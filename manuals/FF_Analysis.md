@@ -54,6 +54,7 @@ python ff_MIDAS.py [arguments]
 | `-provideInputAll` | `int` | `0` | `1` = supply `InputAllExtraInfoFittingAll.csv` directly. Result folder must contain this file. |
 | `-rawDir` | `str` | `''` | Override `RawFolder` in the parameter file. |
 | `-grainsFile` | `str` | `''` | Seed grains file for grain finding (sets `MinNrSpots` to 1). |
+| `-reprocess` | `int` | `0` | `1` = re-run peak merging (`MergeMap.csv`) and consolidated HDF5 generation on existing results. Only needs `-resultFolder`. |
 
 ### Minimal Examples
 
@@ -69,6 +70,9 @@ python ff_MIDAS.py -paramFN ps_ff.txt -startLayerNr 1 -endLayerNr 5
 
 # Peak search only (for inspection):
 python ff_MIDAS.py -paramFN ps_ff.txt -peakSearchOnly 1
+
+# Reprocess existing results (regenerate MergeMap.csv + consolidated HDF5):
+python ff_MIDAS.py -reprocess 1 -resultFolder ~/results/
 ```
 
 ---

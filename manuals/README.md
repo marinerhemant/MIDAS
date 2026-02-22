@@ -11,8 +11,10 @@
 |--------|-------|-------------|
 | [FF_calibration.md](FF_calibration.md) | FF-HEDM geometry calibration | Setting up a new experiment; determining detector parameters |
 | [FF_Analysis.md](FF_Analysis.md) | FF-HEDM grain indexing and fitting | Extracting grain orientations, positions, and strain tensors |
+| [FF_Match_Stack_Reconstructions.md](FF_Match_Stack_Reconstructions.md) | Grain matching and layer stitching | Tracking grains across load states; combining multi-layer scans |
 | [FF_RadialIntegration.md](FF_RadialIntegration.md) | Radial integration / caking | Converting 2D detector images to 1D intensity vs. 2θ profiles |
 | [FF_Interactive_Plotting.md](FF_Interactive_Plotting.md) | Interactive FF-HEDM visualization | Exploring grains, spots, and raw data interactively in a browser |
+| [FF_visualization.md](FF_visualization.md) | FF-HEDM result visualization | Static plotting and export of FF-HEDM grain maps |
 | [FF_dual_datasets.md](FF_dual_datasets.md) | Dual-dataset FF-HEDM analysis | Combining two FF datasets (e.g., different load states) |
 | [PF_Analysis.md](PF_Analysis.md) | Point-Focus HEDM analysis | Analyzing data from a focused beam geometry |
 | [NF_calibration.md](NF_calibration.md) | NF-HEDM detector calibration | Calibrating NF detector distances and beam center |
@@ -38,7 +40,8 @@ For a first-time user performing a combined FF + NF experiment:
 6. **Calibrate** the NF-HEDM detectors → [NF_calibration.md](NF_calibration.md)
 7. **Run NF-HEDM** reconstruction using FF orientation seeds → [NF_Analysis.md](NF_Analysis.md) or [NF_MultiResolution_Analysis.md](NF_MultiResolution_Analysis.md)
 8. **Validate** results with forward simulation → [ForwardSimulationManual.md](ForwardSimulationManual.md)
-9. **(Optional)** Reconstruct tomographic slices for absorption-contrast imaging → [Tomography_Reconstruction.md](Tomography_Reconstruction.md)
+9. **Match/stitch** grains across load states or layers → [FF_Match_Stack_Reconstructions.md](FF_Match_Stack_Reconstructions.md)
+10. **(Optional)** Reconstruct tomographic slices for absorption-contrast imaging → [Tomography_Reconstruction.md](Tomography_Reconstruction.md)
 
 ---
 
@@ -92,7 +95,7 @@ The detector sits only a few millimeters from the sample. At this distance, indi
 NF-HEDM reconstruction is a voxel-by-voxel forward-modeling process. For each candidate voxel position and orientation, MIDAS simulates the expected diffraction pattern and compares it against the measured data. The orientation that produces the best agreement (highest confidence) is assigned to that voxel. The process typically proceeds as follows:
 
 1. **Orientation seeding** — Candidate orientations come from a prior FF-HEDM analysis. Each FF grain provides a seed orientation that is tested at every voxel within the grain's expected spatial extent.
-2. **Multi-layer detector setup** — NF-HEDM at APS 1-ID typically uses multiple GE detectors stacked at different distances from the sample (e.g., layers at 5 mm, 6 mm, 7 mm). Each layer provides an independent constraint, improving the spatial fidelity of the reconstruction.
+2. **Multi-distance detector setup** — NF-HEDM at APS 1-ID typically uses multiple high-resolution detectors stacked at different distances from the sample (e.g., layers at 5 mm, 6 mm, 7 mm). Each distance provides an independent constraint, improving the spatial fidelity of the reconstruction.
 3. **Grid-based reconstruction** — The sample volume is discretized into a regular grid (typically 1–5 µm spacing). Each voxel is tested against all candidate orientations, and the best match is stored in a `.mic` file.
 4. **Multi-resolution refinement** — For large volumes, reconstruction can proceed iteratively: a coarse grid identifies the approximate grain structure, then finer grids refine boundaries and intragranular features. See [NF_MultiResolution_Analysis.md](NF_MultiResolution_Analysis.md).
 

@@ -8,6 +8,7 @@ import time
 import argparse
 import signal
 import shutil
+import glob
 import re
 import logging
 import numpy as np
@@ -1459,6 +1460,71 @@ def process_inputall_data(result_dir: str, top_res_dir: str, ps_fn: str) -> None
     except Exception as e:
         raise RuntimeError(f"Failed to process InputAll data: {e}")
 
+def reprocess_results(result_dir: str) -> None:
+    """Re-run MergeOverlappingPeaksAllZarr and generate consolidated HDF5.
+
+    Use this to regenerate MergeMap.csv and the consolidated HDF5 file for
+    datasets that were processed before these features were added.
+
+    Args:
+        result_dir: Path to an existing analysis result directory
+                    (e.g., LayerNr_1/) containing a .MIDAS.zip and Grains.csv.
+    """
+    result_dir = os.path.abspath(result_dir)
+    logger.info(f"Reprocessing results in {result_dir}")
+
+    # Find the .MIDAS.zip file
+    zip_files = glob.glob(os.path.join(result_dir, '*.MIDAS.zip'))
+    if not zip_files:
+        raise FileNotFoundError(
+            f"No .MIDAS.zip file found in {result_dir}. "
+            f"This directory must contain a Zarr-ZIP archive from a previous analysis.")
+    outFStem = zip_files[0]
+    logger.info(f"Found Zarr-ZIP: {outFStem}")
+
+    # Determine bin directory
+    bin_directory = os.path.join(os.path.dirname(os.path.dirname(
+        os.path.abspath(__file__))), 'bin')
+    if not os.path.isdir(bin_directory):
+        # Try MIDAS_HOME
+        midas_home = os.environ.get('MIDAS_HOME', '')
+        if midas_home:
+            bin_directory = os.path.join(midas_home, 'FF_HEDM', 'bin')
+    logger.info(f"Using bin directory: {bin_directory}")
+
+    # Ensure log directory exists
+    log_dir = os.path.join(result_dir, 'midas_log')
+    os.makedirs(log_dir, exist_ok=True)
+
+    # Step 1: Re-run MergeOverlappingPeaksAllZarr to generate MergeMap.csv
+    merge_bin = os.path.join(bin_directory, 'MergeOverlappingPeaksAllZarr')
+    if not os.path.exists(merge_bin):
+        raise FileNotFoundError(f"MergeOverlappingPeaksAllZarr binary not found at {merge_bin}")
+
+    logger.info("Step 1/2: Running MergeOverlappingPeaksAllZarr (generating MergeMap.csv)...")
+    f_merge_out = os.path.join(log_dir, 'merge_overlaps_reprocess_out.csv')
+    f_merge_err = os.path.join(log_dir, 'merge_overlaps_reprocess_err.csv')
+    cmd = f"{merge_bin} {outFStem}"
+    safely_run_command(cmd, result_dir, f_merge_out, f_merge_err,
+                       task_name="Peak merging (reprocess)")
+
+    merge_map = os.path.join(result_dir, 'MergeMap.csv')
+    if os.path.exists(merge_map):
+        logger.info(f"MergeMap.csv generated: {merge_map}")
+    else:
+        logger.warning("MergeMap.csv was not generated — check merge log for errors")
+
+    # Step 2: Generate consolidated HDF5
+    logger.info("Step 2/2: Generating consolidated HDF5...")
+    try:
+        generate_consolidated_hdf5(result_dir, outFStem)
+    except Exception as e:
+        logger.error(f"Failed to generate consolidated HDF5: {e}")
+        raise
+
+    logger.info("Reprocessing complete.")
+
+
 def main():
     """Main function to process data."""        
     # Set up signal handler
@@ -1507,6 +1573,8 @@ def main():
                         help='If want override the rawDir in the Parameter file.')
     parser.add_argument('-grainsFile', type=str, required=False, default='', 
                         help='Optional input file containing seed grains to use for grain finding. If not provided, grains will be determined from scratch.')
+    parser.add_argument('-reprocess', type=int, required=False, default=0,
+                        help='Set to 1 to re-run peak merging (MergeMap.csv) and consolidated HDF5 generation on existing results. Only needs -resultFolder (or runs in current dir).')
     
     # Parse arguments
     if len(sys.argv) == 1:
@@ -1548,9 +1616,24 @@ def main():
         n_nodes = 1
         
     # Set defaults if neither paramFN nor dataFN is provided
-    if not ps_fn and not data_fn:
+    if not ps_fn and not data_fn and args.reprocess != 1:
         logger.error("Either paramFN or dataFN must be provided")
         sys.exit(1)
+    
+    # Handle reprocess mode
+    if args.reprocess == 1:
+        reprocess_dir = result_dir if result_dir else os.getcwd()
+        # If layer dirs exist, reprocess each
+        layer_dirs = sorted(glob.glob(os.path.join(reprocess_dir, 'LayerNr_*')))
+        if layer_dirs:
+            for ld in layer_dirs:
+                try:
+                    reprocess_results(ld)
+                except Exception as e:
+                    logger.error(f"Reprocess failed for {ld}: {e}")
+        else:
+            reprocess_results(reprocess_dir)
+        return
         
     # Update raw directory if provided
     if len(raw_dir) > 1 and ps_fn:
