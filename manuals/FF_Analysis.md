@@ -237,8 +237,11 @@ Each layer generates a subdirectory:
 │   ├── InputAllExtraInfoFittingAll.csv  # Full spot table
 │   ├── Grains.csv               # ★ Final grain results
 │   ├── SpotMatrix.csv           # Per-spot info grouped by grain
+│   ├── <filestem>_consolidated.h5  # ★ Consolidated HDF5 (all results in one file)
 │   ├── GrainIDsKey.csv          # Grain-to-spot-ID mapping
 │   ├── IDsHash.csv              # Ring→spot-ID lookup table
+│   ├── MergeMap.csv             # Peak merging provenance (SpotID→FrameNr,PeakID)
+│   ├── Radius_StartNr_*.csv     # Per-spot radius and volume estimates
 │   ├── <filestem>_NNNNNN.MIDAS.zip  # Zarr-compressed data
 │   ├── Results/
 │   │   ├── Key.bin              # Indexing results (binary)
@@ -315,7 +318,134 @@ Tab-separated, one row per diffraction spot per grain:
 | 11 | `Theta` | Bragg angle θ (degrees) |
 | 12 | `StrainError` | Per-spot strain error |
 
----
+### Consolidated HDF5 File
+
+The pipeline automatically generates a `<filestem>_consolidated.h5` file that combines all analysis results (grains, spots, peaks, parameters) into a single, self-contained HDF5 file. This is the recommended way to access FF-HEDM results programmatically.
+
+#### File Structure
+
+```
+<filestem>_consolidated.h5
+├── /parameters/                     # All analysis parameters from paramstest.txt
+│   ├── Lsd                          # (float) Sample-to-detector distance
+│   ├── Wavelength                   # (float) X-ray wavelength
+│   ├── SpaceGroup                   # (float) Space group number
+│   ├── LatticeParameter             # (float[6]) a, b, c, α, β, γ
+│   └── ...                          # All other key-value pairs
+│
+├── /all_spots/                      # Full spot table (InputAllExtraInfoFittingAll.csv)
+│   └── data                         # (float[N×15]) All detected spots, 15 columns
+│       attrs: column_names          # [YLab, ZLab, Omega, GrainRadius, SpotID,
+│                                    #  RingNumber, Eta, Ttheta, OmegaIni, YOrig,
+│                                    #  ZOrig, YOrigDetCor, ZOrigDetCor,
+│                                    #  OmegaOrigDetCor, IntegratedIntensity]
+│
+├── /radius_data/                    # Per-spot radius/volume estimates
+│   ├── SpotID                       # (float[N]) Spot identifiers
+│   ├── IntegratedIntensity          # (float[N])
+│   ├── Omega, YCen, ZCen, IMax      # (float[N]) Spot position/intensity
+│   ├── MinOme, MaxOme               # (float[N]) Omega span of the spot
+│   ├── Radius, Theta, Eta           # (float[N]) Geometric properties
+│   ├── DeltaOmega, NImgs            # (float[N]) Omega width, number of frames
+│   ├── RingNr                       # (float[N]) Ring number
+│   ├── GrainVolume, GrainRadius     # (float[N]) Estimated grain size
+│   ├── PowderIntensity              # (float[N]) Reference powder intensity
+│   ├── SigmaR, SigmaEta             # (float[N]) Effective spot widths
+│   └── NrPx, NrPxTot               # (float[N]) Pixel counts
+│
+├── /merge_map/                      # Peak merging provenance
+│   ├── MergedSpotID                 # (int[N]) Final merged spot ID
+│   ├── FrameNr                      # (int[N]) Frame number of constituent peak
+│   └── PeakID                       # (int[N]) Peak ID within that frame
+│
+├── /grains/                         # Per-grain results
+│   ├── summary                      # (float[G×47]) Full Grains.csv data as 2D array
+│   │   attrs: column_names          # Column names (see Grains.csv section above)
+│   │
+│   └── grain_NNNN/                  # One subgroup per grain (e.g., grain_0001)
+│       ├── grain_id                 # (int) Grain ID
+│       ├── orientation              # (float[3×3]) Orientation matrix
+│       ├── position                 # (float[3]) X, Y, Z position (μm)
+│       ├── euler_angles             # (float[3]) Euler angles (Bunge, degrees)
+│       ├── lattice_params_fit       # (float[6]) Fitted a, b, c, α, β, γ
+│       ├── strain_fable             # (float[3×3]) Strain tensor (Fable method)
+│       ├── strain_kenesei           # (float[3×3]) Strain tensor (Kenesei method)
+│       ├── rms_strain_error         # (float) RMS strain error
+│       ├── confidence               # (float) Indexing confidence
+│       ├── phase_nr                 # (int) Phase number
+│       ├── radius                   # (float) Grain radius (μm)
+│       │
+│       └── spots/                   # Spots assigned to this grain
+│           ├── n_spots              # (int) Number of spots
+│           ├── spotid, omega, dety  # (float[S]) SpotMatrix columns (vectorized)
+│           ├── detz, omeraw, eta    # (float[S]) ...
+│           ├── ringnr, ylab, zlab   # (float[S]) ...
+│           ├── theta, strainerror   # (float[S]) ...
+│           │
+│           └── spot_MMMMMM/         # Per-spot subgroup (e.g., spot_000042)
+│               ├── spot_id          # (int) Spot ID
+│               ├── omega, dety, ... # (float) Individual spot properties
+│               ├── minome, maxome   # (float) Radius-derived properties
+│               ├── grainvolume      # (float) Grain volume estimate
+│               ├── powderintensity  # (float) Reference intensity
+│               │
+│               └── constituent_peaks/  # Raw peaks that form this merged spot
+│                   ├── n_constituent_peaks  # (int) Number of raw peaks
+│                   ├── frame_nr     # (int[C]) Frame numbers
+│                   ├── peak_id      # (int[C]) Peak IDs within each frame
+│                   ├── spotid       # (float[C]) Peak-fitted spot ID
+│                   ├── integratedintensity  # (float[C])
+│                   ├── omega, ycen, zcen    # (float[C]) Peak position
+│                   ├── imax, radius, eta    # (float[C]) Peak shape
+│                   ├── sigmar, sigmaeta     # (float[C]) Effective widths
+│                   ├── sigmagr, sigmalr     # (float[C]) Gaussian/Lorentzian R widths
+│                   ├── sigmageta, sigmaleta # (float[C]) Gaussian/Lorentzian η widths
+│                   ├── mu                   # (float[C]) Pseudo-Voigt mixing parameter
+│                   └── bg, nrpixels, ...    # (float[C]) Other _PS.csv columns
+│
+└── /raw_data_ref/                   # Reference to source data
+    └── zarr_path                    # (str) Absolute path to the Zarr-ZIP file
+```
+
+#### Python Example: Reading the Consolidated HDF5
+
+```python
+import h5py
+import numpy as np
+
+with h5py.File('output_consolidated.h5', 'r') as h5:
+    # Access parameters
+    lsd = h5['parameters/Lsd'][()]
+    
+    # Read all grains at once (N×47 array)
+    grains_summary = h5['grains/summary'][:]
+    col_names = list(h5['grains/summary'].attrs['column_names'])
+    
+    # Iterate over individual grains
+    for name in h5['grains']:
+        if not name.startswith('grain_'):
+            continue
+        g = h5['grains'][name]
+        grain_id = g['grain_id'][()]
+        orientation = g['orientation'][:]  # 3×3 matrix
+        position = g['position'][:]       # [X, Y, Z]
+        n_spots = g['spots/n_spots'][()]
+        
+        # Access spots for this grain
+        if n_spots > 0:
+            omegas = g['spots/omega'][:]
+            
+            # Access constituent peaks for a specific spot
+            for sname in g['spots']:
+                if not sname.startswith('spot_'):
+                    continue
+                spot = g['spots'][sname]
+                if 'constituent_peaks' in spot:
+                    cp = spot['constituent_peaks']
+                    n_peaks = cp['n_constituent_peaks'][()]
+                    frame_nrs = cp['frame_nr'][:]
+                    intensities = cp['integratedintensity'][:]
+```
 
 ## 8. Computational Resources
 
