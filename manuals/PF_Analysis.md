@@ -233,7 +233,11 @@ HDF5 file with two datasets:
 ### 8.1. Spatially-Aware Indexing (`IndexerScanningOMP`)
 Unlike standard box-beam indexing, the scanning indexer accounts for the sample's translation across the beam.
 *   **Dynamic Geometry:** For every candidate voxel at position $(x, y)$, the diffraction spot projection is recalculated. The expected detector $Y$ position ($Y_{det}$) is modified by the sample translation projected onto the detector plane:
-    $$ Y_{det} = Y_{theor} + (x \cdot \sin \omega + y \cdot \cos \omega) / px\_size $$
+
+    $$
+    Y_{det} = Y_{theor} + \frac{x \cdot \sin \omega + y \cdot \cos \omega}{px\_size}
+    $$
+
 *   **Voxel Grid:** The software discretizes the sample space into a grid defined by the `BeamSize`. It systematically tests orientations at each grid point, effectively performing a "diffraction-based raster scan."
 
 ### 8.2. Tomographic Reconstruction
