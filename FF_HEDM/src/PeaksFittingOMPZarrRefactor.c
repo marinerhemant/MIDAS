@@ -1039,11 +1039,12 @@ int fit2DPeaks(unsigned nPeaks, int nrPixelsThisRegion, double *z,
     otherInfo[8 * i + 4] = x[(8 * i) + 8]; // SigmaLEta
     otherInfo[8 * i + 5] = x[(8 * i) + 4]; // Mu
 
-    // Store maximum sigma values
-    otherInfo[8 * i + 6] =
-        fmax(x[(8 * i) + 5], x[(8 * i) + 6]); // Max sigma in R
-    otherInfo[8 * i + 7] =
-        fmax(x[(8 * i) + 7], x[(8 * i) + 8]); // Max sigma in Eta
+    // Mu-weighted effective sigma (pseudo-Voigt combination)
+    double mu_i = x[(8 * i) + 4];
+    otherInfo[8 * i + 6] = mu_i * x[(8 * i) + 6] +
+                           (1.0 - mu_i) * x[(8 * i) + 5]; // Effective sigma R
+    otherInfo[8 * i + 7] = mu_i * x[(8 * i) + 8] +
+                           (1.0 - mu_i) * x[(8 * i) + 7]; // Effective sigma Eta
   }
 
   // Calculate Y and Z coordinates from R and Eta
