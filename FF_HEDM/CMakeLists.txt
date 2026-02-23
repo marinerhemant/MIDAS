@@ -77,7 +77,7 @@ add_ff_hedm_executable(CalibrantPanelShiftsOMP SOURCES src/CalibrantPanelShiftsO
 # add_ff_hedm_executable(FitSetup SOURCES src/FitSetupParamsAll.c)
 # add_ff_hedm_executable(FitTiltBCLsdSample SOURCES src/FitTiltBCLsdSampleOmegaCorrection.c)
 # add_ff_hedm_executable(ForwardSimulation SOURCES src/ForwardSimulation.c)
-add_ff_hedm_executable(ForwardSimulationCompressed SOURCES src/ForwardSimulationCompressed.c src/Panel.c OMP)
+add_ff_hedm_executable(ForwardSimulationCompressed SOURCES src/ForwardSimulationCompressed.c src/Panel.c src/MIDAS_Math.c OMP)
 
 add_ff_hedm_executable(FitPosOrStrainsOMP SOURCES src/FitPosOrStrainsOMP.c src/CalcDiffractionSpots.c src/MIDAS_Math.c OMP)
 add_ff_hedm_executable(FitPosOrStrainsDoubleDataset SOURCES src/FitPosOrStrainsDoubleDataset.c src/CalcDiffractionSpots.c src/MIDAS_Math.c OMP)
@@ -111,8 +111,8 @@ add_ff_hedm_executable(CalcRadiusAllZarr SOURCES src/CalcRadiusAllZarr.c src/Zar
 add_ff_hedm_executable(FitSetupZarr SOURCES src/FitSetupParamsAllZarr.c src/ZarrReader.c src/MIDAS_Math.c)
 add_ff_hedm_executable(ProcessGrainsZarr SOURCES src/ProcessGrainsZarr.c src/ZarrReader.c src/GetMisorientation.c src/CalcStrains.c src/MIDAS_Math.c)
 
-add_ff_hedm_executable(IndexerOMP SOURCES src/IndexerOMP.c OMP)
-add_ff_hedm_executable(IndexerScanningOMP SOURCES src/IndexerScanningOMP.c OMP)
+add_ff_hedm_executable(IndexerOMP SOURCES src/IndexerOMP.c src/MIDAS_Math.c OMP)
+add_ff_hedm_executable(IndexerScanningOMP SOURCES src/IndexerScanningOMP.c src/MIDAS_Math.c OMP)
 
 add_ff_hedm_executable(SaveBinData SOURCES src/SaveBinData.c)
 add_ff_hedm_executable(SaveBinDataScanning SOURCES src/SaveBinDataScanning.c)

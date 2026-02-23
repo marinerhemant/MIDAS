@@ -137,8 +137,7 @@ static inline void Convert3x3To9(double MatIn[3][3], double MatOut[9]) {
     for (j = 0; j < 3; j++)
       MatOut[(i * 3) + j] = MatIn[i][j];
 }
-static inline double sind(double x) { return sin(deg2rad * x); }
-static inline double cosd(double x) { return cos(deg2rad * x); }
+
 static inline double tand(double x) { return tan(deg2rad * x); }
 static inline double asind(double x) { return rad2deg * (asin(x)); }
 static inline double acosd(double x) { return rad2deg * (acos(x)); }
@@ -200,13 +199,6 @@ static inline void Euler2OrientMat(double Euler[3], double m_out[3][3]) {
   m_out[2][2] = cph;
 }
 
-static inline void MatrixMult(double m[3][3], double v[3], double r[3]) {
-  int i;
-  for (i = 0; i < 3; i++) {
-    r[i] = m[i][0] * v[0] + m[i][1] * v[1] + m[i][2] * v[2];
-  }
-}
-
 static inline void CorrectHKLsLatC(double LatC[6], double **hklsIn, int nhkls,
                                    double Lsd, double Wavelength,
                                    double **hkls) {
@@ -232,7 +224,7 @@ static inline void CorrectHKLsLatC(double LatC[6], double **hklsIn, int nhkls,
     ginit[1] = hklsIn[hklnr][1];
     ginit[2] = hklsIn[hklnr][2];
     double GCart[3];
-    MatrixMult(B, ginit, GCart);
+    MatrixMultF(B, ginit, GCart);
     double Ds = 1 / (sqrt((GCart[0] * GCart[0]) + (GCart[1] * GCart[1]) +
                           (GCart[2] * GCart[2])));
     hkls[hklnr][0] = GCart[0];
@@ -247,31 +239,7 @@ static inline void CorrectHKLsLatC(double LatC[6], double **hklsIn, int nhkls,
   }
 }
 
-static inline void DisplacementInTheSpot(double a, double b, double c,
-                                         double xi, double yi, double zi,
-                                         double omega, double wedge, double chi,
-                                         double *Displ_y, double *Displ_z) {
-  double sinOme = sind(omega), cosOme = cosd(omega), AcosOme = a * cosOme,
-         BsinOme = b * sinOme;
-  double XNoW = AcosOme - BsinOme, YNoW = (a * sinOme) + (b * cosOme), ZNoW = c;
-  double WedgeRad = deg2rad * wedge, CosW = cos(WedgeRad), SinW = sin(WedgeRad),
-         XW = XNoW * CosW - ZNoW * SinW, YW = YNoW;
-  double ZW = (XNoW * SinW) + (ZNoW * CosW), ChiRad = deg2rad * chi,
-         CosC = cos(ChiRad), SinC = sin(ChiRad), XC = XW;
-  double YC = (CosC * YW) - (SinC * ZW), ZC = (SinC * YW) + (CosC * ZW);
-  double IK[3], NormIK;
-  IK[0] = xi - XC;
-  IK[1] = yi - YC;
-  IK[2] = zi - ZC;
-  NormIK = sqrt((IK[0] * IK[0]) + (IK[1] * IK[1]) + (IK[2] * IK[2]));
-  IK[0] = IK[0] / NormIK;
-  IK[1] = IK[1] / NormIK;
-  IK[2] = IK[2] / NormIK;
-  *Displ_y = YC - ((XC * IK[1]) / (IK[0]));
-  *Displ_z = ZC - ((XC * IK[2]) / (IK[0]));
-}
-
-static inline double CalcEtaAngle(double y, double z) {
+static inline double CalcEtaAngleLocal(double y, double z) {
   double alpha = rad2deg * acos(z / sqrt(y * y + z * z));
   if (y > 0)
     alpha = -alpha;
@@ -284,7 +252,7 @@ static inline void CorrectForOme(double yc, double zc, double Lsd,
                                  double *OmegaOut) {
   double ysi = yc, zsi = zc;
   double CosOme = cos(deg2rad * OmegaIni), SinOme = sin(deg2rad * OmegaIni);
-  double eta = CalcEtaAngle(ysi, zsi);
+  double eta = CalcEtaAngleLocal(ysi, zsi);
   double RingRadius = sqrt((ysi * ysi) + (zsi * zsi));
   double tth = rad2deg * atan(RingRadius / Lsd);
   double theta = tth / 2;
@@ -393,7 +361,7 @@ static inline void CorrectForOme(double yc, double zc, double Lsd,
   double SinOmega = sin(deg2rad * Omega);
   double CosOmega = cos(deg2rad * Omega);
   double Fact = (g1 * CosOmega) - (g2 * SinOmega);
-  double Eta = CalcEtaAngle(k2, k3);
+  double Eta = CalcEtaAngleLocal(k2, k3);
   double Sin_Eta = sin(deg2rad * Eta);
   double Cos_Eta = cos(deg2rad * Eta);
   *ysOut = -RingRadius * Sin_Eta;
@@ -403,8 +371,9 @@ static inline void CorrectForOme(double yc, double zc, double Lsd,
 
 static inline void SpotToGv(double xi, double yi, double zi, double Omega,
                             double theta, double *g1, double *g2, double *g3) {
-  double CosOme = cosd(Omega), SinOme = sind(Omega), eta = CalcEtaAngle(yi, zi),
-         TanEta = tand(-eta), SinTheta = sind(theta);
+  double CosOme = cosd(Omega), SinOme = sind(Omega),
+         eta = CalcEtaAngleLocal(yi, zi), TanEta = tand(-eta),
+         SinTheta = sind(theta);
   double CosTheta = cosd(theta), CosW = 1, SinW = 0,
          k3 = SinTheta * (1 + xi) / ((yi * TanEta) + zi), k2 = TanEta * k3,
          k1 = -SinTheta;
@@ -420,16 +389,6 @@ static inline void SpotToGv(double xi, double yi, double zi, double Omega,
   *g1 = (k1f * CosOme) + (k2f * SinOme);
   *g2 = (k2f * CosOme) - (k1f * SinOme);
   *g3 = k3f;
-}
-
-static inline void MatrixMultF33(double m[3][3], double n[3][3],
-                                 double res[3][3]) {
-  int r;
-  for (r = 0; r < 3; r++) {
-    res[r][0] = m[r][0] * n[0][0] + m[r][1] * n[1][0] + m[r][2] * n[2][0];
-    res[r][1] = m[r][0] * n[0][1] + m[r][1] * n[1][1] + m[r][2] * n[2][1];
-    res[r][2] = m[r][0] * n[0][2] + m[r][1] * n[1][2] + m[r][2] * n[2][2];
-  }
 }
 
 static inline void CorrectTiltSpatialDistortion(
@@ -457,10 +416,10 @@ static inline void CorrectTiltSpatialDistortion(
     Zc = (zDet - zbc) * px;
     double ABC[3] = {0, Yc, Zc};
     double ABCPr[3];
-    MatrixMult(TRs, ABC, ABCPr);
+    MatrixMultF(TRs, ABC, ABCPr);
     double XYZ[3] = {Lsd + ABCPr[0], ABCPr[1], ABCPr[2]};
     Rad = (Lsd / (XYZ[0])) * (sqrt(XYZ[1] * XYZ[1] + XYZ[2] * XYZ[2]));
-    Eta = CalcEtaAngle(XYZ[1], XYZ[2]);
+    Eta = CalcEtaAngleLocal(XYZ[1], XYZ[2]);
     RNorm = Rad / MaxRad;
     EtaT = 90 - Eta;
     DistortFunc = (p0 * (pow(RNorm, n0)) * (cos(deg2rad * (2 * EtaT)))) +

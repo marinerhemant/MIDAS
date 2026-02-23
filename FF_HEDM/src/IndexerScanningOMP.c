@@ -25,6 +25,8 @@
 #include <sys/types.h>
 #include <time.h>
 
+#include "MIDAS_Math.h"
+
 // check() - using MIDAS_CHECK_DEFINED guard (cannot include MIDAS_Limits.h due
 // to conflicting MAX_N_SPOTS)
 #ifndef MIDAS_CHECK_DEFINED
@@ -161,8 +163,6 @@ void FindInMatrix(RealType *aMatrixp, int nrows, int ncols, int SearchColumn,
   }
 }
 
-static inline double sind(double x) { return sin(deg2rad * x); }
-static inline double cosd(double x) { return cos(deg2rad * x); }
 static inline double tand(double x) { return tan(deg2rad * x); }
 static inline double asind(double x) { return rad2deg * (asin(x)); }
 static inline double acosd(double x) { return rad2deg * (acos(x)); }
@@ -245,29 +245,6 @@ void FreeMemMatrix(RealType **mat, int nrows) {
   }
 }
 
-void MatrixMultF33(RealType m[3][3], RealType n[3][3], RealType res[3][3]) {
-  int r;
-  for (r = 0; r < 3; r++) {
-    res[r][0] = m[r][0] * n[0][0] + m[r][1] * n[1][0] + m[r][2] * n[2][0];
-    res[r][1] = m[r][0] * n[0][1] + m[r][1] * n[1][1] + m[r][2] * n[2][1];
-    res[r][2] = m[r][0] * n[0][2] + m[r][1] * n[1][2] + m[r][2] * n[2][2];
-  }
-}
-
-void MatrixMultF(RealType m[3][3], RealType v[3], RealType r[3]) {
-  int i;
-  for (i = 0; i < 3; i++) {
-    r[i] = m[i][0] * v[0] + m[i][1] * v[1] + m[i][2] * v[2];
-  }
-}
-
-void MatrixMult(RealType m[3][3], int v[3], RealType r[3]) {
-  int i;
-  for (i = 0; i < 3; i++) {
-    r[i] = m[i][0] * v[0] + m[i][1] * v[1] + m[i][2] * v[2];
-  }
-}
-
 RealType min(RealType a, RealType b) { return (a < b ? a : b); }
 
 RealType max(RealType a, RealType b) { return (a > b ? a : b); }
@@ -292,19 +269,6 @@ void CalcInternalAngle(RealType x1, RealType y1, RealType z1, RealType x2,
     tmp = -1;
   }
   *ia = rad2deg * acos(tmp);
-}
-
-void RotateAroundZ(RealType v1[3], RealType alpha, RealType v2[3]) {
-  RealType cosa = cos(alpha * deg2rad);
-  RealType sina = sin(alpha * deg2rad);
-  RealType mat[3][3] = {{cosa, -sina, 0}, {sina, cosa, 0}, {0, 0, 1}};
-  MatrixMultF(mat, v1, v2);
-}
-
-void CalcEtaAngle(RealType y, RealType z, RealType *alpha) {
-  *alpha = rad2deg * acos(z / sqrt(y * y + z * z));
-  if (y > 0)
-    *alpha = -*alpha;
 }
 
 void CalcSpotPosition(RealType RingRadius, RealType eta, RealType *yl,

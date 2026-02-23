@@ -19,6 +19,8 @@
 #include <string.h>
 #include <time.h>
 
+#include "MIDAS_Math.h"
+
 #define deg2rad 0.0174532925199433
 #define rad2deg 57.2957795130823
 #define RealType double
@@ -31,28 +33,6 @@ extern int BigDetSize;
 extern int *BigDetector;
 extern long long int totNrPixelsBigDetector;
 extern double pixelsize;
-
-static inline void MatrixMult(RealType m[3][3], int v[3], RealType r[3]) {
-  int i;
-  for (i = 0; i < 3; i++) {
-    r[i] = m[i][0] * v[0] + m[i][1] * v[1] + m[i][2] * v[2];
-  }
-}
-
-static inline void MatrixMultF(RealType m[3][3], RealType v[3], RealType r[3]) {
-  int i;
-  for (i = 0; i < 3; i++) {
-    r[i] = m[i][0] * v[0] + m[i][1] * v[1] + m[i][2] * v[2];
-  }
-}
-
-static inline void RotateAroundZ(RealType v1[3], RealType alpha,
-                                 RealType v2[3]) {
-  RealType cosa = cos(alpha * deg2rad);
-  RealType sina = sin(alpha * deg2rad);
-  RealType mat[3][3] = {{cosa, -sina, 0}, {sina, cosa, 0}, {0, 0, 1}};
-  MatrixMultF(mat, v1, v2);
-}
 
 static inline void QuatToOrientMat(double Quat[4], double OrientMat[3][3]) {
   double Q1_2, Q2_2, Q3_2, Q12, Q03, Q13, Q02, Q23, Q01;
@@ -74,12 +54,6 @@ static inline void QuatToOrientMat(double Quat[4], double OrientMat[3][3]) {
   OrientMat[2][0] = 2 * (Q13 + Q02);
   OrientMat[2][1] = 2 * (Q23 - Q01);
   OrientMat[2][2] = 1 - 2 * (Q1_2 + Q2_2);
-}
-
-static inline void CalcEtaAngle(RealType y, RealType z, RealType *alpha) {
-  *alpha = rad2deg * acos(z / sqrt(y * y + z * z));
-  if (y > 0)
-    *alpha = -*alpha;
 }
 
 static inline void CalcSpotPosition(RealType RingRadius, RealType eta,

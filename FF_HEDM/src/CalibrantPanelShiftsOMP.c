@@ -111,17 +111,7 @@ static inline void FreeMemMatrixInt(int **mat, int nrows) {
   free(mat);
 }
 
-static inline void MatrixMultF33(double m[3][3], double n[3][3],
-                                 double res[3][3]) {
-  int r;
-  for (r = 0; r < 3; r++) {
-    res[r][0] = m[r][0] * n[0][0] + m[r][1] * n[1][0] + m[r][2] * n[2][0];
-    res[r][1] = m[r][0] * n[0][1] + m[r][1] * n[1][1] + m[r][2] * n[2][1];
-    res[r][2] = m[r][0] * n[0][2] + m[r][1] * n[1][2] + m[r][2] * n[2][2];
-  }
-}
-
-static inline double CalcEtaAngle(double y, double z) {
+static inline double CalcEtaAngleLocal(double y, double z) {
   double alpha = rad2deg * acos(z / sqrt(y * y + z * z));
   if (y > 0)
     alpha = -alpha;
@@ -142,13 +132,6 @@ static inline void YZ4mREta(int NrElements, double *R, double *Eta, double *Y,
   for (i = 0; i < NrElements; i++) {
     Y[i] = -R[i] * sin(Eta[i] * deg2rad);
     Z[i] = R[i] * cos(Eta[i] * deg2rad);
-  }
-}
-
-static inline void MatrixMult(double m[3][3], double v[3], double r[3]) {
-  int i;
-  for (i = 0; i < 3; i++) {
-    r[i] = m[i][0] * v[0] + m[i][1] * v[1] + m[i][2] * v[2];
   }
 }
 
@@ -186,13 +169,13 @@ static inline void Car2Pol(int n_hkls, int nEtaBins, int y, int z, double ybc,
       ABC[0] = 0;
       ABC[1] = Yc;
       ABC[2] = Zc;
-      EtaST = CalcEtaAngle(ABC[1], ABC[2]);
-      MatrixMult(TRs, ABC, ABCPr);
+      EtaST = CalcEtaAngleLocal(ABC[1], ABC[2]);
+      MatrixMultF(TRs, ABC, ABCPr);
       XYZ[0] = Lsd + ABCPr[0];
       XYZ[1] = ABCPr[1];
       XYZ[2] = ABCPr[2];
       Rad = (Lsd / (XYZ[0])) * (sqrt(XYZ[1] * XYZ[1] + XYZ[2] * XYZ[2]));
-      EtaS = CalcEtaAngle(XYZ[1], XYZ[2]);
+      EtaS = CalcEtaAngleLocal(XYZ[1], XYZ[2]);
       RNorm = Rad / RhoD;
       EtaT = 90 - EtaS;
       // Reset Eta so that calculations later on are still good.
@@ -541,10 +524,10 @@ static double problem_function(unsigned n, const double *x, double *grad,
     Zc = (ZMean[i] + dZ - zbc) * px;
     double ABC[3] = {0, Yc, Zc};
     double ABCPr[3];
-    MatrixMult(TRs, ABC, ABCPr);
+    MatrixMultF(TRs, ABC, ABCPr);
     double XYZ[3] = {Lsd + ABCPr[0], ABCPr[1], ABCPr[2]};
     Rad = (Lsd / (XYZ[0])) * (sqrt(XYZ[1] * XYZ[1] + XYZ[2] * XYZ[2]));
-    Eta = CalcEtaAngle(XYZ[1], XYZ[2]);
+    Eta = CalcEtaAngleLocal(XYZ[1], XYZ[2]);
     RNorm = Rad / MaxRad;
     EtaT = 90 - Eta;
     DistortFunc = (p0 * (pow(RNorm, n0)) * (cos(deg2rad * (2 * EtaT)))) +
@@ -784,10 +767,10 @@ void FitTiltBCLsd(int nIndices, double *YMean, double *ZMean,
       Zc = (ZMean[i] + dZ - zbcV) * px;
       double ABC[3] = {0, Yc, Zc};
       double ABCPr[3];
-      MatrixMult(TRs, ABC, ABCPr);
+      MatrixMultF(TRs, ABC, ABCPr);
       double XYZ[3] = {LsdV + ABCPr[0], ABCPr[1], ABCPr[2]};
       Rad = (LsdV / (XYZ[0])) * (sqrt(XYZ[1] * XYZ[1] + XYZ[2] * XYZ[2]));
-      Eta = CalcEtaAngle(XYZ[1], XYZ[2]);
+      Eta = CalcEtaAngleLocal(XYZ[1], XYZ[2]);
       RNorm = Rad / MaxRad;
       EtaT = 90 - Eta;
       DistortFunc =
@@ -880,10 +863,10 @@ static inline void CorrectTiltSpatialDistortion(
     Zc = (ZMean[i] + dZ - zbc) * px;
     double ABC[3] = {0, Yc, Zc};
     double ABCPr[3];
-    MatrixMult(TRs, ABC, ABCPr);
+    MatrixMultF(TRs, ABC, ABCPr);
     double XYZ[3] = {Lsd + ABCPr[0], ABCPr[1], ABCPr[2]};
     Rad = (Lsd / (XYZ[0])) * (sqrt(XYZ[1] * XYZ[1] + XYZ[2] * XYZ[2]));
-    Eta = CalcEtaAngle(XYZ[1], XYZ[2]);
+    Eta = CalcEtaAngleLocal(XYZ[1], XYZ[2]);
     RNorm = Rad / MaxRad;
     EtaT = 90 - Eta;
     DistortFunc = (p0 * (pow(RNorm, n0)) * (cos(deg2rad * (2 * EtaT)))) +

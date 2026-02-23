@@ -17,6 +17,7 @@
 //
 //
 
+#include "MIDAS_Math.h"
 #include "Panel.h"
 #include "midas_paths.h"
 #include <blosc.h>
@@ -103,22 +104,6 @@ static inline double **allocMatrix(int nrows, int ncols) {
   return arr;
 }
 
-static inline void MatrixMult(double m[3][3], double v[3], double r[3]) {
-  int i;
-  for (i = 0; i < 3; i++) {
-    r[i] = m[i][0] * v[0] + m[i][1] * v[1] + m[i][2] * v[2];
-  }
-}
-
-static inline void MatrixMultF(double m[3][3], double v[3], double r[3]) {
-  int i;
-  for (i = 0; i < 3; i++) {
-    r[i] = m[i][0] * v[0] + m[i][1] * v[1] + m[i][2] * v[2];
-  }
-}
-
-static inline double sind(double x) { return sin(deg2rad * x); }
-static inline double cosd(double x) { return cos(deg2rad * x); }
 static inline double tand(double x) { return tan(deg2rad * x); }
 static inline double asind(double x) { return rad2deg * (asin(x)); }
 static inline double acosd(double x) { return rad2deg * (acos(x)); }
@@ -144,31 +129,6 @@ static inline void QuatToOrientMat(double Quat[4], double OrientMat[3][3]) {
   OrientMat[2][0] = 2 * (Q13 - Q02);
   OrientMat[2][1] = 2 * (Q23 + Q01);
   OrientMat[2][2] = 1 - 2 * (Q1_2 + Q2_2);
-}
-
-static inline void RotateAroundZ(double v1[3], double alpha, double v2[3]) {
-  double cosa = cos(alpha * deg2rad);
-  double sina = sin(alpha * deg2rad);
-
-  double mat[3][3] = {{cosa, -sina, 0}, {sina, cosa, 0}, {0, 0, 1}};
-
-  MatrixMultF(mat, v1, v2);
-}
-
-static inline void MatrixMultF33(double m[3][3], double n[3][3],
-                                 double res[3][3]) {
-  int r;
-  for (r = 0; r < 3; r++) {
-    res[r][0] = m[r][0] * n[0][0] + m[r][1] * n[1][0] + m[r][2] * n[2][0];
-    res[r][1] = m[r][0] * n[0][1] + m[r][1] * n[1][1] + m[r][2] * n[2][1];
-    res[r][2] = m[r][0] * n[0][2] + m[r][1] * n[1][2] + m[r][2] * n[2][2];
-  }
-}
-
-static inline void CalcEtaAngle(double y, double z, double *alpha) {
-  *alpha = rad2deg * acos(z / sqrt(y * y + z * z));
-  if (y > 0)
-    *alpha = -*alpha;
 }
 
 static inline void CalcSpotPosition(double RingRadius, double eta, double *yl,
@@ -309,30 +269,6 @@ void RotationTilts(double tx, double ty, double tz, double RotMatOut[3][3]) {
   MatrixMultF33(r1r2, r3, RotMatOut);
 }
 
-static inline void DisplacementInTheSpot(double a, double b, double c,
-                                         double xi, double yi, double zi,
-                                         double omega, double *Displ_y,
-                                         double *Displ_z) {
-  double sinOme = sind(omega), cosOme = cosd(omega), AcosOme = a * cosOme,
-         BsinOme = b * sinOme;
-  double XNoW = AcosOme - BsinOme, YNoW = (a * sinOme) + (b * cosOme), ZNoW = c;
-  double XW = XNoW, YW = YNoW;
-  double ZW = ZNoW, XC = XW;
-  double YC = YW, ZC = ZW;
-  double IK[3], NormIK;
-  IK[0] = xi - XC;
-  IK[1] = yi - YC;
-  IK[2] = zi - ZC;
-  NormIK = sqrt((IK[0] * IK[0]) + (IK[1] * IK[1]) + (IK[2] * IK[2]));
-  IK[0] = IK[0] / NormIK;
-  IK[1] = IK[1] / NormIK;
-  IK[2] = IK[2] / NormIK;
-  if (fabs(IK[0]) > EPS) {
-    *Displ_y = YC - ((XC * IK[1]) / (IK[0]));
-    *Displ_z = ZC - ((XC * IK[2]) / (IK[0]));
-  }
-}
-
 static inline void CalcDiffrSpots_Furnace(double **hklIns,
                                           double OrientMatrix[3][3],
                                           double distance, double wavelength,
@@ -454,7 +390,7 @@ static inline void CorrectHKLsLatC(double LatC[6], double Wavelength,
     ginit[1] = hkls[hklnr][1];
     ginit[2] = hkls[hklnr][2];
     double GCart[3];
-    MatrixMult(B, ginit, GCart);
+    MatrixMultF(B, ginit, GCart);
     double Ds = 1 / (sqrt((GCart[0] * GCart[0]) + (GCart[1] * GCart[1]) +
                           (GCart[2] * GCart[2])));
     hklsOut[hklnr][0] = GCart[0];
@@ -529,7 +465,7 @@ static inline void CorrectHKLsLatCEpsilon(double LatC[6], double eps[6],
     ginit[1] = hkls[hklnr][1];
     ginit[2] = hkls[hklnr][2];
     double GCart[3];
-    MatrixMult(B, ginit, GCart);
+    MatrixMultF(B, ginit, GCart);
     double Ds = 1 / (sqrt((GCart[0] * GCart[0]) + (GCart[1] * GCart[1]) +
                           (GCart[2] * GCart[2])));
     hklsOut[hklnr][0] = GCart[0];
@@ -699,7 +635,7 @@ CorrectTiltSpatialDistortion(double px, double Lsd, double ybc, double zbc,
       double Zc = (zpr - zbc) * px;
       double ABC[3] = {0, Yc, Zc};
       double ABCPr[3];
-      MatrixMult(TRs, ABC, ABCPr);
+      MatrixMultF(TRs, ABC, ABCPr);
       double XYZ[3];
       XYZ[0] = Lsd + ABCPr[0];
       XYZ[1] = ABCPr[1];
@@ -1923,7 +1859,7 @@ int main(int argc, char *argv[]) {
             zTemp = TempInfo[0] * cos(TempInfo[1] * deg2rad);
             DisplacementInTheSpot(InputInfo[voxNr][9], InputInfo[voxNr][10],
                                   InputInfo[voxNr][11], Lsd, yTemp, zTemp,
-                                  omeThis, &DisplY2, &DisplZ2);
+                                  omeThis, 0.0, 0.0, &DisplY2, &DisplZ2);
             yThis = yTemp + DisplY2 + yOffset;
             zThis = zTemp + DisplZ2;
             yTrans = (int)(-yThis / px + yBC);

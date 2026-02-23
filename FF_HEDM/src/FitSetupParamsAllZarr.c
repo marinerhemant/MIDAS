@@ -84,17 +84,7 @@ static inline void FreeMemMatrix(double **mat, int nrows) {
   free(mat);
 }
 
-static inline void MatrixMultF33(double m[3][3], double n[3][3],
-                                 double res[3][3]) {
-  int r;
-  for (r = 0; r < 3; r++) {
-    res[r][0] = m[r][0] * n[0][0] + m[r][1] * n[1][0] + m[r][2] * n[2][0];
-    res[r][1] = m[r][0] * n[0][1] + m[r][1] * n[1][1] + m[r][2] * n[2][1];
-    res[r][2] = m[r][0] * n[0][2] + m[r][1] * n[1][2] + m[r][2] * n[2][2];
-  }
-}
-
-static inline double CalcEtaAngle(double y, double z) {
+static inline double CalcEtaAngleLocal(double y, double z) {
   double alpha = rad2deg * acos(z / sqrt(y * y + z * z));
   if (y > 0)
     alpha = -alpha;
@@ -159,13 +149,6 @@ struct my_func_data {
   double p3;
 };
 
-static inline void MatrixMult(double m[3][3], double v[3], double r[3]) {
-  int i;
-  for (i = 0; i < 3; i++) {
-    r[i] = m[i][0] * v[0] + m[i][1] * v[1] + m[i][2] * v[2];
-  }
-}
-
 static double problem_function(unsigned n, const double *x, double *grad,
                                void *f_data_trial) {
   struct my_func_data *f_data = (struct my_func_data *)f_data_trial;
@@ -215,10 +198,10 @@ static double problem_function(unsigned n, const double *x, double *grad,
     Zc = (ZMean[i] - zbc) * px;
     double ABC[3] = {0, Yc, Zc};
     double ABCPr[3];
-    MatrixMult(TRs, ABC, ABCPr);
+    MatrixMultF(TRs, ABC, ABCPr);
     double XYZ[3] = {Lsd + ABCPr[0], ABCPr[1], ABCPr[2]};
     Rad = (Lsd / (XYZ[0])) * (sqrt(XYZ[1] * XYZ[1] + XYZ[2] * XYZ[2]));
-    Eta = CalcEtaAngle(XYZ[1], XYZ[2]);
+    Eta = CalcEtaAngleLocal(XYZ[1], XYZ[2]);
     RNorm = Rad / MaxRad;
     EtaT = 90 - Eta;
     DistortFunc = (p0 * (pow(RNorm, n0)) * (cos(deg2rad * (2 * EtaT)))) +
@@ -339,10 +322,10 @@ CorrectTiltSpatialDistortion(int nIndices, double MaxRad, double *YMean,
     Zc = (ZMean[i] - zbc) * px;
     double ABC[3] = {0, Yc, Zc};
     double ABCPr[3];
-    MatrixMult(TRs, ABC, ABCPr);
+    MatrixMultF(TRs, ABC, ABCPr);
     double XYZ[3] = {Lsd + ABCPr[0], ABCPr[1], ABCPr[2]};
     Rad = (Lsd / (XYZ[0])) * (sqrt(XYZ[1] * XYZ[1] + XYZ[2] * XYZ[2]));
-    Eta = CalcEtaAngle(XYZ[1], XYZ[2]);
+    Eta = CalcEtaAngleLocal(XYZ[1], XYZ[2]);
     RNorm = Rad / MaxRad;
     EtaT = 90 - Eta;
     DistortFunc = (p0 * (pow(RNorm, n0)) * (cos(deg2rad * (2 * EtaT)))) +
@@ -360,7 +343,7 @@ static inline void CorrectWedge(double yc, double zc, double Lsd,
                                 double *EtaOut, double *TthetaOut) {
   double ysi = yc, zsi = zc;
   double CosOme = cos(deg2rad * OmegaIni), SinOme = sin(deg2rad * OmegaIni);
-  double eta = CalcEtaAngle(ysi, zsi);
+  double eta = CalcEtaAngleLocal(ysi, zsi);
   double RingRadius = sqrt((ysi * ysi) + (zsi * zsi));
   double tth = rad2deg * atan(RingRadius / Lsd);
   double theta = tth / 2;
@@ -479,7 +462,7 @@ static inline void CorrectWedge(double yc, double zc, double Lsd,
   double Fact = (g1 * CosOmega) - (g2 * SinOmega);
   double k2N = (g1 * SinOmega) + (g2 * CosOmega);
   double k3N = (SinW * Fact) + (g3 * CosW);
-  double Eta = CalcEtaAngle(k2, k3);
+  double Eta = CalcEtaAngleLocal(k2, k3);
   double Sin_Eta = sin(deg2rad * Eta);
   double Cos_Eta = cos(deg2rad * Eta);
   *ysOut = -RingRadius * Sin_Eta;

@@ -360,9 +360,6 @@ static inline void freeMatrixInt(int **mat, int nrows) {
   free(mat);
 }
 
-// Trigonometric functions using degrees
-static inline double sind(double x) { return sin(DEG2RAD * x); }
-static inline double cosd(double x) { return cos(DEG2RAD * x); }
 static inline double tand(double x) { return tan(DEG2RAD * x); }
 static inline double asind(double x) { return RAD2DEG * asin(x); }
 static inline double acosd(double x) { return RAD2DEG * acos(x); }
