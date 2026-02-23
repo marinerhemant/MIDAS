@@ -220,6 +220,168 @@ def main():
          sys.exit(1)
 
     print("\n*** Automated FF_HEDM Benchmark Suite Executed Successfully ***")
+    
+    # 7. Regression comparison against reference consolidated HDF5
+    result_dir = work_dir / "LayerNr_1"
+    ref_h5 = work_dir / "consolidated_Output.h5"
+    
+    # Find the newly generated consolidated h5
+    new_h5_files = list(result_dir.glob("*_consolidated.h5"))
+    if new_h5_files and ref_h5.exists():
+        compare_consolidated_hdf5(ref_h5, new_h5_files[0])
+    elif not ref_h5.exists():
+        print(f"\nSkipping regression comparison: reference file {ref_h5} not found.")
+    else:
+        print(f"\nSkipping regression comparison: no consolidated HDF5 generated in {result_dir}.")
+
+
+def compare_consolidated_hdf5(ref_path, new_path, atol=1e-6, rtol=1e-6):
+    """Compare a newly generated consolidated HDF5 against a reference file.
+    
+    Reports per-pipeline-stage PASS/FAIL with max absolute difference.
+    
+    Args:
+        ref_path: Path to the reference consolidated HDF5
+        new_path: Path to the newly generated consolidated HDF5
+        atol: Absolute tolerance for floating-point comparison
+        rtol: Relative tolerance for floating-point comparison
+    """
+    import h5py
+    
+    print(f"\n{'='*70}")
+    print(f"  Regression Comparison")
+    print(f"  Reference: {ref_path}")
+    print(f"  New:       {new_path}")
+    print(f"  Tolerance: atol={atol}, rtol={rtol}")
+    print(f"{'='*70}\n")
+    
+    # Map pipeline stages to HDF5 paths
+    stages = [
+        ("PeaksFitting (summary)", [
+            "peaks/summary/data",
+        ]),
+        ("PeaksFitting (per-frame)", [
+            "peaks/per_frame/data",
+        ]),
+        ("MergeOverlaps", [
+            "merge_map/MergedSpotID",
+            "merge_map/FrameNr",
+            "merge_map/PeakID",
+            "id_rings/data",
+            "ids_hash/data",
+        ]),
+        ("CalcRadius", [
+            "radius_data/SpotID",
+            "radius_data/IntegratedIntensity",
+            "radius_data/Omega",
+            "radius_data/YCen",
+            "radius_data/ZCen",
+            "radius_data/IMax",
+            "radius_data/Radius",
+            "radius_data/Eta",
+            "radius_data/RingNr",
+            "radius_data/GrainRadius",
+            "radius_data/SigmaR",
+            "radius_data/SigmaEta",
+        ]),
+        ("FitSetup (InputAll)", [
+            "all_spots/data",
+            "spots_to_index/data",
+        ]),
+        ("Grains (final)", [
+            "grains/summary",
+            "spot_matrix/data",
+            "grain_ids_key/data",
+        ]),
+    ]
+    
+    n_pass = 0
+    n_fail = 0
+    n_skip = 0
+    
+    try:
+        ref = h5py.File(str(ref_path), 'r')
+        new = h5py.File(str(new_path), 'r')
+    except Exception as e:
+        print(f"Error opening HDF5 files: {e}")
+        sys.exit(1)
+    
+    try:
+        for stage_name, datasets in stages:
+            stage_ok = True
+            stage_details = []
+            
+            for ds_path in datasets:
+                if ds_path not in ref:
+                    stage_details.append(f"    {ds_path}: SKIP (not in reference)")
+                    n_skip += 1
+                    continue
+                if ds_path not in new:
+                    stage_details.append(f"    {ds_path}: FAIL (not in new output)")
+                    stage_ok = False
+                    continue
+                
+                ref_data = ref[ds_path][()]
+                new_data = new[ds_path][()]
+                
+                # Shape check
+                if ref_data.shape != new_data.shape:
+                    stage_details.append(
+                        f"    {ds_path}: FAIL (shape mismatch: ref={ref_data.shape}, new={new_data.shape})")
+                    stage_ok = False
+                    continue
+                
+                # Data comparison
+                if np.issubdtype(ref_data.dtype, np.floating):
+                    if np.allclose(ref_data, new_data, atol=atol, rtol=rtol, equal_nan=True):
+                        max_diff = np.nanmax(np.abs(ref_data - new_data)) if ref_data.size > 0 else 0.0
+                        stage_details.append(f"    {ds_path}: PASS (max_diff={max_diff:.2e})")
+                    else:
+                        diff = np.abs(ref_data - new_data)
+                        max_diff = np.nanmax(diff) if diff.size > 0 else 0.0
+                        n_mismatch = np.sum(~np.isclose(ref_data, new_data, atol=atol, rtol=rtol, equal_nan=True))
+                        stage_details.append(
+                            f"    {ds_path}: FAIL (max_diff={max_diff:.2e}, mismatched={n_mismatch}/{ref_data.size})")
+                        stage_ok = False
+                elif np.issubdtype(ref_data.dtype, np.integer):
+                    if np.array_equal(ref_data, new_data):
+                        stage_details.append(f"    {ds_path}: PASS (exact match)")
+                    else:
+                        n_mismatch = np.sum(ref_data != new_data)
+                        stage_details.append(
+                            f"    {ds_path}: FAIL ({n_mismatch}/{ref_data.size} values differ)")
+                        stage_ok = False
+                else:
+                    # String or other types — compare as-is
+                    if np.array_equal(ref_data, new_data):
+                        stage_details.append(f"    {ds_path}: PASS")
+                    else:
+                        stage_details.append(f"    {ds_path}: FAIL (values differ)")
+                        stage_ok = False
+            
+            status = "PASS ✅" if stage_ok else "FAIL ❌"
+            if stage_ok:
+                n_pass += 1
+            else:
+                n_fail += 1
+            
+            print(f"  [{status}]  {stage_name}")
+            for detail in stage_details:
+                print(detail)
+    finally:
+        ref.close()
+        new.close()
+    
+    print(f"\n{'='*70}")
+    print(f"  Summary: {n_pass} PASS, {n_fail} FAIL, {n_skip} SKIP")
+    print(f"{'='*70}")
+    
+    if n_fail > 0:
+        print("\n⚠️  Regression differences detected!")
+        sys.exit(1)
+    else:
+        print("\n✅ All pipeline stages match the reference output.")
+
 
 if __name__ == "__main__":
     main()
