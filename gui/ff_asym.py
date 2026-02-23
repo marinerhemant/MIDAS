@@ -247,6 +247,7 @@ def _load_zarr_zip(zip_path, root_widget=None):
         
         if 'PixelSize' in params:
             px = float(params['PixelSize'][0])
+            pxVar.set(str(px))
             print(f"  px: {px}")
         
         if 'SpaceGroup' in params:
@@ -1453,9 +1454,10 @@ def loadbplot():
 	global bdata
 	global lines2, NrPixelsY, NrPixelsZ
 	global firstFileNumber, nFramesPerFile
-	global Header, BytesPerPixel
+	global Header, BytesPerPixel, px
 	Header = HeaderVar.get()
 	BytesPerPixel = BytesVar.get()
+	px = float(pxVar.get())
 	if not initplot2:
 		lims = [b.get_xlim(), b.get_ylim()]
 	frameNr = int(framenrvar.get())
@@ -1963,6 +1965,7 @@ sg = 225
 bcs = None
 wl = 0.172979
 px = 200
+pxVar = None  # Will be created as Tk.StringVar after root is initialized
 NrPixelsY = 2048
 NrPixelsZ = 2048
 Header = 8192
@@ -2004,6 +2007,8 @@ HeaderVar = Tk.IntVar()
 HeaderVar.set(8192)
 BytesVar = Tk.IntVar()
 BytesVar.set(2)
+pxVar = Tk.StringVar()
+pxVar.set(str(px))
 LatticeConstant = np.zeros(6)
 LatticeConstant[0] = 5.41116
 LatticeConstant[1] = 5.41116
@@ -2132,9 +2137,12 @@ Tk.Entry(imgFrame, textvariable=HeaderVar, width=5, font=default_font).grid(row=
 Tk.Label(imgFrame, text="Bytes/Px", font=default_font).grid(row=3, column=0)
 Tk.Entry(imgFrame, textvariable=BytesVar, width=5, font=default_font).grid(row=3, column=1)
 
-Tk.Checkbutton(imgFrame, text="HFlip", variable=hflip, font=default_font).grid(row=4, column=0)
-Tk.Checkbutton(imgFrame, text="VFlip", variable=vflip, font=default_font).grid(row=4, column=1)
-Tk.Checkbutton(imgFrame, text="Transp", variable=transpose, font=default_font).grid(row=5, column=0, columnspan=2)
+Tk.Checkbutton(imgFrame, text="HFlip", variable=hflip, font=default_font).grid(row=5, column=0)
+Tk.Checkbutton(imgFrame, text="VFlip", variable=vflip, font=default_font).grid(row=5, column=1)
+Tk.Checkbutton(imgFrame, text="Transp", variable=transpose, font=default_font).grid(row=6, column=0, columnspan=2)
+
+Tk.Label(imgFrame, text='PixSize(μm)', font=default_font).grid(row=4, column=0)
+Tk.Entry(imgFrame, textvariable=pxVar, width=5, font=default_font).grid(row=4, column=1)
 
 # 3. Display Control Frame
 dispFrame = Tk.LabelFrame(mainControlFrame, text="Display Control", font=default_font)
