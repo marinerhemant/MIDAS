@@ -671,13 +671,17 @@ def create_param_file(output_file, params):
     except Exception as e:
         logger.error(f"Error creating parameter file {output_file}: {e}")
 
-def process_tiff_input(dataFN, badPxIntensity, gapIntensity):
-    """Process TIFF input file and convert to GE format"""
+def process_tiff_input(dataFN, badPxIntensity, gapIntensity, darkFN=''):
+    """Process TIFF input file and convert to GE format.
+    
+    Also converts a separate dark TIFF to GE if darkFN is provided.
+    Returns (ge_data_file, ge_dark_file) where ge_dark_file is '' if no dark provided.
+    """
     global NrPixelsY, NrPixelsZ, badGapArr
     
     try:
         img = Image.open(dataFN)
-        logger.info("Data was a tiff image. Will convert to a ge file with 16 bit unsigned.")
+        logger.info("Data was a tiff image. Will convert to a ge file.")
         img = np.array(img)
         
         # Find bad or gap pixels
@@ -691,13 +695,28 @@ def process_tiff_input(dataFN, badPxIntensity, gapIntensity):
             if img.shape[0] != 2048:
                 NrPixelsZ = img.shape[0]
         
-        # Save as GE file
+        # Save data as GE file
         ge_file = f"{dataFN}.ge"
         with open(ge_file, 'wb') as f:
             f.write(b'\x00' * 8192)  # Header
             img.tofile(f)
+        
+        # Convert dark TIFF to GE if provided
+        ge_dark_file = ''
+        if darkFN:
+            try:
+                dark_img = Image.open(darkFN)
+                dark_img = np.array(dark_img)
+                ge_dark_file = f"{darkFN}.ge"
+                with open(ge_dark_file, 'wb') as f:
+                    f.write(b'\x00' * 8192)  # Header
+                    dark_img.tofile(f)
+                logger.info(f"Converted dark TIFF to GE: {ge_dark_file}")
+            except Exception as e:
+                logger.error(f"Error processing dark TIFF {darkFN}: {e}")
+                ge_dark_file = ''
             
-        return ge_file
+        return ge_file, ge_dark_file
     except Exception as e:
         logger.error(f"Error processing TIFF input: {e}")
         sys.exit(1)
@@ -783,14 +802,14 @@ def main():
         badGapArr = []
         if convertFile == 3:
             logger.info("Processing TIFF input")
-            dataFN = process_tiff_input(dataFN, badPxIntensity, gapIntensity)
+            dataFN, darkGeFN = process_tiff_input(dataFN, badPxIntensity, gapIntensity, darkFN)
             logger.info(f"Converted TIFF to GE format: {dataFN} and NrPixelsY={NrPixelsY}, NrPixelsZ={NrPixelsZ}. Now converting to Zarr zip file.")
             psFN = args.paramFN
             if not psFN:
                 logger.error("Parameter file is required for conversion")
                 print("ERROR: Parameter file is required for conversion")
                 sys.exit(1)
-            dataFN = generateZip('.', psFN, dfn=dataFN, nchunks=100, preproc=0, NrPixelsY=NrPixelsY, NrPixelsZ=NrPixelsZ)
+            dataFN = generateZip('.', psFN, dfn=dataFN, darkfn=darkGeFN, nchunks=100, preproc=0, NrPixelsY=NrPixelsY, NrPixelsZ=NrPixelsZ)
         
         # Generate Zarr zip file if needed
         if convertFile == 1 or convertFile == 2:
