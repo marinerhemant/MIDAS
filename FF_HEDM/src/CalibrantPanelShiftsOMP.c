@@ -2144,6 +2144,111 @@ int main(int argc, char *argv[]) {
                                  p3, Etas, Diffs, RadOuts, &StdDiff,
                                  outlierFactor, IsOutlier);
     printf("StdStrain %0.12lf\n", StdDiff);
+
+    // Per-panel strain summary
+    if (nPanels > 0) {
+      double *panelSum = calloc(nPanels, sizeof(double));
+      double *panelSumSq = calloc(nPanels, sizeof(double));
+      int *panelCount = calloc(nPanels, sizeof(int));
+      for (i = 0; i < nIndices; i++) {
+        if (Diffs[i] < 0 || IsOutlier[i])
+          continue;
+        int pIdx = GetPanelIndex(Yc[i], Zc[i], nPanels, panels);
+        if (pIdx >= 0 && pIdx < nPanels) {
+          panelSum[pIdx] += Diffs[i];
+          panelSumSq[pIdx] += Diffs[i] * Diffs[i];
+          panelCount[pIdx]++;
+        }
+      }
+      // Compute per-panel mean strain (x10000)
+      double *panelMean = calloc(nPanels, sizeof(double));
+      for (int p = 0; p < nPanels; p++)
+        panelMean[p] = (panelCount[p] > 0)
+                           ? (panelSum[p] / panelCount[p] * 10000.0)
+                           : -1.0;
+
+      printf("\n*** Per-Panel Strain x10000 (Z^ Y>) ***\n");
+      for (int z = NPanelsZ - 1; z >= 0; z--) {
+        printf("Z%-1d |", z);
+        for (int y = 0; y < NPanelsY; y++) {
+          int pIdx = y * NPanelsZ + z;
+          if (pIdx < nPanels && panelMean[pIdx] >= 0) {
+            printf(" %2d:%5.2f", pIdx, panelMean[pIdx]);
+          } else if (pIdx < nPanels) {
+            printf(" %2d: --- ", pIdx);
+          }
+          printf(" |");
+        }
+        printf("\n");
+      }
+      printf("   ");
+      for (int y = 0; y < NPanelsY; y++)
+        printf("    Y=%-2d   ", y);
+      printf("\n***********************************\n");
+
+      // Save strain TIFF (each pixel = its panel's mean strain x10000)
+      if (PanelShiftsFile[0] != '\0') {
+        char strainTiffFN[2048];
+        snprintf(strainTiffFN, sizeof(strainTiffFN), "%s.strain.tif",
+                 PanelShiftsFile);
+        int imgW = NrPixelsY, imgH = NrPixelsZ;
+        int nPx = imgW * imgH;
+        float *strainImg = (float *)calloc(nPx, sizeof(float));
+        if (strainImg) {
+          for (int row = 0; row < imgH; row++) {
+            for (int col = 0; col < imgW; col++) {
+              int pIdx =
+                  GetPanelIndex((double)col, (double)row, nPanels, panels);
+              if (pIdx >= 0 && panelMean[pIdx] >= 0)
+                strainImg[row * imgW + col] = (float)panelMean[pIdx];
+              else
+                strainImg[row * imgW + col] = -1.0f;
+            }
+          }
+          FILE *tf = fopen(strainTiffFN, "wb");
+          if (tf) {
+            unsigned char hdr[8] = {'I', 'I', 42, 0, 8, 0, 0, 0};
+            fwrite(hdr, 1, 8, tf);
+            unsigned short nTags = 10;
+            fwrite(&nTags, 2, 1, tf);
+#define WRITE_TAG_S(tag, type, count, value)                                   \
+  {                                                                            \
+    unsigned short t = tag, tp = type;                                         \
+    unsigned int c = count, v = value;                                         \
+    fwrite(&t, 2, 1, tf);                                                      \
+    fwrite(&tp, 2, 1, tf);                                                     \
+    fwrite(&c, 4, 1, tf);                                                      \
+    fwrite(&v, 4, 1, tf);                                                      \
+  }
+            unsigned int dataBytes = nPx * 4;
+            unsigned int stripOff = 8 + 2 + 10 * 12 + 4;
+            WRITE_TAG_S(256, 3, 1, imgW);
+            WRITE_TAG_S(257, 3, 1, imgH);
+            WRITE_TAG_S(258, 3, 1, 32);
+            WRITE_TAG_S(259, 3, 1, 1);
+            WRITE_TAG_S(262, 3, 1, 1);
+            WRITE_TAG_S(273, 4, 1, stripOff);
+            WRITE_TAG_S(278, 4, 1, imgH);
+            WRITE_TAG_S(279, 4, 1, dataBytes);
+            WRITE_TAG_S(339, 3, 1, 3);
+            WRITE_TAG_S(277, 3, 1, 1);
+#undef WRITE_TAG_S
+            unsigned int nextIFD = 0;
+            fwrite(&nextIFD, 4, 1, tf);
+            fwrite(strainImg, sizeof(float), nPx, tf);
+            fclose(tf);
+            printf("Saved per-panel strain map to %s\n", strainTiffFN);
+          }
+          free(strainImg);
+        }
+      }
+
+      free(panelSum);
+      free(panelSumSq);
+      free(panelCount);
+      free(panelMean);
+    }
+
     means[0] += LsdFit;
     means[1] += ybcFit;
     means[2] += zbcFit;

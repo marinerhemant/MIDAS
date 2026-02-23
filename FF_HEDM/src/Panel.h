@@ -15,8 +15,8 @@ typedef struct {
   double dY;      // Shift Y
   double dZ;      // Shift Z
   double dTheta;  // In-plane rotation (degrees)
-  double centerY; // Panel center pixel Y = (yMin+yMax)/2.0
-  double centerZ; // Panel center pixel Z = (zMin+zMax)/2.0
+  double centerY; // Rotation anchor Y = (yMin+yMax)/2.0
+  double centerZ; // Rotation anchor Z = (zMin+zMax)/2.0
 } Panel;
 
 // Generates panels from parameters.
