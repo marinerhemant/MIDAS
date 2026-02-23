@@ -33,10 +33,11 @@ The MIDAS scripts need to import `GSASIIscriptable` at runtime.  There are two s
    conda install gsas2full -c briantoby
    ```
 
-2. **Manual / source install:** If GSAS-II is installed in a non-standard location (e.g. `/opt/gsas2/GSASII`), point the scripts to it with an environment variable:
+2. **Manual / source install:** If GSAS-II is installed in a non-standard location, point the scripts to it with an environment variable:
    ```bash
-   export GSASII_PATH=/path/to/GSAS-II/GSASII
+   export GSASII_PATH=/path/to/GSAS-II
    ```
+   This can point to either the GSAS-II root or the `GSASII` subdirectory — the script tries both.
    Add this to your `.bashrc` / `.zshrc` for persistence.
 
 ### 2.2. Data
@@ -293,7 +294,7 @@ python $MIDAS_INSTALL_DIR/utils/gsas_ii_refine.py \
 
 ### 9.2. What the Script Does
 
-The script performs the same staged refinement as the GUI workflow, **per histogram**, while ignoring atomic positions due to `--no-atoms`:
+The script extracts lineouts directly from the zarr file (without relying on GSAS-II's MIDAS zarr reader) and passes each lineout to GSAS-II as a temporary `.xye` file. It performs the same staged refinement as the GUI workflow, **per histogram**, while ignoring atomic positions due to `--no-atoms`:
 
 | Stage | Parameters Refined |
 |-------|-------------------|
