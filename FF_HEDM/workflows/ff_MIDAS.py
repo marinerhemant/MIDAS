@@ -1266,7 +1266,10 @@ def generate_consolidated_hdf5(result_dir: str, zarr_path: str) -> None:
             frame_nr = int(match.group(1))
             ps_path = os.path.join(temp_dir, ps_file)
             try:
-                ps_data = np.genfromtxt(ps_path, skip_header=1)
+                import warnings
+                with warnings.catch_warnings():
+                    warnings.simplefilter('ignore', UserWarning)
+                    ps_data = np.genfromtxt(ps_path, skip_header=1)
                 if ps_data.size == 0:
                     continue
                 if ps_data.ndim == 1:
