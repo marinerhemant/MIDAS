@@ -105,14 +105,14 @@ void YsZsCalc(double Lsd, double Ycen, double Zcen, double p0, double p1,
   MatrixMultF33(Rx, TRint, TRs);
   double n0 = 2, n1 = 4, n2 = 2, Yc, Zc;
   double Eta, RNorm, Rad, EtaT, DistortFunc, Rcorr;
-  double pdY = 0, pdZ = 0;
+  double ypr, zpr;
   int pIdx = GetPanelIndex(Ys, Zs, nPanels, panels);
   if (pIdx >= 0) {
-    pdY = panels[pIdx].dY;
-    pdZ = panels[pIdx].dZ;
+    ApplyPanelCorrection(Ys, Zs, &panels[pIdx], &ypr, &zpr);
+  } else {
+    ypr = Ys;
+    zpr = Zs;
   }
-  double ypr = Ys + pdY;
-  double zpr = Zs + pdZ;
   Yc = -(ypr - Ycen) * px;
   Zc = (zpr - Zcen) * px;
   double ABC[3] = {0, Yc, Zc};

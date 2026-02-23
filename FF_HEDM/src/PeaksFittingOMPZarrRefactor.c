@@ -866,8 +866,9 @@ int fit2DPeaks(unsigned nPeaks, int nrPixelsThisRegion, double *z,
     double pdY = 0, pdZ = 0;
     int pIdx = GetPanelIndex(r_idx, c_idx, nPanels, panels);
     if (pIdx >= 0) {
-      pdY = panels[pIdx].dY;
-      pdZ = panels[pIdx].dZ;
+      ApplyPanelCorrection(r_idx, c_idx, &panels[pIdx], &pdY, &pdZ);
+      pdY -= r_idx;
+      pdZ -= c_idx;
     }
 
     // Calculate radius and angle for each pixel

@@ -458,7 +458,8 @@ struct my_func_data {
   double MaxRad;
   double px;
   double tx;
-  int fixPanel; // Added fixPanel
+  int fixPanel;
+  double tolRotation;
 };
 
 static double problem_function(unsigned n, const double *x, double *grad,
@@ -501,7 +502,7 @@ static double problem_function(unsigned n, const double *x, double *grad,
   for (i = 0; i < nIndices; i++) {
     double n0 = 2, n1 = 4, n2 = 2, Yc, Zc;
     double Rad, Eta, RNorm, DistortFunc, Rcorr, RIdeal, EtaT;
-    double dY = 0, dZ = 0;
+    double dY = 0, dZ = 0, dTheta = 0;
     int pIdx = -1;
     if (nPanels > 0) {
       pIdx = GetPanelIndex((double)YMean[i], (double)ZMean[i], nPanels, panels);
@@ -512,16 +513,30 @@ static double problem_function(unsigned n, const double *x, double *grad,
 
     dY = 0;
     dZ = 0;
+    dTheta = 0;
     if (n > 9) {
       if (pIdx != f_data->fixPanel) {
         int logicalIndex = (pIdx < f_data->fixPanel) ? pIdx : pIdx - 1;
-        int xIdx = 9 + logicalIndex * 2;
+        int stride = f_data->tolRotation > 1e-12 ? 3 : 2;
+        int xIdx = 9 + logicalIndex * stride;
         dY = x[xIdx];
         dZ = x[xIdx + 1];
+        if (stride == 3)
+          dTheta = x[xIdx + 2];
       }
     }
-    Yc = -(YMean[i] + dY - ybc) * px;
-    Zc = (ZMean[i] + dZ - zbc) * px;
+    double rawY = YMean[i], rawZ = ZMean[i];
+    if (pIdx >= 0 && fabs(dTheta) > 1e-12) {
+      double cY = panels[pIdx].centerY;
+      double cZ = panels[pIdx].centerZ;
+      double cosT = cos(deg2rad * dTheta);
+      double sinT = sin(deg2rad * dTheta);
+      double dy = rawY - cY, dz = rawZ - cZ;
+      rawY = cY + dy * cosT - dz * sinT;
+      rawZ = cZ + dy * sinT + dz * cosT;
+    }
+    Yc = -(rawY + dY - ybc) * px;
+    Zc = (rawZ + dZ - zbc) * px;
     double ABC[3] = {0, Yc, Zc};
     double ABCPr[3];
     MatrixMultF(TRs, ABC, ABCPr);
@@ -557,16 +572,15 @@ void FitTiltBCLsd(int nIndices, double *YMean, double *ZMean,
                   double *p1, double *p2, double *p3, double *MeanDiff,
                   double tolTilts, double tolLsd, double tolBC, double tolP,
                   double tolP0, double tolP1, double tolP2, double tolP3,
-                  double tolShifts, double px, double outlierFactor,
-                  int minIndices, int fixPanel) {
+                  double tolShifts, double tolRotation, double px,
+                  double outlierFactor, int minIndices, int fixPanel) {
   // Look at the possibility of including translations for each of the small
   // panels on a multi-panel detector in the optimization.... Also change
   // CorrectTiltSpatialDistortion to include translations!!!
   unsigned n = 9;
   if (tolShifts > EPS && nPanels > 1) {
-    // Instead of n=9, we need n=9+(nPanels-1)*2
-    // We anchor Panel 0 to (0,0) to avoid degeneracy with ybc/zbc
-    n += (nPanels - 1) * 2;
+    int stride = (tolRotation > EPS) ? 3 : 2;
+    n += (nPanels - 1) * stride;
   }
   struct my_func_data f_data;
   f_data.nIndices = nIndices;
@@ -577,6 +591,7 @@ void FitTiltBCLsd(int nIndices, double *YMean, double *ZMean,
   f_data.px = px;
   f_data.tx = tx;
   f_data.fixPanel = fixPanel;
+  f_data.tolRotation = tolRotation;
   double x[n], xl[n], xu[n];
   x[0] = Lsd;
   xl[0] = Lsd - tolLsd;
@@ -654,6 +669,19 @@ void FitTiltBCLsd(int nIndices, double *YMean, double *ZMean,
           xu[p_idx] = x[p_idx] + tolShifts;
         }
         p_idx++;
+
+        if (tolRotation > EPS) {
+          x[p_idx] = panels[i].dTheta;
+          if (panelCounts[i] < minIndices) {
+            x[p_idx] = 0;
+            xl[p_idx] = 0;
+            xu[p_idx] = 0;
+          } else {
+            xl[p_idx] = x[p_idx] - tolRotation;
+            xu[p_idx] = x[p_idx] + tolRotation;
+          }
+          p_idx++;
+        }
       }
     }
   }
@@ -694,6 +722,7 @@ void FitTiltBCLsd(int nIndices, double *YMean, double *ZMean,
     if (fixPanel >= 0 && fixPanel < nPanels) {
       panels[fixPanel].dY = 0;
       panels[fixPanel].dZ = 0;
+      panels[fixPanel].dTheta = 0;
     }
 
     // Update others
@@ -704,6 +733,8 @@ void FitTiltBCLsd(int nIndices, double *YMean, double *ZMean,
           continue;
         panels[i].dY = x[xIdx++];
         panels[i].dZ = x[xIdx++];
+        if (tolRotation > EPS)
+          panels[i].dTheta = x[xIdx++];
       }
     } else {
       // Reset others if optimization didn't run for them
@@ -712,6 +743,7 @@ void FitTiltBCLsd(int nIndices, double *YMean, double *ZMean,
           continue;
         panels[i].dY = 0;
         panels[i].dZ = 0;
+        panels[i].dTheta = 0;
       }
     }
   }
@@ -751,7 +783,7 @@ void FitTiltBCLsd(int nIndices, double *YMean, double *ZMean,
     double p3V = *p3;
 
     for (i = 0; i < nIndices; i++) {
-      double dY = 0, dZ = 0;
+      double dY = 0, dZ = 0, dTheta = 0;
       int pIdx = -1;
       if (nPanels > 0) {
         pIdx = GetPanelIndex(YMean[i], ZMean[i], nPanels, panels);
@@ -762,9 +794,20 @@ void FitTiltBCLsd(int nIndices, double *YMean, double *ZMean,
       if (pIdx >= 0) {
         dY = panels[pIdx].dY;
         dZ = panels[pIdx].dZ;
+        dTheta = panels[pIdx].dTheta;
       }
-      Yc = -(YMean[i] + dY - ybcV) * px;
-      Zc = (ZMean[i] + dZ - zbcV) * px;
+      double rawY = YMean[i], rawZ = ZMean[i];
+      if (pIdx >= 0 && fabs(dTheta) > 1e-12) {
+        double cY = panels[pIdx].centerY;
+        double cZ = panels[pIdx].centerZ;
+        double cosT = cos(deg2rad * dTheta);
+        double sinT = sin(deg2rad * dTheta);
+        double dy = rawY - cY, dz = rawZ - cZ;
+        rawY = cY + dy * cosT - dz * sinT;
+        rawZ = cZ + dy * sinT + dz * cosT;
+      }
+      Yc = -(rawY + dY - ybcV) * px;
+      Zc = (rawZ + dZ - zbcV) * px;
       double ABC[3] = {0, Yc, Zc};
       double ABCPr[3];
       MatrixMultF(TRs, ABC, ABCPr);
@@ -844,7 +887,7 @@ static inline void CorrectTiltSpatialDistortion(
   double Rad, Eta, RNorm, DistortFunc, Rcorr, RIdeal, EtaT, Diff, MeanDiff = 0;
   int nValidPoints = 0;
   for (i = 0; i < nIndices; i++) {
-    double dY = 0, dZ = 0;
+    double dY = 0, dZ = 0, dTheta = 0;
     int pIdx = -1;
     if (nPanels > 0) {
       pIdx = GetPanelIndex(YMean[i], ZMean[i], nPanels, panels);
@@ -858,9 +901,20 @@ static inline void CorrectTiltSpatialDistortion(
     if (pIdx >= 0) {
       dY = panels[pIdx].dY;
       dZ = panels[pIdx].dZ;
+      dTheta = panels[pIdx].dTheta;
     }
-    Yc = -(YMean[i] + dY - ybc) * px;
-    Zc = (ZMean[i] + dZ - zbc) * px;
+    double rawY = YMean[i], rawZ = ZMean[i];
+    if (pIdx >= 0 && fabs(dTheta) > 1e-12) {
+      double cY = panels[pIdx].centerY;
+      double cZ = panels[pIdx].centerZ;
+      double cosT = cos(deg2rad * dTheta);
+      double sinT = sin(deg2rad * dTheta);
+      double dy = rawY - cY, dz = rawZ - cZ;
+      rawY = cY + dy * cosT - dz * sinT;
+      rawZ = cZ + dy * sinT + dz * cosT;
+    }
+    Yc = -(rawY + dY - ybc) * px;
+    Zc = (rawZ + dZ - zbc) * px;
     double ABC[3] = {0, Yc, Zc};
     double ABCPr[3];
     MatrixMultF(TRs, ABC, ABCPr);
@@ -1040,6 +1094,7 @@ int main(int argc, char *argv[]) {
          tolP3 = 45, tyin = 0, tzin = 0, p0in = 0, p1in = 0, p2in = 0, p3in = 0,
          padY = 0, padZ = 0;
   double tolShifts = 1.0;
+  double tolRotation = 0.0;
   double outlierFactor = 0.0;
   int MinIndicesForFit = 1;
   int FixPanelID = 0;
@@ -1401,6 +1456,12 @@ int main(int argc, char *argv[]) {
       sscanf(aline, "%s %lf", dummy, &tolShifts);
       continue;
     }
+    str = "tolRotation ";
+    LowNr = strncmp(aline, str, strlen(str));
+    if (LowNr == 0) {
+      sscanf(aline, "%s %lf", dummy, &tolRotation);
+      continue;
+    }
     str = "MultFactor ";
     LowNr = strncmp(aline, str, strlen(str));
     if (LowNr == 0) {
@@ -1525,6 +1586,7 @@ int main(int argc, char *argv[]) {
   printf("║    tolP2:          %-40.8f ║\n", tolP2);
   printf("║    tolP3:          %-40.8f ║\n", tolP3);
   printf("║    tolShifts:      %-40.6f ║\n", tolShifts);
+  printf("║    tolRotation:    %-40.6f ║\n", tolRotation);
   printf("╠══════════════════════════════════════════════════════════════╣\n");
   printf("║  CALIBRATION CONTROL                                        ║\n");
   printf("║    Width:          %-40.2f ║\n", Width);
@@ -2066,8 +2128,8 @@ int main(int argc, char *argv[]) {
     FitTiltBCLsd(nIndices, Yc, Zc, IdealTtheta, Lsd, MaxRingRad, ybc, zbc, tx,
                  tyin, tzin, p0in, p1in, p2in, p3in, &ty, &tz, &LsdFit, &ybcFit,
                  &zbcFit, &p0, &p1, &p2, &p3, &MeanDiff, tolTilts, tolLsd,
-                 tolBC, tolP, tolP0, tolP1, tolP2, tolP3, tolShifts, px,
-                 outlierFactor, MinIndicesForFit, FixPanelID);
+                 tolBC, tolP, tolP0, tolP1, tolP2, tolP3, tolShifts,
+                 tolRotation, px, outlierFactor, MinIndicesForFit, FixPanelID);
     printf("Number of function calls: %lld\n", NrCalls);
     printf("Lsd %0.12f\nBC %0.12f %0.12f\nty %0.12f\ntz %0.12f\np0 %0.12f\np1 "
            "%0.12f\np2 %0.12f\np3 %0.12f\nMeanStrain %0.12lf\n",
@@ -2103,14 +2165,25 @@ int main(int argc, char *argv[]) {
     for (i = 0; i < nIndices; i++) {
       if (Diffs[i] < 0)
         continue;
-      double dY = 0, dZ = 0;
+      double dY = 0, dZ = 0, dTheta = 0;
       int pIdx = GetPanelIndex(Yc[i], Zc[i], nPanels, panels);
       if (pIdx >= 0) {
         dY = panels[pIdx].dY;
         dZ = panels[pIdx].dZ;
+        dTheta = panels[pIdx].dTheta;
       }
-      double YRawCorr = Yc[i] + dY;
-      double ZRawCorr = Zc[i] + dZ;
+      double rawY = Yc[i], rawZ = Zc[i];
+      if (pIdx >= 0 && fabs(dTheta) > 1e-12) {
+        double cY = panels[pIdx].centerY;
+        double cZ = panels[pIdx].centerZ;
+        double cosT = cos(deg2rad * dTheta);
+        double sinT = sin(deg2rad * dTheta);
+        double dy = rawY - cY, dz = rawZ - cZ;
+        rawY = cY + dy * cosT - dz * sinT;
+        rawZ = cZ + dy * sinT + dz * cosT;
+      }
+      double YRawCorr = rawY + dY;
+      double ZRawCorr = rawZ + dZ;
       fprintf(Out, "%f %10.8f %10.8f %f %10.8f %10.8f %f %d %f %f %d\n",
               Etas[i], Diffs[i], RadOuts[i], EtaIns[i], DiffIns[i], RadIns[i],
               IdealTtheta[i], IsOutlier[i], YRawCorr, ZRawCorr, RingNumbers[i]);
@@ -2157,6 +2230,99 @@ int main(int argc, char *argv[]) {
   if (PanelShiftsFile[0] != '\0' && nPanels > 0) {
     SavePanelShifts(PanelShiftsFile, nPanels, panels);
     printf("Saved panel shifts to %s\n", PanelShiftsFile);
+
+    // Write per-pixel shift magnitude TIFF
+    {
+      char shiftsTiffFN[2048];
+      snprintf(shiftsTiffFN, sizeof(shiftsTiffFN), "%s.shifts.tif",
+               PanelShiftsFile);
+
+      int imgW = NrPixelsY; // columns
+      int imgH = NrPixelsZ; // rows
+      int nPixels = imgW * imgH;
+      float *shiftImg = (float *)calloc(nPixels, sizeof(float));
+      if (shiftImg) {
+        for (int row = 0; row < imgH; row++) {
+          for (int col = 0; col < imgW; col++) {
+            int pIdx = GetPanelIndex((double)col, (double)row, nPanels, panels);
+            float mag = 0.0f;
+            if (pIdx >= 0) {
+              double dY = panels[pIdx].dY;
+              double dZ = panels[pIdx].dZ;
+              double dT = panels[pIdx].dTheta;
+              // Shift from rotation at this pixel (max displacement at panel
+              // edge)
+              double cY = panels[pIdx].centerY;
+              double cZ = panels[pIdx].centerZ;
+              double dy = col - cY, dz = row - cZ;
+              double cosT = cos(deg2rad * dT);
+              double sinT = sin(deg2rad * dT);
+              double rotDY = (cY + dy * cosT - dz * sinT) -
+                             col; // rotation-induced Y shift
+              double rotDZ = (cZ + dy * sinT + dz * cosT) -
+                             row; // rotation-induced Z shift
+              double totalDY = dY + rotDY;
+              double totalDZ = dZ + rotDZ;
+              mag = (float)sqrt(totalDY * totalDY + totalDZ * totalDZ);
+            } else {
+              mag = -1.0f; // gap pixel
+            }
+            shiftImg[row * imgW + col] = mag;
+          }
+        }
+
+        // Write minimal uncompressed float32 TIFF (little-endian)
+        FILE *tf = fopen(shiftsTiffFN, "wb");
+        if (tf) {
+          // TIFF Header
+          unsigned char hdr[8] = {'I', 'I', 42, 0,
+                                  8,   0,   0,  0}; // LE, IFD at offset 8
+          fwrite(hdr, 1, 8, tf);
+
+          // IFD with 10 entries
+          unsigned short nTags = 10;
+          fwrite(&nTags, 2, 1, tf);
+
+// Helper: write one IFD entry (12 bytes)
+#define WRITE_TAG(tag, type, count, value)                                     \
+  {                                                                            \
+    unsigned short t = tag, tp = type;                                         \
+    unsigned int c = count, v = value;                                         \
+    fwrite(&t, 2, 1, tf);                                                      \
+    fwrite(&tp, 2, 1, tf);                                                     \
+    fwrite(&c, 4, 1, tf);                                                      \
+    fwrite(&v, 4, 1, tf);                                                      \
+  }
+
+          unsigned int dataBytes = nPixels * 4;
+          unsigned int stripOffset =
+              8 + 2 + 10 * 12 + 4; // header + nTags + entries + next_ifd
+
+          WRITE_TAG(256, 3, 1, imgW);        // ImageWidth
+          WRITE_TAG(257, 3, 1, imgH);        // ImageLength
+          WRITE_TAG(258, 3, 1, 32);          // BitsPerSample
+          WRITE_TAG(259, 3, 1, 1);           // Compression (none)
+          WRITE_TAG(262, 3, 1, 1);           // PhotometricInterp (MinIsBlack)
+          WRITE_TAG(273, 4, 1, stripOffset); // StripOffsets
+          WRITE_TAG(278, 4, 1, imgH);        // RowsPerStrip (all rows)
+          WRITE_TAG(279, 4, 1, dataBytes);   // StripByteCounts
+          WRITE_TAG(339, 3, 1, 3);           // SampleFormat (IEEEFP)
+          WRITE_TAG(277, 3, 1, 1);           // SamplesPerPixel
+
+#undef WRITE_TAG
+
+          unsigned int nextIFD = 0;
+          fwrite(&nextIFD, 4, 1, tf);
+
+          // Pixel data
+          fwrite(shiftImg, sizeof(float), nPixels, tf);
+          fclose(tf);
+          printf("Saved shift map to %s (%d x %d, float32)\n", shiftsTiffFN,
+                 imgW, imgH);
+        }
+        free(shiftImg);
+      }
+    }
   }
   return 0;
 }

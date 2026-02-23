@@ -340,8 +340,9 @@ mapperfcn(double tx, double ty, double tz, int NrPixelsY, int NrPixelsZ,
       double pdY = 0, pdZ = 0;
       int pIdx = GetPanelIndex((double)i, (double)j, nPanels, panels);
       if (pIdx >= 0) {
-        pdY = panels[pIdx].dY;
-        pdZ = panels[pIdx].dZ;
+        ApplyPanelCorrection((double)i, (double)j, &panels[pIdx], &pdY, &pdZ);
+        pdY -= (double)i;
+        pdZ -= (double)j;
       }
       ypr = (double)i + distortionMapY[testPos] + pdY;
       zpr = (double)j + distortionMapZ[testPos] + pdZ;

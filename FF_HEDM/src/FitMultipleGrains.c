@@ -626,16 +626,19 @@ static void calc_grain_errors(int nGrains, int nPanels, Panel *panels,
       SpotInfoShifted[i][4] = g_data->SpotInfoAll[i][4];
       double y_raw = g_data->SpotInfoAll[i][2];
       double z_raw = g_data->SpotInfoAll[i][3];
-      double dy = 0, dz = 0;
       if (nPanels > 0) {
         int pIdx = GetPanelIndex(y_raw, z_raw, nPanels, panels);
         if (pIdx >= 0) {
-          dy = panels[pIdx].dY;
-          dz = panels[pIdx].dZ;
+          ApplyPanelCorrection(y_raw, z_raw, &panels[pIdx],
+                               &SpotInfoShifted[i][2], &SpotInfoShifted[i][3]);
+        } else {
+          SpotInfoShifted[i][2] = y_raw;
+          SpotInfoShifted[i][3] = z_raw;
         }
+      } else {
+        SpotInfoShifted[i][2] = y_raw;
+        SpotInfoShifted[i][3] = z_raw;
       }
-      SpotInfoShifted[i][2] = y_raw + dy;
-      SpotInfoShifted[i][3] = z_raw + dz;
     }
 
     CorrectTiltSpatialDistortion(g_data->nSpots, g_data->RhoD, SpotInfoShifted,
@@ -719,16 +722,19 @@ static double problem_function(unsigned n, const double *x, double *grad,
       SpotInfoShifted[i][4] = g_data->SpotInfoAll[i][4];
       double y_raw = g_data->SpotInfoAll[i][2];
       double z_raw = g_data->SpotInfoAll[i][3];
-      double dy = 0, dz = 0;
       if (nPanels > 0) {
         int pIdx = GetPanelIndex(y_raw, z_raw, nPanels, panels);
         if (pIdx >= 0) {
-          dy = panels[pIdx].dY;
-          dz = panels[pIdx].dZ;
+          ApplyPanelCorrection(y_raw, z_raw, &panels[pIdx],
+                               &SpotInfoShifted[i][2], &SpotInfoShifted[i][3]);
+        } else {
+          SpotInfoShifted[i][2] = y_raw;
+          SpotInfoShifted[i][3] = z_raw;
         }
+      } else {
+        SpotInfoShifted[i][2] = y_raw;
+        SpotInfoShifted[i][3] = z_raw;
       }
-      SpotInfoShifted[i][2] = y_raw + dy;
-      SpotInfoShifted[i][3] = z_raw + dz;
     }
 
     CorrectTiltSpatialDistortion(g_data->nSpots, g_data->RhoD, SpotInfoShifted,
@@ -1425,12 +1431,16 @@ int main(int argc, char *argv[]) {
         gd->SpotInfoAll[nS][3] = YZOme[1];
         gd->SpotInfoAll[nS][4] = YZOme[2];
 
-        // Undo panel shifts
+        // Undo panel shifts (including rotation)
         if (nPanels > 0) {
           int pIdx = GetPanelIndex(YZOme[0], YZOme[1], nPanels, panels);
           if (pIdx >= 0) {
-            gd->SpotInfoAll[nS][2] -= panels[pIdx].dY;
-            gd->SpotInfoAll[nS][3] -= panels[pIdx].dZ;
+            double rawY, rawZ;
+            UnApplyPanelCorrection(gd->SpotInfoAll[nS][2],
+                                   gd->SpotInfoAll[nS][3], &panels[pIdx], &rawY,
+                                   &rawZ);
+            gd->SpotInfoAll[nS][2] = rawY;
+            gd->SpotInfoAll[nS][3] = rawZ;
           }
         }
         nS++;

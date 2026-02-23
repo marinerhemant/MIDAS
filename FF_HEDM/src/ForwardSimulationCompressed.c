@@ -626,8 +626,9 @@ CorrectTiltSpatialDistortion(double px, double Lsd, double ybc, double zbc,
       double pdY = 0, pdZ = 0;
       int pIdx = GetPanelIndex((double)i, (double)j, nPanels, panels);
       if (pIdx >= 0) {
-        pdY = panels[pIdx].dY;
-        pdZ = panels[pIdx].dZ;
+        ApplyPanelCorrection((double)i, (double)j, &panels[pIdx], &pdY, &pdZ);
+        pdY -= (double)i;
+        pdZ -= (double)j;
       }
       double ypr = (double)i + pdY;
       double zpr = (double)j + pdZ;

@@ -205,69 +205,173 @@ python /path/to/AutoCalibrateZarr.py \
 
 ---
 
-## 7. Manual Calibration (Panel Shifts)
- 
- While `AutoCalibrateZarr.py` provides a robust calibration for most standard setups, it treats the detector as a single continuous surface. For multi-panel detectors (e.g., arrays of detectors) where individual panels may have slight independent shifts (`dY`, `dZ`), a manual refinement step is required using the `CalibrantPanelShiftsOMP` binary.
- 
- ### When to use this
- *   You are using a customized or multi-panel detector setup.
- *   You observe residuals or "kinks" in the Debye-Scherrer rings that correspond to panel boundaries.
- *   You need to refine the positions of individual panels to improve the global fit.
- 
- ### Workflow
- 
- 1.  **Run Auto-Calibration First:**
-     Run `AutoCalibrateZarr.py` as described above to obtain a good baseline geometry. This produces the `refined_MIDAS_params.txt` file.
- 
- 2.  **Prepare Parameter File:**
-     Create a new parameter file (e.g., `manual_params.txt`) by copying `refined_MIDAS_params.txt`. `AutoCalibrateZarr` does *not* write out file-handling parameters required by the binary, so **you must manually add the following keys**:
- 
-     **File I/O Parameters (Required)**
-     ```text
-     Folder /absolute/path/to/raw/data/    # Directory containing raw images
-     FileStem CeO2_scan_                   # Common prefix of image filenames
-     Ext .tif                              # File extension (e.g., .tif, .ge2, .h5)
-     StartNr 1                             # Image number to process
-     EndNr 1                               # End image number (usually same as StartNr for calibration)
-     Padding 6                             # Number of digits in filename (e.g., 000001 is padding 6)
-     DataType 1                            # 1=uint16, 2=double, 3=float, 4=uint32, 5=int32
-                                           # 6=tiff-uint32, 7=tiff-uint8, 8=hdf5, 9=tiff-uint16
-     Dark /path/to/dark_image.tif          # Path to dark field image
-     HeadSize 8192                         # Header size in bytes (for binary files)
-     ```
- 
-     **Panel Configuration (Required for Multi-Panel)**
-     ```text
-     NPanelsY [Number of panels in Y]
-     NPanelsZ [Number of panels in Z]
-     PanelSizeY [Pixels per panel in Y]
-     PanelSizeZ [Pixels per panel in Z]
-     PanelGapsY [Gap sizes in Y pixels, space-separated]
-     PanelGapsZ [Gap sizes in Z pixels, space-separated]
-     PanelShiftsFile [Filename to save/load shifts, e.g., panel_shifts.txt]
-     ```
- 
-     **Refinement Controls**
-     ```text
-     tolShifts 1.0     # Maximum allowed shift per iteration (in pixels)
-     FixPanelID 0      # ID of the panel to keep fixed (anchor)
-     ```
- 
- 3.  **Run `CalibrantPanelShiftsOMP`:**
-     Execute the binary manually from the command line:
- 
-     ```bash
-     /path/to/MIDAS/FF_HEDM/bin/CalibrantPanelShiftsOMP manual_params.txt [nCPUs]
-     ```
-     *   Replace `[nCPUs]` with the number of threads to use (e.g., 4 or 8).
- 
- 4.  **Review Output:**
-     *   The program will print the "Indices per Panel" to visualize the coverage.
-     *   It will display the refined geometry (`Lsd`, `BC`, tilts) and the refined panel shifts.
-     *   The refined panel shifts will be saved to the file specified in `PanelShiftsFile`.
- 
- 5.  **Update Geometry:**
-     Use the generated `panel_shifts.txt` and the refined global parameters for your subsequent analysis.
+## 7. Manual Calibration (Panel Shifts & Rotation)
+
+While `AutoCalibrateZarr.py` provides a robust calibration for most standard setups, it treats the detector as a single continuous surface. For multi-panel detectors (e.g., Pilatus, Eiger, or custom detector arrays) where individual panels may have slight independent translations and rotations, a dedicated refinement step is required using the `CalibrantPanelShiftsOMP` binary.
+
+### When to use this
+*   You are using a tiled or multi-panel detector.
+*   You observe residuals or "kinks" in the Debye-Scherrer rings at panel boundaries.
+*   You need to refine the translations and/or in-plane rotations of individual panels.
+
+### Geometry Model
+
+Each panel is defined by its pixel boundaries (`yMin`, `yMax`, `zMin`, `zMax`) and three per-panel correction parameters:
+
+| Parameter | Description |
+| :--- | :--- |
+| `dY` | Translational shift in Y (pixels) |
+| `dZ` | Translational shift in Z (pixels) |
+| `dTheta` | In-plane rotation around the panel center (degrees) |
+
+The rotation is applied around the geometric center of the panel `(centerY, centerZ)`:
+
+```
+rawY = centerY + (Y - centerY)·cos(θ) - (Z - centerZ)·sin(θ)
+rawZ = centerZ + (Y - centerY)·sin(θ) + (Z - centerZ)·cos(θ)
+correctedY = rawY + dY
+correctedZ = rawZ + dZ
+```
+
+> [!IMPORTANT]
+> One panel must be held fixed (`FixPanelID`) with `dY=0`, `dZ=0`, `dTheta=0` to break the degeneracy with global parameters (beam center and tilts absorb any uniform shift/rotation of all panels).
+
+### Workflow
+
+1.  **Run Auto-Calibration First:**
+    Run `AutoCalibrateZarr.py` as described above to obtain a good baseline geometry (`refined_MIDAS_params.txt`).
+
+2.  **Prepare Parameter File:**
+    Copy `refined_MIDAS_params.txt` and add the keys below. `AutoCalibrateZarr` does *not* write file-handling or panel parameters, so **you must add them manually**:
+
+    **File I/O Parameters (Required)**
+    ```text
+    Folder /absolute/path/to/raw/data/
+    FileStem CeO2_scan_
+    Ext .tif
+    StartNr 1
+    EndNr 1
+    Padding 6
+    DataType 9                # 1=uint16, 2=double, 3=float, 4=uint32, 5=int32
+                              # 6=tiff-uint32, 7=tiff-uint8, 8=hdf5, 9=tiff-uint16
+    Dark /path/to/dark.tif
+    HeadSize 8192             # Header size (bytes), for binary formats
+    ```
+
+    **Panel Configuration (Required for Multi-Panel)**
+    ```text
+    NPanelsY 6                # Number of panels in Y direction
+    NPanelsZ 8                # Number of panels in Z direction
+    PanelSizeY 195            # Pixels per panel in Y
+    PanelSizeZ 487            # Pixels per panel in Z
+    PanelGapsY 1 7 1 7 1      # Gap widths between Y panels (NPanelsY-1 values)
+    PanelGapsZ 17 17 17 17 17 17 17  # Gap widths between Z panels (NPanelsZ-1 values)
+    PanelShiftsFile panelshifts.txt  # File to save/load panel corrections
+    FixPanelID 0              # Panel held fixed (anchor)
+    ```
+
+    **Optimization Tolerances**
+    ```text
+    tolShifts 1.0             # Search range for dY, dZ (pixels)
+    tolRotation 1.0           # Search range for dTheta (degrees); 0 = disabled
+    ```
+
+    > [!TIP]
+    > When `tolRotation` is `0` (the default), no rotation variables are added to the optimizer — the behavior is identical to the previous version. Set it to a non-zero value (e.g., `1.0` or `3.0`) to enable per-panel rotation optimization.
+
+3.  **Run `CalibrantPanelShiftsOMP`:**
+
+    ```bash
+    CalibrantPanelShiftsOMP manual_params.txt 96
+    ```
+
+    The binary prints a boxed parameter summary at startup showing all parsed values, followed by optimization progress and results.
+
+4.  **Review Output:**
+
+    The program produces the following output:
+
+    *   **Console:** Refined geometry (`Lsd`, `BC`, tilts, distortion), per-ring deviation tables, and the "Indices per Panel" coverage map.
+    *   **`panelshifts.txt`** — Per-panel corrections in text format:
+        ```text
+        # ID dY dZ dTheta
+        0  0.0000000000  0.0000000000  0.0000000000
+        1  0.3456789012 -0.1234567890  0.0876543210
+        2 -0.2345678901  0.4567890123 -0.0543210987
+        ...
+        ```
+    *   **`panelshifts.txt.shifts.tif`** — A **float32 TIFF image** (same dimensions as the detector) where each pixel contains the total shift magnitude in pixels. This combines translational shifts with position-dependent rotation contribution:
+
+        ```
+        magnitude = sqrt((dY + rotDY)² + (dZ + rotDZ)²)
+        ```
+
+        where `rotDY` and `rotDZ` are the displacement at that specific pixel due to the panel's in-plane rotation. Gap pixels are set to `-1`.
+
+    > [!TIP]
+    > Open the `.shifts.tif` in ImageJ, Python (`tifffile.imread`), or the `ff_asym.py` GUI to visually inspect the per-pixel shift pattern. Panels with large rotations will show a gradient pattern (increasing shift toward panel edges), while purely translational shifts appear as uniform color per panel.
+
+5.  **Iterate if Needed:**
+    If the fit hasn't fully converged (high mean strain), you can re-run the binary with the same parameter file. It will automatically read the previous panel shifts from `PanelShiftsFile` as starting values for the next optimization.
+
+6.  **Use in Analysis:**
+    The generated `panelshifts.txt` and refined global parameters are used by downstream MIDAS tools (`PeaksFittingOMPZarrRefactor`, `FitMultipleGrains`, etc.) to correct peak positions before indexing and refinement.
+
+### Complete Parameter Reference
+
+The following table lists all parameters recognized by `CalibrantPanelShiftsOMP`:
+
+| Parameter | Type | Default | Description |
+| :--- | :--- | :--- | :--- |
+| **File I/O** | | | |
+| `FileStem` | string | — | Base filename prefix |
+| `Folder` | string | — | Data directory |
+| `Ext` | string | — | File extension |
+| `Dark` | string | — | Dark image path |
+| `StartNr` / `EndNr` | int | — | File number range |
+| `Padding` | int | 6 | Filename zero-padding width |
+| `HeadSize` | int | 8192 | Binary file header (bytes) |
+| `DataType` | int | 1 | Pixel data type |
+| `SkipFrame` | int | 0 | Frames to skip at start |
+| **Detector Geometry** | | | |
+| `NrPixels` | int | — | Square detector size (sets Y=Z) |
+| `NrPixelsY` / `NrPixelsZ` | int | — | Non-square detector dimensions |
+| `px` | double | — | Pixel size (μm) |
+| `Lsd` | double | — | Sample-to-detector distance (μm) |
+| `BC` | 2×double | — | Beam center (Y Z) in pixels |
+| `tx` | double | 0 | Detector tilt X (fixed) |
+| `ty` / `tz` | double | 0 | Detector tilts Y, Z (initial) |
+| `p0` – `p3` | double | 0 | Distortion coefficients (initial) |
+| `ImTransOpt` | int | 0 | Image transform (repeatable) |
+| **Crystallography** | | | |
+| `SpaceGroup` | int | — | Space group number |
+| `LatticeConstant` | 6×double | — | a b c α β γ |
+| `Wavelength` | double | — | X-ray wavelength (Å) |
+| `RhoD` | double | — | Max ring radius (μm) |
+| **Masking** | | | |
+| `BadPxIntensity` | int | 0 | Bad pixel intensity value |
+| `GapIntensity` | int | 0 | Gap pixel intensity value |
+| `MaskFile` | string | — | Binary mask file |
+| **Optimization Tolerances** | | | |
+| `tolTilts` | double | — | Search range for ty, tz (°) |
+| `tolBC` | double | — | Search range for BC (pixels) |
+| `tolLsd` | double | — | Search range for Lsd (μm) |
+| `tolP` | double | — | Default range for p0–p2 |
+| `tolP0` – `tolP3` | double | =tolP | Per-coefficient overrides |
+| `tolShifts` | double | 1.0 | Search range for panel dY, dZ (pixels) |
+| `tolRotation` | double | 0.0 | Search range for panel dTheta (°) |
+| **Calibration Control** | | | |
+| `Width` | double | — | Max ring search width (μm) |
+| `EtaBinSize` | double | — | Azimuthal bin size (°) |
+| `RingsToExclude` | int | — | Ring index to exclude (repeatable) |
+| `MultFactor` | double | 0 | Outlier rejection multiplier |
+| `MinIndicesForFit` | int | 1 | Min points per ring |
+| **Multi-Panel** | | | |
+| `NPanelsY` / `NPanelsZ` | int | 0 | Panel grid dimensions |
+| `PanelSizeY` / `PanelSizeZ` | int | 0 | Panel size (pixels) |
+| `PanelGapsY` / `PanelGapsZ` | int... | — | Inter-panel gap sizes |
+| `PanelShiftsFile` | string | — | File for panel corrections |
+| `FixPanelID` | int | 0 | Panel held fixed |
  
  ---
  
