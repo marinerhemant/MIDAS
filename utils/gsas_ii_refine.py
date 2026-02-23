@@ -50,6 +50,7 @@ import json
 import logging
 import os
 import sys
+import tempfile
 import textwrap
 from concurrent.futures import ProcessPoolExecutor, as_completed
 from pathlib import Path
@@ -168,7 +169,9 @@ def build_refinement_recipe(
 # ---------------------------------------------------------------------------
 def _refine_single_histogram(
     hist_index: int,
-    data_file: str,
+    tth_array,
+    intensity_array,
+    sigma_array,
     cif_files: list[str],
     out_dir: str,
     instprm_file: Optional[str],
@@ -178,18 +181,23 @@ def _refine_single_histogram(
     export_cif: bool,
     export_csv: bool,
 ) -> dict:
-    """Refine a single histogram (lineout) from the zarr file.
+    """Refine a single histogram from pre-extracted lineout data.
 
-    This function is designed to run in a separate process so that multiple
-    histograms can be refined in parallel.  It creates its own GSAS-II
-    project, imports only the requested histogram, and runs the full staged
-    refinement.
+    Instead of relying on GSAS-II's 'MIDAS zarr' reader, this function
+    writes a temporary .xye file (2theta, intensity, sigma) and imports
+    it directly.
 
     Parameters
     ----------
     hist_index : int
-        Index of the histogram (lineout) to refine.
-    data_file, cif_files, out_dir, instprm_file, bkg_terms, refine_atoms,
+        Index of the histogram.
+    tth_array : array-like
+        1D array of 2-theta values (degrees).
+    intensity_array : array-like
+        1D array of intensity values.
+    sigma_array : array-like
+        1D array of sigma (uncertainty) values.
+    cif_files, out_dir, instprm_file, bkg_terms, refine_atoms,
     two_theta_limits, export_cif, export_csv
         Same meaning as in ``run_refinement()``.
 
@@ -198,6 +206,7 @@ def _refine_single_histogram(
     dict
         Per-histogram result summary.
     """
+    import numpy as np
     G2sc = _import_gsasii()
 
     gpx_name = f"hist_{hist_index:04d}.gpx"
@@ -205,16 +214,21 @@ def _refine_single_histogram(
 
     result = {"histogram_index": hist_index, "gpx": gpx_path}
 
+    # Write temporary .xye file
+    xye_path = str(Path(out_dir) / f"_temp_hist_{hist_index:04d}.xye")
     try:
+        np.savetxt(xye_path, np.column_stack([tth_array, intensity_array, sigma_array]),
+                   fmt="%.6f %.6f %.6f",
+                   header="2theta Intensity Sigma")
+
         # Create a project for this single histogram
         gpx = G2sc.G2Project(newgpx=gpx_path)
 
-        # Import powder histogram, selecting only this one lineout
+        # Import powder histogram from the .xye file
         gpx.add_powder_histogram(
-            data_file,
+            xye_path,
             instprm_file if instprm_file else "",
-            fmthint="MIDAS zarr",
-            databank=hist_index + 1,  # 1-based bank number for selection
+            fmthint="xye",
         )
 
         if len(gpx.histograms()) == 0:
@@ -289,6 +303,12 @@ def _refine_single_histogram(
     except Exception as e:
         result["status"] = "failed"
         result["error"] = str(e)
+    finally:
+        # Clean up temp file
+        try:
+            os.remove(xye_path)
+        except OSError:
+            pass
 
     return result
 
@@ -353,21 +373,21 @@ def run_refinement(
     out_dir = Path(output_dir).resolve()
     out_dir.mkdir(parents=True, exist_ok=True)
 
-    # ── Discover how many histograms (lineouts) the file contains ──────────
-    # We do a quick probe by loading the zarr file directly.
-    n_hist = _count_histograms(str(data_path))
+    # ── Extract all histograms from zarr upfront ───────────────────────────
+    log.info("Extracting histograms from %s ...", data_path.name)
+    histograms = _extract_histograms(str(data_path))
+    n_hist = len(histograms)
     if n_hist == 0:
         log.error("No valid histograms found in %s", data_path)
         sys.exit(1)
 
     log.info(
-        "Found %d histogram(s) in %s — refining with %d worker(s)",
-        n_hist, data_path.name, min(n_cpus, n_hist),
+        "Extracted %d histogram(s) — refining with %d worker(s)",
+        n_hist, min(n_cpus, n_hist),
     )
 
     # ── Dispatch refinements ──────────────────────────────────────────────
     common_kwargs = dict(
-        data_file=str(data_path),
         cif_files=[str(Path(c).resolve()) for c in cif_files],
         out_dir=str(out_dir),
         instprm_file=instprm_file,
@@ -384,17 +404,28 @@ def run_refinement(
         # Serial path
         for idx in range(n_hist):
             log.info("Refining histogram %d / %d ...", idx + 1, n_hist)
-            res = _refine_single_histogram(hist_index=idx, **common_kwargs)
+            tth, intensity, sigma = histograms[idx]
+            res = _refine_single_histogram(
+                hist_index=idx,
+                tth_array=tth, intensity_array=intensity, sigma_array=sigma,
+                **common_kwargs,
+            )
             results_list.append(res)
             _log_histogram_result(res)
     else:
         # Parallel path
         workers = min(n_cpus, n_hist)
         with ProcessPoolExecutor(max_workers=workers) as pool:
-            futures = {
-                pool.submit(_refine_single_histogram, hist_index=idx, **common_kwargs): idx
-                for idx in range(n_hist)
-            }
+            futures = {}
+            for idx in range(n_hist):
+                tth, intensity, sigma = histograms[idx]
+                f = pool.submit(
+                    _refine_single_histogram,
+                    hist_index=idx,
+                    tth_array=tth, intensity_array=intensity, sigma_array=sigma,
+                    **common_kwargs,
+                )
+                futures[f] = idx
             for future in as_completed(futures):
                 idx = futures[future]
                 try:
@@ -434,10 +465,32 @@ def run_refinement(
     return summary
 
 
-def _count_histograms(data_file: str) -> int:
-    """Count the number of valid lineouts in a MIDAS zarr.zip file.
+def _open_zarr(data_file: str):
+    """Open a MIDAS zarr.zip file, handling both zarr v2 and v3."""
+    import zarr
+    try:
+        return zarr.open(data_file, mode="r")
+    except Exception:
+        import asyncio
+        async def _open():
+            store = await zarr.storage.ZipStore.open(data_file, mode="r")
+            return zarr.open_group(store, mode="r")
+        return asyncio.run(_open())
 
-    Mirrors the logic in G2pwd_MIDAS.py: a lineout needs ≥20 unmasked points.
+
+def _extract_histograms(data_file: str) -> list:
+    """Extract all valid lineouts from a MIDAS zarr.zip file.
+
+    Each lineout is one azimuthal slice (Eta column) from one OmegaSumFrame
+    entry, with at least 20 unmasked bins.
+
+    Returns
+    -------
+    list of (tth, intensity, sigma) tuples
+        Each element is a tuple of 1D numpy arrays:
+        - tth: 2-theta values for unmasked bins (degrees)
+        - intensity: summed counts for those bins
+        - sigma: sqrt(|intensity|) uncertainties
     """
     try:
         import zarr
@@ -446,21 +499,56 @@ def _count_histograms(data_file: str) -> int:
         log.error("zarr and numpy are required (pip install zarr==2.18.3 numpy)")
         sys.exit(1)
 
-    try:
-        fp = zarr.open(data_file, mode="r")
-    except Exception:
-        # zarr 3.x workaround
-        import asyncio
-        async def _open():
-            store = await zarr.storage.ZipStore.open(data_file, mode="r")
-            return zarr.open_group(store, mode="r")
-        fp = asyncio.run(_open())
+    fp = _open_zarr(data_file)
+    remap = np.array(fp["REtaMap"])      # (4, nRBins, nEtaBins)
+    tth_map = remap[1]                    # 2theta per bin (degrees)
+    area_map = remap[3]                   # effective pixel area (mask)
+    Nbins, Nazim = tth_map.shape
 
+    # Identify valid azimuthal slices (≥20 unmasked bins)
+    valid_azm = []
+    for i in range(Nazim):
+        mask = area_map[:, i] != 0
+        if np.sum(mask) > 20:
+            valid_azm.append(i)
+
+    if not valid_azm:
+        return []
+
+    # Extract lineouts from each OmegaSumFrame entry
+    osf_group = fp["OmegaSumFrame"]
+    frame_keys = sorted(osf_group.keys())
+
+    histograms = []
+    for fkey in frame_keys:
+        frame_data = np.array(osf_group[fkey])  # (nRBins, nEtaBins)
+        for azm_idx in valid_azm:
+            mask = area_map[:, azm_idx] != 0
+            tth = tth_map[mask, azm_idx]
+            raw_intensity = frame_data[mask, azm_idx]
+            # Normalize by area to get actual intensity
+            areas = area_map[mask, azm_idx]
+            intensity = np.where(areas > 0, raw_intensity / areas, 0.0)
+            sigma = np.sqrt(np.maximum(np.abs(raw_intensity), 1.0)) / np.maximum(areas, 1.0)
+            histograms.append((tth, intensity, sigma))
+
+    return histograms
+
+
+def _count_histograms(data_file: str) -> int:
+    """Count the number of valid lineouts in a MIDAS zarr.zip file."""
+    try:
+        import zarr
+        import numpy as np
+    except ImportError:
+        log.error("zarr and numpy are required (pip install zarr==2.18.3 numpy)")
+        sys.exit(1)
+
+    fp = _open_zarr(data_file)
     remap = np.array(fp["REtaMap"])
     Nbins, Nazim = remap[1].shape
     n_images = len(fp["OmegaSumFrame"])
 
-    # Unmasked = area > 0
     unmasked = [(remap[3][:, i] != 0) for i in range(Nazim)]
     valid_azm = [i for i in range(Nazim) if sum(unmasked[i]) > 20]
 
