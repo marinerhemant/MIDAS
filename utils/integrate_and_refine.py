@@ -319,7 +319,7 @@ def parse_args() -> argparse.Namespace:
                        Provide --folder or --pva for data source.
 
             GSAS-II must be accessible.  Install via conda:
-                conda install gsas2full -c briantoby
+                conda install gsas2pkg -c briantoby -c conda-forge
             Or set env variable:
                 export GSASII_PATH=/path/to/GSAS-II
         """),

@@ -101,7 +101,7 @@ def _import_gsasii():
     print(
         "ERROR: Cannot import GSASIIscriptable.\n"
         "Install GSAS-II via conda:\n"
-        "    conda install gsas2full -c briantoby\n"
+        "    conda install gsas2pkg -c briantoby -c conda-forge\n"
         "Or set GSASII_PATH to point to your GSAS-II source directory:\n"
         "    export GSASII_PATH=/path/to/GSAS-II/GSASII",
         file=sys.stderr,
@@ -585,7 +585,7 @@ def parse_args() -> argparse.Namespace:
 
             GSAS-II setup
             -------------
-            Install via conda:    conda install gsas2full -c briantoby
+            Install via conda:    conda install gsas2pkg -c briantoby -c conda-forge
             Or set env variable:  export GSASII_PATH=/path/to/GSAS-II/GSASII
         """),
         formatter_class=argparse.RawDescriptionHelpFormatter,

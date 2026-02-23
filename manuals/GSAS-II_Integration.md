@@ -20,20 +20,30 @@ It assumes you already know your material (via a provided CIF file) and are prim
 | Component | Minimum Version | Installation |
 |-----------|----------------|-------------|
 | **MIDAS** | 9.0 | See [README.md](README.md) — typically installed to `~/opt/MIDAS/` but any path works.  Scripts auto-detect their install location. |
-| **GSAS-II** | Latest | `conda install gsas2full -c briantoby` or [install guide](https://advancedphotonsource.github.io/GSAS-II-tutorials/install.html). See §2.3 below. |
+| **GSAS-II** | Latest | `conda install gsas2pkg -c briantoby` or `pip install GSASII` — see §2.3 below. |
 | **Python** | 3.9+ | Required by both packages |
-| **zarr** | Latest | `pip install zarr` or `conda install zarr` (required by the MIDAS zarr importer in GSAS-II) |
+| **zarr** | Latest | `pip install zarr` or `conda install zarr` (required for reading MIDAS .zarr.zip files) |
 
 ### 2.3. GSAS-II Installation & Setup
 
 The MIDAS scripts need to import `GSASIIscriptable` at runtime.  There are two setups:
 
-1. **Conda (recommended):** Install the `gsas2full` package, which places GSAS-II on the standard Python path:
+1. **Conda (recommended):** Install the `gsas2pkg` package into a conda environment:
    ```bash
-   conda install gsas2full -c briantoby
+   conda create -n GSASII briantoby::gsas2pkg -c conda-forge
+   conda activate GSASII
+   ```
+   Or install into an existing environment:
+   ```bash
+   conda install gsas2pkg -c briantoby -c conda-forge
    ```
 
-2. **Manual / source install:** If GSAS-II is installed in a non-standard location, point the scripts to it with an environment variable:
+2. **Pip:** Install directly from the GSAS-II GitHub:
+   ```bash
+   pip install GSASII
+   ```
+
+3. **Manual / source install:** If GSAS-II is installed in a non-standard location, point the scripts to it with an environment variable:
    ```bash
    export GSASII_PATH=/path/to/GSAS-II
    ```
