@@ -1169,6 +1169,73 @@ def generate_consolidated_hdf5(result_dir: str, zarr_path: str) -> None:
                         else:
                             params_dict[key] = parts[1]
     
+    # Parse hkls.csv
+    hkls_file = os.path.join(result_dir, 'hkls.csv')
+    hkls_data = None
+    hkls_cols = ['h', 'k', 'l', 'D-spacing', 'RingNr', 'g1', 'g2', 'g3', 'Theta', '2Theta', 'Radius']
+    if os.path.exists(hkls_file):
+        hkls_data = np.genfromtxt(hkls_file, skip_header=1)
+        if hkls_data.ndim == 1:
+            hkls_data = hkls_data.reshape(1, -1)
+    
+    # Parse Result_StartNr_*.csv (PeaksFitting summary)
+    result_file = None
+    for f in os.listdir(result_dir):
+        if f.startswith('Result_StartNr_') and f.endswith('.csv'):
+            result_file = os.path.join(result_dir, f)
+            break
+    result_data = None
+    result_cols = [
+        'SpotID', 'IntegratedIntensity', 'Omega', 'YCen', 'ZCen', 'IMax',
+        'MinOme', 'MaxOme', 'SigmaR', 'SigmaEta', 'NrPx', 'NrPxTot', 'Radius', 'Eta'
+    ]
+    if result_file and os.path.exists(result_file):
+        result_data = np.genfromtxt(result_file, skip_header=1)
+        if result_data.ndim == 1:
+            result_data = result_data.reshape(1, -1)
+    
+    # Parse IDRings.csv
+    idrings_file = os.path.join(result_dir, 'IDRings.csv')
+    idrings_data = None
+    idrings_cols = ['RingNumber', 'OriginalID', 'NewID']
+    if os.path.exists(idrings_file):
+        idrings_data = np.genfromtxt(idrings_file, skip_header=1)
+        if idrings_data.ndim == 1:
+            idrings_data = idrings_data.reshape(1, -1)
+    
+    # Parse IDsHash.csv (no header, 4 columns: RingNr StartID EndID D-spacing)
+    idshash_file = os.path.join(result_dir, 'IDsHash.csv')
+    idshash_data = None
+    idshash_cols = ['RingNr', 'StartID', 'EndID', 'D-spacing']
+    if os.path.exists(idshash_file):
+        idshash_data = np.genfromtxt(idshash_file)
+        if idshash_data.ndim == 1:
+            idshash_data = idshash_data.reshape(1, -1)
+    
+    # Parse SpotsToIndex.csv (single column, no header)
+    spots2index_file = os.path.join(result_dir, 'SpotsToIndex.csv')
+    spots2index_data = None
+    if os.path.exists(spots2index_file):
+        spots2index_data = np.genfromtxt(spots2index_file, dtype=int)
+        if spots2index_data.ndim == 0:
+            spots2index_data = spots2index_data.reshape(1)
+    
+    # Parse GrainIDsKey.csv (variable-width rows, padded array)
+    grainidskey_file = os.path.join(result_dir, 'GrainIDsKey.csv')
+    grainidskey_data = None
+    if os.path.exists(grainidskey_file):
+        raw_rows = []
+        with open(grainidskey_file, 'r') as f:
+            for line in f:
+                vals = [int(x) for x in line.strip().split() if x]
+                if vals:
+                    raw_rows.append(vals)
+        if raw_rows:
+            max_len = max(len(r) for r in raw_rows)
+            grainidskey_data = np.full((len(raw_rows), max_len), -1, dtype=int)
+            for ri, row in enumerate(raw_rows):
+                grainidskey_data[ri, :len(row)] = row
+    
     # Build merge map index: merged_spot_id -> list of (FrameNr, PeakID) tuples
     merge_idx = defaultdict(list)
     if merge_map_data is not None:
@@ -1178,31 +1245,39 @@ def generate_consolidated_hdf5(result_dir: str, zarr_path: str) -> None:
             peak_id = int(merge_map_data[row_i, 2])
             merge_idx[merged_id].append((frame_nr, peak_id))
     
-    # Load referenced _PS.csv files from Temp/ directory
+    # Load ALL _PS.csv files from Temp/ directory
     # Build cache: (frame_nr, peak_id) -> full 26-column peak row
+    # Also collect all rows for the flat /peaks/per_frame/ dataset
     temp_dir = os.path.join(result_dir, 'Temp')
     # _PS.csv files use the full zarr basename (incl. .zip) as their stem
     # e.g., 'Au_FF_000001_pf.analysis.MIDAS.zip_000004_PS.csv'
     file_stem = os.path.basename(zarr_path) if zarr_path else ''
     ps_cache = {}  # (frame_nr, peak_id) -> np.array of 26 values
-    if merge_map_data is not None and os.path.isdir(temp_dir):
-        # Find which frames we need to load
-        needed_frames = set(int(merge_map_data[i, 1]) for i in range(merge_map_data.shape[0]))
-        logger.info(f"Loading _PS.csv data for {len(needed_frames)} frames from {temp_dir}")
-        for frame_nr in sorted(needed_frames):
-            ps_fn = os.path.join(temp_dir, f'{file_stem}_{frame_nr:06d}_PS.csv')
-            if not os.path.exists(ps_fn):
-                logger.warning(f"_PS.csv file not found: {ps_fn}")
+    all_ps_rows = []  # all rows across all frames, with frame_nr prepended
+    if os.path.isdir(temp_dir):
+        import re
+        ps_files = sorted(f for f in os.listdir(temp_dir) if f.endswith('_PS.csv'))
+        logger.info(f"Loading _PS.csv data for {len(ps_files)} frames from {temp_dir}")
+        for ps_file in ps_files:
+            # Extract frame number from filename: *_NNNNNN_PS.csv
+            match = re.search(r'_(\d{6})_PS\.csv$', ps_file)
+            if not match:
                 continue
+            frame_nr = int(match.group(1))
+            ps_path = os.path.join(temp_dir, ps_file)
             try:
-                ps_data = np.genfromtxt(ps_fn, skip_header=1)
+                ps_data = np.genfromtxt(ps_path, skip_header=1)
+                if ps_data.size == 0:
+                    continue
                 if ps_data.ndim == 1:
                     ps_data = ps_data.reshape(1, -1)
                 for row in ps_data:
                     peak_id = int(row[0])
                     ps_cache[(frame_nr, peak_id)] = row
+                    # Prepend frame_nr to each row for the flat table
+                    all_ps_rows.append(np.concatenate([[frame_nr], row]))
             except Exception as e:
-                logger.warning(f"Error reading {ps_fn}: {e}")
+                logger.warning(f"Error reading {ps_path}: {e}")
         logger.info(f"Loaded {len(ps_cache)} peak entries from _PS.csv files")
     
     # Build radius index: spot_id -> row index
@@ -1342,6 +1417,55 @@ def generate_consolidated_hdf5(result_dir: str, zarr_path: str) -> None:
                             for ci, col in enumerate(ps_cols):
                                 if ci < peak_arr.shape[1]:
                                     cp_grp.create_dataset(col.lower(), data=peak_arr[:, ci])
+        
+        # /spot_matrix/ - flat table of SpotMatrix.csv
+        sm = h5.create_group('spot_matrix')
+        sm.create_dataset('data', data=spot_data)
+        sm.attrs['column_names'] = spot_cols
+        
+        # /hkls/
+        if hkls_data is not None:
+            hg = h5.create_group('hkls')
+            hg.create_dataset('data', data=hkls_data)
+            hg.attrs['column_names'] = hkls_cols[:min(len(hkls_cols), hkls_data.shape[1])]
+        
+        # /peaks/summary/ - Result_StartNr_*.csv
+        pg = h5.create_group('peaks')
+        if result_data is not None:
+            ps_sum = pg.create_group('summary')
+            ps_sum.create_dataset('data', data=result_data)
+            ps_sum.attrs['column_names'] = result_cols[:min(len(result_cols), result_data.shape[1])]
+        
+        # /peaks/per_frame/ - all _PS.csv rows with frame_nr prepended
+        if all_ps_rows:
+            pf_data = np.array(all_ps_rows)
+            pf = pg.create_group('per_frame')
+            pf.create_dataset('data', data=pf_data)
+            pf_cols = ['FrameNr'] + ps_cols
+            pf.attrs['column_names'] = pf_cols[:min(len(pf_cols), pf_data.shape[1])]
+        
+        # /id_rings/
+        if idrings_data is not None:
+            ir = h5.create_group('id_rings')
+            ir.create_dataset('data', data=idrings_data)
+            ir.attrs['column_names'] = idrings_cols[:min(len(idrings_cols), idrings_data.shape[1])]
+        
+        # /ids_hash/
+        if idshash_data is not None:
+            ih = h5.create_group('ids_hash')
+            ih.create_dataset('data', data=idshash_data)
+            ih.attrs['column_names'] = idshash_cols[:min(len(idshash_cols), idshash_data.shape[1])]
+        
+        # /spots_to_index/
+        if spots2index_data is not None:
+            si = h5.create_group('spots_to_index')
+            si.create_dataset('data', data=spots2index_data)
+        
+        # /grain_ids_key/ - padded array (-1 = padding)
+        if grainidskey_data is not None:
+            gk = h5.create_group('grain_ids_key')
+            gk.create_dataset('data', data=grainidskey_data)
+            gk.attrs['description'] = 'Each row is a grain. Values are alternating (SpotID, LocalIndex) pairs. -1 indicates padding.'
         
         # /raw_data_ref/
         rr = h5.create_group('raw_data_ref')
