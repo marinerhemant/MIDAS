@@ -321,7 +321,7 @@ def parse_args() -> argparse.Namespace:
             GSAS-II must be accessible.  Install via conda:
                 conda install gsas2full -c briantoby
             Or set env variable:
-                export GSASII_PATH=/path/to/GSAS-II/GSASII
+                export GSASII_PATH=/path/to/GSAS-II
         """),
         formatter_class=argparse.RawDescriptionHelpFormatter,
     )

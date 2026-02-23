@@ -83,6 +83,15 @@ def _import_gsasii():
     if gsas_path:
         sys.path.insert(0, gsas_path)
         try:
+            from GSASII import GSASIIscriptable as G2sc
+            return G2sc
+        except ImportError:
+            pass
+        # Also try with GSASII subdirectory on path
+        gsasii_subdir = os.path.join(gsas_path, "GSASII")
+        if os.path.isdir(gsasii_subdir):
+            sys.path.insert(0, gsasii_subdir)
+        try:
             import GSASIIscriptable as G2sc
             return G2sc
         except ImportError:
