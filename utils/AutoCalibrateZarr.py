@@ -688,12 +688,12 @@ def process_tiff_input(dataFN, badPxIntensity, gapIntensity, darkFN=''):
         if not np.isnan(badPxIntensity) and not np.isnan(gapIntensity):
             badGapArr = img == badPxIntensity
             badGapArr = np.logical_or(badGapArr, img == gapIntensity)
-            
+
         # Set dimensions if not 2048x2048
-            if img.shape[1] != 2048:
-                NrPixelsY = img.shape[1]
-            if img.shape[0] != 2048:
-                NrPixelsZ = img.shape[0]
+        if img.shape[1] != 2048:
+            NrPixelsY = img.shape[1]
+        if img.shape[0] != 2048:
+            NrPixelsZ = img.shape[0]
         
         # Save data as GE file
         ge_file = f"{dataFN}.ge"
