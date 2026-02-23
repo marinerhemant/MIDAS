@@ -169,26 +169,27 @@ Reports:
 - **Misorientation statistics**: mean, median, std, min, max (in degrees)
 - **Threshold fractions**: percentage of voxels below 1°, 2°, 5°, and 10°
 - **Confidence statistics**: mean and median for both reference and test
-- **Pass/Fail**: passes if >50% of matched voxels have <5° misorientation
+- **Pass/Fail**: passes if >80% of voxels have <0.25° misorientation
 
 ## Expected Output
 
 A successful run produces output similar to:
 ```
 --- Misorientation Statistics (degrees) ---
-  Mean:   1.2345
-  Median: 0.5678
-  Std:    2.3456
+  Mean:   0.0345
+  Median: 0.0078
+  Std:    0.1456
   Min:    0.0000
-  Max:    12.3456
+  Max:    5.3456
 
 --- Fraction below threshold ---
-  <   1.0°:  65.00%
-  <   2.0°:  78.00%
-  <   5.0°:  92.00%
-  <  10.0°:  98.00%
+  <  0.25°:  92.00%
+  <  1.00°:  96.00%
+  <  2.00°:  98.00%
+  <  5.00°:  99.50%
+  < 10.00°: 100.00%
 
-  Benchmark result: PASSED (92.0% of voxels < 5° misorientation)
+  Benchmark result: PASSED (92.0% of voxels < 0.25° misorientation)
 ```
 
 ## Generated Files

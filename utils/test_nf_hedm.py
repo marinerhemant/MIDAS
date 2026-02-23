@@ -257,21 +257,21 @@ def compare_reconstructions(ref_mic_path, test_mic_path, sg_num=225):
     print(f"  Min:    {np.min(miso):.4f}")
     print(f"  Max:    {np.max(miso):.4f}")
 
-    thresholds = [1.0, 2.0, 5.0, 10.0]
+    thresholds = [0.25, 1.0, 2.0, 5.0, 10.0]
     print(f"\n--- Fraction below threshold ---")
     for t in thresholds:
         frac = np.sum(miso < t) / len(miso) * 100
-        print(f"  < {t:5.1f}°: {frac:6.2f}%")
+        print(f"  < {t:5.2f}°: {frac:6.2f}%")
 
     print(f"\n--- Confidence Statistics ---")
     print(f"  Reference  - Mean: {np.mean(conf_r):.4f}, Median: {np.median(conf_r):.4f}")
     print(f"  Test       - Mean: {np.mean(conf_t):.4f}, Median: {np.median(conf_t):.4f}")
 
-    # Pass/fail: majority should be below 5 degrees
-    pct_below_5 = np.sum(miso < 5.0) / len(miso) * 100
-    passed = pct_below_5 > 50.0
+    # Pass/fail: NF-HEDM should be very accurate
+    pct_below_025 = np.sum(miso < 0.25) / len(miso) * 100
+    passed = pct_below_025 > 80.0
     status = "PASSED" if passed else "FAILED"
-    print(f"\n  Benchmark result: {status} ({pct_below_5:.1f}% of voxels < 5° misorientation)")
+    print(f"\n  Benchmark result: {status} ({pct_below_025:.1f}% of voxels < 0.25° misorientation)")
     return passed
 
 
