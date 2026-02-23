@@ -1468,7 +1468,96 @@ int main(int argc, char *argv[]) {
     NrPixelsGlobal = NrPixelsZ;
   }
   int i, j, k;
-  printf("NrTransOpt: %d\n", NrTransOpt);
+
+  // Print parameter summary
+  printf("\n");
+  printf("╔══════════════════════════════════════════════════════════════╗\n");
+  printf("║           CalibrantPanelShiftsOMP — Parameter Summary       ║\n");
+  printf("╠══════════════════════════════════════════════════════════════╣\n");
+  printf("║  FILE I/O                                                   ║\n");
+  printf("║    FileStem:       %-40s ║\n", fn);
+  printf("║    Folder:         %-40s ║\n", folder);
+  printf("║    Ext:            %-40s ║\n", Ext);
+  printf("║    Dark:           %-40s ║\n", Dark);
+  printf("║    StartNr:        %-40d ║\n", StartNr);
+  printf("║    EndNr:          %-40d ║\n", EndNr);
+  printf("║    Padding:        %-40d ║\n", Padding);
+  printf("║    HeadSize:       %-40d ║\n", HeadSize);
+  printf("║    DataType:       %-40d ║\n", dType);
+  printf("║    SkipFrame:      %-40d ║\n", skipFrame);
+  printf("╠══════════════════════════════════════════════════════════════╣\n");
+  printf("║  DETECTOR GEOMETRY                                          ║\n");
+  printf("║    NrPixelsY:      %-40d ║\n", NrPixelsY);
+  printf("║    NrPixelsZ:      %-40d ║\n", NrPixelsZ);
+  printf("║    NrPixels(max):  %-40d ║\n", NrPixels);
+  printf("║    PixelSize:      %-40.6f ║\n", px);
+  printf("║    Lsd:            %-40.2f ║\n", Lsd);
+  printf("║    BC:             %-20.4f %-19.4f ║\n", ybc, zbc);
+  printf("║    tx (fixed):     %-40.6f ║\n", tx);
+  printf("║    ty (initial):   %-40.6f ║\n", tyin);
+  printf("║    tz (initial):   %-40.6f ║\n", tzin);
+  printf("║    p0 (initial):   %-40.8f ║\n", p0in);
+  printf("║    p1 (initial):   %-40.8f ║\n", p1in);
+  printf("║    p2 (initial):   %-40.8f ║\n", p2in);
+  printf("║    p3 (initial):   %-40.8f ║\n", p3in);
+  printf("╠══════════════════════════════════════════════════════════════╣\n");
+  printf("║  CRYSTALLOGRAPHY                                            ║\n");
+  printf("║    SpaceGroup:     %-40d ║\n", SpaceGroup);
+  printf("║    LatticeConst:   %-8.4f %-8.4f %-8.4f %-5.2f %-5.2f %-5.2f  ║\n",
+         LatticeConstant[0], LatticeConstant[1], LatticeConstant[2],
+         LatticeConstant[3], LatticeConstant[4], LatticeConstant[5]);
+  printf("║    Wavelength:     %-40.8f ║\n", Wavelength);
+  printf("║    RhoD:           %-40.2f ║\n", MaxRingRad);
+  printf("╠══════════════════════════════════════════════════════════════╣\n");
+  printf("║  MASKING                                                    ║\n");
+  printf("║    BadPxIntensity: %-40lld ║\n", BadPxIntensity);
+  printf("║    GapIntensity:   %-40lld ║\n", GapIntensity);
+  if (MaskFN[0] != '\0')
+    printf("║    MaskFile:       %-40s ║\n", MaskFN);
+  printf("║    MakeMap mode:   %-40d ║\n", makeMap);
+  printf("╠══════════════════════════════════════════════════════════════╣\n");
+  printf("║  OPTIMIZATION TOLERANCES                                    ║\n");
+  printf("║    tolTilts:       %-40.6f ║\n", tolTilts);
+  printf("║    tolBC:          %-40.6f ║\n", tolBC);
+  printf("║    tolLsd:         %-40.2f ║\n", tolLsd);
+  printf("║    tolP0:          %-40.8f ║\n", tolP0);
+  printf("║    tolP1:          %-40.8f ║\n", tolP1);
+  printf("║    tolP2:          %-40.8f ║\n", tolP2);
+  printf("║    tolP3:          %-40.8f ║\n", tolP3);
+  printf("║    tolShifts:      %-40.6f ║\n", tolShifts);
+  printf("╠══════════════════════════════════════════════════════════════╣\n");
+  printf("║  CALIBRATION CONTROL                                        ║\n");
+  printf("║    Width:          %-40.2f ║\n", Width);
+  printf("║    EtaBinSize:     %-40.4f ║\n", EtaBinSize);
+  printf("║    RBinDivisions:  %-40d ║\n", RBinWidth);
+  printf("║    MultFactor:     %-40.4f ║\n", outlierFactor);
+  printf("║    MinIndices:     %-40d ║\n", MinIndicesForFit);
+  printf("║    FitOrWMean:     %-40d ║\n", FitWeightMean);
+  if (nRingsExclude > 0) {
+    printf("║    RingsExclude:   ");
+    int printed = 0;
+    for (i = 0; i < nRingsExclude; i++) {
+      printed += printf("%d ", RingsExclude[i]);
+    }
+    for (int pad = printed; pad < 41; pad++)
+      printf(" ");
+    printf("║\n");
+  }
+  if (nPanels > 0) {
+    printf(
+        "╠══════════════════════════════════════════════════════════════╣\n");
+    printf("║  MULTI-PANEL                                                ║\n");
+    printf("║    NPanelsY:       %-40d ║\n", NPanelsY);
+    printf("║    NPanelsZ:       %-40d ║\n", NPanelsZ);
+    printf("║    PanelSizeY:     %-40d ║\n", PanelSizeY);
+    printf("║    PanelSizeZ:     %-40d ║\n", PanelSizeZ);
+    printf("║    FixPanelID:     %-40d ║\n", FixPanelID);
+    printf("║    Panels:         %-40d ║\n", nPanels);
+    if (PanelShiftsFile[0] != '\0')
+      printf("║    ShiftsFile:     %-40s ║\n", PanelShiftsFile);
+  }
+  printf(
+      "╚══════════════════════════════════════════════════════════════╝\n\n");
   for (i = 0; i < NrTransOpt; i++) {
     if (TransOpt[i] < 0 || TransOpt[i] > 3) {
       printf("TransformationOptions can only be 0, 1, 2 or 3.\nExiting.\n");
