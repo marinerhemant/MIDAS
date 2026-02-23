@@ -193,6 +193,7 @@ int main(int argc, char *argv[]) {
   char fn2[1000];
   char direct[1000];
   int StartNr, EndNr, skipBin = 0;
+  int precomputedSpotsInfo = 0;
   while (fgets(aline, 1000, fileParam) != NULL) {
     str = "ReducedFileName ";
     LowNr = strncmp(aline, str, strlen(str));
@@ -249,6 +250,12 @@ int main(int argc, char *argv[]) {
       sscanf(aline, "%s %d", dummy, &NrPixelsZ);
       continue;
     }
+    str = "PrecomputedSpotsInfo ";
+    LowNr = strncmp(aline, str, strlen(str));
+    if (LowNr == 0) {
+      sscanf(aline, "%s %d", dummy, &precomputedSpotsInfo);
+      continue;
+    }
   }
 
   // Print all parameters read from parameter file
@@ -266,6 +273,7 @@ int main(int argc, char *argv[]) {
   printf("\n--- Flags ---\n");
   printf("  Ice9Input:            %s\n", Flag ? "YES" : "NO");
   printf("  SkipImageBinning:     %s\n", skipBin ? "YES" : "NO");
+  printf("  PrecomputedSpotsInfo: %s\n", precomputedSpotsInfo ? "YES" : "NO");
   printf(
       "================================================================\n\n");
 
@@ -297,11 +305,27 @@ int main(int argc, char *argv[]) {
     printf("Could not allocate ObsSpotsInfo.\n");
     return 0;
   }
-  if (skipBin == 0)
+  if (precomputedSpotsInfo) {
+    // Read existing SpotsInfo.bin directly instead of generating from bin files
+    char existingSI[1024];
+    sprintf(existingSI, "%s/SpotsInfo.bin", direct);
+    FILE *fExist = fopen(existingSI, "rb");
+    if (fExist == NULL) {
+      printf("PrecomputedSpotsInfo is set but could not open %s\n", existingSI);
+      return 1;
+    }
+    size_t nRead =
+        fread(ObsSpotsInfo, sizeof(*ObsSpotsInfo), SizeObsSpots, fExist);
+    fclose(fExist);
+    printf("Read precomputed SpotsInfo.bin: %zu elements from %s\n", nRead,
+           existingSI);
+    ReadCode = 1;
+  } else if (skipBin == 0) {
     ReadCode = ReadBinFiles(fn, ext, StartNr, EndNr, ObsSpotsInfo, nLayers,
                             SizeObsSpots, NrPixelsY, NrPixelsZ);
-  else
+  } else {
     ReadCode = 1;
+  }
   if (ReadCode == 0) {
     printf("Reading bin files did not go well. Please check.\n");
     return 1;
@@ -368,12 +392,12 @@ int main(int argc, char *argv[]) {
   char OM[1024];
   sprintf(OM, "%s/OrientMat.bin", direct);
   FILE *fSI, *fDS, *fKEY, *fOM;
-  if (skipBin == 0)
+  if (skipBin == 0 && !precomputedSpotsInfo)
     fSI = fopen(SI, "wb");
   fDS = fopen(DS, "wb");
   fKEY = fopen(KEY, "wb");
   fOM = fopen(OM, "wb");
-  if (skipBin == 0)
+  if (skipBin == 0 && !precomputedSpotsInfo)
     if (checkFOPEN(fSI, SI))
       return 1;
   if (checkFOPEN(fDS, DS))
@@ -382,7 +406,7 @@ int main(int argc, char *argv[]) {
     return 1;
   if (checkFOPEN(fOM, OM))
     return 1;
-  if (skipBin == 0)
+  if (skipBin == 0 && !precomputedSpotsInfo)
     fwrite(ObsSpotsInfo, SizeObsSpots * sizeof(*ObsSpotsInfo), 1, fSI);
   fwrite(SpotsMat, TotalDiffrSpots * 3 * sizeof(*SpotsMat), 1, fDS);
   fwrite(NrSpots, NrOrientations * 2 * sizeof(*NrSpots), 1, fKEY);

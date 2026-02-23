@@ -67,6 +67,9 @@ double **allocMatrixF(int nrows, int ncols) {
   for (i = 0; i < nrows; i++) {
     arr[i] = malloc(ncols * sizeof(*arr[i]));
     if (arr[i] == NULL) {
+      for (int j = 0; j < i; j++)
+        free(arr[j]);
+      free(arr);
       return NULL;
     }
   }
@@ -83,6 +86,9 @@ int **allocMatrixIntF(int nrows, int ncols) {
   for (i = 0; i < nrows; i++) {
     arr[i] = malloc(ncols * sizeof(*arr[i]));
     if (arr[i] == NULL) {
+      for (int j = 0; j < i; j++)
+        free(arr[j]);
+      free(arr);
       return NULL;
     }
   }
@@ -147,6 +153,8 @@ int main(int argc, char *argv[]) {
   int skipBin = 0;
   int WriteImage = 1;
   int NrPixelsY = 2048, NrPixelsZ = 2048;
+  double MinConfidence = -1.0;
+  int OnlySpotsInfo = 0;
   while (fgets(aline, 1000, fileParam) != NULL) {
     str = "Lsd ";
     LowNr = strncmp(aline, str, strlen(str));
@@ -164,7 +172,7 @@ int main(int argc, char *argv[]) {
     str = "SaveReducedOutput ";
     LowNr = strncmp(aline, str, strlen(str));
     if (LowNr == 0) {
-      skipBin = 1;
+      sscanf(aline, "%s %d", dummy, &skipBin);
       continue;
     }
     str = "MaxRingRad ";
@@ -302,6 +310,18 @@ int main(int argc, char *argv[]) {
       sscanf(aline, "%s %d", dummy, &NrPixelsZ);
       continue;
     }
+    str = "MinConfidence ";
+    LowNr = strncmp(aline, str, strlen(str));
+    if (LowNr == 0) {
+      sscanf(aline, "%s %lf", dummy, &MinConfidence);
+      continue;
+    }
+    str = "OnlySpotsInfo ";
+    LowNr = strncmp(aline, str, strlen(str));
+    if (LowNr == 0) {
+      sscanf(aline, "%s %d", dummy, &OnlySpotsInfo);
+      continue;
+    }
   }
   int i, j, k, l, m, nrFiles, nrPixels;
   for (i = 0; i < NoOfOmegaRanges; i++) {
@@ -400,18 +420,14 @@ int main(int argc, char *argv[]) {
   fgets(aline, 4096, InpMicF);
   fgets(aline, 4096, InpMicF);
   int lineNr = 0;
-  double *TheorSpots;
-  TheorSpots = malloc(MAX_N_SPOTS * 3 * sizeof(*TheorSpots));
-  if (TheorSpots == NULL) {
-    printf("Could not allocate memory\n");
-    return 1;
-  }
   int voxNr = 0;
-  FILE *spF;
-  spF = fopen("SimulatedSpots.csv", "w");
-  char *headOutThis =
-      "VoxRowNr\tDistanceNr\tFrameNr\tHorPx\tVerPx\tOmegaRaw\tYRaw\tZRaw";
-  fprintf(spF, "%s\n", headOutThis);
+  FILE *spF = NULL;
+  if (!OnlySpotsInfo) {
+    spF = fopen("SimulatedSpots.csv", "w");
+    char *headOutThis =
+        "VoxRowNr\tDistanceNr\tFrameNr\tHorPx\tVerPx\tOmegaRaw\tYRaw\tZRaw";
+    fprintf(spF, "%s\n", headOutThis);
+  }
 
   // Pre-read all voxels from mic file into arrays
   int maxVoxels = 1000000; // Initial capacity
@@ -436,10 +452,18 @@ int main(int argc, char *argv[]) {
            dummy, &allXS[nVoxels], &allYS[nVoxels], &allEdgeLen[nVoxels],
            &allUD[nVoxels], &allEul[nVoxels * 3 + 0], &allEul[nVoxels * 3 + 1],
            &allEul[nVoxels * 3 + 2], &origConf_tmp, dummy);
+    if (MinConfidence > 0 && origConf_tmp < MinConfidence) {
+      continue;
+    }
     nVoxels++;
   }
   fclose(InpMicF);
-  printf("Read %d voxels from mic file\n", nVoxels);
+  if (MinConfidence > 0) {
+    printf("Read %d voxels from mic file (filtered by MinConfidence %.4f)\n",
+           nVoxels, MinConfidence);
+  } else {
+    printf("Read %d voxels from mic file\n", nVoxels);
+  }
 
 // Parallel loop over voxels
 #pragma omp parallel for schedule(dynamic)                                     \
@@ -490,66 +514,95 @@ int main(int argc, char *argv[]) {
   free(allEdgeLen);
   free(allUD);
   free(allEul);
-  free(TheorSpots);
   printf("Writing output file\n");
   FILE *OutputF;
-  if (skipBin == 0) {
+  if (skipBin == 0 && !OnlySpotsInfo) {
     OutputF = fopen(outputFN, "wb");
     if (OutputF == NULL) {
       printf("Could not write output file\n");
       return 1;
     }
     char dummychar[8192];
+    memset(dummychar, 0, sizeof(dummychar));
     fwrite(dummychar, 8192, 1, OutputF);
     fwrite(ObsSpotsInfo, SizeObsSpots * sizeof(*ObsSpotsInfo), 1, OutputF);
     fclose(OutputF);
   }
   printf("Done with full file\n");
-  size_t idxpos, tmpcntr, nrF = 0;
+  size_t idxpos, nrF = 0;
   int *bitArr;
-  bitArr = calloc(SizeObsSpots / 32, sizeof(*bitArr));
-  // Sequential read.
-  idxpos = 0;
-  for (l = 0; l < nLayers; l++) {
-    for (k = 0; k < nrFiles; k++) {
-      for (j = 0; j < NrPixelsZ; j++) {
-        for (i = 0; i < NrPixelsY; i++) {
-          if (ObsSpotsInfo[idxpos] != 0) {
-            for (m = 0; m < ObsSpotsInfo[idxpos]; m++) {
-              binArr[nrF * 5 + 0] = j;
-              binArr[nrF * 5 + 1] = i;
-              binArr[nrF * 5 + 2] = k;
-              binArr[nrF * 5 + 3] = l;
-              binArr[nrF * 5 + 4] = ObsSpotsInfo[idxpos];
+  bitArr = calloc((SizeObsSpots + 31) / 32, sizeof(*bitArr));
+  if (OnlySpotsInfo) {
+    // Fast path: only build bitArr, skip binArr entirely
+    idxpos = 0;
+    for (l = 0; l < nLayers; l++) {
+      for (k = 0; k < nrFiles; k++) {
+        for (j = 0; j < NrPixelsZ; j++) {
+          for (i = 0; i < NrPixelsY; i++) {
+            if (ObsSpotsInfo[idxpos] != 0) {
+              SetBit(bitArr, idxpos);
               nrF++;
             }
-            SetBit(bitArr, idxpos);
+            idxpos++;
           }
-          idxpos++;
         }
       }
     }
+    printf("Total number of illuminated pixels: %zu\n", nrF);
+  } else {
+    // Full path: build both binArr and bitArr
+    size_t binArrCapacity = SizeObsSpots;
+    idxpos = 0;
+    for (l = 0; l < nLayers; l++) {
+      for (k = 0; k < nrFiles; k++) {
+        for (j = 0; j < NrPixelsZ; j++) {
+          for (i = 0; i < NrPixelsY; i++) {
+            if (ObsSpotsInfo[idxpos] != 0) {
+              for (m = 0; m < ObsSpotsInfo[idxpos]; m++) {
+                if ((nrF + 1) * 5 > binArrCapacity) {
+                  binArrCapacity *= 2;
+                  binArr = realloc(binArr, binArrCapacity * sizeof(*binArr));
+                  if (binArr == NULL) {
+                    printf("Could not realloc binArr! Ran out of RAM?\n");
+                    return 1;
+                  }
+                }
+                binArr[nrF * 5 + 0] = j;
+                binArr[nrF * 5 + 1] = i;
+                binArr[nrF * 5 + 2] = k;
+                binArr[nrF * 5 + 3] = l;
+                binArr[nrF * 5 + 4] = ObsSpotsInfo[idxpos];
+                nrF++;
+              }
+              SetBit(bitArr, idxpos);
+            }
+            idxpos++;
+          }
+        }
+      }
+    }
+    printf("Total number of illuminated pixels: %zu\n", nrF);
+    OutputF = fopen(outFN, "wb");
+    if (OutputF == NULL) {
+      printf("Could not write output file\n");
+      return 1;
+    }
+    fwrite(binArr, nrF * 5 * sizeof(*binArr), 1, OutputF);
+    fclose(OutputF);
   }
-  printf("Total number of illuminated pixels: %zu\n", nrF);
-  OutputF = fopen(outFN, "wb");
-  if (OutputF == NULL) {
-    printf("Could not write output file\n");
-    return 1;
-  }
-  fwrite(binArr, nrF * 5 * sizeof(*binArr), 1, OutputF);
-  fclose(OutputF);
   FILE *outputSpotsInfo = fopen("SpotsInfo.bin", "wb");
   if (outputSpotsInfo == NULL) {
     printf("Could not write output file\n");
     return 1;
   }
-  fwrite(bitArr, SizeObsSpots * sizeof(*bitArr) / 32, 1, outputSpotsInfo);
+  fwrite(bitArr, (SizeObsSpots + 31) / 32 * sizeof(*bitArr), 1,
+         outputSpotsInfo);
   fclose(outputSpotsInfo);
 
   // =========================================================================
   // Optional: Write Zarr/ZIP output
   // =========================================================================
-  if (WriteImage) {
+  if (WriteImage && !OnlySpotsInfo) {
     printf("Writing Zarr/ZIP output...\n");
     blosc_init();
     blosc_set_nthreads(4);
@@ -684,7 +737,8 @@ int main(int argc, char *argv[]) {
   }
 
   free(ObsSpotsInfo);
-  free(binArr);
+  if (!OnlySpotsInfo)
+    free(binArr);
   free(bitArr);
   end_time = omp_get_wtime();
   diftotal = end_time - start_time;

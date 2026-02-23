@@ -98,7 +98,7 @@ def create_testing_env(param_path, work_dir):
     return new_param_file, params, out_file_name
 
 
-def run_forward_simulation(param_file, nCPUs):
+def run_forward_simulation(param_file, nCPUs, work_dir):
     """Runs ForwardSimulationCompressed."""
     midas_home = os.environ.get('MIDAS_HOME', str(Path(__file__).resolve().parent.parent))
     bin_path = Path(midas_home) / 'FF_HEDM' / 'bin' / 'ForwardSimulationCompressed'
@@ -109,7 +109,8 @@ def run_forward_simulation(param_file, nCPUs):
         
     cmd = [str(bin_path), str(param_file), str(nCPUs)]
     print(f"Running Simulation: {' '.join(cmd)}")
-    result = subprocess.run(cmd)
+    print(f"Working directory: {work_dir}")
+    result = subprocess.run(cmd, cwd=str(work_dir))
     
     if result.returncode != 0:
         print("Error: ForwardSimulationCompressed failed.")
@@ -177,7 +178,7 @@ def main():
     # Note ForwardSimulationCompressed runs in cwd usually and might dump things locally too.
     # To be safe, we change to work_dir or give absolute path outputs.
     # OutFileName uses absolute paths, so executing here is fine.
-    run_forward_simulation(test_param_file, args.nCPUs)
+    run_forward_simulation(test_param_file, args.nCPUs, work_dir)
     
     # Forward simulation produces _scanNr_0.zip
     generated_zip = work_dir / f"{out_file_base}_scanNr_0.zip"

@@ -87,9 +87,8 @@ int main(int argc, char *argv[]) {
   ParamFN = argv[1];
   run_midas_binary("GetHKLList", ParamFN);
   char cmmd[4096];
-  sprintf(cmmd, "cp SpotsInfo.bin /dev/shm/");
-  system(cmmd);
-  printf("File copied\n");
+  // SpotsInfo.bin copy removed — will mmap directly from DataDirectory below
+  printf("Will mmap SpotsInfo.bin directly from DataDirectory\n");
   char *MicFN = argv[2];
   double fracThresh = atof(argv[3]);
   char aline[4096];
@@ -111,7 +110,7 @@ int main(int argc, char *argv[]) {
   double px, OmegaStart, OmegaStep, tol;
   char fn[1000];
   char fn2[1000];
-  char direct[1000];
+  char direct[1000] = ".";
   char gridfn[1000];
   double OmegaRanges[MAX_N_OMEGA_RANGES][2], BoxSizes[MAX_N_OMEGA_RANGES][4];
   int cntr = 0, countr = 0, conter = 0, StartNr, EndNr, intdummy, SpaceGroup,
@@ -333,8 +332,9 @@ int main(int argc, char *argv[]) {
   SizeObsSpots /= 32;
   // printf("%lld\n",SizeObsSpots*32);
 
-  // Read spots info
-  char *file_name = "/dev/shm/SpotsInfo.bin";
+  // Read spots info (mmap directly from DataDirectory)
+  char file_name[1024];
+  sprintf(file_name, "%s/SpotsInfo.bin", direct);
   int descp;
   struct stat s;
   int status;

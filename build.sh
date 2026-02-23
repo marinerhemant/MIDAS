@@ -17,6 +17,7 @@ INSTALL_PY_DEPS="ON"
 JOBS=$(nproc 2>/dev/null || sysctl -n hw.ncpu 2>/dev/null || echo 2) # Number of parallel jobs
 USE_NINJA=0
 CLEAN_BUILD=0
+RUN_TESTS=""  # Empty means no tests; can be 'ff', 'nf', or 'all'
 
 # Help message
 show_help() {
@@ -37,6 +38,7 @@ show_help() {
     echo "  -j, --jobs N              Number of parallel jobs for build (default: auto)"
     echo "  --ninja                   Use Ninja generator instead of Makefiles"
     echo "  --clean                   Clean the build directory before building"
+    echo "  --test ff|nf|all          Run benchmark tests after build (ff, nf, or all)"
     exit 0
 }
 
@@ -110,6 +112,7 @@ while [[ $# -gt 0 ]]; do
         -j|--jobs) JOBS="$2"; shift 2 ;;
         --ninja) USE_NINJA=1; CMAKE_GENERATOR="Ninja"; shift ;;
         --clean) CLEAN_BUILD=1; shift ;;
+        --test) RUN_TESTS="$2"; shift 2 ;;
         *) echo "Unknown option: $1"; show_help ;;
     esac
 done
@@ -172,3 +175,41 @@ else
 fi
 
 cd ..
+
+# Run benchmarks if requested
+if [ -n "$RUN_TESTS" ]; then
+    echo ""
+    echo "Running benchmark tests..."
+    
+    # Detect Python
+    if [ -n "$PYTHON_EXEC" ]; then
+        PY_CMD="$PYTHON_EXEC"
+    else
+        PY_CMD="python"
+    fi
+
+    TEST_CPUS="$JOBS"
+
+    if [ "$RUN_TESTS" = "ff" ] || [ "$RUN_TESTS" = "all" ]; then
+        echo ""
+        echo "=== Running FF-HEDM Benchmark ==="
+        $PY_CMD utils/test_ff_hedm.py -nCPUs "$TEST_CPUS"
+        if [ $? -ne 0 ]; then
+            echo "FF-HEDM benchmark FAILED."
+            exit 1
+        fi
+    fi
+
+    if [ "$RUN_TESTS" = "nf" ] || [ "$RUN_TESTS" = "all" ]; then
+        echo ""
+        echo "=== Running NF-HEDM Benchmark ==="
+        $PY_CMD utils/test_nf_hedm.py -nCPUs "$TEST_CPUS"
+        if [ $? -ne 0 ]; then
+            echo "NF-HEDM benchmark FAILED."
+            exit 1
+        fi
+    fi
+
+    echo ""
+    echo "All requested benchmarks completed successfully."
+fi

@@ -208,7 +208,11 @@ def GetMisOrientationAngle(euler1,euler2,SGNum):
 	MisV = BringDownToFundamentalRegionSym(QP,NrSymmetries,Sym)
 	if (MisV[0] > 1):
 		MisV[0] = 1
-	return 2*acos(MisV[0]),MisV[1:]/sin(acos(MisV[0]))
+	angle = 2*acos(MisV[0])
+	s = sin(acos(MisV[0]))
+	if fabs(s) < EPS:
+		return angle, np.array([0.0, 0.0, 0.0])
+	return angle, MisV[1:]/s
 
 # OM is 9 length vector
 def GetMisOrientationAngleOM(OM1,OM2,SGNum):
@@ -222,7 +226,11 @@ def GetMisOrientationAngleOM(OM1,OM2,SGNum):
 	MisV = BringDownToFundamentalRegionSym(QP,NrSymmetries,Sym)
 	if (MisV[0] > 1):
 		MisV[0] = 1
-	return 2*acos(MisV[0]),MisV[1:]/sin(acos(MisV[0]))
+	angle = 2*acos(MisV[0])
+	s = sin(acos(MisV[0]))
+	if fabs(s) < EPS:
+		return angle, np.array([0.0, 0.0, 0.0])
+	return angle, MisV[1:]/s
 
 def CalcEtaAngleAll(y, z):
 	alpha = rad2deg*np.arccos(z/np.linalg.norm(np.array([y,z]),axis=0))

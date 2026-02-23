@@ -51,7 +51,6 @@ sys.path.insert(0, v7_dir)
 from parsl.app.app import python_app
 
 # --- CONSTANTS ---
-SHM_FILES = ['SpotsInfo.bin', 'DiffractionSpots.bin', 'Key.bin', 'OrientMat.bin']
 
 # --- HELPER FUNCTIONS: ENVIRONMENT, COMMANDS, PARSING ---
 
@@ -330,15 +329,13 @@ def run_fitting_and_postprocessing(args: argparse.Namespace, params: Dict, t0: f
     """Handles memory mapping, fitting, and final parsing."""
     logDir, resultFolder = params['logDir'], params['resultFolder']
 
-    logger.info("Mapping image info to shared memory.")
+    logger.info("Mapping image info to memory-mapped files.")
     run_command(
         cmd=os.path.join(bin_dir, "MMapImageInfo") + f" {args.paramFN}",
         working_dir=resultFolder,
         out_file=f'{logDir}/map_out.csv',
         err_file=f'{logDir}/map_err.csv'
     )
-    for f in SHM_FILES:
-        shutil.copy2(f, f'/dev/shm/{f}')
     
     if args.refineParameters == 0:
         logger.info("Fitting orientations.")
@@ -464,43 +461,8 @@ def run_fitting_and_postprocessing(args: argparse.Namespace, params: Dict, t0: f
     
     logger.info(f"Fitting stage finished. Time taken: {time.time() - t0:.2f} seconds.")
 
+
 # --- SYSTEM UTILITIES AND CONFIGURATION ---
-
-def check_shared_memory_files() -> bool:
-    """
-    Check for specific shared memory files used by this script and verify their ownership.
-    
-    This is a more robust check that only targets the files this workflow creates,
-    avoiding conflicts with other legitimate processes.
-    """
-    try:
-        current_user = getpass.getuser()
-        
-        for filename in SHM_FILES:
-            filepath = os.path.join('/dev/shm', filename)
-            
-            if os.path.exists(filepath):
-                # File exists, now check the owner.
-                try:
-                    stat_info = os.stat(filepath)
-                    owner_uid = stat_info.st_uid
-                    owner_name = pwd.getpwuid(owner_uid).pw_name
-                    
-                    if owner_name != current_user:
-                        logger.error(f"Conflict detected in shared memory.")
-                        logger.error(f"File '{filepath}' already exists and is owned by '{owner_name}'.")
-                        logger.error(f"The current user is '{current_user}'. Please have the other user clean up their files.")
-                        return False
-                except (KeyError, AttributeError):
-                    # Fallback for cases where UID might not be found in the password database
-                    logger.warning(f"Could not verify owner of existing file '{filepath}'. Proceeding with caution.")
-
-    except Exception as e:
-        logger.warning(f"An unexpected error occurred while checking shared memory files: {e}")
-        # It's safer to proceed with a warning than to halt the script on a check failure.
-    
-    return True
-
 def load_machine_config(machine_name: str, n_nodes: int, num_procs: int) -> Tuple[int, int]:
     """Load machine configuration and set up Parsl."""
     configs = {
@@ -545,7 +507,6 @@ def main():
     t0 = time.time()
     
     # --- 1. Initial Setup and Argument Parsing ---
-    if not check_shared_memory_files(): sys.exit(1)
     
     os.environ['MIDAS_INSTALL_DIR'] = install_dir
     os.environ.setdefault('MIDAS_HOME', install_dir)
@@ -625,14 +586,7 @@ def main():
             run_fitting_and_postprocessing(args, params, t0)
 
         finally:
-            logger.info("Initiating final cleanup of shared memory and Parsl.")
-            for f in SHM_FILES:
-                try:
-                    path = f'/dev/shm/{f}'
-                    if os.path.exists(path):
-                        os.remove(path)
-                except Exception as e:
-                    logger.warning(f"Could not remove /dev/shm/{f}: {e}")
+            logger.info("Initiating Parsl cleanup.")
             parsl.dfk().cleanup()
 
     logger.info(f"Workflow completed successfully. Total time taken: {time.time() - t0:.2f} seconds.")

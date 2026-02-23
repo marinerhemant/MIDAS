@@ -799,10 +799,12 @@ void SimulateDiffractionImage(
             MultZ < 0) {
           break;
         }
-// printf("%lf\n",OmegaThis);
+        // printf("%lf\n",OmegaThis);
+        if (spF != NULL) {
 #pragma omp critical(spF_write)
-        fprintf(spF, "%d\t%d\t%d\t%d\t%d\t%lf\t%lf\t%lf\n", voxNr, Layer,
-                OmeBin, MultY, MultZ, OmegaThis, ythis, zthis);
+          fprintf(spF, "%d\t%d\t%d\t%d\t%d\t%lf\t%lf\t%lf\n", voxNr, Layer,
+                  OmeBin, MultY, MultZ, OmegaThis, ythis, zthis);
+        }
         BinNr = Layer * NrOfFiles;
         BinNr *= NrPixelsY;
         BinNr *= NrPixelsZ;

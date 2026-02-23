@@ -1,0 +1,67 @@
+######## User related parameters
+MinConfidence 0.7
+WriteImage 0 
+OnlySpotsInfo 1
+
+nDistances 2
+# Crystallography
+LatticeParameter 4.08 4.08 4.08 90 90 90 # a,b,c,alpha,beta,gamma (A and degrees)
+Wavelength 0.172979                 # double; in Angstrom
+SpaceGroup 225
+MinFracAccept 0.04                  # double; Minimum fraction of the matching spots vs. ideally simulated spots in the 1st pass of finding candidate orientations before optimization.
+									# Suggested values: with seeding: 0.1; no seeding: 0.04; deformed: 0.01
+OrientTol 2                        # double; in degrees; After the 1st pass of candidate orientations, how big is the optimization radius 
+# Simulation field params
+Rsample 50                          # double; in microns; the radius of the inscribed circle in the hexagonal simulation space 
+GridSize 2.500000
+EdgeLength 1
+GridMask -1000 1000 -1000 1000
+MaxRingRad 2800
+
+#### Output File Names
+MicFileBinary Au_bin_Reconstructed.mic
+MicFileText Au_txt_Reconstructed.mic
+
+# Calibration parameters, must be updated after each calibration 
+Lsd 8289.154576
+Lsd 10290.724494
+BC 985.415831 17.510494
+BC 985.161497 24.511210
+tx 0.536238
+ty 0.557035
+tz 0.474936
+
+################# Should not be changed routinely
+SaveNSolutions 3
+PhaseNr 1
+NumPhases 1
+GlobalPositionFirstLayer 0
+GlobalPosition 0
+LayerThickness 2
+Wedge 0
+WFImages 0
+extOrig tif
+extReduced bin
+NrPixels 2048
+BlanketSubtraction 5
+MedFiltRadius 1                     # int; Only 1 or 2
+GaussFiltRadius 4                   # int; This is the second pass of Gaussian Filter, 4 is good for small spots
+LoGMaskRadius 10                    # int; This should be at least 2.5x bigger than GaussFiltRadius
+DoLoGFilter 0                       # bool; For gold it is not necessary (saves time), only for very special cases
+WriteFinImage 0                     # bool; Wether to write the reduced image files uncompressed (also the active pixels as list)
+NrFilesPerDistance 1440              # int; How many consecutive files in a NF scan per detector distances (excluding the WF images)
+ExcludePoleAngle 6                  # double; in degrees
+OmegaRange -180 180                   # double; in degrees; This is for the simulation, always between [-180, 180]
+BoxSize -1200 1200 100 2500         # double; in microns; The clipping frame box size relative to the Beam Center for all distances on the detector. [ymin ymax zmin zmax] Fable coord system
+OmegaStart 180                     # double; in degrees; Starting Omega value for the first frame as written in the fastsweep scans, counter clockwise (Fable), Note: with aerotech it is opposite !
+OmegaStep -0.25                      # double; in degrees; Omega step value in the scans, counter clockwise (Fable), Note: with aerotech it is negative !
+StartNr 0                          # int; The file range for the good acquisitions to be used in the simulation. It can be subrange of the full scan.
+EndNr 1439
+px 1.48                            # double; in microns; The pixel size on the detector, assuming square shape and grid
+                                   ### THE NEXT 4 ARE ONLY USED FOR INITIAL CALIBRATION
+LsdTol 500                         # double; in microns; How big is the range for detector distance optimization
+LsdRelativeTol 3                  # double; in microns; How accurate is the relative movement of the detector between different Ls
+BCTol 2 0.2                        # double; in pixels; Beam center tolerance in [horiz, vert] direction on each detector distance
+TiltsTol 1                         # double; in degrees; Tolerance on the detector tilts at optimization 
+NumIterations 3
+NrOrientations 243129

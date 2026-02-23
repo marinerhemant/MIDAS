@@ -2,7 +2,6 @@
 // Copyright (c) 2014, UChicago Argonne, LLC
 // See LICENSE file.
 //
-
 #include "MIDAS_Math.h"
 #include "nf_headers.h"
 #include <ctype.h>
@@ -300,7 +299,7 @@ int main(int argc, char *argv[]) {
   double px, OmegaStart, OmegaStep, tol;
   char fn[1000], MicFN[1000];
   char fn2[1000];
-  char direct[1000];
+  char direct[1000] = ".";
   char gridfn[1000];
   double OmegaRanges[MAX_N_OMEGA_RANGES][2], BoxSizes[MAX_N_OMEGA_RANGES][4];
   int cntr = 0, countr = 0, conter = 0, StartNr, EndNr, intdummy, SpaceGroup,
@@ -541,11 +540,10 @@ int main(int argc, char *argv[]) {
   SizeObsSpots /= 32;
   // printf("%lld\n",SizeObsSpots*32);
 
-  // Read spots info
-  char cmmd[4096];
-  sprintf(cmmd, "cp SpotsInfo.bin /dev/shm/");
-  system(cmmd);
-  char *file_name = "/dev/shm/SpotsInfo.bin";
+  // Read spots info (mmap directly from DataDirectory, OS page cache keeps it
+  // fast)
+  char file_name[1024];
+  sprintf(file_name, "%s/SpotsInfo.bin", direct);
   int descp;
   struct stat s;
   int status;
@@ -562,9 +560,8 @@ int main(int argc, char *argv[]) {
 
   // Read DiffractionSpots
   double *SpotsMat;
-  sprintf(cmmd, "cp DiffractionSpots.bin /dev/shm/");
-  system(cmmd);
-  char *spfn = "/dev/shm/DiffractionSpots.bin";
+  char spfn[1024];
+  sprintf(spfn, "%s/DiffractionSpots.bin", direct);
   int spf;
   struct stat s2;
   int status2;
@@ -580,9 +577,8 @@ int main(int argc, char *argv[]) {
 
   // Read OrientationMatrix
   double *OrientationMatrix;
-  sprintf(cmmd, "cp OrientMat.bin /dev/shm/");
-  system(cmmd);
-  char *omfn = "/dev/shm/OrientMat.bin";
+  char omfn[1024];
+  sprintf(omfn, "%s/OrientMat.bin", direct);
   int omf;
   struct stat s3;
   int status3;
