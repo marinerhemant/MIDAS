@@ -62,7 +62,7 @@ MIDAS/
 │   ├── calcMiso.py            # Crystallographic misorientation calculations
 │   ├── gsas_ii_refine.py      # GSAS-II integration
 │   └── ...
-├── gui/              # Interactive visualization GUI (Streamlit)
+├── gui/              # Interactive visualization GUI
 ├── manuals/          # Comprehensive documentation (see below)
 ├── cmake/            # CMake build configuration and dependency management
 ├── build.sh          # Build script (Linux / macOS)
