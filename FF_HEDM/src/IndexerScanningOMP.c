@@ -1016,7 +1016,7 @@ int ReadParams(char FileName[], struct TParams *Params) {
       sscanf(line, "%s %s", dummy, Params->MicFN);
       continue;
     }
-    str = "GrainsFile";
+    str = "GrainsFile ";
     cmpres = strncmp(line, str, strlen(str));
     if (cmpres == 0) {
       sscanf(line, "%s %s", dummy, Params->GrainsFN);
@@ -1193,7 +1193,7 @@ int DoIndexingSingle(int voxNr, double OM[3][3], double xThis, double yThis,
   } else {
     return 0;
   }
-  SpotID = AllGrainSpots[0][13];
+  SpotID = (int)AllGrainSpots[0][14];
   double outArr[16] = {
       (double)SpotID,      GrainMatches[0][15], GrainMatches[0][0],
       GrainMatches[0][1],  GrainMatches[0][2],  GrainMatches[0][3],
@@ -1557,7 +1557,7 @@ int main(int argc, char *argv[]) {
              dummy, dummy);
       nrMic++;
     }
-    realloc(mic, nrMic * 5 * sizeof(*mic));
+    mic = realloc(mic, nrMic * 5 * sizeof(*mic));
   }
 
   int hasGrains = 0, nrGrains = 0;
@@ -1583,7 +1583,7 @@ int main(int argc, char *argv[]) {
              &grainsOM[nrGrains * 9 + 8]);
       nrGrains++;
     }
-    realloc(grainsOM, nrGrains * 9 * sizeof(*grainsOM));
+    grainsOM = realloc(grainsOM, nrGrains * 9 * sizeof(*grainsOM));
     printf("Read %d grains from %s\n", nrGrains, Params.GrainsFN);
     fflush(stdout);
   }
