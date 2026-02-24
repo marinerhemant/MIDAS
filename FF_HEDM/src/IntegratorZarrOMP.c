@@ -288,6 +288,32 @@ int fileReader(FILE *f, char fn[], int dType, int NrPixels, double *returnArr) {
   }
 }
 
+static inline void rawToDouble(const char *raw, double *out, int nPixels,
+                               int dType) {
+  int i;
+  if (dType == 4) { // uint32
+    const uint32_t *p = (const uint32_t *)raw;
+    for (i = 0; i < nPixels; i++)
+      out[i] = (double)p[i];
+  } else if (dType == 5) { // int32
+    const int32_t *p = (const int32_t *)raw;
+    for (i = 0; i < nPixels; i++)
+      out[i] = (double)p[i];
+  } else if (dType == 3) { // float32
+    const float *p = (const float *)raw;
+    for (i = 0; i < nPixels; i++)
+      out[i] = (double)p[i];
+  } else if (dType == 2) { // float64
+    const double *p = (const double *)raw;
+    for (i = 0; i < nPixels; i++)
+      out[i] = p[i];
+  } else { // default: uint16 (dType == 1 or 9)
+    const uint16_t *p = (const uint16_t *)raw;
+    for (i = 0; i < nPixels; i++)
+      out[i] = (double)p[i];
+  }
+}
+
 static inline void MakeSquare(int NrPixels, int NrPixelsY, int NrPixelsZ,
                               pixelvalue *InImage, pixelvalue *OutImage) {
   int i, j, k;
@@ -330,7 +356,7 @@ int main(int argc, char **argv) {
   int makeMap = 0;
   size_t mapMaskSize = 0;
   int *mapMask, skipFrame = 0;
-  int dType = 9;
+  int dType = 1; // default uint16
   char *GapFN = NULL, *BadPxFN = NULL, outputFolder[4096];
   int sumImages = 0, separateFolder = 1, newOutput = 2;
   int haveOmegas = 0, chunkFiles = 1, individualSave = 1;
@@ -610,6 +636,31 @@ int main(int argc, char **argv) {
         NULL) {
       locI0 = count;
     }
+    if (strstr(finfo->name, "measurement/process/scan_parameters/datatype/0") !=
+        NULL) {
+      char *typeName = NULL;
+      size_t typeSize;
+      if (ReadZarrRaw(arch, count, &typeName, &typeSize) >= 0 && typeName) {
+        if (strcasecmp(typeName, "uint32") == 0) {
+          bytesPerPx = 4;
+          dType = 4;
+        } else if (strcasecmp(typeName, "int32") == 0) {
+          bytesPerPx = 4;
+          dType = 5;
+        } else if (strcasecmp(typeName, "float32") == 0) {
+          bytesPerPx = 4;
+          dType = 3;
+        } else if (strcasecmp(typeName, "float64") == 0) {
+          bytesPerPx = 8;
+          dType = 2;
+        } else {
+          bytesPerPx = 2;
+          dType = 1;
+        }
+        printf("Detected datatype: %s (bytesPerPx=%d)\n", typeName, bytesPerPx);
+        free(typeName);
+      }
+    }
     count++;
   }
   if (chunkFiles == 0)
@@ -675,19 +726,16 @@ int main(int argc, char **argv) {
   int a, b;
   pixelvalue *ImageIn;
   pixelvalue *DarkIn;
-  uint16_t *ImageInTU;
   pixelvalue *ImageInT;
-  uint16_t *DarkInTU;
   pixelvalue *DarkInT;
   double *AverageDark;
-  DarkIn = malloc(NrPixelsY * NrPixelsZ * sizeof(*DarkIn));
-  DarkInT = malloc(NrPixelsY * NrPixelsZ * sizeof(*DarkInT));
-  DarkInTU = malloc(NrPixelsY * NrPixelsZ * sizeof(*DarkInTU));
-  AverageDark = calloc(NrPixelsY * NrPixelsZ, sizeof(*AverageDark));
-  ImageIn = malloc(NrPixelsY * NrPixelsZ * sizeof(*ImageIn));
-  ImageInT = malloc(NrPixelsY * NrPixelsZ * sizeof(*ImageInT));
-  ImageInTU = malloc(NrPixelsY * NrPixelsZ * sizeof(*ImageInTU));
-  Image = malloc(NrPixelsY * NrPixelsZ * sizeof(*Image));
+  int nPixels = NrPixelsY * NrPixelsZ;
+  DarkIn = malloc(nPixels * sizeof(*DarkIn));
+  DarkInT = malloc(nPixels * sizeof(*DarkInT));
+  AverageDark = calloc(nPixels, sizeof(*AverageDark));
+  ImageIn = malloc(nPixels * sizeof(*ImageIn));
+  ImageInT = malloc(nPixels * sizeof(*ImageInT));
+  Image = malloc(nPixels * sizeof(*Image));
   // printf("nFrames: %d nrPixelsZ: %d nrPixelsY: %d, dataLoc: %d\n", nFrames,
   // NrPixelsZ, NrPixelsY,dataLoc); Now we read the size of data for each file
   // pointer.
@@ -760,13 +808,10 @@ int main(int argc, char **argv) {
 
     if (dsize <= 0) {
       printf("Error: Failed to decompress dark frame data! dsize: %d\n", dsize);
-      memset(DarkInTU, 0, (size_t)expected_dsize);
+      memset(DarkInT, 0, nPixels * sizeof(*DarkInT));
     } else {
-      memcpy(DarkInTU, data, (size_t)dsize);
+      rawToDouble(data, DarkInT, nPixels, dType);
     }
-
-    for (b = 0; b < NrPixelsY * NrPixelsZ; b++)
-      DarkInT[b] = (double)DarkInTU[b];
     DoImageTransformations(NrTransOpt, TransOpt, DarkInT, DarkIn, NrPixelsY,
                            NrPixelsZ);
     for (b = 0; b < (NrPixelsY * NrPixelsZ); b++) {
@@ -842,7 +887,7 @@ int main(int argc, char **argv) {
          "the file: %d\n",
          nEtaBins, nRBins, (int)nFrames);
   long long int Pos;
-  int nPixels, dataPos;
+  int dataPos;
   struct data ThisVal;
   char outfn[4096];
   char outfn2[4096];
@@ -908,9 +953,7 @@ int main(int argc, char **argv) {
              i, dsz);
       exit(1);
     }
-    memcpy(ImageInTU, locData, dsz);
-    for (j = 0; j < NrPixelsY * NrPixelsZ; j++)
-      ImageInT[j] = (double)ImageInTU[j];
+    rawToDouble(locData, ImageInT, nPixels, dType);
     DoImageTransformations(NrTransOpt, TransOpt, ImageInT, ImageIn, NrPixelsY,
                            NrPixelsZ);
     for (j = 0; j < NrPixelsY * NrPixelsZ; j++) {
