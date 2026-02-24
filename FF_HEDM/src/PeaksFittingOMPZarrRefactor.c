@@ -1617,9 +1617,10 @@ static ErrorCode readZarrDataType(zip_t *archive, PixelValueType *pixelType) {
     if (strstr(fileInfo.name, "measurement/process/scan_parameters/datatype") !=
         NULL) {
       char *typeName = NULL;
-      int rc_str = ReadZarrString(archive, count + 1, &typeName, 256);
+      size_t typeSize;
+      int rc_raw = ReadZarrRaw(archive, count + 1, &typeName, &typeSize);
 
-      if (rc_str < 0) {
+      if (rc_raw < 0) {
         fprintf(stderr, "Error reading Zarr data type\n");
         return ERROR_BLOSC_OPERATION;
       }
