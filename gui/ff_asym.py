@@ -481,6 +481,7 @@ def get_ring_colors(n):
 def _quit():
 	root.quit()
 	root.destroy()
+	sys.exit(0)
 
 def CalcEtaAngle(XYZ):
 	alpha = rad2deg*np.arccos(np.divide(XYZ[2,:],LA.norm(XYZ[1:,:],axis = 0)))
