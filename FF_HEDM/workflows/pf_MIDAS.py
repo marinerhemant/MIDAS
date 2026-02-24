@@ -561,6 +561,7 @@ def peaks(resultDir, zipFN, numProcs, midas_path, blockNr=0, numBlocks=1):
         return True
     
     # Create output files
+    os.makedirs(f'{resultDir}/midas_log', exist_ok=True)
     f_out_path = f'{resultDir}/midas_log/peaksearch_out{blockNr}.csv'
     f_err_path = f'{resultDir}/midas_log/peaksearch_err{blockNr}.csv'
     
@@ -645,6 +646,7 @@ def binData(resultDir, num_scans, midas_path):
     os.chdir(resultDir)
     
     # Create output files
+    os.makedirs(f'{resultDir}/midas_log', exist_ok=True)
     f_out_path = f'{resultDir}/midas_log/mapping_out.csv'
     f_err_path = f'{resultDir}/midas_log/mapping_err.csv'
     
@@ -723,6 +725,7 @@ def indexscanning(resultDir, numProcs, num_scans, midas_path, blockNr=0, numBloc
     os.chdir(resultDir)
     
     # Create output files
+    os.makedirs(f'{resultDir}/midas_log', exist_ok=True)
     f_out_path = f'{resultDir}/midas_log/indexing_out{blockNr}.csv'
     f_err_path = f'{resultDir}/midas_log/indexing_err{blockNr}.csv'
     
@@ -801,6 +804,7 @@ def refinescanning(resultDir, numProcs, midas_path, blockNr=0, numBlocks=1):
     os.chdir(resultDir)
     
     # Create output files
+    os.makedirs(f'{resultDir}/midas_log', exist_ok=True)
     f_out_path = f'{resultDir}/midas_log/refining_out{blockNr}.csv'
     f_err_path = f'{resultDir}/midas_log/refining_err{blockNr}.csv'
     
