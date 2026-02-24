@@ -727,7 +727,10 @@ def main():
     config = build_config(parser, args)
 
     if not args.dataFN or config.get('LayerNr', 1) > 1:
-        outfn_base = Path(args.resultFolder) / f"{config.get('FileStem', 'file')}_{str(config.get('StartFileNrFirstLayer', 0)).zfill(int(config.get('Padding',6)))}"
+        # Use the actual file number for this layer, not StartFileNrFirstLayer
+        layer = int(config.get('LayerNr', 1))
+        actual_fNr = int(config.get('StartFileNrFirstLayer', 0)) + (layer - 1) * int(config.get('NrFilesPerSweep', 1))
+        outfn_base = Path(args.resultFolder) / f"{config.get('FileStem', 'file')}_{str(actual_fNr).zfill(int(config.get('Padding',6)))}"
     else: outfn_base = Path(args.resultFolder) / f"{Path(config['dataFN']).name}.analysis"
     outfn_zip = Path(f"{outfn_base}.MIDAS.zip")
 
