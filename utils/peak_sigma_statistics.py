@@ -104,7 +104,8 @@ def main():
     os.makedirs(out_dir, exist_ok=True)
 
     # Discover LayerNr_* directories
-    layer_dirs = sorted(glob.glob(os.path.join(results_dir, 'LayerNr_*')))
+    layer_dirs = sorted(glob.glob(os.path.join(results_dir, 'LayerNr_*')),
+                        key=lambda p: int(os.path.basename(p).split('_')[-1]))
     if not layer_dirs:
         print(f"No LayerNr_* directories found in {results_dir}")
         sys.exit(1)
