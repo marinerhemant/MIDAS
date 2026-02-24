@@ -165,7 +165,7 @@ def write_analysis_parameters(z_groups, config):
     print("\nWriting analysis parameters to Zarr file...")
 
     FORCE_DOUBLE_PARAMS = { "RMin", "RMax", "px", "PixelSize", "Completeness", "MinMatchesToAcceptFrac", "OverArea", "IntensityThresh", "MinS_N", "YPixelSize", "ZPixelSize", "BeamStopY", "BeamStopZ", "DetDist", "MaxDev", "OmegaStart", "OmegaFirstFile", "OmegaStep", "step", "BadPxIntensity", "GapIntensity", "FitWeightMean", "PixelSplittingRBin", "tolTilts", "tolBC", "tolLsd", "DiscArea", "OverlapLength", "ReferenceRingCurrent", "zDiffThresh", "GlobalPosition", "tolPanelFit", "tolP", "tolP0", "tolP1", "tolP2", "tolP3", "StepSizePos", "tInt", "tGap", "StepSizeOrient", "MarginRadius", "MarginRadial", "MarginEta", "MarginOme", "MargABG", "MargABC", "OmeBinSize", "EtaBinSize", "RBinSize", "EtaMin", "MinEta", "EtaMax", "X", "Y", "Z", "U", "V", "W", "SHpL", "Polariz", "MaxOmeSpotIDsToIndex", "MinOmeSpotIDsToIndex", "BeamThickness", "Wedge", "Rsample", "Hbeam", "Vsample", "RhoD", "MaxRingRad", "Lsd", "Wavelength", "Width", "WidthTthPx", "UpperBoundThreshold", "p3", "p2", "p1", "p0", "tz", "ty", "tx" }
-    FORCE_INT_PARAMS = { "Twins", "MaxNFrames", "DoFit", "DiscModel", "UseMaximaPositions", "MaxNrPx", "MinNrPx", "MaxNPeaks", "PhaseNr", "NumPhases", "MinNrSpots", "UseFriedelPairs", "OverallRingToIndex", "SpaceGroup", "LayerNr", "DoFullImage", "SkipFrame", "SumImages", "Normalize", "SaveIndividualFrames", "OmegaSumFrames", "NrFilesPerSweep", "NPanelsY", "NPanelsZ", "Padding", "PanelSizeY", "PanelSizeZ", "PanelGapsY", "PanelGapsZ" }
+    FORCE_INT_PARAMS = { "Twins", "MaxNFrames", "DoFit", "DiscModel", "UseMaximaPositions", "MaxNrPx", "MinNrPx", "MaxNPeaks", "PhaseNr", "NumPhases", "MinNrSpots", "UseFriedelPairs", "OverallRingToIndex", "SpaceGroup", "LayerNr", "DoFullImage", "SkipFrame", "SumImages", "Normalize", "SaveIndividualFrames", "OmegaSumFrames", "NrFilesPerSweep", "NPanelsY", "NPanelsZ", "Padding", "PanelSizeY", "PanelSizeZ", "PanelGapsY", "PanelGapsZ", "doPeakFit" }
     FORCE_STRING_PARAMS = { "GapFile", "BadPxFile", "ResultFolder" }
     RENAME_MAP = { "OmegaStep": "step", "Completeness": "MinMatchesToAcceptFrac", "px": "PixelSize", "LatticeConstant": "LatticeParameter", "OverAllRingToIndex": "OverallRingToIndex", "resultFolder": "ResultFolder", "OmegaRange": "OmegaRanges", "BoxSize": "BoxSizes" }
 
@@ -173,7 +173,7 @@ def write_analysis_parameters(z_groups, config):
         try:
             target_key = RENAME_MAP.get(key, key)
             target_group = sp_pro_analysis
-            if key in ["OmegaStep", "start", "datatype"]: target_group = sp_pro_meas
+            if key in ["OmegaStep", "start", "datatype", "doPeakFit"]: target_group = sp_pro_meas
 
             if key == 'BC':
                 sp_pro_analysis.create_dataset('YCen', data=np.array([value[0]], dtype=np.double))
