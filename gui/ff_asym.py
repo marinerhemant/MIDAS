@@ -503,9 +503,13 @@ def getfn(fstem,fnum,geNum):
 	else:
 		fldr = folder
 	if geNum != -1:
-		return fldr + fstem + '_' + str(fnum).zfill(padding) + '.ge' + str(geNum)
+		fn = fldr + fstem + '_' + str(fnum).zfill(padding) + '.ge' + str(geNum)
 	else:
-		return fldr + fstem + '_' + str(fnum).zfill(padding) + '.' + fnextvar.get()
+		fn = fldr + fstem + '_' + str(fnum).zfill(padding) + '.' + fnextvar.get()
+	# Auto-detect bz2 compressed files
+	if not os.path.exists(fn) and os.path.exists(fn + '.bz2'):
+		fn = fn + '.bz2'
+	return fn
 
 
 def get_bz2_data(fn):
