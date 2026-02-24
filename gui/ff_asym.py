@@ -707,12 +707,15 @@ def getImageMax(fn):
 	
 	t1 = time.time()
 	dataMax = None
-	ext = os.path.splitext(fn)[1].lower()
+	# Strip .bz2 to check the actual file format extension
+	check_fn = fn[:-4] if fn.lower().endswith('.bz2') else fn
+	ext = os.path.splitext(check_fn)[1].lower()
 	
 	# For single-page TIFF files, iterate over sequential numbered files
 	# For multi-frame files (binary, HDF5, multi-page TIFF), iterate frames within file
-	is_per_file = False
-	if ext in ['.tif', '.tiff'] and tifffile:
+	# bz2 files are always one frame per file
+	is_per_file = fn.lower().endswith('.bz2')
+	if not is_per_file and ext in ['.tif', '.tiff'] and tifffile:
 		try:
 			with tifffile.TiffFile(fn) as tif:
 				if len(tif.pages) == 1:
@@ -725,16 +728,26 @@ def getImageMax(fn):
 		import re
 		basename = os.path.basename(fn)
 		dirname = os.path.dirname(fn)
+		# Strip .bz2 for regex matching, remember to re-append
+		bz2_suffix = ''
+		if basename.lower().endswith('.bz2'):
+			bz2_suffix = basename[-4:]  # preserve original case
+			basename = basename[:-4]
 		m = re.match(r'^(.*?)(\d+)(\.\w+)$', basename)
 		if m:
 			prefix, numstr, suffix = m.group(1), m.group(2), m.group(3)
 			num_start = int(numstr)
 			pad = len(numstr)
 			for i in range(nFramesToDo):
-				seq_fn = os.path.join(dirname, prefix + str(num_start + startFrameNr + i).zfill(pad) + suffix)
+				seq_fn = os.path.join(dirname, prefix + str(num_start + startFrameNr + i).zfill(pad) + suffix + bz2_suffix)
 				if not os.path.exists(seq_fn):
-					print(f"Warning: file {seq_fn} not found, stopping at {i} frames")
-					break
+					# Also try without bz2 suffix (mixed compressed/uncompressed)
+					seq_fn_alt = os.path.join(dirname, prefix + str(num_start + startFrameNr + i).zfill(pad) + suffix)
+					if bz2_suffix and os.path.exists(seq_fn_alt):
+						seq_fn = seq_fn_alt
+					else:
+						print(f"Warning: file {seq_fn} not found, stopping at {i} frames")
+						break
 				img = getImage(seq_fn, 0, frame_idx=0)
 				if dataMax is None:
 					dataMax = img
@@ -797,10 +810,13 @@ def getImageSum(fn):
 	
 	t1 = time.time()
 	dataSum = None
-	ext = os.path.splitext(fn)[1].lower()
+	# Strip .bz2 to check the actual file format extension
+	check_fn = fn[:-4] if fn.lower().endswith('.bz2') else fn
+	ext = os.path.splitext(check_fn)[1].lower()
 	
-	is_per_file = False
-	if ext in ['.tif', '.tiff'] and tifffile:
+	# bz2 files are always one frame per file
+	is_per_file = fn.lower().endswith('.bz2')
+	if not is_per_file and ext in ['.tif', '.tiff'] and tifffile:
 		try:
 			with tifffile.TiffFile(fn) as tif:
 				if len(tif.pages) == 1:
@@ -812,16 +828,25 @@ def getImageSum(fn):
 		import re
 		basename = os.path.basename(fn)
 		dirname = os.path.dirname(fn)
+		# Strip .bz2 for regex matching, remember to re-append
+		bz2_suffix = ''
+		if basename.lower().endswith('.bz2'):
+			bz2_suffix = basename[-4:]
+			basename = basename[:-4]
 		m = re.match(r'^(.*?)(\d+)(\.\w+)$', basename)
 		if m:
 			prefix, numstr, suffix = m.group(1), m.group(2), m.group(3)
 			num_start = int(numstr)
 			pad = len(numstr)
 			for i in range(nFramesToDo):
-				seq_fn = os.path.join(dirname, prefix + str(num_start + startFrameNr + i).zfill(pad) + suffix)
+				seq_fn = os.path.join(dirname, prefix + str(num_start + startFrameNr + i).zfill(pad) + suffix + bz2_suffix)
 				if not os.path.exists(seq_fn):
-					print(f"Warning: file {seq_fn} not found, stopping at {i} frames")
-					break
+					seq_fn_alt = os.path.join(dirname, prefix + str(num_start + startFrameNr + i).zfill(pad) + suffix)
+					if bz2_suffix and os.path.exists(seq_fn_alt):
+						seq_fn = seq_fn_alt
+					else:
+						print(f"Warning: file {seq_fn} not found, stopping at {i} frames")
+						break
 				img = getImage(seq_fn, 0, frame_idx=0)
 				if dataSum is None:
 					dataSum = img
