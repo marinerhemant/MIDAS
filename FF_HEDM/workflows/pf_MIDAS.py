@@ -491,6 +491,11 @@ def parallel_peaks(layerNr, positions, startNrFirstLayer, nrFilesPerSweep, topdi
                 outArr = normalizeIntensitiesNumba(inpArr, Result, hashArr)
                 np.savetxt(outFN2, outArr, header=headerThis, delimiter=' ', fmt='%.6f')
             
+            elif NormalizeIntensities == 3:
+                # Use total raw intensity for the 3D peak
+                dfAllF['GrainRadius'] = dfAllF['RawSumIntensity']
+                dfAllF.to_csv(outFN2, sep=' ', header=True, float_format='%.6f', index=False)
+            
             # Copy necessary files
             shutil.copy2(os.path.join(thisDir, 'paramstest.txt'), os.path.join(topdir, 'paramstest.txt'))
             shutil.copy2(os.path.join(thisDir, 'hkls.csv'), os.path.join(topdir, 'hkls.csv'))
@@ -901,7 +906,7 @@ def main():
     parser.add_argument('-numFrameChunks', type=int, required=False, default=-1, help='If low on RAM, it can process parts of the dataset at the time. -1 will disable.')
     parser.add_argument('-preProcThresh', type=int, required=False, default=-1, help='If want to save the dark corrected data, then put to whatever threshold wanted above dark. -1 will disable. 0 will just subtract dark. Negative values will be reset to 0.')
     parser.add_argument('-doTomo', type=int, required=False, default=1, help='If want to do tomography, put to 1. Only for OneSolPerVox.')
-    parser.add_argument('-normalizeIntensities', type=int, required=False, default=2, help='If want to do tomography and normalize intensities wrt grSize, put to 1, if want to take integrated intensity, put to 2, if want to take equivalent grain size, put to 0. Only for OneSolPerVox. Default is 2.')
+    parser.add_argument('-normalizeIntensities', type=int, required=False, default=2, help='Normalization mode for intensity in sinograms: 0=equivalent grain size, 1=powder-scaled, 2=integrated intensity (default), 3=raw sum intensity from PeaksFitting.')
     parser.add_argument('-convertFiles', type=int, required=False, default=1, help='If want to convert to zarr, if zarr files exist already, put to 0.')
     parser.add_argument('-runIndexing', type=int, required=False, default=1, help='If want to skip Indexing, put to 0.')
     parser.add_argument('-startScanNr', type=int, required=False, default=1, help='If you want to do partial peaksearch. Default: 1')

@@ -202,6 +202,7 @@ typedef struct {
   double *etas;
   int *nrPx;
   double *otherInfo;
+  double *rawSumIntensity;
   // --- Hoisted per-frame buffers (Items 1, 2, 6) ---
   char *locData;       // Raw decompressed frame data
   double *imageAsym_d; // Asymmetric double image
@@ -447,6 +448,7 @@ void freeWorkspace(ThreadWorkspace *ws) {
     free(ws->maximaValues);
     free(ws->z);
     free(ws->integratedIntensity);
+    free(ws->rawSumIntensity);
     free(ws->imax);
     free(ws->yCenArray);
     free(ws->zCenArray);
@@ -489,6 +491,7 @@ ErrorCode allocateWorkspace(ThreadWorkspace *ws, const ImageMetadata *metadata,
   ws->z = calloc(metadata->NrPixels * 10, sizeof(double));
 
   ws->integratedIntensity = calloc(params->maxNPeaks * 2, sizeof(double));
+  ws->rawSumIntensity = calloc(params->maxNPeaks * 2, sizeof(double));
   ws->imax = calloc(params->maxNPeaks * 2, sizeof(double));
   ws->yCenArray = calloc(params->maxNPeaks * 2, sizeof(double));
   ws->zCenArray = calloc(params->maxNPeaks * 2, sizeof(double));
@@ -1441,7 +1444,7 @@ static ErrorCode processImageFrame(int fileNr, char *allData, size_t *sizeArr,
           "\tIMax\tRadius(px)\tEta(degrees)\tSigmaR\tSigmaEta\tNrPixels\t"
           "TotalNrPixelsInPeakRegion\tnPeaks\tmaxY\tmaxZ\tdiffY\tdiffZ\trawIMax"
           "\treturnCode\tretVal\tBG\tSigmaGR\tSigmaLR\tSigmaGEta\t"
-          "SigmaLEta\tMU\n");
+          "SigmaLEta\tMU\tRawSumIntensity\n");
 
   int spotIdStart = 1;
   int totalValidRegions = 0;
@@ -1465,6 +1468,12 @@ static ErrorCode processImageFrame(int fileNr, char *allData, size_t *sizeArr,
       ws->z[i] =
           imgCorrBC[((ws->usefulPixels[i * 2 + 0]) * metadata->NrPixels) +
                     (ws->usefulPixels[i * 2 + 1])];
+    }
+
+    // Compute raw sum intensity for this region (before background subtraction)
+    double rawSumForRegion = 0;
+    for (int i = 0; i < nrPixelsThisRegion; i++) {
+      rawSumForRegion += ws->z[i];
     }
 
     double thresh = goodCoords[((ws->usefulPixels[0]) * metadata->NrPixels) +
@@ -1538,6 +1547,7 @@ static ErrorCode processImageFrame(int fileNr, char *allData, size_t *sizeArr,
       yzFromREta(1, &rMeanVal, &etaMeanVal, ws->yCenArray, ws->zCenArray);
       ws->rads[0] = rMeanVal;
       ws->etas[0] = etaMeanVal;
+      ws->rawSumIntensity[0] = rawSumForRegion;
     } else {
       rc = fit2DPeaks(
           nPeaks, nrPixelsThisRegion, ws->z, ws->usefulPixels, ws->maximaValues,
@@ -1545,6 +1555,22 @@ static ErrorCode processImageFrame(int fileNr, char *allData, size_t *sizeArr,
           ws->zCenArray, ws->rads, ws->etas, params->Ycen, params->Zcen, thresh,
           ws->nrPx, ws->otherInfo, metadata->NrPixels, &retVal, ws->fitRs,
           ws->fitEtas, ws->fitPeakBuf);
+      // Apportion raw sum intensity by IMax for overlapping peaks
+      if (nPeaks == 1) {
+        ws->rawSumIntensity[0] = rawSumForRegion;
+      } else {
+        double totalIMax = 0;
+        for (unsigned pi = 0; pi < nPeaks; pi++)
+          totalIMax += ws->imax[pi];
+        if (totalIMax > 0) {
+          for (unsigned pi = 0; pi < nPeaks; pi++)
+            ws->rawSumIntensity[pi] =
+                rawSumForRegion * ws->imax[pi] / totalIMax;
+        } else {
+          for (unsigned pi = 0; pi < nPeaks; pi++)
+            ws->rawSumIntensity[pi] = rawSumForRegion / nPeaks;
+        }
+      }
     }
 
     for (int i = 0; i < nPeaks; i++) {
@@ -1565,7 +1591,7 @@ static ErrorCode processImageFrame(int fileNr, char *allData, size_t *sizeArr,
       for (int j = 0; j < 6; j++) {
         fprintf(outfilewrite, "\t%f", ws->otherInfo[8 * i + j]);
       }
-      fprintf(outfilewrite, "\n");
+      fprintf(outfilewrite, "\t%f\n", ws->rawSumIntensity[i]);
     }
     spotIdStart += nPeaks;
   }

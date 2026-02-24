@@ -44,7 +44,7 @@ typedef struct ConstituentNode {
   struct ConstituentNode *next;
 } ConstituentNode;
 
-#define N_PS_COLS 26
+#define N_PS_COLS 27
 
 int UseMaximaPositions;
 
@@ -146,6 +146,7 @@ struct InputData {
   double SigmaGEta;
   double SigmaLEta;
   double MU;
+  double RawSumIntensity;
 };
 
 static int cmpfunc(const void *a, const void *b) {
@@ -207,7 +208,7 @@ static inline int ReadSortFiles(char OutFolderName[1024], char FileStem[1024],
     }
     sscanf(aline,
            "%lf %lf %lf %lf %lf %lf %lf %lf %lf %lf %lf %lf %lf %lf %lf "
-           "%lf %lf %lf %lf %lf %lf %lf %lf %lf %lf %lf",
+           "%lf %lf %lf %lf %lf %lf %lf %lf %lf %lf %lf %lf",
            &(MyData[counter].SpotID), &(MyData[counter].IntegratedIntensity),
            &(MyData[counter].Omega), &(MyData[counter].YCen),
            &(MyData[counter].ZCen), &(MyData[counter].IMax),
@@ -220,7 +221,8 @@ static inline int ReadSortFiles(char OutFolderName[1024], char FileStem[1024],
            &(MyData[counter].returnCode), &(MyData[counter].retVal),
            &(MyData[counter].BG), &(MyData[counter].SigmaGR),
            &(MyData[counter].SigmaLR), &(MyData[counter].SigmaGEta),
-           &(MyData[counter].SigmaLEta), &(MyData[counter].MU));
+           &(MyData[counter].SigmaLEta), &(MyData[counter].MU),
+           &(MyData[counter].RawSumIntensity));
     maxY = MyData[counter].maxY;
     maxZ = MyData[counter].maxZ;
     if (UseMaximaPositions == 1) {
@@ -262,6 +264,7 @@ static inline int ReadSortFiles(char OutFolderName[1024], char FileStem[1024],
     SortedMatrix[counter2][23] = MyData[i].SigmaGEta;
     SortedMatrix[counter2][24] = MyData[i].SigmaLEta;
     SortedMatrix[counter2][25] = MyData[i].MU;
+    SortedMatrix[counter2][26] = MyData[i].RawSumIntensity;
     counter2++;
   }
   free(MyData);
@@ -356,7 +359,7 @@ int main(int argc, char *argv[]) {
   char header[1024] =
       "SpotID IntegratedIntensity Omega(degrees) YCen(px) ZCen(px)"
       " IMax MinOme(degrees) MaxOme(degress) SigmaR SigmaEta NrPx NrPxTot "
-      "Radius(px) Eta(degrees)\n";
+      "Radius(px) Eta(degrees) RawSumIntensity\n";
 
   // Read first file
   fflush(stdout);
@@ -364,8 +367,8 @@ int main(int argc, char *argv[]) {
   int nSpots, nSpotsNew;
   double **NewIDs, **CurrentIDs, **TempIDs;
   NewIDs = allocMatrix(nOverlapsMaxPerImage, N_PS_COLS);
-  CurrentIDs = allocMatrix(nOverlapsMaxPerImage, 16);
-  TempIDs = allocMatrix(nOverlapsMaxPerImage, 16);
+  CurrentIDs = allocMatrix(nOverlapsMaxPerImage, 17);
+  TempIDs = allocMatrix(nOverlapsMaxPerImage, 17);
 
   // Lightweight constituent tracking: per-slot linked lists of (FrameNr,
   // PeakID)
@@ -397,6 +400,7 @@ int main(int argc, char *argv[]) {
     CurrentIDs[i][13] = NewIDs[i][9];               // SigmaEta
     CurrentIDs[i][14] = NewIDs[i][10];              // NrPx
     CurrentIDs[i][15] = NewIDs[i][11];              // NrPxTot
+    CurrentIDs[i][16] = NewIDs[i][26];              // RawSumIntensity
     // Record first constituent peak
     ConstituentNode *node = malloc(sizeof(ConstituentNode));
     node->frameNr = FileNr;
@@ -418,11 +422,12 @@ int main(int argc, char *argv[]) {
   int SpotIDNr = 1, counter;
   if (StartNr == EndNr) { // If there is only one file.
     for (i = 0; i < nSpots; i++) {
-      fprintf(
-          OutFile, "%d %lf %lf %lf %lf %lf %lf %lf %lf %lf %lf %lf %lf %lf\n",
-          SpotIDNr, NewIDs[i][1], NewIDs[i][2], NewIDs[i][3], NewIDs[i][4],
-          NewIDs[i][5], NewIDs[i][2], NewIDs[i][2], NewIDs[i][8], NewIDs[i][9],
-          NewIDs[i][10], NewIDs[i][11], NewIDs[i][6], NewIDs[i][7]);
+      fprintf(OutFile,
+              "%d %lf %lf %lf %lf %lf %lf %lf %lf %lf %lf %lf %lf %lf %lf\n",
+              SpotIDNr, NewIDs[i][1], NewIDs[i][2], NewIDs[i][3], NewIDs[i][4],
+              NewIDs[i][5], NewIDs[i][2], NewIDs[i][2], NewIDs[i][8],
+              NewIDs[i][9], NewIDs[i][10], NewIDs[i][11], NewIDs[i][6],
+              NewIDs[i][7], NewIDs[i][26]);
       // Write MergeMap entry (single frame, single constituent)
       fprintf(MergeMapFile, "%d\t%d\t%d\n", SpotIDNr, FileNr,
               (int)NewIDs[i][0]);
@@ -493,6 +498,7 @@ int main(int argc, char *argv[]) {
           }
           CurrentIDs[i][14] += NewIDs[BestID][10]; // NrPx
           CurrentIDs[i][15] += NewIDs[BestID][11]; // NrPxTot
+          CurrentIDs[i][16] += NewIDs[BestID][26]; // RawSumIntensity
           // Record constituent peak (prepend to linked list)
           ConstituentNode *node = malloc(sizeof(ConstituentNode));
           node->frameNr = FileNr;
@@ -504,15 +510,15 @@ int main(int argc, char *argv[]) {
       // Write all the spots not overlapping to the output file.
       for (i = 0; i < nSpots; i++) {
         if (TempIDsCurrent[i] == 0) { // Spot was not overlapping.
-          fprintf(OutFile,
-                  "%d %lf %lf %lf %lf %lf %lf %lf %lf %lf %lf %lf %lf %lf\n",
-                  SpotIDNr, CurrentIDs[i][1],
-                  (CurrentIDs[i][2] / CurrentIDs[i][1]),
-                  (CurrentIDs[i][3] / CurrentIDs[i][1]),
-                  (CurrentIDs[i][4] / CurrentIDs[i][1]), CurrentIDs[i][5],
-                  CurrentIDs[i][10], CurrentIDs[i][11], CurrentIDs[i][12],
-                  CurrentIDs[i][13], CurrentIDs[i][14], CurrentIDs[i][15],
-                  CurrentIDs[i][6], CurrentIDs[i][7]);
+          fprintf(
+              OutFile,
+              "%d %lf %lf %lf %lf %lf %lf %lf %lf %lf %lf %lf %lf %lf %lf\n",
+              SpotIDNr, CurrentIDs[i][1], (CurrentIDs[i][2] / CurrentIDs[i][1]),
+              (CurrentIDs[i][3] / CurrentIDs[i][1]),
+              (CurrentIDs[i][4] / CurrentIDs[i][1]), CurrentIDs[i][5],
+              CurrentIDs[i][10], CurrentIDs[i][11], CurrentIDs[i][12],
+              CurrentIDs[i][13], CurrentIDs[i][14], CurrentIDs[i][15],
+              CurrentIDs[i][6], CurrentIDs[i][7], CurrentIDs[i][16]);
           // Write MergeMap entries for this finalized spot
           {
             ConstituentNode *cn = constituents[i];
@@ -543,7 +549,7 @@ int main(int argc, char *argv[]) {
                    nOverlapsMaxPerImage);
             break;
           }
-          for (j = 0; j < 16; j++) {
+          for (j = 0; j < 17; j++) {
             TempIDs[counter][j] = CurrentIDs[i][j];
           }
           // Move constituent list to tmp
@@ -579,6 +585,7 @@ int main(int argc, char *argv[]) {
           TempIDs[counter][13] = NewIDs[i][9];  // SigmaEta
           TempIDs[counter][14] = NewIDs[i][10]; // NrPx
           TempIDs[counter][15] = NewIDs[i][11]; // NrPxTot
+          TempIDs[counter][16] = NewIDs[i][26]; // RawSumIntensity
           // New spot: single constituent
           ConstituentNode *node = malloc(sizeof(ConstituentNode));
           node->frameNr = FileNr;
@@ -597,7 +604,7 @@ int main(int argc, char *argv[]) {
         }
       }
       for (i = 0; i < nSpotsNew; i++) {
-        for (j = 0; j < 16; j++) {
+        for (j = 0; j < 17; j++) {
           CurrentIDs[i][j] = TempIDs[i][j];
         }
         // Move constituent list back
@@ -610,13 +617,14 @@ int main(int argc, char *argv[]) {
     }
   }
   for (i = 0; i < nSpots; i++) {
-    fprintf(OutFile, "%d %lf %lf %lf %lf %lf %lf %lf %lf %lf %lf %lf %lf %lf\n",
+    fprintf(OutFile,
+            "%d %lf %lf %lf %lf %lf %lf %lf %lf %lf %lf %lf %lf %lf %lf\n",
             SpotIDNr, CurrentIDs[i][1], (CurrentIDs[i][2] / CurrentIDs[i][1]),
             (CurrentIDs[i][3] / CurrentIDs[i][1]),
             (CurrentIDs[i][4] / CurrentIDs[i][1]), CurrentIDs[i][5],
             CurrentIDs[i][10], CurrentIDs[i][11], CurrentIDs[i][12],
             CurrentIDs[i][13], CurrentIDs[i][14], CurrentIDs[i][15],
-            CurrentIDs[i][6], CurrentIDs[i][7]);
+            CurrentIDs[i][6], CurrentIDs[i][7], CurrentIDs[i][16]);
     // Write final MergeMap entries
     {
       ConstituentNode *cn = constituents[i];

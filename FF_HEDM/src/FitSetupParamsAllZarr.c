@@ -983,7 +983,7 @@ int main(int argc, char *argv[]) {
   }
   MaxTtheta = rad2deg * atan(MaxRingRad / Lsd);
   double **SpotsInfo;
-  SpotsInfo = allocMatrix(MaxNSpots, 7);
+  SpotsInfo = allocMatrix(MaxNSpots, 8);
   char FileName[1024];
   if (TopLayer == 1) {
     for (i = 0; i < nBoxSizes; i++) {
@@ -1043,12 +1043,14 @@ int main(int argc, char *argv[]) {
   fgets(line, 5000, fp);
   while (fgets(line, 5000, fp) != NULL) {
     sscanf(line,
-           "%lf %lf %lf %lf %lf %s %s %s %s %s %s %s %lf %lf %s %lf %s %s %s",
+           "%lf %lf %lf %lf %lf %s %s %s %s %s %s %s %lf %lf %s %lf %s %s %s "
+           "%s %s %lf",
            &SpotsInfo[counter][0], &SpotsInfo[counter][6],
            &SpotsInfo[counter][1], &SpotsInfo[counter][2],
            &SpotsInfo[counter][3], dummy, dummy, dummy, dummy, dummy, dummy,
            dummy, &nFramesThis, &SpotsInfo[counter][4], dummy,
-           &SpotsInfo[counter][5], dummy, dummy, dummy);
+           &SpotsInfo[counter][5], dummy, dummy, dummy, dummy, dummy,
+           &SpotsInfo[counter][7]);
     for (i = 0; i < n_hkls; i++)
       if ((int)SpotsInfo[counter][4] == PlaneNumbers[i])
         nSpotsEachRing[i]++;
@@ -1086,15 +1088,15 @@ int main(int argc, char *argv[]) {
   idshashout = fopen(fnidshash, "w");
   int nSpotsThis, nctr = 0, colN, startrowN = 0;
   double **spotsall;
-  spotsall = allocMatrix(nIndices, 7);
+  spotsall = allocMatrix(nIndices, 8);
   for (i = 0; i < n_hkls; i++) {
     double **spotsTemp;
     nSpotsThis = nSpotsEachRing[i];
-    spotsTemp = allocMatrix(nSpotsThis, 7);
+    spotsTemp = allocMatrix(nSpotsThis, 8);
     nctr = 0;
     for (j = 0; j < nIndices; j++) {
       if (SpotsInfo[j][4] == PlaneNumbers[i]) {
-        for (colN = 0; colN < 7; colN++)
+        for (colN = 0; colN < 8; colN++)
           spotsTemp[nctr][colN] = SpotsInfo[j][colN];
         nctr++;
       }
@@ -1104,7 +1106,7 @@ int main(int argc, char *argv[]) {
       // printf("%d %d %d %d %d %d
       // %d\n",i,n_hkls,nIndices,nSpotsThis,j,startrowN,j+startrowN);
       spotsall[j + startrowN][0] = j + startrowN + 1;
-      for (colN = 1; colN < 7; colN++) {
+      for (colN = 1; colN < 8; colN++) {
         spotsall[j + startrowN][colN] = spotsTemp[j][colN];
       }
       fprintf(idhsh, "%d %d %d\n", PlaneNumbers[i], (int)spotsTemp[j][0],
@@ -1271,7 +1273,8 @@ int main(int argc, char *argv[]) {
   fprintf(ExtraInfo, "%YLab ZLab Omega GrainRadius SpotID RingNumber Eta "
                      "Ttheta OmegaIni(NoWedgeCorr) YOrig(NoWedgeCorr) "
                      "ZOrig(NoWedgeCorr) YOrig(DetCor) ZOrig(DetCor) "
-                     "OmegaOrig(DetCor) IntegratedIntensity(count)\n");
+                     "OmegaOrig(DetCor) IntegratedIntensity(count) "
+                     "RawSumIntensity\n");
   for (i = 0; i < nIndices; i++) {
     if (goodRows[i] == 1) {
       fprintf(IndexAll,
@@ -1286,12 +1289,12 @@ int main(int argc, char *argv[]) {
               TthetaCorrWedge[i]);
       fprintf(ExtraInfo,
               "%12.5f %12.5f %12.5f %12.5f %12.5f %12.5f %12.5f %12.5f %12.5f "
-              "%12.5f %12.5f %12.5f %12.5f %12.5f %12.5f\n",
+              "%12.5f %12.5f %12.5f %12.5f %12.5f %12.5f %12.5f\n",
               YCorrWedge[i], ZCorrWedge[i], OmegaCorrWedge[i], SpotsInfo[i][5],
               SpotsInfo[i][0], SpotsInfo[i][4], EtaCorrWedge[i],
               TthetaCorrWedge[i], SpotsInfo[i][1], YCorrected[i], ZCorrected[i],
               SpotsInfo[i][2], SpotsInfo[i][3], SpotsInfo[i][1],
-              SpotsInfo[i][6]);
+              SpotsInfo[i][6], SpotsInfo[i][7]);
     } else {
       fprintf(IndexAll,
               "0.000 0.000 0.000 0.0000 %12.5f 0.0000 0.0000 0.0000\n",
@@ -1301,7 +1304,7 @@ int main(int argc, char *argv[]) {
               SpotsInfo[i][0]);
       fprintf(ExtraInfo,
               "0.000 0.000 0.000 0.0000 %12.5f 0.0000 0.0000 0.0000 0.000 "
-              "0.000 0.000 0.0000 0.000 0.000 0.000\n",
+              "0.000 0.000 0.0000 0.000 0.000 0.000 0.000\n",
               SpotsInfo[i][0]);
     }
   }
