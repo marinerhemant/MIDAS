@@ -308,6 +308,7 @@ def parallel_peaks(layerNr, positions, startNrFirstLayer, nrFilesPerSweep, topdi
         # Create necessary directories
         Path(os.path.join(thisDir, 'Temp')).mkdir(parents=True, exist_ok=True)
         Path(os.path.join(thisDir, 'output')).mkdir(parents=True, exist_ok=True)
+        Path(os.path.join(thisDir, 'midas_log')).mkdir(parents=True, exist_ok=True)
         sub_logDir = os.path.join(thisDir, 'output')
         
         # Generate zip or use existing file
