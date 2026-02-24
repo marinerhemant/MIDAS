@@ -33,7 +33,7 @@ def load_ps_files(temp_dir):
     """Load all _PS.csv files in a Temp directory, return concatenated arrays."""
     ps_files = sorted(glob.glob(os.path.join(temp_dir, '*_PS.csv')))
     if not ps_files:
-        return None
+        return None, None
 
     all_rows = []
     for pf in ps_files:
@@ -50,8 +50,47 @@ def load_ps_files(temp_dir):
             continue
 
     if not all_rows:
-        return None
-    return np.vstack(all_rows)
+        return None, None
+
+    # Extract FileStem from first _PS.csv filename
+    # Pattern: {FileStem}_{number}.MIDAS.zip_{frame}_PS.csv
+    import re
+    first_name = os.path.basename(ps_files[0])
+    m = re.match(r'^(.+?)_\d+\.MIDAS\.zip_', first_name)
+    filestem = m.group(1) if m else ''
+
+    return np.vstack(all_rows), filestem
+
+
+def read_start_file_nr(layer_dir, param_fn=None):
+    """Read StartFileNrFirstLayer from the parameter file in the layer dir."""
+    if param_fn:
+        # User specified a specific parameter file name
+        fpath = os.path.join(layer_dir, param_fn)
+        if os.path.exists(fpath):
+            try:
+                with open(fpath, 'r') as f:
+                    for line in f:
+                        line = line.split('#', 1)[0].strip()
+                        if line.startswith('StartFileNrFirstLayer'):
+                            return int(line.split()[1])
+            except Exception:
+                pass
+        return 0
+    # Fallback: scan all .txt files
+    for fn in os.listdir(layer_dir):
+        if not fn.endswith('.txt'):
+            continue
+        fpath = os.path.join(layer_dir, fn)
+        try:
+            with open(fpath, 'r') as f:
+                for line in f:
+                    line = line.split('#', 1)[0].strip()
+                    if line.startswith('StartFileNrFirstLayer'):
+                        return int(line.split()[1])
+        except Exception:
+            continue
+    return 0
 
 
 def compute_stats(values):
@@ -95,6 +134,9 @@ def main():
     parser.add_argument('results_dir', help='Directory containing LayerNr_* folders')
     parser.add_argument('--out', default='sigma_statistics',
                         help='Output directory for plots and JSON (default: sigma_statistics)')
+    parser.add_argument('--paramFN', type=str, default=None,
+                        help='Parameter file name inside each LayerNr folder (e.g. ps.txt). '
+                             'Used to read StartFileNrFirstLayer. If omitted, auto-detected.')
     parser.add_argument('--nbins', type=int, default=50,
                         help='Number of histogram bins (default: 50)')
     args = parser.parse_args()
@@ -116,6 +158,8 @@ def main():
 
     all_results = {}
     layer_nrs = []
+    file_stems = []
+    file_nrs = []
     sigmaR_means = []
     sigmaR_medians = []
     sigmaR_stds = []
@@ -125,9 +169,9 @@ def main():
     peak_counts = []
 
     print(f"Scanning {len(layer_dirs)} LayerNr directories...")
-    print(f"{'Layer':>6}  {'Peaks':>7}  {'SigR_mean':>10}  {'SigR_med':>10}  "
+    print(f"{'Layer':>6}  {'FileNr':>7}  {'FileStem':<30}  {'Peaks':>7}  {'SigR_mean':>10}  {'SigR_med':>10}  "
           f"{'SigE_mean':>10}  {'SigE_med':>10}")
-    print("-" * 72)
+    print("-" * 112)
 
     for ld in layer_dirs:
         # Extract layer number
@@ -141,7 +185,7 @@ def main():
         if not os.path.isdir(temp_dir):
             continue
 
-        data = load_ps_files(temp_dir)
+        data, filestem = load_ps_files(temp_dir)
         if data is None or data.shape[0] == 0:
             continue
         if data.shape[1] <= max(COL_SIGMA_R, COL_SIGMA_ETA):
@@ -161,12 +205,19 @@ def main():
         sr_stats = compute_stats(sigmaR)
         se_stats = compute_stats(sigmaEta)
 
+        start_fn = read_start_file_nr(ld, args.paramFN)
+        file_nr = start_fn + layer_nr
+
         all_results[layer_nr] = {
             'SigmaR': sr_stats,
             'SigmaEta': se_stats,
+            'FileStem': filestem or '',
+            'FileNr': file_nr,
         }
 
         layer_nrs.append(layer_nr)
+        file_stems.append(filestem or '')
+        file_nrs.append(file_nr)
         sigmaR_means.append(sr_stats['mean'])
         sigmaR_medians.append(sr_stats['median'])
         sigmaR_stds.append(sr_stats['std'])
@@ -175,7 +226,7 @@ def main():
         sigmaEta_stds.append(se_stats['std'])
         peak_counts.append(sr_stats['count'])
 
-        print(f"{layer_nr:>6}  {sr_stats['count']:>7}  {sr_stats['mean']:>10.4f}  "
+        print(f"{layer_nr:>6}  {file_nr:>7}  {(filestem or ''):<30}  {sr_stats['count']:>7}  {sr_stats['mean']:>10.4f}  "
               f"{sr_stats['median']:>10.4f}  {se_stats['mean']:>10.4f}  {se_stats['median']:>10.4f}")
 
         # Save per-layer histogram
@@ -214,13 +265,13 @@ def main():
     # Save CSV summary
     csv_path = os.path.join(out_dir, 'sigma_statistics.csv')
     with open(csv_path, 'w') as f:
-        f.write("LayerNr,NrPeaks,"
+        f.write("LayerNr,FileNr,FileStem,NrPeaks,"
                 "SigmaR_mean,SigmaR_median,SigmaR_std,SigmaR_min,SigmaR_max,SigmaR_q25,SigmaR_q75,"
                 "SigmaEta_mean,SigmaEta_median,SigmaEta_std,SigmaEta_min,SigmaEta_max,SigmaEta_q25,SigmaEta_q75\n")
         for i, lnr in enumerate(layer_nrs):
             sr = all_results[lnr]['SigmaR']
             se = all_results[lnr]['SigmaEta']
-            f.write(f"{lnr},{peak_counts[i]},"
+            f.write(f"{lnr},{file_nrs[i]},{file_stems[i]},{peak_counts[i]},"
                     f"{sr['mean']:.6f},{sr['median']:.6f},{sr['std']:.6f},"
                     f"{sr['min']:.6f},{sr['max']:.6f},{sr['q25']:.6f},{sr['q75']:.6f},"
                     f"{se['mean']:.6f},{se['median']:.6f},{se['std']:.6f},"
