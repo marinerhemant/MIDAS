@@ -14,6 +14,7 @@ import argparse
 import glob
 import json
 import os
+import warnings
 import sys
 
 import numpy as np
@@ -37,7 +38,9 @@ def load_ps_files(temp_dir):
     all_rows = []
     for pf in ps_files:
         try:
-            data = np.genfromtxt(pf, skip_header=1)
+            with warnings.catch_warnings():
+                warnings.simplefilter('ignore', UserWarning)
+                data = np.genfromtxt(pf, skip_header=1)
             if data.size == 0:
                 continue
             if data.ndim == 1:
