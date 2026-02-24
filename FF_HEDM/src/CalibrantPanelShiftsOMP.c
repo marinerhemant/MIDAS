@@ -2336,6 +2336,99 @@ int main(int argc, char *argv[]) {
     SavePanelShifts(PanelShiftsFile, nPanels, panels);
     printf("Saved panel shifts to %s\n", PanelShiftsFile);
 
+    // Print panel shift statistics (excluding fixPanel and panels with no
+    // points)
+    {
+      double *dYarr = malloc(nPanels * sizeof(double));
+      double *dZarr = malloc(nPanels * sizeof(double));
+      double *dTarr = malloc(nPanels * sizeof(double));
+      int nValid = 0;
+      for (int i = 0; i < nPanels; i++) {
+        if (i == FixPanelID)
+          continue;
+        if (fabs(panels[i].dY) < 1e-15 && fabs(panels[i].dZ) < 1e-15 &&
+            fabs(panels[i].dTheta) < 1e-15)
+          continue;
+        dYarr[nValid] = panels[i].dY;
+        dZarr[nValid] = panels[i].dZ;
+        dTarr[nValid] = panels[i].dTheta;
+        nValid++;
+      }
+      if (nValid > 0) {
+        // Sort for median (simple insertion sort — nPanels is small)
+        for (int i = 1; i < nValid; i++) {
+          double ky = dYarr[i], kz = dZarr[i], kt = dTarr[i];
+          int j = i - 1;
+          while (j >= 0 && dYarr[j] > ky) {
+            dYarr[j + 1] = dYarr[j];
+            j--;
+          }
+          dYarr[j + 1] = ky;
+          // Sort dZ separately
+          j = i - 1;
+          kz = dZarr[i];
+          while (j >= 0 && dZarr[j] > kz) {
+            dZarr[j + 1] = dZarr[j];
+            j--;
+          }
+          dZarr[j + 1] = kz;
+          // Sort dTheta separately
+          j = i - 1;
+          kt = dTarr[i];
+          while (j >= 0 && dTarr[j] > kt) {
+            dTarr[j + 1] = dTarr[j];
+            j--;
+          }
+          dTarr[j + 1] = kt;
+        }
+        double medY = (nValid % 2)
+                          ? dYarr[nValid / 2]
+                          : (dYarr[nValid / 2 - 1] + dYarr[nValid / 2]) / 2.0;
+        double medZ = (nValid % 2)
+                          ? dZarr[nValid / 2]
+                          : (dZarr[nValid / 2 - 1] + dZarr[nValid / 2]) / 2.0;
+        double medT = (nValid % 2)
+                          ? dTarr[nValid / 2]
+                          : (dTarr[nValid / 2 - 1] + dTarr[nValid / 2]) / 2.0;
+        // Mean, min, max, std
+        double sumY = 0, sumZ = 0, sumT = 0, sumY2 = 0, sumZ2 = 0, sumT2 = 0;
+        double minY = dYarr[0], maxY = dYarr[nValid - 1];
+        double minZ = dZarr[0], maxZ = dZarr[nValid - 1];
+        double minT = dTarr[0], maxT = dTarr[nValid - 1];
+        for (int i = 0; i < nValid; i++) {
+          sumY += dYarr[i];
+          sumY2 += dYarr[i] * dYarr[i];
+          sumZ += dZarr[i];
+          sumZ2 += dZarr[i] * dZarr[i];
+          sumT += dTarr[i];
+          sumT2 += dTarr[i] * dTarr[i];
+        }
+        double meanY = sumY / nValid, meanZ = sumZ / nValid,
+               meanT = sumT / nValid;
+        double stdY = sqrt(sumY2 / nValid - meanY * meanY);
+        double stdZ = sqrt(sumZ2 / nValid - meanZ * meanZ);
+        double stdT = sqrt(sumT2 / nValid - meanT * meanT);
+        printf("\n*** Panel Shift Statistics (%d optimized panels, excluding "
+               "fixPanel=%d) ***\n",
+               nValid, FixPanelID);
+        printf("         %12s %12s %12s %12s %12s\n", "Mean", "Median", "Min",
+               "Max", "Std");
+        printf("  dY:    %12.4f %12.4f %12.4f %12.4f %12.4f\n", meanY, medY,
+               minY, maxY, stdY);
+        printf("  dZ:    %12.4f %12.4f %12.4f %12.4f %12.4f\n", meanZ, medZ,
+               minZ, maxZ, stdZ);
+        printf("  dTheta:%12.6f %12.6f %12.6f %12.6f %12.6f\n", meanT, medT,
+               minT, maxT, stdT);
+        printf("***************************************************************"
+               "**********\n");
+      } else {
+        printf("\n*** No optimized panels to report statistics for. ***\n");
+      }
+      free(dYarr);
+      free(dZarr);
+      free(dTarr);
+    }
+
     // Write per-pixel shift magnitude TIFF
     {
       char shiftsTiffFN[2048];

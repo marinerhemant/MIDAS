@@ -303,6 +303,77 @@ def validate_layer_range(start: int, end: int) -> bool:
         
     return True
 
+
+def discover_layer_files(raw_folder: str, ext: str, padding: int,
+                         start_file_nr: int, end_file_nr: int) -> list:
+    """Scan raw_folder for files with numbers in [start_file_nr, end_file_nr].
+
+    Expected filename pattern: {stem}_{zero-padded-number}{ext}
+    The last ``padding`` digits before the extension are treated as the
+    file number.  Files whose basename (without extension) starts with
+    ``dark_`` are skipped.
+
+    Args:
+        raw_folder: Directory containing raw data files.
+        ext: File extension including leading dot (e.g. '.ge3', '.tif').
+        padding: Number of digits used for zero-padding.
+        start_file_nr: First file number to include.
+        end_file_nr: Last file number to include.
+
+    Returns:
+        Sorted list of ``(file_nr, filestem)`` tuples where *filestem*
+        is everything before ``_NNNNNN`` (the number segment).
+    """
+    import re
+    if not os.path.isdir(raw_folder):
+        logger.error(f"RawFolder does not exist: {raw_folder}")
+        return []
+
+    # Build regex: stem is captured as group 1, number is group 2
+    # Example with padding=6: (.+)_(\d{6})\.ge3$
+    escaped_ext = re.escape(ext)
+    pattern = re.compile(rf'^(.+?)_(\d{{{padding}}}){escaped_ext}$')
+
+    found = []
+    n_darks = 0
+    all_files = os.listdir(raw_folder)
+    for fname in all_files:
+        m = pattern.match(fname)
+        if not m:
+            continue
+        stem = m.group(1)
+        file_nr = int(m.group(2))
+
+        # Skip files outside the requested range
+        if file_nr < start_file_nr or file_nr > end_file_nr:
+            continue
+
+        # Skip dark files
+        if stem.lower().startswith('dark_'):
+            n_darks += 1
+            continue
+
+        found.append((file_nr, stem))
+
+    found.sort(key=lambda x: x[0])
+
+    n_missing = (end_file_nr - start_file_nr + 1) - len(found) - n_darks
+    logger.info(
+        f"Batch discovery in {raw_folder}: "
+        f"{len(found)} data files, {n_darks} darks skipped, "
+        f"{max(0, n_missing)} file numbers missing"
+    )
+    if found:
+        logger.info(f"  File numbers: {found[0][0]} .. {found[-1][0]}")
+        # Show unique stems
+        stems = sorted(set(s for _, s in found))
+        if len(stems) <= 5:
+            logger.info(f"  Unique stems: {stems}")
+        else:
+            logger.info(f"  Unique stems: {len(stems)} different stems")
+
+    return found
+
 class ProgressTracker:
     """Track progress of a multi-step operation."""
     
@@ -1702,6 +1773,8 @@ def main():
                         help='Optional input file containing seed grains to use for grain finding. If not provided, grains will be determined from scratch.')
     parser.add_argument('-reprocess', type=int, required=False, default=0,
                         help='Set to 1 to re-run peak merging (MergeMap.csv) and consolidated HDF5 generation on existing results. Only needs -resultFolder (or runs in current dir).')
+    parser.add_argument('-batchMode', type=int, required=False, default=0,
+                        help='Auto-detect files in RawFolder. Handles varying FileStem values across layers, skips darks and missing file numbers. Only for NrFilesPerSweep=1.')
     
     # Parse arguments
     if len(sys.argv) == 1:
@@ -1826,36 +1899,94 @@ def main():
     
     # Use cleanup context manager
     with cleanup_context():
-        progress = ProgressTracker(end_layer_nr - start_layer_nr + 1, "Layer processing")
-        
-        for layer_nr in range(start_layer_nr, end_layer_nr + 1):
-            try:
-                process_layer(
-                    layer_nr=layer_nr, 
-                    top_res_dir=top_res_dir, 
-                    ps_fn=ps_fn, 
-                    data_fn=data_fn, 
-                    num_procs=num_procs, 
-                    n_nodes=n_nodes, 
-                    n_chunks=n_chunks, 
-                    preproc=preproc, 
-                    inp_file_name=inp_file_name, 
-                    provide_input_all=provide_input_all, 
-                    convert_files=convert_files, 
-                    do_peak_search=do_peak_search, 
-                    peak_search_only=peak_search_only,
-                    bin_directory=bin_dir,
-                    grains_file=grains_file
-                )
-                
-                progress.update(message=f"Layer {layer_nr} completed successfully")
-                
-            except Exception as e:
-                logger.error(f"Failed to process layer {layer_nr}: {e}")
+        if args.batchMode == 1 and ps_fn:
+            # ── Batch mode: auto-detect files with varying stems ──────────
+            params = read_parameter_file(ps_fn)
+            raw_folder = params.get('RawFolder', '.')
+            ext = params.get('Ext', '.ge3')
+            if not ext.startswith('.'):
+                ext = '.' + ext
+            padding = parse_int_param(params, 'Padding', default=6)
+            start_fn = parse_int_param(params, 'StartFileNrFirstLayer', default=1)
+
+            start_file_nr = start_fn + (start_layer_nr - 1)
+            end_file_nr = start_fn + (end_layer_nr - 1)
+
+            discovered = discover_layer_files(
+                raw_folder, ext, padding, start_file_nr, end_file_nr
+            )
+
+            if not discovered:
+                logger.error("Batch mode: no valid files found in the specified range.")
                 sys.exit(1)
-            finally:
-                # Return to original directory after each layer
-                os.chdir(orig_dir)
+
+            progress = ProgressTracker(len(discovered), "Batch layer processing")
+
+            for file_nr, filestem in discovered:
+                layer_nr = file_nr - start_fn + 1
+                logger.info(f"Batch: file_nr={file_nr}, stem={filestem}, layer_nr={layer_nr}")
+
+                # Update FileStem in the parameter file for this layer
+                update_parameter_file(ps_fn, {'FileStem': filestem})
+
+                try:
+                    process_layer(
+                        layer_nr=layer_nr,
+                        top_res_dir=top_res_dir,
+                        ps_fn=ps_fn,
+                        data_fn=data_fn,
+                        num_procs=num_procs,
+                        n_nodes=n_nodes,
+                        n_chunks=n_chunks,
+                        preproc=preproc,
+                        inp_file_name=inp_file_name,
+                        provide_input_all=provide_input_all,
+                        convert_files=convert_files,
+                        do_peak_search=do_peak_search,
+                        peak_search_only=peak_search_only,
+                        bin_directory=bin_dir,
+                        grains_file=grains_file
+                    )
+
+                    progress.update(message=f"Layer {layer_nr} (file {file_nr}, {filestem}) completed")
+
+                except Exception as e:
+                    logger.error(f"Failed to process layer {layer_nr} (file {file_nr}, {filestem}): {e}")
+                    sys.exit(1)
+                finally:
+                    os.chdir(orig_dir)
+        else:
+            # ── Standard mode: fixed FileStem, sequential layers ──────────
+            progress = ProgressTracker(end_layer_nr - start_layer_nr + 1, "Layer processing")
+            
+            for layer_nr in range(start_layer_nr, end_layer_nr + 1):
+                try:
+                    process_layer(
+                        layer_nr=layer_nr, 
+                        top_res_dir=top_res_dir, 
+                        ps_fn=ps_fn, 
+                        data_fn=data_fn, 
+                        num_procs=num_procs, 
+                        n_nodes=n_nodes, 
+                        n_chunks=n_chunks, 
+                        preproc=preproc, 
+                        inp_file_name=inp_file_name, 
+                        provide_input_all=provide_input_all, 
+                        convert_files=convert_files, 
+                        do_peak_search=do_peak_search, 
+                        peak_search_only=peak_search_only,
+                        bin_directory=bin_dir,
+                        grains_file=grains_file
+                    )
+                    
+                    progress.update(message=f"Layer {layer_nr} completed successfully")
+                    
+                except Exception as e:
+                    logger.error(f"Failed to process layer {layer_nr}: {e}")
+                    sys.exit(1)
+                finally:
+                    # Return to original directory after each layer
+                    os.chdir(orig_dir)
     
     logger.info("All layers processed successfully")
 
