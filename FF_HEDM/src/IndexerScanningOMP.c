@@ -479,17 +479,12 @@ void CompareSpots(RealType **TheorSpots, int nTheorSpots, RealType RefRad,
   for (sp = 0; sp < nTheorSpots; sp++) {
     RingNr = (int)TheorSpots[sp][9];
     iRing = RingNr - 1;
-    // iEta = floor((180 + TheorSpots[sp][12]) / EtaBinSize);
-    // iOme = floor((180 + TheorSpots[sp][6]) / OmeBinSize);
     iEta = floor((180 + TheorSpots[sp][12]) * Params->InvEtaBinSize);
     iOme = floor((180 + TheorSpots[sp][6]) * Params->InvOmeBinSize);
-    // yRot = xThis * sin(deg2rad * TheorSpots[sp][6]) +
-    //       yThis * cos(deg2rad * TheorSpots[sp][6]);
     yRot = xThis * TheorSpots[sp][14] + yThis * TheorSpots[sp][15];
-    //~ printf("%lf %lf %lf %lf\n",yRot,xThis,yThis,TheorSpots[sp][6]);
-    // use iOme, xpos and yPos to calculate scanNr
     etamargin = etamargins[RingNr];
-    omemargin = omemargins[(int)floor(fabs(TheorSpots[sp][12]))];
+    omemargin = omemargins[(int)fabs(
+        TheorSpots[sp][12])]; // fabs result truncated to int, no floor needed
     MatchFound = 0;
     diffOmeBest = MarginOme + 0.00001;
     size_t Pos = iRing;
@@ -1134,15 +1129,11 @@ int DoIndexingSingle(int voxNr, double OM[3][3], double xThis, double yThis,
   RealType **GrainSpots = scratch->GrainSpots;
   RealType **GrainMatches = scratch->GrainMatches;
   RealType **AllGrainSpots = scratch->AllGrainSpots;
-  RealType **GrainMatchesT = scratch->GrainMatchesT;
-  RealType **AllGrainSpotsT = scratch->AllGrainSpotsT;
 
   int nRowsOutput = MAX_N_MATCHES * 2 * n_hkls;
-  int nRowsPerGrain = 2 * n_hkls, nTspots;
-  // Memory allocated in scratch
+  int nTspots;
   int nMatches;
-  int r, c, i, SpotID;
-  int rownr = 0;
+  int r, i, SpotID;
   int sp;
   RealType Displ_y, Displ_z;
   RealType FracThis;
@@ -1166,33 +1157,25 @@ int DoIndexingSingle(int voxNr, double OM[3][3], double xThis, double yThis,
                Params.MarginRadial, etamargins, omemargins, &nMatches,
                GrainSpots, xThis, yThis, &Params);
   FracThis = (double)nMatches / (double)nTspots;
-  if (FracThis > Params.MinMatchesToAcceptFrac) {
-    for (i = 0; i < 9; i++)
-      GrainMatchesT[0][i] = OM[i / 3][i % 3];
-    GrainMatchesT[0][9] = ga;
-    GrainMatchesT[0][10] = gb;
-    GrainMatchesT[0][11] = gc;
-    GrainMatchesT[0][12] = nTspots;
-    GrainMatchesT[0][13] = nMatches;
-    GrainMatchesT[0][14] = 1;
-    for (r = 0; r < nTspots; r++) {
-      for (c = 0; c < 15; c++)
-        AllGrainSpotsT[r][c] = GrainSpots[r][c];
-      AllGrainSpotsT[r][15] = 1;
-    }
-    CalcIA(GrainMatchesT, 1, AllGrainSpotsT, Params.Distance, scratch);
-    rownr = nMatches;
-    for (i = 0; i < 17; i++)
-      GrainMatches[0][i] = GrainMatchesT[0][i];
-    for (r = 0; r < nTspots; r++)
-      for (c = 0; c < 17; c++)
-        AllGrainSpots[r][c] = AllGrainSpotsT[r][c];
-    for (r = nTspots; r < nRowsOutput; r++)
-      for (c = 0; c < 17; c++)
-        AllGrainSpots[r][c] = 0;
-  } else {
+  if (FracThis <= Params.MinMatchesToAcceptFrac) {
     return 0;
   }
+  // Write directly to final arrays (no intermediate T buffers needed)
+  for (i = 0; i < 9; i++)
+    GrainMatches[0][i] = OM[i / 3][i % 3];
+  GrainMatches[0][9] = ga;
+  GrainMatches[0][10] = gb;
+  GrainMatches[0][11] = gc;
+  GrainMatches[0][12] = nTspots;
+  GrainMatches[0][13] = nMatches;
+  GrainMatches[0][14] = 1;
+  for (r = 0; r < nTspots; r++) {
+    memcpy(AllGrainSpots[r], GrainSpots[r], 15 * sizeof(RealType));
+    AllGrainSpots[r][15] = 1;
+  }
+  for (r = nTspots; r < nRowsOutput; r++)
+    memset(AllGrainSpots[r], 0, N_COL_GRAINSPOTS * sizeof(RealType));
+  CalcIA(GrainMatches, 1, AllGrainSpots, Params.Distance, scratch);
   SpotID = (int)AllGrainSpots[0][14];
   double outArr[16] = {
       (double)SpotID,      GrainMatches[0][15], GrainMatches[0][0],
@@ -1206,13 +1189,12 @@ int DoIndexingSingle(int voxNr, double OM[3][3], double xThis, double yThis,
   locAll = ftell(allF);
   fwrite(outArr, 16 * sizeof(double), 1, valsF);
   int *outArr2;
-  // printf("rownr: %d\n", rownr);
-  outArr2 = malloc(rownr * sizeof(*outArr2));
-  for (i = 0; i < rownr; i++)
+  outArr2 = malloc(nMatches * sizeof(*outArr2));
+  for (i = 0; i < nMatches; i++)
     outArr2[i] = (int)AllGrainSpots[i][14];
-  fwrite(outArr2, rownr * sizeof(int), 1, allF);
+  fwrite(outArr2, nMatches * sizeof(int), 1, allF);
   free(outArr2);
-  fprintf(keyF, "%zu %zu %zu %zu\n", (size_t)SpotID, (size_t)rownr, locVals,
+  fprintf(keyF, "%zu %zu %zu %zu\n", (size_t)SpotID, (size_t)nMatches, locVals,
           locAll);
   printf("ID: %d, voxNr: %d, Confidence: %lf\n", SpotID, voxNr, FracThis);
   return 0;
@@ -1299,8 +1281,7 @@ int DoIndexing(int SpotID, int voxNr, double xThis, double yThis, double zThis,
         GrainMatchesT[0][13] = nMatches;
         GrainMatchesT[0][14] = 1;
         for (r = 0; r < nTspots; r++) {
-          for (c = 0; c < 15; c++)
-            AllGrainSpotsT[r][c] = GrainSpots[r][c];
+          memcpy(AllGrainSpotsT[r], GrainSpots[r], 15 * sizeof(RealType));
           AllGrainSpotsT[r][15] = 1;
         }
         CalcIA(GrainMatchesT, 1, AllGrainSpotsT, Params.Distance, scratch);
@@ -1313,14 +1294,13 @@ int DoIndexing(int SpotID, int voxNr, double xThis, double yThis, double zThis,
           bestnTspotsIsp = nTspots;
           rownr = nTspots;
           matchNr = 1;
-          for (i = 0; i < 17; i++)
-            GrainMatches[0][i] = GrainMatchesT[0][i];
+          memcpy(GrainMatches[0], GrainMatchesT[0],
+                 N_COL_GRAINMATCHES * sizeof(RealType));
           for (r = 0; r < nTspots; r++)
-            for (c = 0; c < 17; c++)
-              AllGrainSpots[r][c] = AllGrainSpotsT[r][c];
+            memcpy(AllGrainSpots[r], AllGrainSpotsT[r],
+                   N_COL_GRAINSPOTS * sizeof(RealType));
           for (r = nTspots; r < nRowsOutput; r++)
-            for (c = 0; c < 17; c++)
-              AllGrainSpots[r][c] = 0;
+            memset(AllGrainSpots[r], 0, N_COL_GRAINSPOTS * sizeof(RealType));
         }
       }
     }
@@ -1622,12 +1602,20 @@ int main(int argc, char *argv[]) {
   int RingToIndex = Params.RingToIndex;
   size_t startRowNrSp = MAX_N_SPOTS, endRowNrSp = 0;
   for (i = 0; i < n_spots; i++) {
-    // printf("%d\n",(int)ObsSpotsLab[i*10+5]);
-    // TODO::::::: ADD A RANGE OF OMEGA FILTERING
     if ((int)ObsSpotsLab[i * 10 + 5] == RingToIndex && startRowNrSp > i)
       startRowNrSp = i;
     if ((int)ObsSpotsLab[i * 10 + 5] == RingToIndex && endRowNrSp < i)
       endRowNrSp = i;
+  }
+
+  // Pre-compute sin/cos of omega for all spots (avoids redundant trig per
+  // voxel)
+  double *spotSinOme = malloc(n_spots * sizeof(double));
+  double *spotCosOme = malloc(n_spots * sizeof(double));
+  for (i = 0; i < (int)n_spots; i++) {
+    double omeRad = deg2rad * ObsSpotsLab[i * 10 + 2];
+    spotSinOme[i] = sin(omeRad);
+    spotCosOme[i] = cos(omeRad);
   }
 
   int thisRowNr;
@@ -1701,19 +1689,17 @@ int main(int argc, char *argv[]) {
                            keyF, &scratch);
         }
       } else {
-        double angle, newY;
         int idnr;
         int thisID;
+        double newY;
         int nrRows = endRowNrSp - startRowNrSp + 1;
         printf("%d %lf %lf %d %d %d %d\n", thisRowNr, xThis, yThis, startRowNr,
                endRowNr, endRowNr - startRowNr, nrRows);
         for (idnr = startRowNrSp; idnr <= endRowNrSp; idnr++) {
-          angle = ObsSpotsLab[idnr * 10 + 2];
           thisID = (int)ObsSpotsLab[idnr * 10 + 4];
-          newY = xThis * sin(deg2rad * angle) + yThis * cos(deg2rad * angle);
+          newY = xThis * spotSinOme[idnr] + yThis * spotCosOme[idnr];
           if (fabs(newY - ypos[(int)ObsSpotsLab[idnr * 10 + 9]]) <=
               BeamSize / 2) {
-            // printf("%d %lf %lf\n",idnr,newY,angle);
             DoIndexing(thisID, thisRowNr, xThis, yThis, 0, Params, idnr, valsF,
                        allF, keyF, &scratch);
           }
@@ -1731,6 +1717,8 @@ int main(int argc, char *argv[]) {
     FreeMemMatrix(scratch.TheorSpots, nRowsPerGrain);
     free(scratch.IAgrainspots);
   }
+  free(spotSinOme);
+  free(spotCosOme);
   double time = omp_get_wtime() - start_time;
   printf("Finished, time elapsed: %lf seconds.\n", time);
   return (0);
