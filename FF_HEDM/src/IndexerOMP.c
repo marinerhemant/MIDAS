@@ -171,6 +171,80 @@ void FreeMemMatrix(RealType **mat, int nrows) {
   free(mat);
 }
 
+// Contiguous allocation: single block for data, row pointers index into it.
+// Much better cache locality than allocMatrix.
+RealType **allocMatrixContiguous(int nrows, int ncols) {
+  RealType **arr = malloc(nrows * sizeof(*arr));
+  if (arr == NULL)
+    return NULL;
+  RealType *block = calloc((size_t)nrows * ncols, sizeof(RealType));
+  if (block == NULL) {
+    free(arr);
+    return NULL;
+  }
+  for (int i = 0; i < nrows; i++)
+    arr[i] = block + (size_t)i * ncols;
+  return arr;
+}
+
+void FreeMemMatrixContiguous(RealType **mat) {
+  if (mat) {
+    free(mat[0]); // free contiguous data block
+    free(mat);    // free row pointers
+  }
+}
+
+// Thread-local workspace: all per-spot arrays pre-allocated once per thread.
+struct ThreadWorkspace {
+  RealType **AllGrainSpots;
+  RealType **AllGrainSpotsT;
+  RealType **GrainMatchesT;
+  RealType **GrainMatches;
+  RealType **GrainSpots;
+  RealType **TheorSpots;
+  RealType **BestMatches;
+  RealType *OrMat;
+  int nRowsOutput;
+  int nRowsPerGrain;
+};
+
+struct ThreadWorkspace *init_workspace(int n_hkls_val) {
+  struct ThreadWorkspace *ws = calloc(1, sizeof(*ws));
+  if (!ws)
+    return NULL;
+  ws->nRowsPerGrain = 2 * n_hkls_val;
+  ws->nRowsOutput = MAX_N_MATCHES * ws->nRowsPerGrain;
+  ws->AllGrainSpots = allocMatrixContiguous(ws->nRowsOutput, N_COL_GRAINSPOTS);
+  ws->AllGrainSpotsT = allocMatrixContiguous(ws->nRowsOutput, N_COL_GRAINSPOTS);
+  ws->GrainMatchesT = allocMatrixContiguous(MAX_N_MATCHES, N_COL_GRAINMATCHES);
+  ws->GrainMatches = allocMatrixContiguous(MAX_N_MATCHES, N_COL_GRAINMATCHES);
+  ws->GrainSpots = allocMatrixContiguous(ws->nRowsPerGrain, N_COL_GRAINSPOTS);
+  ws->TheorSpots = allocMatrixContiguous(ws->nRowsPerGrain, N_COL_THEORSPOTS);
+  ws->BestMatches = allocMatrixContiguous(2, 5);
+  ws->OrMat = calloc(MAX_N_OR * 9, sizeof(RealType));
+  if (!ws->AllGrainSpots || !ws->AllGrainSpotsT || !ws->GrainMatchesT ||
+      !ws->GrainMatches || !ws->GrainSpots || !ws->TheorSpots ||
+      !ws->BestMatches || !ws->OrMat) {
+    printf("Memory error: could not allocate thread workspace.\n");
+    return NULL;
+  }
+  return ws;
+}
+
+void free_workspace(struct ThreadWorkspace *ws) {
+  if (!ws)
+    return;
+  FreeMemMatrixContiguous(ws->AllGrainSpots);
+  FreeMemMatrixContiguous(ws->AllGrainSpotsT);
+  FreeMemMatrixContiguous(ws->GrainMatchesT);
+  FreeMemMatrixContiguous(ws->GrainMatches);
+  FreeMemMatrixContiguous(ws->GrainSpots);
+  FreeMemMatrixContiguous(ws->TheorSpots);
+  FreeMemMatrixContiguous(ws->BestMatches);
+  free(ws->OrMat);
+  free(ws);
+}
+
 RealType min(RealType a, RealType b) { return (a < b ? a : b); }
 
 RealType max(RealType a, RealType b) { return (a > b ? a : b); }
@@ -1628,7 +1702,8 @@ void MakeFullFileName(char *fullFileName, char *aPath, char *aFileName) {
 }
 
 int DoIndexing(int SpotIDs, struct TParams Params, int offsetLoc, int idNr,
-               int totalIDs, int ringsToRejectCalc[], int nRingsToRejectCalc) {
+               int totalIDs, int ringsToRejectCalc[], int nRingsToRejectCalc,
+               struct ThreadWorkspace *ws) {
   double dif;
   RealType HalfBeam = Params.Hbeam / 2;
   RealType MinMatchesToAccept;
@@ -1659,59 +1734,20 @@ int DoIndexing(int SpotIDs, struct TParams Params, int offsetLoc, int idNr,
   int rownr;
   int SpotRowNo;
   int usingFriedelPair;
-  RealType **BestMatches;
 
   RealType omemargins[181];
   RealType etamargins[MAX_N_RINGS];
-  char fn[1000];
-  char ffn[1000];
-  char fn2[1000];
-  char ffn2[1000];
-  RealType **GrainMatches;
-  RealType **TheorSpots;
-  RealType **GrainSpots;
-  RealType **AllGrainSpots;
-  RealType **GrainMatchesT;
-  RealType **AllGrainSpotsT;
-  int nRowsOutput = MAX_N_MATCHES * 2 * n_hkls;
-  AllGrainSpots = allocMatrix(nRowsOutput, N_COL_GRAINSPOTS);
-  if (AllGrainSpots == NULL) {
-    printf("Memory error: could not allocate memory for output matrix. Memory "
-           "full?\n");
-    return 1;
-  }
-  AllGrainSpotsT = allocMatrix(nRowsOutput, N_COL_GRAINSPOTS);
-  if (AllGrainSpotsT == NULL) {
-    printf("Memory error: could not allocate memory for output matrix. Memory "
-           "full?\n");
-    return 1;
-  }
-  GrainMatchesT = allocMatrix(MAX_N_MATCHES, N_COL_GRAINMATCHES);
-  if (GrainMatchesT == NULL) {
-    printf("Memory error: could not allocate memory for output matrix. Memory "
-           "full?\n");
-    return 1;
-  }
-  GrainMatches = allocMatrix(MAX_N_MATCHES, N_COL_GRAINMATCHES);
-  if (GrainMatches == NULL) {
-    printf("Memory error: could not allocate memory for output matrix. Memory "
-           "full?\n");
-    return 1;
-  }
-  int nRowsPerGrain = 2 * n_hkls;
-  GrainSpots = allocMatrix(nRowsPerGrain, N_COL_GRAINSPOTS);
-  TheorSpots = allocMatrix(nRowsPerGrain, N_COL_THEORSPOTS);
-  if (TheorSpots == NULL) {
-    printf("Memory error: could not allocate memory for output matrix. Memory "
-           "full?\n");
-    return 1;
-  }
-  BestMatches = allocMatrix(2, 5);
-  if (BestMatches == NULL) {
-    printf("Memory error: could not allocate memory for output matrix. Memory "
-           "full?\n");
-    return 1;
-  }
+
+  // Use pre-allocated workspace arrays
+  RealType **AllGrainSpots = ws->AllGrainSpots;
+  RealType **AllGrainSpotsT = ws->AllGrainSpotsT;
+  RealType **GrainMatchesT = ws->GrainMatchesT;
+  RealType **GrainMatches = ws->GrainMatches;
+  RealType **GrainSpots = ws->GrainSpots;
+  RealType **TheorSpots = ws->TheorSpots;
+  RealType **BestMatches = ws->BestMatches;
+  int nRowsOutput = ws->nRowsOutput;
+  int nRowsPerGrain = ws->nRowsPerGrain;
   for (i = 1; i < 180; i++)
     omemargins[i] = Params.MarginOme +
                     (0.5 * Params.StepsizeOrient / fabs(sin(i * deg2rad)));
@@ -1745,8 +1781,7 @@ int DoIndexing(int SpotIDs, struct TParams Params, int offsetLoc, int idNr,
   RealType eta = ObsSpotsLab[SpotRowNo * 9 + 6];
   RealType ttheta = ObsSpotsLab[SpotRowNo * 9 + 7];
   int ringnr = (int)ObsSpotsLab[SpotRowNo * 9 + 5];
-  RealType *OrMat;
-  OrMat = calloc(MAX_N_OR * 3 * 3, sizeof(*OrMat));
+  RealType *OrMat = ws->OrMat;
   hkl[0] = RingHKL[ringnr][0];
   hkl[1] = RingHKL[ringnr][1];
   hkl[2] = RingHKL[ringnr][2];
@@ -1911,17 +1946,9 @@ int DoIndexing(int SpotIDs, struct TParams Params, int offsetLoc, int idNr,
     }
     isp = isp + ispDelta;
   }
-  free(OrMat);
   fracMatches = bestFracTillNow;
   if (fracMatches > 1 || fracMatches < 0 || (int)bestnTspotsIsp == 0 ||
       (int)bestnMatchesIsp == -1 || bestMatchFound == 0) {
-    FreeMemMatrix(GrainMatches, MAX_N_MATCHES);
-    FreeMemMatrix(GrainMatchesT, MAX_N_MATCHES);
-    FreeMemMatrix(TheorSpots, nRowsPerGrain);
-    FreeMemMatrix(GrainSpots, nRowsPerGrain);
-    FreeMemMatrix(AllGrainSpots, nRowsOutput);
-    FreeMemMatrix(AllGrainSpotsT, nRowsOutput);
-    FreeMemMatrix(BestMatches, 2);
     printf("Nothing good found for ID: %d.\n", SpotIDs);
     fflush(stdout);
     return 1;
@@ -1938,54 +1965,31 @@ int DoIndexing(int SpotIDs, struct TParams Params, int offsetLoc, int idNr,
          "nPlanes: %d, omega: %lf, time: %lfs.\n",
          idNr, totalIDs, SpotIDs, fracMatches, GrainMatches[0][12],
          GrainMatches[0][13], nPlaneNormals, omega, enTm);
-  FreeMemMatrix(GrainMatches, MAX_N_MATCHES);
-  FreeMemMatrix(GrainMatchesT, MAX_N_MATCHES);
-  FreeMemMatrix(TheorSpots, nRowsPerGrain);
-  FreeMemMatrix(GrainSpots, nRowsPerGrain);
-  FreeMemMatrix(AllGrainSpots, nRowsOutput);
-  FreeMemMatrix(AllGrainSpotsT, nRowsOutput);
-  FreeMemMatrix(BestMatches, 2);
 }
 
 int DoIndexingSeed(double orMat[9], double posThis[3], double RefRad,
                    struct TParams Params, int offsetLoc, int idNr, int totalIDs,
-                   int ringsToRejectCalc[], int nRingsToRejectCalc)
+                   int ringsToRejectCalc[], int nRingsToRejectCalc,
+                   struct ThreadWorkspace *ws)
 // We want to provide the orientation matrix as input, then compute the spots
 // and do the rest.
 {
   double sttm = omp_get_wtime();
-  int nRowsPerGrain = 2 * n_hkls;
-  int nRowsOutput = MAX_N_MATCHES * 2 * n_hkls;
+  int nRowsPerGrain = ws->nRowsPerGrain;
+  int nRowsOutput = ws->nRowsOutput;
   RealType orThis[3][3];
   int i, j, r, c;
   for (i = 0; i < 3; i++)
     for (j = 0; j < 3; j++)
       orThis[i][j] = orMat[i * 3 + j];
   int nTspots = 0, nTspotsFrac = 0, nMatchesFracCalc = 0;
-  RealType **GrainSpots;
-  GrainSpots = allocMatrix(nRowsPerGrain, N_COL_GRAINSPOTS);
-  RealType **TheorSpots;
-  TheorSpots = allocMatrix(nRowsPerGrain, N_COL_THEORSPOTS);
-  RealType **GrainMatches;
-  GrainMatches = allocMatrix(MAX_N_MATCHES, N_COL_GRAINMATCHES);
-  RealType **AllGrainSpots;
-  AllGrainSpots = allocMatrix(nRowsOutput, N_COL_GRAINSPOTS);
-  if (AllGrainSpots == NULL) {
-    printf("Memory error: could not allocate memory for output matrix. Memory "
-           "full?\n");
-    return -1;
-  }
-  if (GrainMatches == NULL) {
-    printf("Memory error: could not allocate memory for output matrix. Memory "
-           "full?\n");
-    return -1;
-  }
 
-  if (TheorSpots == NULL) {
-    printf("Memory error: could not allocate memory for output matrix. Memory "
-           "full?\n");
-    return -1;
-  }
+  // Use pre-allocated workspace arrays
+  RealType **GrainSpots = ws->GrainSpots;
+  RealType **TheorSpots = ws->TheorSpots;
+  RealType **GrainMatches = ws->GrainMatches;
+  RealType **AllGrainSpots = ws->AllGrainSpots;
+
   RealType omemargins[181];
   RealType etamargins[MAX_N_RINGS];
   for (i = 1; i < 180; i++)
@@ -2056,10 +2060,6 @@ int DoIndexingSeed(double orMat[9], double posThis[3], double RefRad,
          "time: %lfs.\n",
          idNr, totalIDs, grID, fracMatchesThis, GrainMatches[0][12],
          GrainMatches[0][13], enTm);
-  FreeMemMatrix(GrainMatches, MAX_N_MATCHES);
-  FreeMemMatrix(TheorSpots, nRowsPerGrain);
-  FreeMemMatrix(GrainSpots, nRowsPerGrain);
-  FreeMemMatrix(AllGrainSpots, nRowsOutput);
   return grID;
 }
 
@@ -2289,6 +2289,18 @@ int main(int argc, char *argv[]) {
     fflush(stdout);
     printf("%d\n", omp_get_max_threads());
     int thisRowNr;
+    // Allocate per-thread workspaces
+    struct ThreadWorkspace **workspaces =
+        malloc(numProcs * sizeof(*workspaces));
+    for (int t = 0; t < numProcs; t++) {
+      workspaces[t] = init_workspace(n_hkls);
+      if (!workspaces[t]) {
+        printf("Failed to allocate workspace for thread %d\n", t);
+        exit(EXIT_FAILURE);
+      }
+    }
+    printf("Allocated %d thread workspaces.\n", numProcs);
+
 #pragma omp parallel for num_threads(numProcs) private(thisRowNr)              \
     schedule(dynamic)
     for (thisRowNr = 0; thisRowNr < nSpotIDs; thisRowNr++) {
@@ -2296,9 +2308,15 @@ int main(int argc, char *argv[]) {
       if (thisSpotID == -1)
         continue; // Skip invalid spots
       int idRow = thisRowNr + startRowNr;
+      struct ThreadWorkspace *ws = workspaces[omp_get_thread_num()];
       DoIndexing(thisSpotID, Params, idRow, thisRowNr, nSpotIDs,
-                 Params.RingsToReject, Params.nRingsToRejectCalc);
+                 Params.RingsToReject, Params.nRingsToRejectCalc, ws);
     }
+
+    // Free workspaces
+    for (int t = 0; t < numProcs; t++)
+      free_workspace(workspaces[t]);
+    free(workspaces);
     free(SpotIDs);
   } else {
     // Read the orientations from the grains.csv file, then do forward
@@ -2339,14 +2357,33 @@ int main(int argc, char *argv[]) {
              "Memory full?\n");
       exit(EXIT_FAILURE);
     }
+    // Allocate per-thread workspaces
+    struct ThreadWorkspace **workspaces2 =
+        malloc(numProcs * sizeof(*workspaces2));
+    for (int t = 0; t < numProcs; t++) {
+      workspaces2[t] = init_workspace(n_hkls);
+      if (!workspaces2[t]) {
+        printf("Failed to allocate workspace for thread %d\n", t);
+        exit(EXIT_FAILURE);
+      }
+    }
+    printf("Allocated %d thread workspaces for seed indexing.\n", numProcs);
+
 #pragma omp parallel for num_threads(numProcs) schedule(dynamic)
     for (grainNr = 0; grainNr < nGrains; grainNr++) {
+      struct ThreadWorkspace *ws = workspaces2[omp_get_thread_num()];
       // get the corresponding orient and position, feed to DoIndexingSeed
-      spotsIndexed[grainNr * 2 + 0] = DoIndexingSeed(
-          orients[grainNr], positions[grainNr], radii[grainNr], Params, grainNr,
-          grainNr, nGrains, Params.RingsToReject, Params.nRingsToRejectCalc);
+      spotsIndexed[grainNr * 2 + 0] =
+          DoIndexingSeed(orients[grainNr], positions[grainNr], radii[grainNr],
+                         Params, grainNr, grainNr, nGrains,
+                         Params.RingsToReject, Params.nRingsToRejectCalc, ws);
       spotsIndexed[grainNr * 2 + 1] = IDsFiles[grainNr];
     }
+
+    // Free workspaces
+    for (int t = 0; t < numProcs; t++)
+      free_workspace(workspaces2[t]);
+    free(workspaces2);
     // Write the SpotsToIndex.csv file, this will have 2 IDS, first will be the
     // newID, next is the original ID.
     printf("Writing SpotsToIndex.csv file with %d grains.\n", nGrains);
