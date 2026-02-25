@@ -290,6 +290,10 @@ def build_spot_lookup(unique_spots_df, spots_bin, nScans, tol_ome=1.0, tol_eta=1
 
     print(f"  Built spot lookup: {len(lookup)} entries")
     if len(lookup) > 0:
+        grain_counts = {}
+        for (g, s, sc) in lookup.keys():
+            grain_counts[g] = grain_counts.get(g, 0) + 1
+        print(f"  Entries per grain: {dict(sorted(grain_counts.items()))}")
         sample = next(iter(lookup.items()))
         print(f"  Sample entry: key={sample[0]} → spotID={sample[1]['spotID']}, ω={sample[1]['omega']:.2f}")
     elif not unique_spots_df.empty and spots_bin is not None:
@@ -577,6 +581,11 @@ if __name__ == '__main__':
     print("\nLoading unique spot associations...")
     unique_spots_df = load_unique_spots(topdir)
     print(f"  UniqueSpots: {len(unique_spots_df)}")
+    if not unique_spots_df.empty:
+        grain_nrs = sorted(unique_spots_df['GrainNr'].unique())
+        spots_per_grain = unique_spots_df.groupby('GrainNr').size().to_dict()
+        print(f"  GrainNr values present: {grain_nrs}")
+        print(f"  Spots per grain: {spots_per_grain}")
 
     # --- Load Spots.bin ---
     print("\nLoading Spots.bin...")
