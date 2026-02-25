@@ -194,7 +194,7 @@ Understanding the coordinate system is critical for correctly loading data into 
 
 MIDAS uses the **ESRF convention** for the laboratory coordinate system and here is the relation APS coordinates:
 
-| APS  | Direction | MIDAS_Coordinates |
+| MIDAS_Coordinates  | Direction | APS_Coordinates |
 |------|-----------|-----------------|
 | **X_L** | X-ray beam propagation direction (downstream) | **Z_L** | 
 | **Z'_L** | Tomographic rotation axis | **Y'_L** |
