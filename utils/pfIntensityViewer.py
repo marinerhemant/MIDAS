@@ -20,7 +20,7 @@ import dash_bootstrap_components as dbc
 # ──────────────────────────────────────────────────────────────
 # Constants
 # ──────────────────────────────────────────────────────────────
-COMMON_LAYOUT = dict(margin=dict(l=10, r=10, b=10, t=50), height=800, template="plotly_dark")
+COMMON_LAYOUT = dict(margin=dict(l=10, r=10, b=10, t=50), height=500, template="plotly_white")
 DEFAULT_PATCH_HALF = 15
 DEFAULT_REFRESH_MS = 500
 
@@ -262,7 +262,7 @@ if __name__ == '__main__':
     spotMetaArr = load_spot_meta(topdir)
 
     # ── Dash App ─────────────────────────────────────────────
-    external_stylesheets = [dbc.themes.CYBORG]
+    external_stylesheets = [dbc.themes.FLATLY]
     app = Dash(__name__, external_stylesheets=external_stylesheets)
     app.title = "PF-HEDM Sinogram & Intensity Viewer"
 
@@ -381,26 +381,32 @@ if __name__ == '__main__':
                         dbc.InputGroup([
                             dbc.InputGroupText("Min"),
                             dbc.Input(id='sino-vmin', type='number',
-                                      placeholder='auto', style={'color': '#000'}),
+                                      placeholder='auto'),
                             dbc.InputGroupText("Max"),
                             dbc.Input(id='sino-vmax', type='number',
-                                      placeholder='auto', style={'color': '#000'}),
+                                      placeholder='auto'),
                             dbc.Button("Apply", id='btn-sino-scale',
                                        color='info', size='sm'),
                         ], size='sm'),
+                        dbc.Checklist(id='sino-log-scale',
+                                     options=[{'label': ' Log scale', 'value': 'log'}],
+                                     value=[], inline=True, className='mt-1'),
                     ], width=6),
                     dbc.Col([
                         dbc.Label("Patch Scale:"),
                         dbc.InputGroup([
                             dbc.InputGroupText("Min"),
                             dbc.Input(id='patch-vmin', type='number',
-                                      placeholder='auto', style={'color': '#000'}),
+                                      placeholder='auto'),
                             dbc.InputGroupText("Max"),
                             dbc.Input(id='patch-vmax', type='number',
-                                      placeholder='auto', style={'color': '#000'}),
+                                      placeholder='auto'),
                             dbc.Button("Apply", id='btn-patch-scale',
                                        color='info', size='sm'),
                         ], size='sm'),
+                        dbc.Checklist(id='patch-log-scale',
+                                     options=[{'label': ' Log scale', 'value': 'log'}],
+                                     value=[], inline=True, className='mt-1'),
                     ], width=6),
                 ]),
             ], width=6),
@@ -520,8 +526,10 @@ if __name__ == '__main__':
         Input('col-slider', 'value'),
         Input('store-sino-vmin', 'data'),
         Input('store-sino-vmax', 'data'),
+        Input('sino-log-scale', 'value'),
     )
-    def update_sinogram(grainNr, variant, row, col, vmin, vmax):
+    def update_sinogram(grainNr, variant, row, col, vmin, vmax, logscale):
+        use_log = logscale and 'log' in logscale
         fig = go.Figure()
         if grainNr is None or variant not in sino_variants:
             fig.update_layout(title="No data", **COMMON_LAYOUT)
@@ -564,13 +572,15 @@ if __name__ == '__main__':
                 row_texts.append('<br>'.join(parts))
             hover_text.append(row_texts)
 
+        plot_data = np.log1p(sino) if use_log else sino
+        cb_title = 'log(1+I)' if use_log else 'Intensity'
         fig.add_trace(go.Heatmap(
-            z=sino,
+            z=plot_data,
             x=list(range(nScans)),
             y=y_indices,
             colorscale='Viridis',
             zmin=vmin, zmax=vmax,
-            colorbar=dict(title='Intensity'),
+            colorbar=dict(title=cb_title),
             hoverinfo='text',
             text=hover_text,
         ))
@@ -617,8 +627,10 @@ if __name__ == '__main__':
         Input('patch-size-slider', 'value'),
         Input('store-patch-vmin', 'data'),
         Input('store-patch-vmax', 'data'),
+        Input('patch-log-scale', 'value'),
     )
-    def update_patch(grainNr, row, col, patchHalf, vmin, vmax):
+    def update_patch(grainNr, row, col, patchHalf, vmin, vmax, logscale):
+        use_log = logscale and 'log' in logscale
         fig = go.Figure()
         if grainNr is None:
             fig.update_layout(title="Select a grain", **COMMON_LAYOUT)
@@ -648,11 +660,13 @@ if __name__ == '__main__':
                 **COMMON_LAYOUT)
             return fig
 
+        plot_data = np.log1p(patch) if use_log else patch
+        cb_title = 'log(1+I)' if use_log else 'Intensity'
         fig.add_trace(go.Heatmap(
-            z=patch,
+            z=plot_data,
             colorscale='Viridis',
             zmin=vmin, zmax=vmax,
-            colorbar=dict(title='Intensity'),
+            colorbar=dict(title=cb_title),
             hovertemplate=(
                 'Y: %{x}<br>'
                 'Z: %{y}<br>'
