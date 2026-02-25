@@ -1012,7 +1012,7 @@ void FitStrainIni(double X0[6], int nSpotsComp, double **spotsYZO, int nhkls,
   f_data.scratch->hklsIn2 = allocMatrix(nhkls, 7);
   f_data.scratch->spotsYZO = allocMatrix(nSpotsComp, 9);
   f_data.scratch->TheorSpots = allocMatrix(MaxNSpotsBest, 9);
-  f_data.scratch->SpotsYZOGCorr = allocMatrix(nSpotsComp, 3);
+  f_data.scratch->SpotsYZOGCorr = allocMatrix(nSpotsComp, 4);
   f_data.scratch->TheorSpotsYZWE = allocMatrix(MaxNSpotsBest, 3);
   f_data.scratch->Angles = malloc(MaxNSpotsBest * sizeof(double));
   int maxSpnr = 0;

@@ -1256,7 +1256,7 @@ void FitPositionIni(double X0[12], int nSpotsComp, double **spotsYZO,
   f_data.scratch = malloc(sizeof(struct OptimizeScratch));
   f_data.scratch->hkls = allocMatrix(nhkls, 7);
   f_data.scratch->TheorSpots = allocMatrix(MaxNSpotsBest, 9);
-  f_data.scratch->SpotsYZOGCorr = allocMatrix(nSpotsComp, 3);
+  f_data.scratch->SpotsYZOGCorr = allocMatrix(nSpotsComp, 4);
   f_data.scratch->TheorSpotsYZWE = allocMatrix(MaxNSpotsBest, 3);
   f_data.scratch->hklsIn2 = allocMatrix(nhkls, 7);
   f_data.scratch->spotsYZO = allocMatrix(nSpotsComp, 9);
@@ -1557,7 +1557,7 @@ void FitPosSec(double X0[3], int nSpotsComp, double **spotsYZO,
   f_data.scratch = malloc(sizeof(struct OptimizeScratch));
   f_data.scratch->hkls = allocMatrix(nhkls, 7);
   f_data.scratch->TheorSpots = allocMatrix(MaxNSpotsBest, 9);
-  f_data.scratch->SpotsYZOGCorr = allocMatrix(nSpotsComp, 3);
+  f_data.scratch->SpotsYZOGCorr = allocMatrix(nSpotsComp, 4);
   f_data.scratch->TheorSpotsYZWE = allocMatrix(MaxNSpotsBest, 3);
   // Pre-calculate invariants
   CorrectHKLsLatC(f_data.Strains, f_data.hkls, nhkls, Lsd, Wavelength,

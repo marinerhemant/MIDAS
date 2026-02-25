@@ -913,7 +913,7 @@ def main():
     parser.add_argument('-runIndexing', type=int, required=False, default=1, help='If want to skip Indexing, put to 0.')
     parser.add_argument('-startScanNr', type=int, required=False, default=1, help='If you want to do partial peaksearch. Default: 1')
     parser.add_argument('-minThresh', type=int, required=False, default=-1, help='If you want to filter out peaks with intensity less than this number. -1 disables this. This is only used for filtering out peaksearch results for small peaks, peaks with maxInt smaller than this will be filtered out.')
-    
+    parser.add_argument('-sinoType', type=str, required=False, default='raw', choices=['raw', 'norm', 'abs', 'normabs'], help='Sinogram type to use for reconstruction (raw, norm, abs, normabs). Default: raw')
     # Parse arguments
     args, unparsed = parser.parse_known_args()
     
@@ -937,7 +937,7 @@ def main():
     minThresh = args.minThresh
     micFN = args.micFN
     grainsFN = args.grainsFN
-    
+    sinoType = args.sinoType
     # Use current directory if no result directory specified
     if not topdir:
         topdir = os.getcwd()
@@ -1364,11 +1364,18 @@ def main():
                 for grNr in range(nGrs):
                     nSp = grainSpots[grNr]
                     thetas = omegas[grNr, :nSp]
-                    sino = np.transpose(Sinos[grNr, :nSp, :])
                     
-                    # Save sino and thetas
-                    Image.fromarray(sino).save(f'Sinos/sino_grNr_{str.zfill(str(grNr), 4)}.tif')
-                    np.savetxt(f'Thetas/thetas_grNr_{str.zfill(str(grNr), 4)}.txt', thetas, fmt='%.6f')
+                    # Load the requested sinogram variant directly from the TIFF
+                    sino_tif_fn = f'Sinos/sino_{sinoType}_grNr_{str(grNr).zfill(4)}.tif'
+                    if os.path.exists(sino_tif_fn):
+                        sino = np.array(Image.open(sino_tif_fn))
+                    else:
+                        logger.warning(f"Sinogram {sino_tif_fn} not found. Falling back to Sinos array.")
+                        sino = np.transpose(Sinos[grNr, :nSp, :])
+                    
+                    # Save bare sino (for legacy compatibility) and thetas
+                    Image.fromarray(np.transpose(Sinos[grNr, :nSp, :])).save(f'Sinos/sino_grNr_{str(grNr).zfill(4)}.tif')
+                    np.savetxt(f'Thetas/thetas_grNr_{str(grNr).zfill(4)}.txt', thetas, fmt='%.6f')
                     
                     # Reconstruct
                     recon = iradon(sino, theta=thetas)
