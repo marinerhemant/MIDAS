@@ -2324,37 +2324,52 @@ void extract_patches(const char *topdir, const char *outputFolder,
       /* --- Diagnostic prints for first 5 spots --- */
       if (patchesExtracted < 5 && yCen >= 0 && yCen < nrPixels && zCen >= 0 &&
           zCen < nrPixels) {
-        /* IntInt isn't saved in spotPosArr, but we can look it up in allSpots
-           if passed, or just see the max pixel value. Let's print the value at
-           (zCen, yCen) and permutations. */
 
-        /* The raw data made square */
-        double val_sq_zy = squareBuf[zCen * nrPixels + yCen];
-        double val_sq_yz = squareBuf[yCen * nrPixels + zCen]; // swapped
+        /* Find max value in a 21x21 window for each permutation */
+        double max_sq_zy = 0, max_sq_yz = 0;
+        double max_tr_zy = 0, max_tr_yz = 0;
+        double max_sq_flip_y = 0, max_sq_flip_z = 0, max_sq_flip_both = 0;
 
-        /* The transposed data (which is what PeaksFitting uses for extraction)
-         */
-        double val_tr_zy = transBuf[zCen * nrPixels + yCen];
-        double val_tr_yz = transBuf[yCen * nrPixels + zCen]; // swapped
+        for (int dz = -PATCH_HALF_SIZE; dz <= PATCH_HALF_SIZE; dz++) {
+          for (int dy = -PATCH_HALF_SIZE; dy <= PATCH_HALF_SIZE; dy++) {
+            int pz = zCen + dz;
+            int py = yCen + dy;
+            if (pz >= 0 && pz < nrPixels && py >= 0 && py < nrPixels) {
+              if (squareBuf[pz * nrPixels + py] > max_sq_zy)
+                max_sq_zy = squareBuf[pz * nrPixels + py];
+              if (squareBuf[py * nrPixels + pz] > max_sq_yz)
+                max_sq_yz = squareBuf[py * nrPixels + pz];
+              if (transBuf[pz * nrPixels + py] > max_tr_zy)
+                max_tr_zy = transBuf[pz * nrPixels + py];
+              if (transBuf[py * nrPixels + pz] > max_tr_yz)
+                max_tr_yz = transBuf[py * nrPixels + pz];
 
-        /* Flipped versions on the square buffer */
-        double val_sq_flip_y =
-            squareBuf[zCen * nrPixels + (nrPixels - 1 - yCen)];
-        double val_sq_flip_z =
-            squareBuf[(nrPixels - 1 - zCen) * nrPixels + yCen];
-        double val_sq_flip_both =
-            squareBuf[(nrPixels - 1 - zCen) * nrPixels + (nrPixels - 1 - yCen)];
+              int flip_y = nrPixels - 1 - py;
+              int flip_z = nrPixels - 1 - pz;
+              if (squareBuf[pz * nrPixels + flip_y] > max_sq_flip_y)
+                max_sq_flip_y = squareBuf[pz * nrPixels + flip_y];
+              if (squareBuf[flip_z * nrPixels + py] > max_sq_flip_z)
+                max_sq_flip_z = squareBuf[flip_z * nrPixels + py];
+              if (squareBuf[flip_z * nrPixels + flip_y] > max_sq_flip_both)
+                max_sq_flip_both = squareBuf[flip_z * nrPixels + flip_y];
+            }
+          }
+        }
 
-        printf("\n  [DEBUG Spot %d] scan=%d grain=%d spot=%d yCen=%d zCen=%d\n",
+        /* Attempt to get IntInt from spot data if we can - actually for now
+           just print origID The user can cross reference origID with their CSV
+           if needed, or we just rely on MAX values */
+        printf("\n  [DEBUG Spot %d] scan=%d grain=%d spot=%d "
+               "yCen=%d zCen=%d\n",
                patchesExtracted, scanNr, cells[ci].grainNr, cells[ci].spotNr,
                yCen, zCen);
-        printf("    Center Val (SquareBuf) : (Z,Y)=%8.1f | (Y,Z)=%8.1f\n",
-               val_sq_zy, val_sq_yz);
-        printf("    Center Val (TransBuf)  : (Z,Y)=%8.1f | (Y,Z)=%8.1f\n",
-               val_tr_zy, val_tr_yz);
-        printf("    SquareBuf Flips        : flipY=%8.1f | flipZ=%8.1f | "
+        printf("    Max Val 21x21 (SquareBuf) : (Z,Y)=%8.1f | (Y,Z)=%8.1f\n",
+               max_sq_zy, max_sq_yz);
+        printf("    Max Val 21x21 (TransBuf)  : (Z,Y)=%8.1f | (Y,Z)=%8.1f\n",
+               max_tr_zy, max_tr_yz);
+        printf("    SquareBuf Flips           : flipY=%8.1f | flipZ=%8.1f | "
                "flipBoth=%8.1f\n",
-               val_sq_flip_y, val_sq_flip_z, val_sq_flip_both);
+               max_sq_flip_y, max_sq_flip_z, max_sq_flip_both);
       }
 
       for (int dz = -PATCH_HALF_SIZE; dz <= PATCH_HALF_SIZE; dz++) {
