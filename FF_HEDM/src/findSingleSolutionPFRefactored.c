@@ -175,6 +175,19 @@ void generate_sinograms(SpotList *spotList,
 void extract_patches(const char *topdir, const char *outputFolder,
                      const char *paramFile, size_t nGrs, int maxNHKLs,
                      int nScans, int numProcs);
+
+/* FrameRequest struct and comparator for qsort (used in extract_patches) */
+typedef struct {
+  int frameIdx;
+  double yCen;
+  double zCen;
+  int cellIdx;
+} FrameRequest;
+
+static int cmp_frame_requests(const void *a, const void *b) {
+  return ((const FrameRequest *)a)->frameIdx -
+         ((const FrameRequest *)b)->frameIdx;
+}
 void save_orientation_results(UniqueOrientationsResult *uniqueResult,
                               const char *outputFolder);
 void free_resources(SpotList *spotList, UniqueOrientationsResult *uniqueResult);
@@ -1946,6 +1959,31 @@ void extract_patches(const char *topdir, const char *outputFolder,
   /* --- Per-scan loop: read Result_*.csv and zarr frames --- */
   int patchesExtracted = 0;
 
+  /* Pre-allocate per-thread frame buffers outside the loop */
+  size_t rawFrameSize = (size_t)nrPixelsY * nrPixelsZ;
+  int maxPxSize = 8; /* worst case: double */
+  size_t maxRawBytes = rawFrameSize * maxPxSize;
+  int sqPx = nrPixels;
+
+  /* Allocate one set of buffers per thread */
+  int nThreads = numProcs;
+  void **t_rawBuf = calloc(nThreads, sizeof(void *));
+  double **t_asymBuf = calloc(nThreads, sizeof(double *));
+  double **t_squareBuf = calloc(nThreads, sizeof(double *));
+  double **t_transBuf = calloc(nThreads, sizeof(double *));
+  double **t_temp1 = calloc(nThreads, sizeof(double *));
+  double **t_temp2 = calloc(nThreads, sizeof(double *));
+  for (int t = 0; t < nThreads; t++) {
+    t_rawBuf[t] = malloc(maxRawBytes + 4096);
+    t_asymBuf[t] = malloc(rawFrameSize * sizeof(double));
+    t_squareBuf[t] = malloc((size_t)sqPx * sqPx * sizeof(double));
+    t_transBuf[t] = malloc((size_t)sqPx * sqPx * sizeof(double));
+    t_temp1[t] = malloc((size_t)sqPx * sqPx * sizeof(double));
+    t_temp2[t] = malloc((size_t)sqPx * sqPx * sizeof(double));
+  }
+
+#pragma omp parallel for schedule(dynamic) num_threads(numProcs)               \
+    reduction(+ : patchesExtracted)
   for (int scanNr = 0; scanNr < nScans; scanNr++) {
     int thisStartNr = startFileNr + scanNr * nrFilesPerSweep;
 
@@ -2073,12 +2111,6 @@ void extract_patches(const char *topdir, const char *outputFolder,
              scanNr, nCells, maxResultID);
 
     /* --- Determine which frames we need --- */
-    typedef struct {
-      int frameIdx;
-      double yCen;
-      double zCen;
-      int cellIdx;
-    } FrameRequest;
     FrameRequest *requests = malloc(nCells * sizeof(FrameRequest));
     int nRequests = 0;
 
@@ -2136,8 +2168,6 @@ void extract_patches(const char *topdir, const char *outputFolder,
       free(requests);
       continue;
     }
-
-    /* Find the data chunk location in the zip */
     int dataLoc = -1;
     int nEntries = (int)zip_get_num_entries(archive, 0);
     for (int e = 0; e < nEntries; e++) {
@@ -2190,44 +2220,19 @@ void extract_patches(const char *topdir, const char *outputFolder,
       continue;
     }
 
-    /* Allocate frame buffers */
-    size_t rawFrameSize = (size_t)nrPixelsY * nrPixelsZ;
-    int pxSize =
-        (pxType == PX_DOUBLE)                                               ? 8
-        : (pxType == PX_FLOAT || pxType == PX_UINT32 || pxType == PX_INT32) ? 4
-                                                                            : 2;
-    size_t rawBytes = rawFrameSize * pxSize;
-    void *rawBuf = malloc(rawBytes + 4096);
-    double *asymBuf = malloc(rawFrameSize * sizeof(double));
-    double *squareBuf = malloc((size_t)nrPixels * nrPixels * sizeof(double));
-    double *transBuf = malloc((size_t)nrPixels * nrPixels * sizeof(double));
-    double *temp1 = malloc((size_t)nrPixels * nrPixels * sizeof(double));
-    double *temp2 = malloc((size_t)nrPixels * nrPixels * sizeof(double));
-
-    if (!rawBuf || !asymBuf || !squareBuf || !transBuf || !temp1 || !temp2) {
-      log_error("Failed to allocate frame buffers for scan %d", scanNr);
-      free(rawBuf);
-      free(asymBuf);
-      free(squareBuf);
-      free(transBuf);
-      free(temp1);
-      free(temp2);
-      zip_close(archive);
-      free(cells);
-      free(requests);
-      continue;
-    }
-
     /* Process each unique frame needed */
     int lastFrame = -1;
-    /* Sort requests by frameIdx to avoid re-reading */
-    for (int i = 0; i < nRequests - 1; i++)
-      for (int j = i + 1; j < nRequests; j++)
-        if (requests[i].frameIdx > requests[j].frameIdx) {
-          FrameRequest tmp = requests[i];
-          requests[i] = requests[j];
-          requests[j] = tmp;
-        }
+    /* Sort requests by frameIdx to minimize re-reads */
+    qsort(requests, nRequests, sizeof(FrameRequest), cmp_frame_requests);
+
+    /* Get per-thread buffers */
+    int tid = omp_get_thread_num();
+    void *rawBuf = t_rawBuf[tid];
+    double *asymBuf = t_asymBuf[tid];
+    double *squareBuf = t_squareBuf[tid];
+    double *transBuf = t_transBuf[tid];
+    double *temp1 = t_temp1[tid];
+    double *temp2 = t_temp2[tid];
 
     for (int r = 0; r < nRequests; r++) {
       int frameIdx = requests[r].frameIdx;
@@ -2258,7 +2263,7 @@ void extract_patches(const char *topdir, const char *outputFolder,
 
         /* Decompress with blosc */
         int decompSize =
-            blosc1_decompress(compressedBuf, rawBuf, rawBytes + 4096);
+            blosc1_decompress(compressedBuf, rawBuf, maxRawBytes + 4096);
         free(compressedBuf);
         if (decompSize <= 0)
           continue;
@@ -2305,12 +2310,6 @@ void extract_patches(const char *topdir, const char *outputFolder,
       patchesExtracted++;
     }
 
-    free(rawBuf);
-    free(asymBuf);
-    free(squareBuf);
-    free(transBuf);
-    free(temp1);
-    free(temp2);
     zip_close(archive);
     free(cells);
     free(requests);
@@ -2318,7 +2317,23 @@ void extract_patches(const char *topdir, const char *outputFolder,
     if (scanNr % 10 == 0 || scanNr == nScans - 1)
       printf("  Scan %d/%d: %d patches extracted so far\n", scanNr + 1, nScans,
              patchesExtracted);
+  } /* end OMP parallel for */
+
+  /* Free per-thread buffers */
+  for (int t = 0; t < nThreads; t++) {
+    free(t_rawBuf[t]);
+    free(t_asymBuf[t]);
+    free(t_squareBuf[t]);
+    free(t_transBuf[t]);
+    free(t_temp1[t]);
+    free(t_temp2[t]);
   }
+  free(t_rawBuf);
+  free(t_asymBuf);
+  free(t_squareBuf);
+  free(t_transBuf);
+  free(t_temp1);
+  free(t_temp2);
 
   printf("  Total patches extracted: %d\n", patchesExtracted);
 
