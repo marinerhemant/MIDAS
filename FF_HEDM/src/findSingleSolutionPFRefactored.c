@@ -2104,10 +2104,13 @@ void extract_patches(const char *topdir, const char *outputFolder,
     for (size_t g = 0; g < nGrs; g++) {
       for (int s = 0; s < maxNHKLs; s++) {
         size_t loc = g * maxNHKLs * nScans + s * nScans + scanNr;
+        /* Skip unfilled sinogram cells (no matched spot) */
+        if (spotIDArr[loc] <= 0)
+          continue;
         /* Check if this cell has valid pixel positions (from spotMeta) */
         double yCen = spotMeta[loc * SPOT_META_COLS + 2]; /* yCen_det */
         double zCen = spotMeta[loc * SPOT_META_COLS + 3]; /* zCen_det */
-        if (isnan(yCen) || isnan(zCen))
+        if (yCen == 0.0 && zCen == 0.0)
           continue;
 
         /* Get omega from omegas array */
