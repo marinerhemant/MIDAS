@@ -170,11 +170,19 @@ def load_omegas_and_hkls(topdir, nGrs, maxNHKLs):
 
 
 def load_unique_spots(topdir):
-    """Load UniqueOrientationSpots.csv → DataFrame."""
-    fn = os.path.join(topdir, 'UniqueOrientationSpots.csv')
+    """Load UniqueOrientationSpots.csv → DataFrame.
+    findSingleSolution writes this to {topdir}/Output/.
+    """
+    # Primary location: Output/ subfolder (where findSingleSolution writes it)
+    fn = os.path.join(topdir, 'Output', 'UniqueOrientationSpots.csv')
     if not os.path.exists(fn):
-        print(f"  Warning: {fn} not found. Intensity patches won't be available.")
+        # Fallback: check topdir directly
+        fn = os.path.join(topdir, 'UniqueOrientationSpots.csv')
+    if not os.path.exists(fn):
+        print(f"  Warning: UniqueOrientationSpots.csv not found in Output/ or topdir.")
+        print(f"  Checked: {os.path.join(topdir, 'Output')} and {topdir}")
         return pd.DataFrame(columns=['ID', 'GrainNr', 'SpotNr', 'RingNr', 'Omega', 'Eta'])
+    print(f"  Found: {fn}")
     return pd.read_csv(fn)
 
 
@@ -230,10 +238,21 @@ def build_spot_lookup(unique_spots_df, spots_bin, nScans, tol_ome=1.0, tol_eta=1
     and scanNr, mirroring the logic in generate_sinograms from findSingleSolution.
     """
     if spots_bin is None or unique_spots_df.empty:
+        print("  Skipped: spots_bin is None" if spots_bin is None else "  Skipped: unique_spots_df empty")
         return {}
 
+    # Pre-index Spots.bin by scanNr for O(1) scan lookup
+    print(f"  Pre-indexing {len(spots_bin)} spots by scanNr...")
+    scan_indices = {}
+    scan_nrs = spots_bin[:, 9].astype(int)
+    for scanNr in range(nScans):
+        mask = (scan_nrs == scanNr)
+        scan_indices[scanNr] = spots_bin[mask]
+    print(f"  Done. Avg spots/scan: {len(spots_bin) / max(1, nScans):.0f}")
+
     lookup = {}
-    for _, urow in unique_spots_df.iterrows():
+    n_unique = len(unique_spots_df)
+    for idx, (_, urow) in enumerate(unique_spots_df.iterrows()):
         grainNr = int(urow['GrainNr'])
         spotNr = int(urow['SpotNr'])
         refOmega = urow['Omega']
@@ -241,26 +260,33 @@ def build_spot_lookup(unique_spots_df, spots_bin, nScans, tol_ome=1.0, tol_eta=1
         refRingNr = int(urow['RingNr'])
 
         for scanNr in range(nScans):
-            # Find matching spots in Spots.bin for this scan
+            scan_spots = scan_indices.get(scanNr)
+            if scan_spots is None or len(scan_spots) == 0:
+                continue
+
+            # Filter by ringNr, omega, eta within this scan
             mask = (
-                (np.abs(spots_bin[:, 9] - scanNr) < 0.5) &  # scanNr match
-                (spots_bin[:, 5].astype(int) == refRingNr) &  # ringNr match
-                (np.abs(spots_bin[:, 2] - refOmega) < tol_ome) &  # omega match
-                (np.abs(spots_bin[:, 6] - refEta) < tol_eta)   # eta match
+                (scan_spots[:, 5].astype(int) == refRingNr) &
+                (np.abs(scan_spots[:, 2] - refOmega) < tol_ome) &
+                (np.abs(scan_spots[:, 6] - refEta) < tol_eta)
             )
-            matches = spots_bin[mask]
+            matches = scan_spots[mask]
             if len(matches) > 0:
                 # Take the best match (closest in omega+eta)
                 dist = np.abs(matches[:, 2] - refOmega) + np.abs(matches[:, 6] - refEta)
                 best = matches[np.argmin(dist)]
                 lookup[(grainNr, spotNr, scanNr)] = {
-                    'y_det': best[0],   # detector y position
-                    'x_det': best[1],   # detector x position
+                    'y_det': best[0],
+                    'x_det': best[1],
                     'omega': best[2],
                     'intensity': best[3],
                     'spotID': int(best[4]),
                     'eta': best[6],
                 }
+
+        # Progress for large datasets
+        if (idx + 1) % 200 == 0:
+            print(f"  Processed {idx + 1}/{n_unique} unique spots...")
 
     print(f"  Built spot lookup: {len(lookup)} entries")
     if len(lookup) > 0:
@@ -275,7 +301,6 @@ def build_spot_lookup(unique_spots_df, spots_bin, nScans, tol_ome=1.0, tol_eta=1
         print(f"  DEBUG: Spots.bin eta range: {spots_bin[:, 6].min():.2f} to {spots_bin[:, 6].max():.2f}")
         sample_u = unique_spots_df.iloc[0]
         print(f"  DEBUG: Sample UniqueSpot: ω={sample_u['Omega']:.2f}, η={sample_u['Eta']:.2f}, ring={sample_u['RingNr']}")
-        # Check if any spot matches just by omega
         n_ome = np.sum(np.abs(spots_bin[:, 2] - sample_u['Omega']) < tol_ome)
         n_eta = np.sum(np.abs(spots_bin[:, 6] - sample_u['Eta']) < tol_eta)
         n_ring = np.sum(spots_bin[:, 5].astype(int) == int(sample_u['RingNr']))
