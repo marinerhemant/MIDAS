@@ -1854,6 +1854,7 @@ void extract_patches(const char *topdir, const char *outputFolder,
   }
 
   int startFileNr = 0, nrFilesPerSweep = 0;
+  int startNr = 1, endNr = 0; /* StartNr/EndNr for Result CSV naming */
   double omegaStart = 0, omegaStep = 0;
   char fileStem[MAX_PATH_LEN] = "";
   int imTransOpt[10] = {0};
@@ -1868,6 +1869,10 @@ void extract_patches(const char *topdir, const char *outputFolder,
       sscanf(line, "%s %d", dummy, &startFileNr);
     else if (strncmp(line, "NrFilesPerSweep ", 16) == 0)
       sscanf(line, "%s %d", dummy, &nrFilesPerSweep);
+    else if (strncmp(line, "StartNr ", 8) == 0)
+      sscanf(line, "%s %d", dummy, &startNr);
+    else if (strncmp(line, "EndNr ", 6) == 0)
+      sscanf(line, "%s %d", dummy, &endNr);
     else if (strncmp(line, "OmegaFirstFile ", 15) == 0)
       sscanf(line, "%s %lf", dummy, &omegaStart);
     else if (strncmp(line, "OmegaStep ", 10) == 0)
@@ -1959,15 +1964,16 @@ void extract_patches(const char *topdir, const char *outputFolder,
 
     /* --- Read per-scan Result_*.csv for pixel positions --- */
     char resultFN[MAX_PATH_LEN];
-    int endNr = thisStartNr + nrFilesPerSweep - 1 - skipFrame;
+    int resEndNr = (endNr > 0) ? endNr : (startNr + nrFilesPerSweep - 1);
     sprintf(resultFN, "%s/%d/Result_StartNr_%d_EndNr_%d.csv", topdir,
-            thisStartNr, thisStartNr, endNr);
+            thisStartNr, startNr, resEndNr);
     FILE *rf = fopen(resultFN, "r");
     if (!rf) {
-      /* Try without skipFrame */
-      endNr = thisStartNr + nrFilesPerSweep - 1;
+      /* Try with skipFrame */
+      resEndNr =
+          (endNr > 0) ? endNr : (startNr + nrFilesPerSweep - 1 - skipFrame);
       sprintf(resultFN, "%s/%d/Result_StartNr_%d_EndNr_%d.csv", topdir,
-              thisStartNr, thisStartNr, endNr);
+              thisStartNr, startNr, resEndNr);
       rf = fopen(resultFN, "r");
     }
     if (!rf) {
