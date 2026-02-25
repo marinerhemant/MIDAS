@@ -142,7 +142,7 @@ The script's behavior is controlled via the following arguments:
 | `-MultFactor` | A multiplier for outlier rejection. A ring is rejected if its mean strain is > `MultFactor` * median strain. | `2.5` | `-MultFactor 3.0` |
 | `-FirstRingNr` | The index (1-based) of the first prominent ring visible in the data. Used for the initial `Lsd` estimate. | `1` | `-FirstRingNr 2` |
 | `-LsdGuess` | An initial guess for the sample-to-detector distance (in µm). | `1000000` | `-LsdGuess 210000` |
-| `-BCGuess` | An initial guess for the beam center `[y x]` (in pixels). If not provided, it is auto-detected. | `[0.0 0.0]` | `-BCGuess 1024.5 1021.0` |
+| `-BCGuess` | An initial guess for the beam center `[y z]` (in pixels). If not provided, it is auto-detected. | `[0.0 0.0]` | `-BCGuess 1024.5 1021.0` |
 | `-EtaBinSize` | The size of the azimuthal bins (in degrees) used by `CalibrantOMP` for fitting. | `5.0` | `-EtaBinSize 2.0` |
 | `-Threshold` | A manual intensity threshold for segmenting the rings. If `0`, it's auto-calculated. | `0` | `-Threshold 500` |
  | `-NoMedian` | Set to `1` to skip the median filter calculation (faster, but less robust background subtraction). | `0` | `-NoMedian 1` |

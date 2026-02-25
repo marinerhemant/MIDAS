@@ -1985,6 +1985,7 @@ void extract_patches(const char *topdir, const char *outputFolder,
 #pragma omp parallel for schedule(dynamic) num_threads(numProcs)               \
     reduction(+ : patchesExtracted)
   for (int scanNr = 0; scanNr < nScans; scanNr++) {
+    char tline[1024]; /* Thread-private line buffer for CSV reading */
     int thisStartNr = startFileNr + scanNr * nrFilesPerSweep;
 
     /* Collect all sinogram cells for this scan that have a matched spot */
@@ -2075,11 +2076,11 @@ void extract_patches(const char *topdir, const char *outputFolder,
     /* Use a simple array indexed by spotID (max ~20k per scan) */
     int maxResultID = 0;
     /* First pass: find max ID */
-    while (fgets(line, sizeof(line), rf)) {
-      if (line[0] == 'S' || line[0] == '#')
+    while (fgets(tline, sizeof(tline), rf)) {
+      if (tline[0] == 'S' || tline[0] == '#')
         continue;
       int sid;
-      if (sscanf(line, "%d", &sid) == 1 && sid > maxResultID)
+      if (sscanf(tline, "%d", &sid) == 1 && sid > maxResultID)
         maxResultID = sid;
     }
     rewind(rf);
@@ -2089,12 +2090,12 @@ void extract_patches(const char *topdir, const char *outputFolder,
     double *rOmega = calloc(maxResultID + 1, sizeof(double));
     int *rValid = calloc(maxResultID + 1, sizeof(int));
 
-    while (fgets(line, sizeof(line), rf)) {
-      if (line[0] == 'S' || line[0] == '#')
+    while (fgets(tline, sizeof(tline), rf)) {
+      if (tline[0] == 'S' || tline[0] == '#')
         continue;
       int sid;
       double intInt, omega, ycen, zcen;
-      if (sscanf(line, "%d %lf %lf %lf %lf", &sid, &intInt, &omega, &ycen,
+      if (sscanf(tline, "%d %lf %lf %lf %lf", &sid, &intInt, &omega, &ycen,
                  &zcen) == 5) {
         if (sid >= 0 && sid <= maxResultID) {
           rYCen[sid] = ycen;
