@@ -511,8 +511,24 @@ def _find_pixel_position(scanNr, spotID, id_mapping, params, zarr_shape):
         yCen, zCen = result_data[origID]
         yCen_px = int(round(yCen))
         zCen_px = int(round(zCen))
-        # Clamp to valid range
+
         nPxZ, nPxY = zarr_shape[1], zarr_shape[2]
+
+        # CRITICAL: Result_*.csv positions are in the ImTransOpt-transformed
+        # coordinate system (PeaksFitting applies ImTransOpt before fitting).
+        # But the zarr stores RAW data. We must reverse the transforms.
+        # Transforms were applied in forward order; reverse them in reverse order.
+        imTransOpt = params.get('ImTransOpt', [])
+        for opt in reversed(imTransOpt):
+            if opt == 1:    # flip LR → reverse Y
+                yCen_px = nPxY - 1 - yCen_px
+            elif opt == 2:  # flip UD → reverse Z
+                zCen_px = nPxZ - 1 - zCen_px
+            elif opt == 3:  # transpose → swap Y and Z
+                yCen_px, zCen_px = zCen_px, yCen_px
+            # opt == 0: identity, no change
+
+        # Clamp to valid range
         yCen_px = max(0, min(nPxY - 1, yCen_px))
         zCen_px = max(0, min(nPxZ - 1, zCen_px))
         return yCen_px, zCen_px
