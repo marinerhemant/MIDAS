@@ -1439,36 +1439,6 @@ void generate_sinograms(SpotList *spotList,
     free(scanCounts);
   }
 
-  /* Show match details for grain 0 spot 0 */
-  if (spotList->nSpots > 0) {
-    SpotData *sp0 = &spotList->spotData[0];
-    printf("  Grain 0 Spot 0: omega=%.3f eta=%.3f ring=%d\n", sp0->omega,
-           sp0->eta, sp0->ringNr);
-    printf("  Matches in first 3 scans:\n");
-    for (int sc = 0; sc < 3 && sc < nScans; sc++) {
-      int nMatch = 0;
-      for (size_t i = 0; i < nSpotsAll; i++) {
-        if ((int)allSpots[SPOTS_ARRAY_COLS * i + 9] != sc)
-          continue;
-        if ((int)allSpots[SPOTS_ARRAY_COLS * i + 5] != sp0->ringNr)
-          continue;
-        double dOme = fabs(allSpots[SPOTS_ARRAY_COLS * i + 2] - sp0->omega);
-        double dEta = fabs(allSpots[SPOTS_ARRAY_COLS * i + 6] - sp0->eta);
-        if (dOme < tolOme && dEta < tolEta) {
-          printf("    scan=%d spotIdx=%zu omega=%.3f eta=%.3f I=%.1f "
-                 "dOme=%.3f dEta=%.3f\n",
-                 sc, i, allSpots[SPOTS_ARRAY_COLS * i + 2],
-                 allSpots[SPOTS_ARRAY_COLS * i + 6],
-                 allSpots[SPOTS_ARRAY_COLS * i + 3], dOme, dEta);
-          nMatch++;
-        }
-      }
-      if (nMatch == 0)
-        printf("    scan=%d: NO MATCH\n", sc);
-    }
-  }
-  printf("=================================\n\n");
-
   /* Calculate average omega angles */
   for (size_t grainIdx = 0; grainIdx < uniqueResult->nUniques; grainIdx++) {
     for (size_t spotIdx = 0; spotIdx < (size_t)maxNHKLs; spotIdx++) {
@@ -2133,10 +2103,6 @@ void extract_patches(const char *topdir, const char *outputFolder,
       }
     }
     fclose(rf);
-
-    if (scanNr < 3)
-      printf("  Scan %d: nCells=%d maxResultID=%d nRequests pending...\n",
-             scanNr, nCells, maxResultID);
 
     /* --- Determine which frames we need --- */
     FrameRequest *requests = malloc(nCells * sizeof(FrameRequest));
