@@ -1302,6 +1302,12 @@ void FitPositionIni(double X0[12], int nSpotsComp, double **spotsYZO, int nhkls,
   f_data.wedge = wedge;
   f_data.chi = chi;
   f_data.scratch = malloc(sizeof(struct OptimizeScratch));
+  int maxSpnr = 0;
+  for (int sp = 0; sp < nSpotsComp; sp++) {
+    if ((int)spotsYZO[sp][8] > maxSpnr) maxSpnr = (int)spotsYZO[sp][8];
+  }
+  f_data.scratch->MaxSpnr = maxSpnr;
+  f_data.scratch->SpotLookup = malloc((maxSpnr + 1) * sizeof(int));
   f_data.scratch->hkls = allocMatrix(nhkls, 7);
   f_data.scratch->TheorSpots = allocMatrix(MaxNSpotsBest, 9);
   f_data.scratch->SpotsYZOGCorr = allocMatrix(nSpotsComp, 5);
@@ -1389,6 +1395,12 @@ void FitOrientIni(double X0[9], int nSpotsComp, double **spotsYZO, int nhkls,
   for (i = 0; i < 3; i++)
     f_data.Pos[i] = Pos[i];
   f_data.scratch = malloc(sizeof(struct OptimizeScratch));
+  int maxSpnr = 0;
+  for (int sp = 0; sp < nSpotsComp; sp++) {
+    if ((int)spotsYZO[sp][8] > maxSpnr) maxSpnr = (int)spotsYZO[sp][8];
+  }
+  f_data.scratch->MaxSpnr = maxSpnr;
+  f_data.scratch->SpotLookup = malloc((maxSpnr + 1) * sizeof(int));
   f_data.scratch->hkls = allocMatrix(nhkls, 7);
   f_data.scratch->TheorSpots = allocMatrix(MaxNSpotsBest, 9);
   f_data.scratch->SpotsYZOGCorr = allocMatrix(nSpotsComp, 5);
@@ -1478,6 +1490,12 @@ void FitStrainIni(double X0[6], int nSpotsComp, double **spotsYZO, int nhkls,
   for (i = 0; i < 3; i++)
     f_data.Orient[i] = Orient[i];
   f_data.scratch = malloc(sizeof(struct OptimizeScratch));
+  int maxSpnr = 0;
+  for (int sp = 0; sp < nSpotsComp; sp++) {
+    if ((int)spotsYZO[sp][8] > maxSpnr) maxSpnr = (int)spotsYZO[sp][8];
+  }
+  f_data.scratch->MaxSpnr = maxSpnr;
+  f_data.scratch->SpotLookup = malloc((maxSpnr + 1) * sizeof(int));
   f_data.scratch->hkls = allocMatrix(nhkls, 7);
   f_data.scratch->TheorSpots = allocMatrix(MaxNSpotsBest, 9);
   f_data.scratch->SpotsYZOGCorr = allocMatrix(nSpotsComp, 5);
@@ -1567,6 +1585,12 @@ void FitPosSec(double X0[3], int nSpotsComp, double **spotsYZO, int nhkls,
   for (i = 0; i < 6; i++)
     f_data.Strains[i] = Strains[i];
   f_data.scratch = malloc(sizeof(struct OptimizeScratch));
+  int maxSpnr = 0;
+  for (int sp = 0; sp < nSpotsComp; sp++) {
+    if ((int)spotsYZO[sp][8] > maxSpnr) maxSpnr = (int)spotsYZO[sp][8];
+  }
+  f_data.scratch->MaxSpnr = maxSpnr;
+  f_data.scratch->SpotLookup = malloc((maxSpnr + 1) * sizeof(int));
   f_data.scratch->hkls = allocMatrix(nhkls, 7);
   f_data.scratch->TheorSpots = allocMatrix(MaxNSpotsBest, 9);
   f_data.scratch->SpotsYZOGCorr = allocMatrix(nSpotsComp, 5);
