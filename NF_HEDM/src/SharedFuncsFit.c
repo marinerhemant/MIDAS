@@ -559,6 +559,9 @@ void CalcFracOverlap(const int NrOfFiles, const int nLayers, const int nTspots,
       OutofBounds = 0;
     }
     OmeBin = (int)floor((-OmegaStart + OmegaThis) / OmegaStep);
+    if (OmeBin < 0 || OmeBin >= NrOfFiles) {
+      OutofBounds = 1;
+    }
     double OmegaRad = deg2rad * OmegaThis;
     double sinOme = sin(OmegaRad);
     double cosOme = cos(OmegaRad);
@@ -726,6 +729,9 @@ void SimulateDiffractionImage(
     }
     // printf("%d %lf %lf %lf\n",j,ythis,zthis,OmegaThis);
     OmeBin = (int)floor((-OmegaStart + OmegaThis) / OmegaStep);
+    if (OmeBin < 0 || OmeBin >= NrOfFiles) {
+      OutofBounds = 1;
+    }
     double OmegaRad = deg2rad * OmegaThis;
     double sinOme = sin(OmegaRad);
     double cosOme = cos(OmegaRad);
