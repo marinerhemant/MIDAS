@@ -509,6 +509,24 @@ int main(int argc, char *argv[]) {
       continue;
     }
   }
+
+  // Format and print the parsed parameters for user diagnostic review
+  printf("\n======================================================\n");
+  printf("  FitOrientationOMP Parameter Summary\n");
+  printf("======================================================\n");
+  printf("  DataDirectory   : %s\n", direct);
+  printf("  MicFileBinary   : %s\n", MicFN);
+  printf("  GridFileName    : %s\n", gridfnfound ? gridfn : "grid.txt");
+  printf("  nLayers         : %d\n", nLayers);
+  printf("  StartNr-EndNr   : %d - %d\n", StartNr, EndNr);
+  printf("  OmegaRange      : %.2f (step: %.2f)\n", OmegaStart, OmegaStep);
+  printf("  Pixels (YxZ)    : %d x %d (px: %.4f)\n", NrPixelsY, NrPixelsZ, px);
+  printf("  Rot. Tilts      : tx:%.3f, ty:%.3f, tz:%.3f\n", tx, ty, tz);
+  printf("  Optimization    : OrientTol:%.3f, MinFrac:%.3f, nSaves:%d\n", tol,
+         minFracOverlap, nSaves);
+  printf("======================================================\n\n");
+  fflush(stdout);
+
   int it, jt, mt, nrFiles, nrPixels;
   for (it = 0; it < NoOfOmegaRanges; it++) {
     OmegaRang[it][0] = OmegaRanges[it][0];
