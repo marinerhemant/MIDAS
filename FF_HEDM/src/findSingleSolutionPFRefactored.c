@@ -2042,143 +2042,79 @@ void extract_patches(const char *topdir, const char *outputFolder,
     t_temp2[t] = malloc((size_t)sqPx * sqPx * sizeof(double));
   }
 
+  /* --- Load spotMeta and omegas for pixel positions --- */
+  char spotMetaFN[MAX_PATH_LEN], omegasFN[MAX_PATH_LEN];
+  sprintf(spotMetaFN, "%s/spotMeta_%zu_%d_%d.bin", topdir, nGrs, maxNHKLs,
+          nScans);
+  sprintf(omegasFN, "%s/omegas_%zu_%d.bin", topdir, nGrs, maxNHKLs);
+
+  double *spotMeta = NULL;
+  double *omegas = NULL;
+
+  {
+    FILE *f = fopen(spotMetaFN, "rb");
+    if (!f) {
+      log_error("Cannot open spotMeta: %s", spotMetaFN);
+      free(spotIDArr);
+      free(idMap_origID);
+      free(idMap_scanNr);
+      free(patchesArr);
+      free(spotPosArr);
+      return;
+    }
+    spotMeta = malloc(szSino * SPOT_META_COLS * sizeof(double));
+    fread(spotMeta, sizeof(double), szSino * SPOT_META_COLS, f);
+    fclose(f);
+  }
+  {
+    FILE *f = fopen(omegasFN, "rb");
+    if (!f) {
+      log_error("Cannot open omegas: %s", omegasFN);
+      free(spotMeta);
+      free(spotIDArr);
+      free(idMap_origID);
+      free(idMap_scanNr);
+      free(patchesArr);
+      free(spotPosArr);
+      return;
+    }
+    omegas = malloc((size_t)nGrs * maxNHKLs * sizeof(double));
+    fread(omegas, sizeof(double), (size_t)nGrs * maxNHKLs, f);
+    fclose(f);
+  }
+  printf("  Loaded spotMeta and omegas for pixel positions\n");
+
 #pragma omp parallel for schedule(dynamic) num_threads(numProcs)               \
     reduction(+ : patchesExtracted)
   for (int scanNr = 0; scanNr < nScans; scanNr++) {
-    char tline[1024]; /* Thread-private line buffer for CSV reading */
     int thisStartNr = startFileNr + scanNr * nrFilesPerSweep;
 
-    /* Collect all sinogram cells for this scan that have a matched spot */
+    /* Collect all sinogram cells for this scan that have yCen/zCen data */
+    FrameRequest *requests = malloc(nGrs * maxNHKLs * sizeof(FrameRequest));
+    int nRequests = 0;
+
+    /* Use a simple struct to track which (grain, spot) each request belongs
+     * to */
     typedef struct {
       int grainNr;
       int spotNr;
-      int globalID;
     } CellInfo;
     CellInfo *cells = malloc(nGrs * maxNHKLs * sizeof(CellInfo));
-    int nCells = 0;
 
     for (size_t g = 0; g < nGrs; g++) {
       for (int s = 0; s < maxNHKLs; s++) {
         size_t loc = g * maxNHKLs * nScans + s * nScans + scanNr;
-        int gid = spotIDArr[loc];
-        if (gid > 0 && gid <= nIDEntries) {
-          /* Verify this spot belongs to this scan */
-          if (idMap_scanNr[gid] == scanNr) {
-            cells[nCells].grainNr = (int)g;
-            cells[nCells].spotNr = s;
-            cells[nCells].globalID = gid;
-            nCells++;
-          }
-        }
-      }
-    }
+        /* Check if this cell has valid pixel positions (from spotMeta) */
+        double yCen = spotMeta[loc * SPOT_META_COLS + 2]; /* yCen_det */
+        double zCen = spotMeta[loc * SPOT_META_COLS + 3]; /* zCen_det */
+        if (isnan(yCen) || isnan(zCen))
+          continue;
 
-    if (nCells == 0) {
-      if (scanNr < 3) {
-        /* Diagnostic: why no cells? */
-        int nSpotIDs = 0, nInRange = 0, nScanMatch = 0;
-        for (size_t g = 0; g < nGrs; g++) {
-          for (int s = 0; s < maxNHKLs; s++) {
-            size_t loc = g * maxNHKLs * nScans + s * nScans + scanNr;
-            int gid = spotIDArr[loc];
-            if (gid > 0)
-              nSpotIDs++;
-            if (gid > 0 && gid <= nIDEntries) {
-              nInRange++;
-              if (idMap_scanNr[gid] == scanNr)
-                nScanMatch++;
-            }
-          }
-        }
-        printf("  Scan %d diag: spotIDs>0=%d inRange=%d scanMatch=%d (looking "
-               "for scanNr=%d)\n",
-               scanNr, nSpotIDs, nInRange, nScanMatch, scanNr);
-        if (nInRange > 0 && nScanMatch == 0) {
-          /* Show what scanNr values these IDs actually have */
-          for (size_t g = 0; g < nGrs && g < 1; g++) {
-            for (int s = 0; s < maxNHKLs && s < 5; s++) {
-              size_t loc = g * maxNHKLs * nScans + s * nScans + scanNr;
-              int gid = spotIDArr[loc];
-              if (gid > 0 && gid <= nIDEntries) {
-                printf("    gid=%d → origID=%d scanNr=%d\n", gid,
-                       idMap_origID[gid], idMap_scanNr[gid]);
-              }
-            }
-          }
-        }
-      }
-      free(cells);
-      continue;
-    }
+        /* Get omega from omegas array */
+        double omega = omegas[g * maxNHKLs + s];
+        if (omega < -9999.0)
+          continue;
 
-    /* --- Read per-scan Result_*.csv for pixel positions --- */
-    char resultFN[MAX_PATH_LEN];
-    int resEndNr = (endNr > 0) ? endNr : (startNr + nrFilesPerSweep - 1);
-    sprintf(resultFN, "%s/%d/Result_StartNr_%d_EndNr_%d.csv", topdir,
-            thisStartNr, startNr, resEndNr);
-    FILE *rf = fopen(resultFN, "r");
-    if (!rf) {
-      /* Try with skipFrame */
-      resEndNr =
-          (endNr > 0) ? endNr : (startNr + nrFilesPerSweep - 1 - skipFrame);
-      sprintf(resultFN, "%s/%d/Result_StartNr_%d_EndNr_%d.csv", topdir,
-              thisStartNr, startNr, resEndNr);
-      rf = fopen(resultFN, "r");
-    }
-    if (!rf) {
-      if (scanNr < 3)
-        log_error("Cannot open Result CSV for scan %d: %s", scanNr, resultFN);
-      free(cells);
-      continue;
-    }
-
-    /* Parse Result CSV: spotID → (yCen, zCen, omega) */
-    /* Use a simple array indexed by spotID (max ~20k per scan) */
-    int maxResultID = 0;
-    /* First pass: find max ID */
-    while (fgets(tline, sizeof(tline), rf)) {
-      if (tline[0] == 'S' || tline[0] == '#')
-        continue;
-      int sid;
-      if (sscanf(tline, "%d", &sid) == 1 && sid > maxResultID)
-        maxResultID = sid;
-    }
-    rewind(rf);
-
-    double *rYCen = calloc(maxResultID + 1, sizeof(double));
-    double *rZCen = calloc(maxResultID + 1, sizeof(double));
-    double *rOmega = calloc(maxResultID + 1, sizeof(double));
-    int *rValid = calloc(maxResultID + 1, sizeof(int));
-
-    while (fgets(tline, sizeof(tline), rf)) {
-      if (tline[0] == 'S' || tline[0] == '#')
-        continue;
-      int sid;
-      double intInt, omega, ycen, zcen;
-      if (sscanf(tline, "%d %lf %lf %lf %lf", &sid, &intInt, &omega, &ycen,
-                 &zcen) == 5) {
-        if (sid >= 0 && sid <= maxResultID) {
-          rYCen[sid] = ycen;
-          rZCen[sid] = zcen;
-          rOmega[sid] = omega;
-          rValid[sid] = 1;
-        }
-      }
-    }
-    fclose(rf);
-
-    if (scanNr < 3)
-      printf("  Scan %d: nCells=%d maxResultID=%d nRequests pending...\n",
-             scanNr, nCells, maxResultID);
-
-    /* --- Determine which frames we need --- */
-    FrameRequest *requests = malloc(nCells * sizeof(FrameRequest));
-    int nRequests = 0;
-
-    for (int c = 0; c < nCells; c++) {
-      int origID = idMap_origID[cells[c].globalID];
-      if (origID >= 0 && origID <= maxResultID && rValid[origID]) {
-        double omega = rOmega[origID];
         int frameIdx = 0;
         if (fabs(omegaStep) > 1e-9) {
           frameIdx = (int)round((omega - omegaStart) / omegaStep);
@@ -2191,24 +2127,19 @@ void extract_patches(const char *topdir, const char *outputFolder,
           frameIdx = nrFilesPerSweep - 1;
 
         requests[nRequests].frameIdx = frameIdx;
-        requests[nRequests].yCen = rYCen[origID];
-        requests[nRequests].zCen = rZCen[origID];
-        requests[nRequests].cellIdx = c;
+        requests[nRequests].yCen = yCen;
+        requests[nRequests].zCen = zCen;
+        requests[nRequests].cellIdx = nRequests; /* index into cells */
+        cells[nRequests].grainNr = (int)g;
+        cells[nRequests].spotNr = s;
         nRequests++;
 
         /* Store pixel position in output */
-        size_t posLoc =
-            ((size_t)cells[c].grainNr * maxNHKLs + cells[c].spotNr) * nScans +
-            scanNr;
-        spotPosArr[posLoc * 2 + 0] = rYCen[origID];
-        spotPosArr[posLoc * 2 + 1] = rZCen[origID];
+        size_t posLoc = ((size_t)g * maxNHKLs + s) * nScans + scanNr;
+        spotPosArr[posLoc * 2 + 0] = yCen;
+        spotPosArr[posLoc * 2 + 1] = zCen;
       }
     }
-
-    free(rYCen);
-    free(rZCen);
-    free(rOmega);
-    free(rValid);
 
     if (nRequests == 0) {
       free(cells);
@@ -2427,6 +2358,8 @@ void extract_patches(const char *topdir, const char *outputFolder,
   free(idMap_scanNr);
   free(patchesArr);
   free(spotPosArr);
+  free(spotMeta);
+  free(omegas);
   printf("=== Patch extraction complete ===\n");
 }
 

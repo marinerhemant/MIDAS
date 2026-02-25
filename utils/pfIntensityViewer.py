@@ -20,7 +20,7 @@ import dash_bootstrap_components as dbc
 # ──────────────────────────────────────────────────────────────
 # Constants
 # ──────────────────────────────────────────────────────────────
-COMMON_LAYOUT = dict(margin=dict(l=10, r=10, b=10, t=50), height=550, template="plotly_dark")
+COMMON_LAYOUT = dict(margin=dict(l=10, r=10, b=10, t=50), height=800, template="plotly_dark")
 DEFAULT_PATCH_HALF = 15
 DEFAULT_REFRESH_MS = 500
 
