@@ -1840,6 +1840,18 @@ void extract_patches(const char *topdir, const char *outputFolder,
   fclose(idMapF);
   printf("  Loaded IDsMergedScanning: %d entries\n", nIDEntries);
 
+  /* Quick diagnostic: show a sample of idMap values */
+  {
+    int sampleCount = 0;
+    for (int i = 1; i <= nIDEntries && sampleCount < 3; i++) {
+      if (idMap_origID[i] != 0 || idMap_scanNr[i] != 0) {
+        printf("    IDMap[%d]: origID=%d scanNr=%d\n", i, idMap_origID[i],
+               idMap_scanNr[i]);
+        sampleCount++;
+      }
+    }
+  }
+
   /* --- Read paramstest.txt for StartFileNrFirstLayer, NrFilesPerSweep, etc.
    * --- */
   char paramsFN[MAX_PATH_LEN];
@@ -1958,6 +1970,39 @@ void extract_patches(const char *topdir, const char *outputFolder,
     }
 
     if (nCells == 0) {
+      if (scanNr < 3) {
+        /* Diagnostic: why no cells? */
+        int nSpotIDs = 0, nInRange = 0, nScanMatch = 0;
+        for (size_t g = 0; g < nGrs; g++) {
+          for (int s = 0; s < maxNHKLs; s++) {
+            size_t loc = g * maxNHKLs * nScans + s * nScans + scanNr;
+            int gid = spotIDArr[loc];
+            if (gid > 0)
+              nSpotIDs++;
+            if (gid > 0 && gid <= nIDEntries) {
+              nInRange++;
+              if (idMap_scanNr[gid] == scanNr)
+                nScanMatch++;
+            }
+          }
+        }
+        printf("  Scan %d diag: spotIDs>0=%d inRange=%d scanMatch=%d (looking "
+               "for scanNr=%d)\n",
+               scanNr, nSpotIDs, nInRange, nScanMatch, scanNr);
+        if (nInRange > 0 && nScanMatch == 0) {
+          /* Show what scanNr values these IDs actually have */
+          for (size_t g = 0; g < nGrs && g < 1; g++) {
+            for (int s = 0; s < maxNHKLs && s < 5; s++) {
+              size_t loc = g * maxNHKLs * nScans + s * nScans + scanNr;
+              int gid = spotIDArr[loc];
+              if (gid > 0 && gid <= nIDEntries) {
+                printf("    gid=%d → origID=%d scanNr=%d\n", gid,
+                       idMap_origID[gid], idMap_scanNr[gid]);
+              }
+            }
+          }
+        }
+      }
       free(cells);
       continue;
     }
@@ -2017,6 +2062,10 @@ void extract_patches(const char *topdir, const char *outputFolder,
       }
     }
     fclose(rf);
+
+    if (scanNr < 3)
+      printf("  Scan %d: nCells=%d maxResultID=%d nRequests pending...\n",
+             scanNr, nCells, maxResultID);
 
     /* --- Determine which frames we need --- */
     typedef struct {
