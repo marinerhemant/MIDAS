@@ -236,9 +236,9 @@ int main(int argc, char *argv[]) {
       atof(argv[6]); /* Tolerance for omega angle when matching spots */
   double tolEta =
       atof(argv[7]); /* Tolerance for eta angle when matching spots */
-  int normalizeSino = (argc >= 9) ? atoi(argv[8]) : 1;
-  int absTransform = (argc >= 10) ? atoi(argv[9]) : 1;
-  const char *paramFile = (argc >= 11) ? argv[10] : "paramstest.txt";
+  const char *paramFile = (argc >= 9) ? argv[8] : "paramstest.txt";
+  int normalizeSino = (argc >= 10) ? atoi(argv[9]) : 1;
+  int absTransform = (argc >= 11) ? atoi(argv[10]) : 1;
 
   /* Validate input parameters */
   if (sgNr <= 0 || maxAng <= 0.0 || nScans <= 0 || numProcs <= 0 ||
