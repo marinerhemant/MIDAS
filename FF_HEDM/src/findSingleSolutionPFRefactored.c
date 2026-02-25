@@ -2367,6 +2367,47 @@ void extract_patches(const char *topdir, const char *outputFolder,
 
   printf("  Total patches extracted: %d\n", patchesExtracted);
 
+  /* --- Non-zero pixel / patch diagnostics (matches pfIntensityViewer) --- */
+  {
+    long long totalNonZeroPixels = 0;
+    int nonZeroPatches = 0;
+    int sampleGrain = -1, sampleSpot = -1, sampleScan = -1;
+    float sampleMax = 0;
+
+    for (size_t p = 0; p < totalPatches; p++) {
+      const float *patch = &patchesArr[p * patchPixels];
+      int hasNonZero = 0;
+      float pMax = 0;
+      for (size_t px = 0; px < patchPixels; px++) {
+        if (patch[px] != 0.0f) {
+          totalNonZeroPixels++;
+          hasNonZero = 1;
+          if (patch[px] > pMax)
+            pMax = patch[px];
+        }
+      }
+      if (hasNonZero) {
+        nonZeroPatches++;
+        if (sampleGrain < 0) {
+          /* Record first non-zero patch location */
+          size_t rem = p;
+          sampleGrain = (int)(rem / ((size_t)maxNHKLs * nScans));
+          rem -= (size_t)sampleGrain * maxNHKLs * nScans;
+          sampleSpot = (int)(rem / nScans);
+          sampleScan = (int)(rem % nScans);
+          sampleMax = pMax;
+        }
+      }
+    }
+    printf("  Total non-zero pixels across all patches: %lld\n",
+           totalNonZeroPixels);
+    printf("  Non-zero patches: %d / %zu\n", nonZeroPatches, totalPatches);
+    if (sampleGrain >= 0) {
+      printf("  Sample non-zero: grain=%d, spot=%d, scan=%d, max=%.1f\n",
+             sampleGrain, sampleSpot, sampleScan, sampleMax);
+    }
+  }
+
   /* --- Save patches binary --- */
   char patchesFN[MAX_PATH_LEN];
   sprintf(patchesFN, "%s/patches_%zu_%d_%d.bin", outputFolder, nGrs, maxNHKLs,
