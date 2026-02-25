@@ -2321,6 +2321,42 @@ void extract_patches(const char *topdir, const char *outputFolder,
           scanNr;
       float *outPatch = &patchesArr[patchLoc * patchPixels];
 
+      /* --- Diagnostic prints for first 5 spots --- */
+      if (patchesExtracted < 5 && yCen >= 0 && yCen < nrPixels && zCen >= 0 &&
+          zCen < nrPixels) {
+        /* IntInt isn't saved in spotPosArr, but we can look it up in allSpots
+           if passed, or just see the max pixel value. Let's print the value at
+           (zCen, yCen) and permutations. */
+
+        /* The raw data made square */
+        double val_sq_zy = squareBuf[zCen * nrPixels + yCen];
+        double val_sq_yz = squareBuf[yCen * nrPixels + zCen]; // swapped
+
+        /* The transposed data (which is what PeaksFitting uses for extraction)
+         */
+        double val_tr_zy = transBuf[zCen * nrPixels + yCen];
+        double val_tr_yz = transBuf[yCen * nrPixels + zCen]; // swapped
+
+        /* Flipped versions on the square buffer */
+        double val_sq_flip_y =
+            squareBuf[zCen * nrPixels + (nrPixels - 1 - yCen)];
+        double val_sq_flip_z =
+            squareBuf[(nrPixels - 1 - zCen) * nrPixels + yCen];
+        double val_sq_flip_both =
+            squareBuf[(nrPixels - 1 - zCen) * nrPixels + (nrPixels - 1 - yCen)];
+
+        printf("\n  [DEBUG Spot %d] scan=%d grain=%d spot=%d yCen=%d zCen=%d\n",
+               patchesExtracted, scanNr, cells[ci].grainNr, cells[ci].spotNr,
+               yCen, zCen);
+        printf("    Center Val (SquareBuf) : (Z,Y)=%8.1f | (Y,Z)=%8.1f\n",
+               val_sq_zy, val_sq_yz);
+        printf("    Center Val (TransBuf)  : (Z,Y)=%8.1f | (Y,Z)=%8.1f\n",
+               val_tr_zy, val_tr_yz);
+        printf("    SquareBuf Flips        : flipY=%8.1f | flipZ=%8.1f | "
+               "flipBoth=%8.1f\n",
+               val_sq_flip_y, val_sq_flip_z, val_sq_flip_both);
+      }
+
       for (int dz = -PATCH_HALF_SIZE; dz <= PATCH_HALF_SIZE; dz++) {
         for (int dy = -PATCH_HALF_SIZE; dy <= PATCH_HALF_SIZE; dy++) {
           int pz = zCen + dz;
