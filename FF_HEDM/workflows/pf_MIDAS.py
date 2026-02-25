@@ -265,14 +265,6 @@ def parallel_peaks(layerNr, positions, startNrFirstLayer, nrFilesPerSweep, topdi
     rad2deg = 57.2957795130823
     deg2rad = 0.0174532925199433
     
-    @jit(nopython=True)
-    def normalizeIntensitiesNumba(input, radius, hashArr):
-        nrSps = input.shape[0]
-        for i in range(nrSps):
-            if input[i, 3] > 0.001:
-                input[i, 3] = radius[int(hashArr[i, 1]) - 1, 1]
-        return input
-    
     # Initialize error tracking
     error_files = []
     
@@ -485,11 +477,21 @@ def parallel_peaks(layerNr, positions, startNrFirstLayer, nrFilesPerSweep, topdi
                 dfAllF.to_csv(outFN2, sep=' ', header=True, float_format='%.6f', index=False)
                 
             elif NormalizeIntensities == 2:
-                inpArr = dfAllF.to_numpy(copy=True)
-                hashArr = np.genfromtxt(f'IDRings.csv', skip_header=1)
-                headerThis = ' '.join(list(dfAllF))
-                outArr = normalizeIntensitiesNumba(inpArr, Result, hashArr)
-                np.savetxt(outFN2, outArr, header=headerThis, delimiter=' ', fmt='%.6f')
+                # Safely map the Spot ID to the Integrated Intensity from Radius.csv (Result)
+                # Result[:, 0] is the Spot IDs, Result[:, 1] is the IntInt
+                intensity_map = dict(zip(Result[:, 0], Result[:, 1]))
+                
+                # hashArr[:, 1] gets the original Spot IDs corresponding to the ordered dataframe
+                hashArr = np.genfromtxt('IDRings.csv', skip_header=1)
+                spot_ids = hashArr[:, 1]
+                
+                # Identify which rows are valid
+                valid_mask = dfAllF['GrainRadius'] > 0.001
+                
+                # Apply the safe mapping list comprehension
+                dfAllF.loc[valid_mask, 'GrainRadius'] = [intensity_map.get(sid, 0.0) for sid in spot_ids[valid_mask]]
+                
+                dfAllF.to_csv(outFN2, sep=' ', header=True, float_format='%.6f', index=False)
             
             elif NormalizeIntensities == 3:
                 # Use total raw intensity for the 3D peak
