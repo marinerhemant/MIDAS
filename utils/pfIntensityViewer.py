@@ -313,12 +313,11 @@ def build_spot_lookup(unique_spots_df, spots_bin, nScans, tol_ome=1.0, tol_eta=1
 # ──────────────────────────────────────────────────────────────
 # Intensity Patch Extraction
 # ──────────────────────────────────────────────────────────────
-def make_patch_extractor(spot_lookup, zarr_handles, params):
+def make_patch_extractor(spot_lookup, zarr_handles, params, id_mapping):
     """Create a cached patch extraction function."""
     omegaStart = params['OmegaStart']
     omegaStep = params['OmegaStep']
     nrFilesPerSweep = params['NrFilesPerSweep']
-    imTransOpt = params.get('ImTransOpt', [])
 
     @lru_cache(maxsize=512)
     def get_intensity_patch(grainNr, spotNr, scanNr, patchHalfSize):
@@ -354,50 +353,17 @@ def make_patch_extractor(spot_lookup, zarr_handles, params):
         if frameIdx >= nFrames:
             frameIdx = nFrames - 1
 
-        # Convert detector position (microns from beam center) to pixel coords
-        # The Spots.bin has (y, x) already in pixel-space as output by
-        # the pipeline (YCen, ZCen are in pixel units in the _PS.csv)
-        # But Spots.bin has y and x in different coordinate conventions.
-        # Spots.bin col0 = y (detector horizontal), col1 = x (unused in 2D)
-        # The actual mapping depends on how findSingleSolution reads the data.
-        # For now, use the spotID to retrieve the per-scan Result position,
-        # or use a simpler heuristic with BC and px.
-
-        # The y_det and x_det from Spots.bin are in the coordinate system
-        # defined by CalcRadiusAll. They represent (omega, 2theta equiv.)
-        # For the raw zarr extraction, we need pixel positions.
-        # We'll estimate pixel positions from the spot's eta and radius.
-
-        # Simpler approach: extract a neighborhood around the peak.
-        # From Spots.bin: y_det is the y position, not directly pixels.
-        # Let's use a fixed center approach and just grab the frame.
-        # The user can adjust patch size with the slider.
-
-        # For robust pixel position, read Result CSV if available.
-        # Fallback: use the full frame as the patch (clipped to patch size).
-
-        # Actually, looking at the data flow: Spots.bin is created by
-        # reading Result_*.csv which has columns including Y and Z in pixel space.
-        # Spots.bin[0] = y in sample coords, Spots.bin[1] = x (unused for 2D).
-        # The detector pixel position is encoded differently.
-
-        # Let's try to get the detector-space pixel position from the sinogram's
-        # associated merged spot. The Result_*.csv has YCen and ZCen.
-        # But we need to read them per-scan.
-
-        # For NOW: extract the full area around the center of the detector
-        # at the frame corresponding to the omega angle. The user can see
-        # where the peak is and adjust. This is the MVP approach.
-
-        # Better approach: read the specific scan's Result CSV to get pixel pos.
+        # Use IDsMergedScanning to translate global spotID → per-scan origID
+        # then look up pixel position in the scan's Result_*.csv
         spotID = info['spotID']
-        yCen_px, zCen_px = _find_pixel_position(scanNr, spotID, params, zarr_data.shape)
+        yCen_px, zCen_px = _find_pixel_position(scanNr, spotID, id_mapping, params, zarr_data.shape)
         if yCen_px is None:
-            print(f"  [PATCH DEBUG] _find_pixel_position returned None for scanNr={scanNr}, spotID={spotID}")
+            print(f"  [PATCH DEBUG] _find_pixel_position returned None for "
+                  f"scanNr={scanNr}, spotID={spotID}")
             return None
 
         print(f"  [PATCH] Grain {grainNr}, Spot {spotNr}, Scan {scanNr}: "
-              f"spotID={spotID}, frame={frameIdx}, Y={yCen_px}, Z={zCen_px}")
+              f"frame={frameIdx}, Y={yCen_px}, Z={zCen_px}")
 
         # Extract patch
         h = patchHalfSize
@@ -434,7 +400,9 @@ def make_patch_extractor(spot_lookup, zarr_handles, params):
 _result_cache = {}
 
 def _load_result_csv(scanDir):
-    """Load Result_*.csv from a scan directory → dict of spotID → (YCen_px, ZCen_px)."""
+    """Load Result_*.csv from a scan directory → dict of spotID → (YCen_px, ZCen_px).
+    SpotIDs here are per-scan IDs (1 to N per scan).
+    """
     if scanDir in _result_cache:
         return _result_cache[scanDir]
 
@@ -452,10 +420,7 @@ def _load_result_csv(scanDir):
                         continue
                     try:
                         spotID = int(float(parts[0]))
-                        # Result_*.csv columns (space-separated):
                         # 0:SpotID 1:IntIntensity 2:Omega 3:YCen(px) 4:ZCen(px)
-                        # 5:IMax 6:MinOme 7:MaxOme 8:SigmaR 9:SigmaEta
-                        # 10:NrPx 11:NrPxTot 12:Radius 13:Eta 14:RawSumInt
                         yCen = float(parts[3])
                         zCen = float(parts[4])
                         result_data[spotID] = (yCen, zCen)
@@ -467,19 +432,69 @@ def _load_result_csv(scanDir):
     _result_cache[scanDir] = result_data
     if result_data:
         sample = next(iter(result_data.items()))
-        print(f"    Result CSV loaded: {len(result_data)} spots (e.g. spotID={sample[0]} → Y={sample[1][0]:.1f}, Z={sample[1][1]:.1f})")
+        print(f"    Result CSV loaded: {len(result_data)} spots "
+              f"(e.g. spotID={sample[0]} → Y={sample[1][0]:.1f}, Z={sample[1][1]:.1f})")
     else:
         print(f"    Result CSV: 0 spots loaded from {scanDir}")
-        result_files = glob.glob(os.path.join(scanDir, 'Result_*.csv'))
-        print(f"    Files found: {result_files}")
+        result_files_found = glob.glob(os.path.join(scanDir, 'Result_*.csv'))
+        print(f"    Files found: {result_files_found}")
     return result_data
 
 
-def _find_pixel_position(scanNr, spotID, params, zarr_shape):
-    """Find the pixel position for a given spot in a given scan.
+def load_id_mapping(topdir):
+    """Load IDsMergedScanning.csv → dict mapping global spotID → (origID, scanNr).
+
+    SaveBinDataScanning.c renumbers all spots to global 1..N after sorting.
+    IDsMergedScanning.csv contains: NewID, OrigID, ScanNr
+    where OrigID is the per-scan Result_*.csv SpotID.
+    """
+    fn = os.path.join(topdir, 'IDsMergedScanning.csv')
+    if not os.path.exists(fn):
+        print(f"  Warning: {fn} not found.")
+        return {}
+
+    mapping = {}
+    with open(fn, 'r') as f:
+        for line in f:
+            line = line.strip()
+            if not line or line.startswith('NewID'):
+                continue  # skip header
+            parts = line.split(',')
+            if len(parts) < 3:
+                continue
+            try:
+                newID = int(parts[0])
+                origID = int(parts[1])
+                scanNr = int(parts[2])
+                mapping[newID] = (origID, scanNr)
+            except ValueError:
+                continue
+
+    print(f"  Loaded IDsMergedScanning.csv: {len(mapping)} entries")
+    if mapping:
+        sample = next(iter(mapping.items()))
+        print(f"  Sample: NewID={sample[0]} → OrigID={sample[1][0]}, ScanNr={sample[1][1]}")
+    return mapping
+
+
+def _find_pixel_position(scanNr, spotID, id_mapping, params, zarr_shape):
+    """Find the pixel position for a spot using IDsMergedScanning mapping.
+
+    1. Use id_mapping to translate global spotID → per-scan origID
+    2. Look up origID in the scan's Result_*.csv → (YCen_px, ZCen_px)
 
     Returns (yCen_px, zCen_px) or (None, None).
     """
+    # Translate global Spots.bin ID → per-scan Result_*.csv ID
+    if spotID not in id_mapping:
+        return None, None
+
+    origID, mappedScanNr = id_mapping[spotID]
+
+    # Verify scanNr matches (the spot must belong to this scan)
+    if mappedScanNr != scanNr:
+        return None, None
+
     startNr = params['StartFileNrFirstLayer']
     nrFiles = params['NrFilesPerSweep']
     topdir = params['topdir']
@@ -488,9 +503,8 @@ def _find_pixel_position(scanNr, spotID, params, zarr_shape):
     scanDir = os.path.join(topdir, str(thisStartNr))
 
     result_data = _load_result_csv(scanDir)
-    if spotID in result_data:
-        yCen, zCen = result_data[spotID]
-        # Convert to integer pixel indices
+    if origID in result_data:
+        yCen, zCen = result_data[origID]
         yCen_px = int(round(yCen))
         zCen_px = int(round(zCen))
         # Clamp to valid range
@@ -593,8 +607,12 @@ if __name__ == '__main__':
     if nScans > 3:
         print(f"  ... and {nScans - 3} more scans")
 
+    # --- Load ID mapping (global Spots.bin ID → per-scan Result ID) ---
+    print("\nLoading ID mapping...")
+    id_mapping = load_id_mapping(topdir)
+
     # --- Create patch extractor ---
-    get_intensity_patch = make_patch_extractor(spot_lookup, zarr_handles, params)
+    get_intensity_patch = make_patch_extractor(spot_lookup, zarr_handles, params, id_mapping)
 
     # ── Dash App ─────────────────────────────────────────────
     external_stylesheets = [dbc.themes.CYBORG]
