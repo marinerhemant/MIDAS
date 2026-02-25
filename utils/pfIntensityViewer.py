@@ -945,7 +945,7 @@ if __name__ == '__main__':
             # Vertical line at col
             fig.add_shape(
                 type='line', x0=col, x1=col,
-                y0=-0.5, y1=len(y_labels) - 0.5,
+                y0=-0.5, y1=nSp - 0.5,
                 line=dict(color='red', width=1, dash='dash'),
             )
             # Horizontal line at row
