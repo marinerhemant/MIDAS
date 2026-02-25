@@ -263,6 +263,25 @@ def build_spot_lookup(unique_spots_df, spots_bin, nScans, tol_ome=1.0, tol_eta=1
                 }
 
     print(f"  Built spot lookup: {len(lookup)} entries")
+    if len(lookup) > 0:
+        sample = next(iter(lookup.items()))
+        print(f"  Sample entry: key={sample[0]} → spotID={sample[1]['spotID']}, ω={sample[1]['omega']:.2f}")
+    elif not unique_spots_df.empty and spots_bin is not None:
+        # Diagnose why nothing matched
+        print(f"  DEBUG: UniqueSpots has {len(unique_spots_df)} entries")
+        print(f"  DEBUG: Spots.bin has {len(spots_bin)} entries")
+        print(f"  DEBUG: Spots.bin scanNr range: {spots_bin[:, 9].min():.0f} to {spots_bin[:, 9].max():.0f}")
+        print(f"  DEBUG: Spots.bin omega range: {spots_bin[:, 2].min():.2f} to {spots_bin[:, 2].max():.2f}")
+        print(f"  DEBUG: Spots.bin eta range: {spots_bin[:, 6].min():.2f} to {spots_bin[:, 6].max():.2f}")
+        sample_u = unique_spots_df.iloc[0]
+        print(f"  DEBUG: Sample UniqueSpot: ω={sample_u['Omega']:.2f}, η={sample_u['Eta']:.2f}, ring={sample_u['RingNr']}")
+        # Check if any spot matches just by omega
+        n_ome = np.sum(np.abs(spots_bin[:, 2] - sample_u['Omega']) < tol_ome)
+        n_eta = np.sum(np.abs(spots_bin[:, 6] - sample_u['Eta']) < tol_eta)
+        n_ring = np.sum(spots_bin[:, 5].astype(int) == int(sample_u['RingNr']))
+        print(f"  DEBUG: Spots matching sample ω (tol={tol_ome}): {n_ome}")
+        print(f"  DEBUG: Spots matching sample η (tol={tol_eta}): {n_eta}")
+        print(f"  DEBUG: Spots matching sample ringNr: {n_ring}")
     return lookup
 
 
@@ -281,6 +300,7 @@ def make_patch_extractor(spot_lookup, zarr_handles, params):
         """Extract the 2D intensity patch for one sinogram cell."""
         key = (grainNr, spotNr, scanNr)
         if key not in spot_lookup:
+            print(f"  [PATCH DEBUG] key {key} not in spot_lookup (size={len(spot_lookup)})")
             return None
 
         info = spot_lookup[key]
@@ -299,6 +319,7 @@ def make_patch_extractor(spot_lookup, zarr_handles, params):
 
         zarr_data = zarr_handles[scanNr] if scanNr < len(zarr_handles) else None
         if zarr_data is None:
+            print(f"  [PATCH DEBUG] zarr_data is None for scanNr={scanNr}")
             return None
 
         nFrames = zarr_data.shape[0]
@@ -347,7 +368,11 @@ def make_patch_extractor(spot_lookup, zarr_handles, params):
         spotID = info['spotID']
         yCen_px, zCen_px = _find_pixel_position(scanNr, spotID, params, zarr_data.shape)
         if yCen_px is None:
+            print(f"  [PATCH DEBUG] _find_pixel_position returned None for scanNr={scanNr}, spotID={spotID}")
             return None
+
+        print(f"  [PATCH] Grain {grainNr}, Spot {spotNr}, Scan {scanNr}: "
+              f"spotID={spotID}, frame={frameIdx}, Y={yCen_px}, Z={zCen_px}")
 
         # Extract patch
         h = patchHalfSize
@@ -415,6 +440,13 @@ def _load_result_csv(scanDir):
             continue
 
     _result_cache[scanDir] = result_data
+    if result_data:
+        sample = next(iter(result_data.items()))
+        print(f"    Result CSV loaded: {len(result_data)} spots (e.g. spotID={sample[0]} → Y={sample[1][0]:.1f}, Z={sample[1][1]:.1f})")
+    else:
+        print(f"    Result CSV: 0 spots loaded from {scanDir}")
+        result_files = glob.glob(os.path.join(scanDir, 'Result_*.csv'))
+        print(f"    Files found: {result_files}")
     return result_data
 
 
@@ -520,6 +552,21 @@ if __name__ == '__main__':
     zarr_handles = open_zarr_handles(zarr_paths)
     n_open = sum(1 for h in zarr_handles if h is not None)
     print(f"  Opened {n_open}/{len(zarr_handles)} zarr files")
+    if n_open > 0:
+        h0 = next(h for h in zarr_handles if h is not None)
+        print(f"  Zarr shape: {h0.shape} (frames, Z, Y)")
+
+    # --- Pre-load Result CSVs and show stats ---
+    print("\nPre-loading Result CSVs from scan directories...")
+    for scanIdx in range(min(3, nScans)):
+        startNr = params['StartFileNrFirstLayer']
+        nrFiles = params['NrFilesPerSweep']
+        thisStartNr = startNr + scanIdx * nrFiles
+        scanDir = os.path.join(topdir, str(thisStartNr))
+        print(f"  Scan {scanIdx} ({scanDir}):")
+        _load_result_csv(scanDir)
+    if nScans > 3:
+        print(f"  ... and {nScans - 3} more scans")
 
     # --- Create patch extractor ---
     get_intensity_patch = make_patch_extractor(spot_lookup, zarr_handles, params)
