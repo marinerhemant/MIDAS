@@ -691,14 +691,14 @@ if __name__ == '__main__':
                            tooltip={"placement": "bottom", "always_visible": True}),
             ], width=3),
             dbc.Col([
-                dbc.Label("Spot Nr (row):"),
+                dbc.Label("HKL Nr:"),
                 dcc.Slider(id='row-slider', min=0,
                            max=max(0, int(grainSpots[0]) - 1) if nGrs > 0 else 0,
                            step=1, value=0,
                            tooltip={"placement": "bottom", "always_visible": True}),
             ], width=2),
             dbc.Col([
-                dbc.Label("Scan Nr (col):"),
+                dbc.Label("Scan Nr:"),
                 dcc.Slider(id='col-slider', min=0, max=max(0, nScans - 1),
                            step=1, value=0,
                            tooltip={"placement": "bottom", "always_visible": True}),
@@ -798,17 +798,10 @@ if __name__ == '__main__':
         if not clickData or not clickData.get('points'):
             return no_update, no_update
         pt = clickData['points'][0]
-        # Heatmap click: x = scanNr, y = spot index (row)
-        col = int(pt.get('x', 0))  # scanNr
-        # y is the theta label string — need to get point number
-        pn = pt.get('pointNumber', None)
-        if pn is not None and isinstance(pn, (list, tuple)) and len(pn) >= 2:
-            row = int(pn[0])
-            col = int(pn[1])
-        elif pn is not None and isinstance(pn, int):
-            row = pn
-        else:
-            row = 0
+        # Heatmap with integer y-values: x=scanNr, y=spotNr (HKL index)
+        col = int(pt.get('x', 0))   # scanNr
+        row = int(pt.get('y', 0))   # spotNr (HKL index)
+        print(f"  [CLICK] row(HKL)={row}, col(scan)={col}")
         return row, col
 
     # --- Scale apply buttons → update stores ---
@@ -921,21 +914,30 @@ if __name__ == '__main__':
         sino = sino_data[grainNr, :nSp, :]  # shape: (nSp, nScans)
         theta_vals = omegas[grainNr, :nSp]
 
-        # Y-axis labels = theta values
-        y_labels = [f'{theta_vals[i]:.1f}' for i in range(nSp)]
+        # Y-axis = integer spot indices; omega shown via custom tick labels + hover
+        y_indices = list(range(nSp))
+        # Build omega tick labels for a subset of y positions
+        tick_step = max(1, nSp // 20)
+        tick_vals = list(range(0, nSp, tick_step))
+        tick_text = [f'{theta_vals[i]:.1f}°' for i in tick_vals]
+
+        # Custom hover text with omega values
+        hover_text = []
+        for si in range(nSp):
+            row_texts = []
+            for sc in range(nScans):
+                row_texts.append(f'Scan: {sc}<br>HKL: {si}<br>ω: {theta_vals[si]:.2f}°<br>I: {sino[si, sc]:.2f}')
+            hover_text.append(row_texts)
 
         fig.add_trace(go.Heatmap(
             z=sino,
             x=list(range(nScans)),
-            y=y_labels,
+            y=y_indices,
             colorscale='Viridis',
             zmin=vmin, zmax=vmax,
             colorbar=dict(title='Intensity'),
-            hovertemplate=(
-                'ScanNr: %{x}<br>'
-                'θ: %{y}°<br>'
-                'Intensity: %{z:.2f}<extra></extra>'
-            )
+            hoverinfo='text',
+            text=hover_text,
         ))
 
         # Crosshair at current selection
@@ -954,7 +956,7 @@ if __name__ == '__main__':
             )
             # Marker at intersection
             fig.add_trace(go.Scatter(
-                x=[col], y=[y_labels[row]],
+                x=[col], y=[row],
                 mode='markers',
                 marker=dict(color='red', size=10, symbol='x'),
                 showlegend=False,
@@ -964,7 +966,8 @@ if __name__ == '__main__':
         fig.update_layout(
             title=f'Sinogram: Grain {grainNr} ({variant}) — {nSp} spots',
             xaxis_title='Scan Nr',
-            yaxis_title='Rotation Angle (°)',
+            yaxis_title='HKL Nr',
+            yaxis=dict(tickvals=tick_vals, ticktext=tick_text),
             clickmode='event',
             **COMMON_LAYOUT,
         )
