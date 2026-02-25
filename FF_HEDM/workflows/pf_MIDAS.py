@@ -138,7 +138,7 @@ def check_and_exit_on_errors(error_files):
 def parallel_peaks(layerNr, positions, startNrFirstLayer, nrFilesPerSweep, topdir,
                   paramContents, baseNameParamFN, ConvertFiles, nchunks, preproc,
                   midas_path, doPeakSearch, numProcs, startNr, endNr, Lsd, NormalizeIntensities,
-                  omegaValues, minThresh, fStem, omegaFF, Ext):
+                  omegaValues, minThresh, fStem, omegaFF, Ext, padding=6):
     """
     Run peak search in parallel for a specific layer.
     
@@ -318,7 +318,7 @@ def parallel_peaks(layerNr, positions, startNrFirstLayer, nrFilesPerSweep, topdi
                 logger.error(f"Failed to generate zip for layer {layerNr}")
                 return f"Failed at generateZip for layer {layerNr}"
         else:
-            outFStem = f'{thisDir}/{fStem}_{str(thisStartNr).zfill(6)}.MIDAS.zip'
+            outFStem = f'{thisDir}/{fStem}_{str(thisStartNr).zfill(padding)}.MIDAS.zip'
         
         logger.info(f'Using FileStem: {outFStem}')
         
@@ -1060,6 +1060,7 @@ def main():
         tol_eta = 1
         omegaFN = ''
         omegaFF = -1
+        padding = 6
         
         # Parse parameters
         for line in paramContents:
@@ -1105,6 +1106,8 @@ def main():
                 px = float(line.split()[1])
             elif line.startswith('RingThresh'):
                 RingNrs.append(int(line.split()[1]))
+            elif line.startswith('Padding'):
+                padding = int(line.split()[1])
         
         # Call GetHKLList to generate hkls.csv
         cmd = f"{os.path.join(midas_path, 'FF_HEDM/bin/GetHKLList')} {baseNameParamFN}"
@@ -1151,7 +1154,7 @@ def main():
                     layerNr, positions, startNrFirstLayer, nrFilesPerSweep, topdir,
                     paramContents, baseNameParamFN, ConvertFiles, nchunks, preproc,
                     midas_path, doPeakSearch, numProcs, startNr, endNr, Lsd, NormalizeIntensities,
-                    omegaValues, minThresh, fStem, omegaFF, Ext
+                    omegaValues, minThresh, fStem, omegaFF, Ext, padding
                 ))
             
             # Wait for all tasks to complete
