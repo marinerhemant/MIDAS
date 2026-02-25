@@ -516,14 +516,45 @@ int main(int argc, char *argv[]) {
   printf("======================================================\n");
   printf("  DataDirectory   : %s\n", direct);
   printf("  MicFileBinary   : %s\n", MicFN);
+  printf("  ReducedFileName : %s\n", fn2);
   printf("  GridFileName    : %s\n", gridfnfound ? gridfn : "grid.txt");
   printf("  nLayers         : %d\n", nLayers);
+  int i_print;
+  for (i_print = 0; i_print < nLayers; i_print++) {
+    printf("    Layer %d      : Lsd=%.4f, BC=(%.4f, %.4f)\n", i_print,
+           Lsd[i_print], ybc[i_print], zbc[i_print]);
+  }
   printf("  StartNr-EndNr   : %d - %d\n", StartNr, EndNr);
   printf("  OmegaRange      : %.2f (step: %.2f)\n", OmegaStart, OmegaStep);
   printf("  Pixels (YxZ)    : %d x %d (px: %.4f)\n", NrPixelsY, NrPixelsZ, px);
+  printf("  SpaceGroup      : %d\n", SpaceGroup);
+  printf("  LatticeConstant : %.4f %.4f %.4f %.4f %.4f %.4f\n",
+         LatticeConstant[0], LatticeConstant[1], LatticeConstant[2],
+         LatticeConstant[3], LatticeConstant[4], LatticeConstant[5]);
+  printf("  MaxRingRad      : %.4f\n", MaxRingRad);
+  printf("  Wavelength      : %.4f\n", Wavelength);
+  printf("  Wedge           : %.4f\n", Wedge);
+  printf("  ExcludePoleAngle: %.4f\n", ExcludePoleAngle);
   printf("  Rot. Tilts      : tx:%.3f, ty:%.3f, tz:%.3f\n", tx, ty, tz);
   printf("  Optimization    : OrientTol:%.3f, MinFrac:%.3f, nSaves:%d\n", tol,
          minFracOverlap, nSaves);
+  printf("  Ice9Input       : %s\n", Flag ? "Yes" : "No");
+  printf("  NearestMiso     : %d\n", MinMiso);
+  printf("  OmegaRanges (%d) : ", NoOfOmegaRanges);
+  for (i_print = 0; i_print < NoOfOmegaRanges; i_print++)
+    printf("[%.2f, %.2f] ", OmegaRanges[i_print][0], OmegaRanges[i_print][1]);
+  printf("\n");
+  printf("  BoxSizes (%d)    : ", countr);
+  for (i_print = 0; i_print < countr; i_print++)
+    printf("[%.2f, %.2f, %.2f, %.2f] ", BoxSizes[i_print][0],
+           BoxSizes[i_print][1], BoxSizes[i_print][2], BoxSizes[i_print][3]);
+  printf("\n");
+  if (nRingsToUse > 0) {
+    printf("  RingsToUse (%d)  : ", nRingsToUse);
+    for (i_print = 0; i_print < nRingsToUse; i_print++)
+      printf("%d ", RingsToUse[i_print]);
+    printf("\n");
+  }
   printf("======================================================\n\n");
   fflush(stdout);
 

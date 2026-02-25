@@ -232,7 +232,7 @@ int main(int argc, char *argv[]) {
   printf("\n\n\t\tFinding Single Solution in PF-HEDM.\n\n");
 
   /* Parse command line arguments */
-  if (argc < 8 || argc > 10) {
+  if (argc < 8 || argc > 11) {
     print_usage(argv[0]);
     return EXIT_FAILURE;
   }
