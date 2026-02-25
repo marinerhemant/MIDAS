@@ -635,6 +635,8 @@ struct OptimizeScratch {
   double **hklsIn2;        // [nhkls][7] - Added to hoist the hkls copy buffer
   double **spotsYZO;       // [nSpotsComp][9] - Added to hoist spots copy buffer
   double *Angles;          // [MaxNSpotsBest] - Added for FitErrorsOrientStrains
+  int *SpotLookup;
+  int MaxSpnr;
 };
 
 struct data_FitPosIni {
@@ -812,12 +814,21 @@ FitErrorsPosT(double x[12], int nSpotsComp, double spotsYZOIn[nSpotsComp][9],
     SpotsYZOGCorr[nrSp][1] = zs;
     SpotsYZOGCorr[nrSp][2] = spotsYZO[nrSp][8];
   }
+  int *SpotLookup = scratch->SpotLookup;
+  int MaxSpnr = scratch->MaxSpnr;
+  for (i = 0; i <= MaxSpnr; i++)
+    SpotLookup[i] = -1;
+
   double **TheorSpotsYZWE = scratch->TheorSpotsYZWE;
   // TheorSpotsYZWE = allocMatrix(nTspots, 3);
   for (i = 0; i < nTspots; i++) {
     TheorSpotsYZWE[i][0] = TheorSpots[i][0];
     TheorSpotsYZWE[i][1] = TheorSpots[i][1];
     TheorSpotsYZWE[i][2] = TheorSpots[i][8];
+    int spnr = (int)TheorSpots[i][8];
+    if (spnr >= 0 && spnr <= MaxSpnr && SpotLookup[spnr] == -1) {
+      SpotLookup[spnr] = i;
+    }
   }
   int sp;
   double PosObs[2], PosTheor[2], Spnr;
@@ -826,13 +837,14 @@ FitErrorsPosT(double x[12], int nSpotsComp, double spotsYZOIn[nSpotsComp][9],
     PosObs[0] = SpotsYZOGCorr[sp][0];
     PosObs[1] = SpotsYZOGCorr[sp][1];
     Spnr = SpotsYZOGCorr[sp][2];
-    for (i = 0; i < nTspots; i++) {
-      if ((int)TheorSpotsYZWE[i][2] == (int)Spnr) {
-        PosTheor[0] = TheorSpotsYZWE[i][0];
-        PosTheor[1] = TheorSpotsYZWE[i][1];
+    int spnr_int = (int)Spnr;
+    if (spnr_int >= 0 && spnr_int <= MaxSpnr) {
+      int t_idx = SpotLookup[spnr_int];
+      if (t_idx != -1) {
+        PosTheor[0] = TheorSpotsYZWE[t_idx][0];
+        PosTheor[1] = TheorSpotsYZWE[t_idx][1];
         Error +=
             CalcNorm2((PosObs[0] - PosTheor[0]), (PosObs[1] - PosTheor[1]));
-        break;
       }
     }
   }
@@ -903,7 +915,14 @@ static inline double FitErrorsOrientStrains(
     SpotsYZOGCorr[nrSp][1] = g2;
     SpotsYZOGCorr[nrSp][2] = g3;
     SpotsYZOGCorr[nrSp][3] = spotsYZO[nrSp][8];
+    SpotsYZOGCorr[nrSp][4] = CalcNorm3(g1, g2, g3);
   }
+
+  int *SpotLookup = scratch->SpotLookup;
+  int MaxSpnr = scratch->MaxSpnr;
+  for (i = 0; i <= MaxSpnr; i++)
+    SpotLookup[i] = -1;
+
   double **TheorSpotsYZWE = scratch->TheorSpotsYZWE;
   // TheorSpotsYZWE = allocMatrix(nTspots, 4);
   for (i = 0; i < nTspots; i++) {
@@ -911,6 +930,12 @@ static inline double FitErrorsOrientStrains(
       TheorSpotsYZWE[i][j] = TheorSpots[i][j + 3];
     }
     TheorSpotsYZWE[i][3] = TheorSpots[i][8];
+    TheorSpotsYZWE[i][4] = CalcNorm3(TheorSpotsYZWE[i][0], TheorSpotsYZWE[i][1],
+                                     TheorSpotsYZWE[i][2]);
+    int spnr = (int)TheorSpots[i][8];
+    if (spnr >= 0 && spnr <= MaxSpnr && SpotLookup[spnr] == -1) {
+      SpotLookup[spnr] = i;
+    }
   }
   int sp, nTheorSpotsYZWER, Spnr;
   double GObs[3], GTheors[3], NormGObs, NormGTheors, DotGs, Numers, Denoms;
@@ -922,25 +947,33 @@ static inline double FitErrorsOrientStrains(
     GObs[0] = SpotsYZOGCorr[sp][0];
     GObs[1] = SpotsYZOGCorr[sp][1];
     GObs[2] = SpotsYZOGCorr[sp][2];
-    NormGObs = CalcNorm3(GObs[0], GObs[1], GObs[2]);
+    NormGObs = SpotsYZOGCorr[sp][4];
     Spnr = SpotsYZOGCorr[sp][3];
-    for (i = 0; i < nTspots; i++) {
-      if ((int)TheorSpotsYZWE[i][3] == (int)Spnr) {
-        GTheors[0] = TheorSpotsYZWE[i][0];
-        GTheors[1] = TheorSpotsYZWE[i][1];
-        GTheors[2] = TheorSpotsYZWE[i][2];
-        DotGs = ((GTheors[0] * GObs[0]) + (GTheors[1] * GObs[1]) +
-                 (GTheors[2] * GObs[2]));
-        NormGTheors = CalcNorm3(GTheors[0], GTheors[1], GTheors[2]);
-        Numers = DotGs;
-        Denoms = NormGObs * NormGTheors;
-        double ratio = Numers / Denoms;
-        if (ratio > 1.0)
-          ratio = 1.0;
-        if (ratio < -1.0)
-          ratio = -1.0;
-        Angles[nTheorSpotsYZWER] = fabs(acosd(ratio));
-        nTheorSpotsYZWER++;
+    int spnr_int = (int)Spnr;
+    if (spnr_int >= 0 && spnr_int <= MaxSpnr) {
+      int t_idx_start = SpotLookup[spnr_int];
+      if (t_idx_start != -1) {
+        for (i = t_idx_start; i < nTspots; i++) {
+          if ((int)TheorSpotsYZWE[i][3] != spnr_int)
+            break;
+          GTheors[0] = TheorSpotsYZWE[i][0];
+          GTheors[1] = TheorSpotsYZWE[i][1];
+          GTheors[2] = TheorSpotsYZWE[i][2];
+          DotGs = ((GTheors[0] * GObs[0]) + (GTheors[1] * GObs[1]) +
+                   (GTheors[2] * GObs[2]));
+          NormGTheors = TheorSpotsYZWE[i][4];
+          Numers = DotGs;
+          Denoms = NormGObs * NormGTheors;
+          double ratio = Numers / Denoms;
+          if (ratio > 1.0)
+            ratio = 1.0;
+          if (ratio < -1.0)
+            ratio = -1.0;
+          if (ratio >= 0.9975640502598242) {
+            Angles[nTheorSpotsYZWER] = fabs(acosd(ratio));
+            nTheorSpotsYZWER++;
+          }
+        }
       }
     }
     if (nTheorSpotsYZWER == 0)
@@ -1014,12 +1047,21 @@ static inline double FitErrorsStrains(
     SpotsYZOGCorr[nrSp][1] = zs;
     SpotsYZOGCorr[nrSp][2] = spotsYZO[nrSp][8];
   }
+  int *SpotLookup = scratch->SpotLookup;
+  int MaxSpnr = scratch->MaxSpnr;
+  for (i = 0; i <= MaxSpnr; i++)
+    SpotLookup[i] = -1;
+
   double **TheorSpotsYZWE = scratch->TheorSpotsYZWE;
   // TheorSpotsYZWE = allocMatrix(nTspots, 3);
   for (i = 0; i < nTspots; i++) {
     TheorSpotsYZWE[i][0] = TheorSpots[i][0];
     TheorSpotsYZWE[i][1] = TheorSpots[i][1];
     TheorSpotsYZWE[i][2] = TheorSpots[i][8];
+    int spnr = (int)TheorSpots[i][8];
+    if (spnr >= 0 && spnr <= MaxSpnr && SpotLookup[spnr] == -1) {
+      SpotLookup[spnr] = i;
+    }
   }
   int sp;
   double PosObs[2], PosTheor[2], Spnr;
@@ -1028,13 +1070,14 @@ static inline double FitErrorsStrains(
     PosObs[0] = SpotsYZOGCorr[sp][0];
     PosObs[1] = SpotsYZOGCorr[sp][1];
     Spnr = SpotsYZOGCorr[sp][2];
-    for (i = 0; i < nTspots; i++) {
-      if ((int)TheorSpotsYZWE[i][2] == (int)Spnr) {
-        PosTheor[0] = TheorSpotsYZWE[i][0];
-        PosTheor[1] = TheorSpotsYZWE[i][1];
+    int spnr_int = (int)Spnr;
+    if (spnr_int >= 0 && spnr_int <= MaxSpnr) {
+      int t_idx = SpotLookup[spnr_int];
+      if (t_idx != -1) {
+        PosTheor[0] = TheorSpotsYZWE[t_idx][0];
+        PosTheor[1] = TheorSpotsYZWE[t_idx][1];
         Error +=
             CalcNorm2((PosObs[0] - PosTheor[0]), (PosObs[1] - PosTheor[1]));
-        break;
       }
     }
   }
@@ -1261,8 +1304,8 @@ void FitPositionIni(double X0[12], int nSpotsComp, double **spotsYZO, int nhkls,
   f_data.scratch = malloc(sizeof(struct OptimizeScratch));
   f_data.scratch->hkls = allocMatrix(nhkls, 7);
   f_data.scratch->TheorSpots = allocMatrix(MaxNSpotsBest, 9);
-  f_data.scratch->SpotsYZOGCorr = allocMatrix(nSpotsComp, 4);
-  f_data.scratch->TheorSpotsYZWE = allocMatrix(MaxNSpotsBest, 3);
+  f_data.scratch->SpotsYZOGCorr = allocMatrix(nSpotsComp, 5);
+  f_data.scratch->TheorSpotsYZWE = allocMatrix(MaxNSpotsBest, 5);
   f_data.scratch->hklsIn2 = allocMatrix(nhkls, 7);
   f_data.scratch->spotsYZO = allocMatrix(nSpotsComp, 9);
   f_data.scratch->Angles = malloc(MaxNSpotsBest * sizeof(double));
@@ -1348,8 +1391,8 @@ void FitOrientIni(double X0[9], int nSpotsComp, double **spotsYZO, int nhkls,
   f_data.scratch = malloc(sizeof(struct OptimizeScratch));
   f_data.scratch->hkls = allocMatrix(nhkls, 7);
   f_data.scratch->TheorSpots = allocMatrix(MaxNSpotsBest, 9);
-  f_data.scratch->SpotsYZOGCorr = allocMatrix(nSpotsComp, 4);
-  f_data.scratch->TheorSpotsYZWE = allocMatrix(MaxNSpotsBest, 4);
+  f_data.scratch->SpotsYZOGCorr = allocMatrix(nSpotsComp, 5);
+  f_data.scratch->TheorSpotsYZWE = allocMatrix(MaxNSpotsBest, 5);
   f_data.scratch->hklsIn2 = allocMatrix(nhkls, 7);
   f_data.scratch->spotsYZO = allocMatrix(nSpotsComp, 9);
   f_data.scratch->Angles = malloc(MaxNSpotsBest * sizeof(double));
@@ -1437,8 +1480,8 @@ void FitStrainIni(double X0[6], int nSpotsComp, double **spotsYZO, int nhkls,
   f_data.scratch = malloc(sizeof(struct OptimizeScratch));
   f_data.scratch->hkls = allocMatrix(nhkls, 7);
   f_data.scratch->TheorSpots = allocMatrix(MaxNSpotsBest, 9);
-  f_data.scratch->SpotsYZOGCorr = allocMatrix(nSpotsComp, 4);
-  f_data.scratch->TheorSpotsYZWE = allocMatrix(MaxNSpotsBest, 3);
+  f_data.scratch->SpotsYZOGCorr = allocMatrix(nSpotsComp, 5);
+  f_data.scratch->TheorSpotsYZWE = allocMatrix(MaxNSpotsBest, 5);
   f_data.scratch->hklsIn2 = allocMatrix(nhkls, 7);
   f_data.scratch->spotsYZO = allocMatrix(nSpotsComp, 9);
   f_data.scratch->Angles = malloc(MaxNSpotsBest * sizeof(double));
@@ -1526,8 +1569,8 @@ void FitPosSec(double X0[3], int nSpotsComp, double **spotsYZO, int nhkls,
   f_data.scratch = malloc(sizeof(struct OptimizeScratch));
   f_data.scratch->hkls = allocMatrix(nhkls, 7);
   f_data.scratch->TheorSpots = allocMatrix(MaxNSpotsBest, 9);
-  f_data.scratch->SpotsYZOGCorr = allocMatrix(nSpotsComp, 4);
-  f_data.scratch->TheorSpotsYZWE = allocMatrix(MaxNSpotsBest, 3);
+  f_data.scratch->SpotsYZOGCorr = allocMatrix(nSpotsComp, 5);
+  f_data.scratch->TheorSpotsYZWE = allocMatrix(MaxNSpotsBest, 5);
   f_data.scratch->hklsIn2 = allocMatrix(nhkls, 7);
   f_data.scratch->spotsYZO = allocMatrix(nSpotsComp, 9);
   f_data.scratch->Angles = malloc(MaxNSpotsBest * sizeof(double));
