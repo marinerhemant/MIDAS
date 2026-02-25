@@ -1316,7 +1316,7 @@ def main():
                         shutil.move(dirn, dirn[4:])
             
             # Run find single solution
-            cmd = f"{os.path.join(midas_path, 'FF_HEDM/bin/findSingleSolutionPFRefactored')} {topdir} {sgnum} {maxang} {nScans} {numProcsLocal} {tol_ome} {tol_eta}"
+            cmd = f"{os.path.join(midas_path, 'FF_HEDM/bin/findSingleSolutionPFRefactored')} {topdir} {sgnum} {maxang} {nScans} {numProcsLocal} {tol_ome} {tol_eta} {NormalizeIntensities} 1 {baseNameParamFN}"
             logger.info(f"Running findSingleSolutionPFRefactored: {cmd}")
             result = subprocess.call(cmd, cwd=topdir, shell=True)
             
@@ -1475,7 +1475,7 @@ def main():
                             sys.exit(1)
                     
                     # Run find single solution again
-                    cmd = f"{os.path.join(midas_path, 'FF_HEDM/bin/findSingleSolutionPFRefactored')} {topdir} {sgnum} {maxang} {nScans} {numProcsLocal} {tol_ome} {tol_eta}"
+                    cmd = f"{os.path.join(midas_path, 'FF_HEDM/bin/findSingleSolutionPFRefactored')} {topdir} {sgnum} {maxang} {nScans} {numProcsLocal} {tol_ome} {tol_eta} {NormalizeIntensities} 1 {baseNameParamFN}"
                     logger.info(f"Running findSingleSolutionPFRefactored again: {cmd}")
                     subprocess.call(cmd, cwd=topdir, shell=True)
                     

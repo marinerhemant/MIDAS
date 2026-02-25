@@ -42,6 +42,10 @@
 #include <time.h>
 #include <unistd.h>
 
+/* Zarr/Blosc/Zip includes for patch extraction */
+#include <blosc2.h>
+#include <zip.h>
+
 /* Error codes for better error management */
 #define SUCCESS 0
 #define ERR_MEMORY_ALLOC -1
@@ -166,7 +170,11 @@ void generate_sinograms(SpotList *spotList,
                         UniqueOrientationsResult *uniqueResult,
                         double *allSpots, size_t nSpotsAll, int nScans,
                         double tolOme, double tolEta, const char *outputFolder,
-                        int numProcs, int normalizeSino, int absTransform);
+                        int numProcs, int normalizeSino, int absTransform,
+                        int *outMaxNHKLs);
+void extract_patches(const char *topdir, const char *outputFolder,
+                     const char *paramFile, size_t nGrs, int maxNHKLs,
+                     int nScans, int numProcs);
 void save_orientation_results(UniqueOrientationsResult *uniqueResult,
                               const char *outputFolder);
 void free_resources(SpotList *spotList, UniqueOrientationsResult *uniqueResult);
@@ -230,6 +238,7 @@ int main(int argc, char *argv[]) {
       atof(argv[7]); /* Tolerance for eta angle when matching spots */
   int normalizeSino = (argc >= 9) ? atoi(argv[8]) : 1;
   int absTransform = (argc >= 10) ? atoi(argv[9]) : 1;
+  const char *paramFile = (argc >= 11) ? argv[10] : "paramstest.txt";
 
   /* Validate input parameters */
   if (sgNr <= 0 || maxAng <= 0.0 || nScans <= 0 || numProcs <= 0 ||
@@ -310,9 +319,15 @@ int main(int argc, char *argv[]) {
 
   /* Generate sinograms for visualization */
   printf("Generating sinograms...\n");
+  int maxNHKLs = 0;
   generate_sinograms(&spotList, &uniqueResult, allSpots, nSpotsAll, nScans,
                      tolOme, tolEta, argv[1], numProcs, normalizeSino,
-                     absTransform);
+                     absTransform, &maxNHKLs);
+
+  /* Extract intensity patches for the viewer */
+  printf("Extracting patches...\n");
+  extract_patches(argv[1], argv[1], paramFile, uniqueResult.nUniques, maxNHKLs,
+                  nScans, numProcs);
 
   /* Clean up resources */
   printf("Cleaning up resources...\n");
@@ -1228,7 +1243,8 @@ void generate_sinograms(SpotList *spotList,
                         UniqueOrientationsResult *uniqueResult,
                         double *allSpots, size_t nSpotsAll, int nScans,
                         double tolOme, double tolEta, const char *outputFolder,
-                        int numProcs, int normalizeSino, int absTransform) {
+                        int numProcs, int normalizeSino, int absTransform,
+                        int *outMaxNHKLs) {
 
   /* Find maximum number of spots per grain */
   int maxNHKLs = 0;
@@ -1262,14 +1278,22 @@ void generate_sinograms(SpotList *spotList,
   size_t szSino = uniqueResult->nUniques * maxNHKLs * nScans;
   double *sinoArr = calloc(szSino, sizeof(*sinoArr));
 
+  /* Allocate spotID mapping array (same shape as sinoArr) */
+  int *spotIDArr = calloc(szSino, sizeof(*spotIDArr));
+
+/* Allocate per-cell metadata (4 doubles per cell: eta, 2theta, yCen, zCen) */
+#define SPOT_META_COLS 4
+  double *spotMetaArr = calloc(szSino * SPOT_META_COLS, sizeof(double));
+
   double *sumOmeArr =
       calloc(uniqueResult->nUniques * maxNHKLs, sizeof(*sumOmeArr));
   int *countOmeArr =
       calloc(uniqueResult->nUniques * maxNHKLs, sizeof(*countOmeArr));
 
-  if (!sinoArr || !sumOmeArr || !countOmeArr) {
+  if (!sinoArr || !spotIDArr || !spotMetaArr || !sumOmeArr || !countOmeArr) {
     free(nrHKLsPerGrain);
     free(sinoArr); /* Safe to free NULL */
+    free(spotIDArr);
     free(sumOmeArr);
     free(countOmeArr);
     fatal_error("Failed to allocate memory for sinograms");
@@ -1277,6 +1301,12 @@ void generate_sinograms(SpotList *spotList,
 
   /* Initialize arrays */
   memset(sinoArr, 0, szSino * sizeof(*sinoArr));
+  /* Initialize spotID to -1 (no match) */
+  for (size_t i = 0; i < szSino; i++)
+    spotIDArr[i] = -1;
+  /* Initialize spotMeta to NaN */
+  for (size_t i = 0; i < szSino * SPOT_META_COLS; i++)
+    spotMetaArr[i] = NAN;
 
   double *omeArr = calloc(uniqueResult->nUniques * maxNHKLs, sizeof(*omeArr));
   double *maxIntArr =
@@ -1340,8 +1370,19 @@ void generate_sinograms(SpotList *spotList,
           double currentIntensity = allSpots[SPOTS_ARRAY_COLS * spotIdx + 3];
           double currentOmega = allSpots[SPOTS_ARRAY_COLS * spotIdx + 2];
 
-          /* Store intensity values */
+          /* Store intensity and spotID mapping */
           sinoArr[locThis] = currentIntensity;
+          spotIDArr[locThis] = (int)allSpots[SPOTS_ARRAY_COLS * spotIdx + 4];
+
+          /* Store per-cell metadata: eta, 2theta, yCen_det, zCen_det */
+          spotMetaArr[locThis * SPOT_META_COLS + 0] =
+              allSpots[SPOTS_ARRAY_COLS * spotIdx + 6]; /* eta */
+          spotMetaArr[locThis * SPOT_META_COLS + 1] =
+              allSpots[SPOTS_ARRAY_COLS * spotIdx + 7] * 2.0; /* 2theta */
+          spotMetaArr[locThis * SPOT_META_COLS + 2] =
+              allSpots[SPOTS_ARRAY_COLS * spotIdx + 0]; /* yCen_det */
+          spotMetaArr[locThis * SPOT_META_COLS + 3] =
+              allSpots[SPOTS_ARRAY_COLS * spotIdx + 1]; /* zCen_det */
 
 /* Critical section to prevent race conditions */
 #pragma omp critical
@@ -1378,6 +1419,10 @@ void generate_sinograms(SpotList *spotList,
       continue;
     }
 
+    /* Also allocate parallel arrays for spotID and metadata sorting */
+    int **sortSpotIDs = malloc(maxNHKLs * sizeof(int *));
+    double **sortSpotMeta = malloc(maxNHKLs * sizeof(double *));
+
     /* Count valid spots */
     int nValidSpots = 0;
     for (int spotIdx = 0; spotIdx < maxNHKLs; spotIdx++) {
@@ -1385,25 +1430,37 @@ void generate_sinograms(SpotList *spotList,
       if (omeArr[grainIdx * maxNHKLs + spotIdx] > -9999.0) {
         sortData[nValidSpots].angle = omeArr[grainIdx * maxNHKLs + spotIdx];
         sortData[nValidSpots].intensities = calloc(nScans, sizeof(double));
+        sortSpotIDs[nValidSpots] = calloc(nScans, sizeof(int));
+        sortSpotMeta[nValidSpots] =
+            calloc(nScans * SPOT_META_COLS, sizeof(double));
 
-        if (!sortData[nValidSpots].intensities) {
-          log_error("Failed to allocate memory for intensity data for grain "
+        if (!sortData[nValidSpots].intensities || !sortSpotIDs[nValidSpots] ||
+            !sortSpotMeta[nValidSpots]) {
+          log_error("Failed to allocate memory for sort data for grain "
                     "%zu, spot %d",
                     grainIdx, spotIdx);
 
           /* Clean up previously allocated arrays */
           for (int k = 0; k < nValidSpots; k++) {
             free(sortData[k].intensities);
+            free(sortSpotIDs[k]);
+            free(sortSpotMeta[k]);
           }
           free(sortData);
+          free(sortSpotIDs);
+          free(sortSpotMeta);
           continue;
         }
 
-        /* Copy intensities for this spot across all scans */
+        /* Copy intensities and spotIDs for this spot across all scans */
         for (int scanIdx = 0; scanIdx < nScans; scanIdx++) {
-          sortData[nValidSpots].intensities[scanIdx] =
-              sinoArr[grainIdx * maxNHKLs * nScans + spotIdx * nScans +
-                      scanIdx];
+          size_t loc =
+              grainIdx * maxNHKLs * nScans + spotIdx * nScans + scanIdx;
+          sortData[nValidSpots].intensities[scanIdx] = sinoArr[loc];
+          sortSpotIDs[nValidSpots][scanIdx] = spotIDArr[loc];
+          for (int m = 0; m < SPOT_META_COLS; m++)
+            sortSpotMeta[nValidSpots][scanIdx * SPOT_META_COLS + m] =
+                spotMetaArr[loc * SPOT_META_COLS + m];
         }
 
         nValidSpots++;
@@ -1418,23 +1475,40 @@ void generate_sinograms(SpotList *spotList,
       /* Store sorted omega values */
       omeArr[grainIdx * maxNHKLs + spotIdx] = sortData[spotIdx].angle;
 
-      /* Store sorted intensity values */
+      /* Store sorted intensity and spotID values */
       for (int scanIdx = 0; scanIdx < nScans; scanIdx++) {
-        sinoArr[grainIdx * maxNHKLs * nScans + spotIdx * nScans + scanIdx] =
-            sortData[spotIdx].intensities[scanIdx];
+        size_t loc = grainIdx * maxNHKLs * nScans + spotIdx * nScans + scanIdx;
+        sinoArr[loc] = sortData[spotIdx].intensities[scanIdx];
+        spotIDArr[loc] = sortSpotIDs[spotIdx][scanIdx];
+        for (int m = 0; m < SPOT_META_COLS; m++)
+          spotMetaArr[loc * SPOT_META_COLS + m] =
+              sortSpotMeta[spotIdx][scanIdx * SPOT_META_COLS + m];
       }
 
-      /* Free intensity array */
+      /* Free arrays */
       free(sortData[spotIdx].intensities);
+      free(sortSpotIDs[spotIdx]);
+      free(sortSpotMeta[spotIdx]);
     }
 
     /* Set remaining spots to invalid */
     for (int spotIdx = nValidSpots; spotIdx < maxNHKLs; spotIdx++) {
       omeArr[grainIdx * maxNHKLs + spotIdx] = -10000.0;
+      for (int scanIdx = 0; scanIdx < nScans; scanIdx++) {
+        spotIDArr[grainIdx * maxNHKLs * nScans + spotIdx * nScans + scanIdx] =
+            -1;
+        for (int m = 0; m < SPOT_META_COLS; m++)
+          spotMetaArr[(grainIdx * maxNHKLs * nScans + spotIdx * nScans +
+                       scanIdx) *
+                          SPOT_META_COLS +
+                      m] = NAN;
+      }
     }
 
-    /* Free sort data array */
+    /* Free sort data arrays */
     free(sortData);
+    free(sortSpotIDs);
+    free(sortSpotMeta);
   }
 
   /* --- Make a raw copy before any transforms --- */
@@ -1546,13 +1620,678 @@ void generate_sinograms(SpotList *spotList,
   }
   printf("Saved all 4 sinogram combinations.\n");
 
+  /* Save spotID mapping (same shape as sinograms, for patch extraction) */
+  char spotMapFN[MAX_PATH_LEN];
+  sprintf(spotMapFN, "%s/spotMapping_%zu_%d_%d.bin", outputFolder,
+          uniqueResult->nUniques, maxNHKLs, nScans);
+  FILE *spotMapF = fopen(spotMapFN, "wb");
+  if (spotMapF) {
+    fwrite(spotIDArr, szSino * sizeof(int), 1, spotMapF);
+    fclose(spotMapF);
+    printf("Saved spot ID mapping: %s\n", spotMapFN);
+  }
+
+  /* Save per-cell metadata (eta, 2theta, yCen, zCen) for viewer hover */
+  char spotMetaFN[MAX_PATH_LEN];
+  sprintf(spotMetaFN, "%s/spotMeta_%zu_%d_%d.bin", outputFolder,
+          uniqueResult->nUniques, maxNHKLs, nScans);
+  FILE *smF = fopen(spotMetaFN, "wb");
+  if (smF) {
+    fwrite(spotMetaArr, szSino * SPOT_META_COLS * sizeof(double), 1, smF);
+    fclose(smF);
+    printf("Saved spot metadata: %s\n", spotMetaFN);
+  }
+
+  /* Return maxNHKLs to caller */
+  if (outMaxNHKLs)
+    *outMaxNHKLs = maxNHKLs;
+
   free(rawSinoArr);
   free(sinoArr);
+  free(spotIDArr);
+  free(spotMetaArr);
   free(omeArr);
   free(sumOmeArr);
   free(countOmeArr);
   free(maxIntArr);
   free(nrHKLsPerGrain);
+}
+
+/* ======================================================================
+ * PATCH EXTRACTION — Helper functions (from PeaksFittingOMPZarrRefactor)
+ * ====================================================================== */
+
+#define PATCH_HALF_SIZE 10
+#define PATCH_SIZE (2 * PATCH_HALF_SIZE + 1) /* 21 */
+
+/* Pixel type enum matching PeaksFitting */
+typedef enum {
+  PX_UINT16 = 0,
+  PX_UINT32 = 1,
+  PX_INT32 = 2,
+  PX_FLOAT = 3,
+  PX_DOUBLE = 4
+} PatchPixelType;
+
+static inline void patch_convertPixelsToDouble(const void *rawData,
+                                               double *dest, int nPixels,
+                                               PatchPixelType pxType) {
+  switch (pxType) {
+  case PX_UINT32:
+    for (int i = 0; i < nPixels; i++)
+      dest[i] = (double)((const uint32_t *)rawData)[i];
+    break;
+  case PX_INT32:
+    for (int i = 0; i < nPixels; i++)
+      dest[i] = (double)((const int32_t *)rawData)[i];
+    break;
+  case PX_FLOAT:
+    for (int i = 0; i < nPixels; i++)
+      dest[i] = (double)((const float *)rawData)[i];
+    break;
+  case PX_DOUBLE:
+    memcpy(dest, rawData, (size_t)nPixels * sizeof(double));
+    break;
+  case PX_UINT16:
+  default:
+    for (int i = 0; i < nPixels; i++)
+      dest[i] = (double)((const uint16_t *)rawData)[i];
+    break;
+  }
+}
+
+static inline void patch_makeSquareImage(int nrPixels, int nrPixelsY,
+                                         int nrPixelsZ, double *inImage,
+                                         double *outImage) {
+  memset(outImage, 0, (size_t)nrPixels * nrPixels * sizeof(double));
+  if (nrPixelsY == nrPixelsZ) {
+    memcpy(outImage, inImage, (size_t)nrPixels * nrPixels * sizeof(double));
+  } else if (nrPixelsY > nrPixelsZ) {
+    memcpy(outImage, inImage, (size_t)nrPixelsY * nrPixelsZ * sizeof(double));
+  } else {
+    for (int i = 0; i < nrPixelsZ; i++) {
+      memcpy(outImage + (size_t)i * nrPixels, inImage + (size_t)i * nrPixelsY,
+             (size_t)nrPixelsY * sizeof(double));
+    }
+  }
+}
+
+static inline void patch_applyImTransOpt(int nrTransOpt, int transOpt[10],
+                                         double *image, int nrPixels,
+                                         double *temp1, double *temp2) {
+  size_t nSq = (size_t)nrPixels * nrPixels;
+  memcpy(temp1, image, nSq * sizeof(double));
+
+  for (int k = 0; k < nrTransOpt; k++) {
+    switch (transOpt[k]) {
+    case 1: /* Flip horizontal (Y) */
+      for (int l = 0; l < nrPixels; l++)
+        for (int m = 0; m < nrPixels; m++)
+          temp2[l * nrPixels + m] = temp1[l * nrPixels + (nrPixels - m - 1)];
+      break;
+    case 2: /* Flip vertical (Z) */
+      for (int l = 0; l < nrPixels; l++)
+        for (int m = 0; m < nrPixels; m++)
+          temp2[l * nrPixels + m] = temp1[(nrPixels - l - 1) * nrPixels + m];
+      break;
+    case 3: /* Transpose */
+      for (int l = 0; l < nrPixels; l++)
+        for (int m = 0; m < nrPixels; m++)
+          temp2[l * nrPixels + m] = temp1[m * nrPixels + l];
+      break;
+    case 0:
+    default:
+      memcpy(temp2, temp1, nSq * sizeof(double));
+      break;
+    }
+    double *swap = temp1;
+    temp1 = temp2;
+    temp2 = swap;
+  }
+  memcpy(image, temp1, nSq * sizeof(double));
+}
+
+static inline void patch_transposeMatrix(double *x, int n, double *y) {
+  for (int i = 0; i < n; i++)
+    for (int j = 0; j < n; j++)
+      y[i * n + j] = x[j * n + i];
+}
+
+/* ======================================================================
+ * extract_patches — Read zarr frames and extract 21x21 patches
+ * ====================================================================== */
+
+/**
+ * Extract intensity patches for each sinogram cell.
+ *
+ * For each (grain, spot, scan) with a matched spot:
+ * 1. Translate globalSpotID → per-scan origID via IDsMergedScanning.csv
+ * 2. Look up pixel position from Result_*.csv
+ * 3. Read the zarr frame, apply PeaksFitting transforms
+ * 4. Extract 21×21 patch centered on pixel position
+ * 5. Save all patches as a float32 binary
+ */
+void extract_patches(const char *topdir, const char *outputFolder,
+                     const char *paramFile, size_t nGrs, int maxNHKLs,
+                     int nScans, int numProcs) {
+  printf("\n=== Extracting intensity patches ===\n");
+
+  /* --- Read spot mapping from file --- */
+  char spotMapFN[MAX_PATH_LEN];
+  sprintf(spotMapFN, "%s/spotMapping_%zu_%d_%d.bin", outputFolder, nGrs,
+          maxNHKLs, nScans);
+  size_t szSino = nGrs * maxNHKLs * nScans;
+  int *spotIDArr = malloc(szSino * sizeof(int));
+  if (!spotIDArr) {
+    log_error("Failed to allocate spotIDArr");
+    return;
+  }
+
+  FILE *smf = fopen(spotMapFN, "rb");
+  if (!smf) {
+    log_error("Cannot open %s", spotMapFN);
+    free(spotIDArr);
+    return;
+  }
+  fread(spotIDArr, sizeof(int), szSino, smf);
+  fclose(smf);
+
+  /* --- Read IDsMergedScanning.csv --- */
+  char idMapFN[MAX_PATH_LEN];
+  sprintf(idMapFN, "%s/IDsMergedScanning.csv", topdir);
+  FILE *idMapF = fopen(idMapFN, "r");
+  if (!idMapF) {
+    log_error("Cannot open %s", idMapFN);
+    free(spotIDArr);
+    return;
+  }
+
+  /* Count lines */
+  int nIDEntries = 0;
+  char line[1024];
+  while (fgets(line, sizeof(line), idMapF)) {
+    if (line[0] != 'N')
+      nIDEntries++; /* Skip header */
+  }
+  rewind(idMapF);
+
+  /* Allocate mapping arrays */
+  int *idMap_origID = calloc(nIDEntries + 1, sizeof(int)); /* 1-indexed */
+  int *idMap_scanNr = calloc(nIDEntries + 1, sizeof(int));
+  if (!idMap_origID || !idMap_scanNr) {
+    log_error("Failed to allocate ID mapping arrays");
+    fclose(idMapF);
+    free(spotIDArr);
+    free(idMap_origID);
+    free(idMap_scanNr);
+    return;
+  }
+
+  /* Parse the CSV */
+  while (fgets(line, sizeof(line), idMapF)) {
+    int newID, origID, scanNr;
+    if (sscanf(line, "%d,%d,%d", &newID, &origID, &scanNr) == 3) {
+      if (newID >= 0 && newID <= nIDEntries) {
+        idMap_origID[newID] = origID;
+        idMap_scanNr[newID] = scanNr;
+      }
+    }
+  }
+  fclose(idMapF);
+  printf("  Loaded IDsMergedScanning: %d entries\n", nIDEntries);
+
+  /* --- Read paramstest.txt for StartFileNrFirstLayer, NrFilesPerSweep, etc.
+   * --- */
+  char paramsFN[MAX_PATH_LEN];
+  sprintf(paramsFN, "%s/%s", topdir, paramFile);
+  FILE *pf = fopen(paramsFN, "r");
+  if (!pf) {
+    log_error("Cannot open %s", paramsFN);
+    free(spotIDArr);
+    free(idMap_origID);
+    free(idMap_scanNr);
+    return;
+  }
+
+  int startFileNr = 0, nrFilesPerSweep = 0;
+  double omegaStart = 0, omegaStep = 0;
+  char fileStem[MAX_PATH_LEN] = "";
+  int imTransOpt[10] = {0};
+  int nImTransOpt = 0;
+  int nrPixels = 0, nrPixelsY = 0, nrPixelsZ = 0;
+  int skipFrame = 0;
+  int padding = 6; /* default zero-padding for file numbers */
+  char dummy[1024];
+
+  while (fgets(line, sizeof(line), pf)) {
+    if (strncmp(line, "StartFileNrFirstLayer ", 21) == 0)
+      sscanf(line, "%s %d", dummy, &startFileNr);
+    else if (strncmp(line, "NrFilesPerSweep ", 16) == 0)
+      sscanf(line, "%s %d", dummy, &nrFilesPerSweep);
+    else if (strncmp(line, "OmegaFirstFile ", 15) == 0)
+      sscanf(line, "%s %lf", dummy, &omegaStart);
+    else if (strncmp(line, "OmegaStep ", 10) == 0)
+      sscanf(line, "%s %lf", dummy, &omegaStep);
+    else if (strncmp(line, "FileStem ", 9) == 0)
+      sscanf(line, "%s %s", dummy, fileStem);
+    else if (strncmp(line, "ImTransOpt ", 11) == 0) {
+      if (nImTransOpt < 10)
+        sscanf(line, "%s %d", dummy, &imTransOpt[nImTransOpt++]);
+    } else if (strncmp(line, "NrPixels ", 9) == 0)
+      sscanf(line, "%s %d", dummy, &nrPixels);
+    else if (strncmp(line, "NrPixelsY ", 10) == 0)
+      sscanf(line, "%s %d", dummy, &nrPixelsY);
+    else if (strncmp(line, "NrPixelsZ ", 10) == 0)
+      sscanf(line, "%s %d", dummy, &nrPixelsZ);
+    else if (strncmp(line, "SkipFrame ", 10) == 0)
+      sscanf(line, "%s %d", dummy, &skipFrame);
+    else if (strncmp(line, "Padding ", 8) == 0)
+      sscanf(line, "%s %d", dummy, &padding);
+  }
+  fclose(pf);
+
+  if (nrPixels == 0)
+    nrPixels = (nrPixelsY > nrPixelsZ) ? nrPixelsY : nrPixelsZ;
+  printf("  Params: StartNr=%d NrFiles=%d OmeStart=%.1f OmeStep=%.3f "
+         "NrPx=%d(%dx%d) nImTrans=%d Padding=%d\n",
+         startFileNr, nrFilesPerSweep, omegaStart, omegaStep, nrPixels,
+         nrPixelsY, nrPixelsZ, nImTransOpt, padding);
+
+  /* --- Allocate output patches array (float32) --- */
+  size_t patchPixels = PATCH_SIZE * PATCH_SIZE; /* 21*21 = 441 */
+  size_t totalPatches = (size_t)nGrs * maxNHKLs * nScans;
+  float *patchesArr = calloc(totalPatches * patchPixels, sizeof(float));
+  double *spotPosArr = calloc(totalPatches * 2, sizeof(double));
+  if (!patchesArr || !spotPosArr) {
+    log_error("Failed to allocate patches array (%.1f MB)",
+              (double)(totalPatches * patchPixels * sizeof(float)) /
+                  (1024.0 * 1024.0));
+    free(spotIDArr);
+    free(idMap_origID);
+    free(idMap_scanNr);
+    free(patchesArr);
+    free(spotPosArr);
+    return;
+  }
+  /* Initialize spotPos to -1 */
+  for (size_t i = 0; i < totalPatches * 2; i++)
+    spotPosArr[i] = -1.0;
+
+  printf("  Allocated patches: %.1f MB\n",
+         (double)(totalPatches * patchPixels * sizeof(float)) /
+             (1024.0 * 1024.0));
+
+  /* --- Per-scan loop: read Result_*.csv and zarr frames --- */
+  int patchesExtracted = 0;
+
+  for (int scanNr = 0; scanNr < nScans; scanNr++) {
+    int thisStartNr = startFileNr + scanNr * nrFilesPerSweep;
+
+    /* Collect all sinogram cells for this scan that have a matched spot */
+    typedef struct {
+      int grainNr;
+      int spotNr;
+      int globalID;
+    } CellInfo;
+    CellInfo *cells = malloc(nGrs * maxNHKLs * sizeof(CellInfo));
+    int nCells = 0;
+
+    for (size_t g = 0; g < nGrs; g++) {
+      for (int s = 0; s < maxNHKLs; s++) {
+        size_t loc = g * maxNHKLs * nScans + s * nScans + scanNr;
+        int gid = spotIDArr[loc];
+        if (gid > 0 && gid <= nIDEntries) {
+          /* Verify this spot belongs to this scan */
+          if (idMap_scanNr[gid] == scanNr) {
+            cells[nCells].grainNr = (int)g;
+            cells[nCells].spotNr = s;
+            cells[nCells].globalID = gid;
+            nCells++;
+          }
+        }
+      }
+    }
+
+    if (nCells == 0) {
+      free(cells);
+      continue;
+    }
+
+    /* --- Read per-scan Result_*.csv for pixel positions --- */
+    char resultFN[MAX_PATH_LEN];
+    int endNr = thisStartNr + nrFilesPerSweep - 1 - skipFrame;
+    sprintf(resultFN, "%s/%d/Result_StartNr_%d_EndNr_%d.csv", topdir,
+            thisStartNr, thisStartNr, endNr);
+    FILE *rf = fopen(resultFN, "r");
+    if (!rf) {
+      /* Try without skipFrame */
+      endNr = thisStartNr + nrFilesPerSweep - 1;
+      sprintf(resultFN, "%s/%d/Result_StartNr_%d_EndNr_%d.csv", topdir,
+              thisStartNr, thisStartNr, endNr);
+      rf = fopen(resultFN, "r");
+    }
+    if (!rf) {
+      if (scanNr < 3)
+        log_error("Cannot open Result CSV for scan %d: %s", scanNr, resultFN);
+      free(cells);
+      continue;
+    }
+
+    /* Parse Result CSV: spotID → (yCen, zCen, omega) */
+    /* Use a simple array indexed by spotID (max ~20k per scan) */
+    int maxResultID = 0;
+    /* First pass: find max ID */
+    while (fgets(line, sizeof(line), rf)) {
+      if (line[0] == 'S' || line[0] == '#')
+        continue;
+      int sid;
+      if (sscanf(line, "%d", &sid) == 1 && sid > maxResultID)
+        maxResultID = sid;
+    }
+    rewind(rf);
+
+    double *rYCen = calloc(maxResultID + 1, sizeof(double));
+    double *rZCen = calloc(maxResultID + 1, sizeof(double));
+    double *rOmega = calloc(maxResultID + 1, sizeof(double));
+    int *rValid = calloc(maxResultID + 1, sizeof(int));
+
+    while (fgets(line, sizeof(line), rf)) {
+      if (line[0] == 'S' || line[0] == '#')
+        continue;
+      int sid;
+      double intInt, omega, ycen, zcen;
+      if (sscanf(line, "%d %lf %lf %lf %lf", &sid, &intInt, &omega, &ycen,
+                 &zcen) == 5) {
+        if (sid >= 0 && sid <= maxResultID) {
+          rYCen[sid] = ycen;
+          rZCen[sid] = zcen;
+          rOmega[sid] = omega;
+          rValid[sid] = 1;
+        }
+      }
+    }
+    fclose(rf);
+
+    /* --- Determine which frames we need --- */
+    typedef struct {
+      int frameIdx;
+      double yCen;
+      double zCen;
+      int cellIdx;
+    } FrameRequest;
+    FrameRequest *requests = malloc(nCells * sizeof(FrameRequest));
+    int nRequests = 0;
+
+    for (int c = 0; c < nCells; c++) {
+      int origID = idMap_origID[cells[c].globalID];
+      if (origID >= 0 && origID <= maxResultID && rValid[origID]) {
+        double omega = rOmega[origID];
+        int frameIdx = 0;
+        if (fabs(omegaStep) > 1e-9) {
+          frameIdx = (int)round((omega - omegaStart) / omegaStep);
+        }
+        if (frameIdx < 0)
+          frameIdx += nrFilesPerSweep;
+        if (frameIdx < 0)
+          frameIdx = 0;
+        if (frameIdx >= nrFilesPerSweep)
+          frameIdx = nrFilesPerSweep - 1;
+
+        requests[nRequests].frameIdx = frameIdx;
+        requests[nRequests].yCen = rYCen[origID];
+        requests[nRequests].zCen = rZCen[origID];
+        requests[nRequests].cellIdx = c;
+        nRequests++;
+
+        /* Store pixel position in output */
+        size_t posLoc =
+            ((size_t)cells[c].grainNr * maxNHKLs + cells[c].spotNr) * nScans +
+            scanNr;
+        spotPosArr[posLoc * 2 + 0] = rYCen[origID];
+        spotPosArr[posLoc * 2 + 1] = rZCen[origID];
+      }
+    }
+
+    free(rYCen);
+    free(rZCen);
+    free(rOmega);
+    free(rValid);
+
+    if (nRequests == 0) {
+      free(cells);
+      free(requests);
+      continue;
+    }
+
+    /* --- Open zarr zip file --- */
+    char zarFN[MAX_PATH_LEN];
+    sprintf(zarFN, "%s/%d/%s_%0*d.MIDAS.zip", topdir, thisStartNr, fileStem,
+            padding, thisStartNr);
+    int errorp = 0;
+    zip_t *archive = zip_open(zarFN, 0, &errorp);
+    if (!archive) {
+      if (scanNr < 3)
+        log_error("Cannot open zarr %s (err=%d)", zarFN, errorp);
+      free(cells);
+      free(requests);
+      continue;
+    }
+
+    /* Find the data chunk location in the zip */
+    int dataLoc = -1;
+    int nEntries = (int)zip_get_num_entries(archive, 0);
+    for (int e = 0; e < nEntries; e++) {
+      const char *name = zip_get_name(archive, e, 0);
+      if (name && strstr(name, "exchange/data/0.0.0")) {
+        dataLoc = e;
+        break;
+      }
+    }
+    if (dataLoc < 0) {
+      /* Try single-chunk format */
+      for (int e = 0; e < nEntries; e++) {
+        const char *name = zip_get_name(archive, e, 0);
+        if (name && strstr(name, "exchange/data/0")) {
+          dataLoc = e;
+          break;
+        }
+      }
+    }
+
+    /* Determine pixel type from zarr metadata */
+    PatchPixelType pxType = PX_UINT16;
+    for (int e = 0; e < nEntries; e++) {
+      const char *name = zip_get_name(archive, e, 0);
+      if (name && strstr(name, "exchange/data/.zarray")) {
+        zip_file_t *zf = zip_fopen_index(archive, e, 0);
+        if (zf) {
+          char buf[4096];
+          int nr = (int)zip_fread(zf, buf, sizeof(buf) - 1);
+          buf[nr] = '\0';
+          zip_fclose(zf);
+          if (strstr(buf, "float32") || strstr(buf, "<f4"))
+            pxType = PX_FLOAT;
+          else if (strstr(buf, "float64") || strstr(buf, "<f8"))
+            pxType = PX_DOUBLE;
+          else if (strstr(buf, "uint32") || strstr(buf, "<u4"))
+            pxType = PX_UINT32;
+          else if (strstr(buf, "int32") || strstr(buf, "<i4"))
+            pxType = PX_INT32;
+        }
+        break;
+      }
+    }
+
+    if (dataLoc < 0) {
+      log_error("Cannot find data in zarr %s", zarFN);
+      zip_close(archive);
+      free(cells);
+      free(requests);
+      continue;
+    }
+
+    /* Allocate frame buffers */
+    size_t rawFrameSize = (size_t)nrPixelsY * nrPixelsZ;
+    int pxSize =
+        (pxType == PX_DOUBLE)                                               ? 8
+        : (pxType == PX_FLOAT || pxType == PX_UINT32 || pxType == PX_INT32) ? 4
+                                                                            : 2;
+    size_t rawBytes = rawFrameSize * pxSize;
+    void *rawBuf = malloc(rawBytes + 4096);
+    double *asymBuf = malloc(rawFrameSize * sizeof(double));
+    double *squareBuf = malloc((size_t)nrPixels * nrPixels * sizeof(double));
+    double *transBuf = malloc((size_t)nrPixels * nrPixels * sizeof(double));
+    double *temp1 = malloc((size_t)nrPixels * nrPixels * sizeof(double));
+    double *temp2 = malloc((size_t)nrPixels * nrPixels * sizeof(double));
+
+    if (!rawBuf || !asymBuf || !squareBuf || !transBuf || !temp1 || !temp2) {
+      log_error("Failed to allocate frame buffers for scan %d", scanNr);
+      free(rawBuf);
+      free(asymBuf);
+      free(squareBuf);
+      free(transBuf);
+      free(temp1);
+      free(temp2);
+      zip_close(archive);
+      free(cells);
+      free(requests);
+      continue;
+    }
+
+    /* Process each unique frame needed */
+    int lastFrame = -1;
+    /* Sort requests by frameIdx to avoid re-reading */
+    for (int i = 0; i < nRequests - 1; i++)
+      for (int j = i + 1; j < nRequests; j++)
+        if (requests[i].frameIdx > requests[j].frameIdx) {
+          FrameRequest tmp = requests[i];
+          requests[i] = requests[j];
+          requests[j] = tmp;
+        }
+
+    for (int r = 0; r < nRequests; r++) {
+      int frameIdx = requests[r].frameIdx;
+
+      /* Read and transform frame only if different from last */
+      if (frameIdx != lastFrame) {
+        int zipIdx = dataLoc + frameIdx;
+        if (zipIdx >= nEntries) {
+          continue;
+        }
+
+        zip_stat_t fileStat;
+        zip_stat_init(&fileStat);
+        if (zip_stat_index(archive, zipIdx, 0, &fileStat) != 0)
+          continue;
+
+        char *compressedBuf = malloc(fileStat.size);
+        if (!compressedBuf)
+          continue;
+
+        zip_file_t *zf = zip_fopen_index(archive, zipIdx, 0);
+        if (!zf) {
+          free(compressedBuf);
+          continue;
+        }
+        zip_fread(zf, compressedBuf, fileStat.size);
+        zip_fclose(zf);
+
+        /* Decompress with blosc */
+        int decompSize =
+            blosc1_decompress(compressedBuf, rawBuf, rawBytes + 4096);
+        free(compressedBuf);
+        if (decompSize <= 0)
+          continue;
+
+        /* Convert to double */
+        patch_convertPixelsToDouble(rawBuf, asymBuf, rawFrameSize, pxType);
+
+        /* Make square image */
+        patch_makeSquareImage(nrPixels, nrPixelsY, nrPixelsZ, asymBuf,
+                              squareBuf);
+
+        /* Apply ImTransOpt */
+        patch_applyImTransOpt(nImTransOpt, imTransOpt, squareBuf, nrPixels,
+                              temp1, temp2);
+
+        /* Transpose (always applied after ImTransOpt in PeaksFitting) */
+        patch_transposeMatrix(squareBuf, nrPixels, transBuf);
+
+        lastFrame = frameIdx;
+      }
+
+      /* Extract 21×21 patch from transBuf */
+      int yCen = (int)round(requests[r].yCen);
+      int zCen = (int)round(requests[r].zCen);
+
+      int ci = requests[r].cellIdx;
+      size_t patchLoc =
+          ((size_t)cells[ci].grainNr * maxNHKLs + cells[ci].spotNr) * nScans +
+          scanNr;
+      float *outPatch = &patchesArr[patchLoc * patchPixels];
+
+      for (int dz = -PATCH_HALF_SIZE; dz <= PATCH_HALF_SIZE; dz++) {
+        for (int dy = -PATCH_HALF_SIZE; dy <= PATCH_HALF_SIZE; dy++) {
+          int pz = zCen + dz;
+          int py = yCen + dy;
+          int patchRow = dz + PATCH_HALF_SIZE;
+          int patchCol = dy + PATCH_HALF_SIZE;
+          if (pz >= 0 && pz < nrPixels && py >= 0 && py < nrPixels) {
+            outPatch[patchRow * PATCH_SIZE + patchCol] =
+                (float)transBuf[pz * nrPixels + py];
+          }
+        }
+      }
+      patchesExtracted++;
+    }
+
+    free(rawBuf);
+    free(asymBuf);
+    free(squareBuf);
+    free(transBuf);
+    free(temp1);
+    free(temp2);
+    zip_close(archive);
+    free(cells);
+    free(requests);
+
+    if (scanNr % 10 == 0 || scanNr == nScans - 1)
+      printf("  Scan %d/%d: %d patches extracted so far\n", scanNr + 1, nScans,
+             patchesExtracted);
+  }
+
+  printf("  Total patches extracted: %d\n", patchesExtracted);
+
+  /* --- Save patches binary --- */
+  char patchesFN[MAX_PATH_LEN];
+  sprintf(patchesFN, "%s/patches_%zu_%d_%d.bin", outputFolder, nGrs, maxNHKLs,
+          nScans);
+  FILE *pf2 = fopen(patchesFN, "wb");
+  if (pf2) {
+    fwrite(patchesArr, sizeof(float), totalPatches * patchPixels, pf2);
+    fclose(pf2);
+    printf("  Saved patches: %s (%.1f MB)\n", patchesFN,
+           (double)(totalPatches * patchPixels * sizeof(float)) /
+               (1024.0 * 1024.0));
+  }
+
+  /* --- Save spot positions binary --- */
+  char spotPosFN[MAX_PATH_LEN];
+  sprintf(spotPosFN, "%s/spotPositions_%zu_%d_%d.bin", outputFolder, nGrs,
+          maxNHKLs, nScans);
+  FILE *spf = fopen(spotPosFN, "wb");
+  if (spf) {
+    fwrite(spotPosArr, sizeof(double), totalPatches * 2, spf);
+    fclose(spf);
+    printf("  Saved spot positions: %s\n", spotPosFN);
+  }
+
+  free(spotIDArr);
+  free(idMap_origID);
+  free(idMap_scanNr);
+  free(patchesArr);
+  free(spotPosArr);
+  printf("=== Patch extraction complete ===\n");
 }
 
 /**

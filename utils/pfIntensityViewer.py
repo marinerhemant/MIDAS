@@ -10,14 +10,9 @@ Usage:
   python pfIntensityViewer.py -paramFile <paramFile> [-resultDir <dir>] [-portNr 8051]
 """
 
-import os, sys, glob, argparse, traceback
-from functools import lru_cache
-from pathlib import Path
+import os, sys, glob, argparse
 
 import numpy as np
-import pandas as pd
-import zarr
-from zarr.storage import ZipStore
 import plotly.graph_objects as go
 from dash import Dash, html, dcc, callback, Output, Input, State, no_update, ctx
 import dash_bootstrap_components as dbc
@@ -25,7 +20,6 @@ import dash_bootstrap_components as dbc
 # ──────────────────────────────────────────────────────────────
 # Constants
 # ──────────────────────────────────────────────────────────────
-SPOTS_ARRAY_COLS = 10  # [y, x, omega, intensity, spotID, ringNr, eta, theta, dspacing, scanNr]
 COMMON_LAYOUT = dict(margin=dict(l=10, r=10, b=10, t=50), height=550, template="plotly_dark")
 DEFAULT_PATCH_HALF = 15
 DEFAULT_REFRESH_MS = 500
@@ -106,29 +100,63 @@ def parse_param_file(paramFN):
 # ──────────────────────────────────────────────────────────────
 # Data Loading
 # ──────────────────────────────────────────────────────────────
-def discover_zarr_files(topdir, params):
-    """Discover per-scan zarr zip files based on parameter file values."""
-    nScans = params['nScans']
-    startNr = params['StartFileNrFirstLayer']
-    nrFiles = params['NrFilesPerSweep']
-    fStem = params['FileStem']
+def load_patches(topdir):
+    """Load pre-extracted intensity patches from patches_*.bin.
 
-    zarr_paths = []
-    scan_dirs = []
-    for scanIdx in range(nScans):
-        thisStartNr = startNr + scanIdx * nrFiles
-        scanDir = os.path.join(topdir, str(thisStartNr))
-        scan_dirs.append(scanDir)
-        # Try to find the zarr zip by globbing
-        candidates = glob.glob(os.path.join(scanDir, '*.MIDAS.zip'))
-        if candidates:
-            zarr_paths.append(candidates[0])
-        else:
-            # Fallback to constructed name
-            fname = f'{fStem}_{thisStartNr}.MIDAS.zip'
-            zarr_paths.append(os.path.join(scanDir, fname))
+    The patches are saved by findSingleSolutionPFRefactored as float32,
+    shape (nGrs, maxNHKLs, nScans, 21, 21).
+    Also loads spotPositions_*.bin (doubles, shape (nGrs, maxNHKLs, nScans, 2)).
+    """
+    PATCH_SIZE = 21
 
-    return zarr_paths, scan_dirs
+    # Find patches file
+    pat = glob.glob(os.path.join(topdir, 'patches_*.bin'))
+    if not pat:
+        print("  WARNING: No patches_*.bin found — patch display disabled")
+        return None, None
+
+    fn = pat[0]
+    # Parse nGrs, maxNHKLs, nScans from filename: patches_{nGrs}_{maxNHKLs}_{nScans}.bin
+    base = os.path.splitext(os.path.basename(fn))[0]
+    parts = base.split('_')
+    nGrs = int(parts[1])
+    maxNHKLs = int(parts[2])
+    nScans = int(parts[3])
+
+    patches = np.fromfile(fn, dtype=np.float32).reshape((nGrs, maxNHKLs, nScans, PATCH_SIZE, PATCH_SIZE))
+    print(f"  Loaded patches: {fn}")
+    print(f"    Shape: {patches.shape}, {patches.nbytes / 1024 / 1024:.1f} MB")
+
+    # Load spot positions
+    spotPos = None
+    sp_pat = glob.glob(os.path.join(topdir, 'spotPositions_*.bin'))
+    if sp_pat:
+        spotPos = np.fromfile(sp_pat[0], dtype=np.float64).reshape((nGrs, maxNHKLs, nScans, 2))
+        print(f"  Loaded spot positions: {sp_pat[0]}")
+
+    return patches, spotPos
+
+
+def load_spot_meta(topdir):
+    """Load per-cell spot metadata: eta, 2theta, yCen, zCen.
+
+    Saved by findSingleSolutionPFRefactored as doubles,
+    shape (nGrs, maxNHKLs, nScans, 4).
+    """
+    SPOT_META_COLS = 4
+    pat = glob.glob(os.path.join(topdir, 'spotMeta_*.bin'))
+    if not pat:
+        print("  No spotMeta_*.bin found — hover details limited")
+        return None
+    fn = pat[0]
+    base = os.path.splitext(os.path.basename(fn))[0]
+    parts = base.split('_')
+    nGrs = int(parts[1])
+    maxNHKLs = int(parts[2])
+    nScans = int(parts[3])
+    meta = np.fromfile(fn, dtype=np.float64).reshape((nGrs, maxNHKLs, nScans, SPOT_META_COLS))
+    print(f"  Loaded spot metadata: {fn}")
+    return meta
 
 
 def load_sinogram_variants(topdir):
@@ -169,372 +197,6 @@ def load_omegas_and_hkls(topdir, nGrs, maxNHKLs):
     return omegas, grainSpots
 
 
-def load_unique_spots(topdir):
-    """Load UniqueOrientationSpots.csv → DataFrame.
-    findSingleSolution writes this to {topdir}/Output/.
-    """
-    # Primary location: Output/ subfolder (where findSingleSolution writes it)
-    fn = os.path.join(topdir, 'Output', 'UniqueOrientationSpots.csv')
-    if not os.path.exists(fn):
-        # Fallback: check topdir directly
-        fn = os.path.join(topdir, 'UniqueOrientationSpots.csv')
-    if not os.path.exists(fn):
-        print(f"  Warning: UniqueOrientationSpots.csv not found in Output/ or topdir.")
-        print(f"  Checked: {os.path.join(topdir, 'Output')} and {topdir}")
-        return pd.DataFrame(columns=['ID', 'GrainNr', 'SpotNr', 'RingNr', 'Omega', 'Eta'])
-    print(f"  Found: {fn}")
-    return pd.read_csv(fn)
-
-
-def load_spots_bin(topdir):
-    """Load the Spots.bin memory-mapped file into a structured array.
-
-    Spots.bin format (per row, all doubles):
-    [y, x, omega, intensity, spotID, ringNr, eta, theta, dspacing, scanNr]
-    """
-    fn = os.path.join(topdir, 'Spots.bin')
-    if not os.path.exists(fn):
-        # Also check /dev/shm
-        fn_shm = '/dev/shm/Spots.bin'
-        if os.path.exists(fn_shm):
-            fn = fn_shm
-        else:
-            print(f"  Warning: Spots.bin not found at {fn}")
-            return None
-
-    raw = np.fromfile(fn, dtype=np.double)
-    nSpots = len(raw) // SPOTS_ARRAY_COLS
-    if len(raw) % SPOTS_ARRAY_COLS != 0:
-        print(f"  Warning: Spots.bin size not divisible by {SPOTS_ARRAY_COLS}")
-    spots = raw[:nSpots * SPOTS_ARRAY_COLS].reshape((nSpots, SPOTS_ARRAY_COLS))
-    print(f"  Loaded Spots.bin: {nSpots} spots")
-    return spots
-
-
-def open_zarr_handles(zarr_paths):
-    """Open zarr data handles (lazy) for each scan."""
-    handles = []
-    for zp in zarr_paths:
-        if os.path.exists(zp):
-            try:
-                store = ZipStore(zp, mode='r')
-                zf = zarr.open_group(store=store, mode='r')
-                handles.append(zf['exchange/data'])
-            except Exception as e:
-                print(f"  Warning: Could not open zarr {zp}: {e}")
-                handles.append(None)
-        else:
-            handles.append(None)
-    return handles
-
-
-# ──────────────────────────────────────────────────────────────
-# Spot lookup: map (grainNr, spotNr) to spots in each scan
-# ──────────────────────────────────────────────────────────────
-def build_spot_lookup(unique_spots_df, spots_bin, nScans, tol_ome=1.0, tol_eta=1.0):
-    """Build a lookup: (grainNr, spotNr, scanNr) → (y_det, x_det, omega, spotID)
-
-    Matches UniqueOrientationSpots entries to Spots.bin entries by omega/eta/ringNr
-    and scanNr, mirroring the logic in generate_sinograms from findSingleSolution.
-    """
-    if spots_bin is None or unique_spots_df.empty:
-        print("  Skipped: spots_bin is None" if spots_bin is None else "  Skipped: unique_spots_df empty")
-        return {}
-
-    # Pre-index Spots.bin by scanNr for O(1) scan lookup
-    print(f"  Pre-indexing {len(spots_bin)} spots by scanNr...")
-    scan_indices = {}
-    scan_nrs = spots_bin[:, 9].astype(int)
-    for scanNr in range(nScans):
-        mask = (scan_nrs == scanNr)
-        scan_indices[scanNr] = spots_bin[mask]
-    print(f"  Done. Avg spots/scan: {len(spots_bin) / max(1, nScans):.0f}")
-
-    lookup = {}
-    n_unique = len(unique_spots_df)
-    for idx, (_, urow) in enumerate(unique_spots_df.iterrows()):
-        grainNr = int(urow['GrainNr'])
-        spotNr = int(urow['SpotNr'])
-        refOmega = urow['Omega']
-        refEta = urow['Eta']
-        refRingNr = int(urow['RingNr'])
-
-        for scanNr in range(nScans):
-            scan_spots = scan_indices.get(scanNr)
-            if scan_spots is None or len(scan_spots) == 0:
-                continue
-
-            # Filter by ringNr, omega, eta within this scan
-            mask = (
-                (scan_spots[:, 5].astype(int) == refRingNr) &
-                (np.abs(scan_spots[:, 2] - refOmega) < tol_ome) &
-                (np.abs(scan_spots[:, 6] - refEta) < tol_eta)
-            )
-            matches = scan_spots[mask]
-            if len(matches) > 0:
-                # Take the best match (closest in omega+eta)
-                dist = np.abs(matches[:, 2] - refOmega) + np.abs(matches[:, 6] - refEta)
-                best = matches[np.argmin(dist)]
-                lookup[(grainNr, spotNr, scanNr)] = {
-                    'y_det': best[0],
-                    'x_det': best[1],
-                    'omega': best[2],
-                    'intensity': best[3],
-                    'spotID': int(best[4]),
-                    'eta': best[6],
-                }
-
-        # Progress for large datasets
-        if (idx + 1) % 200 == 0:
-            print(f"  Processed {idx + 1}/{n_unique} unique spots...")
-
-    print(f"  Built spot lookup: {len(lookup)} entries")
-    if len(lookup) > 0:
-        grain_counts = {}
-        for (g, s, sc) in lookup.keys():
-            grain_counts[g] = grain_counts.get(g, 0) + 1
-        print(f"  Entries per grain: {dict(sorted(grain_counts.items()))}")
-        sample = next(iter(lookup.items()))
-        print(f"  Sample entry: key={sample[0]} → spotID={sample[1]['spotID']}, ω={sample[1]['omega']:.2f}")
-    elif not unique_spots_df.empty and spots_bin is not None:
-        # Diagnose why nothing matched
-        print(f"  DEBUG: UniqueSpots has {len(unique_spots_df)} entries")
-        print(f"  DEBUG: Spots.bin has {len(spots_bin)} entries")
-        print(f"  DEBUG: Spots.bin scanNr range: {spots_bin[:, 9].min():.0f} to {spots_bin[:, 9].max():.0f}")
-        print(f"  DEBUG: Spots.bin omega range: {spots_bin[:, 2].min():.2f} to {spots_bin[:, 2].max():.2f}")
-        print(f"  DEBUG: Spots.bin eta range: {spots_bin[:, 6].min():.2f} to {spots_bin[:, 6].max():.2f}")
-        sample_u = unique_spots_df.iloc[0]
-        print(f"  DEBUG: Sample UniqueSpot: ω={sample_u['Omega']:.2f}, η={sample_u['Eta']:.2f}, ring={sample_u['RingNr']}")
-        n_ome = np.sum(np.abs(spots_bin[:, 2] - sample_u['Omega']) < tol_ome)
-        n_eta = np.sum(np.abs(spots_bin[:, 6] - sample_u['Eta']) < tol_eta)
-        n_ring = np.sum(spots_bin[:, 5].astype(int) == int(sample_u['RingNr']))
-        print(f"  DEBUG: Spots matching sample ω (tol={tol_ome}): {n_ome}")
-        print(f"  DEBUG: Spots matching sample η (tol={tol_eta}): {n_eta}")
-        print(f"  DEBUG: Spots matching sample ringNr: {n_ring}")
-    return lookup
-
-
-# ──────────────────────────────────────────────────────────────
-# Intensity Patch Extraction
-# ──────────────────────────────────────────────────────────────
-def make_patch_extractor(spot_lookup, zarr_handles, params, id_mapping):
-    """Create a cached patch extraction function."""
-    omegaStart = params['OmegaStart']
-    omegaStep = params['OmegaStep']
-    nrFilesPerSweep = params['NrFilesPerSweep']
-
-    @lru_cache(maxsize=512)
-    def get_intensity_patch(grainNr, spotNr, scanNr, patchHalfSize):
-        """Extract the 2D intensity patch for one sinogram cell."""
-        key = (grainNr, spotNr, scanNr)
-        if key not in spot_lookup:
-            print(f"  [PATCH DEBUG] key {key} not in spot_lookup (size={len(spot_lookup)})")
-            return None
-
-        info = spot_lookup[key]
-        omega = info['omega']
-
-        # Compute frame number from omega
-        if omegaStep != 0:
-            frameIdx = int(round((omega - omegaStart) / omegaStep))
-        else:
-            frameIdx = 0
-
-        # Clamp to valid range
-        if frameIdx < 0:
-            frameIdx += nrFilesPerSweep
-        frameIdx = max(0, min(nrFilesPerSweep - 1, frameIdx))
-
-        zarr_data = zarr_handles[scanNr] if scanNr < len(zarr_handles) else None
-        if zarr_data is None:
-            print(f"  [PATCH DEBUG] zarr_data is None for scanNr={scanNr}")
-            return None
-
-        nFrames = zarr_data.shape[0]
-        nPxZ = zarr_data.shape[1]
-        nPxY = zarr_data.shape[2]
-
-        if frameIdx >= nFrames:
-            frameIdx = nFrames - 1
-
-        # Use IDsMergedScanning to translate global spotID → per-scan origID
-        # then look up pixel position in the scan's Result_*.csv
-        spotID = info['spotID']
-        yCen_px, zCen_px = _find_pixel_position(scanNr, spotID, id_mapping, params, zarr_data.shape)
-        if yCen_px is None:
-            print(f"  [PATCH DEBUG] _find_pixel_position returned None for "
-                  f"scanNr={scanNr}, spotID={spotID}")
-            return None
-
-        print(f"  [PATCH] Grain {grainNr}, Spot {spotNr}, Scan {scanNr}: "
-              f"frame={frameIdx}, Y={yCen_px}, Z={zCen_px}")
-
-        # Extract patch
-        h = patchHalfSize
-        z0 = max(0, zCen_px - h)
-        z1 = min(nPxZ, zCen_px + h + 1)
-        y0 = max(0, yCen_px - h)
-        y1 = min(nPxY, yCen_px + h + 1)
-
-        if z1 <= z0 or y1 <= y0:
-            return None
-
-        patchSize = 2 * h + 1
-        patch = np.zeros((patchSize, patchSize), dtype=np.double)
-
-        try:
-            raw = zarr_data[frameIdx, z0:z1, y0:y1].astype(np.double)
-            # Handle edge clipping
-            pz0 = h - (zCen_px - z0)
-            pz1 = pz0 + (z1 - z0)
-            py0 = h - (yCen_px - y0)
-            py1 = py0 + (y1 - y0)
-            patch[pz0:pz1, py0:py1] = raw
-        except Exception as e:
-            print(f"  Patch extraction error: {e}")
-            return None
-
-        patch[patch < 0] = 0
-        return patch
-
-    return get_intensity_patch
-
-
-# Cache for per-scan Result CSV data
-_result_cache = {}
-
-def _load_result_csv(scanDir):
-    """Load Result_*.csv from a scan directory → dict of spotID → (YCen_px, ZCen_px).
-    SpotIDs here are per-scan IDs (1 to N per scan).
-    """
-    if scanDir in _result_cache:
-        return _result_cache[scanDir]
-
-    result_data = {}
-    result_files = glob.glob(os.path.join(scanDir, 'Result_*.csv'))
-    for rf in result_files:
-        try:
-            with open(rf, 'r') as f:
-                for line in f:
-                    line = line.strip()
-                    if not line or line.startswith('#') or line.startswith('SpotID'):
-                        continue  # skip header
-                    parts = line.split()
-                    if len(parts) < 5:
-                        continue
-                    try:
-                        spotID = int(float(parts[0]))
-                        # 0:SpotID 1:IntIntensity 2:Omega 3:YCen(px) 4:ZCen(px)
-                        yCen = float(parts[3])
-                        zCen = float(parts[4])
-                        result_data[spotID] = (yCen, zCen)
-                    except (ValueError, IndexError):
-                        continue
-        except Exception:
-            continue
-
-    _result_cache[scanDir] = result_data
-    if result_data:
-        sample = next(iter(result_data.items()))
-        print(f"    Result CSV loaded: {len(result_data)} spots "
-              f"(e.g. spotID={sample[0]} → Y={sample[1][0]:.1f}, Z={sample[1][1]:.1f})")
-    else:
-        print(f"    Result CSV: 0 spots loaded from {scanDir}")
-        result_files_found = glob.glob(os.path.join(scanDir, 'Result_*.csv'))
-        print(f"    Files found: {result_files_found}")
-    return result_data
-
-
-def load_id_mapping(topdir):
-    """Load IDsMergedScanning.csv → dict mapping global spotID → (origID, scanNr).
-
-    SaveBinDataScanning.c renumbers all spots to global 1..N after sorting.
-    IDsMergedScanning.csv contains: NewID, OrigID, ScanNr
-    where OrigID is the per-scan Result_*.csv SpotID.
-    """
-    fn = os.path.join(topdir, 'IDsMergedScanning.csv')
-    if not os.path.exists(fn):
-        print(f"  Warning: {fn} not found.")
-        return {}
-
-    mapping = {}
-    with open(fn, 'r') as f:
-        for line in f:
-            line = line.strip()
-            if not line or line.startswith('NewID'):
-                continue  # skip header
-            parts = line.split(',')
-            if len(parts) < 3:
-                continue
-            try:
-                newID = int(parts[0])
-                origID = int(parts[1])
-                scanNr = int(parts[2])
-                mapping[newID] = (origID, scanNr)
-            except ValueError:
-                continue
-
-    print(f"  Loaded IDsMergedScanning.csv: {len(mapping)} entries")
-    if mapping:
-        sample = next(iter(mapping.items()))
-        print(f"  Sample: NewID={sample[0]} → OrigID={sample[1][0]}, ScanNr={sample[1][1]}")
-    return mapping
-
-
-def _find_pixel_position(scanNr, spotID, id_mapping, params, zarr_shape):
-    """Find the pixel position for a spot using IDsMergedScanning mapping.
-
-    1. Use id_mapping to translate global spotID → per-scan origID
-    2. Look up origID in the scan's Result_*.csv → (YCen_px, ZCen_px)
-
-    Returns (yCen_px, zCen_px) or (None, None).
-    """
-    # Translate global Spots.bin ID → per-scan Result_*.csv ID
-    if spotID not in id_mapping:
-        return None, None
-
-    origID, mappedScanNr = id_mapping[spotID]
-
-    # Verify scanNr matches (the spot must belong to this scan)
-    if mappedScanNr != scanNr:
-        return None, None
-
-    startNr = params['StartFileNrFirstLayer']
-    nrFiles = params['NrFilesPerSweep']
-    topdir = params['topdir']
-
-    thisStartNr = startNr + scanNr * nrFiles
-    scanDir = os.path.join(topdir, str(thisStartNr))
-
-    result_data = _load_result_csv(scanDir)
-    if origID in result_data:
-        yCen, zCen = result_data[origID]
-        yCen_px = int(round(yCen))
-        zCen_px = int(round(zCen))
-
-        nPxZ, nPxY = zarr_shape[1], zarr_shape[2]
-
-        # CRITICAL: Result_*.csv positions are in the ImTransOpt-transformed
-        # coordinate system (PeaksFitting applies ImTransOpt before fitting).
-        # But the zarr stores RAW data. We must reverse the transforms.
-        # Transforms were applied in forward order; reverse them in reverse order.
-        imTransOpt = params.get('ImTransOpt', [])
-        for opt in reversed(imTransOpt):
-            if opt == 1:    # flip LR → reverse Y
-                yCen_px = nPxY - 1 - yCen_px
-            elif opt == 2:  # flip UD → reverse Z
-                zCen_px = nPxZ - 1 - zCen_px
-            elif opt == 3:  # transpose → swap Y and Z
-                yCen_px, zCen_px = zCen_px, yCen_px
-            # opt == 0: identity, no change
-
-        # Clamp to valid range
-        yCen_px = max(0, min(nPxY - 1, yCen_px))
-        zCen_px = max(0, min(nPxZ - 1, zCen_px))
-        return yCen_px, zCen_px
-
-    return None, None
-
 
 # ──────────────────────────────────────────────────────────────
 # Main Application
@@ -563,24 +225,6 @@ if __name__ == '__main__':
     print("\nParsing parameter file...")
     params = parse_param_file(args.paramFile)
     params['topdir'] = topdir
-    imTransOpt = params.get('ImTransOpt', [])
-    print(f"  FileStem: {params['FileStem']}")
-    print(f"  nScans: {params['nScans']}")
-    print(f"  NrFilesPerSweep: {params['NrFilesPerSweep']}")
-    print(f"  OmegaStart: {params['OmegaStart']}")
-    print(f"  OmegaStep: {params['OmegaStep']}")
-    print(f"  ImTransOpt: {imTransOpt}")
-
-    # --- Discover zarr files ---
-    print("\nDiscovering zarr files...")
-    zarr_paths, scan_dirs = discover_zarr_files(topdir, params)
-    n_found = sum(1 for zp in zarr_paths if os.path.exists(zp))
-    print(f"  Found {n_found}/{len(zarr_paths)} zarr files")
-    for i, zp in enumerate(zarr_paths[:3]):
-        exists = '✓' if os.path.exists(zp) else '✗'
-        print(f"  Scan {i}: {os.path.basename(zp)} {exists}")
-    if len(zarr_paths) > 3:
-        print(f"  ... and {len(zarr_paths) - 3} more")
 
     # --- Load sinogram data ---
     print("\nLoading sinogram data...")
@@ -593,51 +237,13 @@ if __name__ == '__main__':
     print("\nLoading omega angles...")
     omegas, grainSpots = load_omegas_and_hkls(topdir, nGrs, maxNHKLs)
 
-    # --- Load unique spots ---
-    print("\nLoading unique spot associations...")
-    unique_spots_df = load_unique_spots(topdir)
-    print(f"  UniqueSpots: {len(unique_spots_df)}")
-    if not unique_spots_df.empty:
-        grain_nrs = sorted(unique_spots_df['GrainNr'].unique())
-        spots_per_grain = unique_spots_df.groupby('GrainNr').size().to_dict()
-        print(f"  GrainNr values present: {grain_nrs}")
-        print(f"  Spots per grain: {spots_per_grain}")
+    # --- Load pre-extracted patches ---
+    print("\nLoading pre-extracted patches...")
+    patchesArr, spotPosArr = load_patches(topdir)
 
-    # --- Load Spots.bin ---
-    print("\nLoading Spots.bin...")
-    spots_bin = load_spots_bin(topdir)
-
-    # --- Build spot lookup ---
-    print("\nBuilding spot lookup (this may take a moment for large datasets)...")
-    spot_lookup = build_spot_lookup(unique_spots_df, spots_bin, nScans)
-
-    # --- Open zarr handles ---
-    print("\nOpening zarr data handles...")
-    zarr_handles = open_zarr_handles(zarr_paths)
-    n_open = sum(1 for h in zarr_handles if h is not None)
-    print(f"  Opened {n_open}/{len(zarr_handles)} zarr files")
-    if n_open > 0:
-        h0 = next(h for h in zarr_handles if h is not None)
-        print(f"  Zarr shape: {h0.shape} (frames, Z, Y)")
-
-    # --- Pre-load Result CSVs and show stats ---
-    print("\nPre-loading Result CSVs from scan directories...")
-    for scanIdx in range(min(3, nScans)):
-        startNr = params['StartFileNrFirstLayer']
-        nrFiles = params['NrFilesPerSweep']
-        thisStartNr = startNr + scanIdx * nrFiles
-        scanDir = os.path.join(topdir, str(thisStartNr))
-        print(f"  Scan {scanIdx} ({scanDir}):")
-        _load_result_csv(scanDir)
-    if nScans > 3:
-        print(f"  ... and {nScans - 3} more scans")
-
-    # --- Load ID mapping (global Spots.bin ID → per-scan Result ID) ---
-    print("\nLoading ID mapping...")
-    id_mapping = load_id_mapping(topdir)
-
-    # --- Create patch extractor ---
-    get_intensity_patch = make_patch_extractor(spot_lookup, zarr_handles, params, id_mapping)
+    # --- Load per-cell spot metadata ---
+    print("\nLoading spot metadata...")
+    spotMetaArr = load_spot_meta(topdir)
 
     # ── Dash App ─────────────────────────────────────────────
     external_stylesheets = [dbc.themes.CYBORG]
@@ -926,7 +532,20 @@ if __name__ == '__main__':
         for si in range(nSp):
             row_texts = []
             for sc in range(nScans):
-                row_texts.append(f'Scan: {sc}<br>HKL: {si}<br>ω: {theta_vals[si]:.2f}°<br>I: {sino[si, sc]:.2f}')
+                parts = [f'Scan: {sc}', f'HKL: {si}',
+                         f'ω: {theta_vals[si]:.2f}°',
+                         f'I: {sino[si, sc]:.2f}']
+                if spotMetaArr is not None:
+                    eta = spotMetaArr[grainNr, si, sc, 0]
+                    tth = spotMetaArr[grainNr, si, sc, 1]
+                    yp  = spotMetaArr[grainNr, si, sc, 2]
+                    zp  = spotMetaArr[grainNr, si, sc, 3]
+                    if not np.isnan(eta):
+                        parts.append(f'η: {eta:.2f}°')
+                        parts.append(f'2θ: {tth:.2f}°')
+                        parts.append(f'Y: {yp:.1f} px')
+                        parts.append(f'Z: {zp:.1f} px')
+                row_texts.append('<br>'.join(parts))
             hover_text.append(row_texts)
 
         fig.add_trace(go.Heatmap(
@@ -998,8 +617,15 @@ if __name__ == '__main__':
 
         theta_val = omegas[grainNr, row]
 
-        patch = get_intensity_patch(grainNr, row, col, patchHalf)
-        if patch is None:
+        # Direct lookup from pre-extracted patches
+        if patchesArr is None:
+            fig.update_layout(
+                title='No patches data — run findSingleSolutionPFRefactored first',
+                **COMMON_LAYOUT)
+            return fig
+
+        patch = patchesArr[grainNr, row, col]
+        if np.all(patch == 0):
             fig.update_layout(
                 title=f'No data: Grain {grainNr}, Spot {row}, Scan {col}',
                 **COMMON_LAYOUT)
