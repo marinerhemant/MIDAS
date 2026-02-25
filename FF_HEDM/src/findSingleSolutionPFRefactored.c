@@ -1383,19 +1383,21 @@ void generate_sinograms(SpotList *spotList,
           double currentIntensity = allSpots[SPOTS_ARRAY_COLS * spotIdx + 3];
           double currentOmega = allSpots[SPOTS_ARRAY_COLS * spotIdx + 2];
 
-          /* Store intensity and spotID mapping */
-          sinoArr[locThis] = currentIntensity;
-          spotIDArr[locThis] = (int)allSpots[SPOTS_ARRAY_COLS * spotIdx + 4];
+          /* Store intensity and spotID mapping — keep best match */
+          if (currentIntensity > sinoArr[locThis]) {
+            sinoArr[locThis] = currentIntensity;
+            spotIDArr[locThis] = (int)allSpots[SPOTS_ARRAY_COLS * spotIdx + 4];
 
-          /* Store per-cell metadata: eta, 2theta, yCen_det, zCen_det */
-          spotMetaArr[locThis * SPOT_META_COLS + 0] =
-              allSpots[SPOTS_ARRAY_COLS * spotIdx + 6]; /* eta */
-          spotMetaArr[locThis * SPOT_META_COLS + 1] =
-              allSpots[SPOTS_ARRAY_COLS * spotIdx + 7] * 2.0; /* 2theta */
-          spotMetaArr[locThis * SPOT_META_COLS + 2] =
-              allSpots[SPOTS_ARRAY_COLS * spotIdx + 0]; /* yCen_det */
-          spotMetaArr[locThis * SPOT_META_COLS + 3] =
-              allSpots[SPOTS_ARRAY_COLS * spotIdx + 1]; /* zCen_det */
+            /* Store per-cell metadata: eta, 2theta, yCen_det, zCen_det */
+            spotMetaArr[locThis * SPOT_META_COLS + 0] =
+                allSpots[SPOTS_ARRAY_COLS * spotIdx + 6]; /* eta */
+            spotMetaArr[locThis * SPOT_META_COLS + 1] =
+                allSpots[SPOTS_ARRAY_COLS * spotIdx + 7] * 2.0; /* 2theta */
+            spotMetaArr[locThis * SPOT_META_COLS + 2] =
+                allSpots[SPOTS_ARRAY_COLS * spotIdx + 0]; /* yCen_det */
+            spotMetaArr[locThis * SPOT_META_COLS + 3] =
+                allSpots[SPOTS_ARRAY_COLS * spotIdx + 1]; /* zCen_det */
+          }
 
 /* Critical section to prevent race conditions */
 #pragma omp critical
