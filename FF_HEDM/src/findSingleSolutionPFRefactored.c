@@ -182,6 +182,8 @@ typedef struct {
   int frameIdx;
   double yCen;
   double zCen;
+  double intInt;
+  double intMax;
   int cellIdx;
 } FrameRequest;
 
@@ -2114,19 +2116,26 @@ void extract_patches(const char *topdir, const char *outputFolder,
     double *rYCen = calloc(maxResultID + 1, sizeof(double));
     double *rZCen = calloc(maxResultID + 1, sizeof(double));
     double *rOmega = calloc(maxResultID + 1, sizeof(double));
+    double *rIntInt = calloc(maxResultID + 1, sizeof(double));
+    double *rIntMax = calloc(maxResultID + 1, sizeof(double));
     int *rValid = calloc(maxResultID + 1, sizeof(int));
 
     while (fgets(tline, sizeof(tline), rf)) {
       if (tline[0] == 'S' || tline[0] == '#')
         continue;
       int sid;
-      double intInt, omega, ycen, zcen;
-      if (sscanf(tline, "%d %lf %lf %lf %lf", &sid, &intInt, &omega, &ycen,
-                 &zcen) == 5) {
+      double intInt, omega, ycen, zcen, eta, intMax;
+      int matched = sscanf(tline, "%d %lf %lf %lf %lf %lf %lf", &sid, &intInt,
+                           &omega, &ycen, &zcen, &eta, &intMax);
+      if (matched >= 5) {
+        if (matched < 7)
+          intMax = 0;
         if (sid >= 0 && sid <= maxResultID) {
           rYCen[sid] = ycen;
           rZCen[sid] = zcen;
           rOmega[sid] = omega;
+          rIntInt[sid] = intInt;
+          rIntMax[sid] = intMax;
           rValid[sid] = 1;
         }
       }
@@ -2159,6 +2168,8 @@ void extract_patches(const char *topdir, const char *outputFolder,
         requests[nRequests].frameIdx = frameIdx;
         requests[nRequests].yCen = rYCen[origID];
         requests[nRequests].zCen = rZCen[origID];
+        requests[nRequests].intInt = rIntInt[origID];
+        requests[nRequests].intMax = rIntMax[origID];
         requests[nRequests].cellIdx = c;
         nRequests++;
 
@@ -2360,9 +2371,9 @@ void extract_patches(const char *topdir, const char *outputFolder,
            just print origID The user can cross reference origID with their CSV
            if needed, or we just rely on MAX values */
         printf("\n  [DEBUG Spot %d] scan=%d grain=%d spot=%d "
-               "yCen=%d zCen=%d\n",
+               "yCen=%d zCen=%d IntInt=%.1f IMax=%.1f\n",
                patchesExtracted, scanNr, cells[ci].grainNr, cells[ci].spotNr,
-               yCen, zCen);
+               yCen, zCen, requests[r].intInt, requests[r].intMax);
         printf("    Max Val 21x21 (SquareBuf) : (Z,Y)=%8.1f | (Y,Z)=%8.1f\n",
                max_sq_zy, max_sq_yz);
         printf("    Max Val 21x21 (TransBuf)  : (Z,Y)=%8.1f | (Y,Z)=%8.1f\n",
@@ -2380,7 +2391,7 @@ void extract_patches(const char *topdir, const char *outputFolder,
           int patchCol = dy + PATCH_HALF_SIZE;
           if (pz >= 0 && pz < nrPixels && py >= 0 && py < nrPixels) {
             outPatch[patchRow * PATCH_SIZE + patchCol] =
-                (float)transBuf[pz * nrPixels + py];
+                (float)squareBuf[pz * nrPixels + py];
           }
         }
       }
@@ -2393,6 +2404,8 @@ void extract_patches(const char *topdir, const char *outputFolder,
     free(rYCen);
     free(rZCen);
     free(rOmega);
+    free(rIntInt);
+    free(rIntMax);
     free(rValid);
 
     if (scanNr % 10 == 0 || scanNr == nScans - 1)
