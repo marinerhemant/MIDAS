@@ -126,6 +126,22 @@ def load_patches(topdir):
     patches = np.fromfile(fn, dtype=np.float32).reshape((nGrs, maxNHKLs, nScans, PATCH_SIZE, PATCH_SIZE))
     print(f"  Loaded patches: {fn}")
     print(f"    Shape: {patches.shape}, {patches.nbytes / 1024 / 1024:.1f} MB")
+    # Diagnostic: how many patches have any non-zero data
+    nonzero_count = np.count_nonzero(np.any(patches.reshape(nGrs, maxNHKLs, nScans, -1), axis=-1))
+    print(f"    Non-zero patches: {nonzero_count} / {nGrs * maxNHKLs * nScans}")
+    # Show a sample non-zero patch location
+    for g in range(nGrs):
+        for s in range(maxNHKLs):
+            for sc in range(nScans):
+                if np.any(patches[g, s, sc] != 0):
+                    print(f"    Sample non-zero: grain={g}, spot={s}, scan={sc}, max={patches[g, s, sc].max():.1f}")
+                    break
+            else:
+                continue
+            break
+        else:
+            continue
+        break
 
     # Load spot positions
     spotPos = None
@@ -625,6 +641,7 @@ if __name__ == '__main__':
             return fig
 
         patch = patchesArr[grainNr, row, col]
+        print(f"  [PATCH] grain={grainNr} row={row} col={col} max={patch.max():.2f} sum={patch.sum():.2f}")
         if np.all(patch == 0):
             fig.update_layout(
                 title=f'No data: Grain {grainNr}, Spot {row}, Scan {col}',
