@@ -1877,6 +1877,8 @@ void extract_patches(const char *topdir, const char *outputFolder,
   char dummy[1024];
 
   while (fgets(line, sizeof(line), pf)) {
+    if (line[0] == '#')
+      continue; /* skip comments */
     if (strncmp(line, "StartFileNrFirstLayer ", 21) == 0)
       sscanf(line, "%s %d", dummy, &startFileNr);
     else if (strncmp(line, "NrFilesPerSweep ", 16) == 0)
@@ -1885,7 +1887,8 @@ void extract_patches(const char *topdir, const char *outputFolder,
       sscanf(line, "%s %d", dummy, &startNr);
     else if (strncmp(line, "EndNr ", 6) == 0)
       sscanf(line, "%s %d", dummy, &endNr);
-    else if (strncmp(line, "OmegaFirstFile ", 15) == 0)
+    else if (strncmp(line, "OmegaFirstFile ", 15) == 0 ||
+             strncmp(line, "OmegaStart ", 11) == 0)
       sscanf(line, "%s %lf", dummy, &omegaStart);
     else if (strncmp(line, "OmegaStep ", 10) == 0)
       sscanf(line, "%s %lf", dummy, &omegaStep);
@@ -1896,9 +1899,11 @@ void extract_patches(const char *topdir, const char *outputFolder,
         sscanf(line, "%s %d", dummy, &imTransOpt[nImTransOpt++]);
     } else if (strncmp(line, "NrPixels ", 9) == 0)
       sscanf(line, "%s %d", dummy, &nrPixels);
-    else if (strncmp(line, "NrPixelsY ", 10) == 0)
+    else if (strncmp(line, "NrPixelsY ", 10) == 0 ||
+             strncmp(line, "numPxY ", 7) == 0)
       sscanf(line, "%s %d", dummy, &nrPixelsY);
-    else if (strncmp(line, "NrPixelsZ ", 10) == 0)
+    else if (strncmp(line, "NrPixelsZ ", 10) == 0 ||
+             strncmp(line, "numPxZ ", 7) == 0)
       sscanf(line, "%s %d", dummy, &nrPixelsZ);
     else if (strncmp(line, "SkipFrame ", 10) == 0)
       sscanf(line, "%s %d", dummy, &skipFrame);
