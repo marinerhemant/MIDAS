@@ -456,10 +456,12 @@ void CalcFittedMean(int nIndices, int *NrEachIndexBin, int **Indices,
                     double *Average, double *R, double *Eta, double *RMean,
                     double *EtaMean, int NrPtsForFit, double *IdealRmins,
                     double *IdealRmaxs, int nBinsPerRing, double ybc,
-                    double zbc, double px, int NrPixels,
+                    double zbc, double px, int NrPixelsY, int NrPixelsZ,
                     double EtaBinsLow[nBinsPerRing],
                     double EtaBinsHigh[nBinsPerRing], int *doubletFlag,
                     int *doubletPartner) {
+  int NrPixels =
+      NrPixelsY > NrPixelsZ ? NrPixelsY : NrPixelsZ; // square image stride
   int idxThis;
 #pragma omp parallel for num_threads(numProcs) private(idxThis)                \
     schedule(dynamic)
@@ -535,8 +537,8 @@ void CalcFittedMean(int nIndices, int *NrEachIndexBin, int **Indices,
     // Detector boundary check using the (possibly merged) Rmax
     ytr = ybc - (-Rmax * sin(EtaMa * deg2rad)) / px;
     ztr = zbc + (Rmax * cos(EtaMa * deg2rad)) / px;
-    if (((int)ytr > NrPixels - 3) || ((int)ytr < 3) ||
-        ((int)ztr > NrPixels - 3) || ((int)ztr < 3)) {
+    if (((int)ytr > NrPixelsY - 3) || ((int)ytr < 3) ||
+        ((int)ztr > NrPixelsZ - 3) || ((int)ztr < 3)) {
       RMean[idxThis] = 0;
       if (isDoublet)
         RMean[partnerIdx] = 0;
@@ -544,8 +546,8 @@ void CalcFittedMean(int nIndices, int *NrEachIndexBin, int **Indices,
     }
     ytr = ybc - (-Rmax * sin(EtaMi * deg2rad)) / px;
     ztr = zbc + (Rmax * cos(EtaMi * deg2rad)) / px;
-    if (((int)ytr > NrPixels - 3) || ((int)ytr < 3) ||
-        ((int)ztr > NrPixels - 3) || ((int)ztr < 3)) {
+    if (((int)ytr > NrPixelsY - 3) || ((int)ytr < 3) ||
+        ((int)ztr > NrPixelsZ - 3) || ((int)ztr < 3)) {
       RMean[idxThis] = 0;
       if (isDoublet)
         RMean[partnerIdx] = 0;
@@ -2437,7 +2439,7 @@ int main(int argc, char *argv[]) {
       } else {
         CalcFittedMean(nIndices, NrEachIndexBin, Indices, Average, R, Eta,
                        RMean, EtaMean, NrPtsForFit, IdealRmins, IdealRmaxs,
-                       nEtaBins, ybc, zbc, px, NrPixels, EtaBinsLow,
+                       nEtaBins, ybc, zbc, px, NrPixelsY, NrPixelsZ, EtaBinsLow,
                        EtaBinsHigh, doubletFlag, doubletPartner);
       }
 
@@ -2590,10 +2592,11 @@ int main(int argc, char *argv[]) {
       printf("Number of function calls: %lld\n", NrCalls);
       printf(
           "Lsd %0.12f\nBC %0.12f %0.12f\nty %0.12f\ntz %0.12f\np0 %0.12f\np1 "
-          "%0.12f\np2 %0.12f\np3 %0.12f\nMeanStrain %0.12lf\n",
-          LsdFit, ybcFit, zbcFit, ty, tz, p0, p1, p2, p3, MeanDiff);
+          "%0.12f\np2 %0.12f\np3 %0.12f\n",
+          LsdFit, ybcFit, zbcFit, ty, tz, p0, p1, p2, p3);
       if (DistortionOrder >= 6)
         printf("p4 %0.12f\n", p4);
+      printf("MeanStrain %0.12lf\nStdStrain  %0.12lf\n", MeanDiff, StdDiff);
 
       // Feed outputs back as inputs for next iteration
       p4in = p4;
