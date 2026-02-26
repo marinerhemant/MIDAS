@@ -38,7 +38,7 @@ show_help() {
     echo "  -j, --jobs N              Number of parallel jobs for build (default: auto)"
     echo "  --ninja                   Use Ninja generator instead of Makefiles"
     echo "  --clean                   Clean the build directory before building"
-    echo "  --test ff|nf|all          Run benchmark tests after build (ff, nf, or all)"
+    echo "  --test ff|nf|calib|all   Run benchmark tests after build (ff, nf, calib, or all)"
     exit 0
 }
 
@@ -206,6 +206,16 @@ if [ -n "$RUN_TESTS" ]; then
         $PY_CMD utils/test_nf_hedm.py -nCPUs "$TEST_CPUS"
         if [ $? -ne 0 ]; then
             echo "NF-HEDM benchmark FAILED."
+            exit 1
+        fi
+    fi
+
+    if [ "$RUN_TESTS" = "calib" ] || [ "$RUN_TESTS" = "all" ]; then
+        echo ""
+        echo "=== Running FF-HEDM Calibration Benchmark ==="
+        $PY_CMD utils/test_ff_calibration.py -nCPUs "$TEST_CPUS"
+        if [ $? -ne 0 ]; then
+            echo "FF-HEDM Calibration benchmark FAILED."
             exit 1
         fi
     fi
