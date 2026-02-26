@@ -458,8 +458,8 @@ void CalcFittedMean(int nIndices, int *NrEachIndexBin, int **Indices,
                     double *IdealRmaxs, int nBinsPerRing, double ybc,
                     double zbc, double px, int NrPixels,
                     double EtaBinsLow[nBinsPerRing],
-                    double EtaBinsHigh[nBinsPerRing],
-                    int *doubletFlag, int *doubletPartner) {
+                    double EtaBinsHigh[nBinsPerRing], int *doubletFlag,
+                    int *doubletPartner) {
   int idxThis;
 #pragma omp parallel for num_threads(numProcs) private(idxThis)                \
     schedule(dynamic)
@@ -496,7 +496,8 @@ void CalcFittedMean(int nIndices, int *NrEachIndexBin, int **Indices,
     // If no pixels for this bin (or both bins in doublet case), skip
     if (NrIndicesThis == 0 && (!isDoublet || NrIndicesPartner == 0)) {
       RMean[idxThis] = 0;
-      if (isDoublet) RMean[partnerIdx] = 0;
+      if (isDoublet)
+        RMean[partnerIdx] = 0;
       continue;
     }
 
@@ -505,9 +506,9 @@ void CalcFittedMean(int nIndices, int *NrEachIndexBin, int **Indices,
       double RminPartner = IdealRmins[partnerIdx];
       double RmaxPartner = IdealRmaxs[partnerIdx];
       Rmin = (IdealRmins[idxThis] < RminPartner) ? IdealRmins[idxThis]
-                                                  : RminPartner;
+                                                 : RminPartner;
       Rmax = (IdealRmaxs[idxThis] > RmaxPartner) ? IdealRmaxs[idxThis]
-                                                  : RmaxPartner;
+                                                 : RmaxPartner;
     } else {
       Rmin = IdealRmins[idxThis];
       Rmax = IdealRmaxs[idxThis];
@@ -515,7 +516,8 @@ void CalcFittedMean(int nIndices, int *NrEachIndexBin, int **Indices,
 
     // Compute NrPtsForFit for this bin based on the window size
     int NrPtsLocal = (int)((Rmax - Rmin) / px) * 4;
-    if (NrPtsLocal < NrPtsForFit) NrPtsLocal = NrPtsForFit;
+    if (NrPtsLocal < NrPtsForFit)
+      NrPtsLocal = NrPtsForFit;
 
     PeakShape = calloc(NrPtsLocal, sizeof(*PeakShape));
     Rs = calloc(NrPtsLocal, sizeof(*Rs));
@@ -536,7 +538,8 @@ void CalcFittedMean(int nIndices, int *NrEachIndexBin, int **Indices,
     if (((int)ytr > NrPixels - 3) || ((int)ytr < 3) ||
         ((int)ztr > NrPixels - 3) || ((int)ztr < 3)) {
       RMean[idxThis] = 0;
-      if (isDoublet) RMean[partnerIdx] = 0;
+      if (isDoublet)
+        RMean[partnerIdx] = 0;
       goto cleanup;
     }
     ytr = ybc - (-Rmax * sin(EtaMi * deg2rad)) / px;
@@ -544,11 +547,13 @@ void CalcFittedMean(int nIndices, int *NrEachIndexBin, int **Indices,
     if (((int)ytr > NrPixels - 3) || ((int)ytr < 3) ||
         ((int)ztr > NrPixels - 3) || ((int)ztr < 3)) {
       RMean[idxThis] = 0;
-      if (isDoublet) RMean[partnerIdx] = 0;
+      if (isDoublet)
+        RMean[partnerIdx] = 0;
       goto cleanup;
     }
     EtaMean[idxThis] = (EtaMi + EtaMa) / 2;
-    if (isDoublet) EtaMean[partnerIdx] = EtaMean[idxThis];
+    if (isDoublet)
+      EtaMean[partnerIdx] = EtaMean[idxThis];
 
     // Merge indices from both rings for the profile calculation
     {
@@ -570,10 +575,11 @@ void CalcFittedMean(int nIndices, int *NrEachIndexBin, int **Indices,
         Rmi = Rs[j] - Rstep / 2;
         Rma = Rs[j] + Rstep / 2;
         CalcPeakProfileParallel(IndicesThis, NrIndicesMerged, idxThis, Average,
-                                Rmi, Rma, EtaMi, EtaMa, ybc, zbc, px,
-                                NrPixels, &RetVal);
+                                Rmi, Rma, EtaMi, EtaMa, ybc, zbc, px, NrPixels,
+                                &RetVal);
         PeakShape[j] = RetVal;
-        if (RetVal != 0) AllZero = 0;
+        if (RetVal != 0)
+          AllZero = 0;
       }
 
       for (j = 0; j < NrPtsLocal; j++)
@@ -595,14 +601,18 @@ void CalcFittedMean(int nIndices, int *NrEachIndexBin, int **Indices,
               W2 += PeakShape[j];
             }
           }
-          if (W1 > 0) Rmean1 /= W1;
-          else Rmean1 = (IdealRmins[idxThis] + IdealRmaxs[idxThis]) / 2;
-          if (W2 > 0) Rmean2 /= W2;
-          else Rmean2 = (IdealRmins[partnerIdx] + IdealRmaxs[partnerIdx]) / 2;
+          if (W1 > 0)
+            Rmean1 /= W1;
+          else
+            Rmean1 = (IdealRmins[idxThis] + IdealRmaxs[idxThis]) / 2;
+          if (W2 > 0)
+            Rmean2 /= W2;
+          else
+            Rmean2 = (IdealRmins[partnerIdx] + IdealRmaxs[partnerIdx]) / 2;
 
           double Rfit1 = 0, Rfit2 = 0;
-          FitDoubletPeakShape(NrPtsLocal, Rs, PeakShape, &Rfit1, &Rfit2,
-                              Rstep, Rmean1, Rmean2);
+          FitDoubletPeakShape(NrPtsLocal, Rs, PeakShape, &Rfit1, &Rfit2, Rstep,
+                              Rmean1, Rmean2);
           RMean[idxThis] = Rfit1;
           RMean[partnerIdx] = Rfit2;
         } else {
@@ -621,19 +631,19 @@ void CalcFittedMean(int nIndices, int *NrEachIndexBin, int **Indices,
         }
       } else {
         RMean[idxThis] = 0;
-        if (isDoublet) RMean[partnerIdx] = 0;
+        if (isDoublet)
+          RMean[partnerIdx] = 0;
       }
       free(IndicesThis);
     }
 
-cleanup:
+  cleanup:
     free(PeakShape);
     free(Rs);
     free(Etas);
     FreeMemMatrixInt(Idxs, 1);
   }
 }
-
 
 struct my_func_data {
   int nIndices;
@@ -645,6 +655,7 @@ struct my_func_data {
   double tx;
   int fixPanel;
   double tolRotation;
+  double *Weights; // per-point weight for ring normalization (NULL=uniform)
 };
 
 static double problem_function(unsigned n, const double *x, double *grad,
@@ -738,7 +749,8 @@ static double problem_function(unsigned n, const double *x, double *grad,
     Rcorr = Rad * DistortFunc;
     RIdeal = Lsd * tan(deg2rad * IdealTtheta[i]);
     double Diff = fabs(1 - (Rcorr / RIdeal));
-    TotalDiff += Diff;
+    double w = (f_data->Weights != NULL) ? f_data->Weights[i] : 1.0;
+    TotalDiff += Diff * w;
   }
   TotalDiff *= OBJ_FUNC_SCALE;
   NrCalls++;
@@ -758,7 +770,8 @@ void FitTiltBCLsd(int nIndices, double *YMean, double *ZMean,
                   double tolTilts, double tolLsd, double tolBC, double tolP,
                   double tolP0, double tolP1, double tolP2, double tolP3,
                   double tolShifts, double tolRotation, double px,
-                  double outlierFactor, int minIndices, int fixPanel) {
+                  double outlierFactor, int minIndices, int fixPanel,
+                  double *Weights) {
   // Look at the possibility of including translations for each of the small
   // panels on a multi-panel detector in the optimization.... Also change
   // CorrectTiltSpatialDistortion to include translations!!!
@@ -777,6 +790,7 @@ void FitTiltBCLsd(int nIndices, double *YMean, double *ZMean,
   f_data.tx = tx;
   f_data.fixPanel = fixPanel;
   f_data.tolRotation = tolRotation;
+  f_data.Weights = Weights;
   double x[n], xl[n], xu[n];
   x[0] = Lsd;
   xl[0] = Lsd - tolLsd;
@@ -1285,6 +1299,7 @@ int main(int argc, char *argv[]) {
   int FixPanelID = 0;
   int nIterations = 1;
   double DoubletSeparation = 0;
+  int NormalizeRingWeights = 0;
   int Padding = 6, NrPixelsY, NrPixelsZ, NrPixels;
   int NrTransOpt = 0, RBinWidth = 4;
   long long int GapIntensity = 0, BadPxIntensity = 0;
@@ -1702,6 +1717,11 @@ int main(int argc, char *argv[]) {
       sscanf(aline, "%s %lf", dummy, &DoubletSeparation);
       continue;
     }
+    str = "NormalizeRingWeights ";
+    if (!strncmp(aline, str, strlen(str))) {
+      sscanf(aline, "%s %d", dummy, &NormalizeRingWeights);
+      continue;
+    }
   }
 
   // Generate Panels
@@ -1796,6 +1816,8 @@ int main(int argc, char *argv[]) {
   printf("║    nIterations:    %-40d ║\n", nIterations);
   if (DoubletSeparation > 0)
     printf("║    DoubletSep(px): %-40.1f ║\n", DoubletSeparation);
+  if (NormalizeRingWeights)
+    printf("║    RingWeightNorm: %-40s ║\n", "ON");
   if (nRingsExclude > 0) {
     printf("║    RingsExclude:   ");
     int printed = 0;
@@ -2288,6 +2310,36 @@ int main(int argc, char *argv[]) {
       IdealTtheta = IdealTtheta2;
       RingNumbers = RingNumbers2;
 
+      // Compute per-ring weights if normalization is enabled
+      double *RingWeights = NULL;
+      if (NormalizeRingWeights) {
+        RingWeights = malloc(nIndices * sizeof(*RingWeights));
+        // Count valid bins per distinct ring number
+        int ringCounts[200] = {0};
+        for (i = 0; i < nIndices; i++) {
+          if (RingNumbers[i] >= 0 && RingNumbers[i] < 200)
+            ringCounts[RingNumbers[i]]++;
+        }
+        // Count how many distinct rings are present
+        int nDistinctRings = 0;
+        for (i = 0; i < 200; i++) {
+          if (ringCounts[i] > 0)
+            nDistinctRings++;
+        }
+        // Weight = 1/(count * nDistinctRings) so each ring sums to
+        // 1/nDistinctRings
+        for (i = 0; i < nIndices; i++) {
+          int rn = RingNumbers[i];
+          if (rn >= 0 && rn < 200 && ringCounts[rn] > 0)
+            RingWeights[i] = 1.0 / ((double)ringCounts[rn]);
+          else
+            RingWeights[i] = 1.0;
+        }
+        printf(
+            "Ring weight normalization: %d distinct rings, weights computed.\n",
+            nDistinctRings);
+      }
+
       end = omp_get_wtime();
       diftotal = end - start;
       if (FitWeightMean != 1) {
@@ -2372,8 +2424,8 @@ int main(int argc, char *argv[]) {
                    tyin, tzin, p0in, p1in, p2in, p3in, &ty, &tz, &LsdFit,
                    &ybcFit, &zbcFit, &p0, &p1, &p2, &p3, &MeanDiff, tolTilts,
                    tolLsd, tolBC, tolP, tolP0, tolP1, tolP2, tolP3, tolShifts,
-                   tolRotation, px, outlierFactor, MinIndicesForFit,
-                   FixPanelID);
+                   tolRotation, px, outlierFactor, MinIndicesForFit, FixPanelID,
+                   RingWeights);
       printf("Number of function calls: %lld\n", NrCalls);
       printf(
           "Lsd %0.12f\nBC %0.12f %0.12f\nty %0.12f\ntz %0.12f\np0 %0.12f\np1 "
@@ -2402,6 +2454,8 @@ int main(int argc, char *argv[]) {
       free(IdealR);
       free(IdealRmins);
       free(IdealRmaxs);
+      if (RingWeights)
+        free(RingWeights);
 
       // On non-final iterations, free arrays that will be re-allocated
       if (iter < nIterations - 1) {
