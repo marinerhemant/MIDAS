@@ -696,6 +696,7 @@ struct my_func_data {
   int perPanelDistort; // flag
   double *snrWeights;  // per-point SNR-based weight (NULL=uniform)
   int weightByRadius;  // flag for Feature 4
+  int useL2;           // flag: 1 = squared objective
 };
 
 static double problem_function(unsigned n, const double *x, double *grad,
@@ -802,13 +803,13 @@ static double problem_function(unsigned n, const double *x, double *grad,
     DistortFunc += 1;
     Rcorr = Rad * DistortFunc;
     RIdeal = panelLsd * tan(deg2rad * IdealTtheta[i]);
-    double Diff = fabs(1 - (Rcorr / RIdeal));
+    double Diff = 1 - (Rcorr / RIdeal);
     double w = (f_data->Weights != NULL) ? f_data->Weights[i] : 1.0;
     if (f_data->weightByRadius)
       w *= RNorm;
     if (f_data->snrWeights != NULL)
       w *= f_data->snrWeights[i];
-    TotalDiff += Diff * w;
+    TotalDiff += (f_data->useL2 ? Diff * Diff : fabs(Diff)) * w;
   }
   TotalDiff *= OBJ_FUNC_SCALE;
   NrCalls++;
@@ -832,7 +833,8 @@ void FitTiltBCLsd(int nIndices, double *YMean, double *ZMean,
                   double *Weights, int DistortionOrder, double p4in,
                   double tolP4, int PerPanelLsd, double tolLsdPanel,
                   int PerPanelDistortion, double tolP2Panel, int WeightByRadius,
-                  double *snrWeights, double *p4Out, int verbose) {
+                  double *snrWeights, double *p4Out, int verbose,
+                  int L2Objective) {
   int nBase = (DistortionOrder >= 6) ? 10 : 9;
   unsigned n = nBase;
   if (tolShifts > EPS && nPanels > 1) {
@@ -859,6 +861,7 @@ void FitTiltBCLsd(int nIndices, double *YMean, double *ZMean,
   f_data.perPanelDistort = PerPanelDistortion;
   f_data.weightByRadius = WeightByRadius;
   f_data.snrWeights = snrWeights;
+  f_data.useL2 = L2Objective;
   double x[n], xl[n], xu[n];
   x[0] = Lsd;
   xl[0] = Lsd - tolLsd;
@@ -1435,6 +1438,7 @@ int main(int argc, char *argv[]) {
   int OutlierIterations = 1;
   int WeightByRadius = 0;
   int WeightByFitSNR = 0;
+  int L2Objective = 0;
   int DistortionOrder = 4;
   int PerPanelLsd = 0;
   int PerPanelDistortion = 0;
@@ -1878,6 +1882,11 @@ int main(int argc, char *argv[]) {
       sscanf(aline, "%s %d", dummy, &WeightByFitSNR);
       continue;
     }
+    str = "L2Objective ";
+    if (!strncmp(aline, str, strlen(str))) {
+      sscanf(aline, "%s %d", dummy, &L2Objective);
+      continue;
+    }
     str = "DistortionOrder ";
     if (!strncmp(aline, str, strlen(str))) {
       sscanf(aline, "%s %d", dummy, &DistortionOrder);
@@ -2008,6 +2017,8 @@ int main(int argc, char *argv[]) {
     printf("║    WeightByRadius: %-40s ║\n", "ON");
   if (WeightByFitSNR)
     printf("║    WeightByFitSNR: %-40s ║\n", "ON");
+  if (L2Objective)
+    printf("║    L2Objective:   %-40s ║\n", "ON (squared strain)");
   if (OutlierIterations > 1)
     printf("║    OutlierIters:   %-40d ║\n", OutlierIterations);
   if (DistortionOrder >= 6)
@@ -2687,7 +2698,7 @@ int main(int argc, char *argv[]) {
                    tolRotation, px, outlierFactor, MinIndicesForFit, FixPanelID,
                    RingWeights, DistortionOrder, p4in, tolP4, PerPanelLsd,
                    tolLsdPanel, PerPanelDistortion, tolP2Panel, WeightByRadius,
-                   snrWeights, &p4, iter == 0);
+                   snrWeights, &p4, iter == 0, L2Objective);
       if (iter == 0) {
         printf("Number of function calls: %lld\n", NrCalls);
         printf("Lsd        %0.12f\n"

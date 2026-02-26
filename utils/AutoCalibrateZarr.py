@@ -1017,7 +1017,7 @@ def main():
                             'PerPanelLsd', 'PerPanelDistortion',
                             'DistortionOrder', 'tolP4', 'tolLsdPanel', 'tolP2Panel',
                             'OutlierIterations', 'WeightByRadius',
-                            'WeightByFitSNR',
+                            'WeightByFitSNR', 'L2Objective',
                             'NormalizeRingWeights', 'nIterations',
                             'DoubletSeparation', 'tolRotation',
                             'MinIndicesForFit',
