@@ -378,8 +378,8 @@ void CalcFittedMean(int nIndices, int *NrEachIndexBin, int **Indices,
     AllZero = 1;
     Rstep = (Rmax - Rmin) / NrPtsForFit;
     BinNr = idxThis % nBinsPerRing;
-    EtaMi = -180 + BinNr * (360 / nBinsPerRing);
-    EtaMa = -180 + (BinNr + 1) * (360 / nBinsPerRing);
+    EtaMi = -180 + BinNr * (360.0 / nBinsPerRing);
+    EtaMa = -180 + (BinNr + 1) * (360.0 / nBinsPerRing);
     // Find if either etamin or etamax result in outside the detector, then
     // ignore this bin
     ytr = ybc - (-Rmax * sin(EtaMa * deg2rad)) / px;
@@ -1098,6 +1098,7 @@ int main(int argc, char *argv[]) {
   double outlierFactor = 0.0;
   int MinIndicesForFit = 1;
   int FixPanelID = 0;
+  int nIterations = 1;
   int Padding = 6, NrPixelsY, NrPixelsZ, NrPixels;
   int NrTransOpt = 0, RBinWidth = 4;
   long long int GapIntensity = 0, BadPxIntensity = 0;
@@ -1503,6 +1504,12 @@ int main(int argc, char *argv[]) {
     LowNr = strncmp(aline, str, strlen(str));
     if (LowNr == 0) {
       sscanf(aline, "%s %d", dummy, &HeadSize);
+      continue;
+    }
+    str = "nIterations ";
+    if (!strncmp(aline, str, strlen(str))) {
+      sscanf(aline, "%s %d", dummy, &nIterations);
+      continue;
     }
   }
 
@@ -1595,6 +1602,7 @@ int main(int argc, char *argv[]) {
   printf("║    MultFactor:     %-40.4f ║\n", outlierFactor);
   printf("║    MinIndices:     %-40d ║\n", MinIndicesForFit);
   printf("║    FitOrWMean:     %-40d ║\n", FitWeightMean);
+  printf("║    nIterations:    %-40d ║\n", nIterations);
   if (nRingsExclude > 0) {
     printf("║    RingsExclude:   ");
     int printed = 0;
@@ -1960,12 +1968,6 @@ int main(int argc, char *argv[]) {
       TthetaMins[i] = IdealTthetas[i] - TthetaTol;
       TthetaMaxs[i] = IdealTthetas[i] + TthetaTol;
     }
-    double IdealRs[n_hkls], Rmins[n_hkls], Rmaxs[n_hkls];
-    for (i = 0; i < n_hkls; i++) {
-      IdealRs[i] = R4mTtheta(IdealTthetas[i], Lsd);
-      Rmins[i] = R4mTtheta(TthetaMins[i], Lsd);
-      Rmaxs[i] = R4mTtheta(TthetaMaxs[i], Lsd);
-    }
     int nEtaBins;
     nEtaBins = (int)ceil(359.99 / EtaBinSize);
     printf("Number of eta bins: %d.\n", nEtaBins);
@@ -1974,166 +1976,238 @@ int main(int argc, char *argv[]) {
       EtaBinsLow[i] = EtaBinSize * i - 179.995;
       EtaBinsHigh[i] = EtaBinSize * (i + 1) - 179.995;
     }
-    double *R, *Eta;
-    R = malloc(NrPixels * NrPixels * sizeof(*R));
-    Eta = malloc(NrPixels * NrPixels * sizeof(*Eta));
-    int **Indices, nIndices;
-    nIndices = nEtaBins * n_hkls;
-    int *NrEachIndexBin, *etaBinNr;
-    NrEachIndexBin = malloc(nIndices * sizeof(*NrEachIndexBin));
-    Indices = allocMatrixInt(nIndices, 20000);
-    Car2Pol(n_hkls, nEtaBins, NrPixels, NrPixels, ybc, zbc, px, R, Eta, Rmins,
-            Rmaxs, EtaBinsLow, EtaBinsHigh, nIndices, NrEachIndexBin, Indices,
-            tx, tyin, tzin, p0in, p1in, p2in, p3in, MaxRingRad, Lsd);
-    double *RMean, *EtaMean, *IdealR, *IdealTtheta, *IdealRmins, *IdealRmaxs;
-    IdealR = malloc(nIndices * sizeof(*IdealR));
-    IdealRmins = malloc(nIndices * sizeof(*IdealRmins));
-    IdealRmaxs = malloc(nIndices * sizeof(*IdealRmaxs));
-    IdealTtheta = malloc(nIndices * sizeof(*IdealTtheta));
-    int *RingNumbers;
-    RingNumbers = malloc(nIndices * sizeof(*RingNumbers));
-    RMean = malloc(nIndices * sizeof(*RMean));
-    EtaMean = malloc(nIndices * sizeof(*EtaMean));
-    int NrPtsForFit;
-    NrPtsForFit = (int)((floor)((Rmaxs[0] - Rmins[0]) / px)) * RBinWidth;
-    for (i = 0; i < nIndices; i++) {
-      IdealR[i] = IdealRs[(int)(floor(i / nEtaBins))];
-      IdealRmins[i] = Rmins[(int)(floor(i / nEtaBins))];
-      IdealRmaxs[i] = Rmaxs[(int)(floor(i / nEtaBins))];
-      IdealTtheta[i] = rad2deg * atan(IdealR[i] / Lsd);
-      RingNumbers[i] = RingIDs[(int)(floor(i / nEtaBins))];
-    }
-    NrCallsProfiler = 0;
-    if (FitWeightMean == 1) {
-      CalcWeightedMean(nIndices, NrEachIndexBin, Indices, Average, R, Eta,
-                       RMean, EtaMean);
-    } else {
-      CalcFittedMean(nIndices, NrEachIndexBin, Indices, Average, R, Eta, RMean,
-                     EtaMean, NrPtsForFit, IdealRmins, IdealRmaxs, nEtaBins,
-                     ybc, zbc, px, NrPixels, EtaBinsLow, EtaBinsHigh);
-    }
-    // Find the RMean, which are 0 and update accordingly.
-    int countr = 0;
-    double *RMean2, *EtaMean2, *IdealTtheta2;
-    int *RingNumbers2;
-    RMean2 = malloc(nIndices * sizeof(*RMean2));
-    EtaMean2 = malloc(nIndices * sizeof(*EtaMean2));
-    IdealTtheta2 = malloc(nIndices * sizeof(*IdealTtheta2));
-    RingNumbers2 = malloc(nIndices * sizeof(*RingNumbers2));
-    for (i = 0; i < nIndices; i++) {
-      if (RMean[i] != 0) {
-        RMean2[countr] = RMean[i];
-        EtaMean2[countr] = EtaMean[i];
-        EtaMean2[countr] = EtaMean[i];
-        IdealTtheta2[countr] = IdealTtheta[i];
-        RingNumbers2[countr] = RingNumbers[i];
-        // printf("%lf %lf %lf
-        // %lf\n",RMean[i],IdealR[i],EtaMean[i],IdealTtheta[i]);
-        countr++;
+
+    // Variables that persist across iterations (declared here, populated
+    // inside)
+    double ty, tz, LsdFit, ybcFit, zbcFit, p0, p1, p2, p3, MeanDiff, StdDiff;
+    double *Yc = NULL, *Zc = NULL, *EtaIns = NULL, *RadIns = NULL,
+           *DiffIns = NULL;
+    double *RMean = NULL, *EtaMean = NULL, *YMean = NULL, *ZMean = NULL;
+    double *IdealTtheta = NULL;
+    int *RingNumbers = NULL;
+    int nIndices = nEtaBins * n_hkls;
+    int nIndicesFinal = 0;
+
+    for (int iter = 0; iter < nIterations; iter++) {
+      if (nIterations > 1)
+        printf("\n╔══════════════════════════════════════════╗\n"
+               "║         Iteration %d / %d                  ║\n"
+               "╚══════════════════════════════════════════╝\n",
+               iter + 1, nIterations);
+
+      // Recompute Lsd-dependent radii
+      double IdealRs[n_hkls], Rmins[n_hkls], Rmaxs[n_hkls];
+      for (i = 0; i < n_hkls; i++) {
+        IdealRs[i] = R4mTtheta(IdealTthetas[i], Lsd);
+        Rmins[i] = R4mTtheta(TthetaMins[i], Lsd);
+        Rmaxs[i] = R4mTtheta(TthetaMaxs[i], Lsd);
       }
-    }
-    printf("Out of %d slices, %d were in the detector\n", nIndices, countr);
-    nIndices = countr;
-    free(RMean);
-    free(EtaMean);
-    free(IdealTtheta);
-    free(RingNumbers);
-    RMean = RMean2;
-    EtaMean = EtaMean2;
-    IdealTtheta = IdealTtheta2;
-    RingNumbers = RingNumbers2;
-    end = omp_get_wtime();
-    diftotal = end - start;
-    if (FitWeightMean != 1) {
-      printf("Number of calls to profiler function: %lld\n", NrCallsProfiler);
-      printf("Time elapsed in fitting peak profiles:\t%f s.\n", diftotal);
-    } else
-      printf("Time elapsed in finding peak positions:\t%f s.\n", diftotal);
-    double *YMean, *ZMean;
-    YMean = malloc(nIndices * sizeof(*YMean));
-    ZMean = malloc(nIndices * sizeof(*ZMean));
-    YZ4mREta(nIndices, RMean, EtaMean, YMean, ZMean);
-    double ty, tz, LsdFit, ybcFit, zbcFit, p0, p1, p2, p3, MeanDiff, *Yc, *Zc,
-        *EtaIns, *RadIns, *DiffIns, StdDiff;
-    Yc = malloc(nIndices * sizeof(*Yc));
-    Zc = malloc(nIndices * sizeof(*Zc));
-    EtaIns = malloc(nIndices * sizeof(*EtaIns));
-    RadIns = malloc(nIndices * sizeof(*RadIns));
-    DiffIns = malloc(nIndices * sizeof(*DiffIns));
-    for (i = 0; i < nIndices; i++) {
-      Yc[i] = (ybc - (YMean[i] / px));
-      Zc[i] = (zbc + (ZMean[i] / px));
-    }
-    CorrectTiltSpatialDistortion(nIndices, MaxRingRad, Yc, Zc, IdealTtheta, px,
-                                 Lsd, ybc, zbc, tx, tyin, tzin, p0in, p1in,
-                                 p2in, p3in, EtaIns, DiffIns, RadIns, &StdDiff,
-                                 outlierFactor, NULL);
-    NrCalls = 0;
-    NrCalls = 0;
-    // Count and print indices per panel
-    if (nPanels > 0) {
-      int *panelCounts = calloc(nPanels, sizeof(int));
-      for (int i = 0; i < nIndices; i++) {
-        int pIdx = GetPanelIndex(Yc[i], Zc[i], nPanels, panels);
-        if (pIdx >= 0) {
-          panelCounts[pIdx]++;
+
+      // Allocate per-iteration arrays
+      double *R = malloc(NrPixels * NrPixels * sizeof(*R));
+      double *Eta = malloc(NrPixels * NrPixels * sizeof(*Eta));
+      nIndices = nEtaBins * n_hkls;
+      int *NrEachIndexBin = malloc(nIndices * sizeof(*NrEachIndexBin));
+      int **Indices = allocMatrixInt(nIndices, 20000);
+
+      // Bin pixels into rings using current parameters
+      Car2Pol(n_hkls, nEtaBins, NrPixels, NrPixels, ybc, zbc, px, R, Eta, Rmins,
+              Rmaxs, EtaBinsLow, EtaBinsHigh, nIndices, NrEachIndexBin, Indices,
+              tx, tyin, tzin, p0in, p1in, p2in, p3in, MaxRingRad, Lsd);
+
+      double *IdealR = malloc(nIndices * sizeof(*IdealR));
+      double *IdealRmins = malloc(nIndices * sizeof(*IdealRmins));
+      double *IdealRmaxs = malloc(nIndices * sizeof(*IdealRmaxs));
+      IdealTtheta = malloc(nIndices * sizeof(*IdealTtheta));
+      RingNumbers = malloc(nIndices * sizeof(*RingNumbers));
+      RMean = malloc(nIndices * sizeof(*RMean));
+      EtaMean = malloc(nIndices * sizeof(*EtaMean));
+      int NrPtsForFit;
+      NrPtsForFit = (int)((floor)((Rmaxs[0] - Rmins[0]) / px)) * RBinWidth;
+      for (i = 0; i < nIndices; i++) {
+        IdealR[i] = IdealRs[(int)(floor((float)i / nEtaBins))];
+        IdealRmins[i] = Rmins[(int)(floor((float)i / nEtaBins))];
+        IdealRmaxs[i] = Rmaxs[(int)(floor((float)i / nEtaBins))];
+        IdealTtheta[i] = rad2deg * atan(IdealR[i] / Lsd);
+        RingNumbers[i] = RingIDs[(int)(floor((float)i / nEtaBins))];
+      }
+
+      // Find peak positions
+      NrCallsProfiler = 0;
+      if (FitWeightMean == 1) {
+        CalcWeightedMean(nIndices, NrEachIndexBin, Indices, Average, R, Eta,
+                         RMean, EtaMean);
+      } else {
+        CalcFittedMean(nIndices, NrEachIndexBin, Indices, Average, R, Eta,
+                       RMean, EtaMean, NrPtsForFit, IdealRmins, IdealRmaxs,
+                       nEtaBins, ybc, zbc, px, NrPixels, EtaBinsLow,
+                       EtaBinsHigh);
+      }
+
+      // Compact: remove zero-RMean entries
+      int countr = 0;
+      double *RMean2 = malloc(nIndices * sizeof(*RMean2));
+      double *EtaMean2 = malloc(nIndices * sizeof(*EtaMean2));
+      double *IdealTtheta2 = malloc(nIndices * sizeof(*IdealTtheta2));
+      int *RingNumbers2 = malloc(nIndices * sizeof(*RingNumbers2));
+      for (i = 0; i < nIndices; i++) {
+        if (RMean[i] != 0) {
+          RMean2[countr] = RMean[i];
+          EtaMean2[countr] = EtaMean[i];
+          IdealTtheta2[countr] = IdealTtheta[i];
+          RingNumbers2[countr] = RingNumbers[i];
+          countr++;
         }
       }
-      printf("\n******************* Indices per Panel (Visual Layout: Z^ Y>) "
-             "*******************\n");
-      printf("                        Anchored Panel ID: %d \n", FixPanelID);
-      double charAspect = 0.5;         // Width / Height
-      double textWidthPerPanel = 14.0; // "|  12 (12345) " is 14 chars
-      double visualWidthPoints = NPanelsY * textWidthPerPanel * charAspect;
-      double targetHeightPoints =
-          visualWidthPoints * ((double)NrPixelsZ / (double)NrPixelsY);
-      // Reduce vertical spacing factor significantly (0.15 factor)
-      int linesPerRow = (int)(targetHeightPoints / NPanelsZ * 0.15 + 0.5);
-      if (linesPerRow < 1)
-        linesPerRow = 1;
+      printf("Out of %d slices, %d were in the detector\n", nIndices, countr);
+      int nIndicesOrig = nIndices; // save for freeing Indices
+      nIndices = countr;
+      free(RMean);
+      free(EtaMean);
+      free(IdealTtheta);
+      free(RingNumbers);
+      RMean = RMean2;
+      EtaMean = EtaMean2;
+      IdealTtheta = IdealTtheta2;
+      RingNumbers = RingNumbers2;
 
-      for (int z = NPanelsZ - 1; z >= 0; z--) {
-        for (int l = 0; l < linesPerRow; l++) {
-          if (l == linesPerRow / 2)
-            printf("Z=%-2d | ", z);
-          else
-            printf("     | ");
+      end = omp_get_wtime();
+      diftotal = end - start;
+      if (FitWeightMean != 1) {
+        printf("Number of calls to profiler function: %lld\n", NrCallsProfiler);
+        printf("Time elapsed in fitting peak profiles:\t%f s.\n", diftotal);
+      } else
+        printf("Time elapsed in finding peak positions:\t%f s.\n", diftotal);
 
-          if (l == linesPerRow / 2) {
-            for (int y = 0; y < NPanelsY; y++) {
-              int pIdx = y * NPanelsZ + z;
-              if (pIdx < nPanels) {
-                printf("| %3d (%5d) ", pIdx, panelCounts[pIdx]);
-              } else {
-                printf("|             ");
-              }
-            }
-            printf("|"); // Closing pipe
+      // Convert to detector coords
+      YMean = malloc(nIndices * sizeof(*YMean));
+      ZMean = malloc(nIndices * sizeof(*ZMean));
+      YZ4mREta(nIndices, RMean, EtaMean, YMean, ZMean);
+      Yc = malloc(nIndices * sizeof(*Yc));
+      Zc = malloc(nIndices * sizeof(*Zc));
+      EtaIns = malloc(nIndices * sizeof(*EtaIns));
+      RadIns = malloc(nIndices * sizeof(*RadIns));
+      DiffIns = malloc(nIndices * sizeof(*DiffIns));
+      for (i = 0; i < nIndices; i++) {
+        Yc[i] = (ybc - (YMean[i] / px));
+        Zc[i] = (zbc + (ZMean[i] / px));
+      }
+      CorrectTiltSpatialDistortion(nIndices, MaxRingRad, Yc, Zc, IdealTtheta,
+                                   px, Lsd, ybc, zbc, tx, tyin, tzin, p0in,
+                                   p1in, p2in, p3in, EtaIns, DiffIns, RadIns,
+                                   &StdDiff, outlierFactor, NULL);
+      NrCalls = 0;
+
+      // Count and print indices per panel
+      if (nPanels > 0) {
+        int *panelCounts = calloc(nPanels, sizeof(int));
+        for (int ii = 0; ii < nIndices; ii++) {
+          int pIdx = GetPanelIndex(Yc[ii], Zc[ii], nPanels, panels);
+          if (pIdx >= 0) {
+            panelCounts[pIdx]++;
           }
-          printf("\n");
         }
+        printf("\n******************* Indices per Panel (Visual Layout: Z^ Y>) "
+               "*******************\n");
+        printf("                        Anchored Panel ID: %d \n", FixPanelID);
+        double charAspect = 0.5;
+        double textWidthPerPanel = 14.0;
+        double visualWidthPoints = NPanelsY * textWidthPerPanel * charAspect;
+        double targetHeightPoints =
+            visualWidthPoints * ((double)NrPixelsZ / (double)NrPixelsY);
+        int linesPerRow = (int)(targetHeightPoints / NPanelsZ * 0.15 + 0.5);
+        if (linesPerRow < 1)
+          linesPerRow = 1;
+        for (int z = NPanelsZ - 1; z >= 0; z--) {
+          for (int l = 0; l < linesPerRow; l++) {
+            if (l == linesPerRow / 2)
+              printf("Z=%-2d | ", z);
+            else
+              printf("     | ");
+            if (l == linesPerRow / 2) {
+              for (int y = 0; y < NPanelsY; y++) {
+                int pIdx = y * NPanelsZ + z;
+                if (pIdx < nPanels) {
+                  printf("| %3d (%5d) ", pIdx, panelCounts[pIdx]);
+                } else {
+                  printf("|             ");
+                }
+              }
+              printf("|");
+            }
+            printf("\n");
+          }
+        }
+        printf("       ");
+        for (int y = 0; y < NPanelsY; y++) {
+          printf("     Y=%-2d     ", y);
+        }
+        printf("\n");
+        printf(
+            "*****************************************************************"
+            "****"
+            "***********\n\n");
+        free(panelCounts);
       }
-      printf("       ");
-      for (int y = 0; y < NPanelsY; y++) {
-        // Data block is 14 chars: "| %3d (%5d) "
-        // We want Y label centered: 5 spaces + "Y=%-2d" (4) + 5 spaces = 14
-        printf("     Y=%-2d     ", y);
+
+      // Optimize
+      FitTiltBCLsd(nIndices, Yc, Zc, IdealTtheta, Lsd, MaxRingRad, ybc, zbc, tx,
+                   tyin, tzin, p0in, p1in, p2in, p3in, &ty, &tz, &LsdFit,
+                   &ybcFit, &zbcFit, &p0, &p1, &p2, &p3, &MeanDiff, tolTilts,
+                   tolLsd, tolBC, tolP, tolP0, tolP1, tolP2, tolP3, tolShifts,
+                   tolRotation, px, outlierFactor, MinIndicesForFit,
+                   FixPanelID);
+      printf("Number of function calls: %lld\n", NrCalls);
+      printf(
+          "Lsd %0.12f\nBC %0.12f %0.12f\nty %0.12f\ntz %0.12f\np0 %0.12f\np1 "
+          "%0.12f\np2 %0.12f\np3 %0.12f\nMeanStrain %0.12lf\n",
+          LsdFit, ybcFit, zbcFit, ty, tz, p0, p1, p2, p3, MeanDiff);
+
+      // Feed outputs back as inputs for next iteration
+      Lsd = LsdFit;
+      ybc = ybcFit;
+      zbc = zbcFit;
+      tyin = ty;
+      tzin = tz;
+      p0in = p0;
+      p1in = p1;
+      p2in = p2;
+      p3in = p3;
+
+      // Save final nIndices for post-loop processing
+      nIndicesFinal = nIndices;
+
+      // Free per-iteration arrays (except those needed after final iteration)
+      FreeMemMatrixInt(Indices, nIndicesOrig);
+      free(R);
+      free(Eta);
+      free(NrEachIndexBin);
+      free(IdealR);
+      free(IdealRmins);
+      free(IdealRmaxs);
+
+      // On non-final iterations, free arrays that will be re-allocated
+      if (iter < nIterations - 1) {
+        free(RMean);
+        free(EtaMean);
+        free(YMean);
+        free(ZMean);
+        free(IdealTtheta);
+        free(RingNumbers);
+        free(Yc);
+        free(Zc);
+        free(EtaIns);
+        free(RadIns);
+        free(DiffIns);
+        RMean = EtaMean = YMean = ZMean = NULL;
+        IdealTtheta = NULL;
+        RingNumbers = NULL;
+        Yc = Zc = EtaIns = RadIns = DiffIns = NULL;
       }
-      printf("\n");
-      printf("*****************************************************************"
-             "****"
-             "***********\n\n");
-      free(panelCounts);
-    }
-    FitTiltBCLsd(nIndices, Yc, Zc, IdealTtheta, Lsd, MaxRingRad, ybc, zbc, tx,
-                 tyin, tzin, p0in, p1in, p2in, p3in, &ty, &tz, &LsdFit, &ybcFit,
-                 &zbcFit, &p0, &p1, &p2, &p3, &MeanDiff, tolTilts, tolLsd,
-                 tolBC, tolP, tolP0, tolP1, tolP2, tolP3, tolShifts,
-                 tolRotation, px, outlierFactor, MinIndicesForFit, FixPanelID);
-    printf("Number of function calls: %lld\n", NrCalls);
-    printf("Lsd %0.12f\nBC %0.12f %0.12f\nty %0.12f\ntz %0.12f\np0 %0.12f\np1 "
-           "%0.12f\np2 %0.12f\np3 %0.12f\nMeanStrain %0.12lf\n",
-           LsdFit, ybcFit, zbcFit, ty, tz, p0, p1, p2, p3, MeanDiff);
+    } // end iteration loop
+
+    // Reassign nIndices for post-loop code
+    nIndices = nIndicesFinal;
     double *Etas, *Diffs, *RadOuts;
     Etas = malloc(nIndices * sizeof(*Etas));
     Diffs = malloc(nIndices * sizeof(*Diffs));
@@ -2294,22 +2368,23 @@ int main(int argc, char *argv[]) {
               IdealTtheta[i], IsOutlier[i], YRawCorr, ZRawCorr, RingNumbers[i]);
     }
     fclose(Out);
-    FreeMemMatrixInt(Indices, nIndices);
-    free(R);
-    free(Eta);
-    free(NrEachIndexBin);
-    free(IdealR);
-    free(IdealRmins);
-    free(IdealRmaxs);
+    // Free arrays kept from the final iteration
+    // (R, Eta, Indices, NrEachIndexBin, IdealR, IdealRmins, IdealRmaxs
+    //  were already freed inside the iteration loop)
     free(IdealTtheta);
     free(RMean);
     free(EtaMean);
     free(YMean);
     free(ZMean);
+    free(RingNumbers);
+    free(Yc);
+    free(Zc);
+    free(EtaIns);
+    free(RadIns);
+    free(DiffIns);
     free(Diffs);
     free(Etas);
     free(IsOutlier);
-    free(RingNumbers);
     end = omp_get_wtime();
     diftotal = end - start;
     printf("Time elapsed for this file:\t%f s.\n", diftotal);
