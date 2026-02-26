@@ -12,12 +12,12 @@
 The script is a crucial first step for any HEDM analysis, as an accurate geometric calibration is fundamental to correctly interpreting diffraction data. It can process several input file formats (Zarr, HDF5, TIFF, GE) and produces a refined parameter file (`refined_MIDAS_params.txt`) ready for use in subsequent MIDAS analysis scripts like `ff_MIDAS.py`.
 
 ### Key Features
-*   **Automated Iterative Refinement:** The script runs the `CalibrantOMP` binary in a loop, automatically identifying and excluding outlier rings and refining parameters until a user-defined strain tolerance is met.
+*   **Automated Iterative Refinement:** The script runs the `CalibrantPanelShiftsOMP` binary in a loop, automatically identifying and excluding outlier rings and refining parameters until a user-defined strain tolerance is met.
 *   **Comprehensive Parameter Fitting:** It refines a wide range of geometric parameters, including:
     *   Sample-to-detector distance (`Lsd`)
     *   Beam center coordinates (`BC`)
     *   Detector tilts (`ty`, `tz`)
-    *   Detector distortion coefficients (`p0`, `p1`, `p2`, `p3`)
+    *   Detector distortion coefficients (`p0`, `p1`, `p2`, `p3`, and optionally `p4` for higher-order R⁶ distortion)
 *   **Robust Image Processing:** Employs advanced techniques like median filtering for background subtraction, automatic thresholding, and an optimized algorithm for detecting the initial beam center from ring patterns.
 *   **Flexible Input:** Can handle multiple common data formats and automatically convert them to the Zarr format required by the MIDAS backend.
 *   **Detailed Output:** Generates a final, refined parameter file, along with optional plots and an HDF5 file containing all intermediate data for detailed inspection and debugging.
@@ -26,7 +26,7 @@ The script is a crucial first step for any HEDM analysis, as an accurate geometr
 
 ## 2. Prerequisites
 
-1.  **MIDAS Installation:** The script must be located within a functioning MIDAS installation to access the `CalibrantOMP` and `GetHKLList` binaries in the `FF_HEDM/bin/` directory.
+1.  **MIDAS Installation:** The script must be located within a functioning MIDAS installation to access the `CalibrantPanelShiftsOMP` and `GetHKLList` binaries in the `FF_HEDM/bin/` directory.
 2.  **Python Environment:** A Python environment with the following libraries installed: `numpy`, `matplotlib`, `zarr`, `scikit-image`, `plotly`, `pandas`, `diplib`, `Pillow`, `h5py`, and `numba`.
 3.  **Input Data:**
     *   A 2D diffraction image of a calibrant material showing clear Debye-Scherrer rings.
@@ -53,7 +53,7 @@ The script follows a logical, multi-step process to achieve a converged geometri
      I --> J[Detect Beam Center & Ring Radii];
      J --> K[Estimate Initial Lsd];
      K --> L[Refinement Loop Start];
-     L --> M[Run CalibrantOMP];
+     L --> M[Run CalibrantPanelShiftsOMP];
      M --> N[Analyze Strain & Identify Outliers];
      N --> O{Converged?};
      O -- No --> P[Exclude Outliers];
@@ -80,8 +80,8 @@ The script follows a logical, multi-step process to achieve a converged geometri
 
 4.  **Iterative Refinement Loop:** This is the core of the script.
     *   The script enters a `while` loop that continues until the refinement converges.
-    *   **Run `CalibrantOMP`:** In each iteration, it calls the `CalibrantOMP` MIDAS binary with the current best-fit parameters. This binary performs a least-squares fit of the ring data and calculates a new, more accurate set of geometric parameters (`Lsd`, `BC`, tilts, distortion). It also computes a "pseudo-strain" for each measured point on each ring.
-    *   **Analyze Results:** The script parses the output of `CalibrantOMP`. The pseudo-strain should be close to zero for a perfect fit.
+    *   **Run `CalibrantPanelShiftsOMP`:** In each iteration, it calls the `CalibrantPanelShiftsOMP` MIDAS binary with the current best-fit parameters. This binary performs a least-squares fit of the ring data and calculates a new, more accurate set of geometric parameters (`Lsd`, `BC`, tilts, distortion). It also computes a "pseudo-strain" for each measured point on each ring.
+    *   **Analyze Results:** The script parses the output of `CalibrantPanelShiftsOMP`. The pseudo-strain should be close to zero for a perfect fit.
     *   **Outlier Rejection:** It calculates the mean pseudo-strain for each ring. If a ring's mean strain is significantly higher than the median (controlled by `-MultFactor`), it is flagged as an outlier and added to an exclusion list for the next iteration.
     *   **Check for Convergence:** The loop terminates when two conditions are met:
         1.  No new outlier rings are identified in an iteration.
@@ -100,11 +100,11 @@ The script follows a logical, multi-step process to achieve a converged geometri
 *   **Beam Center Detection:** Uses `scikit-image` (`measure.label`) to identify potential ring arcs. A custom, JIT-compiled function (`numba`) then calculates the geometric center of these arcs. This process is parallelized using Python's `multiprocessing` module for speed.
 *   **Initial Guess Logic:** The script attempts to identify rings by comparing the ratios of detected ring radii to the theoretical HKL spacing ratios of the calibrant.
 *   **Iterative Refinement:**
-    *   The script enters a convergence loop that calls the C binary `CalibrantOMP`.
+    *   The script enters a convergence loop that calls the C binary `CalibrantPanelShiftsOMP`.
     *   It parses the `calibrant_screen_out.csv` to get updated parameters.
     *   It calculates the mean pseudo-strain for each ring. Rings with strain > `MultFactor * median_strain` are flagged as outliers and excluded from the next iteration.
 
-### 4.2. CalibrantOMP (The Optimization Engine)
+### 4.2. CalibrantPanelShiftsOMP (The Optimization Engine)
 *   **Optimization Algorithm:** Uses the **Nelder-Mead simplex algorithm** (via the `nlopt` library) to minimize the objective function.
 *   **Objective Function:** The function calculates the "Mean Pseudo-Strain," which is the sum of differences between the measured ring radii (after geometric correction) and the theoretical ring radii.
 *   **Sub-Pixel Precision:** For each azimuthal bin, the code extracts a radial lineout and fits a **Pseudo-Voigt** profile to find the peak position with sub-pixel accuracy.
@@ -143,7 +143,7 @@ The script's behavior is controlled via the following arguments:
 | `-FirstRingNr` | The index (1-based) of the first prominent ring visible in the data. Used for the initial `Lsd` estimate. | `1` | `-FirstRingNr 2` |
 | `-LsdGuess` | An initial guess for the sample-to-detector distance (in µm). | `1000000` | `-LsdGuess 210000` |
 | `-BCGuess` | An initial guess for the beam center `[y z]` (in pixels). If not provided, it is auto-detected. | `[0.0 0.0]` | `-BCGuess 1024.5 1021.0` |
-| `-EtaBinSize` | The size of the azimuthal bins (in degrees) used by `CalibrantOMP` for fitting. | `5.0` | `-EtaBinSize 2.0` |
+| `-EtaBinSize` | The size of the azimuthal bins (in degrees) used by `CalibrantPanelShiftsOMP` for fitting. | `5.0` | `-EtaBinSize 2.0` |
 | `-Threshold` | A manual intensity threshold for segmenting the rings. If `0`, it's auto-calculated. | `0` | `-Threshold 500` |
  | `-NoMedian` | Set to `1` to skip the median filter calculation (faster, but less robust background subtraction). | `0` | `-NoMedian 1` |
  
@@ -201,7 +201,7 @@ python /path/to/AutoCalibrateZarr.py \
     -   Data for ring overlays.
     -   Strain vs. 2-theta plots for each iteration.
     -   The final converged strain data and results dataframe.
--   **`calibrant_screen_out.csv`**: The raw text output from the last run of the `CalibrantOMP` binary. Useful for debugging backend issues.
+-   **`calibrant_screen_out.csv`**: The raw text output from the last run of the `CalibrantPanelShiftsOMP` binary. Useful for debugging backend issues.
 
 ---
 
@@ -237,6 +237,88 @@ correctedZ = rawZ + dZ
 
 > [!IMPORTANT]
 > One panel must be held fixed (`FixPanelID`) with `dY=0`, `dZ=0`, `dTheta=0` to break the degeneracy with global parameters (beam center and tilts absorb any uniform shift/rotation of all panels).
+
+### Geometry Model
+
+The full detector geometry model describes how a pixel position `(Y, Z)` on the detector maps to a scattering angle `2θ` and azimuthal angle `η`. The model consists of several stages applied sequentially:
+
+#### 1. Per-Panel Correction (Multi-Panel Detectors)
+
+For each pixel, the code first determines which panel it belongs to and applies the per-panel corrections. The in-plane rotation is applied around the panel geometric center `(cY, cZ)`, followed by the translational shift:
+
+```
+Y' = cY + (Y - cY)·cos(dθ) - (Z - cZ)·sin(dθ) + dY
+Z' = cZ + (Y - cY)·sin(dθ) + (Z - cZ)·cos(dθ) + dZ
+```
+
+#### 2. Detector Coordinate Transform
+
+The corrected pixel position is converted to physical coordinates relative to the beam center `(ybc, zbc)`:
+
+```
+Yc = -(Y' - ybc) · px
+Zc =  (Z' - zbc) · px
+```
+
+where `px` is the pixel size in μm.
+
+#### 3. Tilt Correction
+
+The detector may be tilted relative to the ideal normal-to-beam orientation. Three rotation matrices (about X, Y, Z axes) are applied:
+
+```
+Rx = [[1, 0, 0], [0, cos(tx), -sin(tx)], [0, sin(tx), cos(tx)]]
+Ry = [[cos(ty), 0, sin(ty)], [0, 1, 0], [-sin(ty), 0, cos(ty)]]
+Rz = [[cos(tz), -sin(tz), 0], [sin(tz), cos(tz), 0], [0, 0, 1]]
+
+T = Rx · (Ry · Rz)
+
+[X, Y, Z]_lab = T · [0, Yc, Zc]
+```
+
+The scattering vector in lab coordinates is then:
+
+```
+Lsd_eff = Lsd + dLsd  (per-panel Lsd offset, if PerPanelLsd enabled)
+XYZ = [Lsd_eff + X_lab, Y_lab, Z_lab]
+R = (Lsd_eff / XYZ[0]) · sqrt(Y_lab² + Z_lab²)
+η = atan2(Y_lab, Z_lab)
+```
+
+#### 4. Spatial Distortion Correction
+
+The distortion model corrects for non-ideal detector response. The normalized radius is `RNorm = R / Rmax`:
+
+**Standard model (DistortionOrder 4):**
+```
+D(R,η) = p0·RNorm²·cos(2·(90-η)) + p1·RNorm⁴·cos(4·(90-η) + p3) + p2·RNorm²
+```
+
+**Extended model (DistortionOrder 6):**
+```
+D(R,η) = [standard terms] + p4·RNorm⁶
+```
+
+When `PerPanelDistortion` is enabled, `p2` is replaced by `p2 + dP2` (per-panel offset).
+
+The corrected radius and ideal radius are:
+```
+R_corr = R · (1 + D(R,η))
+R_ideal = Lsd_eff · tan(2θ_hkl)
+```
+
+#### 5. Objective Function
+
+The optimization minimizes the sum of fractional differences:
+```
+Objective = Σᵢ wᵢ · |1 - R_corr,i / R_ideal,i|
+```
+
+where the weight `wᵢ` is:
+- `1.0` by default
+- `1 / N_ring` if `NormalizeRingWeights` enabled (each ring contributes equally)
+- Multiplied by `RNorm` if `WeightByRadius` enabled (outer rings weighted more)
+
 
 ### Workflow
 

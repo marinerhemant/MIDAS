@@ -248,7 +248,7 @@ def generateZip(resFol, pfn, dfn='', darkfn='', dloc='', nchunks=-1, preproc=-1,
 def process_calibrant_output(output_file):
     """Process the output from CalibrantOMP"""
     global nPlanes, lsd_refined, bc_refined, ty_refined, tz_refined
-    global p0_refined, p1_refined, p2_refined, p3_refined, mean_strain, std_strain
+    global p0_refined, p1_refined, p2_refined, p3_refined, p4_refined, mean_strain, std_strain
     
     try:
         with open(output_file) as f:
@@ -277,6 +277,8 @@ def process_calibrant_output(output_file):
                     p2_refined = line.split()[1]
                 if 'p3 ' in line:
                     p3_refined = line.split()[1]
+                if 'p4 ' in line:
+                    p4_refined = line.split()[1]
                 if 'MeanStrain ' in line:
                     mean_strain = line.split()[1]
                 if 'StdStrain ' in line:
@@ -730,7 +732,7 @@ def main():
     global p2_refined, p3_refined, darkName, fnumber, pad, lsd_refined, bc_refined
     global ringsToExclude, nPlanes, mean_strain, std_strain, RhoDThis, h5_file, iterNr
     global badGapArr, tx_reference
-    global midas_dtype, panel_params, panel_shifts_file
+    global midas_dtype, panel_params, panel_shifts_file, p4_refined
     
     try:
         parser = MyParser(
@@ -1009,7 +1011,16 @@ def main():
                             parts = line.split()
                             if len(parts) > 1:
                                 ringsToExclude.append(int(parts[1]))
-                        elif any(line.startswith(pk) for pk in ['NPanelsY', 'NPanelsZ', 'PanelSizeY', 'PanelSizeZ', 'PanelGapsY', 'PanelGapsZ']):
+                        elif any(line.startswith(pk) for pk in [
+                            'NPanelsY', 'NPanelsZ', 'PanelSizeY', 'PanelSizeZ',
+                            'PanelGapsY', 'PanelGapsZ', 'FixPanelID',
+                            'PerPanelLsd', 'PerPanelDistortion',
+                            'DistortionOrder', 'tolP4', 'tolLsdPanel', 'tolP2Panel',
+                            'OutlierIterations', 'WeightByRadius',
+                            'NormalizeRingWeights', 'nIterations',
+                            'DoubletSeparation', 'tolRotation',
+                            'MinIndicesForFit',
+                        ]):
                             panel_params.append(line.strip())
                 logger.info(f"Loaded manual exclusions: {ringsToExclude}")
             except Exception as e:
@@ -1057,6 +1068,7 @@ def main():
         
         # Panel parameters tracking
         panel_shifts_file = f"{fstem}_panel_shifts.txt"
+        p4_refined = '0'
         
         nPlanes = len(sim_rads)
         
@@ -1225,6 +1237,10 @@ def main():
             'MultiplePeaks': 1,
             'DataType': midas_dtype
         }
+        
+        # Add p4 if distortion order was >= 6
+        if p4_refined != '0':
+            final_params['p4'] = p4_refined
         
         with open(psName, 'w') as pf:
             for key, value in final_params.items():
