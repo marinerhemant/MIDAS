@@ -2302,6 +2302,9 @@ int main(int argc, char *argv[]) {
   for (a = 0; a < 11; a++)
     means[a] = 0;
   means[11] = 0;
+  double medStrain = 0, q25Strain = 0, q75Strain = 0, minStrain = 0,
+         maxStrain = 0;
+  int nValid = 0;
   for (a = StartNr; a <= EndNr; a++) {
     start = omp_get_wtime();
     sprintf(FileName, "%s/%s_%0*d%s", folder, fn, Padding, a, Ext);
@@ -2832,6 +2835,38 @@ int main(int argc, char *argv[]) {
         tx, ty, tz, p0, p1, p2, p3, Etas, Diffs, RadOuts, &StdDiff,
         outlierFactor, IsOutlier, p4in, DistortionOrder, OutlierIterations, 1);
     printf("StdStrain %0.12lf\n", StdDiff);
+    // Compute strain statistics from valid (non-outlier) diffs
+    nValid = 0;
+    for (i = 0; i < nIndices; i++)
+      if (Diffs[i] >= 0 && !IsOutlier[i])
+        nValid++;
+    medStrain = 0;
+    q25Strain = 0;
+    q75Strain = 0;
+    minStrain = 0;
+    maxStrain = 0;
+    if (nValid > 0) {
+      double *sortedDiffs = malloc(nValid * sizeof(double));
+      int idx = 0;
+      for (i = 0; i < nIndices; i++)
+        if (Diffs[i] >= 0 && !IsOutlier[i])
+          sortedDiffs[idx++] = Diffs[i];
+      for (int ii = 1; ii < nValid; ii++) {
+        double key = sortedDiffs[ii];
+        int jj = ii - 1;
+        while (jj >= 0 && sortedDiffs[jj] > key) {
+          sortedDiffs[jj + 1] = sortedDiffs[jj];
+          jj--;
+        }
+        sortedDiffs[jj + 1] = key;
+      }
+      medStrain = sortedDiffs[nValid / 2];
+      q25Strain = sortedDiffs[nValid / 4];
+      q75Strain = sortedDiffs[3 * nValid / 4];
+      minStrain = sortedDiffs[0];
+      maxStrain = sortedDiffs[nValid - 1];
+      free(sortedDiffs);
+    }
 
     // Per-panel strain summary
     if (nPanels > 0) {
@@ -2954,7 +2989,20 @@ int main(int argc, char *argv[]) {
             "corr.csv");
     Out = fopen(OutFileName, "w");
     fprintf(Out, "%%Eta Strain RadFit EtaCalc DiffCalc RadCalc Ideal2Theta "
-                 "Outlier YRawCorr ZRawCorr\n");
+                 "Outlier YRawCorr ZRawCorr RingNr RadGlobal\n");
+    // Build tilt rotation matrix for RadGlobal computation
+    double txrG = deg2rad * tx;
+    double tyrG = deg2rad * ty;
+    double tzrG = deg2rad * tz;
+    double RxG[3][3] = {
+        {1, 0, 0}, {0, cos(txrG), -sin(txrG)}, {0, sin(txrG), cos(txrG)}};
+    double RyG[3][3] = {
+        {cos(tyrG), 0, sin(tyrG)}, {0, 1, 0}, {-sin(tyrG), 0, cos(tyrG)}};
+    double RzG[3][3] = {
+        {cos(tzrG), -sin(tzrG), 0}, {sin(tzrG), cos(tzrG), 0}, {0, 0, 1}};
+    double TRintG[3][3], TRsG[3][3];
+    MatrixMultF33(RyG, RzG, TRintG);
+    MatrixMultF33(RxG, TRintG, TRsG);
     for (i = 0; i < nIndices; i++) {
       if (Diffs[i] < 0)
         continue;
@@ -2977,9 +3025,30 @@ int main(int argc, char *argv[]) {
       }
       double YRawCorr = rawY + dY;
       double ZRawCorr = rawZ + dZ;
-      fprintf(Out, "%f %10.8f %10.8f %f %10.8f %10.8f %f %d %f %f %d\n",
+      // Compute RadGlobal: corrected radius using global Lsd only (no dLsd)
+      double YcG = -(rawY + dY - ybcFit) * px;
+      double ZcG = (rawZ + dZ - zbcFit) * px;
+      double ABCG[3] = {0, YcG, ZcG};
+      double ABCPrG[3];
+      MatrixMultF(TRsG, ABCG, ABCPrG);
+      double XYZG[3] = {LsdFit + ABCPrG[0], ABCPrG[1], ABCPrG[2]};
+      double RadG =
+          (LsdFit / XYZG[0]) * sqrt(XYZG[1] * XYZG[1] + XYZG[2] * XYZG[2]);
+      double EtaG = CalcEtaAngleLocal(XYZG[1], XYZG[2]);
+      double RNormG = RadG / MaxRingRad;
+      double EtaTG = 90 - EtaG;
+      double DistortG =
+          (p0 * pow(RNormG, 2.0) * cos(deg2rad * (2 * EtaTG))) +
+          (p1 * pow(RNormG, 4.0) * cos(deg2rad * (4 * EtaTG + p3))) +
+          (p2 * pow(RNormG, 2.0));
+      if (DistortionOrder >= 6)
+        DistortG += p4in * pow(RNormG, 6.0);
+      DistortG += 1;
+      double RadGlobal = RadG * DistortG;
+      fprintf(Out, "%f %10.8f %10.8f %f %10.8f %10.8f %f %d %f %f %d %10.8f\n",
               Etas[i], Diffs[i], RadOuts[i], EtaIns[i], DiffIns[i], RadIns[i],
-              IdealTtheta[i], IsOutlier[i], YRawCorr, ZRawCorr, RingNumbers[i]);
+              IdealTtheta[i], IsOutlier[i], YRawCorr, ZRawCorr, RingNumbers[i],
+              RadGlobal);
     }
     fclose(Out);
     // Free arrays kept from the final iteration
@@ -3024,6 +3093,12 @@ int main(int argc, char *argv[]) {
   printf("           *** microstrain ***\n");
   printf("MeanStrain %0.6lf\nStdStrain  %0.6lf\n", means[9] * 1e6,
          means[10] * 1e6);
+  printf("MedianStr  %0.6lf\n", medStrain * 1e6);
+  printf("Q25        %0.6lf\n", q25Strain * 1e6);
+  printf("Q75        %0.6lf\n", q75Strain * 1e6);
+  printf("MinStrain  %0.6lf\n", minStrain * 1e6);
+  printf("MaxStrain  %0.6lf\n", maxStrain * 1e6);
+  printf("NPoints    %d\n", nValid);
   printf("*******************Copy to par*******************\n");
   free(DarkFile);
   free(AverageDark);
