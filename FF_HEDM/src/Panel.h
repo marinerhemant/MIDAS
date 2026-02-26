@@ -15,6 +15,8 @@ typedef struct {
   double dY;      // Shift Y
   double dZ;      // Shift Z
   double dTheta;  // In-plane rotation (degrees)
+  double dLsd;    // Per-panel Lsd offset (microns)
+  double dP2;     // Per-panel p2 distortion offset
   double centerY; // Rotation anchor Y = (yMin+yMax)/2.0
   double centerZ; // Rotation anchor Z = (zMin+zMax)/2.0
 } Panel;

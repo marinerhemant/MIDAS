@@ -1,6 +1,6 @@
 # AutoCalibrateZarr.py User Manual
 
-**Version:** 9.0  
+**Version:** 10.0  
 **Contact:** hsharma@anl.gov
 
 ---
@@ -223,6 +223,8 @@ Each panel is defined by its pixel boundaries (`yMin`, `yMax`, `zMin`, `zMax`) a
 | `dY` | Translational shift in Y (pixels) |
 | `dZ` | Translational shift in Z (pixels) |
 | `dTheta` | In-plane rotation around the panel center (degrees) |
+| `dLsd` | Per-panel sample-to-detector distance offset (μm) |
+| `dP2` | Per-panel radial distortion (p2) offset |
 
 The rotation is applied around the geometric center of the panel `(centerY, centerZ)`:
 
@@ -294,10 +296,9 @@ correctedZ = rawZ + dZ
     *   **Console:** Refined geometry (`Lsd`, `BC`, tilts, distortion), per-ring deviation tables, and the "Indices per Panel" coverage map.
     *   **`panelshifts.txt`** — Per-panel corrections in text format:
         ```text
-        # ID dY dZ dTheta
-        0  0.0000000000  0.0000000000  0.0000000000
-        1  0.3456789012 -0.1234567890  0.0876543210
-        2 -0.2345678901  0.4567890123 -0.0543210987
+        # ID dY dZ dTheta dLsd dP2
+        0  0.0000000000  0.0000000000  0.0000000000  0.0000000000  0.0000000000
+        1  0.3456789012 -0.1234567890  0.0876543210  12.3456789000  0.0000123456
         ...
         ```
     *   **`panelshifts.txt.shifts.tif`** — A **float32 TIFF image** (same dimensions as the detector) where each pixel contains the total shift magnitude in pixels. This combines translational shifts with position-dependent rotation contribution:
@@ -372,8 +373,90 @@ The following table lists all parameters recognized by `CalibrantPanelShiftsOMP`
 | `PanelGapsY` / `PanelGapsZ` | int... | — | Inter-panel gap sizes |
 | `PanelShiftsFile` | string | — | File for panel corrections |
 | `FixPanelID` | int | 0 | Panel held fixed |
+| **Iterative Refinement** | | | |
+| `nIterations` | int | 1 | Number of refinement iterations (best result is kept) |
+| **Doublet Fitting** | | | |
+| `DoubletSeparation` | double | 0 | Max pixel separation for doublet ring detection; 0 = disabled |
+| **Objective Function Weighting** | | | |
+| `NormalizeRingWeights` | int | 0 | `1` = each ring contributes equally regardless of eta-bin count |
+| `WeightByRadius` | int | 0 | `1` = weight points by R/Rmax (emphasizes outer rings) |
+| **Outlier Rejection** | | | |
+| `OutlierIterations` | int | 1 | Number of iterative sigma-clipping passes |
+| **Distortion Model** | | | |
+| `DistortionOrder` | int | 4 | `4` = standard (p0–p3); `6` = adds R⁶ term (p4) |
+| `tolP4` | double | 0 | Search range for p4 coefficient |
+| **Per-Panel Advanced** | | | |
+| `PerPanelLsd` | int | 0 | `1` = fit per-panel Lsd offset (detector non-planarity) |
+| `tolLsdPanel` | double | 100 | Search range for per-panel dLsd (μm) |
+| `PerPanelDistortion` | int | 0 | `1` = fit per-panel p2 offset (panel flatness) |
+| `tolP2Panel` | double | 0.0001 | Search range for per-panel dP2 |
  
- ---
+### Advanced Optimization Features
+
+The following optional features can be enabled to improve calibration accuracy, especially for multi-panel detectors:
+
+#### Doublet Fitting
+Closely spaced rings (within `DoubletSeparation` pixels) are automatically detected and fitted simultaneously using a 10-parameter dual pseudo-Voigt model with shared background and Lorentzian fraction. This eliminates bias from overlapping peaks that would otherwise require excluding those rings.
+
+```text
+DoubletSeparation 25
+```
+
+#### Ring Weight Normalization
+By default, inner rings near the beam center have more eta bins on the detector and thus contribute more terms to the optimization objective. Enabling `NormalizeRingWeights` ensures each ring contributes equally:
+
+```text
+NormalizeRingWeights 1
+```
+
+#### Higher-Order Distortion
+The standard distortion model uses 4 parameters (p0–p3). Enabling `DistortionOrder 6` adds an R⁶ radially-symmetric term (p4) that can dramatically reduce StdStrain (up to ~74% improvement observed):
+
+```text
+DistortionOrder 6
+tolP4 0.0001
+```
+
+#### Per-Panel Corrections
+For tiled detectors where panels may not be perfectly co-planar or uniformly flat:
+
+- **`PerPanelLsd 1`** — Fits a per-panel Lsd offset to account for detector tile non-planarity.
+- **`PerPanelDistortion 1`** — Fits a per-panel p2 (radial distortion) offset to account for per-tile flatness variations.
+
+```text
+PerPanelLsd 1
+tolLsdPanel 100
+PerPanelDistortion 1
+tolP2Panel 0.0001
+```
+
+#### Iterative Sigma-Clipping
+The standard outlier rejection uses a single pass with `MultFactor × MeanStrain` threshold. Setting `OutlierIterations > 1` iterates the rejection, recomputing the mean each pass for more robust rejection:
+
+```text
+OutlierIterations 3
+```
+
+#### Best-Iteration Tracking
+When `nIterations > 1`, the optimizer tracks the best result (lowest MeanStrain) across all iterations and automatically restores those parameters at the end, preventing oscillation from degrading the final result:
+
+```text
+nIterations 10
+```
+
+> [!TIP]
+> A recommended starting configuration for multi-panel detectors:
+> ```text
+> nIterations 10
+> NormalizeRingWeights 1
+> DistortionOrder 6
+> tolP4 0.0001
+> PerPanelDistortion 1
+> OutlierIterations 3
+> DoubletSeparation 25
+> ```
+
+---
  
  ## 8. See Also
 

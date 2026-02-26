@@ -43,6 +43,8 @@ int GeneratePanels(int nPanelsY, int nPanelsZ, int panelSizeY, int panelSizeZ,
       (*panels)[idx].dY = 0.0;
       (*panels)[idx].dZ = 0.0;
       (*panels)[idx].dTheta = 0.0;
+      (*panels)[idx].dLsd = 0.0;
+      (*panels)[idx].dP2 = 0.0;
       (*panels)[idx].centerY = (yStart + yEnd) / 2.0;
       (*panels)[idx].centerZ = (zStart + zEnd) / 2.0;
 
@@ -65,14 +67,19 @@ int LoadPanelShifts(const char *filename, int nPanels, Panel *panels) {
     if (line[0] == '#' || line[0] == '\n')
       continue;
     int id;
-    double dY, dZ, dTheta = 0.0;
-    int nread = sscanf(line, "%d %lf %lf %lf", &id, &dY, &dZ, &dTheta);
+    double dY, dZ, dTheta = 0.0, dLsd = 0.0, dP2 = 0.0;
+    int nread = sscanf(line, "%d %lf %lf %lf %lf %lf", &id, &dY, &dZ, &dTheta,
+                       &dLsd, &dP2);
     if (nread >= 3) {
       if (id >= 0 && id < nPanels) {
         panels[id].dY = dY;
         panels[id].dZ = dZ;
         if (nread >= 4)
           panels[id].dTheta = dTheta;
+        if (nread >= 5)
+          panels[id].dLsd = dLsd;
+        if (nread >= 6)
+          panels[id].dP2 = dP2;
       }
     }
   }
@@ -88,10 +95,11 @@ int SavePanelShifts(const char *filename, int nPanels, Panel *panels) {
     return 1;
   }
 
-  fprintf(fp, "# ID dY dZ dTheta\n");
+  fprintf(fp, "# ID dY dZ dTheta dLsd dP2\n");
   for (int i = 0; i < nPanels; i++) {
-    fprintf(fp, "%d %.10f %.10f %.10f\n", panels[i].id, panels[i].dY,
-            panels[i].dZ, panels[i].dTheta);
+    fprintf(fp, "%d %.10f %.10f %.10f %.10f %.10f\n", panels[i].id,
+            panels[i].dY, panels[i].dZ, panels[i].dTheta, panels[i].dLsd,
+            panels[i].dP2);
   }
   fclose(fp);
   return 0;

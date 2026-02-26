@@ -655,7 +655,11 @@ struct my_func_data {
   double tx;
   int fixPanel;
   double tolRotation;
-  double *Weights; // per-point weight for ring normalization (NULL=uniform)
+  double *Weights;     // per-point weight for ring normalization (NULL=uniform)
+  int nBase;           // 9 or 10 (10 when DistortionOrder=6)
+  int perPanelLsd;     // flag
+  int perPanelDistort; // flag
+  int weightByRadius;  // flag for Feature 4
 };
 
 static double problem_function(unsigned n, const double *x, double *grad,
@@ -698,7 +702,7 @@ static double problem_function(unsigned n, const double *x, double *grad,
   for (i = 0; i < nIndices; i++) {
     double n0 = 2, n1 = 4, n2 = 2, Yc, Zc;
     double Rad, Eta, RNorm, DistortFunc, Rcorr, RIdeal, EtaT;
-    double dY = 0, dZ = 0, dTheta = 0;
+    double dY = 0, dZ = 0, dTheta = 0, dLsd = 0, dP2 = 0;
     int pIdx = -1;
     if (nPanels > 0) {
       pIdx = GetPanelIndex((double)YMean[i], (double)ZMean[i], nPanels, panels);
@@ -710,15 +714,24 @@ static double problem_function(unsigned n, const double *x, double *grad,
     dY = 0;
     dZ = 0;
     dTheta = 0;
-    if (n > 9) {
+    int stride = (f_data->tolRotation > 1e-12) ? 3 : 2;
+    if (f_data->perPanelLsd)
+      stride++;
+    if (f_data->perPanelDistort)
+      stride++;
+    if (n > f_data->nBase) {
       if (pIdx != f_data->fixPanel) {
         int logicalIndex = (pIdx < f_data->fixPanel) ? pIdx : pIdx - 1;
-        int stride = f_data->tolRotation > 1e-12 ? 3 : 2;
-        int xIdx = 9 + logicalIndex * stride;
+        int xIdx = f_data->nBase + logicalIndex * stride;
         dY = x[xIdx];
         dZ = x[xIdx + 1];
-        if (stride == 3)
-          dTheta = x[xIdx + 2];
+        int off = 2;
+        if (f_data->tolRotation > 1e-12)
+          dTheta = x[xIdx + off++];
+        if (f_data->perPanelLsd)
+          dLsd = x[xIdx + off++];
+        if (f_data->perPanelDistort)
+          dP2 = x[xIdx + off++];
       }
     }
     double rawY = YMean[i], rawZ = ZMean[i];
@@ -736,20 +749,27 @@ static double problem_function(unsigned n, const double *x, double *grad,
     double ABC[3] = {0, Yc, Zc};
     double ABCPr[3];
     MatrixMultF(TRs, ABC, ABCPr);
-    double XYZ[3] = {Lsd + ABCPr[0], ABCPr[1], ABCPr[2]};
-    Rad = (Lsd / (XYZ[0])) * (sqrt(XYZ[1] * XYZ[1] + XYZ[2] * XYZ[2]));
+    double panelLsd = Lsd + dLsd;
+    double XYZ[3] = {panelLsd + ABCPr[0], ABCPr[1], ABCPr[2]};
+    Rad = (panelLsd / (XYZ[0])) * (sqrt(XYZ[1] * XYZ[1] + XYZ[2] * XYZ[2]));
     Eta = CalcEtaAngleLocal(XYZ[1], XYZ[2]);
     RNorm = Rad / MaxRad;
     EtaT = 90 - Eta;
+    double panelP2 = p2 + dP2;
     DistortFunc = (p0 * (pow(RNorm, n0)) * (cos(deg2rad * (2 * EtaT)))) +
                   (p1 * (pow(RNorm, n1)) * (cos(deg2rad * (4 * EtaT + p3)))) +
-                  (p2 * (pow(RNorm, n2))) + 1;
+                  (panelP2 * (pow(RNorm, n2)));
+    if (f_data->nBase > 9) {
+      double p4 = x[9];
+      DistortFunc += p4 * pow(RNorm, 6.0);
+    }
+    DistortFunc += 1;
     Rcorr = Rad * DistortFunc;
-    RIdeal = Lsd * tan(deg2rad * IdealTtheta[i]);
-    Rcorr = Rad * DistortFunc;
-    RIdeal = Lsd * tan(deg2rad * IdealTtheta[i]);
+    RIdeal = panelLsd * tan(deg2rad * IdealTtheta[i]);
     double Diff = fabs(1 - (Rcorr / RIdeal));
     double w = (f_data->Weights != NULL) ? f_data->Weights[i] : 1.0;
+    if (f_data->weightByRadius)
+      w *= RNorm;
     TotalDiff += Diff * w;
   }
   TotalDiff *= OBJ_FUNC_SCALE;
@@ -771,13 +791,18 @@ void FitTiltBCLsd(int nIndices, double *YMean, double *ZMean,
                   double tolP0, double tolP1, double tolP2, double tolP3,
                   double tolShifts, double tolRotation, double px,
                   double outlierFactor, int minIndices, int fixPanel,
-                  double *Weights) {
-  // Look at the possibility of including translations for each of the small
-  // panels on a multi-panel detector in the optimization.... Also change
-  // CorrectTiltSpatialDistortion to include translations!!!
-  unsigned n = 9;
+                  double *Weights, int DistortionOrder, double p4in,
+                  double tolP4, int PerPanelLsd, double tolLsdPanel,
+                  int PerPanelDistortion, double tolP2Panel, int WeightByRadius,
+                  double *p4Out) {
+  int nBase = (DistortionOrder >= 6) ? 10 : 9;
+  unsigned n = nBase;
   if (tolShifts > EPS && nPanels > 1) {
     int stride = (tolRotation > EPS) ? 3 : 2;
+    if (PerPanelLsd)
+      stride++;
+    if (PerPanelDistortion)
+      stride++;
     n += (nPanels - 1) * stride;
   }
   struct my_func_data f_data;
@@ -791,6 +816,10 @@ void FitTiltBCLsd(int nIndices, double *YMean, double *ZMean,
   f_data.fixPanel = fixPanel;
   f_data.tolRotation = tolRotation;
   f_data.Weights = Weights;
+  f_data.nBase = nBase;
+  f_data.perPanelLsd = PerPanelLsd;
+  f_data.perPanelDistort = PerPanelDistortion;
+  f_data.weightByRadius = WeightByRadius;
   double x[n], xl[n], xu[n];
   x[0] = Lsd;
   xl[0] = Lsd - tolLsd;
@@ -819,6 +848,11 @@ void FitTiltBCLsd(int nIndices, double *YMean, double *ZMean,
   x[8] = p3in;
   xl[8] = p3in - tolP3;
   xu[8] = p3in + tolP3;
+  if (nBase > 9) {
+    x[9] = p4in;
+    xl[9] = p4in - tolP4;
+    xu[9] = p4in + tolP4;
+  }
 
   if (tolShifts > EPS && nPanels > 1) {
     int panelCounts[nPanels];
@@ -840,7 +874,7 @@ void FitTiltBCLsd(int nIndices, double *YMean, double *ZMean,
     }
 
     if (nPanels > 1) {
-      int p_idx = 9;
+      int p_idx = nBase;
       for (int i = 0; i < nPanels; i++) {
         if (i == fixPanel)
           continue;
@@ -881,6 +915,34 @@ void FitTiltBCLsd(int nIndices, double *YMean, double *ZMean,
           }
           p_idx++;
         }
+
+        // Per-panel dLsd
+        if (PerPanelLsd) {
+          x[p_idx] = panels[i].dLsd;
+          if (panelCounts[i] < minIndices) {
+            x[p_idx] = 0;
+            xl[p_idx] = 0;
+            xu[p_idx] = 0;
+          } else {
+            xl[p_idx] = x[p_idx] - tolLsdPanel;
+            xu[p_idx] = x[p_idx] + tolLsdPanel;
+          }
+          p_idx++;
+        }
+
+        // Per-panel dP2
+        if (PerPanelDistortion) {
+          x[p_idx] = panels[i].dP2;
+          if (panelCounts[i] < minIndices) {
+            x[p_idx] = 0;
+            xl[p_idx] = 0;
+            xu[p_idx] = 0;
+          } else {
+            xl[p_idx] = x[p_idx] - tolP2Panel;
+            xu[p_idx] = x[p_idx] + tolP2Panel;
+          }
+          p_idx++;
+        }
       }
     }
   }
@@ -914,6 +976,8 @@ void FitTiltBCLsd(int nIndices, double *YMean, double *ZMean,
   *p1 = x[6];
   *p2 = x[7];
   *p3 = x[8];
+  if (nBase > 9 && p4Out)
+    *p4Out = x[9];
 
   // 2. Update panel shifts if applicable
   if (nPanels > 0) {
@@ -926,7 +990,7 @@ void FitTiltBCLsd(int nIndices, double *YMean, double *ZMean,
 
     // Update others
     if (tolShifts > EPS && nPanels > 1) {
-      int xIdx = 9;
+      int xIdx = nBase;
       for (int i = 0; i < nPanels; i++) {
         if (i == fixPanel)
           continue;
@@ -934,6 +998,10 @@ void FitTiltBCLsd(int nIndices, double *YMean, double *ZMean,
         panels[i].dZ = x[xIdx++];
         if (tolRotation > EPS)
           panels[i].dTheta = x[xIdx++];
+        if (PerPanelLsd)
+          panels[i].dLsd = x[xIdx++];
+        if (PerPanelDistortion)
+          panels[i].dP2 = x[xIdx++];
       }
     } else {
       // Reset others if optimization didn't run for them
@@ -982,7 +1050,7 @@ void FitTiltBCLsd(int nIndices, double *YMean, double *ZMean,
     double p3V = *p3;
 
     for (i = 0; i < nIndices; i++) {
-      double dY = 0, dZ = 0, dTheta = 0;
+      double dY = 0, dZ = 0, dTheta = 0, dLsd = 0, dP2 = 0;
       int pIdx = -1;
       if (nPanels > 0) {
         pIdx = GetPanelIndex(YMean[i], ZMean[i], nPanels, panels);
@@ -994,6 +1062,8 @@ void FitTiltBCLsd(int nIndices, double *YMean, double *ZMean,
         dY = panels[pIdx].dY;
         dZ = panels[pIdx].dZ;
         dTheta = panels[pIdx].dTheta;
+        dLsd = panels[pIdx].dLsd;
+        dP2 = panels[pIdx].dP2;
       }
       double rawY = YMean[i], rawZ = ZMean[i];
       if (pIdx >= 0 && fabs(dTheta) > 1e-12) {
@@ -1010,17 +1080,22 @@ void FitTiltBCLsd(int nIndices, double *YMean, double *ZMean,
       double ABC[3] = {0, Yc, Zc};
       double ABCPr[3];
       MatrixMultF(TRs, ABC, ABCPr);
-      double XYZ[3] = {LsdV + ABCPr[0], ABCPr[1], ABCPr[2]};
-      Rad = (LsdV / (XYZ[0])) * (sqrt(XYZ[1] * XYZ[1] + XYZ[2] * XYZ[2]));
+      double panelLsd = LsdV + dLsd;
+      double XYZ[3] = {panelLsd + ABCPr[0], ABCPr[1], ABCPr[2]};
+      Rad = (panelLsd / (XYZ[0])) * (sqrt(XYZ[1] * XYZ[1] + XYZ[2] * XYZ[2]));
       Eta = CalcEtaAngleLocal(XYZ[1], XYZ[2]);
       RNorm = Rad / MaxRad;
       EtaT = 90 - Eta;
+      double panelP2 = p2V + dP2;
       DistortFunc =
           (p0V * (pow(RNorm, n0)) * (cos(deg2rad * (2 * EtaT)))) +
           (p1V * (pow(RNorm, n1)) * (cos(deg2rad * (4 * EtaT + p3V)))) +
-          (p2V * (pow(RNorm, n2))) + 1;
+          (panelP2 * (pow(RNorm, n2)));
+      if (nBase > 9 && p4Out)
+        DistortFunc += (*p4Out) * pow(RNorm, 6.0);
+      DistortFunc += 1;
       Rcorr = Rad * DistortFunc;
-      RIdeal = LsdV * tan(deg2rad * IdealTtheta[i]);
+      RIdeal = panelLsd * tan(deg2rad * IdealTtheta[i]);
       Diff = fabs(1 - (Rcorr / RIdeal));
       tempDiffs[i] = Diff;
       totalSum += Diff;
@@ -1067,7 +1142,8 @@ static inline void CorrectTiltSpatialDistortion(
     double *IdealTtheta, double px, double Lsd, double ybc, double zbc,
     double tx, double ty, double tz, double p0, double p1, double p2, double p3,
     double *Etas, double *Diffs, double *RadOuts, double *StdDiff,
-    double outlierFactor, int *IsOutlier) {
+    double outlierFactor, int *IsOutlier, double p4, int DistortionOrder,
+    int OutlierIterations) {
   double txr, tyr, tzr;
   txr = deg2rad * tx;
   tyr = deg2rad * ty;
@@ -1086,7 +1162,7 @@ static inline void CorrectTiltSpatialDistortion(
   double Rad, Eta, RNorm, DistortFunc, Rcorr, RIdeal, EtaT, Diff, MeanDiff = 0;
   int nValidPoints = 0;
   for (i = 0; i < nIndices; i++) {
-    double dY = 0, dZ = 0, dTheta = 0;
+    double dY = 0, dZ = 0, dTheta = 0, dLsd = 0, dP2 = 0;
     int pIdx = -1;
     if (nPanels > 0) {
       pIdx = GetPanelIndex(YMean[i], ZMean[i], nPanels, panels);
@@ -1101,6 +1177,8 @@ static inline void CorrectTiltSpatialDistortion(
       dY = panels[pIdx].dY;
       dZ = panels[pIdx].dZ;
       dTheta = panels[pIdx].dTheta;
+      dLsd = panels[pIdx].dLsd;
+      dP2 = panels[pIdx].dP2;
     }
     double rawY = YMean[i], rawZ = ZMean[i];
     if (pIdx >= 0 && fabs(dTheta) > 1e-12) {
@@ -1117,23 +1195,26 @@ static inline void CorrectTiltSpatialDistortion(
     double ABC[3] = {0, Yc, Zc};
     double ABCPr[3];
     MatrixMultF(TRs, ABC, ABCPr);
-    double XYZ[3] = {Lsd + ABCPr[0], ABCPr[1], ABCPr[2]};
-    Rad = (Lsd / (XYZ[0])) * (sqrt(XYZ[1] * XYZ[1] + XYZ[2] * XYZ[2]));
+    double panelLsd = Lsd + dLsd;
+    double XYZ[3] = {panelLsd + ABCPr[0], ABCPr[1], ABCPr[2]};
+    Rad = (panelLsd / (XYZ[0])) * (sqrt(XYZ[1] * XYZ[1] + XYZ[2] * XYZ[2]));
     Eta = CalcEtaAngleLocal(XYZ[1], XYZ[2]);
     RNorm = Rad / MaxRad;
     EtaT = 90 - Eta;
+    double panelP2 = p2 + dP2;
     DistortFunc = (p0 * (pow(RNorm, n0)) * (cos(deg2rad * (2 * EtaT)))) +
                   (p1 * (pow(RNorm, n1)) * (cos(deg2rad * (4 * EtaT + p3)))) +
-                  (p2 * (pow(RNorm, n2))) + 1;
+                  (panelP2 * (pow(RNorm, n2)));
+    if (DistortionOrder >= 6)
+      DistortFunc += p4 * pow(RNorm, 6.0);
+    DistortFunc += 1;
     Rcorr = Rad * DistortFunc;
-    RIdeal = Lsd * tan(deg2rad * IdealTtheta[i]);
+    RIdeal = panelLsd * tan(deg2rad * IdealTtheta[i]);
     Diff = fabs(1 - (Rcorr / RIdeal));
     Etas[i] = Eta;
     Diffs[i] = Diff;
     MeanDiff += Diff;
     RadOuts[i] = Rcorr;
-    // printf("%lf %lf %lf %lf %lf %lf
-    // %lf\n",Rad,Lsd,XYZ[0],XYZ[1],XYZ[2],YMean[i],ZMean[i]);
   }
   if (nValidPoints > 0) {
     MeanDiff /= nValidPoints;
@@ -1141,40 +1222,49 @@ static inline void CorrectTiltSpatialDistortion(
     MeanDiff = 0;
   }
 
-  // Filter outliers for StdDiff calculation
+  // Filter outliers with iterative sigma-clipping
   double *validDiffs = malloc(nIndices * sizeof(double));
   int validCount = 0;
-  double threshold = (outlierFactor > 0)
-                         ? (outlierFactor * MeanDiff)
-                         : 1e9; // 1e9 effectively no filter if 0
 
   if (outlierFactor > 0) {
-    double newSum = 0;
+    // Initialize: all valid points are inliers
     for (i = 0; i < nIndices; i++) {
-      if (Diffs[i] < 0) {
-        if (IsOutlier)
-          IsOutlier[i] = 1;
-        continue; // Skip invalid
-      }
-      if (Diffs[i] <= threshold) {
-        if (IsOutlier)
-          IsOutlier[i] = 0;
-        validDiffs[validCount] = Diffs[i];
-        newSum += Diffs[i];
-        validCount++;
-      } else {
-        if (IsOutlier)
-          IsOutlier[i] = 1;
-      }
+      if (IsOutlier)
+        IsOutlier[i] = (Diffs[i] < 0) ? 1 : 0;
     }
-    if (validCount > 0) {
-      double originalMean = MeanDiff;
-      MeanDiff = newSum / validCount;
-      printf("StdDev Outlier Rejection (Factor %.2f): Excluded %d / %d "
-             "points. "
-             "Mean Strain: %.8f -> %.8f\n",
-             outlierFactor, nValidPoints - validCount, nValidPoints,
-             originalMean, MeanDiff);
+
+    int nIter = (OutlierIterations > 0) ? OutlierIterations : 1;
+    for (int iter = 0; iter < nIter; iter++) {
+      double threshold = outlierFactor * MeanDiff;
+      double newSum = 0;
+      validCount = 0;
+
+      for (i = 0; i < nIndices; i++) {
+        if (Diffs[i] < 0)
+          continue;
+        if (Diffs[i] <= threshold) {
+          if (IsOutlier)
+            IsOutlier[i] = 0;
+          validDiffs[validCount] = Diffs[i];
+          newSum += Diffs[i];
+          validCount++;
+        } else {
+          if (IsOutlier)
+            IsOutlier[i] = 1;
+        }
+      }
+      if (validCount > 0) {
+        double prevMean = MeanDiff;
+        MeanDiff = newSum / validCount;
+        if (iter == nIter - 1 || fabs(MeanDiff - prevMean) < 1e-10) {
+          printf("Outlier Rejection (Factor %.2f, iter %d/%d): Excluded %d / "
+                 "%d. Mean Strain: %.8f -> %.8f\n",
+                 outlierFactor, iter + 1, nIter, nValidPoints - validCount,
+                 nValidPoints, prevMean, MeanDiff);
+          if (fabs(MeanDiff - prevMean) < 1e-10)
+            break;
+        }
+      }
     }
   } else {
     for (i = 0; i < nIndices; i++) {
@@ -1300,6 +1390,14 @@ int main(int argc, char *argv[]) {
   int nIterations = 1;
   double DoubletSeparation = 0;
   int NormalizeRingWeights = 0;
+  int OutlierIterations = 1;
+  int WeightByRadius = 0;
+  int DistortionOrder = 4;
+  int PerPanelLsd = 0;
+  int PerPanelDistortion = 0;
+  double tolP4 = 0, p4in = 0;
+  double tolLsdPanel = 100;
+  double tolP2Panel = 0.0001;
   int Padding = 6, NrPixelsY, NrPixelsZ, NrPixels;
   int NrTransOpt = 0, RBinWidth = 4;
   long long int GapIntensity = 0, BadPxIntensity = 0;
@@ -1722,6 +1820,46 @@ int main(int argc, char *argv[]) {
       sscanf(aline, "%s %d", dummy, &NormalizeRingWeights);
       continue;
     }
+    str = "OutlierIterations ";
+    if (!strncmp(aline, str, strlen(str))) {
+      sscanf(aline, "%s %d", dummy, &OutlierIterations);
+      continue;
+    }
+    str = "WeightByRadius ";
+    if (!strncmp(aline, str, strlen(str))) {
+      sscanf(aline, "%s %d", dummy, &WeightByRadius);
+      continue;
+    }
+    str = "DistortionOrder ";
+    if (!strncmp(aline, str, strlen(str))) {
+      sscanf(aline, "%s %d", dummy, &DistortionOrder);
+      continue;
+    }
+    str = "PerPanelLsd ";
+    if (!strncmp(aline, str, strlen(str))) {
+      sscanf(aline, "%s %d", dummy, &PerPanelLsd);
+      continue;
+    }
+    str = "PerPanelDistortion ";
+    if (!strncmp(aline, str, strlen(str))) {
+      sscanf(aline, "%s %d", dummy, &PerPanelDistortion);
+      continue;
+    }
+    str = "tolP4 ";
+    if (!strncmp(aline, str, strlen(str))) {
+      sscanf(aline, "%s %lf", dummy, &tolP4);
+      continue;
+    }
+    str = "tolLsdPanel ";
+    if (!strncmp(aline, str, strlen(str))) {
+      sscanf(aline, "%s %lf", dummy, &tolLsdPanel);
+      continue;
+    }
+    str = "tolP2Panel ";
+    if (!strncmp(aline, str, strlen(str))) {
+      sscanf(aline, "%s %lf", dummy, &tolP2Panel);
+      continue;
+    }
   }
 
   // Generate Panels
@@ -1818,6 +1956,16 @@ int main(int argc, char *argv[]) {
     printf("║    DoubletSep(px): %-40.1f ║\n", DoubletSeparation);
   if (NormalizeRingWeights)
     printf("║    RingWeightNorm: %-40s ║\n", "ON");
+  if (WeightByRadius)
+    printf("║    WeightByRadius: %-40s ║\n", "ON");
+  if (OutlierIterations > 1)
+    printf("║    OutlierIters:   %-40d ║\n", OutlierIterations);
+  if (DistortionOrder >= 6)
+    printf("║    DistortOrder:   %-40d ║\n", DistortionOrder);
+  if (PerPanelLsd)
+    printf("║    PerPanelLsd:    %-40s (tol=%.1f) ║\n", "ON", tolLsdPanel);
+  if (PerPanelDistortion)
+    printf("║    PerPanelP2:     %-40s (tol=%.6f) ║\n", "ON", tolP2Panel);
   if (nRingsExclude > 0) {
     printf("║    RingsExclude:   ");
     int printed = 0;
@@ -2089,9 +2237,10 @@ int main(int argc, char *argv[]) {
     printf("Mask file read: %s\n", MaskFN);
   }
   int a;
-  double means[11];
+  double means[12];
   for (a = 0; a < 11; a++)
     means[a] = 0;
+  means[11] = 0;
   for (a = StartNr; a <= EndNr; a++) {
     start = omp_get_wtime();
     sprintf(FileName, "%s/%s_%0*d%s", folder, fn, Padding, a, Ext);
@@ -2202,6 +2351,15 @@ int main(int argc, char *argv[]) {
     int *RingNumbers = NULL;
     int nIndices = nEtaBins * n_hkls;
     int nIndicesFinal = 0;
+
+    // Best-iteration tracking
+    double bestMeanDiff = 1e30;
+    int bestIter = -1;
+    double bestLsd, bestYbc, bestZbc, bestTy, bestTz;
+    double bestP0, bestP1, bestP2, bestP3, bestP4 = 0;
+    Panel *bestPanels = NULL;
+    if (nPanels > 0)
+      bestPanels = malloc(nPanels * sizeof(Panel));
 
     for (int iter = 0; iter < nIterations; iter++) {
       if (nIterations > 1)
@@ -2361,10 +2519,10 @@ int main(int argc, char *argv[]) {
         Yc[i] = (ybc - (YMean[i] / px));
         Zc[i] = (zbc + (ZMean[i] / px));
       }
-      CorrectTiltSpatialDistortion(nIndices, MaxRingRad, Yc, Zc, IdealTtheta,
-                                   px, Lsd, ybc, zbc, tx, tyin, tzin, p0in,
-                                   p1in, p2in, p3in, EtaIns, DiffIns, RadIns,
-                                   &StdDiff, outlierFactor, NULL);
+      CorrectTiltSpatialDistortion(
+          nIndices, MaxRingRad, Yc, Zc, IdealTtheta, px, Lsd, ybc, zbc, tx,
+          tyin, tzin, p0in, p1in, p2in, p3in, EtaIns, DiffIns, RadIns, &StdDiff,
+          outlierFactor, NULL, p4in, DistortionOrder, OutlierIterations);
       NrCalls = 0;
 
       // Count and print indices per panel
@@ -2420,19 +2578,25 @@ int main(int argc, char *argv[]) {
       }
 
       // Optimize
+      double p4 = p4in;
       FitTiltBCLsd(nIndices, Yc, Zc, IdealTtheta, Lsd, MaxRingRad, ybc, zbc, tx,
                    tyin, tzin, p0in, p1in, p2in, p3in, &ty, &tz, &LsdFit,
                    &ybcFit, &zbcFit, &p0, &p1, &p2, &p3, &MeanDiff, tolTilts,
                    tolLsd, tolBC, tolP, tolP0, tolP1, tolP2, tolP3, tolShifts,
                    tolRotation, px, outlierFactor, MinIndicesForFit, FixPanelID,
-                   RingWeights);
+                   RingWeights, DistortionOrder, p4in, tolP4, PerPanelLsd,
+                   tolLsdPanel, PerPanelDistortion, tolP2Panel, WeightByRadius,
+                   &p4);
       printf("Number of function calls: %lld\n", NrCalls);
       printf(
           "Lsd %0.12f\nBC %0.12f %0.12f\nty %0.12f\ntz %0.12f\np0 %0.12f\np1 "
           "%0.12f\np2 %0.12f\np3 %0.12f\nMeanStrain %0.12lf\n",
           LsdFit, ybcFit, zbcFit, ty, tz, p0, p1, p2, p3, MeanDiff);
+      if (DistortionOrder >= 6)
+        printf("p4 %0.12f\n", p4);
 
       // Feed outputs back as inputs for next iteration
+      p4in = p4;
       Lsd = LsdFit;
       ybc = ybcFit;
       zbc = zbcFit;
@@ -2442,6 +2606,24 @@ int main(int argc, char *argv[]) {
       p1in = p1;
       p2in = p2;
       p3in = p3;
+
+      // Track best iteration
+      if (MeanDiff < bestMeanDiff) {
+        bestMeanDiff = MeanDiff;
+        bestIter = iter;
+        bestLsd = LsdFit;
+        bestYbc = ybcFit;
+        bestZbc = zbcFit;
+        bestTy = ty;
+        bestTz = tz;
+        bestP0 = p0;
+        bestP1 = p1;
+        bestP2 = p2;
+        bestP3 = p3;
+        bestP4 = p4;
+        if (bestPanels && nPanels > 0)
+          memcpy(bestPanels, panels, nPanels * sizeof(Panel));
+      }
 
       // Save final nIndices for post-loop processing
       nIndicesFinal = nIndices;
@@ -2477,6 +2659,43 @@ int main(int argc, char *argv[]) {
       }
     } // end iteration loop
 
+    // Restore best iteration if it wasn't the last one
+    if (nIterations > 1 && bestIter >= 0) {
+      if (bestIter != nIterations - 1) {
+        printf("\n*** Restoring best result from iteration %d/%d "
+               "(MeanStrain %.12f vs last %.12f) ***\n",
+               bestIter + 1, nIterations, bestMeanDiff, MeanDiff);
+        LsdFit = bestLsd;
+        ybcFit = bestYbc;
+        zbcFit = bestZbc;
+        ty = bestTy;
+        tz = bestTz;
+        p0 = bestP0;
+        p1 = bestP1;
+        p2 = bestP2;
+        p3 = bestP3;
+        p4in = bestP4;
+        Lsd = bestLsd;
+        ybc = bestYbc;
+        zbc = bestZbc;
+        tyin = bestTy;
+        tzin = bestTz;
+        p0in = bestP0;
+        p1in = bestP1;
+        p2in = bestP2;
+        p3in = bestP3;
+        MeanDiff = bestMeanDiff;
+        if (bestPanels && nPanels > 0)
+          memcpy(panels, bestPanels, nPanels * sizeof(Panel));
+      } else {
+        printf("\n*** Best result is from final iteration %d/%d "
+               "(MeanStrain %.12f) ***\n",
+               bestIter + 1, nIterations, bestMeanDiff);
+      }
+    }
+    if (bestPanels)
+      free(bestPanels);
+
     // Reassign nIndices for post-loop code
     nIndices = nIndicesFinal;
     double *Etas, *Diffs, *RadOuts;
@@ -2484,11 +2703,13 @@ int main(int argc, char *argv[]) {
     Diffs = malloc(nIndices * sizeof(*Diffs));
     RadOuts = malloc(nIndices * sizeof(*RadOuts));
     int *IsOutlier = calloc(nIndices, sizeof(int));
-    CorrectTiltSpatialDistortion(nIndices, MaxRingRad, Yc, Zc, IdealTtheta, px,
-                                 LsdFit, ybcFit, zbcFit, tx, ty, tz, p0, p1, p2,
-                                 p3, Etas, Diffs, RadOuts, &StdDiff,
-                                 outlierFactor, IsOutlier);
+    CorrectTiltSpatialDistortion(
+        nIndices, MaxRingRad, Yc, Zc, IdealTtheta, px, LsdFit, ybcFit, zbcFit,
+        tx, ty, tz, p0, p1, p2, p3, Etas, Diffs, RadOuts, &StdDiff,
+        outlierFactor, IsOutlier, p4in, DistortionOrder, OutlierIterations);
     printf("StdStrain %0.12lf\n", StdDiff);
+    if (DistortionOrder >= 6)
+      printf("p4 %0.12f\n", p4in);
 
     // Per-panel strain summary
     if (nPanels > 0) {
@@ -2605,6 +2826,7 @@ int main(int argc, char *argv[]) {
     means[8] += p3;
     means[9] += MeanDiff;
     means[10] += StdDiff;
+    means[11] += p4in;
     FILE *Out;
     char OutFileName[1024];
     sprintf(OutFileName, "%s/%s_%0*d%s.%s", folder, fn, Padding, a, Ext,
@@ -2664,13 +2886,15 @@ int main(int argc, char *argv[]) {
   diftotal = end0 - start0;
   printf("Total time elapsed:\t%f s.\n", diftotal);
   printf("*******************Mean Values*******************\n");
-  for (a = 0; a < 11; a++)
+  for (a = 0; a < 12; a++)
     means[a] /= (EndNr - StartNr + 1);
   printf("Lsd %0.12f\nBC %0.12f %0.12f\nty %0.12f\ntz %0.12f\np0 %0.12f\np1 "
          "%0.12f\np2 %0.12f\np3 %0.12f\nMeanStrain %0.12lf\nStdStrain  "
          "%0.12lf\n",
          means[0], means[1], means[2], means[3], means[4], means[5], means[6],
          means[7], means[8], means[9], means[10]);
+  if (DistortionOrder >= 6)
+    printf("p4 %0.12f\n", means[11]);
   printf("*******************Copy to par*******************\n");
   free(DarkFile);
   free(AverageDark);
