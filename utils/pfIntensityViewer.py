@@ -16,6 +16,13 @@ import numpy as np
 import plotly.graph_objects as go
 from dash import Dash, html, dcc, callback, Output, Input, State, no_update, ctx, Patch
 import dash_bootstrap_components as dbc
+from PIL import Image
+
+# Import MIDAS tomo library
+_tomo_dir = os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))), 'TOMO')
+if _tomo_dir not in sys.path:
+    sys.path.insert(0, _tomo_dir)
+from midas_tomo_python import run_tomo_from_sinos
 
 # ──────────────────────────────────────────────────────────────
 # Constants
@@ -261,10 +268,44 @@ if __name__ == '__main__':
     print("\nLoading spot metadata...")
     spotMetaArr = load_spot_meta(topdir)
 
+    # --- Pre-compute tomo reconstructions ---
+    tomo_workdir = os.path.join(topdir, 'Tomo')
+    os.makedirs(tomo_workdir, exist_ok=True)
+    print("\nPre-computing tomo reconstructions...")
+    for variant in available_variants:
+        for grNr in range(nGrs):
+            grStr = str(grNr).zfill(4)
+            tomo_tif = os.path.join(tomo_workdir,
+                                    f'sino_{variant}_grNr_{grStr}.tomo.tif')
+            if os.path.exists(tomo_tif):
+                continue  # already reconstructed
+
+            sino_tif = os.path.join(topdir,
+                                    f'Sinos/sino_{variant}_grNr_{grStr}.tif')
+            thetas_fn = os.path.join(topdir,
+                                     f'Thetas/thetas_grNr_{grStr}.txt')
+            if not os.path.exists(sino_tif) or not os.path.exists(thetas_fn):
+                continue
+
+            sino_img = np.array(Image.open(sino_tif))  # (nScans, nSp)
+            sino_for_tomo = sino_img.T  # (nThetas, detXdim)
+            thetas = np.loadtxt(thetas_fn)
+            try:
+                recon = run_tomo_from_sinos(
+                    sino_for_tomo, tomo_workdir, thetas,
+                    shifts=0.0, filterNr=2, doLog=0,
+                    extraPad=0, autoCentering=1, numCPUs=1, doCleanup=1)
+                recon_slice = recon[0, 0, :, :]
+                Image.fromarray(recon_slice).save(tomo_tif)
+                print(f"  Reconstructed: {tomo_tif}")
+            except Exception as e:
+                print(f"  WARNING: Tomo failed for grain {grNr} ({variant}): {e}")
+    print("Tomo pre-computation complete.")
+
     # ── Dash App ─────────────────────────────────────────────
     external_stylesheets = [dbc.themes.FLATLY]
     app = Dash(__name__, external_stylesheets=external_stylesheets)
-    app.title = "PF-HEDM Sinogram & Intensity Viewer"
+    app.title = "PF-HEDM Sinogram, Intensity & Tomo Viewer"
 
     # --- Layout ---
     app.layout = dbc.Container([
@@ -272,6 +313,8 @@ if __name__ == '__main__':
         dcc.Store(id='store-sino-vmax', data=None),
         dcc.Store(id='store-patch-vmin', data=None),
         dcc.Store(id='store-patch-vmax', data=None),
+        dcc.Store(id='store-tomo-vmin', data=None),
+        dcc.Store(id='store-tomo-vmax', data=None),
         dcc.Interval(id='interval-play-row', interval=DEFAULT_REFRESH_MS,
                      n_intervals=0, disabled=True),
         dcc.Interval(id='interval-play-col', interval=DEFAULT_REFRESH_MS,
@@ -279,7 +322,7 @@ if __name__ == '__main__':
 
         # Title
         dbc.Row([
-            html.H3("PF-HEDM Sinogram & Intensity Viewer",
+            html.H3("PF-HEDM Sinogram, Intensity & Tomo Viewer",
                      className="text-primary text-center mb-3 mt-2")
         ]),
 
@@ -411,6 +454,35 @@ if __name__ == '__main__':
                 ]),
             ], width=6),
         ]),
+
+        html.Hr(),
+
+        # Tomo Reconstruction display
+        dbc.Row([
+            dbc.Col([
+                dbc.Label("Tomo Scale:"),
+                dbc.InputGroup([
+                    dbc.InputGroupText("Min"),
+                    dbc.Input(id='tomo-vmin', type='number',
+                              placeholder='auto'),
+                    dbc.InputGroupText("Max"),
+                    dbc.Input(id='tomo-vmax', type='number',
+                              placeholder='auto'),
+                    dbc.Button("Apply", id='btn-tomo-scale',
+                               color='info', size='sm'),
+                ], size='sm'),
+                dbc.Checklist(id='tomo-log-scale',
+                             options=[{'label': ' Log scale', 'value': 'log'}],
+                             value=[], inline=True, className='mt-1'),
+            ], width=4),
+        ], className='mb-2'),
+        dbc.Row([
+            dbc.Col([
+                dcc.Loading(type="circle", children=[
+                    dcc.Graph(id='tomo-plot', figure=go.Figure())
+                ]),
+            ], width=12),
+        ]),
     ], fluid=True)
 
     # ── Callbacks ────────────────────────────────────────────
@@ -517,7 +589,6 @@ if __name__ == '__main__':
         nSp = int(grainSpots[grainNr]) if grainNr < len(grainSpots) else 1
         return max(0, nSp - 1), 0
 
-    # --- Main sinogram plot ---
     # --- Main sinogram plot ---
     @callback(
         Output('sinogram-plot', 'figure'),
@@ -714,6 +785,68 @@ if __name__ == '__main__':
                    f'(θ={theta_val:.1f}°), Scan {col}'),
             xaxis_title='Y (pixels)',
             yaxis_title='Z (pixels)',
+            yaxis=dict(scaleanchor='x'),
+            **COMMON_LAYOUT,
+        )
+        return fig
+
+    # --- Tomo scale apply button → update stores ---
+    @callback(
+        Output('store-tomo-vmin', 'data'),
+        Output('store-tomo-vmax', 'data'),
+        Input('btn-tomo-scale', 'n_clicks'),
+        State('tomo-vmin', 'value'),
+        State('tomo-vmax', 'value'),
+        prevent_initial_call=True
+    )
+    def apply_tomo_scale(n, vmin, vmax):
+        return vmin, vmax
+
+    # --- Tomo display callback (reads pre-computed TIFs) ---
+    @callback(
+        Output('tomo-plot', 'figure'),
+        Input('grain-dropdown', 'value'),
+        Input('variant-dropdown', 'value'),
+        Input('store-tomo-vmin', 'data'),
+        Input('store-tomo-vmax', 'data'),
+        Input('tomo-log-scale', 'value'),
+    )
+    def update_tomo_plot(grainNr, variant, vmin, vmax, logscale):
+        use_log = logscale and 'log' in logscale
+        fig = go.Figure()
+
+        if grainNr is None:
+            fig.update_layout(title="Select a grain", **COMMON_LAYOUT)
+            return fig
+
+        grStr = str(grainNr).zfill(4)
+        tomo_tif = os.path.join(topdir,
+                                f'Tomo/sino_{variant}_grNr_{grStr}.tomo.tif')
+        if not os.path.exists(tomo_tif):
+            fig.update_layout(
+                title=f'No tomo reconstruction for Grain {grainNr} ({variant})',
+                **COMMON_LAYOUT)
+            return fig
+
+        recon_slice = np.array(Image.open(tomo_tif))
+
+        plot_data = np.log1p(recon_slice) if use_log else recon_slice
+        cb_title = 'log(1+I)' if use_log else 'Intensity'
+        fig.add_trace(go.Heatmap(
+            z=plot_data,
+            colorscale='Viridis',
+            zmin=vmin, zmax=vmax,
+            colorbar=dict(title=cb_title),
+            hovertemplate=(
+                'X: %{x}<br>'
+                'Y: %{y}<br>'
+                'Value: %{z:.4f}<extra></extra>'
+            )
+        ))
+        fig.update_layout(
+            title=f'Tomo Reconstruction: Grain {grainNr} ({variant})',
+            xaxis_title='X',
+            yaxis_title='Y',
             yaxis=dict(scaleanchor='x'),
             **COMMON_LAYOUT,
         )

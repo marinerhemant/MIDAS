@@ -135,6 +135,36 @@ recon = run_tomo(
 > [!IMPORTANT]
 > The `data` array passed to `run_tomo` should have shape `(nThetas + 2, nSlices, xDim)` where the first two frames are tilt-corrected projections that get treated as extra frames. Internally, the function subtracts 2 from `nThetas`. See the docstring in `midas_tomo_python.py` for the exact binary layout.
 
+> [!NOTE]
+> Both `run_tomo()` and `run_tomo_from_sinos()` automatically handle **odd slice counts** by internally duplicating the last slice to satisfy the MIDAS_TOMO even-slice requirement. The returned array is truncated back to the original slice count.
+
+### 3.4. From Pre-Computed Sinograms (Python API)
+
+When you already have sinogram data (e.g., from PF-HEDM `findSingleSolutionPFRefactored` output), use `run_tomo_from_sinos()` which uses the `areSinos=1` mode — no dark/white normalization is needed:
+
+```python
+from midas_tomo_python import run_tomo_from_sinos
+import numpy as np
+
+# 2D sinogram: shape (nThetas, detXdim) — a single slice
+sino = np.array(Image.open('Sinos/sino_raw_grNr_0000.tif')).T
+thetas = np.loadtxt('Thetas/thetas_grNr_0000.txt')
+
+recon = run_tomo_from_sinos(
+    sino,                       # 2D or 3D (nSlices, nThetas, detXdim)
+    workingdir='Tomo/',
+    thetas=thetas,
+    shifts=0.0,                 # Single shift
+    filterNr=2,                 # Hann filter
+    doLog=0,                    # Sinograms are already intensity, not raw
+    numCPUs=1
+)
+# recon shape: (1, 1, xDimNew, xDimNew)
+recon_slice = recon[0, 0, :, :]
+```
+
+The `pfIntensityViewer.py` viewer uses this function to automatically reconstruct all sinogram variants at startup and display them interactively.
+
 ---
 
 ## 4. Parameter File Reference
@@ -338,7 +368,7 @@ Typical performance: a 2048 × 2048 × 1800 dataset reconstructs in under 2 minu
 | Very noisy reconstruction | Using Ramp filter with noisy data | Switch to Hann (2) or Hamming (3) filter |
 | Reconstruction all black or NaN | Normalization failure (bad dark/white) | Verify dark and white frames are valid |
 | `Number of shifts must be even` error | Odd number of shift steps | Adjust `shiftValues` range to produce an even number |
-| `Number of slices must be even` error | Odd slice count | Crop one row from your input or specify even slice range in `slicesToProcess` |
+| `Number of slices must be even` error | Odd slice count (C binary only) | The Python API (`run_tomo`/`run_tomo_from_sinos`) handles this automatically. If calling `MIDAS_TOMO` directly, crop one row or specify an even slice range in `slicesToProcess` |
 | Segmentation fault | Insufficient RAM for requested thread count | Reduce `nCPUs`; the code auto-limits but edge cases exist |
 | Stripe removal too aggressive | `stripeSnr` too low or filter windows too large | Increase `stripeSnr` (try 5.0), reduce `stripeLaSize` and `stripeSmSize` |
 | Rings persist after stripe removal | Stripes below detection threshold | Decrease `stripeSnr` (try 1.5), increase filter windows |
