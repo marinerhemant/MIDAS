@@ -53,7 +53,9 @@ This directory contains Python scripts and tools used across the MIDAS analysis 
 | `GFF2Grains.py` | Convert GrainSpotter `.gff` output to MIDAS `Grains.csv` format. |
 | `mergePeaks.py` | Merge peak lists from multiple frames or scans. |
 | `extractPeaks.py` | Extract individual peak data from the spot table for inspection. |
+| `peak_sigma_statistics.py` | Compute and report peak width (σ) statistics from FF-HEDM fitting results. |
 | `processFilesParallel.py` | Parallel file processing utility for batch FF-HEDM operations. |
+| `extract_grains_mic.py` | Extract grain data from `.mic` files for cross-referencing with FF-HEDM results. |
 
 ## NF-HEDM Post-Processing
 
@@ -76,6 +78,7 @@ This directory contains Python scripts and tools used across the MIDAS analysis 
 | `plotFFSpots3dGrains.py` | 3D scatter plot of FF-HEDM spots, color-coded by grain assignment. |
 | `plotGrains3d.py` | 3D scatter plot of grain centroids with orientation coloring. |
 | `PlotFFNF.py` | Overlay FF-HEDM grain centroids on NF-HEDM orientation maps. |
+| `pfIntensityViewer.py` | Interactive viewer for point-focus / scanning HEDM intensity data. |
 | `viz_caking.py` | Visualize radial integration (caking) results as 2D plots. |
 | `vtkSimExportBin.py` | Export simulation results to VTK binary format for ParaView. |
 
@@ -86,7 +89,9 @@ This directory contains Python scripts and tools used across the MIDAS analysis 
 | `simulatePeaks.py` | Simulate diffraction peak positions for testing and validation. |
 | `sim_ff_transformed.py` | Generate transformed FF-HEDM simulation data for testing deformation workflows. |
 | `compressedSimulationReader.py` | Read compressed forward simulation output files. |
-| `test_ff_hedm.py` | **FF-HEDM benchmark test.** End-to-end test using simulated data to validate the full pipeline. |
+| `test_ff_hedm.py` | **FF-HEDM benchmark test.** End-to-end test using simulated data to validate the full FF-HEDM pipeline (simulation → indexing → regression comparison). Includes automatic cleanup of generated files. |
+| `test_nf_hedm.py` | **NF-HEDM benchmark test.** End-to-end test: runs `simulateNF`, reconstructs via `nf_MIDAS.py`, and compares orientations against a reference `.mic` file. |
+| `test_ff_calibration.py` | **FF-HEDM calibration benchmark.** Runs `CalibrantPanelShiftsOMP` on example CeO2 data and validates mean strain ≤ threshold. See [FF_calibration manual §9](../manuals/FF_calibration.md). |
 
 ## Scanning / Point-Focus HEDM
 
@@ -107,6 +112,7 @@ This directory contains Python scripts and tools used across the MIDAS analysis 
 | `DL2FF.py` | Convert deep-learning peak predictions to FF-HEDM input format. |
 | `run_full_images_ff.py` | Process full detector images through the FF-HEDM pipeline. |
 | `ff_peaks_raw_images.py` | Extract peaks from raw images for diagnostic purposes. |
+| `undistort_image.py` | Apply spatial distortion correction to a raw detector image using calibrated parameters. |
 
 ## Deprecated
 

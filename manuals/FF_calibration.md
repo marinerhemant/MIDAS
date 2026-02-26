@@ -543,8 +543,84 @@ nIterations 10
 > ```
 
 ---
+
+## 8. Example Calibrant Data
+
+A complete, ready-to-run CeO2 calibration example is included in the repository:
+
+```
+FF_HEDM/Example/Calibration/
+├── parameters.txt          # Fully commented parameter file
+├── CeO2_Pil_100x100_att000_650mm_71p676keV_001956.tif   # Calibrant image
+├── dark_CeO2_Pil_100x100_att000_650mm_71p676keV_001975.tif  # Dark field
+└── mask.tif                # Detector gap/bad-pixel mask
+```
+
+The `parameters.txt` file is organized into clearly labeled sections with comments explaining every parameter:
+
+- **Input Data** — file locations and data format
+- **Detector Geometry** — pixel size, dimensions, Lsd, beam center, tilts
+- **Beam / Sample** — wavelength, RhoD
+- **Calibrant Material** — space group, lattice constants
+- **Radial & Azimuthal Binning** — R range, eta range, bin sizes
+- **Spatial Distortion Model** — p0–p4 coefficients with DistortionOrder
+- **Optimization Tolerances** — search ranges for all parameters
+- **Iteration & Convergence** — nIterations, outlier rejection, MultFactor
+- **Objective Function Weights** — ring normalization, radius weighting, SNR weighting, L2
+- **Panel Geometry** — panel layout, gaps, anchoring, per-panel Lsd/distortion
+- **Ring Selection** — excluded rings
+
+This example uses a Pilatus 2M detector (6×8 panels, 1475×1679 pixels, 172 µm pixel size) with CeO2 calibrant at ~650 mm sample-to-detector distance.
+
+---
+
+## 9. Benchmark Testing
+
+An automated benchmark script `utils/test_ff_calibration.py` validates the entire calibration pipeline:
+
+### Usage
+
+```bash
+# Basic (single CPU)
+python utils/test_ff_calibration.py
+
+# Multi-threaded
+python utils/test_ff_calibration.py -nCPUs 4
+
+# Custom parameter file
+python utils/test_ff_calibration.py -paramFN /path/to/params.txt
+
+# Adjust pass/fail threshold (default: 50 microstrain)
+python utils/test_ff_calibration.py -strainThreshold 40
+```
+
+### What it Does
+
+1. Copies example data to a temporary directory
+2. Generates `hkls.csv` via `GetHKLList`
+3. Runs `CalibrantPanelShiftsOMP` with all features enabled (30 iterations, outlier rejection, per-panel Lsd, L2 objective, etc.)
+4. Parses the output and reports strain statistics (mean, std, median, Q25, Q75, min, max)
+5. Validates that mean strain ≤ threshold (default 50 µε)
+6. Cleans up the temporary directory
+
+### Expected Output
+
+```
+======================================================================
+  Results
+======================================================================
+  MeanStrain:   ~35 µε
+  StdStrain:    ~15 µε
+  MedianStrain: ~30 µε
+  ...
+======================================================================
+  ✅ PASS: MeanStrain ≤ 50 µε
+======================================================================
+```
+
+---
  
- ## 8. See Also
+## 10. See Also
 
 - [FF_Analysis.md](FF_Analysis.md) — Standard FF-HEDM analysis using calibrated geometry
 - [PF_Analysis.md](PF_Analysis.md) — Scanning/Point-Focus FF-HEDM analysis
