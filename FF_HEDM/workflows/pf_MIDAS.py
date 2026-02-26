@@ -14,7 +14,7 @@ import pandas as pd
 from parsl.app.app import python_app
 import parsl
 # Add TOMO directory for midas_tomo_python import
-_tomo_dir = os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))), 'TOMO')
+_tomo_dir = os.path.join(os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__)))), 'TOMO')
 if _tomo_dir not in sys.path:
     sys.path.insert(0, _tomo_dir)
 from midas_tomo_python import run_tomo_from_sinos
