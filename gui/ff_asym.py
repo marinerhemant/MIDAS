@@ -103,7 +103,9 @@ def _try_auto_detect():
     # Find data files: files starting with dir_basename
     data_files = []
     for f in all_files:
-        name_no_ext = os.path.splitext(f)[0]
+        # Strip all extensions from first dot (handles .vrx.h5, .ge5, etc.)
+        dot_idx = f.find('.')
+        name_no_ext = f[:dot_idx] if dot_idx > 0 else f
         # File stem must start with dir_basename and have _NNNNNN pattern
         if name_no_ext.startswith(dir_basename + '_'):
             # Extract the trailing number
@@ -141,30 +143,33 @@ def _try_auto_detect():
           f"padding={_auto_padding}, ext='{_auto_ext}'")
     
     # Find dark files: prefer dark_before, fallback to dark_after
+    # Handles both bare (dark_before_NNNN) and stem-prefixed ({stem}_dark_before_NNNN)
     dark_before = []
     dark_after = []
     for f in all_files:
-        name_no_ext = os.path.splitext(f)[0]
+        dot_idx = f.find('.')
+        name_no_ext = f[:dot_idx] if dot_idx > 0 else f
         parts = name_no_ext.split('_')
         if len(parts) >= 2 and parts[-1].isdigit():
-            prefix = '_'.join(parts[:-1])
-            if prefix == 'dark_before':
+            prefix = '_'.join(parts[:-1]).lower()
+            if prefix.endswith('dark_before'):
                 dark_before.append(f)
-            elif prefix == 'dark_after':
+            elif prefix.endswith('dark_after'):
                 dark_after.append(f)
     
     dark_candidates = dark_before if dark_before else dark_after
     if dark_candidates:
         dark_file = dark_candidates[0]  # first (smallest number)
-        dark_basename = os.path.splitext(os.path.basename(dark_file))[0]
-        dark_parts = dark_basename.split('_')
+        dot_idx = dark_file.find('.')
+        dark_name = dark_file[:dot_idx] if dot_idx > 0 else dark_file
+        dark_parts = dark_name.split('_')
         if dark_parts[-1].isdigit():
             _auto_darkNum = int(dark_parts[-1])
             _auto_darkStem = '_'.join(dark_parts[:-1])
             source = 'dark_before' if dark_before else 'dark_after'
             print(f"Auto-detect: dark='{_auto_darkStem}_{str(_auto_darkNum).zfill(len(dark_parts[-1]))}', source={source}")
     else:
-        print("Auto-detect: no dark files found (dark_before_*.* or dark_after_*.*)")
+        print("Auto-detect: no dark files found (*dark_before_*.* or *dark_after_*.*)")
     
     return True
 
@@ -1721,15 +1726,17 @@ def selectHDF5Path(is_dark=False):
 	
 	listbox.config(yscrollcommand=scrollbar.set)
 	scrollbar.config(command=listbox.yview)
-	
-	for path, shape_str in hdf5_cached_datasets:
+	# Sort so /exchange/ paths appear first (most likely data/dark)
+	sorted_datasets = sorted(hdf5_cached_datasets,
+		key=lambda x: (0 if x[0].startswith('/exchange') else 1, x[0]))
+	for path, shape_str in sorted_datasets:
 		listbox.insert(Tk.END, f"{path}  ({shape_str})")
 		
 	def on_select():
 		selection = listbox.curselection()
 		if selection:
 			idx = selection[0]
-			path = hdf5_cached_datasets[idx][0]  # use the raw path, not display string
+			path = sorted_datasets[idx][0]  # use the raw path, not display string
 			if is_dark:
 				hdf5DarkPathVar.set(path)
 			else:
