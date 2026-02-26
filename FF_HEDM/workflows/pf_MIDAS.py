@@ -13,7 +13,11 @@ from math import floor, isnan, fabs
 import pandas as pd
 from parsl.app.app import python_app
 import parsl
-from skimage.transform import iradon
+# Add TOMO directory for midas_tomo_python import
+_tomo_dir = os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))), 'TOMO')
+if _tomo_dir not in sys.path:
+    sys.path.insert(0, _tomo_dir)
+from midas_tomo_python import run_tomo_from_sinos
 from PIL import Image
 import h5py
 import zarr
@@ -1356,8 +1360,18 @@ def main():
                 # Save 4 sinogram variant TIFs per grain (raw, norm, abs, normabs)
                 save_sinogram_variants(topdir, nGrs, maxNHKLs, nScans, grainSpots, omegas)
                 
-                # Reconstruct tomography
-                logger.info(f"Reconstructing tomography for {nGrs} grains")
+                # Reconstruct tomography using MIDAS_TOMO
+                logger.info(f"Reconstructing tomography for {nGrs} grains using MIDAS_TOMO")
+                os.makedirs('Tomo', exist_ok=True)
+                
+                # MIDAS_TOMO upscales detXdim to next power of 2 (reconDim).
+                # Crop the center nScans×nScans region, aligning recon center
+                # (reconDim/2) with the original grid center ((nScans-1)/2).
+                from math import ceil, log2
+                reconDim = 1 << int(ceil(log2(nScans))) if nScans > 1 else 1
+                cropStart = reconDim // 2 - nScans // 2
+                cropEnd = cropStart + nScans
+                
                 all_recons = np.zeros((nGrs, nScans, nScans))
                 im_list = []
                 
@@ -1377,8 +1391,14 @@ def main():
                     Image.fromarray(np.transpose(Sinos[grNr, :nSp, :])).save(f'Sinos/sino_grNr_{str(grNr).zfill(4)}.tif')
                     np.savetxt(f'Thetas/thetas_grNr_{str(grNr).zfill(4)}.txt', thetas, fmt='%.6f')
                     
-                    # Reconstruct
-                    recon = iradon(sino, theta=thetas)
+                    # Reconstruct: sino shape is (nScans, nSp), transpose to (nThetas, detXdim)
+                    sino_for_tomo = sino.T  # (nSp, nScans) = (nThetas, detXdim)
+                    recon_arr = run_tomo_from_sinos(
+                        sino_for_tomo, 'Tomo', thetas,
+                        shifts=0.0, filterNr=2, doLog=0,
+                        extraPad=0, autoCentering=1, numCPUs=1, doCleanup=1)
+                    recon_full = recon_arr[0, 0, :, :]  # (reconDim, reconDim)
+                    recon = recon_full[cropStart:cropEnd, cropStart:cropEnd]  # (nScans, nScans)
                     all_recons[grNr, :, :] = recon
                     im_list.append(Image.fromarray(recon))
                     Image.fromarray(recon).save(f'Recons/recon_grNr_{str.zfill(str(grNr), 4)}.tif')
