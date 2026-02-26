@@ -1722,14 +1722,14 @@ def selectHDF5Path(is_dark=False):
 	listbox.config(yscrollcommand=scrollbar.set)
 	scrollbar.config(command=listbox.yview)
 	
-	for p in hdf5_cached_datasets:
-		listbox.insert(Tk.END, p)
+	for path, shape_str in hdf5_cached_datasets:
+		listbox.insert(Tk.END, f"{path}  ({shape_str})")
 		
 	def on_select():
 		selection = listbox.curselection()
 		if selection:
 			idx = selection[0]
-			path = listbox.get(idx)
+			path = hdf5_cached_datasets[idx][0]  # use the raw path, not display string
 			if is_dark:
 				hdf5DarkPathVar.set(path)
 			else:
@@ -1800,28 +1800,46 @@ def firstFileSelector():
 				hdf5_cached_datasets = []
 				def visit_func(name, node):
 					if isinstance(node, h5py.Dataset):
-						hdf5_cached_datasets.append('/' + name)
+						shape_str = ' x '.join(str(s) for s in node.shape)
+						hdf5_cached_datasets.append(('/' + name, shape_str))
 				f.visititems(visit_func)
-				print(f"Found {len(hdf5_cached_datasets)} datasets: {hdf5_cached_datasets}")
+				print(f"Found {len(hdf5_cached_datasets)} datasets: {[p for p,_ in hdf5_cached_datasets]}")
 				
 				# Auto-detect data and dark paths
 				data_path = None
 				dark_path = None
-				for p in hdf5_cached_datasets:
+				for p, _ in hdf5_cached_datasets:
 					pl = p.lower()
 					if 'dark' in pl and dark_path is None:
 						dark_path = p
 					elif ('data' in pl or 'image' in pl) and data_path is None:
-						data_path = p
+						# Only pick datasets with 2D+ shape as data candidates
+						if f[p].ndim >= 2:
+							data_path = p
 				
 				# If only one dataset, use it for data
 				if data_path is None and len(hdf5_cached_datasets) == 1:
-					data_path = hdf5_cached_datasets[0]
+					data_path = hdf5_cached_datasets[0][0]
+				
+				# Fallback: pick the largest 2D+ dataset by total size
+				if data_path is None:
+					best_size = 0
+					for p, _ in hdf5_cached_datasets:
+						dset = f[p]
+						if dset.ndim >= 2:
+							total = 1
+							for s in dset.shape:
+								total *= s
+							if total > best_size:
+								best_size = total
+								data_path = p
 				
 				if data_path:
 					hdf5PathVar.set(data_path)
+					print(f"  Auto-detected data path: {data_path}")
 				if dark_path:
 					hdf5DarkPathVar.set(dark_path)
+					print(f"  Auto-detected dark path: {dark_path}")
 				
 				# Get dimensions from selected data path
 				dset_path = data_path or hdf5PathVar.get()
