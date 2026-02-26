@@ -918,6 +918,7 @@ def main():
     parser.add_argument('-startScanNr', type=int, required=False, default=1, help='If you want to do partial peaksearch. Default: 1')
     parser.add_argument('-minThresh', type=int, required=False, default=-1, help='If you want to filter out peaks with intensity less than this number. -1 disables this. This is only used for filtering out peaksearch results for small peaks, peaks with maxInt smaller than this will be filtered out.')
     parser.add_argument('-sinoType', type=str, required=False, default='raw', choices=['raw', 'norm', 'abs', 'normabs'], help='Sinogram type to use for reconstruction (raw, norm, abs, normabs). Default: raw')
+    parser.add_argument('-sinoSource', type=str, required=False, default='tolerance', choices=['indexing', 'tolerance'], help='Source of spots for sinogram generation: indexing=use spots matched by indexer at each voxel (cleaner), tolerance=use tolerance-based matching against all spots (legacy). Default: tolerance')
     # Parse arguments
     args, unparsed = parser.parse_known_args()
     
@@ -942,6 +943,7 @@ def main():
     micFN = args.micFN
     grainsFN = args.grainsFN
     sinoType = args.sinoType
+    sinoSource = args.sinoSource
     # Use current directory if no result directory specified
     if not topdir:
         topdir = os.getcwd()
@@ -1321,7 +1323,8 @@ def main():
                             shutil.rmtree(dirn[4:])
                         shutil.move(dirn, dirn[4:])
             
-            # Run find single solution
+            # Run find single solution (needed for UniqueIndexSingleKey.bin, SpotsToIndex.csv,
+            # and sinograms when sinoSource=='tolerance')
             cmd = f"{os.path.join(midas_path, 'FF_HEDM/bin/findSingleSolutionPFRefactored')} {topdir} {sgnum} {maxang} {nScans} {numProcsLocal} {tol_ome} {tol_eta} {baseNameParamFN} {NormalizeIntensities} 1"
             logger.info(f"Running findSingleSolutionPFRefactored: {cmd}")
             result = subprocess.call(cmd, cwd=topdir, shell=True)
@@ -1329,13 +1332,33 @@ def main():
             if result != 0:
                 logger.error("Error in findSingleSolutionPFRefactored")
                 sys.exit(1)
+            
+            if sinoSource == 'indexing':
+                # Clean up sinogram files from findSingleSolution before overwriting
+                for pattern in ["sinos_*.bin", "omegas_*.bin", "nrHKLs_*.bin",
+                                "spotMapping_*.bin", "spotMeta_*.bin"]:
+                    for f in glob.glob(pattern):
+                        os.remove(f)
+                
+                # Overwrite sinograms using per-voxel indexing results (cleaner, less noise).
+                # Runs after findSingleSolution so its sinogram files take precedence.
+                cmd = (f"{os.path.join(midas_path, 'FF_HEDM/bin/findMultipleSolutionsPF')}"
+                       f" {topdir} {sgnum} {maxang} {nScans} {numProcsLocal}"
+                       f" {tol_ome} {tol_eta} {baseNameParamFN}"
+                       f" {NormalizeIntensities} 1 0")
+                logger.info(f"Running findMultipleSolutionsPF (sinogram from indexing): {cmd}")
+                result = subprocess.call(cmd, cwd=topdir, shell=True)
+                if result != 0:
+                    logger.error("Error in findMultipleSolutionsPF (sinogram generation)")
+                    sys.exit(1)
                 
             os.makedirs('Recons', exist_ok=True)
             
             # Run tomography if requested
             if doTomo == 1:
-                # Find sino file
-                sinoFNs = glob.glob("sinos_*.bin")
+                # Find main sino file (sinos_N_N_N.bin, exclude variant files like sinos_raw_*.bin)
+                sinoFNs = [f for f in glob.glob("sinos_*.bin")
+                           if re.match(r'^sinos_\d+_\d+_\d+\.bin$', os.path.basename(f))]
                 if not sinoFNs:
                     logger.error("No sino files found")
                     sys.exit(1)
@@ -1507,6 +1530,19 @@ def main():
                     cmd = f"{os.path.join(midas_path, 'FF_HEDM/bin/findSingleSolutionPFRefactored')} {topdir} {sgnum} {maxang} {nScans} {numProcsLocal} {tol_ome} {tol_eta} {baseNameParamFN} {NormalizeIntensities} 1"
                     logger.info(f"Running findSingleSolutionPFRefactored again: {cmd}")
                     subprocess.call(cmd, cwd=topdir, shell=True)
+                    
+                    if sinoSource == 'indexing':
+                        # Clean up and overwrite sinograms with indexing-based versions
+                        for pattern in ["sinos_*.bin", "omegas_*.bin", "nrHKLs_*.bin",
+                                        "spotMapping_*.bin", "spotMeta_*.bin"]:
+                            for f in glob.glob(pattern):
+                                os.remove(f)
+                        cmd = (f"{os.path.join(midas_path, 'FF_HEDM/bin/findMultipleSolutionsPF')}"
+                               f" {topdir} {sgnum} {maxang} {nScans} {numProcsLocal}"
+                               f" {tol_ome} {tol_eta} {baseNameParamFN}"
+                               f" {NormalizeIntensities} 1 0")
+                        logger.info(f"Running findMultipleSolutionsPF (sinogram from indexing, 2nd pass): {cmd}")
+                        subprocess.call(cmd, cwd=topdir, shell=True)
                     
                     # Create spots to index file
                     with open(f'{topdir}/SpotsToIndex.csv', 'w') as f:
