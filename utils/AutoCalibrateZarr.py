@@ -280,9 +280,9 @@ def process_calibrant_output(output_file):
                 if 'p4 ' in line:
                     p4_refined = line.split()[1]
                 if 'MeanStrain ' in line:
-                    mean_strain = line.split()[1]
+                    mean_strain = str(float(line.split()[1]) / 1e6)
                 if 'StdStrain ' in line:
-                    std_strain = line.split()[1]
+                    std_strain = str(float(line.split()[1]) / 1e6)
             if 'Mean Values' in line:
                 useful = 1
     except Exception as e:

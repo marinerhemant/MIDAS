@@ -832,7 +832,7 @@ void FitTiltBCLsd(int nIndices, double *YMean, double *ZMean,
                   double *Weights, int DistortionOrder, double p4in,
                   double tolP4, int PerPanelLsd, double tolLsdPanel,
                   int PerPanelDistortion, double tolP2Panel, int WeightByRadius,
-                  double *snrWeights, double *p4Out) {
+                  double *snrWeights, double *p4Out, int verbose) {
   int nBase = (DistortionOrder >= 6) ? 10 : 9;
   unsigned n = nBase;
   if (tolShifts > EPS && nPanels > 1) {
@@ -1159,10 +1159,12 @@ void FitTiltBCLsd(int nIndices, double *YMean, double *ZMean,
 
       if (cleanCount > 0) {
         *MeanDiff = cleanSum / cleanCount;
-        printf("Outlier rejection (Factor %.2f): Excluded %d / %d points. Mean "
-               "Strain: %.8f -> %.8f\n",
-               outlierFactor, validCount - cleanCount, validCount, currentMean,
-               *MeanDiff);
+        if (verbose)
+          printf(
+              "Outlier rejection (Factor %.2f): Excluded %d / %d points. Mean "
+              "Strain: %.8f -> %.8f\n",
+              outlierFactor, validCount - cleanCount, validCount, currentMean,
+              *MeanDiff);
       } else {
         *MeanDiff = currentMean;
       }
@@ -1182,7 +1184,7 @@ static inline void CorrectTiltSpatialDistortion(
     double tx, double ty, double tz, double p0, double p1, double p2, double p3,
     double *Etas, double *Diffs, double *RadOuts, double *StdDiff,
     double outlierFactor, int *IsOutlier, double p4, int DistortionOrder,
-    int OutlierIterations) {
+    int OutlierIterations, int verbose) {
   double txr, tyr, tzr;
   txr = deg2rad * tx;
   tyr = deg2rad * ty;
@@ -1296,10 +1298,11 @@ static inline void CorrectTiltSpatialDistortion(
         double prevMean = MeanDiff;
         MeanDiff = newSum / validCount;
         if (iter == nIter - 1 || fabs(MeanDiff - prevMean) < 1e-10) {
-          printf("Outlier Rejection (Factor %.2f, iter %d/%d): Excluded %d / "
-                 "%d. Mean Strain: %.8f -> %.8f\n",
-                 outlierFactor, iter + 1, nIter, nValidPoints - validCount,
-                 nValidPoints, prevMean, MeanDiff);
+          if (verbose)
+            printf("Outlier Rejection (Factor %.2f, iter %d/%d): Excluded %d / "
+                   "%d. Mean Strain: %.8f -> %.8f\n",
+                   outlierFactor, iter + 1, nIter, nValidPoints - validCount,
+                   nValidPoints, prevMean, MeanDiff);
           if (fabs(MeanDiff - prevMean) < 1e-10)
             break;
         }
@@ -2409,11 +2412,19 @@ int main(int argc, char *argv[]) {
       bestPanels = malloc(nPanels * sizeof(Panel));
 
     for (int iter = 0; iter < nIterations; iter++) {
-      if (nIterations > 1)
-        printf("\n╔══════════════════════════════════════════╗\n"
-               "║         Iteration %d / %d                  ║\n"
-               "╚══════════════════════════════════════════╝\n",
-               iter + 1, nIterations);
+      if (nIterations > 1) {
+        char iterLabel[64];
+        snprintf(iterLabel, sizeof(iterLabel), "Iteration %d / %d", iter + 1,
+                 nIterations);
+        int boxW = 44;
+        printf("\n╔");
+        for (int b = 0; b < boxW; b++)
+          printf("═");
+        printf("╗\n║  %-*s║\n╚", boxW - 2, iterLabel);
+        for (int b = 0; b < boxW; b++)
+          printf("═");
+        printf("╝\n");
+      }
 
       // Recompute Lsd-dependent radii
       double IdealRs[n_hkls], Rmins[n_hkls], Rmaxs[n_hkls];
@@ -2439,10 +2450,11 @@ int main(int argc, char *argv[]) {
             doubletFlag[i + 1] = 2;
             doubletPartner[i] = i + 1;
             doubletPartner[i + 1] = i;
-            printf("Doublet detected: ring %d (R=%.2f) <-> ring %d "
-                   "(R=%.2f), separation %.1f px\n",
-                   RingIDs[i], IdealRs[i], RingIDs[i + 1], IdealRs[i + 1],
-                   fabs(IdealRs[i + 1] - IdealRs[i]) / px);
+            if (iter == 0)
+              printf("Doublet detected: ring %d (R=%.2f) <-> ring %d "
+                     "(R=%.2f), separation %.1f px\n",
+                     RingIDs[i], IdealRs[i], RingIDs[i + 1], IdealRs[i + 1],
+                     fabs(IdealRs[i + 1] - IdealRs[i]) / px);
           }
         }
       }
@@ -2506,7 +2518,8 @@ int main(int argc, char *argv[]) {
           countr++;
         }
       }
-      printf("Out of %d slices, %d were in the detector\n", nIndices, countr);
+      if (iter == 0)
+        printf("Out of %d slices, %d were in the detector\n", nIndices, countr);
       int nIndicesOrig = nIndices; // save for freeing Indices
       nIndices = countr;
       free(RMean);
@@ -2545,9 +2558,10 @@ int main(int argc, char *argv[]) {
           else
             RingWeights[i] = 1.0;
         }
-        printf(
-            "Ring weight normalization: %d distinct rings, weights computed.\n",
-            nDistinctRings);
+        if (iter == 0)
+          printf("Ring weight normalization: %d distinct rings, weights "
+                 "computed.\n",
+                 nDistinctRings);
       }
 
       // Compute SNR-based weights if enabled
@@ -2568,24 +2582,29 @@ int main(int argc, char *argv[]) {
           snrSorted[b + 1] = key;
         }
         double medianSNR = snrSorted[nIndices / 2];
-        if (medianSNR < 1e-12) medianSNR = 1.0;  // safety
+        if (medianSNR < 1e-12)
+          medianSNR = 1.0; // safety
         free(snrSorted);
         for (i = 0; i < nIndices; i++) {
           double w = FitSNR[i] / medianSNR;
           snrWeights[i] = (w < 1.0) ? w : 1.0;
         }
-        printf("SNR weighting: median SNR = %.1f, weights computed.\n",
-               medianSNR);
+        if (iter == 0)
+          printf("SNR weighting: median SNR = %.1f, weights computed.\n",
+                 medianSNR);
       }
       free(FitSNR);
 
       end = omp_get_wtime();
       diftotal = end - start;
-      if (FitWeightMean != 1) {
-        printf("Number of calls to profiler function: %lld\n", NrCallsProfiler);
-        printf("Time elapsed in fitting peak profiles:\t%f s.\n", diftotal);
-      } else
-        printf("Time elapsed in finding peak positions:\t%f s.\n", diftotal);
+      if (iter == 0) {
+        if (FitWeightMean != 1) {
+          printf("Number of calls to profiler function: %lld\n",
+                 NrCallsProfiler);
+          printf("Time elapsed in fitting peak profiles:\t%f s.\n", diftotal);
+        } else
+          printf("Time elapsed in finding peak positions:\t%f s.\n", diftotal);
+      }
 
       // Convert to detector coords
       YMean = malloc(nIndices * sizeof(*YMean));
@@ -2603,11 +2622,12 @@ int main(int argc, char *argv[]) {
       CorrectTiltSpatialDistortion(
           nIndices, MaxRingRad, Yc, Zc, IdealTtheta, px, Lsd, ybc, zbc, tx,
           tyin, tzin, p0in, p1in, p2in, p3in, EtaIns, DiffIns, RadIns, &StdDiff,
-          outlierFactor, NULL, p4in, DistortionOrder, OutlierIterations);
+          outlierFactor, NULL, p4in, DistortionOrder, OutlierIterations,
+          iter == 0);
       NrCalls = 0;
 
       // Count and print indices per panel
-      if (nPanels > 0) {
+      if (nPanels > 0 && iter == 0) {
         int *panelCounts = calloc(nPanels, sizeof(int));
         for (int ii = 0; ii < nIndices; ii++) {
           int pIdx = GetPanelIndex(Yc[ii], Zc[ii], nPanels, panels);
@@ -2667,15 +2687,24 @@ int main(int argc, char *argv[]) {
                    tolRotation, px, outlierFactor, MinIndicesForFit, FixPanelID,
                    RingWeights, DistortionOrder, p4in, tolP4, PerPanelLsd,
                    tolLsdPanel, PerPanelDistortion, tolP2Panel, WeightByRadius,
-                   snrWeights, &p4);
-      printf("Number of function calls: %lld\n", NrCalls);
-      printf(
-          "Lsd %0.12f\nBC %0.12f %0.12f\nty %0.12f\ntz %0.12f\np0 %0.12f\np1 "
-          "%0.12f\np2 %0.12f\np3 %0.12f\n",
-          LsdFit, ybcFit, zbcFit, ty, tz, p0, p1, p2, p3);
-      if (DistortionOrder >= 6)
-        printf("p4 %0.12f\n", p4);
-      printf("MeanStrain %0.12lf\nStdStrain  %0.12lf\n", MeanDiff, StdDiff);
+                   snrWeights, &p4, iter == 0);
+      if (iter == 0) {
+        printf("Number of function calls: %lld\n", NrCalls);
+        printf("Lsd        %0.12f\n"
+               "BC         %0.12f %0.12f\n"
+               "ty         %0.12f\n"
+               "tz         %0.12f\n"
+               "p0         %0.12f\n"
+               "p1         %0.12f\n"
+               "p2         %0.12f\n"
+               "p3         %0.12f\n",
+               LsdFit, ybcFit, zbcFit, ty, tz, p0, p1, p2, p3);
+        if (DistortionOrder >= 6)
+          printf("p4         %0.12f\n", p4);
+      }
+      printf("           *** microstrain ***\n");
+      printf("MeanStrain %0.6lf\nStdStrain  %0.6lf\n", MeanDiff * 1e6,
+             StdDiff * 1e6);
 
       // Feed outputs back as inputs for next iteration
       p4in = p4;
@@ -2790,10 +2819,8 @@ int main(int argc, char *argv[]) {
     CorrectTiltSpatialDistortion(
         nIndices, MaxRingRad, Yc, Zc, IdealTtheta, px, LsdFit, ybcFit, zbcFit,
         tx, ty, tz, p0, p1, p2, p3, Etas, Diffs, RadOuts, &StdDiff,
-        outlierFactor, IsOutlier, p4in, DistortionOrder, OutlierIterations);
+        outlierFactor, IsOutlier, p4in, DistortionOrder, OutlierIterations, 1);
     printf("StdStrain %0.12lf\n", StdDiff);
-    if (DistortionOrder >= 6)
-      printf("p4 %0.12f\n", p4in);
 
     // Per-panel strain summary
     if (nPanels > 0) {
@@ -2813,17 +2840,16 @@ int main(int argc, char *argv[]) {
       // Compute per-panel mean strain (x10000)
       double *panelMean = calloc(nPanels, sizeof(double));
       for (int p = 0; p < nPanels; p++)
-        panelMean[p] = (panelCount[p] > 0)
-                           ? (panelSum[p] / panelCount[p] * 10000.0)
-                           : -1.0;
+        panelMean[p] =
+            (panelCount[p] > 0) ? (panelSum[p] / panelCount[p] * 1e6) : -1.0;
 
-      printf("\n*** Per-Panel Strain x10000 (Z^ Y>) ***\n");
+      printf("\n*** Per-Panel Microstrain (Z^ Y>) ***\n");
       for (int z = NPanelsZ - 1; z >= 0; z--) {
         printf("Z%-1d |", z);
         for (int y = 0; y < NPanelsY; y++) {
           int pIdx = y * NPanelsZ + z;
           if (pIdx < nPanels && panelMean[pIdx] >= 0) {
-            printf(" %2d:%5.2f", pIdx, panelMean[pIdx]);
+            printf(" %2d:%5.1f", pIdx, panelMean[pIdx]);
           } else if (pIdx < nPanels) {
             printf(" %2d: --- ", pIdx);
           }
@@ -2972,13 +2998,21 @@ int main(int argc, char *argv[]) {
   printf("*******************Mean Values*******************\n");
   for (a = 0; a < 12; a++)
     means[a] /= (EndNr - StartNr + 1);
-  printf("Lsd %0.12f\nBC %0.12f %0.12f\nty %0.12f\ntz %0.12f\np0 %0.12f\np1 "
-         "%0.12f\np2 %0.12f\np3 %0.12f\nMeanStrain %0.12lf\nStdStrain  "
-         "%0.12lf\n",
+  printf("Lsd        %0.12f\n"
+         "BC         %0.12f %0.12f\n"
+         "ty         %0.12f\n"
+         "tz         %0.12f\n"
+         "p0         %0.12f\n"
+         "p1         %0.12f\n"
+         "p2         %0.12f\n"
+         "p3         %0.12f\n",
          means[0], means[1], means[2], means[3], means[4], means[5], means[6],
-         means[7], means[8], means[9], means[10]);
+         means[7], means[8]);
   if (DistortionOrder >= 6)
-    printf("p4 %0.12f\n", means[11]);
+    printf("p4         %0.12f\n", means[11]);
+  printf("           *** microstrain ***\n");
+  printf("MeanStrain %0.6lf\nStdStrain  %0.6lf\n", means[9] * 1e6,
+         means[10] * 1e6);
   printf("*******************Copy to par*******************\n");
   free(DarkFile);
   free(AverageDark);
