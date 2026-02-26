@@ -1,0 +1,232 @@
+###############################################################################
+#                   MIDAS FF-HEDM Calibrant Parameter File
+#
+#  This file configures CalibrantPanelShiftsOMP for detector geometry
+#  calibration using a known calibrant (e.g. CeO2, LaB6).
+#
+#  Lines starting with # are comments.
+#  Parameters are specified as: ParameterName Value
+###############################################################################
+
+
+# =============================================================================
+#  INPUT DATA
+# =============================================================================
+
+# Path to dark-field image (subtracted from each frame)
+Dark dark_CeO2_Pil_100x100_att000_650mm_71p676keV_001975.tif
+
+# Data location (set by test script at runtime)
+Folder .
+FileStem CeO2_Pil_100x100_att000_650mm_71p676keV
+Ext .tif
+Padding 6
+
+# Frame range to process
+StartNr 1956
+EndNr 1956
+
+# Data format: 6 = TIFF (see manual for other formats)
+DataType 6
+
+# Image transformations (2 = invert Z axis)
+ImTransOpt 2
+
+
+# =============================================================================
+#  DETECTOR GEOMETRY
+# =============================================================================
+
+# Detector dimensions (pixels)
+NrPixelsY 1475
+NrPixelsZ 1679
+
+# Pixel size (microns)
+px 172.0
+
+# Sample-to-detector distance (microns)
+Lsd        657436.895687981043
+
+# Beam center position (pixels)
+BC         685.485459654125 921.034377043941
+
+# Detector tilts (degrees): tx fixed, ty/tz refined
+tx         0.000000000000
+ty         0.200642420648
+tz         0.446902376310
+
+# Wedge angle (degrees, usually 0)
+Wedge 0
+
+
+# =============================================================================
+#  BEAM / SAMPLE
+# =============================================================================
+
+# X-ray wavelength (Angstroms)
+Wavelength 0.172973
+
+# Maximum ring radius (microns, computed from geometry)
+RhoD 219964.42411013643
+
+
+# =============================================================================
+#  CALIBRANT MATERIAL
+# =============================================================================
+
+# Space group number (225 = Fm-3m, e.g. CeO2)
+SpaceGroup 225
+
+# Lattice constants: a b c alpha beta gamma (Angstroms, degrees)
+LatticeConstant 5.4116 5.4116 5.4116 90.0 90.0 90.0
+
+
+# =============================================================================
+#  RADIAL & AZIMUTHAL BINNING
+# =============================================================================
+
+# Radial range and bin size (pixels)
+RMin 10
+RMax 1200
+RBinSize 0.25
+
+# Azimuthal range and bin size (degrees)
+EtaMin -180
+EtaMax 180
+EtaBinSize 1
+
+# Peak profile width for fitting (pixels)
+Width 800
+
+# Omega (rotation) start angle and step size (degrees)
+OmegaStart -180
+OmegaStep 0.25
+
+
+# =============================================================================
+#  SPATIAL DISTORTION MODEL
+# =============================================================================
+
+# Distortion polynomial coefficients: p0*R^2*cos(2η) + p1*R^4*cos(4η+p3) + p2*R^2
+p0         0.000263950640
+p1         0.000056436402
+p2         -0.000413276078
+p3         26.148522357105
+
+# Higher-order distortion (DistortionOrder >= 6 enables p4*R^6)
+DistortionOrder 6
+p4         0.000819022650
+
+
+# =============================================================================
+#  OPTIMIZATION TOLERANCES
+# =============================================================================
+
+# Tilt angle search range (degrees)
+tolTilts 3
+
+# Beam center search range (pixels)
+tolBC 20
+
+# Sample-to-detector distance search range (microns)
+tolLsd 15000
+
+# Distortion coefficient tolerance (general, and per-coefficient overrides)
+tolP 2E-3
+tolP4 0.0001
+
+
+# =============================================================================
+#  ITERATION & CONVERGENCE
+# =============================================================================
+
+# Number of full optimization iterations (best result is kept)
+nIterations 30
+
+# Outlier rejection: factor * mean_strain threshold, iterated N times
+OutlierIterations 3
+
+# MultFactor for AutoCalibrateZarr convergence (ring exclusion threshold)
+MultFactor 2
+
+
+# =============================================================================
+#  OBJECTIVE FUNCTION WEIGHTS
+# =============================================================================
+
+# Normalize ring weights so each ring contributes equally
+NormalizeRingWeights 1
+
+# Weight points by R/Rmax (emphasizes outer rings with more leverage)
+WeightByRadius 1
+
+# Weight points by peak-fit SNR (low-quality fits contribute less)
+WeightByFitSNR 1
+
+# Use squared strain (L2 norm) instead of absolute strain (L1)
+L2Objective 1
+
+
+# =============================================================================
+#  PANEL GEOMETRY (Multi-Panel Detector)
+# =============================================================================
+
+# Panel layout: NPanelsY columns × NPanelsZ rows
+NPanelsY 6
+NPanelsZ 8
+
+# Panel active area (pixels)
+PanelSizeY 243
+PanelSizeZ 195
+
+# Inter-panel gaps (pixels). One value per gap: (N-1) values for N panels
+PanelGapsY 1 7 1 7 1
+PanelGapsZ 17 17 17 17 17 17 17
+
+# Anchored (fixed) panel ID — all other panels shift relative to this one
+FixPanelID 12
+
+# Per-panel shift tolerance (pixels)
+tolShifts 1
+
+# Per-panel rotation tolerance (degrees)
+tolRotation 3
+
+# Enable per-panel Lsd refinement (each panel gets its own effective distance)
+PerPanelLsd 1
+
+# Enable per-panel p2 distortion refinement
+PerPanelDistortion 1
+
+# File to save/load per-panel shift results
+PanelShiftsFile panelshiftsCalibrant.txt
+
+# Mask file for bad pixels / gaps (0 = masked)
+MaskFile mask.tif
+
+# Auto-detect and fit doublet rings (separation threshold in pixels)
+DoubletSeparation 25
+
+
+# =============================================================================
+#  RING SELECTION
+# =============================================================================
+
+# Exclude rings by ID (high-index rings with sparse/noisy data)
+# Use one line per excluded ring
+RingsToExclude 19
+RingsToExclude 20
+RingsToExclude 21
+RingsToExclude 22
+RingsToExclude 22
+RingsToExclude 23
+RingsToExclude 24
+RingsToExclude 25
+RingsToExclude 26
+RingsToExclude 27
+RingsToExclude 28
+RingsToExclude 29
+RingsToExclude 30
+RingsToExclude 31
+RingsToExclude 32
+RingsToExclude 33
