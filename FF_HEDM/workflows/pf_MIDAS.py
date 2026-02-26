@@ -918,6 +918,7 @@ def main():
     parser.add_argument('-startScanNr', type=int, required=False, default=1, help='If you want to do partial peaksearch. Default: 1')
     parser.add_argument('-minThresh', type=int, required=False, default=-1, help='If you want to filter out peaks with intensity less than this number. -1 disables this. This is only used for filtering out peaksearch results for small peaks, peaks with maxInt smaller than this will be filtered out.')
     parser.add_argument('-sinoType', type=str, required=False, default='raw', choices=['raw', 'norm', 'abs', 'normabs'], help='Sinogram type to use for reconstruction (raw, norm, abs, normabs). Default: raw')
+    parser.add_argument('-sinoSource', type=str, required=False, default='tolerance', choices=['indexing', 'tolerance'], help='Sinogram spot source: tolerance=match all spots by angular tolerance (default), indexing=use only spots from per-voxel indexing results (cleaner).')
     # Parse arguments
     args, unparsed = parser.parse_known_args()
     
@@ -942,6 +943,8 @@ def main():
     micFN = args.micFN
     grainsFN = args.grainsFN
     sinoType = args.sinoType
+    sinoSource = args.sinoSource
+    sinoMode = 1 if sinoSource == 'indexing' else 0
     # Use current directory if no result directory specified
     if not topdir:
         topdir = os.getcwd()
@@ -1322,7 +1325,7 @@ def main():
                         shutil.move(dirn, dirn[4:])
             
             # Run find single solution
-            cmd = f"{os.path.join(midas_path, 'FF_HEDM/bin/findSingleSolutionPFRefactored')} {topdir} {sgnum} {maxang} {nScans} {numProcsLocal} {tol_ome} {tol_eta} {baseNameParamFN} {NormalizeIntensities} 1"
+            cmd = f"{os.path.join(midas_path, 'FF_HEDM/bin/findSingleSolutionPFRefactored')} {topdir} {sgnum} {maxang} {nScans} {numProcsLocal} {tol_ome} {tol_eta} {baseNameParamFN} {NormalizeIntensities} 1 {sinoMode}"
             logger.info(f"Running findSingleSolutionPFRefactored: {cmd}")
             result = subprocess.call(cmd, cwd=topdir, shell=True)
             
@@ -1504,7 +1507,7 @@ def main():
                             sys.exit(1)
                     
                     # Run find single solution again
-                    cmd = f"{os.path.join(midas_path, 'FF_HEDM/bin/findSingleSolutionPFRefactored')} {topdir} {sgnum} {maxang} {nScans} {numProcsLocal} {tol_ome} {tol_eta} {baseNameParamFN} {NormalizeIntensities} 1"
+                    cmd = f"{os.path.join(midas_path, 'FF_HEDM/bin/findSingleSolutionPFRefactored')} {topdir} {sgnum} {maxang} {nScans} {numProcsLocal} {tol_ome} {tol_eta} {baseNameParamFN} {NormalizeIntensities} 1 {sinoMode}"
                     logger.info(f"Running findSingleSolutionPFRefactored again: {cmd}")
                     subprocess.call(cmd, cwd=topdir, shell=True)
                     

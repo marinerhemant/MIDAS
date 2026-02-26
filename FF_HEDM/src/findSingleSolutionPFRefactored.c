@@ -173,6 +173,13 @@ void generate_sinograms(SpotList *spotList,
                         double tolOme, double tolEta, const char *outputFolder,
                         int numProcs, int normalizeSino, int absTransform,
                         int *outMaxNHKLs);
+void generate_sinograms_from_indexing(UniqueOrientationsResult *uniqueResult,
+                                      const char *folderName, double *allSpots,
+                                      size_t nSpotsAll, int nScans, int sgNr,
+                                      double maxAng, double tolOme,
+                                      double tolEta, const char *outputFolder,
+                                      int numProcs, int normalizeSino,
+                                      int absTransform, int *outMaxNHKLs);
 void extract_patches(const char *topdir, const char *outputFolder,
                      const char *paramFile, size_t nGrs, int maxNHKLs,
                      int nScans, int numProcs);
@@ -232,7 +239,7 @@ int main(int argc, char *argv[]) {
   printf("\n\n\t\tFinding Single Solution in PF-HEDM.\n\n");
 
   /* Parse command line arguments */
-  if (argc < 8 || argc > 11) {
+  if (argc < 8 || argc > 12) {
     print_usage(argv[0]);
     return EXIT_FAILURE;
   }
@@ -255,6 +262,8 @@ int main(int argc, char *argv[]) {
   const char *paramFile = (argc >= 9) ? argv[8] : "paramstest.txt";
   int normalizeSino = (argc >= 10) ? atoi(argv[9]) : 1;
   int absTransform = (argc >= 11) ? atoi(argv[10]) : 1;
+  int sinoMode =
+      (argc >= 12) ? atoi(argv[11]) : 0; /* 0=tolerance, 1=indexing */
 
   /* Validate input parameters */
   if (sgNr <= 0 || maxAng <= 0.0 || nScans <= 0 || numProcs <= 0 ||
@@ -328,17 +337,27 @@ int main(int argc, char *argv[]) {
   size_t nSpotsAll = spotsDataSize / (SPOTS_ARRAY_COLS * sizeof(double));
   printf("Total number of spots in dataset: %zu\n", nSpotsAll);
 
-  /* Process spots for each unique orientation */
-  printf("Processing spots for each unique orientation...\n");
-  SpotList spotList = process_spots(&uniqueResult, folderName, allSpots,
-                                    nSpotsAll, tolOme, tolEta);
-
-  /* Generate sinograms for visualization */
-  printf("Generating sinograms...\n");
+  /* Generate sinograms */
   int maxNHKLs = 0;
-  generate_sinograms(&spotList, &uniqueResult, allSpots, nSpotsAll, nScans,
-                     tolOme, tolEta, argv[1], numProcs, normalizeSino,
-                     absTransform, &maxNHKLs);
+  SpotList spotList = {0};
+
+  if (sinoMode == 1) {
+    /* Indexing mode: collect spots directly from per-voxel IndexBest_IDs */
+    printf("Generating sinograms from indexing results (sinoMode=1)...\n");
+    generate_sinograms_from_indexing(&uniqueResult, folderName, allSpots,
+                                     nSpotsAll, nScans, sgNr, maxAng, tolOme,
+                                     tolEta, argv[1], numProcs, normalizeSino,
+                                     absTransform, &maxNHKLs);
+  } else {
+    /* Tolerance mode: original behavior */
+    printf("Processing spots for each unique orientation (sinoMode=0)...\n");
+    spotList = process_spots(&uniqueResult, folderName, allSpots, nSpotsAll,
+                             tolOme, tolEta);
+    printf("Generating sinograms...\n");
+    generate_sinograms(&spotList, &uniqueResult, allSpots, nSpotsAll, nScans,
+                       tolOme, tolEta, argv[1], numProcs, normalizeSino,
+                       absTransform, &maxNHKLs);
+  }
 
   /* Extract intensity patches for the viewer */
   printf("Extracting patches...\n");
@@ -349,7 +368,12 @@ int main(int argc, char *argv[]) {
   printf("Cleaning up resources...\n");
   free(allKeyArr);
   free(allOrientationsArr);
-  free_resources(&spotList, &uniqueResult);
+  if (sinoMode == 0)
+    free_resources(&spotList, &uniqueResult);
+  else {
+    free(uniqueResult.uniqueKeyArr);
+    free(uniqueResult.uniqueOrientArr);
+  }
 
   /* Unmap memory mapped file */
   if (munmap(allSpots, spotsDataSize) != 0) {
@@ -376,9 +400,9 @@ int main(int argc, char *argv[]) {
 void print_usage(const char *program_name) {
   printf(
       "Supply foldername spaceGroup, maxAng, NumberScans, nCPUs, tolOme, "
-      "tolEta [normalizeSino] [absTransform] as arguments:\n"
-      "%s foldername sgNum maxAngle nScans nCPUs tolOme tolEta [normalizeSino] "
-      "[absTransform]\n"
+      "tolEta [normalizeSino] [absTransform] [sinoMode] as arguments:\n"
+      "%s foldername sgNum maxAngle nScans nCPUs tolOme tolEta [paramFile] "
+      "[normalizeSino] [absTransform] [sinoMode]\n"
       "\nWhere:\n"
       "  foldername:     Path to the folder containing input data\n"
       "  sgNum:          Space group number for crystallographic symmetry\n"
@@ -391,10 +415,14 @@ void print_usage(const char *program_name) {
       "(degrees)\n"
       "  tolEta:         Tolerance for eta angle when matching spots "
       "(degrees)\n"
+      "  paramFile:      Parameter file name (default: paramstest.txt)\n"
       "  normalizeSino:  0=off, 1=on (default: 1)\n"
       "  absTransform:   0=off, 1=on (default: 1)\n"
       "                  When on, applies exp(-I/Imax) so absorption CT codes\n"
       "                  can recover diffraction intensity via -ln().\n"
+      "  sinoMode:       0=tolerance matching (default), 1=indexing-based\n"
+      "                  Mode 1 uses spots from per-voxel indexing results\n"
+      "                  instead of tolerance-matching against all spots.\n"
       "\nThe indexing results need to be in folderName/Output\n",
       program_name);
 }
@@ -1812,6 +1840,515 @@ static inline void patch_transposeMatrix(double *x, int n, double *y) {
  * 4. Extract 21×21 patch centered on pixel position
  * 5. Save all patches as a float32 binary
  */
+/**
+ * Generate sinograms using spots from per-voxel indexing results
+ *
+ * Instead of tolerance-matching against all spots in Spots.bin, this function:
+ * 1. For each unique grain, iterates over all voxels
+ * 2. Reads each voxel's IndexKey/IndexBest to find orientations matching the
+ * grain
+ * 3. Collects the exact spot IDs from IndexBest_IDs (deduplicated)
+ * 4. Groups spots into HKL slots by (ringNr, omega, eta) similarity
+ * 5. Fills sinogram with collected spot intensities
+ *
+ * This produces cleaner sinograms because only spots explicitly matched by the
+ * indexer are used, rather than any spot within angular tolerance.
+ */
+void generate_sinograms_from_indexing(UniqueOrientationsResult *uniqueResult,
+                                      const char *folderName, double *allSpots,
+                                      size_t nSpotsAll, int nScans, int sgNr,
+                                      double maxAng, double tolOme,
+                                      double tolEta, const char *outputFolder,
+                                      int numProcs, int normalizeSino,
+                                      int absTransform, int *outMaxNHKLs) {
+
+  size_t nGrains = uniqueResult->nUniques;
+  int totalVox = nScans * nScans;
+
+  /* --- Phase 1: Collect spots from all voxels for each grain --- */
+  printf("Collecting spots from per-voxel indexing results (%zu grains, %d "
+         "voxels)...\n",
+         nGrains, totalVox);
+
+  /* Per-grain collected spot arrays */
+  typedef struct {
+    int spotID;
+    int scanNr;
+    double intensity;
+    double omega, eta, yCen, zCen, theta;
+    int ringNr;
+  } CollectedSpot;
+
+  CollectedSpot **grainSpots = calloc(nGrains, sizeof(*grainSpots));
+  int *grainSpotCounts = calloc(nGrains, sizeof(int));
+  int *grainSpotCaps = calloc(nGrains, sizeof(int));
+
+  /* Per-grain dedup sets: track which spotIDs have been seen */
+  bool **seenSpotID = calloc(nGrains, sizeof(bool *));
+
+  if (!grainSpots || !grainSpotCounts || !grainSpotCaps || !seenSpotID) {
+    fatal_error("Failed to allocate per-grain spot collection arrays");
+  }
+
+  for (size_t g = 0; g < nGrains; g++) {
+    grainSpotCaps[g] = 256;
+    grainSpots[g] = malloc(grainSpotCaps[g] * sizeof(CollectedSpot));
+    grainSpotCounts[g] = 0;
+    seenSpotID[g] = calloc(nSpotsAll + 1, sizeof(bool));
+    if (!grainSpots[g] || !seenSpotID[g])
+      fatal_error("Failed to allocate grain %zu spot data", g);
+  }
+
+  /* Precompute grain quaternions */
+  double *grainQuats = malloc(nGrains * 4 * sizeof(double));
+  for (size_t g = 0; g < nGrains; g++) {
+    OrientMat2Quat(&uniqueResult->uniqueOrientArr[g * (ORIENT_ARRAY_COLS + 1)],
+                   &grainQuats[g * 4]);
+  }
+
+  /* Iterate over all voxels */
+  for (int voxNr = 0; voxNr < totalVox; voxNr++) {
+    /* Read this voxel's IndexKey */
+    char keyFN[MAX_PATH_LEN];
+    sprintf(keyFN, "%s/IndexKey_voxNr_%06d.txt", folderName, voxNr);
+    FILE *keyF = fopen(keyFN, "r");
+    if (!keyF)
+      continue;
+
+    /* Read all candidates */
+    size_t candidateKeys[MAX_N_SPOTS_PER_GRAIN * KEY_ARRAY_COLS];
+    int nCandidates = 0;
+    char aline[MAX_PATH_LEN];
+    while (fgets(aline, sizeof(aline), keyF) &&
+           nCandidates < MAX_N_SPOTS_PER_GRAIN) {
+      sscanf(aline, "%zu %zu %zu %zu", &candidateKeys[nCandidates * 4 + 0],
+             &candidateKeys[nCandidates * 4 + 1],
+             &candidateKeys[nCandidates * 4 + 2],
+             &candidateKeys[nCandidates * 4 + 3]);
+      nCandidates++;
+    }
+    fclose(keyF);
+    if (nCandidates == 0)
+      continue;
+
+    /* Read this voxel's IndexBest to get orientation matrices */
+    char valsFN[MAX_PATH_LEN];
+    sprintf(valsFN, "%s/IndexBest_voxNr_%06d.bin", folderName, voxNr);
+    FILE *valsF = fopen(valsFN, "rb");
+    if (!valsF)
+      continue;
+
+    double *tmpArr = malloc(nCandidates * TMP_ARRAY_COLS * sizeof(double));
+    if (!tmpArr) {
+      fclose(valsF);
+      continue;
+    }
+    size_t nRead =
+        fread(tmpArr, sizeof(double), nCandidates * TMP_ARRAY_COLS, valsF);
+    fclose(valsF);
+    if ((int)(nRead / TMP_ARRAY_COLS) < nCandidates)
+      nCandidates = (int)(nRead / TMP_ARRAY_COLS);
+
+    /* For each candidate, check against each grain */
+    for (int ci = 0; ci < nCandidates; ci++) {
+      double OMCand[ORIENT_ARRAY_COLS];
+      for (int j = 0; j < ORIENT_ARRAY_COLS; j++)
+        OMCand[j] = tmpArr[ci * TMP_ARRAY_COLS + 2 + j];
+
+      double quatCand[4];
+      OrientMat2Quat(OMCand, quatCand);
+
+      double confidence = 0;
+      if (tmpArr[ci * TMP_ARRAY_COLS + 14] > 0)
+        confidence =
+            tmpArr[ci * TMP_ARRAY_COLS + 15] / tmpArr[ci * TMP_ARRAY_COLS + 14];
+      if (confidence < 0.01)
+        continue; /* skip very low confidence */
+
+      for (size_t g = 0; g < nGrains; g++) {
+        double Axis[3], ang;
+        GetMisOrientation(quatCand, &grainQuats[g * 4], Axis, &ang, sgNr);
+        if (ang < maxAng) {
+          /* This candidate matches grain g. Read its spot IDs. */
+          size_t nSpots = candidateKeys[ci * 4 + 1];
+          size_t startPos = candidateKeys[ci * 4 + 3];
+
+          char idsFN[MAX_PATH_LEN];
+          sprintf(idsFN, "%s/IndexBest_IDs_voxNr_%06d.bin", folderName, voxNr);
+          FILE *idsF = fopen(idsFN, "rb");
+          if (!idsF)
+            continue;
+          if (fseek(idsF, (long)startPos, SEEK_SET) != 0) {
+            fclose(idsF);
+            continue;
+          }
+
+          int *idArr = malloc(nSpots * sizeof(int));
+          if (!idArr) {
+            fclose(idsF);
+            continue;
+          }
+          size_t nIDsRead = fread(idArr, sizeof(int), nSpots, idsF);
+          fclose(idsF);
+
+          for (size_t si = 0; si < nIDsRead; si++) {
+            int sid = idArr[si];
+            if (sid < 1 || sid > (int)nSpotsAll)
+              continue;
+            if (seenSpotID[g][sid])
+              continue; /* deduplicate */
+            seenSpotID[g][sid] = true;
+
+            size_t idx = (size_t)(sid - 1);
+            if ((int)allSpots[SPOTS_ARRAY_COLS * idx + 4] != sid)
+              continue;
+
+            /* Grow array if needed */
+            if (grainSpotCounts[g] >= grainSpotCaps[g]) {
+              grainSpotCaps[g] *= 2;
+              grainSpots[g] = realloc(grainSpots[g],
+                                      grainSpotCaps[g] * sizeof(CollectedSpot));
+              if (!grainSpots[g])
+                fatal_error("Failed to realloc grain %zu spots", g);
+            }
+
+            CollectedSpot *cs = &grainSpots[g][grainSpotCounts[g]];
+            cs->spotID = sid;
+            cs->scanNr = (int)allSpots[SPOTS_ARRAY_COLS * idx + 9];
+            cs->intensity = allSpots[SPOTS_ARRAY_COLS * idx + 3];
+            cs->omega = allSpots[SPOTS_ARRAY_COLS * idx + 2];
+            cs->eta = allSpots[SPOTS_ARRAY_COLS * idx + 6];
+            cs->ringNr = (int)allSpots[SPOTS_ARRAY_COLS * idx + 5];
+            cs->yCen = allSpots[SPOTS_ARRAY_COLS * idx + 0];
+            cs->zCen = allSpots[SPOTS_ARRAY_COLS * idx + 1];
+            cs->theta = allSpots[SPOTS_ARRAY_COLS * idx + 7];
+            grainSpotCounts[g]++;
+          }
+          free(idArr);
+          break; /* assigned to first matching grain — move to next candidate */
+        }
+      }
+    }
+    free(tmpArr);
+
+    if (voxNr > 0 && voxNr % 5000 == 0)
+      printf("  Processed %d/%d voxels...\n", voxNr, totalVox);
+  }
+  free(grainQuats);
+
+  /* Free dedup arrays */
+  for (size_t g = 0; g < nGrains; g++)
+    free(seenSpotID[g]);
+  free(seenSpotID);
+
+  /* --- Phase 2: Group collected spots into HKL slots per grain --- */
+  printf("Grouping spots into HKL slots...\n");
+  int *nHKLsPerGrain = calloc(nGrains, sizeof(int));
+  int **spotSlot = calloc(nGrains, sizeof(int *));
+  int maxNHKLs = 0;
+
+  for (size_t g = 0; g < nGrains; g++) {
+    int ncs = grainSpotCounts[g];
+    spotSlot[g] = calloc(ncs > 0 ? ncs : 1, sizeof(int));
+    for (int i = 0; i < ncs; i++)
+      spotSlot[g][i] = -1;
+
+    int nextSlot = 0;
+    for (int i = 0; i < ncs; i++) {
+      if (spotSlot[g][i] >= 0)
+        continue;
+      spotSlot[g][i] = nextSlot;
+
+      for (int j = i + 1; j < ncs; j++) {
+        if (spotSlot[g][j] >= 0)
+          continue;
+        if (grainSpots[g][j].ringNr == grainSpots[g][i].ringNr &&
+            fabs(grainSpots[g][j].omega - grainSpots[g][i].omega) < tolOme &&
+            fabs(grainSpots[g][j].eta - grainSpots[g][i].eta) < tolEta) {
+          spotSlot[g][j] = nextSlot;
+        }
+      }
+      nextSlot++;
+    }
+
+    nHKLsPerGrain[g] = nextSlot;
+    if (nextSlot > maxNHKLs)
+      maxNHKLs = nextSlot;
+    printf("  Grain %zu: %d collected spots → %d HKL slots\n", g, ncs,
+           nextSlot);
+  }
+
+  /* --- Phase 3: Fill sinogram arrays --- */
+  printf("Filling sinograms (nGrains=%zu, maxNHKLs=%d, nScans=%d)...\n",
+         nGrains, maxNHKLs, nScans);
+
+  size_t szSino = nGrains * maxNHKLs * nScans;
+  double *sinoArr = calloc(szSino, sizeof(double));
+  int *spotIDArr = calloc(szSino, sizeof(int));
+  double *spotMetaArr = calloc(szSino * SPOT_META_COLS, sizeof(double));
+  double *omeArr = calloc(nGrains * maxNHKLs, sizeof(double));
+  double *maxIntArr = calloc(nGrains * maxNHKLs, sizeof(double));
+  double *sumOmeArr = calloc(nGrains * maxNHKLs, sizeof(double));
+  int *countOmeArr = calloc(nGrains * maxNHKLs, sizeof(int));
+
+  if (!sinoArr || !spotIDArr || !spotMetaArr || !omeArr || !maxIntArr ||
+      !sumOmeArr || !countOmeArr) {
+    fatal_error("Failed to allocate sinogram arrays");
+  }
+
+  for (size_t i = 0; i < szSino; i++)
+    spotIDArr[i] = -1;
+  for (size_t i = 0; i < szSino * SPOT_META_COLS; i++)
+    spotMetaArr[i] = NAN;
+  for (size_t i = 0; i < nGrains * maxNHKLs; i++)
+    omeArr[i] = -10000.0;
+
+  for (size_t g = 0; g < nGrains; g++) {
+    for (int si = 0; si < grainSpotCounts[g]; si++) {
+      CollectedSpot *cs = &grainSpots[g][si];
+      int slot = spotSlot[g][si];
+      if (slot < 0 || slot >= maxNHKLs)
+        continue;
+      if (cs->scanNr < 0 || cs->scanNr >= nScans)
+        continue;
+
+      size_t locSino =
+          g * maxNHKLs * nScans + (size_t)slot * nScans + cs->scanNr;
+      size_t locOme = g * maxNHKLs + (size_t)slot;
+
+      if (cs->intensity > sinoArr[locSino]) {
+        sinoArr[locSino] = cs->intensity;
+        spotIDArr[locSino] = cs->spotID;
+        spotMetaArr[locSino * SPOT_META_COLS + 0] = cs->eta;
+        spotMetaArr[locSino * SPOT_META_COLS + 1] = cs->theta * 2.0;
+        spotMetaArr[locSino * SPOT_META_COLS + 2] = cs->yCen;
+        spotMetaArr[locSino * SPOT_META_COLS + 3] = cs->zCen;
+      }
+      if (cs->intensity > maxIntArr[locOme])
+        maxIntArr[locOme] = cs->intensity;
+      if (cs->intensity > 0) {
+        sumOmeArr[locOme] += cs->omega;
+        countOmeArr[locOme]++;
+      }
+    }
+  }
+
+  /* Print fill stats */
+  for (size_t g = 0; g < nGrains; g++) {
+    int nSp = nHKLsPerGrain[g];
+    int filled = 0;
+    for (int s = 0; s < nSp; s++)
+      for (int sc = 0; sc < nScans; sc++)
+        if (sinoArr[g * maxNHKLs * nScans + s * nScans + sc] > 0)
+          filled++;
+    printf("  Grain %zu: %d/%d cells filled (%.1f%%)\n", g, filled,
+           nSp * nScans,
+           (nSp * nScans > 0) ? 100.0 * filled / (nSp * nScans) : 0.0);
+  }
+
+  /* Free collected spots */
+  for (size_t g = 0; g < nGrains; g++) {
+    free(grainSpots[g]);
+    free(spotSlot[g]);
+  }
+  free(grainSpots);
+  free(grainSpotCounts);
+  free(grainSpotCaps);
+  free(spotSlot);
+
+  /* --- Phase 4: Calculate average omegas --- */
+  for (size_t g = 0; g < nGrains; g++) {
+    for (int s = 0; s < maxNHKLs; s++) {
+      size_t idx = g * maxNHKLs + s;
+      if (countOmeArr[idx] > 0)
+        omeArr[idx] = sumOmeArr[idx] / countOmeArr[idx];
+    }
+  }
+
+  /* --- Phase 5: Sort by omega angle --- */
+  for (size_t gIdx = 0; gIdx < nGrains; gIdx++) {
+    SinoSortData *sortData = malloc(maxNHKLs * sizeof(*sortData));
+    int **sortSpotIDs = malloc(maxNHKLs * sizeof(int *));
+    double **sortMeta = malloc(maxNHKLs * sizeof(double *));
+    if (!sortData || !sortSpotIDs || !sortMeta) {
+      free(sortData);
+      free(sortSpotIDs);
+      free(sortMeta);
+      continue;
+    }
+
+    int nValid = 0;
+    for (int s = 0; s < maxNHKLs; s++) {
+      if (omeArr[gIdx * maxNHKLs + s] > -9999.0) {
+        sortData[nValid].angle = omeArr[gIdx * maxNHKLs + s];
+        sortData[nValid].intensities = calloc(nScans, sizeof(double));
+        sortSpotIDs[nValid] = calloc(nScans, sizeof(int));
+        sortMeta[nValid] = calloc(nScans * SPOT_META_COLS, sizeof(double));
+        sortData[nValid].origIdx = nValid;
+
+        for (int sc = 0; sc < nScans; sc++) {
+          size_t loc = gIdx * maxNHKLs * nScans + s * nScans + sc;
+          sortData[nValid].intensities[sc] = sinoArr[loc];
+          sortSpotIDs[nValid][sc] = spotIDArr[loc];
+          for (int m = 0; m < SPOT_META_COLS; m++)
+            sortMeta[nValid][sc * SPOT_META_COLS + m] =
+                spotMetaArr[loc * SPOT_META_COLS + m];
+        }
+        nValid++;
+      }
+    }
+
+    qsort(sortData, nValid, sizeof(SinoSortData), compare_sino_data);
+
+    for (int s = 0; s < nValid; s++) {
+      omeArr[gIdx * maxNHKLs + s] = sortData[s].angle;
+      int oi = sortData[s].origIdx;
+      for (int sc = 0; sc < nScans; sc++) {
+        size_t loc = gIdx * maxNHKLs * nScans + s * nScans + sc;
+        sinoArr[loc] = sortData[s].intensities[sc];
+        spotIDArr[loc] = sortSpotIDs[oi][sc];
+        for (int m = 0; m < SPOT_META_COLS; m++)
+          spotMetaArr[loc * SPOT_META_COLS + m] =
+              sortMeta[oi][sc * SPOT_META_COLS + m];
+      }
+      free(sortData[s].intensities);
+      free(sortSpotIDs[s]);
+      free(sortMeta[s]);
+    }
+    for (int s = nValid; s < maxNHKLs; s++) {
+      omeArr[gIdx * maxNHKLs + s] = -10000.0;
+      for (int sc = 0; sc < nScans; sc++) {
+        size_t loc = gIdx * maxNHKLs * nScans + s * nScans + sc;
+        sinoArr[loc] = 0;
+        spotIDArr[loc] = -1;
+        for (int m = 0; m < SPOT_META_COLS; m++)
+          spotMetaArr[loc * SPOT_META_COLS + m] = NAN;
+      }
+    }
+    free(sortData);
+    free(sortSpotIDs);
+    free(sortMeta);
+  }
+
+  /* --- Phase 6: Apply transforms, save all output files --- */
+  double *rawSinoArr = malloc(szSino * sizeof(double));
+  if (rawSinoArr)
+    memcpy(rawSinoArr, sinoArr, szSino * sizeof(double));
+
+  for (size_t g = 0; g < nGrains; g++) {
+    for (int s = 0; s < maxNHKLs; s++) {
+      double maxI = maxIntArr[g * maxNHKLs + s];
+      for (int sc = 0; sc < nScans; sc++) {
+        size_t loc = g * maxNHKLs * nScans + s * nScans + sc;
+        if (sinoArr[loc] > 0) {
+          if (normalizeSino && maxI > 0)
+            sinoArr[loc] /= maxI;
+          if (absTransform) {
+            sinoArr[loc] *= -1;
+            sinoArr[loc] = exp(sinoArr[loc]);
+          }
+        }
+      }
+    }
+  }
+
+  /* Save main sinogram files */
+  char sinoFN[MAX_PATH_LEN], omeFN[MAX_PATH_LEN], hklFN[MAX_PATH_LEN];
+  sprintf(sinoFN, "%s/sinos_%zu_%d_%d.bin", outputFolder, nGrains, maxNHKLs,
+          nScans);
+  sprintf(omeFN, "%s/omegas_%zu_%d.bin", outputFolder, nGrains, maxNHKLs);
+  sprintf(hklFN, "%s/nrHKLs_%zu.bin", outputFolder, nGrains);
+
+  FILE *sinoF = fopen(sinoFN, "wb");
+  FILE *omeF = fopen(omeFN, "wb");
+  FILE *hklF = fopen(hklFN, "wb");
+  if (sinoF && omeF && hklF) {
+    fwrite(sinoArr, nGrains * maxNHKLs * nScans * sizeof(double), 1, sinoF);
+    fwrite(omeArr, nGrains * maxNHKLs * sizeof(double), 1, omeF);
+    fwrite(nHKLsPerGrain, nGrains * sizeof(int), 1, hklF);
+    printf("Sinogram data saved.\n");
+  }
+  if (sinoF)
+    fclose(sinoF);
+  if (omeF)
+    fclose(omeF);
+  if (hklF)
+    fclose(hklF);
+
+  /* Save all 4 combinations */
+  const char *comboNames[4] = {"raw", "norm", "abs", "normabs"};
+  int comboNorm[4] = {0, 1, 0, 1};
+  int comboAbs[4] = {0, 0, 1, 1};
+
+  for (int combo = 0; combo < 4; combo++) {
+    double *cArr = malloc(szSino * sizeof(double));
+    if (!cArr)
+      continue;
+    memcpy(cArr, rawSinoArr ? rawSinoArr : sinoArr, szSino * sizeof(double));
+
+    for (size_t g = 0; g < nGrains; g++) {
+      for (int s = 0; s < maxNHKLs; s++) {
+        double maxI = maxIntArr[g * maxNHKLs + s];
+        for (int sc = 0; sc < nScans; sc++) {
+          size_t loc = g * maxNHKLs * nScans + s * nScans + sc;
+          if (cArr[loc] > 0) {
+            if (comboNorm[combo] && maxI > 0)
+              cArr[loc] /= maxI;
+            if (comboAbs[combo]) {
+              cArr[loc] *= -1;
+              cArr[loc] = exp(cArr[loc]);
+            }
+          }
+        }
+      }
+    }
+
+    char cFN[MAX_PATH_LEN];
+    sprintf(cFN, "%s/sinos_%s_%zu_%d_%d.bin", outputFolder, comboNames[combo],
+            nGrains, maxNHKLs, nScans);
+    FILE *cF = fopen(cFN, "wb");
+    if (cF) {
+      fwrite(cArr, szSino * sizeof(double), 1, cF);
+      fclose(cF);
+    }
+    free(cArr);
+  }
+  printf("Saved all 4 sinogram combinations.\n");
+
+  /* Save spotID mapping */
+  char spotMapFN[MAX_PATH_LEN];
+  sprintf(spotMapFN, "%s/spotMapping_%zu_%d_%d.bin", outputFolder, nGrains,
+          maxNHKLs, nScans);
+  FILE *spotMapF = fopen(spotMapFN, "wb");
+  if (spotMapF) {
+    fwrite(spotIDArr, szSino * sizeof(int), 1, spotMapF);
+    fclose(spotMapF);
+  }
+
+  /* Save spot metadata */
+  char spotMetaFN[MAX_PATH_LEN];
+  sprintf(spotMetaFN, "%s/spotMeta_%zu_%d_%d.bin", outputFolder, nGrains,
+          maxNHKLs, nScans);
+  FILE *smF = fopen(spotMetaFN, "wb");
+  if (smF) {
+    fwrite(spotMetaArr, szSino * SPOT_META_COLS * sizeof(double), 1, smF);
+    fclose(smF);
+  }
+
+  if (outMaxNHKLs)
+    *outMaxNHKLs = maxNHKLs;
+
+  free(rawSinoArr);
+  free(sinoArr);
+  free(spotIDArr);
+  free(spotMetaArr);
+  free(omeArr);
+  free(maxIntArr);
+  free(sumOmeArr);
+  free(countOmeArr);
+  free(nHKLsPerGrain);
+}
+
 void extract_patches(const char *topdir, const char *outputFolder,
                      const char *paramFile, size_t nGrs, int maxNHKLs,
                      int nScans, int numProcs) {
