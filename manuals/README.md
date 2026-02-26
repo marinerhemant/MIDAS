@@ -17,6 +17,7 @@
 | [FF_visualization.md](FF_visualization.md) | FF-HEDM result visualization | Static plotting and export of FF-HEDM grain maps |
 | [FF_dual_datasets.md](FF_dual_datasets.md) | Dual-dataset FF-HEDM analysis | Combining two FF datasets (e.g., different load states) |
 | [PF_Analysis.md](PF_Analysis.md) | Point-Focus HEDM analysis | Analyzing data from a focused beam geometry |
+| [PF_Interactive_Plotting.md](PF_Interactive_Plotting.md) | PF-HEDM sinogram, intensity & tomo viewer | Exploring PF-HEDM sinograms, intensity patches, and tomo reconstructions interactively |
 | [NF_calibration.md](NF_calibration.md) | NF-HEDM detector calibration | Calibrating NF detector distances and beam center |
 | [NF_Analysis.md](NF_Analysis.md) | NF-HEDM reconstruction workflow | Reconstructing spatially resolved orientation maps |
 | [NF_MultiResolution_Analysis.md](NF_MultiResolution_Analysis.md) | Multi-resolution NF-HEDM | Iterative NF reconstruction at increasing grid resolution |
