@@ -1,67 +1,178 @@
-######## User related parameters
-MinConfidence 0.7
-WriteImage 0 
-OnlySpotsInfo 1
+###############################################################################
+#                   MIDAS NF-HEDM Example Parameter File
+#
+#  This file configures the NF-HEDM (Near-Field High Energy Diffraction
+#  Microscopy) pipeline: simulation, image processing, and reconstruction.
+#
+#  Used by: simulateNF, nf_MIDAS.py, test_nf_hedm.py
+#
+#  Material: Gold (Au), Space Group 225 (Fm-3m)
+###############################################################################
 
-nDistances 2
-# Crystallography
-LatticeParameter 4.08 4.08 4.08 90 90 90 # a,b,c,alpha,beta,gamma (A and degrees)
-Wavelength 0.172979                 # double; in Angstrom
+
+# =============================================================================
+#  MATERIAL / CRYSTALLOGRAPHY
+# =============================================================================
+
+# Lattice constants: a b c alpha beta gamma (Angstroms, degrees)
+LatticeParameter 4.08 4.08 4.08 90 90 90
+
+# X-ray wavelength (Angstroms)
+Wavelength 0.172979
+
+# Space group number (225 = Fm-3m for Au)
 SpaceGroup 225
-MinFracAccept 0.04                  # double; Minimum fraction of the matching spots vs. ideally simulated spots in the 1st pass of finding candidate orientations before optimization.
-									# Suggested values: with seeding: 0.1; no seeding: 0.04; deformed: 0.01
-OrientTol 2                        # double; in degrees; After the 1st pass of candidate orientations, how big is the optimization radius 
-# Simulation field params
-Rsample 50                          # double; in microns; the radius of the inscribed circle in the hexagonal simulation space 
-GridSize 2.500000
-EdgeLength 1
-GridMask -1000 1000 -1000 1000
-MaxRingRad 2800
 
-#### Output File Names
-MicFileBinary Au_bin_Reconstructed.mic
-MicFileText Au_txt_Reconstructed.mic
 
-# Calibration parameters, must be updated after each calibration 
+# =============================================================================
+#  DETECTOR GEOMETRY
+# =============================================================================
+
+# Number of detector distances (NF-HEDM uses multiple Lsd positions)
+nDistances 2
+
+# Sample-to-detector distances (microns) — one per detector position
 Lsd 8289.154576
 Lsd 10290.724494
+
+# Beam center (pixels: horizontal, vertical) — one per detector position
 BC 985.415831 17.510494
 BC 985.161497 24.511210
+
+# Detector tilts (degrees) — shared across all distances
 tx 0.536238
 ty 0.557035
 tz 0.474936
 
-################# Should not be changed routinely
-SaveNSolutions 3
-PhaseNr 1
-NumPhases 1
-GlobalPositionFirstLayer 0
-GlobalPosition 0
-LayerThickness 2
+# Wedge angle (degrees)
 Wedge 0
-WFImages 0
-extOrig tif
-extReduced bin
+
+# Pixel size (microns, square pixels)
+px 1.48
+
+# Number of pixels (square detector)
 NrPixels 2048
-BlanketSubtraction 5
-MedFiltRadius 1                     # int; Only 1 or 2
-GaussFiltRadius 4                   # int; This is the second pass of Gaussian Filter, 4 is good for small spots
-LoGMaskRadius 10                    # int; This should be at least 2.5x bigger than GaussFiltRadius
-DoLoGFilter 0                       # bool; For gold it is not necessary (saves time), only for very special cases
-WriteFinImage 0                     # bool; Wether to write the reduced image files uncompressed (also the active pixels as list)
-NrFilesPerDistance 1440              # int; How many consecutive files in a NF scan per detector distances (excluding the WF images)
-ExcludePoleAngle 6                  # double; in degrees
-OmegaRange -180 180                   # double; in degrees; This is for the simulation, always between [-180, 180]
-BoxSize -1200 1200 100 2500         # double; in microns; The clipping frame box size relative to the Beam Center for all distances on the detector. [ymin ymax zmin zmax] Fable coord system
-OmegaStart 180                     # double; in degrees; Starting Omega value for the first frame as written in the fastsweep scans, counter clockwise (Fable), Note: with aerotech it is opposite !
-OmegaStep -0.25                      # double; in degrees; Omega step value in the scans, counter clockwise (Fable), Note: with aerotech it is negative !
-StartNr 0                          # int; The file range for the good acquisitions to be used in the simulation. It can be subrange of the full scan.
-EndNr 1439
-px 1.48                            # double; in microns; The pixel size on the detector, assuming square shape and grid
-                                   ### THE NEXT 4 ARE ONLY USED FOR INITIAL CALIBRATION
-LsdTol 500                         # double; in microns; How big is the range for detector distance optimization
-LsdRelativeTol 3                  # double; in microns; How accurate is the relative movement of the detector between different Ls
-BCTol 2 0.2                        # double; in pixels; Beam center tolerance in [horiz, vert] direction on each detector distance
-TiltsTol 1                         # double; in degrees; Tolerance on the detector tilts at optimization 
-NumIterations 3
+
+# Maximum ring radius (microns)
+MaxRingRad 2800
+
+
+# =============================================================================
+#  SCAN PARAMETERS
+# =============================================================================
+
+# Omega rotation
+OmegaStart 180                  # Starting omega for first frame (degrees)
+OmegaStep -0.25                 # Rotation step per frame (degrees, negative = CW)
+OmegaRange -180 180             # Full omega range for simulation (degrees)
+
+# Frame range
+StartNr 0                       # First frame number
+EndNr 1439                      # Last frame number
+
+# Files per detector distance (excluding wide-field images)
+NrFilesPerDistance 1440
+
+# Wide-field images (0 = none)
+WFImages 0
+
+
+# =============================================================================
+#  SAMPLE GEOMETRY
+# =============================================================================
+
+# Simulation space
+Rsample 50                      # Radius of inscribed circle in hexagonal grid (microns)
+GridSize 2.500000                # Voxel grid spacing (microns)
+EdgeLength 1                    # Triangle edge length for mic grid
+
+# Grid mask: ymin ymax zmin zmax (microns)
+GridMask -1000 1000 -1000 1000
+
+# Sample position
+GlobalPositionFirstLayer 0      # First layer position (microns)
+GlobalPosition 0                # Current layer position (microns)
+LayerThickness 2                # Layer thickness (microns)
+
+
+# =============================================================================
+#  IMAGE PROCESSING
+# =============================================================================
+
+# Dark/background subtraction
+BlanketSubtraction 5            # Flat intensity value subtracted from all pixels
+
+# Spatial filtering pipeline
+MedFiltRadius 1                 # Median filter radius (1 or 2)
+GaussFiltRadius 4               # Gaussian filter radius (4 is good for small spots)
+LoGMaskRadius 10                # Laplacian-of-Gaussian mask radius (≥ 2.5× GaussFiltRadius)
+DoLoGFilter 0                   # 1 = enable LoG filter (not needed for Au)
+
+# File formats
+extOrig tif                     # Input file extension
+extReduced bin                  # Reduced file extension
+
+# Output control
+WriteFinImage 0                 # 1 = write uncompressed reduced images
+
+
+# =============================================================================
+#  ORIENTATION SEARCH
+# =============================================================================
+
+# Minimum matching fraction in first-pass candidate search (0–1)
+# Suggested: with seeding 0.1, no seeding 0.04, deformed 0.01
+MinFracAccept 0.04
+
+# Optimization radius after first-pass candidates (degrees)
+OrientTol 2
+
+# Azimuthal exclusion near poles (degrees)
+ExcludePoleAngle 6
+
+# Detector clipping box relative to beam center: ymin ymax zmin zmax (microns)
+BoxSize -1200 1200 100 2500
+
+# Minimum confidence to accept a voxel orientation
+MinConfidence 0.7
+
+# Number of candidate orientations in the search space
 NrOrientations 243129
+
+# Number of best solutions to save per voxel
+SaveNSolutions 3
+
+
+# =============================================================================
+#  PHASE
+# =============================================================================
+
+NumPhases 1                     # Number of phases
+PhaseNr 1                       # Current phase being analyzed
+
+
+# =============================================================================
+#  OUTPUT
+# =============================================================================
+
+# Reconstructed microstructure files
+MicFileBinary Au_bin_Reconstructed.mic
+MicFileText Au_txt_Reconstructed.mic
+
+# Only generate SpotsInfo (1 = skip reconstruction, just produce spot data)
+OnlySpotsInfo 1
+
+# Write reconstructed image (0 = disabled)
+WriteImage 0
+
+
+# =============================================================================
+#  CALIBRATION OPTIMIZATION (Initial calibration only)
+# =============================================================================
+
+# These tolerances are used during initial NF detector calibration
+LsdTol 500                      # Lsd search range (microns)
+LsdRelativeTol 3                # Relative Lsd accuracy between distances (microns)
+BCTol 2 0.2                     # Beam center tolerance: horizontal, vertical (pixels)
+TiltsTol 1                      # Tilt angle tolerance (degrees)
+NumIterations 3                 # Number of calibration iterations
