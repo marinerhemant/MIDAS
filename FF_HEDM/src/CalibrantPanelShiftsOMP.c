@@ -336,119 +336,304 @@ void FitPeakShape(int NrPtsForFit, double Rs[NrPtsForFit],
   *Rfit = x[0];
 }
 
+// Doublet profile objective: two pseudo-Voigt peaks sharing Mu and BG
+// x[0]=Rcen1, x[1]=Rcen2, x[2]=Mu, x[3]=SigmaG1, x[4]=SigmaL1,
+// x[5]=Imax1, x[6]=SigmaG2, x[7]=SigmaL2, x[8]=Imax2, x[9]=BG
+static double problem_function_doublet_profile(unsigned n, const double *x,
+                                               double *grad,
+                                               void *f_data_trial) {
+  struct my_profile_func_data *f_data =
+      (struct my_profile_func_data *)f_data_trial;
+  int NrPtsForFit = f_data->NrPtsForFit;
+  double *Rs = &(f_data->Rs[0]);
+  double *PeakShape = &(f_data->PeakShape[0]);
+  double Rcen1 = x[0], Rcen2 = x[1], Mu = x[2];
+  double SigmaG1 = x[3], SigmaL1 = x[4], Imax1 = x[5];
+  double SigmaG2 = x[6], SigmaL2 = x[7], Imax2 = x[8];
+  double BG = x[9];
+  double TotalDiff = 0, CalcIntensity;
+  int i;
+  double L1, G1, L2, G2, dr1, dr2;
+  for (i = 0; i < NrPtsForFit; i++) {
+    dr1 = Rs[i] - Rcen1;
+    dr2 = Rs[i] - Rcen2;
+    L1 = 1.0 / ((dr1 * dr1 / (SigmaL1 * SigmaL1)) + 1.0);
+    G1 = exp(-0.5 * dr1 * dr1 / (SigmaG1 * SigmaG1));
+    L2 = 1.0 / ((dr2 * dr2 / (SigmaL2 * SigmaL2)) + 1.0);
+    G2 = exp(-0.5 * dr2 * dr2 / (SigmaG2 * SigmaG2));
+    CalcIntensity = BG + Imax1 * (Mu * L1 + (1 - Mu) * G1) +
+                    Imax2 * (Mu * L2 + (1 - Mu) * G2);
+    TotalDiff +=
+        (CalcIntensity - PeakShape[i]) * (CalcIntensity - PeakShape[i]);
+  }
+#pragma omp critical
+  {
+    NrCallsProfiler++;
+  }
+  return TotalDiff;
+}
+
+void FitDoubletPeakShape(int NrPtsForFit, double *Rs, double *PeakShape,
+                         double *Rfit1, double *Rfit2, double Rstep,
+                         double Rmean1, double Rmean2) {
+  unsigned n = 10;
+  double x[10], xl[10], xu[10];
+  struct my_profile_func_data f_data;
+  f_data.NrPtsForFit = NrPtsForFit;
+  f_data.Rs = Rs;
+  f_data.PeakShape = PeakShape;
+  double BG0 = (PeakShape[0] + PeakShape[NrPtsForFit - 1]) / 2;
+  if (BG0 < 0)
+    BG0 = 0;
+  // Find max intensity for amplitude guesses
+  double MaxI = -100000;
+  int i;
+  for (i = 0; i < NrPtsForFit; i++) {
+    if (PeakShape[i] > MaxI)
+      MaxI = PeakShape[i];
+  }
+  // Rcen1
+  x[0] = Rmean1;
+  xl[0] = Rs[0];
+  xu[0] = Rs[NrPtsForFit - 1];
+  // Rcen2
+  x[1] = Rmean2;
+  xl[1] = Rs[0];
+  xu[1] = Rs[NrPtsForFit - 1];
+  // Mu (shared)
+  x[2] = 0.5;
+  xl[2] = 0;
+  xu[2] = 1;
+  // SigmaG1
+  x[3] = Rstep;
+  xl[3] = Rstep / 2;
+  xu[3] = Rstep * NrPtsForFit / 4;
+  // SigmaL1
+  x[4] = Rstep;
+  xl[4] = Rstep / 2;
+  xu[4] = Rstep * NrPtsForFit / 4;
+  // Imax1
+  x[5] = MaxI * 0.6;
+  xl[5] = MaxI / 100;
+  xu[5] = MaxI * 1.5;
+  // SigmaG2
+  x[6] = Rstep;
+  xl[6] = Rstep / 2;
+  xu[6] = Rstep * NrPtsForFit / 4;
+  // SigmaL2
+  x[7] = Rstep;
+  xl[7] = Rstep / 2;
+  xu[7] = Rstep * NrPtsForFit / 4;
+  // Imax2
+  x[8] = MaxI * 0.6;
+  xl[8] = MaxI / 100;
+  xu[8] = MaxI * 1.5;
+  // BG (shared)
+  x[9] = BG0;
+  xl[9] = 0;
+  xu[9] = (BG0 > 0) ? BG0 * 2.0 : 1.0;
+
+  struct my_profile_func_data *f_datat = &f_data;
+  void *trp = (struct my_profile_func_data *)f_datat;
+  NLoptConfig config = {0};
+  config.dimension = n;
+  config.lower_bounds = xl;
+  config.upper_bounds = xu;
+  config.objective_function = problem_function_doublet_profile;
+  config.obj_data = trp;
+  config.initial_guess = x;
+  config.max_evaluations = 10000;
+  config.max_time_seconds = 60;
+  config.ftol_rel = 1e-5;
+  config.xtol_rel = 1e-5;
+
+  run_nlopt_optimization(NLOPT_LN_NELDERMEAD, &config);
+  *Rfit1 = x[0];
+  *Rfit2 = x[1];
+}
+
 void CalcFittedMean(int nIndices, int *NrEachIndexBin, int **Indices,
                     double *Average, double *R, double *Eta, double *RMean,
                     double *EtaMean, int NrPtsForFit, double *IdealRmins,
                     double *IdealRmaxs, int nBinsPerRing, double ybc,
                     double zbc, double px, int NrPixels,
                     double EtaBinsLow[nBinsPerRing],
-                    double EtaBinsHigh[nBinsPerRing]) {
+                    double EtaBinsHigh[nBinsPerRing],
+                    int *doubletFlag, int *doubletPartner) {
   int idxThis;
 #pragma omp parallel for num_threads(numProcs) private(idxThis)                \
     schedule(dynamic)
   for (idxThis = 0; idxThis < nIndices; idxThis++) {
+    int ringIdx = idxThis / nBinsPerRing;
+    int etaBin = idxThis % nBinsPerRing;
+
+    // Doublet secondary ring: skip — the primary ring thread writes our RMean
+    if (doubletFlag != NULL && doubletFlag[ringIdx] == 2) {
+      continue;
+    }
+
     int j, k, BinNr;
     double *PeakShape, Rmin, Rmax, Rstep, Rthis, *Rs;
-    PeakShape = calloc(NrPtsForFit, sizeof(*PeakShape));
-    Rs = calloc(NrPtsForFit, sizeof(*Rs));
     double Rfit = 0;
     int *IndicesThis;
     int NrIndicesThis = NrEachIndexBin[idxThis];
     int **Idxs;
-    Idxs = allocMatrixInt(1, NrPtsForFit);
-    double Etas[NrPtsForFit];
     double EtaMi, EtaMa, Rmi, Rma;
     double RetVal;
-    for (j = 0; j < NrPtsForFit; j++)
-      Idxs[0][j] = j;
     double AllZero;
     double ytr, ztr;
-    double EtaTempThis, RTempThis;
-    // If no pixel inside the detector, ignore this bin
-    if (NrIndicesThis == 0) {
-      Rfit = 0;
-      RMean[idxThis] = Rfit;
+
+    // Check for doublet primary: merge indices from both rings
+    int isDoublet = (doubletFlag != NULL && doubletFlag[ringIdx] == 1);
+    int partnerIdx = -1;
+    int NrIndicesPartner = 0;
+    int *IndicesPartner = NULL;
+    if (isDoublet) {
+      partnerIdx = doubletPartner[ringIdx] * nBinsPerRing + etaBin;
+      NrIndicesPartner = NrEachIndexBin[partnerIdx];
+    }
+
+    // If no pixels for this bin (or both bins in doublet case), skip
+    if (NrIndicesThis == 0 && (!isDoublet || NrIndicesPartner == 0)) {
+      RMean[idxThis] = 0;
+      if (isDoublet) RMean[partnerIdx] = 0;
       continue;
     }
-    IndicesThis = malloc(NrIndicesThis * sizeof(*IndicesThis));
-    for (j = 0; j < NrIndicesThis; j++)
-      IndicesThis[j] = Indices[idxThis][j];
-    Rmin = IdealRmins[idxThis];
-    Rmax = IdealRmaxs[idxThis];
+
+    // For doublet: use merged Rmin/Rmax window
+    if (isDoublet) {
+      double RminPartner = IdealRmins[partnerIdx];
+      double RmaxPartner = IdealRmaxs[partnerIdx];
+      Rmin = (IdealRmins[idxThis] < RminPartner) ? IdealRmins[idxThis]
+                                                  : RminPartner;
+      Rmax = (IdealRmaxs[idxThis] > RmaxPartner) ? IdealRmaxs[idxThis]
+                                                  : RmaxPartner;
+    } else {
+      Rmin = IdealRmins[idxThis];
+      Rmax = IdealRmaxs[idxThis];
+    }
+
+    // Compute NrPtsForFit for this bin based on the window size
+    int NrPtsLocal = (int)((Rmax - Rmin) / px) * 4;
+    if (NrPtsLocal < NrPtsForFit) NrPtsLocal = NrPtsForFit;
+
+    PeakShape = calloc(NrPtsLocal, sizeof(*PeakShape));
+    Rs = calloc(NrPtsLocal, sizeof(*Rs));
+    Idxs = allocMatrixInt(1, NrPtsLocal);
+    double *Etas = malloc(NrPtsLocal * sizeof(double));
+    for (j = 0; j < NrPtsLocal; j++)
+      Idxs[0][j] = j;
+
     AllZero = 1;
-    Rstep = (Rmax - Rmin) / NrPtsForFit;
-    BinNr = idxThis % nBinsPerRing;
+    Rstep = (Rmax - Rmin) / NrPtsLocal;
+    BinNr = etaBin;
     EtaMi = -180 + BinNr * (360.0 / nBinsPerRing);
     EtaMa = -180 + (BinNr + 1) * (360.0 / nBinsPerRing);
-    // Find if either etamin or etamax result in outside the detector, then
-    // ignore this bin
+
+    // Detector boundary check using the (possibly merged) Rmax
     ytr = ybc - (-Rmax * sin(EtaMa * deg2rad)) / px;
     ztr = zbc + (Rmax * cos(EtaMa * deg2rad)) / px;
-    if (((int)ytr > NrPixels - 3) || ((int)ytr < 3)) {
-      Rfit = 0;
-      RMean[idxThis] = Rfit;
-      continue;
-    }
-    if (((int)ztr > NrPixels - 3) || ((int)ztr < 3)) {
-      Rfit = 0;
-      RMean[idxThis] = Rfit;
-      continue;
+    if (((int)ytr > NrPixels - 3) || ((int)ytr < 3) ||
+        ((int)ztr > NrPixels - 3) || ((int)ztr < 3)) {
+      RMean[idxThis] = 0;
+      if (isDoublet) RMean[partnerIdx] = 0;
+      goto cleanup;
     }
     ytr = ybc - (-Rmax * sin(EtaMi * deg2rad)) / px;
     ztr = zbc + (Rmax * cos(EtaMi * deg2rad)) / px;
-    if (((int)ytr > NrPixels - 3) || ((int)ytr < 3)) {
-      Rfit = 0;
-      RMean[idxThis] = Rfit;
-      continue;
-    }
-    if (((int)ztr > NrPixels - 3) || ((int)ztr < 3)) {
-      Rfit = 0;
-      RMean[idxThis] = Rfit;
-      continue;
+    if (((int)ytr > NrPixels - 3) || ((int)ytr < 3) ||
+        ((int)ztr > NrPixels - 3) || ((int)ztr < 3)) {
+      RMean[idxThis] = 0;
+      if (isDoublet) RMean[partnerIdx] = 0;
+      goto cleanup;
     }
     EtaMean[idxThis] = (EtaMi + EtaMa) / 2;
-    for (j = 0; j < NrPtsForFit; j++) {
-      PeakShape[j] = 0;
-      Rs[j] = (Rmin + (j * Rstep) + Rstep / 2);
-      Rmi = Rs[j] - Rstep / 2;
-      Rma = Rs[j] + Rstep / 2;
-      CalcPeakProfileParallel(IndicesThis, NrIndicesThis, idxThis, Average, Rmi,
-                              Rma, EtaMi, EtaMa, ybc, zbc, px, NrPixels,
-                              &RetVal);
-      // printf("%lf ",RetVal);
-      PeakShape[j] = RetVal;
-      if (RetVal != 0) {
-        AllZero = 0;
+    if (isDoublet) EtaMean[partnerIdx] = EtaMean[idxThis];
+
+    // Merge indices from both rings for the profile calculation
+    {
+      int totalIndices = NrIndicesThis + NrIndicesPartner;
+      int actualIndices = (totalIndices > 0) ? totalIndices : 1;
+      IndicesThis = malloc(actualIndices * sizeof(*IndicesThis));
+      for (j = 0; j < NrIndicesThis; j++)
+        IndicesThis[j] = Indices[idxThis][j];
+      if (isDoublet) {
+        for (j = 0; j < NrIndicesPartner; j++)
+          IndicesThis[NrIndicesThis + j] = Indices[partnerIdx][j];
       }
+      int NrIndicesMerged = totalIndices;
+
+      // Build the radial profile over the (merged) window
+      for (j = 0; j < NrPtsLocal; j++) {
+        PeakShape[j] = 0;
+        Rs[j] = Rmin + (j * Rstep) + Rstep / 2;
+        Rmi = Rs[j] - Rstep / 2;
+        Rma = Rs[j] + Rstep / 2;
+        CalcPeakProfileParallel(IndicesThis, NrIndicesMerged, idxThis, Average,
+                                Rmi, Rma, EtaMi, EtaMa, ybc, zbc, px,
+                                NrPixels, &RetVal);
+        PeakShape[j] = RetVal;
+        if (RetVal != 0) AllZero = 0;
+      }
+
+      for (j = 0; j < NrPtsLocal; j++)
+        Etas[j] = EtaMean[idxThis];
+
+      if (AllZero != 1) {
+        if (isDoublet) {
+          // For doublet: compute weighted means in each ring's sub-window
+          // as initial guesses, then fit the doublet
+          double Rmean1 = 0, Rmean2 = 0;
+          double W1 = 0, W2 = 0;
+          double Rmid = (IdealRmaxs[idxThis] + IdealRmins[partnerIdx]) / 2;
+          for (j = 0; j < NrPtsLocal; j++) {
+            if (Rs[j] < Rmid) {
+              Rmean1 += Rs[j] * PeakShape[j];
+              W1 += PeakShape[j];
+            } else {
+              Rmean2 += Rs[j] * PeakShape[j];
+              W2 += PeakShape[j];
+            }
+          }
+          if (W1 > 0) Rmean1 /= W1;
+          else Rmean1 = (IdealRmins[idxThis] + IdealRmaxs[idxThis]) / 2;
+          if (W2 > 0) Rmean2 /= W2;
+          else Rmean2 = (IdealRmins[partnerIdx] + IdealRmaxs[partnerIdx]) / 2;
+
+          double Rfit1 = 0, Rfit2 = 0;
+          FitDoubletPeakShape(NrPtsLocal, Rs, PeakShape, &Rfit1, &Rfit2,
+                              Rstep, Rmean1, Rmean2);
+          RMean[idxThis] = Rfit1;
+          RMean[partnerIdx] = Rfit2;
+        } else {
+          // Singlet: existing path
+          double *Rm = malloc(sizeof(*Rm));
+          double *Etam = malloc(sizeof(*Etam));
+          int *NrPts = malloc(sizeof(*NrPts));
+          NrPts[0] = NrPtsLocal;
+          CalcWeightedMean(1, NrPts, Idxs, PeakShape, Rs, Etas, Rm, Etam);
+          double Rmean = Rm[0];
+          FitPeakShape(NrPtsLocal, Rs, PeakShape, &Rfit, Rstep, Rmean);
+          RMean[idxThis] = Rfit;
+          free(NrPts);
+          free(Rm);
+          free(Etam);
+        }
+      } else {
+        RMean[idxThis] = 0;
+        if (isDoublet) RMean[partnerIdx] = 0;
+      }
+      free(IndicesThis);
     }
-    // printf("\n");
-    for (j = 0; j < NrPtsForFit; j++) {
-      Etas[j] = EtaMean[idxThis];
-    }
-    double *Rm, *Etam;
-    int *NrPts;
-    NrPts = malloc(sizeof(*NrPts));
-    Rm = malloc(sizeof(*Rm));
-    Etam = malloc(sizeof(*Etam));
-    NrPts[0] = NrPtsForFit;
-    if (AllZero != 1) {
-      CalcWeightedMean(1, NrPts, Idxs, PeakShape, Rs, Etas, Rm, Etam);
-      double Rmean = Rm[0];
-      FitPeakShape(NrPtsForFit, Rs, PeakShape, &Rfit, Rstep, Rmean);
-    } else {
-      Rfit = 0;
-    }
-    // printf("\t\t%lf %lf %lf %lf %lf\n",Rmin,Rmax,Rfit,ytr,ztr);
-    RMean[idxThis] = Rfit;
-    free(NrPts);
-    free(Rm);
-    free(Etam);
-    free(IndicesThis);
+
+cleanup:
     free(PeakShape);
     free(Rs);
+    free(Etas);
     FreeMemMatrixInt(Idxs, 1);
   }
 }
+
 
 struct my_func_data {
   int nIndices;
@@ -1099,6 +1284,7 @@ int main(int argc, char *argv[]) {
   int MinIndicesForFit = 1;
   int FixPanelID = 0;
   int nIterations = 1;
+  double DoubletSeparation = 0;
   int Padding = 6, NrPixelsY, NrPixelsZ, NrPixels;
   int NrTransOpt = 0, RBinWidth = 4;
   long long int GapIntensity = 0, BadPxIntensity = 0;
@@ -1511,6 +1697,11 @@ int main(int argc, char *argv[]) {
       sscanf(aline, "%s %d", dummy, &nIterations);
       continue;
     }
+    str = "DoubletSeparation ";
+    if (!strncmp(aline, str, strlen(str))) {
+      sscanf(aline, "%s %lf", dummy, &DoubletSeparation);
+      continue;
+    }
   }
 
   // Generate Panels
@@ -1603,6 +1794,8 @@ int main(int argc, char *argv[]) {
   printf("║    MinIndices:     %-40d ║\n", MinIndicesForFit);
   printf("║    FitOrWMean:     %-40d ║\n", FitWeightMean);
   printf("║    nIterations:    %-40d ║\n", nIterations);
+  if (DoubletSeparation > 0)
+    printf("║    DoubletSep(px): %-40.1f ║\n", DoubletSeparation);
   if (nRingsExclude > 0) {
     printf("║    RingsExclude:   ");
     int printed = 0;
@@ -2003,6 +2196,30 @@ int main(int argc, char *argv[]) {
         Rmaxs[i] = R4mTtheta(TthetaMaxs[i], Lsd);
       }
 
+      // Detect doublet ring pairs
+      int doubletFlag[n_hkls], doubletPartner[n_hkls];
+      for (i = 0; i < n_hkls; i++) {
+        doubletFlag[i] = 0;
+        doubletPartner[i] = -1;
+      }
+      if (DoubletSeparation > 0) {
+        double sepThresh = DoubletSeparation * px;
+        for (i = 0; i < n_hkls - 1; i++) {
+          if (doubletFlag[i] != 0)
+            continue;
+          if (fabs(IdealRs[i + 1] - IdealRs[i]) < sepThresh) {
+            doubletFlag[i] = 1;
+            doubletFlag[i + 1] = 2;
+            doubletPartner[i] = i + 1;
+            doubletPartner[i + 1] = i;
+            printf("Doublet detected: ring %d (R=%.2f) <-> ring %d "
+                   "(R=%.2f), separation %.1f px\n",
+                   RingIDs[i], IdealRs[i], RingIDs[i + 1], IdealRs[i + 1],
+                   fabs(IdealRs[i + 1] - IdealRs[i]) / px);
+          }
+        }
+      }
+
       // Allocate per-iteration arrays
       double *R = malloc(NrPixels * NrPixels * sizeof(*R));
       double *Eta = malloc(NrPixels * NrPixels * sizeof(*Eta));
@@ -2041,7 +2258,7 @@ int main(int argc, char *argv[]) {
         CalcFittedMean(nIndices, NrEachIndexBin, Indices, Average, R, Eta,
                        RMean, EtaMean, NrPtsForFit, IdealRmins, IdealRmaxs,
                        nEtaBins, ybc, zbc, px, NrPixels, EtaBinsLow,
-                       EtaBinsHigh);
+                       EtaBinsHigh, doubletFlag, doubletPartner);
       }
 
       // Compact: remove zero-RMean entries
