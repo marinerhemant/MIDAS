@@ -263,7 +263,9 @@ When `-doTomo 1` is enabled:
 
 - [FF_Analysis.md](FF_Analysis.md) — Standard (box-beam) FF-HEDM analysis
 - [FF_calibration.md](FF_calibration.md) — Geometry calibration
+- [PF_Interactive_Plotting.md](PF_Interactive_Plotting.md) — Interactive sinogram, intensity & tomo viewer for PF-HEDM
 - [FF_Interactive_Plotting.md](FF_Interactive_Plotting.md) — Visualizing FF-HEDM results
+- [Tomography_Reconstruction.md](Tomography_Reconstruction.md) — MIDAS tomography reconstruction
 - [ForwardSimulationManual.md](ForwardSimulationManual.md) — Forward simulation for validation
 - [NF_Analysis.md](NF_Analysis.md) — Near-field HEDM reconstruction
 - [README.md](README.md) — High-level MIDAS overview and manual index
