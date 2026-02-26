@@ -8,6 +8,12 @@ import zarr
 import numpy as np
 from pathlib import Path
 
+# Files/dirs that ship with the Example and must NOT be removed
+PRESERVE = {
+    'Parameters.txt', 'GrainsGen.csv', 'GrainsSim.csv', 'SpotMatrixGen.csv',
+    'consolidated_Output.h5', 'positions.csv', 'Calibration',
+}
+
 def parse_args():
     parser = argparse.ArgumentParser(description="Automated Benchmark Testing Suite for FF_HEDM")
     parser.add_argument("-nCPUs", type=int, default=1, help="Number of CPUs to use for the test")
@@ -234,6 +240,27 @@ def main():
         print(f"\nSkipping regression comparison: reference file {ref_h5} not found.")
     else:
         print(f"\nSkipping regression comparison: no consolidated HDF5 generated in {result_dir}.")
+
+    # 8. Cleanup generated files
+    cleanup_work_dir(work_dir)
+
+
+def cleanup_work_dir(work_dir):
+    """Remove all test-generated files from the work directory, preserving originals."""
+    print("\nCleaning up test-generated files...")
+    removed = 0
+    for item in sorted(work_dir.iterdir()):
+        if item.name in PRESERVE or item.name == '.DS_Store':
+            continue
+        try:
+            if item.is_dir():
+                shutil.rmtree(item)
+            else:
+                item.unlink()
+            removed += 1
+        except Exception as e:
+            print(f"  Warning: could not remove {item.name}: {e}")
+    print(f"  Removed {removed} generated files/directories.")
 
 
 def compare_consolidated_hdf5(ref_path, new_path, atol=1e-6, rtol=1e-6):

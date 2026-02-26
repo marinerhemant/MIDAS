@@ -343,8 +343,12 @@ def main():
     print(f"\n{'='*60}")
     print(f"  NF-HEDM Benchmark Test Completed")
     print(f"{'='*60}")
-    print(f"\nReconstruction output is in: {work_dir}")
-    print(f"To clean up: rm -rf {work_dir}")
+
+    # Cleanup sim directory
+    if work_dir.exists():
+        print(f"\nCleaning up test directory: {work_dir}")
+        shutil.rmtree(work_dir)
+        print("  Done.")
 
     if passed is False:
         sys.exit(1)
