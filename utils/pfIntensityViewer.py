@@ -14,7 +14,7 @@ import os, sys, glob, argparse
 
 import numpy as np
 import plotly.graph_objects as go
-from dash import Dash, html, dcc, callback, Output, Input, State, no_update, ctx
+from dash import Dash, html, dcc, callback, Output, Input, State, no_update, ctx, Patch
 import dash_bootstrap_components as dbc
 
 # ──────────────────────────────────────────────────────────────
@@ -518,17 +518,18 @@ if __name__ == '__main__':
         return max(0, nSp - 1), 0
 
     # --- Main sinogram plot ---
+    # --- Main sinogram plot ---
     @callback(
         Output('sinogram-plot', 'figure'),
         Input('grain-dropdown', 'value'),
         Input('variant-dropdown', 'value'),
-        Input('row-slider', 'value'),
-        Input('col-slider', 'value'),
         Input('store-sino-vmin', 'data'),
         Input('store-sino-vmax', 'data'),
         Input('sino-log-scale', 'value'),
+        State('row-slider', 'value'),
+        State('col-slider', 'value'),
     )
-    def update_sinogram(grainNr, variant, row, col, vmin, vmax, logscale):
+    def update_sinogram(grainNr, variant, vmin, vmax, logscale, row, col):
         use_log = logscale and 'log' in logscale
         fig = go.Figure()
         if grainNr is None or variant not in sino_variants:
@@ -586,27 +587,30 @@ if __name__ == '__main__':
         ))
 
         # Crosshair at current selection
-        if 0 <= row < nSp and 0 <= col < nScans:
-            # Vertical line at col
-            fig.add_shape(
-                type='line', x0=col, x1=col,
-                y0=-0.5, y1=nSp - 0.5,
-                line=dict(color='red', width=1, dash='dash'),
-            )
-            # Horizontal line at row
-            fig.add_shape(
-                type='line', x0=-0.5, x1=nScans - 0.5,
-                y0=row, y1=row,
-                line=dict(color='red', width=1, dash='dash'),
-            )
-            # Marker at intersection
-            fig.add_trace(go.Scatter(
-                x=[col], y=[row],
-                mode='markers',
-                marker=dict(color='red', size=10, symbol='x'),
-                showlegend=False,
-                hoverinfo='skip',
-            ))
+        is_visible = bool(0 <= (row or 0) < nSp and 0 <= (col or 0) < nScans)
+        # Vertical line at col
+        fig.add_shape(
+            type='line', x0=col if col is not None else 0, x1=col if col is not None else 0,
+            y0=-0.5, y1=max(0, nSp - 0.5),
+            line=dict(color='red', width=1, dash='dash'),
+            visible=is_visible
+        )
+        # Horizontal line at row
+        fig.add_shape(
+            type='line', x0=-0.5, x1=nScans - 0.5,
+            y0=row if row is not None else 0, y1=row if row is not None else 0,
+            line=dict(color='red', width=1, dash='dash'),
+            visible=is_visible
+        )
+        # Marker at intersection
+        fig.add_trace(go.Scatter(
+            x=[col if col is not None else 0], y=[row if row is not None else 0],
+            mode='markers',
+            marker=dict(color='red', size=10, symbol='x'),
+            showlegend=False,
+            hoverinfo='skip',
+            visible=is_visible
+        ))
 
         fig.update_layout(
             title=f'Sinogram: Grain {grainNr} ({variant}) — {nSp} spots',
@@ -617,6 +621,37 @@ if __name__ == '__main__':
             **COMMON_LAYOUT,
         )
         return fig
+
+    # --- Crosshair update plot ---
+    @callback(
+        Output('sinogram-plot', 'figure', allow_duplicate=True),
+        Input('row-slider', 'value'),
+        Input('col-slider', 'value'),
+        State('grain-dropdown', 'value'),
+        prevent_initial_call=True
+    )
+    def update_sinogram_crosshair(row, col, grainNr):
+        nSp = int(grainSpots[grainNr]) if grainNr is not None and grainNr < len(grainSpots) else 0
+        patched_fig = Patch()
+        
+        if 0 <= row < nSp and 0 <= col < nScans:
+            patched_fig['layout']['shapes'][0]['x0'] = col
+            patched_fig['layout']['shapes'][0]['x1'] = col
+            patched_fig['layout']['shapes'][0]['visible'] = True
+            
+            patched_fig['layout']['shapes'][1]['y0'] = row
+            patched_fig['layout']['shapes'][1]['y1'] = row
+            patched_fig['layout']['shapes'][1]['visible'] = True
+
+            patched_fig['data'][1]['x'] = [col]
+            patched_fig['data'][1]['y'] = [row]
+            patched_fig['data'][1]['visible'] = True
+        else:
+            patched_fig['layout']['shapes'][0]['visible'] = False
+            patched_fig['layout']['shapes'][1]['visible'] = False
+            patched_fig['data'][1]['visible'] = False
+            
+        return patched_fig
 
     # --- Main intensity patch plot ---
     @callback(
