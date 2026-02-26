@@ -318,6 +318,7 @@ where the weight `wᵢ` is:
 - `1.0` by default
 - `1 / N_ring` if `NormalizeRingWeights` enabled (each ring contributes equally)
 - Multiplied by `RNorm` if `WeightByRadius` enabled (outer rings weighted more)
+- Multiplied by `min(1, SNR_i / median_SNR)` if `WeightByFitSNR` enabled (bins with poor peak fits contribute less; SNR = fitted amplitude / rms residual of the pseudo-Voigt fit)
 
 
 ### Workflow
@@ -462,6 +463,7 @@ The following table lists all parameters recognized by `CalibrantPanelShiftsOMP`
 | **Objective Function Weighting** | | | |
 | `NormalizeRingWeights` | int | 0 | `1` = each ring contributes equally regardless of eta-bin count |
 | `WeightByRadius` | int | 0 | `1` = weight points by R/Rmax (emphasizes outer rings) |
+| `WeightByFitSNR` | int | 0 | `1` = weight points by peak-fit SNR (low-quality fits contribute less) |
 | **Outlier Rejection** | | | |
 | `OutlierIterations` | int | 1 | Number of iterative sigma-clipping passes |
 | **Distortion Model** | | | |

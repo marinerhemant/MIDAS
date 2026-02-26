@@ -278,8 +278,8 @@ static double problem_function_profile(unsigned n, const double *x,
 }
 
 void FitPeakShape(int NrPtsForFit, double Rs[NrPtsForFit],
-                  double PeakShape[NrPtsForFit], double *Rfit, double Rstep,
-                  double Rmean) {
+                  double PeakShape[NrPtsForFit], double *Rfit, double *fitSNR,
+                  double Rstep, double Rmean) {
   unsigned n = 6;
   double x[n], xl[n], xu[n];
   struct my_profile_func_data f_data;
@@ -334,6 +334,12 @@ void FitPeakShape(int NrPtsForFit, double Rs[NrPtsForFit],
   minf = config.min_function_val;
   MeanDiff = sqrt(minf) / (NrPtsForFit);
   *Rfit = x[0];
+  // SNR = fitted amplitude / rms residual
+  double rmsResid = sqrt(minf / NrPtsForFit);
+  if (rmsResid > 0)
+    *fitSNR = x[4] / rmsResid;
+  else
+    *fitSNR = 1.0;
 }
 
 // Doublet profile objective: two pseudo-Voigt peaks sharing Mu and BG
@@ -374,8 +380,9 @@ static double problem_function_doublet_profile(unsigned n, const double *x,
 }
 
 void FitDoubletPeakShape(int NrPtsForFit, double *Rs, double *PeakShape,
-                         double *Rfit1, double *Rfit2, double Rstep,
-                         double Rmean1, double Rmean2) {
+                         double *Rfit1, double *Rfit2, double *fitSNR1,
+                         double *fitSNR2, double Rstep, double Rmean1,
+                         double Rmean2) {
   unsigned n = 10;
   double x[10], xl[10], xu[10];
   struct my_profile_func_data f_data;
@@ -450,14 +457,23 @@ void FitDoubletPeakShape(int NrPtsForFit, double *Rs, double *PeakShape,
   run_nlopt_optimization(NLOPT_LN_NELDERMEAD, &config);
   *Rfit1 = x[0];
   *Rfit2 = x[1];
+  // SNR for each peak: Imax / rms_residual
+  double rmsResid = sqrt(config.min_function_val / NrPtsForFit);
+  if (rmsResid > 0) {
+    *fitSNR1 = x[5] / rmsResid;
+    *fitSNR2 = x[8] / rmsResid;
+  } else {
+    *fitSNR1 = 1.0;
+    *fitSNR2 = 1.0;
+  }
 }
 
 void CalcFittedMean(int nIndices, int *NrEachIndexBin, int **Indices,
                     double *Average, double *R, double *Eta, double *RMean,
-                    double *EtaMean, int NrPtsForFit, double *IdealRmins,
-                    double *IdealRmaxs, int nBinsPerRing, double ybc,
-                    double zbc, double px, int NrPixelsY, int NrPixelsZ,
-                    double EtaBinsLow[nBinsPerRing],
+                    double *EtaMean, double *FitSNR, int NrPtsForFit,
+                    double *IdealRmins, double *IdealRmaxs, int nBinsPerRing,
+                    double ybc, double zbc, double px, int NrPixelsY,
+                    int NrPixelsZ, double EtaBinsLow[nBinsPerRing],
                     double EtaBinsHigh[nBinsPerRing], int *doubletFlag,
                     int *doubletPartner) {
   int NrPixels =
@@ -498,8 +514,11 @@ void CalcFittedMean(int nIndices, int *NrEachIndexBin, int **Indices,
     // If no pixels for this bin (or both bins in doublet case), skip
     if (NrIndicesThis == 0 && (!isDoublet || NrIndicesPartner == 0)) {
       RMean[idxThis] = 0;
-      if (isDoublet)
+      FitSNR[idxThis] = 0;
+      if (isDoublet) {
         RMean[partnerIdx] = 0;
+        FitSNR[partnerIdx] = 0;
+      }
       continue;
     }
 
@@ -540,8 +559,11 @@ void CalcFittedMean(int nIndices, int *NrEachIndexBin, int **Indices,
     if (((int)ytr > NrPixelsY - 3) || ((int)ytr < 3) ||
         ((int)ztr > NrPixelsZ - 3) || ((int)ztr < 3)) {
       RMean[idxThis] = 0;
-      if (isDoublet)
+      FitSNR[idxThis] = 0;
+      if (isDoublet) {
         RMean[partnerIdx] = 0;
+        FitSNR[partnerIdx] = 0;
+      }
       goto cleanup;
     }
     ytr = ybc - (-Rmax * sin(EtaMi * deg2rad)) / px;
@@ -549,8 +571,11 @@ void CalcFittedMean(int nIndices, int *NrEachIndexBin, int **Indices,
     if (((int)ytr > NrPixelsY - 3) || ((int)ytr < 3) ||
         ((int)ztr > NrPixelsZ - 3) || ((int)ztr < 3)) {
       RMean[idxThis] = 0;
-      if (isDoublet)
+      FitSNR[idxThis] = 0;
+      if (isDoublet) {
         RMean[partnerIdx] = 0;
+        FitSNR[partnerIdx] = 0;
+      }
       goto cleanup;
     }
     EtaMean[idxThis] = (EtaMi + EtaMa) / 2;
@@ -613,10 +638,13 @@ void CalcFittedMean(int nIndices, int *NrEachIndexBin, int **Indices,
             Rmean2 = (IdealRmins[partnerIdx] + IdealRmaxs[partnerIdx]) / 2;
 
           double Rfit1 = 0, Rfit2 = 0;
-          FitDoubletPeakShape(NrPtsLocal, Rs, PeakShape, &Rfit1, &Rfit2, Rstep,
-                              Rmean1, Rmean2);
+          double snr1 = 0, snr2 = 0;
+          FitDoubletPeakShape(NrPtsLocal, Rs, PeakShape, &Rfit1, &Rfit2, &snr1,
+                              &snr2, Rstep, Rmean1, Rmean2);
           RMean[idxThis] = Rfit1;
           RMean[partnerIdx] = Rfit2;
+          FitSNR[idxThis] = snr1;
+          FitSNR[partnerIdx] = snr2;
         } else {
           // Singlet: existing path
           double *Rm = malloc(sizeof(*Rm));
@@ -625,16 +653,21 @@ void CalcFittedMean(int nIndices, int *NrEachIndexBin, int **Indices,
           NrPts[0] = NrPtsLocal;
           CalcWeightedMean(1, NrPts, Idxs, PeakShape, Rs, Etas, Rm, Etam);
           double Rmean = Rm[0];
-          FitPeakShape(NrPtsLocal, Rs, PeakShape, &Rfit, Rstep, Rmean);
+          double snr = 0;
+          FitPeakShape(NrPtsLocal, Rs, PeakShape, &Rfit, &snr, Rstep, Rmean);
           RMean[idxThis] = Rfit;
+          FitSNR[idxThis] = snr;
           free(NrPts);
           free(Rm);
           free(Etam);
         }
       } else {
         RMean[idxThis] = 0;
-        if (isDoublet)
+        FitSNR[idxThis] = 0;
+        if (isDoublet) {
           RMean[partnerIdx] = 0;
+          FitSNR[partnerIdx] = 0;
+        }
       }
       free(IndicesThis);
     }
@@ -661,6 +694,7 @@ struct my_func_data {
   int nBase;           // 9 or 10 (10 when DistortionOrder=6)
   int perPanelLsd;     // flag
   int perPanelDistort; // flag
+  double *snrWeights;  // per-point SNR-based weight (NULL=uniform)
   int weightByRadius;  // flag for Feature 4
 };
 
@@ -772,6 +806,8 @@ static double problem_function(unsigned n, const double *x, double *grad,
     double w = (f_data->Weights != NULL) ? f_data->Weights[i] : 1.0;
     if (f_data->weightByRadius)
       w *= RNorm;
+    if (f_data->snrWeights != NULL)
+      w *= f_data->snrWeights[i];
     TotalDiff += Diff * w;
   }
   TotalDiff *= OBJ_FUNC_SCALE;
@@ -796,7 +832,7 @@ void FitTiltBCLsd(int nIndices, double *YMean, double *ZMean,
                   double *Weights, int DistortionOrder, double p4in,
                   double tolP4, int PerPanelLsd, double tolLsdPanel,
                   int PerPanelDistortion, double tolP2Panel, int WeightByRadius,
-                  double *p4Out) {
+                  double *snrWeights, double *p4Out) {
   int nBase = (DistortionOrder >= 6) ? 10 : 9;
   unsigned n = nBase;
   if (tolShifts > EPS && nPanels > 1) {
@@ -822,6 +858,7 @@ void FitTiltBCLsd(int nIndices, double *YMean, double *ZMean,
   f_data.perPanelLsd = PerPanelLsd;
   f_data.perPanelDistort = PerPanelDistortion;
   f_data.weightByRadius = WeightByRadius;
+  f_data.snrWeights = snrWeights;
   double x[n], xl[n], xu[n];
   x[0] = Lsd;
   xl[0] = Lsd - tolLsd;
@@ -1394,6 +1431,7 @@ int main(int argc, char *argv[]) {
   int NormalizeRingWeights = 0;
   int OutlierIterations = 1;
   int WeightByRadius = 0;
+  int WeightByFitSNR = 0;
   int DistortionOrder = 4;
   int PerPanelLsd = 0;
   int PerPanelDistortion = 0;
@@ -1832,6 +1870,11 @@ int main(int argc, char *argv[]) {
       sscanf(aline, "%s %d", dummy, &WeightByRadius);
       continue;
     }
+    str = "WeightByFitSNR ";
+    if (!strncmp(aline, str, strlen(str))) {
+      sscanf(aline, "%s %d", dummy, &WeightByFitSNR);
+      continue;
+    }
     str = "DistortionOrder ";
     if (!strncmp(aline, str, strlen(str))) {
       sscanf(aline, "%s %d", dummy, &DistortionOrder);
@@ -1960,6 +2003,8 @@ int main(int argc, char *argv[]) {
     printf("║    RingWeightNorm: %-40s ║\n", "ON");
   if (WeightByRadius)
     printf("║    WeightByRadius: %-40s ║\n", "ON");
+  if (WeightByFitSNR)
+    printf("║    WeightByFitSNR: %-40s ║\n", "ON");
   if (OutlierIterations > 1)
     printf("║    OutlierIters:   %-40d ║\n", OutlierIterations);
   if (DistortionOrder >= 6)
@@ -2433,14 +2478,15 @@ int main(int argc, char *argv[]) {
 
       // Find peak positions
       NrCallsProfiler = 0;
+      double *FitSNR = calloc(nIndices, sizeof(*FitSNR));
       if (FitWeightMean == 1) {
         CalcWeightedMean(nIndices, NrEachIndexBin, Indices, Average, R, Eta,
                          RMean, EtaMean);
       } else {
         CalcFittedMean(nIndices, NrEachIndexBin, Indices, Average, R, Eta,
-                       RMean, EtaMean, NrPtsForFit, IdealRmins, IdealRmaxs,
-                       nEtaBins, ybc, zbc, px, NrPixelsY, NrPixelsZ, EtaBinsLow,
-                       EtaBinsHigh, doubletFlag, doubletPartner);
+                       RMean, EtaMean, FitSNR, NrPtsForFit, IdealRmins,
+                       IdealRmaxs, nEtaBins, ybc, zbc, px, NrPixelsY, NrPixelsZ,
+                       EtaBinsLow, EtaBinsHigh, doubletFlag, doubletPartner);
       }
 
       // Compact: remove zero-RMean entries
@@ -2449,12 +2495,14 @@ int main(int argc, char *argv[]) {
       double *EtaMean2 = malloc(nIndices * sizeof(*EtaMean2));
       double *IdealTtheta2 = malloc(nIndices * sizeof(*IdealTtheta2));
       int *RingNumbers2 = malloc(nIndices * sizeof(*RingNumbers2));
+      double *FitSNR2 = malloc(nIndices * sizeof(*FitSNR2));
       for (i = 0; i < nIndices; i++) {
         if (RMean[i] != 0) {
           RMean2[countr] = RMean[i];
           EtaMean2[countr] = EtaMean[i];
           IdealTtheta2[countr] = IdealTtheta[i];
           RingNumbers2[countr] = RingNumbers[i];
+          FitSNR2[countr] = FitSNR[i];
           countr++;
         }
       }
@@ -2465,10 +2513,12 @@ int main(int argc, char *argv[]) {
       free(EtaMean);
       free(IdealTtheta);
       free(RingNumbers);
+      free(FitSNR);
       RMean = RMean2;
       EtaMean = EtaMean2;
       IdealTtheta = IdealTtheta2;
       RingNumbers = RingNumbers2;
+      FitSNR = FitSNR2;
 
       // Compute per-ring weights if normalization is enabled
       double *RingWeights = NULL;
@@ -2499,6 +2549,35 @@ int main(int argc, char *argv[]) {
             "Ring weight normalization: %d distinct rings, weights computed.\n",
             nDistinctRings);
       }
+
+      // Compute SNR-based weights if enabled
+      double *snrWeights = NULL;
+      if (WeightByFitSNR && FitWeightMean != 1) {
+        snrWeights = malloc(nIndices * sizeof(*snrWeights));
+        // Find median SNR via sorting a copy
+        double *snrSorted = malloc(nIndices * sizeof(*snrSorted));
+        memcpy(snrSorted, FitSNR, nIndices * sizeof(*snrSorted));
+        // Simple insertion sort for median
+        for (int a = 1; a < nIndices; a++) {
+          double key = snrSorted[a];
+          int b = a - 1;
+          while (b >= 0 && snrSorted[b] > key) {
+            snrSorted[b + 1] = snrSorted[b];
+            b--;
+          }
+          snrSorted[b + 1] = key;
+        }
+        double medianSNR = snrSorted[nIndices / 2];
+        if (medianSNR < 1e-12) medianSNR = 1.0;  // safety
+        free(snrSorted);
+        for (i = 0; i < nIndices; i++) {
+          double w = FitSNR[i] / medianSNR;
+          snrWeights[i] = (w < 1.0) ? w : 1.0;
+        }
+        printf("SNR weighting: median SNR = %.1f, weights computed.\n",
+               medianSNR);
+      }
+      free(FitSNR);
 
       end = omp_get_wtime();
       diftotal = end - start;
@@ -2588,7 +2667,7 @@ int main(int argc, char *argv[]) {
                    tolRotation, px, outlierFactor, MinIndicesForFit, FixPanelID,
                    RingWeights, DistortionOrder, p4in, tolP4, PerPanelLsd,
                    tolLsdPanel, PerPanelDistortion, tolP2Panel, WeightByRadius,
-                   &p4);
+                   snrWeights, &p4);
       printf("Number of function calls: %lld\n", NrCalls);
       printf(
           "Lsd %0.12f\nBC %0.12f %0.12f\nty %0.12f\ntz %0.12f\np0 %0.12f\np1 "
@@ -2641,6 +2720,8 @@ int main(int argc, char *argv[]) {
       free(IdealRmaxs);
       if (RingWeights)
         free(RingWeights);
+      if (snrWeights)
+        free(snrWeights);
 
       // On non-final iterations, free arrays that will be re-allocated
       if (iter < nIterations - 1) {
