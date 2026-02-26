@@ -453,11 +453,92 @@ def _apply_auto_detect(root_widget):
             darkStem = _auto_darkStem
             darkNum = _auto_darkNum
             var.set(1)
+        
+        # Cache HDF5 datasets if the extension indicates HDF5
+        ext_lower = (_auto_ext or '').lower()
+        if any(ext_lower.endswith(e) for e in ['h5', 'hdf', 'hdf5', 'nxs']):
+            _cache_hdf5_datasets_auto()
+        
         root_widget.wm_title(root_widget.wm_title().replace(' [scanning...]', '') + ' [files detected]')
         print("Auto-detection complete. GUI updated.")
     else:
         root_widget.wm_title(root_widget.wm_title().replace(' [scanning...]', ''))
         print("Could not auto-detect files. Please select files manually.")
+
+
+def _cache_hdf5_datasets_auto():
+    """Cache HDF5 datasets from the auto-detected first data file."""
+    global hdf5_cached_datasets, NrPixelsY, NrPixelsZ, nFramesPerFile
+    
+    fn = getfn(fileStem, firstFileNumber, int(detnumbvar.get()))
+    if not os.path.exists(fn):
+        print(f"  HDF5 cache: file not found: {fn}")
+        return
+    
+    try:
+        import h5py
+        with h5py.File(fn, 'r') as f:
+            hdf5_cached_datasets = []
+            def visit_func(name, node):
+                if isinstance(node, h5py.Dataset):
+                    shape_str = ' x '.join(str(s) for s in node.shape)
+                    hdf5_cached_datasets.append(('/' + name, shape_str))
+            f.visititems(visit_func)
+            print(f"  HDF5 cache: {len(hdf5_cached_datasets)} datasets from {os.path.basename(fn)}")
+            
+            # Auto-detect data and dark paths
+            data_path = None
+            dark_path = None
+            for p, _ in hdf5_cached_datasets:
+                pl = p.lower()
+                if 'dark' in pl and dark_path is None:
+                    dark_path = p
+                elif ('data' in pl or 'image' in pl) and data_path is None:
+                    if f[p].ndim >= 2:
+                        data_path = p
+            
+            if data_path is None and len(hdf5_cached_datasets) == 1:
+                data_path = hdf5_cached_datasets[0][0]
+            
+            # Fallback: largest 2D+ dataset
+            if data_path is None:
+                best_size = 0
+                for p, _ in hdf5_cached_datasets:
+                    dset = f[p]
+                    if dset.ndim >= 2:
+                        total = 1
+                        for s in dset.shape:
+                            total *= s
+                        if total > best_size:
+                            best_size = total
+                            data_path = p
+            
+            if data_path:
+                hdf5PathVar.set(data_path)
+                print(f"  Auto-detected data path: {data_path}")
+            if dark_path:
+                hdf5DarkPathVar.set(dark_path)
+                print(f"  Auto-detected dark path: {dark_path}")
+            
+            # Read dimensions
+            dset_path = data_path or hdf5PathVar.get()
+            if dset_path in f:
+                shape = f[dset_path].shape
+                if len(shape) == 3:
+                    nFramesPerFile = shape[0]
+                    NrPixelsY = shape[1]
+                    NrPixelsZ = shape[2]
+                elif len(shape) == 2:
+                    nFramesPerFile = 1
+                    NrPixelsY = shape[0]
+                    NrPixelsZ = shape[1]
+                nFramesPerFileVar.set(nFramesPerFile)
+                nFramesMaxVar.set(nFramesPerFile)
+                NrPixelsYVar.set(NrPixelsY)
+                NrPixelsZVar.set(NrPixelsZ)
+                print(f"  Dimensions: {NrPixelsY}x{NrPixelsZ}, {nFramesPerFile} frames")
+    except Exception as e:
+        print(f"  HDF5 cache error: {e}")
 
 def _start_auto_detect_thread(root_widget):
     """Run auto-detection in a background thread to avoid blocking the GUI."""
