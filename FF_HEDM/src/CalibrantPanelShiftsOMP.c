@@ -2997,9 +2997,13 @@ int main(int argc, char *argv[]) {
     means[11] += p4in;
     FILE *Out;
     char OutFileName[1024];
-    sprintf(OutFileName, "%s/%s_%0*d%s.%s", folder, fn, Padding, a, Ext,
-            "corr.csv");
+    sprintf(OutFileName, "%s_%0*d%s.%s", fn, Padding, a, Ext, "corr.csv");
     Out = fopen(OutFileName, "w");
+    if (!Out) {
+      printf("Error: cannot open output file %s\n", OutFileName);
+      perror("fopen");
+      return 1;
+    }
     fprintf(Out, "%%Eta Strain RadFit EtaCalc DiffCalc RadCalc Ideal2Theta "
                  "Outlier YRawCorr ZRawCorr RingNr RadGlobal\n");
     // Build tilt rotation matrix for RadGlobal computation
