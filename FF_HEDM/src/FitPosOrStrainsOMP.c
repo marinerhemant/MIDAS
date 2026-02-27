@@ -2136,7 +2136,7 @@ int main(int argc, char *argv[]) {
       completeness = NrObserved / NrExpected;
       char SpotsCompFN[2048];
       int nSpotsBest = (int)NrObserved, *spotIDS, nSpotsRad = 0;
-      if (nSpotsBest > MaxNSpotsBest) {
+      if (nSpotsBest > MaxNSpotsBest || nSpotsBest <= 0) {
         // printf("Too many spots found for ID: %d. Skipping this rowNr: %d\n",
         //        thisRowNr, rowNr);
         continue;
@@ -2216,7 +2216,7 @@ int main(int argc, char *argv[]) {
           //        (int)spotIDS[i], (int)(spotPosAllSpots + 1), (int)nSpots,
           //        (int)thisRowNr, (int)nSpotsBest);
           fflush(stdout);
-          nSpotsFound++;
+          nSpotsFound--;
           continue;
         }
         if (spotPosAllSpots + 1 != (size_t)AllSpots[spotPosAllSpots * 14 + 4]) {
@@ -2226,7 +2226,7 @@ int main(int argc, char *argv[]) {
           //        (int)AllSpots[spotPosAllSpots * 14 + 4], (int)thisRowNr,
           //        (int)nSpotsBest);
           fflush(stdout);
-          nSpotsFound++;
+          nSpotsFound--;
           continue;
         }
         spotsYZO[i][0] = AllSpots[spotPosAllSpots * 14 + 0];
@@ -2239,7 +2239,7 @@ int main(int argc, char *argv[]) {
         spotsYZO[i][7] = AllSpots[spotPosAllSpots * 14 + 5];
       }
       if (nSpotsFound == 0) {
-        printf("No valid spots found for grain ID: %d.\n", thisRowNr);
+        // printf("No valid spots found for grain ID: %d.\n", thisRowNr);
         continue;
       }
       double *Ini;
