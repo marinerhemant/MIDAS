@@ -12,6 +12,11 @@ FF_HEDM/Example/SpotMatrixGen.csv
 FF_HEDM/Example/GrainsGen.csv
 FF_HEDM/Example/test_Parameters.txt
 FF_HEDM/Example/LayerNr_*/
+FF_HEDM/Example/Calibration/*.corr.csv
+FF_HEDM/Example/Calibration/hkls.csv
+FF_HEDM/Example/Calibration/panelshiftsCalibrant.txt
+FF_HEDM/Example/Calibration/panelshiftsCalibrant.txt.shifts.tif
+FF_HEDM/Example/Calibration/panelshiftsCalibrant.txt.strain.tif
 FF_HEDM/Example/runinfo/
 FF_HEDM/Cluster/*.kml
 FF_HEDM/Cluster/*.swiftx

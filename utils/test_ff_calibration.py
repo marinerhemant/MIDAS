@@ -242,12 +242,25 @@ def main():
         sys.exit(1)
     print("=" * 70)
 
-    # Cleanup
+    # Cleanup temp dir
     try:
         shutil.rmtree(work_dir)
-        print(f"\n  Cleaned up: {work_dir}")
+        print(f"\n  Cleaned up temp dir: {work_dir}")
     except Exception:
         print(f"\n  Note: Could not clean up {work_dir}")
+
+    # Cleanup generated files from the source Calibration directory
+    calib_dir = param_path.parent
+    generated_patterns = ['*.corr.csv', 'hkls.csv',
+                          'panelshiftsCalibrant.txt',
+                          'panelshiftsCalibrant.txt.shifts.tif',
+                          'panelshiftsCalibrant.txt.strain.tif']
+    for pat in generated_patterns:
+        for f in calib_dir.glob(pat):
+            try:
+                f.unlink()
+            except Exception:
+                pass
 
 
 if __name__ == "__main__":
