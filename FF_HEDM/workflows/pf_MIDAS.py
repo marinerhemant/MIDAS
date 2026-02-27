@@ -1474,7 +1474,10 @@ def main():
                                 logger.warning(f"Index file not found: {index_file}")
                                 continue
                                 
-                            data = np.fromfile(index_file, dtype=np.double, count=16, offset=loc)
+                            data = np.fromfile(index_file, dtype=np.double, count=16, offset=loc * 16 * 8)
+                            if data.size < 16:
+                                logger.warning(f"IndexBest for voxNr={voxNr} too small at row {loc}")
+                                continue
                             xThis = data[11]
                             yThis = data[12]
                             omThis = data[2:11]
