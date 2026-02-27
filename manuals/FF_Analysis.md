@@ -129,6 +129,8 @@ The parameter file is a space-delimited text file. Lines starting with `#` are c
 | `RingsToExcludeFraction` | Ring exclusion fraction (advanced) |
 | `GrainsFile` | `str` | Path to a seed grains file for guided indexing |
 | `ResultFolder` | `str` | Override result folder instead of default execution folder |
+| `UsePixelOverlap` | `int` | `1` = merge peaks using shared pixel coordinates instead of center-distance. Requires `_PX.bin` files from peak search. Default: `0` (distance-based merge). |
+| `doPeakFit` | `int` | `0` = skip Pseudo-Voigt fitting and treat each connected component as a single peak. Default: `1`. |
 
 ---
 
@@ -163,8 +165,8 @@ flowchart TD
 |---|---|---|
 | **Data Conversion** | `ffGenerateZipRefactor.py` | Converts raw GE/HDF5 frames into a Zarr-compressed ZIP archive |
 | **HKL Generation** | `GetHKLListZarr` | Computes expected (h,k,l) reflections from crystal structure |
-| **Peak Search** | `PeaksFittingOMPZarrRefactor` | Identifies and fits diffraction peaks in 2D frames (parallelized) |
-| **Peak Merging** | `MergeOverlappingPeaksAllZarr` | Merges peaks split across adjacent frames |
+| **Peak Search** | `PeaksFittingOMPZarrRefactor` | Identifies and fits diffraction peaks in 2D frames (parallelized). Also writes `_PX.bin` pixel coordinate files. |
+| **Peak Merging** | `MergeOverlappingPeaksAllZarr` | Merges peaks split across adjacent frames (distance-based or pixel-overlap mode) |
 | **Radius Calculation** | `CalcRadiusAllZarr` | Estimates grain radii from integrated intensities |
 | **Data Transform** | `FitSetupZarr` | Converts detector coordinates to sample-frame coordinates |
 | **Binning** | `SaveBinData` | Bins spots by angular position for efficient search |
@@ -189,6 +191,21 @@ The peak search identifies diffraction spots in the raw detector images.
     *   A **Pseudo-Voigt profile** (weighted sum of Gaussian and Lorentzian functions) is fitted to each identified peak.
     *   The objective function minimizes the sum of squared differences between the model and observed pixel intensities using non-linear optimization.
     *   Key fitted parameters: Center of Mass ($Y, Z$), Intensity, and profile widths ($\sigma$).
+    *   When `doPeakFit 0` is set, fitting is skipped and each connected component is treated as a single peak using its centroid.
+*   **Pixel Coordinate Output (`_PX.bin`):**
+    *   For each frame, a binary file is written containing the pixel coordinates belonging to each peak.
+    *   Format: `int32 NrPixels`, `int32 nPeaks`, then per-peak: `int32 nPixels`, followed by `nPixels` pairs of `int16 y, int16 z`.
+    *   These files are used by `MergeOverlappingPeaksAllZarr` when `UsePixelOverlap 1` is enabled.
+
+### 6.1b. Peak Merging (`MergeOverlappingPeaksAllZarr.c`)
+Two merge strategies are available:
+*   **Distance-based (default):** Peaks in adjacent frames are merged if their centers are within `OverlapLength` pixels. This is the original method.
+*   **Pixel-overlap (`UsePixelOverlap 1`):** Peaks are merged if they share any common pixel coordinates between adjacent frames. This uses a label-map approach:
+    1. A 2D label map of the current frame's pixel assignments is built.
+    2. For each new-frame peak, its pixels are scanned against the label map to find the best-matching current peak.
+    3. A mutual best-match check ensures robust pairing.
+    
+    This mode is more accurate for closely-spaced or overlapping peaks, especially when used with `doPeakFit 0`.
 
 ### 6.2. Indexing (`IndexerOMP.c`)
 The indexer finds grain orientations that are consistent with the observed diffraction spots.
@@ -254,6 +271,8 @@ Each layer generates a subdirectory:
 │   ├── Output/
 │   │   └── FitBest.bin          # Best-fit spot data (binary)
 │   ├── Temp/                    # Temporary working files
+│   │   ├── *_PS.csv             # Per-frame peak search results
+│   │   └── *_PX.bin             # Per-frame pixel coordinate data (for pixel-overlap merge)
 │   └── output/                  # Log files
 │       ├── hkls_out.csv / hkls_err.csv
 │       ├── peaksearch_out*.csv / peaksearch_err*.csv

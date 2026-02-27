@@ -113,7 +113,7 @@ flowchart TD
 ## Usage
 
 ```bash
-python utils/test_ff_hedm.py [-nCPUs N] [-paramFN /path/to/Parameters.txt]
+python utils/test_ff_hedm.py [-nCPUs N] [-paramFN /path/to/Parameters.txt] [--px-overlap] [--no-cleanup] [--cleanup-only]
 ```
 
 ### Arguments
@@ -122,12 +122,24 @@ python utils/test_ff_hedm.py [-nCPUs N] [-paramFN /path/to/Parameters.txt]
 |-------------|--------------------------------------|------------------------------------|
 | `-nCPUs`    | `1`                                  | Number of CPUs for parallel steps  |
 | `-paramFN`  | `FF_HEDM/Example/Parameters.txt`     | Path to the parameter file         |
+| `--px-overlap` | off                              | Also run pixel-overlap peaksearch test using `Parameters_px_overlaps.txt` |
+| `--no-cleanup` | off                              | Keep all generated files after the test |
+| `--cleanup-only` | off                            | Only cleanup generated files, don't run any tests |
 
 ### Example
 
 ```bash
 source ~/miniconda3/bin/activate midas_env
 python ~/opt/MIDAS/utils/test_ff_hedm.py -nCPUs 4
+
+# With pixel-overlap test:
+python ~/opt/MIDAS/utils/test_ff_hedm.py -nCPUs 4 --px-overlap
+
+# Keep files for inspection:
+python ~/opt/MIDAS/utils/test_ff_hedm.py -nCPUs 4 --no-cleanup
+
+# Just cleanup leftover files:
+python ~/opt/MIDAS/utils/test_ff_hedm.py --cleanup-only
 ```
 
 ## Working Directory
@@ -152,8 +164,16 @@ Launches `ff_MIDAS.py` with `-convertFiles 0` (skipping raw data conversion sinc
 - **FitPosOrStrainsOMP** → refines grain positions and strains
 - **ProcessGrains** → produces the final `Grains.csv`
 
-### Step 4: Success Check
-The script exits with code 0 if the pipeline completes without errors.
+### Step 4: Regression Comparison
+Compares the newly generated `*_consolidated.h5` against the reference file `consolidated_Output.h5`, checking each pipeline stage (PeaksFitting, MergeOverlaps, CalcRadius, FitSetup, Grains).
+
+### Step 5 (Optional): Pixel-Overlap Test
+When `--px-overlap` is specified, the test additionally:
+1. Patches `UsePixelOverlap 1` and `doPeakFit 1` into the existing Zarr zip
+2. Re-runs `ff_MIDAS.py` with the pixel-overlap parameters
+3. Compares the output against `consolidated_Output_px_overlaps.h5`
+
+This validates the pixel-overlap merge path end-to-end.
 
 ## Expected Output
 
