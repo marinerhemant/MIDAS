@@ -2093,9 +2093,28 @@ int main(int argc, char *argv[]) {
       size_t offst1 = rowNr;
       offst1 *= 15 * sizeof(double);
       double *locArr;
-      locArr = malloc(15 * sizeof(*locArr));
+      locArr = calloc(15, sizeof(*locArr));
       int rcA = pread(inpF, locArr, 15 * sizeof(double), offst1);
       close(inpF);
+      if (rcA < (ssize_t)(15 * sizeof(double))) {
+        // Short read or EOF — slot was never written by IndexerOMP
+        free(locArr);
+        char KeyFN[1024];
+        sprintf(KeyFN, "%s/Key.bin", ResultFolder);
+        int SizeKeyFile = 2 * sizeof(int);
+        size_t OffStKeyFile = SizeKeyFile;
+        OffStKeyFile *= rowNr;
+        int KeyInfo[2] = {0, 0};
+#pragma omp critical
+        {
+          int resultKeyFN = open(KeyFN, O_CREAT | O_WRONLY, S_IRUSR | S_IWUSR);
+          if (resultKeyFN > 0) {
+            pwrite(resultKeyFN, KeyInfo, SizeKeyFile, OffStKeyFile);
+            close(resultKeyFN);
+          }
+        }
+        continue;
+      }
       if (locArr[14] == 0) {
         // printf("Good result not found. Skipping this rowNr: %d\n", rowNr);
         char KeyFN[1024];
@@ -2143,7 +2162,7 @@ int main(int argc, char *argv[]) {
       }
       double *locArr2;
       spotIDS = malloc(nSpotsBest * sizeof(*spotIDS));
-      locArr2 = malloc((int)NrObserved * 2 * sizeof(*locArr2));
+      locArr2 = calloc((int)NrObserved * 2, sizeof(*locArr2));
       size_t offst2 = rowNr;
       offst2 *= MaxNHKLS;
       offst2 *= 2 * sizeof(double);
@@ -2151,6 +2170,10 @@ int main(int argc, char *argv[]) {
       int rcB =
           pread(inpF2, locArr2, (int)NrObserved * 2 * sizeof(double), offst2);
       close(inpF2);
+      if (rcB < (ssize_t)((int)NrObserved * 2 * sizeof(double))) {
+        printf("Warning: short read from IndexBestFull.bin for rowNr %d\n",
+               rowNr);
+      }
       for (i = 0; i < NrObserved; i++) {
         spotIDS[i] = (int)locArr2[i * 2 + 0];
 
@@ -2215,7 +2238,7 @@ int main(int argc, char *argv[]) {
           //        "nSpotsBest: %d.\n\n\n",
           //        (int)spotIDS[i], (int)(spotPosAllSpots + 1), (int)nSpots,
           //        (int)thisRowNr, (int)nSpotsBest);
-          fflush(stdout);
+          // fflush(stdout);
           nSpotsFound--;
           continue;
         }
@@ -2225,7 +2248,7 @@ int main(int argc, char *argv[]) {
           //        (int)spotIDS[i], (int)(spotPosAllSpots + 1),
           //        (int)AllSpots[spotPosAllSpots * 14 + 4], (int)thisRowNr,
           //        (int)nSpotsBest);
-          fflush(stdout);
+          // fflush(stdout);
           nSpotsFound--;
           continue;
         }
@@ -2695,9 +2718,28 @@ int main(int argc, char *argv[]) {
       size_t offst1 = it;
       offst1 *= 15 * sizeof(double);
       double *locArr;
-      locArr = malloc(15 * sizeof(*locArr));
+      locArr = calloc(15, sizeof(*locArr));
       int rcA = pread(inpF, locArr, 15 * sizeof(double), offst1);
       close(inpF);
+      if (rcA < (ssize_t)(15 * sizeof(double))) {
+        // Short read or EOF — slot was never written by IndexerOMP
+        free(locArr);
+        char KeyFN[1024];
+        sprintf(KeyFN, "%s/Key.bin", ResultFolder);
+        int SizeKeyFile = 2 * sizeof(int);
+        size_t OffStKeyFile = SizeKeyFile;
+        OffStKeyFile *= it;
+        int KeyInfo[2] = {0, 0};
+#pragma omp critical
+        {
+          int resultKeyFN = open(KeyFN, O_CREAT | O_WRONLY, S_IRUSR | S_IWUSR);
+          if (resultKeyFN > 0) {
+            pwrite(resultKeyFN, KeyInfo, SizeKeyFile, OffStKeyFile);
+            close(resultKeyFN);
+          }
+        }
+        continue;
+      }
       if (locArr[14] == 0) {
         printf("Good result not found. Skipping this rowNr: %d\n", it);
         char KeyFN[1024];
@@ -2734,7 +2776,7 @@ int main(int argc, char *argv[]) {
       int nSpotsBest = (int)NrObserved, *spotIDS, nSpotsRad = 0;
       double *locArr2;
       spotIDS = malloc(nSpotsBest * sizeof(*spotIDS));
-      locArr2 = malloc((int)NrObserved * 2 * sizeof(*locArr2));
+      locArr2 = calloc((int)NrObserved * 2, sizeof(*locArr2));
       size_t offst2 = it;
       offst2 *= MaxNHKLS;
       offst2 *= 2 * sizeof(double);
@@ -2742,6 +2784,9 @@ int main(int argc, char *argv[]) {
       int rcB =
           pread(inpF2, locArr2, (int)NrObserved * 2 * sizeof(double), offst2);
       close(inpF2);
+      if (rcB < (ssize_t)((int)NrObserved * 2 * sizeof(double))) {
+        printf("Warning: short read from IndexBestFull.bin for grain %d\n", it);
+      }
       double thisRadius, meanRadius = 0, MaxRadTot = -100;
       for (i = 0; i < NrObserved; i++) {
         spotIDS[i] = (int)locArr2[i * 2 + 0];

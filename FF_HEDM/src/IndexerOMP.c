@@ -2233,21 +2233,33 @@ int main(int argc, char *argv[]) {
          n_ring_bins * n_eta_bins * n_ome_bins);
   printf("Finished binning.\n\n");
 
-  // Open output files once
+  // Open output files once.
+  // Only truncate on blockNr==0; subsequent blocks append to existing files.
+  int blockNrFile = atoi(argv[2]);
+  int nSpotsToIndexFile = atoi(argv[4]);
+  int openFlags = O_CREAT | O_WRONLY;
+  if (blockNrFile == 0)
+    openFlags |= O_TRUNC;
   char outFN[4096];
   sprintf(outFN, "%s/IndexBest.bin", Params.OutputFolder);
-  Params.IndexBestFD =
-      open(outFN, O_CREAT | O_WRONLY | O_TRUNC, S_IRUSR | S_IWUSR);
+  Params.IndexBestFD = open(outFN, openFlags, S_IRUSR | S_IWUSR);
   if (Params.IndexBestFD <= 0) {
     printf("Cannot open file: %s\n", outFN);
     exit(EXIT_FAILURE);
   }
   sprintf(outFN, "%s/IndexBestFull.bin", Params.OutputFolder);
-  Params.IndexBestFullFD =
-      open(outFN, O_CREAT | O_WRONLY | O_TRUNC, S_IRUSR | S_IWUSR);
+  Params.IndexBestFullFD = open(outFN, openFlags, S_IRUSR | S_IWUSR);
   if (Params.IndexBestFullFD <= 0) {
     printf("Cannot open file: %s\n", outFN);
     exit(EXIT_FAILURE);
+  }
+  // Pre-allocate files to full size so pread never reads beyond EOF.
+  // ftruncate extends and zero-fills, so unwritten slots read as zeros.
+  if (blockNrFile == 0) {
+    ftruncate(Params.IndexBestFD,
+              (off_t)nSpotsToIndexFile * 15 * sizeof(double));
+    ftruncate(Params.IndexBestFullFD,
+              (off_t)nSpotsToIndexFile * MAX_N_HKLS * 2 * sizeof(double));
   }
 
   int numProcs = atoi(argv[5]);
@@ -2395,7 +2407,7 @@ int main(int argc, char *argv[]) {
       exit(EXIT_FAILURE);
     }
     for (grainNr = 0; grainNr < nGrains; grainNr++) {
-      fprintf(spotsFile, "%d %d\n", spotsIndexed[grainNr + 0],
+      fprintf(spotsFile, "%d %d\n", spotsIndexed[grainNr * 2 + 0],
               spotsIndexed[grainNr * 2 + 1]);
     }
     fclose(spotsFile);
