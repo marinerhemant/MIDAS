@@ -2437,6 +2437,7 @@ int main(int argc, char *argv[]) {
     int bestIter = -1;
     double bestLsd, bestYbc, bestZbc, bestTy, bestTz;
     double bestP0, bestP1, bestP2, bestP3, bestP4 = 0;
+    int stagnantCount = 0;
     Panel *bestPanels = NULL;
     if (nPanels > 0)
       bestPanels = malloc(nPanels * sizeof(Panel));
@@ -2764,6 +2765,48 @@ int main(int argc, char *argv[]) {
         bestP4 = p4;
         if (bestPanels && nPanels > 0)
           memcpy(bestPanels, panels, nPanels * sizeof(Panel));
+        stagnantCount = 0;
+      } else {
+        stagnantCount++;
+      }
+
+      // Perturbation: if stagnant for 3+ iterations, kick parameters
+      if (stagnantCount >= 3 && iter < nIterations - 1) {
+        // Restore from best before perturbing
+        Lsd = bestLsd;
+        ybc = bestYbc;
+        zbc = bestZbc;
+        tyin = bestTy;
+        tzin = bestTz;
+        p0in = bestP0;
+        p1in = bestP1;
+        p2in = bestP2;
+        p3in = bestP3;
+        p4in = bestP4;
+        if (bestPanels && nPanels > 0)
+          memcpy(panels, bestPanels, nPanels * sizeof(Panel));
+
+        // Seed from iteration for reproducibility
+        srand(42 + iter);
+        // Random perturbation in [-1, +1] * fraction * tolerance
+        double pertFrac = 0.5;
+#define PERT(val, tol)                                                         \
+  ((val) + pertFrac * (tol) * (2.0 * rand() / RAND_MAX - 1.0))
+        Lsd = PERT(Lsd, tolLsd);
+        ybc = PERT(ybc, tolBC);
+        zbc = PERT(zbc, tolBC);
+        tyin = PERT(tyin, tolTilts);
+        tzin = PERT(tzin, tolTilts);
+        p0in = PERT(p0in, tolP);
+        p1in = PERT(p1in, tolP);
+        p2in = PERT(p2in, tolP);
+        p3in = PERT(p3in, tolP3);
+        p4in = PERT(p4in, tolP4);
+#undef PERT
+        printf("  [Perturbation applied after %d stagnant iterations, "
+               "restarting from best iter %d]\n",
+               stagnantCount, bestIter + 1);
+        stagnantCount = 0;
       }
 
       // Save final nIndices for post-loop processing
