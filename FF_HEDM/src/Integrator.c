@@ -301,7 +301,15 @@ int main(int argc, char **argv) {
     if (StartsWith(aline, str) == 1) {
       sscanf(aline, "%s %s", dummy, darkDataset);
     }
+    str = "darkLoc ";
+    if (StartsWith(aline, str) == 1) {
+      sscanf(aline, "%s %s", dummy, darkDataset);
+    }
     str = "dataDataset ";
+    if (StartsWith(aline, str) == 1) {
+      sscanf(aline, "%s %s", dummy, dataDataset);
+    }
+    str = "dataLoc ";
     if (StartsWith(aline, str) == 1) {
       sscanf(aline, "%s %s", dummy, dataDataset);
     }

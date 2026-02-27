@@ -1479,7 +1479,19 @@ int main(int argc, char *argv[]) {
       sscanf(aline, "%s %s", dummy, darkDatasetName);
       continue;
     }
+    str = "darkLoc ";
+    LowNr = strncmp(aline, str, strlen(str));
+    if (LowNr == 0) {
+      sscanf(aline, "%s %s", dummy, darkDatasetName);
+      continue;
+    }
     str = "dataDataset ";
+    LowNr = strncmp(aline, str, strlen(str));
+    if (LowNr == 0) {
+      sscanf(aline, "%s %s", dummy, dataDatasetName);
+      continue;
+    }
+    str = "dataLoc ";
     LowNr = strncmp(aline, str, strlen(str));
     if (LowNr == 0) {
       sscanf(aline, "%s %s", dummy, dataDatasetName);

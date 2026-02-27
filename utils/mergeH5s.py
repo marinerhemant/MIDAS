@@ -11,20 +11,20 @@ class MyParser(argparse.ArgumentParser):
 parser = MyParser(description='''Merge two separate files containing data and dark into one, writing a single file.''', formatter_class=argparse.ArgumentDefaultsHelpFormatter)
 parser.add_argument('-dataFN', type=str, required=True, help='Data filename.')
 parser.add_argument('-darkFN', type=str, required=True, help='Dark filename.')
-parser.add_argument('-dataDataLoc', type=str, required=True, help='dataset location with information.')
-parser.add_argument('-darkDataLoc', type=str, required=False, default='', help='dataset location in dark with information in case different from data file.')
+parser.add_argument('-dataLoc', type=str, required=True, help='dataset location with information.')
+parser.add_argument('-darkLoc', type=str, required=False, default='', help='dataset location in dark with information in case different from data file.')
 args, unparsed = parser.parse_known_args()
 
 dataFN = args.dataFN
 darkFN = args.darkFN
-dataLoc = args.dataDataLoc
-darkDataLoc = args.darkDataLoc
+dataLoc = args.dataLoc
+darkLoc = args.darkLoc
 
-if len(darkDataLoc) < 2:
-      darkDataLoc = dataLoc
+if len(darkLoc) < 2:
+      darkLoc = dataLoc
 
 with h5py.File(darkFN,'r') as hf:
-    dark = hf[darkDataLoc][()]
+    dark = hf[darkLoc][()]
 with h5py.File(dataFN,'r') as hf:
     data = hf[dataLoc][()]
 
