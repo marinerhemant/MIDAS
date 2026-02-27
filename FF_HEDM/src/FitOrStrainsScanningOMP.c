@@ -909,9 +909,9 @@ void FitOrientIni(double X0[9], int nSpotsComp, double **spotsYZO, int nhkls,
   f_data.scratch->TheorSpotsYZWE = allocMatrix(MaxNSpotsBest, 5);
   f_data.scratch->Angles = malloc(MaxNSpotsBest * sizeof(double));
   int maxSpnr = 0;
-  for (i = 0; i < nhkls; i++) {
-    if ((int)hkls[i][6] > maxSpnr)
-      maxSpnr = (int)hkls[i][6];
+  for (int sp = 0; sp < nSpotsComp; sp++) {
+    if ((int)spotsYZO[sp][8] > maxSpnr)
+      maxSpnr = (int)spotsYZO[sp][8];
   }
   f_data.scratch->MaxSpnr = maxSpnr;
   f_data.scratch->SpotLookup = malloc((maxSpnr + 1) * sizeof(int));
@@ -1024,9 +1024,9 @@ void FitStrainIni(double X0[6], int nSpotsComp, double **spotsYZO, int nhkls,
   f_data.scratch->TheorSpotsYZWE = allocMatrix(MaxNSpotsBest, 5);
   f_data.scratch->Angles = malloc(MaxNSpotsBest * sizeof(double));
   int maxSpnr = 0;
-  for (i = 0; i < nhkls; i++) {
-    if ((int)hkls[i][6] > maxSpnr)
-      maxSpnr = (int)hkls[i][6];
+  for (int sp = 0; sp < nSpotsComp; sp++) {
+    if ((int)spotsYZO[sp][8] > maxSpnr)
+      maxSpnr = (int)spotsYZO[sp][8];
   }
   f_data.scratch->MaxSpnr = maxSpnr;
   f_data.scratch->SpotLookup = malloc((maxSpnr + 1) * sizeof(int));

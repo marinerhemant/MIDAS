@@ -100,7 +100,7 @@ add_ff_hedm_executable(FitMultipleGrains SOURCES src/FitMultipleGrains.c src/Cal
 # add_ff_hedm_executable(FitTiltX SOURCES src/FitTiltX.c)
 add_ff_hedm_executable(FitWedge SOURCES src/FitWedge.c src/MIDAS_Math.c)
 add_ff_hedm_executable(FitWedgeParallel SOURCES src/FitWedgeParallel.c src/Panel.c src/MIDAS_Math.c OMP)
-# add_ff_hedm_executable(MapDatasets SOURCES src/MapDatasets.c OMP)
+add_ff_hedm_executable(MapDatasets SOURCES src/MapDatasets.c OMP)
 
 add_ff_hedm_executable(GetHKLList SOURCES src/GetHKLList.c src/sgclib.c src/sgfind.c src/sghkl.c src/sgsi.c src/sgio.c)
 # add_ff_hedm_executable(PeaksFittingOMPZarr SOURCES src/archive/PeaksFittingOMPZarr.c OMP)

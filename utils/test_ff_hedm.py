@@ -22,6 +22,7 @@ def parse_args():
     parser.add_argument("--no-cleanup", action="store_true", help="Skip cleanup of generated files after the test")
     parser.add_argument("--cleanup-only", action="store_true", help="Only cleanup generated files, don't run any tests")
     parser.add_argument("--px-overlap", action="store_true", help="Also run pixel-overlap peaksearch test")
+    parser.add_argument("--dual-dataset", action="store_true", help="Also run dual-dataset refinement sanity test")
     
     # Optional paramFN defaulting to the Example Parameters.txt relative to the script location
     default_param_fn = Path(__file__).resolve().parent.parent / "FF_HEDM" / "Example" / "Parameters.txt"
@@ -240,6 +241,183 @@ def run_px_overlap_test(args, work_dir, original_zip):
         print(f"\nSkipping px-overlap regression: no consolidated HDF5 generated in {result_dir}.")
 
 
+def parse_grains_csv(path):
+    """Parse a Grains.csv file, return list of grain dicts with OrientMatrix and Position."""
+    grains = []
+    with open(path, 'r') as f:
+        for line in f:
+            line = line.strip()
+            if not line or line.startswith('%'):
+                continue
+            vals = line.split()
+            if len(vals) < 22:  # GrainID + 9 orient + 3 pos + 9 strain = minimum
+                continue
+            try:
+                grain = {
+                    'id': int(vals[0]),
+                    'orient': np.array([float(v) for v in vals[1:10]]).reshape(3, 3),
+                    'pos': np.array([float(v) for v in vals[10:13]]),
+                    'lattice': np.array([float(v) for v in vals[13:19]]),
+                }
+                grains.append(grain)
+            except (ValueError, IndexError):
+                continue
+    return grains
+
+
+def misorientation_angle_deg(R1, R2):
+    """Compute misorientation angle in degrees between two orientation matrices."""
+    dR = R1 @ R2.T
+    trace = np.clip(np.trace(dR), -1.0, 3.0)
+    angle_rad = np.arccos(np.clip((trace - 1.0) / 2.0, -1.0, 1.0))
+    return np.degrees(angle_rad)
+
+
+def compare_grains_csv(ref_path, new_path, pos_tol_um=1.0, orient_tol_deg=0.01):
+    """Compare two Grains.csv files for grain count, position, and orientation.
+    
+    Args:
+        ref_path: Path to reference Grains.csv (from single-dataset run)
+        new_path: Path to new Grains.csv (from dual-dataset run)
+        pos_tol_um: Position tolerance in micrometers
+        orient_tol_deg: Orientation tolerance in degrees
+    """
+    print(f"\n{'='*70}")
+    print(f"  Dual-Dataset Grains Comparison")
+    print(f"  Reference: {ref_path}")
+    print(f"  New:       {new_path}")
+    print(f"  Tolerances: position={pos_tol_um} µm, orientation={orient_tol_deg}°")
+    print(f"{'='*70}\n")
+    
+    ref_grains = parse_grains_csv(ref_path)
+    new_grains = parse_grains_csv(new_path)
+    
+    n_pass = 0
+    n_fail = 0
+    
+    # Check grain count
+    if len(ref_grains) == len(new_grains):
+        print(f"  [PASS ✅]  Grain count: {len(ref_grains)}")
+        n_pass += 1
+    else:
+        print(f"  [FAIL ❌]  Grain count: ref={len(ref_grains)}, new={len(new_grains)}")
+        n_fail += 1
+    
+    # Match grains by ID and compare
+    ref_by_id = {g['id']: g for g in ref_grains}
+    new_by_id = {g['id']: g for g in new_grains}
+    
+    common_ids = sorted(set(ref_by_id.keys()) & set(new_by_id.keys()))
+    if not common_ids:
+        print(f"  [FAIL ❌]  No common grain IDs found")
+        n_fail += 1
+    else:
+        # Position comparison
+        max_pos_diff = 0.0
+        pos_ok = True
+        for gid in common_ids:
+            diff = np.linalg.norm(ref_by_id[gid]['pos'] - new_by_id[gid]['pos'])
+            max_pos_diff = max(max_pos_diff, diff)
+            if diff > pos_tol_um:
+                pos_ok = False
+        
+        if pos_ok:
+            print(f"  [PASS ✅]  Positions (max_diff={max_pos_diff:.4f} µm)")
+            n_pass += 1
+        else:
+            print(f"  [FAIL ❌]  Positions (max_diff={max_pos_diff:.4f} µm, tol={pos_tol_um})")
+            n_fail += 1
+        
+        # Orientation comparison
+        max_orient_diff = 0.0
+        orient_ok = True
+        for gid in common_ids:
+            angle = misorientation_angle_deg(ref_by_id[gid]['orient'], new_by_id[gid]['orient'])
+            max_orient_diff = max(max_orient_diff, angle)
+            if angle > orient_tol_deg:
+                orient_ok = False
+        
+        if orient_ok:
+            print(f"  [PASS ✅]  Orientations (max_misorientation={max_orient_diff:.6f}°)")
+            n_pass += 1
+        else:
+            print(f"  [FAIL ❌]  Orientations (max_misorientation={max_orient_diff:.6f}°, tol={orient_tol_deg})")
+            n_fail += 1
+    
+    print(f"\n{'='*70}")
+    print(f"  Dual-Dataset Summary: {n_pass} PASS, {n_fail} FAIL")
+    print(f"{'='*70}")
+    
+    if n_fail > 0:
+        print("\n⚠️  Dual-dataset differences detected!")
+    else:
+        print("\n✅ Dual-dataset grains match the single-dataset reference.")
+    
+    return n_fail == 0
+
+
+def run_dual_dataset_test(args, work_dir, final_zip_name):
+    """Run dual-dataset refinement test using the same dataset twice with zero offsets.
+    
+    Feeds the same simulated Zarr as both datasets to ff_dual_datasets.py.
+    The resulting grains should closely match the single-dataset run.
+    """
+    midas_home = Path(os.environ.get('MIDAS_HOME', str(Path(__file__).resolve().parent.parent)))
+    dual_script = midas_home / "FF_HEDM" / "workflows" / "ff_dual_datasets.py"
+    
+    if not dual_script.exists():
+        print(f"Error: {dual_script} not found. Skipping dual-dataset test.")
+        return
+    
+    # Check that MapDatasets binary exists
+    map_bin = midas_home / "FF_HEDM" / "bin" / "MapDatasets"
+    if not map_bin.exists():
+        print(f"Error: {map_bin} not found. Please build MapDatasets. Skipping.")
+        return
+    
+    # Use a separate result folder to avoid clobbering the main test's LayerNr_1
+    dual_res_dir = work_dir / "dual_dataset_test"
+    if dual_res_dir.exists():
+        shutil.rmtree(dual_res_dir)
+    
+    # The test parameter file with absolute paths
+    test_param_file = work_dir / f"test_Parameters.txt"
+    if not test_param_file.exists():
+        print(f"Error: {test_param_file} not found. Run main test first.")
+        return
+    
+    cmd = [
+        sys.executable, str(dual_script),
+        "-resultFolder", str(dual_res_dir),
+        "-paramFN", str(test_param_file),
+        "-dataFN", str(final_zip_name),
+        "-dataFN2", str(final_zip_name),
+        "-offsetX", "0", "-offsetY", "0", "-offsetZ", "0", "-offsetOmega", "0",
+        "-nCPUs", str(args.nCPUs),
+    ]
+    
+    print(f"Running dual-dataset pipeline: {' '.join(cmd)}")
+    pipeline_res = subprocess.run(cmd, cwd=str(work_dir))
+    
+    if pipeline_res.returncode != 0:
+        print("Error: Dual-dataset pipeline execution failed.")
+        return
+    
+    print("\n*** Dual-dataset pipeline executed successfully ***")
+    
+    # Find the Grains.csv in the dual-dataset result
+    # ff_dual_datasets.py puts results in dataset_1_analysis/
+    dual_grains = dual_res_dir / "dataset_1_analysis" / "Grains.csv"
+    ref_grains = work_dir / "LayerNr_1" / "Grains.csv"
+    
+    if dual_grains.exists() and ref_grains.exists():
+        compare_grains_csv(ref_grains, dual_grains, pos_tol_um=1.0, orient_tol_deg=0.06)
+    elif not ref_grains.exists():
+        print(f"\nSkipping comparison: reference {ref_grains} not found.")
+    else:
+        print(f"\nSkipping comparison: dual-dataset {dual_grains} not found.")
+
+
 def main():
     args = parse_args()
     param_path = Path(args.paramFN).resolve()
@@ -336,6 +514,13 @@ def main():
         print("Running pixel-overlap peaksearch test...")
         print("="*60)
         run_px_overlap_test(args, work_dir, final_zip_name)
+
+    # 8b. Optional dual-dataset refinement test
+    if args.dual_dataset:
+        print("\n" + "="*60)
+        print("Running dual-dataset refinement test...")
+        print("="*60)
+        run_dual_dataset_test(args, work_dir, final_zip_name)
 
     # 9. Cleanup generated files
     if not args.no_cleanup:

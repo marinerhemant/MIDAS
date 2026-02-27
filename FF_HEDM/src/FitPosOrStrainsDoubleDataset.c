@@ -1329,12 +1329,8 @@ void FitPositionIni(double X0[12], int nSpotsComp, double **spotsYZO,
   double minf;
   run_nlopt_optimization(NLOPT_LN_NELDERMEAD, &config);
   minf = config.min_function_val;
-  //~ for (i=0;i<n;i++) printf("%f ",x[i]);
-  //~ printf("%10.30f \n", minf);
   run_nlopt_optimization(NLOPT_LN_NELDERMEAD, &config);
   minf = config.min_function_val;
-  //~ for (i=0;i<n;i++) printf("%f ",x[i]);
-  //~ printf("%10.30f \n", minf);
   for (i = 0; i < n; i++)
     XFit[i] = x[i];
   FreeMemMatrix(f_data.spotsYZO, nSpotsComp);
@@ -1409,9 +1405,9 @@ void FitOrientIni(double X0[9], int nSpotsComp, double **spotsYZO,
   f_data.scratch->spotsYZO = allocMatrix(nSpotsComp, 9);
   f_data.scratch->Angles = malloc(MaxNSpotsBest * sizeof(double));
   int maxSpnr = 0;
-  for (i = 0; i < nhkls; i++) {
-    if ((int)hkls[i][6] > maxSpnr)
-      maxSpnr = (int)hkls[i][6];
+  for (int sp = 0; sp < nSpotsComp; sp++) {
+    if ((int)spotsYZO[sp][8] > maxSpnr)
+      maxSpnr = (int)spotsYZO[sp][8];
   }
   f_data.scratch->MaxSpnr = maxSpnr;
   f_data.scratch->SpotLookup = malloc((maxSpnr + 1) * sizeof(int));
@@ -1516,9 +1512,9 @@ void FitStrainIni(double X0[6], int nSpotsComp, double **spotsYZO,
   f_data.scratch->spotsYZO = allocMatrix(nSpotsComp, 9);
   f_data.scratch->Angles = malloc(MaxNSpotsBest * sizeof(double));
   int maxSpnr = 0;
-  for (i = 0; i < nhkls; i++) {
-    if ((int)hkls[i][6] > maxSpnr)
-      maxSpnr = (int)hkls[i][6];
+  for (int sp = 0; sp < nSpotsComp; sp++) {
+    if ((int)spotsYZO[sp][8] > maxSpnr)
+      maxSpnr = (int)spotsYZO[sp][8];
   }
   f_data.scratch->MaxSpnr = maxSpnr;
   f_data.scratch->SpotLookup = malloc((maxSpnr + 1) * sizeof(int));
@@ -1638,12 +1634,22 @@ void FitPosSec(double X0[3], int nSpotsComp, double **spotsYZO,
   f_data.scratch->spotsYZO = allocMatrix(nSpotsComp, 9);
   f_data.scratch->Angles = malloc(MaxNSpotsBest * sizeof(double));
   int maxSpnr = 0;
-  for (i = 0; i < nhkls; i++) {
-    if ((int)hkls[i][6] > maxSpnr)
-      maxSpnr = (int)hkls[i][6];
+  for (int sp = 0; sp < nSpotsComp; sp++) {
+    if ((int)spotsYZO[sp][8] > maxSpnr)
+      maxSpnr = (int)spotsYZO[sp][8];
   }
   f_data.scratch->MaxSpnr = maxSpnr;
   f_data.scratch->SpotLookup = malloc((maxSpnr + 1) * sizeof(int));
+  // Initialize SpotLookup table
+  for (i = 0; i <= maxSpnr; i++)
+    f_data.scratch->SpotLookup[i] = -1;
+  for (i = 0; i < nTspots; i++) {
+    int spnr = (int)f_data.scratch->TheorSpots[i][8];
+    if (spnr >= 0 && spnr <= maxSpnr &&
+        f_data.scratch->SpotLookup[spnr] == -1) {
+      f_data.scratch->SpotLookup[spnr] = i;
+    }
+  }
   struct data_FitPos *f_datat;
   f_datat = &f_data;
   void *trp = (struct data_FitPos *)f_datat;
@@ -2184,7 +2190,9 @@ int main(int argc, char *argv[]) {
       // Idea: spotID always starts from 1 and is increasing in number, so
       // spotIDS[i] should correspond to AllSpots[(spotIDS[i]-1)*14+...], this
       // should reduce execution time.
-      size_t spotPosAllSpots, spotPosAllSpots2;
+      size_t spotPosAllSpots;
+      int spotPosAllSpots2; // int, not size_t, because mapDatasets[] uses -1
+                            // sentinel
       int badSpot = 0;
       for (i = 0; i < nSpotsBest; i++) {
         // Check if spotIDS[i] > 0
@@ -2212,10 +2220,10 @@ int main(int argc, char *argv[]) {
         spotsYZO[i][7] = AllSpots[spotPosAllSpots * 14 + 5];
         if (nSpotsData2 != 0) {
           spotPosAllSpots2 = mapDatasets[spotPosAllSpots];
-          if (spotPosAllSpots2 < 0 || spotPosAllSpots2 >= (size_t)nSpotsData2) {
-            printf("SpotID %d mapped to invalid spot in dataset 2 (%zu). Will "
-                   "use original spot in this case.\n",
-                   (int)spotIDS[i], spotPosAllSpots2);
+          if (spotPosAllSpots2 < 0 || spotPosAllSpots2 >= nSpotsData2) {
+            printf("  Spot %d (idx %zu): mapped to %d in dataset2 -> using "
+                   "original spot\n",
+                   (int)spotIDS[i], spotPosAllSpots, spotPosAllSpots2);
             for (j = 0; j < 8; j++) {
               spotsYZO2[i][j] = spotsYZO[i][j];
             }
@@ -2255,6 +2263,11 @@ int main(int argc, char *argv[]) {
                       hkls, Lsd, Wavelength, OmegaRanges, BoxSizes, MinEta,
                       wedge, chi, SpotsComp, Splist, Splist2, ErrorIni,
                       &nSpotsComp, 0, 0.0, 0.0, 0.0, 0.0);
+      printf("  [DEBUG] SpotID %d: nSpotsIn=%d, nSpotsComp=%d, "
+             "InitErrors=(%.2f, %.4f, %.4f), "
+             "InitPos=(%.2f, %.2f, %.2f), Euler=(%.2f, %.2f, %.2f)\n",
+             SpId, nSpotsYZO, nSpotsComp, ErrorIni[0], ErrorIni[1], ErrorIni[2],
+             Pos0[0], Pos0[1], Pos0[2], Euler0[0], Euler0[1], Euler0[2]);
       double **spotsYZONew, **spotsYZO2New;
       spotsYZONew = allocMatrix(nSpotsComp, 9);
       spotsYZO2New = allocMatrix(nSpotsComp, 9);
