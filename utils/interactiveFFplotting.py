@@ -399,7 +399,13 @@ if __name__ == '__main__':
         ]),
         dbc.Row([
             dbc.Col([dcc.Loading(id="loading-filtered-spots-2d", type="circle", children=[dcc.Graph(figure=go.Figure(), id='filtered_spots_2d', clickData=None)])], width=6),
-            dbc.Col([dcc.Loading(id="loading-image-data", type="cube", children=[dcc.Graph(figure=go.Figure(), id='image_data')])], width=6),
+            dbc.Col([
+                dbc.Row([
+                    dbc.Col([dbc.Label("Frames ±"), dcc.Slider(id='volume-frames-slider', min=1, max=30, step=1, value=VOLUME_WINDOW_FRAME, marks={1:'1', 10:'10', 20:'20', 30:'30'}, tooltip={"placement": "bottom", "always_visible": True})], width=6),
+                    dbc.Col([dbc.Label("Det Pixels ±"), dcc.Slider(id='volume-pixels-slider', min=5, max=50, step=1, value=VOLUME_WINDOW_PX, marks={5:'5', 15:'15', 25:'25', 50:'50'}, tooltip={"placement": "bottom", "always_visible": True})], width=6),
+                ], className="mb-1"),
+                dcc.Loading(id="loading-image-data", type="cube", children=[dcc.Graph(figure=go.Figure(), id='image_data')]),
+            ], width=6),
         ]), html.Hr(),
         dbc.Row([
              dbc.Col([ dbc.Label("Table Rows:", html_for="page-size-dropdown"), dcc.Dropdown(id='page-size-dropdown', options=[{'label': str(s), 'value': s} for s in [10, 25, 50, 100]] + [{'label': 'All', 'value': 99999}], value=DEFAULT_TABLE_PAGE_SIZE, clearable=False, style={'color': '#000'}) ], width={"size": 2, "offset": 10}),
@@ -654,8 +660,8 @@ if __name__ == '__main__':
         return fig
 
     # --- Volume Plot Callback ---
-    @callback( Output('image_data', 'figure'), Input('filtered_spots_2d', 'clickData'), State('selected-grain-id-store', 'data'), prevent_initial_call=True)
-    def update_volume_plot(spot_clickData, selected_grain_id):
+    @callback( Output('image_data', 'figure'), Input('filtered_spots_2d', 'clickData'), Input('volume-frames-slider', 'value'), Input('volume-pixels-slider', 'value'), State('selected-grain-id-store', 'data'), prevent_initial_call=True)
+    def update_volume_plot(spot_clickData, vol_frames, vol_pixels, selected_grain_id):
         fig = go.Figure()
         if selected_grain_id is None: return fig.update_layout(title="Select a grain", **COMMON_LAYOUT_SETTINGS)
         if not (spot_clickData and spot_clickData['points'] and 'customdata' in spot_clickData['points'][0]): return fig.update_layout(title="Click a spot", **COMMON_LAYOUT_SETTINGS)
@@ -670,9 +676,9 @@ if __name__ == '__main__':
         omega_deg = spot_info['omeRaw']
         if pd.isna(omega_deg): return fig.update_layout(title=f"Missing OmegaRaw for Spot {clicked_spot_id}", **COMMON_LAYOUT_SETTINGS)
         frameNrMid = int(round((omega_deg - zarr_params['omegaStart']) / zarr_params['omegaStep']))
-        frameMin, frameMax = max(0, frameNrMid - VOLUME_WINDOW_FRAME), min(zarr_params['nFrames'], frameNrMid + VOLUME_WINDOW_FRAME + 1)
-        yMin, yMax = max(0, detY_px - VOLUME_WINDOW_PX), min(zarr_params['nPxY'], detY_px + VOLUME_WINDOW_PX + 1)
-        zMin, zMax = max(0, detZ_px - VOLUME_WINDOW_PX), min(zarr_params['nPxZ'], detZ_px + VOLUME_WINDOW_PX + 1)
+        frameMin, frameMax = max(0, frameNrMid - vol_frames), min(zarr_params['nFrames'], frameNrMid + vol_frames + 1)
+        yMin, yMax = max(0, detY_px - vol_pixels), min(zarr_params['nPxY'], detY_px + vol_pixels + 1)
+        zMin, zMax = max(0, detZ_px - vol_pixels), min(zarr_params['nPxZ'], detZ_px + vol_pixels + 1)
         yMin_trans, yMax_trans, zMin_trans, zMax_trans = yMin, yMax, zMin, zMax
         nPxY_eff, nPxZ_eff = zarr_params['nPxY'], zarr_params['nPxZ']
         for transOpt in zarr_params.get('ImTransOpt', []):

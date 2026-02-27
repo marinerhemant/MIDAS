@@ -98,25 +98,31 @@ static inline void REta4MYZ(double Y, double Z, double Ycen, double Zcen,
                             double TRs[3][3], double Lsd, double RhoD,
                             double p0, double p1, double p2, double p3,
                             double n0, double n1, double n2, double px,
-                            double *RetVals) {
+                            double *RetVals, double p4, int DistortionOrder,
+                            double dLsd, double dP2) {
   double Yc, Zc, ABC[3], ABCPr[3], XYZ[3], Rad, Eta, RNorm, DistortFunc, EtaT,
       Rt;
+  double panelLsd = Lsd + dLsd;
+  double panelP2 = p2 + dP2;
   Yc = (-Y + Ycen) * px;
   Zc = (Z - Zcen) * px;
   ABC[0] = 0;
   ABC[1] = Yc;
   ABC[2] = Zc;
   MatrixMult(TRs, ABC, ABCPr);
-  XYZ[0] = Lsd + ABCPr[0];
+  XYZ[0] = panelLsd + ABCPr[0];
   XYZ[1] = ABCPr[1];
   XYZ[2] = ABCPr[2];
-  Rad = (Lsd / (XYZ[0])) * (sqrt(XYZ[1] * XYZ[1] + XYZ[2] * XYZ[2]));
+  Rad = (panelLsd / (XYZ[0])) * (sqrt(XYZ[1] * XYZ[1] + XYZ[2] * XYZ[2]));
   Eta = CalcEtaAngle(XYZ[1], XYZ[2]);
   RNorm = Rad / RhoD;
   EtaT = 90 - Eta;
   DistortFunc = (p0 * (pow(RNorm, n0)) * (cos(deg2rad * (2 * EtaT)))) +
                 (p1 * (pow(RNorm, n1)) * (cos(deg2rad * (4 * EtaT + p3)))) +
-                (p2 * (pow(RNorm, n2))) + 1;
+                (panelP2 * (pow(RNorm, n2)));
+  if (DistortionOrder >= 6)
+    DistortFunc += p4 * pow(RNorm, 6.0);
+  DistortFunc += 1;
   Rt = Rad * DistortFunc / px; // in pixels
   RetVals[0] = Eta;
   RetVals[1] = Rt;
@@ -278,7 +284,8 @@ mapperfcn(double tx, double ty, double tz, int NrPixelsY, int NrPixelsZ,
           double RhoD, double p0, double p1, double p2, double p3,
           double *EtaBinsLow, double *EtaBinsHigh, double *RBinsLow,
           double *RBinsHigh, int nRBins, int nEtaBins, struct data ***pxList,
-          int **nPxList, int **maxnPx, double *mask) {
+          int **nPxList, int **maxnPx, double *mask, double p4,
+          int DistortionOrder) {
   double txr, tyr, tzr;
   txr = deg2rad * tx;
   tyr = deg2rad * ty;
@@ -342,11 +349,14 @@ mapperfcn(double tx, double ty, double tz, int NrPixelsY, int NrPixelsZ,
       testPos += i;
       testPos += i;
       double pdY = 0, pdZ = 0;
+      double dLsd = 0, dP2 = 0;
       int pIdx = GetPanelIndex((double)i, (double)j, nPanels, panels);
       if (pIdx >= 0) {
         ApplyPanelCorrection((double)i, (double)j, &panels[pIdx], &pdY, &pdZ);
         pdY -= (double)i; // convert back to delta
         pdZ -= (double)j;
+        dLsd = panels[pIdx].dLsd;
+        dP2 = panels[pIdx].dP2;
       }
       ypr = (double)i + distortionMapY[testPos] + pdY;
       zpr = (double)j + distortionMapZ[testPos] + pdZ;
@@ -355,7 +365,7 @@ mapperfcn(double tx, double ty, double tz, int NrPixelsY, int NrPixelsZ,
           Y = ypr + dy[k];
           Z = zpr + dz[l];
           REta4MYZ(Y, Z, Ycen, Zcen, TRs, Lsd, RhoD, p0, p1, p2, p3, n0, n1, n2,
-                   pxY, RetVals);
+                   pxY, RetVals, p4, DistortionOrder, dLsd, dP2);
           Eta = RetVals[0];
           Rt = RetVals[1]; // in pixels
           if (Eta < EtaMi)
@@ -370,7 +380,7 @@ mapperfcn(double tx, double ty, double tz, int NrPixelsY, int NrPixelsZ,
       }
       // Get corrected Y, Z for this position.
       REta4MYZ(ypr, zpr, Ycen, Zcen, TRs, Lsd, RhoD, p0, p1, p2, p3, n0, n1, n2,
-               pxY, RetVals);
+               pxY, RetVals, p4, DistortionOrder, dLsd, dP2);
       Eta = RetVals[0];
       Rt = RetVals[1]; // in pixels
       YZ4mREta(Rt, Eta, RetVals2);
@@ -717,9 +727,10 @@ int main(int argc, char *argv[]) {
   int count = 0;
   double tx = 0.0, ty = 0.0, tz = 0.0, pxY = 200.0, pxZ = 200.0, yCen = 1024.0,
          zCen = 1024.0, Lsd = 1000000.0, RhoD = 200000.0, p0 = 0.0, p1 = 0.0,
-         p2 = 0.0, p3 = 0.0, EtaBinSize = 5, RBinSize = 0.25, RMax = 1524.0,
-         RMin = 10.0, EtaMax = 180.0, EtaMin = -180.0;
+         p2 = 0.0, p3 = 0.0, p4 = 0.0, EtaBinSize = 5, RBinSize = 0.25,
+         RMax = 1524.0, RMin = 10.0, EtaMax = 180.0, EtaMin = -180.0;
   int NrPixelsY = 2048, NrPixelsZ = 2048;
+  int DistortionOrder = 4;
   char aline[4096], dummy[4096], *str;
   distortionFile = 0;
   char *distortionFN = NULL;
@@ -759,6 +770,15 @@ int main(int argc, char *argv[]) {
     if (strstr(finfo->name, "analysis/process/analysis_parameters/p3/0") !=
         NULL) {
       ReadZarrChunk(arch, count, &p3, sizeof(double));
+    }
+    if (strstr(finfo->name, "analysis/process/analysis_parameters/p4/0") !=
+        NULL) {
+      ReadZarrChunk(arch, count, &p4, sizeof(double));
+    }
+    if (strstr(finfo->name,
+               "analysis/process/analysis_parameters/DistortionOrder/0") !=
+        NULL) {
+      ReadZarrChunk(arch, count, &DistortionOrder, sizeof(int));
     }
     if (strstr(finfo->name, "analysis/process/analysis_parameters/p2/0") !=
         NULL) {
@@ -1029,10 +1049,10 @@ int main(int argc, char *argv[]) {
   }
   // Parameters needed: tx, ty, tz, NrPixelsY, NrPixelsZ, pxY, pxZ, yCen, zCen,
   // Lsd, RhoD, p0, p1, p2
-  long long int TotNrOfBins =
-      mapperfcn(tx, ty, tz, NrPixelsY, NrPixelsZ, pxY, pxZ, yCen, zCen, Lsd,
-                RhoD, p0, p1, p2, p3, EtaBinsLow, EtaBinsHigh, RBinsLow,
-                RBinsHigh, nRBins, nEtaBins, pxList, nPxList, maxnPx, mask);
+  long long int TotNrOfBins = mapperfcn(
+      tx, ty, tz, NrPixelsY, NrPixelsZ, pxY, pxZ, yCen, zCen, Lsd, RhoD, p0, p1,
+      p2, p3, EtaBinsLow, EtaBinsHigh, RBinsLow, RBinsHigh, nRBins, nEtaBins,
+      pxList, nPxList, maxnPx, mask, p4, DistortionOrder);
   printf("Total Number of bins %lld\n", TotNrOfBins);
   fflush(stdout);
   long long int LengthNPxList = nRBins * nEtaBins;
