@@ -192,6 +192,14 @@ int main(int argc, char *argv[]) {
              &LatticeConstant[4], &LatticeConstant[5]);
       continue;
     }
+    str = "LatticeConstant ";
+    LowNr = strncmp(aline, str, strlen(str));
+    if (LowNr == 0) {
+      sscanf(aline, "%s %lf %lf %lf %lf %lf %lf", dummy, &LatticeConstant[0],
+             &LatticeConstant[1], &LatticeConstant[2], &LatticeConstant[3],
+             &LatticeConstant[4], &LatticeConstant[5]);
+      continue;
+    }
     str = "tx ";
     LowNr = strncmp(aline, str, strlen(str));
     if (LowNr == 0) {

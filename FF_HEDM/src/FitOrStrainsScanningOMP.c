@@ -1261,6 +1261,13 @@ int main(int argc, char *argv[]) {
              &LatCinT[1], &LatCinT[2], &LatCinT[3], &LatCinT[4], &LatCinT[5]);
       continue;
     }
+    str = "LatticeConstant ";
+    LowNr = strncmp(aline, str, strlen(str));
+    if (LowNr == 0) {
+      sscanf(aline, "%s %lf %lf %lf %lf %lf %lf", dummy, &LatCinT[0],
+             &LatCinT[1], &LatCinT[2], &LatCinT[3], &LatCinT[4], &LatCinT[5]);
+      continue;
+    }
     str = "px ";
     LowNr = strncmp(aline, str, strlen(str));
     if (LowNr == 0) {

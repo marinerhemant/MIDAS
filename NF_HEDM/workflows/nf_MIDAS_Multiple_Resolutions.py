@@ -450,8 +450,18 @@ def run_multi_resolution_workflow(args, params, t0):
     starting_grid_size = params['GridRefactor'][0]
     scaling_factor = params['GridRefactor'][1]
     num_loops = int(params['GridRefactor'][2])
-    mic_file_base = params['MicFileText']
-    seed_file_base = params['SeedOrientations']
+    # Strip accumulated suffixes from previous runs to ensure idempotent restarts.
+    # e.g. "mymic.0.0" -> "mymic", "mymic_merged.1" -> "mymic", "mymic_all_solutions.2" -> "mymic"
+    import re
+    mic_file_raw = params['MicFileText']
+    mic_file_base = re.sub(r'(_all_solutions|_merged)?(\.\d+)+$', '', mic_file_raw)
+    if mic_file_base != mic_file_raw:
+        logger.info(f"Reset MicFileText from '{mic_file_raw}' to base '{mic_file_base}'")
+    
+    seed_raw = params['SeedOrientations']
+    seed_file_base = re.sub(r'(\.\d+)+$', '', seed_raw)
+    if seed_file_base != seed_raw:
+        logger.info(f"Reset SeedOrientations from '{seed_raw}' to base '{seed_file_base}'")
     
     # Capture runtime-injected keys that are NOT in the parameter file.
     # These must be re-injected after every parse_parameters() call.

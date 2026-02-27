@@ -1081,6 +1081,12 @@ int main(int argc, char *argv[]) {
       sscanf(aline, "%s %lf", dummy, &MinEta);
       continue;
     }
+    str = "MinEta ";
+    LowNr = strncmp(aline, str, strlen(str));
+    if (LowNr == 0) {
+      sscanf(aline, "%s %lf", dummy, &MinEta);
+      continue;
+    }
     str = "Hbeam ";
     LowNr = strncmp(aline, str, strlen(str));
     if (LowNr == 0) {

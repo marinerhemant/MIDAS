@@ -353,6 +353,13 @@ int main(int argc, char *argv[]) {
              &beta, &gamma);
       continue;
     }
+    str = "LatticeConstant ";
+    LowNr = strncmp(aline, str, strlen(str));
+    if (LowNr == 0) {
+      sscanf(aline, "%s %lf %lf %lf %lf %lf %lf", dummy, &a, &b, &c, &alpha,
+             &beta, &gamma);
+      continue;
+    }
     str = "Wavelength ";
     LowNr = strncmp(aline, str, strlen(str));
     if (LowNr == 0) {

@@ -887,6 +887,14 @@ int ReadParams(char FileName[], struct TParams *Params) {
              &ABCABG[2], &ABCABG[3], &ABCABG[4], &ABCABG[5]);
       continue;
     }
+    str = "LatticeConstant ";
+    cmpres = strncmp(line, str, strlen(str));
+    if (cmpres == 0) {
+      sscanf(line, "%s %lf", dummy, &(Params->LatticeConstant));
+      sscanf(line, "%s %lf %lf %lf %lf %lf %lf", dummy, &ABCABG[0], &ABCABG[1],
+             &ABCABG[2], &ABCABG[3], &ABCABG[4], &ABCABG[5]);
+      continue;
+    }
     str = "Wavelength ";
     cmpres = strncmp(line, str, strlen(str));
     if (cmpres == 0) {
