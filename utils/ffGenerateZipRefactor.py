@@ -17,7 +17,9 @@ import subprocess
 from concurrent.futures import ThreadPoolExecutor
 
 # --- Global Configuration ---
-compressor = Blosc(cname='zstd', clevel=1, shuffle=Blosc.BITSHUFFLE, nthreads=8)
+from numcodecs import blosc as _blosc
+_blosc.set_nthreads(8)
+compressor = Blosc(cname='zstd', clevel=1, shuffle=Blosc.BITSHUFFLE)
 
 # --- Helper Functions ---
 
