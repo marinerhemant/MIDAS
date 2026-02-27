@@ -16,6 +16,8 @@ from math import ceil
 import subprocess
 from concurrent.futures import ThreadPoolExecutor
 import sys
+import midas_config
+midas_config.run_startup_checks()
 
 # --- Global Configuration ---
 from numcodecs import blosc as _blosc

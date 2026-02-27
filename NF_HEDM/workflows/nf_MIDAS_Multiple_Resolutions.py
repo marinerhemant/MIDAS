@@ -48,6 +48,9 @@ bin_dir = os.path.join(install_dir, "NF_HEDM/bin")
 sys.path.insert(0, utils_dir)
 sys.path.insert(0, v7_dir)
 
+import midas_config
+midas_config.run_startup_checks()
+
 from parsl.app.app import python_app
 
 # --- CONSTANTS ---

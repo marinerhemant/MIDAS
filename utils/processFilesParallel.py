@@ -19,6 +19,7 @@ def runSingle(workData):
     os.makedirs(rf,exist_ok=True)
     try:
         import midas_config
+        midas_config.run_startup_checks()
         binloc = os.path.join(midas_config.MIDAS_UTILS_DIR, 'ffGenerateZipRefactor.py')
     except ImportError:
         binloc = os.path.expanduser('~/opt/MIDAS/utils/ffGenerateZipRefactor.py')

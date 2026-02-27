@@ -12,6 +12,8 @@ from dataclasses import dataclass
 from functools import lru_cache
 import argparse
 from math import cos, sin
+import midas_config
+midas_config.run_startup_checks()
 import numpy as np
 import pandas as pd
 import zarr

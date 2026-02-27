@@ -15,6 +15,8 @@ import matplotlib.patches as mpatches
 plt.rcParams['figure.figsize'] = [10, 10]
 import argparse
 import sys
+import midas_config
+midas_config.run_startup_checks()
 import plotly.graph_objects as go
 import pandas as pd
 import diplib as dip

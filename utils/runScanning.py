@@ -3,6 +3,8 @@ import glob
 from math import sqrt
 import numpy as np
 import matplotlib.pyplot as plt
+import midas_config
+midas_config.run_startup_checks()
 # ~ from calcMiso import *
 
 # ~ nScans = 21

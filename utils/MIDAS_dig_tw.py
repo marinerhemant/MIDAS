@@ -14,6 +14,7 @@ import os, sys
 from math import cos, sin
 try:
     import midas_config
+    midas_config.run_startup_checks()
     utilsDir = midas_config.MIDAS_UTILS_DIR
 except ImportError:
     utilsDir = os.path.expanduser('~/opt/MIDAS/utils/')

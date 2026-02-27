@@ -11,6 +11,8 @@ import numpy as np
 import subprocess
 from multiprocessing import Pool
 import argparse
+import midas_config
+midas_config.run_startup_checks()
 import pathlib
 import multiprocessing
 import shutil

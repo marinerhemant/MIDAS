@@ -28,6 +28,7 @@ def singleJob(fileNr):
     f_err = open(f'{thisResFolder}/zip_err.txt','w')
     try:
         import midas_config
+        midas_config.run_startup_checks()
         zipPath = os.path.join(midas_config.MIDAS_UTILS_DIR, 'ffGenerateZipRefactor.py')
     except ImportError:
         zipPath = os.path.expanduser('~/opt/MIDAS/utils/ffGenerateZipRefactor.py')

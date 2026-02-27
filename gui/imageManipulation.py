@@ -34,6 +34,7 @@ try:
     if utils_dir not in sys.path:
         sys.path.append(utils_dir)
     import midas_config
+    midas_config.run_startup_checks()
 except ImportError as e:
     print(f"Warning: Could not import midas_config: {e}")
     # Fallback or allow subsequent failures to handle it

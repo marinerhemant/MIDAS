@@ -76,6 +76,8 @@ MIDAS_BIN = MIDAS_HOME / "FF_HEDM" / "bin"
 
 # Add MIDAS utils to path
 sys.path.insert(0, str(MIDAS_UTILS))
+import midas_config
+midas_config.run_startup_checks()
 try:
     from midas2zip import Hdf5ToZarr
 except ImportError:

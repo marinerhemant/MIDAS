@@ -1,0 +1,12 @@
+#!/bin/bash
+#
+# post-merge hook — Remind users to rebuild after git pull.
+# Installed automatically by build.sh
+#
+
+echo ""
+echo "  ╔══════════════════════════════════════════════════════════════╗"
+echo "  ║  ⚠️  MIDAS source updated! Please rebuild:                  ║"
+echo "  ║     cd MIDAS/build && cmake --build .                       ║"
+echo "  ╚══════════════════════════════════════════════════════════════╝"
+echo ""

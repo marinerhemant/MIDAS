@@ -175,6 +175,9 @@ def parallel_peaks(layerNr, positions, startNrFirstLayer, nrFilesPerSweep, topdi
     sys.path.insert(0, utils_dir)
     sys.path.insert(0, v7_dir)
     
+    import midas_config
+    midas_config.run_startup_checks()
+    
     # Get Python executable
     pytpath = sys.executable
     

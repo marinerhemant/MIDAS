@@ -81,6 +81,8 @@ import subprocess
 import sys
 import textwrap
 from pathlib import Path
+import midas_config
+midas_config.run_startup_checks()
 
 # ---------------------------------------------------------------------------
 # Resolve MIDAS installation directory

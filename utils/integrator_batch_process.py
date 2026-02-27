@@ -27,6 +27,8 @@ import socket
 import datetime
 import math
 from pathlib import Path
+import midas_config
+midas_config.run_startup_checks()
 
 # Check for psutil
 try:
