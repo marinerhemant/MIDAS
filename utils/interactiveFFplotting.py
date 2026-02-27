@@ -9,7 +9,10 @@ import dash_bootstrap_components as dbc
 import plotly.graph_objects as go
 import argparse
 import sys
+import os
+import glob
 import zarr
+import h5py
 from math import cos, sin, sqrt
 import traceback
 
@@ -171,6 +174,142 @@ def load_grain_data(grains_file):
         return grains_df
     except Exception as e: print(f"Error creating Grain DataFrame: {e}", file=sys.stderr); traceback.print_exc(); return None
 
+# --- Consolidated HDF5 Loading Functions ---
+def find_consolidated_h5(result_dir):
+    """Search for a consolidated HDF5 file in the result directory.
+    Returns the path if found, None otherwise."""
+    matches = glob.glob(os.path.join(result_dir, '*_consolidated.h5'))
+    if matches:
+        # If multiple, pick the most recently modified
+        matches.sort(key=os.path.getmtime, reverse=True)
+        return matches[0]
+    return None
+
+def load_spot_data_h5(h5_path, zarr_params):
+    """Load spot data from consolidated HDF5 file.
+    Reads /spot_matrix/data for spot info and /all_spots/data for spot sizes.
+    Returns the same DataFrame structure as load_spot_data()."""
+    if zarr_params is None: return None
+    try:
+        with h5py.File(h5_path, 'r') as h5:
+            # Read SpotMatrix data
+            spots = h5['spot_matrix/data'][:]
+            if spots.ndim == 1: spots = spots.reshape(1, -1)
+
+            # Read InputAllExtraInfoFittingAll for spot sizes (GrainRadius at col 3)
+            spotsOrig = None
+            if 'all_spots' in h5 and 'data' in h5['all_spots']:
+                spotsOrig = h5['all_spots/data'][:]
+                if spotsOrig.ndim == 1: spotsOrig = spotsOrig.reshape(1, -1)
+
+        print(f"Loaded {spots.shape[0]} spots from consolidated HDF5.")
+    except Exception as e:
+        print(f"Error reading consolidated HDF5 {h5_path}: {e}", file=sys.stderr)
+        traceback.print_exc()
+        return None
+
+    # Reuse the same processing logic as load_spot_data()
+    # spotsOrig from HDF5 has SpotID at col 4 (not 1-based row index like InputAll.csv)
+    # Build a lookup: spotID -> GrainRadius
+    spot_size_lookup = {}
+    if spotsOrig is not None:
+        for i in range(spotsOrig.shape[0]):
+            sid = int(spotsOrig[i, 4])  # SpotID column
+            spot_size_lookup[sid] = spotsOrig[i, 3]  # GrainRadius column
+
+    data = {k: [] for k in ['omega', 'y', 'z', 'g1', 'g2', 'g3', 'ringNr', 'ringNrInt', 'strain', 'ds', 'grainID', 'grainIDColor', 'spotID', 'detY', 'detZ', 'spotSize', 'detHor', 'detVer', 'omeRaw', 'eta', 'tTheta']}
+    pixSz, Lsd, wl = zarr_params['pixSz'], zarr_params['Lsd'], zarr_params['wl']
+
+    for i in range(spots.shape[0]):
+        if spots[i][SPOT_OMEGA_RAW_COL] == 0.0 and spots[i][SPOT_OMEGA_COL] == 0.0: continue
+        omega_val, tTheta_val_deg = spots[i][SPOT_OMEGA_COL], spots[i][SPOT_TTHETA_COL]
+        tTheta_val_deg *= 2
+        spot_y_microns, spot_z_microns = spots[i][SPOT_Y_M_COL], spots[i][SPOT_Z_M_COL]
+        data['y'].append(spot_y_microns / pixSz); data['z'].append(spot_z_microns / pixSz); data['omega'].append(omega_val)
+        ring_nr_int = int(spots[i][SPOT_RING_NR_COL]); data['ringNr'].append(str(ring_nr_int)); data['ringNrInt'].append(ring_nr_int)
+        grain_id_val, spot_id_val = spots[i][SPOT_GRAIN_ID_COL], spots[i][SPOT_ID_COL]
+        data['grainID'].append(grain_id_val); data['grainIDColor'].append(str(int(grain_id_val))); data['spotID'].append(spot_id_val)
+        data['detY'].append(int(spots[i][SPOT_DET_Y_PX_COL])); data['detZ'].append(int(spots[i][SPOT_DET_Z_PX_COL]))
+        data['detHor'].append(int(spots[i][SPOT_DET_Y_PX_COL])); data['detVer'].append(int(spots[i][SPOT_DET_Z_PX_COL]))
+        data['omeRaw'].append(spots[i][SPOT_OMEGA_RAW_COL]); data['eta'].append(spots[i][SPOT_ETA_COL]); data['tTheta'].append(tTheta_val_deg)
+        # Spot size from HDF5 lookup
+        spot_size_val = np.nan
+        spot_id_int = int(spot_id_val)
+        if spot_id_int in spot_size_lookup:
+            raw_size = spot_size_lookup[spot_id_int]
+            spot_size_val = raw_size if np.isfinite(raw_size) else np.nan
+        data['spotSize'].append(spot_size_val)
+        data['strain'].append(1e6 * np.abs(spots[i][SPOT_STRAIN_COL]))
+        sin_tTheta = sin(tTheta_val_deg * deg2rad / 2.0)
+        ds_val = wl / (2 * sin_tTheta) if abs(sin_tTheta) > 1e-9 else np.nan; data['ds'].append(ds_val)
+        g1_raw, g2_raw, g3_raw = spot2gv(Lsd, spot_y_microns * 1e-6, spot_z_microns * 1e-6, omega_val)
+        g_mag_raw = sqrt(g1_raw**2 + g2_raw**2 + g3_raw**2)
+        if g_mag_raw > 1e-9 and not np.isnan(ds_val) and ds_val > 1e-9:
+             scale_factor = (1.0 / ds_val) / g_mag_raw; g1, g2, g3 = g1_raw * scale_factor, g2_raw * scale_factor, g3_raw * scale_factor
+        else: g1, g2, g3 = np.nan, np.nan, np.nan
+        data['g1'].append(g1); data['g2'].append(g2); data['g3'].append(g3)
+
+    try:
+        spots_df = pd.DataFrame(data)
+        spots_df.dropna(subset=['g1', 'g2', 'g3'], inplace=True)
+        num_cols = ['spotSize', 'strain', 'ds', 'omega', 'y', 'z', 'g1', 'g2', 'g3', 'tTheta', 'eta', 'omeRaw']
+        for col in num_cols: spots_df[col] = pd.to_numeric(spots_df[col], errors='coerce')
+        id_cols = {'grainID': 'Int64', 'spotID': 'Int64', 'ringNrInt': 'Int64', 'detY':'Int64', 'detZ':'Int64', 'detHor':'Int64', 'detVer':'Int64'}
+        for col, dtype in id_cols.items():
+            if col in spots_df.columns: spots_df[col] = pd.to_numeric(spots_df[col], errors='coerce').astype(dtype)
+        str_cols = ['grainIDColor', 'ringNr']; spots_df[str_cols] = spots_df[str_cols].astype(str)
+        spots_df = spots_df.sort_values(by=['grainID', 'spotID'])
+        print(f"Created DataFrame with {len(spots_df)} spots from consolidated HDF5.")
+        return spots_df
+    except Exception as e: print(f"Error creating Spot DataFrame from HDF5: {e}", file=sys.stderr); traceback.print_exc(); return None
+
+def load_grain_data_h5(h5_path):
+    """Load grain data from consolidated HDF5 file.
+    Reads /grains/summary (same layout as Grains.csv after header).
+    Returns the same DataFrame structure as load_grain_data()."""
+    try:
+        with h5py.File(h5_path, 'r') as h5:
+            grains = h5['grains/summary'][:]
+        if grains.ndim == 1: grains = grains.reshape(1, -1)
+        print(f"Loaded {grains.shape[0]} grains from consolidated HDF5.")
+    except Exception as e:
+        print(f"Error reading grains from {h5_path}: {e}", file=sys.stderr)
+        traceback.print_exc()
+        return None
+
+    if grains.shape[0] == 0:
+        print("Warning: Grains data is empty in HDF5.")
+        return pd.DataFrame({'x': [], 'y': [], 'z': [], 'GrainSize': [], 'Confidence': [], 'ID': [], 'Euler0': [], 'Euler1': [], 'Euler2': [], 'StrainError': [], 'IDColor': [], 'Error': [], 'RawGrainSize': []})
+
+    data2 = {k: [] for k in ['x', 'y', 'z', 'GrainSize', 'RawGrainSize', 'Confidence', 'ID', 'IDColor', 'Euler0', 'Euler1', 'Euler2', 'Error', 'StrainError']}
+    valid_size_mask = np.full(grains.shape[0], False)
+    if grains.shape[1] > GRAIN_SIZE_COL: valid_size_mask = np.isfinite(grains[:, GRAIN_SIZE_COL]) & (grains[:, GRAIN_SIZE_COL] > 0)
+    largestSize = np.max(grains[valid_size_mask, GRAIN_SIZE_COL]) if np.any(valid_size_mask) else 1.0
+    if largestSize <= 0: largestSize = 1.0
+
+    for i in range(grains.shape[0]):
+        data2['x'].append(grains[i, GRAIN_X_COL]); data2['y'].append(grains[i, GRAIN_Y_COL]); data2['z'].append(grains[i, GRAIN_Z_COL])
+        raw_size = grains[i, GRAIN_SIZE_COL] if grains.shape[1] > GRAIN_SIZE_COL and np.isfinite(grains[i, GRAIN_SIZE_COL]) else 0
+        data2['RawGrainSize'].append(raw_size)
+        target_max_grain_visual_size = MAX_MARKER_SIZE_VISUAL * 2
+        scaled_size = max(MIN_MARKER_SIZE_VISUAL, target_max_grain_visual_size * raw_size / largestSize) if raw_size > 0 and largestSize > 0 else MIN_MARKER_SIZE_VISUAL
+        data2['GrainSize'].append(scaled_size)
+        data2['Confidence'].append(grains[i, GRAIN_COMPLETENESS_COL])
+        data2['Euler0'].append(grains[i, GRAIN_EULER_0_COL]); data2['Euler1'].append(grains[i, GRAIN_EULER_1_COL]); data2['Euler2'].append(grains[i, GRAIN_EULER_2_COL])
+        data2['StrainError'].append(grains[i, GRAIN_STRAIN_ERROR_COL]); data2['Error'].append(grains[i, GRAIN_ERROR_COL])
+        grain_id = grains[i, GRAIN_ID_COL]; data2['ID'].append(grain_id); data2['IDColor'].append(f'{int(grain_id)}')
+
+    try:
+        grains_df = pd.DataFrame(data2)
+        num_cols = ['x', 'y', 'z', 'GrainSize', 'RawGrainSize', 'Confidence', 'Euler0', 'Euler1', 'Euler2', 'Error', 'StrainError']
+        for col in num_cols: grains_df[col] = pd.to_numeric(grains_df[col], errors='coerce')
+        grains_df['ID'] = pd.to_numeric(grains_df['ID'], errors='coerce').astype('Int64')
+        grains_df['IDColor'] = grains_df['IDColor'].astype(str)
+        grains_df = grains_df.sort_values(by=['ID'])
+        print(f"Processed {len(data2['ID'])} grains from consolidated HDF5.")
+        return grains_df
+    except Exception as e: print(f"Error creating Grain DataFrame from HDF5: {e}", file=sys.stderr); traceback.print_exc(); return None
+
 # --- Main Application Setup ---
 if __name__ == '__main__':
     parser = MyParser(description='''MIDAS FF Interactive Plotter''', formatter_class=argparse.ArgumentDefaultsHelpFormatter)
@@ -183,9 +322,24 @@ if __name__ == '__main__':
 
     print("Loading Zarr parameters..."); zarr_params = load_zarr_params(dataFile)
     if zarr_params is None: sys.exit("Failed Zarr load.")
-    print("Loading spot data..."); spots_df = load_spot_data(resultDir + '/SpotMatrix.csv', resultDir + '/InputAll.csv', zarr_params)
+
+    # Try consolidated HDF5 first, fall back to CSV files
+    h5_path = find_consolidated_h5(resultDir)
+    if h5_path:
+        print(f"Found consolidated HDF5: {h5_path}")
+        print("Loading spot data from HDF5..."); spots_df = load_spot_data_h5(h5_path, zarr_params)
+        print("Loading grain data from HDF5..."); grains_df = load_grain_data_h5(h5_path)
+        # Fall back to CSV if HDF5 loading failed
+        if spots_df is None:
+            print("HDF5 spot load failed, falling back to CSV..."); spots_df = load_spot_data(resultDir + '/SpotMatrix.csv', resultDir + '/InputAll.csv', zarr_params)
+        if grains_df is None:
+            print("HDF5 grain load failed, falling back to CSV..."); grains_df = load_grain_data(resultDir + '/Grains.csv')
+    else:
+        print("No consolidated HDF5 found, using CSV files...")
+        print("Loading spot data..."); spots_df = load_spot_data(resultDir + '/SpotMatrix.csv', resultDir + '/InputAll.csv', zarr_params)
+        print("Loading grain data..."); grains_df = load_grain_data(resultDir + '/Grains.csv')
+
     if spots_df is None: sys.exit("Failed spot load.")
-    print("Loading grain data..."); grains_df = load_grain_data(resultDir + '/Grains.csv')
     if grains_df is None: sys.exit("Failed grain load.")
 
     initial_grain_id = grains_df['ID'].iloc[0] if not grains_df.empty else None
