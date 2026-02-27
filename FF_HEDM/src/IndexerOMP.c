@@ -1806,10 +1806,11 @@ int DoIndexing(int SpotIDs, struct TParams Params, int offsetLoc, int idNr,
   }
   if (nPlaneNormals == 0) {
     if (usingFriedelPair == 1) {
-      printf("We were using Friedel Pairs, but did not find any for this spot "
-             "%d.\n",
-             SpotIDs);
-      fflush(stdout);
+      // printf("We were using Friedel Pairs, but did not find any for this spot
+      // "
+      //        "%d.\n",
+      //        SpotIDs);
+      // fflush(stdout);
       return 1;
     }
     usingFriedelPair = 0;
@@ -1949,8 +1950,8 @@ int DoIndexing(int SpotIDs, struct TParams Params, int offsetLoc, int idNr,
   fracMatches = bestFracTillNow;
   if (fracMatches > 1 || fracMatches < 0 || (int)bestnTspotsIsp == 0 ||
       (int)bestnMatchesIsp == -1 || bestMatchFound == 0) {
-    printf("Nothing good found for ID: %d.\n", SpotIDs);
-    fflush(stdout);
+    // printf("Nothing good found for ID: %d.\n", SpotIDs);
+    // fflush(stdout);
     return 1;
   }
   double enTm = omp_get_wtime() - sttm;
