@@ -504,6 +504,8 @@ int main(int argc, char *argv[]) {
   char fn[1000];
   char fn2[1000];
   char direct[1000];
+  char outputDir[1000];
+  outputDir[0] = '\0';
   double OmegaRanges[MAX_N_OMEGA_RANGES][2], BoxSizes[MAX_N_OMEGA_RANGES][4];
   int cntr = 0, countr = 0, conter = 0, StartNr, EndNr, intdummy, SpaceGroup,
       RingsToUse[100], nRingsToUse = 0;
@@ -526,6 +528,12 @@ int main(int argc, char *argv[]) {
     LowNr = strncmp(aline, str, strlen(str));
     if (LowNr == 0) {
       sscanf(aline, "%s %s", dummy, direct);
+      continue;
+    }
+    str = "OutputDirectory ";
+    LowNr = strncmp(aline, str, strlen(str));
+    if (LowNr == 0) {
+      sscanf(aline, "%s %s", dummy, outputDir);
       continue;
     }
     str = "RingsToUse ";
@@ -749,15 +757,17 @@ int main(int argc, char *argv[]) {
   gs = gSze;
   fclose(fileParam);
   // Read bin files
+  if (outputDir[0] == '\0')
+    strcpy(outputDir, direct);
   char fnG[1000];
-  sprintf(fnG, "%s/grid.txt", direct);
+  sprintf(fnG, "%s/grid.txt", outputDir);
   char fnDS[1000];
   char fnKey[1000];
   char fnOr[1000];
-  sprintf(fnDS, "%s/DiffractionSpots.txt", direct);
-  sprintf(fnKey, "%s/Key.txt", direct);
-  sprintf(fnOr, "%s/OrientMat.txt", direct);
-  sprintf(fn, "%s/%s", direct, fn2);
+  sprintf(fnDS, "%s/DiffractionSpots.txt", outputDir);
+  sprintf(fnKey, "%s/Key.txt", outputDir);
+  sprintf(fnOr, "%s/OrientMat.txt", outputDir);
+  sprintf(fn, "%s/%s", outputDir, fn2);
   char *ext = "bin";
   int *ObsSpotsInfo;
   int ReadCode;

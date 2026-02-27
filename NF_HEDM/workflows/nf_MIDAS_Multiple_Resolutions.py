@@ -773,10 +773,12 @@ def main():
 
     # --- 2. Configuration from Parsed Arguments and Files ---
     params = parse_parameters(args.paramFN)
-    resultFolder = params.get('DataDirectory')
+    resultFolder = params.get('OutputDirectory', params.get('DataDirectory'))
     if not resultFolder:
-        logger.error("DataDirectory not found in parameter file.")
+        logger.error("Neither OutputDirectory nor DataDirectory found in parameter file.")
         sys.exit(1)
+    if 'OutputDirectory' in params:
+        logger.info(f"Using OutputDirectory for results: {resultFolder}")
     
     logDir = os.path.join(resultFolder, 'midas_log')
     params['logDir'] = logDir

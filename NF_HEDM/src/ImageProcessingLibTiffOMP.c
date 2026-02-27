@@ -818,8 +818,9 @@ int main(int argc, char *argv[]) {
   FILE *fileParam;
   ParamFN = argv[1];
   char aline[1000];
-  char fn2[1000], fn[1000], direct[1000], extOrig[1000], extReduced[1000],
-      ReducedFileName[1024];
+  char fn2[1000], fn[1000], direct[1000], outputDir[1000], extOrig[1000],
+      extReduced[1000], ReducedFileName[1024];
+  outputDir[0] = '\0';
   fileParam = fopen(ParamFN, "r");
   char *str, dummy[1000];
   int LowNr, StartNr, NrFilesPerLayer, NrPixels = 2048, BlanketSubtraction,
@@ -851,6 +852,12 @@ int main(int argc, char *argv[]) {
     LowNr = strncmp(aline, str, strlen(str));
     if (LowNr == 0) {
       sscanf(aline, "%s %s", dummy, direct);
+      continue;
+    }
+    str = "OutputDirectory ";
+    LowNr = strncmp(aline, str, strlen(str));
+    if (LowNr == 0) {
+      sscanf(aline, "%s %s", dummy, outputDir);
       continue;
     }
     str = "LoGMaskRadius ";
@@ -962,6 +969,8 @@ int main(int argc, char *argv[]) {
   int nTotalPixels = NrPixelsY * NrPixelsZ;
   if (doDeblur != 0)
     WriteFinImage = 1;
+  if (outputDir[0] == '\0')
+    strcpy(outputDir, direct);
   sprintf(fn, "%s/%s", direct, fn2);
   fclose(fileParam);
 
@@ -972,6 +981,7 @@ int main(int argc, char *argv[]) {
   printf("================================================================\n");
   printf("\n--- File Paths ---\n");
   printf("  DataDirectory:        %s\n", direct);
+  printf("  OutputDirectory:      %s\n", outputDir);
   printf("  OrigFileName:         %s\n", fn2);
   printf("  ReducedFileName:      %s\n", ReducedFileName);
   printf("  extOrig:              %s\n", extOrig);
@@ -1016,7 +1026,7 @@ int main(int argc, char *argv[]) {
   int dNr;
   for (dNr = 0; dNr < nDistances; dNr++) {
     char MedianFileName[1024];
-    sprintf(MedianFileName, "%s/%s_Median_Background_Distance_%d.%s", direct,
+    sprintf(MedianFileName, "%s/%s_Median_Background_Distance_%d.%s", outputDir,
             ReducedFileName, dNr, extReduced);
     FILE *MFI = fopen(MedianFileName, "r");
     if (MFI == NULL) {
@@ -1044,7 +1054,7 @@ int main(int argc, char *argv[]) {
     int i, j, k;
     FILE *fk;
     char OutFN[5024];
-    sprintf(OutFN, "%s/%s_%06d.%s%d", direct, ReducedFileName, ImageNr,
+    sprintf(OutFN, "%s/%s_%06d.%s%d", outputDir, ReducedFileName, ImageNr,
             extReduced, layerNr - 1);
     char OutFileName[5024];
     strcpy(OutFileName, OutFN);
@@ -1224,7 +1234,7 @@ int main(int argc, char *argv[]) {
     char OutFN2[1024];
     if (WriteFinImage == 1) {
       FILE *fw;
-      sprintf(OutFN2, "%s/%s_FullImage_%06d.%s%d", direct, ReducedFileName,
+      sprintf(OutFN2, "%s/%s_FullImage_%06d.%s%d", outputDir, ReducedFileName,
               ImageNr, extReduced, layerNr - 1);
       fw = fopen(OutFN2, "wb");
       fwrite(FinalImage, SizeOutFile, 1, fw);

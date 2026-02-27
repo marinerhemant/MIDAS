@@ -293,7 +293,8 @@ int main(int argc, char *argv[]) {
   ParamFN = argv[1];
   char aline[1000];
   fileParam = fopen(ParamFN, "r");
-  char *str, dummy[1000], direct[1024], OF[1024];
+  char *str, dummy[1000], direct[1024], outputDir[1024], OF[1024];
+  outputDir[0] = '\0';
   int LowNr, NrOrientations;
   RealType Distance;
   double Distances[10], ExcludePoleAngle, LatticeConstant, Wavelength;
@@ -320,6 +321,12 @@ int main(int argc, char *argv[]) {
     LowNr = strncmp(aline, str, strlen(str));
     if (LowNr == 0) {
       sscanf(aline, "%*s %s", direct);
+      continue;
+    }
+    str = "OutputDirectory ";
+    LowNr = strncmp(aline, str, strlen(str));
+    if (LowNr == 0) {
+      sscanf(aline, "%*s %s", outputDir);
       continue;
     }
     str = "SeedOrientations ";
@@ -404,6 +411,8 @@ int main(int argc, char *argv[]) {
   printf("================================================================\n");
   printf("\n--- File Paths ---\n");
   printf("  DataDirectory:      %s\n", direct);
+  printf("  OutputDirectory:    %s\n",
+         outputDir[0] ? outputDir : "(same as DataDirectory)");
   printf("  SeedOrientations:   %s\n", OF);
   printf("\n--- Geometry ---\n");
   printf("  SpaceGroup:           %d\n", SpaceGroup);
@@ -440,6 +449,8 @@ int main(int argc, char *argv[]) {
   Distance = Distances[0];
   FILE *fp;
 
+  if (outputDir[0] == '\0')
+    strcpy(outputDir, direct);
   double quat1, quat2, quat3, quat4;
   double **randQ;
   randQ = allocMatrix(NrOrientations, 4);
@@ -564,9 +575,9 @@ int main(int argc, char *argv[]) {
   char DSFN[1024];
   char KeyFN[1024];
   char OMFN[1024];
-  sprintf(DSFN, "%s/DiffractionSpots.txt", direct);
-  sprintf(KeyFN, "%s/Key.txt", direct);
-  sprintf(OMFN, "%s/OrientMat.txt", direct);
+  sprintf(DSFN, "%s/DiffractionSpots.txt", outputDir);
+  sprintf(KeyFN, "%s/Key.txt", outputDir);
+  sprintf(OMFN, "%s/OrientMat.txt", outputDir);
 
   ft = fopen(DSFN, "w");
   FILE *fg = fopen(KeyFN, "w");

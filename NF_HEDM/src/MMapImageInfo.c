@@ -192,6 +192,8 @@ int main(int argc, char *argv[]) {
   char fn[1000];
   char fn2[1000];
   char direct[1000];
+  char outputDir[1000];
+  outputDir[0] = '\0';
   int StartNr, EndNr, skipBin = 0;
   int precomputedSpotsInfo = 0;
   while (fgets(aline, 1000, fileParam) != NULL) {
@@ -205,6 +207,12 @@ int main(int argc, char *argv[]) {
     LowNr = strncmp(aline, str, strlen(str));
     if (LowNr == 0) {
       sscanf(aline, "%s %s", dummy, direct);
+      continue;
+    }
+    str = "OutputDirectory ";
+    LowNr = strncmp(aline, str, strlen(str));
+    if (LowNr == 0) {
+      sscanf(aline, "%s %s", dummy, outputDir);
       continue;
     }
     str = "StartNr ";
@@ -265,6 +273,8 @@ int main(int argc, char *argv[]) {
   printf("================================================================\n");
   printf("\n--- File Paths ---\n");
   printf("  DataDirectory:      %s\n", direct);
+  printf("  OutputDirectory:    %s\n",
+         outputDir[0] ? outputDir : "(same as DataDirectory)");
   printf("  ReducedFileName:    %s\n", fn2);
   printf("\n--- Scan Parameters ---\n");
   printf("  nDistances (nLayers): %d\n", nLayers);
@@ -280,14 +290,16 @@ int main(int argc, char *argv[]) {
   fclose(fileParam);
   // Read bin files
   char fnG[1000];
-  sprintf(fnG, "%s/grid.txt", direct);
+  if (outputDir[0] == '\0')
+    strcpy(outputDir, direct);
+  sprintf(fnG, "%s/grid.txt", outputDir);
   char fnDS[1000];
   char fnKey[1000];
   char fnOr[1000];
-  sprintf(fnDS, "%s/DiffractionSpots.txt", direct);
-  sprintf(fnKey, "%s/Key.txt", direct);
-  sprintf(fnOr, "%s/OrientMat.txt", direct);
-  sprintf(fn, "%s/%s", direct, fn2);
+  sprintf(fnDS, "%s/DiffractionSpots.txt", outputDir);
+  sprintf(fnKey, "%s/Key.txt", outputDir);
+  sprintf(fnOr, "%s/OrientMat.txt", outputDir);
+  sprintf(fn, "%s/%s", outputDir, fn2);
   int i, j, m, nrFiles, nrPixels;
   char *ext = "bin";
   int *ObsSpotsInfo;
@@ -308,7 +320,7 @@ int main(int argc, char *argv[]) {
   if (precomputedSpotsInfo) {
     // Read existing SpotsInfo.bin directly instead of generating from bin files
     char existingSI[1024];
-    sprintf(existingSI, "%s/SpotsInfo.bin", direct);
+    sprintf(existingSI, "%s/SpotsInfo.bin", outputDir);
     FILE *fExist = fopen(existingSI, "rb");
     if (fExist == NULL) {
       printf("PrecomputedSpotsInfo is set but could not open %s\n", existingSI);
@@ -384,13 +396,13 @@ int main(int argc, char *argv[]) {
   }
   fclose(fo);
   char SI[1024];
-  sprintf(SI, "%s/SpotsInfo.bin", direct);
+  sprintf(SI, "%s/SpotsInfo.bin", outputDir);
   char DS[1024];
-  sprintf(DS, "%s/DiffractionSpots.bin", direct);
+  sprintf(DS, "%s/DiffractionSpots.bin", outputDir);
   char KEY[1024];
-  sprintf(KEY, "%s/Key.bin", direct);
+  sprintf(KEY, "%s/Key.bin", outputDir);
   char OM[1024];
-  sprintf(OM, "%s/OrientMat.bin", direct);
+  sprintf(OM, "%s/OrientMat.bin", outputDir);
   FILE *fSI, *fDS, *fKEY, *fOM;
   if (skipBin == 0 && !precomputedSpotsInfo)
     fSI = fopen(SI, "wb");

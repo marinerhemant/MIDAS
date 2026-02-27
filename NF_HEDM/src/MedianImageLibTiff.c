@@ -236,8 +236,9 @@ int main(int argc, char *argv[]) {
   FILE *fileParam;
   ParamFN = argv[1];
   char aline[1000];
-  char fn2[1000], fn[1000], outFN[1000], direct[1000], ext[1000],
-      extReduced[1000], ReducedFileName[1000];
+  char fn2[1000], fn[1000], outFN[1000], direct[1000], outputDir[1000],
+      ext[1000], extReduced[1000], ReducedFileName[1000];
+  outputDir[0] = '\0';
   fileParam = fopen(ParamFN, "r");
   char *str, dummy[1000];
   int LowNr, nLayers, StartNr, NrFilesPerLayer, NrPixels, WFImages = 0;
@@ -253,6 +254,12 @@ int main(int argc, char *argv[]) {
     LowNr = strncmp(aline, str, strlen(str));
     if (LowNr == 0) {
       sscanf(aline, "%s %s", dummy, direct);
+      continue;
+    }
+    str = "OutputDirectory ";
+    LowNr = strncmp(aline, str, strlen(str));
+    if (LowNr == 0) {
+      sscanf(aline, "%s %s", dummy, outputDir);
       continue;
     }
     str = "NrPixels ";
@@ -299,8 +306,10 @@ int main(int argc, char *argv[]) {
     }
   }
   StartNr = StartNr + (nLayers - 1) * WFImages;
+  if (outputDir[0] == '\0')
+    strcpy(outputDir, direct);
   sprintf(fn, "%s/%s", direct, fn2);
-  sprintf(outFN, "%s/%s", direct, ReducedFileName);
+  sprintf(outFN, "%s/%s", outputDir, ReducedFileName);
   fclose(fileParam);
 
   // Print all parameters read from parameter file
@@ -310,6 +319,7 @@ int main(int argc, char *argv[]) {
   printf("================================================================\n");
   printf("\n--- File Paths ---\n");
   printf("  DataDirectory:        %s\n", direct);
+  printf("  OutputDirectory:      %s\n", outputDir);
   printf("  OrigFileName:         %s\n", fn2);
   printf("  ReducedFileName:      %s\n", ReducedFileName);
   printf("  Full input path:      %s\n", fn);

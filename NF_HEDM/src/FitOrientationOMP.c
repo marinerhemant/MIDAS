@@ -300,6 +300,8 @@ int main(int argc, char *argv[]) {
   char fn[1000], MicFN[1000];
   char fn2[1000];
   char direct[1000] = ".";
+  char outputDir[1000];
+  outputDir[0] = '\0';
   char gridfn[1000];
   double OmegaRanges[MAX_N_OMEGA_RANGES][2], BoxSizes[MAX_N_OMEGA_RANGES][4];
   int cntr = 0, countr = 0, conter = 0, StartNr, EndNr, intdummy, SpaceGroup,
@@ -340,6 +342,12 @@ int main(int argc, char *argv[]) {
     LowNr = strncmp(aline, str, strlen(str));
     if (LowNr == 0) {
       sscanf(aline, "%s %s", dummy, direct);
+      continue;
+    }
+    str = "OutputDirectory ";
+    LowNr = strncmp(aline, str, strlen(str));
+    if (LowNr == 0) {
+      sscanf(aline, "%s %s", dummy, outputDir);
       continue;
     }
     str = "Lsd ";
@@ -523,6 +531,8 @@ int main(int argc, char *argv[]) {
   printf("  FitOrientationOMP Parameter Summary\n");
   printf("======================================================\n");
   printf("  DataDirectory   : %s\n", direct);
+  printf("  OutputDirectory : %s\n",
+         outputDir[0] ? outputDir : "(same as DataDirectory)");
   printf("  MicFileBinary   : %s\n", MicFN);
   printf("  ReducedFileName : %s\n", fn2);
   printf("  GridFileName    : %s\n", gridfnfound ? gridfn : "grid.txt");
@@ -575,17 +585,19 @@ int main(int argc, char *argv[]) {
   fclose(fileParam);
   MaxTtheta = rad2deg * atan(MaxRingRad / Lsd[0]);
   // Read bin files
+  if (outputDir[0] == '\0')
+    strcpy(outputDir, direct);
   char fnG[1000];
   if (gridfnfound == 1)
-    sprintf(fnG, "%s/%s", direct, gridfn);
+    sprintf(fnG, "%s/%s", outputDir, gridfn);
   else
-    sprintf(fnG, "%s/grid.txt", direct);
+    sprintf(fnG, "%s/grid.txt", outputDir);
   char fnDS[1000];
   char fnKey[1000];
   char fnOr[1000];
-  sprintf(fnDS, "%s/DiffractionSpots.txt", direct);
-  sprintf(fnKey, "%s/Key.txt", direct);
-  sprintf(fnOr, "%s/OrientMat.txt", direct);
+  sprintf(fnDS, "%s/DiffractionSpots.txt", outputDir);
+  sprintf(fnKey, "%s/Key.txt", outputDir);
+  sprintf(fnOr, "%s/OrientMat.txt", outputDir);
   char *ext = "bin";
   int *ObsSpotsInfo;
   nrFiles = EndNr - StartNr + 1;
@@ -600,7 +612,7 @@ int main(int argc, char *argv[]) {
   // Read spots info (mmap directly from DataDirectory, OS page cache keeps it
   // fast)
   char file_name[1024];
-  sprintf(file_name, "%s/SpotsInfo.bin", direct);
+  sprintf(file_name, "%s/SpotsInfo.bin", outputDir);
   int descp;
   struct stat s;
   int status;
@@ -618,7 +630,7 @@ int main(int argc, char *argv[]) {
   // Read DiffractionSpots
   double *SpotsMat;
   char spfn[1024];
-  sprintf(spfn, "%s/DiffractionSpots.bin", direct);
+  sprintf(spfn, "%s/DiffractionSpots.bin", outputDir);
   int spf;
   struct stat s2;
   int status2;
@@ -635,7 +647,7 @@ int main(int argc, char *argv[]) {
   // Read OrientationMatrix
   double *OrientationMatrix;
   char omfn[1024];
-  sprintf(omfn, "%s/OrientMat.bin", direct);
+  sprintf(omfn, "%s/OrientMat.bin", outputDir);
   int omf;
   struct stat s3;
   int status3;
@@ -711,7 +723,7 @@ int main(int argc, char *argv[]) {
   double Thetas[5000];
   char aliner[1000];
   char hklfn[1024];
-  sprintf(hklfn, "%s/hkls.csv", direct);
+  sprintf(hklfn, "%s/hkls.csv", outputDir);
   FILE *hklf = fopen(hklfn, "r");
   fgets(aliner, 1000, hklf);
   while (fgets(aliner, 1000, hklf) != NULL) {
