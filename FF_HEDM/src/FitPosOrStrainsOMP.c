@@ -2199,7 +2199,7 @@ int main(int argc, char *argv[]) {
       // spotIDS[i] should correspond to AllSpots[(spotIDS[i]-1)*14+...], this
       // should reduce execution time.
       size_t spotPosAllSpots;
-      int nSpotsFound = 0;
+      int nSpotsFound = nSpotsBest;
       for (i = 0; i < nSpotsBest; i++) {
         spotPosAllSpots = (int)spotIDS[i] - 1;
         // check if spotPosAllSpots + 1 > nSpots, then print and error and
