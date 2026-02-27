@@ -1902,7 +1902,7 @@ void generate_sinograms_from_indexing(UniqueOrientationsResult *uniqueResult,
   /* Precompute grain quaternions */
   double *grainQuats = malloc(nGrains * 4 * sizeof(double));
   for (size_t g = 0; g < nGrains; g++) {
-    OrientMat2Quat(&uniqueResult->uniqueOrientArr[g * (ORIENT_ARRAY_COLS + 1)],
+    OrientMat2Quat(&uniqueResult->uniqueOrientArr[g * ORIENT_ARRAY_COLS],
                    &grainQuats[g * 4]);
   }
 
