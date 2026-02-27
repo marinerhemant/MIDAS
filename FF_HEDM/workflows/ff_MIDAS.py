@@ -1436,6 +1436,21 @@ def generate_consolidated_hdf5(result_dir: str, zarr_path: str) -> None:
                     mg.create_dataset(col_name, data=merge_map_data[:, ci])
             mg.attrs['column_names'] = merge_map_cols
         
+        # Pre-index spot_data by grain_id for O(1) lookup
+        grain_spot_indices = defaultdict(list)
+        for row_i in range(spot_data.shape[0]):
+            grain_spot_indices[int(spot_data[row_i, 0])].append(row_i)
+        
+        # Pre-compute radius column indices for properties we want to attach
+        radius_prop_names = ['MinOme', 'MaxOme', 'Theta', 'DeltaOmega',
+                             'NImgs', 'GrainVolume', 'GrainRadius', 'PowderIntensity']
+        radius_prop_indices = []
+        for rn in radius_prop_names:
+            if rn in radius_cols:
+                radius_prop_indices.append(radius_cols.index(rn))
+            else:
+                radius_prop_indices.append(-1)
+        
         # /grains/
         gg = h5.create_group('grains')
         gg.create_dataset('summary', data=grains_data)
@@ -1464,64 +1479,55 @@ def generate_consolidated_hdf5(result_dir: str, zarr_path: str) -> None:
             if grains_data.shape[1] > 42:
                 grain_grp.create_dataset('radius', data=grain_row[42])
             
-            # Get spots for this grain
-            grain_spots = spot_data[spot_data[:, 0] == grain_id]
+            # Get spots for this grain using pre-built index
+            row_indices = grain_spot_indices.get(grain_id, [])
             spots_grp = grain_grp.create_group('spots')
-            spots_grp.create_dataset('n_spots', data=len(grain_spots))
+            spots_grp.create_dataset('n_spots', data=len(row_indices))
             
-            if len(grain_spots) > 0:
+            if row_indices:
+                grain_spots = spot_data[row_indices]
+                # Store spot data as columnar arrays (efficient bulk write)
                 for ci, col in enumerate(spot_cols[1:], start=1):
                     if ci < grain_spots.shape[1]:
                         spots_grp.create_dataset(col.lower(), data=grain_spots[:, ci])
                 
-                # Per-spot subgroups with constituent peaks
-                for spot_row in grain_spots:
-                    spot_id = int(spot_row[1])
-                    sp_grp = spots_grp.create_group(f'spot_{spot_id:06d}')
-                    sp_grp.create_dataset('spot_id', data=spot_id)
-                    for ci, col in enumerate(spot_cols[2:], start=2):
-                        if ci < spot_row.shape[0]:
-                            sp_grp.create_dataset(col.lower(), data=spot_row[ci])
-                    
-                    # Add radius-derived properties
-                    if spot_id in radius_idx:
-                        ri = radius_idx[spot_id]
-                        rrow = radius_data_arr[ri]
-                        for ri_name in ['MinOme', 'MaxOme', 'Theta', 'DeltaOmega',
-                                        'NImgs', 'GrainVolume', 'GrainRadius',
-                                        'PowderIntensity']:
-                            ri_ci = radius_cols.index(ri_name)
-                            if ri_ci < rrow.shape[0]:
-                                ds_name = ri_name.lower()
-                                # Avoid name collision with SpotMatrix columns
-                                if ds_name in sp_grp:
-                                    ds_name = f'radius_{ds_name}'
-                                sp_grp.create_dataset(ds_name, data=rrow[ri_ci])
-                    
-                    # Constituent peaks from MergeMap + _PS.csv data
-                    if spot_id in merge_idx:
-                        constituents = merge_idx[spot_id]
-                        cp_grp = sp_grp.create_group('constituent_peaks')
-                        cp_grp.create_dataset('n_constituent_peaks', data=len(constituents))
-                        frame_nrs = [c[0] for c in constituents]
-                        peak_ids = [c[1] for c in constituents]
-                        cp_grp.create_dataset('frame_nr', data=np.array(frame_nrs, dtype=int))
-                        cp_grp.create_dataset('peak_id', data=np.array(peak_ids, dtype=int))
-                        # Look up full peak data from _PS.csv cache
-                        peak_rows = []
-                        for fn, pid in constituents:
-                            if (fn, pid) in ps_cache:
-                                peak_rows.append(ps_cache[(fn, pid)])
-                        if peak_rows:
-                            peak_arr = np.array(peak_rows)
-                            for ci, col in enumerate(ps_cols):
-                                if ci < peak_arr.shape[1]:
-                                    cp_grp.create_dataset(col.lower(), data=peak_arr[:, ci])
+                # Add radius-derived properties as columnar arrays (aligned with spot arrays)
+                if radius_data_arr is not None:
+                    spot_ids = grain_spots[:, 1].astype(int)
+                    for pi, rn in enumerate(radius_prop_names):
+                        ri_ci = radius_prop_indices[pi]
+                        if ri_ci < 0:
+                            continue
+                        vals = np.full(len(spot_ids), np.nan)
+                        for si, sid in enumerate(spot_ids):
+                            if sid in radius_idx:
+                                rrow = radius_data_arr[radius_idx[sid]]
+                                if ri_ci < rrow.shape[0]:
+                                    vals[si] = rrow[ri_ci]
+                        ds_name = f'radius_{rn.lower()}'
+                        spots_grp.create_dataset(ds_name, data=vals)
         
         # /spot_matrix/ - flat table of SpotMatrix.csv
         sm = h5.create_group('spot_matrix')
         sm.create_dataset('data', data=spot_data)
         sm.attrs['column_names'] = spot_cols
+        
+        # /constituent_peaks/ - flat global table linking merged spots to raw peaks
+        # Columns: MergedSpotID, FrameNr, PeakID, + all 26 _PS.csv columns
+        if merge_idx and ps_cache:
+            cp_rows = []
+            for merged_id, constituents in merge_idx.items():
+                for fn, pid in constituents:
+                    if (fn, pid) in ps_cache:
+                        cp_rows.append(np.concatenate([[merged_id, fn, pid], ps_cache[(fn, pid)]]))
+                    else:
+                        cp_rows.append(np.array([merged_id, fn, pid] + [np.nan] * len(ps_cols)))
+            if cp_rows:
+                cp_data = np.array(cp_rows)
+                cpg = h5.create_group('constituent_peaks')
+                cpg.create_dataset('data', data=cp_data)
+                cp_col_names = ['MergedSpotID', 'FrameNr', 'PeakID'] + ps_cols
+                cpg.attrs['column_names'] = cp_col_names[:min(len(cp_col_names), cp_data.shape[1])]
         
         # /hkls/
         if hkls_data is not None:
