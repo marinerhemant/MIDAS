@@ -1030,6 +1030,14 @@ def getDataB(geNum,bytesToSkip, frame_idx=0):
 	doDark = var.get()
 	if doDark == 1:
 		darkfn = getfn(darkStem,darkNum,geNum)
+		# For HDF5 data where dark is embedded in the same file,
+		# darkStem may be empty, producing a bogus path.
+		# Fall back to the data file (dark is read via hdf5DarkPathVar).
+		if not os.path.exists(darkfn):
+			datafn = getfn(fileStem, fileNumber, geNum)
+			ext = os.path.splitext(datafn)[1].lower()
+			if ext in ['.h5', '.hdf', '.hdf5', '.nxs'] and os.path.exists(datafn):
+				darkfn = datafn
 		if nDetectors > 1:
 			if dark[geNum-startDetNr] is None:
 				dark[geNum-startDetNr] = getImage(darkfn,Header, is_dark=True)
