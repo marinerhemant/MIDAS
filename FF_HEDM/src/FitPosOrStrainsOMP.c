@@ -1304,7 +1304,8 @@ void FitPositionIni(double X0[12], int nSpotsComp, double **spotsYZO, int nhkls,
   f_data.scratch = malloc(sizeof(struct OptimizeScratch));
   int maxSpnr = 0;
   for (int sp = 0; sp < nSpotsComp; sp++) {
-    if ((int)spotsYZO[sp][8] > maxSpnr) maxSpnr = (int)spotsYZO[sp][8];
+    if ((int)spotsYZO[sp][8] > maxSpnr)
+      maxSpnr = (int)spotsYZO[sp][8];
   }
   f_data.scratch->MaxSpnr = maxSpnr;
   f_data.scratch->SpotLookup = malloc((maxSpnr + 1) * sizeof(int));
@@ -1397,7 +1398,8 @@ void FitOrientIni(double X0[9], int nSpotsComp, double **spotsYZO, int nhkls,
   f_data.scratch = malloc(sizeof(struct OptimizeScratch));
   int maxSpnr = 0;
   for (int sp = 0; sp < nSpotsComp; sp++) {
-    if ((int)spotsYZO[sp][8] > maxSpnr) maxSpnr = (int)spotsYZO[sp][8];
+    if ((int)spotsYZO[sp][8] > maxSpnr)
+      maxSpnr = (int)spotsYZO[sp][8];
   }
   f_data.scratch->MaxSpnr = maxSpnr;
   f_data.scratch->SpotLookup = malloc((maxSpnr + 1) * sizeof(int));
@@ -1492,7 +1494,8 @@ void FitStrainIni(double X0[6], int nSpotsComp, double **spotsYZO, int nhkls,
   f_data.scratch = malloc(sizeof(struct OptimizeScratch));
   int maxSpnr = 0;
   for (int sp = 0; sp < nSpotsComp; sp++) {
-    if ((int)spotsYZO[sp][8] > maxSpnr) maxSpnr = (int)spotsYZO[sp][8];
+    if ((int)spotsYZO[sp][8] > maxSpnr)
+      maxSpnr = (int)spotsYZO[sp][8];
   }
   f_data.scratch->MaxSpnr = maxSpnr;
   f_data.scratch->SpotLookup = malloc((maxSpnr + 1) * sizeof(int));
@@ -1587,7 +1590,8 @@ void FitPosSec(double X0[3], int nSpotsComp, double **spotsYZO, int nhkls,
   f_data.scratch = malloc(sizeof(struct OptimizeScratch));
   int maxSpnr = 0;
   for (int sp = 0; sp < nSpotsComp; sp++) {
-    if ((int)spotsYZO[sp][8] > maxSpnr) maxSpnr = (int)spotsYZO[sp][8];
+    if ((int)spotsYZO[sp][8] > maxSpnr)
+      maxSpnr = (int)spotsYZO[sp][8];
   }
   f_data.scratch->MaxSpnr = maxSpnr;
   f_data.scratch->SpotLookup = malloc((maxSpnr + 1) * sizeof(int));
@@ -2093,7 +2097,7 @@ int main(int argc, char *argv[]) {
       int rcA = pread(inpF, locArr, 15 * sizeof(double), offst1);
       close(inpF);
       if (locArr[14] == 0) {
-        printf("Good result not found. Skipping this rowNr: %d\n", rowNr);
+        // printf("Good result not found. Skipping this rowNr: %d\n", rowNr);
         char KeyFN[1024];
         sprintf(KeyFN, "%s/Key.bin", ResultFolder);
         int SizeKeyFile = 2 * sizeof(int);
@@ -2195,6 +2199,7 @@ int main(int argc, char *argv[]) {
       // spotIDS[i] should correspond to AllSpots[(spotIDS[i]-1)*14+...], this
       // should reduce execution time.
       size_t spotPosAllSpots;
+      int nSpotsFound = 0;
       for (i = 0; i < nSpotsBest; i++) {
         spotPosAllSpots = (int)spotIDS[i] - 1;
         // check if spotPosAllSpots + 1 > nSpots, then print and error and
@@ -2206,6 +2211,7 @@ int main(int argc, char *argv[]) {
                  (int)spotIDS[i], (int)(spotPosAllSpots + 1), (int)nSpots,
                  (int)thisRowNr, (int)nSpotsBest);
           fflush(stdout);
+          nSpotsFound++;
           continue;
         }
         if (spotPosAllSpots + 1 != (size_t)AllSpots[spotPosAllSpots * 14 + 4]) {
@@ -2215,6 +2221,7 @@ int main(int argc, char *argv[]) {
                  (int)AllSpots[spotPosAllSpots * 14 + 4], (int)thisRowNr,
                  (int)nSpotsBest);
           fflush(stdout);
+          nSpotsFound++;
           continue;
         }
         spotsYZO[i][0] = AllSpots[spotPosAllSpots * 14 + 0];
@@ -2225,6 +2232,10 @@ int main(int argc, char *argv[]) {
         spotsYZO[i][5] = AllSpots[spotPosAllSpots * 14 + 9];
         spotsYZO[i][6] = AllSpots[spotPosAllSpots * 14 + 10];
         spotsYZO[i][7] = AllSpots[spotPosAllSpots * 14 + 5];
+      }
+      if (nSpotsFound == 0) {
+        printf("No valid spots found for grain ID: %d.\n", thisRowNr);
+        continue;
       }
       double *Ini;
       Ini = malloc(12 * sizeof(*Ini));
