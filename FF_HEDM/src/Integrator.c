@@ -732,8 +732,8 @@ int main(int argc, char **argv) {
     printf("Processing frame number: %d of %d of file %s.\n", i + 1, nFrames,
            imageFN);
     if (dType == 8) {
-      rc = ReadHDF5Frame(imageFN, "exchange/data", NrPixelsY * NrPixelsZ,
-                         ImageInT, i + skipFrame);
+      rc = ReadHDF5Frame(imageFN, dataDataset, NrPixelsY * NrPixelsZ, ImageInT,
+                         i + skipFrame);
     } else if (dType == 6 || dType == 7 || dType == 9) {
       rc = ReadTiffFrame(imageFN, dType, NrPixelsY * NrPixelsZ, ImageInT, i);
     } else {

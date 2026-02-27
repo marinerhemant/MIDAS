@@ -1453,7 +1453,7 @@ int main(int argc, char *argv[]) {
       // sprintf(dname,"%s",darkDatasetName);
       // printf("%s\n",dname);
       // return 1;
-      dname = "exchange/data";
+      dname = darkDatasetName;
       rc = fileReader(fd, Dark, dType, NrPixelsY * NrPixelsZ, DarkFile, dname);
       MakeSquare(NrPixels, NrPixelsY, NrPixelsZ, DarkFile, DarkFile2);
       DoImageTransformations(NrTransOpt, TransOpt, DarkFile2, NrPixels);
@@ -1477,8 +1477,7 @@ int main(int argc, char *argv[]) {
       printf("Dark file read.\n");
       for (j = 0; j < (NrPixels * NrPixels); j++)
         AverageDark[j] = DarkFile2[j];
-      // sprintf(dname,"%s",dataDatasetName);
-      dname = "exchange/data";
+      dname = dataDatasetName;
       rc = fileReader(fd, FileName, dType, NrPixelsY * NrPixelsZ, Image, dname);
       MakeSquare(NrPixels, NrPixelsY, NrPixelsZ, Image, Image2);
       DoImageTransformations(NrTransOpt, TransOpt, Image2, NrPixels);
