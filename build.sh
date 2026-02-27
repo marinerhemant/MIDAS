@@ -39,8 +39,8 @@ show_help() {
     echo "  --ninja                   Use Ninja generator instead of Makefiles"
     echo "  --clean                   Clean the build directory before building"
     echo ""
-    echo "Note: Source-tree bin directories (FF_HEDM/bin, NF_HEDM/bin, etc.)"
-    echo "      are always auto-cleaned before each build."
+    echo "Note: After each build, orphaned binaries are removed from source-tree"
+    echo "      bin directories, and empty bin dirs are auto-populated from build output."
     echo "  --test ff|nf|calib|all   Run benchmark tests after build (ff, nf, calib, or all)"
     exit 0
 }
@@ -162,17 +162,6 @@ cmake .. \
     -G "$CMAKE_GENERATOR" \
     "${CMAKE_OPTIONS[@]}"
 
-# Clean stale binaries from source-tree bin directories before building.
-# CMake post-build steps copy fresh binaries back into these directories,
-# but legacy/orphaned binaries from previously removed targets can linger.
-echo "Cleaning source-tree bin directories..."
-for bin_dir in FF_HEDM/bin NF_HEDM/bin TOMO/bin DT/bin; do
-    if [ -d "../$bin_dir" ]; then
-        rm -f "../$bin_dir"/*
-        echo "  Cleaned $bin_dir/"
-    fi
-done
-
 # Build
 echo "Building with $JOBS jobs..."
 cmake --build . -j "$JOBS"
@@ -182,6 +171,54 @@ BUILD_SUCCESS=$?
 if [ $BUILD_SUCCESS -eq 0 ]; then
     echo ""
     echo "Build completed successfully!"
+
+    # Sync source-tree bin directories with build/bin/.
+    # POST_BUILD copy commands only fire when a target is actually recompiled.
+    # On incremental builds (no source changes), binaries in build/bin/ are
+    # up-to-date but may not be in source-tree dirs (e.g. after manual clean).
+    # Fix: after build, copy any missing binaries from build/bin/.
+    for bin_dir in FF_HEDM/bin NF_HEDM/bin TOMO/bin DT/bin; do
+        src_bin="../$bin_dir"
+        [ -d "$src_bin" ] || mkdir -p "$src_bin"
+        # Remove orphans (in source-tree but not in build/bin/)
+        for f in "$src_bin"/*; do
+            [ -e "$f" ] || continue
+            base=$(basename "$f")
+            if [ ! -f "bin/$base" ]; then
+                rm -f "$f"
+                echo "  Removed orphaned binary: $bin_dir/$base"
+            fi
+        done
+        # Copy missing/stale: for each file already in source-tree dir,
+        # update from build/bin/ if the build copy is newer
+        for f in "$src_bin"/*; do
+            [ -e "$f" ] || continue
+            base=$(basename "$f")
+            if [ -f "bin/$base" ] && [ "bin/$base" -nt "$f" ]; then
+                cp "bin/$base" "$f"
+            fi
+        done
+    done
+
+    # If any source-tree bin dir is still empty (e.g. first build after clean),
+    # copy binaries from build/bin/ using CMakeFiles/*.dir to determine which
+    # targets belong to each subproject.
+    for bin_dir in FF_HEDM/bin NF_HEDM/bin TOMO/bin DT/bin; do
+        src_bin="../$bin_dir"
+        if [ -z "$(ls -A "$src_bin" 2>/dev/null)" ]; then
+            sub_dir="${bin_dir%/bin}"
+            echo "  Populating $bin_dir/ from build output..."
+            for target_dir in "$sub_dir"/CMakeFiles/*.dir; do
+                [ -d "$target_dir" ] || continue
+                target_name=$(basename "$target_dir" .dir)
+                if [ -f "bin/$target_name" ]; then
+                    cp "bin/$target_name" "$src_bin/"
+                fi
+            done
+            n_copied=$(ls -1 "$src_bin" 2>/dev/null | wc -l)
+            echo "  Copied $n_copied binaries to $bin_dir/"
+        fi
+    done
 
     # Touch the update-check timestamp so the 14-day reminder resets
     touch ".last_update_check"
