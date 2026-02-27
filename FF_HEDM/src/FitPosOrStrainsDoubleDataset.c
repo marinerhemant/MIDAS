@@ -52,6 +52,8 @@
 #define CalcNorm2(x, y) sqrt((x) * (x) + (y) * (y))
 #define TestBit(A, k) (A[(k / 32)] & (1 << (k % 32)))
 #define MAXNOMEGARANGES 2000
+#define COS_4DEG                                                               \
+  0.9975640502598242 // cos(4 * pi/180) threshold for angle matching
 
 int CalcDiffractionSpots(double Distance, double ExcludePoleAngle,
                          double OmegaRanges[MAXNOMEGARANGES][2],
@@ -148,11 +150,6 @@ static inline double sin_cos_to_angle(double s, double c) {
 
 static inline void OrientMat2Euler(double m[3][3], double Euler[3]) {
   double psi, phi, theta, sph;
-  double determinant;
-  determinant = m[0][0] * ((m[1][1] * m[2][2]) - (m[2][1] * m[1][2])) -
-                m[0][1] * (m[1][0] * m[2][2] - m[2][0] * m[1][2]) +
-                m[0][2] * (m[1][0] * m[2][1] - m[2][0] * m[1][1]);
-  //~ printf("Determinant: %lf\n",determinant);
 
   if (fabs(m[2][2] - 1.0) < EPS) {
     phi = 0;
@@ -744,7 +741,7 @@ FitErrorsPosT(double x[12], int nSpotsComp, double **spotsYZOIn,
   CalcDiffractionSpots(Lsd, MinEta, OmegaRanges, nOmeRanges, hkls, nhkls,
                        BoxSizes, &nTspots, OrientMatrix, TheorSpots);
   double **SpotsYZOGCorr = scratch->SpotsYZOGCorr;
-  double DisplY, DisplZ, ys, zs, Omega, Radius, Theta, lenK, yt, zt;
+  double DisplY, DisplZ, ys, zs, Omega, yt, zt;
   double DisplY2, DisplZ2, ys2, zs2, Omega2, yt2, zt2;
   for (nrSp = 0; nrSp < nrMatchedIndexer; nrSp++) {
     // First set of spots
@@ -922,7 +919,7 @@ static inline double FitErrorsOrientStrains(
             ratio = 1.0;
           if (ratio < -1.0)
             ratio = -1.0;
-          if (ratio >= 0.9975640502598242) {
+          if (ratio >= COS_4DEG) {
             Angles[nTheorSpotsYZWER] = fabs(acosd(ratio));
             nTheorSpotsYZWER++;
           }
@@ -1732,6 +1729,7 @@ int main(int argc, char *argv[]) {
                         CellStruct;
   double Rsample, Hbeam, RingRadii[200], MargABC = 0.3, MargABG = 0.3;
   char OutputFolder[1024], ResultFolder[1024], dataSet2Folder[1024];
+  dataSet2Folder[0] = '\0';
   int DiscModel = 0, TopLayer = 0, TakeGrainMax = 0;
   int isGrainsInput = 0;
   char GrainsFileName[4096];
@@ -2089,27 +2087,7 @@ int main(int argc, char *argv[]) {
       int i, j, k;
       int SpId = SptIDs[thisRowNr];
       double LatCin[6];
-      char *SpFN = "SpotsToIndex.csv";
-      FILE *SpFile = fopen(SpFN, "r");
-      if (SpFile == NULL) {
-        printf("Could not read the SpotsToIndex.csv file while trying %d. "
-               "Exiting.\n",
-               SpId);
-        continue;
-      }
-      int rowNr = 0;
-      int ThisID;
-      int count = 0;
-      char line[5024];
-      while (fgets(line, 5000, SpFile) != NULL) {
-        sscanf(line, "%d", &ThisID);
-        if (ThisID == SpId) {
-          rowNr = count;
-          break;
-        }
-        count++;
-      }
-      fclose(SpFile);
+      int rowNr = startRowNr + thisRowNr;
       for (i = 0; i < 6; i++)
         LatCin[i] = LatCinT[i];
 
@@ -2136,7 +2114,6 @@ int main(int argc, char *argv[]) {
         size_t OffStKeyFile = SizeKeyFile;
         OffStKeyFile *= rowNr;
         int KeyInfo[2] = {0, 0};
-#pragma omp critical
         {
           int resultKeyFN = open(KeyFN, O_CREAT | O_WRONLY, S_IRUSR | S_IWUSR);
           if (resultKeyFN <= 0) {
@@ -2261,8 +2238,8 @@ int main(int argc, char *argv[]) {
       }
       if (badSpot == 1) {
         free(spotIDS);
-        free(spotsYZO);
-        free(spotsYZO2);
+        FreeMemMatrix(spotsYZO, nSpotsBest);
+        FreeMemMatrix(spotsYZO2, nSpotsBest);
         continue;
       }
       double *Ini;
@@ -2415,7 +2392,6 @@ int main(int argc, char *argv[]) {
       for (i = 0; i < 6; i++)
         UseXFit[i + 6] = LatCin[i];
       double *ErrorInt2;
-      ErrorInt2 = malloc(3 * sizeof(*ErrorInt2));
       ErrorInt2 = malloc(3 * sizeof(*ErrorInt2));
       CalcAngleErrors(nSpotsComp, nhkls, nOmeRanges, UseXFit, spotsYZONew,
                       spotsYZO2New, hkls, Lsd, Wavelength, OmegaRanges,
@@ -2600,7 +2576,6 @@ int main(int argc, char *argv[]) {
           SpotsCompFNContents[i][j] = SpotsComp[i][j];
         }
       }
-#pragma omp critical
       {
         int resultKeyFN = open(KeyFN, O_CREAT | O_WRONLY, S_IRUSR | S_IWUSR);
         if (resultKeyFN <= 0) {
@@ -2708,7 +2683,6 @@ int main(int argc, char *argv[]) {
         size_t OffStKeyFile = SizeKeyFile;
         OffStKeyFile *= it;
         int KeyInfo[2] = {0, 0};
-#pragma omp critical
         {
           int resultKeyFN = open(KeyFN, O_CREAT | O_WRONLY, S_IRUSR | S_IWUSR);
           if (resultKeyFN <= 0) {
@@ -2744,7 +2718,6 @@ int main(int argc, char *argv[]) {
         size_t OffStKeyFile = SizeKeyFile;
         OffStKeyFile *= it;
         int KeyInfo[2] = {0, 0};
-#pragma omp critical
         {
           int resultKeyFN = open(KeyFN, O_CREAT | O_WRONLY, S_IRUSR | S_IWUSR);
           if (resultKeyFN <= 0) {
@@ -2921,7 +2894,7 @@ int main(int argc, char *argv[]) {
           SpotsCompFNContents[i][j] = SpotsComp[i][j];
         }
       }
-#pragma omp critical
+      // pwrite to non-overlapping offsets — thread-safe without critical
       {
         int resultKeyFN = open(KeyFN, O_CREAT | O_WRONLY, S_IRUSR | S_IWUSR);
         if (resultKeyFN <= 0) {
