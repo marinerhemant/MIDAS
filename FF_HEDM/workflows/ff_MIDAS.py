@@ -458,30 +458,26 @@ def generateZip(
     
     try:
         logger.info(f"Running: {cmd}")
-        # Stream output to both file and console for real-time progress
-        with open(outf_path, 'w') as f_out, open(errf_path, 'w') as f_err:
+        # Stream output: stdout to file, stderr to terminal (for tqdm progress bar)
+        with open(outf_path, 'w') as f_out:
             process = subprocess.Popen(
                 cmd,
                 shell=True,
                 stdout=subprocess.PIPE,
-                stderr=f_err,
+                stderr=None,  # inherit terminal for tqdm progress bar
                 cwd=resFol,
                 env=get_midas_env(),
                 bufsize=1,
                 universal_newlines=True
             )
-            # Read output line by line, write to file and print progress lines
             for line in process.stdout:
                 f_out.write(line)
-                # Show progress lines and final output on console
-                if 'Progress:' in line or 'done:' in line or 'OutputZipName' in line or 'Processing' in line:
+                if 'done:' in line or 'OutputZipName' in line or 'Processing' in line:
                     logger.info(f"[ZIP] {line.rstrip()}")
             process.wait()
 
         if process.returncode != 0:
-            with open(errf_path, 'r') as f:
-                error_content = f.read()
-            error_msg = f"ZIP generation failed with return code {process.returncode}:\n{cmd}\nError output:\n{error_content}"
+            error_msg = f"ZIP generation failed with return code {process.returncode}:\n{cmd}"
             logger.error(error_msg)
             raise RuntimeError(error_msg)
 

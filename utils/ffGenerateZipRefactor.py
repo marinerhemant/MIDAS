@@ -15,6 +15,7 @@ import re
 from math import ceil
 import subprocess
 from concurrent.futures import ThreadPoolExecutor
+import sys
 
 # --- Global Configuration ---
 from numcodecs import blosc as _blosc
@@ -432,9 +433,14 @@ def process_hdf5_scan(config, z_groups, zRoot):
 
                 # Pipeline: overlap HDF5 reads with zarr writes
                 import time as _time
+                from tqdm import tqdm
                 t_start_pipeline = _time.time()
                 frames_written_this_file = 0
                 total_frames_this_file = frames_per_file - start_frame_in_file
+                frame_bytes = nZ * nY * np.dtype(output_dtype).itemsize
+                pbar = tqdm(total=total_frames_this_file, desc=f"  File {i+1}/{num_files}",
+                           unit='fr', file=sys.stderr, dynamic_ncols=True,
+                           bar_format='{l_bar}{bar}| {n_fmt}/{total_fmt} [{elapsed}<{remaining}, {rate_fmt}{postfix}]')
                 j = start_frame_in_file
                 # Initial read
                 end_frame = min(j + chunk_size, frames_per_file)
@@ -457,12 +463,11 @@ def process_hdf5_scan(config, z_groups, zRoot):
                         z_offset += len(data_chunk)
                         frames_written_this_file += len(data_chunk)
 
-                        # Progress report
+                        # Update progress bar with throughput
                         elapsed = _time.time() - t_start_pipeline
-                        bytes_done = frames_written_this_file * nZ * nY * np.dtype(output_dtype).itemsize
-                        throughput = bytes_done / elapsed / 1e6 if elapsed > 0 else 0
-                        print(f"    Progress: {frames_written_this_file}/{total_frames_this_file} frames "
-                              f"({elapsed:.1f}s, {throughput:.0f} MB/s)", flush=True)
+                        throughput = frames_written_this_file * frame_bytes / elapsed / 1e6 if elapsed > 0 else 0
+                        pbar.update(len(data_chunk))
+                        pbar.set_postfix_str(f"{throughput:.0f} MB/s")
 
                         if future is None:
                             break
@@ -473,8 +478,9 @@ def process_hdf5_scan(config, z_groups, zRoot):
                             data_chunk = apply_correction(data_chunk, dark_mean, pre_proc_val)
                         j += chunk_size
 
+                pbar.close()
                 total_elapsed = _time.time() - t_start_pipeline
-                total_bytes = total_frames_this_file * nZ * nY * np.dtype(output_dtype).itemsize
+                total_bytes = total_frames_this_file * frame_bytes
                 print(f"    File {i+1} done: {total_frames_this_file} frames in {total_elapsed:.1f}s "
                       f"({total_bytes/total_elapsed/1e6:.0f} MB/s)", flush=True)
     return output_dtype
