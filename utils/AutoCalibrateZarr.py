@@ -248,7 +248,7 @@ def generateZip(resFol, pfn, dfn='', darkfn='', dloc='', nchunks=-1, preproc=-1,
     sys.exit(1)
 
 def process_calibrant_output(output_file):
-    """Process the output from CalibrantOMP"""
+    """Process the output from CalibrantPanelShiftsOMP"""
     global nPlanes, lsd_refined, bc_refined, ty_refined, tz_refined
     global p0_refined, p1_refined, p2_refined, p3_refined, p4_refined, mean_strain, std_strain
     

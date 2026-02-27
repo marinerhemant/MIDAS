@@ -102,8 +102,7 @@ Raw Data → GetHKLList → PeaksFitting → MergeOverlappingPeaks → CalcRadiu
 
 | Source | Description |
 |--------|-------------|
-| `Calibrant.c` / `CalibrantOMP.c` | Fit detector geometry (tilt, distance, beam center) from powder calibrant rings. |
-| `CalibrantPanelShiftsOMP.c` | Calibrate panel-to-panel shifts for multi-panel detectors. |
+| `CalibrantPanelShiftsOMP.c` | **Primary calibrant.** Fit detector geometry (tilt, distance, beam center) from powder calibrant rings, with panel shift support. |
 | `FitTiltBCLsdSampleOmegaCorrection.c` | Fit tilt, beam center, Lsd, and omega correction. |
 | `FitTiltX.c` | Fit detector tilt about X axis (requires Friedel pairs). |
 | `FitWedge.c` / `FitWedgeParallel.c` | Fit wedge angle (rotation axis tilt). |
