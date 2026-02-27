@@ -1446,6 +1446,16 @@ static ErrorCode processImageFrame(int fileNr, char *allData, size_t *sizeArr,
           "\treturnCode\tretVal\tBG\tSigmaGR\tSigmaLR\tSigmaGEta\t"
           "SigmaLEta\tMU\tRawSumIntensity\n");
 
+  // --- Pixel list collection for _PX.bin ---
+  // We collect per-peak pixel lists during the loop and write at the end.
+  // Each entry stores the region's pixel count and a pointer into positions.
+  // For doPeakFit==0, each region is a single peak, so this is straightforward.
+  int pxCapacity = 4096; // initial capacity for peak pixel entries
+  int pxCount = 0;       // number of peaks collected
+  int *pxNPixels = malloc(pxCapacity * sizeof(int));  // nPixels per peak
+  int *pxRegNrs = malloc(pxCapacity * sizeof(int));   // region number
+  int *pxRegSizes = malloc(pxCapacity * sizeof(int)); // nrPixelsThisRegion
+
   int spotIdStart = 1;
   int totalValidRegions = 0;
 
@@ -1592,11 +1602,61 @@ static ErrorCode processImageFrame(int fileNr, char *allData, size_t *sizeArr,
         fprintf(outfilewrite, "\t%f", ws->otherInfo[8 * i + j]);
       }
       fprintf(outfilewrite, "\t%f\n", ws->rawSumIntensity[i]);
+
+      // Collect pixel data for this peak (all peaks share the region's pixels)
+      if (pxCount >= pxCapacity) {
+        pxCapacity *= 2;
+        pxNPixels = realloc(pxNPixels, pxCapacity * sizeof(int));
+        pxRegNrs = realloc(pxRegNrs, pxCapacity * sizeof(int));
+        pxRegSizes = realloc(pxRegSizes, pxCapacity * sizeof(int));
+      }
+      pxNPixels[pxCount] = nrPixelsThisRegion;
+      pxRegNrs[pxCount] = regNr;
+      pxRegSizes[pxCount] = nrPixelsThisRegion;
+      pxCount++;
     }
     spotIdStart += nPeaks;
   }
 
   fclose(outfilewrite);
+
+  // --- Write _PX.bin pixel list file ---
+  // Format: int32 NrPixels, int32 nPeaksTotal,
+  //         then for each peak: int32 nPixels, int16 y[nPixels], int16
+  //         z[nPixels]
+  {
+    char pxFile[MAX_FILENAME_LENGTH];
+    snprintf(pxFile, MAX_FILENAME_LENGTH, "%s/%s_%06d_PX.bin", outFolderName,
+             basename((char *)dataFN), fileNr + 1);
+    FILE *pxFp = fopen(pxFile, "wb");
+    if (pxFp) {
+      int32_t hdrNrPixels = (int32_t)metadata->NrPixels;
+      int32_t hdrNPeaks = (int32_t)pxCount;
+      fwrite(&hdrNrPixels, sizeof(int32_t), 1, pxFp);
+      fwrite(&hdrNPeaks, sizeof(int32_t), 1, pxFp);
+
+      for (int pk = 0; pk < pxCount; pk++) {
+        int32_t nPx = (int32_t)pxNPixels[pk];
+        fwrite(&nPx, sizeof(int32_t), 1, pxFp);
+        int regNr = pxRegNrs[pk];
+        int nrPxReg = pxRegSizes[pk];
+        for (int i = 0; i < nrPxReg; i++) {
+          int pos = ws->positions[regNr * metadata->NrPixels * 4 + i];
+          int16_t y = (int16_t)(pos / metadata->NrPixels);
+          int16_t z = (int16_t)(pos % metadata->NrPixels);
+          fwrite(&y, sizeof(int16_t), 1, pxFp);
+          fwrite(&z, sizeof(int16_t), 1, pxFp);
+        }
+      }
+      fclose(pxFp);
+    } else {
+      printf("Warning: Could not open %s for writing pixel data.\n", pxFile);
+    }
+  }
+
+  free(pxNPixels);
+  free(pxRegNrs);
+  free(pxRegSizes);
 
   double t3 = omp_get_wtime();
   printf("FrameNr: %d, NrOfRegions: %d, Filtered regions: %d, Number of peaks: "

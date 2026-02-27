@@ -10,13 +10,18 @@ from pathlib import Path
 
 # Files/dirs that ship with the Example and must NOT be removed
 PRESERVE = {
-    'Parameters.txt', 'GrainsGen.csv', 'GrainsSim.csv', 'SpotMatrixGen.csv',
-    'consolidated_Output.h5', 'positions.csv', 'Calibration',
+    'Parameters.txt', 'Parameters_px_overlaps.txt',
+    'GrainsSim.csv',
+    'consolidated_Output.h5', 'consolidated_Output_px_overlaps.h5',
+    'positions.csv', 'Calibration',
 }
 
 def parse_args():
     parser = argparse.ArgumentParser(description="Automated Benchmark Testing Suite for FF_HEDM")
     parser.add_argument("-nCPUs", type=int, default=1, help="Number of CPUs to use for the test")
+    parser.add_argument("--no-cleanup", action="store_true", help="Skip cleanup of generated files after the test")
+    parser.add_argument("--cleanup-only", action="store_true", help="Only cleanup generated files, don't run any tests")
+    parser.add_argument("--px-overlap", action="store_true", help="Also run pixel-overlap peaksearch test")
     
     # Optional paramFN defaulting to the Example Parameters.txt relative to the script location
     default_param_fn = Path(__file__).resolve().parent.parent / "FF_HEDM" / "Example" / "Parameters.txt"
@@ -161,6 +166,80 @@ def enrich_zarr_metadata(zarr_file_path, params):
         write_analysis_parameters(z_groups, params)
 
 
+def run_px_overlap_test(args, work_dir, original_zip):
+    """Run pixel-overlap peaksearch test reusing the same simulated data.
+    
+    Copies the already-enriched zip from the main test and patches only the
+    parameters that differ (UsePixelOverlap, doPeakFit).
+    """
+    px_param_path = work_dir / "Parameters_px_overlaps.txt"
+    if not px_param_path.exists():
+        print(f"Error: {px_param_path} not found. Skipping pixel-overlap test.")
+        return
+
+    # Parse px_overlaps params to find what differs
+    px_params, _ = parse_parameter_file(px_param_path)
+
+    # Create testing env from the px_overlaps parameter file
+    test_param_file, _, out_file_base = create_testing_env(px_param_path, work_dir)
+
+    # Copy the already-enriched zip (skip if same file, e.g. same OutFileName)
+    px_zip_name = work_dir / f"{out_file_base}.analysis.MIDAS.zip"
+    if px_zip_name.resolve() != Path(original_zip).resolve():
+        shutil.copy2(str(original_zip), str(px_zip_name))
+
+    # Patch only the changed parameters into the zip
+    print("Patching pixel-overlap parameters into Zarr zip...")
+    with zarr.ZipStore(str(px_zip_name), mode='a') as store:
+        zRoot = zarr.group(store=store)
+        sp_ana = zRoot.require_group('analysis/process/analysis_parameters')
+        sp_meas = zRoot.require_group('measurement/process/scan_parameters')
+
+        # UsePixelOverlap -> analysis_parameters
+        if 'UsePixelOverlap' in sp_ana:
+            del sp_ana['UsePixelOverlap']
+        sp_ana.create_dataset('UsePixelOverlap', data=np.array([int(px_params.get('UsePixelOverlap', 1))], dtype=np.int32))
+
+        # doPeakFit -> scan_parameters
+        if 'doPeakFit' in sp_meas:
+            del sp_meas['doPeakFit']
+        sp_meas.create_dataset('doPeakFit', data=np.array([int(px_params.get('doPeakFit', 0))], dtype=np.int32))
+
+    print("  Patched: UsePixelOverlap, doPeakFit")
+
+    # Run the pipeline
+    midas_home = Path(os.environ.get('MIDAS_HOME', str(Path(__file__).resolve().parent.parent)))
+    ff_midas_script = midas_home / "FF_HEDM" / "workflows" / "ff_MIDAS.py"
+
+    cmd = [
+        sys.executable, str(ff_midas_script),
+        "-paramFN", test_param_file.name,
+        "-nCPUs", str(args.nCPUs),
+        "-dataFN", px_zip_name.name,
+        "-convertFiles", "0"
+    ]
+    print(f"Running px-overlap pipeline: {' '.join(cmd)}")
+    pipeline_res = subprocess.run(cmd, cwd=str(work_dir))
+
+    if pipeline_res.returncode != 0:
+        print("Error: Pixel-overlap pipeline execution failed.")
+        return
+
+    print("\n*** Pixel-overlap pipeline executed successfully ***")
+
+    # Regression comparison
+    result_dir = work_dir / "LayerNr_1"
+    ref_h5 = work_dir / "consolidated_Output_px_overlaps.h5"
+    new_h5_files = list(result_dir.glob("*_consolidated.h5"))
+
+    if new_h5_files and ref_h5.exists():
+        compare_consolidated_hdf5(ref_h5, new_h5_files[0])
+    elif not ref_h5.exists():
+        print(f"\nSkipping px-overlap regression: reference file {ref_h5} not found.")
+    else:
+        print(f"\nSkipping px-overlap regression: no consolidated HDF5 generated in {result_dir}.")
+
+
 def main():
     args = parse_args()
     param_path = Path(args.paramFN).resolve()
@@ -175,6 +254,16 @@ def main():
     midas_home = Path(os.environ.get('MIDAS_HOME', str(Path(__file__).resolve().parent.parent)))
     work_dir = midas_home / "FF_HEDM" / "Example"
     work_dir.mkdir(exist_ok=True, parents=True)
+
+    # Clean stale results directory to avoid crashes from leftover state
+    layer_dir = work_dir / "LayerNr_1"
+    if layer_dir.exists():
+        print(f"Removing stale {layer_dir.name}/ directory...")
+        shutil.rmtree(layer_dir)
+
+    if args.cleanup_only:
+        cleanup_work_dir(work_dir)
+        return
     
     # 2. Modify Params & Resolve Paths
     test_param_file, params, out_file_base = create_testing_env(param_path, work_dir)
@@ -241,8 +330,18 @@ def main():
     else:
         print(f"\nSkipping regression comparison: no consolidated HDF5 generated in {result_dir}.")
 
-    # 8. Cleanup generated files
-    cleanup_work_dir(work_dir)
+    # 8. Optional pixel-overlap peaksearch test (before cleanup so zip exists)
+    if args.px_overlap:
+        print("\n" + "="*60)
+        print("Running pixel-overlap peaksearch test...")
+        print("="*60)
+        run_px_overlap_test(args, work_dir, final_zip_name)
+
+    # 9. Cleanup generated files
+    if not args.no_cleanup:
+        cleanup_work_dir(work_dir)
+    else:
+        print("\nSkipping cleanup (--no-cleanup specified).")
 
 
 def cleanup_work_dir(work_dir):

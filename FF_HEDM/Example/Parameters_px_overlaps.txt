@@ -1,0 +1,240 @@
+###############################################################################
+#                   MIDAS FF-HEDM Example Parameter File
+#
+#  This file configures the full FF-HEDM pipeline: forward simulation,
+#  peak detection, indexing, and grain refinement.
+#
+#  Used by: ForwardSimulationCompressed, ff_MIDAS.py, test_ff_hedm.py
+#
+#  Lines with # at the start are comments.
+#  Inline comments use # after the value.
+###############################################################################
+
+
+# =============================================================================
+#  CALIBRANT / MATERIAL
+# =============================================================================
+
+# Lattice constants: a b c alpha beta gamma (Angstroms, degrees)
+# Use ideal values (especially for angles)
+LatticeConstant 4.08 4.08 4.08 90 90 90
+
+# Space group number (225 = Fm-3m, e.g. Au, Cu, Ni)
+SpaceGroup 225
+
+
+# =============================================================================
+#  FORWARD SIMULATION
+# =============================================================================
+
+# Input grain orientations for simulation
+InFileName GrainsSim.csv
+
+# Output file stem (produces {OutFileName}_scanNr_0.zip)
+OutFileName Au_FF_000001_pf
+
+# Number of scans (1 = far-field, >1 = point-focus with positions.csv)
+nScans 1
+
+# Simulated peak parameters
+PeakIntensity 5000              # Peak amplitude (counts, rescaled to maximize dynamic range)
+GaussWidth 1                    # Gaussian width of simulated spots (pixels)
+WriteSpots 1                    # 1 = write SpotMatrixGen.csv with per-grain spot assignments
+
+
+# =============================================================================
+#  DETECTOR GEOMETRY
+# =============================================================================
+
+# Number of pixels (square detector assumed for simulation)
+NrPixels 2048
+
+# Pixel size (microns)
+px 200
+
+# Sample-to-detector distance (microns)
+Lsd 1000000.0000
+
+# Beam center position (pixels: horizontal, vertical)
+BC 1022 1022
+
+# Detector tilts (degrees)
+tx 0                            # Rotation about X-ray beam axis (usually fixed)
+ty 0                            # Rotation about horizontal axis
+tz 0                            # Rotation about vertical axis
+
+# Detector distortion coefficients
+p0 0
+p1 0
+p2 0
+p3 0
+p4 0
+
+# Wedge angle: deviation from 90° between rotation axis and beam (degrees)
+Wedge 0
+
+# Maximum ring radius for distortion model (microns)
+RhoD 204800
+
+
+# =============================================================================
+#  BEAM / SAMPLE
+# =============================================================================
+
+# X-ray wavelength (Angstroms)
+Wavelength 0.22291
+
+# Omega rotation range and step
+OmegaStart 180                  # First frame omega (degrees)
+OmegaEnd -180                   # Last frame omega (degrees)
+OmegaStep -0.25                 # Rotation step per frame (degrees, negative = reverse)
+OmegaRange -180 180             # Omega range used during analysis (degrees)
+
+
+# =============================================================================
+#  RING SELECTION
+# =============================================================================
+
+# Rings to use in analysis: RingThresh <ring_number> <intensity_threshold>
+# Only spots above the threshold on this ring are used
+RingThresh 1 10
+RingThresh 2 10
+RingThresh 3 10
+RingThresh 4 10
+RingThresh 5 10
+
+
+# =============================================================================
+#  SAMPLE & BEAM GEOMETRY
+# =============================================================================
+
+# Illuminated volume for grain size calculation (microns³)
+Vsample 10000000
+
+# Beam height (microns)
+BeamThickness 200
+
+# Sample starting position along beam (microns)
+GlobalPosition 100
+
+# Virtual sample bounds for reconstruction (microns)
+Rsample 2000                    # Horizontal radius: grain positions limited to ±Rsample
+Hbeam 2000                      # Vertical size: grain positions limited to ±Hbeam/2
+
+
+# =============================================================================
+#  PHASE & TIMING
+# =============================================================================
+
+# Phase information
+NumPhases 1                     # Number of phases in the material
+PhaseNr 1                       # Phase number being analyzed
+
+# Detector timing
+tInt 0.3                        # Integration time per frame (seconds)
+tGap 0.15                       # Dead time between frames (seconds)
+
+
+# =============================================================================
+#  IMAGE PROCESSING
+# =============================================================================
+
+# Image transformation to get correct coordinate system
+ImTransOpt 0                    # 0 = no transform (see manual for transform codes)
+
+# Detector saturation level (counts)
+# MUST be >15000 for simulated experiments
+UpperBoundThreshold 16000
+
+# Number of files per layer (for multi-wedge scans)
+NrFilesPerSweep 1
+
+# =============================================================================
+#  PIXEL OVERLAP PARAMETERS
+# =============================================================================
+
+# Enable pixel-level overlap detection (experimental)
+UsePixelOverlap 1
+doPeakFit 1
+
+# =============================================================================
+#  INDEXING PARAMETERS
+# =============================================================================
+
+# Ring used to generate candidate orientations
+# Prefer low-multiplicity rings for faster indexing
+OverAllRingToIndex 2
+
+# Minimum matching fraction to accept a grain (0–1)
+Completeness 0.8
+
+# Minimum number of unique solutions before confirming a grain
+MinNrSpots 3
+
+# Use Friedel pairs to speed up indexing (highly recommended)
+UseFriedelPairs 1
+
+# Orientation search step size (degrees of misorientation)
+StepSizeOrient 0.2
+
+# Position search step size for first-pass indexing (microns)
+StepSizePos 100
+
+# Omega range for filtering spots on the ring to index (degrees)
+MinOmeSpotIDsToIndex -90
+MaxOmeSpotIDsToIndex 90
+
+# Azimuthal exclusion near poles (degrees)
+# Removes spots where wedge effects corrupt omega calculation
+MinEta 6
+
+
+# =============================================================================
+#  SPOT MATCHING TOLERANCES
+# =============================================================================
+
+# Tolerance around ideal ring radius (microns)
+Width 1500
+
+# Tolerances around expected spot positions during indexing (microns)
+MarginRadial 500                # Radial (2θ) direction
+MarginEta 500                   # Eta (azimuthal) direction
+MarginOme 0.5                   # Omega (rotation) direction
+
+# Filter out spots beyond this equivalent grain radius (microns)
+# Use a large value to disable
+MarginRadius 500
+
+# Virtual detector box around beam center: -y +y -z +z (microns)
+# Use values larger than detector to disable
+BoxSize -1000000 1000000 -1000000 1000000
+
+# Look-up table bin sizes for spot association
+OmeBinSize 0.1                  # Omega binning (degrees)
+EtaBinSize 0.1                  # Eta binning (degrees)
+
+
+# =============================================================================
+#  REFINEMENT
+# =============================================================================
+
+# Lattice parameter tolerance during refinement (%)
+MargABC 4.8                     # Tolerance for a, b, c
+MargABG 4.8                     # Tolerance for alpha, beta, gamma
+
+
+# =============================================================================
+#  ADVANCED / OPTIONAL
+# =============================================================================
+
+# Twin analysis (0 = disabled)
+Twins 0
+TakeGrainMax 0                  # Related to twin analysis (redundant)
+
+# Focused beam model (0 = parallel beam, 1 = focused beam)
+DiscModel 0
+DiscArea 2250000                # Illuminated area for focused beam (microns³)
+
+# PF-Simulation (uncomment for point-focus):
+# nScans 9
+# BeamSize 10                   # Horizontal beam size (microns)
