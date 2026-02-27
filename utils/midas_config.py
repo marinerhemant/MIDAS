@@ -123,12 +123,12 @@ def check_build_staleness():
         return
 
     newest_src_time = max(os.path.getmtime(f) for f in src_files)
-    oldest_bin_time = min(os.path.getmtime(f) for f in bin_files)
+    newest_bin_time = max(os.path.getmtime(f) for f in bin_files)
 
-    if newest_src_time > oldest_bin_time:
-        # Find which source changed
+    if newest_src_time > newest_bin_time:
+        # Find which source changed since the last build
         changed_sources = [os.path.basename(f) for f in src_files
-                           if os.path.getmtime(f) > oldest_bin_time]
+                           if os.path.getmtime(f) > newest_bin_time]
         n = len(changed_sources)
         example = changed_sources[0] if changed_sources else "unknown"
         print(

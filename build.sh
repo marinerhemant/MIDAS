@@ -38,6 +38,9 @@ show_help() {
     echo "  -j, --jobs N              Number of parallel jobs for build (default: auto)"
     echo "  --ninja                   Use Ninja generator instead of Makefiles"
     echo "  --clean                   Clean the build directory before building"
+    echo ""
+    echo "Note: Source-tree bin directories (FF_HEDM/bin, NF_HEDM/bin, etc.)"
+    echo "      are always auto-cleaned before each build."
     echo "  --test ff|nf|calib|all   Run benchmark tests after build (ff, nf, calib, or all)"
     exit 0
 }
@@ -158,6 +161,17 @@ echo "Configuring CMake with options: \${CMAKE_OPTIONS[*]}"
 cmake .. \
     -G "$CMAKE_GENERATOR" \
     "${CMAKE_OPTIONS[@]}"
+
+# Clean stale binaries from source-tree bin directories before building.
+# CMake post-build steps copy fresh binaries back into these directories,
+# but legacy/orphaned binaries from previously removed targets can linger.
+echo "Cleaning source-tree bin directories..."
+for bin_dir in FF_HEDM/bin NF_HEDM/bin TOMO/bin DT/bin; do
+    if [ -d "../$bin_dir" ]; then
+        rm -f "../$bin_dir"/*
+        echo "  Cleaned $bin_dir/"
+    fi
+done
 
 # Build
 echo "Building with $JOBS jobs..."
