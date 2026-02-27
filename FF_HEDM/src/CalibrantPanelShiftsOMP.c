@@ -2438,6 +2438,7 @@ int main(int argc, char *argv[]) {
     double bestLsd, bestYbc, bestZbc, bestTy, bestTz;
     double bestP0, bestP1, bestP2, bestP3, bestP4 = 0;
     int stagnantCount = 0;
+    double prevIterMeanDiff = -1;
     Panel *bestPanels = NULL;
     if (nPanels > 0)
       bestPanels = malloc(nPanels * sizeof(Panel));
@@ -2765,10 +2766,15 @@ int main(int argc, char *argv[]) {
         bestP4 = p4;
         if (bestPanels && nPanels > 0)
           memcpy(bestPanels, panels, nPanels * sizeof(Panel));
-        stagnantCount = 0;
-      } else {
-        stagnantCount++;
       }
+
+      // Stagnation: detect when optimizer is truly stuck (identical results)
+      if (iter > 0 && fabs(MeanDiff - prevIterMeanDiff) < 1e-12) {
+        stagnantCount++;
+      } else {
+        stagnantCount = 0;
+      }
+      prevIterMeanDiff = MeanDiff;
 
       // Perturbation: if stagnant for 3+ iterations, kick parameters
       if (stagnantCount >= 3 && iter < nIterations - 1) {
@@ -2803,7 +2809,7 @@ int main(int argc, char *argv[]) {
         p3in = PERT(p3in, tolP3);
         p4in = PERT(p4in, tolP4);
 #undef PERT
-        printf("  [Perturbation applied after %d stagnant iterations, "
+        printf("  [Perturbation applied after %d identical iterations, "
                "restarting from best iter %d]\n",
                stagnantCount, bestIter + 1);
         stagnantCount = 0;
