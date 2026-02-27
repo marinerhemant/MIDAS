@@ -844,16 +844,26 @@ def getImageMax(fn):
 			# Fallback: single file, single frame
 			dataMax = getImage(fn, Header, frame_idx=0)
 	else:
-		# HDF5 batch fast-path: read all frames at once
+		# HDF5 chunked fast-path: read in chunks to avoid huge memory allocations
 		if ext in ['.h5', '.hdf', '.hdf5', '.nxs']:
 			try:
 				with h5py.File(fn, 'r') as f:
 					dset_path = hdf5PathVar.get()
 					if dset_path in f and f[dset_path].ndim == 3:
 						end_idx = min(startFrameNr + nFramesToDo, f[dset_path].shape[0])
-						print(f"  HDF5 batch max: frames {startFrameNr}..{end_idx-1}")
-						slab = f[dset_path][startFrameNr:end_idx, :, :]
-						dataMax = np.max(slab, axis=0).astype(float)
+						nFrames = end_idx - startFrameNr
+						print(f"  HDF5 chunked max: frames {startFrameNr}..{end_idx-1} ({nFrames} frames)")
+						# Read in chunks to keep peak memory low
+						chunk_size = 50
+						dataMax = None
+						for cs in range(startFrameNr, end_idx, chunk_size):
+							ce = min(cs + chunk_size, end_idx)
+							chunk = f[dset_path][cs:ce, :, :]
+							chunk_max = np.max(chunk, axis=0)
+							if dataMax is None:
+								dataMax = chunk_max.astype(float)
+							else:
+								np.maximum(dataMax, chunk_max, out=dataMax)
 						# Apply flips/transpose/mask once
 						if transpose.get() == 1:
 							dataMax = np.transpose(dataMax)
@@ -870,7 +880,7 @@ def getImageMax(fn):
 							if badPixelMask is not None and badPixelMask.shape == dataMax.shape:
 								dataMax[badPixelMask == 1] = 0
 						t2 = time.time()
-						print("Time taken to calculate max: " + str(t2-t1))
+						print(f"Time taken to calculate max: {t2-t1:.1f}s")
 						return dataMax
 			except Exception as e:
 				print(f"HDF5 batch max failed ({e}), falling back to per-frame")
@@ -942,16 +952,26 @@ def getImageSum(fn):
 		else:
 			dataSum = getImage(fn, Header, frame_idx=0)
 	else:
-		# HDF5 batch fast-path: read all frames at once
+		# HDF5 chunked fast-path: read in chunks to avoid huge memory allocations
 		if ext in ['.h5', '.hdf', '.hdf5', '.nxs']:
 			try:
 				with h5py.File(fn, 'r') as f:
 					dset_path = hdf5PathVar.get()
 					if dset_path in f and f[dset_path].ndim == 3:
 						end_idx = min(startFrameNr + nFramesToDo, f[dset_path].shape[0])
-						print(f"  HDF5 batch sum: frames {startFrameNr}..{end_idx-1}")
-						slab = f[dset_path][startFrameNr:end_idx, :, :]
-						dataSum = np.sum(slab, axis=0).astype(float)
+						nFrames = end_idx - startFrameNr
+						print(f"  HDF5 chunked sum: frames {startFrameNr}..{end_idx-1} ({nFrames} frames)")
+						# Read in chunks to keep peak memory low
+						chunk_size = 50
+						dataSum = None
+						for cs in range(startFrameNr, end_idx, chunk_size):
+							ce = min(cs + chunk_size, end_idx)
+							chunk = f[dset_path][cs:ce, :, :]
+							chunk_sum = np.sum(chunk, axis=0)
+							if dataSum is None:
+								dataSum = chunk_sum.astype(float)
+							else:
+								dataSum += chunk_sum
 						if transpose.get() == 1:
 							dataSum = np.transpose(dataSum)
 						flip_h = hflip.get() == 1
@@ -967,7 +987,7 @@ def getImageSum(fn):
 							if badPixelMask is not None and badPixelMask.shape == dataSum.shape:
 								dataSum[badPixelMask == 1] = 0
 						t2 = time.time()
-						print("Time taken to calculate sum: " + str(t2-t1))
+						print(f"Time taken to calculate sum: {t2-t1:.1f}s")
 						return dataSum
 			except Exception as e:
 				print(f"HDF5 batch sum failed ({e}), falling back to per-frame")

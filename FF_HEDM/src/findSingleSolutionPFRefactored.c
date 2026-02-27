@@ -317,10 +317,12 @@ int main(int argc, char *argv[]) {
   char spotsFilename[MAX_PATH_LEN];
   sprintf(spotsFilename, "%s/Spots.bin", argv[1]);
 
-  /* Copy to shared memory for faster access */
+  /* Copy to shared memory for faster access (PID-unique to avoid collisions) */
   printf("Copying spots data to shared memory for faster access...\n");
+  char shmFilename[MAX_PATH_LEN];
+  sprintf(shmFilename, "/dev/shm/Spots_%d.bin", (int)getpid());
   char command[MAX_PATH_LEN * 2];
-  sprintf(command, "cp %s /dev/shm/", spotsFilename);
+  sprintf(command, "cp %s %s", spotsFilename, shmFilename);
 
   int system_status = system(command);
   if (system_status != 0) {
@@ -328,7 +330,7 @@ int main(int argc, char *argv[]) {
               "original file.");
     /* Continue with original file if shared memory copy fails */
   } else {
-    sprintf(spotsFilename, "/dev/shm/Spots.bin");
+    sprintf(spotsFilename, "%s", shmFilename);
   }
 
   /* Memory map the spots file for efficient access */
