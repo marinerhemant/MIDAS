@@ -1339,8 +1339,11 @@ def main():
             if doTomo == 1:
                 # Find sino file
                 sinoFNs = glob.glob("sinos_*.bin")
+                # Filter out variant files (sinos_raw_*, sinos_norm_*, etc.)
+                # The base file has format sinos_N_M_S.bin (4 parts when split by _)
+                sinoFNs = [f for f in sinoFNs if f.count('_') == 3 and f.split('_')[1].isdigit()]
                 if not sinoFNs:
-                    logger.error("No sino files found")
+                    logger.error("No base sino file found (expected sinos_N_M_S.bin)")
                     sys.exit(1)
                     
                 sinoFN = sinoFNs[0]
