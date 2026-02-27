@@ -405,6 +405,7 @@ if __name__ == '__main__':
                     dbc.Col([dbc.Label("Det Pixels ±"), dcc.Slider(id='volume-pixels-slider', min=5, max=50, step=1, value=VOLUME_WINDOW_PX, marks={5:'5', 15:'15', 25:'25', 50:'50'}, tooltip={"placement": "bottom", "always_visible": True})], width=6),
                 ], className="mb-1"),
                 dcc.Loading(id="loading-image-data", type="cube", children=[dcc.Graph(figure=go.Figure(), id='image_data')]),
+                html.Div(id='volume-stats', className="text-center small mt-1"),
             ], width=6),
         ]), html.Hr(),
         dbc.Row([
@@ -660,21 +661,21 @@ if __name__ == '__main__':
         return fig
 
     # --- Volume Plot Callback ---
-    @callback( Output('image_data', 'figure'), Input('filtered_spots_2d', 'clickData'), Input('volume-frames-slider', 'value'), Input('volume-pixels-slider', 'value'), State('selected-grain-id-store', 'data'), prevent_initial_call=True)
+    @callback( Output('image_data', 'figure'), Output('volume-stats', 'children'), Input('filtered_spots_2d', 'clickData'), Input('volume-frames-slider', 'value'), Input('volume-pixels-slider', 'value'), State('selected-grain-id-store', 'data'), prevent_initial_call=True)
     def update_volume_plot(spot_clickData, vol_frames, vol_pixels, selected_grain_id):
         fig = go.Figure()
-        if selected_grain_id is None: return fig.update_layout(title="Select a grain", **COMMON_LAYOUT_SETTINGS)
-        if not (spot_clickData and spot_clickData['points'] and 'customdata' in spot_clickData['points'][0]): return fig.update_layout(title="Click a spot", **COMMON_LAYOUT_SETTINGS)
+        if selected_grain_id is None: return fig.update_layout(title="Select a grain", **COMMON_LAYOUT_SETTINGS), ""
+        if not (spot_clickData and spot_clickData['points'] and 'customdata' in spot_clickData['points'][0]): return fig.update_layout(title="Click a spot", **COMMON_LAYOUT_SETTINGS), ""
         try: clicked_spot_id_val = spot_clickData['points'][0]['customdata'][0]; clicked_spot_id = int(clicked_spot_id_val) if clicked_spot_id_val is not None else None
-        except (ValueError, TypeError, IndexError): print(f"Invalid spot ID: {clicked_spot_id_val}"); return fig.update_layout(title="Invalid spot ID clicked", **COMMON_LAYOUT_SETTINGS)
-        if clicked_spot_id is None: return fig.update_layout(title="Click on a spot", **COMMON_LAYOUT_SETTINGS)
+        except (ValueError, TypeError, IndexError): print(f"Invalid spot ID: {clicked_spot_id_val}"); return fig.update_layout(title="Invalid spot ID clicked", **COMMON_LAYOUT_SETTINGS), ""
+        if clicked_spot_id is None: return fig.update_layout(title="Click on a spot", **COMMON_LAYOUT_SETTINGS), ""
         spot_info_df = spots_df[(spots_df['spotID'] == clicked_spot_id) & (spots_df['grainID'] == selected_grain_id)]
-        if spot_info_df.empty: return fig.update_layout(title=f"Spot {clicked_spot_id}/Grain {int(selected_grain_id)} not found", **COMMON_LAYOUT_SETTINGS)
+        if spot_info_df.empty: return fig.update_layout(title=f"Spot {clicked_spot_id}/Grain {int(selected_grain_id)} not found", **COMMON_LAYOUT_SETTINGS), ""
         spot_info = spot_info_df.iloc[0]
         try: detY_px, detZ_px = int(spot_info['detY']), int(spot_info['detZ'])
-        except (ValueError, TypeError): return fig.update_layout(title=f"Invalid coords Spot {clicked_spot_id}", **COMMON_LAYOUT_SETTINGS)
+        except (ValueError, TypeError): return fig.update_layout(title=f"Invalid coords Spot {clicked_spot_id}", **COMMON_LAYOUT_SETTINGS), ""
         omega_deg = spot_info['omeRaw']
-        if pd.isna(omega_deg): return fig.update_layout(title=f"Missing OmegaRaw for Spot {clicked_spot_id}", **COMMON_LAYOUT_SETTINGS)
+        if pd.isna(omega_deg): return fig.update_layout(title=f"Missing OmegaRaw for Spot {clicked_spot_id}", **COMMON_LAYOUT_SETTINGS), ""
         frameNrMid = int(round((omega_deg - zarr_params['omegaStart']) / zarr_params['omegaStep']))
         frameMin, frameMax = max(0, frameNrMid - vol_frames), min(zarr_params['nFrames'], frameNrMid + vol_frames + 1)
         yMin, yMax = max(0, detY_px - vol_pixels), min(zarr_params['nPxY'], detY_px + vol_pixels + 1)
@@ -686,20 +687,32 @@ if __name__ == '__main__':
             elif transOpt == 2: zMin_trans, zMax_trans = nPxZ_eff - zMax_trans, nPxZ_eff - zMin_trans
             elif transOpt == 3: yMin_trans, zMin_trans, yMax_trans, zMax_trans, nPxY_eff, nPxZ_eff = zMin_trans, yMin_trans, zMax_trans, yMax_trans, nPxZ_eff, nPxY_eff
         yMin_trans, yMax_trans = max(0, yMin_trans), min(nPxY_eff, yMax_trans); zMin_trans, zMax_trans = max(0, zMin_trans), min(nPxZ_eff, zMax_trans)
-        if frameMin >= frameMax or zMin_trans >= zMax_trans or yMin_trans >= yMax_trans: return fig.update_layout(title=f"Volume indices invalid", **COMMON_LAYOUT_SETTINGS)
+        if frameMin >= frameMax or zMin_trans >= zMax_trans or yMin_trans >= yMax_trans: return fig.update_layout(title=f"Volume indices invalid", **COMMON_LAYOUT_SETTINGS), ""
         try: # Zarr extraction
             dark_slice = zarr_params['darkMean'][zMin_trans:zMax_trans, yMin_trans:yMax_trans]
             extracted_data = zarr_params['rawDataLink'][frameMin:frameMax, zMin_trans:zMax_trans, yMin_trans:yMax_trans].astype(np.double)
             if extracted_data.shape[1:] == dark_slice.shape: extracted_data -= dark_slice
             else: print(f"Warn: Dark ({dark_slice.shape})/data ({extracted_data.shape[1:]}) mismatch.")
             extracted_data[extracted_data < zarr_params['thresh']] = 0; extracted_data = extracted_data.astype(np.uint16)
-            if extracted_data.size == 0 or np.max(extracted_data) < zarr_params['thresh']: return fig.update_layout(title=f"No data > thresh (Spot {clicked_spot_id})", **COMMON_LAYOUT_SETTINGS)
+            if extracted_data.size == 0 or np.max(extracted_data) < zarr_params['thresh']: return fig.update_layout(title=f"No data > thresh (Spot {clicked_spot_id})", **COMMON_LAYOUT_SETTINGS), ""
             F, Z, Y = np.mgrid[frameMin:frameMax, zMin_trans:zMax_trans, yMin_trans:yMax_trans]
             fig = go.Figure(data=go.Volume(x=F.flatten(), y=Y.flatten(), z=Z.flatten(), value=extracted_data.flatten(), isomin=zarr_params['thresh'], isomax=np.max(extracted_data), opacity=0.1, surface_count=17, caps=dict(x_show=False, y_show=False, z_show=False)))
             fig.update_layout(title=f'Volume: Spot {clicked_spot_id} (Grain {int(selected_grain_id)})', scene=dict(xaxis_title='Frame', yaxis_title='Det Y', zaxis_title='Det Z'), **COMMON_LAYOUT_SETTINGS)
-        except IndexError as e: print(f"Error Zarr slicing: {e}"); traceback.print_exc(); return fig.update_layout(title=f"Error extracting (Indices)", **COMMON_LAYOUT_SETTINGS)
-        except Exception as e: print(f"Error Zarr processing: {e}"); traceback.print_exc(); return fig.update_layout(title=f"Error extracting data", **COMMON_LAYOUT_SETTINGS)
-        return fig
+            # Compute stats
+            nz_mask = extracted_data > 0
+            max_intensity = int(np.max(extracted_data))
+            n_nonzero = int(np.sum(nz_mask))
+            nz_coords = np.argwhere(nz_mask)  # shape (N, 3) with axes [frame, z, y]
+            if nz_coords.size > 0:
+                extent_frames = int(nz_coords[:, 0].max() - nz_coords[:, 0].min() + 1)
+                extent_z = int(nz_coords[:, 1].max() - nz_coords[:, 1].min() + 1)
+                extent_y = int(nz_coords[:, 2].max() - nz_coords[:, 2].min() + 1)
+            else:
+                extent_frames = extent_y = extent_z = 0
+            stats_text = f"MaxIntensity: {max_intensity}  |  NonZeroPixels: {n_nonzero}  |  ExtentY: {extent_y} px  |  ExtentZ: {extent_z} px  |  ExtentFrames: {extent_frames}"
+        except IndexError as e: print(f"Error Zarr slicing: {e}"); traceback.print_exc(); return fig.update_layout(title=f"Error extracting (Indices)", **COMMON_LAYOUT_SETTINGS), ""
+        except Exception as e: print(f"Error Zarr processing: {e}"); traceback.print_exc(); return fig.update_layout(title=f"Error extracting data", **COMMON_LAYOUT_SETTINGS), ""
+        return fig, stats_text
 
     # --- All Spots 3D Callback ---
     @callback( Output('spots', 'figure'), Input('radio-buttons-spots', 'value'), Input("checklist_spots", "value"))
