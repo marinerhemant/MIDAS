@@ -162,7 +162,14 @@ def getfilenames():
 			print(f"Warning: frame index {idx} out of range (0-{len(_beampos_files)-1})")
 			idx = max(0, min(idx, len(_beampos_files)-1))
 			return [_beampos_files[idx], None]
-	medianfn = folder + '/' + fnstem + "_Median_Background_Distance_" + str(dist) + ".bin"
+	medianfn = None
+	if _median_dir and os.path.isdir(_median_dir):
+		medianfn = os.path.join(_median_dir, fnstem + "_Median_Background_Distance_" + str(dist) + ".bin")
+		if not os.path.exists(medianfn):
+			medianfn = None
+	if medianfn is None:
+		# Fallback: look in data folder (legacy behavior)
+		medianfn = folder + '/' + fnstem + "_Median_Background_Distance_" + str(dist) + ".bin"
 	fnr = startframenr + framenr + dist*nrfilesperdistance
 	filefn = folder + '/' + fnstem + '_' + str(fnr).zfill(padding) + '.tif'
 	return [filefn, medianfn]
@@ -881,12 +888,28 @@ def makespots():
 	Tk.Button(master=analysisFrame,text="Load",command=update_spotnr,font=("Helvetica",12)).grid(row=1,column=nrthird+4,sticky=Tk.W)
 
 def median():
-	# Iterate sequentially instead of using Pool/Popen logic which is hard to secure
-	# Since these are likely fast, sequential is safer for the GUI
-	for thisdist in range(ndistances):
-		# Create a temp file for params
-		with tempfile.NamedTemporaryFile(mode='w', suffix='.txt', delete=False) as f:
-			pfname = f.name
+	import concurrent.futures
+	global _median_dir
+	# Create a persistent temp directory for median output
+	# Clean up any previous temp dir
+	if _median_dir and os.path.isdir(_median_dir):
+		import shutil
+		shutil.rmtree(_median_dir, ignore_errors=True)
+	_median_dir = tempfile.mkdtemp(prefix='midas_median_')
+
+	# Auto-detect CPUs: divide total by number of distances (parallel medians)
+	total_cpus = os.cpu_count() or 4
+	cpus_per_median = max(1, total_cpus // ndistances)
+
+	if midas_config and midas_config.MIDAS_NF_BIN_DIR:
+		cmd = os.path.join(midas_config.MIDAS_NF_BIN_DIR, 'MedianImageLibTiff')
+	else:
+		cmd = os.path.expanduser('~/opt/MIDAS/NF_HEDM/bin/MedianImageLibTiff')
+
+	def run_median(thisdist):
+		"""Run median for a single distance in the shared temp dir."""
+		pfname = os.path.join(_median_dir, f'ps_dist{thisdist}.txt')
+		with open(pfname, 'w') as f:
 			f.write('extReduced bin\n')
 			f.write('extOrig tif\n')
 			f.write('WFImages 0\n')
@@ -896,27 +919,19 @@ def median():
 			f.write(f'NrPixelsY {NrPixelsY}\n')
 			f.write(f'NrPixelsZ {NrPixelsZ}\n')
 			f.write(f'DataDirectory {folder}\n')
+			f.write(f'OutputDirectory {_median_dir}\n')
 			f.write(f'RawStartNr {tempnr}\n')
 			f.write(f'ReducedFileName {fnstem}\n')
-
-		if midas_config and midas_config.MIDAS_NF_BIN_DIR:
-			cmd = os.path.join(midas_config.MIDAS_NF_BIN_DIR,'MedianImageLibTiff')
-		else:
-			cmd = os.path.expanduser('~/opt/MIDAS/NF_HEDM/bin/MedianImageLibTiff')
-			
-		# subprocess.run([cmd, pfname, str(thisdist+1), '10'], check=True)
-		# NOTE: original used Popen. Median calculation might be slow. 
-		# Implementing fully blocking here will freeze GUI. 
-		# But original used Pool(len(processes)).map(...) which blocked until ALL returned anyway! 
-		# So blocking here is behaviorally equivalent.
 		try:
-			subprocess.run([cmd, pfname, str(thisdist+1), '10'], check=True)
-			# Clean up temp file
-			os.remove(pfname)
+			subprocess.run([cmd, pfname, str(thisdist+1), str(cpus_per_median)], check=True)
 		except subprocess.CalledProcessError as e:
-			print(f"Error running MedianImageLibTiff: {e}")
+			print(f"Error running MedianImageLibTiff for distance {thisdist}: {e}")
 
-	print('Calculated median for all distances.')
+	# Run all distances in parallel
+	with concurrent.futures.ThreadPoolExecutor(max_workers=ndistances) as executor:
+		executor.map(run_median, range(ndistances))
+
+	print(f'Calculated median for all {ndistances} distances using {cpus_per_median} CPUs each (total: {total_cpus}). Output in: {_median_dir}')
 
 def micfileselect(initialdir=None):
 	global micfile
@@ -1210,6 +1225,7 @@ pixelsize = 1.48
 initvali=100
 cid = None
 cid2 = None
+_median_dir = None
 lb1 = None
 top = None
 top2 = None

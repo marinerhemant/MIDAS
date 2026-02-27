@@ -188,6 +188,15 @@ cd build
 cmake --build . --target <TargetName>
 ```
 
+### Updating After `git pull`
+
+Each time you pull the latest changes, rebuild the C binaries:
+
+```bash
+cd MIDAS/build
+cmake --build .
+```
+
 ### Python Environment
 
 ```bash
