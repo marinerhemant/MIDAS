@@ -170,7 +170,7 @@ if [ $BUILD_SUCCESS -eq 0 ]; then
     echo "Build completed successfully!"
 
     # Touch the update-check timestamp so the 14-day reminder resets
-    touch "$BUILD_DIR/.last_update_check"
+    touch ".last_update_check"
 
     # Install git post-merge hook (reminds users to rebuild after git pull)
     HOOK_SRC="../hooks/post-merge"

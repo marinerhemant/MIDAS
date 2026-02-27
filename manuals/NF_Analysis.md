@@ -108,7 +108,7 @@ The parameter file is a whitespace-delimited text file. Lines starting with `#` 
 
 | Key | Values | Description |
 |---|---|---|
-| `DataDirectory` | path | Working directory for all outputs |
+| `DataDirectory` | path | Base directory containing input data (raw TIFFs, `ReducedFileName` files). Also used as the output directory unless `OutputDirectory` is specified |
 | `ReducedFileName` | string | Base name pattern for input TIFF files |
 | `StartNr` | int | First frame number |
 | `EndNr` | int | Last frame number |
@@ -140,6 +140,7 @@ The parameter file is a whitespace-delimited text file. Lines starting with `#` 
 
 | Key | Values | Description |
 |---|---|---|
+| `OutputDirectory` | path | If specified, all generated output files (mic, grid, logs, intermediate binaries) are written here instead of `DataDirectory`. This avoids modifying the raw data directory and prevents data duplication when working with remote or read-only datasets. Falls back to `DataDirectory` if not set |
 | `RingsToUse` | int | Restrict to specific ring number. Can appear multiple times. Useful when structure factors vary significantly between rings — include only rings with strong, reliable diffraction signal |
 | `SaveNSolutions` | int | Number of top solutions to save per grid point (default: `1`) |
 | `Wedge` | float | Wedge angle (degrees, default: `0`) |
@@ -152,6 +153,9 @@ The parameter file is a whitespace-delimited text file. Lines starting with `#` 
 | `GridFileName` | string | Custom grid filename (default: `grid.txt`) |
 | `GridPoints` | 12 floats | Custom grid point specification (for multi-point refinement) |
 | `BCTol` | 2 floats | Beam center tolerance for refinement |
+
+> [!TIP]
+> **Separating raw data from results:** Set `DataDirectory` to the location of your raw images and `OutputDirectory` to a local working directory. The workflow reads input data from `DataDirectory` and writes all generated files (mic, grid, logs, binaries) to `OutputDirectory`. This is especially useful when raw data lives on a remote filesystem or read-only mount — you avoid copying the data locally.
 
 ---
 
@@ -316,10 +320,10 @@ This produces a `.mic` text file and a `.map` binary file in `DataDirectory`.
 
 ## 8. Output Directory Structure
 
-All output is generated within `DataDirectory` from the parameter file.
+All output is generated within `OutputDirectory` if specified, otherwise within `DataDirectory`.
 
 ```
-<DataDirectory>/
+<OutputDirectory>/    (or <DataDirectory>/ if OutputDirectory is not set)
 ├── midas_log/                  # Logs for every binary
 │   ├── midas_nf_workflow.log   # Master workflow log
 │   ├── hkls_out/err.csv        # HKL generation
