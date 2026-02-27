@@ -227,7 +227,7 @@ The parameter file is a text file containing key-value pairs used by both the `i
 ### A.3. Corrections & Advanced
 | Parameter | Type | Description |
 | :--- | :--- | :--- |
-| `MaskFile` | `str` | Path to a file defining z mask to be skipped, it should be a int8 tiff. All 0 values are good pixels, 1 means mask pixels. (mask) |
+| `MaskFile` | `str` | Path to a uint8 TIFF mask file. Convention: `0` = valid pixel, `1` = masked. Can be generated using `utils/generate_mask.py`. |
 | `GapFile` | `str` | Path to a file defining panel gaps (mask) |
 | `BadPxFile` | `str` | Path to a file defining bad pixels (mask) |
 | `DistortionFile` | `str` | Path to binary file (double precision) containing Y then Z distortion maps |

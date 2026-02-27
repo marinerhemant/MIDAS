@@ -131,6 +131,16 @@ The parameter file is a space-delimited text file. Lines starting with `#` are c
 | `ResultFolder` | `str` | Override result folder instead of default execution folder |
 | `UsePixelOverlap` | `int` | `1` = merge peaks using shared pixel coordinates instead of center-distance. Requires `_PX.bin` files from peak search. Default: `0` (distance-based merge). |
 | `doPeakFit` | `int` | `0` = skip Pseudo-Voigt fitting and treat each connected component as a single peak. Default: `1`. |
+| `MaskFN` | `str` | Path to a uint8 TIFF mask file. Convention: `0` = valid, `1` = masked (bad pixel). Embedded into the Zarr archive and applied during peak search. |
+| `BadPxIntensity` | `float` | Intensity value representing bad pixels (e.g., `-2`). Pixels matching this value are masked. |
+| `GapIntensity` | `float` | Intensity value representing detector gaps (e.g., `-1`). Pixels matching this value are masked. |
+
+> [!TIP]
+> To create a mask TIFF from a dark frame:
+> ```bash
+> python utils/generate_mask.py dark.tif -1 -2 -o mask.tif
+> ```
+> Then add `MaskFN mask.tif` to your parameter file.
 
 ---
 

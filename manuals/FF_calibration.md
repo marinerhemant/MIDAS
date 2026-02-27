@@ -436,7 +436,7 @@ The following table lists all parameters recognized by `CalibrantPanelShiftsOMP`
 | **Masking** | | | |
 | `BadPxIntensity` | int | 0 | Bad pixel intensity value |
 | `GapIntensity` | int | 0 | Gap pixel intensity value |
-| `MaskFile` | string | — | Binary mask file |
+| `MaskFile` | string | — | Path to a uint8 TIFF mask file. Convention: `0` = valid pixel, `1` = masked (bad) pixel. Can be generated from a dark frame using `utils/generate_mask.py`. |
 | **Optimization Tolerances** | | | |
 | `tolTilts` | double | — | Search range for ty, tz (°) |
 | `tolBC` | double | — | Search range for BC (pixels) |
@@ -476,6 +476,13 @@ The following table lists all parameters recognized by `CalibrantPanelShiftsOMP`
 | `tolLsdPanel` | double | 100 | Search range for per-panel dLsd (μm) |
 | `PerPanelDistortion` | int | 0 | `1` = fit per-panel p2 offset (panel flatness) |
 | `tolP2Panel` | double | 0.0001 | Search range for per-panel dP2 |
+
+> [!TIP]
+> To create a mask from a dark frame, use the included utility:
+> ```bash
+> python utils/generate_mask.py dark.tif -1 -2 -o mask.tif
+> ```
+> This marks all pixels with intensity -1 (gaps) or -2 (bad pixels) as masked.
  
 ### Advanced Optimization Features
 
