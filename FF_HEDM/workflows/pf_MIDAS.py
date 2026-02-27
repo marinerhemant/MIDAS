@@ -242,7 +242,22 @@ def parallel_peaks(layerNr, positions, startNrFirstLayer, nrFilesPerSweep, topdi
         logger.info(f"Generating zip for layer {layerNr}: {cmd}")
         
         try:
-            subprocess.call(cmd, shell=True, stdout=open(outf_path, 'w'), stderr=open(errf_path, 'w'))
+            # Stream output to both file and console for real-time progress
+            with open(outf_path, 'w') as f_out, open(errf_path, 'w') as f_err:
+                process = subprocess.Popen(
+                    cmd,
+                    shell=True,
+                    stdout=subprocess.PIPE,
+                    stderr=f_err,
+                    cwd=resFol,
+                    bufsize=1,
+                    universal_newlines=True
+                )
+                for line in process.stdout:
+                    f_out.write(line)
+                    if 'Progress:' in line or 'done:' in line or 'OutputZipName' in line or 'Processing' in line:
+                        logger.info(f"[ZIP] {line.rstrip()}")
+                process.wait()
             
             # Check for errors
             if check_error_file(errf_path):

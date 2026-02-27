@@ -14,9 +14,10 @@ from numba import jit
 import re
 from math import ceil
 import subprocess
+from concurrent.futures import ThreadPoolExecutor
 
 # --- Global Configuration ---
-compressor = Blosc(cname='zstd', clevel=3, shuffle=Blosc.BITSHUFFLE)
+compressor = Blosc(cname='zstd', clevel=1, shuffle=Blosc.BITSHUFFLE, nthreads=8)
 
 # --- Helper Functions ---
 
@@ -427,13 +428,53 @@ def process_hdf5_scan(config, z_groups, zRoot):
                 chunk_size = int(config.get('numFrameChunks', 100));
                 if chunk_size == -1: chunk_size = frames_per_file
 
-                for j in range(start_frame_in_file, frames_per_file, chunk_size):
-                    end_frame = min(j + chunk_size, frames_per_file)
-                    data_chunk = hf[data_loc][j:end_frame]
-                    if pre_proc_active:
-                        data_chunk = apply_correction(data_chunk, dark_mean, pre_proc_val)
-                    z_data[z_offset : z_offset+len(data_chunk)] = data_chunk
-                    z_offset += len(data_chunk)
+                # Pipeline: overlap HDF5 reads with zarr writes
+                import time as _time
+                t_start_pipeline = _time.time()
+                frames_written_this_file = 0
+                total_frames_this_file = frames_per_file - start_frame_in_file
+                j = start_frame_in_file
+                # Initial read
+                end_frame = min(j + chunk_size, frames_per_file)
+                data_chunk = hf[data_loc][j:end_frame]
+                if pre_proc_active:
+                    data_chunk = apply_correction(data_chunk, dark_mean, pre_proc_val)
+                j += chunk_size
+
+                with ThreadPoolExecutor(max_workers=1) as prefetcher:
+                    while True:
+                        # Submit prefetch for the next chunk (if any)
+                        if j < frames_per_file:
+                            next_end = min(j + chunk_size, frames_per_file)
+                            future = prefetcher.submit(lambda s, e: hf[data_loc][s:e], j, next_end)
+                        else:
+                            future = None
+
+                        # Write current chunk to zarr (overlaps with HDF5 read above)
+                        z_data[z_offset : z_offset + len(data_chunk)] = data_chunk
+                        z_offset += len(data_chunk)
+                        frames_written_this_file += len(data_chunk)
+
+                        # Progress report
+                        elapsed = _time.time() - t_start_pipeline
+                        bytes_done = frames_written_this_file * nZ * nY * np.dtype(output_dtype).itemsize
+                        throughput = bytes_done / elapsed / 1e6 if elapsed > 0 else 0
+                        print(f"    Progress: {frames_written_this_file}/{total_frames_this_file} frames "
+                              f"({elapsed:.1f}s, {throughput:.0f} MB/s)", flush=True)
+
+                        if future is None:
+                            break
+
+                        # Get prefetched data for next iteration
+                        data_chunk = future.result()
+                        if pre_proc_active:
+                            data_chunk = apply_correction(data_chunk, dark_mean, pre_proc_val)
+                        j += chunk_size
+
+                total_elapsed = _time.time() - t_start_pipeline
+                total_bytes = total_frames_this_file * nZ * nY * np.dtype(output_dtype).itemsize
+                print(f"    File {i+1} done: {total_frames_this_file} frames in {total_elapsed:.1f}s "
+                      f"({total_bytes/total_elapsed/1e6:.0f} MB/s)", flush=True)
     return output_dtype
 
 def process_multifile_scan(file_type, config, z_groups):
