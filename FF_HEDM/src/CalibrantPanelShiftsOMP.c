@@ -1187,7 +1187,7 @@ static inline void CorrectTiltSpatialDistortion(
     double tx, double ty, double tz, double p0, double p1, double p2, double p3,
     double *Etas, double *Diffs, double *RadOuts, double *StdDiff,
     double outlierFactor, int *IsOutlier, double p4, int DistortionOrder,
-    int OutlierIterations, int verbose) {
+    int OutlierIterations, int verbose, double *MeanDiffOut) {
   double txr, tyr, tzr;
   txr = deg2rad * tx;
   tyr = deg2rad * ty;
@@ -1330,6 +1330,8 @@ static inline void CorrectTiltSpatialDistortion(
     StdDiff2 += (validDiffs[i] - MeanDiff) * (validDiffs[i] - MeanDiff);
   }
   *StdDiff = sqrt(StdDiff2 / validCount);
+  if (MeanDiffOut)
+    *MeanDiffOut = MeanDiff;
   free(validDiffs);
 }
 
@@ -2096,7 +2098,8 @@ int main(int argc, char *argv[]) {
   fgets(aline, 1000, hklf);
   int tRnr, Exclude, LastRingDone = 0;
   double theta;
-  printf("Thetas: ");
+  printf("Ring Info:\n");
+  printf("  %5s  %10s  %10s\n", "RingNr", "Theta(deg)", "Radius(px)");
   while (fgets(aline, 1000, hklf) != NULL) {
     sscanf(aline, "%s %s %s %s %d %s %s %s %lf %s %s", dummy, dummy, dummy,
            dummy, &tRnr, dummy, dummy, dummy, &theta, dummy, dummy);
@@ -2112,7 +2115,8 @@ int main(int argc, char *argv[]) {
       Thetas[n_hkls] = theta;
       RingIDs[n_hkls] = tRnr;
       LastRingDone = tRnr;
-      printf("%lf ", theta);
+      double ringRadPx = Lsd * tan(deg2rad * 2 * theta) / px;
+      printf("  %5d  %10.4f  %10.1f\n", tRnr, theta, ringRadPx);
       n_hkls++;
     }
   }
@@ -2649,7 +2653,7 @@ int main(int argc, char *argv[]) {
           nIndices, MaxRingRad, Yc, Zc, IdealTtheta, px, Lsd, ybc, zbc, tx,
           tyin, tzin, p0in, p1in, p2in, p3in, EtaIns, DiffIns, RadIns, &StdDiff,
           outlierFactor, NULL, p4in, DistortionOrder, OutlierIterations,
-          iter == 0);
+          iter == 0, NULL);
       NrCalls = 0;
 
       // Count and print indices per panel
@@ -2845,7 +2849,8 @@ int main(int argc, char *argv[]) {
     CorrectTiltSpatialDistortion(
         nIndices, MaxRingRad, Yc, Zc, IdealTtheta, px, LsdFit, ybcFit, zbcFit,
         tx, ty, tz, p0, p1, p2, p3, Etas, Diffs, RadOuts, &StdDiff,
-        outlierFactor, IsOutlier, p4in, DistortionOrder, OutlierIterations, 1);
+        outlierFactor, IsOutlier, p4in, DistortionOrder, OutlierIterations, 1,
+        &MeanDiff);
     printf("StdStrain %0.12lf\n", StdDiff);
     // Compute strain statistics from valid (non-outlier) diffs
     nValid = 0;
