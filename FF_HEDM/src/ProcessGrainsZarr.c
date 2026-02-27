@@ -27,6 +27,7 @@
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
+#include <sys/mman.h>
 #include <sys/stat.h>
 #include <sys/types.h>
 #include <time.h>
@@ -243,6 +244,95 @@ inline int StrainTensorKenesei(int nspots, double **SpotsInfo, double Distance,
                                int startSpotMatrix, double **SpotMatrix,
                                double *RetVal, double StrainTensorInput[3][3]);
 
+// Simple hash set for IDsDone duplicate checking (O(1) lookup vs O(n) linear
+// scan)
+#define HASH_TABLE_SIZE 65536 // power of 2
+typedef struct HashNode {
+  int key;
+  struct HashNode *next;
+} HashNode;
+
+typedef struct {
+  HashNode **buckets;
+  int count;
+} HashSet;
+
+static HashSet *hashset_create(void) {
+  HashSet *hs = malloc(sizeof(HashSet));
+  if (hs == NULL)
+    return NULL;
+  hs->buckets = calloc(HASH_TABLE_SIZE, sizeof(HashNode *));
+  if (hs->buckets == NULL) {
+    free(hs);
+    return NULL;
+  }
+  hs->count = 0;
+  return hs;
+}
+
+static int hashset_contains(HashSet *hs, int key) {
+  unsigned int idx = ((unsigned int)key * 2654435761U) & (HASH_TABLE_SIZE - 1);
+  HashNode *node = hs->buckets[idx];
+  while (node) {
+    if (node->key == key)
+      return 1;
+    node = node->next;
+  }
+  return 0;
+}
+
+static int hashset_insert(HashSet *hs, int key) {
+  unsigned int idx = ((unsigned int)key * 2654435761U) & (HASH_TABLE_SIZE - 1);
+  HashNode *node = hs->buckets[idx];
+  while (node) {
+    if (node->key == key)
+      return 0;
+    node = node->next;
+  }
+  HashNode *newNode = malloc(sizeof(HashNode));
+  if (newNode == NULL)
+    return -1;
+  newNode->key = key;
+  newNode->next = hs->buckets[idx];
+  hs->buckets[idx] = newNode;
+  hs->count++;
+  return 1;
+}
+
+static void hashset_destroy(HashSet *hs) {
+  if (hs == NULL)
+    return;
+  for (int i = 0; i < HASH_TABLE_SIZE; i++) {
+    HashNode *node = hs->buckets[i];
+    while (node) {
+      HashNode *next = node->next;
+      free(node);
+      node = next;
+    }
+  }
+  free(hs->buckets);
+  free(hs);
+}
+
+// Count lines in a CSV file (excluding header)
+static int countCSVLines(const char *filename) {
+  FILE *f = fopen(filename, "r");
+  if (f == NULL)
+    return -1;
+  setvbuf(f, NULL, _IOFBF, 1 << 20);
+  char buf[4096];
+  int count = 0;
+  if (fgets(buf, 4096, f) == NULL) {
+    fclose(f);
+    return 0;
+  }
+  while (fgets(buf, 4096, f) != NULL) {
+    count++;
+  }
+  fclose(f);
+  return count;
+}
+
 int main(int argc, char *argv[]) {
   if (argc < 2) {
     printf(
@@ -275,67 +365,83 @@ int main(int argc, char *argv[]) {
   struct zip_stat *finfo = NULL;
   finfo = calloc(16384, sizeof(int));
   zip_stat_init(finfo);
+
+  // Single-pass Zarr parameter scan with early-exit tracking
   int count = 0;
-  while ((zip_stat_index(arch, count, 0, finfo)) == 0) {
-    if (strstr(finfo->name,
-               "analysis/process/analysis_parameters/SpaceGroup/0") != NULL) {
+  int paramsFound = 0;
+  const int totalParams = 10; // number of parameters to find
+  while ((zip_stat_index(arch, count, 0, finfo)) == 0 &&
+         paramsFound < totalParams) {
+    const char *name = finfo->name;
+    if (strstr(name, "analysis/process/analysis_parameters/SpaceGroup/0") !=
+        NULL) {
       ReadZarrChunk(arch, count, &SGNr, sizeof(int));
-    }
-    if (strstr(finfo->name, "analysis/process/analysis_parameters/Twins/0") !=
-        NULL) {
+      paramsFound++;
+    } else if (strstr(name, "analysis/process/analysis_parameters/Twins/0") !=
+               NULL) {
       ReadZarrChunk(arch, count, &Twin, sizeof(int));
-    }
-    if (strstr(finfo->name,
-               "analysis/process/analysis_parameters/MinNrSpots/0") != NULL) {
+      paramsFound++;
+    } else if (strstr(name,
+                      "analysis/process/analysis_parameters/MinNrSpots/0") !=
+               NULL) {
       ReadZarrChunk(arch, count, &MinNrSpots, sizeof(int));
-    }
-    if (strstr(finfo->name,
-               "analysis/process/analysis_parameters/NumPhases/0") != NULL) {
+      paramsFound++;
+    } else if (strstr(name,
+                      "analysis/process/analysis_parameters/NumPhases/0") !=
+               NULL) {
       ReadZarrChunk(arch, count, &NumPhases, sizeof(int));
-    }
-    if (strstr(finfo->name, "analysis/process/analysis_parameters/PhaseNr/0") !=
-        NULL) {
+      paramsFound++;
+    } else if (strstr(name, "analysis/process/analysis_parameters/PhaseNr/0") !=
+               NULL) {
       ReadZarrChunk(arch, count, &PhaseNr, sizeof(int));
-    }
-    if (strstr(finfo->name,
-               "analysis/process/analysis_parameters/GlobalPosition/0") !=
-        NULL) {
+      paramsFound++;
+    } else if (strstr(
+                   name,
+                   "analysis/process/analysis_parameters/GlobalPosition/0") !=
+               NULL) {
       ReadZarrChunk(arch, count, &GlobalPosition, sizeof(double));
-    }
-    if (strstr(finfo->name,
-               "analysis/process/analysis_parameters/BeamThickness/0") !=
-        NULL) {
+      paramsFound++;
+    } else if (strstr(name,
+                      "analysis/process/analysis_parameters/BeamThickness/0") !=
+               NULL) {
       ReadZarrChunk(arch, count, &BeamThickness, sizeof(double));
-    }
-    if (strstr(finfo->name,
-               "analysis/process/analysis_parameters/LatticeParameter/0") !=
-        NULL) {
+      paramsFound++;
+    } else if (strstr(
+                   name,
+                   "analysis/process/analysis_parameters/LatticeParameter/0") !=
+               NULL) {
       ReadZarrChunk(arch, count, LatCin, 6 * sizeof(double));
-    }
-    if (strstr(finfo->name, "analysis/process/analysis_parameters/Lsd/0") !=
-        NULL) {
+      paramsFound++;
+    } else if (strstr(name, "analysis/process/analysis_parameters/Lsd/0") !=
+               NULL) {
       ReadZarrChunk(arch, count, &Distance, sizeof(double));
-    }
-    if (strstr(finfo->name,
-               "analysis/process/analysis_parameters/Wavelength/0") != NULL) {
+      paramsFound++;
+    } else if (strstr(name,
+                      "analysis/process/analysis_parameters/Wavelength/0") !=
+               NULL) {
       ReadZarrChunk(arch, count, &wavelength, sizeof(double));
+      paramsFound++;
     }
     count++;
   }
 
   int i, j, k, ThisID, counter;
   int *IDs;
-  IDs = malloc(MAX_N_IDS * sizeof(*IDs));
-  for (i = 0; i < MAX_N_IDS; i++)
-    IDs[i] = 0;
+  IDs = calloc(MAX_N_IDS, sizeof(*IDs)); // calloc instead of malloc+loop
+  if (IDs == NULL) {
+    printf("Memory error: could not allocate IDs.\n");
+    return 1;
+  }
   int nrIDs = 0;
   char IDsFileName[1024];
   FILE *IDsFile;
   sprintf(IDsFileName, "SpotsToIndex.csv");
   printf("Reading IDs file: %s\n", IDsFileName);
   IDsFile = fopen(IDsFileName, "r");
-  if (IDsFile == NULL)
+  if (IDsFile == NULL) {
     printf("Could not open spots file.\n");
+    return 1;
+  }
   while (fgets(line, 5024, IDsFile) != NULL) {
     sscanf(line, "%d", &IDs[nrIDs]);
     if (IDs[nrIDs] < 0)
@@ -352,28 +458,26 @@ int main(int argc, char *argv[]) {
   bool *IDsToKeep;
   IDsToKeep = malloc(nrIDs * sizeof(*IDsToKeep));
   double *Radiuses;
-  Radiuses = malloc(nrIDs * sizeof(*Radiuses));
+  Radiuses = calloc(nrIDs, sizeof(*Radiuses)); // calloc for zero-init
   double *OPThis, **OPs;
-  OPThis = malloc(27 * sizeof(*OPThis));
-  for (i = 0; i < 27; i++)
-    OPThis[i] = 0;
+  OPThis = calloc(27, sizeof(*OPThis)); // calloc for zero-init
   OPs = allocMatrix(nrIDs, 23);
   int *IDsPerGrain, *NrIDsPerID;
-  NrIDsPerID = malloc(nrIDs * sizeof(*NrIDsPerID));
+  NrIDsPerID = calloc(nrIDs, sizeof(*NrIDsPerID)); // calloc for zero-init
   size_t sizeMat = NR_MAX_IDS_PER_GRAIN;
   sizeMat *= nrIDs;
   sizeMat *= sizeof(*IDsPerGrain);
-  IDsPerGrain = malloc(sizeMat);
+  IDsPerGrain = calloc(sizeMat / sizeof(*IDsPerGrain),
+                       sizeof(*IDsPerGrain)); // calloc replaces malloc+loop
+  if (IDsPerGrain == NULL) {
+    printf("Memory error: could not allocate IDsPerGrain.\n");
+    return 1;
+  }
   for (i = 0; i < nrIDs; i++) {
     IDsToKeep[i] = false;
-    Radiuses[i] = 0;
     for (j = 0; j < 23; j++) {
       OPs[i][j] = 0;
     }
-    for (j = 0; j < NR_MAX_IDS_PER_GRAIN; j++) {
-      IDsPerGrain[(NR_MAX_IDS_PER_GRAIN * i) + j] = 0;
-    }
-    NrIDsPerID[i] = 0;
   }
   FILE *fileKey = fopen("Results/Key.bin", "r");
   FILE *fileOPFit = fopen("Results/OrientPosFit.bin", "r");
@@ -396,32 +500,51 @@ int main(int argc, char *argv[]) {
            "correct. Please check.\nExiting.\n");
     return 1;
   }
-  int *keyID;
-  keyID = malloc(2 * sizeof(*keyID));
-  size_t readKey, readOP, readProcess;
+
+  // Bulk read ProcessKey.bin
+  size_t readProcess;
   readProcess = fread(IDsPerGrain, NR_MAX_IDS_PER_GRAIN * nrIDs * sizeof(int),
                       1, fileProcessKey);
   fclose(fileProcessKey);
+
+  // Bulk read Key.bin
+  int *keyBuf = malloc(nrIDs * 2 * sizeof(int));
+  if (keyBuf == NULL) {
+    printf("Memory error: could not allocate keyBuf.\n");
+    return 1;
+  }
+  size_t readKey = fread(keyBuf, 2 * sizeof(int), nrIDs, fileKey);
+  fclose(fileKey);
+
+  // Bulk read OrientPosFit.bin
+  double *opBuf = malloc(nrIDs * 27 * sizeof(double));
+  if (opBuf == NULL) {
+    printf("Memory error: could not allocate opBuf.\n");
+    return 1;
+  }
+  size_t readOP = fread(opBuf, 27 * sizeof(double), nrIDs, fileOPFit);
+  fclose(fileOPFit);
+
+  // Process bulk-read data
   for (i = 0; i < nrIDs; i++) {
-    readKey = fread(keyID, 2 * sizeof(int), 1, fileKey);
     IDsToKeep[i] = true;
-    if (keyID[0] == 0) {
+    if (keyBuf[i * 2] == 0) {
       IDsToKeep[i] = false;
     }
-    NrIDsPerID[i] = keyID[1];
-    readOP = fread(OPThis, 27 * sizeof(double), 1, fileOPFit);
+    NrIDsPerID[i] = keyBuf[i * 2 + 1];
     counter = 0;
     for (j = 0; j < 27; j++) {
       if (j == 0 || j == 10 || j == 14 || j == 21) {
         continue;
       }
-      OPs[i][counter] = OPThis[j];
+      OPs[i][counter] = opBuf[i * 27 + j];
       counter++;
     }
-    Radiuses[i] = OPThis[25];
+    Radiuses[i] = opBuf[i * 27 + 25];
   }
-  fclose(fileKey);
-  fclose(fileOPFit);
+  free(keyBuf);
+  free(opBuf);
+
   int StartingID, ThisID1, ThisID2;
   int nGrainPositions = 0, BestGrainPos, bestGrainID;
   int *GrainPositions, *nGrainsMatched;
@@ -445,6 +568,7 @@ int main(int argc, char *argv[]) {
   int counte, counten, totcount = 0;
   ID_IA_MAT = calloc(MAX_ID_IA_MAT * 4, sizeof(*ID_IA_MAT));
   FILE *fIDs = fopen("GrainIDsKey.csv", "w");
+  setvbuf(fIDs, NULL, _IOFBF, 1 << 20); // Buffered output
   int trackGrains = 0;
   if (argc == 3)
     trackGrains = atoi(argv[2]);
@@ -481,10 +605,6 @@ int main(int argc, char *argv[]) {
         continue;
       }
       for (j = 0; j < counten; j++) {
-        // Write out the following information: for each counten, save the IDs
-        // Matched, so that we can use them later ID_IA_MAT[(j*4)+1] has the row
-        // Number, ID_IA_MAT[(j*4)] has the ID, these are the two things we
-        // need......
         if (ID_IA_MAT[(j * 4) + 2] < minIA) {
           minIA = ID_IA_MAT[(j * 4) + 2];
           BestGrainPos = (int)ID_IA_MAT[(j * 4) + 1];
@@ -494,8 +614,6 @@ int main(int argc, char *argv[]) {
       }
       fprintf(fIDs, "%d %d ", bestGrainID, BestGrainPos);
       for (j = 0; j < counten; j++) {
-        // Write out ID_IA_MAT[(j*4)] (0,1) along with BestGrainPos and
-        // corresponding ID
         if ((int)ID_IA_MAT[(j * 4) + 1] == BestGrainPos)
           continue;
         fprintf(fIDs, "%d %d ", (int)ID_IA_MAT[(j * 4)],
@@ -508,11 +626,14 @@ int main(int argc, char *argv[]) {
     }
   }
   fclose(fIDs);
-  // Write out
+
+  // Write out - use hash set for O(1) duplicate check
   int nGrains = 0;
-  int *IDsDone;
-  IDsDone = malloc((nGrainPositions * 2) * sizeof(*IDsDone)); // Fix for now.
-  int cres = 0;
+  HashSet *idsDoneSet = hashset_create();
+  if (idsDoneSet == NULL) {
+    printf("Memory error: could not create hash set.\n");
+    return 1;
+  }
   int DoneAlready = 0;
   double StrainTensorSampleKen[3][3];
   double StrainTensorSampleFab[3][3];
@@ -523,8 +644,24 @@ int main(int argc, char *argv[]) {
   double **SpotsInfo;
   SpotsInfo = allocMatrix(NR_MAX_IDS_PER_GRAIN, 8);
   int nspots, rown;
-  // Calculate Strains Now
+
+  // mmap FitBest.bin for better OS caching
   int fullInfoFile = open("Output/FitBest.bin", O_RDONLY);
+  double *fitBestMap = NULL;
+  size_t fitBestSize = 0;
+  if (fullInfoFile >= 0) {
+    struct stat sb;
+    if (fstat(fullInfoFile, &sb) == 0 && sb.st_size > 0) {
+      fitBestSize = sb.st_size;
+      fitBestMap = mmap(0, fitBestSize, PROT_READ, MAP_SHARED, fullInfoFile, 0);
+      if (fitBestMap == MAP_FAILED) {
+        fitBestMap = NULL;
+        printf(
+            "Warning: mmap failed for FitBest.bin, falling back to pread.\n");
+      }
+    }
+  }
+
   size_t OffSt;
   size_t ReadSize;
   double MultR = 1000000.0;
@@ -548,12 +685,25 @@ int main(int argc, char *argv[]) {
   } else {
     MakeHash = 1;
   }
+
+  // Count-then-allocate for InputMatrix
+  int nInputLines = countCSVLines("InputAllExtraInfoFittingAll.csv");
+  if (nInputLines < 0) {
+    printf("Could not open InputAllExtraInfoFittingAll.csv. Exiting.\n");
+    return 1;
+  }
+
   double **SpotMatrix, **InputMatrix;
   SpotMatrix = allocMatrix(NR_MAX_IDS_PER_GRAIN, 12);
-  InputMatrix = allocMatrix(MAX_N_IDS, 10);
+  InputMatrix = allocMatrix(nInputLines, 10); // Sized to actual count
   int counterSpotMatrix = 0;
   char *inputallfn = "InputAllExtraInfoFittingAll.csv";
   FILE *inpfile = fopen(inputallfn, "r");
+  if (inpfile == NULL) {
+    printf("Could not open %s. Exiting.\n", inputallfn);
+    return 1;
+  }
+  setvbuf(inpfile, NULL, _IOFBF, 1 << 20); // Buffered read
   int counterIF = 0;
   fgets(aline, 2000, inpfile);
   int currentRing;
@@ -569,16 +719,14 @@ int main(int argc, char *argv[]) {
       printf("IDs dont match.\nExiting\n");
       return (1);
     }
-    // Write Hash Matrix if needed.
     if (MakeHash == 1) {
-      if (counterIF == 0) { // First Spot
+      if (counterIF == 0) {
         IDHash[nRings][0] = (int)InputMatrix[counterIF][5];
         IDHash[nRings][1] = counterIF + 1;
         currentRing = (int)InputMatrix[counterIF][5];
         nRings++;
       } else {
-        if ((int)InputMatrix[counterIF][5] !=
-            currentRing) { // Each time ring number changes
+        if ((int)InputMatrix[counterIF][5] != currentRing) {
           IDHash[nRings][0] = (int)InputMatrix[counterIF][5];
           IDHash[nRings][1] = counterIF + 1;
           IDHash[nRings - 1][2] = counterIF;
@@ -590,8 +738,8 @@ int main(int argc, char *argv[]) {
     counterIF++;
   }
   fclose(inpfile);
-  IDHash[nRings - 1][2] = counterIF; // Write the max for last ring last ID.
-  if (MakeHash == 1) {               // Get dspacings from hkls.csv file
+  IDHash[nRings - 1][2] = counterIF;
+  if (MakeHash == 1) {
     FILE *hklf = fopen("hkls.csv", "r");
     char aline2[2048];
     double ds;
@@ -613,6 +761,7 @@ int main(int argc, char *argv[]) {
   int rowSpotID, startSpotMatrix;
   double RetVal, Eul[3];
   FILE *spotsfile = fopen("SpotMatrix.csv", "w");
+  setvbuf(spotsfile, NULL, _IOFBF, 1 << 20); // Buffered output
   fprintf(spotsfile, "%%"
                      "GrainID\tSpotID\tOmega\tDetectorHor\tDetectorVert\tOmeRaw"
                      "\tEta\tRingNr\tYLab\tZLab\tTheta\tStrainError\n");
@@ -625,24 +774,12 @@ int main(int argc, char *argv[]) {
       return 1;
     }
     if (trackGrains == 0) {
-      DoneAlready = 0;
-      for (j = 0; j < cres; j++) {
-        if (IDsDone[j] == IDs[rown]) {
-          DoneAlready = 1;
-        }
-      }
-      if (DoneAlready == 1) {
+      // O(1) hash set check instead of O(n) linear scan
+      if (hashset_contains(idsDoneSet, IDs[rown])) {
         continue;
-      } else {
-        IDsDone[cres] = IDs[rown];
-        cres++;
-        if (cres >= (nGrainPositions * 2)) {
-          printf("Something went wrong with cres %d out of %d alloc at %d. "
-                 "nGrains: %d Please check the ProcessGrains code.\n",
-                 cres, nGrainPositions, i, nGrains);
-          return 1;
-        }
       }
+      hashset_insert(idsDoneSet, IDs[rown]);
+
       for (k = 0; k < 9; k++) {
         OR1[k] = OPs[rown][k];
       }
@@ -653,14 +790,8 @@ int main(int argc, char *argv[]) {
           printf("Something is wrong. Please check.\n");
           return 1;
         }
-        int DA = 0;
-        for (k = 0; k < cres; k++) {
-          if (IDsDone[k] == IDs[rown2]) {
-            DA = 1;
-          }
-        }
-        if (DA == 1) {
-          printf("Here11!");
+        // O(1) hash set check
+        if (hashset_contains(idsDoneSet, IDs[rown2])) {
           continue;
         }
         for (k = 0; k < 9; k++) {
@@ -675,19 +806,11 @@ int main(int argc, char *argv[]) {
                        (OPs[rown][11] - OPs[rown2][11]) *
                            (OPs[rown][11] - OPs[rown2][11]));
         if (ang < 0.1 && DiffPos < 5) {
-          IDsDone[cres] = IDs[rown2];
-          cres++;
-          if (cres >= (nGrainPositions * 2)) {
-            printf("Something went wrong with cres %d out of %d allocated at "
-                   "%d. nGrains: %d Please check the ProcessGrains code.\n",
-                   cres, nGrainPositions, i, nGrains);
-            return 1;
-          }
+          hashset_insert(idsDoneSet, IDs[rown2]);
         }
       }
     }
     if (OPs[rown][22] < 0.05) {
-      printf("Here!");
       continue;
     }
 
@@ -695,9 +818,18 @@ int main(int argc, char *argv[]) {
     OffSt = rown;
     OffSt *= 22;
     OffSt *= NR_MAX_IDS_PER_GRAIN;
-    OffSt *= sizeof(double);
-    ReadSize = 22 * nspots * sizeof(double);
-    int rc = pread(fullInfoFile, dummySampleInfo, ReadSize, OffSt);
+
+    // Use mmap if available, otherwise fall back to pread
+    if (fitBestMap != NULL) {
+      size_t offsetDoubles = (size_t)rown * 22 * NR_MAX_IDS_PER_GRAIN;
+      memcpy(dummySampleInfo, &fitBestMap[offsetDoubles],
+             22 * nspots * sizeof(double));
+    } else {
+      OffSt *= sizeof(double);
+      ReadSize = 22 * nspots * sizeof(double);
+      int rc = pread(fullInfoFile, dummySampleInfo, ReadSize, OffSt);
+    }
+
     counterSpotMatrix = 0;
     startSpotMatrix = counterSpotMatrix;
     double GrainIDThis = (double)IDs[rown];
@@ -802,6 +934,7 @@ int main(int argc, char *argv[]) {
     printf("Could not write to Grains.csv. Please check.\n");
     return 1;
   }
+  setvbuf(GrainsFile, NULL, _IOFBF, 1 << 20); // Buffered output
   fprintf(GrainsFile, "%%NumGrains %d\n", nGrains);
   fprintf(GrainsFile, "%%BeamCenter %f\n", BeamCenter);
   fprintf(GrainsFile, "%%BeamThickness %f\n", BeamThickness);
@@ -828,6 +961,16 @@ int main(int argc, char *argv[]) {
     fprintf(GrainsFile, "\n");
   }
   fclose(GrainsFile);
+
+  // Cleanup
+  if (fitBestMap != NULL) {
+    munmap(fitBestMap, fitBestSize);
+  }
+  if (fullInfoFile >= 0) {
+    close(fullInfoFile);
+  }
+  hashset_destroy(idsDoneSet);
+
   end = clock();
   diftotal = ((double)(end - start)) / CLOCKS_PER_SEC;
   printf("Time elapsed: %f s.\n", diftotal);

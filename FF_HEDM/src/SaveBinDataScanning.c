@@ -28,39 +28,15 @@
   500 // max nr of rings that can be stored (applies to the arrays ringttheta,
       // ringhkl, etc)
 
-static inline double **allocMatrix(int nrows, int ncols) {
-  double **arr;
-  int i;
-  arr = malloc(nrows * sizeof(*arr));
-  if (arr == NULL) {
-    return NULL;
-  }
-  for (i = 0; i < nrows; i++) {
-    arr[i] = malloc(ncols * sizeof(*arr[i]));
-    if (arr[i] == NULL) {
-      return NULL;
-    }
-  }
-  return arr;
-}
-
-static inline void FreeMemMatrix(double **mat, int nrows) {
-  int r;
-  for (r = 0; r < nrows; r++) {
-    free(mat[r]);
-  }
-  free(mat);
-}
-
-void CalcDistanceIdealRing(double **ObsSpotsLab, int nspots,
+void CalcDistanceIdealRing(double *ObsSpotsLab, int nspots, int nCols,
                            double RingRadii[]) {
   int i;
   for (i = 0; i < nspots; ++i) {
-    double y = ObsSpotsLab[i][0];
-    double z = ObsSpotsLab[i][1];
+    double y = ObsSpotsLab[i * nCols + 0];
+    double z = ObsSpotsLab[i * nCols + 1];
     double rad = sqrt(y * y + z * z);
-    int ringno = (int)ObsSpotsLab[i][5];
-    ObsSpotsLab[i][15] = rad - RingRadii[ringno];
+    int ringno = (int)ObsSpotsLab[i * nCols + 5];
+    ObsSpotsLab[i * nCols + 15] = rad - RingRadii[ringno];
   }
 }
 
@@ -87,6 +63,7 @@ static int cmpfunc(const void *a, const void *b) {
         return 1;
     }
   }
+  return 0;
 }
 
 int main(int argc, char *argv[]) {
@@ -103,6 +80,10 @@ int main(int argc, char *argv[]) {
   int LowNr;
   FILE *fileParam;
   fileParam = fopen(ParamFN, "r");
+  if (fileParam == NULL) {
+    printf("Could not open %s. Exiting.\n", ParamFN);
+    return 1;
+  }
   int NrOfRings = 0, NoRingNumbers = 0, RingNumbers[MAX_N_RINGS];
   double omemargin0, etamargin0, rotationstep, RingRadii[MAX_N_RINGS],
       RingRadiiUser[MAX_N_RINGS], etabinsize, omebinsize;
@@ -159,6 +140,7 @@ int main(int argc, char *argv[]) {
       continue;
     }
   }
+  fclose(fileParam);
 
   int i, j, k, t;
 
@@ -170,9 +152,18 @@ int main(int argc, char *argv[]) {
   char *rc;
   struct InpData *MyData;
   MyData = malloc(MAX_N_SPOTS * sizeof(*MyData));
+  if (MyData == NULL) {
+    printf("Memory error: could not allocate MyData.\n");
+    return 1;
+  }
   for (scanNr = 0; scanNr < nScans; scanNr++) {
     sprintf(AllSpotsFN, "InputAllExtraInfoFittingAll%d.csv", scanNr);
     AllSpotsFile = fopen(AllSpotsFN, "r");
+    if (AllSpotsFile == NULL) {
+      printf("Could not open %s. Skipping.\n", AllSpotsFN);
+      continue;
+    }
+    setvbuf(AllSpotsFile, NULL, _IOFBF, 1 << 20); // 1 MB read buffer
     rc = fgets(aline, 4096, AllSpotsFile);
     while (fgets(aline, 4096, AllSpotsFile) != NULL) {
       sscanf(aline, "%lf %lf %lf %lf %lf %lf %lf %lf %lf %lf %lf %lf %lf %lf",
@@ -189,24 +180,35 @@ int main(int argc, char *argv[]) {
     }
     fclose(AllSpotsFile);
   }
-  realloc(MyData, nSpots * sizeof(*MyData));
-  printf("Number of Spots: %d\n", nSpots);
+  // Shrink allocation to actual size (fix: capture return value)
+  struct InpData *tmp = realloc(MyData, nSpots * sizeof(*MyData));
+  if (tmp != NULL) {
+    MyData = tmp;
+  }
+  printf("Number of Spots: %zu\n", nSpots);
 
   // Now sort the spots, depending on the ring numbers, then omega value, then
   // on the eta-value.
   qsort(MyData, nSpots, sizeof(struct InpData), cmpfunc);
   printf("Data sorted.\n");
-  double **ObsSpots, **IDMat;
-  ObsSpots = allocMatrix(nSpots, 16);
-  IDMat = allocMatrix(nSpots, 3);
-  for (i = 0; i < nSpots; i++) {
-    for (j = 0; j < 15; j++) {
-      ObsSpots[i][j] = MyData[i].Values[j];
-    }
-    IDMat[i][0] = i + 1;
-    IDMat[i][1] = ObsSpots[i][4];
-    IDMat[i][2] = ObsSpots[i][14];
-    ObsSpots[i][4] = i + 1;
+
+  // Use contiguous 1D arrays instead of row-pointer matrices
+  int nObsCols = 16;
+  int nIDCols = 3;
+  double *ObsSpots = malloc(nSpots * nObsCols * sizeof(double));
+  double *IDMat = malloc(nSpots * nIDCols * sizeof(double));
+  if (ObsSpots == NULL || IDMat == NULL) {
+    printf("Memory error: could not allocate ObsSpots/IDMat.\n");
+    return 1;
+  }
+  for (i = 0; i < (int)nSpots; i++) {
+    // Copy 15 values via memcpy for speed
+    memcpy(&ObsSpots[i * nObsCols], MyData[i].Values, 15 * sizeof(double));
+    ObsSpots[i * nObsCols + 15] = 0; // will be filled by CalcDistanceIdealRing
+    IDMat[i * nIDCols + 0] = i + 1;
+    IDMat[i * nIDCols + 1] = ObsSpots[i * nObsCols + 4];
+    IDMat[i * nIDCols + 2] = ObsSpots[i * nObsCols + 14];
+    ObsSpots[i * nObsCols + 4] = i + 1;
   }
   free(MyData);
 
@@ -216,24 +218,31 @@ int main(int argc, char *argv[]) {
   for (i = 0; i < NrOfRings; i++) {
     RingRadii[RingNumbers[i]] = RingRadiiUser[i];
   }
-  CalcDistanceIdealRing(ObsSpots, nSpots, RingRadii);
+  CalcDistanceIdealRing(ObsSpots, nSpots, nObsCols, RingRadii);
+
   // Make SpotsMatrix
   double *SpotsMat;
   SpotsMat = malloc(nSpots * 10 * sizeof(*SpotsMat));
-  for (i = 0; i < nSpots; i++) {
+  if (SpotsMat == NULL) {
+    printf("Memory error: could not allocate SpotsMat.\n");
+    return 1;
+  }
+  for (i = 0; i < (int)nSpots; i++) {
     for (j = 0; j < 8; j++) {
-      SpotsMat[i * 10 + j] = ObsSpots[i][j];
+      SpotsMat[i * 10 + j] = ObsSpots[i * nObsCols + j];
     }
-    SpotsMat[i * 10 + 8] = ObsSpots[i][15];
-    SpotsMat[i * 10 + 9] = ObsSpots[i][14];
+    SpotsMat[i * 10 + 8] = ObsSpots[i * nObsCols + 15];
+    SpotsMat[i * 10 + 9] = ObsSpots[i * nObsCols + 14];
   }
   // Make ExtraInfoSpotMatrix
   double *ExtraMat;
   ExtraMat = malloc(nSpots * 14 * sizeof(*ExtraMat));
-  for (i = 0; i < nSpots; i++) {
-    for (j = 0; j < 14; j++) {
-      ExtraMat[i * 14 + j] = ObsSpots[i][j];
-    }
+  if (ExtraMat == NULL) {
+    printf("Memory error: could not allocate ExtraMat.\n");
+    return 1;
+  }
+  for (i = 0; i < (int)nSpots; i++) {
+    memcpy(&ExtraMat[i * 14], &ObsSpots[i * nObsCols], 14 * sizeof(double));
   }
   char *SpotsFN = "Spots.bin";
   char *ExtraFN = "ExtraInfo.bin";
@@ -244,16 +253,18 @@ int main(int argc, char *argv[]) {
   FILE *ExtraFile = fopen(ExtraFN, "wb");
   fwrite(ExtraMat, nSpots * 14 * sizeof(*ExtraMat), 1, ExtraFile);
   fclose(ExtraFile);
-  free(ExtraMat); // Fix memory leak
+  free(ExtraMat);
   FILE *IDMatFile = fopen(IDMatFN, "w");
+  setvbuf(IDMatFile, NULL, _IOFBF, 1 << 20); // 1 MB write buffer
   fprintf(IDMatFile, "NewID,OrigID,ScanNr\n");
-  for (i = 0; i < nSpots; i++)
-    fprintf(IDMatFile, "%d,%d,%d\n", (int)IDMat[i][0], (int)IDMat[i][1],
-            (int)IDMat[i][2]);
+  for (i = 0; i < (int)nSpots; i++)
+    fprintf(IDMatFile, "%d,%d,%d\n", (int)IDMat[i * nIDCols + 0],
+            (int)IDMat[i * nIDCols + 1], (int)IDMat[i * nIDCols + 2]);
   fclose(IDMatFile);
   free(SpotsMat);
-  FreeMemMatrix(IDMat, nSpots);
+  free(IDMat);
   if (nosaveall == 1) {
+    free(ObsSpots);
     return 0;
   }
   printf("Files written. Now generating map.\n");
@@ -280,14 +291,16 @@ int main(int argc, char *argv[]) {
   n_ring_bins = HighestRingNo;
   n_eta_bins = ceil(360.0 / etabinsize);
   n_ome_bins = ceil(360.0 / omebinsize);
-  printf("nRings: %zu, nEtas: %zu, nOmes: %zu\n", n_ring_bins, n_eta_bins,
+  printf("nRings: %d, nEtas: %d, nOmes: %d\n", n_ring_bins, n_eta_bins,
          n_ome_bins);
-  printf("Total bins: %zu\n", n_ring_bins * n_eta_bins * n_ome_bins);
+  printf("Total bins: %d\n", n_ring_bins * n_eta_bins * n_ome_bins);
 
   char *DataFN = "Data.bin";
   char *nDataFN = "nData.bin";
   FILE *DataFile = fopen(DataFN, "wb");
   FILE *nDataFile = fopen(nDataFN, "wb");
+  setvbuf(DataFile, NULL, _IOFBF, 1 << 20);  // 1 MB write buffer
+  setvbuf(nDataFile, NULL, _IOFBF, 1 << 20); // 1 MB write buffer
   size_t TotNumberOfBins = 0;
   size_t globalCounter = 0;
 
@@ -325,17 +338,15 @@ int main(int argc, char *argv[]) {
 
     // Bin spots for THIS ring
     for (rowno = 0; rowno < nSpots; rowno++) {
-      int ringnr = (int)ObsSpots[rowno][5];
-      // ObsSpots[rowno][5] is 1-based usually, check logic from before:
-      // int iRing_old = ringnr - 1;
+      int ringnr = (int)ObsSpots[rowno * nObsCols + 5];
       if ((ringnr - 1) != iRing)
         continue;
       if (RingRadii[ringnr] == 0)
         continue;
 
-      int scanno = (int)ObsSpots[rowno][14];
-      double eta = ObsSpots[rowno][6];
-      double omega = ObsSpots[rowno][2];
+      int scanno = (int)ObsSpots[rowno * nObsCols + 14];
+      double eta = ObsSpots[rowno * nObsCols + 6];
+      double omega = ObsSpots[rowno * nObsCols + 2];
 
       double omemargin =
           omemargin0 + (0.5 * rotationstep / fabs(sin(eta * deg2rad)));
@@ -362,7 +373,8 @@ int main(int argc, char *argv[]) {
           size_t iSpot = ndata[iEta][iOme];
           size_t maxnspot = maxndata[iEta][iOme];
           if (iSpot >= maxnspot) {
-            maxnspot = maxnspot + 2;
+            // Geometric growth: reduces realloc calls dramatically
+            maxnspot = (maxnspot == 0) ? 8 : maxnspot * 2;
             oldarray = data[iEta][iOme];
             newarray = realloc(oldarray, maxnspot * 2 * sizeof(*newarray));
             if (newarray == NULL) {
@@ -406,11 +418,12 @@ int main(int argc, char *argv[]) {
 
   fclose(DataFile);
   fclose(nDataFile);
+  free(ObsSpots);
   end = clock();
   diftotal = ((double)(end - start)) / CLOCKS_PER_SEC;
   printf("nData: %zu, Data: %zu\n",
          (size_t)n_ring_bins * n_eta_bins * n_ome_bins * 2,
-         TotNumberOfBins * 2); // LengthNDataStore is no longer used
+         TotNumberOfBins * 2);
   printf("Total Time elapsed: %f s.\n", diftotal);
   return 0;
 }
