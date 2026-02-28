@@ -74,7 +74,7 @@ long long int totNrPixelsBigDetector;
 double pixelsize;
 double DetParams[4][10];
 double WeightMask = 1.0;
-double WeightFitRMSE = 1.0;
+double WeightFitRMSE = 0.0;
 
 // Dynamic spot reassignment: bin data structures (same layout as IndexerOMP)
 static double *ObsSpotsLab; // mmap of Spots.bin (9 doubles per spot)
@@ -1343,9 +1343,9 @@ void FitPositionIni(double X0[12], int nSpotsComp, double **spotsYZO,
   for (i = 0; i < nSpotsComp; i++)
     for (j = 0; j < 11; j++)
       f_data.spotsYZO[i][j] = spotsYZO[i][j];
-  f_data.spotsYZO2 = allocMatrix(nSpotsComp, 8);
+  f_data.spotsYZO2 = allocMatrix(nSpotsComp, 11);
   for (i = 0; i < nSpotsComp; i++)
-    for (j = 0; j < 8; j++)
+    for (j = 0; j < 11; j++)
       f_data.spotsYZO2[i][j] = spotsYZO2[i][j];
   for (i = 0; i < 4; i++)
     f_data.offsets[i] = offsets[i];
@@ -1442,9 +1442,9 @@ void FitOrientIni(double X0[9], int nSpotsComp, double **spotsYZO,
   for (i = 0; i < nSpotsComp; i++)
     for (j = 0; j < 11; j++)
       f_data.spotsYZO[i][j] = spotsYZO[i][j];
-  f_data.spotsYZO2 = allocMatrix(nSpotsComp, 8);
+  f_data.spotsYZO2 = allocMatrix(nSpotsComp, 11);
   for (i = 0; i < nSpotsComp; i++)
-    for (j = 0; j < 8; j++)
+    for (j = 0; j < 11; j++)
       f_data.spotsYZO2[i][j] = spotsYZO2[i][j];
   for (i = 0; i < 4; i++)
     f_data.offsets[i] = offsets[i];
@@ -1547,9 +1547,9 @@ void FitStrainIni(double X0[6], int nSpotsComp, double **spotsYZO,
   for (i = 0; i < nSpotsComp; i++)
     for (j = 0; j < 11; j++)
       f_data.spotsYZO[i][j] = spotsYZO[i][j];
-  f_data.spotsYZO2 = allocMatrix(nSpotsComp, 8);
+  f_data.spotsYZO2 = allocMatrix(nSpotsComp, 11);
   for (i = 0; i < nSpotsComp; i++)
-    for (j = 0; j < 8; j++)
+    for (j = 0; j < 11; j++)
       f_data.spotsYZO2[i][j] = spotsYZO2[i][j];
   for (i = 0; i < 4; i++)
     f_data.offsets[i] = offsets[i];
@@ -1654,9 +1654,9 @@ void FitPosSec(double X0[3], int nSpotsComp, double **spotsYZO,
   for (i = 0; i < nSpotsComp; i++)
     for (j = 0; j < 11; j++)
       f_data.spotsYZO[i][j] = spotsYZO[i][j];
-  f_data.spotsYZO2 = allocMatrix(nSpotsComp, 8);
+  f_data.spotsYZO2 = allocMatrix(nSpotsComp, 11);
   for (i = 0; i < nSpotsComp; i++)
-    for (j = 0; j < 8; j++)
+    for (j = 0; j < 11; j++)
       f_data.spotsYZO2[i][j] = spotsYZO2[i][j];
   for (i = 0; i < 4; i++)
     f_data.offsets[i] = offsets[i];
@@ -2011,6 +2011,18 @@ int main(int argc, char *argv[]) {
       sscanf(aline, "%s %lf", dummy, &gOmeBinSize);
       continue;
     }
+    str = "WeightMask ";
+    LowNr = strncmp(aline, str, strlen(str));
+    if (LowNr == 0) {
+      sscanf(aline, "%s %lf", dummy, &WeightMask);
+      continue;
+    }
+    str = "WeightFitRMSE ";
+    LowNr = strncmp(aline, str, strlen(str));
+    if (LowNr == 0) {
+      sscanf(aline, "%s %lf", dummy, &WeightFitRMSE);
+      continue;
+    }
   }
   fclose(fileParam);
   double *AllSpots;
@@ -2345,7 +2357,7 @@ int main(int argc, char *argv[]) {
       OrientMat2Euler(Orient0_3, Euler0);
       double **spotsYZO, **spotsYZO2 = NULL;
       spotsYZO = allocMatrix(nSpotsBest, 11);
-      spotsYZO2 = allocMatrix(nSpotsBest, 8);
+      spotsYZO2 = allocMatrix(nSpotsBest, 11);
       int nSpotsYZO = nSpotsBest;
       // Idea: spotID always starts from 1 and is increasing in number, so
       // spotIDS[i] should correspond to AllSpots[(spotIDS[i]-1)*14+...], this
@@ -2386,22 +2398,24 @@ int main(int argc, char *argv[]) {
             printf("  Spot %d (idx %zu): mapped to %d in dataset2 -> using "
                    "original spot\n",
                    (int)spotIDS[i], spotPosAllSpots, spotPosAllSpots2);
-            for (j = 0; j < 8; j++) {
+            for (j = 0; j < 11; j++) {
               spotsYZO2[i][j] = spotsYZO[i][j];
             }
             continue;
           }
-          spotsYZO2[i][0] = AllSpots2[spotPosAllSpots2 * 14 + 0];
-          spotsYZO2[i][1] = AllSpots2[spotPosAllSpots2 * 14 + 1];
-          spotsYZO2[i][2] = AllSpots2[spotPosAllSpots2 * 14 + 2];
-          spotsYZO2[i][3] = AllSpots2[spotPosAllSpots2 * 14 + 4];
-          spotsYZO2[i][4] = AllSpots2[spotPosAllSpots2 * 14 + 8];
-          spotsYZO2[i][5] = AllSpots2[spotPosAllSpots2 * 14 + 9];
-          spotsYZO2[i][6] = AllSpots2[spotPosAllSpots2 * 14 + 10];
-          spotsYZO2[i][7] = AllSpots2[spotPosAllSpots2 * 14 + 5];
+          spotsYZO2[i][0] = AllSpots2[spotPosAllSpots2 * 16 + 0];
+          spotsYZO2[i][1] = AllSpots2[spotPosAllSpots2 * 16 + 1];
+          spotsYZO2[i][2] = AllSpots2[spotPosAllSpots2 * 16 + 2];
+          spotsYZO2[i][3] = AllSpots2[spotPosAllSpots2 * 16 + 4];
+          spotsYZO2[i][4] = AllSpots2[spotPosAllSpots2 * 16 + 8];
+          spotsYZO2[i][5] = AllSpots2[spotPosAllSpots2 * 16 + 9];
+          spotsYZO2[i][6] = AllSpots2[spotPosAllSpots2 * 16 + 10];
+          spotsYZO2[i][7] = AllSpots2[spotPosAllSpots2 * 16 + 5];
+          spotsYZO2[i][8] = AllSpots2[spotPosAllSpots2 * 16 + 14];
+          spotsYZO2[i][9] = AllSpots2[spotPosAllSpots2 * 16 + 15];
         } else {
           // just copy over all the spot info from spotsYZO to spotsYZO2
-          for (j = 0; j < 8; j++) {
+          for (j = 0; j < 11; j++) {
             spotsYZO2[i][j] = spotsYZO[i][j];
           }
         }
@@ -2425,11 +2439,12 @@ int main(int argc, char *argv[]) {
                       hkls, Lsd, Wavelength, OmegaRanges, BoxSizes, MinEta,
                       wedge, chi, SpotsComp, Splist, Splist2, ErrorIni,
                       &nSpotsComp, 0, 0.0, 0.0, 0.0, 0.0);
-      printf("  [DEBUG] SpotID %d: nSpotsIn=%d, nSpotsComp=%d, "
-             "InitErrors=(%.2f, %.4f, %.4f), "
-             "InitPos=(%.2f, %.2f, %.2f), Euler=(%.2f, %.2f, %.2f)\n",
-             SpId, nSpotsYZO, nSpotsComp, ErrorIni[0], ErrorIni[1], ErrorIni[2],
-             Pos0[0], Pos0[1], Pos0[2], Euler0[0], Euler0[1], Euler0[2]);
+      // printf("  [DEBUG] SpotID %d: nSpotsIn=%d, nSpotsComp=%d, "
+      //        "InitErrors=(%.2f, %.4f, %.4f), "
+      //        "InitPos=(%.2f, %.2f, %.2f), Euler=(%.2f, %.2f, %.2f)\n",
+      //        SpId, nSpotsYZO, nSpotsComp, ErrorIni[0], ErrorIni[1],
+      //        ErrorIni[2], Pos0[0], Pos0[1], Pos0[2], Euler0[0], Euler0[1],
+      //        Euler0[2]);
       double **spotsYZONew, **spotsYZO2New;
       spotsYZONew = allocMatrix(nSpotsComp, 11);
       spotsYZO2New = allocMatrix(nSpotsComp, 11);
@@ -2980,7 +2995,7 @@ int main(int argc, char *argv[]) {
       Convert3x3To9(Orient0_3, Orient0);
       OrientMat2Euler(Orient0_3, Euler0);
       double **spotsYZO;
-      spotsYZO = allocMatrix(nSpotsBest, 8);
+      spotsYZO = allocMatrix(nSpotsBest, 11);
       int nSpotsYZO = nSpotsBest;
       size_t spotPosAllSpots;
       for (i = 0; i < nSpotsBest; i++) {

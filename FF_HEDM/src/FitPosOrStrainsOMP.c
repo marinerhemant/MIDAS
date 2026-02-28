@@ -68,7 +68,7 @@ extern double DetParams[4][10];
 
 static int GlobalDebugFlag = 0;
 double WeightMask = 1.0;
-double WeightFitRMSE = 1.0;
+double WeightFitRMSE = 0.0;
 
 int BigDetSize = 0;
 int *BigDetector;
@@ -2011,6 +2011,18 @@ int main(int argc, char *argv[]) {
       sscanf(aline, "%s %lf", dummy, &gOmeBinSize);
       continue;
     }
+    str = "WeightMask ";
+    LowNr = strncmp(aline, str, strlen(str));
+    if (LowNr == 0) {
+      sscanf(aline, "%s %lf", dummy, &WeightMask);
+      continue;
+    }
+    str = "WeightFitRMSE ";
+    LowNr = strncmp(aline, str, strlen(str));
+    if (LowNr == 0) {
+      sscanf(aline, "%s %lf", dummy, &WeightFitRMSE);
+      continue;
+    }
   }
   fclose(fileParam);
   printf(
@@ -3067,7 +3079,7 @@ int main(int argc, char *argv[]) {
       Convert3x3To9(Orient0_3, Orient0);
       OrientMat2Euler(Orient0_3, Euler0);
       double **spotsYZO;
-      spotsYZO = allocMatrix(nSpotsBest, 8);
+      spotsYZO = allocMatrix(nSpotsBest, 11);
       int nSpotsYZO = nSpotsBest;
       size_t spotPosAllSpots;
       for (i = 0; i < nSpotsBest; i++) {

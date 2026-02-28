@@ -599,7 +599,7 @@ int main(int argc, char *argv[]) {
          MarginRadial = 500, OmeBinSize = 0.1, EtaBinSize = 0.1,
          MarginEta = 500, MarginOme = 0.5, OmegaStep, MargABC = 2.0,
          MargABG = 2.0;
-  double WeightMask = 1.0, WeightFitRMSE = 1.0;
+  double WeightMask = 1.0, WeightFitRMSE = 0.0;
   int skipFrame = 0;
   int locOmegaRanges, nOmegaRanges = 0;
   int locBoxSizes, nBoxSizes = 0;
@@ -1171,15 +1171,15 @@ int main(int argc, char *argv[]) {
   printf("Reading file: %s.\n", FileName);
   fgets(line, 5000, fp);
   while (fgets(line, 5000, fp) != NULL) {
-    sscanf(line,
-           "%lf %lf %lf %lf %lf %s %s %s %s %s %s %s %lf %lf %s %lf %s %s %s "
-           "%s %s %lf %lf %lf",
-           &SpotsInfo[counter][0], &SpotsInfo[counter][6],
-           &SpotsInfo[counter][1], &SpotsInfo[counter][2],
-           &SpotsInfo[counter][3], dummy, dummy, dummy, dummy, dummy, dummy,
-           dummy, &nFramesThis, &SpotsInfo[counter][4], dummy,
-           &SpotsInfo[counter][5], dummy, dummy, dummy, dummy, dummy,
-           &SpotsInfo[counter][7], &SpotsInfo[counter][8], &SpotsInfo[counter][9]);
+    sscanf(
+        line,
+        "%lf %lf %lf %lf %lf %s %s %s %s %s %s %s %lf %lf %s %lf %s %s %s "
+        "%s %s %lf %lf %lf",
+        &SpotsInfo[counter][0], &SpotsInfo[counter][6], &SpotsInfo[counter][1],
+        &SpotsInfo[counter][2], &SpotsInfo[counter][3], dummy, dummy, dummy,
+        dummy, dummy, dummy, dummy, &nFramesThis, &SpotsInfo[counter][4], dummy,
+        &SpotsInfo[counter][5], dummy, dummy, dummy, dummy, dummy,
+        &SpotsInfo[counter][7], &SpotsInfo[counter][8], &SpotsInfo[counter][9]);
     for (i = 0; i < n_hkls; i++)
       if ((int)SpotsInfo[counter][4] == PlaneNumbers[i])
         nSpotsEachRing[i]++;
@@ -1416,14 +1416,15 @@ int main(int argc, char *argv[]) {
               YCorrWedge[i], ZCorrWedge[i], OmegaCorrWedge[i], SpotsInfo[i][5],
               SpotsInfo[i][0], SpotsInfo[i][4], EtaCorrWedge[i],
               TthetaCorrWedge[i]);
-      fprintf(ExtraInfo,
-              "%12.5f %12.5f %12.5f %12.5f %12.5f %12.5f %12.5f %12.5f %12.5f "
-              "%12.5f %12.5f %12.5f %12.5f %12.5f %12.5f %12.5f %12.5f %12.5f\n",
-              YCorrWedge[i], ZCorrWedge[i], OmegaCorrWedge[i], SpotsInfo[i][5],
-              SpotsInfo[i][0], SpotsInfo[i][4], EtaCorrWedge[i],
-              TthetaCorrWedge[i], SpotsInfo[i][1], YCorrected[i], ZCorrected[i],
-              SpotsInfo[i][2], SpotsInfo[i][3], SpotsInfo[i][1],
-              SpotsInfo[i][6], SpotsInfo[i][7], SpotsInfo[i][8], SpotsInfo[i][9]);
+      fprintf(
+          ExtraInfo,
+          "%12.5f %12.5f %12.5f %12.5f %12.5f %12.5f %12.5f %12.5f %12.5f "
+          "%12.5f %12.5f %12.5f %12.5f %12.5f %12.5f %12.5f %12.5f %12.5f\n",
+          YCorrWedge[i], ZCorrWedge[i], OmegaCorrWedge[i], SpotsInfo[i][5],
+          SpotsInfo[i][0], SpotsInfo[i][4], EtaCorrWedge[i], TthetaCorrWedge[i],
+          SpotsInfo[i][1], YCorrected[i], ZCorrected[i], SpotsInfo[i][2],
+          SpotsInfo[i][3], SpotsInfo[i][1], SpotsInfo[i][6], SpotsInfo[i][7],
+          SpotsInfo[i][8], SpotsInfo[i][9]);
     } else {
       fprintf(IndexAll,
               "0.000 0.000 0.000 0.0000 %12.5f 0.0000 0.0000 0.0000\n",

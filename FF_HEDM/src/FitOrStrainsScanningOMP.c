@@ -56,7 +56,7 @@ double pixelsize;
 double DetParams[4][10];
 #define MAX_N_OMEGA_RANGES 2000
 double WeightMask = 1.0;
-double WeightFitRMSE = 1.0;
+double WeightFitRMSE = 0.0;
 
 // Dynamic spot reassignment: bin data structures (same layout as
 // IndexerScanningOMP)
@@ -1509,6 +1509,18 @@ int main(int argc, char *argv[]) {
     LowNr = strncmp(aline, str, strlen(str));
     if (LowNr == 0) {
       sscanf(aline, "%s %lf", dummy, &gOmeBinSize);
+      continue;
+    }
+    str = "WeightMask ";
+    LowNr = strncmp(aline, str, strlen(str));
+    if (LowNr == 0) {
+      sscanf(aline, "%s %lf", dummy, &WeightMask);
+      continue;
+    }
+    str = "WeightFitRMSE ";
+    LowNr = strncmp(aline, str, strlen(str));
+    if (LowNr == 0) {
+      sscanf(aline, "%s %lf", dummy, &WeightFitRMSE);
       continue;
     }
   }
