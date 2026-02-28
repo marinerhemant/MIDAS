@@ -67,6 +67,8 @@ extern double pixelsize;
 extern double DetParams[4][10];
 
 static int GlobalDebugFlag = 0;
+double WeightMask = 1.0;
+double WeightFitRMSE = 1.0;
 
 int BigDetSize = 0;
 int *BigDetector;
@@ -527,9 +529,15 @@ CalcAngleErrors(int nspots, int nhkls, int nOmegaRanges, double x[12],
       printf("DEBUG OMP: Spot %d best minAngle=%f (Limit 1.0)\n", sp, minAngle);
     }
     if (minAngle < 1) {
-      MatchDiff[nMatched][0] = minAngle;
-      MatchDiff[nMatched][1] = diffLenM;
-      MatchDiff[nMatched][2] = diffOmeM;
+      double maskTouched = spotsYZO[sp][8];
+      double FitRMSE = spotsYZO[sp][9];
+      double weight = 1.0;
+      if (maskTouched > 0.5)
+        weight *= WeightMask;
+      weight *= exp(-FitRMSE * WeightFitRMSE);
+      MatchDiff[nMatched][0] = minAngle * weight;
+      MatchDiff[nMatched][1] = diffLenM * weight;
+      MatchDiff[nMatched][2] = diffOmeM * weight;
       SpotsComp[nMatched][0] = spotsYZO[sp][3];
       for (i = 0; i < 6; i++) {
         SpotsComp[nMatched][i + 1] = SpotsYZOGCorr[sp][i];
@@ -593,8 +601,8 @@ struct OptimizeScratch {
   double **SpotsYZOGCorr;  // [nSpotsComp][3]
   double **TheorSpotsYZWE; // [MaxNSpotsBest][3]
   double **hklsIn2;        // [nhkls][7] - Added to hoist the hkls copy buffer
-  double **spotsYZO;       // [nSpotsComp][9] - Added to hoist spots copy buffer
-  double *Angles;          // [MaxNSpotsBest] - Added for FitErrorsOrientStrains
+  double **spotsYZO; // [nSpotsComp][11] - Added to hoist spots copy buffer
+  double *Angles;    // [MaxNSpotsBest] - Added for FitErrorsOrientStrains
   int *SpotLookup;
   int MaxSpnr;
 };
@@ -670,7 +678,7 @@ struct data_FitPos {
 };
 
 static inline double
-FitErrorsPosSec(double x[3], int nSpotsComp, double spotsYZOIn[nSpotsComp][9],
+FitErrorsPosSec(double x[3], int nSpotsComp, double spotsYZOIn[nSpotsComp][11],
                 int nTspots, double Lsd, double Wavelength, double wedge,
                 double chi, struct OptimizeScratch *scratch,
                 struct data_FitPos
@@ -684,7 +692,7 @@ FitErrorsPosSec(double x[3], int nSpotsComp, double spotsYZOIn[nSpotsComp][9],
 
   double **spotsYZO = scratch->spotsYZO;
   for (i = 0; i < nSpotsComp; i++)
-    for (j = 0; j < 9; j++)
+    for (j = 0; j < 11; j++)
       spotsYZO[i][j] = spotsYZOIn[i][j];
 
   double DisplY, DisplZ, ys, zs, Omega;
@@ -714,8 +722,14 @@ FitErrorsPosSec(double x[3], int nSpotsComp, double spotsYZOIn[nSpotsComp][9],
       if ((int)TheorSpotsYZWE[k][2] == (int)Spnr) {
         PosTheor[0] = TheorSpotsYZWE[k][0];
         PosTheor[1] = TheorSpotsYZWE[k][1];
-        Error +=
-            CalcNorm2((PosObs[0] - PosTheor[0]), (PosObs[1] - PosTheor[1]));
+        double maskT = spotsYZO[i][8];
+        double fRMSE = spotsYZO[i][9];
+        double wgt = 1.0;
+        if (maskT > 0.5)
+          wgt *= WeightMask;
+        wgt *= exp(-fRMSE * WeightFitRMSE);
+        Error += wgt * CalcNorm2((PosObs[0] - PosTheor[0]),
+                                 (PosObs[1] - PosTheor[1]));
         break;
       }
     }
@@ -724,7 +738,7 @@ FitErrorsPosSec(double x[3], int nSpotsComp, double spotsYZOIn[nSpotsComp][9],
 }
 
 static inline double
-FitErrorsPosT(double x[12], int nSpotsComp, double spotsYZOIn[nSpotsComp][9],
+FitErrorsPosT(double x[12], int nSpotsComp, double spotsYZOIn[nSpotsComp][11],
               int nhkls, double hklsIn[nhkls][7], double Lsd, double Wavelength,
               int nOmeRanges, double OmegaRanges[nOmeRanges][2],
               double BoxSizes[nOmeRanges][4], double MinEta, double wedge,
@@ -740,9 +754,9 @@ FitErrorsPosT(double x[12], int nSpotsComp, double spotsYZOIn[nSpotsComp][9],
     for (j = 0; j < 7; j++)
       hklsIn2[i][j] = hklsIn[i][j];
   double **spotsYZO = scratch->spotsYZO;
-  // spotsYZO = allocMatrix(nSpotsComp, 9);
+  // spotsYZO = allocMatrix(nSpotsComp, 11);
   for (i = 0; i < nSpotsComp; i++) {
-    for (j = 0; j < 9; j++) {
+    for (j = 0; j < 11; j++) {
       spotsYZO[i][j] = spotsYZOIn[i][j];
     }
   }
@@ -820,7 +834,7 @@ FitErrorsPosT(double x[12], int nSpotsComp, double spotsYZOIn[nSpotsComp][9],
 }
 
 static inline double FitErrorsOrientStrains(
-    double x[9], int nSpotsComp, double spotsYZOIn[nSpotsComp][9], int nhkls,
+    double x[9], int nSpotsComp, double spotsYZOIn[nSpotsComp][11], int nhkls,
     double hklsIn[nhkls][7], double Lsd, double Wavelength, int nOmeRanges,
     double OmegaRanges[nOmeRanges][2], double BoxSizes[nOmeRanges][4],
     double MinEta, double wedge, double chi, double Pos[3],
@@ -839,9 +853,9 @@ static inline double FitErrorsOrientStrains(
   // hkls = allocMatrix(nhkls, 7);
   CorrectHKLsLatC(LatC, hklsIn2, nhkls, Lsd, Wavelength, hkls);
   double **spotsYZO = scratch->spotsYZO;
-  // spotsYZO = allocMatrix(nSpotsComp, 9);
+  // spotsYZO = allocMatrix(nSpotsComp, 11);
   for (i = 0; i < nSpotsComp; i++) {
-    for (j = 0; j < 9; j++) {
+    for (j = 0; j < 11; j++) {
       spotsYZO[i][j] = spotsYZOIn[i][j];
     }
   }
@@ -960,7 +974,7 @@ static inline double FitErrorsOrientStrains(
 }
 
 static inline double FitErrorsStrains(
-    double x[6], int nSpotsComp, double spotsYZOIn[nSpotsComp][9], int nhkls,
+    double x[6], int nSpotsComp, double spotsYZOIn[nSpotsComp][11], int nhkls,
     double hklsIn[nhkls][7], double Lsd, double Wavelength, int nOmeRanges,
     double OmegaRanges[nOmeRanges][2], double BoxSizes[nOmeRanges][4],
     double MinEta, double wedge, double chi, double Pos[3], double Orient[3],
@@ -976,9 +990,9 @@ static inline double FitErrorsStrains(
     for (j = 0; j < 7; j++)
       hklsIn2[i][j] = hklsIn[i][j];
   double **spotsYZO = scratch->spotsYZO;
-  // spotsYZO = allocMatrix(nSpotsComp, 9);
+  // spotsYZO = allocMatrix(nSpotsComp, 11);
   for (i = 0; i < nSpotsComp; i++) {
-    for (j = 0; j < 9; j++) {
+    for (j = 0; j < 11; j++) {
       spotsYZO[i][j] = spotsYZOIn[i][j];
     }
   }
@@ -1057,9 +1071,9 @@ static double problem_function_PosIni(unsigned n, const double *x, double *grad,
   int i, j;
   struct data_FitPosIni *f_data = (struct data_FitPosIni *)f_data_trial;
   int nSpotsComp = f_data->nSpotsComp;
-  double spotsYZO[nSpotsComp][9];
+  double spotsYZO[nSpotsComp][11];
   for (i = 0; i < nSpotsComp; i++) {
-    for (j = 0; j < 9; j++) {
+    for (j = 0; j < 11; j++) {
       spotsYZO[i][j] = f_data->spotsYZO[i][j];
     }
   }
@@ -1099,9 +1113,9 @@ static double problem_function_OrientIni(unsigned n, const double *x,
   int i, j;
   struct data_FitOrientIni *f_data = (struct data_FitOrientIni *)f_data_trial;
   int nSpotsComp = f_data->nSpotsComp;
-  double spotsYZO[nSpotsComp][9];
+  double spotsYZO[nSpotsComp][11];
   for (i = 0; i < nSpotsComp; i++) {
-    for (j = 0; j < 9; j++) {
+    for (j = 0; j < 11; j++) {
       spotsYZO[i][j] = f_data->spotsYZO[i][j];
     }
   }
@@ -1144,9 +1158,9 @@ static double problem_function_StrainIni(unsigned n, const double *x,
   int i, j;
   struct data_FitStrainIni *f_data = (struct data_FitStrainIni *)f_data_trial;
   int nSpotsComp = f_data->nSpotsComp;
-  double spotsYZO[nSpotsComp][9];
+  double spotsYZO[nSpotsComp][11];
   for (i = 0; i < nSpotsComp; i++) {
-    for (j = 0; j < 9; j++) {
+    for (j = 0; j < 11; j++) {
       spotsYZO[i][j] = f_data->spotsYZO[i][j];
     }
   }
@@ -1192,9 +1206,9 @@ static double problem_function_Pos(unsigned n, const double *x, double *grad,
   int i, j;
   struct data_FitPos *f_data = (struct data_FitPos *)f_data_trial;
   int nSpotsComp = f_data->nSpotsComp;
-  double spotsYZO[nSpotsComp][9];
+  double spotsYZO[nSpotsComp][11];
   for (i = 0; i < nSpotsComp; i++) {
-    for (j = 0; j < 9; j++) {
+    for (j = 0; j < 11; j++) {
       spotsYZO[i][j] = f_data->spotsYZO[i][j];
     }
   }
@@ -1239,9 +1253,9 @@ void FitPositionIni(double X0[12], int nSpotsComp, double **spotsYZO, int nhkls,
   int i, j;
   struct data_FitPosIni f_data;
   f_data.nSpotsComp = nSpotsComp;
-  f_data.spotsYZO = allocMatrix(nSpotsComp, 9);
+  f_data.spotsYZO = allocMatrix(nSpotsComp, 11);
   for (i = 0; i < nSpotsComp; i++)
-    for (j = 0; j < 9; j++)
+    for (j = 0; j < 11; j++)
       f_data.spotsYZO[i][j] = spotsYZO[i][j];
   f_data.nhkls = nhkls;
   f_data.hkls = allocMatrix(nhkls, 7);
@@ -1274,7 +1288,7 @@ void FitPositionIni(double X0[12], int nSpotsComp, double **spotsYZO, int nhkls,
   f_data.scratch->SpotsYZOGCorr = allocMatrix(nSpotsComp, 5);
   f_data.scratch->TheorSpotsYZWE = allocMatrix(MaxNSpotsBest, 5);
   f_data.scratch->hklsIn2 = allocMatrix(nhkls, 7);
-  f_data.scratch->spotsYZO = allocMatrix(nSpotsComp, 9);
+  f_data.scratch->spotsYZO = allocMatrix(nSpotsComp, 11);
   f_data.scratch->Angles = malloc(MaxNSpotsBest * sizeof(double));
 
   for (i = 0; i < n; i++) {
@@ -1332,9 +1346,9 @@ void FitOrientIni(double X0[9], int nSpotsComp, double **spotsYZO, int nhkls,
   int i, j;
   struct data_FitOrientIni f_data;
   f_data.nSpotsComp = nSpotsComp;
-  f_data.spotsYZO = allocMatrix(nSpotsComp, 9);
+  f_data.spotsYZO = allocMatrix(nSpotsComp, 11);
   for (i = 0; i < nSpotsComp; i++)
-    for (j = 0; j < 9; j++)
+    for (j = 0; j < 11; j++)
       f_data.spotsYZO[i][j] = spotsYZO[i][j];
   f_data.nhkls = nhkls;
   f_data.hkls = allocMatrix(nhkls, 7);
@@ -1368,7 +1382,7 @@ void FitOrientIni(double X0[9], int nSpotsComp, double **spotsYZO, int nhkls,
   f_data.scratch->SpotsYZOGCorr = allocMatrix(nSpotsComp, 5);
   f_data.scratch->TheorSpotsYZWE = allocMatrix(MaxNSpotsBest, 5);
   f_data.scratch->hklsIn2 = allocMatrix(nhkls, 7);
-  f_data.scratch->spotsYZO = allocMatrix(nSpotsComp, 9);
+  f_data.scratch->spotsYZO = allocMatrix(nSpotsComp, 11);
   f_data.scratch->Angles = malloc(MaxNSpotsBest * sizeof(double));
 
   for (i = 0; i < n; i++) {
@@ -1426,9 +1440,9 @@ void FitStrainIni(double X0[6], int nSpotsComp, double **spotsYZO, int nhkls,
   int i, j;
   struct data_FitStrainIni f_data;
   f_data.nSpotsComp = nSpotsComp;
-  f_data.spotsYZO = allocMatrix(nSpotsComp, 9);
+  f_data.spotsYZO = allocMatrix(nSpotsComp, 11);
   for (i = 0; i < nSpotsComp; i++)
-    for (j = 0; j < 9; j++)
+    for (j = 0; j < 11; j++)
       f_data.spotsYZO[i][j] = spotsYZO[i][j];
   f_data.nhkls = nhkls;
   f_data.hkls = allocMatrix(nhkls, 7);
@@ -1464,7 +1478,7 @@ void FitStrainIni(double X0[6], int nSpotsComp, double **spotsYZO, int nhkls,
   f_data.scratch->SpotsYZOGCorr = allocMatrix(nSpotsComp, 5);
   f_data.scratch->TheorSpotsYZWE = allocMatrix(MaxNSpotsBest, 5);
   f_data.scratch->hklsIn2 = allocMatrix(nhkls, 7);
-  f_data.scratch->spotsYZO = allocMatrix(nSpotsComp, 9);
+  f_data.scratch->spotsYZO = allocMatrix(nSpotsComp, 11);
   f_data.scratch->Angles = malloc(MaxNSpotsBest * sizeof(double));
 
   for (i = 0; i < n; i++) {
@@ -1522,9 +1536,9 @@ void FitPosSec(double X0[3], int nSpotsComp, double **spotsYZO, int nhkls,
   int i, j;
   struct data_FitPos f_data;
   f_data.nSpotsComp = nSpotsComp;
-  f_data.spotsYZO = allocMatrix(nSpotsComp, 9);
+  f_data.spotsYZO = allocMatrix(nSpotsComp, 11);
   for (i = 0; i < nSpotsComp; i++)
-    for (j = 0; j < 9; j++)
+    for (j = 0; j < 11; j++)
       f_data.spotsYZO[i][j] = spotsYZO[i][j];
   f_data.nhkls = nhkls;
   f_data.hkls = allocMatrix(nhkls, 7);
@@ -1560,7 +1574,7 @@ void FitPosSec(double X0[3], int nSpotsComp, double **spotsYZO, int nhkls,
   f_data.scratch->SpotsYZOGCorr = allocMatrix(nSpotsComp, 5);
   f_data.scratch->TheorSpotsYZWE = allocMatrix(MaxNSpotsBest, 5);
   f_data.scratch->hklsIn2 = allocMatrix(nhkls, 7);
-  f_data.scratch->spotsYZO = allocMatrix(nSpotsComp, 9);
+  f_data.scratch->spotsYZO = allocMatrix(nSpotsComp, 11);
   f_data.scratch->Angles = malloc(MaxNSpotsBest * sizeof(double));
 
   // Pre-calculate invariant data
@@ -1922,7 +1936,7 @@ int main(int argc, char *argv[]) {
   AllSpots = mmap(0, size, PROT_READ, MAP_SHARED, fd, 0);
   check(AllSpots == MAP_FAILED, "mmap %s failed: %s", filename,
         strerror(errno));
-  int nSpots = (int)size / (14 * sizeof(double));
+  int nSpots = (int)size / (16 * sizeof(double));
   if (BigDetSize != 0) {
     long long int size2 = ReadBigDet(cwd);
     totNrPixelsBigDetector = BigDetSize;
@@ -2142,7 +2156,7 @@ int main(int argc, char *argv[]) {
         if (spotPos >= nSpots || spotPos < 0)
           continue;
 
-        int RingNr = (int)AllSpots[spotPos * 14 + 9];
+        int RingNr = (int)AllSpots[spotPos * 16 + 9];
         int skipSpot = 0;
         for (int k = 0; k < nRingsToReject; k++) {
           if (RingNr == RingsToReject[k]) {
@@ -2181,7 +2195,7 @@ int main(int argc, char *argv[]) {
       Convert3x3To9(Orient0_3, Orient0);
       OrientMat2Euler(Orient0_3, Euler0);
       double **spotsYZO;
-      spotsYZO = allocMatrix(nSpotsBest, 9);
+      spotsYZO = allocMatrix(nSpotsBest, 11);
       int nSpotsYZO = nSpotsBest;
       // Idea: spotID always starts from 1 and is increasing in number, so
       // spotIDS[i] should correspond to AllSpots[(spotIDS[i]-1)*14+...], this
@@ -2202,24 +2216,26 @@ int main(int argc, char *argv[]) {
           nSpotsFound--;
           continue;
         }
-        if (spotPosAllSpots + 1 != (size_t)AllSpots[spotPosAllSpots * 14 + 4]) {
+        if (spotPosAllSpots + 1 != (size_t)AllSpots[spotPosAllSpots * 16 + 4]) {
           // printf("\n\nData mismatch! Original: %d, Looked for %d, found %d, "
           //        "skipping this spot, GrID: %d, nSpotsBest: %d.\n\n\n",
           //        (int)spotIDS[i], (int)(spotPosAllSpots + 1),
-          //        (int)AllSpots[spotPosAllSpots * 14 + 4], (int)thisRowNr,
+          //        (int)AllSpots[spotPosAllSpots * 16 + 4], (int)thisRowNr,
           //        (int)nSpotsBest);
           // fflush(stdout);
           nSpotsFound--;
           continue;
         }
-        spotsYZO[i][0] = AllSpots[spotPosAllSpots * 14 + 0];
-        spotsYZO[i][1] = AllSpots[spotPosAllSpots * 14 + 1];
-        spotsYZO[i][2] = AllSpots[spotPosAllSpots * 14 + 2];
-        spotsYZO[i][3] = AllSpots[spotPosAllSpots * 14 + 4];
-        spotsYZO[i][4] = AllSpots[spotPosAllSpots * 14 + 8];
-        spotsYZO[i][5] = AllSpots[spotPosAllSpots * 14 + 9];
-        spotsYZO[i][6] = AllSpots[spotPosAllSpots * 14 + 10];
-        spotsYZO[i][7] = AllSpots[spotPosAllSpots * 14 + 5];
+        spotsYZO[i][0] = AllSpots[spotPosAllSpots * 16 + 0];
+        spotsYZO[i][1] = AllSpots[spotPosAllSpots * 16 + 1];
+        spotsYZO[i][2] = AllSpots[spotPosAllSpots * 16 + 2];
+        spotsYZO[i][3] = AllSpots[spotPosAllSpots * 16 + 4];
+        spotsYZO[i][4] = AllSpots[spotPosAllSpots * 16 + 8];
+        spotsYZO[i][5] = AllSpots[spotPosAllSpots * 16 + 9];
+        spotsYZO[i][6] = AllSpots[spotPosAllSpots * 16 + 10];
+        spotsYZO[i][7] = AllSpots[spotPosAllSpots * 16 + 5];
+        spotsYZO[i][8] = AllSpots[spotPosAllSpots * 16 + 14];
+        spotsYZO[i][9] = AllSpots[spotPosAllSpots * 16 + 15];
       }
       if (nSpotsFound == 0) {
         // printf("No valid spots found for grain ID: %d.\n", thisRowNr);
@@ -2229,7 +2245,7 @@ int main(int argc, char *argv[]) {
       Ini = malloc(12 * sizeof(*Ini));
       double **SpotsComp, **Splist, *ErrorIni;
       SpotsComp = allocMatrix(MaxNSpotsBest, 22);
-      Splist = allocMatrix(MaxNSpotsBest, 9);
+      Splist = allocMatrix(MaxNSpotsBest, 11);
       ErrorIni = malloc(3 * sizeof(*ErrorIni));
       int nSpotsComp;
       ConcatPosEulLatc(Ini, Pos0, Euler0, LatCin);
@@ -2244,9 +2260,9 @@ int main(int argc, char *argv[]) {
                       SpotsComp, Splist, ErrorIni, &nSpotsComp,
                       GlobalDebugFlag);
       double **spotsYZONew;
-      spotsYZONew = allocMatrix(nSpotsComp, 9);
+      spotsYZONew = allocMatrix(nSpotsComp, 11);
       for (i = 0; i < nSpotsComp; i++) {
-        for (j = 0; j < 9; j++) {
+        for (j = 0; j < 11; j++) {
           spotsYZONew[i][j] = Splist[i][j];
         }
       }
@@ -2328,7 +2344,7 @@ int main(int argc, char *argv[]) {
                       chi, SpotsComp, Splist, ErrorInt1, &nSpotsComp,
                       GlobalDebugFlag);
       for (i = 0; i < nSpotsComp; i++)
-        for (j = 0; j < 9; j++)
+        for (j = 0; j < 11; j++)
           spotsYZONew[i][j] = Splist[i][j];
       double X0_2[9];
       X0_2[0] = Euler0[0];
@@ -2379,7 +2395,7 @@ int main(int argc, char *argv[]) {
                       chi, SpotsComp, Splist, ErrorInt2, &nSpotsComp,
                       GlobalDebugFlag);
       for (i = 0; i < nSpotsComp; i++)
-        for (j = 0; j < 9; j++)
+        for (j = 0; j < 11; j++)
           spotsYZONew[i][j] = Splist[i][j];
       double X0_3[6];
       for (i = 0; i < 6; i++)
@@ -2419,7 +2435,7 @@ int main(int argc, char *argv[]) {
                       wedge, chi, SpotsComp, Splist, ErrorInt3, &nSpotsComp,
                       GlobalDebugFlag);
       for (i = 0; i < nSpotsComp; i++)
-        for (j = 0; j < 9; j++)
+        for (j = 0; j < 11; j++)
           spotsYZONew[i][j] = Splist[i][j];
       double X0_4[3];
       for (i = 0; i < 3; i++)
@@ -2470,7 +2486,7 @@ int main(int argc, char *argv[]) {
       printf("SpotID %6d, %6d out of %6d, Errors: %7.2f %6.4f %6.4f, ", SpId,
              thisRowNr, nSptIDs, ErrorFin[0], ErrorFin[1], ErrorFin[2]);
       for (i = 0; i < nSpotsComp; i++)
-        for (j = 0; j < 9; j++)
+        for (j = 0; j < 11; j++)
           spotsYZONew[i][j] = Splist[i][j];
       printf("Fitvals: Pos: %7.2f %7.2f %7.2f, Orient: %7.2f %7.2f %7.2f, "
              "LatC: %6.4f %6.4f %6.4f %7.3f %7.3f %7.3f\n",
@@ -2780,26 +2796,28 @@ int main(int argc, char *argv[]) {
       size_t spotPosAllSpots;
       for (i = 0; i < nSpotsBest; i++) {
         spotPosAllSpots = (int)spotIDS[i] - 1;
-        if (spotPosAllSpots + 1 != (size_t)AllSpots[spotPosAllSpots * 14 + 4]) {
+        if (spotPosAllSpots + 1 != (size_t)AllSpots[spotPosAllSpots * 16 + 4]) {
           printf("Data mismatch! Behavior undefined. Original: %d, Looked for "
                  "%zu, found %zu\n",
                  (int)spotIDS[i], spotPosAllSpots + 1,
-                 (size_t)AllSpots[spotPosAllSpots * 14 + 4]);
+                 (size_t)AllSpots[spotPosAllSpots * 16 + 4]);
         }
-        spotsYZO[i][0] = AllSpots[spotPosAllSpots * 14 + 0];
-        spotsYZO[i][1] = AllSpots[spotPosAllSpots * 14 + 1];
-        spotsYZO[i][2] = AllSpots[spotPosAllSpots * 14 + 2];
-        spotsYZO[i][3] = AllSpots[spotPosAllSpots * 14 + 4];
-        spotsYZO[i][4] = AllSpots[spotPosAllSpots * 14 + 8];
-        spotsYZO[i][5] = AllSpots[spotPosAllSpots * 14 + 9];
-        spotsYZO[i][6] = AllSpots[spotPosAllSpots * 14 + 10];
-        spotsYZO[i][7] = AllSpots[spotPosAllSpots * 14 + 5];
+        spotsYZO[i][0] = AllSpots[spotPosAllSpots * 16 + 0];
+        spotsYZO[i][1] = AllSpots[spotPosAllSpots * 16 + 1];
+        spotsYZO[i][2] = AllSpots[spotPosAllSpots * 16 + 2];
+        spotsYZO[i][3] = AllSpots[spotPosAllSpots * 16 + 4];
+        spotsYZO[i][4] = AllSpots[spotPosAllSpots * 16 + 8];
+        spotsYZO[i][5] = AllSpots[spotPosAllSpots * 16 + 9];
+        spotsYZO[i][6] = AllSpots[spotPosAllSpots * 16 + 10];
+        spotsYZO[i][7] = AllSpots[spotPosAllSpots * 16 + 5];
+        spotsYZO[i][8] = AllSpots[spotPosAllSpots * 16 + 14];
+        spotsYZO[i][9] = AllSpots[spotPosAllSpots * 16 + 15];
       }
       double *Ini;
       Ini = malloc(12 * sizeof(*Ini));
       double **SpotsComp, **Splist, *ErrorIni;
       SpotsComp = allocMatrix(MaxNSpotsBest, 22);
-      Splist = allocMatrix(MaxNSpotsBest, 9);
+      Splist = allocMatrix(MaxNSpotsBest, 11);
       ErrorIni = malloc(3 * sizeof(*ErrorIni));
       int nSpotsComp;
       ConcatPosEulLatc(Ini, Pos0, Euler0, LatCin);
@@ -2807,9 +2825,9 @@ int main(int argc, char *argv[]) {
                       Wavelength, OmegaRanges, BoxSizes, MinEta, wedge, chi,
                       SpotsComp, Splist, ErrorIni, &nSpotsComp, 0);
       double **spotsYZONew;
-      spotsYZONew = allocMatrix(nSpotsComp, 9);
+      spotsYZONew = allocMatrix(nSpotsComp, 11);
       for (i = 0; i < nSpotsComp; i++) {
-        for (j = 0; j < 9; j++) {
+        for (j = 0; j < 11; j++) {
           spotsYZONew[i][j] = Splist[i][j];
         }
       }
@@ -2849,7 +2867,7 @@ int main(int argc, char *argv[]) {
                       hkls, Lsd, Wavelength, OmegaRanges, BoxSizes, MinEta,
                       wedge, chi, SpotsComp, Splist, ErrorFin, &nSpotsComp, 1);
       for (i = 0; i < nSpotsComp; i++)
-        for (j = 0; j < 9; j++)
+        for (j = 0; j < 11; j++)
           spotsYZONew[i][j] = Splist[i][j];
       double FinalResult[12];
       for (i = 0; i < 3; i++)

@@ -36,12 +36,12 @@ void CalcDistanceIdealRing(double *ObsSpotsLab, int nspots, int nCols,
     double z = ObsSpotsLab[i * nCols + 1];
     double rad = sqrt(y * y + z * z);
     int ringno = (int)ObsSpotsLab[i * nCols + 5];
-    ObsSpotsLab[i * nCols + 15] = rad - RingRadii[ringno];
+    ObsSpotsLab[i * nCols + 17] = rad - RingRadii[ringno];
   }
 }
 
 struct InpData {
-  double Values[15];
+  double Values[17];
 };
 
 static int cmpfunc(const void *a, const void *b) {
@@ -166,15 +166,18 @@ int main(int argc, char *argv[]) {
     setvbuf(AllSpotsFile, NULL, _IOFBF, 1 << 20); // 1 MB read buffer
     rc = fgets(aline, 4096, AllSpotsFile);
     while (fgets(aline, 4096, AllSpotsFile) != NULL) {
-      sscanf(aline, "%lf %lf %lf %lf %lf %lf %lf %lf %lf %lf %lf %lf %lf %lf",
+      double dummy0, dummy1;
+      sscanf(aline, "%lf %lf %lf %lf %lf %lf %lf %lf %lf %lf %lf %lf %lf %lf %lf %lf %lf %lf",
              &MyData[nSpots].Values[0], &MyData[nSpots].Values[1],
              &MyData[nSpots].Values[2], &MyData[nSpots].Values[3],
              &MyData[nSpots].Values[4], &MyData[nSpots].Values[5],
              &MyData[nSpots].Values[6], &MyData[nSpots].Values[7],
              &MyData[nSpots].Values[8], &MyData[nSpots].Values[9],
              &MyData[nSpots].Values[10], &MyData[nSpots].Values[11],
-             &MyData[nSpots].Values[12], &MyData[nSpots].Values[13]);
-      MyData[nSpots].Values[14] = scanNr;
+             &MyData[nSpots].Values[12], &MyData[nSpots].Values[13],
+             &dummy0, &dummy1,
+             &MyData[nSpots].Values[14], &MyData[nSpots].Values[15]);
+      MyData[nSpots].Values[16] = scanNr;
       if (fabs(MyData[nSpots].Values[3]) > 0.0001)
         nSpots++;
     }
@@ -193,7 +196,7 @@ int main(int argc, char *argv[]) {
   printf("Data sorted.\n");
 
   // Use contiguous 1D arrays instead of row-pointer matrices
-  int nObsCols = 16;
+  int nObsCols = 18;
   int nIDCols = 3;
   double *ObsSpots = malloc(nSpots * nObsCols * sizeof(double));
   double *IDMat = malloc(nSpots * nIDCols * sizeof(double));
@@ -203,11 +206,11 @@ int main(int argc, char *argv[]) {
   }
   for (i = 0; i < (int)nSpots; i++) {
     // Copy 15 values via memcpy for speed
-    memcpy(&ObsSpots[i * nObsCols], MyData[i].Values, 15 * sizeof(double));
-    ObsSpots[i * nObsCols + 15] = 0; // will be filled by CalcDistanceIdealRing
+    memcpy(&ObsSpots[i * nObsCols], MyData[i].Values, 17 * sizeof(double));
+    ObsSpots[i * nObsCols + 17] = 0; // will be filled by CalcDistanceIdealRing
     IDMat[i * nIDCols + 0] = i + 1;
     IDMat[i * nIDCols + 1] = ObsSpots[i * nObsCols + 4];
-    IDMat[i * nIDCols + 2] = ObsSpots[i * nObsCols + 14];
+    IDMat[i * nIDCols + 2] = ObsSpots[i * nObsCols + 16];
     ObsSpots[i * nObsCols + 4] = i + 1;
   }
   free(MyData);
@@ -231,18 +234,18 @@ int main(int argc, char *argv[]) {
     for (j = 0; j < 8; j++) {
       SpotsMat[i * 10 + j] = ObsSpots[i * nObsCols + j];
     }
-    SpotsMat[i * 10 + 8] = ObsSpots[i * nObsCols + 15];
-    SpotsMat[i * 10 + 9] = ObsSpots[i * nObsCols + 14];
+    SpotsMat[i * 10 + 8] = ObsSpots[i * nObsCols + 17];
+    SpotsMat[i * 10 + 9] = ObsSpots[i * nObsCols + 16];
   }
   // Make ExtraInfoSpotMatrix
   double *ExtraMat;
-  ExtraMat = malloc(nSpots * 14 * sizeof(*ExtraMat));
+  ExtraMat = malloc(nSpots * 16 * sizeof(*ExtraMat));
   if (ExtraMat == NULL) {
     printf("Memory error: could not allocate ExtraMat.\n");
     return 1;
   }
   for (i = 0; i < (int)nSpots; i++) {
-    memcpy(&ExtraMat[i * 14], &ObsSpots[i * nObsCols], 14 * sizeof(double));
+    memcpy(&ExtraMat[i * 16], &ObsSpots[i * nObsCols], 16 * sizeof(double));
   }
   char *SpotsFN = "Spots.bin";
   char *ExtraFN = "ExtraInfo.bin";
@@ -251,7 +254,7 @@ int main(int argc, char *argv[]) {
   fwrite(SpotsMat, nSpots * 10 * sizeof(*SpotsMat), 1, SpotsFile);
   fclose(SpotsFile);
   FILE *ExtraFile = fopen(ExtraFN, "wb");
-  fwrite(ExtraMat, nSpots * 14 * sizeof(*ExtraMat), 1, ExtraFile);
+  fwrite(ExtraMat, nSpots * 16 * sizeof(*ExtraMat), 1, ExtraFile);
   fclose(ExtraFile);
   free(ExtraMat);
   FILE *IDMatFile = fopen(IDMatFN, "w");

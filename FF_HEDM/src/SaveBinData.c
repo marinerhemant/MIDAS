@@ -111,20 +111,23 @@ int main(int arc, char *argv[]) {
   setvbuf(AllSpotsFile, NULL, _IOFBF, 1 << 20); // 1 MB read buffer
   char *rc2 = fgets(aline, 4096, AllSpotsFile); // skip header
   int countr = 0;
-  double *AllSpots = malloc((size_t)nSpots * 14 * sizeof(double));
+  double *AllSpots = malloc((size_t)nSpots * 16 * sizeof(double));
   if (AllSpots == NULL) {
     printf("Memory error: could not allocate AllSpots.\n");
     return 1;
   }
   while (fgets(aline, 4096, AllSpotsFile) != NULL) {
-    sscanf(aline, "%lf %lf %lf %lf %lf %lf %lf %lf %lf %lf %lf %lf %lf %lf",
-           &AllSpots[countr * 14 + 0], &AllSpots[countr * 14 + 1],
-           &AllSpots[countr * 14 + 2], &AllSpots[countr * 14 + 3],
-           &AllSpots[countr * 14 + 4], &AllSpots[countr * 14 + 5],
-           &AllSpots[countr * 14 + 6], &AllSpots[countr * 14 + 7],
-           &AllSpots[countr * 14 + 8], &AllSpots[countr * 14 + 9],
-           &AllSpots[countr * 14 + 10], &AllSpots[countr * 14 + 11],
-           &AllSpots[countr * 14 + 12], &AllSpots[countr * 14 + 13]);
+    double dummy0, dummy1;
+    sscanf(aline, "%lf %lf %lf %lf %lf %lf %lf %lf %lf %lf %lf %lf %lf %lf %lf %lf %lf %lf",
+           &AllSpots[countr * 16 + 0], &AllSpots[countr * 16 + 1],
+           &AllSpots[countr * 16 + 2], &AllSpots[countr * 16 + 3],
+           &AllSpots[countr * 16 + 4], &AllSpots[countr * 16 + 5],
+           &AllSpots[countr * 16 + 6], &AllSpots[countr * 16 + 7],
+           &AllSpots[countr * 16 + 8], &AllSpots[countr * 16 + 9],
+           &AllSpots[countr * 16 + 10], &AllSpots[countr * 16 + 11],
+           &AllSpots[countr * 16 + 12], &AllSpots[countr * 16 + 13],
+           &dummy0, &dummy1,
+           &AllSpots[countr * 16 + 14], &AllSpots[countr * 16 + 15]);
     countr++;
   }
   fclose(AllSpotsFile);
@@ -235,13 +238,13 @@ int main(int arc, char *argv[]) {
   }
   // Make ExtraInfoSpotMatrix
   double *ExtraMat;
-  ExtraMat = malloc(nSpots * 14 * sizeof(*ExtraMat));
+  ExtraMat = malloc(nSpots * 16 * sizeof(*ExtraMat));
   if (ExtraMat == NULL) {
     printf("Memory error: could not allocate ExtraMat.\n");
     return 1;
   }
   for (i = 0; i < nSpots; i++) {
-    memcpy(&ExtraMat[i * 14], &AllSpots[i * 14], 14 * sizeof(double));
+    memcpy(&ExtraMat[i * 16], &AllSpots[i * 16], 16 * sizeof(double));
   }
   char *SpotsFN = "Spots.bin";
   char *ExtraFN = "ExtraInfo.bin";
@@ -249,7 +252,7 @@ int main(int arc, char *argv[]) {
   fwrite(SpotsMat, nSpots * 9 * sizeof(*SpotsMat), 1, SpotsFile);
   fclose(SpotsFile);
   FILE *ExtraFile = fopen(ExtraFN, "wb");
-  fwrite(ExtraMat, nSpots * 14 * sizeof(*ExtraMat), 1, ExtraFile);
+  fwrite(ExtraMat, nSpots * 16 * sizeof(*ExtraMat), 1, ExtraFile);
   fclose(ExtraFile);
   free(ExtraMat);
   free(AllSpots);

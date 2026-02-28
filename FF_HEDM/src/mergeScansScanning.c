@@ -65,12 +65,12 @@ main(int argc, char *argv[])
         size_t nAll=0;
         while (fgets(thisLine,2048,thisF)!=NULL){
             sscanf(thisLine,"%lf %lf %lf %lf %lf %lf %lf %lf %lf %lf %lf %lf %lf %lf",
-                &allSpots[nAll*14+0],&allSpots[nAll*14+1],&allSpots[nAll*14+2],
-                &allSpots[nAll*14+3],&allSpots[nAll*14+4],&allSpots[nAll*14+5],
-                &allSpots[nAll*14+6],&allSpots[nAll*14+7],&allSpots[nAll*14+8],
-                &allSpots[nAll*14+9],&allSpots[nAll*14+10],&allSpots[nAll*14+11],
-                &allSpots[nAll*14+12],&allSpots[nAll*14+13]);
-            if (allSpots[nAll*14+3]<0.01) continue;
+                &allSpots[nAll* 16 +0],&allSpots[nAll* 16 +1],&allSpots[nAll* 16 +2],
+                &allSpots[nAll* 16 +3],&allSpots[nAll* 16 +4],&allSpots[nAll* 16 +5],
+                &allSpots[nAll* 16 +6],&allSpots[nAll* 16 +7],&allSpots[nAll* 16 +8],
+                &allSpots[nAll* 16 +9],&allSpots[nAll* 16 +10],&allSpots[nAll* 16 +11],
+                &allSpots[nAll* 16 +12],&allSpots[nAll* 16 +13]);
+            if (allSpots[nAll* 16 +3]<0.01) continue;
             lastScansSpots[nAll] = nAll;
             nAll++;
         }
@@ -89,12 +89,12 @@ main(int argc, char *argv[])
             fgets(thisLine,2048,thisF);
             while (fgets(thisLine,2048,thisF)!=NULL){
                 sscanf(thisLine,"%lf %lf %lf %lf %lf %lf %lf %lf %lf %lf %lf %lf %lf %lf",
-                    &thisSpots[nThis*14+0],&thisSpots[nThis*14+1],&thisSpots[nThis*14+2],
-                    &thisSpots[nThis*14+3],&thisSpots[nThis*14+4],&thisSpots[nThis*14+5],
-                    &thisSpots[nThis*14+6],&thisSpots[nThis*14+7],&thisSpots[nThis*14+8],
-                    &thisSpots[nThis*14+9],&thisSpots[nThis*14+10],&thisSpots[nThis*14+11],
-                    &thisSpots[nThis*14+12],&thisSpots[nThis*14+13]);
-                if (thisSpots[nThis*14+3]<0.01) continue;
+                    &thisSpots[nThis* 16 +0],&thisSpots[nThis* 16 +1],&thisSpots[nThis* 16 +2],
+                    &thisSpots[nThis* 16 +3],&thisSpots[nThis* 16 +4],&thisSpots[nThis* 16 +5],
+                    &thisSpots[nThis* 16 +6],&thisSpots[nThis* 16 +7],&thisSpots[nThis* 16 +8],
+                    &thisSpots[nThis* 16 +9],&thisSpots[nThis* 16 +10],&thisSpots[nThis* 16 +11],
+                    &thisSpots[nThis* 16 +12],&thisSpots[nThis* 16 +13]);
+                if (thisSpots[nThis* 16 +3]<0.01) continue;
                 nThis++;
             }
             fclose(thisF);
@@ -103,16 +103,16 @@ main(int argc, char *argv[])
                 found = 0;
                 for (l=0;l<nSpotsLastScan;l++){
                     j = lastScansSpots[l];
-                    if (fabs(thisSpots[i*14+5] - allSpots[j*14+5])<0.01){
-                        if (fabs(thisSpots[i*14+0] - allSpots[j*14+0])<tolPx){
-                            if (fabs(thisSpots[i*14+1] - allSpots[j*14+1])<tolPx){
-                                if (fabs(thisSpots[i*14+2] - allSpots[j*14+2])<tolOme){
+                    if (fabs(thisSpots[i* 16 +5] - allSpots[j* 16 +5])<0.01){
+                        if (fabs(thisSpots[i* 16 +0] - allSpots[j* 16 +0])<tolPx){
+                            if (fabs(thisSpots[i* 16 +1] - allSpots[j* 16 +1])<tolPx){
+                                if (fabs(thisSpots[i* 16 +2] - allSpots[j* 16 +2])<tolOme){
                                     found = 1;
-                                    origWeight = allSpots[j*14+3];
-                                    newWeight = thisSpots[i*14+3];
+                                    origWeight = allSpots[j* 16 +3];
+                                    newWeight = thisSpots[i* 16 +3];
                                     thisScansSpots[i] = j;
                                     for (k=0;k<14;k++) {
-                                        allSpots[j*14+k] = (allSpots[j*14+k]*origWeight + thisSpots[i*14+k]*newWeight)/(origWeight+newWeight);
+                                        allSpots[j* 16 +k] = (allSpots[j* 16 +k]*origWeight + thisSpots[i* 16 +k]*newWeight)/(origWeight+newWeight);
                                     }
                                 }
                             }
@@ -121,20 +121,20 @@ main(int argc, char *argv[])
                 }
                 if (found == 0){
                     thisScansSpots[i] = nAll;
-                    for (j=0;j<14;j++) allSpots[nAll*14+j] = thisSpots[i*14+j];
+                    for (j=0;j<14;j++) allSpots[nAll* 16 +j] = thisSpots[i* 16 +j];
                     nAll++;
                 }
             }
             for (i=0;i<nSpotsLastScan;i++) lastScansSpots[i] = thisScansSpots[i];
             nSpotsLastScan = nThis;
         }
-        for (i=0;i<nAll;i++) allSpots[i*14+4] = i+1;
+        for (i=0;i<nAll;i++) allSpots[i* 16 +4] = i+1;
         sprintf(thisFN,"InputAllExtraInfoFittingAll%d.csv",finScanNr);
         thisF = fopen(thisFN,"w");
         fprintf(thisF,"%s",headThis);
         for (i=0;i<nAll;i++){
             for (j=0;j<14;j++){
-                fprintf(thisF,"%lf ",allSpots[i*14+j]);
+                fprintf(thisF,"%lf ",allSpots[i* 16 +j]);
             }
             fprintf(thisF,"\n");
         }

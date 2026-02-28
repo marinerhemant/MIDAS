@@ -1622,17 +1622,17 @@ int main(int argc, char *argv[]) {
   AllSpots = mmap(0, size, PROT_READ, MAP_SHARED, fd, 0);
   check(AllSpots == MAP_FAILED, "mmap %s failed: %s", filename,
         strerror(errno));
-  int nSpots = (int)size / (14 * sizeof(double));
+  int nSpots = (int)size / (16 * sizeof(double));
   AllSpotsYZO = allocMatrix(nSpots, 8);
   for (i = 0; i < nSpots; i++) {
-    AllSpotsYZO[i][0] = AllSpots[i * 14 + 0];
-    AllSpotsYZO[i][1] = AllSpots[i * 14 + 1];
-    AllSpotsYZO[i][2] = AllSpots[i * 14 + 2];
-    AllSpotsYZO[i][3] = AllSpots[i * 14 + 4];
-    AllSpotsYZO[i][4] = AllSpots[i * 14 + 8];
-    AllSpotsYZO[i][5] = AllSpots[i * 14 + 9];
-    AllSpotsYZO[i][6] = AllSpots[i * 14 + 10];
-    AllSpotsYZO[i][7] = AllSpots[i * 14 + 5];
+    AllSpotsYZO[i][0] = AllSpots[i * 16 + 0];
+    AllSpotsYZO[i][1] = AllSpots[i * 16 + 1];
+    AllSpotsYZO[i][2] = AllSpots[i * 16 + 2];
+    AllSpotsYZO[i][3] = AllSpots[i * 16 + 4];
+    AllSpotsYZO[i][4] = AllSpots[i * 16 + 8];
+    AllSpotsYZO[i][5] = AllSpots[i * 16 + 9];
+    AllSpotsYZO[i][6] = AllSpots[i * 16 + 10];
+    AllSpotsYZO[i][7] = AllSpots[i * 16 + 5];
   }
   int tc2 = munmap(AllSpots, size);
   int nrSpIds = 1;

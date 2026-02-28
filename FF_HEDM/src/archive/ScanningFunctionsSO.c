@@ -1000,7 +1000,7 @@ void populate_arrays(char *paramFN) {
   AllSpotsInfo = mmap(0, size, PROT_READ, MAP_SHARED, fd, 0);
   check(AllSpotsInfo == MAP_FAILED, "mmap %s failed: %s", filename,
         strerror(errno));
-  long totalNrSpots = size / (14 * sizeof(double));
+  long totalNrSpots = size / (16 * sizeof(double));
 
   long *AllIDsInfo;
   AllIDsInfo = calloc(nBeamPositions * nRings * 2, sizeof(*AllIDsInfo));

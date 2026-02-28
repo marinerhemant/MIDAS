@@ -386,17 +386,17 @@ int main(int argc, char *argv[]) {
       rowSpotID = (int)dummySampleInfo[j * 22 + 0] - 1;
       SpotMatrix[counterSpotMatrix][0] = (double)(i + 1);             // GrainID
       SpotMatrix[counterSpotMatrix][1] = dummySampleInfo[j * 22 + 0]; // SpotID
-      SpotMatrix[counterSpotMatrix][2] = AllSpots[rowSpotID * 14 + 2];  // Omega
-      SpotMatrix[counterSpotMatrix][3] = AllSpots[rowSpotID * 14 + 11]; // YRaw
-      SpotMatrix[counterSpotMatrix][4] = AllSpots[rowSpotID * 14 + 12]; // ZRaw
+      SpotMatrix[counterSpotMatrix][2] = AllSpots[rowSpotID * 16 + 2];  // Omega
+      SpotMatrix[counterSpotMatrix][3] = AllSpots[rowSpotID * 16 + 11]; // YRaw
+      SpotMatrix[counterSpotMatrix][4] = AllSpots[rowSpotID * 16 + 12]; // ZRaw
       SpotMatrix[counterSpotMatrix][5] =
-          AllSpots[rowSpotID * 14 + 13];                               // OmeRaw
-      SpotMatrix[counterSpotMatrix][6] = AllSpots[rowSpotID * 14 + 6]; // Eta
-      SpotMatrix[counterSpotMatrix][7] = AllSpots[rowSpotID * 14 + 5]; // RingNr
-      SpotMatrix[counterSpotMatrix][8] = AllSpots[rowSpotID * 14 + 0]; // YLab
-      SpotMatrix[counterSpotMatrix][9] = AllSpots[rowSpotID * 14 + 1]; // ZLab
+          AllSpots[rowSpotID * 16 + 13];                               // OmeRaw
+      SpotMatrix[counterSpotMatrix][6] = AllSpots[rowSpotID * 16 + 6]; // Eta
+      SpotMatrix[counterSpotMatrix][7] = AllSpots[rowSpotID * 16 + 5]; // RingNr
+      SpotMatrix[counterSpotMatrix][8] = AllSpots[rowSpotID * 16 + 0]; // YLab
+      SpotMatrix[counterSpotMatrix][9] = AllSpots[rowSpotID * 16 + 1]; // ZLab
       SpotMatrix[counterSpotMatrix][10] =
-          AllSpots[rowSpotID * 14 + 7] / 2.0; // Theta
+          AllSpots[rowSpotID * 16 + 7] / 2.0; // Theta
       counterSpotMatrix++;
     }
     LatticeParameterFit[0] = OPThis[15];

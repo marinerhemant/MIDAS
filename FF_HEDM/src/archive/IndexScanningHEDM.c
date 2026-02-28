@@ -269,19 +269,19 @@ int main(int argc, char *argv[]) {
   AllSpots = mmap(0, size, PROT_READ, MAP_SHARED, fd, 0);
   check(AllSpots == MAP_FAILED, "mmap %s failed: %s", filename,
         strerror(errno));
-  int maxID2 = size / (14 * sizeof(double));
+  int maxID2 = size / (16 * sizeof(double));
   double **allSpotsYZO;
   allSpotsYZO = allocMatrix(maxID, 9);
   for (i = 0; i < maxID; i++) { // We save YLab ZLab Omega GrainRadius SpotID
                                 // RingNumber Eta Theta Radius
-    allSpotsYZO[i][0] = AllSpots[i * 14 + 0];
-    allSpotsYZO[i][1] = AllSpots[i * 14 + 1];
-    allSpotsYZO[i][2] = AllSpots[i * 14 + 2];
-    allSpotsYZO[i][3] = AllSpots[i * 14 + 3];
-    allSpotsYZO[i][4] = AllSpots[i * 14 + 4];
-    allSpotsYZO[i][5] = AllSpots[i * 14 + 5];
-    allSpotsYZO[i][6] = AllSpots[i * 14 + 6];
-    allSpotsYZO[i][7] = AllSpots[i * 14 + 7] / 2;
+    allSpotsYZO[i][0] = AllSpots[i * 16 + 0];
+    allSpotsYZO[i][1] = AllSpots[i * 16 + 1];
+    allSpotsYZO[i][2] = AllSpots[i * 16 + 2];
+    allSpotsYZO[i][3] = AllSpots[i * 16 + 3];
+    allSpotsYZO[i][4] = AllSpots[i * 16 + 4];
+    allSpotsYZO[i][5] = AllSpots[i * 16 + 5];
+    allSpotsYZO[i][6] = AllSpots[i * 16 + 6];
+    allSpotsYZO[i][7] = AllSpots[i * 16 + 7] / 2;
     allSpotsYZO[i][8] = CalcRad(allSpotsYZO[i][0], allSpotsYZO[i][1]);
   }
   int tc2 = munmap(AllSpots, size);

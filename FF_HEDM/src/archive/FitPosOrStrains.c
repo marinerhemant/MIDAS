@@ -1811,7 +1811,7 @@ int main(int argc, char *argv[]) {
   AllSpots = mmap(0, size, PROT_READ, MAP_SHARED, fd, 0);
   check(AllSpots == MAP_FAILED, "mmap %s failed: %s", filename,
         strerror(errno));
-  int nSpots = (int)size / (14 * sizeof(double));
+  int nSpots = (int)size / (16 * sizeof(double));
   if (BigDetSize != 0) {
     long long int size2 = ReadBigDet();
     totNrPixelsBigDetector = BigDetSize;
@@ -1989,14 +1989,14 @@ int main(int argc, char *argv[]) {
   int spotPosAllSpots;
   for (i = 0; i < nSpotsBest; i++) {
     spotPosAllSpots = (int)spotIDS[i] - 1;
-    spotsYZO[i][0] = AllSpots[spotPosAllSpots * 14 + 0];
-    spotsYZO[i][1] = AllSpots[spotPosAllSpots * 14 + 1];
-    spotsYZO[i][2] = AllSpots[spotPosAllSpots * 14 + 2];
-    spotsYZO[i][3] = AllSpots[spotPosAllSpots * 14 + 4];
-    spotsYZO[i][4] = AllSpots[spotPosAllSpots * 14 + 8];
-    spotsYZO[i][5] = AllSpots[spotPosAllSpots * 14 + 9];
-    spotsYZO[i][6] = AllSpots[spotPosAllSpots * 14 + 10];
-    spotsYZO[i][7] = AllSpots[spotPosAllSpots * 14 + 5];
+    spotsYZO[i][0] = AllSpots[spotPosAllSpots * 16 + 0];
+    spotsYZO[i][1] = AllSpots[spotPosAllSpots * 16 + 1];
+    spotsYZO[i][2] = AllSpots[spotPosAllSpots * 16 + 2];
+    spotsYZO[i][3] = AllSpots[spotPosAllSpots * 16 + 4];
+    spotsYZO[i][4] = AllSpots[spotPosAllSpots * 16 + 8];
+    spotsYZO[i][5] = AllSpots[spotPosAllSpots * 16 + 9];
+    spotsYZO[i][6] = AllSpots[spotPosAllSpots * 16 + 10];
+    spotsYZO[i][7] = AllSpots[spotPosAllSpots * 16 + 5];
   }
   int tc2 = munmap(AllSpots, size);
   double *Ini;

@@ -266,7 +266,7 @@ int main(int argc, char *argv[]) {
   fgets(aline, 1000, Infile);
   int counter = 0, RingNr;
   double **SpotsMat;
-  SpotsMat = allocMatrix(MAX_N_SPOTS, 17);
+  SpotsMat = allocMatrix(MAX_N_SPOTS, 19);
   double PowderInt[nRings];
   int i;
   char hklfn[2048];
@@ -309,13 +309,13 @@ int main(int argc, char *argv[]) {
   NrPx = allocMatrix(MAX_N_SPOTS, 2);
   double MinOme = 100000, MaxOme = -100000;
   int thisRings[nRings][2];
-  double tempArr[14], dummyDouble;
+  double tempArr[16], dummyDouble;
   int found;
   while (fgets(aline, 1000, Infile) != NULL) {
-    sscanf(aline, "%lf %lf %lf %lf %lf %lf %lf %lf %lf %lf %lf %lf %lf %lf %lf",
+    sscanf(aline, "%lf %lf %lf %lf %lf %lf %lf %lf %lf %lf %lf %lf %lf %lf %lf %lf %lf",
            &dummyDouble, &tempArr[0], &tempArr[1], &tempArr[2], &tempArr[3],
            &tempArr[4], &tempArr[5], &tempArr[6], &tempArr[7], &tempArr[8],
-           &tempArr[9], &tempArr[10], &tempArr[11], &tempArr[12], &tempArr[13]);
+           &tempArr[9], &tempArr[10], &tempArr[11], &tempArr[12], &tempArr[13], &tempArr[14], &tempArr[15]);
     rrd = tempArr[11] * px;
     SpotsMat[counter][13] = -1;
     found = 0;
@@ -344,6 +344,8 @@ int main(int argc, char *argv[]) {
         SpotsMat[counter][12] = SpotsMat[counter][11] / fabs(OmegaStep);
         SpotsMat[counter][13] = RingNrs[i];
         SpotsMat[counter][16] = tempArr[13]; // RawSumIntensity (pass through)
+        SpotsMat[counter][17] = tempArr[14]; // maskTouched
+        SpotsMat[counter][18] = tempArr[15]; // FitRMSE
         if (TopLayer == 1 && fabs(SpotsMat[counter][10]) < 90) {
         } else {
           found = 1;
@@ -390,8 +392,8 @@ int main(int argc, char *argv[]) {
     for (j = 0; j < 16; j++) {
       fprintf(outfile, "%f ", SpotsMat[i][j]);
     }
-    fprintf(outfile, "%f %f %f %f %f %f\n", PowderInt[ctr], Sigmas[i][0],
-            Sigmas[i][1], NrPx[i][0], NrPx[i][1], SpotsMat[i][16]);
+    fprintf(outfile, "%f %f %f %f %f %f %f %f\n", PowderInt[ctr], Sigmas[i][0],
+            Sigmas[i][1], NrPx[i][0], NrPx[i][1], SpotsMat[i][16], SpotsMat[i][17], SpotsMat[i][18]);
   }
   FreeMemMatrix(SpotsMat, MAX_N_SPOTS);
   end = clock();

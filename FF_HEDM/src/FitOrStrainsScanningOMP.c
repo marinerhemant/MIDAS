@@ -55,6 +55,8 @@ long long int totNrPixelsBigDetector;
 double pixelsize;
 double DetParams[4][10];
 #define MAX_N_OMEGA_RANGES 2000
+double WeightMask = 1.0;
+double WeightFitRMSE = 1.0;
 
 int CalcDiffractionSpots(double Distance, double ExcludePoleAngle,
                          double OmegaRanges[MAX_N_OMEGA_RANGES][2],
@@ -494,9 +496,15 @@ CalcAngleErrors(int nspots, int nhkls, int nOmegaRanges, double x[12],
     diffOmeM = fabs(SpotsYZOGCorr[sp][2] - TheorSpotsYZWER[RowBest][2]);
     //~ printf("%lf\n",minAngle);
     if (minAngle < 1) {
-      MatchDiff[nMatched][0] = minAngle;
-      MatchDiff[nMatched][1] = diffLenM;
-      MatchDiff[nMatched][2] = diffOmeM;
+      double maskTouched = spotsYZO[sp][8];
+      double FitRMSE = spotsYZO[sp][9];
+      double weight = 1.0;
+      if (maskTouched > 0.5)
+        weight *= WeightMask;
+      weight *= exp(-FitRMSE * WeightFitRMSE);
+      MatchDiff[nMatched][0] = minAngle * weight;
+      MatchDiff[nMatched][1] = diffLenM * weight;
+      MatchDiff[nMatched][2] = diffOmeM * weight;
       SpotsComp[nMatched][0] = spotsYZO[sp][3];
       for (i = 0; i < 6; i++) {
         SpotsComp[nMatched][i + 1] = SpotsYZOGCorr[sp][i];
@@ -834,9 +842,9 @@ void FitOrientIni(double X0[9], int nSpotsComp, double **spotsYZO, int nhkls,
   int i, j;
   struct data_FitOrientIni f_data;
   f_data.nSpotsComp = nSpotsComp;
-  f_data.spotsYZO = allocMatrix(nSpotsComp, 9);
+  f_data.spotsYZO = allocMatrix(nSpotsComp, 11);
   for (i = 0; i < nSpotsComp; i++)
-    for (j = 0; j < 9; j++)
+    for (j = 0; j < 11; j++)
       f_data.spotsYZO[i][j] = spotsYZO[i][j];
   f_data.nhkls = nhkls;
   f_data.hkls = allocMatrix(nhkls, 7);
@@ -867,7 +875,7 @@ void FitOrientIni(double X0[9], int nSpotsComp, double **spotsYZO, int nhkls,
   f_data.scratch = malloc(sizeof(struct OptimizeScratch));
   f_data.scratch->hkls = allocMatrix(nhkls, 7);
   f_data.scratch->hklsIn2 = allocMatrix(nhkls, 7);
-  f_data.scratch->spotsYZO = allocMatrix(nSpotsComp, 9);
+  f_data.scratch->spotsYZO = allocMatrix(nSpotsComp, 11);
   f_data.scratch->TheorSpots = allocMatrix(MaxNSpotsBest, 9);
   f_data.scratch->SpotsYZOGCorr = allocMatrix(nSpotsComp, 5);
   f_data.scratch->TheorSpotsYZWE = allocMatrix(MaxNSpotsBest, 5);
@@ -947,9 +955,9 @@ void FitStrainIni(double X0[6], int nSpotsComp, double **spotsYZO, int nhkls,
   int i, j;
   struct data_FitStrainIni f_data;
   f_data.nSpotsComp = nSpotsComp;
-  f_data.spotsYZO = allocMatrix(nSpotsComp, 9);
+  f_data.spotsYZO = allocMatrix(nSpotsComp, 11);
   for (i = 0; i < nSpotsComp; i++)
-    for (j = 0; j < 9; j++)
+    for (j = 0; j < 11; j++)
       f_data.spotsYZO[i][j] = spotsYZO[i][j];
   f_data.nhkls = nhkls;
   f_data.hkls = allocMatrix(nhkls, 7);
@@ -982,7 +990,7 @@ void FitStrainIni(double X0[6], int nSpotsComp, double **spotsYZO, int nhkls,
   f_data.scratch = malloc(sizeof(struct OptimizeScratch));
   f_data.scratch->hkls = allocMatrix(nhkls, 7);
   f_data.scratch->hklsIn2 = allocMatrix(nhkls, 7);
-  f_data.scratch->spotsYZO = allocMatrix(nSpotsComp, 9);
+  f_data.scratch->spotsYZO = allocMatrix(nSpotsComp, 11);
   f_data.scratch->TheorSpots = allocMatrix(MaxNSpotsBest, 9);
   f_data.scratch->SpotsYZOGCorr = allocMatrix(nSpotsComp, 5);
   f_data.scratch->TheorSpotsYZWE = allocMatrix(MaxNSpotsBest, 5);
@@ -1390,7 +1398,7 @@ int main(int argc, char *argv[]) {
   AllSpots = mmap(0, size, PROT_READ, MAP_SHARED, fd, 0);
   check(AllSpots == MAP_FAILED, "mmap %s failed: %s", filename,
         strerror(errno));
-  int nSpots = (int)size / (14 * sizeof(double));
+  int nSpots = (int)size / (16 * sizeof(double));
   if (BigDetSize != 0) {
     long long int size2 = ReadBigDet(cwd);
     totNrPixelsBigDetector = BigDetSize;
@@ -1535,34 +1543,36 @@ int main(int argc, char *argv[]) {
     Convert3x3To9(Orient0_3, Orient0);
 
     // Populate observed spots from mmap'd AllSpots
-    double **spotsYZO = allocMatrix(nSpotsBest, 9);
+    double **spotsYZO = allocMatrix(nSpotsBest, 11);
     size_t spotPosAllSpots;
     for (i = 0; i < nSpotsBest; i++) {
       spotPosAllSpots = (int)spotIDS[i] - 1;
-      spotsYZO[i][0] = AllSpots[spotPosAllSpots * 14 + 0];
-      spotsYZO[i][1] = AllSpots[spotPosAllSpots * 14 + 1];
-      spotsYZO[i][2] = AllSpots[spotPosAllSpots * 14 + 2];
-      spotsYZO[i][3] = AllSpots[spotPosAllSpots * 14 + 4];
-      spotsYZO[i][4] = AllSpots[spotPosAllSpots * 14 + 8];
-      spotsYZO[i][5] = AllSpots[spotPosAllSpots * 14 + 9];
-      spotsYZO[i][6] = AllSpots[spotPosAllSpots * 14 + 10];
-      spotsYZO[i][7] = AllSpots[spotPosAllSpots * 14 + 5];
+      spotsYZO[i][0] = AllSpots[spotPosAllSpots * 16 + 0];
+      spotsYZO[i][1] = AllSpots[spotPosAllSpots * 16 + 1];
+      spotsYZO[i][2] = AllSpots[spotPosAllSpots * 16 + 2];
+      spotsYZO[i][3] = AllSpots[spotPosAllSpots * 16 + 4];
+      spotsYZO[i][4] = AllSpots[spotPosAllSpots * 16 + 8];
+      spotsYZO[i][5] = AllSpots[spotPosAllSpots * 16 + 9];
+      spotsYZO[i][6] = AllSpots[spotPosAllSpots * 16 + 10];
+      spotsYZO[i][7] = AllSpots[spotPosAllSpots * 16 + 5];
+      spotsYZO[i][8] = AllSpots[spotPosAllSpots * 16 + 14];
+      spotsYZO[i][9] = AllSpots[spotPosAllSpots * 16 + 15];
     }
 
     // Initial CalcAngleErrors: match observed to theoretical spots
     double Ini[12];
     ConcatPosEulLatc(Ini, Pos0, Euler0, LatCin);
     double **SpotsComp = allocMatrix(MaxNSpotsBest, 23);
-    double **Splist = allocMatrix(MaxNSpotsBest, 9);
+    double **Splist = allocMatrix(MaxNSpotsBest, 11);
     double Error[3];
     int nSpotsComp;
     CalcAngleErrors(nSpotsBest, nhkls, nOmeRanges, Ini, spotsYZO, hkls, Lsd,
                     Wavelength, OmegaRanges, BoxSizes, MinEta, wedge, chi,
                     SpotsComp, Splist, Error, &nSpotsComp, 0);
 
-    double **spotsYZONew = allocMatrix(nSpotsComp, 9);
+    double **spotsYZONew = allocMatrix(nSpotsComp, 11);
     for (i = 0; i < nSpotsComp; i++)
-      for (j = 0; j < 9; j++)
+      for (j = 0; j < 11; j++)
         spotsYZONew[i][j] = Splist[i][j];
 
     // Re-evaluate matched spots with notIniRun=1
@@ -1570,7 +1580,7 @@ int main(int argc, char *argv[]) {
                     Wavelength, OmegaRanges, BoxSizes, MinEta, wedge, chi,
                     SpotsComp, Splist, Error, &nSpotsComp, 1);
     for (i = 0; i < nSpotsComp; i++)
-      for (j = 0; j < 9; j++)
+      for (j = 0; j < 11; j++)
         spotsYZONew[i][j] = Splist[i][j];
 
     // Step 1: Fit orientation (Euler angles + lattice parameters)
@@ -1618,7 +1628,7 @@ int main(int argc, char *argv[]) {
                     Lsd, Wavelength, OmegaRanges, BoxSizes, MinEta, wedge, chi,
                     SpotsComp, Splist, Error, &nSpotsComp, 1);
     for (i = 0; i < nSpotsComp; i++)
-      for (j = 0; j < 9; j++)
+      for (j = 0; j < 11; j++)
         spotsYZONew[i][j] = Splist[i][j];
 
     // Step 2: Fit strains (lattice parameters)
@@ -1662,7 +1672,7 @@ int main(int argc, char *argv[]) {
            voxNr, SpId, thisRowNr, nSptIDs, ErrorFin[0], ErrorFin[1],
            ErrorFin[2]);
     for (i = 0; i < nSpotsComp; i++)
-      for (j = 0; j < 9; j++)
+      for (j = 0; j < 11; j++)
         spotsYZONew[i][j] = Splist[i][j];
     printf("Fitvals: Pos: %7.2f %7.2f %7.2f, Orient: %7.2f %7.2f %7.2f, LatC: "
            "%6.4f %6.4f %6.4f %7.3f %7.3f %7.3f\n",

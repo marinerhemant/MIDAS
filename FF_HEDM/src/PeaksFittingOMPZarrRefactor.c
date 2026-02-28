@@ -623,10 +623,12 @@ static inline int findConnectedComponents(int *boolImage, int nrPixels,
  * (Fix 4): Uses imgCorrBC for O(1) direct neighbor lookup instead of
  * O(N) linear scan through the pixel list.
  */
-static inline unsigned
-findRegionalMaxima(double *z, int *pixelPositions, int nrPixelsThisRegion,
-                   int *maximaPositions, double *maximaValues, double intSat,
-                   int nrPixels, double *mask, double *imgCorrBC) {
+static inline unsigned findRegionalMaxima(double *z, int *pixelPositions,
+                                          int nrPixelsThisRegion,
+                                          int *maximaPositions,
+                                          double *maximaValues, double intSat,
+                                          int nrPixels, double *mask,
+                                          double *imgCorrBC, int *maskTouched) {
   unsigned nPeaks = 0;
 
   for (int i = 0; i < nrPixelsThisRegion; i++) {
@@ -638,9 +640,10 @@ findRegionalMaxima(double *z, int *pixelPositions, int nrPixelsThisRegion,
     int xThis = pixelPositions[i * 2 + 0];
     int yThis = pixelPositions[i * 2 + 1];
 
-    // Skip if we touched the mask
+    // Flag if we touched the mask, but don't reject the peak entirely
     if (mask[xThis + nrPixels * yThis] == 1) {
-      return 0;
+      if (maskTouched)
+        *maskTouched = 1;
     }
 
     // Check if this is a local maximum using O(1) direct image lookup
@@ -1445,7 +1448,7 @@ static ErrorCode processImageFrame(int fileNr, char *allData, size_t *sizeArr,
           "\tIMax\tRadius(px)\tEta(degrees)\tSigmaR\tSigmaEta\tNrPixels\t"
           "TotalNrPixelsInPeakRegion\tnPeaks\tmaxY\tmaxZ\tdiffY\tdiffZ\trawIMax"
           "\treturnCode\tretVal\tBG\tSigmaGR\tSigmaLR\tSigmaGEta\t"
-          "SigmaLEta\tMU\tRawSumIntensity\n");
+          "SigmaLEta\tMU\tRawSumIntensity\tmaskTouched\tFitRMSE\n");
 
   // --- Pixel list collection for _PX.bin ---
   // We collect per-peak pixel lists during the loop and write at the end.
@@ -1490,9 +1493,11 @@ static ErrorCode processImageFrame(int fileNr, char *allData, size_t *sizeArr,
     double thresh = goodCoords[((ws->usefulPixels[0]) * metadata->NrPixels) +
                                (ws->usefulPixels[1])];
 
+    int maskTouchedLocal = 0;
     unsigned nPeaks = findRegionalMaxima(
         ws->z, ws->usefulPixels, nrPixelsThisRegion, ws->maximaPositions,
-        ws->maximaValues, params->IntSat, metadata->NrPixels, mask, imgCorrBC);
+        ws->maximaValues, params->IntSat, metadata->NrPixels, mask, imgCorrBC,
+        &maskTouchedLocal);
 
     if (nPeaks == 0)
       continue;
@@ -1602,7 +1607,8 @@ static ErrorCode processImageFrame(int fileNr, char *allData, size_t *sizeArr,
       for (int j = 0; j < 6; j++) {
         fprintf(outfilewrite, "\t%f", ws->otherInfo[8 * i + j]);
       }
-      fprintf(outfilewrite, "\t%f\n", ws->rawSumIntensity[i]);
+      fprintf(outfilewrite, "\t%f\t%.1f\t%.6f\n", ws->rawSumIntensity[i],
+              (double)maskTouchedLocal, retVal);
 
       // Collect pixel data for this peak (all peaks share the region's pixels)
       if (pxCount >= pxCapacity) {

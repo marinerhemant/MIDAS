@@ -134,6 +134,8 @@ The parameter file is a space-delimited text file. Lines starting with `#` are c
 | `MaskFN` | `str` | Path to a uint8 TIFF mask file. Convention: `0` = valid, `1` = masked (bad pixel). Embedded into the Zarr archive and applied during peak search. |
 | `BadPxIntensity` | `float` | Intensity value representing bad pixels (e.g., `-2`). Pixels matching this value are masked. |
 | `GapIntensity` | `float` | Intensity value representing detector gaps (e.g., `-1`). Pixels matching this value are masked. |
+| `WeightMask` | `float` | Weight multiplier applied during refinement to peaks that touch the detector mask. Default: `1.0` (no penalty). |
+| `WeightFitRMSE` | `float` | Exponential decay factor (`exp(-RMSE * WeightFitRMSE)`) applied during refinement based on the pseudo-Voigt fit's Root Mean Square Error. Default: `0.0` (disabled). |
 
 > [!TIP]
 > To create a mask TIFF from a dark frame:
@@ -367,11 +369,12 @@ The pipeline automatically generates a `<filestem>_consolidated.h5` file that co
 │   └── ...                          # All other key-value pairs
 │
 ├── /all_spots/                      # Full spot table (InputAllExtraInfoFittingAll.csv)
-│   └── data                         # (float[N×15]) All detected spots, 15 columns
+│   └── data                         # (float[N×18]) All detected spots, 18 columns
 │       attrs: column_names          # [YLab, ZLab, Omega, GrainRadius, SpotID,
 │                                    #  RingNumber, Eta, Ttheta, OmegaIni, YOrig,
 │                                    #  ZOrig, YOrigDetCor, ZOrigDetCor,
-│                                    #  OmegaOrigDetCor, IntegratedIntensity]
+│                                    #  OmegaOrigDetCor, IntegratedIntensity, 
+│                                    #  ... (others), MaskTouched, FitRMSE]
 │
 ├── /radius_data/                    # Per-spot radius/volume estimates
 │   ├── SpotID                       # (float[N]) Spot identifiers
