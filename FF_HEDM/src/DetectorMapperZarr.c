@@ -98,8 +98,8 @@ static inline void REta4MYZ(double Y, double Z, double Ycen, double Zcen,
                             double TRs[3][3], double Lsd, double RhoD,
                             double p0, double p1, double p2, double p3,
                             double n0, double n1, double n2, double px,
-                            double *RetVals, double p4, int DistortionOrder,
-                            double dLsd, double dP2) {
+                            double *RetVals, double p4, double dLsd,
+                            double dP2) {
   double Yc, Zc, ABC[3], ABCPr[3], XYZ[3], Rad, Eta, RNorm, DistortFunc, EtaT,
       Rt;
   double panelLsd = Lsd + dLsd;
@@ -120,10 +120,10 @@ static inline void REta4MYZ(double Y, double Z, double Ycen, double Zcen,
   DistortFunc = (p0 * (pow(RNorm, n0)) * (cos(deg2rad * (2 * EtaT)))) +
                 (p1 * (pow(RNorm, n1)) * (cos(deg2rad * (4 * EtaT + p3)))) +
                 (panelP2 * (pow(RNorm, n2)));
-  if (DistortionOrder >= 6)
-    DistortFunc += p4 * pow(RNorm, 6.0);
+  DistortFunc += p4 * pow(RNorm, 6.0);
   DistortFunc += 1;
   Rt = Rad * DistortFunc / px; // in pixels
+  Rt = Rt * (Lsd / panelLsd);  // re-project to global Lsd plane
   RetVals[0] = Eta;
   RetVals[1] = Rt;
 }
@@ -284,8 +284,7 @@ mapperfcn(double tx, double ty, double tz, int NrPixelsY, int NrPixelsZ,
           double RhoD, double p0, double p1, double p2, double p3,
           double *EtaBinsLow, double *EtaBinsHigh, double *RBinsLow,
           double *RBinsHigh, int nRBins, int nEtaBins, struct data ***pxList,
-          int **nPxList, int **maxnPx, double *mask, double p4,
-          int DistortionOrder) {
+          int **nPxList, int **maxnPx, double *mask, double p4) {
   double txr, tyr, tzr;
   txr = deg2rad * tx;
   tyr = deg2rad * ty;
@@ -365,7 +364,7 @@ mapperfcn(double tx, double ty, double tz, int NrPixelsY, int NrPixelsZ,
           Y = ypr + dy[k];
           Z = zpr + dz[l];
           REta4MYZ(Y, Z, Ycen, Zcen, TRs, Lsd, RhoD, p0, p1, p2, p3, n0, n1, n2,
-                   pxY, RetVals, p4, DistortionOrder, dLsd, dP2);
+                   pxY, RetVals, p4, dLsd, dP2);
           Eta = RetVals[0];
           Rt = RetVals[1]; // in pixels
           if (Eta < EtaMi)
@@ -380,7 +379,7 @@ mapperfcn(double tx, double ty, double tz, int NrPixelsY, int NrPixelsZ,
       }
       // Get corrected Y, Z for this position.
       REta4MYZ(ypr, zpr, Ycen, Zcen, TRs, Lsd, RhoD, p0, p1, p2, p3, n0, n1, n2,
-               pxY, RetVals, p4, DistortionOrder, dLsd, dP2);
+               pxY, RetVals, p4, dLsd, dP2);
       Eta = RetVals[0];
       Rt = RetVals[1]; // in pixels
       YZ4mREta(Rt, Eta, RetVals2);
@@ -730,7 +729,6 @@ int main(int argc, char *argv[]) {
          p2 = 0.0, p3 = 0.0, p4 = 0.0, EtaBinSize = 5, RBinSize = 0.25,
          RMax = 1524.0, RMin = 10.0, EtaMax = 180.0, EtaMin = -180.0;
   int NrPixelsY = 2048, NrPixelsZ = 2048;
-  int DistortionOrder = 4;
   char aline[4096], dummy[4096], *str;
   distortionFile = 0;
   char *distortionFN = NULL;
@@ -778,7 +776,7 @@ int main(int argc, char *argv[]) {
     if (strstr(finfo->name,
                "analysis/process/analysis_parameters/DistortionOrder/0") !=
         NULL) {
-      ReadZarrChunk(arch, count, &DistortionOrder, sizeof(int));
+      ; // DistortionOrder ignored; p4 is always enabled
     }
     if (strstr(finfo->name, "analysis/process/analysis_parameters/p2/0") !=
         NULL) {
@@ -1049,10 +1047,10 @@ int main(int argc, char *argv[]) {
   }
   // Parameters needed: tx, ty, tz, NrPixelsY, NrPixelsZ, pxY, pxZ, yCen, zCen,
   // Lsd, RhoD, p0, p1, p2
-  long long int TotNrOfBins = mapperfcn(
-      tx, ty, tz, NrPixelsY, NrPixelsZ, pxY, pxZ, yCen, zCen, Lsd, RhoD, p0, p1,
-      p2, p3, EtaBinsLow, EtaBinsHigh, RBinsLow, RBinsHigh, nRBins, nEtaBins,
-      pxList, nPxList, maxnPx, mask, p4, DistortionOrder);
+  long long int TotNrOfBins =
+      mapperfcn(tx, ty, tz, NrPixelsY, NrPixelsZ, pxY, pxZ, yCen, zCen, Lsd,
+                RhoD, p0, p1, p2, p3, EtaBinsLow, EtaBinsHigh, RBinsLow,
+                RBinsHigh, nRBins, nEtaBins, pxList, nPxList, maxnPx, mask, p4);
   printf("Total Number of bins %lld\n", TotNrOfBins);
   fflush(stdout);
   long long int LengthNPxList = nRBins * nEtaBins;

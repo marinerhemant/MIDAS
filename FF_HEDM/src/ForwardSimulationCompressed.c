@@ -600,12 +600,11 @@ static inline double CorrectWedge(double eta, double theta, double wl,
   return Omega;
 }
 
-static inline void
-CorrectTiltSpatialDistortion(double px, double Lsd, double ybc, double zbc,
-                             double tx, double ty, double tz, double RhoD,
-                             double p0, double p1, double p2, double p3,
-                             int NrPixels, double *yDispl, double *zDispl,
-                             int nPanels, Panel *panels, int nCPUs) {
+static inline void CorrectTiltSpatialDistortion(
+    double px, double Lsd, double ybc, double zbc, double tx, double ty,
+    double tz, double RhoD, double p0, double p1, double p2, double p3,
+    double p4, int NrPixels, double *yDispl, double *zDispl, int nPanels,
+    Panel *panels, int nCPUs) {
   double txr, tyr, tzr;
   txr = deg2rad * tx;
   tyr = deg2rad * ty;
@@ -637,11 +636,19 @@ CorrectTiltSpatialDistortion(double px, double Lsd, double ybc, double zbc,
       double ABC[3] = {0, Yc, Zc};
       double ABCPr[3];
       MatrixMultF(TRs, ABC, ABCPr);
+      double dLsd = 0, dP2 = 0;
+      if (pIdx >= 0) {
+        dLsd = panels[pIdx].dLsd;
+        dP2 = panels[pIdx].dP2;
+      }
+      double panelLsd = Lsd + dLsd;
+      double panelP2 = p2 + dP2;
       double XYZ[3];
-      XYZ[0] = Lsd + ABCPr[0];
+      XYZ[0] = panelLsd + ABCPr[0];
       XYZ[1] = ABCPr[1];
       XYZ[2] = ABCPr[2];
-      double Rad = (Lsd / (XYZ[0])) * (sqrt(XYZ[1] * XYZ[1] + XYZ[2] * XYZ[2]));
+      double Rad =
+          (panelLsd / (XYZ[0])) * (sqrt(XYZ[1] * XYZ[1] + XYZ[2] * XYZ[2]));
       double Eta;
       CalcEtaAngle(XYZ[1], XYZ[2], &Eta);
       double RNorm = Rad / RhoD;
@@ -649,7 +656,7 @@ CorrectTiltSpatialDistortion(double px, double Lsd, double ybc, double zbc,
       double DistortFunc =
           (p0 * (pow(RNorm, n0)) * (cos(deg2rad * (2 * EtaT)))) +
           (p1 * (pow(RNorm, n1)) * (cos(deg2rad * (4 * EtaT + p3)))) +
-          (p2 * (pow(RNorm, n2))) + 1;
+          (panelP2 * (pow(RNorm, n2))) + p4 * pow(RNorm, 6.0) + 1;
       double Rcorr = Rad * DistortFunc;
       double YCorr = -Rcorr * sin(Eta * deg2rad);
       double ZCorr = Rcorr * cos(Eta * deg2rad);
@@ -1074,7 +1081,7 @@ int main(int argc, char *argv[]) {
   int Padding = 6, NrPixels;
   double Lsd, tx, ty, tz, yBC, zBC, OmegaStep, OmegaStart, OmegaEnd, px;
   int RingsToUse[500], nRings = 0;
-  double LatC[6], Wavelength, Wedge = 0, p0, p1, p2, p3 = 0, RhoD,
+  double LatC[6], Wavelength, Wedge = 0, p0, p1, p2, p3 = 0, p4 = 0, RhoD,
                               GaussWidth = 1, PeakIntensity = 2000;
   int NPanelsY = 0, NPanelsZ = 0, PanelSizeY = 0, PanelSizeZ = 0;
   int *PanelGapsY = NULL, *PanelGapsZ = NULL;
@@ -1194,6 +1201,12 @@ int main(int argc, char *argv[]) {
     LowNr = strncmp(aline, str, strlen(str));
     if (LowNr == 0) {
       sscanf(aline, "%s %lf", dummy, &p3);
+      continue;
+    }
+    str = "p4 ";
+    LowNr = strncmp(aline, str, strlen(str));
+    if (LowNr == 0) {
+      sscanf(aline, "%s %lf", dummy, &p4);
       continue;
     }
     str = "NPanelsY ";
@@ -1667,8 +1680,8 @@ int main(int argc, char *argv[]) {
         -32100.0; // Set to a special number to check if it was set or not.
   }
   CorrectTiltSpatialDistortion(px, Lsd, yBC, zBC, tx, ty, tz, RhoD, p0, p1, p2,
-                               p3, NrPixels, yDispl, zDispl, nPanels, panels,
-                               nCPUs);
+                               p3, p4, NrPixels, yDispl, zDispl, nPanels,
+                               panels, nCPUs);
   end_time = omp_get_wtime();
   diftotal = end_time - start0;
   printf("Distortion map done in %lf sec.\n", diftotal);

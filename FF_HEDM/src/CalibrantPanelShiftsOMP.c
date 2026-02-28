@@ -691,7 +691,7 @@ struct my_func_data {
   int fixPanel;
   double tolRotation;
   double *Weights;     // per-point weight for ring normalization (NULL=uniform)
-  int nBase;           // 9 or 10 (10 when DistortionOrder=6)
+  int nBase;           // always 10 (p4 permanently enabled)
   int perPanelLsd;     // flag
   int perPanelDistort; // flag
   double *snrWeights;  // per-point SNR-based weight (NULL=uniform)
@@ -830,12 +830,11 @@ void FitTiltBCLsd(int nIndices, double *YMean, double *ZMean,
                   double tolP0, double tolP1, double tolP2, double tolP3,
                   double tolShifts, double tolRotation, double px,
                   double outlierFactor, int minIndices, int fixPanel,
-                  double *Weights, int DistortionOrder, double p4in,
-                  double tolP4, int PerPanelLsd, double tolLsdPanel,
-                  int PerPanelDistortion, double tolP2Panel, int WeightByRadius,
-                  double *snrWeights, double *p4Out, int verbose,
-                  int L2Objective) {
-  int nBase = (DistortionOrder >= 6) ? 10 : 9;
+                  double *Weights, double p4in, double tolP4, int PerPanelLsd,
+                  double tolLsdPanel, int PerPanelDistortion, double tolP2Panel,
+                  int WeightByRadius, double *snrWeights, double *p4Out,
+                  int verbose, int L2Objective) {
+  int nBase = 10;
   unsigned n = nBase;
   if (tolShifts > EPS && nPanels > 1) {
     int stride = (tolRotation > EPS) ? 3 : 2;
@@ -890,11 +889,9 @@ void FitTiltBCLsd(int nIndices, double *YMean, double *ZMean,
   x[8] = p3in;
   xl[8] = p3in - tolP3;
   xu[8] = p3in + tolP3;
-  if (nBase > 9) {
-    x[9] = p4in;
-    xl[9] = p4in - tolP4;
-    xu[9] = p4in + tolP4;
-  }
+  x[9] = p4in;
+  xl[9] = p4in - tolP4;
+  xu[9] = p4in + tolP4;
 
   if (tolShifts > EPS && nPanels > 1) {
     int panelCounts[nPanels];
@@ -1186,8 +1183,8 @@ static inline void CorrectTiltSpatialDistortion(
     double *IdealTtheta, double px, double Lsd, double ybc, double zbc,
     double tx, double ty, double tz, double p0, double p1, double p2, double p3,
     double *Etas, double *Diffs, double *RadOuts, double *StdDiff,
-    double outlierFactor, int *IsOutlier, double p4, int DistortionOrder,
-    int OutlierIterations, int verbose, double *MeanDiffOut) {
+    double outlierFactor, int *IsOutlier, double p4, int OutlierIterations,
+    int verbose, double *MeanDiffOut) {
   double txr, tyr, tzr;
   txr = deg2rad * tx;
   tyr = deg2rad * ty;
@@ -1249,8 +1246,7 @@ static inline void CorrectTiltSpatialDistortion(
     DistortFunc = (p0 * (pow(RNorm, n0)) * (cos(deg2rad * (2 * EtaT)))) +
                   (p1 * (pow(RNorm, n1)) * (cos(deg2rad * (4 * EtaT + p3)))) +
                   (panelP2 * (pow(RNorm, n2)));
-    if (DistortionOrder >= 6)
-      DistortFunc += p4 * pow(RNorm, 6.0);
+    DistortFunc += p4 * pow(RNorm, 6.0);
     DistortFunc += 1;
     Rcorr = Rad * DistortFunc;
     RIdeal = panelLsd * tan(deg2rad * IdealTtheta[i]);
@@ -1441,10 +1437,10 @@ int main(int argc, char *argv[]) {
   int WeightByRadius = 0;
   int WeightByFitSNR = 0;
   int L2Objective = 0;
-  int DistortionOrder = 4;
   int PerPanelLsd = 0;
   int PerPanelDistortion = 0;
   double tolP4 = 0, p4in = 0;
+  int tolP4Set = 0;
   double tolLsdPanel = 100;
   double tolP2Panel = 0.0001;
   int Padding = 6, NrPixelsY, NrPixelsZ, NrPixels;
@@ -1903,8 +1899,7 @@ int main(int argc, char *argv[]) {
     }
     str = "DistortionOrder ";
     if (!strncmp(aline, str, strlen(str))) {
-      sscanf(aline, "%s %d", dummy, &DistortionOrder);
-      continue;
+      continue; // DistortionOrder ignored; p4 is always enabled
     }
     str = "PerPanelLsd ";
     if (!strncmp(aline, str, strlen(str))) {
@@ -1919,6 +1914,7 @@ int main(int argc, char *argv[]) {
     str = "tolP4 ";
     if (!strncmp(aline, str, strlen(str))) {
       sscanf(aline, "%s %lf", dummy, &tolP4);
+      tolP4Set = 1;
       continue;
     }
     str = "tolLsdPanel ";
@@ -1948,6 +1944,8 @@ int main(int argc, char *argv[]) {
     tolP1 = tolP;
   if (tolP2 == 0)
     tolP2 = tolP;
+  if (!tolP4Set && tolP4 == 0)
+    tolP4 = tolP;
   if (NrPixelsY > NrPixelsZ) {
     NrPixels = NrPixelsY;
     NrPixelsGlobal = NrPixelsY;
@@ -2035,8 +2033,6 @@ int main(int argc, char *argv[]) {
     printf("║    L2Objective:   %-40s ║\n", "ON (squared strain)");
   if (OutlierIterations > 1)
     printf("║    OutlierIters:   %-40d ║\n", OutlierIterations);
-  if (DistortionOrder >= 6)
-    printf("║    DistortOrder:   %-40d ║\n", DistortionOrder);
   if (PerPanelLsd)
     printf("║    PerPanelLsd:    %-40s (tol=%.1f) ║\n", "ON", tolLsdPanel);
   if (PerPanelDistortion)
@@ -2654,7 +2650,7 @@ int main(int argc, char *argv[]) {
       CorrectTiltSpatialDistortion(
           nIndices, MaxRingRad, Yc, Zc, IdealTtheta, px, Lsd, ybc, zbc, tx,
           tyin, tzin, p0in, p1in, p2in, p3in, EtaIns, DiffIns, RadIns, &StdDiff,
-          outlierFactor, NULL, p4in, DistortionOrder, OutlierIterations,
+          outlierFactor, NULL, p4in, OutlierIterations,
           iter == 0, NULL);
       NrCalls = 0;
 
@@ -2717,7 +2713,7 @@ int main(int argc, char *argv[]) {
                    &ybcFit, &zbcFit, &p0, &p1, &p2, &p3, &MeanDiff, tolTilts,
                    tolLsd, tolBC, tolP, tolP0, tolP1, tolP2, tolP3, tolShifts,
                    tolRotation, px, outlierFactor, MinIndicesForFit, FixPanelID,
-                   RingWeights, DistortionOrder, p4in, tolP4, PerPanelLsd,
+                   RingWeights, p4in, tolP4, PerPanelLsd,
                    tolLsdPanel, PerPanelDistortion, tolP2Panel, WeightByRadius,
                    snrWeights, &p4, iter == 0, L2Objective);
       if (iter == 0) {
@@ -2731,8 +2727,7 @@ int main(int argc, char *argv[]) {
                "p2         %0.12f\n"
                "p3         %0.12f\n",
                LsdFit, ybcFit, zbcFit, ty, tz, p0, p1, p2, p3);
-        if (DistortionOrder >= 6)
-          printf("p4         %0.12f\n", p4);
+        printf("p4         %0.12f\n", p4);
       }
       printf("           *** microstrain ***\n");
       printf("MeanStrain %0.6lf\nStdStrain  %0.6lf\n", MeanDiff * 1e6,
@@ -2898,7 +2893,7 @@ int main(int argc, char *argv[]) {
     CorrectTiltSpatialDistortion(
         nIndices, MaxRingRad, Yc, Zc, IdealTtheta, px, LsdFit, ybcFit, zbcFit,
         tx, ty, tz, p0, p1, p2, p3, Etas, Diffs, RadOuts, &StdDiff,
-        outlierFactor, IsOutlier, p4in, DistortionOrder, OutlierIterations, 1,
+        outlierFactor, IsOutlier, p4in, OutlierIterations, 1,
         &MeanDiff);
     printf("StdStrain %0.12lf\n", StdDiff);
     // Compute strain statistics from valid (non-outlier) diffs
@@ -3111,8 +3106,7 @@ int main(int argc, char *argv[]) {
           (p0 * pow(RNormG, 2.0) * cos(deg2rad * (2 * EtaTG))) +
           (p1 * pow(RNormG, 4.0) * cos(deg2rad * (4 * EtaTG + p3))) +
           (p2 * pow(RNormG, 2.0));
-      if (DistortionOrder >= 6)
-        DistortG += p4in * pow(RNormG, 6.0);
+      DistortG += p4in * pow(RNormG, 6.0);
       DistortG += 1;
       double RadGlobal = RadG * DistortG;
       fprintf(Out, "%f %10.8f %10.8f %f %10.8f %10.8f %f %d %f %f %d %10.8f\n",
@@ -3158,8 +3152,7 @@ int main(int argc, char *argv[]) {
          "p3         %0.12f\n",
          means[0], means[1], means[2], means[3], means[4], means[5], means[6],
          means[7], means[8]);
-  if (DistortionOrder >= 6)
-    printf("p4         %0.12f\n", means[11]);
+  printf("p4         %0.12f\n", means[11]);
   printf("           *** microstrain ***\n");
   printf("MeanStrain %0.6lf\nStdStrain  %0.6lf\n", means[9] * 1e6,
          means[10] * 1e6);

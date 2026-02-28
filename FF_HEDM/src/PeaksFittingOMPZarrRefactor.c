@@ -136,6 +136,7 @@ typedef struct {
   double p1;
   double p2;
   double p3;
+  double p4;
   double Wavelength;
   double zDiffThresh;
   double BadPxIntensity;
@@ -1879,6 +1880,7 @@ static ErrorCode parseZarrMetadata(const char *dataFile,
   params->p1 = 0;
   params->p2 = 0;
   params->p3 = 0;
+  params->p4 = 0;
   params->Wavelength = DEFAULT_WAVELENGTH;
   params->zDiffThresh = 0;
   params->minNrPx = 1;
@@ -2195,6 +2197,9 @@ static ErrorCode parseZarrMetadata(const char *dataFile,
     if (strstr(fileInfo->name, "analysis/process/analysis_parameters/p3/0") !=
         NULL)
       ReadZarrChunk(archive, count, &params->p3, sizeof(double));
+    if (strstr(fileInfo->name, "analysis/process/analysis_parameters/p4/0") !=
+        NULL)
+      ReadZarrChunk(archive, count, &params->p4, sizeof(double));
     if (strstr(fileInfo->name,
                "analysis/process/analysis_parameters/MinNrPx/0") != NULL)
       ReadZarrChunk(archive, count, &params->minNrPx, sizeof(int));
@@ -2584,13 +2589,24 @@ int main(int argc, char *argv[]) {
 #pragma omp parallel for
     for (int a = 0; a < metadata.NrPixels; a++) {
       for (int b = 0; b < metadata.NrPixels; b++) {
+        double pixY = (double)a, pixZ = (double)b;
+        double dLsd = 0, dP2 = 0;
+        if (nPanels > 0) {
+          int pIdx = GetPanelIndex(pixY, pixZ, nPanels, panels);
+          if (pIdx >= 0) {
+            dLsd = panels[pIdx].dLsd;
+            dP2 = panels[pIdx].dP2;
+          }
+        }
+        double panelLsd = params.Lsd + dLsd;
+        double panelP2 = params.p2 + dP2;
         double Yc = (-a + params.Ycen) * params.px,
                Zc = (b - params.Zcen) * params.px;
         double ABC[3] = {0, Yc, Zc}, ABCPr[3];
         matrixVectorMultiply(TRs, ABC, ABCPr);
-        double XYZ[3] = {params.Lsd + ABCPr[0], ABCPr[1], ABCPr[2]};
+        double XYZ[3] = {panelLsd + ABCPr[0], ABCPr[1], ABCPr[2]};
         double Rad =
-            (params.Lsd / XYZ[0]) * sqrt(XYZ[1] * XYZ[1] + XYZ[2] * XYZ[2]);
+            (panelLsd / XYZ[0]) * sqrt(XYZ[1] * XYZ[1] + XYZ[2] * XYZ[2]);
         double Eta = calcEtaAngle(XYZ[1], XYZ[2]);
         double RNorm = Rad / params.RhoD;
         double EtaT = 90 - Eta;
@@ -2602,8 +2618,9 @@ int main(int argc, char *argv[]) {
         double DistortFunc =
             (params.p0 * RNorm2 * cos(2.0 * EtaT_rad)) +
             (params.p1 * RNorm4 * cos(4.0 * EtaT_rad + params.p3 * DEG2RAD)) +
-            (params.p2 * RNorm2) + 1;
+            (panelP2 * RNorm2) + params.p4 * RNorm4 * RNorm2 + 1;
         double Rt = Rad * DistortFunc / params.px;
+        Rt = Rt * (params.Lsd / panelLsd); // re-project to global Lsd plane
         for (int r = 0; r < params.nRingsThresh; r++) {
           if (Rt > ringRads[r] - params.Width &&
               Rt < ringRads[r] + params.Width) {

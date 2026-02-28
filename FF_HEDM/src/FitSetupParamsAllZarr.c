@@ -13,6 +13,7 @@
 //  Important: row major, starting with y's and going up. Bottom right is 0,0.
 
 #include "MIDAS_Math.h"
+#include "Panel.h"
 #include "ZarrReader.h"
 #include <blosc2.h>
 #include <ctype.h>
@@ -147,6 +148,7 @@ struct my_func_data {
   double p1;
   double p2;
   double p3;
+  double p4;
 };
 
 static double problem_function(unsigned n, const double *x, double *grad,
@@ -159,7 +161,7 @@ static double problem_function(unsigned n, const double *x, double *grad,
   ZMean = &(f_data->ZMean[0]);
   IdealTtheta = &(f_data->IdealTtheta[0]);
   px = f_data->px;
-  double Lsd, ybc, zbc, tx, ty, tz, p0, p1, p2, p3, txr, tyr, tzr;
+  double Lsd, ybc, zbc, tx, ty, tz, p0, p1, p2, p3, p4, txr, tyr, tzr;
   Lsd = x[0];
   ybc = x[1];
   zbc = x[2];
@@ -170,6 +172,7 @@ static double problem_function(unsigned n, const double *x, double *grad,
   p1 = f_data->p1;
   p2 = f_data->p2;
   p3 = f_data->p3;
+  p4 = f_data->p4;
   txr = deg2rad * tx;
   tyr = deg2rad * ty;
   tzr = deg2rad * tz;
@@ -206,7 +209,7 @@ static double problem_function(unsigned n, const double *x, double *grad,
     EtaT = 90 - Eta;
     DistortFunc = (p0 * (pow(RNorm, n0)) * (cos(deg2rad * (2 * EtaT)))) +
                   (p1 * (pow(RNorm, n1)) * (cos(deg2rad * (4 * EtaT + p3)))) +
-                  (p2 * (pow(RNorm, n2))) + 1;
+                  (p2 * (pow(RNorm, n2))) + p4 * pow(RNorm, 6.0) + 1;
     Rcorr = Rad * DistortFunc;
     RIdeal = Lsd * tan(deg2rad * IdealTtheta[i]);
     Diff = fabs(1 - (Rcorr / RIdeal));
@@ -238,8 +241,9 @@ void FitTiltBCLsd(int nIndices, double *YMean, double *ZMean,
                   double *IdealTtheta, double Lsd, double MaxRad, double ybc,
                   double zbc, double tx, double tyIn, double tzIn, double *ty,
                   double *tz, double *LsdFit, double *ybcFit, double *zbcFit,
-                  double p0, double p1, double p2, double p3, double *MeanDiff,
-                  double tolTilts, double tolLsd, double tolBC, double px) {
+                  double p0, double p1, double p2, double p3, double p4,
+                  double *MeanDiff, double tolTilts, double tolLsd,
+                  double tolBC, double px) {
   unsigned n = 5;
   struct my_func_data f_data;
   f_data.nIndices = nIndices;
@@ -253,6 +257,7 @@ void FitTiltBCLsd(int nIndices, double *YMean, double *ZMean,
   f_data.p1 = p1;
   f_data.p2 = p2;
   f_data.p3 = p3;
+  f_data.p4 = p4;
   double x[n], xl[n], xu[n];
   x[0] = Lsd;
   xl[0] = Lsd - tolLsd;
@@ -295,12 +300,11 @@ void FitTiltBCLsd(int nIndices, double *YMean, double *ZMean,
   *tz = x[4];
 }
 
-static inline void
-CorrectTiltSpatialDistortion(int nIndices, double MaxRad, double *YMean,
-                             double *ZMean, double px, double Lsd, double ybc,
-                             double zbc, double tx, double ty, double tz,
-                             double p0, double p1, double p2, double p3,
-                             double *YCorrected, double *ZCorrected) {
+static inline void CorrectTiltSpatialDistortion(
+    int nIndices, double MaxRad, double *YMean, double *ZMean, double px,
+    double Lsd, double ybc, double zbc, double tx, double ty, double tz,
+    double p0, double p1, double p2, double p3, double p4, double *YCorrected,
+    double *ZCorrected, int nPanels, Panel *panels) {
   double txr, tyr, tzr;
   txr = deg2rad * tx;
   tyr = deg2rad * ty;
@@ -318,20 +322,31 @@ CorrectTiltSpatialDistortion(int nIndices, double MaxRad, double *YMean,
   double n0 = 2, n1 = 4, n2 = 2, Yc, Zc;
   double Rad, Eta, RNorm, DistortFunc, Rcorr, EtaT;
   for (i = 0; i < nIndices; i++) {
+    double dLsd = 0, dP2 = 0;
+    if (nPanels > 0) {
+      int pIdx = GetPanelIndex(YMean[i], ZMean[i], nPanels, panels);
+      if (pIdx >= 0) {
+        dLsd = panels[pIdx].dLsd;
+        dP2 = panels[pIdx].dP2;
+      }
+    }
+    double panelLsd = Lsd + dLsd;
+    double panelP2 = p2 + dP2;
     Yc = -(YMean[i] - ybc) * px;
     Zc = (ZMean[i] - zbc) * px;
     double ABC[3] = {0, Yc, Zc};
     double ABCPr[3];
     MatrixMultF(TRs, ABC, ABCPr);
-    double XYZ[3] = {Lsd + ABCPr[0], ABCPr[1], ABCPr[2]};
-    Rad = (Lsd / (XYZ[0])) * (sqrt(XYZ[1] * XYZ[1] + XYZ[2] * XYZ[2]));
+    double XYZ[3] = {panelLsd + ABCPr[0], ABCPr[1], ABCPr[2]};
+    Rad = (panelLsd / (XYZ[0])) * (sqrt(XYZ[1] * XYZ[1] + XYZ[2] * XYZ[2]));
     Eta = CalcEtaAngleLocal(XYZ[1], XYZ[2]);
     RNorm = Rad / MaxRad;
     EtaT = 90 - Eta;
     DistortFunc = (p0 * (pow(RNorm, n0)) * (cos(deg2rad * (2 * EtaT)))) +
                   (p1 * (pow(RNorm, n1)) * (cos(deg2rad * (4 * EtaT + p3)))) +
-                  (p2 * (pow(RNorm, n2))) + 1;
+                  (panelP2 * (pow(RNorm, n2))) + p4 * pow(RNorm, 6.0) + 1;
     Rcorr = Rad * DistortFunc;
+    Rcorr = Rcorr * (Lsd / panelLsd); // re-project to global Lsd plane
     YCorrected[i] = -Rcorr * sin(deg2rad * Eta);
     ZCorrected[i] = Rcorr * cos(deg2rad * Eta);
   }
@@ -563,8 +578,14 @@ int main(int argc, char *argv[]) {
   int StartNr = 1, EndNr, NrPixels, NrPixelsZ, NrPixelsY, LayerNr;
   double LatticeConstant[6], Wavelength, MaxRingRad, Lsd, MaxTtheta, TthetaTol,
       ybc, zbc, px, tyIn, tzIn, BeamSize = 0;
-  double tx, tolTilts = 1, tolLsd = 5000, tolBC = 1, p0, p1, p2, p3, RhoD,
-             wedge, MinEta;
+  double tx, tolTilts = 1, tolLsd = 5000, tolBC = 1, p0, p1, p2, p3, p4 = 0,
+             RhoD, wedge, MinEta;
+  // Panel parameters
+  int NPanelsY = 0, NPanelsZ = 0, PanelSizeY = 0, PanelSizeZ = 0;
+  int locPanelGapsY = -1, locPanelGapsZ = -1, nGapsY = 0, nGapsZ = 0;
+  char *PanelShiftsFile = NULL;
+  Panel *panels = NULL;
+  int nPanels = 0;
   int cs = 0, DoFit = 0, RingToIndex;
   double Rsample, Hbeam, MinMatchesToAcceptFrac = 0, MinOmeSpotIDsToIndex,
                          MaxOmeSpotIDsToIndex, Width = -1, WidthOrig;
@@ -886,6 +907,73 @@ int main(int argc, char *argv[]) {
                "analysis/process/analysis_parameters/SkipFrame/0") != NULL) {
       ReadZarrChunk(arch, count, &skipFrame, sizeof(int));
     }
+    if (strstr(finfo->name, "analysis/process/analysis_parameters/p4/0") !=
+        NULL) {
+      ReadZarrChunk(arch, count, &p4, sizeof(double));
+    }
+    if (strstr(finfo->name,
+               "analysis/process/analysis_parameters/NPanelsY/0") != NULL) {
+      ReadZarrChunk(arch, count, &NPanelsY, sizeof(int));
+    }
+    if (strstr(finfo->name,
+               "analysis/process/analysis_parameters/NPanelsZ/0") != NULL) {
+      ReadZarrChunk(arch, count, &NPanelsZ, sizeof(int));
+    }
+    if (strstr(finfo->name,
+               "analysis/process/analysis_parameters/PanelSizeY/0") != NULL) {
+      ReadZarrChunk(arch, count, &PanelSizeY, sizeof(int));
+    }
+    if (strstr(finfo->name,
+               "analysis/process/analysis_parameters/PanelSizeZ/0") != NULL) {
+      ReadZarrChunk(arch, count, &PanelSizeZ, sizeof(int));
+    }
+    if (strstr(finfo->name,
+               "analysis/process/analysis_parameters/PanelGapsY/0.0") != NULL) {
+      locPanelGapsY = count;
+    }
+    if (strstr(finfo->name,
+               "analysis/process/analysis_parameters/PanelGapsZ/0.0") != NULL) {
+      locPanelGapsZ = count;
+    }
+    if (strstr(finfo->name,
+               "analysis/process/analysis_parameters/PanelGapsY/.zarray") !=
+        NULL) {
+      char *s = NULL;
+      size_t sSize;
+      ReadZarrRaw(arch, count, &s, &sSize);
+      char *ptr = strstr(s, "shape");
+      if (ptr != NULL) {
+        char *ptrt = strstr(ptr, "[");
+        char *ptr2 = strstr(ptrt, "]");
+        int loc = (int)(ptr2 - ptrt);
+        char ptr3[2048];
+        strncpy(ptr3, ptrt, loc + 1);
+        sscanf(ptr3, "%*[^0123456789]%d", &nGapsY);
+      }
+      free(s);
+    }
+    if (strstr(finfo->name,
+               "analysis/process/analysis_parameters/PanelGapsZ/.zarray") !=
+        NULL) {
+      char *s = NULL;
+      size_t sSize;
+      ReadZarrRaw(arch, count, &s, &sSize);
+      char *ptr = strstr(s, "shape");
+      if (ptr != NULL) {
+        char *ptrt = strstr(ptr, "[");
+        char *ptr2 = strstr(ptrt, "]");
+        int loc = (int)(ptr2 - ptrt);
+        char ptr3[2048];
+        strncpy(ptr3, ptrt, loc + 1);
+        sscanf(ptr3, "%*[^0123456789]%d", &nGapsZ);
+      }
+      free(s);
+    }
+    if (strstr(finfo->name,
+               "analysis/process/analysis_parameters/PanelShiftsFile/0") !=
+        NULL) {
+      ReadZarrString(arch, count, &PanelShiftsFile, 4096);
+    }
     count++;
   }
   if (Width == -1)
@@ -898,6 +986,37 @@ int main(int argc, char *argv[]) {
     }
   } else {
     NrPixels = NrPixelsY;
+  }
+
+  // Generate panels if configured
+  if (NPanelsY > 0 && NPanelsZ > 0) {
+    int *PanelGapsY = NULL;
+    int *PanelGapsZ = NULL;
+    if (locPanelGapsY != -1) {
+      int32_t bufSize = nGapsY * sizeof(int);
+      PanelGapsY = (int *)malloc((size_t)bufSize);
+      ReadZarrChunk(arch, locPanelGapsY, PanelGapsY, bufSize);
+    }
+    if (locPanelGapsZ != -1) {
+      int32_t bufSize = nGapsZ * sizeof(int);
+      PanelGapsZ = (int *)malloc((size_t)bufSize);
+      ReadZarrChunk(arch, locPanelGapsZ, PanelGapsZ, bufSize);
+    }
+    GeneratePanels(NPanelsY, NPanelsZ, PanelSizeY, PanelSizeZ, PanelGapsY,
+                   PanelGapsZ, &panels, &nPanels);
+    if (PanelShiftsFile) {
+      if (LoadPanelShifts(PanelShiftsFile, nPanels, panels) == 0) {
+        printf("Loaded panel shifts from %s\n", PanelShiftsFile);
+      } else {
+        printf("Failed to load panel shifts from %s\n", PanelShiftsFile);
+      }
+      free(PanelShiftsFile);
+    }
+    if (PanelGapsY)
+      free(PanelGapsY);
+    if (PanelGapsZ)
+      free(PanelGapsZ);
+    printf("Generated %d panels.\n", nPanels);
   }
   if (argc == 3)
     Folder = argv[2];
@@ -1141,7 +1260,7 @@ int main(int argc, char *argv[]) {
   if (DoFit == 1) {
     printf("Fitting parameters.\n");
     FitTiltBCLsd(nIndices, Ys, Zs, IdealTtheta, Lsd, RhoD, ybc, zbc, tx, tyIn,
-                 tzIn, &ty, &tz, &LsdFit, &ybcFit, &zbcFit, p0, p1, p2, p3,
+                 tzIn, &ty, &tz, &LsdFit, &ybcFit, &zbcFit, p0, p1, p2, p3, p4,
                  &MeanDiff, tolTilts, tolLsd, tolBC, px);
     printf("Number of function calls: %d\n", NrCalls);
     printf("LsdFit:\t\t%0.12f\nYBCFit:\t\t%0.12f\nZBCFit:\t\t%0.12f\ntyFit:"
@@ -1162,8 +1281,8 @@ int main(int argc, char *argv[]) {
   YCorrected = malloc(nIndices * sizeof(*YCorrected));
   ZCorrected = malloc(nIndices * sizeof(*ZCorrected));
   CorrectTiltSpatialDistortion(nIndices, RhoD, Ys, Zs, px, LsdFit, ybcFit,
-                               zbcFit, tx, ty, tz, p0, p1, p2, p3, YCorrected,
-                               ZCorrected);
+                               zbcFit, tx, ty, tz, p0, p1, p2, p3, p4,
+                               YCorrected, ZCorrected, nPanels, panels);
   double *YCorrWedge, *ZCorrWedge, *OmegaCorrWedge, *EtaCorrWedge,
       *TthetaCorrWedge, YCorrWedgeT, ZCorrWedgeT, OmegaCorrWedgeT,
       EtaCorrWedgeT, TthetaCorrWedgeT;

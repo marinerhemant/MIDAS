@@ -98,7 +98,7 @@ add_ff_hedm_executable(GenMedianDark SOURCES src/GenMedianDark.c src/FileReader.
 add_ff_hedm_executable(FitMultipleGrains SOURCES src/FitMultipleGrains.c src/CalcDiffractionSpots.c src/Panel.c src/MIDAS_Math.c OMP)
 # add_ff_hedm_executable(FitScanningGrain SOURCES src/FitScanningGrain.c)
 # add_ff_hedm_executable(FitTiltX SOURCES src/FitTiltX.c)
-add_ff_hedm_executable(FitWedge SOURCES src/FitWedge.c src/MIDAS_Math.c)
+add_ff_hedm_executable(FitWedge SOURCES src/FitWedge.c src/Panel.c src/MIDAS_Math.c)
 add_ff_hedm_executable(FitWedgeParallel SOURCES src/FitWedgeParallel.c src/Panel.c src/MIDAS_Math.c OMP)
 add_ff_hedm_executable(MapDatasets SOURCES src/MapDatasets.c OMP)
 
@@ -108,7 +108,7 @@ add_ff_hedm_executable(PeaksFittingOMPZarrRefactor SOURCES src/PeaksFittingOMPZa
 add_ff_hedm_executable(GetHKLListZarr SOURCES src/GetHKLListZarr.c src/ZarrReader.c src/sgclib.c src/sgfind.c src/sghkl.c src/sgsi.c src/sgio.c)
 add_ff_hedm_executable(MergeOverlappingPeaksAllZarr SOURCES src/MergeOverlappingPeaksAllZarr.c src/ZarrReader.c)
 add_ff_hedm_executable(CalcRadiusAllZarr SOURCES src/CalcRadiusAllZarr.c src/ZarrReader.c)
-add_ff_hedm_executable(FitSetupZarr SOURCES src/FitSetupParamsAllZarr.c src/ZarrReader.c src/MIDAS_Math.c)
+add_ff_hedm_executable(FitSetupZarr SOURCES src/FitSetupParamsAllZarr.c src/ZarrReader.c src/Panel.c src/MIDAS_Math.c)
 add_ff_hedm_executable(ProcessGrainsZarr SOURCES src/ProcessGrainsZarr.c src/ZarrReader.c src/GetMisorientation.c src/CalcStrains.c src/MIDAS_Math.c)
 
 add_ff_hedm_executable(IndexerOMP SOURCES src/IndexerOMP.c src/MIDAS_Math.c OMP)

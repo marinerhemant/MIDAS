@@ -393,46 +393,6 @@ static inline void SpotToGv(double xi, double yi, double zi, double Omega,
   *g3 = k3f;
 }
 
-static inline void CorrectTiltSpatialDistortion(
-    int nIndices, double MaxRad, double yDet, double zDet, double px,
-    double Lsd, double ybc, double zbc, double tx, double ty, double tz,
-    double p0, double p1, double p2, double *yt, double *zt) {
-  double txr, tyr, tzr;
-  txr = deg2rad * tx;
-  tyr = deg2rad * ty;
-  tzr = deg2rad * tz;
-  double Rx[3][3] = {
-      {1, 0, 0}, {0, cos(txr), -sin(txr)}, {0, sin(txr), cos(txr)}};
-  double Ry[3][3] = {
-      {cos(tyr), 0, sin(tyr)}, {0, 1, 0}, {-sin(tyr), 0, cos(tyr)}};
-  double Rz[3][3] = {
-      {cos(tzr), -sin(tzr), 0}, {sin(tzr), cos(tzr), 0}, {0, 0, 1}};
-  double TRint[3][3], TRs[3][3];
-  MatrixMultF33(Ry, Rz, TRint);
-  MatrixMultF33(Rx, TRint, TRs);
-  int i, j, k;
-  double n0 = 2, n1 = 4, n2 = 2, Yc, Zc;
-  double Rad, Eta, RNorm, DistortFunc, Rcorr, EtaT;
-  for (i = 0; i < nIndices; i++) {
-    Yc = -(yDet - ybc) * px;
-    Zc = (zDet - zbc) * px;
-    double ABC[3] = {0, Yc, Zc};
-    double ABCPr[3];
-    MatrixMultF(TRs, ABC, ABCPr);
-    double XYZ[3] = {Lsd + ABCPr[0], ABCPr[1], ABCPr[2]};
-    Rad = (Lsd / (XYZ[0])) * (sqrt(XYZ[1] * XYZ[1] + XYZ[2] * XYZ[2]));
-    Eta = CalcEtaAngleLocal(XYZ[1], XYZ[2]);
-    RNorm = Rad / MaxRad;
-    EtaT = 90 - Eta;
-    DistortFunc = (p0 * (pow(RNorm, n0)) * (cos(deg2rad * (2 * EtaT)))) +
-                  (p1 * (pow(RNorm, n1)) * (cos(deg2rad * (4 * EtaT)))) +
-                  (p2 * (pow(RNorm, n2))) + 1;
-    Rcorr = Rad * DistortFunc;
-    *yt = -Rcorr * sin(deg2rad * Eta);
-    *zt = Rcorr * cos(deg2rad * Eta);
-  }
-}
-
 static inline void
 CalcAngleErrors(int nspots, int nhkls, int nOmegaRanges, double x[12],
                 double **spotsYZO, double **hklsIn, double Lsd,
