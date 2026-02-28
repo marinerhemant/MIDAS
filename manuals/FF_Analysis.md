@@ -243,6 +243,15 @@ This step refines the parameters of the indexed grains to minimize the error bet
     *   **Wedge:** Sample stage wedge angle.
     *   **Lsd/Tilt:** Detector distance and tilts.
     *   **Spatial Distortion:** Radial distortion of the detector (if parameters `p0, p1, p2` are used).
+*   **Dynamic Spot Reassignment:** After each optimization stage (Position, Orientation, Strain), the code performs a **two-pass refinement**:
+    1.  **Pass 1:** The standard fit is performed using the initially-assigned spots from the indexing step.
+    2.  **Reassignment:** Using the refined grain parameters, theoretical diffraction spot positions are recomputed. The 3D-binned spot pool (`Spots.bin`, `Data.bin`, `nData.bin` — the same data used by the indexer) is searched to find the best-matching observed spots for the current grain state.
+    3.  **Pass 2:** The fit is re-run with the newly assigned spots, which may provide better constraints and improved accuracy.
+    
+    This feature is controlled by the `EtaBinSize` and `OmeBinSize` parameters (which define the bin dimensions for the spot search) and is automatically enabled when the bin data files are present.
+
+> [!NOTE]
+> Dynamic spot reassignment is only available in the **single-dataset** refinement code (`FitPosOrStrainsOMP`). It is **not** used in the dual-dataset refinement (`FitPosOrStrainsDoubleDataset`), because the two datasets have paired spot correspondences that cannot be independently reassigned.
 
 ### 6.4. Grain Processing (`ProcessGrainsZarr.c`)
 The final merging step cleans up the results and computes derived quantities.

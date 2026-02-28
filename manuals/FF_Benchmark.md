@@ -113,7 +113,7 @@ flowchart TD
 ## Usage
 
 ```bash
-python utils/test_ff_hedm.py [-nCPUs N] [-paramFN /path/to/Parameters.txt] [--px-overlap] [--no-cleanup] [--cleanup-only]
+python utils/test_ff_hedm.py [-nCPUs N] [-paramFN /path/to/Parameters.txt] [--px-overlap] [--dual-dataset] [--no-cleanup] [--cleanup-only]
 ```
 
 ### Arguments
@@ -123,6 +123,7 @@ python utils/test_ff_hedm.py [-nCPUs N] [-paramFN /path/to/Parameters.txt] [--px
 | `-nCPUs`    | `1`                                  | Number of CPUs for parallel steps  |
 | `-paramFN`  | `FF_HEDM/Example/Parameters.txt`     | Path to the parameter file         |
 | `--px-overlap` | off                              | Also run pixel-overlap peaksearch test using `Parameters_px_overlaps.txt` |
+| `--dual-dataset` | off                            | Also run dual-dataset refinement test using `ff_dual_datasets.py` |
 | `--no-cleanup` | off                              | Keep all generated files after the test |
 | `--cleanup-only` | off                            | Only cleanup generated files, don't run any tests |
 
@@ -174,6 +175,14 @@ When `--px-overlap` is specified, the test additionally:
 3. Compares the output against `consolidated_Output_px_overlaps.h5`
 
 This validates the pixel-overlap merge path end-to-end.
+
+### Step 6 (Optional): Dual-Dataset Test
+When `--dual-dataset` is specified, the test additionally:
+1. Runs `ff_dual_datasets.py` using the same simulated data as both datasets (with zero offsets)
+2. Verifies that `MapDatasets` and `FitPosOrStrainsDoubleDataset` complete successfully
+3. Compares the dual-dataset `Grains.csv` against the single-dataset results
+
+This validates the dual-dataset pipeline end-to-end, including the dataset mapping and combined refinement steps.
 
 ## Expected Output
 

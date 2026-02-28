@@ -109,6 +109,9 @@ The workflow uses **Parsl**, a Python parallel scripting library, to manage conc
 ### 4.3. Combined Indexing
 *   **Binder:** The final indexing and refinement steps (`IndexerOMP`, `FitPosOrStrainsDoubleDataset`) read the `Dataset2Folder` info. They utilize the mapping from `mapDatasets.txt` to treat corresponding spots from both datasets as observations of the same grain, minimizing the global error across the combined volume.
 
+> [!NOTE]
+> **Dynamic spot reassignment** (the two-pass refinement feature in `FitPosOrStrainsOMP`) is **not** used in the dual-dataset refinement. In dual-dataset mode, spots from both datasets are paired via the `mapDatasets.txt` mapping, and these pairs must remain in sync. Independent reassignment of one dataset's spots would break this correspondence.
+
 ---
 
 ## 5. Command-Line Arguments
