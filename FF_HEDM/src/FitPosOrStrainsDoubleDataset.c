@@ -401,104 +401,6 @@ static inline void SpotToGv(double xi, double yi, double zi, double Omega,
   *g3 = k3f;
 }
 
-// Dynamic Spot Reassignment: search AllSpots via bin structures to find
-// better-matched observed spots for the current grain parameters.
-static int ReassignSpotsFromBins(
-    double x[12], int nhkls, double **hklsIn, double Lsd, double Wavelength,
-    int nOmegaRanges, double OmegaRange[MAXNOMEGARANGES][2],
-    double BoxSize[MAXNOMEGARANGES][4], double MinEta, double wedge, double chi,
-    double **spotsYZO, int maxSpots, double *AllSpotsPtr, int totalNSpots) {
-  if (ObsSpotsLab == NULL || BinData == NULL || nBinData == NULL)
-    return 0;
-  int i;
-  double LatC[6];
-  for (i = 0; i < 6; i++)
-    LatC[i] = x[6 + i];
-  double **hkls;
-  hkls = allocMatrix(nhkls, 7);
-  CorrectHKLsLatC(LatC, hklsIn, nhkls, Lsd, Wavelength, hkls);
-  double OrientMatrix[3][3], EulerIn[3];
-  EulerIn[0] = x[3];
-  EulerIn[1] = x[4];
-  EulerIn[2] = x[5];
-  Euler2OrientMat(EulerIn, OrientMatrix);
-  int nTspots;
-  double **TheorSpots;
-  TheorSpots = allocMatrix(MaxNSpotsBest, 9);
-  CalcDiffractionSpots(Lsd, MinEta, OmegaRange, nOmegaRanges, hkls, nhkls,
-                       BoxSize, &nTspots, OrientMatrix, TheorSpots);
-  int nMatched = 0;
-  int usedSpotIDs[MaxNSpotsBest];
-  for (i = 0; i < MaxNSpotsBest; i++)
-    usedSpotIDs[i] = -1;
-  for (int sp = 0; sp < nTspots && nMatched < maxSpots; sp++) {
-    int RingNr = (int)TheorSpots[sp][7];
-    double theorOmega = TheorSpots[sp][2];
-    double theorEta = CalcEtaAngleLocal(-TheorSpots[sp][0], TheorSpots[sp][1]);
-    int iRing = RingNr - 1;
-    if (iRing < 0 || iRing >= g_n_ring_bins)
-      continue;
-    int iEta = (int)floor((180.0 + theorEta) / gEtaBinSize);
-    int iOme = (int)floor((180.0 + theorOmega) / gOmeBinSize);
-    if (iEta < 0)
-      iEta = 0;
-    if (iEta >= g_n_eta_bins)
-      iEta = g_n_eta_bins - 1;
-    if (iOme < 0)
-      iOme = 0;
-    if (iOme >= g_n_ome_bins)
-      iOme = g_n_ome_bins - 1;
-    long long int Pos = (long long int)iRing * g_n_eta_bins * g_n_ome_bins +
-                        iEta * g_n_ome_bins + iOme;
-    int nInBin = nBinData[Pos * 2];
-    int DataPos = nBinData[Pos * 2 + 1];
-    if (nInBin == 0)
-      continue;
-    double bestDiffOme = 1e9;
-    int bestRow = -1;
-    for (int iSpot = 0; iSpot < nInBin; iSpot++) {
-      int spotRow = BinData[DataPos + iSpot];
-      if (spotRow < 0 || spotRow >= gNSpotsBin)
-        continue;
-      int alreadyUsed = 0;
-      for (int u = 0; u < nMatched; u++) {
-        if (usedSpotIDs[u] == spotRow) {
-          alreadyUsed = 1;
-          break;
-        }
-      }
-      if (alreadyUsed)
-        continue;
-      double obsOmega = ObsSpotsLab[spotRow * 9 + 2];
-      double diffOme = fabs(theorOmega - obsOmega);
-      if (diffOme < 5.0 && diffOme < bestDiffOme) {
-        bestDiffOme = diffOme;
-        bestRow = spotRow;
-      }
-    }
-    if (bestRow >= 0) {
-      usedSpotIDs[nMatched] = bestRow;
-      size_t spos = (size_t)bestRow;
-      if (spos < (size_t)totalNSpots) {
-        spotsYZO[nMatched][0] = AllSpotsPtr[spos * 16 + 0];
-        spotsYZO[nMatched][1] = AllSpotsPtr[spos * 16 + 1];
-        spotsYZO[nMatched][2] = AllSpotsPtr[spos * 16 + 2];
-        spotsYZO[nMatched][3] = AllSpotsPtr[spos * 16 + 4];
-        spotsYZO[nMatched][4] = AllSpotsPtr[spos * 16 + 8];
-        spotsYZO[nMatched][5] = AllSpotsPtr[spos * 16 + 9];
-        spotsYZO[nMatched][6] = AllSpotsPtr[spos * 16 + 10];
-        spotsYZO[nMatched][7] = AllSpotsPtr[spos * 16 + 5];
-        spotsYZO[nMatched][8] = AllSpotsPtr[spos * 16 + 14];
-        spotsYZO[nMatched][9] = AllSpotsPtr[spos * 16 + 15];
-        spotsYZO[nMatched][10] = 0;
-        nMatched++;
-      }
-    }
-  }
-  FreeMemMatrix(hkls, nhkls);
-  FreeMemMatrix(TheorSpots, MaxNSpotsBest);
-  return nMatched;
-}
 
 static inline void CalcAngleErrors(
     int nspots, int nhkls, int nOmegaRanges, double x[12], double **spotsYZO,
@@ -2101,23 +2003,6 @@ int main(int argc, char *argv[]) {
       return 1;
     }
   }
-  // Mmap Spots.bin, Data.bin and nData.bin for dynamic spot reassignment
-  {
-    char binFN[2048];
-    struct stat bs;
-    sprintf(binFN, "%s/Spots.bin", cwd);
-    int fdSpots = open(binFN, O_RDONLY);
-    if (fdSpots >= 0) {
-      fstat(fdSpots, &bs);
-      ObsSpotsLab = mmap(0, bs.st_size, PROT_READ, MAP_SHARED, fdSpots, 0);
-      if (ObsSpotsLab == MAP_FAILED)
-        ObsSpotsLab = NULL;
-      gNSpotsBin = (int)(bs.st_size / (9 * sizeof(double)));
-      printf("Spots.bin mapped: %d spots\n", gNSpotsBin);
-    } else {
-      ObsSpotsLab = NULL;
-      printf("Warning: Spots.bin not found, dynamic reassignment disabled.\n");
-    }
     sprintf(binFN, "%s/Data.bin", cwd);
     int fdData = open(binFN, O_RDONLY);
     if (fdData >= 0) {

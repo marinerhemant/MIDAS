@@ -1769,7 +1769,7 @@ int main(int argc, char *argv[]) {
                     Wavelength, OmegaRanges, BoxSizes, MinEta, wedge, chi,
                     SpotsComp, Splist, Error, &nSpotsComp, 0);
 
-    double **spotsYZONew = allocMatrix(nSpotsComp, 11);
+    double **spotsYZONew = allocMatrix(MaxNSpotsBest, 11);
     for (i = 0; i < nSpotsComp; i++)
       for (j = 0; j < 11; j++)
         spotsYZONew[i][j] = Splist[i][j];
