@@ -58,6 +58,19 @@ double DetParams[4][10];
 double WeightMask = 1.0;
 double WeightFitRMSE = 1.0;
 
+// Dynamic spot reassignment: bin data structures (same layout as
+// IndexerScanningOMP)
+static double
+    *ObsSpotsLab;     // mmap of Spots.bin (10 doubles per spot for scanning)
+static int *BinData;  // mmap of Data.bin (spot row indices + scan numbers)
+static int *nBinData; // mmap of nData.bin (count, offset pairs)
+static double gEtaBinSize = 2.0;
+static double gOmeBinSize = 2.0;
+static int g_n_ring_bins = 0;
+static int g_n_eta_bins = 0;
+static int g_n_ome_bins = 0;
+static int gNSpotsBin = 0; // total spots (from Spots.bin)
+
 int CalcDiffractionSpots(double Distance, double ExcludePoleAngle,
                          double OmegaRanges[MAX_N_OMEGA_RANGES][2],
                          int NoOfOmegaRanges, double **hkls, int n_hkls,
@@ -1201,6 +1214,113 @@ inline int StrainTensorKenesei(int nspots, double **SpotsInfo, double Distance,
   return 1;
 }
 
+static int ReassignSpotsFromBins(
+    double x[12], int nhkls, double **hklsIn, double Lsd, double Wavelength,
+    int nOmegaRanges, double OmegaRange[MAXNOMEGARANGES][2],
+    double BoxSize[MAXNOMEGARANGES][4], double MinEta, double wedge, double chi,
+    double **spotsYZO, int maxSpots, double *AllSpotsPtr, int totalNSpots) {
+  if (ObsSpotsLab == NULL || BinData == NULL || nBinData == NULL)
+    return 0;
+  int i, j;
+  // Compute theoretical spots for current orientation
+  double LatC[6];
+  for (i = 0; i < 6; i++)
+    LatC[i] = x[6 + i];
+  double **hkls;
+  hkls = allocMatrix(MaxNSpotsBest, 7);
+  CorrectHKLsLatC(LatC, hklsIn, nhkls, Lsd, Wavelength, hkls);
+  double OrientMatrix[3][3], EulerIn[3];
+  EulerIn[0] = x[3];
+  EulerIn[1] = x[4];
+  EulerIn[2] = x[5];
+  Euler2OrientMat(EulerIn, OrientMatrix);
+  int nTspots;
+  double **TheorSpots;
+  TheorSpots = allocMatrix(MaxNSpotsBest, 9);
+  CalcDiffractionSpots(Lsd, MinEta, OmegaRange, nOmegaRanges, hkls, nhkls,
+                       BoxSize, &nTspots, OrientMatrix, TheorSpots);
+  // For each theoretical spot, search the bin structure for the best observed
+  // match
+  int nMatched = 0;
+  int usedSpotIDs[MaxNSpotsBest];
+  for (i = 0; i < MaxNSpotsBest; i++)
+    usedSpotIDs[i] = -1;
+  for (int sp = 0; sp < nTspots && nMatched < maxSpots; sp++) {
+    int RingNr = (int)TheorSpots[sp][7];
+    double theorOmega = TheorSpots[sp][2];
+    double theorEta = CalcEtaAngleLocal(-TheorSpots[sp][0], TheorSpots[sp][1]);
+    int iRing = RingNr - 1;
+    if (iRing < 0 || iRing >= g_n_ring_bins)
+      continue;
+    int iEta = (int)floor((180.0 + theorEta) / gEtaBinSize);
+    int iOme = (int)floor((180.0 + theorOmega) / gOmeBinSize);
+    if (iEta < 0)
+      iEta = 0;
+    if (iEta >= g_n_eta_bins)
+      iEta = g_n_eta_bins - 1;
+    if (iOme < 0)
+      iOme = 0;
+    if (iOme >= g_n_ome_bins)
+      iOme = g_n_ome_bins - 1;
+    long long int Pos = (long long int)iRing * g_n_eta_bins * g_n_ome_bins +
+                        iEta * g_n_ome_bins + iOme;
+    int nInBin = nBinData[Pos * 2];
+    int DataPos = nBinData[Pos * 2 + 1];
+    if (nInBin == 0)
+      continue;
+    // Compute theoretical g-vector for angular comparison
+    double g1t = TheorSpots[sp][3], g2t = TheorSpots[sp][4],
+           g3t = TheorSpots[sp][5];
+    double normGt = CalcNorm3(g1t, g2t, g3t);
+    double bestDiffOme = 1e9;
+    int bestRow = -1;
+    for (int iSpot = 0; iSpot < nInBin; iSpot++) {
+      // Data.bin for scanning stores (rowno, scanno) pairs
+      int spotRow = BinData[(DataPos + iSpot) * 2];
+      if (spotRow < 0 || spotRow >= gNSpotsBin)
+        continue;
+      // Check if already assigned to a previous theoretical spot
+      int alreadyUsed = 0;
+      for (int u = 0; u < nMatched; u++) {
+        if (usedSpotIDs[u] == spotRow) {
+          alreadyUsed = 1;
+          break;
+        }
+      }
+      if (alreadyUsed)
+        continue;
+      double obsOmega = ObsSpotsLab[spotRow * 10 + 2];
+      double diffOme = fabs(theorOmega - obsOmega);
+      if (diffOme < 5.0 && diffOme < bestDiffOme) {
+        bestDiffOme = diffOme;
+        bestRow = spotRow;
+      }
+    }
+    if (bestRow >= 0) {
+      usedSpotIDs[nMatched] = bestRow;
+      // Populate spotsYZO from AllSpots (ExtraInfo.bin, 16 doubles/row)
+      size_t spos = (size_t)bestRow;
+      if (spos < (size_t)totalNSpots) {
+        spotsYZO[nMatched][0] = AllSpotsPtr[spos * 16 + 0];  // YLab
+        spotsYZO[nMatched][1] = AllSpotsPtr[spos * 16 + 1];  // ZLab
+        spotsYZO[nMatched][2] = AllSpotsPtr[spos * 16 + 2];  // Omega
+        spotsYZO[nMatched][3] = AllSpotsPtr[spos * 16 + 4];  // SpotID
+        spotsYZO[nMatched][4] = AllSpotsPtr[spos * 16 + 8];  // OmegaIni
+        spotsYZO[nMatched][5] = AllSpotsPtr[spos * 16 + 9];  // YOrig
+        spotsYZO[nMatched][6] = AllSpotsPtr[spos * 16 + 10]; // ZOrig
+        spotsYZO[nMatched][7] = AllSpotsPtr[spos * 16 + 5];  // RingNr
+        spotsYZO[nMatched][8] = AllSpotsPtr[spos * 16 + 14]; // maskTouched
+        spotsYZO[nMatched][9] = AllSpotsPtr[spos * 16 + 15]; // FitRMSE
+        spotsYZO[nMatched][10] = 0;
+        nMatched++;
+      }
+    }
+  }
+  FreeMemMatrix(hkls, MaxNSpotsBest);
+  FreeMemMatrix(TheorSpots, MaxNSpotsBest);
+  return nMatched;
+}
+
 int main(int argc, char *argv[]) {
   if (argc != 6) {
     printf("Supply a parameter file, blockNr, nBlocks, nSpotsToIndex, numProcs "
@@ -1379,6 +1499,18 @@ int main(int argc, char *argv[]) {
       sscanf(aline, "%s %lf", dummy, &MargABG);
       continue;
     }
+    str = "EtaBinSize ";
+    LowNr = strncmp(aline, str, strlen(str));
+    if (LowNr == 0) {
+      sscanf(aline, "%s %lf", dummy, &gEtaBinSize);
+      continue;
+    }
+    str = "OmeBinSize ";
+    LowNr = strncmp(aline, str, strlen(str));
+    if (LowNr == 0) {
+      sscanf(aline, "%s %lf", dummy, &gOmeBinSize);
+      continue;
+    }
   }
   fclose(fileParam);
   double *AllSpots;
@@ -1399,6 +1531,61 @@ int main(int argc, char *argv[]) {
   check(AllSpots == MAP_FAILED, "mmap %s failed: %s", filename,
         strerror(errno));
   int nSpots = (int)size / (16 * sizeof(double));
+  // Mmap Spots.bin, Data.bin and nData.bin for dynamic spot reassignment
+  {
+    char binFN[2048];
+    struct stat bs;
+    // Spots.bin (10 doubles per spot for scanning)
+    sprintf(binFN, "%s/Spots.bin", cwd);
+    int fdSpots = open(binFN, O_RDONLY);
+    if (fdSpots >= 0) {
+      fstat(fdSpots, &bs);
+      ObsSpotsLab = mmap(0, bs.st_size, PROT_READ, MAP_SHARED, fdSpots, 0);
+      if (ObsSpotsLab == MAP_FAILED)
+        ObsSpotsLab = NULL;
+      gNSpotsBin = (int)(bs.st_size / (10 * sizeof(double)));
+      printf("Spots.bin mapped: %d spots\n", gNSpotsBin);
+    } else {
+      ObsSpotsLab = NULL;
+      printf("Warning: Spots.bin not found, dynamic reassignment disabled.\n");
+    }
+    // Data.bin
+    sprintf(binFN, "%s/Data.bin", cwd);
+    int fdData = open(binFN, O_RDONLY);
+    if (fdData >= 0) {
+      fstat(fdData, &bs);
+      BinData = mmap(0, bs.st_size, PROT_READ, MAP_SHARED, fdData, 0);
+      if (BinData == MAP_FAILED)
+        BinData = NULL;
+      printf("Data.bin mapped: %lld bytes\n", (long long int)bs.st_size);
+    } else {
+      BinData = NULL;
+    }
+    // nData.bin
+    sprintf(binFN, "%s/nData.bin", cwd);
+    int fdNData = open(binFN, O_RDONLY);
+    if (fdNData >= 0) {
+      fstat(fdNData, &bs);
+      nBinData = mmap(0, bs.st_size, PROT_READ, MAP_SHARED, fdNData, 0);
+      if (nBinData == MAP_FAILED)
+        nBinData = NULL;
+      printf("nData.bin mapped: %lld bytes\n", (long long int)bs.st_size);
+    } else {
+      nBinData = NULL;
+    }
+    // Compute bin dimensions
+    g_n_eta_bins = (int)ceil(360.0 / gEtaBinSize);
+    g_n_ome_bins = (int)ceil(360.0 / gOmeBinSize);
+    int highRing = 0;
+    for (int ri = 0; ri < cs; ri++) {
+      if (RingNumbers[ri] > highRing)
+        highRing = RingNumbers[ri];
+    }
+    g_n_ring_bins = highRing;
+    printf("Bin dims: rings=%d, eta=%d, ome=%d (EtaBinSize=%.1f, "
+           "OmeBinSize=%.1f)\n",
+           g_n_ring_bins, g_n_eta_bins, g_n_ome_bins, gEtaBinSize, gOmeBinSize);
+  }
   if (BigDetSize != 0) {
     long long int size2 = ReadBigDet(cwd);
     totNrPixelsBigDetector = BigDetSize;
@@ -1630,6 +1817,31 @@ int main(int argc, char *argv[]) {
     for (i = 0; i < nSpotsComp; i++)
       for (j = 0; j < 11; j++)
         spotsYZONew[i][j] = Splist[i][j];
+    // === Dynamic Reassignment after Orient Fit (Pass 2) ===
+    {
+      int nReassigned = ReassignSpotsFromBins(
+          UseXFit, nhkls, hkls, Lsd, Wavelength, nOmeRanges, OmegaRanges,
+          BoxSizes, MinEta, wedge, chi, spotsYZONew, MaxNSpotsBest, AllSpots,
+          nSpots);
+      if (nReassigned > 0) {
+        nSpotsComp = nReassigned;
+        FitOrientIni(X0_2, nSpotsComp, spotsYZONew, nhkls, hkls, Lsd,
+                     Wavelength, nOmeRanges, OmegaRanges, BoxSizes, MinEta,
+                     wedge, chi, XFit2, lb2, ub2, Pos0);
+        for (i = 0; i < 3; i++)
+          UseXFit[i] = Pos0[i];
+        for (i = 0; i < 3; i++)
+          UseXFit[i + 3] = XFit2[i];
+        for (i = 0; i < 6; i++)
+          UseXFit[i + 6] = LatCin[i];
+        CalcAngleErrors(nSpotsComp, nhkls, nOmeRanges, UseXFit, spotsYZONew,
+                        hkls, Lsd, Wavelength, OmegaRanges, BoxSizes, MinEta,
+                        wedge, chi, SpotsComp, Splist, Error, &nSpotsComp, 1);
+        for (i = 0; i < nSpotsComp; i++)
+          for (j = 0; j < 11; j++)
+            spotsYZONew[i][j] = Splist[i][j];
+      }
+    }
 
     // Step 2: Fit strains (lattice parameters)
     double X0_3[6];
@@ -1674,6 +1886,39 @@ int main(int argc, char *argv[]) {
     for (i = 0; i < nSpotsComp; i++)
       for (j = 0; j < 11; j++)
         spotsYZONew[i][j] = Splist[i][j];
+    // === Dynamic Reassignment after Strain Fit (Pass 2) ===
+    {
+      double UseXFitS[12];
+      for (i = 0; i < 3; i++)
+        UseXFitS[i] = Pos0[i];
+      for (i = 0; i < 3; i++)
+        UseXFitS[i + 3] = XFit2[i];
+      for (i = 0; i < 6; i++)
+        UseXFitS[i + 6] = XFit3[i];
+      int nReassigned = ReassignSpotsFromBins(
+          UseXFitS, nhkls, hkls, Lsd, Wavelength, nOmeRanges, OmegaRanges,
+          BoxSizes, MinEta, wedge, chi, spotsYZONew, MaxNSpotsBest, AllSpots,
+          nSpots);
+      if (nReassigned > 0) {
+        nSpotsComp = nReassigned;
+        FitStrainIni(X0_3, nSpotsComp, spotsYZONew, nhkls, hkls, Lsd,
+                     Wavelength, nOmeRanges, OmegaRanges, BoxSizes, MinEta,
+                     wedge, chi, XFit3, lb3, ub3, Pos0, OrientFitIn);
+        for (i = 0; i < 3; i++)
+          UseXFitS[i] = Pos0[i];
+        for (i = 0; i < 3; i++)
+          UseXFitS[i + 3] = XFit2[i];
+        for (i = 0; i < 6; i++)
+          UseXFitS[i + 6] = XFit3[i];
+        CalcAngleErrors(nSpotsComp, nhkls, nOmeRanges, UseXFitS, spotsYZONew,
+                        hkls, Lsd, Wavelength, OmegaRanges, BoxSizes, MinEta,
+                        wedge, chi, SpotsComp, Splist, ErrorFin, &nSpotsComp,
+                        1);
+        for (i = 0; i < nSpotsComp; i++)
+          for (j = 0; j < 11; j++)
+            spotsYZONew[i][j] = Splist[i][j];
+      }
+    }
     printf("Fitvals: Pos: %7.2f %7.2f %7.2f, Orient: %7.2f %7.2f %7.2f, LatC: "
            "%6.4f %6.4f %6.4f %7.3f %7.3f %7.3f\n",
            FinalResult[0], FinalResult[1], FinalResult[2], FinalResult[3],

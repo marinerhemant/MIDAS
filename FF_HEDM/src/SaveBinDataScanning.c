@@ -167,16 +167,17 @@ int main(int argc, char *argv[]) {
     rc = fgets(aline, 4096, AllSpotsFile);
     while (fgets(aline, 4096, AllSpotsFile) != NULL) {
       double dummy0, dummy1;
-      sscanf(aline, "%lf %lf %lf %lf %lf %lf %lf %lf %lf %lf %lf %lf %lf %lf %lf %lf %lf %lf",
+      sscanf(aline,
+             "%lf %lf %lf %lf %lf %lf %lf %lf %lf %lf %lf %lf %lf %lf %lf %lf "
+             "%lf %lf",
              &MyData[nSpots].Values[0], &MyData[nSpots].Values[1],
              &MyData[nSpots].Values[2], &MyData[nSpots].Values[3],
              &MyData[nSpots].Values[4], &MyData[nSpots].Values[5],
              &MyData[nSpots].Values[6], &MyData[nSpots].Values[7],
              &MyData[nSpots].Values[8], &MyData[nSpots].Values[9],
              &MyData[nSpots].Values[10], &MyData[nSpots].Values[11],
-             &MyData[nSpots].Values[12], &MyData[nSpots].Values[13],
-             &dummy0, &dummy1,
-             &MyData[nSpots].Values[14], &MyData[nSpots].Values[15]);
+             &MyData[nSpots].Values[12], &MyData[nSpots].Values[13], &dummy0,
+             &dummy1, &MyData[nSpots].Values[14], &MyData[nSpots].Values[15]);
       MyData[nSpots].Values[16] = scanNr;
       if (fabs(MyData[nSpots].Values[3]) > 0.0001)
         nSpots++;
@@ -347,7 +348,7 @@ int main(int argc, char *argv[]) {
       if (RingRadii[ringnr] == 0)
         continue;
 
-      int scanno = (int)ObsSpots[rowno * nObsCols + 14];
+      int scanno = (int)ObsSpots[rowno * nObsCols + 16];
       double eta = ObsSpots[rowno * nObsCols + 6];
       double omega = ObsSpots[rowno * nObsCols + 2];
 
