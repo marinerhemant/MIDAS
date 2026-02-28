@@ -105,6 +105,19 @@ add_custom_command(TARGET ImageProcessingLibTiffOMP POST_BUILD
   VERBATIM
 )
 
+add_executable(ProcessImagesCombined ${NF_SRCDIR}/ProcessImagesCombined.c)
+target_link_libraries(ProcessImagesCombined PRIVATE TIFF::TIFF ${COMMON_LINK_LIBRARIES})
+if(OpenMP_C_FOUND AND BUILD_OMP)
+  target_link_libraries(ProcessImagesCombined PRIVATE OpenMP::OpenMP_C)
+endif()
+install(TARGETS ProcessImagesCombined RUNTIME DESTINATION ${MIDAS_INSTALL_BINDIR})
+add_custom_command(TARGET ProcessImagesCombined POST_BUILD
+  COMMAND ${CMAKE_COMMAND} -E make_directory "${CMAKE_CURRENT_SOURCE_DIR}/bin"
+  COMMAND ${CMAKE_COMMAND} -E copy $<TARGET_FILE:ProcessImagesCombined> "${CMAKE_CURRENT_SOURCE_DIR}/bin/"
+  COMMENT "Copied ProcessImagesCombined to ${CMAKE_CURRENT_SOURCE_DIR}/bin/"
+  VERBATIM
+)
+
 add_executable(FitOrientationOMP ${NF_SRCDIR}/FitOrientationOMP.c ${NF_SHARED_FIT_SOURCES} ${NF_SRCDIR}/MIDAS_Math.c)
 target_link_libraries(FitOrientationOMP PRIVATE NLOPT::NLOPT ${COMMON_LINK_LIBRARIES})
 if(OpenMP_C_FOUND AND BUILD_OMP)

@@ -300,26 +300,22 @@ def run_preprocessing(args: argparse.Namespace, params: Dict, t0: float):
     logger.info(f"Preprocessing finished. Time taken: {time.time() - t0:.2f} seconds.")
 
 def run_image_processing(args: argparse.Namespace, params: Dict, t0: float):
-    """Handles median filtering and image processing stages."""
+    """Handles combined median filtering and image processing in a single pass per layer."""
     logDir, resultFolder = params['logDir'], params['resultFolder']
     
-    logger.info("Starting image processing stage.")
+    logger.info("Starting combined image processing stage (median + peak extraction).")
     try:
-        cpusPerMedian = max(1, args.nCPUs // params['nDistances'])
-        if args.machineName == 'local':
-            logger.info(f"Computing median locally using multiprocessing ({cpusPerMedian} threads per process).")
-            partial_median = partial(median_local, psFN=args.paramFN, numProcs=cpusPerMedian, logDir=logDir, resultFolder=resultFolder, bin_dir=bin_dir)
-            with Pool(params['nDistances']) as p:
-                work_items = range(1, params['nDistances'] + 1)
-                list(tqdm(p.imap(partial_median, work_items), total=len(work_items), desc="Calculating Medians (Local)"))
-        else:
-            logger.info(f"Computing median remotely using Parsl ({cpusPerMedian} threads per task).")
-            median_futures = [median(args.paramFN, i, cpusPerMedian, logDir, resultFolder, bin_dir) for i in range(1, params['nDistances'] + 1)]
-            [f.result() for f in tqdm(median_futures, desc="Calculating Medians (Parsl)")]
-
-        logger.info("Processing images in parallel.")
-        image_futures = [image(args.paramFN, i, args.nNodes, args.nCPUs, logDir, resultFolder, bin_dir) for i in range(args.nNodes)]
-        [f.result() for f in tqdm(image_futures, desc="Processing Images")]
+        cpusPerLayer = max(1, args.nCPUs)
+        work_items = range(1, params['nDistances'] + 1)
+        
+        for distanceNr in tqdm(work_items, desc="Processing Layers (Combined)"):
+            cmd = os.path.join(bin_dir, "ProcessImagesCombined") + f' {args.paramFN} {distanceNr} {cpusPerLayer}'
+            run_command(
+                cmd=cmd,
+                working_dir=resultFolder,
+                out_file=f'{logDir}/combined_image{distanceNr}_out.csv',
+                err_file=f'{logDir}/combined_image{distanceNr}_err.csv'
+            )
         
     except Exception as e:
         logger.error("A failure occurred during the image processing stage. Aborting workflow.")
