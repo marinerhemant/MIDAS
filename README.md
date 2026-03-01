@@ -180,12 +180,22 @@ sudo ./build_wsl_windows.sh
 # Disable CUDA support
 ./build.sh --cuda OFF
 
+# Specify a custom nvcc compiler path
+cd build
+cmake .. -DCMAKE_CUDA_COMPILER=/path/to/cuda/bin/nvcc
+cmake --build . -j
+
+# Specify target CUDA architectures (default is "86;90")
+cd build
+cmake .. -DCMAKE_CUDA_ARCHITECTURES="75;80"
+cmake --build . -j
+
 # Build and run benchmarks
 ./build.sh --test all
 
 # Build a single target
 cd build
-cmake --build . --target <TargetName>
+cmake --build . --target IntegratorFitPeaksGPUStream
 ```
 
 ### Updating After `git pull`

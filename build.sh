@@ -185,8 +185,12 @@ if [ $BUILD_SUCCESS -eq 0 ]; then
             [ -e "$f" ] || continue
             base=$(basename "$f")
             if [ ! -f "bin/$base" ]; then
-                rm -f "$f"
-                echo "  Removed orphaned binary: $bin_dir/$base"
+                if [ "$base" = "IntegratorFitPeaksGPUStream" ]; then
+                    echo "  Keeping manually compiled binary: $bin_dir/$base"
+                else
+                    rm -f "$f"
+                    echo "  Removed orphaned binary: $bin_dir/$base"
+                fi
             fi
         done
         # Copy missing/stale: for each file already in source-tree dir,

@@ -286,7 +286,7 @@ if(USE_CUDA)
     
     if(NOT CMAKE_CUDA_ARCHITECTURES)
       # Set a default, but this should ideally be user-configurable e.g. via cache variable or toolchain file
-      set(CMAKE_CUDA_ARCHITECTURES 75 CACHE STRING "Target CUDA architectures (e.g., 60;70;75;80)") # Example: Volta
+      set(CMAKE_CUDA_ARCHITECTURES "86;90" CACHE STRING "Target CUDA architectures (e.g., 60;70;75;80)") # Default to 86 and 90
       message(STATUS "CMAKE_CUDA_ARCHITECTURES not set, defaulting to ${CMAKE_CUDA_ARCHITECTURES}. Configure as needed.")
     endif()
     message(STATUS "CUDA enabled with standard ${CMAKE_CUDA_STANDARD} for architectures ${CMAKE_CUDA_ARCHITECTURES}.")

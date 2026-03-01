@@ -151,7 +151,7 @@ add_ff_hedm_executable(findMultipleSolutionsPF SOURCES src/findMultipleSolutions
 add_ff_hedm_executable(mergeScansScanning SOURCES src/mergeScansScanning.c OMP)
 
 # CUDA specific targets
-add_ff_hedm_executable(IntegratorCUDA SOURCES src/IntegratorFitPeaksGPUStream.cu CUDA OMP)
+add_ff_hedm_executable(IntegratorFitPeaksGPUStream SOURCES src/IntegratorFitPeaksGPUStream.cu CUDA OMP)
 # Example for other CUDA targets if they were to be re-added:
 # add_ff_hedm_executable(IndexerCUDA SOURCES src/IndexerRefineNLOPT.cu CUDA)
 # add_ff_hedm_executable(PeaksCUDA SOURCES src/PeaksNLMD.cu CUDA)
@@ -174,7 +174,7 @@ set(FF_HEDM_ALL_NON_CUDA_TARGETS_LIST
 add_custom_target(midas_ff_hedm_all_executables DEPENDS ${FF_HEDM_ALL_NON_CUDA_TARGETS_LIST} )
 
 if(USE_CUDA)
- add_dependencies(midas_ff_hedm_all_executables IntegratorCUDA)
+ add_dependencies(midas_ff_hedm_all_executables IntegratorFitPeaksGPUStream)
  # Add other CUDA targets here if re-enabled:
  # add_dependencies(midas_ff_hedm_all_executables IndexerCUDA PeaksCUDA)
 endif()
