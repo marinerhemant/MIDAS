@@ -922,6 +922,14 @@ int main(int argc, char *argv[]) {
       printf("Encoded mask from file: %s\n", MaskFN);
       DoImageTransformations(NrTransOpt, TransOpt, mask, mask, NrPixelsY,
                              NrPixelsZ);
+      int maskedPixels = 0;
+      for (int mi = 0; mi < NrPixelsY * NrPixelsZ; mi++) {
+        if (mask[mi] == 1.0) {
+          maskedPixels++;
+        }
+      }
+      printf("Number of masked pixels: %d out of %d\n", maskedPixels,
+             NrPixelsY * NrPixelsZ);
     } else {
       printf("Failed to read mask file: %s\n", MaskFN);
       free(mask);
