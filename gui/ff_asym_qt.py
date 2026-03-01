@@ -455,6 +455,10 @@ class FFViewer(QtWidgets.QMainWindow):
         log_btn.toggled.connect(lambda c: self.log_panel.show() if c else self.log_panel.hide())
         tb.addWidget(log_btn)
 
+        help_btn = QtWidgets.QPushButton("Help")
+        help_btn.clicked.connect(self._show_help)
+        tb.addWidget(help_btn)
+
         tb.addStretch()
         return tb
 
@@ -613,6 +617,24 @@ class FFViewer(QtWidgets.QMainWindow):
         self.image_view.frameScrolled.connect(self._on_frame_scroll)
         # Cursor tracking
         self.image_view.cursorMoved.connect(self._on_cursor_moved)
+
+    def _show_help(self):
+        QtWidgets.QMessageBox.information(self, 'FF Viewer — Controls',
+            'Mouse Controls:\n'
+            '  Scroll wheel — Zoom in/out\n'
+            '  Right-click drag — Zoom rectangle\n'
+            '  Left-click drag — Pan\n'
+            '  Ctrl+Scroll wheel — Change frame\n'
+            '  Right-click → View All — Reset zoom\n'
+            '\n'
+            'Keyboard Shortcuts:\n'
+            '  ← / → — Previous / Next frame\n'
+            '  L — Toggle log scale\n'
+            '  R — Toggle ring overlay\n'
+            '\n'
+            'Histogram (right side of image):\n'
+            '  Drag top/bottom bars — Adjust thresholds\n'
+            '  Right-click histogram — Change colormap\n')
 
     def _setup_shortcuts(self):
         add_shortcut(self, 'Right', lambda: self.frame_spin.setValue(self.frame_spin.value() + 1))

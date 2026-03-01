@@ -314,6 +314,10 @@ class NFViewer(QtWidgets.QMainWindow):
         log_btn.toggled.connect(lambda c: self.log_panel.show() if c else self.log_panel.hide())
         tb.addWidget(log_btn)
 
+        help_btn = QtWidgets.QPushButton("Help")
+        help_btn.clicked.connect(self._show_help)
+        tb.addWidget(help_btn)
+
         tb.addStretch()
         return tb
 
@@ -485,6 +489,26 @@ class NFViewer(QtWidgets.QMainWindow):
             lambda d: self.frame_spin.setValue(self.frame_spin.value() + d))
         self.image_view.cursorMoved.connect(self._on_cursor_moved)
         self.col_group.buttonClicked.connect(self._on_col_mode_changed)
+
+    def _show_help(self):
+        QtWidgets.QMessageBox.information(self, 'NF Viewer — Controls',
+            'Mouse Controls:\n'
+            '  Scroll wheel — Zoom in/out\n'
+            '  Right-click drag — Zoom rectangle\n'
+            '  Left-click drag — Pan\n'
+            '  Ctrl+Scroll wheel — Change frame\n'
+            '  Right-click → View All — Reset zoom\n'
+            '\n'
+            'Keyboard Shortcuts:\n'
+            '  ← / → — Previous / Next frame\n'
+            '  L — Toggle log scale\n'
+            '\n'
+            'Histogram (right side of image):\n'
+            '  Drag top/bottom bars — Adjust thresholds\n'
+            '  Right-click histogram — Change colormap\n'
+            '\n'
+            'Line Profile:\n'
+            '  Click LineOutH/V, then drag endpoints on image\n')
 
     def _setup_shortcuts(self):
         add_shortcut(self, 'Right', lambda: self.frame_spin.setValue(self.frame_spin.value() + 1))
