@@ -221,13 +221,41 @@ def main():
     n_rings = max(p['ring'] for p in all_peaks) + 1
     print(f"  Assigned to {n_rings} rings")
 
+    # Load ideal 2theta from _corr.csv if available
+    corr_csv = args.corr_csv
+    if corr_csv is None:
+        # Auto-derive: strip .analysis.MIDAS.zip.caked.hdf.zarr.zip -> .corr.csv
+        base = args.zarr_file
+        suffix = '.analysis.MIDAS.zip.caked.hdf.zarr.zip'
+        if base.endswith(suffix):
+            corr_csv = base[:-len(suffix)] + '.corr.csv'
+
+    ideal_2thetas = None
+    if corr_csv and os.path.isfile(corr_csv):
+        print(f"  Loading ideal 2theta from {corr_csv}")
+        corr_data = np.genfromtxt(corr_csv, skip_header=1)
+        ideal_2thetas = np.sort(np.unique(corr_data[:, 6]))  # Ideal2Theta column
+    elif corr_csv:
+        print(f"  Warning: corr.csv not found at {corr_csv}")
+
     # Print ring summary
-    print(f"\n  {'Ring':>4s}  {'Mean 2θ':>10s}  {'Std 2θ':>10s}  {'NPoints':>8s}")
-    print(f"  {'----':>4s}  {'----------':>10s}  {'----------':>10s}  {'--------':>8s}")
+    if ideal_2thetas is not None:
+        print(f"\n  {'Ring':>4s}  {'Ideal 2θ':>10s}  {'Mean 2θ':>10s}  {'Std 2θ':>10s}  {'NPoints':>8s}")
+        print(f"  {'----':>4s}  {'----------':>10s}  {'----------':>10s}  {'----------':>10s}  {'--------':>8s}")
+    else:
+        print(f"\n  {'Ring':>4s}  {'Mean 2θ':>10s}  {'Std 2θ':>10s}  {'NPoints':>8s}")
+        print(f"  {'----':>4s}  {'----------':>10s}  {'----------':>10s}  {'--------':>8s}")
     for r in range(n_rings):
-        tths = [p['tth_fit'] for p in all_peaks if p['ring'] == r]
-        if tths:
-            print(f"  {r:4d}  {np.mean(tths):10.4f}  {np.std(tths):10.6f}  {len(tths):8d}")
+        ring_tths = [p['tth_fit'] for p in all_peaks if p['ring'] == r]
+        if ring_tths:
+            mean_tth = np.mean(ring_tths)
+            if ideal_2thetas is not None:
+                # Find closest ideal 2theta
+                idx = np.argmin(np.abs(ideal_2thetas - mean_tth))
+                ideal_val = ideal_2thetas[idx]
+                print(f"  {r:4d}  {ideal_val:10.4f}  {mean_tth:10.4f}  {np.std(ring_tths):10.6f}  {len(ring_tths):8d}")
+            else:
+                print(f"  {r:4d}  {mean_tth:10.4f}  {np.std(ring_tths):10.6f}  {len(ring_tths):8d}")
 
     # Extract arrays for plotting
     etas = np.array([p['eta'] for p in all_peaks])
@@ -237,7 +265,7 @@ def main():
 
     # Plot
     fig, ax = plt.subplots(figsize=(14, 8))
-    scatter = ax.scatter(etas, tths, c=rings, cmap='tab10', s=4, alpha=0.7)
+    scatter = ax.scatter(etas, tths, c=rings, cmap='tab10', s=15, alpha=0.7)
     cbar = plt.colorbar(scatter, ax=ax, label='Ring Number')
     cbar.set_ticks(range(n_rings))
 
@@ -246,21 +274,10 @@ def main():
     ax.set_title(f'Peak Positions from {os.path.basename(args.zarr_file)}', fontsize=13)
     ax.grid(True, alpha=0.3)
 
-    # Overlay ideal 2theta lines from _corr.csv if available
-    corr_csv = args.corr_csv
-    if corr_csv is None:
-        # Auto-derive: strip .analysis.MIDAS.zip.caked.hdf.zarr.zip -> .corr.csv
-        base = args.zarr_file
-        suffix = '.analysis.MIDAS.zip.caked.hdf.zarr.zip'
-        if base.endswith(suffix):
-            corr_csv = base[:-len(suffix)] + '.corr.csv'
-
-    if corr_csv and os.path.isfile(corr_csv):
-        print(f"\n  Loading ideal 2theta from {corr_csv}")
-        corr_data = np.genfromtxt(corr_csv, skip_header=1)
-        ideal_2thetas = np.unique(corr_data[:, 6])  # Ideal2Theta column
+    # Overlay ideal 2theta lines
+    if ideal_2thetas is not None:
         for tt in ideal_2thetas:
-            ax.axhline(tt, color='red', linestyle='--', alpha=0.6, linewidth=0.8,
+            ax.axhline(tt, color='red', linestyle='--', alpha=0.6, linewidth=2,
                        label=f'Ideal 2θ = {tt:.4f}°')
         # De-duplicate legend entries
         handles, labels = ax.get_legend_handles_labels()
@@ -268,8 +285,6 @@ def main():
         ax.legend(by_label.values(), by_label.keys(), fontsize=8,
                   loc='upper right', ncol=2)
         print(f"  Added {len(ideal_2thetas)} ideal 2theta lines")
-    elif corr_csv:
-        print(f"  Warning: corr.csv not found at {corr_csv}")
 
     plt.tight_layout()
 
