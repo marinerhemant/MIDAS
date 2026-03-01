@@ -87,7 +87,9 @@ def _read_recon(outfnstr, nrShifts, nrSlices, xDimNew):
 
 def run_tomo(data, dark, whites, workingdir, thetas,
              shifts=0.0, filterNr=2, doLog=1, extraPad=0,
-             autoCentering=1, numCPUs=40, doCleanup=1, ringRemoval=0):
+             autoCentering=1, numCPUs=40, doCleanup=1, ringRemoval=0,
+             doStripeRemoval=0, stripeSnr=3.0, stripeLaSize=61,
+             stripeSmSize=21):
     """Reconstruct from raw projection data.
 
     Parameters
@@ -119,6 +121,14 @@ def run_tomo(data, dark, whites, workingdir, thetas,
         1 to remove temporary files after reconstruction.
     ringRemoval : float
         Ring-removal coefficient (0 to disable).
+    doStripeRemoval : int
+        1 to enable Vo et al. 2018 stripe removal, 0 to disable.
+    stripeSnr : float
+        SNR threshold for stripe detection (default 3.0).
+    stripeLaSize : int
+        Median filter window for large stripes (default 61, must be odd).
+    stripeSmSize : int
+        Median filter window for small stripes (default 21, must be odd).
 
     Returns
     -------
@@ -174,6 +184,11 @@ def run_tomo(data, dark, whites, workingdir, thetas,
         f.write('slicesToProcess -1\n')
         f.write(f'ExtraPad {extraPad}\n')
         f.write(f'AutoCentering {autoCentering}\n')
+        if doStripeRemoval:
+            f.write(f'doStripeRemoval 1\n')
+            f.write(f'stripeSnr {stripeSnr}\n')
+            f.write(f'stripeLaSize {stripeLaSize}\n')
+            f.write(f'stripeSmSize {stripeSmSize}\n')
 
     print(f'Time elapsed in preprocessing: {time.time() - start_time:.3f}s.')
 
@@ -204,7 +219,8 @@ def run_tomo(data, dark, whites, workingdir, thetas,
 def run_tomo_from_sinos(sinograms, workingdir, thetas,
                         shifts=0.0, filterNr=2, doLog=0, extraPad=0,
                         autoCentering=1, numCPUs=1, doCleanup=1,
-                        ringRemoval=0):
+                        ringRemoval=0, doStripeRemoval=0, stripeSnr=3.0,
+                        stripeLaSize=61, stripeSmSize=21):
     """Reconstruct from pre-formed sinograms (areSinos=1 mode).
 
     Parameters
@@ -234,6 +250,14 @@ def run_tomo_from_sinos(sinograms, workingdir, thetas,
         1 to remove temporary files after reconstruction.
     ringRemoval : float
         Ring-removal coefficient (0 to disable).
+    doStripeRemoval : int
+        1 to enable Vo et al. 2018 stripe removal, 0 to disable.
+    stripeSnr : float
+        SNR threshold for stripe detection (default 3.0).
+    stripeLaSize : int
+        Median filter window for large stripes (default 61, must be odd).
+    stripeSmSize : int
+        Median filter window for small stripes (default 21, must be odd).
 
     Returns
     -------
@@ -288,6 +312,11 @@ def run_tomo_from_sinos(sinograms, workingdir, thetas,
         f.write('slicesToProcess -1\n')
         f.write(f'ExtraPad {extraPad}\n')
         f.write(f'AutoCentering {autoCentering}\n')
+        if doStripeRemoval:
+            f.write(f'doStripeRemoval 1\n')
+            f.write(f'stripeSnr {stripeSnr}\n')
+            f.write(f'stripeLaSize {stripeLaSize}\n')
+            f.write(f'stripeSmSize {stripeSmSize}\n')
 
     print(f'Time elapsed in preprocessing: {time.time() - start_time:.3f}s.')
 
