@@ -108,7 +108,9 @@ class MIDASImageView(pg.ImageView):
     def set_image_data(self, data, auto_levels=True, levels=None):
         """Set image data with smart percentile-based auto-levels."""
         self._raw_data = data
-        display = self._apply_log(data) if self._log_mode else data
+        # Transpose: PyQtGraph maps axis-0→X, axis-1→Y, but numpy images
+        # are (rows, cols). Transpose so rows→Y (vertical), cols→X (horizontal).
+        display = self._apply_log(data.T) if self._log_mode else data.T
 
         # Compute stats
         finite = display[np.isfinite(display)]
