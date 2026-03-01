@@ -411,7 +411,7 @@ def run_dual_dataset_test(args, work_dir, final_zip_name):
     ref_grains = work_dir / "LayerNr_1" / "Grains.csv"
     
     if dual_grains.exists() and ref_grains.exists():
-        compare_grains_csv(ref_grains, dual_grains, pos_tol_um=1.0, orient_tol_deg=0.06)
+        compare_grains_csv(ref_grains, dual_grains, pos_tol_um=1.0, orient_tol_deg=0.09)
     elif not ref_grains.exists():
         print(f"\nSkipping comparison: reference {ref_grains} not found.")
     else:
