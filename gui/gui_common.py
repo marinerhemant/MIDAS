@@ -56,14 +56,15 @@ def get_colormap(name):
 
 
 # ── MIDASImageView ─────────────────────────────────────────────────────
-class MIDASImageView(pg.ImageView):
+class MIDASImageView(QtWidgets.QWidget):
     """
-    Enhanced ImageView with:
+    Enhanced ImageView wrapper with:
       - Crosshair overlay with coordinate tracking
       - Colormap dropdown
       - Mouse-wheel frame navigation signal
       - Log-scale display
       - Export-to-PNG action
+      - Navigation toolbar (Home, Back, Forward, Pan, Zoom-to-rect)
       - Status bar signal for cursor position + pixel value
     """
 
@@ -75,15 +76,24 @@ class MIDASImageView(pg.ImageView):
     dataStatsUpdated = QtCore.pyqtSignal(float, float, float, float)
 
     def __init__(self, parent=None, name='MIDASImageView', origin='bl', **kwargs):
-        super().__init__(parent=parent, name=name, view=pg.PlotItem(), **kwargs)
+        super().__init__(parent)
 
         self._raw_data = None
         self._log_mode = False
         self._origin = origin  # 'bl' = bottom-left, 'br' = bottom-right
 
-        # Remove the default ROI and Norm buttons for a cleaner look
-        self.ui.roiBtn.hide()
-        self.ui.menuBtn.hide()
+        # ── Internal ImageView ──
+        self._iv = pg.ImageView(parent=self, name=name, view=pg.PlotItem(), **kwargs)
+        self._iv.ui.roiBtn.hide()
+        self._iv.ui.menuBtn.hide()
+
+        # ── Navigation state ──
+        self._nav_mode = 'pointer'  # 'pointer', 'pan', 'zoom'
+        self._view_history = []
+        self._view_index = -1
+        self._is_dragging = False
+        self._drag_start = None
+        self._zoom_rect = None
 
         # ── Crosshair ──
         self._vline = pg.InfiniteLine(angle=90, movable=False,
@@ -92,16 +102,158 @@ class MIDASImageView(pg.ImageView):
                                        pen=pg.mkPen('y', width=1, style=QtCore.Qt.DashLine))
         self._vline.setZValue(1000)
         self._hline.setZValue(1000)
-        self.addItem(self._vline)
-        self.addItem(self._hline)
+        self._iv.addItem(self._vline)
+        self._iv.addItem(self._hline)
         self._crosshair_visible = True
 
-        # Track mouse
-        self._proxy = pg.SignalProxy(self.scene.sigMouseMoved, rateLimit=60,
+        # Track mouse for crosshair
+        self._proxy = pg.SignalProxy(self._iv.scene.sigMouseMoved, rateLimit=60,
                                       slot=self._on_mouse_moved)
 
         # ── Overlay items (rings, annotations, etc.) ──
         self._overlay_items = []
+
+        # ── Navigation Toolbar ──
+        self._nav_bar = self._build_nav_bar()
+
+        # ── Layout: image view + nav bar ──
+        layout = QtWidgets.QVBoxLayout(self)
+        layout.setContentsMargins(0, 0, 0, 0)
+        layout.setSpacing(0)
+        layout.addWidget(self._iv, stretch=1)
+        layout.addWidget(self._nav_bar)
+
+        # Disable default mouse-wheel zoom (keep Ctrl+wheel for frame scroll)
+        vb = self._get_viewbox()
+        vb.setMouseEnabled(x=False, y=False)  # Disable scroll-zoom
+        vb.enableAutoRange(False)
+
+        # Install event filter for zoom-rect and pan
+        self._iv.scene.sigMouseClicked.connect(self._on_scene_clicked)
+
+    # ── Navigation Toolbar ─────────────────────────────────────────
+
+    def _build_nav_bar(self):
+        bar = QtWidgets.QToolBar()
+        bar.setIconSize(QtCore.QSize(20, 20))
+        bar.setMovable(False)
+        bar.setStyleSheet("QToolBar { spacing: 4px; padding: 2px; }")
+
+        style = QtWidgets.QApplication.style()
+
+        # Home
+        self._home_btn = QtWidgets.QToolButton()
+        self._home_btn.setIcon(style.standardIcon(QtWidgets.QStyle.SP_DirHomeIcon))
+        self._home_btn.setToolTip("Home – Reset to full view")
+        self._home_btn.clicked.connect(self._nav_home)
+        bar.addWidget(self._home_btn)
+
+        # Back
+        self._back_btn = QtWidgets.QToolButton()
+        self._back_btn.setIcon(style.standardIcon(QtWidgets.QStyle.SP_ArrowBack))
+        self._back_btn.setToolTip("Back – Previous view")
+        self._back_btn.clicked.connect(self._nav_back)
+        self._back_btn.setEnabled(False)
+        bar.addWidget(self._back_btn)
+
+        # Forward
+        self._fwd_btn = QtWidgets.QToolButton()
+        self._fwd_btn.setIcon(style.standardIcon(QtWidgets.QStyle.SP_ArrowForward))
+        self._fwd_btn.setToolTip("Forward – Next view")
+        self._fwd_btn.clicked.connect(self._nav_forward)
+        self._fwd_btn.setEnabled(False)
+        bar.addWidget(self._fwd_btn)
+
+        bar.addSeparator()
+
+        # Pan
+        self._pan_btn = QtWidgets.QToolButton()
+        self._pan_btn.setIcon(style.standardIcon(QtWidgets.QStyle.SP_FileDialogDetailedView))
+        self._pan_btn.setToolTip("Pan – Drag to move view")
+        self._pan_btn.setCheckable(True)
+        self._pan_btn.clicked.connect(lambda: self._set_nav_mode('pan'))
+        bar.addWidget(self._pan_btn)
+
+        # Zoom
+        self._zoom_btn = QtWidgets.QToolButton()
+        self._zoom_btn.setIcon(style.standardIcon(QtWidgets.QStyle.SP_FileDialogContentsView))
+        self._zoom_btn.setToolTip("Zoom – Drag rectangle to zoom")
+        self._zoom_btn.setCheckable(True)
+        self._zoom_btn.clicked.connect(lambda: self._set_nav_mode('zoom'))
+        bar.addWidget(self._zoom_btn)
+
+        bar.addSeparator()
+
+        # Mode label
+        self._mode_label = QtWidgets.QLabel("  Mode: Pointer")
+        bar.addWidget(self._mode_label)
+
+        return bar
+
+    def _set_nav_mode(self, mode):
+        """Set navigation mode: 'pointer', 'pan', or 'zoom'."""
+        if self._nav_mode == mode:
+            mode = 'pointer'  # Toggle off
+
+        self._nav_mode = mode
+        vb = self._get_viewbox()
+
+        self._pan_btn.setChecked(mode == 'pan')
+        self._zoom_btn.setChecked(mode == 'zoom')
+
+        if mode == 'pan':
+            vb.setMouseEnabled(x=True, y=True)
+            self._mode_label.setText("  Mode: Pan")
+        elif mode == 'zoom':
+            vb.setMouseEnabled(x=False, y=False)
+            self._mode_label.setText("  Mode: Zoom")
+        else:
+            vb.setMouseEnabled(x=False, y=False)
+            self._mode_label.setText("  Mode: Pointer")
+
+    def _push_view(self):
+        """Save current view range to history stack."""
+        vb = self._get_viewbox()
+        xr = vb.viewRange()[0]
+        yr = vb.viewRange()[1]
+        entry = (list(xr), list(yr))
+        # Trim forward history
+        if self._view_index < len(self._view_history) - 1:
+            self._view_history = self._view_history[:self._view_index + 1]
+        self._view_history.append(entry)
+        self._view_index = len(self._view_history) - 1
+        self._update_nav_buttons()
+
+    def _nav_home(self):
+        """Reset view to full image extent."""
+        self._push_view()
+        vb = self._get_viewbox()
+        vb.autoRange()
+        self._push_view()
+
+    def _nav_back(self):
+        if self._view_index > 0:
+            self._view_index -= 1
+            xr, yr = self._view_history[self._view_index]
+            vb = self._get_viewbox()
+            vb.setRange(xRange=xr, yRange=yr, padding=0)
+            self._update_nav_buttons()
+
+    def _nav_forward(self):
+        if self._view_index < len(self._view_history) - 1:
+            self._view_index += 1
+            xr, yr = self._view_history[self._view_index]
+            vb = self._get_viewbox()
+            vb.setRange(xRange=xr, yRange=yr, padding=0)
+            self._update_nav_buttons()
+
+    def _update_nav_buttons(self):
+        self._back_btn.setEnabled(self._view_index > 0)
+        self._fwd_btn.setEnabled(self._view_index < len(self._view_history) - 1)
+
+    def _on_scene_clicked(self, ev):
+        """Handle mouse press for zoom-rect mode."""
+        pass  # Clicks handled separately; zoom uses press/release
 
     # ── Public API ──────────────────────────────────────────────────
 
@@ -126,21 +278,23 @@ class MIDASImageView(pg.ImageView):
             if self._log_mode:
                 levels = (np.log10(max(levels[0], 1e-10)),
                           np.log10(max(levels[1], 1e-10)))
-            self.setImage(display, autoLevels=False, levels=levels)
+            self._iv.setImage(display, autoLevels=False, levels=levels)
         elif auto_levels:
-            # Smart levels: use 2nd-98th percentile to avoid hot pixel domination
-            self.setImage(display, autoLevels=False, levels=(p2, p98))
+            self._iv.setImage(display, autoLevels=False, levels=(p2, p98))
         else:
-            self.setImage(display, autoLevels=False)
+            self._iv.setImage(display, autoLevels=False)
 
         # Force origin position AFTER setImage (which may reset axes)
-        vb = self.getView()
-        if self._origin == 'bl':  # bottom-left: y=0 bottom, x=0 left
+        vb = self._iv.getView()
+        if self._origin == 'bl':
             vb.invertY(False)
             vb.invertX(False)
-        elif self._origin == 'br':  # bottom-right: y=0 bottom, x=0 right
+        elif self._origin == 'br':
             vb.invertY(False)
             vb.invertX(True)
+
+        # Push initial view to history
+        self._push_view()
 
     def set_log_mode(self, enabled):
         """Toggle log10 display."""
@@ -152,7 +306,7 @@ class MIDASImageView(pg.ImageView):
         """Apply a named colormap."""
         cmap = get_colormap(name)
         lut = cmap.getLookupTable(nPts=256)
-        self.imageItem.setLookupTable(lut)
+        self._iv.imageItem.setLookupTable(lut)
 
     def set_crosshair_visible(self, visible):
         """Show or hide crosshair."""
@@ -160,15 +314,19 @@ class MIDASImageView(pg.ImageView):
         self._vline.setVisible(visible)
         self._hline.setVisible(visible)
 
+    def setLevels(self, lo, hi):
+        """Set intensity levels (proxied to internal ImageView)."""
+        self._iv.setLevels(lo, hi)
+
     def add_overlay(self, item):
         """Add a PlotItem overlay (rings, markers, etc.)."""
-        self.addItem(item)
+        self._iv.addItem(item)
         self._overlay_items.append(item)
 
     def clear_overlays(self):
         """Remove all overlay items."""
         for item in self._overlay_items:
-            self.removeItem(item)
+            self._iv.removeItem(item)
         self._overlay_items.clear()
 
     def export_png(self, filename=None):
@@ -177,10 +335,38 @@ class MIDASImageView(pg.ImageView):
             filename, _ = QtWidgets.QFileDialog.getSaveFileName(
                 self, 'Export Image', '', 'PNG Files (*.png);;All Files (*)')
         if filename:
-            exporter = pg.exporters.ImageExporter(self.scene)
+            exporter = pg.exporters.ImageExporter(self._iv.scene)
             exporter.export(filename)
 
+    def addItem(self, item):
+        """Proxy addItem to internal ImageView."""
+        self._iv.addItem(item)
+
+    def removeItem(self, item):
+        """Proxy removeItem to internal ImageView."""
+        self._iv.removeItem(item)
+
+    def getView(self):
+        """Proxy getView to internal ImageView."""
+        return self._iv.getView()
+
+    def getViewBox(self):
+        """Get the ViewBox."""
+        return self._get_viewbox()
+
+    @property
+    def imageItem(self):
+        return self._iv.imageItem
+
+    @property
+    def scene(self):
+        return self._iv.scene
+
     # ── Internal ────────────────────────────────────────────────────
+
+    def _get_viewbox(self):
+        """Get the ViewBox from the PlotItem."""
+        return self._iv.getView().getViewBox()
 
     def _apply_log(self, data):
         """Apply log10 to data for display."""
@@ -188,7 +374,7 @@ class MIDASImageView(pg.ImageView):
 
     def _on_mouse_moved(self, evt):
         pos = evt[0]
-        vb = self.getView()
+        vb = self._iv.getView()
         vbox = vb.getViewBox()
         if vb.sceneBoundingRect().contains(pos):
             mouse_point = vbox.mapSceneToView(pos)
@@ -206,13 +392,58 @@ class MIDASImageView(pg.ImageView):
             self.cursorMoved.emit(x, y, val)
 
     def wheelEvent(self, ev):
-        """Emit frame scroll signal on Ctrl+wheel, else default zoom."""
+        """Emit frame scroll signal on Ctrl+wheel; otherwise ignore (no zoom)."""
         if ev.modifiers() & QtCore.Qt.ControlModifier:
             delta = 1 if ev.angleDelta().y() > 0 else -1
             self.frameScrolled.emit(delta)
             ev.accept()
         else:
-            super().wheelEvent(ev)
+            # Don't zoom; ignore the event
+            ev.ignore()
+
+    def mousePressEvent(self, ev):
+        if self._nav_mode == 'zoom' and ev.button() == QtCore.Qt.LeftButton:
+            self._is_dragging = True
+            self._drag_start = ev.pos()
+            # Create rubber-band rectangle
+            self._zoom_rect = QtWidgets.QRubberBand(QtWidgets.QRubberBand.Rectangle, self._iv)
+            self._zoom_rect.setGeometry(QtCore.QRect(self._drag_start, QtCore.QSize()))
+            self._zoom_rect.show()
+            ev.accept()
+        else:
+            super().mousePressEvent(ev)
+
+    def mouseMoveEvent(self, ev):
+        if self._is_dragging and self._zoom_rect:
+            self._zoom_rect.setGeometry(
+                QtCore.QRect(self._drag_start, ev.pos()).normalized())
+            ev.accept()
+        else:
+            super().mouseMoveEvent(ev)
+
+    def mouseReleaseEvent(self, ev):
+        if self._is_dragging and self._zoom_rect and ev.button() == QtCore.Qt.LeftButton:
+            self._is_dragging = False
+            rect = QtCore.QRect(self._drag_start, ev.pos()).normalized()
+            self._zoom_rect.hide()
+            self._zoom_rect = None
+
+            # Convert widget coordinates to view coordinates
+            if rect.width() > 5 and rect.height() > 5:
+                vb = self._get_viewbox()
+                # Map the rectangle corners from widget to scene to view
+                p1 = self._iv.mapToScene(rect.topLeft())
+                p2 = self._iv.mapToScene(rect.bottomRight())
+                v1 = vb.mapSceneToView(p1)
+                v2 = vb.mapSceneToView(p2)
+                x_min, x_max = sorted([v1.x(), v2.x()])
+                y_min, y_max = sorted([v1.y(), v2.y()])
+                self._push_view()
+                vb.setRange(xRange=[x_min, x_max], yRange=[y_min, y_max], padding=0)
+                self._push_view()
+            ev.accept()
+        else:
+            super().mouseReleaseEvent(ev)
 
 
 # ── AsyncWorker ────────────────────────────────────────────────────────
