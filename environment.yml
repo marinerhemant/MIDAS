@@ -28,3 +28,5 @@ dependencies:
       - tqdm
       - diskcache
       - multiprocess
+      - pyqtgraph
+      - PyQt5
