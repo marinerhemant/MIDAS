@@ -3067,8 +3067,9 @@ int main(int argc, char *argv[]) {
       perror("fopen");
       return 1;
     }
-    fprintf(Out, "%%Eta Strain RadFit EtaCalc DiffCalc RadCalc Ideal2Theta "
-                 "Outlier YRawCorr ZRawCorr RingNr RadGlobal IdealR\n");
+    fprintf(Out,
+            "%%Eta Strain RadFit EtaCalc DiffCalc RadCalc Ideal2Theta "
+            "Outlier YRawCorr ZRawCorr RingNr RadGlobal IdealR Fit2Theta\n");
     // Build tilt rotation matrix for RadGlobal computation
     double txrG = deg2rad * tx;
     double tyrG = deg2rad * ty;
@@ -3144,12 +3145,13 @@ int main(int argc, char *argv[]) {
       DistortG += 1;
       double RadGlobal = RadG * DistortG;
       double IdealR = LsdFit * tan(deg2rad * IdealTtheta[i]);
+      double Fit2Theta = atan(RadGlobal / LsdFit) / deg2rad;
       fprintf(
           Out,
-          "%f %10.8f %10.8f %f %10.8f %10.8f %f %d %f %f %d %10.8f %10.8f\n",
+          "%f %10.8f %10.8f %f %10.8f %10.8f %f %d %f %f %d %10.8f %10.8f %f\n",
           Etas[i], Diffs[i], RadOuts[i], EtaIns[i], DiffIns[i], RadIns[i],
           IdealTtheta[i], IsOutlier[i], YRawCorr, ZRawCorr, RingNumbers[i],
-          RadGlobal, IdealR);
+          RadGlobal, IdealR, Fit2Theta);
       // Accumulate radius residual statistics (non-outlier only)
       if (!IsOutlier[i]) {
         double dR = RadGlobal - IdealR; // signed residual in microns
