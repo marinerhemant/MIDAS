@@ -242,30 +242,30 @@ struct my_profile_func_data {
   double *PeakShape;
 };
 
+// Height-normalized Pseudo-Voigt singlet objective with shared FWHM.
+// Parameters: x[0]=Rcen, x[1]=Mu, x[2]=Gamma(FWHM), x[3]=Imax, x[4]=BG
+// L(x) = 1 / (1 + 4*(x/Gamma)^2)         [peaks at 1]
+// G(x) = exp(-4*ln2*(x/Gamma)^2)          [peaks at 1]
+// I(R) = BG + Imax * (Mu*L + (1-Mu)*G)
 static double problem_function_profile(unsigned n, const double *x,
                                        double *grad, void *f_data_trial) {
   struct my_profile_func_data *f_data =
       (struct my_profile_func_data *)f_data_trial;
   int NrPtsForFit = f_data->NrPtsForFit;
-  double *Rs, *PeakShape;
-  Rs = &(f_data->Rs[0]);
-  PeakShape = &(f_data->PeakShape[0]);
-  double Rcen, Mu, SigmaG, SigmaL, Imax, BG;
-  Rcen = x[0];
-  Mu = x[1];
-  SigmaG = x[2];
-  SigmaL = x[3];
-  Imax = x[4];
-  BG = x[5];
-  double TotalDifferenceIntensity = 0, CalcIntensity;
-  int i, j, k;
-  double L, G;
-  for (i = 0; i < NrPtsForFit; i++) {
-    L = (1 / (((Rs[i] - Rcen) * (Rs[i] - Rcen) / (SigmaL * SigmaL)) + (1)));
-    G = (exp((-0.5) * (Rs[i] - Rcen) * (Rs[i] - Rcen) / (SigmaG * SigmaG)));
-    CalcIntensity = BG + Imax * ((Mu * L) + ((1 - Mu) * G));
-    TotalDifferenceIntensity +=
-        (CalcIntensity - PeakShape[i]) * (CalcIntensity - PeakShape[i]);
+  double *Rs = &(f_data->Rs[0]);
+  double *PeakShape = &(f_data->PeakShape[0]);
+  double Rcen = x[0], Mu = x[1], Gamma = x[2], Imax = x[3], BG = x[4];
+  double C0 = 4.0 * log(2.0);
+  double invGamma2 = 1.0 / (Gamma * Gamma);
+  double TotalDifferenceIntensity = 0;
+  for (int i = 0; i < NrPtsForFit; i++) {
+    double dr = Rs[i] - Rcen;
+    double dr2 = dr * dr;
+    double L = 1.0 / (1.0 + 4.0 * dr2 * invGamma2);
+    double G = exp(-C0 * dr2 * invGamma2);
+    double CalcIntensity = BG + Imax * (Mu * L + (1.0 - Mu) * G);
+    double diff = CalcIntensity - PeakShape[i];
+    TotalDifferenceIntensity += diff * diff;
   }
 #pragma omp critical
   {
@@ -280,8 +280,8 @@ static double problem_function_profile(unsigned n, const double *x,
 void FitPeakShape(int NrPtsForFit, double Rs[NrPtsForFit],
                   double PeakShape[NrPtsForFit], double *Rfit, double *fitSNR,
                   double Rstep, double Rmean) {
-  unsigned n = 6;
-  double x[n], xl[n], xu[n];
+  unsigned n = 5;
+  double x[5], xl[5], xu[5];
   struct my_profile_func_data f_data;
   f_data.NrPtsForFit = NrPtsForFit;
   f_data.Rs = &Rs[0];
@@ -296,24 +296,27 @@ void FitPeakShape(int NrPtsForFit, double Rs[NrPtsForFit],
       MaxI = PeakShape[i];
     }
   }
+  // x[0] = Rcen
   x[0] = Rmean;
   xl[0] = Rs[0];
   xu[0] = Rs[NrPtsForFit - 1];
+  // x[1] = Mu (mixing: 0=pure Gaussian, 1=pure Lorentzian)
   x[1] = 0.5;
   xl[1] = 0;
   xu[1] = 1;
-  x[2] = Rstep;
+  // x[2] = Gamma (FWHM, shared by Gaussian and Lorentzian)
+  double GammaGuess = Rstep * 3;
+  x[2] = GammaGuess;
   xl[2] = Rstep / 2;
   xu[2] = Rstep * NrPtsForFit / 2;
-  x[3] = Rstep;
-  xl[3] = Rstep / 2;
-  xu[3] = Rstep * NrPtsForFit / 2;
-  x[4] = MaxI;
-  xl[4] = MaxI / 100;
-  xu[4] = MaxI * 1.5;
-  x[5] = BG0;
-  xl[5] = 0;
-  xu[5] = BG0 * 1.5;
+  // x[3] = Imax (peak height above background)
+  x[3] = MaxI - BG0;
+  xl[3] = (MaxI - BG0) / 100;
+  xu[3] = MaxI * 1.5;
+  // x[4] = BG
+  x[4] = BG0;
+  xl[4] = 0;
+  xu[4] = (BG0 > 0) ? BG0 * 1.5 : MaxI * 0.5;
   struct my_profile_func_data *f_datat;
   f_datat = &f_data;
   void *trp = (struct my_profile_func_data *)f_datat;
@@ -334,17 +337,20 @@ void FitPeakShape(int NrPtsForFit, double Rs[NrPtsForFit],
   minf = config.min_function_val;
   MeanDiff = sqrt(minf) / (NrPtsForFit);
   *Rfit = x[0];
-  // SNR = fitted amplitude / rms residual
+  // SNR = Imax / rms residual
   double rmsResid = sqrt(minf / NrPtsForFit);
   if (rmsResid > 0)
-    *fitSNR = x[4] / rmsResid;
+    *fitSNR = x[3] / rmsResid;
   else
     *fitSNR = 1.0;
 }
 
-// Doublet profile objective: two pseudo-Voigt peaks sharing Mu and BG
-// x[0]=Rcen1, x[1]=Rcen2, x[2]=Mu, x[3]=SigmaG1, x[4]=SigmaL1,
-// x[5]=Imax1, x[6]=SigmaG2, x[7]=SigmaL2, x[8]=Imax2, x[9]=BG
+// Height-normalized Pseudo-Voigt doublet objective with shared FWHM.
+// Two peaks sharing Mu and BG, each with independent Gamma and Imax.
+// x[0]=Rcen1, x[1]=Rcen2, x[2]=Mu
+// x[3]=Gamma1, x[4]=Imax1
+// x[5]=Gamma2, x[6]=Imax2
+// x[7]=BG
 static double problem_function_doublet_profile(unsigned n, const double *x,
                                                double *grad,
                                                void *f_data_trial) {
@@ -354,23 +360,26 @@ static double problem_function_doublet_profile(unsigned n, const double *x,
   double *Rs = &(f_data->Rs[0]);
   double *PeakShape = &(f_data->PeakShape[0]);
   double Rcen1 = x[0], Rcen2 = x[1], Mu = x[2];
-  double SigmaG1 = x[3], SigmaL1 = x[4], Imax1 = x[5];
-  double SigmaG2 = x[6], SigmaL2 = x[7], Imax2 = x[8];
-  double BG = x[9];
-  double TotalDiff = 0, CalcIntensity;
-  int i;
-  double L1, G1, L2, G2, dr1, dr2;
-  for (i = 0; i < NrPtsForFit; i++) {
-    dr1 = Rs[i] - Rcen1;
-    dr2 = Rs[i] - Rcen2;
-    L1 = 1.0 / ((dr1 * dr1 / (SigmaL1 * SigmaL1)) + 1.0);
-    G1 = exp(-0.5 * dr1 * dr1 / (SigmaG1 * SigmaG1));
-    L2 = 1.0 / ((dr2 * dr2 / (SigmaL2 * SigmaL2)) + 1.0);
-    G2 = exp(-0.5 * dr2 * dr2 / (SigmaG2 * SigmaG2));
-    CalcIntensity = BG + Imax1 * (Mu * L1 + (1 - Mu) * G1) +
-                    Imax2 * (Mu * L2 + (1 - Mu) * G2);
-    TotalDiff +=
-        (CalcIntensity - PeakShape[i]) * (CalcIntensity - PeakShape[i]);
+  double Gamma1 = x[3], Imax1 = x[4];
+  double Gamma2 = x[5], Imax2 = x[6];
+  double BG = x[7];
+  double C0 = 4.0 * log(2.0);
+  double invGamma1_2 = 1.0 / (Gamma1 * Gamma1);
+  double invGamma2_2 = 1.0 / (Gamma2 * Gamma2);
+  double TotalDiff = 0;
+  for (int i = 0; i < NrPtsForFit; i++) {
+    double dr1 = Rs[i] - Rcen1;
+    double dr2 = Rs[i] - Rcen2;
+    double dr1_2 = dr1 * dr1;
+    double dr2_2 = dr2 * dr2;
+    double L1 = 1.0 / (1.0 + 4.0 * dr1_2 * invGamma1_2);
+    double G1 = exp(-C0 * dr1_2 * invGamma1_2);
+    double L2 = 1.0 / (1.0 + 4.0 * dr2_2 * invGamma2_2);
+    double G2 = exp(-C0 * dr2_2 * invGamma2_2);
+    double CalcIntensity = BG + Imax1 * (Mu * L1 + (1 - Mu) * G1) +
+                           Imax2 * (Mu * L2 + (1 - Mu) * G2);
+    double diff = CalcIntensity - PeakShape[i];
+    TotalDiff += diff * diff;
   }
 #pragma omp critical
   {
@@ -383,8 +392,8 @@ void FitDoubletPeakShape(int NrPtsForFit, double *Rs, double *PeakShape,
                          double *Rfit1, double *Rfit2, double *fitSNR1,
                          double *fitSNR2, double Rstep, double Rmean1,
                          double Rmean2) {
-  unsigned n = 10;
-  double x[10], xl[10], xu[10];
+  unsigned n = 8;
+  double x[8], xl[8], xu[8];
   struct my_profile_func_data f_data;
   f_data.NrPtsForFit = NrPtsForFit;
   f_data.Rs = Rs;
@@ -392,13 +401,16 @@ void FitDoubletPeakShape(int NrPtsForFit, double *Rs, double *PeakShape,
   double BG0 = (PeakShape[0] + PeakShape[NrPtsForFit - 1]) / 2;
   if (BG0 < 0)
     BG0 = 0;
-  // Find max intensity for amplitude guesses
   double MaxI = -100000;
   int i;
   for (i = 0; i < NrPtsForFit; i++) {
     if (PeakShape[i] > MaxI)
       MaxI = PeakShape[i];
   }
+  double GammaGuess = Rstep * 3;
+  double ImaxGuess = MaxI - BG0;
+  if (ImaxGuess < 1e-6)
+    ImaxGuess = 1e-6;
   // Rcen1
   x[0] = Rmean1;
   xl[0] = Rs[0];
@@ -411,34 +423,26 @@ void FitDoubletPeakShape(int NrPtsForFit, double *Rs, double *PeakShape,
   x[2] = 0.5;
   xl[2] = 0;
   xu[2] = 1;
-  // SigmaG1
-  x[3] = Rstep;
+  // Gamma1 (FWHM of peak 1)
+  x[3] = GammaGuess;
   xl[3] = Rstep / 2;
   xu[3] = Rstep * NrPtsForFit / 4;
-  // SigmaL1
-  x[4] = Rstep;
-  xl[4] = Rstep / 2;
-  xu[4] = Rstep * NrPtsForFit / 4;
   // Imax1
-  x[5] = MaxI * 0.6;
-  xl[5] = MaxI / 100;
-  xu[5] = MaxI * 1.5;
-  // SigmaG2
-  x[6] = Rstep;
-  xl[6] = Rstep / 2;
-  xu[6] = Rstep * NrPtsForFit / 4;
-  // SigmaL2
-  x[7] = Rstep;
-  xl[7] = Rstep / 2;
-  xu[7] = Rstep * NrPtsForFit / 4;
+  x[4] = ImaxGuess * 0.6;
+  xl[4] = ImaxGuess / 100;
+  xu[4] = MaxI * 1.5;
+  // Gamma2 (FWHM of peak 2)
+  x[5] = GammaGuess;
+  xl[5] = Rstep / 2;
+  xu[5] = Rstep * NrPtsForFit / 4;
   // Imax2
-  x[8] = MaxI * 0.6;
-  xl[8] = MaxI / 100;
-  xu[8] = MaxI * 1.5;
+  x[6] = ImaxGuess * 0.6;
+  xl[6] = ImaxGuess / 100;
+  xu[6] = MaxI * 1.5;
   // BG (shared)
-  x[9] = BG0;
-  xl[9] = 0;
-  xu[9] = (BG0 > 0) ? BG0 * 2.0 : 1.0;
+  x[7] = BG0;
+  xl[7] = 0;
+  xu[7] = (BG0 > 0) ? BG0 * 2.0 : 1.0;
 
   struct my_profile_func_data *f_datat = &f_data;
   void *trp = (struct my_profile_func_data *)f_datat;
@@ -460,8 +464,8 @@ void FitDoubletPeakShape(int NrPtsForFit, double *Rs, double *PeakShape,
   // SNR for each peak: Imax / rms_residual
   double rmsResid = sqrt(config.min_function_val / NrPtsForFit);
   if (rmsResid > 0) {
-    *fitSNR1 = x[5] / rmsResid;
-    *fitSNR2 = x[8] / rmsResid;
+    *fitSNR1 = x[4] / rmsResid;
+    *fitSNR2 = x[6] / rmsResid;
   } else {
     *fitSNR1 = 1.0;
     *fitSNR2 = 1.0;

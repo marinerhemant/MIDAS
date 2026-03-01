@@ -107,7 +107,7 @@ The script follows a logical, multi-step process to achieve a converged geometri
 ### 4.2. CalibrantPanelShiftsOMP (The Optimization Engine)
 *   **Optimization Algorithm:** Uses the **Nelder-Mead simplex algorithm** (via the `nlopt` library) to minimize the objective function.
 *   **Objective Function:** The function calculates the "Mean Pseudo-Strain," which is the sum of differences between the measured ring radii (after geometric correction) and the theoretical ring radii.
-*   **Sub-Pixel Precision:** For each azimuthal bin, the code extracts a radial lineout and fits a **Pseudo-Voigt** profile to find the peak position with sub-pixel accuracy.
+*   **Sub-Pixel Precision:** For each azimuthal bin, the code extracts a radial lineout and fits a **height-normalized Pseudo-Voigt** profile (Gaussian and Lorentzian sharing a single FWHM, with mixing parameter Mu) to find the peak position with sub-pixel accuracy.
 *   **Parallelization:** The peak fitting process is parallelized using **OpenMP**, distributing the azimuthal bins across available CPU cores.
 
 ---
@@ -489,7 +489,7 @@ The following table lists all parameters recognized by `CalibrantPanelShiftsOMP`
 The following optional features can be enabled to improve calibration accuracy, especially for multi-panel detectors:
 
 #### Doublet Fitting
-Closely spaced rings (within `DoubletSeparation` pixels) are automatically detected and fitted simultaneously using a 10-parameter dual pseudo-Voigt model with shared background and Lorentzian fraction. This eliminates bias from overlapping peaks that would otherwise require excluding those rings.
+Closely spaced rings (within `DoubletSeparation` pixels) are automatically detected and fitted simultaneously using an 8-parameter dual height-normalized Pseudo-Voigt model with shared Mu and background, each peak having its own independent FWHM (Gamma) and peak height (Imax). This eliminates bias from overlapping peaks that would otherwise require excluding those rings.
 
 ```text
 DoubletSeparation 25

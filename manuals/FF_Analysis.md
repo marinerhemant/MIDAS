@@ -200,9 +200,11 @@ The peak search identifies diffraction spots in the raw detector images.
     *   Stack-based iteration is used instead of recursion to prevent stack overflow on large spots.
 *   **Peak Finding:** Within each connected component, the algorithm searches for **regional maxima**. A pixel is identified as a peak if its intensity is strictly greater than all its 8 neighbors.
 *   **Fitting:** 
-    *   A **Pseudo-Voigt profile** (weighted sum of Gaussian and Lorentzian functions) is fitted to each identified peak.
-    *   The objective function minimizes the sum of squared differences between the model and observed pixel intensities using non-linear optimization.
-    *   Key fitted parameters: Center of Mass ($Y, Z$), Intensity, and profile widths ($\sigma$).
+    *   A **Pseudo-Voigt profile** (weighted sum of Gaussian and Lorentzian functions with a shared FWHM) is fitted to each identified peak.
+    *   Both the Gaussian and Lorentzian components share a single full-width-at-half-maximum (Gamma), with a mixing parameter Mu interpolating between the two profiles.
+    *   The model is height-normalized: `I(R,Eta) = BG + Imax * (Mu*L + (1-Mu)*G)` where L and G each peak at 1.0.
+    *   Key fitted parameters: Center (R, Eta), peak height (Imax), profile mixing (Mu), and shared FWHM (GammaR, GammaEta).
+    *   For backward compatibility, the output columns `SigmaGR`, `SigmaLR`, `SigmaGEta`, `SigmaLEta` contain equivalent sigmas derived from Gamma: `SigmaG = Gamma/2.355`, `SigmaL = Gamma/2`. The effective sigma is `Mu*SigmaL + (1-Mu)*SigmaG`.
     *   When `doPeakFit 0` is set, fitting is skipped and each connected component is treated as a single peak using its centroid.
 *   **Pixel Coordinate Output (`_PX.bin`):**
     *   For each frame, a binary file is written containing the pixel coordinates belonging to each peak.
@@ -441,11 +443,11 @@ The pipeline automatically generates a `<filestem>_consolidated.h5` file that co
 │                   ├── spotid       # (float[C]) Peak-fitted spot ID
 │                   ├── integratedintensity  # (float[C])
 │                   ├── omega, ycen, zcen    # (float[C]) Peak position
-│                   ├── imax, radius, eta    # (float[C]) Peak shape
-│                   ├── sigmar, sigmaeta     # (float[C]) Effective widths
-│                   ├── sigmagr, sigmalr     # (float[C]) Gaussian/Lorentzian R widths
-│                   ├── sigmageta, sigmaleta # (float[C]) Gaussian/Lorentzian η widths
-│                   ├── mu                   # (float[C]) Pseudo-Voigt mixing parameter
+│                   ├── imax, radius, eta    # (float[C]) Peak height, position
+│                   ├── sigmar, sigmaeta     # (float[C]) Effective widths (Mu*sigmaL + (1-Mu)*sigmaG)
+│                   ├── sigmagr, sigmalr     # (float[C]) Gauss/Lorentz-equiv sigma R (both from shared FWHM)
+│                   ├── sigmageta, sigmaleta # (float[C]) Gauss/Lorentz-equiv sigma η (both from shared FWHM)
+│                   ├── mu                   # (float[C]) Pseudo-Voigt mixing parameter (0=Gauss, 1=Lorentz)
 │                   └── bg, nrpixels, ...    # (float[C]) Other _PS.csv columns
 │
 └── /raw_data_ref/                   # Reference to source data

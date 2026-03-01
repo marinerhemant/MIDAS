@@ -1747,8 +1747,12 @@ typedef struct {
 
 // =========================================================================
 // <<< NEW HELPER FUNCTION: Calculates the model profile and peak areas >>>
-// This separates the model calculation from the optimization objective
-// function.
+// =========================================================================
+// Height-normalized Pseudo-Voigt model curve with shared FWHM.
+// Parameters per peak: [Imax, m=mixing, c=center, Gamma=FWHM]
+// L(x) = 1 / (1 + 4*(x/Gamma)^2)        [peaks at 1]
+// G(x) = exp(-4*ln2*(x/Gamma)^2)         [peaks at 1]
+// I(R) = BG + sum_j Imax_j * (m_j * L(R-c_j) + (1-m_j) * G(R-c_j))
 // =========================================================================
 static inline void calculate_model_and_area(
     int n_peaks, const double *params,    // Input: Peak parameters
@@ -1757,6 +1761,7 @@ static inline void calculate_model_and_area(
     double *out_peak_areas) // Output: Buffer for each peak's area (can be NULL)
 {
   const double bg = params[n_peaks * 4];
+  const double C0 = 4.0 * log(2.0);
 
   // Initialize the model curve with just the background
   for (int i = 0; i < n_points; ++i) {
@@ -1765,33 +1770,30 @@ static inline void calculate_model_and_area(
 
   // Add the contribution of each peak
   for (int pN = 0; pN < n_peaks; ++pN) {
-    double A = params[pN * 4 + 0];
+    double Imax = params[pN * 4 + 0]; // Peak height
     double m = fmax(0.0, fmin(1.0, params[pN * 4 + 1]));
-    double c = params[pN * 4 + 2];
-    double s = fmax(1e-9, params[pN * 4 + 3]);
+    double c = params[pN * 4 + 2];             // Center
+    double G = fmax(1e-9, params[pN * 4 + 3]); // FWHM (Gamma)
+    double invG2 = 1.0 / (G * G);
 
     for (int i = 0; i < n_points; ++i) {
-      double diff_sq = (R_values[i] - c) * (R_values[i] - c);
-      double s_sq = s * s;
-      double gaussian = exp(-diff_sq / (2.0 * s_sq));
-      double lorentzian = 1.0 / (1.0 + diff_sq / s_sq);
-      out_model_curve[i] += A * (m * gaussian + (1.0 - m) * lorentzian);
+      double diff = R_values[i] - c;
+      double diff_sq = diff * diff;
+      double L = 1.0 / (1.0 + 4.0 * diff_sq * invG2);
+      double Gaus = exp(-C0 * diff_sq * invG2);
+      out_model_curve[i] += Imax * (m * L + (1.0 - m) * Gaus);
     }
 
-    // Calculate the integrated area for this peak if requested
+    // Analytical area: Imax * Gamma/2 * (m*pi + (1-m)*sqrt(pi/ln2))
     if (out_peak_areas != NULL) {
-      // Area = A * (m * Area_Gaussian_Shape + (1-m) * Area_Lorentzian_Shape)
-      // Area_Gaussian_Shape = s * sqrt(2 * PI)
-      // Area_Lorentzian_Shape = s * PI
-      out_peak_areas[pN] = A * s * (m * sqrt(2.0 * M_PI) + (1.0 - m) * M_PI);
+      out_peak_areas[pN] =
+          Imax * G / 2.0 * (m * M_PI + (1.0 - m) * sqrt(M_PI / log(2.0)));
     }
   }
 }
 
 // =========================================================================
-// <<< MODIFIED Objective Function >>>
-// Now much simpler, as it uses the helper function. The gradient logic is
-// unchanged.
+// Height-normalized Pseudo-Voigt objective with analytical gradients.
 // =========================================================================
 static double problem_function_global_bg(unsigned n, const double *x,
                                          double *grad, void *fdat) {
@@ -1800,6 +1802,7 @@ static double problem_function_global_bg(unsigned n, const double *x,
   const double *Rs = d->R;
   const double *Is = d->Int;
   const int nP = (n - 1) / 4;
+  const double C0 = 4.0 * log(2.0);
 
   double *calculated_I = (double *)malloc(Np * sizeof(double));
   if (!calculated_I)
@@ -1814,30 +1817,48 @@ static double problem_function_global_bg(unsigned n, const double *x,
   }
 
   // --- GRADIENT CALCULATION ---
+  // For height-normalized Pseudo-Voigt with shared FWHM:
+  // L(x) = 1 / (1 + 4*x^2/G^2)           [peaks at 1]
+  // Gaus(x) = exp(-C0*x^2/G^2)            [peaks at 1]
+  // where x = R - c, G = Gamma (FWHM)
+  //
+  // dI/dImax = m*L + (1-m)*Gaus
+  // dI/dm = Imax*(L - Gaus)
+  // dI/dc = Imax * [m * 8*x/(G^2*denom^2) + (1-m) * Gaus * 2*C0*x/G^2]
+  // dI/dG = Imax * [m * 8*x^2/(G^3*denom^2) + (1-m) * Gaus * 2*C0*x^2/G^3]
   if (grad) {
     memset(grad, 0, n * sizeof(double));
     for (int pN = 0; pN < nP; ++pN) {
-      double A = x[pN * 4 + 0], m = fmax(0., fmin(1., x[pN * 4 + 1])),
-             c = x[pN * 4 + 2], s = fmax(1e-9, x[pN * 4 + 3]);
+      double Imax = x[pN * 4 + 0], m = fmax(0., fmin(1., x[pN * 4 + 1])),
+             c = x[pN * 4 + 2], G = fmax(1e-9, x[pN * 4 + 3]);
       double *gA = &grad[pN * 4 + 0], *gm = &grad[pN * 4 + 1],
-             *gc = &grad[pN * 4 + 2], *gs = &grad[pN * 4 + 3];
+             *gc = &grad[pN * 4 + 2], *gG = &grad[pN * 4 + 3];
+      double G2 = G * G, G3 = G2 * G;
+      double invG2 = 1.0 / G2;
+
       for (int i = 0; i < Np; ++i) {
-        double diff = Rs[i] - c, diff_sq = diff * diff, s_sq = s * s;
-        double gaussian = exp(-diff_sq / (2. * s_sq)),
-               lorentzian = 1. / (1. + diff_sq / s_sq);
-        double residual = calculated_I[i] - Is[i]; // On-the-fly calculation
-        double common = 2. * residual;
-        *gA += common * (m * gaussian + (1 - m) * lorentzian);
-        *gm += common * A * (gaussian - lorentzian);
-        *gc += common * A *
-               (m * gaussian * (diff / s_sq) +
-                (1 - m) * lorentzian * lorentzian * (2 * diff / s_sq));
-        *gs += common * A *
-               (m * gaussian * (diff_sq / (s_sq * s)) +
-                (1 - m) * lorentzian * lorentzian * (2 * diff_sq / (s_sq * s)));
+        double diff = Rs[i] - c, diff_sq = diff * diff;
+        double denom = 1.0 + 4.0 * diff_sq * invG2;
+        double L = 1.0 / denom;
+        double Gaus = exp(-C0 * diff_sq * invG2);
+        double residual = calculated_I[i] - Is[i];
+        double common = 2.0 * residual;
+
+        // dI/dImax
+        *gA += common * (m * L + (1. - m) * Gaus);
+        // dI/dm
+        *gm += common * Imax * (L - Gaus);
+        // dI/dc: diff = R - c, d(diff)/dc = -1
+        double dLdc = 8.0 * diff / (G2 * denom * denom);
+        double dGausdc = Gaus * 2.0 * C0 * diff * invG2;
+        *gc += common * Imax * (m * dLdc + (1. - m) * dGausdc);
+        // dI/dG
+        double dLdG = 8.0 * diff_sq / (G3 * denom * denom);
+        double dGausdG = Gaus * 2.0 * C0 * diff_sq / G3;
+        *gG += common * Imax * (m * dLdG + (1. - m) * dGausdG);
       }
     }
-    //  Use the on-the-fly residual for the background gradient
+    //  Background gradient
     for (int i = 0; i < Np; ++i) {
       grad[n - 1] += 2.0 * (calculated_I[i] - Is[i]);
     }
@@ -2665,21 +2686,23 @@ int main(int argc, char *argv[]) {
               double sigma_g = fwhm * RBinSize / 2.355;
               if (sigma_g < RBinSize * 0.5)
                 sigma_g = RBinSize * 2.0;
+              // Convert sigma to FWHM (Gamma) for shared-FWHM pV
+              double gamma_g = sigma_g * 2.355;
               if (p == 0) {
                 primary_amp_guess = amp_g;
                 primary_bg_guess = bg_g;
               }
 
               int b = p * 4;
-              fitParams[b + 0] = amp_g;
-              fitParams[b + 1] = 0.5; // Mix
+              fitParams[b + 0] = amp_g; // Imax (peak height)
+              fitParams[b + 1] = 0.5;   // Mix
               fitParams[b + 2] = peak->radius;
-              fitParams[b + 3] = sigma_g;
+              fitParams[b + 3] = gamma_g; // FWHM (Gamma)
               lowerBounds[b + 0] = 0;
               lowerBounds[b + 1] = 0;
               lowerBounds[b + 2] = peak->radius - fwhm * RBinSize;
               lowerBounds[b + 3] = RBinSize * 0.5;
-              upperBounds[b + 0] = amp_g * 3.0; // Loose upper
+              upperBounds[b + 0] = amp_g * 3.0;
               upperBounds[b + 1] = 1.0;
               upperBounds[b + 2] = peak->radius + fwhm * RBinSize;
               upperBounds[b + 3] = (hR[job->endIndex] - hR[job->startIndex]);
@@ -2728,14 +2751,15 @@ int main(int argc, char *argv[]) {
               for (int p = 0; p < nJobPeaks; ++p) {
                 int out_base = (result_start + p) * 7;
                 int in_base = p * 4;
-                sendFitParams[out_base + 0] = fitParams[in_base + 0]; // Amp
+                sendFitParams[out_base + 0] = fitParams[in_base + 0]; // Imax
                 sendFitParams[out_base + 1] = localBG;
                 sendFitParams[out_base + 2] = fitParams[in_base + 1]; // Mix
                 sendFitParams[out_base + 3] = fitParams[in_base + 2]; // Cen
-                sendFitParams[out_base + 4] = fitParams[in_base + 3]; // Sig
+                // Convert Gamma (FWHM) to Gaussian-equiv sigma for output
+                sendFitParams[out_base + 4] =
+                    fitParams[in_base + 3] / (2.0 * sqrt(2.0 * log(2.0)));
                 sendFitParams[out_base + 5] = gof;
-                sendFitParams[out_base + 6] =
-                    0; // Area (skipped calc for speed here)
+                sendFitParams[out_base + 6] = 0; // Area (compute if needed)
               }
               total_successful_peaks += nJobPeaks;
             }
@@ -3066,21 +3090,23 @@ int main(int argc, char *argv[]) {
               double sigma_g = fwhm * RBinSize / 2.355;
               if (sigma_g < RBinSize * 0.5)
                 sigma_g = RBinSize * 2.0;
+              // Convert sigma to FWHM (Gamma) for shared-FWHM pV
+              double gamma_g = sigma_g * 2.355;
               if (p == 0) {
                 primary_amp_guess = amp_g;
                 primary_bg_guess = bg_g;
               }
 
               int b = p * 4;
-              fitParams[b + 0] = amp_g;
-              fitParams[b + 1] = 0.5; // Mix
+              fitParams[b + 0] = amp_g; // Imax (peak height)
+              fitParams[b + 1] = 0.5;   // Mix
               fitParams[b + 2] = peak->radius;
-              fitParams[b + 3] = sigma_g;
+              fitParams[b + 3] = gamma_g; // FWHM (Gamma)
               lowerBounds[b + 0] = 0;
               lowerBounds[b + 1] = 0;
               lowerBounds[b + 2] = peak->radius - fwhm * RBinSize;
               lowerBounds[b + 3] = RBinSize * 0.5;
-              upperBounds[b + 0] = amp_g * 3.0; // Loose upper
+              upperBounds[b + 0] = amp_g * 3.0;
               upperBounds[b + 1] = 1.0;
               upperBounds[b + 2] = peak->radius + fwhm * RBinSize;
               upperBounds[b + 3] = (hR[job->endIndex] - hR[job->startIndex]);
@@ -3112,11 +3138,13 @@ int main(int argc, char *argv[]) {
               int result_start = job_result_indices[i];
               for (int p = 0; p < nJobPeaks; ++p) {
                 int out_base = (result_start + p) * 7;
-                sendFitParams[out_base + 0] = fitParams[p * 4 + 0];
-                sendFitParams[out_base + 1] = fitParams[nFitParams - 1];
-                sendFitParams[out_base + 2] = fitParams[p * 4 + 1];
-                sendFitParams[out_base + 3] = fitParams[p * 4 + 2];
-                sendFitParams[out_base + 4] = fitParams[p * 4 + 3];
+                sendFitParams[out_base + 0] = fitParams[p * 4 + 0];      // Imax
+                sendFitParams[out_base + 1] = fitParams[nFitParams - 1]; // BG
+                sendFitParams[out_base + 2] = fitParams[p * 4 + 1];      // Mix
+                sendFitParams[out_base + 3] = fitParams[p * 4 + 2];      // Cen
+                // Convert Gamma to Gaussian-equiv sigma
+                sendFitParams[out_base + 4] =
+                    fitParams[p * 4 + 3] / (2.0 * sqrt(2.0 * log(2.0)));
                 sendFitParams[out_base + 5] = minObj;
                 sendFitParams[out_base + 6] = 0;
               }
