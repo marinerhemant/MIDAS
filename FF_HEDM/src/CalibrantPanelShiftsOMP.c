@@ -2320,6 +2320,18 @@ int main(int argc, char *argv[]) {
   means[11] = 0;
   double medStrain = 0, q25Strain = 0, q75Strain = 0, minStrain = 0,
          maxStrain = 0;
+  // Radius residual statistics (signed and absolute)
+  double medRadRes = 0, q25RadRes = 0, q75RadRes = 0;
+  double minRadRes = 0, maxRadRes = 0, meanRadRes = 0, stdRadRes = 0;
+  double meanAbsRadRes = 0, maxAbsRadRes = 0;
+  int nValidRadRes = 0;
+// Per-ring radius residual accumulators
+#define MAX_RINGS_STAT 200
+  double ringMeanRadRes[MAX_RINGS_STAT] = {0};
+  double ringMeanAbsRadRes[MAX_RINGS_STAT] = {0};
+  double ringMaxAbsRadRes[MAX_RINGS_STAT] = {0};
+  double ringIdealR[MAX_RINGS_STAT] = {0};
+  int ringCountRadRes[MAX_RINGS_STAT] = {0};
   int nValid = 0;
   for (a = StartNr; a <= EndNr; a++) {
     start = omp_get_wtime();
@@ -3070,6 +3082,26 @@ int main(int argc, char *argv[]) {
     double TRintG[3][3], TRsG[3][3];
     MatrixMultF33(RyG, RzG, TRintG);
     MatrixMultF33(RxG, TRintG, TRsG);
+    // Allocate array for radius residuals (for sorting/percentiles)
+    double *radResArr = malloc(nIndices * sizeof(double));
+    int nRadRes = 0;
+    double sumRadRes = 0, sumAbsRadRes = 0, sumRadResSq = 0;
+    double localMaxAbsRadRes = 0;
+    // Per-ring accumulators for this file
+    double localRingSum[MAX_RINGS_STAT] = {0};
+    double localRingAbsSum[MAX_RINGS_STAT] = {0};
+    double localRingMax[MAX_RINGS_STAT] = {0};
+    double localRingIdealR[MAX_RINGS_STAT] = {0};
+    int localRingCount[MAX_RINGS_STAT] = {0};
+    // Per-panel radius residual accumulators
+    double *panelRadResSum = NULL;
+    double *panelRadResAbsSum = NULL;
+    int *panelRadResCount = NULL;
+    if (nPanels > 0) {
+      panelRadResSum = calloc(nPanels, sizeof(double));
+      panelRadResAbsSum = calloc(nPanels, sizeof(double));
+      panelRadResCount = calloc(nPanels, sizeof(int));
+    }
     for (i = 0; i < nIndices; i++) {
       if (Diffs[i] < 0)
         continue;
@@ -3118,8 +3150,118 @@ int main(int argc, char *argv[]) {
           Etas[i], Diffs[i], RadOuts[i], EtaIns[i], DiffIns[i], RadIns[i],
           IdealTtheta[i], IsOutlier[i], YRawCorr, ZRawCorr, RingNumbers[i],
           RadGlobal, IdealR);
+      // Accumulate radius residual statistics (non-outlier only)
+      if (!IsOutlier[i]) {
+        double dR = RadGlobal - IdealR; // signed residual in microns
+        radResArr[nRadRes++] = dR;
+        sumRadRes += dR;
+        sumAbsRadRes += fabs(dR);
+        sumRadResSq += dR * dR;
+        if (fabs(dR) > localMaxAbsRadRes)
+          localMaxAbsRadRes = fabs(dR);
+        // Per-ring accumulation
+        int rn = RingNumbers[i];
+        if (rn >= 0 && rn < MAX_RINGS_STAT) {
+          localRingSum[rn] += dR;
+          localRingAbsSum[rn] += fabs(dR);
+          if (fabs(dR) > localRingMax[rn])
+            localRingMax[rn] = fabs(dR);
+          localRingIdealR[rn] = IdealR; // same for all points on this ring
+          localRingCount[rn]++;
+        }
+        // Per-panel accumulation
+        if (pIdx >= 0 && pIdx < nPanels) {
+          panelRadResSum[pIdx] += dR;
+          panelRadResAbsSum[pIdx] += fabs(dR);
+          panelRadResCount[pIdx]++;
+        }
+      }
     }
     fclose(Out);
+
+    // --- Compute radius residual statistics ---
+    nValidRadRes = nRadRes;
+    if (nRadRes > 0) {
+      meanRadRes = sumRadRes / nRadRes;
+      meanAbsRadRes = sumAbsRadRes / nRadRes;
+      maxAbsRadRes = localMaxAbsRadRes;
+      stdRadRes = sqrt(sumRadResSq / nRadRes - meanRadRes * meanRadRes);
+      // Sort signed residuals for percentiles
+      for (int ii = 1; ii < nRadRes; ii++) {
+        double key = radResArr[ii];
+        int jj = ii - 1;
+        while (jj >= 0 && radResArr[jj] > key) {
+          radResArr[jj + 1] = radResArr[jj];
+          jj--;
+        }
+        radResArr[jj + 1] = key;
+      }
+      medRadRes = radResArr[nRadRes / 2];
+      q25RadRes = radResArr[nRadRes / 4];
+      q75RadRes = radResArr[3 * nRadRes / 4];
+      minRadRes = radResArr[0];
+      maxRadRes = radResArr[nRadRes - 1];
+    }
+    free(radResArr);
+
+    // Copy per-ring stats for final summary (last file wins, like strain stats)
+    for (int rr = 0; rr < MAX_RINGS_STAT; rr++) {
+      ringMeanRadRes[rr] =
+          (localRingCount[rr] > 0) ? localRingSum[rr] / localRingCount[rr] : 0;
+      ringMeanAbsRadRes[rr] = (localRingCount[rr] > 0)
+                                  ? localRingAbsSum[rr] / localRingCount[rr]
+                                  : 0;
+      ringMaxAbsRadRes[rr] = localRingMax[rr];
+      ringIdealR[rr] = localRingIdealR[rr];
+      ringCountRadRes[rr] = localRingCount[rr];
+    }
+
+    // Print per-ring radius residual table
+    printf("\n           *** per-ring radius residual (\u03bcm) ***\n");
+    printf(" Ring   IdealR(\u03bcm)   NPoints   Mean|\u0394R|   Max|\u0394R|   "
+           " Mean\u0394R\n");
+    printf("--------------------------------------------------------------\n");
+    for (int rr = 0; rr < MAX_RINGS_STAT; rr++) {
+      if (localRingCount[rr] > 0) {
+        double rmean = localRingSum[rr] / localRingCount[rr];
+        double rabsmean = localRingAbsSum[rr] / localRingCount[rr];
+        printf(" %4d  %10.2f   %5d   %8.4f   %8.4f   %+8.4f\n", rr,
+               localRingIdealR[rr], localRingCount[rr], rabsmean,
+               localRingMax[rr], rmean);
+      }
+    }
+    printf(
+        "--------------------------------------------------------------\n\n");
+
+    // Print per-panel radius residual grid (if panels defined)
+    if (nPanels > 0 && panelRadResCount) {
+      printf("*** Per-Panel Mean|\u0394R| (\u03bcm) (Z^ Y>) ***\n");
+      for (int z = NPanelsZ - 1; z >= 0; z--) {
+        printf("Z%-1d |", z);
+        for (int y = 0; y < NPanelsY; y++) {
+          int pIdx = y * NPanelsZ + z;
+          if (pIdx < nPanels && panelRadResCount[pIdx] > 0) {
+            double pmean = panelRadResAbsSum[pIdx] / panelRadResCount[pIdx];
+            printf(" %2d:%6.2f", pIdx, pmean);
+          } else if (pIdx < nPanels) {
+            printf(" %2d:  --- ", pIdx);
+          }
+          printf(" |");
+        }
+        printf("\n");
+      }
+      printf("   ");
+      for (int y = 0; y < NPanelsY; y++)
+        printf("    Y=%-2d   ", y);
+      printf("\n***********************************\n\n");
+    }
+    if (panelRadResSum)
+      free(panelRadResSum);
+    if (panelRadResAbsSum)
+      free(panelRadResAbsSum);
+    if (panelRadResCount)
+      free(panelRadResCount);
+
     // Free arrays kept from the final iteration
     // (R, Eta, Indices, NrEachIndexBin, IdealR, IdealRmins, IdealRmaxs
     //  were already freed inside the iteration loop)
@@ -3167,6 +3309,31 @@ int main(int argc, char *argv[]) {
   printf("MinStrain  %0.6lf\n", minStrain * 1e6);
   printf("MaxStrain  %0.6lf\n", maxStrain * 1e6);
   printf("NPoints    %d\n", nValid);
+  // --- Aggregate radius residual statistics ---
+  printf("           *** radius residual (\u03bcm) ***\n");
+  printf("Mean\u0394R     %+.4f   (signed bias)\n", meanRadRes);
+  printf("Mean|\u0394R|    %.4f   (absolute)\n", meanAbsRadRes);
+  printf("Std\u0394R       %.4f\n", stdRadRes);
+  printf("Max|\u0394R|     %.4f\n", maxAbsRadRes);
+  printf("Median\u0394R   %+.4f\n", medRadRes);
+  printf("Q25\u0394R      %+.4f\n", q25RadRes);
+  printf("Q75\u0394R      %+.4f\n", q75RadRes);
+  printf("Min\u0394R      %+.4f\n", minRadRes);
+  printf("Max\u0394R      %+.4f\n", maxRadRes);
+  printf("NPoints     %d\n", nValidRadRes);
+  // Per-ring summary in final output
+  printf("\n           *** per-ring radius residual (\u03bcm) ***\n");
+  printf(" Ring   IdealR(\u03bcm)   NPoints   Mean|\u0394R|   Max|\u0394R|    "
+         "Mean\u0394R\n");
+  printf("--------------------------------------------------------------\n");
+  for (int rr = 0; rr < MAX_RINGS_STAT; rr++) {
+    if (ringCountRadRes[rr] > 0) {
+      printf(" %4d  %10.2f   %5d   %8.4f   %8.4f   %+8.4f\n", rr,
+             ringIdealR[rr], ringCountRadRes[rr], ringMeanAbsRadRes[rr],
+             ringMaxAbsRadRes[rr], ringMeanRadRes[rr]);
+    }
+  }
+  printf("--------------------------------------------------------------\n");
   printf("*******************Copy to par*******************\n");
   free(DarkFile);
   free(AverageDark);
