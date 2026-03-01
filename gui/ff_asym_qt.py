@@ -931,13 +931,9 @@ class FFViewer(QtWidgets.QMainWindow):
         self.bc_local = [bc_y, bc_z]
         self.lsd_local = lsd
         colors = _color_cycle_colors
-        print(f"[Rings] BC_Y={bc_y}, BC_Z={bc_z}, "
-              f"Lsd={lsd}, Lsd_orig={self.lsd_orig}, px={px}")
         for idx, rad in enumerate(self.ring_rads):
             Y, Z = compute_ring_points(rad, lsd, self.lsd_orig,
                                         [bc_y, bc_z], px)
-            print(f"  Ring {idx}: rad={rad:.1f}, center=({Y.mean():.1f}, {Z.mean():.1f}), "
-                  f"Y=[{Y.min():.1f}..{Y.max():.1f}], Z=[{Z.min():.1f}..{Z.max():.1f}]")
             color = colors[idx % len(colors)]
             curve = pg.PlotDataItem(Y, Z, pen=pg.mkPen(color, width=1.5))
             self.image_view.add_overlay(curve)
