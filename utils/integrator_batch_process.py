@@ -27,6 +27,7 @@ import socket
 import datetime
 import math
 from pathlib import Path
+import shutil
 import midas_config
 midas_config.run_startup_checks()
 
@@ -88,9 +89,11 @@ def read_parameters_from_file(param_file):
                 rmin = float(val)
             elif key == 'RBinSize':
                 rbin_size = float(val)
+            elif key == 'PanelShiftsFile':
+                panel_shifts_file = val
     
     n_rbins = int(math.ceil((rmax - rmin) / rbin_size))
-    return nx, ny, omega_sum_frames, n_rbins
+    return nx, ny, omega_sum_frames, n_rbins, panel_shifts_file
 
 def is_port_open(host, port, timeout=1):
     """Check if a port is open on the specified host"""
@@ -477,7 +480,7 @@ def main():
             print(f"Found {expected_frames} {extension} files to process")
     
     # Read parameters from parameter file
-    nx, ny, omega_sum_frames, n_rbins = read_parameters_from_file(param_file)
+    nx, ny, omega_sum_frames, n_rbins, panel_shifts_file = read_parameters_from_file(param_file)
     if nx == 0 or ny == 0:
         print("Error: Could not determine frame size from parameter file")
         sys.exit(1)
@@ -497,6 +500,13 @@ def main():
     
     # Add helpful environment variable that might be needed
     midas_env["CUDA_VISIBLE_DEVICES"] = "0"  # Use the first GPU
+    
+    # Copy PanelShiftsFile to the absolute analysis output dir if it exists, so DetectorMapper can find it
+    if panel_shifts_file:
+        panel_shifts_path = Path(param_file).parent / panel_shifts_file
+        if panel_shifts_path.exists():
+            print(f"Copying PanelShiftsFile {panel_shifts_file} to {output_dir}/")
+            shutil.copy2(panel_shifts_path, output_dir / panel_shifts_file)
     
     # Check if mapping files exist and create them if needed
     if not check_and_create_mapping_files(param_file, midas_env, output_dir):
