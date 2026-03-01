@@ -2650,8 +2650,7 @@ int main(int argc, char *argv[]) {
       CorrectTiltSpatialDistortion(
           nIndices, MaxRingRad, Yc, Zc, IdealTtheta, px, Lsd, ybc, zbc, tx,
           tyin, tzin, p0in, p1in, p2in, p3in, EtaIns, DiffIns, RadIns, &StdDiff,
-          outlierFactor, NULL, p4in, OutlierIterations,
-          iter == 0, NULL);
+          outlierFactor, NULL, p4in, OutlierIterations, iter == 0, NULL);
       NrCalls = 0;
 
       // Count and print indices per panel
@@ -2713,9 +2712,9 @@ int main(int argc, char *argv[]) {
                    &ybcFit, &zbcFit, &p0, &p1, &p2, &p3, &MeanDiff, tolTilts,
                    tolLsd, tolBC, tolP, tolP0, tolP1, tolP2, tolP3, tolShifts,
                    tolRotation, px, outlierFactor, MinIndicesForFit, FixPanelID,
-                   RingWeights, p4in, tolP4, PerPanelLsd,
-                   tolLsdPanel, PerPanelDistortion, tolP2Panel, WeightByRadius,
-                   snrWeights, &p4, iter == 0, L2Objective);
+                   RingWeights, p4in, tolP4, PerPanelLsd, tolLsdPanel,
+                   PerPanelDistortion, tolP2Panel, WeightByRadius, snrWeights,
+                   &p4, iter == 0, L2Objective);
       if (iter == 0) {
         printf("Number of function calls: %lld\n", NrCalls);
         printf("Lsd        %0.12f\n"
@@ -2893,8 +2892,7 @@ int main(int argc, char *argv[]) {
     CorrectTiltSpatialDistortion(
         nIndices, MaxRingRad, Yc, Zc, IdealTtheta, px, LsdFit, ybcFit, zbcFit,
         tx, ty, tz, p0, p1, p2, p3, Etas, Diffs, RadOuts, &StdDiff,
-        outlierFactor, IsOutlier, p4in, OutlierIterations, 1,
-        &MeanDiff);
+        outlierFactor, IsOutlier, p4in, OutlierIterations, 1, &MeanDiff);
     printf("StdStrain %0.12lf\n", StdDiff);
     // Compute strain statistics from valid (non-outlier) diffs
     nValid = 0;
@@ -3054,7 +3052,7 @@ int main(int argc, char *argv[]) {
       return 1;
     }
     fprintf(Out, "%%Eta Strain RadFit EtaCalc DiffCalc RadCalc Ideal2Theta "
-                 "Outlier YRawCorr ZRawCorr RingNr RadGlobal\n");
+                 "Outlier YRawCorr ZRawCorr RingNr RadGlobal IdealR\n");
     // Build tilt rotation matrix for RadGlobal computation
     double txrG = deg2rad * tx;
     double tyrG = deg2rad * ty;
@@ -3109,10 +3107,13 @@ int main(int argc, char *argv[]) {
       DistortG += p4in * pow(RNormG, 6.0);
       DistortG += 1;
       double RadGlobal = RadG * DistortG;
-      fprintf(Out, "%f %10.8f %10.8f %f %10.8f %10.8f %f %d %f %f %d %10.8f\n",
-              Etas[i], Diffs[i], RadOuts[i], EtaIns[i], DiffIns[i], RadIns[i],
-              IdealTtheta[i], IsOutlier[i], YRawCorr, ZRawCorr, RingNumbers[i],
-              RadGlobal);
+      double IdealR = LsdFit * tan(deg2rad * IdealTtheta[i]);
+      fprintf(
+          Out,
+          "%f %10.8f %10.8f %f %10.8f %10.8f %f %d %f %f %d %10.8f %10.8f\n",
+          Etas[i], Diffs[i], RadOuts[i], EtaIns[i], DiffIns[i], RadIns[i],
+          IdealTtheta[i], IsOutlier[i], YRawCorr, ZRawCorr, RingNumbers[i],
+          RadGlobal, IdealR);
     }
     fclose(Out);
     // Free arrays kept from the final iteration
