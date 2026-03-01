@@ -74,11 +74,12 @@ class MIDASImageView(pg.ImageView):
     # Emitted when image data changes: (min, max, p2, p98)
     dataStatsUpdated = QtCore.pyqtSignal(float, float, float, float)
 
-    def __init__(self, parent=None, name='MIDASImageView', **kwargs):
+    def __init__(self, parent=None, name='MIDASImageView', origin='bl', **kwargs):
         super().__init__(parent=parent, name=name, view=pg.PlotItem(), **kwargs)
 
         self._raw_data = None
         self._log_mode = False
+        self._origin = origin  # 'bl' = bottom-left, 'br' = bottom-right
 
         # Remove the default ROI and Norm buttons for a cleaner look
         self.ui.roiBtn.hide()
@@ -107,11 +108,7 @@ class MIDASImageView(pg.ImageView):
     def set_image_data(self, data, auto_levels=True, levels=None):
         """Set image data with smart percentile-based auto-levels."""
         self._raw_data = data
-        # PyQtGraph maps axis-0 → X, axis-1 → Y.  Transpose so that
-        # rows (axis-0) → Y (vertical) and cols (axis-1) → X (horizontal),
-        # matching matplotlib imshow + invert_yaxis with origin at bottom-left.
-        display_raw = data.T
-        display = self._apply_log(display_raw) if self._log_mode else display_raw
+        display = self._apply_log(data) if self._log_mode else data
 
         # Compute stats
         finite = display[np.isfinite(display)]
@@ -133,6 +130,15 @@ class MIDASImageView(pg.ImageView):
             self.setImage(display, autoLevels=False, levels=(p2, p98))
         else:
             self.setImage(display, autoLevels=False)
+
+        # Force origin position AFTER setImage (which may reset axes)
+        vb = self.getView()
+        if self._origin == 'bl':  # bottom-left: y=0 bottom, x=0 left
+            vb.invertY(False)
+            vb.invertX(False)
+        elif self._origin == 'br':  # bottom-right: y=0 bottom, x=0 right
+            vb.invertY(False)
+            vb.invertX(True)
 
     def set_log_mode(self, enabled):
         """Toggle log10 display."""

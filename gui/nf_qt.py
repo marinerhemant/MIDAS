@@ -237,7 +237,7 @@ class NFViewer(QtWidgets.QMainWindow):
         self.splitter = QtWidgets.QSplitter(QtCore.Qt.Horizontal)
 
         # Left: diffraction image
-        self.image_view = MIDASImageView(self, name='Diffraction')
+        self.image_view = MIDASImageView(self, name='Diffraction', origin='br')
         self.image_view.set_colormap('bone')
         self.splitter.addWidget(self.image_view)
 
