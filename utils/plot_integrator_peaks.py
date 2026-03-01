@@ -28,13 +28,20 @@ from scipy.optimize import curve_fit
 from scipy.signal import find_peaks
 
 
-def gaussian(x, amp, mu, sigma, bg):
-    """Gaussian peak + constant background."""
-    return amp * np.exp(-0.5 * ((x - mu) / sigma) ** 2) + bg
+def pseudo_voigt(x, amp, mu, sigma, eta, bg):
+    """Pseudo-Voigt peak + constant background.
+
+    pV(x) = eta * Lorentzian + (1 - eta) * Gaussian + bg
+    where eta is the mixing parameter (0 = pure Gaussian, 1 = pure Lorentzian).
+    """
+    dx = (x - mu) / sigma
+    gauss = np.exp(-0.5 * dx ** 2)
+    lorentz = 1.0 / (1.0 + dx ** 2)
+    return amp * (eta * lorentz + (1.0 - eta) * gauss) + bg
 
 
 def fit_peak(tth_arr, intensity, peak_idx, half_window=5):
-    """Fit a Gaussian to a peak in the 1D intensity profile.
+    """Fit a pseudo-Voigt to a peak in the 1D intensity profile.
 
     Parameters
     ----------
@@ -50,7 +57,7 @@ def fit_peak(tth_arr, intensity, peak_idx, half_window=5):
     Returns
     -------
     dict or None
-        {'tth_fit': float, 'amp': float, 'sigma': float, 'bg': float}
+        {'tth_fit': float, 'amp': float, 'sigma': float, 'eta': float, 'bg': float}
         or None if fit fails.
     """
     lo = max(0, peak_idx - half_window)
@@ -58,24 +65,26 @@ def fit_peak(tth_arr, intensity, peak_idx, half_window=5):
     x = tth_arr[lo:hi]
     y = intensity[lo:hi]
 
-    if len(x) < 4:
+    if len(x) < 5:
         return None
 
     # Initial guesses
     amp0 = y.max() - y.min()
     mu0 = tth_arr[peak_idx]
     sigma0 = (x[-1] - x[0]) / 4.0
+    eta0 = 0.5  # start halfway between Gaussian and Lorentzian
     bg0 = y.min()
 
     try:
         popt, _ = curve_fit(
-            gaussian, x, y,
-            p0=[amp0, mu0, sigma0, bg0],
-            bounds=([0, x[0], 1e-6, -np.inf],
-                    [np.inf, x[-1], x[-1] - x[0], np.inf]),
-            maxfev=2000
+            pseudo_voigt, x, y,
+            p0=[amp0, mu0, sigma0, eta0, bg0],
+            bounds=([0, x[0], 1e-6, 0.0, -np.inf],
+                    [np.inf, x[-1], x[-1] - x[0], 1.0, np.inf]),
+            maxfev=3000
         )
-        return {'tth_fit': popt[1], 'amp': popt[0], 'sigma': popt[2], 'bg': popt[3]}
+        return {'tth_fit': popt[1], 'amp': popt[0], 'sigma': popt[2],
+                'eta_mix': popt[3], 'bg': popt[4]}
     except (RuntimeError, ValueError):
         return None
 
