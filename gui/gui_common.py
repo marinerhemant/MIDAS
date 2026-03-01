@@ -107,9 +107,10 @@ class MIDASImageView(pg.ImageView):
     def set_image_data(self, data, auto_levels=True, levels=None):
         """Set image data with smart percentile-based auto-levels."""
         self._raw_data = data
-        # Flip rows so visual matches matplotlib imshow+invert_yaxis
-        # while keeping PyQtGraph's default y=0 at bottom-left.
-        display_raw = data[::-1, :].copy()
+        # PyQtGraph maps axis-0 → X, axis-1 → Y.  Transpose so that
+        # rows (axis-0) → Y (vertical) and cols (axis-1) → X (horizontal),
+        # matching matplotlib imshow + invert_yaxis with origin at bottom-left.
+        display_raw = data.T
         display = self._apply_log(display_raw) if self._log_mode else display_raw
 
         # Compute stats
