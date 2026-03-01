@@ -901,7 +901,7 @@ class FFViewer(QtWidgets.QMainWindow):
             data = np.maximum(data - dark_data, 0)
 
         self.bdata = data
-        self.image_view.set_image_data(data[::-1, :])
+        self.image_view.set_image_data(data)
         self.frame_label.setText(f"Frame {self.frame_nr}")
         if self.show_rings and self.ring_rads:
             self._draw_rings()

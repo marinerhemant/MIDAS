@@ -130,6 +130,10 @@ class MIDASImageView(pg.ImageView):
         else:
             self.setImage(display, autoLevels=False)
 
+        # Match matplotlib's invert_yaxis(): row 0 at top visually,
+        # but axis labels read 0 at bottom, increasing upward.
+        self.getView().invertY(True)
+
     def set_log_mode(self, enabled):
         """Toggle log10 display."""
         self._log_mode = enabled
