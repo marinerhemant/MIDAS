@@ -16,7 +16,7 @@ There are **two primary workflows** depending on your experimental needs:
 | **Script** | `utils/integrator_batch_process.py` | `utils/integrator.py` |
 | **Best For** | **Real-time** experiments, High-throughput, Large Datasets | **Post-experiment** analysis, Single files, Systems without GPUs |
 | **Engine** | `IntegratorFitPeaksGPUStream` (CUDA) | `IntegratorZarrOMP` (OpenMP) |
-| **Key Feature** | Live streaming from detector (PVA) or folder | Parallel processing of individual file chunks |
+| **Key Feature** | Live streaming from detector (PVA) or folder, optional 1D peak fitting | Parallel processing of individual file chunks |
 | **Outputs** | HDF5 with fit results & lineouts, zarr.zip for GSAS-II | Zarr/HDF5 with lineouts, zarr.zip for GSAS-II, MATLAB (.mat) option |
 
 ---
@@ -46,6 +46,7 @@ graph LR
     Mapper -->|"Map.bin"| GPU
     Server -->|"Frames (Socket)"| GPU
     GPU -->|"Binary Stream"| Post["integrator_stream_process_h5.py"]
+    GPU -->|"fit.bin"| Fit["Peak Fit Results"]
     Post --> Final["Final Output .h5"]
     Post --> Zarr["GSAS-II zarr.zip"]
 ```
@@ -88,6 +89,145 @@ python ~/opt/MIDAS/utils/integrator_batch_process.py \
 | `--zarr-output` | Custom filename for the GSAS-II zarr.zip output (default: auto from `--output-h5`). |
 | `--no-zarr` | Skip zarr.zip creation (HDF5 only). |
 | `--save-interval` | How often (in frames) to save the intermediate mapping file. Default: 500. |
+
+### 2.5. Peak Fitting (GPU Backend)
+
+The GPU streaming engine can optionally perform **1D Pseudo-Voigt peak fitting** on the azimuthally-integrated 1D lineout for every frame. This is enabled by adding peak fitting parameters to the parameter file.
+
+> [!NOTE]
+> Peak fitting runs on the **CPU** (parallelized with OpenMP) after the GPU integration completes each frame. The fitted parameters are streamed to `fit.bin` in real time.
+
+#### Peak Shape Model
+
+Each peak in the 1D lineout is fitted with a **height-normalized Pseudo-Voigt** profile. The Gaussian and Lorentzian components share a single FWHM (Gamma):
+
+$$L(R) = \frac{1}{1 + 4\,(R - R_{cen})^2 / \Gamma^2} \qquad G(R) = \exp\!\left(-\frac{4\ln 2\,(R - R_{cen})^2}{\Gamma^2}\right)$$
+
+$$I(R) = BG + I_{max}\bigl[\mu\,L(R) + (1-\mu)\,G(R)\bigr]$$
+
+Both $L$ and $G$ peak at 1.0 at $R = R_{cen}$. The fitted parameters are:
+
+| Parameter | Description |
+|---|---|
+| $I_{max}$ | Peak height above background |
+| $\mu$ | Pseudo-Voigt mixing (0 = pure Gaussian, 1 = pure Lorentzian) |
+| $R_{cen}$ | Peak center (radial position in pixel units) |
+| $\Gamma$ | Full-Width at Half-Maximum (shared by Gaussian and Lorentzian components) |
+| $BG$ | Background level (shared across all peaks in each ROI) |
+
+When multiple peaks overlap, they are fitted simultaneously within a shared ROI with a common background.
+
+#### Specifying Peaks
+
+There are two ways to tell the engine which peaks to fit:
+
+**Mode 1: User-Specified Peak Locations** (recommended for known ring positions)
+
+Add one `PeakLocation` line per expected ring radius (in pixel units) to the parameter file:
+
+```text
+DoPeakFit 1
+PeakLocation 245.3
+PeakLocation 347.1
+PeakLocation 425.8
+```
+
+Each `PeakLocation` is snapped to the nearest radial bin. If no bin is within `2 × RBinSize` of the specified location, that peak is silently skipped. Setting `PeakLocation` automatically enables `DoPeakFit 1` and `MultiplePeaks 1`, and disables smoothing.
+
+**Mode 2: Automatic Peak Discovery**
+
+Set `DoPeakFit 1` and `MultiplePeaks 1` without any `PeakLocation` lines. The engine will automatically find peaks in the 1D lineout by searching for local maxima. Optional Savitzky-Golay smoothing (`DoSmoothing 1`) can reduce noise before peak detection.
+
+```text
+DoPeakFit 1
+MultiplePeaks 1
+DoSmoothing 1
+```
+
+#### Fitting Parameters
+
+| Parameter | Type | Default | Description |
+|---|---|---|---|
+| `DoPeakFit` | int | `0` | `1` = enable 1D peak fitting on the integrated lineout |
+| `MultiplePeaks` | int | `0` | `1` = enable multi-peak fitting (must be `1` for >1 peak) |
+| `PeakLocation` | float | — | Expected peak radius (pixels). Repeatable, one per line. Implicitly enables `DoPeakFit`, `MultiplePeaks`, and disables smoothing |
+| `DoSmoothing` | int | `0` | `1` = apply Savitzky-Golay smoothing before automatic peak finding (window sizes 5, 7, or 9) |
+| `FitROIPadding` | int | `20` | Half-width of the fitting Region of Interest around each peak (in radial bins) |
+| `FitROIAuto` | int | `0` | `1` = automatically determine ROI width from estimated FWHM (overrides `FitROIPadding`). ROI = max(15, 1.5 × FWHM) |
+
+#### Fitting Pipeline (Per Frame)
+
+```mermaid
+graph TD
+    A["GPU: Azimuthal Integration → 1D Lineout I(R)"] --> B{Peaks specified?}
+    B -->|"PeakLocation lines"| C["Snap each location to nearest R bin"]
+    B -->|"Auto-discovery"| D["Find local maxima in lineout"]
+    C --> E["Sort peaks by R"]
+    D --> E
+    E --> F["Build ROIs (merge overlapping)"]
+    F --> G["Estimate initial params per peak<br/>(BG from edges, Imax, FWHM)"]
+    G --> H["L-BFGS optimization (nlopt)"]
+    H --> I{Converged?}
+    I -->|Yes| K
+    I -->|No| J["Fallback: Nelder-Mead simplex"]
+    J --> K["Extract: Imax, BG, Mu, Rcen, Sigma"]
+    K --> L["Write to fit.bin"]
+```
+
+1. **1D Lineout:** The GPU reduces the 2D caked image to a 1D `I(R)` profile by averaging all eta bins for each radial bin.
+2. **Peak Identification:** Peaks are found either from user-specified `PeakLocation` entries (snapped to the nearest R bin) or by automatic local maxima detection.
+3. **ROI Construction:** A region of interest is built around each peak (`±FitROIPadding` bins or auto-sized). Overlapping ROIs are merged, and their peaks are fitted jointly with a shared background.
+4. **Initial Guess:** Background is estimated from the ROI edges (average of up to 5 edge points). Peak height (`Imax`) is estimated from the peak maximum minus background. FWHM is estimated by scanning for the half-maximum crossings.
+5. **Optimization:** The L-BFGS algorithm (with analytical gradients) minimizes the sum of squared residuals. If L-BFGS fails, the Nelder-Mead simplex method is used as a fallback.
+6. **Output:** Fitted parameters are converted to backward-compatible units (Gamma → Gaussian-equivalent sigma: $\sigma = \Gamma / 2.355$) and written to `fit.bin`.
+
+#### Output Format (`fit.bin`)
+
+The fit results are written as a binary stream of `double` values, **7 values per peak per frame**:
+
+| Column | Name | Description |
+|---|---|---|
+| 0 | `Imax` | Fitted peak height above background |
+| 1 | `BG` | Fitted background level |
+| 2 | `Mu` | Pseudo-Voigt mixing parameter (0–1) |
+| 3 | `Rcen` | Fitted peak center (pixel units) |
+| 4 | `Sigma` | Gaussian-equivalent sigma ($= \Gamma / 2.355$) |
+| 5 | `GoF` | Goodness-of-fit (sum of squared residuals) |
+| 6 | `Area` | Reserved (currently 0) |
+
+A companion file `fit_curves.bin` is also written, containing the fitted model curves for visualization.
+
+> [!TIP]
+> To read the fit results in Python:
+> ```python
+> import numpy as np
+> n_peaks = 3  # number of PeakLocation entries
+> data = np.fromfile('fit.bin', dtype=np.float64).reshape(-1, n_peaks, 7)
+> # data[frame_idx, peak_idx, column_idx]
+> imax = data[:, :, 0]   # Peak heights for all frames, all peaks
+> rcen = data[:, :, 3]   # Peak centers
+> sigma = data[:, :, 4]  # Gaussian-equiv sigma
+> ```
+
+#### Example: Fitting Three Calibrant Rings
+
+```text
+# In parameter file:
+DoPeakFit 1
+PeakLocation 245.3
+PeakLocation 347.1
+PeakLocation 425.8
+FitROIPadding 25
+```
+
+```bash
+python ~/opt/MIDAS/utils/integrator_batch_process.py \
+    --param-file setup_30keV.txt \
+    --folder /data/experiment/scan_01 \
+    --dark /data/experiment/darks/dark_avg.bin \
+    --output-h5 scan_01_integrated.h5
+# After completion, fit.bin and fit_curves.bin will be in the working directory
+```
 
 ---
 
@@ -195,6 +335,7 @@ The radial integration is performed by one of two engines, optimized for differe
         *   `initialize_PerFrameArr`: Pre-calculates static bin data (R, Eta, Area) and applies pixel masks.
         *   `integrate_kernel`: Performs the weighted summation of pixels for each bin. It uses atomic adds for the "Summed Image" feature.
         *   `calculate_1D_profile_kernel`: efficiently reduces the 2D (R, Eta) array to a 1D (R) profile using **Warp Shuffle** intrinsics (`__shfl_down_sync`) for high-speed reduction within GPU thread blocks.
+*   **CPU-Side Peak Fitting:** When `DoPeakFit` is enabled, after each frame's GPU integration completes, the 1D lineout is passed to an OpenMP-parallelized CPU fitting pipeline that uses `nlopt` (L-BFGS with analytical gradients, Nelder-Mead fallback) to fit height-normalized Pseudo-Voigt peaks. See [Section 2.5](#25-peak-fitting-gpu-backend) for full details.
 
 ### 4.3. DetectorMapper (The Geometry Engine)
 This tool runs automatically at the start of either workflow. It consumes the experimental geometry (distance, tilts, pixel size) and produces two look-up tables:
@@ -238,6 +379,19 @@ The parameter file is a text file containing key-value pairs used by both the `i
 | `NPanelsY`, `NPanelsZ` | `int` | Number of detector panels in Y and Z directions |
 | `PanelSizeY`, `PanelSizeZ` | `int` | Size of each panel in pixels |
 | `PanelGapsY`, `PanelGapsZ` | `int` | Gap size between panels in pixels |
+
+### A.4. Peak Fitting (GPU Engine Only)
+
+These parameters control the optional 1D peak fitting in `IntegratorFitPeaksGPUStream`. See [Section 2.5](#25-peak-fitting-gpu-backend) for full documentation.
+
+| Parameter | Type | Default | Description |
+| :--- | :--- | :--- | :--- |
+| `DoPeakFit` | `int` | `0` | `1` = enable 1D Pseudo-Voigt peak fitting |
+| `MultiplePeaks` | `int` | `0` | `1` = allow fitting multiple peaks |
+| `PeakLocation` | `float` | — | Expected peak radius (pixels). Repeatable. Implicitly enables fitting |
+| `DoSmoothing` | `int` | `0` | `1` = Savitzky-Golay smoothing before auto peak detection |
+| `FitROIPadding` | `int` | `20` | Half-width of fitting ROI (radial bins) |
+| `FitROIAuto` | `int` | `0` | `1` = auto-size ROI from FWHM |
 
 ## 6. Output Formats
 
