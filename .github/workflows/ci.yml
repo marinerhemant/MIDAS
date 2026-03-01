@@ -66,3 +66,64 @@ jobs:
             -Wno-dev
             
           cmake --build . -j 8
+
+  build-linux-cuda:
+    runs-on: ubuntu-latest
+    container: nvidia/cuda:12.6.3-devel-ubuntu24.04
+    timeout-minutes: 30
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Install system dependencies
+        run: |
+          apt-get update
+          apt-get install -y \
+            build-essential \
+            cmake \
+            pkg-config \
+            python3-dev \
+            zlib1g-dev \
+            libjpeg-dev \
+            libtiff-dev \
+            libpng-dev \
+            libssl-dev \
+            libbz2-dev \
+            liblzma-dev \
+            libzstd-dev \
+            liblz4-dev \
+            libzip-dev \
+            libhdf5-dev \
+            libblosc-dev \
+            libblosc2-dev \
+            libnlopt-dev \
+            libfftw3-dev
+
+      - name: Build (with CUDA)
+        run: |
+          # Move custom cmake files to avoid forcing custom builds
+          mkdir -p cmake/deps/backup
+          mv cmake/deps/*_custom.cmake cmake/deps/backup/ 2>/dev/null || true
+
+          # HDF5 specific configuration for Ubuntu
+          export HDF5_DIR=/usr/lib/x86_64-linux-gnu/hdf5/serial
+          export HDF5_INCLUDE_DIR=/usr/include/hdf5/serial
+
+          mkdir -p build
+          cd build
+          cmake .. \
+            -DUSE_SYSTEM_DEPS=ON \
+            -DDOWNLOAD_DEPENDENCIES=OFF \
+            -DINSTALL_PYTHON_DEPENDENCIES=OFF \
+            -DCMAKE_BUILD_TYPE=Release \
+            -DUSE_CUDA=ON \
+            -DCMAKE_CUDA_ARCHITECTURES="86;90" \
+            -DCMAKE_PREFIX_PATH="/usr/lib/x86_64-linux-gnu/hdf5/serial" \
+            -DCMAKE_C_FLAGS="-I/usr/include/hdf5/serial" \
+            -DCMAKE_CXX_FLAGS="-I/usr/include/hdf5/serial" \
+            -DHDF5_DIR="/usr/lib/x86_64-linux-gnu/hdf5/serial" \
+            -DHDF5_INCLUDE_DIRS="/usr/include/hdf5/serial" \
+            -Wno-dev
+
+          cmake --build . -j 8
