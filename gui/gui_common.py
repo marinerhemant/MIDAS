@@ -74,6 +74,10 @@ class MIDASImageView(QtWidgets.QWidget):
     frameScrolled = QtCore.pyqtSignal(int)
     # Emitted when image data changes: (min, max, p2, p98)
     dataStatsUpdated = QtCore.pyqtSignal(float, float, float, float)
+    # Emitted for movie mode: advance one frame
+    movieFrameAdvance = QtCore.pyqtSignal()
+    # Emitted when a file is dropped onto the viewer
+    fileDropped = QtCore.pyqtSignal(str)
 
     def __init__(self, parent=None, name='MIDASImageView', origin='bl', **kwargs):
         super().__init__(parent)
@@ -131,6 +135,9 @@ class MIDASImageView(QtWidgets.QWidget):
         # Install event filter for zoom-rect and pan
         self._iv.scene.sigMouseClicked.connect(self._on_scene_clicked)
 
+        # Enable drag-and-drop
+        self.setAcceptDrops(True)
+
     # ── Navigation Toolbar ─────────────────────────────────────────
 
     def _build_nav_bar(self):
@@ -184,9 +191,46 @@ class MIDASImageView(QtWidgets.QWidget):
 
         bar.addSeparator()
 
+        # ── Movie controls ──
+        self._play_btn = QtWidgets.QToolButton()
+        self._play_btn.setIcon(style.standardIcon(QtWidgets.QStyle.SP_MediaPlay))
+        self._play_btn.setToolTip("Play – Animate frames")
+        self._play_btn.clicked.connect(self._movie_play)
+        bar.addWidget(self._play_btn)
+
+        self._pause_btn = QtWidgets.QToolButton()
+        self._pause_btn.setIcon(style.standardIcon(QtWidgets.QStyle.SP_MediaPause))
+        self._pause_btn.setToolTip("Pause – Pause animation")
+        self._pause_btn.clicked.connect(self._movie_pause)
+        self._pause_btn.setEnabled(False)
+        bar.addWidget(self._pause_btn)
+
+        self._stop_btn = QtWidgets.QToolButton()
+        self._stop_btn.setIcon(style.standardIcon(QtWidgets.QStyle.SP_MediaStop))
+        self._stop_btn.setToolTip("Stop – Stop and reset to first frame")
+        self._stop_btn.clicked.connect(self._movie_stop)
+        self._stop_btn.setEnabled(False)
+        bar.addWidget(self._stop_btn)
+
+        fps_label = QtWidgets.QLabel("  FPS:")
+        bar.addWidget(fps_label)
+        self._fps_spin = QtWidgets.QSpinBox()
+        self._fps_spin.setRange(1, 30)
+        self._fps_spin.setValue(5)
+        self._fps_spin.setToolTip("Frames per second for animation")
+        self._fps_spin.valueChanged.connect(self._update_movie_timer)
+        self._fps_spin.setFixedWidth(50)
+        bar.addWidget(self._fps_spin)
+
+        bar.addSeparator()
+
         # Mode label
         self._mode_label = QtWidgets.QLabel("  Mode: Pointer")
         bar.addWidget(self._mode_label)
+
+        # ── Movie timer ──
+        self._movie_timer = QtCore.QTimer(self)
+        self._movie_timer.timeout.connect(self._movie_tick)
 
         return bar
 
@@ -254,6 +298,56 @@ class MIDASImageView(QtWidgets.QWidget):
     def _on_scene_clicked(self, ev):
         """Handle mouse press for zoom-rect mode."""
         pass  # Clicks handled separately; zoom uses press/release
+
+    # ── Movie Controls ─────────────────────────────────────────────
+
+    def _movie_play(self):
+        """Start frame animation."""
+        fps = self._fps_spin.value()
+        self._movie_timer.start(int(1000 / fps))
+        self._play_btn.setEnabled(False)
+        self._pause_btn.setEnabled(True)
+        self._stop_btn.setEnabled(True)
+        self._mode_label.setText(f"  ▶ Playing ({fps} fps)")
+
+    def _movie_pause(self):
+        """Pause frame animation."""
+        self._movie_timer.stop()
+        self._play_btn.setEnabled(True)
+        self._pause_btn.setEnabled(False)
+        self._mode_label.setText("  ⏸ Paused")
+
+    def _movie_stop(self):
+        """Stop frame animation."""
+        self._movie_timer.stop()
+        self._play_btn.setEnabled(True)
+        self._pause_btn.setEnabled(False)
+        self._stop_btn.setEnabled(False)
+        self._mode_label.setText("  Mode: Pointer")
+
+    def _movie_tick(self):
+        """Advance one frame in movie mode."""
+        self.movieFrameAdvance.emit()
+
+    def _update_movie_timer(self, fps):
+        """Update timer interval when FPS changes."""
+        if self._movie_timer.isActive():
+            self._movie_timer.setInterval(int(1000 / max(1, fps)))
+            self._mode_label.setText(f"  ▶ Playing ({fps} fps)")
+
+    # ── Drag-and-Drop ──────────────────────────────────────────────
+
+    def dragEnterEvent(self, ev):
+        if ev.mimeData().hasUrls():
+            ev.acceptProposedAction()
+        else:
+            ev.ignore()
+
+    def dropEvent(self, ev):
+        urls = ev.mimeData().urls()
+        if urls:
+            path = urls[0].toLocalFile()
+            self.fileDropped.emit(path)
 
     # ── Public API ──────────────────────────────────────────────────
 

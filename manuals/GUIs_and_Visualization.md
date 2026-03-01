@@ -64,6 +64,10 @@ python ~/opt/MIDAS/gui/ff_asym_qt.py &
 - **Colormap** and **theme** (dark/light) selection
 - **Font size** control (8–24pt)
 - **Export PNG** of current view
+- **🎬 Movie mode**: Play/Pause/Stop + FPS slider (1–30) — animates through frames automatically
+- **🖱️ Drag-and-drop**: drop a file or folder onto the viewer to open it
+- **📊 Intensity vs Frame**: dock widget showing mean/max intensity across all frames, click to jump (View → Intensity vs Frame)
+- **💾 Session save/restore**: File → Save/Load Session as `.session.json` (Ctrl+S / Ctrl+Shift+S)
 
 ### Key Differences from Legacy (`ff_asym.py`)
 
@@ -96,6 +100,7 @@ All features from the FF viewer plus:
 - **BoxH / BoxV ROI tools**: rectangular region-of-interest with real-time Sum, Mean, Min, Max statistics
 - **Beam center determination**: guided workflow for multi-distance calibration
 - **Origin at bottom-right** (matching physical NF detector convention)
+- **🎬 Movie mode**, **🖱️ drag-drop**, **💾 session save** — same as FF viewer
 
 For detailed NF-specific calibration workflows, see [NF_GUI.md](NF_GUI.md).
 
@@ -232,6 +237,10 @@ Built into `MIDASImageView`, displayed below the image:
 | ▶ Forward | Next view in history |
 | 📋 Pan | Toggle: drag to move |
 | 🔍 Zoom | Toggle: drag rectangle to zoom |
+| ▶ Play | Animate frames at set FPS |
+| ⏸ Pause | Pause animation |
+| ⏹ Stop | Stop animation, reset mode |
+| FPS | 1–30 frames per second spinner |
 
 Mouse-wheel zoom is disabled by default. Ctrl+wheel scrolls frames.
 

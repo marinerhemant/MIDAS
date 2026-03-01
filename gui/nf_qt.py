@@ -14,6 +14,7 @@ import subprocess
 import threading
 import concurrent.futures
 import glob
+import json
 
 import numpy as np
 from math import sin, cos
@@ -228,6 +229,15 @@ class NFViewer(QtWidgets.QMainWindow):
         self.setCentralWidget(central)
         main_layout = QtWidgets.QVBoxLayout(central)
         main_layout.setContentsMargins(4, 4, 4, 4)
+
+        # Menu bar
+        file_menu = self.menuBar().addMenu('&File')
+        save_act = file_menu.addAction('Save Session...')
+        save_act.setShortcut('Ctrl+S')
+        save_act.triggered.connect(self._save_session)
+        load_act = file_menu.addAction('Load Session...')
+        load_act.setShortcut('Ctrl+Shift+S')
+        load_act.triggered.connect(self._load_session)
 
         # Toolbar
         tb = self._build_toolbar()
@@ -523,6 +533,10 @@ class NFViewer(QtWidgets.QMainWindow):
         self.image_view.cursorMoved.connect(self._on_cursor_moved)
         self.image_view.dataStatsUpdated.connect(self._on_stats_updated)
         self.col_group.buttonClicked.connect(self._on_col_mode_changed)
+        # Movie mode: advance frame by 1 (wraps at max)
+        self.image_view.movieFrameAdvance.connect(self._movie_advance_frame)
+        # Drag-and-drop: open dropped file
+        self.image_view.fileDropped.connect(self._on_file_dropped)
 
     def _on_font_changed(self, size):
         QtWidgets.QApplication.instance().setStyleSheet(f'* {{ font-size: {size}pt; }}')
@@ -552,11 +566,103 @@ class NFViewer(QtWidgets.QMainWindow):
         add_shortcut(self, 'Left', lambda: self.frame_spin.setValue(self.frame_spin.value() - 1))
         add_shortcut(self, 'L', lambda: self.log_check.toggle())
 
+    # ── Session Save / Load ────────────────────────────────────────
+
+    def _save_session(self):
+        fn, _ = QtWidgets.QFileDialog.getSaveFileName(
+            self, 'Save Session', '', 'Session Files (*.session.json);;All (*)')
+        if not fn:
+            return
+        if not fn.endswith('.session.json'):
+            fn += '.session.json'
+        state = {
+            'viewer': 'nf',
+            'folder': self.folder,
+            'fnstem': self.fnstem,
+            'padding': self.padding,
+            'start_frame_nr': self.start_frame_nr,
+            'n_files_per_dist': self.n_files_per_dist,
+            'frame': self.frame_spin.value(),
+            'distance': self.dist_spin.value(),
+            'ny': self.ny, 'nz': self.nz,
+            'colormap': self.cmap_combo.currentText(),
+            'theme': self.theme_combo.currentText(),
+            'log': self.log_check.isChecked(),
+            'hflip': self.hflip_check.isChecked(),
+            'vflip': self.vflip_check.isChecked(),
+            'transpose': self.transpose_check.isChecked(),
+            'median': self.median_check.isChecked(),
+        }
+        try:
+            with open(fn, 'w') as f:
+                json.dump(state, f, indent=2)
+            print(f'Session saved: {fn}')
+        except Exception as e:
+            print(f'Session save failed: {e}')
+
+    def _load_session(self):
+        fn, _ = QtWidgets.QFileDialog.getOpenFileName(
+            self, 'Load Session', '', 'Session Files (*.session.json);;All (*)')
+        if not fn:
+            return
+        try:
+            with open(fn) as f:
+                state = json.load(f)
+        except Exception as e:
+            print(f'Session load failed: {e}')
+            return
+        self.folder = state.get('folder', self.folder)
+        self.fnstem = state.get('fnstem', self.fnstem)
+        self.padding = state.get('padding', self.padding)
+        self.start_frame_nr = state.get('start_frame_nr', self.start_frame_nr)
+        self.n_files_per_dist = state.get('n_files_per_dist', self.n_files_per_dist)
+        self.ny = state.get('ny', self.ny)
+        self.nz = state.get('nz', self.nz)
+
+        self.folder_edit.setText(self.folder)
+        self.stem_edit.setText(self.fnstem)
+        self.nypx_edit.setText(str(self.ny))
+        self.nzpx_edit.setText(str(self.nz))
+
+        self.cmap_combo.setCurrentText(state.get('colormap', 'bone'))
+        self.theme_combo.setCurrentText(state.get('theme', 'light'))
+        self.log_check.setChecked(state.get('log', False))
+        self.hflip_check.setChecked(state.get('hflip', False))
+        self.vflip_check.setChecked(state.get('vflip', False))
+        self.transpose_check.setChecked(state.get('transpose', False))
+        self.median_check.setChecked(state.get('median', False))
+
+        self.dist_spin.setValue(state.get('distance', 0))
+        self.frame_spin.setValue(state.get('frame', 0))
+        print(f'Session loaded: {fn}')
+
     # ── Callbacks ──────────────────────────────────────────────────
 
     def _on_log_toggled(self, checked):
         self.use_log = checked
         self.image_view.set_log_mode(checked)
+
+    def _movie_advance_frame(self):
+        """Advance frame by 1 for movie mode; wrap at max."""
+        cur = self.frame_spin.value()
+        mx = self.frame_spin.maximum()
+        nxt = cur + 1 if cur < mx else 0
+        self.frame_spin.setValue(nxt)
+
+    def _on_file_dropped(self, path):
+        """Handle file dropped onto the viewer."""
+        if os.path.isdir(path):
+            self.folder = path.rstrip('/') + '/'
+            self.folder_edit.setText(path)
+            self._load_and_display()
+        elif os.path.isfile(path):
+            ext = os.path.splitext(path)[1].lower()
+            if ext == '.tif' or ext == '.tiff':
+                self.folder = os.path.dirname(path) + '/'
+                self.folder_edit.setText(self.folder)
+                self._load_and_display()
+            elif ext in ('.mic', '.map'):
+                self._load_mic_file(path)
 
     def _on_cursor_moved(self, x, y, val):
         self.status_label.setText(f"x={x:.1f}  y={y:.1f}  I={val:.0f}")

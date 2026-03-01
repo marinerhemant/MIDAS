@@ -16,6 +16,7 @@ import shutil
 import bz2
 import glob
 import itertools
+import json
 
 import numpy as np
 from numpy import linalg as LA
@@ -390,6 +391,15 @@ class FFViewer(QtWidgets.QMainWindow):
         main_layout.setContentsMargins(4, 4, 4, 4)
         main_layout.setSpacing(4)
 
+        # ── Menu bar ──
+        file_menu = self.menuBar().addMenu('&File')
+        save_act = file_menu.addAction('Save Session...')
+        save_act.setShortcut('Ctrl+S')
+        save_act.triggered.connect(self._save_session)
+        load_act = file_menu.addAction('Load Session...')
+        load_act.setShortcut('Ctrl+Shift+S')
+        load_act.triggered.connect(self._load_session)
+
         # ── Toolbar ──
         tb = self._build_toolbar()
         main_layout.addLayout(tb)
@@ -421,6 +431,48 @@ class FFViewer(QtWidgets.QMainWindow):
         self.addDockWidget(QtCore.Qt.BottomDockWidgetArea, self.log_panel)
         self.log_panel.install_redirect()
         self.log_panel.hide()
+
+        # ── Intensity vs Frame Dock ──
+        self._ivf_dock = QtWidgets.QDockWidget("Intensity vs Frame", self)
+        self._ivf_dock.setFeatures(
+            QtWidgets.QDockWidget.DockWidgetClosable |
+            QtWidgets.QDockWidget.DockWidgetFloatable)
+        ivf_widget = QtWidgets.QWidget()
+        ivf_lay = QtWidgets.QVBoxLayout(ivf_widget)
+        ivf_lay.setContentsMargins(2, 2, 2, 2)
+
+        self._ivf_plot = pg.PlotWidget(title="Intensity vs Frame")
+        self._ivf_plot.setLabel('bottom', 'Frame')
+        self._ivf_plot.setLabel('left', 'Intensity')
+        self._ivf_mean_curve = self._ivf_plot.plot(pen='c', name='Mean')
+        self._ivf_max_curve = self._ivf_plot.plot(pen='r', name='Max')
+        self._ivf_marker = self._ivf_plot.plot(pen=None, symbol='o',
+                                                symbolSize=8, symbolBrush='y')
+        self._ivf_plot.addLegend()
+        self._ivf_plot.scene().sigMouseClicked.connect(self._on_ivf_clicked)
+        ivf_lay.addWidget(self._ivf_plot)
+
+        ivf_btn_lay = QtWidgets.QHBoxLayout()
+        self._ivf_compute_btn = QtWidgets.QPushButton("Compute")
+        self._ivf_compute_btn.setToolTip("Sweep all frames and compute mean/max intensity")
+        self._ivf_compute_btn.clicked.connect(self._compute_ivf)
+        ivf_btn_lay.addWidget(self._ivf_compute_btn)
+        ivf_btn_lay.addStretch()
+        ivf_lay.addLayout(ivf_btn_lay)
+
+        self._ivf_dock.setWidget(ivf_widget)
+        self.addDockWidget(QtCore.Qt.BottomDockWidgetArea, self._ivf_dock)
+        self._ivf_dock.hide()
+
+        # IvF data
+        self._ivf_means = []
+        self._ivf_maxs = []
+        self._ivf_frames = []
+
+        # View menu to toggle docks
+        view_menu = self.menuBar().addMenu('&View')
+        view_menu.addAction(self.log_panel.toggleViewAction())
+        view_menu.addAction(self._ivf_dock.toggleViewAction())
 
     def _build_toolbar(self):
         tb = QtWidgets.QHBoxLayout()
@@ -639,6 +691,10 @@ class FFViewer(QtWidgets.QMainWindow):
         self.bcz_edit.editingFinished.connect(self._redraw_if_rings)
         self.lsd_edit.editingFinished.connect(self._redraw_if_rings)
         self.image_view.dataStatsUpdated.connect(self._on_stats_updated)
+        # Movie mode: advance frame by 1 (wraps at max)
+        self.image_view.movieFrameAdvance.connect(self._movie_advance_frame)
+        # Drag-and-drop: open dropped file
+        self.image_view.fileDropped.connect(self._on_file_dropped)
 
     def _show_help(self):
         QtWidgets.QMessageBox.information(self, 'FF Viewer — Controls',
@@ -664,6 +720,92 @@ class FFViewer(QtWidgets.QMainWindow):
         add_shortcut(self, 'L', lambda: self.log_check.toggle())
         add_shortcut(self, 'R', lambda: self.rings_check.toggle())
 
+    # ── Session Save / Load ────────────────────────────────────────
+
+    def _save_session(self):
+        fn, _ = QtWidgets.QFileDialog.getSaveFileName(
+            self, 'Save Session', '', 'Session Files (*.session.json);;All (*)')
+        if not fn:
+            return
+        if not fn.endswith('.session.json'):
+            fn += '.session.json'
+        state = {
+            'viewer': 'ff',
+            'folder': self.folder,
+            'file_stem': self.file_stem,
+            'first_file_nr': self.first_file_nr,
+            'padding': self.padding,
+            'ext': self.ext,
+            'frame': self.frame_spin.value(),
+            'ny': self.ny, 'nz': self.nz,
+            'header_size': self.header_size,
+            'bytes_per_pixel': self.bytes_per_pixel,
+            'n_frames_per_file': self.n_frames_per_file,
+            'lsd': float(self.lsd_edit.text()),
+            'bcy': float(self.bcy_edit.text()),
+            'bcz': float(self.bcz_edit.text()),
+            'px': float(self.px_edit.text()),
+            'colormap': self.cmap_combo.currentText(),
+            'theme': self.theme_combo.currentText(),
+            'log': self.log_check.isChecked(),
+            'hflip': self.hflip_check.isChecked(),
+            'vflip': self.vflip_check.isChecked(),
+            'transpose': self.transpose_check.isChecked(),
+            'show_rings': self.rings_check.isChecked(),
+            'use_dark': self.dark_check.isChecked(),
+        }
+        try:
+            with open(fn, 'w') as f:
+                json.dump(state, f, indent=2)
+            print(f'Session saved: {fn}')
+        except Exception as e:
+            print(f'Session save failed: {e}')
+
+    def _load_session(self):
+        fn, _ = QtWidgets.QFileDialog.getOpenFileName(
+            self, 'Load Session', '', 'Session Files (*.session.json);;All (*)')
+        if not fn:
+            return
+        try:
+            with open(fn) as f:
+                state = json.load(f)
+        except Exception as e:
+            print(f'Session load failed: {e}')
+            return
+        self.folder = state.get('folder', self.folder)
+        self.file_stem = state.get('file_stem', self.file_stem)
+        self.first_file_nr = state.get('first_file_nr', self.first_file_nr)
+        self.padding = state.get('padding', self.padding)
+        self.ext = state.get('ext', self.ext)
+        self.ny = state.get('ny', self.ny)
+        self.nz = state.get('nz', self.nz)
+        self.header_size = state.get('header_size', self.header_size)
+        self.bytes_per_pixel = state.get('bytes_per_pixel', self.bytes_per_pixel)
+        self.n_frames_per_file = state.get('n_frames_per_file', self.n_frames_per_file)
+
+        self.file_nr_edit.setText(str(self.first_file_nr))
+        self.nypx_edit.setText(str(self.ny))
+        self.nzpx_edit.setText(str(self.nz))
+        self.header_edit.setText(str(self.header_size))
+        self.bpp_edit.setText(str(self.bytes_per_pixel))
+        self.nframes_edit.setText(str(self.n_frames_per_file))
+        self.lsd_edit.setText(str(state.get('lsd', 1000000.0)))
+        self.bcy_edit.setText(str(state.get('bcy', 1024.0)))
+        self.bcz_edit.setText(str(state.get('bcz', 1024.0)))
+        self.px_edit.setText(str(state.get('px', 200.0)))
+
+        self.cmap_combo.setCurrentText(state.get('colormap', 'bone'))
+        self.theme_combo.setCurrentText(state.get('theme', 'light'))
+        self.log_check.setChecked(state.get('log', False))
+        self.hflip_check.setChecked(state.get('hflip', False))
+        self.vflip_check.setChecked(state.get('vflip', False))
+        self.transpose_check.setChecked(state.get('transpose', False))
+        self.rings_check.setChecked(state.get('show_rings', False))
+        self.dark_check.setChecked(state.get('use_dark', False))
+
+        self.frame_spin.setValue(state.get('frame', 0))
+        print(f'Session loaded: {fn}')
+
     # ── Callbacks ──────────────────────────────────────────────────
 
     def _on_log_toggled(self, checked):
@@ -683,6 +825,36 @@ class FFViewer(QtWidgets.QMainWindow):
 
     def _on_frame_scroll(self, delta):
         self.frame_spin.setValue(self.frame_spin.value() + delta)
+
+    def _movie_advance_frame(self):
+        """Advance frame by 1 for movie mode; wrap at max."""
+        cur = self.frame_spin.value()
+        mx = self.frame_spin.maximum()
+        nxt = cur + 1 if cur < mx else 0
+        self.frame_spin.setValue(nxt)
+
+    def _on_file_dropped(self, path):
+        """Handle file dropped onto the viewer."""
+        if os.path.isdir(path):
+            self.folder = path.rstrip('/') + '/'
+            self._load_and_display()
+        elif path.endswith('.zip'):
+            self._load_zarr_zip(path)
+        elif os.path.isfile(path):
+            # Treat like FirstFile selection
+            self.folder = os.path.dirname(path) + '/'
+            basename = os.path.basename(path)
+            dot = basename.find('.')
+            if dot > 0:
+                name_part = basename[:dot]
+                self.ext = basename[dot + 1:]
+                parts = name_part.split('_')
+                if parts[-1].isdigit():
+                    self.first_file_nr = int(parts[-1])
+                    self.padding = len(parts[-1])
+                    self.file_stem = '_'.join(parts[:-1])
+                self.file_nr_edit.setText(str(self.first_file_nr))
+            self._load_and_display()
 
     def _on_cursor_moved(self, x, y, val):
         px = float(self.px_edit.text() or 200)
@@ -709,6 +881,75 @@ class FFViewer(QtWidgets.QMainWindow):
             self.image_view.setLevels(lo, hi)
         except ValueError:
             pass
+
+    # ── Intensity vs Frame ─────────────────────────────────────────
+
+    def _compute_ivf(self):
+        """Sweep all frames and compute mean/max intensity."""
+        self._ivf_compute_btn.setEnabled(False)
+        self._ivf_compute_btn.setText("Computing...")
+        self._ivf_dock.show()
+
+        def _worker():
+            means, maxs, frames = [], [], []
+            self._sync_params()
+            n = self.frame_spin.maximum() + 1
+            for i in range(n):
+                file_nr = self.first_file_nr + i // max(1, self.n_frames_per_file)
+                frame_in = i % max(1, self.n_frames_per_file)
+                fn = build_filename(self.folder, self.file_stem, file_nr,
+                                    self.padding, self.det_nr, self.ext, self.sep_folder)
+                try:
+                    data = read_image(fn, self.header_size, self.bytes_per_pixel,
+                                      self.ny, self.nz, frame_in,
+                                      False, False, False,
+                                      None, self.zarr_store, self.zarr_dark_mean,
+                                      hdf5_data_path=self.hdf5_data_path,
+                                      hdf5_dark_path=self.hdf5_dark_path)
+                    means.append(float(np.mean(data)))
+                    maxs.append(float(np.max(data)))
+                    frames.append(i)
+                except Exception:
+                    break
+            return frames, means, maxs
+
+        worker = AsyncWorker(_worker)
+
+        def _done(result):
+            frames, means, maxs = result
+            self._ivf_frames = frames
+            self._ivf_means = means
+            self._ivf_maxs = maxs
+            self._ivf_mean_curve.setData(frames, means)
+            self._ivf_max_curve.setData(frames, maxs)
+            self._update_ivf_marker()
+            self._ivf_compute_btn.setEnabled(True)
+            self._ivf_compute_btn.setText("Compute")
+            print(f"IvF: computed {len(frames)} frames")
+
+        worker.finished.connect(_done)
+        worker.start()
+        # Keep reference to prevent GC
+        self._ivf_worker = worker
+
+    def _on_ivf_clicked(self, ev):
+        """Click on intensity-vs-frame plot to jump to that frame."""
+        if not self._ivf_frames:
+            return
+        vb = self._ivf_plot.plotItem.vb
+        pos = vb.mapSceneToView(ev.scenePos())
+        frame = int(round(pos.x()))
+        frame = max(0, min(frame, self.frame_spin.maximum()))
+        self.frame_spin.setValue(frame)
+        self._update_ivf_marker()
+
+    def _update_ivf_marker(self):
+        """Update yellow marker on IvF plot to current frame."""
+        if not self._ivf_frames:
+            return
+        f = self.frame_spin.value()
+        if f < len(self._ivf_means):
+            self._ivf_marker.setData([f], [self._ivf_means[f]])
 
     def _on_rings_toggled(self, checked):
         self.show_rings = checked
