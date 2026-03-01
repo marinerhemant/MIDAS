@@ -2759,7 +2759,16 @@ int main(int argc, char *argv[]) {
                 sendFitParams[out_base + 4] =
                     fitParams[in_base + 3] / (2.0 * sqrt(2.0 * log(2.0)));
                 sendFitParams[out_base + 5] = gof;
-                sendFitParams[out_base + 6] = 0; // Area (compute if needed)
+                // Analytical pseudo-Voigt area: Imax * Gamma/2 * (m*pi +
+                // (1-m)*sqrt(pi/ln2))
+                {
+                  double pImax = fitParams[in_base + 0];
+                  double pMix = fmax(0.0, fmin(1.0, fitParams[in_base + 1]));
+                  double pGamma = fmax(1e-9, fitParams[in_base + 3]);
+                  sendFitParams[out_base + 6] =
+                      pImax * pGamma / 2.0 *
+                      (pMix * M_PI + (1.0 - pMix) * sqrt(M_PI / log(2.0)));
+                }
               }
               total_successful_peaks += nJobPeaks;
             }
@@ -3123,16 +3132,27 @@ int main(int argc, char *argv[]) {
             nlopt_opt opt = nlopt_create(NLOPT_LD_LBFGS, nFitParams);
             nlopt_set_lower_bounds(opt, lowerBounds);
             nlopt_set_upper_bounds(opt, upperBounds);
-            nlopt_set_maxeval(opt, 5000);
-            nlopt_set_maxtime(opt, 30);
-            nlopt_set_ftol_rel(opt, 1e-5);
-            nlopt_set_xtol_rel(opt, 1e-5);
             nlopt_set_min_objective(opt, problem_function_global_bg, &fitData);
-            nlopt_set_xtol_rel(opt, 1e-4);
-            nlopt_set_maxeval(opt, 200);
+            nlopt_set_xtol_rel(opt, 1e-5);
+            nlopt_set_maxeval(opt, 500 * nFitParams);
+
             double minObj;
             int rc = nlopt_optimize(opt, fitParams, &minObj);
             nlopt_destroy(opt);
+
+            if (rc < 0) { // Fallback to Nelder-Mead
+              opt = nlopt_create(NLOPT_LN_NELDERMEAD, nFitParams);
+              nlopt_set_lower_bounds(opt, lowerBounds);
+              nlopt_set_upper_bounds(opt, upperBounds);
+              nlopt_set_min_objective(opt, problem_function_global_bg,
+                                      &fitData);
+              nlopt_set_maxeval(opt, 5000);
+              nlopt_set_maxtime(opt, 30);
+              nlopt_set_ftol_rel(opt, 1e-5);
+              nlopt_set_xtol_rel(opt, 1e-5);
+              rc = nlopt_optimize(opt, fitParams, &minObj);
+              nlopt_destroy(opt);
+            }
 
             if (rc >= 0) {
               int result_start = job_result_indices[i];
@@ -3146,7 +3166,15 @@ int main(int argc, char *argv[]) {
                 sendFitParams[out_base + 4] =
                     fitParams[p * 4 + 3] / (2.0 * sqrt(2.0 * log(2.0)));
                 sendFitParams[out_base + 5] = minObj;
-                sendFitParams[out_base + 6] = 0;
+                // Analytical pseudo-Voigt area
+                {
+                  double pImax = fitParams[p * 4 + 0];
+                  double pMix = fmax(0.0, fmin(1.0, fitParams[p * 4 + 1]));
+                  double pGamma = fmax(1e-9, fitParams[p * 4 + 3]);
+                  sendFitParams[out_base + 6] =
+                      pImax * pGamma / 2.0 *
+                      (pMix * M_PI + (1.0 - pMix) * sqrt(M_PI / log(2.0)));
+                }
               }
             }
             free(fitParams);
