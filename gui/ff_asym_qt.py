@@ -401,10 +401,11 @@ class FFViewer(QtWidgets.QMainWindow):
 
         # ── Control Panels ──
         ctrl = QtWidgets.QHBoxLayout()
-        ctrl.addWidget(self._build_file_panel())
-        ctrl.addWidget(self._build_image_panel())
-        ctrl.addWidget(self._build_display_panel())
-        ctrl.addWidget(self._build_processing_panel())
+        ctrl.setSpacing(4)
+        ctrl.addWidget(self._build_file_panel(), stretch=3)
+        ctrl.addWidget(self._build_image_panel(), stretch=2)
+        ctrl.addWidget(self._build_display_panel(), stretch=2)
+        ctrl.addWidget(self._build_processing_panel(), stretch=2)
         main_layout.addLayout(ctrl)
 
         # ── Status Bar ──
@@ -576,17 +577,14 @@ class FFViewer(QtWidgets.QMainWindow):
 
         lay.addWidget(QtWidgets.QLabel("MinI"), 4, 0)
         self.min_intensity_edit = QtWidgets.QLineEdit("0")
-        self.min_intensity_edit.setMinimumWidth(80)
         lay.addWidget(self.min_intensity_edit, 4, 1)
-
         lay.addWidget(QtWidgets.QLabel("MaxI"), 4, 2)
         self.max_intensity_edit = QtWidgets.QLineEdit("1000")
-        self.max_intensity_edit.setMinimumWidth(80)
-        lay.addWidget(self.max_intensity_edit, 5, 0)
+        lay.addWidget(self.max_intensity_edit, 4, 3)
 
         apply_btn = QtWidgets.QPushButton("Apply")
         apply_btn.clicked.connect(self._apply_intensity_levels)
-        lay.addWidget(apply_btn, 5, 1)
+        lay.addWidget(apply_btn, 4, 4)
 
         return grp
 

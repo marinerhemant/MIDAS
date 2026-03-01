@@ -130,9 +130,6 @@ class MIDASImageView(pg.ImageView):
         else:
             self.setImage(display, autoLevels=False)
 
-        # Invert Y axis to match matplotlib imshow convention (origin bottom-left)
-        self.getView().invertY(True)
-
     def set_log_mode(self, enabled):
         """Toggle log10 display."""
         self._log_mode = enabled
