@@ -446,7 +446,7 @@ class FFViewer(QtWidgets.QMainWindow):
 
         # Export
         export_btn = QtWidgets.QPushButton("Export PNG")
-        export_btn.clicked.connect(self.image_view.export_png)
+        export_btn.clicked.connect(lambda: self.image_view.export_png())
         tb.addWidget(export_btn)
 
         # Toggle log panel
