@@ -46,5 +46,5 @@ The Diffraction Tomography module performs **detector coordinate remapping and p
 
 ## See Also
 
-- [FF_RadialIntegration manual](../manuals/FF_RadialIntegration.md) — radial integration / caking user guide
+- [FF_RadialIntegration manual](../manuals/FF_Radial_Integration.md) — radial integration / caking user guide
 - [GSAS-II_Integration manual](../manuals/GSAS-II_Integration.md) — importing integrated data into GSAS-II

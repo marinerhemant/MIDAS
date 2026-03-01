@@ -431,9 +431,9 @@ Between multi-resolution loops, `Mic2GrainsList` extracts unique grain orientati
 ## 12. See Also
 
 - [NF_Analysis.md](NF_Analysis.md) — Single-resolution NF-HEDM reconstruction
-- [NF_calibration.md](NF_calibration.md) — NF detector geometry calibration
-- [NF_gui.md](NF_gui.md) — Interactive NF-HEDM analysis GUI
-- [ForwardSimulationManual.md](ForwardSimulationManual.md) — Forward simulation (simulateNF)
+- [NF_Calibration.md](NF_Calibration.md) — NF detector geometry calibration
+- [NF_GUI.md](NF_GUI.md) — Interactive NF-HEDM analysis GUI
+- [Forward_Simulation.md](Forward_Simulation.md) — Forward simulation (simulateNF)
 - [README.md](README.md) — High-level MIDAS overview and manual index
 
 ---

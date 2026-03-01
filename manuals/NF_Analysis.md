@@ -238,11 +238,11 @@ python nf_MIDAS.py \
 A high-confidence NF-HEDM reconstruction requires iterating between parameter refinement and full reconstruction. This section describes the complete end-to-end procedure.
 
 > [!IMPORTANT]
-> **Start with the calibration procedure** in [NF_calibration.md](NF_calibration.md) to determine initial values for `Lsd`, `BC`, and detector tilts. Those values become the initial guess in your parameter file.
+> **Start with the calibration procedure** in [NF_Calibration.md](NF_Calibration.md) to determine initial values for `Lsd`, `BC`, and detector tilts. Those values become the initial guess in your parameter file.
 
 ```mermaid
 graph TD
-    A["Initial Calibration<br>(NF_calibration.md)"] --> B["Update Parameter File<br>with Lsd, BC values"]
+    A["Initial Calibration<br>(NF_Calibration.md)"] --> B["Update Parameter File<br>with Lsd, BC values"]
     B --> C["Single-Point Optimization<br>(2-3 iterations)"]
     C --> D["Full Reconstruction"]
     D --> E["Inspect .mic in GUI<br>(LoadMic → .map file)"]
@@ -274,7 +274,7 @@ This produces a `.mic` text file and a `.map` binary file in `DataDirectory`.
 
 ### 7.3 Grid Point Selection for Multi-Point Optimization
 
-1.  **Open the reconstruction in the NF GUI** (see [NF_gui.md](NF_gui.md)):
+1.  **Open the reconstruction in the NF GUI** (see [NF_GUI.md](NF_GUI.md)):
     ```bash
     cd <DataDirectory>
     python ~/opt/MIDAS/gui/nf.py &
@@ -450,9 +450,9 @@ The final text mic file has one line per reconstructed grid point. Lines startin
 ## 12. See Also
 
 - [NF_MultiResolution_Analysis.md](NF_MultiResolution_Analysis.md) — Multi-resolution iterative NF-HEDM reconstruction
-- [NF_calibration.md](NF_calibration.md) — NF detector geometry calibration
-- [NF_gui.md](NF_gui.md) — Interactive NF-HEDM analysis GUI
-- [ForwardSimulationManual.md](ForwardSimulationManual.md) — Forward simulation (simulateNF)
+- [NF_Calibration.md](NF_Calibration.md) — NF detector geometry calibration
+- [NF_GUI.md](NF_GUI.md) — Interactive NF-HEDM analysis GUI
+- [Forward_Simulation.md](Forward_Simulation.md) — Forward simulation (simulateNF)
 - [README.md](README.md) — High-level MIDAS overview and manual index
 
 ---

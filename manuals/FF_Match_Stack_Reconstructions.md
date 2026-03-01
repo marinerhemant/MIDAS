@@ -450,6 +450,6 @@ The Python wrapper provides the same functionality plus:
 
 - [FF_Analysis.md](FF_Analysis.md) — Full FF-HEDM analysis workflow (`ff_MIDAS.py`)
 - [PF_Analysis.md](PF_Analysis.md) — Scanning/Point-Focus FF-HEDM
-- [FF_calibration.md](FF_calibration.md) — Detector geometry calibration
-- [ForwardSimulationManual.md](ForwardSimulationManual.md) — Forward simulation for validation
+- [FF_Calibration.md](FF_Calibration.md) — Detector geometry calibration
+- [Forward_Simulation.md](Forward_Simulation.md) — Forward simulation for validation
 - [README.md](README.md) — High-level MIDAS overview and manual index

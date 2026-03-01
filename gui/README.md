@@ -21,7 +21,7 @@ Provides a desktop interface for:
 - Comparing reconstructions at different parameter settings
 - Inspecting individual voxel orientations and confidence values
 
-See [NF_gui manual](../manuals/NF_gui.md) for the full user guide.
+See [NF_gui manual](../manuals/NF_GUI.md) for the full user guide.
 
 ---
 
@@ -40,7 +40,7 @@ Provides a desktop interface for:
 - Inspecting individual spot assignments per grain
 - Exploring the orientation space (pole figures, IPF)
 
-See [FF_visualization manual](../manuals/FF_visualization.md) for the full user guide, including the auto-detection naming convention.
+See [FF_visualization manual](../manuals/FF_Visualization.md) for the full user guide, including the auto-detection naming convention.
 
 ---
 
@@ -109,5 +109,5 @@ h5py
 
 ## See Also
 
-- [NF_gui manual](../manuals/NF_gui.md) — NF-HEDM GUI user guide
+- [NF_gui manual](../manuals/NF_GUI.md) — NF-HEDM GUI user guide
 - [FF_Interactive_Plotting manual](../manuals/FF_Interactive_Plotting.md) — FF-HEDM interactive visualization

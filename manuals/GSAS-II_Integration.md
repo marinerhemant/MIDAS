@@ -54,8 +54,8 @@ The MIDAS scripts need to import `GSASIIscriptable` at runtime.  There are two s
 
 Before starting, you should have:
 
-1. A **calibrated parameter file** from `AutoCalibrateZarr.py` or manual calibration (see [FF_calibration.md](FF_calibration.md)).
-2. A **caked output file** produced by `integrator.py` (see [FF_RadialIntegration.md](FF_RadialIntegration.md)).
+1. A **calibrated parameter file** from `AutoCalibrateZarr.py` or manual calibration (see [FF_Calibration.md](FF_Calibration.md)).
+2. A **caked output file** produced by `integrator.py` (see [FF_Radial_Integration.md](FF_Radial_Integration.md)).
 
 ---
 
@@ -101,7 +101,7 @@ These parameters are set in the MIDAS caking parameter file and directly control
 
 ### 3.3. Running the Integrator (Quick Reference)
 
-For full details, see [FF_RadialIntegration.md](FF_RadialIntegration.md). A typical invocation is:
+For full details, see [FF_Radial_Integration.md](FF_Radial_Integration.md). A typical invocation is:
 
 ```bash
 python ~/opt/MIDAS/utils/integrator.py \
@@ -451,8 +451,8 @@ python $MIDAS_INSTALL_DIR/utils/integrate_and_refine.py \
 
 ## 11. See Also
 
-- [FF_RadialIntegration.md](FF_RadialIntegration.md) — MIDAS radial integration / caking workflow (both CPU and GPU pipelines)
-- [FF_calibration.md](FF_calibration.md) — FF-HEDM geometry calibration (produces parameters used by integrator)
+- [FF_Radial_Integration.md](FF_Radial_Integration.md) — MIDAS radial integration / caking workflow (both CPU and GPU pipelines)
+- [FF_Calibration.md](FF_Calibration.md) — FF-HEDM geometry calibration (produces parameters used by integrator)
 - [README.md](README.md) — High-level MIDAS overview and manual index
 - [GSAS-II Tutorials](https://advancedphotonsource.github.io/GSAS-II-tutorials/tutorials.html) — Official GSAS-II tutorials and documentation
 - [GSASIIscriptable API](https://gsas-ii.readthedocs.io/en/latest/GSASIIscriptable.html) — GSAS-II scripting reference

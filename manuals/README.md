@@ -9,20 +9,20 @@
 
 | Manual | Topic | When to Use |
 |--------|-------|-------------|
-| [FF_calibration.md](FF_calibration.md) | FF-HEDM geometry calibration | Setting up a new experiment; determining detector parameters |
+| [FF_Calibration.md](FF_Calibration.md) | FF-HEDM geometry calibration | Setting up a new experiment; determining detector parameters |
 | [FF_Analysis.md](FF_Analysis.md) | FF-HEDM grain indexing and fitting | Extracting grain orientations, positions, and strain tensors |
 | [FF_Match_Stack_Reconstructions.md](FF_Match_Stack_Reconstructions.md) | Grain matching and layer stitching | Tracking grains across load states; combining multi-layer scans |
-| [FF_RadialIntegration.md](FF_RadialIntegration.md) | Radial integration / caking | Converting 2D detector images to 1D intensity vs. 2θ profiles |
+| [FF_Radial_Integration.md](FF_Radial_Integration.md) | Radial integration / caking | Converting 2D detector images to 1D intensity vs. 2θ profiles |
 | [FF_Interactive_Plotting.md](FF_Interactive_Plotting.md) | Interactive FF-HEDM visualization | Exploring grains, spots, and raw data interactively in a browser |
-| [FF_visualization.md](FF_visualization.md) | FF-HEDM result visualization | Static plotting and export of FF-HEDM grain maps |
-| [FF_dual_datasets.md](FF_dual_datasets.md) | Dual-dataset FF-HEDM analysis | Combining two FF datasets (e.g., different load states) |
+| [FF_Visualization.md](FF_Visualization.md) | FF-HEDM result visualization | Static plotting and export of FF-HEDM grain maps |
+| [FF_Dual_Datasets.md](FF_Dual_Datasets.md) | Dual-dataset FF-HEDM analysis | Combining two FF datasets (e.g., different load states) |
 | [PF_Analysis.md](PF_Analysis.md) | Point-Focus HEDM analysis | Analyzing data from a focused beam geometry |
 | [PF_Interactive_Plotting.md](PF_Interactive_Plotting.md) | PF-HEDM sinogram, intensity & tomo viewer | Exploring PF-HEDM sinograms, intensity patches, and tomo reconstructions interactively |
-| [NF_calibration.md](NF_calibration.md) | NF-HEDM detector calibration | Calibrating NF detector distances and beam center |
+| [NF_Calibration.md](NF_Calibration.md) | NF-HEDM detector calibration | Calibrating NF detector distances and beam center |
 | [NF_Analysis.md](NF_Analysis.md) | NF-HEDM reconstruction workflow | Reconstructing spatially resolved orientation maps |
 | [NF_MultiResolution_Analysis.md](NF_MultiResolution_Analysis.md) | Multi-resolution NF-HEDM | Iterative NF reconstruction at increasing grid resolution |
-| [NF_gui.md](NF_gui.md) | NF-HEDM interactive GUI | Calibrating detectors, visualizing NF data, and inspecting results |
-| [ForwardSimulationManual.md](ForwardSimulationManual.md) | Forward simulation (`simulateNF`) | Validating reconstructions by simulating expected diffraction patterns |
+| [NF_GUI.md](NF_GUI.md) | NF-HEDM interactive GUI | Calibrating detectors, visualizing NF data, and inspecting results |
+| [Forward_Simulation.md](Forward_Simulation.md) | Forward simulation (`simulateNF`) | Validating reconstructions by simulating expected diffraction patterns |
 | [GSAS-II_Integration.md](GSAS-II_Integration.md) | Importing MIDAS output into GSAS-II | Rietveld refinement of caked powder data |
 | [Tomography_Reconstruction.md](Tomography_Reconstruction.md) | Absorption-contrast CT reconstruction | Reconstructing tomographic slices from projection data |
 | [FF_Benchmark.md](FF_Benchmark.md) | FF-HEDM benchmark testing | Validating the FF-HEDM pipeline with simulated data |
@@ -33,14 +33,14 @@
 
 For a first-time user performing a combined FF + NF experiment:
 
-1. **Calibrate** the FF-HEDM detector using a powder calibrant (CeO₂ or LaB₆) → [FF_calibration.md](FF_calibration.md)
-2. **Integrate / cake** the powder data (if WAXS analysis is needed) → [FF_RadialIntegration.md](FF_RadialIntegration.md)
+1. **Calibrate** the FF-HEDM detector using a powder calibrant (CeO₂ or LaB₆) → [FF_Calibration.md](FF_Calibration.md)
+2. **Integrate / cake** the powder data (if WAXS analysis is needed) → [FF_Radial_Integration.md](FF_Radial_Integration.md)
 3. **(Optional)** Import caked data into GSAS-II for Rietveld refinement → [GSAS-II_Integration.md](GSAS-II_Integration.md)
 4. **Run FF-HEDM** analysis on the specimen → [FF_Analysis.md](FF_Analysis.md)
 5. **Visualize** FF results interactively → [FF_Interactive_Plotting.md](FF_Interactive_Plotting.md)
-6. **Calibrate** the NF-HEDM detectors → [NF_calibration.md](NF_calibration.md)
+6. **Calibrate** the NF-HEDM detectors → [NF_Calibration.md](NF_Calibration.md)
 7. **Run NF-HEDM** reconstruction using FF orientation seeds → [NF_Analysis.md](NF_Analysis.md) or [NF_MultiResolution_Analysis.md](NF_MultiResolution_Analysis.md)
-8. **Validate** results with forward simulation → [ForwardSimulationManual.md](ForwardSimulationManual.md)
+8. **Validate** results with forward simulation → [Forward_Simulation.md](Forward_Simulation.md)
 9. **Match/stitch** grains across load states or layers → [FF_Match_Stack_Reconstructions.md](FF_Match_Stack_Reconstructions.md)
 10. **(Optional)** Reconstruct tomographic slices for absorption-contrast imaging → [Tomography_Reconstruction.md](Tomography_Reconstruction.md)
 
@@ -100,9 +100,9 @@ NF-HEDM reconstruction is a voxel-by-voxel forward-modeling process. For each ca
 3. **Grid-based reconstruction** — The sample volume is discretized into a regular grid (typically 1–5 µm spacing). Each voxel is tested against all candidate orientations, and the best match is stored in a `.mic` file.
 4. **Multi-resolution refinement** — For large volumes, reconstruction can proceed iteratively: a coarse grid identifies the approximate grain structure, then finer grids refine boundaries and intragranular features. See [NF_MultiResolution_Analysis.md](NF_MultiResolution_Analysis.md).
 
-**NF-HEDM detector calibration** is separate from FF calibration because the detector geometry must be known more precisely at the shorter working distances. The NF calibration procedure determines the sample-to-detector distance and beam center for each layer. See [NF_calibration.md](NF_calibration.md).
+**NF-HEDM detector calibration** is separate from FF calibration because the detector geometry must be known more precisely at the shorter working distances. The NF calibration procedure determines the sample-to-detector distance and beam center for each layer. See [NF_Calibration.md](NF_Calibration.md).
 
-**Interactive analysis** is supported through a GUI that provides real-time visualization of raw NF diffraction images, reconstructed microstructure layers, and confidence maps. See [NF_gui.md](NF_gui.md).
+**Interactive analysis** is supported through a GUI that provides real-time visualization of raw NF diffraction images, reconstructed microstructure layers, and confidence maps. See [NF_GUI.md](NF_GUI.md).
 
 > [!TIP]
 > For best NF results, always run FF-HEDM first to generate high-quality orientation seeds. The quality of the NF reconstruction depends heavily on the completeness and accuracy of the seed orientations.

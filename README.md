@@ -80,19 +80,19 @@ Full manuals are in the **[manuals/](manuals/)** directory. Start with the [manu
 
 | Manual | Topic |
 |--------|-------|
-| [FF_calibration](manuals/FF_calibration.md) | FF-HEDM geometry calibration |
+| [FF_Calibration](manuals/FF_Calibration.md) | FF-HEDM geometry calibration |
 | [FF_Analysis](manuals/FF_Analysis.md) | FF-HEDM grain indexing and fitting |
 | [FF_Match_Stack_Reconstructions](manuals/FF_Match_Stack_Reconstructions.md) | Grain matching across load states and layer stitching |
-| [FF_RadialIntegration](manuals/FF_RadialIntegration.md) | Radial integration / caking |
+| [FF_Radial_Integration](manuals/FF_Radial_Integration.md) | Radial integration / caking |
 | [FF_Interactive_Plotting](manuals/FF_Interactive_Plotting.md) | Interactive FF-HEDM visualization |
-| [FF_visualization](manuals/FF_visualization.md) | FF-HEDM result visualization |
-| [FF_dual_datasets](manuals/FF_dual_datasets.md) | Dual-dataset FF-HEDM analysis |
+| [FF_Visualization](manuals/FF_Visualization.md) | FF-HEDM result visualization |
+| [FF_Dual_Datasets](manuals/FF_Dual_Datasets.md) | Dual-dataset FF-HEDM analysis |
 | [PF_Analysis](manuals/PF_Analysis.md) | Point-Focus HEDM analysis |
-| [NF_calibration](manuals/NF_calibration.md) | NF-HEDM detector calibration |
+| [NF_Calibration](manuals/NF_Calibration.md) | NF-HEDM detector calibration |
 | [NF_Analysis](manuals/NF_Analysis.md) | NF-HEDM reconstruction workflow |
 | [NF_MultiResolution_Analysis](manuals/NF_MultiResolution_Analysis.md) | Multi-resolution NF-HEDM |
-| [NF_gui](manuals/NF_gui.md) | NF-HEDM interactive GUI |
-| [ForwardSimulationManual](manuals/ForwardSimulationManual.md) | Forward simulation for validation |
+| [NF_GUI](manuals/NF_GUI.md) | NF-HEDM interactive GUI |
+| [Forward_Simulation](manuals/Forward_Simulation.md) | Forward simulation for validation |
 | [GSAS-II_Integration](manuals/GSAS-II_Integration.md) | Importing MIDAS output into GSAS-II |
 | [Tomography_Reconstruction](manuals/Tomography_Reconstruction.md) | Absorption-contrast CT reconstruction |
 | [FF_Benchmark](manuals/FF_Benchmark.md) | FF-HEDM benchmark testing |
@@ -224,12 +224,12 @@ pip install numpy scipy h5py parsl
 
 ## Quick Start
 
-1. **Calibrate** the detector geometry → [FF_calibration](manuals/FF_calibration.md)
+1. **Calibrate** the detector geometry → [FF_Calibration](manuals/FF_Calibration.md)
 2. **Run FF-HEDM** grain indexing and fitting → [FF_Analysis](manuals/FF_Analysis.md)
 3. **Visualize** results interactively → [FF_Interactive_Plotting](manuals/FF_Interactive_Plotting.md)
 4. **Match/stitch** grains across load states or layers → [FF_Match_Stack_Reconstructions](manuals/FF_Match_Stack_Reconstructions.md)
 5. **Reconstruct NF-HEDM** orientation maps → [NF_Analysis](manuals/NF_Analysis.md)
-6. **Validate** with forward simulation → [ForwardSimulationManual](manuals/ForwardSimulationManual.md)
+6. **Validate** with forward simulation → [Forward_Simulation](manuals/Forward_Simulation.md)
 
 See the [manuals README](manuals/README.md) for the full step-by-step checklist.
 

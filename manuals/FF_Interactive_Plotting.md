@@ -250,8 +250,8 @@ The application's interactivity is driven by a chain of Dash callbacks:
 
 - [FF_Analysis.md](FF_Analysis.md) — Standard FF-HEDM analysis (produces Grains.csv and SpotMatrix.csv)
 - [PF_Analysis.md](PF_Analysis.md) — Scanning/Point-Focus FF-HEDM analysis
-- [ForwardSimulationManual.md](ForwardSimulationManual.md) — Forward simulation for validation
-- [FF_calibration.md](FF_calibration.md) — Geometry calibration
+- [Forward_Simulation.md](Forward_Simulation.md) — Forward simulation for validation
+- [FF_Calibration.md](FF_Calibration.md) — Geometry calibration
 - [README.md](README.md) — High-level MIDAS overview and manual index
 
 ---

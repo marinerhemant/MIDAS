@@ -5,7 +5,7 @@
 
 > [!NOTE]
 > For **scanning/Point-Focus** FF-HEDM, see [PF_Analysis.md](PF_Analysis.md).  
-> For **dual-dataset** FF-HEDM, see [FF_dual_datasets.md](FF_dual_datasets.md).
+> For **dual-dataset** FF-HEDM, see [FF_Dual_Datasets.md](FF_Dual_Datasets.md).
 
 ---
 
@@ -24,7 +24,7 @@ The script uses [Parsl](https://parsl-project.org/) for parallelism and supports
     -   **GE format** (`.ge2`, `.ge3`, etc.) with a matching parameter file.
     -   **HDF5 format** (`.h5`) — either standalone or paired with a parameter file.
     -   **Pre-built Zarr-ZIP** (`.MIDAS.zip`) — if data conversion was already performed.
--   A calibrant-derived parameter file (see [FF_calibration.md](FF_calibration.md)).
+-   A calibrant-derived parameter file (see [FF_Calibration.md](FF_Calibration.md)).
 -   Python environment with: `parsl`, `numpy`, `argparse`, `logging`.
 
 ---
@@ -279,7 +279,11 @@ This step refines the parameters of the indexed grains to minimize the error bet
     *   **Position:** 3 coordinates ($X, Y, Z$) representing the grain's center of mass in the sample.
     *   **Strain:** 6 components of the lattice strain tensor (or directly the lattice parameters $a, b, c, \alpha, \beta, \gamma$).
 *   **Objective Function:** The solver minimizes the weighted sum of squared differences between observed and simulated spot parameters:
-    $$ \chi^2 = \sum (Y_{obs} - Y_{sim})^2 + (Z_{obs} - Z_{sim})^2 + (\omega_{obs} - \omega_{sim})^2 $$
+
+$$
+\chi^2 = \sum \left[(Y_{obs} - Y_{sim})^2 + (Z_{obs} - Z_{sim})^2 + (\omega_{obs} - \omega_{sim})^2\right]
+$$
+
 *   **Corrections:** The model includes complex geometric corrections for:
     *   **Wedge:** Sample stage wedge angle.
     *   **Lsd/Tilt:** Detector distance and tilts.
@@ -562,7 +566,7 @@ with h5py.File('output_consolidated.h5', 'r') as h5:
 | `Key file was not found` | Indexing found zero grains | Check `MinNrSpots`, ring thresholds, and detector geometry |
 | `Failed to generate ZIP file` | Raw data not found or wrong format | Verify `RawFolder`, `FileStem`, `Ext`, and `StartFileNrFirstLayer` |
 | `HKL generation failed` | Wrong crystal structure parameters | Verify `LatticeParameter`, `SpaceGroup`, and `Wavelength` |
-| Peak search produces no output | Incorrect `BC`, `Lsd`, or tilts | Re-run calibration ([FF_calibration.md](FF_calibration.md)) |
+| Peak search produces no output | Incorrect `BC`, `Lsd`, or tilts | Re-run calibration ([FF_Calibration.md](FF_Calibration.md)) |
 | Out of memory during peak search | Dataset too large for RAM | Use `-numFrameChunks 2` (or higher) |
 | `Grains.csv is empty` | `MinNrSpots` too high, or wrong `SpaceGroup` | Lower `MinNrSpots` or verify crystal symmetry |
 
@@ -571,10 +575,10 @@ with h5py.File('output_consolidated.h5', 'r') as h5:
 ## 10. See Also
 
 - [PF_Analysis.md](PF_Analysis.md) — Scanning/Point-Focus FF-HEDM analysis
-- [FF_calibration.md](FF_calibration.md) — Geometry calibration from calibrant rings
-- [FF_dual_datasets.md](FF_dual_datasets.md) — Dual-dataset combined analysis
+- [FF_Calibration.md](FF_Calibration.md) — Geometry calibration from calibrant rings
+- [FF_Dual_Datasets.md](FF_Dual_Datasets.md) — Dual-dataset combined analysis
 - [FF_Interactive_Plotting.md](FF_Interactive_Plotting.md) — Visualizing FF-HEDM results
-- [ForwardSimulationManual.md](ForwardSimulationManual.md) — Forward simulation for validation
+- [Forward_Simulation.md](Forward_Simulation.md) — Forward simulation for validation
 - [README.md](README.md) — High-level MIDAS overview and manual index
 
 ---

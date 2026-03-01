@@ -26,7 +26,7 @@ The script:
 
 -   A working MIDAS installation.
 -   Raw diffraction data (GE, HDF5, or pre-built Zarr-ZIP).
--   A calibrant-derived parameter file (see [FF_calibration.md](FF_calibration.md)).
+-   A calibrant-derived parameter file (see [FF_Calibration.md](FF_Calibration.md)).
 -   A `positions.csv` file listing Y-positions (one per line, negative w.r.t. motor position).
 -   Parameter file and `positions.csv` must be in the **same directory**.
 -   Python environment with: `parsl`, `numpy`, `pandas`, `scikit-image`, `Pillow`, `h5py`, `zarr`, `numba`.
@@ -262,11 +262,11 @@ When `-doTomo 1` is enabled:
 ## 10. See Also
 
 - [FF_Analysis.md](FF_Analysis.md) — Standard (box-beam) FF-HEDM analysis
-- [FF_calibration.md](FF_calibration.md) — Geometry calibration
+- [FF_Calibration.md](FF_Calibration.md) — Geometry calibration
 - [PF_Interactive_Plotting.md](PF_Interactive_Plotting.md) — Interactive sinogram, intensity & tomo viewer for PF-HEDM
 - [FF_Interactive_Plotting.md](FF_Interactive_Plotting.md) — Visualizing FF-HEDM results
 - [Tomography_Reconstruction.md](Tomography_Reconstruction.md) — MIDAS tomography reconstruction
-- [ForwardSimulationManual.md](ForwardSimulationManual.md) — Forward simulation for validation
+- [Forward_Simulation.md](Forward_Simulation.md) — Forward simulation for validation
 - [NF_Analysis.md](NF_Analysis.md) — Near-field HEDM reconstruction
 - [README.md](README.md) — High-level MIDAS overview and manual index
 

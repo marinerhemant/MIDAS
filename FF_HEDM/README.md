@@ -23,7 +23,7 @@ FF_HEDM/
 |------|-------------|
 | `ff_MIDAS.py` | **Main FF-HEDM workflow.** Orchestrates the full pipeline: data conversion → peak search → merging → indexing → fitting → grain processing → consolidated HDF5. Supports `-reprocess` mode. See [FF_Analysis manual](../manuals/FF_Analysis.md). |
 | `pf_MIDAS.py` | **Point-Focus HEDM workflow.** Similar pipeline for focused-beam geometry with spatial scanning. See [PF_Analysis manual](../manuals/PF_Analysis.md). |
-| `ff_dual_datasets.py` | **Dual-dataset analysis.** Combines two FF-HEDM datasets for improved grain finding. See [FF_dual_datasets manual](../manuals/FF_dual_datasets.md). |
+| `ff_dual_datasets.py` | **Dual-dataset analysis.** Combines two FF-HEDM datasets for improved grain finding. See [FF_dual_datasets manual](../manuals/FF_Dual_Datasets.md). |
 | `localConfig.py` | Parsl execution configuration for local runs. |
 | `orthrosAllConfig.py` | Parsl configuration for Orthros cluster. |
 | `polarisConfig.py` | Parsl configuration for ALCF Polaris supercomputer. |
@@ -148,5 +148,5 @@ python ../utils/test_ff_hedm.py -nCPUs 8
 ## See Also
 
 - [FF_Analysis manual](../manuals/FF_Analysis.md) — complete user guide
-- [FF_calibration manual](../manuals/FF_calibration.md) — calibration workflow
+- [FF_calibration manual](../manuals/FF_Calibration.md) — calibration workflow
 - [FF_Match_Stack_Reconstructions manual](../manuals/FF_Match_Stack_Reconstructions.md) — grain matching

@@ -440,7 +440,7 @@ flowchart TD
 
 - [FF_Interactive_Plotting.md](FF_Interactive_Plotting.md) — Dash-based interactive viewer for post-analysis visualization
 - [FF_Analysis.md](FF_Analysis.md) — Standard FF-HEDM data reduction workflow
-- [FF_calibration.md](FF_calibration.md) — Detector geometry calibration
+- [FF_Calibration.md](FF_Calibration.md) — Detector geometry calibration
 - [README.md](README.md) — MIDAS manual index
 
 ---

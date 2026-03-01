@@ -290,7 +290,7 @@ graph TD
 
 - [FF_Analysis.md](FF_Analysis.md) — Standard FF-HEDM analysis (produces Grains.csv used as input here)
 - [FF_Interactive_Plotting.md](FF_Interactive_Plotting.md) — Visualizing FF-HEDM results and simulated data
-- [FF_calibration.md](FF_calibration.md) — Geometry calibration from calibrant rings
+- [FF_Calibration.md](FF_Calibration.md) — Geometry calibration from calibrant rings
 - [README.md](README.md) — High-level MIDAS overview and manual index
 
 ---
@@ -471,8 +471,8 @@ WriteImage        1
 ### 2.8. See Also
 
 - [NF_Analysis.md](NF_Analysis.md) — NF-HEDM reconstruction workflow
-- [NF_calibration.md](NF_calibration.md) — NF detector geometry calibration
-- [NF_gui.md](NF_gui.md) — Interactive NF-HEDM analysis GUI
+- [NF_Calibration.md](NF_Calibration.md) — NF detector geometry calibration
+- [NF_GUI.md](NF_GUI.md) — Interactive NF-HEDM analysis GUI
 - [README.md](README.md) — High-level MIDAS overview and manual index
 
 ---

@@ -646,9 +646,9 @@ python utils/test_ff_calibration.py -strainThreshold 40
 
 - [FF_Analysis.md](FF_Analysis.md) — Standard FF-HEDM analysis using calibrated geometry
 - [PF_Analysis.md](PF_Analysis.md) — Scanning/Point-Focus FF-HEDM analysis
-- [FF_dual_datasets.md](FF_dual_datasets.md) — Dual-dataset FF-HEDM analysis
-- [FF_RadialIntegration.md](FF_RadialIntegration.md) — Radial integration / caking using calibrated parameters
-- [ForwardSimulationManual.md](ForwardSimulationManual.md) — Forward simulation for validation
+- [FF_Dual_Datasets.md](FF_Dual_Datasets.md) — Dual-dataset FF-HEDM analysis
+- [FF_Radial_Integration.md](FF_Radial_Integration.md) — Radial integration / caking using calibrated parameters
+- [Forward_Simulation.md](Forward_Simulation.md) — Forward simulation for validation
 - [GSAS-II_Integration.md](GSAS-II_Integration.md) — Importing caked output into GSAS-II
 - [README.md](README.md) — High-level MIDAS overview and manual index
 

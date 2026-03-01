@@ -5,7 +5,7 @@
 
 This is a graphical user interface (GUI) for visualizing and analyzing near-field High-Energy Diffraction Microscopy (HEDM) data. The primary purpose of this tool is to perform a near-field calibration to determine the precise beam position and detector distances using a known calibrant sample, such as single-crystal gold.
 
-**DETAILED INSTRUCTIONS FOR CALIBRATION ARE AT:** [NF_calibration.md](NF_calibration.md)
+**DETAILED INSTRUCTIONS FOR CALIBRATION ARE AT:** [NF_Calibration.md](NF_Calibration.md)
 
 ## Features
 
@@ -183,7 +183,7 @@ The "MakeSpots" simulation feature uses a hybrid approach:
 
 - [NF_Analysis.md](NF_Analysis.md) — Single-resolution NF-HEDM reconstruction
 - [NF_MultiResolution_Analysis.md](NF_MultiResolution_Analysis.md) — Multi-resolution iterative NF-HEDM reconstruction
-- [NF_calibration.md](NF_calibration.md) — Detailed step-by-step calibration procedure
+- [NF_Calibration.md](NF_Calibration.md) — Detailed step-by-step calibration procedure
 - [README.md](README.md) — High-level MIDAS overview and manual index
 
 ---

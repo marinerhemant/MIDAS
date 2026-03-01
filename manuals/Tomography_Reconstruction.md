@@ -378,8 +378,8 @@ Typical performance: a 2048 × 2048 × 1800 dataset reconstructs in under 2 minu
 ## 10. See Also
 
 - [README.md](README.md) — High-level MIDAS overview and manual index
-- [FF_RadialIntegration.md](FF_RadialIntegration.md) — Radial integration / caking (complementary analysis for diffraction data)
-- [FF_calibration.md](FF_calibration.md) — FF-HEDM geometry calibration
+- [FF_Radial_Integration.md](FF_Radial_Integration.md) — Radial integration / caking (complementary analysis for diffraction data)
+- [FF_Calibration.md](FF_Calibration.md) — FF-HEDM geometry calibration
 
 ---
 

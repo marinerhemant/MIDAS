@@ -421,7 +421,7 @@ Use the **FF-HEDM Interactive Viewer** (`interactiveFFplotting.py`) to inspect t
 ## 7. See Also
 
 - [FF_Analysis.md](FF_Analysis.md) — Standard FF-HEDM analysis
-- [FF_calibration.md](FF_calibration.md) — Geometry calibration from calibrant rings
+- [FF_Calibration.md](FF_Calibration.md) — Geometry calibration from calibrant rings
 - [FF_Interactive_Plotting.md](FF_Interactive_Plotting.md) — Visualizing FF-HEDM results
 - [GSAS-II_Integration.md](GSAS-II_Integration.md) — Importing caked output into GSAS-II for Rietveld refinement
 - [README.md](README.md) — High-level MIDAS overview and manual index

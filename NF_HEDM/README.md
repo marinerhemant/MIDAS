@@ -113,6 +113,6 @@ The `seedOrientations/` directory contains pre-computed orientation seed files f
 ## See Also
 
 - [NF_Analysis manual](../manuals/NF_Analysis.md) — complete user guide
-- [NF_calibration manual](../manuals/NF_calibration.md) — detector calibration
+- [NF_calibration manual](../manuals/NF_Calibration.md) — detector calibration
 - [NF_MultiResolution_Analysis manual](../manuals/NF_MultiResolution_Analysis.md) — multi-resolution workflow
-- [NF_gui manual](../manuals/NF_gui.md) — interactive GUI
+- [NF_gui manual](../manuals/NF_GUI.md) — interactive GUI

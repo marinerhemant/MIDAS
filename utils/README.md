@@ -91,7 +91,7 @@ This directory contains Python scripts and tools used across the MIDAS analysis 
 | `compressedSimulationReader.py` | Read compressed forward simulation output files. |
 | `test_ff_hedm.py` | **FF-HEDM benchmark test.** End-to-end test using simulated data to validate the full FF-HEDM pipeline (simulation → indexing → regression comparison). Includes automatic cleanup of generated files. |
 | `test_nf_hedm.py` | **NF-HEDM benchmark test.** End-to-end test: runs `simulateNF`, reconstructs via `nf_MIDAS.py`, and compares orientations against a reference `.mic` file. |
-| `test_ff_calibration.py` | **FF-HEDM calibration benchmark.** Runs `CalibrantPanelShiftsOMP` on example CeO2 data and validates mean strain ≤ threshold. See [FF_calibration manual §9](../manuals/FF_calibration.md). |
+| `test_ff_calibration.py` | **FF-HEDM calibration benchmark.** Runs `CalibrantPanelShiftsOMP` on example CeO2 data and validates mean strain ≤ threshold. See [FF_calibration manual §9](../manuals/FF_Calibration.md). |
 
 ## Scanning / Point-Focus HEDM
 

@@ -211,9 +211,9 @@ The script generates two initial analysis directories within the main `-resultFo
 ## 9. See Also
 
 - [FF_Analysis.md](FF_Analysis.md) — Standard single-dataset FF-HEDM analysis
-- [FF_calibration.md](FF_calibration.md) — Geometry calibration
+- [FF_Calibration.md](FF_Calibration.md) — Geometry calibration
 - [FF_Interactive_Plotting.md](FF_Interactive_Plotting.md) — Visualizing FF-HEDM results
-- [ForwardSimulationManual.md](ForwardSimulationManual.md) — Forward simulation for validation
+- [Forward_Simulation.md](Forward_Simulation.md) — Forward simulation for validation
 - [README.md](README.md) — High-level MIDAS overview and manual index
 
 ---
