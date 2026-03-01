@@ -668,25 +668,42 @@ static inline int StartsWith(const char *a, const char *b) {
 static inline void DoImageTransformations(int NrTransOpt, int TransOpt[10],
                                           double *ImageIn, double *ImageOut,
                                           int NrPixelsY, int NrPixelsZ) {
-  int i, j, k, l, m;
+  int i, k, l;
+  if (ImageIn != ImageOut) {
+    memcpy(ImageOut, ImageIn, NrPixelsY * NrPixelsZ * sizeof(*ImageIn));
+  }
   if (NrTransOpt == 0) {
-    memcpy(ImageOut, ImageIn,
-           NrPixelsY * NrPixelsZ * sizeof(*ImageIn)); // Nothing to do
     return;
   }
+
+  double buffer;
   for (i = 0; i < NrTransOpt; i++) {
-    if (TransOpt[i] == 1) {
-      for (k = 0; k < NrPixelsY; k++) {
-        for (l = 0; l < NrPixelsZ; l++) {
+    if (TransOpt[i] == 1) { // Invert Y (columns)
+      for (l = 0; l < NrPixelsZ; l++) {
+        for (k = 0; k < NrPixelsY / 2; k++) {
+          buffer = ImageOut[l * NrPixelsY + k];
           ImageOut[l * NrPixelsY + k] =
-              ImageIn[l * NrPixelsY + (NrPixelsY - k - 1)]; // Invert Y
+              ImageOut[l * NrPixelsY + (NrPixelsY - k - 1)];
+          ImageOut[l * NrPixelsY + (NrPixelsY - k - 1)] = buffer;
         }
       }
-    } else if (TransOpt[i] == 2) {
-      for (k = 0; k < NrPixelsY; k++) {
-        for (l = 0; l < NrPixelsZ; l++) {
+    } else if (TransOpt[i] == 2) { // Invert Z (rows)
+      for (l = 0; l < NrPixelsZ / 2; l++) {
+        for (k = 0; k < NrPixelsY; k++) {
+          buffer = ImageOut[l * NrPixelsY + k];
           ImageOut[l * NrPixelsY + k] =
-              ImageIn[(NrPixelsZ - l - 1) * NrPixelsY + k]; // Invert Z
+              ImageOut[(NrPixelsZ - l - 1) * NrPixelsY + k];
+          ImageOut[(NrPixelsZ - l - 1) * NrPixelsY + k] = buffer;
+        }
+      }
+    } else if (TransOpt[i] == 3) { // Transpose
+      if (NrPixelsY == NrPixelsZ) {
+        for (l = 0; l < NrPixelsZ; l++) {
+          for (k = l + 1; k < NrPixelsY; k++) {
+            buffer = ImageOut[l * NrPixelsY + k];
+            ImageOut[l * NrPixelsY + k] = ImageOut[k * NrPixelsY + l];
+            ImageOut[k * NrPixelsY + l] = buffer;
+          }
         }
       }
     }
