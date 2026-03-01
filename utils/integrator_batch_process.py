@@ -60,6 +60,8 @@ def read_parameters_from_file(param_file):
     ny = 0
     omega_sum_frames = None
     rmax, rmin, rbin_size = 100, 10, 0.1  # Defaults match integrator_stream_process_h5.py
+    n_peaks = 0
+    peak_fit = False
     
     with open(param_file, 'r') as f:
         for line in f:
@@ -91,9 +93,16 @@ def read_parameters_from_file(param_file):
                 rbin_size = float(val)
             elif key == 'PanelShiftsFile':
                 panel_shifts_file = val
+            elif key == 'PeakLocation':
+                n_peaks += 1
+            elif key == 'DoPeakFit':
+                if int(val) == 1:
+                    peak_fit = True
     
+    if n_peaks > 0:
+        peak_fit = True  # PeakLocation implies DoPeakFit
     n_rbins = int(math.ceil((rmax - rmin) / rbin_size))
-    return nx, ny, omega_sum_frames, n_rbins, panel_shifts_file
+    return nx, ny, omega_sum_frames, n_rbins, panel_shifts_file, n_peaks, peak_fit
 
 def is_port_open(host, port, timeout=1):
     """Check if a port is open on the specified host"""
@@ -440,6 +449,10 @@ def main():
                         help='Output zarr.zip filename for GSAS-II (default: auto from h5 name)')
     parser.add_argument('--no-zarr', action='store_true',
                         help='Skip creating zarr.zip output for GSAS-II')
+    parser.add_argument('--live-viewer', action='store_true',
+                        help='Launch real-time visualization dashboard')
+    parser.add_argument('--viewer-theme', choices=['dark', 'light'], default='light',
+                        help='Theme for live viewer (default: light)')
     
     args = parser.parse_args()
     
@@ -480,7 +493,7 @@ def main():
             print(f"Found {expected_frames} {extension} files to process")
     
     # Read parameters from parameter file
-    nx, ny, omega_sum_frames, n_rbins, panel_shifts_file = read_parameters_from_file(param_file)
+    nx, ny, omega_sum_frames, n_rbins, panel_shifts_file, n_peaks, peak_fit = read_parameters_from_file(param_file)
     if nx == 0 or ny == 0:
         print("Error: Could not determine frame size from parameter file")
         sys.exit(1)
@@ -605,6 +618,26 @@ def main():
     
     print(f"Started integrator_server.py with PID {server_proc.pid}")
     
+    # Launch live viewer if requested
+    viewer_proc = None
+    if args.live_viewer:
+        print("\nLaunching live viewer dashboard...")
+        viewer_script = os.path.join(INSTALL_PATH, "utils/live_viewer.py")
+        viewer_cmd = [
+            sys.executable, viewer_script,
+            '--lineout', str(output_dir / 'lineout.bin'),
+            '--nRBins', str(n_rbins),
+            '--theme', args.viewer_theme
+        ]
+        if peak_fit and n_peaks > 0:
+            viewer_cmd.extend([
+                '--fit', str(output_dir / 'fit.bin'),
+                '--nPeaks', str(n_peaks)
+            ])
+        print(f"Viewer command: {' '.join(viewer_cmd)}")
+        viewer_proc = subprocess.Popen(viewer_cmd, env=midas_env)
+        print(f"Started live_viewer.py with PID {viewer_proc.pid}")
+    
     # Monitor processing
     print("\nMonitoring processing progress...")
     completed = monitor_processing(output_dir / mapping_file, expected_frames)
@@ -654,6 +687,11 @@ def main():
     pids = find_process_by_name("IntegratorFitPeaksGPUStream")
     for pid in pids:
         kill_process(pid)
+    
+    # Terminate live viewer if running
+    if viewer_proc and viewer_proc.poll() is None:
+        print("Terminating live viewer...")
+        kill_process(viewer_proc.pid)
     
     # Run integrator_stream_process_h5.py
     print("\nConverting binary output to HDF5...")
