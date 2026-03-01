@@ -3373,23 +3373,6 @@ int main(int argc, char *argv[]) {
       ringCountLatRes[rr] = localRingLatCount[rr];
     }
 
-    // Print per-ring radius residual table
-    printf("\n           *** per-ring radius residual (\u03bcm) ***\n");
-    printf(" Ring   IdealR(\u03bcm)   NPoints   Mean|\u0394R|   Max|\u0394R|   "
-           " Mean\u0394R\n");
-    printf("--------------------------------------------------------------\n");
-    for (int rr = 0; rr < MAX_RINGS_STAT; rr++) {
-      if (localRingCount[rr] > 0) {
-        double rmean = localRingSum[rr] / localRingCount[rr];
-        double rabsmean = localRingAbsSum[rr] / localRingCount[rr];
-        printf(" %4d  %10.2f   %5d   %8.4f   %8.4f   %+8.4f\n", rr,
-               localRingIdealR[rr], localRingCount[rr], rabsmean,
-               localRingMax[rr], rmean);
-      }
-    }
-    printf(
-        "--------------------------------------------------------------\n\n");
-
     // Print per-panel radius residual grid (if panels defined)
     if (nPanels > 0 && panelRadResCount) {
       printf("*** Per-Panel Mean|\u0394R| (\u03bcm) (Z^ Y>) ***\n");
@@ -3447,81 +3430,87 @@ int main(int argc, char *argv[]) {
 
   // --- Aggregate radius residual statistics ---
   printf("           *** radius residual (\u03bcm) ***\n");
-  printf("Mean\u0394R     %+.4f   (signed bias)\n", meanRadRes);
-  printf("Mean|\u0394R|    %.4f   (absolute)\n", meanAbsRadRes);
-  printf("Std\u0394R       %.4f\n", stdRadRes);
-  printf("Max|\u0394R|     %.4f\n", maxAbsRadRes);
-  printf("Median\u0394R   %+.4f\n", medRadRes);
-  printf("Q25\u0394R      %+.4f\n", q25RadRes);
-  printf("Q75\u0394R      %+.4f\n", q75RadRes);
-  printf("Min\u0394R      %+.4f\n", minRadRes);
-  printf("Max\u0394R      %+.4f\n", maxRadRes);
-  printf("NPoints     %d\n", nValidRadRes);
+  printf("  Mean\u0394R      %+12.4f   (signed bias)\n", meanRadRes);
+  printf("  Mean|\u0394R|    %12.4f   (absolute)\n", meanAbsRadRes);
+  printf("  Std\u0394R       %12.4f\n", stdRadRes);
+  printf("  Max|\u0394R|     %12.4f\n", maxAbsRadRes);
+  printf("  Median\u0394R   %+12.4f\n", medRadRes);
+  printf("  Q25\u0394R      %+12.4f\n", q25RadRes);
+  printf("  Q75\u0394R      %+12.4f\n", q75RadRes);
+  printf("  Min\u0394R      %+12.4f\n", minRadRes);
+  printf("  Max\u0394R      %+12.4f\n", maxRadRes);
+  printf("  NPoints    %12d\n", nValidRadRes);
   // Per-ring summary in final output
   printf("\n           *** per-ring radius residual (\u03bcm) ***\n");
-  printf(" Ring   IdealR(\u03bcm)   NPoints   Mean|\u0394R|   Max|\u0394R|    "
-         "Mean\u0394R\n");
-  printf("--------------------------------------------------------------\n");
+  printf("  Ring    IdealR(\u03bcm)  NPoints   Mean|\u0394R|    Max|\u0394R|   "
+         "  Mean\u0394R\n");
+  printf(
+      "  ------------------------------------------------------------------\n");
   for (int rr = 0; rr < MAX_RINGS_STAT; rr++) {
     if (ringCountRadRes[rr] > 0) {
-      printf(" %4d  %10.2f   %5d   %8.4f   %8.4f   %+8.4f\n", rr,
+      printf("  %4d  %11.2f  %6d  %10.4f  %10.4f  %+10.4f\n", rr,
              ringIdealR[rr], ringCountRadRes[rr], ringMeanAbsRadRes[rr],
              ringMaxAbsRadRes[rr], ringMeanRadRes[rr]);
     }
   }
-  printf("--------------------------------------------------------------\n");
+  printf(
+      "  ------------------------------------------------------------------\n");
 
   // --- Aggregate 2theta residual statistics ---
   printf("           *** 2theta residual (deg) ***\n");
-  printf("Mean\u0394(2\u03b8)   %+.6f   (signed bias)\n", mean2thRes);
-  printf("Mean|\u0394(2\u03b8)|  %.6f   (absolute)\n", meanAbs2thRes);
-  printf("Std\u0394(2\u03b8)     %.6f\n", std2thRes);
-  printf("Max|\u0394(2\u03b8)|   %.6f\n", maxAbs2thRes);
-  printf("Median\u0394(2\u03b8) %+.6f\n", med2thRes);
-  printf("Q25\u0394(2\u03b8)    %+.6f\n", q252thRes);
-  printf("Q75\u0394(2\u03b8)    %+.6f\n", q752thRes);
-  printf("Min\u0394(2\u03b8)    %+.6f\n", min2thRes);
-  printf("Max\u0394(2\u03b8)    %+.6f\n", max2thRes);
-  printf("NPoints     %d\n", nValid2thRes);
+  printf("  Mean\u0394(2\u03b8)    %+12.6f   (signed bias)\n", mean2thRes);
+  printf("  Mean|\u0394(2\u03b8)|  %12.6f   (absolute)\n", meanAbs2thRes);
+  printf("  Std\u0394(2\u03b8)     %12.6f\n", std2thRes);
+  printf("  Max|\u0394(2\u03b8)|   %12.6f\n", maxAbs2thRes);
+  printf("  Median\u0394(2\u03b8) %+12.6f\n", med2thRes);
+  printf("  Q25\u0394(2\u03b8)    %+12.6f\n", q252thRes);
+  printf("  Q75\u0394(2\u03b8)    %+12.6f\n", q752thRes);
+  printf("  Min\u0394(2\u03b8)    %+12.6f\n", min2thRes);
+  printf("  Max\u0394(2\u03b8)    %+12.6f\n", max2thRes);
+  printf("  NPoints    %12d\n", nValid2thRes);
   // Per-ring 2theta summary
   printf("\n           *** per-ring 2theta residual (deg) ***\n");
-  printf(" Ring   Ideal2\u03b8(deg) NPoints   Mean|\u0394(2\u03b8)|  "
-         "Max|\u0394(2\u03b8)|  "
-         "Mean\u0394(2\u03b8)\n");
-  printf("--------------------------------------------------------------\n");
+  printf("  Ring  Ideal2\u03b8(deg)  NPoints  Mean|\u0394(2\u03b8)|   "
+         "Max|\u0394(2\u03b8)|  Mean\u0394(2\u03b8)\n");
+  printf(
+      "  ------------------------------------------------------------------\n");
   for (int rr = 0; rr < MAX_RINGS_STAT; rr++) {
     if (ringCount2thRes[rr] > 0) {
-      printf(" %4d  %10.4f   %5d   %10.6f %10.6f  %+10.6f\n", rr,
+      printf("  %4d  %11.4f  %6d  %12.6f %12.6f %+12.6f\n", rr,
              ringIdeal2th[rr], ringCount2thRes[rr], ringMeanAbs2thRes[rr],
              ringMax2thAbs[rr], ringMean2thRes[rr]);
     }
   }
-  printf("--------------------------------------------------------------\n");
+  printf(
+      "  ------------------------------------------------------------------\n");
 
   // --- Aggregate lattice parameter residual statistics ---
-  printf("           *** lattice parameter residual (Å) ***\n");
-  printf("IdealA      %.8f\n", IdealA);
-  printf("MeanΔa     %+.8f   (signed bias)\n", meanLatRes);
-  printf("Mean|Δa|    %.8f   (absolute)\n", meanAbsLatRes);
-  printf("StdΔa       %.8f\n", stdLatRes);
-  printf("Max|Δa|     %.8f\n", maxAbsLatRes);
-  printf("MedianΔa   %+.8f\n", medLatRes);
-  printf("Q25Δa      %+.8f\n", q25LatRes);
-  printf("Q75Δa      %+.8f\n", q75LatRes);
-  printf("MinΔa      %+.8f\n", minLatRes);
-  printf("MaxΔa      %+.8f\n", maxLatRes);
-  printf("NPoints     %d\n", nValidLatRes);
+  printf("           *** lattice parameter residual (\u00c5) ***\n");
+  printf("  IdealA      %12.8f\n", IdealA);
+  printf("  Mean\u0394a     %+12.8f   (signed bias)\n", meanLatRes);
+  printf("  Mean|\u0394a|    %12.8f   (absolute)\n", meanAbsLatRes);
+  printf("  Std\u0394a       %12.8f\n", stdLatRes);
+  printf("  Max|\u0394a|     %12.8f\n", maxAbsLatRes);
+  printf("  Median\u0394a   %+12.8f\n", medLatRes);
+  printf("  Q25\u0394a      %+12.8f\n", q25LatRes);
+  printf("  Q75\u0394a      %+12.8f\n", q75LatRes);
+  printf("  Min\u0394a      %+12.8f\n", minLatRes);
+  printf("  Max\u0394a      %+12.8f\n", maxLatRes);
+  printf("  NPoints    %12d\n", nValidLatRes);
   // Per-ring lattice parameter summary
-  printf("\n           *** per-ring lattice parameter residual (Å) ***\n");
-  printf(" Ring   NPoints   Mean|Δa|      Max|Δa|      MeanΔa\n");
-  printf("--------------------------------------------------------------\n");
+  printf("\n           *** per-ring lattice parameter residual (\u00c5) ***\n");
+  printf("  Ring  NPoints    Mean|\u0394a|       Max|\u0394a|        "
+         "Mean\u0394a\n");
+  printf(
+      "  ------------------------------------------------------------------\n");
   for (int rr = 0; rr < MAX_RINGS_STAT; rr++) {
     if (ringCountLatRes[rr] > 0) {
-      printf(" %4d   %5d   %10.8f  %10.8f  %+10.8f\n", rr, ringCountLatRes[rr],
+      printf("  %4d  %6d  %12.8f  %12.8f  %+12.8f\n", rr, ringCountLatRes[rr],
              ringMeanAbsLatRes[rr], ringMaxAbsLat[rr], ringMeanLatRes[rr]);
     }
   }
-  printf("--------------------------------------------------------------\n");
+  printf(
+      "  ------------------------------------------------------------------\n");
   printf("*******************Copy to par*******************\n");
   free(DarkFile);
   free(AverageDark);
