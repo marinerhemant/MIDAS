@@ -306,7 +306,7 @@ class NFViewer(QtWidgets.QMainWindow):
         tb.addWidget(self.log_check)
 
         export_btn = QtWidgets.QPushButton("Export PNG")
-        export_btn.clicked.connect(self.image_view.export_png)
+        export_btn.clicked.connect(lambda: self.image_view.export_png())
         tb.addWidget(export_btn)
 
         log_btn = QtWidgets.QPushButton("Log Panel")

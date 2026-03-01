@@ -160,8 +160,9 @@ class MIDASImageView(pg.ImageView):
 
     def _on_mouse_moved(self, evt):
         pos = evt[0]
-        if self.sceneBoundingRect().contains(pos):
-            mouse_point = self.getView().mapSceneToView(pos)
+        vb = self.getView()
+        if vb.sceneBoundingRect().contains(pos):
+            mouse_point = vb.mapSceneToView(pos)
             x, y = mouse_point.x(), mouse_point.y()
             self._vline.setPos(x)
             self._hline.setPos(y)
