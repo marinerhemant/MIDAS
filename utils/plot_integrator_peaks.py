@@ -18,6 +18,7 @@ Options:
 """
 
 import argparse
+import os
 import sys
 
 import matplotlib.pyplot as plt
@@ -131,6 +132,8 @@ def main():
                         help='Save plot to file instead of showing')
     parser.add_argument('--frame', type=int, default=-1,
                         help='Which OmegaSumFrame to use (-1 = last, default: -1)')
+    parser.add_argument('--corr-csv', type=str, default=None,
+                        help='Path to _corr.csv file for ideal 2theta lines (auto-derived if not given)')
     args = parser.parse_args()
 
     # Open zarr
@@ -240,8 +243,33 @@ def main():
 
     ax.set_xlabel('Eta (deg)', fontsize=12)
     ax.set_ylabel('Fitted 2θ (deg)', fontsize=12)
-    ax.set_title(f'Peak Positions from {args.zarr_file}', fontsize=13)
+    ax.set_title(f'Peak Positions from {os.path.basename(args.zarr_file)}', fontsize=13)
     ax.grid(True, alpha=0.3)
+
+    # Overlay ideal 2theta lines from _corr.csv if available
+    corr_csv = args.corr_csv
+    if corr_csv is None:
+        # Auto-derive: strip .analysis.MIDAS.zip.caked.hdf.zarr.zip -> .corr.csv
+        base = args.zarr_file
+        suffix = '.analysis.MIDAS.zip.caked.hdf.zarr.zip'
+        if base.endswith(suffix):
+            corr_csv = base[:-len(suffix)] + '.corr.csv'
+
+    if corr_csv and os.path.isfile(corr_csv):
+        print(f"\n  Loading ideal 2theta from {corr_csv}")
+        corr_data = np.genfromtxt(corr_csv, skip_header=1)
+        ideal_2thetas = np.unique(corr_data[:, 6])  # Ideal2Theta column
+        for tt in ideal_2thetas:
+            ax.axhline(tt, color='red', linestyle='--', alpha=0.6, linewidth=0.8,
+                       label=f'Ideal 2θ = {tt:.4f}°')
+        # De-duplicate legend entries
+        handles, labels = ax.get_legend_handles_labels()
+        by_label = dict(zip(labels, handles))
+        ax.legend(by_label.values(), by_label.keys(), fontsize=8,
+                  loc='upper right', ncol=2)
+        print(f"  Added {len(ideal_2thetas)} ideal 2theta lines")
+    elif corr_csv:
+        print(f"  Warning: corr.csv not found at {corr_csv}")
 
     plt.tight_layout()
 
