@@ -401,7 +401,6 @@ static inline void SpotToGv(double xi, double yi, double zi, double Omega,
   *g3 = k3f;
 }
 
-
 static inline void CalcAngleErrors(
     int nspots, int nhkls, int nOmegaRanges, double x[12], double **spotsYZO,
     double **spotsYZO2, double **hklsIn, double Lsd, double Wavelength,
@@ -561,9 +560,13 @@ static inline void CalcAngleErrors(
         SpList[nMatched][i] = spotsYZO[sp][i];
       }
       SpList[nMatched][8] = TheorSpotsYZWER[RowBest][8];
+      SpList[nMatched][9] = spotsYZO[sp][8];
+      SpList[nMatched][10] = spotsYZO[sp][9];
       for (i = 0; i < 8; i++) {
         SpList2[nMatched][i] = spotsYZO2[sp][i];
       }
+      SpList2[nMatched][9] = spotsYZO2[sp][8];
+      SpList2[nMatched][10] = spotsYZO2[sp][9];
       nMatched++;
     }
   }
@@ -2003,6 +2006,10 @@ int main(int argc, char *argv[]) {
       return 1;
     }
   }
+  // Mmap Spots.bin, Data.bin and nData.bin for dynamic spot reassignment
+  {
+    char binFN[2048];
+    struct stat bs;
     sprintf(binFN, "%s/Data.bin", cwd);
     int fdData = open(binFN, O_RDONLY);
     if (fdData >= 0) {

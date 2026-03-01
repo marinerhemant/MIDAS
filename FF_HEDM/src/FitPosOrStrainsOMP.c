@@ -675,6 +675,8 @@ CalcAngleErrors(int nspots, int nhkls, int nOmegaRanges, double x[12],
         SpList[nMatched][i] = spotsYZO[sp][i];
       }
       SpList[nMatched][8] = TheorSpotsYZWER[RowBest][8];
+      SpList[nMatched][9] = spotsYZO[sp][8];
+      SpList[nMatched][10] = spotsYZO[sp][9];
       nMatched++;
     }
   }
@@ -841,8 +843,8 @@ FitErrorsPosSec(double x[3], int nSpotsComp, double spotsYZOIn[nSpotsComp][11],
       if ((int)TheorSpotsYZWE[k][2] == (int)Spnr) {
         PosTheor[0] = TheorSpotsYZWE[k][0];
         PosTheor[1] = TheorSpotsYZWE[k][1];
-        double maskT = spotsYZO[i][8];
-        double fRMSE = spotsYZO[i][9];
+        double maskT = spotsYZO[i][9];
+        double fRMSE = spotsYZO[i][10];
         double wgt = 1.0;
         if (maskT > 0.5)
           wgt *= WeightMask;

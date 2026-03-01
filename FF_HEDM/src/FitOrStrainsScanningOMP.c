@@ -537,6 +537,8 @@ CalcAngleErrors(int nspots, int nhkls, int nOmegaRanges, double x[12],
         SpList[nMatched][i] = spotsYZO[sp][i];
       }
       SpList[nMatched][8] = TheorSpotsYZWER[RowBest][8];
+      SpList[nMatched][9] = spotsYZO[sp][8];
+      SpList[nMatched][10] = spotsYZO[sp][9];
       nMatched++;
     }
   }
