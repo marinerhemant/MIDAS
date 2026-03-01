@@ -2325,6 +2325,11 @@ int main(int argc, char *argv[]) {
   double minRadRes = 0, maxRadRes = 0, meanRadRes = 0, stdRadRes = 0;
   double meanAbsRadRes = 0, maxAbsRadRes = 0;
   int nValidRadRes = 0;
+  // 2theta residual statistics
+  double med2thRes = 0, q252thRes = 0, q752thRes = 0;
+  double min2thRes = 0, max2thRes = 0, mean2thRes = 0, std2thRes = 0;
+  double meanAbs2thRes = 0, maxAbs2thRes = 0;
+  int nValid2thRes = 0;
 // Per-ring radius residual accumulators
 #define MAX_RINGS_STAT 200
   double ringMeanRadRes[MAX_RINGS_STAT] = {0};
@@ -2332,6 +2337,23 @@ int main(int argc, char *argv[]) {
   double ringMaxAbsRadRes[MAX_RINGS_STAT] = {0};
   double ringIdealR[MAX_RINGS_STAT] = {0};
   int ringCountRadRes[MAX_RINGS_STAT] = {0};
+  // Per-ring 2theta residual accumulators
+  double ringMean2thRes[MAX_RINGS_STAT] = {0};
+  double ringMeanAbs2thRes[MAX_RINGS_STAT] = {0};
+  double ringMax2thAbs[MAX_RINGS_STAT] = {0};
+  double ringIdeal2th[MAX_RINGS_STAT] = {0};
+  int ringCount2thRes[MAX_RINGS_STAT] = {0};
+  // Lattice parameter residual statistics
+  double medLatRes = 0, q25LatRes = 0, q75LatRes = 0;
+  double minLatRes = 0, maxLatRes = 0, meanLatRes = 0, stdLatRes = 0;
+  double meanAbsLatRes = 0, maxAbsLatRes = 0;
+  int nValidLatRes = 0;
+  double IdealA = LatticeConstant[0]; // ideal lattice parameter 'a'
+  // Per-ring lattice parameter residual accumulators
+  double ringMeanLatRes[MAX_RINGS_STAT] = {0};
+  double ringMeanAbsLatRes[MAX_RINGS_STAT] = {0};
+  double ringMaxAbsLat[MAX_RINGS_STAT] = {0};
+  int ringCountLatRes[MAX_RINGS_STAT] = {0};
   int nValid = 0;
   for (a = StartNr; a <= EndNr; a++) {
     start = omp_get_wtime();
@@ -3067,9 +3089,9 @@ int main(int argc, char *argv[]) {
       perror("fopen");
       return 1;
     }
-    fprintf(Out,
-            "%%Eta Strain RadFit EtaCalc DiffCalc RadCalc Ideal2Theta "
-            "Outlier YRawCorr ZRawCorr RingNr RadGlobal IdealR Fit2Theta\n");
+    fprintf(Out, "%%Eta Strain RadFit EtaCalc DiffCalc RadCalc Ideal2Theta "
+                 "Outlier YRawCorr ZRawCorr RingNr RadGlobal IdealR Fit2Theta "
+                 "IdealA FitA\n");
     // Build tilt rotation matrix for RadGlobal computation
     double txrG = deg2rad * tx;
     double tyrG = deg2rad * ty;
@@ -3088,12 +3110,33 @@ int main(int argc, char *argv[]) {
     int nRadRes = 0;
     double sumRadRes = 0, sumAbsRadRes = 0, sumRadResSq = 0;
     double localMaxAbsRadRes = 0;
+    // 2theta residual accumulators for this file
+    double *tthResArr = malloc(nIndices * sizeof(double));
+    int nTthRes = 0;
+    double sumTthRes = 0, sumAbsTthRes = 0, sumTthResSq = 0;
+    double localMaxAbsTthRes = 0;
+    // Lattice parameter residual accumulators for this file
+    double *latResArr = malloc(nIndices * sizeof(double));
+    int nLatRes = 0;
+    double sumLatRes = 0, sumAbsLatRes = 0, sumLatResSq = 0;
+    double localMaxAbsLatRes = 0;
     // Per-ring accumulators for this file
     double localRingSum[MAX_RINGS_STAT] = {0};
     double localRingAbsSum[MAX_RINGS_STAT] = {0};
     double localRingMax[MAX_RINGS_STAT] = {0};
     double localRingIdealR[MAX_RINGS_STAT] = {0};
     int localRingCount[MAX_RINGS_STAT] = {0};
+    // Per-ring 2theta accumulators for this file
+    double localRing2thSum[MAX_RINGS_STAT] = {0};
+    double localRing2thAbsSum[MAX_RINGS_STAT] = {0};
+    double localRing2thMax[MAX_RINGS_STAT] = {0};
+    double localRingIdeal2th[MAX_RINGS_STAT] = {0};
+    int localRing2thCount[MAX_RINGS_STAT] = {0};
+    // Per-ring lattice param accumulators for this file
+    double localRingLatSum[MAX_RINGS_STAT] = {0};
+    double localRingLatAbsSum[MAX_RINGS_STAT] = {0};
+    double localRingLatMax[MAX_RINGS_STAT] = {0};
+    int localRingLatCount[MAX_RINGS_STAT] = {0};
     // Per-panel radius residual accumulators
     double *panelRadResSum = NULL;
     double *panelRadResAbsSum = NULL;
@@ -3146,12 +3189,18 @@ int main(int argc, char *argv[]) {
       double RadGlobal = RadG * DistortG;
       double IdealR = LsdFit * tan(deg2rad * IdealTtheta[i]);
       double Fit2Theta = atan(RadGlobal / LsdFit) / deg2rad;
+      // Compute fit lattice parameter: a_fit = a_ideal * sin(ideal_theta) /
+      // sin(fit_theta)
+      double sinIdeal = sin(deg2rad * IdealTtheta[i] / 2.0);
+      double sinFit = sin(deg2rad * Fit2Theta / 2.0);
+      double FitA = (sinFit > 1e-15) ? IdealA * sinIdeal / sinFit : IdealA;
       fprintf(
           Out,
-          "%f %10.8f %10.8f %f %10.8f %10.8f %f %d %f %f %d %10.8f %10.8f %f\n",
+          "%f %10.8f %10.8f %f %10.8f %10.8f %f %d %f %f %d %10.8f %10.8f %f "
+          "%10.8f %10.8f\n",
           Etas[i], Diffs[i], RadOuts[i], EtaIns[i], DiffIns[i], RadIns[i],
           IdealTtheta[i], IsOutlier[i], YRawCorr, ZRawCorr, RingNumbers[i],
-          RadGlobal, IdealR, Fit2Theta);
+          RadGlobal, IdealR, Fit2Theta, IdealA, FitA);
       // Accumulate radius residual statistics (non-outlier only)
       if (!IsOutlier[i]) {
         double dR = RadGlobal - IdealR; // signed residual in microns
@@ -3176,6 +3225,39 @@ int main(int argc, char *argv[]) {
           panelRadResSum[pIdx] += dR;
           panelRadResAbsSum[pIdx] += fabs(dR);
           panelRadResCount[pIdx]++;
+        }
+        // 2theta residual accumulation
+        double d2th = Fit2Theta - IdealTtheta[i]; // degrees
+        tthResArr[nTthRes++] = d2th;
+        sumTthRes += d2th;
+        sumAbsTthRes += fabs(d2th);
+        sumTthResSq += d2th * d2th;
+        if (fabs(d2th) > localMaxAbsTthRes)
+          localMaxAbsTthRes = fabs(d2th);
+        // Per-ring 2theta accumulation
+        if (rn >= 0 && rn < MAX_RINGS_STAT) {
+          localRing2thSum[rn] += d2th;
+          localRing2thAbsSum[rn] += fabs(d2th);
+          if (fabs(d2th) > localRing2thMax[rn])
+            localRing2thMax[rn] = fabs(d2th);
+          localRingIdeal2th[rn] = IdealTtheta[i];
+          localRing2thCount[rn]++;
+        }
+        // Lattice parameter residual accumulation
+        double dLat = FitA - IdealA; // Angstroms
+        latResArr[nLatRes++] = dLat;
+        sumLatRes += dLat;
+        sumAbsLatRes += fabs(dLat);
+        sumLatResSq += dLat * dLat;
+        if (fabs(dLat) > localMaxAbsLatRes)
+          localMaxAbsLatRes = fabs(dLat);
+        // Per-ring lattice param accumulation
+        if (rn >= 0 && rn < MAX_RINGS_STAT) {
+          localRingLatSum[rn] += dLat;
+          localRingLatAbsSum[rn] += fabs(dLat);
+          if (fabs(dLat) > localRingLatMax[rn])
+            localRingLatMax[rn] = fabs(dLat);
+          localRingLatCount[rn]++;
         }
       }
     }
@@ -3206,6 +3288,30 @@ int main(int argc, char *argv[]) {
     }
     free(radResArr);
 
+    // --- Compute 2theta residual statistics ---
+    nValid2thRes = nTthRes;
+    if (nTthRes > 0) {
+      mean2thRes = sumTthRes / nTthRes;
+      meanAbs2thRes = sumAbsTthRes / nTthRes;
+      maxAbs2thRes = localMaxAbsTthRes;
+      std2thRes = sqrt(sumTthResSq / nTthRes - mean2thRes * mean2thRes);
+      for (int ii = 1; ii < nTthRes; ii++) {
+        double key = tthResArr[ii];
+        int jj = ii - 1;
+        while (jj >= 0 && tthResArr[jj] > key) {
+          tthResArr[jj + 1] = tthResArr[jj];
+          jj--;
+        }
+        tthResArr[jj + 1] = key;
+      }
+      med2thRes = tthResArr[nTthRes / 2];
+      q252thRes = tthResArr[nTthRes / 4];
+      q752thRes = tthResArr[3 * nTthRes / 4];
+      min2thRes = tthResArr[0];
+      max2thRes = tthResArr[nTthRes - 1];
+    }
+    free(tthResArr);
+
     // Copy per-ring stats for final summary (last file wins, like strain stats)
     for (int rr = 0; rr < MAX_RINGS_STAT; rr++) {
       ringMeanRadRes[rr] =
@@ -3216,6 +3322,55 @@ int main(int argc, char *argv[]) {
       ringMaxAbsRadRes[rr] = localRingMax[rr];
       ringIdealR[rr] = localRingIdealR[rr];
       ringCountRadRes[rr] = localRingCount[rr];
+    }
+    // Copy per-ring 2theta stats
+    for (int rr = 0; rr < MAX_RINGS_STAT; rr++) {
+      ringMean2thRes[rr] = (localRing2thCount[rr] > 0)
+                               ? localRing2thSum[rr] / localRing2thCount[rr]
+                               : 0;
+      ringMeanAbs2thRes[rr] =
+          (localRing2thCount[rr] > 0)
+              ? localRing2thAbsSum[rr] / localRing2thCount[rr]
+              : 0;
+      ringMax2thAbs[rr] = localRing2thMax[rr];
+      ringIdeal2th[rr] = localRingIdeal2th[rr];
+      ringCount2thRes[rr] = localRing2thCount[rr];
+    }
+
+    // --- Compute lattice parameter residual statistics ---
+    nValidLatRes = nLatRes;
+    if (nLatRes > 0) {
+      meanLatRes = sumLatRes / nLatRes;
+      meanAbsLatRes = sumAbsLatRes / nLatRes;
+      maxAbsLatRes = localMaxAbsLatRes;
+      stdLatRes = sqrt(sumLatResSq / nLatRes - meanLatRes * meanLatRes);
+      for (int ii = 1; ii < nLatRes; ii++) {
+        double key = latResArr[ii];
+        int jj = ii - 1;
+        while (jj >= 0 && latResArr[jj] > key) {
+          latResArr[jj + 1] = latResArr[jj];
+          jj--;
+        }
+        latResArr[jj + 1] = key;
+      }
+      medLatRes = latResArr[nLatRes / 2];
+      q25LatRes = latResArr[nLatRes / 4];
+      q75LatRes = latResArr[3 * nLatRes / 4];
+      minLatRes = latResArr[0];
+      maxLatRes = latResArr[nLatRes - 1];
+    }
+    free(latResArr);
+    // Copy per-ring lattice param stats
+    for (int rr = 0; rr < MAX_RINGS_STAT; rr++) {
+      ringMeanLatRes[rr] = (localRingLatCount[rr] > 0)
+                               ? localRingLatSum[rr] / localRingLatCount[rr]
+                               : 0;
+      ringMeanAbsLatRes[rr] =
+          (localRingLatCount[rr] > 0)
+              ? localRingLatAbsSum[rr] / localRingLatCount[rr]
+              : 0;
+      ringMaxAbsLat[rr] = localRingLatMax[rr];
+      ringCountLatRes[rr] = localRingLatCount[rr];
     }
 
     // Print per-ring radius residual table
@@ -3288,29 +3443,8 @@ int main(int argc, char *argv[]) {
   end0 = omp_get_wtime();
   diftotal = end0 - start0;
   printf("Total time elapsed:\t%f s.\n", diftotal);
-  printf("*******************Mean Values*******************\n");
-  for (a = 0; a < 12; a++)
-    means[a] /= (EndNr - StartNr + 1);
-  printf("Lsd        %0.12f\n"
-         "BC         %0.12f %0.12f\n"
-         "ty         %0.12f\n"
-         "tz         %0.12f\n"
-         "p0         %0.12f\n"
-         "p1         %0.12f\n"
-         "p2         %0.12f\n"
-         "p3         %0.12f\n",
-         means[0], means[1], means[2], means[3], means[4], means[5], means[6],
-         means[7], means[8]);
-  printf("p4         %0.12f\n", means[11]);
-  printf("           *** microstrain ***\n");
-  printf("MeanStrain %0.6lf\nStdStrain  %0.6lf\n", means[9] * 1e6,
-         means[10] * 1e6);
-  printf("MedianStr  %0.6lf\n", medStrain * 1e6);
-  printf("Q25        %0.6lf\n", q25Strain * 1e6);
-  printf("Q75        %0.6lf\n", q75Strain * 1e6);
-  printf("MinStrain  %0.6lf\n", minStrain * 1e6);
-  printf("MaxStrain  %0.6lf\n", maxStrain * 1e6);
   printf("NPoints    %d\n", nValid);
+
   // --- Aggregate radius residual statistics ---
   printf("           *** radius residual (\u03bcm) ***\n");
   printf("Mean\u0394R     %+.4f   (signed bias)\n", meanRadRes);
@@ -3333,6 +3467,58 @@ int main(int argc, char *argv[]) {
       printf(" %4d  %10.2f   %5d   %8.4f   %8.4f   %+8.4f\n", rr,
              ringIdealR[rr], ringCountRadRes[rr], ringMeanAbsRadRes[rr],
              ringMaxAbsRadRes[rr], ringMeanRadRes[rr]);
+    }
+  }
+  printf("--------------------------------------------------------------\n");
+
+  // --- Aggregate 2theta residual statistics ---
+  printf("           *** 2theta residual (deg) ***\n");
+  printf("Mean\u0394(2\u03b8)   %+.6f   (signed bias)\n", mean2thRes);
+  printf("Mean|\u0394(2\u03b8)|  %.6f   (absolute)\n", meanAbs2thRes);
+  printf("Std\u0394(2\u03b8)     %.6f\n", std2thRes);
+  printf("Max|\u0394(2\u03b8)|   %.6f\n", maxAbs2thRes);
+  printf("Median\u0394(2\u03b8) %+.6f\n", med2thRes);
+  printf("Q25\u0394(2\u03b8)    %+.6f\n", q252thRes);
+  printf("Q75\u0394(2\u03b8)    %+.6f\n", q752thRes);
+  printf("Min\u0394(2\u03b8)    %+.6f\n", min2thRes);
+  printf("Max\u0394(2\u03b8)    %+.6f\n", max2thRes);
+  printf("NPoints     %d\n", nValid2thRes);
+  // Per-ring 2theta summary
+  printf("\n           *** per-ring 2theta residual (deg) ***\n");
+  printf(" Ring   Ideal2\u03b8(deg) NPoints   Mean|\u0394(2\u03b8)|  "
+         "Max|\u0394(2\u03b8)|  "
+         "Mean\u0394(2\u03b8)\n");
+  printf("--------------------------------------------------------------\n");
+  for (int rr = 0; rr < MAX_RINGS_STAT; rr++) {
+    if (ringCount2thRes[rr] > 0) {
+      printf(" %4d  %10.4f   %5d   %10.6f %10.6f  %+10.6f\n", rr,
+             ringIdeal2th[rr], ringCount2thRes[rr], ringMeanAbs2thRes[rr],
+             ringMax2thAbs[rr], ringMean2thRes[rr]);
+    }
+  }
+  printf("--------------------------------------------------------------\n");
+
+  // --- Aggregate lattice parameter residual statistics ---
+  printf("           *** lattice parameter residual (Å) ***\n");
+  printf("IdealA      %.8f\n", IdealA);
+  printf("MeanΔa     %+.8f   (signed bias)\n", meanLatRes);
+  printf("Mean|Δa|    %.8f   (absolute)\n", meanAbsLatRes);
+  printf("StdΔa       %.8f\n", stdLatRes);
+  printf("Max|Δa|     %.8f\n", maxAbsLatRes);
+  printf("MedianΔa   %+.8f\n", medLatRes);
+  printf("Q25Δa      %+.8f\n", q25LatRes);
+  printf("Q75Δa      %+.8f\n", q75LatRes);
+  printf("MinΔa      %+.8f\n", minLatRes);
+  printf("MaxΔa      %+.8f\n", maxLatRes);
+  printf("NPoints     %d\n", nValidLatRes);
+  // Per-ring lattice parameter summary
+  printf("\n           *** per-ring lattice parameter residual (Å) ***\n");
+  printf(" Ring   NPoints   Mean|Δa|      Max|Δa|      MeanΔa\n");
+  printf("--------------------------------------------------------------\n");
+  for (int rr = 0; rr < MAX_RINGS_STAT; rr++) {
+    if (ringCountLatRes[rr] > 0) {
+      printf(" %4d   %5d   %10.8f  %10.8f  %+10.8f\n", rr, ringCountLatRes[rr],
+             ringMeanAbsLatRes[rr], ringMaxAbsLat[rr], ringMeanLatRes[rr]);
     }
   }
   printf("--------------------------------------------------------------\n");
@@ -3533,5 +3719,29 @@ int main(int argc, char *argv[]) {
       }
     }
   }
+  // Print final fitted parameters (moved to end for easy copy/paste)
+  printf("\n*******************Mean Values*******************\n");
+  for (a = 0; a < 12; a++)
+    means[a] /= (EndNr - StartNr + 1);
+  printf("Lsd        %0.12f\n"
+         "BC         %0.12f %0.12f\n"
+         "ty         %0.12f\n"
+         "tz         %0.12f\n"
+         "p0         %0.12f\n"
+         "p1         %0.12f\n"
+         "p2         %0.12f\n"
+         "p3         %0.12f\n",
+         means[0], means[1], means[2], means[3], means[4], means[5], means[6],
+         means[7], means[8]);
+  printf("p4         %0.12f\n", means[11]);
+  printf("           *** microstrain ***\n");
+  printf("MeanStrain %0.6lf\nStdStrain  %0.6lf\n", means[9] * 1e6,
+         means[10] * 1e6);
+  printf("MedianStr  %0.6lf\n", medStrain * 1e6);
+  printf("Q25        %0.6lf\n", q25Strain * 1e6);
+  printf("Q75        %0.6lf\n", q75Strain * 1e6);
+  printf("MinStrain  %0.6lf\n", minStrain * 1e6);
+  printf("MaxStrain  %0.6lf\n", maxStrain * 1e6);
+  printf("NPoints    %d\n", nValid);
   return 0;
 }
