@@ -22,6 +22,7 @@
 | [NF_Analysis.md](NF_Analysis.md) | NF-HEDM reconstruction workflow | Reconstructing spatially resolved orientation maps |
 | [NF_MultiResolution_Analysis.md](NF_MultiResolution_Analysis.md) | Multi-resolution NF-HEDM | Iterative NF reconstruction at increasing grid resolution |
 | [NF_GUI.md](NF_GUI.md) | NF-HEDM interactive GUI | Calibrating detectors, visualizing NF data, and inspecting results |
+| [GUIs_and_Visualization.md](GUIs_and_Visualization.md) | All GUIs and visualization tools | Master guide to all desktop, web, and utility visualization tools |
 | [Forward_Simulation.md](Forward_Simulation.md) | Forward simulation (`simulateNF`) | Validating reconstructions by simulating expected diffraction patterns |
 | [GSAS-II_Integration.md](GSAS-II_Integration.md) | Importing MIDAS output into GSAS-II | Rietveld refinement of caked powder data |
 | [Tomography_Reconstruction.md](Tomography_Reconstruction.md) | Absorption-contrast CT reconstruction | Reconstructing tomographic slices from projection data |

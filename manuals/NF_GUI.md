@@ -1,11 +1,75 @@
-# Near-Field HEDM Calibration GUI
+# Near-Field HEDM GUI
 
 **Version:** 9.1  
 **Contact:** hsharma@anl.gov
 
-This is a graphical user interface (GUI) for visualizing and analyzing near-field High-Energy Diffraction Microscopy (HEDM) data. The primary purpose of this tool is to perform a near-field calibration to determine the precise beam position and detector distances using a known calibrant sample, such as single-crystal gold.
+This manual covers both the modern PyQtGraph-based NF viewer (`nf_qt.py`) and the legacy Tkinter-based viewer (`nf.py`).
 
 **DETAILED INSTRUCTIONS FOR CALIBRATION ARE AT:** [NF_Calibration.md](NF_Calibration.md)
+
+---
+
+## Modern Viewer: `nf_qt.py` (PyQtGraph)
+
+The recommended NF viewer uses PyQt5 + PyQtGraph for faster rendering and a richer interface.
+
+### Launching
+
+```bash
+cd <data_directory>
+python ~/opt/MIDAS/gui/nf_qt.py &
+```
+
+### Features
+
+```mermaid
+graph LR
+    NF["nf_qt.py"]
+    NF --> Viz["Image Viewer<br/>(PyQtGraph)"]
+    NF --> Nav["Navigation Toolbar<br/>Home/Back/Fwd/Pan/Zoom"]
+    NF --> ROI["BoxH / BoxV<br/>ROI Stats"]
+    NF --> Mic["Microstructure<br/>.mic / .map"]
+    NF --> Sim["Spot Simulation<br/>GrainDialog"]
+    NF --> Cal["Beam Center<br/>Calibration"]
+    
+    Viz --> Cross["Crosshair +<br/>pixel coords"]
+    Viz --> Levels["P2-P98 Auto<br/>+ ManualI"]
+    Viz --> Log["Log Scale"]
+    Viz --> CM["Colormaps +<br/>Dark/Light Theme"]
+```
+
+| Feature | Description |
+|---|---|
+| **Navigation toolbar** | Home, Back/Forward, Pan, Zoom-to-rect below the image. Mouse-wheel zoom disabled |
+| **Auto-detection** | Scans current directory for TIFF files, sets folder/stem/frame automatically |
+| **Intensity control** | P2–P98 auto-scaling with editable MinI/MaxI fields and Apply button |
+| **Log scale** | Checkbox for log₁₀ display |
+| **Median subtraction** | Toggle per-frame background subtraction |
+| **Max frames** | Aggregate multiple frames (max projection) |
+| **Image transforms** | HFlip, VFlip, Transpose checkboxes |
+| **BoxH / BoxV ROI** | Rectangular region with live Sum, Mean, Min, Max statistics |
+| **Microstructure** | Load `.mic`/`.map`, color by Confidence, GrainID, Euler, KAM, GROD, Phase |
+| **Spot simulation** | GrainDialog: enter grain parameters, simulate expected spots |
+| **Colormap** | viridis, inferno, plasma, magma, turbo, gray, hot, cool, bone |
+| **Theme** | Dark or light |
+| **Font size** | Adjustable 8–24pt |
+| **Export PNG** | Save current view |
+| **Frame stepping** | Spinner + Ctrl+mouse-wheel |
+
+### Prerequisites
+
+```
+PyQt5
+pyqtgraph
+numpy
+tifffile
+```
+
+---
+
+## Legacy Viewer: `nf.py` (Tkinter)
+
+The original Tkinter-based NF viewer remains available for compatibility. Everything below describes this version.
 
 ## Features
 
@@ -184,6 +248,7 @@ The "MakeSpots" simulation feature uses a hybrid approach:
 - [NF_Analysis.md](NF_Analysis.md) — Single-resolution NF-HEDM reconstruction
 - [NF_MultiResolution_Analysis.md](NF_MultiResolution_Analysis.md) — Multi-resolution iterative NF-HEDM reconstruction
 - [NF_Calibration.md](NF_Calibration.md) — Detailed step-by-step calibration procedure
+- [GUIs_and_Visualization.md](GUIs_and_Visualization.md) — Master guide to all GUIs and visualization tools
 - [README.md](README.md) — High-level MIDAS overview and manual index
 
 ---

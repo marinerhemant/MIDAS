@@ -1,79 +1,84 @@
 # gui/ — Interactive Visualization GUIs
 
-This directory contains Tkinter-based interactive desktop applications for visualizing and analyzing MIDAS data. All GUIs are run with `python` and open a native window with matplotlib-embedded plots.
+This directory contains interactive desktop applications for visualizing and analyzing MIDAS data. Two generations of viewers are available: modern PyQtGraph-based viewers (recommended) and legacy Tkinter-based viewers.
 
 ---
 
 ## Applications
 
-### NF-HEDM GUI (`nf.py`)
+### Modern PyQtGraph Viewers (Recommended)
 
-**Interactive NF-HEDM calibration and visualization.**
+#### FF-HEDM Viewer (`ff_asym_qt.py`)
 
 ```bash
-python nf.py
+cd <data_directory> && python ~/opt/MIDAS/gui/ff_asym_qt.py &
 ```
 
-Provides a desktop interface for:
-- Viewing raw NF-HEDM detector images across all omega angles
-- Adjusting detector geometry parameters (beam center, distance) interactively
-- Visualizing reconstructed `.mic` orientation maps with confidence overlays
-- Comparing reconstructions at different parameter settings
-- Inspecting individual voxel orientations and confidence values
+Fast PyQtGraph-based FF-HEDM viewer with navigation toolbar, P2–P98 auto-scaling, live ring overlays, dark subtraction, HDF5 browsing, log scale, and export PNG. See [GUIs_and_Visualization](../manuals/GUIs_and_Visualization.md) §1.
 
-See [NF_gui manual](../manuals/NF_GUI.md) for the full user guide.
+#### NF-HEDM Viewer (`nf_qt.py`)
+
+```bash
+cd <data_directory> && python ~/opt/MIDAS/gui/nf_qt.py &
+```
+
+NF-HEDM viewer with all FF features plus microstructure overlay (`.mic`/`.map`), spot simulation, BoxH/BoxV ROI tools, and beam center calibration. See [NF_GUI manual](../manuals/NF_GUI.md) and [GUIs_and_Visualization](../manuals/GUIs_and_Visualization.md) §2.
 
 ---
 
-### FF-HEDM GUI (`ff_asym.py`)
+### Legacy Tkinter Viewers
 
-**Interactive FF-HEDM exploration.**
+#### FF-HEDM Viewer (`ff_asym.py`)
 
 ```bash
-python ff_asym.py
+cd <data_directory> && python ~/opt/MIDAS/gui/ff_asym.py &
 ```
 
-Provides a desktop interface for:
-- **Auto-detecting** data and dark files from the directory name convention (launch from data directory)
-- Browsing grain lists with filtering by orientation, position, confidence
-- Viewing and comparing raw detector frames
-- Inspecting individual spot assignments per grain
-- Exploring the orientation space (pole figures, IPF)
+Tkinter + Matplotlib FF viewer. See [FF_Visualization manual](../manuals/FF_Visualization.md).
 
-See [FF_visualization manual](../manuals/FF_Visualization.md) for the full user guide, including the auto-detection naming convention.
+#### NF-HEDM Viewer (`nf.py`)
+
+```bash
+cd <data_directory> && python ~/opt/MIDAS/gui/nf.py &
+```
+
+Tkinter + Matplotlib NF viewer with calibration workflow. See [NF_GUI manual](../manuals/NF_GUI.md).
 
 ---
 
-### Diffraction Tomography GUI (`dt.py`)
+### Other Tools
 
-**Interactive diffraction tomography and caking visualization.**
+#### Diffraction Tomography GUI (`dt.py`)
 
 ```bash
-python dt.py
+python ~/opt/MIDAS/gui/dt.py &
 ```
 
-Provides a desktop interface for:
-- Viewing raw 2D detector images
-- Overlaying calibrated ring positions
-- Interactively adjusting integration parameters
-- Viewing 1D intensity profiles vs. 2θ
+2D detector image viewer with ring overlays and 1D intensity profiles.
+
+#### Image Manipulation (`imageManipulation.py`)
+
+```bash
+python ~/opt/MIDAS/gui/imageManipulation.py &
+```
+
+General-purpose image viewer: dark subtraction, flat-field, ROI, transforms, histograms.
 
 ---
 
-### Image Manipulation (`imageManipulation.py`)
+## Shared Components
 
-**Detector image viewing and processing toolkit.**
+#### `gui_common.py`
 
-```bash
-python imageManipulation.py
-```
+Common library for PyQtGraph viewers:
 
-Provides utilities for:
-- Loading and displaying detector images (GE, TIFF, HDF5)
-- Dark subtraction and flat-field normalization
-- Region-of-interest selection
-- Image transformations (flip, transpose, rotate)
-- Pixel statistics and histogram analysis
+| Component | Description |
+|---|---|
+| `MIDASImageView` | Image viewer with crosshair, navigation toolbar, axis origin control |
+| `apply_theme()` | Dark/light palette for Qt + PyQtGraph |
+| `AsyncWorker` | Background thread wrapper |
+| `LogPanel` | Redirects `print()` to collapsible dock |
+| `get_colormap()` | Colormap lookup with matplotlib fallback |
 
 ---
 
@@ -81,12 +86,13 @@ Provides utilities for:
 
 ```
 gui/
-├── nf.py                 # NF-HEDM calibration and microstructure GUI
-├── ff_asym.py            # FF-HEDM grain exploration GUI
-├── dt.py                 # Diffraction tomography / caking GUI
+├── ff_asym_qt.py         # FF-HEDM PyQtGraph viewer (recommended)
+├── nf_qt.py              # NF-HEDM PyQtGraph viewer (recommended)
+├── gui_common.py         # Shared PyQtGraph components
+├── ff_asym.py            # FF-HEDM Tkinter viewer (legacy)
+├── nf.py                 # NF-HEDM Tkinter viewer (legacy)
+├── dt.py                 # Diffraction tomography GUI
 ├── imageManipulation.py  # Image viewer and processing tools
-├── ff/                   # FF-specific GUI components
-├── ff_dash_app/          # Dash-based FF visualization (alternative)
 └── GEBad/                # GE detector bad-pixel masks
 ```
 
@@ -94,13 +100,19 @@ gui/
 
 ## Requirements
 
-All GUIs use Python's built-in **Tkinter** for the window framework and **matplotlib** for plotting. These are included in standard Python/conda installations:
+### PyQtGraph Viewers
+```
+PyQt5
+pyqtgraph
+numpy
+```
 
+### Tkinter Viewers
 ```
 tkinter (built-in)
 matplotlib
 numpy
-PIL / Pillow
+Pillow
 scipy
 h5py
 ```
@@ -109,5 +121,7 @@ h5py
 
 ## See Also
 
-- [NF_gui manual](../manuals/NF_GUI.md) — NF-HEDM GUI user guide
-- [FF_Interactive_Plotting manual](../manuals/FF_Interactive_Plotting.md) — FF-HEDM interactive visualization
+- [GUIs_and_Visualization manual](../manuals/GUIs_and_Visualization.md) — Master GUI guide
+- [NF_GUI manual](../manuals/NF_GUI.md) — NF-HEDM GUI user guide
+- [FF_Visualization manual](../manuals/FF_Visualization.md) — FF-HEDM visualization
+- [FF_Interactive_Plotting manual](../manuals/FF_Interactive_Plotting.md) — Browser-based FF exploration

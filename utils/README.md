@@ -13,6 +13,7 @@ This directory contains Python scripts and tools used across the MIDAS analysis 
 | `integrator_batch_process.py` | Batch-mode radial integration for processing large datasets non-interactively. |
 | `integrator_server.py` | Long-running integration server for real-time data reduction during beamline operation. |
 | `integrator_stream_process_h5.py` | Streaming radial integration from HDF5 files as they are written during acquisition. |
+| `live_viewer.py` | **Real-time dashboard.** PyQtGraph-based live viewer that tails `lineout.bin` and `fit.bin` from the GPU integrator, showing 1D lineouts, heatmap waterfall, and peak evolution plots. See [FF_Radial_Integration](../manuals/FF_Radial_Integration.md) §6.3. |
 | `integrate_and_refine.py` | Combined radial integration + GSAS-II peakfit refinement pipeline. |
 | `gsas_ii_refine.py` | **GSAS-II integration.** Imports caked 1D profiles into GSAS-II for powder diffraction refinement. |
 | `midas_config.py` | MIDAS configuration and environment variable management. |
@@ -80,6 +81,9 @@ This directory contains Python scripts and tools used across the MIDAS analysis 
 | `PlotFFNF.py` | Overlay FF-HEDM grain centroids on NF-HEDM orientation maps. |
 | `pfIntensityViewer.py` | Interactive viewer for point-focus / scanning HEDM intensity data. |
 | `viz_caking.py` | Visualize radial integration (caking) results as 2D plots. |
+| `plot_integrator_peaks.py` | **Post-hoc peak analysis.** Reads `.caked.hdf.zarr.zip` and fits Pseudo-Voigt peaks along 2θ for each η slice. Produces ring-assigned scatter plots. |
+| `plot_calibrant_results.py` | **Calibrant QC.** Lattice-parameter-vs-η scatter from `CalibrantPanelShiftsOMP` `_corr.csv` output. |
+| `sino_cleanup_tomo.py` | **Sinogram cleanup and tomo reconstruction.** Processes PF-HEDM sinograms: column normalization, hole filling, despeckling, MIDAS_TOMO reconstruction. See [Tomography_Reconstruction](../manuals/Tomography_Reconstruction.md). |
 | `vtkSimExportBin.py` | Export simulation results to VTK binary format for ParaView. |
 
 ## Simulation & Testing
@@ -91,7 +95,8 @@ This directory contains Python scripts and tools used across the MIDAS analysis 
 | `compressedSimulationReader.py` | Read compressed forward simulation output files. |
 | `test_ff_hedm.py` | **FF-HEDM benchmark test.** End-to-end test using simulated data to validate the full FF-HEDM pipeline (simulation → indexing → regression comparison). Includes automatic cleanup of generated files. |
 | `test_nf_hedm.py` | **NF-HEDM benchmark test.** End-to-end test: runs `simulateNF`, reconstructs via `nf_MIDAS.py`, and compares orientations against a reference `.mic` file. |
-| `test_ff_calibration.py` | **FF-HEDM calibration benchmark.** Runs `CalibrantPanelShiftsOMP` on example CeO2 data and validates mean strain ≤ threshold. See [FF_calibration manual §9](../manuals/FF_Calibration.md). |
+| `test_ff_calibration.py` | **FF-HEDM calibration benchmark.** Runs `CalibrantPanelShiftsOMP` on example CeO2 data and validates mean strain ≤ threshold. See [FF_Calibration manual §9](../manuals/FF_Calibration.md). |
+| `test_live_viewer.py` | **Live viewer test.** Generates synthetic `lineout.bin` and `fit.bin` streams for testing `live_viewer.py` without a running GPU process. |
 
 ## Scanning / Point-Focus HEDM
 
@@ -113,6 +118,7 @@ This directory contains Python scripts and tools used across the MIDAS analysis 
 | `run_full_images_ff.py` | Process full detector images through the FF-HEDM pipeline. |
 | `ff_peaks_raw_images.py` | Extract peaks from raw images for diagnostic purposes. |
 | `undistort_image.py` | Apply spatial distortion correction to a raw detector image using calibrated parameters. |
+| `generate_mask.py` | **Mask generator.** Create uint8 TIFF mask files for detector pixel masking (convention: 0=valid, 1=masked). Used with `MaskFile` parameter. |
 
 ## Deprecated
 

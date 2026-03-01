@@ -413,8 +413,91 @@ Instrument parameters are read from the parameter file if present (keys `Wavelen
 > [!TIP]
 > For importing into GSAS-II, see [GSAS-II_Integration.md](GSAS-II_Integration.md). MIDAS requires `zarr` v2 (e.g. `zarr==2.18.3`).
 
-### 6.3. Visualizing Results
-Use the **FF-HEDM Interactive Viewer** (`interactiveFFplotting.py`) to inspect the resulting HDF5/Zarr files, or simpler tools like `silx view` or standard Python `h5py`/`zarr` scripts.
+### 6.3. Live Integration Dashboard (`live_viewer.py`)
+
+For real-time monitoring during GPU streaming experiments, MIDAS provides a PyQtGraph-based dashboard that tails binary output files as they are written by `IntegratorFitPeaksGPUStream`.
+
+#### Architecture
+
+```mermaid
+graph LR
+    GPU["IntegratorFitPeaksGPUStream<br/>(running)"] -->|writes| LO["lineout.bin"]
+    GPU -->|writes| FIT["fit.bin"]
+    GPU -->|writes| FC["fit_curves.bin"]
+    LO -->|tailed by| LV["live_viewer.py<br/>(PyQtGraph dashboard)"]
+    FIT -->|tailed by| LV
+    FC -->|tailed by| LV
+```
+
+The viewer uses a `BinaryTailer` class that periodically checks file sizes and reads new complete records. This allows it to start before the GPU process and remain synchronized as data streams in.
+
+#### Launching
+
+```bash
+# Basic — lineout only
+python ~/opt/MIDAS/utils/live_viewer.py \
+    --lineout lineout.bin --n-rbins 500
+
+# With peak fitting
+python ~/opt/MIDAS/utils/live_viewer.py \
+    --lineout lineout.bin --n-rbins 500 \
+    --fit fit.bin --n-peaks 3 \
+    --max-history 2000
+
+# Auto-launched by integrator_batch_process.py
+python ~/opt/MIDAS/utils/integrator_batch_process.py \
+    --param-file setup.txt --folder /data/scan_01 \
+    --output-h5 scan_01.h5
+# → automatically starts live_viewer in a subprocess
+```
+
+#### Three-Panel Display
+
+| Panel | Content | Use |
+|---|---|---|
+| **1D Lineout** (left) | Latest integrated I(R) profile | Monitor peak positions, check data quality |
+| **Heatmap** (center) | R × frame waterfall (time-evolving) | Spot drift, beam instabilities, texture changes |
+| **Peak Evolution** (right) | Fitted params vs. frame | Track Imax, Rcen, Sigma, Mu, BG, GoF per peak over time |
+
+#### Controls
+
+| Control | Description |
+|---|---|
+| Colormap | Select from viridis, inferno, plasma, etc. |
+| Theme | Dark or light mode |
+| Log heatmap | Log₁₀ scale for heatmap |
+| Log lineout | Log₁₀ scale for 1D lineout |
+| Font size | Adjustable 8–24pt |
+| Decimate | Show every Nth frame in heatmap (performance) |
+| Max history | Limit number of retained frames |
+| Pause | Freeze display (data still collected) |
+| Reset | Clear all accumulated data |
+| Param select | Choose which fit params to plot (Imax, BG, Mu, Rcen, Sigma, GoF) |
+| Peak select | Choose which peaks to display |
+
+#### Command-Line Arguments
+
+| Argument | Description | Default |
+|---|---|---|
+| `--lineout` | Path to `lineout.bin` | **(required)** |
+| `--n-rbins` | Number of radial bins per record | `500` |
+| `--fit` | Path to `fit.bin` | *(optional)* |
+| `--n-peaks` | Number of peaks in fit.bin | `0` |
+| `--max-history` | Max frames to retain | `0` (unlimited) |
+| `--theme` | `light` or `dark` | `light` |
+
+### 6.4. Post-Hoc Peak Analysis (`plot_integrator_peaks.py`)
+
+For offline analysis of caked output, `plot_integrator_peaks.py` reads `.caked.hdf.zarr.zip` files and fits Pseudo-Voigt peaks along the 2θ axis for each η slice.
+
+```bash
+python ~/opt/MIDAS/utils/plot_integrator_peaks.py \
+    --zarr scan_01.caked.hdf.zarr.zip \
+    --peaks 245.3 347.1 425.8 \
+    --frame -1
+```
+
+**Output:** 2D scatter plot of fitted 2θ vs η with ring assignment, per-ring statistics (mean, std), and overlaid ideal ring positions.
 
 ---
 

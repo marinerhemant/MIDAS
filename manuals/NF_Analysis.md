@@ -68,6 +68,9 @@ graph LR
 1. `MedianImageLibTiff` — per-distance median background image (parallelized via `multiprocessing.Pool` locally or Parsl on clusters)
 2. `ImageProcessingLibTiffOMP` — background subtraction on raw TIFFs → `SpotsInfo.bin`
 
+> [!NOTE]
+> A combined single-pass executable `ProcessImagesCombined` is also available. It computes the median and processes images in one step, which can be faster for moderate dataset sizes. The workflow selects it automatically when applicable.
+
 **Fitting & Postprocessing:**
 1. `MMapImageInfo` — prepare memory-mapped binary data
 2. Copy `.bin` files to `/dev/shm`
@@ -381,6 +384,7 @@ The final text mic file has one line per reconstructed grid point. Lines startin
 | `MakeDiffrSpots` | Simulate diffraction spots for all seeds | `<paramFN>` |
 | `MedianImageLibTiff` | Compute median background image | `<paramFN> <distanceNr>` |
 | `ImageProcessingLibTiffOMP` | Process raw images (background subtraction) | `<paramFN> <nodeNr> <nNodes> <nCPUs>` |
+| `ProcessImagesCombined` | Single-pass median + image processing | `<paramFN> <distanceNr> <nCPUs>` |
 | `MMapImageInfo` | Prepare memory-mapped binary data | `<paramFN>` |
 | `FitOrientationOMP` | Fit crystal orientations at each grid point | `<paramFN> <blockNr> <nBlocks> <nCPUs>` |
 | `ParseMic` | Consolidate fitting results into mic file | `<paramFN>` |
