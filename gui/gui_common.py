@@ -71,6 +71,8 @@ class MIDASImageView(pg.ImageView):
     cursorMoved = QtCore.pyqtSignal(float, float, float)
     # Emitted when mouse wheel changes frame: delta (+1 or -1)
     frameScrolled = QtCore.pyqtSignal(int)
+    # Emitted when image data changes: (min, max, p2, p98)
+    dataStatsUpdated = QtCore.pyqtSignal(float, float, float, float)
 
     def __init__(self, parent=None, name='MIDASImageView', **kwargs):
         super().__init__(parent=parent, name=name, view=pg.PlotItem(), **kwargs)
@@ -103,16 +105,33 @@ class MIDASImageView(pg.ImageView):
     # ── Public API ──────────────────────────────────────────────────
 
     def set_image_data(self, data, auto_levels=True, levels=None):
-        """Set image data, respecting log mode."""
+        """Set image data with smart percentile-based auto-levels."""
         self._raw_data = data
         display = self._apply_log(data) if self._log_mode else data
+
+        # Compute stats
+        finite = display[np.isfinite(display)]
+        if finite.size > 0:
+            dmin, dmax = float(finite.min()), float(finite.max())
+            p2 = float(np.percentile(finite, 2))
+            p98 = float(np.percentile(finite, 98))
+        else:
+            dmin = dmax = p2 = p98 = 0.0
+        self.dataStatsUpdated.emit(dmin, dmax, p2, p98)
+
         if levels is not None:
             if self._log_mode:
                 levels = (np.log10(max(levels[0], 1e-10)),
                           np.log10(max(levels[1], 1e-10)))
             self.setImage(display, autoLevels=False, levels=levels)
+        elif auto_levels:
+            # Smart levels: use 2nd-98th percentile to avoid hot pixel domination
+            self.setImage(display, autoLevels=False, levels=(p2, p98))
         else:
-            self.setImage(display, autoLevels=auto_levels)
+            self.setImage(display, autoLevels=False)
+
+        # Invert Y axis to match matplotlib imshow convention (origin bottom-left)
+        self.getView().invertY(True)
 
     def set_log_mode(self, enabled):
         """Toggle log10 display."""

@@ -410,6 +410,8 @@ class FFViewer(QtWidgets.QMainWindow):
         # ── Status Bar ──
         self.status_label = QtWidgets.QLabel("Ready")
         self.statusBar().addWidget(self.status_label, 1)
+        self.stats_label = QtWidgets.QLabel("")
+        self.statusBar().addPermanentWidget(self.stats_label)
         self.frame_label = QtWidgets.QLabel("")
         self.statusBar().addPermanentWidget(self.frame_label)
 
@@ -435,6 +437,13 @@ class FFViewer(QtWidgets.QMainWindow):
         self.theme_combo.addItems(['light', 'dark'])
         self.theme_combo.setCurrentText(self._theme)
         tb.addWidget(self.theme_combo)
+
+        tb.addWidget(QtWidgets.QLabel("Font:"))
+        self.font_spin = QtWidgets.QSpinBox()
+        self.font_spin.setRange(8, 24)
+        self.font_spin.setValue(10)
+        self.font_spin.valueChanged.connect(self._on_font_changed)
+        tb.addWidget(self.font_spin)
 
         # Log
         self.log_check = QtWidgets.QCheckBox("Log")
@@ -565,6 +574,20 @@ class FFViewer(QtWidgets.QMainWindow):
         self.max_frames_spin.setValue(240)
         lay.addWidget(self.max_frames_spin, 3, 1, 1, 2)
 
+        lay.addWidget(QtWidgets.QLabel("MinI"), 4, 0)
+        self.min_intensity_edit = QtWidgets.QLineEdit("0")
+        self.min_intensity_edit.setMaximumWidth(70)
+        lay.addWidget(self.min_intensity_edit, 4, 1)
+
+        lay.addWidget(QtWidgets.QLabel("MaxI"), 4, 2)
+        self.max_intensity_edit = QtWidgets.QLineEdit("1000")
+        self.max_intensity_edit.setMaximumWidth(70)
+        lay.addWidget(self.max_intensity_edit, 5, 0)
+
+        apply_btn = QtWidgets.QPushButton("Apply")
+        apply_btn.clicked.connect(self._apply_intensity_levels)
+        lay.addWidget(apply_btn, 5, 1)
+
         return grp
 
     def _build_processing_panel(self):
@@ -617,6 +640,7 @@ class FFViewer(QtWidgets.QMainWindow):
         self.image_view.frameScrolled.connect(self._on_frame_scroll)
         # Cursor tracking
         self.image_view.cursorMoved.connect(self._on_cursor_moved)
+        self.image_view.dataStatsUpdated.connect(self._on_stats_updated)
 
     def _show_help(self):
         QtWidgets.QMessageBox.information(self, 'FF Viewer — Controls',
@@ -656,6 +680,9 @@ class FFViewer(QtWidgets.QMainWindow):
         self._theme = theme
         apply_theme(QtWidgets.QApplication.instance(), theme)
 
+    def _on_font_changed(self, size):
+        QtWidgets.QApplication.instance().setStyleSheet(f'* {{ font-size: {size}pt; }}')
+
     def _on_frame_scroll(self, delta):
         self.frame_spin.setValue(self.frame_spin.value() + delta)
 
@@ -671,6 +698,19 @@ class FFViewer(QtWidgets.QMainWindow):
             )
         except Exception:
             self.status_label.setText(f"x={x:.1f}  y={y:.1f}  I={val:.0f}")
+
+    def _on_stats_updated(self, dmin, dmax, p2, p98):
+        self.stats_label.setText(f"Min={dmin:.0f}  Max={dmax:.0f}  [P2={p2:.0f}  P98={p98:.0f}]")
+        self.min_intensity_edit.setText(str(int(p2)))
+        self.max_intensity_edit.setText(str(int(p98)))
+
+    def _apply_intensity_levels(self):
+        try:
+            lo = float(self.min_intensity_edit.text())
+            hi = float(self.max_intensity_edit.text())
+            self.image_view.setLevels(lo, hi)
+        except ValueError:
+            pass
 
     def _on_rings_toggled(self, checked):
         self.show_rings = checked
@@ -899,7 +939,12 @@ class FFViewer(QtWidgets.QMainWindow):
             self._draw_rings()
 
     def _on_calibrate(self):
-        print("Calibration not yet ported — use ff_asym.py for now")
+        """Open calibration dialog — requires readParams to have been run first."""
+        if self.bcs is None or not self.ring_rads:
+            print("Load a parameter file (readParams) and select rings first.")
+            return
+        dlg = CalibrationDialog(self)
+        dlg.exec_()
 
     # ── Auto-detect ────────────────────────────────────────────────
 
@@ -936,6 +981,161 @@ class FFViewer(QtWidgets.QMainWindow):
             print(f"Auto-detected: {self.file_stem} in {self.folder}")
             self.setWindowTitle(self.windowTitle() + " [files detected]")
             self._load_and_display()
+
+
+# ═══════════════════════════════════════════════════════════════════════
+#  Calibration Dialog
+# ═══════════════════════════════════════════════════════════════════════
+
+class CalibrationDialog(QtWidgets.QDialog):
+    """Run detector calibration (Calibrant) with optional ring exclusion."""
+
+    def __init__(self, viewer, parent=None):
+        super().__init__(parent or viewer)
+        self.viewer = viewer
+        self.setWindowTitle("Detector Calibration")
+        self.resize(700, 400)
+        self._build_ui()
+
+    def _build_ui(self):
+        lay = QtWidgets.QVBoxLayout(self)
+        lay.addWidget(QtWidgets.QLabel(
+            "Enter rings to exclude (comma-separated, 0 = none):"))
+        self.exclude_edit = QtWidgets.QLineEdit("0")
+        lay.addWidget(self.exclude_edit)
+
+        self.run_btn = QtWidgets.QPushButton("Run Calibration")
+        self.run_btn.clicked.connect(self._run_calibration)
+        lay.addWidget(self.run_btn)
+
+        self.result_text = QtWidgets.QPlainTextEdit()
+        self.result_text.setReadOnly(True)
+        lay.addWidget(self.result_text)
+
+        btn_row = QtWidgets.QHBoxLayout()
+        self.redo_btn = QtWidgets.QPushButton("Run Again")
+        self.redo_btn.clicked.connect(self._run_calibration)
+        self.redo_btn.setEnabled(False)
+        btn_row.addWidget(self.redo_btn)
+        close_btn = QtWidgets.QPushButton("Close")
+        close_btn.clicked.connect(self.accept)
+        btn_row.addWidget(close_btn)
+        lay.addLayout(btn_row)
+
+    def _write_calib_params(self, pfname, det_num, rings_exclude):
+        v = self.viewer
+        idx = det_num - v.start_det_nr
+        dark_fn = build_filename(v.folder, v.dark_stem, v.dark_num,
+                                  v.padding, det_num, v.ext)
+        with open(pfname, 'w') as f:
+            f.write('Folder ' + v.folder + '\n')
+            f.write('FileStem ' + v.file_stem + '\n')
+            f.write('Dark ' + dark_fn + '\n')
+            f.write('Padding ' + str(v.padding) + '\n')
+            f.write('Ext .ge' + str(det_num) + '\n')
+            f.write('ImTransOpt 0\n')
+            f.write('BC ' + str(v.bcs[idx][0]) + ' ' + str(v.bcs[idx][1]) + '\n')
+            f.write('px ' + str(v.pixel_size) + '\n')
+            lc = v.lattice_const
+            f.write('LatticeParameter ' + ' '.join(str(x) for x in lc) + '\n')
+            f.write('SpaceGroup ' + str(v.sg) + '\n')
+            f.write('NrPixelsY ' + str(v.ny) + '\n')
+            f.write('NrPixelsZ ' + str(v.nz) + '\n')
+            f.write('Wavelength ' + str(v.wl) + '\n')
+            f.write('Lsd ' + str(v.lsd[idx]) + '\n')
+            f.write('StartNr ' + str(v.first_file_nr) + '\n')
+            f.write('EndNr ' + str(v.first_file_nr) + '\n')
+            f.write('EtaBinSize 5\n')
+            if hasattr(v, 'ty') and len(v.ty) > idx:
+                f.write('ty ' + str(v.ty[idx]) + '\n')
+                f.write('tz ' + str(v.tz[idx]) + '\n')
+                f.write('tx ' + str(v.tx[idx]) + '\n')
+            for ring in rings_exclude:
+                f.write('RingsToExclude ' + str(ring) + '\n')
+
+    def _run_calibration(self):
+        v = self.viewer
+        self.result_text.clear()
+        self.result_text.appendPlainText("Running calibration...")
+        self.run_btn.setEnabled(False)
+        self.redo_btn.setEnabled(False)
+        QtWidgets.QApplication.processEvents()
+
+        exclude_str = self.exclude_edit.text().strip()
+        rings_exclude = [] if exclude_str == '0' else \
+            [int(x.strip()) for x in exclude_str.split(',') if x.strip()]
+
+        if midas_config and midas_config.MIDAS_BIN_DIR:
+            calibrate_cmd = os.path.join(midas_config.MIDAS_BIN_DIR, 'Calibrant')
+        else:
+            calibrate_cmd = os.path.expanduser('~/opt/MIDAS/FF_HEDM/bin/Calibrant')
+
+        pfnames = []
+        for det in range(v.start_det_nr, v.end_det_nr + 1):
+            pf = 'CalibrationDetNr' + str(det) + '.txt'
+            self._write_calib_params(pf, det, rings_exclude)
+            pfnames.append(pf)
+
+        cmds = [[calibrate_cmd, pf] for pf in pfnames]
+        processes = [subprocess.Popen(cmd, stdin=subprocess.PIPE,
+                     stdout=subprocess.PIPE, stderr=subprocess.STDOUT,
+                     close_fds=True) for cmd in cmds]
+
+        def get_lines(proc):
+            return proc.communicate()[0].decode('utf-8').splitlines()
+
+        outputs = Pool(len(processes)).map(get_lines, processes)
+        self._parse_outputs(outputs)
+
+    def _parse_outputs(self, outputs):
+        v = self.viewer
+        n_det = v.end_det_nr - v.start_det_nr + 1
+        v.ty = []; v.tz = []
+        p0 = []; p1 = []; p2 = []
+        mean_strain = []; std_strain = []
+
+        lines_out = []
+        for i in range(n_det):
+            lsd_t = bc_y = bc_z = ty_t = tz_t = 0
+            p0_t = p1_t = p2_t = ms_t = ss_t = 0
+            n_files = 1
+            for line in outputs[i]:
+                if 'LsdFit' in line: lsd_t += float(line.split('\t')[-1]) / n_files
+                if 'YBCFit' in line: bc_y += float(line.split('\t')[-1]) / n_files
+                if 'ZBCFit' in line: bc_z += float(line.split('\t')[-1]) / n_files
+                if 'tyFit' in line:  ty_t += float(line.split('\t')[-1]) / n_files
+                if 'tzFit' in line:  tz_t += float(line.split('\t')[-1]) / n_files
+                if 'P0Fit' in line:  p0_t += float(line.split('\t')[-1]) / n_files
+                if 'P1Fit' in line:  p1_t += float(line.split('\t')[-1]) / n_files
+                if 'P2Fit' in line:  p2_t += float(line.split('\t')[-1]) / n_files
+                if 'MeanStrain' in line: ms_t += float(line.split('\t')[-1]) / n_files
+                if 'StdStrain' in line:  ss_t += float(line.split('\t')[-1]) / n_files
+
+            v.lsd[i] = lsd_t
+            if v.bcs is not None:
+                v.bcs[i] = [bc_y, bc_z]
+            v.ty.append(ty_t); v.tz.append(tz_t)
+            p0.append(p0_t); p1.append(p1_t); p2.append(p2_t)
+            mean_strain.append(ms_t); std_strain.append(ss_t)
+
+            s = (f"Det {v.start_det_nr + i}: Lsd={lsd_t:.1f} BC=[{bc_y:.1f},{bc_z:.1f}] "
+                 f"ty={ty_t:.4f} tz={tz_t:.4f} P={p0_t:.4f},{p1_t:.4f},{p2_t:.4f} "
+                 f"MeanStr={ms_t:.6f} StdStr={ss_t:.6f}")
+            lines_out.append(s)
+
+        self.result_text.clear()
+        self.result_text.appendPlainText("Refined values:")
+        for line in lines_out:
+            self.result_text.appendPlainText(line)
+        self.result_text.appendPlainText("\nClick 'Run Again' to iterate.")
+        self.run_btn.setEnabled(True)
+        self.redo_btn.setEnabled(True)
+
+        # Update Lsd/BC display
+        v.lsd_edit.setText(str(v.lsd[0]))
+        if v.bcs is not None:
+            v.bcy_edit.setText(str(v.bcs[0][0]))
+            v.bcz_edit.setText(str(v.bcs[0][1]))
 
 
 # ═══════════════════════════════════════════════════════════════════════

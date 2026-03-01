@@ -267,18 +267,21 @@ class NFViewer(QtWidgets.QMainWindow):
 
         main_layout.addWidget(self.splitter, stretch=1)
 
-        # Control panels
+        # Control panels — use a splitter for resizable proportions
         ctrl = QtWidgets.QHBoxLayout()
-        ctrl.addWidget(self._build_file_panel())
-        ctrl.addWidget(self._build_image_panel())
-        ctrl.addWidget(self._build_processing_panel())
-        ctrl.addWidget(self._build_analysis_panel())
-        ctrl.addWidget(self._build_mic_panel())
+        ctrl.setSpacing(8)
+        ctrl.addWidget(self._build_file_panel(), stretch=2)
+        ctrl.addWidget(self._build_image_panel(), stretch=2)
+        ctrl.addWidget(self._build_processing_panel(), stretch=2)
+        ctrl.addWidget(self._build_analysis_panel(), stretch=1)
+        ctrl.addWidget(self._build_mic_panel(), stretch=2)
         main_layout.addLayout(ctrl)
 
         # Status bar
         self.status_label = QtWidgets.QLabel("Ready")
         self.statusBar().addWidget(self.status_label, 1)
+        self.stats_label = QtWidgets.QLabel("")
+        self.statusBar().addPermanentWidget(self.stats_label)
         self.frame_label = QtWidgets.QLabel("")
         self.statusBar().addPermanentWidget(self.frame_label)
 
@@ -301,6 +304,13 @@ class NFViewer(QtWidgets.QMainWindow):
         self.theme_combo.addItems(['light', 'dark'])
         self.theme_combo.setCurrentText(self._theme)
         tb.addWidget(self.theme_combo)
+
+        tb.addWidget(QtWidgets.QLabel("Font:"))
+        self.font_spin = QtWidgets.QSpinBox()
+        self.font_spin.setRange(8, 24)
+        self.font_spin.setValue(10)
+        self.font_spin.valueChanged.connect(self._on_font_changed)
+        tb.addWidget(self.font_spin)
 
         self.log_check = QtWidgets.QCheckBox("Log")
         tb.addWidget(self.log_check)
@@ -342,15 +352,15 @@ class NFViewer(QtWidgets.QMainWindow):
         self.fnstem_edit.setMaximumWidth(120)
         lay.addWidget(self.fnstem_edit, 0, 5)
 
-        lay.addWidget(QtWidgets.QLabel("NrPixY"), 0, 6)
+        lay.addWidget(QtWidgets.QLabel("NrPixY"), 1, 0)
         self.ny_edit = QtWidgets.QLineEdit(str(self.ny))
-        self.ny_edit.setMaximumWidth(50)
-        lay.addWidget(self.ny_edit, 0, 7)
+        self.ny_edit.setMaximumWidth(60)
+        lay.addWidget(self.ny_edit, 1, 1)
 
-        lay.addWidget(QtWidgets.QLabel("NrPixZ"), 0, 8)
+        lay.addWidget(QtWidgets.QLabel("NrPixZ"), 1, 2)
         self.nz_edit = QtWidgets.QLineEdit(str(self.nz))
-        self.nz_edit.setMaximumWidth(50)
-        lay.addWidget(self.nz_edit, 0, 9)
+        self.nz_edit.setMaximumWidth(60)
+        lay.addWidget(self.nz_edit, 1, 3)
         return grp
 
     def _build_image_panel(self):
@@ -377,10 +387,10 @@ class NFViewer(QtWidgets.QMainWindow):
         self.nfiles_edit.setMaximumWidth(40)
         lay.addWidget(self.nfiles_edit, 0, 7)
 
-        lay.addWidget(QtWidgets.QLabel("PxSz"), 0, 8)
+        lay.addWidget(QtWidgets.QLabel("PxSz"), 1, 0)
         self.px_edit = QtWidgets.QLineEdit(str(self.pixel_size))
-        self.px_edit.setMaximumWidth(40)
-        lay.addWidget(self.px_edit, 0, 9)
+        self.px_edit.setMaximumWidth(50)
+        lay.addWidget(self.px_edit, 1, 1)
         return grp
 
     def _build_processing_panel(self):
@@ -402,10 +412,25 @@ class NFViewer(QtWidgets.QMainWindow):
         self.maxframes_check = QtWidgets.QCheckBox("MaxOverFr")
         lay.addWidget(self.maxframes_check, 0, 4)
 
-        lay.addWidget(QtWidgets.QLabel("Lsd(μm)"), 0, 5)
+        lay.addWidget(QtWidgets.QLabel("Lsd(μm)"), 1, 0)
         self.lsd_edit = QtWidgets.QLineEdit(str(self.lsd))
-        self.lsd_edit.setMaximumWidth(70)
-        lay.addWidget(self.lsd_edit, 0, 6)
+        self.lsd_edit.setMaximumWidth(80)
+        lay.addWidget(self.lsd_edit, 1, 1, 1, 2)
+
+        lay.addWidget(QtWidgets.QLabel("MinI"), 2, 0)
+        self.min_intensity_edit = QtWidgets.QLineEdit("0")
+        self.min_intensity_edit.setMaximumWidth(60)
+        lay.addWidget(self.min_intensity_edit, 2, 1)
+
+        lay.addWidget(QtWidgets.QLabel("MaxI"), 2, 2)
+        self.max_intensity_edit = QtWidgets.QLineEdit("1000")
+        self.max_intensity_edit.setMaximumWidth(60)
+        lay.addWidget(self.max_intensity_edit, 2, 3)
+
+        apply_btn = QtWidgets.QPushButton("Apply")
+        apply_btn.clicked.connect(self._apply_intensity_levels)
+        lay.addWidget(apply_btn, 2, 4)
+
         return grp
 
     def _build_analysis_panel(self):
@@ -423,6 +448,14 @@ class NFViewer(QtWidgets.QMainWindow):
         btn_bc = QtWidgets.QPushButton("BeamCenter")
         btn_bc.clicked.connect(self._on_beam_center)
         lay.addWidget(btn_bc, 0, 2)
+
+        btn_boxh = QtWidgets.QPushButton("BoxH")
+        btn_boxh.clicked.connect(lambda: self._add_box_roi('h'))
+        lay.addWidget(btn_boxh, 1, 0)
+
+        btn_boxv = QtWidgets.QPushButton("BoxV")
+        btn_boxv.clicked.connect(lambda: self._add_box_roi('v'))
+        lay.addWidget(btn_boxv, 1, 1)
         return grp
 
     def _build_mic_panel(self):
@@ -485,9 +518,13 @@ class NFViewer(QtWidgets.QMainWindow):
             lambda n: self.image_view.set_colormap(n))
         self.theme_combo.currentTextChanged.connect(
             lambda t: apply_theme(QtWidgets.QApplication.instance(), t))
+
+    def _on_font_changed(self, size):
+        QtWidgets.QApplication.instance().setStyleSheet(f'* {{ font-size: {size}pt; }}')
         self.image_view.frameScrolled.connect(
             lambda d: self.frame_spin.setValue(self.frame_spin.value() + d))
         self.image_view.cursorMoved.connect(self._on_cursor_moved)
+        self.image_view.dataStatsUpdated.connect(self._on_stats_updated)
         self.col_group.buttonClicked.connect(self._on_col_mode_changed)
 
     def _show_help(self):
@@ -523,6 +560,19 @@ class NFViewer(QtWidgets.QMainWindow):
 
     def _on_cursor_moved(self, x, y, val):
         self.status_label.setText(f"x={x:.1f}  y={y:.1f}  I={val:.0f}")
+
+    def _on_stats_updated(self, dmin, dmax, p2, p98):
+        self.stats_label.setText(f"Min={dmin:.0f}  Max={dmax:.0f}  [P2={p2:.0f}  P98={p98:.0f}]")
+        self.min_intensity_edit.setText(str(int(p2)))
+        self.max_intensity_edit.setText(str(int(p98)))
+
+    def _apply_intensity_levels(self):
+        try:
+            lo = float(self.min_intensity_edit.text())
+            hi = float(self.max_intensity_edit.text())
+            self.image_view.setLevels(lo, hi)
+        except ValueError:
+            pass
 
     def _on_col_mode_changed(self, btn):
         self.col_mode = self.col_group.id(btn)
@@ -642,7 +692,6 @@ class NFViewer(QtWidgets.QMainWindow):
             else:
                 self.imarr2 = imarr
 
-        self.imarr2 = self.imarr2[::-1, ::-1].copy()
         self.image_view.set_image_data(self.imarr2.astype(float))
         self.frame_label.setText(f"Frame {self.frame_nr}  Dist {self.dist}")
 
@@ -676,6 +725,51 @@ class NFViewer(QtWidgets.QMainWindow):
         if data is not None and len(data) > 0:
             self.lineout_plot.clear()
             self.lineout_plot.plot(data, pen=pg.mkPen('b', width=1.5))
+
+    # ── Box ROI (sum across rect) ──────────────────────────────────
+
+    def _add_box_roi(self, direction):
+        """Add rectangular ROI for box-integrated line profile."""
+        if self.imarr2 is None:
+            return
+        self.right_widget.setCurrentIndex(0)
+        self._box_direction = direction
+        h, w = self.imarr2.shape
+        size_main = int(min(h, w) * 0.4)
+        size_cross = int(min(h, w) * 0.1)
+        if direction == 'h':
+            roi = pg.RectROI([w * 0.3, h * 0.45], [size_main, size_cross],
+                              pen=pg.mkPen('c', width=2))
+        else:
+            roi = pg.RectROI([w * 0.45, h * 0.3], [size_cross, size_main],
+                              pen=pg.mkPen('c', width=2))
+
+        if hasattr(self, '_box_roi') and self._box_roi is not None:
+            self.image_view.removeItem(self._box_roi)
+        self._box_roi = roi
+        self.image_view.addItem(roi)
+        roi.sigRegionChanged.connect(self._update_box_profile)
+        self._update_box_profile()
+
+    def _update_box_profile(self):
+        if not hasattr(self, '_box_roi') or self._box_roi is None or self.imarr2 is None:
+            return
+        data = self._box_roi.getArrayRegion(
+            self.imarr2.astype(float), self.image_view.imageItem)
+        if data is None or data.size == 0:
+            return
+        direction = getattr(self, '_box_direction', 'h')
+        if direction == 'h':
+            profile = np.sum(data, axis=0)  # sum along vertical (cross) axis
+            title = 'BoxH'
+        else:
+            profile = np.sum(data, axis=1)  # sum along horizontal (cross) axis
+            title = 'BoxV'
+        self.lineout_plot.clear()
+        self.lineout_plot.plot(profile, pen=pg.mkPen('c', width=1.5))
+        self.lineout_plot.setTitle(f"{title}  Sum={np.sum(data):.0f}  "
+                                   f"Mean={np.mean(data):.1f}  "
+                                   f"Min={np.min(data):.0f}  Max={np.max(data):.0f}")
 
     # ── Mic File ───────────────────────────────────────────────────
 
@@ -834,10 +928,103 @@ class NFViewer(QtWidgets.QMainWindow):
     # ── Grain Simulation (placeholders) ────────────────────────────
 
     def _on_load_grain(self):
-        print("LoadGrain: not yet ported — use nf.py for now")
+        """Open grain parameter dialog."""
+        dlg = GrainDialog(self)
+        if dlg.exec_() == QtWidgets.QDialog.Accepted:
+            self._make_spots()
 
     def _on_make_spots(self):
-        print("MakeSpots: not yet ported — use nf.py for now")
+        """Generate and display simulated spots."""
+        if not self.simulated_spots:
+            self._on_load_grain()
+        elif self.simulated_spots:
+            self._plot_spot(self.spot_nr)
+
+    def _make_spots(self):
+        """Run GetHKLList + GenSeedOrientations + SimulateDiffractionSpots."""
+        with tempfile.TemporaryDirectory() as tmp:
+            pf = os.path.join(tmp, 'ps.txt')
+            with open(pf, 'w') as f:
+                f.write('SpaceGroup ' + str(self.sg) + '\n')
+                f.write('Wavelength ' + str(self.wl) + '\n')
+                lsd_val = float(self.lsd_edit.text())
+                f.write('Lsd ' + str(lsd_val) + '\n')
+                f.write('MaxRingRad ' + str(self.maxringrad) + '\n')
+                f.write('LatticeConstant ' + ' '.join(str(v) for v in self.latC) + '\n')
+
+            if midas_config and midas_config.MIDAS_NF_BIN_DIR:
+                hkl_bin = os.path.join(midas_config.MIDAS_NF_BIN_DIR, 'GetHKLList')
+                gen_bin = os.path.join(midas_config.MIDAS_NF_BIN_DIR, 'GenSeedOrientationsFF2NFHEDM')
+                sim_bin = os.path.join(midas_config.MIDAS_NF_BIN_DIR, 'SimulateDiffractionSpots')
+            else:
+                hkl_bin = os.path.expanduser('~/opt/MIDAS/NF_HEDM/bin/GetHKLList')
+                gen_bin = os.path.expanduser('~/opt/MIDAS/NF_HEDM/bin/GenSeedOrientationsFF2NFHEDM')
+                sim_bin = os.path.expanduser('~/opt/MIDAS/NF_HEDM/bin/SimulateDiffractionSpots')
+
+            try:
+                subprocess.run([hkl_bin, pf], check=True, cwd=tmp)
+            except Exception as e:
+                print(f"GetHKLList failed: {e}"); return
+
+            orinfn = os.path.join(tmp, 'orin.txt')
+            oroutfn = os.path.join(tmp, 'orout.txt')
+            instr = "120 " + " ".join(str(self.om[i]) for i in range(9))
+            instr += " " + " ".join(str(self.pos[i]) for i in range(3))
+            instr += " " + " ".join(str(self.latC[i]) for i in range(6)) + "\n"
+            with open(orinfn, 'w') as f:
+                f.write(instr)
+
+            try:
+                subprocess.run([gen_bin, orinfn, oroutfn], check=True, cwd=tmp)
+                subprocess.run([sim_bin, str(lsd_val), oroutfn], check=True, cwd=tmp)
+            except Exception as e:
+                print(f"Spot simulation failed: {e}"); return
+
+            spots_fn = os.path.join(tmp, 'SimulatedDiffractionSpots.txt')
+            if os.path.exists(spots_fn):
+                with open(spots_fn, 'r') as f:
+                    self.simulated_spots = f.readlines()
+                print(f"Generated {len(self.simulated_spots)} simulated spots")
+                self.spot_nr = 1
+                self._plot_spot(1)
+            else:
+                print("SimulatedDiffractionSpots.txt not found")
+
+    def _plot_spot(self, spot_nr):
+        """Display a single simulated spot on the image."""
+        if not self.simulated_spots or spot_nr < 1 or spot_nr > len(self.simulated_spots):
+            return
+        self._sync_params()
+        dist = self.dist
+        lsd_val = float(self.lsd_edit.text())
+        this_lsd = lsd_val + dist * self.dist_diff
+        sim_lsd = lsd_val
+
+        line = self.simulated_spots[spot_nr - 1].split()
+        rad = float(line[0]) * this_lsd / sim_lsd
+        eta = float(line[1])
+        thisome = float(line[2])
+
+        frame_to_read = int((thisome - self.startome) / self.omestep) if self.omestep != 0 else 0
+        self.frame_spin.setValue(frame_to_read)
+
+        ys, zs = YZ4mREta(rad, eta)
+        ya = self.pos[0] * math.sin(thisome * deg2rad) + self.pos[1] * math.cos(thisome * deg2rad)
+        xa = -self.pos[1] * math.sin(thisome * deg2rad) + self.pos[0] * math.cos(thisome * deg2rad)
+        px = self.pixel_size
+        yn = (ya + ys * (1 - xa / this_lsd)) / px + self.bcs[dist][0]
+        zn = (zs * (1 - xa / this_lsd)) / px + self.bcs[dist][1]
+
+        # Clear old overlays and add spot markers
+        self.image_view.clear_overlays()
+        # Red: spot position
+        spot_item = pg.ScatterPlotItem([yn], [zn], size=12, pen=pg.mkPen('r', width=2), brush=None, symbol='o')
+        self.image_view.add_overlay(spot_item)
+        # Blue: beam center
+        bc_item = pg.ScatterPlotItem([self.bcs[dist][0]], [self.bcs[dist][1]], size=10,
+                                      pen=pg.mkPen('b', width=2), brush=None, symbol='star')
+        self.image_view.add_overlay(bc_item)
+        print(f"Spot {spot_nr}: frame={frame_to_read} yn={yn:.1f} zn={zn:.1f} ω={thisome:.1f}°")
 
     # ── Auto-detect ────────────────────────────────────────────────
 
@@ -861,6 +1048,84 @@ class NFViewer(QtWidgets.QMainWindow):
             self.frame_spin.setValue(0)
             self.setWindowTitle(self.windowTitle() + " [files detected]")
             self._load_and_display()
+
+
+# ═══════════════════════════════════════════════════════════════════════
+#  Grain Parameter Dialog
+# ═══════════════════════════════════════════════════════════════════════
+
+class GrainDialog(QtWidgets.QDialog):
+    """Enter/edit grain orientation, position, and material parameters."""
+
+    def __init__(self, viewer, parent=None):
+        super().__init__(parent or viewer)
+        self.viewer = viewer
+        self.setWindowTitle("Grain Parameters")
+        self.resize(700, 350)
+        self._build_ui()
+
+    def _build_ui(self):
+        lay = QtWidgets.QFormLayout(self)
+
+        # Orientation matrix (3x3 = 9 entries)
+        om_row = QtWidgets.QHBoxLayout()
+        self.om_edits = []
+        for i in range(9):
+            e = QtWidgets.QLineEdit(str(self.viewer.om[i]))
+            e.setMaximumWidth(65)
+            om_row.addWidget(e)
+            self.om_edits.append(e)
+        lay.addRow("Orient. Matrix:", om_row)
+
+        # Position (3 entries)
+        pos_row = QtWidgets.QHBoxLayout()
+        self.pos_edits = []
+        for i in range(3):
+            e = QtWidgets.QLineEdit(str(self.viewer.pos[i]))
+            e.setMaximumWidth(80)
+            pos_row.addWidget(e)
+            self.pos_edits.append(e)
+        lay.addRow("Position (μm):", pos_row)
+
+        # Lattice constants (6 entries)
+        lc_row = QtWidgets.QHBoxLayout()
+        self.lc_edits = []
+        for i in range(6):
+            e = QtWidgets.QLineEdit(str(self.viewer.latC[i]))
+            e.setMaximumWidth(65)
+            lc_row.addWidget(e)
+            self.lc_edits.append(e)
+        lay.addRow("Lattice Const:", lc_row)
+
+        self.wl_edit = QtWidgets.QLineEdit(str(self.viewer.wl))
+        lay.addRow("Wavelength (Å):", self.wl_edit)
+        self.startome_edit = QtWidgets.QLineEdit(str(self.viewer.startome))
+        lay.addRow("StartOmega (°):", self.startome_edit)
+        self.omestep_edit = QtWidgets.QLineEdit(str(self.viewer.omestep))
+        lay.addRow("OmegaStep (°):", self.omestep_edit)
+        self.sg_edit = QtWidgets.QLineEdit(str(self.viewer.sg))
+        lay.addRow("SpaceGroup:", self.sg_edit)
+        self.maxrad_edit = QtWidgets.QLineEdit(str(self.viewer.maxringrad))
+        lay.addRow("MaxRingRad (μm):", self.maxrad_edit)
+
+        btn = QtWidgets.QPushButton("Confirm")
+        btn.clicked.connect(self._accept)
+        lay.addRow(btn)
+
+    def _accept(self):
+        v = self.viewer
+        for i in range(9):
+            v.om[i] = float(self.om_edits[i].text())
+        for i in range(3):
+            v.pos[i] = float(self.pos_edits[i].text())
+        for i in range(6):
+            v.latC[i] = float(self.lc_edits[i].text())
+        v.wl = float(self.wl_edit.text())
+        v.startome = float(self.startome_edit.text())
+        v.omestep = float(self.omestep_edit.text())
+        v.sg = int(self.sg_edit.text())
+        v.maxringrad = float(self.maxrad_edit.text())
+        self.accept()
 
 
 # ═══════════════════════════════════════════════════════════════════════
