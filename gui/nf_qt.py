@@ -518,14 +518,14 @@ class NFViewer(QtWidgets.QMainWindow):
             lambda n: self.image_view.set_colormap(n))
         self.theme_combo.currentTextChanged.connect(
             lambda t: apply_theme(QtWidgets.QApplication.instance(), t))
-
-    def _on_font_changed(self, size):
-        QtWidgets.QApplication.instance().setStyleSheet(f'* {{ font-size: {size}pt; }}')
         self.image_view.frameScrolled.connect(
             lambda d: self.frame_spin.setValue(self.frame_spin.value() + d))
         self.image_view.cursorMoved.connect(self._on_cursor_moved)
         self.image_view.dataStatsUpdated.connect(self._on_stats_updated)
         self.col_group.buttonClicked.connect(self._on_col_mode_changed)
+
+    def _on_font_changed(self, size):
+        QtWidgets.QApplication.instance().setStyleSheet(f'* {{ font-size: {size}pt; }}')
 
     def _show_help(self):
         QtWidgets.QMessageBox.information(self, 'NF Viewer — Controls',

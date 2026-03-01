@@ -634,6 +634,10 @@ class FFViewer(QtWidgets.QMainWindow):
         self.image_view.frameScrolled.connect(self._on_frame_scroll)
         # Cursor tracking
         self.image_view.cursorMoved.connect(self._on_cursor_moved)
+        # Live ring redraw on BC/Lsd change
+        self.bcy_edit.editingFinished.connect(self._redraw_if_rings)
+        self.bcz_edit.editingFinished.connect(self._redraw_if_rings)
+        self.lsd_edit.editingFinished.connect(self._redraw_if_rings)
         self.image_view.dataStatsUpdated.connect(self._on_stats_updated)
 
     def _show_help(self):
@@ -908,17 +912,30 @@ class FFViewer(QtWidgets.QMainWindow):
 
     # ── Rings ──────────────────────────────────────────────────────
 
+    def _redraw_if_rings(self):
+        if self.show_rings and self.ring_rads:
+            self._draw_rings()
+
     def _draw_rings(self):
         self.image_view.clear_overlays()
         if not self.ring_rads:
             return
         px = self.pixel_size
+        # Always read current values from text fields
+        try:
+            bc_y = float(self.bcy_edit.text())
+            bc_z = float(self.bcz_edit.text())
+            lsd = float(self.lsd_edit.text())
+        except ValueError:
+            return
+        self.bc_local = [bc_y, bc_z]
+        self.lsd_local = lsd
         colors = _color_cycle_colors
-        print(f"[Rings] BC_Y={self.bc_local[0]}, BC_Z={self.bc_local[1]}, "
-              f"Lsd={self.lsd_local}, Lsd_orig={self.lsd_orig}, px={px}")
+        print(f"[Rings] BC_Y={bc_y}, BC_Z={bc_z}, "
+              f"Lsd={lsd}, Lsd_orig={self.lsd_orig}, px={px}")
         for idx, rad in enumerate(self.ring_rads):
-            Y, Z = compute_ring_points(rad, self.lsd_local, self.lsd_orig,
-                                        self.bc_local, px)
+            Y, Z = compute_ring_points(rad, lsd, self.lsd_orig,
+                                        [bc_y, bc_z], px)
             print(f"  Ring {idx}: rad={rad:.1f}, center=({Y.mean():.1f}, {Z.mean():.1f}), "
                   f"Y=[{Y.min():.1f}..{Y.max():.1f}], Z=[{Z.min():.1f}..{Z.max():.1f}]")
             color = colors[idx % len(colors)]
