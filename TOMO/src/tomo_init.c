@@ -17,6 +17,9 @@
 #include <sys/stat.h>
 #include <time.h>
 #include <unistd.h>
+#ifdef __APPLE__
+#include <sys/sysctl.h>
+#endif
 // #include <sys/sysinfo.h>
 
 /*
@@ -166,18 +169,39 @@ int main(int argc, char *argv[]) {
     printf("Reading wisdom file %s.\n", plan2DFN);
     createPlanFile(&recon_info_record);
   }
-  // Read /proc/meminfo to get the available RAM size and calculate maxNProcs
-  // accordingly.
+  // Detect available RAM (platform-specific)
   long long int avRAM;
-  FILE *memf = fopen("/proc/meminfo", "r");
-  char aline[4096], dummy[4096];
-  while (fgets(aline, 4096, memf) != NULL) {
-    if (strncmp(aline, "MemAvailable:", strlen("MemAvailable:")) == 0) {
-      sscanf(aline, "%s %lld", dummy, &avRAM);
-      break;
+#ifdef __APPLE__
+  {
+    int64_t memsize = 0;
+    size_t len = sizeof(memsize);
+    if (sysctlbyname("hw.memsize", &memsize, &len, NULL, 0) == 0) {
+      avRAM = (long long int)memsize; // already in bytes
+    } else {
+      avRAM = 8LL * 1024 * 1024 * 1024; // fallback: assume 8 GB
+      printf("Warning: could not determine RAM, assuming 8 GB.\n");
     }
   }
-  avRAM *= 1024; // Get in bytes
+#else
+  {
+    FILE *memf = fopen("/proc/meminfo", "r");
+    if (memf == NULL) {
+      avRAM = 8LL * 1024 * 1024 * 1024; // fallback: assume 8 GB
+      printf("Warning: could not open /proc/meminfo, assuming 8 GB RAM.\n");
+    } else {
+      char aline[4096], dummy[4096];
+      avRAM = 8LL * 1024 * 1024 * 1024; // default fallback
+      while (fgets(aline, 4096, memf) != NULL) {
+        if (strncmp(aline, "MemAvailable:", strlen("MemAvailable:")) == 0) {
+          sscanf(aline, "%s %lld", dummy, &avRAM);
+          avRAM *= 1024; // MemAvailable is in kB, convert to bytes
+          break;
+        }
+      }
+      fclose(memf);
+    }
+  }
+#endif
   recon_info_record.sizeMatrices *= 2;
   long long int maxNProcs =
       (long long int)avRAM / (long long int)recon_info_record.sizeMatrices;
