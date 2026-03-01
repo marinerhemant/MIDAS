@@ -108,6 +108,21 @@ The script follows a logical, multi-step process to achieve a converged geometri
 *   **Optimization Algorithm:** Uses the **Nelder-Mead simplex algorithm** (via the `nlopt` library) to minimize the objective function.
 *   **Objective Function:** The function calculates the "Mean Pseudo-Strain," which is the sum of differences between the measured ring radii (after geometric correction) and the theoretical ring radii.
 *   **Sub-Pixel Precision:** For each azimuthal bin, the code extracts a radial lineout and fits a **height-normalized Pseudo-Voigt** profile (Gaussian and Lorentzian sharing a single FWHM, with mixing parameter Mu) to find the peak position with sub-pixel accuracy.
+
+    **Singlet Peak Shape** (5 parameters: $R_{cen}$, $\mu$, $\Gamma$, $I_{max}$, $BG$):
+
+    $$L(R) = \frac{1}{1 + 4\,(R - R_{cen})^2 / \Gamma^2} \qquad G(R) = \exp\!\left(-\frac{4\ln 2\,(R - R_{cen})^2}{\Gamma^2}\right)$$
+
+    $$I(R) = BG + I_{max}\bigl[\mu\,L(R) + (1-\mu)\,G(R)\bigr]$$
+
+    Both $L$ and $G$ peak at 1.0 at $R = R_{cen}$ and share the same FWHM $\Gamma$.
+
+    **Doublet Peak Shape** (8 parameters: $R_1$, $R_2$, $\mu$, $\Gamma_1$, $I_{max,1}$, $\Gamma_2$, $I_{max,2}$, $BG$):
+
+    For closely-spaced ring pairs (within `DoubletSeparation` pixels), two peaks are fitted simultaneously with shared $\mu$ and $BG$:
+
+    $$I(R) = BG + I_{max,1}\bigl[\mu\,L_1(R) + (1-\mu)\,G_1(R)\bigr] + I_{max,2}\bigl[\mu\,L_2(R) + (1-\mu)\,G_2(R)\bigr]$$
+
 *   **Parallelization:** The peak fitting process is parallelized using **OpenMP**, distributing the azimuthal bins across available CPU cores.
 
 ---

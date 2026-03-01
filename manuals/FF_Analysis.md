@@ -200,12 +200,51 @@ The peak search identifies diffraction spots in the raw detector images.
     *   Stack-based iteration is used instead of recursion to prevent stack overflow on large spots.
 *   **Peak Finding:** Within each connected component, the algorithm searches for **regional maxima**. A pixel is identified as a peak if its intensity is strictly greater than all its 8 neighbors.
 *   **Fitting:** 
-    *   A **Pseudo-Voigt profile** (weighted sum of Gaussian and Lorentzian functions with a shared FWHM) is fitted to each identified peak.
-    *   Both the Gaussian and Lorentzian components share a single full-width-at-half-maximum (Gamma), with a mixing parameter Mu interpolating between the two profiles.
-    *   The model is height-normalized: `I(R,Eta) = BG + Imax * (Mu*L + (1-Mu)*G)` where L and G each peak at 1.0.
-    *   Key fitted parameters: Center (R, Eta), peak height (Imax), profile mixing (Mu), and shared FWHM (GammaR, GammaEta).
-    *   For backward compatibility, the output columns `SigmaGR`, `SigmaLR`, `SigmaGEta`, `SigmaLEta` contain equivalent sigmas derived from Gamma: `SigmaG = Gamma/2.355`, `SigmaL = Gamma/2`. The effective sigma is `Mu*SigmaL + (1-Mu)*SigmaG`.
+    *   A **height-normalized Pseudo-Voigt profile** is fitted to each identified peak. The Gaussian and Lorentzian components share a single FWHM (Gamma), with a mixing parameter Mu interpolating between the two profiles.
     *   When `doPeakFit 0` is set, fitting is skipped and each connected component is treated as a single peak using its centroid.
+
+    **1D Profile (used in `CalibrantPanelShiftsOMP` and `IntegratorFitPeaksGPUStream`):**
+
+    $$L(R) = \frac{1}{1 + 4\,(R - R_{cen})^2 / \Gamma^2}$$
+
+    $$G(R) = \exp\!\left(-\frac{4\ln 2\,(R - R_{cen})^2}{\Gamma^2}\right)$$
+
+    $$I(R) = BG + I_{max}\bigl[\mu\,L(R) + (1-\mu)\,G(R)\bigr]$$
+
+    **2D Profile (used in `PeaksFittingOMPZarrRefactor`):**
+
+    The 2D profile is a separable product of 1D profiles in R and Eta, each with its own shared FWHM:
+
+    $$L_{2D}(R,\eta) = L_R(R) \cdot L_\eta(\eta)$$
+
+    $$G_{2D}(R,\eta) = \exp\!\left(-4\ln 2\left[\frac{(R - R_{cen})^2}{\Gamma_R^2} + \frac{(\eta - \eta_{cen})^2}{\Gamma_\eta^2}\right]\right)$$
+
+    $$I(R,\eta) = BG + I_{max}\bigl[\mu\,L_{2D}(R,\eta) + (1 - \mu)\,G_{2D}(R,\eta)\bigr]$$
+
+    **Fitted Parameters:**
+
+    | Parameter | Description |
+    |---|---|
+    | $I_{max}$ | Peak height above background |
+    | $R_{cen},\;\eta_{cen}$ | Peak center position |
+    | $\mu$ | Mixing parameter (0 = pure Gaussian, 1 = pure Lorentzian) |
+    | $\Gamma_R,\;\Gamma_\eta$ | Full-Width at Half-Maximum (shared by G and L) |
+    | $BG$ | Background intensity (shared across all peaks in a region) |
+
+    **Analytical Area** (1D, used for integrated intensity computation):
+
+    $$A = I_{max} \cdot \frac{\Gamma}{2}\left[\mu\pi + (1-\mu)\sqrt{\frac{\pi}{\ln 2}}\right]$$
+
+    **Backward-Compatible Sigma Convention:**
+
+    For downstream codes that expect separate Gaussian/Lorentzian sigma values, the shared Gamma is converted:
+
+    | Output Column | Formula | Relationship |
+    |---|---|---|
+    | `SigmaGR` | $\Gamma_R / (2\sqrt{2\ln 2}) \approx \Gamma_R / 2.355$ | Gaussian: $G = e^{-x^2/2\sigma_G^2}$ has FWHM $= 2\sqrt{2\ln 2}\,\sigma_G$ |
+    | `SigmaLR` | $\Gamma_R / 2$ | Lorentzian: $L = 1/(1 + x^2/\sigma_L^2)$ has FWHM $= 2\sigma_L$ |
+    | `SigmaR` (effective) | $\mu\,\sigma_L + (1-\mu)\,\sigma_G$ | Blended width |
+
 *   **Pixel Coordinate Output (`_PX.bin`):**
     *   For each frame, a binary file is written containing the pixel coordinates belonging to each peak.
     *   Format: `int32 NrPixels`, `int32 nPeaks`, then per-peak: `int32 nPixels`, followed by `nPixels` pairs of `int16 y, int16 z`.
