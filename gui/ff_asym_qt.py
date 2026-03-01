@@ -492,12 +492,12 @@ class FFViewer(QtWidgets.QMainWindow):
 
         lay.addWidget(QtWidgets.QLabel("FileNr"), 1, 0)
         self.file_nr_edit = QtWidgets.QLineEdit(str(self.first_file_nr))
-        self.file_nr_edit.setMaximumWidth(60)
+        self.file_nr_edit.setMinimumWidth(70)
         lay.addWidget(self.file_nr_edit, 1, 1)
 
         lay.addWidget(QtWidgets.QLabel("nFr/File"), 1, 2)
         self.nframes_edit = QtWidgets.QLineEdit("1")
-        self.nframes_edit.setMaximumWidth(60)
+        self.nframes_edit.setMinimumWidth(70)
         lay.addWidget(self.nframes_edit, 1, 3)
 
         lay.addWidget(QtWidgets.QLabel("H5 Data"), 2, 0)
@@ -521,22 +521,22 @@ class FFViewer(QtWidgets.QMainWindow):
 
         lay.addWidget(QtWidgets.QLabel("NrPixH"), 0, 0)
         self.nz_edit = QtWidgets.QLineEdit(str(self.nz))
-        self.nz_edit.setMaximumWidth(60)
+        self.nz_edit.setMinimumWidth(70)
         lay.addWidget(self.nz_edit, 0, 1)
 
         lay.addWidget(QtWidgets.QLabel("NrPixV"), 1, 0)
         self.ny_edit = QtWidgets.QLineEdit(str(self.ny))
-        self.ny_edit.setMaximumWidth(60)
+        self.ny_edit.setMinimumWidth(70)
         lay.addWidget(self.ny_edit, 1, 1)
 
         lay.addWidget(QtWidgets.QLabel("Header"), 2, 0)
         self.header_edit = QtWidgets.QLineEdit(str(self.header_size))
-        self.header_edit.setMaximumWidth(60)
+        self.header_edit.setMinimumWidth(70)
         lay.addWidget(self.header_edit, 2, 1)
 
         lay.addWidget(QtWidgets.QLabel("Byt/Px"), 3, 0)
         self.bpp_edit = QtWidgets.QLineEdit(str(self.bytes_per_pixel))
-        self.bpp_edit.setMaximumWidth(60)
+        self.bpp_edit.setMinimumWidth(70)
         lay.addWidget(self.bpp_edit, 3, 1)
 
         self.hflip_check = QtWidgets.QCheckBox("HFlip")
@@ -548,7 +548,7 @@ class FFViewer(QtWidgets.QMainWindow):
 
         lay.addWidget(QtWidgets.QLabel("PixSz(μm)"), 6, 0)
         self.px_edit = QtWidgets.QLineEdit(str(self.pixel_size))
-        self.px_edit.setMaximumWidth(60)
+        self.px_edit.setMinimumWidth(70)
         lay.addWidget(self.px_edit, 6, 1)
 
         return grp
@@ -576,12 +576,12 @@ class FFViewer(QtWidgets.QMainWindow):
 
         lay.addWidget(QtWidgets.QLabel("MinI"), 4, 0)
         self.min_intensity_edit = QtWidgets.QLineEdit("0")
-        self.min_intensity_edit.setMaximumWidth(70)
+        self.min_intensity_edit.setMinimumWidth(80)
         lay.addWidget(self.min_intensity_edit, 4, 1)
 
         lay.addWidget(QtWidgets.QLabel("MaxI"), 4, 2)
         self.max_intensity_edit = QtWidgets.QLineEdit("1000")
-        self.max_intensity_edit.setMaximumWidth(70)
+        self.max_intensity_edit.setMinimumWidth(80)
         lay.addWidget(self.max_intensity_edit, 5, 0)
 
         apply_btn = QtWidgets.QPushButton("Apply")
@@ -604,17 +604,17 @@ class FFViewer(QtWidgets.QMainWindow):
 
         lay.addWidget(QtWidgets.QLabel("Lsd"), 1, 0)
         self.lsd_edit = QtWidgets.QLineEdit(str(self.lsd_local))
-        self.lsd_edit.setMaximumWidth(100)
+        self.lsd_edit.setMinimumWidth(100)
         lay.addWidget(self.lsd_edit, 1, 1)
 
         lay.addWidget(QtWidgets.QLabel("BC_Y"), 2, 0)
         self.bcy_edit = QtWidgets.QLineEdit(str(self.bc_local[0]))
-        self.bcy_edit.setMaximumWidth(80)
+        self.bcy_edit.setMinimumWidth(90)
         lay.addWidget(self.bcy_edit, 2, 1)
 
         lay.addWidget(QtWidgets.QLabel("BC_Z"), 3, 0)
         self.bcz_edit = QtWidgets.QLineEdit(str(self.bc_local[1]))
-        self.bcz_edit.setMaximumWidth(80)
+        self.bcz_edit.setMinimumWidth(90)
         lay.addWidget(self.bcz_edit, 3, 1)
 
         return grp
@@ -1172,7 +1172,7 @@ class RingSelectionDialog(QtWidgets.QDialog):
         lay.addRow("Wavelength (Å) or Energy (keV):", self.wl_edit)
         lc_row = QtWidgets.QHBoxLayout()
         for e in self.lc_edits:
-            e.setMaximumWidth(60)
+            e.setMinimumWidth(70)
             lc_row.addWidget(e)
         lay.addRow("Lattice Const (Å):", lc_row)
         lay.addRow("Lsd (μm):", self.lsd_edit)

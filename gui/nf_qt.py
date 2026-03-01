@@ -340,7 +340,7 @@ class NFViewer(QtWidgets.QMainWindow):
 
         lay.addWidget(QtWidgets.QLabel("Folder"), 0, 1)
         self.folder_edit = QtWidgets.QLineEdit(self.folder)
-        self.folder_edit.setMaximumWidth(150)
+        self.folder_edit.setMinimumWidth(160)
         lay.addWidget(self.folder_edit, 0, 2)
 
         btn_browse = QtWidgets.QPushButton("Browse")
@@ -349,17 +349,17 @@ class NFViewer(QtWidgets.QMainWindow):
 
         lay.addWidget(QtWidgets.QLabel("FNStem"), 0, 4)
         self.fnstem_edit = QtWidgets.QLineEdit(self.fnstem)
-        self.fnstem_edit.setMaximumWidth(120)
+        self.fnstem_edit.setMinimumWidth(120)
         lay.addWidget(self.fnstem_edit, 0, 5)
 
         lay.addWidget(QtWidgets.QLabel("NrPixY"), 1, 0)
         self.ny_edit = QtWidgets.QLineEdit(str(self.ny))
-        self.ny_edit.setMaximumWidth(60)
+        self.ny_edit.setMinimumWidth(70)
         lay.addWidget(self.ny_edit, 1, 1)
 
         lay.addWidget(QtWidgets.QLabel("NrPixZ"), 1, 2)
         self.nz_edit = QtWidgets.QLineEdit(str(self.nz))
-        self.nz_edit.setMaximumWidth(60)
+        self.nz_edit.setMinimumWidth(70)
         lay.addWidget(self.nz_edit, 1, 3)
         return grp
 
@@ -379,17 +379,17 @@ class NFViewer(QtWidgets.QMainWindow):
 
         lay.addWidget(QtWidgets.QLabel("nDist"), 0, 4)
         self.ndist_edit = QtWidgets.QLineEdit(str(self.n_distances))
-        self.ndist_edit.setMaximumWidth(30)
+        self.ndist_edit.setMinimumWidth(50)
         lay.addWidget(self.ndist_edit, 0, 5)
 
         lay.addWidget(QtWidgets.QLabel("nFl/D"), 0, 6)
         self.nfiles_edit = QtWidgets.QLineEdit(str(self.n_files_per_dist))
-        self.nfiles_edit.setMaximumWidth(40)
+        self.nfiles_edit.setMinimumWidth(55)
         lay.addWidget(self.nfiles_edit, 0, 7)
 
         lay.addWidget(QtWidgets.QLabel("PxSz"), 1, 0)
         self.px_edit = QtWidgets.QLineEdit(str(self.pixel_size))
-        self.px_edit.setMaximumWidth(50)
+        self.px_edit.setMinimumWidth(60)
         lay.addWidget(self.px_edit, 1, 1)
         return grp
 
@@ -399,7 +399,7 @@ class NFViewer(QtWidgets.QMainWindow):
 
         lay.addWidget(QtWidgets.QLabel("StartNr"), 0, 0)
         self.startframe_edit = QtWidgets.QLineEdit(str(self.start_frame_nr))
-        self.startframe_edit.setMaximumWidth(50)
+        self.startframe_edit.setMinimumWidth(60)
         lay.addWidget(self.startframe_edit, 0, 1)
 
         btn_median = QtWidgets.QPushButton("CalcMedian")
@@ -414,17 +414,17 @@ class NFViewer(QtWidgets.QMainWindow):
 
         lay.addWidget(QtWidgets.QLabel("Lsd(μm)"), 1, 0)
         self.lsd_edit = QtWidgets.QLineEdit(str(self.lsd))
-        self.lsd_edit.setMaximumWidth(80)
+        self.lsd_edit.setMinimumWidth(90)
         lay.addWidget(self.lsd_edit, 1, 1, 1, 2)
 
         lay.addWidget(QtWidgets.QLabel("MinI"), 2, 0)
         self.min_intensity_edit = QtWidgets.QLineEdit("0")
-        self.min_intensity_edit.setMaximumWidth(60)
+        self.min_intensity_edit.setMinimumWidth(70)
         lay.addWidget(self.min_intensity_edit, 2, 1)
 
         lay.addWidget(QtWidgets.QLabel("MaxI"), 2, 2)
         self.max_intensity_edit = QtWidgets.QLineEdit("1000")
-        self.max_intensity_edit.setMaximumWidth(60)
+        self.max_intensity_edit.setMinimumWidth(70)
         lay.addWidget(self.max_intensity_edit, 2, 3)
 
         apply_btn = QtWidgets.QPushButton("Apply")
@@ -491,10 +491,10 @@ class NFViewer(QtWidgets.QMainWindow):
 
         lay.addWidget(QtWidgets.QLabel("ConfCut"), row, 0)
         self.cut_conf_edit = QtWidgets.QLineEdit("0")
-        self.cut_conf_edit.setMaximumWidth(40)
+        self.cut_conf_edit.setMinimumWidth(55)
         lay.addWidget(self.cut_conf_edit, row, 1)
         self.max_conf_edit = QtWidgets.QLineEdit("1")
-        self.max_conf_edit.setMaximumWidth(40)
+        self.max_conf_edit.setMinimumWidth(55)
         lay.addWidget(self.max_conf_edit, row, 2)
 
         btn_grain = QtWidgets.QPushButton("LoadGrain")
@@ -692,6 +692,7 @@ class NFViewer(QtWidgets.QMainWindow):
             else:
                 self.imarr2 = imarr
 
+        self.imarr2 = self.imarr2[::-1, ::-1].copy()
         self.image_view.set_image_data(self.imarr2.astype(float))
         self.frame_label.setText(f"Frame {self.frame_nr}  Dist {self.dist}")
 
@@ -1072,7 +1073,7 @@ class GrainDialog(QtWidgets.QDialog):
         self.om_edits = []
         for i in range(9):
             e = QtWidgets.QLineEdit(str(self.viewer.om[i]))
-            e.setMaximumWidth(65)
+            e.setMinimumWidth(75)
             om_row.addWidget(e)
             self.om_edits.append(e)
         lay.addRow("Orient. Matrix:", om_row)
@@ -1082,7 +1083,7 @@ class GrainDialog(QtWidgets.QDialog):
         self.pos_edits = []
         for i in range(3):
             e = QtWidgets.QLineEdit(str(self.viewer.pos[i]))
-            e.setMaximumWidth(80)
+            e.setMinimumWidth(90)
             pos_row.addWidget(e)
             self.pos_edits.append(e)
         lay.addRow("Position (μm):", pos_row)
@@ -1092,7 +1093,7 @@ class GrainDialog(QtWidgets.QDialog):
         self.lc_edits = []
         for i in range(6):
             e = QtWidgets.QLineEdit(str(self.viewer.latC[i]))
-            e.setMaximumWidth(65)
+            e.setMinimumWidth(75)
             lc_row.addWidget(e)
             self.lc_edits.append(e)
         lay.addRow("Lattice Const:", lc_row)
