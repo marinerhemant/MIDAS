@@ -776,6 +776,7 @@ class NFViewer(QtWidgets.QMainWindow):
                     imarr = np.fromfile(f, dtype=np.uint16, count=self.ny * self.nz)
                 self.imarr2 = imarr.reshape((self.nz, self.ny))
                 self.imarr2[self.imarr2 < self.background] = 0
+                self._last_loaded_fn = fn
             else:
                 print(f"File not found: {fn}")
                 return
@@ -787,6 +788,7 @@ class NFViewer(QtWidgets.QMainWindow):
             imarr = read_tiff(fns[0])
             if imarr is None:
                 return
+            self._last_loaded_fn = fns[0]
             print(f"Read file {fns[0]}")
 
             if self.use_median and fns[1] is not None and os.path.exists(fns[1]):
@@ -800,7 +802,13 @@ class NFViewer(QtWidgets.QMainWindow):
 
         self.imarr2 = self.imarr2[::-1, ::-1].copy()
         self.image_view.set_image_data(self.imarr2.astype(float))
-        self.frame_label.setText(f"Frame {self.frame_nr}  Dist {self.dist}")
+        # Show which file is loaded
+        if hasattr(self, '_last_loaded_fn'):
+            basename = os.path.basename(self._last_loaded_fn)
+        else:
+            basename = ''
+        self.frame_label.setText(f"Frame {self.frame_nr}  Dist {self.dist}  |  {basename}")
+        self.setWindowTitle(f"NF Viewer — {basename} [frame {self.frame_nr}, dist {self.dist}]")
 
     # ── Line Profile ───────────────────────────────────────────────
 

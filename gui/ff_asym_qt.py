@@ -1147,7 +1147,9 @@ class FFViewer(QtWidgets.QMainWindow):
 
         self.bdata = data
         self.image_view.set_image_data(data)
-        self.frame_label.setText(f"Frame {self.frame_nr}")
+        basename = os.path.basename(fn) if not self.zarr_store else os.path.basename(self.zarr_zip_path or '')
+        self.frame_label.setText(f"Frame {self.frame_nr}  |  {basename}")
+        self.setWindowTitle(f"FF Viewer — {basename} [frame {self.frame_nr}]")
         if self.show_rings and self.ring_rads:
             self._draw_rings()
 
