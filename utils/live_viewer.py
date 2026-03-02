@@ -187,6 +187,7 @@ class LiveViewer(QtWidgets.QMainWindow):
 
         # Tailers
         self.lineout_tailer = BinaryTailer(lineout_path, n_rbins * 2)
+        self._fit_path = fit_path  # stored for lazy tailer creation
         self.fit_tailer = BinaryTailer(fit_path, n_peaks * 7) if fit_path and n_peaks > 0 else None
 
         # State
@@ -197,6 +198,8 @@ class LiveViewer(QtWidgets.QMainWindow):
         self.selected_peaks = list(range(n_peaks))  # All peaks selected initially
         self.decimation = 1  # show every Nth frame in heatmap
         self.font_size = 10  # base font size in pt
+        self.param_checks = []  # populated by _build_param_bar
+        self.peak_checks = []   # populated by _build_param_bar
 
         # Peak pick state
         self._pick_mode = False
@@ -340,43 +343,19 @@ class LiveViewer(QtWidgets.QMainWindow):
         pick_bar.addStretch()
         main_layout.addLayout(pick_bar)
 
-        # ---- Peak param selector (if peaks) ----
+        # ---- Peak param selector ----
+        # Always create the container; hide if no peaks initially
+        self._param_bar_widget = QtWidgets.QWidget()
+        param_bar = QtWidgets.QHBoxLayout(self._param_bar_widget)
+        param_bar.setContentsMargins(0, 0, 0, 0)
         if self.n_peaks > 0:
-            param_bar = QtWidgets.QHBoxLayout()
-            param_bar.addWidget(QtWidgets.QLabel('Params:'))
-            self.param_checks = []
-            for i, name in enumerate(PARAM_SHORT):
-                chk = QtWidgets.QCheckBox(name)
-                chk.setChecked(i in self.selected_params)
-                chk.toggled.connect(self._on_param_selection_changed)
-                self.param_checks.append(chk)
-                param_bar.addWidget(chk)
-
-            param_bar.addSpacing(20)
-            param_bar.addWidget(QtWidgets.QLabel('Peaks:'))
-
-            btn_all = QtWidgets.QPushButton('All')
-            btn_all.setFixedWidth(40)
-            btn_all.clicked.connect(lambda: self._set_all_peaks(True))
-            param_bar.addWidget(btn_all)
-            btn_none = QtWidgets.QPushButton('None')
-            btn_none.setFixedWidth(40)
-            btn_none.clicked.connect(lambda: self._set_all_peaks(False))
-            param_bar.addWidget(btn_none)
-
-            self.peak_checks = []
-            for p in range(self.n_peaks):
-                chk = QtWidgets.QCheckBox(f'Pk {p}')
-                chk.setChecked(True)
-                chk.toggled.connect(self._on_peak_selection_changed)
-                self.peak_checks.append(chk)
-                param_bar.addWidget(chk)
-
-            param_bar.addStretch()
-            main_layout.addLayout(param_bar)
+            self._build_param_bar(param_bar)
+        else:
+            self._param_bar_widget.hide()
+        main_layout.addWidget(self._param_bar_widget)
 
         # ---- Plot panels ----
-        splitter = QtWidgets.QSplitter(QtCore.Qt.Vertical)
+        self.splitter = QtWidgets.QSplitter(QtCore.Qt.Vertical)
 
         # Top row: heatmap + lineout side by side
         top_splitter = QtWidgets.QSplitter(QtCore.Qt.Horizontal)
@@ -428,17 +407,21 @@ class LiveViewer(QtWidgets.QMainWindow):
                     self._extra_axes.append(ax_q)
 
         top_splitter.setSizes([700, 700])
-        splitter.addWidget(top_splitter)
+        self.splitter.addWidget(top_splitter)
 
-        # Panel 3: Peak parameter evolution (only if peaks)
+        # Panel 3: Peak parameter evolution
+        # Always create but hide until peaks are available
+        self.peak_layout_widget = pg.GraphicsLayoutWidget(title='Peak Evolution')
+        self.peak_plots = {}  # (peak_idx, param_idx) -> (plot, curve)
+        self.splitter.addWidget(self.peak_layout_widget)
         if self.n_peaks > 0:
-            self.peak_layout_widget = pg.GraphicsLayoutWidget(title='Peak Evolution')
-            splitter.addWidget(self.peak_layout_widget)
-            self.peak_plots = {}  # (peak_idx, param_idx) -> (plot, curve)
             self._rebuild_peak_grid()
+            self.splitter.setSizes([500, 400])
+        else:
+            self.peak_layout_widget.hide()
+            self.splitter.setSizes([900, 0])
 
-        splitter.setSizes([500, 400])
-        main_layout.addWidget(splitter)
+        main_layout.addWidget(self.splitter)
 
     def _apply_theme(self, theme):
         """Apply dark or light theme to Qt palette and PyQtGraph."""
@@ -472,6 +455,67 @@ class LiveViewer(QtWidgets.QMainWindow):
                 cmap = pg.colormap.get('viridis')
         lut = cmap.getLookupTable(nPts=256)
         self.heatmap_img.setLookupTable(lut)
+
+    def _build_param_bar(self, layout):
+        """Populate the param bar with checkboxes for peak parameters."""
+        # Clear existing widgets
+        while layout.count():
+            item = layout.takeAt(0)
+            w = item.widget()
+            if w:
+                w.deleteLater()
+
+        layout.addWidget(QtWidgets.QLabel('Params:'))
+        self.param_checks = []
+        for i, name in enumerate(PARAM_SHORT):
+            chk = QtWidgets.QCheckBox(name)
+            chk.setChecked(i in self.selected_params)
+            chk.toggled.connect(self._on_param_selection_changed)
+            self.param_checks.append(chk)
+            layout.addWidget(chk)
+
+        layout.addSpacing(20)
+        layout.addWidget(QtWidgets.QLabel('Peaks:'))
+
+        btn_all = QtWidgets.QPushButton('All')
+        btn_all.setFixedWidth(40)
+        btn_all.clicked.connect(lambda: self._set_all_peaks(True))
+        layout.addWidget(btn_all)
+        btn_none = QtWidgets.QPushButton('None')
+        btn_none.setFixedWidth(40)
+        btn_none.clicked.connect(lambda: self._set_all_peaks(False))
+        layout.addWidget(btn_none)
+
+        self.peak_checks = []
+        for p in range(self.n_peaks):
+            chk = QtWidgets.QCheckBox(f'Pk {p}')
+            chk.setChecked(True)
+            chk.toggled.connect(self._on_peak_selection_changed)
+            self.peak_checks.append(chk)
+            layout.addWidget(chk)
+
+        layout.addStretch()
+
+    def _enable_peak_panel(self, n_peaks):
+        """Dynamically enable the peak evolution panel (0 → N transition)."""
+        self.n_peaks = n_peaks
+        self.selected_peaks = list(range(n_peaks))
+
+        # Create/reconfigure fit tailer
+        if self._fit_path:
+            self.fit_tailer = BinaryTailer(self._fit_path, n_peaks * 7)
+            print(f'Enabled fit tailing for {n_peaks} peaks')
+
+        # Build param bar and show it
+        layout = self._param_bar_widget.layout()
+        self._build_param_bar(layout)
+        self._param_bar_widget.show()
+
+        # Show peak evolution panel
+        self.peak_layout_widget.show()
+        self._rebuild_peak_grid()
+        self.splitter.setSizes([500, 400])
+        print(f'Peak evolution panel enabled ({n_peaks} peaks)')
 
     def _rebuild_peak_grid(self):
         """Rebuild the peak evolution plot grid based on selected params."""
@@ -658,6 +702,16 @@ class LiveViewer(QtWidgets.QMainWindow):
                 line.setPen(green_pen)
         except Exception as e:
             print(f'Failed to write peak_update.txt: {e}')
+            return
+
+        # Dynamically enable/reconfigure peak panel
+        n_sent = len(peaks) if mode == 'replace' else self.n_peaks + len(peaks)
+        if self.n_peaks == 0:
+            # First-time enable: create entire panel
+            self._enable_peak_panel(n_sent)
+        elif n_sent != self.n_peaks:
+            # Peak count changed — reconfigure
+            self._enable_peak_panel(n_sent)
 
     def _update_active_overlays(self):
         """Read active_peaks.txt and draw red dashed lines on both plots."""

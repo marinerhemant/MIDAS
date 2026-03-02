@@ -8,7 +8,7 @@ This directory contains Python scripts and tools used across the MIDAS analysis 
 
 | Script | Description |
 |--------|-------------|
-| `AutoCalibrateZarr.py` | **FF-HEDM auto-calibration.** Determines detector tilt angles, beam center, and sample-to-detector distance from powder calibrant diffraction rings. Reads Zarr-ZIP data directly. |
+| `AutoCalibrateZarr.py` | **FF-HEDM auto-calibration.** Determines detector tilt angles, beam center, and sample-to-detector distance from powder calibrant diffraction rings. Auto-detects file format and calibrant material (CeO2/LaB6) from filename. Uses all CPU cores. |
 | `integrator.py` | **Radial integrator (caking).** Converts 2D detector images to 1D intensity vs. 2θ profiles. Supports multiple detector geometries and azimuthal wedges. |
 | `integrator_batch_process.py` | Batch-mode radial integration for processing large datasets non-interactively. |
 | `integrator_server.py` | Long-running integration server for real-time data reduction during beamline operation. |

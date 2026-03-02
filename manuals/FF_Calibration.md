@@ -1,26 +1,24 @@
 # AutoCalibrateZarr.py User Manual
 
-**Version:** 10.0  
+**Version:** 11.0  
 **Contact:** hsharma@anl.gov
 
 ---
 
 ## 1. Introduction
 
-`AutoCalibrateZarr.py` is a sophisticated utility script within the MIDAS framework designed to automatically determine the precise geometry of a powder X-ray diffraction experiment. It analyzes a 2D diffraction image containing Debye-Scherrer rings from a known calibrant material (e.g., CeO2) and iteratively refines a comprehensive set of geometric parameters until it converges on a stable, high-accuracy solution.
+`AutoCalibrateZarr.py` is a utility script within the MIDAS framework designed to automatically determine the precise geometry of a powder X-ray diffraction experiment. It analyzes a 2D diffraction image containing Debye-Scherrer rings from a known calibrant material (e.g., CeO2, LaB6) and refines a comprehensive set of geometric parameters via a single call to the `CalibrantPanelShiftsOMP` C/OpenMP binary (40 iterations, doublet detection, SNR weighting).
 
 The script is a crucial first step for any HEDM analysis, as an accurate geometric calibration is fundamental to correctly interpreting diffraction data. It can process several input file formats (Zarr, HDF5, TIFF, GE) and produces a refined parameter file (`refined_MIDAS_params.txt`) ready for use in subsequent MIDAS analysis scripts like `ff_MIDAS.py`.
 
 ### Key Features
-*   **Automated Iterative Refinement:** The script runs the `CalibrantPanelShiftsOMP` binary in a loop, automatically identifying and excluding outlier rings and refining parameters until a user-defined strain tolerance is met.
-*   **Comprehensive Parameter Fitting:** It refines a wide range of geometric parameters, including:
-    *   Sample-to-detector distance (`Lsd`)
-    *   Beam center coordinates (`BC`)
-    *   Detector tilts (`ty`, `tz`)
-    *   Detector distortion coefficients (`p0`, `p1`, `p2`, `p3`, and optionally `p4` for higher-order R⁶ distortion)
-*   **Robust Image Processing:** Employs advanced techniques like median filtering for background subtraction, automatic thresholding, and an optimized algorithm for detecting the initial beam center from ring patterns.
-*   **Flexible Input:** Can handle multiple common data formats and automatically convert them to the Zarr format required by the MIDAS backend.
-*   **Detailed Output:** Generates a final, refined parameter file, along with optional plots and an HDF5 file containing all intermediate data for detailed inspection and debugging.
+*   **Single-Call C-Side Refinement:** The script calls `CalibrantPanelShiftsOMP` once with `nIterations=40` — all iteration, outlier rejection, doublet detection, and convergence are handled inside the optimized C/OpenMP binary.
+*   **Auto-Detect File Format:** Automatically determines input format from the file extension (`.zip`, `.h5`, `.tif`, `.ge*`). No need to specify `-ConvertFile`.
+*   **Comprehensive Parameter Fitting:** Refines `Lsd`, `BC`, tilts, distortion (`p0`–`p4`), with doublet detection (`DoubletSeparation=25px`), ring weight normalization, and SNR-based weighting all enabled by default.
+*   **Modern CLI:** Uses `--flag` convention (e.g., `--data`, `--params`, `--lsd-guess`) with backward-compatible aliases for legacy `-dataFN`, `-paramFN`, etc.
+*   **Robust Image Processing:** Median filtering for background subtraction, automatic thresholding, and JIT-accelerated beam center detection.
+*   **Flexible Input:** Handles Zarr .zip, HDF5, GE binary, and TIFF formats.
+*   **Detailed Output:** Final refined parameter file, optional HDF5 data, and real-time terminal progress from the C binary.
 
 ---
 
@@ -30,7 +28,23 @@ The script is a crucial first step for any HEDM analysis, as an accurate geometr
 2.  **Python Environment:** A Python environment with the following libraries installed: `numpy`, `matplotlib`, `zarr`, `scikit-image`, `plotly`, `pandas`, `diplib`, `Pillow`, `h5py`, and `numba`.
 3.  **Input Data:**
     *   A 2D diffraction image of a calibrant material showing clear Debye-Scherrer rings.
-    *   If using a format other than Zarr (e.g., HDF5, TIFF), a basic parameter file (`-paramFN`) is required to provide essential metadata like `SpaceGroup`, `Wavelength`, and `LatticeConstant`.
+    *   If using a format other than Zarr (e.g., HDF5, TIFF), a basic parameter file (`--params`) is required to provide essential metadata like `Wavelength` and `px`.
+    *   **SpaceGroup and LatticeParameter are auto-detected** from the filename (see §3.1 below) and do not need to be specified for CeO2 or LaB6.
+
+---
+
+### 2.1. Calibrant Auto-Detection
+
+The script auto-detects the calibrant material from the data filename (case-insensitive):
+
+| Filename Pattern | Detected Material | SpaceGroup | Lattice (Å) |
+|---|---|---|---|
+| `ceo2`, `CeO2`, `ceria`, `ceriumoxide` | CeO2 | 225 | 5.4116 |
+| `lab6`, `LaB6`, `lab_6`, `lab-6`, `lanthanumhexaboride` | LaB6 | 221 | 4.1569 |
+
+**Priority:** Zarr metadata > param file > filename detection > CeO2 default.
+
+If no calibrant is detected from the filename and no metadata is available, CeO2 is used as the default.
 
 ---
 
@@ -40,69 +54,63 @@ The script follows a logical, multi-step process to achieve a converged geometri
  
  ```mermaid
  graph TD
-     A[Start] --> B{Input Format?};
+     A[Start] --> B{Auto-detect Format};
      B -- Zarr --> C[Read Zarr];
-     B -- TIFF/HDF5/GE --> D[Convert to Zarr using ffGenerateZipRefactor];
+     B -- TIFF/HDF5/GE --> D[Convert to Zarr];
      D --> C;
      C --> E[Calculate Average Image];
      E --> F{NoMedian?};
-     F -- No --> G[Apply Median Filter/Background Subtraction];
-     F -- Yes --> H[Skip Background Subtraction];
+     F -- No --> G[Median Filter Background];
+     F -- Yes --> H[Dark Subtraction];
      G --> I[Threshold Image];
      H --> I;
      I --> J[Detect Beam Center & Ring Radii];
      J --> K[Estimate Initial Lsd];
-     K --> L[Refinement Loop Start];
-     L --> M[Run CalibrantPanelShiftsOMP];
-     M --> N[Analyze Strain & Identify Outliers];
-     N --> O{Converged?};
-     O -- No --> P[Exclude Outliers];
-     P --> M;
-     O -- Yes --> Q[Save refined_MIDAS_params.txt];
+     K --> L["CalibrantPanelShiftsOMP<br/>(40 iterations, doublets, SNR weights)"];
+     L --> Q[Save refined_MIDAS_params.txt];
      Q --> R[Save Optional HDF5 Data];
      R --> S[End];
  ```
 
 1.  **File Input & Conversion:**
-    *   The script takes a data file as input. If the format is TIFF, GE, or HDF5, it first calls `ffGenerateZipRefactor.py` to convert it into a standard `.MIDAS.zip` (Zarr) archive.
-    *   It can also apply geometric transformations (flips, transposes) if specified via `-ImTransOpt`.
-    *   It reads essential metadata (e.g., `SpaceGroup`, `Wavelength`, `PixelSize`) from the Zarr file or the provided parameter file.
+    *   The file format is auto-detected from the extension (`.zip`→Zarr, `.h5`→HDF5, `.ge*`→GE, `.tif`→TIFF).
+    *   Non-Zarr formats are automatically converted via `ffGenerateZipRefactor.py`.
+    *   Image transformations (flips, transposes) can be applied via `--im-trans`.
 
 2.  **Initial Image Processing:**
-    *   It calculates an average 2D image from the input data (if it's a 3D stack).
-    *   A heavy median filter (`diplib.MedianFilter`) is applied to create a robust model of the image background (unless `-NoMedian 1` is used).
-    *   The background is subtracted, and an automatic or user-defined threshold is applied to create a clean, binary image of the diffraction rings.
+    *   Average 2D image is computed from multi-frame input.
+    *   Median filter background subtraction (or dark subtraction with `--no-median`).
+    *   Automatic or manual thresholding for ring detection.
 
 3.  **Initial Guess Estimation:**
-    *   **Beam Center:** It uses a highly optimized, parallel algorithm (`detect_beam_center_optimized`) to find the geometric center of the ring pattern from the thresholded image. Alternatively, a manual guess can be provided.
-    *   **Ring Radii:** It detects the radii of the visible rings in the image.
-    *   **Sample-to-Detector Distance (`Lsd`):** It compares the ratios of the detected ring radii to the theoretical ratios for the calibrant material to make an initial estimate of the `Lsd`. A manual guess can also be provided.
+    *   **Beam Center:** JIT-accelerated parallel algorithm, or manual guess via `--bc-guess`.
+    *   **Ring Radii & Lsd:** Automatic matching of ring radius ratios to HKL spacings.
 
-4.  **Iterative Refinement Loop:** This is the core of the script.
-    *   The script enters a `while` loop that continues until the refinement converges.
-    *   **Run `CalibrantPanelShiftsOMP`:** In each iteration, it calls the `CalibrantPanelShiftsOMP` MIDAS binary with the current best-fit parameters. This binary performs a least-squares fit of the ring data and calculates a new, more accurate set of geometric parameters (`Lsd`, `BC`, tilts, distortion). It also computes a "pseudo-strain" for each measured point on each ring.
-    *   **Analyze Results:** The script parses the output of `CalibrantPanelShiftsOMP`. The pseudo-strain should be close to zero for a perfect fit.
-    *   **Outlier Rejection:** It calculates the mean pseudo-strain for each ring. If a ring's mean strain is significantly higher than the median (controlled by `-MultFactor`), it is flagged as an outlier and added to an exclusion list for the next iteration.
-    *   **Check for Convergence:** The loop terminates when two conditions are met:
-        1.  No new outlier rings are identified in an iteration.
-        2.  The overall mean pseudo-strain falls below a specified tolerance (`-StoppingStrain`).
+4.  **Single-Call Refinement:**
+    *   A single call to `CalibrantPanelShiftsOMP` with all features enabled:
+        -   `nIterations 40` — multi-iteration with stagnation detection and perturbation
+        -   `DoubletSeparation 25` — automatic doublet ring fitting
+        -   `OutlierIterations 3` — per-ring sigma-clipping
+        -   `NormalizeRingWeights 1` — equal weight per ring
+        -   `WeightByFitSNR 1` — SNR-based point weighting
+        -   `MinIndicesForFit 5` — skip under-sampled rings
+    *   Uses all available CPU cores.
+    *   Progress (iteration strains, doublet detections) is streamed to the terminal in real-time.
 
 5.  **Final Output:**
-    *   Once converged, the script writes the final, best-fit geometric parameters to `refined_MIDAS_params.txt`.
-    *   If requested, it saves all intermediate data (raw images, backgrounds, thresholded images, strain plots per iteration) into a single HDF5 file for detailed analysis.
-    *   It also generates a final report of the converged parameters on the console.
+    *   `refined_MIDAS_params.txt` with converged geometry.
+    *   Optional HDF5 with all intermediate data.
+    *   Console summary of best-fit parameters.
 
 ---
 
 ## 4. Technical Implementation Details
 
 ### 4.1. AutoCalibrateZarr.py (The Orchestrator)
-*   **Beam Center Detection:** Uses `scikit-image` (`measure.label`) to identify potential ring arcs. A custom, JIT-compiled function (`numba`) then calculates the geometric center of these arcs. This process is parallelized using Python's `multiprocessing` module for speed.
-*   **Initial Guess Logic:** The script attempts to identify rings by comparing the ratios of detected ring radii to the theoretical HKL spacing ratios of the calibrant.
-*   **Iterative Refinement:**
-    *   The script enters a convergence loop that calls the C binary `CalibrantPanelShiftsOMP`.
-    *   It parses the `calibrant_screen_out.csv` to get updated parameters.
-    *   It calculates the mean pseudo-strain for each ring. Rings with strain > `MultFactor * median_strain` are flagged as outliers and excluded from the next iteration.
+*   **Beam Center Detection:** Uses `scikit-image` (`measure.label`) to identify potential ring arcs. A custom, JIT-compiled function (`numba`) then calculates the geometric center of these arcs. This process is parallelized using Python's `multiprocessing` module.
+*   **Initial Guess Logic:** Ring radii ratios are matched to HKL spacing ratios to estimate `Lsd`.
+*   **Single C Call:** Instead of a Python iteration loop, the script makes a single call to `CalibrantPanelShiftsOMP` with `nIterations=40` and all advanced features (doublets, SNR weighting, ring normalization). The C code handles all iteration, outlier rejection, and convergence internally.
+*   **State Management:** Uses a `CalibState` dataclass to manage all calibration parameters cleanly.
 
 ### 4.2. CalibrantPanelShiftsOMP (The Optimization Engine)
 *   **Optimization Algorithm:** Uses the **Nelder-Mead simplex algorithm** (via the `nlopt` library) to minimize the objective function.
@@ -129,80 +137,97 @@ The script follows a logical, multi-step process to achieve a converged geometri
 
 ## 4. Command-Line Arguments
 
-The script's behavior is controlled via the following arguments:
+The script uses `--flag` convention with backward-compatible aliases for all legacy `-Flag` names.
 
 ### Required Arguments
 
-| Argument | Description | Example |
-| :--- | :--- | :--- |
-| `-dataFN` | The input data file. Can be `.zip` (Zarr), `.h5`, `.ge`, or `.tif`. | `-dataFN CeO2_scan.h5` |
+| New Flag | Legacy Alias | Description | Example |
+| :--- | :--- | :--- | :--- |
+| `--data` | `-dataFN`, `-d` | Input data file (format auto-detected from extension) | `--data CeO2.h5` |
 
 ### File Conversion & Input Parameters
 
-| Argument | Description | Default | Example |
-| :--- | :--- | :--- | :--- |
-| `-ConvertFile` | Specifies the input file type. `0`: Zarr (default), `1`: HDF5, `2`: GE binary, `3`: TIFF. | `0` | `-ConvertFile 1` |
-| `-paramFN` | A parameter file containing material/beamline info. **Required** if `-ConvertFile` is not 0. | `''` | `-paramFN initial_params.txt` |
-| `-darkFN` | Path to a separate file containing the dark-field image. | `''` | `-darkFN dark_image.h5` |
-| `-dataLoc` | Path to the dataset within an HDF5 file if not the standard location. | `''` | `-dataLoc /entry/data/data` |
- | `-ImTransOpt` | Image transformations: `0`: None, `1`: FlipLR, `2`: FlipUD, `3`: Transpose. Can be multiple. | `[0]` | `-ImTransOpt 1 3` |
- | `-BadPxIntensity` | Intensity value representing bad pixels in the input. | `NaN` | `-BadPxIntensity -2` |
- | `-GapIntensity` | Intensity value representing inter-module gaps. | `NaN` | `-GapIntensity -1` |
+| New Flag | Legacy Alias | Description | Default | Example |
+| :--- | :--- | :--- | :--- | :--- |
+| `--convert` | `-ConvertFile` | Force format: `0`=Zarr, `1`=HDF5, `2`=GE, `3`=TIFF. Default: auto-detect. | auto | `--convert 1` |
+| `--params` | `-paramFN`, `-p` | Parameter file (required for non-Zarr inputs) | `''` | `--params setup.txt` |
+| `--dark` | `-darkFN` | Separate dark field image file | `''` | `--dark dark.h5` |
+| `--data-loc` | `-dataLoc` | HDF5 dataset path (if non-standard) | `''` | `--data-loc /entry/data` |
+| `--im-trans` | `-ImTransOpt` | Image transforms: `0`=none, `1`=flipLR, `2`=flipUD, `3`=transpose | `[0]` | `--im-trans 1 3` |
+| `--bad-px` | `-BadPxIntensity` | Bad pixel intensity value | `NaN` | `--bad-px -2` |
+| `--gap-px` | `-GapIntensity` | Gap pixel intensity value | `NaN` | `--gap-px -1` |
 
 ### Calibration & Refinement Control
 
-| Argument | Description | Default | Example |
-| :--- | :--- | :--- | :--- |
-| `-StoppingStrain`| The mean pseudo-strain at which the refinement is considered converged. | `0.00004` | `-StoppingStrain 0.0001` |
-| `-MultFactor` | A multiplier for outlier rejection. A ring is rejected if its mean strain is > `MultFactor` * median strain. | `2.5` | `-MultFactor 3.0` |
-| `-FirstRingNr` | The index (1-based) of the first prominent ring visible in the data. Used for the initial `Lsd` estimate. | `1` | `-FirstRingNr 2` |
-| `-LsdGuess` | An initial guess for the sample-to-detector distance (in µm). | `1000000` | `-LsdGuess 210000` |
-| `-BCGuess` | An initial guess for the beam center `[y z]` (in pixels). If not provided, it is auto-detected. | `[0.0 0.0]` | `-BCGuess 1024.5 1021.0` |
-| `-EtaBinSize` | The size of the azimuthal bins (in degrees) used by `CalibrantPanelShiftsOMP` for fitting. | `5.0` | `-EtaBinSize 2.0` |
-| `-Threshold` | A manual intensity threshold for segmenting the rings. If `0`, it's auto-calculated. | `0` | `-Threshold 500` |
- | `-NoMedian` | Set to `1` to skip the median filter calculation (faster, but less robust background subtraction). | `0` | `-NoMedian 1` |
- 
- > [!TIP]
- > Using `-NoMedian 1` significantly speeds up processing, especially for large images, but requires a clean input or a pre-calculated background.
- 
- > [!IMPORTANT]
- > If you provide either `-BadPxIntensity` or `-GapIntensity`, it is recommended to provide **both** if your data contains both types of artifacts.
+| New Flag | Legacy Alias | Description | Default | Example |
+| :--- | :--- | :--- | :--- | :--- |
+| `--n-iterations` | — | Number of C-side calibration iterations | `40` | `--n-iterations 20` |
+| `--mult-factor` | `-MultFactor` | Outlier ring rejection factor (× median strain) | `2.5` | `--mult-factor 3.0` |
+| `--doublet-separation` | — | Doublet detection threshold (pixels) | `25` | `--doublet-separation 30` |
+| `--outlier-iterations` | — | Per-ring outlier removal iterations | `3` | `--outlier-iterations 5` |
+| `--first-ring` | `-FirstRingNr` | First ring number to use | `1` | `--first-ring 2` |
+| `--eta-bin-size` | `-EtaBinSize` | Azimuthal bin size (degrees) | `5.0` | `--eta-bin-size 2.0` |
+| `--lsd-guess` | `-LsdGuess` | Initial guess for detector distance (µm) | `1000000` | `--lsd-guess 210000` |
+| `--bc-guess` | `-BCGuess` | Initial guess for beam center [Y Z] (pixels) | `[0 0]` | `--bc-guess 1024 1024` |
+| `--threshold` | `-Threshold` | Manual threshold for ring detection (0=auto) | `0` | `--threshold 500` |
+| `--no-median` | `-NoMedian` | Skip median filter (0=use, 1=skip) | `0` | `--no-median 1` |
+| `--cpus` | — | Number of CPUs for CalibrantPanelShiftsOMP (0=all) | `0` | `--cpus 32` |
 
-### Input Parameter File (`-paramFN`)
+> [!TIP]
+> The following C-side features are enabled by default and do not need explicit flags:
+> `NormalizeRingWeights 1`, `WeightByFitSNR 1`, `MinIndicesForFit 5`
 
-When using `-ConvertFile` (i.e., input is not a pre-existing Zarr), you must provide a parameter file with initial metadata. `AutoCalibrateZarr.py` reads the following keys:
+> [!IMPORTANT]
+> `-StoppingStrain` has been removed. Convergence is now controlled entirely by `--n-iterations` and `--mult-factor` inside the C binary.
+
+### Input Parameter File (`--params`)
+
+When input is not a pre-existing Zarr file, provide a parameter file with initial metadata:
 
 | Key | Description | Example |
 | :--- | :--- | :--- |
-| `SpaceGroup` | Space group number of the calibrant (e.g., 225 for CeO2). | `225` |
-| `LatticeParameter` | Lattice constants (a b c alpha beta gamma). | `5.411 5.411 5.411 90 90 90` |
-| `Wavelength` | X-ray wavelength in Angstroms. | `0.41328` |
-| `px` | Pixel size in microns. | `200` |
-| `RingsToExclude` | (Optional) Ring indices to exclude from the start. | `RingsToExclude 1` |
-| `SkipFrame` | (Optional) Number of frames to skip in the data file (usually 0). | `0` |
-| `tx` | (Optional) Initial variation in x (usually 0). | `0` |
+| `SpaceGroup` | Space group number (e.g., 225 for CeO2) | `225` |
+| `LatticeParameter` | Lattice constants (a b c α β γ) | `5.411 5.411 5.411 90 90 90` |
+| `Wavelength` | X-ray wavelength (Å) | `0.41328` |
+| `px` | Pixel size (µm) | `200` |
+| `RingsToExclude` | (Optional) Ring indices to exclude | `RingsToExclude 1` |
+| `SkipFrame` | (Optional) Frames to skip | `0` |
+| `tx` | (Optional) Initial tx value | `0` |
 
 ### Output & Visualization
 
-| Argument | Description | Default | Example |
-| :--- | :--- | :--- | :--- |
-| `-MakePlots` | Set to `1` to display intermediate Matplotlib plots during the run. | `0` | `-MakePlots 1` |
-| `-SavePlotsHDF` | Path to an HDF5 file where all intermediate data arrays will be saved for offline analysis. | `''` | `-SavePlotsHDF cal_data.h5` |
+| New Flag | Legacy Alias | Description | Default | Example |
+| :--- | :--- | :--- | :--- | :--- |
+| `--plots` | `-MakePlots`, `-P` | Make plots: `0`=no, `1`=yes | `0` | `--plots 1` |
+| `--save-hdf` | `-SavePlotsHDF` | Save arrays to HDF5 file | `''` | `--save-hdf cal.h5` |
 
 ---
 
-## 5. Execution Example
+## 5. Execution Examples
 
-Calibrate the geometry using an HDF5 file, providing an initial parameter file and a good guess for the `Lsd`. Save all the intermediate data to an HDF5 file for later inspection.
-
+### Simple (auto-detect everything)
 ```bash
-python /path/to/AutoCalibrateZarr.py \
-    -dataFN CeO2_30keV_210mm.h5 \
-    -ConvertFile 1 \
-    -paramFN initial_params.txt \
-    -LsdGuess 210000 \
-    -StoppingStrain 0.0005 \
-    -SavePlotsHDF calibration_run.h5
+python AutoCalibrateZarr.py --data CeO2_00001.zip
+```
+
+### HDF5 with geometry hints
+```bash
+python AutoCalibrateZarr.py --data CeO2_30keV.h5 \
+    --params initial_params.txt \
+    --lsd-guess 210000 \
+    --save-hdf calibration.h5
+```
+
+### TIFF with old-style flags (backward compatible)
+```bash
+python AutoCalibrateZarr.py -dataFN CeO2.tif -paramFN ps.txt \
+    -BadPxIntensity -2 -GapIntensity -1 -MultFactor 3.0
+```
+
+### With custom iteration count and CPU control
+```bash
+python AutoCalibrateZarr.py --data CeO2.zip \
+    --n-iterations 20 --cpus 64 --doublet-separation 30
 ```
 
 ---
@@ -216,7 +241,7 @@ python /path/to/AutoCalibrateZarr.py \
     -   Data for ring overlays.
     -   Strain vs. 2-theta plots for each iteration.
     -   The final converged strain data and results dataframe.
--   **`calibrant_screen_out.csv`**: The raw text output from the last run of the `CalibrantPanelShiftsOMP` binary. Useful for debugging backend issues.
+-   **`calibrant_screen_out.csv`**: The raw text output from `CalibrantPanelShiftsOMP`, including per-iteration strain values. Contains all 40 iterations of the single C call.
 
 ---
 

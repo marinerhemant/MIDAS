@@ -628,13 +628,11 @@ def main():
             '--lineout', str(output_dir / 'lineout.bin'),
             '--nRBins', str(n_rbins),
             '--params', param_file,
-            '--theme', args.viewer_theme
+            '--theme', args.viewer_theme,
+            # Always pass fit path so viewer can pick up runtime-enabled peaks
+            '--fit', str(output_dir / 'fit.bin'),
+            '--nPeaks', str(n_peaks),
         ]
-        if peak_fit and n_peaks > 0:
-            viewer_cmd.extend([
-                '--fit', str(output_dir / 'fit.bin'),
-                '--nPeaks', str(n_peaks)
-            ])
         print(f"Viewer command: {' '.join(viewer_cmd)}")
         viewer_proc = subprocess.Popen(viewer_cmd, env=midas_env)
         print(f"Started live_viewer.py with PID {viewer_proc.pid}")
