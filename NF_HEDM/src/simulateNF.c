@@ -118,7 +118,7 @@ int main(int argc, char *argv[]) {
   char *ParamFN;
   FILE *fileParam;
   ParamFN = argv[1];
-  run_midas_binary("GetHKLList", ParamFN);
+  run_midas_binary("GetHKLListNF", ParamFN);
   char *MicFN = argv[2];
   char *outputFN = argv[3];
   char aline[4096];
