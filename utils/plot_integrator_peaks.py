@@ -63,25 +63,38 @@ def fit_peak(tth_arr, intensity, peak_idx, half_window=5):
     lo = max(0, peak_idx - half_window)
     hi = min(len(tth_arr), peak_idx + half_window + 1)
     x = tth_arr[lo:hi]
-    y = intensity[lo:hi]
+    y = intensity[lo:hi].astype(float)
 
     if len(x) < 5:
         return None
 
     # Initial guesses
-    amp0 = y.max() - y.min()
+    bg0 = np.median(np.concatenate([y[:3], y[-3:]]))  # baseline from edges
+    amp0 = y.max() - bg0
     mu0 = tth_arr[peak_idx]
-    sigma0 = (x[-1] - x[0]) / 4.0
+
+    # Estimate sigma from the actual FWHM in the data
+    half_max = bg0 + amp0 / 2.0
+    above = np.where(y >= half_max)[0]
+    if len(above) >= 2:
+        fwhm_est = x[above[-1]] - x[above[0]]
+        sigma0 = max(fwhm_est / 2.355, 1e-5)  # FWHM ~ 2.355*sigma for Gaussian
+    else:
+        sigma0 = (x[-1] - x[0]) / 4.0
+
     eta0 = 0.5  # start halfway between Gaussian and Lorentzian
-    bg0 = y.min()
+
+    # Poisson weighting: sigma_i = sqrt(max(I_i, 1)) so tails get fair weight
+    weights = np.sqrt(np.maximum(y, 1.0))
 
     try:
         popt, _ = curve_fit(
             pseudo_voigt, x, y,
             p0=[amp0, mu0, sigma0, eta0, bg0],
+            sigma=weights, absolute_sigma=True,
             bounds=([0, x[0], 1e-6, 0.0, -np.inf],
                     [np.inf, x[-1], x[-1] - x[0], 1.0, np.inf]),
-            maxfev=3000
+            maxfev=5000
         )
         return {'tth_fit': popt[1], 'amp': popt[0], 'sigma': popt[2],
                 'eta_mix': popt[3], 'bg': popt[4]}
