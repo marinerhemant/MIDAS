@@ -154,6 +154,17 @@ def main():
     tth_2d = retamap[1]   # (nRBins, nEtaBins) - 2theta in degrees
     eta_2d = retamap[2]   # (nRBins, nEtaBins) - eta in degrees
 
+    # Filter out points with zero bin area
+    valid = retamap[3] > 0
+    tth_2d[~valid] = np.nan
+    eta_2d[~valid] = np.nan
+    intensity[~valid] = np.nan
+
+    # for each eta bin, print 2theta range
+    for i in range(tth_2d.shape[1]):
+        tth_range = np.nanmax(tth_2d[:, i]) - np.nanmin(tth_2d[:, i])
+        print(f"  2theta range for eta bin {i}: {tth_range:.4f} deg")
+
     # 2theta and eta axes (constant along the other dimension)
     tth_axis = tth_2d[:, 0]    # 1D: nRBins values
     eta_axis = eta_2d[0, :]    # 1D: nEtaBins values
