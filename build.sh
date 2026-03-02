@@ -11,6 +11,7 @@ ENABLE_CUDA="ON" # Matches top-level CMakeLists.txt option default
 ENABLE_OMP="ON"  # Matches top-level CMakeLists.txt option default
 DOWNLOAD_DEPS="ON" # Matches top-level CMakeLists.txt option default
 USE_SYSTEM_DEPS="OFF" # Matches top-level CMakeLists.txt option default
+CUDA_COMPILER=""
 PYTHON_EXEC=""
 INSTALL_PY_SCRIPTS="ON"
 INSTALL_PY_DEPS="ON"
@@ -29,6 +30,7 @@ show_help() {
     echo "  -b, --build-dir DIR       Set build directory (default: build)"
     echo "  -i, --install-dir DIR     Set CMAKE_INSTALL_PREFIX"
     echo "  --cuda ON|OFF             Enable/Disable CUDA components (default: $ENABLE_CUDA)"
+    echo "  --nvcc PATH               Path to custom nvcc compiler (e.g. /usr/local/cuda-12/bin/nvcc)"
     echo "  --omp ON|OFF              Enable/Disable OpenMP components (default: $ENABLE_OMP)"
     echo "  --download-deps ON|OFF    Enable/Disable downloading dependencies (default: $DOWNLOAD_DEPS)"
     echo "  --system-deps ON|OFF      Prefer system-installed dependencies (default: $USE_SYSTEM_DEPS)"
@@ -106,6 +108,7 @@ while [[ $# -gt 0 ]]; do
         -b|--build-dir) BUILD_DIR="$2"; shift 2 ;;
         -i|--install-dir) INSTALL_DIR="$2"; shift 2 ;;
         --cuda) ENABLE_CUDA="$2"; shift 2 ;;
+        --nvcc) CUDA_COMPILER="$2"; shift 2 ;;
         --omp) ENABLE_OMP="$2"; shift 2 ;;
         --download-deps) DOWNLOAD_DEPS="$2"; shift 2 ;;
         --system-deps) USE_SYSTEM_DEPS="$2"; shift 2 ;;
@@ -135,6 +138,10 @@ CMAKE_OPTIONS+=("-DINSTALL_PYTHON_DEPENDENCIES=${INSTALL_PY_DEPS}")
 
 if [ -n "$INSTALL_DIR" ]; then
     CMAKE_OPTIONS+=("-DCMAKE_INSTALL_PREFIX=${INSTALL_DIR}")
+fi
+
+if [ -n "$CUDA_COMPILER" ]; then
+    CMAKE_OPTIONS+=("-DCMAKE_CUDA_COMPILER=${CUDA_COMPILER}")
 fi
 
 if [ -n "$PYTHON_EXEC" ]; then

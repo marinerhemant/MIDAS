@@ -181,14 +181,13 @@ sudo ./build_wsl_windows.sh
 ./build.sh --cuda OFF
 
 # Specify a custom nvcc compiler path
-cd build
-cmake .. -DCMAKE_CUDA_COMPILER=/path/to/cuda/bin/nvcc
-cmake --build . -j
+./build.sh --nvcc /usr/local/cuda-12/bin/nvcc
+
+# Or pass it directly to cmake
+cd build && cmake .. -DCMAKE_CUDA_COMPILER=/path/to/cuda/bin/nvcc && cmake --build . -j
 
 # Specify target CUDA architectures (default is "86;90")
-cd build
-cmake .. -DCMAKE_CUDA_ARCHITECTURES="75;80"
-cmake --build . -j
+cd build && cmake .. -DCMAKE_CUDA_ARCHITECTURES="75;80" && cmake --build . -j
 
 # Build and run benchmarks
 ./build.sh --test all
