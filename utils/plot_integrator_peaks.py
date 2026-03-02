@@ -293,7 +293,7 @@ def main():
             sys.exit(1)
 
         print(f"  Using OmegaSumFrame/{frame_key}")
-        intensity = osf[frame_key][:]  # (nRBins, nEtaBins)
+        intensity = osf[frame_key][:]/10  # (nRBins, nEtaBins)
     elif 'SumFrames' in z:
         print("  No OmegaSumFrame found, using SumFrames")
         intensity = z['SumFrames'][:]
