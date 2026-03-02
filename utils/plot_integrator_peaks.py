@@ -265,7 +265,7 @@ def main():
     elif corr_csv:
         print(f"  Warning: corr.csv not found at {corr_csv}")
 
-    # Print ring summary
+    # Print ring summary, 10 decimal places for 2theta
     if ideal_2thetas is not None:
         print(f"\n  {'Ring':>4s}  {'Ideal 2θ':>10s}  {'Mean 2θ':>10s}  {'Std 2θ':>10s}  {'NPoints':>8s}")
         print(f"  {'----':>4s}  {'----------':>10s}  {'----------':>10s}  {'----------':>10s}  {'--------':>8s}")
@@ -280,9 +280,9 @@ def main():
                 # Find closest ideal 2theta
                 idx = np.argmin(np.abs(ideal_2thetas - mean_tth))
                 ideal_val = ideal_2thetas[idx]
-                print(f"  {r:4d}  {ideal_val:10.4f}  {mean_tth:10.4f}  {np.std(ring_tths):10.6f}  {len(ring_tths):8d}")
+                print(f"  {r:4d}  {ideal_val:10.10f}  {mean_tth:10.10f}  {np.std(ring_tths):10.10f}  {len(ring_tths):8d}")
             else:
-                print(f"  {r:4d}  {mean_tth:10.4f}  {np.std(ring_tths):10.6f}  {len(ring_tths):8d}")
+                print(f"  {r:4d}  {mean_tth:10.10f}  {np.std(ring_tths):10.10f}  {len(ring_tths):8d}")
 
     # Extract arrays for plotting
     etas = np.array([p['eta'] for p in all_peaks])
