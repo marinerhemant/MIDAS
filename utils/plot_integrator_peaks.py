@@ -63,38 +63,25 @@ def fit_peak(tth_arr, intensity, peak_idx, half_window=5):
     lo = max(0, peak_idx - half_window)
     hi = min(len(tth_arr), peak_idx + half_window + 1)
     x = tth_arr[lo:hi]
-    y = intensity[lo:hi].astype(float)
+    y = intensity[lo:hi]
 
     if len(x) < 5:
         return None
 
     # Initial guesses
-    bg0 = np.median(np.concatenate([y[:3], y[-3:]]))  # baseline from edges
-    amp0 = y.max() - bg0
+    amp0 = y.max() - y.min()
     mu0 = tth_arr[peak_idx]
-
-    # Estimate sigma from the actual FWHM in the data
-    half_max = bg0 + amp0 / 2.0
-    above = np.where(y >= half_max)[0]
-    if len(above) >= 2:
-        fwhm_est = x[above[-1]] - x[above[0]]
-        sigma0 = max(fwhm_est / 2.355, 1e-5)  # FWHM ~ 2.355*sigma for Gaussian
-    else:
-        sigma0 = (x[-1] - x[0]) / 4.0
-
+    sigma0 = (x[-1] - x[0]) / 4.0
     eta0 = 0.5  # start halfway between Gaussian and Lorentzian
-
-    # Poisson weighting: sigma_i = sqrt(max(I_i, 1)) so tails get fair weight
-    weights = np.sqrt(np.maximum(y, 1.0))
+    bg0 = y.min()
 
     try:
         popt, _ = curve_fit(
             pseudo_voigt, x, y,
             p0=[amp0, mu0, sigma0, eta0, bg0],
-            sigma=weights, absolute_sigma=True,
             bounds=([0, x[0], 1e-6, 0.0, -np.inf],
                     [np.inf, x[-1], x[-1] - x[0], 1.0, np.inf]),
-            maxfev=5000
+            maxfev=3000
         )
         return {'tth_fit': popt[1], 'amp': popt[0], 'sigma': popt[2],
                 'eta_mix': popt[3], 'bg': popt[4]}
@@ -140,101 +127,6 @@ def assign_rings(peaks, tol_deg=0.05):
     return peaks
 
 
-def plot_single_eta_bin(tth_axis, profile, eta_val, eta_bin_idx, all_peaks_for_bin,
-                        tth_range, zarr_basename, save_path=None):
-    """Plot a GSAS-II style 1D peak profile for a single eta bin.
-
-    Shows intensity (log scale) vs 2theta with:
-      - Blue '+' markers for measured data
-      - Green solid line for the pseudo-Voigt fit envelope
-      - Red solid line for the background level
-      - Blue dotted vertical line at each peak center
-      - Green/red dashed vertical boundary lines
-    """
-    # Restrict to the requested 2theta range
-    tth_lo, tth_hi = tth_range
-    mask = (tth_axis >= tth_lo) & (tth_axis <= tth_hi)
-    x_plot = tth_axis[mask]
-    y_plot = profile[mask].astype(float)
-
-    if len(x_plot) == 0:
-        print(f"  Error: no data in 2theta range [{tth_lo}, {tth_hi}]")
-        sys.exit(1)
-
-    # Build the multi-peak fit envelope + background over full range
-    x_fine = np.linspace(tth_lo, tth_hi, 2000)
-    bg_level = np.inf
-    fit_envelope = np.zeros_like(x_fine)
-    has_fit = False
-
-    for pk in all_peaks_for_bin:
-        pv = pseudo_voigt(x_fine, pk['amp'], pk['tth_fit'], pk['sigma'],
-                          pk['eta_mix'], pk['bg'])
-        fit_envelope += pv - pk['bg']  # subtract bg so we add it once below
-        if pk['bg'] < bg_level:
-            bg_level = pk['bg']
-        has_fit = True
-
-    if not has_fit:
-        bg_level = float(np.median(y_plot))
-    fit_envelope += bg_level
-
-    # Ensure positive values for log scale
-    y_plot_safe = np.where(y_plot > 0, y_plot, np.nan)
-    fit_safe = np.where(fit_envelope > 0, fit_envelope, np.nan)
-
-    # --- Create the figure ---
-    fig, ax = plt.subplots(figsize=(10, 7))
-
-    # Data: blue '+' markers connected by a thin cyan line (like GSAS-II)
-    ax.plot(x_plot, y_plot_safe, color='#2196F3', marker='+', markersize=6,
-            linewidth=0.0, label='Observed', zorder=3)
-
-    # Fitted curve: solid green
-    if has_fit:
-        ax.plot(x_fine, fit_safe, color='#2E7D32', linewidth=1.8,
-                label='Fit', zorder=4)
-
-    # Background: solid red
-    bg_line = np.full_like(x_fine, bg_level)
-    ax.plot(x_fine, np.where(bg_line > 0, bg_line, np.nan),
-            color='#D32F2F', linewidth=1.5, label='Background', zorder=2)
-
-    # Peak center markers: blue dotted vertical lines
-    for pk in all_peaks_for_bin:
-        if tth_lo <= pk['tth_fit'] <= tth_hi:
-            ax.axvline(pk['tth_fit'], color='blue', linestyle=':', linewidth=1.2,
-                       alpha=0.9, zorder=5)
-
-    # Fit-region boundary lines (GSAS-II style)
-    ax.axvline(tth_lo, color='green', linestyle='--', linewidth=2.0, alpha=0.8)
-    ax.axvline(tth_hi, color='red', linestyle='--', linewidth=2.0, alpha=0.8)
-
-    # Log scale
-    ax.set_yscale('log')
-
-    # Axis labels matching GSAS-II
-    ax.set_xlabel(r'2$\theta$', fontsize=14, fontstyle='italic')
-    ax.set_ylabel(r'Intensity', fontsize=14, fontstyle='italic')
-    ax.set_xlim(tth_lo, tth_hi)
-
-    # Title: filename + eta info
-    title = f'{zarr_basename}  eta bin={eta_bin_idx} ({eta_val:.1f}°)'
-    ax.set_title(title, fontsize=11, loc='left', pad=10)
-
-    # Light grey grid
-    ax.grid(True, alpha=0.25, which='both')
-    ax.tick_params(labelsize=11)
-
-    plt.tight_layout()
-
-    if save_path:
-        plt.savefig(save_path, dpi=200, bbox_inches='tight')
-        print(f"\n  Saved plot to {save_path}")
-    else:
-        plt.show()
-
-
 def main():
     parser = argparse.ArgumentParser(
         description='Fit peaks in integrator zarr.zip output and plot 2theta vs eta')
@@ -251,10 +143,6 @@ def main():
                         help='Which OmegaSumFrame to use (-1 = last, default: -1)')
     parser.add_argument('--corr-csv', type=str, default=None,
                         help='Path to _corr.csv file for ideal 2theta lines (auto-derived if not given)')
-    parser.add_argument('--eta-bin', type=int, default=None,
-                        help='Show GSAS-II style single-bin peak profile for this eta bin index')
-    parser.add_argument('--tth-range', type=float, nargs=2, default=None, metavar=('LO', 'HI'),
-                        help='2theta range for single-bin plot (default: full range)')
     args = parser.parse_args()
 
     # Open zarr
@@ -263,27 +151,9 @@ def main():
 
     # Extract REtaMap: shape (4, nRBins, nEtaBins) = [Radius, 2Theta, Eta, BinArea]
     retamap = z['REtaMap'][:]
-    tth_2d_raw = retamap[1]   # (nRBins, nEtaBins) - 2theta in degrees
-    tth_2d = np.copy(tth_2d_raw)
-    eta_2d_raw = retamap[2]   # (nRBins, nEtaBins) - eta in degrees
-    eta_2d = np.copy(eta_2d_raw)
+    tth_2d = retamap[1]   # (nRBins, nEtaBins) - 2theta in degrees
+    eta_2d = retamap[2]   # (nRBins, nEtaBins) - eta in degrees
 
-    # Filter out points with zero bin area
-    valid = retamap[3] > 0
-    tth_2d[~valid] = np.nan
-    eta_2d[~valid] = np.nan
-
-    # for each eta bin, print 2theta range and min-max values for 2theta
-    for i in range(tth_2d.shape[1]):
-        tth_range = np.nanmax(tth_2d[:, i]) - np.nanmin(tth_2d[:, i])
-        tth_min = np.nanmin(tth_2d[:, i])
-        tth_max = np.nanmax(tth_2d[:, i])
-        print(f"eta bin {i}: {eta_2d_raw[0, i]:.4f} deg")
-        print(f"  2theta range for eta bin {i}: {tth_range:.4f} deg")
-        print(f"  2theta min-max for eta bin {i}: {tth_min:.4f} - {tth_max:.4f} deg")
-
-    tth_2d = np.copy(tth_2d_raw)
-    eta_2d = np.copy(eta_2d_raw)
     # 2theta and eta axes (constant along the other dimension)
     tth_axis = tth_2d[:, 0]    # 1D: nRBins values
     eta_axis = eta_2d[0, :]    # 1D: nEtaBins values
@@ -306,7 +176,7 @@ def main():
             sys.exit(1)
 
         print(f"  Using OmegaSumFrame/{frame_key}")
-        intensity = osf[frame_key][:]/10  # (nRBins, nEtaBins)
+        intensity = osf[frame_key][:]  # (nRBins, nEtaBins)
     elif 'SumFrames' in z:
         print("  No OmegaSumFrame found, using SumFrames")
         intensity = z['SumFrames'][:]
@@ -322,56 +192,6 @@ def main():
     prominence = args.prominence if args.prominence is not None else 0.03 * imax
     print(f"  Peak detection: min_height={min_height:.1f}, prominence={prominence:.1f}")
 
-    # ----------------------------------------------------------------
-    # Single eta-bin mode (GSAS-II style)
-    # ----------------------------------------------------------------
-    if args.eta_bin is not None:
-        j = args.eta_bin
-        if j < 0 or j >= nEtaBins:
-            print(f"Error: --eta-bin {j} out of range [0, {nEtaBins-1}]")
-            sys.exit(1)
-
-        eta_val = eta_axis[j]
-        profile = intensity[:, j]
-        print(f"\n  Single-bin mode: eta bin {j} = {eta_val:.4f} deg")
-
-        # Determine 2theta range
-        if args.tth_range is not None:
-            tth_range_plot = tuple(args.tth_range)
-        else:
-            tth_range_plot = (float(tth_axis[0]), float(tth_axis[-1]))
-
-        # Compute a fit window (in bins) that spans the entire tth_range
-        # so the pseudo-Voigt can properly capture the broad Lorentzian tails.
-        if args.tth_range is not None:
-            dt = tth_axis[1] - tth_axis[0] if len(tth_axis) > 1 else 1.0
-            n_fit_bins = max(args.fit_window,
-                             int((tth_range_plot[1] - tth_range_plot[0]) / abs(dt) / 2))
-        else:
-            n_fit_bins = args.fit_window
-
-        # Find and fit peaks in this bin
-        peak_indices, _ = find_peaks(profile, height=min_height, prominence=prominence)
-        bin_peaks = []
-        for pi in peak_indices:
-            result = fit_peak(tth_axis, profile, pi, half_window=n_fit_bins)
-            if result is not None:
-                result['eta'] = eta_val
-                result['eta_idx'] = j
-                bin_peaks.append(result)
-        print(f"  Found {len(bin_peaks)} peaks in eta bin {j} (fit window = {n_fit_bins} bins)")
-        for pk in bin_peaks:
-            print(f"    2θ = {pk['tth_fit']:.6f}°  amp = {pk['amp']:.1f}  "
-                  f"σ = {pk['sigma']:.6f}  η_mix = {pk['eta_mix']:.3f}  bg = {pk['bg']:.1f}")
-
-        plot_single_eta_bin(tth_axis, profile, eta_val, j, bin_peaks,
-                            tth_range_plot, os.path.basename(args.zarr_file),
-                            save_path=args.save)
-        return
-
-    # ----------------------------------------------------------------
-    # Multi-bin mode (original 2D scatter plot)
-    # ----------------------------------------------------------------
     # Fit peaks for each eta column
     all_peaks = []
     n_fitted = 0
@@ -427,7 +247,7 @@ def main():
     elif corr_csv:
         print(f"  Warning: corr.csv not found at {corr_csv}")
 
-    # Print ring summary, 10 decimal places for 2theta
+    # Print ring summary
     if ideal_2thetas is not None:
         print(f"\n  {'Ring':>4s}  {'Ideal 2θ':>10s}  {'Mean 2θ':>10s}  {'Std 2θ':>10s}  {'NPoints':>8s}")
         print(f"  {'----':>4s}  {'----------':>10s}  {'----------':>10s}  {'----------':>10s}  {'--------':>8s}")
@@ -442,9 +262,9 @@ def main():
                 # Find closest ideal 2theta
                 idx = np.argmin(np.abs(ideal_2thetas - mean_tth))
                 ideal_val = ideal_2thetas[idx]
-                print(f"  {r:4d}  {ideal_val:10.10f}  {mean_tth:10.10f}  {np.std(ring_tths):10.10f}  {len(ring_tths):8d}")
+                print(f"  {r:4d}  {ideal_val:10.4f}  {mean_tth:10.4f}  {np.std(ring_tths):10.6f}  {len(ring_tths):8d}")
             else:
-                print(f"  {r:4d}  {mean_tth:10.10f}  {np.std(ring_tths):10.10f}  {len(ring_tths):8d}")
+                print(f"  {r:4d}  {mean_tth:10.4f}  {np.std(ring_tths):10.6f}  {len(ring_tths):8d}")
 
     # Extract arrays for plotting
     etas = np.array([p['eta'] for p in all_peaks])
