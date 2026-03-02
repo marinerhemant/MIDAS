@@ -47,6 +47,7 @@ from dataclasses import dataclass, field
 import traceback
 import h5py
 import io
+import re
 import numba
 from numba import jit
 from scipy import ndimage
@@ -183,6 +184,55 @@ def detect_calibrant(filename):
                         f"(SpaceGroup {cal['space_group']})")
             return cal
     return None
+
+
+# hc in keV·Å
+_HC_KEV_ANGSTROM = 12.3984198
+
+
+def parse_filename_hints(filename):
+    """Extract energy (keV) and distance (mm) from filename tokens.
+
+    Recognizes patterns like:
+      71p676keV  or  71.676keV  →  energy 71.676 keV  →  wavelength 0.17301 Å
+      657mm                     →  distance 657 mm    →  Lsd 657000 µm
+
+    Returns dict with keys 'wavelength' (Å) and/or 'lsd' (µm), only for
+    values that were found.
+    """
+    base = Path(filename).stem
+    hints = {}
+
+    # Energy:  match e.g. '71p676keV', '71.676keV', '30keV'
+    # Uses 'p' or '.' as decimal separator
+    energy_match = re.search(
+        r'(?:^|[_\-])([\d]+(?:[p.][\d]+)?)keV(?:[_\-.]|$)',
+        base, re.IGNORECASE
+    )
+    if energy_match:
+        energy_str = energy_match.group(1).replace('p', '.')
+        energy_kev = float(energy_str)
+        if energy_kev > 0:
+            wavelength = _HC_KEV_ANGSTROM / energy_kev
+            hints['wavelength'] = wavelength
+            logger.info(f"Auto-detected energy from filename: {energy_kev} keV "
+                        f"→ wavelength {wavelength:.5f} Å")
+
+    # Distance:  match e.g. '657mm', '210mm'
+    dist_match = re.search(
+        r'(?:^|[_\-])([\d]+(?:[p.][\d]+)?)mm(?:[_\-.]|$)',
+        base, re.IGNORECASE
+    )
+    if dist_match:
+        dist_str = dist_match.group(1).replace('p', '.')
+        dist_mm = float(dist_str)
+        if dist_mm > 0:
+            lsd_um = dist_mm * 1000.0
+            hints['lsd'] = lsd_um
+            logger.info(f"Auto-detected distance from filename: {dist_mm} mm "
+                        f"→ Lsd {lsd_um:.0f} µm")
+
+    return hints
 
 
 # ---- File format detection ----
@@ -698,6 +748,37 @@ def runMIDAS(rawFN, state, n_iterations=40, mult_factor=2.5,
         logger.error(f"Error running MIDAS: {traceback.format_exc()}")
 
 
+def _make_temp_param_file(args, calibrant, filename_hints):
+    """Generate a temporary parameter file from CLI args and auto-detected values.
+
+    This allows running without --params when --px and calibrant/energy
+    info are available (from filename or defaults).
+    """
+    px = args.px if args.px > 0 else 200.0
+    wavelength = filename_hints.get('wavelength', 0.0)
+    latc = calibrant['lattice']
+    sg = calibrant['space_group']
+
+    if wavelength <= 0:
+        logger.error("Cannot create temp param file: wavelength not available "
+                     "(set energy in filename or provide --params)")
+        print("ERROR: Wavelength not available. Either include energy in the "
+              "filename (e.g. 71p676keV) or provide --params")
+        sys.exit(1)
+
+    temp_fn = '_autocal_temp_params.txt'
+    with open(temp_fn, 'w') as f:
+        f.write(f"SpaceGroup {sg}\n")
+        f.write(f"LatticeParameter {' '.join(str(v) for v in latc)}\n")
+        f.write(f"Wavelength {wavelength}\n")
+        f.write(f"px {px}\n")
+        f.write(f"SkipFrame 0\n")
+        f.write(f"tx 0\n")
+    logger.info(f"Auto-generated temp param file: {temp_fn} "
+                f"(SG={sg}, px={px}, λ={wavelength:.5f}Å, {calibrant['name']})")
+    return temp_fn
+
+
 def main():
     """Main function to run the automated calibration."""
     try:
@@ -742,6 +823,8 @@ def main():
                             help='Initial guess for detector distance (µm)')
         parser.add_argument('--bc-guess', '-BCGuess', type=float, default=[0.0, 0.0], nargs=2,
                             help='Initial guess for beam center [Y Z] (pixels)')
+        parser.add_argument('--px', type=float, default=0,
+                            help='Pixel size in µm (e.g. 200, 172). If set, no param file needed for non-Zarr inputs.')
 
         # Image handling
         parser.add_argument('--im-trans', '-ImTransOpt', type=int, default=[0], nargs='*',
@@ -797,6 +880,12 @@ def main():
         minArea = 300
         maxW = 1000
 
+        # Parse energy/distance hints from filename
+        filename_hints = parse_filename_hints(args.data)
+        if 'lsd' in filename_hints and args.lsd_guess == 1000000:
+            initialLsd = filename_hints['lsd']
+            logger.info(f"Using Lsd from filename: {initialLsd:.0f} µm")
+
         logger.info(f"Starting automated calibration for: {dataFN}")
 
         # ---- Auto-detect file format ----
@@ -807,6 +896,13 @@ def main():
 
         # ---- File format conversion ----
         bad_gap_arr = []
+
+        # Detect calibrant + filename hints early (needed for temp param file)
+        calibrant = detect_calibrant(args.data)
+        if calibrant is None:
+            calibrant = CALIBRANTS['ceo2']
+            logger.info(f"No calibrant detected from filename, defaulting to {calibrant['name']}")
+
         if convertFile == 3:
             logger.info("Processing TIFF input")
             dataFN, darkGeFN, ny, nz, bad_gap_arr = process_tiff_input(
@@ -819,9 +915,7 @@ def main():
                         f"NrPixelsZ={state.nr_pixels_z}")
             psFN = args.params
             if not psFN:
-                logger.error("Parameter file is required for TIFF conversion")
-                print("ERROR: Parameter file is required for TIFF conversion (use --params)")
-                sys.exit(1)
+                psFN = _make_temp_param_file(args, calibrant, filename_hints)
             dataFN = generateZip('.', psFN, dfn=dataFN, darkfn=darkGeFN,
                                  nchunks=100, preproc=0,
                                  NrPixelsY=state.nr_pixels_y,
@@ -830,9 +924,7 @@ def main():
         if convertFile == 1 or convertFile == 2:
             psFN = args.params
             if not psFN:
-                logger.error("Parameter file is required for format conversion")
-                print("ERROR: Parameter file is required for format conversion (use --params)")
-                sys.exit(1)
+                psFN = _make_temp_param_file(args, calibrant, filename_hints)
             logger.info("Generating zip file")
             dataFN = generateZip('.', psFN, dfn=dataFN, nchunks=100,
                                  preproc=0, darkfn=darkFN, dloc=dataLoc)
@@ -842,11 +934,7 @@ def main():
         dataF = zarr.open(dataFN, mode='r')
         dataFN = os.path.basename(dataFN)
 
-        # Try to detect calibrant from filename for defaults
-        calibrant = detect_calibrant(args.data)
-        if calibrant is None:
-            calibrant = CALIBRANTS['ceo2']  # default to CeO2
-            logger.info(f"No calibrant detected from filename, defaulting to {calibrant['name']}")
+        # calibrant already detected above
 
         # Extract parameters from Zarr (with calibrant defaults as fallback)
         state.skip_frame = 0
@@ -862,6 +950,9 @@ def main():
 
         if f'{ap}/PixelSize' in dataF:
             state.px = dataF[f'{ap}/PixelSize'][0].item()
+        elif args.px > 0:
+            state.px = args.px
+            logger.info(f"PixelSize from --px: {state.px} µm")
         else:
             state.px = 200.0
             logger.info(f"PixelSize not in Zarr, using default: {state.px} µm")
@@ -874,9 +965,12 @@ def main():
 
         if f'{ap}/Wavelength' in dataF:
             state.wavelength = dataF[f'{ap}/Wavelength'][:].item()
+        elif 'wavelength' in filename_hints:
+            state.wavelength = filename_hints['wavelength']
+            logger.info(f"Wavelength from filename: {state.wavelength:.5f} Å")
         else:
             state.wavelength = 0.0
-            logger.warning("Wavelength not found in Zarr — must be set in param file")
+            logger.warning("Wavelength not found in Zarr or filename — must be set in param file")
 
         if f'{ap}/tx' in dataF:
             state.tx = dataF[f'{ap}/tx'][:].item()

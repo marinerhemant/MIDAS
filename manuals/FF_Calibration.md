@@ -28,7 +28,7 @@ The script is a crucial first step for any HEDM analysis, as an accurate geometr
 2.  **Python Environment:** A Python environment with the following libraries installed: `numpy`, `matplotlib`, `zarr`, `scikit-image`, `plotly`, `pandas`, `diplib`, `Pillow`, `h5py`, and `numba`.
 3.  **Input Data:**
     *   A 2D diffraction image of a calibrant material showing clear Debye-Scherrer rings.
-    *   If using a format other than Zarr (e.g., HDF5, TIFF), a basic parameter file (`--params`) is required to provide essential metadata like `Wavelength` and `px`.
+    *   If using a format other than Zarr (e.g., HDF5, TIFF), a parameter file (`--params`) **or** the `--px` flag plus energy-in-filename is needed.
     *   **SpaceGroup and LatticeParameter are auto-detected** from the filename (see §3.1 below) and do not need to be specified for CeO2 or LaB6.
 
 ---
@@ -42,9 +42,19 @@ The script auto-detects the calibrant material from the data filename (case-inse
 | `ceo2`, `CeO2`, `ceria`, `ceriumoxide` | CeO2 | 225 | 5.4116 |
 | `lab6`, `LaB6`, `lab_6`, `lab-6`, `lanthanumhexaboride` | LaB6 | 221 | 4.1569 |
 
-**Priority:** Zarr metadata > param file > filename detection > CeO2 default.
+It also extracts **energy** and **distance** from the filename:
 
-If no calibrant is detected from the filename and no metadata is available, CeO2 is used as the default.
+| Pattern | Example | Parsed Value |
+|---|---|---|
+| `<number>keV` (decimal: `.` or `p`) | `71p676keV` | Energy 71.676 keV → wavelength 0.17298 Å |
+| `<number>mm` | `657mm` | Distance 657 mm → Lsd 657000 µm |
+
+For example, `CeO2_Pil_100x100_att000_657mm_71p676keV_000062.tif` auto-sets:
+- Calibrant: CeO2 (SG 225)
+- Wavelength: 0.17298 Å (from 71.676 keV)
+- Lsd guess: 657000 µm (from 657 mm)
+
+**Priority:** Zarr metadata > param file > CLI argument > filename detection > defaults.
 
 ---
 
@@ -150,7 +160,7 @@ The script uses `--flag` convention with backward-compatible aliases for all leg
 | New Flag | Legacy Alias | Description | Default | Example |
 | :--- | :--- | :--- | :--- | :--- |
 | `--convert` | `-ConvertFile` | Force format: `0`=Zarr, `1`=HDF5, `2`=GE, `3`=TIFF. Default: auto-detect. | auto | `--convert 1` |
-| `--params` | `-paramFN`, `-p` | Parameter file (required for non-Zarr inputs) | `''` | `--params setup.txt` |
+| `--params` | `-paramFN`, `-p` | Parameter file. Optional if `--px` + energy in filename. | `''` | `--params setup.txt` |
 | `--dark` | `-darkFN` | Separate dark field image file | `''` | `--dark dark.h5` |
 | `--data-loc` | `-dataLoc` | HDF5 dataset path (if non-standard) | `''` | `--data-loc /entry/data` |
 | `--im-trans` | `-ImTransOpt` | Image transforms: `0`=none, `1`=flipLR, `2`=flipUD, `3`=transpose | `[0]` | `--im-trans 1 3` |
@@ -171,6 +181,7 @@ The script uses `--flag` convention with backward-compatible aliases for all leg
 | `--bc-guess` | `-BCGuess` | Initial guess for beam center [Y Z] (pixels) | `[0 0]` | `--bc-guess 1024 1024` |
 | `--threshold` | `-Threshold` | Manual threshold for ring detection (0=auto) | `0` | `--threshold 500` |
 | `--no-median` | `-NoMedian` | Skip median filter (0=use, 1=skip) | `0` | `--no-median 1` |
+| `--px` | — | Pixel size (µm). Enables param-file-free usage for non-Zarr. | `0` (auto) | `--px 172` |
 | `--cpus` | — | Number of CPUs for CalibrantPanelShiftsOMP (0=all) | `0` | `--cpus 32` |
 
 > [!TIP]
@@ -222,6 +233,12 @@ python AutoCalibrateZarr.py --data CeO2_30keV.h5 \
 ```bash
 python AutoCalibrateZarr.py -dataFN CeO2.tif -paramFN ps.txt \
     -BadPxIntensity -2 -GapIntensity -1 -MultFactor 3.0
+```
+
+### Zero-config TIFF (everything auto-detected from filename)
+```bash
+python AutoCalibrateZarr.py \
+    --data CeO2_Pil_100x100_att000_657mm_71p676keV_000062.tif --px 172
 ```
 
 ### With custom iteration count and CPU control
