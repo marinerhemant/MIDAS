@@ -164,6 +164,7 @@ def main():
         tth_range = np.nanmax(tth_2d[:, i]) - np.nanmin(tth_2d[:, i])
         tth_min = np.nanmin(tth_2d[:, i])
         tth_max = np.nanmax(tth_2d[:, i])
+        print(f"eta bin {i}: {eta_2d[0, i]:.4f} - {eta_2d[-1, i]:.4f} deg")
         print(f"  2theta range for eta bin {i}: {tth_range:.4f} deg")
         print(f"  2theta min-max for eta bin {i}: {tth_min:.4f} - {tth_max:.4f} deg")
 
