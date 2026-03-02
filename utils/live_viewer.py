@@ -821,7 +821,18 @@ class LiveViewer(QtWidgets.QMainWindow):
             img = img[::self.decimation]
         if self.log_heatmap:
             img = np.log10(np.clip(img, 1e-10, None))
+        # img shape: (n_frames, n_rbins)
+        # ImageItem expects (width, height) so we transpose → (n_rbins, n_frames)
         self.heatmap_img.setImage(img.T, autoLevels=True)
+        # Map image coordinates to match the R-value axis used by the lineout
+        n_frames, n_rbins = img.shape
+        if self.r_values is not None and len(self.r_values) == n_rbins:
+            r_min = self.r_values[0]
+            r_max = self.r_values[-1]
+        else:
+            r_min = 0
+            r_max = n_rbins
+        self.heatmap_img.setRect(QtCore.QRectF(r_min, 0, r_max - r_min, n_frames))
 
     def _redraw_peak_evolution(self):
         if not self.fit_history:
