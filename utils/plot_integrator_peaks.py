@@ -328,16 +328,25 @@ def main():
         else:
             tth_range_plot = (float(tth_axis[0]), float(tth_axis[-1]))
 
+        # Compute a fit window (in bins) that spans the entire tth_range
+        # so the pseudo-Voigt can properly capture the broad Lorentzian tails.
+        if args.tth_range is not None:
+            dt = tth_axis[1] - tth_axis[0] if len(tth_axis) > 1 else 1.0
+            n_fit_bins = max(args.fit_window,
+                             int((tth_range_plot[1] - tth_range_plot[0]) / abs(dt) / 2))
+        else:
+            n_fit_bins = args.fit_window
+
         # Find and fit peaks in this bin
         peak_indices, _ = find_peaks(profile, height=min_height, prominence=prominence)
         bin_peaks = []
         for pi in peak_indices:
-            result = fit_peak(tth_axis, profile, pi, half_window=args.fit_window)
+            result = fit_peak(tth_axis, profile, pi, half_window=n_fit_bins)
             if result is not None:
                 result['eta'] = eta_val
                 result['eta_idx'] = j
                 bin_peaks.append(result)
-        print(f"  Found {len(bin_peaks)} peaks in eta bin {j}")
+        print(f"  Found {len(bin_peaks)} peaks in eta bin {j} (fit window = {n_fit_bins} bins)")
         for pk in bin_peaks:
             print(f"    2θ = {pk['tth_fit']:.6f}°  amp = {pk['amp']:.1f}  "
                   f"σ = {pk['sigma']:.6f}  η_mix = {pk['eta_mix']:.3f}  bg = {pk['bg']:.1f}")
