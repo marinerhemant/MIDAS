@@ -627,6 +627,7 @@ def main():
             sys.executable, viewer_script,
             '--lineout', str(output_dir / 'lineout.bin'),
             '--nRBins', str(n_rbins),
+            '--params', param_file,
             '--theme', args.viewer_theme
         ]
         if peak_fit and n_peaks > 0:

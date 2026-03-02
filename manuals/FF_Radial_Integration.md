@@ -336,6 +336,55 @@ The radial integration is performed by one of two engines, optimized for differe
         *   `integrate_kernel`: Performs the weighted summation of pixels for each bin. It uses atomic adds for the "Summed Image" feature.
         *   `calculate_1D_profile_kernel`: efficiently reduces the 2D (R, Eta) array to a 1D (R) profile using **Warp Shuffle** intrinsics (`__shfl_down_sync`) for high-speed reduction within GPU thread blocks.
 *   **CPU-Side Peak Fitting:** When `DoPeakFit` is enabled, after each frame's GPU integration completes, the 1D lineout is passed to an OpenMP-parallelized CPU fitting pipeline that uses `nlopt` (L-BFGS with analytical gradients, Nelder-Mead fallback) to fit height-normalized Pseudo-Voigt peaks. See [Section 2.5](#25-peak-fitting-gpu-backend) for full details.
+*   **Runtime Peak Updates:** The integrator polls for `peak_update.txt` at the top of each frame loop. If found, it updates the peak locations and enables fitting on-the-fly. See [Section 4.2.1](#421-interactive-peak-selection-from-live-viewer) below.
+
+#### 4.2.1. Interactive Peak Selection from Live Viewer
+
+The `live_viewer.py` dashboard can **interactively send peak locations** to the running GPU integrator. This enables exploratory analysis: watch the lineout, identify interesting peaks, and immediately begin fitting them — all without restarting the integrator.
+
+**Protocol (File-Based IPC):**
+
+The live_viewer writes a `peak_update.txt` file atomically (temp + rename) to the GPU integrator's working directory. The integrator polls for this file at the top of each frame loop.
+
+```text
+mode replace
+245.3
+347.1
+425.8
+```
+
+- First line: `mode replace` (discard existing peaks, fit only these) or `mode append` (add to current peaks)
+- Remaining lines: one R value per line (radius in pixel units)
+
+After reading and deleting the signal file, the integrator writes `active_peaks.txt` (one R per line) so the live_viewer can display red overlay markers at the currently-fitted radii.
+
+**live_viewer usage:**
+
+```bash
+python ~/opt/MIDAS/utils/live_viewer.py \
+    --lineout lineout.bin --nRBins 500 \
+    --fit fit.bin --nPeaks 5 \
+    --params setup_30keV.txt
+```
+
+1. Click **🎯 Pick** to enter peak selection mode
+2. Click on peaks in the lineout or heatmap — yellow markers appear
+3. Select **Replace** or **Append** mode
+4. Click **📤 Send Peaks** — `peak_update.txt` is written
+5. GPU picks it up on the next frame — fitting begins
+6. Red overlay lines appear at active fit radii on both plots
+
+**Triple Axes (2θ, Q):**
+
+When `--params` is provided (or `--lsd`, `--px`, `--wavelength` are given explicitly), the live_viewer shows three stacked x-axes on both plots:
+
+| Axis | Formula | Units |
+|------|---------|-------|
+| R | — | pixels |
+| 2θ | `atan(R × px / Lsd)` | degrees |
+| Q | `4π sin(θ) / λ` | Å⁻¹ |
+
+If wavelength is not available, only R and 2θ axes are shown.
 
 ### 4.3. DetectorMapper (The Geometry Engine)
 This tool runs automatically at the start of either workflow. It consumes the experimental geometry (distance, tilts, pixel size) and produces two look-up tables:

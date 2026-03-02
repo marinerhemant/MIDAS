@@ -21,6 +21,8 @@ import argparse
 import os
 import sys
 import time
+import math
+import json
 from collections import deque
 
 import numpy as np
@@ -99,11 +101,71 @@ class BinaryTailer:
 
 
 # ============================================================
+# Scaled Axis Item (non-linear tick transform)
+# ============================================================
+class ScaledAxisItem(pg.AxisItem):
+    """AxisItem whose tick labels are transformed through a function.
+
+    Used to show 2θ or Q axes that correspond to the primary R axis.
+    """
+
+    def __init__(self, transform_fn, label, units='', *args, **kwargs):
+        super().__init__(*args, orientation='bottom', **kwargs)
+        self._transform = transform_fn
+        self.setLabel(label, units=units)
+        self.setStyle(tickLength=-5)
+
+    def tickStrings(self, values, scale, spacing):
+        """Convert R tick values through the transform function."""
+        result = []
+        for v in values:
+            try:
+                tv = self._transform(v * scale)
+                result.append(f'{tv:.2f}')
+            except (ValueError, ZeroDivisionError, OverflowError):
+                result.append('')
+        return result
+
+
+# ============================================================
+# Parameter file parser
+# ============================================================
+def parse_param_file(path):
+    """Extract Lsd, px, Wavelength, RMin, RMax from a MIDAS parameter file.
+
+    Returns dict with keys: lsd, px, wavelength (all in µm/Å as stored).
+    Missing keys are omitted.
+    """
+    result = {}
+    key_map = {
+        'Lsd': 'lsd',
+        'px': 'px',
+        'Wavelength': 'wavelength',
+        'RMin': 'rmin',
+        'RMax': 'rmax',
+        'RBinSize': 'rbinsize',
+    }
+    try:
+        with open(path) as f:
+            for line in f:
+                line = line.strip()
+                if not line or line.startswith('#'):
+                    continue
+                parts = line.split()
+                if len(parts) >= 2 and parts[0] in key_map:
+                    result[key_map[parts[0]]] = float(parts[1])
+    except Exception as e:
+        print(f'Warning: could not parse param file {path}: {e}')
+    return result
+
+
+# ============================================================
 # Main Viewer Window
 # ============================================================
 class LiveViewer(QtWidgets.QMainWindow):
     def __init__(self, lineout_path, fit_path=None, n_rbins=500, n_peaks=0,
-                 max_history=0, theme='light', parent=None):
+                 max_history=0, theme='light', lsd=None, px=None,
+                 wavelength=None, work_dir=None, parent=None):
         super().__init__(parent)
         self.setWindowTitle('MIDAS Live Viewer')
         self.resize(1400, 900)
@@ -112,6 +174,10 @@ class LiveViewer(QtWidgets.QMainWindow):
         self.n_peaks = n_peaks
         self.max_history = max_history  # 0 = unlimited
         self.current_theme = theme
+        self.lsd = lsd  # sample-detector distance (µm)
+        self.px = px    # pixel size (µm)
+        self.wavelength = wavelength  # X-ray wavelength (Å)
+        self.work_dir = work_dir or os.path.dirname(os.path.abspath(lineout_path))
 
         # Data storage
         self.lineout_history = deque(maxlen=max_history if max_history > 0 else None)
@@ -131,6 +197,14 @@ class LiveViewer(QtWidgets.QMainWindow):
         self.selected_peaks = list(range(n_peaks))  # All peaks selected initially
         self.decimation = 1  # show every Nth frame in heatmap
         self.font_size = 10  # base font size in pt
+
+        # Peak pick state
+        self._pick_mode = False
+        self._picked_peaks = []  # list of R values
+        self._pick_lines_lo = []  # InfiniteLine objects on lineout
+        self._pick_lines_hm = []  # InfiniteLine objects on heatmap
+        self._active_fit_lines_lo = []  # active fit overlays on lineout
+        self._active_fit_lines_hm = []  # active fit overlays on heatmap
 
         # FPS tracking
         self._fps_time = time.monotonic()
@@ -235,6 +309,37 @@ class LiveViewer(QtWidgets.QMainWindow):
 
         main_layout.addLayout(toolbar)
 
+        # ---- Peak Pick toolbar ----
+        pick_bar = QtWidgets.QHBoxLayout()
+        self.btn_pick = QtWidgets.QPushButton('\U0001F3AF Pick')
+        self.btn_pick.setCheckable(True)
+        self.btn_pick.setToolTip('Click on lineout/heatmap to select peak R values')
+        self.btn_pick.toggled.connect(self._on_pick_toggled)
+        pick_bar.addWidget(self.btn_pick)
+
+        self.btn_clear_picks = QtWidgets.QPushButton('\u274C Clear')
+        self.btn_clear_picks.setToolTip('Remove all picked peak markers')
+        self.btn_clear_picks.clicked.connect(self._on_clear_picks)
+        pick_bar.addWidget(self.btn_clear_picks)
+
+        pick_bar.addSpacing(10)
+        pick_bar.addWidget(QtWidgets.QLabel('Mode:'))
+        self.send_mode_combo = QtWidgets.QComboBox()
+        self.send_mode_combo.addItems(['Replace', 'Append'])
+        self.send_mode_combo.setToolTip('Replace: fit only picked peaks.  Append: add to current set.')
+        pick_bar.addWidget(self.send_mode_combo)
+
+        self.btn_send = QtWidgets.QPushButton('\U0001F4E4 Send Peaks')
+        self.btn_send.setToolTip('Write picked peaks to peak_update.txt for GPU process')
+        self.btn_send.clicked.connect(self._on_send_peaks)
+        pick_bar.addWidget(self.btn_send)
+
+        pick_bar.addSpacing(20)
+        self.lbl_picks = QtWidgets.QLabel('Picked: 0')
+        pick_bar.addWidget(self.lbl_picks)
+        pick_bar.addStretch()
+        main_layout.addLayout(pick_bar)
+
         # ---- Peak param selector (if peaks) ----
         if self.n_peaks > 0:
             param_bar = QtWidgets.QHBoxLayout()
@@ -279,10 +384,12 @@ class LiveViewer(QtWidgets.QMainWindow):
         # Panel 1: Heatmap
         self.heatmap_widget = pg.PlotWidget(title='Lineout Heatmap')
         self.heatmap_widget.setLabel('left', 'Frame #')
-        self.heatmap_widget.setLabel('bottom', 'R-bin')
+        self.heatmap_widget.setLabel('bottom', 'R (pixels)')
         self.heatmap_img = pg.ImageItem()
         self.heatmap_widget.addItem(self.heatmap_img)
         self._apply_colormap('viridis')
+        # Click handler for peak pick on heatmap
+        self.heatmap_widget.scene().sigMouseClicked.connect(self._on_heatmap_clicked)
         top_splitter.addWidget(self.heatmap_widget)
 
         # Panel 2: Current lineout
@@ -291,7 +398,34 @@ class LiveViewer(QtWidgets.QMainWindow):
         self.lineout_widget.setLabel('bottom', 'R (pixels)')
         self.lineout_widget.showGrid(x=True, y=True, alpha=0.3)
         self.lineout_curve = self.lineout_widget.plot(pen=pg.mkPen('c', width=1.5))
+        # Click handler for peak pick on lineout
+        self.lineout_widget.scene().sigMouseClicked.connect(self._on_lineout_clicked)
         top_splitter.addWidget(self.lineout_widget)
+
+        # ---- Add secondary axes (2θ, Q) to both plots ----
+        self._extra_axes = []  # keep references
+        if self.lsd is not None and self.px is not None:
+            def r_to_twotheta(r):
+                return math.degrees(math.atan(r * self.px / self.lsd))
+
+            for pw in [self.lineout_widget, self.heatmap_widget]:
+                ax_2th = ScaledAxisItem(r_to_twotheta, '2θ', units='°')
+                pi = pw.plotItem
+                pi.layout.addItem(ax_2th, pi.layout.rowCount(), 1)
+                ax_2th.linkToView(pi.vb)
+                self._extra_axes.append(ax_2th)
+
+            if self.wavelength is not None and self.wavelength > 0:
+                def r_to_q(r):
+                    theta = math.atan(r * self.px / self.lsd) / 2.0
+                    return 4.0 * math.pi * math.sin(theta) / self.wavelength
+
+                for pw in [self.lineout_widget, self.heatmap_widget]:
+                    ax_q = ScaledAxisItem(r_to_q, 'Q', units='Å⁻¹')
+                    pi = pw.plotItem
+                    pi.layout.addItem(ax_q, pi.layout.rowCount(), 1)
+                    ax_q.linkToView(pi.vb)
+                    self._extra_axes.append(ax_q)
 
         top_splitter.setSizes([700, 700])
         splitter.addWidget(top_splitter)
@@ -459,6 +593,113 @@ class LiveViewer(QtWidgets.QMainWindow):
         for chk in self.peak_checks:
             chk.setChecked(checked)
 
+    # ---- Peak Pick ----
+    def _on_pick_toggled(self, checked):
+        self._pick_mode = checked
+        self.btn_pick.setText('\U0001F3AF Pick ✓' if checked else '\U0001F3AF Pick')
+
+    def _add_pick_marker(self, r_val):
+        """Add a yellow marker at the given R value on both plots."""
+        self._picked_peaks.append(r_val)
+        pen = pg.mkPen(color='y', width=1.5, style=QtCore.Qt.DashLine)
+        line_lo = pg.InfiniteLine(pos=r_val, angle=90, pen=pen,
+                                  label=f'{r_val:.1f}', labelOpts={'position': 0.9, 'color': 'y'})
+        self.lineout_widget.addItem(line_lo)
+        self._pick_lines_lo.append(line_lo)
+        line_hm = pg.InfiniteLine(pos=r_val, angle=90, pen=pen)
+        self.heatmap_widget.addItem(line_hm)
+        self._pick_lines_hm.append(line_hm)
+        self.lbl_picks.setText(f'Picked: {len(self._picked_peaks)}')
+
+    def _on_lineout_clicked(self, ev):
+        if not self._pick_mode:
+            return
+        vb = self.lineout_widget.plotItem.vb
+        pos = vb.mapSceneToView(ev.scenePos())
+        self._add_pick_marker(pos.x())
+
+    def _on_heatmap_clicked(self, ev):
+        if not self._pick_mode:
+            return
+        vb = self.heatmap_widget.plotItem.vb
+        pos = vb.mapSceneToView(ev.scenePos())
+        self._add_pick_marker(pos.x())
+
+    def _on_clear_picks(self):
+        for line in self._pick_lines_lo:
+            self.lineout_widget.removeItem(line)
+        for line in self._pick_lines_hm:
+            self.heatmap_widget.removeItem(line)
+        self._pick_lines_lo.clear()
+        self._pick_lines_hm.clear()
+        self._picked_peaks.clear()
+        self.lbl_picks.setText('Picked: 0')
+
+    def _on_send_peaks(self):
+        if not self._picked_peaks:
+            print('No peaks picked — nothing to send.')
+            return
+        mode = self.send_mode_combo.currentText().lower()
+        peaks = sorted(self._picked_peaks)
+
+        # Write atomically via temp + rename
+        out_path = os.path.join(self.work_dir, 'peak_update.txt')
+        tmp_path = out_path + '.tmp'
+        try:
+            with open(tmp_path, 'w') as f:
+                f.write(f'mode {mode}\n')
+                for p in peaks:
+                    f.write(f'{p:.4f}\n')
+            os.replace(tmp_path, out_path)
+            print(f'Sent {len(peaks)} peaks ({mode}): {peaks}')
+            # Flash markers green
+            green_pen = pg.mkPen(color='g', width=2, style=QtCore.Qt.DashLine)
+            for line in self._pick_lines_lo + self._pick_lines_hm:
+                line.setPen(green_pen)
+        except Exception as e:
+            print(f'Failed to write peak_update.txt: {e}')
+
+    def _update_active_overlays(self):
+        """Read active_peaks.txt and draw red dashed lines on both plots."""
+        ap_path = os.path.join(self.work_dir, 'active_peaks.txt')
+        radii = []
+        try:
+            if os.path.exists(ap_path):
+                with open(ap_path) as f:
+                    for line in f:
+                        line = line.strip()
+                        if line:
+                            radii.append(float(line))
+        except Exception:
+            pass
+
+        # Also extract from fit_history if available and no file
+        if not radii and self.fit_history and self.n_peaks > 0:
+            last = self.fit_history[-1]
+            for p in range(self.n_peaks):
+                idx = p * 7 + 3  # Center
+                if idx < len(last) and last[idx] > 0:
+                    radii.append(last[idx])
+
+        # Update overlay lines — reuse existing or create new
+        red_pen = pg.mkPen(color='r', width=1.5, style=QtCore.Qt.DashLine)
+        # Remove excess
+        while len(self._active_fit_lines_lo) > len(radii):
+            self.lineout_widget.removeItem(self._active_fit_lines_lo.pop())
+            self.heatmap_widget.removeItem(self._active_fit_lines_hm.pop())
+        # Add missing
+        while len(self._active_fit_lines_lo) < len(radii):
+            lo = pg.InfiniteLine(angle=90, pen=red_pen)
+            hm = pg.InfiniteLine(angle=90, pen=red_pen)
+            self.lineout_widget.addItem(lo)
+            self.heatmap_widget.addItem(hm)
+            self._active_fit_lines_lo.append(lo)
+            self._active_fit_lines_hm.append(hm)
+        # Update positions
+        for i, r in enumerate(radii):
+            self._active_fit_lines_lo[i].setPos(r)
+            self._active_fit_lines_hm[i].setPos(r)
+
     # ---- Update loop ----
     def _update(self):
         if self.paused:
@@ -513,6 +754,10 @@ class LiveViewer(QtWidgets.QMainWindow):
         # Update peak evolution
         if new_fits and self.n_peaks > 0:
             self._redraw_peak_evolution()
+
+        # Update active fit overlays (every 10th frame to avoid disk thrashing)
+        if self.frame_count % 10 == 0:
+            self._update_active_overlays()
 
     def _redraw_heatmap(self):
         if not self.lineout_history:
@@ -597,7 +842,34 @@ def main():
                         help='Max history frames (0 = unlimited)')
     parser.add_argument('--theme', choices=['dark', 'light'], default='light',
                         help='UI theme (default: light)')
+    parser.add_argument('--params', default=None,
+                        help='MIDAS parameter file (extracts Lsd, px, Wavelength)')
+    parser.add_argument('--lsd', type=float, default=None,
+                        help='Sample-detector distance (µm), overrides --params')
+    parser.add_argument('--px', type=float, default=None,
+                        help='Pixel size (µm), overrides --params')
+    parser.add_argument('--wavelength', type=float, default=None,
+                        help='X-ray wavelength (Å), overrides --params')
     args = parser.parse_args()
+
+    # Resolve geometry from param file + explicit overrides
+    lsd, px, wavelength = args.lsd, args.px, args.wavelength
+    if args.params:
+        pf = parse_param_file(args.params)
+        if lsd is None:
+            lsd = pf.get('lsd')
+        if px is None:
+            px = pf.get('px')
+        if wavelength is None:
+            wavelength = pf.get('wavelength')
+
+    if lsd and px:
+        print(f'Geometry: Lsd={lsd} µm, px={px} µm', end='')
+        if wavelength:
+            print(f', λ={wavelength} Å', end='')
+        print('  →  2θ/Q axes enabled')
+    else:
+        print('Geometry not provided — 2θ/Q axes disabled')
 
     app = QtWidgets.QApplication.instance()
     if app is None:
@@ -611,7 +883,10 @@ def main():
         n_rbins=args.nRBins,
         n_peaks=args.nPeaks,
         max_history=args.history,
-        theme=args.theme
+        theme=args.theme,
+        lsd=lsd,
+        px=px,
+        wavelength=wavelength,
     )
     viewer.show()
     sys.exit(app.exec_())

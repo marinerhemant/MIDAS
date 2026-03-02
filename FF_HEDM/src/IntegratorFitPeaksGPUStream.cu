@@ -91,6 +91,13 @@ size_t szPxList = 0;
 size_t szNPxList = 0;
 volatile sig_atomic_t keep_running = 1; // Flag for graceful shutdown
 
+// --- Peak Fitting (file-scope so check_peak_update can modify) ---
+static double g_pkLoc[MAX_PEAK_LOCATIONS]; // Specified peak locations
+static int g_nSpecP = 0;                   // Number of specified peaks
+static int g_pkFit = 0;                    // DoPeakFit flag
+static int g_multiP = 0;                   // MultiplePeaks flag
+static int g_doSm = 0;                     // DoSmoothing flag
+
 // --- Data Structures ---
 typedef struct {
   uint16_t dataset_num;
@@ -2023,6 +2030,75 @@ static double estimate_initial_params(const double *intensity_data,
 }
 
 // =========================================================================
+// Poll for live peak-location updates from live_viewer
+// =========================================================================
+static void check_peak_update(const double *hR, int nRBins) {
+  FILE *f = fopen("peak_update.txt", "r");
+  if (!f)
+    return;
+
+  char buf[256];
+  int is_replace = 1;
+  double new_locs[MAX_PEAK_LOCATIONS];
+  int n_new = 0;
+
+  // First line: mode
+  if (fgets(buf, sizeof(buf), f)) {
+    if (strstr(buf, "append"))
+      is_replace = 0;
+  }
+  // Remaining lines: R values
+  while (fgets(buf, sizeof(buf), f) && n_new < MAX_PEAK_LOCATIONS) {
+    double v;
+    if (sscanf(buf, "%lf", &v) == 1) {
+      new_locs[n_new++] = v;
+    }
+  }
+  fclose(f);
+  remove("peak_update.txt");
+
+  if (n_new == 0)
+    return;
+
+  if (is_replace) {
+    g_nSpecP = 0;
+  }
+  for (int i = 0; i < n_new && g_nSpecP < MAX_PEAK_LOCATIONS; ++i) {
+    g_pkLoc[g_nSpecP++] = new_locs[i];
+  }
+  g_pkFit = 1;
+  g_multiP = 1;
+  g_doSm = 0;
+
+  printf("[PeakUpdate] mode=%s, nPeaks=%d:", is_replace ? "replace" : "append",
+         g_nSpecP);
+  for (int i = 0; i < g_nSpecP; ++i)
+    printf(" %.2f", g_pkLoc[i]);
+  printf("\n");
+  fflush(stdout);
+
+  // Open fit output files if they weren't opened at startup
+  if (fFit == NULL) {
+    fFit = fopen("fit.bin", "wb");
+    if (fFit)
+      printf("[PeakUpdate] Opened fit.bin for writing\n");
+  }
+  if (fFitCurves == NULL) {
+    fFitCurves = fopen("fit_curves.bin", "wb");
+    if (fFitCurves)
+      printf("[PeakUpdate] Opened fit_curves.bin for writing\n");
+  }
+
+  // Write active_peaks.txt for live_viewer overlay
+  FILE *ap = fopen("active_peaks.txt", "w");
+  if (ap) {
+    for (int i = 0; i < g_nSpecP; ++i)
+      fprintf(ap, "%.4f\n", g_pkLoc[i]);
+    fclose(ap);
+  }
+}
+
+// =========================================================================
 // ============================ MAIN FUNCTION ============================
 // =========================================================================
 int main(int argc, char *argv[]) {
@@ -2077,10 +2153,10 @@ int main(int argc, char *argv[]) {
   int doSm = 0;      // Flag to smooth 1D data before peak finding
   int multiP = 0;    // Flag for finding multiple peaks
   int pkFit = 0;     // Flag to perform peak fitting
-  int nSpecP = 0;    // Number of specified peak locations
+  int nSpecP = 0;    // (shadows file-scope; will sync below)
   int wr2D = 0;      // Flag to write 2D integrated patterns
   int doBinSort = 1; // Flag to sort bins by workload (default 1)
-  double pkLoc[MAX_PEAK_LOCATIONS]; // Array for specified peak locations
+  double pkLoc[MAX_PEAK_LOCATIONS]; // (shadows file-scope; will sync below)
   int fitROIPadding = 20;           // Default ROI padding
   int fitROIAuto = 0;               // Default to manual ROI sizing
 
@@ -2212,6 +2288,23 @@ int main(int argc, char *argv[]) {
         GapI, BadPxI);
   printf("Read Params: %.3f ms\n", t_start_params);
   fflush(stdout);
+
+  // Sync local parsing results to file-scope variables
+  memcpy(g_pkLoc, pkLoc, sizeof(pkLoc));
+  g_nSpecP = nSpecP;
+  g_pkFit = pkFit;
+  g_multiP = multiP;
+  g_doSm = doSm;
+
+  // Write initial active_peaks.txt if peaks specified
+  if (g_nSpecP > 0) {
+    FILE *ap = fopen("active_peaks.txt", "w");
+    if (ap) {
+      for (int i = 0; i < g_nSpecP; ++i)
+        fprintf(ap, "%.4f\n", g_pkLoc[i]);
+      fclose(ap);
+    }
+  }
 
   // --- Setup Bin Edges (Host) ---
   double *hEtaLo, *hEtaHi, *hRLo, *hRHi;
@@ -2543,6 +2636,9 @@ int main(int argc, char *argv[]) {
   int streamId = 0;
   int frameCounter = 0;
   while (keep_running) {
+    // Poll for peak location updates from live_viewer
+    check_peak_update(hR, nRBins);
+
     static double accum_gpu_int = 0;
     StreamContext *ctx = &streamPool[streamId];
 
@@ -2570,21 +2666,21 @@ int main(int argc, char *argv[]) {
 
       // Peak Fit (Synchronous CPU work for now)
       double t_fit_start = get_wall_time_ms();
-      if (pkFit) {
+      if (g_pkFit) {
         double *local_h_int1D = ctx->h_int1D;
         int currentPeakCount = 0;
         double *sendFitParams = NULL;
         Peak *pks = NULL;
 
         // --- Step 1: Identify Peak Candidates ---
-        if (nSpecP > 0) {
-          pks = (Peak *)malloc(nSpecP * sizeof(Peak));
+        if (g_nSpecP > 0) {
+          pks = (Peak *)malloc(g_nSpecP * sizeof(Peak));
           int validPeakCount = 0;
-          for (int p = 0; p < nSpecP; ++p) {
+          for (int p = 0; p < g_nSpecP; ++p) {
             int bestBin = -1;
             double minDiff = 1e10;
             for (int r = 0; r < nRBins; ++r) {
-              double diff = fabs(hR[r] - pkLoc[p]);
+              double diff = fabs(hR[r] - g_pkLoc[p]);
               if (diff < minDiff) {
                 minDiff = diff;
                 bestBin = r;
@@ -2996,20 +3092,20 @@ int main(int argc, char *argv[]) {
 
       writer_queue_push(&writer_queue, dJob);
 
-      if (pkFit) {
+      if (g_pkFit) {
         double *local_h_int1D = drainCtx->h_int1D;
         int currentPeakCount = 0;
         double *sendFitParams = NULL;
         Peak *pks = NULL;
 
-        if (nSpecP > 0) {
-          pks = (Peak *)malloc(nSpecP * sizeof(Peak));
+        if (g_nSpecP > 0) {
+          pks = (Peak *)malloc(g_nSpecP * sizeof(Peak));
           int validPeakCount = 0;
-          for (int p = 0; p < nSpecP; ++p) {
+          for (int p = 0; p < g_nSpecP; ++p) {
             int bestBin = -1;
             double minDiff = 1e10;
             for (int r = 0; r < nRBins; ++r) {
-              double diff = fabs(hR[r] - pkLoc[p]);
+              double diff = fabs(hR[r] - g_pkLoc[p]);
               if (diff < minDiff) {
                 minDiff = diff;
                 bestBin = r;

@@ -170,17 +170,22 @@ Real-time visualization of GPU integrator output. Tails `lineout.bin` and `fit.b
 
 ```bash
 python ~/opt/MIDAS/utils/live_viewer.py \
-    --lineout lineout.bin --n-rbins 500 \
-    --fit fit.bin --n-peaks 3 \
-    --max-history 1000
+    --lineout lineout.bin --nRBins 500 \
+    --fit fit.bin --nPeaks 3 \
+    --params setup_30keV.txt
 ```
 
 **Three-panel display:**
 1. **1D Lineout** — latest integrated I(R) profile with log scale option
 2. **Heatmap** — time-evolving intensity waterfall (R × frame)
-3. **Peak evolution** — fitted Imax, Rcen, Sigma, Mu, BG, GoF vs. frame for each peak
+3. **Peak evolution** — fitted Imax, Rcen, Sigma, η, BG, GoF, Area vs. frame for each peak
 
-See [FF_Radial_Integration.md](FF_Radial_Integration.md) §6.3 for details.
+**Interactive Features:**
+- **Triple x-axes** (R, 2θ, Q) on both lineout and heatmap — enabled via `--params` or `--lsd`/`--px`/`--wavelength`
+- **🎯 Peak Pick** — click on peaks to select R values, then **📤 Send Peaks** to the running GPU integrator (Replace or Append mode)
+- **Active fit overlays** — red dashed lines at currently-fitted radii on both plots
+
+See [FF_Radial_Integration.md](FF_Radial_Integration.md) §4.2.1 for details on the interactive peak selection protocol.
 
 ---
 
