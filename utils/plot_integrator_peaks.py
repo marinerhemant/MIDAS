@@ -158,7 +158,6 @@ def main():
     valid = retamap[3] > 0
     tth_2d[~valid] = np.nan
     eta_2d[~valid] = np.nan
-    intensity[~valid] = np.nan
 
     # for each eta bin, print 2theta range
     for i in range(tth_2d.shape[1]):
