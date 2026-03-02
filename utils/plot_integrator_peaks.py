@@ -151,7 +151,8 @@ def main():
 
     # Extract REtaMap: shape (4, nRBins, nEtaBins) = [Radius, 2Theta, Eta, BinArea]
     retamap = z['REtaMap'][:]
-    tth_2d = retamap[1]   # (nRBins, nEtaBins) - 2theta in degrees
+    tth_2d_raw = retamap[1]   # (nRBins, nEtaBins) - 2theta in degrees
+    tth_2d = np.copy(tth_2d_raw)
     eta_2d_raw = retamap[2]   # (nRBins, nEtaBins) - eta in degrees
     eta_2d = np.copy(eta_2d_raw)
 
@@ -169,6 +170,8 @@ def main():
         print(f"  2theta range for eta bin {i}: {tth_range:.4f} deg")
         print(f"  2theta min-max for eta bin {i}: {tth_min:.4f} - {tth_max:.4f} deg")
 
+    tth_2d = np.copy(tth_2d_raw)
+    eta_2d = np.copy(eta_2d_raw)
     # 2theta and eta axes (constant along the other dimension)
     tth_axis = tth_2d[:, 0]    # 1D: nRBins values
     eta_axis = eta_2d[0, :]    # 1D: nEtaBins values
