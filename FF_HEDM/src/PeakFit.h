@@ -18,6 +18,10 @@
 #include <stdlib.h>
 #include <string.h>
 
+#ifdef __cplusplus
+extern "C" {
+#endif
+
 #ifndef M_PI
 #define M_PI 3.14159265358979323846
 #endif
@@ -73,15 +77,9 @@ typedef struct {
 //   outFitParams   - output buffer             [nPeaks * PF_PARAMS_PER_PEAK]
 //
 // Returns: number of successfully fitted peaks (may be < nPeaks)
-int fitPeaksForLineout(
-    const double *R,
-    const double *intensity,
-    int nRBins,
-    const double *peakLocations,
-    int nPeaks,
-    double RBinSize,
-    int fitROIPadding,
-    double *outFitParams);
+int fitPeaksForLineout(const double *R, const double *intensity, int nRBins,
+                       const double *peakLocations, int nPeaks, double RBinSize,
+                       int fitROIPadding, double *outFitParams);
 
 // Height-normalized pseudo-Voigt model evaluation + analytical areas.
 //
@@ -90,26 +88,30 @@ int fitPeaksForLineout(
 //   G(x) = exp(-4*ln2*(x/Gamma)^2)
 //
 // params layout: [Imax0, Mix0, Center0, Gamma0, ..., BG]
-void pf_calculate_model_and_area(
-    int n_peaks, const double *params,
-    int n_points, const double *R_values,
-    double *out_model_curve,
-    double *out_peak_areas);
+void pf_calculate_model_and_area(int n_peaks, const double *params,
+                                 int n_points, const double *R_values,
+                                 double *out_model_curve,
+                                 double *out_peak_areas);
 
-// NLOPT objective function (sum of squared residuals) with analytical gradients.
-double pf_problem_function_global_bg(
-    unsigned n, const double *x, double *grad, void *fdat);
+// NLOPT objective function (sum of squared residuals) with analytical
+// gradients.
+double pf_problem_function_global_bg(unsigned n, const double *x, double *grad,
+                                     void *fdat);
 
 // Estimate initial parameters (FWHM, background, amplitude) for a peak.
 // Returns estimated FWHM in bin units.
-double pf_estimate_initial_params(
-    const double *intensity_data, int n_points, int peak_idx_local,
-    double *out_bg_guess, double *out_amp_guess);
+double pf_estimate_initial_params(const double *intensity_data, int n_points,
+                                  int peak_idx_local, double *out_bg_guess,
+                                  double *out_amp_guess);
 
 // Savitzky-Golay smoothing filter (window sizes 5, 7, or 9).
 void pf_smoothData(const double *in, double *out, int N, int W);
 
 // Sort helper for peaks
 int pf_comparePeaksByIndex(const void *a, const void *b);
+
+#ifdef __cplusplus
+}
+#endif
 
 #endif // PEAKFIT_H

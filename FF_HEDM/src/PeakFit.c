@@ -249,10 +249,17 @@ int fitPeaksForLineout(const double *R, const double *intensity, int nRBins,
       pks[validCount].radius = R[bestBin];
       pks[validCount].intensity = intensity[bestBin];
       validCount++;
+    } else if (p < 3) {
+      printf("  [PeakFit] Peak %d: loc=%.4f, bestBin=%d, R[bestBin]=%.4f, "
+             "minDiff=%.6f, threshold=%.6f => REJECTED\n",
+             p, peakLocations[p], bestBin, bestBin >= 0 ? R[bestBin] : -1.0,
+             minDiff, RBinSize * 2.0);
     }
   }
 
   if (validCount == 0) {
+    printf("  [PeakFit] validCount=0: R[0]=%.4f, R[%d]=%.4f, RBinSize=%.4f\n",
+           R[0], nRBins - 1, R[nRBins - 1], RBinSize);
     free(pks);
     return 0;
   }
@@ -325,22 +332,45 @@ int fitPeaksForLineout(const double *R, const double *intensity, int nRBins,
       }
 
       int b = p * 4;
-      fitParams[b + 0] = amp_g;
-      fitParams[b + 1] = 0.5;          // Mix
-      fitParams[b + 2] = peak->radius; // Center
-      fitParams[b + 3] = gamma_g;      // FWHM (Gamma)
+      double center_range = fmax(fwhm * RBinSize, RBinSize * 5.0);
+      double gamma_max = (R[job->endIndex] - R[job->startIndex]);
+      if (gamma_max < RBinSize * 2.0)
+        gamma_max = RBinSize * 10.0;
+      double amp_upper = fmax(amp_g * 5.0, fabs(primary_amp_guess) * 2.0);
+      if (amp_upper < 1.0)
+        amp_upper = 1.0;
+
+      fitParams[b + 0] = fmax(amp_g, 1.0);                // Amplitude
+      fitParams[b + 1] = 0.5;                             // Mix
+      fitParams[b + 2] = peak->radius;                    // Center
+      fitParams[b + 3] = fmax(sigma_g * 2.355, RBinSize); // Gamma (FWHM)
       lowerBounds[b + 0] = 0;
       lowerBounds[b + 1] = 0;
-      lowerBounds[b + 2] = peak->radius - fwhm * RBinSize;
+      lowerBounds[b + 2] = peak->radius - center_range;
       lowerBounds[b + 3] = RBinSize * 0.5;
-      upperBounds[b + 0] = amp_g * 3.0;
+      upperBounds[b + 0] = amp_upper;
       upperBounds[b + 1] = 1.0;
-      upperBounds[b + 2] = peak->radius + fwhm * RBinSize;
-      upperBounds[b + 3] = (R[job->endIndex] - R[job->startIndex]);
+      upperBounds[b + 2] = peak->radius + center_range;
+      upperBounds[b + 3] = gamma_max;
+
+      // Clamp initial values to be strictly within bounds
+      for (int bb = b; bb < b + 4; bb++) {
+        if (fitParams[bb] <= lowerBounds[bb])
+          fitParams[bb] =
+              lowerBounds[bb] + (upperBounds[bb] - lowerBounds[bb]) * 0.01;
+        if (fitParams[bb] >= upperBounds[bb])
+          fitParams[bb] =
+              upperBounds[bb] - (upperBounds[bb] - lowerBounds[bb]) * 0.01;
+      }
     }
     fitParams[nFitParams - 1] = primary_bg_guess;
-    lowerBounds[nFitParams - 1] = -fabs(primary_amp_guess);
-    upperBounds[nFitParams - 1] = fabs(primary_amp_guess);
+    lowerBounds[nFitParams - 1] = -fabs(primary_amp_guess) - 1.0;
+    upperBounds[nFitParams - 1] = fabs(primary_amp_guess) + 1.0;
+    // Clamp BG
+    if (fitParams[nFitParams - 1] <= lowerBounds[nFitParams - 1])
+      fitParams[nFitParams - 1] = lowerBounds[nFitParams - 1] + 0.01;
+    if (fitParams[nFitParams - 1] >= upperBounds[nFitParams - 1])
+      fitParams[nFitParams - 1] = upperBounds[nFitParams - 1] - 0.01;
 
     PF_DataFit fitData;
     fitData.nrBins = job->endIndex - job->startIndex + 1;
@@ -401,6 +431,19 @@ int fitPeaksForLineout(const double *R, const double *intensity, int nRBins,
         }
       }
       total_successful += nJobPeaks;
+    } else if (i < 2) {
+      printf("  [PeakFit] Job %d NLOPT FAILED: rc=%d, nBins=%d, nPeaks=%d, "
+             "nParams=%d\n",
+             i, rc, fitData.nrBins, nJobPeaks, nFitParams);
+      printf("    p0: amp=%.2f mix=%.2f center=%.4f gamma=%.4f bg=%.2f\n",
+             fitParams[0], fitParams[1], fitParams[2], fitParams[3],
+             fitParams[nFitParams - 1]);
+      printf("    lo: amp=%.2f mix=%.2f center=%.4f gamma=%.4f bg=%.2f\n",
+             lowerBounds[0], lowerBounds[1], lowerBounds[2], lowerBounds[3],
+             lowerBounds[nFitParams - 1]);
+      printf("    hi: amp=%.2f mix=%.2f center=%.4f gamma=%.4f bg=%.2f\n",
+             upperBounds[0], upperBounds[1], upperBounds[2], upperBounds[3],
+             upperBounds[nFitParams - 1]);
     }
 
     free(fitParams);
