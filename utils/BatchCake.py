@@ -82,7 +82,7 @@ for fileNr in tqdm(range(startNr,endNr+1)):
     im = np.array(Image.open(f'{folder}/{fStem}{fileNr}.tif'))
     im.astype(np.uint16).tofile(f'{conv_folder}/{fStem}{fileNr}.mar')
     if midas_config and midas_config.MIDAS_BIN_DIR:
-        integrator = os.path.join(midas_config.MIDAS_BIN_DIR, 'Integrator')
+        integrator = os.path.join(midas_config.MIDAS_BIN_DIR, 'IntegratorZarrOMP')
     else:
-        integrator = os.path.expanduser('~/opt/MIDAS/FF_HEDM/bin/Integrator')
-    subprocess.call(integrator + f' {params} {conv_folder}/{fStem}{fileNr}.mar {conv_folder}/{darkFN}.mar',shell=True,cwd=folder)
+        integrator = os.path.expanduser('~/opt/MIDAS/FF_HEDM/bin/IntegratorZarrOMP')
+    subprocess.call(integrator + f' -paramFN {params} -dataFN {conv_folder}/{fStem}{fileNr}.mar -darkFN {conv_folder}/{darkFN}.mar',shell=True,cwd=folder)

@@ -9,6 +9,7 @@
 // Dt: 2017/07/26
 //
 
+#include "FileReader.h"
 #include "MapHeader.h"
 #include "PeakFit.h"
 #include "ZarrReader.h"
@@ -359,30 +360,251 @@ static inline void MakeSquare(int NrPixels, int NrPixelsY, int NrPixelsZ,
   }
 }
 
+// ─────────────────────────────────────────────────────────────────
+// readParamFile: parse MIDAS parameter file into integrator vars
+// ─────────────────────────────────────────────────────────────────
+struct IntegratorParams {
+  double RMax, RMin, RBinSize, EtaMax, EtaMin, EtaBinSize;
+  double Lsd, px, Lam;
+  double Polariz, SHpL, U, V, W, X, Y, Z;
+  double omeStart, omeStep;
+  int NrPixelsY, NrPixelsZ, Normalize, skipFrame;
+  int NrTransOpt;
+  int TransOpt[10];
+  int sumImages, chunkFiles, individualSave;
+  int haveOmegas;
+  int doPeakFit, nPeakLocations, fitROIPadding;
+  double peakLocations[MAX_PEAK_LOCATIONS_PF];
+  char resultFolder[4096];
+  char GapFN[4096];
+  char BadPxFN[4096];
+  char MaskFN[4096];
+  int hasGapFN, hasBadPxFN, hasMaskFN;
+};
+
+static void initIntegratorParams(struct IntegratorParams *p) {
+  memset(p, 0, sizeof(*p));
+  p->NrPixelsY = 2048;
+  p->NrPixelsZ = 2048;
+  p->Normalize = 1;
+  p->Lam = 0.172978;
+  p->Polariz = 0.99;
+  p->SHpL = 0.002;
+  p->U = 1.163;
+  p->V = -0.126;
+  p->W = 0.063;
+  p->chunkFiles = 1;
+  p->individualSave = 1;
+  p->fitROIPadding = 20;
+}
+
+static int readParamFile(const char *filename, struct IntegratorParams *p) {
+  FILE *f = fopen(filename, "r");
+  if (!f) {
+    fprintf(stderr, "ERROR: Cannot open param file: %s\n", filename);
+    return -1;
+  }
+  char line[4096], key[256], rest[3840];
+  while (fgets(line, sizeof(line), f)) {
+    if (line[0] == '#' || line[0] == '\n' || line[0] == '\r')
+      continue;
+    if (sscanf(line, "%255s %[^\n]", key, rest) < 2)
+      continue;
+    /* Geometry */
+    if (strcmp(key, "RMin") == 0)
+      p->RMin = atof(rest);
+    else if (strcmp(key, "RMax") == 0)
+      p->RMax = atof(rest);
+    else if (strcmp(key, "RBinSize") == 0)
+      p->RBinSize = atof(rest);
+    else if (strcmp(key, "EtaMin") == 0 || strcmp(key, "MinEta") == 0)
+      p->EtaMin = atof(rest);
+    else if (strcmp(key, "EtaMax") == 0)
+      p->EtaMax = atof(rest);
+    else if (strcmp(key, "EtaBinSize") == 0)
+      p->EtaBinSize = atof(rest);
+    else if (strcmp(key, "Lsd") == 0 || strcmp(key, "DetDist") == 0)
+      p->Lsd = atof(rest);
+    else if (strcmp(key, "px") == 0 || strcmp(key, "PixelSize") == 0)
+      p->px = atof(rest);
+    else if (strcmp(key, "YPixelSize") == 0)
+      p->px = atof(rest);
+    else if (strcmp(key, "Wavelength") == 0)
+      p->Lam = atof(rest);
+    else if (strcmp(key, "NrPixels") == 0) {
+      p->NrPixelsY = atoi(rest);
+      p->NrPixelsZ = atoi(rest);
+    } else if (strcmp(key, "NrPixelsY") == 0)
+      p->NrPixelsY = atoi(rest);
+    else if (strcmp(key, "NrPixelsZ") == 0)
+      p->NrPixelsZ = atoi(rest);
+    /* Tilts / distortion — not needed for integration, but keep for future */
+    /* Output */
+    else if (strcmp(key, "Folder") == 0 || strcmp(key, "ResultFolder") == 0)
+      sscanf(rest, "%4095s", p->resultFolder);
+    /* Transforms */
+    else if (strcmp(key, "ImTransOpt") == 0) {
+      /* Space-separated ints on one line */
+      char *tok = strtok(rest, " \t");
+      p->NrTransOpt = 0;
+      while (tok && p->NrTransOpt < 10) {
+        p->TransOpt[p->NrTransOpt++] = atoi(tok);
+        tok = strtok(NULL, " \t");
+      }
+    } else if (strcmp(key, "Normalize") == 0)
+      p->Normalize = atoi(rest);
+    else if (strcmp(key, "SkipFrame") == 0)
+      p->skipFrame = atoi(rest);
+    else if (strcmp(key, "OmegaStart") == 0 ||
+             strcmp(key, "OmegaFirstFile") == 0) {
+      p->omeStart = atof(rest);
+      p->haveOmegas = 1;
+    } else if (strcmp(key, "OmegaStep") == 0)
+      p->omeStep = atof(rest);
+    else if (strcmp(key, "OmegaSumFrames") == 0)
+      p->chunkFiles = atoi(rest);
+    else if (strcmp(key, "SumImages") == 0)
+      p->sumImages = atoi(rest);
+    else if (strcmp(key, "SaveIndividualFrames") == 0)
+      p->individualSave = atoi(rest);
+    /* Masking */
+    else if (strcmp(key, "GapFile") == 0) {
+      sscanf(rest, "%4095s", p->GapFN);
+      p->hasGapFN = 1;
+    } else if (strcmp(key, "BadPxFile") == 0) {
+      sscanf(rest, "%4095s", p->BadPxFN);
+      p->hasBadPxFN = 1;
+    } else if (strcmp(key, "MaskFile") == 0 || strcmp(key, "MaskFN") == 0) {
+      sscanf(rest, "%4095s", p->MaskFN);
+      p->hasMaskFN = 1;
+    }
+    /* Instrument */
+    else if (strcmp(key, "Polariz") == 0)
+      p->Polariz = atof(rest);
+    else if (strcmp(key, "SHpL") == 0)
+      p->SHpL = atof(rest);
+    else if (strcmp(key, "U") == 0)
+      p->U = atof(rest);
+    else if (strcmp(key, "V") == 0)
+      p->V = atof(rest);
+    else if (strcmp(key, "W") == 0)
+      p->W = atof(rest);
+    else if (strcmp(key, "X") == 0)
+      p->X = atof(rest);
+    else if (strcmp(key, "Y") == 0)
+      p->Y = atof(rest);
+    else if (strcmp(key, "Z") == 0)
+      p->Z = atof(rest);
+    /* Peak fitting */
+    else if (strcmp(key, "DoPeakFit") == 0)
+      p->doPeakFit = atoi(rest);
+    else if (strcmp(key, "FitROIPadding") == 0)
+      p->fitROIPadding = atoi(rest);
+    else if (strcmp(key, "PeakLocation") == 0) {
+      if (p->nPeakLocations < MAX_PEAK_LOCATIONS_PF) {
+        p->peakLocations[p->nPeakLocations++] = atof(rest);
+        p->doPeakFit = 1;
+      }
+    }
+  }
+  fclose(f);
+  if (p->chunkFiles == 0)
+    p->chunkFiles = 1;
+  printf("readParamFile: %s\n", filename);
+  printf("  NrPixels: %d x %d, Lsd: %.1f, px: %.4f, Wavelength: %.6f\n",
+         p->NrPixelsY, p->NrPixelsZ, p->Lsd, p->px, p->Lam);
+  printf("  R: [%.1f, %.1f] bin=%.4f, Eta: [%.1f, %.1f] bin=%.2f\n", p->RMin,
+         p->RMax, p->RBinSize, p->EtaMin, p->EtaMax, p->EtaBinSize);
+  return 0;
+}
+
+// ─────────────────────────────────────────────────────────────────
+// readDataFile: read a single frame via FileReader.h
+// ─────────────────────────────────────────────────────────────────
+static int readDataFile(const char *filename, size_t NrPixels,
+                        double *returnArr) {
+  const char *ext = strrchr(filename, '.');
+  if (!ext) {
+    fprintf(stderr, "ERROR: No extension in '%s'\n", filename);
+    return -1;
+  }
+  if (strcasecmp(ext, ".tif") == 0 || strcasecmp(ext, ".tiff") == 0) {
+    return ReadTiffFrame(filename, 6, NrPixels, returnArr, 0);
+  } else if (strcasecmp(ext, ".h5") == 0 || strcasecmp(ext, ".hdf5") == 0 ||
+             strcasecmp(ext, ".hdf") == 0) {
+    return ReadHDF5Frame(filename, "exchange/data", NrPixels, returnArr, 0);
+  } else {
+    /* Binary fallback */
+    FILE *f = fopen(filename, "rb");
+    if (!f) {
+      fprintf(stderr, "ERROR: Cannot open '%s'\n", filename);
+      return -1;
+    }
+    fseek(f, 8192, SEEK_SET); /* skip GE header */
+    int rc = ReadBinaryFrame(f, 1, NrPixels, returnArr);
+    fclose(f);
+    return rc;
+  }
+}
+
 int main(int argc, char **argv) {
   clock_t start, end, start0, end0;
   start0 = clock();
   double diftotal;
   int nCPUs = 4;
   char *PeakParamsFN = NULL;
-  if (argc == 2) {
-    // ZarrName only
-  } else if (argc == 3) {
-    // Could be nCPUs or PeakParamsFN
-    if (atoi(argv[2]) > 0) {
-      nCPUs = atoi(argv[2]);
-    } else {
-      PeakParamsFN = argv[2];
+
+  // ── Mode detection ────────────────────────────────────────────
+  int useParamFile = 0;
+  char *paramFN = NULL, *dataFN_arg = NULL, *darkFN_arg = NULL;
+
+  if (argc >= 2 && strcmp(argv[1], "-paramFN") == 0) {
+    useParamFile = 1;
+    /* Flag-based argument parsing */
+    for (int i = 1; i < argc; i++) {
+      if (strcmp(argv[i], "-paramFN") == 0 && i + 1 < argc)
+        paramFN = argv[++i];
+      else if (strcmp(argv[i], "-dataFN") == 0 && i + 1 < argc)
+        dataFN_arg = argv[++i];
+      else if (strcmp(argv[i], "-darkFN") == 0 && i + 1 < argc)
+        darkFN_arg = argv[++i];
+      else if (strcmp(argv[i], "-nCPUs") == 0 && i + 1 < argc)
+        nCPUs = atoi(argv[++i]);
+      else if (strcmp(argv[i], "-PeakParamsFN") == 0 && i + 1 < argc)
+        PeakParamsFN = argv[++i];
     }
-  } else if (argc == 4) {
-    nCPUs = atoi(argv[2]);
-    PeakParamsFN = argv[3];
+    if (!paramFN || !dataFN_arg) {
+      fprintf(stderr,
+              "Usage: %s -paramFN params.txt -dataFN image.tif "
+              "[-darkFN dark.tif] [-nCPUs N] [-PeakParamsFN peaks.txt]\n",
+              argv[0]);
+      return 1;
+    }
+  } else if (argc >= 2) {
+    /* Existing zarr mode: positional args */
+    dataFN_arg = argv[1];
+    if (argc == 3) {
+      if (atoi(argv[2]) > 0)
+        nCPUs = atoi(argv[2]);
+      else
+        PeakParamsFN = argv[2];
+    } else if (argc == 4) {
+      nCPUs = atoi(argv[2]);
+      PeakParamsFN = argv[3];
+    } else if (argc > 4) {
+      printf("Usage: %s ZarrName.zip [nCPUs] [PeakParamsFN]\n", argv[0]);
+      printf("       %s -paramFN params.txt -dataFN image.tif [...]\n",
+             argv[0]);
+      return 1;
+    }
   } else {
     printf("Usage: %s ZarrName.zip [nCPUs] [PeakParamsFN]\n", argv[0]);
-    printf("  PeakParamsFN: optional text file with "
-           "DoPeakFit/PeakLocation/FitROIPadding\n");
-    return (1);
+    printf("       %s -paramFN params.txt -dataFN image.tif "
+           "[-darkFN dark.tif] [-nCPUs N] [-PeakParamsFN peaks.txt]\n",
+           argv[0]);
+    return 1;
   }
+
   omp_set_num_threads(nCPUs);
   printf("Running with %d OpenMP threads.\n", nCPUs);
 
@@ -401,15 +623,161 @@ int main(int argc, char **argv) {
   char *GapFN = NULL, *BadPxFN = NULL, outputFolder[4096];
   int sumImages = 0, separateFolder = 1, newOutput = 2;
   int haveOmegas = 0, chunkFiles = 1, individualSave = 1;
-  double omeStart, omeStep;
+  double omeStart = 0, omeStep = 0;
   double Lam = 0.172978, Polariz = 0.99, SHpL = 0.002, U = 1.163, V = -0.126,
          W = 0.063, X = 0.0, Y = 0.0, Z = 0.0;
   // Peak fitting parameters
   int doPeakFit = 0, nPeakLocations = 0, fitROIPadding = 20;
   double peakLocations[MAX_PEAK_LOCATIONS_PF];
-  char *DataFN = argv[1];
+
+  char *DataFN = dataFN_arg;
+  char *resultFolder = NULL;
+  int nFrames = 0, nDarks = 0, nFloods = 0, bytesPerPx = 2;
+  double *AverageDark = NULL;
+  pixelvalue *ImageIn = NULL, *ImageInT = NULL;
+  double *Image = NULL;
+  int nPixels;
+
   blosc2_init();
-  // Read zarr config
+
+  if (useParamFile) {
+    // ── PARAM-FILE MODE ──────────────────────────────────────
+    struct IntegratorParams ip;
+    initIntegratorParams(&ip);
+    if (readParamFile(paramFN, &ip) != 0)
+      return 1;
+
+    // Override with PeakParamsFN if provided
+    if (PeakParamsFN != NULL) {
+      FILE *pf = fopen(PeakParamsFN, "r");
+      if (pf) {
+        char pfline[4096], pfkey[256], pfval[3072];
+        while (fgets(pfline, sizeof(pfline), pf)) {
+          if (pfline[0] == '#' || pfline[0] == '\n')
+            continue;
+          if (sscanf(pfline, "%255s %[^\n]", pfkey, pfval) == 2) {
+            if (strcmp(pfkey, "DoPeakFit") == 0)
+              ip.doPeakFit = atoi(pfval);
+            else if (strcmp(pfkey, "FitROIPadding") == 0)
+              ip.fitROIPadding = atoi(pfval);
+            else if (strcmp(pfkey, "PeakLocation") == 0) {
+              if (ip.nPeakLocations < MAX_PEAK_LOCATIONS_PF) {
+                ip.peakLocations[ip.nPeakLocations++] = atof(pfval);
+                ip.doPeakFit = 1;
+              }
+            }
+          }
+        }
+        fclose(pf);
+        printf("Read peak params from %s: DoPeakFit=%d, nPeaks=%d, "
+               "ROIPadding=%d\n",
+               PeakParamsFN, ip.doPeakFit, ip.nPeakLocations, ip.fitROIPadding);
+      }
+    }
+
+    // Copy params to local vars used by integration loop
+    RMax = ip.RMax;
+    RMin = ip.RMin;
+    RBinSize = ip.RBinSize;
+    EtaMax = ip.EtaMax;
+    EtaMin = ip.EtaMin;
+    EtaBinSize = ip.EtaBinSize;
+    Lsd = ip.Lsd;
+    px = ip.px;
+    Lam = ip.Lam;
+    NrPixelsY = ip.NrPixelsY;
+    NrPixelsZ = ip.NrPixelsZ;
+    Normalize = ip.Normalize;
+    skipFrame = ip.skipFrame;
+    NrTransOpt = ip.NrTransOpt;
+    for (int i = 0; i < NrTransOpt; i++)
+      TransOpt[i] = ip.TransOpt[i];
+    omeStart = ip.omeStart;
+    omeStep = ip.omeStep;
+    haveOmegas = ip.haveOmegas;
+    chunkFiles = ip.chunkFiles;
+    sumImages = ip.sumImages;
+    individualSave = ip.individualSave;
+    Polariz = ip.Polariz;
+    SHpL = ip.SHpL;
+    U = ip.U;
+    V = ip.V;
+    W = ip.W;
+    X = ip.X;
+    Y = ip.Y;
+    Z = ip.Z;
+    doPeakFit = ip.doPeakFit;
+    nPeakLocations = ip.nPeakLocations;
+    fitROIPadding = ip.fitROIPadding;
+    for (int i = 0; i < nPeakLocations; i++)
+      peakLocations[i] = ip.peakLocations[i];
+    GapFN = ip.hasGapFN ? ip.GapFN : NULL;
+    BadPxFN = ip.hasBadPxFN ? ip.BadPxFN : NULL;
+
+    // In paramFN mode, the caller sets cwd to the work directory,
+    // so resultFolder should always be "." to avoid double-pathing.
+    resultFolder = strdup(".");
+    sprintf(outputFolder, "%s", resultFolder);
+    struct stat st = {0};
+    if (stat(outputFolder, &st) == -1) {
+      printf("Output folder '%s' did not exist. Creating now.\n", outputFolder);
+      mkdir(outputFolder, 0700);
+    }
+
+    nPixels = NrPixelsY * NrPixelsZ;
+    nFrames = 1; // Single frame mode
+    nDarks = 0;
+
+    // Read Map.bin / nMap.bin
+    int rc = ReadBins(resultFolder);
+
+    // Read data frame
+    ImageInT = malloc(nPixels * sizeof(*ImageInT));
+    ImageIn = malloc(nPixels * sizeof(*ImageIn));
+    AverageDark = calloc(nPixels, sizeof(*AverageDark));
+
+    double *rawFrame = calloc(nPixels, sizeof(double));
+    printf("Reading data file: %s\n", DataFN);
+    if (readDataFile(DataFN, nPixels, rawFrame) != FR_SUCCESS) {
+      fprintf(stderr, "ERROR: Failed to read data file: %s\n", DataFN);
+      free(rawFrame);
+      return 1;
+    }
+    // Copy to ImageInT
+    for (int i = 0; i < nPixels; i++)
+      ImageInT[i] = rawFrame[i];
+
+    // Dark subtraction
+    if (darkFN_arg) {
+      double *darkFrame = calloc(nPixels, sizeof(double));
+      printf("Reading dark file: %s\n", darkFN_arg);
+      if (readDataFile(darkFN_arg, nPixels, darkFrame) == FR_SUCCESS) {
+        for (int i = 0; i < nPixels; i++)
+          AverageDark[i] = darkFrame[i];
+      } else {
+        printf("Warning: Failed to read dark file, proceeding without dark.\n");
+      }
+      free(darkFrame);
+    }
+    free(rawFrame);
+
+    // Apply image transformations
+    DoImageTransformations(NrTransOpt, TransOpt, ImageInT, ImageIn, NrPixelsY,
+                           NrPixelsZ);
+
+    // Mask setup
+    if (GapFN || BadPxFN) {
+      makeMap = 2;
+    }
+
+    printf("ParamFile mode: ready for integration (%d x %d, %d frame)\n",
+           NrPixelsY, NrPixelsZ, nFrames);
+
+    // Skip to integration (goto label after zarr reading)
+    goto integration_start;
+  }
+
+  // ── ZARR MODE (existing code) ────────────────────────────────
   int errorp = 0;
   zip_t *arch = NULL;
   arch = zip_open(DataFN, 0, &errorp);
@@ -422,9 +790,11 @@ int main(int argc, char **argv) {
   finfo = calloc(16384, sizeof(int));
   zip_stat_init(finfo);
   int count = 0;
-  char *resultFolder = NULL;
-  int locImTransOpt, locTemp = -1, locPres = -1, locI = -1, locI0 = -1, nFrames,
-                     nDarks, nFloods, bytesPerPx = 2;
+  resultFolder = NULL;
+  int locImTransOpt, locTemp = -1, locPres = -1, locI = -1, locI0 = -1;
+  nDarks = 0;
+  nFloods = 0;
+  bytesPerPx = 2;
   int darkLoc = -1, dataLoc = -1, floodLoc = -1;
   double *Temperature, *Pressure, *I, *I0;
   while ((zip_stat_index(arch, count, 0, finfo)) == 0) {
@@ -807,20 +1177,15 @@ int main(int argc, char **argv) {
       I0[iter - skipFrame] = tmpData[iter];
     free(tmpData);
   }
-  double *Image;
   int a, b;
-  pixelvalue *ImageIn;
   pixelvalue *DarkIn;
-  pixelvalue *ImageInT;
   pixelvalue *DarkInT;
-  double *AverageDark;
-  int nPixels = NrPixelsY * NrPixelsZ;
+  nPixels = NrPixelsY * NrPixelsZ;
   DarkIn = malloc(nPixels * sizeof(*DarkIn));
   DarkInT = malloc(nPixels * sizeof(*DarkInT));
   AverageDark = calloc(nPixels, sizeof(*AverageDark));
   ImageIn = malloc(nPixels * sizeof(*ImageIn));
   ImageInT = malloc(nPixels * sizeof(*ImageInT));
-  Image = malloc(nPixels * sizeof(*Image));
   // printf("nFrames: %d nrPixelsZ: %d nrPixelsY: %d, dataLoc: %d\n", nFrames,
   // NrPixelsZ, NrPixelsY,dataLoc); Now we read the size of data for each file
   // pointer.
@@ -907,6 +1272,10 @@ int main(int argc, char **argv) {
   free(data);
   zip_close(arch);
 
+integration_start:
+  if (!nPixels)
+    nPixels = NrPixelsY * NrPixelsZ;
+  Image = malloc(nPixels * sizeof(*Image));
   nRBins = (int)ceil((RMax - RMin) / RBinSize);
   nEtaBins = (int)ceil((EtaMax - EtaMin) / EtaBinSize);
   double *EtaBinsLow, *EtaBinsHigh;
@@ -1032,7 +1401,7 @@ int main(int argc, char **argv) {
   char *locData;
   locData = calloc(NrPixelsY * NrPixelsZ * bytesPerPx, sizeof(*locData));
   int32_t dsz = NrPixelsY * NrPixelsZ * bytesPerPx;
-  double presThis, tempThis, iThis, i0This;
+  double presThis = 0, tempThis = 0, iThis = 0, i0This = 0;
   double t_integration = 0, t_0;
   for (i = 0; i < nFrames; i++) {
     if (chunkFiles > 0) {
@@ -1047,22 +1416,31 @@ int main(int argc, char **argv) {
     }
     printf("Processing frame number: %d of %d of file %s.\n", i + 1, nFrames,
            DataFN);
-    presThis += Pressure[i];
-    tempThis += Temperature[i];
-    iThis += I[i];
-    i0This = I0[i];
-    dsz = NrPixelsY * NrPixelsZ * bytesPerPx; // Reset buffer capacity
-    dsz = blosc1_decompress(&allData[sizeArr[i * 2 + 1]], locData, dsz);
-    if (dsz <= 0) {
-      printf("Error: Failed to decompress frame data at index %d! dsize: %d\n",
-             i, dsz);
-      exit(1);
-    }
-    rawToDouble(locData, ImageInT, nPixels, dType);
-    DoImageTransformations(NrTransOpt, TransOpt, ImageInT, ImageIn, NrPixelsY,
-                           NrPixelsZ);
-    for (j = 0; j < NrPixelsY * NrPixelsZ; j++) {
-      Image[j] = (double)ImageIn[j] - AverageDark[j];
+    if (useParamFile) {
+      // In paramFN mode: ImageIn already holds the transformed frame,
+      // AverageDark is set. Just compute Image = ImageIn - dark.
+      for (j = 0; j < NrPixelsY * NrPixelsZ; j++) {
+        Image[j] = (double)ImageIn[j] - AverageDark[j];
+      }
+    } else {
+      presThis += Pressure[i];
+      tempThis += Temperature[i];
+      iThis += I[i];
+      i0This = I0[i];
+      dsz = NrPixelsY * NrPixelsZ * bytesPerPx; // Reset buffer capacity
+      dsz = blosc1_decompress(&allData[sizeArr[i * 2 + 1]], locData, dsz);
+      if (dsz <= 0) {
+        printf(
+            "Error: Failed to decompress frame data at index %d! dsize: %d\n",
+            i, dsz);
+        exit(1);
+      }
+      rawToDouble(locData, ImageInT, nPixels, dType);
+      DoImageTransformations(NrTransOpt, TransOpt, ImageInT, ImageIn, NrPixelsY,
+                             NrPixelsZ);
+      for (j = 0; j < NrPixelsY * NrPixelsZ; j++) {
+        Image[j] = (double)ImageIn[j] - AverageDark[j];
+      }
     }
     if (i == 0) {
       char fn2[4096];

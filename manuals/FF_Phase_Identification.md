@@ -269,28 +269,27 @@ The mean `a` across all detected rings provides the refined lattice parameter. T
 When processing multiple files, `--multi-cpu N` launches up to N files in parallel:
 
 1. **Phase prediction and ring deduplication** run once (shared)
-2. **DetectorMapper** (non-Zarr) runs once in the base work directory, producing `Map.bin` + `nMap.bin`. This uses the parameter-file-based `DetectorMapper` binary which reads geometry directly — no Zarr creation needed for the mapping step.
+2. **DetectorMapper** (non-Zarr) runs once in the base work directory, producing `Map.bin` + `nMap.bin`
 3. **Map files are copied** to each per-file work directory
-4. **N workers** run concurrently. Each creates its own Zarr zip and runs `IntegratorZarrOMP` (which skips `DetectorMapperZarr` since `Map.bin` already exists)
+4. **N workers** run concurrently. Each calls `IntegratorZarrOMP` in **direct file mode** (`-paramFN`/`-dataFN`), reading the TIFF/HDF5 image directly—**no Zarr creation needed**. This eliminates the ~0.5s per-file Zarr bottleneck, achieving ~13× faster per-file integration.
 5. **Results are printed in file order** — output is captured per-worker to prevent interleaving
 6. **Combined results** are saved to the `--output` file
 
-**Screen output** is compact — a single Phase Summary table header followed by per-file rows with per-stage timing (zarr, integrate, analysis). Full per-ring detail is written to the `--output` file only.
+**Screen output** is compact — a single Phase Summary table header followed by per-file rows with per-stage timing (integrate, analysis). The Phase Summary includes a `Uniq` column showing the number of non-overlapping (exclusive) peaks detected for each phase. Full per-ring detail is written to the `--output` file only.
 
 ```bash
-# Process 8 files, 4 in parallel, 2 CPUs per integration job
+# Process 8 files, 4 in parallel
 python utils/phase_id.py \
     -paramFN geometry.txt \
     -dataFolder /data/scans/ \
     -phases phases.txt \
-    -nCPUs 2 \
     --multi-cpu 4 \
     --output /data/results.txt \
     --keep-work-dir
 ```
 
 > [!TIP]
-> Total CPU usage is approximately `multi-cpu × nCPUs`. E.g., `--multi-cpu 4 -nCPUs 2` uses ~8 CPU threads peak. A timing summary at the end shows wall time and per-stage breakdown (rings, mapper, files) for identifying bottlenecks.
+> The `--multi-cpu` flag controls job-level parallelism. Each `IntegratorZarrOMP` call uses 1 CPU thread. A timing summary at the end shows wall time and per-stage breakdown (rings, mapper, files) for identifying bottlenecks.
 
 ## Benchmark Test
 

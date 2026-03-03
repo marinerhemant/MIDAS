@@ -637,7 +637,7 @@ def print_results(rings: List[RingEntry], fits: List[FitResult],
     # ── Table B: Per-phase summary ────────────────────────────────────
     # Full output (out) gets the decorated header; summary_out gets
     # only the data rows so the caller can print one shared header.
-    col_header = (f"  {'Phase':<8} {'Det':<6} {'Cov':<6} "
+    col_header = (f"  {'Phase':<8} {'Det':<6} {'Cov':<6} {'Uniq':<5}"
                   f"{'Mean a(Å)':<10} {'Std a(Å)':<10} "
                   f"{'Min a(Å)':<10} {'Max a(Å)':<10} "
                   f"{'Δa/a(ppm)':<12} "
@@ -712,13 +712,13 @@ def print_results(rings: List[RingEntry], fits: List[FitResult],
         frac_str = f"{intensity_frac*100:5.1f}%" if phase_intensity > 0 else f"{'--':>6}"
 
         if mean_a > 0:
-            line = (f"  {p.name:<8} {coverage:<6} {pct:>4.0f}%  "
+            line = (f"  {p.name:<8} {coverage:<6} {pct:>4.0f}%  {excl_det:<5}"
                     f"{mean_a:<10.4f} {std_a:<10.4f} "
                     f"{min_a:<10.4f} {max_a:<10.4f} "
                     f"{d_ppm:<12.1f} "
                     f"{auc_str} {frac_str}  {status}")
         else:
-            line = (f"  {p.name:<8} {coverage:<6} {pct:>4.0f}%  "
+            line = (f"  {p.name:<8} {coverage:<6} {pct:>4.0f}%  {excl_det:<5}"
                     f"{'--':<10} {'--':<10} "
                     f"{'--':<10} {'--':<10} "
                     f"{'--':<12} "
@@ -761,7 +761,7 @@ def print_results(rings: List[RingEntry], fits: List[FitResult],
 
 def phase_summary_header() -> str:
     """Return the column header block for the Phase Summary table."""
-    col = (f"  {'Phase':<8} {'Det':<6} {'Cov':<6} "
+    col = (f"  {'Phase':<8} {'Det':<6} {'Cov':<6} {'Uniq':<5}"
            f"{'Mean a(Å)':<10} {'Std a(Å)':<10} "
            f"{'Min a(Å)':<10} {'Max a(Å)':<10} "
            f"{'Δa/a(ppm)':<12} "
@@ -881,17 +881,38 @@ def process_single_file(data_file: Path, work_dir: Path, cur_param: Path,
         if file_peak_params != peak_params_src:
             shutil.copy2(str(peak_params_src), str(file_peak_params))
 
-        # Create zarr zip
+        # ── Direct mode: skip zarr creation ────────────────────────
+        # DetectorMapper must have already run (Map.bin/nMap.bin in work_dir)
         t0 = time.monotonic()
-        _log("  Generating Zarr zip...")
-        zip_file = create_zarr_zip(data_file, dark_file,
-                                   cur_param, work_dir, log=log)
-        timings['zarr'] = time.monotonic() - t0
 
-        # Run pipeline (DetectorMapper skips if Map.bin exists)
-        t0 = time.monotonic()
-        fit_bin = run_cpu_pipeline(zip_file, file_peak_params,
-                                  work_dir, n_cpus, log=log)
+        integrator = MIDAS_BIN / "IntegratorZarrOMP"
+        cmd = [
+            str(integrator),
+            "-paramFN", str(cur_param.resolve()),
+            "-dataFN", str(data_file.resolve()),
+            "-nCPUs", "1",
+            "-PeakParamsFN", str(file_peak_params.resolve()),
+        ]
+        if dark_file and dark_file.exists():
+            cmd.extend(["-darkFN", str(dark_file.resolve())])
+
+        _log("  Running IntegratorZarrOMP (direct mode)...")
+        stdout = run_cmd(cmd, cwd=str(work_dir.resolve()), log=log)
+
+        # Diagnostic lines
+        for line in stdout.split('\n'):
+            stripped = line.strip()
+            if stripped and any(k in stripped for k in
+                               ['peak', 'Peak', 'nPeaks', 'nRBins', 'PeakFit',
+                                'Warning', 'Error', 'REJECTED', 'FAILED']):
+                _log(f"    ▸ {stripped}")
+
+        fit_bin = work_dir / "fit.bin"
+        if fit_bin.exists():
+            _log(f"  fit.bin: {fit_bin.stat().st_size} bytes")
+        else:
+            _log("  WARNING: fit.bin not generated")
+
         timings['integrate'] = time.monotonic() - t0
     else:
         # GPU backend
