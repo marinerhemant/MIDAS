@@ -13,7 +13,7 @@ This directory contains Python scripts and tools used across the MIDAS analysis 
 | `integrator_batch_process.py` | Batch-mode radial integration for processing large datasets non-interactively. |
 | `integrator_server.py` | Long-running integration server for real-time data reduction during beamline operation. |
 | `integrator_stream_process_h5.py` | Streaming radial integration from HDF5 files as they are written during acquisition. |
-| `phase_id.py` | **Multi-phase identification.** Identifies crystallographic phases from diffraction images using ring-matching, peak fitting, and lattice parameter refinement. Supports single/multi-file, `-startNr`/`-endNr`, and `-dataFolder` modes. See [FF_Phase_Identification](../manuals/FF_Phase_Identification.md). |
+| `phase_id.py` | **Multi-phase identification.** Identifies crystallographic phases from diffraction images using ring-matching, peak fitting, and lattice parameter refinement. Supports single/multi-file, `-startNr`/`-endNr`, `-dataFolder`, and `--multi-cpu N` parallel modes. Results saved to `--output` file. See [FF_Phase_Identification](../manuals/FF_Phase_Identification.md). |
 | `map_header.py` | **Map.bin header reader.** Python counterpart to `MapHeader.h` — reads 64-byte parameter-hash headers from `Map.bin`/`nMap.bin` to detect stale mapping files. Used by orchestrators. |
 | `live_viewer.py` | **Real-time dashboard.** PyQtGraph-based live viewer that tails `lineout.bin` and `fit.bin` from the GPU integrator, showing 1D lineouts, heatmap waterfall, and peak evolution plots. See [FF_Radial_Integration](../manuals/FF_Radial_Integration.md) §6.3. |
 | `integrate_and_refine.py` | Combined radial integration + GSAS-II peakfit refinement pipeline. |

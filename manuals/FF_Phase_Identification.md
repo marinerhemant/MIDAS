@@ -35,7 +35,7 @@ flowchart TD
 
     subgraph S2["Step 2 · Integration + Peak Fitting"]
         direction LR
-        CPU["CPU: ffGenZip →<br/>DetectorMapperZarr →<br/>IntegratorZarrOMP"]
+        CPU["CPU: ffGenZip →<br/>DetectorMapper(Zarr) →<br/>IntegratorZarrOMP"]
         GPU["GPU: integrator_batch_process →<br/>IntegratorFitPeaksGPUStream"]
     end
 
@@ -88,6 +88,14 @@ python utils/phase_id.py \
     -paramFN geometry.txt \
     -dataFolder /data/pressure_series/ \
     -phases phases.txt
+
+# Parallel processing — 4 files at a time
+python utils/phase_id.py \
+    -paramFN geometry.txt \
+    -dataFolder /data/pressure_series/ \
+    -phases phases.txt \
+    --multi-cpu 4 \
+    --output results.txt
 
 # GPU backend
 python utils/phase_id.py \
@@ -143,7 +151,7 @@ Columns:
 | `-endNr` | — | Ending file number (requires `-startNr`) |
 | `-phases` | required | Phase definitions file |
 | `-darkFN` | — | Dark frame for subtraction |
-| `-nCPUs` | 4 | Number of CPU threads |
+| `-nCPUs` | 4 | Number of CPU threads per integration job |
 | `-backend` | `cpu` | `cpu` (IntegratorZarrOMP) or `gpu` (IntegratorFitPeaksGPUStream) |
 | `--snr-threshold` | 5.0 | Minimum SNR for a peak to be "detected" |
 | `--rel-intensity-threshold` | 0.01 | Minimum Imax as fraction of strongest peak (1% default) |
@@ -152,6 +160,8 @@ Columns:
 | `--merge-threshold` | 2×RBinSize | Ring deduplication threshold (pixels) |
 | `--keep-work-dir` | — | Preserve temporary working directory |
 | `--work-dir` | — | Use specific working directory |
+| `--multi-cpu` | 0 | Process N files in parallel (0 = sequential). Runs `DetectorMapper` once, copies map files, then launches N workers. |
+| `--output` | `<work-dir>/phase_id_results.txt` | Save combined results to this file |
 
 ## Detection Filters
 
@@ -254,6 +264,34 @@ The mean `a` across all detected rings provides the refined lattice parameter. T
 | Best for | Few images, no GPU | Streaming, large datasets |
 | Output | `fit.bin` (same format) | `fit.bin` (same format) |
 
+## Parallel Processing (`--multi-cpu`)
+
+When processing multiple files, `--multi-cpu N` launches up to N files in parallel:
+
+1. **Phase prediction and ring deduplication** run once (shared)
+2. **DetectorMapper** (non-Zarr) runs once in the base work directory, producing `Map.bin` + `nMap.bin`. This uses the parameter-file-based `DetectorMapper` binary which reads geometry directly — no Zarr creation needed for the mapping step.
+3. **Map files are copied** to each per-file work directory
+4. **N workers** run concurrently. Each creates its own Zarr zip and runs `IntegratorZarrOMP` (which skips `DetectorMapperZarr` since `Map.bin` already exists)
+5. **Results are printed in file order** — output is captured per-worker to prevent interleaving
+6. **Combined results** are saved to the `--output` file
+
+**Screen output** is compact — a single Phase Summary table header followed by per-file rows with per-stage timing (zarr, integrate, analysis). Full per-ring detail is written to the `--output` file only.
+
+```bash
+# Process 8 files, 4 in parallel, 2 CPUs per integration job
+python utils/phase_id.py \
+    -paramFN geometry.txt \
+    -dataFolder /data/scans/ \
+    -phases phases.txt \
+    -nCPUs 2 \
+    --multi-cpu 4 \
+    --output /data/results.txt \
+    --keep-work-dir
+```
+
+> [!TIP]
+> Total CPU usage is approximately `multi-cpu × nCPUs`. E.g., `--multi-cpu 4 -nCPUs 2` uses ~8 CPU threads peak. A timing summary at the end shows wall time and per-stage breakdown (rings, mapper, files) for identifying bottlenecks.
+
 ## Benchmark Test
 
 ```bash
@@ -304,16 +342,16 @@ The key requirement is that the shifted peak must remain **within the ROI window
 For tracking lattice parameter evolution across a series of images (e.g., pressure steps, time-resolved), run `phase_id.py` on each image independently and collect the per-image fitted lattice parameters:
 
 ```bash
-# Process a series of images
-for i in $(seq 1 100); do
-    python utils/phase_id.py \
-        -paramFN geometry.txt \
-        -dataFN "scan_$(printf '%06d' $i).tif" \
-        -phases phases.txt \
-        -nCPUs 4 \
-        --roi-padding 100 \
-        --work-dir output/frame_$i
-done
+# Process a series of images in parallel
+python utils/phase_id.py \
+    -paramFN geometry.txt \
+    -dataFolder /data/pressure_series/ \
+    -phases phases.txt \
+    -nCPUs 2 \
+    --multi-cpu 8 \
+    --roi-padding 100 \
+    --work-dir output/ \
+    --output lattice_results.txt
 ```
 
 The per-phase `Mean a(Å)` from each run gives `a(t)` or `a(P)`, which can be used to compute:
