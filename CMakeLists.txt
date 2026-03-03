@@ -17,6 +17,10 @@ option(INSTALL_PYTHON_DEPENDENCIES "Install Python dependencies using pip (if re
 set(PYTHON_EXECUTABLE "" CACHE FILEPATH "Path to Python executable for installing dependencies")
 
 if(USE_CUDA)
+  # Workaround: glibc >=2.41 declares cospi/sinpi/rsqrt with noexcept(true),
+  # which clashes with CUDA's builtin declarations during compiler identification.
+  # Must be set BEFORE project() so CMake's compiler-id step sees it.
+  set(CMAKE_CUDA_FLAGS "${CMAKE_CUDA_FLAGS} -Xcudafe --diag_suppress=1301" CACHE STRING "" FORCE)
   project(MIDAS LANGUAGES C CXX CUDA)
 else()
   project(MIDAS LANGUAGES C CXX)
@@ -286,9 +290,6 @@ if(USE_CUDA)
       message(STATUS "CMAKE_CUDA_ARCHITECTURES not set, defaulting to ${CMAKE_CUDA_ARCHITECTURES}. Configure as needed.")
     endif()
     message(STATUS "CUDA enabled with standard ${CMAKE_CUDA_STANDARD} for architectures ${CMAKE_CUDA_ARCHITECTURES}.")
-    # Workaround: glibc ≥2.41 declares cospi/sinpi/rsqrt with noexcept(true),
-    # which clashes with CUDA's builtin declarations.  Suppress cudafe error 1301.
-    set(CMAKE_CUDA_FLAGS "${CMAKE_CUDA_FLAGS} -Xcudafe --diag_suppress=1301" CACHE STRING "" FORCE)
     # Example CUDA flags (from FF_HEDM, adjust as necessary)
     # set(CMAKE_CUDA_FLAGS "${CMAKE_CUDA_FLAGS} -O3 -G --generate-code arch=compute_${CMAKE_CUDA_ARCHITECTURES},code=sm_${CMAKE_CUDA_ARCHITECTURES}")
   else()
