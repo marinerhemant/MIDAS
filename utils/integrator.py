@@ -211,7 +211,8 @@ class FileProcessor:
         cmd: List[str],
         out_file: Path,
         err_file: Path,
-        error_msg: str
+        error_msg: str,
+        cwd: Path = None
     ) -> Iterator[subprocess.CompletedProcess]:
         """Run a command with proper error handling
         
@@ -220,6 +221,7 @@ class FileProcessor:
             out_file: File to capture stdout
             err_file: File to capture stderr
             error_msg: Error message prefix for exceptions
+            cwd: Working directory for the command (default: current dir)
             
         Yields:
             Completed process information
@@ -230,7 +232,8 @@ class FileProcessor:
         cmd_str = ' '.join(cmd)
         try:
             with open(out_file, 'w') as out_f, open(err_file, 'w') as err_f:
-                result = subprocess.run(cmd_str, shell=True, stdout=out_f, stderr=err_f)
+                result = subprocess.run(cmd_str, shell=True, stdout=out_f, stderr=err_f,
+                                        cwd=str(cwd) if cwd else None)
                 
             if result.returncode != 0:
                 try:
@@ -556,7 +559,8 @@ class FileProcessor:
             integrator_cmd, 
             out_log, 
             err_log,
-            f"IntegratorZarr failed for {zip_file}"
+            f"IntegratorZarr failed for {zip_file}",
+            cwd=self.params.result_dir
         ):
             pass
         
@@ -1155,11 +1159,44 @@ class MidasIntegrator:
             if getattr(self.args, 'liveViewer', False):
                 viewer_script = MIDAS_UTILS / 'live_viewer.py'
                 if viewer_script.exists():
+                    # Compute nRBins from param file
+                    n_rbins = 0
+                    ppfn_for_viewer = getattr(self.args, 'peakParamsFN', '')
+                    n_peaks_viewer = 0
+                    try:
+                        rmin, rmax, rbinsize = 0.0, 1000.0, 1.0
+                        with open(self.params.param_file) as pf:
+                            for line in pf:
+                                parts = line.strip().split()
+                                if len(parts) >= 2:
+                                    if parts[0] == 'RMin': rmin = float(parts[1])
+                                    elif parts[0] == 'RMax': rmax = float(parts[1])
+                                    elif parts[0] == 'RBinSize': rbinsize = float(parts[1])
+                        import math
+                        n_rbins = int(math.ceil((rmax - rmin) / rbinsize))
+                        # Count peaks from peak params file
+                        if ppfn_for_viewer and Path(ppfn_for_viewer).exists():
+                            with open(ppfn_for_viewer) as ppf:
+                                for line in ppf:
+                                    if line.strip().startswith('PeakLocation'):
+                                        n_peaks_viewer += 1
+                    except Exception as e:
+                        logger.warning(f"Could not read params for live viewer: {e}")
+                        n_rbins = 500  # fallback
+                    
+                    result_dir = self.params.result_dir
                     viewer_cmd = [
                         sys.executable, str(viewer_script),
-                        '--result-dir', str(self.params.result_dir),
+                        '--lineout', str(result_dir / 'lineout.bin'),
+                        '--nRBins', str(n_rbins),
                         '--theme', getattr(self.args, 'viewerTheme', 'dark'),
+                        '--params', str(self.params.param_file),
                     ]
+                    if n_peaks_viewer > 0:
+                        viewer_cmd.extend([
+                            '--fit', str(result_dir / 'fit.bin'),
+                            '--nPeaks', str(n_peaks_viewer),
+                        ])
                     logger.info(f"Launching live viewer: {' '.join(viewer_cmd)}")
                     self.viewer_proc = subprocess.Popen(viewer_cmd)
                 else:

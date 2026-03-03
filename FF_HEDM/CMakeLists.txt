@@ -124,7 +124,7 @@ add_ff_hedm_executable(MatchGrains SOURCES src/MatchGrains.c src/GetMisorientati
 
 add_ff_hedm_executable(DetectorMapper SOURCES src/DetectorMapper.c src/Panel.c src/FileReader.c)
 add_ff_hedm_executable(DetectorMapperZarr SOURCES src/DetectorMapperZarr.c src/ZarrReader.c src/Panel.c src/FileReader.c)
-add_ff_hedm_executable(Integrator SOURCES src/Integrator.c src/FileReader.c)
+# add_ff_hedm_executable(Integrator SOURCES src/Integrator.c src/FileReader.c)  # archived → src/archive/Integrator.c
 # add_ff_hedm_executable(IntegratorZarr SOURCES src/archive/IntegratorZarr.c)
 add_ff_hedm_executable(IntegratorZarrOMP SOURCES src/IntegratorZarrOMP.c src/ZarrReader.c src/PeakFit.c OMP)
 # add_ff_hedm_executable(ConvTiffToGE SOURCES src/ConvTiffToGE.c)
@@ -167,7 +167,7 @@ set(FF_HEDM_ALL_NON_CUDA_TARGETS_LIST
  PeaksFittingOMPZarrRefactor GetHKLListZarr MergeOverlappingPeaksAllZarr CalcRadiusAllZarr
  FitSetupZarr ProcessGrainsZarr IndexerLinuxArgsShm IndexerOMP IndexerScanningOMP
  SaveBinData SaveBinDataScanning MergeMultipleScans ProcessGrains ProcessGrainsScanningHEDM MatchGrains
- DetectorMapper DetectorMapperZarr Integrator IntegratorZarr 
+ DetectorMapper DetectorMapperZarr IntegratorZarr 
  findSingleSolutionPFRefactored findMultipleSolutionsPF mergeScansScanning
 )
 
