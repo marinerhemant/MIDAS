@@ -526,12 +526,13 @@ class FileProcessor:
                 
             return None
     
-    def run_integrator(self, zip_file: Path) -> Path:
+    def run_integrator(self, zip_file: Path, peak_params_fn: str = '') -> Path:
         """
         Run IntegratorZarr on a ZIP file
         
         Args:
             zip_file: Input ZIP file
+            peak_params_fn: Optional path to peak parameters file
             
         Returns:
             Path to the output HDF file
@@ -547,7 +548,9 @@ class FileProcessor:
         err_log = log_path / f"{zip_file.name}_integrator_err.csv"
         
         integrator_path = MIDAS_BIN / 'IntegratorZarrOMP'
-        integrator_cmd = [str(integrator_path), str(zip_file),str(self.params.nCPUsLocal)]
+        integrator_cmd = [str(integrator_path), str(zip_file), str(self.params.nCPUsLocal)]
+        if peak_params_fn and Path(peak_params_fn).exists():
+            integrator_cmd.append(str(peak_params_fn))
         
         with self._run_command(
             integrator_cmd, 
@@ -647,7 +650,8 @@ class FileProcessor:
                 logger.info(f'Using existing zip file: {zip_file}')
             
             # Run integrator
-            hdf_file = self.run_integrator(zip_file)
+            peak_params_fn = getattr(self.params, '_peak_params_fn', '')
+            hdf_file = self.run_integrator(zip_file, peak_params_fn=peak_params_fn)
             
             # Convert HDF to Zarr
             out_zip = self.convert_hdf_to_zarr(hdf_file, zip_file)
@@ -709,6 +713,7 @@ class MidasIntegrator:
         self.processor = FileProcessor(self.params)
         self.completed_files = set()
         self._shutdown_requested = False
+        self.viewer_proc = None
         
     def _create_temp_param_file(self, original_path: Path, overrides: Dict[str, str]) -> Path:
         """Create a temporary parameter file with overridden values.
@@ -761,13 +766,20 @@ class MidasIntegrator:
         return Path(temp_path)
 
     def _cleanup_temp_file(self):
-        """Remove temporary parameter file if it exists"""
+        """Remove temporary parameter file and stop live viewer if running"""
         if self.temp_param_file and self.temp_param_file.exists():
             try:
                 os.unlink(self.temp_param_file)
                 logger.info(f"Cleaned up temporary parameter file: {self.temp_param_file}")
             except Exception as e:
                 logger.warning(f"Failed to cleanup temporary parameter file: {e}")
+        if self.viewer_proc and self.viewer_proc.poll() is None:
+            logger.info("Terminating live viewer...")
+            self.viewer_proc.terminate()
+            try:
+                self.viewer_proc.wait(timeout=5)
+            except subprocess.TimeoutExpired:
+                self.viewer_proc.kill()
 
     def _setup_signal_handlers(self) -> None:
         """Setup signal handlers for graceful shutdown"""
@@ -853,6 +865,14 @@ class MidasIntegrator:
                           help='Skip processing of files that have already been processed.')
         parser.add_argument('-logLevel', choices=['DEBUG', 'INFO', 'WARNING', 'ERROR', 'CRITICAL'],
                           default='INFO', help='Set the logging level')
+        parser.add_argument('-liveViewer', action='store_true',
+                          help='Launch live viewer for real-time visualization of lineout and peak fits.')
+        parser.add_argument('-viewerTheme', type=str, default='dark', choices=['dark', 'light'],
+                          help='Theme for the live viewer.')
+        parser.add_argument('-peakFit', action='store_true',
+                          help='Enable peak fitting in the integrator.')
+        parser.add_argument('-peakParamsFN', type=str, default='',
+                          help='Peak parameters file with DoPeakFit/PeakLocation/FitROIPadding entries.')
         
         # Parse known args and capture the rest
         args, unknown = parser.parse_known_args()
@@ -1130,6 +1150,31 @@ class MidasIntegrator:
                 return
                 
             logger.info(f"Will process {len(files_to_process)} of {nr_files} total files")
+            
+            # Launch live viewer if requested
+            if getattr(self.args, 'liveViewer', False):
+                viewer_script = MIDAS_UTILS / 'live_viewer.py'
+                if viewer_script.exists():
+                    viewer_cmd = [
+                        sys.executable, str(viewer_script),
+                        '--result-dir', str(self.params.result_dir),
+                        '--theme', getattr(self.args, 'viewerTheme', 'dark'),
+                    ]
+                    logger.info(f"Launching live viewer: {' '.join(viewer_cmd)}")
+                    self.viewer_proc = subprocess.Popen(viewer_cmd)
+                else:
+                    logger.warning(f"Live viewer not found at {viewer_script}")
+            
+            # Store peak params fn for use by process_single_file
+            ppfn = getattr(self.args, 'peakParamsFN', '')
+            if ppfn:
+                self.params._peak_params_fn = ppfn
+            elif getattr(self.args, 'peakFit', False):
+                # Auto-generate a minimal peak params file
+                self.params._peak_params_fn = ''
+                logger.info("Peak fitting enabled but no peakParamsFN provided. IntegratorZarrOMP will use Zarr-embedded params.")
+            else:
+                self.params._peak_params_fn = ''
             
             # Process all files
             results = self._process_files(files_to_process, start_file_nr)

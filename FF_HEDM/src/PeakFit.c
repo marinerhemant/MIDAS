@@ -228,6 +228,13 @@ int fitPeaksForLineout(const double *R, const double *intensity, int nRBins,
   if (nPeaks <= 0 || nRBins <= 0)
     return 0;
 
+  static int pf_version_printed = 0;
+  if (!pf_version_printed) {
+    printf("  [PeakFit v3] data-range bounds, nPeaks=%d, RBinSize=%.4f\n",
+           nPeaks, RBinSize);
+    pf_version_printed = 1;
+  }
+
   // Zero output
   memset(outFitParams, 0, nPeaks * PF_PARAMS_PER_PEAK * sizeof(double));
 
@@ -313,18 +320,28 @@ int fitPeaksForLineout(const double *R, const double *intensity, int nRBins,
     double *upperBounds = (double *)malloc(nFitParams * sizeof(double));
 
     // Estimate initial parameters
+    // First scan the ROI to find actual max/min intensity for realistic bounds
+    int roiLen = job->endIndex - job->startIndex + 1;
+    double roi_max = -1e30, roi_min = 1e30;
+    for (int rr = 0; rr < roiLen; rr++) {
+      double v = intensity[job->startIndex + rr];
+      if (v > roi_max)
+        roi_max = v;
+      if (v < roi_min)
+        roi_min = v;
+    }
+    double data_range = fmax(roi_max - roi_min, 1.0);
+
     double primary_amp_guess = 1.0, primary_bg_guess = 0.0;
     for (int p = 0; p < nJobPeaks; ++p) {
       PF_Peak *peak = &(job->peaks[p]);
       int p_idx_local = peak->index - job->startIndex;
       double bg_g, amp_g;
       double fwhm = pf_estimate_initial_params(
-          &intensity[job->startIndex], job->endIndex - job->startIndex + 1,
-          p_idx_local, &bg_g, &amp_g);
+          &intensity[job->startIndex], roiLen, p_idx_local, &bg_g, &amp_g);
       double sigma_g = fwhm * RBinSize / 2.355;
       if (sigma_g < RBinSize * 0.5)
         sigma_g = RBinSize * 2.0;
-      double gamma_g = sigma_g * 2.355; // Convert sigma to FWHM
 
       if (p == 0) {
         primary_amp_guess = amp_g;
@@ -332,28 +349,31 @@ int fitPeaksForLineout(const double *R, const double *intensity, int nRBins,
       }
 
       int b = p * 4;
+      // Center: allow ± max(estimated FWHM, 5 bins) in R units
       double center_range = fmax(fwhm * RBinSize, RBinSize * 5.0);
-      double gamma_max = (R[job->endIndex] - R[job->startIndex]);
-      if (gamma_max < RBinSize * 2.0)
-        gamma_max = RBinSize * 10.0;
-      double amp_upper = fmax(amp_g * 5.0, fabs(primary_amp_guess) * 2.0);
-      if (amp_upper < 1.0)
-        amp_upper = 1.0;
+      // FWHM (Gamma): physically 0.5–10 px for HEDM diffraction peaks
+      double gamma_lo = RBinSize * 0.5;
+      double gamma_hi = fmin(RBinSize * 40.0, (double)roiLen * RBinSize * 0.5);
+      // Amplitude: bounded by actual data range, not multiples of guess
+      double amp_hi = data_range * 2.0;
+      if (amp_hi < 1.0)
+        amp_hi = 1.0;
 
-      fitParams[b + 0] = fmax(amp_g, 1.0);                // Amplitude
-      fitParams[b + 1] = 0.5;                             // Mix
-      fitParams[b + 2] = peak->radius;                    // Center
-      fitParams[b + 3] = fmax(sigma_g * 2.355, RBinSize); // Gamma (FWHM)
+      fitParams[b + 0] = fmax(fmin(amp_g, amp_hi * 0.9), 0.01);
+      fitParams[b + 1] = 0.5;          // Mix
+      fitParams[b + 2] = peak->radius; // Center
+      fitParams[b + 3] =
+          fmax(fmin(sigma_g * 2.355, gamma_hi * 0.5), gamma_lo * 2.0);
       lowerBounds[b + 0] = 0;
       lowerBounds[b + 1] = 0;
       lowerBounds[b + 2] = peak->radius - center_range;
-      lowerBounds[b + 3] = RBinSize * 0.5;
-      upperBounds[b + 0] = amp_upper;
+      lowerBounds[b + 3] = gamma_lo;
+      upperBounds[b + 0] = amp_hi;
       upperBounds[b + 1] = 1.0;
       upperBounds[b + 2] = peak->radius + center_range;
-      upperBounds[b + 3] = gamma_max;
+      upperBounds[b + 3] = gamma_hi;
 
-      // Clamp initial values to be strictly within bounds
+      // Clamp initial values strictly within bounds
       for (int bb = b; bb < b + 4; bb++) {
         if (fitParams[bb] <= lowerBounds[bb])
           fitParams[bb] =
@@ -363,10 +383,10 @@ int fitPeaksForLineout(const double *R, const double *intensity, int nRBins,
               upperBounds[bb] - (upperBounds[bb] - lowerBounds[bb]) * 0.01;
       }
     }
+    // Background: bounded by actual edge values
     fitParams[nFitParams - 1] = primary_bg_guess;
-    lowerBounds[nFitParams - 1] = -fabs(primary_amp_guess) - 1.0;
-    upperBounds[nFitParams - 1] = fabs(primary_amp_guess) + 1.0;
-    // Clamp BG
+    lowerBounds[nFitParams - 1] = fmin(roi_min - data_range * 0.5, -1.0);
+    upperBounds[nFitParams - 1] = roi_max;
     if (fitParams[nFitParams - 1] <= lowerBounds[nFitParams - 1])
       fitParams[nFitParams - 1] = lowerBounds[nFitParams - 1] + 0.01;
     if (fitParams[nFitParams - 1] >= upperBounds[nFitParams - 1])
@@ -377,6 +397,27 @@ int fitPeaksForLineout(const double *R, const double *intensity, int nRBins,
     fitData.R = &R[job->startIndex];
     fitData.Int = &intensity[job->startIndex];
 
+    if (i == 0) {
+#pragma omp critical
+      {
+        printf("  [PeakFit] Job0: roi_min=%.2f roi_max=%.2f data_range=%.2f "
+               "amp_hi=%.2f\n",
+               roi_min, roi_max, data_range, upperBounds[0]);
+        printf(
+            "  [PeakFit] Job0: init amp=%.2f center=%.4f gamma=%.4f bg=%.2f\n",
+            fitParams[0], fitParams[2], fitParams[3],
+            fitParams[nFitParams - 1]);
+        printf(
+            "  [PeakFit] Job0: lo   amp=%.2f center=%.4f gamma=%.4f bg=%.2f\n",
+            lowerBounds[0], lowerBounds[2], lowerBounds[3],
+            lowerBounds[nFitParams - 1]);
+        printf(
+            "  [PeakFit] Job0: hi   amp=%.2f center=%.4f gamma=%.4f bg=%.2f\n",
+            upperBounds[0], upperBounds[2], upperBounds[3],
+            upperBounds[nFitParams - 1]);
+        fflush(stdout);
+      }
+    }
     // Primary: L-BFGS
     nlopt_opt opt = nlopt_create(NLOPT_LD_LBFGS, nFitParams);
     nlopt_set_lower_bounds(opt, lowerBounds);
@@ -404,25 +445,25 @@ int fitPeaksForLineout(const double *R, const double *intensity, int nRBins,
     }
 
     if (rc >= 0) {
-      double dof = (double)(fitData.nrBins - nFitParams);
-      double gof = (dof > 0) ? minObj / dof : -1.0;
+      double rmsResid = sqrt(minObj / (double)fitData.nrBins);
       int result_start = job_result_indices[i];
       double localBG = fitParams[nFitParams - 1];
 
       for (int p = 0; p < nJobPeaks; ++p) {
         int out_base = (result_start + p) * PF_PARAMS_PER_PEAK;
         int in_base = p * 4;
-        outFitParams[out_base + 0] = fitParams[in_base + 0]; // Imax
+        double pImax = fitParams[in_base + 0];
+        outFitParams[out_base + 0] = pImax; // Imax
         outFitParams[out_base + 1] = localBG;
         outFitParams[out_base + 2] = fitParams[in_base + 1]; // Mix
         outFitParams[out_base + 3] = fitParams[in_base + 2]; // Center
         // Gamma → Gaussian-equiv sigma
         outFitParams[out_base + 4] =
             fitParams[in_base + 3] / (2.0 * sqrt(2.0 * log(2.0)));
-        outFitParams[out_base + 5] = gof;
+        // SNR = Imax / rmsResid (matches CalibrantPanelShiftsOMP)
+        outFitParams[out_base + 5] = (rmsResid > 0) ? pImax / rmsResid : -1.0;
         // Analytical pV area
         {
-          double pImax = fitParams[in_base + 0];
           double pMix = fmax(0.0, fmin(1.0, fitParams[in_base + 1]));
           double pGamma = fmax(1e-9, fitParams[in_base + 3]);
           outFitParams[out_base + 6] =

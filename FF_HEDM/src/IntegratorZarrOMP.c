@@ -9,6 +9,7 @@
 // Dt: 2017/07/26
 //
 
+#include "PeakFit.h"
 #include "ZarrReader.h"
 #include <assert.h>
 #include <blosc2.h>
@@ -336,10 +337,23 @@ int main(int argc, char **argv) {
   start0 = clock();
   double diftotal;
   int nCPUs = 4;
-  if (argc == 3) {
+  char *PeakParamsFN = NULL;
+  if (argc == 2) {
+    // ZarrName only
+  } else if (argc == 3) {
+    // Could be nCPUs or PeakParamsFN
+    if (atoi(argv[2]) > 0) {
+      nCPUs = atoi(argv[2]);
+    } else {
+      PeakParamsFN = argv[2];
+    }
+  } else if (argc == 4) {
     nCPUs = atoi(argv[2]);
-  } else if (argc != 2) {
-    printf("Usage: %s ZarrName.zip [nCPUs]\n", argv[0]);
+    PeakParamsFN = argv[3];
+  } else {
+    printf("Usage: %s ZarrName.zip [nCPUs] [PeakParamsFN]\n", argv[0]);
+    printf("  PeakParamsFN: optional text file with "
+           "DoPeakFit/PeakLocation/FitROIPadding\n");
     return (1);
   }
   omp_set_num_threads(nCPUs);
@@ -363,6 +377,9 @@ int main(int argc, char **argv) {
   double omeStart, omeStep;
   double Lam = 0.172978, Polariz = 0.99, SHpL = 0.002, U = 1.163, V = -0.126,
          W = 0.063, X = 0.0, Y = 0.0, Z = 0.0;
+  // Peak fitting parameters
+  int doPeakFit = 0, nPeakLocations = 0, fitROIPadding = 20;
+  double peakLocations[MAX_PEAK_LOCATIONS_PF];
   char *DataFN = argv[1];
   blosc2_init();
   // Read zarr config
@@ -499,6 +516,15 @@ int main(int argc, char **argv) {
     if (strstr(finfo->name,
                "analysis/process/analysis_parameters/Normalize/0") != NULL) {
       ReadZarrChunk(arch, count, &Normalize, sizeof(int));
+    }
+    if (strstr(finfo->name,
+               "analysis/process/analysis_parameters/DoPeakFit/0") != NULL) {
+      ReadZarrChunk(arch, count, &doPeakFit, sizeof(int));
+    }
+    if (strstr(finfo->name,
+               "analysis/process/analysis_parameters/FitROIPadding/0") !=
+        NULL) {
+      ReadZarrChunk(arch, count, &fitROIPadding, sizeof(int));
     }
     if (strstr(finfo->name,
                "analysis/process/analysis_parameters/SumImages/0") != NULL) {
@@ -665,6 +691,38 @@ int main(int argc, char **argv) {
   }
   if (chunkFiles == 0)
     chunkFiles = 1;
+
+  // Read peak fitting parameters from companion file (if provided)
+  if (PeakParamsFN != NULL) {
+    FILE *pf = fopen(PeakParamsFN, "r");
+    if (pf) {
+      char pfline[4096], pfkey[256], pfval[3072];
+      while (fgets(pfline, sizeof(pfline), pf)) {
+        if (pfline[0] == '#' || pfline[0] == '\n')
+          continue;
+        if (sscanf(pfline, "%255s %[^\n]", pfkey, pfval) == 2) {
+          if (strcmp(pfkey, "DoPeakFit") == 0)
+            sscanf(pfval, "%d", &doPeakFit);
+          else if (strcmp(pfkey, "FitROIPadding") == 0)
+            sscanf(pfval, "%d", &fitROIPadding);
+          else if (strcmp(pfkey, "PeakLocation") == 0) {
+            if (nPeakLocations < MAX_PEAK_LOCATIONS_PF) {
+              sscanf(pfval, "%lf", &peakLocations[nPeakLocations]);
+              nPeakLocations++;
+              doPeakFit = 1; // Implicitly enable
+            }
+          }
+        }
+      }
+      fclose(pf);
+      printf(
+          "Read peak params from %s: DoPeakFit=%d, nPeaks=%d, ROIPadding=%d\n",
+          PeakParamsFN, doPeakFit, nPeakLocations, fitROIPadding);
+    } else {
+      printf("Warning: Could not open peak params file: %s\n", PeakParamsFN);
+    }
+  }
+
   int rc = ReadBins(resultFolder);
   int32_t imTransBufSize = NrTransOpt * sizeof(int);
   int *imTransData = (int *)malloc((size_t)imTransBufSize);
@@ -832,6 +890,26 @@ int main(int argc, char **argv) {
   RBinsHigh = malloc(nRBins * sizeof(*RBinsHigh));
   REtaMapper(RMin, EtaMin, nEtaBins, nRBins, EtaBinSize, RBinSize, EtaBinsLow,
              EtaBinsHigh, RBinsLow, RBinsHigh);
+
+  // Compute R bin centers for peak fitting and lineout output
+  double *RBinCenters = malloc(nRBins * sizeof(double));
+  for (int rb = 0; rb < nRBins; rb++) {
+    RBinCenters[rb] = (RBinsLow[rb] + RBinsHigh[rb]) / 2.0;
+  }
+
+  // Open binary output files for live viewer compatibility
+  FILE *fLineout = NULL, *fFitBin = NULL;
+  fLineout = fopen("lineout.bin", "wb");
+  if (fLineout)
+    printf("Opened lineout.bin for binary output.\n");
+  if (doPeakFit && nPeakLocations > 0) {
+    fFitBin = fopen("fit.bin", "wb");
+    if (fFitBin)
+      printf("Opened fit.bin for peak fitting output (%d peaks).\n",
+             nPeakLocations);
+    printf("Peak fit enabled: %d peaks, ROI padding: %d bins\n", nPeakLocations,
+           fitROIPadding);
+  }
 
   int i, j, k, l, p;
   printf("NrTransOpt: %d\n", NrTransOpt);
@@ -1033,6 +1111,70 @@ int main(int argc, char **argv) {
       }
     }
     t_integration += (omp_get_wtime() - t_0);
+
+    // --- Compute eta-summed 1D lineout and write binary output ---
+    double *lineout1D = (double *)calloc(nRBins, sizeof(double));
+#pragma omp parallel for schedule(static)
+    for (j = 0; j < nRBins; j++) {
+      double sum = 0;
+      int cnt = 0;
+      for (k = 0; k < nEtaBins; k++) {
+        double val = IntArrPerFrame[j * nEtaBins + k];
+        if (val != 0) {
+          sum += val;
+          cnt++;
+        }
+      }
+      lineout1D[j] = (cnt > 0) ? sum / cnt : 0;
+    }
+    // Write lineout.bin: nRBins doubles per frame (eta-averaged lineout)
+    if (fLineout) {
+      fwrite(lineout1D, sizeof(double), nRBins, fLineout);
+      fflush(fLineout);
+    }
+    // Peak fitting
+    if (doPeakFit && nPeakLocations > 0) {
+      double *fitResults =
+          (double *)calloc(nPeakLocations * PF_PARAMS_PER_PEAK, sizeof(double));
+      int nFitted = fitPeaksForLineout(RBinCenters, lineout1D, nRBins,
+                                       peakLocations, nPeakLocations, RBinSize,
+                                       fitROIPadding, fitResults);
+      if (nFitted > 0 && fFitBin) {
+        fwrite(fitResults, sizeof(double), nPeakLocations * PF_PARAMS_PER_PEAK,
+               fFitBin);
+        fflush(fFitBin);
+      }
+      if (i == 0) {
+        if (nFitted > 0) {
+          printf("  Peak fit results (frame 0): %d/%d peaks fitted\n", nFitted,
+                 nPeakLocations);
+          for (int pp = 0; pp < nPeakLocations; pp++) {
+            int base = pp * PF_PARAMS_PER_PEAK;
+            printf(
+                "    Peak %d: Center=%.4f, Imax=%.2f, Sigma=%.4f, SNR=%.2f\n",
+                pp, fitResults[base + 3], fitResults[base + 0],
+                fitResults[base + 4], fitResults[base + 5]);
+          }
+        } else {
+          printf("  Peak fit FAILED (frame 0): nFitted=0 out of %d peaks\n",
+                 nPeakLocations);
+          printf(
+              "    RBinCenters[0]=%.4f, RBinCenters[%d]=%.4f, RBinSize=%.4f\n",
+              RBinCenters[0], nRBins - 1, RBinCenters[nRBins - 1], RBinSize);
+          printf("    peakLocations[0]=%.4f, lineout1D max=%.4f\n",
+                 peakLocations[0], ({
+                   double mx = 0;
+                   for (int zz = 0; zz < nRBins; zz++)
+                     if (lineout1D[zz] > mx)
+                       mx = lineout1D[zz];
+                   mx;
+                 }));
+        }
+      }
+      free(fitResults);
+    }
+    free(lineout1D);
+
     if (i == 0) {
       hsize_t dims[3] = {4, nRBins, nEtaBins};
       status_f =
@@ -1120,6 +1262,11 @@ int main(int argc, char **argv) {
   H5LTmake_dataset_double(file_id, "/InstrumentParameters/Distance", 1, dimval,
                           &Lsd);
   status_f = H5Fclose(file_id);
+  if (fLineout)
+    fclose(fLineout);
+  if (fFitBin)
+    fclose(fFitBin);
+  free(RBinCenters);
   end0 = clock();
   diftotal = ((double)(end0 - start0)) / CLOCKS_PER_SEC;
   printf("Total time elapsed:\t%f s.\n", diftotal);

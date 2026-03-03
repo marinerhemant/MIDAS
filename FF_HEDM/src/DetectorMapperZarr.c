@@ -765,6 +765,7 @@ int main(int argc, char *argv[]) {
   char PanelShiftsFile[1024];
   PanelShiftsFile[0] = '\0';
   char MaskFN[4096];
+  memset(MaskFN, 0, sizeof(MaskFN));
   int useMask = 0;
   double *mask = NULL;
   while ((zip_stat_index(arch, count, 0, finfo)) == 0) {
