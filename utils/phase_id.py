@@ -470,7 +470,13 @@ def print_results(rings: List[RingEntry], fits: List[FitResult],
 
     phase_nominal = {p.name: p.lattice_a for p in phases}
 
+    # Compute AUC (area under curve) = pi * Imax * Sigma for each fit
+    import math
+    aucs = [math.pi * f.Imax * f.Sigma if f.Imax > 0 else 0.0 for f in fits]
+    min_sigma = 0.5 * geom['RBinSize']  # peaks narrower than this are fitting artifacts
+
     # Find global max Imax for relative intensity filter
+    # (AUC is NOT used for gating — broad-sigma fitter artifacts inflate it)
     global_max_imax = max((f.Imax for f in fits if f.Imax > 0), default=1.0)
 
     # Determine detection per peak
@@ -480,7 +486,8 @@ def print_results(rings: List[RingEntry], fits: List[FitResult],
         fit = fits[i]
         snr_ok = fit.SNR >= snr_threshold
         rel_ok = fit.Imax >= rel_intensity_threshold * global_max_imax
-        detected_flags.append(fit.Imax > 0 and snr_ok and rel_ok)
+        sigma_ok = fit.Sigma >= min_sigma
+        detected_flags.append(fit.Imax > 0 and snr_ok and rel_ok and sigma_ok)
 
     # Collect per-phase statistics
     phase_stats = {}
@@ -501,7 +508,7 @@ def print_results(rings: List[RingEntry], fits: List[FitResult],
           f"(= {global_max_imax * rel_intensity_threshold:.0f} counts)")
     print()
     header = (f"{'Phase':<8} {'(hkl)':<8} {'R_theory':>9} {'R_fitted':>9} "
-              f"{'Imax':>12} {'BG':>10} {'Sigma':>6} {'SNR':>8} "
+              f"{'Imax':>10} {'AUC':>10} {'BG':>8} {'Sigma':>6} {'SNR':>8} "
               f"{'a_fitted':>9} {'Δa/a(ppm)':>10}  {'Notes'}")
     print(header)
     print("-" * 120)
@@ -526,7 +533,7 @@ def print_results(rings: List[RingEntry], fits: List[FitResult],
 
                 phase_stats[ref.phase]['detected'] += 1
                 phase_stats[ref.phase]['a_values'].append(a_fitted)
-                phase_stats[ref.phase]['intensities'].append(fit.Imax)
+                phase_stats[ref.phase]['intensities'].append(aucs[i])
                 if not ring.is_overlap:
                     phase_stats[ref.phase]['exclusive_detected'] += 1
                 phase_stats[ref.phase]['ring_order'].append(
@@ -541,7 +548,7 @@ def print_results(rings: List[RingEntry], fits: List[FitResult],
 
                 print(f"  {ref.phase:<8} {ref.h}{ref.k}{ref.l:<7} "
                       f"{ref.R_px:>9.2f} {fit.Center:>9.2f} "
-                      f"{fit.Imax:>12.1f} {fit.BG:>10.1f} "
+                      f"{fit.Imax:>10.1f} {aucs[i]:>10.1f} {fit.BG:>8.1f} "
                       f"{fit.Sigma:>6.3f} {fit.SNR:>8.1f} "
                       f"{a_fitted:>9.4f} {delta_ppm:>10.1f}  {notes}")
         else:
@@ -557,15 +564,18 @@ def print_results(rings: List[RingEntry], fits: List[FitResult],
 
             # Show why it was rejected
             reason = "NOT DET"
+            auc_i = aucs[i] if i < len(aucs) else 0
             if fit.Imax > 0:
-                if fit.SNR < snr_threshold:
+                if fit.Sigma < min_sigma:
+                    reason = f"σ={fit.Sigma:.3f}<{min_sigma:.3f}"
+                elif fit.SNR < snr_threshold:
                     reason = f"SNR={fit.SNR:.1f}<{snr_threshold}"
                 elif fit.Imax < rel_intensity_threshold * global_max_imax:
                     rel_pct = fit.Imax / global_max_imax * 100
                     reason = f"Imax={rel_pct:.2f}%<{rel_intensity_threshold*100:.0f}%"
             print(f"  {phase_label:<8} {ref.h}{ref.k}{ref.l:<7} "
                   f"{ref.R_px:>9.2f} {'':>9} "
-                  f"{'':>12} {'':>10} "
+                  f"{'':>10} {'':>10} {'':>8} "
                   f"{'':>6} {'':>8} "
                   f"{'':>9} {'':>10}  {reason}")
 
@@ -618,11 +628,11 @@ def print_results(rings: List[RingEntry], fits: List[FitResult],
         has_exclusive_opportunity = excl_tot > 0
         has_exclusive_evidence = excl_det > 0
 
-        # Check if any of the first 3 (lowest-angle) rings were detected.
-        # Low-angle peaks are always strongest; if all missed, phase is
+        # Check if any of the first 2 (lowest-angle) rings were detected.
+        # Low-angle peaks are always strongest; if both missed, phase is
         # likely not real.
         sorted_rings = sorted(st['ring_order'], key=lambda x: x[0])
-        first_n = min(3, len(sorted_rings))
+        first_n = min(2, len(sorted_rings))
         first_rings_detected = any(d for _, d in sorted_rings[:first_n])
 
         if has_exclusive_opportunity and not has_exclusive_evidence:
@@ -657,8 +667,8 @@ def print_results(rings: List[RingEntry], fits: List[FitResult],
         print("=" * 120)
         print("  INTENSITY STATISTICS")
         print("=" * 120)
-        header = (f"{'Phase':<8} {'Sum Imax':>14} {'Mean Imax':>14} "
-                  f"{'Max Imax':>14} {'Min Imax':>14} "
+        header = (f"{'Phase':<8} {'Sum AUC':>14} {'Mean AUC':>14} "
+                  f"{'Max AUC':>14} {'Min AUC':>14} "
                   f"{'Frac of Total':>14}")
         print(header)
         print("-" * 120)
