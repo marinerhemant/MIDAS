@@ -773,7 +773,7 @@ def _make_temp_param_file(args, calibrant, filename_hints):
         f.write(f"Wavelength {wavelength}\n")
         f.write(f"px {px}\n")
         f.write(f"SkipFrame 0\n")
-        f.write(f"tx 0\n")
+        f.write(f"tx {args.tx}\n")
     logger.info(f"Auto-generated temp param file: {temp_fn} "
                 f"(SG={sg}, px={px}, λ={wavelength:.5f}Å, {calibrant['name']})")
     return temp_fn
@@ -825,6 +825,8 @@ def main():
                             help='Initial guess for beam center [Y Z] (pixels)')
         parser.add_argument('--px', type=float, default=0,
                             help='Pixel size in µm (e.g. 200, 172). If set, no param file needed for non-Zarr inputs.')
+        parser.add_argument('--tx', type=float, default=0.0,
+                            help='Detector tilt tx (radians, not fitted but passed to CalibrantPanelShiftsOMP)')
 
         # Image handling
         parser.add_argument('--im-trans', '-ImTransOpt', type=int, default=[0], nargs='*',
@@ -976,6 +978,10 @@ def main():
             state.tx = dataF[f'{ap}/tx'][:].item()
         else:
             state.tx = 0.0
+        # CLI --tx overrides Zarr/default
+        if args.tx != 0.0:
+            state.tx = args.tx
+            logger.info(f"tx from --tx: {state.tx}")
 
         # Read data and dark
         raw, ny, nz = fileReader(dataF, '/exchange/data', state.skip_frame)
