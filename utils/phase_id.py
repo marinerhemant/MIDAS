@@ -17,6 +17,7 @@ Usage:
 import argparse
 import math
 import os
+os.environ.setdefault('KMP_DUPLICATE_LIB_OK', 'TRUE')  # macOS: prevent dual-libomp abort
 import shutil
 import struct
 import subprocess

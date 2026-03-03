@@ -19,6 +19,7 @@ Author: Hemant Sharma
 import argparse
 import logging
 import os
+os.environ.setdefault('KMP_DUPLICATE_LIB_OK', 'TRUE')  # macOS: prevent dual-libomp abort
 import re
 import shutil
 import signal

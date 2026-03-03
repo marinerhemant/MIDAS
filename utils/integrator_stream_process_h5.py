@@ -20,6 +20,9 @@ avoid loading entire files into RAM. It reads and writes data frame-by-frame
 (or group-by-group) based on the sorted order.
 """
 
+import os
+os.environ.setdefault('KMP_DUPLICATE_LIB_OK', 'TRUE')  # macOS: prevent dual-libomp abort
+
 import numpy as np
 import h5py
 import os

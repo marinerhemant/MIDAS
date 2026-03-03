@@ -19,6 +19,7 @@ Options:
 """
 
 import os
+os.environ.setdefault('KMP_DUPLICATE_LIB_OK', 'TRUE')  # macOS: prevent dual-libomp abort
 import sys
 import time
 import subprocess

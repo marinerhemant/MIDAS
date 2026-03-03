@@ -21,6 +21,9 @@ Usage examples
 Legacy syntax with -dataFN, -paramFN, etc. is still accepted.
 """
 
+import os
+os.environ.setdefault('KMP_DUPLICATE_LIB_OK', 'TRUE')  # macOS: prevent dual-libomp abort
+
 import warnings
 warnings.filterwarnings("ignore")
 import numpy as np
@@ -125,6 +128,7 @@ class CalibState:
 
     # Bad pixel mask
     bad_gap_arr: list = field(default_factory=list)
+    mask_file: str = ''
 
     # HDF5 output
     h5_file: object = None
@@ -717,6 +721,10 @@ def runMIDAS(rawFN, state, n_iterations=40, mult_factor=2.5,
                 pf.write(f'PanelShiftsFile {state.panel_shifts_file}\n')
                 pf.write('tolShifts 1\n')
 
+            # Mask file
+            if state.mask_file:
+                pf.write(f'MaskFile {state.mask_file}\n')
+
         # Run CalibrantPanelShiftsOMP with all available CPUs
         calibrant_exe = os.path.join(INSTALL_PATH, 'FF_HEDM/bin/CalibrantPanelShiftsOMP')
         calibrant_cmd = f"{calibrant_exe} {ps_file} {n_cpus}"
@@ -827,6 +835,8 @@ def main():
                             help='Pixel size in µm (e.g. 200, 172). If set, no param file needed for non-Zarr inputs.')
         parser.add_argument('--tx', type=float, default=0.0,
                             help='Detector tilt tx (radians, not fitted but passed to CalibrantPanelShiftsOMP)')
+        parser.add_argument('--mask', '-MaskFile', type=str, default='',
+                            help='Mask TIFF file for bad/gap pixels (passed as MaskFile to CalibrantPanelShiftsOMP)')
 
         # Image handling
         parser.add_argument('--im-trans', '-ImTransOpt', type=int, default=[0], nargs='*',
@@ -983,11 +993,41 @@ def main():
             state.tx = args.tx
             logger.info(f"tx from --tx: {state.tx}")
 
+        if f'{ap}/MaskFile' in dataF:
+            mf = dataF[f'{ap}/MaskFile'][0]
+            if isinstance(mf, bytes): mf = mf.decode()
+            state.mask_file = str(mf)
+        # CLI --mask overrides Zarr/default
+        if args.mask:
+            state.mask_file = str(Path(args.mask).absolute())
+            logger.info(f"MaskFile from --mask: {state.mask_file}")
+
         # Read data and dark
         raw, ny, nz = fileReader(dataF, '/exchange/data', state.skip_frame)
         dark, _, _ = fileReader(dataF, '/exchange/dark', state.skip_frame)
         state.nr_pixels_y = ny
         state.nr_pixels_z = nz
+
+        # Apply mask file: zero out masked pixels before any processing
+        if state.mask_file:
+            try:
+                mask_img = np.array(Image.open(state.mask_file))
+                # Convention: mask==0 means bad/masked pixel, mask!=0 means good pixel
+                mask_bool = (mask_img == 0)  # True where pixel is BAD
+                if mask_bool.shape != raw.shape:
+                    logger.warning(f"Mask shape {mask_bool.shape} != image shape {raw.shape}, skipping mask")
+                else:
+                    raw[mask_bool] = 0
+                    dark[mask_bool] = 0
+                    # Merge with existing bad_gap_arr
+                    if len(bad_gap_arr) != 0:
+                        bad_gap_arr = np.logical_or(bad_gap_arr, mask_bool)
+                    else:
+                        bad_gap_arr = mask_bool
+                    logger.info(f"Applied mask from {state.mask_file}: "
+                                f"{np.sum(mask_bool)} pixels masked")
+            except Exception as e:
+                logger.error(f"Failed to read mask file {state.mask_file}: {e}")
 
         # Save as GE files (needed by CalibrantPanelShiftsOMP)
         rawFN = dataFN.split('.zip')[0] + '.ge5'
@@ -1302,6 +1342,9 @@ def main():
 
         if state.p4 != '0':
             final_params['p4'] = state.p4
+
+        if state.mask_file:
+            final_params['MaskFile'] = state.mask_file
 
         with open(psName, 'w') as pf:
             for key, value in final_params.items():
