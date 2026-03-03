@@ -242,7 +242,7 @@ struct my_profile_func_data {
   double *PeakShape;
 };
 
-// Height-normalized Pseudo-Voigt singlet objective with shared FWHM.
+// Height-normalized Pseudo-Voigt singlet objective with analytical gradients.
 // Parameters: x[0]=Rcen, x[1]=Mu, x[2]=Gamma(FWHM), x[3]=Imax, x[4]=BG
 // L(x) = 1 / (1 + 4*(x/Gamma)^2)         [peaks at 1]
 // G(x) = exp(-4*ln2*(x/Gamma)^2)          [peaks at 1]
@@ -256,21 +256,42 @@ static double problem_function_profile(unsigned n, const double *x,
   double *PeakShape = &(f_data->PeakShape[0]);
   double Rcen = x[0], Mu = x[1], Gamma = x[2], Imax = x[3], BG = x[4];
   double C0 = 4.0 * log(2.0);
-  double invGamma2 = 1.0 / (Gamma * Gamma);
+  double Gamma2 = Gamma * Gamma, Gamma3 = Gamma2 * Gamma;
+  double invGamma2 = 1.0 / Gamma2;
   double TotalDifferenceIntensity = 0;
+
+  if (grad)
+    memset(grad, 0, n * sizeof(double));
+
   for (int i = 0; i < NrPtsForFit; i++) {
     double dr = Rs[i] - Rcen;
     double dr2 = dr * dr;
-    double L = 1.0 / (1.0 + 4.0 * dr2 * invGamma2);
+    double denom = 1.0 + 4.0 * dr2 * invGamma2;
+    double L = 1.0 / denom;
     double G = exp(-C0 * dr2 * invGamma2);
     double CalcIntensity = BG + Imax * (Mu * L + (1.0 - Mu) * G);
     double diff = CalcIntensity - PeakShape[i];
     TotalDifferenceIntensity += diff * diff;
+
+    if (grad) {
+      double common = 2.0 * diff;
+      // dI/dRcen: dr = R - Rcen, d(dr)/dRcen = -1
+      double dLdc = 8.0 * dr / (Gamma2 * denom * denom);
+      double dGdc = G * 2.0 * C0 * dr * invGamma2;
+      grad[0] += common * Imax * (Mu * dLdc + (1.0 - Mu) * dGdc);
+      // dI/dMu
+      grad[1] += common * Imax * (L - G);
+      // dI/dGamma
+      double dLdG = 8.0 * dr2 / (Gamma3 * denom * denom);
+      double dGdGamma = G * 2.0 * C0 * dr2 / Gamma3;
+      grad[2] += common * Imax * (Mu * dLdG + (1.0 - Mu) * dGdGamma);
+      // dI/dImax
+      grad[3] += common * (Mu * L + (1.0 - Mu) * G);
+      // dI/dBG
+      grad[4] += common;
+    }
   }
-#pragma omp critical
-  {
-    NrCallsProfiler++;
-  }
+  __atomic_add_fetch(&NrCallsProfiler, 1, __ATOMIC_RELAXED);
 #ifdef PRINTOPT
   printf("Peak profiler intensity difference: %f\n", TotalDifferenceIntensity);
 #endif
@@ -333,7 +354,14 @@ void FitPeakShape(int NrPtsForFit, double Rs[NrPtsForFit],
   config.xtol_rel = 1e-5;
 
   double minf, MeanDiff;
-  run_nlopt_optimization(NLOPT_LN_NELDERMEAD, &config);
+  double x_init[5];
+  memcpy(x_init, x, n * sizeof(double));
+  int rc = run_nlopt_optimization(NLOPT_LD_LBFGS, &config);
+  if (rc < 0) {
+    // L-BFGS failed — restore initial guesses and retry with Nelder-Mead
+    memcpy(x, x_init, n * sizeof(double));
+    run_nlopt_optimization(NLOPT_LN_NELDERMEAD, &config);
+  }
   minf = config.min_function_val;
   MeanDiff = sqrt(minf) / (NrPtsForFit);
   *Rfit = x[0];
@@ -345,7 +373,7 @@ void FitPeakShape(int NrPtsForFit, double Rs[NrPtsForFit],
     *fitSNR = 1.0;
 }
 
-// Height-normalized Pseudo-Voigt doublet objective with shared FWHM.
+// Height-normalized Pseudo-Voigt doublet objective with analytical gradients.
 // Two peaks sharing Mu and BG, each with independent Gamma and Imax.
 // x[0]=Rcen1, x[1]=Rcen2, x[2]=Mu
 // x[3]=Gamma1, x[4]=Imax1
@@ -364,27 +392,60 @@ static double problem_function_doublet_profile(unsigned n, const double *x,
   double Gamma2 = x[5], Imax2 = x[6];
   double BG = x[7];
   double C0 = 4.0 * log(2.0);
-  double invGamma1_2 = 1.0 / (Gamma1 * Gamma1);
-  double invGamma2_2 = 1.0 / (Gamma2 * Gamma2);
+  double G1_2 = Gamma1 * Gamma1, G1_3 = G1_2 * Gamma1;
+  double G2_2 = Gamma2 * Gamma2, G2_3 = G2_2 * Gamma2;
+  double invG1_2 = 1.0 / G1_2;
+  double invG2_2 = 1.0 / G2_2;
   double TotalDiff = 0;
+
+  if (grad)
+    memset(grad, 0, n * sizeof(double));
+
   for (int i = 0; i < NrPtsForFit; i++) {
     double dr1 = Rs[i] - Rcen1;
     double dr2 = Rs[i] - Rcen2;
     double dr1_2 = dr1 * dr1;
     double dr2_2 = dr2 * dr2;
-    double L1 = 1.0 / (1.0 + 4.0 * dr1_2 * invGamma1_2);
-    double G1 = exp(-C0 * dr1_2 * invGamma1_2);
-    double L2 = 1.0 / (1.0 + 4.0 * dr2_2 * invGamma2_2);
-    double G2 = exp(-C0 * dr2_2 * invGamma2_2);
-    double CalcIntensity = BG + Imax1 * (Mu * L1 + (1 - Mu) * G1) +
-                           Imax2 * (Mu * L2 + (1 - Mu) * G2);
+    double den1 = 1.0 + 4.0 * dr1_2 * invG1_2;
+    double den2 = 1.0 + 4.0 * dr2_2 * invG2_2;
+    double L1 = 1.0 / den1;
+    double Gau1 = exp(-C0 * dr1_2 * invG1_2);
+    double L2 = 1.0 / den2;
+    double Gau2 = exp(-C0 * dr2_2 * invG2_2);
+    double CalcIntensity = BG + Imax1 * (Mu * L1 + (1 - Mu) * Gau1) +
+                           Imax2 * (Mu * L2 + (1 - Mu) * Gau2);
     double diff = CalcIntensity - PeakShape[i];
     TotalDiff += diff * diff;
+
+    if (grad) {
+      double common = 2.0 * diff;
+      // Peak 1 gradients
+      double dL1dc = 8.0 * dr1 / (G1_2 * den1 * den1);
+      double dG1dc = Gau1 * 2.0 * C0 * dr1 * invG1_2;
+      grad[0] +=
+          common * Imax1 * (Mu * dL1dc + (1.0 - Mu) * dG1dc); // dI/dRcen1
+      double dL1dG = 8.0 * dr1_2 / (G1_3 * den1 * den1);
+      double dG1dG = Gau1 * 2.0 * C0 * dr1_2 / G1_3;
+      grad[3] +=
+          common * Imax1 * (Mu * dL1dG + (1.0 - Mu) * dG1dG); // dI/dGamma1
+      grad[4] += common * (Mu * L1 + (1.0 - Mu) * Gau1);      // dI/dImax1
+      // Peak 2 gradients
+      double dL2dc = 8.0 * dr2 / (G2_2 * den2 * den2);
+      double dG2dc = Gau2 * 2.0 * C0 * dr2 * invG2_2;
+      grad[1] +=
+          common * Imax2 * (Mu * dL2dc + (1.0 - Mu) * dG2dc); // dI/dRcen2
+      double dL2dG = 8.0 * dr2_2 / (G2_3 * den2 * den2);
+      double dG2dG = Gau2 * 2.0 * C0 * dr2_2 / G2_3;
+      grad[5] +=
+          common * Imax2 * (Mu * dL2dG + (1.0 - Mu) * dG2dG); // dI/dGamma2
+      grad[6] += common * (Mu * L2 + (1.0 - Mu) * Gau2);      // dI/dImax2
+      // Shared: dI/dMu (contributions from both peaks)
+      grad[2] += common * (Imax1 * (L1 - Gau1) + Imax2 * (L2 - Gau2));
+      // dI/dBG
+      grad[7] += common;
+    }
   }
-#pragma omp critical
-  {
-    NrCallsProfiler++;
-  }
+  __atomic_add_fetch(&NrCallsProfiler, 1, __ATOMIC_RELAXED);
   return TotalDiff;
 }
 
@@ -458,7 +519,14 @@ void FitDoubletPeakShape(int NrPtsForFit, double *Rs, double *PeakShape,
   config.ftol_rel = 1e-5;
   config.xtol_rel = 1e-5;
 
-  run_nlopt_optimization(NLOPT_LN_NELDERMEAD, &config);
+  double x_init[8];
+  memcpy(x_init, x, n * sizeof(double));
+  int rc = run_nlopt_optimization(NLOPT_LD_LBFGS, &config);
+  if (rc < 0) {
+    // L-BFGS failed — restore initial guesses and retry with Nelder-Mead
+    memcpy(x, x_init, n * sizeof(double));
+    run_nlopt_optimization(NLOPT_LN_NELDERMEAD, &config);
+  }
   *Rfit1 = x[0];
   *Rfit2 = x[1];
   // SNR for each peak: Imax / rms_residual
@@ -1406,6 +1474,7 @@ static inline void MakeSquare(int NrPixels, int NrPixelsY, int NrPixelsZ,
 // This section is being removed.
 
 int main(int argc, char *argv[]) {
+  setvbuf(stdout, NULL, _IOLBF, 0); // line-buffer stdout for piped output
   if (argc != 3) {
     printf("Usage: CalibrantOMP ps.txt nCPUs\n");
     return 1;
