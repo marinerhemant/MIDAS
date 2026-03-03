@@ -3,16 +3,22 @@
 // See LICENSE file.
 //
 
-// Compile using:
-// gcc -o GetHKLList GetHKLList.c sgclib.c sgfind.c sghkl.c sgsi.c sgio.c -ldl
-// -lm -O3
+// GetHKLList.c
+//
+// Generates HKL list with ring radii from crystallographic parameters.
+// Supports both parameter-file mode and command-line argument mode.
+//
+// Usage:
+//   GetHKLList <ParamFile> [--stdout]
+//   GetHKLList --sg SG --lp a b c al be ga --wl WL --lsd LSD --maxR MAXR
+//   [--stdout]
 
+#include "sginfo.h"
 #include <ctype.h>
 #include <math.h>
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
-#include "sginfo.h"
 
 static inline double **allocMatrix(int nrows, int ncols) {
   double **arr;
@@ -140,77 +146,138 @@ static inline void SortFunc(int nRows, int nCols, double **TotInfo,
 }
 
 int main(int argc, char *argv[]) {
-  if (argc != 2) {
-    printf("Give a parameter file.\n");
+  int SpaceGrp = 0;
+  double LatC[6] = {0}, wl = 0, Lsd = 0, MaxRingRad = 0;
+  int useStdout = 0;
+  int cliMode = 0;
+
+  // --- CLI mode: parse --sg, --lp, --wl, --lsd, --maxR, --stdout ---
+  if (argc > 2) {
+    for (int a = 1; a < argc; a++) {
+      if (strcmp(argv[a], "--sg") == 0 && a + 1 < argc) {
+        SpaceGrp = atoi(argv[++a]);
+        cliMode = 1;
+      } else if (strcmp(argv[a], "--lp") == 0 && a + 6 < argc) {
+        LatC[0] = atof(argv[++a]);
+        LatC[1] = atof(argv[++a]);
+        LatC[2] = atof(argv[++a]);
+        LatC[3] = atof(argv[++a]);
+        LatC[4] = atof(argv[++a]);
+        LatC[5] = atof(argv[++a]);
+        cliMode = 1;
+      } else if (strcmp(argv[a], "--wl") == 0 && a + 1 < argc) {
+        wl = atof(argv[++a]);
+        cliMode = 1;
+      } else if (strcmp(argv[a], "--lsd") == 0 && a + 1 < argc) {
+        Lsd = atof(argv[++a]);
+        cliMode = 1;
+      } else if (strcmp(argv[a], "--maxR") == 0 && a + 1 < argc) {
+        MaxRingRad = atof(argv[++a]);
+        cliMode = 1;
+      } else if (strcmp(argv[a], "--stdout") == 0) {
+        useStdout = 1;
+      }
+    }
+  }
+
+  // --- Parameter file mode ---
+  if (!cliMode) {
+    if (argc < 2) {
+      printf("Usage: %s <ParamFile> [--stdout]\n", argv[0]);
+      printf("   or: %s --sg SG --lp a b c al be ga --wl WL --lsd LSD --maxR "
+             "MAXR [--stdout]\n",
+             argv[0]);
+      exit(1);
+    }
+    char *ParamFN = argv[1];
+    if (ParamFN[0] == '-') {
+      printf("Error: unrecognized arguments. Use --sg, --lp, --wl, --lsd, "
+             "--maxR.\n");
+      exit(1);
+    }
+    FILE *fileParam = fopen(ParamFN, "r");
+    if (!fileParam) {
+      printf("Error: cannot open %s\n", ParamFN);
+      exit(1);
+    }
+    char aline[1000], dummy[1000];
+    int LowNr;
+    const char *str;
+    while (fgets(aline, 1000, fileParam) != NULL) {
+      str = "SpaceGroup ";
+      LowNr = strncmp(aline, str, strlen(str));
+      if (LowNr == 0) {
+        sscanf(aline, "%s %d", dummy, &SpaceGrp);
+        continue;
+      }
+      str = "LatticeConstant ";
+      LowNr = strncmp(aline, str, strlen(str));
+      if (LowNr == 0) {
+        sscanf(aline, "%s %lf %lf %lf %lf %lf %lf", dummy, &LatC[0], &LatC[1],
+               &LatC[2], &LatC[3], &LatC[4], &LatC[5]);
+        continue;
+      }
+      str = "LatticeParameter ";
+      LowNr = strncmp(aline, str, strlen(str));
+      if (LowNr == 0) {
+        sscanf(aline, "%s %lf %lf %lf %lf %lf %lf", dummy, &LatC[0], &LatC[1],
+               &LatC[2], &LatC[3], &LatC[4], &LatC[5]);
+        continue;
+      }
+      str = "Wavelength ";
+      LowNr = strncmp(aline, str, strlen(str));
+      if (LowNr == 0) {
+        sscanf(aline, "%s %lf", dummy, &wl);
+        continue;
+      }
+      str = "Lsd ";
+      LowNr = strncmp(aline, str, strlen(str));
+      if (LowNr == 0) {
+        sscanf(aline, "%s %lf", dummy, &Lsd);
+        continue;
+      }
+      str = "LsdMean ";
+      LowNr = strncmp(aline, str, strlen(str));
+      if (LowNr == 0) {
+        sscanf(aline, "%s %lf", dummy, &Lsd);
+        continue;
+      }
+      str = "DetParams ";
+      LowNr = strncmp(aline, str, strlen(str));
+      if (LowNr == 0) {
+        sscanf(aline, "%s %lf", dummy, &Lsd);
+        continue;
+      }
+      str = "MaxRingRad ";
+      LowNr = strncmp(aline, str, strlen(str));
+      if (LowNr == 0) {
+        sscanf(aline, "%s %lf", dummy, &MaxRingRad);
+        continue;
+      }
+      str = "RhoD ";
+      LowNr = strncmp(aline, str, strlen(str));
+      if (LowNr == 0) {
+        sscanf(aline, "%s %lf", dummy, &MaxRingRad);
+        continue;
+      }
+    }
+    fclose(fileParam);
+    for (int a = 2; a < argc; a++) {
+      if (strcmp(argv[a], "--stdout") == 0)
+        useStdout = 1;
+    }
+  }
+
+  // Validate
+  if (SpaceGrp == 0 || wl <= 0 || Lsd <= 0 || MaxRingRad <= 0 || LatC[0] <= 0) {
+    printf("Error: Missing required parameters.\n");
+    printf("  SpaceGroup=%d, Wavelength=%.6f, Lsd=%.1f, MaxRingRad=%.1f\n",
+           SpaceGrp, wl, Lsd, MaxRingRad);
+    printf("  LatticeParams=%.4f %.4f %.4f %.4f %.4f %.4f\n", LatC[0], LatC[1],
+           LatC[2], LatC[3], LatC[4], LatC[5]);
     exit(1);
   }
-  int SpaceGrp;
-  double LatC[6], wl, Lsd, MaxRingRad;
-  char *ParamFN;
-  FILE *fileParam;
-  ParamFN = argv[1];
-  char aline[1000];
-  fileParam = fopen(ParamFN, "r");
-  char *str, dummy[1000];
-  int LowNr;
-  while (fgets(aline, 1000, fileParam) != NULL) {
-    str = "SpaceGroup ";
-    LowNr = strncmp(aline, str, strlen(str));
-    if (LowNr == 0) {
-      sscanf(aline, "%s %d", dummy, &SpaceGrp);
-      continue;
-    }
-    str = "LatticeConstant ";
-    LowNr = strncmp(aline, str, strlen(str));
-    if (LowNr == 0) {
-      sscanf(aline, "%s %lf %lf %lf %lf %lf %lf", dummy, &LatC[0], &LatC[1],
-             &LatC[2], &LatC[3], &LatC[4], &LatC[5]);
-      continue;
-    }
-    str = "LatticeParameter ";
-    LowNr = strncmp(aline, str, strlen(str));
-    if (LowNr == 0) {
-      sscanf(aline, "%s %lf %lf %lf %lf %lf %lf", dummy, &LatC[0], &LatC[1],
-             &LatC[2], &LatC[3], &LatC[4], &LatC[5]);
-      continue;
-    }
-    str = "Wavelength ";
-    LowNr = strncmp(aline, str, strlen(str));
-    if (LowNr == 0) {
-      sscanf(aline, "%s %lf", dummy, &wl);
-      continue;
-    }
-    str = "Lsd ";
-    LowNr = strncmp(aline, str, strlen(str));
-    if (LowNr == 0) {
-      sscanf(aline, "%s %lf", dummy, &Lsd);
-      continue;
-    }
-    str = "LsdMean ";
-    LowNr = strncmp(aline, str, strlen(str));
-    if (LowNr == 0) {
-      sscanf(aline, "%s %lf", dummy, &Lsd);
-      continue;
-    }
-    str = "DetParams ";
-    LowNr = strncmp(aline, str, strlen(str));
-    if (LowNr == 0) {
-      sscanf(aline, "%s %lf", dummy, &Lsd);
-      continue;
-    }
-    str = "MaxRingRad ";
-    LowNr = strncmp(aline, str, strlen(str));
-    if (LowNr == 0) {
-      sscanf(aline, "%s %lf", dummy, &MaxRingRad);
-      continue;
-    }
-    str = "RhoD ";
-    LowNr = strncmp(aline, str, strlen(str));
-    if (LowNr == 0) {
-      sscanf(aline, "%s %lf", dummy, &MaxRingRad);
-      continue;
-    }
-  }
+
   printf("Read Parameters:\n\tWavelength: %lf\n\tDistance: %lf\n\tMaxRingRad: "
          "%lf\n\tSpaceGroup: %d\n",
          wl, Lsd, MaxRingRad, SpaceGrp);
@@ -229,15 +296,13 @@ int main(int argc, char *argv[]) {
   printf("Generating hkl's\n");
   if ((SgInfo = (T_SgInfo *)malloc(sizeof(T_SgInfo))) == NULL) {
     printf("Unable to allocate SgInfo\n");
-    printf("Aborting\n");
     exit(1);
   }
   SgInfo->GenOption = 0;
   SgInfo->MaxList = 192;
   if ((SgInfo->ListSeitzMx =
            (T_RTMx *)malloc(SgInfo->MaxList * sizeof(T_RTMx))) == NULL) {
-    printf("Unable to allocate (SgInfo.ListSeitzMx\n");
-    printf("Aborting\n");
+    printf("Unable to allocate SgInfo.ListSeitzMx\n");
     exit(1);
   }
   SgInfo->ListRotMxInfo = NULL;
@@ -246,7 +311,6 @@ int main(int argc, char *argv[]) {
   tsgn = FindTabSgNameEntry(SgName, F_Convention);
   if (tsgn == NULL) {
     printf("Error: Unknown Space Group Symbol\n");
-    printf("Aborting\n");
     exit(1);
   }
   sprintf(SgName, "%s", tsgn->HallSymbol);
@@ -256,16 +320,13 @@ int main(int argc, char *argv[]) {
   {
     int pos_hsym;
     pos_hsym = ParseHallSymbol(SgName, SgInfo);
-
     if (SgError != NULL) {
       printf("Error: Unknown Space Group Symbol\n");
-      printf("Aborting\n");
       exit(1);
     }
   }
   if (CompleteSgInfo(SgInfo) != 0) {
     printf("Error in Complete\n");
-    printf("Aborting\n");
     exit(1);
   }
   if (SgInfo->LatticeInfo->Code != 'P') {
@@ -287,9 +348,8 @@ int main(int argc, char *argv[]) {
   for (h = Minh; h <= Maxh; h++) {
     for (k = Mink; k <= Maxk; k++) {
       for (l = Minl; l <= Maxl; l++) {
-        if (h == 0 && k == 0 && l == 0) {
+        if (h == 0 && k == 0 && l == 0)
           continue;
-        }
         iList = IsSysAbsent_hkl(SgInfo, h, k, l, &restriction);
         if (SgError != NULL) {
           printf("IsSysAbsent_hkl failed.\n");
@@ -297,14 +357,12 @@ int main(int argc, char *argv[]) {
         }
         if (iList == 0) {
           if ((iList = IsSuppressed_hkl(SgInfo, Minh, Mink, Minl, Maxk, Maxl, h,
-                                        k, l)) !=
-              0) { /* Suppressed reflections */
+                                        k, l)) != 0) {
           } else {
             T_Eq_hkl Eq_hkl;
             M = BuildEq_hkl(SgInfo, &Eq_hkl, h, k, l);
-            if (SgError != NULL) {
+            if (SgError != NULL)
               return 0;
-            }
             for (i = 0; i < Eq_hkl.N; i++) {
               for (j = -1; j <= 1; j += 2) {
                 Families[nrFilled][0] = Eq_hkl.h[i] * j;
@@ -325,9 +383,8 @@ int main(int argc, char *argv[]) {
     AreDuplicates[i] = 0;
   int nrPlanes = 0;
   for (i = 0; i < nrFilled - 1; i++) {
-    if (AreDuplicates[i] == 1) {
+    if (AreDuplicates[i] == 1)
       continue;
-    }
     for (j = i + 1; j < nrFilled; j++) {
       if (Families[i][0] == Families[j][0] &&
           Families[i][1] == Families[j][1] &&
@@ -369,14 +426,26 @@ int main(int argc, char *argv[]) {
     hkls[i][9] = hkls[i][8] * 2;
     hkls[i][10] = Lsd * tand(hkls[i][9]);
   }
-  char *fn = "hkls.csv";
+
+  // --- Output ---
   FILE *fp;
-  fp = fopen(fn, "w");
+  if (useStdout) {
+    fp = stdout;
+  } else {
+    char *fn = "hkls.csv";
+    fp = fopen(fn, "w");
+    if (!fp) {
+      printf("Error: cannot open %s for writing\n", fn);
+      exit(1);
+    }
+  }
   fprintf(fp, "h k l D-spacing RingNr g1 g2 g3 Theta 2Theta Radius\n");
   for (i = 0; i < nrPlanes; i++) {
     fprintf(fp, "%.0f %.0f %.0f %f %.0f %f %f %f %f %f %f\n", hkls[i][0],
             hkls[i][1], hkls[i][2], hkls[i][3], hkls[i][4], hkls[i][5],
             hkls[i][6], hkls[i][7], hkls[i][8], hkls[i][9], hkls[i][10]);
   }
+  if (!useStdout)
+    fclose(fp);
   exit(0);
 }
