@@ -10,6 +10,7 @@
 // TODO: Add option to give QbinSize instead of RbinSize, look at 0,90,180,270
 
 #include "FileReader.h"
+#include "MapHeader.h"
 #include "ZarrReader.h"
 #include <blosc2.h>
 #include <ctype.h>
@@ -1094,6 +1095,13 @@ int main(int argc, char *argv[]) {
     }
   }
 
+  // Compute parameter hash header
+  struct MapHeader map_hdr;
+  map_header_compute(&map_hdr, Lsd, yCen, zCen, pxY, pxZ, tx, ty, tz, p0, p1,
+                     p2, p3, p4, RhoD, RBinSize, EtaBinSize, RMin, RMax, EtaMin,
+                     EtaMax, NrPixelsY, NrPixelsZ);
+  map_header_print("Map.bin", &map_hdr);
+
   // Write out
   char mapfn[4096];
   sprintf(mapfn, "%s/Map.bin", resultFolder);
@@ -1107,6 +1115,8 @@ int main(int argc, char *argv[]) {
             mapfn, nmapfn);
     exit(EXIT_FAILURE);
   }
+  map_header_write(mapfile, &map_hdr);
+  map_header_write(nmapfile, &map_hdr);
   fwrite(pxListStore, TotNrOfBins * sizeof(*pxListStore), 1, mapfile);
   fwrite(nPxListStore, LengthNPxList * 2 * sizeof(*nPxListStore), 1, nmapfile);
 

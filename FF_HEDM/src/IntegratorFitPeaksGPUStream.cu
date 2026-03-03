@@ -60,10 +60,11 @@
 #include <time.h>
 #include <unistd.h>
 // #include <blosc2.h>     // Include if blosc compression is used
-#include "PeakFit.h"  // Shared peak fitting module
-#include <nlopt.h>    // For non-linear optimization
-#include <omp.h>      // <<< ADD THIS FOR OpenMP
-#define NUM_STREAMS 4 // Number of concurrent streams for GPU saturation
+#include "MapHeader.h" // Map.bin header validation
+#include "PeakFit.h"   // Shared peak fitting module
+#include <nlopt.h>     // For non-linear optimization
+#include <omp.h>       // <<< ADD THIS FOR OpenMP
+#define NUM_STREAMS 4  // Number of concurrent streams for GPU saturation
 
 // --- Constants ---
 #define SERVER_IP "127.0.0.1"
@@ -741,21 +742,42 @@ int ReadBins() {
   fd_m = open(f_m, O_RDONLY);
   check(fd_m < 0, "open %s fail: %s", f_m, strerror(errno));
   check(fstat(fd_m, &s_m) < 0, "stat %s fail: %s", f_m, strerror(errno));
-  szPxList = s_m.st_size;
+
+  /* Detect header */
+  struct MapHeader map_hdr;
+  int has_header = map_header_read_fd(fd_m, &map_hdr);
+  size_t offset_m = 0;
+  if (has_header) {
+    offset_m = MAP_HEADER_SIZE;
+    map_header_print("Map.bin", &map_hdr);
+  } else {
+    printf("WARNING: Map.bin has no parameter header (legacy format).\n");
+  }
+
+  szPxList = s_m.st_size - offset_m;
   check(szPxList == 0, "%s empty", f_m);
-  printf("Map '%s': %lld bytes\n", f_m, (long long)szPxList);
-  pxList = (struct data *)mmap(NULL, szPxList, PROT_READ, MAP_SHARED, fd_m, 0);
-  check(pxList == MAP_FAILED, "mmap %s fail: %s", f_m, strerror(errno));
+  printf("Map '%s': %lld bytes (data)\n", f_m, (long long)szPxList);
+  /* mmap entire file, adjust pointer past header */
+  void *map_base = mmap(NULL, s_m.st_size, PROT_READ, MAP_SHARED, fd_m, 0);
+  check(map_base == MAP_FAILED, "mmap %s fail: %s", f_m, strerror(errno));
+  pxList = (struct data *)((char *)map_base + offset_m);
   close(fd_m);
 
   fd_n = open(f_n, O_RDONLY);
   check(fd_n < 0, "open %s fail: %s", f_n, strerror(errno));
   check(fstat(fd_n, &s_n) < 0, "stat %s fail: %s", f_n, strerror(errno));
-  szNPxList = s_n.st_size;
+
+  /* Detect header in nMap.bin */
+  struct MapHeader nmap_hdr;
+  int has_header_n = map_header_read_fd(fd_n, &nmap_hdr);
+  size_t offset_n = has_header_n ? MAP_HEADER_SIZE : 0;
+
+  szNPxList = s_n.st_size - offset_n;
   check(szNPxList == 0, "%s empty", f_n);
-  printf("nMap '%s': %lld bytes\n", f_n, (long long)szNPxList);
-  nPxList = (int *)mmap(NULL, szNPxList, PROT_READ, MAP_SHARED, fd_n, 0);
-  check(nPxList == MAP_FAILED, "mmap %s fail: %s", f_n, strerror(errno));
+  printf("nMap '%s': %lld bytes (data)\n", f_n, (long long)szNPxList);
+  void *nmap_base = mmap(NULL, s_n.st_size, PROT_READ, MAP_SHARED, fd_n, 0);
+  check(nmap_base == MAP_FAILED, "mmap %s fail: %s", f_n, strerror(errno));
+  nPxList = (int *)((char *)nmap_base + offset_n);
   close(fd_n);
 
   printf("Mapped pixel data files.\n");

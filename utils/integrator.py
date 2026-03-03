@@ -1129,6 +1129,10 @@ class MidasIntegrator:
             # Run detector mapper if requested or if map files don't exist (but skip if files exist)
             if self.args.mapDetector or not map_files_exist:
                 if map_files_exist:
+                    # Validate parameter headers before skipping
+                    from map_header import check_map_header
+                    check_map_header(map_file, "Map.bin")
+                    check_map_header(nmap_file, "nMap.bin")
                     logger.info("Map.bin and nMap.bin already exist in result folder. Skipping detector mapping.")
                 elif not self.args.mapDetector:
                     logger.warning("Map.bin and nMap.bin do not exist in result folder but are required. Running detector mapper despite mapDetector=0.")

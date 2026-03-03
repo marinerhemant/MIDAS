@@ -9,6 +9,7 @@
 // Dt: 2017/07/26
 //
 
+#include "MapHeader.h"
 #include "PeakFit.h"
 #include "ZarrReader.h"
 #include <assert.h>
@@ -98,12 +99,30 @@ int ReadBins(char *resultFolder) {
   status = fstat(fd, &s);
   check(status < 0, "stat %s failed: %s", file_name, strerror(errno));
   size = s.st_size;
+
+  /* Detect header */
+  struct MapHeader map_hdr;
+  int has_header = map_header_read_fd(fd, &map_hdr);
+  size_t data_offset = 0;
+  if (has_header) {
+    data_offset = MAP_HEADER_SIZE;
+    map_header_print("Map.bin", &map_hdr);
+  } else {
+    printf("WARNING: Map.bin has no parameter header (legacy format).\n");
+    printf("  Consider regenerating with latest DetectorMapperZarr.\n");
+  }
+  size_t data_size = size - data_offset;
+
   int sizelen = 2 * (int)sizeof(int) + (int)sizeof(double);
   printf("Map size in bytes: %lld, each element size: %d, total elements: "
          "%lld. \n",
-         (long long int)size, sizelen, (long long int)(size / sizelen));
-  pxList = mmap(0, size, PROT_READ, MAP_SHARED, fd, 0);
-  check(pxList == MAP_FAILED, "mmap %s failed: %s", file_name, strerror(errno));
+         (long long int)data_size, sizelen,
+         (long long int)(data_size / sizelen));
+  /* mmap entire file, then adjust pointer past header */
+  void *map_base = mmap(0, size, PROT_READ, MAP_SHARED, fd, 0);
+  check(map_base == MAP_FAILED, "mmap %s failed: %s", file_name,
+        strerror(errno));
+  pxList = (struct data *)((char *)map_base + data_offset);
 
   int fd2;
   struct stat s2;
@@ -114,15 +133,23 @@ int ReadBins(char *resultFolder) {
   check(fd2 < 0, "open %s failed: %s", file_name2, strerror(errno));
   status2 = fstat(fd2, &s2);
   check(status2 < 0, "stat %s failed: %s", file_name2, strerror(errno));
-  size_t size2 = s2.st_size;
-  nPxList = mmap(0, size2, PROT_READ, MAP_SHARED, fd2, 0);
+  size_t size2_total = s2.st_size;
+
+  /* Detect header in nMap.bin too */
+  struct MapHeader nmap_hdr;
+  int has_header2 = map_header_read_fd(fd2, &nmap_hdr);
+  size_t data_offset2 = has_header2 ? MAP_HEADER_SIZE : 0;
+  size_t data_size2 = size2_total - data_offset2;
+
+  void *nmap_base = mmap(0, size2_total, PROT_READ, MAP_SHARED, fd2, 0);
+  check(nmap_base == MAP_FAILED, "mmap %s failed: %s", file_name2,
+        strerror(errno));
+  nPxList = (int *)((char *)nmap_base + data_offset2);
   printf("nMap size in bytes: %lld, each element size: %d, total elements: "
          "%lld. \n",
-         (long long int)size2, 2 * (int)sizeof(int),
-         2 * (long long int)(size2 / sizeof(int)));
+         (long long int)data_size2, 2 * (int)sizeof(int),
+         2 * (long long int)(data_size2 / sizeof(int)));
   fflush(stdout);
-  check(nPxList == MAP_FAILED, "mmap %s failed: %s", file_name,
-        strerror(errno));
   return 1;
 }
 

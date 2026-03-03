@@ -313,6 +313,10 @@ def run_cpu_pipeline(zip_file: Path, peak_params: Path,
 
     if map_bin.exists() and nmap_bin.exists():
         print("  DetectorMapperZarr: skipped (Map.bin + nMap.bin exist)")
+        # Validate parameter headers
+        from map_header import check_map_header
+        check_map_header(map_bin, "Map.bin")
+        check_map_header(nmap_bin, "nMap.bin")
     else:
         mapper = MIDAS_BIN / "DetectorMapperZarr"
         print("  Running DetectorMapperZarr...")

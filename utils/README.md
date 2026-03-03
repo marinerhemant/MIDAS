@@ -13,6 +13,8 @@ This directory contains Python scripts and tools used across the MIDAS analysis 
 | `integrator_batch_process.py` | Batch-mode radial integration for processing large datasets non-interactively. |
 | `integrator_server.py` | Long-running integration server for real-time data reduction during beamline operation. |
 | `integrator_stream_process_h5.py` | Streaming radial integration from HDF5 files as they are written during acquisition. |
+| `phase_id.py` | **Multi-phase identification.** Identifies crystallographic phases from diffraction images using ring-matching, peak fitting, and lattice parameter refinement. Supports single/multi-file, `-startNr`/`-endNr`, and `-dataFolder` modes. See [FF_Phase_Identification](../manuals/FF_Phase_Identification.md). |
+| `map_header.py` | **Map.bin header reader.** Python counterpart to `MapHeader.h` — reads 64-byte parameter-hash headers from `Map.bin`/`nMap.bin` to detect stale mapping files. Used by orchestrators. |
 | `live_viewer.py` | **Real-time dashboard.** PyQtGraph-based live viewer that tails `lineout.bin` and `fit.bin` from the GPU integrator, showing 1D lineouts, heatmap waterfall, and peak evolution plots. See [FF_Radial_Integration](../manuals/FF_Radial_Integration.md) §6.3. |
 | `integrate_and_refine.py` | Combined radial integration + GSAS-II peakfit refinement pipeline. |
 | `gsas_ii_refine.py` | **GSAS-II integration.** Imports caked 1D profiles into GSAS-II for powder diffraction refinement. |
@@ -96,6 +98,8 @@ This directory contains Python scripts and tools used across the MIDAS analysis 
 | `test_ff_hedm.py` | **FF-HEDM benchmark test.** End-to-end test using simulated data to validate the full FF-HEDM pipeline (simulation → indexing → regression comparison). Includes automatic cleanup of generated files. |
 | `test_nf_hedm.py` | **NF-HEDM benchmark test.** End-to-end test: runs `simulateNF`, reconstructs via `nf_MIDAS.py`, and compares orientations against a reference `.mic` file. |
 | `test_ff_calibration.py` | **FF-HEDM calibration benchmark.** Runs `CalibrantPanelShiftsOMP` on example CeO2 data and validates mean strain ≤ threshold. See [FF_Calibration manual §9](../manuals/FF_Calibration.md). |
+| `test_integrator_peaks.py` | **Integrator peak-fitting benchmark.** Runs `DetectorMapperZarr` + `IntegratorZarrOMP` with peak fitting on CeO2 calibration data and validates peak positions. See [FF_Integrator_Benchmark](../manuals/FF_Integrator_Benchmark.md). |
+| `test_phase_id.py` | **Phase identification benchmark.** Runs the full `phase_id.py` pipeline on CeO2 calibration data, verifies CeO2 detection (≥80%), Au rejection, and lattice parameter accuracy (<500 ppm). See [FF_Phase_Identification](../manuals/FF_Phase_Identification.md). |
 | `test_live_viewer.py` | **Live viewer test.** Generates synthetic `lineout.bin` and `fit.bin` streams for testing `live_viewer.py` without a running GPU process. |
 
 ## Scanning / Point-Focus HEDM

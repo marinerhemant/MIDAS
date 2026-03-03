@@ -225,6 +225,10 @@ def check_and_create_mapping_files(param_file, midas_env, output_dir):
     # Check if mapping files already exist
     if map_file.exists() and nmap_file.exists():
         print(f"Mapping files (Map.bin, nMap.bin) found in {output_dir}.")
+        # Validate parameter headers
+        from map_header import check_map_header
+        check_map_header(map_file, "Map.bin")
+        check_map_header(nmap_file, "nMap.bin")
         return True
     
     # Files don't exist, need to run the mapper
