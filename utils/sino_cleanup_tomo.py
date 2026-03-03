@@ -376,7 +376,7 @@ def reconstruct_midas(sino, thetas, workingdir, filter_nr=2,
     sino_transposed.astype(np.float32).tofile(infn)
     outfnstr = os.path.join(workingdir, 'output')
 
-    # Next power of 2
+    # Next power of 2 (MIDAS_TOMO output dimension)
     xDimNew = 1
     while xDimNew < nScans:
         xDimNew <<= 1
@@ -430,7 +430,7 @@ def reconstruct_midas(sino, thetas, workingdir, filter_nr=2,
     except ImportError:
         tomo_exe = os.path.expanduser('~/opt/MIDAS/TOMO/bin/MIDAS_TOMO')
 
-    subprocess.run([tomo_exe, configFN, '1'], check=True)
+    subprocess.run([tomo_exe, configFN, '1'], check=True, cwd=workingdir)
 
     # Read result
     outfn = (f'{outfnstr}_NrShifts_001'
@@ -442,10 +442,12 @@ def reconstruct_midas(sino, thetas, workingdir, filter_nr=2,
     recon_all = recon_data.reshape((1, nSlices, xDimNew, xDimNew))
     recon_full = recon_all[0, 0, :, :]  # first shift, first slice
 
-    # Cleanup temp files
-    for fn in [outfn, configFN, thetasFN, infn,
-               os.path.join(workingdir, f'fftwf_wisdom_1d_{2 * xDimNew}.txt'),
-               os.path.join(workingdir, f'fftwf_wisdom_2d_{2 * xDimNew}.txt')]:
+    # Cleanup temp files (wisdom files may be in workingdir or cwd)
+    cleanup_files = [outfn, configFN, thetasFN, infn]
+    for wdir in [workingdir, '.']:
+        cleanup_files.append(os.path.join(wdir, f'fftwf_wisdom_1d_{2 * xDimNew}.txt'))
+        cleanup_files.append(os.path.join(wdir, f'fftwf_wisdom_2d_{2 * xDimNew}.txt'))
+    for fn in cleanup_files:
         try:
             os.remove(fn)
         except FileNotFoundError:

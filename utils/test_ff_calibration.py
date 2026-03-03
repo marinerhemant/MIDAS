@@ -114,18 +114,36 @@ def generate_hkls(param_file, work_dir):
 
 
 def run_calibrant(param_file, nCPUs, work_dir):
-    """Run CalibrantPanelShiftsOMP and capture output."""
+    """Run CalibrantPanelShiftsOMP and stream progress live."""
     calib_bin = find_binary()
     cmd = [str(calib_bin), str(param_file), str(nCPUs)]
     print(f"  Running: {' '.join(cmd)}")
-    result = subprocess.run(cmd, cwd=str(work_dir),
-                            capture_output=True, text=True)
-    if result.returncode != 0:
-        print(f"Error: CalibrantPanelShiftsOMP failed (rc={result.returncode}).")
-        print(f"stdout:\n{result.stdout[-2000:]}")
-        print(f"stderr:\n{result.stderr[-1000:]}")
+
+    # Stream output line-by-line so the user sees progress
+    proc = subprocess.Popen(cmd, cwd=str(work_dir),
+                            stdout=subprocess.PIPE, stderr=subprocess.PIPE,
+                            text=True, bufsize=1)
+    output_lines = []
+    # Keywords that indicate progress worth showing live
+    progress_keys = ['Iteration', 'MeanStrain', 'StdStrain', 'microstrain',
+                     'Number of eta bins', 'Out of', 'Doublet detected',
+                     'Number of function calls', 'Lsd ', 'BC ',
+                     'Restoring best', 'Best result']
+    for line in proc.stdout:
+        output_lines.append(line)
+        stripped = line.strip()
+        if any(k in stripped for k in progress_keys):
+            print(f"    ▸ {stripped}")
+    proc.wait()
+    output = ''.join(output_lines)
+
+    if proc.returncode != 0:
+        print(f"Error: CalibrantPanelShiftsOMP failed (rc={proc.returncode}).")
+        print(f"stdout:\n{output[-2000:]}")
+        stderr = proc.stderr.read() if proc.stderr else ""
+        print(f"stderr:\n{stderr[-1000:]}")
         sys.exit(1)
-    return result.stdout
+    return output
 
 
 def parse_results(output):

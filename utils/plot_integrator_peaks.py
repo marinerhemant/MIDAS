@@ -28,20 +28,44 @@ from scipy.optimize import curve_fit
 from scipy.signal import find_peaks
 
 
-def pseudo_voigt(x, amp, mu, sigma, eta, bg):
-    """Pseudo-Voigt peak + constant background.
+def _tch_eta_fwhm(sig, gam):
+    """Thompson-Cox-Hastings: derive total FWHM and mixing eta from sig and gam.
 
-    pV(x) = eta * Lorentzian + (1 - eta) * Gaussian + bg
-    where eta is the mixing parameter (0 = pure Gaussian, 1 = pure Lorentzian).
+    sig : Gaussian FWHM
+    gam : Lorentzian FWHM
+    Returns (FWHM, eta)
     """
-    dx = (x - mu) / sigma
-    gauss = np.exp(-0.5 * dx ** 2)
-    lorentz = 1.0 / (1.0 + dx ** 2)
-    return amp * (eta * lorentz + (1.0 - eta) * gauss) + bg
+    fg = max(sig, 1e-12)
+    fl = max(gam, 1e-12)
+    fg2, fg3, fg4, fg5 = fg**2, fg**3, fg**4, fg**5
+    fl2, fl3, fl4, fl5 = fl**2, fl**3, fl**4, fl**5
+    FWHM = (fg5 + 2.69269*fg4*fl + 2.42843*fg3*fl2 + 4.47163*fg2*fl3
+            + 0.07842*fg*fl4 + fl5) ** 0.2
+    ratio = fl / FWHM
+    eta = np.clip(1.36603*ratio - 0.47719*ratio**2 + 0.11116*ratio**3, 0, 1)
+    return FWHM, eta
 
 
-def fit_peak(tth_arr, intensity, peak_idx, half_window=5):
-    """Fit a pseudo-Voigt to a peak in the 1D intensity profile.
+def pseudo_voigt_tch(x, Imax, center, sig, gam, bg0, bg1, x_lo, x_hi):
+    """GSAS-II style pseudo-Voigt with TCH mixing and Chebyshev background.
+
+    Parameters (fitted): Imax, center, sig (Gaussian FWHM), gam (Lorentzian FWHM),
+                         bg0 (constant), bg1 (linear Chebyshev T1 coefficient).
+    Parameters (fixed):  x_lo, x_hi (window bounds for Chebyshev normalization).
+    """
+    FWHM, eta = _tch_eta_fwhm(sig, gam)
+    sig_g = FWHM / (2.0 * np.sqrt(2.0 * np.log(2.0)))  # Gaussian sigma from FWHM
+    dx = x - center
+    G = np.exp(-0.5 * (dx / max(sig_g, 1e-12))**2)
+    L = 1.0 / (1.0 + 4.0 * (dx / max(FWHM, 1e-12))**2)
+    # Chebyshev background: T0=1, T1=x_norm
+    x_norm = 2.0 * (x - x_lo) / max(x_hi - x_lo, 1e-12) - 1.0
+    bg = bg0 + bg1 * x_norm
+    return Imax * (eta * L + (1.0 - eta) * G) + bg
+
+
+def fit_peak(tth_arr, intensity, peak_idx, half_window=50):
+    """Fit a GSAS-II style pseudo-Voigt (TCH) to a peak.
 
     Parameters
     ----------
@@ -52,12 +76,12 @@ def fit_peak(tth_arr, intensity, peak_idx, half_window=5):
     peak_idx : int
         Index of the detected peak.
     half_window : int
-        Half-width of the fit window in bins.
+        Half-width of the fit window in bins (default: 50).
 
     Returns
     -------
     dict or None
-        {'tth_fit': float, 'amp': float, 'sigma': float, 'eta': float, 'bg': float}
+        {'tth_fit', 'Imax', 'sig', 'gam', 'FWHM', 'eta', 'bg0', 'bg1'}
         or None if fit fails.
     """
     lo = max(0, peak_idx - half_window)
@@ -65,26 +89,37 @@ def fit_peak(tth_arr, intensity, peak_idx, half_window=5):
     x = tth_arr[lo:hi]
     y = intensity[lo:hi]
 
-    if len(x) < 5:
+    if len(x) < 7:
         return None
 
+    x_lo, x_hi = x[0], x[-1]
+    span = x_hi - x_lo
+
     # Initial guesses
-    amp0 = y.max() - y.min()
-    mu0 = tth_arr[peak_idx]
-    sigma0 = (x[-1] - x[0]) / 4.0
-    eta0 = 0.5  # start halfway between Gaussian and Lorentzian
-    bg0 = y.min()
+    Imax0 = y.max() - y.min()
+    center0 = tth_arr[peak_idx]
+    fwhm0 = span / 6.0
+    sig0 = fwhm0   # start with equal Gaussian and Lorentzian contribution
+    gam0 = fwhm0
+    bg0_init = np.median(np.concatenate([y[:5], y[-5:]]))
+    bg1_init = 0.0
+
+    # Wrapper to fix x_lo, x_hi
+    def model(xx, Imax, center, sig, gam, bg0, bg1):
+        return pseudo_voigt_tch(xx, Imax, center, sig, gam, bg0, bg1, x_lo, x_hi)
 
     try:
         popt, _ = curve_fit(
-            pseudo_voigt, x, y,
-            p0=[amp0, mu0, sigma0, eta0, bg0],
-            bounds=([0, x[0], 1e-6, 0.0, -np.inf],
-                    [np.inf, x[-1], x[-1] - x[0], 1.0, np.inf]),
-            maxfev=3000
+            model, x, y,
+            p0=[Imax0, center0, sig0, gam0, bg0_init, bg1_init],
+            bounds=([0,      x_lo,    1e-6, 1e-6,  -np.inf, -np.inf],
+                    [np.inf, x_hi,    span,  span,   np.inf,  np.inf]),
+            maxfev=5000
         )
-        return {'tth_fit': popt[1], 'amp': popt[0], 'sigma': popt[2],
-                'eta_mix': popt[3], 'bg': popt[4]}
+        Imax, center, sig, gam, bg0, bg1 = popt
+        FWHM, eta = _tch_eta_fwhm(sig, gam)
+        return {'tth_fit': center, 'Imax': Imax, 'sig': sig, 'gam': gam,
+                'FWHM': FWHM, 'eta': eta, 'bg0': bg0, 'bg1': bg1}
     except (RuntimeError, ValueError):
         return None
 
@@ -135,8 +170,8 @@ def main():
                         help='Minimum peak height (default: 5%% of max intensity)')
     parser.add_argument('--prominence', type=float, default=None,
                         help='Minimum peak prominence (default: 3%% of max intensity)')
-    parser.add_argument('--fit-window', type=int, default=5,
-                        help='Half-width in bins for Gaussian fit window (default: 5)')
+    parser.add_argument('--fit-window', type=int, default=50,
+                        help='Half-width in bins for peak fit window (default: 50)')
     parser.add_argument('--save', type=str, default=None,
                         help='Save plot to file instead of showing')
     parser.add_argument('--frame', type=int, default=-1,
@@ -216,10 +251,10 @@ def main():
         det_fitted = 0
         det_failed = 0
 
-        print(f"\n  {'EtaBin':>6s}  {'Eta(°)':>8s}  {'2θ_fit':>10s}  {'Amp':>10s}  "
-              f"{'Sigma':>10s}  {'η_mix':>6s}  {'BG':>10s}")
+        print(f"\n  {'EtaBin':>6s}  {'Eta(°)':>8s}  {'2θ_fit':>10s}  {'Imax':>10s}  "
+              f"{'Sig':>8s}  {'Gam':>8s}  {'FWHM':>8s}  {'η':>5s}  {'BG0':>8s}  {'BG1':>8s}")
         print(f"  {'------':>6s}  {'--------':>8s}  {'----------':>10s}  {'----------':>10s}  "
-              f"{'----------':>10s}  {'------':>6s}  {'----------':>10s}")
+              f"{'--------':>8s}  {'--------':>8s}  {'--------':>8s}  {'-----':>5s}  {'--------':>8s}  {'--------':>8s}")
 
         for j in range(nEtaBins):
             profile = intensity[:, j]
@@ -240,8 +275,9 @@ def main():
                     all_peaks.append(result)
                     det_fitted += 1
                     print(f"  {j:6d}  {eta_val:8.2f}  {result['tth_fit']:10.6f}  "
-                          f"{result['amp']:10.1f}  {result['sigma']:10.6f}  "
-                          f"{result['eta_mix']:6.3f}  {result['bg']:10.1f}")
+                          f"{result['Imax']:10.1f}  {result['sig']:8.5f}  "
+                          f"{result['gam']:8.5f}  {result['FWHM']:8.5f}  "
+                          f"{result['eta']:5.3f}  {result['bg0']:8.1f}  {result['bg1']:8.2f}")
                 else:
                     det_failed += 1
 
