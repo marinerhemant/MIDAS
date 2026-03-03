@@ -615,12 +615,12 @@ def process_multifile_scan(file_type, config, z_groups):
                 # Ensure dtype matches output
                 dark_mean = dark_mean.astype(output_dtype)
 
-    if pre_proc_thresh_value != -1:
-        print("  - Pre-processing threshold is set. Writing zero arrays for dark/bright.")
+    if correction_active:
+        print("  - Correction active: data is already dark-subtracted. Writing zero arrays for dark/bright.")
         z_groups['exc'].create_dataset('dark', data=np.zeros(dark_shape, dtype=output_dtype), chunks=(1, dark_shape[1], dark_shape[2]), compression=compressor)
         z_groups['exc'].create_dataset('bright', data=np.zeros(dark_shape, dtype=output_dtype), chunks=(1, dark_shape[1], dark_shape[2]), compression=compressor)
     else:
-        # If we have real dark data (from GE or TIFF), write it. Otherwise it writes zeros.
+        # No correction applied — write actual dark data for IntegratorZarrOMP to subtract
         print("  - Writing actual dark and bright frame data.")
         # If dark_frames_data wasn't loaded (no file provided), we need a placeholder
         if not dark_file_provided:

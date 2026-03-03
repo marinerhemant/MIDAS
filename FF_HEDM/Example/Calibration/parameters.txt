@@ -202,7 +202,7 @@ PerPanelDistortion 1
 PanelShiftsFile panelshiftsCalibrant.txt
 
 # Mask file for bad pixels / gaps (0 = masked)
-MaskFile mask.tif
+MaskFile mask_upd.tif
 
 # Auto-detect and fit doublet rings (separation threshold in pixels)
 DoubletSeparation 25

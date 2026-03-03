@@ -747,13 +747,22 @@ int main(int argc, char **argv) {
     for (int i = 0; i < nPixels; i++)
       ImageInT[i] = rawFrame[i];
 
-    // Dark subtraction
+    // Dark subtraction — read dark and apply same transforms as data
     if (darkFN_arg) {
       double *darkFrame = calloc(nPixels, sizeof(double));
       printf("Reading dark file: %s\n", darkFN_arg);
       if (readDataFile(darkFN_arg, nPixels, darkFrame) == FR_SUCCESS) {
+        // Transform dark the same way as data (e.g. flip-top-bottom)
+        pixelvalue *darkInT = malloc(nPixels * sizeof(*darkInT));
+        pixelvalue *darkInX = malloc(nPixels * sizeof(*darkInX));
         for (int i = 0; i < nPixels; i++)
-          AverageDark[i] = darkFrame[i];
+          darkInT[i] = darkFrame[i];
+        DoImageTransformations(NrTransOpt, TransOpt, darkInT, darkInX,
+                               NrPixelsY, NrPixelsZ);
+        for (int i = 0; i < nPixels; i++)
+          AverageDark[i] = darkInX[i];
+        free(darkInT);
+        free(darkInX);
       } else {
         printf("Warning: Failed to read dark file, proceeding without dark.\n");
       }
@@ -761,7 +770,7 @@ int main(int argc, char **argv) {
     }
     free(rawFrame);
 
-    // Apply image transformations
+    // Apply image transformations to data
     DoImageTransformations(NrTransOpt, TransOpt, ImageInT, ImageIn, NrPixelsY,
                            NrPixelsZ);
 
@@ -1442,6 +1451,7 @@ integration_start:
         Image[j] = (double)ImageIn[j] - AverageDark[j];
       }
     }
+
     if (i == 0) {
       char fn2[4096];
       sprintf(fn2, "%s", DataFN);

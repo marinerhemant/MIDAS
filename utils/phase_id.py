@@ -17,11 +17,15 @@ Usage:
 import argparse
 import concurrent.futures
 import contextlib
+import glob as glob_mod
 import io
+import json
 import math
 import os
 os.environ.setdefault('KMP_DUPLICATE_LIB_OK', 'TRUE')  # macOS: prevent dual-libomp abort
+import re
 import shutil
+import statistics as stats_mod
 import struct
 import subprocess
 import sys
@@ -35,6 +39,17 @@ from typing import List, Optional, Tuple
 SCRIPT_DIR = Path(__file__).resolve().parent
 MIDAS_HOME = SCRIPT_DIR.parent
 MIDAS_BIN = MIDAS_HOME / "FF_HEDM" / "bin"
+
+# Log levels
+QUIET, NORMAL, VERBOSE = 0, 1, 2
+_log_level = NORMAL
+
+
+def qprint(*args, level=NORMAL, **kwargs):
+    """Print only if current log level >= required level."""
+    if _log_level >= level:
+        print(*args, **kwargs)
+
 
 # Peak fit binary format: 7 doubles per peak
 PF_PARAMS_PER_PEAK = 7
@@ -112,7 +127,7 @@ def run_cmd(cmd, cwd=None, check=True, log=None):
     if log is not None:
         log.append(cmd_str)
     else:
-        print(cmd_str)
+        qprint(cmd_str, level=VERBOSE)
     result = subprocess.run(cmd, capture_output=True, text=True, cwd=cwd,
                             errors='replace')
     if check and result.returncode != 0:
@@ -190,7 +205,9 @@ def predict_rings_for_phase(phase: PhaseInfo, param_file: Path,
                             geom: dict) -> List[HKLReflection]:
     """Run GetHKLList for a single phase and return reflections."""
     # Create temp parameter file with this phase's crystal structure
-    tmp_param = Path(tempfile.mktemp(suffix='_phase.txt'))
+    tmp_fd = tempfile.NamedTemporaryFile(suffix='_phase.txt', delete=False)
+    tmp_param = Path(tmp_fd.name)
+    tmp_fd.close()
     try:
         with open(param_file) as fin, open(tmp_param, 'w') as fout:
             for line in fin:
@@ -504,6 +521,45 @@ def back_calculate_lattice(R_fitted_px: float, h: int, k: int, l: int,
     return d_fitted * hkl_norm
 
 
+def compute_confidence(det, tot, excl_det, excl_tot, a_values,
+                       lattice_a, intensity_frac, first_rings_detected):
+    """Compute 0–100 confidence score for phase presence.
+
+    Components:
+    - Coverage (40%):  detected / total rings, saturates at 50%.
+    - Exclusive (25%): exclusively-detected / exclusive-total rings.
+    - Lattice (20%):   consistency of back-calculated a with nominal.
+    - Intensity (15%): AUC fraction, saturates at 30%.
+    """
+    # Coverage component
+    coverage = (det / tot) if tot > 0 else 0
+    coverage_score = min(coverage / 0.5, 1.0) * 40
+
+    # Exclusive-peak component
+    if excl_tot > 0:
+        excl_score = (excl_det / excl_tot) * 25
+    else:
+        excl_score = coverage * 12.5  # partial credit
+
+    # Lattice consistency component
+    if a_values and lattice_a > 0:
+        mean_a = stats_mod.mean(a_values)
+        delta_ppm = abs(mean_a - lattice_a) / lattice_a * 1e6
+        lattice_score = max(0, 1.0 - delta_ppm / 5000) * 20
+    else:
+        lattice_score = 0
+
+    # Intensity fraction component
+    int_score = min(intensity_frac / 0.3, 1.0) * 15
+
+    # Penalty: no first-ring detection
+    if not first_rings_detected and det > 0:
+        coverage_score *= 0.5
+
+    total = coverage_score + excl_score + lattice_score + int_score
+    return min(100, max(0, round(total)))
+
+
 # =========================================================================
 # Reporting
 # =========================================================================
@@ -519,14 +575,13 @@ def print_results(rings: List[RingEntry], fits: List[FitResult],
     If *summary_out* is provided, the Phase Summary table (Table B)
     is also written there for compact screen display.
     """
-    import statistics as stats_mod
+
     if out is None:
         out = sys.stdout
 
     phase_nominal = {p.name: p.lattice_a for p in phases}
 
     # Compute AUC (area under curve) = pi * Imax * Sigma for each fit
-    import math
     aucs = [math.pi * f.Imax * f.Sigma if f.Imax > 0 else 0.0 for f in fits]
     min_sigma = 0.5 * geom['RBinSize']  # peaks narrower than this are fitting artifacts
 
@@ -641,7 +696,7 @@ def print_results(rings: List[RingEntry], fits: List[FitResult],
                   f"{'Mean a(Å)':<10} {'Std a(Å)':<10} "
                   f"{'Min a(Å)':<10} {'Max a(Å)':<10} "
                   f"{'Δa/a(ppm)':<12} "
-                  f"{'Sum AUC':>10} {'Frac':>6}  {'Status'}")
+                  f"{'Sum AUC':>10} {'Frac':>6}  {'Conf':>4}  {'Status'}")
     W = len(col_header) + 4
     print(file=out)
     print("=" * W, file=out)
@@ -711,18 +766,22 @@ def print_results(rings: List[RingEntry], fits: List[FitResult],
         auc_str = f"{phase_intensity:10.1f}" if phase_intensity > 0 else f"{'--':>10}"
         frac_str = f"{intensity_frac*100:5.1f}%" if phase_intensity > 0 else f"{'--':>6}"
 
+        conf = compute_confidence(det, tot, excl_det, excl_tot,
+                                  st['a_values'], p.lattice_a,
+                                  intensity_frac, first_rings_detected)
+
         if mean_a > 0:
             line = (f"  {p.name:<8} {coverage:<6} {pct:>4.0f}%  {excl_det:<5}"
                     f"{mean_a:<10.4f} {std_a:<10.4f} "
                     f"{min_a:<10.4f} {max_a:<10.4f} "
                     f"{d_ppm:<12.1f} "
-                    f"{auc_str} {frac_str}  {status}")
+                    f"{auc_str} {frac_str}  {conf:>4}  {status}")
         else:
             line = (f"  {p.name:<8} {coverage:<6} {pct:>4.0f}%  {excl_det:<5}"
                     f"{'--':<10} {'--':<10} "
                     f"{'--':<10} {'--':<10} "
                     f"{'--':<12} "
-                    f"{auc_str} {frac_str}  {status}")
+                    f"{auc_str} {frac_str}  {conf:>4}  {status}")
         print(line, file=out)
         if summary_out is not None:
             print(line, file=summary_out)
@@ -765,7 +824,7 @@ def phase_summary_header() -> str:
            f"{'Mean a(Å)':<10} {'Std a(Å)':<10} "
            f"{'Min a(Å)':<10} {'Max a(Å)':<10} "
            f"{'Δa/a(ppm)':<12} "
-           f"{'Sum AUC':>10} {'Frac':>6}  {'Status'}")
+           f"{'Sum AUC':>10} {'Frac':>6}  {'Conf':>4}  {'Status'}")
     W = len(col) + 4
     return (f"{'=' * W}\n"
             f"  PHASE SUMMARY\n"
@@ -790,8 +849,7 @@ def resolve_data_files(data_fns, start_nr, end_nr, data_folder):
     replaced with each number in [startNr, endNr], zero-padded to
     match the original digit width.
     """
-    import glob as glob_mod
-    import re
+
 
     # Mode 1: folder scan
     if data_folder:
@@ -953,10 +1011,188 @@ def process_single_file(data_file: Path, work_dir: Path, cur_param: Path,
 
 
 # =========================================================================
+# Helper functions for main
+# =========================================================================
+
+def prepare_work_dirs(data_files, base_work_dir, work_param, parallel, backend):
+    """Create per-file work directories, linking shared Map.bin if needed."""
+    n_files = len(data_files)
+    file_work_dirs = []
+    file_params = []
+    for data_file in data_files:
+        if n_files > 1:
+            wd = base_work_dir / data_file.stem
+            wd.mkdir(parents=True, exist_ok=True)
+            fp = wd / "phase_id_params.txt"
+            with open(work_param) as fin, open(fp, 'w') as fout:
+                for line in fin:
+                    if line.strip().startswith('Folder '):
+                        fout.write(f"Folder {wd}\n")
+                    else:
+                        fout.write(line)
+            # Hard-link Map.bin/nMap.bin if in parallel mode (zero-copy)
+            if parallel and backend == 'cpu':
+                for mf in ("Map.bin", "nMap.bin"):
+                    src = base_work_dir / mf
+                    dst = wd / mf
+                    if not dst.exists():
+                        os.link(str(src), str(dst))
+            file_work_dirs.append(wd)
+            file_params.append(fp)
+        else:
+            file_work_dirs.append(base_work_dir)
+            file_params.append(work_param)
+    return file_work_dirs, file_params
+
+
+def dispatch_files(data_files, file_work_dirs, file_params, peak_params,
+                   rings, n_peaks, geom, dark_file, n_cpus,
+                   backend, snr_threshold, rel_intensity_threshold,
+                   phases, roi_padding, parallel, n_workers):
+    """Run per-file processing, returning results in file order.
+
+    Returns a list of (data_file, log_text, results_text, summary_text,
+    timings) tuples ordered by file index.
+    """
+    n_files = len(data_files)
+    if parallel:
+        futures = {}
+        with concurrent.futures.ThreadPoolExecutor(
+                max_workers=n_workers) as pool:
+            for idx, (df, wd, fp) in enumerate(
+                    zip(data_files, file_work_dirs, file_params)):
+                fut = pool.submit(
+                    process_single_file,
+                    df, wd, fp, peak_params, rings, n_peaks, geom,
+                    dark_file, n_cpus, backend,
+                    snr_threshold, rel_intensity_threshold,
+                    phases, roi_padding,
+                )
+                futures[fut] = (idx, df)
+
+        results_by_idx = {}
+        for fut in futures:
+            idx, df = futures[fut]
+            try:
+                log_text, results_text, summary_text, tm = fut.result()
+                results_by_idx[idx] = (df, log_text, results_text,
+                                       summary_text, tm)
+            except Exception as exc:
+                results_by_idx[idx] = (df, f"  ERROR: {exc}", "", "", {})
+
+        return [results_by_idx[i] for i in range(n_files)]
+    else:
+        results = []
+        for df, wd, fp in zip(data_files, file_work_dirs, file_params):
+            log_text, results_text, summary_text, tm = \
+                process_single_file(
+                    df, wd, fp, peak_params,
+                    rings, n_peaks, geom, dark_file, n_cpus,
+                    backend, snr_threshold,
+                    rel_intensity_threshold, phases, roi_padding,
+                )
+            results.append((df, log_text, results_text, summary_text, tm))
+        return results
+
+
+def emit_file_result(idx, n_files, df_name, summary_text, tm, multi=True):
+    """Print compact per-file result to screen."""
+    t_file = tm.get('total', 0)
+    timing_parts = []
+    for k in ('zarr', 'integrate', 'gpu_pipeline', 'analysis'):
+        if k in tm:
+            timing_parts.append(f"{k}={tm[k]:.2f}s")
+    timing_str = (f"  [{', '.join(timing_parts)}, total={t_file:.2f}s]"
+                  if timing_parts else "")
+    if multi:
+        qprint(f"  ── [{idx+1}/{n_files}] {df_name}{timing_str}")
+        if summary_text.strip():
+            qprint(summary_text, end="")
+        else:
+            qprint("  (no results)")
+    else:
+        if timing_str:
+            qprint(f"  {df_name}{timing_str}")
+        qprint(summary_text)
+
+
+def write_results_file(output_path, parts, fmt='table'):
+    """Save results to a file."""
+    output_path.parent.mkdir(parents=True, exist_ok=True)
+    if fmt == 'json':
+        # For JSON, the caller already built a JSON string in parts[0]
+        with open(output_path, 'w') as f:
+            f.write(parts[0])
+    else:
+        with open(output_path, 'w') as f:
+            f.write("\n".join(parts))
+
+
+def build_json_results(data_files, results_ordered, rings, phases, geom,
+                       snr_threshold, rel_intensity_threshold):
+    """Build structured JSON output from results."""
+    phase_nominal = {p.name: p.lattice_a for p in phases}
+    min_sigma = 0.5 * geom['RBinSize']
+    output = {
+        'geometry': geom,
+        'phases': [{'name': p.name, 'spacegroup': p.spacegroup,
+                    'lattice_a': p.lattice_a} for p in phases],
+        'rings': [{'R_px': r.R_px, 'R_um': r.R_um,
+                   'hkl_label': r.hkl_label,
+                   'phase_names': r.phase_names,
+                   'is_overlap': r.is_overlap} for r in rings],
+        'files': [],
+    }
+
+    for df, log_text, results_text, summary_text, tm in results_ordered:
+        # Re-read fit.bin for structured data
+        n_peaks = len(rings)
+        fit_bin = Path(log_text.split("fit.bin:")[0]).parent / "fit.bin" \
+            if "fit.bin:" in log_text else None
+
+        # Build per-phase stats from fit results
+        file_entry = {
+            'filename': df.name,
+            'timings': tm,
+            'phases': [],
+        }
+
+        # Parse summary_text for phase data (robust approach)
+        for p in phases:
+            phase_data = {
+                'name': p.name,
+                'status': 'UNKNOWN',
+                'confidence': 0,
+            }
+            # Extract from summary text lines
+            for line in summary_text.split('\n'):
+                if line.strip().startswith(p.name):
+                    parts = line.split()
+                    if len(parts) >= 4:
+                        phase_data['detection'] = parts[1] if len(parts) > 1 else ''
+                        # Find status keyword
+                        if 'PRESENT' in line:
+                            phase_data['status'] = 'PRESENT'
+                        elif 'MARGINAL' in line:
+                            phase_data['status'] = 'MARGINAL'
+                        elif 'ABSENT' in line:
+                            phase_data['status'] = 'ABSENT'
+                    break
+            file_entry['phases'].append(phase_data)
+
+        output['files'].append(file_entry)
+
+    return json.dumps(output, indent=2)
+
+
+# =========================================================================
 # Main
 # =========================================================================
 
+
 def main():
+    global _log_level
+
     parser = argparse.ArgumentParser(
         description='MIDAS Multi-Phase Identification Tool')
     parser.add_argument('-paramFN', required=True,
@@ -1003,7 +1239,19 @@ def main():
     parser.add_argument('--output', type=str, default=None, metavar='FILE',
                         help='Save results to this file '
                              '(default: <work-dir>/phase_id_results.txt)')
+    parser.add_argument('--format', choices=['table', 'json'], default='table',
+                        help='Output format: table (default) or json')
+    parser.add_argument('--quiet', action='store_true',
+                        help='Suppress output except the phase summary table')
+    parser.add_argument('--verbose', action='store_true',
+                        help='Show detailed diagnostic output')
     args = parser.parse_args()
+
+    # Set log level
+    if args.quiet:
+        _log_level = QUIET
+    elif args.verbose:
+        _log_level = VERBOSE
 
     param_file = Path(args.paramFN).resolve()
     phases_file = Path(args.phases).resolve()
@@ -1082,15 +1330,15 @@ def main():
 
     # Compact screen header
     mode_str = f", {n_workers} parallel" if parallel else ""
-    print(f"  MIDAS Phase ID: {len(data_files)} file(s), "
-          f"{args.backend.upper()}{mode_str}")
-    print(f"  Output → {output_path}")
+    qprint(f"  MIDAS Phase ID: {len(data_files)} file(s), "
+           f"{args.backend.upper()}{mode_str}")
+    qprint(f"  Output → {output_path}")
 
     t_wall_start = time.monotonic()
 
     try:
         # ==============================================================
-        # Step 1: Parse phases and predict rings
+        # Step 1: Parse phases and predict rings (parallel GetHKLList)
         # ==============================================================
         t0 = time.monotonic()
         _hdr("[1/4] Parsing phases and predicting ring positions...")
@@ -1102,12 +1350,33 @@ def main():
         for p in phases:
             _hdr(f"  Phase: {p.name}  SG={p.spacegroup}  a={p.lattice_a} Å")
 
+        # Predict rings for all phases in parallel
         all_reflections = []
-        for phase in phases:
+        if len(phases) > 1:
+            with concurrent.futures.ThreadPoolExecutor(
+                    max_workers=len(phases)) as pool:
+                futures = {
+                    pool.submit(predict_rings_for_phase, phase,
+                                param_file, geom): phase
+                    for phase in phases
+                }
+                phase_refs = {}
+                for fut in concurrent.futures.as_completed(futures):
+                    phase = futures[fut]
+                    refs = fut.result()[:args.max_rings]
+                    phase_refs[phase.name] = refs
+            # Maintain original phase order
+            for phase in phases:
+                refs = phase_refs[phase.name]
+                all_reflections.extend(refs)
+                _hdr(f"\n  Computing rings for {phase.name} "
+                     f"(SG={phase.spacegroup}, a={phase.lattice_a} Å)...")
+                _hdr(f"    → {len(refs)} rings")
+        else:
+            phase = phases[0]
             _hdr(f"\n  Computing rings for {phase.name} "
                  f"(SG={phase.spacegroup}, a={phase.lattice_a} Å)...")
             refs = predict_rings_for_phase(phase, param_file, geom)
-            # Limit per phase
             refs = refs[:args.max_rings]
             all_reflections.extend(refs)
             _hdr(f"    → {len(refs)} rings")
@@ -1132,9 +1401,9 @@ def main():
         t_rings = time.monotonic() - t0
         # Brief screen summary for steps 1-2
         phase_names = ", ".join(p.name for p in phases)
-        print(f"  Phases: {phase_names}  |  "
-              f"{len(rings)} peaks ({n_overlaps} overlapping)  "
-              f"[{t_rings:.2f}s]")
+        qprint(f"  Phases: {phase_names}  |  "
+               f"{len(rings)} peaks ({n_overlaps} overlapping)  "
+               f"[{t_rings:.2f}s]")
 
         # ==============================================================
         # Step 3+4: Run integration + peak fitting per data file
@@ -1175,7 +1444,7 @@ def main():
             else:
                 _hdr(f"\n[2.5/4] Running DetectorMapper "
                      f"once (shared map)...")
-                print("  Running DetectorMapper...", end="", flush=True)
+                qprint("  Running DetectorMapper...", end="", flush=True)
                 t0 = time.monotonic()
                 run_detector_mapper(work_param, base_work_dir)
                 t_mapper = time.monotonic() - t0
@@ -1184,163 +1453,69 @@ def main():
                     print("ERROR: DetectorMapper did not produce "
                           "Map.bin / nMap.bin")
                     sys.exit(1)
-                print(f" done [{t_mapper:.2f}s]")
+                qprint(f" done [{t_mapper:.2f}s]")
             _hdr(f"  Map.bin:  {map_bin.stat().st_size:,} bytes")
             _hdr(f"  nMap.bin: {nmap_bin.stat().st_size:,} bytes")
 
         # ── Prepare per-file work dirs ──────────────────────────
-        n_files = len(data_files)
-        file_work_dirs = []
-        file_params = []
-        for data_file in data_files:
-            if n_files > 1:
-                wd = base_work_dir / data_file.stem
-                wd.mkdir(parents=True, exist_ok=True)
-                fp = wd / "phase_id_params.txt"
-                with open(work_param) as fin, open(fp, 'w') as fout:
-                    for line in fin:
-                        if line.strip().startswith('Folder '):
-                            fout.write(f"Folder {wd}\n")
-                        else:
-                            fout.write(line)
-                # Copy Map.bin/nMap.bin if in parallel mode
-                if parallel and args.backend == 'cpu':
-                    for mf in ("Map.bin", "nMap.bin"):
-                        src = base_work_dir / mf
-                        dst = wd / mf
-                        if not dst.exists():
-                            shutil.copy2(str(src), str(dst))
-                file_work_dirs.append(wd)
-                file_params.append(fp)
-            else:
-                file_work_dirs.append(base_work_dir)
-                file_params.append(work_param)
+        file_work_dirs, file_params = prepare_work_dirs(
+            data_files, base_work_dir, work_param, parallel, args.backend)
 
         # Collect all output for the results file
         all_output_parts: List[str] = [header_buf.getvalue()]
         all_timings: List[Tuple[str, dict]] = []
 
-        if parallel:
-            # ── PARALLEL mode ────────────────────────────────────
-            futures = {}
-            with concurrent.futures.ProcessPoolExecutor(
-                    max_workers=n_workers) as pool:
-                for idx, (df, wd, fp) in enumerate(
-                        zip(data_files, file_work_dirs, file_params)):
-                    pp_src = peak_params
-                    fut = pool.submit(
-                        process_single_file,
-                        df, wd, fp, pp_src, rings, n_peaks, geom,
-                        dark_file, args.nCPUs, args.backend,
-                        args.snr_threshold,
-                        args.rel_intensity_threshold,
-                        phases, args.roi_padding,
-                    )
-                    futures[fut] = (idx, df)
+        # ── Dispatch files (unified parallel/sequential) ─────────
+        n_files = len(data_files)
+        results_ordered = dispatch_files(
+            data_files, file_work_dirs, file_params, peak_params,
+            rings, n_peaks, geom, dark_file, args.nCPUs,
+            args.backend, args.snr_threshold,
+            args.rel_intensity_threshold, phases, args.roi_padding,
+            parallel, n_workers)
 
-            # Print results in file order
-            results_by_idx = {}
-            for fut in futures:
-                idx, df = futures[fut]
-                try:
-                    log_text, results_text, summary_text, tm = fut.result()
-                    results_by_idx[idx] = (df, log_text, results_text,
-                                           summary_text, tm)
-                except Exception as exc:
-                    results_by_idx[idx] = (df, f"  ERROR: {exc}", "", "",
-                                           {})
-
-            # Print shared summary header once
-            print(f"\n{phase_summary_header()}")
-            for idx in range(n_files):
-                df, log_text, results_text, summary_text, tm = \
-                    results_by_idx[idx]
-                t_file = tm.get('total', 0)
-                timing_parts = []
-                for k in ('zarr', 'integrate', 'gpu_pipeline', 'analysis'):
-                    if k in tm:
-                        timing_parts.append(f"{k}={tm[k]:.2f}s")
-                timing_str = (f"  [{', '.join(timing_parts)}, "
-                              f"total={t_file:.2f}s]"
-                              if timing_parts else "")
-                # Screen: compact separator + phase rows
-                print(f"  ── [{idx+1}/{n_files}] {df.name}{timing_str}")
-                if summary_text.strip():
-                    print(summary_text, end="")
-                else:
-                    print("  (no results)")
-                # File: everything
-                full_header = (f"\n{'='*70}\n"
-                               f"  [{idx+1}/{n_files}] {df.name}\n"
-                               f"{'='*70}")
-                all_output_parts.append(full_header)
-                all_output_parts.append(log_text)
-                all_output_parts.append(results_text)
-                all_timings.append((df.name, tm))
-        else:
-            # ── SEQUENTIAL mode (existing behaviour) ─────────────
-            if n_files > 1:
-                print(f"\n{phase_summary_header()}")
-            for file_idx, (data_file, work_dir, cur_param) in enumerate(
-                    zip(data_files, file_work_dirs, file_params)):
-                pp_src = peak_params
-                log_text, results_text, summary_text, tm = \
-                    process_single_file(
-                        data_file, work_dir, cur_param, pp_src,
-                        rings, n_peaks, geom, dark_file, args.nCPUs,
-                        args.backend, args.snr_threshold,
-                        args.rel_intensity_threshold, phases,
-                        args.roi_padding,
-                    )
-                t_file = tm.get('total', 0)
-                timing_parts = []
-                for k in ('zarr', 'integrate', 'gpu_pipeline', 'analysis'):
-                    if k in tm:
-                        timing_parts.append(f"{k}={tm[k]:.2f}s")
-                timing_str = (f"  [{', '.join(timing_parts)}, "
-                              f"total={t_file:.2f}s]"
-                              if timing_parts else "")
-                if n_files > 1:
-                    print(f"  ── [{file_idx+1}/{n_files}] "
-                          f"{data_file.name}{timing_str}")
-                    if summary_text.strip():
-                        print(summary_text, end="")
-                    else:
-                        print("  (no results)")
-                    full_header = (f"\n{'='*70}\n"
-                                   f"  [{file_idx+1}/{n_files}] "
-                                   f"{data_file.name}\n{'='*70}")
-                    all_output_parts.append(full_header)
-                else:
-                    if timing_str:
-                        print(f"  {data_file.name}{timing_str}")
-                    print(summary_text)
-                # File: everything
-                all_output_parts.append(log_text)
-                all_output_parts.append(results_text)
-                all_timings.append((data_file.name, tm))
+        # ── Emit results ─────────────────────────────────────────
+        if n_files > 1 or parallel:
+            qprint(f"\n{phase_summary_header()}")
+        for idx in range(n_files):
+            df, log_text, results_text, summary_text, tm = \
+                results_ordered[idx]
+            emit_file_result(idx, n_files, df.name, summary_text, tm,
+                             multi=(n_files > 1))
+            full_header = (f"\n{'='*70}\n"
+                           f"  [{idx+1}/{n_files}] {df.name}\n"
+                           f"{'='*70}")
+            all_output_parts.append(full_header)
+            all_output_parts.append(log_text)
+            all_output_parts.append(results_text)
+            all_timings.append((df.name, tm))
 
         # ── Timing summary ───────────────────────────────────────
         t_wall = time.monotonic() - t_wall_start
-        print(f"\n  Total wall time: {t_wall:.2f}s  "
-              f"(rings={t_rings:.2f}s"
-              + (f", mapper={t_mapper:.2f}s" if t_mapper > 0 else "")
-              + f", files={sum(t.get('total', 0) for _, t in all_timings):.2f}s)")
+        qprint(f"\n  Total wall time: {t_wall:.2f}s  "
+               f"(rings={t_rings:.2f}s"
+               + (f", mapper={t_mapper:.2f}s" if t_mapper > 0 else "")
+               + f", files={sum(t.get('total', 0) for _, t in all_timings):.2f}s)")
 
-        # ── Save results to file ─────────────────────────────────
-        output_path.parent.mkdir(parents=True, exist_ok=True)
-        with open(output_path, 'w') as f:
-            f.write("\n".join(all_output_parts))
-        print(f"  Results saved to: {output_path}")
+        # ── Save results ─────────────────────────────────────────
+        if args.format == 'json':
+            json_str = build_json_results(
+                data_files, results_ordered, rings, phases, geom,
+                args.snr_threshold, args.rel_intensity_threshold)
+            write_results_file(output_path, [json_str], fmt='json')
+        else:
+            write_results_file(output_path, all_output_parts)
+        qprint(f"  Results saved to: {output_path}")
 
     finally:
         if not args.keep_work_dir and not args.work_dir:
-            print(f"  Cleaning up: {base_work_dir}")
+            qprint(f"  Cleaning up: {base_work_dir}")
             shutil.rmtree(base_work_dir, ignore_errors=True)
         else:
-            print(f"  Work directory: {base_work_dir}")
+            qprint(f"  Work directory: {base_work_dir}")
 
 
 if __name__ == '__main__':
     main()
+
 
