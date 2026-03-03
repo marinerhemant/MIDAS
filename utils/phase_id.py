@@ -561,6 +561,116 @@ def compute_confidence(det, tot, excl_det, excl_tot, a_values,
 
 
 # =========================================================================
+# Peak table output
+# =========================================================================
+
+PEAK_TABLE_COLUMNS = [
+    'Filename', 'R_px', 'R_um', '2theta_deg', 'FWHM_px', 'FWHM_2theta_deg',
+    'Intensity', 'Imax', 'SNR', 'Phase', 'HKL', 'Flag'
+]
+
+
+def build_peak_rows(filename: str, rings: List[RingEntry],
+                    fits: List[FitResult], geom: dict,
+                    snr_threshold: float,
+                    rel_intensity_threshold: float) -> List[dict]:
+    """Build peak table rows for one data file.
+
+    Returns one dict per peak (per reflection for overlaps), containing
+    all columns in PEAK_TABLE_COLUMNS.  All peaks are included regardless
+    of detection status; the Flag column distinguishes them.
+    """
+    px = geom['px']
+    Lsd = geom['Lsd']
+
+    min_sigma = 0.5 * geom['RBinSize']
+    global_max_imax = max((f.Imax for f in fits if f.Imax > 0), default=1.0)
+
+    n = min(len(rings), len(fits))
+    rows: List[dict] = []
+
+    for i in range(n):
+        ring = rings[i]
+        fit = fits[i]
+
+        # Detection flag (same logic as print_results)
+        snr_ok = fit.SNR >= snr_threshold
+        rel_ok = fit.Imax >= rel_intensity_threshold * global_max_imax
+        sigma_ok = fit.Sigma >= min_sigma
+        detected = fit.Imax > 0 and snr_ok and rel_ok and sigma_ok
+
+        # Compute physical quantities
+        R_px = fit.Center
+        R_um = R_px * px
+        tth_rad = math.atan(R_um / Lsd) if Lsd > 0 else 0.0
+        tth_deg = math.degrees(tth_rad)
+
+        fwhm_px = 2.355 * fit.Sigma
+        fwhm_um = fwhm_px * px
+        # d(2θ)/dR = 1 / (Lsd * (1 + (R/Lsd)^2))
+        if Lsd > 0:
+            dtth_dR = 1.0 / (Lsd * (1.0 + (R_um / Lsd) ** 2))
+            fwhm_tth_deg = math.degrees(fwhm_um * dtth_dR)
+        else:
+            fwhm_tth_deg = 0.0
+
+        # One row per reflection (overlapping rings get multiple rows)
+        for ref in ring.reflections:
+            hkl = f"{ref.h}{ref.k}{ref.l}"
+            flag = "DETECTED" if detected else "NOT_DET"
+            rows.append({
+                'Filename': filename,
+                'R_px': R_px,
+                'R_um': R_um,
+                '2theta_deg': tth_deg,
+                'FWHM_px': fwhm_px,
+                'FWHM_2theta_deg': fwhm_tth_deg,
+                'Intensity': fit.Area,
+                'Imax': fit.Imax,
+                'SNR': fit.SNR,
+                'Phase': ref.phase,
+                'HKL': hkl,
+                'Flag': flag,
+            })
+
+    return rows
+
+
+def write_peak_tables(rows: List[dict], base_path: Path):
+    """Write combined peak table as both CSV and space-separated TXT."""
+    csv_path = base_path.with_suffix('.csv')
+    txt_path = base_path.with_suffix('.txt')
+
+    # CSV
+    with open(csv_path, 'w', newline='') as f:
+        f.write(','.join(PEAK_TABLE_COLUMNS) + '\n')
+        for row in rows:
+            vals = []
+            for col in PEAK_TABLE_COLUMNS:
+                v = row[col]
+                if isinstance(v, float):
+                    vals.append(f'{v:.6f}')
+                else:
+                    vals.append(str(v))
+            f.write(','.join(vals) + '\n')
+
+    # Space-separated TXT with comment header
+    with open(txt_path, 'w') as f:
+        f.write('# ' + '  '.join(f'{c:>16}' for c in PEAK_TABLE_COLUMNS) + '\n')
+        for row in rows:
+            parts = []
+            for col in PEAK_TABLE_COLUMNS:
+                v = row[col]
+                if isinstance(v, float):
+                    parts.append(f'{v:>16.6f}')
+                else:
+                    parts.append(f'{str(v):>16}')
+            f.write('  '.join(parts) + '\n')
+
+    return csv_path, txt_path
+
+
+# =========================================================================
 # Reporting
 # =========================================================================
 
@@ -988,7 +1098,7 @@ def process_single_file(data_file: Path, work_dir: Path, cur_param: Path,
         timings['analysis'] = time.monotonic() - t0
         timings['total'] = time.monotonic() - t_total
         _log(f"WARNING: No fit results for {data_file.name}")
-        return "\n".join(log), "", "", timings
+        return "\n".join(log), "", "", timings, []
 
     _log(f"  Read {len(fits)} peak fit results")
 
@@ -1000,6 +1110,10 @@ def process_single_file(data_file: Path, work_dir: Path, cur_param: Path,
     timings['analysis'] = time.monotonic() - t0
     timings['total'] = time.monotonic() - t_total
 
+    # Build peak table rows
+    peak_rows = build_peak_rows(data_file.name, rings, fits, geom,
+                                snr_threshold, rel_intensity_threshold)
+
     # Append timing to log
     parts = []
     for k in ('zarr', 'integrate', 'gpu_pipeline', 'analysis'):
@@ -1007,7 +1121,7 @@ def process_single_file(data_file: Path, work_dir: Path, cur_param: Path,
             parts.append(f"{k}={timings[k]:.2f}s")
     _log(f"  Timing: {', '.join(parts)}  total={timings['total']:.2f}s")
 
-    return "\n".join(log), results_buf.getvalue(), summary_buf.getvalue(), timings
+    return "\n".join(log), results_buf.getvalue(), summary_buf.getvalue(), timings, peak_rows
 
 
 # =========================================================================
@@ -1052,7 +1166,7 @@ def dispatch_files(data_files, file_work_dirs, file_params, peak_params,
     """Run per-file processing, returning results in file order.
 
     Returns a list of (data_file, log_text, results_text, summary_text,
-    timings) tuples ordered by file index.
+    timings, peak_rows) tuples ordered by file index.
     """
     n_files = len(data_files)
     if parallel:
@@ -1074,24 +1188,26 @@ def dispatch_files(data_files, file_work_dirs, file_params, peak_params,
         for fut in futures:
             idx, df = futures[fut]
             try:
-                log_text, results_text, summary_text, tm = fut.result()
+                log_text, results_text, summary_text, tm, peak_rows = \
+                    fut.result()
                 results_by_idx[idx] = (df, log_text, results_text,
-                                       summary_text, tm)
+                                       summary_text, tm, peak_rows)
             except Exception as exc:
-                results_by_idx[idx] = (df, f"  ERROR: {exc}", "", "", {})
+                results_by_idx[idx] = (df, f"  ERROR: {exc}", "", "", {}, [])
 
         return [results_by_idx[i] for i in range(n_files)]
     else:
         results = []
         for df, wd, fp in zip(data_files, file_work_dirs, file_params):
-            log_text, results_text, summary_text, tm = \
+            log_text, results_text, summary_text, tm, peak_rows = \
                 process_single_file(
                     df, wd, fp, peak_params,
                     rings, n_peaks, geom, dark_file, n_cpus,
                     backend, snr_threshold,
                     rel_intensity_threshold, phases, roi_padding,
                 )
-            results.append((df, log_text, results_text, summary_text, tm))
+            results.append((df, log_text, results_text, summary_text,
+                            tm, peak_rows))
         return results
 
 
@@ -1144,7 +1260,7 @@ def build_json_results(data_files, results_ordered, rings, phases, geom,
         'files': [],
     }
 
-    for df, log_text, results_text, summary_text, tm in results_ordered:
+    for df, log_text, results_text, summary_text, tm, _pk in results_ordered:
         # Re-read fit.bin for structured data
         n_peaks = len(rings)
         fit_bin = Path(log_text.split("fit.bin:")[0]).parent / "fit.bin" \
@@ -1435,7 +1551,7 @@ def main():
 
         # ── Run DetectorMapper once if in parallel mode ──────────
         t_mapper = 0.0
-        if parallel and args.backend == 'cpu':
+        if args.backend == 'cpu':
             map_bin = base_work_dir / "Map.bin"
             nmap_bin = base_work_dir / "nMap.bin"
             if map_bin.exists() and nmap_bin.exists():
@@ -1477,8 +1593,9 @@ def main():
         # ── Emit results ─────────────────────────────────────────
         if n_files > 1 or parallel:
             qprint(f"\n{phase_summary_header()}")
+        all_peak_rows: List[dict] = []
         for idx in range(n_files):
-            df, log_text, results_text, summary_text, tm = \
+            df, log_text, results_text, summary_text, tm, peak_rows = \
                 results_ordered[idx]
             emit_file_result(idx, n_files, df.name, summary_text, tm,
                              multi=(n_files > 1))
@@ -1489,6 +1606,7 @@ def main():
             all_output_parts.append(log_text)
             all_output_parts.append(results_text)
             all_timings.append((df.name, tm))
+            all_peak_rows.extend(peak_rows)
 
         # ── Timing summary ───────────────────────────────────────
         t_wall = time.monotonic() - t_wall_start
@@ -1506,6 +1624,13 @@ def main():
         else:
             write_results_file(output_path, all_output_parts)
         qprint(f"  Results saved to: {output_path}")
+
+        # ── Write combined peak table ─────────────────────────────
+        if all_peak_rows:
+            peak_base = output_path.with_name('peak_table')
+            csv_path, txt_path = write_peak_tables(all_peak_rows, peak_base)
+            qprint(f"  Peak table ({len(all_peak_rows)} rows): {csv_path}")
+            qprint(f"  Peak table ({len(all_peak_rows)} rows): {txt_path}")
 
     finally:
         if not args.keep_work_dir and not args.work_dir:

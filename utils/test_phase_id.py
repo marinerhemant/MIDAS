@@ -284,7 +284,7 @@ def run_test(n_cpus=4, max_rings=15, keep_work=False,
         print("=" * 70)
 
         print("\n[5/6] Running direct-mode integration + peak fitting...")
-        log_text, results_text, summary_text, tm = process_single_file(
+        log_text, results_text, summary_text, tm, _peak_rows = process_single_file(
             data_file, work_dir, work_param, peak_params,
             rings, n_peaks, geom, dark_file, n_cpus, 'cpu',
             snr_threshold, rel_intensity_threshold, phases,

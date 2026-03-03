@@ -54,9 +54,10 @@ flowchart TD
         T1["Table A: Per-ring<br/>R, Imax, AUC, SNR, a_fitted"]
         T2["Table B: Phase summary<br/>coverage, mean/std a"]
         T3["Table C: Intensity<br/>AUC statistics"]
+        T4["Peak Table<br/>CSV + TXT"]
     end
 
-    CALC --> T1 --> T2 --> T3
+    CALC --> T1 --> T2 --> T3 --> T4
 ```
 
 ## Quick Start
@@ -162,6 +163,7 @@ Columns:
 | `--work-dir` | — | Use specific working directory |
 | `--multi-cpu` | 0 | Process N files in parallel (0 = sequential). Runs `DetectorMapper` once, copies map files, then launches N workers. |
 | `--output` | `<work-dir>/phase_id_results.txt` | Save combined results to this file |
+| `--format` | `table` | Output format: `table` (default) or `json` |
 
 ## Detection Filters
 
@@ -227,6 +229,35 @@ Per-phase AUC breakdown (only includes detected peaks):
 
 > [!NOTE]
 > AUC (`π × Imax × Sigma`) captures both peak height and width, providing a better measure of total diffracted power than Imax alone. It is used for intensity comparisons between phases but NOT for detection gating.
+
+### Peak Table (`peak_table.csv` / `peak_table.txt`)
+
+A combined peak table is written alongside the results file, containing **all** fitted peaks (both detected and undetected) across all processed files. Two formats are generated automatically:
+
+| File | Format |
+|------|--------|
+| `peak_table.csv` | Comma-separated, with header row |
+| `peak_table.txt` | Space-aligned columns, `#`-comment header |
+
+**Columns:**
+
+| Column | Description |
+|--------|-------------|
+| `Filename` | Source data filename |
+| `R_px` | Fitted peak center (pixels) |
+| `R_um` | Fitted peak center (µm) = R_px × pixel_size |
+| `2theta_deg` | Scattering angle = atan(R_um / Lsd), in degrees |
+| `FWHM_px` | Full-width half-maximum in pixels (2.355 × σ) |
+| `FWHM_2theta_deg` | FWHM converted to 2θ degrees |
+| `Intensity` | Integrated area under the peak |
+| `Imax` | Peak maximum intensity (counts) |
+| `SNR` | Signal-to-noise ratio |
+| `Phase` | Assigned phase label |
+| `HKL` | Miller indices |
+| `Flag` | `DETECTED` or `NOT_DET` (based on detection filters) |
+
+> [!TIP]
+> The peak table is ideal for quick post-experiment analysis: load `peak_table.csv` with pandas/Excel, filter by `Flag == 'DETECTED'`, and plot 2θ positions vs. filename to track lattice evolution.
 
 ## Phase Classification
 
