@@ -43,7 +43,7 @@ show_help() {
     echo ""
     echo "Note: After each build, orphaned binaries are removed from source-tree"
     echo "      bin directories, and empty bin dirs are auto-populated from build output."
-    echo "  --test ff|nf|calib|all   Run benchmark tests after build (ff, nf, calib, or all)"
+    echo "  --test ff|nf|calib|peaks|all   Run benchmark tests after build (ff, nf, calib, peaks, or all)"
     exit 0
 }
 
@@ -290,6 +290,16 @@ if [ -n "$RUN_TESTS" ]; then
         $PY_CMD utils/test_ff_calibration.py -nCPUs "$TEST_CPUS"
         if [ $? -ne 0 ]; then
             echo "FF-HEDM Calibration benchmark FAILED."
+            exit 1
+        fi
+    fi
+
+    if [ "$RUN_TESTS" = "peaks" ] || [ "$RUN_TESTS" = "all" ]; then
+        echo ""
+        echo "=== Running Integrator Peak Fitting Benchmark ==="
+        $PY_CMD utils/test_integrator_peaks.py -nCPUs "$TEST_CPUS"
+        if [ $? -ne 0 ]; then
+            echo "Integrator peak fitting benchmark FAILED."
             exit 1
         fi
     fi

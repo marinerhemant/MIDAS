@@ -192,7 +192,7 @@ The fit results are written as a binary stream of `double` values, **7 values pe
 | 2 | `Mu` | Pseudo-Voigt mixing parameter (0–1) |
 | 3 | `Rcen` | Fitted peak center (pixel units) |
 | 4 | `Sigma` | Gaussian-equivalent sigma ($= \Gamma / 2.355$) |
-| 5 | `GoF` | Goodness-of-fit (sum of squared residuals) |
+| 5 | `SNR` | Signal-to-noise ratio (`Imax / rms_residual`) |
 | 6 | `Area` | Reserved (currently 0) |
 
 A companion file `fit_curves.bin` is also written, containing the fitted model curves for visualization.
@@ -506,7 +506,7 @@ python ~/opt/MIDAS/utils/integrator_batch_process.py \
 |---|---|---|
 | **1D Lineout** (left) | Latest integrated I(R) profile | Monitor peak positions, check data quality |
 | **Heatmap** (center) | R × frame waterfall (time-evolving) | Spot drift, beam instabilities, texture changes |
-| **Peak Evolution** (right) | Fitted params vs. frame | Track Imax, Rcen, Sigma, Mu, BG, GoF per peak over time |
+| **Peak Evolution** (right) | Fitted params vs. frame | Track Imax, Rcen, Sigma, Mu, BG, SNR per peak over time |
 
 #### Controls
 
@@ -521,7 +521,7 @@ python ~/opt/MIDAS/utils/integrator_batch_process.py \
 | Max history | Limit number of retained frames |
 | Pause | Freeze display (data still collected) |
 | Reset | Clear all accumulated data |
-| Param select | Choose which fit params to plot (Imax, BG, Mu, Rcen, Sigma, GoF) |
+| Param select | Choose which fit params to plot (Imax, BG, Mu, Rcen, Sigma, SNR) |
 | Peak select | Choose which peaks to display |
 
 #### Command-Line Arguments

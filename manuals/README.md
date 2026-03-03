@@ -27,6 +27,7 @@
 | [GSAS-II_Integration.md](GSAS-II_Integration.md) | Importing MIDAS output into GSAS-II | Rietveld refinement of caked powder data |
 | [Tomography_Reconstruction.md](Tomography_Reconstruction.md) | Absorption-contrast CT reconstruction | Reconstructing tomographic slices from projection data |
 | [FF_Benchmark.md](FF_Benchmark.md) | FF-HEDM benchmark testing | Validating the FF-HEDM pipeline with simulated data |
+| [FF_Integrator_Benchmark.md](FF_Integrator_Benchmark.md) | Integrator peak fitting benchmark | Validating calibration → integration → peak fitting with CeO₂ data |
 
 ---
 
