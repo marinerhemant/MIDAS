@@ -1065,10 +1065,20 @@ def main():
 
         # ---- Ring simulation ----
         logger.info("Running initial ring simulation")
+
+        # Validate required params for GetHKLList
+        if state.wavelength <= 0:
+            print("ERROR: Wavelength is required but not set. Provide it via --params or filename (e.g. 71p676keV).")
+            sys.exit(1)
+        if np.all(state.latc == 0):
+            print("ERROR: LatticeParameter is required but not set. Provide it via --params.")
+            sys.exit(1)
+
         sim_params = {
             'Wavelength': state.wavelength,
             'SpaceGroup': state.space_group,
             'Lsd': initialLsd,
+            'RhoD': state.rhod,
             'MaxRingRad': mrr,
             'LatticeConstant': state.latc
         }
@@ -1078,7 +1088,8 @@ def main():
         sim_rad_ratios = sim_rads / sim_rads[0]
 
         # ---- Background subtraction and thresholding ----
-        data = raw.astype(np.float64)
+        # np.asarray strips masked-array wrapper (diplib segfaults on masked arrays)
+        data = np.asarray(raw).astype(np.float64)
 
         # Determine DataType for CalibrantPanelShiftsOMP
         if raw.dtype == np.uint32:
@@ -1094,6 +1105,7 @@ def main():
 
         if noMedian == 0:
             logger.info("Applying median filter for background estimation")
+            data = np.ascontiguousarray(data)  # diplib needs contiguous memory
             data2 = dip.MedianFilter(data, 101)
             for _ in range(4):
                 data2 = dip.MedianFilter(data2, 101)

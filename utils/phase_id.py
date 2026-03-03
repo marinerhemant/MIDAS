@@ -286,14 +286,14 @@ def create_zarr_zip(data_file: Path, dark_file: Optional[Path],
 
     cmd = [
         sys.executable, str(gen_script),
-        '-paramFN', str(param_file),
-        '-dataFN', str(data_file),
-        '-resultFolder', str(work_dir),
+        '-paramFN', str(param_file.resolve()),
+        '-dataFN', str(data_file.resolve()),
+        '-resultFolder', str(work_dir.resolve()),
     ]
     if dark_file and dark_file.exists():
-        cmd.extend(['-darkFN', str(dark_file)])
+        cmd.extend(['-darkFN', str(dark_file.resolve())])
 
-    run_cmd(cmd, cwd=str(work_dir))
+    run_cmd(cmd, cwd=str(work_dir.resolve()))
 
     zips = list(work_dir.glob("*.MIDAS.zip"))
     if not zips:
@@ -309,6 +309,11 @@ def run_cpu_pipeline(zip_file: Path, peak_params: Path,
 
     Skips DetectorMapperZarr if Map.bin and nMap.bin already exist.
     """
+    # Resolve all paths to absolute (run_cmd uses cwd=work_dir)
+    zip_file = zip_file.resolve()
+    peak_params = peak_params.resolve()
+    work_dir = work_dir.resolve()
+
     map_bin = work_dir / "Map.bin"
     nmap_bin = work_dir / "nMap.bin"
 
@@ -353,6 +358,13 @@ def run_gpu_pipeline(data_file: Path, dark_file: Optional[Path],
                      work_dir: Path, n_cpus: int,
                      roi_padding: int = 30) -> Path:
     """Run GPU pipeline via integrator_batch_process.py. Returns path to fit.bin."""
+    # Resolve all paths to absolute
+    data_file = data_file.resolve()
+    param_file = param_file.resolve()
+    work_dir = work_dir.resolve()
+    if dark_file:
+        dark_file = dark_file.resolve()
+
     # Create temp param file with PeakLocation lines injected
     gpu_param = work_dir / "gpu_params.txt"
     with open(param_file) as fin, open(gpu_param, 'w') as fout:
@@ -476,6 +488,7 @@ def print_results(rings: List[RingEntry], fits: List[FitResult],
         phase_stats[p.name] = {
             'detected': 0, 'total': 0, 'a_values': [], 'intensities': [],
             'exclusive_detected': 0, 'exclusive_total': 0,
+            'ring_order': [],  # list of (R_px, detected_bool) in R order
         }
 
     # ── Table A: Per-ring results ──────────────────────────────────────
@@ -516,6 +529,8 @@ def print_results(rings: List[RingEntry], fits: List[FitResult],
                 phase_stats[ref.phase]['intensities'].append(fit.Imax)
                 if not ring.is_overlap:
                     phase_stats[ref.phase]['exclusive_detected'] += 1
+                phase_stats[ref.phase]['ring_order'].append(
+                    (ref.R_px, True))
 
                 notes = ""
                 if ring.is_overlap:
@@ -534,6 +549,11 @@ def print_results(rings: List[RingEntry], fits: List[FitResult],
             phase_label = ref.phase
             if ring.is_overlap:
                 phase_label = "+".join(r.phase for r in ring.reflections)
+
+            # Track non-detected rings per phase
+            for ref_nd in ring.reflections:
+                phase_stats[ref_nd.phase]['ring_order'].append(
+                    (ref_nd.R_px, False))
 
             # Show why it was rejected
             reason = "NOT DET"
@@ -581,7 +601,38 @@ def print_results(rings: List[RingEntry], fits: List[FitResult],
         else:
             mean_a = std_a = min_a = max_a = d_ppm = 0.0
 
-        if ratio >= 0.3:
+        # Intensity fraction for this phase
+        total_intensity = sum(sum(phase_stats[pp.name]['intensities'])
+                              for pp in phases
+                              if phase_stats[pp.name]['intensities'])
+        phase_intensity = sum(st['intensities']) if st['intensities'] else 0
+        intensity_frac = phase_intensity / total_intensity if total_intensity > 0 else 0
+
+        # Classification logic:
+        #   - exclusive_total > 0 but exclusive_detected == 0 means ALL
+        #     this phase's unique peaks failed detection — its signal is
+        #     entirely explained by overlap with another phase → capped
+        #     at MARGINAL.
+        #   - Otherwise, PRESENT if exclusive ratio ≥ 30%, or strong
+        #     overall coverage + intensity.
+        has_exclusive_opportunity = excl_tot > 0
+        has_exclusive_evidence = excl_det > 0
+
+        # Check if any of the first 3 (lowest-angle) rings were detected.
+        # Low-angle peaks are always strongest; if all missed, phase is
+        # likely not real.
+        sorted_rings = sorted(st['ring_order'], key=lambda x: x[0])
+        first_n = min(3, len(sorted_rings))
+        first_rings_detected = any(d for _, d in sorted_rings[:first_n])
+
+        if has_exclusive_opportunity and not has_exclusive_evidence:
+            status = "⚠️  MARGINAL" if det > 0 else "❌ ABSENT"
+        elif not first_rings_detected and det > 0:
+            # Only high-order peaks matched — likely coincidental
+            status = "⚠️  MARGINAL"
+        elif (ratio >= 0.3
+                or (pct >= 50 and intensity_frac >= 0.2)
+                or (pct >= 40 and intensity_frac >= 0.4)):
             status = "✅ PRESENT"
         elif det > 0:
             status = "⚠️  MARGINAL"

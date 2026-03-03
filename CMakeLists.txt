@@ -17,12 +17,6 @@ option(INSTALL_PYTHON_DEPENDENCIES "Install Python dependencies using pip (if re
 set(PYTHON_EXECUTABLE "" CACHE FILEPATH "Path to Python executable for installing dependencies")
 
 if(USE_CUDA)
-  # Workaround: CUDA 12.9 + glibc >=2.41 — cospi/sinpi/rsqrt exception-spec
-  # clash causes a hard error in cudafe++ during CMake's compiler identification.
-  # CMAKE_CUDA_COMPILER_FORCED skips the id-test entirely (safe: nvcc is known).
-  # The actual project code compiles fine because we pass --diag_suppress below.
-  set(CMAKE_CUDA_COMPILER_FORCED TRUE)
-  set(CMAKE_CUDA_FLAGS "${CMAKE_CUDA_FLAGS} -Xcudafe --diag_suppress=1301" CACHE STRING "" FORCE)
   project(MIDAS LANGUAGES C CXX CUDA)
 else()
   project(MIDAS LANGUAGES C CXX)
