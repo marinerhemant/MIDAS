@@ -60,6 +60,7 @@
 #include <time.h>
 #include <unistd.h>
 // #include <blosc2.h>     // Include if blosc compression is used
+#include "PeakFit.h"  // Shared peak fitting module
 #include <nlopt.h>    // For non-linear optimization
 #include <omp.h>      // <<< ADD THIS FOR OpenMP
 #define NUM_STREAMS 4 // Number of concurrent streams for GPU saturation
@@ -92,11 +93,11 @@ size_t szNPxList = 0;
 volatile sig_atomic_t keep_running = 1; // Flag for graceful shutdown
 
 // --- Peak Fitting (file-scope so check_peak_update can modify) ---
-static double g_pkLoc[MAX_PEAK_LOCATIONS]; // Specified peak locations
-static int g_nSpecP = 0;                   // Number of specified peaks
-static int g_pkFit = 0;                    // DoPeakFit flag
-static int g_multiP = 0;                   // MultiplePeaks flag
-static int g_doSm = 0;                     // DoSmoothing flag
+static double g_pkLoc[MAX_PEAK_LOCATIONS];       // Specified peak locations
+static int g_nSpecP = 0;                         // Number of specified peaks
+static int g_pkFit = 0;                          // DoPeakFit flag
+static int g_multiP __attribute__((unused)) = 0; // MultiplePeaks flag
+static int g_doSm __attribute__((unused)) = 0;   // DoSmoothing flag
 
 // --- Data Structures ---
 typedef struct {
@@ -1739,240 +1740,16 @@ void ProcessImageGPU(void *hRaw, float *dProc, const float *dAvgDark, int Nopt,
   }
 }
 
-// --- Peak Fitting Data Structures and Functions ---
-typedef struct {
-  int nrBins;
-  const double *R;   // Radial positions (X-axis)
-  const double *Int; // Intensity values (Y-axis)
-} dataFit;
-
-typedef struct {
-  int index;        // Index in the R/Int array
-  double radius;    // R value at the peak
-  double intensity; // Intensity value at the peak
-} Peak;
-
-// =========================================================================
-// <<< NEW HELPER FUNCTION: Calculates the model profile and peak areas >>>
-// =========================================================================
-// Height-normalized Pseudo-Voigt model curve with shared FWHM.
-// Parameters per peak: [Imax, m=mixing, c=center, Gamma=FWHM]
-// L(x) = 1 / (1 + 4*(x/Gamma)^2)        [peaks at 1]
-// G(x) = exp(-4*ln2*(x/Gamma)^2)         [peaks at 1]
-// I(R) = BG + sum_j Imax_j * (m_j * L(R-c_j) + (1-m_j) * G(R-c_j))
-// =========================================================================
-static inline void calculate_model_and_area(
-    int n_peaks, const double *params,    // Input: Peak parameters
-    int n_points, const double *R_values, // Input: X-axis data
-    double *out_model_curve, // Output: Buffer for the calculated Y-values
-    double *out_peak_areas) // Output: Buffer for each peak's area (can be NULL)
-{
-  const double bg = params[n_peaks * 4];
-  const double C0 = 4.0 * log(2.0);
-
-  // Initialize the model curve with just the background
-  for (int i = 0; i < n_points; ++i) {
-    out_model_curve[i] = bg;
-  }
-
-  // Add the contribution of each peak
-  for (int pN = 0; pN < n_peaks; ++pN) {
-    double Imax = params[pN * 4 + 0]; // Peak height
-    double m = fmax(0.0, fmin(1.0, params[pN * 4 + 1]));
-    double c = params[pN * 4 + 2];             // Center
-    double G = fmax(1e-9, params[pN * 4 + 3]); // FWHM (Gamma)
-    double invG2 = 1.0 / (G * G);
-
-    for (int i = 0; i < n_points; ++i) {
-      double diff = R_values[i] - c;
-      double diff_sq = diff * diff;
-      double L = 1.0 / (1.0 + 4.0 * diff_sq * invG2);
-      double Gaus = exp(-C0 * diff_sq * invG2);
-      out_model_curve[i] += Imax * (m * L + (1.0 - m) * Gaus);
-    }
-
-    // Analytical area: Imax * Gamma/2 * (m*pi + (1-m)*sqrt(pi/ln2))
-    if (out_peak_areas != NULL) {
-      out_peak_areas[pN] =
-          Imax * G / 2.0 * (m * M_PI + (1.0 - m) * sqrt(M_PI / log(2.0)));
-    }
-  }
-}
-
-// =========================================================================
-// Height-normalized Pseudo-Voigt objective with analytical gradients.
-// =========================================================================
-static double problem_function_global_bg(unsigned n, const double *x,
-                                         double *grad, void *fdat) {
-  const dataFit *d = (const dataFit *)fdat;
-  const int Np = d->nrBins;
-  const double *Rs = d->R;
-  const double *Is = d->Int;
-  const int nP = (n - 1) / 4;
-  const double C0 = 4.0 * log(2.0);
-
-  double *calculated_I = (double *)malloc(Np * sizeof(double));
-  if (!calculated_I)
-    return INFINITY;
-  calculate_model_and_area(nP, x, Np, Rs, calculated_I, NULL);
-
-  // --- Calculate total squared error ---
-  double total_sq_error = 0.0;
-  for (int i = 0; i < Np; ++i) {
-    double residual = calculated_I[i] - Is[i];
-    total_sq_error += residual * residual;
-  }
-
-  // --- GRADIENT CALCULATION ---
-  // For height-normalized Pseudo-Voigt with shared FWHM:
-  // L(x) = 1 / (1 + 4*x^2/G^2)           [peaks at 1]
-  // Gaus(x) = exp(-C0*x^2/G^2)            [peaks at 1]
-  // where x = R - c, G = Gamma (FWHM)
-  //
-  // dI/dImax = m*L + (1-m)*Gaus
-  // dI/dm = Imax*(L - Gaus)
-  // dI/dc = Imax * [m * 8*x/(G^2*denom^2) + (1-m) * Gaus * 2*C0*x/G^2]
-  // dI/dG = Imax * [m * 8*x^2/(G^3*denom^2) + (1-m) * Gaus * 2*C0*x^2/G^3]
-  if (grad) {
-    memset(grad, 0, n * sizeof(double));
-    for (int pN = 0; pN < nP; ++pN) {
-      double Imax = x[pN * 4 + 0], m = fmax(0., fmin(1., x[pN * 4 + 1])),
-             c = x[pN * 4 + 2], G = fmax(1e-9, x[pN * 4 + 3]);
-      double *gA = &grad[pN * 4 + 0], *gm = &grad[pN * 4 + 1],
-             *gc = &grad[pN * 4 + 2], *gG = &grad[pN * 4 + 3];
-      double G2 = G * G, G3 = G2 * G;
-      double invG2 = 1.0 / G2;
-
-      for (int i = 0; i < Np; ++i) {
-        double diff = Rs[i] - c, diff_sq = diff * diff;
-        double denom = 1.0 + 4.0 * diff_sq * invG2;
-        double L = 1.0 / denom;
-        double Gaus = exp(-C0 * diff_sq * invG2);
-        double residual = calculated_I[i] - Is[i];
-        double common = 2.0 * residual;
-
-        // dI/dImax
-        *gA += common * (m * L + (1. - m) * Gaus);
-        // dI/dm
-        *gm += common * Imax * (L - Gaus);
-        // dI/dc: diff = R - c, d(diff)/dc = -1
-        double dLdc = 8.0 * diff / (G2 * denom * denom);
-        double dGausdc = Gaus * 2.0 * C0 * diff * invG2;
-        *gc += common * Imax * (m * dLdc + (1. - m) * dGausdc);
-        // dI/dG
-        double dLdG = 8.0 * diff_sq / (G3 * denom * denom);
-        double dGausdG = Gaus * 2.0 * C0 * diff_sq / G3;
-        *gG += common * Imax * (m * dLdG + (1. - m) * dGausdG);
-      }
-    }
-    //  Background gradient
-    for (int i = 0; i < Np; ++i) {
-      grad[n - 1] += 2.0 * (calculated_I[i] - Is[i]);
-    }
-  }
-
-  free(calculated_I);
-  return total_sq_error;
-}
-
-// Apply Savitzky-Golay smoothing filter (coefficients for specific window
-// sizes)
-void smoothData(const double *in, double *out, int N, int W) {
-  // W = Window size (must be odd, >= 3)
-  if (W < 3 || W % 2 == 0) {
-    // Invalid window size, just copy input to output
-    memcpy(out, in, N * sizeof(double));
-    return;
-  }
-  int H = W / 2; // Half-window size
-
-  // Savitzky-Golay coefficients (pre-calculated, for smoothing, polynomial
-  // order 2) Source: Numerical Recipes or similar resources
-  double *coeffs = (double *)malloc(W * sizeof(double));
-  check(!coeffs, "smoothData: Malloc failed for coefficients");
-  double norm = 0.0;
-
-  switch (W) {
-  case 5:
-    norm = 35.0;
-    coeffs[0] = -3;
-    coeffs[1] = 12;
-    coeffs[2] = 17;
-    coeffs[3] = 12;
-    coeffs[4] = -3;
-    break;
-  case 7:
-    norm = 21.0;
-    coeffs[0] = -2;
-    coeffs[1] = 3;
-    coeffs[2] = 6;
-    coeffs[3] = 7;
-    coeffs[4] = 6;
-    coeffs[5] = 3;
-    coeffs[6] = -2;
-    break;
-  case 9:
-    norm = 231.0;
-    coeffs[0] = -21;
-    coeffs[1] = 14;
-    coeffs[2] = 39;
-    coeffs[3] = 54;
-    coeffs[4] = 59;
-    coeffs[5] = 54;
-    coeffs[6] = 39;
-    coeffs[7] = 14;
-    coeffs[8] = -21;
-    break;
-  // Add more cases for other window sizes if needed
-  default:
-    fprintf(stderr,
-            "smoothData Warn: Unsupported window size %d. No smoothing "
-            "applied.\n",
-            W);
-    memcpy(out, in, N * sizeof(double));
-    free(coeffs);
-    return;
-  }
-
-  // Normalize coefficients
-  for (int i = 0; i < W; ++i) {
-    coeffs[i] /= norm;
-  }
-
-  // Apply the filter
-  for (int i = 0; i < N; ++i) {
-    if (i < H || i >= N - H) {
-      // Handle boundaries: just copy original data (could use reflection or
-      // other methods)
-      out[i] = in[i];
-    } else {
-      // Apply convolution in the center
-      double smoothed_value = 0.0;
-      for (int j = 0; j < W; ++j) {
-        smoothed_value += coeffs[j] * in[i - H + j];
-      }
-      out[i] = smoothed_value;
-    }
-  }
-  free(coeffs);
-}
-
-// (Removed disabled findPeaks CPU function)
-
-// Structure to define a fitting job (a region and the peaks within it)
-typedef struct {
-  int startIndex;
-  int endIndex;
-  int numPeaks;
-  Peak *peaks; // Pointer to the first peak in this job
-} FitJob;
-
-// Helper for qsort
-static int comparePeaksByIndex(const void *a, const void *b) {
-  Peak *peakA = (Peak *)a;
-  Peak *peakB = (Peak *)b;
-  return (peakA->index - peakB->index);
-}
+// --- Peak Fitting: Use shared PeakFit module ---
+// Compatibility aliases for existing code that uses unprefixed type names
+typedef PF_DataFit dataFit;
+typedef PF_Peak Peak;
+typedef PF_FitJob FitJob;
+#define calculate_model_and_area pf_calculate_model_and_area
+#define problem_function_global_bg pf_problem_function_global_bg
+#define estimate_initial_params pf_estimate_initial_params
+#define smoothData pf_smoothData
+#define comparePeaksByIndex pf_comparePeaksByIndex
 
 // --- Bin Sorting Struct ---
 typedef struct {
@@ -1985,48 +1762,6 @@ static int compareBinSort(const void *a, const void *b) {
   BinSort *binB = (BinSort *)b;
   // Sort Descending (Heaviest first)
   return (binB->count - binA->count);
-}
-
-static double estimate_initial_params(const double *intensity_data,
-                                      int n_points, int peak_idx_local,
-                                      double *out_bg_guess,
-                                      double *out_amp_guess) {
-  // 1. Estimate background from the edges of the ROI.
-  int bg_width =
-      fmin(5, n_points / 4); // Use up to 5 points or 1/4 of ROI width
-  if (bg_width < 1)
-    bg_width = 1;
-  double bg_sum = 0.0;
-  for (int i = 0; i < bg_width; ++i) {
-    bg_sum += intensity_data[i];
-    bg_sum += intensity_data[n_points - 1 - i];
-  }
-  *out_bg_guess = bg_sum / (2.0 * bg_width);
-
-  // 2. Estimate amplitude above local background.
-  *out_amp_guess = intensity_data[peak_idx_local] - *out_bg_guess;
-  if (*out_amp_guess <= 0)
-    *out_amp_guess = intensity_data[peak_idx_local]; // Fallback
-
-  // 3. Find the Full Width at Half Maximum (FWHM).
-  double half_max = *out_bg_guess + (*out_amp_guess / 2.0);
-
-  // Scan left from peak center
-  int left_idx = peak_idx_local;
-  while (left_idx > 0 && intensity_data[left_idx] > half_max) {
-    left_idx--;
-  }
-
-  // Scan right from peak center
-  int right_idx = peak_idx_local;
-  while (right_idx < n_points - 1 && intensity_data[right_idx] > half_max) {
-    right_idx++;
-  }
-
-  double fwhm = (double)(right_idx - left_idx);
-  return (fwhm > 1.0)
-             ? fwhm
-             : 2.0; // Return FWHM in bin units (ensure it's at least 2)
 }
 
 // =========================================================================
