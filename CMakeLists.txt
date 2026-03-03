@@ -286,6 +286,9 @@ if(USE_CUDA)
       message(STATUS "CMAKE_CUDA_ARCHITECTURES not set, defaulting to ${CMAKE_CUDA_ARCHITECTURES}. Configure as needed.")
     endif()
     message(STATUS "CUDA enabled with standard ${CMAKE_CUDA_STANDARD} for architectures ${CMAKE_CUDA_ARCHITECTURES}.")
+    # Workaround: glibc ≥2.41 declares cospi/sinpi/rsqrt with noexcept(true),
+    # which clashes with CUDA's builtin declarations.  Suppress cudafe error 1301.
+    set(CMAKE_CUDA_FLAGS "${CMAKE_CUDA_FLAGS} -Xcudafe --diag_suppress=1301" CACHE STRING "" FORCE)
     # Example CUDA flags (from FF_HEDM, adjust as necessary)
     # set(CMAKE_CUDA_FLAGS "${CMAKE_CUDA_FLAGS} -O3 -G --generate-code arch=compute_${CMAKE_CUDA_ARCHITECTURES},code=sm_${CMAKE_CUDA_ARCHITECTURES}")
   else()
