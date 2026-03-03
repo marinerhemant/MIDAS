@@ -408,13 +408,7 @@ def monitor_processing(mapping_file, expected_frames=None, check_interval=0.5):
         time.sleep(check_interval)
 
 def main():
-    # Create timestamped directory
-    timestamp = datetime.datetime.now().strftime("%Y%m%d_%H%M%S")
-    output_dir = Path(f"analysis_{timestamp}").absolute()
-    output_dir.mkdir(parents=True, exist_ok=True)
-    print(f"All outputs will be saved to: {output_dir}")
-
-    # Set up argument parser
+    # Set up argument parser first so we can use --output-dir
     import argparse
     
     parser = argparse.ArgumentParser(
@@ -430,6 +424,7 @@ def main():
     # Input source options - mutually exclusive group
     input_group = parser.add_mutually_exclusive_group(required=True)
     input_group.add_argument('--folder', help='Folder containing image files to process')
+    input_group.add_argument('--file', help='Single image file to process (no need to copy to a separate folder)')
     input_group.add_argument('--pva', action='store_true', help='Use PVA stream instead of files')
     
     # Optional arguments
@@ -458,7 +453,19 @@ def main():
     parser.add_argument('--viewer-theme', choices=['dark', 'light'], default='light',
                         help='Theme for live viewer (default: light)')
     
+    parser.add_argument('--output-dir', default=None,
+                        help='Custom output directory name (default: analysis_YYYYMMDD_HHMMSS)')
+    
     args = parser.parse_args()
+    
+    # ---- Create output directory ----
+    if args.output_dir:
+        output_dir = Path(args.output_dir).absolute()
+    else:
+        timestamp = datetime.datetime.now().strftime("%Y%m%d_%H%M%S")
+        output_dir = Path(f"analysis_{timestamp}").absolute()
+    output_dir.mkdir(parents=True, exist_ok=True)
+    print(f"All outputs will be saved to: {output_dir}")
     
     # Validation
     param_file = str(Path(args.param_file).absolute())
@@ -467,8 +474,23 @@ def main():
         sys.exit(1)
 
     use_pva = args.pva
-    folder_to_process = str(Path(args.folder).absolute()) if not use_pva else None
-    extension = args.extension
+    # Determine folder_to_process: from --folder, from --file (its parent), or None (PVA)
+    single_file_mode = False
+    if args.file:
+        single_file_path = Path(args.file).absolute()
+        if not single_file_path.exists():
+            print(f"Error: File '{single_file_path}' not found")
+            sys.exit(1)
+        folder_to_process = str(single_file_path.parent)
+        extension = single_file_path.suffix.lstrip('.')
+        single_file_mode = True
+        print(f"Single-file mode: processing {single_file_path.name}")
+    elif not use_pva:
+        folder_to_process = str(Path(args.folder).absolute())
+        extension = args.extension
+    else:
+        folder_to_process = None
+        extension = args.extension
     mapping_file = args.mapping_file
     
     # Get install dir from path of executable
@@ -487,14 +509,18 @@ def main():
     # Count number of files to process for progress tracking
     expected_frames = 0
     if not use_pva and folder_to_process:
-        expected_frames = count_files_in_folder(folder_to_process, extension)
-        if expected_frames == 0:
-            print(f"Warning: No {extension} files found in {folder_to_process}")
-            proceed = input("Continue anyway? (y/n): ")
-            if proceed.lower() != 'y':
-                sys.exit(0)
+        if single_file_mode:
+            expected_frames = 1
+            print(f"Processing single file: {single_file_path.name}")
         else:
-            print(f"Found {expected_frames} {extension} files to process")
+            expected_frames = count_files_in_folder(folder_to_process, extension)
+            if expected_frames == 0:
+                print(f"Warning: No {extension} files found in {folder_to_process}")
+                proceed = input("Continue anyway? (y/n): ")
+                if proceed.lower() != 'y':
+                    sys.exit(0)
+            else:
+                print(f"Found {expected_frames} {extension} files to process")
     
     # Read parameters from parameter file
     nx, ny, omega_sum_frames, n_rbins, panel_shifts_file, n_peaks, peak_fit = read_parameters_from_file(param_file)
