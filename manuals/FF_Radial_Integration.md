@@ -82,10 +82,12 @@ python ~/opt/MIDAS/utils/integrator_batch_process.py \
 | Argument | Description |
 | :--- | :--- |
 | `--param-file` | **Required.** Path to the text file containing geometry and integration parameters. |
-| `--folder` | Source folder for image files (e.g., `.tif`, `.ge`). Mutually exclusive with `--pva`. |
+| `--folder` | Source folder for image files (e.g., `.tif`, `.ge`). Mutually exclusive with `--file` and `--pva`. |
+| `--file` | Single image file to process (auto-detects extension and parent folder). Mutually exclusive with `--folder` and `--pva`. |
 | `--pva` | Enable listening to an EPICS PVA stream instead of reading files. |
 | `--dark` | Path to a dark field file (binary) for background subtraction. |
 | `--output-h5` | Filename for the final consolidated HDF5 output. |
+| `--output-dir` | Custom output directory name (default: `analysis_YYYYMMDD_HHMMSS`). |
 | `--zarr-output` | Custom filename for the GSAS-II zarr.zip output (default: auto from `--output-h5`). |
 | `--no-zarr` | Skip zarr.zip creation (HDF5 only). |
 | `--save-interval` | How often (in frames) to save the intermediate mapping file. Default: 500. |

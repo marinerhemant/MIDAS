@@ -44,16 +44,16 @@ flowchart TD
 
     subgraph S3["Step 3 · Analysis"]
         PARSE["Parse fit.bin<br/>7 doubles per peak"]
-        FILTER["Dual filter:<br/>SNR ≥ threshold<br/>Imax ≥ 1% of max"]
+        FILTER["Triple filter:<br/>Sigma ≥ 0.5×RBinSize<br/>SNR ≥ threshold<br/>Imax ≥ 1% of max"]
         CALC["Back-calculate<br/>a = d × √ h²+k²+l² "]
     end
 
     S2 -->|"fit.bin"| PARSE --> FILTER --> CALC
 
     subgraph S4["Step 4 · Report"]
-        T1["Table A: Per-ring<br/>R, Imax, SNR, a_fitted"]
+        T1["Table A: Per-ring<br/>R, Imax, AUC, SNR, a_fitted"]
         T2["Table B: Phase summary<br/>coverage, mean/std a"]
-        T3["Table C: Intensity<br/>statistics"]
+        T3["Table C: Intensity<br/>AUC statistics"]
     end
 
     CALC --> T1 --> T2 --> T3
@@ -155,12 +155,17 @@ Columns:
 
 ## Detection Filters
 
-A peak is considered "detected" only if **both** conditions are met:
+A peak is considered "detected" only if **all three** conditions are met:
 
-1. **SNR filter**: `SNR ≥ snr-threshold` (default 5.0) — ensures the peak is statistically significant above background noise
-2. **Relative intensity filter**: `Imax ≥ rel-intensity-threshold × max(Imax)` (default 1%) — eliminates weak noise peaks that happen to pass the SNR filter but are orders of magnitude weaker than real diffraction peaks
+1. **Sigma filter**: `Sigma ≥ 0.5 × RBinSize` — rejects fitting artifacts where the optimizer converges to a delta-function width (Sigma ≈ 0.053), which indicates the fitter found noise rather than a real peak
+2. **SNR filter**: `SNR ≥ snr-threshold` (default 5.0) — ensures the peak is statistically significant above background noise
+3. **Relative intensity filter**: `Imax ≥ rel-intensity-threshold × max(Imax)` (default 1%) — eliminates weak noise peaks that happen to pass the SNR filter but are orders of magnitude weaker than real diffraction peaks
+
+> [!NOTE]
+> The detection gate uses raw `Imax` (peak height), not AUC. This is deliberate: AUC (`π × Imax × Sigma`) amplifies false positives from fitting artifacts where the fitter converges to its maximum allowed sigma (≈ 4.25), inflating AUC for tiny Imax values. AUC is computed and displayed for informational purposes.
 
 When a peak fails detection, the rejection reason is displayed:
+- `σ=0.053<0.125` — failed Sigma filter (fitting artifact)
 - `SNR=2.1<5.0` — failed SNR filter
 - `Imax=0.02%<1%` — failed relative intensity filter
 - `NOT DET` — no peak found at all (Imax ≈ 0)
@@ -186,9 +191,10 @@ When rings from different phases have similar radii (ΔR < merge threshold), the
 For each fitted ring:
 - `Phase` + `(hkl)` — phase assignment and Miller indices
 - `R_theory` / `R_fitted` — predicted vs. fitted radius (pixels)
-- `Imax` — peak amplitude (integrated counts)
+- `Imax` — peak amplitude above background (counts)
+- `AUC` — Area Under Curve (`π × Imax × Sigma`), measures total diffracted power
 - `BG` — fitted background level
-- `Sigma` — peak width (bins)
+- `Sigma` — peak width (Gaussian-equivalent sigma, in bins)
 - `SNR` — signal-to-noise ratio
 - `a_fitted` — back-calculated cubic lattice parameter (Å)
 - `Δa/a(ppm)` — fractional deviation from nominal lattice parameter
@@ -201,13 +207,29 @@ Per-phase aggregate statistics:
 - `Coverage` — detection percentage
 - `Mean/Std/Min/Max a(Å)` — lattice parameter statistics
 - `Δa/a_nom(ppm)` — mean fractional deviation from nominal
-- `Status`: ✅ PRESENT (≥30% of exclusive rings detected), ⚠️ MARGINAL (<30% but >0%), ❌ ABSENT
+- `Status` — classification (see [Phase Classification](#phase-classification) below)
 
 ### Table C: Intensity Statistics
 
-Per-phase intensity breakdown:
-- `Sum/Mean/Max/Min Imax` — intensity distribution
-- `Frac of Total` — fraction of total detected intensity belonging to each phase
+Per-phase AUC breakdown (only includes detected peaks):
+- `Sum/Mean/Max/Min AUC` — AUC distribution across detected rings
+- `Frac of Total` — fraction of total detected AUC belonging to each phase
+
+> [!NOTE]
+> AUC (`π × Imax × Sigma`) captures both peak height and width, providing a better measure of total diffracted power than Imax alone. It is used for intensity comparisons between phases but NOT for detection gating.
+
+## Phase Classification
+
+Phases are classified using a multi-criteria decision that goes beyond simple coverage percentage:
+
+1. **Exclusive-peak check**: If a phase has exclusive (non-overlapping) rings but **none** of them are detected, the phase is capped at ⚠️ MARGINAL. This prevents a phase from being declared PRESENT solely through peaks shared with another phase.
+2. **First-ring heuristic**: If neither of a phase's two lowest-angle rings are detected, the phase is capped at ⚠️ MARGINAL. Low-angle reflections are always the strongest; if both are missed, the phase is likely not present.
+3. **PRESENT criteria** (any one sufficient):
+   - Exclusive ring detection ratio ≥ 30%
+   - Coverage ≥ 50% AND intensity fraction ≥ 20%
+   - Coverage ≥ 40% AND intensity fraction ≥ 40%
+4. **MARGINAL**: Some rings detected but criteria above not met
+5. **ABSENT**: Zero detected rings
 
 ## Lattice Parameter Back-Calculation
 

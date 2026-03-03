@@ -182,6 +182,8 @@ The script uses `--flag` convention with backward-compatible aliases for all leg
 | `--threshold` | `-Threshold` | Manual threshold for ring detection (0=auto) | `0` | `--threshold 500` |
 | `--no-median` | `-NoMedian` | Skip median filter (0=use, 1=skip) | `0` | `--no-median 1` |
 | `--px` | — | Pixel size (µm). Enables param-file-free usage for non-Zarr. | `0` (auto) | `--px 172` |
+| `--tx` | — | Detector tilt tx (radians). Not fitted, passed through to `CalibrantPanelShiftsOMP`. | `0.0` | `--tx 0.001` |
+| `--mask` | `-MaskFile` | Mask TIFF for bad/gap pixels (passed as `MaskFile`). Convention: `0` = bad, `1` = good. | `''` | `--mask mask.tif` |
 | `--cpus` | — | Number of CPUs for CalibrantPanelShiftsOMP (0=all) | `0` | `--cpus 32` |
 
 > [!TIP]
