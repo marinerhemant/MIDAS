@@ -187,5 +187,6 @@ The ~2.7× difference is expected:
 ## See Also
 
 - [FF_Radial_Integration.md](FF_Radial_Integration.md) — Full documentation of the radial integration suite
+- [FF_Phase_Identification.md](FF_Phase_Identification.md) — Multi-phase identification from diffraction images
 - [FF_Calibration.md](FF_Calibration.md) — Geometry calibration with `CalibrantPanelShiftsOMP`
 - [FF_Benchmark.md](FF_Benchmark.md) — FF-HEDM full pipeline benchmark

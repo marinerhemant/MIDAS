@@ -555,6 +555,7 @@ python ~/opt/MIDAS/utils/plot_integrator_peaks.py \
 - [FF_Analysis.md](FF_Analysis.md) — Standard FF-HEDM analysis
 - [FF_Calibration.md](FF_Calibration.md) — Geometry calibration from calibrant rings
 - [FF_Interactive_Plotting.md](FF_Interactive_Plotting.md) — Visualizing FF-HEDM results
+- [FF_Phase_Identification.md](FF_Phase_Identification.md) — Multi-phase identification from diffraction images
 - [GSAS-II_Integration.md](GSAS-II_Integration.md) — Importing caked output into GSAS-II for Rietveld refinement
 - [README.md](README.md) — High-level MIDAS overview and manual index
 

@@ -28,6 +28,7 @@
 | [Tomography_Reconstruction.md](Tomography_Reconstruction.md) | Absorption-contrast CT reconstruction | Reconstructing tomographic slices from projection data |
 | [FF_Benchmark.md](FF_Benchmark.md) | FF-HEDM benchmark testing | Validating the FF-HEDM pipeline with simulated data |
 | [FF_Integrator_Benchmark.md](FF_Integrator_Benchmark.md) | Integrator peak fitting benchmark | Validating calibration → integration → peak fitting with CeO₂ data |
+| [FF_Phase_Identification.md](FF_Phase_Identification.md) | Multi-phase identification | Identifying crystallographic phases from diffraction images |
 
 ---
 
