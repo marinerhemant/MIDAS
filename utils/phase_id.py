@@ -675,6 +675,36 @@ def write_peak_tables(rows: List[dict], base_path: Path):
     return csv_path, txt_path
 
 
+SINGLE_PHASE_COLUMNS = ['pixel_number', 'two_theta_deg', 'FWHM_2theta_deg', 'intensity']
+
+
+def write_single_phase_peak_table(fits: List[FitResult], rings: List[RingEntry],
+                                  geom: dict, out_path: Path):
+    """Write minimal peak table for single-phase mode.
+
+    Columns: pixel_number, two_theta_deg, FWHM_2theta_deg, intensity
+    One row per peak (all peaks, including non-detected).
+    """
+    px = geom['px']
+    Lsd = geom['Lsd']
+    n = min(len(rings), len(fits))
+    with open(out_path, 'w') as f:
+        f.write('# ' + '  '.join(f'{c:>18}' for c in SINGLE_PHASE_COLUMNS) + '\n')
+        for i in range(n):
+            fit = fits[i]
+            R_um = fit.Center * px
+            tth_deg = math.degrees(math.atan(R_um / Lsd)) if Lsd > 0 else 0.0
+            fwhm_px = 2.355 * fit.Sigma
+            fwhm_um = fwhm_px * px
+            if Lsd > 0:
+                dtth_dR = 1.0 / (Lsd * (1.0 + (R_um / Lsd) ** 2))
+                fwhm_tth = math.degrees(fwhm_um * dtth_dR)
+            else:
+                fwhm_tth = 0.0
+            f.write(f'{i:>18d}  {tth_deg:>18.6f}  {fwhm_tth:>18.6f}  {fit.Area:>18.6f}\n')
+    return out_path
+
+
 # =========================================================================
 # Reporting
 # =========================================================================
@@ -1362,6 +1392,10 @@ def main():
                              '(default: <work-dir>/phase_id_results.txt)')
     parser.add_argument('--format', choices=['table', 'json'], default='table',
                         help='Output format: table (default) or json')
+    parser.add_argument('--single-phase', action='store_true',
+                        help='Single-phase mode: each line in -phases maps '
+                             'to one data file (1:1). Output is a minimal '
+                             'peak table per file: pixel, 2theta, FWHM, intensity.')
     parser.add_argument('--quiet', action='store_true',
                         help='Suppress output except the phase summary table')
     parser.add_argument('--verbose', action='store_true',
@@ -1459,7 +1493,7 @@ def main():
 
     try:
         # ==============================================================
-        # Step 1: Parse phases and predict rings (parallel GetHKLList)
+        # Step 1: Parse phases and predict rings
         # ==============================================================
         t0 = time.monotonic()
         _hdr("[1/4] Parsing phases and predicting ring positions...")
@@ -1470,6 +1504,138 @@ def main():
 
         for p in phases:
             _hdr(f"  Phase: {p.name}  SG={p.spacegroup}  a={p.lattice_a} Å")
+
+        # ── Single-phase mode validation ──────────────────────────
+        if args.single_phase:
+            if len(phases) != len(data_files):
+                print(f"ERROR: --single-phase requires phases file to have "
+                      f"exactly {len(data_files)} entries (one per data file), "
+                      f"got {len(phases)}")
+                sys.exit(1)
+
+        # ==============================================================
+        # SINGLE-PHASE MODE
+        # ==============================================================
+        if args.single_phase:
+            qprint(f"  Single-phase mode: {len(data_files)} file(s), "
+                   f"1 phase per file")
+
+            # Create working param file with absolute paths
+            work_param = base_work_dir / "phase_id_params.txt"
+            param_dir = param_file.parent
+            with open(param_file) as fin, open(work_param, 'w') as fout:
+                for line in fin:
+                    parts = line.strip().split()
+                    if not parts:
+                        fout.write(line)
+                        continue
+                    key = parts[0]
+                    if key in ('MaskFile', 'MaskFN') and len(parts) > 1:
+                        abs_path = (param_dir / parts[1]).resolve()
+                        fout.write(f"{key} {abs_path}\n")
+                    elif key == 'Dark' and len(parts) > 1:
+                        abs_path = (param_dir / parts[1]).resolve()
+                        fout.write(f"Dark {abs_path}\n")
+                    elif key == 'Folder':
+                        fout.write(f"Folder {base_work_dir}\n")
+                    else:
+                        fout.write(line)
+
+            # Predict rings per unique phase and cache mapper results
+            phase_ring_cache = {}   # (name, sg, a) → List[RingEntry]
+            mapper_cache = {}       # (name, sg, a) → Path to work_dir with Map.bin
+
+            t_rings = time.monotonic() - t0
+            n_files = len(data_files)
+
+            for idx, (df, phase) in enumerate(zip(data_files, phases)):
+                phase_key = (phase.name, phase.spacegroup, phase.lattice_a)
+                qprint(f"  [{idx+1}/{n_files}] {df.name}  →  {phase.name} "
+                       f"(SG={phase.spacegroup}, a={phase.lattice_a} Å)")
+
+                # Predict rings (cached per unique phase)
+                if phase_key not in phase_ring_cache:
+                    refs = predict_rings_for_phase(phase, param_file, geom)
+                    refs = refs[:args.max_rings]
+                    rings = merge_and_deduplicate(refs, merge_threshold)
+                    phase_ring_cache[phase_key] = rings
+                    qprint(f"    Predicted {len(rings)} rings")
+                else:
+                    rings = phase_ring_cache[phase_key]
+
+                n_peaks = len(rings)
+
+                # Per-file work directory
+                file_dir = base_work_dir / f"file_{idx:04d}"
+                file_dir.mkdir(parents=True, exist_ok=True)
+
+                # Write per-file peak_params.txt
+                file_peak_params = file_dir / "peak_params.txt"
+                write_peak_params(rings, file_peak_params, args.roi_padding)
+
+                # Copy work param
+                file_param = file_dir / "phase_id_params.txt"
+                shutil.copy2(str(work_param), str(file_param))
+
+                # Run DetectorMapper (cached per unique phase)
+                if args.backend == 'cpu':
+                    if phase_key in mapper_cache:
+                        # Symlink Map.bin + nMap.bin from cached dir
+                        cached_dir = mapper_cache[phase_key]
+                        for mf in ('Map.bin', 'nMap.bin'):
+                            src = cached_dir / mf
+                            dst = file_dir / mf
+                            if not dst.exists() and src.exists():
+                                os.symlink(str(src), str(dst))
+                    else:
+                        qprint(f"    Running DetectorMapper...", end="",
+                               flush=True)
+                        t0m = time.monotonic()
+                        run_detector_mapper(file_param, file_dir)
+                        qprint(f" done [{time.monotonic()-t0m:.2f}s]")
+                        mapper_cache[phase_key] = file_dir
+
+                    if not (file_dir / "Map.bin").exists():
+                        print(f"ERROR: DetectorMapper failed for {df.name}")
+                        continue
+
+                # Run integrator
+                t0i = time.monotonic()
+                integrator = MIDAS_BIN / "IntegratorZarrOMP"
+                cmd = [
+                    str(integrator),
+                    "-paramFN", str(file_param.resolve()),
+                    "-dataFN", str(df.resolve()),
+                    "-nCPUs", "1",
+                    "-PeakParamsFN", str(file_peak_params.resolve()),
+                ]
+                if dark_file and dark_file.exists():
+                    cmd.extend(["-darkFN", str(dark_file.resolve())])
+                run_cmd(cmd, cwd=str(file_dir.resolve()))
+                t_int = time.monotonic() - t0i
+
+                # Read fit results
+                fit_bin = file_dir / "fit.bin"
+                fits = read_fit_bin(fit_bin, n_peaks)
+                if not fits:
+                    qprint(f"    WARNING: No fit results")
+                    continue
+
+                # Write minimal peak table
+                out_name = df.stem + "_peaks.txt"
+                out_path_sp = base_work_dir / out_name
+                write_single_phase_peak_table(fits, rings, geom, out_path_sp)
+                qprint(f"    → {out_path_sp.name}  "
+                       f"({n_peaks} peaks, {t_int:.2f}s)")
+
+            t_wall = time.monotonic() - t_wall_start
+            qprint(f"\n  Total wall time: {t_wall:.2f}s")
+            qprint(f"  Peak tables in: {base_work_dir}")
+            return  # Done — skip multi-phase reporting
+
+        # ==============================================================
+        # MULTI-PHASE MODE (original behavior)
+        # ==============================================================
 
         # Predict rings for all phases in parallel
         all_reflections = []

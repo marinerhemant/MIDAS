@@ -164,6 +164,7 @@ Columns:
 | `--multi-cpu` | 0 | Process N files in parallel (0 = sequential). Runs `DetectorMapper` once, copies map files, then launches N workers. |
 | `--output` | `<work-dir>/phase_id_results.txt` | Save combined results to this file |
 | `--format` | `table` | Output format: `table` (default) or `json` |
+| `--single-phase` | — | Single-phase mode: each line in `-phases` maps 1:1 to a data file. Output is a minimal peak table per file. See [Single-Phase Mode](#single-phase-mode). |
 
 ## Detection Filters
 
@@ -321,6 +322,62 @@ python utils/phase_id.py \
 
 > [!TIP]
 > The `--multi-cpu` flag controls job-level parallelism. Each `IntegratorZarrOMP` call uses 1 CPU thread. A timing summary at the end shows wall time and per-stage breakdown (rings, mapper, files) for identifying bottlenecks.
+
+## Single-Phase Mode
+
+When you already know which phase each data file corresponds to, use `--single-phase` to skip multi-phase detection and produce minimal peak tables.
+
+### Phases File Format
+
+In single-phase mode, the phases file must have **exactly as many non-comment lines as data files**. Line *i* specifies the phase for data file *i*:
+
+```text
+# phases_single.txt — one phase per file
+CeO2  225  5.4116
+LaB6  221  4.1569
+CeO2  225  5.4116
+```
+
+For 3 data files, this maps:
+- `file_1.tif` → CeO2
+- `file_2.tif` → LaB6
+- `file_3.tif` → CeO2
+
+### Usage
+
+```bash
+python utils/phase_id.py \
+    -paramFN geometry.txt \
+    -dataFN sample_001.tif sample_002.tif sample_003.tif \
+    -phases phases_single.txt \
+    --single-phase \
+    --keep-work-dir --work-dir ./output
+```
+
+### Output
+
+One peak table per file is written to the work directory:
+
+| File | Contents |
+|------|----------|
+| `sample_001_peaks.txt` | Peaks from CeO2 rings in `sample_001.tif` |
+| `sample_002_peaks.txt` | Peaks from LaB6 rings in `sample_002.tif` |
+| `sample_003_peaks.txt` | Peaks from CeO2 rings in `sample_003.tif` |
+
+Each peak table has four columns:
+
+| Column | Description |
+|--------|-------------|
+| `pixel_number` | Peak index (0-based) |
+| `two_theta_deg` | Fitted 2θ scattering angle (degrees) |
+| `FWHM_2theta_deg` | Full-width half-maximum in 2θ (degrees) |
+| `intensity` | Integrated area under the peak |
+
+> [!TIP]
+> Ring predictions and DetectorMapper results are cached per unique phase, so if multiple files share the same phase (e.g., two CeO2 files above), the mapper only runs once.
+
+> [!NOTE]
+> All multi-phase reporting (confidence scores, overlap detection, lattice back-calculation) is skipped in single-phase mode. Use the default mode if you need phase identification.
 
 ## Benchmark Test
 

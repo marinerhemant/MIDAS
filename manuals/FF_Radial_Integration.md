@@ -393,6 +393,10 @@ This tool runs automatically at the start of either workflow. It consumes the ex
 *   `Map.bin`: The mapping of every pixel to its (Radius, Azimuth) bin.
 *   `nMap.bin`: An index file for the map.
 
+Both `DetectorMapper` and `DetectorMapperZarr` accept a `-nCPUs N` flag to parallelize the mapping computation with OpenMP. When run via `integrator.py` or `phase_id.py`, the `-nCPUs` argument is passed through automatically.
+
+The mapping uses the shared `DetectorGeometry` library (`dg_pixel_to_REta`, `dg_polygon_area`, etc.) for pixel-to-(R, η) coordinate transforms with full distortion correction (tilts, p0–p4, per-panel Lsd/dP2).
+
 ## 5. Parameter File Reference
  
 The parameter file is a text file containing key-value pairs used by both the `integrator` and `DetectorMapper`.
