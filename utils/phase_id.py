@@ -154,7 +154,8 @@ def read_param_value(param_file: Path, key: str, default=None):
 def read_geometry(param_file: Path) -> dict:
     """Read key geometry parameters from a MIDAS parameter file."""
     geom = {'px': 172.0, 'Lsd': 0.0, 'Wavelength': 0.0,
-             'RMin': 10.0, 'RMax': 1200.0, 'RBinSize': 0.25}
+             'RMin': 10.0, 'RMax': 1200.0, 'RBinSize': 0.25,
+             'MultFactor': 0.0}
     with open(param_file) as f:
         for line in f:
             parts = line.strip().split()
@@ -504,6 +505,126 @@ def read_fit_bin(fit_bin: Path, n_peaks: int) -> List[FitResult]:
     return results
 
 
+def read_fit_per_eta(csv_path: Path) -> dict:
+    """Parse fit_per_eta.csv produced by IntegratorZarrOMP.
+
+    Returns a dict keyed by PeakIdx (int), where each value is a list
+    of dicts with keys: EtaCen, R_px, R_um, TwoTheta_deg, Imax,
+    Sigma_px, FWHM_px, SNR, Mix, GoF, Area.
+    Only frame 0 rows are returned (phase_id processes single-frame
+    images).
+    """
+    if not csv_path.exists():
+        return {}
+    import csv
+    result: dict = {}
+    with open(csv_path) as f:
+        reader = csv.DictReader(f)
+        for row in reader:
+            try:
+                frame = int(row['Frame'])
+                if frame != 0:
+                    continue
+                pidx = int(row['PeakIdx'])
+                entry = {
+                    'EtaCen': float(row['EtaCen']),
+                    'R_px': float(row['R_px']),
+                    'R_um': float(row['R_um']),
+                    'TwoTheta_deg': float(row['TwoTheta_deg']),
+                    'Imax': float(row['Imax']),
+                    'Sigma_px': float(row['Sigma_px']),
+                    'FWHM_px': float(row['FWHM_px']),
+                    'SNR': float(row['SNR']),
+                }
+                result.setdefault(pidx, []).append(entry)
+            except (KeyError, ValueError):
+                continue
+    return result
+
+
+def compute_filtered_peak_stats(
+        per_eta: dict, rings: List['RingEntry'], geom: dict,
+        mult_factor: float) -> dict:
+    """Compute filtered per-peak lattice parameters from per-eta-bin data.
+
+    For each ring, collects all per-eta R_px values, computes ``a`` for
+    each eta bin, applies iterative MultFactor rejection on |Δa/a_mean|,
+    and returns filtered statistics.
+
+    Returns a dict keyed by peak index (int), with values:
+        mean_R_px, mean_a, std_a, n_total, n_excluded,
+        mean_tth_deg, mean_fwhm_px, mean_imax
+    Peaks without per-eta data are omitted.
+    """
+    result = {}
+    for pidx, eta_rows in per_eta.items():
+        if pidx >= len(rings):
+            continue
+        ring = rings[pidx]
+        ref = ring.reflections[0]  # use first reflection for back-calc
+
+        # Compute a from each eta bin
+        a_per_eta = []
+        r_per_eta = []
+        tth_per_eta = []
+        fwhm_per_eta = []
+        imax_per_eta = []
+        for row in eta_rows:
+            a = back_calculate_lattice(row['R_px'], ref.h, ref.k, ref.l, geom)
+            if a > 0:
+                a_per_eta.append(a)
+                r_per_eta.append(row['R_px'])
+                tth_per_eta.append(row['TwoTheta_deg'])
+                fwhm_per_eta.append(row['FWHM_px'])
+                imax_per_eta.append(row['Imax'])
+
+        if not a_per_eta:
+            continue
+
+        n_total = len(a_per_eta)
+        n_excluded = 0
+
+        if mult_factor > 0 and len(a_per_eta) >= 2:
+            # Iterative rejection: threshold = mult_factor × mean(|Δa/a_mean|)
+            indices = list(range(len(a_per_eta)))
+            for _iteration in range(3):
+                if len(indices) < 2:
+                    break
+                vals = [a_per_eta[j] for j in indices]
+                mean_a = stats_mod.mean(vals)
+                if mean_a <= 0:
+                    break
+                deltas = [abs(v - mean_a) / mean_a for v in vals]
+                mean_delta = stats_mod.mean(deltas)
+                threshold = mult_factor * mean_delta
+                kept = [j for j, d in zip(indices, deltas) if d <= threshold]
+                if len(kept) == len(indices) or len(kept) < 1:
+                    break
+                indices = kept
+            n_excluded = n_total - len(indices)
+            # Use only kept indices
+            a_per_eta = [a_per_eta[j] for j in indices]
+            r_per_eta = [r_per_eta[j] for j in indices]
+            tth_per_eta = [tth_per_eta[j] for j in indices]
+            fwhm_per_eta = [fwhm_per_eta[j] for j in indices]
+            imax_per_eta = [imax_per_eta[j] for j in indices]
+
+        mean_a = stats_mod.mean(a_per_eta)
+        std_a = stats_mod.stdev(a_per_eta) if len(a_per_eta) > 1 else 0.0
+
+        result[pidx] = {
+            'mean_R_px': stats_mod.mean(r_per_eta),
+            'mean_a': mean_a,
+            'std_a': std_a,
+            'n_total': n_total,
+            'n_excluded': n_excluded,
+            'mean_tth_deg': stats_mod.mean(tth_per_eta),
+            'mean_fwhm_px': stats_mod.mean(fwhm_per_eta),
+            'mean_imax': stats_mod.mean(imax_per_eta),
+        }
+    return result
+
+
 def back_calculate_lattice(R_fitted_px: float, h: int, k: int, l: int,
                            geom: dict) -> float:
     """Back-calculate cubic lattice parameter from fitted Rcen.
@@ -578,12 +699,15 @@ PEAK_TABLE_COLUMNS = [
 def build_peak_rows(filename: str, rings: List[RingEntry],
                     fits: List[FitResult], geom: dict,
                     snr_threshold: float,
-                    rel_intensity_threshold: float) -> List[dict]:
+                    rel_intensity_threshold: float,
+                    filtered_stats: dict = None) -> List[dict]:
     """Build peak table rows for one data file.
 
     Returns one dict per peak (per reflection for overlaps), containing
     all columns in PEAK_TABLE_COLUMNS.  All peaks are included regardless
     of detection status; the Flag column distinguishes them.
+    When *filtered_stats* is provided, per-eta-bin filtered values are
+    used for R, 2θ, and FWHM.
     """
     px = geom['px']
     Lsd = geom['Lsd']
@@ -604,15 +728,19 @@ def build_peak_rows(filename: str, rings: List[RingEntry],
         sigma_ok = fit.Sigma >= min_sigma
         detected = fit.Imax > 0 and snr_ok and rel_ok and sigma_ok
 
-        # Compute physical quantities
-        R_px = fit.Center
-        R_um = R_px * px
-        tth_rad = math.atan(R_um / Lsd) if Lsd > 0 else 0.0
-        tth_deg = math.degrees(tth_rad)
+        # Use per-eta filtered values when available
+        if filtered_stats and i in filtered_stats:
+            fs = filtered_stats[i]
+            R_px = fs['mean_R_px']
+            tth_deg = fs['mean_tth_deg']
+            fwhm_px = fs['mean_fwhm_px']
+        else:
+            R_px = fit.Center
+            tth_deg = math.degrees(math.atan(R_px * px / Lsd)) if Lsd > 0 else 0.0
+            fwhm_px = 2.355 * fit.Sigma
 
-        fwhm_px = 2.355 * fit.Sigma
+        R_um = R_px * px
         fwhm_um = fwhm_px * px
-        # d(2θ)/dR = 1 / (Lsd * (1 + (R/Lsd)^2))
         if Lsd > 0:
             dtth_dR = 1.0 / (Lsd * (1.0 + (R_um / Lsd) ** 2))
             fwhm_tth_deg = math.degrees(fwhm_um * dtth_dR)
@@ -679,11 +807,13 @@ SINGLE_PHASE_COLUMNS = ['pixel_number', 'two_theta_deg', 'FWHM_2theta_deg', 'int
 
 
 def write_single_phase_peak_table(fits: List[FitResult], rings: List[RingEntry],
-                                  geom: dict, out_path: Path):
+                                  geom: dict, out_path: Path,
+                                  filtered_stats: dict = None):
     """Write minimal peak table for single-phase mode.
 
     Columns: pixel_number, two_theta_deg, FWHM_2theta_deg, intensity
     One row per peak (all peaks, including non-detected).
+    When *filtered_stats* is provided, uses per-eta-bin filtered values.
     """
     px = geom['px']
     Lsd = geom['Lsd']
@@ -692,9 +822,15 @@ def write_single_phase_peak_table(fits: List[FitResult], rings: List[RingEntry],
         f.write('# ' + '  '.join(f'{c:>18}' for c in SINGLE_PHASE_COLUMNS) + '\n')
         for i in range(n):
             fit = fits[i]
-            R_um = fit.Center * px
-            tth_deg = math.degrees(math.atan(R_um / Lsd)) if Lsd > 0 else 0.0
-            fwhm_px = 2.355 * fit.Sigma
+            if filtered_stats and i in filtered_stats:
+                fs = filtered_stats[i]
+                tth_deg = fs['mean_tth_deg']
+                fwhm_px = fs['mean_fwhm_px']
+                R_um = fs['mean_R_px'] * px
+            else:
+                R_um = fit.Center * px
+                tth_deg = math.degrees(math.atan(R_um / Lsd)) if Lsd > 0 else 0.0
+                fwhm_px = 2.355 * fit.Sigma
             fwhm_um = fwhm_px * px
             if Lsd > 0:
                 dtth_dR = 1.0 / (Lsd * (1.0 + (R_um / Lsd) ** 2))
@@ -713,12 +849,15 @@ def print_results(rings: List[RingEntry], fits: List[FitResult],
                   geom: dict, snr_threshold: float,
                   rel_intensity_threshold: float,
                   phases: List[PhaseInfo], out=None,
-                  summary_out=None):
+                  summary_out=None, mult_factor: float = 0.0,
+                  filtered_stats: dict = None):
     """Print per-ring results and per-phase summary with dual filters.
 
     If *out* is provided, output is written there instead of stdout.
     If *summary_out* is provided, the Phase Summary table (Table B)
     is also written there for compact screen display.
+    If *filtered_stats* is provided (from compute_filtered_peak_stats),
+    per-eta-bin filtered lattice parameters are used instead of single-fit values.
     """
 
     if out is None:
@@ -780,8 +919,12 @@ def print_results(rings: List[RingEntry], fits: List[FitResult],
 
         if det:
             for ref in ring.reflections:
-                a_fitted = back_calculate_lattice(
-                    fit.Center, ref.h, ref.k, ref.l, geom)
+                # Use per-eta filtered value if available, else single fit
+                if filtered_stats and i in filtered_stats:
+                    a_fitted = filtered_stats[i]['mean_a']
+                else:
+                    a_fitted = back_calculate_lattice(
+                        fit.Center, ref.h, ref.k, ref.l, geom)
                 a_nom = phase_nominal[ref.phase]
                 delta_ppm = ((a_fitted - a_nom) / a_nom * 1e6
                              if a_nom > 0 else 0)
@@ -793,6 +936,12 @@ def print_results(rings: List[RingEntry], fits: List[FitResult],
                     phase_stats[ref.phase]['exclusive_detected'] += 1
                 phase_stats[ref.phase]['ring_order'].append(
                     (ref.R_px, True))
+                # Track per-eta exclusions for this ring/phase
+                if filtered_stats and i in filtered_stats:
+                    phase_stats[ref.phase].setdefault(
+                        'eta_excluded', 0)
+                    phase_stats[ref.phase]['eta_excluded'] += \
+                        filtered_stats[i]['n_excluded']
 
                 notes = ""
                 if ring.is_overlap:
@@ -841,7 +990,7 @@ def print_results(rings: List[RingEntry], fits: List[FitResult],
                   f"{'Mean a(Å)':<10} {'Std a(Å)':<10} "
                   f"{'Min a(Å)':<10} {'Max a(Å)':<10} "
                   f"{'Δa/a(ppm)':<12} "
-                  f"{'Sum AUC':>10} {'Frac':>6}  {'Conf':>4}  {'Status'}")
+                  f"{'Sum AUC':>10} {'Frac':>6}  {'Excl':>4}  {'Conf':>4}  {'Status'}")
     W = len(col_header) + 4
     print(file=out)
     print("=" * W, file=out)
@@ -861,11 +1010,36 @@ def print_results(rings: List[RingEntry], fits: List[FitResult],
         excl_tot = st['exclusive_total']
         ratio = (excl_det / excl_tot) if excl_tot > 0 else (det / tot if tot > 0 else 0)
 
-        if st['a_values']:
-            mean_a = stats_mod.mean(st['a_values'])
-            std_a = stats_mod.stdev(st['a_values']) if len(st['a_values']) > 1 else 0.0
-            min_a = min(st['a_values'])
-            max_a = max(st['a_values'])
+        # ── Two-level outlier rejection ─────────────────────────────
+        # Level 1: per-eta-bin exclusions (already applied in
+        #          compute_filtered_peak_stats, counted here)
+        # Level 2: per-ring rejection — remove entire rings whose
+        #          mean-a deviates too far from the phase mean.
+        #          Catches misattributed overlapping rings (e.g.
+        #          CeO2 ring counted as Ta).
+        a_values = list(st['a_values'])
+        n_outliers = st.get('eta_excluded', 0)
+
+        if mult_factor > 0 and len(a_values) >= 2 and p.lattice_a > 0:
+            # Use the NOMINAL lattice parameter as reference (not the
+            # computed mean) — prevents bimodal distributions from
+            # masking outliers (e.g. CeO2 ring misattributed to Ta).
+            deltas = [abs(a - p.lattice_a) / p.lattice_a
+                      for a in a_values]
+            mean_delta = stats_mod.mean(deltas)
+            threshold = mult_factor * mean_delta
+            kept = [a for a, d in zip(a_values, deltas)
+                    if d <= threshold]
+            if 0 < len(kept) < len(a_values):
+                a_values = kept
+            n_ring_excl = len(st['a_values']) - len(a_values)
+            n_outliers += n_ring_excl
+
+        if a_values:
+            mean_a = stats_mod.mean(a_values)
+            std_a = stats_mod.stdev(a_values) if len(a_values) > 1 else 0.0
+            min_a = min(a_values)
+            max_a = max(a_values)
             d_ppm = (mean_a - p.lattice_a) / p.lattice_a * 1e6
         else:
             mean_a = std_a = min_a = max_a = d_ppm = 0.0
@@ -910,9 +1084,10 @@ def print_results(rings: List[RingEntry], fits: List[FitResult],
 
         auc_str = f"{phase_intensity:10.1f}" if phase_intensity > 0 else f"{'--':>10}"
         frac_str = f"{intensity_frac*100:5.1f}%" if phase_intensity > 0 else f"{'--':>6}"
+        excl_str = f"{n_outliers:>4}" if n_outliers > 0 else f"{'--':>4}"
 
         conf = compute_confidence(det, tot, excl_det, excl_tot,
-                                  st['a_values'], p.lattice_a,
+                                  a_values, p.lattice_a,
                                   intensity_frac, first_rings_detected)
 
         if mean_a > 0:
@@ -920,13 +1095,13 @@ def print_results(rings: List[RingEntry], fits: List[FitResult],
                     f"{mean_a:<10.4f} {std_a:<10.4f} "
                     f"{min_a:<10.4f} {max_a:<10.4f} "
                     f"{d_ppm:<12.1f} "
-                    f"{auc_str} {frac_str}  {conf:>4}  {status}")
+                    f"{auc_str} {frac_str}  {excl_str}  {conf:>4}  {status}")
         else:
             line = (f"  {p.name:<8} {coverage:<6} {pct:>4.0f}%  {excl_det:<5}"
                     f"{'--':<10} {'--':<10} "
                     f"{'--':<10} {'--':<10} "
                     f"{'--':<12} "
-                    f"{auc_str} {frac_str}  {conf:>4}  {status}")
+                    f"{auc_str} {frac_str}  {excl_str}  {conf:>4}  {status}")
         print(line, file=out)
         if summary_out is not None:
             print(line, file=summary_out)
@@ -969,7 +1144,7 @@ def phase_summary_header() -> str:
            f"{'Mean a(Å)':<10} {'Std a(Å)':<10} "
            f"{'Min a(Å)':<10} {'Max a(Å)':<10} "
            f"{'Δa/a(ppm)':<12} "
-           f"{'Sum AUC':>10} {'Frac':>6}  {'Conf':>4}  {'Status'}")
+           f"{'Sum AUC':>10} {'Frac':>6}  {'Excl':>4}  {'Conf':>4}  {'Status'}")
     W = len(col) + 4
     return (f"{'=' * W}\n"
             f"  PHASE SUMMARY\n"
@@ -1063,6 +1238,7 @@ def process_single_file(data_file: Path, work_dir: Path, cur_param: Path,
                         rel_intensity_threshold: float,
                         phases: List[PhaseInfo],
                         roi_padding: int = 30,
+                        mult_factor: float = 0.0,
                         ) -> Tuple[str, str, str, dict]:
     """Process a single data file.
 
@@ -1137,17 +1313,34 @@ def process_single_file(data_file: Path, work_dir: Path, cur_param: Path,
 
     _log(f"  Read {len(fits)} peak fit results")
 
+    # Per-eta-bin filtering (if MultFactor enabled and per-eta CSV exists)
+    filtered_stats = None
+    if mult_factor > 0:
+        fit_per_eta_csv = work_dir / "fit_per_eta.csv"
+        per_eta = read_fit_per_eta(fit_per_eta_csv)
+        if per_eta:
+            filtered_stats = compute_filtered_peak_stats(
+                per_eta, rings, geom, mult_factor)
+            n_filtered = sum(1 for v in filtered_stats.values()
+                             if v['n_excluded'] > 0)
+            _log(f"  Per-eta filtering (MultFactor={mult_factor}): "
+                 f"{len(per_eta)} peaks, "
+                 f"{n_filtered} peaks had outlier bins rejected")
+
     results_buf = io.StringIO()
     summary_buf = io.StringIO()
     print_results(rings, fits, geom, snr_threshold,
                   rel_intensity_threshold, phases,
-                  out=results_buf, summary_out=summary_buf)
+                  out=results_buf, summary_out=summary_buf,
+                  mult_factor=mult_factor,
+                  filtered_stats=filtered_stats)
     timings['analysis'] = time.monotonic() - t0
     timings['total'] = time.monotonic() - t_total
 
     # Build peak table rows
     peak_rows = build_peak_rows(data_file.name, rings, fits, geom,
-                                snr_threshold, rel_intensity_threshold)
+                                snr_threshold, rel_intensity_threshold,
+                                filtered_stats=filtered_stats)
 
     # Append timing to log
     parts = []
@@ -1197,7 +1390,8 @@ def prepare_work_dirs(data_files, base_work_dir, work_param, parallel, backend):
 def dispatch_files(data_files, file_work_dirs, file_params, peak_params,
                    rings, n_peaks, geom, dark_file, n_cpus,
                    backend, snr_threshold, rel_intensity_threshold,
-                   phases, roi_padding, parallel, n_workers):
+                   phases, roi_padding, parallel, n_workers,
+                   mult_factor=0.0):
     """Run per-file processing, returning results in file order.
 
     Returns a list of (data_file, log_text, results_text, summary_text,
@@ -1215,7 +1409,7 @@ def dispatch_files(data_files, file_work_dirs, file_params, peak_params,
                     df, wd, fp, peak_params, rings, n_peaks, geom,
                     dark_file, n_cpus, backend,
                     snr_threshold, rel_intensity_threshold,
-                    phases, roi_padding,
+                    phases, roi_padding, mult_factor,
                 )
                 futures[fut] = (idx, df)
 
@@ -1240,6 +1434,7 @@ def dispatch_files(data_files, file_work_dirs, file_params, peak_params,
                     rings, n_peaks, geom, dark_file, n_cpus,
                     backend, snr_threshold,
                     rel_intensity_threshold, phases, roi_padding,
+                    mult_factor,
                 )
             results.append((df, log_text, results_text, summary_text,
                             tm, peak_rows))
@@ -1372,6 +1567,12 @@ def main():
     parser.add_argument('--rel-intensity-threshold', type=float, default=0.01,
                         help='Min Imax as fraction of strongest peak '
                              '(default: 0.01 = 1%%)')
+    parser.add_argument('--mult-factor', type=float, default=None,
+                        help='Outlier rejection factor for lattice '
+                             'parameters (like CalibrantPanelShiftsOMP). '
+                             'Rings with |Δa/a| > MultFactor × mean(|Δa/a|) '
+                             'are excluded. Overrides MultFactor from param '
+                             'file. (default: 0 = disabled)')
     parser.add_argument('--max-rings', type=int, default=20,
                         help='Max rings per phase (default: 20)')
     parser.add_argument('--roi-padding', type=int, default=30,
@@ -1505,6 +1706,10 @@ def main():
         for p in phases:
             _hdr(f"  Phase: {p.name}  SG={p.spacegroup}  a={p.lattice_a} Å")
 
+        # Determine MultFactor: CLI overrides param file
+        mult_factor = (args.mult_factor if args.mult_factor is not None
+                       else geom.get('MultFactor', 0.0))
+
         # ── Single-phase mode validation ──────────────────────────
         if args.single_phase:
             if len(phases) != len(data_files):
@@ -1621,10 +1826,20 @@ def main():
                     qprint(f"    WARNING: No fit results")
                     continue
 
+                # Per-eta-bin filtering for single-phase mode
+                sp_filtered = None
+                if mult_factor > 0:
+                    per_eta_csv = file_dir / "fit_per_eta.csv"
+                    per_eta = read_fit_per_eta(per_eta_csv)
+                    if per_eta:
+                        sp_filtered = compute_filtered_peak_stats(
+                            per_eta, rings, geom, mult_factor)
+
                 # Write minimal peak table
                 out_name = df.stem + "_peaks.txt"
                 out_path_sp = base_work_dir / out_name
-                write_single_phase_peak_table(fits, rings, geom, out_path_sp)
+                write_single_phase_peak_table(fits, rings, geom, out_path_sp,
+                                              filtered_stats=sp_filtered)
                 qprint(f"    → {out_path_sp.name}  "
                        f"({n_peaks} peaks, {t_int:.2f}s)")
 
@@ -1752,6 +1967,7 @@ def main():
         all_output_parts: List[str] = [header_buf.getvalue()]
         all_timings: List[Tuple[str, dict]] = []
 
+
         # ── Dispatch files (unified parallel/sequential) ─────────
         n_files = len(data_files)
         results_ordered = dispatch_files(
@@ -1759,7 +1975,7 @@ def main():
             rings, n_peaks, geom, dark_file, args.nCPUs,
             args.backend, args.snr_threshold,
             args.rel_intensity_threshold, phases, args.roi_padding,
-            parallel, n_workers)
+            parallel, n_workers, mult_factor)
 
         # ── Emit results ─────────────────────────────────────────
         if n_files > 1 or parallel:
