@@ -803,41 +803,46 @@ def write_peak_tables(rows: List[dict], base_path: Path):
     return csv_path, txt_path
 
 
-SINGLE_PHASE_COLUMNS = ['pixel_number', 'two_theta_deg', 'FWHM_2theta_deg', 'intensity']
+SINGLE_PHASE_COLUMNS = ['R_px', 'two_theta_deg', 'FWHM_2theta_deg', 'intensity']
 
 
 def write_single_phase_peak_table(fits: List[FitResult], rings: List[RingEntry],
                                   geom: dict, out_path: Path,
-                                  filtered_stats: dict = None):
+                                  filtered_stats: dict = None,
+                                  intensity_threshold: float = 0.0):
     """Write minimal peak table for single-phase mode.
 
-    Columns: pixel_number, two_theta_deg, FWHM_2theta_deg, intensity
-    One row per peak (all peaks, including non-detected).
+    Columns: R_px, two_theta_deg, FWHM_2theta_deg, intensity
+    Only rows with intensity > intensity_threshold are written.
     When *filtered_stats* is provided, uses per-eta-bin filtered values.
     """
     px = geom['px']
     Lsd = geom['Lsd']
     n = min(len(rings), len(fits))
     with open(out_path, 'w') as f:
-        f.write('# ' + '  '.join(f'{c:>18}' for c in SINGLE_PHASE_COLUMNS) + '\n')
+        f.write('  '.join(f'{c:>18}' for c in SINGLE_PHASE_COLUMNS) + '\n')
         for i in range(n):
             fit = fits[i]
+            if fit.Area <= intensity_threshold:
+                continue
             if filtered_stats and i in filtered_stats:
                 fs = filtered_stats[i]
+                R_px = fs['mean_R_px']
                 tth_deg = fs['mean_tth_deg']
                 fwhm_px = fs['mean_fwhm_px']
-                R_um = fs['mean_R_px'] * px
             else:
-                R_um = fit.Center * px
+                R_px = fit.Center
+                R_um = R_px * px
                 tth_deg = math.degrees(math.atan(R_um / Lsd)) if Lsd > 0 else 0.0
                 fwhm_px = 2.355 * fit.Sigma
+            R_um = R_px * px
             fwhm_um = fwhm_px * px
             if Lsd > 0:
                 dtth_dR = 1.0 / (Lsd * (1.0 + (R_um / Lsd) ** 2))
                 fwhm_tth = math.degrees(fwhm_um * dtth_dR)
             else:
                 fwhm_tth = 0.0
-            f.write(f'{i:>18d}  {tth_deg:>18.6f}  {fwhm_tth:>18.6f}  {fit.Area:>18.6f}\n')
+            f.write(f'{R_px:>18.6f}  {tth_deg:>18.6f}  {fwhm_tth:>18.6f}  {fit.Area:>18.6f}\n')
     return out_path
 
 
@@ -1748,7 +1753,10 @@ def main():
 
             # Predict rings per unique phase and cache mapper results
             phase_ring_cache = {}   # (name, sg, a) → List[RingEntry]
-            mapper_cache = {}       # (name, sg, a) → Path to work_dir with Map.bin
+
+            # DetectorMapper depends only on geometry (from param file),
+            # not on which phase/peaks we're looking for.  Run once.
+            mapper_done = False
 
             t_rings = time.monotonic() - t0
             n_files = len(data_files)
@@ -1782,23 +1790,26 @@ def main():
                 file_param = file_dir / "phase_id_params.txt"
                 shutil.copy2(str(work_param), str(file_param))
 
-                # Run DetectorMapper (cached per unique phase)
+                # Run DetectorMapper ONCE (geometry-only, same for all phases)
                 if args.backend == 'cpu':
-                    if phase_key in mapper_cache:
-                        # Symlink Map.bin + nMap.bin from cached dir
-                        cached_dir = mapper_cache[phase_key]
-                        for mf in ('Map.bin', 'nMap.bin'):
-                            src = cached_dir / mf
-                            dst = file_dir / mf
-                            if not dst.exists() and src.exists():
-                                os.symlink(str(src), str(dst))
-                    else:
+                    if (file_dir / "Map.bin").exists():
+                        # Reuse existing Map.bin from previous run
+                        if not mapper_done:
+                            mapper_done = file_dir
+                    elif not mapper_done:
                         qprint(f"    Running DetectorMapper...", end="",
                                flush=True)
                         t0m = time.monotonic()
                         run_detector_mapper(file_param, file_dir)
                         qprint(f" done [{time.monotonic()-t0m:.2f}s]")
-                        mapper_cache[phase_key] = file_dir
+                        mapper_done = file_dir  # remember where Map.bin lives
+                    else:
+                        # Symlink Map.bin + nMap.bin from first run
+                        for mf in ('Map.bin', 'nMap.bin'):
+                            src = mapper_done / mf
+                            dst = file_dir / mf
+                            if not dst.exists() and src.exists():
+                                os.symlink(str(src), str(dst))
 
                     if not (file_dir / "Map.bin").exists():
                         print(f"ERROR: DetectorMapper failed for {df.name}")
