@@ -73,7 +73,7 @@ endfunction()
 
 # add_ff_hedm_executable(Calibrant SOURCES src/Calibrant.c src/CalcPeakProfile.c)
 # add_ff_hedm_executable(CalibrantOMP SOURCES src/CalibrantOMP.c src/CalcPeakProfile.c src/MIDAS_Math.c OMP)  # Archived: CalibrantPanelShiftsOMP is the active superset
-add_ff_hedm_executable(CalibrantPanelShiftsOMP SOURCES src/CalibrantPanelShiftsOMP.c src/CalcPeakProfile.c src/Panel.c src/FileReader.c src/MIDAS_Math.c OMP)
+add_ff_hedm_executable(CalibrantPanelShiftsOMP SOURCES src/CalibrantPanelShiftsOMP.c src/CalcPeakProfile.c src/DetectorGeometry.c src/Panel.c src/FileReader.c src/MIDAS_Math.c OMP)
 # add_ff_hedm_executable(FitSetup SOURCES src/FitSetupParamsAll.c)
 # add_ff_hedm_executable(FitTiltBCLsdSample SOURCES src/FitTiltBCLsdSampleOmegaCorrection.c)
 # add_ff_hedm_executable(ForwardSimulation SOURCES src/ForwardSimulation.c)
@@ -122,8 +122,8 @@ add_ff_hedm_executable(ProcessGrains SOURCES src/ProcessGrains.c src/GetMisorien
 add_ff_hedm_executable(ProcessGrainsScanningHEDM SOURCES src/ProcessGrainsScanningHEDM.c src/GetMisorientation.c src/CalcStrains.c src/MIDAS_Math.c)
 add_ff_hedm_executable(MatchGrains SOURCES src/MatchGrains.c src/GetMisorientation.c)
 
-add_ff_hedm_executable(DetectorMapper SOURCES src/DetectorMapper.c src/Panel.c src/FileReader.c)
-add_ff_hedm_executable(DetectorMapperZarr SOURCES src/DetectorMapperZarr.c src/ZarrReader.c src/Panel.c src/FileReader.c)
+add_ff_hedm_executable(DetectorMapper SOURCES src/DetectorMapper.c src/DetectorGeometry.c src/Panel.c src/FileReader.c src/MIDAS_Math.c OMP)
+add_ff_hedm_executable(DetectorMapperZarr SOURCES src/DetectorMapperZarr.c src/DetectorGeometry.c src/ZarrReader.c src/Panel.c src/FileReader.c src/MIDAS_Math.c OMP)
 # add_ff_hedm_executable(Integrator SOURCES src/Integrator.c src/FileReader.c)  # archived → src/archive/Integrator.c
 # add_ff_hedm_executable(IntegratorZarr SOURCES src/archive/IntegratorZarr.c)
 add_ff_hedm_executable(IntegratorZarrOMP SOURCES src/IntegratorZarrOMP.c src/ZarrReader.c src/PeakFit.c src/FileReader.c OMP)

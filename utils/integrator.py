@@ -592,7 +592,8 @@ class FileProcessor:
         err_log = log_path / "map_err.csv"
         
         mapper_path = MIDAS_BIN / 'DetectorMapperZarr'
-        mapper_cmd = [str(mapper_path), str(zip_file)]
+        mapper_cmd = [str(mapper_path), str(zip_file),
+                      '-nCPUs', str(self.params.nCPUsLocal)]
         
         with self._run_command(
             mapper_cmd, 

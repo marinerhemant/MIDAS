@@ -1307,11 +1307,18 @@ integration_start:
   fLineout = fopen("lineout.bin", "wb");
   if (fLineout)
     printf("Opened lineout.bin for binary output.\n");
+  FILE *fFitPerEta = NULL;
   if (doPeakFit && nPeakLocations > 0) {
     fFitBin = fopen("fit.bin", "wb");
     if (fFitBin)
       printf("Opened fit.bin for peak fitting output (%d peaks).\n",
              nPeakLocations);
+    fFitPerEta = fopen("fit_per_eta.csv", "w");
+    if (fFitPerEta) {
+      fprintf(fFitPerEta, "Frame,EtaBin,EtaCen,PeakIdx,R_px,R_um,TwoTheta_deg,"
+                          "Imax,Sigma_px,FWHM_px,SNR,Mix,GoF,Area\n");
+      printf("Opened fit_per_eta.csv for per-eta peak fitting output.\n");
+    }
     printf("Peak fit enabled: %d peaks, ROI padding: %d bins\n", nPeakLocations,
            fitROIPadding);
   }
@@ -1588,6 +1595,59 @@ integration_start:
       }
       free(fitResults);
     }
+
+    // --- Per-eta-bin peak fitting ---
+    if (doPeakFit && nPeakLocations > 0 && fFitPerEta) {
+      double *etaProfile = (double *)malloc(nRBins * sizeof(double));
+      double *etaFitResults =
+          (double *)calloc(nPeakLocations * PF_PARAMS_PER_PEAK, sizeof(double));
+      int totalPerEtaFitted = 0;
+      for (int eb = 0; eb < nEtaBins; eb++) {
+        // Extract the 1D R-profile for this eta bin
+        int nonZero = 0;
+        for (int rb = 0; rb < nRBins; rb++) {
+          etaProfile[rb] = IntArrPerFrame[rb * nEtaBins + eb];
+          if (etaProfile[rb] != 0)
+            nonZero++;
+        }
+        if (nonZero < 5)
+          continue; // skip nearly-empty eta bins
+
+        memset(etaFitResults, 0,
+               nPeakLocations * PF_PARAMS_PER_PEAK * sizeof(double));
+        int nf = fitPeaksForLineout(RBinCenters, etaProfile, nRBins,
+                                    peakLocations, nPeakLocations, RBinSize,
+                                    fitROIPadding, etaFitResults);
+        if (nf > 0) {
+          totalPerEtaFitted += nf;
+          double etaCen = (EtaBinsLow[eb] + EtaBinsHigh[eb]) / 2.0;
+          for (int pp = 0; pp < nPeakLocations; pp++) {
+            int base = pp * PF_PARAMS_PER_PEAK;
+            double center_px = etaFitResults[base + 3];
+            if (center_px == 0)
+              continue; // peak not fitted
+            double r_um = center_px * px;
+            double tth_deg = atan(r_um / Lsd) * 180.0 / M_PI;
+            double sigma_px = etaFitResults[base + 4];
+            double fwhm_px = sigma_px * 2.0 * sqrt(2.0 * log(2.0));
+            fprintf(fFitPerEta,
+                    "%d,%d,%.4f,%d,%.6f,%.4f,%.6f,%.4f,%.6f,%.6f,%.2f,%.4f,"
+                    "%.4f,%.4f\n",
+                    i, eb, etaCen, pp, center_px, r_um, tth_deg,
+                    etaFitResults[base + 0], sigma_px, fwhm_px,
+                    etaFitResults[base + 5], etaFitResults[base + 2],
+                    etaFitResults[base + 5], etaFitResults[base + 6]);
+          }
+        }
+      }
+      if (i == 0) {
+        printf("  Per-eta peak fit (frame 0): %d total fits across %d eta "
+               "bins\n",
+               totalPerEtaFitted, nEtaBins);
+      }
+      free(etaProfile);
+      free(etaFitResults);
+    }
     free(lineout1D);
 
     if (i == 0) {
@@ -1681,6 +1741,8 @@ integration_start:
     fclose(fLineout);
   if (fFitBin)
     fclose(fFitBin);
+  if (fFitPerEta)
+    fclose(fFitPerEta);
   free(RBinCenters);
   end0 = clock();
   diftotal = ((double)(end0 - start0)) / CLOCKS_PER_SEC;

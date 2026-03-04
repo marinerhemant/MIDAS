@@ -75,7 +75,7 @@ if midas_config and midas_config.MIDAS_BIN_DIR:
     detector_mapper = os.path.join(midas_config.MIDAS_BIN_DIR, 'DetectorMapper')
 else:
     detector_mapper = os.path.expanduser('~/opt/MIDAS/FF_HEDM/bin/DetectorMapper')
-subprocess.call(detector_mapper + f' {params}',shell=True)
+subprocess.call(detector_mapper + f' {params} -nCPUs {os.cpu_count()}',shell=True)
 print('Map file generated. Now doing caking.')
 
 for fileNr in tqdm(range(startNr,endNr+1)):

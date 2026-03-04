@@ -78,7 +78,7 @@ updF.close()
 
 #############DO THE LINEOUTS#####
 
-cmd1 = f'{os.path.join(DT_BIN_DIR, "DetectorMapper")} {paramFN}.upd'
+cmd1 = f'{os.path.join(DT_BIN_DIR, "DetectorMapper")} {paramFN}.upd -nCPUs {numProcs}'
 subprocess.call(cmd1,shell=True)
 
 cmd = f'{os.path.join(DT_BIN_DIR, "IntegratorPeakFitOMP")} {paramFN}.upd {fStem} {startNr} {endNr} {pad} {ext} {darkFN} {nFrames} {numProcs}'

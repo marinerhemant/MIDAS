@@ -13,6 +13,7 @@
 //  Important: row major, starting with y's and going up. Bottom right is 0,0.
 //  TODO: Implement proper transformations for rectangular detectors.
 
+#include "DetectorGeometry.h"
 #include "FileReader.h"
 #include "MIDAS_Math.h"
 #include "Panel.h"
@@ -111,12 +112,7 @@ static inline void FreeMemMatrixInt(int **mat, int nrows) {
   free(mat);
 }
 
-static inline double CalcEtaAngleLocal(double y, double z) {
-  double alpha = rad2deg * acos(z / sqrt(y * y + z * z));
-  if (y > 0)
-    alpha = -alpha;
-  return alpha;
-}
+// dg_calc_eta_angle replaced by dg_calc_eta_angle from DetectorGeometry.h
 
 static inline double R4mTtheta(double Ttheta, double Lsd) {
   return Lsd * tan(deg2rad * Ttheta);
@@ -135,55 +131,45 @@ static inline void YZ4mREta(int NrElements, double *R, double *Eta, double *Y,
   }
 }
 
-static inline void Car2Pol(int n_hkls, int nEtaBins, int y, int z, double ybc,
-                           double zbc, double px, double *R, double *Eta,
-                           double Rmins[n_hkls], double Rmaxs[n_hkls],
-                           double EtaBinsLow[nEtaBins],
-                           double EtaBinsHigh[nEtaBins], int nIndices,
-                           int *NrEachIndexbin, int **Indices, double tx,
-                           double ty, double tz, double p0, double p1,
-                           double p2, double p3, double RhoD, double Lsd) {
+static inline void
+Car2Pol(int n_hkls, int nEtaBins, int y, int z, double ybc, double zbc,
+        double px, double *R, double *Eta, double Rmins[n_hkls],
+        double Rmaxs[n_hkls], double EtaBinsLow[nEtaBins],
+        double EtaBinsHigh[nEtaBins], int nIndices, int *NrEachIndexbin,
+        int **Indices, double tx, double ty, double tz, double p0, double p1,
+        double p2, double p3, double RhoD, double Lsd, double p4) {
   int i, j, k, l, counter = 0, ctr = 0;
   for (i = 0; i < nIndices; i++)
     NrEachIndexbin[i] = 0;
-  double txr, tyr, tzr;
-  txr = deg2rad * tx;
-  tyr = deg2rad * ty;
-  tzr = deg2rad * tz;
-  double Rx[3][3] = {
-      {1, 0, 0}, {0, cos(txr), -sin(txr)}, {0, sin(txr), cos(txr)}};
-  double Ry[3][3] = {
-      {cos(tyr), 0, sin(tyr)}, {0, 1, 0}, {-sin(tyr), 0, cos(tyr)}};
-  double Rz[3][3] = {
-      {cos(tzr), -sin(tzr), 0}, {sin(tzr), cos(tzr), 0}, {0, 0, 1}};
-  double TRint[3][3], TRs[3][3];
-  MatrixMultF33(Ry, Rz, TRint);
-  MatrixMultF33(Rx, TRint, TRs);
-  double Yc, Zc, n0 = 2, n1 = 4, n2 = 2;
-  double ABC[3], ABCPr[3], XYZ[3];
-  double Rt, Rad, EtaS, EtaST, RNorm, DistortFunc, EtaT;
+  double TRs[3][3];
+  dg_build_tilt_matrix(tx, ty, tz, TRs);
+  double Rt_px, EtaS;
   for (i = 0; i < z; i++) {
     for (j = 0; j < y; j++) {
-      Yc = (-j + ybc) * px;
-      Zc = (i - zbc) * px;
-      ABC[0] = 0;
-      ABC[1] = Yc;
-      ABC[2] = Zc;
-      EtaST = CalcEtaAngleLocal(ABC[1], ABC[2]);
-      MatrixMultF(TRs, ABC, ABCPr);
-      XYZ[0] = Lsd + ABCPr[0];
-      XYZ[1] = ABCPr[1];
-      XYZ[2] = ABCPr[2];
-      Rad = (Lsd / (XYZ[0])) * (sqrt(XYZ[1] * XYZ[1] + XYZ[2] * XYZ[2]));
-      EtaS = CalcEtaAngleLocal(XYZ[1], XYZ[2]);
-      RNorm = Rad / RhoD;
-      EtaT = 90 - EtaS;
-      // Reset Eta so that calculations later on are still good.
-      EtaS = EtaST;
-      DistortFunc = (p0 * (pow(RNorm, n0)) * (cos(deg2rad * (2 * EtaT)))) +
-                    (p1 * (pow(RNorm, n1)) * (cos(deg2rad * (4 * EtaT + p3)))) +
-                    (p2 * (pow(RNorm, n2))) + 1;
-      Rt = Rad * DistortFunc;
+      long long int pixIdx = (long long int)i * y + j;
+      // Skip masked pixels
+      if (mapMask != NULL && (mapMask[pixIdx / 32] & (1 << (pixIdx % 32)))) {
+        R[counter] = 0;
+        Eta[counter] = 0;
+        counter++;
+        continue;
+      }
+      // Apply panel corrections (dY, dZ, dTheta, dLsd, dP2)
+      double pdY = 0, pdZ = 0;
+      double dLsd = 0, dP2 = 0;
+      int pIdx = GetPanelIndex((double)j, (double)i, nPanels, panels);
+      if (pIdx >= 0) {
+        ApplyPanelCorrection((double)j, (double)i, &panels[pIdx], &pdY, &pdZ);
+        pdY -= (double)j;
+        pdZ -= (double)i;
+        dLsd = panels[pIdx].dLsd;
+        dP2 = panels[pIdx].dP2;
+      }
+      double ypr = (double)j + pdY;
+      double zpr = (double)i + pdZ;
+      dg_pixel_to_REta(ypr, zpr, ybc, zbc, TRs, Lsd, RhoD, p0, p1, p2, p3, p4,
+                       px, dLsd, dP2, &Rt_px, &EtaS);
+      double Rt = Rt_px * px; // convert from pixels to microns
       R[counter] = Rt;
       Eta[counter] = EtaS;
       for (k = 0; k < n_hkls; k++) {
@@ -861,7 +847,7 @@ static double problem_function(unsigned n, const double *x, double *grad,
     double panelLsd = Lsd + dLsd;
     double XYZ[3] = {panelLsd + ABCPr[0], ABCPr[1], ABCPr[2]};
     Rad = (panelLsd / (XYZ[0])) * (sqrt(XYZ[1] * XYZ[1] + XYZ[2] * XYZ[2]));
-    Eta = CalcEtaAngleLocal(XYZ[1], XYZ[2]);
+    Eta = dg_calc_eta_angle(XYZ[1], XYZ[2]);
     RNorm = Rad / MaxRad;
     EtaT = 90 - Eta;
     double panelP2 = p2 + dP2;
@@ -1194,7 +1180,7 @@ void FitTiltBCLsd(int nIndices, double *YMean, double *ZMean,
       double panelLsd = LsdV + dLsd;
       double XYZ[3] = {panelLsd + ABCPr[0], ABCPr[1], ABCPr[2]};
       Rad = (panelLsd / (XYZ[0])) * (sqrt(XYZ[1] * XYZ[1] + XYZ[2] * XYZ[2]));
-      Eta = CalcEtaAngleLocal(XYZ[1], XYZ[2]);
+      Eta = dg_calc_eta_angle(XYZ[1], XYZ[2]);
       RNorm = Rad / MaxRad;
       EtaT = 90 - Eta;
       double panelP2 = p2V + dP2;
@@ -1311,7 +1297,7 @@ static inline void CorrectTiltSpatialDistortion(
     double panelLsd = Lsd + dLsd;
     double XYZ[3] = {panelLsd + ABCPr[0], ABCPr[1], ABCPr[2]};
     Rad = (panelLsd / (XYZ[0])) * (sqrt(XYZ[1] * XYZ[1] + XYZ[2] * XYZ[2]));
-    Eta = CalcEtaAngleLocal(XYZ[1], XYZ[2]);
+    Eta = dg_calc_eta_angle(XYZ[1], XYZ[2]);
     RNorm = Rad / MaxRad;
     EtaT = 90 - Eta;
     double panelP2 = p2 + dP2;
@@ -2546,6 +2532,10 @@ int main(int argc, char *argv[]) {
     if (nPanels > 0)
       bestPanels = malloc(nPanels * sizeof(Panel));
 
+    int perturbedFlag =
+        0; // set by perturbation logic; triggers re-bin next iter
+    double *FitSNR = NULL; // persists across iterations for snrWeights
+
     for (int iter = 0; iter < nIterations; iter++) {
       if (nIterations > 1) {
         char iterLabel[64];
@@ -2561,206 +2551,168 @@ int main(int argc, char *argv[]) {
         printf("╝\n");
       }
 
-      // Recompute Lsd-dependent radii
-      double IdealRs[n_hkls], Rmins[n_hkls], Rmaxs[n_hkls];
-      for (i = 0; i < n_hkls; i++) {
-        IdealRs[i] = R4mTtheta(IdealTthetas[i], Lsd);
-        Rmins[i] = R4mTtheta(TthetaMins[i], Lsd);
-        Rmaxs[i] = R4mTtheta(TthetaMaxs[i], Lsd);
-      }
+      // --- Option B: skip initial bin+fit on iter>0 unless perturbed ---
+      int didInitBin = 0;
+      double *R = NULL, *Eta = NULL, *IdealR = NULL;
+      double *IdealRmins = NULL, *IdealRmaxs = NULL;
+      int *NrEachIndexBin = NULL;
+      int **Indices = NULL;
+      int nIndicesOrig = 0;
 
-      // Detect doublet ring pairs
-      int doubletFlag[n_hkls], doubletPartner[n_hkls];
-      for (i = 0; i < n_hkls; i++) {
-        doubletFlag[i] = 0;
-        doubletPartner[i] = -1;
-      }
-      if (DoubletSeparation > 0) {
-        double sepThresh = DoubletSeparation * px;
-        for (i = 0; i < n_hkls - 1; i++) {
-          if (doubletFlag[i] != 0)
-            continue;
-          if (fabs(IdealRs[i + 1] - IdealRs[i]) < sepThresh) {
-            doubletFlag[i] = 1;
-            doubletFlag[i + 1] = 2;
-            doubletPartner[i] = i + 1;
-            doubletPartner[i + 1] = i;
-            if (iter == 0)
-              printf("Doublet detected: ring %d (R=%.2f) <-> ring %d "
-                     "(R=%.2f), separation %.1f px\n",
-                     RingIDs[i], IdealRs[i], RingIDs[i + 1], IdealRs[i + 1],
-                     fabs(IdealRs[i + 1] - IdealRs[i]) / px);
+      if (iter == 0 || perturbedFlag) {
+        didInitBin = 1;
+        perturbedFlag = 0;
+
+        // Recompute Lsd-dependent radii
+        double IdealRs[n_hkls], Rmins[n_hkls], Rmaxs[n_hkls];
+        for (i = 0; i < n_hkls; i++) {
+          IdealRs[i] = R4mTtheta(IdealTthetas[i], Lsd);
+          Rmins[i] = R4mTtheta(TthetaMins[i], Lsd);
+          Rmaxs[i] = R4mTtheta(TthetaMaxs[i], Lsd);
+        }
+
+        // Detect doublet ring pairs
+        int doubletFlag[n_hkls], doubletPartner[n_hkls];
+        for (i = 0; i < n_hkls; i++) {
+          doubletFlag[i] = 0;
+          doubletPartner[i] = -1;
+        }
+        if (DoubletSeparation > 0) {
+          double sepThresh = DoubletSeparation * px;
+          for (i = 0; i < n_hkls - 1; i++) {
+            if (doubletFlag[i] != 0)
+              continue;
+            if (fabs(IdealRs[i + 1] - IdealRs[i]) < sepThresh) {
+              doubletFlag[i] = 1;
+              doubletFlag[i + 1] = 2;
+              doubletPartner[i] = i + 1;
+              doubletPartner[i + 1] = i;
+              if (iter == 0)
+                printf("Doublet detected: ring %d (R=%.2f) <-> ring %d "
+                       "(R=%.2f), separation %.1f px\n",
+                       RingIDs[i], IdealRs[i], RingIDs[i + 1], IdealRs[i + 1],
+                       fabs(IdealRs[i + 1] - IdealRs[i]) / px);
+            }
           }
         }
-      }
 
-      // Allocate per-iteration arrays
-      double *R = malloc(NrPixels * NrPixels * sizeof(*R));
-      double *Eta = malloc(NrPixels * NrPixels * sizeof(*Eta));
-      nIndices = nEtaBins * n_hkls;
-      int *NrEachIndexBin = malloc(nIndices * sizeof(*NrEachIndexBin));
-      int **Indices = allocMatrixInt(nIndices, 20000);
+        // Allocate per-iteration arrays
+        double *R = malloc(NrPixels * NrPixels * sizeof(*R));
+        double *Eta = malloc(NrPixels * NrPixels * sizeof(*Eta));
+        nIndices = nEtaBins * n_hkls;
+        int *NrEachIndexBin = malloc(nIndices * sizeof(*NrEachIndexBin));
+        int **Indices = allocMatrixInt(nIndices, 20000);
 
-      // Bin pixels into rings using current parameters
-      Car2Pol(n_hkls, nEtaBins, NrPixels, NrPixels, ybc, zbc, px, R, Eta, Rmins,
-              Rmaxs, EtaBinsLow, EtaBinsHigh, nIndices, NrEachIndexBin, Indices,
-              tx, tyin, tzin, p0in, p1in, p2in, p3in, MaxRingRad, Lsd);
+        // Bin pixels into rings using current parameters
+        Car2Pol(n_hkls, nEtaBins, NrPixels, NrPixels, ybc, zbc, px, R, Eta,
+                Rmins, Rmaxs, EtaBinsLow, EtaBinsHigh, nIndices, NrEachIndexBin,
+                Indices, tx, tyin, tzin, p0in, p1in, p2in, p3in, MaxRingRad,
+                Lsd, p4in);
 
-      double *IdealR = malloc(nIndices * sizeof(*IdealR));
-      double *IdealRmins = malloc(nIndices * sizeof(*IdealRmins));
-      double *IdealRmaxs = malloc(nIndices * sizeof(*IdealRmaxs));
-      IdealTtheta = malloc(nIndices * sizeof(*IdealTtheta));
-      RingNumbers = malloc(nIndices * sizeof(*RingNumbers));
-      RMean = malloc(nIndices * sizeof(*RMean));
-      EtaMean = malloc(nIndices * sizeof(*EtaMean));
-      int NrPtsForFit;
-      NrPtsForFit = (int)((floor)((Rmaxs[0] - Rmins[0]) / px)) * RBinWidth;
-      for (i = 0; i < nIndices; i++) {
-        IdealR[i] = IdealRs[(int)(floor((float)i / nEtaBins))];
-        IdealRmins[i] = Rmins[(int)(floor((float)i / nEtaBins))];
-        IdealRmaxs[i] = Rmaxs[(int)(floor((float)i / nEtaBins))];
-        IdealTtheta[i] = rad2deg * atan(IdealR[i] / Lsd);
-        RingNumbers[i] = RingIDs[(int)(floor((float)i / nEtaBins))];
-      }
-
-      // Find peak positions
-      NrCallsProfiler = 0;
-      double *FitSNR = calloc(nIndices, sizeof(*FitSNR));
-      if (FitWeightMean == 1) {
-        CalcWeightedMean(nIndices, NrEachIndexBin, Indices, Average, R, Eta,
-                         RMean, EtaMean);
-      } else {
-        CalcFittedMean(nIndices, NrEachIndexBin, Indices, Average, R, Eta,
-                       RMean, EtaMean, FitSNR, NrPtsForFit, IdealRmins,
-                       IdealRmaxs, nEtaBins, ybc, zbc, px, NrPixelsY, NrPixelsZ,
-                       EtaBinsLow, EtaBinsHigh, doubletFlag, doubletPartner);
-      }
-
-      // Compact: remove zero-RMean entries
-      int countr = 0;
-      double *RMean2 = malloc(nIndices * sizeof(*RMean2));
-      double *EtaMean2 = malloc(nIndices * sizeof(*EtaMean2));
-      double *IdealTtheta2 = malloc(nIndices * sizeof(*IdealTtheta2));
-      int *RingNumbers2 = malloc(nIndices * sizeof(*RingNumbers2));
-      double *FitSNR2 = malloc(nIndices * sizeof(*FitSNR2));
-      for (i = 0; i < nIndices; i++) {
-        if (RMean[i] != 0) {
-          RMean2[countr] = RMean[i];
-          EtaMean2[countr] = EtaMean[i];
-          IdealTtheta2[countr] = IdealTtheta[i];
-          RingNumbers2[countr] = RingNumbers[i];
-          FitSNR2[countr] = FitSNR[i];
-          countr++;
-        }
-      }
-      if (iter == 0)
-        printf("Out of %d slices, %d were in the detector\n", nIndices, countr);
-      int nIndicesOrig = nIndices; // save for freeing Indices
-      nIndices = countr;
-      free(RMean);
-      free(EtaMean);
-      free(IdealTtheta);
-      free(RingNumbers);
-      free(FitSNR);
-      RMean = RMean2;
-      EtaMean = EtaMean2;
-      IdealTtheta = IdealTtheta2;
-      RingNumbers = RingNumbers2;
-      FitSNR = FitSNR2;
-
-      // Compute per-ring weights if normalization is enabled
-      double *RingWeights = NULL;
-      if (NormalizeRingWeights) {
-        RingWeights = malloc(nIndices * sizeof(*RingWeights));
-        // Count valid bins per distinct ring number
-        int ringCounts[200] = {0};
+        double *IdealR = malloc(nIndices * sizeof(*IdealR));
+        double *IdealRmins = malloc(nIndices * sizeof(*IdealRmins));
+        double *IdealRmaxs = malloc(nIndices * sizeof(*IdealRmaxs));
+        IdealTtheta = malloc(nIndices * sizeof(*IdealTtheta));
+        RingNumbers = malloc(nIndices * sizeof(*RingNumbers));
+        RMean = malloc(nIndices * sizeof(*RMean));
+        EtaMean = malloc(nIndices * sizeof(*EtaMean));
+        int NrPtsForFit;
+        NrPtsForFit = (int)((floor)((Rmaxs[0] - Rmins[0]) / px)) * RBinWidth;
         for (i = 0; i < nIndices; i++) {
-          if (RingNumbers[i] >= 0 && RingNumbers[i] < 200)
-            ringCounts[RingNumbers[i]]++;
+          IdealR[i] = IdealRs[(int)(floor((float)i / nEtaBins))];
+          IdealRmins[i] = Rmins[(int)(floor((float)i / nEtaBins))];
+          IdealRmaxs[i] = Rmaxs[(int)(floor((float)i / nEtaBins))];
+          IdealTtheta[i] = rad2deg * atan(IdealR[i] / Lsd);
+          RingNumbers[i] = RingIDs[(int)(floor((float)i / nEtaBins))];
         }
-        // Count how many distinct rings are present
-        int nDistinctRings = 0;
-        for (i = 0; i < 200; i++) {
-          if (ringCounts[i] > 0)
-            nDistinctRings++;
-        }
-        // Weight = 1/(count * nDistinctRings) so each ring sums to
-        // 1/nDistinctRings
-        for (i = 0; i < nIndices; i++) {
-          int rn = RingNumbers[i];
-          if (rn >= 0 && rn < 200 && ringCounts[rn] > 0)
-            RingWeights[i] = 1.0 / ((double)ringCounts[rn]);
-          else
-            RingWeights[i] = 1.0;
-        }
-        if (iter == 0)
-          printf("Ring weight normalization: %d distinct rings, weights "
-                 "computed.\n",
-                 nDistinctRings);
-      }
 
-      // Compute SNR-based weights if enabled
-      double *snrWeights = NULL;
-      if (WeightByFitSNR && FitWeightMean != 1) {
-        snrWeights = malloc(nIndices * sizeof(*snrWeights));
-        // Find median SNR via sorting a copy
-        double *snrSorted = malloc(nIndices * sizeof(*snrSorted));
-        memcpy(snrSorted, FitSNR, nIndices * sizeof(*snrSorted));
-        // Simple insertion sort for median
-        for (int a = 1; a < nIndices; a++) {
-          double key = snrSorted[a];
-          int b = a - 1;
-          while (b >= 0 && snrSorted[b] > key) {
-            snrSorted[b + 1] = snrSorted[b];
-            b--;
+        // Find peak positions
+        NrCallsProfiler = 0;
+        if (FitSNR) {
+          free(FitSNR);
+          FitSNR = NULL;
+        } // free previous iter's
+        FitSNR = calloc(nIndices, sizeof(*FitSNR));
+        if (FitWeightMean == 1) {
+          CalcWeightedMean(nIndices, NrEachIndexBin, Indices, Average, R, Eta,
+                           RMean, EtaMean);
+        } else {
+          CalcFittedMean(nIndices, NrEachIndexBin, Indices, Average, R, Eta,
+                         RMean, EtaMean, FitSNR, NrPtsForFit, IdealRmins,
+                         IdealRmaxs, nEtaBins, ybc, zbc, px, NrPixelsY,
+                         NrPixelsZ, EtaBinsLow, EtaBinsHigh, doubletFlag,
+                         doubletPartner);
+        }
+
+        // Compact: remove zero-RMean entries
+        int countr = 0;
+        double *RMean2 = malloc(nIndices * sizeof(*RMean2));
+        double *EtaMean2 = malloc(nIndices * sizeof(*EtaMean2));
+        double *IdealTtheta2 = malloc(nIndices * sizeof(*IdealTtheta2));
+        int *RingNumbers2 = malloc(nIndices * sizeof(*RingNumbers2));
+        double *FitSNR2 = malloc(nIndices * sizeof(*FitSNR2));
+        for (i = 0; i < nIndices; i++) {
+          if (RMean[i] != 0) {
+            RMean2[countr] = RMean[i];
+            EtaMean2[countr] = EtaMean[i];
+            IdealTtheta2[countr] = IdealTtheta[i];
+            RingNumbers2[countr] = RingNumbers[i];
+            FitSNR2[countr] = FitSNR[i];
+            countr++;
           }
-          snrSorted[b + 1] = key;
-        }
-        double medianSNR = snrSorted[nIndices / 2];
-        if (medianSNR < 1e-12)
-          medianSNR = 1.0; // safety
-        free(snrSorted);
-        for (i = 0; i < nIndices; i++) {
-          double w = FitSNR[i] / medianSNR;
-          snrWeights[i] = (w < 1.0) ? w : 1.0;
         }
         if (iter == 0)
-          printf("SNR weighting: median SNR = %.1f, weights computed.\n",
-                 medianSNR);
-      }
-      free(FitSNR);
+          printf("Out of %d slices, %d were in the detector\n", nIndices,
+                 countr);
+        int nIndicesOrig = nIndices; // save for freeing Indices
+        nIndices = countr;
+        free(RMean);
+        free(EtaMean);
+        free(IdealTtheta);
+        free(RingNumbers);
+        if (didInitBin)
+          free(FitSNR);
+        RMean = RMean2;
+        EtaMean = EtaMean2;
+        IdealTtheta = IdealTtheta2;
+        RingNumbers = RingNumbers2;
+        FitSNR = FitSNR2;
 
-      end = omp_get_wtime();
-      diftotal = end - start;
-      if (iter == 0) {
-        if (FitWeightMean != 1) {
-          printf("Number of calls to profiler function: %lld\n",
-                 NrCallsProfiler);
-          printf("Time elapsed in fitting peak profiles:\t%f s.\n", diftotal);
-        } else
-          printf("Time elapsed in finding peak positions:\t%f s.\n", diftotal);
-      }
+        end = omp_get_wtime();
+        diftotal = end - start;
+        if (iter == 0) {
+          if (FitWeightMean != 1) {
+            printf("Number of calls to profiler function: %lld\n",
+                   NrCallsProfiler);
+            printf("Time elapsed in fitting peak profiles:\t%f s.\n", diftotal);
+          } else
+            printf("Time elapsed in finding peak positions:\t%f s.\n",
+                   diftotal);
+        }
 
-      // Convert to detector coords
-      YMean = malloc(nIndices * sizeof(*YMean));
-      ZMean = malloc(nIndices * sizeof(*ZMean));
-      YZ4mREta(nIndices, RMean, EtaMean, YMean, ZMean);
-      Yc = malloc(nIndices * sizeof(*Yc));
-      Zc = malloc(nIndices * sizeof(*Zc));
-      EtaIns = malloc(nIndices * sizeof(*EtaIns));
-      RadIns = malloc(nIndices * sizeof(*RadIns));
-      DiffIns = malloc(nIndices * sizeof(*DiffIns));
-      for (i = 0; i < nIndices; i++) {
-        Yc[i] = (ybc - (YMean[i] / px));
-        Zc[i] = (zbc + (ZMean[i] / px));
-      }
-      CorrectTiltSpatialDistortion(
-          nIndices, MaxRingRad, Yc, Zc, IdealTtheta, px, Lsd, ybc, zbc, tx,
-          tyin, tzin, p0in, p1in, p2in, p3in, EtaIns, DiffIns, RadIns, &StdDiff,
-          outlierFactor, NULL, p4in, OutlierIterations, iter == 0, NULL);
-      NrCalls = 0;
+        // Convert to detector coords
+        YMean = malloc(nIndices * sizeof(*YMean));
+        ZMean = malloc(nIndices * sizeof(*ZMean));
+        YZ4mREta(nIndices, RMean, EtaMean, YMean, ZMean);
+        Yc = malloc(nIndices * sizeof(*Yc));
+        Zc = malloc(nIndices * sizeof(*Zc));
+        EtaIns = malloc(nIndices * sizeof(*EtaIns));
+        RadIns = malloc(nIndices * sizeof(*RadIns));
+        DiffIns = malloc(nIndices * sizeof(*DiffIns));
+        for (i = 0; i < nIndices; i++) {
+          Yc[i] = (ybc - (YMean[i] / px));
+          Zc[i] = (zbc + (ZMean[i] / px));
+        }
+        CorrectTiltSpatialDistortion(nIndices, MaxRingRad, Yc, Zc, IdealTtheta,
+                                     px, Lsd, ybc, zbc, tx, tyin, tzin, p0in,
+                                     p1in, p2in, p3in, EtaIns, DiffIns, RadIns,
+                                     &StdDiff, outlierFactor, NULL, p4in,
+                                     OutlierIterations, iter == 0, NULL);
+        NrCalls = 0;
 
-      // Count and print indices per panel
+      } // end if (iter == 0 || perturbedFlag) — initial bin+fit
+
+      // Count and print indices per panel (only on iter 0)
       if (nPanels > 0 && iter == 0) {
         int *panelCounts = calloc(nPanels, sizeof(int));
         for (int ii = 0; ii < nIndices; ii++) {
@@ -2805,11 +2757,55 @@ int main(int argc, char *argv[]) {
           printf("     Y=%-2d     ", y);
         }
         printf("\n");
-        printf(
-            "*****************************************************************"
-            "****"
-            "***********\n\n");
+        printf("*************************************************************"
+               "****"
+               "****"
+               "***********\n\n");
         free(panelCounts);
+      }
+
+      // Compute per-ring weights (works with either fresh or carried-forward
+      // RingNumbers)
+      double *RingWeights = NULL;
+      if (NormalizeRingWeights) {
+        RingWeights = malloc(nIndices * sizeof(*RingWeights));
+        int ringCounts[200] = {0};
+        for (i = 0; i < nIndices; i++) {
+          if (RingNumbers[i] >= 0 && RingNumbers[i] < 200)
+            ringCounts[RingNumbers[i]]++;
+        }
+        for (i = 0; i < nIndices; i++) {
+          int rn = RingNumbers[i];
+          if (rn >= 0 && rn < 200 && ringCounts[rn] > 0)
+            RingWeights[i] = 1.0 / ((double)ringCounts[rn]);
+          else
+            RingWeights[i] = 1.0;
+        }
+      }
+      // snrWeights: compute from FitSNR (available from initial bin or previous
+      // re-fit)
+      double *snrWeights = NULL;
+      if (WeightByFitSNR && FitWeightMean != 1 && FitSNR != NULL) {
+        snrWeights = malloc(nIndices * sizeof(*snrWeights));
+        double *snrSorted = malloc(nIndices * sizeof(*snrSorted));
+        memcpy(snrSorted, FitSNR, nIndices * sizeof(*snrSorted));
+        for (int a = 1; a < nIndices; a++) {
+          double key = snrSorted[a];
+          int b = a - 1;
+          while (b >= 0 && snrSorted[b] > key) {
+            snrSorted[b + 1] = snrSorted[b];
+            b--;
+          }
+          snrSorted[b + 1] = key;
+        }
+        double medianSNR = snrSorted[nIndices / 2];
+        if (medianSNR < 1e-12)
+          medianSNR = 1.0;
+        free(snrSorted);
+        for (i = 0; i < nIndices; i++) {
+          double w = FitSNR[i] / medianSNR;
+          snrWeights[i] = (w < 1.0) ? w : 1.0;
+        }
       }
 
       // Optimize
@@ -2835,9 +2831,160 @@ int main(int argc, char *argv[]) {
                LsdFit, ybcFit, zbcFit, ty, tz, p0, p1, p2, p3);
         printf("p4         %0.12f\n", p4);
       }
-      printf("           *** microstrain ***\n");
+      printf("           *** microstrain (pre-refit) ***\n");
       printf("MeanStrain %0.6lf\nStdStrain  %0.6lf\n", MeanDiff * 1e6,
              StdDiff * 1e6);
+
+      // --- PER-ITERATION RE-FIT with optimized parameters ---
+      {
+        // Free pre-optimization peak arrays
+        free(YMean);
+        free(ZMean);
+        free(Yc);
+        free(Zc);
+        free(EtaIns);
+        free(RadIns);
+        free(DiffIns);
+        free(RMean);
+        free(EtaMean);
+        free(IdealTtheta);
+        free(RingNumbers);
+        YMean = ZMean = Yc = Zc = EtaIns = RadIns = DiffIns = NULL;
+        RMean = EtaMean = IdealTtheta = NULL;
+        RingNumbers = NULL;
+
+        // Recompute radii for optimized Lsd
+        double IdealRs_rf[n_hkls], Rmins_rf[n_hkls], Rmaxs_rf[n_hkls];
+        for (i = 0; i < n_hkls; i++) {
+          IdealRs_rf[i] = R4mTtheta(IdealTthetas[i], LsdFit);
+          Rmins_rf[i] = R4mTtheta(TthetaMins[i], LsdFit);
+          Rmaxs_rf[i] = R4mTtheta(TthetaMaxs[i], LsdFit);
+        }
+        // Doublets for re-fit
+        int dbf_rf[n_hkls], dbp_rf[n_hkls];
+        for (i = 0; i < n_hkls; i++) {
+          dbf_rf[i] = 0;
+          dbp_rf[i] = -1;
+        }
+        if (DoubletSeparation > 0) {
+          double sepT = DoubletSeparation * px;
+          for (i = 0; i < n_hkls - 1; i++) {
+            if (dbf_rf[i] != 0)
+              continue;
+            if (fabs(IdealRs_rf[i + 1] - IdealRs_rf[i]) < sepT) {
+              dbf_rf[i] = 1;
+              dbf_rf[i + 1] = 2;
+              dbp_rf[i] = i + 1;
+              dbp_rf[i + 1] = i;
+            }
+          }
+        }
+
+        int nIdx_rf = nEtaBins * n_hkls;
+        double *R_rf = malloc(NrPixels * NrPixels * sizeof(*R_rf));
+        double *Eta_rf = malloc(NrPixels * NrPixels * sizeof(*Eta_rf));
+        int *NrBin_rf = malloc(nIdx_rf * sizeof(*NrBin_rf));
+        int **Idx_rf = allocMatrixInt(nIdx_rf, 20000);
+
+        Car2Pol(n_hkls, nEtaBins, NrPixels, NrPixels, ybcFit, zbcFit, px, R_rf,
+                Eta_rf, Rmins_rf, Rmaxs_rf, EtaBinsLow, EtaBinsHigh, nIdx_rf,
+                NrBin_rf, Idx_rf, tx, ty, tz, p0, p1, p2, p3, MaxRingRad,
+                LsdFit, p4);
+
+        double *IRmins_rf = malloc(nIdx_rf * sizeof(*IRmins_rf));
+        double *IRmaxs_rf = malloc(nIdx_rf * sizeof(*IRmaxs_rf));
+        IdealTtheta = malloc(nIdx_rf * sizeof(*IdealTtheta));
+        RingNumbers = malloc(nIdx_rf * sizeof(*RingNumbers));
+        RMean = malloc(nIdx_rf * sizeof(*RMean));
+        EtaMean = malloc(nIdx_rf * sizeof(*EtaMean));
+        int NPF_rf =
+            (int)((floor)((Rmaxs_rf[0] - Rmins_rf[0]) / px)) * RBinWidth;
+        for (i = 0; i < nIdx_rf; i++) {
+          int ri = (int)(floor((float)i / nEtaBins));
+          IRmins_rf[i] = Rmins_rf[ri];
+          IRmaxs_rf[i] = Rmaxs_rf[ri];
+          IdealTtheta[i] = rad2deg * atan(IdealRs_rf[ri] / LsdFit);
+          RingNumbers[i] = RingIDs[ri];
+        }
+
+        double *FitSNR_rf = calloc(nIdx_rf, sizeof(*FitSNR_rf));
+        if (FitWeightMean == 1) {
+          CalcWeightedMean(nIdx_rf, NrBin_rf, Idx_rf, Average, R_rf, Eta_rf,
+                           RMean, EtaMean);
+        } else {
+          CalcFittedMean(nIdx_rf, NrBin_rf, Idx_rf, Average, R_rf, Eta_rf,
+                         RMean, EtaMean, FitSNR_rf, NPF_rf, IRmins_rf,
+                         IRmaxs_rf, nEtaBins, ybcFit, zbcFit, px, NrPixelsY,
+                         NrPixelsZ, EtaBinsLow, EtaBinsHigh, dbf_rf, dbp_rf);
+        }
+        // Don't free FitSNR_rf — compact it and save for next iter snrWeights
+
+        // Compact
+        int cnt_rf = 0;
+        double *RM2 = malloc(nIdx_rf * sizeof(*RM2));
+        double *EM2 = malloc(nIdx_rf * sizeof(*EM2));
+        double *IT2 = malloc(nIdx_rf * sizeof(*IT2));
+        int *RN2 = malloc(nIdx_rf * sizeof(*RN2));
+        double *FS2 = malloc(nIdx_rf * sizeof(*FS2)); // compacted FitSNR
+        for (i = 0; i < nIdx_rf; i++) {
+          if (RMean[i] != 0) {
+            RM2[cnt_rf] = RMean[i];
+            EM2[cnt_rf] = EtaMean[i];
+            IT2[cnt_rf] = IdealTtheta[i];
+            RN2[cnt_rf] = RingNumbers[i];
+            FS2[cnt_rf] = FitSNR_rf[i];
+            cnt_rf++;
+          }
+        }
+        free(RMean);
+        free(EtaMean);
+        free(IdealTtheta);
+        free(RingNumbers);
+        free(FitSNR_rf);
+        if (FitSNR)
+          free(FitSNR);
+        RMean = RM2;
+        EtaMean = EM2;
+        IdealTtheta = IT2;
+        RingNumbers = RN2;
+        FitSNR = FS2; // persist for next iter's snrWeights
+        nIndices = cnt_rf;
+        printf("Re-fit: %d valid slices (optimized geometry).\n", cnt_rf);
+
+        // Recompute Yc, Zc
+        YMean = malloc(nIndices * sizeof(*YMean));
+        ZMean = malloc(nIndices * sizeof(*ZMean));
+        YZ4mREta(nIndices, RMean, EtaMean, YMean, ZMean);
+        Yc = malloc(nIndices * sizeof(*Yc));
+        Zc = malloc(nIndices * sizeof(*Zc));
+        EtaIns = malloc(nIndices * sizeof(*EtaIns));
+        RadIns = malloc(nIndices * sizeof(*RadIns));
+        DiffIns = malloc(nIndices * sizeof(*DiffIns));
+        for (i = 0; i < nIndices; i++) {
+          Yc[i] = ybcFit - (YMean[i] / px);
+          Zc[i] = zbcFit + (ZMean[i] / px);
+        }
+        CorrectTiltSpatialDistortion(
+            nIndices, MaxRingRad, Yc, Zc, IdealTtheta, px, LsdFit, ybcFit,
+            zbcFit, tx, ty, tz, p0, p1, p2, p3, EtaIns, DiffIns, RadIns,
+            &StdDiff, outlierFactor, NULL, p4, OutlierIterations, 0, &MeanDiff);
+        printf("           *** microstrain (re-fit) ***\n");
+        printf("MeanStrain %0.6lf\nStdStrain  %0.6lf\n", MeanDiff * 1e6,
+               StdDiff * 1e6);
+        printf("Lsd %0.4f  BC %0.4f %0.4f  ty %0.6f  tz %0.6f\n", LsdFit,
+               ybcFit, zbcFit, ty, tz);
+        printf("p0 %0.9f  p1 %0.9f  p2 %0.9f  p3 %0.6f  p4 %0.9f\n", p0, p1, p2,
+               p3, p4);
+
+        // Free temp pixel arrays
+        free(R_rf);
+        free(Eta_rf);
+        free(NrBin_rf);
+        FreeMemMatrixInt(Idx_rf, nIdx_rf);
+        free(IRmins_rf);
+        free(IRmaxs_rf);
+      }
+      // --- END PER-ITERATION RE-FIT ---
 
       // Feed outputs back as inputs for next iteration
       p4in = p4;
@@ -2914,26 +3061,31 @@ int main(int argc, char *argv[]) {
                "restarting from best iter %d]\n",
                stagnantCount, bestIter + 1);
         stagnantCount = 0;
+        perturbedFlag = 1; // next iteration will re-bin
       }
 
       // Save final nIndices for post-loop processing
       nIndicesFinal = nIndices;
 
       // Free per-iteration arrays (except those needed after final iteration)
-      FreeMemMatrixInt(Indices, nIndicesOrig);
-      free(R);
-      free(Eta);
-      free(NrEachIndexBin);
-      free(IdealR);
-      free(IdealRmins);
-      free(IdealRmaxs);
+      if (didInitBin) {
+        FreeMemMatrixInt(Indices, nIndicesOrig);
+        free(R);
+        free(Eta);
+        free(NrEachIndexBin);
+        free(IdealR);
+        free(IdealRmins);
+        free(IdealRmaxs);
+      }
       if (RingWeights)
         free(RingWeights);
       if (snrWeights)
         free(snrWeights);
 
-      // On non-final iterations, free arrays that will be re-allocated
-      if (iter < nIterations - 1) {
+      // On non-final iterations: free peak arrays only if next iter will
+      // re-bin (either via perturbation or always on iter 0 → 1 which the
+      // re-fit handles)
+      if (iter < nIterations - 1 && perturbedFlag) {
         free(RMean);
         free(EtaMean);
         free(YMean);
@@ -2989,8 +3141,136 @@ int main(int argc, char *argv[]) {
     if (bestPanels)
       free(bestPanels);
 
+    // --- POST-LOOP RE-FIT (only if best iteration != final) ---
+    // When bestIter == last, the per-iteration re-fit already produced
+    // correct arrays. When restoring from an earlier best, we must re-fit.
+    if (nIterations > 1 && bestIter >= 0 && bestIter != nIterations - 1) {
+      printf("\n*** Post-loop re-fit with restored best parameters ***\n");
+      free(RMean);
+      free(EtaMean);
+      free(YMean);
+      free(ZMean);
+      free(IdealTtheta);
+      free(RingNumbers);
+      free(Yc);
+      free(Zc);
+      free(EtaIns);
+      free(RadIns);
+      free(DiffIns);
+      YMean = ZMean = Yc = Zc = EtaIns = RadIns = DiffIns = NULL;
+      RMean = EtaMean = IdealTtheta = NULL;
+      RingNumbers = NULL;
+
+      double IdealRs_pl[n_hkls], Rmins_pl[n_hkls], Rmaxs_pl[n_hkls];
+      for (i = 0; i < n_hkls; i++) {
+        IdealRs_pl[i] = R4mTtheta(IdealTthetas[i], LsdFit);
+        Rmins_pl[i] = R4mTtheta(TthetaMins[i], LsdFit);
+        Rmaxs_pl[i] = R4mTtheta(TthetaMaxs[i], LsdFit);
+      }
+      int dbf_pl[n_hkls], dbp_pl[n_hkls];
+      for (i = 0; i < n_hkls; i++) {
+        dbf_pl[i] = 0;
+        dbp_pl[i] = -1;
+      }
+      if (DoubletSeparation > 0) {
+        double sepT = DoubletSeparation * px;
+        for (i = 0; i < n_hkls - 1; i++) {
+          if (dbf_pl[i] != 0)
+            continue;
+          if (fabs(IdealRs_pl[i + 1] - IdealRs_pl[i]) < sepT) {
+            dbf_pl[i] = 1;
+            dbf_pl[i + 1] = 2;
+            dbp_pl[i] = i + 1;
+            dbp_pl[i + 1] = i;
+          }
+        }
+      }
+      int nIdx_pl = nEtaBins * n_hkls;
+      double *R_pl = malloc(NrPixels * NrPixels * sizeof(*R_pl));
+      double *Eta_pl = malloc(NrPixels * NrPixels * sizeof(*Eta_pl));
+      int *NrBin_pl = malloc(nIdx_pl * sizeof(*NrBin_pl));
+      int **Idx_pl = allocMatrixInt(nIdx_pl, 20000);
+      Car2Pol(n_hkls, nEtaBins, NrPixels, NrPixels, ybcFit, zbcFit, px, R_pl,
+              Eta_pl, Rmins_pl, Rmaxs_pl, EtaBinsLow, EtaBinsHigh, nIdx_pl,
+              NrBin_pl, Idx_pl, tx, ty, tz, p0, p1, p2, p3, MaxRingRad, LsdFit,
+              p4in);
+      double *IRmins_pl = malloc(nIdx_pl * sizeof(*IRmins_pl));
+      double *IRmaxs_pl = malloc(nIdx_pl * sizeof(*IRmaxs_pl));
+      IdealTtheta = malloc(nIdx_pl * sizeof(*IdealTtheta));
+      RingNumbers = malloc(nIdx_pl * sizeof(*RingNumbers));
+      RMean = malloc(nIdx_pl * sizeof(*RMean));
+      EtaMean = malloc(nIdx_pl * sizeof(*EtaMean));
+      int NPF_pl = (int)((floor)((Rmaxs_pl[0] - Rmins_pl[0]) / px)) * RBinWidth;
+      for (i = 0; i < nIdx_pl; i++) {
+        int ri = (int)(floor((float)i / nEtaBins));
+        IRmins_pl[i] = Rmins_pl[ri];
+        IRmaxs_pl[i] = Rmaxs_pl[ri];
+        IdealTtheta[i] = rad2deg * atan(IdealRs_pl[ri] / LsdFit);
+        RingNumbers[i] = RingIDs[ri];
+      }
+      double *FitSNR_pl = calloc(nIdx_pl, sizeof(*FitSNR_pl));
+      if (FitWeightMean == 1) {
+        CalcWeightedMean(nIdx_pl, NrBin_pl, Idx_pl, Average, R_pl, Eta_pl,
+                         RMean, EtaMean);
+      } else {
+        CalcFittedMean(nIdx_pl, NrBin_pl, Idx_pl, Average, R_pl, Eta_pl, RMean,
+                       EtaMean, FitSNR_pl, NPF_pl, IRmins_pl, IRmaxs_pl,
+                       nEtaBins, ybcFit, zbcFit, px, NrPixelsY, NrPixelsZ,
+                       EtaBinsLow, EtaBinsHigh, dbf_pl, dbp_pl);
+      }
+      free(FitSNR_pl);
+      int cnt_pl = 0;
+      double *RM2 = malloc(nIdx_pl * sizeof(*RM2));
+      double *EM2 = malloc(nIdx_pl * sizeof(*EM2));
+      double *IT2 = malloc(nIdx_pl * sizeof(*IT2));
+      int *RN2 = malloc(nIdx_pl * sizeof(*RN2));
+      for (i = 0; i < nIdx_pl; i++) {
+        if (RMean[i] != 0) {
+          RM2[cnt_pl] = RMean[i];
+          EM2[cnt_pl] = EtaMean[i];
+          IT2[cnt_pl] = IdealTtheta[i];
+          RN2[cnt_pl] = RingNumbers[i];
+          cnt_pl++;
+        }
+      }
+      free(RMean);
+      free(EtaMean);
+      free(IdealTtheta);
+      free(RingNumbers);
+      RMean = RM2;
+      EtaMean = EM2;
+      IdealTtheta = IT2;
+      RingNumbers = RN2;
+      nIndices = cnt_pl;
+      nIndicesFinal = nIndices;
+      printf("Post-loop re-fit: %d valid slices.\n", cnt_pl);
+      YMean = malloc(nIndices * sizeof(*YMean));
+      ZMean = malloc(nIndices * sizeof(*ZMean));
+      YZ4mREta(nIndices, RMean, EtaMean, YMean, ZMean);
+      Yc = malloc(nIndices * sizeof(*Yc));
+      Zc = malloc(nIndices * sizeof(*Zc));
+      EtaIns = malloc(nIndices * sizeof(*EtaIns));
+      RadIns = malloc(nIndices * sizeof(*RadIns));
+      DiffIns = malloc(nIndices * sizeof(*DiffIns));
+      for (i = 0; i < nIndices; i++) {
+        Yc[i] = ybcFit - (YMean[i] / px);
+        Zc[i] = zbcFit + (ZMean[i] / px);
+      }
+      CorrectTiltSpatialDistortion(
+          nIndices, MaxRingRad, Yc, Zc, IdealTtheta, px, LsdFit, ybcFit, zbcFit,
+          tx, ty, tz, p0, p1, p2, p3, EtaIns, DiffIns, RadIns, &StdDiff,
+          outlierFactor, NULL, p4in, OutlierIterations, 0, &MeanDiff);
+      printf("Post-loop re-fit MeanStrain %0.6lf\n", MeanDiff * 1e6);
+      free(R_pl);
+      free(Eta_pl);
+      free(NrBin_pl);
+      FreeMemMatrixInt(Idx_pl, nIdx_pl);
+      free(IRmins_pl);
+      free(IRmaxs_pl);
+    }
     // Reassign nIndices for post-loop code
     nIndices = nIndicesFinal;
+
     double *Etas, *Diffs, *RadOuts;
     Etas = malloc(nIndices * sizeof(*Etas));
     Diffs = malloc(nIndices * sizeof(*Diffs));
@@ -3246,7 +3526,7 @@ int main(int argc, char *argv[]) {
       double XYZG[3] = {LsdFit + ABCPrG[0], ABCPrG[1], ABCPrG[2]};
       double RadG =
           (LsdFit / XYZG[0]) * sqrt(XYZG[1] * XYZG[1] + XYZG[2] * XYZG[2]);
-      double EtaG = CalcEtaAngleLocal(XYZG[1], XYZG[2]);
+      double EtaG = dg_calc_eta_angle(XYZG[1], XYZG[2]);
       double RNormG = RadG / MaxRingRad;
       double EtaTG = 90 - EtaG;
       double DistortG =
@@ -3381,7 +3661,8 @@ int main(int argc, char *argv[]) {
     }
     free(tthResArr);
 
-    // Copy per-ring stats for final summary (last file wins, like strain stats)
+    // Copy per-ring stats for final summary (last file wins, like strain
+    // stats)
     for (int rr = 0; rr < MAX_RINGS_STAT; rr++) {
       ringMeanRadRes[rr] =
           (localRingCount[rr] > 0) ? localRingSum[rr] / localRingCount[rr] : 0;
@@ -3474,17 +3755,30 @@ int main(int argc, char *argv[]) {
     // Free arrays kept from the final iteration
     // (R, Eta, Indices, NrEachIndexBin, IdealR, IdealRmins, IdealRmaxs
     //  were already freed inside the iteration loop)
-    free(IdealTtheta);
-    free(RMean);
-    free(EtaMean);
-    free(YMean);
-    free(ZMean);
-    free(RingNumbers);
-    free(Yc);
-    free(Zc);
-    free(EtaIns);
-    free(RadIns);
-    free(DiffIns);
+    if (IdealTtheta)
+      free(IdealTtheta);
+    if (RMean)
+      free(RMean);
+    if (EtaMean)
+      free(EtaMean);
+    if (YMean)
+      free(YMean);
+    if (ZMean)
+      free(ZMean);
+    if (RingNumbers)
+      free(RingNumbers);
+    if (Yc)
+      free(Yc);
+    if (Zc)
+      free(Zc);
+    if (EtaIns)
+      free(EtaIns);
+    if (RadIns)
+      free(RadIns);
+    if (DiffIns)
+      free(DiffIns);
+    if (FitSNR)
+      free(FitSNR);
     free(Diffs);
     free(Etas);
     free(IsOutlier);
@@ -3514,7 +3808,8 @@ int main(int argc, char *argv[]) {
   printf("  Ring    IdealR(\u03bcm)  NPoints   Mean|\u0394R|    Max|\u0394R|   "
          "  Mean\u0394R\n");
   printf(
-      "  ------------------------------------------------------------------\n");
+      "  "
+      "------------------------------------------------------------------\n");
   for (int rr = 0; rr < MAX_RINGS_STAT; rr++) {
     if (ringCountRadRes[rr] > 0) {
       printf("  %4d  %11.2f  %6d  %10.4f  %10.4f  %+10.4f\n", rr,
@@ -3523,7 +3818,8 @@ int main(int argc, char *argv[]) {
     }
   }
   printf(
-      "  ------------------------------------------------------------------\n");
+      "  "
+      "------------------------------------------------------------------\n");
 
   // --- Aggregate 2theta residual statistics ---
   printf("           *** 2theta residual (deg) ***\n");
@@ -3542,7 +3838,8 @@ int main(int argc, char *argv[]) {
   printf("  Ring  Ideal2\u03b8(deg)  NPoints  Mean|\u0394(2\u03b8)|   "
          "Max|\u0394(2\u03b8)|  Mean\u0394(2\u03b8)\n");
   printf(
-      "  ------------------------------------------------------------------\n");
+      "  "
+      "------------------------------------------------------------------\n");
   for (int rr = 0; rr < MAX_RINGS_STAT; rr++) {
     if (ringCount2thRes[rr] > 0) {
       printf("  %4d  %11.4f  %6d  %12.6f %12.6f %+12.6f\n", rr,
@@ -3551,7 +3848,8 @@ int main(int argc, char *argv[]) {
     }
   }
   printf(
-      "  ------------------------------------------------------------------\n");
+      "  "
+      "------------------------------------------------------------------\n");
 
   // --- Aggregate lattice parameter residual statistics ---
   printf("           *** lattice parameter residual (\u00c5) ***\n");
@@ -3571,7 +3869,8 @@ int main(int argc, char *argv[]) {
   printf("  Ring  NPoints    Mean|\u0394a|       Max|\u0394a|        "
          "Mean\u0394a\n");
   printf(
-      "  ------------------------------------------------------------------\n");
+      "  "
+      "------------------------------------------------------------------\n");
   for (int rr = 0; rr < MAX_RINGS_STAT; rr++) {
     if (ringCountLatRes[rr] > 0) {
       printf("  %4d  %6d  %12.8f  %12.8f  %+12.8f\n", rr, ringCountLatRes[rr],
@@ -3579,7 +3878,8 @@ int main(int argc, char *argv[]) {
     }
   }
   printf(
-      "  ------------------------------------------------------------------\n");
+      "  "
+      "------------------------------------------------------------------\n");
   printf("*******************Copy to par*******************\n");
   free(DarkFile);
   free(AverageDark);

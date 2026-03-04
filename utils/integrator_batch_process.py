@@ -236,7 +236,7 @@ def check_and_create_mapping_files(param_file, midas_env, output_dir):
     print(f"Mapping files not found in {output_dir}. Running DetectorMapper to create them...")
     
     detector_mapper = os.path.join(INSTALL_PATH, "FF_HEDM/bin/DetectorMapper")
-    mapper_cmd = [detector_mapper, param_file]
+    mapper_cmd = [detector_mapper, param_file, "-nCPUs", str(os.cpu_count())]
     mapper_log = "detector_mapper.log"
     
     try:

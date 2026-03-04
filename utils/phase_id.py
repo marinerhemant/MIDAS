@@ -338,7 +338,7 @@ def create_zarr_zip(data_file: Path, dark_file: Optional[Path],
     return zips[0]
 
 
-def run_detector_mapper(param_file: Path, work_dir: Path, log=None):
+def run_detector_mapper(param_file: Path, work_dir: Path, n_cpus: int = 0, log=None):
     """Run DetectorMapper (non-Zarr) to produce Map.bin + nMap.bin.
 
     Uses the parameter-file-based DetectorMapper which reads geometry
@@ -350,8 +350,10 @@ def run_detector_mapper(param_file: Path, work_dir: Path, log=None):
         log.append(msg)
     else:
         print(msg)
-    run_cmd([str(mapper), str(param_file.resolve())],
-            cwd=str(work_dir.resolve()), log=log)
+    cmd = [str(mapper), str(param_file.resolve())]
+    if n_cpus > 0:
+        cmd += ["-nCPUs", str(n_cpus)]
+    run_cmd(cmd, cwd=str(work_dir.resolve()), log=log)
 
 
 def run_cpu_pipeline(zip_file: Path, peak_params: Path,
@@ -390,7 +392,10 @@ def run_cpu_pipeline(zip_file: Path, peak_params: Path,
     else:
         mapper = MIDAS_BIN / "DetectorMapperZarr"
         _log("  Running DetectorMapperZarr...")
-        run_cmd([str(mapper), str(zip_file)], cwd=str(work_dir), log=log)
+        cmd = [str(mapper), str(zip_file)]
+        if n_cpus > 0:
+            cmd += ["-nCPUs", str(n_cpus)]
+        run_cmd(cmd, cwd=str(work_dir), log=log)
 
     integrator = MIDAS_BIN / "IntegratorZarrOMP"
     _log("  Running IntegratorZarrOMP with peak fitting...")

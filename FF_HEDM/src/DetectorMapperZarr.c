@@ -25,9 +25,8 @@
 #include <time.h>
 #include <zip.h>
 
-#define deg2rad 0.0174532925199433
-#define rad2deg 57.2957795130823
-#define EPS 1E-6
+#include "DetectorGeometry.h"
+
 double *distortionMapY;
 double *distortionMapZ;
 int distortionFile;
@@ -36,313 +35,48 @@ int numProcs;
 static Panel *panels = NULL;
 static int nPanels = 0;
 
-static inline int BETWEEN(double val, double min, double max) {
-  return ((val - EPS <= max && val + EPS >= min) ? 1 : 0);
-}
-
-static inline double **allocMatrix(int nrows, int ncols) {
-  double **arr;
-  int i;
-  arr = malloc(nrows * sizeof(*arr));
-  if (arr == NULL) {
-    return NULL;
-  }
-  for (i = 0; i < nrows; i++) {
-    arr[i] = malloc(ncols * sizeof(*arr[i]));
-    if (arr[i] == NULL) {
-      return NULL;
-    }
-  }
-  return arr;
-}
-
-static inline void FreeMemMatrix(double **mat, int nrows) {
-  int r;
-  for (r = 0; r < nrows; r++) {
-    free(mat[r]);
-  }
-  free(mat);
-}
-
-static inline double signVal(double x) {
-  if (x == 0)
-    return 1.0;
-  else
-    return x / fabs(x);
-}
-
-static inline void MatrixMult(double m[3][3], double v[3], double r[3]) {
-  int i;
-  for (i = 0; i < 3; i++) {
-    r[i] = m[i][0] * v[0] + m[i][1] * v[1] + m[i][2] * v[2];
-  }
-}
-
-static inline void MatrixMultF33(double m[3][3], double n[3][3],
-                                 double res[3][3]) {
-  int r;
-  for (r = 0; r < 3; r++) {
-    res[r][0] = m[r][0] * n[0][0] + m[r][1] * n[1][0] + m[r][2] * n[2][0];
-    res[r][1] = m[r][0] * n[0][1] + m[r][1] * n[1][1] + m[r][2] * n[2][1];
-    res[r][2] = m[r][0] * n[0][2] + m[r][1] * n[1][2] + m[r][2] * n[2][2];
-  }
-}
-
-static inline double CalcEtaAngle(double y, double z) {
-  double alpha = rad2deg * acos(z / sqrt(y * y + z * z));
-  if (y > 0)
-    alpha = -alpha;
-  return alpha;
-}
-
-static inline void REta4MYZ(double Y, double Z, double Ycen, double Zcen,
-                            double TRs[3][3], double Lsd, double RhoD,
-                            double p0, double p1, double p2, double p3,
-                            double n0, double n1, double n2, double px,
-                            double *RetVals, double p4, double dLsd,
-                            double dP2) {
-  double Yc, Zc, ABC[3], ABCPr[3], XYZ[3], Rad, Eta, RNorm, DistortFunc, EtaT,
-      Rt;
-  double panelLsd = Lsd + dLsd;
-  double panelP2 = p2 + dP2;
-  Yc = (-Y + Ycen) * px;
-  Zc = (Z - Zcen) * px;
-  ABC[0] = 0;
-  ABC[1] = Yc;
-  ABC[2] = Zc;
-  MatrixMult(TRs, ABC, ABCPr);
-  XYZ[0] = panelLsd + ABCPr[0];
-  XYZ[1] = ABCPr[1];
-  XYZ[2] = ABCPr[2];
-  Rad = (panelLsd / (XYZ[0])) * (sqrt(XYZ[1] * XYZ[1] + XYZ[2] * XYZ[2]));
-  Eta = CalcEtaAngle(XYZ[1], XYZ[2]);
-  RNorm = Rad / RhoD;
-  EtaT = 90 - Eta;
-  DistortFunc = (p0 * (pow(RNorm, n0)) * (cos(deg2rad * (2 * EtaT)))) +
-                (p1 * (pow(RNorm, n1)) * (cos(deg2rad * (4 * EtaT + p3)))) +
-                (panelP2 * (pow(RNorm, n2)));
-  DistortFunc += p4 * pow(RNorm, 6.0);
-  DistortFunc += 1;
-  Rt = Rad * DistortFunc / px; // in pixels
-  Rt = Rt * (Lsd / panelLsd);  // re-project to global Lsd plane
-  RetVals[0] = Eta;
-  RetVals[1] = Rt;
-}
-
-static inline void YZ4mREta(double R, double Eta, double *YZ) {
-  YZ[0] = -R * sin(Eta * deg2rad);
-  YZ[1] = R * cos(Eta * deg2rad);
-}
-
-const double dy[2] = {-0.5, +0.5};
-const double dz[2] = {-0.5, +0.5};
-
-static inline void REtaMapper(double Rmin, double EtaMin, int nEtaBins,
-                              int nRBins, double EtaBinSize, double RBinSize,
-                              double *EtaBinsLow, double *EtaBinsHigh,
-                              double *RBinsLow, double *RBinsHigh) {
-  int i, j, k, l;
-  for (i = 0; i < nEtaBins; i++) {
-    EtaBinsLow[i] = EtaBinSize * i + EtaMin;
-    EtaBinsHigh[i] = EtaBinSize * (i + 1) + EtaMin;
-  }
-  for (i = 0; i < nRBins; i++) {
-    RBinsLow[i] = RBinSize * i + Rmin;
-    RBinsHigh[i] = RBinSize * (i + 1) + Rmin;
-  }
-}
-
-static inline int nOutside(double pos, int direction, double tempIntercepts[],
-                           int nIntercepts) {
-  int i;
-  int nOD = 0;
-  for (i = 0; i < nIntercepts; i++) {
-    if (direction * pos < direction * tempIntercepts[i]) {
-      nOD++;
-    }
-  }
-  return nOD;
-}
-
-struct Point {
-  double x;
-  double y;
-};
-
-struct Point center;
-
-static int cmpfunc(const void *ia, const void *ib) {
-  struct Point *a = (struct Point *)ia;
-  struct Point *b = (struct Point *)ib;
-  if (a->x - center.x >= 0 && b->x - center.x < 0)
-    return 1;
-  if (a->x - center.x < 0 && b->x - center.x >= 0)
-    return -1;
-  if (a->x - center.x == 0 && b->x - center.x == 0) {
-    if (a->y - center.y >= 0 || b->y - center.y >= 0) {
-      return a->y > b->y ? 1 : -1;
-    }
-    return b->y > a->y ? 1 : -1;
-  }
-  double det = (a->x - center.x) * (b->y - center.y) -
-               (b->x - center.x) * (a->y - center.y);
-  if (det < 0)
-    return 1;
-  if (det > 0)
-    return -1;
-  int d1 = (a->x - center.x) * (a->x - center.x) +
-           (a->y - center.y) * (a->y - center.y);
-  int d2 = (b->x - center.x) * (b->x - center.x) +
-           (b->y - center.y) * (b->y - center.y);
-  return d1 > d2 ? 1 : -1;
-}
-
-double PosMatrix[4][2] = {{-0.5, -0.5}, {-0.5, 0.5}, {0.5, 0.5}, {0.5, -0.5}};
-
-static inline double CalcAreaPolygon(double **Edges, int nEdges) {
-  int i;
-  struct Point *MyData;
-  MyData = malloc(nEdges * sizeof(*MyData));
-  center.x = 0;
-  center.y = 0;
-  for (i = 0; i < nEdges; i++) {
-    center.x += Edges[i][0];
-    center.y += Edges[i][1];
-    MyData[i].x = Edges[i][0];
-    MyData[i].y = Edges[i][1];
-  }
-  center.x /= nEdges;
-  center.y /= nEdges;
-
-  qsort(MyData, nEdges, sizeof(struct Point), cmpfunc);
-  double **SortedEdges;
-  SortedEdges = allocMatrix(nEdges + 1, 2);
-  for (i = 0; i < nEdges; i++) {
-    SortedEdges[i][0] = MyData[i].x;
-    SortedEdges[i][1] = MyData[i].y;
-  }
-  SortedEdges[nEdges][0] = MyData[0].x;
-  SortedEdges[nEdges][1] = MyData[0].y;
-
-  double Area = 0;
-  for (i = 0; i < nEdges; i++) {
-    Area += 0.5 * ((SortedEdges[i][0] * SortedEdges[i + 1][1]) -
-                   (SortedEdges[i + 1][0] * SortedEdges[i][1]));
-  }
-  free(MyData);
-  FreeMemMatrix(SortedEdges, nEdges + 1);
-  return Area;
-}
-
-static inline int FindUniques(double **EdgesIn, double **EdgesOut, int nEdgesIn,
-                              double RMin, double RMax, double EtaMin,
-                              double EtaMax) {
-  int i, j, nEdgesOut = 0, duplicate;
-  double Len, RT, ET;
-  for (i = 0; i < nEdgesIn; i++) {
-    duplicate = 0;
-    for (j = i + 1; j < nEdgesIn; j++) {
-      Len = sqrt(
-          (EdgesIn[i][0] - EdgesIn[j][0]) * (EdgesIn[i][0] - EdgesIn[j][0]) +
-          (EdgesIn[i][1] - EdgesIn[j][1]) * (EdgesIn[i][1] - EdgesIn[j][1]));
-      if (Len == 0) {
-        duplicate = 1;
-      }
-    }
-    RT = sqrt(EdgesIn[i][0] * EdgesIn[i][0] + EdgesIn[i][1] * EdgesIn[i][1]);
-    ET = CalcEtaAngle(EdgesIn[i][0], EdgesIn[i][1]);
-    if (!BETWEEN(ET, EtaMin, EtaMax)) {
-      if (BETWEEN(ET + 360, EtaMin, EtaMax)) {
-        ET += 360;
-      } else if (BETWEEN(ET - 360, EtaMin, EtaMax)) {
-        ET -= 360;
-      }
-    }
-    if (BETWEEN(RT, RMin, RMax) == 0) {
-      duplicate = 1;
-    }
-    if (BETWEEN(ET, EtaMin, EtaMax) == 0) {
-      duplicate = 1;
-    }
-    if (duplicate == 0) {
-      EdgesOut[nEdgesOut][0] = EdgesIn[i][0];
-      EdgesOut[nEdgesOut][1] = EdgesIn[i][1];
-      nEdgesOut++;
-    }
-  }
-  return nEdgesOut;
-}
-
 struct data {
   int y;
   int z;
   double frac;
 };
 
-static inline long long int
+static long long int
 mapperfcn(double tx, double ty, double tz, int NrPixelsY, int NrPixelsZ,
           double pxY, double pxZ, double Ycen, double Zcen, double Lsd,
           double RhoD, double p0, double p1, double p2, double p3,
           double *EtaBinsLow, double *EtaBinsHigh, double *RBinsLow,
           double *RBinsHigh, int nRBins, int nEtaBins, struct data ***pxList,
           int **nPxList, int **maxnPx, double *mask, double p4) {
-  double txr, tyr, tzr;
-  txr = deg2rad * tx;
-  tyr = deg2rad * ty;
-  tzr = deg2rad * tz;
-  double Rx[3][3] = {
-      {1, 0, 0}, {0, cos(txr), -sin(txr)}, {0, sin(txr), cos(txr)}};
-  double Ry[3][3] = {
-      {cos(tyr), 0, sin(tyr)}, {0, 1, 0}, {-sin(tyr), 0, cos(tyr)}};
-  double Rz[3][3] = {
-      {cos(tzr), -sin(tzr), 0}, {sin(tzr), cos(tzr), 0}, {0, 0, 1}};
-  double TRint[3][3], TRs[3][3];
-  MatrixMultF33(Ry, Rz, TRint);
-  MatrixMultF33(Rx, TRint, TRs);
-  double n0 = 2.0, n1 = 4.0, n2 = 2.0;
-  double *RetVals, *RetVals2;
-  RetVals = malloc(2 * sizeof(*RetVals));
-  RetVals2 = malloc(2 * sizeof(*RetVals2));
-  double Y, Z, Eta, Rt;
-  int i, j, k, l, m, n;
-  double EtaMi, EtaMa, RMi, RMa;
-  int RChosen[500], EtaChosen[500];
-  int nrRChosen, nrEtaChosen;
-  double EtaMiTr, EtaMaTr;
-  double YZ[2];
-  double **Edges;
-  Edges = allocMatrix(50, 2);
-  double **EdgesOut;
-  EdgesOut = allocMatrix(50, 2);
-  int nEdges;
-  double RMin, RMax, EtaMin, EtaMax;
-  double yMin, yMax, zMin, zMax;
-  double boxEdge[4][2];
-  double Area;
-  double RThis, EtaThis;
-  double yTemp, zTemp, yTempMin, yTempMax, zTempMin, zTempMax;
-  int maxnVal, nVal;
-  struct data *oldarr, *newarr;
+  double TRs[3][3];
+  dg_build_tilt_matrix(tx, ty, tz, TRs);
+  int i;
   long long int TotNrOfBins = 0;
   long long int sumNrBins = 0;
   long long int nrContinued = 0;
-  long long int testPos;
-  double ypr, zpr;
-  double RT, ET;
-  // This could be done with OMP Parallel for
+#pragma omp parallel for schedule(dynamic, 16)                                 \
+    reduction(+ : TotNrOfBins, sumNrBins, nrContinued)
   for (i = 0; i < NrPixelsY; i++) {
+    // Thread-private allocations
+    double RetVals[2], RetVals2[2];
+    double **Edges = dg_alloc_matrix(50, 2);
+    double **EdgesOut = dg_alloc_matrix(50, 2);
+    double boxEdge[4][2];
+    double YZ[2];
+    int RChosen[500], EtaChosen[500];
+    int j, k, l, m;
     for (j = 0; j < NrPixelsZ; j++) {
-      testPos = j;
+      long long int testPos = j;
       testPos *= NrPixelsY;
       testPos += i;
       if (mask != NULL) {
         if (mask[testPos] == 1.0)
           continue;
       }
-      EtaMi = 1800;
-      EtaMa = -1800;
-      RMi = 1E8; // In pixels
-      RMa = -1000;
+      double EtaMi = 1800;
+      double EtaMa = -1800;
+      double RMi = 1E8; // In pixels
+      double RMa = -1000;
       // Calculate RMi, RMa, EtaMi, EtaMa
       testPos = j;
       testPos *= NrPixelsY;
@@ -358,16 +92,15 @@ mapperfcn(double tx, double ty, double tz, int NrPixelsY, int NrPixelsZ,
         dLsd = panels[pIdx].dLsd;
         dP2 = panels[pIdx].dP2;
       }
-      ypr = (double)i + distortionMapY[testPos] + pdY;
-      zpr = (double)j + distortionMapZ[testPos] + pdZ;
+      double ypr = (double)i + distortionMapY[testPos] + pdY;
+      double zpr = (double)j + distortionMapZ[testPos] + pdZ;
+      double Eta, Rt;
       for (k = 0; k < 2; k++) {
         for (l = 0; l < 2; l++) {
-          Y = ypr + dy[k];
-          Z = zpr + dz[l];
-          REta4MYZ(Y, Z, Ycen, Zcen, TRs, Lsd, RhoD, p0, p1, p2, p3, n0, n1, n2,
-                   pxY, RetVals, p4, dLsd, dP2);
-          Eta = RetVals[0];
-          Rt = RetVals[1]; // in pixels
+          double Y = ypr + dg_dy[k];
+          double Z = zpr + dg_dz[l];
+          dg_pixel_to_REta(Y, Z, Ycen, Zcen, TRs, Lsd, RhoD, p0, p1, p2, p3, p4,
+                           pxY, dLsd, dP2, &Rt, &Eta);
           if (Eta < EtaMi)
             EtaMi = Eta;
           if (Eta > EtaMa)
@@ -379,18 +112,12 @@ mapperfcn(double tx, double ty, double tz, int NrPixelsY, int NrPixelsZ,
         }
       }
       // Get corrected Y, Z for this position.
-      REta4MYZ(ypr, zpr, Ycen, Zcen, TRs, Lsd, RhoD, p0, p1, p2, p3, n0, n1, n2,
-               pxY, RetVals, p4, dLsd, dP2);
-      Eta = RetVals[0];
-      Rt = RetVals[1]; // in pixels
-      YZ4mREta(Rt, Eta, RetVals2);
-      YZ[0] = RetVals2[0]; // Corrected Y position according to R, Eta, center
-                           // at 0,0
-      YZ[1] = RetVals2[1]; // Corrected Z position according to R, Eta, center
-                           // at 0,0
+      dg_pixel_to_REta(ypr, zpr, Ycen, Zcen, TRs, Lsd, RhoD, p0, p1, p2, p3, p4,
+                       pxY, dLsd, dP2, &Rt, &Eta);
+      dg_REta_to_YZ(Rt, Eta, &YZ[0], &YZ[1]);
       // Now check which eta, R ranges should have this pixel
-      nrRChosen = 0;
-      nrEtaChosen = 0;
+      int nrRChosen = 0;
+      int nrEtaChosen = 0;
       for (k = 0; k < nRBins; k++) {
         if (RBinsHigh[k] >= RMi && RBinsLow[k] <= RMa) {
           RChosen[nrRChosen] = k;
@@ -402,8 +129,8 @@ mapperfcn(double tx, double ty, double tz, int NrPixelsY, int NrPixelsZ,
                   // greater than 0, check for eta, eta-360
         // First check if the pixel is a special case
         if (EtaMa - EtaMi > 180) {
-          EtaMiTr = EtaMa;
-          EtaMaTr = 360 + EtaMi;
+          double EtaMiTr = EtaMa;
+          double EtaMaTr = 360 + EtaMi;
           EtaMa = EtaMaTr;
           EtaMi = EtaMiTr;
         }
@@ -425,10 +152,10 @@ mapperfcn(double tx, double ty, double tz, int NrPixelsY, int NrPixelsZ,
           continue;
         }
       }
-      yMin = YZ[0] - 0.5;
-      yMax = YZ[0] + 0.5;
-      zMin = YZ[1] - 0.5;
-      zMax = YZ[1] + 0.5;
+      double yMin = YZ[0] - 0.5;
+      double yMax = YZ[0] + 0.5;
+      double zMin = YZ[1] - 0.5;
+      double zMax = YZ[1] + 0.5;
       sumNrBins += nrRChosen * nrEtaChosen;
       double totPxArea = 0;
       // Line Intercepts ordering: RMin: ymin, ymax, zmin, zmax. RMax: ymin,
@@ -436,39 +163,32 @@ mapperfcn(double tx, double ty, double tz, int NrPixelsY, int NrPixelsZ,
       //							 EtaMin: ymin,
       // ymax, zmin, zmax. EtaMax: ymin, ymax, zmin, zmax.
       for (k = 0; k < nrRChosen; k++) {
-        RMin = RBinsLow[RChosen[k]];
-        RMax = RBinsHigh[RChosen[k]];
+        double RMin = RBinsLow[RChosen[k]];
+        double RMax = RBinsHigh[RChosen[k]];
         for (l = 0; l < nrEtaChosen; l++) {
-          EtaMin = EtaBinsLow[EtaChosen[l]];
-          EtaMax = EtaBinsHigh[EtaChosen[l]];
+          double EtaMin = EtaBinsLow[EtaChosen[l]];
+          double EtaMax = EtaBinsHigh[EtaChosen[l]];
           // Find YZ of the polar mask.
-          YZ4mREta(RMin, EtaMin, RetVals);
-          boxEdge[0][0] = RetVals[0];
-          boxEdge[0][1] = RetVals[1];
-          YZ4mREta(RMin, EtaMax, RetVals);
-          boxEdge[1][0] = RetVals[0];
-          boxEdge[1][1] = RetVals[1];
-          YZ4mREta(RMax, EtaMin, RetVals);
-          boxEdge[2][0] = RetVals[0];
-          boxEdge[2][1] = RetVals[1];
-          YZ4mREta(RMax, EtaMax, RetVals);
-          boxEdge[3][0] = RetVals[0];
-          boxEdge[3][1] = RetVals[1];
-          nEdges = 0;
+          dg_REta_to_YZ(RMin, EtaMin, &boxEdge[0][0], &boxEdge[0][1]);
+          dg_REta_to_YZ(RMin, EtaMax, &boxEdge[1][0], &boxEdge[1][1]);
+          dg_REta_to_YZ(RMax, EtaMin, &boxEdge[2][0], &boxEdge[2][1]);
+          dg_REta_to_YZ(RMax, EtaMax, &boxEdge[3][0], &boxEdge[3][1]);
+          int nEdges = 0;
           // Now check if any edge of the pixel is within the polar mask
           for (m = 0; m < 4; m++) {
-            RThis = sqrt((YZ[0] + PosMatrix[m][0]) * (YZ[0] + PosMatrix[m][0]) +
-                         (YZ[1] + PosMatrix[m][1]) * (YZ[1] + PosMatrix[m][1]));
-            EtaThis =
-                CalcEtaAngle(YZ[0] + PosMatrix[m][0], YZ[1] + PosMatrix[m][1]);
-            if (EtaMin < -180 && signVal(EtaThis) != signVal(EtaMin))
+            double RThis = sqrt(
+                (YZ[0] + dg_PosMatrix[m][0]) * (YZ[0] + dg_PosMatrix[m][0]) +
+                (YZ[1] + dg_PosMatrix[m][1]) * (YZ[1] + dg_PosMatrix[m][1]));
+            double EtaThis = dg_calc_eta_angle(YZ[0] + dg_PosMatrix[m][0],
+                                               YZ[1] + dg_PosMatrix[m][1]);
+            if (EtaMin < -180 && dg_sign(EtaThis) != dg_sign(EtaMin))
               EtaThis -= 360;
-            if (EtaMax > 180 && signVal(EtaThis) != signVal(EtaMax))
+            if (EtaMax > 180 && dg_sign(EtaThis) != dg_sign(EtaMax))
               EtaThis += 360;
             if (RThis >= RMin && RThis <= RMax && EtaThis >= EtaMin &&
                 EtaThis <= EtaMax) {
-              Edges[nEdges][0] = YZ[0] + PosMatrix[m][0];
-              Edges[nEdges][1] = YZ[1] + PosMatrix[m][1];
+              Edges[nEdges][0] = YZ[0] + dg_PosMatrix[m][0];
+              Edges[nEdges][1] = YZ[1] + dg_PosMatrix[m][1];
               nEdges++;
             }
           }
@@ -485,33 +205,34 @@ mapperfcn(double tx, double ty, double tz, int NrPixelsY, int NrPixelsZ,
             // Now go through Rmin, Rmax, EtaMin, EtaMax and calculate
             // intercepts and check if within the pixel.
             // RMin,Max and yMin,Max
+            double yTemp, zTemp, yTempMin, yTempMax, zTempMin, zTempMax;
             if (RMin >= yMin) {
-              zTemp = signVal(YZ[1]) * sqrt(RMin * RMin - yMin * yMin);
-              if (BETWEEN(zTemp, zMin, zMax) == 1) {
+              zTemp = dg_sign(YZ[1]) * sqrt(RMin * RMin - yMin * yMin);
+              if (dg_between(zTemp, zMin, zMax) == 1) {
                 Edges[nEdges][0] = yMin;
                 Edges[nEdges][1] = zTemp;
                 nEdges++;
               }
             }
             if (RMin >= yMax) {
-              zTemp = signVal(YZ[1]) * sqrt(RMin * RMin - yMax * yMax);
-              if (BETWEEN(zTemp, zMin, zMax) == 1) {
+              zTemp = dg_sign(YZ[1]) * sqrt(RMin * RMin - yMax * yMax);
+              if (dg_between(zTemp, zMin, zMax) == 1) {
                 Edges[nEdges][0] = yMax;
                 Edges[nEdges][1] = zTemp;
                 nEdges++;
               }
             }
             if (RMax >= yMin) {
-              zTemp = signVal(YZ[1]) * sqrt(RMax * RMax - yMin * yMin);
-              if (BETWEEN(zTemp, zMin, zMax) == 1) {
+              zTemp = dg_sign(YZ[1]) * sqrt(RMax * RMax - yMin * yMin);
+              if (dg_between(zTemp, zMin, zMax) == 1) {
                 Edges[nEdges][0] = yMin;
                 Edges[nEdges][1] = zTemp;
                 nEdges++;
               }
             }
             if (RMax >= yMax) {
-              zTemp = signVal(YZ[1]) * sqrt(RMax * RMax - yMax * yMax);
-              if (BETWEEN(zTemp, zMin, zMax) == 1) {
+              zTemp = dg_sign(YZ[1]) * sqrt(RMax * RMax - yMax * yMax);
+              if (dg_between(zTemp, zMin, zMax) == 1) {
                 Edges[nEdges][0] = yMax;
                 Edges[nEdges][1] = zTemp;
                 nEdges++;
@@ -519,32 +240,32 @@ mapperfcn(double tx, double ty, double tz, int NrPixelsY, int NrPixelsZ,
             }
             // RMin,Max and zMin,Max
             if (RMin >= zMin) {
-              yTemp = signVal(YZ[0]) * sqrt(RMin * RMin - zMin * zMin);
-              if (BETWEEN(yTemp, yMin, yMax) == 1) {
+              yTemp = dg_sign(YZ[0]) * sqrt(RMin * RMin - zMin * zMin);
+              if (dg_between(yTemp, yMin, yMax) == 1) {
                 Edges[nEdges][0] = yTemp;
                 Edges[nEdges][1] = zMin;
                 nEdges++;
               }
             }
             if (RMin >= zMax) {
-              yTemp = signVal(YZ[0]) * sqrt(RMin * RMin - zMax * zMax);
-              if (BETWEEN(yTemp, yMin, yMax) == 1) {
+              yTemp = dg_sign(YZ[0]) * sqrt(RMin * RMin - zMax * zMax);
+              if (dg_between(yTemp, yMin, yMax) == 1) {
                 Edges[nEdges][0] = yTemp;
                 Edges[nEdges][1] = zMax;
                 nEdges++;
               }
             }
             if (RMax >= zMin) {
-              yTemp = signVal(YZ[0]) * sqrt(RMax * RMax - zMin * zMin);
-              if (BETWEEN(yTemp, yMin, yMax) == 1) {
+              yTemp = dg_sign(YZ[0]) * sqrt(RMax * RMax - zMin * zMin);
+              if (dg_between(yTemp, yMin, yMax) == 1) {
                 Edges[nEdges][0] = yTemp;
                 Edges[nEdges][1] = zMin;
                 nEdges++;
               }
             }
             if (RMax >= zMax) {
-              yTemp = signVal(YZ[0]) * sqrt(RMax * RMax - zMax * zMax);
-              if (BETWEEN(yTemp, yMin, yMax) == 1) {
+              yTemp = dg_sign(YZ[0]) * sqrt(RMax * RMax - zMax * zMax);
+              if (dg_between(yTemp, yMin, yMax) == 1) {
                 Edges[nEdges][0] = yTemp;
                 Edges[nEdges][1] = zMax;
                 nEdges++;
@@ -555,15 +276,15 @@ mapperfcn(double tx, double ty, double tz, int NrPixelsY, int NrPixelsZ,
               zTempMin = 0;
               zTempMax = 0;
             } else {
-              zTempMin = -yMin / tan(EtaMin * deg2rad);
-              zTempMax = -yMax / tan(EtaMin * deg2rad);
+              zTempMin = -yMin / tan(EtaMin * DG_DEG2RAD);
+              zTempMax = -yMax / tan(EtaMin * DG_DEG2RAD);
             }
-            if (BETWEEN(zTempMin, zMin, zMax) == 1) {
+            if (dg_between(zTempMin, zMin, zMax) == 1) {
               Edges[nEdges][0] = yMin;
               Edges[nEdges][1] = zTempMin;
               nEdges++;
             }
-            if (BETWEEN(zTempMax, zMin, zMax) == 1) {
+            if (dg_between(zTempMax, zMin, zMax) == 1) {
               Edges[nEdges][0] = yMax;
               Edges[nEdges][1] = zTempMax;
               nEdges++;
@@ -572,15 +293,15 @@ mapperfcn(double tx, double ty, double tz, int NrPixelsY, int NrPixelsZ,
               zTempMin = 0;
               zTempMax = 0;
             } else {
-              zTempMin = -yMin / tan(EtaMax * deg2rad);
-              zTempMax = -yMax / tan(EtaMax * deg2rad);
+              zTempMin = -yMin / tan(EtaMax * DG_DEG2RAD);
+              zTempMax = -yMax / tan(EtaMax * DG_DEG2RAD);
             }
-            if (BETWEEN(zTempMin, zMin, zMax) == 1) {
+            if (dg_between(zTempMin, zMin, zMax) == 1) {
               Edges[nEdges][0] = yMin;
               Edges[nEdges][1] = zTempMin;
               nEdges++;
             }
-            if (BETWEEN(zTempMax, zMin, zMax) == 1) {
+            if (dg_between(zTempMax, zMin, zMax) == 1) {
               Edges[nEdges][0] = yMax;
               Edges[nEdges][1] = zTempMax;
               nEdges++;
@@ -590,15 +311,15 @@ mapperfcn(double tx, double ty, double tz, int NrPixelsY, int NrPixelsZ,
               yTempMin = 0;
               yTempMax = 0;
             } else {
-              yTempMin = -zMin * tan(EtaMin * deg2rad);
-              yTempMax = -zMax * tan(EtaMin * deg2rad);
+              yTempMin = -zMin * tan(EtaMin * DG_DEG2RAD);
+              yTempMax = -zMax * tan(EtaMin * DG_DEG2RAD);
             }
-            if (BETWEEN(yTempMin, yMin, yMax) == 1) {
+            if (dg_between(yTempMin, yMin, yMax) == 1) {
               Edges[nEdges][0] = yTempMin;
               Edges[nEdges][1] = zMin;
               nEdges++;
             }
-            if (BETWEEN(yTempMax, yMin, yMax) == 1) {
+            if (dg_between(yTempMax, yMin, yMax) == 1) {
               Edges[nEdges][0] = yTempMax;
               Edges[nEdges][1] = zMax;
               nEdges++;
@@ -607,15 +328,15 @@ mapperfcn(double tx, double ty, double tz, int NrPixelsY, int NrPixelsZ,
               yTempMin = 0;
               yTempMax = 0;
             } else {
-              yTempMin = -zMin * tan(EtaMax * deg2rad);
-              yTempMax = -zMax * tan(EtaMax * deg2rad);
+              yTempMin = -zMin * tan(EtaMax * DG_DEG2RAD);
+              yTempMax = -zMax * tan(EtaMax * DG_DEG2RAD);
             }
-            if (BETWEEN(yTempMin, yMin, yMax) == 1) {
+            if (dg_between(yTempMin, yMin, yMax) == 1) {
               Edges[nEdges][0] = yTempMin;
               Edges[nEdges][1] = zMin;
               nEdges++;
             }
-            if (BETWEEN(yTempMax, yMin, yMax) == 1) {
+            if (dg_between(yTempMax, yMin, yMax) == 1) {
               Edges[nEdges][0] = yTempMax;
               Edges[nEdges][1] = zMax;
               nEdges++;
@@ -625,36 +346,40 @@ mapperfcn(double tx, double ty, double tz, int NrPixelsY, int NrPixelsZ,
             nrContinued++;
             continue;
           }
-          nEdges =
-              FindUniques(Edges, EdgesOut, nEdges, RMin, RMax, EtaMin, EtaMax);
+          nEdges = dg_find_unique_vertices(Edges, EdgesOut, nEdges, RMin, RMax,
+                                           EtaMin, EtaMax);
           if (nEdges < 3) {
             nrContinued++;
             continue;
           }
           // Now we have all the edges, let's calculate the area.
-          Area = CalcAreaPolygon(EdgesOut, nEdges);
+          double Area = dg_polygon_area(EdgesOut, nEdges);
           if (Area < 1E-5) {
             nrContinued++;
             continue;
           }
-          // Populate the arrays, this needs to be done critical.
-          maxnVal = maxnPx[RChosen[k]][EtaChosen[l]];
-          nVal = nPxList[RChosen[k]][EtaChosen[l]];
-          if (nVal >= maxnVal) {
-            maxnVal += 2;
-            oldarr = pxList[RChosen[k]][EtaChosen[l]];
-            newarr = realloc(oldarr, maxnVal * sizeof(*newarr));
-            if (newarr == NULL) {
-              printf("Could not allocate array. Behavior undefined.\n");
+          // Populate the arrays (thread-safe)
+#pragma omp critical
+          {
+            int maxnVal = maxnPx[RChosen[k]][EtaChosen[l]];
+            int nVal = nPxList[RChosen[k]][EtaChosen[l]];
+            if (nVal >= maxnVal) {
+              maxnVal += 2;
+              struct data *oldarr = pxList[RChosen[k]][EtaChosen[l]];
+              struct data *newarr = realloc(oldarr, maxnVal * sizeof(*newarr));
+              if (newarr == NULL) {
+                fprintf(stderr, "realloc failed in mapperfcn\n");
+              } else {
+                pxList[RChosen[k]][EtaChosen[l]] = newarr;
+                maxnPx[RChosen[k]][EtaChosen[l]] = maxnVal;
+              }
             }
-            pxList[RChosen[k]][EtaChosen[l]] = newarr;
-            maxnPx[RChosen[k]][EtaChosen[l]] = maxnVal;
+            pxList[RChosen[k]][EtaChosen[l]][nVal].y = i;
+            pxList[RChosen[k]][EtaChosen[l]][nVal].z = j;
+            pxList[RChosen[k]][EtaChosen[l]][nVal].frac = Area;
+            (nPxList[RChosen[k]][EtaChosen[l]])++;
           }
-          pxList[RChosen[k]][EtaChosen[l]][nVal].y = i;
-          pxList[RChosen[k]][EtaChosen[l]][nVal].z = j;
-          pxList[RChosen[k]][EtaChosen[l]][nVal].frac = Area;
           totPxArea += Area;
-          (nPxList[RChosen[k]][EtaChosen[l]])++;
           TotNrOfBins++;
         }
       }
@@ -718,15 +443,26 @@ int main(int argc, char *argv[]) {
   clock_t start, end, start0, end0;
   start0 = clock();
   double diftotal;
-  if (argc != 2) {
+  numProcs = omp_get_max_threads();
+  // Check for -nCPUs flag
+  for (int ai = 1; ai < argc; ai++) {
+    if (strcmp(argv[ai], "-nCPUs") == 0 && ai + 1 < argc) {
+      numProcs = atoi(argv[ai + 1]);
+      ai++;
+    }
+  }
+  if (argc < 2) {
     printf(
         "******************Supply a Zarr file as argument.******************\n"
         "Zarr file must have all the parameters needed: tx, ty, tz, px, BC, "
         "Lsd, RhoD,"
         "\n\t\t   p0, p1, p2, EtaBinSize, EtaMin,\n\t\t   EtaMax, RBinSize, "
-        "RMin, RMax,\n\t\t   NrPixels\n");
+        "RMin, RMax,\n\t\t   NrPixels\n"
+        "Optional: -nCPUs N (default: all available)\n");
     return (1);
   }
+  omp_set_num_threads(numProcs);
+  printf("Using %d threads.\n", numProcs);
   char *DataFN = argv[1];
   blosc2_init();
   // Read zarr config
@@ -1044,8 +780,8 @@ int main(int argc, char *argv[]) {
   EtaBinsHigh = malloc(nEtaBins * sizeof(*EtaBinsHigh));
   RBinsLow = malloc(nRBins * sizeof(*RBinsLow));
   RBinsHigh = malloc(nRBins * sizeof(*RBinsHigh));
-  REtaMapper(RMin, EtaMin, nEtaBins, nRBins, EtaBinSize, RBinSize, EtaBinsLow,
-             EtaBinsHigh, RBinsLow, RBinsHigh);
+  dg_build_bin_edges(RMin, EtaMin, nEtaBins, nRBins, EtaBinSize, RBinSize,
+                     EtaBinsLow, EtaBinsHigh, RBinsLow, RBinsHigh);
   // Initialize arrays, need fraction array
   struct data ***pxList;
   int **nPxList;

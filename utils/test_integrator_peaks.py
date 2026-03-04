@@ -325,7 +325,7 @@ def run_integrator_with_peaks(zip_file: Path, peak_params: Path,
     if not mapper.exists():
         raise FileNotFoundError(f"DetectorMapperZarr not found at {mapper}")
     print("  Running DetectorMapperZarr...")
-    run_cmd([str(mapper), str(zip_file)], cwd=str(work_dir))
+    run_cmd([str(mapper), str(zip_file), "-nCPUs", str(n_cpus)], cwd=str(work_dir))
 
     # Step B: Run IntegratorZarrOMP with peak fitting
     integrator = MIDAS_BIN / "IntegratorZarrOMP"

@@ -469,7 +469,7 @@ def acceptParameters():
 			cmdname = os.path.join(midas_config.MIDAS_BIN_DIR, 'DetectorMapper')
 		else:
 			cmdname = os.path.expanduser('~')+'/opt/MIDAS/FF_HEDM/bin/DetectorMapper'
-		call([cmdname,'ps_midas.txt'])
+		call([cmdname,'ps_midas.txt','-nCPUs',str(multiprocessing.cpu_count())])
 	else:
 		st = time.time()
 		mapFastIntegration() # this will create 2 arrays: Rads and/or Etas.
