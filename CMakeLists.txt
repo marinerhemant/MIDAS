@@ -1,10 +1,8 @@
-cmake_minimum_required(VERSION 3.16...3.31)
+cmake_minimum_required(VERSION 3.5)
 
-cmake_policy(SET CMP0135 NEW)
-
-# Allow FetchContent_Populate() in custom dep files (CMP0169)
-if(POLICY CMP0169)
-  cmake_policy(SET CMP0169 OLD)
+# Set the CMP0135 policy to NEW
+if(POLICY CMP0135)
+  cmake_policy(SET CMP0135 NEW)
 endif()
 
 # Define options first, before the project command
@@ -75,10 +73,6 @@ set(DEPS_INSTALL_DIR "${CMAKE_BINARY_DIR}/deps" CACHE PATH "Dependencies install
 list(APPEND CMAKE_PREFIX_PATH ${DEPS_INSTALL_DIR}) # Add to prefix path for find_package
 include(FetchContent) # Ensure FetchContent is available
 include(ExternalProject) # Ensure ExternalProject is available
-
-# Suppress deprecation warnings from fetched third-party CMakeLists
-set(CMAKE_SUPPRESS_DEVELOPER_WARNINGS ON CACHE INTERNAL "" FORCE)
-set(CMAKE_WARN_DEPRECATED OFF CACHE INTERNAL "" FORCE)
 
 # Function to handle dependencies (copied and adapted from FF_HEDM)
 function(handle_dependency NAME URL DOWNLOAD_FLAG)
