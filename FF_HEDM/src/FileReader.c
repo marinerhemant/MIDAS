@@ -103,13 +103,13 @@ int ReadTiffFrame(const char *filename, int dType, size_t NrPixels,
   // original code calculates index: rnr * (scanline / sizeof_type) + i
   // We strictly follow original logic.
 
-  if (dType == 6) { // uint32
-    uint32_t *datar;
+  if (dType == 6) { // int32
+    int32_t *datar;
     for (rnr = 0; rnr < imagelength; rnr++) {
       TIFFReadScanline(tif, buf, rnr, 1);
-      datar = (uint32_t *)buf;
-      for (i = 0; i < scanline / sizeof(uint32_t); i++) {
-        returnArr[rnr * (scanline / sizeof(uint32_t)) + i] = (double)datar[i];
+      datar = (int32_t *)buf;
+      for (i = 0; i < scanline / sizeof(int32_t); i++) {
+        returnArr[rnr * (scanline / sizeof(int32_t)) + i] = (double)datar[i];
       }
     }
   } else if (dType == 7) { // uint8 (bitmap logic)
