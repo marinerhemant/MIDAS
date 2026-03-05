@@ -344,18 +344,23 @@ def run_integrator_with_peaks(zip_file: Path, peak_params: Path,
         if stripped and any(k in stripped for k in diag_keys):
             print(f"    ▸ {stripped}")
 
-    fit_bin = work_dir / "fit.bin"
-    lineout_bin = work_dir / "lineout.bin"
+    # Output files are named per data file (parallel-safe)
+    data_stem = zip_file.stem  # e.g. "foo.MIDAS" from "foo.MIDAS.zip"
+    # strip .MIDAS if present
+    if data_stem.endswith('.MIDAS'):
+        data_stem = data_stem[:-6]
+    fit_bin = work_dir / f"{data_stem}_fit.bin"
+    lineout_bin = work_dir / f"{data_stem}_lineout.bin"
 
     if lineout_bin.exists():
-        print(f"  lineout.bin: {lineout_bin.stat().st_size} bytes")
+        print(f"  {lineout_bin.name}: {lineout_bin.stat().st_size} bytes")
     else:
-        print("  WARNING: lineout.bin not generated")
+        print(f"  WARNING: {lineout_bin.name} not generated")
 
     if fit_bin.exists():
-        print(f"  fit.bin: {fit_bin.stat().st_size} bytes")
+        print(f"  {fit_bin.name}: {fit_bin.stat().st_size} bytes")
     else:
-        print("  WARNING: fit.bin not generated")
+        print(f"  WARNING: {fit_bin.name} not generated")
 
     return fit_bin
 

@@ -258,7 +258,13 @@ def run_test(n_cpus=4, max_rings=15, keep_work=False,
         # Remove Zarr-generated files to ensure clean slate
         for stale in work_dir.glob("*.zarr.zip"):
             stale.unlink()
-        for stale in ("Map.bin", "nMap.bin", "fit.bin",
+        for stale in work_dir.glob("*_fit.bin"):
+            stale.unlink()
+        for stale in work_dir.glob("*_lineout.bin"):
+            stale.unlink()
+        for stale in work_dir.glob("*_fit_per_eta.csv"):
+            stale.unlink()
+        for stale in ("Map.bin", "nMap.bin",
                       "REtaMap.bin", "nREtaMap.bin"):
             p = work_dir / stale
             if p.exists():
@@ -291,7 +297,7 @@ def run_test(n_cpus=4, max_rings=15, keep_work=False,
         )
 
         print("\n[B] Analyzing direct pipeline results...")
-        fit_bin_direct = work_dir / "fit.bin"
+        fit_bin_direct = work_dir / f"{data_file.stem}_fit.bin"
         fits_direct = read_fit_bin(fit_bin_direct, n_peaks)
         if not fits_direct:
             print("  FAIL: No fit results from direct pipeline")

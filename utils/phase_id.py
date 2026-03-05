@@ -422,11 +422,11 @@ def run_cpu_pipeline(zip_file: Path, peak_params: Path,
                             'Warning', 'Error', 'REJECTED', 'FAILED']):
             _log(f"    ▸ {stripped}")
 
-    fit_bin = work_dir / "fit.bin"
+    fit_bin = work_dir / f"{zip_file.stem}_fit.bin"
     if fit_bin.exists():
-        _log(f"  fit.bin: {fit_bin.stat().st_size} bytes")
+        _log(f"  {fit_bin.name}: {fit_bin.stat().st_size} bytes")
     else:
-        _log("  WARNING: fit.bin not generated")
+        _log(f"  WARNING: {fit_bin.name} not generated")
     return fit_bin
 
 
@@ -1412,11 +1412,11 @@ def process_single_file(data_file: Path, work_dir: Path, cur_param: Path,
                                 'Warning', 'Error', 'REJECTED', 'FAILED']):
                 _log(f"    ▸ {stripped}")
 
-        fit_bin = work_dir / "fit.bin"
+        fit_bin = work_dir / f"{data_file.stem}_fit.bin"
         if fit_bin.exists():
-            _log(f"  fit.bin: {fit_bin.stat().st_size} bytes")
+            _log(f"  {fit_bin.name}: {fit_bin.stat().st_size} bytes")
         else:
-            _log("  WARNING: fit.bin not generated")
+            _log(f"  WARNING: {data_file.stem}_fit.bin not generated")
 
         timings['integrate'] = time.monotonic() - t0
     else:
@@ -1442,7 +1442,7 @@ def process_single_file(data_file: Path, work_dir: Path, cur_param: Path,
     # Per-eta-bin filtering (if MultFactor enabled and per-eta CSV exists)
     filtered_stats = None
     if mult_factor > 0:
-        fit_per_eta_csv = work_dir / "fit_per_eta.csv"
+        fit_per_eta_csv = work_dir / f"{data_file.stem}_fit_per_eta.csv"
         per_eta = read_fit_per_eta(fit_per_eta_csv)
         if per_eta:
             filtered_stats = compute_filtered_peak_stats(
@@ -1956,7 +1956,7 @@ def main():
                 t_int = time.monotonic() - t0i
 
                 # Read fit results
-                fit_bin = file_dir / "fit.bin"
+                fit_bin = file_dir / f"{df.stem}_fit.bin"
                 fits = read_fit_bin(fit_bin, n_peaks)
                 if not fits:
                     qprint(f"    WARNING: No fit results")
@@ -1965,7 +1965,7 @@ def main():
                 # Per-eta-bin filtering for single-phase mode
                 sp_filtered = None
                 if mult_factor > 0:
-                    per_eta_csv = file_dir / "fit_per_eta.csv"
+                    per_eta_csv = file_dir / f"{df.stem}_fit_per_eta.csv"
                     per_eta = read_fit_per_eta(per_eta_csv)
                     if per_eta:
                         sp_filtered = compute_filtered_peak_stats(
@@ -1980,7 +1980,7 @@ def main():
                 # Write lineout comparison (measured vs calculated)
                 lineout_name = df.stem + "_lineout.txt"
                 lineout_path = base_work_dir / lineout_name
-                lineout_bin = file_dir / "lineout.bin"
+                lineout_bin = file_dir / f"{df.stem}_lineout.bin"
                 lo_result = write_lineout_comparison(
                     fits, geom, lineout_bin, lineout_path,
                     roi_padding=args.roi_padding)

@@ -109,12 +109,13 @@ def _process_one_frame(nr, data_file, param_file, out_dir, out_xy, geom,
         if result.returncode != 0:
             return (nr, False, "integrator failed")
 
-        lineout_bin = work_dir / "lineout.bin"
+        lineout_bin = work_dir / f"{stem}_lineout.bin"
         if not lineout_bin.exists():
-            return (nr, False, "no lineout.bin")
+            return (nr, False, f"no {stem}_lineout.bin")
 
         # Convert to .xy
         data = lineout_bin.read_bytes()
+        lineout_bin.unlink()  # clean up binary file
         n_rbins = len(data) // 8
         if n_rbins == 0:
             return (nr, False, "empty lineout.bin")

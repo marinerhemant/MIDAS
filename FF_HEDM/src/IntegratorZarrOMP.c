@@ -1301,22 +1301,39 @@ integration_start:
     RBinCenters[rb] = (RBinsLow[rb] + RBinsHigh[rb]) / 2.0;
   }
 
-  // Open binary output files for live viewer compatibility
+  // Build data-file-based prefix for output files (e.g. "map1_00001")
+  char _dfn_buf[4096];
+  sprintf(_dfn_buf, "%s", DataFN);
+  char *_bn = basename(_dfn_buf);
+  char dataPrefix[4096];
+  sprintf(dataPrefix, "%s", _bn);
+  // Strip extension from prefix
+  char *_dot = strrchr(dataPrefix, '.');
+  if (_dot)
+    *_dot = '\0';
+
+  // Open binary output files (named per data file for parallel safety)
   FILE *fLineout = NULL, *fFitBin = NULL;
-  fLineout = fopen("lineout.bin", "wb");
+  char lineoutFN[4096];
+  sprintf(lineoutFN, "%s_lineout.bin", dataPrefix);
+  fLineout = fopen(lineoutFN, "wb");
   if (fLineout)
-    printf("Opened lineout.bin for binary output.\n");
+    printf("Opened %s for binary output.\n", lineoutFN);
   FILE *fFitPerEta = NULL;
   if (doPeakFit && nPeakLocations > 0) {
-    fFitBin = fopen("fit.bin", "wb");
+    char fitBinFN[4096];
+    sprintf(fitBinFN, "%s_fit.bin", dataPrefix);
+    fFitBin = fopen(fitBinFN, "wb");
     if (fFitBin)
-      printf("Opened fit.bin for peak fitting output (%d peaks).\n",
+      printf("Opened %s for peak fitting output (%d peaks).\n", fitBinFN,
              nPeakLocations);
-    fFitPerEta = fopen("fit_per_eta.csv", "w");
+    char fitPerEtaFN[4096];
+    sprintf(fitPerEtaFN, "%s_fit_per_eta.csv", dataPrefix);
+    fFitPerEta = fopen(fitPerEtaFN, "w");
     if (fFitPerEta) {
       fprintf(fFitPerEta, "Frame,EtaBin,EtaCen,PeakIdx,R_px,R_um,TwoTheta_deg,"
                           "Imax,Sigma_px,FWHM_px,SNR,Mix,GoF,Area\n");
-      printf("Opened fit_per_eta.csv for per-eta peak fitting output.\n");
+      printf("Opened %s for per-eta peak fitting output.\n", fitPerEtaFN);
     }
     printf("Peak fit enabled: %d peaks, ROI padding: %d bins\n", nPeakLocations,
            fitROIPadding);
