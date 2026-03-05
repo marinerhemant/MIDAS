@@ -51,9 +51,15 @@ FetchContent_Declare(
   libtiff
   URL https://download.osgeo.org/libtiff/tiff-4.7.0.tar.gz
   URL_HASH SHA256=67160e3457365ab96c5b3286a0903aa6e78bdc44c4bc737d2e486bcecb6ba976
-  CMAKE_ARGS ${LIBTIFF_CMAKE_ARGS}
-  ${_libtiff_fetch_extra_args} # This will expand to PATCH_COMMAND ... if on macOS, or nothing otherwise
+  ${_libtiff_fetch_extra_args}
 )
+
+# FetchContent uses add_subdirectory, NOT ExternalProject, so CMAKE_ARGS
+# is ignored.  Set libtiff options as cache variables instead.
+set(tiff-tools OFF CACHE BOOL "Build libtiff tools" FORCE)
+set(tiff-tests OFF CACHE BOOL "Build libtiff tests" FORCE)
+set(tiff-contrib OFF CACHE BOOL "Build libtiff contrib" FORCE)
+set(tiff-docs OFF CACHE BOOL "Build libtiff docs" FORCE)
 
 FetchContent_MakeAvailable(libtiff)
 
