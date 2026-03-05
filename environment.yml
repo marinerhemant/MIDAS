@@ -30,3 +30,4 @@ dependencies:
       - multiprocess
       - pyqtgraph
       - PyQt5
+      - PyQt6

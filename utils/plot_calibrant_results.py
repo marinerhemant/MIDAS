@@ -170,7 +170,9 @@ class CalibrantViewer(QMainWindow):
 
         # ── Matplotlib canvas ───────────────────────────────────────
         self.fig = Figure(figsize=(10, 6), dpi=100)
-        self.ax = self.fig.add_subplot(111)
+        # Fixed axes positions so colorbar doesn't steal space
+        self.ax = self.fig.add_axes([0.08, 0.12, 0.78, 0.82])
+        self.cax = self.fig.add_axes([0.88, 0.12, 0.02, 0.82])
         self.canvas = FigureCanvasQTAgg(self.fig)
         toolbar = NavigationToolbar2QT(self.canvas, self)
         main_layout.addWidget(toolbar)
@@ -281,13 +283,9 @@ class CalibrantViewer(QMainWindow):
                              cmap=self.cmap, norm=norm,
                              s=30, alpha=0.7, edgecolors='none')
 
-        # Colorbar (remove old one if present)
-        if hasattr(self, '_cbar') and self._cbar is not None:
-            try:
-                self._cbar.remove()
-            except Exception:
-                pass
-        self._cbar = self.fig.colorbar(sc, ax=self.ax, label=c_label, pad=0.01)
+        # Colorbar — reuse fixed cax
+        self.cax.clear()
+        self._cbar = self.fig.colorbar(sc, cax=self.cax, label=c_label)
 
         # Reference line for lattice parameter plot
         if self.y_col == 'FitA':
@@ -301,7 +299,6 @@ class CalibrantViewer(QMainWindow):
         self.ax.set_xlabel(self.x_col)
         self.ax.set_ylabel(self.y_col)
         self.ax.set_title(f'{self.filename}  ({n_shown}/{n_total} pts)', fontsize=10)
-        self.fig.tight_layout()
         self.canvas.draw_idle()
 
 
