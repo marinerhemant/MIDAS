@@ -1493,6 +1493,29 @@ integration_start:
       PerFrameArr = malloc(bigArrSize * 4 * sizeof(*PerFrameArr));
     }
     memset(IntArrPerFrame, 0, bigArrSize * sizeof(double));
+    // Diagnostic: count pixels with value -1 or -2
+    {
+      long neg1_masked = 0, neg1_unmasked = 0;
+      long neg2_masked = 0, neg2_unmasked = 0;
+      for (j = 0; j < NrPixelsY * NrPixelsZ; j++) {
+        int is_masked = (mapMaskSize != 0 && TestBit(mapMask, j));
+        if (Image[j] == -1.0) {
+          if (is_masked)
+            neg1_masked++;
+          else
+            neg1_unmasked++;
+        } else if (Image[j] == -2.0) {
+          if (is_masked)
+            neg2_masked++;
+          else
+            neg2_unmasked++;
+        }
+      }
+      if (neg1_masked + neg1_unmasked + neg2_masked + neg2_unmasked > 0)
+        printf("  Pixel diagnostic: val=-1: %ld masked, %ld unmasked; "
+               "val=-2: %ld masked, %ld unmasked\n",
+               neg1_masked, neg1_unmasked, neg2_masked, neg2_unmasked);
+    }
     t_0 = omp_get_wtime();
 #pragma omp parallel for private(j, k, l, Pos, nPixels, dataPos, Intensity,    \
                                      totArea, ThisVal, testPos, ThisInt,       \
