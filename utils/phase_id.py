@@ -846,6 +846,116 @@ def write_single_phase_peak_table(fits: List[FitResult], rings: List[RingEntry],
     return out_path
 
 
+def write_lineout_comparison(fits: List[FitResult], geom: dict,
+                             lineout_bin: Path, out_path: Path,
+                             roi_padding: int = 30):
+    """Write measured vs calculated 1D profile for single-phase mode.
+
+    Reads the eta-averaged lineout from lineout.bin, reconstructs
+    the calculated profile from the pseudo-Voigt fit parameters
+    **only within each peak's ROI** (±roi_padding bins from center),
+    using the per-job background stored in each peak's BG field.
+
+    The pseudo-Voigt model matches PeakFit.c exactly:
+        I(R) = BG_job + Σ { Imax * [Mix*L(R) + (1-Mix)*G(R)] }
+        L(R) = 1 / (1 + 4*(R-c)²/Γ²)
+        G(R) = exp(-4·ln(2)·(R-c)²/Γ²)
+        Γ    = Sigma * 2.355   (stored Sigma is Gaussian-equiv σ)
+
+    Bins outside all ROIs have I_calculated = NaN.
+    """
+    if not lineout_bin.exists():
+        return None
+
+    px = geom['px']
+    Lsd = geom['Lsd']
+    RMin = geom['RMin']
+    RBinSize = geom['RBinSize']
+
+    # Read lineout: nRBins doubles
+    data = lineout_bin.read_bytes()
+    nRBins = len(data) // 8
+    if nRBins == 0:
+        return None
+    measured = struct.unpack(f'{nRBins}d', data[:nRBins * 8])
+
+    # Compute R bin centers
+    R_centers = [RMin + (i + 0.5) * RBinSize for i in range(nRBins)]
+
+    # Build per-peak ROI ranges and merge overlapping ones into jobs
+    # (mirrors PeakFit.c's job merging logic)
+    C0 = 4.0 * math.log(2.0)
+    calculated = [float('nan')] * nRBins
+
+    # Build jobs: groups of peaks with overlapping ROIs
+    valid_peaks = []
+    for fit in fits:
+        if fit.Imax <= 0:
+            continue
+        # Find nearest bin to peak center
+        best_bin = -1
+        min_diff = 1e10
+        for r in range(nRBins):
+            d = abs(R_centers[r] - fit.Center)
+            if d < min_diff:
+                min_diff = d
+                best_bin = r
+        if best_bin >= 0:
+            roi_start = max(0, best_bin - roi_padding)
+            roi_end = min(nRBins - 1, best_bin + roi_padding)
+            valid_peaks.append((fit, roi_start, roi_end))
+
+    if not valid_peaks:
+        return None
+
+    # Sort by roi_start and merge overlapping ROIs into jobs
+    valid_peaks.sort(key=lambda x: x[1])
+    jobs = []  # list of (roi_start, roi_end, [fits])
+    first_fit, cur_start, cur_end = valid_peaks[0]
+    cur_fits_list = [first_fit]
+    for fit, rs, re in valid_peaks[1:]:
+        if rs <= cur_end:
+            # Merge
+            cur_end = max(cur_end, re)
+            cur_fits_list.append(fit)
+        else:
+            jobs.append((cur_start, cur_end, cur_fits_list))
+            cur_start, cur_end = rs, re
+            cur_fits_list = [fit]
+    jobs.append((cur_start, cur_end, cur_fits_list))
+
+    # Compute calculated profile within each job's ROI
+    for roi_start, roi_end, job_fits in jobs:
+        # Use BG from first peak in job (all peaks in a job share BG)
+        bg = job_fits[0].BG
+
+        for i in range(roi_start, roi_end + 1):
+            val = bg
+            for fit in job_fits:
+                Imax = fit.Imax
+                Mix = max(0.0, min(1.0, fit.Mix))
+                c = fit.Center
+                Gamma = fit.Sigma * 2.355
+                invG2 = 1.0 / max(Gamma * Gamma, 1e-18)
+                diff = R_centers[i] - c
+                diff_sq = diff * diff
+                L = 1.0 / (1.0 + 4.0 * diff_sq * invG2)
+                G = math.exp(-C0 * diff_sq * invG2)
+                val += Imax * (Mix * L + (1.0 - Mix) * G)
+            calculated[i] = val
+
+    # Convert R to 2θ and write
+    with open(out_path, 'w') as f:
+        f.write(f'{"two_theta_deg":>18}  {"I_measured":>18}  {"I_calculated":>18}\n')
+        for i in range(nRBins):
+            R_um = R_centers[i] * px
+            tth_deg = math.degrees(math.atan(R_um / Lsd)) if Lsd > 0 else 0.0
+            calc_str = f'{calculated[i]:>18.6f}' if not math.isnan(calculated[i]) else f'{"NaN":>18}'
+            f.write(f'{tth_deg:>18.6f}  {measured[i]:>18.6f}  {calc_str}\n')
+
+    return out_path
+
+
 # =========================================================================
 # Reporting
 # =========================================================================
@@ -1602,6 +1712,9 @@ def main():
                         help='Single-phase mode: each line in -phases maps '
                              'to one data file (1:1). Output is a minimal '
                              'peak table per file: pixel, 2theta, FWHM, intensity.')
+    parser.add_argument('--plot', action='store_true',
+                        help='(Single-phase only) Show measured vs calculated '
+                             'lineout plot for each file.')
     parser.add_argument('--quiet', action='store_true',
                         help='Suppress output except the phase summary table')
     parser.add_argument('--verbose', action='store_true',
@@ -1760,6 +1873,7 @@ def main():
 
             t_rings = time.monotonic() - t0
             n_files = len(data_files)
+            lineout_files = []  # (filename, lineout_path) for --plot
 
             for idx, (df, phase) in enumerate(zip(data_files, phases)):
                 phase_key = (phase.name, phase.spacegroup, phase.lattice_a)
@@ -1851,12 +1965,67 @@ def main():
                 out_path_sp = base_work_dir / out_name
                 write_single_phase_peak_table(fits, rings, geom, out_path_sp,
                                               filtered_stats=sp_filtered)
+
+                # Write lineout comparison (measured vs calculated)
+                lineout_name = df.stem + "_lineout.txt"
+                lineout_path = base_work_dir / lineout_name
+                lineout_bin = file_dir / "lineout.bin"
+                lo_result = write_lineout_comparison(
+                    fits, geom, lineout_bin, lineout_path,
+                    roi_padding=args.roi_padding)
+
+                extra = f", lineout" if lo_result else ""
                 qprint(f"    → {out_path_sp.name}  "
-                       f"({n_peaks} peaks, {t_int:.2f}s)")
+                       f"({n_peaks} peaks{extra}, {t_int:.2f}s)")
+                if lo_result:
+                    lineout_files.append((df.name, lineout_path))
 
             t_wall = time.monotonic() - t_wall_start
             qprint(f"\n  Total wall time: {t_wall:.2f}s")
             qprint(f"  Peak tables in: {base_work_dir}")
+
+            # Optional plot of measured vs calculated lineouts
+            if args.plot and lineout_files:
+                try:
+                    import matplotlib.pyplot as plt
+                    n_plots = len(lineout_files)
+                    fig, axes = plt.subplots(n_plots, 1,
+                                             figsize=(10, 3.5 * n_plots),
+                                             squeeze=False)
+                    for ax_idx, (fname, lpath) in enumerate(lineout_files):
+                        ax = axes[ax_idx, 0]
+                        tth, meas, calc = [], [], []
+                        with open(lpath) as lf:
+                            next(lf)  # skip header
+                            for line in lf:
+                                parts = line.split()
+                                if len(parts) >= 3:
+                                    tth.append(float(parts[0]))
+                                    meas.append(float(parts[1]))
+                                    try:
+                                        calc.append(float(parts[2]))
+                                    except ValueError:
+                                        calc.append(float('nan'))
+                        # Measured: scatter all points
+                        ax.scatter(tth, meas, s=2, alpha=0.5,
+                                   label='Measured', color='steelblue')
+                        # Calculated: plot with NaN gaps so each ROI
+                        # is a separate line segment
+                        ax.plot(tth, calc, linewidth=1.2,
+                                label='Calculated', color='crimson')
+                        ax.set_title(fname, fontsize=10)
+                        ax.set_xlabel('2θ (°)')
+                        ax.set_ylabel('Intensity')
+                        ax.set_yscale('log')
+                        ax.legend(fontsize=8)
+                    fig.tight_layout()
+                    plot_path = base_work_dir / "lineout_comparison.png"
+                    fig.savefig(str(plot_path), dpi=150)
+                    qprint(f"  Plot saved: {plot_path}")
+                    plt.show()
+                except ImportError:
+                    qprint("  WARNING: matplotlib not available, skipping plot")
+
             return  # Done — skip multi-phase reporting
 
         # ==============================================================

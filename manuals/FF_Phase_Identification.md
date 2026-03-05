@@ -165,6 +165,8 @@ Columns:
 | `--output` | `<work-dir>/phase_id_results.txt` | Save combined results to this file |
 | `--format` | `table` | Output format: `table` (default) or `json` |
 | `--single-phase` | — | Single-phase mode: each line in `-phases` maps 1:1 to a data file. Output is a minimal peak table per file. See [Single-Phase Mode](#single-phase-mode). |
+| `--mult-factor` | 0 | Outlier rejection factor for lattice parameters. Uses per-eta-bin filtering from `fit_per_eta.csv` plus per-ring rejection against nominal `a`. Overrides `MultFactor` from param file. See [MultFactor Outlier Rejection](#multfactor-outlier-rejection). |
+| `--plot` | — | (Single-phase only) Show measured vs calculated lineout plot for each file. Saves `lineout_comparison.png`. |
 
 ## Detection Filters
 
@@ -220,6 +222,7 @@ Per-phase aggregate statistics:
 - `Coverage` — detection percentage
 - `Mean/Std/Min/Max a(Å)` — lattice parameter statistics
 - `Δa/a_nom(ppm)` — mean fractional deviation from nominal
+- `Excl` — number of outliers excluded by MultFactor rejection (eta bins + rings). Shown as `--` when MultFactor is disabled or the phase is absent.
 - `Status` — classification (see [Phase Classification](#phase-classification) below)
 
 ### Table C: Intensity Statistics
@@ -285,6 +288,30 @@ a = d × √(h² + k² + l²)
 ```
 
 The mean `a` across all detected rings provides the refined lattice parameter. The standard deviation indicates the consistency of the refinement. Values within ~100 ppm of nominal indicate good geometry calibration.
+
+## MultFactor Outlier Rejection
+
+When `--mult-factor` is set (or `MultFactor` is present in the parameter file), two-level outlier rejection is applied to lattice parameter calculations:
+
+### Level 1: Per-Eta-Bin Rejection
+
+IntegratorZarrOMP produces `fit_per_eta.csv` with per-eta-bin peak fits. For each ring, `phase_id.py`:
+1. Computes `a` from each eta bin's fitted R
+2. Iteratively rejects eta bins where `|Δa/a_mean| > MultFactor × mean(|Δa/a_mean|)` (up to 3 iterations)
+3. Uses the filtered mean `a` for that ring
+
+This is analogous to the outlier rejection in `CalibrantPanelShiftsOMP`.
+
+### Level 2: Per-Ring Rejection
+
+After per-eta filtering, the per-ring `a` values are checked against the **nominal** lattice parameter:
+- Rings where `|a - a_nom| / a_nom > MultFactor × mean(|Δa/a_nom|)` are excluded
+- This catches misattributed overlapping rings (e.g., a CeO2 ring counted as Ta)
+
+The `Excl` column in the Phase Summary shows the total exclusions from both levels.
+
+> [!TIP]
+> A typical `MultFactor` value of 2–3 works well for most experiments. When `MultFactor = 0` (default), no rejection is applied and `fit_per_eta.csv` is not read.
 
 ## CPU vs GPU Backend
 
@@ -356,25 +383,48 @@ python utils/phase_id.py \
 
 ### Output
 
-One peak table per file is written to the work directory:
+Two files per data file are written to the work directory:
 
 | File | Contents |
 |------|----------|
-| `sample_001_peaks.txt` | Peaks from CeO2 rings in `sample_001.tif` |
-| `sample_002_peaks.txt` | Peaks from LaB6 rings in `sample_002.tif` |
-| `sample_003_peaks.txt` | Peaks from CeO2 rings in `sample_003.tif` |
+| `sample_001_peaks.txt` | Peaks table from CeO2 rings |
+| `sample_001_lineout.txt` | Measured vs calculated 1D profile |
 
-Each peak table has four columns:
+#### Peak Table (`_peaks.txt`)
 
 | Column | Description |
 |--------|-------------|
-| `pixel_number` | Peak index (0-based) |
+| `R_px` | Fitted peak center position (pixels) |
 | `two_theta_deg` | Fitted 2θ scattering angle (degrees) |
 | `FWHM_2theta_deg` | Full-width half-maximum in 2θ (degrees) |
 | `intensity` | Integrated area under the peak |
 
+Peaks with zero intensity are excluded from the output.
+
+When `--mult-factor` is set, values are per-eta-bin filtered (using `fit_per_eta.csv`) — the `R_px`, `two_theta_deg`, and `FWHM_2theta_deg` columns reflect the filtered mean across surviving eta bins.
+
+#### Lineout Comparison (`_lineout.txt`)
+
+A three-column file comparing measured and calculated intensities:
+
+| Column | Description |
+|--------|-------------|
+| `two_theta_deg` | 2θ axis (degrees) |
+| `I_measured` | Eta-averaged lineout from IntegratorZarrOMP |
+| `I_calculated` | Reconstructed pseudo-Voigt profile from fit parameters |
+
+The calculated intensity is only computed within each peak's ROI (±`roi-padding` bins from center), using the per-job background from the fitter. Bins outside all ROIs contain `NaN`.
+
+#### Plot (`--plot`)
+
+When `--plot` is specified, a matplotlib figure is displayed and saved as `lineout_comparison.png`:
+- One subplot per file, stacked vertically
+- Blue scatter: measured lineout intensity
+- Red line: calculated pseudo-Voigt fit (separate line per peak ROI)
+- Log scale on the vertical axis
+
 > [!TIP]
-> Ring predictions and DetectorMapper results are cached per unique phase, so if multiple files share the same phase (e.g., two CeO2 files above), the mapper only runs once.
+> DetectorMapper depends only on detector geometry (not on which phase is being analyzed). In single-phase mode, it runs **at most once** across all files, and reuses existing `Map.bin` from previous runs if found in the work directory.
 
 > [!NOTE]
 > All multi-phase reporting (confidence scores, overlap detection, lattice back-calculation) is skipped in single-phase mode. Use the default mode if you need phase identification.
