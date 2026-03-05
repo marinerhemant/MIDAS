@@ -2530,19 +2530,6 @@ int main(int argc, char *argv[]) {
     double *FitSNR = NULL; // persists across iterations for snrWeights
 
     for (int iter = 0; iter < nIterations; iter++) {
-      if (nIterations > 1) {
-        char iterLabel[64];
-        snprintf(iterLabel, sizeof(iterLabel), "Iteration %d / %d", iter + 1,
-                 nIterations);
-        int boxW = 44;
-        printf("\n╔");
-        for (int b = 0; b < boxW; b++)
-          printf("═");
-        printf("╗\n║  %-*s║\n╚", boxW - 2, iterLabel);
-        for (int b = 0; b < boxW; b++)
-          printf("═");
-        printf("╝\n");
-      }
 
       // --- Option B: skip initial bin+fit on iter>0 unless perturbed ---
       int didInitBin = 0;
@@ -2813,20 +2800,7 @@ int main(int argc, char *argv[]) {
                    &p4, iter == 0, L2Objective);
       if (iter == 0) {
         printf("Number of function calls: %lld\n", NrCalls);
-        printf("Lsd        %0.12f\n"
-               "BC         %0.12f %0.12f\n"
-               "ty         %0.12f\n"
-               "tz         %0.12f\n"
-               "p0         %0.12f\n"
-               "p1         %0.12f\n"
-               "p2         %0.12f\n"
-               "p3         %0.12f\n",
-               LsdFit, ybcFit, zbcFit, ty, tz, p0, p1, p2, p3);
-        printf("p4         %0.12f\n", p4);
       }
-      printf("           *** microstrain (pre-refit) ***\n");
-      printf("MeanStrain %0.6lf\nStdStrain  %0.6lf\n", MeanDiff * 1e6,
-             StdDiff * 1e6);
 
       // --- PER-ITERATION RE-FIT with optimized parameters ---
       {
@@ -2942,7 +2916,6 @@ int main(int argc, char *argv[]) {
         RingNumbers = RN2;
         FitSNR = FS2; // persist for next iter's snrWeights
         nIndices = cnt_rf;
-        printf("Re-fit: %d valid slices (optimized geometry).\n", cnt_rf);
 
         // Recompute Yc, Zc
         YMean = malloc(nIndices * sizeof(*YMean));
@@ -2961,13 +2934,8 @@ int main(int argc, char *argv[]) {
             nIndices, MaxRingRad, Yc, Zc, IdealTtheta, px, LsdFit, ybcFit,
             zbcFit, tx, ty, tz, p0, p1, p2, p3, EtaIns, DiffIns, RadIns,
             &StdDiff, outlierFactor, NULL, p4, OutlierIterations, 0, &MeanDiff);
-        printf("           *** microstrain (re-fit) ***\n");
-        printf("MeanStrain %0.6lf\nStdStrain  %0.6lf\n", MeanDiff * 1e6,
-               StdDiff * 1e6);
-        printf("Lsd %0.4f  BC %0.4f %0.4f  ty %0.6f  tz %0.6f\n", LsdFit,
-               ybcFit, zbcFit, ty, tz);
-        printf("p0 %0.9f  p1 %0.9f  p2 %0.9f  p3 %0.6f  p4 %0.9f\n", p0, p1, p2,
-               p3, p4);
+        printf("Iter %2d/%d  MeanStrain %8.3f  StdStrain %8.3f\n", iter + 1,
+               nIterations, MeanDiff * 1e6, StdDiff * 1e6);
 
         // Free temp pixel arrays
         free(R_rf);
