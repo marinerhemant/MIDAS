@@ -79,6 +79,7 @@ class HKLReflection:
     ring_nr: int
     R_um: float         # radius in µm
     R_px: float         # radius in pixels
+    two_theta_deg: float = 0.0  # predicted 2θ in degrees
 
 
 @dataclass
@@ -255,6 +256,7 @@ def predict_rings_for_phase(phase: PhaseInfo, param_file: Path,
                     l = int(float(parts[2]))
                     d_spacing = float(parts[3])
                     ring_nr = int(float(parts[4]))
+                    two_theta = float(parts[9])
                     radius_um = float(parts[10])
                     # Only keep one reflection per unique ring
                     if ring_nr not in seen_rings:
@@ -266,6 +268,7 @@ def predict_rings_for_phase(phase: PhaseInfo, param_file: Path,
                             ring_nr=ring_nr,
                             R_um=radius_um,
                             R_px=radius_um / px,
+                            two_theta_deg=two_theta,
                         ))
                 except (ValueError, IndexError):
                     continue
@@ -1024,11 +1027,11 @@ def print_results(rings: List[RingEntry], fits: List[FitResult],
           f"Imax ≥ {rel_intensity_threshold*100:.0f}% of max "
           f"(= {global_max_imax * rel_intensity_threshold:.0f} counts)", file=out)
     print(file=out)
-    header = (f"{'Phase':<8} {'(hkl)':<8} {'R_theory':>9} {'R_fitted':>9} "
+    header = (f"{'Phase':<8} {'(hkl)':<8} {'R_theory':>9} {'2θ_pred':>8} {'R_fitted':>9} "
               f"{'Imax':>10} {'AUC':>10} {'BG':>8} {'Sigma':>6} {'SNR':>8} "
               f"{'a_fitted':>9} {'Δa/a(ppm)':>10}  {'Notes'}")
     print(header, file=out)
-    print("-" * 120, file=out)
+    print("-" * 130, file=out)
 
     for i in range(n):
         ring = rings[i]
@@ -1074,7 +1077,7 @@ def print_results(rings: List[RingEntry], fits: List[FitResult],
                             f"{r.phase}({r.h}{r.k}{r.l})" for r in others)
 
                 print(f"  {ref.phase:<8} {ref.h}{ref.k}{ref.l:<7} "
-                      f"{ref.R_px:>9.2f} {fit.Center:>9.2f} "
+                      f"{ref.R_px:>9.2f} {ref.two_theta_deg:>8.4f} {fit.Center:>9.2f} "
                       f"{fit.Imax:>10.1f} {aucs[i]:>10.1f} {fit.BG:>8.1f} "
                       f"{fit.Sigma:>6.3f} {fit.SNR:>8.1f} "
                       f"{a_fitted:>9.4f} {delta_ppm:>10.1f}  {notes}", file=out)
@@ -1101,7 +1104,7 @@ def print_results(rings: List[RingEntry], fits: List[FitResult],
                     rel_pct = fit.Imax / global_max_imax * 100
                     reason = f"Imax={rel_pct:.2f}%<{rel_intensity_threshold*100:.0f}%"
             print(f"  {phase_label:<8} {ref.h}{ref.k}{ref.l:<7} "
-                  f"{ref.R_px:>9.2f} {'':>9} "
+                  f"{ref.R_px:>9.2f} {ref.two_theta_deg:>8.4f} {'':>9} "
                   f"{'':>10} {'':>10} {'':>8} "
                   f"{'':>6} {'':>8} "
                   f"{'':>9} {'':>10}  {reason}", file=out)

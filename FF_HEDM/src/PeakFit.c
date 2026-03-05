@@ -416,27 +416,28 @@ int fitPeaksForLineout(const double *R, const double *intensity, int nRBins,
     fitData.Int = &intensity[job->startIndex];
     fitData.nBGParams = nBGParams;
 
-    if (i == 0) {
-#pragma omp critical
-      {
-        printf("  [PeakFit] Job0: roi_min=%.2f roi_max=%.2f data_range=%.2f "
-               "amp_hi=%.2f\n",
-               roi_min, roi_max, data_range, upperBounds[0]);
-        printf(
-            "  [PeakFit] Job0: init amp=%.2f center=%.4f gamma=%.4f bg=%.2f\n",
-            fitParams[0], fitParams[2], fitParams[3],
-            fitParams[nFitParams - 1]);
-        printf(
-            "  [PeakFit] Job0: lo   amp=%.2f center=%.4f gamma=%.4f bg=%.2f\n",
-            lowerBounds[0], lowerBounds[2], lowerBounds[3],
-            lowerBounds[nFitParams - 1]);
-        printf(
-            "  [PeakFit] Job0: hi   amp=%.2f center=%.4f gamma=%.4f bg=%.2f\n",
-            upperBounds[0], upperBounds[2], upperBounds[3],
-            upperBounds[nFitParams - 1]);
-        fflush(stdout);
-      }
-    }
+    //     if (i == 0) {
+    // #pragma omp critical
+    //       {
+    //         printf("  [PeakFit] Job0: roi_min=%.2f roi_max=%.2f
+    //         data_range=%.2f "
+    //                "amp_hi=%.2f\n",
+    //                roi_min, roi_max, data_range, upperBounds[0]);
+    //         printf(
+    //             "  [PeakFit] Job0: init amp=%.2f center=%.4f gamma=%.4f
+    //             bg=%.2f\n", fitParams[0], fitParams[2], fitParams[3],
+    //             fitParams[nFitParams - 1]);
+    //         printf(
+    //             "  [PeakFit] Job0: lo   amp=%.2f center=%.4f gamma=%.4f
+    //             bg=%.2f\n", lowerBounds[0], lowerBounds[2], lowerBounds[3],
+    //             lowerBounds[nFitParams - 1]);
+    //         printf(
+    //             "  [PeakFit] Job0: hi   amp=%.2f center=%.4f gamma=%.4f
+    //             bg=%.2f\n", upperBounds[0], upperBounds[2], upperBounds[3],
+    //             upperBounds[nFitParams - 1]);
+    //         fflush(stdout);
+    //       }
+    //     }
     // Primary: L-BFGS
     nlopt_opt opt = nlopt_create(NLOPT_LD_LBFGS, nFitParams);
     nlopt_set_lower_bounds(opt, lowerBounds);
