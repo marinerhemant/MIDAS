@@ -1493,28 +1493,37 @@ integration_start:
       PerFrameArr = malloc(bigArrSize * 4 * sizeof(*PerFrameArr));
     }
     memset(IntArrPerFrame, 0, bigArrSize * sizeof(double));
-    // Diagnostic: count pixels with value -1 or -2
+    // Diagnostic: count mapped pixels with value -1 or -2
+    // Only checks pixels actually in Map.bin (what the integrator uses)
     {
-      long neg1_masked = 0, neg1_unmasked = 0;
-      long neg2_masked = 0, neg2_unmasked = 0;
-      for (j = 0; j < NrPixelsY * NrPixelsZ; j++) {
-        int is_masked = (mapMaskSize != 0 && TestBit(mapMask, j));
-        if (Image[j] == -1.0) {
-          if (is_masked)
-            neg1_masked++;
-          else
-            neg1_unmasked++;
-        } else if (Image[j] == -2.0) {
-          if (is_masked)
-            neg2_masked++;
-          else
-            neg2_unmasked++;
+      long neg1_total = 0, neg1_used = 0;
+      long neg2_total = 0, neg2_used = 0;
+      for (j = 0; j < nRBins; j++) {
+        for (k = 0; k < nEtaBins; k++) {
+          long long int pos = (long long int)j * nEtaBins + k;
+          int npx = nPxList[2 * pos + 0];
+          int dp = nPxList[2 * pos + 1];
+          for (l = 0; l < npx; l++) {
+            size_t tp = (size_t)pxList[dp + l].z * NrPixelsY + pxList[dp + l].y;
+            int is_gap_masked = (mapMaskSize != 0 && TestBit(mapMask, tp));
+            double val = Image[tp];
+            if (val == -1.0) {
+              neg1_total++;
+              if (!is_gap_masked)
+                neg1_used++;
+            } else if (val == -2.0) {
+              neg2_total++;
+              if (!is_gap_masked)
+                neg2_used++;
+            }
+          }
         }
       }
-      if (neg1_masked + neg1_unmasked + neg2_masked + neg2_unmasked > 0)
-        printf("  Pixel diagnostic: val=-1: %ld masked, %ld unmasked; "
-               "val=-2: %ld masked, %ld unmasked\n",
-               neg1_masked, neg1_unmasked, neg2_masked, neg2_unmasked);
+      if (neg1_total + neg2_total > 0)
+        printf("  Pixel diagnostic (mapped only): "
+               "val=-1: %ld in map (%ld used); "
+               "val=-2: %ld in map (%ld used)\n",
+               neg1_total, neg1_used, neg2_total, neg2_used);
     }
     t_0 = omp_get_wtime();
 #pragma omp parallel for private(j, k, l, Pos, nPixels, dataPos, Intensity,    \
