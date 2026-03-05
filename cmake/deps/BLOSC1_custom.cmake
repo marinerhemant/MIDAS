@@ -27,11 +27,26 @@ if(NOT blosc1_POPULATED)
   
   # Always use internal zlib in BLOSC1
   set(DEACTIVATE_ZLIB OFF CACHE BOOL "Do not include support for the Zlib library." FORCE)
-  
+
   # Avoid issues with other dependencies
   set(DEACTIVATE_SNAPPY ON CACHE BOOL "Do not include support for the Snappy library." FORCE)
-  
+  # Use the already-fetched external zlib.  blosc1/blosc/CMakeLists.txt checks
+  # ZLIB_FOUND (leaked from our top-level FetchContent cache) and links to
+  # ZLIB_LIBRARY by file path.  Setting PREFER_EXTERNAL_ZLIB=ON ensures the
+  # find_package(ZLIB) path runs, and since we already populated ZLIB_LIBRARY
+  # and ZLIB_INCLUDE_DIR, it finds the fetched zlib properly.
+  set(PREFER_EXTERNAL_ZLIB ON CACHE BOOL "Use external ZLIB for Blosc1" FORCE)
+
   add_subdirectory(${blosc1_SOURCE_DIR} ${blosc1_BINARY_DIR})
+
+  # blosc1 links to ZLIB_LIBRARY by file path, not target.
+  # Add an explicit target dependency so libz.so is built first.
+  if(TARGET blosc_shared AND TARGET zlib)
+    add_dependencies(blosc_shared zlib)
+  endif()
+  if(TARGET blosc_static AND TARGET zlib)
+    add_dependencies(blosc_static zlib)
+  endif()
   
   # Export BLOSC1 as a target
   add_library(BLOSC1::BLOSC1 INTERFACE IMPORTED)
