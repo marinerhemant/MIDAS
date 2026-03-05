@@ -16,12 +16,13 @@
 void pf_calculate_model_and_area(int n_peaks, const double *params,
                                  int n_points, const double *R_values,
                                  double *out_model_curve,
-                                 double *out_peak_areas) {
-  const double bg = params[n_peaks * 4];
+                                 double *out_peak_areas, int nBGParams) {
+  const double c0 = params[n_peaks * 4];
+  const double c1 = (nBGParams >= 2) ? params[n_peaks * 4 + 1] : 0.0;
   const double C0 = 4.0 * log(2.0);
 
   for (int i = 0; i < n_points; ++i) {
-    out_model_curve[i] = bg;
+    out_model_curve[i] = c0 + c1 * R_values[i];
   }
 
   for (int pN = 0; pN < n_peaks; ++pN) {
@@ -55,13 +56,14 @@ double pf_problem_function_global_bg(unsigned n, const double *x, double *grad,
   const int Np = d->nrBins;
   const double *Rs = d->R;
   const double *Is = d->Int;
-  const int nP = (n - 1) / 4;
+  const int nBGP = d->nBGParams;
+  const int nP = (n - nBGP) / 4;
   const double C0 = 4.0 * log(2.0);
 
   double *calculated_I = (double *)malloc(Np * sizeof(double));
   if (!calculated_I)
     return INFINITY;
-  pf_calculate_model_and_area(nP, x, Np, Rs, calculated_I, NULL);
+  pf_calculate_model_and_area(nP, x, Np, Rs, calculated_I, NULL, nBGP);
 
   double total_sq_error = 0.0;
   for (int i = 0; i < Np; ++i) {
@@ -97,8 +99,15 @@ double pf_problem_function_global_bg(unsigned n, const double *x, double *grad,
         *gG += common * Imax * (m * dLdG + (1. - m) * dGausdG);
       }
     }
+    // BG c0 gradient
     for (int i = 0; i < Np; ++i) {
-      grad[n - 1] += 2.0 * (calculated_I[i] - Is[i]);
+      grad[n - nBGP] += 2.0 * (calculated_I[i] - Is[i]);
+    }
+    // BG c1 (slope) gradient if nBGParams >= 2
+    if (nBGP >= 2) {
+      for (int i = 0; i < Np; ++i) {
+        grad[n - nBGP + 1] += 2.0 * (calculated_I[i] - Is[i]) * Rs[i];
+      }
     }
   }
 
@@ -224,7 +233,9 @@ int pf_comparePeaksByIndex(const void *a, const void *b) {
 // =========================================================================
 int fitPeaksForLineout(const double *R, const double *intensity, int nRBins,
                        const double *peakLocations, int nPeaks, double RBinSize,
-                       int fitROIPadding, double *outFitParams) {
+                       int fitROIPadding, double *outFitParams,
+                       int useLinearBG) {
+  int nBGParams = useLinearBG ? 2 : 1;
   if (nPeaks <= 0 || nRBins <= 0)
     return 0;
 
@@ -313,7 +324,7 @@ int fitPeaksForLineout(const double *R, const double *intensity, int nRBins,
   for (int i = 0; i < numJobs; ++i) {
     PF_FitJob *job = &fitJobs[i];
     int nJobPeaks = job->numPeaks;
-    int nFitParams = nJobPeaks * 4 + 1; // 4 per peak + 1 background
+    int nFitParams = nJobPeaks * 4 + nBGParams; // 4 per peak + BG params
 
     double *fitParams = (double *)malloc(nFitParams * sizeof(double));
     double *lowerBounds = (double *)malloc(nFitParams * sizeof(double));
@@ -383,19 +394,26 @@ int fitPeaksForLineout(const double *R, const double *intensity, int nRBins,
               upperBounds[bb] - (upperBounds[bb] - lowerBounds[bb]) * 0.01;
       }
     }
-    // Background: bounded by actual edge values
-    fitParams[nFitParams - 1] = primary_bg_guess;
-    lowerBounds[nFitParams - 1] = fmin(roi_min - data_range * 0.5, -1.0);
-    upperBounds[nFitParams - 1] = roi_max;
-    if (fitParams[nFitParams - 1] <= lowerBounds[nFitParams - 1])
-      fitParams[nFitParams - 1] = lowerBounds[nFitParams - 1] + 0.01;
-    if (fitParams[nFitParams - 1] >= upperBounds[nFitParams - 1])
-      fitParams[nFitParams - 1] = upperBounds[nFitParams - 1] - 0.01;
+    // Background c0: bounded by actual edge values
+    fitParams[nJobPeaks * 4] = primary_bg_guess;
+    lowerBounds[nJobPeaks * 4] = fmin(roi_min - data_range * 0.5, -1.0);
+    upperBounds[nJobPeaks * 4] = roi_max;
+    if (fitParams[nJobPeaks * 4] <= lowerBounds[nJobPeaks * 4])
+      fitParams[nJobPeaks * 4] = lowerBounds[nJobPeaks * 4] + 0.01;
+    if (fitParams[nJobPeaks * 4] >= upperBounds[nJobPeaks * 4])
+      fitParams[nJobPeaks * 4] = upperBounds[nJobPeaks * 4] - 0.01;
+    // Background c1 (slope): only if nBGParams >= 2
+    if (nBGParams >= 2) {
+      fitParams[nJobPeaks * 4 + 1] = 0.0;
+      lowerBounds[nJobPeaks * 4 + 1] = -data_range;
+      upperBounds[nJobPeaks * 4 + 1] = data_range;
+    }
 
     PF_DataFit fitData;
     fitData.nrBins = job->endIndex - job->startIndex + 1;
     fitData.R = &R[job->startIndex];
     fitData.Int = &intensity[job->startIndex];
+    fitData.nBGParams = nBGParams;
 
     if (i == 0) {
 #pragma omp critical

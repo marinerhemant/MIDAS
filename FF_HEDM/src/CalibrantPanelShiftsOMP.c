@@ -147,13 +147,6 @@ Car2Pol(int n_hkls, int nEtaBins, int y, int z, double ybc, double zbc,
   for (i = 0; i < z; i++) {
     for (j = 0; j < y; j++) {
       long long int pixIdx = (long long int)i * y + j;
-      // Skip masked pixels
-      if (mapMask != NULL && (mapMask[pixIdx / 32] & (1 << (pixIdx % 32)))) {
-        R[counter] = 0;
-        Eta[counter] = 0;
-        counter++;
-        continue;
-      }
       // Apply panel corrections (dY, dZ, dTheta, dLsd, dP2)
       double pdY = 0, pdZ = 0;
       double dLsd = 0, dP2 = 0;

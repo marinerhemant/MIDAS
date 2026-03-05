@@ -21,7 +21,6 @@
 #include <hdf5.h>
 #include <hdf5_hl.h>
 #include <libgen.h>
-#include <limits.h>
 #include <math.h>
 #include <omp.h>
 #include <stdarg.h>
@@ -1257,7 +1256,7 @@ int main(int argc, char **argv) {
     }
     int numRead = zip_fread(fd, arr, finfo->size);
     // print arr size
-    printf("Dark frame compressed size: %ld\n", finfo->size);
+    printf("Dark frame compressed size: %ld\n", (long int)finfo->size);
     printf("Number of bytes read: %d\n", numRead);
     // print
     dsize = expected_dsize; // Reset buffer capacity
@@ -1560,7 +1559,7 @@ integration_start:
           (double *)calloc(nPeakLocations * PF_PARAMS_PER_PEAK, sizeof(double));
       int nFitted = fitPeaksForLineout(RBinCenters, lineout1D, nRBins,
                                        peakLocations, nPeakLocations, RBinSize,
-                                       fitROIPadding, fitResults);
+                                       fitROIPadding, fitResults, 1);
       if (nFitted > 0 && fFitBin) {
         fwrite(fitResults, sizeof(double), nPeakLocations * PF_PARAMS_PER_PEAK,
                fFitBin);
@@ -1617,7 +1616,7 @@ integration_start:
                nPeakLocations * PF_PARAMS_PER_PEAK * sizeof(double));
         int nf = fitPeaksForLineout(RBinCenters, etaProfile, nRBins,
                                     peakLocations, nPeakLocations, RBinSize,
-                                    fitROIPadding, etaFitResults);
+                                    fitROIPadding, etaFitResults, 1);
         if (nf > 0) {
           totalPerEtaFitted += nf;
           double etaCen = (EtaBinsLow[eb] + EtaBinsHigh[eb]) / 2.0;

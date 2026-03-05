@@ -43,7 +43,7 @@
 #include <errno.h> // For ETIMEDOUT
 #include <fcntl.h>
 #include <libgen.h> // For basename (optional)
-#include <limits.h>
+// #include <limits.h>
 #include <math.h>
 #include <pthread.h>
 #include <signal.h> // For signal handling
@@ -2457,10 +2457,11 @@ int main(int argc, char *argv[]) {
           }
         }
 
-        // --- Step 2: Perform Fit ---
+        // --- Step 2: Perform Fit via shared PeakFit API ---
         if (currentPeakCount > 0 && pks != NULL) {
           sendFitParams =
               (double *)malloc(currentPeakCount * 7 * sizeof(double));
+          memset(sendFitParams, 0, currentPeakCount * 7 * sizeof(double));
 
           int roi_half_width = fitROIPadding;
           if (fitROIAuto) {
@@ -2481,163 +2482,22 @@ int main(int argc, char *argv[]) {
             roi_half_width = fmax(15, (int)(max_fwhm * 1.5));
           }
 
-          qsort(pks, currentPeakCount, sizeof(Peak), comparePeaksByIndex);
+          // Build peak locations array for fitPeaksForLineout
+          double *peakLocs =
+              (double *)malloc(currentPeakCount * sizeof(double));
+          for (int p = 0; p < currentPeakCount; ++p)
+            peakLocs[p] = pks[p].radius;
 
-          FitJob *fitJobs = (FitJob *)malloc(currentPeakCount * sizeof(FitJob));
-          int numJobs = 0;
-          int *job_result_indices =
-              (int *)calloc(currentPeakCount, sizeof(int)); // calloc for safety
+          fitPeaksForLineout(hR, local_h_int1D, nRBins, peakLocs,
+                             currentPeakCount, RBinSize, roi_half_width,
+                             sendFitParams, 1);
+          free(peakLocs);
 
-          if (currentPeakCount > 0) {
-            fitJobs[0].startIndex = fmax(0, pks[0].index - roi_half_width);
-            fitJobs[0].endIndex =
-                fmin(nRBins - 1, pks[0].index + roi_half_width);
-            fitJobs[0].numPeaks = 1;
-            fitJobs[0].peaks = &pks[0];
-            job_result_indices[0] = 0;
-            numJobs = 1;
-            for (int i = 1; i < currentPeakCount; ++i) {
-              int current_roi_start = fmax(0, pks[i].index - roi_half_width);
-              if (current_roi_start <= fitJobs[numJobs - 1].endIndex) {
-                fitJobs[numJobs - 1].endIndex =
-                    fmin(nRBins - 1, pks[i].index + roi_half_width);
-                fitJobs[numJobs - 1].numPeaks++;
-              } else {
-                job_result_indices[numJobs] = job_result_indices[numJobs - 1] +
-                                              fitJobs[numJobs - 1].numPeaks;
-                fitJobs[numJobs].startIndex = current_roi_start;
-                fitJobs[numJobs].endIndex =
-                    fmin(nRBins - 1, pks[i].index + roi_half_width);
-                fitJobs[numJobs].numPeaks = 1;
-                fitJobs[numJobs].peaks = &pks[i];
-                numJobs++;
-              }
-            }
-          }
-
-          int total_successful_peaks = 0;
-// OpenMP parallelization for fitting
-#pragma omp parallel for reduction(+ : total_successful_peaks)
-          for (int i = 0; i < numJobs; ++i) {
-            FitJob *job = &fitJobs[i];
-            int nJobPeaks = job->numPeaks;
-            int nFitParams = nJobPeaks * 4 + 1;
-            double *fitParams = (double *)malloc(nFitParams * sizeof(double));
-            double *lowerBounds = (double *)malloc(nFitParams * sizeof(double));
-            double *upperBounds = (double *)malloc(nFitParams * sizeof(double));
-
-            // Parameter estimation
-            double primary_amp_guess = 1.0, primary_bg_guess = 0.0;
-            for (int p = 0; p < nJobPeaks; ++p) {
-              Peak *peak = &(job->peaks[p]);
-              int p_idx_local = peak->index - job->startIndex;
-              double bg_g, amp_g;
-              double fwhm =
-                  estimate_initial_params(&local_h_int1D[job->startIndex],
-                                          job->endIndex - job->startIndex + 1,
-                                          p_idx_local, &bg_g, &amp_g);
-              double sigma_g = fwhm * RBinSize / 2.355;
-              if (sigma_g < RBinSize * 0.5)
-                sigma_g = RBinSize * 2.0;
-              // Convert sigma to FWHM (Gamma) for shared-FWHM pV
-              double gamma_g = sigma_g * 2.355;
-              if (p == 0) {
-                primary_amp_guess = amp_g;
-                primary_bg_guess = bg_g;
-              }
-
-              int b = p * 4;
-              fitParams[b + 0] = amp_g; // Imax (peak height)
-              fitParams[b + 1] = 0.5;   // Mix
-              fitParams[b + 2] = peak->radius;
-              fitParams[b + 3] = gamma_g; // FWHM (Gamma)
-              lowerBounds[b + 0] = 0;
-              lowerBounds[b + 1] = 0;
-              lowerBounds[b + 2] = peak->radius - fwhm * RBinSize;
-              lowerBounds[b + 3] = RBinSize * 0.5;
-              upperBounds[b + 0] = amp_g * 3.0;
-              upperBounds[b + 1] = 1.0;
-              upperBounds[b + 2] = peak->radius + fwhm * RBinSize;
-              upperBounds[b + 3] = (hR[job->endIndex] - hR[job->startIndex]);
-            }
-            fitParams[nFitParams - 1] = primary_bg_guess;
-            lowerBounds[nFitParams - 1] = -fabs(primary_amp_guess);
-            upperBounds[nFitParams - 1] = fabs(primary_amp_guess);
-
-            dataFit fitData;
-            fitData.nrBins = job->endIndex - job->startIndex + 1;
-            fitData.R = &hR[job->startIndex];
-            fitData.Int = &local_h_int1D[job->startIndex];
-
-            nlopt_opt opt = nlopt_create(NLOPT_LD_LBFGS, nFitParams);
-            nlopt_set_lower_bounds(opt, lowerBounds);
-            nlopt_set_upper_bounds(opt, upperBounds);
-            nlopt_set_min_objective(opt, problem_function_global_bg, &fitData);
-            nlopt_set_xtol_rel(opt, 1e-5);
-            nlopt_set_maxeval(opt, 500 * nFitParams);
-
-            double minObj;
-            int rc = nlopt_optimize(opt, fitParams, &minObj);
-            nlopt_destroy(opt);
-
-            if (rc < 0) { // Fallback
-              opt = nlopt_create(NLOPT_LN_NELDERMEAD, nFitParams);
-              nlopt_set_lower_bounds(opt, lowerBounds);
-              nlopt_set_upper_bounds(opt, upperBounds);
-              nlopt_set_min_objective(opt, problem_function_global_bg,
-                                      &fitData);
-              nlopt_set_maxeval(opt, 5000);
-              nlopt_set_maxtime(opt, 30);
-              nlopt_set_ftol_rel(opt, 1e-5);
-              nlopt_set_xtol_rel(opt, 1e-5);
-              rc = nlopt_optimize(opt, fitParams, &minObj);
-              nlopt_destroy(opt);
-            }
-
-            if (rc >= 0) {
-              double dof = (double)(fitData.nrBins - nFitParams);
-              double gof = (dof > 0) ? minObj / dof : -1.0;
-
-              int result_start = job_result_indices[i];
-              double localBG = fitParams[nFitParams - 1];
-
-              for (int p = 0; p < nJobPeaks; ++p) {
-                int out_base = (result_start + p) * 7;
-                int in_base = p * 4;
-                sendFitParams[out_base + 0] = fitParams[in_base + 0]; // Imax
-                sendFitParams[out_base + 1] = localBG;
-                sendFitParams[out_base + 2] = fitParams[in_base + 1]; // Mix
-                sendFitParams[out_base + 3] = fitParams[in_base + 2]; // Cen
-                // Convert Gamma (FWHM) to Gaussian-equiv sigma for output
-                sendFitParams[out_base + 4] =
-                    fitParams[in_base + 3] / (2.0 * sqrt(2.0 * log(2.0)));
-                sendFitParams[out_base + 5] = gof;
-                // Analytical pseudo-Voigt area: Imax * Gamma/2 * (m*pi +
-                // (1-m)*sqrt(pi/ln2))
-                {
-                  double pImax = fitParams[in_base + 0];
-                  double pMix = fmax(0.0, fmin(1.0, fitParams[in_base + 1]));
-                  double pGamma = fmax(1e-9, fitParams[in_base + 3]);
-                  sendFitParams[out_base + 6] =
-                      pImax * pGamma / 2.0 *
-                      (pMix * M_PI + (1.0 - pMix) * sqrt(M_PI / log(2.0)));
-                }
-              }
-              total_successful_peaks += nJobPeaks;
-            }
-
-            free(fitParams);
-            free(lowerBounds);
-            free(upperBounds);
-          }
-
-          if (total_successful_peaks > 0 && fFit) {
+          if (fFit) {
             fwrite(sendFitParams, sizeof(double), currentPeakCount * 7, fFit);
             fflush(fFit);
           }
 
-          free(fitJobs);
-          free(job_result_indices);
           if (sendFitParams)
             free(sendFitParams);
         }
@@ -2885,162 +2745,25 @@ int main(int argc, char *argv[]) {
         if (currentPeakCount > 0 && pks != NULL) {
           sendFitParams =
               (double *)malloc(currentPeakCount * 7 * sizeof(double));
+          memset(sendFitParams, 0, currentPeakCount * 7 * sizeof(double));
+
           int roi_half_width = fitROIPadding;
-          // (Auto ROI logic omitted for drain brevity/safety, assuming manual
-          // or padded sufficient for drain) Actually, let's keep it simple.
-          // If fitROIAuto is on, we skip or use default to avoid complexity.
 
-          qsort(pks, currentPeakCount, sizeof(Peak), comparePeaksByIndex);
+          // Build peak locations array for fitPeaksForLineout
+          double *peakLocs =
+              (double *)malloc(currentPeakCount * sizeof(double));
+          for (int p = 0; p < currentPeakCount; ++p)
+            peakLocs[p] = pks[p].radius;
 
-          // Simplified fit for drain (sequential or simple OMP)
-          // To ensure this compiles without huge code block, we copy the OMP
-          // block
-          FitJob *fitJobs = (FitJob *)malloc(currentPeakCount * sizeof(FitJob));
-          int numJobs = 0;
-          int *job_result_indices =
-              (int *)calloc(currentPeakCount, sizeof(int));
-
-          if (currentPeakCount > 0) {
-            fitJobs[0].startIndex = fmax(0, pks[0].index - roi_half_width);
-            fitJobs[0].endIndex =
-                fmin(nRBins - 1, pks[0].index + roi_half_width);
-            fitJobs[0].numPeaks = 1;
-            fitJobs[0].peaks = &pks[0];
-            job_result_indices[0] = 0;
-            numJobs = 1;
-            for (int i = 1; i < currentPeakCount; ++i) {
-              int current_roi_start = fmax(0, pks[i].index - roi_half_width);
-              if (current_roi_start <= fitJobs[numJobs - 1].endIndex) {
-                fitJobs[numJobs - 1].endIndex =
-                    fmin(nRBins - 1, pks[i].index + roi_half_width);
-                fitJobs[numJobs - 1].numPeaks++;
-              } else {
-                job_result_indices[numJobs] = job_result_indices[numJobs - 1] +
-                                              fitJobs[numJobs - 1].numPeaks;
-                fitJobs[numJobs].startIndex = current_roi_start;
-                fitJobs[numJobs].endIndex =
-                    fmin(nRBins - 1, pks[i].index + roi_half_width);
-                fitJobs[numJobs].numPeaks = 1;
-                fitJobs[numJobs].peaks = &pks[0] + i; // Pointer arithmetic fix
-                numJobs++;
-              }
-            }
-          }
-
-#pragma omp parallel for
-          for (int i = 0; i < numJobs; ++i) {
-            FitJob *job = &fitJobs[i];
-            int nJobPeaks = job->numPeaks;
-            int nFitParams = nJobPeaks * 4 + 1;
-            double *fitParams = (double *)malloc(nFitParams * sizeof(double));
-            double *lowerBounds = (double *)malloc(nFitParams * sizeof(double));
-            double *upperBounds = (double *)malloc(nFitParams * sizeof(double));
-            // ... (Simplified parameter init for drain) ...
-            // Ideally should copy full logic, but for now we assume drain is
-            // edge case. Re-implementing full logic to ensure correctness:
-
-            // Parameter estimation
-            double primary_amp_guess = 1.0, primary_bg_guess = 0.0;
-            for (int p = 0; p < nJobPeaks; ++p) {
-              Peak *peak = &(job->peaks[p]);
-              int p_idx_local = peak->index - job->startIndex;
-              double bg_g, amp_g;
-              double fwhm =
-                  estimate_initial_params(&local_h_int1D[job->startIndex],
-                                          job->endIndex - job->startIndex + 1,
-                                          p_idx_local, &bg_g, &amp_g);
-              double sigma_g = fwhm * RBinSize / 2.355;
-              if (sigma_g < RBinSize * 0.5)
-                sigma_g = RBinSize * 2.0;
-              // Convert sigma to FWHM (Gamma) for shared-FWHM pV
-              double gamma_g = sigma_g * 2.355;
-              if (p == 0) {
-                primary_amp_guess = amp_g;
-                primary_bg_guess = bg_g;
-              }
-
-              int b = p * 4;
-              fitParams[b + 0] = amp_g; // Imax (peak height)
-              fitParams[b + 1] = 0.5;   // Mix
-              fitParams[b + 2] = peak->radius;
-              fitParams[b + 3] = gamma_g; // FWHM (Gamma)
-              lowerBounds[b + 0] = 0;
-              lowerBounds[b + 1] = 0;
-              lowerBounds[b + 2] = peak->radius - fwhm * RBinSize;
-              lowerBounds[b + 3] = RBinSize * 0.5;
-              upperBounds[b + 0] = amp_g * 3.0;
-              upperBounds[b + 1] = 1.0;
-              upperBounds[b + 2] = peak->radius + fwhm * RBinSize;
-              upperBounds[b + 3] = (hR[job->endIndex] - hR[job->startIndex]);
-            }
-            fitParams[nFitParams - 1] = primary_bg_guess;
-            lowerBounds[nFitParams - 1] = -fabs(primary_amp_guess);
-            upperBounds[nFitParams - 1] = fabs(primary_amp_guess);
-
-            dataFit fitData;
-            fitData.nrBins = job->endIndex - job->startIndex + 1;
-            fitData.R = &hR[job->startIndex];
-            fitData.Int = &local_h_int1D[job->startIndex];
-
-            nlopt_opt opt = nlopt_create(NLOPT_LD_LBFGS, nFitParams);
-            nlopt_set_lower_bounds(opt, lowerBounds);
-            nlopt_set_upper_bounds(opt, upperBounds);
-            nlopt_set_min_objective(opt, problem_function_global_bg, &fitData);
-            nlopt_set_xtol_rel(opt, 1e-5);
-            nlopt_set_maxeval(opt, 500 * nFitParams);
-
-            double minObj;
-            int rc = nlopt_optimize(opt, fitParams, &minObj);
-            nlopt_destroy(opt);
-
-            if (rc < 0) { // Fallback to Nelder-Mead
-              opt = nlopt_create(NLOPT_LN_NELDERMEAD, nFitParams);
-              nlopt_set_lower_bounds(opt, lowerBounds);
-              nlopt_set_upper_bounds(opt, upperBounds);
-              nlopt_set_min_objective(opt, problem_function_global_bg,
-                                      &fitData);
-              nlopt_set_maxeval(opt, 5000);
-              nlopt_set_maxtime(opt, 30);
-              nlopt_set_ftol_rel(opt, 1e-5);
-              nlopt_set_xtol_rel(opt, 1e-5);
-              rc = nlopt_optimize(opt, fitParams, &minObj);
-              nlopt_destroy(opt);
-            }
-
-            if (rc >= 0) {
-              int result_start = job_result_indices[i];
-              for (int p = 0; p < nJobPeaks; ++p) {
-                int out_base = (result_start + p) * 7;
-                sendFitParams[out_base + 0] = fitParams[p * 4 + 0];      // Imax
-                sendFitParams[out_base + 1] = fitParams[nFitParams - 1]; // BG
-                sendFitParams[out_base + 2] = fitParams[p * 4 + 1];      // Mix
-                sendFitParams[out_base + 3] = fitParams[p * 4 + 2];      // Cen
-                // Convert Gamma to Gaussian-equiv sigma
-                sendFitParams[out_base + 4] =
-                    fitParams[p * 4 + 3] / (2.0 * sqrt(2.0 * log(2.0)));
-                sendFitParams[out_base + 5] = minObj;
-                // Analytical pseudo-Voigt area
-                {
-                  double pImax = fitParams[p * 4 + 0];
-                  double pMix = fmax(0.0, fmin(1.0, fitParams[p * 4 + 1]));
-                  double pGamma = fmax(1e-9, fitParams[p * 4 + 3]);
-                  sendFitParams[out_base + 6] =
-                      pImax * pGamma / 2.0 *
-                      (pMix * M_PI + (1.0 - pMix) * sqrt(M_PI / log(2.0)));
-                }
-              }
-            }
-            free(fitParams);
-            free(lowerBounds);
-            free(upperBounds);
-          }
+          fitPeaksForLineout(hR, local_h_int1D, nRBins, peakLocs,
+                             currentPeakCount, RBinSize, roi_half_width,
+                             sendFitParams, 1);
+          free(peakLocs);
 
           if (fFit) {
             fwrite(sendFitParams, sizeof(double), currentPeakCount * 7, fFit);
             fflush(fFit);
           }
-          free(fitJobs);
-          free(job_result_indices);
           if (sendFitParams)
             free(sendFitParams);
         }

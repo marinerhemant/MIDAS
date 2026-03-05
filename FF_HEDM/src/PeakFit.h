@@ -35,6 +35,7 @@ typedef struct {
   int nrBins;
   const double *R;   // Radial positions (X-axis)
   const double *Int; // Intensity values  (Y-axis)
+  int nBGParams;     // 1 = flat BG, 2 = linear Chebyshev (c0 + c1*R)
 } PF_DataFit;
 
 // Detected / specified peak candidate
@@ -75,11 +76,13 @@ typedef struct {
 //   RBinSize       - radial bin width
 //   fitROIPadding  - bins of padding around each peak ROI
 //   outFitParams   - output buffer             [nPeaks * PF_PARAMS_PER_PEAK]
+//   useLinearBG    - 0 = flat BG (1 param), 1 = linear Chebyshev (2 params)
 //
 // Returns: number of successfully fitted peaks (may be < nPeaks)
 int fitPeaksForLineout(const double *R, const double *intensity, int nRBins,
                        const double *peakLocations, int nPeaks, double RBinSize,
-                       int fitROIPadding, double *outFitParams);
+                       int fitROIPadding, double *outFitParams,
+                       int useLinearBG);
 
 // Height-normalized pseudo-Voigt model evaluation + analytical areas.
 //
@@ -91,7 +94,7 @@ int fitPeaksForLineout(const double *R, const double *intensity, int nRBins,
 void pf_calculate_model_and_area(int n_peaks, const double *params,
                                  int n_points, const double *R_values,
                                  double *out_model_curve,
-                                 double *out_peak_areas);
+                                 double *out_peak_areas, int nBGParams);
 
 // NLOPT objective function (sum of squared residuals) with analytical
 // gradients.
