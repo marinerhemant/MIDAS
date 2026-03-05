@@ -193,6 +193,22 @@ def main():
     print(f"  Output: {out_dir}")
     print()
 
+    # --- Copy auxiliary files (mask, dark) to output dir if needed ---
+    with open(param_file) as f:
+        for line in f:
+            parts = line.strip().split()
+            if not parts or len(parts) < 2:
+                continue
+            if parts[0] in ('MaskFile', 'MaskFN', 'Dark'):
+                src = Path(parts[1])
+                if not src.is_absolute():
+                    src = param_file.parent / src
+                src = src.resolve()
+                dst = out_dir / src.name
+                if src.exists() and not dst.exists():
+                    shutil.copy2(str(src), str(dst))
+                    print(f"  Copied {parts[0]}: {src.name} → {out_dir.name}/")
+
     # --- Run DetectorMapper once to produce Map.bin + nMap.bin ---
     if not run_detector_mapper(param_file, out_dir, n_workers):
         print("ERROR: DetectorMapper failed, cannot proceed.")
