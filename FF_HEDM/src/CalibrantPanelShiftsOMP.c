@@ -1459,255 +1459,268 @@ static inline void MakeSquare(int NrPixels, int NrPixelsY, int NrPixelsZ,
 // } // End of fileReader function
 // This section is being removed.
 
-int main(int argc, char *argv[]) {
-  setvbuf(stdout, NULL, _IOLBF, 0); // line-buffer stdout for piped output
-  if (argc != 3) {
-    printf("Usage: CalibrantOMP ps.txt nCPUs\n");
-    return 1;
-  }
-  double start, end, start0, end0;
-  start0 = omp_get_wtime();
-  double diftotal;
-  // Read params file.
-  char *ParamFN;
-  FILE *fileParam;
-  ParamFN = argv[1];
-  numProcs = atoi(argv[2]);
-  char aline[1000];
-  fileParam = fopen(ParamFN, "r");
-  char *str, dummy[1000];
-  char fn[1024], folder[1024], Ext[1024], Dark[1024];
-  int StartNr, EndNr, LowNr;
-  int SpaceGroup, FitWeightMean = 0;
-  double LatticeConstant[6], Wavelength, MaxRingRad, Lsd, MaxTtheta, TthetaTol,
-      ybc, zbc, EtaBinSize, px, Width;
-  double tx = 0, tolTilts, tolLsd, tolBC, tolP, tolP0 = 0, tolP1 = 0, tolP2 = 0,
-         tolP3 = 45, tyin = 0, tzin = 0, p0in = 0, p1in = 0, p2in = 0, p3in = 0,
-         padY = 0, padZ = 0;
-  double tolShifts = 1.0;
-  double tolRotation = 0.0;
-  double outlierFactor = 0.0;
-  int MinIndicesForFit = 1;
-  int FixPanelID = 0;
-  int nIterations = 1;
-  double DoubletSeparation = 0;
-  int NormalizeRingWeights = 0;
-  int OutlierIterations = 1;
-  int WeightByRadius = 0;
-  int WeightByFitSNR = 0;
-  int L2Objective = 0;
-  int PerPanelLsd = 0;
-  int PerPanelDistortion = 0;
-  double tolP4 = 0, p4in = 0;
-  int tolP4Set = 0;
-  double tolLsdPanel = 100;
-  double tolP2Panel = 0.0001;
-  int Padding = 6, NrPixelsY, NrPixelsZ, NrPixels;
-  int NrTransOpt = 0, RBinWidth = 4;
-  long long int GapIntensity = 0, BadPxIntensity = 0;
-  int TransOpt[10], nRingsExclude = 0, RingsExclude[50];
-  int makeMap = 0;
-  int HeadSize = 8192;
-  int dType = 1;
+// ─── CalibConfig: holds all parsed parameters ─────────────────────
+typedef struct {
+  // File I/O
+  char fn[1024];
+  char folder[1024];
+  char Ext[1024];
+  char Dark[1024];
+  int StartNr, EndNr;
+  int Padding;
+  int HeadSize;
+  int dType;
+
+  // Detector geometry
+  int NrPixelsY, NrPixelsZ, NrPixels;
+  double px;
+  double Lsd, ybc, zbc;
+  double tx, tyin, tzin;
+  double p0in, p1in, p2in, p3in, p4in;
+
+  // Crystallography
+  int SpaceGroup;
+  double LatticeConstant[6];
+  double Wavelength;
+  double MaxRingRad;
+
+  // Optimization tolerances
+  double tolTilts, tolLsd, tolBC, tolP;
+  double tolP0, tolP1, tolP2, tolP3, tolP4;
+  int tolP4Set;
+  double tolShifts, tolRotation;
+  double tolLsdPanel, tolP2Panel;
+
+  // Calibration control
+  double Width, EtaBinSize;
+  int RBinWidth;
+  double outlierFactor;
+  int MinIndicesForFit;
+  int FitWeightMean;
+  int nIterations;
+  double DoubletSeparation;
+  int NormalizeRingWeights;
+  int OutlierIterations;
+  int WeightByRadius;
+  int WeightByFitSNR;
+  int L2Objective;
+  int PerPanelLsd;
+  int PerPanelDistortion;
+
+  // Image transformations
+  int NrTransOpt;
+  int TransOpt[10];
+
+  // Masking
+  long long int GapIntensity, BadPxIntensity;
+  int makeMap;
   char GapFN[4096], BadPxFN[4096], MaskFN[4096];
-  char darkDatasetName[4096], dataDatasetName[4096];
-  // Parameter defaults
-  int NPanelsY = 0;
-  int NPanelsZ = 0;
-  int PanelSizeY = 0;
-  int PanelSizeZ = 0;
-  int *PanelGapsY = NULL;
-  int *PanelGapsZ = NULL;
+
+  // Excluded rings
+  int nRingsExclude;
+  int RingsExclude[50];
+
+  // Panel configuration
+  int NPanelsY, NPanelsZ;
+  int PanelSizeY, PanelSizeZ;
+  int *PanelGapsY, *PanelGapsZ;
   char PanelShiftsFile[1024];
-  PanelShiftsFile[0] = '\0';
-  MaskFN[0] = '\0';
-  sprintf(darkDatasetName, "exchange/dark");
-  sprintf(dataDatasetName, "exchange/data");
-  while (fgets(aline, 1000, fileParam) != NULL) {
+  int FixPanelID;
+
+  // HDF5 dataset names
+  char darkDatasetName[4096];
+  char dataDatasetName[4096];
+
+  // Derived
+  double MaxTtheta;
+  double padY, padZ;
+} CalibConfig;
+
+// ─── parse_parameters: read parameter file into CalibConfig ───────
+static int parse_parameters(const char *filename, CalibConfig *cfg) {
+  FILE *f = fopen(filename, "r");
+  if (!f) {
+    fprintf(stderr, "Error: cannot open parameter file %s\n", filename);
+    return -1;
+  }
+  // Set defaults
+  memset(cfg, 0, sizeof(*cfg));
+  cfg->Padding = 6;
+  cfg->HeadSize = 0;
+  cfg->dType = 1;
+  cfg->RBinWidth = 4;
+  cfg->tolP3 = 45;
+  cfg->tolShifts = 1.0;
+  cfg->MinIndicesForFit = 1;
+  cfg->nIterations = 1;
+  cfg->OutlierIterations = 1;
+  cfg->tolLsdPanel = 100;
+  cfg->tolP2Panel = 0.0001;
+  sprintf(cfg->darkDatasetName, "exchange/dark");
+  sprintf(cfg->dataDatasetName, "exchange/data");
+
+  char aline[1000], dummy[1000];
+  const char *str;
+  while (fgets(aline, 1000, f) != NULL) {
     str = "FileStem ";
-    LowNr = strncmp(aline, str, strlen(str));
-    if (LowNr == 0) {
-      sscanf(aline, "%s %s", dummy, fn);
+    if (!strncmp(aline, str, strlen(str))) {
+      sscanf(aline, "%s %s", dummy, cfg->fn);
       continue;
     }
     str = "darkDataset ";
-    LowNr = strncmp(aline, str, strlen(str));
-    if (LowNr == 0) {
-      sscanf(aline, "%s %s", dummy, darkDatasetName);
+    if (!strncmp(aline, str, strlen(str))) {
+      sscanf(aline, "%s %s", dummy, cfg->darkDatasetName);
       continue;
     }
     str = "darkLoc ";
-    LowNr = strncmp(aline, str, strlen(str));
-    if (LowNr == 0) {
-      sscanf(aline, "%s %s", dummy, darkDatasetName);
+    if (!strncmp(aline, str, strlen(str))) {
+      sscanf(aline, "%s %s", dummy, cfg->darkDatasetName);
       continue;
     }
     str = "dataDataset ";
-    LowNr = strncmp(aline, str, strlen(str));
-    if (LowNr == 0) {
-      sscanf(aline, "%s %s", dummy, dataDatasetName);
+    if (!strncmp(aline, str, strlen(str))) {
+      sscanf(aline, "%s %s", dummy, cfg->dataDatasetName);
       continue;
     }
     str = "dataLoc ";
-    LowNr = strncmp(aline, str, strlen(str));
-    if (LowNr == 0) {
-      sscanf(aline, "%s %s", dummy, dataDatasetName);
+    if (!strncmp(aline, str, strlen(str))) {
+      sscanf(aline, "%s %s", dummy, cfg->dataDatasetName);
       continue;
     }
     str = "Folder ";
-    LowNr = strncmp(aline, str, strlen(str));
-    if (LowNr == 0) {
-      sscanf(aline, "%s %s", dummy, folder);
+    if (!strncmp(aline, str, strlen(str))) {
+      sscanf(aline, "%s %s", dummy, cfg->folder);
       continue;
     }
     str = "MaskFile ";
-    LowNr = strncmp(aline, str, strlen(str));
-    if (LowNr == 0) {
-      sscanf(aline, "%s %s", dummy, MaskFN);
-      makeMap = 3;
+    if (!strncmp(aline, str, strlen(str))) {
+      sscanf(aline, "%s %s", dummy, cfg->MaskFN);
+      cfg->makeMap = 3;
       continue;
     }
     str = "GapFile ";
-    LowNr = strncmp(aline, str, strlen(str));
-    if (LowNr == 0) {
-      sscanf(aline, "%s %s", dummy, GapFN);
-      makeMap = 2;
+    if (!strncmp(aline, str, strlen(str))) {
+      sscanf(aline, "%s %s", dummy, cfg->GapFN);
+      cfg->makeMap = 2;
       continue;
     }
     str = "BadPxFile ";
-    LowNr = strncmp(aline, str, strlen(str));
-    if (LowNr == 0) {
-      sscanf(aline, "%s %s", dummy, BadPxFN);
-      makeMap = 2;
+    if (!strncmp(aline, str, strlen(str))) {
+      sscanf(aline, "%s %s", dummy, cfg->BadPxFN);
+      cfg->makeMap = 2;
       continue;
     }
     str = "DataType ";
-    LowNr = strncmp(aline, str, strlen(str));
-    if (LowNr == 0) {
-      sscanf(aline, "%s %d", dummy, &dType);
+    if (!strncmp(aline, str, strlen(str))) {
+      sscanf(aline, "%s %d", dummy, &cfg->dType);
       continue;
     }
     str = "RBinDivisions ";
-    LowNr = strncmp(aline, str, strlen(str));
-    if (LowNr == 0) {
-      sscanf(aline, "%s %d", dummy, &RBinWidth);
+    if (!strncmp(aline, str, strlen(str))) {
+      sscanf(aline, "%s %d", dummy, &cfg->RBinWidth);
       continue;
     }
     str = "SkipFrame ";
-    LowNr = strncmp(aline, str, strlen(str));
-    if (LowNr == 0) {
+    if (!strncmp(aline, str, strlen(str))) {
       sscanf(aline, "%s %d", dummy, &skipFrame);
       continue;
     }
     str = "GapIntensity ";
-    LowNr = strncmp(aline, str, strlen(str));
-    if (LowNr == 0) {
-      sscanf(aline, "%s %lld", dummy, &GapIntensity);
-      makeMap = 1;
+    if (!strncmp(aline, str, strlen(str))) {
+      sscanf(aline, "%s %lld", dummy, &cfg->GapIntensity);
+      cfg->makeMap = 1;
       continue;
     }
     str = "BadPxIntensity ";
-    LowNr = strncmp(aline, str, strlen(str));
-    if (LowNr == 0) {
-      sscanf(aline, "%s %lld", dummy, &BadPxIntensity);
-      makeMap = 1;
+    if (!strncmp(aline, str, strlen(str))) {
+      sscanf(aline, "%s %lld", dummy, &cfg->BadPxIntensity);
+      cfg->makeMap = 1;
       continue;
     }
     str = "Ext ";
-    LowNr = strncmp(aline, str, strlen(str));
-    if (LowNr == 0) {
-      sscanf(aline, "%s %s", dummy, Ext);
+    if (!strncmp(aline, str, strlen(str))) {
+      sscanf(aline, "%s %s", dummy, cfg->Ext);
       continue;
     }
     str = "Dark ";
-    LowNr = strncmp(aline, str, strlen(str));
-    if (LowNr == 0) {
-      sscanf(aline, "%s %s", dummy, Dark);
+    if (!strncmp(aline, str, strlen(str))) {
+      sscanf(aline, "%s %s", dummy, cfg->Dark);
       continue;
     }
     str = "Padding ";
-    LowNr = strncmp(aline, str, strlen(str));
-    if (LowNr == 0) {
-      sscanf(aline, "%s %d", dummy, &Padding);
+    if (!strncmp(aline, str, strlen(str))) {
+      sscanf(aline, "%s %d", dummy, &cfg->Padding);
       continue;
     }
     str = "StartNr ";
-    LowNr = strncmp(aline, str, strlen(str));
-    if (LowNr == 0) {
-      sscanf(aline, "%s %d", dummy, &StartNr);
+    if (!strncmp(aline, str, strlen(str))) {
+      sscanf(aline, "%s %d", dummy, &cfg->StartNr);
       continue;
     }
     str = "EndNr ";
-    LowNr = strncmp(aline, str, strlen(str));
-    if (LowNr == 0) {
-      sscanf(aline, "%s %d", dummy, &EndNr);
+    if (!strncmp(aline, str, strlen(str))) {
+      sscanf(aline, "%s %d", dummy, &cfg->EndNr);
       continue;
     }
     str = "NrPixels ";
-    LowNr = strncmp(aline, str, strlen(str));
-    if (LowNr == 0) {
-      sscanf(aline, "%s %d", dummy, &NrPixelsY);
-      NrPixelsZ = NrPixelsY;
+    if (!strncmp(aline, str, strlen(str))) {
+      sscanf(aline, "%s %d", dummy, &cfg->NrPixelsY);
+      cfg->NrPixelsZ = cfg->NrPixelsY;
       continue;
     }
     str = "NrPixelsY ";
-    LowNr = strncmp(aline, str, strlen(str));
-    if (LowNr == 0) {
-      sscanf(aline, "%s %d", dummy, &NrPixelsY);
+    if (!strncmp(aline, str, strlen(str))) {
+      sscanf(aline, "%s %d", dummy, &cfg->NrPixelsY);
       continue;
     }
     str = "NrPixelsZ ";
-    LowNr = strncmp(aline, str, strlen(str));
-    if (LowNr == 0) {
-      sscanf(aline, "%s %d", dummy, &NrPixelsZ);
+    if (!strncmp(aline, str, strlen(str))) {
+      sscanf(aline, "%s %d", dummy, &cfg->NrPixelsZ);
       continue;
     }
     str = "ImTransOpt ";
-    LowNr = strncmp(aline, str, strlen(str));
-    if (LowNr == 0) {
-      sscanf(aline, "%s %d", dummy, &TransOpt[NrTransOpt]);
-      NrTransOpt++;
+    if (!strncmp(aline, str, strlen(str))) {
+      sscanf(aline, "%s %d", dummy, &cfg->TransOpt[cfg->NrTransOpt]);
+      cfg->NrTransOpt++;
       continue;
     }
     str = "SpaceGroup ";
-    LowNr = strncmp(aline, str, strlen(str));
-    if (LowNr == 0) {
-      sscanf(aline, "%s %d", dummy, &SpaceGroup);
+    if (!strncmp(aline, str, strlen(str))) {
+      sscanf(aline, "%s %d", dummy, &cfg->SpaceGroup);
       continue;
     }
     str = "NPanelsY ";
     if (!strncmp(aline, str, strlen(str))) {
-      sscanf(aline, "%s %d", dummy, &NPanelsY);
+      sscanf(aline, "%s %d", dummy, &cfg->NPanelsY);
       continue;
     }
     str = "NPanelsZ ";
     if (!strncmp(aline, str, strlen(str))) {
-      sscanf(aline, "%s %d", dummy, &NPanelsZ);
+      sscanf(aline, "%s %d", dummy, &cfg->NPanelsZ);
       continue;
     }
     str = "PanelSizeY ";
     if (!strncmp(aline, str, strlen(str))) {
-      sscanf(aline, "%s %d", dummy, &PanelSizeY);
+      sscanf(aline, "%s %d", dummy, &cfg->PanelSizeY);
       continue;
     }
     str = "PanelSizeZ ";
     if (!strncmp(aline, str, strlen(str))) {
-      sscanf(aline, "%s %d", dummy, &PanelSizeZ);
+      sscanf(aline, "%s %d", dummy, &cfg->PanelSizeZ);
       continue;
     }
     str = "PanelShiftsFile ";
     if (!strncmp(aline, str, strlen(str))) {
-      sscanf(aline, "%s %s", dummy, PanelShiftsFile);
+      sscanf(aline, "%s %s", dummy, cfg->PanelShiftsFile);
       continue;
     }
-
     str = "PanelGapsY ";
     if (!strncmp(aline, str, strlen(str))) {
       char *ptr = aline + strlen(str);
-      if (NPanelsY > 1) {
-        PanelGapsY = (int *)malloc((NPanelsY - 1) * sizeof(int));
-        for (int k = 0; k < NPanelsY - 1; k++) {
-          PanelGapsY[k] = strtol(ptr, &ptr, 10);
+      if (cfg->NPanelsY > 1) {
+        cfg->PanelGapsY = malloc((cfg->NPanelsY - 1) * sizeof(int));
+        for (int gi = 0; gi < cfg->NPanelsY - 1; gi++) {
+          cfg->PanelGapsY[gi] = (int)strtol(ptr, &ptr, 10);
         }
       }
       continue;
@@ -1715,390 +1728,349 @@ int main(int argc, char *argv[]) {
     str = "PanelGapsZ ";
     if (!strncmp(aline, str, strlen(str))) {
       char *ptr = aline + strlen(str);
-      if (NPanelsZ > 1) {
-        PanelGapsZ = (int *)malloc((NPanelsZ - 1) * sizeof(int));
-        for (int k = 0; k < NPanelsZ - 1; k++) {
-          PanelGapsZ[k] = strtol(ptr, &ptr, 10);
+      if (cfg->NPanelsZ > 1) {
+        cfg->PanelGapsZ = malloc((cfg->NPanelsZ - 1) * sizeof(int));
+        for (int gi = 0; gi < cfg->NPanelsZ - 1; gi++) {
+          cfg->PanelGapsZ[gi] = (int)strtol(ptr, &ptr, 10);
         }
       }
       continue;
     }
-
-    str = "LatticeParameter ";
-    LowNr = strncmp(aline, str, strlen(str));
-    if (LowNr == 0) {
-      sscanf(aline, "%s %lf %lf %lf %lf %lf %lf", dummy, &LatticeConstant[0],
-             &LatticeConstant[1], &LatticeConstant[2], &LatticeConstant[3],
-             &LatticeConstant[4], &LatticeConstant[5]);
-      continue;
-    }
     str = "LatticeConstant ";
-    LowNr = strncmp(aline, str, strlen(str));
-    if (LowNr == 0) {
-      sscanf(aline, "%s %lf %lf %lf %lf %lf %lf", dummy, &LatticeConstant[0],
-             &LatticeConstant[1], &LatticeConstant[2], &LatticeConstant[3],
-             &LatticeConstant[4], &LatticeConstant[5]);
+    if (!strncmp(aline, str, strlen(str))) {
+      sscanf(aline, "%s %lf %lf %lf %lf %lf %lf", dummy,
+             &cfg->LatticeConstant[0], &cfg->LatticeConstant[1],
+             &cfg->LatticeConstant[2], &cfg->LatticeConstant[3],
+             &cfg->LatticeConstant[4], &cfg->LatticeConstant[5]);
       continue;
     }
     str = "Wavelength ";
-    LowNr = strncmp(aline, str, strlen(str));
-    if (LowNr == 0) {
-      sscanf(aline, "%s %lf", dummy, &Wavelength);
-      continue;
-    }
-    str = "RhoD ";
-    LowNr = strncmp(aline, str, strlen(str));
-    if (LowNr == 0) {
-      sscanf(aline, "%s %lf", dummy, &MaxRingRad);
+    if (!strncmp(aline, str, strlen(str))) {
+      sscanf(aline, "%s %lf", dummy, &cfg->Wavelength);
       continue;
     }
     str = "Lsd ";
-    LowNr = strncmp(aline, str, strlen(str));
-    if (LowNr == 0) {
-      sscanf(aline, "%s %lf", dummy, &Lsd);
+    if (!strncmp(aline, str, strlen(str))) {
+      sscanf(aline, "%s %lf", dummy, &cfg->Lsd);
       continue;
     }
-    str = "px ";
-    LowNr = strncmp(aline, str, strlen(str));
-    if (LowNr == 0) {
-      sscanf(aline, "%s %lf", dummy, &px);
-      continue;
-    }
-    str = "ty ";
-    LowNr = strncmp(aline, str, strlen(str));
-    if (LowNr == 0) {
-      sscanf(aline, "%s %lf", dummy, &tyin);
-      continue;
-    }
-    str = "tz ";
-    LowNr = strncmp(aline, str, strlen(str));
-    if (LowNr == 0) {
-      sscanf(aline, "%s %lf", dummy, &tzin);
-      continue;
-    }
-    str = "p0 ";
-    LowNr = strncmp(aline, str, strlen(str));
-    if (LowNr == 0) {
-      sscanf(aline, "%s %lf", dummy, &p0in);
-      continue;
-    }
-    str = "p1 ";
-    LowNr = strncmp(aline, str, strlen(str));
-    if (LowNr == 0) {
-      sscanf(aline, "%s %lf", dummy, &p1in);
-      continue;
-    }
-    str = "p2 ";
-    LowNr = strncmp(aline, str, strlen(str));
-    if (LowNr == 0) {
-      sscanf(aline, "%s %lf", dummy, &p2in);
-      continue;
-    }
-    str = "p3 ";
-    LowNr = strncmp(aline, str, strlen(str));
-    if (LowNr == 0) {
-      sscanf(aline, "%s %lf", dummy, &p3in);
-      continue;
-    }
-    str = "Width ";
-    LowNr = strncmp(aline, str, strlen(str));
-    if (LowNr == 0) {
-      sscanf(aline, "%s %lf", dummy, &Width);
-      continue;
-    }
-    str = "EtaBinSize ";
-    LowNr = strncmp(aline, str, strlen(str));
-    if (LowNr == 0) {
-      sscanf(aline, "%s %lf", dummy, &EtaBinSize);
+    str = "RhoD ";
+    if (!strncmp(aline, str, strlen(str))) {
+      sscanf(aline, "%s %lf", dummy, &cfg->MaxRingRad);
       continue;
     }
     str = "BC ";
-    LowNr = strncmp(aline, str, strlen(str));
-    if (LowNr == 0) {
-      sscanf(aline, "%s %lf %lf", dummy, &ybc, &zbc);
+    if (!strncmp(aline, str, strlen(str))) {
+      sscanf(aline, "%s %lf %lf", dummy, &cfg->ybc, &cfg->zbc);
+      continue;
+    }
+    str = "ty ";
+    if (!strncmp(aline, str, strlen(str))) {
+      sscanf(aline, "%s %lf", dummy, &cfg->tyin);
+      continue;
+    }
+    str = "tz ";
+    if (!strncmp(aline, str, strlen(str))) {
+      sscanf(aline, "%s %lf", dummy, &cfg->tzin);
+      continue;
+    }
+    str = "p0 ";
+    if (!strncmp(aline, str, strlen(str))) {
+      sscanf(aline, "%s %lf", dummy, &cfg->p0in);
+      continue;
+    }
+    str = "p1 ";
+    if (!strncmp(aline, str, strlen(str))) {
+      sscanf(aline, "%s %lf", dummy, &cfg->p1in);
+      continue;
+    }
+    str = "p2 ";
+    if (!strncmp(aline, str, strlen(str))) {
+      sscanf(aline, "%s %lf", dummy, &cfg->p2in);
+      continue;
+    }
+    str = "p3 ";
+    if (!strncmp(aline, str, strlen(str))) {
+      sscanf(aline, "%s %lf", dummy, &cfg->p3in);
+      continue;
+    }
+    str = "Width ";
+    if (!strncmp(aline, str, strlen(str))) {
+      sscanf(aline, "%s %lf", dummy, &cfg->Width);
+      continue;
+    }
+    str = "EtaBinSize ";
+    if (!strncmp(aline, str, strlen(str))) {
+      sscanf(aline, "%s %lf", dummy, &cfg->EtaBinSize);
       continue;
     }
     str = "tolTilts ";
-    LowNr = strncmp(aline, str, strlen(str));
-    if (LowNr == 0) {
-      sscanf(aline, "%s %lf", dummy, &tolTilts);
+    if (!strncmp(aline, str, strlen(str))) {
+      sscanf(aline, "%s %lf", dummy, &cfg->tolTilts);
       continue;
     }
     str = "tolBC ";
-    LowNr = strncmp(aline, str, strlen(str));
-    if (LowNr == 0) {
-      sscanf(aline, "%s %lf", dummy, &tolBC);
+    if (!strncmp(aline, str, strlen(str))) {
+      sscanf(aline, "%s %lf", dummy, &cfg->tolBC);
       continue;
     }
     str = "tolLsd ";
-    LowNr = strncmp(aline, str, strlen(str));
-    if (LowNr == 0) {
-      sscanf(aline, "%s %lf", dummy, &tolLsd);
+    if (!strncmp(aline, str, strlen(str))) {
+      sscanf(aline, "%s %lf", dummy, &cfg->tolLsd);
       continue;
     }
     str = "tolP ";
-    LowNr = strncmp(aline, str, strlen(str));
-    if (LowNr == 0) {
-      sscanf(aline, "%s %lf", dummy, &tolP);
+    if (!strncmp(aline, str, strlen(str))) {
+      sscanf(aline, "%s %lf", dummy, &cfg->tolP);
       continue;
     }
-    str = "tolP0 ";
-    LowNr = strncmp(aline, str, strlen(str));
-    if (LowNr == 0) {
-      sscanf(aline, "%s %lf", dummy, &tolP0);
+    str = "p4 ";
+    if (!strncmp(aline, str, strlen(str))) {
+      sscanf(aline, "%s %lf", dummy, &cfg->p4in);
       continue;
     }
-    str = "tolP1 ";
-    LowNr = strncmp(aline, str, strlen(str));
-    if (LowNr == 0) {
-      sscanf(aline, "%s %lf", dummy, &tolP1);
-      continue;
-    }
-    str = "tolP2 ";
-    LowNr = strncmp(aline, str, strlen(str));
-    if (LowNr == 0) {
-      sscanf(aline, "%s %lf", dummy, &tolP2);
-      continue;
-    }
-    str = "tolP3 ";
-    LowNr = strncmp(aline, str, strlen(str));
-    if (LowNr == 0) {
-      sscanf(aline, "%s %lf", dummy, &tolP3);
+    str = "px ";
+    if (!strncmp(aline, str, strlen(str))) {
+      sscanf(aline, "%s %lf", dummy, &cfg->px);
       continue;
     }
     str = "tolShifts ";
-    LowNr = strncmp(aline, str, strlen(str));
-    if (LowNr == 0) {
-      sscanf(aline, "%s %lf", dummy, &tolShifts);
+    if (!strncmp(aline, str, strlen(str))) {
+      sscanf(aline, "%s %lf", dummy, &cfg->tolShifts);
       continue;
     }
     str = "tolRotation ";
-    LowNr = strncmp(aline, str, strlen(str));
-    if (LowNr == 0) {
-      sscanf(aline, "%s %lf", dummy, &tolRotation);
+    if (!strncmp(aline, str, strlen(str))) {
+      sscanf(aline, "%s %lf", dummy, &cfg->tolRotation);
       continue;
     }
     str = "MultFactor ";
-    LowNr = strncmp(aline, str, strlen(str));
-    if (LowNr == 0) {
-      sscanf(aline, "%s %lf", dummy, &outlierFactor);
+    if (!strncmp(aline, str, strlen(str))) {
+      sscanf(aline, "%s %lf", dummy, &cfg->outlierFactor);
       continue;
     }
     str = "MinIndicesForFit ";
-    LowNr = strncmp(aline, str, strlen(str));
-    if (LowNr == 0) {
-      sscanf(aline, "%s %d", dummy, &MinIndicesForFit);
+    if (!strncmp(aline, str, strlen(str))) {
+      sscanf(aline, "%s %d", dummy, &cfg->MinIndicesForFit);
       continue;
     }
     str = "FixPanelID ";
-    LowNr = strncmp(aline, str, strlen(str));
-    if (LowNr == 0) {
-      sscanf(aline, "%s %d", dummy, &FixPanelID);
+    if (!strncmp(aline, str, strlen(str))) {
+      sscanf(aline, "%s %d", dummy, &cfg->FixPanelID);
       continue;
     }
     str = "tx ";
-    LowNr = strncmp(aline, str, strlen(str));
-    if (LowNr == 0) {
-      sscanf(aline, "%s %lf", dummy, &tx);
+    if (!strncmp(aline, str, strlen(str))) {
+      sscanf(aline, "%s %lf", dummy, &cfg->tx);
       continue;
     }
     str = "FitOrWeightedMean ";
-    LowNr = strncmp(aline, str, strlen(str));
-    if (LowNr == 0) {
-      sscanf(aline, "%s %d", dummy, &FitWeightMean);
+    if (!strncmp(aline, str, strlen(str))) {
+      sscanf(aline, "%s %d", dummy, &cfg->FitWeightMean);
       continue;
     }
     str = "RingsToExclude ";
-    LowNr = strncmp(aline, str, strlen(str));
-    if (LowNr == 0) {
-      sscanf(aline, "%s %d", dummy, &RingsExclude[nRingsExclude]);
-      nRingsExclude++;
+    if (!strncmp(aline, str, strlen(str))) {
+      sscanf(aline, "%s %d", dummy, &cfg->RingsExclude[cfg->nRingsExclude]);
+      cfg->nRingsExclude++;
       continue;
     }
     str = "HeadSize ";
-    LowNr = strncmp(aline, str, strlen(str));
-    if (LowNr == 0) {
-      sscanf(aline, "%s %d", dummy, &HeadSize);
+    if (!strncmp(aline, str, strlen(str))) {
+      sscanf(aline, "%s %d", dummy, &cfg->HeadSize);
       continue;
     }
     str = "nIterations ";
     if (!strncmp(aline, str, strlen(str))) {
-      sscanf(aline, "%s %d", dummy, &nIterations);
+      sscanf(aline, "%s %d", dummy, &cfg->nIterations);
       continue;
     }
     str = "DoubletSeparation ";
     if (!strncmp(aline, str, strlen(str))) {
-      sscanf(aline, "%s %lf", dummy, &DoubletSeparation);
+      sscanf(aline, "%s %lf", dummy, &cfg->DoubletSeparation);
       continue;
     }
     str = "NormalizeRingWeights ";
     if (!strncmp(aline, str, strlen(str))) {
-      sscanf(aline, "%s %d", dummy, &NormalizeRingWeights);
+      sscanf(aline, "%s %d", dummy, &cfg->NormalizeRingWeights);
       continue;
     }
     str = "OutlierIterations ";
     if (!strncmp(aline, str, strlen(str))) {
-      sscanf(aline, "%s %d", dummy, &OutlierIterations);
+      sscanf(aline, "%s %d", dummy, &cfg->OutlierIterations);
       continue;
     }
     str = "WeightByRadius ";
     if (!strncmp(aline, str, strlen(str))) {
-      sscanf(aline, "%s %d", dummy, &WeightByRadius);
+      sscanf(aline, "%s %d", dummy, &cfg->WeightByRadius);
       continue;
     }
     str = "WeightByFitSNR ";
     if (!strncmp(aline, str, strlen(str))) {
-      sscanf(aline, "%s %d", dummy, &WeightByFitSNR);
+      sscanf(aline, "%s %d", dummy, &cfg->WeightByFitSNR);
       continue;
     }
     str = "L2Objective ";
     if (!strncmp(aline, str, strlen(str))) {
-      sscanf(aline, "%s %d", dummy, &L2Objective);
+      sscanf(aline, "%s %d", dummy, &cfg->L2Objective);
       continue;
     }
     str = "DistortionOrder ";
     if (!strncmp(aline, str, strlen(str))) {
-      continue; // DistortionOrder ignored; p4 is always enabled
+      continue;
     }
     str = "PerPanelLsd ";
     if (!strncmp(aline, str, strlen(str))) {
-      sscanf(aline, "%s %d", dummy, &PerPanelLsd);
+      sscanf(aline, "%s %d", dummy, &cfg->PerPanelLsd);
       continue;
     }
     str = "PerPanelDistortion ";
     if (!strncmp(aline, str, strlen(str))) {
-      sscanf(aline, "%s %d", dummy, &PerPanelDistortion);
+      sscanf(aline, "%s %d", dummy, &cfg->PerPanelDistortion);
       continue;
     }
     str = "tolP4 ";
     if (!strncmp(aline, str, strlen(str))) {
-      sscanf(aline, "%s %lf", dummy, &tolP4);
-      tolP4Set = 1;
+      sscanf(aline, "%s %lf", dummy, &cfg->tolP4);
+      cfg->tolP4Set = 1;
       continue;
     }
     str = "tolLsdPanel ";
     if (!strncmp(aline, str, strlen(str))) {
-      sscanf(aline, "%s %lf", dummy, &tolLsdPanel);
+      sscanf(aline, "%s %lf", dummy, &cfg->tolLsdPanel);
       continue;
     }
     str = "tolP2Panel ";
     if (!strncmp(aline, str, strlen(str))) {
-      sscanf(aline, "%s %lf", dummy, &tolP2Panel);
+      sscanf(aline, "%s %lf", dummy, &cfg->tolP2Panel);
       continue;
     }
   }
+  fclose(f);
 
   // Generate Panels
-  if (NPanelsY > 0 && NPanelsZ > 0) {
-    if (GeneratePanels(NPanelsY, NPanelsZ, PanelSizeY, PanelSizeZ, PanelGapsY,
-                       PanelGapsZ, &panels, &nPanels) != 0) {
+  if (cfg->NPanelsY > 0 && cfg->NPanelsZ > 0) {
+    if (GeneratePanels(cfg->NPanelsY, cfg->NPanelsZ, cfg->PanelSizeY,
+                       cfg->PanelSizeZ, cfg->PanelGapsY, cfg->PanelGapsZ,
+                       &panels, &nPanels) != 0) {
       fprintf(stderr, "Fast generation failed.\n");
-      return 1;
+      return -1;
     }
     printf("Generated %d panels.\n", nPanels);
   }
-  if (tolP0 == 0)
-    tolP0 = tolP;
-  if (tolP1 == 0)
-    tolP1 = tolP;
-  if (tolP2 == 0)
-    tolP2 = tolP;
-  if (!tolP4Set && tolP4 == 0)
-    tolP4 = tolP;
-  if (NrPixelsY > NrPixelsZ) {
-    NrPixels = NrPixelsY;
-  } else {
-    NrPixels = NrPixelsZ;
-  }
-  int i, j, k;
 
-  // Print parameter summary
+  // Apply tolerance defaults
+  if (cfg->tolP0 == 0)
+    cfg->tolP0 = cfg->tolP;
+  if (cfg->tolP1 == 0)
+    cfg->tolP1 = cfg->tolP;
+  if (cfg->tolP2 == 0)
+    cfg->tolP2 = cfg->tolP;
+  if (!cfg->tolP4Set && cfg->tolP4 == 0)
+    cfg->tolP4 = cfg->tolP;
+
+  // Derive NrPixels
+  cfg->NrPixels =
+      (cfg->NrPixelsY > cfg->NrPixelsZ) ? cfg->NrPixelsY : cfg->NrPixelsZ;
+
+  // Load panel shifts file if specified
+  if (cfg->PanelShiftsFile[0] != '\0') {
+    LoadPanelShifts(cfg->PanelShiftsFile, nPanels, panels);
+  }
+
+  cfg->MaxTtheta = rad2deg * atan(cfg->MaxRingRad / cfg->Lsd);
+  return 0;
+}
+
+// ─── print_parameter_summary ──────────────────────────────────────
+static void print_parameter_summary(const CalibConfig *c) {
   printf("\n");
   printf("╔══════════════════════════════════════════════════════════════╗\n");
   printf("║           CalibrantPanelShiftsOMP — Parameter Summary       ║\n");
   printf("╠══════════════════════════════════════════════════════════════╣\n");
   printf("║  FILE I/O                                                   ║\n");
-  printf("║    FileStem:       %-40s ║\n", fn);
-  printf("║    Folder:         %-40s ║\n", folder);
-  printf("║    Ext:            %-40s ║\n", Ext);
-  printf("║    Dark:           %-40s ║\n", Dark);
-  printf("║    StartNr:        %-40d ║\n", StartNr);
-  printf("║    EndNr:          %-40d ║\n", EndNr);
-  printf("║    Padding:        %-40d ║\n", Padding);
-  printf("║    HeadSize:       %-40d ║\n", HeadSize);
-  printf("║    DataType:       %-40d ║\n", dType);
+  printf("║    FileStem:       %-40s ║\n", c->fn);
+  printf("║    Folder:         %-40s ║\n", c->folder);
+  printf("║    Ext:            %-40s ║\n", c->Ext);
+  printf("║    Dark:           %-40s ║\n", c->Dark);
+  printf("║    StartNr:        %-40d ║\n", c->StartNr);
+  printf("║    EndNr:          %-40d ║\n", c->EndNr);
+  printf("║    Padding:        %-40d ║\n", c->Padding);
+  printf("║    HeadSize:       %-40d ║\n", c->HeadSize);
+  printf("║    DataType:       %-40d ║\n", c->dType);
   printf("║    SkipFrame:      %-40d ║\n", skipFrame);
   printf("╠══════════════════════════════════════════════════════════════╣\n");
   printf("║  DETECTOR GEOMETRY                                          ║\n");
-  printf("║    NrPixelsY:      %-40d ║\n", NrPixelsY);
-  printf("║    NrPixelsZ:      %-40d ║\n", NrPixelsZ);
-  printf("║    NrPixels(max):  %-40d ║\n", NrPixels);
-  printf("║    PixelSize:      %-40.6f ║\n", px);
-  printf("║    Lsd:            %-40.2f ║\n", Lsd);
-  printf("║    BC:             %-20.4f %-19.4f ║\n", ybc, zbc);
-  printf("║    tx (fixed):     %-40.6f ║\n", tx);
-  printf("║    ty (initial):   %-40.6f ║\n", tyin);
-  printf("║    tz (initial):   %-40.6f ║\n", tzin);
-  printf("║    p0 (initial):   %-40.8f ║\n", p0in);
-  printf("║    p1 (initial):   %-40.8f ║\n", p1in);
-  printf("║    p2 (initial):   %-40.8f ║\n", p2in);
-  printf("║    p3 (initial):   %-40.8f ║\n", p3in);
+  printf("║    NrPixelsY:      %-40d ║\n", c->NrPixelsY);
+  printf("║    NrPixelsZ:      %-40d ║\n", c->NrPixelsZ);
+  printf("║    NrPixels(max):  %-40d ║\n", c->NrPixels);
+  printf("║    PixelSize:      %-40.6f ║\n", c->px);
+  printf("║    Lsd:            %-40.2f ║\n", c->Lsd);
+  printf("║    BC:             %-20.4f %-19.4f ║\n", c->ybc, c->zbc);
+  printf("║    tx (fixed):     %-40.6f ║\n", c->tx);
+  printf("║    ty (initial):   %-40.6f ║\n", c->tyin);
+  printf("║    tz (initial):   %-40.6f ║\n", c->tzin);
+  printf("║    p0 (initial):   %-40.8f ║\n", c->p0in);
+  printf("║    p1 (initial):   %-40.8f ║\n", c->p1in);
+  printf("║    p2 (initial):   %-40.8f ║\n", c->p2in);
+  printf("║    p3 (initial):   %-40.8f ║\n", c->p3in);
+  printf("║    p4 (initial):   %-40.8f ║\n", c->p4in);
   printf("╠══════════════════════════════════════════════════════════════╣\n");
   printf("║  CRYSTALLOGRAPHY                                            ║\n");
-  printf("║    SpaceGroup:     %-40d ║\n", SpaceGroup);
+  printf("║    SpaceGroup:     %-40d ║\n", c->SpaceGroup);
   printf("║    LatticeConst:   %-8.4f %-8.4f %-8.4f %-5.2f %-5.2f %-5.2f  ║\n",
-         LatticeConstant[0], LatticeConstant[1], LatticeConstant[2],
-         LatticeConstant[3], LatticeConstant[4], LatticeConstant[5]);
-  printf("║    Wavelength:     %-40.8f ║\n", Wavelength);
-  printf("║    RhoD:           %-40.2f ║\n", MaxRingRad);
+         c->LatticeConstant[0], c->LatticeConstant[1], c->LatticeConstant[2],
+         c->LatticeConstant[3], c->LatticeConstant[4], c->LatticeConstant[5]);
+  printf("║    Wavelength:     %-40.8f ║\n", c->Wavelength);
+  printf("║    RhoD:           %-40.2f ║\n", c->MaxRingRad);
   printf("╠══════════════════════════════════════════════════════════════╣\n");
   printf("║  MASKING                                                    ║\n");
-  printf("║    BadPxIntensity: %-40lld ║\n", BadPxIntensity);
-  printf("║    GapIntensity:   %-40lld ║\n", GapIntensity);
-  if (MaskFN[0] != '\0')
-    printf("║    MaskFile:       %-40s ║\n", MaskFN);
-  printf("║    MakeMap mode:   %-40d ║\n", makeMap);
+  printf("║    BadPxIntensity: %-40lld ║\n", c->BadPxIntensity);
+  printf("║    GapIntensity:   %-40lld ║\n", c->GapIntensity);
+  if (c->MaskFN[0] != '\0')
+    printf("║    MaskFile:       %-40s ║\n", c->MaskFN);
+  printf("║    MakeMap mode:   %-40d ║\n", c->makeMap);
   printf("╠══════════════════════════════════════════════════════════════╣\n");
   printf("║  OPTIMIZATION TOLERANCES                                    ║\n");
-  printf("║    tolTilts:       %-40.6f ║\n", tolTilts);
-  printf("║    tolBC:          %-40.6f ║\n", tolBC);
-  printf("║    tolLsd:         %-40.2f ║\n", tolLsd);
-  printf("║    tolP0:          %-40.8f ║\n", tolP0);
-  printf("║    tolP1:          %-40.8f ║\n", tolP1);
-  printf("║    tolP2:          %-40.8f ║\n", tolP2);
-  printf("║    tolP3:          %-40.8f ║\n", tolP3);
-  printf("║    tolShifts:      %-40.6f ║\n", tolShifts);
-  printf("║    tolRotation:    %-40.6f ║\n", tolRotation);
+  printf("║    tolTilts:       %-40.6f ║\n", c->tolTilts);
+  printf("║    tolBC:          %-40.6f ║\n", c->tolBC);
+  printf("║    tolLsd:         %-40.2f ║\n", c->tolLsd);
+  printf("║    tolP0:          %-40.8f ║\n", c->tolP0);
+  printf("║    tolP1:          %-40.8f ║\n", c->tolP1);
+  printf("║    tolP2:          %-40.8f ║\n", c->tolP2);
+  printf("║    tolP3:          %-40.8f ║\n", c->tolP3);
+  printf("║    tolShifts:      %-40.6f ║\n", c->tolShifts);
+  printf("║    tolRotation:    %-40.6f ║\n", c->tolRotation);
   printf("╠══════════════════════════════════════════════════════════════╣\n");
   printf("║  CALIBRATION CONTROL                                        ║\n");
-  printf("║    Width:          %-40.2f ║\n", Width);
-  printf("║    EtaBinSize:     %-40.4f ║\n", EtaBinSize);
-  printf("║    RBinDivisions:  %-40d ║\n", RBinWidth);
-  printf("║    MultFactor:     %-40.4f ║\n", outlierFactor);
-  printf("║    MinIndices:     %-40d ║\n", MinIndicesForFit);
-  printf("║    FitOrWMean:     %-40d ║\n", FitWeightMean);
-  printf("║    nIterations:    %-40d ║\n", nIterations);
-  if (DoubletSeparation > 0)
-    printf("║    DoubletSep(px): %-40.1f ║\n", DoubletSeparation);
-  if (NormalizeRingWeights)
+  printf("║    Width:          %-40.2f ║\n", c->Width);
+  printf("║    EtaBinSize:     %-40.4f ║\n", c->EtaBinSize);
+  printf("║    RBinDivisions:  %-40d ║\n", c->RBinWidth);
+  printf("║    MultFactor:     %-40.4f ║\n", c->outlierFactor);
+  printf("║    MinIndices:     %-40d ║\n", c->MinIndicesForFit);
+  printf("║    FitOrWMean:     %-40d ║\n", c->FitWeightMean);
+  printf("║    nIterations:    %-40d ║\n", c->nIterations);
+  if (c->DoubletSeparation > 0)
+    printf("║    DoubletSep(px): %-40.1f ║\n", c->DoubletSeparation);
+  if (c->NormalizeRingWeights)
     printf("║    RingWeightNorm: %-40s ║\n", "ON");
-  if (WeightByRadius)
+  if (c->WeightByRadius)
     printf("║    WeightByRadius: %-40s ║\n", "ON");
-  if (WeightByFitSNR)
+  if (c->WeightByFitSNR)
     printf("║    WeightByFitSNR: %-40s ║\n", "ON");
-  if (L2Objective)
+  if (c->L2Objective)
     printf("║    L2Objective:   %-40s ║\n", "ON (squared strain)");
-  if (OutlierIterations > 1)
-    printf("║    OutlierIters:   %-40d ║\n", OutlierIterations);
-  if (PerPanelLsd)
-    printf("║    PerPanelLsd:    %-40s (tol=%.1f) ║\n", "ON", tolLsdPanel);
-  if (PerPanelDistortion)
-    printf("║    PerPanelP2:     %-40s (tol=%.6f) ║\n", "ON", tolP2Panel);
-  if (nRingsExclude > 0) {
+  if (c->OutlierIterations > 1)
+    printf("║    OutlierIters:   %-40d ║\n", c->OutlierIterations);
+  if (c->PerPanelLsd)
+    printf("║    PerPanelLsd:    %-40s (tol=%.1f) ║\n", "ON", c->tolLsdPanel);
+  if (c->PerPanelDistortion)
+    printf("║    PerPanelP2:     %-40s (tol=%.6f) ║\n", "ON", c->tolP2Panel);
+  if (c->nRingsExclude > 0) {
     printf("║    RingsExclude:   ");
     int printed = 0;
-    for (i = 0; i < nRingsExclude; i++) {
-      printed += printf("%d ", RingsExclude[i]);
+    for (int i = 0; i < c->nRingsExclude; i++) {
+      printed += printf("%d ", c->RingsExclude[i]);
     }
     for (int pad = printed; pad < 41; pad++)
       printf(" ");
@@ -2108,17 +2080,88 @@ int main(int argc, char *argv[]) {
     printf(
         "╠══════════════════════════════════════════════════════════════╣\n");
     printf("║  MULTI-PANEL                                                ║\n");
-    printf("║    NPanelsY:       %-40d ║\n", NPanelsY);
-    printf("║    NPanelsZ:       %-40d ║\n", NPanelsZ);
-    printf("║    PanelSizeY:     %-40d ║\n", PanelSizeY);
-    printf("║    PanelSizeZ:     %-40d ║\n", PanelSizeZ);
-    printf("║    FixPanelID:     %-40d ║\n", FixPanelID);
+    printf("║    NPanelsY:       %-40d ║\n", c->NPanelsY);
+    printf("║    NPanelsZ:       %-40d ║\n", c->NPanelsZ);
+    printf("║    PanelSizeY:     %-40d ║\n", c->PanelSizeY);
+    printf("║    PanelSizeZ:     %-40d ║\n", c->PanelSizeZ);
+    printf("║    FixPanelID:     %-40d ║\n", c->FixPanelID);
     printf("║    Panels:         %-40d ║\n", nPanels);
-    if (PanelShiftsFile[0] != '\0')
-      printf("║    ShiftsFile:     %-40s ║\n", PanelShiftsFile);
+    if (c->PanelShiftsFile[0] != '\0')
+      printf("║    ShiftsFile:     %-40s ║\n", c->PanelShiftsFile);
   }
   printf(
       "╚══════════════════════════════════════════════════════════════╝\n\n");
+}
+
+int main(int argc, char *argv[]) {
+  setvbuf(stdout, NULL, _IOLBF, 0); // line-buffer stdout for piped output
+  if (argc != 3) {
+    printf("Usage: CalibrantOMP ps.txt nCPUs\n");
+    return 1;
+  }
+  double start, end, start0, end0;
+  start0 = omp_get_wtime();
+  double diftotal;
+
+  char *ParamFN = argv[1];
+  numProcs = atoi(argv[2]);
+
+  // Parse all parameters into CalibConfig struct
+  CalibConfig cfg;
+  if (parse_parameters(ParamFN, &cfg) != 0)
+    return 1;
+
+  // Unpack config into local variables (keeps rest of main() unchanged)
+  char aline[1000];
+  char *str, dummy[1000];
+  char fn[1024], folder[1024], Ext[1024], Dark[1024];
+  strcpy(fn, cfg.fn); strcpy(folder, cfg.folder);
+  strcpy(Ext, cfg.Ext); strcpy(Dark, cfg.Dark);
+  int StartNr = cfg.StartNr, EndNr = cfg.EndNr, LowNr;
+  int SpaceGroup = cfg.SpaceGroup, FitWeightMean = cfg.FitWeightMean;
+  double LatticeConstant[6], Wavelength = cfg.Wavelength,
+         MaxRingRad = cfg.MaxRingRad, Lsd = cfg.Lsd, MaxTtheta = cfg.MaxTtheta,
+         TthetaTol, ybc = cfg.ybc, zbc = cfg.zbc,
+         EtaBinSize = cfg.EtaBinSize, px = cfg.px, Width = cfg.Width;
+  memcpy(LatticeConstant, cfg.LatticeConstant, sizeof(LatticeConstant));
+  double tx = cfg.tx, tolTilts = cfg.tolTilts, tolLsd = cfg.tolLsd,
+         tolBC = cfg.tolBC, tolP = cfg.tolP, tolP0 = cfg.tolP0,
+         tolP1 = cfg.tolP1, tolP2 = cfg.tolP2, tolP3 = cfg.tolP3,
+         tyin = cfg.tyin, tzin = cfg.tzin, p0in = cfg.p0in, p1in = cfg.p1in,
+         p2in = cfg.p2in, p3in = cfg.p3in, padY = cfg.padY, padZ = cfg.padZ;
+  double tolShifts = cfg.tolShifts, tolRotation = cfg.tolRotation;
+  double outlierFactor = cfg.outlierFactor;
+  int MinIndicesForFit = cfg.MinIndicesForFit, FixPanelID = cfg.FixPanelID;
+  int nIterations = cfg.nIterations;
+  double DoubletSeparation = cfg.DoubletSeparation;
+  int NormalizeRingWeights = cfg.NormalizeRingWeights;
+  int OutlierIterations = cfg.OutlierIterations;
+  int WeightByRadius = cfg.WeightByRadius, WeightByFitSNR = cfg.WeightByFitSNR;
+  int L2Objective = cfg.L2Objective;
+  int PerPanelLsd = cfg.PerPanelLsd, PerPanelDistortion = cfg.PerPanelDistortion;
+  double tolP4 = cfg.tolP4, p4in = cfg.p4in;
+  double tolLsdPanel = cfg.tolLsdPanel, tolP2Panel = cfg.tolP2Panel;
+  int Padding = cfg.Padding, NrPixelsY = cfg.NrPixelsY, NrPixelsZ = cfg.NrPixelsZ,
+      NrPixels = cfg.NrPixels;
+  int NrTransOpt = cfg.NrTransOpt, RBinWidth = cfg.RBinWidth;
+  long long int GapIntensity = cfg.GapIntensity, BadPxIntensity = cfg.BadPxIntensity;
+  int TransOpt[10], nRingsExclude = cfg.nRingsExclude, RingsExclude[50];
+  memcpy(TransOpt, cfg.TransOpt, sizeof(TransOpt));
+  memcpy(RingsExclude, cfg.RingsExclude, sizeof(RingsExclude));
+  int makeMap = cfg.makeMap;
+  int HeadSize = cfg.HeadSize;
+  int dType = cfg.dType;
+  char GapFN[4096], BadPxFN[4096], MaskFN[4096];
+  strcpy(GapFN, cfg.GapFN); strcpy(BadPxFN, cfg.BadPxFN); strcpy(MaskFN, cfg.MaskFN);
+  char darkDatasetName[4096], dataDatasetName[4096];
+  strcpy(darkDatasetName, cfg.darkDatasetName); strcpy(dataDatasetName, cfg.dataDatasetName);
+  int NPanelsY = cfg.NPanelsY, NPanelsZ = cfg.NPanelsZ;
+  int PanelSizeY = cfg.PanelSizeY, PanelSizeZ = cfg.PanelSizeZ;
+  char PanelShiftsFile[1024];
+  strcpy(PanelShiftsFile, cfg.PanelShiftsFile);
+  int i, j, k;
+
+  print_parameter_summary(&cfg);
   for (i = 0; i < NrTransOpt; i++) {
     if (TransOpt[i] < 0 || TransOpt[i] > 3) {
       printf("TransformationOptions can only be 0, 1, 2 or 3.\nExiting.\n");
@@ -2134,7 +2177,6 @@ int main(int argc, char *argv[]) {
     else
       printf("Transpose.\n");
   }
-  MaxTtheta = rad2deg * atan(MaxRingRad / Lsd);
   double Thetas[100];
   int RingIDs[100];
   for (i = 0; i < 100; i++)
