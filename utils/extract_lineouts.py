@@ -158,6 +158,8 @@ def main():
     parser.add_argument('-nCPUs', type=int, default=1,
                         help='Number of concurrent integrator instances '
                              '(default: 1)')
+    parser.add_argument('-inputDir', default='.',
+                        help='Input directory containing data files (default: cwd)')
     parser.add_argument('-outDir', default='.',
                         help='Output directory for .xy files (default: cwd)')
     parser.add_argument('-darkFN', default=None,
@@ -171,6 +173,7 @@ def main():
 
     dark_file = Path(args.darkFN).resolve() if args.darkFN else None
 
+    input_dir = Path(args.inputDir).resolve()
     out_dir = Path(args.outDir).resolve()
     out_dir.mkdir(parents=True, exist_ok=True)
 
@@ -185,7 +188,8 @@ def main():
     print(f"  Extract lineouts: {n_total} file(s), {n_workers} workers")
     print(f"  Pattern: {args.dataFN}")
     print(f"  Range: {args.startNr} → {args.endNr}")
-    print(f"  Param: {param_file}")
+    print(f"  Input:  {input_dir}")
+    print(f"  Param:  {param_file}")
     print(f"  Output: {out_dir}")
     print()
 
@@ -228,9 +232,9 @@ def main():
         except (IndexError, KeyError):
             fn = data_pattern.replace('{}', str(nr))
 
-        data_file = Path(fn)
+        data_file = input_dir / fn
         if not data_file.exists():
-            data_file = param_file.parent / fn
+            data_file = Path(fn)
         if not data_file.exists():
             print(f"  [{nr}] SKIP: {fn} not found")
             continue
