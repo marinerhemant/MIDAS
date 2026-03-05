@@ -20,12 +20,9 @@ if(NOT blosc_POPULATED)
   # Always use internal zlib in BLOSC1
   set(DEACTIVATE_ZLIB OFF CACHE BOOL "Do not include support for the Zlib library." FORCE)
 
-  # # Enable using external zlib instead of internal one
-  # set(BLOSC_PREFER_EXTERNAL_ZLIB ON CACHE BOOL "Use external ZLIB" FORCE)
-  # set(BLOSC_PREFER_EXTERNAL_LZ4 ON CACHE BOOL "Use external LZ4" FORCE)
-  
-  # # Disable internal zlib building completely
-  # set(DEACTIVATE_ZLIB ON CACHE BOOL "Deactivate internal zlib" FORCE)
+  # Use the already-fetched zlib instead of Blosc2's internal zlib-ng.
+  # Without this, both create a "zlib" target → CMake collision.
+  set(PREFER_EXTERNAL_ZLIB ON CACHE BOOL "Use external ZLIB for Blosc2" FORCE)
   
   # # Find system zlib
   # find_package(ZLIB REQUIRED)

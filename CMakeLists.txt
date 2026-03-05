@@ -241,6 +241,14 @@ else()
     message(WARNING "ZLIB not found and DOWNLOAD_DEPENDENCIES is OFF or ZLIB::ZLIB target does not exist. Some dependencies might fail.")
 endif()
 
+# Ensure CMake's check_symbol_exists / check_function_exists probes
+# can find libm functions (pow, floor, etc.).  On some Linux systems
+# libm is not linked automatically, which causes libtiff's
+# FindCMath.cmake to fail with "Could NOT find CMath (missing: CMath_pow)".
+if(NOT APPLE)
+  list(APPEND CMAKE_REQUIRED_LIBRARIES m)
+endif()
+
 # Handle all dependencies
 # Order can matter: BLOSC may provide ZLIB, which HDF5, LIBTIFF, LIBZIP might need.
 # FFTW is independent. NLOPT is independent.
