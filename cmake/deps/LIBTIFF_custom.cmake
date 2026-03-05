@@ -57,6 +57,13 @@ FetchContent_Declare(
 
 FetchContent_MakeAvailable(libtiff)
 
+# On Linux, our CMAKE_REQUIRED_LIBRARIES=m makes FindCMath's
+# check_symbol_exists(pow) pass in the "no library needed" branch,
+# so libtiff omits -lm from its link line.  Add it explicitly.
+if(TARGET tiff AND NOT APPLE)
+  target_link_libraries(tiff PRIVATE m)
+endif()
+
 # --- Target Aliasing Logic (remains the same) ---
 if(NOT TARGET TIFF::TIFF)
     add_library(TIFF::TIFF INTERFACE IMPORTED GLOBAL)
