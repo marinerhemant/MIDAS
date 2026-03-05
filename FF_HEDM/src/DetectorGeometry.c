@@ -87,15 +87,21 @@ void dg_pixel_to_REta(double Y, double Z, double Ycen, double Zcen,
   double Yc = (-Y + Ycen) * px;
   double Zc = (Z - Zcen) * px;
   double ABC[3] = {0, Yc, Zc};
+  // Untilted Eta: from raw pixel-centered coords, before tilt matrix.
+  // This matches the original Car2Pol convention and is required by
+  // CalcPeakProfileParallel's box construction and the boundary check,
+  // which both use the untilted (R,Eta)->pixel formula.
+  double EtaUntilted = dg_calc_eta_angle(ABC[1], ABC[2]);
   double ABCPr[3], XYZ[3];
   dg_mat_mult_33v(TRs, ABC, ABCPr);
   XYZ[0] = panelLsd + ABCPr[0];
   XYZ[1] = ABCPr[1];
   XYZ[2] = ABCPr[2];
   double Rad = (panelLsd / XYZ[0]) * sqrt(XYZ[1] * XYZ[1] + XYZ[2] * XYZ[2]);
-  double Eta = dg_calc_eta_angle(XYZ[1], XYZ[2]);
+  // Tilted Eta: used only for the distortion function
+  double EtaTilted = dg_calc_eta_angle(XYZ[1], XYZ[2]);
   double RNorm = Rad / RhoD;
-  double EtaT = 90 - Eta;
+  double EtaT = 90 - EtaTilted;
   double n0 = 2.0, n1 = 4.0, n2 = 2.0;
   double DistortFunc =
       (p0 * pow(RNorm, n0) * cos(DG_DEG2RAD * (2 * EtaT))) +
@@ -106,7 +112,7 @@ void dg_pixel_to_REta(double Y, double Z, double Ycen, double Zcen,
   double Rt = Rad * DistortFunc / px; // in pixels
   Rt = Rt * (Lsd / panelLsd);         // re-project to global Lsd plane
   *R_out = Rt;
-  *Eta_out = Eta;
+  *Eta_out = EtaUntilted;
 }
 
 void dg_REta_to_YZ(double R, double Eta_deg, double *Y_out, double *Z_out) {

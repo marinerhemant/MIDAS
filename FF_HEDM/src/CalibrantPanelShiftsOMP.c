@@ -1744,6 +1744,14 @@ static int parse_parameters(const char *filename, CalibConfig *cfg) {
              &cfg->LatticeConstant[4], &cfg->LatticeConstant[5]);
       continue;
     }
+    str = "LatticeParameter ";
+    if (!strncmp(aline, str, strlen(str))) {
+      sscanf(aline, "%s %lf %lf %lf %lf %lf %lf", dummy,
+             &cfg->LatticeConstant[0], &cfg->LatticeConstant[1],
+             &cfg->LatticeConstant[2], &cfg->LatticeConstant[3],
+             &cfg->LatticeConstant[4], &cfg->LatticeConstant[5]);
+      continue;
+    }
     str = "Wavelength ";
     if (!strncmp(aline, str, strlen(str))) {
       sscanf(aline, "%s %lf", dummy, &cfg->Wavelength);
@@ -2115,14 +2123,16 @@ int main(int argc, char *argv[]) {
   char aline[1000];
   char *str, dummy[1000];
   char fn[1024], folder[1024], Ext[1024], Dark[1024];
-  strcpy(fn, cfg.fn); strcpy(folder, cfg.folder);
-  strcpy(Ext, cfg.Ext); strcpy(Dark, cfg.Dark);
+  strcpy(fn, cfg.fn);
+  strcpy(folder, cfg.folder);
+  strcpy(Ext, cfg.Ext);
+  strcpy(Dark, cfg.Dark);
   int StartNr = cfg.StartNr, EndNr = cfg.EndNr, LowNr;
   int SpaceGroup = cfg.SpaceGroup, FitWeightMean = cfg.FitWeightMean;
-  double LatticeConstant[6], Wavelength = cfg.Wavelength,
-         MaxRingRad = cfg.MaxRingRad, Lsd = cfg.Lsd, MaxTtheta = cfg.MaxTtheta,
-         TthetaTol, ybc = cfg.ybc, zbc = cfg.zbc,
-         EtaBinSize = cfg.EtaBinSize, px = cfg.px, Width = cfg.Width;
+  double LatticeConstant[6],
+      Wavelength = cfg.Wavelength, MaxRingRad = cfg.MaxRingRad, Lsd = cfg.Lsd,
+      MaxTtheta = cfg.MaxTtheta, TthetaTol, ybc = cfg.ybc, zbc = cfg.zbc,
+      EtaBinSize = cfg.EtaBinSize, px = cfg.px, Width = cfg.Width;
   memcpy(LatticeConstant, cfg.LatticeConstant, sizeof(LatticeConstant));
   double tx = cfg.tx, tolTilts = cfg.tolTilts, tolLsd = cfg.tolLsd,
          tolBC = cfg.tolBC, tolP = cfg.tolP, tolP0 = cfg.tolP0,
@@ -2138,13 +2148,15 @@ int main(int argc, char *argv[]) {
   int OutlierIterations = cfg.OutlierIterations;
   int WeightByRadius = cfg.WeightByRadius, WeightByFitSNR = cfg.WeightByFitSNR;
   int L2Objective = cfg.L2Objective;
-  int PerPanelLsd = cfg.PerPanelLsd, PerPanelDistortion = cfg.PerPanelDistortion;
+  int PerPanelLsd = cfg.PerPanelLsd,
+      PerPanelDistortion = cfg.PerPanelDistortion;
   double tolP4 = cfg.tolP4, p4in = cfg.p4in;
   double tolLsdPanel = cfg.tolLsdPanel, tolP2Panel = cfg.tolP2Panel;
-  int Padding = cfg.Padding, NrPixelsY = cfg.NrPixelsY, NrPixelsZ = cfg.NrPixelsZ,
-      NrPixels = cfg.NrPixels;
+  int Padding = cfg.Padding, NrPixelsY = cfg.NrPixelsY,
+      NrPixelsZ = cfg.NrPixelsZ, NrPixels = cfg.NrPixels;
   int NrTransOpt = cfg.NrTransOpt, RBinWidth = cfg.RBinWidth;
-  long long int GapIntensity = cfg.GapIntensity, BadPxIntensity = cfg.BadPxIntensity;
+  long long int GapIntensity = cfg.GapIntensity,
+                BadPxIntensity = cfg.BadPxIntensity;
   int TransOpt[10], nRingsExclude = cfg.nRingsExclude, RingsExclude[50];
   memcpy(TransOpt, cfg.TransOpt, sizeof(TransOpt));
   memcpy(RingsExclude, cfg.RingsExclude, sizeof(RingsExclude));
@@ -2152,9 +2164,12 @@ int main(int argc, char *argv[]) {
   int HeadSize = cfg.HeadSize;
   int dType = cfg.dType;
   char GapFN[4096], BadPxFN[4096], MaskFN[4096];
-  strcpy(GapFN, cfg.GapFN); strcpy(BadPxFN, cfg.BadPxFN); strcpy(MaskFN, cfg.MaskFN);
+  strcpy(GapFN, cfg.GapFN);
+  strcpy(BadPxFN, cfg.BadPxFN);
+  strcpy(MaskFN, cfg.MaskFN);
   char darkDatasetName[4096], dataDatasetName[4096];
-  strcpy(darkDatasetName, cfg.darkDatasetName); strcpy(dataDatasetName, cfg.dataDatasetName);
+  strcpy(darkDatasetName, cfg.darkDatasetName);
+  strcpy(dataDatasetName, cfg.dataDatasetName);
   int NPanelsY = cfg.NPanelsY, NPanelsZ = cfg.NPanelsZ;
   int PanelSizeY = cfg.PanelSizeY, PanelSizeZ = cfg.PanelSizeZ;
   char PanelShiftsFile[1024];
