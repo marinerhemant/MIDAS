@@ -47,6 +47,36 @@ def read_geometry(param_file: Path) -> dict:
     return geom
 
 
+def run_detector_mapper(param_file: Path, work_dir: Path, n_cpus: int = 0):
+    """Run DetectorMapper to produce Map.bin + nMap.bin.
+
+    Skips if both files already exist in work_dir.
+    """
+    map_bin = work_dir / "Map.bin"
+    nmap_bin = work_dir / "nMap.bin"
+    if map_bin.exists() and nmap_bin.exists():
+        print(f"  DetectorMapper: skipped (Map.bin + nMap.bin exist)")
+        return True
+
+    mapper = MIDAS_BIN / "DetectorMapper"
+    if not mapper.exists():
+        raise FileNotFoundError(f"DetectorMapper not found at {mapper}")
+
+    print("  Running DetectorMapper...", end="", flush=True)
+    cmd = [str(mapper), str(param_file.resolve())]
+    if n_cpus > 0:
+        cmd += ["-nCPUs", str(n_cpus)]
+    result = subprocess.run(cmd, capture_output=True, text=True,
+                            cwd=str(work_dir), errors='replace')
+    if result.returncode != 0:
+        print(f" FAILED (rc={result.returncode})")
+        if result.stderr:
+            print(f"  STDERR: {result.stderr[-500:]}")
+        return False
+    print(f" OK ({map_bin.stat().st_size:,} bytes)")
+    return True
+
+
 def run_integrator(param_file: Path, data_file: Path, work_dir: Path,
                    n_cpus: int = 1, dark_file: Path = None):
     """Run IntegratorZarrOMP in direct mode (-paramFN)."""
@@ -130,7 +160,7 @@ def main():
 
     dark_file = Path(args.darkFN).resolve() if args.darkFN else None
 
-    out_dir = Path(args.outDir)
+    out_dir = Path(args.outDir).resolve()
     out_dir.mkdir(parents=True, exist_ok=True)
 
     geom = read_geometry(param_file)
@@ -146,7 +176,13 @@ def main():
     print(f"  Pattern: {args.dataFN}")
     print(f"  Range: {args.startNr} → {args.endNr}")
     print(f"  Param: {param_file}")
-    print(f"  Output: {out_dir.resolve()}")
+    print(f"  Output: {out_dir}")
+    print()
+
+    # --- Run DetectorMapper once to produce Map.bin + nMap.bin ---
+    if not run_detector_mapper(param_file, out_dir, args.nCPUs):
+        print("ERROR: DetectorMapper failed, cannot proceed.")
+        sys.exit(1)
     print()
 
     for nr in range(args.startNr, args.endNr + 1):
@@ -168,13 +204,12 @@ def main():
         stem = data_file.stem
         out_xy = out_dir / f"{stem}_lineout.xy"
 
-        # Use a temp work directory for Map.bin etc.
+        # Use a temp work directory per frame
         work_dir = Path(tempfile.mkdtemp(prefix=f"lineout_{stem}_"))
         try:
-            # Copy Map.bin and nMap.bin if they exist in the param file's dir
-            # (avoids re-running DetectorMapper each time)
+            # Symlink Map.bin and nMap.bin from the output directory
             for mapf in ("Map.bin", "nMap.bin"):
-                src = param_file.parent / mapf
+                src = out_dir / mapf
                 if src.exists():
                     os.symlink(src, work_dir / mapf)
 
