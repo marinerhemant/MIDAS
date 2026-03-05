@@ -4,6 +4,10 @@ cmake_minimum_required(VERSION 3.5)
 if(POLICY CMP0135)
   cmake_policy(SET CMP0135 NEW)
 endif()
+# CMP0075: check_include_file macros honor CMAKE_REQUIRED_LIBRARIES
+if(POLICY CMP0075)
+  cmake_policy(SET CMP0075 NEW)
+endif()
 
 # Define options first, before the project command
 option(USE_CUDA "Build with CUDA support" OFF) # Default to ON, can be configured
@@ -204,38 +208,50 @@ find_package(ZLIB QUIET)
 if(NOT ZLIB_FOUND AND DOWNLOAD_DEPENDENCIES AND NOT TARGET ZLIB::ZLIB)
   message(STATUS "ZLIB not found by find_package. Attempting to build ZLIB via FetchContent.")
   FetchContent_Declare(
-    zlib_fetch # Use zlib_fetch to avoid conflict with potential ZLIB::ZLIB from find_package
-    URL https://github.com/madler/zlib/releases/download/v1.3.1/zlib-1.3.1.tar.gz # Official Zlib source
+    zlib_fetch
+    URL https://github.com/madler/zlib/releases/download/v1.3.1/zlib-1.3.1.tar.gz
     URL_HASH SHA256=9a93b2b7dfdac77ceba5a558a580e74667dd6fede4585b91eefb60f03b72df23
   )
   FetchContent_GetProperties(zlib_fetch)
   if(NOT zlib_fetch_POPULATED)
     FetchContent_Populate(zlib_fetch)
-    # Add zlib as a subdirectory. Its CMakeLists.txt should create ZLIB::ZLIB target.
-    # Need to ensure its CMakeLists.txt supports BUILD_SHARED_LIBS or similar.
-    # Zlib's own CMake (since 1.2.12) creates zlibstatic and zlib (shared).
-    # It respects BUILD_SHARED_LIBS global property.
     add_subdirectory(${zlib_fetch_SOURCE_DIR} ${zlib_fetch_BINARY_DIR})
-    if(TARGET ZLIB::ZLIB)
-        message(STATUS "ZLIB::ZLIB target successfully created from fetched zlib.")
-        # Ensure install locations are handled if other projects need to find it via CMAKE_PREFIX_PATH
-        # By default, FetchContent subprojects don't install.
-        # If DEPS_INSTALL_DIR is used, zlib should be configured to install there.
-        # However, linking against ZLIB::ZLIB target directly is preferred.
-    else()
-        message(WARNING "Fetched zlib but ZLIB::ZLIB target was not created. Check zlib's CMakeLists.txt.")
+  endif()
+
+  # zlib's CMakeLists.txt creates targets "zlib" (shared) and "zlibstatic"
+  # but does NOT create ZLIB::ZLIB or set ZLIB_LIBRARY / ZLIB_INCLUDE_DIR.
+  # We must do this ourselves so that all downstream find_package(ZLIB)
+  # calls (in Blosc2, libtiff, HDF5, libzip) succeed.
+  if(NOT TARGET ZLIB::ZLIB)
+    if(TARGET zlib)
+      add_library(ZLIB::ZLIB ALIAS zlib)
+      message(STATUS "Created ZLIB::ZLIB as alias for fetched 'zlib' target.")
+    elseif(TARGET zlibstatic)
+      add_library(ZLIB::ZLIB ALIAS zlibstatic)
+      message(STATUS "Created ZLIB::ZLIB as alias for fetched 'zlibstatic' target.")
     endif()
   endif()
-  # Re-check ZLIB_FOUND after attempting to build
-  if(NOT ZLIB_FOUND AND TARGET ZLIB::ZLIB)
-    set(ZLIB_FOUND TRUE) # Manually set if target exists now
-    # Populate ZLIB_INCLUDE_DIRS and ZLIB_LIBRARIES if needed by older CMake scripts, though ZLIB::ZLIB is preferred.
-    if(TARGET ZLIB::ZLIB)
-        get_target_property(ZLIB_INCLUDE_DIRS ZLIB::ZLIB INTERFACE_INCLUDE_DIRECTORIES)
-    endif()
+
+  # Populate the variables that find_package(ZLIB) would normally set.
+  # Many dependencies (Blosc2, HDF5, libzip) call find_package(ZLIB) which
+  # checks ZLIB_LIBRARY and ZLIB_INCLUDE_DIR — not ZLIB::ZLIB target.
+  if(TARGET zlib)
+    # Point to the shared library in the build tree
+    set(ZLIB_LIBRARY "${zlib_fetch_BINARY_DIR}/libz${CMAKE_SHARED_LIBRARY_SUFFIX}" CACHE FILEPATH "Path to zlib library" FORCE)
+    set(ZLIB_LIBRARIES zlib)
+  elseif(TARGET zlibstatic)
+    set(ZLIB_LIBRARY "${zlib_fetch_BINARY_DIR}/libz.a" CACHE FILEPATH "Path to zlib library" FORCE)
+    set(ZLIB_LIBRARIES zlibstatic)
   endif()
+  # zlib.h is in the source dir, zconf.h is generated in the binary dir
+  set(ZLIB_INCLUDE_DIR "${zlib_fetch_SOURCE_DIR}" CACHE PATH "Zlib include directory" FORCE)
+  set(ZLIB_INCLUDE_DIRS "${zlib_fetch_SOURCE_DIR};${zlib_fetch_BINARY_DIR}")
+  include_directories(SYSTEM "${zlib_fetch_SOURCE_DIR}" "${zlib_fetch_BINARY_DIR}")
+  set(ZLIB_FOUND TRUE)
+  set(ZLIB_VERSION_STRING "1.3.1")
+  message(STATUS "ZLIB configured: ZLIB_LIBRARY=${ZLIB_LIBRARY}, ZLIB_INCLUDE_DIR=${ZLIB_INCLUDE_DIR}")
 elseif(TARGET ZLIB::ZLIB)
-    set(ZLIB_FOUND TRUE) # If find_package found it and created the target.
+    set(ZLIB_FOUND TRUE)
     message(STATUS "ZLIB found and ZLIB::ZLIB target exists.")
 else()
     message(WARNING "ZLIB not found and DOWNLOAD_DEPENDENCIES is OFF or ZLIB::ZLIB target does not exist. Some dependencies might fail.")
