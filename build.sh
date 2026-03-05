@@ -169,6 +169,38 @@ cmake .. \
     -G "$CMAKE_GENERATOR" \
     "${CMAKE_OPTIONS[@]}"
 
+CMAKE_CONFIG_RC=$?
+if [ $CMAKE_CONFIG_RC -ne 0 ] && [ "$ENABLE_CUDA" = "ON" ]; then
+    echo ""
+    echo "CMake configuration failed with CUDA enabled."
+    echo "Retrying with CUDA disabled (--cuda OFF)..."
+    echo ""
+    ENABLE_CUDA="OFF"
+    # Rebuild CMAKE_OPTIONS with CUDA OFF
+    CMAKE_OPTIONS=()
+    CMAKE_OPTIONS+=("-DCMAKE_BUILD_TYPE=${BUILD_TYPE}")
+    CMAKE_OPTIONS+=("-DUSE_CUDA=OFF")
+    CMAKE_OPTIONS+=("-DBUILD_OMP=${ENABLE_OMP}")
+    CMAKE_OPTIONS+=("-DDOWNLOAD_DEPENDENCIES=${DOWNLOAD_DEPS}")
+    CMAKE_OPTIONS+=("-DUSE_SYSTEM_DEPS=${USE_SYSTEM_DEPS}")
+    CMAKE_OPTIONS+=("-DINSTALL_PYTHON_SCRIPTS=${INSTALL_PY_SCRIPTS}")
+    CMAKE_OPTIONS+=("-DINSTALL_PYTHON_DEPENDENCIES=${INSTALL_PY_DEPS}")
+    if [ -n "$INSTALL_DIR" ]; then
+        CMAKE_OPTIONS+=("-DCMAKE_INSTALL_PREFIX=${INSTALL_DIR}")
+    fi
+    if [ -n "$PYTHON_EXEC" ]; then
+        CMAKE_OPTIONS+=("-DPYTHON_EXECUTABLE=${PYTHON_EXEC}")
+    fi
+    # Re-run cmake
+    cmake .. \
+        -G "$CMAKE_GENERATOR" \
+        "${CMAKE_OPTIONS[@]}"
+    if [ $? -ne 0 ]; then
+        echo "CMake configuration failed even without CUDA."
+        exit 1
+    fi
+fi
+
 # Build
 echo "Building with $JOBS jobs..."
 cmake --build . -j "$JOBS"
