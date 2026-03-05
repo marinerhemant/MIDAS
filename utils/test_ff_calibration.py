@@ -125,10 +125,11 @@ def run_calibrant(param_file, nCPUs, work_dir):
                             text=True, bufsize=1)
     output_lines = []
     # Keywords that indicate progress worth showing live
-    progress_keys = ['Iteration', 'MeanStrain', 'StdStrain', 'microstrain',
-                     'Number of eta bins', 'Out of', 'Doublet detected',
-                     'Number of function calls', 'Lsd ', 'BC ',
-                     'Restoring best', 'Best result']
+    progress_keys = ['Iter ', 'Iteration', 'MeanStrain', 'StdStrain',
+                      'microstrain', 'Number of eta bins', 'Out of',
+                      'Doublet detected', 'Number of function calls',
+                      'Lsd ', 'BC ', 'Restoring best', 'Best result',
+                      'Post-loop']
     for line in proc.stdout:
         output_lines.append(line)
         stripped = line.strip()

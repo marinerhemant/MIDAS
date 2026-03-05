@@ -38,9 +38,6 @@ static int nPanels = 0;
 #define rad2deg 57.2957795130823
 typedef double pixelvalue;
 long long int NrCalls;
-long long int NrCallsProfiler;
-int NrPixelsGlobal = 2048;
-#define OBJ_FUNC_SCALE 1
 #define EPS 1E-12
 
 int numProcs;
@@ -52,11 +49,6 @@ extern int *mapMask;
 
 size_t mapMaskSize = 0;
 int *mapMask;
-
-inline void CalcPeakProfile(int **Indices, int *NrEachIndexBin, int idx,
-                            double *Average, double Rmi, double Rma,
-                            double EtaMi, double EtaMa, double ybc, double zbc,
-                            double px, int NrPixelsY, double *ReturnValue);
 
 inline void CalcPeakProfileParallel(int *Indices, int NrEachIndexBin, int idx,
                                     double *Average, double Rmi, double Rma,
@@ -74,6 +66,9 @@ static inline pixelvalue **allocMatrixPX(int nrows, int ncols) {
   for (i = 0; i < nrows; i++) {
     arr[i] = malloc(ncols * sizeof(*arr[i]));
     if (arr[i] == NULL) {
+      for (int j = 0; j < i; j++)
+        free(arr[j]);
+      free(arr);
       return NULL;
     }
   }
@@ -98,6 +93,9 @@ static inline int **allocMatrixInt(int nrows, int ncols) {
   for (i = 0; i < nrows; i++) {
     arr[i] = malloc(ncols * sizeof(*arr[i]));
     if (arr[i] == NULL) {
+      for (int j = 0; j < i; j++)
+        free(arr[j]);
+      free(arr);
       return NULL;
     }
   }
@@ -131,13 +129,15 @@ static inline void YZ4mREta(int NrElements, double *R, double *Eta, double *Y,
   }
 }
 
-static inline void
-Car2Pol(int n_hkls, int nEtaBins, int y, int z, double ybc, double zbc,
-        double px, double *R, double *Eta, double Rmins[n_hkls],
-        double Rmaxs[n_hkls], double EtaBinsLow[nEtaBins],
-        double EtaBinsHigh[nEtaBins], int nIndices, int *NrEachIndexbin,
-        int **Indices, double tx, double ty, double tz, double p0, double p1,
-        double p2, double p3, double RhoD, double Lsd, double p4) {
+static inline void Car2Pol(int n_hkls, int nEtaBins, int y, int z, double ybc,
+                           double zbc, double px, double *R, double *Eta,
+                           double Rmins[n_hkls], double Rmaxs[n_hkls],
+                           double EtaBinsLow[nEtaBins],
+                           double EtaBinsHigh[nEtaBins], int nIndices,
+                           int *NrEachIndexbin, int **Indices, double tx,
+                           double ty, double tz, double p0, double p1,
+                           double p2, double p3, double RhoD, double Lsd,
+                           double p4, int NrPixelsStride, int maxPerBin) {
   int i, j, k, l, counter = 0, ctr = 0;
   for (i = 0; i < nIndices; i++)
     NrEachIndexbin[i] = 0;
@@ -165,19 +165,33 @@ Car2Pol(int n_hkls, int nEtaBins, int y, int z, double ybc, double zbc,
       double Rt = Rt_px * px; // convert from pixels to microns
       R[counter] = Rt;
       Eta[counter] = EtaS;
-      for (k = 0; k < n_hkls; k++) {
-        if (Rt >= (Rmins[k] - px) && Rt <= (Rmaxs[k] + px)) {
-          for (l = 0; l < nEtaBins; l++) {
-            if (EtaS >= (EtaBinsLow[l] - px / R[counter]) &&
-                EtaS <= (EtaBinsHigh[l] + px / R[counter])) {
-              Indices[(nEtaBins * k) + l][NrEachIndexbin[(nEtaBins * k) + l]] =
-                  (i * NrPixelsGlobal) + j;
-              NrEachIndexbin[(nEtaBins * k) + l] += 1;
-              ctr++;
-              break;
-            }
-          }
+      // Binary search for matching ring (Rmins is sorted ascending)
+      int lo = 0, hi = n_hkls - 1;
+      k = -1;
+      while (lo <= hi) {
+        int mid = (lo + hi) / 2;
+        if (Rt < (Rmins[mid] - px)) {
+          hi = mid - 1;
+        } else if (Rt > (Rmaxs[mid] + px)) {
+          lo = mid + 1;
+        } else {
+          k = mid; // found a ring
           break;
+        }
+      }
+      if (k >= 0) {
+        for (l = 0; l < nEtaBins; l++) {
+          if (EtaS >= (EtaBinsLow[l] - px / R[counter]) &&
+              EtaS <= (EtaBinsHigh[l] + px / R[counter])) {
+            int binIdx = (nEtaBins * k) + l;
+            if (NrEachIndexbin[binIdx] < maxPerBin) {
+              Indices[binIdx][NrEachIndexbin[binIdx]] =
+                  (i * NrPixelsStride) + j;
+              NrEachIndexbin[binIdx] += 1;
+              ctr++;
+            }
+            break;
+          }
         }
       }
       counter++;
@@ -189,14 +203,9 @@ static inline void CalcWeightedMean(int nIndices, int *NrEachIndexBin,
                                     int **Indices, double *Average, double *R,
                                     double *Eta, double *RMean,
                                     double *EtaMean) {
-  int i, j, k;
-  if (nIndices > 2048) {
-    printf("nIndices > 2048\\n");
-    return;
-  }
-  double TotIntensities[2048];
+  int i, j;
+  double *TotIntensities = calloc(nIndices, sizeof(double));
   for (i = 0; i < nIndices; i++) {
-    TotIntensities[i] = 0;
     EtaMean[i] = 0;
     RMean[i] = 0;
   }
@@ -213,6 +222,7 @@ static inline void CalcWeightedMean(int nIndices, int *NrEachIndexBin,
           (Average[Indices[i][j]] * Eta[Indices[i][j]]) / TotIntensities[i];
     }
   }
+  free(TotIntensities);
 }
 
 struct my_profile_func_data {
@@ -270,7 +280,7 @@ static double problem_function_profile(unsigned n, const double *x,
       grad[4] += common;
     }
   }
-  __atomic_add_fetch(&NrCallsProfiler, 1, __ATOMIC_RELAXED);
+
 #ifdef PRINTOPT
   printf("Peak profiler intensity difference: %f\n", TotalDifferenceIntensity);
 #endif
@@ -424,7 +434,7 @@ static double problem_function_doublet_profile(unsigned n, const double *x,
       grad[7] += common;
     }
   }
-  __atomic_add_fetch(&NrCallsProfiler, 1, __ATOMIC_RELAXED);
+
   return TotalDiff;
 }
 
@@ -698,19 +708,13 @@ void CalcFittedMean(int nIndices, int *NrEachIndexBin, int **Indices,
           FitSNR[partnerIdx] = snr2;
         } else {
           // Singlet: existing path
-          double *Rm = malloc(sizeof(*Rm));
-          double *Etam = malloc(sizeof(*Etam));
-          int *NrPts = malloc(sizeof(*NrPts));
-          NrPts[0] = NrPtsLocal;
-          CalcWeightedMean(1, NrPts, Idxs, PeakShape, Rs, Etas, Rm, Etam);
-          double Rmean = Rm[0];
+          double Rm = 0, Etam = 0;
+          int NrPts = NrPtsLocal;
+          CalcWeightedMean(1, &NrPts, Idxs, PeakShape, Rs, Etas, &Rm, &Etam);
           double snr = 0;
-          FitPeakShape(NrPtsLocal, Rs, PeakShape, &Rfit, &snr, Rstep, Rmean);
+          FitPeakShape(NrPtsLocal, Rs, PeakShape, &Rfit, &snr, Rstep, Rm);
           RMean[idxThis] = Rfit;
           FitSNR[idxThis] = snr;
-          free(NrPts);
-          free(Rm);
-          free(Etam);
         }
       } else {
         RMean[idxThis] = 0;
@@ -862,11 +866,10 @@ static double problem_function(unsigned n, const double *x, double *grad,
       w *= f_data->snrWeights[i];
     TotalDiff += (f_data->useL2 ? Diff * Diff : fabs(Diff)) * w;
   }
-  TotalDiff *= OBJ_FUNC_SCALE;
+
   NrCalls++;
-  // printf("Mean strain: %0.40f\n", TotalDiff / (OBJ_FUNC_SCALE * nIndices));
 #ifdef PRINTOPT
-  printf("Mean strain: %0.40f\n", TotalDiff / (OBJ_FUNC_SCALE * nIndices));
+  printf("Mean strain: %0.40f\n", TotalDiff / nIndices);
 #endif
   return TotalDiff;
 }
@@ -1052,9 +1055,14 @@ void FitTiltBCLsd(int nIndices, double *YMean, double *ZMean,
   config.xtol_rel = 1e-5;
 
   double minf;
-  run_nlopt_optimization(NLOPT_LN_NELDERMEAD, &config);
+  // Use SBPLX (subplex) for high-dimensional problems; it partitions the
+  // parameter space into low-dimensional subspaces automatically.
+  if (n > 20)
+    run_nlopt_optimization(NLOPT_LN_SBPLX, &config);
+  else
+    run_nlopt_optimization(NLOPT_LN_NELDERMEAD, &config);
   minf = config.min_function_val;
-  *MeanDiff = minf / (OBJ_FUNC_SCALE * nIndices);
+  *MeanDiff = minf / nIndices;
 
   // 1. Update output parameters with optimized values
   *LsdFit = x[0];
@@ -1386,11 +1394,11 @@ static inline void DoImageTransformations(int NrTransOpt, int TransOpt[10],
                                           pixelvalue *Image, int NrPixels) {
   int i, j, k, l, m;
   pixelvalue **ImageTemp1, **ImageTemp2;
-  ImageTemp1 = allocMatrixPX(NrPixels, NrPixels);
-  ImageTemp2 = allocMatrixPX(NrPixels, NrPixels);
   if (NrTransOpt == 0) {
     return;
   }
+  ImageTemp1 = allocMatrixPX(NrPixels, NrPixels);
+  ImageTemp2 = allocMatrixPX(NrPixels, NrPixels);
   for (k = 0; k < NrPixels; k++) {
     for (l = 0; l < NrPixels; l++) {
       ImageTemp1[k][l] = Image[(NrPixels * k) + l];
@@ -1429,17 +1437,16 @@ static inline void DoImageTransformations(int NrTransOpt, int TransOpt[10],
 
 static inline void MakeSquare(int NrPixels, int NrPixelsY, int NrPixelsZ,
                               pixelvalue *InImage, pixelvalue *OutImage) {
-  int i, j, k;
+  int i;
+  memset(OutImage, 0, (size_t)NrPixels * NrPixels * sizeof(*OutImage));
   if (NrPixelsY == NrPixelsZ) {
-    memcpy(OutImage, InImage, NrPixels * NrPixels * sizeof(*InImage));
+    memcpy(OutImage, InImage, (size_t)NrPixels * NrPixels * sizeof(*InImage));
+  } else if (NrPixelsY > NrPixelsZ) {
+    memcpy(OutImage, InImage, (size_t)NrPixelsY * NrPixelsZ * sizeof(*InImage));
   } else {
-    if (NrPixelsY > NrPixelsZ) { // Filling along the slow direction // easy
-      memcpy(OutImage, InImage, NrPixelsY * NrPixelsZ * sizeof(*InImage));
-    } else {
-      for (i = 0; i < NrPixelsZ; i++) {
-        memcpy(OutImage + i * NrPixelsZ, InImage + i * NrPixelsY,
-               NrPixelsY * sizeof(*InImage));
-      }
+    for (i = 0; i < NrPixelsZ; i++) {
+      memcpy(OutImage + i * NrPixelsZ, InImage + i * NrPixelsY,
+             NrPixelsY * sizeof(*InImage));
     }
   }
 }
@@ -2000,10 +2007,8 @@ int main(int argc, char *argv[]) {
     tolP4 = tolP;
   if (NrPixelsY > NrPixelsZ) {
     NrPixels = NrPixelsY;
-    NrPixelsGlobal = NrPixelsY;
   } else {
     NrPixels = NrPixelsZ;
-    NrPixelsGlobal = NrPixelsZ;
   }
   int i, j, k;
 
@@ -2581,13 +2586,17 @@ int main(int argc, char *argv[]) {
         double *Eta = malloc(NrPixels * NrPixels * sizeof(*Eta));
         nIndices = nEtaBins * n_hkls;
         int *NrEachIndexBin = malloc(nIndices * sizeof(*NrEachIndexBin));
-        int **Indices = allocMatrixInt(nIndices, 20000);
+        // Compute Indices capacity: total pixels / bins, with 4x safety margin
+        int maxPerBin = (NrPixels * NrPixels / nIndices) * 4;
+        if (maxPerBin < 1000)
+          maxPerBin = 1000;
+        int **Indices = allocMatrixInt(nIndices, maxPerBin);
 
         // Bin pixels into rings using current parameters
         Car2Pol(n_hkls, nEtaBins, NrPixels, NrPixels, ybc, zbc, px, R, Eta,
                 Rmins, Rmaxs, EtaBinsLow, EtaBinsHigh, nIndices, NrEachIndexBin,
                 Indices, tx, tyin, tzin, p0in, p1in, p2in, p3in, MaxRingRad,
-                Lsd, p4in);
+                Lsd, p4in, NrPixels, maxPerBin);
 
         double *IdealR = malloc(nIndices * sizeof(*IdealR));
         double *IdealRmins = malloc(nIndices * sizeof(*IdealRmins));
@@ -2607,7 +2616,7 @@ int main(int argc, char *argv[]) {
         }
 
         // Find peak positions
-        NrCallsProfiler = 0;
+
         if (FitSNR) {
           free(FitSNR);
           FitSNR = NULL;
@@ -2662,8 +2671,6 @@ int main(int argc, char *argv[]) {
         diftotal = end - start;
         if (iter == 0) {
           if (FitWeightMean != 1) {
-            printf("Number of calls to profiler function: %lld\n",
-                   NrCallsProfiler);
             printf("Time elapsed in fitting peak profiles:\t%f s.\n", diftotal);
           } else
             printf("Time elapsed in finding peak positions:\t%f s.\n",
@@ -2851,12 +2858,15 @@ int main(int argc, char *argv[]) {
         double *R_rf = malloc(NrPixels * NrPixels * sizeof(*R_rf));
         double *Eta_rf = malloc(NrPixels * NrPixels * sizeof(*Eta_rf));
         int *NrBin_rf = malloc(nIdx_rf * sizeof(*NrBin_rf));
-        int **Idx_rf = allocMatrixInt(nIdx_rf, 20000);
+        int maxPerBin_rf = (NrPixels * NrPixels / nIdx_rf) * 4;
+        if (maxPerBin_rf < 1000)
+          maxPerBin_rf = 1000;
+        int **Idx_rf = allocMatrixInt(nIdx_rf, maxPerBin_rf);
 
         Car2Pol(n_hkls, nEtaBins, NrPixels, NrPixels, ybcFit, zbcFit, px, R_rf,
                 Eta_rf, Rmins_rf, Rmaxs_rf, EtaBinsLow, EtaBinsHigh, nIdx_rf,
                 NrBin_rf, Idx_rf, tx, ty, tz, p0, p1, p2, p3, MaxRingRad,
-                LsdFit, p4);
+                LsdFit, p4, NrPixels, maxPerBin_rf);
 
         double *IRmins_rf = malloc(nIdx_rf * sizeof(*IRmins_rf));
         double *IRmaxs_rf = malloc(nIdx_rf * sizeof(*IRmaxs_rf));
@@ -3001,12 +3011,16 @@ int main(int argc, char *argv[]) {
         if (bestPanels && nPanels > 0)
           memcpy(panels, bestPanels, nPanels * sizeof(Panel));
 
-        // Seed from iteration for reproducibility
-        srand(42 + iter);
+        // Local LCG RNG seeded from iteration for reproducibility
+        // (avoids corrupting global rand() state in parallel regions)
+        unsigned long long lcg_state = 42ULL + iter;
+#define LCG_NEXT(s)                                                            \
+  ((s) = (s) * 6364136223846793005ULL + 1442695040888963407ULL)
+#define LCG_DOUBLE(s) ((double)(LCG_NEXT(s) >> 33) / (double)(1ULL << 31))
         // Random perturbation in [-1, +1] * fraction * tolerance
         double pertFrac = 0.5;
 #define PERT(val, tol)                                                         \
-  ((val) + pertFrac * (tol) * (2.0 * rand() / RAND_MAX - 1.0))
+  ((val) + pertFrac * (tol) * (2.0 * LCG_DOUBLE(lcg_state) - 1.0))
         Lsd = PERT(Lsd, tolLsd);
         ybc = PERT(ybc, tolBC);
         zbc = PERT(zbc, tolBC);
@@ -3018,6 +3032,8 @@ int main(int argc, char *argv[]) {
         p3in = PERT(p3in, tolP3);
         p4in = PERT(p4in, tolP4);
 #undef PERT
+#undef LCG_NEXT
+#undef LCG_DOUBLE
         printf("  [Perturbation applied after %d identical iterations, "
                "restarting from best iter %d]\n",
                stagnantCount, bestIter + 1);
@@ -3150,11 +3166,14 @@ int main(int argc, char *argv[]) {
       double *R_pl = malloc(NrPixels * NrPixels * sizeof(*R_pl));
       double *Eta_pl = malloc(NrPixels * NrPixels * sizeof(*Eta_pl));
       int *NrBin_pl = malloc(nIdx_pl * sizeof(*NrBin_pl));
-      int **Idx_pl = allocMatrixInt(nIdx_pl, 20000);
+      int maxPerBin_pl = (NrPixels * NrPixels / nIdx_pl) * 4;
+      if (maxPerBin_pl < 1000)
+        maxPerBin_pl = 1000;
+      int **Idx_pl = allocMatrixInt(nIdx_pl, maxPerBin_pl);
       Car2Pol(n_hkls, nEtaBins, NrPixels, NrPixels, ybcFit, zbcFit, px, R_pl,
               Eta_pl, Rmins_pl, Rmaxs_pl, EtaBinsLow, EtaBinsHigh, nIdx_pl,
               NrBin_pl, Idx_pl, tx, ty, tz, p0, p1, p2, p3, MaxRingRad, LsdFit,
-              p4in);
+              p4in, NrPixels, maxPerBin_pl);
       double *IRmins_pl = malloc(nIdx_pl * sizeof(*IRmins_pl));
       double *IRmaxs_pl = malloc(nIdx_pl * sizeof(*IRmaxs_pl));
       IdealTtheta = malloc(nIdx_pl * sizeof(*IdealTtheta));
