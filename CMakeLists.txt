@@ -233,14 +233,16 @@ if(NOT ZLIB_FOUND AND DOWNLOAD_DEPENDENCIES AND NOT TARGET ZLIB::ZLIB)
   endif()
 
   # Populate the variables that find_package(ZLIB) would normally set.
-  # Many dependencies (Blosc2, HDF5, libzip) call find_package(ZLIB) which
-  # checks ZLIB_LIBRARY and ZLIB_INCLUDE_DIR — not ZLIB::ZLIB target.
+  # CRITICAL: Set ZLIB_LIBRARY to the TARGET NAME (not a file path).
+  # Downstream deps like blosc1 use ${ZLIB_LIBRARY} in target_link_libraries().
+  # If this is a file path, gmake creates a file-level dependency with no
+  # corresponding make rule, causing "No rule to make target libz.so" errors.
+  # Using the target name lets CMake resolve it as a proper target dependency.
   if(TARGET zlib)
-    # Point to the shared library in the build tree
-    set(ZLIB_LIBRARY "${zlib_fetch_BINARY_DIR}/libz${CMAKE_SHARED_LIBRARY_SUFFIX}" CACHE FILEPATH "Path to zlib library" FORCE)
+    set(ZLIB_LIBRARY zlib CACHE STRING "Zlib library target" FORCE)
     set(ZLIB_LIBRARIES zlib)
   elseif(TARGET zlibstatic)
-    set(ZLIB_LIBRARY "${zlib_fetch_BINARY_DIR}/libz.a" CACHE FILEPATH "Path to zlib library" FORCE)
+    set(ZLIB_LIBRARY zlibstatic CACHE STRING "Zlib library target" FORCE)
     set(ZLIB_LIBRARIES zlibstatic)
   endif()
   # zlib.h is in the source dir, zconf.h is generated in the binary dir
