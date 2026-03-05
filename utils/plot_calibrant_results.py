@@ -1,10 +1,10 @@
 #!/usr/bin/env python3
 """
-Interactive CalibrantPanelShiftsOMP results viewer.
+Interactive CalibrantPanelShiftsOMP results viewer (Qt edition).
 
 Auto-detects *corr.csv files in the current directory.
 Provides dropdown selectors for X, Y, and Color columns,
-plus a checkbox to include/exclude outlier points.
+user-selectable color range, log scale, and colormap picker.
 
 Usage:  python plot_calibrant_results.py [file.corr.csv]
 """
@@ -12,13 +12,20 @@ Usage:  python plot_calibrant_results.py [file.corr.csv]
 import glob
 import sys
 
+import matplotlib
+matplotlib.use('QtAgg')
+
 import matplotlib.pyplot as plt
 import numpy as np
-from matplotlib.widgets import Button, CheckButtons, RadioButtons
+from matplotlib.backends.backend_qtagg import FigureCanvasQTAgg, NavigationToolbar2QT
+from matplotlib.colors import LogNorm, Normalize
+from matplotlib.figure import Figure
 
-plt.rcParams.update({'font.size': 12, 'axes.labelsize': 13,
-                     'axes.titlesize': 13, 'xtick.labelsize': 11,
-                     'ytick.labelsize': 11})
+from PyQt6.QtCore import Qt
+from PyQt6.QtWidgets import (
+    QApplication, QCheckBox, QComboBox, QHBoxLayout, QLabel,
+    QLineEdit, QMainWindow, QPushButton, QVBoxLayout, QWidget,
+)
 
 # ── CSV column map (from CalibrantPanelShiftsOMP header) ────────────────
 COLUMNS = [
@@ -27,9 +34,15 @@ COLUMNS = [
     'RadGlobal', 'IdealR', 'Fit2Theta', 'IdealA', 'FitA',
 ]
 COL = {name: idx for idx, name in enumerate(COLUMNS)}
-
-# Friendly display names for the selector
 PLOTTABLE = [c for c in COLUMNS if c != 'Outlier']
+
+COLORMAPS = [
+    'viridis', 'plasma', 'inferno', 'magma', 'cividis',
+    'tab10', 'tab20', 'Set1', 'Set2', 'Set3',
+    'coolwarm', 'RdYlBu', 'Spectral', 'bwr',
+    'jet', 'turbo', 'rainbow',
+    'Greys', 'Blues', 'Reds', 'YlOrRd',
+]
 
 
 # ── File discovery ──────────────────────────────────────────────────────
@@ -38,7 +51,6 @@ def find_corr_files():
 
 
 def choose_file(files):
-    """Prompt user to pick a file if multiple are found."""
     if not files:
         print('No *corr.csv files found in the current directory.', file=sys.stderr)
         sys.exit(1)
@@ -57,136 +69,240 @@ def choose_file(files):
         print(f'Please enter 0–{len(files)-1}')
 
 
-# ── Interactive plotter ─────────────────────────────────────────────────
-class CalibrantPlotter:
+# ── Qt Main Window ──────────────────────────────────────────────────────
+class CalibrantViewer(QMainWindow):
     def __init__(self, filename):
+        super().__init__()
         self.filename = filename
         self.raw = np.genfromtxt(filename, skip_header=1)
-        self.exclude_bad = True
+        self.setWindowTitle(f'Calibrant Viewer — {filename}')
+        self.resize(1200, 750)
+
+        # State
         self.x_col = 'EtaCalc'
         self.y_col = 'FitA'
         self.c_col = 'RingNr'
-        self.cbar = None
-        self._build_ui()
+        self.exclude_outliers = True
+        self.log_color = False
+        self.cmap = 'tab10'
+        self.c_min = None  # None = auto
+        self.c_max = None
+
+        # Build UI
+        central = QWidget()
+        self.setCentralWidget(central)
+        main_layout = QVBoxLayout(central)
+
+        # ── Control bar ─────────────────────────────────────────────
+        controls = QHBoxLayout()
+
+        # X axis
+        controls.addWidget(QLabel('X:'))
+        self.combo_x = QComboBox()
+        self.combo_x.addItems(PLOTTABLE)
+        self.combo_x.setCurrentText(self.x_col)
+        self.combo_x.currentTextChanged.connect(self._on_x)
+        controls.addWidget(self.combo_x)
+
+        # Y axis
+        controls.addWidget(QLabel('Y:'))
+        self.combo_y = QComboBox()
+        self.combo_y.addItems(PLOTTABLE)
+        self.combo_y.setCurrentText(self.y_col)
+        self.combo_y.currentTextChanged.connect(self._on_y)
+        controls.addWidget(self.combo_y)
+
+        # Separator
+        controls.addWidget(self._vsep())
+
+        # Color column
+        controls.addWidget(QLabel('Color:'))
+        self.combo_c = QComboBox()
+        self.combo_c.addItems(PLOTTABLE)
+        self.combo_c.setCurrentText(self.c_col)
+        self.combo_c.currentTextChanged.connect(self._on_color)
+        controls.addWidget(self.combo_c)
+
+        # Colormap
+        controls.addWidget(QLabel('Cmap:'))
+        self.combo_cmap = QComboBox()
+        self.combo_cmap.addItems(COLORMAPS)
+        self.combo_cmap.setCurrentText(self.cmap)
+        self.combo_cmap.currentTextChanged.connect(self._on_cmap)
+        controls.addWidget(self.combo_cmap)
+
+        # Color range
+        controls.addWidget(QLabel('Min:'))
+        self.edit_cmin = QLineEdit()
+        self.edit_cmin.setPlaceholderText('auto')
+        self.edit_cmin.setFixedWidth(70)
+        self.edit_cmin.editingFinished.connect(self._on_crange)
+        controls.addWidget(self.edit_cmin)
+
+        controls.addWidget(QLabel('Max:'))
+        self.edit_cmax = QLineEdit()
+        self.edit_cmax.setPlaceholderText('auto')
+        self.edit_cmax.setFixedWidth(70)
+        self.edit_cmax.editingFinished.connect(self._on_crange)
+        controls.addWidget(self.edit_cmax)
+
+        # Log scale
+        self.chk_log = QCheckBox('Log')
+        self.chk_log.toggled.connect(self._on_log)
+        controls.addWidget(self.chk_log)
+
+        # Separator
+        controls.addWidget(self._vsep())
+
+        # Outlier toggle
+        self.chk_outlier = QCheckBox('Show outliers')
+        self.chk_outlier.setChecked(not self.exclude_outliers)
+        self.chk_outlier.toggled.connect(self._on_outlier)
+        controls.addWidget(self.chk_outlier)
+
+        # Auto-range button
+        self.btn_autorng = QPushButton('Auto range')
+        self.btn_autorng.clicked.connect(self._on_autorange)
+        controls.addWidget(self.btn_autorng)
+
+        controls.addStretch()
+        main_layout.addLayout(controls)
+
+        # ── Matplotlib canvas ───────────────────────────────────────
+        self.fig = Figure(figsize=(10, 6), dpi=100)
+        self.ax = self.fig.add_subplot(111)
+        self.canvas = FigureCanvasQTAgg(self.fig)
+        toolbar = NavigationToolbar2QT(self.canvas, self)
+        main_layout.addWidget(toolbar)
+        main_layout.addWidget(self.canvas)
+
         self._update()
 
+    @staticmethod
+    def _vsep():
+        sep = QWidget()
+        sep.setFixedWidth(2)
+        sep.setStyleSheet('background-color: #999;')
+        return sep
+
+    # ── Data property ───────────────────────────────────────────────
     @property
     def data(self):
         d = self.raw
-        if self.exclude_bad:
+        if self.exclude_outliers:
             d = d[d[:, COL['Outlier']] == 0]
         return d
 
-    # ── UI setup ────────────────────────────────────────────────────
-    def _build_ui(self):
-        self.fig = plt.figure(figsize=(13, 8))
-        self.fig.canvas.manager.set_window_title(f'Calibrant Viewer — {self.filename}')
-
-        # Main axes and colorbar axes with fixed positions
-        self.ax = self.fig.add_axes([0.22, 0.10, 0.65, 0.82])
-        self.cax = self.fig.add_axes([0.89, 0.10, 0.02, 0.82])
-
-        # ── Radio buttons for X column ──
-        ax_x = self.fig.add_axes([0.01, 0.55, 0.16, 0.40])
-        ax_x.set_title('X axis', fontsize=9, fontweight='bold')
-        self.radio_x = RadioButtons(ax_x, PLOTTABLE,
-                                    active=PLOTTABLE.index(self.x_col))
-        self.radio_x.on_clicked(self._on_x)
-        for lbl in self.radio_x.labels:
-            lbl.set_fontsize(9)
-
-        # ── Radio buttons for Y column ──
-        ax_y = self.fig.add_axes([0.01, 0.10, 0.16, 0.40])
-        ax_y.set_title('Y axis', fontsize=9, fontweight='bold')
-        self.radio_y = RadioButtons(ax_y, PLOTTABLE,
-                                    active=PLOTTABLE.index(self.y_col))
-        self.radio_y.on_clicked(self._on_y)
-        for lbl in self.radio_y.labels:
-            lbl.set_fontsize(9)
-
-        # ── Color selector (button cycling) ──
-        ax_cbtn = self.fig.add_axes([0.01, 0.02, 0.12, 0.04])
-        self.color_btn = Button(ax_cbtn, f'Color: {self.c_col}')
-        self.color_btn.label.set_fontsize(9)
-        self.color_btn.on_clicked(self._cycle_color)
-
-        # ── Outlier checkbox ──
-        ax_chk = self.fig.add_axes([0.14, 0.02, 0.07, 0.04])
-        self.chk_bad = CheckButtons(ax_chk, ['Bad pts'], [not self.exclude_bad])
-        self.chk_bad.on_clicked(self._toggle_bad)
-        for lbl in self.chk_bad.labels:
-            lbl.set_fontsize(9)
-
     # ── Callbacks ───────────────────────────────────────────────────
-    def _on_x(self, label):
-        self.x_col = label
+    def _on_x(self, text):
+        self.x_col = text
         self._update()
 
-    def _on_y(self, label):
-        self.y_col = label
+    def _on_y(self, text):
+        self.y_col = text
         self._update()
 
-    def _cycle_color(self, _event):
-        idx = PLOTTABLE.index(self.c_col)
-        self.c_col = PLOTTABLE[(idx + 1) % len(PLOTTABLE)]
-        self.color_btn.label.set_text(f'Color: {self.c_col}')
+    def _on_color(self, text):
+        self.c_col = text
+        # Auto-select sensible colormap
+        if text == 'RingNr':
+            self.combo_cmap.setCurrentText('tab10')
+        elif text == 'Strain':
+            self.combo_cmap.setCurrentText('coolwarm')
+        else:
+            if self.cmap in ('tab10', 'tab20', 'Set1', 'Set2', 'Set3'):
+                self.combo_cmap.setCurrentText('viridis')
+        self._clear_crange()
         self._update()
 
-    def _toggle_bad(self, _label):
-        self.exclude_bad = not self.exclude_bad
+    def _on_cmap(self, text):
+        self.cmap = text
         self._update()
+
+    def _on_crange(self):
+        try:
+            self.c_min = float(self.edit_cmin.text()) if self.edit_cmin.text().strip() else None
+        except ValueError:
+            self.c_min = None
+        try:
+            self.c_max = float(self.edit_cmax.text()) if self.edit_cmax.text().strip() else None
+        except ValueError:
+            self.c_max = None
+        self._update()
+
+    def _on_log(self, checked):
+        self.log_color = checked
+        self._update()
+
+    def _on_outlier(self, checked):
+        self.exclude_outliers = not checked
+        self._update()
+
+    def _on_autorange(self):
+        self._clear_crange()
+        self._update()
+
+    def _clear_crange(self):
+        self.c_min = None
+        self.c_max = None
+        self.edit_cmin.clear()
+        self.edit_cmax.clear()
 
     # ── Redraw ──────────────────────────────────────────────────────
     def _update(self):
         d = self.data
-        ax = self.ax
-        ax.clear()
+        self.ax.clear()
 
         if len(d) == 0:
-            ax.text(0.5, 0.5, 'No data after filtering',
-                    transform=ax.transAxes, ha='center', va='center')
-            self.fig.canvas.draw_idle()
+            self.ax.text(0.5, 0.5, 'No data after filtering',
+                         transform=self.ax.transAxes, ha='center', va='center')
+            self.canvas.draw_idle()
             return
 
         xi, yi, ci = COL[self.x_col], COL[self.y_col], COL[self.c_col]
-
-        # Choose colormap: categorical for RingNr, diverging for Strain
-        if self.c_col == 'RingNr':
-            cmap = 'tab10'
-        elif self.c_col == 'Strain':
-            cmap = 'coolwarm'
-        else:
-            cmap = 'viridis'
-
-        c_data = d[:, ci]
+        c_data = d[:, ci].copy()
         c_label = self.c_col
         if self.c_col == 'Strain':
             c_data = c_data * 1e6
             c_label = 'Strain (µε)'
 
-        sc = ax.scatter(d[:, xi], d[:, yi], c=c_data,
-                        cmap=cmap, s=30, alpha=0.7, edgecolors='none')
+        # Color normalization
+        vmin = self.c_min if self.c_min is not None else np.nanmin(c_data)
+        vmax = self.c_max if self.c_max is not None else np.nanmax(c_data)
+        if self.log_color:
+            # Clamp to positive for log scale
+            safe_min = max(vmin, 1e-10)
+            safe_max = max(vmax, safe_min * 1.1)
+            norm = LogNorm(vmin=safe_min, vmax=safe_max)
+        else:
+            norm = Normalize(vmin=vmin, vmax=vmax)
 
-        # Update colorbar in its fixed axes
-        self.cax.clear()
-        self.fig.colorbar(sc, cax=self.cax, label=c_label)
+        sc = self.ax.scatter(d[:, xi], d[:, yi], c=c_data,
+                             cmap=self.cmap, norm=norm,
+                             s=30, alpha=0.7, edgecolors='none')
+
+        # Colorbar (remove old one if present)
+        if hasattr(self, '_cbar') and self._cbar is not None:
+            try:
+                self._cbar.remove()
+            except Exception:
+                pass
+        self._cbar = self.fig.colorbar(sc, ax=self.ax, label=c_label, pad=0.01)
 
         # Reference line for lattice parameter plot
         if self.y_col == 'FitA':
             ideal_a = d[0, COL['IdealA']]
-            ax.axhline(ideal_a, color='red', ls='-', alpha=0.5,
-                       label=f'Ideal a = {ideal_a:.6f} Å')
-            ax.legend(fontsize=8)
+            self.ax.axhline(ideal_a, color='red', ls='-', alpha=0.5,
+                            label=f'Ideal a = {ideal_a:.6f} Å')
+            self.ax.legend(fontsize=8)
 
         n_total = len(self.raw)
         n_shown = len(d)
-        ax.set_xlabel(self.x_col)
-        ax.set_ylabel(self.y_col)
-        ax.set_title(f'{self.filename}  ({n_shown}/{n_total} pts)', fontsize=10)
-        self.fig.canvas.draw_idle()
-
-    def show(self):
-        plt.show()
+        self.ax.set_xlabel(self.x_col)
+        self.ax.set_ylabel(self.y_col)
+        self.ax.set_title(f'{self.filename}  ({n_shown}/{n_total} pts)', fontsize=10)
+        self.fig.tight_layout()
+        self.canvas.draw_idle()
 
 
 # ── Entry point ─────────────────────────────────────────────────────────
@@ -197,7 +313,10 @@ def main():
         filename = choose_file(find_corr_files())
 
     print(f'Loading {filename} …')
-    CalibrantPlotter(filename).show()
+    app = QApplication.instance() or QApplication(sys.argv)
+    viewer = CalibrantViewer(filename)
+    viewer.show()
+    sys.exit(app.exec())
 
 
 if __name__ == '__main__':
