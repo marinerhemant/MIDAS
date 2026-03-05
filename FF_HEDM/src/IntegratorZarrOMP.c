@@ -1519,11 +1519,11 @@ integration_start:
           }
         }
       }
-      if (neg1_total + neg2_total > 0)
-        printf("  Pixel diagnostic (mapped only): "
-               "val=-1: %ld in map (%ld used); "
-               "val=-2: %ld in map (%ld used)\n",
-               neg1_total, neg1_used, neg2_total, neg2_used);
+      // if (neg1_total + neg2_total > 0)
+      printf("  Pixel diagnostic (mapped only): "
+             "val=-1: %ld in map (%ld used); "
+             "val=-2: %ld in map (%ld used)\n",
+             neg1_total, neg1_used, neg2_total, neg2_used);
     }
     t_0 = omp_get_wtime();
 #pragma omp parallel for private(j, k, l, Pos, nPixels, dataPos, Intensity,    \
