@@ -29,7 +29,13 @@
         set(ZLIB_LIBRARY ${ZLIB_LIBRARIES})
     endif()
 
-    add_subdirectory(${hdf5_SOURCE_DIR} ${hdf5_BINARY_DIR})
+    # Skip HDF5's install/export rules — we only need it as a build dep.
+    # Without this, install(EXPORT "hdf5-targets") fails because it
+    # references the fetched "zlib" target which isn't in any export set.
+    set(HDF5_EXTERNALLY_CONFIGURED ON CACHE BOOL "" FORCE)
+    set(HDF5_EXPORTED_TARGETS "" CACHE STRING "" FORCE)
+
+    add_subdirectory(${hdf5_SOURCE_DIR} ${hdf5_BINARY_DIR} EXCLUDE_FROM_ALL)
 
     # Export HDF5 as targets
     add_library(HDF5::HDF5 INTERFACE IMPORTED)

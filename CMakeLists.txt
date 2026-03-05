@@ -215,7 +215,7 @@ if(NOT ZLIB_FOUND AND DOWNLOAD_DEPENDENCIES AND NOT TARGET ZLIB::ZLIB)
   FetchContent_GetProperties(zlib_fetch)
   if(NOT zlib_fetch_POPULATED)
     FetchContent_Populate(zlib_fetch)
-    add_subdirectory(${zlib_fetch_SOURCE_DIR} ${zlib_fetch_BINARY_DIR})
+    add_subdirectory(${zlib_fetch_SOURCE_DIR} ${zlib_fetch_BINARY_DIR} EXCLUDE_FROM_ALL)
   endif()
 
   # zlib's CMakeLists.txt creates targets "zlib" (shared) and "zlibstatic"

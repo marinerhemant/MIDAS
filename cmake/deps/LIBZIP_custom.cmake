@@ -14,7 +14,9 @@
     set(BUILD_EXAMPLES OFF CACHE BOOL "Build examples" FORCE)
     set(BUILD_DOC OFF CACHE BOOL "Build documentation" FORCE)
     
-    add_subdirectory(${libzip_SOURCE_DIR} ${libzip_BINARY_DIR})
+    set(LIBZIP_DO_INSTALL OFF CACHE BOOL "" FORCE)
+
+    add_subdirectory(${libzip_SOURCE_DIR} ${libzip_BINARY_DIR} EXCLUDE_FROM_ALL)
     
     # Export LIBZIP as a target
     add_library(LIBZIP::LIBZIP INTERFACE IMPORTED)
