@@ -227,7 +227,7 @@ if [ $BUILD_SUCCESS -eq 0 ]; then
                 if [ "$base" = "IntegratorFitPeaksGPUStream" ]; then
                     echo "  Keeping manually compiled binary: $bin_dir/$base"
                 else
-                    rm -f "$f"
+                    rm -rf "$f"
                     echo "  Removed orphaned binary: $bin_dir/$base"
                 fi
             fi
