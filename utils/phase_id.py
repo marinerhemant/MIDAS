@@ -1988,12 +1988,17 @@ def main():
             if args.plot and lineout_files:
                 try:
                     import matplotlib.pyplot as plt
+                    import matplotlib.gridspec as gridspec
+                    import numpy as np_plot
                     n_plots = len(lineout_files)
-                    fig, axes = plt.subplots(n_plots, 1,
-                                             figsize=(10, 3.5 * n_plots),
-                                             squeeze=False)
+                    fig = plt.figure(figsize=(12, 4.5 * n_plots))
+                    gs = gridspec.GridSpec(n_plots * 2, 1,
+                                          height_ratios=[3, 1] * n_plots,
+                                          hspace=0.08)
                     for ax_idx, (fname, lpath) in enumerate(lineout_files):
-                        ax = axes[ax_idx, 0]
+                        ax_main = fig.add_subplot(gs[ax_idx * 2])
+                        ax_resid = fig.add_subplot(gs[ax_idx * 2 + 1],
+                                                   sharex=ax_main)
                         tth, meas, calc = [], [], []
                         with open(lpath) as lf:
                             next(lf)  # skip header
@@ -2006,18 +2011,29 @@ def main():
                                         calc.append(float(parts[2]))
                                     except ValueError:
                                         calc.append(float('nan'))
-                        # Measured: scatter all points
-                        ax.scatter(tth, meas, s=2, alpha=0.5,
-                                   label='Measured', color='steelblue')
-                        # Calculated: plot with NaN gaps so each ROI
-                        # is a separate line segment
-                        ax.plot(tth, calc, linewidth=1.2,
-                                label='Calculated', color='crimson')
-                        ax.set_title(fname, fontsize=10)
-                        ax.set_xlabel('2θ (°)')
-                        ax.set_ylabel('Intensity')
-                        ax.set_yscale('log')
-                        ax.legend(fontsize=8)
+                        tth_a = np_plot.array(tth)
+                        meas_a = np_plot.array(meas)
+                        calc_a = np_plot.array(calc)
+                        resid = meas_a - calc_a  # NaN where calc is NaN
+
+                        # Main plot
+                        ax_main.scatter(tth_a, meas_a, s=2, alpha=0.5,
+                                        label='Measured', color='steelblue')
+                        ax_main.plot(tth_a, calc_a, linewidth=1.2,
+                                     label='Calculated', color='crimson')
+                        ax_main.set_title(fname, fontsize=10)
+                        ax_main.set_ylabel('Intensity')
+                        ax_main.set_yscale('log')
+                        ax_main.legend(fontsize=8)
+                        plt.setp(ax_main.get_xticklabels(), visible=False)
+
+                        # Residual plot
+                        ax_resid.plot(tth_a, resid, linewidth=0.8,
+                                      color='forestgreen', alpha=0.8)
+                        ax_resid.axhline(0, color='gray', linewidth=0.5,
+                                         linestyle='--')
+                        ax_resid.set_ylabel('Residual')
+                        ax_resid.set_xlabel('2θ (°)')
                     fig.tight_layout()
                     plot_path = base_work_dir / "lineout_comparison.png"
                     fig.savefig(str(plot_path), dpi=150)

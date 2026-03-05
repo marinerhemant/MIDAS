@@ -360,11 +360,12 @@ int fitPeaksForLineout(const double *R, const double *intensity, int nRBins,
       }
 
       int b = p * 4;
-      // Center: allow ± max(estimated FWHM, 5 bins) in R units
-      double center_range = fmax(fwhm * RBinSize, RBinSize * 5.0);
-      // FWHM (Gamma): physically 0.5–10 px for HEDM diffraction peaks
+      // Center: allow ± max(estimated FWHM, half the ROI) in R units
+      double center_range =
+          fmax(fwhm * RBinSize, (double)roiLen * RBinSize * 0.5);
+      // FWHM (Gamma): 0.5–80 px, capped at half the ROI span
       double gamma_lo = RBinSize * 0.5;
-      double gamma_hi = fmin(RBinSize * 40.0, (double)roiLen * RBinSize * 0.5);
+      double gamma_hi = fmin(RBinSize * 80.0, (double)roiLen * RBinSize * 0.5);
       // Amplitude: bounded by actual data range, not multiples of guess
       double amp_hi = data_range * 2.0;
       if (amp_hi < 1.0)
@@ -465,7 +466,7 @@ int fitPeaksForLineout(const double *R, const double *intensity, int nRBins,
     if (rc >= 0) {
       double rmsResid = sqrt(minObj / (double)fitData.nrBins);
       int result_start = job_result_indices[i];
-      double localBG = fitParams[nFitParams - 1];
+      double localBG = fitParams[nJobPeaks * 4]; // c0 (constant term)
 
       for (int p = 0; p < nJobPeaks; ++p) {
         int out_base = (result_start + p) * PF_PARAMS_PER_PEAK;
