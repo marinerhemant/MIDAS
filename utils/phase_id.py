@@ -227,9 +227,7 @@ def predict_rings_for_phase(phase: PhaseInfo, param_file: Path,
 
         # Run GetHKLList (suppress $ line from screen)
         hkl_bin = MIDAS_BIN / "GetHKLList"
-        _sink: List[str] = []  # absorb diagnostic output
-        stdout = run_cmd([str(hkl_bin), str(tmp_param), "--stdout"],
-                         log=_sink)
+        stdout = run_cmd([str(hkl_bin), str(tmp_param), "--stdout"])
 
         # Parse output: "h k l D-spacing RingNr g1 g2 g3 Theta 2Theta Radius"
         reflections = []
