@@ -6,13 +6,13 @@ For each file, runs IntegratorZarrOMP in direct mode (no Zarr creation)
 and converts the resulting lineout.bin into a two-column .xy text file.
 
 Usage:
-    python extract_lineouts.py -paramFN params.txt -dataFN map1_{:05d}.tif \
+    python extract_lineouts.py -paramFN params.txt -dataFN map1_00001.tif \
         -startNr 1 -endNr 100 [-nCPUs 4] [-outDir lineouts] [-darkFN dark.tif]
 
-The -dataFN argument is a Python format string with a single integer
-placeholder for the frame number, e.g.:
-    map1_{:05d}.tif      →  map1_00001.tif … map1_00100.tif
-    scan_{}.tif          →  scan_1.tif … scan_100.tif
+The -dataFN argument can be either:
+  - A literal filename with a number: map1_00001.tif
+    (the last numeric group is auto-replaced with frame numbers)
+  - A Python format pattern:  map1_{:05d}.tif
 
 Output files are named  <stem>_lineout.xy  (e.g. map1_00001_lineout.xy).
 """
@@ -21,6 +21,7 @@ import argparse
 import concurrent.futures
 import math
 import os
+import re
 import shutil
 import struct
 import subprocess
@@ -194,13 +195,38 @@ def main():
         sys.exit(1)
     print()
 
+    # --- Build filename pattern ---
+    # If dataFN contains '{', treat as Python format string.
+    # Otherwise, auto-detect the last numeric group and replace it.
+    data_pattern = args.dataFN
+    if '{' not in data_pattern:
+        # Find the last group of digits in the basename (before extension)
+        stem_part = Path(data_pattern).stem
+        m = list(re.finditer(r'\d+', stem_part))
+        if m:
+            last_match = m[-1]
+            width = len(last_match.group())
+            ext = Path(data_pattern).suffix
+            prefix = stem_part[:last_match.start()]
+            suffix = stem_part[last_match.end():]
+            # Reconstruct with format placeholder
+            dir_part = str(Path(data_pattern).parent)
+            if dir_part == '.':
+                data_pattern = f"{prefix}{{:0{width}d}}{suffix}{ext}"
+            else:
+                data_pattern = f"{dir_part}/{prefix}{{:0{width}d}}{suffix}{ext}"
+            print(f"  Auto-detected pattern: {data_pattern}")
+        else:
+            print(f"ERROR: No numeric group found in {data_pattern}")
+            sys.exit(1)
+
     # --- Build list of (nr, data_file, out_xy) jobs ---
     jobs = []
     for nr in range(args.startNr, args.endNr + 1):
         try:
-            fn = args.dataFN.format(nr)
+            fn = data_pattern.format(nr)
         except (IndexError, KeyError):
-            fn = args.dataFN.replace('{}', str(nr))
+            fn = data_pattern.replace('{}', str(nr))
 
         data_file = Path(fn)
         if not data_file.exists():
