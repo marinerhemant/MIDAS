@@ -8,6 +8,10 @@ endif()
 if(POLICY CMP0075)
   cmake_policy(SET CMP0075 NEW)
 endif()
+# CMP0079: target_link_libraries on targets from other directories
+if(POLICY CMP0079)
+  cmake_policy(SET CMP0079 NEW)
+endif()
 
 # Define options first, before the project command
 option(USE_CUDA "Build with CUDA support" OFF) # Default to ON, can be configured
