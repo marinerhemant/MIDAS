@@ -210,6 +210,8 @@ def predict_rings_for_phase(phase: PhaseInfo, param_file: Path,
     tmp_param = Path(tmp_fd.name)
     tmp_fd.close()
     try:
+        wrote_sg = False
+        wrote_lc = False
         with open(param_file) as fin, open(tmp_param, 'w') as fout:
             for line in fin:
                 parts = line.strip().split()
@@ -219,11 +221,19 @@ def predict_rings_for_phase(phase: PhaseInfo, param_file: Path,
                 key = parts[0]
                 if key == 'SpaceGroup':
                     fout.write(f"SpaceGroup {phase.spacegroup}\n")
-                elif key == 'LatticeConstant':
+                    wrote_sg = True
+                elif key in ('LatticeConstant', 'LatticeParameter'):
                     a = phase.lattice_a
                     fout.write(f"LatticeConstant {a} {a} {a} 90.0 90.0 90.0\n")
+                    wrote_lc = True
                 else:
                     fout.write(line)
+            # Append if not already present in the param file
+            a = phase.lattice_a
+            if not wrote_sg:
+                fout.write(f"SpaceGroup {phase.spacegroup}\n")
+            if not wrote_lc:
+                fout.write(f"LatticeConstant {a} {a} {a} 90.0 90.0 90.0\n")
 
         # Run GetHKLList (suppress $ line from screen)
         hkl_bin = MIDAS_BIN / "GetHKLList"
