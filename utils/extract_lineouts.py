@@ -601,6 +601,12 @@ def _process_one_frame(nr, data_file, param_file, out_dir, out_xy, geom,
                                             fit_window_deg=fit_window_deg,
                                             wavelength_A=wavelength,
                                             peak_widths=peak_widths)
+                # Truncate to requested n_peaks (detect_peaks over-selects
+                # by 3× as a safety margin; keep strongest by area)
+                if len(fit_results) > n_peaks:
+                    fit_results.sort(key=lambda r: r['area'], reverse=True)
+                    fit_results = fit_results[:n_peaks]
+                    fit_results.sort(key=lambda r: r['center_2theta'])
                 if fit_results:
                     peaks_csv = out_xy.parent / f"{stem}_peaks.csv"
                     with open(peaks_csv, 'w') as f:
