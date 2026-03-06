@@ -2476,8 +2476,8 @@ int main(int argc, char *argv[]) {
           // Append to HDF5 buffer
           for (int pp = 0; pp < currentPeakCount; pp++) {
             PeakH5Row h5row = pfio_make_row(
-                frameNr, 0, pp, 0.0, &sendFitParams[pp * PF_PARAMS_PER_PEAK],
-                px, Lsd, g_Lam);
+                ctx->frameIdx, 0, pp, 0.0,
+                &sendFitParams[pp * PF_PARAMS_PER_PEAK], px, Lsd, g_Lam);
             pfio_append_row(&g_h5buf, &h5row);
           }
           if (sendFitParams)
@@ -2545,8 +2545,8 @@ int main(int argc, char *argv[]) {
             // Append to HDF5 buffer
             for (int pp = 0; pp < currentPeakCount; pp++) {
               PeakH5Row h5row = pfio_make_row(
-                  frameNr, 0, pp, 0.0, &sendFitParams[pp * PF_PARAMS_PER_PEAK],
-                  px, Lsd, g_Lam);
+                  ctx->frameIdx, 0, pp, 0.0,
+                  &sendFitParams[pp * PF_PARAMS_PER_PEAK], px, Lsd, g_Lam);
               pfio_append_row(&g_h5buf, &h5row);
             }
             if (sendFitParams)
