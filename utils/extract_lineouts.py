@@ -579,7 +579,13 @@ def _process_one_frame(nr, data_file, param_file, out_dir, out_xy, geom,
         corrected = int_np - bg
 
         # Write 4-column .xy
+        import datetime
+        file_mtime = data_file.stat().st_mtime
+        file_timestamp = datetime.datetime.fromtimestamp(file_mtime).strftime(
+            '%Y-%m-%d %H:%M:%S')
         with open(out_xy, 'w') as f:
+            f.write(f"# Filename: {data_file.name}\n")
+            f.write(f"# Timestamp: {file_timestamp}\n")
             f.write("# 2theta_deg  intensity  snip_background  corrected\n")
             for i in range(len(tth_np)):
                 f.write(f"{tth_np[i]:.6f}  {int_np[i]:.6f}  "
