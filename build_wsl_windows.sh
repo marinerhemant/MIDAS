@@ -14,6 +14,7 @@ sudo hwclock -s
 mkdir -p ~/opt && cd ~/opt
 [ -d "MIDAS" ] || git clone https://github.com/marinerhemant/MIDAS
 cd MIDAS
+git pull  # Ensure we have the latest code
 
 # 4. Neutralize "Custom" build scripts that force x86/Intel optimizations
 # This forces the project to use the ARM-compatible system libraries instead
