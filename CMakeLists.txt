@@ -117,13 +117,72 @@ function(handle_dependency NAME URL DOWNLOAD_FLAG)
     
     if(USE_SYSTEM_DEPS) # Changed from SYSTEM_DEPENDENCIES to match global option
       # Try to find the package in the system
-      find_package(${NAME} QUIET) # For some deps, this might need FindXXX.cmake, e.g. FindLibTIFF.cmake
+      # Special case: HDF5 needs COMPONENTS to discover hdf5_hl
+      if(NAME STREQUAL "HDF5")
+        find_package(HDF5 COMPONENTS C HL QUIET)
+      else()
+        find_package(${NAME} QUIET) # For some deps, this might need FindXXX.cmake, e.g. FindLibTIFF.cmake
+      endif()
       if(${NAME}_FOUND)
         message(STATUS "Found system ${NAME} via find_package.")
         # Ensure an imported target NAME::NAME or TIFF::TIFF is created by FindXXX.cmake
         # If FindXXX.cmake doesn't create it, we might need to create it here.
         if(NAME STREQUAL "LIBTIFF" AND NOT TARGET TIFF::TIFF AND TARGET ${NAME}::libtiff) # Common alias from FindLibTIFF
             add_library(TIFF::TIFF ALIAS ${NAME}::libtiff)
+        elseif(NAME STREQUAL "HDF5")
+            # CMake's FindHDF5 creates hdf5::hdf5 and hdf5::hdf5_hl (lowercase)
+            # or HDF5::HDF5 depending on the version. Create our canonical targets.
+            if(NOT TARGET HDF5::HDF5)
+              if(TARGET hdf5::hdf5)
+                add_library(HDF5::HDF5 ALIAS hdf5::hdf5)
+              elseif(TARGET hdf5-shared)
+                add_library(HDF5::HDF5 ALIAS hdf5-shared)
+              elseif(HDF5_C_LIBRARIES)
+                add_library(HDF5::HDF5 INTERFACE IMPORTED)
+                set_target_properties(HDF5::HDF5 PROPERTIES
+                  INTERFACE_INCLUDE_DIRECTORIES "${HDF5_INCLUDE_DIRS}"
+                  INTERFACE_LINK_LIBRARIES "${HDF5_C_LIBRARIES}"
+                )
+              elseif(HDF5_LIBRARIES)
+                add_library(HDF5::HDF5 INTERFACE IMPORTED)
+                set_target_properties(HDF5::HDF5 PROPERTIES
+                  INTERFACE_INCLUDE_DIRECTORIES "${HDF5_INCLUDE_DIRS}"
+                  INTERFACE_LINK_LIBRARIES "${HDF5_LIBRARIES}"
+                )
+              endif()
+            endif()
+            if(NOT TARGET HDF5::HL)
+              if(TARGET hdf5::hdf5_hl)
+                add_library(HDF5::HL ALIAS hdf5::hdf5_hl)
+              elseif(TARGET hdf5_hl-shared)
+                add_library(HDF5::HL ALIAS hdf5_hl-shared)
+              elseif(HDF5_HL_LIBRARIES)
+                add_library(HDF5::HL INTERFACE IMPORTED)
+                set_target_properties(HDF5::HL PROPERTIES
+                  INTERFACE_INCLUDE_DIRECTORIES "${HDF5_INCLUDE_DIRS}"
+                  INTERFACE_LINK_LIBRARIES "${HDF5_HL_LIBRARIES}"
+                )
+              else()
+                # Last resort: try to find hdf5_hl library directly
+                find_library(HDF5_HL_LIBRARY NAMES hdf5_hl)
+                if(HDF5_HL_LIBRARY)
+                  add_library(HDF5::HL INTERFACE IMPORTED)
+                  set_target_properties(HDF5::HL PROPERTIES
+                    INTERFACE_INCLUDE_DIRECTORIES "${HDF5_INCLUDE_DIRS}"
+                    INTERFACE_LINK_LIBRARIES "${HDF5_HL_LIBRARY}"
+                  )
+                  message(STATUS "Created HDF5::HL from find_library: ${HDF5_HL_LIBRARY}")
+                else()
+                  message(WARNING "HDF5 found but hdf5_hl library not found. HDF5::HL target not created.")
+                endif()
+              endif()
+            endif()
+            if(TARGET HDF5::HDF5)
+              message(STATUS "HDF5::HDF5 target available.")
+            endif()
+            if(TARGET HDF5::HL)
+              message(STATUS "HDF5::HL target available.")
+            endif()
         elseif(NOT TARGET ${NAME}::${NAME} AND ${NAME}_LIBRARIES AND ${NAME}_INCLUDE_DIRS)
             add_library(${NAME}::${NAME} INTERFACE IMPORTED)
             set_target_properties(${NAME}::${NAME} PROPERTIES
@@ -164,6 +223,37 @@ function(handle_dependency NAME URL DOWNLOAD_FLAG)
               INTERFACE_INCLUDE_DIRECTORIES "${${NAME}_PC_INCLUDE_DIRS}"
               INTERFACE_LINK_LIBRARIES "${${NAME}_PC_LIBRARIES}"
             )
+          elseif(NAME STREQUAL "HDF5")
+            # PkgConfig for HDF5: create both HDF5::HDF5 and HDF5::HL
+            if(NOT TARGET HDF5::HDF5)
+              add_library(HDF5::HDF5 INTERFACE IMPORTED)
+              set_target_properties(HDF5::HDF5 PROPERTIES
+                INTERFACE_INCLUDE_DIRECTORIES "${${NAME}_PC_INCLUDE_DIRS}"
+                INTERFACE_LINK_LIBRARIES "${${NAME}_PC_LIBRARIES}"
+              )
+            endif()
+            if(NOT TARGET HDF5::HL)
+              # Try to find hdf5_hl via pkg-config or find_library
+              pkg_check_modules(HDF5_HL_PC QUIET hdf5_hl)
+              if(HDF5_HL_PC_FOUND)
+                add_library(HDF5::HL INTERFACE IMPORTED)
+                set_target_properties(HDF5::HL PROPERTIES
+                  INTERFACE_INCLUDE_DIRECTORIES "${HDF5_HL_PC_INCLUDE_DIRS}"
+                  INTERFACE_LINK_LIBRARIES "${HDF5_HL_PC_LIBRARIES}"
+                )
+              else()
+                find_library(HDF5_HL_LIBRARY NAMES hdf5_hl)
+                if(HDF5_HL_LIBRARY)
+                  add_library(HDF5::HL INTERFACE IMPORTED)
+                  set_target_properties(HDF5::HL PROPERTIES
+                    INTERFACE_INCLUDE_DIRECTORIES "${${NAME}_PC_INCLUDE_DIRS}"
+                    INTERFACE_LINK_LIBRARIES "${HDF5_HL_LIBRARY}"
+                  )
+                else()
+                  message(WARNING "HDF5 found via PkgConfig but hdf5_hl not found. HDF5::HL target not created.")
+                endif()
+              endif()
+            endif()
           else()
             if(NOT TARGET ${NAME}::${NAME}) 
               add_library(${NAME}::${NAME} INTERFACE IMPORTED) 
