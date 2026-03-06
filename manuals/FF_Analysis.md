@@ -203,13 +203,10 @@ The peak search identifies diffraction spots in the raw detector images.
     *   A **height-normalized Pseudo-Voigt profile** is fitted to each identified peak. The Gaussian and Lorentzian components share a single FWHM (Gamma), with a mixing parameter Mu interpolating between the two profiles.
     *   When `doPeakFit 0` is set, fitting is skipped and each connected component is treated as a single peak using its centroid.
 
-    **1D Profile (used in `CalibrantPanelShiftsOMP` and `IntegratorFitPeaksGPUStream`):**
+    **1D Profile (used in `IntegratorZarrOMP` and `IntegratorFitPeaksGPUStream`):**
 
-    $$L(R) = \frac{1}{1 + 4\,(R - R_{cen})^2 / \Gamma^2}$$
-
-    $$G(R) = \exp\!\left(-\frac{4\ln 2\,(R - R_{cen})^2}{\Gamma^2}\right)$$
-
-    $$I(R) = BG + I_{max}\bigl[\mu\,L(R) + (1-\mu)\,G(R)\bigr]$$
+    > [!NOTE]
+    > The 1D integrator fitting pipeline has been refactored to use a **GSAS-II compliant area-normalized Pseudo-Voigt** profile with Thompson-Cox-Hastings (TCH) mixing. The output parameters are: `[Area, Center, sig, gam, FWHM, eta, ChiSq]`. See the [Radial Integration Manual](FF_Radial_Integration.md#25-peak-fitting-both-cpu-and-gpu-engines) for full details.
 
     **2D Profile (used in `PeaksFittingOMPZarrRefactor`):**
 

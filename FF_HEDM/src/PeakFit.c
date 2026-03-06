@@ -307,9 +307,9 @@ int fitPeaks(const double *x, const double *intensity, int nBins,
       pks[validCount].intensity = intensity[bestBin];
       validCount++;
     } else if (p < 3) {
-      printf("  [PeakFit] Peak %d: loc=%.4f, bestBin=%d, minDiff=%.6f => "
-             "REJECTED\n",
-             p, peakLocations[p], bestBin, minDiff);
+      // printf("  [PeakFit] Peak %d: loc=%.4f, bestBin=%d, minDiff=%.6f => "
+      //        "REJECTED\n",
+      //        p, peakLocations[p], bestBin, minDiff);
     }
   }
 
@@ -527,8 +527,9 @@ int fitPeaks(const double *x, const double *intensity, int nBins,
       }
       total_successful += nJobPeaks;
     } else if (i < 2) {
-      printf("  [PeakFit] Job %d NLOPT FAILED: rc=%d, nBins=%d, nPeaks=%d\n", i,
-             rc, roiLen, nJobPeaks);
+      // printf("  [PeakFit] Job %d NLOPT FAILED: rc=%d, nBins=%d, nPeaks=%d\n",
+      // i,
+      //        rc, roiLen, nJobPeaks);
     }
 
     free(fitParams);

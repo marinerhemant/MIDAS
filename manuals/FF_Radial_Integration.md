@@ -92,32 +92,42 @@ python ~/opt/MIDAS/FF_HEDM/workflows/integrator_batch_process.py \
 | `--no-zarr` | Skip zarr.zip creation (HDF5 only). |
 | `--save-interval` | How often (in frames) to save the intermediate mapping file. Default: 500. |
 
-### 2.5. Peak Fitting (GPU Backend)
+### 2.5. Peak Fitting (Both CPU and GPU Engines)
 
-The GPU streaming engine can optionally perform **1D Pseudo-Voigt peak fitting** on the azimuthally-integrated 1D lineout for every frame. This is enabled by adding peak fitting parameters to the parameter file.
+Both `IntegratorZarrOMP` (CPU) and `IntegratorFitPeaksGPUStream` (GPU) can optionally perform **1D Pseudo-Voigt peak fitting** on the azimuthally-integrated 1D lineout for every frame. This is enabled by adding peak fitting parameters to the parameter file.
 
 > [!NOTE]
-> Peak fitting runs on the **CPU** (parallelized with OpenMP) after the GPU integration completes each frame. The fitted parameters are streamed to `fit.bin` in real time.
+> Peak fitting runs on the **CPU** (parallelized with OpenMP) after each frame's integration completes. The fitted parameters are streamed to `fit.bin` in real time and also written to `_caked_peaks.h5` (HDF5) at program exit.
 
 #### Peak Shape Model
 
-Each peak in the 1D lineout is fitted with a **height-normalized Pseudo-Voigt** profile. The Gaussian and Lorentzian components share a single FWHM (Gamma):
+Each peak in the 1D lineout is fitted with a **GSAS-II compliant area-normalized Pseudo-Voigt** profile. The Gaussian (G) and Lorentzian (L) components have independent width parameters (`sig` and `gam`):
 
-$$L(R) = \frac{1}{1 + 4\,(R - R_{cen})^2 / \Gamma^2} \qquad G(R) = \exp\!\left(-\frac{4\ln 2\,(R - R_{cen})^2}{\Gamma^2}\right)$$
+$$G(R) = \frac{\sqrt{4\ln 2}}{\text{FWHM}_G \sqrt{\pi}} \exp\!\left(-\frac{4\ln 2\,(R - R_{cen})^2}{\text{FWHM}_G^2}\right)$$
 
-$$I(R) = BG + I_{max}\bigl[\mu\,L(R) + (1-\mu)\,G(R)\bigr]$$
+$$L(R) = \frac{2}{\pi\,\text{FWHM}_L} \cdot \frac{1}{1 + 4\,(R - R_{cen})^2 / \text{FWHM}_L^2}$$
 
-Both $L$ and $G$ peak at 1.0 at $R = R_{cen}$. The fitted parameters are:
+$$I(R) = BG(R) + A\bigl[\eta\,L(R) + (1-\eta)\,G(R)\bigr]$$
 
-| Parameter | Description |
-|---|---|
-| $I_{max}$ | Peak height above background |
-| $\mu$ | Pseudo-Voigt mixing (0 = pure Gaussian, 1 = pure Lorentzian) |
-| $R_{cen}$ | Peak center (radial position in pixel units) |
-| $\Gamma$ | Full-Width at Half-Maximum (shared by Gaussian and Lorentzian components) |
-| $BG$ | Background level (shared across all peaks in each ROI) |
+The total FWHM and mixing parameter $\eta$ are derived from `sig` and `gam` using the **Thompson-Cox-Hastings (TCH)** approximation:
 
-When multiple peaks overlap, they are fitted simultaneously within a shared ROI with a common background.
+- $\text{FWHM}_G = \sqrt{8\ln 2 \cdot \text{sig}}$ (where sig = Gaussian variance in pixel²)
+- $\text{FWHM}_L = \text{gam}$ (Lorentzian FWHM in pixels)
+- $\text{FWHM}_{total}$ and $\eta$ are computed from a 5th-order polynomial TCH mixing rule.
+
+The background is a **2-parameter Chebyshev** polynomial (constant + linear term) fitted jointly with the peaks.
+
+| Parameter | Unit | Description |
+|---|---|---|
+| $A$ (Area) | counts × pixels | Integrated area under the peak |
+| $R_{cen}$ (Center) | pixels | Peak center (radial position) |
+| $\sigma$ (sig) | pixels² | Gaussian variance parameter |
+| $\gamma$ (gam) | pixels | Lorentzian FWHM parameter |
+| FWHM | pixels | Total FWHM from TCH mixing |
+| $\eta$ (eta) | — | TCH mixing (0 = pure Gaussian, 1 = pure Lorentzian) |
+| $\chi^2$ | — | Reduced chi-squared of the fit |
+
+When multiple peaks overlap, they are fitted simultaneously within a shared ROI with a common Chebyshev background.
 
 #### Specifying Peaks
 
@@ -161,43 +171,43 @@ DoSmoothing 1
 
 ```mermaid
 graph TD
-    A["GPU: Azimuthal Integration → 1D Lineout I(R)"] --> B{Peaks specified?}
+    A["Integration → 1D Lineout I(R)"] --> B{Peaks specified?}
     B -->|"PeakLocation lines"| C["Snap each location to nearest R bin"]
-    B -->|"Auto-discovery"| D["Find local maxima in lineout"]
+    B -->|"Auto-discovery"| D["SNIP baseline + local maxima detection"]
     C --> E["Sort peaks by R"]
     D --> E
     E --> F["Build ROIs (merge overlapping)"]
-    F --> G["Estimate initial params per peak<br/>(BG from edges, Imax, FWHM)"]
+    F --> G["Estimate initial params per peak<br/>(Chebyshev BG, Area, sig, gam)"]
     G --> H["L-BFGS optimization (nlopt)"]
     H --> I{Converged?}
     I -->|Yes| K
     I -->|No| J["Fallback: Nelder-Mead simplex"]
-    J --> K["Extract: Imax, BG, Mu, Rcen, Sigma"]
-    K --> L["Write to fit.bin"]
+    J --> K["Extract: Area, Center, sig, gam, FWHM, eta, χ²"]
+    K --> L["Write to fit.bin + append to HDF5 buffer"]
 ```
 
-1. **1D Lineout:** The GPU reduces the 2D caked image to a 1D `I(R)` profile by averaging all eta bins for each radial bin.
-2. **Peak Identification:** Peaks are found either from user-specified `PeakLocation` entries (snapped to the nearest R bin) or by automatic local maxima detection.
-3. **ROI Construction:** A region of interest is built around each peak (`±FitROIPadding` bins or auto-sized). Overlapping ROIs are merged, and their peaks are fitted jointly with a shared background.
-4. **Initial Guess:** Background is estimated from the ROI edges (average of up to 5 edge points). Peak height (`Imax`) is estimated from the peak maximum minus background. FWHM is estimated by scanning for the half-maximum crossings.
-5. **Optimization:** The L-BFGS algorithm (with analytical gradients) minimizes the sum of squared residuals. If L-BFGS fails, the Nelder-Mead simplex method is used as a fallback.
-6. **Output:** Fitted parameters are converted to backward-compatible units (Gamma → Gaussian-equivalent sigma: $\sigma = \Gamma / 2.355$) and written to `fit.bin`.
+1. **1D Lineout:** The engine reduces the 2D caked image to a 1D `I(R)` profile by averaging all eta bins for each radial bin.
+2. **Peak Identification:** Peaks are found either from user-specified `PeakLocation` entries (snapped to the nearest R bin) or by SNIP baseline subtraction followed by local maxima detection.
+3. **ROI Construction:** A region of interest is built around each peak (`±FitROIPadding` bins or auto-sized). Overlapping ROIs are merged, and their peaks are fitted jointly with a shared Chebyshev background.
+4. **Initial Guess:** Background is estimated via 2-parameter Chebyshev from the ROI edges. Peak area is estimated from the integral above background. Sig and gam are estimated from the observed FWHM.
+5. **Optimization:** The L-BFGS algorithm minimizes the sum of squared residuals. If L-BFGS fails, the Nelder-Mead simplex method is used as a fallback. Gradients are computed numerically for TCH safety.
+6. **Output:** Fitted GSAS-II parameters are written to `fit.bin` (binary stream) and accumulated into a `_caked_peaks.h5` HDF5 file at program exit.
 
 #### Output Format (`fit.bin`)
 
 The fit results are written as a binary stream of `double` values, **7 values per peak per frame**:
 
-| Column | Name | Description |
-|---|---|---|
-| 0 | `Imax` | Fitted peak height above background |
-| 1 | `BG` | Fitted background level |
-| 2 | `Mu` | Pseudo-Voigt mixing parameter (0–1) |
-| 3 | `Rcen` | Fitted peak center (pixel units) |
-| 4 | `Sigma` | Gaussian-equivalent sigma ($= \Gamma / 2.355$) |
-| 5 | `SNR` | Signal-to-noise ratio (`Imax / rms_residual`) |
-| 6 | `Area` | Reserved (currently 0) |
+| Column | Name | Unit | Description |
+|---|---|---|---|
+| 0 | `Area` | counts × px | Integrated peak area (GSAS-II convention) |
+| 1 | `Center` | pixels | Fitted peak center position |
+| 2 | `sig` | pixels² | Gaussian variance parameter |
+| 3 | `gam` | pixels | Lorentzian FWHM parameter |
+| 4 | `FWHM` | pixels | Total FWHM from TCH mixing |
+| 5 | `eta` | — | TCH mixing parameter (0–1) |
+| 6 | `ChiSq` | — | Reduced chi-squared of the fit |
 
-A companion file `fit_curves.bin` is also written, containing the fitted model curves for visualization.
+The CPU engine (`IntegratorZarrOMP`) also writes a per-eta-bin CSV file (`_fit_per_eta.csv`) and a `_caked_peaks.h5` HDF5 file compatible with `plot_caked_peaks.py`.
 
 > [!TIP]
 > To read the fit results in Python:
@@ -206,9 +216,13 @@ A companion file `fit_curves.bin` is also written, containing the fitted model c
 > n_peaks = 3  # number of PeakLocation entries
 > data = np.fromfile('fit.bin', dtype=np.float64).reshape(-1, n_peaks, 7)
 > # data[frame_idx, peak_idx, column_idx]
-> imax = data[:, :, 0]   # Peak heights for all frames, all peaks
-> rcen = data[:, :, 3]   # Peak centers
-> sigma = data[:, :, 4]  # Gaussian-equiv sigma
+> area   = data[:, :, 0]   # Integrated area for all frames, all peaks
+> center = data[:, :, 1]   # Peak centers (pixels)
+> sig    = data[:, :, 2]   # Gaussian variance
+> gam    = data[:, :, 3]   # Lorentzian FWHM
+> fwhm   = data[:, :, 4]   # Total FWHM (TCH mixed)
+> eta    = data[:, :, 5]   # TCH mixing parameter
+> chisq  = data[:, :, 6]   # Reduced chi-squared
 > ```
 
 #### Example: Fitting Three Calibrant Rings
@@ -337,7 +351,7 @@ The radial integration is performed by one of two engines, optimized for differe
         *   `initialize_PerFrameArr`: Pre-calculates static bin data (R, Eta, Area) and applies pixel masks.
         *   `integrate_kernel`: Performs the weighted summation of pixels for each bin. It uses atomic adds for the "Summed Image" feature.
         *   `calculate_1D_profile_kernel`: efficiently reduces the 2D (R, Eta) array to a 1D (R) profile using **Warp Shuffle** intrinsics (`__shfl_down_sync`) for high-speed reduction within GPU thread blocks.
-*   **CPU-Side Peak Fitting:** When `DoPeakFit` is enabled, after each frame's GPU integration completes, the 1D lineout is passed to an OpenMP-parallelized CPU fitting pipeline that uses `nlopt` (L-BFGS with analytical gradients, Nelder-Mead fallback) to fit height-normalized Pseudo-Voigt peaks. See [Section 2.5](#25-peak-fitting-gpu-backend) for full details.
+*   **CPU-Side Peak Fitting:** When `DoPeakFit` is enabled, after each frame's GPU integration completes, the 1D lineout is passed to an OpenMP-parallelized CPU fitting pipeline that uses `nlopt` (L-BFGS with numerical gradients, Nelder-Mead fallback) to fit GSAS-II area-normalized Pseudo-Voigt peaks with TCH mixing. Results are written to `fit.bin` (binary stream) and `caked_peaks.h5` (HDF5, written after all frames). See [Section 2.5](#25-peak-fitting-both-cpu-and-gpu-engines) for full details.
 *   **Runtime Peak Updates:** The integrator polls for `peak_update.txt` at the top of each frame loop. If found, it updates the peak locations and enables fitting on-the-fly. See [Section 4.2.1](#421-interactive-peak-selection-from-live-viewer) below.
 
 #### 4.2.1. Interactive Peak Selection from Live Viewer
@@ -451,18 +465,21 @@ The parameter file is a text file containing key-value pairs used by both the `i
 | `PanelSizeY`, `PanelSizeZ` | `int` | Size of each panel in pixels |
 | `PanelGapsY`, `PanelGapsZ` | `int` | Gap size between panels in pixels |
 
-### A.4. Peak Fitting (GPU Engine Only)
+### A.4. Peak Fitting (Both CPU and GPU Engines)
 
-These parameters control the optional 1D peak fitting in `IntegratorFitPeaksGPUStream`. See [Section 2.5](#25-peak-fitting-gpu-backend) for full documentation.
+These parameters control the optional 1D peak fitting in both `IntegratorZarrOMP` and `IntegratorFitPeaksGPUStream`. See [Section 2.5](#25-peak-fitting-both-cpu-and-gpu-engines) for full documentation.
 
 | Parameter | Type | Default | Description |
 | :--- | :--- | :--- | :--- |
-| `DoPeakFit` | `int` | `0` | `1` = enable 1D Pseudo-Voigt peak fitting |
+| `DoPeakFit` | `int` | `0` | `1` = enable 1D GSAS-II area-normalized Pseudo-Voigt peak fitting |
 | `MultiplePeaks` | `int` | `0` | `1` = allow fitting multiple peaks |
 | `PeakLocation` | `float` | — | Expected peak radius (pixels). Repeatable. Implicitly enables fitting |
+| `AutoDetectPeaks` | `int` | `0` | Number of peaks to auto-detect (0 = disabled). Uses SNIP baseline + local maxima |
+| `SNIPIterations` | `int` | `50` | Number of SNIP iterations for baseline estimation in auto-detect mode |
 | `DoSmoothing` | `int` | `0` | `1` = Savitzky-Golay smoothing before auto peak detection |
 | `FitROIPadding` | `int` | `20` | Half-width of fitting ROI (radial bins) |
 | `FitROIAuto` | `int` | `0` | `1` = auto-size ROI from FWHM |
+| `Wavelength` | `float` | — | X-ray wavelength (Å). Required for d-spacing in HDF5 output |
 
 ## 6. Output Formats
 
@@ -547,7 +564,7 @@ python ~/opt/MIDAS/FF_HEDM/workflows/integrator_batch_process.py \
 | Max history | Limit number of retained frames |
 | Pause | Freeze display (data still collected) |
 | Reset | Clear all accumulated data |
-| Param select | Choose which fit params to plot (Imax, BG, Mu, Rcen, Sigma, SNR) |
+| Param select | Choose which fit params to plot (Area, Center, sig, gam, FWHM, eta, ChiSq) |
 | Peak select | Choose which peaks to display |
 
 #### Command-Line Arguments
