@@ -1160,24 +1160,6 @@ int main(int argc, char **argv) {
   }
 
   int rc = ReadBins(resultFolder);
-  // ── Debug: verify ReadBins loaded pixel lists ──
-  {
-    long long totalMappedPx = 0;
-    int maxPxPerBin = 0;
-    int emptyBins = 0;
-    long long totalBins = (long long)nRBins * nEtaBins;
-    for (long long bb = 0; bb < totalBins; bb++) {
-      int npx = nPxList[2 * bb + 0];
-      totalMappedPx += npx;
-      if (npx > maxPxPerBin)
-        maxPxPerBin = npx;
-      if (npx == 0)
-        emptyBins++;
-    }
-    printf("  DEBUG ReadBins: totalMappedPx=%lld, maxPxPerBin=%d, "
-           "emptyBins=%d/%lld\n",
-           totalMappedPx, maxPxPerBin, emptyBins, totalBins);
-  }
   int32_t imTransBufSize = NrTransOpt * sizeof(int);
   int *imTransData = (int *)malloc((size_t)imTransBufSize);
   ReadZarrChunk(arch, locImTransOpt, imTransData, imTransBufSize);
@@ -1343,6 +1325,25 @@ integration_start:
   RBinsHigh = malloc(nRBins * sizeof(*RBinsHigh));
   REtaMapper(RMin, EtaMin, nEtaBins, nRBins, EtaBinSize, RBinSize, EtaBinsLow,
              EtaBinsHigh, RBinsLow, RBinsHigh);
+
+  // ── Debug: verify ReadBins loaded pixel lists (after nRBins/nEtaBins set) ──
+  {
+    long long totalMappedPx = 0;
+    int maxPxPerBin = 0;
+    int emptyBins = 0;
+    long long totalBins = (long long)nRBins * nEtaBins;
+    for (long long bb = 0; bb < totalBins; bb++) {
+      int npx = nPxList[2 * bb + 0];
+      totalMappedPx += npx;
+      if (npx > maxPxPerBin)
+        maxPxPerBin = npx;
+      if (npx == 0)
+        emptyBins++;
+    }
+    printf("  DEBUG ReadBins: totalMappedPx=%lld, maxPxPerBin=%d, "
+           "emptyBins=%d/%lld, nRBins=%d, nEtaBins=%d\n",
+           totalMappedPx, maxPxPerBin, emptyBins, totalBins, nRBins, nEtaBins);
+  }
 
   // Compute R bin centers for peak fitting and lineout output
   double *RBinCenters = malloc(nRBins * sizeof(double));
@@ -1549,8 +1550,33 @@ integration_start:
                (unsigned long long)sizeArr[0 * 2 + 0]);
       }
       rawToDouble(locData, ImageInT, nPixels, dType);
+      // DEBUG: check ImageInT after rawToDouble
+      if (i == 0) {
+        double imtMin = 1e30, imtMax = -1e30;
+        for (int dd = 0; dd < nPixels; dd++) {
+          if (ImageInT[dd] < imtMin)
+            imtMin = ImageInT[dd];
+          if (ImageInT[dd] > imtMax)
+            imtMax = ImageInT[dd];
+        }
+        printf("  DEBUG rawToDouble: ImageInT[%.1f,%.1f], nPixels=%lld, "
+               "dType=%d\n",
+               imtMin, imtMax, (long long)nPixels, dType);
+      }
       DoImageTransformations(NrTransOpt, TransOpt, ImageInT, ImageIn, NrPixelsY,
                              NrPixelsZ);
+      // DEBUG: check ImageIn after DoImageTransformations
+      if (i == 0) {
+        double imMin = 1e30, imMax = -1e30;
+        for (int dd = 0; dd < NrPixelsY * NrPixelsZ; dd++) {
+          if (ImageIn[dd] < imMin)
+            imMin = ImageIn[dd];
+          if (ImageIn[dd] > imMax)
+            imMax = ImageIn[dd];
+        }
+        printf("  DEBUG DoImageTransformations: ImageIn[%.1f,%.1f]\n", imMin,
+               imMax);
+      }
       for (j = 0; j < NrPixelsY * NrPixelsZ; j++) {
         Image[j] = (double)ImageIn[j] - AverageDark[j];
       }
