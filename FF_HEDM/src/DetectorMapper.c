@@ -398,6 +398,28 @@ mapperfcn(double tx, double ty, double tz, int NrPixelsY, int NrPixelsZ,
     dg_free_matrix(EdgesOut, 50);
   }
   printf("%lld %lld %lld\n", nrContinued1, nrContinued2, nrContinued3);
+
+  // ── Debug: print R and Eta for sample pixels to diagnose empty maps ──
+  if (TotNrOfBins == 0) {
+    double TRsDbg[3][3];
+    dg_build_tilt_matrix(tx, ty, tz, TRsDbg);
+    int sampleY[] = {0, NrPixelsY / 2, NrPixelsY - 1, NrPixelsY / 4};
+    int sampleZ[] = {0, NrPixelsZ / 2, NrPixelsZ - 1, NrPixelsZ / 4};
+    printf("DEBUG: Empty map — R/Eta for sample pixels:\n");
+    printf("  Eta bin range: [%.1f, %.1f]\n", EtaBinsLow[0],
+           EtaBinsHigh[nEtaBins - 1]);
+    printf("  R bin range:   [%.1f, %.1f]\n", RBinsLow[0],
+           RBinsHigh[nRBins - 1]);
+    for (int si = 0; si < 4; si++) {
+      double Rdbg, Etadbg;
+      dg_pixel_to_REta((double)sampleY[si], (double)sampleZ[si], Ycen, Zcen,
+                       TRsDbg, Lsd, RhoD, p0, p1, p2, p3, p4, pxY, 0, 0, &Rdbg,
+                       &Etadbg);
+      printf("  pixel(%4d,%4d): R=%10.2f  Eta=%8.2f\n", sampleY[si],
+             sampleZ[si], Rdbg, Etadbg);
+    }
+  }
+
   return TotNrOfBins;
 }
 
