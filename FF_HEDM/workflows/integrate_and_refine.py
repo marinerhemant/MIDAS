@@ -34,7 +34,7 @@ Usage
 -----
 CPU batch (individual files)::
 
-    python $MIDAS_INSTALL_DIR/utils/integrate_and_refine.py \\
+    python $MIDAS_INSTALL_DIR/FF_HEDM/workflows/integrate_and_refine.py \\
         --backend batch \\
         -paramFN  ps.txt \\
         -dataFN   data/sample_000001.h5 \\
@@ -44,7 +44,7 @@ CPU batch (individual files)::
 
 GPU streaming (folder of images)::
 
-    python $MIDAS_INSTALL_DIR/utils/integrate_and_refine.py \\
+    python $MIDAS_INSTALL_DIR/FF_HEDM/workflows/integrate_and_refine.py \\
         --backend stream \\
         --param-file ps.txt \\
         --folder  /data/experiment/scan_01/ \\
@@ -54,7 +54,7 @@ GPU streaming (folder of images)::
 
 GPU streaming (live PVA)::
 
-    python $MIDAS_INSTALL_DIR/utils/integrate_and_refine.py \\
+    python $MIDAS_INSTALL_DIR/FF_HEDM/workflows/integrate_and_refine.py \\
         --backend stream \\
         --param-file ps.txt \\
         --pva --pva-ip 10.54.105.139 \\

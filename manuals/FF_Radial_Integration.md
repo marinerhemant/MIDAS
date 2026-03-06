@@ -13,7 +13,7 @@ There are **two primary workflows** depending on your experimental needs:
 
 | Feature | **Workflow A: GPU Streaming** | **Workflow B: CPU Batch Processing** |
 | :--- | :--- | :--- |
-| **Script** | `utils/integrator_batch_process.py` | `utils/integrator.py` |
+| **Script** | `FF_HEDM/workflows/integrator_batch_process.py` | `FF_HEDM/workflows/integrator.py` |
 | **Best For** | **Real-time** experiments, High-throughput, Large Datasets | **Post-experiment** analysis, Single files, Systems without GPUs |
 | **Engine** | `IntegratorFitPeaksGPUStream` (CUDA) | `IntegratorZarrOMP` (OpenMP) |
 | **Key Feature** | Live streaming from detector (PVA) or folder, optional 1D peak fitting | Parallel processing of individual file chunks |
@@ -22,7 +22,7 @@ There are **two primary workflows** depending on your experimental needs:
 ---
 
 ## 2. Workflow A: High-Throughput GPU Streaming
-**Script:** `utils/integrator_batch_process.py`
+**Script:** `FF_HEDM/workflows/integrator_batch_process.py`
 
 This is the recommended workflow for most large-scale experiments. It orchestrates a high-speed pipeline where data streams (from files or a live detector) to a GPU-accelerated backend.
 
@@ -62,7 +62,7 @@ The GPU pipeline now produces **both** HDF5 and `.zarr.zip` output by default. T
 
 **Example 1: Processing a Folder of TIFFs**
 ```bash
-python ~/opt/MIDAS/utils/integrator_batch_process.py \
+python ~/opt/MIDAS/FF_HEDM/workflows/integrator_batch_process.py \
     --param-file setup_30keV.txt \
     --folder /data/experiment/scan_01 \
     --dark /data/experiment/darks/dark_avg.bin \
@@ -71,7 +71,7 @@ python ~/opt/MIDAS/utils/integrator_batch_process.py \
 
 **Example 2: Real-time Streaming (Live Analysis)**
 ```bash
-python ~/opt/MIDAS/utils/integrator_batch_process.py \
+python ~/opt/MIDAS/FF_HEDM/workflows/integrator_batch_process.py \
     --param-file setup_30keV.txt \
     --pva \
     --pva-ip 10.54.105.139 \
@@ -223,7 +223,7 @@ FitROIPadding 25
 ```
 
 ```bash
-python ~/opt/MIDAS/utils/integrator_batch_process.py \
+python ~/opt/MIDAS/FF_HEDM/workflows/integrator_batch_process.py \
     --param-file setup_30keV.txt \
     --folder /data/experiment/scan_01 \
     --dark /data/experiment/darks/dark_avg.bin \
@@ -234,7 +234,7 @@ python ~/opt/MIDAS/utils/integrator_batch_process.py \
 ---
 
 ## 3. Workflow B: CPU Batch Processing
-**Script:** `utils/integrator.py`
+**Script:** `FF_HEDM/workflows/integrator.py`
 
 This workflow is designed for flexibility. It processes files independently, making it ideal for converting specific scans, running on clusters without GPUs, or simple "convert-and-integrate" tasks. It handles the full lifecycle of a file: `Raw -> Zarr -> Integrated HDF5`.
 
@@ -264,7 +264,7 @@ graph TD
 
 **Example 1: Process a single file**
 ```bash
-python ~/opt/MIDAS/utils/integrator.py \
+python ~/opt/MIDAS/FF_HEDM/workflows/integrator.py \
     --paramFN setup.txt \
     --dataFN /data/images/scan_001.tif \
     --resultFolder /analysis/output
@@ -273,7 +273,7 @@ python ~/opt/MIDAS/utils/integrator.py \
 **Example 2: parallel processing of a series**
 Run on 4 files starting from `scan_001.tif`, using 8 global CPUs, with each integrator instance using 4 local threads.
 ```bash
-python ~/opt/MIDAS/utils/integrator.py \
+python ~/opt/MIDAS/FF_HEDM/workflows/integrator.py \
     --paramFN setup.txt \
     --dataFN /data/images/scan_001.tif \
     --startFileNr 1 \
@@ -301,11 +301,11 @@ You can override any value in the parameter file directly from the command line 
 
 **Example:** Override radial range and bins
 ```bash
-python utils/integrator.py --paramFN setup.txt --dataFN scan_001.tif MinRad 10 MaxRad 1000 RadBinSize 0.5
+python FF_HEDM/workflows/integrator.py --paramFN setup.txt --dataFN scan_001.tif MinRad 10 MaxRad 1000 RadBinSize 0.5
 ```
 You can also use standard flag syntax if you prefer:
 ```bash
-python utils/integrator.py --paramFN setup.txt --dataFN scan_001.tif --MinRad 10 --MaxRad 1000
+python FF_HEDM/workflows/integrator.py --paramFN setup.txt --dataFN scan_001.tif --MinRad 10 --MaxRad 1000
 ```
 *Note: Any arguments not recognized as standard flags (like `-paramFN`, `-dataFN`) are treated as parameter overrides.*
 
@@ -518,7 +518,7 @@ python ~/opt/MIDAS/gui/viewers/live_viewer.py \
     --max-history 2000
 
 # Auto-launched by integrator_batch_process.py
-python ~/opt/MIDAS/utils/integrator_batch_process.py \
+python ~/opt/MIDAS/FF_HEDM/workflows/integrator_batch_process.py \
     --param-file setup.txt --folder /data/scan_01 \
     --output-h5 scan_01.h5
 # → automatically starts live_viewer in a subprocess

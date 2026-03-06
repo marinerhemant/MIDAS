@@ -606,7 +606,7 @@ def main():
     # Prepare server command
     server_cmd = [
         sys.executable,  # Add this line to use the current Python interpreter
-        os.path.join(INSTALL_PATH, "utils/integrator_server.py"),
+        os.path.join(INSTALL_PATH, "FF_HEDM/workflows/integrator_server.py"),
         "--stream", "0" if not use_pva else "1",
         "--mapping-file", mapping_file,
         "--save-interval", str(args.save_interval)
@@ -727,7 +727,7 @@ def main():
     print("\nConverting binary output to HDF5...")
     h5_cmd = [
         sys.executable,  # Add this line to use the current Python interpreter
-        os.path.join(INSTALL_PATH, "utils/integrator_stream_process_h5.py"),
+        os.path.join(INSTALL_PATH, "FF_HEDM/workflows/integrator_stream_process_h5.py"),
         "--lineout", "lineout.bin",
         "--fit", "fit.bin",
         "--int2d", "Int2D.bin",

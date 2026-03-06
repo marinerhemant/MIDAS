@@ -104,7 +104,7 @@ These parameters are set in the MIDAS caking parameter file and directly control
 For full details, see [FF_Radial_Integration.md](FF_Radial_Integration.md). A typical invocation is:
 
 ```bash
-python ~/opt/MIDAS/utils/integrator.py \
+python ~/opt/MIDAS/FF_HEDM/workflows/integrator.py \
   -resultFolder ./output \
   -paramFN ps_caking.txt \
   -dataFN /path/to/data.vrx.h5 \
@@ -388,7 +388,7 @@ Both backends produce a `.zarr.zip` file that is passed to Stage 2 (Rietveld ref
 Process individual data files using the OpenMP-based integrator:
 
 ```bash
-python $MIDAS_INSTALL_DIR/utils/integrate_and_refine.py \
+python $MIDAS_INSTALL_DIR/FF_HEDM/workflows/integrate_and_refine.py \
     --backend batch \
     -paramFN  ps.txt \
     -dataFN   data/sample_000001.h5 \
@@ -402,7 +402,7 @@ python $MIDAS_INSTALL_DIR/utils/integrate_and_refine.py \
 Process a folder of images using the GPU streaming pipeline:
 
 ```bash
-python $MIDAS_INSTALL_DIR/utils/integrate_and_refine.py \
+python $MIDAS_INSTALL_DIR/FF_HEDM/workflows/integrate_and_refine.py \
     --backend stream \
     --param-file ps.txt \
     --folder /data/experiment/scan_01/ \
@@ -416,7 +416,7 @@ python $MIDAS_INSTALL_DIR/utils/integrate_and_refine.py \
 Connect to a live EPICS PVAccess detector stream:
 
 ```bash
-python $MIDAS_INSTALL_DIR/utils/integrate_and_refine.py \
+python $MIDAS_INSTALL_DIR/FF_HEDM/workflows/integrate_and_refine.py \
     --backend stream \
     --param-file ps.txt \
     --pva --pva-ip 10.54.105.139 \

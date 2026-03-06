@@ -1164,7 +1164,7 @@ class MidasIntegrator:
             
             # Launch live viewer if requested
             if getattr(self.args, 'liveViewer', False):
-                viewer_script = MIDAS_UTILS / 'live_viewer.py'
+                viewer_script = MIDAS_HOME / 'gui' / 'viewers' / 'live_viewer.py'
                 if viewer_script.exists():
                     # Compute nRBins from param file
                     n_rbins = 0
