@@ -61,6 +61,9 @@ def snip_background(intensities, n_iter=50):
 
     # LLS (log-log-sqrt) transform — compresses dynamic range
     # Standard Morháč formulation: sqrt(y + 1) ensures positive argument
+    # Clamp to 0 first: negative intensities (from dark subtraction) would
+    # produce NaN in the sqrt transform.
+    y = np.clip(y, 0, None)
     y = np.log(np.log(np.sqrt(y + 1) + 1) + 1)
 
     # Iterative clipping with decreasing window (vectorized)

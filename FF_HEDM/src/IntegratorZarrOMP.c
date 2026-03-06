@@ -1333,25 +1333,6 @@ integration_start:
   REtaMapper(RMin, EtaMin, nEtaBins, nRBins, EtaBinSize, RBinSize, EtaBinsLow,
              EtaBinsHigh, RBinsLow, RBinsHigh);
 
-  // ── Debug: verify ReadBins loaded pixel lists (after nRBins/nEtaBins set) ──
-  {
-    long long totalMappedPx = 0;
-    int maxPxPerBin = 0;
-    int emptyBins = 0;
-    long long totalBins = (long long)nRBins * nEtaBins;
-    for (long long bb = 0; bb < totalBins; bb++) {
-      int npx = nPxList[2 * bb + 0];
-      totalMappedPx += npx;
-      if (npx > maxPxPerBin)
-        maxPxPerBin = npx;
-      if (npx == 0)
-        emptyBins++;
-    }
-    printf("  DEBUG ReadBins: totalMappedPx=%lld, maxPxPerBin=%d, "
-           "emptyBins=%d/%lld, nRBins=%d, nEtaBins=%d\n",
-           totalMappedPx, maxPxPerBin, emptyBins, totalBins, nRBins, nEtaBins);
-  }
-
   // Compute R bin centers for peak fitting and lineout output
   double *RBinCenters = malloc(nRBins * sizeof(double));
   for (int rb = 0; rb < nRBins; rb++) {
@@ -1531,90 +1512,12 @@ integration_start:
             i, dsz);
         exit(1);
       }
-      // DEBUG: check raw decompressed bytes for frame 0
-      if (i == 0) {
-        int allZero = 1;
-        uint16_t rawMax16 = 0;
-        const uint16_t *raw16 = (const uint16_t *)locData;
-        int nPx = NrPixelsY * NrPixelsZ;
-        for (int dd = 0; dd < nPx; dd++) {
-          if (raw16[dd] != 0) {
-            allZero = 0;
-          }
-          if (raw16[dd] > rawMax16)
-            rawMax16 = raw16[dd];
-        }
-        printf("  DEBUG decompress frame0: dsz=%d, expected=%d, "
-               "allZero=%d, rawMax16=%u, first8bytes=[%02x %02x %02x %02x %02x "
-               "%02x %02x %02x], "
-               "compressedOffset=%llu, compressedSize=%llu\n",
-               dsz, NrPixelsY * NrPixelsZ * bytesPerPx, allZero, rawMax16,
-               (unsigned char)locData[0], (unsigned char)locData[1],
-               (unsigned char)locData[2], (unsigned char)locData[3],
-               (unsigned char)locData[4], (unsigned char)locData[5],
-               (unsigned char)locData[6], (unsigned char)locData[7],
-               (unsigned long long)sizeArr[0 * 2 + 1],
-               (unsigned long long)sizeArr[0 * 2 + 0]);
-      }
       rawToDouble(locData, ImageInT, nPixels, dType);
-      // DEBUG: check ImageInT after rawToDouble
-      if (i == 0) {
-        double imtMin = 1e30, imtMax = -1e30;
-        for (int dd = 0; dd < nPixels; dd++) {
-          if (ImageInT[dd] < imtMin)
-            imtMin = ImageInT[dd];
-          if (ImageInT[dd] > imtMax)
-            imtMax = ImageInT[dd];
-        }
-        printf("  DEBUG rawToDouble: ImageInT[%.1f,%.1f], nPixels=%lld, "
-               "dType=%d\n",
-               imtMin, imtMax, (long long)nPixels, dType);
-      }
       DoImageTransformations(NrTransOpt, TransOpt, ImageInT, ImageIn, NrPixelsY,
                              NrPixelsZ);
-      // DEBUG: check ImageIn after DoImageTransformations
-      if (i == 0) {
-        double imMin = 1e30, imMax = -1e30;
-        for (int dd = 0; dd < NrPixelsY * NrPixelsZ; dd++) {
-          if (ImageIn[dd] < imMin)
-            imMin = ImageIn[dd];
-          if (ImageIn[dd] > imMax)
-            imMax = ImageIn[dd];
-        }
-        printf("  DEBUG DoImageTransformations: ImageIn[%.1f,%.1f]\n", imMin,
-               imMax);
-      }
       for (j = 0; j < NrPixelsY * NrPixelsZ; j++) {
         Image[j] = (double)ImageIn[j] - AverageDark[j];
       }
-    }
-
-    // ── Debug: image stats for frame 0 ──
-    if (i == 0) {
-      double imgMin = 1e30, imgMax = -1e30, imgSum = 0;
-      double darkMin = 1e30, darkMax = -1e30, darkSum = 0;
-      double rawMin = 1e30, rawMax = -1e30;
-      for (int dd = 0; dd < NrPixelsY * NrPixelsZ; dd++) {
-        if (ImageIn[dd] < rawMin)
-          rawMin = ImageIn[dd];
-        if (ImageIn[dd] > rawMax)
-          rawMax = ImageIn[dd];
-        if (AverageDark[dd] < darkMin)
-          darkMin = AverageDark[dd];
-        if (AverageDark[dd] > darkMax)
-          darkMax = AverageDark[dd];
-        darkSum += AverageDark[dd];
-        if (Image[dd] < imgMin)
-          imgMin = Image[dd];
-        if (Image[dd] > imgMax)
-          imgMax = Image[dd];
-        imgSum += Image[dd];
-      }
-      int npx = NrPixelsY * NrPixelsZ;
-      printf("  DEBUG frame0: raw[%.1f,%.1f] dark[%.1f,%.1f,mean=%.1f] "
-             "Image[%.1f,%.1f,mean=%.3f]\n",
-             rawMin, rawMax, darkMin, darkMax, darkSum / npx, imgMin, imgMax,
-             imgSum / npx);
     }
 
     if (i == 0) {
@@ -1726,27 +1629,6 @@ integration_start:
       }
     }
     t_integration += (omp_get_wtime() - t_0);
-
-    // ── Debug: integration result stats for frame 0 ──
-    if (i == 0) {
-      int nonZeroBins = 0;
-      double intMin = 1e30, intMax = -1e30, intSum = 0;
-      for (long long bb = 0; bb < (long long)nRBins * nEtaBins; bb++) {
-        if (IntArrPerFrame[bb] != 0) {
-          nonZeroBins++;
-          if (IntArrPerFrame[bb] < intMin)
-            intMin = IntArrPerFrame[bb];
-          if (IntArrPerFrame[bb] > intMax)
-            intMax = IntArrPerFrame[bb];
-          intSum += IntArrPerFrame[bb];
-        }
-      }
-      printf("  DEBUG integration frame0: nonZeroBins=%d/%d", nonZeroBins,
-             nRBins * nEtaBins);
-      if (nonZeroBins > 0)
-        printf(" int[%.3f,%.3f,sum=%.3f]", intMin, intMax, intSum);
-      printf("\n");
-    }
 
     // --- Compute eta-summed 1D lineout and write binary output ---
     double *lineout1D = (double *)calloc(nRBins, sizeof(double));
