@@ -1291,33 +1291,34 @@ class RingSelectionDialog(QtWidgets.QDialog):
         for i in range(6):
             self.viewer.lattice_const[i] = float(self.lc_edits[i].text())
 
-        with tempfile.TemporaryDirectory() as tmp:
-            pf = os.path.join(tmp, 'ps.txt')
-            with open(pf, 'w') as f:
-                f.write('Wavelength ' + str(wl) + '\n')
-                f.write('SpaceGroup ' + str(self.viewer.sg) + '\n')
-                f.write('Lsd ' + str(self.viewer.lsd_local) + '\n')
-                f.write('MaxRingRad ' + str(self.viewer.temp_max_ring_rad) + '\n')
-                f.write('LatticeConstant ' + ' '.join(str(v) for v in self.viewer.lattice_const) + '\n')
+        if midas_config and midas_config.MIDAS_BIN_DIR:
+            hkl_bin = os.path.join(midas_config.MIDAS_BIN_DIR, 'GetHKLList')
+        else:
+            hkl_bin = os.path.expanduser('~/opt/MIDAS/FF_HEDM/bin/GetHKLList')
 
-            if midas_config and midas_config.MIDAS_BIN_DIR:
-                hkl_bin = os.path.join(midas_config.MIDAS_BIN_DIR, 'GetHKLList')
-            else:
-                hkl_bin = os.path.expanduser('~/opt/MIDAS/FF_HEDM/bin/GetHKLList')
+        lp = self.viewer.lattice_const
+        cmd = [
+            hkl_bin,
+            '--sg', str(self.viewer.sg),
+            '--lp', str(lp[0]), str(lp[1]), str(lp[2]),
+                    str(lp[3]), str(lp[4]), str(lp[5]),
+            '--wl', str(wl),
+            '--lsd', str(self.viewer.lsd_local),
+            '--maxR', str(self.viewer.temp_max_ring_rad),
+            '--stdout',
+        ]
+        try:
+            result = subprocess.run(
+                cmd, check=True, capture_output=True, text=True)
+        except Exception as e:
+            print(f"GetHKLList failed: {e}")
+            return
 
-            try:
-                subprocess.run([hkl_bin, pf], check=True, cwd=tmp)
-            except Exception as e:
-                print(f"GetHKLList failed: {e}")
-                return
-
-            hkl_file = os.path.join(tmp, 'hkls.csv')
-            if not os.path.exists(hkl_file):
-                print("hkls.csv not generated")
-                return
-            with open(hkl_file) as f:
-                header = f.readline()
-                lines = f.readlines()
+        lines = result.stdout.strip().split('\n')
+        if len(lines) < 2:
+            print("GetHKLList produced no output")
+            return
+        lines = lines[1:]  # skip header
 
         # Parse rings
         all_rings = []

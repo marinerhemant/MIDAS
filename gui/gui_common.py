@@ -95,9 +95,6 @@ class MIDASImageView(QtWidgets.QWidget):
         self._nav_mode = 'pointer'  # 'pointer', 'pan', 'zoom'
         self._view_history = []
         self._view_index = -1
-        self._is_dragging = False
-        self._drag_start = None
-        self._zoom_rect = None
 
         # ── Crosshair ──
         self._vline = pg.InfiniteLine(angle=90, movable=False,
@@ -127,9 +124,10 @@ class MIDASImageView(QtWidgets.QWidget):
         layout.addWidget(self._iv, stretch=1)
         layout.addWidget(self._nav_bar)
 
-        # Disable default mouse-wheel zoom (keep Ctrl+wheel for frame scroll)
+        # Disable mouse interaction by default (avoids expensive redraws over SSH)
+        # Pan/Zoom only enabled via toolbar buttons
         vb = self._get_viewbox()
-        vb.setMouseEnabled(x=False, y=False)  # Disable scroll-zoom
+        vb.setMouseEnabled(x=False, y=False)
         vb.enableAutoRange(False)
 
         # Install event filter for zoom-rect and pan
@@ -247,9 +245,11 @@ class MIDASImageView(QtWidgets.QWidget):
 
         if mode == 'pan':
             vb.setMouseEnabled(x=True, y=True)
+            vb.setMouseMode(pg.ViewBox.PanMode)
             self._mode_label.setText("  Mode: Pan")
         elif mode == 'zoom':
-            vb.setMouseEnabled(x=False, y=False)
+            vb.setMouseEnabled(x=True, y=True)
+            vb.setMouseMode(pg.ViewBox.RectMode)
             self._mode_label.setText("  Mode: Zoom")
         else:
             vb.setMouseEnabled(x=False, y=False)
@@ -296,8 +296,9 @@ class MIDASImageView(QtWidgets.QWidget):
         self._fwd_btn.setEnabled(self._view_index < len(self._view_history) - 1)
 
     def _on_scene_clicked(self, ev):
-        """Handle mouse press for zoom-rect mode."""
-        pass  # Clicks handled separately; zoom uses press/release
+        """Double-click resets zoom to full view."""
+        if ev.double():
+            self._nav_home()
 
     # ── Movie Controls ─────────────────────────────────────────────
 
@@ -486,58 +487,22 @@ class MIDASImageView(QtWidgets.QWidget):
             self.cursorMoved.emit(x, y, val)
 
     def wheelEvent(self, ev):
-        """Emit frame scroll signal on Ctrl+wheel; otherwise ignore (no zoom)."""
+        """Ctrl+wheel scrolls frames; plain wheel ignored (no zoom over SSH)."""
         if ev.modifiers() & QtCore.Qt.ControlModifier:
             delta = 1 if ev.angleDelta().y() > 0 else -1
             self.frameScrolled.emit(delta)
             ev.accept()
         else:
-            # Don't zoom; ignore the event
             ev.ignore()
 
     def mousePressEvent(self, ev):
-        if self._nav_mode == 'zoom' and ev.button() == QtCore.Qt.LeftButton:
-            self._is_dragging = True
-            self._drag_start = ev.pos()
-            # Create rubber-band rectangle
-            self._zoom_rect = QtWidgets.QRubberBand(QtWidgets.QRubberBand.Rectangle, self._iv)
-            self._zoom_rect.setGeometry(QtCore.QRect(self._drag_start, QtCore.QSize()))
-            self._zoom_rect.show()
-            ev.accept()
-        else:
-            super().mousePressEvent(ev)
+        super().mousePressEvent(ev)
 
     def mouseMoveEvent(self, ev):
-        if self._is_dragging and self._zoom_rect:
-            self._zoom_rect.setGeometry(
-                QtCore.QRect(self._drag_start, ev.pos()).normalized())
-            ev.accept()
-        else:
-            super().mouseMoveEvent(ev)
+        super().mouseMoveEvent(ev)
 
     def mouseReleaseEvent(self, ev):
-        if self._is_dragging and self._zoom_rect and ev.button() == QtCore.Qt.LeftButton:
-            self._is_dragging = False
-            rect = QtCore.QRect(self._drag_start, ev.pos()).normalized()
-            self._zoom_rect.hide()
-            self._zoom_rect = None
-
-            # Convert widget coordinates to view coordinates
-            if rect.width() > 5 and rect.height() > 5:
-                vb = self._get_viewbox()
-                # Map the rectangle corners from widget to scene to view
-                p1 = self._iv.mapToScene(rect.topLeft())
-                p2 = self._iv.mapToScene(rect.bottomRight())
-                v1 = vb.mapSceneToView(p1)
-                v2 = vb.mapSceneToView(p2)
-                x_min, x_max = sorted([v1.x(), v2.x()])
-                y_min, y_max = sorted([v1.y(), v2.y()])
-                self._push_view()
-                vb.setRange(xRange=[x_min, x_max], yRange=[y_min, y_max], padding=0)
-                self._push_view()
-            ev.accept()
-        else:
-            super().mouseReleaseEvent(ev)
+        super().mouseReleaseEvent(ev)
 
 
 # ── AsyncWorker ────────────────────────────────────────────────────────
