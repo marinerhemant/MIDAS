@@ -23,8 +23,7 @@ gui/
 │   ├── plotGrains3d.py
 │   ├── PlotFFNF.py
 │   └── viz_caking.py
-├── MIDAS_dig_tw.py          # Digital twin (original)
-├── ff_dig_tw.py             # Digital twin (refactored)
+├── dig_tw.py                # Digital twin (FF + NF HEDM)
 ├── ff_asym_qt.py            # FF-HEDM PyQtGraph viewer (recommended)
 ├── nf_qt.py                 # NF-HEDM PyQtGraph viewer (recommended)
 ├── gui_common.py            # Shared PyQtGraph components
@@ -37,12 +36,12 @@ gui/
 
 ---
 
-## Digital Twin (`MIDAS_dig_tw.py` / `ff_dig_tw.py`)
+## Digital Twin (`dig_tw.py`)
 
-Interactive browser-based (Dash + Plotly) simulation of diffraction patterns from microstructure data. Supports FF-HEDM (`ForwardSimulationCompressed`) and NF-HEDM (`simulateNF`) modes. See [Digital_Twin manual](../manuals/Digital_Twin.md).
+Interactive browser-based (Dash + Plotly) simulation of diffraction patterns from microstructure data. Supports both FF-HEDM (`ForwardSimulationCompressed`) and NF-HEDM (`simulateNF`) modes with configurable pixel size and detector dimensions. See [Digital_Twin manual](../manuals/Digital_Twin.md).
 
 ```bash
-python ~/opt/MIDAS/gui/ff_dig_tw.py -mic Grains.csv
+python ~/opt/MIDAS/gui/dig_tw.py -mic Grains.csv
 ```
 
 ---

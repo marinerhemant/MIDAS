@@ -15,22 +15,21 @@ The MIDAS Digital Twin creates a virtual diffraction experiment from a measured 
 - **Beam size filtering**: Slider to select grains within the beam footprint
 - **Sequence support**: Load and compare multiple deformation states from `Grains.csv.*`
 
-## Scripts
+## Script
 
 | Script | Description |
 |--------|-------------|
-| `MIDAS_dig_tw.py` | Original digital twin (Dash + Plotly) |
-| `ff_dig_tw.py` | Refactored version with dataclasses, caching, error handling, and export |
+| `dig_tw.py` | Unified digital twin (Dash + Plotly) — supports FF-HEDM and NF-HEDM |
+
+> [!NOTE]
+> The previous `MIDAS_dig_tw.py` and `ff_dig_tw.py` have been consolidated into `dig_tw.py` and archived to `gui/archive/`.
 
 ## Usage
 
 ```bash
 # Launch the digital twin (opens in browser at http://localhost:8050)
 cd <data_directory>
-python ~/opt/MIDAS/gui/MIDAS_dig_tw.py -mic Grains.csv
-
-# Or use the refactored version
-python ~/opt/MIDAS/gui/ff_dig_tw.py -mic Grains.csv
+python ~/opt/MIDAS/gui/dig_tw.py -mic Grains.csv
 ```
 
 ### Supported Microstructure Formats
@@ -64,7 +63,9 @@ graph TD
 | Energy | 71.676 keV | X-ray energy |
 | Space group | 194 | Crystallographic space group number |
 | Lattice constants | Ti (HCP) | a, b, c (Å), α, β, γ (°) |
-| Beam size | 2000 μm | Horizontal beam footprint for grain filtering |
+| Beam size | 2000 µm | Horizontal beam footprint for grain filtering (FF only) |
+| Pixel size | 200 µm | Detector pixel size |
+| NrPixels | 2048 | Detector dimension (NrPixels × NrPixels) |
 | Omega range | −10° to 10° | Rotation range for simulation |
 | Omega step | 0.25° | Angular step per frame |
 
@@ -77,16 +78,12 @@ plotly
 pandas
 numpy
 zarr
-```
-
-The refactored version (`ff_dig_tw.py`) additionally requires:
-```
 diskcache
 ```
 
 ## MIDAS Binaries Used
 
-- `GetHKLList` — generates `hkls.csv` from lattice parameters
+- `GetHKLList` — generates HKL list from lattice parameters (called in `--stdout` CLI mode)
 - `ForwardSimulationCompressed` — FF-HEDM forward simulation
 - `simulateNF` — NF-HEDM forward simulation
 
