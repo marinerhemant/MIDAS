@@ -29,6 +29,12 @@ import datetime
 import math
 from pathlib import Path
 import shutil
+
+# Add MIDAS utils to sys.path so midas_config can be found
+_script_dir = Path(__file__).resolve().parent
+_midas_root = _script_dir.parent.parent  # FF_HEDM/workflows -> FF_HEDM -> MIDAS root
+sys.path.insert(0, str(_midas_root / "utils"))
+
 import midas_config
 midas_config.run_startup_checks()
 
@@ -44,8 +50,8 @@ except ImportError:
 def get_install_path():
     """Determines the MIDAS installation path based on script location"""
     script_dir = Path(__file__).resolve().parent
-    # Go one directory up from the script directory (utils)
-    install_dir = script_dir.parent
+    # FF_HEDM/workflows -> FF_HEDM -> MIDAS root
+    install_dir = script_dir.parent.parent
     return install_dir
 
 INSTALL_PATH = get_install_path()
@@ -495,7 +501,7 @@ def main():
     mapping_file = args.mapping_file
     
     # Get install dir from path of executable
-    install_dir = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+    install_dir = os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
     # Validate dark file if specified
     dark_file = str(Path(args.dark).absolute()) if args.dark else None
@@ -653,7 +659,7 @@ def main():
     viewer_proc = None
     if args.live_viewer:
         print("\nLaunching live viewer dashboard...")
-        viewer_script = os.path.join(INSTALL_PATH, "utils/live_viewer.py")
+        viewer_script = os.path.join(INSTALL_PATH, "gui/viewers/live_viewer.py")
         viewer_cmd = [
             sys.executable, viewer_script,
             '--lineout', str(output_dir / 'lineout.bin'),

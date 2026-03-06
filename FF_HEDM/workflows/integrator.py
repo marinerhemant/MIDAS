@@ -67,7 +67,8 @@ def get_installation_dir() -> Path:
         Path: Installation directory path
     """
     script_dir = Path(__file__).resolve().parent
-    install_dir = script_dir.parent
+    # FF_HEDM/workflows -> FF_HEDM -> MIDAS root
+    install_dir = script_dir.parent.parent
     return install_dir
 
 # Path configuration
@@ -77,6 +78,7 @@ MIDAS_BIN = MIDAS_HOME / "FF_HEDM" / "bin"
 
 # Add MIDAS utils to path
 sys.path.insert(0, str(MIDAS_UTILS))
+sys.path.insert(0, str(MIDAS_UTILS / "converters"))
 import midas_config
 midas_config.run_startup_checks()
 try:

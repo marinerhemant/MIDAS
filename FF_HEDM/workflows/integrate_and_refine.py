@@ -81,14 +81,18 @@ import subprocess
 import sys
 import textwrap
 from pathlib import Path
+
+# Add MIDAS utils to sys.path so midas_config can be found
+_SCRIPT_DIR = Path(__file__).resolve().parent
+sys.path.insert(0, str(_SCRIPT_DIR.parent.parent / "utils"))
+
 import midas_config
 midas_config.run_startup_checks()
 
 # ---------------------------------------------------------------------------
 # Resolve MIDAS installation directory
 # ---------------------------------------------------------------------------
-_SCRIPT_DIR = Path(__file__).resolve().parent
-MIDAS_HOME = os.environ.get("MIDAS_INSTALL_DIR", str(_SCRIPT_DIR.parent))
+MIDAS_HOME = os.environ.get("MIDAS_INSTALL_DIR", str(_SCRIPT_DIR.parent.parent))
 MIDAS_UTILS = Path(MIDAS_HOME) / "utils"
 
 logging.basicConfig(
@@ -116,7 +120,7 @@ def run_batch_integrator(args: argparse.Namespace) -> Path:
     Path
         Path to the generated .zarr.zip file.
     """
-    integrator_script = MIDAS_UTILS / "integrator.py"
+    integrator_script = _SCRIPT_DIR / "integrator.py"
     if not integrator_script.exists():
         log.error("integrator.py not found at %s", integrator_script)
         sys.exit(1)
@@ -185,7 +189,7 @@ def run_stream_integrator(args: argparse.Namespace) -> Path:
     Path
         Path to the generated .zarr.zip file.
     """
-    stream_script = MIDAS_UTILS / "integrator_batch_process.py"
+    stream_script = _SCRIPT_DIR / "integrator_batch_process.py"
     if not stream_script.exists():
         log.error("integrator_batch_process.py not found at %s", stream_script)
         sys.exit(1)
