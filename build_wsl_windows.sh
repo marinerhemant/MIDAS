@@ -26,7 +26,9 @@ rm -rf build && mkdir build && cd build
 # We use CMAKE_C_STANDARD_LIBRARIES and CMAKE_CXX_STANDARD_LIBRARIES 
 # to ensure the linker order is correct (libraries at the end of the command)
 HDF5_INC="/usr/include/hdf5/serial"
-HDF5_LIB_DIR="/usr/lib/aarch64-linux-gnu/hdf5/serial"
+# Auto-detect architecture (x86_64-linux-gnu or aarch64-linux-gnu)
+MULTIARCH=$(dpkg-architecture -qDEB_HOST_MULTIARCH 2>/dev/null || echo "x86_64-linux-gnu")
+HDF5_LIB_DIR="/usr/lib/${MULTIARCH}/hdf5/serial"
 LIBS="-L${HDF5_LIB_DIR} -lhdf5_hl -lhdf5 -ltiff -lblosc2 -lblosc -lfftw3 -lnlopt -lz -lm -ldl"
 
 cmake .. \
