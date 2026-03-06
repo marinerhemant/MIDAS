@@ -1,0 +1,16 @@
+# Force LF line endings for all text files to avoid CRLF issues on WSL
+* text=auto eol=lf
+
+# Ensure shell scripts are always LF (critical for WSL)
+*.sh text eol=lf
+
+# Binary files
+*.bin binary
+*.tif binary
+*.tiff binary
+*.ge binary
+*.gz binary
+*.zip binary
+*.h5 binary
+*.hdf5 binary
+*.zarr binary
