@@ -46,8 +46,11 @@ int ReadZarrChunk(zip_t *arch, int entryIndex, void *dest, size_t destSize) {
   if (decompSize < 0) {
     fprintf(stderr,
             "ZarrReader ERROR: blosc1_decompress failed for index %d "
-            "(error code: %d)\n",
-            entryIndex, decompSize);
+            "(error code: %d, compressedSize=%llu, destSize=%llu, "
+            "entry='%s')\n",
+            entryIndex, decompSize, (unsigned long long)finfo.size,
+            (unsigned long long)destSize,
+            finfo.name ? finfo.name : "(unknown)");
     free(compressed);
     zip_fclose(fd);
     return ZR_ERR_DECOMP;

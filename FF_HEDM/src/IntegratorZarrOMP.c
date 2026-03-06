@@ -1160,6 +1160,24 @@ int main(int argc, char **argv) {
   }
 
   int rc = ReadBins(resultFolder);
+  // ── Debug: verify ReadBins loaded pixel lists ──
+  {
+    long long totalMappedPx = 0;
+    int maxPxPerBin = 0;
+    int emptyBins = 0;
+    long long totalBins = (long long)nRBins * nEtaBins;
+    for (long long bb = 0; bb < totalBins; bb++) {
+      int npx = nPxList[2 * bb + 0];
+      totalMappedPx += npx;
+      if (npx > maxPxPerBin)
+        maxPxPerBin = npx;
+      if (npx == 0)
+        emptyBins++;
+    }
+    printf("  DEBUG ReadBins: totalMappedPx=%lld, maxPxPerBin=%d, "
+           "emptyBins=%d/%lld\n",
+           totalMappedPx, maxPxPerBin, emptyBins, totalBins);
+  }
   int32_t imTransBufSize = NrTransOpt * sizeof(int);
   int *imTransData = (int *)malloc((size_t)imTransBufSize);
   ReadZarrChunk(arch, locImTransOpt, imTransData, imTransBufSize);
@@ -1513,6 +1531,34 @@ integration_start:
       }
     }
 
+    // ── Debug: image stats for frame 0 ──
+    if (i == 0) {
+      double imgMin = 1e30, imgMax = -1e30, imgSum = 0;
+      double darkMin = 1e30, darkMax = -1e30, darkSum = 0;
+      double rawMin = 1e30, rawMax = -1e30;
+      for (int dd = 0; dd < NrPixelsY * NrPixelsZ; dd++) {
+        if (ImageIn[dd] < rawMin)
+          rawMin = ImageIn[dd];
+        if (ImageIn[dd] > rawMax)
+          rawMax = ImageIn[dd];
+        if (AverageDark[dd] < darkMin)
+          darkMin = AverageDark[dd];
+        if (AverageDark[dd] > darkMax)
+          darkMax = AverageDark[dd];
+        darkSum += AverageDark[dd];
+        if (Image[dd] < imgMin)
+          imgMin = Image[dd];
+        if (Image[dd] > imgMax)
+          imgMax = Image[dd];
+        imgSum += Image[dd];
+      }
+      int npx = NrPixelsY * NrPixelsZ;
+      printf("  DEBUG frame0: raw[%.1f,%.1f] dark[%.1f,%.1f,mean=%.1f] "
+             "Image[%.1f,%.1f,mean=%.3f]\n",
+             rawMin, rawMax, darkMin, darkMax, darkSum / npx, imgMin, imgMax,
+             imgSum / npx);
+    }
+
     if (i == 0) {
       char fn2[4096];
       sprintf(fn2, "%s", DataFN);
@@ -1622,6 +1668,27 @@ integration_start:
       }
     }
     t_integration += (omp_get_wtime() - t_0);
+
+    // ── Debug: integration result stats for frame 0 ──
+    if (i == 0) {
+      int nonZeroBins = 0;
+      double intMin = 1e30, intMax = -1e30, intSum = 0;
+      for (long long bb = 0; bb < (long long)nRBins * nEtaBins; bb++) {
+        if (IntArrPerFrame[bb] != 0) {
+          nonZeroBins++;
+          if (IntArrPerFrame[bb] < intMin)
+            intMin = IntArrPerFrame[bb];
+          if (IntArrPerFrame[bb] > intMax)
+            intMax = IntArrPerFrame[bb];
+          intSum += IntArrPerFrame[bb];
+        }
+      }
+      printf("  DEBUG integration frame0: nonZeroBins=%d/%d", nonZeroBins,
+             nRBins * nEtaBins);
+      if (nonZeroBins > 0)
+        printf(" int[%.3f,%.3f,sum=%.3f]", intMin, intMax, intSum);
+      printf("\n");
+    }
 
     // --- Compute eta-summed 1D lineout and write binary output ---
     double *lineout1D = (double *)calloc(nRBins, sizeof(double));
