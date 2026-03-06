@@ -179,11 +179,11 @@ def main():
     # Plot
     fig, ax = plt.subplots(figsize=(14, 6))
 
-    ax.plot(calib_tth, calib_int, '*', linewidth=0.8, alpha=0.9,
+    ax.plot(calib_tth, calib_int, '-', linewidth=0.8, alpha=0.9,
             color='#2196F3', label=f'Calibrant ({calib_path.name})')
 
     if integ_tth is not None:
-        ax.plot(integ_tth, integ_int, '*', linewidth=0.8, alpha=0.9,
+        ax.plot(integ_tth, integ_int, '-', linewidth=0.8, alpha=0.9,
                 color='#FF5722', label=f'Integrator ({integ_path.name})')
 
     # Draw ideal 2theta lines
