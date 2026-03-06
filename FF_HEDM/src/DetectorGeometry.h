@@ -30,7 +30,8 @@ void dg_build_tilt_matrix(double tx_deg, double ty_deg, double tz_deg,
 void dg_pixel_to_REta(double Y, double Z, double Ycen, double Zcen,
                       double TRs[3][3], double Lsd, double RhoD, double p0,
                       double p1, double p2, double p3, double p4, double px,
-                      double dLsd, double dP2, double *R_out, double *Eta_out);
+                      double dLsd, double dP2, double *R_out, double *Eta_out,
+                      double *Eta_untilted_out);
 
 // Inverse: (R_px, Eta_deg) → centered (Y, Z) in pixel units.
 // Coordinates are centered at beam center (0,0).

@@ -96,7 +96,7 @@ mapperfcn(double tx, double ty, double tz, int NrPixelsY, int NrPixelsZ,
           double Y = ypr + dg_dy[k];
           double Z = zpr + dg_dz[l];
           dg_pixel_to_REta(Y, Z, Ycen, Zcen, TRs, Lsd, RhoD, p0, p1, p2, p3, p4,
-                           pxY, dLsd, dP2, &Rt, &Eta);
+                           pxY, dLsd, dP2, &Rt, &Eta, NULL);
           RetVals[0] = Eta;
           RetVals[1] = Rt;
           if (Eta < EtaMi)
@@ -111,7 +111,7 @@ mapperfcn(double tx, double ty, double tz, int NrPixelsY, int NrPixelsZ,
       }
       // Get corrected Y, Z for this position.
       dg_pixel_to_REta(ypr, zpr, Ycen, Zcen, TRs, Lsd, RhoD, p0, p1, p2, p3, p4,
-                       pxY, dLsd, dP2, &Rt, &Eta);
+                       pxY, dLsd, dP2, &Rt, &Eta, NULL);
       dg_REta_to_YZ(Rt, Eta, &YZ[0], &YZ[1]);
       // Now check which eta, R ranges should have this pixel
       int nrRChosen = 0;
@@ -414,7 +414,7 @@ mapperfcn(double tx, double ty, double tz, int NrPixelsY, int NrPixelsZ,
       double Rdbg, Etadbg;
       dg_pixel_to_REta((double)sampleY[si], (double)sampleZ[si], Ycen, Zcen,
                        TRsDbg, Lsd, RhoD, p0, p1, p2, p3, p4, pxY, 0, 0, &Rdbg,
-                       &Etadbg);
+                       &Etadbg, NULL);
       printf("  pixel(%4d,%4d): R=%10.2f  Eta=%8.2f\n", sampleY[si],
              sampleZ[si], Rdbg, Etadbg);
     }

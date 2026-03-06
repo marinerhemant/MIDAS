@@ -81,16 +81,15 @@ void dg_build_tilt_matrix(double tx_deg, double ty_deg, double tz_deg,
 void dg_pixel_to_REta(double Y, double Z, double Ycen, double Zcen,
                       double TRs[3][3], double Lsd, double RhoD, double p0,
                       double p1, double p2, double p3, double p4, double px,
-                      double dLsd, double dP2, double *R_out, double *Eta_out) {
+                      double dLsd, double dP2, double *R_out, double *Eta_out,
+                      double *Eta_untilted_out) {
   double panelLsd = Lsd + dLsd;
   double panelP2 = p2 + dP2;
   double Yc = (-Y + Ycen) * px;
   double Zc = (Z - Zcen) * px;
   double ABC[3] = {0, Yc, Zc};
   // Untilted Eta: from raw pixel-centered coords, before tilt matrix.
-  // This matches the original Car2Pol convention and is required by
-  // CalcPeakProfileParallel's box construction and the boundary check,
-  // which both use the untilted (R,Eta)->pixel formula.
+  // Required by CalibrantPanelShiftsOMP's box construction and boundary check.
   double EtaUntilted = dg_calc_eta_angle(ABC[1], ABC[2]);
   double ABCPr[3], XYZ[3];
   dg_mat_mult_33v(TRs, ABC, ABCPr);
@@ -98,7 +97,7 @@ void dg_pixel_to_REta(double Y, double Z, double Ycen, double Zcen,
   XYZ[1] = ABCPr[1];
   XYZ[2] = ABCPr[2];
   double Rad = (panelLsd / XYZ[0]) * sqrt(XYZ[1] * XYZ[1] + XYZ[2] * XYZ[2]);
-  // Tilted Eta: used only for the distortion function
+  // Tilted Eta: from post-tilt coordinates, used for distortion and binning
   double EtaTilted = dg_calc_eta_angle(XYZ[1], XYZ[2]);
   double RNorm = Rad / RhoD;
   double EtaT = 90 - EtaTilted;
@@ -112,7 +111,9 @@ void dg_pixel_to_REta(double Y, double Z, double Ycen, double Zcen,
   double Rt = Rad * DistortFunc / px; // in pixels
   Rt = Rt * (Lsd / panelLsd);         // re-project to global Lsd plane
   *R_out = Rt;
-  *Eta_out = EtaUntilted;
+  *Eta_out = EtaTilted;
+  if (Eta_untilted_out != NULL)
+    *Eta_untilted_out = EtaUntilted;
 }
 
 void dg_REta_to_YZ(double R, double Eta_deg, double *Y_out, double *Z_out) {
