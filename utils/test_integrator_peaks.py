@@ -319,13 +319,15 @@ def create_zarr_zip(work_dir: Path, param_file: Path) -> Path:
 
 def run_integrator_with_peaks(zip_file: Path, peak_params: Path,
                               work_dir: Path, n_cpus: int = 4) -> Path:
-    """Run DetectorMapperZarr + IntegratorZarrOMP with peak fitting enabled."""
-    # Step A: Run DetectorMapperZarr to generate Map.bin/nMap.bin
-    mapper = MIDAS_BIN / "DetectorMapperZarr"
+    """Run DetectorMapper + IntegratorZarrOMP with peak fitting enabled."""
+    # Step A: Run DetectorMapper (Zarr mode) to generate Map.bin/nMap.bin
+    mapper = MIDAS_BIN / "DetectorMapper"
     if not mapper.exists():
-        raise FileNotFoundError(f"DetectorMapperZarr not found at {mapper}")
-    print("  Running DetectorMapperZarr...")
-    run_cmd([str(mapper), str(zip_file), "-nCPUs", str(n_cpus)], cwd=str(work_dir))
+        raise FileNotFoundError(f"DetectorMapper not found at {mapper}")
+    print("  Running DetectorMapper (Zarr mode)...")
+    run_cmd([str(mapper), "-zarrFN", str(zip_file),
+             "-resultFolder", str(work_dir), "-nCPUs", str(n_cpus)],
+            cwd=str(work_dir))
 
     # Step B: Run IntegratorZarrOMP with peak fitting
     integrator = MIDAS_BIN / "IntegratorZarrOMP"

@@ -591,15 +591,16 @@ class FileProcessor:
         out_log = log_path / "map_out.csv"
         err_log = log_path / "map_err.csv"
         
-        mapper_path = MIDAS_BIN / 'DetectorMapperZarr'
-        mapper_cmd = [str(mapper_path), str(zip_file),
+        mapper_path = MIDAS_BIN / 'DetectorMapper'
+        mapper_cmd = [str(mapper_path), '-zarrFN', str(zip_file),
+                      '-resultFolder', str(self.params.result_dir),
                       '-nCPUs', str(self.params.nCPUsLocal)]
         
         with self._run_command(
             mapper_cmd, 
             out_log, 
             err_log,
-            f"DetectorMapperZarr failed for {zip_file}"
+            f"DetectorMapper failed for {zip_file}"
         ):
             pass
     

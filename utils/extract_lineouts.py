@@ -110,30 +110,37 @@ def _process_one_frame(nr, data_file, param_file, out_dir, out_xy, geom,
         if result.returncode != 0:
             return (nr, False, "integrator failed")
 
+        # IntegratorZarrOMP now writes _lineout.xy directly (2θ from its own Lsd)
+        lineout_xy_src = work_dir / f"{stem}_lineout.xy"
         lineout_bin = work_dir / f"{stem}_lineout.bin"
-        if not lineout_bin.exists():
-            return (nr, False, f"no {stem}_lineout.bin")
 
-        # Convert to .xy
-        data = lineout_bin.read_bytes()
-        lineout_bin.unlink()  # clean up binary file
-        n_rbins = len(data) // 8
-        if n_rbins == 0:
-            return (nr, False, "empty lineout.bin")
-
-        intensities = struct.unpack(f'{n_rbins}d', data[:n_rbins * 8])
-        px = geom['px']
-        Lsd = geom['Lsd']
-        RMin = geom['RMin']
-        RBinSize = geom['RBinSize']
-
-        with open(out_xy, 'w') as f:
-            f.write("# 2theta_deg  intensity\n")
-            for i in range(n_rbins):
-                R_px = RMin + (i + 0.5) * RBinSize
-                R_um = R_px * px
-                tth_deg = math.degrees(math.atan(R_um / Lsd)) if Lsd > 0 else 0.0
-                f.write(f"{tth_deg:.6f}  {intensities[i]:.6f}\n")
+        if lineout_xy_src.exists():
+            # Use the .xy file directly — 2θ computed by IntegratorZarrOMP
+            import shutil as _shutil
+            _shutil.copy2(str(lineout_xy_src), str(out_xy))
+        elif lineout_bin.exists():
+            # Fallback: convert binary using parameter-file geometry
+            data = lineout_bin.read_bytes()
+            n_rbins = len(data) // 8
+            if n_rbins == 0:
+                return (nr, False, "empty lineout.bin")
+            intensities = struct.unpack(f'{n_rbins}d', data[:n_rbins * 8])
+            px = geom['px']
+            Lsd = geom['Lsd']
+            RMin = geom['RMin']
+            RBinSize = geom['RBinSize']
+            with open(out_xy, 'w') as f:
+                f.write("# 2theta_deg  intensity\n")
+                for i in range(n_rbins):
+                    R_px = RMin + (i + 0.5) * RBinSize
+                    R_um = R_px * px
+                    tth_deg = math.degrees(math.atan(R_um / Lsd)) if Lsd > 0 else 0.0
+                    val = intensities[i]
+                    if math.isnan(val):
+                        continue
+                    f.write(f"{tth_deg:.6f}  {val:.6f}\n")
+        else:
+            return (nr, False, f"no {stem}_lineout.xy or _lineout.bin")
 
         return (nr, True, "OK")
 

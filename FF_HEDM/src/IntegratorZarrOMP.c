@@ -85,6 +85,8 @@ struct data {
 
 struct data *pxList;
 int *nPxList;
+int *binMaskFlag; // per-bin contamination flags from maskMap.bin (NULL if
+                  // absent)
 
 int ReadBins(char *resultFolder) {
   int fd;
@@ -109,7 +111,7 @@ int ReadBins(char *resultFolder) {
     map_header_print("Map.bin", &map_hdr);
   } else {
     printf("WARNING: Map.bin has no parameter header (legacy format).\n");
-    printf("  Consider regenerating with latest DetectorMapperZarr.\n");
+    printf("  Consider regenerating with latest DetectorMapper.\n");
   }
   size_t data_size = size - data_offset;
 
@@ -149,6 +151,35 @@ int ReadBins(char *resultFolder) {
          "%lld. \n",
          (long long int)data_size2, 2 * (int)sizeof(int),
          2 * (long long int)(data_size2 / sizeof(int)));
+
+  // Optionally read maskMap.bin (bin contamination flags)
+  binMaskFlag = NULL;
+  char mask_map_fn[4096];
+  sprintf(mask_map_fn, "%s/maskMap.bin", resultFolder);
+  int fd3 = open(mask_map_fn, O_RDONLY);
+  if (fd3 >= 0) {
+    struct stat s3;
+    if (fstat(fd3, &s3) == 0 && s3.st_size > 0) {
+      size_t size3 = s3.st_size;
+      struct MapHeader mask_hdr;
+      int has_hdr3 = map_header_read_fd(fd3, &mask_hdr);
+      size_t off3 = has_hdr3 ? MAP_HEADER_SIZE : 0;
+      void *mask_base = mmap(0, size3, PROT_READ, MAP_SHARED, fd3, 0);
+      if (mask_base != MAP_FAILED) {
+        binMaskFlag = (int *)((char *)mask_base + off3);
+        int nFlagged = 0;
+        long long int nBins = (long long int)(size3 - off3) / sizeof(int);
+        for (long long int bi = 0; bi < nBins; bi++)
+          if (binMaskFlag[bi])
+            nFlagged++;
+        printf("maskMap.bin: %lld bins, %d flagged as contaminated\n", nBins,
+               nFlagged);
+      }
+    } else {
+      close(fd3);
+    }
+  }
+
   fflush(stdout);
   return 1;
 }
@@ -1319,6 +1350,13 @@ integration_start:
   fLineout = fopen(lineoutFN, "wb");
   if (fLineout)
     printf("Opened %s for binary output.\n", lineoutFN);
+  char lineoutXYFN[4096];
+  sprintf(lineoutXYFN, "%s_lineout.xy", dataPrefix);
+  FILE *fLineoutXY = fopen(lineoutXYFN, "w");
+  if (fLineoutXY) {
+    fprintf(fLineoutXY, "# 2theta_deg  intensity\n");
+    printf("Opened %s for text lineout output.\n", lineoutXYFN);
+  }
   FILE *fFitPerEta = NULL;
   if (doPeakFit && nPeakLocations > 0) {
     char fitBinFN[4096];
@@ -1569,6 +1607,9 @@ integration_start:
           PerFrameArr[3 * bigArrSize + (j * nEtaBins + k)] = totArea;
         }
         IntArrPerFrame[j * nEtaBins + k] = Intensity;
+        // If this bin is flagged as contaminated by a masked pixel, force NAN
+        if (binMaskFlag != NULL && binMaskFlag[j * nEtaBins + k])
+          IntArrPerFrame[j * nEtaBins + k] = NAN;
         if (sumImages == 1) {
           if (i == 0) {
             sumMatrix[j * nEtaBins * 5 + k * 5 + 0] = RMean;
@@ -1590,7 +1631,7 @@ integration_start:
       int cnt = 0;
       for (k = 0; k < nEtaBins; k++) {
         double val = IntArrPerFrame[j * nEtaBins + k];
-        if (val != 0) {
+        if (val != 0 && !isnan(val)) {
           sum += val;
           cnt++;
         }
@@ -1601,6 +1642,16 @@ integration_start:
     if (fLineout) {
       fwrite(lineout1D, sizeof(double), nRBins, fLineout);
       fflush(fLineout);
+    }
+    // Write lineout.xy: 2theta (deg) + intensity per R bin
+    if (fLineoutXY) {
+      for (j = 0; j < nRBins; j++) {
+        if (isnan(lineout1D[j]))
+          continue; // skip contaminated bins
+        double tth = atand(RBinCenters[j] * px / Lsd);
+        fprintf(fLineoutXY, "%.6f  %.6f\n", tth, lineout1D[j]);
+      }
+      fflush(fLineoutXY);
     }
     // Peak fitting
     if (doPeakFit && nPeakLocations > 0) {
@@ -1787,6 +1838,8 @@ integration_start:
   status_f = H5Fclose(file_id);
   if (fLineout)
     fclose(fLineout);
+  if (fLineoutXY)
+    fclose(fLineoutXY);
   if (fFitBin)
     fclose(fFitBin);
   if (fFitPerEta)

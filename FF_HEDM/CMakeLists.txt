@@ -122,7 +122,7 @@ add_ff_hedm_executable(ProcessGrains SOURCES src/ProcessGrains.c src/GetMisorien
 add_ff_hedm_executable(ProcessGrainsScanningHEDM SOURCES src/ProcessGrainsScanningHEDM.c src/GetMisorientation.c src/CalcStrains.c src/MIDAS_Math.c)
 add_ff_hedm_executable(MatchGrains SOURCES src/MatchGrains.c src/GetMisorientation.c)
 
-add_ff_hedm_executable(DetectorMapper SOURCES src/DetectorMapper.c src/DetectorGeometry.c src/Panel.c src/FileReader.c src/MIDAS_Math.c OMP)
+add_ff_hedm_executable(DetectorMapper SOURCES src/DetectorMapper.c src/DetectorGeometry.c src/ZarrReader.c src/Panel.c src/FileReader.c src/MIDAS_Math.c OMP)
 add_ff_hedm_executable(DetectorMapperZarr SOURCES src/DetectorMapperZarr.c src/DetectorGeometry.c src/ZarrReader.c src/Panel.c src/FileReader.c src/MIDAS_Math.c OMP)
 # add_ff_hedm_executable(Integrator SOURCES src/Integrator.c src/FileReader.c)  # archived → src/archive/Integrator.c
 # add_ff_hedm_executable(IntegratorZarr SOURCES src/archive/IntegratorZarr.c)

@@ -4229,11 +4229,14 @@ int main(int argc, char *argv[]) {
         double lo_EtaMa = lo_EtaBinsHigh[eb];
 
         double binSumI = 0, binArea = 0;
+        int binContaminated = 0; // flag: any masked pixel in this bin
         for (int pi = 0; pi < lo_NrEach[binIdx]; pi++) {
           int pixIdx = lo_Indices[binIdx][pi];
-          // Skip masked pixels
-          if (mapMaskSize != 0 && TestBit(mapMask, pixIdx))
-            continue;
+          // If ANY pixel in this bin is masked, flag the entire bin
+          if (mapMaskSize != 0 && TestBit(mapMask, pixIdx)) {
+            binContaminated = 1;
+            break;
+          }
 
           int iy = pixIdx % NrPixels;
           int iz = pixIdx / NrPixels;
@@ -4265,8 +4268,8 @@ int main(int argc, char *argv[]) {
           binSumI += Average[pixIdx] * thisArea;
           binArea += thisArea;
         }
-        // Step 1: per-eta-bin normalized intensity
-        if (binSumI != 0 && binArea > 0) {
+        // Step 1: per-eta-bin normalized intensity (skip contaminated bins)
+        if (!binContaminated && binSumI != 0 && binArea > 0) {
           double binIntensity = binSumI / binArea;
           etaSum += binIntensity;
           etaCnt++;

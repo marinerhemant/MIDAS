@@ -57,7 +57,9 @@ def read_lineout_xy(path, geom=None):
         RBinSize = geom['RBinSize']
         tth = np.degrees(np.arctan(
             (RMin + (np.arange(n) + 0.5) * RBinSize) * px / Lsd))
-        return tth, intensities
+        # Filter out NaN (contaminated by masked pixels)
+        valid = ~np.isnan(intensities)
+        return tth[valid], intensities[valid]
 
     # Text: two-column (.xy)
     tth, intensity = [], []

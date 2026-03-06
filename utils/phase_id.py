@@ -309,7 +309,7 @@ def merge_and_deduplicate(all_reflections: List[HKLReflection],
 
 
 # =========================================================================
-# CPU backend: ffGenerateZipRefactor → DetectorMapperZarr → IntegratorZarrOMP
+# CPU backend: ffGenerateZipRefactor → DetectorMapper → IntegratorZarrOMP
 # =========================================================================
 
 def write_peak_params(rings: List[RingEntry], out_path: Path,
@@ -370,9 +370,9 @@ def run_detector_mapper(param_file: Path, work_dir: Path, n_cpus: int = 0, log=N
 
 def run_cpu_pipeline(zip_file: Path, peak_params: Path,
                      work_dir: Path, n_cpus: int, log=None) -> Path:
-    """Run DetectorMapperZarr + IntegratorZarrOMP. Returns path to fit.bin.
+    """Run DetectorMapper + IntegratorZarrOMP. Returns path to fit.bin.
 
-    Skips DetectorMapperZarr if Map.bin and nMap.bin already exist.
+    Skips DetectorMapper if Map.bin and nMap.bin already exist.
     If *log* is a list, output is captured there instead of printed.
     """
     # Resolve all paths to absolute (run_cmd uses cwd=work_dir)
@@ -390,7 +390,7 @@ def run_cpu_pipeline(zip_file: Path, peak_params: Path,
     nmap_bin = work_dir / "nMap.bin"
 
     if map_bin.exists() and nmap_bin.exists():
-        _log("  DetectorMapperZarr: skipped (Map.bin + nMap.bin exist)")
+        _log("  DetectorMapper: skipped (Map.bin + nMap.bin exist)")
         # Validate parameter headers (capture prints)
         from map_header import check_map_header
         hdr_buf = io.StringIO()
@@ -402,9 +402,10 @@ def run_cpu_pipeline(zip_file: Path, peak_params: Path,
             for hl in hdr_out.split('\n'):
                 _log(hl)
     else:
-        mapper = MIDAS_BIN / "DetectorMapperZarr"
-        _log("  Running DetectorMapperZarr...")
-        cmd = [str(mapper), str(zip_file)]
+        mapper = MIDAS_BIN / "DetectorMapper"
+        _log("  Running DetectorMapper (Zarr mode)...")
+        cmd = [str(mapper), "-zarrFN", str(zip_file),
+               "-resultFolder", str(work_dir)]
         if n_cpus > 0:
             cmd += ["-nCPUs", str(n_cpus)]
         run_cmd(cmd, cwd=str(work_dir), log=log)
