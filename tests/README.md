@@ -125,6 +125,29 @@ python gui/viewers/live_viewer.py --lineout lineout.bin --fit fit.bin \
 
 ---
 
+### `test_tomo.py` — Tomography Reconstruction
+
+Full-pipeline benchmark using a synthetic Shepp-Logan phantom:
+
+1. Generates a phantom image
+2. Computes Radon transform projections (sinograms)
+3. Converts to simulated raw detector data (dark + white fields + uint16 projections)
+4. **Pipeline A:** Reconstructs via `run_tomo()` (full dark/white normalization → FBP)
+5. **Pipeline B:** Reconstructs via `run_tomo_from_sinos()` (sinogram → FBP)
+6. Compares both reconstructions against ground truth using NRMSE and SSIM
+
+**Pass criterion:** NRMSE < 0.15 and SSIM > 0.60 for both pipelines.
+
+```bash
+python tests/test_tomo.py -nCPUs 4
+python tests/test_tomo.py --phantom-size 128 --n-thetas 360  # faster
+python tests/test_tomo.py --keep-work-dir                     # inspect output
+```
+
+**Data:** Fully synthetic — no example data needed.
+
+---
+
 ## Common Arguments
 
 | Argument | Description | Default |

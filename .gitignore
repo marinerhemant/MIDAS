@@ -46,3 +46,4 @@ build
 NF_HEDM/seedOrientations/
 NF_HEDM/Example/sim/
 AGENT_GUIDE.md
+fftwf_wisdom_*.txt

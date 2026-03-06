@@ -179,6 +179,7 @@ def run_tomo(data, dark, whites, workingdir, thetas,
         f.write(f'detYdim {nrSlices}\n')
         f.write(f'thetaFileName {thetasFN}\n')
         f.write(f'shiftValues {shift_str}\n')
+        f.write(f'filter {filterNr}\n')
         f.write(f'ringRemovalCoefficient {ringRemoval}\n')
         f.write(f'doLog {doLog}\n')
         f.write('slicesToProcess -1\n')
