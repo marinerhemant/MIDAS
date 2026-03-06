@@ -1523,6 +1523,31 @@ integration_start:
             i, dsz);
         exit(1);
       }
+      // DEBUG: check raw decompressed bytes for frame 0
+      if (i == 0) {
+        int allZero = 1;
+        uint16_t rawMax16 = 0;
+        const uint16_t *raw16 = (const uint16_t *)locData;
+        int nPx = NrPixelsY * NrPixelsZ;
+        for (int dd = 0; dd < nPx; dd++) {
+          if (raw16[dd] != 0) {
+            allZero = 0;
+          }
+          if (raw16[dd] > rawMax16)
+            rawMax16 = raw16[dd];
+        }
+        printf("  DEBUG decompress frame0: dsz=%d, expected=%d, "
+               "allZero=%d, rawMax16=%u, first8bytes=[%02x %02x %02x %02x %02x "
+               "%02x %02x %02x], "
+               "compressedOffset=%llu, compressedSize=%llu\n",
+               dsz, NrPixelsY * NrPixelsZ * bytesPerPx, allZero, rawMax16,
+               (unsigned char)locData[0], (unsigned char)locData[1],
+               (unsigned char)locData[2], (unsigned char)locData[3],
+               (unsigned char)locData[4], (unsigned char)locData[5],
+               (unsigned char)locData[6], (unsigned char)locData[7],
+               (unsigned long long)sizeArr[0 * 2 + 1],
+               (unsigned long long)sizeArr[0 * 2 + 0]);
+      }
       rawToDouble(locData, ImageInT, nPixels, dType);
       DoImageTransformations(NrTransOpt, TransOpt, ImageInT, ImageIn, NrPixelsY,
                              NrPixelsZ);
