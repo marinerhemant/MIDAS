@@ -60,21 +60,18 @@ def snip_background(intensities, n_iter=50):
     n = len(y)
 
     # LLS (log-log-sqrt) transform — compresses dynamic range
-    y = np.log(np.log(np.sqrt(np.maximum(y, 0)) + 1) + 1)
+    # Standard Morháč formulation: sqrt(y + 1) ensures positive argument
+    y = np.log(np.log(np.sqrt(y + 1) + 1) + 1)
 
-    # Iterative clipping with decreasing window
+    # Iterative clipping with decreasing window (vectorized)
     for m in range(n_iter, 0, -1):
-        y_new = y.copy()
-        for i in range(m, n - m):
-            avg = (y[i - m] + y[i + m]) / 2.0
-            if y_new[i] > avg:
-                y_new[i] = avg
-        y = y_new
+        avg = (y[:-2*m] + y[2*m:]) / 2.0  # average of neighbors at distance m
+        y[m:n-m] = np.minimum(y[m:n-m], avg)
 
-    # Inverse LLS transform
-    bg = (np.exp(np.exp(y) - 1) - 1) ** 2
+    # Inverse LLS transform (exact inverse of forward)
+    bg = (np.exp(np.exp(y) - 1) - 1) ** 2 - 1
 
-    return bg
+    return np.maximum(bg, 0)  # clip tiny negative from numerical noise
 
 
 # ─── GSAS-II Pseudo-Voigt Profile ───────────────────────────────────────
@@ -134,23 +131,33 @@ def detect_peaks(tth, corrected, n_peaks=6):
     """Find the n strongest peaks in background-corrected lineout.
 
     Uses scipy.signal.find_peaks with prominence-based ranking.
+    Uses small separation (0.03°) so doublet components are both detected.
 
     Returns
     -------
-    peak_indices : array of indices into tth/corrected, sorted by prominence
+    peak_indices : array of indices into tth/corrected, sorted by 2θ
     """
     from scipy.signal import find_peaks
 
-    # Require peaks to be at least 3 bins wide and above zero
-    peaks, properties = find_peaks(corrected, prominence=0, width=1)
+    # Small separation to detect both components of doublets
+    dt = np.median(np.diff(tth)) if len(tth) > 1 else 0.004
+    min_sep_deg = 0.03
+    min_distance = max(5, int(min_sep_deg / dt))
+
+    # Minimum prominence: 1% of max corrected intensity to reject noise
+    min_prom = max(np.max(corrected) * 0.01, 1.0)
+
+    peaks, properties = find_peaks(corrected, prominence=min_prom, width=1,
+                                   distance=min_distance)
 
     if len(peaks) == 0:
         return np.array([], dtype=int)
 
-    # Sort by prominence (descending) and take top n_peaks
+    # Sort by prominence (descending) and take extra candidates
+    # (request 3× n_peaks to have room for multiplet partners)
     prominences = properties['prominences']
     order = np.argsort(prominences)[::-1]
-    top = peaks[order[:n_peaks]]
+    top = peaks[order[:n_peaks * 3]]
 
     # Return sorted by 2θ position
     return top[np.argsort(tth[top])]
@@ -158,17 +165,55 @@ def detect_peaks(tth, corrected, n_peaks=6):
 
 # ─── Peak Fitting ────────────────────────────────────────────────────────
 
-def fit_peaks_gsas(tth, corrected, peak_indices, fit_window_deg=0.5,
-                   wavelength_A=0.0):
-    """Fit each detected peak with GSAS-II pseudo-Voigt (no background).
+def _make_multiplet_model(n_peaks):
+    """Create an N-peak pseudo-Voigt model function for curve_fit.
+
+    Parameters are packed as: area1, center1, sig1, gam1, area2, ...
+    """
+    def model(x, *params):
+        result = np.zeros_like(x)
+        for i in range(n_peaks):
+            base = i * 4
+            result += pseudo_voigt_no_bg(x, params[base], params[base+1],
+                                         params[base+2], params[base+3])
+        return result
+    return model
+
+
+def _make_peak_result(center, area, sig, gam, wavelength_A):
+    """Build a result dict for one fitted peak."""
+    FWHM, eta = _tch_eta_fwhm(sig, gam)
+    d_A = 0.0
+    if wavelength_A > 0 and center > 0:
+        theta_rad = math.radians(center / 2.0)
+        if theta_rad > 0:
+            d_A = wavelength_A / (2.0 * math.sin(theta_rad))
+    return {
+        'center_2theta': center,
+        'area': area,
+        'sig': sig,
+        'gam': gam,
+        'FWHM_deg': FWHM,
+        'eta': eta,
+        'd_spacing_A': d_A,
+    }
+
+
+def fit_peaks_gsas(tth, corrected, peak_indices, fit_window_deg=0.15,
+                   wavelength_A=0.0, multiplet_threshold=0.15):
+    """Fit detected peaks with GSAS-II pseudo-Voigt (no background).
+
+    Peaks closer than multiplet_threshold are grouped and fitted together
+    as a multi-peak model (sum of N pseudo-Voigts, N ≤ 3).
 
     Parameters
     ----------
-    tth            : 2θ array (degrees)
-    corrected      : background-subtracted intensities
-    peak_indices   : indices of detected peaks
-    fit_window_deg : half-width of fitting ROI (degrees)
-    wavelength_A   : wavelength in Å (for d-spacing; 0 = skip)
+    tth                 : 2θ array (degrees)
+    corrected           : background-subtracted intensities
+    peak_indices        : indices of detected peaks
+    fit_window_deg      : half-width of fitting ROI (degrees)
+    wavelength_A        : wavelength in Å (for d-spacing; 0 = skip)
+    multiplet_threshold : max separation (deg) to group as multiplet
 
     Returns
     -------
@@ -179,53 +224,116 @@ def fit_peaks_gsas(tth, corrected, peak_indices, fit_window_deg=0.5,
     results = []
     dt = np.median(np.diff(tth)) if len(tth) > 1 else 0.01
 
-    for pk_idx in peak_indices:
-        center_guess = tth[pk_idx]
-        # Extract ROI
-        mask = np.abs(tth - center_guess) <= fit_window_deg
-        x_roi = tth[mask]
-        y_roi = corrected[mask]
-
-        if len(x_roi) < 5:
+    # Group nearby peaks into multiplets (singlet / doublet / triplet)
+    groups = []
+    used = set()
+    sorted_indices = list(peak_indices)
+    for i, idx_i in enumerate(sorted_indices):
+        if idx_i in used:
             continue
+        group = [idx_i]
+        used.add(idx_i)
+        # Collect neighbors within threshold (up to 2 more → triplet max)
+        for j in range(i + 1, len(sorted_indices)):
+            if len(group) >= 3:
+                break
+            idx_j = sorted_indices[j]
+            if idx_j in used:
+                continue
+            # Check distance to any member of the group
+            if any(abs(tth[idx_j] - tth[g]) < multiplet_threshold
+                   for g in group):
+                group.append(idx_j)
+                used.add(idx_j)
+        groups.append(group)
 
-        # Initial guesses — tuned for narrow synchrotron peaks
-        peak_height = np.max(y_roi)
-        area_guess = peak_height * dt * max(3, len(x_roi) // 4)
-        sig_guess = 10.0    # centideg² → ~0.04° Gaussian FWHM
-        gam_guess = 5.0     # centideg  → 0.05° Lorentzian FWHM
+    for group in groups:
+        n_peaks = len(group)
 
-        p0 = [area_guess, center_guess, sig_guess, gam_guess]
-        bounds_lo = [0, center_guess - fit_window_deg, 0.01, 0.01]
-        bounds_hi = [area_guess * 100, center_guess + fit_window_deg,
-                     1e5, 1e4]
+        if n_peaks == 1:
+            # ── Singlet ─────────────────────────────────────────────
+            pk_idx = group[0]
+            center_guess = tth[pk_idx]
+            mask = np.abs(tth - center_guess) <= fit_window_deg
+            x_roi = tth[mask]
+            y_roi = corrected[mask]
+            if len(x_roi) < 5:
+                continue
 
-        try:
-            popt, pcov = curve_fit(pseudo_voigt_no_bg, x_roi, y_roi,
-                                   p0=p0, bounds=(bounds_lo, bounds_hi),
-                                   maxfev=5000)
-            area, center, sig, gam = popt
-            FWHM, eta = _tch_eta_fwhm(sig, gam)
+            # Use height at peak index (not ROI max, which might be
+            # from a neighbor's tail leaking into the window)
+            peak_height = corrected[pk_idx]
+            area_guess = peak_height * dt * max(3, len(x_roi) // 4)
 
-            # d-spacing from Bragg's law
-            d_A = 0.0
-            if wavelength_A > 0 and center > 0:
-                theta_rad = math.radians(center / 2.0)
-                if theta_rad > 0:
-                    d_A = wavelength_A / (2.0 * math.sin(theta_rad))
+            p0 = [area_guess, center_guess, 10.0, 5.0]
+            # Center constrained to ±0.05° to prevent snapping to neighbors
+            center_tol = 0.05
+            bounds_lo = [0, center_guess - center_tol, 0.01, 0.01]
+            bounds_hi = [area_guess * 100, center_guess + center_tol,
+                         500.0, 500.0]
 
-            results.append({
-                'center_2theta': center,
-                'area': area,
-                'sig': sig,
-                'gam': gam,
-                'FWHM_deg': FWHM,
-                'eta': eta,
-                'd_spacing_A': d_A,
-            })
-        except (RuntimeError, ValueError):
-            # Fit failed — skip this peak
-            continue
+            try:
+                popt, _ = curve_fit(pseudo_voigt_no_bg, x_roi, y_roi,
+                                    p0=p0, bounds=(bounds_lo, bounds_hi),
+                                    maxfev=5000)
+                area, center, sig, gam = popt
+                FWHM, _ = _tch_eta_fwhm(sig, gam)
+                if FWHM > 0.15:
+                    continue  # too wide for a singlet
+                results.append(_make_peak_result(center, area, sig, gam,
+                                                 wavelength_A))
+            except (RuntimeError, ValueError):
+                continue
+
+        else:
+            # ── Multiplet (doublet or triplet) ──────────────────────
+            centers = [tth[g] for g in group]
+            mid = np.mean(centers)
+            span = max(centers) - min(centers)
+            roi_half = max(fit_window_deg, span / 2 + 0.15)
+            mask = np.abs(tth - mid) <= roi_half
+            x_roi = tth[mask]
+            y_roi = corrected[mask]
+            if len(x_roi) < 5 * n_peaks:
+                continue
+
+            # Build p0, bounds for N peaks: [area, center, sig, gam] × N
+            p0 = []
+            bounds_lo = []
+            bounds_hi = []
+            for g_idx in group:
+                h = corrected[g_idx] if g_idx < len(corrected) else 100
+                a_guess = max(h * dt * 5, 1.0)
+                c_guess = tth[g_idx]
+                p0.extend([a_guess, c_guess, 10.0, 5.0])
+                bounds_lo.extend([0, c_guess - 0.1, 0.01, 0.01])
+                bounds_hi.extend([a_guess * 100, c_guess + 0.1, 500.0, 500.0])
+
+            model = _make_multiplet_model(n_peaks)
+
+            try:
+                popt, _ = curve_fit(model, x_roi, y_roi,
+                                    p0=p0, bounds=(bounds_lo, bounds_hi),
+                                    maxfev=10000)
+                for k in range(n_peaks):
+                    base = k * 4
+                    a, c, s, g = popt[base:base+4]
+                    results.append(_make_peak_result(c, a, s, g,
+                                                     wavelength_A))
+            except (RuntimeError, ValueError):
+                continue
+
+    # Deduplicate: merge peaks within 0.02° (keep highest area)
+    if len(results) > 1:
+        results.sort(key=lambda r: r['center_2theta'])
+        deduped = [results[0]]
+        for r in results[1:]:
+            if abs(r['center_2theta'] - deduped[-1]['center_2theta']) < 0.02:
+                if r['area'] > deduped[-1]['area']:
+                    deduped[-1] = r
+            else:
+                deduped.append(r)
+        results = deduped
 
     return results
 
@@ -432,8 +540,8 @@ def main():
                         help='Enable peak detection and GSAS-II pseudo-Voigt fitting')
     parser.add_argument('--n-peaks', type=int, default=6,
                         help='Number of strongest peaks to detect (default: 6)')
-    parser.add_argument('--fit-window', type=float, default=0.5,
-                        help='Peak fit ROI half-width in degrees 2θ (default: 0.5)')
+    parser.add_argument('--fit-window', type=float, default=0.15,
+                        help='Peak fit ROI half-width in degrees 2θ (default: 0.15)')
     args = parser.parse_args()
 
     param_file = Path(args.paramFN).resolve()
