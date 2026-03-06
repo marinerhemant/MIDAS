@@ -429,6 +429,13 @@ def fit_peaks_gsas(tth, corrected, peak_indices, fit_window_deg=0.15,
         max_fwhm = max(5.0 * median_fwhm, 0.05)  # floor at 0.05°
         results = [r for r in results if r['FWHM_deg'] <= max_fwhm]
 
+    # Adaptive chi_sq rejection: reject badly-fitted peaks (e.g. beamstop
+    # edge artifacts, noise).  Threshold = 10× median, floor at 10.0.
+    if len(results) > 2:
+        chi_vals = [r['chi_sq'] for r in results]
+        max_chi = max(10.0 * np.median(chi_vals), 10.0)
+        results = [r for r in results if r['chi_sq'] <= max_chi]
+
     # Deduplicate: merge peaks within 0.02° (keep highest area)
     if len(results) > 1:
         results.sort(key=lambda r: r['center_2theta'])
@@ -610,6 +617,8 @@ def _process_one_frame(nr, data_file, param_file, out_dir, out_xy, geom,
                 if fit_results:
                     peaks_csv = out_xy.parent / f"{stem}_peaks.csv"
                     with open(peaks_csv, 'w') as f:
+                        f.write(f"# Filename: {data_file.name}\n")
+                        f.write(f"# Timestamp: {file_timestamp}\n")
                         f.write("# peak_nr,center_2theta,area,"
                                 "sig_centideg2,gam_centideg,"
                                 "FWHM_deg,eta,d_spacing_A,chi_sq\n")
