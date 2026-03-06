@@ -347,10 +347,8 @@ def run_integrator_with_peaks(zip_file: Path, peak_params: Path,
             print(f"    ▸ {stripped}")
 
     # Output files are named per data file (parallel-safe)
+    # The integrator uses the zip filename minus .zip as the stem
     data_stem = zip_file.stem  # e.g. "foo.MIDAS" from "foo.MIDAS.zip"
-    # strip .MIDAS if present
-    if data_stem.endswith('.MIDAS'):
-        data_stem = data_stem[:-6]
     fit_bin = work_dir / f"{data_stem}_fit.bin"
     lineout_bin = work_dir / f"{data_stem}_lineout.bin"
 
