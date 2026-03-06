@@ -2,13 +2,18 @@
 // Copyright (c) 2014, UChicago Argonne, LLC
 // See LICENSE file.
 //
-// PeakFit.h - Shared pseudo-Voigt peak fitting module
+// PeakFit.h — Shared GSAS-II pseudo-Voigt peak fitting module
 //
-// Extracted from IntegratorFitPeaksGPUStream.cu for reuse in
-// IntegratorZarrOMP.c and other CPU-based integrators.
+// Uses NLOPT (L-BFGS with Nelder-Mead fallback) to fit area-normalized
+// pseudo-Voigt profiles with Thompson-Cox-Hastings (TCH) mixing.
 //
-// Uses NLOPT (L-BFGS with Nelder-Mead fallback) to fit height-normalized
-// pseudo-Voigt profiles to 1D integrated lineouts.
+// Parameters per peak match GSAS-II conventions:
+//   Area        : integrated intensity (area under peak above background)
+//   Center      : peak position (same units as input x-axis)
+//   sig         : Gaussian variance (centideg² when x is in degrees)
+//   gam         : Lorentzian FWHM (centideg when x is in degrees)
+//
+// Background: 2-parameter Chebyshev (bg0 + bg1 * x_norm)
 
 #ifndef PEAKFIT_H
 #define PEAKFIT_H
@@ -28,14 +33,24 @@ extern "C" {
 
 #define MAX_PEAK_LOCATIONS_PF 200
 
+// Per-peak output: 7 doubles
+//   [0] area          - integrated intensity (area above background)
+//   [1] center        - fitted peak center (same units as input x)
+//   [2] sig           - Gaussian variance (centideg²)
+//   [3] gam           - Lorentzian FWHM (centideg)
+//   [4] FWHM          - total FWHM (same units as x)
+//   [5] eta           - pseudo-Voigt mixing parameter (0=Gaussian,
+//   1=Lorentzian) [6] chi_sq        - goodness-of-fit (chi² / dof)
+#define PF_PARAMS_PER_PEAK 7
+
 // --- Data Structures ---
 
 // Data passed to the NLOPT objective function
 typedef struct {
   int nrBins;
-  const double *R;   // Radial positions (X-axis)
-  const double *Int; // Intensity values  (Y-axis)
-  int nBGParams;     // 1 = flat BG, 2 = linear Chebyshev (c0 + c1*R)
+  const double *R;   // X-axis values (e.g. 2θ degrees)
+  const double *Int; // Intensity values (Y-axis)
+  double x_lo, x_hi; // Window bounds for Chebyshev normalization
 } PF_DataFit;
 
 // Detected / specified peak candidate
@@ -53,53 +68,50 @@ typedef struct {
   PF_Peak *peaks; // Pointer to the first peak in this job
 } PF_FitJob;
 
-// Per-peak output (7 doubles, matches GPU binary format):
-//   [0] Imax        - peak height
-//   [1] Background  - local background
-//   [2] Mix         - Lorentzian mixing fraction (0=Gauss, 1=Lorentz)
-//   [3] Center      - fitted R center
-//   [4] Sigma       - Gaussian-equivalent sigma
-//   [5] GoF         - goodness-of-fit (chi^2 / dof)
-//   [6] Area        - analytical peak area
-#define PF_PARAMS_PER_PEAK 7
+// --- TCH Mixing ---
 
-// --- Public API ---
+// Thompson-Cox-Hastings: compute total FWHM and mixing η
+// from Gaussian variance (centideg²) and Lorentzian FWHM (centideg).
+// Returns FWHM in degrees, η in [0, 1].
+void pf_tch_eta_fwhm(double sig_centideg2, double gam_centideg,
+                     double *out_fwhm_deg, double *out_eta);
 
-// Top-level convenience function: fit all peaks in a 1D lineout.
+// --- Model Evaluation ---
+
+// Area-normalized pseudo-Voigt with TCH mixing and Chebyshev background.
+//
+// params layout: [Area0, Center0, sig0, gam0, ..., bg0, bg1]
+//                (4 doubles per peak, then 2 background params)
+void pf_calculate_model(int n_peaks, const double *params, int n_points,
+                        const double *x_values, double x_lo, double x_hi,
+                        double *out_model_curve);
+
+// --- NLOPT Objective ---
+
+// Sum of squared residuals with analytical gradients.
+double pf_objective(unsigned n, const double *x, double *grad, void *fdat);
+
+// --- Peak Fitting ---
+
+// Fit all specified peaks in a 1D profile using area-normalized GSAS-II
+// pseudo-Voigt profiles. Input x-axis can be any unit (pixels, 2θ degrees).
 //
 // Parameters:
-//   R              - R bin centers             [nRBins]
-//   intensity      - eta-summed 1D lineout     [nRBins]
-//   nRBins         - number of R bins
-//   peakLocations  - target R positions        [nPeaks]
+//   x              - x-axis values                [nBins]
+//   intensity      - 1D profile                   [nBins]
+//   nBins          - number of data points
+//   peakLocations  - target x positions            [nPeaks]
 //   nPeaks         - number of peaks to fit
-//   RBinSize       - radial bin width
+//   xBinSize       - bin width (same units as x)
 //   fitROIPadding  - bins of padding around each peak ROI
-//   outFitParams   - output buffer             [nPeaks * PF_PARAMS_PER_PEAK]
-//   useLinearBG    - 0 = flat BG (1 param), 1 = linear Chebyshev (2 params)
+//   outFitParams   - output buffer                [nPeaks * PF_PARAMS_PER_PEAK]
 //
 // Returns: number of successfully fitted peaks (may be < nPeaks)
-int fitPeaksForLineout(const double *R, const double *intensity, int nRBins,
-                       const double *peakLocations, int nPeaks, double RBinSize,
-                       int fitROIPadding, double *outFitParams,
-                       int useLinearBG);
+int fitPeaks(const double *x, const double *intensity, int nBins,
+             const double *peakLocations, int nPeaks, double xBinSize,
+             int fitROIPadding, double *outFitParams);
 
-// Height-normalized pseudo-Voigt model evaluation + analytical areas.
-//
-// Model: I(R) = BG + sum_j Imax_j * (m_j * L(R-c_j) + (1-m_j) * G(R-c_j))
-//   L(x) = 1 / (1 + 4*(x/Gamma)^2)
-//   G(x) = exp(-4*ln2*(x/Gamma)^2)
-//
-// params layout: [Imax0, Mix0, Center0, Gamma0, ..., BG]
-void pf_calculate_model_and_area(int n_peaks, const double *params,
-                                 int n_points, const double *R_values,
-                                 double *out_model_curve,
-                                 double *out_peak_areas, int nBGParams);
-
-// NLOPT objective function (sum of squared residuals) with analytical
-// gradients.
-double pf_problem_function_global_bg(unsigned n, const double *x, double *grad,
-                                     void *fdat);
+// --- Utility ---
 
 // Estimate initial parameters (FWHM, background, amplitude) for a peak.
 // Returns estimated FWHM in bin units.
@@ -112,6 +124,29 @@ void pf_smoothData(const double *in, double *out, int N, int W);
 
 // Sort helper for peaks
 int pf_comparePeaksByIndex(const void *a, const void *b);
+
+// --- SNIP Background ---
+
+// SNIP (Statistics-sensitive Non-linear Iterative Peak-clipping)
+// background estimation (Morháč LLS transform).
+void pf_snip_background(const double *intensity, double *background, int nBins,
+                        int nIter);
+
+// --- Auto-Detect ---
+
+// Automatic peak detection: smooths, computes negative 2nd derivative,
+// finds local maxima, ranks by prominence, returns top `maxPeaks`.
+// outPeakLocations receives x-values (not indices).
+// Returns: number of peaks found (<= maxPeaks).
+int pf_detect_peaks(const double *x, const double *corrected, int nBins,
+                    int maxPeaks, double *outPeakLocations,
+                    double minSeparation);
+
+// Top-level auto-detect + fit: SNIP → detect → fit → quality filter.
+// Returns: number of peaks that pass quality filtering (<= maxPeaks).
+int fitPeaksAutoDetect(const double *x, const double *intensity, int nBins,
+                       int maxPeaks, double xBinSize, int fitROIPadding,
+                       double *outFitParams, int snipIter);
 
 #ifdef __cplusplus
 }

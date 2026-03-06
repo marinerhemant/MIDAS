@@ -62,6 +62,7 @@
 // #include <blosc2.h>     // Include if blosc compression is used
 #include "MapHeader.h" // Map.bin header validation
 #include "PeakFit.h"   // Shared peak fitting module
+#include "PeakFitIO.h" // Shared HDF5 peak output
 #include <nlopt.h>     // For non-linear optimization
 #include <omp.h>       // <<< ADD THIS FOR OpenMP
 #define NUM_STREAMS 4  // Number of concurrent streams for GPU saturation
@@ -98,7 +99,14 @@ static double g_pkLoc[MAX_PEAK_LOCATIONS];       // Specified peak locations
 static int g_nSpecP = 0;                         // Number of specified peaks
 static int g_pkFit = 0;                          // DoPeakFit flag
 static int g_multiP __attribute__((unused)) = 0; // MultiplePeaks flag
+static int g_autoDetectPeaks = 0;                // AutoDetectPeaks (0=disabled)
+static int g_snipIterations = 50;                // SNIPIterations default
+static double g_Lam = 0.0;                       // Wavelength (Angstrom)
 static int g_doSm __attribute__((unused)) = 0;   // DoSmoothing flag
+
+// --- HDF5 peak output buffer (PeakFitIO, thread-safe: only main thread writes)
+// ---
+static PeakH5Buffer g_h5buf;
 
 // --- Data Structures ---
 typedef struct {
@@ -1916,6 +1924,8 @@ int main(int argc, char *argv[]) {
   double pkLoc[MAX_PEAK_LOCATIONS]; // (shadows file-scope; will sync below)
   int fitROIPadding = 20;           // Default ROI padding
   int fitROIAuto = 0;               // Default to manual ROI sizing
+  int autoDetectPeaks = 0; // AutoDetectPeaks (0=disabled, >0=max peaks)
+  int snipIterations = 50; // SNIPIterations
 
   // Read parameters line by line
   while (fgets(line, sizeof(line), pF)) {
@@ -1981,6 +1991,8 @@ int main(int argc, char *argv[]) {
         sscanf(val_str, "%d", &pkFit);
       else if (strcmp(key, "FitROIPadding") == 0)
         sscanf(val_str, "%d", &fitROIPadding);
+      else if (strcmp(key, "Wavelength") == 0)
+        sscanf(val_str, "%lf", &g_Lam);
       else if (strcmp(key, "FitROIAuto") == 0)
         sscanf(val_str, "%d", &fitROIAuto);
       else if (strcmp(key, "PeakLocation") == 0) {
@@ -1994,8 +2006,12 @@ int main(int argc, char *argv[]) {
                  "locations.\n",
                  MAX_PEAK_LOCATIONS);
         }
+      } else if (strcmp(key, "AutoDetectPeaks") == 0) {
+        sscanf(val_str, "%d", &autoDetectPeaks);
+        pkFit = 1;
+      } else if (strcmp(key, "SNIPIterations") == 0) {
+        sscanf(val_str, "%d", &snipIterations);
       }
-      // Add other parameters here if needed
     }
   }
   fclose(pF);
@@ -2065,6 +2081,8 @@ int main(int argc, char *argv[]) {
   g_pkFit = pkFit;
   g_multiP = multiP;
   g_doSm = doSm;
+  g_autoDetectPeaks = autoDetectPeaks;
+  g_snipIterations = snipIterations;
 
   // Write initial active_peaks.txt if peaks specified
   if (g_nSpecP > 0) {
@@ -2314,6 +2332,11 @@ int main(int argc, char *argv[]) {
 
   // First Block: Init Writer Thread (replacing lines ~1962 queue_init)
   writer_queue_init(&writer_queue);
+  // Init HDF5 peak buffer before threads start
+  if (g_pkFit) {
+    pfio_init_buffer(&g_h5buf, 4096);
+  }
+
   pthread_t writer_thread;
   if (pthread_create(&writer_thread, NULL, writer_thread_func, NULL) != 0) {
     check(1, "Failed to create writer thread");
@@ -2435,11 +2458,33 @@ int main(int argc, char *argv[]) {
         double *local_h_int1D = ctx->h_int1D;
         int currentPeakCount = 0;
         double *sendFitParams = NULL;
-        Peak *pks = NULL;
 
-        // --- Step 1: Identify Peak Candidates ---
-        if (g_nSpecP > 0) {
-          pks = (Peak *)malloc(g_nSpecP * sizeof(Peak));
+        if (g_autoDetectPeaks > 0) {
+          // --- Auto-detect mode ---
+          sendFitParams = (double *)malloc(g_autoDetectPeaks *
+                                           PF_PARAMS_PER_PEAK * sizeof(double));
+          memset(sendFitParams, 0,
+                 g_autoDetectPeaks * PF_PARAMS_PER_PEAK * sizeof(double));
+          currentPeakCount = fitPeaksAutoDetect(
+              hR, local_h_int1D, nRBins, g_autoDetectPeaks, RBinSize,
+              fitROIPadding, sendFitParams, g_snipIterations);
+          if (currentPeakCount > 0 && fFit) {
+            fwrite(sendFitParams, sizeof(double),
+                   currentPeakCount * PF_PARAMS_PER_PEAK, fFit);
+            fflush(fFit);
+          }
+          // Append to HDF5 buffer
+          for (int pp = 0; pp < currentPeakCount; pp++) {
+            PeakH5Row h5row = pfio_make_row(
+                frameNr, 0, pp, 0.0, &sendFitParams[pp * PF_PARAMS_PER_PEAK],
+                px, Lsd, g_Lam);
+            pfio_append_row(&g_h5buf, &h5row);
+          }
+          if (sendFitParams)
+            free(sendFitParams);
+        } else if (g_nSpecP > 0) {
+          // --- Specified peak locations mode ---
+          Peak *pks = (Peak *)malloc(g_nSpecP * sizeof(Peak));
           int validPeakCount = 0;
           for (int p = 0; p < g_nSpecP; ++p) {
             int bestBin = -1;
@@ -2459,58 +2504,56 @@ int main(int argc, char *argv[]) {
             }
           }
           currentPeakCount = validPeakCount;
-          if (validPeakCount == 0) {
-            free(pks);
-            pks = NULL;
-          }
-        }
 
-        // --- Step 2: Perform Fit via shared PeakFit API ---
-        if (currentPeakCount > 0 && pks != NULL) {
-          sendFitParams =
-              (double *)malloc(currentPeakCount * 7 * sizeof(double));
-          memset(sendFitParams, 0, currentPeakCount * 7 * sizeof(double));
+          if (currentPeakCount > 0) {
+            sendFitParams =
+                (double *)malloc(currentPeakCount * 7 * sizeof(double));
+            memset(sendFitParams, 0, currentPeakCount * 7 * sizeof(double));
 
-          int roi_half_width = fitROIPadding;
-          if (fitROIAuto) {
-            double max_fwhm = 0.0;
-            for (int i = 0; i < currentPeakCount; ++i) {
-              int temp_start = fmax(0, pks[i].index - 50);
-              int temp_end = fmin(nRBins - 1, pks[i].index + 50);
-              if (temp_start >= temp_end)
-                continue;
-              int peak_idx_local = pks[i].index - temp_start;
-              double bg, amp;
-              double fwhm = estimate_initial_params(&local_h_int1D[temp_start],
-                                                    temp_end - temp_start + 1,
-                                                    peak_idx_local, &bg, &amp);
-              if (fwhm > max_fwhm)
-                max_fwhm = fwhm;
+            int roi_half_width = fitROIPadding;
+            if (fitROIAuto) {
+              double max_fwhm = 0.0;
+              for (int i = 0; i < currentPeakCount; ++i) {
+                int temp_start = fmax(0, pks[i].index - 50);
+                int temp_end = fmin(nRBins - 1, pks[i].index + 50);
+                if (temp_start >= temp_end)
+                  continue;
+                int peak_idx_local = pks[i].index - temp_start;
+                double bg, amp;
+                double fwhm = estimate_initial_params(
+                    &local_h_int1D[temp_start], temp_end - temp_start + 1,
+                    peak_idx_local, &bg, &amp);
+                if (fwhm > max_fwhm)
+                  max_fwhm = fwhm;
+              }
+              roi_half_width = fmax(15, (int)(max_fwhm * 1.5));
             }
-            roi_half_width = fmax(15, (int)(max_fwhm * 1.5));
+
+            double *peakLocs =
+                (double *)malloc(currentPeakCount * sizeof(double));
+            for (int p = 0; p < currentPeakCount; ++p)
+              peakLocs[p] = pks[p].radius;
+
+            fitPeaks(hR, local_h_int1D, nRBins, peakLocs, currentPeakCount,
+                     RBinSize, roi_half_width, sendFitParams);
+            free(peakLocs);
+
+            if (fFit) {
+              fwrite(sendFitParams, sizeof(double), currentPeakCount * 7, fFit);
+              fflush(fFit);
+            }
+            // Append to HDF5 buffer
+            for (int pp = 0; pp < currentPeakCount; pp++) {
+              PeakH5Row h5row = pfio_make_row(
+                  frameNr, 0, pp, 0.0, &sendFitParams[pp * PF_PARAMS_PER_PEAK],
+                  px, Lsd, g_Lam);
+              pfio_append_row(&g_h5buf, &h5row);
+            }
+            if (sendFitParams)
+              free(sendFitParams);
           }
-
-          // Build peak locations array for fitPeaksForLineout
-          double *peakLocs =
-              (double *)malloc(currentPeakCount * sizeof(double));
-          for (int p = 0; p < currentPeakCount; ++p)
-            peakLocs[p] = pks[p].radius;
-
-          fitPeaksForLineout(hR, local_h_int1D, nRBins, peakLocs,
-                             currentPeakCount, RBinSize, roi_half_width,
-                             sendFitParams, 1);
-          free(peakLocs);
-
-          if (fFit) {
-            fwrite(sendFitParams, sizeof(double), currentPeakCount * 7, fFit);
-            fflush(fFit);
-          }
-
-          if (sendFitParams)
-            free(sendFitParams);
-        }
-        if (pks)
           free(pks);
+        }
       }
       double t_fit_end = get_wall_time_ms();
 
@@ -2721,10 +2764,33 @@ int main(int argc, char *argv[]) {
         double *local_h_int1D = drainCtx->h_int1D;
         int currentPeakCount = 0;
         double *sendFitParams = NULL;
-        Peak *pks = NULL;
 
-        if (g_nSpecP > 0) {
-          pks = (Peak *)malloc(g_nSpecP * sizeof(Peak));
+        if (g_autoDetectPeaks > 0) {
+          // --- Auto-detect mode ---
+          sendFitParams = (double *)malloc(g_autoDetectPeaks *
+                                           PF_PARAMS_PER_PEAK * sizeof(double));
+          memset(sendFitParams, 0,
+                 g_autoDetectPeaks * PF_PARAMS_PER_PEAK * sizeof(double));
+          currentPeakCount = fitPeaksAutoDetect(
+              hR, local_h_int1D, nRBins, g_autoDetectPeaks, RBinSize,
+              fitROIPadding, sendFitParams, g_snipIterations);
+          if (currentPeakCount > 0 && fFit) {
+            fwrite(sendFitParams, sizeof(double),
+                   currentPeakCount * PF_PARAMS_PER_PEAK, fFit);
+            fflush(fFit);
+          }
+          // Append to HDF5 buffer
+          for (int pp = 0; pp < currentPeakCount; pp++) {
+            PeakH5Row h5row = pfio_make_row(
+                0, 0, pp, 0.0, &sendFitParams[pp * PF_PARAMS_PER_PEAK], px, Lsd,
+                g_Lam);
+            pfio_append_row(&g_h5buf, &h5row);
+          }
+          if (sendFitParams)
+            free(sendFitParams);
+        } else if (g_nSpecP > 0) {
+          // --- Specified peak locations mode ---
+          Peak *pks = (Peak *)malloc(g_nSpecP * sizeof(Peak));
           int validPeakCount = 0;
           for (int p = 0; p < g_nSpecP; ++p) {
             int bestBin = -1;
@@ -2744,39 +2810,37 @@ int main(int argc, char *argv[]) {
             }
           }
           currentPeakCount = validPeakCount;
-          if (validPeakCount == 0) {
-            free(pks);
-            pks = NULL;
+
+          if (currentPeakCount > 0) {
+            sendFitParams =
+                (double *)malloc(currentPeakCount * 7 * sizeof(double));
+            memset(sendFitParams, 0, currentPeakCount * 7 * sizeof(double));
+
+            double *peakLocs =
+                (double *)malloc(currentPeakCount * sizeof(double));
+            for (int p = 0; p < currentPeakCount; ++p)
+              peakLocs[p] = pks[p].radius;
+
+            fitPeaks(hR, local_h_int1D, nRBins, peakLocs, currentPeakCount,
+                     RBinSize, fitROIPadding, sendFitParams);
+            free(peakLocs);
+
+            if (fFit) {
+              fwrite(sendFitParams, sizeof(double), currentPeakCount * 7, fFit);
+              fflush(fFit);
+            }
+            // Append to HDF5 buffer
+            for (int pp = 0; pp < currentPeakCount; pp++) {
+              PeakH5Row h5row = pfio_make_row(
+                  0, 0, pp, 0.0, &sendFitParams[pp * PF_PARAMS_PER_PEAK], px,
+                  Lsd, g_Lam);
+              pfio_append_row(&g_h5buf, &h5row);
+            }
+            if (sendFitParams)
+              free(sendFitParams);
           }
-        }
-
-        if (currentPeakCount > 0 && pks != NULL) {
-          sendFitParams =
-              (double *)malloc(currentPeakCount * 7 * sizeof(double));
-          memset(sendFitParams, 0, currentPeakCount * 7 * sizeof(double));
-
-          int roi_half_width = fitROIPadding;
-
-          // Build peak locations array for fitPeaksForLineout
-          double *peakLocs =
-              (double *)malloc(currentPeakCount * sizeof(double));
-          for (int p = 0; p < currentPeakCount; ++p)
-            peakLocs[p] = pks[p].radius;
-
-          fitPeaksForLineout(hR, local_h_int1D, nRBins, peakLocs,
-                             currentPeakCount, RBinSize, roi_half_width,
-                             sendFitParams, 1);
-          free(peakLocs);
-
-          if (fFit) {
-            fwrite(sendFitParams, sizeof(double), currentPeakCount * 7, fFit);
-            fflush(fFit);
-          }
-          if (sendFitParams)
-            free(sendFitParams);
-        }
-        if (pks)
           free(pks);
+        }
       }
 
       if (drainCtx->inputDataPtr)
@@ -2855,6 +2919,12 @@ int main(int argc, char *argv[]) {
   pthread_join(writer_thread, NULL);
   printf("Writer thread joined. Destroying writer queue...\n");
   writer_queue_destroy(&writer_queue);
+
+  // Write HDF5 peaks file (after all threads joined — thread safe)
+  if (g_pkFit && g_h5buf.count > 0) {
+    pfio_write_peaks_h5("caked_peaks.h5", &g_h5buf, NULL, 0, NULL, 0, 1, "GPU");
+    pfio_free_buffer(&g_h5buf);
+  }
 
   // Destroy queue
   queue_destroy(&process_queue);

@@ -270,6 +270,127 @@ def create_peak_params_file(ring_radii: list, out_path: Path, px: float,
     return n_peaks
 
 
+def create_autodetect_params_file(out_path: Path, max_peaks: int = 20) -> int:
+    """Create a peak_params.txt file for auto-detect mode (no PeakLocation lines)."""
+    with open(out_path, 'w') as f:
+        f.write("# Auto-detect mode: no PeakLocation specified\n")
+        f.write("DoPeakFit 1\n")
+        f.write(f"AutoDetectPeaks {max_peaks}\n")
+        f.write("SNIPIterations 50\n")
+        f.write("FitROIPadding 30\n")
+    print(f"  Wrote auto-detect params (maxPeaks={max_peaks}) to {out_path}")
+    return max_peaks
+
+
+def read_fit_per_eta_csv(csv_path: Path) -> list:
+    """Parse _fit_per_eta.csv into list of dicts."""
+    rows = []
+    if not csv_path.exists():
+        return rows
+    import csv
+    with open(csv_path) as f:
+        reader = csv.DictReader(f)
+        for row in reader:
+            rows.append({
+                'frame': int(row['Frame']),
+                'eta_bin': int(row['EtaBin']),
+                'eta_deg': float(row['EtaCen']),
+                'peak_nr': int(row['PeakIdx']),
+                'center_px': float(row['R_px']),
+                'tth_deg': float(row['TwoTheta_deg']),
+                'area': float(row['Area']),
+                'fwhm_deg': float(row['FWHM_deg']),
+            })
+    return rows
+
+
+def validate_autodetect_per_eta(per_eta_peaks: list, theoretical_radii: list,
+                                px: float, n_eta_bins: int = 360):
+    """Validate auto-detected peaks against theoretical CeO2 ring radii.
+
+    For each theoretical ring, checks how many eta bins have a matching peak.
+    A match occurs when |R_detected - R_theoretical| < tolerance.
+    """
+    print("\n" + "=" * 70)
+    print("  AUTO-DETECT: Per-Eta-Bin Ring Detection Validation")
+    print("=" * 70)
+
+    # Theoretical radii in pixels
+    ring_radii_px = [(nr, r_um / px) for nr, r_um in theoretical_radii]
+
+    # Group peaks by eta_bin
+    from collections import defaultdict
+    by_eta = defaultdict(list)
+    for p in per_eta_peaks:
+        by_eta[p['eta_bin']].append(p)
+
+    n_active_eta = len(by_eta)
+    tolerance_px = 2.0  # match within 2 pixels
+
+    print(f"  Active eta bins: {n_active_eta}")
+    print(f"  Total detected peaks: {len(per_eta_peaks)}")
+    print(f"  Match tolerance: {tolerance_px:.1f} px")
+    print()
+
+    print(f"{'Ring':>4} {'R_theory':>10} {'Detected':>10} {'Rate':>8} {'Mean_err':>10} {'Err_ppm':>10}")
+    print("-" * 60)
+
+    rings_detected = 0
+    all_strains = []
+
+    for ring_nr, R_theory in ring_radii_px:
+        n_matched = 0
+        center_errors = []
+
+        for eta_bin, peaks in by_eta.items():
+            # Find closest detected peak to this ring
+            best_err = float('inf')
+            for p in peaks:
+                err = abs(p['center_px'] - R_theory)
+                if err < best_err:
+                    best_err = err
+            if best_err < tolerance_px:
+                n_matched += 1
+                center_errors.append(best_err)
+
+        rate = n_matched / max(n_active_eta, 1)
+        mean_err = sum(center_errors) / max(len(center_errors), 1) if center_errors else 0
+        err_ppm = (mean_err / max(R_theory, 1e-6)) * 1e6
+
+        if rate >= 0.5:
+            rings_detected += 1
+            all_strains.append(err_ppm)
+
+        status = '✓' if rate >= 0.5 else '✗'
+        print(f"  {ring_nr:>3}{status} {R_theory:>10.2f} {n_matched:>8}/{n_active_eta} "
+              f"{rate:>7.1%} {mean_err:>10.4f} {err_ppm:>10.1f}")
+
+    print("-" * 60)
+    mean_strain = sum(all_strains) / max(len(all_strains), 1) if all_strains else 0
+
+    print(f"  Rings detected (≥50% eta bins): {rings_detected}/{len(ring_radii_px)}")
+    if all_strains:
+        print(f"  Mean center error: {mean_strain:.1f} ppm")
+    print()
+
+    # PASS criteria
+    min_rings = 10
+    max_err_ppm = 500
+    pass_rings = rings_detected >= min_rings
+    pass_err = mean_strain < max_err_ppm if all_strains else False
+
+    if pass_rings and pass_err:
+        print(f"  ✅ PASS: {rings_detected} rings detected (≥{min_rings}), "
+              f"mean error {mean_strain:.0f} ppm (<{max_err_ppm})")
+    else:
+        reasons = []
+        if not pass_rings:
+            reasons.append(f"only {rings_detected}/{min_rings} rings detected")
+        if not pass_err:
+            reasons.append(f"mean error {mean_strain:.0f} ppm (>{max_err_ppm})")
+        print(f"  ⚠️  WARNING: {', '.join(reasons)}")
+
+
 def create_zarr_zip(work_dir: Path, param_file: Path) -> Path:
     """Create a Zarr zip from the calibration TIFF."""
     gen_script = MIDAS_HOME / "utils" / "ffGenerateZipRefactor.py"
@@ -383,13 +504,13 @@ def read_fit_bin(fit_bin: Path, n_peaks: int) -> list:
     for i in range(n_peaks):
         base = i * PF_PARAMS_PER_PEAK
         peaks.append({
-            'Imax': values[base + 0],
-            'BG': values[base + 1],
-            'Mix': values[base + 2],
-            'Center': values[base + 3],
-            'Sigma': values[base + 4],
-            'SNR': values[base + 5],
-            'Area': values[base + 6],
+            'Area': values[base + 0],
+            'Center': values[base + 1],
+            'Sig': values[base + 2],
+            'Gam': values[base + 3],
+            'FWHM': values[base + 4],
+            'Eta': values[base + 5],
+            'ChiSq': values[base + 6],
         })
 
     return peaks
@@ -401,7 +522,7 @@ def compute_strain_benchmark(theoretical_radii: list, fitted_peaks: list,
     print("\n" + "=" * 70)
     print("BENCHMARK: Calibration vs Integration Peak Fitting")
     print("=" * 70)
-    print(f"{'Ring':>4} {'R_theory':>10} {'R_fitted':>10} {'ΔR':>10} {'ΔR/R (ppm)':>12} {'Imax':>10} {'SNR':>10}")
+    print(f"{'Ring':>4} {'R_theory':>10} {'R_fitted':>10} {'ΔR':>10} {'ΔR/R (ppm)':>12} {'Area':>10} {'ChiSq':>10}")
     print("-" * 70)
 
     strains = []
@@ -412,7 +533,7 @@ def compute_strain_benchmark(theoretical_radii: list, fitted_peaks: list,
         peak = fitted_peaks[i]
         R_fitted = peak['Center']
 
-        if R_fitted == 0 and peak['Imax'] == 0:
+        if R_fitted == 0 and peak['Area'] == 0:
             print(f"  {ring_nr:>4} {R_theory:>10.2f} {'FAILED':>10} {'--':>10} {'--':>12} {'--':>10} {'--':>10}")
             continue
 
@@ -421,7 +542,7 @@ def compute_strain_benchmark(theoretical_radii: list, fitted_peaks: list,
         strains.append(strain_ppm)
 
         print(f"  {ring_nr:>4} {R_theory:>10.2f} {R_fitted:>10.2f} {delta_R:>10.4f} "
-              f"{strain_ppm:>12.1f} {peak['Imax']:>10.1f} {peak['SNR']:>10.1f}")
+              f"{strain_ppm:>12.1f} {peak['Area']:>10.1f} {peak['ChiSq']:>10.1f}")
 
     if strains:
         import statistics
@@ -458,7 +579,44 @@ def main():
                         help='Maximum number of rings to fit (default: 15)')
     parser.add_argument('--skip-calibration', action='store_true',
                         help='Skip calibration step, use parameters.txt as-is')
+    parser.add_argument('--mode', choices=['specified', 'autodetect'],
+                        default='specified',
+                        help='Fitting mode: specified (PeakLocation) or autodetect')
+    parser.add_argument('--integrator', choices=['cpu', 'gpu'],
+                        default='cpu',
+                        help='Integrator binary: cpu (IntegratorZarrOMP) or gpu (IntegratorFitPeaksGPUStream)')
     args = parser.parse_args()
+
+    # GPU integrator is a streaming server — different workflow
+    if args.integrator == 'gpu':
+        print("=" * 70)
+        print("  GPU Integrator Test")
+        print("=" * 70)
+        gpu_bin = MIDAS_BIN / "IntegratorFitPeaksGPUStream"
+        if not gpu_bin.exists():
+            print(f"  ERROR: GPU integrator not found at {gpu_bin}")
+            print(f"  Build with: cd ~/opt/MIDAS/build && cmake .. -DUSE_CUDA=ON && cmake --build . --target IntegratorFitPeaksGPUStream -j 8")
+            sys.exit(1)
+        print(f"  GPU binary found: {gpu_bin}")
+        print()
+        print("  IntegratorFitPeaksGPUStream is a streaming server.")
+        print("  To test GPU peak fitting:")
+        print()
+        print("  1. Build with CUDA:")
+        print("     cd ~/opt/MIDAS/build")
+        print("     cmake .. -DUSE_CUDA=ON")
+        print("     cmake --build . --target IntegratorFitPeaksGPUStream -j 8")
+        print()
+        print("  2. Create a combined parameter file with peak params:")
+        print("     (DoPeakFit 1, PeakLocation entries, or AutoDetectPeaks N)")
+        print()
+        print("  3. Run the GPU integrator:")
+        print(f"     {gpu_bin} <combined_params.txt>")
+        print()
+        print("  4. Send data via the streaming pipeline or use direct mode.")
+        print()
+        print("  HDF5 output: caked_peaks.h5 (written after all frames processed)")
+        sys.exit(0)
 
     param_path = CALIB_DIR / "parameters.txt"
     if not param_path.exists():
@@ -470,6 +628,7 @@ def main():
     print("=" * 70)
     print(f"  Calibration dir: {CALIB_DIR}")
     print(f"  CPUs: {args.nCPUs}")
+    print(f"  Mode: {args.mode}")
     if args.skip_calibration:
         print(f"  ⚡ Calibration skipped (using parameters.txt as-is)")
     print()
@@ -561,8 +720,11 @@ def main():
                     px = float(line.strip().split()[1])
                     break
         peak_params = work_dir / "peak_params.txt"
-        n_peaks = create_peak_params_file(ring_radii, peak_params, px,
-                                          max_rings=args.max_rings)
+        if args.mode == 'autodetect':
+            n_peaks = create_autodetect_params_file(peak_params, max_peaks=20)
+        else:
+            n_peaks = create_peak_params_file(ring_radii, peak_params, px,
+                                              max_rings=args.max_rings)
         print()
 
         # ------------------------------------------------------------------
@@ -581,19 +743,30 @@ def main():
         print()
 
         # ------------------------------------------------------------------
-        # Step 5: Read fit results and compute strain benchmark
+        # Step 5: Read fit results and compute benchmark
         # ------------------------------------------------------------------
-        print("[5/5] Computing strain benchmark...")
-        fitted_peaks = read_fit_bin(fit_bin, n_peaks)
-        if fitted_peaks:
-            for i, peak in enumerate(fitted_peaks[:5]):
-                print(f"  Peak {i}: Center={peak['Center']:.4f}, Imax={peak['Imax']:.2f}")
+        if args.mode == 'autodetect':
+            print("[5/5] Validating auto-detected peaks per eta bin...")
+            # Find the per-eta CSV
+            data_stem = zip_file.stem
+            csv_path = work_dir / f"{data_stem}_fit_per_eta.csv"
+            per_eta_peaks = read_fit_per_eta_csv(csv_path)
+            if per_eta_peaks:
+                print(f"  Read {len(per_eta_peaks)} per-eta peak entries from {csv_path.name}")
+            else:
+                print(f"  WARNING: No per-eta data found in {csv_path}")
+            validate_autodetect_per_eta(per_eta_peaks, ring_radii, px)
         else:
-            print("  No fit results found")
-
-        # Ring radii from GetHKLList are in microns; convert to pixels
-        ring_radii_px = [(nr, r / px) for nr, r in ring_radii[:n_peaks]]
-        compute_strain_benchmark(ring_radii_px, fitted_peaks, px)
+            print("[5/5] Computing strain benchmark...")
+            fitted_peaks = read_fit_bin(fit_bin, n_peaks)
+            if fitted_peaks:
+                for i, peak in enumerate(fitted_peaks[:5]):
+                    print(f"  Peak {i}: Center={peak['Center']:.4f}, Area={peak['Area']:.2f}")
+            else:
+                print("  No fit results found")
+            # Ring radii from GetHKLList are in microns; convert to pixels
+            ring_radii_px = [(nr, r / px) for nr, r in ring_radii[:n_peaks]]
+            compute_strain_benchmark(ring_radii_px, fitted_peaks, px)
 
     finally:
         if not args.keep_work_dir and not args.work_dir:

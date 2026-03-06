@@ -126,7 +126,7 @@ add_ff_hedm_executable(DetectorMapper SOURCES src/DetectorMapper.c src/DetectorG
 # add_ff_hedm_executable(DetectorMapperZarr ...)  # archived → src/archive/DetectorMapperZarr.c
 # add_ff_hedm_executable(Integrator SOURCES src/Integrator.c src/FileReader.c)  # archived → src/archive/Integrator.c
 # add_ff_hedm_executable(IntegratorZarr SOURCES src/archive/IntegratorZarr.c)
-add_ff_hedm_executable(IntegratorZarrOMP SOURCES src/IntegratorZarrOMP.c src/ZarrReader.c src/PeakFit.c src/FileReader.c OMP)
+add_ff_hedm_executable(IntegratorZarrOMP SOURCES src/IntegratorZarrOMP.c src/ZarrReader.c src/PeakFit.c src/PeakFitIO.c src/FileReader.c OMP)
 # add_ff_hedm_executable(ConvTiffToGE SOURCES src/ConvTiffToGE.c)
 # add_ff_hedm_executable(MapBND SOURCES src/MapBND.c)
 
@@ -151,7 +151,7 @@ add_ff_hedm_executable(findMultipleSolutionsPF SOURCES src/findMultipleSolutions
 add_ff_hedm_executable(mergeScansScanning SOURCES src/mergeScansScanning.c OMP)
 
 # CUDA specific targets
-add_ff_hedm_executable(IntegratorFitPeaksGPUStream SOURCES src/IntegratorFitPeaksGPUStream.cu src/PeakFit.c CUDA OMP)
+add_ff_hedm_executable(IntegratorFitPeaksGPUStream SOURCES src/IntegratorFitPeaksGPUStream.cu src/PeakFit.c src/PeakFitIO.c CUDA OMP)
 # Example for other CUDA targets if they were to be re-added:
 # add_ff_hedm_executable(IndexerCUDA SOURCES src/IndexerRefineNLOPT.cu CUDA)
 # add_ff_hedm_executable(PeaksCUDA SOURCES src/PeaksNLMD.cu CUDA)

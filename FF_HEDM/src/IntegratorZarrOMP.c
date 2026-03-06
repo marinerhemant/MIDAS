@@ -12,6 +12,7 @@
 #include "FileReader.h"
 #include "MapHeader.h"
 #include "PeakFit.h"
+#include "PeakFitIO.h"
 #include "ZarrReader.h"
 #include <assert.h>
 #include <blosc2.h>
@@ -411,6 +412,8 @@ struct IntegratorParams {
   int sumImages, chunkFiles, individualSave;
   int haveOmegas;
   int doPeakFit, nPeakLocations, fitROIPadding;
+  int autoDetectPeaks; // 0 = disabled, >0 = max peaks to auto-detect
+  int snipIterations;  // SNIP background iterations (default 50)
   double peakLocations[MAX_PEAK_LOCATIONS_PF];
   char resultFolder[4096];
   char GapFN[4096];
@@ -433,6 +436,8 @@ static void initIntegratorParams(struct IntegratorParams *p) {
   p->chunkFiles = 1;
   p->individualSave = 1;
   p->fitROIPadding = 20;
+  p->autoDetectPeaks = 0;
+  p->snipIterations = 50;
 }
 
 static int readParamFile(const char *filename, struct IntegratorParams *p) {
@@ -537,7 +542,12 @@ static int readParamFile(const char *filename, struct IntegratorParams *p) {
       p->doPeakFit = atoi(rest);
     else if (strcmp(key, "FitROIPadding") == 0)
       p->fitROIPadding = atoi(rest);
-    else if (strcmp(key, "PeakLocation") == 0) {
+    else if (strcmp(key, "AutoDetectPeaks") == 0) {
+      p->autoDetectPeaks = atoi(rest);
+      p->doPeakFit = 1;
+    } else if (strcmp(key, "SNIPIterations") == 0) {
+      p->snipIterations = atoi(rest);
+    } else if (strcmp(key, "PeakLocation") == 0) {
       if (p->nPeakLocations < MAX_PEAK_LOCATIONS_PF) {
         p->peakLocations[p->nPeakLocations++] = atof(rest);
         p->doPeakFit = 1;
@@ -665,6 +675,7 @@ int main(int argc, char **argv) {
          W = 0.063, X = 0.0, Y = 0.0, Z = 0.0;
   // Peak fitting parameters
   int doPeakFit = 0, nPeakLocations = 0, fitROIPadding = 20;
+  int autoDetectPeaks = 0, snipIterations = 50;
   double peakLocations[MAX_PEAK_LOCATIONS_PF];
 
   char *DataFN = dataFN_arg;
@@ -697,6 +708,11 @@ int main(int argc, char **argv) {
               ip.doPeakFit = atoi(pfval);
             else if (strcmp(pfkey, "FitROIPadding") == 0)
               ip.fitROIPadding = atoi(pfval);
+            else if (strcmp(pfkey, "AutoDetectPeaks") == 0) {
+              ip.autoDetectPeaks = atoi(pfval);
+              ip.doPeakFit = 1;
+            } else if (strcmp(pfkey, "SNIPIterations") == 0)
+              ip.snipIterations = atoi(pfval);
             else if (strcmp(pfkey, "PeakLocation") == 0) {
               if (ip.nPeakLocations < MAX_PEAK_LOCATIONS_PF) {
                 ip.peakLocations[ip.nPeakLocations++] = atof(pfval);
@@ -707,8 +723,9 @@ int main(int argc, char **argv) {
         }
         fclose(pf);
         printf("Read peak params from %s: DoPeakFit=%d, nPeaks=%d, "
-               "ROIPadding=%d\n",
-               PeakParamsFN, ip.doPeakFit, ip.nPeakLocations, ip.fitROIPadding);
+               "AutoDetect=%d, SNIP=%d, ROIPadding=%d\n",
+               PeakParamsFN, ip.doPeakFit, ip.nPeakLocations,
+               ip.autoDetectPeaks, ip.snipIterations, ip.fitROIPadding);
       }
     }
 
@@ -746,6 +763,8 @@ int main(int argc, char **argv) {
     doPeakFit = ip.doPeakFit;
     nPeakLocations = ip.nPeakLocations;
     fitROIPadding = ip.fitROIPadding;
+    autoDetectPeaks = ip.autoDetectPeaks;
+    snipIterations = ip.snipIterations;
     for (int i = 0; i < nPeakLocations; i++)
       peakLocations[i] = ip.peakLocations[i];
     GapFN = ip.hasGapFN ? ip.GapFN : NULL;
@@ -1137,7 +1156,12 @@ int main(int argc, char **argv) {
             sscanf(pfval, "%d", &doPeakFit);
           else if (strcmp(pfkey, "FitROIPadding") == 0)
             sscanf(pfval, "%d", &fitROIPadding);
-          else if (strcmp(pfkey, "PeakLocation") == 0) {
+          else if (strcmp(pfkey, "AutoDetectPeaks") == 0) {
+            sscanf(pfval, "%d", &autoDetectPeaks);
+            doPeakFit = 1;
+          } else if (strcmp(pfkey, "SNIPIterations") == 0) {
+            sscanf(pfval, "%d", &snipIterations);
+          } else if (strcmp(pfkey, "PeakLocation") == 0) {
             if (nPeakLocations < MAX_PEAK_LOCATIONS_PF) {
               sscanf(pfval, "%lf", &peakLocations[nPeakLocations]);
               nPeakLocations++;
@@ -1147,9 +1171,10 @@ int main(int argc, char **argv) {
         }
       }
       fclose(pf);
-      printf(
-          "Read peak params from %s: DoPeakFit=%d, nPeaks=%d, ROIPadding=%d\n",
-          PeakParamsFN, doPeakFit, nPeakLocations, fitROIPadding);
+      printf("Read peak params from %s: DoPeakFit=%d, nPeaks=%d, "
+             "AutoDetect=%d, SNIP=%d, ROIPadding=%d\n",
+             PeakParamsFN, doPeakFit, nPeakLocations, autoDetectPeaks,
+             snipIterations, fitROIPadding);
     } else {
       printf("Warning: Could not open peak params file: %s\n", PeakParamsFN);
     }
@@ -1350,23 +1375,33 @@ integration_start:
     printf("Opened %s for text lineout output.\n", lineoutXYFN);
   }
   FILE *fFitPerEta = NULL;
-  if (doPeakFit && nPeakLocations > 0) {
+  int peakFitActive = doPeakFit && (nPeakLocations > 0 || autoDetectPeaks > 0);
+  if (peakFitActive) {
+    int nPeaksForOutput =
+        (autoDetectPeaks > 0) ? autoDetectPeaks : nPeakLocations;
     char fitBinFN[4096];
     sprintf(fitBinFN, "%s_fit.bin", dataPrefix);
     fFitBin = fopen(fitBinFN, "wb");
     if (fFitBin)
-      printf("Opened %s for peak fitting output (%d peaks).\n", fitBinFN,
-             nPeakLocations);
+      printf("Opened %s for peak fitting output (%d peaks%s).\n", fitBinFN,
+             nPeaksForOutput, autoDetectPeaks > 0 ? ", auto-detect" : "");
     char fitPerEtaFN[4096];
     sprintf(fitPerEtaFN, "%s_fit_per_eta.csv", dataPrefix);
     fFitPerEta = fopen(fitPerEtaFN, "w");
     if (fFitPerEta) {
-      fprintf(fFitPerEta, "Frame,EtaBin,EtaCen,PeakIdx,R_px,R_um,TwoTheta_deg,"
-                          "Imax,Sigma_px,FWHM_px,SNR,Mix,GoF,Area\n");
+      fprintf(fFitPerEta,
+              "Frame,EtaBin,EtaCen,PeakIdx,R_px,R_um,TwoTheta_deg,"
+              "Area,Sig_centideg2,Gam_centideg,FWHM_deg,Eta,ChiSq,Area2\n");
       printf("Opened %s for per-eta peak fitting output.\n", fitPerEtaFN);
     }
     printf("Peak fit enabled: %d peaks, ROI padding: %d bins\n", nPeakLocations,
            fitROIPadding);
+  }
+
+  // HDF5 peak output buffer
+  PeakH5Buffer h5buf;
+  if (peakFitActive) {
+    pfio_init_buffer(&h5buf, 4096);
   }
 
   int i, j, k, l, p;
@@ -1641,52 +1676,51 @@ integration_start:
       fflush(fLineoutXY);
     }
     // Peak fitting
-    if (doPeakFit && nPeakLocations > 0) {
+    if (peakFitActive) {
+      int nPeaksThisFit =
+          (autoDetectPeaks > 0) ? autoDetectPeaks : nPeakLocations;
       double *fitResults =
-          (double *)calloc(nPeakLocations * PF_PARAMS_PER_PEAK, sizeof(double));
-      int nFitted = fitPeaksForLineout(RBinCenters, lineout1D, nRBins,
-                                       peakLocations, nPeakLocations, RBinSize,
-                                       fitROIPadding, fitResults, 1);
+          (double *)calloc(nPeaksThisFit * PF_PARAMS_PER_PEAK, sizeof(double));
+      int nFitted;
+      if (autoDetectPeaks > 0) {
+        nFitted = fitPeaksAutoDetect(RBinCenters, lineout1D, nRBins,
+                                     autoDetectPeaks, RBinSize, fitROIPadding,
+                                     fitResults, snipIterations);
+      } else {
+        nFitted = fitPeaks(RBinCenters, lineout1D, nRBins, peakLocations,
+                           nPeakLocations, RBinSize, fitROIPadding, fitResults);
+      }
       if (nFitted > 0 && fFitBin) {
-        fwrite(fitResults, sizeof(double), nPeakLocations * PF_PARAMS_PER_PEAK,
+        fwrite(fitResults, sizeof(double), nFitted * PF_PARAMS_PER_PEAK,
                fFitBin);
         fflush(fFitBin);
       }
       if (i == 0) {
         if (nFitted > 0) {
-          printf("  Peak fit results (frame 0): %d/%d peaks fitted\n", nFitted,
-                 nPeakLocations);
-          for (int pp = 0; pp < nPeakLocations; pp++) {
+          printf("  Peak fit results (frame 0): %d/%d peaks fitted%s\n",
+                 nFitted, nPeaksThisFit,
+                 autoDetectPeaks > 0 ? " (auto-detect)" : "");
+          for (int pp = 0; pp < nFitted; pp++) {
             int base = pp * PF_PARAMS_PER_PEAK;
-            printf(
-                "    Peak %d: Center=%.4f, Imax=%.2f, Sigma=%.4f, SNR=%.2f\n",
-                pp, fitResults[base + 3], fitResults[base + 0],
-                fitResults[base + 4], fitResults[base + 5]);
+            printf("    Peak %d: Center=%.4f, Area=%.2f, FWHM=%.4f, eta=%.2f\n",
+                   pp, fitResults[base + 1], fitResults[base + 0],
+                   fitResults[base + 4], fitResults[base + 5]);
           }
         } else {
           printf("  Peak fit FAILED (frame 0): nFitted=0 out of %d peaks\n",
-                 nPeakLocations);
-          printf(
-              "    RBinCenters[0]=%.4f, RBinCenters[%d]=%.4f, RBinSize=%.4f\n",
-              RBinCenters[0], nRBins - 1, RBinCenters[nRBins - 1], RBinSize);
-          printf("    peakLocations[0]=%.4f, lineout1D max=%.4f\n",
-                 peakLocations[0], ({
-                   double mx = 0;
-                   for (int zz = 0; zz < nRBins; zz++)
-                     if (lineout1D[zz] > mx)
-                       mx = lineout1D[zz];
-                   mx;
-                 }));
+                 nPeaksThisFit);
         }
       }
       free(fitResults);
     }
 
     // --- Per-eta-bin peak fitting ---
-    if (doPeakFit && nPeakLocations > 0 && fFitPerEta) {
+    if (peakFitActive && fFitPerEta) {
+      int nPeaksThisFit =
+          (autoDetectPeaks > 0) ? autoDetectPeaks : nPeakLocations;
       double *etaProfile = (double *)malloc(nRBins * sizeof(double));
       double *etaFitResults =
-          (double *)calloc(nPeakLocations * PF_PARAMS_PER_PEAK, sizeof(double));
+          (double *)calloc(nPeaksThisFit * PF_PARAMS_PER_PEAK, sizeof(double));
       int totalPerEtaFitted = 0;
       for (int eb = 0; eb < nEtaBins; eb++) {
         // Extract the 1D R-profile for this eta bin
@@ -1700,29 +1734,43 @@ integration_start:
           continue; // skip nearly-empty eta bins
 
         memset(etaFitResults, 0,
-               nPeakLocations * PF_PARAMS_PER_PEAK * sizeof(double));
-        int nf = fitPeaksForLineout(RBinCenters, etaProfile, nRBins,
-                                    peakLocations, nPeakLocations, RBinSize,
-                                    fitROIPadding, etaFitResults, 1);
+               nPeaksThisFit * PF_PARAMS_PER_PEAK * sizeof(double));
+        int nf;
+        if (autoDetectPeaks > 0) {
+          nf = fitPeaksAutoDetect(RBinCenters, etaProfile, nRBins,
+                                  autoDetectPeaks, RBinSize, fitROIPadding,
+                                  etaFitResults, snipIterations);
+        } else {
+          nf = fitPeaks(RBinCenters, etaProfile, nRBins, peakLocations,
+                        nPeakLocations, RBinSize, fitROIPadding, etaFitResults);
+        }
         if (nf > 0) {
           totalPerEtaFitted += nf;
           double etaCen = (EtaBinsLow[eb] + EtaBinsHigh[eb]) / 2.0;
-          for (int pp = 0; pp < nPeakLocations; pp++) {
+          for (int pp = 0; pp < nf; pp++) {
             int base = pp * PF_PARAMS_PER_PEAK;
-            double center_px = etaFitResults[base + 3];
+            double center_px = etaFitResults[base + 1]; // center
             if (center_px == 0)
               continue; // peak not fitted
             double r_um = center_px * px;
             double tth_deg = atan(r_um / Lsd) * 180.0 / M_PI;
-            double sigma_px = etaFitResults[base + 4];
-            double fwhm_px = sigma_px * 2.0 * sqrt(2.0 * log(2.0));
+            double fwhm_px = etaFitResults[base + 4]; // FWHM
             fprintf(fFitPerEta,
-                    "%d,%d,%.4f,%d,%.6f,%.4f,%.6f,%.4f,%.6f,%.6f,%.2f,%.4f,"
+                    "%d,%d,%.4f,%d,%.6f,%.4f,%.6f,%.4f,%.6f,%.6f,%.4f,%.4f,"
                     "%.4f,%.4f\n",
                     i, eb, etaCen, pp, center_px, r_um, tth_deg,
-                    etaFitResults[base + 0], sigma_px, fwhm_px,
-                    etaFitResults[base + 5], etaFitResults[base + 2],
-                    etaFitResults[base + 5], etaFitResults[base + 6]);
+                    etaFitResults[base + 0], // area
+                    etaFitResults[base + 2], // sig
+                    etaFitResults[base + 3], // gam
+                    fwhm_px,
+                    etaFitResults[base + 5], // eta
+                    etaFitResults[base + 6], // chi_sq
+                    etaFitResults[base + 0]  // area (for backward compat)
+            );
+            // Append to HDF5 buffer
+            PeakH5Row h5row = pfio_make_row(i, eb, pp, etaCen,
+                                            &etaFitResults[base], px, Lsd, Lam);
+            pfio_append_row(&h5buf, &h5row);
           }
         }
       }
@@ -1831,6 +1879,25 @@ integration_start:
     fclose(fFitBin);
   if (fFitPerEta)
     fclose(fFitPerEta);
+  if (peakFitActive) {
+    // Write HDF5 peaks file
+    char peaksH5FN[4096];
+    sprintf(peaksH5FN, "%s_caked_peaks.h5", dataPrefix);
+    // Compute tth_axis for HDF5 metadata
+    double *tthAxis = (double *)malloc(nRBins * sizeof(double));
+    double *etaAxis = (double *)malloc(nEtaBins * sizeof(double));
+    for (int ri = 0; ri < nRBins; ri++) {
+      tthAxis[ri] = atan(RBinCenters[ri] * px / Lsd) * 180.0 / M_PI;
+    }
+    for (int ei = 0; ei < nEtaBins; ei++) {
+      etaAxis[ei] = (EtaBinsLow[ei] + EtaBinsHigh[ei]) / 2.0;
+    }
+    pfio_write_peaks_h5(peaksH5FN, &h5buf, tthAxis, nRBins, etaAxis, nEtaBins,
+                        NrTransOpt, DataFN);
+    free(tthAxis);
+    free(etaAxis);
+    pfio_free_buffer(&h5buf);
+  }
   free(RBinCenters);
   end0 = clock();
   diftotal = ((double)(end0 - start0)) / CLOCKS_PER_SEC;
