@@ -38,8 +38,7 @@ Zarr/ZIP utilities remain here. Standalone converters moved to `utils/converters
 
 | Script | Description |
 |--------|-------------|
-| `ffGenerateZip.py` | Convert raw detector data (HDF5 / GE / TIFF) into MIDAS Zarr-ZIP archives. |
-| `ffGenerateZipRefactor.py` | Refactored version with improved performance and memory management. |
+| `ffGenerateZipRefactor.py` | Convert raw detector data (HDF5 / GE / TIFF) into MIDAS Zarr-ZIP archives. |
 | `updateZarrDset.py` | Update datasets/metadata within existing Zarr-ZIP archives. |
 | `updateZarrDsetRefactor.py` | Refactored Zarr dataset updater. |
 
@@ -128,3 +127,4 @@ See `tests/` for: `test_ff_hedm.py`, `test_nf_hedm.py`, `test_ff_calibration.py`
 | Script | Description |
 |--------|-------------|
 | `deprecated_AutoCalibrate.py` | Older auto-calibration script (superseded by `AutoCalibrateZarr.py`). |
+| `ffGenerateZip.py` | Original Zarr-ZIP generator (superseded by `ffGenerateZipRefactor.py`). |
