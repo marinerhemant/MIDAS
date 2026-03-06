@@ -32,9 +32,9 @@ from matplotlib.figure import Figure
 from PyQt6.QtCore import Qt
 from PyQt6.QtGui import QFont
 from PyQt6.QtWidgets import (
-    QApplication, QCheckBox, QComboBox, QHBoxLayout, QHeaderView,
-    QLabel, QMainWindow, QSplitter, QTableWidget, QTableWidgetItem,
-    QVBoxLayout, QWidget,
+    QAbstractItemView, QApplication, QCheckBox, QComboBox, QHBoxLayout,
+    QHeaderView, QLabel, QMainWindow, QSplitter, QTableWidget,
+    QTableWidgetItem, QVBoxLayout, QWidget,
 )
 
 
@@ -159,6 +159,8 @@ class LineoutViewer(QMainWindow):
         self.show_bg = True
         self.show_profile = True
         self.show_peaks = True
+        self.peak_lines = []  # axvline artists for highlighting
+        self.selected_peak_idx = -1  # row index of selected peak
 
         self._build_ui()
         self._update()
@@ -243,10 +245,17 @@ class LineoutViewer(QMainWindow):
         # Table widget
         self.table = QTableWidget()
         self.table.setAlternatingRowColors(True)
+        self.table.setSelectionBehavior(
+            QAbstractItemView.SelectionBehavior.SelectRows)
+        self.table.setSelectionMode(
+            QAbstractItemView.SelectionMode.SingleSelection)
         self.table.setStyleSheet(
             'QTableWidget { font-size: 12px; }'
             'QHeaderView::section { font-weight: bold; font-size: 12px; }'
+            'QTableWidget::item:selected { background-color: #3399ff; '
+            'color: white; }'
         )
+        self.table.itemSelectionChanged.connect(self._on_row_selected)
         splitter.addWidget(self.table)
 
         splitter.setSizes([600, 250])
@@ -283,6 +292,26 @@ class LineoutViewer(QMainWindow):
     def _on_peaks(self, checked):
         self.show_peaks = checked
         self._update()
+
+    def _on_row_selected(self):
+        """Thicken the vertical line for the selected peak."""
+        rows = self.table.selectionModel().selectedRows()
+        if not rows:
+            self.selected_peak_idx = -1
+        else:
+            self.selected_peak_idx = rows[0].row()
+
+        # Update line widths
+        for i, line in enumerate(self.peak_lines):
+            if i == self.selected_peak_idx:
+                line.set_linewidth(3.0)
+                line.set_alpha(1.0)
+                line.set_linestyle('-')
+            else:
+                line.set_linewidth(0.8)
+                line.set_alpha(0.5)
+                line.set_linestyle(':')
+        self.canvas.draw_idle()
 
     # ── Update plot + table ─────────────────────────────────────────
     def _update(self):
@@ -327,14 +356,21 @@ class LineoutViewer(QMainWindow):
                               label='Fitted profile', color='crimson',
                               zorder=4)
 
-        # Peak markers (vertical lines)
+        # Peak markers (vertical lines) — store for interactive highlighting
+        self.peak_lines = []
         if self.show_peaks and peak_rows:
-            for row in peak_rows:
+            for i, row in enumerate(peak_rows):
                 tth_peak = row.get('center_2theta', None)
                 if tth_peak is not None:
-                    self.ax_main.axvline(tth_peak, color='forestgreen',
-                                         alpha=0.5, linewidth=0.8,
-                                         linestyle=':', zorder=1)
+                    is_sel = (i == self.selected_peak_idx)
+                    lw = 3.0 if is_sel else 0.8
+                    alp = 1.0 if is_sel else 0.5
+                    ls = '-' if is_sel else ':'
+                    line = self.ax_main.axvline(
+                        tth_peak, color='forestgreen',
+                        alpha=alp, linewidth=lw,
+                        linestyle=ls, zorder=1)
+                    self.peak_lines.append(line)
 
         # Y scale
         if self.log_y:
@@ -380,7 +416,15 @@ class LineoutViewer(QMainWindow):
             for c, col in enumerate(header):
                 val = row.get(col, '')
                 if isinstance(val, float):
-                    text = f'{val:.6f}'
+                    # Smart formatting per column
+                    if col == 'peak_nr':
+                        text = f'{int(val)}'
+                    elif col == 'chi_sq':
+                        text = f'{val:.2f}'
+                    elif col in ('area',):
+                        text = f'{val:.2f}'
+                    else:
+                        text = f'{val:.6f}'
                 else:
                     text = str(val)
                 item = QTableWidgetItem(text)
