@@ -22,6 +22,7 @@ import math
 import os
 import sys
 import time
+import traceback
 from pathlib import Path
 
 import h5py
@@ -80,10 +81,16 @@ def _fit_one_slice(args_tuple):
         'eta_idx': eta_idx,
         'eta_deg': eta_deg,
         'peaks': [],
+        'status': 'ok',
+        'error': None,
     }
 
     # Skip empty or all-zero profiles
-    if len(profile) < 10 or np.max(profile) <= 0:
+    if len(profile) < 10:
+        result['status'] = 'skip_short'
+        return result
+    if np.max(profile) <= 0:
+        result['status'] = 'skip_zero'
         return result
 
     try:
@@ -95,6 +102,7 @@ def _fit_one_slice(args_tuple):
         peak_indices, peak_widths = detect_peaks(tth_axis, corrected,
                                                    n_peaks=n_peaks)
         if len(peak_indices) == 0:
+            result['status'] = 'no_peaks_detected'
             return result
 
         # Fit peaks with GSAS-II pseudo-Voigt
@@ -104,6 +112,10 @@ def _fit_one_slice(args_tuple):
             wavelength_A=wavelength_A,
             peak_widths=peak_widths,
         )
+
+        if not fit_results:
+            result['status'] = 'all_fits_failed'
+            return result
 
         for k, r in enumerate(fit_results):
             result['peaks'].append({
@@ -118,8 +130,9 @@ def _fit_one_slice(args_tuple):
                 'chi_sq': r['chi_sq'],
             })
 
-    except Exception:
-        pass  # silently skip failed slices
+    except Exception as e:
+        result['status'] = 'error'
+        result['error'] = f"{type(e).__name__}: {e}\n{traceback.format_exc()}"
 
     return result
 
@@ -301,6 +314,19 @@ def process_zarr_file(zarr_path, n_cpus=1, snip_iter=50, n_peaks=6,
         else:
             intensity = z['OmegaSumFrame'][fk][:]
 
+        # Diagnostic: print intensity stats for first frame
+        if fi == frame_indices[0]:
+            print(f"  Intensity shape: {intensity.shape}, "
+                  f"dtype={intensity.dtype}, "
+                  f"min={np.min(intensity):.1f}, "
+                  f"max={np.max(intensity):.1f}, "
+                  f"mean={np.mean(intensity):.1f}")
+            n_zero_cols = sum(1 for j in range(nEtaBins)
+                             if np.max(intensity[:, j]) <= 0)
+            if n_zero_cols > 0:
+                print(f"  ⚠ {n_zero_cols}/{nEtaBins} eta bins have "
+                      f"max intensity ≤ 0 in first frame")
+
         for j in range(nEtaBins):
             profile = np.asarray(intensity[:, j], dtype=np.float64)
             jobs.append((
@@ -338,6 +364,21 @@ def process_zarr_file(zarr_path, n_cpus=1, snip_iter=50, n_peaks=6,
 
     elapsed = time.time() - t0
     print(f"\n  Completed in {elapsed:.1f}s — {n_peaks_total} peaks fitted")
+
+    # Diagnostic summary
+    status_counts = {}
+    first_error = None
+    for r in all_results:
+        s = r.get('status', 'ok')
+        status_counts[s] = status_counts.get(s, 0) + 1
+        if s == 'error' and first_error is None:
+            first_error = r.get('error', 'unknown')
+    if len(status_counts) > 1 or 'ok' not in status_counts:
+        print(f"  Slice status breakdown:")
+        for s, cnt in sorted(status_counts.items()):
+            print(f"    {s}: {cnt}")
+    if first_error:
+        print(f"\n  First error (representative):\n{first_error}")
 
     # Sort results by (frame_idx, eta_idx)
     all_results.sort(key=lambda r: (r['frame_idx'], r['eta_idx']))
