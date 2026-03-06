@@ -1964,6 +1964,9 @@ int main(int argc, char *argv[]) {
         else
           printf("Warn: Max %d ImTransOpt reached, ignoring further options.\n",
                  MAX_TRANSFORM_OPS);
+        // NOTE: Topt values are parsed but Nopt will be zeroed below.
+        // Map.bin now stores raw pixel coordinates, so image transforms
+        // are baked into the map and no longer applied per-frame.
       } else if (strcmp(key, "SumImages") == 0)
         sscanf(val_str, "%d", &sumI);
       else if (strcmp(key, "Write2D") == 0)
@@ -1996,6 +1999,16 @@ int main(int argc, char *argv[]) {
     }
   }
   fclose(pF);
+
+  // Map.bin now stores raw pixel coordinates (inverse transforms baked in
+  // during map generation), so per-frame image transforms are no longer needed.
+  // Zero out Nopt so GPU transform kernels are skipped.
+  if (Nopt > 0) {
+    printf("  Map-side transforms: %d ImTransOpt values parsed but disabled "
+           "(baked into Map.bin).\n",
+           Nopt);
+    Nopt = 0;
+  }
 
   // Validate essential parameters
   check(NrPixelsY <= 0 || NrPixelsZ <= 0,
@@ -2075,10 +2088,8 @@ int main(int argc, char *argv[]) {
              hEtaHi, hRLo, hRHi);
 
   // --- Host Memory Allocations ---
-  double *hAvgDark = NULL; // Averaged dark frame (double) on host
-  int64_t *hDarkInT =
-      NULL; // Temporary buffer for reading raw dark frame (int64)
-  int64_t *hDarkIn = NULL; // Buffer for transformed dark frame (int64)
+  double *hAvgDark = NULL;  // Averaged dark frame (double) on host
+  int64_t *hDarkInT = NULL; // Buffer for reading raw dark frame (int64)
 
   size_t totalPixels = (size_t)NrPixelsY * NrPixelsZ;
   NUM_PIXELS_GLOBAL = totalPixels;   // Init global
@@ -2089,8 +2100,6 @@ int main(int argc, char *argv[]) {
   check(!hAvgDark, "Allocation failed for hAvgDark");
   hDarkInT = (int64_t *)malloc(SizeFile);
   check(!hDarkInT, "Allocation failed for hDarkInT");
-  hDarkIn = (int64_t *)malloc(SizeFile);
-  check(!hDarkIn, "Allocation failed for hDarkIn");
 
   // --- Device Memory Allocations (Persistent) ---
   float *dAvgDark = NULL;      // Averaged dark frame on GPU (now float)
@@ -2198,14 +2207,13 @@ int main(int argc, char *argv[]) {
         printf("Read failed for dark frame %d\n", i);
         break;
       }
-      DoImageTransformationsSequential(Nopt, Topt, hDarkInT, hDarkIn, NrPixelsY,
-                                       NrPixelsZ);
+      // Map.bin stores raw pixel coordinates — no transformation needed
 
       if (mkMap == 1 && i == 0) {
         mapMaskWC = (totalPixels + 31) / 32;
         hMapMask = (int *)calloc(mapMaskWC, sizeof(int));
         for (size_t j = 0; j < totalPixels; ++j) {
-          if (hDarkIn[j] == GapI || hDarkIn[j] == BadPxI) {
+          if (hDarkInT[j] == GapI || hDarkInT[j] == BadPxI) {
             SetBit(hMapMask, j);
           }
         }
@@ -2216,7 +2224,7 @@ int main(int argc, char *argv[]) {
       }
 
       for (size_t j = 0; j < totalPixels; ++j) {
-        hAvgDark[j] += (double)hDarkIn[j];
+        hAvgDark[j] += (double)hDarkInT[j];
       }
     }
     fclose(fD);

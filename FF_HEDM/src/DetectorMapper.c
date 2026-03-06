@@ -42,6 +42,29 @@ struct data {
   double frac;
 };
 
+static inline void inverse_transform_pixel(int y_in, int z_in, int *y_out,
+                                           int *z_out, int NrTransOpt,
+                                           const int TransOpt[10],
+                                           int NrPixelsY, int NrPixelsZ) {
+  int y = y_in, z = z_in;
+  /* Apply inverse transformations in reverse order.
+     For flips the inverse is the same operation, so we just
+     iterate in reverse. */
+  for (int t = NrTransOpt - 1; t >= 0; t--) {
+    if (TransOpt[t] == 1) { /* Flip LR (invert Y) */
+      y = NrPixelsY - 1 - y;
+    } else if (TransOpt[t] == 2) { /* Flip TB (invert Z) */
+      z = NrPixelsZ - 1 - z;
+    } else if (TransOpt[t] == 3) { /* Transpose */
+      int tmp = y;
+      y = z;
+      z = tmp;
+    }
+  }
+  *y_out = y;
+  *z_out = z;
+}
+
 static long long int
 mapperfcn(double tx, double ty, double tz, int NrPixelsY, int NrPixelsZ,
           double pxY, double pxZ, double Ycen, double Zcen, double Lsd,
@@ -49,7 +72,7 @@ mapperfcn(double tx, double ty, double tz, int NrPixelsY, int NrPixelsZ,
           double *EtaBinsLow, double *EtaBinsHigh, double *RBinsLow,
           double *RBinsHigh, int nRBins, int nEtaBins, struct data ***pxList,
           int **nPxList, int **maxnPx, double *mask, double p4,
-          int *binMaskFlag) {
+          int *binMaskFlag, int NrTransOpt, const int TransOpt[10]) {
   double TRs[3][3];
   dg_build_tilt_matrix(tx, ty, tz, TRs);
   int i;
@@ -384,8 +407,11 @@ mapperfcn(double tx, double ty, double tz, int NrPixelsY, int NrPixelsZ,
                 maxnPx[RChosen[k]][EtaChosen[l]] = maxnVal;
               }
             }
-            pxList[RChosen[k]][EtaChosen[l]][nVal].y = i;
-            pxList[RChosen[k]][EtaChosen[l]][nVal].z = j;
+            int raw_y, raw_z;
+            inverse_transform_pixel(i, j, &raw_y, &raw_z, NrTransOpt, TransOpt,
+                                    NrPixelsY, NrPixelsZ);
+            pxList[RChosen[k]][EtaChosen[l]][nVal].y = raw_y;
+            pxList[RChosen[k]][EtaChosen[l]][nVal].z = raw_z;
             pxList[RChosen[k]][EtaChosen[l]][nVal].frac = Area;
             (nPxList[RChosen[k]][EtaChosen[l]])++;
           }
@@ -997,7 +1023,7 @@ int main(int argc, char *argv[]) {
   long long int TotNrOfBins = mapperfcn(
       tx, ty, tz, NrPixelsY, NrPixelsZ, pxY, pxZ, yCen, zCen, Lsd, RhoD, p0, p1,
       p2, p3, EtaBinsLow, EtaBinsHigh, RBinsLow, RBinsHigh, nRBins, nEtaBins,
-      pxList, nPxList, maxnPx, mask, p4, binMaskFlag);
+      pxList, nPxList, maxnPx, mask, p4, binMaskFlag, NrTransOpt, TransOpt);
   printf("Total Number of bins %lld\n", TotNrOfBins);
   fflush(stdout);
 
@@ -1034,7 +1060,7 @@ int main(int argc, char *argv[]) {
   struct MapHeader map_hdr;
   map_header_compute(&map_hdr, Lsd, yCen, zCen, pxY, pxZ, tx, ty, tz, p0, p1,
                      p2, p3, p4, RhoD, RBinSize, EtaBinSize, RMin, RMax, EtaMin,
-                     EtaMax, NrPixelsY, NrPixelsZ);
+                     EtaMax, NrPixelsY, NrPixelsZ, NrTransOpt, TransOpt);
   map_header_print("Map.bin", &map_hdr);
 
   // Write output (to resultFolder if set, else cwd)

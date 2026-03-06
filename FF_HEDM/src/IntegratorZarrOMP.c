@@ -671,7 +671,7 @@ int main(int argc, char **argv) {
   char *resultFolder = NULL;
   int nFrames = 0, nDarks = 0, nFloods = 0, bytesPerPx = 2;
   double *AverageDark = NULL;
-  pixelvalue *ImageIn = NULL, *ImageInT = NULL;
+  pixelvalue *ImageInT = NULL;
   double *Image = NULL;
   int nPixels;
 
@@ -770,7 +770,6 @@ int main(int argc, char **argv) {
 
     // Read data frame
     ImageInT = malloc(nPixels * sizeof(*ImageInT));
-    ImageIn = malloc(nPixels * sizeof(*ImageIn));
     AverageDark = calloc(nPixels, sizeof(*AverageDark));
 
     double *rawFrame = calloc(nPixels, sizeof(double));
@@ -789,17 +788,9 @@ int main(int argc, char **argv) {
       double *darkFrame = calloc(nPixels, sizeof(double));
       printf("Reading dark file: %s\n", darkFN_arg);
       if (readDataFile(darkFN_arg, nPixels, darkFrame) == FR_SUCCESS) {
-        // Transform dark the same way as data (e.g. flip-top-bottom)
-        pixelvalue *darkInT = malloc(nPixels * sizeof(*darkInT));
-        pixelvalue *darkInX = malloc(nPixels * sizeof(*darkInX));
+        // Map.bin now stores raw pixel coordinates, so no transformation needed
         for (int i = 0; i < nPixels; i++)
-          darkInT[i] = darkFrame[i];
-        DoImageTransformations(NrTransOpt, TransOpt, darkInT, darkInX,
-                               NrPixelsY, NrPixelsZ);
-        for (int i = 0; i < nPixels; i++)
-          AverageDark[i] = darkInX[i];
-        free(darkInT);
-        free(darkInX);
+          AverageDark[i] = darkFrame[i];
       } else {
         printf("Warning: Failed to read dark file, proceeding without dark.\n");
       }
@@ -807,9 +798,7 @@ int main(int argc, char **argv) {
     }
     free(rawFrame);
 
-    // Apply image transformations to data
-    DoImageTransformations(NrTransOpt, TransOpt, ImageInT, ImageIn, NrPixelsY,
-                           NrPixelsZ);
+    // ImageInT is now used directly (no transform needed)
 
     // Mask setup
     if (GapFN || BadPxFN) {
@@ -1224,13 +1213,10 @@ int main(int argc, char **argv) {
     free(tmpData);
   }
   int a, b;
-  pixelvalue *DarkIn;
   pixelvalue *DarkInT;
   nPixels = NrPixelsY * NrPixelsZ;
-  DarkIn = malloc(nPixels * sizeof(*DarkIn));
   DarkInT = malloc(nPixels * sizeof(*DarkInT));
   AverageDark = calloc(nPixels, sizeof(*AverageDark));
-  ImageIn = malloc(nPixels * sizeof(*ImageIn));
   ImageInT = malloc(nPixels * sizeof(*ImageInT));
   // printf("nFrames: %d nrPixelsZ: %d nrPixelsY: %d, dataLoc: %d\n", nFrames,
   // NrPixelsZ, NrPixelsY,dataLoc); Now we read the size of data for each file
@@ -1308,10 +1294,9 @@ int main(int argc, char **argv) {
     } else {
       rawToDouble(data, DarkInT, nPixels, dType);
     }
-    DoImageTransformations(NrTransOpt, TransOpt, DarkInT, DarkIn, NrPixelsY,
-                           NrPixelsZ);
+    // Map.bin now stores raw pixel coordinates, so skip transformation
     for (b = 0; b < (NrPixelsY * NrPixelsZ); b++) {
-      AverageDark[b] += ((double)DarkIn[b]) / (nDarks - skipFrame);
+      AverageDark[b] += ((double)DarkInT[b]) / (nDarks - skipFrame);
     }
   }
   // for (b=0;b<NrPixelsY*NrPixelsZ;b++) printf("%lf\n",AverageDark[b]);
@@ -1412,23 +1397,20 @@ integration_start:
     mapper = calloc(NrPixelsY * NrPixelsZ, sizeof(*mapper));
     double *mapperOut;
     mapperOut = calloc(NrPixelsY * NrPixelsZ, sizeof(*mapperOut));
+    // Map.bin stores raw pixel coordinates, so skip mask transformation
     fileReader(fdd, GapFN, 7, NrPixelsY * NrPixelsZ, mapper);
-    DoImageTransformations(NrTransOpt, TransOpt, mapper, mapperOut, NrPixelsY,
-                           NrPixelsZ);
     for (i = 0; i < NrPixelsY * NrPixelsZ; i++) {
-      if (mapperOut[i] != 0) {
+      if (mapper[i] != 0) {
         SetBit(mapMask, i);
-        mapperOut[i] = 0;
+        mapper[i] = 0;
         nrdone++;
       }
     }
     fileReader(fdd, BadPxFN, 7, NrPixelsY * NrPixelsZ, mapper);
-    DoImageTransformations(NrTransOpt, TransOpt, mapper, mapperOut, NrPixelsY,
-                           NrPixelsZ);
     for (i = 0; i < NrPixelsY * NrPixelsZ; i++) {
-      if (mapperOut[i] != 0) {
+      if (mapper[i] != 0) {
         SetBit(mapMask, i);
-        mapperOut[i] = 0;
+        mapper[i] = 0;
         nrdone++;
       }
     }
@@ -1494,10 +1476,10 @@ integration_start:
     printf("Processing frame number: %d of %d of file %s.\n", i + 1, nFrames,
            DataFN);
     if (useParamFile) {
-      // In paramFN mode: ImageIn already holds the transformed frame,
-      // AverageDark is set. Just compute Image = ImageIn - dark.
+      // In paramFN mode: ImageInT already holds the raw frame,
+      // AverageDark is set. Just compute Image = ImageInT - dark.
       for (j = 0; j < NrPixelsY * NrPixelsZ; j++) {
-        Image[j] = (double)ImageIn[j] - AverageDark[j];
+        Image[j] = (double)ImageInT[j] - AverageDark[j];
       }
     } else {
       presThis += Pressure[i];
@@ -1513,10 +1495,8 @@ integration_start:
         exit(1);
       }
       rawToDouble(locData, ImageInT, nPixels, dType);
-      DoImageTransformations(NrTransOpt, TransOpt, ImageInT, ImageIn, NrPixelsY,
-                             NrPixelsZ);
       for (j = 0; j < NrPixelsY * NrPixelsZ; j++) {
-        Image[j] = (double)ImageIn[j] - AverageDark[j];
+        Image[j] = (double)ImageInT[j] - AverageDark[j];
       }
     }
 

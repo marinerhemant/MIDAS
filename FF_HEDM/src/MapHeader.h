@@ -197,7 +197,8 @@ static void map_header_compute(struct MapHeader *hdr, double Lsd, double yCen,
                                double p2, double p3, double p4, double RhoD,
                                double RBinSize, double EtaBinSize, double RMin,
                                double RMax, double EtaMin, double EtaMax,
-                               int NrPixelsY, int NrPixelsZ) {
+                               int NrPixelsY, int NrPixelsZ, int NrTransOpt,
+                               const int TransOpt[10]) {
   memset(hdr, 0, sizeof(*hdr));
   hdr->magic = MAP_HEADER_MAGIC;
   hdr->version = MAP_HEADER_VERSION;
@@ -208,11 +209,16 @@ static void map_header_compute(struct MapHeader *hdr, double Lsd, double yCen,
                    "BC=%.6f,%.6f|EtaBinSize=%.6f|EtaMax=%.6f|EtaMin=%.6f|"
                    "Lsd=%.6f|NrPixelsY=%d|NrPixelsZ=%d|"
                    "RBinSize=%.6f|RMax=%.6f|RMin=%.6f|RhoD=%.6f|"
-                   "p0=%.6f|p1=%.6f|p2=%.6f|p3=%.6f|p4=%.6f|"
-                   "pxY=%.6f|pxZ=%.6f|tx=%.6f|ty=%.6f|tz=%.6f",
+                   "TransOpt=%d",
                    yCen, zCen, EtaBinSize, EtaMax, EtaMin, Lsd, NrPixelsY,
-                   NrPixelsZ, RBinSize, RMax, RMin, RhoD, p0, p1, p2, p3, p4,
-                   pxY, pxZ, tx, ty, tz);
+                   NrPixelsZ, RBinSize, RMax, RMin, RhoD, NrTransOpt);
+  for (int i = 0; i < NrTransOpt && i < 10; i++) {
+    n += snprintf(buf + n, sizeof(buf) - n, ",%d", TransOpt[i]);
+  }
+  n += snprintf(buf + n, sizeof(buf) - n,
+                "|p0=%.6f|p1=%.6f|p2=%.6f|p3=%.6f|p4=%.6f|"
+                "pxY=%.6f|pxZ=%.6f|tx=%.6f|ty=%.6f|tz=%.6f",
+                p0, p1, p2, p3, p4, pxY, pxZ, tx, ty, tz);
 
   MH_SHA256_CTX ctx;
   mh_sha256_init(&ctx);
