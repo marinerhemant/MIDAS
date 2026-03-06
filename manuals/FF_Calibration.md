@@ -657,22 +657,22 @@ This example uses a Pilatus 2M detector (6×8 panels, 1475×1679 pixels, 172 µm
 
 ## 9. Benchmark Testing
 
-An automated benchmark script `utils/test_ff_calibration.py` validates the entire calibration pipeline:
+An automated benchmark script `tests/test_ff_calibration.py` validates the entire calibration pipeline:
 
 ### Usage
 
 ```bash
 # Basic (single CPU)
-python utils/test_ff_calibration.py
+python tests/test_ff_calibration.py
 
 # Multi-threaded
-python utils/test_ff_calibration.py -nCPUs 4
+python tests/test_ff_calibration.py -nCPUs 4
 
 # Custom parameter file
-python utils/test_ff_calibration.py -paramFN /path/to/params.txt
+python tests/test_ff_calibration.py -paramFN /path/to/params.txt
 
 # Adjust pass/fail threshold (default: 50 microstrain)
-python utils/test_ff_calibration.py -strainThreshold 40
+python tests/test_ff_calibration.py -strainThreshold 40
 ```
 
 ### What it Does

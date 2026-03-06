@@ -144,32 +144,32 @@ General-purpose detector image viewer: dark subtraction, flat-field, ROI selecti
 
 ## 4. Interactive Web Dashboards (`utils/`)
 
-### FF-HEDM Interactive Plotting (`utils/interactiveFFplotting.py`)
+### FF-HEDM Interactive Plotting (`gui/viewers/interactiveFFplotting.py`)
 
 **Browser-based** interactive exploration of FF-HEDM results using Plotly Dash.
 
 ```bash
-python ~/opt/MIDAS/utils/interactiveFFplotting.py <Grains.csv>
+python ~/opt/MIDAS/gui/viewers/interactiveFFplotting.py <Grains.csv>
 ```
 
 See [FF_Interactive_Plotting.md](FF_Interactive_Plotting.md).
 
-### PF-HEDM Intensity Viewer (`utils/pfIntensityViewer.py`)
+### PF-HEDM Intensity Viewer (`gui/viewers/pfIntensityViewer.py`)
 
 Interactive sinogram, intensity patch, and tomographic reconstruction viewer for Point-Focus HEDM.
 
 ```bash
-python ~/opt/MIDAS/utils/pfIntensityViewer.py
+python ~/opt/MIDAS/gui/viewers/pfIntensityViewer.py
 ```
 
 See [PF_Interactive_Plotting.md](PF_Interactive_Plotting.md).
 
-### Live Integration Dashboard (`utils/live_viewer.py`)
+### Live Integration Dashboard (`gui/viewers/live_viewer.py`)
 
 Real-time visualization of GPU integrator output. Tails `lineout.bin` and `fit.bin` as they are written by `IntegratorFitPeaksGPUStream`.
 
 ```bash
-python ~/opt/MIDAS/utils/live_viewer.py \
+python ~/opt/MIDAS/gui/viewers/live_viewer.py \
     --lineout lineout.bin --nRBins 500 \
     --fit fit.bin --nPeaks 3 \
     --params setup_30keV.txt
@@ -191,17 +191,17 @@ See [FF_Radial_Integration.md](FF_Radial_Integration.md) §4.2.1 for details on 
 
 ## 5. Plotting Utilities (`utils/`)
 
-### Peak Analysis (`utils/plot_integrator_peaks.py`)
+### Peak Analysis (`gui/viewers/plot_integrator_peaks.py`)
 
 Post-hoc Pseudo-Voigt peak fitting on caked zarr.zip output. Produces 2D scatter plots of fitted 2θ vs η with ring assignment.
 
 ```bash
-python ~/opt/MIDAS/utils/plot_integrator_peaks.py \
+python ~/opt/MIDAS/gui/viewers/plot_integrator_peaks.py \
     --zarr scan_01.caked.hdf.zarr.zip \
     --peaks 245.3 347.1 425.8
 ```
 
-### Calibrant QC (`utils/plot_calibrant_results.py`)
+### Calibrant QC (`gui/viewers/plot_calibrant_results.py`)
 
 Quick lattice-parameter-vs-η scatter plot from `CalibrantPanelShiftsOMP` `_corr.csv` output, with ideal lattice overlay.
 

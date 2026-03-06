@@ -299,7 +299,7 @@ if [ -n "$RUN_TESTS" ]; then
     if [ "$RUN_TESTS" = "ff" ] || [ "$RUN_TESTS" = "all" ]; then
         echo ""
         echo "=== Running FF-HEDM Benchmark ==="
-        $PY_CMD utils/test_ff_hedm.py -nCPUs "$TEST_CPUS"
+        $PY_CMD tests/test_ff_hedm.py -nCPUs "$TEST_CPUS"
         if [ $? -ne 0 ]; then
             echo "FF-HEDM benchmark FAILED."
             exit 1
@@ -309,7 +309,7 @@ if [ -n "$RUN_TESTS" ]; then
     if [ "$RUN_TESTS" = "nf" ] || [ "$RUN_TESTS" = "all" ]; then
         echo ""
         echo "=== Running NF-HEDM Benchmark ==="
-        $PY_CMD utils/test_nf_hedm.py -nCPUs "$TEST_CPUS"
+        $PY_CMD tests/test_nf_hedm.py -nCPUs "$TEST_CPUS"
         if [ $? -ne 0 ]; then
             echo "NF-HEDM benchmark FAILED."
             exit 1
@@ -319,7 +319,7 @@ if [ -n "$RUN_TESTS" ]; then
     if [ "$RUN_TESTS" = "calib" ] || [ "$RUN_TESTS" = "all" ]; then
         echo ""
         echo "=== Running FF-HEDM Calibration Benchmark ==="
-        $PY_CMD utils/test_ff_calibration.py -nCPUs "$TEST_CPUS"
+        $PY_CMD tests/test_ff_calibration.py -nCPUs "$TEST_CPUS"
         if [ $? -ne 0 ]; then
             echo "FF-HEDM Calibration benchmark FAILED."
             exit 1
@@ -329,7 +329,7 @@ if [ -n "$RUN_TESTS" ]; then
     if [ "$RUN_TESTS" = "peaks" ] || [ "$RUN_TESTS" = "all" ]; then
         echo ""
         echo "=== Running Integrator Peak Fitting Benchmark ==="
-        $PY_CMD utils/test_integrator_peaks.py -nCPUs "$TEST_CPUS"
+        $PY_CMD tests/test_integrator_peaks.py -nCPUs "$TEST_CPUS"
         if [ $? -ne 0 ]; then
             echo "Integrator peak fitting benchmark FAILED."
             exit 1
@@ -339,7 +339,7 @@ if [ -n "$RUN_TESTS" ]; then
     if [ "$RUN_TESTS" = "phaseid" ] || [ "$RUN_TESTS" = "all" ]; then
         echo ""
         echo "=== Running Phase Identification Benchmark ==="
-        $PY_CMD utils/test_phase_id.py -nCPUs "$TEST_CPUS"
+        $PY_CMD tests/test_phase_id.py -nCPUs "$TEST_CPUS"
         if [ $? -ne 0 ]; then
             echo "Phase identification benchmark FAILED."
             exit 1

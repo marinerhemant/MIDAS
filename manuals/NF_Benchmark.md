@@ -4,7 +4,7 @@
 
 ## Overview
 
-The NF-HEDM benchmark (`utils/test_nf_hedm.py`) is an automated end-to-end test that validates the NF-HEDM reconstruction pipeline by:
+The NF-HEDM benchmark (`tests/test_nf_hedm.py`) is an automated end-to-end test that validates the NF-HEDM reconstruction pipeline by:
 
 1. Running a forward simulation (`simulateNF`) to produce synthetic diffraction spot data from a known microstructure
 2. Patching the parameter file and configuring seed orientations from a far-field grains file
@@ -104,7 +104,7 @@ flowchart TD
 ## Usage
 
 ```bash
-python utils/test_nf_hedm.py [-nCPUs N] [-paramFN /path/to/ps_au.txt] [-micFN /path/to/Au_txt.mic]
+python tests/test_nf_hedm.py [-nCPUs N] [-paramFN /path/to/ps_au.txt] [-micFN /path/to/Au_txt.mic]
 ```
 
 ### Arguments
@@ -119,7 +119,7 @@ python utils/test_nf_hedm.py [-nCPUs N] [-paramFN /path/to/ps_au.txt] [-micFN /p
 
 ```bash
 source ~/miniconda3/bin/activate midas_env
-python ~/opt/MIDAS/utils/test_nf_hedm.py -nCPUs 8
+python ~/opt/MIDAS/tests/test_nf_hedm.py -nCPUs 8
 ```
 
 ### Via Build Script

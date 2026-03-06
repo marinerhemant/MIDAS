@@ -4,7 +4,7 @@
 
 ## Overview
 
-The integrator peak fitting benchmark (`utils/test_integrator_peaks.py`) validates the complete **calibration → integration → peak fitting** pipeline by:
+The integrator peak fitting benchmark (`tests/test_integrator_peaks.py`) validates the complete **calibration → integration → peak fitting** pipeline by:
 
 1. Running `CalibrantPanelShiftsOMP` to refine detector geometry from CeO₂ powder rings
 2. Computing theoretical ring radii from the calibrated geometry (`GetHKLList`)
@@ -102,7 +102,7 @@ flowchart TD
 ## Usage
 
 ```bash
-python utils/test_integrator_peaks.py [-nCPUs N] [--skip-calibration] [--max-rings N]
+python tests/test_integrator_peaks.py [-nCPUs N] [--skip-calibration] [--max-rings N]
 ```
 
 ### Arguments
@@ -117,13 +117,13 @@ python utils/test_integrator_peaks.py [-nCPUs N] [--skip-calibration] [--max-rin
 
 ```bash
 # Full pipeline (calibration + integration + peak fitting)
-python utils/test_integrator_peaks.py -nCPUs 8
+python tests/test_integrator_peaks.py -nCPUs 8
 
 # Quick iteration (skip calibration, use existing geometry)
-python utils/test_integrator_peaks.py -nCPUs 8 --skip-calibration
+python tests/test_integrator_peaks.py -nCPUs 8 --skip-calibration
 
 # Fit more rings for more thorough validation
-python utils/test_integrator_peaks.py -nCPUs 8 --max-rings 25
+python tests/test_integrator_peaks.py -nCPUs 8 --max-rings 25
 ```
 
 ### From build.sh

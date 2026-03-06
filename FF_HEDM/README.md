@@ -140,7 +140,7 @@ The `Example/` directory contains a small Au dataset (1 layer) for testing:
 
 ```bash
 cd Example
-python ../utils/test_ff_hedm.py -nCPUs 8
+python ../tests/test_ff_hedm.py -nCPUs 8
 ```
 
 ---

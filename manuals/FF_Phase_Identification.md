@@ -433,7 +433,7 @@ When `--plot` is specified, a matplotlib figure is displayed and saved as `lineo
 
 ```bash
 # Run the phase identification benchmark
-python utils/test_phase_id.py -nCPUs 4
+python tests/test_phase_id.py -nCPUs 4
 
 # Via build.sh
 ./build.sh --test phaseid

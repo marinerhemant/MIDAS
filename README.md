@@ -278,10 +278,10 @@ MIDAS includes automated benchmark tests that validate the complete pipeline usi
 conda activate midas_env
 
 # FF-HEDM: Forward simulation → indexing → grain recovery
-python utils/test_ff_hedm.py -nCPUs 4
+python tests/test_ff_hedm.py -nCPUs 4
 
 # NF-HEDM: Forward simulation → reconstruction → orientation comparison
-python utils/test_nf_hedm.py -nCPUs 8
+python tests/test_nf_hedm.py -nCPUs 8
 ```
 
 The **FF-HEDM benchmark** simulates 3 Au grains, runs the full indexing pipeline, and verifies all 3 grains are recovered. Output is in `FF_HEDM/Example/`.

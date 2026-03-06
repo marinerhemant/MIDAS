@@ -1,6 +1,11 @@
 # utils/ — Python Utilities for MIDAS
 
-This directory contains Python scripts and tools used across the MIDAS analysis pipeline. Scripts fall into several categories: workflow drivers, data conversion, visualization, calibration, and analysis.
+This directory contains Python scripts and tools used across the MIDAS analysis pipeline.
+
+> **Note:** As of 2026-03, several file groups have been reorganized:
+> - **Tests** → `tests/` (6 files)
+> - **Viewers & plotting** → `gui/viewers/` (14 files)
+> - **Format converters** → `utils/converters/` (12 files)
 
 ---
 
@@ -29,20 +34,16 @@ This directory contains Python scripts and tools used across the MIDAS analysis 
 
 ## Data Conversion & Format Utilities
 
+Zarr/ZIP utilities remain here. Standalone converters moved to `utils/converters/`.
+
 | Script | Description |
 |--------|-------------|
-| `ffGenerateZip.py` | Convert raw detector data (HDF5 / GE / TIFF) into MIDAS Zarr-ZIP archives for FF-HEDM analysis. Handles dark subtraction, data reshaping, and metadata embedding. |
-| `ffGenerateZipRefactor.py` | Refactored version of `ffGenerateZip.py` with improved performance and memory management. When dark correction is active, writes zero dark/bright arrays to Zarr (data is already dark-subtracted). |
-| `updateZarrDset.py` | Update individual datasets or metadata within an existing Zarr-ZIP archive without full reprocessing. |
-| `updateZarrDsetRefactor.py` | Refactored Zarr dataset updater with support for additional operations. |
-| `GE2Tiff.py` | Convert GE detector binary files to TIFF format. |
-| `esrf2zip_pf.py` | Convert ESRF-format data to MIDAS Zarr-ZIP for point-focus HEDM. |
-| `esrf_to_ge.py` | Convert ESRF-format detector images to GE binary format. |
-| `mergeGEfiles.py` | Merge multiple GE binary files into a single file. |
-| `mergeH5s.py` | Merge multiple HDF5 files into one. |
-| `midas2zip.py` | Convert older MIDAS output formats to Zarr-ZIP archives. |
-| `ang2mic.py` | Convert `.ang` (EBSD-style) files to `.mic` (MIDAS microstructure) format. |
-| `ConvTiffToGE.c` | (Compiled separately) Convert TIFF images to GE binary format. |
+| `ffGenerateZip.py` | Convert raw detector data (HDF5 / GE / TIFF) into MIDAS Zarr-ZIP archives. |
+| `ffGenerateZipRefactor.py` | Refactored version with improved performance and memory management. |
+| `updateZarrDset.py` | Update datasets/metadata within existing Zarr-ZIP archives. |
+| `updateZarrDsetRefactor.py` | Refactored Zarr dataset updater. |
+
+See `utils/converters/` for: `GE2Tiff.py`, `ang2mic.py`, `esrf2zip_pf.py`, `esrf_to_ge.py`, `ff2midas.py`, `mergeGEfiles.py`, `mergeH5s.py`, `midas2zip.py`, etc.
 
 ## FF-HEDM Post-Processing
 
@@ -74,35 +75,31 @@ This directory contains Python scripts and tools used across the MIDAS analysis 
 
 ## Visualization
 
+All visualization/plotting scripts have moved to `gui/viewers/`. See `gui/viewers/` for:
+`interactiveFFplotting.py`, `plotFFSpots3d.py`, `plotGrains3d.py`, `PlotFFNF.py`,
+`pfIntensityViewer.py`, `viz_caking.py`, `plot_integrator_peaks.py`,
+`plot_calibrant_results.py`, `plot_lineout_results.py`, `plot_lineout_comparison.py`,
+`live_viewer.py`, `peak_sigma_statistics.py`.
+
+Data processing scripts that remain here:
+
 | Script | Description |
 |--------|-------------|
-| `interactiveFFplotting.py` | **Interactive FF-HEDM browser app.** Dash-based visualization of grains, spots, and raw detector images. See [FF_Interactive_Plotting manual](../manuals/FF_Interactive_Plotting.md). |
-| `plotFFSpots3d.py` | 3D scatter plot of FF-HEDM diffraction spots (Eta, Omega, 2Theta). |
-| `plotFFSpots3dGrains.py` | 3D scatter plot of FF-HEDM spots, color-coded by grain assignment. |
-| `plotGrains3d.py` | 3D scatter plot of grain centroids with orientation coloring. |
-| `PlotFFNF.py` | Overlay FF-HEDM grain centroids on NF-HEDM orientation maps. |
-| `pfIntensityViewer.py` | Interactive viewer for point-focus / scanning HEDM intensity data. |
-| `viz_caking.py` | Visualize radial integration (caking) results as 2D plots. |
-| `plot_integrator_peaks.py` | **Post-hoc peak analysis.** Reads `.caked.hdf.zarr.zip` and fits Pseudo-Voigt peaks along 2θ for each η slice. Produces ring-assigned scatter plots. |
-| `plot_calibrant_results.py` | **Calibrant QC.** PyQt6 interactive viewer for lattice-parameter-vs-η scatter from `CalibrantPanelShiftsOMP` `_corr.csv` output. |
-| `plot_lineout_comparison.py` | **Lineout comparison.** Overlay calibrant and integrator lineouts with ideal ring markers. Supports both binary (`_lineout.bin`) and text (`_lineout.xy`) formats. |
-| `extract_lineouts.py` | **Batch lineout extraction.** Runs `IntegratorZarrOMP` in direct mode on a series of images and produces 2θ vs intensity `.xy` files, with parallel processing support. |
-| `sino_cleanup_tomo.py` | **Sinogram cleanup and tomo reconstruction.** Processes PF-HEDM sinograms: column normalization, hole filling, despeckling, MIDAS_TOMO reconstruction. See [Tomography_Reconstruction](../manuals/Tomography_Reconstruction.md). |
-| `vtkSimExportBin.py` | Export simulation results to VTK binary format for ParaView. |
+| `extract_lineouts.py` | **Batch lineout extraction.** Runs `IntegratorZarrOMP` in direct mode with SNIP background, SavGol peak detection, and multiplet fitting. |
+| `sino_cleanup_tomo.py` | **Sinogram cleanup and tomo reconstruction.** See [Tomography_Reconstruction](../manuals/Tomography_Reconstruction.md). |
 
 ## Simulation & Testing
+
+Simulation scripts remain here. Test scripts have moved to `tests/`.
 
 | Script | Description |
 |--------|-------------|
 | `simulatePeaks.py` | Simulate diffraction peak positions for testing and validation. |
 | `sim_ff_transformed.py` | Generate transformed FF-HEDM simulation data for testing deformation workflows. |
 | `compressedSimulationReader.py` | Read compressed forward simulation output files. |
-| `test_ff_hedm.py` | **FF-HEDM benchmark test.** End-to-end test using simulated data to validate the full FF-HEDM pipeline (simulation → indexing → regression comparison). Includes automatic cleanup of generated files. |
-| `test_nf_hedm.py` | **NF-HEDM benchmark test.** End-to-end test: runs `simulateNF`, reconstructs via `nf_MIDAS.py`, and compares orientations against a reference `.mic` file. |
-| `test_ff_calibration.py` | **FF-HEDM calibration benchmark.** Runs `CalibrantPanelShiftsOMP` on example CeO2 data and validates mean strain ≤ threshold. See [FF_Calibration manual §9](../manuals/FF_Calibration.md). |
-| `test_integrator_peaks.py` | **Integrator peak-fitting benchmark.** Runs `DetectorMapper` + `IntegratorZarrOMP` with peak fitting on CeO2 calibration data and validates peak positions. See [FF_Integrator_Benchmark](../manuals/FF_Integrator_Benchmark.md). |
-| `test_phase_id.py` | **Phase identification benchmark.** Runs the full `phase_id.py` pipeline on CeO2 calibration data, verifies CeO2 detection (≥80%), Au rejection, and lattice parameter accuracy (<500 ppm). See [FF_Phase_Identification](../manuals/FF_Phase_Identification.md). |
-| `test_live_viewer.py` | **Live viewer test.** Generates synthetic `lineout.bin` and `fit.bin` streams for testing `live_viewer.py` without a running GPU process. |
+
+See `tests/` for: `test_ff_hedm.py`, `test_nf_hedm.py`, `test_ff_calibration.py`,
+`test_integrator_peaks.py`, `test_phase_id.py`, `test_live_viewer.py`.
 
 ## Scanning / Point-Focus HEDM
 

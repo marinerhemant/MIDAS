@@ -113,10 +113,10 @@ python pfIntensityViewer.py -paramFile <param.txt> [-resultDir <dir>] [-portNr 8
 
 ```bash
 # From the result directory:
-python ~/opt/MIDAS/utils/pfIntensityViewer.py -paramFile ps_pf.txt
+python ~/opt/MIDAS/gui/viewers/pfIntensityViewer.py -paramFile ps_pf.txt
 
 # Specifying result directory and port:
-python ~/opt/MIDAS/utils/pfIntensityViewer.py \
+python ~/opt/MIDAS/gui/viewers/pfIntensityViewer.py \
     -paramFile /data/exp1/ps_pf.txt \
     -resultDir /data/exp1/results/ \
     -portNr 9000

@@ -363,7 +363,7 @@ After reading and deleting the signal file, the integrator writes `active_peaks.
 **live_viewer usage:**
 
 ```bash
-python ~/opt/MIDAS/utils/live_viewer.py \
+python ~/opt/MIDAS/gui/viewers/live_viewer.py \
     --lineout lineout.bin --nRBins 500 \
     --fit fit.bin --nPeaks 5 \
     --params setup_30keV.txt
@@ -508,11 +508,11 @@ The viewer uses a `BinaryTailer` class that periodically checks file sizes and r
 
 ```bash
 # Basic — lineout only
-python ~/opt/MIDAS/utils/live_viewer.py \
+python ~/opt/MIDAS/gui/viewers/live_viewer.py \
     --lineout lineout.bin --n-rbins 500
 
 # With peak fitting
-python ~/opt/MIDAS/utils/live_viewer.py \
+python ~/opt/MIDAS/gui/viewers/live_viewer.py \
     --lineout lineout.bin --n-rbins 500 \
     --fit fit.bin --n-peaks 3 \
     --max-history 2000
@@ -564,7 +564,7 @@ python ~/opt/MIDAS/utils/integrator_batch_process.py \
 For offline analysis of caked output, `plot_integrator_peaks.py` reads `.caked.hdf.zarr.zip` files and fits Pseudo-Voigt peaks along the 2θ axis for each η slice.
 
 ```bash
-python ~/opt/MIDAS/utils/plot_integrator_peaks.py \
+python ~/opt/MIDAS/gui/viewers/plot_integrator_peaks.py \
     --zarr scan_01.caked.hdf.zarr.zip \
     --peaks 245.3 347.1 425.8 \
     --frame -1
@@ -591,7 +591,7 @@ This runs `IntegratorZarrOMP` in direct mode for each frame and extracts the `_l
 Compares calibrant and integrator lineouts against ideal ring positions:
 
 ```bash
-python ~/opt/MIDAS/utils/plot_lineout_comparison.py \
+python ~/opt/MIDAS/gui/viewers/plot_lineout_comparison.py \
     --paramFN geometry.txt \
     calibrant_lineout.xy integrator_lineout.xy
 ```

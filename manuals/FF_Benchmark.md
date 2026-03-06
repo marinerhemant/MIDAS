@@ -4,7 +4,7 @@
 
 ## Overview
 
-The FF-HEDM benchmark (`utils/test_ff_hedm.py`) is an automated end-to-end test that validates the full FF-HEDM pipeline by:
+The FF-HEDM benchmark (`tests/test_ff_hedm.py`) is an automated end-to-end test that validates the full FF-HEDM pipeline by:
 
 1. Running a forward simulation to generate synthetic diffraction data from known grain orientations
 2. Enriching the output Zarr with analysis metadata
@@ -113,7 +113,7 @@ flowchart TD
 ## Usage
 
 ```bash
-python utils/test_ff_hedm.py [-nCPUs N] [-paramFN /path/to/Parameters.txt] [--px-overlap] [--dual-dataset] [--no-cleanup] [--cleanup-only]
+python tests/test_ff_hedm.py [-nCPUs N] [-paramFN /path/to/Parameters.txt] [--px-overlap] [--dual-dataset] [--no-cleanup] [--cleanup-only]
 ```
 
 ### Arguments
@@ -131,16 +131,16 @@ python utils/test_ff_hedm.py [-nCPUs N] [-paramFN /path/to/Parameters.txt] [--px
 
 ```bash
 source ~/miniconda3/bin/activate midas_env
-python ~/opt/MIDAS/utils/test_ff_hedm.py -nCPUs 4
+python ~/opt/MIDAS/tests/test_ff_hedm.py -nCPUs 4
 
 # With pixel-overlap test:
-python ~/opt/MIDAS/utils/test_ff_hedm.py -nCPUs 4 --px-overlap
+python ~/opt/MIDAS/tests/test_ff_hedm.py -nCPUs 4 --px-overlap
 
 # Keep files for inspection:
-python ~/opt/MIDAS/utils/test_ff_hedm.py -nCPUs 4 --no-cleanup
+python ~/opt/MIDAS/tests/test_ff_hedm.py -nCPUs 4 --no-cleanup
 
 # Just cleanup leftover files:
-python ~/opt/MIDAS/utils/test_ff_hedm.py --cleanup-only
+python ~/opt/MIDAS/tests/test_ff_hedm.py --cleanup-only
 ```
 
 ## Working Directory
