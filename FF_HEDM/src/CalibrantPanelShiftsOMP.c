@@ -894,7 +894,8 @@ void FitTiltBCLsd(int nIndices, double *YMean, double *ZMean,
                   double *Weights, double p4in, double tolP4, int PerPanelLsd,
                   double tolLsdPanel, int PerPanelDistortion, double tolP2Panel,
                   int WeightByRadius, double *snrWeights, double *p4Out,
-                  int verbose, int L2Objective) {
+                  int verbose, int L2Objective, double *initParams,
+                  Panel *initPanels) {
   int nBase = 10;
   unsigned n = nBase;
   if (tolShifts > EPS && nPanels > 1) {
@@ -923,36 +924,48 @@ void FitTiltBCLsd(int nIndices, double *YMean, double *ZMean,
   f_data.snrWeights = snrWeights;
   f_data.useL2 = L2Objective;
   double x[n], xl[n], xu[n];
+  // When initParams is non-NULL, anchor bounds to initial values to prevent
+  // multi-iteration drift.  The optimizer still starts at the current value.
+  double bLsd = (initParams ? initParams[0] : Lsd);
+  double bybc = (initParams ? initParams[1] : ybc);
+  double bzbc = (initParams ? initParams[2] : zbc);
+  double btyin = (initParams ? initParams[3] : tyin);
+  double btzin = (initParams ? initParams[4] : tzin);
+  double bp0 = (initParams ? initParams[5] : p0in);
+  double bp1 = (initParams ? initParams[6] : p1in);
+  double bp2 = (initParams ? initParams[7] : p2in);
+  double bp3 = (initParams ? initParams[8] : p3in);
+  double bp4 = (initParams ? initParams[9] : p4in);
   x[0] = Lsd;
-  xl[0] = Lsd - tolLsd;
-  xu[0] = Lsd + tolLsd;
+  xl[0] = bLsd - tolLsd;
+  xu[0] = bLsd + tolLsd;
   x[1] = ybc;
-  xl[1] = ybc - tolBC;
-  xu[1] = ybc + tolBC;
+  xl[1] = bybc - tolBC;
+  xu[1] = bybc + tolBC;
   x[2] = zbc;
-  xl[2] = zbc - tolBC;
-  xu[2] = zbc + tolBC;
+  xl[2] = bzbc - tolBC;
+  xu[2] = bzbc + tolBC;
   x[3] = tyin;
-  xl[3] = tyin - tolTilts;
-  xu[3] = tyin + tolTilts;
+  xl[3] = btyin - tolTilts;
+  xu[3] = btyin + tolTilts;
   x[4] = tzin;
-  xl[4] = tzin - tolTilts;
-  xu[4] = tzin + tolTilts;
+  xl[4] = btzin - tolTilts;
+  xu[4] = btzin + tolTilts;
   x[5] = p0in;
-  xl[5] = p0in - tolP0;
-  xu[5] = p0in + tolP0;
+  xl[5] = bp0 - tolP0;
+  xu[5] = bp0 + tolP0;
   x[6] = p1in;
-  xl[6] = p1in - tolP1;
-  xu[6] = p1in + tolP1;
+  xl[6] = bp1 - tolP1;
+  xu[6] = bp1 + tolP1;
   x[7] = p2in;
-  xl[7] = p2in - tolP2;
-  xu[7] = p2in + tolP2;
+  xl[7] = bp2 - tolP2;
+  xu[7] = bp2 + tolP2;
   x[8] = p3in;
-  xl[8] = p3in - tolP3;
-  xu[8] = p3in + tolP3;
+  xl[8] = bp3 - tolP3;
+  xu[8] = bp3 + tolP3;
   x[9] = p4in;
-  xl[9] = p4in - tolP4;
-  xu[9] = p4in + tolP4;
+  xl[9] = bp4 - tolP4;
+  xu[9] = bp4 + tolP4;
 
   if (tolShifts > EPS && nPanels > 1) {
     int panelCounts[nPanels];
@@ -986,8 +999,9 @@ void FitTiltBCLsd(int nIndices, double *YMean, double *ZMean,
           xl[p_idx] = 0;
           xu[p_idx] = 0;
         } else {
-          xl[p_idx] = x[p_idx] - tolShifts;
-          xu[p_idx] = x[p_idx] + tolShifts;
+          double anchor = (initPanels ? initPanels[i].dY : x[p_idx]);
+          xl[p_idx] = anchor - tolShifts;
+          xu[p_idx] = anchor + tolShifts;
         }
         p_idx++;
 
@@ -998,8 +1012,9 @@ void FitTiltBCLsd(int nIndices, double *YMean, double *ZMean,
           xl[p_idx] = 0;
           xu[p_idx] = 0;
         } else {
-          xl[p_idx] = x[p_idx] - tolShifts;
-          xu[p_idx] = x[p_idx] + tolShifts;
+          double anchor = (initPanels ? initPanels[i].dZ : x[p_idx]);
+          xl[p_idx] = anchor - tolShifts;
+          xu[p_idx] = anchor + tolShifts;
         }
         p_idx++;
 
@@ -1010,8 +1025,9 @@ void FitTiltBCLsd(int nIndices, double *YMean, double *ZMean,
             xl[p_idx] = 0;
             xu[p_idx] = 0;
           } else {
-            xl[p_idx] = x[p_idx] - tolRotation;
-            xu[p_idx] = x[p_idx] + tolRotation;
+            double anchor = (initPanels ? initPanels[i].dTheta : x[p_idx]);
+            xl[p_idx] = anchor - tolRotation;
+            xu[p_idx] = anchor + tolRotation;
           }
           p_idx++;
         }
@@ -1024,8 +1040,9 @@ void FitTiltBCLsd(int nIndices, double *YMean, double *ZMean,
             xl[p_idx] = 0;
             xu[p_idx] = 0;
           } else {
-            xl[p_idx] = x[p_idx] - tolLsdPanel;
-            xu[p_idx] = x[p_idx] + tolLsdPanel;
+            double anchor = (initPanels ? initPanels[i].dLsd : x[p_idx]);
+            xl[p_idx] = anchor - tolLsdPanel;
+            xu[p_idx] = anchor + tolLsdPanel;
           }
           p_idx++;
         }
@@ -1038,8 +1055,9 @@ void FitTiltBCLsd(int nIndices, double *YMean, double *ZMean,
             xl[p_idx] = 0;
             xu[p_idx] = 0;
           } else {
-            xl[p_idx] = x[p_idx] - tolP2Panel;
-            xu[p_idx] = x[p_idx] + tolP2Panel;
+            double anchor = (initPanels ? initPanels[i].dP2 : x[p_idx]);
+            xl[p_idx] = anchor - tolP2Panel;
+            xu[p_idx] = anchor + tolP2Panel;
           }
           p_idx++;
         }
@@ -2777,6 +2795,18 @@ int main(int argc, char *argv[]) {
       goto post_iteration_loop;
     }
 
+    // Save initial parameter values to anchor optimizer bounds across
+    // iterations. Without this, bounds drift because each iteration re-centers
+    // bounds on the latest fitted values, allowing parameters to walk
+    // arbitrarily far.
+    double initParams[10] = {Lsd,  ybc,  zbc,  tyin, tzin,
+                             p0in, p1in, p2in, p3in, p4in};
+    Panel *initPanels = NULL;
+    if (nPanels > 0) {
+      initPanels = malloc(nPanels * sizeof(Panel));
+      memcpy(initPanels, panels, nPanels * sizeof(Panel));
+    }
+
     for (int iter = 0; iter < nIterations; iter++) {
 
       // --- Option B: skip initial bin+fit on iter>0 unless perturbed ---
@@ -3046,7 +3076,7 @@ int main(int argc, char *argv[]) {
                    tolRotation, px, outlierFactor, MinIndicesForFit, FixPanelID,
                    RingWeights, p4in, tolP4, PerPanelLsd, tolLsdPanel,
                    PerPanelDistortion, tolP2Panel, WeightByRadius, snrWeights,
-                   &p4, iter == 0, L2Objective);
+                   &p4, iter == 0, L2Objective, initParams, initPanels);
       if (iter == 0) {
         printf("Number of function calls: %lld\n", NrCalls);
       }
@@ -3238,7 +3268,7 @@ int main(int argc, char *argv[]) {
       prevIterMeanDiff = MeanDiff;
 
       // Perturbation: if stagnant for 3+ iterations, kick parameters
-      if (stagnantCount >= 3 && iter < nIterations - 1) {
+      if (stagnantCount >= 5 && iter < nIterations - 1) {
         // Restore from best before perturbing
         Lsd = bestLsd;
         ybc = bestYbc;
@@ -3260,20 +3290,32 @@ int main(int argc, char *argv[]) {
   ((s) = (s) * 6364136223846793005ULL + 1442695040888963407ULL)
 #define LCG_DOUBLE(s) ((double)(LCG_NEXT(s) >> 33) / (double)(1ULL << 31))
         // Random perturbation in [-1, +1] * fraction * tolerance
-        double pertFrac = 0.5;
-#define PERT(val, tol)                                                         \
-  ((val) + pertFrac * (tol) * (2.0 * LCG_DOUBLE(lcg_state) - 1.0))
-        Lsd = PERT(Lsd, tolLsd);
-        ybc = PERT(ybc, tolBC);
-        zbc = PERT(zbc, tolBC);
-        tyin = PERT(tyin, tolTilts);
-        tzin = PERT(tzin, tolTilts);
-        p0in = PERT(p0in, tolP);
-        p1in = PERT(p1in, tolP);
-        p2in = PERT(p2in, tolP);
-        p3in = PERT(p3in, tolP3);
-        p4in = PERT(p4in, tolP4);
-#undef PERT
+        double pertFrac = 0.05;
+#define PERT_CLAMP(val, tol, lo, hi)                                           \
+  fmin(fmax((val) + pertFrac * (tol) * (2.0 * LCG_DOUBLE(lcg_state) - 1.0),    \
+            (lo)),                                                             \
+       (hi))
+        Lsd = PERT_CLAMP(Lsd, tolLsd, initParams[0] - tolLsd,
+                         initParams[0] + tolLsd);
+        ybc = PERT_CLAMP(ybc, tolBC, initParams[1] - tolBC,
+                         initParams[1] + tolBC);
+        zbc = PERT_CLAMP(zbc, tolBC, initParams[2] - tolBC,
+                         initParams[2] + tolBC);
+        tyin = PERT_CLAMP(tyin, tolTilts, initParams[3] - tolTilts,
+                          initParams[3] + tolTilts);
+        tzin = PERT_CLAMP(tzin, tolTilts, initParams[4] - tolTilts,
+                          initParams[4] + tolTilts);
+        p0in = PERT_CLAMP(p0in, tolP, initParams[5] - tolP0,
+                          initParams[5] + tolP0);
+        p1in = PERT_CLAMP(p1in, tolP, initParams[6] - tolP1,
+                          initParams[6] + tolP1);
+        p2in = PERT_CLAMP(p2in, tolP, initParams[7] - tolP2,
+                          initParams[7] + tolP2);
+        p3in = PERT_CLAMP(p3in, tolP3, initParams[8] - tolP3,
+                          initParams[8] + tolP3);
+        p4in = PERT_CLAMP(p4in, tolP4, initParams[9] - tolP4,
+                          initParams[9] + tolP4);
+#undef PERT_CLAMP
 #undef LCG_NEXT
 #undef LCG_DOUBLE
         printf("  [Perturbation applied after %d identical iterations, "
@@ -3491,6 +3533,8 @@ int main(int argc, char *argv[]) {
       free(IRmaxs_pl);
     }
     // Reassign nIndices for post-loop code
+    if (initPanels)
+      free(initPanels);
   post_iteration_loop:
     nIndices = nIndicesFinal;
 
