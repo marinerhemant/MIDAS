@@ -240,14 +240,16 @@ Built into `MIDASImageView`, displayed below the image:
 | 🏠 Home | Reset to full image extent |
 | ◀ Back | Previous view in history |
 | ▶ Forward | Next view in history |
-| 📋 Pan | Toggle: drag to move |
-| 🔍 Zoom | Toggle: drag rectangle to zoom |
+| 📋 Pan | Toggle: left-drag to move |
+| 🔍 Zoom | Toggle: left-drag rectangle to zoom |
 | ▶ Play | Animate frames at set FPS |
 | ⏸ Pause | Pause animation |
 | ⏹ Stop | Stop animation, reset mode |
 | FPS | 1–30 frames per second spinner |
 
-Mouse-wheel zoom is disabled by default. Ctrl+wheel scrolls frames.
+Mouse-wheel zoom is disabled by default (optimized for SSH/remote display where wheel events cause expensive redraws). Use the Pan and Zoom toolbar buttons instead. **Double-click** anywhere on the image resets to full view (same as Home).
+
+Ctrl+scroll wheel scrolls through frames.
 
 ---
 

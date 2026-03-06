@@ -320,7 +320,7 @@ The radial integration is performed by one of two engines, optimized for differe
 *   **Memory mapping:** `Map.bin` and `nMap.bin` are memory-mapped (`mmap`) to avoid loading the entire 16GB+ mapping tables into RAM. These tables provide a linear list of pixel indices for each bin.
 *   **Data Handling:**
     *   Reads **Zarr** chunks using `blosc1_decompress`.
-    *   Applies image transformations (flips/transposes) in memory.
+    *   Image transformations (flips/transposes) are pre-baked into `Map.bin` by `DetectorMapper` — the integrator reads raw pixel data directly.
     *   Subtracts the dark field image.
     *   Accumulates intensity: `Intensity += PixelValue * Fraction`.
 *   **Efficiency:** By processing Zarr chunks sequentially but parallelizing the bin summation, it balances memory usage with CPU utilization.
@@ -408,6 +408,8 @@ The `-nCPUs N` flag parallelizes the mapping computation with OpenMP. When run v
 
 The mapping uses the shared `DetectorGeometry` library (`dg_pixel_to_REta`, `dg_polygon_area`, etc.) for pixel-to-(R, η) coordinate transforms with full distortion correction (tilts, p0–p4, per-panel Lsd/dP2).
 
+When `ImTransOpt` is set, `DetectorMapper` applies the inverse image transformation to pixel coordinates at map-generation time. This means the pixel indices stored in `Map.bin` reference **raw (untransformed) image coordinates**, so the integrators (`IntegratorZarrOMP`, `IntegratorFitPeaksGPUStream`) can consume raw pixel data directly without per-frame transformation overhead. Changing `ImTransOpt` triggers a `Map.bin` rebuild (via the parameter hash).
+
 > [!NOTE]
 > The separate `DetectorMapperZarr` binary has been retired (archived to `src/archive/`). The unified `DetectorMapper` handles both text and Zarr inputs.
 
@@ -441,7 +443,7 @@ The parameter file is a text file containing key-value pairs used by both the `i
 | `GapFile` | `str` | Path to a file defining panel gaps (mask) |
 | `BadPxFile` | `str` | Path to a file defining bad pixels (mask) |
 | `DistortionFile` | `str` | Path to binary file (double precision) containing Y then Z distortion maps |
-| `ImTransOpt` | `int` | Image transformation (0=None, 1=FlipH, 2=FlipV, 3=Transpose) |
+| `ImTransOpt` | `int` | Image transformation (0=None, 1=FlipH, 2=FlipV, 3=Transpose). Applied by `DetectorMapper` at map-generation time — integrators read raw pixel data directly |
 | `Polariz` | `float` | Polarization factor (default 0.99) |
 | `GapIntensity` | `float` | In-fill value for gap pixels (default 0) |
 | `p0`, `p1`, `p2`, `p3` | `float` | Geometric distortion coefficients |

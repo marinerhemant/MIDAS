@@ -129,7 +129,7 @@ Standalone plotting and diagnostic viewers, moved from `utils/` as of 2026-03.
 
 | Component | Description |
 |-----------|-------------|
-| `MIDASImageView` | Image viewer with crosshair, navigation toolbar, axis origin control |
+| `MIDASImageView` | Image viewer with crosshair, navigation toolbar, double-click zoom reset, axis origin control |
 | `apply_theme()` | Dark/light palette for Qt + PyQtGraph |
 | `AsyncWorker` | Background thread wrapper |
 | `LogPanel` | Redirects `print()` to collapsible dock |
