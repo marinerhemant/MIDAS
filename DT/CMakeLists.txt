@@ -22,7 +22,7 @@ function(add_dt_executable TARGET_NAME)
 endfunction()
 
 # --- Executable: DetectorMapperDT ---
-add_dt_executable(DetectorMapperDT SOURCES ${DT_SRCDIR}/DetectorMapper.c src/Panel.c src/FileReader.c src/DetectorGeometry.c src/MIDAS_Math.c)
+add_dt_executable(DetectorMapperDT SOURCES ${DT_SRCDIR}/DetectorMapper.c src/Panel.c src/FileReader.c src/DetectorGeometry.c src/MIDAS_Math.c src/ZarrReader.c)
 if(OpenMP_C_FOUND AND BUILD_OMP)
     target_link_libraries(DetectorMapperDT PRIVATE OpenMP::OpenMP_C)
 endif()
