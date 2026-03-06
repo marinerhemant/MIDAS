@@ -2,7 +2,7 @@
 # 1. Update and install all required development libraries
 sudo apt update && sudo apt upgrade -y
 sudo apt install -y \
-    build-essential cmake pkg-config python3-dev \
+    build-essential cmake pkg-config python3-dev python-is-python3 \
     zlib1g-dev libjpeg-dev libtiff-dev libpng-dev libssl-dev libbz2-dev \
     liblzma-dev libzstd-dev liblz4-dev libzip-dev \
     libhdf5-dev libblosc-dev libblosc2-dev libnlopt-dev libfftw3-dev
@@ -10,10 +10,9 @@ sudo apt install -y \
 # 2. Fix WSL clock sync (prevents "Clock skew detected" errors)
 sudo hwclock -s
 
-# 3. Setup Project Directory
-mkdir -p ~/opt && cd ~/opt
-[ -d "MIDAS" ] || git clone https://github.com/marinerhemant/MIDAS
-cd MIDAS
+# 3. Navigate to project directory (the repo that contains this script)
+SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+cd "$SCRIPT_DIR"
 git pull  # Ensure we have the latest code
 
 # 4. Neutralize "Custom" build scripts that force x86/Intel optimizations
