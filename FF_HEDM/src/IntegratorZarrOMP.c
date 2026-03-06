@@ -218,25 +218,32 @@ static inline void DoImageTransformations(int NrTransOpt, int TransOpt[10],
                                           pixelvalue *ImageIn,
                                           pixelvalue *ImageOut, int NrPixelsY,
                                           int NrPixelsZ) {
-  int i, j, k, l, m;
-  if (NrTransOpt == 0 || (NrTransOpt == 1 && TransOpt[0] == 0)) {
-    memcpy(ImageOut, ImageIn,
-           NrPixelsY * NrPixelsZ * sizeof(*ImageIn)); // Nothing to do
+  int i, k, l;
+  // Always copy input to output first
+  if (ImageIn != ImageOut) {
+    memcpy(ImageOut, ImageIn, NrPixelsY * NrPixelsZ * sizeof(*ImageIn));
+  }
+  if (NrTransOpt == 0) {
     return;
   }
+  pixelvalue buffer;
   for (i = 0; i < NrTransOpt; i++) {
-    if (TransOpt[i] == 1) {
-      for (k = 0; k < NrPixelsY; k++) {
-        for (l = 0; l < NrPixelsZ; l++) {
+    if (TransOpt[i] == 1) { // Invert Y (columns) — Flip Left Right
+      for (l = 0; l < NrPixelsZ; l++) {
+        for (k = 0; k < NrPixelsY / 2; k++) {
+          buffer = ImageOut[l * NrPixelsY + k];
           ImageOut[l * NrPixelsY + k] =
-              ImageIn[l * NrPixelsY + (NrPixelsY - k - 1)]; // Invert Y
+              ImageOut[l * NrPixelsY + (NrPixelsY - k - 1)];
+          ImageOut[l * NrPixelsY + (NrPixelsY - k - 1)] = buffer;
         }
       }
-    } else if (TransOpt[i] == 2) {
-      for (k = 0; k < NrPixelsY; k++) {
-        for (l = 0; l < NrPixelsZ; l++) {
+    } else if (TransOpt[i] == 2) { // Invert Z (rows) — Flip Top Bottom
+      for (l = 0; l < NrPixelsZ / 2; l++) {
+        for (k = 0; k < NrPixelsY; k++) {
+          buffer = ImageOut[l * NrPixelsY + k];
           ImageOut[l * NrPixelsY + k] =
-              ImageIn[(NrPixelsZ - l - 1) * NrPixelsY + k]; // Invert Z
+              ImageOut[(NrPixelsZ - l - 1) * NrPixelsY + k];
+          ImageOut[(NrPixelsZ - l - 1) * NrPixelsY + k] = buffer;
         }
       }
     }
