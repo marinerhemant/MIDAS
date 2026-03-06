@@ -277,3 +277,213 @@ int dg_find_unique_vertices(double **EdgesIn, double **EdgesOut, int nEdgesIn,
   }
   return nEdgesOut;
 }
+
+// ── Pixel–bin area (mapperfcn-style) ────────────────────────────────
+
+double dg_calc_pixel_bin_area(double pixY, double pixZ, double RMin,
+                              double RMax, double EtaMin, double EtaMax,
+                              double **Edges, double **EdgesOut) {
+  // Pixel bounding box (unit pixel centered at pixY, pixZ)
+  double yMin = pixY - 0.5;
+  double yMax = pixY + 0.5;
+  double zMin = pixZ - 0.5;
+  double zMax = pixZ + 0.5;
+
+  int nEdges = 0;
+  int m;
+
+  // (1) Check which pixel corners lie inside the (R,Eta) bin
+  for (m = 0; m < 4; m++) {
+    double cy = pixY + dg_PosMatrix[m][0];
+    double cz = pixZ + dg_PosMatrix[m][1];
+    double RThis = sqrt(cy * cy + cz * cz);
+    double EtaThis = dg_calc_eta_angle(cy, cz);
+    if (EtaMin < -180 && dg_sign(EtaThis) != dg_sign(EtaMin))
+      EtaThis -= 360;
+    if (EtaMax > 180 && dg_sign(EtaThis) != dg_sign(EtaMax))
+      EtaThis += 360;
+    if (RThis >= RMin && RThis <= RMax && EtaThis >= EtaMin &&
+        EtaThis <= EtaMax) {
+      Edges[nEdges][0] = cy;
+      Edges[nEdges][1] = cz;
+      nEdges++;
+    }
+  }
+
+  // (2) Check which bin corners lie inside the pixel
+  double boxEdge[4][2];
+  dg_REta_to_YZ(RMin, EtaMin, &boxEdge[0][0], &boxEdge[0][1]);
+  dg_REta_to_YZ(RMin, EtaMax, &boxEdge[1][0], &boxEdge[1][1]);
+  dg_REta_to_YZ(RMax, EtaMin, &boxEdge[2][0], &boxEdge[2][1]);
+  dg_REta_to_YZ(RMax, EtaMax, &boxEdge[3][0], &boxEdge[3][1]);
+  for (m = 0; m < 4; m++) {
+    if (boxEdge[m][0] >= yMin && boxEdge[m][0] <= yMax &&
+        boxEdge[m][1] >= zMin && boxEdge[m][1] <= zMax) {
+      Edges[nEdges][0] = boxEdge[m][0];
+      Edges[nEdges][1] = boxEdge[m][1];
+      nEdges++;
+    }
+  }
+
+  if (nEdges < 4) {
+    // (3) R-arc × pixel-edge intercepts
+    double zTemp, yTemp;
+
+    // RMin arc vs y = yMin, y = yMax
+    if (RMin >= fabs(yMin)) {
+      zTemp = dg_sign(pixZ) * sqrt(RMin * RMin - yMin * yMin);
+      if (dg_between(zTemp, zMin, zMax) == 1) {
+        Edges[nEdges][0] = yMin;
+        Edges[nEdges][1] = zTemp;
+        nEdges++;
+      }
+    }
+    if (RMin >= fabs(yMax)) {
+      zTemp = dg_sign(pixZ) * sqrt(RMin * RMin - yMax * yMax);
+      if (dg_between(zTemp, zMin, zMax) == 1) {
+        Edges[nEdges][0] = yMax;
+        Edges[nEdges][1] = zTemp;
+        nEdges++;
+      }
+    }
+    if (RMax >= fabs(yMin)) {
+      zTemp = dg_sign(pixZ) * sqrt(RMax * RMax - yMin * yMin);
+      if (dg_between(zTemp, zMin, zMax) == 1) {
+        Edges[nEdges][0] = yMin;
+        Edges[nEdges][1] = zTemp;
+        nEdges++;
+      }
+    }
+    if (RMax >= fabs(yMax)) {
+      zTemp = dg_sign(pixZ) * sqrt(RMax * RMax - yMax * yMax);
+      if (dg_between(zTemp, zMin, zMax) == 1) {
+        Edges[nEdges][0] = yMax;
+        Edges[nEdges][1] = zTemp;
+        nEdges++;
+      }
+    }
+
+    // RMin/RMax arc vs z = zMin, z = zMax
+    if (RMin >= fabs(zMin)) {
+      yTemp = dg_sign(pixY) * sqrt(RMin * RMin - zMin * zMin);
+      if (dg_between(yTemp, yMin, yMax) == 1) {
+        Edges[nEdges][0] = yTemp;
+        Edges[nEdges][1] = zMin;
+        nEdges++;
+      }
+    }
+    if (RMin >= fabs(zMax)) {
+      yTemp = dg_sign(pixY) * sqrt(RMin * RMin - zMax * zMax);
+      if (dg_between(yTemp, yMin, yMax) == 1) {
+        Edges[nEdges][0] = yTemp;
+        Edges[nEdges][1] = zMax;
+        nEdges++;
+      }
+    }
+    if (RMax >= fabs(zMin)) {
+      yTemp = dg_sign(pixY) * sqrt(RMax * RMax - zMin * zMin);
+      if (dg_between(yTemp, yMin, yMax) == 1) {
+        Edges[nEdges][0] = yTemp;
+        Edges[nEdges][1] = zMin;
+        nEdges++;
+      }
+    }
+    if (RMax >= fabs(zMax)) {
+      yTemp = dg_sign(pixY) * sqrt(RMax * RMax - zMax * zMax);
+      if (dg_between(yTemp, yMin, yMax) == 1) {
+        Edges[nEdges][0] = yTemp;
+        Edges[nEdges][1] = zMax;
+        nEdges++;
+      }
+    }
+
+    // (4) Eta-ray × pixel-edge intercepts
+    double zTempMin, zTempMax, yTempMin, yTempMax;
+
+    // EtaMin ray vs y = yMin, yMax
+    if (fabs(EtaMin) < 1E-5 || fabs(fabs(EtaMin) - 180) < 1E-5) {
+      zTempMin = 0;
+      zTempMax = 0;
+    } else {
+      zTempMin = -yMin / tan(EtaMin * DG_DEG2RAD);
+      zTempMax = -yMax / tan(EtaMin * DG_DEG2RAD);
+    }
+    if (dg_between(zTempMin, zMin, zMax) == 1) {
+      Edges[nEdges][0] = yMin;
+      Edges[nEdges][1] = zTempMin;
+      nEdges++;
+    }
+    if (dg_between(zTempMax, zMin, zMax) == 1) {
+      Edges[nEdges][0] = yMax;
+      Edges[nEdges][1] = zTempMax;
+      nEdges++;
+    }
+
+    // EtaMax ray vs y = yMin, yMax
+    if (fabs(EtaMax) < 1E-5 || fabs(fabs(EtaMax) - 180) < 1E-5) {
+      zTempMin = 0;
+      zTempMax = 0;
+    } else {
+      zTempMin = -yMin / tan(EtaMax * DG_DEG2RAD);
+      zTempMax = -yMax / tan(EtaMax * DG_DEG2RAD);
+    }
+    if (dg_between(zTempMin, zMin, zMax) == 1) {
+      Edges[nEdges][0] = yMin;
+      Edges[nEdges][1] = zTempMin;
+      nEdges++;
+    }
+    if (dg_between(zTempMax, zMin, zMax) == 1) {
+      Edges[nEdges][0] = yMax;
+      Edges[nEdges][1] = zTempMax;
+      nEdges++;
+    }
+
+    // EtaMin ray vs z = zMin, zMax
+    if (fabs(fabs(EtaMin) - 90) < 1E-5) {
+      yTempMin = 0;
+      yTempMax = 0;
+    } else {
+      yTempMin = -zMin * tan(EtaMin * DG_DEG2RAD);
+      yTempMax = -zMax * tan(EtaMin * DG_DEG2RAD);
+    }
+    if (dg_between(yTempMin, yMin, yMax) == 1) {
+      Edges[nEdges][0] = yTempMin;
+      Edges[nEdges][1] = zMin;
+      nEdges++;
+    }
+    if (dg_between(yTempMax, yMin, yMax) == 1) {
+      Edges[nEdges][0] = yTempMax;
+      Edges[nEdges][1] = zMax;
+      nEdges++;
+    }
+
+    // EtaMax ray vs z = zMin, zMax
+    if (fabs(fabs(EtaMax) - 90) < 1E-5) {
+      yTempMin = 0;
+      yTempMax = 0;
+    } else {
+      yTempMin = -zMin * tan(EtaMax * DG_DEG2RAD);
+      yTempMax = -zMax * tan(EtaMax * DG_DEG2RAD);
+    }
+    if (dg_between(yTempMin, yMin, yMax) == 1) {
+      Edges[nEdges][0] = yTempMin;
+      Edges[nEdges][1] = zMin;
+      nEdges++;
+    }
+    if (dg_between(yTempMax, yMin, yMax) == 1) {
+      Edges[nEdges][0] = yTempMax;
+      Edges[nEdges][1] = zMax;
+      nEdges++;
+    }
+  }
+
+  if (nEdges < 3)
+    return 0.0;
+
+  nEdges = dg_find_unique_vertices(Edges, EdgesOut, nEdges, RMin, RMax, EtaMin,
+                                   EtaMax);
+  if (nEdges < 3)
+    return 0.0;
+
+  return dg_polygon_area(EdgesOut, nEdges);
+}

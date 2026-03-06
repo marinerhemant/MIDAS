@@ -44,6 +44,7 @@ int numProcs;
 int skipFrame = 0;
 
 #define SetBit(A, k) (A[(k / 32)] |= (1 << (k % 32)))
+#define TestBit(A, k) (A[(k / 32)] & (1 << (k % 32)))
 extern size_t mapMaskSize;
 extern int *mapMask;
 
@@ -55,6 +56,12 @@ inline void CalcPeakProfileParallel(int *Indices, int NrEachIndexBin, int idx,
                                     double EtaMi, double EtaMa, double ybc,
                                     double zbc, double px, int NrPixelsY,
                                     double *ReturnValue);
+
+inline void CalcPeakProfileRaw(int *Indices, int NrEachIndexBin, int idx,
+                               double *Average, double Rmi, double Rma,
+                               double EtaMi, double EtaMa, double ybc,
+                               double zbc, double px, int NrPixelsY,
+                               double *outSumIntensity, double *outTotalArea);
 
 static inline pixelvalue **allocMatrixPX(int nrows, int ncols) {
   pixelvalue **arr;
@@ -1531,6 +1538,11 @@ typedef struct {
   char darkDatasetName[4096];
   char dataDatasetName[4096];
 
+  // Lineout parameters (full-range integration)
+  double lineoutRBinSize; // px, default 0.25
+  double lineoutRMin;     // px, default 10
+  double lineoutRMax;     // px, default 0 → auto from detector diagonal
+
   // Derived
   double MaxTtheta;
   double padY, padZ;
@@ -1556,6 +1568,9 @@ static int parse_parameters(const char *filename, CalibConfig *cfg) {
   cfg->OutlierIterations = 1;
   cfg->tolLsdPanel = 100;
   cfg->tolP2Panel = 0.0001;
+  cfg->lineoutRBinSize = 0.25;
+  cfg->lineoutRMin = 10.0;
+  cfg->lineoutRMax = 0.0;
   sprintf(cfg->darkDatasetName, "exchange/dark");
   sprintf(cfg->dataDatasetName, "exchange/data");
 
@@ -1883,6 +1898,21 @@ static int parse_parameters(const char *filename, CalibConfig *cfg) {
       cfg->nRingsExclude++;
       continue;
     }
+    str = "RBinSize ";
+    if (!strncmp(aline, str, strlen(str))) {
+      sscanf(aline, "%s %lf", dummy, &cfg->lineoutRBinSize);
+      continue;
+    }
+    str = "RMin ";
+    if (!strncmp(aline, str, strlen(str))) {
+      sscanf(aline, "%s %lf", dummy, &cfg->lineoutRMin);
+      continue;
+    }
+    str = "RMax ";
+    if (!strncmp(aline, str, strlen(str))) {
+      sscanf(aline, "%s %lf", dummy, &cfg->lineoutRMax);
+      continue;
+    }
     str = "HeadSize ";
     if (!strncmp(aline, str, strlen(str))) {
       sscanf(aline, "%s %d", dummy, &cfg->HeadSize);
@@ -2097,6 +2127,14 @@ static void print_parameter_summary(const CalibConfig *c) {
     if (c->PanelShiftsFile[0] != '\0')
       printf("║    ShiftsFile:     %-40s ║\n", c->PanelShiftsFile);
   }
+  printf("╠══════════════════════════════════════════════════════════════╣\n");
+  printf("║  LINEOUT                                                    ║\n");
+  printf("║    RBinSize:       %-40.4f ║\n", c->lineoutRBinSize);
+  printf("║    RMin:           %-40.4f ║\n", c->lineoutRMin);
+  if (c->lineoutRMax > 0)
+    printf("║    RMax:           %-40.4f ║\n", c->lineoutRMax);
+  else
+    printf("║    RMax:           %-40s ║\n", "auto (detector diagonal)");
   printf(
       "╚══════════════════════════════════════════════════════════════╝\n\n");
 }
@@ -2160,6 +2198,9 @@ int main(int argc, char *argv[]) {
   int TransOpt[10], nRingsExclude = cfg.nRingsExclude, RingsExclude[50];
   memcpy(TransOpt, cfg.TransOpt, sizeof(TransOpt));
   memcpy(RingsExclude, cfg.RingsExclude, sizeof(RingsExclude));
+  double lineoutRBinSize = cfg.lineoutRBinSize;
+  double lineoutRMin = cfg.lineoutRMin;
+  double lineoutRMax = cfg.lineoutRMax;
   int makeMap = cfg.makeMap;
   int HeadSize = cfg.HeadSize;
   int dType = cfg.dType;
@@ -2798,10 +2839,9 @@ int main(int argc, char *argv[]) {
         }
         printf("       ");
         for (int y = 0; y < NPanelsY; y++) {
-          printf("     Y=%-2d     ", y);
+          printf("    Y=%-2d   ", y);
         }
-        printf("\n");
-        printf("*************************************************************"
+        printf("\n*************************************************************"
                "****"
                "****"
                "***********\n\n");
@@ -3918,6 +3958,368 @@ int main(int argc, char *argv[]) {
       "  "
       "------------------------------------------------------------------\n");
   printf("*******************Copy to par*******************\n");
+
+  // ── Full-range lineout using fitted geometry ──────────────────────
+  {
+    printf("\n--- Computing full-range lineout ---\n");
+    double lo_start = omp_get_wtime();
+
+    // Use mean fitted parameters (averaged across all files)
+    double lo_means[12];
+    for (int mi = 0; mi < 12; mi++)
+      lo_means[mi] = means[mi] / (EndNr - StartNr + 1);
+    double lo_Lsd = lo_means[0];
+    double lo_ybc = lo_means[1];
+    double lo_zbc = lo_means[2];
+    double lo_ty = lo_means[3];
+    double lo_tz = lo_means[4];
+    double lo_p0 = lo_means[5];
+    double lo_p1 = lo_means[6];
+    double lo_p2 = lo_means[7];
+    double lo_p3 = lo_means[8];
+    double lo_p4 = lo_means[11];
+
+    // Auto-compute RMax from detector diagonal if not set
+    double lo_RMax = lineoutRMax;
+    if (lo_RMax <= 0) {
+      double maxDist =
+          sqrt((double)NrPixels * NrPixels + (double)NrPixels * NrPixels) / 2.0;
+      lo_RMax = maxDist;
+    }
+    double lo_RMin = lineoutRMin;
+    double lo_RBinSize = lineoutRBinSize;
+    int lo_nRBins = (int)ceil((lo_RMax - lo_RMin) / lo_RBinSize);
+    if (lo_nRBins <= 0)
+      lo_nRBins = 1;
+
+    // Eta bins: full 360 degrees using same EtaBinSize
+    int lo_nEtaBins = (int)ceil(359.99 / EtaBinSize);
+    double *lo_EtaBinsLow = malloc(lo_nEtaBins * sizeof(double));
+    double *lo_EtaBinsHigh = malloc(lo_nEtaBins * sizeof(double));
+    for (int ei = 0; ei < lo_nEtaBins; ei++) {
+      lo_EtaBinsLow[ei] = EtaBinSize * ei - 179.995;
+      lo_EtaBinsHigh[ei] = EtaBinSize * (ei + 1) - 179.995;
+    }
+
+    int lo_nBins = lo_nRBins * lo_nEtaBins;
+    printf("  Lineout: %d R-bins x %d eta-bins = %d total bins\n", lo_nRBins,
+           lo_nEtaBins, lo_nBins);
+    printf("  R range: [%.2f, %.2f] px, RBinSize=%.4f px\n", lo_RMin, lo_RMax,
+           lo_RBinSize);
+    printf("  Using fitted params: Lsd=%.4f BC=(%.4f,%.4f) ty=%.6f tz=%.6f\n",
+           lo_Lsd, lo_ybc, lo_zbc, lo_ty, lo_tz);
+
+    // Phase 1: Full-range pixel assignment (multi-bin per pixel)
+    // For each pixel, compute R/Eta at all 4 corners to find which bins
+    // it could overlap.  CalcPeakProfileRaw then handles fractional areas.
+    // This matches CalibrantPanelShiftsOMP's approach: Car2Pol assigns to
+    // wide ring windows, then CalcPeakProfileParallel distributes across
+    // fine R sub-bins.
+    int *lo_NrEach = calloc(lo_nBins, sizeof(int));
+    int *lo_MaxEach = malloc(lo_nBins * sizeof(int));
+    int **lo_Indices = malloc(lo_nBins * sizeof(int *));
+    int lo_initCap = 64;
+    for (int b = 0; b < lo_nBins; b++) {
+      lo_MaxEach[b] = lo_initCap;
+      lo_Indices[b] = malloc(lo_initCap * sizeof(int));
+    }
+
+    double lo_TRs[3][3];
+    dg_build_tilt_matrix(tx, lo_ty, lo_tz, lo_TRs);
+
+    // Corner offsets: (-0.5,-0.5), (-0.5,+0.5), (+0.5,+0.5), (+0.5,-0.5)
+    double cornerDY[4] = {-0.5, -0.5, 0.5, 0.5};
+    double cornerDZ[4] = {-0.5, 0.5, 0.5, -0.5};
+
+    long long int lo_totalAssigned = 0;
+    for (int iz = 0; iz < NrPixels; iz++) {
+      for (int iy = 0; iy < NrPixels; iy++) {
+        long long int pixIdx = (long long int)iz * NrPixels + iy;
+        // Skip masked pixels
+        if (mapMaskSize != 0 && TestBit(mapMask, pixIdx))
+          continue;
+
+        // Apply panel corrections (same offset for all corners of this pixel)
+        double pdY = 0, pdZ = 0, dLsd = 0, dP2 = 0;
+        int pIdx = GetPanelIndex((double)iy, (double)iz, nPanels, panels);
+        if (pIdx >= 0) {
+          ApplyPanelCorrection((double)iy, (double)iz, &panels[pIdx], &pdY,
+                               &pdZ);
+          pdY -= (double)iy;
+          pdZ -= (double)iz;
+          dLsd = panels[pIdx].dLsd;
+          dP2 = panels[pIdx].dP2;
+        }
+
+        // Compute R and Eta at all 4 corners to find bounding range
+        double Rmin_corner = 1e30, Rmax_corner = -1e30;
+        double Etamin_corner = 1e30, Etamax_corner = -1e30;
+        for (int c = 0; c < 4; c++) {
+          double yc = (double)iy + pdY + cornerDY[c];
+          double zc = (double)iz + pdZ + cornerDZ[c];
+          double Rc, Ec;
+          dg_pixel_to_REta(yc, zc, lo_ybc, lo_zbc, lo_TRs, lo_Lsd, MaxRingRad,
+                           lo_p0, lo_p1, lo_p2, lo_p3, lo_p4, px, dLsd, dP2,
+                           &Rc, &Ec);
+          if (Rc < Rmin_corner)
+            Rmin_corner = Rc;
+          if (Rc > Rmax_corner)
+            Rmax_corner = Rc;
+          if (Ec < Etamin_corner)
+            Etamin_corner = Ec;
+          if (Ec > Etamax_corner)
+            Etamax_corner = Ec;
+        }
+
+        // Handle Eta wrap-around: if corners span a wide range (>180 deg),
+        // the pixel is near the ±180 boundary
+        int etaWraps = (Etamax_corner - Etamin_corner) > 180.0;
+
+        // Find range of R bins this pixel overlaps
+        int rBinLo = (int)floor((Rmin_corner - lo_RMin) / lo_RBinSize);
+        int rBinHi = (int)floor((Rmax_corner - lo_RMin) / lo_RBinSize);
+        if (rBinLo < 0)
+          rBinLo = 0;
+        if (rBinHi >= lo_nRBins)
+          rBinHi = lo_nRBins - 1;
+        if (rBinHi < 0 || rBinLo >= lo_nRBins)
+          continue;
+
+        // Find range of Eta bins this pixel overlaps
+        int etaBinLo, etaBinHi;
+        if (etaWraps) {
+          // Pixel wraps around ±180: assign to all eta bins
+          etaBinLo = 0;
+          etaBinHi = lo_nEtaBins - 1;
+        } else {
+          etaBinLo =
+              (int)floor((Etamin_corner - lo_EtaBinsLow[0]) / EtaBinSize);
+          etaBinHi =
+              (int)floor((Etamax_corner - lo_EtaBinsLow[0]) / EtaBinSize);
+          if (etaBinLo < 0)
+            etaBinLo = 0;
+          if (etaBinHi >= lo_nEtaBins)
+            etaBinHi = lo_nEtaBins - 1;
+          if (etaBinHi < 0 || etaBinLo >= lo_nEtaBins)
+            continue;
+        }
+
+        // Assign this pixel to ALL overlapping (R, Eta) bins
+        for (int rb = rBinLo; rb <= rBinHi; rb++) {
+          for (int eb = etaBinLo; eb <= etaBinHi; eb++) {
+            int binIdx = rb * lo_nEtaBins + eb;
+            // Grow array if needed
+            if (lo_NrEach[binIdx] >= lo_MaxEach[binIdx]) {
+              lo_MaxEach[binIdx] *= 2;
+              lo_Indices[binIdx] =
+                  realloc(lo_Indices[binIdx], lo_MaxEach[binIdx] * sizeof(int));
+            }
+            lo_Indices[binIdx][lo_NrEach[binIdx]] = (int)pixIdx;
+            lo_NrEach[binIdx]++;
+            lo_totalAssigned++;
+          }
+        }
+      }
+    }
+    printf("  Phase 1 (pixel assignment): %lld pixel-bin assignments\n",
+           lo_totalAssigned);
+
+    // ── Single-pixel diagnostic ──
+    // Print all bin assignments and areas for one test pixel.
+    // Change diagY/diagZ to probe a different pixel.
+    {
+      int diagY = 0, diagZ = 0;
+      long long int diagIdx = (long long int)diagZ * NrPixels + diagY;
+      printf("\n  *** DIAGNOSTIC: pixel iy=%d iz=%d (idx=%lld) ***\n", diagY,
+             diagZ, diagIdx);
+
+      // Compute this pixel's R/Eta at center
+      double pdY = 0, pdZ = 0, dLsd = 0, dP2 = 0;
+      int pIdx = GetPanelIndex((double)diagY, (double)diagZ, nPanels, panels);
+      if (pIdx >= 0) {
+        ApplyPanelCorrection((double)diagY, (double)diagZ, &panels[pIdx], &pdY,
+                             &pdZ);
+        pdY -= (double)diagY;
+        pdZ -= (double)diagZ;
+        dLsd = panels[pIdx].dLsd;
+        dP2 = panels[pIdx].dP2;
+      }
+      double ypr = (double)diagY + pdY;
+      double zpr = (double)diagZ + pdZ;
+      double Rt_d, Eta_d;
+      dg_pixel_to_REta(ypr, zpr, lo_ybc, lo_zbc, lo_TRs, lo_Lsd, MaxRingRad,
+                       lo_p0, lo_p1, lo_p2, lo_p3, lo_p4, px, dLsd, dP2, &Rt_d,
+                       &Eta_d);
+      double pixY_d, pixZ_d;
+      dg_REta_to_YZ(Rt_d, Eta_d, &pixY_d, &pixZ_d);
+      printf("  Panel=%d pdY=%.4f pdZ=%.4f dLsd=%.2f dP2=%.8f\n", pIdx, pdY,
+             pdZ, dLsd, dP2);
+      printf("  ypr=%.4f zpr=%.4f\n", ypr, zpr);
+      printf("  R_center=%.6f px  Eta_center=%.6f deg\n", Rt_d, Eta_d);
+      printf("  YZ_center=(%.6f, %.6f) via dg_REta_to_YZ\n", pixY_d, pixZ_d);
+      printf("  Raw offset: pixY=%.4f pixZ=%.4f\n", -(double)(diagY - lo_ybc),
+             (double)(diagZ - lo_zbc));
+      double rawR = sqrt((diagY - lo_ybc) * (diagY - lo_ybc) +
+                         (diagZ - lo_zbc) * (diagZ - lo_zbc));
+      printf("  Raw R=%.4f vs corrected R=%.4f (diff=%.6f px)\n", rawR, Rt_d,
+             Rt_d - rawR);
+
+      // Find all bins containing this pixel and compute areas
+      printf("  Bin assignments (rBin, etaBin, R_lo, R_hi, Eta_lo, Eta_hi, "
+             "area):\n");
+      double **dEdges = dg_alloc_matrix(50, 2);
+      double **dEdgesOut = dg_alloc_matrix(50, 2);
+      int nBinsFound = 0;
+      double totalDiagArea = 0;
+      for (int rb = 0; rb < lo_nRBins; rb++) {
+        for (int eb = 0; eb < lo_nEtaBins; eb++) {
+          int binIdx = rb * lo_nEtaBins + eb;
+          // Check if this pixel is in this bin
+          for (int pi = 0; pi < lo_NrEach[binIdx]; pi++) {
+            if (lo_Indices[binIdx][pi] == (int)diagIdx) {
+              double Rmi = lo_RMin + rb * lo_RBinSize;
+              double Rma = Rmi + lo_RBinSize;
+              double area = dg_calc_pixel_bin_area(
+                  pixY_d, pixZ_d, Rmi, Rma, lo_EtaBinsLow[eb],
+                  lo_EtaBinsHigh[eb], dEdges, dEdgesOut);
+              printf("    rb=%4d eb=%3d  R=[%8.3f,%8.3f]  Eta=[%7.2f,%7.2f]  "
+                     "area=%.8f\n",
+                     rb, eb, Rmi, Rma, lo_EtaBinsLow[eb], lo_EtaBinsHigh[eb],
+                     area);
+              totalDiagArea += area;
+              nBinsFound++;
+              break;
+            }
+          }
+        }
+      }
+      printf("  Total: %d bins, total area=%.8f (expect ~1.0)\n", nBinsFound,
+             totalDiagArea);
+      dg_free_matrix(dEdges, 50);
+      dg_free_matrix(dEdgesOut, 50);
+      printf("  *** END DIAGNOSTIC ***\n\n");
+    }
+
+    // Phase 2: Area-weighted integration (mapperfcn-style pixel center)
+    // Key fix: compute pixel center via dg_pixel_to_REta → dg_REta_to_YZ
+    // (round-trip through full geometry model), matching mapperfcn exactly.
+    // CalcPeakProfileRaw used raw -(iy-ybc) which diverges at high R.
+    double *lo_lineout = calloc(lo_nRBins, sizeof(double));
+
+#pragma omp parallel for schedule(dynamic, 4)
+    for (int rb = 0; rb < lo_nRBins; rb++) {
+      double Rmi_px = lo_RMin + rb * lo_RBinSize;
+      double Rma_px = Rmi_px + lo_RBinSize;
+
+      // Thread-local scratch arrays for dg_calc_pixel_bin_area
+      double **tEdges = dg_alloc_matrix(50, 2);
+      double **tEdgesOut = dg_alloc_matrix(50, 2);
+
+      // Two-step normalization (matches IntegratorZarrOMP):
+      // Step 1: For each eta bin, compute area-weighted average intensity
+      // Step 2: Average across non-zero eta bins
+      double etaSum = 0;
+      int etaCnt = 0;
+      for (int eb = 0; eb < lo_nEtaBins; eb++) {
+        int binIdx = rb * lo_nEtaBins + eb;
+        if (lo_NrEach[binIdx] == 0)
+          continue;
+
+        double lo_EtaMi = lo_EtaBinsLow[eb];
+        double lo_EtaMa = lo_EtaBinsHigh[eb];
+
+        double binSumI = 0, binArea = 0;
+        for (int pi = 0; pi < lo_NrEach[binIdx]; pi++) {
+          int pixIdx = lo_Indices[binIdx][pi];
+          // Skip masked pixels
+          if (mapMaskSize != 0 && TestBit(mapMask, pixIdx))
+            continue;
+
+          int iy = pixIdx % NrPixels;
+          int iz = pixIdx / NrPixels;
+
+          // Compute pixel center via round-trip (matches mapperfcn exactly):
+          // pixel → dg_pixel_to_REta → dg_REta_to_YZ
+          double pdY = 0, pdZ = 0, dLsd = 0, dP2 = 0;
+          int pIdx = GetPanelIndex((double)iy, (double)iz, nPanels, panels);
+          if (pIdx >= 0) {
+            ApplyPanelCorrection((double)iy, (double)iz, &panels[pIdx], &pdY,
+                                 &pdZ);
+            pdY -= (double)iy;
+            pdZ -= (double)iz;
+            dLsd = panels[pIdx].dLsd;
+            dP2 = panels[pIdx].dP2;
+          }
+          double ypr = (double)iy + pdY;
+          double zpr = (double)iz + pdZ;
+          double Rt_center, Eta_center;
+          dg_pixel_to_REta(ypr, zpr, lo_ybc, lo_zbc, lo_TRs, lo_Lsd, MaxRingRad,
+                           lo_p0, lo_p1, lo_p2, lo_p3, lo_p4, px, dLsd, dP2,
+                           &Rt_center, &Eta_center);
+          double pixY, pixZ;
+          dg_REta_to_YZ(Rt_center, Eta_center, &pixY, &pixZ);
+
+          double thisArea =
+              dg_calc_pixel_bin_area(pixY, pixZ, Rmi_px, Rma_px, lo_EtaMi,
+                                     lo_EtaMa, tEdges, tEdgesOut);
+          binSumI += Average[pixIdx] * thisArea;
+          binArea += thisArea;
+        }
+        // Step 1: per-eta-bin normalized intensity
+        if (binSumI != 0 && binArea > 0) {
+          double binIntensity = binSumI / binArea;
+          etaSum += binIntensity;
+          etaCnt++;
+        }
+      }
+      // Step 2: average over non-zero eta bins
+      lo_lineout[rb] = (etaCnt > 0) ? etaSum / etaCnt : 0.0;
+
+      dg_free_matrix(tEdges, 50);
+      dg_free_matrix(tEdgesOut, 50);
+    }
+
+    // Phase 3: Write .lineout.xy file
+    char lineoutFN[2048];
+    snprintf(lineoutFN, sizeof(lineoutFN), "%s_%0*d%s.lineout.xy", fn, Padding,
+             EndNr, Ext);
+    FILE *fLO = fopen(lineoutFN, "w");
+    if (fLO) {
+      fprintf(fLO, "# 2theta_deg  intensity\n");
+      fprintf(fLO,
+              "# Fitted geometry: Lsd=%.4f BC=%.4f,%.4f"
+              " ty=%.6f tz=%.6f\n",
+              lo_Lsd, lo_ybc, lo_zbc, lo_ty, lo_tz);
+      fprintf(fLO, "# p0=%.8f p1=%.8f p2=%.8f p3=%.8f p4=%.8f\n", lo_p0, lo_p1,
+              lo_p2, lo_p3, lo_p4);
+      fprintf(fLO,
+              "# RBinSize=%.4f RMin=%.4f RMax=%.4f"
+              " EtaBinSize=%.4f nRBins=%d\n",
+              lo_RBinSize, lo_RMin, lo_RMax, EtaBinSize, lo_nRBins);
+      for (int rb = 0; rb < lo_nRBins; rb++) {
+        double Rcen_px = lo_RMin + (rb + 0.5) * lo_RBinSize;
+        double R_um = Rcen_px * px;
+        double tth_deg = atan(R_um / lo_Lsd) * (180.0 / M_PI);
+        fprintf(fLO, "%.6f  %.6f\n", tth_deg, lo_lineout[rb]);
+      }
+      fclose(fLO);
+      printf("  Wrote full-range lineout to %s (%d R-bins, %.1f s)\n",
+             lineoutFN, lo_nRBins, omp_get_wtime() - lo_start);
+    } else {
+      printf("  WARNING: Could not open %s for writing\n", lineoutFN);
+    }
+
+    // Cleanup
+    free(lo_lineout);
+    for (int b = 0; b < lo_nBins; b++)
+      free(lo_Indices[b]);
+    free(lo_Indices);
+    free(lo_NrEach);
+    free(lo_MaxEach);
+    free(lo_EtaBinsLow);
+    free(lo_EtaBinsHigh);
+  }
+
   free(DarkFile);
   free(AverageDark);
   free(Average);

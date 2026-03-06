@@ -304,49 +304,34 @@ inline void CalcPeakProfileParallel(int *Indices, int NrEachIndexBin, int idx,
                                     double EtaMi, double EtaMa, double ybc,
                                     double zbc, double px, int NrPixelsY,
                                     double *ReturnValue) {
-  double **BoxEdges, *RMs, *EtaMs, **EdgesIn, **EdgesOut;
-  double SumIntensity = 0;
-  BoxEdges = allocMatrix(5, 2);
-  EdgesIn = allocMatrix(10, 2);
-  EdgesOut = allocMatrix(10, 2);
-  RMs = malloc(5 * sizeof(*RMs));
-  EtaMs = malloc(5 * sizeof(*EtaMs));
-  RMs[0] = Rmi;
-  EtaMs[0] = EtaMi;
-  RMs[1] = Rma;
-  EtaMs[1] = EtaMi;
-  RMs[2] = Rma;
-  EtaMs[2] = EtaMa;
-  RMs[3] = Rmi;
-  EtaMs[3] = EtaMa;
-  RMs[4] = Rmi;
-  EtaMs[4] = EtaMi;
-  YZMat4mREta(5, RMs, EtaMs, BoxEdges, ybc, zbc, px);
-  int i, j;
-  int *Pos, nEdges = 0;
-  Pos = malloc(2 * sizeof(*Pos));
-  double ThisArea, TotArea = 0;
+  // Allocate scratch arrays for dg_calc_pixel_bin_area (50×2 each)
+  double **EdgesIn = allocMatrix(50, 2);
+  double **EdgesOut = allocMatrix(50, 2);
+
+  // Convert R bounds from microns to pixel-centered units
+  double RmiPx = Rmi / px;
+  double RmaPx = Rma / px;
+
+  int i;
+  double SumIntensity = 0, TotArea = 0;
   for (i = 0; i < NrEachIndexBin; i++) {
-    nEdges = 0;
-    if (mapMaskSize != 0) { // Skip this point if it was on the badPx, gap mask
+    if (mapMaskSize != 0) {
       if (TestBit(mapMask, Indices[i])) {
         *ReturnValue = 0;
+        FreeMemMatrix(EdgesIn, 50);
+        FreeMemMatrix(EdgesOut, 50);
         return;
       }
     }
-    Pos[0] = Indices[i] % NrPixelsY; // This is Y
-    Pos[1] = Indices[i] / NrPixelsY; // This is Z
-    nEdges = CalcNEdges(BoxEdges, Pos, EdgesIn);
-    if (nEdges == 0) {
-      continue;
-    }
-    if (nEdges > 10) {
-      printf("Messed up calculating nEdges.\n");
-      *ReturnValue = 0;
-      return;
-    }
-    nEdges = FindUniques(EdgesIn, EdgesOut, nEdges);
-    ThisArea = dg_polygon_area(EdgesOut, nEdges);
+    int iy = Indices[i] % NrPixelsY;
+    int iz = Indices[i] / NrPixelsY;
+    // Raw beam-centered coordinates (self-consistent with
+    // CorrectTiltSpatialDistortion)
+    double pixY = -(double)(iy - ybc);
+    double pixZ = (double)(iz - zbc);
+
+    double ThisArea = dg_calc_pixel_bin_area(pixY, pixZ, RmiPx, RmaPx, EtaMi,
+                                             EtaMa, EdgesIn, EdgesOut);
     TotArea += ThisArea;
     SumIntensity += Average[Indices[i]] * ThisArea;
   }
@@ -354,11 +339,42 @@ inline void CalcPeakProfileParallel(int *Indices, int NrEachIndexBin, int idx,
   if (TotArea == 0) {
     SumIntensity = 0;
   }
-  free(Pos);
-  FreeMemMatrix(EdgesIn, 10);
-  FreeMemMatrix(EdgesOut, 10);
-  free(RMs);
-  free(EtaMs);
-  FreeMemMatrix(BoxEdges, 5);
+  FreeMemMatrix(EdgesIn, 50);
+  FreeMemMatrix(EdgesOut, 50);
   *ReturnValue = SumIntensity;
+}
+
+inline void CalcPeakProfileRaw(int *Indices, int NrEachIndexBin, int idx,
+                               double *Average, double Rmi, double Rma,
+                               double EtaMi, double EtaMa, double ybc,
+                               double zbc, double px, int NrPixelsY,
+                               double *outSumIntensity, double *outTotalArea) {
+  double **EdgesIn = allocMatrix(50, 2);
+  double **EdgesOut = allocMatrix(50, 2);
+
+  double RmiPx = Rmi / px;
+  double RmaPx = Rma / px;
+
+  int i;
+  double SumIntensity = 0, TotArea = 0;
+  for (i = 0; i < NrEachIndexBin; i++) {
+    if (mapMaskSize != 0) {
+      if (TestBit(mapMask, Indices[i])) {
+        continue;
+      }
+    }
+    int iy = Indices[i] % NrPixelsY;
+    int iz = Indices[i] / NrPixelsY;
+    double pixY = -(double)(iy - ybc);
+    double pixZ = (double)(iz - zbc);
+
+    double ThisArea = dg_calc_pixel_bin_area(pixY, pixZ, RmiPx, RmaPx, EtaMi,
+                                             EtaMa, EdgesIn, EdgesOut);
+    TotArea += ThisArea;
+    SumIntensity += Average[Indices[i]] * ThisArea;
+  }
+  *outSumIntensity = SumIntensity;
+  *outTotalArea = TotArea;
+  FreeMemMatrix(EdgesIn, 50);
+  FreeMemMatrix(EdgesOut, 50);
 }

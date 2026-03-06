@@ -54,8 +54,8 @@ mapperfcn(double tx, double ty, double tz, int NrPixelsY, int NrPixelsZ,
   long long int nrContinued1 = 0;
   long long int nrContinued2 = 0;
   long long int nrContinued3 = 0;
-#pragma omp parallel for schedule(dynamic, 16) \
-    reduction(+:TotNrOfBins, sumNrBins, nrContinued1, nrContinued2, nrContinued3)
+#pragma omp parallel for schedule(dynamic, 16) reduction(                      \
+        + : TotNrOfBins, sumNrBins, nrContinued1, nrContinued2, nrContinued3)
   for (i = 0; i < NrPixelsY; i++) {
     // Thread-private allocations
     double RetVals[2], RetVals2[2];
@@ -173,10 +173,11 @@ mapperfcn(double tx, double ty, double tz, int NrPixelsY, int NrPixelsZ,
           int nEdges = 0;
           // Now check if any edge of the pixel is within the polar mask
           for (m = 0; m < 4; m++) {
-            double RThis = sqrt((YZ[0] + dg_PosMatrix[m][0]) * (YZ[0] + dg_PosMatrix[m][0]) +
-                         (YZ[1] + dg_PosMatrix[m][1]) * (YZ[1] + dg_PosMatrix[m][1]));
-            double EtaThis =
-                dg_calc_eta_angle(YZ[0] + dg_PosMatrix[m][0], YZ[1] + dg_PosMatrix[m][1]);
+            double RThis = sqrt(
+                (YZ[0] + dg_PosMatrix[m][0]) * (YZ[0] + dg_PosMatrix[m][0]) +
+                (YZ[1] + dg_PosMatrix[m][1]) * (YZ[1] + dg_PosMatrix[m][1]));
+            double EtaThis = dg_calc_eta_angle(YZ[0] + dg_PosMatrix[m][0],
+                                               YZ[1] + dg_PosMatrix[m][1]);
             if (EtaMin < -180 && dg_sign(EtaThis) != dg_sign(EtaMin))
               EtaThis -= 360;
             if (EtaMax > 180 && dg_sign(EtaThis) != dg_sign(EtaMax))
@@ -342,8 +343,8 @@ mapperfcn(double tx, double ty, double tz, int NrPixelsY, int NrPixelsZ,
             nrContinued1++;
             continue;
           }
-          nEdges =
-              dg_find_unique_vertices(Edges, EdgesOut, nEdges, RMin, RMax, EtaMin, EtaMax);
+          nEdges = dg_find_unique_vertices(Edges, EdgesOut, nEdges, RMin, RMax,
+                                           EtaMin, EtaMax);
           if (nEdges < 3) {
             nrContinued2++;
             continue;
@@ -752,6 +753,65 @@ int main(int argc, char *argv[]) {
                 RBinsHigh, nRBins, nEtaBins, pxList, nPxList, maxnPx, mask, p4);
   printf("Total Number of bins %lld\n", TotNrOfBins);
   fflush(stdout);
+
+  // ── Single-pixel diagnostic (matches CalibrantPanelShiftsOMP) ──
+  {
+    int diagY = 0, diagZ = 0;
+    printf("\n  *** DIAGNOSTIC: pixel iy=%d iz=%d ***\n", diagY, diagZ);
+
+    double pdY = 0, pdZ = 0, dLsd = 0, dP2 = 0;
+    int dpIdx = GetPanelIndex((double)diagY, (double)diagZ, nPanels, panels);
+    if (dpIdx >= 0) {
+      ApplyPanelCorrection((double)diagY, (double)diagZ, &panels[dpIdx], &pdY,
+                           &pdZ);
+      pdY -= (double)diagY;
+      pdZ -= (double)diagZ;
+      dLsd = panels[dpIdx].dLsd;
+      dP2 = panels[dpIdx].dP2;
+    }
+    double yprD = (double)diagY +
+                  distortionMapY[(long long)diagZ * NrPixelsY + diagY] + pdY;
+    double zprD = (double)diagZ +
+                  distortionMapZ[(long long)diagZ * NrPixelsY + diagY] + pdZ;
+    double TRsD[3][3];
+    dg_build_tilt_matrix(tx, ty, tz, TRsD);
+    double RtD, EtaD;
+    dg_pixel_to_REta(yprD, zprD, yCen, zCen, TRsD, Lsd, RhoD, p0, p1, p2, p3,
+                     p4, pxY, dLsd, dP2, &RtD, &EtaD);
+    double pixYD, pixZD;
+    dg_REta_to_YZ(RtD, EtaD, &pixYD, &pixZD);
+    printf("  Panel=%d pdY=%.4f pdZ=%.4f dLsd=%.2f dP2=%.8f\n", dpIdx, pdY, pdZ,
+           dLsd, dP2);
+    printf("  distMapY=%.6f distMapZ=%.6f\n",
+           distortionMapY[(long long)diagZ * NrPixelsY + diagY],
+           distortionMapZ[(long long)diagZ * NrPixelsY + diagY]);
+    printf("  ypr=%.4f zpr=%.4f\n", yprD, zprD);
+    printf("  R_center=%.6f px  Eta_center=%.6f deg\n", RtD, EtaD);
+    printf("  YZ_center=(%.6f, %.6f) via dg_REta_to_YZ\n", pixYD, pixZD);
+
+    // Scan all bins for this pixel
+    printf("  Bin assignments (rBin, etaBin, R_lo, R_hi, Eta_lo, Eta_hi, "
+           "area):\n");
+    int nBinsD = 0;
+    double totalAreaD = 0;
+    for (i = 0; i < nRBins; i++) {
+      for (j = 0; j < nEtaBins; j++) {
+        for (k = 0; k < nPxList[i][j]; k++) {
+          if (pxList[i][j][k].y == diagY && pxList[i][j][k].z == diagZ) {
+            printf("    rb=%4d eb=%3d  R=[%8.3f,%8.3f]  Eta=[%7.2f,%7.2f]  "
+                   "area=%.8f\n",
+                   i, j, RBinsLow[i], RBinsHigh[i], EtaBinsLow[j],
+                   EtaBinsHigh[j], pxList[i][j][k].frac);
+            totalAreaD += pxList[i][j][k].frac;
+            nBinsD++;
+          }
+        }
+      }
+    }
+    printf("  Total: %d bins, total area=%.8f (expect ~1.0)\n", nBinsD,
+           totalAreaD);
+    printf("  *** END DIAGNOSTIC ***\n\n");
+  }
   long long int LengthNPxList = nRBins * nEtaBins;
   struct data *pxListStore;
   int *nPxListStore;

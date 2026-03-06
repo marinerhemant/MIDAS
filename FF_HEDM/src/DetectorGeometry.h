@@ -63,6 +63,14 @@ int dg_find_unique_vertices(double **EdgesIn, double **EdgesOut, int nEdgesIn,
                             double RMin, double RMax, double EtaMin,
                             double EtaMax);
 
+// Compute the intersection area of a unit pixel centered at (pixY, pixZ)
+// with the (R, Eta) bin [RMin..RMax] × [EtaMin..EtaMax].
+// Uses true R-arc and Eta-ray geometry (mapperfcn-style).
+// Edges[50][2] and EdgesOut[50][2] are caller-allocated scratch arrays.
+double dg_calc_pixel_bin_area(double pixY, double pixZ, double RMin,
+                              double RMax, double EtaMin, double EtaMax,
+                              double **Edges, double **EdgesOut);
+
 // ── Small helpers ───────────────────────────────────────────────────
 
 double dg_calc_eta_angle(double y, double z);
