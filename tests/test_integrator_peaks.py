@@ -272,9 +272,9 @@ def create_peak_params_file(ring_radii: list, out_path: Path, px: float,
 
 def create_zarr_zip(work_dir: Path, param_file: Path) -> Path:
     """Create a Zarr zip from the calibration TIFF."""
-    gen_script = SCRIPT_DIR / "ffGenerateZipRefactor.py"
+    gen_script = MIDAS_HOME / "utils" / "ffGenerateZipRefactor.py"
     if not gen_script.exists():
-        gen_script = SCRIPT_DIR / "midas2zip.py"
+        gen_script = MIDAS_HOME / "utils" / "converters" / "midas2zip.py"
 
     data_file = CALIB_DIR / "CeO2_Pil_100x100_att000_650mm_71p676keV_001956.tif"
     dark_file = CALIB_DIR / "dark_CeO2_Pil_100x100_att000_650mm_71p676keV_001975.tif"
@@ -296,7 +296,7 @@ def create_zarr_zip(work_dir: Path, param_file: Path) -> Path:
         print(f"  Warning: ffGenerateZipRefactor failed: {e}")
         print(f"  Trying alternative approach...")
         cmd2 = [
-            sys.executable, str(SCRIPT_DIR / "integrator.py"),
+            sys.executable, str(MIDAS_HOME / "FF_HEDM" / "workflows" / "integrator.py"),
             '-paramFN', str(param_file),
             '-dataFN', str(data_file),
             '-darkFN', str(dark_file),

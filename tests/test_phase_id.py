@@ -33,7 +33,7 @@ MIDAS_HOME = SCRIPT_DIR.parent
 CALIB_DIR = MIDAS_HOME / "FF_HEDM" / "Example" / "Calibration"
 
 # Import phase_id components for direct programmatic access
-sys.path.insert(0, str(SCRIPT_DIR))
+sys.path.insert(0, str(MIDAS_HOME / "utils"))
 from phase_id import (
     parse_phases_file, predict_rings_for_phase, merge_and_deduplicate,
     read_geometry, write_peak_params, create_zarr_zip, run_cpu_pipeline,

@@ -19,7 +19,7 @@ import dash_bootstrap_components as dbc
 from PIL import Image
 
 # Import MIDAS tomo library
-_tomo_dir = os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))), 'TOMO')
+_tomo_dir = os.path.join(os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__)))), 'TOMO')
 if _tomo_dir not in sys.path:
     sys.path.insert(0, _tomo_dir)
 from midas_tomo_python import run_tomo_from_sinos

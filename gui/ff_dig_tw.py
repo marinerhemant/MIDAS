@@ -12,6 +12,13 @@ from dataclasses import dataclass
 from functools import lru_cache
 import argparse
 from math import cos, sin
+
+# Set up paths before importing midas_config
+file_path = os.path.abspath(__file__)
+install_path = os.path.dirname(os.path.dirname(file_path))
+utils_dir = os.path.join(install_path, 'utils/')
+sys.path.insert(0, utils_dir)
+
 import midas_config
 midas_config.run_startup_checks()
 import numpy as np
@@ -34,11 +41,7 @@ DEFAULT_DETECTOR_PIXELS = 2048
 DEFAULT_OMEGA_RANGE = (-10, 10)
 DEFAULT_OMEGA_STEP = 0.25
 
-# Get the installation path (one directory up from the current file)
-file_path = os.path.abspath(__file__)
-install_path = os.path.dirname(os.path.dirname(file_path))
-utils_dir = os.path.join(install_path, 'utils/')
-sys.path.insert(0, utils_dir)
+
 
 try:
     from calcMiso import OrientMat2Euler

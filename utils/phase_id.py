@@ -461,7 +461,7 @@ def run_gpu_pipeline(data_file: Path, dark_file: Optional[Path],
     # Set up data folder
     data_folder = data_file.parent
 
-    batch_script = SCRIPT_DIR / "integrator_batch_process.py"
+    batch_script = MIDAS_HOME / "FF_HEDM" / "workflows" / "integrator_batch_process.py"
     if not batch_script.exists():
         raise FileNotFoundError(f"integrator_batch_process.py not found")
 
