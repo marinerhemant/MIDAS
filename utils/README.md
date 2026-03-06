@@ -29,7 +29,6 @@ Integrator scripts moved to [`FF_HEDM/workflows/`](../FF_HEDM/workflows/): `inte
 |--------|-------------|
 | `ffGenerateZipRefactor.py` | Convert raw detector data (HDF5 / GE / TIFF) into MIDAS Zarr-ZIP archives. |
 | `updateZarrDset.py` | Update datasets/metadata within existing Zarr-ZIP archives. |
-| `updateZarrDsetRefactor.py` | Refactored Zarr dataset updater. |
 
 See [`converters/`](converters/) for standalone format converters: `GE2Tiff.py`, `ang2mic.py`, `esrf2zip_pf.py`, `esrf_to_ge.py`, `ff2midas.py`, `mergeGEfiles.py`, `mergeH5s.py`, `mergePeaks.py`, `midas2zip.py`, `SpotMatrixToSpotsHDF.py`, `GFF2Grains.py`, `vtkSimExportBin.py`.
 
@@ -90,8 +89,6 @@ Tests moved to [`tests/`](../tests/): `test_ff_hedm.py`, `test_nf_hedm.py`, `tes
 
 | Script | Description |
 |--------|-------------|
-| `MIDAS_dig_tw.py` | Digital twin workflow for in situ experiments. |
-| `ff_dig_tw.py` | FF-HEDM digital twin: forward model + comparison. |
 | `blobPeaksearch.py` | Blob-based peak search on raw detector images. |
 | `BatchCake.py` | Batch radial integration. |
 | `batchImages.py` | Batch image processing (dark subtraction, normalization). |
@@ -107,3 +104,4 @@ Tests moved to [`tests/`](../tests/): `test_ff_hedm.py`, `test_nf_hedm.py`, `tes
 |--------|-------------|
 | `deprecated_AutoCalibrate.py` | Superseded by `AutoCalibrateZarr.py`. |
 | `ffGenerateZip.py` | Superseded by `ffGenerateZipRefactor.py`. |
+| `updateZarrDsetRefactor.py` | Unused refactored Zarr updater (original `updateZarrDset.py` is still active). |
