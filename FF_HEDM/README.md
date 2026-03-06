@@ -123,7 +123,7 @@ Raw Data → GetHKLList → PeaksFitting → MergeOverlappingPeaks → CalcRadiu
 |--------|-------------|
 | `IntegratorZarr.c` / `IntegratorZarrOMP.c` | Radial integration (caking) engine for Zarr data. |
 | `Integrator.c` / `Integrator.cu` | Radial integration (CPU and GPU versions). |
-| `DetectorMapper.c` / `DetectorMapperZarr.c` | Map raw detector pixels to (R, η) coordinates. |
+| `DetectorMapper.c` | Map raw detector pixels to (R, η) coordinates. Supports text and Zarr inputs. |
 | `DetectorMapperGPUCSR.cu` | GPU-accelerated detector mapping using compressed sparse row format. |
 
 ### SGInfo Library

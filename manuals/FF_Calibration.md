@@ -261,6 +261,7 @@ python AutoCalibrateZarr.py --data CeO2.zip \
     -   Strain vs. 2-theta plots for each iteration.
     -   The final converged strain data and results dataframe.
 -   **`calibrant_screen_out.csv`**: The raw text output from `CalibrantPanelShiftsOMP`, including per-iteration strain values. Contains all 40 iterations of the single C call.
+-   **`.lineout.xy`**: Full-range 2θ vs intensity lineout (text, two-column) generated at the end of calibration. Useful for visual comparison with `IntegratorZarrOMP` output via `plot_lineout_comparison.py`.
 
 ---
 
@@ -517,7 +518,7 @@ The following table lists all parameters recognized by `CalibrantPanelShiftsOMP`
 | `PanelShiftsFile` | string | — | File for panel corrections |
 | `FixPanelID` | int | 0 | Panel held fixed |
 | **Iterative Refinement** | | | |
-| `nIterations` | int | 1 | Number of refinement iterations (best result is kept) |
+| `nIterations` | int | 1 | Number of refinement iterations (best result is kept). Set to `0` to skip optimization and evaluate input parameters directly (strain + lineout output only). |
 | **Doublet Fitting** | | | |
 | `DoubletSeparation` | double | 0 | Max pixel separation for doublet ring detection; 0 = disabled |
 | **Objective Function Weighting** | | | |
@@ -595,6 +596,20 @@ When `nIterations > 1`, the optimizer tracks the best result (lowest MeanStrain)
 ```text
 nIterations 10
 ```
+
+#### Evaluate-Only Mode (`nIterations 0`)
+
+Setting `nIterations 0` skips the calibration optimization loop entirely. The code uses the input parameters as-is to compute strain statistics and generate the lineout file. This is useful for:
+
+- Quickly evaluating the quality of existing calibration parameters
+- Generating a lineout from a known geometry without fitting
+- Comparing parameter sets by inspecting their strain metrics
+
+```text
+nIterations 0
+```
+
+The output includes `MeanStrain`, `StdStrain`, per-panel microstrain, and a `.lineout.xy` file.
 
 > [!TIP]
 > A recommended starting configuration for multi-panel detectors:

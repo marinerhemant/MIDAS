@@ -9,7 +9,7 @@ The integrator peak fitting benchmark (`utils/test_integrator_peaks.py`) validat
 1. Running `CalibrantPanelShiftsOMP` to refine detector geometry from CeO₂ powder rings
 2. Computing theoretical ring radii from the calibrated geometry (`GetHKLList`)
 3. Generating a Zarr zip from the calibration TIFF (`ffGenerateZipRefactor.py`)
-4. Running `DetectorMapperZarr` + `IntegratorZarrOMP` with 1D peak fitting
+4. Running `DetectorMapper` + `IntegratorZarrOMP` with 1D peak fitting
 5. Comparing fitted peak centers to theoretical positions (strain residual in ppm)
 
 ## Pipeline Data Flow
@@ -59,7 +59,7 @@ flowchart TD
     GEN --> ZIP
 
     subgraph Step4["Step 4: Integration + Peak Fit"]
-        DM["DetectorMapperZarr<br/>(generates Map.bin)"]
+        DM["DetectorMapper<br/>(generates Map.bin)"]
         INT["IntegratorZarrOMP<br/>(peak fitting enabled)"]
     end
 
@@ -88,7 +88,7 @@ flowchart TD
 
 ## Prerequisites
 
-- MIDAS must be compiled (all FF_HEDM binaries built, including `IntegratorZarrOMP` and `DetectorMapperZarr`)
+- MIDAS must be compiled (all FF_HEDM binaries built, including `IntegratorZarrOMP` and `DetectorMapper`)
 - The `midas_env` conda environment must be active:
   ```bash
   source /path/to/miniconda3/bin/activate midas_env
@@ -179,7 +179,7 @@ The ~2.7× difference is expected:
 
 ## Troubleshooting
 
-- **`roi_min` shows huge negative values**: The mask file is not loading. Check that `MaskFile` is in the parameter file with a valid absolute path, and that `DetectorMapperZarr` was rebuilt after the `MaskFN` zero-initialization fix.
+- **`roi_min` shows huge negative values**: The mask file is not loading. Check that `MaskFile` is in the parameter file with a valid absolute path, and that `DetectorMapper` was rebuilt after the `MaskFN` zero-initialization fix.
 - **`ResultFolder (null)`**: The Zarr zip is missing the `ResultFolder` entry. Ensure `ffGenerateZipRefactor.py` receives `-resultFolder`.
 - **~35,000 ppm strain**: Mask is not applied — unmasked bad pixels produce corrupted lineout data.
 - **CalibrantPanelShiftsOMP timeout**: The calibration runs 30 iterations and can take several minutes. Use `--skip-calibration` for fast iteration during development.

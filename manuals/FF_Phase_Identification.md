@@ -318,7 +318,7 @@ The `Excl` column in the Phase Summary shows the total exclusions from both leve
 | Feature | CPU (`-backend cpu`) | GPU (`-backend gpu`) |
 |---------|---------------------|---------------------|
 | Binary | `IntegratorZarrOMP` | `IntegratorFitPeaksGPUStream` |
-| Orchestration | Direct: `ffGenerateZipRefactor → DetectorMapperZarr → IntegratorZarrOMP` | Via `integrator_batch_process.py` |
+| Orchestration | Direct: `ffGenerateZipRefactor → DetectorMapper → IntegratorZarrOMP` | Via `integrator_batch_process.py` |
 | Peak params | `peak_params.txt` file | `PeakLocation` lines in param file |
 | Best for | Few images, no GPU | Streaming, large datasets |
 | Output | `fit.bin` (same format) | `fit.bin` (same format) |

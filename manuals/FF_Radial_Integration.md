@@ -389,13 +389,27 @@ When `--params` is provided (or `--lsd`, `--px`, `--wavelength` are given explic
 If wavelength is not available, only R and 2θ axes are shown.
 
 ### 4.3. DetectorMapper (The Geometry Engine)
-This tool runs automatically at the start of either workflow. It consumes the experimental geometry (distance, tilts, pixel size) and produces two look-up tables:
+This tool runs automatically at the start of either workflow. It consumes the experimental geometry (distance, tilts, pixel size) and produces three look-up tables:
 *   `Map.bin`: The mapping of every pixel to its (Radius, Azimuth) bin.
 *   `nMap.bin`: An index file for the map.
+*   `maskMap.bin`: A per-bin contamination flag (1 = bin overlaps with a masked pixel). Used by `IntegratorZarrOMP` to exclude contaminated bins from lineouts.
 
-Both `DetectorMapper` and `DetectorMapperZarr` accept a `-nCPUs N` flag to parallelize the mapping computation with OpenMP. When run via `integrator.py` or `phase_id.py`, the `-nCPUs` argument is passed through automatically.
+`DetectorMapper` is a unified binary that supports both text-file and Zarr inputs:
+
+```bash
+# Text file input (standard)
+DetectorMapper parameters.txt -nCPUs 8
+
+# Zarr input
+DetectorMapper parameters.txt -nCPUs 8 -zarrFN data.zip -resultFolder output/
+```
+
+The `-nCPUs N` flag parallelizes the mapping computation with OpenMP. When run via `integrator.py` or `phase_id.py`, the `-nCPUs` argument is passed through automatically.
 
 The mapping uses the shared `DetectorGeometry` library (`dg_pixel_to_REta`, `dg_polygon_area`, etc.) for pixel-to-(R, η) coordinate transforms with full distortion correction (tilts, p0–p4, per-panel Lsd/dP2).
+
+> [!NOTE]
+> The separate `DetectorMapperZarr` binary has been retired (archived to `src/archive/`). The unified `DetectorMapper` handles both text and Zarr inputs.
 
 ## 5. Parameter File Reference
  
@@ -456,6 +470,10 @@ Both workflows produce hierarchical data files containing:
 *   `tth`: The 2-theta angles corresponding to the radius bins.
 *   `azimuth`: The azimuthal angles.
 *   `intensity`: The 2D integrated image (if enabled).
+
+`IntegratorZarrOMP` also produces:
+*   **`_lineout.xy`** — A two-column text file (2θ in degrees, intensity) for each frame. The 2θ values are computed by `IntegratorZarrOMP` using the fitted Lsd, ensuring consistency across all tools. Bins contaminated by masked pixels (from `maskMap.bin`) have NaN intensities and are omitted.
+*   **`_lineout.bin`** — Binary lineout (R-indexed) for backward compatibility.
 
 ### 6.2. GSAS-II Compatible zarr.zip
 Both workflows also produce a `.zarr.zip` file compatible with GSAS-II's MIDAS zarr importer. This file contains:
@@ -553,6 +571,32 @@ python ~/opt/MIDAS/utils/plot_integrator_peaks.py \
 ```
 
 **Output:** 2D scatter plot of fitted 2θ vs η with ring assignment, per-ring statistics (mean, std), and overlaid ideal ring positions.
+
+### 6.5. Batch Lineout Extraction (`extract_lineouts.py`)
+
+For batch extraction of 1D lineouts from a series of images:
+
+```bash
+python ~/opt/MIDAS/utils/extract_lineouts.py \
+    --paramFN geometry.txt \
+    --dataFN scan_001.tif \
+    --startNr 1 --endNr 100 \
+    --nCPUs 8
+```
+
+This runs `IntegratorZarrOMP` in direct mode for each frame and extracts the `_lineout.xy` text output. Results are two-column files (2θ, intensity) suitable for plotting or Rietveld refinement.
+
+### 6.6. Lineout Comparison (`plot_lineout_comparison.py`)
+
+Compares calibrant and integrator lineouts against ideal ring positions:
+
+```bash
+python ~/opt/MIDAS/utils/plot_lineout_comparison.py \
+    --paramFN geometry.txt \
+    calibrant_lineout.xy integrator_lineout.xy
+```
+
+**Output:** Overlay plot of both lineouts with vertical ideal-ring markers.
 
 ---
 

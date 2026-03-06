@@ -6,7 +6,7 @@
 // area-weighted binning for MIDAS detector mapping.
 //
 // Extracted from DetectorMapper.c to provide a single source of truth
-// for DetectorMapper, DetectorMapperZarr, and CalibrantPanelShiftsOMP.
+// for DetectorMapper and CalibrantPanelShiftsOMP.
 //
 
 #include "DetectorGeometry.h"

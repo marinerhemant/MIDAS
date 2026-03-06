@@ -2,7 +2,7 @@
 map_header.py — Python reader for Map.bin / nMap.bin parameter-hash headers.
 
 The MapHeader is a 64-byte header prepended to Map.bin and nMap.bin by
-DetectorMapper / DetectorMapperZarr.  It contains a SHA-256 hash of the
+DetectorMapper.  It contains a SHA-256 hash of the
 geometry parameters so that downstream consumers can detect stale files.
 
 Header layout (64 bytes total):
