@@ -731,19 +731,27 @@ def main():
     # --- Build filename pattern ---
     data_pattern = args.dataFN
     if '{' not in data_pattern:
-        stem_part = Path(data_pattern).stem
-        m = list(re.finditer(r'\d+', stem_part))
+        # Strip ALL extensions to get the true stem (before any dots after
+        # the base name), then find the frame-number digit group.
+        full_name = Path(data_pattern).name
+        # Find all digit groups in the full filename
+        m = list(re.finditer(r'\d+', full_name))
         if m:
-            last_match = m[-1]
-            width = len(last_match.group())
-            ext = Path(data_pattern).suffix
-            prefix = stem_part[:last_match.start()]
-            suffix = stem_part[last_match.end():]
+            # Prefer the longest digit group (the zero-padded frame number)
+            # rather than the last group (which may be inside extensions
+            # like ".h5" or ".ge3").  If there are ties, prefer the last
+            # occurrence among the longest matches.
+            max_len = max(len(match.group()) for match in m)
+            longest = [match for match in m if len(match.group()) == max_len]
+            best = longest[-1]
+            width = len(best.group())
+            prefix = full_name[:best.start()]
+            suffix = full_name[best.end():]
             dir_part = str(Path(data_pattern).parent)
             if dir_part == '.':
-                data_pattern = f"{prefix}{{:0{width}d}}{suffix}{ext}"
+                data_pattern = f"{prefix}{{:0{width}d}}{suffix}"
             else:
-                data_pattern = f"{dir_part}/{prefix}{{:0{width}d}}{suffix}{ext}"
+                data_pattern = f"{dir_part}/{prefix}{{:0{width}d}}{suffix}"
             print(f"  Auto-detected pattern: {data_pattern}")
         else:
             print(f"ERROR: No numeric group found in {data_pattern}")
