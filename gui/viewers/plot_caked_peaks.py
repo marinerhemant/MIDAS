@@ -491,6 +491,24 @@ class CakedPeakViewer(QMainWindow):
                 ring_bar.addWidget(cb)
                 self.ring_cbs.append(cb)
             ring_bar.addStretch()
+
+            ring_bar.addWidget(self._vsep())
+            ring_bar.addWidget(QLabel('Font:'))
+            self.lat_font_spin = QSpinBox()
+            self.lat_font_spin.setRange(4, 24)
+            self.lat_font_spin.setValue(9)
+            self.lat_font_spin.valueChanged.connect(
+                lambda v: self._update_lattice_plot())
+            ring_bar.addWidget(self.lat_font_spin)
+
+            ring_bar.addWidget(QLabel('Marker:'))
+            self.lat_marker_spin = QSpinBox()
+            self.lat_marker_spin.setRange(2, 80)
+            self.lat_marker_spin.setValue(18)
+            self.lat_marker_spin.valueChanged.connect(
+                lambda v: self._update_lattice_plot())
+            ring_bar.addWidget(self.lat_marker_spin)
+
             lat_layout.addLayout(ring_bar)
 
             self.fig_lat = Figure(figsize=(12, 2.5))
@@ -734,6 +752,9 @@ class CakedPeakViewer(QMainWindow):
         n_rings = len(self.hkl_rings)
         cmap = __import__('matplotlib').colormaps['tab10' if n_rings <= 10 else 'tab20']
 
+        msz = self.lat_marker_spin.value() if hasattr(self, 'lat_marker_spin') else 18
+        fsz = self.lat_font_spin.value() if hasattr(self, 'lat_font_spin') else 9
+
         for ri, ring in enumerate(self.hkl_rings):
             if ri < len(self.ring_cbs) and not self.ring_cbs[ri].isChecked():
                 continue
@@ -746,12 +767,12 @@ class CakedPeakViewer(QMainWindow):
             hkl = f'({ring["h"]},{ring["k"]},{ring["l"]})'
             label = f'R{ring["ring_nr"]} {hkl}'
             # Left plot: a vs η
-            self.ax_lat.scatter(etas, a_vals, s=18, c=[color],
+            self.ax_lat.scatter(etas, a_vals, s=msz, c=[color],
                                 edgecolors='none', linewidths=0.3,
                                 zorder=3, label=label)
             # Right plot: Δa/a₀ vs η
             strain = (a_vals - a_ref) / a_ref
-            self.ax_strain.scatter(etas, strain, s=18, c=[color],
+            self.ax_strain.scatter(etas, strain, s=msz, c=[color],
                                    edgecolors='none', linewidths=0.3,
                                    zorder=3, label=label)
 
@@ -759,12 +780,14 @@ class CakedPeakViewer(QMainWindow):
         self.ax_lat.axhline(a_ref, color='#F44336', linestyle='--',
                              linewidth=1.2, alpha=0.8,
                              label=f'a₀ = {a_ref:.5f} Å')
-        self.ax_lat.set_xlabel('η (°)')
-        self.ax_lat.set_ylabel('a (Å)')
-        self.ax_lat.set_title('Lattice parameter vs η')
-        self.ax_lat.legend(fontsize=7, loc='upper right', ncol=min(n_rings + 1, 6),
+        self.ax_lat.set_xlabel('η (°)', fontsize=fsz)
+        self.ax_lat.set_ylabel('a (Å)', fontsize=fsz)
+        self.ax_lat.set_title('Lattice parameter vs η', fontsize=fsz + 1)
+        self.ax_lat.legend(fontsize=max(fsz - 2, 5), loc='upper right',
+                            ncol=min(n_rings + 1, 6),
                             markerscale=1.5, handletextpad=0.3, columnspacing=0.8)
         self.ax_lat.grid(True, alpha=0.2)
+        self.ax_lat.tick_params(labelsize=fsz)
         self.ax_lat.yaxis.set_major_formatter(ScalarFormatter(useOffset=False))
         self.ax_lat.ticklabel_format(axis='y', useOffset=False, style='plain')
         if lat_xlim is not None:
@@ -774,10 +797,11 @@ class CakedPeakViewer(QMainWindow):
         # Right: zero reference line
         self.ax_strain.axhline(0, color='#F44336', linestyle='--',
                                 linewidth=1.2, alpha=0.8)
-        self.ax_strain.set_xlabel('η (°)')
-        self.ax_strain.set_ylabel('Δa / a₀')
-        self.ax_strain.set_title('Relative lattice strain vs η')
+        self.ax_strain.set_xlabel('η (°)', fontsize=fsz)
+        self.ax_strain.set_ylabel('Δa / a₀', fontsize=fsz)
+        self.ax_strain.set_title('Relative lattice strain vs η', fontsize=fsz + 1)
         self.ax_strain.grid(True, alpha=0.2)
+        self.ax_strain.tick_params(labelsize=fsz)
         self.ax_strain.yaxis.set_major_formatter(ScalarFormatter(useOffset=False))
         self.ax_strain.ticklabel_format(axis='y', useOffset=False, style='plain')
         if str_xlim is not None:
