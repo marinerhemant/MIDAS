@@ -617,6 +617,44 @@ python ~/opt/MIDAS/gui/viewers/plot_lineout_comparison.py \
 
 **Output:** Overlay plot of both lineouts with vertical ideal-ring markers.
 
+### 6.7. Caked Peak Fitting (`fit_caked_peaks.py`)
+
+Standalone Python peak fitter that processes `_caked.hdf.zarr.zip` output from `IntegratorZarrOMP`:
+
+```bash
+python ~/opt/MIDAS/utils/fit_caked_peaks.py \
+    /path/to/scan.caked.hdf.zarr.zip \
+    -paramFN refined_params.txt
+```
+
+Produces `_caked_peaks.h5` containing per-η-bin fitted peaks using GSAS-II-convention area-normalized pseudo-Voigt profiles with 2-parameter Chebyshev background. Key features:
+
+- Automatic peak detection using second-derivative (Savitzky-Golay) analysis
+- SNIP background subtraction for clean peak isolation
+- Adaptive rejection filters for FWHM outliers
+- Chi-squared rejection normalized by peak area (intensity-independent)
+- HDF5 output compatible with `plot_caked_peaks.py`
+
+### 6.8. Caked Peak Viewer (`plot_caked_peaks.py`)
+
+Interactive Qt viewer for the `_caked_peaks.h5` output:
+
+```bash
+python ~/opt/MIDAS/gui/viewers/plot_caked_peaks.py /path/to/results/
+
+# With lattice parameter analysis:
+python ~/opt/MIDAS/gui/viewers/plot_caked_peaks.py /path/to/results/ \
+    -paramFN refined_params.txt
+```
+
+Four-panel display:
+1. **Caked heatmap** — 2θ × η with colormap and crosshair
+2. **1D profile** — intensity vs 2θ at selected η bin with fitted peaks overlaid
+3. **Peak data table** — center, area, FWHM, sig, gam, η_mix, d, χ², and (with `--paramFN`) Ring, a(Å), Δa/a₀
+4. **Lattice plots** (with `--paramFN`) — lattice parameter *a* and relative strain Δa/a₀ vs η, with per-ring coloring and checkbox selection
+
+See [GUIs_and_Visualization.md](GUIs_and_Visualization.md) §1b for full feature list.
+
 ---
 
 ## 7. See Also

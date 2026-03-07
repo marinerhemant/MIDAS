@@ -1,6 +1,6 @@
 # GUIs and Visualization — MIDAS
 
-**Version:** 9.1  
+**Version:** 9.2  
 **Contact:** hsharma@anl.gov
 
 ---
@@ -60,7 +60,10 @@ python ~/opt/MIDAS/gui/ff_asym_qt.py &
 - **Dark subtraction**: load and apply dark field images
 - **HDF5 support**: browse H5 datasets with customizable data path
 - **Frame navigation**: spinner + Ctrl+mouse-wheel frame stepping
-- **Max/Sum over frames**: aggregate multiple frames for improved signal
+- **Max/Sum over frames**: aggregate multiple frames for improved signal (mutually exclusive toggles)
+- **ZIP auto-initialization**: loading a MIDAS `.zip` automatically reads Lsd, BC, PixelSize, Wavelength, SpaceGroup, LatticeConstant, and ImTransOpt (HFlip/VFlip/Transpose)
+- **Auto ring computation**: when a ZIP is loaded, clicking RingsMat skips the parameter dialog and computes rings directly from ZIP metadata
+- **Nearest ring in status bar**: when rings are displayed, status bar shows the nearest ring's number and hkl at the cursor position
 - **Colormap** and **theme** (dark/light) selection
 - **Font size** control (8–24pt)
 - **Export PNG** of current view
@@ -79,6 +82,57 @@ python ~/opt/MIDAS/gui/ff_asym_qt.py &
 | Intensity scaling | Manual min/max | P2–P98 auto-scaling + manual override |
 | Ring update | Requires reload | Live on BC/Lsd text field change |
 | Calibrate dialog | Available | Removed (use `AutoCalibrateZarr.py`) |
+
+### Keyboard Shortcuts
+
+| Key | Action |
+|---|---|
+| ← / → | Previous / Next frame |
+| L | Toggle log scale |
+| R | Toggle ring overlay |
+| Q | Quit |
+| Ctrl+S | Save session |
+| Ctrl+Shift+S | Load session |
+
+---
+
+## 1b. Caked Peak Viewer (`gui/viewers/plot_caked_peaks.py`)
+
+Interactive viewer for `_caked_peaks.h5` output from `IntegratorZarrOMP` or `fit_caked_peaks.py`.
+
+**Launch:**
+```bash
+python ~/opt/MIDAS/gui/viewers/plot_caked_peaks.py /path/to/results/
+
+# With lattice parameter analysis:
+python ~/opt/MIDAS/gui/viewers/plot_caked_peaks.py /path/to/results/ \
+    -paramFN refined_params.txt
+```
+
+### Features
+
+- **Caked heatmap**: 2θ × η with colormap, interactive crosshair
+- **1D profile**: intensity vs 2θ at selected η bin, with fitted peak overlays
+- **Peak data table**: peak center, area, FWHM, sig, gam, η_mix, d-spacing, χ²
+- **Lattice parameter mode** (with `--paramFN`): adds Ring, a(Å), Δa/a₀ columns to table, and two bottom plots:
+  - Lattice parameter *a* vs η
+  - Relative lattice strain Δa/a₀ vs η
+- **Ring selection checkboxes**: toggle visibility of individual rings (only detected rings shown)
+- **Font size** and **marker size** spinners for the lattice plots
+- **UI font** spinner for all Qt widgets (labels, table, etc.)
+- **Toggle overlays**: Raw, BG, Corrected, Fit, Peak markers, Log scale
+
+### Caked Peak Fitting (`utils/fit_caked_peaks.py`)
+
+Standalone Python peak fitter for `_caked.hdf.zarr.zip` output:
+
+```bash
+python ~/opt/MIDAS/utils/fit_caked_peaks.py \
+    /path/to/scan.caked.hdf.zarr.zip \
+    -paramFN refined_params.txt
+```
+
+Produces `_caked_peaks.h5` with per-η-bin fitted peaks using GSAS-II-convention pseudo-Voigt profiles. The chi-squared rejection filter is normalized by peak area to prevent intensity-dependent rejection.
 
 ---
 

@@ -17,6 +17,7 @@ Core data processing, calibration, and analysis scripts for the MIDAS pipeline.
 | `AutoCalibrateZarr.py` | **FF-HEDM auto-calibration.** Determines detector geometry from powder calibrant rings. Auto-detects calibrant (CeO2/LaB6) from filename. |
 | `phase_id.py` | **Multi-phase identification.** Ring-matching, peak fitting, lattice parameter refinement. See [FF_Phase_Identification](../manuals/FF_Phase_Identification.md). |
 | `extract_lineouts.py` | **Batch lineout extraction.** Direct-mode `IntegratorZarrOMP` with SNIP background, SavGol peak detection, and multiplet pseudo-Voigt fitting. |
+| `fit_caked_peaks.py` | **Caked peak fitting.** Fits GSAS-II pseudo-Voigt profiles per η-bin on `_caked.hdf.zarr.zip` output. Produces `_caked_peaks.h5` for `plot_caked_peaks.py`. |
 | `gsas_ii_refine.py` | Import caked 1D profiles into GSAS-II for powder diffraction refinement. |
 | `map_header.py` | `Map.bin` header reader — detects stale mapping files via parameter hashes. |
 | `midas_config.py` | MIDAS configuration and environment variable management. |

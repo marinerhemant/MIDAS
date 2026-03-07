@@ -14,6 +14,7 @@ gui/
 │   ├── plot_calibrant_results.py
 │   ├── plot_phase_id_results.py
 │   ├── plot_lineout_comparison.py
+│   ├── plot_caked_peaks.py
 │   ├── live_viewer.py
 │   ├── interactiveFFplotting.py
 │   ├── pfIntensityViewer.py
@@ -56,7 +57,7 @@ python ~/opt/MIDAS/gui/dig_tw.py -mic Grains.csv
 cd <data_directory> && python ~/opt/MIDAS/gui/ff_asym_qt.py &
 ```
 
-Fast PyQtGraph-based FF-HEDM viewer with navigation toolbar, P2–P98 auto-scaling, live ring overlays, dark subtraction, HDF5 browsing, log scale, and export PNG. See [GUIs_and_Visualization](../manuals/GUIs_and_Visualization.md) §1.
+Fast PyQtGraph-based FF-HEDM viewer with navigation toolbar, P2–P98 auto-scaling, live ring overlays, dark subtraction, HDF5 browsing, log scale, MaxOverFrames/SumOverFrames, and export PNG. Loading a MIDAS ZIP auto-initializes all parameters (Lsd, BC, Wavelength, SpaceGroup, LatticeConstant, ImTransOpt). When rings are displayed, status bar shows nearest ring info. See [GUIs_and_Visualization](../manuals/GUIs_and_Visualization.md) §1.
 
 #### NF-HEDM Viewer (`nf_qt.py`)
 
@@ -93,6 +94,7 @@ Standalone plotting and diagnostic viewers, moved from `utils/` as of 2026-03.
 | `plot_lineout_results.py` | **Lineout viewer.** PyQt6 viewer for `extract_lineouts.py` output. Shows corrected lineout, SNIP background, fitted profile, difference, and peak table with interactive row selection → peak highlighting. |
 | `plot_lineout_comparison.py` | Overlay calibrant and integrator lineouts with ideal ring markers. |
 | `plot_integrator_peaks.py` | Post-hoc peak analysis from `.caked.hdf.zarr.zip`. Ring-assigned scatter plots. |
+| `plot_caked_peaks.py` | **Caked peak viewer.** PyQt6 viewer for `_caked_peaks.h5` with heatmap, 1D profile, peak table, lattice parameter & strain plots, ring filtering. See [GUIs_and_Visualization](../manuals/GUIs_and_Visualization.md) §1b. |
 | `peak_sigma_statistics.py` | Peak width (σ) statistics from FF-HEDM fitting results. |
 
 ### Calibration & Phase ID Viewers
