@@ -625,9 +625,7 @@ class CakedPeakViewer(QMainWindow):
         self.fig_heat.tight_layout()
         self.canvas_heat.draw_idle()
 
-        # ── Update 1D profile ── (preserve zoom if set)
-        prof_xlim = self.ax_prof.get_xlim() if self.ax_prof.has_data() else None
-        prof_ylim = self.ax_prof.get_ylim() if self.ax_prof.has_data() else None
+        # ── Update 1D profile ──
         self.ax_prof.clear()
 
         if self.show_raw:
@@ -668,9 +666,6 @@ class CakedPeakViewer(QMainWindow):
             f'{len(self.current_peaks)} peaks')
         self.ax_prof.legend(fontsize=8, loc='upper right')
         self.ax_prof.grid(True, alpha=0.2)
-        if prof_xlim is not None:
-            self.ax_prof.set_xlim(prof_xlim)
-            self.ax_prof.set_ylim(prof_ylim)
         self.fig_prof.tight_layout()
         self.canvas_prof.draw_idle()
 
