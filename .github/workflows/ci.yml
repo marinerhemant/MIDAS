@@ -86,7 +86,8 @@ jobs:
             h5py \
             pandas \
             scipy \
-            scikit-image
+            scikit-image \
+            numba
 
       # ── Benchmark tests (2 vCPUs on standard GitHub runners) ─────────
       # NOTE: test_nf_hedm.py is skipped — simulateNF needs ~24 GB RAM,
