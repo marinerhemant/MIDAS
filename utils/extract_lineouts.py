@@ -430,11 +430,14 @@ def fit_peaks_gsas(tth, corrected, peak_indices, fit_window_deg=0.15,
         results = [r for r in results if r['FWHM_deg'] <= max_fwhm]
 
     # Adaptive chi_sq rejection: reject badly-fitted peaks (e.g. beamstop
-    # edge artifacts, noise).  Threshold = 10× median, floor at 10.0.
+    # edge artifacts, noise).  We normalize chi_sq by peak area so that
+    # intense peaks are not penalized for having large absolute residuals.
+    # Threshold = 10× median of normalized values, floor at 10.0.
     if len(results) > 2:
-        chi_vals = [r['chi_sq'] for r in results]
-        max_chi = max(10.0 * np.median(chi_vals), 10.0)
-        results = [r for r in results if r['chi_sq'] <= max_chi]
+        norm_chi = [r['chi_sq'] / max(r['area'], 1e-6) for r in results]
+        max_norm_chi = max(10.0 * np.median(norm_chi), 10.0)
+        results = [r for r in results
+                   if r['chi_sq'] / max(r['area'], 1e-6) <= max_norm_chi]
 
     # Deduplicate: merge peaks within 0.02° (keep highest area)
     if len(results) > 1:
