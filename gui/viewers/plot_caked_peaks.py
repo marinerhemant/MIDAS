@@ -21,6 +21,7 @@ Usage:
 
 import argparse
 import os
+import subprocess
 import sys
 from pathlib import Path
 
@@ -171,10 +172,138 @@ def reconstruct_profile(tth, peaks):
     return y
 
 
+# ── Lattice parameter helpers ───────────────────────────────────────────
+
+def read_param_file(param_file):
+    """Read Wavelength and LatticeConstant from a MIDAS parameter file."""
+    info = {'wavelength': None, 'lattice': None, 'sg': None,
+            'lsd': None, 'maxringrad': None}
+    with open(param_file) as f:
+        for line in f:
+            parts = line.strip().split()
+            if not parts:
+                continue
+            key = parts[0]
+            if key == 'Wavelength' and len(parts) >= 2:
+                info['wavelength'] = float(parts[1])
+            elif key in ('LatticeConstant', 'LatticeParameter') and len(parts) >= 7:
+                info['lattice'] = [float(x) for x in parts[1:7]]
+            elif key == 'SpaceGroup' and len(parts) >= 2:
+                info['sg'] = int(parts[1])
+            elif key in ('Lsd', 'LsdMean') and len(parts) >= 2:
+                info['lsd'] = float(parts[1])
+            elif key in ('MaxRingRad', 'RhoD') and len(parts) >= 2:
+                info['maxringrad'] = float(parts[1])
+    return info
+
+
+def run_get_hkl_list(param_file):
+    """Run GetHKLList and return list of unique rings.
+
+    Each ring is a dict: {ring_nr, h, k, l, d_spacing, two_theta}.
+    Only returns one representative (h,k,l) per ring number.
+    """
+    gethkl = MIDAS_HOME / 'FF_HEDM' / 'bin' / 'GetHKLList'
+    if not gethkl.exists():
+        print(f'Warning: GetHKLList not found at {gethkl}')
+        return []
+    try:
+        result = subprocess.run(
+            [str(gethkl), str(param_file), '--stdout'],
+            capture_output=True, text=True, timeout=10)
+        if result.returncode != 0:
+            print(f'GetHKLList failed: {result.stderr}')
+            return []
+    except Exception as e:
+        print(f'GetHKLList error: {e}')
+        return []
+
+    rings = {}  # ring_nr → first entry
+    for line in result.stdout.splitlines():
+        if line.startswith('h ') or not line.strip():
+            continue
+        parts = line.split()
+        if len(parts) < 11:
+            continue
+        try:
+            ring_nr = int(float(parts[4]))
+            if ring_nr not in rings:
+                rings[ring_nr] = {
+                    'ring_nr': ring_nr,
+                    'h': int(float(parts[0])),
+                    'k': int(float(parts[1])),
+                    'l': int(float(parts[2])),
+                    'd_spacing': float(parts[3]),
+                    'two_theta': float(parts[9]),
+                }
+        except (ValueError, IndexError):
+            continue
+    return [rings[k] for k in sorted(rings.keys())]
+
+
+def match_peak_to_ring(peak_2theta, rings, tol_deg=0.3):
+    """Find the ring whose 2θ is closest to the peak's 2θ."""
+    best_ring = None
+    best_diff = tol_deg
+    for r in rings:
+        diff = abs(peak_2theta - r['two_theta'])
+        if diff < best_diff:
+            best_diff = diff
+            best_ring = r
+    return best_ring
+
+
+def compute_lattice_a_for_ring(peaks_h5_path, frame_key, ring, eta_axis,
+                               a_ref, d_ref):
+    """Compute lattice parameter 'a' at each η bin for a specific ring.
+
+    Returns (etas, a_values) arrays.
+    """
+    if peaks_h5_path is None or not peaks_h5_path.exists():
+        return np.array([]), np.array([])
+
+    with h5py.File(str(peaks_h5_path), 'r') as hf:
+        if 'peaks' not in hf:
+            return np.array([]), np.array([])
+        pk = hf['peaks']
+        fk_arr = pk['frame_key'][:]
+        eta_arr = pk['eta_idx'][:]
+        centers = pk['center_2theta'][:]
+        d_vals = pk['d_spacing_A'][:]
+
+        etas_out = []
+        a_out = []
+        for ei in range(len(eta_axis)):
+            # Find peaks for this frame + eta
+            mask = np.zeros(len(fk_arr), dtype=bool)
+            for i in range(len(fk_arr)):
+                fk_val = fk_arr[i]
+                if isinstance(fk_val, bytes):
+                    fk_val = fk_val.decode()
+                if fk_val == frame_key and eta_arr[i] == ei:
+                    mask[i] = True
+            if not np.any(mask):
+                continue
+            # Find the peak closest to this ring's 2θ
+            indices = np.where(mask)[0]
+            best_idx = None
+            best_diff = 0.3  # tolerance
+            for idx in indices:
+                diff = abs(centers[idx] - ring['two_theta'])
+                if diff < best_diff:
+                    best_diff = diff
+                    best_idx = idx
+            if best_idx is not None and d_vals[best_idx] > 0:
+                a_meas = d_vals[best_idx] * (a_ref / d_ref)
+                etas_out.append(eta_axis[ei])
+                a_out.append(a_meas)
+        return np.array(etas_out), np.array(a_out)
+
+
 # ── Qt Main Window ──────────────────────────────────────────────────────
 
 class CakedPeakViewer(QMainWindow):
-    def __init__(self, work_dir):
+    def __init__(self, work_dir, param_file=None):
         super().__init__()
         self.work_dir = Path(work_dir)
         self.datasets = discover_datasets(self.work_dir)
@@ -203,6 +332,18 @@ class CakedPeakViewer(QMainWindow):
         self.show_fit_profile = True
         self.show_peak_markers = True
         self.log_scale = False
+
+        # Lattice parameter mode (optional)
+        self.param_file = Path(param_file) if param_file else None
+        self.param_info = None
+        self.hkl_rings = []
+        if self.param_file and self.param_file.exists():
+            self.param_info = read_param_file(self.param_file)
+            self.hkl_rings = run_get_hkl_list(self.param_file)
+            if self.hkl_rings:
+                print(f'  Loaded {len(self.hkl_rings)} rings from GetHKLList')
+            else:
+                print('  Warning: no rings from GetHKLList')
 
         if not self.datasets:
             self._show_empty()
@@ -330,10 +471,44 @@ class CakedPeakViewer(QMainWindow):
         self.table.setMinimumHeight(120)
         splitter_vert.addWidget(self.table)
 
-        splitter_vert.setSizes([500, 200])
+        # ── Optional: lattice parameter plot ──
+        if self.hkl_rings:
+            lat_widget = QWidget()
+            lat_layout = QVBoxLayout(lat_widget)
+            lat_layout.setContentsMargins(0, 0, 0, 0)
+
+            # Ring selector bar
+            ring_bar = QHBoxLayout()
+            ring_bar.addWidget(QLabel('Ring:'))
+            self.ring_combo = QComboBox()
+            for r in self.hkl_rings:
+                self.ring_combo.addItem(
+                    f"Ring {r['ring_nr']}: ({r['h']},{r['k']},{r['l']})  "
+                    f"2θ={r['two_theta']:.3f}°  d={r['d_spacing']:.4f}Å")
+            self.ring_combo.currentIndexChanged.connect(self._on_ring_changed)
+            ring_bar.addWidget(self.ring_combo)
+            ring_bar.addStretch()
+            lat_layout.addLayout(ring_bar)
+
+            self.fig_lat = Figure(figsize=(10, 2.5))
+            self.ax_lat = self.fig_lat.add_subplot(111)
+            self.canvas_lat = FigureCanvas(self.fig_lat)
+            self.canvas_lat.setMinimumSize(QSize(400, 150))
+            self.toolbar_lat = NavigationToolbar(self.canvas_lat, lat_widget)
+            lat_layout.addWidget(self.toolbar_lat)
+            lat_layout.addWidget(self.canvas_lat)
+            splitter_vert.addWidget(lat_widget)
+            splitter_vert.setSizes([400, 150, 200])
+        else:
+            self.fig_lat = None
+            self.ax_lat = None
+            self.canvas_lat = None
+            self.ring_combo = None
+            splitter_vert.setSizes([500, 200])
+
         root_layout.addWidget(splitter_vert)
 
-        self.resize(1200, 800)
+        self.resize(1200, 900 if self.hkl_rings else 800)
 
     @staticmethod
     def _vsep():
@@ -382,6 +557,9 @@ class CakedPeakViewer(QMainWindow):
     def _on_fit(self, checked): self.show_fit_profile = checked; self._update()
     def _on_markers(self, checked): self.show_peak_markers = checked; self._update()
     def _on_log(self, checked): self.log_scale = checked; self._update()
+
+    def _on_ring_changed(self, idx):
+        self._update_lattice_plot()
 
     def _on_row_selected(self):
         """Highlight the selected peak on the profile plot."""
@@ -498,6 +676,10 @@ class CakedPeakViewer(QMainWindow):
         # ── Update peak table ──
         self._populate_table()
 
+        # ── Update lattice parameter plot ──
+        if self.ax_lat is not None:
+            self._update_lattice_plot()
+
     def _populate_table(self):
         headers = ['#', '2θ (°)', 'Area', 'FWHM (°)', 'sig (cd²)',
                     'gam (cd)', 'η_mix', 'd (Å)', 'χ²']
@@ -529,6 +711,57 @@ class CakedPeakViewer(QMainWindow):
             QHeaderView.ResizeMode.Stretch if _QT6
             else QHeaderView.Stretch)
 
+    def _update_lattice_plot(self):
+        """Compute and plot lattice parameter vs η for the selected ring."""
+        if self.ax_lat is None or self.zarr_data is None:
+            return
+        if not self.hkl_rings or self.ring_combo is None:
+            return
+
+        ring_idx = self.ring_combo.currentIndex()
+        if ring_idx < 0 or ring_idx >= len(self.hkl_rings):
+            return
+        ring = self.hkl_rings[ring_idx]
+
+        frame_idx = self.frame_combo.currentIndex()
+        if frame_idx < 0:
+            return
+        frame_key = self.zarr_data['frame_keys'][frame_idx]
+        eta_axis = self.zarr_data['eta_axis']
+        a_ref = self.param_info['lattice'][0]  # reference 'a'
+        d_ref = ring['d_spacing']
+
+        etas, a_vals = compute_lattice_a_for_ring(
+            self.peaks_h5_path, frame_key, ring, eta_axis, a_ref, d_ref)
+
+        # Preserve zoom
+        lat_xlim = self.ax_lat.get_xlim() if self.ax_lat.has_data() else None
+        lat_ylim = self.ax_lat.get_ylim() if self.ax_lat.has_data() else None
+        self.ax_lat.clear()
+
+        if len(etas) > 0:
+            self.ax_lat.scatter(etas, a_vals, s=18, c='#2196F3',
+                                edgecolors='#0D47A1', linewidths=0.4,
+                                zorder=3, label=f'Measured a')
+        # Reference line
+        self.ax_lat.axhline(a_ref, color='#F44336', linestyle='--',
+                             linewidth=1.2, alpha=0.8,
+                             label=f'Reference a = {a_ref:.5f} Å')
+
+        hkl = f'({ring["h"]},{ring["k"]},{ring["l"]})'
+        self.ax_lat.set_xlabel('η (°)')
+        self.ax_lat.set_ylabel('a (Å)')
+        self.ax_lat.set_title(
+            f'Lattice parameter — Ring {ring["ring_nr"]} {hkl}  '
+            f'2θ_ref = {ring["two_theta"]:.3f}°')
+        self.ax_lat.legend(fontsize=8, loc='upper right')
+        self.ax_lat.grid(True, alpha=0.2)
+        if lat_xlim is not None:
+            self.ax_lat.set_xlim(lat_xlim)
+            self.ax_lat.set_ylim(lat_ylim)
+        self.fig_lat.tight_layout()
+        self.canvas_lat.draw_idle()
+
     def show(self):
         super().show()
 
@@ -540,10 +773,13 @@ def main():
         description='Interactive viewer for caked peak-fit results')
     parser.add_argument('path', help='Directory with zarr + peaks files, '
                                       'or a single zarr file')
+    parser.add_argument('-paramFN', '--paramFN', default=None,
+                        help='MIDAS parameter file — enables lattice '
+                             'parameter vs η scatter plot')
     args = parser.parse_args()
 
     app = QApplication(sys.argv)
-    viewer = CakedPeakViewer(args.path)
+    viewer = CakedPeakViewer(args.path, param_file=args.paramFN)
     viewer.show()
     sys.exit(app.exec() if _QT6 else app.exec_())
 
