@@ -28,10 +28,11 @@ gui/
 ├── ff_asym_qt.py            # FF-HEDM PyQtGraph viewer (recommended)
 ├── nf_qt.py                 # NF-HEDM PyQtGraph viewer (recommended)
 ├── gui_common.py            # Shared PyQtGraph components
-├── ff_asym.py               # FF-HEDM Tkinter viewer (legacy)
-├── nf.py                    # NF-HEDM Tkinter viewer (legacy)
 ├── dt.py                    # Diffraction tomography GUI
 ├── imageManipulation.py     # Image viewer and processing tools
+├── archive/                 # Archived legacy viewers
+│   ├── ff_asym.py           # FF-HEDM Tkinter viewer (legacy)
+│   └── nf.py                # NF-HEDM Tkinter viewer (legacy)
 └── GEBad/                   # GE detector bad-pixel masks
 ```
 
@@ -65,14 +66,16 @@ Fast PyQtGraph-based FF-HEDM viewer with navigation toolbar, P2–P98 auto-scali
 cd <data_directory> && python ~/opt/MIDAS/gui/nf_qt.py &
 ```
 
-NF-HEDM viewer with all FF features plus microstructure overlay (`.mic`/`.map`), spot simulation, BoxH/BoxV ROI tools, and beam center calibration. See [NF_GUI manual](../manuals/NF_GUI.md).
+NF-HEDM viewer with all FF features plus microstructure overlay (`.mic`/`.map`), spot simulation, BoxH/BoxV ROI tools, beam center calibration, **SelectSpots** interactive calibration, **ComputeDistances** ray triangulation, **SelectPoint** (click mic → auto-populate grain), **SumOverFrames**, and Q-to-quit shortcut. See [NF_GUI manual](../manuals/NF_GUI.md).
 
-### Legacy Tkinter Viewers
+### Legacy Tkinter Viewers (Archived)
+
+Legacy viewers have been moved to `gui/archive/` and are preserved for reference only:
 
 | Script | Description |
 |--------|-------------|
-| `ff_asym.py` | Tkinter + Matplotlib FF viewer. See [FF_Visualization](../manuals/FF_Visualization.md). |
-| `nf.py` | Tkinter + Matplotlib NF viewer with calibration workflow. |
+| `archive/ff_asym.py` | Tkinter + Matplotlib FF viewer. |
+| `archive/nf.py` | Tkinter + Matplotlib NF viewer with calibration workflow. |
 
 ### Other Tools
 

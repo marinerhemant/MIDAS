@@ -562,9 +562,19 @@ class FFViewer(QtWidgets.QMainWindow):
 
         lay.addWidget(QtWidgets.QLabel("Mask"), 3, 0)
         self.mask_edit = QtWidgets.QLineEdit("")
-        lay.addWidget(self.mask_edit, 3, 1, 1, 2)
+        lay.addWidget(self.mask_edit, 3, 1, 1, 1)
+        btn_mask = QtWidgets.QPushButton("Browse")
+        btn_mask.clicked.connect(self._on_browse_mask)
+        lay.addWidget(btn_mask, 3, 2)
         self.mask_check = QtWidgets.QCheckBox("Apply")
         lay.addWidget(self.mask_check, 3, 3)
+
+        lay.addWidget(QtWidgets.QLabel("H5 Dark"), 4, 0)
+        self.h5dark_edit = QtWidgets.QLineEdit(self.hdf5_dark_path)
+        lay.addWidget(self.h5dark_edit, 4, 1, 1, 2)
+        btn_h5d = QtWidgets.QPushButton("Browse")
+        btn_h5d.clicked.connect(lambda: self._browse_h5(True))
+        lay.addWidget(btn_h5d, 4, 3)
 
         return grp
 
@@ -1066,9 +1076,17 @@ class FFViewer(QtWidgets.QMainWindow):
         if ok:
             if is_dark:
                 self.hdf5_dark_path = item
+                self.h5dark_edit.setText(item)
             else:
                 self.hdf5_data_path = item
                 self.h5data_edit.setText(item)
+
+    def _on_browse_mask(self):
+        fn, _ = QtWidgets.QFileDialog.getOpenFileName(
+            self, "Select Mask File", os.getcwd(), "All Files (*);;Binary (*.bin)")
+        if fn:
+            self.mask_edit.setText(fn)
+            self.mask_check.setChecked(True)
 
     def _load_zarr_zip(self, zip_path):
         if zarr is None:
@@ -1153,6 +1171,7 @@ class FFViewer(QtWidgets.QMainWindow):
             self.lsd_local = float(self.lsd_edit.text())
             self.bc_local = [float(self.bcy_edit.text()), float(self.bcz_edit.text())]
             self.hdf5_data_path = self.h5data_edit.text()
+            self.hdf5_dark_path = self.h5dark_edit.text()
         except ValueError:
             pass
 

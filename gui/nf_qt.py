@@ -178,11 +178,17 @@ class NFViewer(QtWidgets.QMainWindow):
         self.use_log = False
         self.use_median = False
         self.max_over_frames = False
+        self.sum_over_frames = False
 
         # Beam centers
         self.bcs = np.zeros((self.n_distances, 2))
         self.spots = np.zeros((self.n_distances, 3))
         self.dist_diff = 0.0
+
+        # SelectSpots state
+        self._selecting_spots = False
+        self._click_ix = 0.0
+        self._click_iy = 0.0
 
         # Image data
         self.imarr2 = None
@@ -422,6 +428,9 @@ class NFViewer(QtWidgets.QMainWindow):
         self.maxframes_check = QtWidgets.QCheckBox("MaxOverFr")
         lay.addWidget(self.maxframes_check, 0, 4)
 
+        self.sumframes_check = QtWidgets.QCheckBox("SumOverFr")
+        lay.addWidget(self.sumframes_check, 0, 5)
+
         lay.addWidget(QtWidgets.QLabel("Lsd(μm)"), 1, 0)
         self.lsd_edit = QtWidgets.QLineEdit(str(self.lsd))
         self.lsd_edit.setMinimumWidth(90)
@@ -466,6 +475,10 @@ class NFViewer(QtWidgets.QMainWindow):
         btn_boxv = QtWidgets.QPushButton("BoxV")
         btn_boxv.clicked.connect(lambda: self._add_box_roi('v'))
         lay.addWidget(btn_boxv, 1, 1)
+
+        btn_select = QtWidgets.QPushButton("SelectSpots")
+        btn_select.clicked.connect(self._on_select_spots)
+        lay.addWidget(btn_select, 1, 2)
         return grp
 
     def _build_mic_panel(self):
@@ -514,6 +527,10 @@ class NFViewer(QtWidgets.QMainWindow):
         btn_spots = QtWidgets.QPushButton("MakeSpots")
         btn_spots.clicked.connect(self._on_make_spots)
         lay.addWidget(btn_spots, row + 1, 1)
+
+        btn_selectpt = QtWidgets.QPushButton("SelectPoint")
+        btn_selectpt.clicked.connect(self._on_select_point)
+        lay.addWidget(btn_selectpt, row + 1, 2)
         return grp
 
     # ── Signals ────────────────────────────────────────────────────
@@ -523,7 +540,8 @@ class NFViewer(QtWidgets.QMainWindow):
         self.dist_spin.valueChanged.connect(self._load_and_display)
         self.log_check.toggled.connect(self._on_log_toggled)
         self.median_check.toggled.connect(self._load_and_display)
-        self.maxframes_check.toggled.connect(self._load_and_display)
+        self.maxframes_check.toggled.connect(self._on_max_toggled)
+        self.sumframes_check.toggled.connect(self._on_sum_toggled)
         self.cmap_combo.currentTextChanged.connect(
             lambda n: self.image_view.set_colormap(n))
         self.theme_combo.currentTextChanged.connect(
@@ -553,6 +571,7 @@ class NFViewer(QtWidgets.QMainWindow):
             'Keyboard Shortcuts:\n'
             '  ← / → — Previous / Next frame\n'
             '  L — Toggle log scale\n'
+            '  Q — Quit\n'
             '\n'
             'Histogram (right side of image):\n'
             '  Drag top/bottom bars — Adjust thresholds\n'
@@ -565,6 +584,7 @@ class NFViewer(QtWidgets.QMainWindow):
         add_shortcut(self, 'Right', lambda: self.frame_spin.setValue(self.frame_spin.value() + 1))
         add_shortcut(self, 'Left', lambda: self.frame_spin.setValue(self.frame_spin.value() - 1))
         add_shortcut(self, 'L', lambda: self.log_check.toggle())
+        add_shortcut(self, 'Q', self.close)
 
     # ── Session Save / Load ────────────────────────────────────────
 
@@ -642,6 +662,216 @@ class NFViewer(QtWidgets.QMainWindow):
         self.use_log = checked
         self.image_view.set_log_mode(checked)
 
+    def _on_max_toggled(self, checked):
+        if checked:
+            self.sumframes_check.blockSignals(True)
+            self.sumframes_check.setChecked(False)
+            self.sumframes_check.blockSignals(False)
+        self._load_and_display()
+
+    def _on_sum_toggled(self, checked):
+        if checked:
+            self.maxframes_check.blockSignals(True)
+            self.maxframes_check.setChecked(False)
+            self.maxframes_check.blockSignals(False)
+        self._load_and_display()
+
+    # ── SelectPoint (click mic → grain) ─────────────────────────────
+
+    def _on_select_point(self):
+        """Enable click-on-mic to auto-populate grain parameters."""
+        if self.mic_data is None:
+            self._on_load_mic()
+        if self.mic_data is None:
+            return
+        if self.bcs[0][0] == 0 and self.bcs[0][1] == 0:
+            self._on_beam_center()
+        if float(self.lsd_edit.text()) == 0:
+            val, ok = QtWidgets.QInputDialog.getDouble(self, "Lsd", "Enter Lsd (μm):", 5000, 0, 1e9, 1)
+            if ok:
+                self.lsd_edit.setText(str(val))
+        self.status_label.setText("Click on a grain in the mic map...")
+        # Connect click handler on the mic view
+        if self.mic_type == 1:
+            self.mic_view.scene().sigMouseClicked.connect(self._on_mic_clicked)
+        elif self.mic_type == 2:
+            self.mic_image_view.scene.sigMouseClicked.connect(self._on_mic_clicked)
+
+    def _on_mic_clicked(self, event):
+        """Handle click on mic map: find nearest grain, populate grain dialog."""
+        # Disconnect to prevent repeated triggers
+        try:
+            self.mic_view.scene().sigMouseClicked.disconnect(self._on_mic_clicked)
+        except Exception:
+            pass
+        try:
+            self.mic_image_view.scene.sigMouseClicked.disconnect(self._on_mic_clicked)
+        except Exception:
+            pass
+
+        if self.mic_data_cut is None or len(self.mic_data_cut) == 0:
+            return
+
+        # Get click position in data coords
+        if self.mic_type == 1:
+            pos = self.mic_view.plotItem.vb.mapSceneToView(event.scenePos())
+            click_x, click_y = pos.x(), pos.y()
+        else:
+            pos = self.mic_image_view.getView().mapSceneToView(event.scenePos())
+            click_x, click_y = pos.x(), pos.y()
+
+        # Find nearest grain
+        xs = self.mic_data_cut[:, 3]
+        ys = self.mic_data_cut[:, 4]
+        dists = (xs - click_x)**2 + (ys - click_y)**2
+        best_idx = np.argmin(dists)
+        row = self.mic_data_cut[best_idx]
+
+        # Auto-populate grain params
+        euler = row[7:10]
+        self.om = euler2orientmat(euler)
+        self.pos[0] = row[3]
+        self.pos[1] = row[4]
+        self.pos[2] = 0
+        self.status_label.setText(
+            f"Selected grain at ({row[3]:.1f}, {row[4]:.1f}), "
+            f"Euler=({euler[0]:.3f}, {euler[1]:.3f}, {euler[2]:.3f}), "
+            f"Conf={row[10]:.3f}")
+
+        # Open grain dialog pre-populated
+        dlg = GrainDialog(self)
+        if dlg.exec_() == QtWidgets.QDialog.Accepted:
+            self._make_spots()
+
+    # ── SelectSpots / ComputeDistances ──────────────────────────────
+
+    def _on_select_spots(self):
+        """Start interactive spot selection for calibration."""
+        self._sync_params()
+        if not np.any(self.bcs):
+            reply = QtWidgets.QMessageBox.question(
+                self, "Warning",
+                "All beam centers are 0. Enter beam centers first?",
+                QtWidgets.QMessageBox.Yes | QtWidgets.QMessageBox.No)
+            if reply == QtWidgets.QMessageBox.Yes:
+                self._on_beam_center()
+                return
+
+        msg = QtWidgets.QMessageBox(self)
+        msg.setWindowTitle("Spot Selection Guide")
+        msg.setText(
+            "1. Ensure correct beam centers and distance difference.\n"
+            "2. It is recommended to have median correction enabled.\n"
+            "3. Starting from the last distance, click on a diffraction spot.\n"
+            "4. Click 'Confirm Selection' in the status bar.\n"
+            "5. Repeat for each distance using the SAME spot.\n"
+            "6. Click 'Compute Distances' when finished.")
+        msg.addButton("Ready!", QtWidgets.QMessageBox.AcceptRole)
+        msg.exec_()
+
+        self._selecting_spots = True
+        self._spot_confirm_btn = QtWidgets.QPushButton("Confirm Selection")
+        self._spot_confirm_btn.clicked.connect(self._confirm_select_spot)
+        self.statusBar().addWidget(self._spot_confirm_btn)
+        self.status_label.setText("Click on a diffraction spot...")
+        self.image_view.scene.sigMouseClicked.connect(self._on_spot_clicked)
+
+    def _on_spot_clicked(self, event):
+        """Record clicked position for spot selection."""
+        if not self._selecting_spots:
+            return
+        pos = self.image_view.getView().mapSceneToView(event.scenePos())
+        self._click_ix = pos.x()
+        self._click_iy = pos.y()
+        self.status_label.setText(
+            f"Spot at ({self._click_ix:.1f}, {self._click_iy:.1f}) — click 'Confirm Selection'")
+
+    def _confirm_select_spot(self):
+        """Confirm the selected spot and move to next distance."""
+        self._sync_params()
+        dist = self.dist
+        xbc = self.bcs[dist][0]
+        ybc = self.bcs[dist][1]
+        self.spots[dist][0] = self._click_ix - xbc
+        self.spots[dist][1] = self._click_iy - ybc
+        self.spots[dist][2] = math.sqrt(self.spots[dist][0]**2 + self.spots[dist][1]**2)
+        print(f"Spot confirmed for distance {dist}: "
+              f"rel=({self.spots[dist][0]:.1f}, {self.spots[dist][1]:.1f}), "
+              f"R={self.spots[dist][2]:.1f}")
+
+        # Ask: next distance or finished?
+        dlg = QtWidgets.QDialog(self)
+        dlg.setWindowTitle("Select Distance")
+        layout = QtWidgets.QVBoxLayout(dlg)
+        layout.addWidget(QtWidgets.QLabel(f"Previous distance was: {dist}. Which distance now?"))
+        dist_edit = QtWidgets.QSpinBox()
+        dist_edit.setRange(0, 20)
+        dist_edit.setValue(max(0, dist - 1))
+        layout.addWidget(dist_edit)
+        btn_row = QtWidgets.QHBoxLayout()
+        btn_load = QtWidgets.QPushButton("Load")
+        btn_finish = QtWidgets.QPushButton("Finished")
+        btn_row.addWidget(btn_load)
+        btn_row.addWidget(btn_finish)
+        layout.addLayout(btn_row)
+
+        def on_load():
+            self.dist_spin.setValue(dist_edit.value())
+            dlg.accept()
+
+        def on_finish():
+            self._selecting_spots = False
+            try:
+                self.image_view.scene.sigMouseClicked.disconnect(self._on_spot_clicked)
+            except Exception:
+                pass
+            self.statusBar().removeWidget(self._spot_confirm_btn)
+            self._spot_confirm_btn.deleteLater()
+            self._spot_confirm_btn = None
+            # Show Compute Distances button
+            compute_btn = QtWidgets.QPushButton("Compute Distances")
+            compute_btn.clicked.connect(lambda: self._compute_distances(compute_btn))
+            self.statusBar().addWidget(compute_btn)
+            self.status_label.setText("Click 'Compute Distances' to calculate.")
+            dlg.accept()
+
+        btn_load.clicked.connect(on_load)
+        btn_finish.clicked.connect(on_finish)
+        dlg.exec_()
+
+    def _compute_distances(self, btn=None):
+        """Compute sample-to-detector distances via ray triangulation."""
+        self._sync_params()
+        n = self.n_distances
+        nsols = int(n * (n - 1) / 2)
+        xs = np.zeros(nsols)
+        ys = np.zeros(nsols)
+        idx = 0
+        for i in range(n):
+            for j in range(i + 1, n):
+                z1 = self.spots[i][1]
+                z2 = self.spots[j][1]
+                y1 = self.spots[i][0]
+                y2 = self.spots[j][0]
+                x = self.dist_diff * (j - i)
+                if z2 != z1:
+                    xs[idx] = x * z1 / (z2 - z1) - (self.dist_diff * i)
+                    ys[idx] = y1 + (y2 - y1) * z1 / (z1 - z2)
+                idx += 1
+
+        self.lsd = float(np.mean(xs[:idx])) if idx > 0 else 0
+        self.lsd_edit.setText(f"{self.lsd:.1f}")
+        result_text = (f"Calculated distances: {xs[:idx]}\n"
+                       f"Calculated Ys: {ys[:idx]}\n"
+                       f"Mean Lsd: {self.lsd:.1f} μm")
+        print(result_text)
+        QtWidgets.QMessageBox.information(self, "Distance Computation", result_text)
+
+        if btn is not None:
+            self.statusBar().removeWidget(btn)
+            btn.deleteLater()
+        self.status_label.setText(f"Lsd = {self.lsd:.1f} μm")
+
     def _movie_advance_frame(self):
         """Advance frame by 1 for movie mode; wrap at max."""
         cur = self.frame_spin.value()
@@ -700,6 +930,7 @@ class NFViewer(QtWidgets.QMainWindow):
             self.lsd = float(self.lsd_edit.text())
             self.use_median = self.median_check.isChecked()
             self.max_over_frames = self.maxframes_check.isChecked()
+            self.sum_over_frames = self.sumframes_check.isChecked()
             self.cut_confidence = float(self.cut_conf_edit.text())
             self.max_conf = float(self.max_conf_edit.text())
         except ValueError:
@@ -764,13 +995,17 @@ class NFViewer(QtWidgets.QMainWindow):
     def _load_and_display(self):
         self._sync_params()
 
-        if self.max_over_frames and not self._beampos_mode:
+        if (self.max_over_frames or self.sum_over_frames) and not self._beampos_mode:
+            if self.max_over_frames:
+                tag = 'MaximumIntensity'
+            else:
+                tag = 'SumIntensity'
             if self.use_median:
                 fn = os.path.join(self.folder, self.fnstem +
-                    '_MaximumIntensityMedianCorrected_Distance_' + str(self.dist) + '.bin')
+                    f'_{tag}MedianCorrected_Distance_' + str(self.dist) + '.bin')
             else:
                 fn = os.path.join(self.folder, self.fnstem +
-                    '_MaximumIntensity_Distance_' + str(self.dist) + '.bin')
+                    f'_{tag}_Distance_' + str(self.dist) + '.bin')
             if os.path.exists(fn):
                 with open(fn, 'rb') as f:
                     imarr = np.fromfile(f, dtype=np.uint16, count=self.ny * self.nz)

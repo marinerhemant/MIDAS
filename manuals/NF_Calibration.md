@@ -7,6 +7,9 @@
 
 The purpose of this software and the procedures outlined below is to perform a near-field calibration. The goal is to determine the exact X-ray beam position on the detector and the precise sample-to-detector distance for multiple detector positions. This is accomplished using a known calibrant sample, such as single-crystal gold (Au).
 
+> [!NOTE]
+> This manual uses the modern PyQtGraph-based viewer `nf_qt.py`. The legacy `nf.py` has been archived to `gui/archive/nf.py`.
+
 This manual is divided into two primary sections, mirroring the calibration workflow:
 *   **Part I: Determining the Beam Center:** Finding the central pixel of the direct beam at each detector distance.
 *   **Part II: Determining Detector Positions:** Using diffraction spots from a gold standard to calculate the precise distance from the sample to each detector.
@@ -22,7 +25,7 @@ This manual is divided into two primary sections, mirroring the calibration work
 1.  **Launch the Application:**
     *   Open the GUI by executing the following command in your terminal:
         ```bash
-        python ~/opt/MIDAS/gui/nf.py &
+        python ~/opt/MIDAS/gui/nf_qt.py &
         ```
 
 2.  **Load the Beam Position Scan File:**
@@ -35,9 +38,9 @@ This manual is divided into two primary sections, mirroring the calibration work
 > **Shortcut:** You can also launch the GUI directly from the data folder:
 > ```bash
 > cd /path/to/Au_DetZBeamPos_72keV
-> python ~/opt/MIDAS/gui/nf.py &
+> python ~/opt/MIDAS/gui/nf_qt.py &
 > ```
-> When the folder name contains `BeamPos` or `DetZBeamPos`, the GUI automatically enters **BeamPos mode**: all `.tif` files are sorted by numeric suffix, and `FrameNumber` becomes an index into this list. This lets you step through files with different stems using the `+`/`-` buttons.
+> When the folder name contains `BeamPos` or `DetZBeamPos`, the GUI automatically enters **BeamPos mode**: all `.tif` files are sorted by numeric suffix, and `Frame` becomes an index into this list. This lets you step through files with different stems using ← / → keys or the Frame spinner.
 
 3.  **Display the Image:**
     *   Click the large **`Load`** button. The detector image will appear in the left-hand window.
@@ -79,18 +82,17 @@ We will determine the center of the left and right edges of this line and averag
 #### **Step 1: Analyze the Left Edge of the Beam (5mm distance)**
 
 **(a) Find the Horizontal Center of the Left Edge:**
-1.  Click the **`BoxOutHor`** button. Your cursor is now active for selection on the image.
-2.  On the detector image, click a point to the **top-left** of the beam's left edge.
-3.  Click a second point to the **bottom-right** of the beam's left edge, ensuring your box fully encompasses the edge.
-4.  An intensity profile will appear in the right-hand plot. This curve shows the integrated intensity vs. horizontal pixel position.
-5.  Hover your mouse over this curve. The coordinates (`x`, `y`, `z`) are displayed in the bottom-left of the GUI window.
-6.  Identify the **`x` value** that corresponds to the approximate center of the slope on the curve. This is the horizontal position of the left edge. **Record this value.**
+1.  Click the **`BoxH`** button. A rectangular ROI appears on the image.
+2.  Drag the ROI over the **left edge** of the beam, ensuring it fully encompasses the edge.
+3.  An intensity profile will appear in the right-hand panel. This curve shows the integrated intensity vs. horizontal pixel position.
+4.  Hover your mouse over this curve. The coordinates are displayed in the status bar.
+5.  Identify the **x value** at the center of the slope. **Record this value.**
 
 **(b) Find the Vertical Center of the Left Edge:**
-1.  Click the **`BoxOutVer`** button.
-2.  On the detector image, draw a similar box around the left edge of the beam.
+1.  Click the **`BoxV`** button.
+2.  Drag the ROI over the left edge of the beam.
 3.  A new intensity profile will appear on the right, showing intensity vs. vertical pixel position.
-4.  Hover your mouse over the curve and identify the **`x` value** (which represents the vertical axis in this plot) at the center of the peak. **Record this value.**
+4.  Hover your mouse over the curve and identify the **x value** at the center of the peak. **Record this value.**
 
 #### **Step 2: Analyze the Right Edge of the Beam (5mm distance)**
 
@@ -108,10 +110,10 @@ We will determine the center of the left and right edges of this line and averag
 
 #### **Step 4: Repeat for Other Detector Distances (7mm and 9mm)**
 
-1.  In the **`DistanceNr`** box, change the value from `0` to `1` (for the second distance, e.g., 7mm).
-2.  Click the **`Load`** button. The image for the next detector position will load.
+1.  Using the **`Dist`** spinner, change the value from `0` to `1` (for the second distance, e.g., 7mm).
+2.  The image for the next detector position will load automatically.
 3.  Repeat **Steps 1, 2, and 3** to find the average beam center for this distance.
-4.  Change **`DistanceNr`** to `2` (for the third distance, e.g., 9mm), click **`Load`**, and repeat the process again.
+4.  Change **`Dist`** to `2` (for the third distance, e.g., 9mm) and repeat the process again.
 
 You should now have three pairs of (horizontal, vertical) beam center coordinates, one for each detector distance.
 
@@ -141,7 +143,7 @@ Now we will use the gold calibration scan data and the beam center values from P
 
 1.  Click **`FirstFile`**.
 2.  Select the **first gold calibration scan file**. The folder is typically "Au_NF", and you should choose the first image number for the 5mm detector distance.
-3.  Ensure **`DistanceNr`** is set to `0` and click **`Load`**.
+3.  Ensure **`Dist`** is set to `0` and the image will load automatically.
 
 #### **Step 6: Enter All Calculated Center Values**
 
@@ -154,17 +156,17 @@ Now we will use the gold calibration scan data and the beam center values from P
 
 #### **Step 7: Select Diffraction Spots**
 
-1.  Click the **`Select Spots`** button. A help window will appear. Read the instructions and click **`Ready!`**.
-2.  Make sure you are viewing the last detector distance (`DistanceNr` = `2`, e.g., 9mm).
-3.  Use the **`FrameNumber`** box or the **`+`** and **`-`** buttons to cycle through the scan images until you find a clear, strong diffraction spot..
-4.  Adjust the **`MaxThresh`** value to ensure the spot is bright but not saturated.
+1.  Click the **`SelectSpots`** button. A help window will appear. Read the instructions and click **`Ready!`**.
+2.  Make sure you are viewing the last detector distance (`Dist` = `2`, e.g., 9mm).
+3.  Use the **`Frame`** spinner or the **← / →** keys to cycle through scan images until you find a clear, strong diffraction spot.
+4.  Adjust the intensity levels using the histogram on the right to ensure the spot is bright.
 5.  Click on the pixel with the maximum intensity in the diffraction spot.
-6.  Click the **`Confirm Selection`** button that appears.
+6.  Click the **`Confirm Selection`** button that appears in the status bar.
 
 #### **Step 8: Select the Same Spot on Other Detectors**
 
-1.  A dialog box will pop up. Enter `1` as the new distance and click **`Load`**. The GUI will now show the middle detector distance.
-2.  The diffraction spot will have moved. Use the zoom tool (magnifying glass in the toolbar) if needed to find the same spot.
+1.  A dialog box will pop up. Enter `1` as the new distance and click **`Load`**. The GUI will show the middle detector distance.
+2.  The diffraction spot will have moved. Use the zoom buttons if needed to find the same spot.
 3.  Click on the pixel with the max intensity in this new location. Click **`Confirm Selection`**.
 4.  The dialog box will pop up again. Enter `0` as the new distance and click **`Load`**.
 5.  Find and click the same spot on this first detector. Click **`Confirm Selection`**.
@@ -227,7 +229,7 @@ This produces a `.mic` text file and a `.map` binary file.
 1.  **Open the reconstruction in the GUI:**
     ```bash
     cd <DataDirectory>
-    python ~/opt/MIDAS/gui/nf.py &
+    python ~/opt/MIDAS/gui/nf_qt.py &
     ```
     Click **LoadMic** and select the `.map` file (preferred — faster rendering via `imshow`).
 
@@ -291,15 +293,18 @@ The `Compute Distances` function employs a **Ray-Triangulation** method based on
 | Button/Field        | Function                                                                                                 |
 | ------------------- | -------------------------------------------------------------------------------------------------------- |
 | **`Load`**              | Loads or reloads the image display based on the current settings (file, frame, thresholds, etc.).        |
-| **`MinThresh`/`MaxThresh`** | Adjusts the minimum/maximum intensity values for the image display (contrast).                     |
-| **`LogScale`**          | Toggles a logarithmic color scale for the image, useful for seeing faint features.                       |
-| **`LineOutHor/Vert`**   | Plots a 1-pixel wide line profile (less common than `BoxOut`).                                           |
-| **`LoadMic`**           | Loads a microstructure (`.mic` or `.map`) file for display in the right-hand panel.                      |
-| **`SelectPoint`**       | Allows you to click on the loaded mic file to extract grain information for simulation.                  |
-| **`LoadGrain`**         | Opens a window to manually input crystal orientation, position, and lattice parameters for simulation. |
-| **`MakeSpots`**         | Simulates diffraction spots based on the currently loaded grain information.                             |
-| **`SubtMedian`**        | Toggles the subtraction of a pre-calculated median background image.                                     |
-| **`CalcMedian`**        | Calculates a median background image from a specified number of frames (`nFilesMedianCalc`).           |
+| **`MinI`/`MaxI`** | Adjusts the minimum/maximum intensity values for the image display (contrast).                     |
+| **`Log`**             | Toggles a logarithmic color scale for the image, useful for seeing faint features.                       |
+| **`LineOutH/V`**      | Draggable 1D line profile ROI — shows intensity along a line.                                            |
+| **`BoxH/BoxV`**       | Draggable rectangular ROI — shows integrated 1D profile summed across the short axis.                    |
+| **`LoadMic`**         | Loads a microstructure (`.mic` or `.map`) file for display in the right-hand panel.                      |
+| **`SelectPoint`**     | Click on mic map to auto-populate grain parameters for spot simulation.                                  |
+| **`LoadGrain`**       | Opens a window to manually input crystal orientation, position, and lattice parameters for simulation. |
+| **`MakeSpots`**       | Simulates diffraction spots based on the currently loaded grain information.                             |
+| **`SubtMedian`**      | Toggles the subtraction of a pre-calculated median background image.                                     |
+| **`CalcMedian`**      | Calculates a median background image from a specified number of frames.                                  |
+| **`SelectSpots`**     | Starts the interactive spot-selection workflow for detector distance calibration.                         |
+| **`ComputeDistances`**| Computes sample-to-detector distances via ray triangulation from selected spots.                          |
 
 ---
 
