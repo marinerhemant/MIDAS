@@ -38,6 +38,7 @@ from extract_lineouts import snip_background, pseudo_voigt_no_bg, _tch_eta_fwhm
 from matplotlib.backends.backend_qtagg import FigureCanvasQTAgg as FigureCanvas
 from matplotlib.backends.backend_qtagg import NavigationToolbar2QT as NavigationToolbar
 from matplotlib.figure import Figure
+from matplotlib.ticker import ScalarFormatter
 
 try:
     from PyQt6.QtCore import Qt, QSize
@@ -477,33 +478,21 @@ class CakedPeakViewer(QMainWindow):
             lat_layout = QVBoxLayout(lat_widget)
             lat_layout.setContentsMargins(0, 0, 0, 0)
 
-            # Ring selector bar
-            ring_bar = QHBoxLayout()
-            ring_bar.addWidget(QLabel('Ring:'))
-            self.ring_combo = QComboBox()
-            for r in self.hkl_rings:
-                self.ring_combo.addItem(
-                    f"Ring {r['ring_nr']}: ({r['h']},{r['k']},{r['l']})  "
-                    f"2θ={r['two_theta']:.3f}°  d={r['d_spacing']:.4f}Å")
-            self.ring_combo.currentIndexChanged.connect(self._on_ring_changed)
-            ring_bar.addWidget(self.ring_combo)
-            ring_bar.addStretch()
-            lat_layout.addLayout(ring_bar)
-
-            self.fig_lat = Figure(figsize=(10, 2.5))
-            self.ax_lat = self.fig_lat.add_subplot(111)
+            self.fig_lat = Figure(figsize=(12, 2.5))
+            self.ax_lat = self.fig_lat.add_subplot(121)
+            self.ax_strain = self.fig_lat.add_subplot(122)
             self.canvas_lat = FigureCanvas(self.fig_lat)
-            self.canvas_lat.setMinimumSize(QSize(400, 150))
+            self.canvas_lat.setMinimumSize(QSize(600, 150))
             self.toolbar_lat = NavigationToolbar(self.canvas_lat, lat_widget)
             lat_layout.addWidget(self.toolbar_lat)
             lat_layout.addWidget(self.canvas_lat)
             splitter_vert.addWidget(lat_widget)
-            splitter_vert.setSizes([400, 150, 200])
+            splitter_vert.setSizes([400, 200, 150])
         else:
             self.fig_lat = None
             self.ax_lat = None
+            self.ax_strain = None
             self.canvas_lat = None
-            self.ring_combo = None
             splitter_vert.setSizes([500, 200])
 
         root_layout.addWidget(splitter_vert)
@@ -557,9 +546,6 @@ class CakedPeakViewer(QMainWindow):
     def _on_fit(self, checked): self.show_fit_profile = checked; self._update()
     def _on_markers(self, checked): self.show_peak_markers = checked; self._update()
     def _on_log(self, checked): self.log_scale = checked; self._update()
-
-    def _on_ring_changed(self, idx):
-        self._update_lattice_plot()
 
     def _on_row_selected(self):
         """Highlight the selected peak on the profile plot."""
@@ -712,16 +698,11 @@ class CakedPeakViewer(QMainWindow):
             else QHeaderView.Stretch)
 
     def _update_lattice_plot(self):
-        """Compute and plot lattice parameter vs η for the selected ring."""
+        """Compute and plot lattice parameter vs η for ALL rings."""
         if self.ax_lat is None or self.zarr_data is None:
             return
-        if not self.hkl_rings or self.ring_combo is None:
+        if not self.hkl_rings:
             return
-
-        ring_idx = self.ring_combo.currentIndex()
-        if ring_idx < 0 or ring_idx >= len(self.hkl_rings):
-            return
-        ring = self.hkl_rings[ring_idx]
 
         frame_idx = self.frame_combo.currentIndex()
         if frame_idx < 0:
@@ -729,36 +710,67 @@ class CakedPeakViewer(QMainWindow):
         frame_key = self.zarr_data['frame_keys'][frame_idx]
         eta_axis = self.zarr_data['eta_axis']
         a_ref = self.param_info['lattice'][0]  # reference 'a'
-        d_ref = ring['d_spacing']
-
-        etas, a_vals = compute_lattice_a_for_ring(
-            self.peaks_h5_path, frame_key, ring, eta_axis, a_ref, d_ref)
 
         # Preserve zoom
         lat_xlim = self.ax_lat.get_xlim() if self.ax_lat.has_data() else None
         lat_ylim = self.ax_lat.get_ylim() if self.ax_lat.has_data() else None
+        str_xlim = self.ax_strain.get_xlim() if self.ax_strain.has_data() else None
+        str_ylim = self.ax_strain.get_ylim() if self.ax_strain.has_data() else None
         self.ax_lat.clear()
+        self.ax_strain.clear()
 
-        if len(etas) > 0:
-            self.ax_lat.scatter(etas, a_vals, s=18, c='#2196F3',
-                                edgecolors='#0D47A1', linewidths=0.4,
-                                zorder=3, label=f'Measured a')
-        # Reference line
+        # Color map: one color per ring
+        n_rings = len(self.hkl_rings)
+        cmap = __import__('matplotlib').colormaps['tab10' if n_rings <= 10 else 'tab20']
+
+        for ri, ring in enumerate(self.hkl_rings):
+            d_ref = ring['d_spacing']
+            etas, a_vals = compute_lattice_a_for_ring(
+                self.peaks_h5_path, frame_key, ring, eta_axis, a_ref, d_ref)
+            if len(etas) == 0:
+                continue
+            color = cmap(ri % cmap.N / cmap.N) if hasattr(cmap, 'N') else cmap(ri / max(n_rings - 1, 1))
+            hkl = f'({ring["h"]},{ring["k"]},{ring["l"]})'
+            label = f'R{ring["ring_nr"]} {hkl}'
+            # Left plot: a vs η
+            self.ax_lat.scatter(etas, a_vals, s=18, c=[color],
+                                edgecolors='none', linewidths=0.3,
+                                zorder=3, label=label)
+            # Right plot: Δa/a₀ vs η
+            strain = (a_vals - a_ref) / a_ref
+            self.ax_strain.scatter(etas, strain, s=18, c=[color],
+                                   edgecolors='none', linewidths=0.3,
+                                   zorder=3, label=label)
+
+        # Left: reference line
         self.ax_lat.axhline(a_ref, color='#F44336', linestyle='--',
                              linewidth=1.2, alpha=0.8,
-                             label=f'Reference a = {a_ref:.5f} Å')
-
-        hkl = f'({ring["h"]},{ring["k"]},{ring["l"]})'
+                             label=f'a₀ = {a_ref:.5f} Å')
         self.ax_lat.set_xlabel('η (°)')
         self.ax_lat.set_ylabel('a (Å)')
-        self.ax_lat.set_title(
-            f'Lattice parameter — Ring {ring["ring_nr"]} {hkl}  '
-            f'2θ_ref = {ring["two_theta"]:.3f}°')
-        self.ax_lat.legend(fontsize=8, loc='upper right')
+        self.ax_lat.set_title('Lattice parameter vs η')
+        self.ax_lat.legend(fontsize=7, loc='upper right', ncol=min(n_rings + 1, 6),
+                            markerscale=1.5, handletextpad=0.3, columnspacing=0.8)
         self.ax_lat.grid(True, alpha=0.2)
+        self.ax_lat.yaxis.set_major_formatter(ScalarFormatter(useOffset=False))
+        self.ax_lat.ticklabel_format(axis='y', useOffset=False, style='plain')
         if lat_xlim is not None:
             self.ax_lat.set_xlim(lat_xlim)
             self.ax_lat.set_ylim(lat_ylim)
+
+        # Right: zero reference line
+        self.ax_strain.axhline(0, color='#F44336', linestyle='--',
+                                linewidth=1.2, alpha=0.8)
+        self.ax_strain.set_xlabel('η (°)')
+        self.ax_strain.set_ylabel('Δa / a₀')
+        self.ax_strain.set_title('Relative lattice strain vs η')
+        self.ax_strain.grid(True, alpha=0.2)
+        self.ax_strain.yaxis.set_major_formatter(ScalarFormatter(useOffset=False))
+        self.ax_strain.ticklabel_format(axis='y', useOffset=False, style='plain')
+        if str_xlim is not None:
+            self.ax_strain.set_xlim(str_xlim)
+            self.ax_strain.set_ylim(str_ylim)
+
         self.fig_lat.tight_layout()
         self.canvas_lat.draw_idle()
 
