@@ -678,8 +678,8 @@ class FFViewer(QtWidgets.QMainWindow):
         self.hflip_check.toggled.connect(self._load_and_display)
         self.vflip_check.toggled.connect(self._load_and_display)
         self.transpose_check.toggled.connect(self._load_and_display)
-        self.max_check.toggled.connect(self._load_and_display)
-        self.sum_check.toggled.connect(self._load_and_display)
+        self.max_check.toggled.connect(self._on_max_toggled)
+        self.sum_check.toggled.connect(self._on_sum_toggled)
         # Colormap
         self.cmap_combo.currentTextChanged.connect(self._on_cmap_changed)
         # Theme
@@ -813,6 +813,16 @@ class FFViewer(QtWidgets.QMainWindow):
     def _on_log_toggled(self, checked):
         self.use_log = checked
         self.image_view.set_log_mode(checked)
+
+    def _on_max_toggled(self, checked):
+        if checked:
+            self.sum_check.setChecked(False)
+        self._load_and_display()
+
+    def _on_sum_toggled(self, checked):
+        if checked:
+            self.max_check.setChecked(False)
+        self._load_and_display()
 
     def _on_cmap_changed(self, name):
         self.colormap_name = name
