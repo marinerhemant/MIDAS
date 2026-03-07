@@ -1098,6 +1098,13 @@ class FFViewer(QtWidgets.QMainWindow):
                 if len(lc) >= 6:
                     self.lattice_const = [float(x) for x in lc[:6]]
                     print(f"  LatticeConstant: {self.lattice_const}")
+            if 'ImTransOpt' in p:
+                opts = [int(x) for x in p['ImTransOpt'][:]]
+                self.hflip_check.setChecked(1 in opts)
+                self.vflip_check.setChecked(2 in opts)
+                self.transpose_check.setChecked(3 in opts)
+                if opts:
+                    print(f"  ImTransOpt: {opts}")
 
         print(f"Loaded ZIP: {zip_path}")
         self._load_and_display()
