@@ -1076,6 +1076,7 @@ class FFViewer(QtWidgets.QMainWindow):
             self.ny_edit.setText(str(self.ny)); self.nz_edit.setText(str(self.nz))
             self.nframes_edit.setText(str(self.n_frames_per_file))
             self.frame_spin.setMaximum(self.n_frames_per_file - 1)
+            self.max_frames_spin.setValue(self.n_frames_per_file)
         if 'exchange/dark' in zr:
             dk = zr['exchange/dark'][:]
             if dk.ndim == 3 and dk.shape[0] > 0 and np.any(dk):
