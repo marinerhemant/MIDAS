@@ -15,6 +15,7 @@ import subprocess
 import shutil
 import numpy as np
 from pathlib import Path
+from test_common import add_common_args, run_preflight, print_environment
 
 
 def parse_args():
@@ -44,6 +45,7 @@ def parse_args():
         default=str(default_mic_fn),
         help="Path to the input mic file for simulation",
     )
+    add_common_args(parser)
 
     return parser.parse_args()
 
@@ -287,7 +289,17 @@ def main():
         print(f"Error: Mic file not found at {mic_path}")
         sys.exit(1)
 
+    print_environment()
+
     midas_home = get_midas_home()
+
+    if not getattr(args, 'skip_preflight', False):
+        run_preflight(
+            required_binaries=["simulateNF", "MakeDiffrSpots"],
+            required_packages=["numpy"],
+            required_data_files=[str(param_path), str(mic_path)],
+        )
+
     example_dir = midas_home / "NF_HEDM" / "Example"
 
     # Locate grs.csv in the Example directory

@@ -22,6 +22,7 @@ import subprocess
 import sys
 import tempfile
 from pathlib import Path
+from test_common import add_common_args, run_preflight, print_environment
 
 # Setup paths
 SCRIPT_DIR = Path(__file__).resolve().parent
@@ -585,6 +586,7 @@ def main():
     parser.add_argument('--integrator', choices=['cpu', 'gpu'],
                         default='cpu',
                         help='Integrator binary: cpu (IntegratorZarrOMP) or gpu (IntegratorFitPeaksGPUStream)')
+    add_common_args(parser)
     args = parser.parse_args()
 
     # GPU integrator is a streaming server — different workflow
@@ -632,6 +634,16 @@ def main():
     if args.skip_calibration:
         print(f"  ⚡ Calibration skipped (using parameters.txt as-is)")
     print()
+
+    print_environment()
+
+    if not getattr(args, 'skip_preflight', False):
+        run_preflight(
+            required_binaries=["IntegratorZarrOMP", "DetectorMapper",
+                               "CalibrantPanelShiftsOMP", "GetHKLList"],
+            required_packages=["numpy"],
+            required_data_files=[str(param_path)],
+        )
 
     # Create working directory
     if args.work_dir:

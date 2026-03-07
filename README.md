@@ -259,7 +259,7 @@ python utils/match_grains.py match \
 
 ## Benchmark Testing
 
-MIDAS includes automated benchmark tests that validate the complete pipeline using synthetic data:
+MIDAS includes automated benchmark tests that validate every pipeline using synthetic data and built-in reference comparisons. Each test also runs **pre-flight checks** (binary existence, staleness, package availability) and prints an **environment fingerprint** to make failures easy to diagnose.
 
 ### Quick Start
 
@@ -277,18 +277,40 @@ MIDAS includes automated benchmark tests that validate the complete pipeline usi
 ```bash
 conda activate midas_env
 
-# FF-HEDM: Forward simulation → indexing → grain recovery
+# FF-HEDM: Forward simulation → indexing → grain recovery (6-stage HDF5 comparison)
 python tests/test_ff_hedm.py -nCPUs 4
 
-# NF-HEDM: Forward simulation → reconstruction → orientation comparison
+# NF-HEDM: Forward simulation → reconstruction → orientation comparison (>80% < 0.25°)
 python tests/test_nf_hedm.py -nCPUs 8
+
+# Calibration: CeO2 ring fitting → MeanStrain ≤ 50 µε
+python tests/test_ff_calibration.py -nCPUs 4
+
+# Integration: Azimuthal integration + peak fitting → strain residual < 500 ppm
+python tests/test_integrator_peaks.py -nCPUs 4
+
+# Phase ID: CeO2 detected, Au absent, lattice constant within 500 ppm
+python tests/test_phase_id.py -nCPUs 4
+
+# Tomography: Shepp-Logan phantom → FBP reconstruction → Pearson correlation > 0.85
+python tests/test_tomo.py -nCPUs 4
 ```
 
-The **FF-HEDM benchmark** simulates 3 Au grains, runs the full indexing pipeline, and verifies all 3 grains are recovered. Output is in `FF_HEDM/Example/`.
+### If a Test Fails
 
-The **NF-HEDM benchmark** simulates a microstructure, reconstructs it, and compares orientations against a reference using misorientation analysis. Output is isolated in `NF_HEDM/Example/sim/` for easy cleanup.
+All tests support built-in diagnostic flags for troubleshooting:
 
-See [FF_Benchmark](manuals/FF_Benchmark.md) and [NF_Benchmark](manuals/NF_Benchmark.md) for full details.
+```bash
+# Generate a JSON diagnostic report with full environment and comparison details
+python tests/test_ff_hedm.py -nCPUs 4 --diagnose
+
+# Save the generated output file alongside the reference for manual comparison
+python tests/test_ff_hedm.py -nCPUs 4 --save-on-fail
+```
+
+Send the generated diagnostic report to **hsharma@anl.gov** for assistance.
+
+See [tests/README.md](tests/README.md) for detailed documentation on what each test computes, how results are compared, and exact pass/fail criteria.
 
 ---
 

@@ -27,6 +27,7 @@ import subprocess
 import sys
 import tempfile
 from pathlib import Path
+from test_common import add_common_args, run_preflight, print_environment
 
 SCRIPT_DIR = Path(__file__).resolve().parent
 MIDAS_HOME = SCRIPT_DIR.parent
@@ -185,6 +186,14 @@ def run_test(n_cpus=4, max_rings=15, keep_work=False,
     print(f"  Work dir: {work_dir}")
     print()
 
+    print_environment()
+
+    run_preflight(
+        required_binaries=["IntegratorZarrOMP", "DetectorMapper", "GetHKLList"],
+        required_packages=["numpy"],
+        required_data_files=[str(param_path), str(data_file)],
+    )
+
     try:
         # ── Shared: predict rings and deduplicate ─────────────────────
         phases_file = work_dir / "test_phases.txt"
@@ -341,6 +350,7 @@ def main():
     parser.add_argument('--keep-work-dir', action='store_true')
     parser.add_argument('--work-dir', type=str, default=None)
     parser.add_argument('--max-rings', type=int, default=15)
+    add_common_args(parser)
     args = parser.parse_args()
 
     success = run_test(

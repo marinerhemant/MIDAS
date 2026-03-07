@@ -7,6 +7,9 @@ import stat
 import zarr
 import numpy as np
 from pathlib import Path
+from test_common import (add_common_args, run_preflight, print_environment,
+                         DiagnosticReporter, build_diff_histogram,
+                         get_mismatch_samples, get_midas_home)
 
 # Files/dirs that ship with the Example and must NOT be removed
 PRESERVE = {
@@ -23,6 +26,7 @@ def parse_args():
     parser.add_argument("--cleanup-only", action="store_true", help="Only cleanup generated files, don't run any tests")
     parser.add_argument("--px-overlap", action="store_true", help="Also run pixel-overlap peaksearch test")
     parser.add_argument("--dual-dataset", action="store_true", help="Also run dual-dataset refinement sanity test")
+    add_common_args(parser)
     
     # Optional paramFN defaulting to the Example Parameters.txt relative to the script location
     default_param_fn = Path(__file__).resolve().parent.parent / "FF_HEDM" / "Example" / "Parameters.txt"
@@ -424,12 +428,26 @@ def main():
     if not param_path.exists():
         print(f"Error: Parameter file not found at {param_path}")
         sys.exit(1)
-        
+
+    print_environment()
+
+    midas_home = get_midas_home()
+    if not getattr(args, 'skip_preflight', False):
+        run_preflight(
+            required_binaries=["ForwardSimulationCompressed",
+                               "PeaksFittingOMPZarrRefactor"],
+            required_packages=["numpy", "zarr", "h5py"],
+            required_data_files=[
+                str(midas_home / "FF_HEDM" / "Example" / "Parameters.txt"),
+                str(midas_home / "FF_HEDM" / "Example" / "GrainsSim.csv"),
+                str(midas_home / "FF_HEDM" / "Example" / "consolidated_Output.h5"),
+            ],
+        )
+
     print(f"Starting FF_HEDM Benchmark using: {param_path}")
     print(f"Using CPUs: {args.nCPUs}")
     
     # 1. Prepare Workspace (always use FF_HEDM/Example/ as the working directory)
-    midas_home = Path(os.environ.get('MIDAS_HOME', str(Path(__file__).resolve().parent.parent)))
     work_dir = midas_home / "FF_HEDM" / "Example"
     work_dir.mkdir(exist_ok=True, parents=True)
 

@@ -27,6 +27,7 @@ import time
 from pathlib import Path
 
 import numpy as np
+from test_common import add_common_args, run_preflight, print_environment
 
 # ---------------------------------------------------------------------------
 # Locate MIDAS
@@ -175,6 +176,12 @@ def run_test(n_cpus: int = 4, phantom_size: int = 256,
     print(f"  CPUs:         {n_cpus}")
     print()
 
+    print_environment()
+
+    run_preflight(
+        required_packages=["numpy"],
+    )
+
     # 1. Generate phantom
     print("[1/6] Generating Shepp-Logan phantom...", flush=True)
     phantom = shepp_logan_phantom(phantom_size)
@@ -310,6 +317,7 @@ def main():
     parser.add_argument('--keep-work-dir', action='store_true')
     parser.add_argument('--plot', action='store_true',
                         help='Show phantom and reconstruction plots')
+    add_common_args(parser)
     args = parser.parse_args()
 
     success = run_test(

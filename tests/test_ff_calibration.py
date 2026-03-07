@@ -20,6 +20,7 @@ import sys
 import tempfile
 import shutil
 from pathlib import Path
+from test_common import add_common_args, run_preflight, print_environment
 
 
 def parse_args():
@@ -36,6 +37,7 @@ def parse_args():
     parser.add_argument("-strainThreshold", type=float, default=50.0,
                         help="Maximum acceptable mean strain in microstrain (default: 50)")
 
+    add_common_args(parser)
     return parser.parse_args()
 
 
@@ -195,6 +197,15 @@ def main():
     print(f"  CPUs: {args.nCPUs}")
     print(f"  Strain threshold: {args.strainThreshold} µε")
     print()
+
+    print_environment()
+
+    if not getattr(args, 'skip_preflight', False):
+        run_preflight(
+            required_binaries=["CalibrantPanelShiftsOMP", "GetHKLList"],
+            required_packages=["numpy"],
+            required_data_files=[str(param_path)],
+        )
 
     # 1. Prepare workspace
     print("[1/3] Preparing workspace...")
