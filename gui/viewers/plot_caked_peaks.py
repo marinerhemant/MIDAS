@@ -423,6 +423,15 @@ class CakedPeakViewer(QMainWindow):
         cb_log.toggled.connect(self._on_log)
         top.addWidget(cb_log)
 
+        top.addWidget(self._vsep())
+        top.addWidget(QLabel('UI Font:'))
+        self.ui_font_spin = QSpinBox()
+        self.ui_font_spin.setRange(6, 24)
+        self.ui_font_spin.setValue(QApplication.font().pointSize()
+                                    if QApplication.font().pointSize() > 0 else 10)
+        self.ui_font_spin.valueChanged.connect(self._on_ui_font_changed)
+        top.addWidget(self.ui_font_spin)
+
         top.addStretch()
         root_layout.addLayout(top)
 
@@ -580,6 +589,11 @@ class CakedPeakViewer(QMainWindow):
     def _on_fit(self, checked): self.show_fit_profile = checked; self._update()
     def _on_markers(self, checked): self.show_peak_markers = checked; self._update()
     def _on_log(self, checked): self.log_scale = checked; self._update()
+
+    def _on_ui_font_changed(self, size):
+        font = QApplication.font()
+        font.setPointSize(size)
+        QApplication.setFont(font)
 
     def _on_row_selected(self):
         """Highlight the selected peak on the profile plot."""
