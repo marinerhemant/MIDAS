@@ -461,6 +461,7 @@ class CakedPeakViewer(QMainWindow):
         # Vertical splitter: plots on top, table on bottom
         splitter_vert = QSplitter(Qt.Orientation.Vertical if _QT6
                                    else Qt.Vertical)
+        splitter_vert.setHandleWidth(6)  # wider handles for easier resizing
         splitter_vert.addWidget(splitter_main)
 
         # Bottom: peak table
@@ -469,7 +470,7 @@ class CakedPeakViewer(QMainWindow):
             QTableWidget.SelectionBehavior.SelectRows if _QT6
             else QTableWidget.SelectRows)
         self.table.itemSelectionChanged.connect(self._on_row_selected)
-        self.table.setMinimumHeight(120)
+        self.table.setMinimumHeight(40)
         splitter_vert.addWidget(self.table)
 
         # ── Optional: lattice parameter plot ──
