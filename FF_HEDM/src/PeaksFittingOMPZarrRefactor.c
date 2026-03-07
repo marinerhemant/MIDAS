@@ -1686,56 +1686,49 @@ static ErrorCode readZarrDataType(zip_t *archive, PixelValueType *pixelType) {
   // Default to uint16
   *pixelType = PX_TYPE_UINT16;
 
-  // Look for a datatype entry in the Zarr metadata
-  int count = 0;
-  struct zip_stat fileInfo;
-  zip_stat_init(&fileInfo);
-
-  // Try to find measurement/process/scan_parameters/datatype
-  while (zip_stat_index(archive, count, 0, &fileInfo) == 0) {
-    if (strstr(fileInfo.name, "measurement/process/scan_parameters/datatype") !=
-        NULL) {
-      char *typeName = NULL;
-      size_t typeSize;
-      int rc_raw = ReadZarrRaw(archive, count + 1, &typeName, &typeSize);
-
-      if (rc_raw < 0) {
-        fprintf(stderr, "Error reading Zarr data type\n");
-        return ERROR_BLOSC_OPERATION;
-      }
-      printf("%s\n", typeName);
-
-      // Set the pixel type based on string content
-      if (typeName) {
-        if (strcasecmp(typeName, "float") == 0 ||
-            strcasecmp(typeName, "float32") == 0) {
-          *pixelType = PX_TYPE_FLOAT;
-          printf("Setting pixel type to float\n");
-        } else if (strcasecmp(typeName, "double") == 0 ||
-                   strcasecmp(typeName, "float64") == 0) {
-          *pixelType = PX_TYPE_DOUBLE;
-          printf("Setting pixel type to double\n");
-        } else if (strcasecmp(typeName, "int32") == 0) {
-          *pixelType = PX_TYPE_INT32;
-          printf("Setting pixel type to int32\n");
-        } else if (strcasecmp(typeName, "uint32") == 0) {
-          *pixelType = PX_TYPE_UINT32;
-          printf("Setting pixel type to uint32\n");
-        } else {
-          // Default to uint16
-          *pixelType = PX_TYPE_UINT16;
-          printf("Setting pixel type to uint16\n");
-        }
-        free(typeName);
-      }
-
-      return SUCCESS;
-    }
-    count++;
+  // Look up the datatype data chunk by explicit name
+  int dataIdx = (int)zip_name_locate(
+      archive, "measurement/process/scan_parameters/datatype/0", 0);
+  if (dataIdx < 0) {
+    // If we didn't find the datatype entry, just use the default
+    printf("No datatype specified, using default uint16\n");
+    return SUCCESS;
   }
 
-  // If we didn't find the datatype entry, just use the default
-  printf("No datatype specified, using default uint16\n");
+  char *typeName = NULL;
+  size_t typeSize;
+  int rc_raw = ReadZarrRaw(archive, dataIdx, &typeName, &typeSize);
+
+  if (rc_raw < 0) {
+    fprintf(stderr, "Error reading Zarr data type\n");
+    return ERROR_BLOSC_OPERATION;
+  }
+  printf("Datatype from Zarr: %s\n", typeName);
+
+  // Set the pixel type based on string content
+  if (typeName) {
+    if (strcasecmp(typeName, "float") == 0 ||
+        strcasecmp(typeName, "float32") == 0) {
+      *pixelType = PX_TYPE_FLOAT;
+      printf("Setting pixel type to float\n");
+    } else if (strcasecmp(typeName, "double") == 0 ||
+               strcasecmp(typeName, "float64") == 0) {
+      *pixelType = PX_TYPE_DOUBLE;
+      printf("Setting pixel type to double\n");
+    } else if (strcasecmp(typeName, "int32") == 0) {
+      *pixelType = PX_TYPE_INT32;
+      printf("Setting pixel type to int32\n");
+    } else if (strcasecmp(typeName, "uint32") == 0) {
+      *pixelType = PX_TYPE_UINT32;
+      printf("Setting pixel type to uint32\n");
+    } else {
+      // Default to uint16
+      *pixelType = PX_TYPE_UINT16;
+      printf("Setting pixel type to uint16\n");
+    }
+    free(typeName);
+  }
+
   return SUCCESS;
 }
 
