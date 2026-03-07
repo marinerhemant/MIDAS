@@ -720,6 +720,7 @@ class FFViewer(QtWidgets.QMainWindow):
         add_shortcut(self, 'Left', lambda: self.frame_spin.setValue(self.frame_spin.value() - 1))
         add_shortcut(self, 'L', lambda: self.log_check.toggle())
         add_shortcut(self, 'R', lambda: self.rings_check.toggle())
+        add_shortcut(self, 'Q', self.close)
 
     # ── Session Save / Load ────────────────────────────────────────
 
@@ -1083,6 +1084,21 @@ class FFViewer(QtWidgets.QMainWindow):
             if 'PixelSize' in p:
                 self.pixel_size = float(p['PixelSize'][0])
                 self.px_edit.setText(str(self.pixel_size))
+            if 'Wavelength' in p:
+                self.wl = float(p['Wavelength'][0])
+                print(f"  Wavelength: {self.wl:.6f} Å")
+            if 'SpaceGroup' in p:
+                self.sg = int(p['SpaceGroup'][0])
+                print(f"  SpaceGroup: {self.sg}")
+            lc_key = ('LatticeParameter' if 'LatticeParameter' in p
+                       else 'LatticeConstant' if 'LatticeConstant' in p
+                       else None)
+            if lc_key:
+                lc = p[lc_key][:]
+                if len(lc) >= 6:
+                    self.lattice_const = [float(x) for x in lc[:6]]
+                    print(f"  LatticeConstant: {self.lattice_const}")
+
         print(f"Loaded ZIP: {zip_path}")
         self._load_and_display()
 
