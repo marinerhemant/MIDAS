@@ -35,6 +35,7 @@ sys.path.insert(0, str(MIDAS_HOME / 'utils'))
 from extract_lineouts import snip_background, pseudo_voigt_no_bg, _tch_eta_fwhm
 
 from matplotlib.backends.backend_qtagg import FigureCanvasQTAgg as FigureCanvas
+from matplotlib.backends.backend_qtagg import NavigationToolbar2QT as NavigationToolbar
 from matplotlib.figure import Figure
 
 try:
@@ -287,19 +288,31 @@ class CakedPeakViewer(QMainWindow):
         splitter_main = QSplitter(Qt.Orientation.Horizontal if _QT6
                                    else Qt.Horizontal)
 
-        # Left: 2D heatmap
+        # Left: 2D heatmap + toolbar
+        heat_widget = QWidget()
+        heat_layout = QVBoxLayout(heat_widget)
+        heat_layout.setContentsMargins(0, 0, 0, 0)
         self.fig_heat = Figure(figsize=(5, 5))
         self.ax_heat = self.fig_heat.add_subplot(111)
         self.canvas_heat = FigureCanvas(self.fig_heat)
         self.canvas_heat.setMinimumSize(QSize(350, 300))
-        splitter_main.addWidget(self.canvas_heat)
+        self.toolbar_heat = NavigationToolbar(self.canvas_heat, heat_widget)
+        heat_layout.addWidget(self.toolbar_heat)
+        heat_layout.addWidget(self.canvas_heat)
+        splitter_main.addWidget(heat_widget)
 
-        # Right: 1D profile
+        # Right: 1D profile + toolbar
+        prof_widget = QWidget()
+        prof_layout = QVBoxLayout(prof_widget)
+        prof_layout.setContentsMargins(0, 0, 0, 0)
         self.fig_prof = Figure(figsize=(7, 5))
         self.ax_prof = self.fig_prof.add_subplot(111)
         self.canvas_prof = FigureCanvas(self.fig_prof)
         self.canvas_prof.setMinimumSize(QSize(450, 300))
-        splitter_main.addWidget(self.canvas_prof)
+        self.toolbar_prof = NavigationToolbar(self.canvas_prof, prof_widget)
+        prof_layout.addWidget(self.toolbar_prof)
+        prof_layout.addWidget(self.canvas_prof)
+        splitter_main.addWidget(prof_widget)
 
         splitter_main.setSizes([400, 600])
 
@@ -408,7 +421,9 @@ class CakedPeakViewer(QMainWindow):
         self.current_peaks = load_peaks_h5(
             self.peaks_h5_path, frame_key, eta_idx)
 
-        # ── Update 2D heatmap ──
+        # ── Update 2D heatmap ── (preserve zoom if set)
+        heat_xlim = self.ax_heat.get_xlim() if self.ax_heat.has_data() else None
+        heat_ylim = self.ax_heat.get_ylim() if self.ax_heat.has_data() else None
         self.ax_heat.clear()
         # Transpose so x=η, y=2θ  (like the standard cake plot)
         vmax = np.percentile(intensity_2d, 99.5) if intensity_2d.max() > 0 else 1
@@ -425,10 +440,15 @@ class CakedPeakViewer(QMainWindow):
         self.ax_heat.set_xlabel('η (°)')
         self.ax_heat.set_ylabel('2θ (°)')
         self.ax_heat.set_title(f'{frame_key}')
+        if heat_xlim is not None:
+            self.ax_heat.set_xlim(heat_xlim)
+            self.ax_heat.set_ylim(heat_ylim)
         self.fig_heat.tight_layout()
         self.canvas_heat.draw_idle()
 
-        # ── Update 1D profile ──
+        # ── Update 1D profile ── (preserve zoom if set)
+        prof_xlim = self.ax_prof.get_xlim() if self.ax_prof.has_data() else None
+        prof_ylim = self.ax_prof.get_ylim() if self.ax_prof.has_data() else None
         self.ax_prof.clear()
 
         if self.show_raw:
@@ -469,6 +489,9 @@ class CakedPeakViewer(QMainWindow):
             f'{len(self.current_peaks)} peaks')
         self.ax_prof.legend(fontsize=8, loc='upper right')
         self.ax_prof.grid(True, alpha=0.2)
+        if prof_xlim is not None:
+            self.ax_prof.set_xlim(prof_xlim)
+            self.ax_prof.set_ylim(prof_ylim)
         self.fig_prof.tight_layout()
         self.canvas_prof.draw_idle()
 
