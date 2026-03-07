@@ -478,6 +478,20 @@ class CakedPeakViewer(QMainWindow):
             lat_layout = QVBoxLayout(lat_widget)
             lat_layout.setContentsMargins(0, 0, 0, 0)
 
+            # Ring selector checkboxes
+            ring_bar = QHBoxLayout()
+            ring_bar.addWidget(QLabel('Rings:'))
+            self.ring_cbs = []
+            for r in self.hkl_rings:
+                hkl = f'({r["h"]},{r["k"]},{r["l"]})'
+                cb = QCheckBox(f'R{r["ring_nr"]} {hkl}')
+                cb.setChecked(True)
+                cb.toggled.connect(lambda checked: self._update_lattice_plot())
+                ring_bar.addWidget(cb)
+                self.ring_cbs.append(cb)
+            ring_bar.addStretch()
+            lat_layout.addLayout(ring_bar)
+
             self.fig_lat = Figure(figsize=(12, 2.5))
             self.ax_lat = self.fig_lat.add_subplot(121)
             self.ax_strain = self.fig_lat.add_subplot(122)
@@ -487,12 +501,13 @@ class CakedPeakViewer(QMainWindow):
             lat_layout.addWidget(self.toolbar_lat)
             lat_layout.addWidget(self.canvas_lat)
             splitter_vert.addWidget(lat_widget)
-            splitter_vert.setSizes([400, 200, 150])
+            splitter_vert.setSizes([400, 250, 150])
         else:
             self.fig_lat = None
             self.ax_lat = None
             self.ax_strain = None
             self.canvas_lat = None
+            self.ring_cbs = []
             splitter_vert.setSizes([500, 200])
 
         root_layout.addWidget(splitter_vert)
@@ -724,6 +739,8 @@ class CakedPeakViewer(QMainWindow):
         cmap = __import__('matplotlib').colormaps['tab10' if n_rings <= 10 else 'tab20']
 
         for ri, ring in enumerate(self.hkl_rings):
+            if ri < len(self.ring_cbs) and not self.ring_cbs[ri].isChecked():
+                continue
             d_ref = ring['d_spacing']
             etas, a_vals = compute_lattice_a_for_ring(
                 self.peaks_h5_path, frame_key, ring, eta_axis, a_ref, d_ref)
