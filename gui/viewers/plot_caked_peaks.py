@@ -242,7 +242,7 @@ def run_get_hkl_list(param_file):
     return [rings[k] for k in sorted(rings.keys())]
 
 
-def match_peak_to_ring(peak_2theta, rings, tol_deg=0.3):
+def match_peak_to_ring(peak_2theta, rings, tol_deg=0.1):
     """Find the ring whose 2θ is closest to the peak's 2θ."""
     best_ring = None
     best_diff = tol_deg
@@ -288,7 +288,7 @@ def compute_lattice_a_for_ring(peaks_h5_path, frame_key, ring, eta_axis,
             # Find the peak closest to this ring's 2θ
             indices = np.where(mask)[0]
             best_idx = None
-            best_diff = 0.3  # tolerance
+            best_diff = 0.1  # tolerance
             for idx in indices:
                 diff = abs(centers[idx] - ring['two_theta'])
                 if diff < best_diff:
