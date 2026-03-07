@@ -678,6 +678,8 @@ class FFViewer(QtWidgets.QMainWindow):
         self.hflip_check.toggled.connect(self._load_and_display)
         self.vflip_check.toggled.connect(self._load_and_display)
         self.transpose_check.toggled.connect(self._load_and_display)
+        self.max_check.toggled.connect(self._load_and_display)
+        self.sum_check.toggled.connect(self._load_and_display)
         # Colormap
         self.cmap_combo.currentTextChanged.connect(self._on_cmap_changed)
         # Theme
@@ -699,11 +701,10 @@ class FFViewer(QtWidgets.QMainWindow):
     def _show_help(self):
         QtWidgets.QMessageBox.information(self, 'FF Viewer — Controls',
             'Mouse Controls:\n'
-            '  Scroll wheel — Zoom in/out\n'
-            '  Right-click drag — Zoom rectangle\n'
-            '  Left-click drag — Pan\n'
             '  Ctrl+Scroll wheel — Change frame\n'
-            '  Right-click → View All — Reset zoom\n'
+            '  Right-click drag — Zoom rectangle (in Zoom mode)\n'
+            '  Left-click drag — Pan (in Pan mode)\n'
+            '  Double-click — Reset to full view\n'
             '\n'
             'Keyboard Shortcuts:\n'
             '  ← / → — Previous / Next frame\n'
@@ -1129,21 +1130,57 @@ class FFViewer(QtWidgets.QMainWindow):
                                        self.ny, self.nz, 0,
                                        self.do_transpose, self.hflip, self.vflip)
 
-        # Main image
-        file_nr = self.first_file_nr + self.frame_nr // max(1, self.n_frames_per_file)
-        frame_in_file = self.frame_nr % max(1, self.n_frames_per_file)
-        fn = build_filename(self.folder, self.file_stem, file_nr,
-                            self.padding, self.det_nr, self.ext, self.sep_folder)
+        # MaxOverFrames / SumOverFrames
+        if self.max_check.isChecked() or self.sum_check.isChecked():
+            n_accum = self.max_frames_spin.value()
+            use_sum = self.sum_check.isChecked()
+            data_accum = None
+            start_frame = self.frame_nr
+            for i in range(n_accum):
+                fr = start_frame + i
+                f_nr = self.first_file_nr + fr // max(1, self.n_frames_per_file)
+                f_in = fr % max(1, self.n_frames_per_file)
+                fn = build_filename(self.folder, self.file_stem, f_nr,
+                                    self.padding, self.det_nr, self.ext,
+                                    self.sep_folder)
+                try:
+                    frame = read_image(
+                        fn, self.header_size, self.bytes_per_pixel,
+                        self.ny, self.nz, f_in,
+                        self.do_transpose, self.hflip, self.vflip,
+                        mask, self.zarr_store, self.zarr_dark_mean,
+                        hdf5_data_path=self.hdf5_data_path,
+                        hdf5_dark_path=self.hdf5_dark_path)
+                except Exception:
+                    break
+                if dark_data is not None:
+                    frame = np.maximum(frame - dark_data, 0)
+                if data_accum is None:
+                    data_accum = frame.astype(np.float64)
+                else:
+                    if use_sum:
+                        data_accum += frame
+                    else:
+                        np.maximum(data_accum, frame, out=data_accum)
+            data = data_accum if data_accum is not None else np.zeros((self.ny, self.nz))
+            mode_str = "Sum" if use_sum else "Max"
+            print(f"{mode_str}OverFrames: {n_accum} frames from frame {start_frame}")
+        else:
+            # Single frame
+            file_nr = self.first_file_nr + self.frame_nr // max(1, self.n_frames_per_file)
+            frame_in_file = self.frame_nr % max(1, self.n_frames_per_file)
+            fn = build_filename(self.folder, self.file_stem, file_nr,
+                                self.padding, self.det_nr, self.ext, self.sep_folder)
 
-        data = read_image(fn, self.header_size, self.bytes_per_pixel,
-                          self.ny, self.nz, frame_in_file,
-                          self.do_transpose, self.hflip, self.vflip,
-                          mask, self.zarr_store, self.zarr_dark_mean,
-                          hdf5_data_path=self.hdf5_data_path,
-                          hdf5_dark_path=self.hdf5_dark_path)
+            data = read_image(fn, self.header_size, self.bytes_per_pixel,
+                              self.ny, self.nz, frame_in_file,
+                              self.do_transpose, self.hflip, self.vflip,
+                              mask, self.zarr_store, self.zarr_dark_mean,
+                              hdf5_data_path=self.hdf5_data_path,
+                              hdf5_dark_path=self.hdf5_dark_path)
 
-        if dark_data is not None:
-            data = np.maximum(data - dark_data, 0)
+            if dark_data is not None:
+                data = np.maximum(data - dark_data, 0)
 
         self.bdata = data
         self.image_view.set_image_data(data)

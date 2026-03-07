@@ -129,6 +129,8 @@ class MIDASImageView(QtWidgets.QWidget):
         vb = self._get_viewbox()
         vb.setMouseEnabled(x=False, y=False)
         vb.enableAutoRange(False)
+        # Disable scroll-to-zoom (only rectangle-drag zoom via toolbar)
+        vb.wheelScaleFactor = 0
 
         # Install event filter for zoom-rect and pan
         self._iv.scene.sigMouseClicked.connect(self._on_scene_clicked)
