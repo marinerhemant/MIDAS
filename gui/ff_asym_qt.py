@@ -864,10 +864,22 @@ class FFViewer(QtWidgets.QMainWindow):
         bcz = float(self.bcz_edit.text() or 0)
         try:
             eta, rr = CalcEtaAngleRad(-x + bcy, y - bcz)
-            self.status_label.setText(
-                f"x={x:.1f}  y={y:.1f}  I={val:.0f}  "
-                f"R={rr:.1f}px  η={eta:.1f}°"
-            )
+            status = (f"x={x:.1f}  y={y:.1f}  I={val:.0f}  "
+                      f"R={rr:.1f}px  η={eta:.1f}°")
+            # Show nearest ring info
+            if self.show_rings and self.ring_rads:
+                r_um = rr * px  # convert R from pixels to μm
+                best_i, best_diff = None, float('inf')
+                for i, rad in enumerate(self.ring_rads):
+                    diff = abs(r_um - rad)
+                    if diff < best_diff:
+                        best_diff = diff
+                        best_i = i
+                if best_i is not None:
+                    nr = self.ring_nrs[best_i]
+                    hkl = self.hkls[best_i]
+                    status += f"  | Ring {nr} ({hkl[0]},{hkl[1]},{hkl[2]})"
+            self.status_label.setText(status)
         except Exception:
             self.status_label.setText(f"x={x:.1f}  y={y:.1f}  I={val:.0f}")
 
@@ -1243,7 +1255,7 @@ class FFViewer(QtWidgets.QMainWindow):
 
     def _on_ring_selection(self):
         """Open ring material selection dialog."""
-        dlg = RingSelectionDialog(self)
+        dlg = RingSelectionDialog(self, auto_generate=self.zarr_store is not None)
         if dlg.exec_() == QtWidgets.QDialog.Accepted:
             self.ring_rads = dlg.ring_rads
             self.ring_nrs = dlg.ring_nrs
@@ -1299,7 +1311,7 @@ class FFViewer(QtWidgets.QMainWindow):
 class RingSelectionDialog(QtWidgets.QDialog):
     """Two-step dialog: enter material params → select rings from list."""
 
-    def __init__(self, viewer, parent=None):
+    def __init__(self, viewer, parent=None, auto_generate=False):
         super().__init__(parent or viewer)
         self.viewer = viewer
         self.ring_rads = []
@@ -1308,7 +1320,11 @@ class RingSelectionDialog(QtWidgets.QDialog):
         self.rings_to_show = []
         self.setWindowTitle("Ring Material Selection")
         self.resize(500, 400)
-        self._build_material_page()
+        if auto_generate:
+            self._build_material_page()
+            self._generate_and_select()
+        else:
+            self._build_material_page()
 
     def _build_material_page(self):
         lay = QtWidgets.QFormLayout(self)
