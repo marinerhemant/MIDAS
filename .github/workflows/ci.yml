@@ -1,4 +1,4 @@
-name: CI Build
+name: CI Build & Test
 
 on:
   push:
@@ -7,9 +7,9 @@ on:
     branches: [ master ]
 
 jobs:
-  build-linux:
+  build-and-test-linux:
     runs-on: ubuntu-latest
-    timeout-minutes: 30
+    timeout-minutes: 60
 
     steps:
       - name: Checkout
@@ -23,6 +23,7 @@ jobs:
             cmake \
             pkg-config \
             python3-dev \
+            python3-pip \
             zlib1g-dev \
             libjpeg-dev \
             libtiff-dev \
@@ -40,6 +41,7 @@ jobs:
             libfftw3-dev
 
       - name: Build (no CUDA)
+        id: build
         run: |
           # Move custom cmake files to avoid forcing custom builds
           mkdir -p cmake/deps/backup
@@ -65,7 +67,57 @@ jobs:
             -DHDF5_INCLUDE_DIRS="/usr/include/hdf5/serial" \
             -Wno-dev
             
-          cmake --build . -j 8
+          cmake --build . -j $(nproc)
+
+      # ── Python test dependencies ──────────────────────────────────────
+      - name: Install Python test dependencies
+        if: always() && steps.build.outcome == 'success'
+        run: |
+          pip install --break-system-packages \
+            numpy \
+            "zarr==2.18.3" \
+            "numcodecs==0.15.1" \
+            h5py \
+            pandas \
+            scipy \
+            scikit-image
+
+      # ── Benchmark tests (2 vCPUs on standard GitHub runners) ─────────
+      - name: Test FF-HEDM
+        if: always() && steps.build.outcome == 'success'
+        env:
+          MIDAS_HOME: ${{ github.workspace }}
+        run: python tests/test_ff_hedm.py -nCPUs 2
+
+      - name: Test NF-HEDM
+        if: always() && steps.build.outcome == 'success'
+        env:
+          MIDAS_HOME: ${{ github.workspace }}
+        run: python tests/test_nf_hedm.py -nCPUs 2
+
+      - name: Test FF Calibration
+        if: always() && steps.build.outcome == 'success'
+        env:
+          MIDAS_HOME: ${{ github.workspace }}
+        run: python tests/test_ff_calibration.py -nCPUs 2
+
+      - name: Test Integrator Peaks
+        if: always() && steps.build.outcome == 'success'
+        env:
+          MIDAS_HOME: ${{ github.workspace }}
+        run: python tests/test_integrator_peaks.py -nCPUs 2
+
+      - name: Test Phase ID
+        if: always() && steps.build.outcome == 'success'
+        env:
+          MIDAS_HOME: ${{ github.workspace }}
+        run: python tests/test_phase_id.py -nCPUs 2
+
+      - name: Test Tomography
+        if: always() && steps.build.outcome == 'success'
+        env:
+          MIDAS_HOME: ${{ github.workspace }}
+        run: python tests/test_tomo.py -nCPUs 2
 
   build-linux-cuda:
     runs-on: ubuntu-latest
@@ -126,4 +178,4 @@ jobs:
             -DHDF5_INCLUDE_DIRS="/usr/include/hdf5/serial" \
             -Wno-dev
 
-          cmake --build . -j 8
+          cmake --build . -j $(nproc)
