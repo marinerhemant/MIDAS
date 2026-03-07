@@ -1362,7 +1362,7 @@ class RingSelectionDialog(QtWidgets.QDialog):
         for rn in range(1, 101):
             for line in lines:
                 parts = line.split()
-                if len(parts) >= 11 and int(parts[4]) == rn:
+                if len(parts) >= 11 and parts[4].isdigit() and int(parts[4]) == rn:
                     all_rings.append({
                         'nr': rn,
                         'hkl': [int(parts[0]), int(parts[1]), int(parts[2])],
