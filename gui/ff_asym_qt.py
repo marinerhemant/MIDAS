@@ -1418,15 +1418,16 @@ class RingSelectionDialog(QtWidgets.QDialog):
         self._show_ring_list(all_rings)
 
     def _show_ring_list(self, all_rings):
-        # Clear layout and show list
-        while self.layout().count():
-            item = self.layout().takeAt(0)
-            if item.widget():
-                item.widget().deleteLater()
-            elif item.layout():
-                pass  # sub-layouts cleaned up by parent
+        # Clear existing layout properly
+        old = self.layout()
+        if old is not None:
+            while old.count():
+                item = old.takeAt(0)
+                if item.widget():
+                    item.widget().deleteLater()
+            QtWidgets.QWidget().setLayout(old)  # reparent to delete
 
-        self.setLayout(QtWidgets.QVBoxLayout())
+        lay = QtWidgets.QVBoxLayout(self)
         self.layout().addWidget(QtWidgets.QLabel("Select rings (Ctrl+click for multi):"))
         self._list = QtWidgets.QListWidget()
         self._list.setSelectionMode(QtWidgets.QAbstractItemView.ExtendedSelection)
