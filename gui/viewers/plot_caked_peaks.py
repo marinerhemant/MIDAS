@@ -340,9 +340,28 @@ class CakedPeakViewer(QMainWindow):
         self.hkl_rings = []
         if self.param_file and self.param_file.exists():
             self.param_info = read_param_file(self.param_file)
-            self.hkl_rings = run_get_hkl_list(self.param_file)
-            if self.hkl_rings:
-                print(f'  Loaded {len(self.hkl_rings)} rings from GetHKLList')
+            all_rings = run_get_hkl_list(self.param_file)
+            if all_rings:
+                # Filter to rings that have at least one detected peak
+                detected_tths = set()
+                for _, _, ph5 in self.datasets:
+                    if ph5 and ph5.exists():
+                        try:
+                            with h5py.File(str(ph5), 'r') as hf:
+                                if 'peaks' in hf:
+                                    for c in hf['peaks']['center_2theta'][:]:
+                                        detected_tths.add(float(c))
+                        except Exception:
+                            pass
+                if detected_tths:
+                    for ring in all_rings:
+                        if any(abs(t - ring['two_theta']) < 0.1
+                               for t in detected_tths):
+                            self.hkl_rings.append(ring)
+                else:
+                    self.hkl_rings = all_rings  # no peaks yet, show all
+                print(f'  Loaded {len(self.hkl_rings)}/{len(all_rings)} '
+                      f'rings (detected)')
             else:
                 print('  Warning: no rings from GetHKLList')
 
