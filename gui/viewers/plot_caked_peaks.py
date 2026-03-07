@@ -696,11 +696,16 @@ class CakedPeakViewer(QMainWindow):
             self._update_lattice_plot()
 
     def _populate_table(self):
+        has_lat = bool(self.hkl_rings) and self.param_info is not None
         headers = ['#', '2θ (°)', 'Area', 'FWHM (°)', 'sig (cd²)',
                     'gam (cd)', 'η_mix', 'd (Å)', 'χ²']
+        if has_lat:
+            headers += ['Ring', 'a (Å)', 'Δa/a₀']
         self.table.setColumnCount(len(headers))
         self.table.setHorizontalHeaderLabels(headers)
         self.table.setRowCount(len(self.current_peaks))
+
+        a_ref = self.param_info['lattice'][0] if has_lat else None
 
         for i, p in enumerate(self.current_peaks):
             vals = [
@@ -714,6 +719,15 @@ class CakedPeakViewer(QMainWindow):
                 f"{p['d_spacing_A']:.5f}" if p['d_spacing_A'] > 0 else "—",
                 f"{p['chi_sq']:.3f}",
             ]
+            if has_lat:
+                ring = match_peak_to_ring(p['center_2theta'], self.hkl_rings)
+                if ring and p['d_spacing_A'] > 0:
+                    a_meas = p['d_spacing_A'] * (a_ref / ring['d_spacing'])
+                    da_a0 = (a_meas - a_ref) / a_ref
+                    hkl = f"R{ring['ring_nr']} ({ring['h']},{ring['k']},{ring['l']})"
+                    vals += [hkl, f"{a_meas:.5f}", f"{da_a0:.6f}"]
+                else:
+                    vals += ['—', '—', '—']
             for j, v in enumerate(vals):
                 item = QTableWidgetItem(v)
                 item.setFlags(item.flags() & ~Qt.ItemFlag.ItemIsEditable
