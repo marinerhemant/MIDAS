@@ -76,18 +76,13 @@ jobs:
         run: ln -sf build/bin bin
 
       # ── Python test dependencies ──────────────────────────────────────
-      - name: Install Python test dependencies
+      - name: Install Python dependencies
         if: steps.build.outcome == 'success'
         run: |
           pip install --break-system-packages \
-            numpy \
-            "zarr==2.18.3" \
-            "numcodecs==0.15.1" \
-            h5py \
-            pandas \
-            scipy \
-            scikit-image \
-            numba
+            matplotlib numpy pandas parsl scikit-image pillow h5py numba \
+            "zarr==2.18.3" "numcodecs==0.15.1" hdf5plugin \
+            scipy fsspec tqdm diskcache multiprocess
 
       # ── Benchmark tests (2 vCPUs on standard GitHub runners) ─────────
       # NOTE: test_nf_hedm.py is skipped — simulateNF needs ~24 GB RAM,
