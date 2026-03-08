@@ -79,8 +79,8 @@ class CalibrantViewer(QMainWindow):
         self.resize(1200, 750)
 
         # State
-        self.x_col = 'EtaCalc'
-        self.y_col = 'FitA'
+        self.x_col = 'RingNr'
+        self.y_col = 'Strain'
         self.c_col = 'RingNr'
         self.exclude_outliers = True
         self.log_color = False

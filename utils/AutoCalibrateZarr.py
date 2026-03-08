@@ -24,24 +24,26 @@ Legacy syntax with -dataFN, -paramFN, etc. is still accepted.
 import os
 os.environ.setdefault('KMP_DUPLICATE_LIB_OK', 'TRUE')  # macOS: prevent dual-libomp abort
 
+# diplib MUST be imported before numpy/numba/scipy/skimage so that diplib's
+# libomp.dylib loads first.  KMP_DUPLICATE_LIB_OK then lets numba's libomp
+# coexist without aborting.  Reversing this order causes segfaults on macOS.
+try:
+    import diplib as dip
+    _HAS_DIPLIB = True
+except ImportError:
+    _HAS_DIPLIB = False
+
 import warnings
 warnings.filterwarnings("ignore")
 import numpy as np
-import matplotlib.pyplot as plt
-import os
 import zarr
 import subprocess
 from skimage import measure
-import matplotlib.patches as mpatches
-plt.rcParams['figure.figsize'] = [10, 10]
 import argparse
 import sys
 import midas_config
 midas_config.run_startup_checks()
-import plotly.graph_objects as go
 import pandas as pd
-import diplib as dip
-from plotly.subplots import make_subplots
 from PIL import Image
 import math
 import logging
@@ -56,6 +58,27 @@ from numba import jit
 from scipy import ndimage
 import multiprocessing as mp
 from functools import partial
+
+
+def _safe_median_filter(data, kernel_size=101, n_iters=5):
+    """Run diplib MedianFilter; fall back to scipy if diplib unavailable."""
+    if not _HAS_DIPLIB:
+        logger.warning("diplib not available, using scipy median_filter (slower)")
+        for _ in range(n_iters):
+            data = ndimage.median_filter(data, size=kernel_size)
+        return data
+
+    try:
+        dip_img = dip.Image(data)
+        ks = [kernel_size, kernel_size]
+        for _ in range(n_iters):
+            dip_img = dip.MedianFilter(dip_img, ks)
+        return np.asarray(dip_img).astype(np.float64)
+    except Exception as e:
+        logger.error(f"diplib MedianFilter failed: {e}. Falling back to scipy.")
+        for _ in range(n_iters):
+            data = ndimage.median_filter(data, size=kernel_size)
+        return data
 
 # Set up logging
 logging.basicConfig(
@@ -86,18 +109,19 @@ env = dict(os.environ)
 class CalibState:
     """All calibration state in one place — no globals needed."""
     # Geometry (refined iteratively by C code)
-    lsd: str = '1000000'
-    bc: str = '1024 1024'
+    lsd: float = 1000000.0
+    ybc: float = 1024.0
+    zbc: float = 1024.0
     tx: float = 0.0
-    ty: str = '0'
-    tz: str = '0'
-    p0: str = '0'
-    p1: str = '0'
-    p2: str = '0'
-    p3: str = '0'
-    p4: str = '0'
-    mean_strain: str = '1.0'
-    std_strain: str = '0.0'
+    ty: float = 0.0
+    tz: float = 0.0
+    p0: float = 0.0
+    p1: float = 0.0
+    p2: float = 0.0
+    p3: float = 0.0
+    p4: float = 0.0
+    mean_strain: float = 1.0
+    std_strain: float = 0.0
     rhod: float = 0.0
 
     # Ring info
@@ -121,12 +145,22 @@ class CalibState:
     dark_name: str = ''
     fnumber: int = 1
     pad: int = 6
+    data_loc: str = ''
+    dark_loc: str = ''
 
     # Panel
     panel_params: list = field(default_factory=list)
     panel_shifts_file: str = ''
+    panel_grid: object = None          # PanelGrid from auto-detection
+    tol_shifts: float = 3.0
+    tol_rotation: float = 1.0
+    per_panel_lsd: int = 1
+    per_panel_distortion: int = 1
+    fix_panel_id: int = -1             # -1 = auto (closest to BC)
 
-    # Bad pixel mask
+    # Bad pixel / gap (B2 fix: declared fields instead of ad-hoc attrs)
+    bad_px_intensity: float = field(default_factory=lambda: float('nan'))
+    gap_intensity: float = field(default_factory=lambda: float('nan'))
     bad_gap_arr: list = field(default_factory=list)
     mask_file: str = ''
 
@@ -135,6 +169,355 @@ class CalibState:
 
     # Image transforms
     im_trans_opt: list = field(default_factory=lambda: [0])
+
+    @property
+    def bc(self) -> str:
+        """Backward-compat: 'ybc zbc' string for param file writing."""
+        return f'{self.ybc} {self.zbc}'
+
+
+@dataclass
+class PanelGrid:
+    """Auto-detected panel layout from a mask file."""
+    n_panels_y: int = 0   # number of panels along Y (columns)
+    n_panels_z: int = 0   # number of panels along Z (rows)
+    panel_size_y: int = 0  # panel width in pixels (along Y/cols)
+    panel_size_z: int = 0  # panel height in pixels (along Z/rows)
+    gaps_y: list = field(default_factory=list)  # column gaps (n_panels_y - 1)
+    gaps_z: list = field(default_factory=list)  # row gaps (n_panels_z - 1)
+    fix_panel_id: int = 0  # panel to fix (closest to center)
+    n_panels_total: int = 0
+    row_starts: list = field(default_factory=list)
+    col_starts: list = field(default_factory=list)
+
+
+def detect_panels_from_mask(mask_file, min_panel_pixels=1000, bc_guess=None):
+    """Auto-detect panel layout from a mask TIFF.
+
+    Convention: 0 = good pixel, non-zero = bad pixel.
+    Returns PanelGrid or None if < 2 panels found.
+    """
+    mask_img = np.array(Image.open(mask_file))
+    good = (mask_img == 0).astype(np.int32)
+    labeled, n_regions = ndimage.label(good)
+
+    if n_regions < 2:
+        logger.info(f"Mask has {n_regions} regions — no multi-panel layout detected")
+        return None
+
+    slices = ndimage.find_objects(labeled)
+
+    # Collect bounding boxes of substantial panels
+    panels = []
+    for i, sl in enumerate(slices):
+        if sl is None:
+            continue
+        region = (labeled[sl] == (i + 1))
+        n_px = np.sum(region)
+        if n_px < min_panel_pixels:
+            continue
+        r0, r1 = sl[0].start, sl[0].stop
+        c0, c1 = sl[1].start, sl[1].stop
+        h, w = r1 - r0, c1 - c0
+        fill = n_px / (h * w)
+        if fill < 0.9:  # skip non-rectangular regions
+            continue
+        panels.append((r0, r1, c0, c1, h, w))
+
+    if len(panels) < 2:
+        logger.info(f"Only {len(panels)} valid panels found — skipping panel detection")
+        return None
+
+    # Cluster row starts and col starts (tolerance 2px for alignment jitter)
+    def cluster_values(vals, tol=2):
+        vals = sorted(set(vals))
+        clusters = []
+        for v in vals:
+            if not clusters or v - clusters[-1] > tol:
+                clusters.append(v)
+        return clusters
+
+    row_starts = cluster_values([p[0] for p in panels])
+    col_starts = cluster_values([p[2] for p in panels])
+    n_rows = len(row_starts)
+    n_cols = len(col_starts)
+
+    if n_rows * n_cols < len(panels) * 0.8:
+        logger.warning(f"Grid detection mismatch: {n_rows}×{n_cols} = {n_rows*n_cols} "
+                       f"vs {len(panels)} panels. Skipping.")
+        return None
+
+    # Panel dimensions: median height and width
+    panel_h = int(np.median([p[4] for p in panels]))
+    panel_w = int(np.median([p[5] for p in panels]))
+
+    # Compute gaps
+    gaps_z = [row_starts[i+1] - (row_starts[i] + panel_h) for i in range(n_rows - 1)]
+    gaps_y = [col_starts[i+1] - (col_starts[i] + panel_w) for i in range(n_cols - 1)]
+
+    # Ensure gaps are non-negative (clamp to 0)
+    gaps_z = [max(0, g) for g in gaps_z]
+    gaps_y = [max(0, g) for g in gaps_y]
+
+    # Find panel closest to center (or BC guess) for fixPanel
+    cy = mask_img.shape[1] / 2.0  # center col = Y
+    cz = mask_img.shape[0] / 2.0  # center row = Z
+    if bc_guess is not None and bc_guess[0] > 0 and bc_guess[1] > 0:
+        cy, cz = bc_guess[0], bc_guess[1]  # ybc, zbc
+
+    best_panel_id = 0
+    best_dist = float('inf')
+    panel_id = 0
+    for ri, rs in enumerate(row_starts):
+        for ci, cs in enumerate(col_starts):
+            pc_z = rs + panel_h / 2.0
+            pc_y = cs + panel_w / 2.0
+            d = (pc_y - cy)**2 + (pc_z - cz)**2
+            if d < best_dist:
+                best_dist = d
+                best_panel_id = panel_id
+            panel_id += 1
+
+    pg = PanelGrid(
+        n_panels_y=n_cols,
+        n_panels_z=n_rows,
+        panel_size_y=panel_w,
+        panel_size_z=panel_h,
+        gaps_y=gaps_y,
+        gaps_z=gaps_z,
+        fix_panel_id=best_panel_id,
+        n_panels_total=n_rows * n_cols,
+        row_starts=row_starts,
+        col_starts=col_starts,
+    )
+
+    logger.info(f"Detected panel grid: {n_rows}×{n_cols} = {n_rows*n_cols} panels, "
+                f"size={panel_h}×{panel_w}px, "
+                f"gapsZ={gaps_z}, gapsY={gaps_y}, "
+                f"fixPanel={best_panel_id}")
+    return pg
+
+# ---- Blocking 2×2 image viewer (PyQt6 + pyqtgraph) ----
+COLORMAPS = ['viridis', 'inferno', 'plasma', 'magma', 'cividis',
+             'gray', 'hot', 'cool', 'bone', 'copper']
+
+_qapp = None  # lazy singleton
+
+def _ensure_qapp():
+    """Create QApplication if needed."""
+    global _qapp
+    from PyQt6.QtWidgets import QApplication
+    if _qapp is None:
+        _qapp = QApplication.instance() or QApplication(sys.argv)
+    return _qapp
+
+
+class CalibImageViewer:
+    """Blocking PyQt6/pyqtgraph 2×2 image viewer with shared zoom.
+
+    Panels: Raw | Background | Corrected | Corrected + Rings
+    Controls: colormap dropdown, clim min/max, Continue button.
+    show_and_wait() blocks until 'Continue' is clicked.
+    """
+
+    def __init__(self, title='AutoCalibrateZarr'):
+        _ensure_qapp()
+        import pyqtgraph as pg
+        from PyQt6.QtWidgets import (QMainWindow, QWidget, QVBoxLayout,
+                                     QHBoxLayout, QComboBox, QLabel,
+                                     QLineEdit, QPushButton)
+
+        self._pg = pg
+        self.win = QMainWindow()
+        self.win.setWindowTitle(title)
+        self.win.resize(1400, 900)
+        self._continued = False
+
+        central = QWidget()
+        self.win.setCentralWidget(central)
+        layout = QVBoxLayout(central)
+
+        # Control bar
+        controls = QHBoxLayout()
+
+        controls.addWidget(QLabel('Colormap:'))
+        self.cmap_combo = QComboBox()
+        self.cmap_combo.addItems(COLORMAPS)
+        self.cmap_combo.setCurrentText('viridis')
+        self.cmap_combo.currentTextChanged.connect(self._on_cmap)
+        controls.addWidget(self.cmap_combo)
+
+        controls.addWidget(QLabel('  Clim Min:'))
+        self.edit_cmin = QLineEdit()
+        self.edit_cmin.setPlaceholderText('auto')
+        self.edit_cmin.setFixedWidth(80)
+        self.edit_cmin.editingFinished.connect(self._on_clim)
+        controls.addWidget(self.edit_cmin)
+
+        controls.addWidget(QLabel('  Max:'))
+        self.edit_cmax = QLineEdit()
+        self.edit_cmax.setPlaceholderText('auto')
+        self.edit_cmax.setFixedWidth(80)
+        self.edit_cmax.editingFinished.connect(self._on_clim)
+        controls.addWidget(self.edit_cmax)
+
+        auto_btn = QPushButton('Auto Range')
+        auto_btn.clicked.connect(self._on_auto)
+        controls.addWidget(auto_btn)
+
+        controls.addStretch()
+
+        self.continue_btn = QPushButton('▶ Continue')
+        self.continue_btn.setStyleSheet(
+            'QPushButton { background-color: #2ecc71; color: white; '
+            'font-weight: bold; padding: 6px 20px; border-radius: 4px; }')
+        self.continue_btn.clicked.connect(self._on_continue)
+        controls.addWidget(self.continue_btn)
+
+        layout.addLayout(controls)
+
+        # 2×2 pyqtgraph grid with shared zoom
+        gw = pg.GraphicsLayoutWidget()
+        layout.addWidget(gw)
+
+        self.panels = {}
+        self.items = {}
+        labels = [('Raw', 0, 0), ('Background', 0, 1),
+                  ('Corrected', 1, 0), ('Corrected + Rings', 1, 1)]
+
+        first_vb = None
+        for name, row, col in labels:
+            p = gw.addPlot(row=row, col=col, title=name)
+            p.setAspectLocked(True)
+            p.invertY(False)
+            img = pg.ImageItem()
+            p.addItem(img)
+            self.panels[name] = p
+            self.items[name] = img
+            if first_vb is None:
+                first_vb = p.getViewBox()
+            else:
+                p.getViewBox().setXLink(first_vb)
+                p.getViewBox().setYLink(first_vb)
+
+        self._ring_items = []
+        self._lut = None
+        self._on_cmap('viridis')  # set initial colormap LUT
+        self.win.show()
+
+    def _set_image(self, name, img):
+        """Set image on a panel and auto-range the view."""
+        item = self.items[name]
+        # pyqtgraph ImageItem expects (x, y) = (cols, rows), so transpose
+        item.setImage(img.T, autoLevels=False)
+        if self._lut is not None:
+            item.setLookupTable(self._lut)
+        # Apply current clim if set, otherwise auto
+        self._apply_clim_to(item, img)
+        # Auto-range the first panel's view (linked panels follow)
+        if name == 'Raw':
+            self.panels[name].getViewBox().autoRange()
+
+    def _apply_clim_to(self, item, img=None):
+        """Apply current clim values to an ImageItem."""
+        try:
+            vmin = float(self.edit_cmin.text()) if self.edit_cmin.text().strip() else None
+        except ValueError:
+            vmin = None
+        try:
+            vmax = float(self.edit_cmax.text()) if self.edit_cmax.text().strip() else None
+        except ValueError:
+            vmax = None
+        if vmin is not None and vmax is not None:
+            item.setLevels([vmin, vmax])
+        elif img is not None:
+            item.setLevels([np.nanmin(img), np.nanmax(img)])
+
+    def set_raw(self, img):
+        self._raw_img = img
+        self._set_image('Raw', img)
+        # Auto clim from raw
+        pos = img[img > 0] if np.any(img > 0) else img.ravel()
+        m, s = np.median(pos), np.std(pos)
+        self.edit_cmin.setText(f'{m:.1f}')
+        self.edit_cmax.setText(f'{m + 2*s:.1f}')
+        self._on_clim()
+
+    def set_bg(self, img):
+        self._set_image('Background', img)
+
+    def set_corr(self, img):
+        self._set_image('Corrected', img)
+
+    def set_rings(self, img, ring_radii, bc, rings_to_exclude=None):
+        self._set_image('Corrected + Rings', img)
+        pg = self._pg
+        p = self.panels['Corrected + Rings']
+        # Remove old ring overlays
+        for item in self._ring_items:
+            p.removeItem(item)
+        self._ring_items = []
+        # Draw new rings as ellipses (CircleROI)
+        for i, rad in enumerate(ring_radii):
+            ring_nr = i + 1
+            if rings_to_exclude and ring_nr in rings_to_exclude:
+                continue
+            # pyqtgraph coords: x=col, y=row → bc[1]=col, bc[0]=row
+            r_px = rad / self._px if hasattr(self, '_px') else rad
+            circle = pg.CircleROI(
+                [bc[1] - r_px, bc[0] - r_px], [2 * r_px, 2 * r_px],
+                pen=pg.mkPen('c', width=1), movable=False)
+            # Remove resize/rotate handles
+            for h in circle.getHandles():
+                circle.removeHandle(h)
+            p.addItem(circle)
+            self._ring_items.append(circle)
+
+    def show_and_wait(self):
+        """Block until user clicks Continue."""
+        self.continue_btn.setEnabled(True)
+        _qapp.processEvents()
+        _qapp.exec()
+
+    def _on_continue(self):
+        self._continued = True
+        _qapp.quit()
+
+    def _on_cmap(self, name):
+        pg = self._pg
+        try:
+            cmap = pg.colormap.get(name, source='matplotlib')
+        except Exception:
+            cmap = pg.colormap.get('viridis', source='matplotlib')
+        self._lut = cmap.getLookupTable(nPts=256)
+        for item in self.items.values():
+            item.setLookupTable(self._lut)
+
+    def _on_clim(self):
+        try:
+            vmin = float(self.edit_cmin.text()) if self.edit_cmin.text().strip() else None
+        except ValueError:
+            vmin = None
+        try:
+            vmax = float(self.edit_cmax.text()) if self.edit_cmax.text().strip() else None
+        except ValueError:
+            vmax = None
+        if vmin is not None and vmax is not None:
+            for item in self.items.values():
+                item.setLevels([vmin, vmax])
+
+    def _on_auto(self):
+        if hasattr(self, '_raw_img'):
+            pos = self._raw_img[self._raw_img > 0] if np.any(self._raw_img > 0) else self._raw_img.ravel()
+            m, s = np.median(pos), np.std(pos)
+            self.edit_cmin.setText(f'{m:.1f}')
+            self.edit_cmax.setText(f'{m + 2*s:.1f}')
+            self._on_clim()
+
+    def process_events(self):
+        """Process Qt events (non-blocking)."""
+        if _qapp:
+            _qapp.processEvents()
 
 
 class MyParser(argparse.ArgumentParser):
@@ -312,6 +695,170 @@ def fileReader(f, dset, skip_frame=0):
     return np.mean(data, axis=0), ny, nz
 
 
+def detect_data_type(data_fn):
+    """Auto-detect CalibrantPanelShiftsOMP DataType from file.
+
+    Returns int: 1=uint16-raw, 6=tiff-uint32, 7=tiff-uint8,
+                 8=HDF5, 9=tiff-uint16
+    """
+    ext = Path(data_fn).suffix.lower()
+    if ext in ('.h5', '.hdf5', '.hdf', '.nxs'):
+        return 8
+    if ext in ('.tif', '.tiff'):
+        try:
+            import tifffile
+            with tifffile.TiffFile(data_fn) as tif:
+                dtype = tif.pages[0].dtype
+                if dtype == np.uint8:
+                    return 7
+                if dtype == np.uint16:
+                    return 9
+                if dtype == np.uint32:
+                    return 6
+        except ImportError:
+            # Fallback: use PIL
+            img = Image.open(data_fn)
+            mode = img.mode
+            if mode == 'I':         # 32-bit
+                return 6
+            if mode == 'L':         # 8-bit
+                return 7
+        return 6  # default for TIFF
+    if ext.startswith('.ge'):
+        return 1  # uint16 raw binary
+    return 1  # default
+
+
+def read_image_for_estimation(data_fn, dark_fn, data_loc, dark_loc,
+                              skip_frame=0, data_type=None):
+    """Read image data into numpy for beam center / ring detection.
+
+    Supports HDF5, TIFF, GE binary, and Zarr.
+    Returns: raw, dark, ny, nz
+    """
+    ext = Path(data_fn).suffix.lower()
+
+    if ext in ('.h5', '.hdf5', '.hdf', '.nxs'):
+        # Direct HDF5 reading
+        dl = data_loc or 'exchange/data'
+        dkl = dark_loc or 'exchange/dark'
+        with h5py.File(data_fn, 'r') as f:
+            data = f[dl][:]
+            data = data[skip_frame:]
+            if data.ndim == 3:
+                raw = np.mean(data, axis=0).astype(np.float64)
+            else:
+                raw = data.astype(np.float64)
+            nz, ny = raw.shape
+
+            if dkl in f:
+                dark_data = f[dkl][:]
+                if dark_data.ndim == 3:
+                    dark = np.mean(dark_data, axis=0).astype(np.float64)
+                else:
+                    dark = dark_data.astype(np.float64)
+            else:
+                dark = np.zeros_like(raw)
+
+        # Separate dark file
+        if dark_fn and os.path.exists(dark_fn):
+            with h5py.File(dark_fn, 'r') as f:
+                dkl2 = dark_loc or 'exchange/dark'
+                dark_data = f[dkl2][:]
+                if dark_data.ndim == 3:
+                    dark = np.mean(dark_data, axis=0).astype(np.float64)
+                else:
+                    dark = dark_data.astype(np.float64)
+
+        raw[raw < 1] = 1
+        return raw, dark, ny, nz
+
+    elif ext in ('.tif', '.tiff'):
+        img = np.array(Image.open(data_fn)).astype(np.float64)
+        nz, ny = img.shape
+        img[img < 1] = 1
+        dark = np.zeros_like(img)
+        if dark_fn and os.path.exists(dark_fn):
+            dark = np.array(Image.open(dark_fn)).astype(np.float64)
+        return img, dark, ny, nz
+
+    elif ext == '.zip' or ext == '.zarr':
+        # Zarr path (backward compat)
+        import zarr
+        f = zarr.open(data_fn, mode='r')
+        raw, ny, nz = fileReader(f, '/exchange/data', skip_frame)
+        dark, _, _ = fileReader(f, '/exchange/dark', skip_frame)
+        return raw, dark, ny, nz
+
+    else:
+        # GE binary or other raw format
+        dt = data_type or 1
+        dtype_map = {1: np.uint16, 2: np.float64, 3: np.float32,
+                     4: np.uint32, 5: np.int32}
+        np_dtype = dtype_map.get(dt, np.uint16)
+        raw = np.fromfile(data_fn, dtype=np_dtype)
+        # Assume square detector
+        side = int(np.sqrt(len(raw)))
+        if side * side != len(raw):
+            # Try with 8192-byte header
+            raw = np.fromfile(data_fn, dtype=np_dtype, offset=8192)
+            side = int(np.sqrt(len(raw)))
+        raw = raw.reshape(side, side).astype(np.float64)
+        nz, ny = raw.shape
+        raw[raw < 1] = 1
+        dark = np.zeros_like(raw)
+        if dark_fn and os.path.exists(dark_fn):
+            dark = np.fromfile(dark_fn, dtype=np_dtype)
+            if len(dark) > side * side:
+                dark = np.fromfile(dark_fn, dtype=np_dtype, offset=8192)
+            dark = dark[:side*side].reshape(side, side).astype(np.float64)
+        return raw, dark, ny, nz
+
+
+def run_get_hkl_list_cli(sg, latc, wavelength, lsd, max_ring_rad):
+    """Run GetHKLList in CLI mode (no temp param file needed).
+
+    Returns numpy array with columns:
+        h k l D-spacing RingNr g1 g2 g3 Theta 2Theta Radius
+    """
+    hkl_bin = os.path.join(INSTALL_PATH, 'FF_HEDM/bin/GetHKLList')
+    cmd = [
+        hkl_bin,
+        '--sg', str(int(sg)),
+        '--lp', *[f'{x:.6f}' for x in latc],
+        '--wl', f'{wavelength:.6f}',
+        '--lsd', f'{lsd:.1f}',
+        '--maxR', f'{max_ring_rad:.1f}',
+        '--stdout',
+    ]
+    try:
+        result = subprocess.run(cmd, capture_output=True, text=True,
+                                env=env, check=True)
+        lines = result.stdout.strip().split('\n')
+        # Filter to only numeric data lines (skip info/header lines)
+        data_lines = []
+        for l in lines:
+            l = l.strip()
+            if not l:
+                continue
+            try:
+                float(l.split()[0])
+                data_lines.append(l)
+            except (ValueError, IndexError):
+                continue  # skip non-numeric lines (headers, info)
+        if not data_lines:
+            logger.error(f"GetHKLList returned no numeric data. "
+                         f"Full output:\n{result.stdout}")
+            raise RuntimeError("GetHKLList returned no data")
+        return np.array([[float(x) for x in l.split()] for l in data_lines])
+    except subprocess.CalledProcessError as e:
+        logger.error(f"GetHKLList failed: {e.stderr}")
+        raise
+    except Exception as e:
+        logger.error(f"Error running GetHKLList CLI: {e}")
+        raise
+
+
 def generateZip(resFol, pfn, dfn='', darkfn='', dloc='', darkloc='',
                 nchunks=-1, preproc=-1, outf='ZipOut.txt', errf='ZipErr.txt',
                 NrPixelsY=0, NrPixelsZ=0):
@@ -384,28 +931,34 @@ def process_calibrant_output(output_file, state):
             if useful == 1:
                 if 'Copy to par' in line:
                     continue
+                parts = line.split()
+                if len(parts) < 2:
+                    continue
                 if 'Lsd ' in line:
-                    state.lsd = line.split()[1]
+                    state.lsd = float(parts[1])
                 if 'BC ' in line:
-                    state.bc = line.split()[1] + ' ' + line.split()[2]
+                    state.ybc = float(parts[1])
+                    state.zbc = float(parts[2])
                 if 'ty ' in line:
-                    state.ty = line.split()[1]
+                    state.ty = float(parts[1])
                 if 'tz ' in line:
-                    state.tz = line.split()[1]
+                    state.tz = float(parts[1])
                 if 'p0 ' in line:
-                    state.p0 = line.split()[1]
+                    state.p0 = float(parts[1])
                 if 'p1 ' in line:
-                    state.p1 = line.split()[1]
+                    state.p1 = float(parts[1])
                 if 'p2 ' in line:
-                    state.p2 = line.split()[1]
+                    state.p2 = float(parts[1])
                 if 'p3 ' in line:
-                    state.p3 = line.split()[1]
+                    state.p3 = float(parts[1])
                 if 'p4 ' in line:
-                    state.p4 = line.split()[1]
+                    state.p4 = float(parts[1])
+                if 'RhoD ' in line:
+                    state.rhod = float(parts[1])
                 if 'MeanStrain ' in line:
-                    state.mean_strain = str(float(line.split()[1]) / 1e6)
+                    state.mean_strain = float(parts[1]) / 1e6
                 if 'StdStrain ' in line:
-                    state.std_strain = str(float(line.split()[1]) / 1e6)
+                    state.std_strain = float(parts[1]) / 1e6
             if 'Mean Values' in line:
                 useful = 1
     except Exception as e:
@@ -642,11 +1195,13 @@ def run_get_hkl_list(param_file):
 
 def runMIDAS(rawFN, state, n_iterations=40, mult_factor=2.5,
              doublet_separation=25, outlier_iterations=3,
-             eta_bin_size=5.0, max_width=1000, n_cpus=None):
-    """Run CalibrantPanelShiftsOMP with all features enabled.
+             eta_bin_size=5.0, max_width=1000, n_cpus=None,
+             stage=0, stage_label=''):
+    """Run CalibrantPanelShiftsOMP.
 
-    A single call handles multi-iteration refinement, ring outlier rejection,
-    doublet detection, SNR weighting, and ring normalization internally.
+    stage=0: full optimization (legacy behavior)
+    stage=1: geometry only — Lsd, BC, tilts (tolP=0, no panels)
+    stage=2: full — distortion + panels using refined geometry from stage 1
     """
     if n_cpus is None:
         n_cpus = os.cpu_count() or 8
@@ -667,11 +1222,14 @@ def runMIDAS(rawFN, state, n_iterations=40, mult_factor=2.5,
                 pf.write(f'ImTransOpt {transOpt}\n')
             pf.write(f'Width {max_width}\n')
 
-            # Tolerances
+            # Tolerances — stage 1: lock distortion, stage 2: full
             pf.write('tolTilts 3\n')
             pf.write('tolBC 20\n')
-            pf.write('tolLsd 15000\n')
-            pf.write('tolP 2E-3\n')
+            pf.write('tolLsd 25000\n')
+            if stage == 1:
+                pf.write('tolP 0\n')  # lock distortion at current values
+            else:
+                pf.write('tolP 2E-3\n')
 
             # Current geometry
             pf.write(f'tx {state.tx}\n')
@@ -682,6 +1240,8 @@ def runMIDAS(rawFN, state, n_iterations=40, mult_factor=2.5,
             pf.write(f'p1 {state.p1}\n')
             pf.write(f'p2 {state.p2}\n')
             pf.write(f'p3 {state.p3}\n')
+            if state.p4 != 0.0:
+                pf.write(f'p4 {state.p4}\n')
             pf.write(f'EtaBinSize {eta_bin_size}\n')
             pf.write('HeadSize 0\n')
 
@@ -708,20 +1268,46 @@ def runMIDAS(rawFN, state, n_iterations=40, mult_factor=2.5,
             pf.write(f'BC {state.bc}\n')
             pf.write(f'LatticeConstant {" ".join(map(str, state.latc))}\n')
 
+            # Direct file reading params (skip GE conversion)
+            if state.data_loc:
+                pf.write(f'dataLoc {state.data_loc}\n')
+            if state.dark_loc:
+                pf.write(f'darkLoc {state.dark_loc}\n')
+
             # C-side iteration and advanced features
             pf.write(f'nIterations {n_iterations}\n')
             pf.write(f'DoubletSeparation {doublet_separation}\n')
             pf.write(f'OutlierIterations {outlier_iterations}\n')
             pf.write('NormalizeRingWeights 1\n')
             pf.write('MinIndicesForFit 5\n')
+            pf.write('WeightByRadius 1\n')
             pf.write('WeightByFitSNR 1\n')
+            pf.write('L2Objective 1\n')
 
-            # Panel parameters
-            if state.panel_params:
-                for pp in state.panel_params:
-                    pf.write(f'{pp}\n')
-                pf.write(f'PanelShiftsFile {state.panel_shifts_file}\n')
-                pf.write('tolShifts 1\n')
+            # Panel parameters — only in stage 2 or stage 0
+            if stage != 1:
+                if state.panel_grid is not None:
+                    pg = state.panel_grid
+                    pf.write(f'NPanelsY {pg.n_panels_y}\n')
+                    pf.write(f'NPanelsZ {pg.n_panels_z}\n')
+                    pf.write(f'PanelSizeY {pg.panel_size_y}\n')
+                    pf.write(f'PanelSizeZ {pg.panel_size_z}\n')
+                    pf.write(f'PanelGapsY {" ".join(str(g) for g in pg.gaps_y)}\n')
+                    pf.write(f'PanelGapsZ {" ".join(str(g) for g in pg.gaps_z)}\n')
+                    fix_id = state.fix_panel_id if state.fix_panel_id >= 0 else pg.fix_panel_id
+                    pf.write(f'FixPanelID {fix_id}\n')
+                    pf.write(f'tolShifts {state.tol_shifts}\n')
+                    pf.write(f'tolRotation {state.tol_rotation}\n')
+                    pf.write(f'PerPanelLsd {state.per_panel_lsd}\n')
+                    pf.write(f'PerPanelDistortion {state.per_panel_distortion}\n')
+                    if state.panel_shifts_file:
+                        pf.write(f'PanelShiftsFile {state.panel_shifts_file}\n')
+                elif state.panel_params:
+                    for pp in state.panel_params:
+                        pf.write(f'{pp}\n')
+                    if state.panel_shifts_file:
+                        pf.write(f'PanelShiftsFile {state.panel_shifts_file}\n')
+                    pf.write(f'tolShifts {state.tol_shifts}\n')
 
             # Mask file
             if state.mask_file:
@@ -731,7 +1317,7 @@ def runMIDAS(rawFN, state, n_iterations=40, mult_factor=2.5,
         calibrant_exe = os.path.join(INSTALL_PATH, 'FF_HEDM/bin/CalibrantPanelShiftsOMP')
         calibrant_cmd = f"{calibrant_exe} {ps_file} {n_cpus}"
 
-        logger.info(f"Running CalibrantPanelShiftsOMP with {n_cpus} CPUs, "
+        logger.info(f"{stage_label}Running CalibrantPanelShiftsOMP with {n_cpus} CPUs, "
                      f"{n_iterations} iterations, DoubletSep={doublet_separation}px")
 
         # Run and capture output in real-time while also saving to file
@@ -842,6 +1428,16 @@ def main():
         parser.add_argument('--mask', '-MaskFile', type=str, default='',
                             help='Mask TIFF file for bad/gap pixels (passed as MaskFile to CalibrantPanelShiftsOMP)')
 
+        # Panel optimization (auto-detected from mask)
+        parser.add_argument('--tol-shifts', type=float, default=3.0,
+                            help='Panel shift tolerance in pixels (default: 3.0)')
+        parser.add_argument('--tol-rotation', type=float, default=1.0,
+                            help='Panel rotation tolerance in degrees (default: 1.0)')
+        parser.add_argument('--per-panel-lsd', type=int, default=1,
+                            help='Enable per-panel Lsd optimization (0=off, 1=on)')
+        parser.add_argument('--fix-panel', type=int, default=-1,
+                            help='Panel to fix during optimization (-1=auto: closest to BC)')
+
         # Image handling
         parser.add_argument('--im-trans', '-ImTransOpt', type=int, default=[0], nargs='*',
                             help='Image transformations: 0=none, 1=flipLR, 2=flipUD, 3=transpose')
@@ -864,6 +1460,16 @@ def main():
         parser.add_argument('--cpus', type=int, default=0,
                             help='Number of CPUs for CalibrantPanelShiftsOMP (0=all)')
 
+        # Data type override
+        parser.add_argument('--data-type', type=int, default=-1,
+                            help='Override DataType for CalibrantPanelShiftsOMP: '
+                                 '1=uint16-raw, 6=tiff-uint32, 7=tiff-uint8, '
+                                 '8=HDF5, 9=tiff-uint16. Default: auto-detect.')
+
+        # Output
+        parser.add_argument('--output', '-o', type=str, default='',
+                            help='Output parameter filename (default: refined_MIDAS_params_<stem>.txt)')
+
         args, unparsed = parser.parse_known_args()
 
         # ---- Initialize state ----
@@ -871,12 +1477,16 @@ def main():
         state.bad_px_intensity = args.bad_px
         state.gap_intensity = args.gap_px
         state.im_trans_opt = args.im_trans
+        state.data_loc = args.data_loc
+        state.dark_loc = args.dark_loc
+        state.tol_shifts = args.tol_shifts
+        state.tol_rotation = args.tol_rotation
+        state.per_panel_lsd = args.per_panel_lsd
+        state.fix_panel_id = args.fix_panel
 
         dataFN = args.data
         darkFN = args.dark
-        dataLoc = args.data_loc
-        darkLoc = args.dark_loc
-        DrawPlots = int(args.plots)
+        DrawPlots = bool(args.plots)
         firstRing = int(args.first_ring)
         multFactor = float(args.mult_factor)
         threshold = args.threshold
@@ -905,216 +1515,251 @@ def main():
 
         logger.info(f"Starting automated calibration for: {dataFN}")
 
-        # ---- Auto-detect file format ----
+        # ---- Auto-detect file format and DataType ----
         convertFile = args.convert
         if convertFile < 0:
             convertFile = detect_format(dataFN)
             logger.info(f"Auto-detected format: {['Zarr','HDF5','GE','TIFF'][convertFile]}")
 
-        # ---- File format conversion ----
-        bad_gap_arr = []
+        if args.data_type >= 0:
+            state.midas_dtype = args.data_type
+            logger.info(f"DataType override from --data-type: {state.midas_dtype}")
+        else:
+            state.midas_dtype = detect_data_type(dataFN)
+            logger.info(f"Auto-detected DataType: {state.midas_dtype}")
 
-        # Detect calibrant + filename hints early (needed for temp param file)
+        # Detect calibrant from filename
         calibrant = detect_calibrant(args.data)
         if calibrant is None:
             calibrant = CALIBRANTS['ceo2']
             logger.info(f"No calibrant detected from filename, defaulting to {calibrant['name']}")
 
-        if convertFile == 3:
-            logger.info("Processing TIFF input")
-            dataFN, darkGeFN, ny, nz, bad_gap_arr = process_tiff_input(
-                dataFN, args.bad_px, args.gap_px, darkFN)
-            if ny > 0:
-                state.nr_pixels_y = ny
-            if nz > 0:
-                state.nr_pixels_z = nz
-            logger.info(f"Converted TIFF to GE: {dataFN}, NrPixelsY={state.nr_pixels_y}, "
-                        f"NrPixelsZ={state.nr_pixels_z}")
+        # ---- Read image data for geometry estimation ----
+        # For --convert 0 (force Zarr), use old pipeline
+        if convertFile == 0 and not dataFN.endswith('.zip'):
+            # User forced Zarr conversion from non-Zarr input
             psFN = args.params
             if not psFN:
                 psFN = _make_temp_param_file(args, calibrant, filename_hints)
-            dataFN = generateZip('.', psFN, dfn=dataFN, darkfn=darkGeFN,
-                                 nchunks=100, preproc=0,
-                                 NrPixelsY=state.nr_pixels_y,
-                                 NrPixelsZ=state.nr_pixels_z)
-
-        if convertFile == 1 or convertFile == 2:
-            psFN = args.params
-            if not psFN:
-                psFN = _make_temp_param_file(args, calibrant, filename_hints)
-            logger.info("Generating zip file")
+            logger.info("Generating Zarr file (--convert 0)")
             dataFN = generateZip('.', psFN, dfn=dataFN, nchunks=100,
-                                 preproc=0, darkfn=darkFN, dloc=dataLoc,
-                                 darkloc=darkLoc)
+                                 preproc=0, darkfn=darkFN,
+                                 dloc=args.data_loc, darkloc=args.dark_loc)
 
-        # ---- Read Zarr file ----
-        logger.info(f"Reading Zarr file: {dataFN}")
-        dataF = zarr.open(dataFN, mode='r')
-        dataFN = os.path.basename(dataFN)
-
-        # calibrant already detected above
-
-        # Extract parameters from Zarr (with calibrant defaults as fallback)
-        state.skip_frame = 0
-        ap = '/analysis/process/analysis_parameters'
-        if f'{ap}/SpaceGroup' in dataF:
-            state.space_group = dataF[f'{ap}/SpaceGroup'][0].item()
-        else:
-            state.space_group = calibrant['space_group']
-            logger.info(f"SpaceGroup not in Zarr, using {calibrant['name']} default: {state.space_group}")
-
-        if f'{ap}/SkipFrame' in dataF:
-            state.skip_frame = dataF[f'{ap}/SkipFrame'][0].item()
-
-        if f'{ap}/PixelSize' in dataF:
-            state.px = dataF[f'{ap}/PixelSize'][0].item()
-        elif args.px > 0:
-            state.px = args.px
-            logger.info(f"PixelSize from --px: {state.px} µm")
-        else:
-            state.px = 200.0
-            logger.info(f"PixelSize not in Zarr, using default: {state.px} µm")
-
-        if f'{ap}/LatticeParameter' in dataF:
-            state.latc = dataF[f'{ap}/LatticeParameter'][:]
-        else:
-            state.latc = calibrant['lattice']
-            logger.info(f"LatticeParameter not in Zarr, using {calibrant['name']} default: {state.latc}")
-
-        if f'{ap}/Wavelength' in dataF:
-            state.wavelength = dataF[f'{ap}/Wavelength'][:].item()
-        elif 'wavelength' in filename_hints:
-            state.wavelength = filename_hints['wavelength']
-            logger.info(f"Wavelength from filename: {state.wavelength:.5f} Å")
-        else:
-            state.wavelength = 0.0
-            logger.warning("Wavelength not found in Zarr or filename — must be set in param file")
-
-        if f'{ap}/tx' in dataF:
-            state.tx = dataF[f'{ap}/tx'][:].item()
-        else:
-            state.tx = 0.0
-        # CLI --tx overrides Zarr/default
-        if args.tx != 0.0:
-            state.tx = args.tx
-            logger.info(f"tx from --tx: {state.tx}")
-
-        if f'{ap}/MaskFile' in dataF:
-            mf = dataF[f'{ap}/MaskFile'][0]
-            if isinstance(mf, bytes): mf = mf.decode()
-            state.mask_file = str(mf)
-        # CLI --mask overrides Zarr/default
-        if args.mask:
-            state.mask_file = str(Path(args.mask).absolute())
-            logger.info(f"MaskFile from --mask: {state.mask_file}")
-
-        # Read data and dark
-        raw, ny, nz = fileReader(dataF, '/exchange/data', state.skip_frame)
-        dark, _, _ = fileReader(dataF, '/exchange/dark', state.skip_frame)
+        logger.info(f"Reading image for geometry estimation: {dataFN}")
+        raw, dark, ny, nz = read_image_for_estimation(
+            dataFN, darkFN, args.data_loc, args.dark_loc,
+            skip_frame=state.skip_frame, data_type=state.midas_dtype)
         state.nr_pixels_y = ny
         state.nr_pixels_z = nz
 
+        # Extract params from Zarr metadata if Zarr input
+        if convertFile == 0 or dataFN.endswith('.zip'):
+            import zarr
+            dataF = zarr.open(dataFN, mode='r')
+            ap = '/analysis/process/analysis_parameters'
+            if f'{ap}/SpaceGroup' in dataF:
+                state.space_group = dataF[f'{ap}/SpaceGroup'][0].item()
+            else:
+                state.space_group = calibrant['space_group']
+            if f'{ap}/SkipFrame' in dataF:
+                state.skip_frame = dataF[f'{ap}/SkipFrame'][0].item()
+            if f'{ap}/PixelSize' in dataF:
+                state.px = dataF[f'{ap}/PixelSize'][0].item()
+            elif args.px > 0:
+                state.px = args.px
+            if f'{ap}/LatticeParameter' in dataF:
+                state.latc = dataF[f'{ap}/LatticeParameter'][:]
+            else:
+                state.latc = calibrant['lattice']
+            if f'{ap}/Wavelength' in dataF:
+                state.wavelength = dataF[f'{ap}/Wavelength'][:].item()
+            elif 'wavelength' in filename_hints:
+                state.wavelength = filename_hints['wavelength']
+            if f'{ap}/tx' in dataF:
+                state.tx = dataF[f'{ap}/tx'][:].item()
+            if f'{ap}/MaskFile' in dataF:
+                mf = dataF[f'{ap}/MaskFile'][0]
+                if isinstance(mf, bytes): mf = mf.decode()
+                state.mask_file = str(mf)
+        else:
+            # Non-Zarr: use calibrant defaults and CLI args
+            state.space_group = calibrant['space_group']
+            state.latc = calibrant['lattice']
+            if args.px > 0:
+                state.px = args.px
+            elif state.px == 0:
+                state.px = 200.0
+            if 'wavelength' in filename_hints:
+                state.wavelength = filename_hints['wavelength']
+
+            # Read additional params from param file
+            if args.params:
+                try:
+                    with open(args.params) as pf:
+                        for line in pf:
+                            parts = line.split()
+                            if len(parts) < 2:
+                                continue
+                            key = parts[0]
+                            if key == 'Wavelength':
+                                state.wavelength = float(parts[1])
+                            elif key == 'SpaceGroup':
+                                state.space_group = int(parts[1])
+                            elif key in ('LatticeConstant', 'LatticeParameter'):
+                                state.latc = np.array([float(x) for x in parts[1:7]])
+                            elif key == 'px':
+                                state.px = float(parts[1])
+                            elif key == 'tx':
+                                state.tx = float(parts[1])
+                            elif key in ('NrPixels', 'NrPixelsY'):
+                                state.nr_pixels_y = int(parts[1])
+                            elif key == 'NrPixelsZ':
+                                state.nr_pixels_z = int(parts[1])
+                except Exception as e:
+                    logger.warning(f"Could not fully parse param file: {e}")
+
+        # CLI overrides
+        if args.tx != 0.0:
+            state.tx = args.tx
+        # Save pre-mask copy for viewer display
+        raw_for_display = raw.copy()
+
+        if args.mask:
+            state.mask_file = str(Path(args.mask).absolute())
+            logger.info(f"MaskFile from --mask: {state.mask_file}")
+        elif not state.mask_file:
+            # Auto-detect: if image has -1 or -2 intensity pixels, generate mask
+            mask_intensities = []
+            n_neg1 = int(np.sum(raw == -1))
+            n_neg2 = int(np.sum(raw == -2))
+            if n_neg1 > 0:
+                mask_intensities.append(-1)
+            if n_neg2 > 0:
+                mask_intensities.append(-2)
+            if mask_intensities:
+                logger.info(f"Auto-detected mask pixels: "
+                            f"{n_neg1} at -1, {n_neg2} at -2 — generating mask")
+                from generate_mask import generate_mask as _gen_mask
+                # Avoid overwriting: use unique name in current directory
+                auto_mask_fn = os.path.join(
+                    os.path.dirname(os.path.abspath(dataFN)),
+                    f"{Path(dataFN).stem}_autocal_mask.tif")
+                if os.path.exists(auto_mask_fn):
+                    logger.info(f"Auto-mask already exists: {auto_mask_fn}")
+                else:
+                    auto_mask_fn = _gen_mask(
+                        os.path.abspath(dataFN), mask_intensities,
+                        output_path=auto_mask_fn)
+                    logger.info(f"Generated auto-mask: {auto_mask_fn}")
+                state.mask_file = str(Path(auto_mask_fn).absolute())
+
         # Apply mask file: zero out masked pixels before any processing
+        bad_gap_arr = []
         if state.mask_file:
             try:
                 mask_img = np.array(Image.open(state.mask_file))
-                # Convention: mask==0 means bad/masked pixel, mask!=0 means good pixel
-                mask_bool = (mask_img == 0)  # True where pixel is BAD
+                mask_bool = (mask_img != 0)  # True where pixel is BAD (0=good, nonzero=bad)
                 if mask_bool.shape != raw.shape:
                     logger.warning(f"Mask shape {mask_bool.shape} != image shape {raw.shape}, skipping mask")
                 else:
                     raw[mask_bool] = 0
                     dark[mask_bool] = 0
-                    # Merge with existing bad_gap_arr
-                    if len(bad_gap_arr) != 0:
-                        bad_gap_arr = np.logical_or(bad_gap_arr, mask_bool)
-                    else:
-                        bad_gap_arr = mask_bool
+                    bad_gap_arr = mask_bool
+                    n_good = np.sum(~mask_bool)
                     logger.info(f"Applied mask from {state.mask_file}: "
-                                f"{np.sum(mask_bool)} pixels masked")
+                                f"{np.sum(mask_bool)} pixels masked, "
+                                f"{n_good} active ({100*n_good/mask_bool.size:.1f}%)")
             except Exception as e:
                 logger.error(f"Failed to read mask file {state.mask_file}: {e}")
 
-        # Save as GE files (needed by CalibrantPanelShiftsOMP)
-        rawFN = dataFN.split('.zip')[0] + '.ge5'
-        darkFN_ge = 'dark_' + rawFN
-        raw.tofile(rawFN)
+            # Auto-detect panel layout from mask
+            bc_guess = None
+            if state.ybc > 0 and state.zbc > 0:
+                bc_guess = (state.ybc, state.zbc)
+            state.panel_grid = detect_panels_from_mask(state.mask_file, bc_guess=bc_guess)
+
+        # Parse raw filename for CalibrantPanelShiftsOMP file naming
+        rawFN = os.path.abspath(dataFN)
+
+        # Apply bad_gap_arr mask if created from mask file
         if len(bad_gap_arr) != 0:
             raw = np.ma.masked_array(raw, mask=bad_gap_arr)
-        dark.tofile(darkFN_ge)
-        state.dark_name = darkFN_ge
 
-        # Apply image transformations
+        # Set dark_name for CalibrantPanelShiftsOMP
+        if darkFN:
+            state.dark_name = os.path.abspath(darkFN)
+        else:
+            state.dark_name = os.path.abspath(dataFN)  # dark from same file
+        if not state.folder:
+            state.folder = os.path.dirname(rawFN) or os.getcwd()
+
+        # Apply image transformations (for Python-side geometry estimation)
         for transOpt in state.im_trans_opt:
             if transOpt == 1:
                 raw = np.fliplr(raw)
                 dark = np.fliplr(dark)
+                raw_for_display = np.fliplr(raw_for_display)
             elif transOpt == 2:
                 raw = np.flipud(raw)
                 dark = np.flipud(dark)
+                raw_for_display = np.flipud(raw_for_display)
             elif transOpt == 3:
                 raw = np.transpose(raw)
                 dark = np.transpose(dark)
+                raw_for_display = np.transpose(raw_for_display)
 
         if state.h5_file:
             save_raw_image_data(raw, state.h5_file)
 
-        if DrawPlots == 1:
-            fig = plt.figure()
-            plt.imshow(np.log(raw),
-                       clim=[np.median(np.log(raw)),
-                             np.median(np.log(raw)) + np.std(np.log(raw))],
-                       origin='lower')
-            plt.colorbar()
-            plt.title('Raw image')
-            plt.show()
+        # Create viewer (initially shows raw pre-mask image)
+        viewer = None
+        if DrawPlots:
+            try:
+                os.environ.setdefault('QT_MAC_WANTS_LAYER', '1')  # macOS Cocoa compat
+                viewer = CalibImageViewer(title=f'AutoCalibrateZarr — {os.path.basename(rawFN)}')
+                viewer.set_raw(np.log(raw_for_display.astype(np.float64) + 1))
+                viewer.process_events()
+            except Exception as e:
+                logger.warning(f"Could not create viewer (no display?): {e}")
+                logger.warning("Continuing without plots")
+                viewer = None
 
-        # ---- Ring simulation ----
+        # ---- Ring simulation (B4 fix: compute rhod first) ----
         logger.info("Running initial ring simulation")
 
         # Validate required params for GetHKLList
         if state.wavelength <= 0:
-            print("ERROR: Wavelength is required but not set. Provide it via --params or filename (e.g. 71p676keV).")
+            logger.error("Wavelength is required but not set. Provide it via --params or filename (e.g. 71p676keV).")
             sys.exit(1)
         if np.all(state.latc == 0):
-            print("ERROR: LatticeParameter is required but not set. Provide it via --params.")
+            logger.error("LatticeParameter is required but not set. Provide it via --params.")
             sys.exit(1)
 
-        sim_params = {
-            'Wavelength': state.wavelength,
-            'SpaceGroup': state.space_group,
-            'Lsd': initialLsd,
-            'RhoD': state.rhod,
-            'MaxRingRad': mrr,
-            'LatticeConstant': state.latc
-        }
-        create_param_file('ps_init_sim.txt', sim_params)
-        hkls = run_get_hkl_list('ps_init_sim.txt')
+        # B4 fix: compute rhod before first GetHKLList call
+        NrPixelsY = state.nr_pixels_y if state.nr_pixels_y > 0 else 2048
+        NrPixelsZ = state.nr_pixels_z if state.nr_pixels_z > 0 else 2048
+        state.rhod = max(NrPixelsY, NrPixelsZ) * state.px
+
+        # Use GetHKLList CLI mode (no temp param files needed)
+        hkls = run_get_hkl_list_cli(
+            state.space_group, state.latc, state.wavelength,
+            initialLsd, state.rhod)
         sim_rads = np.unique(hkls[:, -1]) / state.px
         sim_rad_ratios = sim_rads / sim_rads[0]
 
         # ---- Background subtraction and thresholding ----
         # np.asarray strips masked-array wrapper (diplib segfaults on masked arrays)
         data = np.asarray(raw).astype(np.float64)
-
-        # Determine DataType for CalibrantPanelShiftsOMP
-        if raw.dtype == np.uint32:
-            state.midas_dtype = 4
-        elif raw.dtype == np.int32:
-            state.midas_dtype = 5
-        elif raw.dtype == np.float32:
-            state.midas_dtype = 3
-        elif raw.dtype == np.float64:
-            state.midas_dtype = 2
-        else:
-            state.midas_dtype = 1  # default Uint16
+        # DataType already detected by detect_data_type() earlier
 
         if noMedian == 0:
             logger.info("Applying median filter for background estimation")
-            data = np.ascontiguousarray(data)  # diplib needs contiguous memory
-            data2 = dip.MedianFilter(data, 101)
-            for _ in range(4):
-                data2 = dip.MedianFilter(data2, 101)
+            # Ensure fully contiguous C-ordered copy
+            data = np.ascontiguousarray(data.copy())
+            logger.info(f"  data shape={data.shape}, dtype={data.dtype}, "
+                        f"min={np.min(data):.1f}, max={np.max(data):.1f}")
+            data2 = _safe_median_filter(data, kernel_size=101, n_iters=5)
         else:
             logger.info("Skipping median filter, using dark subtraction only")
             data2 = dark.astype(np.float64)
@@ -1125,12 +1770,9 @@ def main():
         if state.h5_file:
             save_background_data(data2, state.h5_file)
 
-        if DrawPlots == 1 and noMedian == 0:
-            fig = plt.figure()
-            plt.imshow(np.log(data2), origin='lower')
-            plt.colorbar()
-            plt.title('Computed background')
-            plt.show()
+        if DrawPlots and viewer and noMedian == 0:
+            viewer.set_bg(np.log(np.asarray(data2) + 1))
+            viewer.process_events()
 
         # Background subtraction and thresholding
         data_corr = data - data2
@@ -1145,12 +1787,9 @@ def main():
         if state.h5_file:
             save_threshold_data(thresh, state.h5_file)
 
-        if DrawPlots == 1 and noMedian == 0:
-            fig = plt.figure()
-            plt.imshow(thresh, origin='lower')
-            plt.colorbar()
-            plt.title('Cleaned image')
-            plt.show()
+        if DrawPlots and viewer and noMedian == 0:
+            viewer.set_corr(thresh)
+            viewer.process_events()
 
         # ---- Beam center and ring detection ----
         bcg = args.bc_guess
@@ -1175,10 +1814,10 @@ def main():
         bc_new = bc_computed
         logger.info(f"FN: {rawFN}, Beam Center guess: {np.flip(bc_new)}, Lsd guess: {initialLsd}")
 
-        # Re-run ring simulation with updated Lsd
-        sim_params['Lsd'] = initialLsd
-        create_param_file('ps.txt', sim_params)
-        hkls = run_get_hkl_list('ps.txt')
+        # Re-run ring simulation with updated Lsd (CLI mode)
+        hkls = run_get_hkl_list_cli(
+            state.space_group, state.latc, state.wavelength,
+            initialLsd, state.rhod)
         sim_rads = np.unique(hkls[:, -1]) / state.px
         sim_rad_ratios = sim_rads / sim_rads[0]
 
@@ -1215,55 +1854,75 @@ def main():
         # Display rings overlay
         NrPixelsY = state.nr_pixels_y if state.nr_pixels_y > 0 else 2048
         NrPixelsZ = state.nr_pixels_z if state.nr_pixels_z > 0 else 2048
-        if DrawPlots == 1:
-            fig, ax = plt.subplots()
+        if DrawPlots and viewer:
             if noMedian == 0:
-                plt.imshow(thresh, origin='lower')
+                viewer.set_rings(thresh, sim_rads, bc_new, state.rings_to_exclude)
             else:
                 log_img = np.log(data_corr + 1)
-                vmin = np.median(log_img)
-                vmax = vmin + np.std(log_img)
-                plt.imshow(log_img, clim=[vmin, vmax], origin='lower')
-                plt.colorbar()
-            for ringNr, rad in enumerate(sim_rads, start=1):
-                if ringNr in state.rings_to_exclude:
-                    continue
-                e1 = mpatches.Arc((bc_new[1], bc_new[0]), 2*rad, 2*rad,
-                                  angle=0, theta1=-180, theta2=180, color='blue')
-                ax.add_patch(e1)
-            ax.axis([0, NrPixelsY, 0, NrPixelsZ])
-            ax.set_aspect('equal')
-            plt.title('Overlaid rings')
-            plt.show()
+                viewer.set_rings(log_img, sim_rads, bc_new, state.rings_to_exclude)
+            logger.info("Showing image viewer — click 'Continue' to proceed")
+            viewer.show_and_wait()
 
         # ---- Prepare for MIDAS calibration ----
-        state.fnumber = int(rawFN.split('_')[-1].split('.')[0])
-        state.pad = len(rawFN.split('_')[-1].split('.')[0])
-        state.fstem = os.path.basename('_'.join(rawFN.split('_')[:-1]))
-        state.ext = '.' + '.'.join(rawFN.split('_')[-1].split('.')[1:])
-        state.folder = os.path.dirname(rawFN)
-        if not state.folder:
-            state.folder = os.getcwd()
+        # Parse filename components for CalibrantPanelShiftsOMP
+        base = os.path.basename(rawFN)
+        try:
+            state.fnumber = int(base.split('_')[-1].split('.')[0])
+            state.pad = len(base.split('_')[-1].split('.')[0])
+            state.fstem = '_'.join(base.split('_')[:-1])
+            state.ext = '.' + '.'.join(base.split('_')[-1].split('.')[1:])
+        except (ValueError, IndexError):
+            # Filename doesn't follow STEM_NNNN.ext pattern
+            stem_ext = os.path.splitext(base)
+            state.fstem = stem_ext[0]
+            state.ext = stem_ext[1]
+            state.fnumber = 1
+            state.pad = 6
 
-        state.lsd = str(initialLsd)
-        state.bc = f"{bc_new[1]} {bc_new[0]}"
+        state.lsd = initialLsd
+        state.ybc = bc_new[1]
+        state.zbc = bc_new[0]
         state.panel_shifts_file = f"{state.fstem}_panel_shifts.txt"
         state.nr_pixels_y = NrPixelsY
         state.nr_pixels_z = NrPixelsZ
 
-        # Calculate RhoD — maximum radius to edge from beam center
+        # Refine RhoD — maximum radius to edge from beam center
         edges = np.array([[0, 0], [NrPixelsY, 0], [NrPixelsY, NrPixelsZ], [0, NrPixelsZ]])
         state.rhod = np.max(np.linalg.norm(
             np.transpose(edges) - bc_new[:, None], axis=0)) * state.px
 
-        # ---- Single call to CalibrantPanelShiftsOMP ----
-        logger.info(f"Running MIDAS calibration: {args.n_iterations} iterations, "
-                     f"{n_cpus} CPUs, DoubletSep={args.doublet_separation}px")
+        # ---- Multi-stage CalibrantPanelShiftsOMP ----
+        # Stage 1: geometry only (Lsd, BC, tilts) — lock distortion, no panels
+        # Stage 2: full (distortion + panels) using refined geometry from stage 1
+        stage1_iters = min(10, args.n_iterations)
+
+        logger.info(f"Running MIDAS calibration: 2-stage, {n_cpus} CPUs, "
+                     f"DoubletSep={args.doublet_separation}px")
+
         print(f"\n{'='*60}")
-        print(f"  CalibrantPanelShiftsOMP: {args.n_iterations} iterations, "
-              f"{n_cpus} CPUs")
+        print(f"  Stage 1: Geometry (Lsd, BC, tilts) — {stage1_iters} iterations")
         print(f"  DoubletSeparation={args.doublet_separation}px, "
               f"MultFactor={multFactor}")
+        print(f"{'='*60}")
+
+        runMIDAS(rawFN, state,
+                 n_iterations=stage1_iters,
+                 mult_factor=multFactor,
+                 doublet_separation=args.doublet_separation,
+                 outlier_iterations=args.outlier_iterations,
+                 eta_bin_size=args.eta_bin_size,
+                 max_width=maxW,
+                 n_cpus=n_cpus,
+                 stage=1,
+                 stage_label='[Stage 1/2] ')
+
+        logger.info(f"Stage 1 result: Lsd={state.lsd:.1f}, "
+                     f"BC=({state.ybc:.2f}, {state.zbc:.2f}), "
+                     f"ty={state.ty:.6f}, tz={state.tz:.6f}")
+
+        print(f"\n{'='*60}")
+        print(f"  Stage 2: Full (distortion + panels) — "
+              f"{args.n_iterations} iterations")
         print(f"{'='*60}")
 
         runMIDAS(rawFN, state,
@@ -1273,7 +1932,9 @@ def main():
                  outlier_iterations=args.outlier_iterations,
                  eta_bin_size=args.eta_bin_size,
                  max_width=maxW,
-                 n_cpus=n_cpus)
+                 n_cpus=n_cpus,
+                 stage=2,
+                 stage_label='[Stage 2/2] ')
 
         # ---- Generate final results ----
         logger.info("Generating final results data")
@@ -1281,24 +1942,17 @@ def main():
         if os.path.exists(corr_file):
             df = pd.read_csv(corr_file, delimiter=' ')
 
-            if DrawPlots == 1:
-                fig = make_subplots(rows=1, cols=2,
-                                   specs=[[{"type": "scatter"}, {"type": "scatterpolar"}]])
-                fig.add_trace(
-                    go.Scatter(mode='markers', x=df['RadFit'], y=df['Strain'],
-                               marker=dict(color=df['Ideal2Theta']), showlegend=True),
-                    row=1, col=1
-                )
-                fig.add_trace(
-                    go.Scatterpolar(r=df['Strain'], theta=df['EtaCalc'],
-                                    mode='markers',
-                                    marker=dict(color=df['Ideal2Theta']),
-                                    showlegend=True),
-                    row=1, col=2
-                )
-                html_file = f"{rawFN}.html"
-                fig.write_html(html_file)
-                logger.info(f"Interactive plots written to: {html_file}")
+            if DrawPlots:
+                # Launch interactive calibrant viewer (plot_calibrant_results.py)
+                viewer_script = os.path.join(
+                    INSTALL_PATH, 'gui/viewers/plot_calibrant_results.py')
+                if os.path.exists(viewer_script):
+                    subprocess.Popen(
+                        [sys.executable, viewer_script, corr_file],
+                        env=env)
+                    logger.info(f"Launched plot_calibrant_results.py on {corr_file}")
+                else:
+                    logger.warning(f"Viewer not found: {viewer_script}")
 
             if state.h5_file:
                 save_results_dataframe(df, state.h5_file)
@@ -1341,38 +1995,74 @@ def main():
         logger.info(f'BC {state.bc}')
         logger.info(f'Mean Strain: {state.mean_strain}')
 
-        # ---- Write final parameter file ----
-        psName = 'refined_MIDAS_params.txt'
+        # ---- Write final parameter file (B5 fix: complete output) ----
+        if args.output:
+            psName = args.output
+        else:
+            psName = f'refined_MIDAS_params_{state.fstem}.txt'
         logger.info(f"Writing final parameters to {psName}")
 
         final_params = {
+            # Geometry
             'Lsd': state.lsd, 'BC': state.bc,
             'tx': state.tx, 'ty': state.ty, 'tz': state.tz,
             'p0': state.p0, 'p1': state.p1, 'p2': state.p2, 'p3': state.p3,
             'RhoD': state.rhod, 'Wavelength': state.wavelength, 'px': state.px,
+            # B5 fix: added missing fields
+            'SpaceGroup': state.space_group,
+            'LatticeConstant': ' '.join(f'{x:.6f}' for x in state.latc),
+            'NrPixelsY': NrPixelsY, 'NrPixelsZ': NrPixelsZ,
+            'DataType': state.midas_dtype,
+            'Folder': state.folder,
+            'FileStem': state.fstem,
+            'Ext': state.ext,
+            'Dark': state.dark_name,
+            'Padding': state.pad,
+            'StartNr': state.fnumber,
+            'EndNr': state.fnumber,
+            'skipFrame': state.skip_frame,
+            # D7: Integration params (user requested)
             'RMin': 10, 'RMax': 1000, 'RBinSize': 1,
             'EtaMin': -180, 'EtaMax': 180,
-            'NrPixelsY': NrPixelsY, 'NrPixelsZ': NrPixelsZ,
             'EtaBinSize': 5, 'DoSmoothing': 1, 'DoPeakFit': 1,
-            'skipFrame': state.skip_frame,
-            'MultiplePeaks': 1, 'DataType': state.midas_dtype
+            'MultiplePeaks': 1,
         }
 
-        if state.p4 != '0':
+        if state.p4 != 0.0:
             final_params['p4'] = state.p4
 
         if state.mask_file:
             final_params['MaskFile'] = state.mask_file
 
+        if state.data_loc:
+            final_params['dataLoc'] = state.data_loc
+        if state.dark_loc:
+            final_params['darkLoc'] = state.dark_loc
+
         with open(psName, 'w') as pf:
             for key, value in final_params.items():
                 pf.write(f"{key} {value}\n")
 
-            if state.panel_params:
+            if state.panel_grid is not None:
+                pg = state.panel_grid
+                pf.write(f'NPanelsY {pg.n_panels_y}\n')
+                pf.write(f'NPanelsZ {pg.n_panels_z}\n')
+                pf.write(f'PanelSizeY {pg.panel_size_y}\n')
+                pf.write(f'PanelSizeZ {pg.panel_size_z}\n')
+                pf.write(f'PanelGapsY {" ".join(str(g) for g in pg.gaps_y)}\n')
+                pf.write(f'PanelGapsZ {" ".join(str(g) for g in pg.gaps_z)}\n')
+                fix_id = state.fix_panel_id if state.fix_panel_id >= 0 else pg.fix_panel_id
+                pf.write(f'FixPanelID {fix_id}\n')
+                pf.write(f'tolShifts {state.tol_shifts}\n')
+                pf.write(f'tolRotation {state.tol_rotation}\n')
+                if state.panel_shifts_file:
+                    pf.write(f'PanelShiftsFile {state.panel_shifts_file}\n')
+            elif state.panel_params:
                 for pp in state.panel_params:
                     pf.write(f'{pp}\n')
-                pf.write(f'PanelShiftsFile {state.panel_shifts_file}\n')
-                pf.write('tolShifts 1\n')
+                if state.panel_shifts_file:
+                    pf.write(f'PanelShiftsFile {state.panel_shifts_file}\n')
+                pf.write(f'tolShifts {state.tol_shifts}\n')
 
             for transOpt in state.im_trans_opt:
                 pf.write(f"ImTransOpt {transOpt}\n")
