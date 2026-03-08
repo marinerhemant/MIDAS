@@ -160,9 +160,9 @@ struct InputData {
 };
 
 static int cmpfunc(const void *a, const void *b) {
-  struct InputData *ia = (struct InputData *)a;
-  struct InputData *ib = (struct InputData *)b;
-  return (int)(1000.f * ia->Eta - 1000.f * ib->Eta);
+  double ea = ((struct InputData *)a)->Eta;
+  double eb = ((struct InputData *)b)->Eta;
+  return (ea < eb) ? -1 : (ea > eb) ? 1 : 0;
 }
 
 static inline int CheckDirectoryCreation(char Folder[1024],
@@ -606,7 +606,8 @@ int main(int argc, char *argv[]) {
   if (StartNr == EndNr) { // If there is only one file.
     for (i = 0; i < nSpots; i++) {
       fprintf(OutFile,
-              "%d %lf %lf %lf %lf %lf %lf %lf %lf %lf %lf %lf %lf %lf %lf %lf %lf\n",
+              "%d %lf %lf %lf %lf %lf %lf %lf %lf %lf %lf %lf %lf %lf %lf %lf "
+              "%lf\n",
               SpotIDNr, NewIDs[i][1], NewIDs[i][2], NewIDs[i][3], NewIDs[i][4],
               NewIDs[i][5], NewIDs[i][2], NewIDs[i][2], NewIDs[i][8],
               NewIDs[i][9], NewIDs[i][10], NewIDs[i][11], NewIDs[i][6],
@@ -705,8 +706,10 @@ int main(int argc, char *argv[]) {
             CurrentIDs[i][14] += NewIDs[BestID][10]; // NrPx
             CurrentIDs[i][15] += NewIDs[BestID][11]; // NrPxTot
             CurrentIDs[i][16] += NewIDs[BestID][26]; // RawSumIntensity
-            if (NewIDs[BestID][27] > 0) CurrentIDs[i][17] = 1.0;
-            if (NewIDs[BestID][28] > CurrentIDs[i][18]) CurrentIDs[i][18] = NewIDs[BestID][28];
+            if (NewIDs[BestID][27] > 0)
+              CurrentIDs[i][17] = 1.0;
+            if (NewIDs[BestID][28] > CurrentIDs[i][18])
+              CurrentIDs[i][18] = NewIDs[BestID][28];
             ConstituentNode *node = malloc(sizeof(ConstituentNode));
             node->frameNr = FileNr;
             node->peakID = (int)NewIDs[BestID][0];
@@ -780,8 +783,10 @@ int main(int argc, char *argv[]) {
             CurrentIDs[i][14] += NewIDs[BestID][10]; // NrPx
             CurrentIDs[i][15] += NewIDs[BestID][11]; // NrPxTot
             CurrentIDs[i][16] += NewIDs[BestID][26]; // RawSumIntensity
-            if (NewIDs[BestID][27] > 0) CurrentIDs[i][17] = 1.0;
-            if (NewIDs[BestID][28] > CurrentIDs[i][18]) CurrentIDs[i][18] = NewIDs[BestID][28];
+            if (NewIDs[BestID][27] > 0)
+              CurrentIDs[i][17] = 1.0;
+            if (NewIDs[BestID][28] > CurrentIDs[i][18])
+              CurrentIDs[i][18] = NewIDs[BestID][28];
             // Record constituent peak (prepend to linked list)
             ConstituentNode *node = malloc(sizeof(ConstituentNode));
             node->frameNr = FileNr;
@@ -794,15 +799,17 @@ int main(int argc, char *argv[]) {
       // Write all the spots not overlapping to the output file.
       for (i = 0; i < nSpots; i++) {
         if (TempIDsCurrent[i] == 0) { // Spot was not overlapping.
-          fprintf(
-              OutFile,
-              "%d %lf %lf %lf %lf %lf %lf %lf %lf %lf %lf %lf %lf %lf %lf %lf %lf\n",
-              SpotIDNr, CurrentIDs[i][1], (CurrentIDs[i][2] / CurrentIDs[i][1]),
-              (CurrentIDs[i][3] / CurrentIDs[i][1]),
-              (CurrentIDs[i][4] / CurrentIDs[i][1]), CurrentIDs[i][5],
-              CurrentIDs[i][10], CurrentIDs[i][11], CurrentIDs[i][12],
-              CurrentIDs[i][13], CurrentIDs[i][14], CurrentIDs[i][15],
-              CurrentIDs[i][6], CurrentIDs[i][7], CurrentIDs[i][16], CurrentIDs[i][17], CurrentIDs[i][18]);
+          fprintf(OutFile,
+                  "%d %lf %lf %lf %lf %lf %lf %lf %lf %lf %lf %lf %lf %lf %lf "
+                  "%lf %lf\n",
+                  SpotIDNr, CurrentIDs[i][1],
+                  (CurrentIDs[i][2] / CurrentIDs[i][1]),
+                  (CurrentIDs[i][3] / CurrentIDs[i][1]),
+                  (CurrentIDs[i][4] / CurrentIDs[i][1]), CurrentIDs[i][5],
+                  CurrentIDs[i][10], CurrentIDs[i][11], CurrentIDs[i][12],
+                  CurrentIDs[i][13], CurrentIDs[i][14], CurrentIDs[i][15],
+                  CurrentIDs[i][6], CurrentIDs[i][7], CurrentIDs[i][16],
+                  CurrentIDs[i][17], CurrentIDs[i][18]);
           // Write MergeMap entries for this finalized spot
           {
             ConstituentNode *cn = constituents[i];
@@ -914,14 +921,15 @@ int main(int argc, char *argv[]) {
     }
   }
   for (i = 0; i < nSpots; i++) {
-    fprintf(OutFile,
-            "%d %lf %lf %lf %lf %lf %lf %lf %lf %lf %lf %lf %lf %lf %lf %lf %lf\n",
-            SpotIDNr, CurrentIDs[i][1], (CurrentIDs[i][2] / CurrentIDs[i][1]),
-            (CurrentIDs[i][3] / CurrentIDs[i][1]),
-            (CurrentIDs[i][4] / CurrentIDs[i][1]), CurrentIDs[i][5],
-            CurrentIDs[i][10], CurrentIDs[i][11], CurrentIDs[i][12],
-            CurrentIDs[i][13], CurrentIDs[i][14], CurrentIDs[i][15],
-            CurrentIDs[i][6], CurrentIDs[i][7], CurrentIDs[i][16]);
+    fprintf(
+        OutFile,
+        "%d %lf %lf %lf %lf %lf %lf %lf %lf %lf %lf %lf %lf %lf %lf %lf %lf\n",
+        SpotIDNr, CurrentIDs[i][1], (CurrentIDs[i][2] / CurrentIDs[i][1]),
+        (CurrentIDs[i][3] / CurrentIDs[i][1]),
+        (CurrentIDs[i][4] / CurrentIDs[i][1]), CurrentIDs[i][5],
+        CurrentIDs[i][10], CurrentIDs[i][11], CurrentIDs[i][12],
+        CurrentIDs[i][13], CurrentIDs[i][14], CurrentIDs[i][15],
+        CurrentIDs[i][6], CurrentIDs[i][7], CurrentIDs[i][16]);
     // Write final MergeMap entries
     {
       ConstituentNode *cn = constituents[i];

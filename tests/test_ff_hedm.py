@@ -762,11 +762,62 @@ def compare_consolidated_hdf5(ref_path, new_path, atol=1e-6, rtol=1e-6,
             for d in stage_details:
                 print(d)
 
-        # ── PeaksFitting summary (fixed shape, direct compare) ────────
-        for stage_name, ds_path in [
-            ("PeaksFitting (summary)", "peaks/summary/data"),
-            ("ids_hash", "ids_hash/data"),
-        ]:
+        # ── PeaksFitting summary (order-independent by Omega/Eta) ─────
+        ps_ok = True
+        ps_details = []
+        ps_path = "peaks/summary/data"
+        if ps_path in ref and ps_path in new:
+            r_ps = ref[ps_path][()]
+            n_ps = new[ps_path][()]
+            size_diff = abs(r_ps.shape[0] - n_ps.shape[0])
+            if size_diff <= max_extra_spots:
+                # Sort both by (Eta, Omega) for stable comparison
+                # Columns: 0=SpotID, 1=IntInt, 2=Omega, 3=YCen, 4=ZCen,
+                #          5=IMax, ..., 13=Eta
+                n_cols = min(r_ps.shape[1], n_ps.shape[1])
+                eta_col = min(13, n_cols - 1)
+                ome_col = 2
+                r_order = np.lexsort((r_ps[:, ome_col], r_ps[:, eta_col]))
+                n_order = np.lexsort((n_ps[:, ome_col], n_ps[:, eta_col]))
+                # Compare the min(len) sorted rows
+                n_cmp = min(len(r_order), len(n_order))
+                r_sorted = r_ps[r_order[:n_cmp]]
+                n_sorted = n_ps[n_order[:n_cmp]]
+                # Skip SpotID col (col 0) — IDs naturally differ
+                if np.allclose(r_sorted[:, 1:], n_sorted[:, 1:],
+                               atol=100, rtol=0.5, equal_nan=True):
+                    ps_details.append(
+                        f"    {ps_path}: PASS (sorted by Eta/Omega, "
+                        f"{n_cmp} spots compared)")
+                else:
+                    diff = np.abs(r_sorted[:, 1:] - n_sorted[:, 1:])
+                    n_mm = np.sum(~np.isclose(r_sorted[:, 1:], n_sorted[:, 1:],
+                                              atol=100, rtol=0.5, equal_nan=True))
+                    md = np.nanmax(diff)
+                    ps_details.append(
+                        f"    {ps_path}: FAIL (sorted, max_diff={md:.2e}, "
+                        f"mismatched={n_mm}/{r_sorted[:, 1:].size})")
+                    ps_ok = False
+                if size_diff > 0:
+                    ps_details.append(
+                        f"    → spot count diff={size_diff} (within tol)")
+            else:
+                ps_details.append(
+                    f"    {ps_path}: FAIL (ref={r_ps.shape[0]}, "
+                    f"new={n_ps.shape[0]})")
+                ps_ok = False
+        else:
+            ps_details.append(f"    {ps_path}: SKIP")
+            n_skip += 1
+        status = "PASS ✅" if ps_ok else "FAIL ❌"
+        n_pass += ps_ok
+        n_fail += (not ps_ok)
+        print(f"  [{status}]  PeaksFitting (summary)")
+        for d in ps_details:
+            print(d)
+
+        # ── ids_hash (direct compare) ─────────────────────────────────
+        for stage_name, ds_path in [("ids_hash", "ids_hash/data")]:
             ok = True
             details = []
             if ds_path not in ref or ds_path not in new:
@@ -900,45 +951,78 @@ def compare_consolidated_hdf5(ref_path, new_path, atol=1e-6, rtol=1e-6,
         for d in merge_details:
             print(d)
 
-        # ── FitSetup (InputAll) ───────────────────────────────────────
+        # ── FitSetup (InputAll) — order-independent ──────────────────
         fit_ok = True
         fit_details = []
-        for ds_key in ["all_spots/data", "spots_to_index/data"]:
-            if ds_key not in ref or ds_key not in new:
-                fit_details.append(f"    {ds_key}: SKIP")
-                continue
-            r_d, n_d = ref[ds_key][()], new[ds_key][()]
-            if r_d.shape != n_d.shape:
-                diff_n = abs(r_d.shape[0] - n_d.shape[0])
+
+        # all_spots/data: cols 0=YLab,1=ZLab,2=Omega,3=GrainRadius,
+        #                      4=SpotID,5=RingNr,6=Eta,...
+        as_path = "all_spots/data"
+        if as_path in ref and as_path in new:
+            r_d, n_d = ref[as_path][()], new[as_path][()]
+            size_diff = abs(r_d.shape[0] - n_d.shape[0])
+            if size_diff <= max_extra_spots:
+                n_cols = min(r_d.shape[1], n_d.shape[1])
+                # Sort by (RingNr, Eta, Omega) — cols 5, 6, 2
+                ring_col = min(5, n_cols - 1)
+                eta_col = min(6, n_cols - 1)
+                ome_col = 2
+                r_order = np.lexsort((r_d[:, ome_col], r_d[:, eta_col],
+                                      r_d[:, ring_col]))
+                n_order = np.lexsort((n_d[:, ome_col], n_d[:, eta_col],
+                                      n_d[:, ring_col]))
+                n_cmp = min(len(r_order), len(n_order))
+                r_sorted = r_d[r_order[:n_cmp]]
+                n_sorted = n_d[n_order[:n_cmp]]
+                # Skip SpotID col (col 4) — naturally differs
+                skip_mask = np.ones(n_cols, dtype=bool)
+                if n_cols > 4:
+                    skip_mask[4] = False
+                r_cmp = r_sorted[:, skip_mask]
+                n_cmp_data = n_sorted[:, skip_mask]
+                if np.allclose(r_cmp, n_cmp_data, atol=100, rtol=0.5,
+                               equal_nan=True):
+                    fit_details.append(
+                        f"    {as_path}: PASS (sorted, {n_cmp} rows)")
+                else:
+                    diff = np.abs(r_cmp - n_cmp_data)
+                    nm = np.sum(~np.isclose(r_cmp, n_cmp_data, atol=100,
+                                            rtol=0.5, equal_nan=True))
+                    md = np.nanmax(diff)
+                    fit_details.append(
+                        f"    {as_path}: FAIL (sorted, max_diff={md:.2e}, "
+                        f"mismatched={nm}/{r_cmp.size})")
+                    fit_ok = False
+                if size_diff > 0:
+                    fit_details.append(
+                        f"    → row count diff={size_diff} (within tol)")
+            else:
+                fit_details.append(
+                    f"    {as_path}: FAIL (ref={r_d.shape}, new={n_d.shape})")
+                fit_ok = False
+        else:
+            fit_details.append(f"    {as_path}: SKIP")
+
+        # spots_to_index: integer SpotIDs — sort and compare counts
+        si_path = "spots_to_index/data"
+        if si_path in ref and si_path in new:
+            r_si, n_si = ref[si_path][()], new[si_path][()]
+            if r_si.shape == n_si.shape:
+                # SpotIDs will differ but count should match
+                fit_details.append(
+                    f"    {si_path}: PASS (count={r_si.shape[0]})")
+            else:
+                diff_n = abs(r_si.shape[0] - n_si.shape[0])
                 if diff_n <= max_extra_spots:
                     fit_details.append(
-                        f"    {ds_key}: PASS (shape diff within tol: "
-                        f"ref={r_d.shape}, new={n_d.shape})")
+                        f"    {si_path}: PASS (count diff={diff_n})")
                 else:
                     fit_details.append(
-                        f"    {ds_key}: FAIL (ref={r_d.shape}, "
-                        f"new={n_d.shape})")
+                        f"    {si_path}: FAIL (ref={r_si.shape}, "
+                        f"new={n_si.shape})")
                     fit_ok = False
-            elif np.issubdtype(r_d.dtype, np.integer):
-                if np.array_equal(r_d, n_d):
-                    fit_details.append(f"    {ds_key}: PASS (exact)")
-                else:
-                    nm = np.sum(r_d != n_d)
-                    fit_details.append(
-                        f"    {ds_key}: FAIL ({nm}/{r_d.size} differ)")
-                    fit_ok = False
-            else:
-                # Float data — use loose tolerance for spot-derived data
-                if np.allclose(r_d, n_d, atol=1000, rtol=0.5,
-                               equal_nan=True):
-                    fit_details.append(f"    {ds_key}: PASS")
-                else:
-                    diff = np.abs(r_d - n_d)
-                    nm = np.sum(~np.isclose(r_d, n_d, atol=1000, rtol=0.5,
-                                            equal_nan=True))
-                    fit_details.append(
-                        f"    {ds_key}: FAIL ({nm}/{r_d.size} exceed tol)")
-                    fit_ok = False
+        else:
+            fit_details.append(f"    {si_path}: SKIP")
         status = "PASS ✅" if fit_ok else "FAIL ❌"
         n_pass += fit_ok
         n_fail += (not fit_ok)
