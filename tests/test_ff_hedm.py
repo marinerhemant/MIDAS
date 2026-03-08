@@ -569,6 +569,8 @@ def compare_consolidated_hdf5(ref_path, new_path, atol=1e-6, rtol=1e-6):
     """Compare a newly generated consolidated HDF5 against a reference file.
     
     Reports per-pipeline-stage PASS/FAIL with max absolute difference.
+    When shape mismatches or value differences are found, prints detailed
+    diagnostics showing which peaks differ and their properties.
     
     Args:
         ref_path: Path to the reference consolidated HDF5
@@ -659,6 +661,28 @@ def compare_consolidated_hdf5(ref_path, new_path, atol=1e-6, rtol=1e-6):
                     stage_details.append(
                         f"    {ds_path}: FAIL (shape mismatch: ref={ref_data.shape}, new={new_data.shape})")
                     stage_ok = False
+                    
+                    # ── Detailed shape-mismatch diagnostics ──
+                    if ds_path == "peaks/per_frame/data":
+                        # Rows = merged spots. Show which spots are extra/missing
+                        n_ref, n_new = ref_data.shape[0], new_data.shape[0]
+                        stage_details.append(
+                            f"      → {abs(n_new - n_ref)} {'extra' if n_new > n_ref else 'missing'} "
+                            f"merged spot(s) in new output ({n_ref} → {n_new})")
+                    elif ds_path.startswith("merge_map/"):
+                        n_ref, n_new = ref_data.shape[0], new_data.shape[0]
+                        col_name = ds_path.split("/")[-1]
+                        # Show the extra entries
+                        if n_new > n_ref:
+                            extra = new_data[n_ref:]
+                            stage_details.append(
+                                f"      → extra {col_name} values: {extra.tolist()[:10]}"
+                                + (f" ... ({n_new - n_ref} total)" if n_new - n_ref > 10 else ""))
+                        elif n_ref > n_new:
+                            missing = ref_data[n_new:]
+                            stage_details.append(
+                                f"      → missing {col_name} values: {missing.tolist()[:10]}"
+                                + (f" ... ({n_ref - n_new} total)" if n_ref - n_new > 10 else ""))
                     continue
                 
                 # Data comparison
@@ -673,6 +697,17 @@ def compare_consolidated_hdf5(ref_path, new_path, atol=1e-6, rtol=1e-6):
                         stage_details.append(
                             f"    {ds_path}: FAIL (max_diff={max_diff:.2e}, mismatched={n_mismatch}/{ref_data.size})")
                         stage_ok = False
+                        
+                        # ── Show top-5 largest differences ──
+                        flat_diff = diff.ravel()
+                        n_show = min(5, flat_diff.size)
+                        top_idx = np.argpartition(flat_diff, -n_show)[-n_show:]
+                        top_idx = top_idx[np.argsort(flat_diff[top_idx])[::-1]]
+                        for ti in top_idx:
+                            idx = np.unravel_index(ti, ref_data.shape)
+                            stage_details.append(
+                                f"      idx={idx}: ref={ref_data[idx]:.6g}, new={new_data[idx]:.6g}, "
+                                f"diff={diff[idx]:.2e}")
                 elif np.issubdtype(ref_data.dtype, np.integer):
                     if np.array_equal(ref_data, new_data):
                         stage_details.append(f"    {ds_path}: PASS (exact match)")
@@ -698,6 +733,58 @@ def compare_consolidated_hdf5(ref_path, new_path, atol=1e-6, rtol=1e-6):
             print(f"  [{status}]  {stage_name}")
             for detail in stage_details:
                 print(detail)
+
+        # ── Extra detail section: cross-reference merge_map for new peaks ──
+        if "merge_map/MergedSpotID" in ref and "merge_map/MergedSpotID" in new:
+            ref_n = ref["merge_map/MergedSpotID"].shape[0]
+            new_n = new["merge_map/MergedSpotID"].shape[0]
+            if ref_n != new_n:
+                print(f"\n  {'─'*60}")
+                print(f"  Peak Count Diagnostics ({ref_n} ref → {new_n} new)")
+                print(f"  {'─'*60}")
+                
+                # Build lookup: SpotID → (FrameNr, PeakID)
+                ref_ids = set(ref["merge_map/MergedSpotID"][()].tolist())
+                new_ids = set(new["merge_map/MergedSpotID"][()].tolist())
+                extra_ids = new_ids - ref_ids
+                missing_ids = ref_ids - new_ids
+                
+                if extra_ids:
+                    print(f"  Extra spot IDs in new: {sorted(extra_ids)[:20]}")
+                if missing_ids:
+                    print(f"  Missing spot IDs in new: {sorted(missing_ids)[:20]}")
+                
+                # Show properties of extra spots from radius_data
+                if extra_ids and "radius_data/SpotID" in new:
+                    rd_spotid = new["radius_data/SpotID"][()]
+                    print(f"\n  Properties of {'extra' if extra_ids else 'differing'} spots:")
+                    print(f"    {'SpotID':>7} {'Ring':>5} {'Omega':>8} {'YCen':>8} "
+                          f"{'ZCen':>8} {'Radius':>8} {'IMax':>10} {'Eta':>8}")
+                    print(f"    {'─'*72}")
+                    for sid in sorted(extra_ids)[:15]:
+                        mask = rd_spotid == sid
+                        if not np.any(mask):
+                            continue
+                        idx = np.where(mask)[0][0]
+                        def _get(key):
+                            return new[f"radius_data/{key}"][()][idx] if f"radius_data/{key}" in new else 0
+                        print(f"    {sid:7d} {_get('RingNr'):5.0f} {_get('Omega'):8.2f} "
+                              f"{_get('YCen'):8.1f} {_get('ZCen'):8.1f} "
+                              f"{_get('Radius'):8.1f} {_get('IMax'):10.1f} {_get('Eta'):8.2f}")
+                    if len(extra_ids) > 15:
+                        print(f"    ... and {len(extra_ids) - 15} more")
+
+                # Show which FrameNr/PeakID the extra merged spots came from
+                if new_n > ref_n and "merge_map/FrameNr" in new and "merge_map/PeakID" in new:
+                    new_frames = new["merge_map/FrameNr"][()]
+                    new_peaks = new["merge_map/PeakID"][()]
+                    print(f"\n  Extra merge_map entries (indices {ref_n}..{new_n-1}):")
+                    for j in range(ref_n, min(new_n, ref_n + 15)):
+                        sid = new["merge_map/MergedSpotID"][()][j]
+                        print(f"    [{j}] MergedSpotID={sid}, FrameNr={new_frames[j]}, PeakID={new_peaks[j]}")
+                    if new_n - ref_n > 15:
+                        print(f"    ... and {new_n - ref_n - 15} more")
+
     finally:
         ref.close()
         new.close()
