@@ -299,7 +299,7 @@ if [ -n "$RUN_TESTS" ]; then
     if [ "$RUN_TESTS" = "ff" ] || [ "$RUN_TESTS" = "all" ]; then
         echo ""
         echo "=== Running FF-HEDM Benchmark ==="
-        $PY_CMD tests/test_ff_hedm.py -nCPUs "$TEST_CPUS"
+        $PY_CMD tests/test_ff_hedm.py -nCPUs "$TEST_CPUS" --px-overlap --dual-dataset
         if [ $? -ne 0 ]; then
             echo "FF-HEDM benchmark FAILED."
             exit 1

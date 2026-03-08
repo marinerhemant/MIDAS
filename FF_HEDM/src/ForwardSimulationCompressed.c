@@ -1958,7 +1958,7 @@ int main(int argc, char *argv[]) {
                     WeightsY[dy + extent] = 0.0;
                     continue;
                   }
-                  double distY = (double)y_curr - yDet;
+                  double distY = (double)y_curr - yDet; 
                   WeightsY[dy + extent] = exp(-(distY * distY) / twoSigmaSq);
                 }
 

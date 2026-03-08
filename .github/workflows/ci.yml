@@ -92,7 +92,7 @@ jobs:
         if: always() && steps.build.outcome == 'success'
         env:
           MIDAS_HOME: ${{ github.workspace }}
-        run: python tests/test_ff_hedm.py -nCPUs 2
+        run: python tests/test_ff_hedm.py -nCPUs 2 --px-overlap --dual-dataset
 
       - name: Test FF Calibration
         if: always() && steps.build.outcome == 'success'
