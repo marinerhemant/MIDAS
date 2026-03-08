@@ -110,9 +110,9 @@ struct Data {
 };
 
 static int cmpfunc(const void *a, const void *b) {
-  struct Data *ia = (struct Data *)a;
-  struct Data *ib = (struct Data *)b;
-  return (int)(1000.f * ia->SortVals - 1000.f * ib->SortVals);
+  double va = ((struct Data *)a)->SortVals;
+  double vb = ((struct Data *)b)->SortVals;
+  return (va < vb) ? -1 : (va > vb) ? 1 : 0;
 }
 
 static inline void SortFunc(int nRows, int nCols, double **TotInfo,

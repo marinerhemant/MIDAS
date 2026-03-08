@@ -498,9 +498,9 @@ struct SpotsData {
 };
 
 static int cmpfunc(const void *a, const void *b) {
-  struct SpotsData *ia = (struct SpotsData *)a;
-  struct SpotsData *ib = (struct SpotsData *)b;
-  return (int)(1000.f * ia->Omega - 1000.f * ib->Omega);
+  double oa = ((struct SpotsData *)a)->Omega;
+  double ob = ((struct SpotsData *)b)->Omega;
+  return (oa < ob) ? -1 : (oa > ob) ? 1 : 0;
 }
 
 static inline void SortSpots(int nIndices, double **SpotsInfo) {
