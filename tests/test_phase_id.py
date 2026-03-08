@@ -59,6 +59,8 @@ def check_assertions(fits, rings, phases, geom, snr_threshold,
     """Run assertions on fit results. Returns True if all pass."""
     global_max_imax = max((f.Imax for f in fits if f.Imax > 0), default=1.0)
     min_sigma = 0.5 * geom['RBinSize']
+    lattice_tol_ppm = 1000.0  # reject peaks with |Δa/a| > 1000 ppm
+    phase_nominal = {p.name: p.lattice_a for p in phases}
     phase_detected = {p.name: 0 for p in phases}
     phase_total = {p.name: 0 for p in phases}
     phase_a = {p.name: [] for p in phases}
@@ -71,10 +73,31 @@ def check_assertions(fits, rings, phases, geom, snr_threshold,
             break
         fit = fits[i]
         auc = math.pi * fit.Imax * fit.Sigma if fit.Imax > 0 else 0.0
-        det = (fit.Imax > 0 and
+        basic_det = (fit.Imax > 0 and
                fit.SNR >= snr_threshold and
                fit.Imax >= rel_intensity_threshold * global_max_imax and
                fit.Sigma >= min_sigma)
+
+        # Per-peak lattice parameter check
+        lattice_ok = True
+        if basic_det:
+            all_bad = True
+            for ref in ring.reflections:
+                a = back_calculate_lattice(
+                    fit.Center, ref.h, ref.k, ref.l, geom)
+                a_nom = phase_nominal[ref.phase]
+                if a_nom > 0:
+                    ppm = abs(a - a_nom) / a_nom * 1e6
+                    if ppm <= lattice_tol_ppm:
+                        all_bad = False
+                        break
+                else:
+                    all_bad = False
+                    break
+            if all_bad:
+                lattice_ok = False
+
+        det = basic_det and lattice_ok
 
         for ref in ring.reflections:
             phase_total[ref.phase] += 1

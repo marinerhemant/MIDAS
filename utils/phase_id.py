@@ -1026,7 +1026,8 @@ def print_results(rings: List[RingEntry], fits: List[FitResult],
                   rel_intensity_threshold: float,
                   phases: List[PhaseInfo], out=None,
                   summary_out=None, mult_factor: float = 0.0,
-                  filtered_stats: dict = None):
+                  filtered_stats: dict = None,
+                  lattice_tol_ppm: float = 1000.0):
     """Print per-ring results and per-phase summary with dual filters.
 
     If *out* is provided, output is written there instead of stdout.
@@ -1052,12 +1053,40 @@ def print_results(rings: List[RingEntry], fits: List[FitResult],
     # Determine detection per peak
     n = min(len(rings), len(fits))
     detected_flags = []
+    lattice_reject_flags = []  # per-peak: True if ALL reflections fail Δa/a
     for i in range(n):
         fit = fits[i]
         snr_ok = fit.SNR >= snr_threshold
         rel_ok = fit.Imax >= rel_intensity_threshold * global_max_imax
         sigma_ok = fit.Sigma >= min_sigma
-        detected_flags.append(fit.Imax > 0 and snr_ok and rel_ok and sigma_ok)
+        basic_det = fit.Imax > 0 and snr_ok and rel_ok and sigma_ok
+
+        # Per-peak lattice parameter check: reject if ALL reflections
+        # have |Δa/a| > lattice_tol_ppm
+        lattice_rej = False
+        if basic_det and lattice_tol_ppm > 0:
+            ring = rings[i]
+            all_bad = True
+            for ref in ring.reflections:
+                if filtered_stats and i in filtered_stats:
+                    a_fit = filtered_stats[i]['mean_a']
+                else:
+                    a_fit = back_calculate_lattice(
+                        fit.Center, ref.h, ref.k, ref.l, geom)
+                a_nom = phase_nominal[ref.phase]
+                if a_nom > 0:
+                    ppm = abs(a_fit - a_nom) / a_nom * 1e6
+                    if ppm <= lattice_tol_ppm:
+                        all_bad = False
+                        break
+                else:
+                    all_bad = False
+                    break
+            if all_bad:
+                lattice_rej = True
+
+        lattice_reject_flags.append(lattice_rej)
+        detected_flags.append(basic_det and not lattice_rej)
 
     # Collect per-phase statistics
     phase_stats = {}
@@ -1146,7 +1175,14 @@ def print_results(rings: List[RingEntry], fits: List[FitResult],
             reason = "NOT DET"
             auc_i = aucs[i] if i < len(aucs) else 0
             if fit.Imax > 0:
-                if fit.Sigma < min_sigma:
+                if lattice_reject_flags[i]:
+                    # Compute the actual ppm for display
+                    a_fit = back_calculate_lattice(
+                        fit.Center, ref.h, ref.k, ref.l, geom)
+                    a_nom = phase_nominal.get(ref.phase, 0)
+                    ppm = abs(a_fit - a_nom) / a_nom * 1e6 if a_nom > 0 else 0
+                    reason = f"Δa/a={ppm:.0f}ppm>{lattice_tol_ppm:.0f}"
+                elif fit.Sigma < min_sigma:
                     reason = f"σ={fit.Sigma:.3f}<{min_sigma:.3f}"
                 elif fit.SNR < snr_threshold:
                     reason = f"SNR={fit.SNR:.1f}<{snr_threshold}"
