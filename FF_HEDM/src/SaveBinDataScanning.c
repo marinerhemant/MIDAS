@@ -4,13 +4,14 @@
 //
 
 //
-// SaveBinData.c
+// SaveBinDataScanning.c
 //
 // Created by Hemant Sharma on 2014/11/07
 // WE NEED TO UPDATE PARAMSTEST.TXT with RingToIndex
 //
 //
 
+#include <errno.h>
 #include <limits.h>
 #include <math.h>
 #include <stdio.h>
@@ -18,6 +19,7 @@
 #include <string.h>
 #include <sys/stat.h>
 #include <time.h>
+#include <unistd.h>
 
 #define deg2rad 0.0174532925199433
 #define rad2deg 57.2957795130823
@@ -36,6 +38,14 @@ void CalcDistanceIdealRing(double *ObsSpotsLab, int nspots, int nCols,
     double z = ObsSpotsLab[i * nCols + 1];
     double rad = sqrt(y * y + z * z);
     int ringno = (int)ObsSpotsLab[i * nCols + 5];
+    if (ringno < 0 || ringno >= MAX_N_RINGS) {
+      fprintf(stderr,
+              "ERROR: CalcDistanceIdealRing: spot %d has invalid "
+              "ringno=%d (must be 0..%d). Skipping.\n",
+              i, ringno, MAX_N_RINGS - 1);
+      ObsSpotsLab[i * nCols + 17] = 0;
+      continue;
+    }
     ObsSpotsLab[i * nCols + 17] = rad - RingRadii[ringno];
   }
 }
@@ -69,10 +79,19 @@ static int cmpfunc(const void *a, const void *b) {
 int main(int argc, char *argv[]) {
   clock_t start, end;
   if (argc != 2) {
+    fprintf(stderr, "ERROR: Usage: SaveBinDataScanning nScans\n");
     printf("Usage: SaveBinDataScanning nScans\n");
     return 1;
   }
   int nScans = atoi(argv[1]);
+  if (nScans <= 0) {
+    fprintf(stderr, "ERROR: nScans=%d is invalid (must be > 0)\n", nScans);
+    return 1;
+  }
+  printf("SaveBinDataScanning: nScans=%d\n", nScans);
+  fprintf(stderr, "INFO: SaveBinDataScanning starting with nScans=%d\n",
+          nScans);
+
   double diftotal;
   start = clock();
   char *ParamFN = "paramstest.txt", dummy[1024], *str;
@@ -81,13 +100,24 @@ int main(int argc, char *argv[]) {
   FILE *fileParam;
   fileParam = fopen(ParamFN, "r");
   if (fileParam == NULL) {
+    fprintf(stderr,
+            "ERROR: Could not open parameter file '%s': %s (errno=%d)\n",
+            ParamFN, strerror(errno), errno);
     printf("Could not open %s. Exiting.\n", ParamFN);
     return 1;
   }
+  fprintf(stderr, "INFO: Opened parameter file '%s'\n", ParamFN);
+
   int NrOfRings = 0, NoRingNumbers = 0, RingNumbers[MAX_N_RINGS];
-  double omemargin0, etamargin0, rotationstep, RingRadii[MAX_N_RINGS],
-      RingRadiiUser[MAX_N_RINGS], etabinsize, omebinsize;
+  double omemargin0 = -1, etamargin0 = -1, rotationstep = -1,
+         RingRadii[MAX_N_RINGS], RingRadiiUser[MAX_N_RINGS], etabinsize = -1,
+         omebinsize = -1;
   int nosaveall = 0;
+
+  // Track which required params were found
+  int found_marginome = 0, found_margineta = 0, found_etabinsize = 0,
+      found_omebinsize = 0, found_stepsize = 0;
+
   while (fgets(aline, 4096, fileParam) != NULL) {
     str = "NoSaveAll ";
     LowNr = strncmp(aline, str, strlen(str));
@@ -99,35 +129,45 @@ int main(int argc, char *argv[]) {
     LowNr = strncmp(aline, str, strlen(str));
     if (LowNr == 0) {
       sscanf(aline, "%s %lf", dummy, &omemargin0);
+      found_marginome = 1;
       continue;
     }
     str = "MarginEta ";
     LowNr = strncmp(aline, str, strlen(str));
     if (LowNr == 0) {
       sscanf(aline, "%s %lf", dummy, &etamargin0);
+      found_margineta = 1;
       continue;
     }
     str = "EtaBinSize ";
     LowNr = strncmp(aline, str, strlen(str));
     if (LowNr == 0) {
       sscanf(aline, "%s %lf", dummy, &etabinsize);
+      found_etabinsize = 1;
       continue;
     }
     str = "StepsizeOrient ";
     LowNr = strncmp(aline, str, strlen(str));
     if (LowNr == 0) {
       sscanf(aline, "%s %lf", dummy, &rotationstep);
+      found_stepsize = 1;
       continue;
     }
     str = "OmeBinSize ";
     LowNr = strncmp(aline, str, strlen(str));
     if (LowNr == 0) {
       sscanf(aline, "%s %lf", dummy, &omebinsize);
+      found_omebinsize = 1;
       continue;
     }
     str = "RingRadii ";
     LowNr = strncmp(aline, str, strlen(str));
     if (LowNr == 0) {
+      if (NrOfRings >= MAX_N_RINGS) {
+        fprintf(stderr, "ERROR: Too many RingRadii entries (max=%d)\n",
+                MAX_N_RINGS);
+        return 1;
+      }
       sscanf(aline, "%s %lf", dummy, &RingRadiiUser[NrOfRings]);
       NrOfRings++;
       continue;
@@ -135,6 +175,11 @@ int main(int argc, char *argv[]) {
     str = "RingNumbers ";
     LowNr = strncmp(aline, str, strlen(str));
     if (LowNr == 0) {
+      if (NoRingNumbers >= MAX_N_RINGS) {
+        fprintf(stderr, "ERROR: Too many RingNumbers entries (max=%d)\n",
+                MAX_N_RINGS);
+        return 1;
+      }
       sscanf(aline, "%s %d", dummy, &RingNumbers[NoRingNumbers]);
       NoRingNumbers++;
       continue;
@@ -142,59 +187,234 @@ int main(int argc, char *argv[]) {
   }
   fclose(fileParam);
 
-  int i, j, k, t;
+  // ---- Validate required parameters ----
+  fprintf(stderr, "INFO: Parameter summary:\n");
+  fprintf(stderr, "INFO:   NrOfRings=%d, NoRingNumbers=%d\n", NrOfRings,
+          NoRingNumbers);
+  fprintf(stderr, "INFO:   MarginOme=%.4f (found=%d)\n", omemargin0,
+          found_marginome);
+  fprintf(stderr, "INFO:   MarginEta=%.4f (found=%d)\n", etamargin0,
+          found_margineta);
+  fprintf(stderr, "INFO:   EtaBinSize=%.4f (found=%d)\n", etabinsize,
+          found_etabinsize);
+  fprintf(stderr, "INFO:   OmeBinSize=%.4f (found=%d)\n", omebinsize,
+          found_omebinsize);
+  fprintf(stderr, "INFO:   StepsizeOrient=%.6f (found=%d)\n", rotationstep,
+          found_stepsize);
+  fprintf(stderr, "INFO:   NoSaveAll=%d\n", nosaveall);
+
+  int param_error = 0;
+  if (!found_marginome) {
+    fprintf(stderr, "ERROR: Required parameter 'MarginOme' not found in %s\n",
+            ParamFN);
+    param_error = 1;
+  }
+  if (!found_margineta) {
+    fprintf(stderr, "ERROR: Required parameter 'MarginEta' not found in %s\n",
+            ParamFN);
+    param_error = 1;
+  }
+  if (!found_etabinsize) {
+    fprintf(stderr, "ERROR: Required parameter 'EtaBinSize' not found in %s\n",
+            ParamFN);
+    param_error = 1;
+  }
+  if (!found_omebinsize) {
+    fprintf(stderr, "ERROR: Required parameter 'OmeBinSize' not found in %s\n",
+            ParamFN);
+    param_error = 1;
+  }
+  if (!found_stepsize) {
+    fprintf(stderr,
+            "ERROR: Required parameter 'StepsizeOrient' not found in %s\n",
+            ParamFN);
+    param_error = 1;
+  }
+  if (NrOfRings == 0) {
+    fprintf(stderr, "ERROR: No 'RingRadii' entries found in %s\n", ParamFN);
+    param_error = 1;
+  }
+  if (NoRingNumbers == 0) {
+    fprintf(stderr, "ERROR: No 'RingNumbers' entries found in %s\n", ParamFN);
+    param_error = 1;
+  }
+  if (NrOfRings != NoRingNumbers) {
+    fprintf(stderr,
+            "ERROR: NrOfRings(%d) != NoRingNumbers(%d) — mismatch in %s\n",
+            NrOfRings, NoRingNumbers, ParamFN);
+    param_error = 1;
+  }
+  if (param_error) {
+    fprintf(stderr, "ERROR: Missing required parameters. Cannot proceed.\n");
+    return 1;
+  }
+
+  // Validate parameter values
+  if (etabinsize <= 0) {
+    fprintf(stderr, "ERROR: EtaBinSize=%.4f is invalid (must be > 0)\n",
+            etabinsize);
+    return 1;
+  }
+  if (omebinsize <= 0) {
+    fprintf(stderr, "ERROR: OmeBinSize=%.4f is invalid (must be > 0)\n",
+            omebinsize);
+    return 1;
+  }
+
+  // Log ring info
+  for (int r = 0; r < NrOfRings; r++) {
+    fprintf(stderr, "INFO:   Ring[%d]: number=%d, radius=%.4f\n", r,
+            RingNumbers[r], RingRadiiUser[r]);
+  }
+
+  int i, j, k;
 
   int scanNr;
   size_t nSpots = 0;
-  int countr = 0;
+
   char AllSpotsFN[4096];
   FILE *AllSpotsFile;
   char *rc;
   struct InpData *MyData;
   MyData = malloc(MAX_N_SPOTS * sizeof(*MyData));
   if (MyData == NULL) {
+    fprintf(stderr, "ERROR: Could not allocate MyData array (%zu bytes)\n",
+            (size_t)MAX_N_SPOTS * sizeof(*MyData));
     printf("Memory error: could not allocate MyData.\n");
     return 1;
   }
+  fprintf(stderr, "INFO: Allocated MyData array for up to %d spots\n",
+          MAX_N_SPOTS);
+
+  int nFilesFound = 0;
+  int nFilesNotFound = 0;
   for (scanNr = 0; scanNr < nScans; scanNr++) {
     sprintf(AllSpotsFN, "InputAllExtraInfoFittingAll%d.csv", scanNr);
     AllSpotsFile = fopen(AllSpotsFN, "r");
     if (AllSpotsFile == NULL) {
+      fprintf(stderr,
+              "WARNING: Could not open '%s': %s (errno=%d). Skipping.\n",
+              AllSpotsFN, strerror(errno), errno);
       printf("Could not open %s. Skipping.\n", AllSpotsFN);
+      nFilesNotFound++;
       continue;
     }
+    nFilesFound++;
     setvbuf(AllSpotsFile, NULL, _IOFBF, 1 << 20); // 1 MB read buffer
-    rc = fgets(aline, 4096, AllSpotsFile);
+    rc = fgets(aline, 4096, AllSpotsFile);        // skip header
+    if (rc == NULL) {
+      fprintf(stderr, "WARNING: File '%s' is empty or has no header line.\n",
+              AllSpotsFN);
+      fclose(AllSpotsFile);
+      continue;
+    }
+    size_t nSpotsThisScan = 0;
+    size_t nLinesRead = 0;
+    size_t nParseErrors = 0;
     while (fgets(aline, 4096, AllSpotsFile) != NULL) {
+      nLinesRead++;
       double dummy0, dummy1;
-      sscanf(aline,
-             "%lf %lf %lf %lf %lf %lf %lf %lf %lf %lf %lf %lf %lf %lf %lf %lf "
-             "%lf %lf",
-             &MyData[nSpots].Values[0], &MyData[nSpots].Values[1],
-             &MyData[nSpots].Values[2], &MyData[nSpots].Values[3],
-             &MyData[nSpots].Values[4], &MyData[nSpots].Values[5],
-             &MyData[nSpots].Values[6], &MyData[nSpots].Values[7],
-             &MyData[nSpots].Values[8], &MyData[nSpots].Values[9],
-             &MyData[nSpots].Values[10], &MyData[nSpots].Values[11],
-             &MyData[nSpots].Values[12], &MyData[nSpots].Values[13], &dummy0,
-             &dummy1, &MyData[nSpots].Values[14], &MyData[nSpots].Values[15]);
+      int nParsed = sscanf(
+          aline,
+          "%lf %lf %lf %lf %lf %lf %lf %lf %lf %lf %lf %lf %lf %lf %lf %lf "
+          "%lf %lf",
+          &MyData[nSpots].Values[0], &MyData[nSpots].Values[1],
+          &MyData[nSpots].Values[2], &MyData[nSpots].Values[3],
+          &MyData[nSpots].Values[4], &MyData[nSpots].Values[5],
+          &MyData[nSpots].Values[6], &MyData[nSpots].Values[7],
+          &MyData[nSpots].Values[8], &MyData[nSpots].Values[9],
+          &MyData[nSpots].Values[10], &MyData[nSpots].Values[11],
+          &MyData[nSpots].Values[12], &MyData[nSpots].Values[13], &dummy0,
+          &dummy1, &MyData[nSpots].Values[14], &MyData[nSpots].Values[15]);
+
+      if (nParsed != 18) {
+        nParseErrors++;
+        if (nParseErrors <= 5) {
+          fprintf(stderr,
+                  "WARNING: Parse error in '%s' line %zu: expected 18 "
+                  "fields, got %d. Line: %.80s...\n",
+                  AllSpotsFN, nLinesRead + 1, nParsed, aline);
+        }
+        continue;
+      }
+
+      // Validate ring number bounds
+      int ringno = (int)MyData[nSpots].Values[5];
+      if (ringno < 0 || ringno >= MAX_N_RINGS) {
+        fprintf(stderr,
+                "WARNING: Spot in '%s' line %zu has invalid ringno=%d "
+                "(must be 0..%d). Skipping.\n",
+                AllSpotsFN, nLinesRead + 1, ringno, MAX_N_RINGS - 1);
+        continue;
+      }
+
       MyData[nSpots].Values[16] = scanNr;
-      if (fabs(MyData[nSpots].Values[3]) > 0.0001)
+      if (fabs(MyData[nSpots].Values[3]) > 0.0001) {
         nSpots++;
+        nSpotsThisScan++;
+      }
+
+      if (nSpots >= MAX_N_SPOTS) {
+        fprintf(stderr,
+                "ERROR: Exceeded MAX_N_SPOTS=%d at scan %d. Truncating.\n",
+                MAX_N_SPOTS, scanNr);
+        break;
+      }
     }
     fclose(AllSpotsFile);
+    fprintf(stderr,
+            "INFO: Scan %d/%d: read %zu data lines from '%s', "
+            "%zu valid spots (total so far: %zu)",
+            scanNr + 1, nScans, nLinesRead, AllSpotsFN, nSpotsThisScan, nSpots);
+    if (nParseErrors > 0) {
+      fprintf(stderr, ", %zu parse errors", nParseErrors);
+    }
+    fprintf(stderr, "\n");
   }
+
+  fprintf(stderr, "INFO: Input files: %d found, %d not found (out of %d)\n",
+          nFilesFound, nFilesNotFound, nScans);
+
+  if (nFilesFound == 0) {
+    fprintf(stderr,
+            "ERROR: No input files found! Expected "
+            "InputAllExtraInfoFittingAll0.csv .. "
+            "InputAllExtraInfoFittingAll%d.csv in current directory.\n",
+            nScans - 1);
+    // List current directory for debugging
+    fprintf(stderr,
+            "ERROR: Current working directory contents (first check):\n");
+    char cwd[4096];
+    if (getcwd(cwd, sizeof(cwd)) != NULL) {
+      fprintf(stderr, "ERROR: CWD = %s\n", cwd);
+    }
+    free(MyData);
+    return 1;
+  }
+
+  if (nSpots == 0) {
+    fprintf(stderr,
+            "ERROR: No valid spots found across %d scans (%d files). "
+            "All spots may have been filtered (Values[3] <= 0.0001) or "
+            "files may be empty. Cannot create Spots.bin.\n",
+            nScans, nFilesFound);
+    free(MyData);
+    return 1;
+  }
+
   // Shrink allocation to actual size (fix: capture return value)
   struct InpData *tmp = realloc(MyData, nSpots * sizeof(*MyData));
   if (tmp != NULL) {
     MyData = tmp;
   }
   printf("Number of Spots: %zu\n", nSpots);
+  fprintf(stderr, "INFO: Total valid spots: %zu\n", nSpots);
 
   // Now sort the spots, depending on the ring numbers, then omega value, then
   // on the eta-value.
   qsort(MyData, nSpots, sizeof(struct InpData), cmpfunc);
   printf("Data sorted.\n");
+  fprintf(stderr, "INFO: Spots sorted by ring/omega/eta\n");
 
   // Use contiguous 1D arrays instead of row-pointer matrices
   int nObsCols = 18;
@@ -202,11 +422,16 @@ int main(int argc, char *argv[]) {
   double *ObsSpots = malloc(nSpots * nObsCols * sizeof(double));
   double *IDMat = malloc(nSpots * nIDCols * sizeof(double));
   if (ObsSpots == NULL || IDMat == NULL) {
+    fprintf(stderr,
+            "ERROR: Could not allocate ObsSpots (%zu bytes) or IDMat (%zu "
+            "bytes)\n",
+            nSpots * nObsCols * sizeof(double),
+            nSpots * nIDCols * sizeof(double));
     printf("Memory error: could not allocate ObsSpots/IDMat.\n");
     return 1;
   }
   for (i = 0; i < (int)nSpots; i++) {
-    // Copy 15 values via memcpy for speed
+    // Copy 17 values via memcpy for speed
     memcpy(&ObsSpots[i * nObsCols], MyData[i].Values, 17 * sizeof(double));
     ObsSpots[i * nObsCols + 17] = 0; // will be filled by CalcDistanceIdealRing
     IDMat[i * nIDCols + 0] = i + 1;
@@ -220,6 +445,11 @@ int main(int argc, char *argv[]) {
     RingRadii[i] = 0;
   }
   for (i = 0; i < NrOfRings; i++) {
+    if (RingNumbers[i] < 0 || RingNumbers[i] >= MAX_N_RINGS) {
+      fprintf(stderr, "ERROR: RingNumbers[%d]=%d is out of range (0..%d)\n", i,
+              RingNumbers[i], MAX_N_RINGS - 1);
+      return 1;
+    }
     RingRadii[RingNumbers[i]] = RingRadiiUser[i];
   }
   CalcDistanceIdealRing(ObsSpots, nSpots, nObsCols, RingRadii);
@@ -228,6 +458,8 @@ int main(int argc, char *argv[]) {
   double *SpotsMat;
   SpotsMat = malloc(nSpots * 10 * sizeof(*SpotsMat));
   if (SpotsMat == NULL) {
+    fprintf(stderr, "ERROR: Could not allocate SpotsMat (%zu bytes)\n",
+            nSpots * 10 * sizeof(*SpotsMat));
     printf("Memory error: could not allocate SpotsMat.\n");
     return 1;
   }
@@ -242,36 +474,96 @@ int main(int argc, char *argv[]) {
   double *ExtraMat;
   ExtraMat = malloc(nSpots * 16 * sizeof(*ExtraMat));
   if (ExtraMat == NULL) {
+    fprintf(stderr, "ERROR: Could not allocate ExtraMat (%zu bytes)\n",
+            nSpots * 16 * sizeof(*ExtraMat));
     printf("Memory error: could not allocate ExtraMat.\n");
     return 1;
   }
   for (i = 0; i < (int)nSpots; i++) {
     memcpy(&ExtraMat[i * 16], &ObsSpots[i * nObsCols], 16 * sizeof(double));
   }
+
+  // ---- Write output files ----
   char *SpotsFN = "Spots.bin";
   char *ExtraFN = "ExtraInfo.bin";
   char *IDMatFN = "IDsMergedScanning.csv";
+
   FILE *SpotsFile = fopen(SpotsFN, "wb");
-  fwrite(SpotsMat, nSpots * 10 * sizeof(*SpotsMat), 1, SpotsFile);
-  fclose(SpotsFile);
+  if (SpotsFile == NULL) {
+    fprintf(stderr, "ERROR: Could not open '%s' for writing: %s (errno=%d)\n",
+            SpotsFN, strerror(errno), errno);
+    return 1;
+  }
+  size_t nWritten =
+      fwrite(SpotsMat, nSpots * 10 * sizeof(*SpotsMat), 1, SpotsFile);
+  if (nWritten != 1) {
+    fprintf(stderr,
+            "ERROR: fwrite to '%s' failed: wrote %zu of 1 blocks "
+            "(errno=%d: %s)\n",
+            SpotsFN, nWritten, errno, strerror(errno));
+    fclose(SpotsFile);
+    return 1;
+  }
+  if (fclose(SpotsFile) != 0) {
+    fprintf(stderr, "ERROR: fclose '%s' failed: %s (errno=%d)\n", SpotsFN,
+            strerror(errno), errno);
+    return 1;
+  }
+  fprintf(stderr, "INFO: Wrote %s (%zu spots, %zu bytes)\n", SpotsFN, nSpots,
+          nSpots * 10 * sizeof(*SpotsMat));
+
   FILE *ExtraFile = fopen(ExtraFN, "wb");
-  fwrite(ExtraMat, nSpots * 16 * sizeof(*ExtraMat), 1, ExtraFile);
-  fclose(ExtraFile);
+  if (ExtraFile == NULL) {
+    fprintf(stderr, "ERROR: Could not open '%s' for writing: %s (errno=%d)\n",
+            ExtraFN, strerror(errno), errno);
+    return 1;
+  }
+  nWritten = fwrite(ExtraMat, nSpots * 16 * sizeof(*ExtraMat), 1, ExtraFile);
+  if (nWritten != 1) {
+    fprintf(stderr,
+            "ERROR: fwrite to '%s' failed: wrote %zu of 1 blocks "
+            "(errno=%d: %s)\n",
+            ExtraFN, nWritten, errno, strerror(errno));
+    fclose(ExtraFile);
+    return 1;
+  }
+  if (fclose(ExtraFile) != 0) {
+    fprintf(stderr, "ERROR: fclose '%s' failed: %s (errno=%d)\n", ExtraFN,
+            strerror(errno), errno);
+    return 1;
+  }
+  fprintf(stderr, "INFO: Wrote %s (%zu spots, %zu bytes)\n", ExtraFN, nSpots,
+          nSpots * 16 * sizeof(*ExtraMat));
   free(ExtraMat);
+
   FILE *IDMatFile = fopen(IDMatFN, "w");
+  if (IDMatFile == NULL) {
+    fprintf(stderr, "ERROR: Could not open '%s' for writing: %s (errno=%d)\n",
+            IDMatFN, strerror(errno), errno);
+    return 1;
+  }
   setvbuf(IDMatFile, NULL, _IOFBF, 1 << 20); // 1 MB write buffer
   fprintf(IDMatFile, "NewID,OrigID,ScanNr\n");
   for (i = 0; i < (int)nSpots; i++)
     fprintf(IDMatFile, "%d,%d,%d\n", (int)IDMat[i * nIDCols + 0],
             (int)IDMat[i * nIDCols + 1], (int)IDMat[i * nIDCols + 2]);
-  fclose(IDMatFile);
+  if (fclose(IDMatFile) != 0) {
+    fprintf(stderr, "ERROR: fclose '%s' failed: %s (errno=%d)\n", IDMatFN,
+            strerror(errno), errno);
+    return 1;
+  }
+  fprintf(stderr, "INFO: Wrote %s (%zu entries)\n", IDMatFN, nSpots);
+
   free(SpotsMat);
   free(IDMat);
   if (nosaveall == 1) {
     free(ObsSpots);
+    fprintf(stderr, "INFO: NoSaveAll=1, skipping Data.bin/nData.bin. Done.\n");
     return 0;
   }
   printf("Files written. Now generating map.\n");
+  fprintf(stderr,
+          "INFO: Files written. Now generating Data.bin/nData.bin map.\n");
 
   // data will save id, scanNr for each spot, everything else remains the same.
   // Twice the size now.
@@ -285,8 +577,7 @@ int main(int argc, char *argv[]) {
   size_t *oldarray;
   int iEta, iOme, iEta0, iOme0;
   size_t rowno;
-  double EtaBinSize = etabinsize;
-  double OmeBinSize = omebinsize;
+
   int HighestRingNo = 0;
   for (i = 0; i < MAX_N_RINGS; i++) {
     if (RingRadii[i] != 0)
@@ -298,11 +589,38 @@ int main(int argc, char *argv[]) {
   printf("nRings: %d, nEtas: %d, nOmes: %d\n", n_ring_bins, n_eta_bins,
          n_ome_bins);
   printf("Total bins: %d\n", n_ring_bins * n_eta_bins * n_ome_bins);
+  fprintf(stderr,
+          "INFO: Map dimensions: nRings=%d, nEtas=%d, nOmes=%d, "
+          "totalBins=%d\n",
+          n_ring_bins, n_eta_bins, n_ome_bins,
+          n_ring_bins * n_eta_bins * n_ome_bins);
+
+  if (n_ring_bins <= 0 || n_eta_bins <= 0 || n_ome_bins <= 0) {
+    fprintf(stderr,
+            "ERROR: Invalid bin dimensions: nRings=%d, nEtas=%d, "
+            "nOmes=%d. Check EtaBinSize, OmeBinSize, and ring radii.\n",
+            n_ring_bins, n_eta_bins, n_ome_bins);
+    free(ObsSpots);
+    return 1;
+  }
 
   char *DataFN = "Data.bin";
   char *nDataFN = "nData.bin";
   FILE *DataFile = fopen(DataFN, "wb");
+  if (DataFile == NULL) {
+    fprintf(stderr, "ERROR: Could not open '%s' for writing: %s (errno=%d)\n",
+            DataFN, strerror(errno), errno);
+    free(ObsSpots);
+    return 1;
+  }
   FILE *nDataFile = fopen(nDataFN, "wb");
+  if (nDataFile == NULL) {
+    fprintf(stderr, "ERROR: Could not open '%s' for writing: %s (errno=%d)\n",
+            nDataFN, strerror(errno), errno);
+    fclose(DataFile);
+    free(ObsSpots);
+    return 1;
+  }
   setvbuf(DataFile, NULL, _IOFBF, 1 << 20);  // 1 MB write buffer
   setvbuf(nDataFile, NULL, _IOFBF, 1 << 20); // 1 MB write buffer
   size_t TotNumberOfBins = 0;
@@ -316,8 +634,14 @@ int main(int argc, char *argv[]) {
     maxndata = malloc(n_eta_bins * sizeof(size_t *)); // Corrected sizeof
 
     if (!data || !ndata || !maxndata) {
+      fprintf(stderr,
+              "ERROR: Memory allocation failed for ring %d (n_eta_bins=%d)\n",
+              iRing, n_eta_bins);
       printf("Memory error: memory full during allocation for ring %d\n",
              iRing);
+      fclose(DataFile);
+      fclose(nDataFile);
+      free(ObsSpots);
       return 1;
     }
 
@@ -327,9 +651,16 @@ int main(int argc, char *argv[]) {
       maxndata[j] = malloc(n_ome_bins * sizeof(size_t)); // Corrected sizeof
 
       if (!data[j] || !ndata[j] || !maxndata[j]) {
+        fprintf(stderr,
+                "ERROR: Memory allocation failed for ring %d, eta bin %d "
+                "(n_ome_bins=%d)\n",
+                iRing, j, n_ome_bins);
         printf("Memory error: memory full during allocation for ring %d, eta "
                "bin %d\n",
                iRing, j);
+        fclose(DataFile);
+        fclose(nDataFile);
+        free(ObsSpots);
         return 1;
       }
 
@@ -341,11 +672,12 @@ int main(int argc, char *argv[]) {
     }
 
     // Bin spots for THIS ring
+    size_t nSpotsThisRing = 0;
     for (rowno = 0; rowno < nSpots; rowno++) {
       int ringnr = (int)ObsSpots[rowno * nObsCols + 5];
       if ((ringnr - 1) != iRing)
         continue;
-      if (RingRadii[ringnr] == 0)
+      if (ringnr < 0 || ringnr >= MAX_N_RINGS || RingRadii[ringnr] == 0)
         continue;
 
       int scanno = (int)ObsSpots[rowno * nObsCols + 16];
@@ -365,6 +697,7 @@ int main(int argc, char *argv[]) {
       int iEtaMin = floor(etamin / etabinsize);
       int iEtaMax = floor(etamax / etabinsize);
 
+      nSpotsThisRing++;
       for (iEta0 = iEtaMin; iEta0 <= iEtaMax; iEta0++) {
         iEta = iEta0 % n_eta_bins;
         if (iEta < 0)
@@ -382,7 +715,15 @@ int main(int argc, char *argv[]) {
             oldarray = data[iEta][iOme];
             newarray = realloc(oldarray, maxnspot * 2 * sizeof(*newarray));
             if (newarray == NULL) {
+              fprintf(stderr,
+                      "ERROR: realloc failed for ring %d, eta=%d, ome=%d "
+                      "(requested %zu bytes): %s\n",
+                      iRing, iEta, iOme, maxnspot * 2 * sizeof(*newarray),
+                      strerror(errno));
               printf("Memory error: memory full?\n");
+              fclose(DataFile);
+              fclose(nDataFile);
+              free(ObsSpots);
               return 1;
             }
             data[iEta][iOme] = newarray;
@@ -396,17 +737,35 @@ int main(int argc, char *argv[]) {
       }
     }
 
+    fprintf(stderr, "INFO: Ring %d/%d: %zu spots binned\n", iRing + 1,
+            n_ring_bins, nSpotsThisRing);
+
     // Write to File immediately
+    int write_error = 0;
     for (j = 0; j < n_eta_bins; j++) {
       for (k = 0; k < n_ome_bins; k++) {
         size_t localNDataVal = ndata[j][k];
         size_t nDataInfo[2];
         nDataInfo[0] = localNDataVal;
         nDataInfo[1] = globalCounter;
-        fwrite(nDataInfo, sizeof(size_t), 2, nDataFile);
+        size_t w = fwrite(nDataInfo, sizeof(size_t), 2, nDataFile);
+        if (w != 2 && !write_error) {
+          fprintf(stderr,
+                  "ERROR: fwrite to nData.bin failed at ring=%d, "
+                  "eta=%d, ome=%d: wrote %zu/2 (errno=%d: %s)\n",
+                  iRing, j, k, w, errno, strerror(errno));
+          write_error = 1;
+        }
 
         if (localNDataVal > 0) {
-          fwrite(data[j][k], sizeof(size_t), localNDataVal * 2, DataFile);
+          w = fwrite(data[j][k], sizeof(size_t), localNDataVal * 2, DataFile);
+          if (w != localNDataVal * 2 && !write_error) {
+            fprintf(stderr,
+                    "ERROR: fwrite to Data.bin failed at ring=%d, "
+                    "eta=%d, ome=%d: wrote %zu/%zu (errno=%d: %s)\n",
+                    iRing, j, k, w, localNDataVal * 2, errno, strerror(errno));
+            write_error = 1;
+          }
           globalCounter += localNDataVal;
           free(data[j][k]); // Free the spot array
         }
@@ -418,16 +777,58 @@ int main(int argc, char *argv[]) {
     free(data);
     free(ndata);
     free(maxndata);
+
+    if (write_error) {
+      fprintf(stderr,
+              "ERROR: Write errors occurred during ring %d. Aborting.\n",
+              iRing);
+      fclose(DataFile);
+      fclose(nDataFile);
+      free(ObsSpots);
+      return 1;
+    }
   }
 
-  fclose(DataFile);
-  fclose(nDataFile);
+  if (fclose(DataFile) != 0) {
+    fprintf(stderr, "ERROR: fclose 'Data.bin' failed: %s (errno=%d)\n",
+            strerror(errno), errno);
+    return 1;
+  }
+  if (fclose(nDataFile) != 0) {
+    fprintf(stderr, "ERROR: fclose 'nData.bin' failed: %s (errno=%d)\n",
+            strerror(errno), errno);
+    return 1;
+  }
   free(ObsSpots);
+
   end = clock();
   diftotal = ((double)(end - start)) / CLOCKS_PER_SEC;
   printf("nData: %zu, Data: %zu\n",
          (size_t)n_ring_bins * n_eta_bins * n_ome_bins * 2,
          TotNumberOfBins * 2);
   printf("Total Time elapsed: %f s.\n", diftotal);
+  fprintf(stderr,
+          "INFO: SaveBinDataScanning completed successfully. "
+          "nSpots=%zu, nData=%zu, Data=%zu, Time=%.2fs\n",
+          nSpots, (size_t)n_ring_bins * n_eta_bins * n_ome_bins * 2,
+          TotNumberOfBins * 2, diftotal);
+
+  // Verify output files exist and have size
+  struct stat st;
+  const char *outFiles[] = {"Spots.bin", "ExtraInfo.bin",
+                            "IDsMergedScanning.csv", "Data.bin", "nData.bin"};
+  for (int f = 0; f < 5; f++) {
+    if (stat(outFiles[f], &st) == 0) {
+      fprintf(stderr, "INFO: Output file '%s': %lld bytes\n", outFiles[f],
+              (long long)st.st_size);
+      if (st.st_size == 0) {
+        fprintf(stderr, "WARNING: Output file '%s' is 0 bytes!\n", outFiles[f]);
+      }
+    } else {
+      fprintf(stderr, "ERROR: Output file '%s' not found after writing!\n",
+              outFiles[f]);
+    }
+  }
+
   return 0;
 }

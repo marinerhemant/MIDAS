@@ -681,15 +681,40 @@ def binData(resultDir, num_scans, midas_path):
             # Build command
             cmd_this = f"{os.path.join(midas_path, 'FF_HEDM/bin/SaveBinDataScanning')} {num_scans}"
             logger.info(f"Running SaveBinDataScanning: {cmd_this}")
-            # Log hostname for debugging
-            subprocess.call(cmd_this, shell=True, stdout=f, stderr=f_err)
+            # Use subprocess.run to capture return code
+            result = subprocess.run(cmd_this, shell=True, stdout=f, stderr=f_err)
        
-        # Check for errors
-        with open(f_err_path, 'r') as f_err:
-            content = f_err.read()
-            if "Error" in content or "error" in content:
-                logger.error(f"Error in binData: {content}")
-                return "Failed to bin data"
+        # Always log stderr content for diagnostics
+        if os.path.exists(f_err_path):
+            with open(f_err_path, 'r') as ef:
+                stderr_content = ef.read()
+                if stderr_content.strip():
+                    # Log all stderr (contains INFO/WARNING/ERROR from SaveBinDataScanning)
+                    for line in stderr_content.strip().split('\n'):
+                        if 'ERROR' in line:
+                            logger.error(f"SaveBinDataScanning: {line}")
+                        elif 'WARNING' in line:
+                            logger.warning(f"SaveBinDataScanning: {line}")
+                        else:
+                            logger.info(f"SaveBinDataScanning: {line}")
+        
+        # Check return code
+        if result.returncode != 0:
+            logger.error(f"SaveBinDataScanning failed with return code {result.returncode}")
+            logger.error(f"Check {f_err_path} for detailed error messages")
+            return f"Failed to bin data (rc={result.returncode})"
+        
+        # Verify critical output files exist
+        spots_file = os.path.join(resultDir, 'Spots.bin')
+        if not os.path.exists(spots_file):
+            logger.error(f"SaveBinDataScanning completed but Spots.bin not found at {spots_file}")
+            logger.error(f"Check {f_err_path} for details")
+            return "Failed to bin data: Spots.bin not created"
+        elif os.path.getsize(spots_file) == 0:
+            logger.error(f"Spots.bin exists but is 0 bytes at {spots_file}")
+            return "Failed to bin data: Spots.bin is empty"
+        else:
+            logger.info(f"Spots.bin created successfully: {os.path.getsize(spots_file)} bytes")
         
         return "Successfully binned data"
         
