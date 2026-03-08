@@ -51,9 +51,9 @@ def qprint(*args, level=NORMAL, **kwargs):
         print(*args, **kwargs)
 
 
-# Peak fit binary format: 7 doubles per peak
+# Peak fit binary format: 7 doubles per peak (GSAS-II area-normalized)
 PF_PARAMS_PER_PEAK = 7
-# [0]=Imax, [1]=BG, [2]=Mix, [3]=Center, [4]=Sigma, [5]=SNR, [6]=Area
+# [0]=area, [1]=center, [2]=sig, [3]=gam, [4]=FWHM, [5]=eta, [6]=chi_sq
 
 
 # =========================================================================
@@ -104,14 +104,50 @@ class RingEntry:
 
 @dataclass
 class FitResult:
-    """Fitted peak result."""
-    Imax: float = 0.0
-    BG: float = 0.0
-    Mix: float = 0.0
-    Center: float = 0.0   # R_fitted in pixels
-    Sigma: float = 0.0
-    SNR: float = 0.0
-    Area: float = 0.0
+    """Fitted peak result (GSAS-II area-normalized pseudo-Voigt).
+
+    Binary layout from PeakFit.c fitPeaks():
+        [0] area    - integrated intensity
+        [1] center  - fitted peak center (R in pixels or x-units)
+        [2] sig     - Gaussian variance (centideg²)
+        [3] gam     - Lorentzian FWHM (centideg)
+        [4] FWHM    - total FWHM (same units as x)
+        [5] eta     - pseudo-Voigt mixing (0=Gaussian, 1=Lorentzian)
+        [6] chi_sq  - reduced chi-squared
+    """
+    Area: float = 0.0       # integrated area (slot 0)
+    Center: float = 0.0     # fitted center in R pixels (slot 1)
+    sig: float = 0.0        # Gaussian variance, centideg² (slot 2)
+    gam: float = 0.0        # Lorentzian FWHM, centideg (slot 3)
+    FWHM: float = 0.0       # total FWHM in x-units (slot 4)
+    Mix: float = 0.0        # eta mixing parameter (slot 5)
+    chi_sq: float = 0.0     # reduced chi-squared (slot 6)
+
+    # Backward-compatible derived properties
+    @property
+    def Imax(self) -> float:
+        """Approximate peak height from area-normalized profile."""
+        if self.FWHM > 0:
+            # For pseudo-Voigt: Imax ≈ Area / (FWHM × ~1.065)
+            return self.Area / self.FWHM
+        return self.Area
+
+    @property
+    def Sigma(self) -> float:
+        """FWHM expressed as Gaussian sigma (FWHM / 2.355)."""
+        return self.FWHM / 2.355 if self.FWHM > 0 else 0.0
+
+    @property
+    def SNR(self) -> float:
+        """Signal-to-noise from chi-squared (lower chi_sq = better fit = higher SNR)."""
+        if self.Area > 0 and self.chi_sq > 0:
+            return self.Area / math.sqrt(self.chi_sq)
+        return 0.0
+
+    @property
+    def BG(self) -> float:
+        """Background (not available in GSAS-II format, bg is subtracted)."""
+        return 0.0
 
 
 # =========================================================================
@@ -493,7 +529,11 @@ def run_gpu_pipeline(data_file: Path, dark_file: Optional[Path],
 # =========================================================================
 
 def read_fit_bin(fit_bin: Path, n_peaks: int) -> List[FitResult]:
-    """Read fit.bin and return per-peak FitResult objects."""
+    """Read fit.bin and return per-peak FitResult objects.
+
+    Binary layout (PeakFit.c): 7 doubles per peak:
+        [0]=area, [1]=center, [2]=sig, [3]=gam, [4]=FWHM, [5]=eta, [6]=chi_sq
+    """
     if not fit_bin.exists():
         return []
 
@@ -510,9 +550,13 @@ def read_fit_bin(fit_bin: Path, n_peaks: int) -> List[FitResult]:
     for i in range(n_peaks):
         base = i * PF_PARAMS_PER_PEAK
         results.append(FitResult(
-            Imax=values[base], BG=values[base + 1], Mix=values[base + 2],
-            Center=values[base + 3], Sigma=values[base + 4],
-            SNR=values[base + 5], Area=values[base + 6],
+            Area=values[base],
+            Center=values[base + 1],
+            sig=values[base + 2],
+            gam=values[base + 3],
+            FWHM=values[base + 4],
+            Mix=values[base + 5],
+            chi_sq=values[base + 6],
         ))
     return results
 
