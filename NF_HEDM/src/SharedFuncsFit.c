@@ -398,6 +398,8 @@ static inline double CalcEta(RealType y, RealType z) {
 
 static inline double CorrectWedge(double eta, double theta, double wl,
                                   double wedge) {
+  if (fabs(wedge) < 1e-10)
+    return 0.0;
   double SinTheta = sin(deg2rad * theta);
   double CosTheta = cos(deg2rad * theta);
   double ds = 2 * SinTheta / wl;
@@ -457,21 +459,13 @@ static inline double CorrectWedge(double eta, double theta, double wl,
   double SinOmega2 = (-b_Sin + P_Sin) / (2 * a_Sin);
   double CosOmega1 = (-b_Cos - P_Cos) / (2 * a_Cos);
   double CosOmega2 = (-b_Cos + P_Cos) / (2 * a_Cos);
-  if (SinOmega1 < -1)
+  if (SinOmega1 < -1 || SinOmega1 > 1)
     SinOmega1 = 0;
-  else if (SinOmega1 > 1)
-    SinOmega1 = 0;
-  else if (SinOmega2 < -1)
+  if (SinOmega2 < -1 || SinOmega2 > 1)
     SinOmega2 = 0;
-  else if (SinOmega2 > 1)
-    SinOmega2 = 0;
-  if (CosOmega1 < -1)
+  if (CosOmega1 < -1 || CosOmega1 > 1)
     CosOmega1 = 0;
-  else if (CosOmega1 > 1)
-    CosOmega1 = 0;
-  else if (CosOmega2 < -1)
-    CosOmega2 = 0;
-  else if (CosOmega2 > 1)
+  if (CosOmega2 < -1 || CosOmega2 > 1)
     CosOmega2 = 0;
   if (P_check_Sin == 1) {
     SinOmega1 = 0;

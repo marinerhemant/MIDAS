@@ -493,6 +493,8 @@ void DisplacementSpots(RealType a, RealType b, RealType Lsd, RealType yi,
 
 static inline double CorrectWedge(double eta, double theta, double wl,
                                   double wedge) {
+  if (fabs(wedge) < 1e-10)
+    return 0.0;
   double SinTheta = sin(deg2rad * theta);
   double CosTheta = cos(deg2rad * theta);
   double ds = 2 * SinTheta / wl;
@@ -2088,6 +2090,10 @@ int main(int argc, char *argv[]) {
     } // End of omp parallel block
     // Flush all thread spot buffers to file (serial, after parallel region)
     if (writeSpots == 1) {
+      int totalSpots = 0;
+      int grainSpotCounts[nrPoints];
+      for (i = 0; i < nrPoints; i++)
+        grainSpotCounts[i] = 0;
       for (i = 0; i < nCPUs; i++) {
         for (j = 0; j < spotBuffers[i].count; j++) {
           SpotRecord *r = &spotBuffers[i].records[j];
@@ -2097,8 +2103,14 @@ int main(int argc, char *argv[]) {
                   r->grainID, r->spotID, r->omega, r->detHor, r->detVert,
                   r->omeRaw, r->eta, r->ringNr, r->yLab, r->zLab, r->theta, 0.0,
                   r->scanNr, r->ringRad, r->omeBin);
+          if (r->grainID >= 1 && r->grainID <= nrPoints)
+            grainSpotCounts[r->grainID - 1]++;
+          totalSpots++;
         }
       }
+      printf("SpotMatrixGen summary: %d total spots\n", totalSpots);
+      for (i = 0; i < nrPoints; i++)
+        printf("  Grain %d: %d spots\n", i + 1, grainSpotCounts[i]);
     }
     maxInt = 0.0;
     printf("Scan %d simulation done in %.3f sec.\n", scanNr,

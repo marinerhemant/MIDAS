@@ -357,10 +357,18 @@ static inline void CorrectWedge(double yc, double zc, double Lsd,
                                 double *ysOut, double *zsOut, double *OmegaOut,
                                 double *EtaOut, double *TthetaOut) {
   double ysi = yc, zsi = zc;
-  double CosOme = cos(deg2rad * OmegaIni), SinOme = sin(deg2rad * OmegaIni);
   double eta = CalcEtaAngleLocal(ysi, zsi);
   double RingRadius = sqrt((ysi * ysi) + (zsi * zsi));
   double tth = rad2deg * atan(RingRadius / Lsd);
+  if (fabs(wedge) < 1e-10) {
+    *ysOut = yc;
+    *zsOut = zc;
+    *OmegaOut = OmegaIni;
+    *EtaOut = eta;
+    *TthetaOut = tth;
+    return;
+  }
+  double CosOme = cos(deg2rad * OmegaIni), SinOme = sin(deg2rad * OmegaIni);
   double theta = tth / 2;
   double SinTheta = sin(deg2rad * theta);
   double CosTheta = cos(deg2rad * theta);
