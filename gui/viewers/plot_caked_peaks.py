@@ -255,7 +255,7 @@ def match_peak_to_ring(peak_2theta, rings, tol_deg=0.1):
 
 
 def compute_lattice_a_for_ring(peaks_h5_path, frame_key, ring, eta_axis,
-                               a_ref, d_ref):
+                               a_ref, d_ref, wavelength=None):
     """Compute lattice parameter 'a' at each η bin for a specific ring.
 
     Returns (etas, a_values) arrays.
@@ -294,10 +294,18 @@ def compute_lattice_a_for_ring(peaks_h5_path, frame_key, ring, eta_axis,
                 if diff < best_diff:
                     best_diff = diff
                     best_idx = idx
-            if best_idx is not None and d_vals[best_idx] > 0:
-                a_meas = d_vals[best_idx] * (a_ref / d_ref)
-                etas_out.append(eta_axis[ei])
-                a_out.append(a_meas)
+            if best_idx is not None:
+                d_val = d_vals[best_idx]
+                # If d_spacing is zero/missing, compute from 2θ via Bragg's law
+                if d_val <= 0 and wavelength is not None:
+                    theta_rad = np.radians(centers[best_idx] / 2.0)
+                    sin_theta = np.sin(theta_rad)
+                    if sin_theta > 0:
+                        d_val = wavelength / (2.0 * sin_theta)
+                if d_val > 0:
+                    a_meas = d_val * (a_ref / d_ref)
+                    etas_out.append(eta_axis[ei])
+                    a_out.append(a_meas)
         return np.array(etas_out), np.array(a_out)
 
 
@@ -802,12 +810,14 @@ class CakedPeakViewer(QMainWindow):
         msz = self.lat_marker_spin.value() if hasattr(self, 'lat_marker_spin') else 18
         fsz = self.lat_font_spin.value() if hasattr(self, 'lat_font_spin') else 9
 
+        wl = self.param_info.get('wavelength') if self.param_info else None
         for ri, ring in enumerate(self.hkl_rings):
             if ri < len(self.ring_cbs) and not self.ring_cbs[ri].isChecked():
                 continue
             d_ref = ring['d_spacing']
             etas, a_vals = compute_lattice_a_for_ring(
-                self.peaks_h5_path, frame_key, ring, eta_axis, a_ref, d_ref)
+                self.peaks_h5_path, frame_key, ring, eta_axis, a_ref, d_ref,
+                wavelength=wl)
             if len(etas) == 0:
                 continue
             color = cmap(ri % cmap.N / cmap.N) if hasattr(cmap, 'N') else cmap(ri / max(n_rings - 1, 1))

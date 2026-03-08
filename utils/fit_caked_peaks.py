@@ -259,6 +259,16 @@ def process_zarr_file(zarr_path, n_cpus=1, snip_iter=50, n_peaks=6,
     # Open zarr
     z = zarr.open(str(zarr_path), mode='r')
 
+    # Try to extract wavelength from zarr if not provided via param file
+    if wavelength_A <= 0:
+        try:
+            lam = z['InstrumentParameters']['Lam'][0]
+            if lam > 0:
+                wavelength_A = float(lam)
+                print(f"  Wavelength auto-detected from zarr: {wavelength_A} Å")
+        except (KeyError, IndexError, TypeError):
+            pass
+
     # REtaMap → axes
     retamap = z['REtaMap'][:]
     tth_2d = retamap[1]  # [nRBins, nEtaBins]
