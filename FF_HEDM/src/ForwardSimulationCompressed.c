@@ -552,21 +552,13 @@ static inline double CorrectWedge(double eta, double theta, double wl,
   double SinOmega2 = (-b_Sin + P_Sin) / (2 * a_Sin);
   double CosOmega1 = (-b_Cos - P_Cos) / (2 * a_Cos);
   double CosOmega2 = (-b_Cos + P_Cos) / (2 * a_Cos);
-  if (SinOmega1 < -1)
+  if (SinOmega1 < -1 || SinOmega1 > 1)
     SinOmega1 = 0;
-  else if (SinOmega1 > 1)
-    SinOmega1 = 0;
-  else if (SinOmega2 < -1)
+  if (SinOmega2 < -1 || SinOmega2 > 1)
     SinOmega2 = 0;
-  else if (SinOmega2 > 1)
-    SinOmega2 = 0;
-  if (CosOmega1 < -1)
+  if (CosOmega1 < -1 || CosOmega1 > 1)
     CosOmega1 = 0;
-  else if (CosOmega1 > 1)
-    CosOmega1 = 0;
-  else if (CosOmega2 < -1)
-    CosOmega2 = 0;
-  else if (CosOmega2 > 1)
+  if (CosOmega2 < -1 || CosOmega2 > 1)
     CosOmega2 = 0;
   if (P_check_Sin == 1) {
     SinOmega1 = 0;
@@ -1860,12 +1852,30 @@ int main(int argc, char *argv[]) {
             OmeDiff =
                 CorrectWedge(TempInfo[1], TempInfo[3], sample_lambda, Wedge);
             omeThis = TempInfo[2] - OmeDiff;
-            if ((omeThis >= omegaLarge) || (omeThis <= omegaSmall))
+            // Diagnostic: trace boundary spots (Ring 4-5, Eta near ±175)
+            int _diag = ((int)TempInfo[4] >= 4 && (int)TempInfo[4] <= 5 &&
+                         fabs(fabs(TempInfo[1]) - 175.0) < 1.0);
+            if (_diag) {
+              fprintf(stderr,
+                      "DIAG vox=%d spot=%d Ring=%.0f Eta=%.4f OmeRaw=%.6f "
+                      "OmeDiff=%.10f omeThis=%.6f range=[%.2f,%.2f]\n",
+                      voxNr + 1, spotNr, TempInfo[4], TempInfo[1], TempInfo[2],
+                      OmeDiff, omeThis, omegaSmall, omegaLarge);
+            }
+            if ((omeThis >= omegaLarge) || (omeThis <= omegaSmall)) {
+              if (_diag)
+                fprintf(stderr, "  REJECTED: omega out of range\n");
               continue;
+            }
             if (nScans > 1 || beamSize > 0) {
               newY = InputInfo[voxNr][9] * sin(deg2rad * omeThis) +
                      InputInfo[voxNr][10] * cos(deg2rad * omeThis);
               if (fabs(newY - yOffset) > beamSize / 2) {
+                if (_diag)
+                  fprintf(
+                      stderr,
+                      "  REJECTED: beam size (newY=%.4f yOff=%.4f bs=%.4f)\n",
+                      newY, yOffset, beamSize);
                 continue;
               }
             }
@@ -1876,17 +1886,36 @@ int main(int argc, char *argv[]) {
                                   omeThis, 0.0, 0.0, &DisplY2, &DisplZ2);
             yThis = yTemp + DisplY2 + yOffset;
             zThis = zTemp + DisplZ2;
-            yTrans = (int)(-yThis / px + yBC);
-            zTrans = (int)(zThis / px + zBC);
+            double yTransF = -yThis / px + yBC;
+            double zTransF = zThis / px + zBC;
+            yTrans = (int)(yTransF);
+            zTrans = (int)(zTransF);
             idx = yTrans + NrPixels * zTrans;
-            if (idx < 1 || idx >= NrPixels * NrPixels)
+            if (_diag) {
+              fprintf(stderr,
+                      "  yTemp=%.6f zTemp=%.6f DisplY2=%.6f DisplZ2=%.6f\n",
+                      yTemp, zTemp, DisplY2, DisplZ2);
+              fprintf(stderr,
+                      "  yThis=%.6f zThis=%.6f yTransF=%.10f zTransF=%.10f\n",
+                      yThis, zThis, yTransF, zTransF);
+              fprintf(stderr, "  yTrans=%d zTrans=%d idx=%d NrPx=%d\n", yTrans,
+                      zTrans, idx, NrPixels);
+            }
+            if (idx < 1 || idx >= NrPixels * NrPixels) {
+              if (_diag)
+                fprintf(stderr, "  REJECTED: idx out of bounds\n");
               continue;
+            }
             DisplY = yDispl[idx];
             DisplZ = zDispl[idx];
             if (DisplY == -32100) {
               if (idx - NrPixels < 0 ||
-                  idx + NrPixels > NrPixels * NrPixels - 1)
+                  idx + NrPixels > NrPixels * NrPixels - 1) {
+                if (_diag)
+                  fprintf(stderr,
+                          "  REJECTED: DisplY=-32100, idx near boundary\n");
                 continue;
+              }
               if (yDispl[idx - 1] != -32100.0) {
                 DisplY = yDispl[idx - 1];
                 DisplZ = zDispl[idx - 1];
@@ -1900,6 +1929,9 @@ int main(int argc, char *argv[]) {
                 DisplY = yDispl[idx + NrPixels];
                 DisplZ = zDispl[idx + NrPixels];
               } else {
+                if (_diag)
+                  fprintf(stderr,
+                          "  REJECTED: DisplY=-32100, no valid neighbor\n");
                 continue;
               }
             }
@@ -1907,8 +1939,17 @@ int main(int argc, char *argv[]) {
             zTemp = zThis + DisplZ;
             yDet = yBC - yTemp / px;
             zDet = zBC + zTemp / px;
-            if (yDet < 0 || yDet >= NrPixels || zDet < 0 || zDet >= NrPixels)
+            if (_diag) {
+              fprintf(stderr, "  DisplY=%.6f DisplZ=%.6f yDet=%.6f zDet=%.6f\n",
+                      DisplY, DisplZ, yDet, zDet);
+            }
+            if (yDet < 0 || yDet >= NrPixels || zDet < 0 || zDet >= NrPixels) {
+              if (_diag)
+                fprintf(stderr, "  REJECTED: detector bounds\n");
               continue;
+            }
+            if (_diag)
+              fprintf(stderr, "  ACCEPTED\n");
             // ========================================================================
             // Spot position logging (independent of WriteImage)
             // ========================================================================

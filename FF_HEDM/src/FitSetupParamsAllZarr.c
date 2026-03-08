@@ -427,7 +427,7 @@ static inline void CorrectWedge(double yc, double zc, double Lsd,
     SinOmega1 = -1;
   else if (SinOmega1 > 1)
     SinOmega1 = 1;
-  else if (SinOmega2 < -1)
+  if (SinOmega2 < -1)
     SinOmega2 = -1;
   else if (SinOmega2 > 1)
     SinOmega2 = 1;
@@ -435,7 +435,7 @@ static inline void CorrectWedge(double yc, double zc, double Lsd,
     CosOmega1 = -1;
   else if (CosOmega1 > 1)
     CosOmega1 = 1;
-  else if (CosOmega2 < -1)
+  if (CosOmega2 < -1)
     CosOmega2 = -1;
   else if (CosOmega2 > 1)
     CosOmega2 = 1;
