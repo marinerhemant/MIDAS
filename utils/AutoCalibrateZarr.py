@@ -312,8 +312,8 @@ def fileReader(f, dset, skip_frame=0):
     return np.mean(data, axis=0), ny, nz
 
 
-def generateZip(resFol, pfn, dfn='', darkfn='', dloc='', nchunks=-1,
-                preproc=-1, outf='ZipOut.txt', errf='ZipErr.txt',
+def generateZip(resFol, pfn, dfn='', darkfn='', dloc='', darkloc='',
+                nchunks=-1, preproc=-1, outf='ZipOut.txt', errf='ZipErr.txt',
                 NrPixelsY=0, NrPixelsZ=0):
     """Generate a Zarr zip file from other file formats."""
     cmd = [
@@ -328,6 +328,8 @@ def generateZip(resFol, pfn, dfn='', darkfn='', dloc='', nchunks=-1,
         cmd.extend(['-darkFN', darkfn])
     if dloc:
         cmd.extend(['-dataLoc', dloc])
+    if darkloc:
+        cmd.extend(['-darkLoc', darkloc])
     if nchunks != -1:
         cmd.extend(['-numFrameChunks', str(nchunks)])
     if preproc != -1:
@@ -806,6 +808,8 @@ def main():
                             help='MIDAS parameter file (required for non-Zarr inputs)')
         parser.add_argument('--data-loc', '-dataLoc', type=str, default='',
                             help='HDF5 dataset path (default: /exchange/data)')
+        parser.add_argument('--dark-loc', '-darkLoc', type=str, default='',
+                            help='HDF5 dark field dataset path (default: exchange/dark)')
 
         # Format control
         parser.add_argument('--convert', '-ConvertFile', type=int, default=-1,
@@ -871,6 +875,7 @@ def main():
         dataFN = args.data
         darkFN = args.dark
         dataLoc = args.data_loc
+        darkLoc = args.dark_loc
         DrawPlots = int(args.plots)
         firstRing = int(args.first_ring)
         multFactor = float(args.mult_factor)
@@ -939,7 +944,8 @@ def main():
                 psFN = _make_temp_param_file(args, calibrant, filename_hints)
             logger.info("Generating zip file")
             dataFN = generateZip('.', psFN, dfn=dataFN, nchunks=100,
-                                 preproc=0, darkfn=darkFN, dloc=dataLoc)
+                                 preproc=0, darkfn=darkFN, dloc=dataLoc,
+                                 darkloc=darkLoc)
 
         # ---- Read Zarr file ----
         logger.info(f"Reading Zarr file: {dataFN}")
