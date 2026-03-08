@@ -564,9 +564,12 @@ def read_fit_bin(fit_bin: Path, n_peaks: int) -> List[FitResult]:
 def read_fit_per_eta(csv_path: Path) -> dict:
     """Parse fit_per_eta.csv produced by IntegratorZarrOMP.
 
+    CSV columns (GSAS-II format):
+        Frame,EtaBin,EtaCen,PeakIdx,R_px,R_um,TwoTheta_deg,
+        Area,Sig_centideg2,Gam_centideg,FWHM_deg,Eta,ChiSq,Area2
+
     Returns a dict keyed by PeakIdx (int), where each value is a list
-    of dicts with keys: EtaCen, R_px, R_um, TwoTheta_deg, Imax,
-    Sigma_px, FWHM_px, SNR, Mix, GoF, Area.
+    of dicts with keys matching the downstream consumers.
     Only frame 0 rows are returned (phase_id processes single-frame
     images).
     """
@@ -582,15 +585,17 @@ def read_fit_per_eta(csv_path: Path) -> dict:
                 if frame != 0:
                     continue
                 pidx = int(row['PeakIdx'])
+                area = float(row['Area'])
+                fwhm_deg = float(row.get('FWHM_deg', 0))
                 entry = {
                     'EtaCen': float(row['EtaCen']),
                     'R_px': float(row['R_px']),
                     'R_um': float(row['R_um']),
                     'TwoTheta_deg': float(row['TwoTheta_deg']),
-                    'Imax': float(row['Imax']),
-                    'Sigma_px': float(row['Sigma_px']),
-                    'FWHM_px': float(row['FWHM_px']),
-                    'SNR': float(row['SNR']),
+                    'Area': area,
+                    'Imax': area / fwhm_deg if fwhm_deg > 0 else area,
+                    'FWHM_px': fwhm_deg,    # kept as FWHM for downstream compat
+                    'SNR': 0.0,             # not directly available per-eta
                 }
                 result.setdefault(pidx, []).append(entry)
             except (KeyError, ValueError):

@@ -30,9 +30,9 @@ MIDAS_HOME = SCRIPT_DIR.parent
 MIDAS_BIN = MIDAS_HOME / "FF_HEDM" / "bin"
 CALIB_DIR = MIDAS_HOME / "FF_HEDM" / "Example" / "Calibration"
 
-# Peak fit binary format: 7 doubles per peak
+# Peak fit binary format: 7 doubles per peak (GSAS-II area-normalized)
 PF_PARAMS_PER_PEAK = 7
-# [0]=Imax, [1]=BG, [2]=Mix, [3]=Center, [4]=Sigma, [5]=SNR, [6]=Area
+# [0]=area, [1]=center, [2]=sig, [3]=gam, [4]=FWHM, [5]=eta, [6]=chi_sq
 
 def run_cmd(cmd, cwd=None, check=True, stream=False):
     """Run a command and return stdout."""

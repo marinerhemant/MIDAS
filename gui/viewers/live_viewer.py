@@ -35,8 +35,8 @@ import pyqtgraph as pg
 
 # ---------------- Constants ----------------
 TIMER_INTERVAL_MS = 33  # ~30 fps
-PARAM_NAMES = ['Imax', 'BG', 'Mixing (η)', 'Center', 'σ (width)', 'GoF', 'Area']
-PARAM_SHORT = ['Imax', 'BG', 'η', 'Center', 'σ', 'GoF', 'Area']
+PARAM_NAMES = ['Area', 'Center', 'sig (centideg²)', 'gam (centideg)', 'FWHM', 'η (mixing)', 'χ²']
+PARAM_SHORT = ['Area', 'Center', 'sig', 'gam', 'FWHM', 'η', 'χ²']
 COLORMAPS = ['viridis', 'inferno', 'plasma', 'magma', 'turbo', 'gray', 'gray_r', 'hot', 'cool']
 
 
@@ -194,7 +194,7 @@ class LiveViewer(QtWidgets.QMainWindow):
         self.paused = False
         self.log_lineout = False
         self.log_heatmap = False
-        self.selected_params = [3, 0]  # Center, Imax by default
+        self.selected_params = [1, 0]  # Center, Area by default
         self.selected_peaks = list(range(n_peaks))  # All peaks selected initially
         self.decimation = 1  # show every Nth frame in heatmap
         self.font_size = 10  # base font size in pt
@@ -535,7 +535,7 @@ class LiveViewer(QtWidgets.QMainWindow):
         peak_order = list(sel_peaks)
         if self.fit_history:
             last_fit = self.fit_history[-1]
-            centers = {p: last_fit[p * 7 + 3] for p in sel_peaks if p * 7 + 3 < len(last_fit)}
+            centers = {p: last_fit[p * 7 + 1] for p in sel_peaks if p * 7 + 1 < len(last_fit)}
             peak_order = sorted(sel_peaks, key=lambda p: centers.get(p, p))
 
         colors = pg.intColor(0, hues=max(self.n_peaks, 1))
@@ -731,7 +731,7 @@ class LiveViewer(QtWidgets.QMainWindow):
         if not radii and self.fit_history and self.n_peaks > 0:
             last = self.fit_history[-1]
             for p in range(self.n_peaks):
-                idx = p * 7 + 3  # Center
+                idx = p * 7 + 1  # Center
                 if idx < len(last) and last[idx] > 0:
                     radii.append(last[idx])
 
