@@ -1,9 +1,13 @@
 #!/usr/bin/env python
-"""Sum a numbered sequence of image files (TIF, etc.) into a single output image."""
+"""Sum a numbered sequence of image files (TIF, etc.) into a single output image.
+
+Supports parallel loading via multiprocessing (-j flag).
+"""
 
 import argparse
 import os
 import sys
+import multiprocessing
 import numpy as np
 from PIL import Image
 
@@ -13,18 +17,38 @@ def build_filename(folder, stem, nr, padding, ext):
     return os.path.join(folder, f"{stem}{nr:0{padding}d}.{ext}")
 
 
-def sum_images(folder, stem, start, end, padding, ext):
-    """Read images [start..end] and return (summed_array, count)."""
+def _load_one(fname):
+    """Load a single image file and return (array, fname) or (None, fname)."""
+    if not os.path.isfile(fname):
+        return None, fname
+    return np.array(Image.open(fname), dtype=np.float64), fname
+
+
+def sum_images(folder, stem, start, end, padding, ext, jobs=1):
+    """Read images [start..end] and return (summed_array, count).
+
+    Parameters
+    ----------
+    jobs : int
+        Number of parallel workers for file I/O.  1 = serial.
+    """
+    fnames = [build_filename(folder, stem, nr, padding, ext)
+              for nr in range(start, end + 1)]
+
+    if jobs == 1:
+        results = [_load_one(f) for f in fnames]
+    else:
+        with multiprocessing.Pool(processes=jobs) as pool:
+            results = pool.map(_load_one, fnames)
+
     accumulated = None
     count = 0
-    for nr in range(start, end + 1):
-        fname = build_filename(folder, stem, nr, padding, ext)
-        if not os.path.isfile(fname):
+    for img, fname in results:
+        if img is None:
             print(f"WARNING: {fname} not found – skipping")
             continue
-        img = np.array(Image.open(fname), dtype=np.float64)
         if accumulated is None:
-            accumulated = img.copy()
+            accumulated = img
         else:
             if img.shape != accumulated.shape:
                 print(f"ERROR: shape mismatch for {fname}: "
@@ -47,10 +71,14 @@ def main():
     parser.add_argument("Ext",      help="File extension without dot (e.g. tif)")
     parser.add_argument("-o", "--output", default=None,
                         help="Output filename (default: <Folder>/<FileStem>_sum.tif)")
+    parser.add_argument("-j", "--jobs", type=int,
+                        default=multiprocessing.cpu_count(),
+                        help="Number of parallel workers (default: all CPUs)")
     args = parser.parse_args()
 
     total, count = sum_images(
-        args.Folder, args.FileStem, args.startNr, args.endNr, args.Padding, args.Ext
+        args.Folder, args.FileStem, args.startNr, args.endNr,
+        args.Padding, args.Ext, jobs=args.jobs
     )
 
     if total is None:
@@ -70,10 +98,11 @@ def main():
         out_img = Image.fromarray(total.astype(np.float32))
 
     out_img.save(out_path)
-    print(f"Summed {count} images → {out_path}  "
+    print(f"Summed {count} images ({args.jobs} workers) → {out_path}  "
           f"(shape {total.shape}, dtype {out_img.mode}, "
           f"min={total.min():.1f}, max={total.max():.1f})")
 
 
 if __name__ == "__main__":
     main()
+
