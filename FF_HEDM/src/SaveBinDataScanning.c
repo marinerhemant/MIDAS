@@ -11,8 +11,8 @@
 //
 //
 
+#include "midas_version.h"
 #include <errno.h>
-#include <limits.h>
 #include <math.h>
 #include <stdio.h>
 #include <stdlib.h>
@@ -20,13 +20,12 @@
 #include <sys/stat.h>
 #include <time.h>
 #include <unistd.h>
-#include "midas_version.h"
 
 #define deg2rad 0.0174532925199433
 #define rad2deg 57.2957795130823
 
-#define N_COL_OBSSPOTS 10     // This is one less number of columns
-#define MAX_N_SPOTS 100000000 // max nr of observed spots that can be stored
+#define N_COL_OBSSPOTS 10             // This is one less number of columns
+#define INITIAL_SPOT_CAPACITY 1000000 // start with 1M spots, grow dynamically
 #define MAX_N_RINGS                                                            \
   500 // max nr of rings that can be stored (applies to the arrays ringttheta,
       // ringhkl, etc)
@@ -78,7 +77,7 @@ static int cmpfunc(const void *a, const void *b) {
 }
 
 int main(int argc, char *argv[]) {
-	printf("Version: %s\n", MIDAS_VERSION_STRING);
+  printf("Version: %s\n", MIDAS_VERSION_STRING);
   clock_t start, end;
   if (argc != 2) {
     fprintf(stderr, "ERROR: Usage: SaveBinDataScanning nScans\n");
@@ -273,20 +272,22 @@ int main(int argc, char *argv[]) {
 
   int scanNr;
   size_t nSpots = 0;
+  size_t spotCapacity = INITIAL_SPOT_CAPACITY;
 
   char AllSpotsFN[4096];
   FILE *AllSpotsFile;
   char *rc;
   struct InpData *MyData;
-  MyData = malloc(MAX_N_SPOTS * sizeof(*MyData));
+  MyData = malloc(spotCapacity * sizeof(*MyData));
   if (MyData == NULL) {
     fprintf(stderr, "ERROR: Could not allocate MyData array (%zu bytes)\n",
-            (size_t)MAX_N_SPOTS * sizeof(*MyData));
+            spotCapacity * sizeof(*MyData));
     printf("Memory error: could not allocate MyData.\n");
     return 1;
   }
-  fprintf(stderr, "INFO: Allocated MyData array for up to %d spots\n",
-          MAX_N_SPOTS);
+  fprintf(stderr, "INFO: Allocated MyData array for %zu spots (%.1f MB)\n",
+          spotCapacity,
+          (double)(spotCapacity * sizeof(*MyData)) / (1024.0 * 1024.0));
 
   int nFilesFound = 0;
   int nFilesNotFound = 0;
@@ -330,12 +331,27 @@ int main(int argc, char *argv[]) {
           &dummy1, &MyData[nSpots].Values[14], &MyData[nSpots].Values[15]);
 
       if (nParsed != 18) {
-        nParseErrors++;
-        if (nParseErrors <= 5) {
-          fprintf(stderr,
-                  "WARNING: Parse error in '%s' line %zu: expected 18 "
-                  "fields, got %d. Line: %.80s...\n",
-                  AllSpotsFN, nLinesRead + 1, nParsed, aline);
+        // Check if this is a zero-filled placeholder row (all values ~0
+        // except spotID at index 4). These are empty entries from the
+        // pipeline and would be filtered by the Values[3] check anyway.
+        int is_zero_row = (nParsed >= 6);
+        for (int zi = 0; zi < nParsed && zi < 16 && is_zero_row; zi++) {
+          if (zi == 4)
+            continue; // skip spotID
+          double val = (zi < 14)    ? MyData[nSpots].Values[zi]
+                       : (zi == 14) ? dummy0
+                                    : dummy1;
+          if (fabs(val) > 0.001)
+            is_zero_row = 0;
+        }
+        if (!is_zero_row) {
+          nParseErrors++;
+          if (nParseErrors <= 5) {
+            fprintf(stderr,
+                    "WARNING: Parse error in '%s' line %zu: expected 18 "
+                    "fields, got %d. Line: %.80s...\n",
+                    AllSpotsFN, nLinesRead + 1, nParsed, aline);
+          }
         }
         continue;
       }
@@ -356,11 +372,25 @@ int main(int argc, char *argv[]) {
         nSpotsThisScan++;
       }
 
-      if (nSpots >= MAX_N_SPOTS) {
-        fprintf(stderr,
-                "ERROR: Exceeded MAX_N_SPOTS=%d at scan %d. Truncating.\n",
-                MAX_N_SPOTS, scanNr);
-        break;
+      // Grow array if full
+      if (nSpots >= spotCapacity) {
+        size_t newCap = spotCapacity * 2;
+        struct InpData *grown = realloc(MyData, newCap * sizeof(*MyData));
+        if (grown == NULL) {
+          fprintf(stderr,
+                  "ERROR: Could not grow MyData from %zu to %zu spots "
+                  "(%.1f GB requested). Processing with %zu spots.\n",
+                  spotCapacity, newCap,
+                  (double)(newCap * sizeof(*MyData)) /
+                      (1024.0 * 1024.0 * 1024.0),
+                  nSpots);
+          break;
+        }
+        MyData = grown;
+        spotCapacity = newCap;
+        fprintf(stderr, "INFO: Grew MyData to %zu spots (%.1f MB)\n",
+                spotCapacity,
+                (double)(spotCapacity * sizeof(*MyData)) / (1024.0 * 1024.0));
       }
     }
     fclose(AllSpotsFile);
