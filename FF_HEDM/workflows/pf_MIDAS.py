@@ -1208,9 +1208,12 @@ def main():
                 padding = int(line.split()[1])
         
         # Call GetHKLList to generate hkls.csv
-        cmd = f"{os.path.join(midas_path, 'FF_HEDM/bin/GetHKLList')} {baseNameParamFN}"
-        logger.info(f"Running GetHKLList: {cmd}")
-        subprocess.call(cmd, shell=True)
+        if _should_run('hkl'):
+            cmd = f"{os.path.join(midas_path, 'FF_HEDM/bin/GetHKLList')} {baseNameParamFN}"
+            logger.info(f"Running GetHKLList: {cmd}")
+            subprocess.call(cmd, shell=True)
+        else:
+            logger.info("RESUME: skipping hkl stage")
         
         # Check for hkls.csv
         if not os.path.exists('hkls.csv'):
@@ -1225,15 +1228,16 @@ def main():
         
         logger.info(f"Ring numbers: {RingNrs}")
         logger.info(f"Ring radii: {rads}")
-        ph5.mark('hkl')
-        ph5.write_dataset('parameters/RingNrs', np.array(RingNrs, dtype=np.int32))
-        ph5.write_dataset('parameters/RingRadii', np.array(rads))
-        ph5.write_dataset('parameters/sgnum', sgnum)
-        ph5.write_dataset('parameters/nScans', nScans)
-        ph5.write_dataset('parameters/BeamSize', BeamSize)
-        ph5.write_dataset('parameters/topdir', topdir)
-        if grainsFN:
-            ph5.write_dataset('parameters/grainsFN', grainsFN)
+        if _should_run('hkl'):
+            ph5.mark('hkl')
+            ph5.write_dataset('parameters/RingNrs', np.array(RingNrs, dtype=np.int32))
+            ph5.write_dataset('parameters/RingRadii', np.array(rads))
+            ph5.write_dataset('parameters/sgnum', sgnum)
+            ph5.write_dataset('parameters/nScans', nScans)
+            ph5.write_dataset('parameters/BeamSize', BeamSize)
+            ph5.write_dataset('parameters/topdir', topdir)
+            if grainsFN:
+                ph5.write_dataset('parameters/grainsFN', grainsFN)
         
         # Handle merges
         if nMerges != 0:
@@ -1251,81 +1255,93 @@ def main():
             omegaValues = np.genfromtxt(omegaFile)
         
         # Run peak search if requested
-        if doPeakSearch == 1 or doPeakSearch == -1:
-            logger.info(f"Starting peak search for {nScans} scans starting from {startScanNr}")
-            
-            # Use parsl to run in parallel
-            res = []
-            for layerNr in range(startScanNr, nScans + 1):
-                res.append(parallel_peaks(
-                    layerNr, positions, startNrFirstLayer, nrFilesPerSweep, topdir,
-                    paramContents, baseNameParamFN, ConvertFiles, nchunks, preproc,
-                    midas_path, doPeakSearch, numProcs, startNr, endNr, Lsd, NormalizeIntensities,
-                    omegaValues, minThresh, fStem, omegaFF, Ext, padding
-                ))
-            
-            # Wait for all tasks to complete
-            outputs = [i.result() for i in res]
-            
-            # Check for errors in outputs
-            for i, output in enumerate(outputs):
-                if output and "Failed" in output:
-                    logger.error(f"Error in peak search for layer {startScanNr + i}: {output}")
-                    
-                    # Check error files for this layer
-                    layerNr = startScanNr + i
-                    thisStartNr = startNrFirstLayer + (layerNr - 1) * nrFilesPerSweep
-                    folderName = str(thisStartNr)
-                    thisDir = os.path.join(topdir, folderName)
-                    err_file = os.path.join(thisDir, 'output', 'processing_err0.csv')
-                    
-                    if os.path.exists(err_file):
-                        with open(err_file, 'r') as f:
-                            logger.error(f"Error file content: {f.read()}")
-                    
-                    sys.exit(1)
-            
-            logger.info(f'Peak search completed on {nNodes} nodes.')
+        if _should_run('peak_search'):
+            if doPeakSearch == 1 or doPeakSearch == -1:
+                logger.info(f"Starting peak search for {nScans} scans starting from {startScanNr}")
+                
+                # Use parsl to run in parallel
+                res = []
+                for layerNr in range(startScanNr, nScans + 1):
+                    res.append(parallel_peaks(
+                        layerNr, positions, startNrFirstLayer, nrFilesPerSweep, topdir,
+                        paramContents, baseNameParamFN, ConvertFiles, nchunks, preproc,
+                        midas_path, doPeakSearch, numProcs, startNr, endNr, Lsd, NormalizeIntensities,
+                        omegaValues, minThresh, fStem, omegaFF, Ext, padding
+                    ))
+                
+                # Wait for all tasks to complete
+                outputs = [i.result() for i in res]
+                
+                # Check for errors in outputs
+                for i, output in enumerate(outputs):
+                    if output and "Failed" in output:
+                        logger.error(f"Error in peak search for layer {startScanNr + i}: {output}")
+                        
+                        # Check error files for this layer
+                        layerNr = startScanNr + i
+                        thisStartNr = startNrFirstLayer + (layerNr - 1) * nrFilesPerSweep
+                        folderName = str(thisStartNr)
+                        thisDir = os.path.join(topdir, folderName)
+                        err_file = os.path.join(thisDir, 'output', 'processing_err0.csv')
+                        
+                        if os.path.exists(err_file):
+                            with open(err_file, 'r') as f:
+                                logger.error(f"Error file content: {f.read()}")
+                        
+                        sys.exit(1)
+                
+                logger.info(f'Peak search completed on {nNodes} nodes.')
+            else:
+                logger.info("Peak search skipped (doPeakSearch=0)")
+                if nMerges != 0:
+                    for layerNr in range(0, nMerges * (nScans // nMerges)):
+                        if os.path.exists(f'original_InputAllExtraInfoFittingAll{layerNr}.csv'):
+                            shutil.move(
+                                f'original_InputAllExtraInfoFittingAll{layerNr}.csv',
+                                f'InputAllExtraInfoFittingAll{layerNr}.csv'
+                            )
             ph5.mark('peak_search')
         else:
-            if nMerges != 0:
-                for layerNr in range(0, nMerges * (nScans // nMerges)):
-                    if os.path.exists(f'original_InputAllExtraInfoFittingAll{layerNr}.csv'):
-                        shutil.move(
-                            f'original_InputAllExtraInfoFittingAll{layerNr}.csv',
-                            f'InputAllExtraInfoFittingAll{layerNr}.csv'
-                        )
+            logger.info("RESUME: skipping peak_search stage")
         
         # Handle merges
         if nMerges != 0:
-            logger.info(f"Merging {nMerges} scans")
-            
-            os.chdir(topdir)
-            shutil.move('positions.csv', 'original_positions.csv')
-            
-            for layerNr in range(0, nMerges * (nScans // nMerges)):
-                if os.path.exists(f'InputAllExtraInfoFittingAll{layerNr}.csv'):
-                    shutil.move(
-                        f'InputAllExtraInfoFittingAll{layerNr}.csv',
-                        f'original_InputAllExtraInfoFittingAll{layerNr}.csv'
-                    )
-            
-            # Run merge command
-            merge_cmd = f"{os.path.join(midas_path, 'FF_HEDM/bin/mergeScansScanning')} {nMerges*(nScans//nMerges)} {nMerges} {2*px} {2*omegaStep} {numProcsLocal}"
-            logger.info(f"Running merge: {merge_cmd}")
-            subprocess.call(merge_cmd, shell=True)
-            
-            # Read new positions after merge
-            with open(os.path.join(topdir, 'positions.csv'), 'r') as f:
-                positions = f.readlines()
+            if _should_run('merge'):
+                logger.info(f"Merging {nMerges} scans")
                 
-            nScans = int(floor(nScans / nMerges))
-            BeamSize *= nMerges
-            ph5.mark('merge')
-            ph5.write_dataset('merge_info/was_merged', True)
-            ph5.write_dataset('merge_info/nMerges', nMerges)
-            ph5.write_dataset('merge_info/post_merge_nScans', nScans)
-            ph5.write_dataset('merge_info/post_merge_BeamSize', BeamSize)
+                os.chdir(topdir)
+                shutil.move('positions.csv', 'original_positions.csv')
+                
+                for layerNr in range(0, nMerges * (nScans // nMerges)):
+                    if os.path.exists(f'InputAllExtraInfoFittingAll{layerNr}.csv'):
+                        shutil.move(
+                            f'InputAllExtraInfoFittingAll{layerNr}.csv',
+                            f'original_InputAllExtraInfoFittingAll{layerNr}.csv'
+                        )
+                
+                # Run merge command
+                merge_cmd = f"{os.path.join(midas_path, 'FF_HEDM/bin/mergeScansScanning')} {nMerges*(nScans//nMerges)} {nMerges} {2*px} {2*omegaStep} {numProcsLocal}"
+                logger.info(f"Running merge: {merge_cmd}")
+                subprocess.call(merge_cmd, shell=True)
+                
+                # Read new positions after merge
+                with open(os.path.join(topdir, 'positions.csv'), 'r') as f:
+                    positions = f.readlines()
+                    
+                nScans = int(floor(nScans / nMerges))
+                BeamSize *= nMerges
+                ph5.mark('merge')
+                ph5.write_dataset('merge_info/was_merged', True)
+                ph5.write_dataset('merge_info/nMerges', nMerges)
+                ph5.write_dataset('merge_info/post_merge_nScans', nScans)
+                ph5.write_dataset('merge_info/post_merge_BeamSize', BeamSize)
+            else:
+                logger.info("RESUME: skipping merge stage")
+                # Still update nScans/BeamSize since downstream stages need them
+                nScans = int(floor(nScans / nMerges))
+                BeamSize *= nMerges
+                with open(os.path.join(topdir, 'positions.csv'), 'r') as f:
+                    positions = f.readlines()
         
         # Prepare for indexing and refinement
         os.chdir(topdir)
@@ -1333,44 +1349,47 @@ def main():
         Path(os.path.join(topdir, 'Results')).mkdir(parents=True, exist_ok=True)
         
         # Update parameters file
-        with open('paramstest.txt', 'r') as paramsf:
-            lines = paramsf.readlines()
-            
-        with open('paramstest.txt', 'w') as paramsf:
-            for line in lines:
-                if any(line.startswith(x) for x in ['RingNumbers', 'MarginRadius', 'RingRadii', 'RingToIndex', 'BeamSize', 'px']):
-                    continue
-                if line.startswith('MicFile') and not micFN:
-                    continue
-                if line.startswith('GrainsFile') and not grainsFN:
-                    continue
-                if line.startswith('OutputFolder'):
-                    paramsf.write(f'OutputFolder {topdir}/Output\n')
-                elif line.startswith('ResultFolder'):
-                    paramsf.write(f'ResultFolder {topdir}/Results\n')
-                else:
-                    paramsf.write(line)
-            
-            # Add ring numbers and radii
-            for idx in range(len(RingNrs)):
-                paramsf.write(f'RingNumbers {RingNrs[idx]}\n')
-                paramsf.write(f'RingRadii {rads[idx]}\n')
+        if _should_run('params_rewrite'):
+            with open('paramstest.txt', 'r') as paramsf:
+                lines = paramsf.readlines()
                 
-            paramsf.write(f'BeamSize {BeamSize}\n')
-            paramsf.write('MarginRadius 10000000;\n')
-            paramsf.write(f'px {px}\n')
-            paramsf.write(f'RingToIndex {RingToIndex}\n')
-            
-            if args.micFN:
-                paramsf.write(f'MicFile {args.micFN}\n')
-                micFN = args.micFN
-            if args.grainsFN:
-                paramsf.write(f'GrainsFile {args.grainsFN}\n')
-                print("Added grains file to parameters file: ", args.grainsFN)
-                grainsFN = args.grainsFN
-        ph5.mark('params_rewrite')
-        ph5.write_dataset('parameters/nScans_final', nScans)
-        ph5.write_dataset('parameters/BeamSize_final', BeamSize)
+            with open('paramstest.txt', 'w') as paramsf:
+                for line in lines:
+                    if any(line.startswith(x) for x in ['RingNumbers', 'MarginRadius', 'RingRadii', 'RingToIndex', 'BeamSize', 'px']):
+                        continue
+                    if line.startswith('MicFile') and not micFN:
+                        continue
+                    if line.startswith('GrainsFile') and not grainsFN:
+                        continue
+                    if line.startswith('OutputFolder'):
+                        paramsf.write(f'OutputFolder {topdir}/Output\n')
+                    elif line.startswith('ResultFolder'):
+                        paramsf.write(f'ResultFolder {topdir}/Results\n')
+                    else:
+                        paramsf.write(line)
+                
+                # Add ring numbers and radii
+                for idx in range(len(RingNrs)):
+                    paramsf.write(f'RingNumbers {RingNrs[idx]}\n')
+                    paramsf.write(f'RingRadii {rads[idx]}\n')
+                    
+                paramsf.write(f'BeamSize {BeamSize}\n')
+                paramsf.write('MarginRadius 10000000;\n')
+                paramsf.write(f'px {px}\n')
+                paramsf.write(f'RingToIndex {RingToIndex}\n')
+                
+                if args.micFN:
+                    paramsf.write(f'MicFile {args.micFN}\n')
+                    micFN = args.micFN
+                if args.grainsFN:
+                    paramsf.write(f'GrainsFile {args.grainsFN}\n')
+                    print("Added grains file to parameters file: ", args.grainsFN)
+                    grainsFN = args.grainsFN
+            ph5.mark('params_rewrite')
+            ph5.write_dataset('parameters/nScans_final', nScans)
+            ph5.write_dataset('parameters/BeamSize_final', BeamSize)
+        else:
+            logger.info("RESUME: skipping params_rewrite stage")
         
         # Determine execution path
         if oneSolPerVox == 1:
@@ -1383,45 +1402,52 @@ def main():
         ph5.write_dataset('parameters/execution_path', exec_path)
         
         # Run indexing if requested
-        if runIndexing == 1:
-            logger.info("Starting data binning")
-            bin_result = binData(topdir, nScans, midas_path).result()
-            logger.info(f"Binning result: {bin_result}")
-            
-            # Check for errors in binning
-            bin_err_file = os.path.join(topdir, 'output', 'mapping_err.csv')
-            if check_error_file(bin_err_file):
-                logger.error("Error in data binning")
-                with open(bin_err_file, 'r') as f:
-                    logger.error(f.read())
-                sys.exit(1)
-            
-            logger.info("Data binning finished. Running indexing.")
-            
-            # Run indexing in parallel
-            resIndex = []
-            for nodeNr in range(nNodes):
-                resIndex.append(indexscanning(topdir, numProcs, nScans, midas_path, blockNr=nodeNr, numBlocks=nNodes))
+        if _should_run('indexing'):
+            if runIndexing == 1:
+                logger.info("Starting data binning")
+                bin_result = binData(topdir, nScans, midas_path).result()
+                logger.info(f"Binning result: {bin_result}")
                 
-            # Wait for all indexing tasks to complete
-            outputIndex = [i.result() for i in resIndex]
-            
-            # Check for errors in indexing
-            for i, output in enumerate(outputIndex):
-                if "Failed" in output:
-                    logger.error(f"Error in indexing for node {i}: {output}")
-                    
-                    # Check error file
-                    err_file = os.path.join(topdir, 'output', f'indexing_err{i}.csv')
-                    if os.path.exists(err_file):
-                        with open(err_file, 'r') as f:
-                            logger.error(f"Error file content: {f.read()}")
-                    
+                # Check for errors in binning
+                bin_err_file = os.path.join(topdir, 'output', 'mapping_err.csv')
+                if check_error_file(bin_err_file):
+                    logger.error("Error in data binning")
+                    with open(bin_err_file, 'r') as f:
+                        logger.error(f.read())
                     sys.exit(1)
+                
+                logger.info("Data binning finished. Running indexing.")
+                
+                # Run indexing in parallel
+                resIndex = []
+                for nodeNr in range(nNodes):
+                    resIndex.append(indexscanning(topdir, numProcs, nScans, midas_path, blockNr=nodeNr, numBlocks=nNodes))
+                    
+                # Wait for all indexing tasks to complete
+                outputIndex = [i.result() for i in resIndex]
+                
+                # Check for errors in indexing
+                for i, output in enumerate(outputIndex):
+                    if "Failed" in output:
+                        logger.error(f"Error in indexing for node {i}: {output}")
+                        
+                        # Check error file
+                        err_file = os.path.join(topdir, 'output', f'indexing_err{i}.csv')
+                        if os.path.exists(err_file):
+                            with open(err_file, 'r') as f:
+                                logger.error(f"Error file content: {f.read()}")
+                        
+                        sys.exit(1)
+            else:
+                logger.info("Indexing skipped (runIndexing=0)")
             ph5.mark('indexing')
+        else:
+            logger.info("RESUME: skipping indexing stage")
         
         # Handle single solution per voxel
-        if oneSolPerVox == 1:
+        if not _should_run('refinement'):
+            logger.info("RESUME: skipping refinement and downstream stages")
+        elif oneSolPerVox == 1:
             # Prepare for tomography if requested
             if doTomo == 1:
                 # Remove existing sinos

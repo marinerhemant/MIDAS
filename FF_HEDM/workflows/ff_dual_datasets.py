@@ -552,72 +552,89 @@ def main():
     with cleanup_context():
         try:
             # Step 1: Process the first dataset up to binning
-            result_dir1 = process_dataset_until_binning(
-                dataset_id=1, top_res_dir=top_res_dir, ps_fn=args.paramFN, data_fn=args.dataFN,
-                num_procs=num_procs, n_nodes=n_nodes, n_chunks=args.numFrameChunks,
-                preproc=args.preProcThresh, bin_directory=bin_dir
-            )
-            ph5.mark('ds1_binning')
-            ph5.write_dataset('datasets/ds1/result_dir', result_dir1)
+            result_dir1 = os.path.join(top_res_dir, 'dataset_1_analysis')
+            if _should_run('ds1_binning'):
+                result_dir1 = process_dataset_until_binning(
+                    dataset_id=1, top_res_dir=top_res_dir, ps_fn=args.paramFN, data_fn=args.dataFN,
+                    num_procs=num_procs, n_nodes=n_nodes, n_chunks=args.numFrameChunks,
+                    preproc=args.preProcThresh, bin_directory=bin_dir
+                )
+                ph5.mark('ds1_binning')
+                ph5.write_dataset('datasets/ds1/result_dir', result_dir1)
+            else:
+                logger.info("RESUME: skipping ds1_binning stage")
             
             # Step 2: Process the second dataset up to binning
-            result_dir2 = process_dataset_until_binning(
-                dataset_id=2, top_res_dir=top_res_dir, ps_fn=args.paramFN, data_fn=args.dataFN2,
-                num_procs=num_procs, n_nodes=n_nodes, n_chunks=args.numFrameChunks,
-                preproc=args.preProcThresh, bin_directory=bin_dir
-            )
-            ph5.mark('ds2_binning')
-            ph5.write_dataset('datasets/ds2/result_dir', result_dir2)
+            result_dir2 = os.path.join(top_res_dir, 'dataset_2_analysis')
+            if _should_run('ds2_binning'):
+                result_dir2 = process_dataset_until_binning(
+                    dataset_id=2, top_res_dir=top_res_dir, ps_fn=args.paramFN, data_fn=args.dataFN2,
+                    num_procs=num_procs, n_nodes=n_nodes, n_chunks=args.numFrameChunks,
+                    preproc=args.preProcThresh, bin_directory=bin_dir
+                )
+                ph5.mark('ds2_binning')
+                ph5.write_dataset('datasets/ds2/result_dir', result_dir2)
+            else:
+                logger.info("RESUME: skipping ds2_binning stage")
 
             # Step 3: Add the mapping information to the parameter file of the first dataset
-            paramstest_path = os.path.join(result_dir1, "paramstest.txt")
-            dataset2_line = f"Dataset2Folder {result_dir2} {args.offsetX} {args.offsetY} {args.offsetZ} {args.offsetOmega}\n"
-            # read the minNrSpots line from paramFN
-            minLine = "MinNrSpots 2\n"
-            with open(args.paramFN, "r") as f:
-                for line in f:
-                    if line.startswith("MinNrSpots"):
-                        minLine = line
-                        break
-            logger.info(f"Appending to {paramstest_path}: {dataset2_line.strip()}")
-            with open(paramstest_path, "a") as f:
-                f.write(dataset2_line)
-                f.write(minLine)
+            if _should_run('mapping'):
+                paramstest_path = os.path.join(result_dir1, "paramstest.txt")
+                dataset2_line = f"Dataset2Folder {result_dir2} {args.offsetX} {args.offsetY} {args.offsetZ} {args.offsetOmega}\n"
+                # read the minNrSpots line from paramFN
+                minLine = "MinNrSpots 2\n"
+                with open(args.paramFN, "r") as f:
+                    for line in f:
+                        if line.startswith("MinNrSpots"):
+                            minLine = line
+                            break
+                logger.info(f"Appending to {paramstest_path}: {dataset2_line.strip()}")
+                with open(paramstest_path, "a") as f:
+                    f.write(dataset2_line)
+                    f.write(minLine)
 
-            # Step 4: Map the two datasets together
-            logger.info(f"Mapping datasets: {result_dir1} and {result_dir2}")
-            map_cmd = f"{os.path.join(bin_dir, 'MapDatasets')} {result_dir1} {result_dir2} {args.offsetOmega} {num_procs}"
-            safely_run_command(
-                map_cmd, result_dir1,
-                out_file=os.path.join(result_dir1, 'output', 'map_out.txt'),
-                err_file=os.path.join(result_dir1, 'output', 'map_err.txt'),
-                task_name="Dataset Mapping"
-            )
-            ph5.mark('mapping')
+                # Step 4: Map the two datasets together
+                logger.info(f"Mapping datasets: {result_dir1} and {result_dir2}")
+                map_cmd = f"{os.path.join(bin_dir, 'MapDatasets')} {result_dir1} {result_dir2} {args.offsetOmega} {num_procs}"
+                safely_run_command(
+                    map_cmd, result_dir1,
+                    out_file=os.path.join(result_dir1, 'output', 'map_out.txt'),
+                    err_file=os.path.join(result_dir1, 'output', 'map_err.txt'),
+                    task_name="Dataset Mapping"
+                )
+                ph5.mark('mapping')
+            else:
+                logger.info("RESUME: skipping mapping stage")
 
             # Step 5: Run indexing and subsequent steps on the mapped data in the first folder
-            process_mapped_dataset_from_indexing(
-                result_dir=result_dir1, num_procs=num_procs, n_nodes=n_nodes, bin_directory=bin_dir
-            )
-            ph5.mark('indexing_refinement')
+            if _should_run('indexing_refinement'):
+                process_mapped_dataset_from_indexing(
+                    result_dir=result_dir1, num_procs=num_procs, n_nodes=n_nodes, bin_directory=bin_dir
+                )
+                ph5.mark('indexing_refinement')
+            else:
+                logger.info("RESUME: skipping indexing_refinement stage")
 
             # Generate consolidated H5 from grains data
-            grains_csv = os.path.join(result_dir1, 'Grains.csv')
-            if os.path.exists(grains_csv):
-                try:
-                    grains_data = np.genfromtxt(grains_csv, skip_header=9)
-                    if grains_data.ndim == 1:
-                        grains_data = grains_data.reshape(1, -1)
-                    ph5.write_dataset('grains/data', grains_data)
-                    ph5.write_dataset('grains/num_grains', grains_data.shape[0])
-                    if grains_data.shape[1] >= 22:
-                        ph5.write_dataset('grains/position', grains_data[:, 11:14])
-                        ph5.write_dataset('grains/orientation_matrix', grains_data[:, 1:10].reshape(-1, 3, 3))
-                        ph5.write_dataset('grains/lattice_params', grains_data[:, 14:20])
-                        ph5.write_dataset('grains/strain', grains_data[:, 22:31].reshape(-1, 3, 3))
-                except Exception as e:
-                    logger.warning(f"Failed to write grains to H5: {e}")
-            ph5.mark('consolidation')
+            if _should_run('consolidation'):
+                grains_csv = os.path.join(result_dir1, 'Grains.csv')
+                if os.path.exists(grains_csv):
+                    try:
+                        grains_data = np.genfromtxt(grains_csv, skip_header=9)
+                        if grains_data.ndim == 1:
+                            grains_data = grains_data.reshape(1, -1)
+                        ph5.write_dataset('grains/data', grains_data)
+                        ph5.write_dataset('grains/num_grains', grains_data.shape[0])
+                        if grains_data.shape[1] >= 22:
+                            ph5.write_dataset('grains/position', grains_data[:, 11:14])
+                            ph5.write_dataset('grains/orientation_matrix', grains_data[:, 1:10].reshape(-1, 3, 3))
+                            ph5.write_dataset('grains/lattice_params', grains_data[:, 14:20])
+                            ph5.write_dataset('grains/strain', grains_data[:, 22:31].reshape(-1, 3, 3))
+                    except Exception as e:
+                        logger.warning(f"Failed to write grains to H5: {e}")
+                ph5.mark('consolidation')
+            else:
+                logger.info("RESUME: skipping consolidation stage")
 
         except Exception as e:
             logger.error(f"An error occurred during the dual dataset workflow: {e}")
