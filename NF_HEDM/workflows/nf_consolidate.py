@@ -24,7 +24,7 @@ import numpy as np
 
 # Setup path for MIDAS utils
 _utils_dir = os.path.join(
-    os.path.dirname(os.path.dirname(os.path.abspath(__file__))), "utils"
+    os.path.dirname(os.path.dirname(os.path.realpath(__file__))), "utils"
 )
 sys.path.insert(0, _utils_dir)
 
