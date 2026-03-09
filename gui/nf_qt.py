@@ -1349,8 +1349,17 @@ class NFViewer(QtWidgets.QMainWindow):
             brush_indices = (norm * 255).astype(int)
             brushes = [pg.mkBrush(*lut[i]) for i in brush_indices]
 
+            # Save current view range before updating data
+            vb = self.mic_view.plotItem.vb
+            had_data = self.mic_scatter.data is not None and len(self.mic_scatter.data) > 0
+            saved_range = vb.viewRange() if had_data else None
+
+            vb.enableAutoRange(enable=False)
             self.mic_scatter.setData(xs, ys, brush=brushes)
             self.mic_view.setTitle(f"Mic ({col_labels.get(col, 'Col ' + str(col))})")
+
+            if saved_range is not None:
+                vb.setRange(xRange=saved_range[0], yRange=saved_range[1], padding=0)
 
         elif self.mic_type == 2:
             # Binary map: image display
@@ -1389,8 +1398,16 @@ class NFViewer(QtWidgets.QMainWindow):
 
             arr[bad] = np.nan
             arr = arr.reshape((sy, sx))
+            # Save current view range before updating image
+            mic_vb = self.mic_image_view.getView()
+            had_image = self.mic_image_view.image is not None
+            saved_range = mic_vb.viewRange() if had_image else None
+
             self.mic_image_view.set_image_data(arr)
             self.mic_image_view.set_colormap('turbo')
+
+            if saved_range is not None:
+                mic_vb.setRange(xRange=saved_range[0], yRange=saved_range[1], padding=0)
 
     # ── Beam Center ────────────────────────────────────────────────
 
