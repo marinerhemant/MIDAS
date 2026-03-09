@@ -29,6 +29,7 @@
 #include <stdint.h>
 #include <tiffio.h>
 #include <libgen.h>
+#include "midas_version.h"
 
 typedef double pixelvalue;
 
@@ -974,6 +975,7 @@ int mainFunc(char *ParamFN, char *darkFN, char *imageFN, double *retValArr, int 
 
 int main(int argc, char **argv)
 {
+	printf("Version: %s\n", MIDAS_VERSION_STRING);
 	if (argc != 10){
 		printf("Usage: ./IntegratorPeakFitOMP ParamFN FileStem(fullpath until _before digits) StartNr EndNr Padding ext darkFN nFrames numProcs \n");
 		return 1;

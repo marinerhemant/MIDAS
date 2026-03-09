@@ -19,6 +19,7 @@
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
+#include "midas_version.h"
 
 static inline double **allocMatrix(int nrows, int ncols) {
   double **arr;
@@ -146,6 +147,7 @@ static inline void SortFunc(int nRows, int nCols, double **TotInfo,
 }
 
 int main(int argc, char *argv[]) {
+	printf("Version: %s\n", MIDAS_VERSION_STRING);
   int SpaceGrp = 0;
   double LatC[6] = {0}, wl = 0, Lsd = 0, MaxRingRad = 0;
   int useStdout = 0;

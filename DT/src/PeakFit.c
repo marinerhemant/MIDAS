@@ -22,6 +22,7 @@
 #include <stdint.h>
 #include <tiffio.h>
 #include <libgen.h>
+#include "midas_version.h"
 
 #define nFitVals 12
 
@@ -162,6 +163,7 @@ int StartsWith(const char *a, const char *b)
 
 int main(int argc, char **argv)
 {
+	printf("Version: %s\n", MIDAS_VERSION_STRING);
     if (argc != 3){
         printf("Usage: ./peakfit paramFN numProcs \n");
         return 1;

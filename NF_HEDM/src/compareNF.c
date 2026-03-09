@@ -22,6 +22,7 @@
 #include <sys/stat.h>
 #include <sys/types.h>
 #include <time.h>
+#include "midas_version.h"
 
 #define RealType double
 #define float32_t float
@@ -71,6 +72,7 @@ int **allocMatrixIntF(int nrows, int ncols) {
 // check() is now provided by MIDAS_Limits.h (via nf_headers.h)
 
 int main(int argc, char *argv[]) {
+	printf("Version: %s\n", MIDAS_VERSION_STRING);
   if (argc != 4) {
     printf("Usage:\n compareNF params.txt InputMicFN ConfDiff\n Must have "
            "SpotInfo.bin in the same directory.\n");

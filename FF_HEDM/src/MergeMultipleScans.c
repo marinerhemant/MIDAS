@@ -18,6 +18,7 @@
 #include <sys/stat.h>
 #include <time.h>
 #include <unistd.h>
+#include "midas_version.h"
 
 static inline int StartsWith(const char *a, const char *b) {
   if (strncmp(a, b, strlen(b)) == 0)
@@ -26,6 +27,7 @@ static inline int StartsWith(const char *a, const char *b) {
 }
 
 int main(int argc, char *argv[]) {
+	printf("Version: %s\n", MIDAS_VERSION_STRING);
   clock_t start, end;
   double diftotal;
   start = clock();

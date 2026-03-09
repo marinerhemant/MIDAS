@@ -11,6 +11,7 @@
 #include <time.h>
 
 #include "MIDAS_Limits.h"
+#include "midas_version.h"
 #define BUFFER_SIZE MAX_BUFFER_SIZE
 
 // Function prototypes
@@ -23,6 +24,7 @@ inline double GetMisOrientation(double quat1[4], double quat2[4],
                                 double axis[3], double *Angle, int SGNr);
 
 int main(int argc, char *argv[]) {
+	printf("Version: %s\n", MIDAS_VERSION_STRING);
   double start_time = omp_get_wtime();
   printf("\n\n\t\tFinding Multiple Solutions in PF-HEDM.\n\n");
 

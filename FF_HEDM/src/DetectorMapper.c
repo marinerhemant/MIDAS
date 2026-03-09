@@ -33,6 +33,7 @@ int distortionFile;
 int numProcs;
 
 #include "Panel.h"
+#include "midas_version.h"
 static Panel *panels = NULL;
 static int nPanels = 0;
 
@@ -501,6 +502,7 @@ static inline void DoImageTransformations(int NrTransOpt, int TransOpt[10],
 }
 
 int main(int argc, char *argv[]) {
+	printf("Version: %s\n", MIDAS_VERSION_STRING);
   clock_t start0, end0;
   start0 = clock();
   double diftotal;

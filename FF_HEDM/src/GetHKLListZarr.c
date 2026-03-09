@@ -18,6 +18,7 @@
 #include <string.h>
 #include <sys/stat.h>
 #include <zip.h>
+#include "midas_version.h"
 
 static inline double **allocMatrix(int nrows, int ncols) {
   double **arr;
@@ -162,6 +163,7 @@ static inline int CheckDirectoryCreation(char Folder[1024]) {
 }
 
 int main(int argc, char *argv[]) {
+	printf("Version: %s\n", MIDAS_VERSION_STRING);
   if (argc < 2) {
     printf("Give a data ZarrZip file. Optionally resultFolder\n");
     exit(1);

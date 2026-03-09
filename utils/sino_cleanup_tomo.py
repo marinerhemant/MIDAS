@@ -699,5 +699,12 @@ def main():
             print(f"{r['grNr']:6d}  {r['orig_fill_pct']:9.1f}  {r['clean_fill_pct']:10.1f}  {r['max_intensity']:12.2f}")
 
 
+# MIDAS version banner
+try:
+    from version import version_string as _vs
+    print(_vs())
+except Exception:
+    pass
+
 if __name__ == '__main__':
     main()

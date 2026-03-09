@@ -12,6 +12,7 @@
 #include <string.h>
 #include <sys/stat.h>
 #include <time.h>
+#include "midas_version.h"
 
 #define float32_t float
 #define SetBit(A, k) (A[(k / 32)] |= (1 << (k % 32)))
@@ -165,6 +166,7 @@ int ReadBinFiles(char FileStem[1000], char *ext, int StartNr, int EndNr,
 }
 
 int main(int argc, char *argv[]) {
+	printf("Version: %s\n", MIDAS_VERSION_STRING);
   clock_t start, end;
   double diftotal;
   start = clock();

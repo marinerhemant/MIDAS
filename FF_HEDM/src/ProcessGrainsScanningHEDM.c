@@ -36,6 +36,7 @@
 #include <unistd.h>
 
 #include "MIDAS_Limits.h"
+#include "midas_version.h"
 #define NR_MAX_IDS_PER_GRAIN 5000
 #define IAColNr 20 // 20 for Internal Angle, 18 for position, 19 for omega
 #define EPS 1E-12
@@ -163,6 +164,7 @@ static inline void QuatToOrientMat(double Quat[4], double OrientMat[9]) {
 }
 
 int main(int argc, char *argv[]) {
+	printf("Version: %s\n", MIDAS_VERSION_STRING);
   if (argc != 3) {
     printf("Usage: ProcessGrains ParameterFile NrPoints\n");
     return 0;

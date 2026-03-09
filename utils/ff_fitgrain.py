@@ -524,5 +524,12 @@ def main():
     
     return 0
 
+# MIDAS version banner
+try:
+    from version import version_string as _vs
+    print(_vs())
+except Exception:
+    pass
+
 if __name__ == "__main__":
     main()

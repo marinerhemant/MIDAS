@@ -2,8 +2,10 @@
 #include <stdint.h>
 #include <stdio.h>
 #include <stdlib.h>
+#include "midas_version.h"
 
 int main(int argc, char *argv[]) {
+	printf("Version: %s\n", MIDAS_VERSION_STRING);
   char gridFN[1024] = "grid.txt";
   double pxTomo = atof(argv[2]);
   char *tomoFN;

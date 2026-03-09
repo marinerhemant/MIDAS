@@ -19,6 +19,7 @@
 #include <stdlib.h>
 #include <string.h>
 #include <time.h>
+#include "midas_version.h"
 
 #define CalcNorm2(a, b, c, d) sqrt((a - b) * (a - b) + (c - d) * (c - d))
 
@@ -617,6 +618,7 @@ static void ProcessAllMatches(MicParams *params, double *MicContents) {
 }
 
 int main(int argc, char *argv[]) {
+	printf("Version: %s\n", MIDAS_VERSION_STRING);
   if (argc != 2) {
     usage();
     return 1;

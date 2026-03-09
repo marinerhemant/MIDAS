@@ -17,6 +17,7 @@
 #include <tiffio.h>
 #include <time.h>
 #include <unistd.h>
+#include "midas_version.h"
 
 typedef uint16_t pixelvalue;
 
@@ -215,6 +216,7 @@ static void usage(void) {
 }
 
 int main(int argc, char *argv[]) {
+	printf("Version: %s\n", MIDAS_VERSION_STRING);
   if (argc < 3 || argc > 4) {
     usage();
     return 1;

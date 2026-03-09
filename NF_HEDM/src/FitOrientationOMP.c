@@ -22,6 +22,7 @@
 #include <sys/stat.h>
 #include <sys/types.h>
 #include <time.h>
+#include "midas_version.h"
 
 #define RealType double
 #define float32_t float
@@ -271,6 +272,7 @@ static inline void QuatToOrientMat(double Quat[4], double OrientMat[3][3]) {
 }
 
 int main(int argc, char *argv[]) {
+	printf("Version: %s\n", MIDAS_VERSION_STRING);
   if (argc != 5) {
     printf("Usage:\n FitOrientation params.txt blockNr nBlocks nCPUs\n");
     return 1;

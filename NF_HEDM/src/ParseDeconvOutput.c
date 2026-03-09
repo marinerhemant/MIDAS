@@ -14,6 +14,7 @@
 #include <ctype.h>
 #include <stdint.h>
 #include <tiffio.h>
+#include "midas_version.h"
 
 #define float32_t float
 #define MAX_N_OVERLAPS 55000
@@ -49,6 +50,7 @@ usage(void)
 int
 main(int argc, char *argv[])
 {
+	printf("Version: %s\n", MIDAS_VERSION_STRING);
 	if (argc != 4)
     {
         usage();

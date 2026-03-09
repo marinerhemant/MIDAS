@@ -24,6 +24,7 @@
 #include <sys/stat.h>
 #include <sys/types.h>
 #include <time.h>
+#include "midas_version.h"
 
 typedef double pixelvalue;
 
@@ -103,6 +104,7 @@ static inline void FreeMemMatrixPx(pixelvalue **mat, int nrows) {
 }
 
 int main(int argc, char *argv[]) {
+	printf("Version: %s\n", MIDAS_VERSION_STRING);
   clock_t start, end;
   if (argc < 4) {
     printf("Usage: ./GenMedianDark InFN OutFN dType [NrPixelsY] [NrPixelsZ] [Hdf5DatasetName] [skipFrames] [nCPUs].\nNot enough arguments, exiting.\n");

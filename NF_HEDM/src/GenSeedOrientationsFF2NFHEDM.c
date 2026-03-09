@@ -19,6 +19,7 @@
 #include <stdlib.h>
 #include <string.h>
 #include <time.h>
+#include "midas_version.h"
 
 // External Functions from GetMisorientation.c with inline keyword
 extern void OrientMat2Quat(double OrientMat[9], double Quat[4]);
@@ -29,6 +30,7 @@ static inline void usage(void) {
 }
 
 int main(int argc, char *argv[]) {
+	printf("Version: %s\n", MIDAS_VERSION_STRING);
   if (argc != 3) {
     usage();
     return 1;

@@ -64,7 +64,8 @@
 #include "PeakFit.h"   // Shared peak fitting module
 #include "PeakFitIO.h" // Shared HDF5 peak output
 #include <nlopt.h>     // For non-linear optimization
-#include <omp.h>       // <<< ADD THIS FOR OpenMP
+#include <omp.h>
+#include "midas_version.h"       // <<< ADD THIS FOR OpenMP
 #define NUM_STREAMS 4  // Number of concurrent streams for GPU saturation
 
 // --- Constants ---
@@ -1754,6 +1755,7 @@ static void check_peak_update(const double *hR, int nRBins) {
 // ============================ MAIN FUNCTION ============================
 // =========================================================================
 int main(int argc, char *argv[]) {
+	printf("Version: %s\n", MIDAS_VERSION_STRING);
   if (argc < 2) {
     printf("Usage: %s ParamFN [DarkAvgFN]\n", argv[0]);
     printf(" Args:\n");

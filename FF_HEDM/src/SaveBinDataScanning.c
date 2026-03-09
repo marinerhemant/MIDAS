@@ -20,6 +20,7 @@
 #include <sys/stat.h>
 #include <time.h>
 #include <unistd.h>
+#include "midas_version.h"
 
 #define deg2rad 0.0174532925199433
 #define rad2deg 57.2957795130823
@@ -77,6 +78,7 @@ static int cmpfunc(const void *a, const void *b) {
 }
 
 int main(int argc, char *argv[]) {
+	printf("Version: %s\n", MIDAS_VERSION_STRING);
   clock_t start, end;
   if (argc != 2) {
     fprintf(stderr, "ERROR: Usage: SaveBinDataScanning nScans\n");

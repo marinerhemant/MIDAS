@@ -19,6 +19,7 @@
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
+#include "midas_version.h"
 
 #define MAX_LINE_LENGTH 4096
 #define MAX_N_RINGS 500
@@ -46,6 +47,7 @@ void convert_to_g_vector(double y, double z, double omega, double distance,
 
 // --- Main Program ---
 int main(int argc, char *argv[]) {
+	printf("Version: %s\n", MIDAS_VERSION_STRING);
   if (argc != 5) {
     fprintf(stderr,
             "Usage: %s <source_folder> <target_folder> <offset_omega> "

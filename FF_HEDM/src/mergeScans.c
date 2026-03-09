@@ -33,6 +33,7 @@
 #include <time.h>
 #include <unistd.h>
 #include <zip.h>
+#include "midas_version.h"
 
 static inline int CheckDirectoryCreation(char Folder[1024]) {
   int e;
@@ -52,6 +53,7 @@ static inline int CheckDirectoryCreation(char Folder[1024]) {
 }
 
 int main(int argc, char *argv[]) {
+	printf("Version: %s\n", MIDAS_VERSION_STRING);
   double start_time = omp_get_wtime();
   if (argc < 11) {
     printf("Usage: %s FolderName FileStem Extension(with.) nScans nScansMerge "

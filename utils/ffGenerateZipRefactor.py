@@ -839,5 +839,12 @@ def main():
     print(f"\nSuccessfully created Zarr file: {outfn_zip}")
     print(f"OutputZipName: {outfn_zip}")
 
+# MIDAS version banner
+try:
+    from version import version_string as _vs
+    print(_vs())
+except Exception:
+    pass
+
 if __name__ == '__main__':
     main()

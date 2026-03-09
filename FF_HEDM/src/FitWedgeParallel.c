@@ -24,6 +24,7 @@
 #include <string.h>
 #include <sys/stat.h>
 #include <time.h>
+#include "midas_version.h"
 
 static Panel *panels = NULL;
 static int nPanels = 0;
@@ -360,6 +361,7 @@ typedef struct {
 // --- Main ---
 
 int main(int argc, char *argv[]) {
+	printf("Version: %s\n", MIDAS_VERSION_STRING);
   if (argc != 3) {
     printf("Usage: %s <ParamFile> <nCPUs>\n", argv[0]);
     return 1;

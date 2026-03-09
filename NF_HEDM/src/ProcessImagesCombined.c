@@ -21,6 +21,7 @@
 #include <tiffio.h>
 #include <time.h>
 #include <unistd.h>
+#include "midas_version.h"
 
 #define SetBit(A, k) (A[(k / 32)] |= (1 << (k % 32)))
 #define ClearBit(A, k) (A[(k / 32)] &= ~(1 << (k % 32)))
@@ -613,6 +614,7 @@ static inline int FindConnectedComponents(int **BoolImage, int NrPixelsY,
 //                              MAIN
 // =====================================================================
 int main(int argc, char *argv[]) {
+	printf("Version: %s\n", MIDAS_VERSION_STRING);
   if (argc < 3 || argc > 4) {
     printf("ProcessImagesCombined: usage: ./ProcessImagesCombined "
            "<ParameterFile> <LayerNr> [nCPUs]\n");

@@ -30,6 +30,7 @@
 #include <sys/types.h>
 #include <time.h>
 #include <unistd.h>
+#include "midas_version.h"
 
 #define MAX_N_IDS 6000000
 #define MAX_ID_IA_MAT 5000000
@@ -332,6 +333,7 @@ static int countCSVLines(const char *filename) {
 }
 
 int main(int argc, char *argv[]) {
+	printf("Version: %s\n", MIDAS_VERSION_STRING);
   if (argc != 2) {
     printf("Usage: ProcessGrains ParameterFile\n");
     return 0;

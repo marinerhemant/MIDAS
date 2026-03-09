@@ -22,6 +22,7 @@
 #include <sys/stat.h>
 #include <sys/types.h>
 #include <time.h>
+#include "midas_version.h"
 
 #define MAX_N_GRAINS 100000
 
@@ -103,6 +104,7 @@ static inline int StartsWith(const char *a, const char *b) {
 }
 
 int main(int argc, char *argv[]) {
+	printf("Version: %s\n", MIDAS_VERSION_STRING);
   if (argc < 13) {
     printf("Usage: MatchGrains   OutFileName   state1.txt state2.txt"
            "     SGNr      offset[3]"

@@ -190,6 +190,13 @@ def main():
         print(f"\nSaved {len(combined)} points ({len(header_lines)} header lines) to {args.out}")
 
 
+# MIDAS version banner
+try:
+    from version import version_string as _vs
+    print(_vs())
+except Exception:
+    pass
+
 if __name__ == '__main__':
     main()
 

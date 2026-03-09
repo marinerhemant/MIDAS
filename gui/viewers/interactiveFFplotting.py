@@ -311,6 +311,15 @@ def load_grain_data_h5(h5_path):
     except Exception as e: print(f"Error creating Grain DataFrame from HDF5: {e}", file=sys.stderr); traceback.print_exc(); return None
 
 # --- Main Application Setup ---
+# MIDAS version banner
+try:
+    import sys as _sys, os as _os
+    _sys.path.insert(0, _os.path.join(_os.path.dirname(_os.path.dirname(_os.path.dirname(_os.path.abspath(__file__)))), 'utils'))
+    from version import version_string as _vs
+    print(_vs())
+except Exception:
+    pass
+
 if __name__ == '__main__':
     parser = MyParser(description='''MIDAS FF Interactive Plotter''', formatter_class=argparse.ArgumentDefaultsHelpFormatter)
     parser.add_argument('-resultFolder', type=str, required=True, help='Folder where the reconstruction exists')

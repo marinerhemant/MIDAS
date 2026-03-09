@@ -16,6 +16,7 @@
 #include <string.h>
 #include <sys/stat.h>
 #include <time.h>
+#include "midas_version.h"
 
 #define RealType double
 #define float32_t float
@@ -306,6 +307,7 @@ void FitOrientation(
 }
 
 int main(int argc, char *argv[]) {
+	printf("Version: %s\n", MIDAS_VERSION_STRING);
   double start, end, diftotal;
   start = omp_get_wtime();
 

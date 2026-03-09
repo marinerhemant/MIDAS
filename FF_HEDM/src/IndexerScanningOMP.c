@@ -26,6 +26,7 @@
 #include <time.h>
 
 #include "MIDAS_Math.h"
+#include "midas_version.h"
 
 // check() - using MIDAS_CHECK_DEFINED guard (cannot include MIDAS_Limits.h due
 // to conflicting MAX_N_SPOTS)
@@ -1417,6 +1418,7 @@ int ReadSpots(char *cwd) {
 }
 
 int main(int argc, char *argv[]) {
+	printf("Version: %s\n", MIDAS_VERSION_STRING);
   double start_time = omp_get_wtime();
   printf("\n\n\t\tIndexerScanningOMP v6.0\nContact hsharma@anl.gov in case of "
          "questions about the MIDAS project.\n\n");

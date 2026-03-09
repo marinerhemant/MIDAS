@@ -22,6 +22,7 @@
 #define rad2deg 57.2957795130823
 #define RealType double
 #include "../../FF_HEDM/src/MIDAS_Limits.h"
+#include "midas_version.h"
 #define EPS 0.000000001
 
 #ifndef M_PI
@@ -274,6 +275,7 @@ static inline void usage(void) {
 }
 
 int main(int argc, char *argv[]) {
+	printf("Version: %s\n", MIDAS_VERSION_STRING);
   if (argc != 2 && argc != 3) {
     usage();
     return 1;

@@ -51,6 +51,7 @@
 #define CalcNorm2(x, y) sqrt((x) * (x) + (y) * (y))
 #define TestBit(A, k) (A[(k / 32)] & (1 << (k % 32)))
 #include "MIDAS_Limits.h"
+#include "midas_version.h"
 #define MAXNOMEGARANGES MAX_N_OMEGA_RANGES
 
 int CalcDiffractionSpots(double Distance, double ExcludePoleAngle,
@@ -1786,6 +1787,7 @@ long long int ReadBigDet(char *cwd) {
 }
 
 int main(int argc, char *argv[]) {
+	printf("Version: %s\n", MIDAS_VERSION_STRING);
   if (argc != 6) {
     printf(
         "Supply a parameter file, blockNr, nBlocks, nSpotsToIndex, numProcs as "

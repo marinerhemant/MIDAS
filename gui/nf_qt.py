@@ -1536,5 +1536,14 @@ def main():
     sys.exit(app.exec_())
 
 
+# MIDAS version banner
+try:
+    import sys as _sys, os as _os
+    _sys.path.insert(0, _os.path.join(_os.path.dirname(_os.path.dirname(_os.path.abspath(__file__))), 'utils'))
+    from version import version_string as _vs
+    print(_vs())
+except Exception:
+    pass
+
 if __name__ == '__main__':
     main()

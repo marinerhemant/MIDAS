@@ -15,6 +15,7 @@
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
+#include "midas_version.h"
 
 #define deg2rad 0.0174532925199433
 #define rad2deg 57.2957795130823
@@ -95,6 +96,7 @@ void freeQueue(Queue *q) {
 }
 
 int main(int argc, char *argv[]) {
+	printf("Version: %s\n", MIDAS_VERSION_STRING);
   if (argc < 4) {
     usage();
     return 1;

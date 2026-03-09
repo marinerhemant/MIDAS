@@ -668,5 +668,12 @@ def main():
     print("=" * 60 + "\n")
 
 
+# MIDAS version banner
+try:
+    from version import version_string as _vs
+    print(_vs())
+except Exception:
+    pass
+
 if __name__ == "__main__":
     main()

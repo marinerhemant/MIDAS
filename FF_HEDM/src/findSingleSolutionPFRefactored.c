@@ -45,6 +45,7 @@
 /* Zarr/Blosc/Zip includes for patch extraction */
 #include <blosc2.h>
 #include <zip.h>
+#include "midas_version.h"
 
 /* Error codes for better error management */
 #define SUCCESS 0
@@ -235,6 +236,7 @@ extern double GetMisOrientation(const double *Quat1, const double *Quat2,
  * @return Program exit code
  */
 int main(int argc, char *argv[]) {
+	printf("Version: %s\n", MIDAS_VERSION_STRING);
   double start_time = omp_get_wtime();
   printf("\n\n\t\tFinding Single Solution in PF-HEDM.\n\n");
 

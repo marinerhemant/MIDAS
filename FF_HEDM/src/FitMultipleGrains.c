@@ -518,6 +518,7 @@ static inline double CalcAngleErrors(int nspots, int nhkls, int nOmegaRanges,
 }
 
 #include "Panel.h"
+#include "midas_version.h"
 
 static inline void CorrectTiltSpatialDistortion(
     int nIndices, double MaxRad, double **SpotInfoAll, double px, double Lsd,
@@ -974,6 +975,7 @@ int compareGrains(const void *a, const void *b) {
 }
 
 int main(int argc, char *argv[]) {
+	printf("Version: %s\n", MIDAS_VERSION_STRING);
   if (argc < 4 || argc > 5) {
     printf("Usage: FitMultipleGrains Folder Parameters.txt nGrains [nCPUs]\n");
     return 0;

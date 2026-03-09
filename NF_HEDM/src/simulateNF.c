@@ -23,6 +23,7 @@
 #include <sys/types.h>
 #include <time.h>
 #include <zip.h>
+#include "midas_version.h"
 
 #define RealType double
 #define float32_t float
@@ -96,6 +97,7 @@ int **allocMatrixIntF(int nrows, int ncols) {
 }
 
 int main(int argc, char *argv[]) {
+	printf("Version: %s\n", MIDAS_VERSION_STRING);
   if (argc < 4 || argc > 5) {
     printf("Usage:\n simulateNF params.txt InputMicFN OutputFN [nCPUs]\n");
     return 1;
