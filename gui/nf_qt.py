@@ -1198,13 +1198,18 @@ class NFViewer(QtWidgets.QMainWindow):
             with h5py.File(fn, 'r') as h5:
                 # Discover available resolutions
                 resolutions = ["root"]
+                has_maps = {"root": 'maps' in h5 and 'orientation' in h5.get('maps', {})}
                 if 'multi_resolution' in h5:
                     for key in sorted(h5['multi_resolution'].keys()):
                         grp = h5[f'multi_resolution/{key}']
                         grid = grp.attrs.get('grid_size', '?')
                         ptype = grp.attrs.get('pass_type', '')
-                        label = f"{key} (grid={grid}, {ptype})"
+                        map_grp = f'multi_resolution/{key}/maps'
+                        has_map = map_grp in h5 and 'orientation' in h5[map_grp]
+                        warn = "" if has_map else " ⚠ slow"
+                        label = f"{key} (grid={grid}, {ptype}){warn}"
                         resolutions.append(label)
+                        has_maps[label] = has_map
 
                 self._h5_resolutions = resolutions
 
@@ -1220,8 +1225,23 @@ class NFViewer(QtWidgets.QMainWindow):
                 self._res_selector_label.setVisible(has_multi)
                 self._res_combo.setVisible(has_multi)
 
-                # Load root voxels as default
-                self._load_h5_resolution(h5, "root")
+                # Default to highest-resolution seeded loop with maps,
+                # falling back to highest seeded, then root
+                default_res = "root"
+                for r in reversed(resolutions):
+                    if '_seeded' in r and has_maps.get(r, False):
+                        default_res = r
+                        break
+                else:
+                    # No seeded with maps — try highest seeded anyway
+                    for r in reversed(resolutions):
+                        if '_seeded' in r:
+                            default_res = r
+                            break
+
+                idx = resolutions.index(default_res)
+                self._res_combo.setCurrentIndex(idx)
+                self._load_h5_resolution(h5, default_res)
 
         except Exception as e:
             QtWidgets.QMessageBox.critical(self, "Error", f"Failed to load H5: {e}")

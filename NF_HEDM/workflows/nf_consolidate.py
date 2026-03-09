@@ -60,6 +60,22 @@ logger = logging.getLogger(__name__)
 #  Readers for ParseMic output files
 # ──────────────────────────────────────────────────────────────────────
 
+def read_tri_edge_size(mic_path: str) -> float:
+    """Read TriEdgeSize from the first header line of a text mic file.
+
+    The first line is: %TriEdgeSize <value>
+    Returns 0.0 if the file doesn't exist or the header can't be parsed.
+    """
+    try:
+        with open(mic_path, 'r') as f:
+            line = f.readline().strip()
+            if line.startswith('%TriEdgeSize'):
+                return float(line.split()[1])
+    except Exception:
+        pass
+    return 0.0
+
+
 def read_mic_text(mic_path: str) -> np.ndarray:
     """Read a text .mic file (4 header lines, whitespace-delimited columns).
 
@@ -448,6 +464,10 @@ def add_resolution_to_h5(
     mic_data = read_mic_text(mic_text_path)
     mic_base = os.path.splitext(mic_text_path)[0]
     prefix = f"multi_resolution/{resolution_label}"
+
+    # Auto-read grid size from mic header if not explicitly provided
+    if grid_size == 0.0:
+        grid_size = read_tri_edge_size(mic_text_path)
 
     with h5py.File(h5_path, "a") as h5:
         grp = h5.require_group(prefix)
