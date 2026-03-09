@@ -53,7 +53,12 @@ midas_config.run_startup_checks()
 from parsl.app.app import python_app
 pytpath = sys.executable
 
-from pipeline_state import PipelineH5
+from pipeline_state import PipelineH5, find_resume_stage, load_resume_info
+
+DUAL_STAGE_ORDER = [
+    'ds1_binning', 'ds2_binning', 'mapping',
+    'indexing_refinement', 'consolidation'
+]
 
 # Import FF consolidation function for final output
 ff_workflow_dir = os.path.join(install_dir, "FF_HEDM/workflows")
@@ -485,8 +490,39 @@ def main():
     parser.add_argument('-nNodes', type=int, default=1, help='Number of nodes for execution.')
     parser.add_argument('-numFrameChunks', type=int, default=-1, help='If low on RAM, process data in chunks. -1 to disable.')
     parser.add_argument('-preProcThresh', type=int, default=-1, help='Threshold for saving dark-corrected data. -1 to disable.')
+    parser.add_argument('-resume', type=str, default='',
+                        help='Path to pipeline H5 to resume from.')
+    parser.add_argument('-restartFrom', type=str, default='',
+                        help=f'Stage to restart from. Valid: {", ".join(DUAL_STAGE_ORDER)}')
     
     args = parser.parse_args()
+
+    # --- Resume handling ---
+    resume_from_stage = ''
+    if hasattr(args, 'resume') and args.resume:
+        if not os.path.exists(args.resume):
+            logger.error(f"Resume H5 not found: {args.resume}")
+            sys.exit(1)
+        resume_from_stage = find_resume_stage(args.resume, DUAL_STAGE_ORDER)
+        if resume_from_stage:
+            info = load_resume_info(args.resume)
+            logger.info(f"Resuming from stage '{resume_from_stage}'. Completed: {info['completed_stages']}")
+        else:
+            logger.info("All stages complete. Re-running consolidation.")
+            resume_from_stage = 'consolidation'
+    elif hasattr(args, 'restartFrom') and args.restartFrom:
+        if args.restartFrom not in DUAL_STAGE_ORDER:
+            logger.error(f"Invalid restart stage '{args.restartFrom}'. Valid: {DUAL_STAGE_ORDER}")
+            sys.exit(1)
+        resume_from_stage = args.restartFrom
+
+    _skip_before = -1
+    if resume_from_stage and resume_from_stage in DUAL_STAGE_ORDER:
+        _skip_before = DUAL_STAGE_ORDER.index(resume_from_stage)
+    def _should_run(stage_name):
+        if _skip_before < 0:
+            return True
+        return DUAL_STAGE_ORDER.index(stage_name) >= _skip_before if stage_name in DUAL_STAGE_ORDER else True
     
     # --- Setup and Configuration ---
     top_res_dir = os.path.abspath(args.resultFolder)

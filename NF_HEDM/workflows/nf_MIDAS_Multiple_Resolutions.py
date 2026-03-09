@@ -58,6 +58,7 @@ nf_workflow_dir = os.path.join(install_dir, "NF_HEDM/workflows")
 sys.path.insert(0, nf_workflow_dir)
 from nf_consolidate import generate_consolidated_hdf5 as nf_consolidate_h5
 from nf_consolidate import add_resolution_to_h5
+from pipeline_state import PipelineH5, find_resume_stage, load_resume_info, get_completed_stages
 
 # --- CONSTANTS ---
 
@@ -450,7 +451,7 @@ def run_fitting_and_postprocessing(args: argparse.Namespace, params: Dict, t0: f
     
     logger.info(f"Fitting stage finished. Time taken: {time.time() - t0:.2f} seconds.")
 
-def run_multi_resolution_workflow(args, params, t0):
+def run_multi_resolution_workflow(args, params, t0, ph5=None, resume_from_stage=''):
     """Orchestrates the multi-resolution looping."""
     starting_grid_size = params['GridRefactor'][0]
     scaling_factor = params['GridRefactor'][1]
@@ -488,6 +489,27 @@ def run_multi_resolution_workflow(args, params, t0):
     logger.info(f"Starting Multi-Resolution Workflow: {num_loops} loops, "
                 f"StartingGridSize: {starting_grid_size}, Scaling: {scaling_factor}")
 
+    # Resume logic: determine which loop+pass to skip to
+    def _stage_name(loop, pass_name):
+        return f"loop_{loop}_{pass_name}"
+    
+    def _should_run(loop, pass_name):
+        """Check if a given loop+pass should be run based on resume state."""
+        if not resume_from_stage:
+            return True
+        # Build the full ordered stage list
+        all_stages = [_stage_name(0, 'initial')]
+        for li in range(1, num_loops + 1):
+            all_stages.extend([
+                _stage_name(li, 'seeded'),
+                _stage_name(li, 'unseeded'),
+                _stage_name(li, 'merge'),
+            ])
+        target = _stage_name(loop, pass_name)
+        if target not in all_stages or resume_from_stage not in all_stages:
+            return True
+        return all_stages.index(target) >= all_stages.index(resume_from_stage)
+
     # --- LOOP 0: Initial Run ---
     logger.info(">>> Running Loop 0 (Initial Coarse Pass)")
     
@@ -502,10 +524,13 @@ def run_multi_resolution_workflow(args, params, t0):
     args.ffSeedOrientations = 0 # Ensure unseeded
     params = reload_params()
     
-    run_preprocessing(args, params, t0)
-    if args.doImageProcessing == 1:
-        run_image_processing(args, params, t0)
-    run_fitting_and_postprocessing(args, params, t0)
+    if _should_run(0, 'initial'):
+        run_preprocessing(args, params, t0)
+        if args.doImageProcessing == 1:
+            run_image_processing(args, params, t0)
+        run_fitting_and_postprocessing(args, params, t0)
+    else:
+        logger.info("Skipping loop 0 initial pass (resumed past this stage).")
 
     # Generate consolidated H5 from loop 0 output
     mic_loop0_path = os.path.join(params['resultFolder'], f"{mic_file_base}.0.mic")
@@ -531,6 +556,8 @@ def run_multi_resolution_workflow(args, params, t0):
             logger.info(f"Consolidated H5 created: {h5_path}")
         except Exception as e:
             logger.warning(f"Failed to create consolidated H5: {e}")
+    if ph5 is not None:
+        ph5.mark(_stage_name(0, 'initial'))
     
     # 3. Backup SeedOrientationsAll
     seed_all_backup = f"{params['SeedOrientationsAll']}_Backup"
@@ -583,41 +610,54 @@ def run_multi_resolution_workflow(args, params, t0):
         args.ffSeedOrientations = 1 # Enable seeded mode
         params = reload_params()
         
-        run_preprocessing(args, params, t0, skip_hex_grid=False) # MAKE FULL HEX GRID
-        
-        # Capture the full grid for later (Pass 2 Needs exact columns)
-        grid_pass1_map = {}
-        with open(os.path.join(params['resultFolder'], 'grid.txt'), 'r') as f:
-            for line in f:
-                vals = line.split()
-                if len(vals) < 5: continue
-                # Key by X(2), Y(3) precise string or float?
-                # Best to key by float with tolerance or format string.
-                # ParseMic output X Y will be formatted.
-                # Let's key by (float(x), float(y)) for robust lookup.
+        if _should_run(loop_idx, 'seeded'):
+            run_preprocessing(args, params, t0, skip_hex_grid=False) # MAKE FULL HEX GRID
+            
+            # Capture the full grid for later (Pass 2 Needs exact columns)
+            grid_pass1_map = {}
+            with open(os.path.join(params['resultFolder'], 'grid.txt'), 'r') as f:
+                for line in f:
+                    vals = line.split()
+                    if len(vals) < 5: continue
+                    try:
+                        kx, ky = float(vals[2]), float(vals[3])
+                        grid_pass1_map[(kx, ky)] = line.strip()
+                    except ValueError: continue
+
+            if args.doImageProcessing == 1:
+                 run_image_processing(args, params, t0)
+                 
+            run_fitting_and_postprocessing(args, params, t0)
+
+            # Add seeded resolution to consolidated H5
+            mic_seeded_path = os.path.join(params['resultFolder'], f"{target_mic_pass1}.mic")
+            if os.path.exists(h5_path) and os.path.exists(mic_seeded_path):
                 try:
-                    kx, ky = float(vals[2]), float(vals[3])
-                    grid_pass1_map[(kx, ky)] = line.strip()
-                except ValueError: continue
-
-        if args.doImageProcessing == 1:
-             run_image_processing(args, params, t0)
-             
-        run_fitting_and_postprocessing(args, params, t0)
-
-        # Add seeded resolution to consolidated H5
-        mic_seeded_path = os.path.join(params['resultFolder'], f"{target_mic_pass1}.mic")
-        if os.path.exists(h5_path) and os.path.exists(mic_seeded_path):
-            try:
-                add_resolution_to_h5(
-                    h5_path=h5_path,
-                    mic_text_path=mic_seeded_path,
-                    resolution_label=f"loop_{loop_idx}_seeded",
-                    grid_size=new_grid_size,
-                    pass_type="seeded",
-                )
-            except Exception as e:
-                logger.warning(f"Failed to add seeded resolution to H5: {e}")
+                    add_resolution_to_h5(
+                        h5_path=h5_path,
+                        mic_text_path=mic_seeded_path,
+                        resolution_label=f"loop_{loop_idx}_seeded",
+                        grid_size=new_grid_size,
+                        pass_type="seeded",
+                    )
+                except Exception as e:
+                    logger.warning(f"Failed to add seeded resolution to H5: {e}")
+            if ph5 is not None:
+                ph5.mark(_stage_name(loop_idx, 'seeded'))
+        else:
+            logger.info(f"Skipping loop {loop_idx} seeded pass (resumed past this stage).")
+            # Need to rebuild grid_pass1_map from existing grid.txt for later filtering
+            grid_pass1_map = {}
+            grid_path = os.path.join(params['resultFolder'], 'grid.txt')
+            if os.path.exists(grid_path):
+                with open(grid_path, 'r') as f:
+                    for line in f:
+                        vals = line.split()
+                        if len(vals) < 5: continue
+                        try:
+                            kx, ky = float(vals[2]), float(vals[3])
+                            grid_pass1_map[(kx, ky)] = line.strip()
+                        except ValueError: continue
         
         # d. Filter & Grid Update for "Bad" Solutions
         logger.info(f"Filtering bad solutions from Pass 1.")
@@ -692,25 +732,30 @@ def run_multi_resolution_workflow(args, params, t0):
         args.ffSeedOrientations = 0
         params = reload_params()
         
-        # SKIP MakeHexGrid
-        run_preprocessing(args, params, t0, skip_hex_grid=True) 
-        if args.doImageProcessing == 1:
-             run_image_processing(args, params, t0)
-        run_fitting_and_postprocessing(args, params, t0)
+        if _should_run(loop_idx, 'unseeded'):
+            # SKIP MakeHexGrid
+            run_preprocessing(args, params, t0, skip_hex_grid=True) 
+            if args.doImageProcessing == 1:
+                 run_image_processing(args, params, t0)
+            run_fitting_and_postprocessing(args, params, t0)
 
-        # Add unseeded resolution to consolidated H5
-        mic_unseeded_path = os.path.join(params['resultFolder'], f"{target_mic_pass2}.mic")
-        if os.path.exists(h5_path) and os.path.exists(mic_unseeded_path):
-            try:
-                add_resolution_to_h5(
-                    h5_path=h5_path,
-                    mic_text_path=mic_unseeded_path,
-                    resolution_label=f"loop_{loop_idx}_unseeded",
-                    grid_size=new_grid_size,
-                    pass_type="unseeded",
-                )
-            except Exception as e:
-                logger.warning(f"Failed to add unseeded resolution to H5: {e}")
+            # Add unseeded resolution to consolidated H5
+            mic_unseeded_path = os.path.join(params['resultFolder'], f"{target_mic_pass2}.mic")
+            if os.path.exists(h5_path) and os.path.exists(mic_unseeded_path):
+                try:
+                    add_resolution_to_h5(
+                        h5_path=h5_path,
+                        mic_text_path=mic_unseeded_path,
+                        resolution_label=f"loop_{loop_idx}_unseeded",
+                        grid_size=new_grid_size,
+                        pass_type="unseeded",
+                    )
+                except Exception as e:
+                    logger.warning(f"Failed to add unseeded resolution to H5: {e}")
+            if ph5 is not None:
+                ph5.mark(_stage_name(loop_idx, 'unseeded'))
+        else:
+            logger.info(f"Skipping loop {loop_idx} unseeded pass (resumed past this stage).")
         
         # f. Merge Results
         logger.info("Merging Pass 1 and Pass 2 results.")
@@ -762,6 +807,8 @@ def run_multi_resolution_workflow(args, params, t0):
                 )
             except Exception as e:
                 logger.warning(f"Failed to add merged resolution to H5: {e}")
+        if ph5 is not None:
+            ph5.mark(_stage_name(loop_idx, 'merge'))
 
 # --- SYSTEM UTILITIES AND CONFIGURATION ---
 
@@ -840,6 +887,11 @@ def main():
     parser.add_argument('-nNodes', type=int, default=1, help='Number of nodes for execution.')
     parser.add_argument('-ffSeedOrientations', type=int, default=0, help='Use seed orientations from far-field results (1=yes, 0=no).')
     parser.add_argument('-doImageProcessing', type=int, default=1, help='Perform image processing (1=yes, 0=no).')
+    parser.add_argument('-resume', type=str, default='',
+                        help='Path to pipeline H5 to resume from. Auto-detects the last completed stage.')
+    parser.add_argument('-restartFrom', type=str, default='',
+                        help='Stage to restart from (e.g. loop_1_seeded, loop_2_unseeded). '
+                             'Use -resume to see available stages.')
     args = parser.parse_args()
 
     # --- 2. Configuration from Parsed Arguments and Files ---
@@ -875,6 +927,54 @@ def main():
     
     os.makedirs(logDir, exist_ok=True)
     
+    # --- Initialize Pipeline H5 ---
+    with open(args.paramFN, 'r') as pf:
+        param_text = pf.read()
+    mic_text_raw = params.get('MicFileText', 'nf_multires')
+    import re as _re
+    mic_base = _re.sub(r'(_all_solutions|_merged)?(\.[0-9]+)+$', '', mic_text_raw)
+    ph5_path = os.path.join(resultFolder, f'{mic_base}_pipeline.h5')
+    ph5 = PipelineH5(ph5_path, 'nf_midas_multires', vars(args), param_text)
+    ph5.__enter__()
+    ph5.write_dataset('parameters/resultFolder', resultFolder)
+    ph5.write_dataset('parameters/paramFN', os.path.abspath(args.paramFN))
+    
+    # --- Resume handling ---
+    resume_from_stage = ''
+    if args.resume:
+        if not os.path.exists(args.resume):
+            logger.error(f"Resume H5 not found: {args.resume}")
+            sys.exit(1)
+        completed = get_completed_stages(args.resume)
+        if completed:
+            # Build full stage list to find next stage after last completed
+            num_loops = int(params.get('GridRefactor', [0, 0, 0])[2]) if 'GridRefactor' in params else 0
+            all_stages = ['loop_0_initial']
+            for li in range(1, num_loops + 1):
+                all_stages.extend([f'loop_{li}_seeded', f'loop_{li}_unseeded', f'loop_{li}_merge'])
+            # Find first incomplete
+            for s in all_stages:
+                if s not in completed:
+                    resume_from_stage = s
+                    break
+            if not resume_from_stage:
+                logger.info("All stages already complete. Re-running last merge.")
+                resume_from_stage = all_stages[-1]
+            
+            logger.info(f"\n{'='*60}")
+            logger.info(f"  RESUME: Picking up from stage '{resume_from_stage}'")
+            logger.info(f"  Completed stages: {completed}")
+            logger.info(f"  Available stages: {all_stages}")
+            logger.info(f"{'='*60}\n")
+            logger.info(f"  To restart from a different stage, use:")
+            logger.info(f"    -restartFrom <stage_name>")
+            logger.info(f"  Example: -restartFrom loop_1_seeded")
+        else:
+            logger.info("No completed stages found. Starting from beginning.")
+    elif args.restartFrom:
+        resume_from_stage = args.restartFrom
+        logger.info(f"Restarting from explicit stage: {resume_from_stage}")
+    
     # --- 3. Workflow Execution with Guaranteed Cleanup ---
     with change_directory(resultFolder):
         # Delete stale MicFileBinary if it exists from a previous run
@@ -896,7 +996,7 @@ def main():
         try:
             # Check for GridRefactor parameter to determine workflow
             if 'GridRefactor' in params:
-                 run_multi_resolution_workflow(args, params, t0)
+                 run_multi_resolution_workflow(args, params, t0, ph5=ph5, resume_from_stage=resume_from_stage)
             else:
                  run_preprocessing(args, params, t0)
                  if args.doImageProcessing == 1:
@@ -907,6 +1007,7 @@ def main():
             logger.info("Initiating Parsl cleanup.")
             parsl.dfk().cleanup()
 
+    ph5.__exit__(None, None, None)
     logger.info(f"Workflow completed successfully. Total time taken: {time.time() - t0:.2f} seconds.")
 
 # MIDAS version banner

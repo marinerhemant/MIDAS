@@ -959,6 +959,10 @@ def main():
     parser.add_argument('-minThresh', type=int, required=False, default=-1, help='If you want to filter out peaks with intensity less than this number. -1 disables this. This is only used for filtering out peaksearch results for small peaks, peaks with maxInt smaller than this will be filtered out.')
     parser.add_argument('-sinoType', type=str, required=False, default='raw', choices=['raw', 'norm', 'abs', 'normabs'], help='Sinogram type to use for reconstruction (raw, norm, abs, normabs). Default: raw')
     parser.add_argument('-sinoSource', type=str, required=False, default='tolerance', choices=['indexing', 'tolerance'], help='Sinogram spot source: tolerance=match all spots by angular tolerance (default), indexing=use only spots from per-voxel indexing results (cleaner).')
+    parser.add_argument('-resume', type=str, required=False, default='',
+                        help='Path to a pipeline H5 file to resume from. Auto-detects the first incomplete stage.')
+    parser.add_argument('-restartFrom', type=str, required=False, default='',
+                        help='Stage name to restart from (re-runs all stages from that point). Valid: hkl, peak_search, merge, params_rewrite, indexing, refinement, find_multiple_solutions, consolidation')
     # Parse arguments
     args, unparsed = parser.parse_known_args()
     
@@ -1007,7 +1011,41 @@ def main():
     sys.path.insert(0, v7_dir)
     
     from version import version_string, stamp_h5
-    from pipeline_state import PipelineH5
+    from pipeline_state import PipelineH5, find_resume_stage, load_resume_info
+
+    PF_STAGE_ORDER = [
+        'hkl', 'peak_search', 'merge', 'params_rewrite', 'indexing',
+        'refinement', 'find_multiple_solutions', 'consolidation'
+    ]
+
+    # --- Resume handling ---
+    resume_from_stage = ''
+    if args.resume:
+        if not os.path.exists(args.resume):
+            logger.error(f"Resume H5 not found: {args.resume}")
+            sys.exit(1)
+        resume_from_stage = find_resume_stage(args.resume, PF_STAGE_ORDER)
+        if resume_from_stage:
+            info = load_resume_info(args.resume)
+            logger.info(f"Resuming from stage '{resume_from_stage}'. "
+                        f"Completed: {info['completed_stages']}")
+        else:
+            logger.info("All stages complete. Re-running consolidation.")
+            resume_from_stage = 'consolidation'
+    elif args.restartFrom:
+        if args.restartFrom not in PF_STAGE_ORDER:
+            logger.error(f"Invalid restart stage '{args.restartFrom}'. Valid: {PF_STAGE_ORDER}")
+            sys.exit(1)
+        resume_from_stage = args.restartFrom
+        logger.info(f"Restarting from explicit stage: {resume_from_stage}")
+
+    _skip_before = -1
+    if resume_from_stage and resume_from_stage in PF_STAGE_ORDER:
+        _skip_before = PF_STAGE_ORDER.index(resume_from_stage)
+    def _should_run(stage_name):
+        if _skip_before < 0:
+            return True
+        return PF_STAGE_ORDER.index(stage_name) >= _skip_before if stage_name in PF_STAGE_ORDER else True
     logger.info(version_string())
     
     # Import from MIDAS libraries
@@ -1193,6 +1231,9 @@ def main():
         ph5.write_dataset('parameters/sgnum', sgnum)
         ph5.write_dataset('parameters/nScans', nScans)
         ph5.write_dataset('parameters/BeamSize', BeamSize)
+        ph5.write_dataset('parameters/topdir', topdir)
+        if grainsFN:
+            ph5.write_dataset('parameters/grainsFN', grainsFN)
         
         # Handle merges
         if nMerges != 0:

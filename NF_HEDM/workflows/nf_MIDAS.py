@@ -57,8 +57,18 @@ from parsl.app.app import python_app
 nf_workflow_dir = os.path.join(install_dir, "NF_HEDM/workflows")
 sys.path.insert(0, nf_workflow_dir)
 from nf_consolidate import generate_consolidated_hdf5 as nf_consolidate_h5
+from pipeline_state import PipelineH5, find_resume_stage, load_resume_info
 
 # --- CONSTANTS ---
+
+NF_STAGE_ORDER = [
+    'preprocessing',    # HKLs + seeds + grid + MakeDiffrSpots
+    'image_processing', # Combined median + peak extraction (if enabled)
+    'mmap',             # MMapImageInfo
+    'fitting',          # FitOrientationOMP
+    'parse_mic',        # ParseMic
+    'consolidation'     # nf_consolidate_h5
+]
 
 # --- HELPER FUNCTIONS: ENVIRONMENT, COMMANDS, PARSING ---
 
@@ -329,7 +339,7 @@ def run_image_processing(args: argparse.Namespace, params: Dict, t0: float):
         
     logger.info(f"Image processing finished. Time taken: {time.time() - t0:.2f} seconds.")
 
-def run_fitting_and_postprocessing(args: argparse.Namespace, params: Dict, t0: float):
+def run_fitting_and_postprocessing(args: argparse.Namespace, params: Dict, t0: float, ph5=None):
     """Handles memory mapping, fitting, and final parsing."""
     logDir, resultFolder = params['logDir'], params['resultFolder']
 
@@ -340,6 +350,8 @@ def run_fitting_and_postprocessing(args: argparse.Namespace, params: Dict, t0: f
         out_file=f'{logDir}/map_out.csv',
         err_file=f'{logDir}/map_err.csv'
     )
+    if ph5 is not None:
+        ph5.mark('mmap')
     
     if args.refineParameters == 0:
         logger.info("Fitting orientations.")
@@ -398,6 +410,8 @@ def run_fitting_and_postprocessing(args: argparse.Namespace, params: Dict, t0: f
             logger.error("A failure occurred during the orientation fitting stage. Aborting workflow.")
             logger.error(f"Details: {e}", exc_info=True)
             sys.exit(1)
+        if ph5 is not None:
+            ph5.mark('fitting')
         
         logger.info("Parsing mic file.")
         run_command(
@@ -406,6 +420,8 @@ def run_fitting_and_postprocessing(args: argparse.Namespace, params: Dict, t0: f
             out_file=f'{logDir}/parse_out.csv',
             err_file=f'{logDir}/parse_err.csv'
         )
+        if ph5 is not None:
+            ph5.mark('parse_mic')
 
         # Generate consolidated HDF5
         mic_text_name = params.get('MicFileText', '')
@@ -421,6 +437,8 @@ def run_fitting_and_postprocessing(args: argparse.Namespace, params: Dict, t0: f
                         args_namespace=args,
                     )
                     logger.info("Consolidated HDF5 generated successfully.")
+                    if ph5 is not None:
+                        ph5.mark('consolidation')
                 except Exception as e:
                     logger.warning(f"Failed to generate consolidated HDF5: {e}")
             else:
@@ -549,6 +567,10 @@ def main():
     parser.add_argument('-doImageProcessing', type=int, default=1, help='Perform image processing (1=yes, 0=no).')
     parser.add_argument('-refineParameters', type=int, default=0, help='Refine setup parameters (1=yes, 0=no).')
     parser.add_argument('-multiGridPoints', type=int, default=0, help='If refining parameters, use multiple grid points (1=yes, 0=no).')
+    parser.add_argument('-resume', type=str, default='',
+                        help='Path to pipeline H5 to resume from.')
+    parser.add_argument('-restartFrom', type=str, default='',
+                        help=f'Stage to restart from. Valid: {", ".join(NF_STAGE_ORDER)}')
     args = parser.parse_args()
 
     # --- 2. Configuration from Parsed Arguments and Files ---
@@ -584,6 +606,44 @@ def main():
     
     os.makedirs(logDir, exist_ok=True)
     
+    # --- Initialize pipeline state H5 ---
+    with open(args.paramFN, 'r') as pf:
+        param_text = pf.read()
+    mic_text_name = params.get('MicFileText', '')
+    h5_path = os.path.join(resultFolder, f'{mic_text_name}_pipeline.h5' if mic_text_name else 'nf_pipeline.h5')
+    ph5 = PipelineH5(h5_path, 'nf_midas', vars(args), param_text)
+    ph5.__enter__()
+    ph5.write_dataset('parameters/resultFolder', resultFolder)
+    ph5.write_dataset('parameters/MicFileText', mic_text_name)
+    ph5.write_dataset('parameters/paramFN', os.path.abspath(args.paramFN))
+
+    # --- Resume handling ---
+    resume_from_stage = ''
+    if args.resume:
+        if not os.path.exists(args.resume):
+            logger.error(f"Resume H5 not found: {args.resume}")
+            sys.exit(1)
+        resume_from_stage = find_resume_stage(args.resume, NF_STAGE_ORDER)
+        if resume_from_stage:
+            info = load_resume_info(args.resume)
+            logger.info(f"Resuming from stage '{resume_from_stage}'. Completed: {info['completed_stages']}")
+        else:
+            logger.info("All stages complete. Re-running consolidation.")
+            resume_from_stage = 'consolidation'
+    elif args.restartFrom:
+        if args.restartFrom not in NF_STAGE_ORDER:
+            logger.error(f"Invalid restart stage '{args.restartFrom}'. Valid: {NF_STAGE_ORDER}")
+            sys.exit(1)
+        resume_from_stage = args.restartFrom
+
+    _skip_before = -1
+    if resume_from_stage and resume_from_stage in NF_STAGE_ORDER:
+        _skip_before = NF_STAGE_ORDER.index(resume_from_stage)
+    def _should_run(stage_name):
+        if _skip_before < 0:
+            return True
+        return NF_STAGE_ORDER.index(stage_name) >= _skip_before if stage_name in NF_STAGE_ORDER else True
+    
     # --- 3. Workflow Execution with Guaranteed Cleanup ---
     with change_directory(resultFolder):
         # Delete stale MicFileBinary if it exists from a previous run
@@ -603,17 +663,29 @@ def main():
             logger.info(f"Ensured reduced data directory exists: {reduced_dir_path}")
 
         try:
-            run_preprocessing(args, params, t0)
+            if _should_run('preprocessing'):
+                run_preprocessing(args, params, t0)
+                ph5.mark('preprocessing')
+            else:
+                logger.info("Skipping preprocessing (resumed past this stage).")
             
             if args.doImageProcessing == 1:
-                run_image_processing(args, params, t0)
+                if _should_run('image_processing'):
+                    run_image_processing(args, params, t0)
+                    ph5.mark('image_processing')
+                else:
+                    logger.info("Skipping image_processing (resumed past this stage).")
                 
-            run_fitting_and_postprocessing(args, params, t0)
+            if _should_run('mmap'):
+                run_fitting_and_postprocessing(args, params, t0, ph5=ph5)
+            else:
+                logger.info("Skipping fitting/postprocessing (resumed past this stage).")
 
         finally:
             logger.info("Initiating Parsl cleanup.")
             parsl.dfk().cleanup()
 
+    ph5.__exit__(None, None, None)
     logger.info(f"Workflow completed successfully. Total time taken: {time.time() - t0:.2f} seconds.")
 
 # MIDAS version banner

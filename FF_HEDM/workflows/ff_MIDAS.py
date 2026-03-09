@@ -58,10 +58,16 @@ sys.path.insert(0, v7_dir)
 import midas_config
 from version import version_string, stamp_h5
 from pipeline_state import PipelineH5
+from pipeline_state import find_resume_stage, load_resume_info
 midas_config.run_startup_checks()
 
 from parsl.app.app import python_app
 pytpath = sys.executable
+
+FF_STAGE_ORDER = [
+    'hkl', 'peak_search', 'merge_overlaps', 'calc_radius',
+    'data_transform', 'binning', 'indexing', 'refinement', 'consolidation'
+]
 
 @contextmanager
 def change_directory(new_dir: str) -> Generator[None, None, None]:
@@ -851,7 +857,8 @@ def setup_output_directories(result_dir: str) -> None:
 def process_layer(layer_nr: int, top_res_dir: str, ps_fn: str, data_fn: str, num_procs: int, 
                  n_nodes: int, n_chunks: int, preproc: int, inp_file_name: str, 
                  provide_input_all: int, convert_files: int, do_peak_search: int, 
-                 peak_search_only: int, bin_directory: str, grains_file: str = '') -> None:
+                 peak_search_only: int, bin_directory: str, grains_file: str = '',
+                 resume_from_stage: str = '') -> None:
     """Process a single layer.
     
     Args:
@@ -914,6 +921,17 @@ def process_layer(layer_nr: int, top_res_dir: str, ps_fn: str, data_fn: str, num
             logger.error(f"Failed to copy PanelShiftsFile: {e}")
     
     t0 = time.time()
+
+    # Determine which stage to resume from
+    _skip_before = -1
+    if resume_from_stage and resume_from_stage in FF_STAGE_ORDER:
+        _skip_before = FF_STAGE_ORDER.index(resume_from_stage)
+        logger.info(f"Resuming from stage '{resume_from_stage}' (index {_skip_before}). "
+                    f"Skipping stages before it.")
+    def _should_run(stage_name):
+        if _skip_before < 0:
+            return True
+        return FF_STAGE_ORDER.index(stage_name) >= _skip_before if stage_name in FF_STAGE_ORDER else True
     
     # Process based on input type
     outFStem = None
@@ -985,6 +1003,9 @@ def process_layer(layer_nr: int, top_res_dir: str, ps_fn: str, data_fn: str, num
         ph5 = PipelineH5(ph5_path, 'ff_midas', layer_args, param_text)
         ph5.__enter__()
         ph5.mark('hkl')
+        # Save data for restart
+        ph5.write_dataset('parameters/zarr_path', outFStem if outFStem else '')
+        ph5.write_dataset('parameters/result_dir', result_dir)
     else:
         # Handle InputAll case
         with change_directory(result_dir):
@@ -1003,56 +1024,70 @@ def process_layer(layer_nr: int, top_res_dir: str, ps_fn: str, data_fn: str, num
                     
     # Process peaks if required
     if provide_input_all == 0:
-        if do_peak_search == 1:
-            logger.info(f"Doing PeakSearch. Time till now: {time.time() - t0} seconds.")
-            
-            try:
-                res = []
-                for nodeNr in range(n_nodes):
-                    res.append(peaks(result_dir, outFStem, num_procs, bin_directory, blockNr=nodeNr, numBlocks=n_nodes))
-                outputs = [i.result() for i in res]
-                logger.info(f"PeakSearch done. Time till now: {time.time() - t0}")
+        if _should_run('peak_search'):
+            if do_peak_search == 1:
+                logger.info(f"Doing PeakSearch. Time till now: {time.time() - t0} seconds.")
+                
+                try:
+                    res = []
+                    for nodeNr in range(n_nodes):
+                        res.append(peaks(result_dir, outFStem, num_procs, bin_directory, blockNr=nodeNr, numBlocks=n_nodes))
+                    outputs = [i.result() for i in res]
+                    logger.info(f"PeakSearch done. Time till now: {time.time() - t0}")
+                    ph5.mark('peak_search')
+                except Exception as e:
+                    raise RuntimeError(f"Failed during peak search: {e}")
+            else:
+                logger.info("Peaksearch results were supplied. Skipping peak search.")
                 ph5.mark('peak_search')
-            except Exception as e:
-                raise RuntimeError(f"Failed during peak search: {e}")
         else:
-            logger.info("Peaksearch results were supplied. Skipping peak search.")
+            logger.info("Skipping peak_search (resumed past this stage).")
             
         if peak_search_only == 1:
+            ph5.__exit__(None, None, None)
             return
+
+        if _should_run('merge_overlaps'):
+            logger.info("Merging peaks.")
             
-        logger.info("Merging peaks.")
+            try:
+                f_merge_out = f'{result_dir}/midas_log/merge_overlaps_out.csv'
+                f_merge_err = f'{result_dir}/midas_log/merge_overlaps_err.csv'
+                cmd = f"{os.path.join(bin_directory, 'MergeOverlappingPeaksAllZarr')} {outFStem}"
+                safely_run_command(cmd, result_dir, f_merge_out, f_merge_err, task_name="Peak merging")
+                ph5.mark('merge_overlaps')
+            except Exception as e:
+                raise RuntimeError(f"Failed to merge peaks: {e}")
+        else:
+            logger.info("Skipping merge_overlaps (resumed past this stage).")
         
-        try:
-            f_merge_out = f'{result_dir}/midas_log/merge_overlaps_out.csv'
-            f_merge_err = f'{result_dir}/midas_log/merge_overlaps_err.csv'
-            cmd = f"{os.path.join(bin_directory, 'MergeOverlappingPeaksAllZarr')} {outFStem}"
-            safely_run_command(cmd, result_dir, f_merge_out, f_merge_err, task_name="Peak merging")
-            ph5.mark('merge_overlaps')
-        except Exception as e:
-            raise RuntimeError(f"Failed to merge peaks: {e}")
+        if _should_run('calc_radius'):
+            logger.info(f"Calculating Radii. Time till now: {time.time() - t0}")
+            
+            try:
+                f_radius_out = f'{result_dir}/midas_log/calc_radius_out.csv'
+                f_radius_err = f'{result_dir}/midas_log/calc_radius_err.csv'
+                cmd = f"{os.path.join(bin_directory, 'CalcRadiusAllZarr')} {outFStem}"
+                safely_run_command(cmd, result_dir, f_radius_out, f_radius_err, task_name="Radius calculation")
+                ph5.mark('calc_radius')
+            except Exception as e:
+                raise RuntimeError(f"Failed to calculate radii: {e}")
+        else:
+            logger.info("Skipping calc_radius (resumed past this stage).")
         
-        logger.info(f"Calculating Radii. Time till now: {time.time() - t0}")
-        
-        try:
-            f_radius_out = f'{result_dir}/midas_log/calc_radius_out.csv'
-            f_radius_err = f'{result_dir}/midas_log/calc_radius_err.csv'
-            cmd = f"{os.path.join(bin_directory, 'CalcRadiusAllZarr')} {outFStem}"
-            safely_run_command(cmd, result_dir, f_radius_out, f_radius_err, task_name="Radius calculation")
-            ph5.mark('calc_radius')
-        except Exception as e:
-            raise RuntimeError(f"Failed to calculate radii: {e}")
-        
-        logger.info(f"Transforming data. Time till now: {time.time() - t0}")
-        
-        try:
-            f_setup_out = f'{result_dir}/midas_log/fit_setup_out.csv'
-            f_setup_err = f'{result_dir}/midas_log/fit_setup_err.csv'
-            cmd = f"{os.path.join(bin_directory, 'FitSetupZarr')} {outFStem}"
-            safely_run_command(cmd, result_dir, f_setup_out, f_setup_err, task_name="Data transformation")
-            ph5.mark('data_transform')
-        except Exception as e:
-            raise RuntimeError(f"Failed to transform data: {e}")
+        if _should_run('data_transform'):
+            logger.info(f"Transforming data. Time till now: {time.time() - t0}")
+            
+            try:
+                f_setup_out = f'{result_dir}/midas_log/fit_setup_out.csv'
+                f_setup_err = f'{result_dir}/midas_log/fit_setup_err.csv'
+                cmd = f"{os.path.join(bin_directory, 'FitSetupZarr')} {outFStem}"
+                safely_run_command(cmd, result_dir, f_setup_out, f_setup_err, task_name="Data transformation")
+                ph5.mark('data_transform')
+            except Exception as e:
+                raise RuntimeError(f"Failed to transform data: {e}")
+        else:
+            logger.info("Skipping data_transform (resumed past this stage).")
 
     # Add grains file to parameters if needed
     with change_directory(result_dir):
@@ -1074,39 +1109,48 @@ def process_layer(layer_nr: int, top_res_dir: str, ps_fn: str, data_fn: str, num
             logger.error(f"Failed to propagate RingsToExcludeFraction: {e}")
 
         # Bin data
-        logger.info(f"Binning data. Time till now: {time.time() - t0}, workingdir: {result_dir}")
-        try:
-            f_bin_out = f'{result_dir}/midas_log/binning_out.csv'
-            f_bin_err = f'{result_dir}/midas_log/binning_err.csv'
-            cmd = f"{os.path.join(bin_directory, 'SaveBinData')}"
-            safely_run_command(cmd, result_dir, f_bin_out, f_bin_err, task_name="Data binning")
-            ph5.mark('binning')
-        except Exception as e:
-            raise RuntimeError(f"Failed to bin data: {e}")
+        if _should_run('binning'):
+            logger.info(f"Binning data. Time till now: {time.time() - t0}, workingdir: {result_dir}")
+            try:
+                f_bin_out = f'{result_dir}/midas_log/binning_out.csv'
+                f_bin_err = f'{result_dir}/midas_log/binning_err.csv'
+                cmd = f"{os.path.join(bin_directory, 'SaveBinData')}"
+                safely_run_command(cmd, result_dir, f_bin_out, f_bin_err, task_name="Data binning")
+                ph5.mark('binning')
+            except Exception as e:
+                raise RuntimeError(f"Failed to bin data: {e}")
+        else:
+            logger.info("Skipping binning (resumed past this stage).")
             
         # Run indexing
-        logger.info(f"Indexing. Time till now: {time.time() - t0}")
-        
-        try:
-            res_index = []
-            for nodeNr in range(n_nodes):
-                res_index.append(index(result_dir, num_procs, bin_directory, blockNr=nodeNr, numBlocks=n_nodes))
-            output_index = [i.result() for i in res_index]
-            ph5.mark('indexing')
-        except Exception as e:
-            raise RuntimeError(f"Failed during indexing: {e}")
+        if _should_run('indexing'):
+            logger.info(f"Indexing. Time till now: {time.time() - t0}")
+            
+            try:
+                res_index = []
+                for nodeNr in range(n_nodes):
+                    res_index.append(index(result_dir, num_procs, bin_directory, blockNr=nodeNr, numBlocks=n_nodes))
+                output_index = [i.result() for i in res_index]
+                ph5.mark('indexing')
+            except Exception as e:
+                raise RuntimeError(f"Failed during indexing: {e}")
+        else:
+            logger.info("Skipping indexing (resumed past this stage).")
             
         # Run refinement
-        logger.info(f"Refining. Time till now: {time.time() - t0}")
-        
-        try:
-            res_refine = []
-            for nodeNr in range(n_nodes):
-                res_refine.append(refine(result_dir, num_procs, bin_directory, blockNr=nodeNr, numBlocks=n_nodes))
-            output_refine = [i.result() for i in res_refine]
-            ph5.mark('refinement')
-        except Exception as e:
-            raise RuntimeError(f"Failed during refinement: {e}")
+        if _should_run('refinement'):
+            logger.info(f"Refining. Time till now: {time.time() - t0}")
+            
+            try:
+                res_refine = []
+                for nodeNr in range(n_nodes):
+                    res_refine.append(refine(result_dir, num_procs, bin_directory, blockNr=nodeNr, numBlocks=n_nodes))
+                output_refine = [i.result() for i in res_refine]
+                ph5.mark('refinement')
+            except Exception as e:
+                raise RuntimeError(f"Failed during refinement: {e}")
+        else:
+            logger.info("Skipping refinement (resumed past this stage).")
                         
         # Process grains
         logger.info(f"Making grains list. Time till now: {time.time() - t0}")
@@ -1837,6 +1881,10 @@ def main():
                         help='Set to 1 to re-run peak merging (MergeMap.csv) and consolidated HDF5 generation on existing results. Only needs -resultFolder (or runs in current dir).')
     parser.add_argument('-batchMode', type=int, required=False, default=0,
                         help='Auto-detect files in RawFolder. Handles varying FileStem values across layers, skips darks and missing file numbers. Only for NrFilesPerSweep=1.')
+    parser.add_argument('-resume', type=str, required=False, default='',
+                        help='Path to a pipeline H5 file to resume from. Auto-detects the first incomplete stage.')
+    parser.add_argument('-restartFrom', type=str, required=False, default='',
+                        help=f'Stage name to restart from (re-runs all stages from that point). Valid stages: {", ".join(FF_STAGE_ORDER)}')
     
     # Parse arguments
     if len(sys.argv) == 1:
@@ -1845,6 +1893,27 @@ def main():
         sys.exit(1)
         
     args, unparsed = parser.parse_known_args()
+    
+    # --- Resume handling ---
+    resume_from_stage = ''
+    if args.resume:
+        if not os.path.exists(args.resume):
+            logger.error(f"Resume H5 not found: {args.resume}")
+            sys.exit(1)
+        resume_from_stage = find_resume_stage(args.resume, FF_STAGE_ORDER)
+        if resume_from_stage:
+            info = load_resume_info(args.resume)
+            logger.info(f"Resuming from stage '{resume_from_stage}'. "
+                        f"Completed: {info['completed_stages']}")
+        else:
+            logger.info("All stages already complete in resume H5. Re-running consolidation.")
+            resume_from_stage = 'consolidation'
+    elif args.restartFrom:
+        if args.restartFrom not in FF_STAGE_ORDER:
+            logger.error(f"Invalid restart stage '{args.restartFrom}'. Valid: {FF_STAGE_ORDER}")
+            sys.exit(1)
+        resume_from_stage = args.restartFrom
+        logger.info(f"Restarting from explicit stage: {resume_from_stage}")
     
     # Set variables from arguments
     result_dir = args.resultFolder
@@ -2007,7 +2076,8 @@ def main():
                         do_peak_search=do_peak_search,
                         peak_search_only=peak_search_only,
                         bin_directory=bin_dir,
-                        grains_file=grains_file
+                        grains_file=grains_file,
+                        resume_from_stage=resume_from_stage
                     )
 
                     progress.update(message=f"Layer {layer_nr} (file {file_nr}, {filestem}) completed")
@@ -2038,7 +2108,8 @@ def main():
                         do_peak_search=do_peak_search, 
                         peak_search_only=peak_search_only,
                         bin_directory=bin_dir,
-                        grains_file=grains_file
+                        grains_file=grains_file,
+                        resume_from_stage=resume_from_stage
                     )
                     
                     progress.update(message=f"Layer {layer_nr} completed successfully")

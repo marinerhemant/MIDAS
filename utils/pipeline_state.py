@@ -231,6 +231,52 @@ class PipelineH5:
             f"(workflow={self.workflow_type})"
         )
 
+    def reset_from(self, stage_name: str, stage_order: list):
+        """Clear completed_stages from stage_name onward (inclusive).
+
+        Used by --restart-from to force re-execution from a given stage.
+        All stages at or after stage_name in stage_order are removed.
+        """
+        if stage_name not in stage_order:
+            logger.warning(f"Stage '{stage_name}' not in stage_order, skipping reset")
+            return
+
+        target_idx = stage_order.index(stage_name)
+        current = self.completed
+
+        # Determine which to keep
+        keep = [s for s in current if s in stage_order and stage_order.index(s) < target_idx]
+        # Also keep stages not in stage_order (custom / legacy markers)
+        keep += [s for s in current if s not in stage_order]
+
+        # Rebuild completed_stages group
+        if "pipeline_state/completed_stages" in self._h5:
+            del self._h5["pipeline_state/completed_stages"]
+        grp = self._h5.require_group("pipeline_state/completed_stages")
+        for i, s in enumerate(keep):
+            grp.create_dataset(str(i), data=s)
+
+        self._h5["pipeline_state"].attrs["current_stage"] = keep[-1] if keep else ""
+        self._h5.flush()
+        logger.info(
+            f"Reset pipeline from '{stage_name}': kept {len(keep)} stages, "
+            f"cleared {len(current) - len(keep)}"
+        )
+
+    def restore_dataset(self, path: str):
+        """Read a dataset back from the H5 for variable restoration.
+
+        Returns native Python types: str, int, float, or numpy array.
+        """
+        if path not in self._h5:
+            raise KeyError(f"Dataset '{path}' not found in {self.h5_path}")
+        val = self._h5[path][()]
+        if isinstance(val, bytes):
+            return val.decode()
+        if isinstance(val, np.ndarray) and val.ndim == 0:
+            return val.item()
+        return val
+
 
 # ------------------------------------------------------------------
 # Standalone convenience functions (for simple usage without context mgr)
@@ -271,3 +317,60 @@ def can_skip_to(h5_path: str, target_stage: str, stage_order: list) -> bool:
         if stage_order[i] not in completed:
             return False
     return True
+
+
+def load_resume_info(h5_path: str) -> dict:
+    """Quick read of pipeline H5 state without full PipelineH5 init.
+
+    Returns dict with:
+      - completed_stages: list[str]
+      - workflow_type: str
+      - args_json: str (original CLI args as JSON)
+      - param_text: str (original parameter file content)
+    """
+    info = {
+        "completed_stages": [],
+        "workflow_type": "",
+        "args_json": "{}",
+        "param_text": "",
+    }
+    if not os.path.exists(h5_path):
+        return info
+    with h5py.File(h5_path, "r") as h5:
+        # Completed stages
+        if "pipeline_state/completed_stages" in h5:
+            grp = h5["pipeline_state/completed_stages"]
+            for i in range(len(grp)):
+                key = str(i)
+                if key in grp:
+                    val = grp[key][()]
+                    info["completed_stages"].append(
+                        val.decode() if isinstance(val, bytes) else val
+                    )
+        # Workflow type
+        if "pipeline_state" in h5:
+            info["workflow_type"] = h5["pipeline_state"].attrs.get(
+                "workflow_type", ""
+            )
+            info["args_json"] = h5["pipeline_state"].attrs.get(
+                "command_line_args", "{}"
+            )
+        # Param text
+        if "provenance" in h5:
+            info["param_text"] = h5["provenance"].attrs.get(
+                "parameter_file", ""
+            )
+    return info
+
+
+def find_resume_stage(h5_path: str, stage_order: list) -> str:
+    """Determine the first incomplete stage in the pipeline.
+
+    Returns the stage name to resume from, or empty string if all complete.
+    """
+    completed = set(get_completed_stages(h5_path))
+    for stage in stage_order:
+        if stage not in completed:
+            return stage
+    return ""
+
