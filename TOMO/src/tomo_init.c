@@ -3,6 +3,7 @@
 // See LICENSE file.
 //
 
+#include "midas_version.h"
 #include "tomo_heads.h"
 #include <ctype.h>
 #include <fcntl.h>
@@ -19,7 +20,6 @@
 #include <unistd.h>
 #ifdef __APPLE__
 #include <sys/sysctl.h>
-#include "midas_version.h"
 #endif
 // #include <sys/sysinfo.h>
 
@@ -134,7 +134,7 @@ void usage() {
 }
 
 int main(int argc, char *argv[]) {
-	printf("Version: %s\n", MIDAS_VERSION_STRING);
+  printf("Version: %s\n", MIDAS_VERSION_STRING);
   if (argc != 3) {
     usage();
     return 1;
