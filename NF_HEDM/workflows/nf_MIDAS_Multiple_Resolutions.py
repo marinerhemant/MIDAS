@@ -53,6 +53,12 @@ midas_config.run_startup_checks()
 
 from parsl.app.app import python_app
 
+# NF consolidation
+nf_workflow_dir = os.path.join(install_dir, "NF_HEDM/workflows")
+sys.path.insert(0, nf_workflow_dir)
+from nf_consolidate import generate_consolidated_hdf5 as nf_consolidate_h5
+from nf_consolidate import add_resolution_to_h5
+
 # --- CONSTANTS ---
 
 # --- HELPER FUNCTIONS: ENVIRONMENT, COMMANDS, PARSING ---
@@ -500,6 +506,31 @@ def run_multi_resolution_workflow(args, params, t0):
     if args.doImageProcessing == 1:
         run_image_processing(args, params, t0)
     run_fitting_and_postprocessing(args, params, t0)
+
+    # Generate consolidated H5 from loop 0 output
+    mic_loop0_path = os.path.join(params['resultFolder'], f"{mic_file_base}.0.mic")
+    h5_path = os.path.join(params['resultFolder'], f"{mic_file_base}_consolidated.h5")
+    if os.path.exists(mic_loop0_path):
+        try:
+            with open(args.paramFN, 'r') as pf:
+                param_text = pf.read()
+            nf_consolidate_h5(
+                mic_text_path=mic_loop0_path,
+                param_text=param_text,
+                args_namespace=args,
+                output_path=h5_path,
+            )
+            # Also store as loop_0_unseeded resolution
+            add_resolution_to_h5(
+                h5_path=h5_path,
+                mic_text_path=mic_loop0_path,
+                resolution_label="loop_0_unseeded",
+                grid_size=starting_grid_size,
+                pass_type="unseeded",
+            )
+            logger.info(f"Consolidated H5 created: {h5_path}")
+        except Exception as e:
+            logger.warning(f"Failed to create consolidated H5: {e}")
     
     # 3. Backup SeedOrientationsAll
     seed_all_backup = f"{params['SeedOrientationsAll']}_Backup"
@@ -573,6 +604,20 @@ def run_multi_resolution_workflow(args, params, t0):
              run_image_processing(args, params, t0)
              
         run_fitting_and_postprocessing(args, params, t0)
+
+        # Add seeded resolution to consolidated H5
+        mic_seeded_path = os.path.join(params['resultFolder'], f"{target_mic_pass1}.mic")
+        if os.path.exists(h5_path) and os.path.exists(mic_seeded_path):
+            try:
+                add_resolution_to_h5(
+                    h5_path=h5_path,
+                    mic_text_path=mic_seeded_path,
+                    resolution_label=f"loop_{loop_idx}_seeded",
+                    grid_size=new_grid_size,
+                    pass_type="seeded",
+                )
+            except Exception as e:
+                logger.warning(f"Failed to add seeded resolution to H5: {e}")
         
         # d. Filter & Grid Update for "Bad" Solutions
         logger.info(f"Filtering bad solutions from Pass 1.")
@@ -652,6 +697,20 @@ def run_multi_resolution_workflow(args, params, t0):
         if args.doImageProcessing == 1:
              run_image_processing(args, params, t0)
         run_fitting_and_postprocessing(args, params, t0)
+
+        # Add unseeded resolution to consolidated H5
+        mic_unseeded_path = os.path.join(params['resultFolder'], f"{target_mic_pass2}.mic")
+        if os.path.exists(h5_path) and os.path.exists(mic_unseeded_path):
+            try:
+                add_resolution_to_h5(
+                    h5_path=h5_path,
+                    mic_text_path=mic_unseeded_path,
+                    resolution_label=f"loop_{loop_idx}_unseeded",
+                    grid_size=new_grid_size,
+                    pass_type="unseeded",
+                )
+            except Exception as e:
+                logger.warning(f"Failed to add unseeded resolution to H5: {e}")
         
         # f. Merge Results
         logger.info("Merging Pass 1 and Pass 2 results.")
@@ -690,6 +749,19 @@ def run_multi_resolution_workflow(args, params, t0):
                 f.write(l)
                 
         logger.info(f"Loop {loop_idx} complete. Merged result in {current_mic_file}.")
+
+        # Add merged resolution to consolidated H5
+        if os.path.exists(h5_path) and os.path.exists(final_path):
+            try:
+                add_resolution_to_h5(
+                    h5_path=h5_path,
+                    mic_text_path=final_path,
+                    resolution_label=f"loop_{loop_idx}_merged",
+                    grid_size=new_grid_size,
+                    pass_type="merged",
+                )
+            except Exception as e:
+                logger.warning(f"Failed to add merged resolution to H5: {e}")
 
 # --- SYSTEM UTILITIES AND CONFIGURATION ---
 

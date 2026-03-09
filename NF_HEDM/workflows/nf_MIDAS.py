@@ -53,6 +53,11 @@ midas_config.run_startup_checks()
 
 from parsl.app.app import python_app
 
+# NF consolidation
+nf_workflow_dir = os.path.join(install_dir, "NF_HEDM/workflows")
+sys.path.insert(0, nf_workflow_dir)
+from nf_consolidate import generate_consolidated_hdf5 as nf_consolidate_h5
+
 # --- CONSTANTS ---
 
 # --- HELPER FUNCTIONS: ENVIRONMENT, COMMANDS, PARSING ---
@@ -401,6 +406,25 @@ def run_fitting_and_postprocessing(args: argparse.Namespace, params: Dict, t0: f
             out_file=f'{logDir}/parse_out.csv',
             err_file=f'{logDir}/parse_err.csv'
         )
+
+        # Generate consolidated HDF5
+        mic_text_name = params.get('MicFileText', '')
+        if mic_text_name:
+            mic_text_path = os.path.join(resultFolder, mic_text_name + '.mic')
+            if os.path.exists(mic_text_path):
+                try:
+                    with open(args.paramFN, 'r') as pf:
+                        param_text = pf.read()
+                    nf_consolidate_h5(
+                        mic_text_path=mic_text_path,
+                        param_text=param_text,
+                        args_namespace=args,
+                    )
+                    logger.info("Consolidated HDF5 generated successfully.")
+                except Exception as e:
+                    logger.warning(f"Failed to generate consolidated HDF5: {e}")
+            else:
+                logger.warning(f"MicFileText output not found: {mic_text_path}")
     elif args.refineParameters == 1:
         logger.info("Refining parameters...")
         if args.multiGridPoints == 0:

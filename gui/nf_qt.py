@@ -19,6 +19,12 @@ import json
 import numpy as np
 from math import sin, cos
 
+try:
+    import h5py
+    HAS_H5PY = True
+except ImportError:
+    HAS_H5PY = False
+
 from PyQt5 import QtWidgets, QtCore, QtGui
 import pyqtgraph as pg
 
@@ -227,6 +233,11 @@ class NFViewer(QtWidgets.QMainWindow):
 
         # Line profile state
         self._line_roi = None
+
+        # Consolidated H5 state
+        self._h5_path = None
+        self._h5_resolutions = []  # list of resolution labels from H5
+        self._h5_current_resolution = None
 
     # ── UI ──────────────────────────────────────────────────────────
 
@@ -493,6 +504,13 @@ class NFViewer(QtWidgets.QMainWindow):
         btn_reload.clicked.connect(self._plot_mic)
         lay.addWidget(btn_reload, 0, 1)
 
+        btn_load_h5 = QtWidgets.QPushButton("Load H5")
+        btn_load_h5.clicked.connect(self._on_load_h5)
+        if not HAS_H5PY:
+            btn_load_h5.setEnabled(False)
+            btn_load_h5.setToolTip("h5py not installed")
+        lay.addWidget(btn_load_h5, 0, 2)
+
         # Color mode radio buttons
         self.col_group = QtWidgets.QButtonGroup(self)
         col_modes = [
@@ -520,6 +538,18 @@ class NFViewer(QtWidgets.QMainWindow):
         self.max_conf_edit.setMinimumWidth(55)
         lay.addWidget(self.max_conf_edit, row, 2)
 
+        # Resolution selector (hidden by default, shown when H5 is loaded)
+        row += 1
+        self._res_selector_label = QtWidgets.QLabel("Resolution:")
+        self._res_selector_label.setVisible(False)
+        lay.addWidget(self._res_selector_label, row, 0)
+
+        self._res_combo = QtWidgets.QComboBox()
+        self._res_combo.setVisible(False)
+        self._res_combo.currentTextChanged.connect(self._on_resolution_changed)
+        lay.addWidget(self._res_combo, row, 1, 1, 2)
+
+        row += 1
         btn_grain = QtWidgets.QPushButton("LoadGrain")
         btn_grain.clicked.connect(self._on_load_grain)
         lay.addWidget(btn_grain, row + 1, 0)
@@ -1148,6 +1178,141 @@ class NFViewer(QtWidgets.QMainWindow):
 
         self._plot_mic()
 
+    def _on_load_h5(self):
+        """Load a consolidated NF-HEDM HDF5 file."""
+        if not HAS_H5PY:
+            QtWidgets.QMessageBox.warning(self, "Missing Dependency",
+                                          "h5py is required to load consolidated H5 files.")
+            return
+
+        fn, _ = QtWidgets.QFileDialog.getOpenFileName(
+            self, "Select Consolidated H5", os.getcwd(),
+            "HDF5 Files (*.h5 *.hdf5);;All Files (*)")
+        if not fn:
+            return
+
+        self._h5_path = fn
+        print(f"Loading consolidated H5: {fn}")
+
+        try:
+            with h5py.File(fn, 'r') as h5:
+                # Discover available resolutions
+                resolutions = ["root"]
+                if 'multi_resolution' in h5:
+                    for key in sorted(h5['multi_resolution'].keys()):
+                        grp = h5[f'multi_resolution/{key}']
+                        grid = grp.attrs.get('grid_size', '?')
+                        ptype = grp.attrs.get('pass_type', '')
+                        label = f"{key} (grid={grid}, {ptype})"
+                        resolutions.append(label)
+
+                self._h5_resolutions = resolutions
+
+                # Populate combo box
+                self._res_combo.blockSignals(True)
+                self._res_combo.clear()
+                for r in resolutions:
+                    self._res_combo.addItem(r)
+                self._res_combo.blockSignals(False)
+
+                # Show selector if multi-resolution
+                has_multi = len(resolutions) > 1
+                self._res_selector_label.setVisible(has_multi)
+                self._res_combo.setVisible(has_multi)
+
+                # Load root voxels as default
+                self._load_h5_resolution(h5, "root")
+
+        except Exception as e:
+            QtWidgets.QMessageBox.critical(self, "Error", f"Failed to load H5: {e}")
+            print(f"H5 load error: {e}")
+
+    def _on_resolution_changed(self, text):
+        """Handle resolution combo box change."""
+        if not self._h5_path or not text:
+            return
+        try:
+            with h5py.File(self._h5_path, 'r') as h5:
+                self._load_h5_resolution(h5, text)
+        except Exception as e:
+            print(f"Resolution switch error: {e}")
+
+    def _load_h5_resolution(self, h5, resolution_text):
+        """Load voxel data from a specific resolution in the H5.
+
+        Args:
+            h5:              Open h5py.File object.
+            resolution_text: "root" or "loop_N_type (grid=X, type)".
+        """
+        if resolution_text == "root":
+            prefix = "voxels"
+        else:
+            # Extract key from display text: "loop_0_unseeded (grid=5.0, unseeded)"
+            key = resolution_text.split(" (")[0]
+            prefix = f"multi_resolution/{key}/voxels"
+
+        if prefix not in h5:
+            print(f"Resolution not found in H5: {prefix}")
+            return
+
+        # Read voxel data and assemble into mic_data format
+        grp = h5[prefix]
+        n = grp['position'].shape[0]
+
+        # Build a mic_data array matching text mic format (15 cols)
+        mic = np.zeros((n, 15))
+
+        mic[:, 3:5] = grp['position'][()]
+        mic[:, 7:10] = grp['euler_angles'][()]
+        mic[:, 10] = grp['confidence'][()]
+
+        if 'tri_edge_size' in grp:
+            mic[:, 0] = grp['tri_edge_size'][()]
+        if 'up_down' in grp:
+            mic[:, 1] = grp['up_down'][()]
+        if 'orientation_row_nr' in grp:
+            mic[:, 2] = grp['orientation_row_nr'][()]
+        if 'orientation_id' in grp:
+            mic[:, 6] = grp['orientation_id'][()]
+        if 'phase_nr' in grp:
+            mic[:, 11] = grp['phase_nr'][()]
+        if 'run_time' in grp:
+            mic[:, 12] = grp['run_time'][()]
+
+        self.mic_type = 1  # Treat as text mic for scatter plot
+        self.mic_data = mic
+        self.mic_file = self._h5_path
+        self._h5_current_resolution = resolution_text
+
+        # Check for binary map in H5
+        map_prefix = prefix.replace('/voxels', '/maps')
+        if map_prefix in h5 and 'orientation' in h5[map_prefix]:
+            orient = h5[f"{map_prefix}/orientation"][()]
+            h, w, _ = orient.shape
+            self.mic_size_x = w
+            self.mic_size_y = h
+            extent = h5[f"{map_prefix}/extent"][()]
+            self.mic_ref_x = int(extent[0])
+            self.mic_ref_y = int(extent[2])
+
+            # Build flat map data matching binary .map layout
+            n_pix = w * h
+            flat = np.zeros(n_pix * 7)
+            for i in range(7):
+                flat[i * n_pix:(i + 1) * n_pix] = orient[:, :, i].ravel()
+
+            # Also load KAM, GROD, GrainID if present
+            self._h5_extra_maps = {}
+            for name, col in [('kam', 12), ('grod', 13), ('grain_id', 14)]:
+                if f"{map_prefix}/{name}" in h5:
+                    self._h5_extra_maps[col] = h5[f"{map_prefix}/{name}"][()]
+
+            self.mic_type = 2  # Use image display
+            self.mic_data = flat
+
+        print(f"Loaded resolution: {resolution_text} ({n} voxels)")
+        self._plot_mic()
+
     def _plot_mic(self):
         if self.mic_data is None:
             return
@@ -1207,15 +1372,18 @@ class NFViewer(QtWidgets.QMainWindow):
             elif col == 11:  # PhaseNr
                 arr = self.mic_data[n * 5:n * 6].copy()
             elif col in [12, 13, 14]:
-                # KAM/GROD/GrainMap from external files
-                ext_map = {12: '.kam', 13: '.grod', 14: '.grainId'}
-                ext_file = self.mic_file + ext_map[col]
-                if os.path.exists(ext_file):
-                    with open(ext_file, 'rb') as f:
-                        arr = np.fromfile(f, dtype=np.double)[4:]
+                # KAM/GROD/GrainMap from external files or H5
+                if hasattr(self, '_h5_extra_maps') and col in self._h5_extra_maps:
+                    arr = self._h5_extra_maps[col].ravel().copy()
                 else:
-                    print(f"File not found: {ext_file}")
-                    return
+                    ext_map = {12: '.kam', 13: '.grod', 14: '.grainId'}
+                    ext_file = self.mic_file + ext_map[col]
+                    if os.path.exists(ext_file):
+                        with open(ext_file, 'rb') as f:
+                            arr = np.fromfile(f, dtype=np.double)[4:]
+                    else:
+                        print(f"File not found: {ext_file}")
+                        return
             else:
                 arr = self.mic_data[:n].copy()
 
