@@ -1400,7 +1400,7 @@ class NFViewer(QtWidgets.QMainWindow):
             arr = arr.reshape((sy, sx))
             # Save current view range before updating image
             mic_vb = self.mic_image_view.getView()
-            had_image = self.mic_image_view.image is not None
+            had_image = self.mic_image_view._raw_data is not None
             saved_range = mic_vb.viewRange() if had_image else None
 
             self.mic_image_view.set_image_data(arr)
