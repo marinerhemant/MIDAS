@@ -22,10 +22,32 @@ import sys
 import h5py
 import numpy as np
 
-# Setup path for MIDAS utils
-_utils_dir = os.path.join(
-    os.path.dirname(os.path.dirname(os.path.realpath(__file__))), "utils"
-)
+# Setup path for MIDAS utils — try multiple approaches for robustness
+def _find_utils_dir():
+    """Find the MIDAS utils/ directory, handling symlinks and install layouts."""
+    candidates = []
+    # 1. Via realpath (resolves symlinks)
+    _here = os.path.dirname(os.path.realpath(__file__))
+    candidates.append(os.path.join(_here, '..', '..', 'utils'))
+    # 2. Via abspath (no symlink resolution)
+    _here2 = os.path.dirname(os.path.abspath(__file__))
+    candidates.append(os.path.join(_here2, '..', '..', 'utils'))
+    # 3. Via MIDAS_HOME env var
+    midas_home = os.environ.get('MIDAS_HOME', '')
+    if midas_home:
+        candidates.append(os.path.join(midas_home, 'utils'))
+    # 4. Via MIDAS_INSTALL_DIR env var
+    midas_install = os.environ.get('MIDAS_INSTALL_DIR', '')
+    if midas_install:
+        candidates.append(os.path.join(midas_install, 'utils'))
+    for c in candidates:
+        c = os.path.normpath(c)
+        if os.path.isdir(c) and os.path.exists(os.path.join(c, 'pipeline_state.py')):
+            return c
+    # Last resort: return first candidate and let the import error be informative
+    return os.path.normpath(candidates[0])
+
+_utils_dir = _find_utils_dir()
 sys.path.insert(0, _utils_dir)
 
 from pipeline_state import PipelineH5, COMPRESSION
