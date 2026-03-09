@@ -3,16 +3,14 @@
 // See LICENSE file.
 //
 
+#include "midas_version.h"
 #include <ctype.h>
-#include <limits.h>
-#include <math.h>
 #include <stdint.h>
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
 #include <sys/stat.h>
 #include <time.h>
-#include "midas_version.h"
 
 #define float32_t float
 #define SetBit(A, k) (A[(k / 32)] |= (1 << (k % 32)))
@@ -142,9 +140,9 @@ int ReadBinFiles(char FileStem[1000], char *ext, int StartNr, int EndNr,
         BinNr += (ythis * ((long long int)NrPixelsZ));
         BinNr += zthis;
         if (BinNr < 0 || BinNr >= kT) {
-          printf("%lld %d %d %d %lld %d %d %d %d %d %d %d %d\n", BinNr, k,
-                 NrOfFiles, NrOfPixels, TempCntr, ythis, zthis, nElements, j,
-                 (int)ys[j], (int)zs[j], i);
+          printf("%lld %d %d %d %lld %d %d %d %d %d %d %d\n", BinNr, k,
+                 NrOfFiles, (int)NrOfPixels, TempCntr, ythis, zthis, nElements,
+                 j, (int)ys[j], (int)zs[j], i);
           printf("Something was wrong with the Binary Files. Distance %d and "
                  "FileNr %d contained %d for y and %d for z position. Please "
                  "check, exiting.\n",
@@ -166,7 +164,7 @@ int ReadBinFiles(char FileStem[1000], char *ext, int StartNr, int EndNr,
 }
 
 int main(int argc, char *argv[]) {
-	printf("Version: %s\n", MIDAS_VERSION_STRING);
+  printf("Version: %s\n", MIDAS_VERSION_STRING);
   clock_t start, end;
   double diftotal;
   start = clock();

@@ -262,39 +262,63 @@ def fit(psFN: str, nodeNr: int, nNodes: int, numProcs: int, logDir: str, resultF
 
 # --- WORKFLOW STAGE FUNCTIONS ---
 
-def run_preprocessing(args: argparse.Namespace, params: Dict, t0: float, skip_hex_grid: bool = False):
-    """Handles HKLs, seed orientations, grid creation, and spot simulation."""
+# Diffraction spot simulation output files (grid-independent, orientation-dependent)
+_DIFFR_SPOT_FILES = [
+    'DiffractionSpots.txt', 'DiffractionSpots.bin',
+    'OrientMat.txt', 'OrientMat.bin', 'Key.txt',
+]
+
+
+def _backup_diffr_spots(result_folder: str, suffix: str = '_unseeded_backup'):
+    """Backup DiffractionSpots/OrientMat/Key files for later reuse."""
+    for fn in _DIFFR_SPOT_FILES:
+        src = os.path.join(result_folder, fn)
+        if os.path.exists(src):
+            shutil.copy2(src, src + suffix)
+    logger.info(f"Backed up diffraction spot files ({suffix})")
+
+
+def _restore_diffr_spots(result_folder: str, suffix: str = '_unseeded_backup'):
+    """Restore backed-up DiffractionSpots/OrientMat/Key files."""
+    for fn in _DIFFR_SPOT_FILES:
+        backup = os.path.join(result_folder, fn + suffix)
+        dst = os.path.join(result_folder, fn)
+        if os.path.exists(backup):
+            shutil.copy2(backup, dst)
+        else:
+            logger.warning(f"Backup not found: {backup}")
+    logger.info(f"Restored diffraction spot files from {suffix}")
+
+
+def run_preprocessing(args: argparse.Namespace, params: Dict, t0: float,
+                     skip_hex_grid: bool = False, skip_diffr_spots: bool = False):
+    """Handles seed orientations, grid creation, and spot simulation.
+
+    Note: GetHKLListNF is called once at workflow start, not here.
+    """
     logDir = params['logDir']
     resultFolder = params['resultFolder']
 
-    logger.info("Making HKLs.")
-    run_command(
-        cmd=os.path.join(install_dir, "NF_HEDM/bin/GetHKLListNF") + f" {args.paramFN}",
-        working_dir=resultFolder,
-        out_file=f'{logDir}/hkls_out.csv',
-        err_file=f'{logDir}/hkls_err.csv'
-    )
-
     if args.ffSeedOrientations == 1:
         logger.info("Making seed orientations from far-field results.")
-        # Ensure we have GrainsFile and SeedOrientations in params (refreshed)
         run_command(
             cmd=os.path.join(bin_dir, "GenSeedOrientationsFF2NFHEDM") + f" {params['GrainsFile']} {params['SeedOrientations']}",
             working_dir=resultFolder,
             out_file=f'{logDir}/seed_out.csv',
             err_file=f'{logDir}/seed_err.csv'
         )
-        
-    logger.info("Updating parameter file with orientation count.")
-    try:
-        nrOrientations = len(open(params['SeedOrientations']).readlines())
-        with open(args.paramFN, 'r') as f:
-            lines = [line for line in f if not line.strip().startswith('NrOrientations ')]
-        lines.append(f'NrOrientations {nrOrientations}\n')
-        with open(args.paramFN, 'w') as f:
-            f.writelines(lines)
-    except Exception as e:
-        raise RuntimeError(f"Failed to update parameter file with orientation count: {e}")
+
+    if not skip_diffr_spots:
+        logger.info("Updating parameter file with orientation count.")
+        try:
+            nrOrientations = len(open(params['SeedOrientations']).readlines())
+            with open(args.paramFN, 'r') as f:
+                lines = [line for line in f if not line.strip().startswith('NrOrientations ')]
+            lines.append(f'NrOrientations {nrOrientations}\n')
+            with open(args.paramFN, 'w') as f:
+                f.writelines(lines)
+        except Exception as e:
+            raise RuntimeError(f"Failed to update parameter file with orientation count: {e}")
 
     if not skip_hex_grid:
         logger.info("Making and filtering reconstruction space.")
@@ -326,13 +350,17 @@ def run_preprocessing(args: argparse.Namespace, params: Dict, t0: float, skip_he
             shutil.move('grid.txt', 'grid_old.txt')
             np.savetxt('grid.txt', gridpoints, fmt='%.6f', delimiter=' ', header=f'{gridpoints.shape[0]}', comments='')
 
-    logger.info("Making simulated diffraction spots.")
-    run_command(
-        cmd=os.path.join(bin_dir, "MakeDiffrSpots") + f" {args.paramFN} {args.nCPUs}",
-        working_dir=resultFolder,
-        out_file=f'{logDir}/spots_out.csv',
-        err_file=f'{logDir}/spots_err.csv'
-    )
+    if skip_diffr_spots:
+        logger.info("Restoring diffraction spots from unseeded backup (reusing loop 0 output).")
+        _restore_diffr_spots(resultFolder)
+    else:
+        logger.info("Making simulated diffraction spots.")
+        run_command(
+            cmd=os.path.join(bin_dir, "MakeDiffrSpots") + f" {args.paramFN} {args.nCPUs}",
+            working_dir=resultFolder,
+            out_file=f'{logDir}/spots_out.csv',
+            err_file=f'{logDir}/spots_err.csv'
+        )
     logger.info(f"Preprocessing finished. Time taken: {time.time() - t0:.2f} seconds.")
 
 def run_image_processing(args: argparse.Namespace, params: Dict, t0: float):
@@ -510,6 +538,15 @@ def run_multi_resolution_workflow(args, params, t0, ph5=None, resume_from_stage=
             return True
         return all_stages.index(target) >= all_stages.index(resume_from_stage)
 
+    # --- ONE-TIME SETUP ---
+    logger.info("Running GetHKLListNF (once).")
+    run_command(
+        cmd=os.path.join(install_dir, "NF_HEDM/bin/GetHKLListNF") + f" {args.paramFN}",
+        working_dir=_resultFolder,
+        out_file=f'{_logDir}/hkls_out.csv',
+        err_file=f'{_logDir}/hkls_err.csv'
+    )
+
     # --- LOOP 0: Initial Run ---
     logger.info(">>> Running Loop 0 (Initial Coarse Pass)")
     
@@ -529,6 +566,14 @@ def run_multi_resolution_workflow(args, params, t0, ph5=None, resume_from_stage=
         if args.doImageProcessing == 1:
             run_image_processing(args, params, t0)
         run_fitting_and_postprocessing(args, params, t0)
+
+        # Backup diffraction spots for reuse in unseeded passes
+        _backup_diffr_spots(params['resultFolder'])
+
+        # Enable PrecomputedSpotsInfo for all subsequent MMapImageInfo calls
+        # (images don't change — SpotsInfo.bin from loop 0 is reusable)
+        update_param_file(args.paramFN, {'PrecomputedSpotsInfo': '1'})
+        logger.info("Enabled PrecomputedSpotsInfo for subsequent loops.")
     else:
         logger.info("Skipping loop 0 initial pass (resumed past this stage).")
 
@@ -733,8 +778,9 @@ def run_multi_resolution_workflow(args, params, t0, ph5=None, resume_from_stage=
         params = reload_params()
         
         if _should_run(loop_idx, 'unseeded'):
-            # SKIP MakeHexGrid
-            run_preprocessing(args, params, t0, skip_hex_grid=True) 
+            # SKIP MakeHexGrid (grid was already written above for bad points)
+            # SKIP MakeDiffrSpots (reuse loop 0 output — same SeedOrientationsAll)
+            run_preprocessing(args, params, t0, skip_hex_grid=True, skip_diffr_spots=True)
             if args.doImageProcessing == 1:
                  run_image_processing(args, params, t0)
             run_fitting_and_postprocessing(args, params, t0)
@@ -1004,6 +1050,14 @@ def main():
             if 'GridRefactor' in params:
                  run_multi_resolution_workflow(args, params, t0, ph5=ph5, resume_from_stage=resume_from_stage)
             else:
+                 # Single-resolution: run HKLs once, then standard pipeline
+                 logger.info("Running GetHKLListNF (once).")
+                 run_command(
+                     cmd=os.path.join(install_dir, "NF_HEDM/bin/GetHKLListNF") + f" {args.paramFN}",
+                     working_dir=resultFolder,
+                     out_file=f'{logDir}/hkls_out.csv',
+                     err_file=f'{logDir}/hkls_err.csv'
+                 )
                  run_preprocessing(args, params, t0)
                  if args.doImageProcessing == 1:
                      run_image_processing(args, params, t0)
