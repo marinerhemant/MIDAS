@@ -123,12 +123,16 @@ def read_single_plane_map(path: str):
 
 
 def read_all_matches(mic_path: str) -> np.ndarray:
-    """Read AllMatches.mic (text file, 4 header lines, many columns).
+    """Read AllMatches file (text file, 4 header lines, many columns).
 
     Returns:
         (N, C) float64 array, or None if file doesn't exist.
     """
-    all_matches_path = mic_path.replace(".mic", "_AllMatches.mic")
+    # Try direct append first: stem.mic.0 -> stem.mic.0.AllMatches
+    all_matches_path = mic_path + ".AllMatches"
+    if not os.path.exists(all_matches_path):
+        # Try replace-based path: stem.mic -> stem_AllMatches.mic
+        all_matches_path = mic_path.replace(".mic", "_AllMatches.mic")
     if not os.path.exists(all_matches_path):
         # Try alternate naming
         base_dir = os.path.dirname(mic_path)
@@ -352,7 +356,11 @@ def generate_consolidated_hdf5(
                 ph5.h5["grains/strain"].attrs["status"] = "reserved"
 
         # ── Binary maps ──
-        map_path = mic_base + ".map"
+        # Try mic_text_path + ".map" first (for files like "stem.mic.0" -> "stem.mic.0.map")
+        # Fall back to splitext-based path (for "stem.mic" -> "stem.map")
+        map_path = mic_text_path + ".map"
+        if not os.path.exists(map_path):
+            map_path = mic_base + ".map"
         if os.path.exists(map_path):
             map_data = read_binary_map(map_path)
             prefix = "maps" if not resolution_label else f"multi_resolution/{resolution_label}/maps"
@@ -451,8 +459,8 @@ def add_resolution_to_h5(
             if mic_data.shape[1] > 12:
                 h5.create_dataset(f"{vp}/run_time", data=mic_data[:, 12], **COMPRESSION)
 
-        # Binary map
-        map_path = mic_base + ".map"
+        # Binary map — mic files like "stem.mic.1" have maps at "stem.mic.1.map"
+        map_path = mic_text_path + ".map"
         if os.path.exists(map_path):
             map_data = read_binary_map(map_path)
             mp = f"{prefix}/maps"
@@ -480,13 +488,19 @@ def main():
         description="Generate consolidated HDF5 from NF-HEDM outputs."
     )
     parser.add_argument(
-        "--mic", required=True, help="Path to text .mic file"
+        "--mic", required=True, help="Path to text .mic file (for single mode: the mic file; "
+        "for --multi-res: the base mic file, e.g. holder3_txt.mic.0)"
     )
     parser.add_argument(
         "--params", default="", help="Path to parameter file (for provenance)"
     )
     parser.add_argument(
-        "--output", default=None, help="Output H5 path (default: {mic}_consolidated.h5)"
+        "--output", default=None, help="Output H5 path (default: {mic_base}_consolidated.h5)"
+    )
+    parser.add_argument(
+        "--multi-res", action="store_true",
+        help="Auto-discover and consolidate all multi-resolution mic files "
+        "(e.g. .mic.0, .mic.1, _all_solutions.1, _merged.1, etc.)"
     )
     args = parser.parse_args()
 
@@ -495,13 +509,94 @@ def main():
         with open(args.params) as f:
             param_text = f.read()
 
-    h5_path = generate_consolidated_hdf5(
-        mic_text_path=args.mic,
-        param_text=param_text,
-        args_namespace=vars(args),
-        output_path=args.output,
-    )
-    print(f"Consolidated H5: {h5_path}")
+    if not args.multi_res:
+        # Single-file consolidation
+        h5_path = generate_consolidated_hdf5(
+            mic_text_path=args.mic,
+            param_text=param_text,
+            args_namespace=vars(args),
+            output_path=args.output,
+        )
+        print(f"Consolidated H5: {h5_path}")
+    else:
+        # Multi-resolution: auto-discover all mic files
+        import re
+        mic_path = os.path.abspath(args.mic)
+        mic_dir = os.path.dirname(mic_path)
+
+        # Derive base name: strip .mic.N suffix -> base
+        # e.g. /path/holder3_txt.mic.0 -> holder3_txt.mic
+        base_match = re.match(r'^(.+\.mic)\.\d+$', mic_path)
+        if base_match:
+            mic_base = base_match.group(1)  # e.g. /path/holder3_txt.mic
+        else:
+            mic_base = os.path.splitext(mic_path)[0] + ".mic"
+
+        mic_stem = os.path.basename(mic_base)  # e.g. holder3_txt.mic
+        # Strip ".mic" for pattern matching
+        stem_no_ext = mic_stem.rsplit('.mic', 1)[0]  # e.g. holder3_txt
+
+        output_path = args.output or os.path.join(
+            mic_dir, f"{stem_no_ext}_consolidated.h5"
+        )
+
+        # 1. Create consolidated H5 from loop 0 (the root)
+        loop0_mic = mic_path  # The --mic argument is the .mic.0 file
+        if not os.path.exists(loop0_mic):
+            print(f"Error: Loop 0 mic file not found: {loop0_mic}")
+            sys.exit(1)
+
+        print(f"Creating consolidated H5 from loop 0: {loop0_mic}")
+        h5_path = generate_consolidated_hdf5(
+            mic_text_path=loop0_mic,
+            param_text=param_text,
+            args_namespace=vars(args),
+            output_path=output_path,
+        )
+
+        # Also add as loop_0_unseeded resolution
+        add_resolution_to_h5(
+            h5_path=h5_path,
+            mic_text_path=loop0_mic,
+            resolution_label="loop_0_unseeded",
+            grid_size=0.0,
+            pass_type="unseeded",
+        )
+
+        # 2. Auto-discover higher resolution loops
+        # Pattern: stem.mic.N (seeded), stem.mic_all_solutions.N (unseeded),
+        #          stem.mic_merged.N (merged)
+        loop_idx = 1
+        while True:
+            seeded_mic = os.path.join(mic_dir, f"{mic_stem}.{loop_idx}")
+            unseeded_mic = os.path.join(mic_dir, f"{stem_no_ext}_all_solutions.{loop_idx}")
+            merged_mic = os.path.join(mic_dir, f"{stem_no_ext}_merged.{loop_idx}")
+
+            has_any = any(os.path.exists(f) for f in [seeded_mic, unseeded_mic, merged_mic])
+            if not has_any:
+                break
+
+            for mic_file, label, ptype in [
+                (seeded_mic, f"loop_{loop_idx}_seeded", "seeded"),
+                (unseeded_mic, f"loop_{loop_idx}_unseeded", "unseeded"),
+                (merged_mic, f"loop_{loop_idx}_merged", "merged"),
+            ]:
+                if os.path.exists(mic_file):
+                    print(f"  Adding {label}: {os.path.basename(mic_file)}")
+                    try:
+                        add_resolution_to_h5(
+                            h5_path=h5_path,
+                            mic_text_path=mic_file,
+                            resolution_label=label,
+                            grid_size=0.0,
+                            pass_type=ptype,
+                        )
+                    except Exception as e:
+                        print(f"  ERROR adding {label}: {e}")
+
+            loop_idx += 1
+
+        print(f"\nConsolidated H5 with {loop_idx - 1} resolution loops: {h5_path}")
 
 
 # MIDAS version banner

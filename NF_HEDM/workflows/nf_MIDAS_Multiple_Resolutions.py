@@ -555,7 +555,7 @@ def run_multi_resolution_workflow(args, params, t0, ph5=None, resume_from_stage=
             )
             logger.info(f"Consolidated H5 created: {h5_path}")
         except Exception as e:
-            logger.warning(f"Failed to create consolidated H5: {e}")
+            logger.error(f"Failed to create consolidated H5: {e}", exc_info=True)
     if ph5 is not None:
         ph5.mark(_stage_name(0, 'initial'))
     
@@ -641,7 +641,7 @@ def run_multi_resolution_workflow(args, params, t0, ph5=None, resume_from_stage=
                         pass_type="seeded",
                     )
                 except Exception as e:
-                    logger.warning(f"Failed to add seeded resolution to H5: {e}")
+                    logger.error(f"Failed to add seeded resolution to H5: {e}", exc_info=True)
             if ph5 is not None:
                 ph5.mark(_stage_name(loop_idx, 'seeded'))
         else:
@@ -751,7 +751,7 @@ def run_multi_resolution_workflow(args, params, t0, ph5=None, resume_from_stage=
                         pass_type="unseeded",
                     )
                 except Exception as e:
-                    logger.warning(f"Failed to add unseeded resolution to H5: {e}")
+                    logger.error(f"Failed to add unseeded resolution to H5: {e}", exc_info=True)
             if ph5 is not None:
                 ph5.mark(_stage_name(loop_idx, 'unseeded'))
         else:
@@ -806,7 +806,7 @@ def run_multi_resolution_workflow(args, params, t0, ph5=None, resume_from_stage=
                     pass_type="merged",
                 )
             except Exception as e:
-                logger.warning(f"Failed to add merged resolution to H5: {e}")
+                logger.error(f"Failed to add merged resolution to H5: {e}", exc_info=True)
         if ph5 is not None:
             ph5.mark(_stage_name(loop_idx, 'merge'))
 
