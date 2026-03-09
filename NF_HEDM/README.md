@@ -35,8 +35,8 @@ The output is a `.mic` file containing position, orientation, and confidence for
 
 | File | Description |
 |------|-------------|
-| `nf_MIDAS.py` | **Main NF-HEDM workflow.** Orchestrates image processing, grid generation, forward simulation, and reconstruction. Supports multiple compute backends. See [NF_Analysis manual](../manuals/NF_Analysis.md). |
-| `nf_MIDAS_Multiple_Resolutions.py` | **Multi-resolution NF-HEDM.** Iterative reconstruction at increasing grid resolution for large volumes. See [NF_MultiResolution_Analysis manual](../manuals/NF_MultiResolution_Analysis.md). |
+| `nf_MIDAS.py` | **Main NF-HEDM workflow.** Orchestrates image processing, grid generation, forward simulation, and reconstruction. Tracks pipeline state via HDF5 checkpoint with 6 stage markers. Supports pipeline restart via `-resume`/`-restartFrom`. See [NF_Analysis manual](../manuals/NF_Analysis.md). |
+| `nf_MIDAS_Multiple_Resolutions.py` | **Multi-resolution NF-HEDM.** Iterative reconstruction at increasing grid resolution for large volumes. Tracks pipeline state with dynamic loop-based stage markers (`loop_0_initial`, `loop_N_seeded`, etc.). Supports pipeline restart via `-resume`/`-restartFrom` with user guidance on available stages. See [NF_MultiResolution_Analysis manual](../manuals/NF_MultiResolution_Analysis.md). |
 | `localConfig.py` | Parsl execution configuration for local runs. |
 | `orthrosAllConfig.py` | Parsl configuration for Orthros cluster. |
 | `polarisConfig.py` | Parsl configuration for ALCF Polaris. |

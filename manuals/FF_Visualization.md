@@ -1,6 +1,6 @@
 # MIDAS FF-HEDM Desktop Image Viewer (`ff_asym_qt.py`): User Manual
 
-**Version:** 9.2  
+**Version:** 10.0  
 **Contact:** hsharma@anl.gov
 
 ---

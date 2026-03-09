@@ -8,7 +8,7 @@
 
 **MIDAS** is an open-source suite for reconstructing three-dimensional microstructures from High-Energy Diffraction Microscopy (HEDM) data. Developed at the [Advanced Photon Source](https://www.aps.anl.gov/) at Argonne National Laboratory, it supports the complete data-reduction pipeline — from raw detector frames to grain maps, strain tensors, spatially resolved orientation fields, and tomographic reconstructions.
 
-**Version:** 9.0
+**Version:** 10.0
 **Contact:** [Hemant Sharma](mailto:hsharma@anl.gov?subject=[MIDAS]%20From%20Github) (hsharma@anl.gov)
 
 ---
@@ -24,9 +24,11 @@
 | **Grain Matching & Stitching** | Track grains across load states; combine multi-layer scans | — |
 | **Tomography (CT)** | Absorption-contrast cross-sections via gridrec algorithm | — |
 
-### Version 9 Highlights
+### Version 10 Highlights
 
 - **Consolidated HDF5 output** — all FF-HEDM results (grains, spots, strains, peak provenance) in a single `.h5` file
+- **Pipeline restart** — `--resume` and `--restart-from` flags on all workflows (FF, PF, NF, dual-dataset, multi-resolution) allow resuming from any completed stage using the HDF5 checkpoint
+- **Version & provenance tracking** — every C binary and Python workflow embeds `MIDAS v10.0 (<git-hash>)` into output files, HDF5 attributes, and Zarr metadata for full reproducibility
 - **Pseudo-Voigt peak fitting** — two-stage decomposed fitting (Lorentzian + Gaussian) with mu-weighted effective widths
 - **Grain matching & stitching** — Python-native optimal (Hungarian) matching across load states with affine deformation support
 - **Reprocess mode** — regenerate `MergeMap.csv` and consolidated HDF5 on old datasets (`-reprocess 1`)
@@ -35,6 +37,7 @@
 - **Forward simulation engine** — compressed output with OpenMP parallelism
 - **Multi-resolution NF-HEDM** — iterative reconstruction at increasing grid resolution
 - **Interactive GUI** — browser-based visualization of NF calibration, microstructure, and FF results
+- **Multi-stage auto-calibration** — geometry-first calibration strategy with panel auto-detection from masks
 
 ---
 
@@ -238,6 +241,16 @@ See the [manuals README](manuals/README.md) for the full step-by-step checklist.
 conda activate midas_env
 cd FF_HEDM/Example
 python ../workflows/ff_MIDAS.py -paramFN ps_ff.txt
+```
+
+### Example: Resume a failed pipeline from its last checkpoint
+
+```bash
+# Auto-detect last completed stage and resume:
+python FF_HEDM/workflows/ff_MIDAS.py -paramFN ps_ff.txt -resume /path/to/consolidated.h5
+
+# Or restart from a specific stage:
+python FF_HEDM/workflows/ff_MIDAS.py -paramFN ps_ff.txt -restartFrom refinement
 ```
 
 ### Example: Reprocess old results (generate MergeMap.csv + consolidated HDF5)

@@ -1,6 +1,6 @@
 # ff_MIDAS.py User Manual
 
-**Version:** 9.0  
+**Version:** 10.0  
 **Contact:** hsharma@anl.gov
 
 > [!NOTE]
@@ -55,6 +55,8 @@ python ff_MIDAS.py [arguments]
 | `-rawDir` | `str` | `''` | Override `RawFolder` in the parameter file. |
 | `-grainsFile` | `str` | `''` | Seed grains file for grain finding (sets `MinNrSpots` to 1). |
 | `-reprocess` | `int` | `0` | `1` = re-run peak merging (`MergeMap.csv`) and consolidated HDF5 generation on existing results. Only needs `-resultFolder`. |
+| `-resume` | `str` | `''` | Path to a pipeline H5 file to resume from. Auto-detects the last completed stage and re-runs from there. |
+| `-restartFrom` | `str` | `''` | Explicit stage to restart from. All stages from this point forward are re-run. Valid stages: `conversion`, `hkl`, `peaksearch`, `merging`, `radius`, `setup`, `binning`, `indexing`, `refinement`, `consolidation`. |
 
 ### Minimal Examples
 
@@ -73,6 +75,12 @@ python ff_MIDAS.py -paramFN ps_ff.txt -peakSearchOnly 1
 
 # Reprocess existing results (regenerate MergeMap.csv + consolidated HDF5):
 python ff_MIDAS.py -reprocess 1 -resultFolder ~/results/
+
+# Resume from the last completed stage (auto-detect):
+python ff_MIDAS.py -paramFN ps_ff.txt -resume ~/results/LayerNr_1/output_consolidated.h5
+
+# Restart from indexing (re-runs indexing → refinement → consolidation):
+python ff_MIDAS.py -paramFN ps_ff.txt -restartFrom indexing
 ```
 
 ---

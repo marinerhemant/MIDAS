@@ -1,6 +1,6 @@
 # GUIs and Visualization — MIDAS
 
-**Version:** 9.2  
+**Version:** 10.0  
 **Contact:** hsharma@anl.gov
 
 ---

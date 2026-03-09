@@ -1,6 +1,6 @@
 # GSAS-II Integration: Importing MIDAS Data for Peak Fitting & Strain Analysis
 
-**Version:** 9.0  
+**Version:** 10.0  
 **Contact:** hsharma@anl.gov
 
 ---

@@ -10,7 +10,7 @@ import datetime
 import functools
 
 
-MIDAS_VERSION = "9.2"
+MIDAS_VERSION = "10.0"
 
 
 @functools.lru_cache(maxsize=1)
@@ -40,7 +40,7 @@ def get_midas_version():
 
 
 def version_string():
-    """Return a human-readable version string, e.g. 'MIDAS v9.2 (a1b2c3d4)'."""
+    """Return a human-readable version string, e.g. 'MIDAS v10.0 (a1b2c3d4)'."""
     v = get_midas_version()
     s = f"MIDAS v{v['version']} ({v['git_short']})"
     if v.get("git_dirty"):

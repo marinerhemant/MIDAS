@@ -1,6 +1,6 @@
 # PF-HEDM Interactive Sinogram, Intensity & Tomo Viewer
 
-**Version:** 9.0  
+**Version:** 10.0  
 **Contact:** hsharma@anl.gov
 
 ---

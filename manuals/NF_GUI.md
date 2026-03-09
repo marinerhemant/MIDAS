@@ -1,6 +1,6 @@
 # Near-Field HEDM GUI
 
-**Version:** 9.2  
+**Version:** 10.0  
 **Contact:** hsharma@anl.gov
 
 This manual covers the PyQtGraph-based NF viewer (`nf_qt.py`).

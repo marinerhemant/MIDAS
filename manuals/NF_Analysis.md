@@ -1,6 +1,6 @@
 # nf_MIDAS.py User Manual
 
-**Version:** 9.1  
+**Version:** 10.0  
 **Contact:** hsharma@anl.gov
 
 > [!NOTE]
@@ -182,6 +182,8 @@ python nf_MIDAS.py \
 | `-doImageProcessing` | int | `1` | `1` = run median and image processing; `0` = skip (reuse existing processed images) |
 | `-refineParameters` | int | `0` | `1` = run parameter refinement mode; `0` = run reconstruction mode |
 | `-multiGridPoints` | int | `0` | *(only if `-refineParameters 1`)* `1` = use multiple grid points from param file; `0` = prompt for single (x,y) |
+| `-resume` | string | `''` | Path to a pipeline H5 to resume from. Auto-detects the last completed stage. |
+| `-restartFrom` | string | `''` | Explicit stage to restart from. Valid stages: `preprocessing`, `image_processing`, `mmap`, `fitting`, `parse_mic`, `consolidation`. |
 
 ---
 
@@ -232,6 +234,18 @@ python nf_MIDAS.py \
     -nCPUs 8 \
     -refineParameters 1 \
     -multiGridPoints 1
+```
+
+### Example 5: Resume from a Pipeline Checkpoint
+
+```bash
+# Auto-detect last completed stage and resume:
+python nf_MIDAS.py -paramFN nf_params.txt -nCPUs 8 \
+    -resume /path/to/pipeline.h5
+
+# Restart from fitting (re-runs fitting → parse_mic → consolidation):
+python nf_MIDAS.py -paramFN nf_params.txt -nCPUs 8 \
+    -restartFrom fitting
 ```
 
 ---

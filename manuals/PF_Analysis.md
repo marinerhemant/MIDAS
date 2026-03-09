@@ -1,6 +1,6 @@
 # pf_MIDAS.py User Manual
 
-**Version:** 9.0  
+**Version:** 10.0  
 **Contact:** hsharma@anl.gov
 
 > [!NOTE]
@@ -60,6 +60,8 @@ python pf_MIDAS.py -paramFile <param.txt> [options]
 | `--micFN` | `str` | `''` | Path to a `.mic` file for guided indexing. |
 | `--grainsFN` | `str` | `''` | Path to a grains file for seed-based indexing. |
 | `-omegaFile` | `str` | `''` | Override omega values (one per scan, text file). |
+| `-resume` | `str` | `''` | Path to a pipeline H5 to resume from. Auto-detects the last completed stage. |
+| `-restartFrom` | `str` | `''` | Explicit stage to restart from. Valid stages: `conversion`, `hkl`, `peaksearch`, `merging`, `binning`, `indexing`, `solution`, `tomo`, `refinement`, `consolidation`. |
 
 ### Example
 
@@ -72,6 +74,12 @@ python pf_MIDAS.py -paramFile ps_pf.txt -doPeakSearch 0 -nCPUs 32
 
 # Multiple orientations per voxel (no tomography):
 python pf_MIDAS.py -paramFile ps_pf.txt -oneSolPerVox 0 -doTomo 0
+
+# Resume from the last completed stage:
+python pf_MIDAS.py -paramFile ps_pf.txt -resume /path/to/pipeline.h5
+
+# Restart from indexing:
+python pf_MIDAS.py -paramFile ps_pf.txt -restartFrom indexing
 ```
 
 ---

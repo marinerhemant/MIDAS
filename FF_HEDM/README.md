@@ -21,9 +21,9 @@ FF_HEDM/
 
 | File | Description |
 |------|-------------|
-| `ff_MIDAS.py` | **Main FF-HEDM workflow.** Orchestrates the full pipeline: data conversion → peak search → merging → indexing → fitting → grain processing → consolidated HDF5. Supports `-reprocess` mode. See [FF_Analysis manual](../manuals/FF_Analysis.md). |
-| `pf_MIDAS.py` | **Point-Focus HEDM workflow.** Similar pipeline for focused-beam geometry with spatial scanning. See [PF_Analysis manual](../manuals/PF_Analysis.md). |
-| `ff_dual_datasets.py` | **Dual-dataset analysis.** Combines two FF-HEDM datasets for improved grain finding. See [FF_dual_datasets manual](../manuals/FF_Dual_Datasets.md). |
+| `ff_MIDAS.py` | **Main FF-HEDM workflow.** Orchestrates the full pipeline: data conversion → peak search → merging → indexing → fitting → grain processing → consolidated HDF5. Supports `-reprocess` mode and pipeline restart via `-resume`/`-restartFrom`. See [FF_Analysis manual](../manuals/FF_Analysis.md). |
+| `pf_MIDAS.py` | **Point-Focus HEDM workflow.** Similar pipeline for focused-beam geometry with spatial scanning. Supports pipeline restart via `-resume`/`-restartFrom`. See [PF_Analysis manual](../manuals/PF_Analysis.md). |
+| `ff_dual_datasets.py` | **Dual-dataset analysis.** Combines two FF-HEDM datasets for improved grain finding. Supports pipeline restart via `-resume`/`-restartFrom`. See [FF_dual_datasets manual](../manuals/FF_Dual_Datasets.md). |
 | `localConfig.py` | Parsl execution configuration for local runs. |
 | `orthrosAllConfig.py` | Parsl configuration for Orthros cluster. |
 | `polarisConfig.py` | Parsl configuration for ALCF Polaris supercomputer. |

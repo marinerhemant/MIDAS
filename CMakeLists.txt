@@ -31,7 +31,7 @@ else()
 endif()
 
 # --- MIDAS Version ---
-set(MIDAS_VERSION "9.2")
+set(MIDAS_VERSION "10.0")
 find_package(Git QUIET)
 if(GIT_FOUND)
   execute_process(COMMAND ${GIT_EXECUTABLE} rev-parse --short=8 HEAD

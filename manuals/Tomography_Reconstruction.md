@@ -1,6 +1,6 @@
 # Tomography Reconstruction with MIDAS
 
-**Version:** 9.0  
+**Version:** 10.0  
 **Contact:** hsharma@anl.gov
 
 ---

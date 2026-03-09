@@ -1,6 +1,6 @@
 # ff_dual_datasets.py User Manual
 
-**Version:** 9.0  
+**Version:** 10.0  
 **Contact:** hsharma@anl.gov
 
 ---
@@ -140,6 +140,8 @@ The script's behavior is controlled via the following arguments.
 | `-nCPUs` | Number of CPU cores to use per node/task. | `10` | `-nCPUs 128` |
 | `-numFrameChunks`| Splits large datasets into chunks during conversion to save RAM. `-1` disables chunking. | `-1` | `-numFrameChunks 4` |
 | `-preProcThresh`| Saves dark-corrected/thresholded data during conversion. `-1` disables. `0` just subtracts dark. | `-1` | `-preProcThresh 100` |
+| `-resume` | Path to a pipeline H5 to resume from. Auto-detects the last completed stage. | `''` | `-resume pipeline.h5` |
+| `-restartFrom` | Explicit stage to restart from. Valid stages: `preprocess_ds1`, `preprocess_ds2`, `mapping`, `indexing`, `consolidation`. | `''` | `-restartFrom indexing` |
 
 ---
 

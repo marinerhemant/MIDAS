@@ -1,6 +1,6 @@
 # FF-HEDM Integrator Peak Fitting Benchmark
 
-**MIDAS v9+**
+**MIDAS v10+**
 
 ## Overview
 

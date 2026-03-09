@@ -1,7 +1,7 @@
 # NF-HEDM Multi-Resolution Analysis Manual
 
 **Script:** `nf_MIDAS_Multiple_Resolutions.py`
-**Version:** 9.0 — Contact: hsharma@anl.gov
+**Version:** 10.0 — Contact: hsharma@anl.gov
 
 ---
 
@@ -57,6 +57,8 @@ python nf_MIDAS_Multiple_Resolutions.py \
 | `-nNodes` | int | `1` | Number of compute nodes (Parsl workers) |
 | `-ffSeedOrientations` | int | `0` | `1` = generate seeds from FF `Grains.csv`; `0` = use existing `SeedOrientations` file |
 | `-doImageProcessing` | int | `1` | `1` = run median and image processing; `0` = skip (reuse existing processed images) |
+| `-resume` | string | `''` | Path to a pipeline H5 to resume from. Auto-detects the last completed stage and prints available restart points. |
+| `-restartFrom` | string | `''` | Explicit stage to restart from. Valid stages: `loop_0_initial`, `loop_N_seeded`, `loop_N_unseeded`, `loop_N_merge` (where N is the loop number). |
 
 ---
 
@@ -317,9 +319,33 @@ This will run:
 - Loop 2 at `GridSize=1.25` (seeded from Loop 1 merged clusters)
 - Loop 3 at `GridSize=0.625` (seeded from Loop 2 merged clusters)
 
-### Example 3: Resuming After Image Processing
+### Example 3: Resume from a Pipeline Checkpoint
 
-If image processing completed but fitting failed:
+If the run was interrupted mid-way through:
+
+```bash
+# Auto-detect last completed stage and resume:
+python nf_MIDAS_Multiple_Resolutions.py \
+    -paramFN params.txt \
+    -machineName local \
+    -nCPUs 8 \
+    -resume /path/to/pipeline.h5
+
+# The script will print:
+#   RESUME: Picking up from stage 'loop_2_seeded'
+#   Completed stages: ['loop_0_initial', 'loop_1_seeded', 'loop_1_unseeded', 'loop_1_merge']
+#   Available stages: ['loop_0_initial', 'loop_1_seeded', ...]
+#   To restart from a different stage, use:
+#     -restartFrom <stage_name>
+
+# Restart from a specific loop/pass:
+python nf_MIDAS_Multiple_Resolutions.py \
+    -paramFN params.txt \
+    -nCPUs 8 \
+    -restartFrom loop_1_seeded
+```
+
+### Example 4: Skip Image Processing (reuse existing)
 
 ```bash
 python nf_MIDAS_Multiple_Resolutions.py \
