@@ -175,7 +175,7 @@ def read_grid(grid_path: str) -> np.ndarray:
     """
     if not os.path.exists(grid_path):
         return None
-    return np.genfromtxt(grid_path)
+    return np.genfromtxt(grid_path, skip_header=1)
 
 
 # ──────────────────────────────────────────────────────────────────────
