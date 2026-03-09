@@ -591,8 +591,8 @@ def main():
         loop_idx = 1
         while True:
             seeded_mic = os.path.join(mic_dir, f"{mic_stem}.{loop_idx}")
-            unseeded_mic = os.path.join(mic_dir, f"{stem_no_ext}_all_solutions.{loop_idx}")
-            merged_mic = os.path.join(mic_dir, f"{stem_no_ext}_merged.{loop_idx}")
+            unseeded_mic = os.path.join(mic_dir, f"{mic_stem}_all_solutions.{loop_idx}")
+            merged_mic = os.path.join(mic_dir, f"{mic_stem}_merged.{loop_idx}")
 
             has_any = any(os.path.exists(f) for f in [seeded_mic, unseeded_mic, merged_mic])
             if not has_any:
