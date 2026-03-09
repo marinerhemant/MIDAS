@@ -20,6 +20,7 @@
 #include "MIDAS_Math.h"
 #include "Panel.h"
 #include "midas_paths.h"
+#include "midas_version.h"
 #include <blosc.h>
 #include <ctype.h>
 #include <math.h>
@@ -1052,6 +1053,7 @@ static long ReadInputData(char *InFileName, int isBin, double **InputInfo,
 }
 
 int main(int argc, char *argv[]) {
+  printf("Version: %s\n", MIDAS_VERSION_STRING);
 
   if (argc != 3) {
     usage();
@@ -1958,7 +1960,7 @@ int main(int argc, char *argv[]) {
                     WeightsY[dy + extent] = 0.0;
                     continue;
                   }
-                  double distY = (double)y_curr - yDet; 
+                  double distY = (double)y_curr - yDet;
                   WeightsY[dy + extent] = exp(-(distY * distY) / twoSigmaSq);
                 }
 

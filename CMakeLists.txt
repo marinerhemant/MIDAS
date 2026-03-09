@@ -30,6 +30,27 @@ else()
   project(MIDAS LANGUAGES C CXX)
 endif()
 
+# --- MIDAS Version ---
+set(MIDAS_VERSION "9.2")
+find_package(Git QUIET)
+if(GIT_FOUND)
+  execute_process(COMMAND ${GIT_EXECUTABLE} rev-parse --short=8 HEAD
+    WORKING_DIRECTORY ${CMAKE_SOURCE_DIR}
+    OUTPUT_VARIABLE MIDAS_GIT_HASH OUTPUT_STRIP_TRAILING_WHITESPACE
+    ERROR_QUIET)
+  execute_process(COMMAND ${GIT_EXECUTABLE} log -1 --format=%ci
+    WORKING_DIRECTORY ${CMAKE_SOURCE_DIR}
+    OUTPUT_VARIABLE MIDAS_GIT_DATE OUTPUT_STRIP_TRAILING_WHITESPACE
+    ERROR_QUIET)
+else()
+  set(MIDAS_GIT_HASH "unknown")
+  set(MIDAS_GIT_DATE "unknown")
+endif()
+configure_file(${CMAKE_SOURCE_DIR}/cmake/midas_version.h.in
+               ${CMAKE_BINARY_DIR}/generated/midas_version.h @ONLY)
+include_directories(${CMAKE_BINARY_DIR}/generated)
+message(STATUS "MIDAS version: ${MIDAS_VERSION} (${MIDAS_GIT_HASH})")
+
 # Set C standard
 set(CMAKE_C_STANDARD 99)
 set(CMAKE_C_STANDARD_REQUIRED ON)

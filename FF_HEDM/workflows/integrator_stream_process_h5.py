@@ -31,6 +31,14 @@ import json
 import datetime
 import struct
 
+# Version stamping
+try:
+    import sys as _sys
+    _sys.path.insert(0, os.path.join(os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__)))), 'utils'))
+    from version import stamp_h5, stamp_zarr
+except ImportError:
+    stamp_h5 = stamp_zarr = None
+
 try:
     import zarr
     from zarr.storage import ZipStore
@@ -267,6 +275,8 @@ def create_hdf5_file_streamed(output_file,
     
     # --- Create Output Groups ---
     with h5py.File(output_file, 'w') as h5f:
+        if stamp_h5 is not None:
+            stamp_h5(h5f)
         h5f.attrs['creation_date'] = np.bytes_(datetime.datetime.now().isoformat())
         h5f.attrs['num_frames'] = num_frames
         
@@ -483,6 +493,8 @@ def create_zarr_zip(zarr_output,
     # --- Open zarr zip store (zarr v2) ---
     store = ZipStore(zarr_output, mode='w')
     root = zarr.group(store, overwrite=True)
+    if stamp_zarr is not None:
+        stamp_zarr(root)
 
     # --- 1. REtaMap (4, nRBins, nEtaBins) from RTthEtaAreaMap.bin ---
     raw_map = np.fromfile(map_data_file, dtype=np.float64)

@@ -15,6 +15,7 @@
 #include "MIDAS_Math.h"
 #include "Panel.h"
 #include "ZarrReader.h"
+#include "midas_version.h"
 #include <blosc2.h>
 #include <ctype.h>
 #include <errno.h>
@@ -555,6 +556,7 @@ static inline int CheckDirectoryCreation(char Folder[1024]) {
 }
 
 int main(int argc, char *argv[]) {
+  printf("Version: %s\n", MIDAS_VERSION_STRING);
   if (argc < 2) {
     printf("Usage: %s ZarrZip (optional)ResultFolder\n", argv[0]);
     exit(EXIT_FAILURE);

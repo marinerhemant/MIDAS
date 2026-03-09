@@ -12,6 +12,7 @@
 
 #include "MIDAS_Math.h"
 #include "ZarrReader.h"
+#include "midas_version.h"
 #include <blosc2.h>
 #include <ctype.h>
 #include <errno.h>
@@ -2495,6 +2496,7 @@ static ErrorCode readFrameData(const char *dataFile, int dataLoc, int nFrames,
  * Main function
  */
 int main(int argc, char *argv[]) {
+  printf("Version: %s\n", MIDAS_VERSION_STRING);
   double startTime = omp_get_wtime();
 
   if (argc < 5) {

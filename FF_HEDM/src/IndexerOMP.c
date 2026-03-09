@@ -7,6 +7,7 @@
 // Hemant Sharma
 // OpenMP version of IndexerLinuxArgsShm code.
 
+#include "midas_version.h"
 #include <ctype.h>
 #include <errno.h>
 #include <fcntl.h>
@@ -2118,8 +2119,9 @@ int ReadSpots(char *cwd) {
 
 int main(int argc, char *argv[]) {
   double start_time = omp_get_wtime();
-  printf("\n\n\t\tIndexerOMP v6.0\nContact hsharma@anl.gov in case of "
-         "questions about the MIDAS project.\n\n");
+  printf("\n\n\t\tIndexerOMP (%s)\nContact hsharma@anl.gov in case of "
+         "questions about the MIDAS project.\n\n",
+         MIDAS_VERSION_STRING);
   int returncode;
   struct TParams Params;
   char *ParamFN;

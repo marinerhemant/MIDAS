@@ -18,6 +18,7 @@
 #include "MIDAS_Math.h"
 #include "Panel.h"
 #include "midas_paths.h"
+#include "midas_version.h"
 #include <ctype.h>
 #include <limits.h>
 #include <math.h>
@@ -2160,6 +2161,7 @@ static void print_parameter_summary(const CalibConfig *c) {
 
 int main(int argc, char *argv[]) {
   setvbuf(stdout, NULL, _IOLBF, 0); // line-buffer stdout for piped output
+  printf("Version: %s\n", MIDAS_VERSION_STRING);
   if (argc != 3) {
     printf("Usage: CalibrantOMP ps.txt nCPUs\n");
     return 1;

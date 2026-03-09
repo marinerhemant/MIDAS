@@ -79,6 +79,8 @@ MIDAS_BIN = MIDAS_HOME / "FF_HEDM" / "bin"
 # Add MIDAS utils to path
 sys.path.insert(0, str(MIDAS_UTILS))
 sys.path.insert(0, str(MIDAS_UTILS / "converters"))
+
+from version import version_string, stamp_zarr
 import midas_config
 midas_config.run_startup_checks()
 try:
@@ -457,6 +459,7 @@ class FileProcessor:
                     logger.debug(f"Could not read OmegaSumFrames, defaulting to 1: {e}")
                 
                 with zarr.open(str(output_zip_file), mode='a') as z_out:
+                    stamp_zarr(z_out)
                     # Copy scan_parameters
                     if 'measurement/process/scan_parameters' in z_in:
                         sp_in = z_in['measurement/process/scan_parameters']

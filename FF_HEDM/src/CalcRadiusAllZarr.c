@@ -14,6 +14,7 @@
 //
 
 #include "ZarrReader.h"
+#include "midas_version.h"
 #include <blosc2.h>
 #include <ctype.h>
 #include <errno.h>
@@ -75,6 +76,7 @@ static inline double acosd(double x) { return rad2deg * (acos(x)); }
 static inline double atand(double x) { return rad2deg * (atan(x)); }
 
 int main(int argc, char *argv[]) {
+  printf("Version: %s\n", MIDAS_VERSION_STRING);
   if (argc < 2) {
     printf("Usage:\n %s ZarrZip (optional)ResultFolder\n", argv[0]);
     return 1;
@@ -312,10 +314,13 @@ int main(int argc, char *argv[]) {
   double tempArr[16], dummyDouble;
   int found;
   while (fgets(aline, 1000, Infile) != NULL) {
-    sscanf(aline, "%lf %lf %lf %lf %lf %lf %lf %lf %lf %lf %lf %lf %lf %lf %lf %lf %lf",
-           &dummyDouble, &tempArr[0], &tempArr[1], &tempArr[2], &tempArr[3],
-           &tempArr[4], &tempArr[5], &tempArr[6], &tempArr[7], &tempArr[8],
-           &tempArr[9], &tempArr[10], &tempArr[11], &tempArr[12], &tempArr[13], &tempArr[14], &tempArr[15]);
+    sscanf(
+        aline,
+        "%lf %lf %lf %lf %lf %lf %lf %lf %lf %lf %lf %lf %lf %lf %lf %lf %lf",
+        &dummyDouble, &tempArr[0], &tempArr[1], &tempArr[2], &tempArr[3],
+        &tempArr[4], &tempArr[5], &tempArr[6], &tempArr[7], &tempArr[8],
+        &tempArr[9], &tempArr[10], &tempArr[11], &tempArr[12], &tempArr[13],
+        &tempArr[14], &tempArr[15]);
     rrd = tempArr[11] * px;
     SpotsMat[counter][13] = -1;
     found = 0;
@@ -393,7 +398,8 @@ int main(int argc, char *argv[]) {
       fprintf(outfile, "%f ", SpotsMat[i][j]);
     }
     fprintf(outfile, "%f %f %f %f %f %f %f %f\n", PowderInt[ctr], Sigmas[i][0],
-            Sigmas[i][1], NrPx[i][0], NrPx[i][1], SpotsMat[i][16], SpotsMat[i][17], SpotsMat[i][18]);
+            Sigmas[i][1], NrPx[i][0], NrPx[i][1], SpotsMat[i][16],
+            SpotsMat[i][17], SpotsMat[i][18]);
   }
   FreeMemMatrix(SpotsMat, MAX_N_SPOTS);
   end = clock();

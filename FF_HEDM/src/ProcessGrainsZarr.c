@@ -17,6 +17,7 @@
 //
 
 #include "ZarrReader.h"
+#include "midas_version.h"
 #include <blosc2.h>
 #include <ctype.h>
 #include <fcntl.h>
@@ -334,6 +335,7 @@ static int countCSVLines(const char *filename) {
 }
 
 int main(int argc, char *argv[]) {
+  printf("Version: %s\n", MIDAS_VERSION_STRING);
   if (argc < 2) {
     printf(
         "Usage: ProcessGrainsZarr ZarrZip (optionally)TrackGrains (0 or 1)\n");

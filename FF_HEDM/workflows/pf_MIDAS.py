@@ -1006,6 +1006,9 @@ def main():
     sys.path.insert(0, utils_dir)
     sys.path.insert(0, v7_dir)
     
+    from version import version_string, stamp_h5
+    logger.info(version_string())
+    
     # Import from MIDAS libraries
     try:
         from calcMiso import MakeSymmetries, GetMisOrientationAngleOM, OrientMat2Euler, OrientMat2Quat, BringDownToFundamentalRegionSym
@@ -1648,6 +1651,7 @@ def main():
             
             # Create HDF file
             with h5py.File(f'{topdir}/Recons/microstructure.hdf', 'w') as f:
+                stamp_h5(f)
                 micstr = f.create_dataset(name='microstr', dtype=np.double, data=filesdata)
                 micstr.attrs['Header'] = np.bytes_(head)
                 

@@ -14,6 +14,7 @@
 #include "PeakFit.h"
 #include "PeakFitIO.h"
 #include "ZarrReader.h"
+#include "midas_version.h"
 #include <assert.h>
 #include <blosc2.h>
 #include <ctype.h>
@@ -653,6 +654,7 @@ int main(int argc, char **argv) {
   }
 
   omp_set_num_threads(nCPUs);
+  printf("Version: %s\n", MIDAS_VERSION_STRING);
   printf("Running with %d OpenMP threads.\n", nCPUs);
 
   double RMax, RMin, RBinSize, EtaMax, EtaMin, EtaBinSize, Lsd, px;

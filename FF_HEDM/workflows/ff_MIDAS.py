@@ -56,6 +56,7 @@ sys.path.insert(0, utils_dir)
 sys.path.insert(0, v7_dir)
 
 import midas_config
+from version import version_string, stamp_h5
 midas_config.run_startup_checks()
 
 from parsl.app.app import python_app
@@ -1389,6 +1390,7 @@ def generate_consolidated_hdf5(result_dir: str, zarr_path: str) -> None:
     # ---------- Write HDF5 ----------
     logger.info(f"Writing consolidated HDF5 to {h5_path}")
     with h5py.File(h5_path, 'w') as h5:
+        stamp_h5(h5)
         # /parameters/
         pg = h5.create_group('parameters')
         for key, val in params_dict.items():
@@ -1756,7 +1758,8 @@ def reprocess_results(result_dir: str) -> None:
 
 
 def main():
-    """Main function to process data."""        
+    """Main function to process data."""
+    logger.info(version_string())
     # Set up signal handler
     global default_handler
     default_handler = signal.getsignal(signal.SIGINT)
