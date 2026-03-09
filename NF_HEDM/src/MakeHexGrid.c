@@ -106,7 +106,8 @@ int main(int argc, char *argv[]) {
   FILE *fileParam;
   char aline[1000];
   fileParam = fopen(ParamFN, "r");
-  char *str, dummy[1000], direct[1024], gridfn[1000];
+  char *str, dummy[1000], direct[1024], outputDir[1024], gridfn[1000];
+  outputDir[0] = '\0';
   int LowNr;
   int gridfnfound = 0;
   double GridSize, Rsample, EdgeLength = 0;
@@ -136,6 +137,12 @@ int main(int argc, char *argv[]) {
       sscanf(aline, "%s %s", dummy, direct);
       continue;
     }
+    str = "OutputDirectory ";
+    LowNr = strncmp(aline, str, strlen(str));
+    if (LowNr == 0) {
+      sscanf(aline, "%s %s", dummy, outputDir);
+      continue;
+    }
     str = "GridFileName ";
     LowNr = strncmp(aline, str, strlen(str));
     if (LowNr == 0) {
@@ -145,6 +152,9 @@ int main(int argc, char *argv[]) {
     }
   }
   fclose(fileParam);
+  if (outputDir[0] != '\0')
+    strcpy(direct, outputDir);
+
   if (EdgeLength == 0)
     EdgeLength = GridSize;
 
@@ -155,6 +165,8 @@ int main(int argc, char *argv[]) {
   printf("================================================================\n");
   printf("\n--- File Paths ---\n");
   printf("  DataDirectory:      %s\n", direct);
+  printf("  OutputDirectory:    %s\n",
+         outputDir[0] ? outputDir : "(same as DataDirectory)");
   if (gridfnfound)
     printf("  GridFileName:       %s\n", gridfn);
   else
