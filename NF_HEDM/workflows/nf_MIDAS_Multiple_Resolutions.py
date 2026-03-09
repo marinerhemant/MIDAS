@@ -902,6 +902,12 @@ def main():
         sys.exit(1)
     if 'OutputDirectory' in params:
         logger.info(f"Using OutputDirectory for results: {resultFolder}")
+        os.makedirs(resultFolder, exist_ok=True)
+        param_dest = os.path.join(resultFolder, os.path.basename(args.paramFN))
+        if os.path.abspath(args.paramFN) != os.path.abspath(param_dest):
+            shutil.copy2(args.paramFN, param_dest)
+            logger.info(f"Copied parameter file to OutputDirectory: {param_dest}")
+            args.paramFN = param_dest
     
     logDir = os.path.join(resultFolder, 'midas_log')
     params['logDir'] = logDir
