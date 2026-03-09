@@ -9,13 +9,13 @@
 // Created by Hemant Sharma on 2024/02/10
 //
 
+#include "midas_version.h"
 #include <ctype.h>
-#include <math.h>
+#include <omp.h>
 #include <stdbool.h>
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
-#include "midas_version.h"
 
 #define deg2rad 0.0174532925199433
 #define rad2deg 57.2957795130823
@@ -56,7 +56,8 @@ int compare_grains(const void *a, const void *b) {
 
 static inline void usage(void) {
   printf("Mic2GrainsList usage: ./Mic2GrainsList <ParamFile> <MicFile> "
-         "<OutputFile> [DoNeighborSearch (0/1, default 0)]\n");
+         "<OutputFile> [DoNeighborSearch (0/1, default 0)] [nCPUs (default "
+         "all)]\n");
 }
 
 // Queue for BFS
@@ -96,7 +97,7 @@ void freeQueue(Queue *q) {
 }
 
 int main(int argc, char *argv[]) {
-	printf("Version: %s\n", MIDAS_VERSION_STRING);
+  printf("Version: %s\n", MIDAS_VERSION_STRING);
   if (argc < 4) {
     usage();
     return 1;
@@ -106,9 +107,14 @@ int main(int argc, char *argv[]) {
   char *micFN = argv[2];
   char *outFN = argv[3];
   int doNeighborSearch = 0;
+  int nCPUs = omp_get_max_threads();
   if (argc >= 5) {
     doNeighborSearch = atoi(argv[4]);
   }
+  if (argc >= 6) {
+    nCPUs = atoi(argv[5]);
+  }
+  omp_set_num_threads(nCPUs);
 
   // Default parameters
   int sgNr = 225; // Default to cubic if not found
@@ -163,6 +169,7 @@ int main(int argc, char *argv[]) {
   printf("  LatticeParameter: %lf %lf %lf %lf %lf %lf\n", latP[0], latP[1],
          latP[2], latP[3], latP[4], latP[5]);
   printf("  DoNeighborSearch: %d\n", doNeighborSearch);
+  printf("  nCPUs: %d\n", nCPUs);
 
   FILE *fp = fopen(micFN, "r");
   if (!fp) {
@@ -233,12 +240,15 @@ int main(int argc, char *argv[]) {
     grains[count].confidence = vals[10];
     grains[count].used = false;
     grains[count].originalIndex = count;
-
-    Euler2OrientMat(grains[count].eul, (double (*)[3])grains[count].orientMat);
-
     count++;
   }
   fclose(fp);
+
+  // Parallel Euler -> OrientMat conversion
+#pragma omp parallel for schedule(static)
+  for (int k = 0; k < count; k++) {
+    Euler2OrientMat(grains[k].eul, (double (*)[3])grains[k].orientMat);
+  }
 
   printf("Read %d valid orientations (confidence >= %lf)\n", count, minConf);
 
@@ -258,7 +268,7 @@ int main(int argc, char *argv[]) {
   int nUnique = 0;
 
   if (doNeighborSearch == 0) {
-    // --- Traditional Global Merge ---
+    // --- Traditional Global Merge (OpenMP-parallel inner loop) ---
     for (int i = 0; i < count; i++) {
       if (grains[i].used)
         continue;
@@ -280,15 +290,17 @@ int main(int argc, char *argv[]) {
       nUnique++;
       grains[i].used = true;
 
-      // Mark duplicates globally
+      // Mark duplicates globally (parallel)
+#pragma omp parallel for schedule(dynamic, 256)
       for (int j = i + 1; j < count; j++) {
         if (grains[j].used)
           continue;
 
-        OrientMat2Quat(grains[j].orientMat, quat2);
-        GetMisOrientation(quat1, quat2, axis, &ang, sgNr);
+        double q2[4], ax[3], a;
+        OrientMat2Quat(grains[j].orientMat, q2);
+        GetMisOrientation(quat1, q2, ax, &a, sgNr);
 
-        if (ang < maxAng) {
+        if (a < maxAng) {
           grains[j].used = true;
         }
       }

@@ -154,7 +154,7 @@ def enrich_zarr_metadata(zarr_file_path, params):
         
         # Populate Scan Parameters (simplistic mappings from config to measurement)
         # Assuming missing physical metadata like temperature is irrelevant for raw simulations
-        sp_pro.require_dataset('datatype', shape=(), dtype=str, data='uint16')
+        sp_pro.require_dataset('datatype', shape=(), dtype=str, data='int32')
 
         z_groups = {
             'sp_pro_analysis': sp_ana,

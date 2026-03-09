@@ -17,6 +17,7 @@
 //
 //
 
+#include "FileReader.h"
 #include "MIDAS_Math.h"
 #include "Panel.h"
 #include "midas_paths.h"
@@ -43,7 +44,7 @@ static int nPanels = 0;
 #define RealType double
 #define EPS 0.00001
 #define MAX_NR_POINTS 20000000
-#define MAX_OUTPUT_INTENSITY 15000
+#define DEFAULT_MAX_OUTPUT_INTENSITY 15000
 
 // --- Frame-batching support ---
 typedef struct {
@@ -1089,6 +1090,10 @@ int main(int argc, char *argv[]) {
   double *positions, beamSize = -1;
   double eResolution = 0.0; // Default to monochromatic (zero spread)
   char IntensitiesFile[4096] = "";
+  double maxOutputIntensity = DEFAULT_MAX_OUTPUT_INTENSITY;
+  char MaskFN[4096] = "";
+  int useMask = 0;
+  double *mask = NULL;
   double RingNrIntensity[500];
   int num_lambda_samples = 1;
   int SimulationBatches = 0; // 0 = auto-detect based on system RAM
@@ -1373,6 +1378,19 @@ int main(int argc, char *argv[]) {
       sscanf(aline, "%s %lf %d", dummy, &eResolution, &num_lambda_samples);
       continue;
     }
+    str = "MaxOutputIntensity ";
+    LowNr = strncmp(aline, str, strlen(str));
+    if (LowNr == 0) {
+      sscanf(aline, "%s %lf", dummy, &maxOutputIntensity);
+      continue;
+    }
+    str = "MaskFile ";
+    LowNr = strncmp(aline, str, strlen(str));
+    if (LowNr == 0) {
+      sscanf(aline, "%s %s", dummy, MaskFN);
+      useMask = 1;
+      continue;
+    }
     str = "SimulationBatches ";
     LowNr = strncmp(aline, str, strlen(str));
     if (LowNr == 0) {
@@ -1396,6 +1414,24 @@ int main(int argc, char *argv[]) {
         fprintf(stderr, "Failed to load panel shifts from %s\n",
                 PanelShiftsFile);
       }
+    }
+  }
+
+  // Load mask file if specified
+  if (useMask) {
+    mask = calloc(NrPixels * NrPixels, sizeof(double));
+    if (ReadTiffFrame(MaskFN, 7, NrPixels * NrPixels, mask, 0) == 0) {
+      int maskedPixels = 0;
+      for (int mi = 0; mi < NrPixels * NrPixels; mi++)
+        if (mask[mi] == 1.0)
+          maskedPixels++;
+      printf("Mask file read: %s (%d masked pixels out of %d)\n", MaskFN,
+             maskedPixels, NrPixels * NrPixels);
+    } else {
+      printf("Failed to read mask file: %s\n", MaskFN);
+      free(mask);
+      mask = NULL;
+      useMask = 0;
     }
   }
 
@@ -1442,6 +1478,9 @@ int main(int argc, char *argv[]) {
   printf("Scans:               %d\n", nScans);
   if (beamSize > 0)
     printf("Beam Size:           %.4f (microns)\n", beamSize);
+  printf("MaxOutputIntensity:  %.2f\n", maxOutputIntensity);
+  if (useMask)
+    printf("MaskFile:            %s\n", MaskFN);
   printf("Misc Options:        WriteSpots=%d, WriteImage=%d, IsBinary=%d, "
          "NFOutput=%d\n",
          writeSpots, WriteImage, isBin, nfOutput);
@@ -2084,7 +2123,7 @@ int main(int argc, char *argv[]) {
       blosc_set_nthreads(10);
       int nFrames = nFrames_total;
       int frameNr;
-      uint16_t *data_out, *outArr;
+      int32_t *data_out, *outArr;
       outArr = calloc(NrPixels * NrPixels, sizeof(*outArr));
       int compressedSize;
       char outfn[4096];
@@ -2122,7 +2161,7 @@ int main(int argc, char *argv[]) {
               "  \"clevel\": 3,\n"
               "\n        \"cname\": \"zstd\",\n        \"id\": \"blosc\",\n    "
               "    \"shuffle\": 2\n"
-              "    },\n    \"dtype\": \"<u2\",\n    \"fill_value\": 0,\n    "
+              "    },\n    \"dtype\": \"<i4\",\n    \"fill_value\": 0,\n    "
               "\"filters\": null,\n"
               "    \"order\": \"C\",\n    \"shape\": [\n        %d,\n        "
               "%d,\n        %d\n    ],\n"
@@ -2153,9 +2192,11 @@ int main(int argc, char *argv[]) {
         size_t loc = 0;
         for (frameNr = 0; frameNr < nFrames; frameNr++) {
           for (i = 0; i < NrPixels * NrPixels; i++) {
-            if (maxInt > 0) {
+            if (mask && mask[i] == 1.0) {
+              outArr[i] = -1;
+            } else if (maxInt > 0) {
               outArr[i] =
-                  (uint16_t)(ImageArr[loc] * MAX_OUTPUT_INTENSITY / maxInt);
+                  (int32_t)(ImageArr[loc] * maxOutputIntensity / maxInt);
             } else {
               outArr[i] = 0;
             }
@@ -2164,8 +2205,8 @@ int main(int argc, char *argv[]) {
           data_out = calloc(NrPixels * NrPixels, sizeof(*data_out));
           blosc_set_compressor("zstd");
           compressedSize = blosc_compress(
-              3, 2, 2, NrPixels * NrPixels * sizeof(uint16_t), outArr, data_out,
-              NrPixels * NrPixels * sizeof(uint16_t));
+              3, 2, 4, NrPixels * NrPixels * sizeof(int32_t), outArr, data_out,
+              NrPixels * NrPixels * sizeof(int32_t));
           sprintf(outfn, "exchange/data/%d.0.0", frameNr);
           const void *dataT = (const void *)data_out;
           zip_source_t *source =
@@ -2293,9 +2334,11 @@ int main(int argc, char *argv[]) {
           for (frameNr = startFrame; frameNr < endFrame; frameNr++) {
             size_t fOff = (size_t)(frameNr - startFrame) * NrPixels * NrPixels;
             for (i = 0; i < NrPixels * NrPixels; i++) {
-              if (maxInt > 0) {
-                outArr[i] = (uint16_t)(batchArr[fOff + i] *
-                                       MAX_OUTPUT_INTENSITY / maxInt);
+              if (mask && mask[i] == 1.0) {
+                outArr[i] = -1;
+              } else if (maxInt > 0) {
+                outArr[i] = (int32_t)(batchArr[fOff + i] *
+                                      maxOutputIntensity / maxInt);
               } else {
                 outArr[i] = 0;
               }
@@ -2303,8 +2346,8 @@ int main(int argc, char *argv[]) {
             data_out = calloc(NrPixels * NrPixels, sizeof(*data_out));
             blosc_set_compressor("zstd");
             compressedSize = blosc_compress(
-                3, 2, 2, NrPixels * NrPixels * sizeof(uint16_t), outArr,
-                data_out, NrPixels * NrPixels * sizeof(uint16_t));
+                3, 2, 4, NrPixels * NrPixels * sizeof(int32_t), outArr,
+                data_out, NrPixels * NrPixels * sizeof(int32_t));
             sprintf(outfn, "exchange/data/%d.0.0", frameNr);
             const void *dataT = (const void *)data_out;
             zip_source_t *source =
@@ -2352,6 +2395,9 @@ int main(int argc, char *argv[]) {
   free(positions);
   if (ImageArr) {
     free(ImageArr);
+  }
+  if (mask) {
+    free(mask);
   }
   free(yDispl);
   free(zDispl);
