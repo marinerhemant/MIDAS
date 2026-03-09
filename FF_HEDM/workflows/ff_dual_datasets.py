@@ -53,6 +53,17 @@ midas_config.run_startup_checks()
 from parsl.app.app import python_app
 pytpath = sys.executable
 
+from pipeline_state import PipelineH5
+
+# Import FF consolidation function for final output
+ff_workflow_dir = os.path.join(install_dir, "FF_HEDM/workflows")
+sys.path.insert(0, ff_workflow_dir)
+try:
+    from ff_MIDAS import generate_consolidated_hdf5 as ff_consolidate_h5
+    HAS_FF_CONSOLIDATE = True
+except ImportError:
+    HAS_FF_CONSOLIDATE = False
+
 @contextmanager
 def change_directory(new_dir: str) -> Generator[None, None, None]:
     """Context manager for changing directory."""
@@ -489,6 +500,19 @@ def main():
         sys.exit(1)
 
     # --- Main Processing Workflow ---
+    # Read param file text for provenance
+    with open(args.paramFN, 'r') as f:
+        param_text = f.read()
+    h5_path = os.path.join(top_res_dir, 'dual_dataset_consolidated.h5')
+    ph5 = PipelineH5(h5_path, 'ff_dual_datasets', vars(args), param_text)
+    ph5.__enter__()
+    
+    # Store dataset offsets
+    ph5.write_dataset('parameters/offsetX', args.offsetX)
+    ph5.write_dataset('parameters/offsetY', args.offsetY)
+    ph5.write_dataset('parameters/offsetZ', args.offsetZ)
+    ph5.write_dataset('parameters/offsetOmega', args.offsetOmega)
+    
     with cleanup_context():
         try:
             # Step 1: Process the first dataset up to binning
@@ -497,6 +521,8 @@ def main():
                 num_procs=num_procs, n_nodes=n_nodes, n_chunks=args.numFrameChunks,
                 preproc=args.preProcThresh, bin_directory=bin_dir
             )
+            ph5.mark('ds1_binning')
+            ph5.write_dataset('datasets/ds1/result_dir', result_dir1)
             
             # Step 2: Process the second dataset up to binning
             result_dir2 = process_dataset_until_binning(
@@ -504,6 +530,8 @@ def main():
                 num_procs=num_procs, n_nodes=n_nodes, n_chunks=args.numFrameChunks,
                 preproc=args.preProcThresh, bin_directory=bin_dir
             )
+            ph5.mark('ds2_binning')
+            ph5.write_dataset('datasets/ds2/result_dir', result_dir2)
 
             # Step 3: Add the mapping information to the parameter file of the first dataset
             paramstest_path = os.path.join(result_dir1, "paramstest.txt")
@@ -529,16 +557,41 @@ def main():
                 err_file=os.path.join(result_dir1, 'output', 'map_err.txt'),
                 task_name="Dataset Mapping"
             )
+            ph5.mark('mapping')
 
             # Step 5: Run indexing and subsequent steps on the mapped data in the first folder
             process_mapped_dataset_from_indexing(
                 result_dir=result_dir1, num_procs=num_procs, n_nodes=n_nodes, bin_directory=bin_dir
             )
+            ph5.mark('indexing_refinement')
+
+            # Generate consolidated H5 from grains data
+            grains_csv = os.path.join(result_dir1, 'Grains.csv')
+            if os.path.exists(grains_csv):
+                try:
+                    grains_data = np.genfromtxt(grains_csv, skip_header=9)
+                    if grains_data.ndim == 1:
+                        grains_data = grains_data.reshape(1, -1)
+                    ph5.write_dataset('grains/data', grains_data)
+                    ph5.write_dataset('grains/num_grains', grains_data.shape[0])
+                    if grains_data.shape[1] >= 22:
+                        ph5.write_dataset('grains/position', grains_data[:, 11:14])
+                        ph5.write_dataset('grains/orientation_matrix', grains_data[:, 1:10].reshape(-1, 3, 3))
+                        ph5.write_dataset('grains/lattice_params', grains_data[:, 14:20])
+                        ph5.write_dataset('grains/strain', grains_data[:, 22:31].reshape(-1, 3, 3))
+                except Exception as e:
+                    logger.warning(f"Failed to write grains to H5: {e}")
+            ph5.mark('consolidation')
 
         except Exception as e:
             logger.error(f"An error occurred during the dual dataset workflow: {e}")
+            try:
+                ph5.__exit__(type(e), e, e.__traceback__)
+            except Exception:
+                pass
             sys.exit(1)
             
+    ph5.__exit__(None, None, None)
     logger.info("Dual dataset processing completed successfully.")
 
 # MIDAS version banner

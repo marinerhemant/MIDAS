@@ -1007,6 +1007,7 @@ def main():
     sys.path.insert(0, v7_dir)
     
     from version import version_string, stamp_h5
+    from pipeline_state import PipelineH5
     logger.info(version_string())
     
     # Import from MIDAS libraries
@@ -1103,6 +1104,13 @@ def main():
         # Read parameter file
         with open(baseNameParamFN, 'r') as f:
             paramContents = f.readlines()
+        param_text = ''.join(paramContents)
+
+        # Initialize consolidated H5
+        h5_path = os.path.join(topdir, 'Recons', 'microstructure_pf.h5')
+        os.makedirs(os.path.join(topdir, 'Recons'), exist_ok=True)
+        ph5 = PipelineH5(h5_path, 'pf_midas', vars(args), param_text)
+        ph5.__enter__()
         
         # Initialize variables
         RingNrs = []
@@ -1179,6 +1187,12 @@ def main():
         
         logger.info(f"Ring numbers: {RingNrs}")
         logger.info(f"Ring radii: {rads}")
+        ph5.mark('hkl')
+        ph5.write_dataset('parameters/RingNrs', np.array(RingNrs, dtype=np.int32))
+        ph5.write_dataset('parameters/RingRadii', np.array(rads))
+        ph5.write_dataset('parameters/sgnum', sgnum)
+        ph5.write_dataset('parameters/nScans', nScans)
+        ph5.write_dataset('parameters/BeamSize', BeamSize)
         
         # Handle merges
         if nMerges != 0:
@@ -1231,6 +1245,7 @@ def main():
                     sys.exit(1)
             
             logger.info(f'Peak search completed on {nNodes} nodes.')
+            ph5.mark('peak_search')
         else:
             if nMerges != 0:
                 for layerNr in range(0, nMerges * (nScans // nMerges)):
@@ -1265,6 +1280,11 @@ def main():
                 
             nScans = int(floor(nScans / nMerges))
             BeamSize *= nMerges
+            ph5.mark('merge')
+            ph5.write_dataset('merge_info/was_merged', True)
+            ph5.write_dataset('merge_info/nMerges', nMerges)
+            ph5.write_dataset('merge_info/post_merge_nScans', nScans)
+            ph5.write_dataset('merge_info/post_merge_BeamSize', BeamSize)
         
         # Prepare for indexing and refinement
         os.chdir(topdir)
@@ -1307,6 +1327,19 @@ def main():
                 paramsf.write(f'GrainsFile {args.grainsFN}\n')
                 print("Added grains file to parameters file: ", args.grainsFN)
                 grainsFN = args.grainsFN
+        ph5.mark('params_rewrite')
+        ph5.write_dataset('parameters/nScans_final', nScans)
+        ph5.write_dataset('parameters/BeamSize_final', BeamSize)
+        
+        # Determine execution path
+        if oneSolPerVox == 1:
+            if doTomo == 1:
+                exec_path = 'single_tomo'
+            else:
+                exec_path = 'single_no_tomo'
+        else:
+            exec_path = 'multi_solution'
+        ph5.write_dataset('parameters/execution_path', exec_path)
         
         # Run indexing if requested
         if runIndexing == 1:
@@ -1344,6 +1377,7 @@ def main():
                             logger.error(f"Error file content: {f.read()}")
                     
                     sys.exit(1)
+            ph5.mark('indexing')
         
         # Handle single solution per voxel
         if oneSolPerVox == 1:
@@ -1649,7 +1683,7 @@ def main():
             # Save output files
             np.savetxt(f'{topdir}/Recons/microstrFull.csv', filesdata, fmt='%.6f', delimiter=',', header=head)
             
-            # Create HDF file
+            # Create legacy HDF file for backward compatibility
             with h5py.File(f'{topdir}/Recons/microstructure.hdf', 'w') as f:
                 stamp_h5(f)
                 micstr = f.create_dataset(name='microstr', dtype=np.double, data=filesdata)
@@ -1662,6 +1696,35 @@ def main():
                 
                 imgs = f.create_dataset(name='images', dtype=np.double, data=info_arr)
                 imgs.attrs['Header'] = np.bytes_('ID,Quat1,Quat2,Quat3,Quat4,x,y,a,b,c,alpha,beta,gamma,posErr,omeErr,InternalAngle,Completeness,E11,E12,E13,E22,E23,E33')
+            
+            # Write to consolidated H5
+            ph5.mark('refinement')
+            ph5.write_dataset('voxels/microstr', filesdata)
+            ph5.h5['voxels/microstr'].attrs['Header'] = np.bytes_(head)
+            
+            info_arr_final = info_arr.reshape((23, nScans, nScans))
+            info_arr_final = np.flip(info_arr_final, axis=(1, 2))
+            info_arr_final = info_arr_final.transpose(0, 2, 1)
+            ph5.write_dataset('images/data', info_arr_final)
+            ph5.h5['images/data'].attrs['Header'] = np.bytes_('ID,Quat1,Quat2,Quat3,Quat4,x,y,a,b,c,alpha,beta,gamma,posErr,omeErr,InternalAngle,Completeness,E11,E12,E13,E22,E23,E33')
+            
+            # Extract per-voxel structured data
+            valid = ~np.isnan(filesdata[:, 26]) & (filesdata[:, 26] >= 0) & (filesdata[:, 26] <= 1.0000001)
+            valid_data = filesdata[valid]
+            if valid_data.size > 0:
+                ph5.write_dataset('voxels/position', valid_data[:, 11:14])
+                ph5.write_dataset('voxels/orientation_matrix', valid_data[:, 1:10].reshape(-1, 3, 3))
+                ph5.write_dataset('voxels/euler_angles', valid_data[:, 35:38])
+                ph5.write_dataset('voxels/quaternion', valid_data[:, 39:43])
+                ph5.write_dataset('voxels/lattice_params', valid_data[:, 15:21])
+                ph5.write_dataset('voxels/strain', valid_data[:, 27:36].reshape(-1, 3, 3))
+                ph5.write_dataset('voxels/completeness', valid_data[:, 26])
+                ph5.write_dataset('voxels/pos_error', valid_data[:, 22])
+                ph5.write_dataset('voxels/ome_error', valid_data[:, 23])
+                ph5.write_dataset('voxels/internal_angle', valid_data[:, 24])
+                ph5.write_dataset('voxels/radius', valid_data[:, 25])
+            
+            ph5.mark('consolidation')
         else:
             # Multiple solutions per voxel
             # Read Completeness from params file
@@ -1726,12 +1789,34 @@ def main():
             head += 'E11,E12,E13,E21,E22,E23,E31,E32,E33,Eul1,Eul2,Eul3,Quat1,Quat2,Quat3,Quat4'
             
             np.savetxt('microstrFull.csv', filesdata, fmt='%.6f', delimiter=',', header=head)
+
+            # Write multi-solution results to consolidated H5
+            ph5.mark('find_multiple_solutions')
+            ph5.write_dataset('voxels/microstr', filesdata)
+            ph5.h5['voxels/microstr'].attrs['Header'] = np.bytes_(head)
+
+            valid = filesdata[:, :1].ravel() > 0  # has valid SpotID
+            valid_data = filesdata[valid]
+            if valid_data.size > 0:
+                ph5.write_dataset('voxels/position', valid_data[:, 11:14])
+                ph5.write_dataset('voxels/orientation_matrix', valid_data[:, 1:10].reshape(-1, 3, 3))
+                ph5.write_dataset('voxels/euler_angles', valid_data[:, 35:38])
+                ph5.write_dataset('voxels/quaternion', valid_data[:, 39:43])
+                ph5.write_dataset('voxels/lattice_params', valid_data[:, 15:21])
+                ph5.write_dataset('voxels/strain', valid_data[:, 27:36].reshape(-1, 3, 3))
+                ph5.write_dataset('voxels/completeness', valid_data[:, 26])
+            ph5.mark('consolidation')
         
         logger.info(f"All processing completed successfully. Time elapsed: {time.time() - startTime:.2f} seconds.")
+        ph5.__exit__(None, None, None)
         
     except Exception as e:
         logger.error(f"Unhandled exception in main: {str(e)}")
         logger.error(traceback.format_exc())
+        try:
+            ph5.__exit__(type(e), e, e.__traceback__)
+        except Exception:
+            pass
         sys.exit(1)
 
 if __name__ == "__main__":

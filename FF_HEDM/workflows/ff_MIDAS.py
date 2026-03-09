@@ -57,6 +57,7 @@ sys.path.insert(0, v7_dir)
 
 import midas_config
 from version import version_string, stamp_h5
+from pipeline_state import PipelineH5
 midas_config.run_startup_checks()
 
 from parsl.app.app import python_app
@@ -967,6 +968,23 @@ def process_layer(layer_nr: int, top_res_dir: str, ps_fn: str, data_fn: str, num
             safely_run_command(cmd, result_dir, f_hkls_out, f_hkls_err, task_name="HKL generation")
         except Exception as e:
             raise RuntimeError(f"Failed to generate HKLs: {e}")
+
+        # Initialize pipeline state in consolidated H5
+        param_text = ''
+        if os.path.exists(ps_fn):
+            with open(ps_fn, 'r') as pf:
+                param_text = pf.read()
+        # Use the same H5 that generate_consolidated_hdf5 will create
+        if outFStem:
+            stem = os.path.splitext(os.path.basename(outFStem))[0]
+            stem = stem.replace('.MIDAS', '')
+        else:
+            stem = f'layer_{layer_nr}'
+        ph5_path = os.path.join(result_dir, f'{stem}_consolidated.h5')
+        layer_args = {'layer_nr': layer_nr, 'result_dir': result_dir, 'ps_fn': ps_fn}
+        ph5 = PipelineH5(ph5_path, 'ff_midas', layer_args, param_text)
+        ph5.__enter__()
+        ph5.mark('hkl')
     else:
         # Handle InputAll case
         with change_directory(result_dir):
@@ -994,6 +1012,7 @@ def process_layer(layer_nr: int, top_res_dir: str, ps_fn: str, data_fn: str, num
                     res.append(peaks(result_dir, outFStem, num_procs, bin_directory, blockNr=nodeNr, numBlocks=n_nodes))
                 outputs = [i.result() for i in res]
                 logger.info(f"PeakSearch done. Time till now: {time.time() - t0}")
+                ph5.mark('peak_search')
             except Exception as e:
                 raise RuntimeError(f"Failed during peak search: {e}")
         else:
@@ -1009,6 +1028,7 @@ def process_layer(layer_nr: int, top_res_dir: str, ps_fn: str, data_fn: str, num
             f_merge_err = f'{result_dir}/midas_log/merge_overlaps_err.csv'
             cmd = f"{os.path.join(bin_directory, 'MergeOverlappingPeaksAllZarr')} {outFStem}"
             safely_run_command(cmd, result_dir, f_merge_out, f_merge_err, task_name="Peak merging")
+            ph5.mark('merge_overlaps')
         except Exception as e:
             raise RuntimeError(f"Failed to merge peaks: {e}")
         
@@ -1019,6 +1039,7 @@ def process_layer(layer_nr: int, top_res_dir: str, ps_fn: str, data_fn: str, num
             f_radius_err = f'{result_dir}/midas_log/calc_radius_err.csv'
             cmd = f"{os.path.join(bin_directory, 'CalcRadiusAllZarr')} {outFStem}"
             safely_run_command(cmd, result_dir, f_radius_out, f_radius_err, task_name="Radius calculation")
+            ph5.mark('calc_radius')
         except Exception as e:
             raise RuntimeError(f"Failed to calculate radii: {e}")
         
@@ -1029,6 +1050,7 @@ def process_layer(layer_nr: int, top_res_dir: str, ps_fn: str, data_fn: str, num
             f_setup_err = f'{result_dir}/midas_log/fit_setup_err.csv'
             cmd = f"{os.path.join(bin_directory, 'FitSetupZarr')} {outFStem}"
             safely_run_command(cmd, result_dir, f_setup_out, f_setup_err, task_name="Data transformation")
+            ph5.mark('data_transform')
         except Exception as e:
             raise RuntimeError(f"Failed to transform data: {e}")
 
@@ -1058,6 +1080,7 @@ def process_layer(layer_nr: int, top_res_dir: str, ps_fn: str, data_fn: str, num
             f_bin_err = f'{result_dir}/midas_log/binning_err.csv'
             cmd = f"{os.path.join(bin_directory, 'SaveBinData')}"
             safely_run_command(cmd, result_dir, f_bin_out, f_bin_err, task_name="Data binning")
+            ph5.mark('binning')
         except Exception as e:
             raise RuntimeError(f"Failed to bin data: {e}")
             
@@ -1069,6 +1092,7 @@ def process_layer(layer_nr: int, top_res_dir: str, ps_fn: str, data_fn: str, num
             for nodeNr in range(n_nodes):
                 res_index.append(index(result_dir, num_procs, bin_directory, blockNr=nodeNr, numBlocks=n_nodes))
             output_index = [i.result() for i in res_index]
+            ph5.mark('indexing')
         except Exception as e:
             raise RuntimeError(f"Failed during indexing: {e}")
             
@@ -1080,6 +1104,7 @@ def process_layer(layer_nr: int, top_res_dir: str, ps_fn: str, data_fn: str, num
             for nodeNr in range(n_nodes):
                 res_refine.append(refine(result_dir, num_procs, bin_directory, blockNr=nodeNr, numBlocks=n_nodes))
             output_refine = [i.result() for i in res_refine]
+            ph5.mark('refinement')
         except Exception as e:
             raise RuntimeError(f"Failed during refinement: {e}")
                         
@@ -1106,9 +1131,11 @@ def process_layer(layer_nr: int, top_res_dir: str, ps_fn: str, data_fn: str, num
         # Generate consolidated HDF5 output with full provenance
         try:
             generate_consolidated_hdf5(result_dir, outFStem)
+            ph5.mark('consolidation')
         except Exception as e:
             logger.warning(f"Failed to generate consolidated HDF5: {e}")
-            
+
+        ph5.__exit__(None, None, None)
         logger.info(f"Done Layer {layer_nr}. Total time elapsed: {time.time() - t0}")
 
 def get_grains_info(result_dir: str) -> None:
