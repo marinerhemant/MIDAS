@@ -1301,6 +1301,28 @@ def main():
                                 f'InputAllExtraInfoFittingAll{layerNr}.csv'
                             )
             ph5.mark('peak_search')
+            
+            # Ingest peak search results into H5 (works whether peaksearch
+            # was actually run or skipped via -doPeakSearch 0)
+            spots_per_scan = []
+            total_spots = 0
+            for scanNr in range(nScans):
+                csv_fn = os.path.join(topdir, f'InputAllExtraInfoFittingAll{scanNr}.csv')
+                if os.path.exists(csv_fn):
+                    try:
+                        df = pd.read_csv(csv_fn, delimiter=' ', skipinitialspace=True)
+                        n = len(df)
+                        spots_per_scan.append(n)
+                        total_spots += n
+                    except Exception as e:
+                        logger.warning(f"Could not read {csv_fn}: {e}")
+                        spots_per_scan.append(0)
+                else:
+                    spots_per_scan.append(0)
+            ph5.write_dataset('peak_search/spots_per_scan', np.array(spots_per_scan, dtype=np.int64))
+            ph5.write_dataset('peak_search/total_spots', total_spots)
+            ph5.write_dataset('peak_search/doPeakSearch', doPeakSearch)
+            logger.info(f"Peak search summary: {total_spots} total spots across {nScans} scans")
         else:
             logger.info("RESUME: skipping peak_search stage")
         
