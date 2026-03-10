@@ -409,11 +409,15 @@ static inline void SpotToGv(double xi, double yi, double zi, double Omega,
 // Dynamic Spot Reassignment: search AllSpots via bin structures to find
 // better-matched observed spots for the current grain parameters.
 // Returns the new number of matched spots (updates spotsYZO in-place).
+static int DoDynamicReassignment = 1;
+
 static int ReassignSpotsFromBins(
     double x[12], int nhkls, double **hklsIn, double Lsd, double Wavelength,
     int nOmegaRanges, double OmegaRange[MAXNOMEGARANGES][2],
     double BoxSize[MAXNOMEGARANGES][4], double MinEta, double wedge, double chi,
     double **spotsYZO, int maxSpots, double *AllSpotsPtr, int totalNSpots) {
+  if (!DoDynamicReassignment)
+    return 0;
   if (ObsSpotsLab == NULL || BinData == NULL || nBinData == NULL)
     return 0;
   int i, j;
@@ -443,7 +447,7 @@ static int ReassignSpotsFromBins(
   for (int sp = 0; sp < nTspots && nMatched < maxSpots; sp++) {
     int RingNr = (int)TheorSpots[sp][7];
     double theorOmega = TheorSpots[sp][2];
-    double theorEta = CalcEtaAngleLocal(-TheorSpots[sp][0], TheorSpots[sp][1]);
+    double theorEta = CalcEtaAngleLocal(TheorSpots[sp][0], TheorSpots[sp][1]);
     int iRing = RingNr - 1;
     if (iRing < 0 || iRing >= g_n_ring_bins)
       continue;
@@ -548,6 +552,48 @@ CalcAngleErrors(int nspots, int nhkls, int nOmegaRanges, double x[12],
     printf(
         "DEBUG OMP: CalcAngleErrors Entry. nspots=%d, nhkls=%d, nTspots=%d\n",
         nspots, nhkls, nTspots);
+  // Diagnostic: print once for the very first grain
+  static int diagPrinted = 0;
+  int doDiag = (diagPrinted == 0 && notIniRun == 0);
+  if (doDiag) {
+    diagPrinted = 1;
+    printf("DIAG CalcAngleErrors: nObsSpots=%d, nTheorSpots=%d, nhkls=%d\n",
+           nspots, nTspots, nhkls);
+    printf("DIAG  Euler=%.4f %.4f %.4f, Pos=%.2f %.2f %.2f\n",
+           x[3], x[4], x[5], x[0], x[1], x[2]);
+    printf("DIAG  LatC=%.4f %.4f %.4f %.4f %.4f %.4f\n",
+           x[6], x[7], x[8], x[9], x[10], x[11]);
+    int maxPrint = nspots < 10 ? nspots : 10;
+    for (int dd = 0; dd < maxPrint; dd++) {
+      printf("DIAG  ObsSpot[%d]: Ring=%.0f Y=%.2f Z=%.2f Omega=%.2f "
+             "SpotID=%.0f YOrig=%.2f ZOrig=%.2f\n",
+             dd, spotsYZO[dd][7], spotsYZO[dd][0], spotsYZO[dd][1],
+             spotsYZO[dd][2], spotsYZO[dd][3],
+             spotsYZO[dd][5], spotsYZO[dd][6]);
+    }
+    // Count theoretical spots per ring
+    int ringHist[200] = {0};
+    for (int dd = 0; dd < nTspots; dd++) {
+      int rn = (int)TheorSpots[dd][7];
+      if (rn >= 0 && rn < 200) ringHist[rn]++;
+    }
+    printf("DIAG  TheorSpots per ring:");
+    for (int dd = 0; dd < 200; dd++) {
+      if (ringHist[dd] > 0) printf(" R%d=%d", dd, ringHist[dd]);
+    }
+    printf("\n");
+    // Count observed spots per ring
+    int obsRingHist[200] = {0};
+    for (int dd = 0; dd < nspots; dd++) {
+      int rn = (int)spotsYZO[dd][7];
+      if (rn >= 0 && rn < 200) obsRingHist[rn]++;
+    }
+    printf("DIAG  ObsSpots per ring:");
+    for (int dd = 0; dd < 200; dd++) {
+      if (obsRingHist[dd] > 0) printf(" R%d=%d", dd, obsRingHist[dd]);
+    }
+    printf("\n");
+  }
   double **SpotsYZOGCorr;
   SpotsYZOGCorr = allocMatrix(nrMatchedIndexer, 7);
   double DisplY, DisplZ, ys, zs, Omega, Radius, Theta, lenK, yt, zt;
@@ -632,6 +678,26 @@ CalcAngleErrors(int nspots, int nhkls, int nOmegaRanges, double x[12],
       }
     }
     if (nTheorSpotsYZWER == 0) {
+      if (doDiag && sp < 10) {
+        printf("DIAG  Spot[%d] Ring=%.0f Ome=%.2f: NO ring+omega match among %d theor spots\n",
+               sp, SpotsYZOGCorr[sp][6], SpotsYZOGCorr[sp][2], nTspots);
+        // Show closest theoretical spot with same ring
+        double bestOmeDiff = 1e9;
+        int bestIdx = -1;
+        for (i = 0; i < nTspots; i++) {
+          if ((int)TheorSpotsYZWE[i][7] == (int)SpotsYZOGCorr[sp][6]) {
+            double d = fabs(SpotsYZOGCorr[sp][2] - TheorSpotsYZWE[i][2]);
+            if (d < bestOmeDiff) { bestOmeDiff = d; bestIdx = i; }
+          }
+        }
+        if (bestIdx >= 0) {
+          printf("DIAG    Closest same-ring theor: idx=%d ome=%.2f diff=%.2f (limit 5.0)\n",
+                 bestIdx, TheorSpotsYZWE[bestIdx][2], bestOmeDiff);
+        } else {
+          printf("DIAG    No theoretical spots found with ring=%.0f at all!\n",
+                 SpotsYZOGCorr[sp][6]);
+        }
+      }
       continue;
     }
     minAngle = 1000000;
@@ -648,13 +714,28 @@ CalcAngleErrors(int nspots, int nhkls, int nOmegaRanges, double x[12],
     if (notIniRun == 1 && sp < 5 && nTheorSpotsYZWER > 0) {
       printf("DEBUG OMP: Spot %d best minAngle=%f (Limit 1.0)\n", sp, minAngle);
     }
+    if (doDiag && sp < 10) {
+      printf("DIAG  Spot[%d] Ring=%.0f: %d candidates, minAngle=%.4f %s\n",
+             sp, SpotsYZOGCorr[sp][6], nTheorSpotsYZWER, minAngle,
+             minAngle < 1.0 ? "ACCEPTED" : "REJECTED (>=1.0)");
+    }
     if (minAngle < 1) {
       double maskTouched = spotsYZO[sp][8];
       double FitRMSE = spotsYZO[sp][9];
       double weight = 1.0;
       if (maskTouched > 0.5)
         weight *= WeightMask;
-      weight *= exp(-FitRMSE * WeightFitRMSE);
+      if (WeightFitRMSE > 0.0 && isfinite(FitRMSE))
+        weight *= exp(-FitRMSE * WeightFitRMSE);
+      if (doDiag && sp < 5) {
+        printf("DIAG  Spot[%d] diffLenM=%.4f diffOmeM=%.4f weight=%.6f "
+               "mask=%.1f RMSE=%.4f minAngle=%.4f\n",
+               sp, diffLenM, diffOmeM, weight, maskTouched, FitRMSE, minAngle);
+        printf("DIAG    ObsYZ=%.2f,%.2f TheorYZ=%.2f,%.2f ObsOme=%.2f TheorOme=%.2f\n",
+               SpotsYZOGCorr[sp][0], SpotsYZOGCorr[sp][1],
+               TheorSpotsYZWER[RowBest][0], TheorSpotsYZWER[RowBest][1],
+               SpotsYZOGCorr[sp][2], TheorSpotsYZWER[RowBest][2]);
+      }
       MatchDiff[nMatched][0] = minAngle * weight;
       MatchDiff[nMatched][1] = diffLenM * weight;
       MatchDiff[nMatched][2] = diffOmeM * weight;
@@ -696,6 +777,13 @@ CalcAngleErrors(int nspots, int nhkls, int nOmegaRanges, double x[12],
            "%f %f\n",
            nMatched, Error[0], Error[1], Error[2], x[0], x[1], x[2], x[3], x[4],
            x[5]);
+  if (doDiag) {
+    printf("DIAG  RESULT: nMatched=%d out of %d obs spots (%.1f%%)\n",
+           nMatched, nspots, nspots > 0 ? 100.0 * nMatched / nspots : 0.0);
+    printf("DIAG  Errors: PosErr=%.4f OmeErr=%.4f IntAngle=%.4f\n",
+           Error[0], Error[1], Error[2]);
+    fflush(stdout);
+  }
   // }
   FreeMemMatrix(MatchDiff, nrMatchedIndexer);
   FreeMemMatrix(hkls, nhkls);
@@ -849,7 +937,8 @@ FitErrorsPosSec(double x[3], int nSpotsComp, double spotsYZOIn[nSpotsComp][11],
         double wgt = 1.0;
         if (maskT > 0.5)
           wgt *= WeightMask;
-        wgt *= exp(-fRMSE * WeightFitRMSE);
+        if (WeightFitRMSE > 0.0 && isfinite(fRMSE))
+          wgt *= exp(-fRMSE * WeightFitRMSE);
         Error += wgt * CalcNorm2((PosObs[0] - PosTheor[0]),
                                  (PosObs[1] - PosTheor[1]));
         break;
@@ -2027,6 +2116,12 @@ int main(int argc, char *argv[]) {
       sscanf(aline, "%s %lf", dummy, &WeightFitRMSE);
       continue;
     }
+    str = "DoDynamicReassignment ";
+    LowNr = strncmp(aline, str, strlen(str));
+    if (LowNr == 0) {
+      sscanf(aline, "%s %d", dummy, &DoDynamicReassignment);
+      continue;
+    }
   }
   fclose(fileParam);
   printf(
@@ -2462,7 +2557,7 @@ int main(int argc, char *argv[]) {
                       SpotsComp, Splist, ErrorIni, &nSpotsComp,
                       GlobalDebugFlag);
       double **spotsYZONew;
-      spotsYZONew = allocMatrix(nSpotsComp, 11);
+      spotsYZONew = allocMatrix(MaxNSpotsBest, 11);
       for (i = 0; i < nSpotsComp; i++) {
         for (j = 0; j < 11; j++) {
           spotsYZONew[i][j] = Splist[i][j];
@@ -2556,7 +2651,17 @@ int main(int argc, char *argv[]) {
             nSpots);
         if (nReassigned > 0) {
           nSpotsComp = nReassigned;
-          // Re-run Position Fit with updated spots
+          // Re-map columns via CalcAngleErrors before fitting
+          // (ReassignSpotsFromBins puts maskTouched in col 8, but Fit
+          // functions need the theoretical spot sequence number there)
+          CalcAngleErrors(nSpotsComp, nhkls, nOmeRanges, XFit, spotsYZONew,
+                          hkls, Lsd, Wavelength, OmegaRanges, BoxSizes, MinEta,
+                          wedge, chi, SpotsComp, Splist, ErrorInt1, &nSpotsComp,
+                          0);
+          for (i = 0; i < nSpotsComp; i++)
+            for (j = 0; j < 11; j++)
+              spotsYZONew[i][j] = Splist[i][j];
+          // Re-run Position Fit with properly mapped spots
           FitPositionIni(X0, nSpotsComp, spotsYZONew, nhkls, hkls, Lsd,
                          Wavelength, nOmeRanges, OmegaRanges, BoxSizes, MinEta,
                          wedge, chi, XFit, lb, ub);
@@ -2643,6 +2748,14 @@ int main(int argc, char *argv[]) {
             nSpots);
         if (nReassigned > 0) {
           nSpotsComp = nReassigned;
+          // Re-map columns via CalcAngleErrors before fitting
+          CalcAngleErrors(nSpotsComp, nhkls, nOmeRanges, UseXFitRA, spotsYZONew,
+                          hkls, Lsd, Wavelength, OmegaRanges, BoxSizes, MinEta,
+                          wedge, chi, SpotsComp, Splist, ErrorInt2, &nSpotsComp,
+                          0);
+          for (i = 0; i < nSpotsComp; i++)
+            for (j = 0; j < 11; j++)
+              spotsYZONew[i][j] = Splist[i][j];
           FitOrientIni(X0_2, nSpotsComp, spotsYZONew, nhkls, hkls, Lsd,
                        Wavelength, nOmeRanges, OmegaRanges, BoxSizes, MinEta,
                        wedge, chi, XFit2, lb2, ub2, PosFitOrientIn);
@@ -2710,6 +2823,14 @@ int main(int argc, char *argv[]) {
             nSpots);
         if (nReassigned > 0) {
           nSpotsComp = nReassigned;
+          // Re-map columns via CalcAngleErrors before fitting
+          CalcAngleErrors(nSpotsComp, nhkls, nOmeRanges, UseXFit2, spotsYZONew,
+                          hkls, Lsd, Wavelength, OmegaRanges, BoxSizes, MinEta,
+                          wedge, chi, SpotsComp, Splist, ErrorInt3, &nSpotsComp,
+                          0);
+          for (i = 0; i < nSpotsComp; i++)
+            for (j = 0; j < 11; j++)
+              spotsYZONew[i][j] = Splist[i][j];
           FitStrainIni(X0_3, nSpotsComp, spotsYZONew, nhkls, hkls, Lsd,
                        Wavelength, nOmeRanges, OmegaRanges, BoxSizes, MinEta,
                        wedge, chi, XFit3, lb3, ub3, PosFitOrientIn,
@@ -2907,7 +3028,7 @@ int main(int argc, char *argv[]) {
       FreeMemMatrix(SpotsComp, MaxNSpotsBest);
       FreeMemMatrix(Splist, MaxNSpotsBest);
       free(ErrorIni);
-      FreeMemMatrix(spotsYZONew, nSpotsComp);
+      FreeMemMatrix(spotsYZONew, MaxNSpotsBest);
       free(XFit);
       free(ErrorInt1);
       free(XFit2);
@@ -3117,7 +3238,7 @@ int main(int argc, char *argv[]) {
                       Wavelength, OmegaRanges, BoxSizes, MinEta, wedge, chi,
                       SpotsComp, Splist, ErrorIni, &nSpotsComp, 0);
       double **spotsYZONew;
-      spotsYZONew = allocMatrix(nSpotsComp, 11);
+      spotsYZONew = allocMatrix(MaxNSpotsBest, 11);
       for (i = 0; i < nSpotsComp; i++) {
         for (j = 0; j < 11; j++) {
           spotsYZONew[i][j] = Splist[i][j];
@@ -3289,7 +3410,7 @@ int main(int argc, char *argv[]) {
       FreeMemMatrix(SpotsComp, MaxNSpotsBest);
       FreeMemMatrix(Splist, MaxNSpotsBest);
       free(ErrorIni);
-      FreeMemMatrix(spotsYZONew, nSpotsComp);
+      FreeMemMatrix(spotsYZONew, MaxNSpotsBest);
       free(XFit3);
       free(spotIDS);
       free(ErrorFin);

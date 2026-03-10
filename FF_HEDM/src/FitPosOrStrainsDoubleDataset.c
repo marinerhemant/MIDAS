@@ -539,7 +539,8 @@ static inline void CalcAngleErrors(
       double weight = 1.0;
       if (maskTouched > 0.5)
         weight *= WeightMask;
-      weight *= exp(-FitRMSE * WeightFitRMSE);
+      if (WeightFitRMSE > 0.0 && isfinite(FitRMSE))
+        weight *= exp(-FitRMSE * WeightFitRMSE);
       MatchDiff[nMatched][0] = minAngle * weight;
       MatchDiff[nMatched][1] = diffLenM * weight;
       MatchDiff[nMatched][2] = diffOmeM * weight;
@@ -2340,7 +2341,7 @@ int main(int argc, char *argv[]) {
       //        ErrorIni[2], Pos0[0], Pos0[1], Pos0[2], Euler0[0], Euler0[1],
       //        Euler0[2]);
       double **spotsYZONew, **spotsYZO2New;
-      spotsYZONew = allocMatrix(nSpotsComp, 11);
+      spotsYZONew = allocMatrix(MaxNSpotsBest, 11);
       spotsYZO2New = allocMatrix(nSpotsComp, 11);
       for (i = 0; i < nSpotsComp; i++) {
         for (j = 0; j < 11; j++) {
@@ -2714,7 +2715,7 @@ int main(int argc, char *argv[]) {
       FreeMemMatrix(Splist, MaxNSpotsBest);
       FreeMemMatrix(Splist2, MaxNSpotsBest);
       free(ErrorIni);
-      FreeMemMatrix(spotsYZONew, nSpotsComp);
+      FreeMemMatrix(spotsYZONew, MaxNSpotsBest);
       FreeMemMatrix(spotsYZO2New, nSpotsComp);
       free(XFit);
       free(ErrorInt1);

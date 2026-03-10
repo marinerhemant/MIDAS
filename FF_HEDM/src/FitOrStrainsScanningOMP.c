@@ -515,7 +515,8 @@ CalcAngleErrors(int nspots, int nhkls, int nOmegaRanges, double x[12],
       double weight = 1.0;
       if (maskTouched > 0.5)
         weight *= WeightMask;
-      weight *= exp(-FitRMSE * WeightFitRMSE);
+      if (WeightFitRMSE > 0.0 && isfinite(FitRMSE))
+        weight *= exp(-FitRMSE * WeightFitRMSE);
       MatchDiff[nMatched][0] = minAngle * weight;
       MatchDiff[nMatched][1] = diffLenM * weight;
       MatchDiff[nMatched][2] = diffOmeM * weight;
@@ -1217,11 +1218,15 @@ inline int StrainTensorKenesei(int nspots, double **SpotsInfo, double Distance,
   return 1;
 }
 
+static int DoDynamicReassignment = 1;
+
 static int ReassignSpotsFromBins(
     double x[12], int nhkls, double **hklsIn, double Lsd, double Wavelength,
     int nOmegaRanges, double OmegaRange[MAXNOMEGARANGES][2],
     double BoxSize[MAXNOMEGARANGES][4], double MinEta, double wedge, double chi,
     double **spotsYZO, int maxSpots, double *AllSpotsPtr, int totalNSpots) {
+  if (!DoDynamicReassignment)
+    return 0;
   if (ObsSpotsLab == NULL || BinData == NULL || nBinData == NULL)
     return 0;
   int i, j;
@@ -1251,7 +1256,7 @@ static int ReassignSpotsFromBins(
   for (int sp = 0; sp < nTspots && nMatched < maxSpots; sp++) {
     int RingNr = (int)TheorSpots[sp][7];
     double theorOmega = TheorSpots[sp][2];
-    double theorEta = CalcEtaAngleLocal(-TheorSpots[sp][0], TheorSpots[sp][1]);
+    double theorEta = CalcEtaAngleLocal(TheorSpots[sp][0], TheorSpots[sp][1]);
     int iRing = RingNr - 1;
     if (iRing < 0 || iRing >= g_n_ring_bins)
       continue;
@@ -1525,6 +1530,12 @@ int main(int argc, char *argv[]) {
     LowNr = strncmp(aline, str, strlen(str));
     if (LowNr == 0) {
       sscanf(aline, "%s %lf", dummy, &WeightFitRMSE);
+      continue;
+    }
+    str = "DoDynamicReassignment ";
+    LowNr = strncmp(aline, str, strlen(str));
+    if (LowNr == 0) {
+      sscanf(aline, "%s %d", dummy, &DoDynamicReassignment);
       continue;
     }
   }
