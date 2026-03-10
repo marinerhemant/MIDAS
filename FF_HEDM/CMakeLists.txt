@@ -109,7 +109,7 @@ add_ff_hedm_executable(GetHKLListZarr SOURCES src/GetHKLListZarr.c src/ZarrReade
 add_ff_hedm_executable(MergeOverlappingPeaksAllZarr SOURCES src/MergeOverlappingPeaksAllZarr.c src/ZarrReader.c)
 add_ff_hedm_executable(CalcRadiusAllZarr SOURCES src/CalcRadiusAllZarr.c src/ZarrReader.c)
 add_ff_hedm_executable(FitSetupZarr SOURCES src/FitSetupParamsAllZarr.c src/ZarrReader.c src/Panel.c src/MIDAS_Math.c)
-add_ff_hedm_executable(ProcessGrainsZarr SOURCES src/ProcessGrainsZarr.c src/ZarrReader.c src/GetMisorientation.c src/CalcStrains.c src/MIDAS_Math.c)
+add_ff_hedm_executable(ProcessGrains SOURCES src/ProcessGrains.c src/ZarrReader.c src/GetMisorientation.c src/CalcStrains.c src/MIDAS_Math.c OMP)
 
 add_ff_hedm_executable(IndexerOMP SOURCES src/IndexerOMP.c src/MIDAS_Math.c OMP)
 add_ff_hedm_executable(IndexerScanningOMP SOURCES src/IndexerScanningOMP.c src/MIDAS_Math.c OMP)
@@ -118,7 +118,8 @@ add_ff_hedm_executable(SaveBinData SOURCES src/SaveBinData.c)
 add_ff_hedm_executable(SaveBinDataScanning SOURCES src/SaveBinDataScanning.c)
 add_ff_hedm_executable(MergeMultipleScans SOURCES src/MergeMultipleScans.c)
 
-add_ff_hedm_executable(ProcessGrains SOURCES src/ProcessGrains.c src/GetMisorientation.c src/CalcStrains.c src/MIDAS_Math.c)
+# add_ff_hedm_executable(ProcessGrains_paramFN_only ...)  # archived → src/archive/ProcessGrains.c
+# add_ff_hedm_executable(ProcessGrainsZarr ...)  # archived → src/archive/ProcessGrainsZarr.c; consolidated into ProcessGrains
 add_ff_hedm_executable(ProcessGrainsScanningHEDM SOURCES src/ProcessGrainsScanningHEDM.c src/GetMisorientation.c src/CalcStrains.c src/MIDAS_Math.c)
 add_ff_hedm_executable(MatchGrains SOURCES src/MatchGrains.c src/GetMisorientation.c)
 
@@ -165,8 +166,8 @@ set(FF_HEDM_ALL_NON_CUDA_TARGETS_LIST
  CalcRadius CalcRadiusAll GrainTracking GenMedianDark
  FitWedge GetHKLList PeaksFittingOMPZarr
  PeaksFittingOMPZarrRefactor GetHKLListZarr MergeOverlappingPeaksAllZarr CalcRadiusAllZarr
- FitSetupZarr ProcessGrainsZarr IndexerLinuxArgsShm IndexerOMP IndexerScanningOMP
- SaveBinData SaveBinDataScanning MergeMultipleScans ProcessGrains ProcessGrainsScanningHEDM MatchGrains
+ FitSetupZarr ProcessGrains IndexerLinuxArgsShm IndexerOMP IndexerScanningOMP
+ SaveBinData SaveBinDataScanning MergeMultipleScans ProcessGrainsScanningHEDM MatchGrains
  DetectorMapper
  findSingleSolutionPFRefactored findMultipleSolutionsPF mergeScansScanning
 )

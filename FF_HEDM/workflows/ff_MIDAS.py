@@ -1161,11 +1161,11 @@ def process_layer(layer_nr: int, top_res_dir: str, ps_fn: str, data_fn: str, num
             
             if provide_input_all == 0:
                 if grains_file:
-                    cmd = f"{os.path.join(bin_directory, 'ProcessGrainsZarr')} {outFStem} 1"
+                    cmd = f"{os.path.join(bin_directory, 'ProcessGrains')} {outFStem} 1"
                 else:
-                    cmd = f"{os.path.join(bin_directory, 'ProcessGrainsZarr')} {outFStem}"
+                    cmd = f"{os.path.join(bin_directory, 'ProcessGrains')} {outFStem}"
             else:
-                cmd = f"{os.path.join(bin_directory, 'ProcessGrains')} {result_dir}/paramstest.txt"
+                cmd = f"{os.path.join(bin_directory, 'ProcessGrains')} -paramFN {result_dir}/paramstest.txt"
                 
             safely_run_command(cmd, result_dir, f_grains_out, f_grains_err, task_name="Grain processing")
         except Exception as e:

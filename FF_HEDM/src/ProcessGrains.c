@@ -16,6 +16,9 @@
 //  - Strains!!
 //
 
+#include "ZarrReader.h"
+#include "midas_version.h"
+#include <blosc2.h>
 #include <ctype.h>
 #include <fcntl.h>
 #include <limits.h>
@@ -30,10 +33,12 @@
 #include <sys/types.h>
 #include <time.h>
 #include <unistd.h>
-#include "midas_version.h"
+#include <zip.h>
+#ifdef _OPENMP
+#include <omp.h>
+#endif
 
-#define MAX_N_IDS 6000000
-#define MAX_ID_IA_MAT 5000000
+#include "MIDAS_Limits.h"
 #define NR_MAX_IDS_PER_GRAIN 5000 // Nr spots per grain max.
 #define IAColNr 20 // 20 for Internal Angle, 18 for position, 19 for omega
 
@@ -44,19 +49,8 @@ static inline double sin_cos_to_angle(double s, double c) {
   return (s >= 0.0) ? acos(c) : 2.0 * M_PI - acos(c);
 }
 
-inline void OrientMat2Quat(double OrientMat[9], double Quat[4]);
 inline double GetMisOrientation(double quat1[4], double quat2[4],
                                 double axis[3], double *Angle, int SGNr);
-inline void CalcStrainTensorFableBeaudoin(double LatCin[6],
-                                          double LatticeParameterFit[6],
-                                          double Orient[3][3],
-                                          double StrainTensorSample[3][3]);
-inline int StrainTensorKenesei(int nspots, double **SpotsInfo, double Distance,
-                               double wavelength,
-                               double StrainTensorSample[3][3], int **IDHash,
-                               double *dspacings, int nRings,
-                               int startSpotMatrix, double **SpotMatrix,
-                               double *RetVal, double StrainTensorInput[3][3]);
 
 static inline void OrientMat2Euler(double m[3][3], double Euler[3]) {
   double psi, phi, theta, sph;
@@ -131,6 +125,8 @@ static inline void FreeMemMatrix(double **mat, int nrows) {
   free(mat);
 }
 
+inline void OrientMat2Quat(double OrientMat[9], double Quat[4]);
+
 static inline int FindInternalAnglesTwins(int nrIDs, int *IDs, int *IDsPerGrain,
                                           int *NrIDsPerID, bool *IDsChecked,
                                           double **OPs, double *ID_IA_Mat,
@@ -160,7 +156,7 @@ static inline int FindInternalAnglesTwins(int nrIDs, int *IDs, int *IDsPerGrain,
         }
         OrientMat2Quat(OR2, q2);
         Angle = GetMisOrientation(q1, q2, Axis, &ang, SGNr);
-        AreTwins = (fabs(ang - 60) < 0.1) &&
+        AreTwins = (fabs(ang - 60) < 0.4) &&
                    (fabs(Axis[0]) - fabs(Axis[1])) < 0.01 &&
                    (fabs(Axis[2]) - fabs(Axis[1])) < 0.01;
         if (fabs(ang) < 0.4 || AreTwins) {
@@ -241,6 +237,18 @@ static inline void QuatToOrientMat(double Quat[4], double OrientMat[9]) {
   OrientMat[8] = 1 - 2 * (Q1_2 + Q2_2);
 }
 
+inline void CalcStrainTensorFableBeaudoin(double LatCin[6],
+                                          double LatticeParameterFit[6],
+                                          double Orient[3][3],
+                                          double StrainTensorSample[3][3]);
+
+inline int StrainTensorKenesei(int nspots, double **SpotsInfo, double Distance,
+                               double wavelength,
+                               double StrainTensorSample[3][3], int **IDHash,
+                               double *dspacings, int nRings,
+                               int startSpotMatrix, double **SpotMatrix,
+                               double *RetVal, double StrainTensorInput[3][3]);
+
 // Simple hash set for IDsDone duplicate checking (O(1) lookup vs O(n) linear
 // scan)
 #define HASH_TABLE_SIZE 65536 // power of 2
@@ -280,14 +288,12 @@ static int hashset_contains(HashSet *hs, int key) {
 
 static int hashset_insert(HashSet *hs, int key) {
   unsigned int idx = ((unsigned int)key * 2654435761U) & (HASH_TABLE_SIZE - 1);
-  // Check if already present
   HashNode *node = hs->buckets[idx];
   while (node) {
     if (node->key == key)
-      return 0; // already present
+      return 0;
     node = node->next;
   }
-  // Insert new node
   HashNode *newNode = malloc(sizeof(HashNode));
   if (newNode == NULL)
     return -1;
@@ -321,7 +327,7 @@ static int countCSVLines(const char *filename) {
   setvbuf(f, NULL, _IOFBF, 1 << 20);
   char buf[4096];
   int count = 0;
-  if (fgets(buf, 4096, f) == NULL) { // skip header
+  if (fgets(buf, 4096, f) == NULL) {
     fclose(f);
     return 0;
   }
@@ -333,123 +339,189 @@ static int countCSVLines(const char *filename) {
 }
 
 int main(int argc, char *argv[]) {
-	printf("Version: %s\n", MIDAS_VERSION_STRING);
-  if (argc != 2) {
-    printf("Usage: ProcessGrains ParameterFile\n");
-    return 0;
+  printf("Version: %s\n", MIDAS_VERSION_STRING);
+  if (argc < 2) {
+    printf("Usage: ProcessGrains ZarrZip [TrackGrains(0|1)] [nCPUs]\n");
+    printf("       ProcessGrains -paramFN params.txt [-trackGrains 0|1] [-nCPUs N]\n");
+    return 1;
   }
   clock_t start, end;
   double diftotal;
   start = clock();
   char line[5024];
-  char *ParamFN;
-  FILE *fileParam;
-  ParamFN = argv[1];
+
   char aline[1000];
-  fileParam = fopen(ParamFN, "r");
-  if (fileParam == NULL) {
-    printf("Could not open %s. Exiting.\n", ParamFN);
-    return 1;
-  }
   char *str, dummy[1000];
-  int LowNr;
-  int Twin = 0, MinNrSpots = 1, SGNr = 225, TrackGrains = 0;
-  double Distance, wavelength, LatCin[6];
+  int Twin = 0, MinNrSpots = 1, SGNr = 225;
+  double Distance = 0, wavelength = 0, LatCin[6];
   double BeamThickness = 0, GlobalPosition = 0;
   int NumPhases = 1, PhaseNr = 1;
-  while (fgets(aline, 1000, fileParam) != NULL) {
-    str = "Twins ";
-    LowNr = strncmp(aline, str, strlen(str));
-    if (LowNr == 0) {
-      sscanf(aline, "%s %d", dummy, &Twin);
-      continue;
+  int nCPUs = 1;
+  int trackGrains = 0;
+
+  // ── Mode detection ──────────────────────────────────────────
+  int useParamFile = 0;
+  char *paramFN = NULL;
+
+  if (argc >= 2 && strcmp(argv[1], "-paramFN") == 0) {
+    useParamFile = 1;
+    for (int ai = 1; ai < argc; ai++) {
+      if (strcmp(argv[ai], "-paramFN") == 0 && ai + 1 < argc)
+        paramFN = argv[++ai];
+      else if (strcmp(argv[ai], "-trackGrains") == 0 && ai + 1 < argc)
+        trackGrains = atoi(argv[++ai]);
+      else if (strcmp(argv[ai], "-nCPUs") == 0 && ai + 1 < argc)
+        nCPUs = atoi(argv[++ai]);
     }
-    str = "Wavelength ";
-    LowNr = strncmp(aline, str, strlen(str));
-    if (LowNr == 0) {
-      sscanf(aline, "%s %lf", dummy, &wavelength);
-      continue;
-    }
-    str = "BeamThickness ";
-    LowNr = strncmp(aline, str, strlen(str));
-    if (LowNr == 0) {
-      sscanf(aline, "%s %lf", dummy, &BeamThickness);
-      continue;
-    }
-    str = "GlobalPosition ";
-    LowNr = strncmp(aline, str, strlen(str));
-    if (LowNr == 0) {
-      sscanf(aline, "%s %lf", dummy, &GlobalPosition);
-      continue;
-    }
-    str = "NumPhases ";
-    LowNr = strncmp(aline, str, strlen(str));
-    if (LowNr == 0) {
-      sscanf(aline, "%s %d", dummy, &NumPhases);
-      continue;
-    }
-    str = "PhaseNr ";
-    LowNr = strncmp(aline, str, strlen(str));
-    if (LowNr == 0) {
-      sscanf(aline, "%s %d", dummy, &PhaseNr);
-      continue;
-    }
-    str = "MinNrSpots ";
-    LowNr = strncmp(aline, str, strlen(str));
-    if (LowNr == 0) {
-      sscanf(aline, "%s %d", dummy, &MinNrSpots);
-      continue;
-    }
-    str = "SpaceGroup ";
-    LowNr = strncmp(aline, str, strlen(str));
-    if (LowNr == 0) {
-      sscanf(aline, "%s %d", dummy, &SGNr);
-      continue;
-    }
-    str = "Lsd ";
-    LowNr = strncmp(aline, str, strlen(str));
-    if (LowNr == 0) {
-      sscanf(aline, "%s %lf", dummy, &Distance);
-      continue;
-    }
-    str = "Distance ";
-    LowNr = strncmp(aline, str, strlen(str));
-    if (LowNr == 0) {
-      sscanf(aline, "%s %lf", dummy, &Distance);
-      continue;
-    }
-    str = "LsdMean ";
-    LowNr = strncmp(aline, str, strlen(str));
-    if (LowNr == 0) {
-      sscanf(aline, "%s %lf", dummy, &Distance);
-      continue;
-    }
-    str = "LatticeConstant ";
-    LowNr = strncmp(aline, str, strlen(str));
-    if (LowNr == 0) {
-      sscanf(aline, "%s %lf %lf %lf %lf %lf %lf", dummy, &LatCin[0], &LatCin[1],
-             &LatCin[2], &LatCin[3], &LatCin[4], &LatCin[5]);
-      continue;
-    }
-    str = "LatticeParameter ";
-    LowNr = strncmp(aline, str, strlen(str));
-    if (LowNr == 0) {
-      sscanf(aline, "%s %lf %lf %lf %lf %lf %lf", dummy, &LatCin[0], &LatCin[1],
-             &LatCin[2], &LatCin[3], &LatCin[4], &LatCin[5]);
-      continue;
+    if (!paramFN) {
+      fprintf(stderr, "ERROR: -paramFN requires a filename argument.\n");
+      return 1;
     }
   }
-  fclose(fileParam);
-  printf("Read Parameters:\n\tTwins: %d\n\tWavelength: %lf\n\tBeamThickness: "
-         "%lf\n\tGlobalPosition: %lf\n\tNumPhases: %d\n\tPhaseNr: "
-         "%d\n\tMinNrSpots: %d\n\tSpaceGroup: %d\n\tDistance: %lf\n",
-         Twin, wavelength, BeamThickness, GlobalPosition, NumPhases, PhaseNr,
-         MinNrSpots, SGNr, Distance);
-  printf("\tLatticeConstant: %lf %lf %lf %lf %lf %lf\n", LatCin[0], LatCin[1],
-         LatCin[2], LatCin[3], LatCin[4], LatCin[5]);
+
+  blosc2_init();
+
+  if (useParamFile) {
+    // ── PARAM-FILE MODE ─────────────────────────────────────
+    FILE *fileParam = fopen(paramFN, "r");
+    if (fileParam == NULL) {
+      printf("Could not open %s. Exiting.\n", paramFN);
+      return 1;
+    }
+    int LowNr;
+    memset(LatCin, 0, sizeof(LatCin));
+    while (fgets(aline, 1000, fileParam) != NULL) {
+      str = "Twins ";
+      LowNr = strncmp(aline, str, strlen(str));
+      if (LowNr == 0) { sscanf(aline, "%s %d", dummy, &Twin); continue; }
+      str = "Wavelength ";
+      LowNr = strncmp(aline, str, strlen(str));
+      if (LowNr == 0) { sscanf(aline, "%s %lf", dummy, &wavelength); continue; }
+      str = "BeamThickness ";
+      LowNr = strncmp(aline, str, strlen(str));
+      if (LowNr == 0) { sscanf(aline, "%s %lf", dummy, &BeamThickness); continue; }
+      str = "GlobalPosition ";
+      LowNr = strncmp(aline, str, strlen(str));
+      if (LowNr == 0) { sscanf(aline, "%s %lf", dummy, &GlobalPosition); continue; }
+      str = "NumPhases ";
+      LowNr = strncmp(aline, str, strlen(str));
+      if (LowNr == 0) { sscanf(aline, "%s %d", dummy, &NumPhases); continue; }
+      str = "PhaseNr ";
+      LowNr = strncmp(aline, str, strlen(str));
+      if (LowNr == 0) { sscanf(aline, "%s %d", dummy, &PhaseNr); continue; }
+      str = "MinNrSpots ";
+      LowNr = strncmp(aline, str, strlen(str));
+      if (LowNr == 0) { sscanf(aline, "%s %d", dummy, &MinNrSpots); continue; }
+      str = "SpaceGroup ";
+      LowNr = strncmp(aline, str, strlen(str));
+      if (LowNr == 0) { sscanf(aline, "%s %d", dummy, &SGNr); continue; }
+      str = "Lsd ";
+      LowNr = strncmp(aline, str, strlen(str));
+      if (LowNr == 0) { sscanf(aline, "%s %lf", dummy, &Distance); continue; }
+      str = "Distance ";
+      LowNr = strncmp(aline, str, strlen(str));
+      if (LowNr == 0) { sscanf(aline, "%s %lf", dummy, &Distance); continue; }
+      str = "LsdMean ";
+      LowNr = strncmp(aline, str, strlen(str));
+      if (LowNr == 0) { sscanf(aline, "%s %lf", dummy, &Distance); continue; }
+      str = "LatticeConstant ";
+      LowNr = strncmp(aline, str, strlen(str));
+      if (LowNr == 0) {
+        sscanf(aline, "%s %lf %lf %lf %lf %lf %lf", dummy, &LatCin[0], &LatCin[1],
+               &LatCin[2], &LatCin[3], &LatCin[4], &LatCin[5]);
+        continue;
+      }
+      str = "LatticeParameter ";
+      LowNr = strncmp(aline, str, strlen(str));
+      if (LowNr == 0) {
+        sscanf(aline, "%s %lf %lf %lf %lf %lf %lf", dummy, &LatCin[0], &LatCin[1],
+               &LatCin[2], &LatCin[3], &LatCin[4], &LatCin[5]);
+        continue;
+      }
+    }
+    fclose(fileParam);
+    printf("Read Parameters from %s:\n\tTwins: %d\n\tWavelength: %lf\n\tBeamThickness: "
+           "%lf\n\tGlobalPosition: %lf\n\tNumPhases: %d\n\tPhaseNr: "
+           "%d\n\tMinNrSpots: %d\n\tSpaceGroup: %d\n\tDistance: %lf\n",
+           paramFN, Twin, wavelength, BeamThickness, GlobalPosition, NumPhases, PhaseNr,
+           MinNrSpots, SGNr, Distance);
+    printf("\tLatticeConstant: %lf %lf %lf %lf %lf %lf\n", LatCin[0], LatCin[1],
+           LatCin[2], LatCin[3], LatCin[4], LatCin[5]);
+  } else {
+    // ── ZARR MODE ───────────────────────────────────────────
+    char *DataFN = argv[1];
+    if (argc >= 3) {
+      // Second positional arg: trackGrains or nCPUs
+      int val2 = atoi(argv[2]);
+      if (val2 == 0 || val2 == 1) trackGrains = val2;
+      else nCPUs = val2;
+    }
+    if (argc >= 4) nCPUs = atoi(argv[3]);
+
+    int errorp = 0;
+    zip_t *arch = NULL;
+    arch = zip_open(DataFN, 0, &errorp);
+    if (arch == NULL) {
+      fprintf(stderr, "ERROR: Could not open zip archive '%s' (error code: %d)\n",
+              DataFN, errorp);
+      return 1;
+    }
+    struct zip_stat *finfo = NULL;
+    finfo = calloc(16384, sizeof(int));
+    zip_stat_init(finfo);
+
+    // Single-pass Zarr parameter scan with early-exit tracking
+    int count = 0;
+    int paramsFound = 0;
+    const int totalParams = 10;
+    while ((zip_stat_index(arch, count, 0, finfo)) == 0 &&
+           paramsFound < totalParams) {
+      const char *name = finfo->name;
+      if (strstr(name, "analysis/process/analysis_parameters/SpaceGroup/0") != NULL) {
+        ReadZarrChunk(arch, count, &SGNr, sizeof(int));
+        paramsFound++;
+      } else if (strstr(name, "analysis/process/analysis_parameters/Twins/0") != NULL) {
+        ReadZarrChunk(arch, count, &Twin, sizeof(int));
+        paramsFound++;
+      } else if (strstr(name, "analysis/process/analysis_parameters/MinNrSpots/0") != NULL) {
+        ReadZarrChunk(arch, count, &MinNrSpots, sizeof(int));
+        paramsFound++;
+      } else if (strstr(name, "analysis/process/analysis_parameters/NumPhases/0") != NULL) {
+        ReadZarrChunk(arch, count, &NumPhases, sizeof(int));
+        paramsFound++;
+      } else if (strstr(name, "analysis/process/analysis_parameters/PhaseNr/0") != NULL) {
+        ReadZarrChunk(arch, count, &PhaseNr, sizeof(int));
+        paramsFound++;
+      } else if (strstr(name, "analysis/process/analysis_parameters/GlobalPosition/0") != NULL) {
+        ReadZarrChunk(arch, count, &GlobalPosition, sizeof(double));
+        paramsFound++;
+      } else if (strstr(name, "analysis/process/analysis_parameters/BeamThickness/0") != NULL) {
+        ReadZarrChunk(arch, count, &BeamThickness, sizeof(double));
+        paramsFound++;
+      } else if (strstr(name, "analysis/process/analysis_parameters/LatticeParameter/0") != NULL) {
+        ReadZarrChunk(arch, count, LatCin, 6 * sizeof(double));
+        paramsFound++;
+      } else if (strstr(name, "analysis/process/analysis_parameters/Lsd/0") != NULL) {
+        ReadZarrChunk(arch, count, &Distance, sizeof(double));
+        paramsFound++;
+      } else if (strstr(name, "analysis/process/analysis_parameters/Wavelength/0") != NULL) {
+        ReadZarrChunk(arch, count, &wavelength, sizeof(double));
+        paramsFound++;
+      }
+      count++;
+    }
+    free(finfo);
+    zip_close(arch);
+  }
+
+#ifdef _OPENMP
+  omp_set_num_threads(nCPUs);
+  printf("Running with %d OpenMP threads.\n", nCPUs);
+#endif
+
   int i, j, k, ThisID, counter;
   int *IDs;
-  IDs = calloc(MAX_N_IDS, sizeof(*IDs)); // Use calloc instead of malloc+loop
+  IDs = calloc(MAX_N_IDS, sizeof(*IDs)); // calloc instead of malloc+loop
   if (IDs == NULL) {
     printf("Memory error: could not allocate IDs.\n");
     return 1;
@@ -466,6 +538,8 @@ int main(int argc, char *argv[]) {
   }
   while (fgets(line, 5024, IDsFile) != NULL) {
     sscanf(line, "%d", &IDs[nrIDs]);
+    if (IDs[nrIDs] < 0)
+      continue;
     nrIDs++;
   }
   if (nrIDs == 0) {
@@ -527,7 +601,7 @@ int main(int argc, char *argv[]) {
                       1, fileProcessKey);
   fclose(fileProcessKey);
 
-  // Bulk read Key.bin file
+  // Bulk read Key.bin
   int *keyBuf = malloc(nrIDs * 2 * sizeof(int));
   if (keyBuf == NULL) {
     printf("Memory error: could not allocate keyBuf.\n");
@@ -536,7 +610,7 @@ int main(int argc, char *argv[]) {
   size_t readKey = fread(keyBuf, 2 * sizeof(int), nrIDs, fileKey);
   fclose(fileKey);
 
-  // Bulk read OrientPosFit.bin file
+  // Bulk read OrientPosFit.bin
   double *opBuf = malloc(nrIDs * 27 * sizeof(double));
   if (opBuf == NULL) {
     printf("Memory error: could not allocate opBuf.\n");
@@ -598,14 +672,23 @@ int main(int argc, char *argv[]) {
       maxRadThis = Radiuses[i];
       minIA = OPs[i][IAColNr];
       BestGrainPos = i;
-      if (Twin == 0) {
-        counten = FindInternalAngles(nrIDs, IDs, IDsPerGrain, NrIDsPerID,
-                                     IDsChecked, OPs, ID_IA_MAT, counte, i,
-                                     StartingID, Radiuses, SGNr);
+      if (trackGrains == 0) {
+        if (Twin == 0) {
+          counten = FindInternalAngles(nrIDs, IDs, IDsPerGrain, NrIDsPerID,
+                                       IDsChecked, OPs, ID_IA_MAT, counte, i,
+                                       StartingID, Radiuses, SGNr);
+        } else {
+          counten = FindInternalAnglesTwins(nrIDs, IDs, IDsPerGrain, NrIDsPerID,
+                                            IDsChecked, OPs, ID_IA_MAT, counte,
+                                            i, StartingID, Radiuses, SGNr);
+        }
       } else {
-        counten = FindInternalAnglesTwins(nrIDs, IDs, IDsPerGrain, NrIDsPerID,
-                                          IDsChecked, OPs, ID_IA_MAT, counte, i,
-                                          StartingID, Radiuses, SGNr);
+        counten = 0;
+        ID_IA_MAT[(counten * 4)] = (double)StartingID;
+        ID_IA_MAT[(counten * 4) + 1] = (double)i;
+        ID_IA_MAT[(counten * 4) + 2] = OPs[i][IAColNr];
+        ID_IA_MAT[(counten * 4) + 3] = Radiuses[i];
+        counten = 1;
       }
       totcount += counten;
       nGrainsMatched[i] = counten;
@@ -635,8 +718,7 @@ int main(int argc, char *argv[]) {
   }
   fclose(fIDs);
 
-  // Write out - use hash set for O(1) duplicate check instead of O(n) linear
-  // scan
+  // Write out - use hash set for O(1) duplicate check
   int nGrains = 0;
   HashSet *idsDoneSet = hashset_create();
   if (idsDoneSet == NULL) {
@@ -728,16 +810,14 @@ int main(int argc, char *argv[]) {
       printf("IDs dont match.\nExiting\n");
       return (1);
     }
-    // Write Hash Matrix if needed.
     if (MakeHash == 1) {
-      if (counterIF == 0) { // First Spot
+      if (counterIF == 0) {
         IDHash[nRings][0] = (int)InputMatrix[counterIF][5];
         IDHash[nRings][1] = counterIF + 1;
         currentRing = (int)InputMatrix[counterIF][5];
         nRings++;
       } else {
-        if ((int)InputMatrix[counterIF][5] !=
-            currentRing) { // Each time ring number changes
+        if ((int)InputMatrix[counterIF][5] != currentRing) {
           IDHash[nRings][0] = (int)InputMatrix[counterIF][5];
           IDHash[nRings][1] = counterIF + 1;
           IDHash[nRings - 1][2] = counterIF;
@@ -749,8 +829,8 @@ int main(int argc, char *argv[]) {
     counterIF++;
   }
   fclose(inpfile);
-  IDHash[nRings - 1][2] = counterIF; // Write the max for last ring last ID.
-  if (MakeHash == 1) {               // Get dspacings from hkls.csv file
+  IDHash[nRings - 1][2] = counterIF;
+  if (MakeHash == 1) {
     FILE *hklf = fopen("hkls.csv", "r");
     char aline2[2048];
     double ds;
@@ -784,37 +864,41 @@ int main(int argc, char *argv[]) {
       printf("Something is wrong. Please check.\n");
       return 1;
     }
-    // O(1) hash set check instead of O(n) linear scan
-    if (hashset_contains(idsDoneSet, IDs[rown])) {
-      continue;
-    }
-    hashset_insert(idsDoneSet, IDs[rown]);
-
-    for (k = 0; k < 9; k++) {
-      OR1[k] = OPs[rown][k];
-    }
-    OrientMat2Quat(OR1, q1);
-    for (j = i + 1; j < nGrainPositions; j++) {
-      rown2 = GrainPositions[j];
-      if (rown2 >= nrIDs) {
-        printf("Something is wrong. Please check.\n");
-        return 1;
-      }
-      // O(1) hash set check
-      if (hashset_contains(idsDoneSet, IDs[rown2])) {
+    if (trackGrains == 0) {
+      // O(1) hash set check instead of O(n) linear scan
+      if (hashset_contains(idsDoneSet, IDs[rown])) {
         continue;
       }
+      hashset_insert(idsDoneSet, IDs[rown]);
+
       for (k = 0; k < 9; k++) {
-        OR2[k] = OPs[rown2][k];
+        OR1[k] = OPs[rown][k];
       }
-      OrientMat2Quat(OR2, q2);
-      Angle = GetMisOrientation(q1, q2, Axis, &ang, SGNr);
-      DiffPos = sqrt(
-          (OPs[rown][9] - OPs[rown2][9]) * (OPs[rown][9] - OPs[rown2][9]) +
-          (OPs[rown][10] - OPs[rown2][10]) * (OPs[rown][10] - OPs[rown2][10]) +
-          (OPs[rown][11] - OPs[rown2][11]) * (OPs[rown][11] - OPs[rown2][11]));
-      if (ang < 0.1 && DiffPos < 5) {
-        hashset_insert(idsDoneSet, IDs[rown2]);
+      OrientMat2Quat(OR1, q1);
+      for (j = i + 1; j < nGrainPositions; j++) {
+        rown2 = GrainPositions[j];
+        if (rown2 >= nrIDs) {
+          printf("Something is wrong. Please check.\n");
+          return 1;
+        }
+        // O(1) hash set check
+        if (hashset_contains(idsDoneSet, IDs[rown2])) {
+          continue;
+        }
+        for (k = 0; k < 9; k++) {
+          OR2[k] = OPs[rown2][k];
+        }
+        OrientMat2Quat(OR2, q2);
+        Angle = GetMisOrientation(q1, q2, Axis, &ang, SGNr);
+        DiffPos = sqrt((OPs[rown][9] - OPs[rown2][9]) *
+                           (OPs[rown][9] - OPs[rown2][9]) +
+                       (OPs[rown][10] - OPs[rown2][10]) *
+                           (OPs[rown][10] - OPs[rown2][10]) +
+                       (OPs[rown][11] - OPs[rown2][11]) *
+                           (OPs[rown][11] - OPs[rown2][11]));
+        if (ang < 0.1 && DiffPos < 5) {
+          hashset_insert(idsDoneSet, IDs[rown2]);
+        }
       }
     }
     if (OPs[rown][22] < 0.05) {
@@ -894,14 +978,14 @@ int main(int argc, char *argv[]) {
         fprintf(spotsfile, "%d\t", (int)SpotMatrix[j][k]);
       for (k = 2; k < 7; k++)
         fprintf(spotsfile, "%lf\t", SpotMatrix[j][k]);
-      fprintf(spotsfile, "%lf\t", SpotMatrix[j][7]);
+      fprintf(spotsfile, "%d\t", (int)SpotMatrix[j][7]);
       for (k = 8; k < 12; k++)
         fprintf(spotsfile, "%lf\t", SpotMatrix[j][k]);
       fprintf(spotsfile, "\n");
     }
     if (retval == 0) {
       printf("Did not read correct hash table for IDs. Exiting\n");
-      return 0;
+      return 1;
     }
     FinalMatrix[nGrains][0] = GrainIDThis;
     for (j = 0; j < 21; j++) {

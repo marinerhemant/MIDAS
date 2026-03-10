@@ -458,7 +458,7 @@ def process_mapped_dataset_from_indexing(
         
         logger.info(f"Making grains list. Time till now: {time.time() - t0:.2f} seconds.")
         # NOTE: Using the non-Zarr version as the mapped data is not a single Zarr file
-        cmd_grains = f"{os.path.join(bin_directory, 'ProcessGrains')} {result_dir}/paramstest.txt"
+        cmd_grains = f"{os.path.join(bin_directory, 'ProcessGrains')} -paramFN {result_dir}/paramstest.txt"
         safely_run_command(cmd_grains, result_dir, f'{result_dir}/output/grains_out.csv', f'{result_dir}/output/grains_err.csv', "Grain processing")
 
     logger.info(f"Done with mapped dataset. Total time for final steps: {time.time() - t0:.2f} seconds.")
