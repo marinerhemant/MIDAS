@@ -1204,18 +1204,58 @@ class NFViewer(QtWidgets.QMainWindow):
             return
         direction = getattr(self, '_box_direction', 'h')
         if direction == 'h':
-            # BoxH: horizontal profile — sum along Y (axis=1 in pyqtgraph)
             profile = np.mean(data, axis=1)
             title = 'BoxH'
         else:
-            # BoxV: vertical profile — sum along X (axis=0 in pyqtgraph)
             profile = np.mean(data, axis=0)
             title = 'BoxV'
+
         self.lineout_plot.clear()
-        self.lineout_plot.plot(profile, pen=pg.mkPen('c', width=1.5))
-        self.lineout_plot.setTitle(f"{title}  Sum={np.sum(data):.0f}  "
-                                   f"Mean={np.mean(data):.1f}  "
-                                   f"Min={np.min(data):.0f}  Max={np.max(data):.0f}")
+        x = np.arange(len(profile))
+        self.lineout_plot.plot(x, profile, pen=pg.mkPen('c', width=2.5))
+
+        # ── Half-max edge detection ──
+        pmin, pmax = float(np.min(profile)), float(np.max(profile))
+        threshold = pmin + 0.5 * (pmax - pmin)
+        above = profile >= threshold
+        # Find crossings: transitions from below→above or above→below
+        crossings = np.where(np.diff(above.astype(int)) != 0)[0]
+
+        edge_info = ''
+        if len(crossings) >= 2:
+            # Interpolate for sub-pixel crossing positions
+            edges = []
+            for ci in crossings:
+                dv = profile[ci + 1] - profile[ci]
+                if abs(dv) > 1e-12:
+                    frac = (threshold - profile[ci]) / dv
+                else:
+                    frac = 0.5
+                edges.append(ci + frac)
+            # Use first and last crossing as the two edges
+            e_left, e_right = edges[0], edges[-1]
+            center = 0.5 * (e_left + e_right)
+            width = abs(e_right - e_left)
+
+            # Draw edges (yellow dashed) and center (red solid)
+            self.lineout_plot.addLine(x=e_left, pen=pg.mkPen('y', width=2, style=QtCore.Qt.DashLine))
+            self.lineout_plot.addLine(x=e_right, pen=pg.mkPen('y', width=2, style=QtCore.Qt.DashLine))
+            self.lineout_plot.addLine(x=center, pen=pg.mkPen('r', width=2.5))
+            # Draw threshold line
+            self.lineout_plot.plot([0, len(profile) - 1], [threshold, threshold],
+                                   pen=pg.mkPen(color=(255, 255, 0, 80), width=1, style=QtCore.Qt.DotLine))
+            edge_info = f'  Center={center:.1f}  Width={width:.1f}  Edges=[{e_left:.1f}, {e_right:.1f}]'
+        elif len(crossings) == 1:
+            # Single crossing — just mark it
+            ci = crossings[0]
+            dv = profile[ci + 1] - profile[ci]
+            frac = (threshold - profile[ci]) / dv if abs(dv) > 1e-12 else 0.5
+            edge_pos = ci + frac
+            self.lineout_plot.addLine(x=edge_pos, pen=pg.mkPen('y', width=2, style=QtCore.Qt.DashLine))
+            edge_info = f'  Edge={edge_pos:.1f}'
+
+        self.lineout_plot.setTitle(f"{title}  Mean={np.mean(data):.1f}  "
+                                   f"Min={pmin:.0f}  Max={pmax:.0f}{edge_info}")
 
     # ── Mic File ───────────────────────────────────────────────────
 
