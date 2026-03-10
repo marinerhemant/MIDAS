@@ -806,15 +806,18 @@ class NFViewer(QtWidgets.QMainWindow):
         self._click_ix = pos.x()
         self._click_iy = pos.y()
 
-        # Show crosshair marker at clicked position
+        # Show crosshair at clicked position (two InfiniteLines = always visible)
         if hasattr(self, '_spot_marker') and self._spot_marker is not None:
-            self.image_view.removeItem(self._spot_marker)
-        marker = pg.ScatterPlotItem(
-            [self._click_ix], [self._click_iy],
-            symbol='+', size=20, pen=pg.mkPen('c', width=2), brush=None)
-        marker.setZValue(1000)
-        self.image_view.addItem(marker)
-        self._spot_marker = marker
+            for item in self._spot_marker:
+                self.image_view.removeItem(item)
+        cross_pen = pg.mkPen(color=(0, 255, 255, 180), width=1.5, style=QtCore.Qt.DashLine)
+        h_line = pg.InfiniteLine(pos=self._click_iy, angle=0, pen=cross_pen)
+        v_line = pg.InfiniteLine(pos=self._click_ix, angle=90, pen=cross_pen)
+        h_line.setZValue(1000)
+        v_line.setZValue(1000)
+        self.image_view.addItem(h_line)
+        self.image_view.addItem(v_line)
+        self._spot_marker = [h_line, v_line]
 
         self.status_label.setText(
             f"Spot at ({self._click_ix:.1f}, {self._click_iy:.1f}) — click 'Confirm Selection'")
@@ -873,7 +876,8 @@ class NFViewer(QtWidgets.QMainWindow):
             self._spot_confirm_btn.deleteLater()
             self._spot_confirm_btn = None
             if hasattr(self, '_spot_marker') and self._spot_marker is not None:
-                self.image_view.removeItem(self._spot_marker)
+                for item in self._spot_marker:
+                    self.image_view.removeItem(item)
                 self._spot_marker = None
             dlg.accept()
             # Auto-compute distances
