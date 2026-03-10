@@ -1079,6 +1079,10 @@ class NFViewer(QtWidgets.QMainWindow):
         self.frame_label.setText(f"Frame {self.frame_nr}  Dist {self.dist}  |  {basename}")
         self.setWindowTitle(f"NF Viewer — {basename} [frame {self.frame_nr}, dist {self.dist}]")
 
+        # Refresh box profile if an ROI is active
+        if hasattr(self, '_box_roi') and self._box_roi is not None:
+            self._update_box_profile()
+
     # ── Line Profile ───────────────────────────────────────────────
 
 
