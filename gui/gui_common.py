@@ -394,12 +394,16 @@ class MIDASImageView(QtWidgets.QWidget):
         self._push_view()
 
     def set_log_mode(self, enabled):
-        """Toggle log10 display, preserving current intensity levels."""
+        """Toggle log10 display, preserving current view range and intensity levels."""
         self._log_mode = enabled
         if self._raw_data is not None:
-            # Get current levels before re-applying
+            # Save current view range and levels before re-applying
+            vb = self._iv.getView()
+            saved_range = vb.viewRange()  # [[xmin, xmax], [ymin, ymax]]
             current_levels = self._iv.getLevels()
             self.set_image_data(self._raw_data, auto_levels=False)
+            # Restore view range (prevents zoom reset)
+            vb.setRange(xRange=saved_range[0], yRange=saved_range[1], padding=0)
             # Re-apply levels (converted to/from log space)
             if current_levels is not None:
                 lo, hi = current_levels
