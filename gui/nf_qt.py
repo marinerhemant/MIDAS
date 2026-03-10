@@ -1564,6 +1564,12 @@ class NFViewer(QtWidgets.QMainWindow):
             shutil.rmtree(self._median_dir, ignore_errors=True)
         self._median_dir = tempfile.mkdtemp(prefix='midas_median_')
 
+        # Ensure subdirectory exists if fnstem contains path separators
+        # (e.g. "subdir/stem" → MedianImageLibTiff writes to OutputDir/subdir/)
+        fnstem_dir = os.path.dirname(self.fnstem)
+        if fnstem_dir:
+            os.makedirs(os.path.join(self._median_dir, fnstem_dir), exist_ok=True)
+
         if midas_config and midas_config.MIDAS_NF_BIN_DIR:
             cmd = os.path.join(midas_config.MIDAS_NF_BIN_DIR, 'MedianImageLibTiff')
         else:
