@@ -923,9 +923,16 @@ class NFViewer(QtWidgets.QMainWindow):
 
         self.lsd = float(np.mean(xs[:idx])) if idx > 0 else 0
         self.lsd_edit.setText(f"{self.lsd:.1f}")
-        result_text = (f"Calculated distances: {xs[:idx]}\n"
-                       f"Calculated Ys: {ys[:idx]}\n"
-                       f"Mean Lsd: {self.lsd:.1f} μm")
+
+        # Build detailed result text
+        lines = ["Confirmed spot positions (relative to beam center):"]
+        for d in confirmed:
+            lines.append(f"  Dist {d}: Y={self.spots[d][0]:.1f}  Z={self.spots[d][1]:.1f}  R={self.spots[d][2]:.1f}")
+        lines.append("")
+        for k in range(idx):
+            lines.append(f"  Pair {k}: Lsd={xs[k]:.1f}  grainY={ys[k]:.1f}")
+        lines.append(f"\nMean Lsd: {self.lsd:.1f} μm")
+        result_text = "\n".join(lines)
         print(result_text)
 
         if btn is not None:
