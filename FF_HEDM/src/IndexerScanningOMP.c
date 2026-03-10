@@ -11,7 +11,6 @@
 #include <errno.h>
 #include <fcntl.h>
 #include <libgen.h>
-#include <limits.h>
 #include <math.h>
 #include <omp.h>
 #include <stdarg.h>
@@ -1418,7 +1417,7 @@ int ReadSpots(char *cwd) {
 }
 
 int main(int argc, char *argv[]) {
-	printf("Version: %s\n", MIDAS_VERSION_STRING);
+  printf("Version: %s\n", MIDAS_VERSION_STRING);
   double start_time = omp_get_wtime();
   printf("\n\n\t\tIndexerScanningOMP v6.0\nContact hsharma@anl.gov in case of "
          "questions about the MIDAS project.\n\n");
@@ -1453,7 +1452,83 @@ int main(int argc, char *argv[]) {
                       0.5 * Params.StepsizeOrient;
   }
 
-  printf("SpaceGroup: %d\n", Params.SpaceGroupNum);
+  printf("\n");
+  printf("╔══════════════════════════════════════════════════════════════╗\n");
+  printf("║          IndexerScanningOMP — Parameter Summary            ║\n");
+  printf("╠══════════════════════════════════════════════════════════════╣\n");
+  printf("║  CRYSTAL                                                   ║\n");
+  printf("║    SpaceGroup      : %-6d                                ║\n",
+         Params.SpaceGroupNum);
+  printf("║    LatticeConstant : %-10.4f                            ║\n",
+         Params.LatticeConstant);
+  printf("║    LatticeParams   : %.4f %.4f %.4f %.2f %.2f %.2f       ║\n",
+         ABCABG[0], ABCABG[1], ABCABG[2], ABCABG[3], ABCABG[4], ABCABG[5]);
+  printf("║    Wavelength      : %-12.6f Å                        ║\n",
+         Params.Wavelength);
+  printf("║                                                            ║\n");
+  printf("║  GEOMETRY                                                  ║\n");
+  printf("║    Distance (Lsd)  : %-12.2f µm                        ║\n",
+         Params.Distance);
+  printf("║    PixelSize       : %-10.4f µm                          ║\n",
+         pixelsize);
+  printf("║    BigDetSize      : %-6d px                            ║\n",
+         BigDetSize);
+  printf("║    Rsample         : %-10.4f                            ║\n",
+         Params.Rsample);
+  printf("║    Hbeam           : %-10.4f                            ║\n",
+         Params.Hbeam);
+  printf("║    BeamSize        : %-10.4f                            ║\n",
+         BeamSize);
+  printf("║                                                            ║\n");
+  printf("║  INDEXING                                                  ║\n");
+  printf("║    NrOfRings       : %-6d                                ║\n",
+         Params.NrOfRings);
+  printf("║    RingToIndex     : %-6d                                ║\n",
+         Params.RingToIndex);
+  printf("║    StepsizePos     : %-10.4f                            ║\n",
+         Params.StepsizePos);
+  printf("║    StepsizeOrient  : %-10.4f                            ║\n",
+         Params.StepsizeOrient);
+  printf("║    MinMatchFrac    : %-10.4f                            ║\n",
+         Params.MinMatchesToAcceptFrac);
+  printf("║    ExcludePoleAngle: %-10.4f                            ║\n",
+         Params.ExcludePoleAngle);
+  printf("║    UseFriedelPairs : %-6d                                ║\n",
+         Params.UseFriedelPairs);
+  printf("║                                                            ║\n");
+  printf("║  TOLERANCES                                                ║\n");
+  printf("║    MarginOme       : %-10.4f                            ║\n",
+         Params.MarginOme);
+  printf("║    MarginRadius    : %-10.4f                            ║\n",
+         Params.MarginRad);
+  printf("║    MarginRadial    : %-10.4f                            ║\n",
+         Params.MarginRadial);
+  printf("║    MarginEta       : %-10.4f                            ║\n",
+         Params.MarginEta);
+  printf("║    EtaBinSize      : %-10.4f                            ║\n",
+         Params.EtaBinSize);
+  printf("║    OmeBinSize      : %-10.4f                            ║\n",
+         Params.OmeBinSize);
+  printf("║                                                            ║\n");
+  printf("║  OMEGA RANGES (%d)                                        ║\n",
+         Params.NoOfOmegaRanges);
+  for (i = 0; i < Params.NoOfOmegaRanges; i++)
+    printf("║    [%2d] %10.4f → %10.4f                            ║\n", i,
+           Params.OmegaRanges[i][0], Params.OmegaRanges[i][1]);
+  printf("║                                                            ║\n");
+  printf("║  RING NUMBERS                                              ║\n");
+  printf("║   ");
+  for (i = 0; i < Params.NrOfRings; i++)
+    printf(" %d", Params.RingNumbers[i]);
+  printf("\n");
+  printf("║                                                            ║\n");
+  printf("║  FILE I/O                                                  ║\n");
+  printf("║    OutputFolder    : %s\n", Params.OutputFolder);
+  printf("║    SpotsFileName   : %s\n", Params.SpotsFileName);
+  printf("║    IDsFileName     : %s\n", Params.IDsFileName);
+  printf("║    MicFile         : %s\n", Params.MicFN);
+  printf("║    GrainsFile      : %s\n", Params.GrainsFN);
+  printf("╚══════════════════════════════════════════════════════════════╝\n");
   printf("Finished reading parameters.\n");
   char *hklfn = "hkls.csv";
   FILE *hklf = fopen(hklfn, "r");
@@ -1496,7 +1571,7 @@ int main(int argc, char *argv[]) {
   char *cwdstr = dirname(tmpstr);
   printf("No of hkl's: %d\n", n_hkls);
   n_spots = ReadSpots(cwdstr);
-  printf("nSpots = %d, Binned data...\n", n_spots);
+  printf("nSpots = %d, Binned data...\n", (int)n_spots);
   int rc = ReadBins(cwdstr);
   int HighestRingNo = 0;
   for (i = 0; i < MAX_N_RINGS; i++) {
@@ -1629,8 +1704,8 @@ int main(int argc, char *argv[]) {
   }
 
   int thisRowNr;
-  printf("%s %d %d %d %d\n", Params.MicFN, nrMic, hasMic, startRowNrSp,
-         endRowNrSp);
+  printf("%s %d %d %d %d\n", Params.MicFN, nrMic, hasMic, (int)startRowNrSp,
+         (int)endRowNrSp);
 #pragma omp parallel num_threads(numProcs) private(thisRowNr)
   {
     struct IndexerScratch scratch;
@@ -1683,6 +1758,10 @@ int main(int argc, char *argv[]) {
         DoIndexingSingle(thisRowNr, OMThis, xThis, yThis, Params, valsF, allF,
                          keyF, &scratch);
       } else if (hasGrains == 1) {
+        if (omp_get_thread_num() == 0 && thisRowNr == startRowNr)
+          printf(
+              "Entering Grains.csv orientation loop (%d grains × %d voxels)\n",
+              nrGrains, endRowNr - startRowNr);
         int iter;
         double OMThis[3][3];
         for (iter = 0; iter < nrGrains; iter++) {

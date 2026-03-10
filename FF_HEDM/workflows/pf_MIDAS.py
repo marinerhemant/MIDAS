@@ -1379,9 +1379,9 @@ def main():
                 for line in lines:
                     if any(line.startswith(x) for x in ['RingNumbers', 'MarginRadius', 'RingRadii', 'RingToIndex', 'BeamSize', 'px']):
                         continue
-                    if line.startswith('MicFile') and not micFN:
+                    if line.startswith('MicFile'):
                         continue
-                    if line.startswith('GrainsFile') and not grainsFN:
+                    if line.startswith('GrainsFile'):
                         continue
                     if line.startswith('OutputFolder'):
                         paramsf.write(f'OutputFolder {topdir}/Output\n')
@@ -1400,13 +1400,11 @@ def main():
                 paramsf.write(f'px {px}\n')
                 paramsf.write(f'RingToIndex {RingToIndex}\n')
                 
-                if args.micFN:
-                    paramsf.write(f'MicFile {args.micFN}\n')
-                    micFN = args.micFN
-                if args.grainsFN:
-                    paramsf.write(f'GrainsFile {args.grainsFN}\n')
-                    print("Added grains file to parameters file: ", args.grainsFN)
-                    grainsFN = args.grainsFN
+                if micFN:
+                    paramsf.write(f'MicFile {micFN}\n')
+                if grainsFN:
+                    paramsf.write(f'GrainsFile {grainsFN}\n')
+                    logger.info(f"Added GrainsFile to paramstest.txt: {grainsFN}")
             ph5.mark('params_rewrite')
             ph5.write_dataset('parameters/nScans_final', nScans)
             ph5.write_dataset('parameters/BeamSize_final', BeamSize)

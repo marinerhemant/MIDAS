@@ -1269,7 +1269,7 @@ def runMIDAS(rawFN, state, n_iterations=40, mult_factor=2.5,
     if n_cpus is None:
         n_cpus = os.cpu_count() or 8
 
-    ps_file = f"{rawFN}ps.txt"
+    ps_file = os.path.join(os.getcwd(), f"{os.path.basename(rawFN)}ps.txt")
 
     try:
         with open(ps_file, 'w') as pf:
