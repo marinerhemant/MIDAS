@@ -797,6 +797,10 @@ class NFViewer(QtWidgets.QMainWindow):
         self.statusBar().addWidget(self._spot_confirm_btn)
         self.status_label.setText("RIGHT-CLICK on a diffraction spot (left-click to zoom)...")
 
+        # Disable ViewBox context menu so right-click doesn't show it
+        vb = self.image_view.getView().getViewBox()
+        vb.setMenuEnabled(False)
+
         self.image_view.scene.sigMouseClicked.connect(self._on_spot_clicked)
 
     def _on_spot_clicked(self, event):
@@ -884,6 +888,9 @@ class NFViewer(QtWidgets.QMainWindow):
                 for item in self._spot_marker:
                     self.image_view.removeItem(item)
                 self._spot_marker = None
+            # Restore ViewBox context menu
+            vb = self.image_view.getView().getViewBox()
+            vb.setMenuEnabled(True)
             dlg.accept()
             # Auto-compute distances
             self._compute_distances()
@@ -944,11 +951,13 @@ class NFViewer(QtWidgets.QMainWindow):
         dlg = QtWidgets.QDialog(self)
         dlg.setWindowTitle(f"Distance Results — Lsd = {self.lsd:.1f} μm")
         dlg.resize(1000, 650)
+        dlg.setFont(self.font())  # match main window font
         main_lay = QtWidgets.QVBoxLayout(dlg)
 
         # Summary text
         summary = QtWidgets.QLabel(result_text)
         summary.setWordWrap(True)
+        summary.setTextInteractionFlags(QtCore.Qt.TextSelectableByMouse)
         main_lay.addWidget(summary)
 
         gw = pg.GraphicsLayoutWidget()
