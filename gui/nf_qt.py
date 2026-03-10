@@ -1586,8 +1586,7 @@ class NFViewer(QtWidgets.QMainWindow):
                 f.write('WFImages 0\n')
                 f.write('OrigFileName ' + self.fnstem + '\n')
                 f.write('NrFilesPerDistance ' + str(self.n_files_per_dist) + '\n')
-                f.write('NrPixelsY ' + str(self.ny) + '\n')
-                f.write('NrPixelsZ ' + str(self.nz) + '\n')
+                f.write('NrPixels ' + str(self.ny) + '\n')
                 f.write('DataDirectory ' + self.folder + '\n')
                 f.write('OutputDirectory ' + self._median_dir + '\n')
                 tempnr = self.start_frame_nr + d * self.n_files_per_dist
