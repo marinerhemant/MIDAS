@@ -1121,27 +1121,112 @@ class NFViewer(QtWidgets.QMainWindow):
     # ── Box ROI (sum across rect) ──────────────────────────────────
 
     def _add_box_roi(self, direction):
-        """Add rectangular ROI for box-integrated line profile."""
+        """Enter draw mode: user drags to define box ROI for line profile."""
         if self.imarr2 is None:
             return
         self.right_widget.setCurrentIndex(0)
         self._box_direction = direction
-        h, w = self.imarr2.shape
-        size_main = int(min(h, w) * 0.4)
-        size_cross = int(min(h, w) * 0.1)
-        if direction == 'h':
-            roi = pg.RectROI([w * 0.3, h * 0.45], [size_main, size_cross],
-                              pen=pg.mkPen('c', width=2))
-        else:
-            roi = pg.RectROI([w * 0.45, h * 0.3], [size_cross, size_main],
-                              pen=pg.mkPen('c', width=2))
+        self._box_drawing = True
+        self._box_draw_start = None
 
+        # Remove previous ROI and preview
         if hasattr(self, '_box_roi') and self._box_roi is not None:
             self.image_view.removeItem(self._box_roi)
+            self._box_roi = None
+        if hasattr(self, '_box_preview') and self._box_preview is not None:
+            self.image_view.removeItem(self._box_preview)
+            self._box_preview = None
+
+        label = 'BoxH' if direction == 'h' else 'BoxV'
+        self.status_label.setText(f"Draw {label}: click one corner, then click the opposite corner to drag-select the region of interest")
+        self.setCursor(QtCore.Qt.CrossCursor)
+
+        # Connect mouse events on the scene
+        scene = self.image_view.scene
+        scene.sigMouseClicked.connect(self._box_draw_click)
+
+    def _box_draw_click(self, ev):
+        """Handle mouse click for box draw mode."""
+        if not getattr(self, '_box_drawing', False):
+            return
+
+        vb = self.image_view.getView().getViewBox()
+        pos = vb.mapSceneToView(ev.scenePos())
+
+        if self._box_draw_start is None:
+            # First click: record start point, install move handler
+            self._box_draw_start = (pos.x(), pos.y())
+            self.status_label.setText("Now click the opposite corner...")
+            # Add preview rectangle
+            from PyQt5 import QtGui as _QtGui
+            preview = QtWidgets.QGraphicsRectItem(pos.x(), pos.y(), 0, 0)
+            preview.setPen(pg.mkPen('c', width=2, style=QtCore.Qt.DashLine))
+            preview.setBrush(_QtGui.QBrush(_QtGui.QColor(0, 255, 255, 30)))
+            preview.setZValue(1000)
+            self.image_view.addItem(preview)
+            self._box_preview = preview
+            # Track mouse for preview
+            self._box_move_proxy = pg.SignalProxy(
+                self.image_view.scene.sigMouseMoved, rateLimit=30,
+                slot=self._box_draw_move)
+            ev.accept()
+        else:
+            # Second click: finalize ROI
+            x0, y0 = self._box_draw_start
+            x1, y1 = pos.x(), pos.y()
+            self._box_finish_draw(x0, y0, x1, y1)
+            ev.accept()
+
+    def _box_draw_move(self, evt):
+        """Update preview rectangle as mouse moves."""
+        if not getattr(self, '_box_drawing', False) or self._box_draw_start is None:
+            return
+        pos = evt[0]
+        vb = self.image_view.getView().getViewBox()
+        if self.image_view.getView().sceneBoundingRect().contains(pos):
+            mp = vb.mapSceneToView(pos)
+            x0, y0 = self._box_draw_start
+            x1, y1 = mp.x(), mp.y()
+            rx, ry = min(x0, x1), min(y0, y1)
+            rw, rh = abs(x1 - x0), abs(y1 - y0)
+            if hasattr(self, '_box_preview') and self._box_preview is not None:
+                self._box_preview.setRect(rx, ry, rw, rh)
+
+    def _box_finish_draw(self, x0, y0, x1, y1):
+        """Create final RectROI from the two corner points."""
+        # Cleanup draw mode
+        self._box_drawing = False
+        self._box_draw_start = None
+        self.setCursor(QtCore.Qt.ArrowCursor)
+
+        # Disconnect handlers
+        try:
+            self.image_view.scene.sigMouseClicked.disconnect(self._box_draw_click)
+        except Exception:
+            pass
+        if hasattr(self, '_box_move_proxy'):
+            self._box_move_proxy.disconnect()
+            self._box_move_proxy = None
+
+        # Remove preview
+        if hasattr(self, '_box_preview') and self._box_preview is not None:
+            self.image_view.removeItem(self._box_preview)
+            self._box_preview = None
+
+        # Create ROI at drawn bounds
+        rx, ry = min(x0, x1), min(y0, y1)
+        rw, rh = abs(x1 - x0), abs(y1 - y0)
+        if rw < 2 or rh < 2:  # too small, ignore
+            self.status_label.setText("Box too small, try again")
+            return
+
+        roi = pg.RectROI([rx, ry], [rw, rh], pen=pg.mkPen('c', width=2))
         self._box_roi = roi
         self.image_view.addItem(roi)
         roi.sigRegionChanged.connect(self._update_box_profile)
         self._update_box_profile()
+        label = 'BoxH' if self._box_direction == 'h' else 'BoxV'
+        self.status_label.setText(f"{label} ROI created — drag handles to adjust")
 
     def _update_box_profile(self):
         if not hasattr(self, '_box_roi') or self._box_roi is None or self.imarr2 is None:

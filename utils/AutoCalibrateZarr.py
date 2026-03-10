@@ -468,15 +468,19 @@ class CalibImageViewer:
         for item in self._ring_items:
             p.removeItem(item)
         self._ring_items = []
-        # Disable auto-range while adding ring overlays (prevents linked views zooming out)
-        p.getViewBox().disableAutoRange()
+        # Disable auto-range on ALL panels before adding overlays (they are linked)
+        saved_ranges = {}
+        for name, panel in self.panels.items():
+            vb = panel.getViewBox()
+            vb.disableAutoRange()
+            saved_ranges[name] = (vb.viewRange()[0][:], vb.viewRange()[1][:])
         # Draw new rings as ellipses (CircleROI)
         for i, rad in enumerate(ring_radii):
             ring_nr = i + 1
             if rings_to_exclude and ring_nr in rings_to_exclude:
                 continue
-            # pyqtgraph coords: x=col, y=row → bc[1]=col, bc[0]=row
-            r_px = rad / self._px if hasattr(self, '_px') else rad
+            # sim_rads is already in pixels; do NOT divide by _px again
+            r_px = rad
             circle = pg.CircleROI(
                 [bc[1] - r_px, bc[0] - r_px], [2 * r_px, 2 * r_px],
                 pen=pg.mkPen('c', width=1), movable=False)
@@ -485,8 +489,11 @@ class CalibImageViewer:
                 circle.removeHandle(h)
             p.addItem(circle)
             self._ring_items.append(circle)
-        # Restore view range to image dimensions
-        p.getViewBox().setRange(xRange=[0, img.shape[1]], yRange=[0, img.shape[0]], padding=0.02)
+        # Restore view range on all panels to image dimensions
+        img_range = {'x': [0, img.shape[1]], 'y': [0, img.shape[0]]}
+        for name, panel in self.panels.items():
+            panel.getViewBox().setRange(xRange=img_range['x'],
+                                        yRange=img_range['y'], padding=0.02)
 
     def show_and_wait(self):
         """Block until user clicks Continue."""
