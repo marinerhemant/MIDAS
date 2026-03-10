@@ -166,6 +166,9 @@ def read_image(fn, header, bytes_per_pixel, ny, nz, frame_idx=0,
             data = tifffile.imread(fn, key=frame_idx)
         else:
             return np.zeros((ny, nz))
+    elif ext == '.cbf':
+        from read_cbf import read_cbf as _read_cbf
+        _, data = _read_cbf(fn, check_md5=False)
     else:
         with open(fn, 'rb') as f:
             skip = header + frame_idx * (bytes_per_pixel * ny * nz)

@@ -488,14 +488,16 @@ def process_hdf5_scan(config, z_groups, zRoot):
     return output_dtype
 
 def process_multifile_scan(file_type, config, z_groups):
-    """Processes a scan of multiple GE/TIFF files with SkipFrame logic and .bz2 support."""
+    """Processes a scan of multiple GE/TIFF/CBF files with SkipFrame logic and .bz2 support."""
     print(f"\n--- Processing {file_type.upper()} File(s) ---")
     num_files, skip_frames = int(config.get('numFilesPerScan', 1)), int(config.get('SkipFrame', 0))
     header_size = int(config.get('HeadSize', 8192))
-    # numPxY, numPxZ will be determined/verified from the file if possible (for TIFF) or config (for GE)
+    # numPxY, numPxZ will be determined/verified from the file if possible (for TIFF/CBF) or config (for GE)
 
-    # Ensure tifffile is available if needed (for both data and dark files)
-    if file_type != 'ge':
+    # Ensure required I/O modules are available
+    if file_type == 'cbf':
+        from read_cbf import read_cbf as _read_cbf, read_cbf_metadata, DATA_TYPES as CBF_DATA_TYPES
+    elif file_type != 'ge':
         import tifffile
 
     # --- Correction Logic ---
@@ -552,7 +554,35 @@ def process_multifile_scan(file_type, config, z_groups):
 
     # Check size of first file
     with BZ2Context(file_list[0]) as first_fn_uncompressed:
-        if file_type == 'ge':
+        if file_type == 'cbf':
+            # CBF: read metadata from first file to get dimensions, dtype, pixel size
+            cbf_hdr = read_cbf_metadata(first_fn_uncompressed)
+            numPxY = int(cbf_hdr['X-Binary-Size-Fastest-Dimension'])
+            numPxZ = int(cbf_hdr['X-Binary-Size-Second-Dimension'])
+            frames_per_file = 1  # CBF is always 1 frame per file
+
+            # Determine dtype from CBF header
+            cbf_type_str = cbf_hdr.get('X-Binary-Element-Type', 'signed 32-bit integer')
+            output_dtype = CBF_DATA_TYPES.get(cbf_type_str, np.int32)
+            bytes_per_pixel = np.dtype(output_dtype).itemsize
+
+            config['numPxY'] = numPxY
+            config['numPxZ'] = numPxZ
+            print(f"  - Inferred dimensions from CBF: {numPxY} x {numPxZ}, dtype: {output_dtype.__name__}")
+
+            # Auto-sense pixel size from Pilatus sub-header (meters → microns)
+            pilatus = cbf_hdr.get('pilatus', {})
+            if 'Pixel_size' in pilatus and 'px' not in config and 'PixelSize' not in config:
+                px_m = pilatus['Pixel_size']  # (y_m, z_m) tuple or single float
+                if isinstance(px_m, (tuple, list)):
+                    px_um = px_m[0] * 1e6  # assume square pixels, take first
+                else:
+                    px_um = float(px_m) * 1e6
+                config['px'] = px_um
+                config['PixelSize'] = px_um
+                print(f"  - Auto-sensed pixel size from CBF header: {px_um:.1f} µm")
+
+        elif file_type == 'ge':
             # For GE files, we MUST have valid numPxY/numPxZ from config/defaults as they have no header info
             numPxY = int(config.get('numPxY', 2048))
             numPxZ = int(config.get('numPxZ', 2048))
@@ -631,7 +661,29 @@ def process_multifile_scan(file_type, config, z_groups):
 
     pre_proc_threshold = dark_mean + (pre_proc_thresh_value if pre_proc_thresh_value != -1 else 0)
 
-    if file_type == 'ge':
+    if file_type == 'cbf':
+        # CBF: one frame per file, read in parallel with ThreadPoolExecutor.
+        # Numba's @njit releases the GIL, so threads achieve real parallelism.
+        import concurrent.futures
+
+        def process_single_cbf(filepath):
+            """Reads, corrects, and returns data for one CBF file."""
+            with BZ2Context(filepath) as uncompressed_path:
+                _, data = _read_cbf(uncompressed_path, check_md5=False)
+                data_chunk = data.reshape((1, numPxZ, numPxY))
+                if correction_active:
+                    return apply_correction(data_chunk, dark_mean, pre_proc_threshold)
+                return data_chunk
+
+        with concurrent.futures.ThreadPoolExecutor() as executor:
+            results = executor.map(process_single_cbf, file_list)
+
+            for processed_data in results:
+                z_data[z_offset : z_offset + len(processed_data)] = processed_data
+                z_offset += len(processed_data)
+                print(f"  - Wrote frame {z_offset}/{total_frames_to_write} to Zarr archive.")
+
+    elif file_type == 'ge':
         for i, current_fn in enumerate(file_list):
             print(f"  - Reading file {i+1}/{num_files_found}: {current_fn}")
             
@@ -810,6 +862,7 @@ def main():
                 print(f"Copying Zarr data with shape: {source_data.shape}, dtype: {output_dtype}")
                 zarr.copy_all(zf_in['exchange'], z_groups['exc'])
         elif file_ext in ['.tif', '.tiff']: output_dtype = process_multifile_scan('tiff', config, z_groups)
+        elif file_ext == '.cbf': output_dtype = process_multifile_scan('cbf', config, z_groups)
         else: output_dtype = process_multifile_scan('ge', config, z_groups)
     except (FileNotFoundError, KeyError, ValueError, SystemExit) as e:
         print(f"\nFATAL ERROR: {e}"); zip_store.close();
