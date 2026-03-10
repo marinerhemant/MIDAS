@@ -784,10 +784,10 @@ class NFViewer(QtWidgets.QMainWindow):
         msg.setText(
             "1. Ensure correct beam centers and distance difference.\n"
             "2. It is recommended to have median correction enabled.\n"
-            "3. Starting from the last distance, click on a diffraction spot.\n"
+            "3. Starting from the last distance, RIGHT-CLICK on a diffraction spot.\n"
             "4. Click 'Confirm Selection' in the status bar.\n"
             "5. Repeat for each distance using the SAME spot.\n"
-            "6. Click 'Compute Distances' when finished.")
+            "6. Click 'Finished' when done (distances auto-computed).")
         msg.addButton("Ready!", QtWidgets.QMessageBox.AcceptRole)
         msg.exec_()
 
@@ -795,12 +795,15 @@ class NFViewer(QtWidgets.QMainWindow):
         self._spot_confirm_btn = QtWidgets.QPushButton("Confirm Selection")
         self._spot_confirm_btn.clicked.connect(self._confirm_select_spot)
         self.statusBar().addWidget(self._spot_confirm_btn)
-        self.status_label.setText("Click on a diffraction spot...")
+        self.status_label.setText("RIGHT-CLICK on a diffraction spot (left-click to zoom)...")
+
         self.image_view.scene.sigMouseClicked.connect(self._on_spot_clicked)
 
     def _on_spot_clicked(self, event):
-        """Record clicked position for spot selection."""
+        """Record clicked position for spot selection (right-click only)."""
         if not self._selecting_spots:
+            return
+        if event.button() != QtCore.Qt.RightButton:
             return
         pos = self.image_view.getView().mapSceneToView(event.scenePos())
         self._click_ix = pos.x()
