@@ -566,7 +566,7 @@ class LogPanel(QtWidgets.QDockWidget):
         self._text = QtWidgets.QPlainTextEdit()
         self._text.setReadOnly(True)
         self._text.setMaximumBlockCount(5000)
-        font = QtGui.QFont('Consolas', 10)
+        font = QtGui.QFont('Menlo', 10)
         font.setStyleHint(QtGui.QFont.Monospace)
         self._text.setFont(font)
         self.setWidget(self._text)

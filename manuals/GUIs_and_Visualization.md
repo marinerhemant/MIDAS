@@ -54,7 +54,7 @@ python ~/opt/MIDAS/gui/ff_asym_qt.py &
 - **Auto-detection** of data files from current directory
 - **Image display** with PyQtGraph: fast pan, zoom, crosshair with pixel coordinates
 - **Navigation toolbar** below image: Home, Back/Forward (view history), Pan, Zoom-to-rect
-- **Intensity control**: P2–P98 percentile auto-scaling, editable MinI/MaxI fields, log scale
+- **Intensity control**: P2–P98 percentile auto-scaling, editable Min I / Max I fields (in toolbar), log scale
 - **Ring overlays** from ring material database with live redraw on BC/Lsd change
 - **Image transforms**: HFlip, VFlip, Transpose checkboxes
 - **Dark subtraction**: load and apply dark field images
@@ -62,7 +62,7 @@ python ~/opt/MIDAS/gui/ff_asym_qt.py &
 - **Frame navigation**: spinner + Ctrl+mouse-wheel frame stepping
 - **Max/Sum over frames**: aggregate multiple frames for improved signal (mutually exclusive toggles)
 - **ZIP auto-initialization**: loading a MIDAS `.zip` automatically reads Lsd, BC, PixelSize, Wavelength, SpaceGroup, LatticeConstant, and ImTransOpt (HFlip/VFlip/Transpose)
-- **Auto ring computation**: when a ZIP is loaded, clicking RingsMat skips the parameter dialog and computes rings directly from ZIP metadata
+- **Auto ring computation**: when a ZIP is loaded, clicking Rings Material skips the parameter dialog and computes rings directly from ZIP metadata
 - **Nearest ring in status bar**: when rings are displayed, status bar shows the nearest ring's number and hkl at the cursor position
 - **Colormap** and **theme** (dark/light) selection
 - **Font size** control (8–24pt)
@@ -79,7 +79,7 @@ python ~/opt/MIDAS/gui/ff_asym_qt.py &
 | Rendering speed | Matplotlib (slower) | PyQtGraph (GPU-accelerated) |
 | Navigation | Matplotlib toolbar | Custom Home/Back/Forward/Pan/Zoom |
 | Mouse-wheel zoom | Enabled by default | Disabled (explicit Zoom button) |
-| Intensity scaling | Manual min/max | P2–P98 auto-scaling + manual override |
+| Intensity scaling | Manual min/max | P2–P98 auto-scaling + manual override (in toolbar) |
 | Ring update | Requires reload | Live on BC/Lsd text field change |
 | Calibrate dialog | Available | Removed (use `AutoCalibrateZarr.py`) |
 
@@ -151,8 +151,8 @@ All features from the FF viewer plus:
 - **Microstructure overlay**: load `.mic` / `.map` files, color by Confidence, GrainID, Euler angles, KAM, GROD, Phase
 - **Spot simulation**: load grain parameters and simulate diffraction spots
 - **LineoutH / LineoutV**: horizontal and vertical intensity profiles
-- **BoxH / BoxV ROI tools**: rectangular region-of-interest with real-time Sum, Mean, Min, Max statistics
-- **Beam center determination**: guided workflow for multi-distance calibration
+- **Box H / Box V ROI tools**: rectangular region-of-interest with real-time Sum, Mean, Min, Max statistics
+- **Beam Center determination**: guided workflow for multi-distance calibration
 - **Origin at bottom-right** (matching physical NF detector convention)
 - **🎬 Movie mode**, **🖱️ drag-drop**, **💾 session save** — same as FF viewer
 

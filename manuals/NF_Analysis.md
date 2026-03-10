@@ -262,7 +262,7 @@ graph TD
     A["Initial Calibration<br>(NF_Calibration.md)"] --> B["Update Parameter File<br>with Lsd, BC values"]
     B --> C["Single-Point Optimization<br>(2-3 iterations)"]
     C --> D["Full Reconstruction"]
-    D --> E["Inspect .mic in GUI<br>(LoadMic → .map file)"]
+    D --> E["Inspect .mic in GUI<br>(Load Mic → .map file)"]
     E --> F["Select 5-10 GridPoints<br>from high-confidence grains"]
     F --> G["Multi-Point Optimization<br>(2-3 iterations)"]
     G --> H["Full Reconstruction"]
@@ -296,7 +296,7 @@ This produces a `.mic` text file and a `.map` binary file in `DataDirectory`.
     cd <DataDirectory>
     python ~/opt/MIDAS/gui/nf.py &
     ```
-    Click **LoadMic** and select the `.map` file (preferred over `.mic` — `imshow` rendering is significantly faster).
+    Click **Load Mic** and select the `.map` file (preferred over `.mic` — `imshow` rendering is significantly faster).
 
 2.  **Set visualization to `Confidence`** using the radio buttons.
 

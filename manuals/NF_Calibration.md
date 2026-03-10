@@ -29,7 +29,7 @@ This manual is divided into two primary sections, mirroring the calibration work
         ```
 
 2.  **Load the Beam Position Scan File:**
-    *   Click the **`FirstFile`** button.
+    *   Click the **`First File`** button.
     *   Navigate to your data folder. For Part I, select the Au 5mm beam position scan file. The filename stem will typically be **"DetZBeamPosScan"**.
     *   If no "DetZBeamPosScan" files exist, load the first image from your "Au_NF" folder for that distance.
     *   The GUI will auto-populate the `Folder`, `FNStem`, and `StartFileNumberFirstLayer` fields.
@@ -82,14 +82,14 @@ We will determine the center of the left and right edges of this line and averag
 #### **Step 1: Analyze the Left Edge of the Beam (5mm distance)**
 
 **(a) Find the Horizontal Center of the Left Edge:**
-1.  Click the **`BoxH`** button. A rectangular ROI appears on the image.
+1.  Click the **`Box H`** button. A rectangular ROI appears on the image.
 2.  Drag the ROI over the **left edge** of the beam, ensuring it fully encompasses the edge.
 3.  An intensity profile will appear in the right-hand panel. This curve shows the integrated intensity vs. horizontal pixel position.
 4.  Hover your mouse over this curve. The coordinates are displayed in the status bar.
 5.  Identify the **x value** at the center of the slope. **Record this value.**
 
 **(b) Find the Vertical Center of the Left Edge:**
-1.  Click the **`BoxV`** button.
+1.  Click the **`Box V`** button.
 2.  Drag the ROI over the left edge of the beam.
 3.  A new intensity profile will appear on the right, showing intensity vs. vertical pixel position.
 4.  Hover your mouse over the curve and identify the **x value** at the center of the peak. **Record this value.**
@@ -142,14 +142,14 @@ Now we will use the gold calibration scan data and the beam center values from P
  #### **Step 5: Load the Gold Calibration Data**
 
 
-1.  Click **`FirstFile`**.
+1.  Click **`First File`**.
 2.  Select the **first gold calibration scan file**. The folder is typically "Au_NF", and you should choose the first image number for the 5mm detector distance.
 3.  Ensure **`Dist`** is set to `0` and the image will load automatically.
 
 #### **Step 6: Enter All Calculated Center Values**
 
 
-1.  Click the **`BeamCenter`** button. A new window titled "Enter beam center values (pixels)" will open.
+1.  Click the **`Beam Center`** button. A new window titled "Enter beam center values (pixels)" will open.
 2.  **Left Column:** Enter the three **horizontal center values of the Au sample** you just calculated in part I (one for each distance).
 3.  **Right Column:** Enter the three **average vertical beam center values** you calculated in Part I (one for each distance).
 4.  **Difference in distances:** Enter the approximate distance between your detectors in microns (e.g., `2000` for 2mm).
@@ -157,7 +157,7 @@ Now we will use the gold calibration scan data and the beam center values from P
 
 #### **Step 7: Select Diffraction Spots**
 
-1.  Click the **`SelectSpots`** button. A help window will appear. Read the instructions and click **`Ready!`**.
+1.  Click the **`Select Spots`** button. A help window will appear. Read the instructions and click **`Ready!`**.
 2.  Make sure you are viewing the last detector distance (`Dist` = `2`, e.g., 9mm).
 3.  Use the **`Frame`** spinner or the **← / →** keys to cycle through scan images until you find a clear, strong diffraction spot.
 4.  Use **left-click-drag** to zoom into the spot area (rectangle zoom remains active throughout).
@@ -205,7 +205,7 @@ graph TD
     A["Initial Calibration<br>(Parts I & II)"] --> B["Update Parameter File<br>with Lsd, BC values"]
     B --> C["Single-Point Optimization<br>(2-3 iterations)"]
     C --> D["Full Reconstruction"]
-    D --> E["Inspect .mic in GUI<br>(LoadMic → .map file)"]
+    D --> E["Inspect .mic in GUI<br>(Load Mic → .map file)"]
     E --> F["Select 5-10 GridPoints<br>from high-confidence grains"]
     F --> G["Multi-Point Optimization<br>(2-3 iterations)"]
     G --> H["Full Reconstruction"]
@@ -242,7 +242,7 @@ This produces a `.mic` text file and a `.map` binary file.
     cd <DataDirectory>
     python ~/opt/MIDAS/gui/nf_qt.py &
     ```
-    Click **LoadMic** and select the `.map` file (preferred — faster rendering via `imshow`).
+    Click **Load Mic** and select the `.map` file (preferred — faster rendering via `imshow`).
 
 2.  **Set the visualization to `Confidence`** using the radio buttons.
 
@@ -307,15 +307,15 @@ The `Compute Distances` function employs a **Ray-Triangulation** method based on
 | **`MinI`/`MaxI`** | Adjusts the minimum/maximum intensity values for the image display (contrast).                     |
 | **`Log`**             | Toggles a logarithmic color scale for the image, useful for seeing faint features.                       |
 | **`LineOutH/V`**      | Draggable 1D line profile ROI — shows intensity along a line.                                            |
-| **`BoxH/BoxV`**       | Draggable rectangular ROI — shows integrated 1D profile summed across the short axis.                    |
-| **`LoadMic`**         | Loads a microstructure (`.mic` or `.map`) file for display in the right-hand panel.                      |
-| **`SelectPoint`**     | Click on mic map to auto-populate grain parameters for spot simulation.                                  |
-| **`LoadGrain`**       | Opens a window to manually input crystal orientation, position, and lattice parameters for simulation. |
-| **`MakeSpots`**       | Simulates diffraction spots based on the currently loaded grain information.                             |
-| **`SubtMedian`**      | Toggles the subtraction of a pre-calculated median background image.                                     |
-| **`CalcMedian`**      | Calculates a median background image from all frames per distance. Auto-enables SubtMedian and reloads the image on completion. Output stored in a temporary directory (not persisted). |
-| **`SelectSpots`**     | Starts the interactive spot-selection workflow. **Right-click** to pick spots while keeping left-click rectangle zoom active. Cyan crosshairs show click positions. |
-| **`ComputeDistances`**| Auto-computed when clicking **Finished** in SelectSpots. Shows visual dialog with crop patches and ray triangulation diagram. |
+| **`Box H / Box V`**   | Draggable rectangular ROI — shows integrated 1D profile summed across the short axis.                    |
+| **`Load Mic`**        | Loads a microstructure (`.mic` or `.map`) file for display in the right-hand panel.                      |
+| **`Select Point`**    | Click on mic map to auto-populate grain parameters for spot simulation.                                  |
+| **`Load Grain`**      | Opens a window to manually input crystal orientation, position, and lattice parameters for simulation. |
+| **`Make Spots`**      | Simulates diffraction spots based on the currently loaded grain information.                             |
+| **`Subt. Median`**    | Toggles the subtraction of a pre-calculated median background image.                                     |
+| **`Calc Median`**     | Calculates a median background image from all frames per distance. Auto-enables Subt. Median and reloads the image on completion. Output stored in a temporary directory (not persisted). |
+| **`Select Spots`**    | Starts the interactive spot-selection workflow. **Right-click** to pick spots while keeping left-click rectangle zoom active. Cyan crosshairs show click positions. |
+| **`Compute Distances`**| Auto-computed when clicking **Finished** in Select Spots. Shows visual dialog with crop patches and ray triangulation diagram. |
 
 ---
 

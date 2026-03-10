@@ -58,7 +58,7 @@ python ~/opt/MIDAS/gui/dig_tw.py -mic Grains.csv
 cd <data_directory> && python ~/opt/MIDAS/gui/ff_asym_qt.py &
 ```
 
-Fast PyQtGraph-based FF-HEDM viewer with navigation toolbar, P2–P98 auto-scaling, live ring overlays, dark subtraction, HDF5 browsing, log scale, MaxOverFrames/SumOverFrames, and export PNG. Loading a MIDAS ZIP auto-initializes all parameters (Lsd, BC, Wavelength, SpaceGroup, LatticeConstant, ImTransOpt). When rings are displayed, status bar shows nearest ring info. See [GUIs_and_Visualization](../manuals/GUIs_and_Visualization.md) §1.
+Fast PyQtGraph-based FF-HEDM viewer with navigation toolbar, P2–P98 auto-scaling, live ring overlays, dark subtraction, HDF5 browsing, log scale, Max/Frames and Sum/Frames, and export PNG. Loading a MIDAS ZIP auto-initializes all parameters (Lsd, BC, Wavelength, SpaceGroup, LatticeConstant, ImTransOpt). When rings are displayed, status bar shows nearest ring info. See [GUIs_and_Visualization](../manuals/GUIs_and_Visualization.md) §1.
 
 #### NF-HEDM Viewer (`nf_qt.py`)
 
@@ -66,7 +66,7 @@ Fast PyQtGraph-based FF-HEDM viewer with navigation toolbar, P2–P98 auto-scali
 cd <data_directory> && python ~/opt/MIDAS/gui/nf_qt.py &
 ```
 
-NF-HEDM viewer with all FF features plus microstructure overlay (`.mic`/`.map`), spot simulation, BoxH/BoxV ROI tools (auto-refresh on frame/distance change, orange-red edge lines in pixel coordinates), beam center calibration, **SelectSpots** interactive calibration (right-click to select, cyan crosshairs, partial distance support), **ComputeDistances** auto-computed on Finished with visual results dialog (crop patches + ray triangulation diagram), **CalcMedian** with auto-reload, **SelectPoint** (click mic → auto-populate grain), **SumOverFrames**, and Q-to-quit shortcut. See [NF_GUI manual](../manuals/NF_GUI.md).
+NF-HEDM viewer with all FF features plus microstructure overlay (`.mic`/`.map`), spot simulation, Box H / Box V ROI tools (auto-refresh on frame/distance change, orange-red edge lines in pixel coordinates), Beam Center calibration, **Select Spots** interactive calibration (right-click to select, cyan crosshairs, partial distance support), **Compute Distances** auto-computed on Finished with visual results dialog (crop patches + ray triangulation diagram), **Calc Median** with auto-reload, **Select Point** (click mic → auto-populate grain), **Sum/Frames**, and Q-to-quit shortcut. See [NF_GUI manual](../manuals/NF_GUI.md).
 
 ### Legacy Tkinter Viewers (Archived)
 

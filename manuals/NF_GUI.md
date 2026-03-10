@@ -25,10 +25,10 @@ graph LR
     NF["nf_qt.py"]
     NF --> Viz["Image Viewer<br/>(PyQtGraph)"]
     NF --> Nav["Navigation Toolbar<br/>Home/Back/Fwd/Pan/Zoom"]
-    NF --> ROI["BoxH / BoxV<br/>ROI Stats"]
+    NF --> ROI["Box H / Box V<br/>ROI Stats"]
     NF --> Mic["Microstructure<br/>.mic / .map"]
     NF --> Sim["Spot Simulation<br/>GrainDialog"]
-    NF --> Cal["Calibration<br/>BeamCenter / SelectSpots<br/>/ ComputeDistances"]
+    NF --> Cal["Calibration<br/>Beam Center / Select Spots<br/>/ Compute Distances"]
     
     Viz --> Cross["Crosshair +<br/>pixel coords"]
     Viz --> Levels["P2-P98 Auto<br/>+ ManualI"]
@@ -40,21 +40,21 @@ graph LR
 |---|---|
 | **Navigation toolbar** | Home, Back/Forward, Pan, Zoom-to-rect below the image. Mouse-wheel zoom disabled |
 | **Auto-detection** | Scans current directory for TIFF files, sets folder/stem/frame automatically |
-| **Intensity control** | P2–P98 auto-scaling with editable MinI/MaxI fields and Apply button |
+| **Intensity control** | P2–P98 auto-scaling with editable Min I / Max I fields and Apply button (in toolbar) |
 | **Log scale** | Checkbox for log₁₀ display |
 | **Median subtraction** | Toggle per-frame background subtraction |
-| **Max/Sum over frames** | MaxOverFr and SumOverFr checkboxes (mutually exclusive) |
+| **Max/Sum over frames** | Max/Frames and Sum/Frames checkboxes (mutually exclusive) |
 | **Image transforms** | HFlip, VFlip, Transpose checkboxes |
-| **BoxH / BoxV ROI** | Rectangular region with live Sum, Mean, Min, Max statistics. Auto-refreshes on frame/distance change |
+| **Box H / Box V ROI** | Rectangular region with live Sum, Mean, Min, Max statistics. Auto-refreshes on frame/distance change |
 | **Box profile edge lines** | Half-maximum edges shown in orange-red with center/width in image pixel coordinates |
-| **Microstructure** | Load `.mic`/`.map`, color by Confidence, GrainID, Euler, KAM, GROD, Phase, GrMap |
-| **SelectPoint** | Click on mic map to auto-populate grain parameters for simulation |
+| **Microstructure** | Load `.mic`/`.map`, color by Confidence, GrainID, Euler, KAM, GROD, Phase, GrainMap |
+| **Select Point** | Click on mic map to auto-populate grain parameters for simulation |
 | **Spot simulation** | GrainDialog: enter grain parameters, simulate expected spots |
-| **SelectSpots** | Interactive workflow to pick diffraction spots at multiple distances. **Right-click** to select spots while maintaining zoom |
-| **ComputeDistances** | Automatic ray triangulation on Finished — visual dialog with spot crop patches, triangulation ray diagram, per-pair Lsd/grainY output |
-| **CalcMedian** | Compute median background from all frames per distance. Auto-enables SubtMedian and reloads on completion. Output stored in temp directory |
-| **Partial spot data** | Skip distances during SelectSpots — only confirmed (≥2) spots are used for triangulation |
-| **BeamCenter** | Dialog to enter beam center values for each distance |
+| **Select Spots** | Interactive workflow to pick diffraction spots at multiple distances. **Right-click** to select spots while maintaining zoom |
+| **Compute Distances** | Automatic ray triangulation on Finished — visual dialog with spot crop patches, triangulation ray diagram, per-pair Lsd/grainY output |
+| **Calc Median** | Compute median background from all frames per distance. Auto-enables Subt. Median and reloads on completion. Output stored in temp directory |
+| **Partial spot data** | Skip distances during Select Spots — only confirmed (≥2) spots are used for triangulation |
+| **Beam Center** | Dialog to enter beam center values for each distance |
 | **Colormap** | viridis, inferno, plasma, magma, turbo, gray, hot, cool, bone |
 | **Theme** | Dark or light |
 | **Font size** | Adjustable 8–24pt |
@@ -89,8 +89,8 @@ tifffile
 ### 1. Loading Data
 
 1.  **Launch the Application:** Run `python ~/opt/MIDAS/gui/nf_qt.py &` from your data directory.
-2.  **Auto-Detection:** When launched from a data directory, the GUI automatically sets `Folder`, `FNStem`, and `StartNr` by scanning for `.tif` files. The image loads automatically.
-3.  **Load Initial File (alternative):** Click the **FirstFile** button to open a file dialog and manually select your first `.tif` image.
+2.  **Auto-Detection:** When launched from a data directory, the GUI automatically sets `Folder`, `File Stem`, and `Start Frame` by scanning for `.tif` files. The image loads automatically.
+3.  **Load Initial File (alternative):** Click the **First File** button to open a file dialog and manually select your first `.tif` image.
 
 #### BeamPos / DetZBeamPos Folder Mode
 
@@ -117,11 +117,11 @@ The left panel shows the detector image.
 This procedure finds the `(x, y)` pixel coordinates of the beam center at each detector distance.
 
 1.  **Generate Horizontal Profile:**
-    *   Click the **BoxH** button.
+    *   Click the **Box H** button.
     *   A rectangular ROI appears on the image. Drag it over a horizontal diffraction line.
     *   The right panel shows an integrated intensity profile summed along the vertical axis.
 2.  **Generate Vertical Profile:**
-    *   Click the **BoxV** button.
+    *   Click the **Box V** button.
     *   Drag the ROI over a vertical feature.
     *   The right panel shows an integrated intensity profile summed along the horizontal axis.
 3.  **Find the Center:**
@@ -129,18 +129,18 @@ This procedure finds the `(x, y)` pixel coordinates of the beam center at each d
     *   Identify the center of the slope/peak for both horizontal and vertical profiles.
     *   Average the left and right edges to get the beam center `(x, y)`.
 4.  **Enter Beam Center Values:**
-    *   Click the **BeamCenter** button.
+    *   Click the **Beam Center** button.
     *   Enter the `(x, y)` beam center for each distance.
     *   Enter the known distance difference between detectors (μm).
     *   Click **Confirm**.
-5.  **Repeat** for other detector distances using the **Dist** spinner.
+5.  **Repeat** for other detector distances using the **Distance** spinner.
 
 ### 4. Part II: Determining Detector Position
 
 1.  **Enable Background Correction (Recommended):**
-    *   Check **SubtMedian**. To compute a new median, click **CalcMedian**.
+    *   Check **Subt. Median**. To compute a new median, click **Calc Median**.
 2.  **Select Spots:**
-    *   Click the **SelectSpots** button. A guide appears. Click **Ready!**
+    *   Click the **Select Spots** button. A guide appears. Click **Ready!**
     *   Navigate to a clear diffraction spot using **Frame** spinner and **Dist** spinner.
     *   Use **left-click-drag** to zoom into the area of interest (rectangle zoom stays active).
     *   **Right-click** on the spot center. A **cyan crosshair** appears showing where you clicked.
@@ -159,7 +159,7 @@ This procedure finds the `(x, y)` pixel coordinates of the beam center at each d
 
 #### 5.1 Loading Reconstruction Results
 
-1.  **Load Mic File:** Click **LoadMic** and select your reconstruction output file.
+1.  **Load Mic File:** Click **Load Mic** and select your reconstruction output file.
 
     | Format | Extension | Rendering | Notes |
     |--------|-----------|-----------|-------|
@@ -168,17 +168,17 @@ This procedure finds the `(x, y)` pixel coordinates of the beam center at each d
 
 2.  **Visualize Data:** Use the radio buttons (Conf, GrainID, Eu0/1/2, KAM, GROD, GrMap, Phase) to change coloring.
 
-#### 5.2 SelectPoint: Auto-Populate Grain Parameters
+#### 5.2 Select Point: Auto-Populate Grain Parameters
 
-1.  Click the **SelectPoint** button.
+1.  Click the **Select Point** button.
 2.  Click on a grain of interest in the microstructure map.
-3.  The grain's orientation and position are auto-populated in a LoadGrain dialog. Click **Confirm**.
-4.  Click **MakeSpots** to simulate diffraction spots for that grain.
+3.  The grain's orientation and position are auto-populated in a Load Grain dialog. Click **Confirm**.
+4.  Click **Make Spots** to simulate diffraction spots for that grain.
 
 #### 5.3 Diffraction Spot Simulation
 
-1.  **Manual Entry:** Click **LoadGrain** and enter grain parameters manually.
-2.  Click **MakeSpots**. A red circle shows the predicted spot position. Frame navigation auto-jumps to the correct rotation angle. A blue star marks the beam center.
+1.  **Manual Entry:** Click **Load Grain** and enter grain parameters manually.
+2.  Click **Make Spots**. A red circle shows the predicted spot position. Frame navigation auto-jumps to the correct rotation angle. A blue star marks the beam center.
 
 ---
 
@@ -190,7 +190,7 @@ This procedure finds the `(x, y)` pixel coordinates of the beam center at each d
 *   **Shared components:** Uses `gui_common.py` for `MIDASImageView`, `LogPanel`, `AsyncWorker`, colormap utilities, and theme management shared with the FF viewer.
 
 ### 6.2. Simulation Backend
-The **MakeSpots** simulation uses C binaries:
+The **Make Spots** simulation uses C binaries:
 *   `GetHKLList` — Generates reciprocal lattice vectors.
 *   `GenSeedOrientationsFF2NFHEDM` — Transforms orientation matrix.
 *   `SimulateDiffractionSpots` — Computes expected spot positions.

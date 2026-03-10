@@ -294,13 +294,11 @@ class NFViewer(QtWidgets.QMainWindow):
 
         main_layout.addWidget(self.splitter, stretch=1)
 
-        # Control panels — use a splitter for resizable proportions
+        # Control panels — balanced 3-panel strip
         ctrl = QtWidgets.QHBoxLayout()
         ctrl.setSpacing(8)
-        ctrl.addWidget(self._build_file_panel(), stretch=2)
-        ctrl.addWidget(self._build_image_panel(), stretch=2)
-        ctrl.addWidget(self._build_processing_panel(), stretch=2)
-        ctrl.addWidget(self._build_analysis_panel(), stretch=1)
+        ctrl.addWidget(self._build_data_source_panel(), stretch=4)
+        ctrl.addWidget(self._build_analysis_processing_panel(), stretch=3)
         ctrl.addWidget(self._build_mic_panel(), stretch=2)
         main_layout.addLayout(ctrl)
 
@@ -342,6 +340,19 @@ class NFViewer(QtWidgets.QMainWindow):
         self.log_check = QtWidgets.QCheckBox("Log")
         tb.addWidget(self.log_check)
 
+        # Intensity controls (moved from Processing panel)
+        tb.addWidget(QtWidgets.QLabel("Min I:"))
+        self.min_intensity_edit = QtWidgets.QLineEdit("0")
+        self.min_intensity_edit.setFixedWidth(60)
+        tb.addWidget(self.min_intensity_edit)
+        tb.addWidget(QtWidgets.QLabel("Max I:"))
+        self.max_intensity_edit = QtWidgets.QLineEdit("1000")
+        self.max_intensity_edit.setFixedWidth(60)
+        tb.addWidget(self.max_intensity_edit)
+        apply_btn = QtWidgets.QPushButton("Apply")
+        apply_btn.clicked.connect(self._apply_intensity_levels)
+        tb.addWidget(apply_btn)
+
         export_btn = QtWidgets.QPushButton("Export PNG")
         export_btn.clicked.connect(lambda: self.image_view.export_png())
         tb.addWidget(export_btn)
@@ -358,141 +369,128 @@ class NFViewer(QtWidgets.QMainWindow):
         tb.addStretch()
         return tb
 
-    def _build_file_panel(self):
-        grp = QtWidgets.QGroupBox("File I/O")
+    def _build_data_source_panel(self):
+        """Merged File I/O + Image panel."""
+        grp = QtWidgets.QGroupBox("Data Source")
         lay = QtWidgets.QGridLayout(grp)
-        btn = QtWidgets.QPushButton("FirstFile")
+
+        # Row 0: file selection
+        btn = QtWidgets.QPushButton("First File")
         btn.clicked.connect(self._on_first_file)
         lay.addWidget(btn, 0, 0)
 
         lay.addWidget(QtWidgets.QLabel("Folder"), 0, 1)
         self.folder_edit = QtWidgets.QLineEdit(self.folder)
-        self.folder_edit.setMinimumWidth(160)
-        lay.addWidget(self.folder_edit, 0, 2)
+        self.folder_edit.setMinimumWidth(140)
+        lay.addWidget(self.folder_edit, 0, 2, 1, 2)
 
         btn_browse = QtWidgets.QPushButton("Browse")
         btn_browse.clicked.connect(self._on_browse_folder)
-        lay.addWidget(btn_browse, 0, 3)
+        lay.addWidget(btn_browse, 0, 4)
 
-        lay.addWidget(QtWidgets.QLabel("FNStem"), 0, 4)
+        lay.addWidget(QtWidgets.QLabel("File Stem"), 0, 5)
         self.fnstem_edit = QtWidgets.QLineEdit(self.fnstem)
-        self.fnstem_edit.setMinimumWidth(120)
-        lay.addWidget(self.fnstem_edit, 0, 5)
+        self.fnstem_edit.setMinimumWidth(100)
+        lay.addWidget(self.fnstem_edit, 0, 6, 1, 2)
 
-        lay.addWidget(QtWidgets.QLabel("NrPixY"), 1, 0)
-        self.ny_edit = QtWidgets.QLineEdit(str(self.ny))
-        self.ny_edit.setMinimumWidth(70)
-        lay.addWidget(self.ny_edit, 1, 1)
-
-        lay.addWidget(QtWidgets.QLabel("NrPixZ"), 1, 2)
-        self.nz_edit = QtWidgets.QLineEdit(str(self.nz))
-        self.nz_edit.setMinimumWidth(70)
-        lay.addWidget(self.nz_edit, 1, 3)
-        return grp
-
-    def _build_image_panel(self):
-        grp = QtWidgets.QGroupBox("Image")
-        lay = QtWidgets.QGridLayout(grp)
-
-        lay.addWidget(QtWidgets.QLabel("Frame"), 0, 0)
+        # Row 1: frame/distance navigation
+        lay.addWidget(QtWidgets.QLabel("Frame"), 1, 0)
         self.frame_spin = QtWidgets.QSpinBox()
         self.frame_spin.setRange(0, 99999)
-        lay.addWidget(self.frame_spin, 0, 1)
+        lay.addWidget(self.frame_spin, 1, 1)
 
-        lay.addWidget(QtWidgets.QLabel("Dist"), 0, 2)
+        lay.addWidget(QtWidgets.QLabel("Distance"), 1, 2)
         self.dist_spin = QtWidgets.QSpinBox()
         self.dist_spin.setRange(0, 20)
-        lay.addWidget(self.dist_spin, 0, 3)
+        lay.addWidget(self.dist_spin, 1, 3)
 
-        lay.addWidget(QtWidgets.QLabel("nDist"), 0, 4)
+        lay.addWidget(QtWidgets.QLabel("Num Dist"), 1, 4)
         self.ndist_edit = QtWidgets.QLineEdit(str(self.n_distances))
-        self.ndist_edit.setMinimumWidth(50)
-        lay.addWidget(self.ndist_edit, 0, 5)
+        self.ndist_edit.setFixedWidth(45)
+        lay.addWidget(self.ndist_edit, 1, 5)
 
-        lay.addWidget(QtWidgets.QLabel("nFl/D"), 0, 6)
+        lay.addWidget(QtWidgets.QLabel("Files/Dist"), 1, 6)
         self.nfiles_edit = QtWidgets.QLineEdit(str(self.n_files_per_dist))
-        self.nfiles_edit.setMinimumWidth(55)
-        lay.addWidget(self.nfiles_edit, 0, 7)
+        self.nfiles_edit.setFixedWidth(50)
+        lay.addWidget(self.nfiles_edit, 1, 7)
 
-        lay.addWidget(QtWidgets.QLabel("PxSz"), 1, 0)
+        # Row 2: pixel params and start frame
+        lay.addWidget(QtWidgets.QLabel("Pixels Y"), 2, 0)
+        self.ny_edit = QtWidgets.QLineEdit(str(self.ny))
+        self.ny_edit.setFixedWidth(55)
+        lay.addWidget(self.ny_edit, 2, 1)
+
+        lay.addWidget(QtWidgets.QLabel("Pixels Z"), 2, 2)
+        self.nz_edit = QtWidgets.QLineEdit(str(self.nz))
+        self.nz_edit.setFixedWidth(55)
+        lay.addWidget(self.nz_edit, 2, 3)
+
+        lay.addWidget(QtWidgets.QLabel("Pixel Size"), 2, 4)
         self.px_edit = QtWidgets.QLineEdit(str(self.pixel_size))
-        self.px_edit.setMinimumWidth(60)
-        lay.addWidget(self.px_edit, 1, 1)
+        self.px_edit.setFixedWidth(50)
+        lay.addWidget(self.px_edit, 2, 5)
+
+        lay.addWidget(QtWidgets.QLabel("Start Frame"), 2, 6)
+        self.startframe_edit = QtWidgets.QLineEdit(str(self.start_frame_nr))
+        self.startframe_edit.setFixedWidth(55)
+        lay.addWidget(self.startframe_edit, 2, 7)
+
         return grp
 
-    def _build_processing_panel(self):
-        grp = QtWidgets.QGroupBox("Processing")
+    def _build_analysis_processing_panel(self):
+        """Merged Processing + Analysis panel."""
+        grp = QtWidgets.QGroupBox("Analysis & Processing")
         lay = QtWidgets.QGridLayout(grp)
 
-        lay.addWidget(QtWidgets.QLabel("StartNr"), 0, 0)
-        self.startframe_edit = QtWidgets.QLineEdit(str(self.start_frame_nr))
-        self.startframe_edit.setMinimumWidth(60)
-        lay.addWidget(self.startframe_edit, 0, 1)
-
-        btn_median = QtWidgets.QPushButton("CalcMedian")
+        # Row 0: median / frame operations
+        btn_median = QtWidgets.QPushButton("Calc Median")
         btn_median.clicked.connect(self._on_calc_median)
-        lay.addWidget(btn_median, 0, 2)
+        lay.addWidget(btn_median, 0, 0)
 
-        self.median_check = QtWidgets.QCheckBox("SubtMedian")
-        lay.addWidget(self.median_check, 0, 3)
+        self.median_check = QtWidgets.QCheckBox("Subt. Median")
+        lay.addWidget(self.median_check, 0, 1)
 
-        self.maxframes_check = QtWidgets.QCheckBox("MaxOverFr")
-        lay.addWidget(self.maxframes_check, 0, 4)
+        self.maxframes_check = QtWidgets.QCheckBox("Max/Frames")
+        lay.addWidget(self.maxframes_check, 0, 2)
 
-        self.sumframes_check = QtWidgets.QCheckBox("SumOverFr")
-        lay.addWidget(self.sumframes_check, 0, 5)
+        self.sumframes_check = QtWidgets.QCheckBox("Sum/Frames")
+        lay.addWidget(self.sumframes_check, 0, 3)
 
-        lay.addWidget(QtWidgets.QLabel("Lsd(μm)"), 1, 0)
+        # Row 1: Lsd
+        lay.addWidget(QtWidgets.QLabel("Lsd (μm)"), 1, 0)
         self.lsd_edit = QtWidgets.QLineEdit(str(self.lsd))
         self.lsd_edit.setMinimumWidth(90)
-        lay.addWidget(self.lsd_edit, 1, 1, 1, 2)
+        lay.addWidget(self.lsd_edit, 1, 1, 1, 3)
 
-        lay.addWidget(QtWidgets.QLabel("MinI"), 2, 0)
-        self.min_intensity_edit = QtWidgets.QLineEdit("0")
-        self.min_intensity_edit.setMinimumWidth(70)
-        lay.addWidget(self.min_intensity_edit, 2, 1)
-
-        lay.addWidget(QtWidgets.QLabel("MaxI"), 2, 2)
-        self.max_intensity_edit = QtWidgets.QLineEdit("1000")
-        self.max_intensity_edit.setMinimumWidth(70)
-        lay.addWidget(self.max_intensity_edit, 2, 3)
-
-        apply_btn = QtWidgets.QPushButton("Apply")
-        apply_btn.clicked.connect(self._apply_intensity_levels)
-        lay.addWidget(apply_btn, 2, 4)
-
-        return grp
-
-    def _build_analysis_panel(self):
-        grp = QtWidgets.QGroupBox("Analysis")
-        lay = QtWidgets.QGridLayout(grp)
-
-        btn_boxh = QtWidgets.QPushButton("BoxH")
+        # Row 2: analysis tools
+        btn_boxh = QtWidgets.QPushButton("Box H")
         btn_boxh.clicked.connect(lambda: self._add_box_roi('h'))
-        lay.addWidget(btn_boxh, 0, 0)
+        lay.addWidget(btn_boxh, 2, 0)
 
-        btn_boxv = QtWidgets.QPushButton("BoxV")
+        btn_boxv = QtWidgets.QPushButton("Box V")
         btn_boxv.clicked.connect(lambda: self._add_box_roi('v'))
-        lay.addWidget(btn_boxv, 0, 1)
+        lay.addWidget(btn_boxv, 2, 1)
 
-        btn_bc = QtWidgets.QPushButton("BeamCenter")
+        btn_bc = QtWidgets.QPushButton("Beam Center")
         btn_bc.clicked.connect(self._on_beam_center)
-        lay.addWidget(btn_bc, 0, 2)
+        lay.addWidget(btn_bc, 2, 2)
 
-        btn_select = QtWidgets.QPushButton("SelectSpots")
+        btn_select = QtWidgets.QPushButton("Select Spots")
         btn_select.clicked.connect(self._on_select_spots)
-        lay.addWidget(btn_select, 0, 3)
+        lay.addWidget(btn_select, 2, 3)
+
         return grp
 
     def _build_mic_panel(self):
-        grp = QtWidgets.QGroupBox("Mic File")
+        grp = QtWidgets.QGroupBox("Microstructure")
         lay = QtWidgets.QGridLayout(grp)
 
-        btn_load = QtWidgets.QPushButton("LoadMic")
+        # Row 0: load buttons
+        btn_load = QtWidgets.QPushButton("Load Mic")
         btn_load.clicked.connect(self._on_load_mic)
         lay.addWidget(btn_load, 0, 0)
 
-        btn_reload = QtWidgets.QPushButton("ReloadMic")
+        btn_reload = QtWidgets.QPushButton("Reload Mic")
         btn_reload.clicked.connect(self._plot_mic)
         lay.addWidget(btn_reload, 0, 1)
 
@@ -503,56 +501,50 @@ class NFViewer(QtWidgets.QMainWindow):
             btn_load_h5.setToolTip("h5py not installed")
         lay.addWidget(btn_load_h5, 0, 2)
 
-        # Color mode radio buttons
-        self.col_group = QtWidgets.QButtonGroup(self)
-        col_modes = [
-            ("Conf", 10), ("GrainID", 0), ("Phase", 11),
-            ("Eu0", 7), ("Eu1", 8), ("Eu2", 9),
-            ("KAM", 12), ("GROD", 13), ("GrMap", 14)
+        # Row 1: color mode combo (replaces 9 radio buttons)
+        lay.addWidget(QtWidgets.QLabel("Color Mode:"), 1, 0)
+        self.col_combo = QtWidgets.QComboBox()
+        self._col_modes = [
+            ("Confidence", 10), ("GrainID", 0), ("Phase", 11),
+            ("Euler0", 7), ("Euler1", 8), ("Euler2", 9),
+            ("KAM", 12), ("GROD", 13), ("GrainMap", 14)
         ]
-        row, col_idx = 1, 0
-        for label, val in col_modes:
-            rb = QtWidgets.QRadioButton(label)
-            if val == 10:
-                rb.setChecked(True)
-            self.col_group.addButton(rb, val)
-            lay.addWidget(rb, row, col_idx)
-            col_idx += 1
-            if col_idx >= 3:
-                col_idx = 0
-                row += 1
+        for label, _val in self._col_modes:
+            self.col_combo.addItem(label)
+        self.col_combo.setCurrentIndex(0)  # Confidence
+        lay.addWidget(self.col_combo, 1, 1, 1, 2)
 
-        lay.addWidget(QtWidgets.QLabel("ConfCut"), row, 0)
+        # Row 2: confidence filter
+        lay.addWidget(QtWidgets.QLabel("Conf. Cut"), 2, 0)
         self.cut_conf_edit = QtWidgets.QLineEdit("0")
-        self.cut_conf_edit.setMinimumWidth(55)
-        lay.addWidget(self.cut_conf_edit, row, 1)
+        self.cut_conf_edit.setFixedWidth(55)
+        lay.addWidget(self.cut_conf_edit, 2, 1)
         self.max_conf_edit = QtWidgets.QLineEdit("1")
-        self.max_conf_edit.setMinimumWidth(55)
-        lay.addWidget(self.max_conf_edit, row, 2)
+        self.max_conf_edit.setFixedWidth(55)
+        lay.addWidget(self.max_conf_edit, 2, 2)
 
         # Resolution selector (hidden by default, shown when H5 is loaded)
-        row += 1
         self._res_selector_label = QtWidgets.QLabel("Resolution:")
         self._res_selector_label.setVisible(False)
-        lay.addWidget(self._res_selector_label, row, 0)
+        lay.addWidget(self._res_selector_label, 3, 0)
 
         self._res_combo = QtWidgets.QComboBox()
         self._res_combo.setVisible(False)
         self._res_combo.currentTextChanged.connect(self._on_resolution_changed)
-        lay.addWidget(self._res_combo, row, 1, 1, 2)
+        lay.addWidget(self._res_combo, 3, 1, 1, 2)
 
-        row += 1
-        btn_grain = QtWidgets.QPushButton("LoadGrain")
+        # Row 4: grain simulation
+        btn_grain = QtWidgets.QPushButton("Load Grain")
         btn_grain.clicked.connect(self._on_load_grain)
-        lay.addWidget(btn_grain, row + 1, 0)
+        lay.addWidget(btn_grain, 4, 0)
 
-        btn_spots = QtWidgets.QPushButton("MakeSpots")
+        btn_spots = QtWidgets.QPushButton("Make Spots")
         btn_spots.clicked.connect(self._on_make_spots)
-        lay.addWidget(btn_spots, row + 1, 1)
+        lay.addWidget(btn_spots, 4, 1)
 
-        btn_selectpt = QtWidgets.QPushButton("SelectPoint")
+        btn_selectpt = QtWidgets.QPushButton("Select Point")
         btn_selectpt.clicked.connect(self._on_select_point)
-        lay.addWidget(btn_selectpt, row + 1, 2)
+        lay.addWidget(btn_selectpt, 4, 2)
         return grp
 
     # ── Signals ────────────────────────────────────────────────────
@@ -572,7 +564,7 @@ class NFViewer(QtWidgets.QMainWindow):
             lambda d: self.frame_spin.setValue(self.frame_spin.value() + d))
         self.image_view.cursorMoved.connect(self._on_cursor_moved)
         self.image_view.dataStatsUpdated.connect(self._on_stats_updated)
-        self.col_group.buttonClicked.connect(self._on_col_mode_changed)
+        self.col_combo.currentIndexChanged.connect(self._on_col_mode_changed)
         # Movie mode: advance frame by 1 (wraps at max)
         self.image_view.movieFrameAdvance.connect(self._movie_advance_frame)
         # Drag-and-drop: open dropped file
@@ -1059,8 +1051,9 @@ class NFViewer(QtWidgets.QMainWindow):
         except ValueError:
             pass
 
-    def _on_col_mode_changed(self, btn):
-        self.col_mode = self.col_group.id(btn)
+    def _on_col_mode_changed(self, index):
+        if 0 <= index < len(self._col_modes):
+            self.col_mode = self._col_modes[index][1]
         if self.mic_data is not None:
             self._plot_mic()
 

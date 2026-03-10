@@ -203,11 +203,17 @@ def read_image_max(fn, header, bytes_per_pixel, ny, nz, n_frames, start_frame=0,
 
 
 def read_mask(fn, ny, nz, do_transpose=False, do_hflip=False, do_vflip=False):
-    """Read binary int8 mask file."""
+    """Read uint8 TIFF mask file. 1 = masked, 0 = good pixel."""
     if not fn or not os.path.exists(fn):
         return None
     try:
-        mask = np.fromfile(fn, dtype=np.int8, count=ny * nz).reshape((ny, nz))
+        if tifffile is None:
+            print("tifffile not installed — cannot read mask")
+            return None
+        mask = tifffile.imread(fn).astype(np.uint8)
+        if mask.shape != (ny, nz):
+            print(f"Mask shape {mask.shape} does not match image ({ny}, {nz})")
+            return None
         if do_transpose: mask = np.transpose(mask)
         if do_hflip and do_vflip: mask = mask[::-1, ::-1].copy()
         elif do_hflip: mask = mask[::-1, :].copy()
@@ -430,8 +436,7 @@ class FFViewer(QtWidgets.QMainWindow):
         ctrl = QtWidgets.QHBoxLayout()
         ctrl.setSpacing(4)
         ctrl.addWidget(self._build_file_panel(), stretch=3)
-        ctrl.addWidget(self._build_image_panel(), stretch=2)
-        ctrl.addWidget(self._build_display_panel(), stretch=2)
+        ctrl.addWidget(self._build_image_display_panel(), stretch=3)
         ctrl.addWidget(self._build_processing_panel(), stretch=2)
         main_layout.addLayout(ctrl)
 
@@ -523,6 +528,19 @@ class FFViewer(QtWidgets.QMainWindow):
         self.rings_check = QtWidgets.QCheckBox("Rings")
         tb.addWidget(self.rings_check)
 
+        # Intensity controls (moved from Display panel)
+        tb.addWidget(QtWidgets.QLabel("Min I:"))
+        self.min_intensity_edit = QtWidgets.QLineEdit("0")
+        self.min_intensity_edit.setFixedWidth(60)
+        tb.addWidget(self.min_intensity_edit)
+        tb.addWidget(QtWidgets.QLabel("Max I:"))
+        self.max_intensity_edit = QtWidgets.QLineEdit("1000")
+        self.max_intensity_edit.setFixedWidth(60)
+        tb.addWidget(self.max_intensity_edit)
+        apply_btn = QtWidgets.QPushButton("Apply")
+        apply_btn.clicked.connect(self._apply_intensity_levels)
+        tb.addWidget(apply_btn)
+
         # Export
         export_btn = QtWidgets.QPushButton("Export PNG")
         export_btn.clicked.connect(lambda: self.image_view.export_png())
@@ -542,14 +560,14 @@ class FFViewer(QtWidgets.QMainWindow):
         return tb
 
     def _build_file_panel(self):
-        grp = QtWidgets.QGroupBox("File I/O")
+        grp = QtWidgets.QGroupBox("Data Source")
         lay = QtWidgets.QGridLayout(grp)
 
-        btn_first = QtWidgets.QPushButton("FirstFile")
+        btn_first = QtWidgets.QPushButton("First File")
         btn_first.clicked.connect(self._on_first_file)
         lay.addWidget(btn_first, 0, 0)
 
-        btn_dark = QtWidgets.QPushButton("DarkFile")
+        btn_dark = QtWidgets.QPushButton("Dark File")
         btn_dark.clicked.connect(self._on_dark_file)
         lay.addWidget(btn_dark, 0, 1)
 
@@ -560,12 +578,12 @@ class FFViewer(QtWidgets.QMainWindow):
         btn_zip.clicked.connect(self._on_load_zip)
         lay.addWidget(btn_zip, 0, 3)
 
-        lay.addWidget(QtWidgets.QLabel("FileNr"), 1, 0)
+        lay.addWidget(QtWidgets.QLabel("File Nr"), 1, 0)
         self.file_nr_edit = QtWidgets.QLineEdit(str(self.first_file_nr))
         self.file_nr_edit.setMinimumWidth(70)
         lay.addWidget(self.file_nr_edit, 1, 1)
 
-        lay.addWidget(QtWidgets.QLabel("nFr/File"), 1, 2)
+        lay.addWidget(QtWidgets.QLabel("Frames/File"), 1, 2)
         self.nframes_edit = QtWidgets.QLineEdit("1")
         self.nframes_edit.setMinimumWidth(70)
         lay.addWidget(self.nframes_edit, 1, 3)
@@ -595,97 +613,85 @@ class FFViewer(QtWidgets.QMainWindow):
 
         return grp
 
-    def _build_image_panel(self):
-        grp = QtWidgets.QGroupBox("Image Settings")
+    def _build_image_display_panel(self):
+        """Merged Image Settings + Display panel."""
+        grp = QtWidgets.QGroupBox("Image & Display")
         lay = QtWidgets.QGridLayout(grp)
 
-        lay.addWidget(QtWidgets.QLabel("NrPixH"), 0, 0)
+        # Row 0: pixel dimensions + frame
+        lay.addWidget(QtWidgets.QLabel("Pixels H"), 0, 0)
         self.nz_edit = QtWidgets.QLineEdit(str(self.nz))
-        self.nz_edit.setMinimumWidth(70)
+        self.nz_edit.setFixedWidth(55)
         lay.addWidget(self.nz_edit, 0, 1)
 
-        lay.addWidget(QtWidgets.QLabel("NrPixV"), 1, 0)
+        lay.addWidget(QtWidgets.QLabel("Pixels V"), 0, 2)
         self.ny_edit = QtWidgets.QLineEdit(str(self.ny))
-        self.ny_edit.setMinimumWidth(70)
-        lay.addWidget(self.ny_edit, 1, 1)
+        self.ny_edit.setFixedWidth(55)
+        lay.addWidget(self.ny_edit, 0, 3)
 
-        lay.addWidget(QtWidgets.QLabel("Header"), 2, 0)
-        self.header_edit = QtWidgets.QLineEdit(str(self.header_size))
-        self.header_edit.setMinimumWidth(70)
-        lay.addWidget(self.header_edit, 2, 1)
-
-        lay.addWidget(QtWidgets.QLabel("Byt/Px"), 3, 0)
-        self.bpp_edit = QtWidgets.QLineEdit(str(self.bytes_per_pixel))
-        self.bpp_edit.setMinimumWidth(70)
-        lay.addWidget(self.bpp_edit, 3, 1)
-
-        self.hflip_check = QtWidgets.QCheckBox("HFlip")
-        lay.addWidget(self.hflip_check, 4, 0)
-        self.vflip_check = QtWidgets.QCheckBox("VFlip")
-        lay.addWidget(self.vflip_check, 4, 1)
-        self.transpose_check = QtWidgets.QCheckBox("Transp")
-        lay.addWidget(self.transpose_check, 5, 0, 1, 2)
-
-        lay.addWidget(QtWidgets.QLabel("PixSz(μm)"), 6, 0)
-        self.px_edit = QtWidgets.QLineEdit(str(self.pixel_size))
-        self.px_edit.setMinimumWidth(70)
-        lay.addWidget(self.px_edit, 6, 1)
-
-        return grp
-
-    def _build_display_panel(self):
-        grp = QtWidgets.QGroupBox("Display")
-        lay = QtWidgets.QGridLayout(grp)
-
-        lay.addWidget(QtWidgets.QLabel("Frame"), 0, 0)
+        lay.addWidget(QtWidgets.QLabel("Frame"), 0, 4)
         self.frame_spin = QtWidgets.QSpinBox()
         self.frame_spin.setRange(0, 99999)
         self.frame_spin.setValue(0)
-        lay.addWidget(self.frame_spin, 0, 1, 1, 2)
+        lay.addWidget(self.frame_spin, 0, 5)
 
-        self.max_check = QtWidgets.QCheckBox("MaxOverFrames")
-        lay.addWidget(self.max_check, 1, 0, 1, 2)
-        self.sum_check = QtWidgets.QCheckBox("SumOverFrames")
-        lay.addWidget(self.sum_check, 2, 0, 1, 2)
+        # Row 1: header, bytes/pixel, num frames
+        lay.addWidget(QtWidgets.QLabel("Header"), 1, 0)
+        self.header_edit = QtWidgets.QLineEdit(str(self.header_size))
+        self.header_edit.setFixedWidth(55)
+        lay.addWidget(self.header_edit, 1, 1)
 
-        lay.addWidget(QtWidgets.QLabel("nFrames"), 3, 0)
+        lay.addWidget(QtWidgets.QLabel("Bytes/Pixel"), 1, 2)
+        self.bpp_edit = QtWidgets.QLineEdit(str(self.bytes_per_pixel))
+        self.bpp_edit.setFixedWidth(35)
+        lay.addWidget(self.bpp_edit, 1, 3)
+
+        lay.addWidget(QtWidgets.QLabel("Num Frames"), 1, 4)
         self.max_frames_spin = QtWidgets.QSpinBox()
         self.max_frames_spin.setRange(1, 99999)
         self.max_frames_spin.setValue(240)
-        lay.addWidget(self.max_frames_spin, 3, 1, 1, 2)
+        lay.addWidget(self.max_frames_spin, 1, 5)
 
-        lay.addWidget(QtWidgets.QLabel("MinI"), 4, 0)
-        self.min_intensity_edit = QtWidgets.QLineEdit("0")
-        lay.addWidget(self.min_intensity_edit, 4, 1)
-        lay.addWidget(QtWidgets.QLabel("MaxI"), 4, 2)
-        self.max_intensity_edit = QtWidgets.QLineEdit("1000")
-        lay.addWidget(self.max_intensity_edit, 4, 3)
+        # Row 2: pixel size + transforms
+        lay.addWidget(QtWidgets.QLabel("Pixel Size (μm)"), 2, 0, 1, 2)
+        self.px_edit = QtWidgets.QLineEdit(str(self.pixel_size))
+        self.px_edit.setFixedWidth(55)
+        lay.addWidget(self.px_edit, 2, 2)
 
-        apply_btn = QtWidgets.QPushButton("Apply")
-        apply_btn.clicked.connect(self._apply_intensity_levels)
-        lay.addWidget(apply_btn, 4, 4)
+        self.hflip_check = QtWidgets.QCheckBox("HFlip")
+        lay.addWidget(self.hflip_check, 2, 3)
+        self.vflip_check = QtWidgets.QCheckBox("VFlip")
+        lay.addWidget(self.vflip_check, 2, 4)
+        self.transpose_check = QtWidgets.QCheckBox("Transpose")
+        lay.addWidget(self.transpose_check, 2, 5)
+
+        # Row 3: Max/Sum toggles
+        self.max_check = QtWidgets.QCheckBox("Max/Frames")
+        lay.addWidget(self.max_check, 3, 0, 1, 3)
+        self.sum_check = QtWidgets.QCheckBox("Sum/Frames")
+        lay.addWidget(self.sum_check, 3, 3, 1, 3)
 
         return grp
 
     def _build_processing_panel(self):
-        grp = QtWidgets.QGroupBox("Processing")
+        grp = QtWidgets.QGroupBox("Detector & Rings")
         lay = QtWidgets.QGridLayout(grp)
 
-        btn_rings = QtWidgets.QPushButton("RingsMat")
+        btn_rings = QtWidgets.QPushButton("Rings Material")
         btn_rings.clicked.connect(self._on_ring_selection)
         lay.addWidget(btn_rings, 0, 0, 1, 2)
 
-        lay.addWidget(QtWidgets.QLabel("Lsd"), 1, 0)
+        lay.addWidget(QtWidgets.QLabel("Lsd (μm)"), 1, 0)
         self.lsd_edit = QtWidgets.QLineEdit(str(self.lsd_local))
         self.lsd_edit.setMinimumWidth(100)
         lay.addWidget(self.lsd_edit, 1, 1)
 
-        lay.addWidget(QtWidgets.QLabel("BC_Y"), 2, 0)
+        lay.addWidget(QtWidgets.QLabel("Beam Ctr Y"), 2, 0)
         self.bcy_edit = QtWidgets.QLineEdit(str(self.bc_local[0]))
         self.bcy_edit.setMinimumWidth(90)
         lay.addWidget(self.bcy_edit, 2, 1)
 
-        lay.addWidget(QtWidgets.QLabel("BC_Z"), 3, 0)
+        lay.addWidget(QtWidgets.QLabel("Beam Ctr Z"), 3, 0)
         self.bcz_edit = QtWidgets.QLineEdit(str(self.bc_local[1]))
         self.bcz_edit.setMinimumWidth(90)
         lay.addWidget(self.bcz_edit, 3, 1)
@@ -719,6 +725,7 @@ class FFViewer(QtWidgets.QMainWindow):
         self.bcy_edit.editingFinished.connect(self._redraw_if_rings)
         self.bcz_edit.editingFinished.connect(self._redraw_if_rings)
         self.lsd_edit.editingFinished.connect(self._redraw_if_rings)
+        self.h5dark_edit.editingFinished.connect(self._load_and_display)
         self.image_view.dataStatsUpdated.connect(self._on_stats_updated)
         # Movie mode: advance frame by 1 (wraps at max)
         self.image_view.movieFrameAdvance.connect(self._movie_advance_frame)
@@ -1089,7 +1096,8 @@ class FFViewer(QtWidgets.QMainWindow):
 
     def _on_browse_mask(self):
         fn, _ = QtWidgets.QFileDialog.getOpenFileName(
-            self, "Select Mask File", os.getcwd(), "All Files (*);;Binary (*.bin)")
+            self, "Select Mask File (TIFF)", os.getcwd(),
+            "TIFF Files (*.tif *.tiff);;All Files (*)")
         if fn:
             self.mask_edit.setText(fn)
             self.mask_check.setChecked(True)

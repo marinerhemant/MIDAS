@@ -35,7 +35,7 @@ graph TD
         TIF["TIFF Files (.tif, .tiff)"]
         BZ2["Compressed (.bz2)"]
         ZIP["Zarr-ZIP (.MIDAS.zip)"]
-        MASK["Mask File (int8 binary)"]
+        MASK["Mask File (uint8 TIFF)"]
         DARK["Dark Image File"]
     end
 
@@ -53,8 +53,8 @@ graph TD
     end
 
     subgraph "Processing"
-        RI --> MAX["MaxOverFrames"]
-        RI --> SUM["SumOverFrames"]
+        RI --> MAX["Max/Frames"]
+        RI --> SUM["Sum/Frames"]
         RI --> SINGLE["Single Frame"]
     end
 
@@ -97,7 +97,7 @@ The viewer operates on **single detector files** containing one or more frames o
 | Zarr-ZIP | `.MIDAS.zip` | MIDAS archive produced by `ffGenerateZip.py`. Contains `exchange/data`, `exchange/dark`, and analysis parameters. |
 | Compressed | `.bz2` | Any of the above, bz2-compressed. Decompressed transparently to a temp file. |
 
-**Bad Pixel Mask:** A flat binary file of `int8` values with dimensions `NrPixelsVert × NrPixelsHor`. Values: `0` = good pixel, `1` = bad pixel.
+**Bad Pixel Mask:** A uint8 TIFF file with dimensions matching the detector (`NrPixelsVert × NrPixelsHor`). Values: `0` = good pixel, `1` = masked (bad) pixel.
 
 ---
 
@@ -151,7 +151,7 @@ The viewer can open `.MIDAS.zip` archives produced by `ffGenerateZip.py`. These 
 
 If auto-detection populated the fields, the image loads automatically. Otherwise:
 
-1. Click **FirstFile** → select a data file (binary, HDF5, TIFF, or bz2).
+1. Click **First File** → select a data file (binary, HDF5, TIFF, or bz2).
 2. For HDF5 files, set the **H5 Data** path (default: `/exchange/data`). Click **Browse** to select from available datasets.
 3. Set **NrPixH** and **NrPixV** to match your detector dimensions.
 4. For binary files, set **Header** (e.g., `8192` for GE) and **Byt/Px** (`2` for uint16, `4` for int32).
@@ -165,7 +165,7 @@ If auto-detection populated the fields, the image loads automatically. Otherwise
 
 | Control | Description |
 | :--- | :--- |
-| **FirstFile** | Opens a file dialog to select the primary data file. |
+| **First File** | Opens a file dialog to select the primary data file. |
 | **DarkFile** | Opens a file dialog to select the dark-field reference file. |
 | **Dark** | Checkbox to enable/disable dark-field subtraction. |
 | **Load ZIP** | Opens a file dialog to load a `.MIDAS.zip` Zarr archive, auto-populating all parameters. |
@@ -175,49 +175,39 @@ If auto-detection populated the fields, the image loads automatically. Otherwise
 | **Browse** (Data) | Browse HDF5 file to select a dataset path interactively. |
 | **H5 Dark** | HDF5 dataset path for the dark images (e.g., `/exchange/dark`). |
 | **Browse** (Dark) | Browse HDF5 file to select a dark dataset path interactively. |
-| **Mask** | Path to a bad pixel mask file (int8 binary). |
+| **Mask** | Path to a bad pixel mask file (uint8 TIFF, `0`=good, `1`=masked). |
 | **Browse** (Mask) | Opens a file dialog to select a mask file. |
 | **Apply** | Checkbox to enable/disable bad pixel masking. |
 
-### 4.2. Image Settings Panel
+### 4.2. Image & Display Panel
 
 | Control | Description |
 | :--- | :--- |
-| **NrPixH** | Horizontal detector size in pixels (default: 2048). |
-| **NrPixV** | Vertical detector size in pixels (default: 2048). |
+| **Pixels H** | Horizontal detector size in pixels (default: 2048). |
+| **Pixels V** | Vertical detector size in pixels (default: 2048). |
+| **Frame** | Frame spinner (0-indexed). Keyboard: ← / → to step. |
 | **Header** | File header size in bytes (default: 8192). |
-| **Byt/Px** | Bytes per pixel: `2` = uint16, `4` = int32 (default: 2). |
+| **Bytes/Pixel** | Bytes per pixel: `2` = uint16, `4` = int32 (default: 2). |
+| **Num Frames** | Number of frames to include in Max/Sum projection. |
+| **Pixel Size (μm)** | Pixel size in micrometers (default: 200). |
 | **HFlip** | Flip image horizontally (left–right). |
 | **VFlip** | Flip image vertically (top–bottom). |
-| **Transp** | Transpose the image (swap rows and columns). |
-| **PixSz(μm)** | Pixel size in micrometers (default: 200). |
+| **Transpose** | Transpose the image (swap rows and columns). |
+| **Max/Frames** | Compute pixel-wise maximum over a range of frames. |
+| **Sum/Frames** | Compute pixel-wise sum over a range of frames. |
 
-### 4.3. Display Control Panel
-
-| Control | Description |
-| :--- | :--- |
-| **Frame** | Frame spinner (0-indexed). Keyboard: ← / → to step. |
-| **MinI / MaxI** | Manual intensity range override. |
-| **Apply** | Apply manual intensity range. |
-| **Log** | Toggle logarithmic intensity scaling. |
-
-### 4.4. Processing Panel
+### 4.3. Detector & Rings Panel
 
 | Control | Description |
 | :--- | :--- |
-| **MaxOverFrames** | Compute pixel-wise maximum over a range of frames. |
-| **SumOverFrames** | Compute pixel-wise sum over a range of frames. |
-| **nFrames** | Number of frames to include in Max/Sum projection. |
-| **RingsMat** | Open dialog to specify ring material parameters. |
-| **PlotRings** | Toggle diffraction ring overlay on the image. |
-| **DetNum** | Detector number for multi-detector setups. |
-| **Lsd** | Sample-to-detector distance (μm). |
-| **BC Y / BC Z** | Beam center coordinates (pixels). |
+| **Rings Material** | Open dialog to specify ring material parameters. |
+| **Lsd (μm)** | Sample-to-detector distance (μm). |
+| **Beam Ctr Y / Z** | Beam center coordinates (pixels). |
 
 > [!IMPORTANT]
-> **MaxOverFrames** and **SumOverFrames** are mutually exclusive. Checking one automatically unchecks the other.
+> **Max/Frames** and **Sum/Frames** are mutually exclusive. Checking one automatically unchecks the other.
 
-### 4.5. Toolbar
+### 4.4. Toolbar
 
 | Control | Description |
 | :--- | :--- |
@@ -225,6 +215,9 @@ If auto-detection populated the fields, the image loads automatically. Otherwise
 | **Theme** | Light or dark theme. |
 | **Font** | Adjustable font size (8–24pt). |
 | **Log** | Toggle logarithmic display. |
+| **Rings** | Toggle ring overlay on the image. |
+| **Min I / Max I** | Manual intensity range override. |
+| **Apply** | Apply manual intensity range. |
 | **Export PNG** | Save current view as a PNG file. |
 | **Help** | Show keyboard shortcuts and mouse controls. |
 
@@ -237,12 +230,13 @@ If auto-detection populated the fields, the image loads automatically. Otherwise
 Bad pixel masks identify dead or hot detector pixels that should be excluded from analysis.
 
 **Mask File Format:**
-- Flat binary file of `int8` values
-- Dimensions: `NrPixelsVert × NrPixelsHor` (row-major order)
-- Values: `0` = good pixel, `1` = bad pixel
+- uint8 TIFF file (`.tif` / `.tiff`)
+- Dimensions must match the detector: `NrPixelsVert × NrPixelsHor`
+- Values: `0` = good pixel, `1` = masked (bad) pixel
+- Same transforms (HFlip, VFlip, Transpose) are applied to the mask as to the image
 
 **Usage:**
-1. Click **Browse** next to the Mask field and select your mask file.
+1. Click **Browse** next to the Mask field and select your TIFF mask file.
 2. Check the **Apply** checkbox.
 3. The mask is automatically applied to all subsequent image loads.
 
@@ -250,8 +244,8 @@ Bad pixel masks identify dead or hot detector pixels that should be excluded fro
 
 | Mode | Description |
 | :--- | :--- |
-| **MaxOverFrames** | For each pixel, take the maximum intensity value across selected frames. Useful for seeing all diffraction spots in a single view. |
-| **SumOverFrames** | For each pixel, sum intensity values across selected frames. Useful for enhancing weak features. |
+| **Max/Frames** | For each pixel, take the maximum intensity value across selected frames. Useful for seeing all diffraction spots in a single view. |
+| **Sum/Frames** | For each pixel, sum intensity values across selected frames. Useful for enhancing weak features. |
 
 Set **nFrames** to define the number of frames, then check the desired mode. The current frame is the starting frame.
 
@@ -260,11 +254,11 @@ Set **nFrames** to define the number of frames, then check the desired mode. The
 The ring overlay feature plots expected diffraction ring positions on the image, helping verify detector geometry calibration.
 
 **Manual workflow:**
-1. Click **RingsMat** and enter your material parameters (space group, wavelength, lattice constants).
+1. Click **Rings Material** and enter your material parameters (space group, wavelength, lattice constants).
 2. Select which rings to display from the generated list.
 3. Check **PlotRings** to toggle the overlay on/off.
 
-**Auto ring from ZIP:** When a Zarr-ZIP is loaded, clicking **RingsMat** bypasses the material parameter dialog and directly computes and displays rings using the metadata from the ZIP.
+**Auto ring from ZIP:** When a Zarr-ZIP is loaded, clicking **Rings Material** bypasses the material parameter dialog and directly computes and displays rings using the metadata from the ZIP.
 
 **Nearest ring display:** When rings are shown, the status bar displays the nearest ring's number and HKL indices at the current cursor position.
 
@@ -316,7 +310,7 @@ The histogram on the right side of the image can be used to adjust intensity lev
 | **Blank/white image** | Check `NrPixH`/`NrPixV` match your detector. For binary files, verify `Header` and `Byt/Px`. |
 | **HDF5 dataset not found** | Use the **Browse** button next to H5 Data to browse the internal structure. |
 | **Image appears rotated** | Toggle **HFlip**, **VFlip**, or **Transp** to match your detector orientation. |
-| **Mask not applying** | Ensure **Apply** checkbox is checked and the mask file dimensions match `NrPixV × NrPixH`. |
+| **Mask not applying** | Ensure **Apply** checkbox is checked and the mask TIFF dimensions match `NrPixV × NrPixH`. |
 | **Frame navigation not working** | Check that `nFr/File` is set correctly. |
 | **Import error for tifffile** | Install with `pip install tifffile`. |
 | **Import error for h5py** | Install with `pip install h5py`. |
