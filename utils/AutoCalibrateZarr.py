@@ -1443,11 +1443,11 @@ def main():
         )
 
         # Primary arguments (new --flag style with backward-compat aliases)
-        parser.add_argument('--data', '-dataFN', '-d', type=str, required=True,
+        parser.add_argument('--data', '-dataFN', type=str, required=True,
                             help='Data file: .zip (Zarr), .h5 (HDF5), .ge* (GE binary), .tif/.tiff, or .cbf')
         parser.add_argument('--dark', '-darkFN', type=str, default='',
                             help='Separate dark field image file')
-        parser.add_argument('--params', '-paramFN', '-p', type=str, default='',
+        parser.add_argument('--params', '-paramFN', type=str, default='',
                             help='MIDAS parameter file (required for non-Zarr inputs)')
         parser.add_argument('--data-loc', '-dataLoc', type=str, default='',
                             help='HDF5 dataset path (default: /exchange/data)')
@@ -1511,7 +1511,7 @@ def main():
                             help='Manual threshold for ring detection (0=auto)')
 
         # Output
-        parser.add_argument('--plots', '-MakePlots', '-P', type=int, default=0,
+        parser.add_argument('--plots', '-MakePlots', type=int, default=0,
                             help='Make plots: 0=no, 1=yes')
         parser.add_argument('--save-hdf', '-SavePlotsHDF', type=str, default='',
                             help='Save all data arrays to this HDF5 file')
