@@ -805,6 +805,17 @@ class NFViewer(QtWidgets.QMainWindow):
         pos = self.image_view.getView().mapSceneToView(event.scenePos())
         self._click_ix = pos.x()
         self._click_iy = pos.y()
+
+        # Show crosshair marker at clicked position
+        if hasattr(self, '_spot_marker') and self._spot_marker is not None:
+            self.image_view.removeItem(self._spot_marker)
+        marker = pg.ScatterPlotItem(
+            [self._click_ix], [self._click_iy],
+            symbol='+', size=20, pen=pg.mkPen('c', width=2), brush=None)
+        marker.setZValue(1000)
+        self.image_view.addItem(marker)
+        self._spot_marker = marker
+
         self.status_label.setText(
             f"Spot at ({self._click_ix:.1f}, {self._click_iy:.1f}) — click 'Confirm Selection'")
 
@@ -847,15 +858,16 @@ class NFViewer(QtWidgets.QMainWindow):
                 self.image_view.scene.sigMouseClicked.disconnect(self._on_spot_clicked)
             except Exception:
                 pass
+            # Clean up confirm button and spot marker
             self.statusBar().removeWidget(self._spot_confirm_btn)
             self._spot_confirm_btn.deleteLater()
             self._spot_confirm_btn = None
-            # Show Compute Distances button
-            compute_btn = QtWidgets.QPushButton("Compute Distances")
-            compute_btn.clicked.connect(lambda: self._compute_distances(compute_btn))
-            self.statusBar().addWidget(compute_btn)
-            self.status_label.setText("Click 'Compute Distances' to calculate.")
+            if hasattr(self, '_spot_marker') and self._spot_marker is not None:
+                self.image_view.removeItem(self._spot_marker)
+                self._spot_marker = None
             dlg.accept()
+            # Auto-compute distances
+            self._compute_distances()
 
         btn_load.clicked.connect(on_load)
         btn_finish.clicked.connect(on_finish)
