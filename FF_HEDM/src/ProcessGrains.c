@@ -21,10 +21,8 @@
 #include <blosc2.h>
 #include <ctype.h>
 #include <fcntl.h>
-#include <limits.h>
 #include <math.h>
 #include <stdbool.h>
-#include <stdint.h>
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
@@ -342,7 +340,8 @@ int main(int argc, char *argv[]) {
   printf("Version: %s\n", MIDAS_VERSION_STRING);
   if (argc < 2) {
     printf("Usage: ProcessGrains ZarrZip [TrackGrains(0|1)] [nCPUs]\n");
-    printf("       ProcessGrains -paramFN params.txt [-trackGrains 0|1] [-nCPUs N]\n");
+    printf("       ProcessGrains -paramFN params.txt [-trackGrains 0|1] "
+           "[-nCPUs N]\n");
     return 1;
   }
   clock_t start, end;
@@ -393,58 +392,92 @@ int main(int argc, char *argv[]) {
     while (fgets(aline, 1000, fileParam) != NULL) {
       str = "Twins ";
       LowNr = strncmp(aline, str, strlen(str));
-      if (LowNr == 0) { sscanf(aline, "%s %d", dummy, &Twin); continue; }
+      if (LowNr == 0) {
+        sscanf(aline, "%s %d", dummy, &Twin);
+        continue;
+      }
       str = "Wavelength ";
       LowNr = strncmp(aline, str, strlen(str));
-      if (LowNr == 0) { sscanf(aline, "%s %lf", dummy, &wavelength); continue; }
+      if (LowNr == 0) {
+        sscanf(aline, "%s %lf", dummy, &wavelength);
+        continue;
+      }
       str = "BeamThickness ";
       LowNr = strncmp(aline, str, strlen(str));
-      if (LowNr == 0) { sscanf(aline, "%s %lf", dummy, &BeamThickness); continue; }
+      if (LowNr == 0) {
+        sscanf(aline, "%s %lf", dummy, &BeamThickness);
+        continue;
+      }
       str = "GlobalPosition ";
       LowNr = strncmp(aline, str, strlen(str));
-      if (LowNr == 0) { sscanf(aline, "%s %lf", dummy, &GlobalPosition); continue; }
+      if (LowNr == 0) {
+        sscanf(aline, "%s %lf", dummy, &GlobalPosition);
+        continue;
+      }
       str = "NumPhases ";
       LowNr = strncmp(aline, str, strlen(str));
-      if (LowNr == 0) { sscanf(aline, "%s %d", dummy, &NumPhases); continue; }
+      if (LowNr == 0) {
+        sscanf(aline, "%s %d", dummy, &NumPhases);
+        continue;
+      }
       str = "PhaseNr ";
       LowNr = strncmp(aline, str, strlen(str));
-      if (LowNr == 0) { sscanf(aline, "%s %d", dummy, &PhaseNr); continue; }
+      if (LowNr == 0) {
+        sscanf(aline, "%s %d", dummy, &PhaseNr);
+        continue;
+      }
       str = "MinNrSpots ";
       LowNr = strncmp(aline, str, strlen(str));
-      if (LowNr == 0) { sscanf(aline, "%s %d", dummy, &MinNrSpots); continue; }
+      if (LowNr == 0) {
+        sscanf(aline, "%s %d", dummy, &MinNrSpots);
+        continue;
+      }
       str = "SpaceGroup ";
       LowNr = strncmp(aline, str, strlen(str));
-      if (LowNr == 0) { sscanf(aline, "%s %d", dummy, &SGNr); continue; }
+      if (LowNr == 0) {
+        sscanf(aline, "%s %d", dummy, &SGNr);
+        continue;
+      }
       str = "Lsd ";
       LowNr = strncmp(aline, str, strlen(str));
-      if (LowNr == 0) { sscanf(aline, "%s %lf", dummy, &Distance); continue; }
+      if (LowNr == 0) {
+        sscanf(aline, "%s %lf", dummy, &Distance);
+        continue;
+      }
       str = "Distance ";
       LowNr = strncmp(aline, str, strlen(str));
-      if (LowNr == 0) { sscanf(aline, "%s %lf", dummy, &Distance); continue; }
+      if (LowNr == 0) {
+        sscanf(aline, "%s %lf", dummy, &Distance);
+        continue;
+      }
       str = "LsdMean ";
       LowNr = strncmp(aline, str, strlen(str));
-      if (LowNr == 0) { sscanf(aline, "%s %lf", dummy, &Distance); continue; }
+      if (LowNr == 0) {
+        sscanf(aline, "%s %lf", dummy, &Distance);
+        continue;
+      }
       str = "LatticeConstant ";
       LowNr = strncmp(aline, str, strlen(str));
       if (LowNr == 0) {
-        sscanf(aline, "%s %lf %lf %lf %lf %lf %lf", dummy, &LatCin[0], &LatCin[1],
-               &LatCin[2], &LatCin[3], &LatCin[4], &LatCin[5]);
+        sscanf(aline, "%s %lf %lf %lf %lf %lf %lf", dummy, &LatCin[0],
+               &LatCin[1], &LatCin[2], &LatCin[3], &LatCin[4], &LatCin[5]);
         continue;
       }
       str = "LatticeParameter ";
       LowNr = strncmp(aline, str, strlen(str));
       if (LowNr == 0) {
-        sscanf(aline, "%s %lf %lf %lf %lf %lf %lf", dummy, &LatCin[0], &LatCin[1],
-               &LatCin[2], &LatCin[3], &LatCin[4], &LatCin[5]);
+        sscanf(aline, "%s %lf %lf %lf %lf %lf %lf", dummy, &LatCin[0],
+               &LatCin[1], &LatCin[2], &LatCin[3], &LatCin[4], &LatCin[5]);
         continue;
       }
     }
     fclose(fileParam);
-    printf("Read Parameters from %s:\n\tTwins: %d\n\tWavelength: %lf\n\tBeamThickness: "
+    printf("Read Parameters from %s:\n\tTwins: %d\n\tWavelength: "
+           "%lf\n\tBeamThickness: "
            "%lf\n\tGlobalPosition: %lf\n\tNumPhases: %d\n\tPhaseNr: "
            "%d\n\tMinNrSpots: %d\n\tSpaceGroup: %d\n\tDistance: %lf\n",
-           paramFN, Twin, wavelength, BeamThickness, GlobalPosition, NumPhases, PhaseNr,
-           MinNrSpots, SGNr, Distance);
+           paramFN, Twin, wavelength, BeamThickness, GlobalPosition, NumPhases,
+           PhaseNr, MinNrSpots, SGNr, Distance);
     printf("\tLatticeConstant: %lf %lf %lf %lf %lf %lf\n", LatCin[0], LatCin[1],
            LatCin[2], LatCin[3], LatCin[4], LatCin[5]);
   } else {
@@ -453,16 +486,20 @@ int main(int argc, char *argv[]) {
     if (argc >= 3) {
       // Second positional arg: trackGrains or nCPUs
       int val2 = atoi(argv[2]);
-      if (val2 == 0 || val2 == 1) trackGrains = val2;
-      else nCPUs = val2;
+      if (val2 == 0 || val2 == 1)
+        trackGrains = val2;
+      else
+        nCPUs = val2;
     }
-    if (argc >= 4) nCPUs = atoi(argv[3]);
+    if (argc >= 4)
+      nCPUs = atoi(argv[3]);
 
     int errorp = 0;
     zip_t *arch = NULL;
     arch = zip_open(DataFN, 0, &errorp);
     if (arch == NULL) {
-      fprintf(stderr, "ERROR: Could not open zip archive '%s' (error code: %d)\n",
+      fprintf(stderr,
+              "ERROR: Could not open zip archive '%s' (error code: %d)\n",
               DataFN, errorp);
       return 1;
     }
@@ -477,34 +514,52 @@ int main(int argc, char *argv[]) {
     while ((zip_stat_index(arch, count, 0, finfo)) == 0 &&
            paramsFound < totalParams) {
       const char *name = finfo->name;
-      if (strstr(name, "analysis/process/analysis_parameters/SpaceGroup/0") != NULL) {
+      if (strstr(name, "analysis/process/analysis_parameters/SpaceGroup/0") !=
+          NULL) {
         ReadZarrChunk(arch, count, &SGNr, sizeof(int));
         paramsFound++;
-      } else if (strstr(name, "analysis/process/analysis_parameters/Twins/0") != NULL) {
+      } else if (strstr(name, "analysis/process/analysis_parameters/Twins/0") !=
+                 NULL) {
         ReadZarrChunk(arch, count, &Twin, sizeof(int));
         paramsFound++;
-      } else if (strstr(name, "analysis/process/analysis_parameters/MinNrSpots/0") != NULL) {
+      } else if (strstr(name,
+                        "analysis/process/analysis_parameters/MinNrSpots/0") !=
+                 NULL) {
         ReadZarrChunk(arch, count, &MinNrSpots, sizeof(int));
         paramsFound++;
-      } else if (strstr(name, "analysis/process/analysis_parameters/NumPhases/0") != NULL) {
+      } else if (strstr(name,
+                        "analysis/process/analysis_parameters/NumPhases/0") !=
+                 NULL) {
         ReadZarrChunk(arch, count, &NumPhases, sizeof(int));
         paramsFound++;
-      } else if (strstr(name, "analysis/process/analysis_parameters/PhaseNr/0") != NULL) {
+      } else if (strstr(name,
+                        "analysis/process/analysis_parameters/PhaseNr/0") !=
+                 NULL) {
         ReadZarrChunk(arch, count, &PhaseNr, sizeof(int));
         paramsFound++;
-      } else if (strstr(name, "analysis/process/analysis_parameters/GlobalPosition/0") != NULL) {
+      } else if (strstr(
+                     name,
+                     "analysis/process/analysis_parameters/GlobalPosition/0") !=
+                 NULL) {
         ReadZarrChunk(arch, count, &GlobalPosition, sizeof(double));
         paramsFound++;
-      } else if (strstr(name, "analysis/process/analysis_parameters/BeamThickness/0") != NULL) {
+      } else if (strstr(
+                     name,
+                     "analysis/process/analysis_parameters/BeamThickness/0") !=
+                 NULL) {
         ReadZarrChunk(arch, count, &BeamThickness, sizeof(double));
         paramsFound++;
-      } else if (strstr(name, "analysis/process/analysis_parameters/LatticeParameter/0") != NULL) {
+      } else if (strstr(name, "analysis/process/analysis_parameters/"
+                              "LatticeParameter/0") != NULL) {
         ReadZarrChunk(arch, count, LatCin, 6 * sizeof(double));
         paramsFound++;
-      } else if (strstr(name, "analysis/process/analysis_parameters/Lsd/0") != NULL) {
+      } else if (strstr(name, "analysis/process/analysis_parameters/Lsd/0") !=
+                 NULL) {
         ReadZarrChunk(arch, count, &Distance, sizeof(double));
         paramsFound++;
-      } else if (strstr(name, "analysis/process/analysis_parameters/Wavelength/0") != NULL) {
+      } else if (strstr(name,
+                        "analysis/process/analysis_parameters/Wavelength/0") !=
+                 NULL) {
         ReadZarrChunk(arch, count, &wavelength, sizeof(double));
         paramsFound++;
       }
