@@ -805,7 +805,9 @@ class NFViewer(QtWidgets.QMainWindow):
             return
         if event.button() != QtCore.Qt.RightButton:
             return
-        pos = self.image_view.getView().mapSceneToView(event.scenePos())
+        event.accept()  # suppress context menu
+        vb = self.image_view.getView().getViewBox()
+        pos = vb.mapSceneToView(event.scenePos())
         self._click_ix = pos.x()
         self._click_iy = pos.y()
 
