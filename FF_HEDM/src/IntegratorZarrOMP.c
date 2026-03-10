@@ -1013,6 +1013,37 @@ int main(int argc, char **argv) {
         free(s);
         return 1;
       }
+      // Parse dtype from .zarray to set bytesPerPx/dType as fallback
+      ptr = strstr(s, "dtype");
+      if (ptr != NULL) {
+        char *q1 = strchr(ptr, '"');
+        char *q2 = q1 ? strchr(q1 + 1, '"') : NULL;
+        char *q3 = q2 ? strchr(q2 + 1, '"') : NULL;
+        if (q2 && q3) {
+          size_t dlen = q3 - q2 - 1;
+          char dtStr[32] = {0};
+          if (dlen < sizeof(dtStr)) {
+            strncpy(dtStr, q2 + 1, dlen);
+            printf("Parsed dtype from .zarray: '%s'\n", dtStr);
+            if (strstr(dtStr, "u2")) {
+              bytesPerPx = 2;
+              dType = 1;
+            } else if (strstr(dtStr, "i4")) {
+              bytesPerPx = 4;
+              dType = 5;
+            } else if (strstr(dtStr, "u4")) {
+              bytesPerPx = 4;
+              dType = 4;
+            } else if (strstr(dtStr, "f4")) {
+              bytesPerPx = 4;
+              dType = 3;
+            } else if (strstr(dtStr, "f8")) {
+              bytesPerPx = 8;
+              dType = 2;
+            }
+          }
+        }
+      }
       free(s);
     }
     if (strstr(finfo->name, "exchange/dark/.zarray") != NULL) {

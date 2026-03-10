@@ -1949,27 +1949,63 @@ static ErrorCode parseZarrMetadata(const char *dataFile,
         }
       }
 
-      // Parse data type string from .zarray, but use our enum to set bytesPerPx
-      // This ensures consistency
+      // Parse data type string from .zarray to set bytesPerPx and pixelType
+      // This is the authoritative source for the actual on-disk data format
       ptr = strstr(buffer, "dtype");
       if (ptr != NULL) {
-        switch (metadata->pixelType) {
-        case PX_TYPE_FLOAT:
-          metadata->bytesPerPx = sizeof(float);
-          break;
-        case PX_TYPE_DOUBLE:
-          metadata->bytesPerPx = sizeof(double);
-          break;
-        case PX_TYPE_INT32:
-          metadata->bytesPerPx = sizeof(int32_t);
-          break;
-        case PX_TYPE_UINT32:
-          metadata->bytesPerPx = sizeof(uint32_t);
-          break;
-        case PX_TYPE_UINT16:
-        default:
-          metadata->bytesPerPx = sizeof(uint16_t);
-          break;
+        // Extract the dtype string (e.g. "<u2", "<i4", "<f4", "<f8", "<u4")
+        // JSON format: "dtype": "<i4"  — need to find the 3rd and 4th quotes
+        // quote1 = opening quote of key "dtype"
+        // quote2 = closing quote of key "dtype"
+        // quote3 = opening quote of value "<i4"
+        // quote4 = closing quote of value "<i4"
+        char *quote1 = strchr(ptr, '"');
+        char *quote2 = quote1 ? strchr(quote1 + 1, '"') : NULL;
+        char *quote3 = quote2 ? strchr(quote2 + 1, '"') : NULL;
+        if (quote2 && quote3) {
+          size_t len = quote3 - quote2 - 1;
+          char dtypeStr[32] = {0};
+          if (len < sizeof(dtypeStr)) {
+            strncpy(dtypeStr, quote2 + 1, len);
+            printf("Parsed dtype from .zarray: '%s'\n", dtypeStr);
+            // Map dtype string to bytesPerPx and pixelType
+            if (strstr(dtypeStr, "u2") || strstr(dtypeStr, "uint16")) {
+              metadata->bytesPerPx = sizeof(uint16_t);
+              metadata->pixelType = PX_TYPE_UINT16;
+            } else if (strstr(dtypeStr, "i4") || strstr(dtypeStr, "int32")) {
+              metadata->bytesPerPx = sizeof(int32_t);
+              metadata->pixelType = PX_TYPE_INT32;
+            } else if (strstr(dtypeStr, "u4") || strstr(dtypeStr, "uint32")) {
+              metadata->bytesPerPx = sizeof(uint32_t);
+              metadata->pixelType = PX_TYPE_UINT32;
+            } else if (strstr(dtypeStr, "f4") || strstr(dtypeStr, "float32")) {
+              metadata->bytesPerPx = sizeof(float);
+              metadata->pixelType = PX_TYPE_FLOAT;
+            } else if (strstr(dtypeStr, "f8") || strstr(dtypeStr, "float64")) {
+              metadata->bytesPerPx = sizeof(double);
+              metadata->pixelType = PX_TYPE_DOUBLE;
+            } else {
+              // Fallback: use pixelType from readZarrDataType
+              switch (metadata->pixelType) {
+              case PX_TYPE_FLOAT:
+                metadata->bytesPerPx = sizeof(float);
+                break;
+              case PX_TYPE_DOUBLE:
+                metadata->bytesPerPx = sizeof(double);
+                break;
+              case PX_TYPE_INT32:
+                metadata->bytesPerPx = sizeof(int32_t);
+                break;
+              case PX_TYPE_UINT32:
+                metadata->bytesPerPx = sizeof(uint32_t);
+                break;
+              case PX_TYPE_UINT16:
+              default:
+                metadata->bytesPerPx = sizeof(uint16_t);
+                break;
+              }
+            }
+          }
         }
       }
 

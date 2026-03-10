@@ -152,9 +152,15 @@ def enrich_zarr_metadata(zarr_file_path, params):
         sp_ana = zRoot.require_group('analysis/process/analysis_parameters')
         sp_pro = zRoot.require_group('measurement/process/scan_parameters')
         
-        # Populate Scan Parameters (simplistic mappings from config to measurement)
-        # Assuming missing physical metadata like temperature is irrelevant for raw simulations
-        sp_pro.require_dataset('datatype', shape=(), dtype=str, data='int32')
+        # Read dtype from the actual data array and write it for the C code
+        dtype_map = {
+            'uint16': 'uint16', 'int32': 'int32', 'uint32': 'uint32',
+            'float32': 'float32', 'float64': 'float64',
+        }
+        data_dtype = str(zRoot['exchange/data'].dtype)
+        dtype_str = dtype_map.get(data_dtype, data_dtype)
+        sp_pro.create_dataset('datatype', data=np.bytes_(dtype_str.encode('UTF-8')))
+        print(f"  Written datatype for C-code: '{dtype_str}' (from exchange/data dtype: {data_dtype})")
 
         z_groups = {
             'sp_pro_analysis': sp_ana,
