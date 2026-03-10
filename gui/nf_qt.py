@@ -191,10 +191,10 @@ class NFViewer(QtWidgets.QMainWindow):
         self.spots = np.zeros((self.n_distances, 3))
         self.dist_diff = 0.0
 
-        # SelectSpots state
         self._selecting_spots = False
         self._click_ix = 0.0
         self._click_iy = 0.0
+        self._spot_crops = {}  # {dist: ndarray} cropped image around spot
 
         # Image data
         self.imarr2 = None
@@ -832,6 +832,16 @@ class NFViewer(QtWidgets.QMainWindow):
               f"rel=({self.spots[dist][0]:.1f}, {self.spots[dist][1]:.1f}), "
               f"R={self.spots[dist][2]:.1f}")
 
+        # Save crop around clicked spot for visualization
+        if self.imarr2 is not None:
+            half = 50
+            cx, cy = int(round(self._click_ix)), int(round(self._click_iy))
+            h, w = self.imarr2.shape
+            y0, y1 = max(0, cy - half), min(h, cy + half)
+            x0, x1 = max(0, cx - half), min(w, cx + half)
+            if y1 > y0 and x1 > x0:
+                self._spot_crops[dist] = self.imarr2[y0:y1, x0:x1].copy()
+
         # Ask: next distance or finished?
         dlg = QtWidgets.QDialog(self)
         dlg.setWindowTitle("Select Distance")
@@ -899,12 +909,76 @@ class NFViewer(QtWidgets.QMainWindow):
                        f"Calculated Ys: {ys[:idx]}\n"
                        f"Mean Lsd: {self.lsd:.1f} μm")
         print(result_text)
-        QtWidgets.QMessageBox.information(self, "Distance Computation", result_text)
 
         if btn is not None:
             self.statusBar().removeWidget(btn)
             btn.deleteLater()
         self.status_label.setText(f"Lsd = {self.lsd:.1f} μm")
+
+        # ── Visual results dialog ──
+        dlg = QtWidgets.QDialog(self)
+        dlg.setWindowTitle(f"Distance Results — Lsd = {self.lsd:.1f} μm")
+        dlg.resize(1000, 650)
+        main_lay = QtWidgets.QVBoxLayout(dlg)
+
+        # Summary text
+        summary = QtWidgets.QLabel(result_text)
+        summary.setWordWrap(True)
+        main_lay.addWidget(summary)
+
+        gw = pg.GraphicsLayoutWidget()
+        main_lay.addWidget(gw, stretch=1)
+
+        # Row 1: Spot crops for each distance
+        crops = getattr(self, '_spot_crops', {})
+        sorted_dists = sorted(crops.keys())
+        n_crops = len(sorted_dists)
+
+        if n_crops > 0:
+            for d in sorted_dists:
+                p = gw.addPlot(title=f"Dist {d}")
+                img = pg.ImageItem(crops[d].T.astype(float))
+                p.addItem(img)
+                p.setAspectLocked(True)
+                # Crosshair at center of crop
+                ch, cw = crops[d].shape
+                p.plot([cw / 2], [ch / 2], symbol='+', symbolSize=14,
+                       symbolPen=pg.mkPen('c', width=2), pen=None)
+                p.hideAxis('left')
+                p.hideAxis('bottom')
+            gw.nextRow()
+
+        # Row 2: Triangulation ray diagram
+        colspan = max(n_crops, 1)
+        tri = gw.addPlot(title="Ray Triangulation", colspan=colspan)
+        tri.setLabel('bottom', 'Distance from sample (μm)')
+        tri.setLabel('left', 'Spot position (px from BC)')
+        tri.addLegend(offset=(10, 10))
+
+        # Draw rays: sample at origin, detectors at Lsd + d*dist_diff
+        for d in range(n):
+            spot_z = self.spots[d][1]
+            if abs(spot_z) < 1e-6 and abs(self.spots[d][0]) < 1e-6:
+                continue  # skip unset distances
+            det_pos = self.lsd + d * self.dist_diff
+            color = pg.intColor(d, n, maxValue=200)
+            # Ray from sample (0, 0) through (det_pos, spot_z)
+            tri.plot([0, det_pos], [0, spot_z],
+                     pen=pg.mkPen(color, width=2), name=f"Dist {d}")
+            tri.plot([det_pos], [spot_z],
+                     symbol='o', symbolBrush=color, symbolSize=10, pen=None)
+
+        # Mark sample position
+        tri.plot([0], [0], symbol='x', symbolBrush='r', symbolSize=15,
+                 symbolPen=pg.mkPen('r', width=2), pen=None, name='Sample')
+        tri.addLine(x=0, pen=pg.mkPen('r', width=1.5, style=QtCore.Qt.DashLine))
+
+        # Close button
+        close_btn = QtWidgets.QPushButton("Close")
+        close_btn.clicked.connect(dlg.accept)
+        main_lay.addWidget(close_btn)
+
+        dlg.exec_()
 
     def _movie_advance_frame(self):
         """Advance frame by 1 for movie mode; wrap at max."""
