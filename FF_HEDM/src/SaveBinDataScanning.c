@@ -90,8 +90,7 @@ int main(int argc, char *argv[]) {
     return 1;
   }
   printf("SaveBinDataScanning: nScans=%d\n", nScans);
-  fprintf(stderr, "INFO: SaveBinDataScanning starting with nScans=%d\n",
-          nScans);
+
 
   double diftotal;
   start = clock();
@@ -107,7 +106,7 @@ int main(int argc, char *argv[]) {
     printf("Could not open %s. Exiting.\n", ParamFN);
     return 1;
   }
-  fprintf(stderr, "INFO: Opened parameter file '%s'\n", ParamFN);
+
 
   int NrOfRings = 0, NoRingNumbers = 0, RingNumbers[MAX_N_RINGS];
   double omemargin0 = -1, etamargin0 = -1, rotationstep = -1,
@@ -189,20 +188,7 @@ int main(int argc, char *argv[]) {
   fclose(fileParam);
 
   // ---- Validate required parameters ----
-  fprintf(stderr, "INFO: Parameter summary:\n");
-  fprintf(stderr, "INFO:   NrOfRings=%d, NoRingNumbers=%d\n", NrOfRings,
-          NoRingNumbers);
-  fprintf(stderr, "INFO:   MarginOme=%.4f (found=%d)\n", omemargin0,
-          found_marginome);
-  fprintf(stderr, "INFO:   MarginEta=%.4f (found=%d)\n", etamargin0,
-          found_margineta);
-  fprintf(stderr, "INFO:   EtaBinSize=%.4f (found=%d)\n", etabinsize,
-          found_etabinsize);
-  fprintf(stderr, "INFO:   OmeBinSize=%.4f (found=%d)\n", omebinsize,
-          found_omebinsize);
-  fprintf(stderr, "INFO:   StepsizeOrient=%.6f (found=%d)\n", rotationstep,
-          found_stepsize);
-  fprintf(stderr, "INFO:   NoSaveAll=%d\n", nosaveall);
+
 
   int param_error = 0;
   if (!found_marginome) {
@@ -262,11 +248,7 @@ int main(int argc, char *argv[]) {
     return 1;
   }
 
-  // Log ring info
-  for (int r = 0; r < NrOfRings; r++) {
-    fprintf(stderr, "INFO:   Ring[%d]: number=%d, radius=%.4f\n", r,
-            RingNumbers[r], RingRadiiUser[r]);
-  }
+
 
   int i, j, k;
 
@@ -285,9 +267,7 @@ int main(int argc, char *argv[]) {
     printf("Memory error: could not allocate MyData.\n");
     return 1;
   }
-  fprintf(stderr, "INFO: Allocated MyData array for %zu spots (%.1f MB)\n",
-          spotCapacity,
-          (double)(spotCapacity * sizeof(*MyData)) / (1024.0 * 1024.0));
+
 
   int nFilesFound = 0;
   int nFilesNotFound = 0;
@@ -388,24 +368,16 @@ int main(int argc, char *argv[]) {
         }
         MyData = grown;
         spotCapacity = newCap;
-        fprintf(stderr, "INFO: Grew MyData to %zu spots (%.1f MB)\n",
-                spotCapacity,
-                (double)(spotCapacity * sizeof(*MyData)) / (1024.0 * 1024.0));
+
       }
     }
     fclose(AllSpotsFile);
-    fprintf(stderr,
-            "INFO: Scan %d/%d: read %zu data lines from '%s', "
-            "%zu valid spots (total so far: %zu)",
-            scanNr + 1, nScans, nLinesRead, AllSpotsFN, nSpotsThisScan, nSpots);
     if (nParseErrors > 0) {
-      fprintf(stderr, ", %zu parse errors", nParseErrors);
+      fprintf(stderr, "WARNING: %zu parse errors in '%s'\n", nParseErrors, AllSpotsFN);
     }
-    fprintf(stderr, "\n");
   }
 
-  fprintf(stderr, "INFO: Input files: %d found, %d not found (out of %d)\n",
-          nFilesFound, nFilesNotFound, nScans);
+
 
   if (nFilesFound == 0) {
     fprintf(stderr,
@@ -440,13 +412,13 @@ int main(int argc, char *argv[]) {
     MyData = tmp;
   }
   printf("Number of Spots: %zu\n", nSpots);
-  fprintf(stderr, "INFO: Total valid spots: %zu\n", nSpots);
+
 
   // Now sort the spots, depending on the ring numbers, then omega value, then
   // on the eta-value.
   qsort(MyData, nSpots, sizeof(struct InpData), cmpfunc);
   printf("Data sorted.\n");
-  fprintf(stderr, "INFO: Spots sorted by ring/omega/eta\n");
+
 
   // Use contiguous 1D arrays instead of row-pointer matrices
   int nObsCols = 18;
@@ -541,8 +513,7 @@ int main(int argc, char *argv[]) {
             strerror(errno), errno);
     return 1;
   }
-  fprintf(stderr, "INFO: Wrote %s (%zu spots, %zu bytes)\n", SpotsFN, nSpots,
-          nSpots * 10 * sizeof(*SpotsMat));
+
 
   FILE *ExtraFile = fopen(ExtraFN, "wb");
   if (ExtraFile == NULL) {
@@ -564,8 +535,7 @@ int main(int argc, char *argv[]) {
             strerror(errno), errno);
     return 1;
   }
-  fprintf(stderr, "INFO: Wrote %s (%zu spots, %zu bytes)\n", ExtraFN, nSpots,
-          nSpots * 16 * sizeof(*ExtraMat));
+
   free(ExtraMat);
 
   FILE *IDMatFile = fopen(IDMatFN, "w");
@@ -584,18 +554,17 @@ int main(int argc, char *argv[]) {
             strerror(errno), errno);
     return 1;
   }
-  fprintf(stderr, "INFO: Wrote %s (%zu entries)\n", IDMatFN, nSpots);
+
 
   free(SpotsMat);
   free(IDMat);
   if (nosaveall == 1) {
     free(ObsSpots);
-    fprintf(stderr, "INFO: NoSaveAll=1, skipping Data.bin/nData.bin. Done.\n");
+
     return 0;
   }
   printf("Files written. Now generating map.\n");
-  fprintf(stderr,
-          "INFO: Files written. Now generating Data.bin/nData.bin map.\n");
+
 
   // data will save id, scanNr for each spot, everything else remains the same.
   // Twice the size now.
@@ -621,11 +590,7 @@ int main(int argc, char *argv[]) {
   printf("nRings: %d, nEtas: %d, nOmes: %d\n", n_ring_bins, n_eta_bins,
          n_ome_bins);
   printf("Total bins: %d\n", n_ring_bins * n_eta_bins * n_ome_bins);
-  fprintf(stderr,
-          "INFO: Map dimensions: nRings=%d, nEtas=%d, nOmes=%d, "
-          "totalBins=%d\n",
-          n_ring_bins, n_eta_bins, n_ome_bins,
-          n_ring_bins * n_eta_bins * n_ome_bins);
+
 
   if (n_ring_bins <= 0 || n_eta_bins <= 0 || n_ome_bins <= 0) {
     fprintf(stderr,
@@ -769,8 +734,7 @@ int main(int argc, char *argv[]) {
       }
     }
 
-    fprintf(stderr, "INFO: Ring %d/%d: %zu spots binned\n", iRing + 1,
-            n_ring_bins, nSpotsThisRing);
+
 
     // Write to File immediately
     int write_error = 0;
@@ -839,28 +803,9 @@ int main(int argc, char *argv[]) {
          (size_t)n_ring_bins * n_eta_bins * n_ome_bins * 2,
          TotNumberOfBins * 2);
   printf("Total Time elapsed: %f s.\n", diftotal);
-  fprintf(stderr,
-          "INFO: SaveBinDataScanning completed successfully. "
-          "nSpots=%zu, nData=%zu, Data=%zu, Time=%.2fs\n",
-          nSpots, (size_t)n_ring_bins * n_eta_bins * n_ome_bins * 2,
-          TotNumberOfBins * 2, diftotal);
 
-  // Verify output files exist and have size
-  struct stat st;
-  const char *outFiles[] = {"Spots.bin", "ExtraInfo.bin",
-                            "IDsMergedScanning.csv", "Data.bin", "nData.bin"};
-  for (int f = 0; f < 5; f++) {
-    if (stat(outFiles[f], &st) == 0) {
-      fprintf(stderr, "INFO: Output file '%s': %lld bytes\n", outFiles[f],
-              (long long)st.st_size);
-      if (st.st_size == 0) {
-        fprintf(stderr, "WARNING: Output file '%s' is 0 bytes!\n", outFiles[f]);
-      }
-    } else {
-      fprintf(stderr, "ERROR: Output file '%s' not found after writing!\n",
-              outFiles[f]);
-    }
-  }
+
+
 
   return 0;
 }
