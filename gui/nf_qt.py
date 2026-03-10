@@ -1581,7 +1581,7 @@ class NFViewer(QtWidgets.QMainWindow):
                 f.write('NrPixelsZ ' + str(self.nz) + '\n')
                 f.write('DataDirectory ' + self.folder + '\n')
                 f.write('OutputDirectory ' + self._median_dir + '\n')
-                tempnr = self.start_frame_nr + d * (self.n_files_per_dist - self.n_files_per_dist)
+                tempnr = self.start_frame_nr + d * self.n_files_per_dist
                 f.write('RawStartNr ' + str(tempnr) + '\n')
                 f.write('ReducedFileName ' + self.fnstem + '\n')
             try:
@@ -1592,8 +1592,11 @@ class NFViewer(QtWidgets.QMainWindow):
         worker = AsyncWorker(
             target=lambda: list(concurrent.futures.ThreadPoolExecutor(
                 max_workers=self.n_distances).map(run_median, range(self.n_distances))))
-        worker.finished_signal.connect(
-            lambda _: print(f"Median computed for {self.n_distances} distances"))
+        def _on_median_done(_):
+            print(f"Median computed for {self.n_distances} distances")
+            self.median_check.setChecked(True)
+            self._load_and_display()
+        worker.finished_signal.connect(_on_median_done)
         worker.start()
         self._median_worker = worker
 
