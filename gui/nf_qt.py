@@ -971,12 +971,16 @@ class NFViewer(QtWidgets.QMainWindow):
         if n_crops > 0:
             for d in sorted_dists:
                 p = gw.addPlot(title=f"Dist {d}")
-                img = pg.ImageItem(crops[d].T.astype(float))
+                crop_data = crops[d].astype(float)
+                print(f"Crop dist {d}: shape={crop_data.shape}, "
+                      f"min={crop_data.min():.0f}, max={crop_data.max():.0f}")
+                img = pg.ImageItem()
+                img.setImage(crop_data, autoLevels=True)
                 p.addItem(img)
                 p.setAspectLocked(True)
                 # Crosshair at center of crop
-                ch, cw = crops[d].shape
-                p.plot([cw / 2], [ch / 2], symbol='+', symbolSize=14,
+                ch, cw = crop_data.shape
+                p.plot([ch / 2], [cw / 2], symbol='+', symbolSize=14,
                        symbolPen=pg.mkPen('c', width=2), pen=None)
                 p.hideAxis('left')
                 p.hideAxis('bottom')
