@@ -1112,11 +1112,17 @@ class NFViewer(QtWidgets.QMainWindow):
             else:
                 tag = 'SumIntensity'
             if self.use_median:
-                fn = os.path.join(self.folder, self.fnstem +
-                    f'_{tag}MedianCorrected_Distance_' + str(self.dist) + '.bin')
+                suffix = f'_{tag}MedianCorrected_Distance_' + str(self.dist) + '.bin'
             else:
-                fn = os.path.join(self.folder, self.fnstem +
-                    f'_{tag}_Distance_' + str(self.dist) + '.bin')
+                suffix = f'_{tag}_Distance_' + str(self.dist) + '.bin'
+            # Check temp median dir first, then data folder
+            fn = None
+            if self._median_dir and os.path.isdir(self._median_dir):
+                candidate = os.path.join(self._median_dir, self.fnstem + suffix)
+                if os.path.exists(candidate):
+                    fn = candidate
+            if fn is None:
+                fn = os.path.join(self.folder, self.fnstem + suffix)
             if os.path.exists(fn):
                 with open(fn, 'rb') as f:
                     imarr = np.fromfile(f, dtype=np.uint16, count=self.ny * self.nz)
