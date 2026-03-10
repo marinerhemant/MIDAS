@@ -87,100 +87,128 @@ def load_zarr_params(zarr_file):
 
 def load_spot_data(spots_file, spots_orig_file, zarr_params):
     if zarr_params is None: return None
-    try: spots = np.genfromtxt(spots_file, skip_header=1)
+    try:
+        spots = pd.read_csv(spots_file, sep=r'\s+', header=0).values
     except Exception as e: print(f"Error reading {spots_file}: {e}", file=sys.stderr); traceback.print_exc(); return None
-    try: spotsOrig = np.genfromtxt(spots_orig_file, skip_header=1)
-    except Exception as e: print(f"Warning/Error reading {spots_orig_file}: {e}. Spot size info may be missing.", file=sys.stderr); traceback.print_exc(); spotsOrig = None
+    try:
+        spotsOrig = pd.read_csv(spots_orig_file, sep=r'\s+', header=0).values
+    except Exception as e: print(f"Warning reading {spots_orig_file}: {e}. Spot size info may be missing.", file=sys.stderr); spotsOrig = None
 
-    data = {k: [] for k in ['omega', 'y', 'z', 'g1', 'g2', 'g3', 'ringNr', 'ringNrInt', 'strain', 'ds', 'grainID', 'grainIDColor', 'spotID', 'detY', 'detZ', 'spotSize', 'detHor', 'detVer', 'omeRaw', 'eta', 'tTheta']}
     pixSz, Lsd, wl = zarr_params['pixSz'], zarr_params['Lsd'], zarr_params['wl']
 
-    for i in range(spots.shape[0]):
-        if spots[i][SPOT_OMEGA_RAW_COL] == 0.0 and spots[i][SPOT_OMEGA_COL] == 0.0: continue
-        omega_val, tTheta_val_deg = spots[i][SPOT_OMEGA_COL], spots[i][SPOT_TTHETA_COL]
-        tTheta_val_deg *= 2 # Note: Assuming input is Theta
-        spot_y_microns, spot_z_microns = spots[i][SPOT_Y_M_COL], spots[i][SPOT_Z_M_COL]
-        data['y'].append(spot_y_microns / pixSz); data['z'].append(spot_z_microns / pixSz); data['omega'].append(omega_val)
-        ring_nr_int = int(spots[i][SPOT_RING_NR_COL]); data['ringNr'].append(str(ring_nr_int)); data['ringNrInt'].append(ring_nr_int)
-        grain_id_val, spot_id_val = spots[i][SPOT_GRAIN_ID_COL], spots[i][SPOT_ID_COL]
-        data['grainID'].append(grain_id_val); data['grainIDColor'].append(str(int(grain_id_val))); data['spotID'].append(spot_id_val)
-        data['detY'].append(int(spots[i][SPOT_DET_Y_PX_COL])); data['detZ'].append(int(spots[i][SPOT_DET_Z_PX_COL]))
-        data['detHor'].append(int(spots[i][SPOT_DET_Y_PX_COL])); data['detVer'].append(int(spots[i][SPOT_DET_Z_PX_COL]))
-        data['omeRaw'].append(spots[i][SPOT_OMEGA_RAW_COL]); data['eta'].append(spots[i][SPOT_ETA_COL]); data['tTheta'].append(tTheta_val_deg)
-        spot_size_val = np.nan
-        if spotsOrig is not None:
-            spot_id_int = int(spot_id_val)
-            if 1 <= spot_id_int <= spotsOrig.shape[0]:
-                try: raw_size = spotsOrig[spot_id_int - 1, SPOT_ORIG_SIZE_COL]; spot_size_val = raw_size if np.isfinite(raw_size) else np.nan
-                except IndexError: pass
-        data['spotSize'].append(spot_size_val)
-        data['strain'].append(1e6 * np.abs(spots[i][SPOT_STRAIN_COL]))
-        sin_tTheta = sin(tTheta_val_deg * deg2rad / 2.0)
-        ds_val = wl / (2 * sin_tTheta) if abs(sin_tTheta) > 1e-9 else np.nan; data['ds'].append(ds_val)
-        g1_raw, g2_raw, g3_raw = spot2gv(Lsd, spot_y_microns * 1e-6, spot_z_microns * 1e-6, omega_val)
-        g_mag_raw = sqrt(g1_raw**2 + g2_raw**2 + g3_raw**2)
-        if g_mag_raw > 1e-9 and not np.isnan(ds_val) and ds_val > 1e-9:
-             scale_factor = (1.0 / ds_val) / g_mag_raw; g1, g2, g3 = g1_raw * scale_factor, g2_raw * scale_factor, g3_raw * scale_factor
-        else: g1, g2, g3 = np.nan, np.nan, np.nan
-        data['g1'].append(g1); data['g2'].append(g2); data['g3'].append(g3)
+    # Filter out rows where both omega columns are zero
+    mask = ~((spots[:, SPOT_OMEGA_RAW_COL] == 0.0) & (spots[:, SPOT_OMEGA_COL] == 0.0))
+    s = spots[mask]
 
-    try:
-        spots_df = pd.DataFrame(data)
-        spots_df.dropna(subset=['g1', 'g2', 'g3'], inplace=True)
-        num_cols = ['spotSize', 'strain', 'ds', 'omega', 'y', 'z', 'g1', 'g2', 'g3', 'tTheta', 'eta', 'omeRaw']
-        for col in num_cols: spots_df[col] = pd.to_numeric(spots_df[col], errors='coerce')
-        id_cols = {'grainID': 'Int64', 'spotID': 'Int64', 'ringNrInt': 'Int64', 'detY':'Int64', 'detZ':'Int64', 'detHor':'Int64', 'detVer':'Int64'}
-        for col, dtype in id_cols.items():
-            if col in spots_df.columns: spots_df[col] = pd.to_numeric(spots_df[col], errors='coerce').astype(dtype)
-        str_cols = ['grainIDColor', 'ringNr']; spots_df[str_cols] = spots_df[str_cols].astype(str)
-        spots_df = spots_df.sort_values(by=['grainID', 'spotID'])
-        print(f"Created DataFrame with {len(spots_df)} spots after processing.")
-        return spots_df
-    except Exception as e: print(f"Error creating Spot DataFrame: {e}", file=sys.stderr); traceback.print_exc(); return None
+    omega = s[:, SPOT_OMEGA_COL]
+    tTheta = s[:, SPOT_TTHETA_COL] * 2  # Input is Theta, we want 2-Theta
+    spot_y = s[:, SPOT_Y_M_COL]
+    spot_z = s[:, SPOT_Z_M_COL]
+    ring_nr = s[:, SPOT_RING_NR_COL].astype(int)
+    grain_id = s[:, SPOT_GRAIN_ID_COL]
+    spot_id = s[:, SPOT_ID_COL]
+    det_y = s[:, SPOT_DET_Y_PX_COL].astype(int)
+    det_z = s[:, SPOT_DET_Z_PX_COL].astype(int)
+    ome_raw = s[:, SPOT_OMEGA_RAW_COL]
+    eta = s[:, SPOT_ETA_COL]
+    strain = 1e6 * np.abs(s[:, SPOT_STRAIN_COL])
+
+    # d-spacing
+    sin_tTheta = np.sin(tTheta * deg2rad / 2.0)
+    ds = np.where(np.abs(sin_tTheta) > 1e-9, wl / (2 * sin_tTheta), np.nan)
+
+    # Spot sizes via lookup
+    spot_size = np.full(len(s), np.nan)
+    if spotsOrig is not None:
+        spot_ids_int = spot_id.astype(int)
+        valid = (spot_ids_int >= 1) & (spot_ids_int <= spotsOrig.shape[0])
+        idx = spot_ids_int[valid] - 1
+        raw_sizes = spotsOrig[idx, SPOT_ORIG_SIZE_COL]
+        raw_sizes = np.where(np.isfinite(raw_sizes), raw_sizes, np.nan)
+        spot_size[valid] = raw_sizes
+
+    # Vectorized g-vector computation
+    spot_y_m = spot_y * 1e-6
+    spot_z_m = spot_z * 1e-6
+    v = np.column_stack([np.full(len(s), Lsd), spot_y_m, spot_z_m])
+    v_norm = np.linalg.norm(v, axis=1, keepdims=True)
+    v_norm = np.maximum(v_norm, 1e-9)  # avoid div by zero
+    vn = v / v_norm
+    g1r = vn[:, 0] - 1; g2r = vn[:, 1]; g3r = vn[:, 2]
+    # Rotate around Z by -omega
+    ome_rad = -omega * deg2rad
+    cos_o = np.cos(ome_rad); sin_o = np.sin(ome_rad)
+    g1 = cos_o * g1r - sin_o * g2r
+    g2 = sin_o * g1r + cos_o * g2r
+    g3 = g3r  # Z component unchanged
+    # Scale to 1/d
+    g_mag = np.sqrt(g1**2 + g2**2 + g3**2)
+    scale_ok = (g_mag > 1e-9) & np.isfinite(ds) & (ds > 1e-9)
+    scale = np.where(scale_ok, (1.0 / ds) / g_mag, np.nan)
+    g1 = np.where(scale_ok, g1 * scale, np.nan)
+    g2 = np.where(scale_ok, g2 * scale, np.nan)
+    g3 = np.where(scale_ok, g3 * scale, np.nan)
+
+    spots_df = pd.DataFrame({
+        'omega': omega, 'y': spot_y / pixSz, 'z': spot_z / pixSz,
+        'g1': g1, 'g2': g2, 'g3': g3,
+        'ringNr': ring_nr.astype(str), 'ringNrInt': ring_nr,
+        'strain': strain, 'ds': ds,
+        'grainID': grain_id.astype(int), 'grainIDColor': [str(int(x)) for x in grain_id],
+        'spotID': spot_id.astype(int),
+        'detY': det_y, 'detZ': det_z, 'detHor': det_y, 'detVer': det_z,
+        'spotSize': spot_size, 'omeRaw': ome_raw, 'eta': eta, 'tTheta': tTheta,
+    })
+    spots_df.dropna(subset=['g1', 'g2', 'g3'], inplace=True)
+    spots_df = spots_df.sort_values(by=['grainID', 'spotID'])
+    print(f"Created DataFrame with {len(spots_df)} spots after processing.")
+    return spots_df
 
 def load_grain_data(grains_file):
-    """Loads grain data from CSV file, keeping numeric columns numeric."""
-    try: grains = np.genfromtxt(grains_file, skip_header=9)
+    """Loads grain data from CSV file (vectorized)."""
+    try:
+        grains = pd.read_csv(grains_file, sep=r'\s+', header=None, skiprows=9, comment='#').values
     except Exception as e: print(f"Error reading {grains_file}: {e}", file=sys.stderr); traceback.print_exc(); return None
     if grains.ndim == 1: grains = grains.reshape(1, -1)
-    elif grains.shape[0] == 0: print("Warning: Grains file is empty."); return pd.DataFrame({'x': [], 'y': [], 'z': [], 'GrainSize': [], 'Confidence': [], 'ID': [], 'Euler0': [], 'Euler1': [], 'Euler2': [], 'StrainError': [], 'IDColor': [], 'Error': [], 'RawGrainSize': []})
+    if grains.shape[0] == 0:
+        print("Warning: Grains file is empty.")
+        return pd.DataFrame({'x': [], 'y': [], 'z': [], 'GrainSize': [], 'Confidence': [], 'ID': [], 'Euler0': [], 'Euler1': [], 'Euler2': [], 'StrainError': [], 'IDColor': [], 'Error': [], 'RawGrainSize': []})
 
-    data2 = {k: [] for k in ['x', 'y', 'z', 'GrainSize', 'RawGrainSize', 'Confidence', 'ID', 'IDColor', 'Euler0', 'Euler1', 'Euler2', 'Error', 'StrainError']}
-    valid_size_mask = np.full(grains.shape[0], False)
-    if grains.shape[1] > GRAIN_SIZE_COL: valid_size_mask = np.isfinite(grains[:, GRAIN_SIZE_COL]) & (grains[:, GRAIN_SIZE_COL] > 0)
-    largestSize = np.max(grains[valid_size_mask, GRAIN_SIZE_COL]) if np.any(valid_size_mask) else 1.0
-    if largestSize <= 0: largestSize = 1.0
+    raw_size = np.where(np.isfinite(grains[:, GRAIN_SIZE_COL]) & (grains[:, GRAIN_SIZE_COL] > 0),
+                        grains[:, GRAIN_SIZE_COL], 0.0)
+    largest = np.max(raw_size) if np.any(raw_size > 0) else 1.0
+    if largest <= 0: largest = 1.0
+    scaled = np.where(raw_size > 0,
+                      np.clip(MAX_MARKER_SIZE_VISUAL * 2 * raw_size / largest,
+                              MIN_MARKER_SIZE_VISUAL, MAX_MARKER_SIZE_VISUAL * 2),
+                      MIN_MARKER_SIZE_VISUAL)
 
-    for i in range(grains.shape[0]):
-        data2['x'].append(grains[i, GRAIN_X_COL]); data2['y'].append(grains[i, GRAIN_Y_COL]); data2['z'].append(grains[i, GRAIN_Z_COL])
-        raw_size = grains[i, GRAIN_SIZE_COL] if grains.shape[1] > GRAIN_SIZE_COL and np.isfinite(grains[i, GRAIN_SIZE_COL]) else 0
-        data2['RawGrainSize'].append(raw_size)
-        target_max_grain_visual_size = MAX_MARKER_SIZE_VISUAL * 2 # Grains can be larger
-        scaled_size = max(MIN_MARKER_SIZE_VISUAL, target_max_grain_visual_size * raw_size / largestSize) if raw_size > 0 and largestSize > 0 else MIN_MARKER_SIZE_VISUAL
-        data2['GrainSize'].append(scaled_size) # This 'GrainSize' is the scaled visual size
-        data2['Confidence'].append(grains[i, GRAIN_COMPLETENESS_COL]) # Keep raw Confidence
-        data2['Euler0'].append(grains[i, GRAIN_EULER_0_COL]); data2['Euler1'].append(grains[i, GRAIN_EULER_1_COL]); data2['Euler2'].append(grains[i, GRAIN_EULER_2_COL])
-        data2['StrainError'].append(grains[i, GRAIN_STRAIN_ERROR_COL]); data2['Error'].append(grains[i, GRAIN_ERROR_COL])
-        grain_id = grains[i, GRAIN_ID_COL]; data2['ID'].append(grain_id); data2['IDColor'].append(f'{int(grain_id)}')
-
-    try:
-        grains_df = pd.DataFrame(data2)
-        num_cols = ['x', 'y', 'z', 'GrainSize', 'RawGrainSize', 'Confidence', 'Euler0', 'Euler1', 'Euler2', 'Error', 'StrainError']
-        for col in num_cols: grains_df[col] = pd.to_numeric(grains_df[col], errors='coerce')
-        grains_df['ID'] = pd.to_numeric(grains_df['ID'], errors='coerce').astype('Int64')
-        grains_df['IDColor'] = grains_df['IDColor'].astype(str)
-        grains_df = grains_df.sort_values(by=['ID'])
-        print(f"Processed {len(data2['ID'])} grains.")
-        return grains_df
-    except Exception as e: print(f"Error creating Grain DataFrame: {e}", file=sys.stderr); traceback.print_exc(); return None
+    grains_df = pd.DataFrame({
+        'x': grains[:, GRAIN_X_COL], 'y': grains[:, GRAIN_Y_COL], 'z': grains[:, GRAIN_Z_COL],
+        'RawGrainSize': raw_size, 'GrainSize': scaled,
+        'Confidence': grains[:, GRAIN_COMPLETENESS_COL],
+        'ID': grains[:, GRAIN_ID_COL].astype(int),
+        'IDColor': [str(int(x)) for x in grains[:, GRAIN_ID_COL]],
+        'Euler0': grains[:, GRAIN_EULER_0_COL], 'Euler1': grains[:, GRAIN_EULER_1_COL], 'Euler2': grains[:, GRAIN_EULER_2_COL],
+        'StrainError': grains[:, GRAIN_STRAIN_ERROR_COL], 'Error': grains[:, GRAIN_ERROR_COL],
+    })
+    grains_df = grains_df.sort_values(by=['ID'])
+    print(f"Processed {len(grains_df)} grains.")
+    return grains_df
 
 # --- Consolidated HDF5 Loading Functions ---
 def find_consolidated_h5(result_dir):
     """Search for a consolidated HDF5 file in the result directory.
+    Prefers .MIDAS_consolidated.h5 (full data) over _consolidated.h5 (pipeline state).
     Returns the path if found, None otherwise."""
+    # Prefer the full MIDAS consolidated file
+    midas_matches = glob.glob(os.path.join(result_dir, '*.MIDAS_consolidated.h5'))
+    if midas_matches:
+        midas_matches.sort(key=os.path.getmtime, reverse=True)
+        return midas_matches[0]
+    # Fall back to any consolidated H5
     matches = glob.glob(os.path.join(result_dir, '*_consolidated.h5'))
     if matches:
-        # If multiple, pick the most recently modified
         matches.sort(key=os.path.getmtime, reverse=True)
         return matches[0]
     return None
@@ -265,39 +293,77 @@ def load_spot_data_h5(h5_path, zarr_params):
 
 def load_grain_data_h5(h5_path):
     """Load grain data from consolidated HDF5 file.
-    Reads /grains/summary (same layout as Grains.csv after header).
+    Reads per-grain groups: grains/grain_NNNNNN/{grain_id, position, confidence, radius, euler_angles, rms_strain_error, strain_kenesei}.
     Returns the same DataFrame structure as load_grain_data()."""
     try:
         with h5py.File(h5_path, 'r') as h5:
-            grains = h5['grains/summary'][:]
-        if grains.ndim == 1: grains = grains.reshape(1, -1)
-        print(f"Loaded {grains.shape[0]} grains from consolidated HDF5.")
+            if 'grains' not in h5:
+                print(f"No 'grains' group in {h5_path}", file=sys.stderr)
+                return None
+            grains_grp = h5['grains']
+            grain_keys = sorted(grains_grp.keys())
+            if not grain_keys:
+                print("Warning: Grains group is empty in HDF5.")
+                return pd.DataFrame({'x': [], 'y': [], 'z': [], 'GrainSize': [], 'Confidence': [], 'ID': [], 'Euler0': [], 'Euler1': [], 'Euler2': [], 'StrainError': [], 'IDColor': [], 'Error': [], 'RawGrainSize': []})
+
+            # Pre-allocate arrays
+            n = len(grain_keys)
+            ids = np.zeros(n, dtype=np.float64)
+            positions = np.zeros((n, 3))
+            confidences = np.zeros(n)
+            radii = np.zeros(n)
+            eulers = np.zeros((n, 3))
+            strain_errors = np.zeros(n)
+            rms_errors = np.zeros(n)
+
+            for i, gk in enumerate(grain_keys):
+                prefix = f'grains/{gk}/'
+                # Use read_direct with pre-allocated buffers for each dataset
+                h5[prefix + 'grain_id'].read_direct(ids, dest_sel=np.s_[i:i+1])
+                pos_buf = np.empty(3, dtype=np.float64)
+                h5[prefix + 'position'].read_direct(pos_buf)
+                positions[i] = pos_buf
+                conf_buf = np.empty((), dtype=np.float64)
+                h5[prefix + 'confidence'].read_direct(conf_buf)
+                confidences[i] = float(conf_buf)
+                rad_buf = np.empty((), dtype=np.float64)
+                h5[prefix + 'radius'].read_direct(rad_buf)
+                radii[i] = float(rad_buf)
+                eul_buf = np.empty(3, dtype=np.float64)
+                h5[prefix + 'euler_angles'].read_direct(eul_buf)
+                eulers[i] = eul_buf
+                se_buf = np.empty((), dtype=np.float64)
+                h5[prefix + 'rms_strain_error'].read_direct(se_buf)
+                strain_errors[i] = float(se_buf)
+                sk = np.empty((3, 3), dtype=np.float64)
+                h5[prefix + 'strain_kenesei'].read_direct(sk)
+                rms_errors[i] = np.sqrt(np.mean(np.diag(sk)**2))
+
+        print(f"Loaded {n} grains from consolidated HDF5.")
     except Exception as e:
         print(f"Error reading grains from {h5_path}: {e}", file=sys.stderr)
         traceback.print_exc()
         return None
 
-    if grains.shape[0] == 0:
-        print("Warning: Grains data is empty in HDF5.")
-        return pd.DataFrame({'x': [], 'y': [], 'z': [], 'GrainSize': [], 'Confidence': [], 'ID': [], 'Euler0': [], 'Euler1': [], 'Euler2': [], 'StrainError': [], 'IDColor': [], 'Error': [], 'RawGrainSize': []})
-
-    data2 = {k: [] for k in ['x', 'y', 'z', 'GrainSize', 'RawGrainSize', 'Confidence', 'ID', 'IDColor', 'Euler0', 'Euler1', 'Euler2', 'Error', 'StrainError']}
-    valid_size_mask = np.full(grains.shape[0], False)
-    if grains.shape[1] > GRAIN_SIZE_COL: valid_size_mask = np.isfinite(grains[:, GRAIN_SIZE_COL]) & (grains[:, GRAIN_SIZE_COL] > 0)
-    largestSize = np.max(grains[valid_size_mask, GRAIN_SIZE_COL]) if np.any(valid_size_mask) else 1.0
+    # Build DataFrame matching the CSV loader's output
+    valid_size_mask = np.isfinite(radii) & (radii > 0)
+    largestSize = np.max(radii[valid_size_mask]) if np.any(valid_size_mask) else 1.0
     if largestSize <= 0: largestSize = 1.0
 
-    for i in range(grains.shape[0]):
-        data2['x'].append(grains[i, GRAIN_X_COL]); data2['y'].append(grains[i, GRAIN_Y_COL]); data2['z'].append(grains[i, GRAIN_Z_COL])
-        raw_size = grains[i, GRAIN_SIZE_COL] if grains.shape[1] > GRAIN_SIZE_COL and np.isfinite(grains[i, GRAIN_SIZE_COL]) else 0
-        data2['RawGrainSize'].append(raw_size)
-        target_max_grain_visual_size = MAX_MARKER_SIZE_VISUAL * 2
-        scaled_size = max(MIN_MARKER_SIZE_VISUAL, target_max_grain_visual_size * raw_size / largestSize) if raw_size > 0 and largestSize > 0 else MIN_MARKER_SIZE_VISUAL
-        data2['GrainSize'].append(scaled_size)
-        data2['Confidence'].append(grains[i, GRAIN_COMPLETENESS_COL])
-        data2['Euler0'].append(grains[i, GRAIN_EULER_0_COL]); data2['Euler1'].append(grains[i, GRAIN_EULER_1_COL]); data2['Euler2'].append(grains[i, GRAIN_EULER_2_COL])
-        data2['StrainError'].append(grains[i, GRAIN_STRAIN_ERROR_COL]); data2['Error'].append(grains[i, GRAIN_ERROR_COL])
-        grain_id = grains[i, GRAIN_ID_COL]; data2['ID'].append(grain_id); data2['IDColor'].append(f'{int(grain_id)}')
+    data2 = {
+        'x': positions[:, 0], 'y': positions[:, 1], 'z': positions[:, 2],
+        'RawGrainSize': radii,
+        'GrainSize': np.where(radii > 0,
+                              np.clip(MAX_MARKER_SIZE_VISUAL * 2 * radii / largestSize,
+                                      MIN_MARKER_SIZE_VISUAL, MAX_MARKER_SIZE_VISUAL * 2),
+                              MIN_MARKER_SIZE_VISUAL),
+        'Confidence': confidences,
+        'ID': ids,
+        'IDColor': [str(int(i)) for i in ids],
+        'Euler0': eulers[:, 0], 'Euler1': eulers[:, 1], 'Euler2': eulers[:, 2],
+        'StrainError': strain_errors,
+        'Error': rms_errors,
+    }
 
     try:
         grains_df = pd.DataFrame(data2)
@@ -306,7 +372,7 @@ def load_grain_data_h5(h5_path):
         grains_df['ID'] = pd.to_numeric(grains_df['ID'], errors='coerce').astype('Int64')
         grains_df['IDColor'] = grains_df['IDColor'].astype(str)
         grains_df = grains_df.sort_values(by=['ID'])
-        print(f"Processed {len(data2['ID'])} grains from consolidated HDF5.")
+        print(f"Processed {n} grains from consolidated HDF5.")
         return grains_df
     except Exception as e: print(f"Error creating Grain DataFrame from HDF5: {e}", file=sys.stderr); traceback.print_exc(); return None
 
@@ -332,21 +398,9 @@ if __name__ == '__main__':
     print("Loading Zarr parameters..."); zarr_params = load_zarr_params(dataFile)
     if zarr_params is None: sys.exit("Failed Zarr load.")
 
-    # Try consolidated HDF5 first, fall back to CSV files
-    h5_path = find_consolidated_h5(resultDir)
-    if h5_path:
-        print(f"Found consolidated HDF5: {h5_path}")
-        print("Loading spot data from HDF5..."); spots_df = load_spot_data_h5(h5_path, zarr_params)
-        print("Loading grain data from HDF5..."); grains_df = load_grain_data_h5(h5_path)
-        # Fall back to CSV if HDF5 loading failed
-        if spots_df is None:
-            print("HDF5 spot load failed, falling back to CSV..."); spots_df = load_spot_data(resultDir + '/SpotMatrix.csv', resultDir + '/InputAll.csv', zarr_params)
-        if grains_df is None:
-            print("HDF5 grain load failed, falling back to CSV..."); grains_df = load_grain_data(resultDir + '/Grains.csv')
-    else:
-        print("No consolidated HDF5 found, using CSV files...")
-        print("Loading spot data..."); spots_df = load_spot_data(resultDir + '/SpotMatrix.csv', resultDir + '/InputAll.csv', zarr_params)
-        print("Loading grain data..."); grains_df = load_grain_data(resultDir + '/Grains.csv')
+    # Load data from CSV files
+    print("Loading spot data..."); spots_df = load_spot_data(resultDir + '/SpotMatrix.csv', resultDir + '/InputAll.csv', zarr_params)
+    print("Loading grain data..."); grains_df = load_grain_data(resultDir + '/Grains.csv')
 
     if spots_df is None: sys.exit("Failed spot load.")
     if grains_df is None: sys.exit("Failed grain load.")
@@ -377,17 +431,23 @@ if __name__ == '__main__':
     app.layout = dbc.Container([
         dcc.Store(id='selected-grain-id-store', data=initial_grain_id),
         dbc.Row([html.Div('MIDAS FF-HEDM Interactive Viewer', className="text-primary text-center fs-3 mb-2")]),
+        # --- Toggle for heavy overview plots (disabled by default) ---
         dbc.Row([
-            dbc.Col([dbc.Label("Spot Color (3D View):"), dbc.RadioItems(options=[{"label": x, "value": x} for x in ['ringNr', 'grainIDColor','strain','spotSize']], value='grainIDColor', inline=True, id='radio-buttons-spots')], width=6),
-            dbc.Col([dbc.Label("G-Vector Color (Reciprocal Space):"), dbc.RadioItems(options=[{"label": x, "value": x} for x in ['ringNr', 'grainIDColor','strain','ds']], value='grainIDColor', inline=True, id='radio-buttons-spots_polar')], width=6),
+            dbc.Col([dbc.Switch(id='toggle-overview-plots', label='Show All-Spots & G-Vector Overview Plots (slow for large datasets)', value=False)], width=12, className="mb-2"),
         ]),
-        dbc.Row([
-             dbc.Col([dbc.Label("Select Rings (3D View):")],width=2), dbc.Col([dcc.Checklist(id="checklist_spots", options=ring_nr_options, value=initial_ring_nr_values, inline=True)],width=4),
-             dbc.Col([dbc.Label("Select Rings (Reciprocal Space):")],width=2), dbc.Col([dcc.Checklist(id="checklist_spots_polar", options=ring_nr_options, value=initial_ring_nr_values, inline=True)],width=4),
-        ]),
-        dbc.Row([
-            dbc.Col([dcc.Loading(id="loading-spots", type="circle", children=[dcc.Graph(figure=go.Figure(), id='spots')])], width=6),
-            dbc.Col([dcc.Loading(id="loading-spots-polar", type="circle", children=[dcc.Graph(figure=go.Figure(), id='spots_polar')])], width=6),
+        dbc.Collapse(id='overview-plots-collapse', is_open=False, children=[
+            dbc.Row([
+                dbc.Col([dbc.Label("Spot Color (3D View):"), dbc.RadioItems(options=[{"label": x, "value": x} for x in ['ringNr', 'grainIDColor','strain','spotSize']], value='grainIDColor', inline=True, id='radio-buttons-spots')], width=6),
+                dbc.Col([dbc.Label("G-Vector Color (Reciprocal Space):"), dbc.RadioItems(options=[{"label": x, "value": x} for x in ['ringNr', 'grainIDColor','strain','ds']], value='grainIDColor', inline=True, id='radio-buttons-spots_polar')], width=6),
+            ]),
+            dbc.Row([
+                 dbc.Col([dbc.Label("Select Rings (3D View):")],width=2), dbc.Col([dcc.Checklist(id="checklist_spots", options=ring_nr_options, value=[], inline=True)],width=4),
+                 dbc.Col([dbc.Label("Select Rings (Reciprocal Space):")],width=2), dbc.Col([dcc.Checklist(id="checklist_spots_polar", options=ring_nr_options, value=[], inline=True)],width=4),
+            ]),
+            dbc.Row([
+                dbc.Col([dcc.Loading(id="loading-spots", type="circle", children=[dcc.Graph(figure=go.Figure(), id='spots')])], width=6),
+                dbc.Col([dcc.Loading(id="loading-spots-polar", type="circle", children=[dcc.Graph(figure=go.Figure(), id='spots_polar')])], width=6),
+            ]),
         ]), html.Hr(),
         # --- Grain Filtering Controls ---
         dbc.Row([
@@ -723,10 +783,15 @@ if __name__ == '__main__':
         except Exception as e: print(f"Error Zarr processing: {e}"); traceback.print_exc(); return fig.update_layout(title=f"Error extracting data", **COMMON_LAYOUT_SETTINGS), ""
         return fig, stats_text
 
+    # --- Toggle collapse for overview plots ---
+    @callback(Output('overview-plots-collapse', 'is_open'), Input('toggle-overview-plots', 'value'))
+    def toggle_overview(is_on): return is_on
+
     # --- All Spots 3D Callback ---
-    @callback( Output('spots', 'figure'), Input('radio-buttons-spots', 'value'), Input("checklist_spots", "value"))
-    def update_all_spots_3d(spots_color_choice, selected_ring_nrs):
+    @callback( Output('spots', 'figure'), Input('radio-buttons-spots', 'value'), Input("checklist_spots", "value"), Input('toggle-overview-plots', 'value'))
+    def update_all_spots_3d(spots_color_choice, selected_ring_nrs, is_enabled):
         fig = go.Figure()
+        if not is_enabled: return fig.update_layout(title='Enable overview plots above', **COMMON_LAYOUT_SETTINGS)
         if spots_df is None or spots_df.empty: return fig.update_layout(title='Spots data empty', **COMMON_LAYOUT_SETTINGS)
         if selected_ring_nrs is None or not isinstance(selected_ring_nrs, list) or len(selected_ring_nrs) == 0: return fig.update_layout(title='Select rings', **COMMON_LAYOUT_SETTINGS)
         try: selected_ring_nrs_int = [int(nr) for nr in selected_ring_nrs]
@@ -783,9 +848,10 @@ if __name__ == '__main__':
         return fig
 
     # --- G-Vector Plot Callback ---
-    @callback( Output('spots_polar', 'figure'), Input('radio-buttons-spots_polar', 'value'), Input("checklist_spots_polar", "value"))
-    def update_g_vector_plot(gvector_color_choice, selected_ring_nrs):
+    @callback( Output('spots_polar', 'figure'), Input('radio-buttons-spots_polar', 'value'), Input("checklist_spots_polar", "value"), Input('toggle-overview-plots', 'value'))
+    def update_g_vector_plot(gvector_color_choice, selected_ring_nrs, is_enabled):
         fig = go.Figure(); scene_settings = dict(aspectmode='cube')
+        if not is_enabled: return fig.update_layout(title='Enable overview plots above', scene=scene_settings, **COMMON_LAYOUT_SETTINGS)
         if spots_df is None or spots_df.empty: return fig.update_layout(title='Spots data empty', scene=scene_settings, **COMMON_LAYOUT_SETTINGS)
         if selected_ring_nrs is None or not isinstance(selected_ring_nrs, list) or len(selected_ring_nrs) == 0: return fig.update_layout(title='Select rings', scene=scene_settings, **COMMON_LAYOUT_SETTINGS)
         try: selected_ring_nrs_int = [int(nr) for nr in selected_ring_nrs]

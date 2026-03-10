@@ -155,8 +155,8 @@ static inline int FindInternalAnglesTwins(int nrIDs, int *IDs, int *IDsPerGrain,
         OrientMat2Quat(OR2, q2);
         Angle = GetMisOrientation(q1, q2, Axis, &ang, SGNr);
         AreTwins = (fabs(ang - 60) < 0.4) &&
-                   (fabs(Axis[0]) - fabs(Axis[1])) < 0.01 &&
-                   (fabs(Axis[2]) - fabs(Axis[1])) < 0.01;
+                   fabs(fabs(Axis[0]) - fabs(Axis[1])) < 0.01 &&
+                   fabs(fabs(Axis[2]) - fabs(Axis[1])) < 0.01;
         if (fabs(ang) < 0.4 || AreTwins) {
           counter = FindInternalAnglesTwins(nrIDs, IDs, IDsPerGrain, NrIDsPerID,
                                             IDsChecked, OPs, ID_IA_Mat, counter,
