@@ -185,6 +185,10 @@ static double problem_function(unsigned n, const double *x, double *grad,
   g1 = -g1;
   g2 = -g2;
   g3 = -g3;
+  // Reset to un-wedged frame for omega calculation
+  // (g-vector is already in wedge-corrected frame)
+  SinW = 0;
+  CosW = 1;
   double Length_G = sqrt((g1 * g1) + (g2 * g2) + (g3 * g3));
   double k1i = -(Length_G * Length_G) * (wl / 2);
   double A = (k1i + (g3 * SinW)) / (CosW);
@@ -217,21 +221,13 @@ static double problem_function(unsigned n, const double *x, double *grad,
   double Cos_Omega1 = ((-b_Cos) - (P_Cos)) / (2 * a_Cos);
   double Cos_Omega2 = ((-b_Cos) + (P_Cos)) / (2 * a_Cos);
 
-  if (Sin_Omega1 < -1)
+  if (Sin_Omega1 < -1 || Sin_Omega1 > 1)
     Sin_Omega1 = 0;
-  else if (Sin_Omega1 > 1)
-    Sin_Omega1 = 0;
-  else if (Sin_Omega2 > 1)
+  if (Sin_Omega2 < -1 || Sin_Omega2 > 1)
     Sin_Omega2 = 0;
-  else if (Sin_Omega2 < -1)
-    Sin_Omega2 = 0;
-  if (Cos_Omega1 < -1)
+  if (Cos_Omega1 < -1 || Cos_Omega1 > 1)
     Cos_Omega1 = 0;
-  else if (Cos_Omega1 > 1)
-    Cos_Omega1 = 0;
-  else if (Cos_Omega2 > 1)
-    Cos_Omega2 = 0;
-  else if (Cos_Omega2 < -1)
+  if (Cos_Omega2 < -1 || Cos_Omega2 > 1)
     Cos_Omega2 = 0;
   if (P_check_Sin == 1) {
     Sin_Omega1 = 0;
