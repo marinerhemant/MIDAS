@@ -232,7 +232,7 @@ class NFViewer(QtWidgets.QMainWindow):
         self._beampos_files = []
 
         # Line profile state
-        self._line_roi = None
+
 
         # Consolidated H5 state
         self._h5_path = None
@@ -467,29 +467,21 @@ class NFViewer(QtWidgets.QMainWindow):
         grp = QtWidgets.QGroupBox("Analysis")
         lay = QtWidgets.QGridLayout(grp)
 
-        btn_h = QtWidgets.QPushButton("LineOutH")
-        btn_h.clicked.connect(lambda: self._add_line_roi('h'))
-        lay.addWidget(btn_h, 0, 0)
+        btn_boxh = QtWidgets.QPushButton("BoxH")
+        btn_boxh.clicked.connect(lambda: self._add_box_roi('h'))
+        lay.addWidget(btn_boxh, 0, 0)
 
-        btn_v = QtWidgets.QPushButton("LineOutV")
-        btn_v.clicked.connect(lambda: self._add_line_roi('v'))
-        lay.addWidget(btn_v, 0, 1)
+        btn_boxv = QtWidgets.QPushButton("BoxV")
+        btn_boxv.clicked.connect(lambda: self._add_box_roi('v'))
+        lay.addWidget(btn_boxv, 0, 1)
 
         btn_bc = QtWidgets.QPushButton("BeamCenter")
         btn_bc.clicked.connect(self._on_beam_center)
         lay.addWidget(btn_bc, 0, 2)
 
-        btn_boxh = QtWidgets.QPushButton("BoxH")
-        btn_boxh.clicked.connect(lambda: self._add_box_roi('h'))
-        lay.addWidget(btn_boxh, 1, 0)
-
-        btn_boxv = QtWidgets.QPushButton("BoxV")
-        btn_boxv.clicked.connect(lambda: self._add_box_roi('v'))
-        lay.addWidget(btn_boxv, 1, 1)
-
         btn_select = QtWidgets.QPushButton("SelectSpots")
         btn_select.clicked.connect(self._on_select_spots)
-        lay.addWidget(btn_select, 1, 2)
+        lay.addWidget(btn_select, 0, 3)
         return grp
 
     def _build_mic_panel(self):
@@ -607,8 +599,8 @@ class NFViewer(QtWidgets.QMainWindow):
             '  Drag top/bottom bars — Adjust thresholds\n'
             '  Right-click histogram — Change colormap\n'
             '\n'
-            'Line Profile:\n'
-            '  Click LineOutH/V, then drag endpoints on image\n')
+            'Box Profile:\n'
+            '  Click BoxH/V, then draw a rectangle on the image\n')
 
     def _setup_shortcuts(self):
         add_shortcut(self, 'Right', lambda: self.frame_spin.setValue(self.frame_spin.value() + 1))
@@ -1089,34 +1081,7 @@ class NFViewer(QtWidgets.QMainWindow):
 
     # ── Line Profile ───────────────────────────────────────────────
 
-    def _add_line_roi(self, direction):
-        """Add interactive line ROI for profile extraction."""
-        if self.imarr2 is None:
-            return
-        self.right_widget.setCurrentIndex(0)  # show lineout plot
-        h, w = self.imarr2.shape
-        if direction == 'h':
-            roi = pg.LineSegmentROI([[w * 0.3, h * 0.5], [w * 0.7, h * 0.5]],
-                                    pen=pg.mkPen('y', width=2))
-        else:
-            roi = pg.LineSegmentROI([[w * 0.5, h * 0.3], [w * 0.5, h * 0.7]],
-                                    pen=pg.mkPen('y', width=2))
 
-        if self._line_roi is not None:
-            self.image_view.removeItem(self._line_roi)
-        self._line_roi = roi
-        self.image_view.addItem(roi)
-        roi.sigRegionChanged.connect(self._update_line_profile)
-        self._update_line_profile()
-
-    def _update_line_profile(self):
-        if self._line_roi is None or self.imarr2 is None:
-            return
-        data = self._line_roi.getArrayRegion(
-            self.imarr2.astype(float), self.image_view.imageItem)
-        if data is not None and len(data) > 0:
-            self.lineout_plot.clear()
-            self.lineout_plot.plot(data, pen=pg.mkPen('b', width=1.5))
 
     # ── Box ROI (sum across rect) ──────────────────────────────────
 
@@ -1231,16 +1196,20 @@ class NFViewer(QtWidgets.QMainWindow):
     def _update_box_profile(self):
         if not hasattr(self, '_box_roi') or self._box_roi is None or self.imarr2 is None:
             return
+        # imageItem displays data.T (cols, rows), so pass transposed data
+        # to match the imageItem's coordinate system
         data = self._box_roi.getArrayRegion(
-            self.imarr2.astype(float), self.image_view.imageItem)
+            self.imarr2.T.astype(float), self.image_view.imageItem)
         if data is None or data.size == 0:
             return
         direction = getattr(self, '_box_direction', 'h')
         if direction == 'h':
-            profile = np.sum(data, axis=0)  # sum along vertical (cross) axis
+            # BoxH: horizontal profile — sum along Y (axis=1 in pyqtgraph)
+            profile = np.mean(data, axis=1)
             title = 'BoxH'
         else:
-            profile = np.sum(data, axis=1)  # sum along horizontal (cross) axis
+            # BoxV: vertical profile — sum along X (axis=0 in pyqtgraph)
+            profile = np.mean(data, axis=0)
             title = 'BoxV'
         self.lineout_plot.clear()
         self.lineout_plot.plot(profile, pen=pg.mkPen('c', width=1.5))
