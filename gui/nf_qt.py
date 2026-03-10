@@ -1052,12 +1052,15 @@ class NFViewer(QtWidgets.QMainWindow):
             print(f"Read file {fns[0]}")
 
             if self.use_median and fns[1] is not None and os.path.exists(fns[1]):
+                print(f"Subtracting median: {fns[1]}")
                 with open(fns[1], 'rb') as f:
                     median = np.fromfile(f, dtype=np.uint16, count=self.ny * self.nz)
                 median = median.reshape((self.nz, self.ny))
                 self.imarr2 = np.subtract(imarr.astype(int), median.astype(int))
                 self.imarr2[self.imarr2 < self.background] = 0
             else:
+                if self.use_median:
+                    print(f"SubtMedian ON but median file not found. _median_dir={self._median_dir}, median_fn={fns[1]}")
                 self.imarr2 = imarr
 
         self.imarr2 = self.imarr2[::-1, ::-1].copy()
