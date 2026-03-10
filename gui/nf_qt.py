@@ -1681,7 +1681,7 @@ class NFViewer(QtWidgets.QMainWindow):
                 f.write('NrPixels ' + str(self.ny) + '\n')
                 f.write('DataDirectory ' + self.folder + '\n')
                 f.write('OutputDirectory ' + self._median_dir + '\n')
-                tempnr = self.start_frame_nr + d * self.n_files_per_dist
+                tempnr = self.start_frame_nr
                 f.write('RawStartNr ' + str(tempnr) + '\n')
                 f.write('ReducedFileName ' + self.fnstem + '\n')
             try:
