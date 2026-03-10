@@ -130,11 +130,12 @@ Now we will use the gold calibration scan data and the beam center values from P
          EnterBC --> InputBCs[Input: Horizontal/Vertical Centers, DistDiff]
          InputBCs --> ConfirmBC[Confirm & Close]
          ConfirmBC --> Select[Select Spots Mode]
-         Select --> Pick1[Pick Spot on Det 1]
-         Pick1 --> Pick2[Pick SAME Spot on Det 2]
-         Pick2 --> Pick3[Pick SAME Spot on Det 3]
-         Pick3 --> Compute[Click Compute Distances]
-         Compute --> Result[Output: Precise Detector Distances]
+         Select --> Pick1["RIGHT-CLICK spot on Det N"]
+         Pick1 --> Confirm1[Confirm Selection]
+         Confirm1 --> Pick2["RIGHT-CLICK SAME spot on Det N-1"]
+         Pick2 --> Confirm2[Confirm Selection]
+         Confirm2 --> Finished[Click Finished]
+         Finished --> Result["Auto: Visual Results Dialog<br>Crop patches + Ray triangulation"]
      end
  ```
  
@@ -159,24 +160,34 @@ Now we will use the gold calibration scan data and the beam center values from P
 1.  Click the **`SelectSpots`** button. A help window will appear. Read the instructions and click **`Ready!`**.
 2.  Make sure you are viewing the last detector distance (`Dist` = `2`, e.g., 9mm).
 3.  Use the **`Frame`** spinner or the **← / →** keys to cycle through scan images until you find a clear, strong diffraction spot.
-4.  Adjust the intensity levels using the histogram on the right to ensure the spot is bright.
-5.  Click on the pixel with the maximum intensity in the diffraction spot.
-6.  Click the **`Confirm Selection`** button that appears in the status bar.
+4.  Use **left-click-drag** to zoom into the spot area (rectangle zoom remains active throughout).
+5.  **Right-click** on the pixel with the maximum intensity. A **cyan crosshair** appears confirming your click position.
+6.  Click the **`Confirm Selection`** button in the status bar.
+
+> [!TIP]
+> During spot selection, the ViewBox context menu is disabled so right-clicks register as spot picks instead of opening a menu. The status bar reminds you to "RIGHT-CLICK on a diffraction spot".
 
 #### **Step 8: Select the Same Spot on Other Detectors**
 
 1.  A dialog box will pop up. Enter `1` as the new distance and click **`Load`**. The GUI will show the middle detector distance.
-2.  The diffraction spot will have moved. Use the zoom buttons if needed to find the same spot.
-3.  Click on the pixel with the max intensity in this new location. Click **`Confirm Selection`**.
+2.  The diffraction spot will have moved. Use left-click-drag zoom if needed to find the same spot.
+3.  **Right-click** on the pixel with the max intensity in this new location. Verify the cyan crosshair position. Click **`Confirm Selection`**.
 4.  The dialog box will pop up again. Enter `0` as the new distance and click **`Load`**.
-5.  Find and click the same spot on this first detector. Click **`Confirm Selection`**.
+5.  Find and right-click the same spot on this first detector. Click **`Confirm Selection`**.
 6.  In the final pop-up, click **`Finished`**.
 
-#### **Step 9: Compute Final Distances**
+> [!NOTE]
+> You may **skip distances** if a spot is unclear at some positions. At least 2 confirmed spots are required for triangulation. Only confirmed (non-zero) spots are used in the computation.
 
-1.  A **`Compute Distances`** button will now be active. Click it.
-2.  A final pop-up box will appear, listing the three precisely calculated detector distances and three calculated Y-positions.
-3.  **Record these values.**
+#### **Step 9: Visual Results Dialog**
+
+1.  After clicking **Finished**, distances are **automatically computed** and a visual dialog appears.
+2.  The dialog shows:
+    *   **Crop patches** — 100×100 px image windows around each confirmed spot, with a cyan crosshair at center.
+    *   **Ray triangulation diagram** — rays drawn from the computed sample position through each spot on each detector, color-coded by distance.
+    *   **Detailed results** — per-distance spot positions (Y, Z, R relative to beam center), per-pair Lsd and grainY values, and mean Lsd.
+3.  The mean Lsd is auto-filled in the main window.
+4.  **Record these values.**
 
 **The initial calibration is now complete.** The beam center and detector distances from Parts I and II provide the initial guess for the parameter file. Proceed to the iterative optimization workflow below.
 
@@ -302,9 +313,9 @@ The `Compute Distances` function employs a **Ray-Triangulation** method based on
 | **`LoadGrain`**       | Opens a window to manually input crystal orientation, position, and lattice parameters for simulation. |
 | **`MakeSpots`**       | Simulates diffraction spots based on the currently loaded grain information.                             |
 | **`SubtMedian`**      | Toggles the subtraction of a pre-calculated median background image.                                     |
-| **`CalcMedian`**      | Calculates a median background image from a specified number of frames.                                  |
-| **`SelectSpots`**     | Starts the interactive spot-selection workflow for detector distance calibration.                         |
-| **`ComputeDistances`**| Computes sample-to-detector distances via ray triangulation from selected spots.                          |
+| **`CalcMedian`**      | Calculates a median background image from all frames per distance. Auto-enables SubtMedian and reloads the image on completion. Output stored in a temporary directory (not persisted). |
+| **`SelectSpots`**     | Starts the interactive spot-selection workflow. **Right-click** to pick spots while keeping left-click rectangle zoom active. Cyan crosshairs show click positions. |
+| **`ComputeDistances`**| Auto-computed when clicking **Finished** in SelectSpots. Shows visual dialog with crop patches and ray triangulation diagram. |
 
 ---
 

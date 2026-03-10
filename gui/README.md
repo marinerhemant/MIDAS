@@ -66,7 +66,7 @@ Fast PyQtGraph-based FF-HEDM viewer with navigation toolbar, P2–P98 auto-scali
 cd <data_directory> && python ~/opt/MIDAS/gui/nf_qt.py &
 ```
 
-NF-HEDM viewer with all FF features plus microstructure overlay (`.mic`/`.map`), spot simulation, BoxH/BoxV ROI tools, beam center calibration, **SelectSpots** interactive calibration, **ComputeDistances** ray triangulation, **SelectPoint** (click mic → auto-populate grain), **SumOverFrames**, and Q-to-quit shortcut. See [NF_GUI manual](../manuals/NF_GUI.md).
+NF-HEDM viewer with all FF features plus microstructure overlay (`.mic`/`.map`), spot simulation, BoxH/BoxV ROI tools (auto-refresh on frame/distance change, orange-red edge lines in pixel coordinates), beam center calibration, **SelectSpots** interactive calibration (right-click to select, cyan crosshairs, partial distance support), **ComputeDistances** auto-computed on Finished with visual results dialog (crop patches + ray triangulation diagram), **CalcMedian** with auto-reload, **SelectPoint** (click mic → auto-populate grain), **SumOverFrames**, and Q-to-quit shortcut. See [NF_GUI manual](../manuals/NF_GUI.md).
 
 ### Legacy Tkinter Viewers (Archived)
 

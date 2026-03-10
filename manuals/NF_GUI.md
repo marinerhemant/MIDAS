@@ -45,13 +45,15 @@ graph LR
 | **Median subtraction** | Toggle per-frame background subtraction |
 | **Max/Sum over frames** | MaxOverFr and SumOverFr checkboxes (mutually exclusive) |
 | **Image transforms** | HFlip, VFlip, Transpose checkboxes |
-| **BoxH / BoxV ROI** | Rectangular region with live Sum, Mean, Min, Max statistics |
-| **LineOutH / LineOutV** | Draggable line ROI for 1D intensity profile extraction |
+| **BoxH / BoxV ROI** | Rectangular region with live Sum, Mean, Min, Max statistics. Auto-refreshes on frame/distance change |
+| **Box profile edge lines** | Half-maximum edges shown in orange-red with center/width in image pixel coordinates |
 | **Microstructure** | Load `.mic`/`.map`, color by Confidence, GrainID, Euler, KAM, GROD, Phase, GrMap |
 | **SelectPoint** | Click on mic map to auto-populate grain parameters for simulation |
 | **Spot simulation** | GrainDialog: enter grain parameters, simulate expected spots |
-| **SelectSpots** | Interactive workflow to pick diffraction spots at multiple distances |
-| **ComputeDistances** | Compute sample-to-detector distance via ray triangulation |
+| **SelectSpots** | Interactive workflow to pick diffraction spots at multiple distances. **Right-click** to select spots while maintaining zoom |
+| **ComputeDistances** | Automatic ray triangulation on Finished — visual dialog with spot crop patches, triangulation ray diagram, per-pair Lsd/grainY output |
+| **CalcMedian** | Compute median background from all frames per distance. Auto-enables SubtMedian and reloads on completion. Output stored in temp directory |
+| **Partial spot data** | Skip distances during SelectSpots — only confirmed (≥2) spots are used for triangulation |
 | **BeamCenter** | Dialog to enter beam center values for each distance |
 | **Colormap** | viridis, inferno, plasma, magma, turbo, gray, hot, cool, bone |
 | **Theme** | Dark or light |
@@ -140,14 +142,18 @@ This procedure finds the `(x, y)` pixel coordinates of the beam center at each d
 2.  **Select Spots:**
     *   Click the **SelectSpots** button. A guide appears. Click **Ready!**
     *   Navigate to a clear diffraction spot using **Frame** spinner and **Dist** spinner.
-    *   Click on the spot center.
+    *   Use **left-click-drag** to zoom into the area of interest (rectangle zoom stays active).
+    *   **Right-click** on the spot center. A **cyan crosshair** appears showing where you clicked.
     *   Click **Confirm Selection** in the status bar.
-    *   A dialog asks for the next distance. Enter the number and click **Load**.
-    *   Find the **same** spot on the next distance. Click to select and confirm.
-    *   Continue for all distances, then click **Finished**.
-3.  **Compute Distances:**
-    *   Click the **Compute Distances** button that appears.
-    *   A popup displays the calculated distances and Y-positions. The mean Lsd is auto-filled.
+    *   A dialog asks for the next distance. Enter the number and click **Load**, or click **Finished** if done.
+    *   Find the **same** spot on the next distance. Right-click to select and confirm.
+    *   You may **skip distances** — at least 2 confirmed spots are needed.
+    *   After clicking **Finished**, distances are **auto-computed** and a visual results dialog appears.
+3.  **Results Dialog:**
+    *   Shows **crop patches** of each confirmed spot (100×100 px window from the image at confirmation time).
+    *   Shows a **ray triangulation diagram** with rays from the computed sample position through each spot.
+    *   Displays per-distance spot positions (Y, Z, R), per-pair Lsd/grainY values, and mean Lsd.
+    *   The mean Lsd is auto-filled in the main window.
 
 ### 5. Microstructure Analysis and Simulation
 
