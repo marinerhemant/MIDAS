@@ -891,12 +891,21 @@ class NFViewer(QtWidgets.QMainWindow):
         """Compute sample-to-detector distances via ray triangulation."""
         self._sync_params()
         n = self.n_distances
-        nsols = int(n * (n - 1) / 2)
+        # Only use distances with confirmed spots (non-zero)
+        confirmed = [d for d in range(n)
+                     if abs(self.spots[d][0]) > 1e-6 or abs(self.spots[d][1]) > 1e-6]
+        if len(confirmed) < 2:
+            QtWidgets.QMessageBox.warning(
+                self, "Insufficient Data",
+                f"Need at least 2 confirmed spots, got {len(confirmed)}.")
+            return
+
+        nsols = int(len(confirmed) * (len(confirmed) - 1) / 2)
         xs = np.zeros(nsols)
         ys = np.zeros(nsols)
         idx = 0
-        for i in range(n):
-            for j in range(i + 1, n):
+        for ii, i in enumerate(confirmed):
+            for j in confirmed[ii + 1:]:
                 z1 = self.spots[i][1]
                 z2 = self.spots[j][1]
                 y1 = self.spots[i][0]
