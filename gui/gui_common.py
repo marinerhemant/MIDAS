@@ -394,10 +394,24 @@ class MIDASImageView(QtWidgets.QWidget):
         self._push_view()
 
     def set_log_mode(self, enabled):
-        """Toggle log10 display."""
+        """Toggle log10 display, preserving current intensity levels."""
         self._log_mode = enabled
         if self._raw_data is not None:
-            self.set_image_data(self._raw_data)
+            # Get current levels before re-applying
+            current_levels = self._iv.getLevels()
+            self.set_image_data(self._raw_data, auto_levels=False)
+            # Re-apply levels (converted to/from log space)
+            if current_levels is not None:
+                lo, hi = current_levels
+                if enabled:
+                    # Convert linear levels to log space
+                    lo = np.log10(max(lo, 1e-10))
+                    hi = np.log10(max(hi, 1e-10))
+                else:
+                    # Convert log levels back to linear space
+                    lo = 10.0 ** lo
+                    hi = 10.0 ** hi
+                self._iv.setLevels(lo, hi)
 
     def set_colormap(self, name):
         """Apply a named colormap."""

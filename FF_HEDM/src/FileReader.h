@@ -103,6 +103,20 @@ int SumHDF5Frames(const char *filename, const char *datasetName,
 int GetHDF5Dimensions(const char *filename, const char *datasetName,
                       hsize_t *dims);
 
+/**
+ * Reads a single frame from a CBF (Crystallographic Binary File).
+ * Handles x-CBF_BYTE_OFFSET decompression internally.
+ *
+ * @param filename   Path to CBF file
+ * @param NrPixels   Expected number of pixels (for validation; 0 = trust header)
+ * @param returnArr  Output buffer (allocated by caller)
+ * @param outNcols   If non-NULL, set to fastest dimension (columns) from header
+ * @param outNrows   If non-NULL, set to second dimension (rows) from header
+ * @return           FR_SUCCESS or error code
+ */
+int ReadCBFFrame(const char *filename, size_t NrPixels, double *returnArr,
+                 int *outNcols, int *outNrows);
+
 #ifdef __cplusplus
 }
 #endif

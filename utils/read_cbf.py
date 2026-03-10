@@ -422,7 +422,7 @@ def read_cbf(filename: str, check_md5: bool = True):
 
     # ── Decompress & reshape (single-pass, no intermediate copy) ──
     pixels = _decode_byte_offset(compressed, n_elements, dtype=dtype)
-    data = pixels.reshape(nrows, ncols)
+    data = pixels.reshape(nrows, ncols).T[::-1, ::-1]  # transpose + flip to MIDAS convention
 
     return header, data
 

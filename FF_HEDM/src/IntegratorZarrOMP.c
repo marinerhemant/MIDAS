@@ -581,6 +581,8 @@ static int readDataFile(const char *filename, size_t NrPixels,
   } else if (strcasecmp(ext, ".h5") == 0 || strcasecmp(ext, ".hdf5") == 0 ||
              strcasecmp(ext, ".hdf") == 0) {
     return ReadHDF5Frame(filename, "exchange/data", NrPixels, returnArr, 0);
+  } else if (strcasecmp(ext, ".cbf") == 0) {
+    return ReadCBFFrame(filename, NrPixels, returnArr, NULL, NULL);
   } else {
     /* Binary fallback */
     FILE *f = fopen(filename, "rb");

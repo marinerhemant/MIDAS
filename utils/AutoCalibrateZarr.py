@@ -365,6 +365,12 @@ class CalibImageViewer:
         auto_btn.clicked.connect(self._on_auto)
         controls.addWidget(auto_btn)
 
+        self.zoom_btn = QPushButton('🔍 Zoom Box')
+        self.zoom_btn.setCheckable(True)
+        self.zoom_btn.setToolTip('Toggle: left-click drag to zoom into a rectangle')
+        self.zoom_btn.clicked.connect(self._on_zoom_toggle)
+        controls.addWidget(self.zoom_btn)
+
         controls.addStretch()
 
         self.continue_btn = QPushButton('▶ Continue')
@@ -420,17 +426,22 @@ class CalibImageViewer:
 
     def _apply_clim_to(self, item, img=None):
         """Apply current clim values to an ImageItem."""
-        try:
-            vmin = float(self.edit_cmin.text()) if self.edit_cmin.text().strip() else None
-        except ValueError:
-            vmin = None
-        try:
-            vmax = float(self.edit_cmax.text()) if self.edit_cmax.text().strip() else None
-        except ValueError:
-            vmax = None
-        if vmin is not None and vmax is not None:
-            item.setLevels([vmin, vmax])
+        # Only apply manual clim to Raw panel
+        if item is self.items.get('Raw'):
+            try:
+                vmin = float(self.edit_cmin.text()) if self.edit_cmin.text().strip() else None
+            except ValueError:
+                vmin = None
+            try:
+                vmax = float(self.edit_cmax.text()) if self.edit_cmax.text().strip() else None
+            except ValueError:
+                vmax = None
+            if vmin is not None and vmax is not None:
+                item.setLevels([vmin, vmax])
+            elif img is not None:
+                item.setLevels([np.nanmin(img), np.nanmax(img)])
         elif img is not None:
+            # Non-Raw panels: always auto-level from their own data
             item.setLevels([np.nanmin(img), np.nanmax(img)])
 
     def set_raw(self, img):
@@ -457,6 +468,8 @@ class CalibImageViewer:
         for item in self._ring_items:
             p.removeItem(item)
         self._ring_items = []
+        # Disable auto-range while adding ring overlays (prevents linked views zooming out)
+        p.getViewBox().disableAutoRange()
         # Draw new rings as ellipses (CircleROI)
         for i, rad in enumerate(ring_radii):
             ring_nr = i + 1
@@ -472,6 +485,8 @@ class CalibImageViewer:
                 circle.removeHandle(h)
             p.addItem(circle)
             self._ring_items.append(circle)
+        # Restore view range to image dimensions
+        p.getViewBox().setRange(xRange=[0, img.shape[1]], yRange=[0, img.shape[0]], padding=0.02)
 
     def show_and_wait(self):
         """Block until user clicks Continue."""
@@ -503,8 +518,10 @@ class CalibImageViewer:
         except ValueError:
             vmax = None
         if vmin is not None and vmax is not None:
-            for item in self.items.values():
-                item.setLevels([vmin, vmax])
+            # Only apply manual clim to Raw and Background panels
+            for name in ('Raw', 'Background'):
+                if name in self.items:
+                    self.items[name].setLevels([vmin, vmax])
 
     def _on_auto(self):
         if hasattr(self, '_raw_img'):
@@ -513,6 +530,14 @@ class CalibImageViewer:
             self.edit_cmin.setText(f'{m:.1f}')
             self.edit_cmax.setText(f'{m + 2*s:.1f}')
             self._on_clim()
+
+    def _on_zoom_toggle(self, checked):
+        """Toggle between zoom-box (RectMode) and pan (PanMode) for all panels."""
+        pg = self._pg
+        mode = pg.ViewBox.RectMode if checked else pg.ViewBox.PanMode
+        for p in self.panels.values():
+            p.getViewBox().setMouseMode(mode)
+        self.zoom_btn.setText('🔍 Zoom Box (ON)' if checked else '🔍 Zoom Box')
 
     def process_events(self):
         """Process Qt events (non-blocking)."""
@@ -638,6 +663,8 @@ def detect_format(path):
         return 2
     elif ext in ('.tif', '.tiff'):
         return 3
+    elif ext == '.cbf':
+        return 4
     else:
         logger.warning(f"Cannot auto-detect format for '{ext}', assuming Zarr zip")
         return 0
@@ -726,6 +753,8 @@ def detect_data_type(data_fn):
         return 6  # default for TIFF
     if ext.startswith('.ge'):
         return 1  # uint16 raw binary
+    if ext == '.cbf':
+        return 10  # native CBF (ReadCBFFrame in FileReader.c)
     return 1  # default
 
 
@@ -781,6 +810,22 @@ def read_image_for_estimation(data_fn, dark_fn, data_loc, dark_loc,
         if dark_fn and os.path.exists(dark_fn):
             dark = np.array(Image.open(dark_fn)).astype(np.float64)
         return img, dark, ny, nz
+
+    elif ext == '.cbf':
+        from read_cbf import read_cbf as _read_cbf
+        _, raw = _read_cbf(data_fn, check_md5=False)
+        raw = raw.astype(np.float64)
+        nz, ny = raw.shape
+        raw[raw < 1] = 1
+        dark = np.zeros_like(raw)
+        if dark_fn and os.path.exists(dark_fn):
+            dark_ext = Path(dark_fn).suffix.lower()
+            if dark_ext == '.cbf':
+                _, dark = _read_cbf(dark_fn, check_md5=False)
+                dark = dark.astype(np.float64)
+            else:
+                dark = np.array(Image.open(dark_fn)).astype(np.float64)
+        return raw, dark, ny, nz
 
     elif ext == '.zip' or ext == '.zarr':
         # Zarr path (backward compat)
@@ -1026,44 +1071,55 @@ def _process_single_label(label_info):
     return center
 
 
-def detect_beam_center_optimized(thresh, minArea, num_processes=None):
-    """Detect beam center from thresholded image."""
+def detect_beam_center_optimized(thresh, minArea, num_processes=None,
+                                  labels=None, props=None):
+    """Detect beam center from thresholded image.
+
+    Uses 4× downsampling for fast labeling, then runs the chord-bisector
+    on each surviving region.  Accepts pre-computed *labels*/*props* but
+    will recompute on the downsampled image for speed.
+    """
     try:
+        # Warm up numba JIT on first call
         if not hasattr(detect_beam_center_optimized, "_initialized"):
             dummy_coords = np.array([[0, 0], [1, 1], [2, 2]])
             dummy_bbox = (0, 0, 2, 2)
             _ = _find_center_point(dummy_coords, dummy_bbox)
             detect_beam_center_optimized._initialized = True
 
-        labels, nlabels = ndimage.label(thresh)
-        if nlabels == 0:
+        # Downsample for speed (4× reduction each axis → 16× fewer pixels)
+        scale = 4
+        h, w = thresh.shape
+        sh, sw = h // scale, w // scale
+        # Use block-max so thin arcs survive downsampling
+        ds = thresh[:sh*scale, :sw*scale].reshape(sh, scale, sw, scale).max(axis=(1, 3))
+
+        ds_labels, ds_nlabels = ndimage.label(ds)
+        if ds_nlabels == 0:
             logger.warning("No beam centers detected!")
             return np.array([0.0, 0.0])
 
-        label_data = []
-        for label in range(1, nlabels + 1):
-            mask = (labels == label)
-            label_data.append((label, mask, minArea))
+        from skimage import measure as _measure
+        ds_props = _measure.regionprops(ds_labels)
 
-        if num_processes is None:
-            num_processes = min(mp.cpu_count(), len(label_data))
+        ds_minArea = max(1, minArea // (scale * scale))
 
-        if len(label_data) > 1 and num_processes > 1:
-            with mp.Pool(processes=num_processes) as pool:
-                results = pool.map(_process_single_label, label_data)
-            all_centers = [r for r in results if r is not None]
-        else:
-            all_centers = []
-            for data in label_data:
-                result = _process_single_label(data)
-                if result is not None:
-                    all_centers.append(result)
+        # Single-pass: iterate regionprops (coords & bbox already computed)
+        all_centers = []
+        for rp in ds_props:
+            if rp.area < ds_minArea:
+                continue
+            coords = rp.coords  # (N, 2) array of (row, col)
+            bbox = (rp.bbox[0], rp.bbox[1], rp.bbox[2], rp.bbox[3])
+            center = _find_center_point(coords, bbox)
+            if center[0] >= 0 and center[1] >= 0:
+                all_centers.append(center)
 
         if not all_centers:
             logger.warning("No valid beam centers calculated!")
             return np.array([0.0, 0.0])
 
-        centers_array = np.array(all_centers)
+        centers_array = np.array(all_centers) * scale  # scale back to full res
         return np.array([np.median(centers_array[:, 0]),
                          np.median(centers_array[:, 1])])
     except Exception as e:
@@ -1075,19 +1131,19 @@ def detect_ring_radii(labels, props, bc_computed, minArea):
     """Detect ring radii from labeled image and beam center."""
     try:
         rads = []
-        nlabels = len(props) + 1
-        for label in range(1, nlabels):
-            if np.sum(labels == label) > minArea:
-                coords = props[label-1].coords
-                rad = np.mean(np.linalg.norm(
-                    np.transpose(coords) - bc_computed[:, None], axis=0))
-                toAdd = True
-                for existing_rad in rads:
-                    if np.abs(existing_rad - rad) < 20:
-                        toAdd = False
-                        break
-                if toAdd:
-                    rads.append(rad)
+        for rp in props:
+            if rp.area < minArea:
+                continue
+            coords = rp.coords
+            rad = np.mean(np.linalg.norm(
+                np.transpose(coords) - bc_computed[:, None], axis=0))
+            toAdd = True
+            for existing_rad in rads:
+                if np.abs(existing_rad - rad) < 20:
+                    toAdd = False
+                    break
+            if toAdd:
+                rads.append(rad)
         if not rads:
             logger.warning("No rings detected!")
             return np.array([])
@@ -1252,7 +1308,8 @@ def runMIDAS(rawFN, state, n_iterations=40, mult_factor=2.5,
                 pf.write(f'GapIntensity {state.gap_intensity}\n')
 
             # Data specifics
-            pf.write(f'Dark {state.dark_name}\n')
+            if state.dark_name:
+                pf.write(f'Dark {state.dark_name}\n')
             pf.write(f'StartNr {state.fnumber}\n')
             pf.write(f'EndNr {state.fnumber}\n')
             pf.write(f'Padding {state.pad}\n')
@@ -1351,15 +1408,15 @@ def _make_temp_param_file(args, calibrant, filename_hints):
     info are available (from filename or defaults).
     """
     px = args.px if args.px > 0 else 200.0
-    wavelength = filename_hints.get('wavelength', 0.0)
+    wavelength = args.wavelength if args.wavelength > 0 else filename_hints.get('wavelength', 0.0)
     latc = calibrant['lattice']
     sg = calibrant['space_group']
 
     if wavelength <= 0:
         logger.error("Cannot create temp param file: wavelength not available "
-                     "(set energy in filename or provide --params)")
-        print("ERROR: Wavelength not available. Either include energy in the "
-              "filename (e.g. 71p676keV) or provide --params")
+                     "(use --wavelength, set energy in filename, or provide --params)")
+        print("ERROR: Wavelength not available. Use --wavelength, include energy in the "
+              "filename (e.g. 71p676keV), or provide --params")
         sys.exit(1)
 
     temp_fn = '_autocal_temp_params.txt'
@@ -1387,7 +1444,7 @@ def main():
 
         # Primary arguments (new --flag style with backward-compat aliases)
         parser.add_argument('--data', '-dataFN', '-d', type=str, required=True,
-                            help='Data file: .zip (Zarr), .h5 (HDF5), .ge* (GE binary), or .tif/.tiff')
+                            help='Data file: .zip (Zarr), .h5 (HDF5), .ge* (GE binary), .tif/.tiff, or .cbf')
         parser.add_argument('--dark', '-darkFN', type=str, default='',
                             help='Separate dark field image file')
         parser.add_argument('--params', '-paramFN', '-p', type=str, default='',
@@ -1399,7 +1456,7 @@ def main():
 
         # Format control
         parser.add_argument('--convert', '-ConvertFile', type=int, default=-1,
-                            help='Force format conversion: 0=Zarr, 1=HDF5, 2=GE, 3=TIFF. '
+                            help='Force format conversion: 0=Zarr, 1=HDF5, 2=GE, 3=TIFF, 4=CBF. '
                                  'Default: auto-detect from extension.')
 
         # Calibration control
@@ -1425,6 +1482,11 @@ def main():
                             help='Pixel size in µm (e.g. 200, 172). If set, no param file needed for non-Zarr inputs.')
         parser.add_argument('--tx', type=float, default=0.0,
                             help='Detector tilt tx (radians, not fitted but passed to CalibrantPanelShiftsOMP)')
+        parser.add_argument('--wavelength', '-wl', type=float, default=0.0,
+                            help='X-ray wavelength in Angstroms (e.g. 0.2066). Overrides filename and param file.')
+        parser.add_argument('--material', '-mat', type=str, default='',
+                            choices=['', 'ceo2', 'lab6'],
+                            help='Calibrant material: ceo2 or lab6. Overrides filename detection.')
         parser.add_argument('--mask', '-MaskFile', type=str, default='',
                             help='Mask TIFF file for bad/gap pixels (passed as MaskFile to CalibrantPanelShiftsOMP)')
 
@@ -1519,7 +1581,7 @@ def main():
         convertFile = args.convert
         if convertFile < 0:
             convertFile = detect_format(dataFN)
-            logger.info(f"Auto-detected format: {['Zarr','HDF5','GE','TIFF'][convertFile]}")
+            logger.info(f"Auto-detected format: {['Zarr','HDF5','GE','TIFF','CBF'][convertFile]}")
 
         if args.data_type >= 0:
             state.midas_dtype = args.data_type
@@ -1528,11 +1590,16 @@ def main():
             state.midas_dtype = detect_data_type(dataFN)
             logger.info(f"Auto-detected DataType: {state.midas_dtype}")
 
-        # Detect calibrant from filename
-        calibrant = detect_calibrant(args.data)
-        if calibrant is None:
-            calibrant = CALIBRANTS['ceo2']
-            logger.info(f"No calibrant detected from filename, defaulting to {calibrant['name']}")
+        # Detect calibrant: CLI --material > filename detection > default CeO2
+        if args.material:
+            calibrant = CALIBRANTS[args.material]
+            logger.info(f"Using calibrant from --material: {calibrant['name']} "
+                        f"(SpaceGroup {calibrant['space_group']})")
+        else:
+            calibrant = detect_calibrant(args.data)
+            if calibrant is None:
+                calibrant = CALIBRANTS['ceo2']
+                logger.info(f"No calibrant detected from filename, defaulting to {calibrant['name']}")
 
         # ---- Read image data for geometry estimation ----
         # For --convert 0 (force Zarr), use old pipeline
@@ -1588,6 +1655,24 @@ def main():
             state.latc = calibrant['lattice']
             if args.px > 0:
                 state.px = args.px
+            elif convertFile == 4:
+                # Auto-sense pixel size from CBF header (Pilatus sub-header)
+                from read_cbf import read_cbf_metadata
+                cbf_hdr = read_cbf_metadata(dataFN)
+                # Pixel_size lives inside the 'pilatus' sub-header dict
+                pilatus_hdr = cbf_hdr.get('pilatus', {})
+                if not isinstance(pilatus_hdr, dict):
+                    pilatus_hdr = {}
+                px_vals = pilatus_hdr.get('Pixel_size', None)
+                if px_vals and isinstance(px_vals, (list, tuple)) and len(px_vals) > 0:
+                    cbf_px_m = float(px_vals[0])
+                    if cbf_px_m > 0:
+                        state.px = cbf_px_m * 1e6  # meters → microns
+                        logger.info(f"Auto-sensed pixel size from CBF header: {state.px:.1f} µm")
+                    else:
+                        state.px = 200.0
+                else:
+                    state.px = 200.0
             elif state.px == 0:
                 state.px = 200.0
             if 'wavelength' in filename_hints:
@@ -1622,6 +1707,14 @@ def main():
         # CLI overrides
         if args.tx != 0.0:
             state.tx = args.tx
+        if args.wavelength > 0:
+            state.wavelength = args.wavelength
+            logger.info(f"Wavelength from --wavelength: {state.wavelength:.6f} Å")
+        if args.material:
+            state.space_group = calibrant['space_group']
+            state.latc = calibrant['lattice']
+            logger.info(f"Material from --material: {calibrant['name']} "
+                        f"(SG={state.space_group}, a={state.latc[0]:.4f})")
         # Save pre-mask copy for viewer display
         raw_for_display = raw.copy()
 
@@ -1689,8 +1782,12 @@ def main():
         # Set dark_name for CalibrantPanelShiftsOMP
         if darkFN:
             state.dark_name = os.path.abspath(darkFN)
+        elif state.ext.lower() in ('.h5', '.hdf5', '.hdf', '.nxs'):
+            # HDF5 files can embed dark in the same file
+            state.dark_name = os.path.abspath(dataFN)
         else:
-            state.dark_name = os.path.abspath(dataFN)  # dark from same file
+            # All other formats: no dark subtraction without explicit dark
+            state.dark_name = ''
         if not state.folder:
             state.folder = os.path.dirname(rawFN) or os.getcwd()
 
@@ -1794,16 +1891,32 @@ def main():
         # ---- Beam center and ring detection ----
         bcg = args.bc_guess
         if bcg[0] == 0:
+            import time as _time
             logger.info("Auto-detecting beam center")
+            t0 = _time.perf_counter()
             labels, nlabels = measure.label(thresh, return_num=True)
             props = measure.regionprops(labels)
+            t1 = _time.perf_counter()
+            logger.info(f"  Labeling + regionprops: {t1-t0:.3f}s  ({nlabels} labels)")
 
-            for label in range(1, nlabels):
-                if np.sum(labels == label) < minArea:
-                    thresh[labels == label] = 0
+            # Bulk-filter small regions (single pass via lookup table)
+            keep = np.zeros(nlabels + 1, dtype=bool)
+            for rp in props:
+                if rp.area >= minArea:
+                    keep[rp.label] = True
+            thresh[~keep[labels]] = 0
+            n_kept = int(np.sum(keep))
+            t2 = _time.perf_counter()
+            logger.info(f"  Bulk filter: {t2-t1:.3f}s  ({n_kept} regions kept, {nlabels-n_kept} removed)")
 
-            bc_computed = detect_beam_center_optimized(thresh, minArea, 6)
+            # Beam center uses internal 4× downsampling for speed
+            bc_computed = detect_beam_center_optimized(thresh, minArea)
+            t3 = _time.perf_counter()
+            logger.info(f"  Beam center detection: {t3-t2:.3f}s")
+
             rads = detect_ring_radii(labels, props, bc_computed, minArea)
+            t4 = _time.perf_counter()
+            logger.info(f"  Ring radii detection: {t4-t3:.3f}s  (total BC pipeline: {t4-t0:.3f}s)")
 
             if args.lsd_guess == 1000000:
                 initialLsd = estimate_lsd(rads, sim_rads, sim_rad_ratios,
@@ -2081,8 +2194,6 @@ def main():
             'calibrant_screen_out.csv',  # CalibrantPanelShiftsOMP stdout log
             'hkls.csv',                  # HKL list (regenerated each run)
             'hkls_screen_out.csv',       # GetHKLList stdout
-            f"{rawFN}.corr.csv",         # per-point correction data
-            f"{rawFN}.lineout.xy",       # lineout data
         ]
         for f in cleanup_files:
             if os.path.exists(f):

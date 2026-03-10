@@ -17,6 +17,7 @@ import bz2
 import glob
 import itertools
 import json
+import re
 
 import numpy as np
 from numpy import linalg as LA
@@ -221,6 +222,25 @@ def read_mask(fn, ny, nz, do_transpose=False, do_hflip=False, do_vflip=False):
 #  Auto-detection (from ff_asym.py, adapted)
 # ═══════════════════════════════════════════════════════════════════════
 
+def _parse_numbered_filename(basename):
+    """Parse a numbered filename like 'stem_00001.ext' into components.
+
+    Finds the last ``_DIGITS.`` pattern in *basename* and splits there.
+    This handles filenames with multiple dots and special characters,
+    e.g. ``frame_%I.cbf_00001_Varex_1_00001.cbf``.
+
+    Returns (stem, file_nr, padding, ext) or None if no pattern found.
+    """
+    matches = list(re.finditer(r'_(\d+)\.', basename))
+    if not matches:
+        return None
+    last = matches[-1]
+    digits = last.group(1)
+    stem = basename[:last.start()]          # everything before _DIGITS
+    ext  = basename[last.end():]            # everything after the dot  (no leading dot)
+    return stem, int(digits), len(digits), ext
+
+
 def auto_detect_files(cwd):
     """Auto-detect data files, dark files, and zarr-zip from directory.
     Returns dict with keys: file_stem, folder, padding, first_nr, ext,
@@ -239,41 +259,35 @@ def auto_detect_files(cwd):
     all_files = sorted(os.listdir(cwd))
     data_files = []
     for f in all_files:
-        dot = f.find('.')
-        name = f[:dot] if dot > 0 else f
-        if name.startswith(basename + '_'):
-            parts = name.split('_')
-            if parts[-1].isdigit():
-                data_files.append(f)
+        parsed = _parse_numbered_filename(f)
+        if parsed and parsed[0].startswith(basename + '_'):
+            # a bit redundant but keeps dark_* away
+            data_files.append(f)
 
     if not data_files:
         return result
 
     first = data_files[0]
-    dot = first.find('.')
-    name_part = first[:dot]
-    ext_part = first[dot + 1:]
-    parts = name_part.split('_')
-    if not parts[-1].isdigit():
+    parsed = _parse_numbered_filename(first)
+    if parsed is None:
         return result
 
-    result['first_nr'] = int(parts[-1])
-    result['padding'] = len(parts[-1])
-    result['file_stem'] = '_'.join(parts[:-1])
+    stem, first_nr, padding, ext = parsed
+    result['first_nr'] = first_nr
+    result['padding'] = padding
+    result['file_stem'] = stem
     result['folder'] = cwd + '/'
-    result['ext'] = ext_part
+    result['ext'] = ext
     result['n_frames'] = 1
 
     # Dark files
     for f in all_files:
-        dot = f.find('.')
-        name = f[:dot] if dot > 0 else f
-        fparts = name.split('_')
-        if len(fparts) >= 2 and fparts[-1].isdigit():
-            prefix = '_'.join(fparts[:-1]).lower()
-            if prefix.endswith('dark_before') or prefix.endswith('dark_after'):
-                result['dark_stem'] = '_'.join(fparts[:-1])
-                result['dark_num'] = int(fparts[-1])
+        dp = _parse_numbered_filename(f)
+        if dp:
+            prefix_lower = dp[0].lower()
+            if prefix_lower.endswith('dark_before') or prefix_lower.endswith('dark_after'):
+                result['dark_stem'] = dp[0]
+                result['dark_num'] = dp[1]
                 break
     return result
 
@@ -869,15 +883,9 @@ class FFViewer(QtWidgets.QMainWindow):
             # Treat like FirstFile selection
             self.folder = os.path.dirname(path) + '/'
             basename = os.path.basename(path)
-            dot = basename.find('.')
-            if dot > 0:
-                name_part = basename[:dot]
-                self.ext = basename[dot + 1:]
-                parts = name_part.split('_')
-                if parts[-1].isdigit():
-                    self.first_file_nr = int(parts[-1])
-                    self.padding = len(parts[-1])
-                    self.file_stem = '_'.join(parts[:-1])
+            parsed = _parse_numbered_filename(basename)
+            if parsed:
+                self.file_stem, self.first_file_nr, self.padding, self.ext = parsed
                 self.file_nr_edit.setText(str(self.first_file_nr))
             self._load_and_display()
 
@@ -908,8 +916,11 @@ class FFViewer(QtWidgets.QMainWindow):
 
     def _on_stats_updated(self, dmin, dmax, p2, p98):
         self.stats_label.setText(f"Min={dmin:.0f}  Max={dmax:.0f}  [P2={p2:.0f}  P98={p98:.0f}]")
-        self.min_intensity_edit.setText(str(int(p2)))
-        self.max_intensity_edit.setText(str(int(p98)))
+        # Only auto-populate MinI/MaxI on the very first image load
+        if not getattr(self, '_levels_initialized', False):
+            self._levels_initialized = True
+            self.min_intensity_edit.setText(str(int(p2)))
+            self.max_intensity_edit.setText(str(int(p98)))
 
     def _apply_intensity_levels(self):
         try:
@@ -1004,22 +1015,16 @@ class FFViewer(QtWidgets.QMainWindow):
             return
         check_fn = fn[:-4] if fn.endswith('.bz2') else fn
         basename = os.path.basename(check_fn)
-        dot = basename.find('.')
-        if dot == -1:
+        parsed = _parse_numbered_filename(basename)
+        if parsed is None:
+            print(f"Warning: could not parse numbered filename: {basename}")
             return
-        name_part = basename[:dot]
-        ext_part = basename[dot + 1:]
-        parts = name_part.split('_')
-        if parts[-1].isdigit():
-            self.first_file_nr = int(parts[-1])
-            self.padding = len(parts[-1])
-            self.file_stem = '_'.join(parts[:-1])
+        self.file_stem, self.first_file_nr, self.padding, self.ext = parsed
         self.folder = os.path.dirname(fn) + '/'
-        self.ext = ext_part
         self.file_nr_edit.setText(str(self.first_file_nr))
         self.det_nr = -1
-        if ext_part.startswith('ge') and len(ext_part) == 3 and ext_part[-1].isdigit():
-            self.det_nr = int(ext_part[-1])
+        if self.ext.startswith('ge') and len(self.ext) == 3 and self.ext[-1].isdigit():
+            self.det_nr = int(self.ext[-1])
         # Try HDF5 dimension detection
         ext_lower = os.path.splitext(check_fn)[1].lower()
         if ext_lower in ['.h5', '.hdf', '.hdf5', '.nxs'] and h5py:
@@ -1032,12 +1037,10 @@ class FFViewer(QtWidgets.QMainWindow):
         if not fn:
             return
         basename = os.path.basename(fn)
-        dot = basename.find('.')
-        name_part = basename[:dot] if dot > 0 else basename
-        parts = name_part.split('_')
-        if parts[-1].isdigit():
-            self.dark_num = int(parts[-1])
-            self.dark_stem = '_'.join(parts[:-1])
+        parsed = _parse_numbered_filename(basename)
+        if parsed:
+            self.dark_stem = parsed[0]
+            self.dark_num = parsed[1]
         self.dark_check.setChecked(True)
         print(f"Dark: {self.dark_stem}_{self.dark_num}")
 
@@ -1251,7 +1254,16 @@ class FFViewer(QtWidgets.QMainWindow):
                 data = np.maximum(data - dark_data, 0)
 
         self.bdata = data
-        self.image_view.set_image_data(data)
+        # On first load, auto-levels; afterwards use user's MinI/MaxI
+        if getattr(self, '_levels_initialized', False):
+            try:
+                lo = float(self.min_intensity_edit.text())
+                hi = float(self.max_intensity_edit.text())
+                self.image_view.set_image_data(data, auto_levels=False, levels=(lo, hi))
+            except ValueError:
+                self.image_view.set_image_data(data)
+        else:
+            self.image_view.set_image_data(data)
         basename = os.path.basename(fn) if not self.zarr_store else os.path.basename(self.zarr_zip_path or '')
         self.frame_label.setText(f"Frame {self.frame_nr}  |  {basename}")
         self.setWindowTitle(f"FF Viewer — {basename} [frame {self.frame_nr}]")
@@ -1288,6 +1300,15 @@ class FFViewer(QtWidgets.QMainWindow):
 
     def _on_ring_selection(self):
         """Open ring material selection dialog."""
+        # Sync current GUI values so dialog picks them up
+        try:
+            self.pixel_size = float(self.px_edit.text())
+        except ValueError:
+            pass
+        try:
+            self.lsd_local = float(self.lsd_edit.text())
+        except ValueError:
+            pass
         dlg = RingSelectionDialog(self, auto_generate=self.zarr_store is not None)
         if dlg.exec_() == QtWidgets.QDialog.Accepted:
             self.ring_rads = dlg.ring_rads
@@ -1361,6 +1382,18 @@ class RingSelectionDialog(QtWidgets.QDialog):
 
     def _build_material_page(self):
         lay = QtWidgets.QFormLayout(self)
+
+        # ── Material preset buttons ──
+        preset_row = QtWidgets.QHBoxLayout()
+        btn_ceo2 = QtWidgets.QPushButton("CeO2")
+        btn_lab6 = QtWidgets.QPushButton("LaB6")
+        btn_ceo2.clicked.connect(lambda: self._apply_preset(225, [5.4116, 5.4116, 5.4116, 90.0, 90.0, 90.0]))
+        btn_lab6.clicked.connect(lambda: self._apply_preset(221, [4.1569, 4.1569, 4.1569, 90.0, 90.0, 90.0]))
+        preset_row.addWidget(btn_ceo2)
+        preset_row.addWidget(btn_lab6)
+        preset_row.addStretch()
+        lay.addRow("Material:", preset_row)
+
         self.sg_edit = QtWidgets.QLineEdit(str(self.viewer.sg))
         self.wl_edit = QtWidgets.QLineEdit(str(self.viewer.wl))
         self.px_edit = QtWidgets.QLineEdit(str(self.viewer.pixel_size))
@@ -1385,6 +1418,12 @@ class RingSelectionDialog(QtWidgets.QDialog):
         btn = QtWidgets.QPushButton("Generate Rings")
         btn.clicked.connect(self._generate_and_select)
         lay.addRow(btn)
+
+    def _apply_preset(self, sg, lattice):
+        """Auto-populate SpaceGroup and LatticeParameters from a material preset."""
+        self.sg_edit.setText(str(sg))
+        for i, val in enumerate(lattice):
+            self.lc_edits[i].setText(str(val))
 
     def _generate_and_select(self):
         # Write temp param file and run GetHKLList

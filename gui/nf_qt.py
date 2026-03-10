@@ -929,8 +929,11 @@ class NFViewer(QtWidgets.QMainWindow):
 
     def _on_stats_updated(self, dmin, dmax, p2, p98):
         self.stats_label.setText(f"Min={dmin:.0f}  Max={dmax:.0f}  [P2={p2:.0f}  P98={p98:.0f}]")
-        self.min_intensity_edit.setText(str(int(p2)))
-        self.max_intensity_edit.setText(str(int(p98)))
+        # Only auto-populate MinI/MaxI on the very first image load
+        if not getattr(self, '_levels_initialized', False):
+            self._levels_initialized = True
+            self.min_intensity_edit.setText(str(int(p2)))
+            self.max_intensity_edit.setText(str(int(p98)))
 
     def _apply_intensity_levels(self):
         try:
@@ -1066,7 +1069,16 @@ class NFViewer(QtWidgets.QMainWindow):
                 self.imarr2 = imarr
 
         self.imarr2 = self.imarr2[::-1, ::-1].copy()
-        self.image_view.set_image_data(self.imarr2.astype(float))
+        # On first load, auto-levels; afterwards use user's MinI/MaxI
+        if getattr(self, '_levels_initialized', False):
+            try:
+                lo = float(self.min_intensity_edit.text())
+                hi = float(self.max_intensity_edit.text())
+                self.image_view.set_image_data(self.imarr2.astype(float), auto_levels=False, levels=(lo, hi))
+            except ValueError:
+                self.image_view.set_image_data(self.imarr2.astype(float))
+        else:
+            self.image_view.set_image_data(self.imarr2.astype(float))
         # Show which file is loaded
         if hasattr(self, '_last_loaded_fn'):
             basename = os.path.basename(self._last_loaded_fn)

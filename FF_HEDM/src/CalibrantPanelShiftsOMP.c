@@ -2329,6 +2329,9 @@ int main(int argc, char *argv[]) {
   } else if (dType == 9) { // Tiff Unit16
     pxSize = sizeof(uint16_t);
     HeadSize = 0;
+  } else if (dType == 10) { // CBF (x-CBF_BYTE_OFFSET)
+    pxSize = sizeof(uint16_t);
+    HeadSize = 0;
   }
   size_t SizeFile = pxSize * NrPixelsY * NrPixelsZ;
   size_t sz;
@@ -2364,6 +2367,9 @@ int main(int argc, char *argv[]) {
       sz -= HeadSize;
       rewind(fd);
       nFrames = sz / (SizeFile);
+      if ((dType == 10 || dType == 6 || dType == 7 || dType == 9) &&
+          nFrames == 0)
+        nFrames = 1;
       Skip = HeadSize;
       printf("Reading dark file:      %s, nFrames: %d, skipping first %ld "
              "bytes.\n",
@@ -2372,6 +2378,8 @@ int main(int argc, char *argv[]) {
       for (i = 0; i < nFrames; i++) {
         if (dType == 6 || dType == 7 || dType == 9) {
           rc = ReadTiffFrame(Dark, dType, NrPixelsY * NrPixelsZ, DarkFile, i);
+        } else if (dType == 10) {
+          rc = ReadCBFFrame(Dark, NrPixelsY * NrPixelsZ, DarkFile, NULL, NULL);
         } else {
           rc = ReadBinaryFrame(fd, dType, NrPixelsY * NrPixelsZ, DarkFile);
         }
@@ -2541,6 +2549,8 @@ int main(int argc, char *argv[]) {
       sz = ftell(fp);
       sz = sz - HeadSize;
       nFrames = sz / (SizeFile);
+      if (dType == 10 && nFrames == 0)
+        nFrames = 1; /* CBF is compressed; 1 frame per file */
       Skip = HeadSize;
       printf("Reading calibrant file: %s, nFrames: %d %d %d, skipping first "
              "%ld bytes.\n",
@@ -2550,6 +2560,8 @@ int main(int argc, char *argv[]) {
       for (j = 0; j < nFrames; j++) {
         if (dType == 6 || dType == 7 || dType == 9) {
           rc = ReadTiffFrame(FileName, dType, NrPixelsY * NrPixelsZ, Image, j);
+        } else if (dType == 10) {
+          rc = ReadCBFFrame(FileName, NrPixelsY * NrPixelsZ, Image, NULL, NULL);
         } else {
           rc = ReadBinaryFrame(fp, dType, NrPixelsY * NrPixelsZ, Image);
         }

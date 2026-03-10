@@ -247,70 +247,259 @@ int SumHDF5Frames(const char *filename, const char *datasetName,
   }
 
   hid_t dataspace_id = H5Dget_space(dataset_id);
-  hsize_t dims[3];
+  int ndims = H5Sget_simple_extent_ndims(dataspace_id);
+  hsize_t dims[3] = {0, 0, 0};
   H5Sget_simple_extent_dims(dataspace_id, dims, NULL);
 
-  int nFrames = dims[0];
-  int frameRows = dims[1];
-  int frameCols = dims[2];
-  size_t frameSize = frameRows * frameCols;
+  int nFrames, frameRows, frameCols;
+  size_t frameSize;
 
-  // Safety check on size
-  if (frameSize != NrPixels && NrPixels != 0) {
-    // Warning: dimension mismatch
-  }
+  if (ndims == 2) {
+    // 2D dataset: [rows, cols] — single frame, read directly
+    nFrames = 1;
+    frameRows = dims[0];
+    frameCols = dims[1];
+    frameSize = (size_t)frameRows * frameCols;
 
-  // Allocate temp buffer for one frame
-  double *frameBuf = malloc(frameSize * sizeof(double));
-  if (!frameBuf) {
-    H5Sclose(dataspace_id);
-    H5Dclose(dataset_id);
-    H5Fclose(file_id);
-    return FR_ERR_MEMORY;
-  }
-
-  hid_t memspace_id =
-      H5Screate_simple(3, (hsize_t[]){1, dims[1], dims[2]}, NULL);
-
-  int i, p;
-  for (i = skipFrames; i < nFrames; i++) {
-    hsize_t offset[3] = {(hsize_t)i, 0, 0};
-    hsize_t count[3] = {1, dims[1], dims[2]};
-
-    H5Sselect_hyperslab(dataspace_id, H5S_SELECT_SET, offset, NULL, count,
-                        NULL);
-
-    // Read as DOUBLE
-    H5Dread(dataset_id, H5T_NATIVE_DOUBLE, memspace_id, dataspace_id,
-            H5P_DEFAULT, frameBuf);
-
-    // Accumulate
-    for (p = 0; p < frameSize; p++) {
-      returnArr[p] += frameBuf[p];
+    double *frameBuf = malloc(frameSize * sizeof(double));
+    if (!frameBuf) {
+      H5Sclose(dataspace_id);
+      H5Dclose(dataset_id);
+      H5Fclose(file_id);
+      return FR_ERR_MEMORY;
     }
-  }
 
-  // Average? Original code in Integrator calculates AverageDark by dividing by
-  // nFrames. CalibrantPanelShiftsOMP seems to calculate Average[k] += Image2[k]
-  // - AverageDark[k]; It sums differences. But the HDF5 block in Calibrant
-  // returns a "returnArr" which seems to be the sum of frames? Let's re-read
-  // Calibrant logic. Line 1123 in Calibrant: returnArr[...] +=
-  // ((double)data[...]) / frame_dims[0]; It creates an AVERAGE. So
-  // SumHDF5Frames should actually Compute MEAN.
+    // Read entire 2D dataset
+    H5Dread(dataset_id, H5T_NATIVE_DOUBLE, H5S_ALL, H5S_ALL, H5P_DEFAULT,
+            frameBuf);
 
-  // Correction: We should divide by nFrames - skipFrames.
-  int validFrames = nFrames - skipFrames;
-  if (validFrames > 0) {
-    for (p = 0; p < frameSize; p++) {
-      returnArr[p] /= validFrames;
+    size_t copySize =
+        (frameSize < NrPixels || NrPixels == 0) ? frameSize : NrPixels;
+    int p;
+    for (p = 0; p < copySize; p++) {
+      returnArr[p] = frameBuf[p];
     }
+
+    free(frameBuf);
+  } else {
+    // 3D dataset: [nFrames, rows, cols] — sum/average frames
+    nFrames = dims[0];
+    frameRows = dims[1];
+    frameCols = dims[2];
+    frameSize = (size_t)frameRows * frameCols;
+
+    double *frameBuf = malloc(frameSize * sizeof(double));
+    if (!frameBuf) {
+      H5Sclose(dataspace_id);
+      H5Dclose(dataset_id);
+      H5Fclose(file_id);
+      return FR_ERR_MEMORY;
+    }
+
+    hid_t memspace_id =
+        H5Screate_simple(3, (hsize_t[]){1, dims[1], dims[2]}, NULL);
+
+    int i, p;
+    for (i = skipFrames; i < nFrames; i++) {
+      hsize_t offset[3] = {(hsize_t)i, 0, 0};
+      hsize_t count[3] = {1, dims[1], dims[2]};
+
+      H5Sselect_hyperslab(dataspace_id, H5S_SELECT_SET, offset, NULL, count,
+                          NULL);
+
+      H5Dread(dataset_id, H5T_NATIVE_DOUBLE, memspace_id, dataspace_id,
+              H5P_DEFAULT, frameBuf);
+
+      for (p = 0; p < frameSize; p++) {
+        returnArr[p] += frameBuf[p];
+      }
+    }
+
+    // Compute average
+    int validFrames = nFrames - skipFrames;
+    if (validFrames > 1) {
+      for (p = 0; p < frameSize; p++) {
+        returnArr[p] /= validFrames;
+      }
+    }
+
+    free(frameBuf);
+    H5Sclose(memspace_id);
   }
 
-  free(frameBuf);
-  H5Sclose(memspace_id);
   H5Sclose(dataspace_id);
   H5Dclose(dataset_id);
   H5Fclose(file_id);
 
+  return FR_SUCCESS;
+}
+
+// --- CBF Reading (x-CBF_BYTE_OFFSET decompression) ---
+
+// CBF binary section starter: CIF magic bytes 0x0C 0x1A 0x04 0xD5
+static const unsigned char CBF_STARTER[] = {0x0C, 0x1A, 0x04, 0xD5};
+
+// Find a byte pattern in a buffer
+static const unsigned char *find_bytes(const unsigned char *haystack,
+                                       size_t hlen, const unsigned char *needle,
+                                       size_t nlen) {
+  if (nlen > hlen)
+    return NULL;
+  for (size_t i = 0; i <= hlen - nlen; i++) {
+    if (memcmp(haystack + i, needle, nlen) == 0)
+      return haystack + i;
+  }
+  return NULL;
+}
+
+// Parse an integer value from a header line like "X-Binary-Something: 12345"
+static int parse_header_int(const char *header, const char *key) {
+  const char *pos = strstr(header, key);
+  if (!pos)
+    return 0;
+  pos += strlen(key);
+  while (*pos == ' ' || *pos == ':' || *pos == '\t')
+    pos++;
+  return atoi(pos);
+}
+
+int ReadCBFFrame(const char *filename, size_t NrPixels, double *returnArr,
+                 int *outNcols, int *outNrows) {
+  // Read entire file into memory
+  FILE *f = fopen(filename, "rb");
+  if (!f) {
+    fprintf(stderr, "Error: Could not open CBF file %s\n", filename);
+    return FR_ERR_OPEN;
+  }
+  fseek(f, 0L, SEEK_END);
+  size_t fileSize = ftell(f);
+  rewind(f);
+
+  unsigned char *fileData = malloc(fileSize);
+  if (!fileData) {
+    fclose(f);
+    return FR_ERR_MEMORY;
+  }
+  if (fread(fileData, 1, fileSize, f) != fileSize) {
+    free(fileData);
+    fclose(f);
+    return FR_ERR_READ;
+  }
+  fclose(f);
+
+  // Find the binary section starter marker
+  const unsigned char *starter =
+      find_bytes(fileData, fileSize, CBF_STARTER, sizeof(CBF_STARTER));
+  if (!starter) {
+    fprintf(stderr, "Error: No CBF binary section marker found in %s\n",
+            filename);
+    free(fileData);
+    return FR_ERR_FORMAT;
+  }
+
+  // Parse the binary sub-header (ASCII text between "--CIF-BINARY..." and
+  // starter) We search backward for the MIME boundary
+  const char *boundary = "--CIF-BINARY-FORMAT-SECTION--";
+  const unsigned char *bnd =
+      find_bytes(fileData, (size_t)(starter - fileData),
+                 (const unsigned char *)boundary, strlen(boundary));
+  int ncols = 0, nrows = 0, n_elements = 0, binary_size = 0;
+  if (bnd) {
+    // Header is from boundary to starter, null-terminate a copy
+    size_t hdr_len = (size_t)(starter - bnd);
+    char *hdr = malloc(hdr_len + 1);
+    memcpy(hdr, bnd, hdr_len);
+    hdr[hdr_len] = '\0';
+
+    ncols = parse_header_int(hdr, "X-Binary-Size-Fastest-Dimension");
+    nrows = parse_header_int(hdr, "X-Binary-Size-Second-Dimension");
+    n_elements = parse_header_int(hdr, "X-Binary-Number-of-Elements");
+    binary_size = parse_header_int(hdr, "X-Binary-Size:");
+
+    free(hdr);
+  }
+
+  if (ncols <= 0 || nrows <= 0 || n_elements <= 0) {
+    fprintf(stderr,
+            "Error: Could not parse CBF header dimensions in %s "
+            "(ncols=%d, nrows=%d, n_elements=%d)\n",
+            filename, ncols, nrows, n_elements);
+    free(fileData);
+    return FR_ERR_FORMAT;
+  }
+
+  if (outNcols)
+    *outNcols = nrows; // transposed: original rows become output cols
+  if (outNrows)
+    *outNrows = ncols; // transposed: original cols become output rows
+
+  if (NrPixels > 0 && (size_t)n_elements != NrPixels) {
+    fprintf(stderr, "Warning: CBF element count %d != expected %zu in %s\n",
+            n_elements, NrPixels, filename);
+  }
+
+  // Data starts right after the 4-byte starter
+  const unsigned char *data = starter + sizeof(CBF_STARTER);
+  size_t data_avail = fileSize - (size_t)(data - fileData);
+  if (binary_size > 0 && (size_t)binary_size < data_avail)
+    data_avail = (size_t)binary_size;
+
+  // x-CBF_BYTE_OFFSET decompression
+  int64_t prev = 0;
+  size_t pos = 0;
+  for (int i = 0; i < n_elements; i++) {
+    if (pos >= data_avail) {
+      fprintf(stderr, "Error: CBF data truncated at pixel %d/%d in %s\n", i,
+              n_elements, filename);
+      free(fileData);
+      return FR_ERR_READ;
+    }
+
+    int8_t b = (int8_t)data[pos++];
+    int64_t delta;
+
+    if (b != -128) {
+      delta = b;
+    } else {
+      // Read 16-bit value (little-endian)
+      if (pos + 2 > data_avail) {
+        free(fileData);
+        return FR_ERR_READ;
+      }
+      int16_t s =
+          (int16_t)((uint16_t)data[pos] | ((uint16_t)data[pos + 1] << 8));
+      pos += 2;
+
+      if (s != -32768) {
+        delta = s;
+      } else {
+        // Read 32-bit value (little-endian)
+        if (pos + 4 > data_avail) {
+          free(fileData);
+          return FR_ERR_READ;
+        }
+        int32_t l =
+            (int32_t)((uint32_t)data[pos] | ((uint32_t)data[pos + 1] << 8) |
+                      ((uint32_t)data[pos + 2] << 16) |
+                      ((uint32_t)data[pos + 3] << 24));
+        pos += 4;
+        delta = l;
+      }
+    }
+
+    prev += delta;
+
+    // Transpose: original (row, col) in row-major → (col, row) in output
+    // Plus flip both axes: .T[::-1, ::-1]
+    int row = i / ncols;
+    int col = i % ncols;
+    returnArr[(ncols - 1 - col) * nrows + (nrows - 1 - row)] = (double)prev;
+  }
+
+  printf(
+      "ReadCBFFrame: %s — %dx%d (%d elements, transposed+flipped to %dx%d)\n",
+      filename, ncols, nrows, n_elements, nrows, ncols);
+
+  free(fileData);
   return FR_SUCCESS;
 }

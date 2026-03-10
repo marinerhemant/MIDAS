@@ -9,6 +9,7 @@
 //
 
 #include "FileReader.h"
+#include "midas_version.h"
 #include <ctype.h>
 #include <errno.h>
 #include <fcntl.h>
@@ -24,7 +25,6 @@
 #include <sys/stat.h>
 #include <sys/types.h>
 #include <time.h>
-#include "midas_version.h"
 
 typedef double pixelvalue;
 
@@ -104,10 +104,12 @@ static inline void FreeMemMatrixPx(pixelvalue **mat, int nrows) {
 }
 
 int main(int argc, char *argv[]) {
-	printf("Version: %s\n", MIDAS_VERSION_STRING);
+  printf("Version: %s\n", MIDAS_VERSION_STRING);
   clock_t start, end;
   if (argc < 4) {
-    printf("Usage: ./GenMedianDark InFN OutFN dType [NrPixelsY] [NrPixelsZ] [Hdf5DatasetName] [skipFrames] [nCPUs].\nNot enough arguments, exiting.\n");
+    printf("Usage: ./GenMedianDark InFN OutFN dType [NrPixelsY] [NrPixelsZ] "
+           "[Hdf5DatasetName] [skipFrames] [nCPUs].\nNot enough arguments, "
+           "exiting.\n");
     return 1;
   }
   double diftotal;
@@ -135,10 +137,10 @@ int main(int argc, char *argv[]) {
   }
   int nCPUs = omp_get_max_threads();
   if (argc > 8) {
-      nCPUs = atoi(argv[8]);
+    nCPUs = atoi(argv[8]);
   }
   if (nCPUs > 0) {
-      omp_set_num_threads(nCPUs);
+    omp_set_num_threads(nCPUs);
   }
 
   size_t nrPixels = (size_t)NrPixelsY * NrPixelsZ;
@@ -166,6 +168,8 @@ int main(int argc, char *argv[]) {
     pxSize = 0;            // Handled by FileReader dimensions
   } else if (dType == 9) { // Tiff Uint16
     pxSize = sizeof(uint16_t);
+  } else if (dType == 10) { // CBF (x-CBF_BYTE_OFFSET)
+    pxSize = sizeof(uint16_t);
   }
 
   if (dType == 8) {
@@ -188,6 +192,9 @@ int main(int argc, char *argv[]) {
                  // pixelTimeSeries arrays...
     return 1;    // TIFF Not fully supported for temporal median calculation yet
                  // without explicit frame limits.
+  } else if (dType == 10) {
+    // CBF is compressed (byte-offset), one frame per file
+    nFrames = 1;
   } else {
     fp = fopen(inFN, "rb");
     if (!fp) {
@@ -245,6 +252,8 @@ int main(int argc, char *argv[]) {
     if (dType == 8) {
       rc = ReadHDF5Frame(inFN, datasetName, nrPixels, frameBuffer,
                          i + skipFrame);
+    } else if (dType == 10) {
+      rc = ReadCBFFrame(inFN, nrPixels, frameBuffer, NULL, NULL);
     } else {
       rc = ReadBinaryFrame(fp, dType, nrPixels, frameBuffer);
     }
@@ -256,8 +265,8 @@ int main(int argc, char *argv[]) {
       break;
     }
 
-    // Transpose the data: [pixelIdx][frameIdx]
-    #pragma omp parallel for
+// Transpose the data: [pixelIdx][frameIdx]
+#pragma omp parallel for
     for (size_t p = 0; p < nrPixels; p++) {
       pixelTimeSeries[p][i] = frameBuffer[p];
     }
@@ -279,7 +288,7 @@ int main(int argc, char *argv[]) {
   }
 
   double *median = malloc(nrPixels * sizeof(*median));
-  #pragma omp parallel for
+#pragma omp parallel for
   for (size_t i = 0; i < nrPixels; i++) {
     median[i] = quick_select(pixelTimeSeries[i], nFrames);
   }
