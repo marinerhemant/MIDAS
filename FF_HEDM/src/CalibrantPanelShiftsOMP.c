@@ -865,11 +865,15 @@ static double problem_function(unsigned n, const double *x, double *grad,
       double p4 = x[9];
       DistortFunc += p4 * pow(RNorm, 6.0);
     }
+    if (f_data->nBase > 10) {
+      double p5 = x[10];
+      DistortFunc += p5 * pow(RNorm, 4.0);
+    }
     DistortFunc += 1;
     Rcorr = Rad * DistortFunc;
     double thisTtheta;
     if (f_data->fitWavelength) {
-      double wl = x[10]; // wavelength parameter
+      double wl = x[f_data->nBase - 1]; // wavelength is always last base param
       double d = f_data->PointDSpacing[i];
       thisTtheta = 2.0 * asin(wl / (2.0 * d)) / deg2rad;
     } else {
@@ -905,11 +909,13 @@ void FitTiltBCLsd(int nIndices, double *YMean, double *ZMean,
                   double *Weights, double p4in, double tolP4, int PerPanelLsd,
                   double tolLsdPanel, int PerPanelDistortion, double tolP2Panel,
                   int WeightByRadius, double *snrWeights, double *p4Out,
+                  double p5in, double tolP5, double *p5Out,
                   int verbose, int L2Objective, double *initParams,
                   Panel *initPanels, int fitWavelength, double wavelengthIn,
                   double tolWavelength, double *PointDSpacing,
                   double *wavelengthOut) {
-  int nBase = fitWavelength ? 11 : 10;
+  int nBase = 11; // Lsd, ybc, zbc, ty, tz, p0-p3, p4, p5
+  if (fitWavelength) nBase = 12;
   unsigned n = nBase;
   if (tolShifts > EPS && nPanels > 1) {
     int stride = (tolRotation > EPS) ? 3 : 2;
@@ -981,11 +987,15 @@ void FitTiltBCLsd(int nIndices, double *YMean, double *ZMean,
   x[9] = p4in;
   xl[9] = bp4 - tolP4;
   xu[9] = bp4 + tolP4;
+  double bp5 = (initParams ? initParams[10] : p5in);
+  x[10] = p5in;
+  xl[10] = bp5 - tolP5;
+  xu[10] = bp5 + tolP5;
   if (fitWavelength) {
-    double bwl = (initParams ? initParams[10] : wavelengthIn);
-    x[10] = wavelengthIn;
-    xl[10] = bwl - tolWavelength;
-    xu[10] = bwl + tolWavelength;
+    double bwl = (initParams ? initParams[11] : wavelengthIn);
+    x[11] = wavelengthIn;
+    xl[11] = bwl - tolWavelength;
+    xu[11] = bwl + tolWavelength;
   }
 
   if (tolShifts > EPS && nPanels > 1) {
@@ -1122,8 +1132,10 @@ void FitTiltBCLsd(int nIndices, double *YMean, double *ZMean,
   *p3 = x[8];
   if (nBase > 9 && p4Out)
     *p4Out = x[9];
+  if (p5Out)
+    *p5Out = x[10];
   if (fitWavelength && wavelengthOut)
-    *wavelengthOut = x[10];
+    *wavelengthOut = x[nBase - 1];
 
   // 2. Update panel shifts if applicable
   if (nPanels > 0) {
@@ -1290,7 +1302,8 @@ static inline void CorrectTiltSpatialDistortion(
     double *IdealTtheta, double px, double Lsd, double ybc, double zbc,
     double tx, double ty, double tz, double p0, double p1, double p2, double p3,
     double *Etas, double *Diffs, double *RadOuts, double *StdDiff,
-    double outlierFactor, int *IsOutlier, double p4, int OutlierIterations,
+    double outlierFactor, int *IsOutlier, double p4, double p5,
+    int OutlierIterations,
     int verbose, double *MeanDiffOut) {
   double txr, tyr, tzr;
   txr = deg2rad * tx;
@@ -1354,6 +1367,7 @@ static inline void CorrectTiltSpatialDistortion(
                   (p1 * (pow(RNorm, n1)) * (cos(deg2rad * (4 * EtaT + p3)))) +
                   (panelP2 * (pow(RNorm, n2)));
     DistortFunc += p4 * pow(RNorm, 6.0);
+    DistortFunc += p5 * pow(RNorm, 4.0);
     DistortFunc += 1;
     Rcorr = Rad * DistortFunc;
     RIdeal = panelLsd * tan(deg2rad * IdealTtheta[i]);
@@ -1524,7 +1538,7 @@ typedef struct {
   double px;
   double Lsd, ybc, zbc;
   double tx, tyin, tzin;
-  double p0in, p1in, p2in, p3in, p4in;
+  double p0in, p1in, p2in, p3in, p4in, p5in;
 
   // Crystallography
   int SpaceGroup;
@@ -1534,8 +1548,8 @@ typedef struct {
 
   // Optimization tolerances
   double tolTilts, tolLsd, tolBC, tolP;
-  double tolP0, tolP1, tolP2, tolP3, tolP4;
-  int tolP4Set;
+  double tolP0, tolP1, tolP2, tolP3, tolP4, tolP5;
+  int tolP4Set, tolP5Set;
   double tolShifts, tolRotation;
   double tolLsdPanel, tolP2Panel;
 
@@ -2028,6 +2042,17 @@ static int parse_parameters(const char *filename, CalibConfig *cfg) {
       cfg->tolP4Set = 1;
       continue;
     }
+    str = "tolP5 ";
+    if (!strncmp(aline, str, strlen(str))) {
+      sscanf(aline, "%s %lf", dummy, &cfg->tolP5);
+      cfg->tolP5Set = 1;
+      continue;
+    }
+    str = "p5 ";
+    if (!strncmp(aline, str, strlen(str))) {
+      sscanf(aline, "%s %lf", dummy, &cfg->p5in);
+      continue;
+    }
     str = "tolLsdPanel ";
     if (!strncmp(aline, str, strlen(str))) {
       sscanf(aline, "%s %lf", dummy, &cfg->tolLsdPanel);
@@ -2061,6 +2086,8 @@ static int parse_parameters(const char *filename, CalibConfig *cfg) {
     cfg->tolP2 = cfg->tolP;
   if (!cfg->tolP4Set && cfg->tolP4 == 0)
     cfg->tolP4 = cfg->tolP;
+  if (!cfg->tolP5Set && cfg->tolP5 == 0)
+    cfg->tolP5 = cfg->tolP;
 
   // Derive NrPixels
   cfg->NrPixels =
@@ -2108,6 +2135,7 @@ static void print_parameter_summary(const CalibConfig *c) {
   printf("║    p2 (initial):   %-40.8f ║\n", c->p2in);
   printf("║    p3 (initial):   %-40.8f ║\n", c->p3in);
   printf("║    p4 (initial):   %-40.8f ║\n", c->p4in);
+  printf("║    p5 (initial):   %-40.8f ║\n", c->p5in);
   printf("╠══════════════════════════════════════════════════════════════╣\n");
   printf("║  CRYSTALLOGRAPHY                                            ║\n");
   printf("║    SpaceGroup:     %-40d ║\n", c->SpaceGroup);
@@ -2249,6 +2277,7 @@ int main(int argc, char *argv[]) {
   int PerPanelLsd = cfg.PerPanelLsd,
       PerPanelDistortion = cfg.PerPanelDistortion;
   double tolP4 = cfg.tolP4, p4in = cfg.p4in;
+  double tolP5 = cfg.tolP5, p5in = cfg.p5in;
   double tolLsdPanel = cfg.tolLsdPanel, tolP2Panel = cfg.tolP2Panel;
   int FitWavelength = cfg.FitWavelength;
   double tolWavelength = cfg.tolWavelength;
@@ -2539,8 +2568,8 @@ int main(int argc, char *argv[]) {
     printf("Mask file read: %s\n", MaskFN);
   }
   int a;
-  double means[13];
-  for (a = 0; a < 13; a++)
+  double means[14];
+  for (a = 0; a < 14; a++)
     means[a] = 0;
   double medStrain = 0, q25Strain = 0, q75Strain = 0, minStrain = 0,
          maxStrain = 0;
@@ -2700,6 +2729,7 @@ int main(int argc, char *argv[]) {
     int bestIter = -1;
     double bestLsd, bestYbc, bestZbc, bestTy, bestTz;
     double bestP0, bestP1, bestP2, bestP3, bestP4 = 0;
+    double bestP5 = 0;
     int stagnantCount = 0;
     double prevIterMeanDiff = -1;
     Panel *bestPanels = NULL;
@@ -2851,7 +2881,7 @@ int main(int argc, char *argv[]) {
       CorrectTiltSpatialDistortion(
           nIndices, MaxRingRad, Yc, Zc, IdealTtheta, px, Lsd, ybc, zbc, tx,
           tyin, tzin, p0in, p1in, p2in, p3in, EtaIns, DiffIns, RadIns, &StdDiff,
-          outlierFactor, NULL, p4in, OutlierIterations, 1, &MeanDiff);
+          outlierFactor, NULL, p4in, p5in, OutlierIterations, 1, &MeanDiff);
       printf("MeanStrain (input params): %.6f µε\n", MeanDiff * 1e6);
 
       // Cleanup
@@ -2868,8 +2898,8 @@ int main(int argc, char *argv[]) {
     // iterations. Without this, bounds drift because each iteration re-centers
     // bounds on the latest fitted values, allowing parameters to walk
     // arbitrarily far.
-    double initParams[11] = {Lsd,  ybc,  zbc,  tyin, tzin,      p0in,
-                             p1in, p2in, p3in, p4in, Wavelength};
+    double initParams[12] = {Lsd,  ybc,  zbc,  tyin, tzin,      p0in,
+                             p1in, p2in, p3in, p4in, p5in, Wavelength};
     Panel *initPanels = NULL;
     if (nPanels > 0) {
       initPanels = malloc(nPanels * sizeof(Panel));
@@ -3046,7 +3076,7 @@ int main(int argc, char *argv[]) {
         CorrectTiltSpatialDistortion(nIndices, MaxRingRad, Yc, Zc, IdealTtheta,
                                      px, Lsd, ybc, zbc, tx, tyin, tzin, p0in,
                                      p1in, p2in, p3in, EtaIns, DiffIns, RadIns,
-                                     &StdDiff, outlierFactor, NULL, p4in,
+                                     &StdDiff, outlierFactor, NULL, p4in, p5in,
                                      OutlierIterations, iter == 0, NULL);
         NrCalls = 0;
 
@@ -3147,8 +3177,8 @@ int main(int argc, char *argv[]) {
         }
       }
 
-      // Optimize
       double p4 = p4in;
+      double p5 = p5in;
       double wavelengthFit = Wavelength;
       FitTiltBCLsd(nIndices, Yc, Zc, IdealTtheta, Lsd, MaxRingRad, ybc, zbc, tx,
                    tyin, tzin, p0in, p1in, p2in, p3in, &ty, &tz, &LsdFit,
@@ -3157,7 +3187,8 @@ int main(int argc, char *argv[]) {
                    tolRotation, px, outlierFactor, MinIndicesForFit, FixPanelID,
                    RingWeights, p4in, tolP4, PerPanelLsd, tolLsdPanel,
                    PerPanelDistortion, tolP2Panel, WeightByRadius, snrWeights,
-                   &p4, iter == 0, L2Objective, initParams, initPanels,
+                   &p4, p5in, tolP5, &p5,
+                   iter == 0, L2Objective, initParams, initPanels,
                    FitWavelength, Wavelength, tolWavelength, PointDSpacing,
                    &wavelengthFit);
       if (FitWavelength)
@@ -3311,7 +3342,7 @@ int main(int argc, char *argv[]) {
         CorrectTiltSpatialDistortion(
             nIndices, MaxRingRad, Yc, Zc, IdealTtheta, px, LsdFit, ybcFit,
             zbcFit, tx, ty, tz, p0, p1, p2, p3, EtaIns, DiffIns, RadIns,
-            &StdDiff, outlierFactor, NULL, p4, OutlierIterations, 0, &MeanDiff);
+            &StdDiff, outlierFactor, NULL, p4, p5, OutlierIterations, 0, &MeanDiff);
         printf("Iter %2d/%d  MeanStrain %8.3f  StdStrain %8.3f\n", iter + 1,
                nIterations, MeanDiff * 1e6, StdDiff * 1e6);
 
@@ -3351,6 +3382,7 @@ int main(int argc, char *argv[]) {
         bestP2 = p2;
         bestP3 = p3;
         bestP4 = p4;
+        bestP5 = p5;
         if (bestPanels && nPanels > 0)
           memcpy(bestPanels, panels, nPanels * sizeof(Panel));
       }
@@ -3376,6 +3408,7 @@ int main(int argc, char *argv[]) {
         p2in = bestP2;
         p3in = bestP3;
         p4in = bestP4;
+        p5in = bestP5;
         if (bestPanels && nPanels > 0)
           memcpy(panels, bestPanels, nPanels * sizeof(Panel));
 
@@ -3411,6 +3444,8 @@ int main(int argc, char *argv[]) {
                           initParams[8] + tolP3);
         p4in = PERT_CLAMP(p4in, tolP4, initParams[9] - tolP4,
                           initParams[9] + tolP4);
+        p5in = PERT_CLAMP(p5in, tolP5, initParams[10] - tolP5,
+                          initParams[10] + tolP5);
 #undef PERT_CLAMP
 #undef LCG_NEXT
 #undef LCG_DOUBLE
@@ -3478,6 +3513,7 @@ int main(int argc, char *argv[]) {
         p2 = bestP2;
         p3 = bestP3;
         p4in = bestP4;
+        p5in = bestP5;
         Lsd = bestLsd;
         ybc = bestYbc;
         zbc = bestZbc;
@@ -3630,7 +3666,7 @@ int main(int argc, char *argv[]) {
       CorrectTiltSpatialDistortion(
           nIndices, MaxRingRad, Yc, Zc, IdealTtheta, px, LsdFit, ybcFit, zbcFit,
           tx, ty, tz, p0, p1, p2, p3, EtaIns, DiffIns, RadIns, &StdDiff,
-          outlierFactor, NULL, p4in, OutlierIterations, 0, &MeanDiff);
+          outlierFactor, NULL, p4in, p5in, OutlierIterations, 0, &MeanDiff);
       printf("Post-loop re-fit MeanStrain %0.6lf\n", MeanDiff * 1e6);
       free(R_pl);
       free(Eta_pl);
@@ -3653,7 +3689,7 @@ int main(int argc, char *argv[]) {
     CorrectTiltSpatialDistortion(
         nIndices, MaxRingRad, Yc, Zc, IdealTtheta, px, LsdFit, ybcFit, zbcFit,
         tx, ty, tz, p0, p1, p2, p3, Etas, Diffs, RadOuts, &StdDiff,
-        outlierFactor, IsOutlier, p4in, OutlierIterations, 1, &MeanDiff);
+        outlierFactor, IsOutlier, p4in, p5in, OutlierIterations, 1, &MeanDiff);
     printf("StdStrain %0.12lf\n", StdDiff);
     // Compute strain statistics from valid (non-outlier) diffs
     nValid = 0;
@@ -3804,6 +3840,7 @@ int main(int argc, char *argv[]) {
     means[10] += StdDiff;
     means[11] += p4in;
     means[12] += Wavelength;
+    means[13] += p5in;
     FILE *Out;
     char OutFileName[1024];
     sprintf(OutFileName, "%s_%0*d%s.%s", fn, Padding, a, Ext, "corr.csv");
@@ -3909,6 +3946,7 @@ int main(int argc, char *argv[]) {
           (p1 * pow(RNormG, 4.0) * cos(deg2rad * (4 * EtaTG + p3))) +
           (p2 * pow(RNormG, 2.0));
       DistortG += p4in * pow(RNormG, 6.0);
+      DistortG += p5in * pow(RNormG, 4.0);
       DistortG += 1;
       double RadGlobal = RadG * DistortG;
       double IdealR = LsdFit * tan(deg2rad * IdealTtheta[i]);
@@ -4265,8 +4303,8 @@ int main(int argc, char *argv[]) {
     double lo_start = omp_get_wtime();
 
     // Use mean fitted parameters (averaged across all files)
-    double lo_means[13];
-    for (int mi = 0; mi < 13; mi++)
+    double lo_means[14];
+    for (int mi = 0; mi < 14; mi++)
       lo_means[mi] = means[mi] / (EndNr - StartNr + 1);
     double lo_Lsd = lo_means[0];
     double lo_ybc = lo_means[1];
@@ -4824,7 +4862,7 @@ int main(int argc, char *argv[]) {
   }
   // Print final fitted parameters (moved to end for easy copy/paste)
   printf("\n*******************Mean Values*******************\n");
-  for (a = 0; a < 13; a++)
+  for (a = 0; a < 14; a++)
     means[a] /= (EndNr - StartNr + 1);
   printf("Lsd        %0.12f\n"
          "BC         %0.12f %0.12f\n"
@@ -4837,6 +4875,7 @@ int main(int argc, char *argv[]) {
          means[0], means[1], means[2], means[3], means[4], means[5], means[6],
          means[7], means[8]);
   printf("p4         %0.12f\n", means[11]);
+  printf("p5         %0.12f\n", means[13]);
   if (FitWavelength) {
     printf("Wavelength %0.12f\n", means[12]);
     double energy_keV = 12.398419843320026 / means[12];
