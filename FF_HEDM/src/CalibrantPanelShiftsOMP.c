@@ -1583,6 +1583,7 @@ typedef struct {
   // Excluded rings
   int nRingsExclude;
   int RingsExclude[50];
+  int MaxRingNumber;  // 0 = no limit, >0 = exclude rings with RingNr > this
 
   // Panel configuration
   int NPanelsY, NPanelsZ;
@@ -1957,6 +1958,11 @@ static int parse_parameters(const char *filename, CalibConfig *cfg) {
       cfg->nRingsExclude++;
       continue;
     }
+    str = "MaxRingNumber ";
+    if (!strncmp(aline, str, strlen(str))) {
+      sscanf(aline, "%s %d", dummy, &cfg->MaxRingNumber);
+      continue;
+    }
     str = "RBinSize ";
     if (!strncmp(aline, str, strlen(str))) {
       sscanf(aline, "%s %lf", dummy, &cfg->lineoutRBinSize);
@@ -2203,6 +2209,8 @@ static void print_parameter_summary(const CalibConfig *c) {
       printf(" ");
     printf("║\n");
   }
+  if (c->MaxRingNumber > 0)
+    printf("║    MaxRingNumber:  %-40d ║\n", c->MaxRingNumber);
   if (nPanels > 0) {
     printf(
         "╠══════════════════════════════════════════════════════════════╣\n");
@@ -2289,6 +2297,7 @@ int main(int argc, char *argv[]) {
   long long int GapIntensity = cfg.GapIntensity,
                 BadPxIntensity = cfg.BadPxIntensity;
   int TransOpt[10], nRingsExclude = cfg.nRingsExclude, RingsExclude[50];
+  int MaxRingNumber = cfg.MaxRingNumber;
   memcpy(TransOpt, cfg.TransOpt, sizeof(TransOpt));
   memcpy(RingsExclude, cfg.RingsExclude, sizeof(RingsExclude));
   double lineoutRBinSize = cfg.lineoutRBinSize;
@@ -2358,6 +2367,8 @@ int main(int argc, char *argv[]) {
         Exclude = 1;
       }
     }
+    if (MaxRingNumber > 0 && tRnr > MaxRingNumber)
+      break;
     if (Exclude == 0 && tRnr > LastRingDone) {
       Thetas[n_hkls] = theta;
       DSpacings[n_hkls] = Wavelength / (2.0 * sin(theta * deg2rad));

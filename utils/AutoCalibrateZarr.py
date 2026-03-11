@@ -127,6 +127,7 @@ class CalibState:
     # Ring info
     n_planes: int = 0
     rings_to_exclude: list = field(default_factory=list)
+    max_ring_number: int = 0  # 0 = no limit, >0 = exclude rings > this
 
     # Image / file
     nr_pixels_y: int = 0
@@ -1276,6 +1277,8 @@ def runMIDAS(rawFN, state, n_iterations=40, mult_factor=2.5,
             # Ring exclusions
             for ringNr in state.rings_to_exclude:
                 pf.write(f'RingsToExclude {ringNr}\n')
+            if state.max_ring_number > 0:
+                pf.write(f'MaxRingNumber {state.max_ring_number}\n')
 
             # File info
             pf.write(f'Folder {state.folder}\n')
@@ -1477,6 +1480,8 @@ def main():
                             help='Per-ring outlier removal iterations')
         parser.add_argument('--first-ring', '-FirstRingNr', type=int, default=1,
                             help='First ring number to use')
+        parser.add_argument('--max-ring', '-MaxRingNumber', type=int, default=0,
+                            help='Maximum ring number to use (0 = no limit)')
         parser.add_argument('--eta-bin-size', '-EtaBinSize', type=float, default=5.0,
                             help='Azimuthal bin size (degrees)')
 
@@ -1561,6 +1566,7 @@ def main():
         threshold = args.threshold
         noMedian = args.no_median
         n_cpus = args.cpus if args.cpus > 0 else os.cpu_count() or 8
+        state.max_ring_number = args.max_ring
 
         # HDF5 output
         if args.save_hdf:
@@ -1955,6 +1961,10 @@ def main():
                             parts = line.split()
                             if len(parts) > 1:
                                 state.rings_to_exclude.append(int(parts[1]))
+                        elif line.startswith('MaxRingNumber'):
+                            parts = line.split()
+                            if len(parts) > 1 and args.max_ring == 0:
+                                state.max_ring_number = int(parts[1])
                         elif any(line.startswith(pk) for pk in [
                             'NPanelsY', 'NPanelsZ', 'PanelSizeY', 'PanelSizeZ',
                             'PanelGapsY', 'PanelGapsZ', 'FixPanelID',
