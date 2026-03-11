@@ -948,11 +948,11 @@ int main(int argc, char *argv[]) {
       ReadZarrChunk(arch, count, &PanelSizeZ, sizeof(int));
     }
     if (strstr(finfo->name,
-               "analysis/process/analysis_parameters/PanelGapsY/0.0") != NULL) {
+               "analysis/process/analysis_parameters/PanelGapsY/0") != NULL) {
       locPanelGapsY = count;
     }
     if (strstr(finfo->name,
-               "analysis/process/analysis_parameters/PanelGapsZ/0.0") != NULL) {
+               "analysis/process/analysis_parameters/PanelGapsZ/0") != NULL) {
       locPanelGapsZ = count;
     }
     if (strstr(finfo->name,

@@ -21,7 +21,7 @@ int GeneratePanels(int nPanelsY, int nPanelsZ, int panelSizeY, int panelSizeZ,
 
     // Calculate next Y start
     if (i < nPanelsY - 1) {
-      currentY = yEnd + 1 + gapsY[i];
+      currentY = yEnd + 1 + (gapsY ? gapsY[i] : 0);
     }
 
     // Z Loop
@@ -32,7 +32,7 @@ int GeneratePanels(int nPanelsY, int nPanelsZ, int panelSizeY, int panelSizeZ,
 
       // Calculate next Z start
       if (j < nPanelsZ - 1) {
-        currentZ = zEnd + 1 + gapsZ[j];
+        currentZ = zEnd + 1 + (gapsZ ? gapsZ[j] : 0);
       }
 
       (*panels)[idx].id = idx;
