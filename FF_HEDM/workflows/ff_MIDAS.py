@@ -1090,7 +1090,18 @@ def process_layer(layer_nr: int, top_res_dir: str, ps_fn: str, data_fn: str, num
             logger.info("Skipping data_transform (resumed past this stage).")
 
     # Add grains file to parameters if needed
+    # If not provided via CLI, check the parameter file
     with change_directory(result_dir):
+        if not grains_file:
+            try:
+                with open(ps_fn, 'r') as pf:
+                    for line in pf:
+                        if line.strip().startswith('GrainsFile '):
+                            grains_file = line.strip().split(None, 1)[1]
+                            logger.info(f"Found GrainsFile in parameter file: {grains_file}")
+                            break
+            except Exception as e:
+                logger.warning(f"Could not read GrainsFile from parameter file: {e}")
         if grains_file:
             try:
                 with open(f"{result_dir}/paramstest.txt", "a") as paramstestF:

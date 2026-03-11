@@ -171,8 +171,8 @@ def write_analysis_parameters(z_groups, config):
     print("\nWriting analysis parameters to Zarr file...")
 
     FORCE_DOUBLE_PARAMS = { "RMin", "RMax", "px", "PixelSize", "Completeness", "MinMatchesToAcceptFrac", "OverArea", "IntensityThresh", "MinS_N", "YPixelSize", "ZPixelSize", "BeamStopY", "BeamStopZ", "DetDist", "MaxDev", "OmegaStart", "OmegaFirstFile", "OmegaStep", "step", "BadPxIntensity", "GapIntensity", "FitWeightMean", "PixelSplittingRBin", "tolTilts", "tolBC", "tolLsd", "DiscArea", "OverlapLength", "ReferenceRingCurrent", "zDiffThresh", "GlobalPosition", "tolPanelFit", "tolP", "tolP0", "tolP1", "tolP2", "tolP3", "tolP4", "tolShifts", "tolRotation", "tolLsdPanel", "tolP2Panel", "DoubletSeparation", "MultFactor", "StepSizePos", "tInt", "tGap", "StepSizeOrient", "MarginRadius", "MarginRadial", "MarginEta", "MarginOme", "MargABG", "MargABC", "OmeBinSize", "EtaBinSize", "RBinSize", "EtaMin", "MinEta", "EtaMax", "X", "Y", "Z", "U", "V", "W", "SHpL", "Polariz", "MaxOmeSpotIDsToIndex", "MinOmeSpotIDsToIndex", "BeamThickness", "Wedge", "Rsample", "Hbeam", "Vsample", "RhoD", "MaxRingRad", "Lsd", "Wavelength", "Width", "WidthTthPx", "UpperBoundThreshold", "p4", "p3", "p2", "p1", "p0", "tz", "ty", "tx", "WeightMask", "WeightFitRMSE" }
-    FORCE_INT_PARAMS = { "Twins", "MaxNFrames", "DoFit", "DiscModel", "UseMaximaPositions", "UsePixelOverlap", "MaxNrPx", "MinNrPx", "MaxNPeaks", "PhaseNr", "NumPhases", "MinNrSpots", "UseFriedelPairs", "OverallRingToIndex", "SpaceGroup", "LayerNr", "DoFullImage", "SkipFrame", "SumImages", "Normalize", "SaveIndividualFrames", "OmegaSumFrames", "NrFilesPerSweep", "NPanelsY", "NPanelsZ", "Padding", "PanelSizeY", "PanelSizeZ", "PanelGapsY", "PanelGapsZ", "doPeakFit", "nIterations", "NormalizeRingWeights", "OutlierIterations", "WeightByRadius", "WeightByFitSNR", "L2Objective", "PerPanelLsd", "PerPanelDistortion", "FixPanelID", "MinIndicesForFit" }
-    FORCE_STRING_PARAMS = { "GapFile", "BadPxFile", "ResultFolder", "PanelShiftsFile", "MaskFile" }
+    FORCE_INT_PARAMS = { "Twins", "MaxNFrames", "DoFit", "DiscModel", "UseMaximaPositions", "UsePixelOverlap", "MaxNrPx", "MinNrPx", "MaxNPeaks", "PhaseNr", "NumPhases", "MinNrSpots", "UseFriedelPairs", "OverallRingToIndex", "SpaceGroup", "LayerNr", "DoFullImage", "SkipFrame", "SumImages", "Normalize", "SaveIndividualFrames", "OmegaSumFrames", "NrFilesPerSweep", "NPanelsY", "NPanelsZ", "Padding", "PanelSizeY", "PanelSizeZ", "PanelGapsY", "PanelGapsZ", "doPeakFit", "nIterations", "NormalizeRingWeights", "OutlierIterations", "WeightByRadius", "WeightByFitSNR", "L2Objective", "PerPanelLsd", "PerPanelDistortion", "FixPanelID", "MinIndicesForFit", "LocalMaximaOnly" }
+    FORCE_STRING_PARAMS = { "GapFile", "BadPxFile", "ResultFolder", "PanelShiftsFile", "MaskFile", "GrainsFile" }
     RENAME_MAP = { "OmegaStep": "step", "Completeness": "MinMatchesToAcceptFrac", "px": "PixelSize", "LatticeConstant": "LatticeParameter", "OverAllRingToIndex": "OverallRingToIndex", "resultFolder": "ResultFolder", "OmegaRange": "OmegaRanges", "BoxSize": "BoxSizes" }
 
     for key, value in config.items():
@@ -225,6 +225,19 @@ def write_analysis_parameters(z_groups, config):
                 if arr is not None: target_group.create_dataset(target_key, data=arr)
         except Exception as e:
             print(f"  - Warning: Could not write parameter '{key}'. Reason: {e}")
+
+    # --- LocalMaximaOnly mode: force dependent parameters ---
+    if int(config.get('LocalMaximaOnly', 0)) == 1:
+        print("  - LocalMaximaOnly=1: forcing doPeakFit=0, UseMaximaPositions=1, OverlapLength=3")
+        forced = {'doPeakFit': (np.int32, sp_pro_meas), 'UseMaximaPositions': (np.int32, sp_pro_analysis), 'LocalMaximaOnly': (np.int32, sp_pro_analysis)}
+        forced_dbl = {'OverlapLength': (3.0, sp_pro_analysis)}
+        for k, (dt, grp) in forced.items():
+            val = 0 if k == 'doPeakFit' else 1
+            if k in grp: del grp[k]
+            grp.create_dataset(k, data=np.array([val], dtype=dt))
+        for k, (v, grp) in forced_dbl.items():
+            if k in grp: del grp[k]
+            grp.create_dataset(k, data=np.array([v], dtype=np.double))
 
     essential_datasets = {
         'RingThresh':   {'default': np.zeros((1, 2), dtype=np.double)},

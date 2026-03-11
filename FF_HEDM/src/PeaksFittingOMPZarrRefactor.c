@@ -153,6 +153,7 @@ typedef struct {
   int *RingNrs;
   double *Thresholds;
   int doPeakFit;
+  int localMaximaOnly;
 } AnalysisParams;
 
 // Structure for peak info
@@ -1528,7 +1529,34 @@ static ErrorCode processImageFrame(int fileNr, char *allData, size_t *sizeArr,
     double retVal = 0;
     int rc = 0;
 
-    if (params->doPeakFit == 0) {
+    if (params->localMaximaOnly == 1) {
+      // --- LocalMaximaOnly mode: emit one peak per local maximum ---
+      // Each maximum gets position at its pixel, intensity proportioned by IMax
+      double totalIMax = 0;
+      for (unsigned pi = 0; pi < nPeaks; pi++)
+        totalIMax += ws->maximaValues[pi];
+
+      for (unsigned pi = 0; pi < nPeaks; pi++) {
+        int maxY = ws->maximaPositions[pi * 2 + 0];
+        int maxZ = ws->maximaPositions[pi * 2 + 1];
+        ws->imax[pi] = ws->maximaValues[pi];
+        ws->nrPx[pi] = 1; // single pixel maximum
+        // Position at the maximum pixel itself
+        ws->yCenArray[pi] = -maxY + params->Ycen;
+        ws->zCenArray[pi] = maxZ - params->Zcen;
+        ws->rads[pi] = CALC_NORM_2(-maxY + params->Ycen, maxZ - params->Zcen);
+        ws->etas[pi] = calcEtaAngle(-maxY + params->Ycen, maxZ - params->Zcen);
+        // Apportion raw intensity by IMax fraction
+        if (totalIMax > 0)
+          ws->integratedIntensity[pi] = rawSumForRegion * ws->maximaValues[pi] / totalIMax;
+        else
+          ws->integratedIntensity[pi] = rawSumForRegion / nPeaks;
+        ws->rawSumIntensity[pi] = ws->integratedIntensity[pi];
+        // Zero out otherInfo for this peak (no fit was performed)
+        for (int j = 0; j < 8; j++)
+          ws->otherInfo[8 * pi + j] = 0;
+      }
+    } else if (params->doPeakFit == 0) {
       double rMeanVal = 0, etaMeanVal = 0;
       nPeaks = 1;
       ws->imax[0] = ws->maximaValues[0];
@@ -1788,6 +1816,7 @@ static void printAllParameters(const ImageMetadata *metadata,
   printf("  makeMap            : %d\n", params->makeMap);
   printf("  maxNPeaks          : %d\n", params->maxNPeaks);
   printf("  doPeakFit (params) : %d\n", params->doPeakFit);
+  printf("  localMaximaOnly    : %d\n", params->localMaximaOnly);
 
   printf("  nImTransOpt        : %d\n", params->nImTransOpt);
   if (params->TransOpt != NULL && params->nImTransOpt > 0) {
@@ -1851,6 +1880,7 @@ static ErrorCode parseZarrMetadata(const char *dataFile,
   metadata->nOmegaCenterEntries = 0;    // Initialize nOmegaCenterEntries
 
   params->doPeakFit = 1;
+  params->localMaximaOnly = 0;
   params->bc = DEFAULT_BC;
   params->Ycen = DEFAULT_NR_PIXELS / 2;
   params->Zcen = DEFAULT_NR_PIXELS / 2;
@@ -2184,6 +2214,10 @@ static ErrorCode parseZarrMetadata(const char *dataFile,
       ReadZarrChunk(archive, count, &metadata->doPeakFit, sizeof(int));
       params->doPeakFit = metadata->doPeakFit;
     }
+    if (strstr(fileInfo->name,
+               "analysis/process/analysis_parameters/LocalMaximaOnly/0") !=
+        NULL)
+      ReadZarrChunk(archive, count, &params->localMaximaOnly, sizeof(int));
     if (strstr(fileInfo->name,
                "analysis/process/analysis_parameters/ResultFolder/0") != NULL) {
       ReadZarrString(archive, count, resultFolder, 4096);

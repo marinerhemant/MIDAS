@@ -16,6 +16,7 @@
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
+#include <math.h>
 
 #define deg2rad 0.0174532925199433
 #define rad2deg 57.2957795130823
@@ -255,17 +256,19 @@ int main(int argc, char *argv[]) {
   // Sort by confidence
   qsort(grains, count, sizeof(GrainInfo), compare_grains);
 
-  FILE *fout = fopen(outFN, "w");
-  if (!fout) {
-    printf("Error opening output file %s\n", outFN);
-    free(grains);
-    return 1;
-  }
-  fprintf(fout, "%%GrainID OrientMat(9) dummies LatC(6) x y z dummies\n");
+  // --- Buffer unique grains so we can write %NumGrains header ---
+  // Each unique grain entry: orientMat[9], x, y, nVoxels
+  typedef struct {
+    double orientMat[9];
+    double x, y;
+    int nVoxels; // number of mic voxels merged into this grain
+  } UniqueGrain;
 
   int grainID = 1;
   double quat1[4], quat2[4], axis[3], ang;
   int nUnique = 0;
+  int uniqueCapacity = 1000;
+  UniqueGrain *uniqueGrains = malloc(uniqueCapacity * sizeof(UniqueGrain));
 
   if (doNeighborSearch == 0) {
     // --- Traditional Global Merge (OpenMP-parallel inner loop) ---
@@ -275,23 +278,13 @@ int main(int argc, char *argv[]) {
 
       OrientMat2Quat(grains[i].orientMat, quat1);
 
-      fprintf(
-          fout,
-          "%d %.12lf %.12lf %.12lf %.12lf %.12lf %.12lf %.12lf %.12lf %.12lf "
-          "0 0 0 %.6lf %.6lf %.6lf %.6lf %.6lf %.6lf %.6lf %.6lf 0 0\n",
-          grainID, grains[i].orientMat[0], grains[i].orientMat[1],
-          grains[i].orientMat[2], grains[i].orientMat[3],
-          grains[i].orientMat[4], grains[i].orientMat[5],
-          grains[i].orientMat[6], grains[i].orientMat[7],
-          grains[i].orientMat[8], latP[0], latP[1], latP[2], latP[3], latP[4],
-          latP[5], grains[i].x, grains[i].y);
-
-      grainID++;
-      nUnique++;
+      // Count merged voxels (this grain + all duplicates)
+      int nVox = 1;
       grains[i].used = true;
 
-      // Mark duplicates globally (parallel)
-#pragma omp parallel for schedule(dynamic, 256)
+      // Mark duplicates globally (parallel) and count them
+      int nDups = 0;
+#pragma omp parallel for schedule(dynamic, 256) reduction(+:nDups)
       for (int j = i + 1; j < count; j++) {
         if (grains[j].used)
           continue;
@@ -302,8 +295,21 @@ int main(int argc, char *argv[]) {
 
         if (a < maxAng) {
           grains[j].used = true;
+          nDups++;
         }
       }
+      nVox += nDups;
+
+      // Buffer the unique grain
+      if (nUnique >= uniqueCapacity) {
+        uniqueCapacity *= 2;
+        uniqueGrains = realloc(uniqueGrains, uniqueCapacity * sizeof(UniqueGrain));
+      }
+      memcpy(uniqueGrains[nUnique].orientMat, grains[i].orientMat, 9 * sizeof(double));
+      uniqueGrains[nUnique].x = grains[i].x;
+      uniqueGrains[nUnique].y = grains[i].y;
+      uniqueGrains[nUnique].nVoxels = nVox;
+      nUnique++;
     }
   } else {
     // --- Spatial Neighbor Search (Region Growing) ---
@@ -322,7 +328,6 @@ int main(int argc, char *argv[]) {
     }
 
     // 2. Set up Grid
-    // Use slightly larger bin size to catch neighbors
     double binSize = triEdgeSize * 1.01;
     int dimX = (int)((maxX - minX) / binSize) + 2;
     int dimY = (int)((maxY - minY) / binSize) + 2;
@@ -338,15 +343,13 @@ int main(int argc, char *argv[]) {
       int idx = by * dimX + bx;
 
       Node *newNode = (Node *)malloc(sizeof(Node));
-      newNode->grainIndex = i; // storing index into *sorted* array
+      newNode->grainIndex = i;
       newNode->next = grid[idx];
       grid[idx] = newNode;
     }
 
     // 4. BFS Clustering
-    double distThresh =
-        triEdgeSize *
-        2.0; // Neighbor tolerance (slightly generous for diagonals)
+    double distThresh = triEdgeSize * 2.0;
     double distThreshSq = distThresh * distThresh;
 
     Queue *q = createQueue(count);
@@ -358,26 +361,15 @@ int main(int argc, char *argv[]) {
       // New Grain Found (Seed)
       OrientMat2Quat(grains[i].orientMat, quat1);
 
-      fprintf(
-          fout,
-          "%d %.12lf %.12lf %.12lf %.12lf %.12lf %.12lf %.12lf %.12lf %.12lf "
-          "0 0 0 %.6lf %.6lf %.6lf %.6lf %.6lf %.6lf %.6lf %.6lf 0 0\n",
-          grainID, grains[i].orientMat[0], grains[i].orientMat[1],
-          grains[i].orientMat[2], grains[i].orientMat[3],
-          grains[i].orientMat[4], grains[i].orientMat[5],
-          grains[i].orientMat[6], grains[i].orientMat[7],
-          grains[i].orientMat[8], latP[0], latP[1], latP[2], latP[3], latP[4],
-          latP[5], grains[i].x, grains[i].y);
-
       grains[i].used = true;
       enqueue(q, i);
+      int nVox = 1;
 
       // Flood fill orientation
       while (!isQueueEmpty(q)) {
         int currIdx = dequeue(q);
         GrainInfo *curr = &grains[currIdx];
 
-        // Determine search range in grid (3x3 neighborhood)
         int bx = (int)((curr->x - minX) / binSize);
         int by = (int)((curr->y - minY) / binSize);
 
@@ -386,28 +378,20 @@ int main(int argc, char *argv[]) {
             if (nx < 0 || nx >= dimX || ny < 0 || ny >= dimY)
               continue;
 
-            // Check all points in this bin
             Node *scan = grid[ny * dimX + nx];
             while (scan) {
               int neighborIdx = scan->grainIndex;
               if (!grains[neighborIdx].used) {
-                // Check Spatial Distance
                 double dx = grains[neighborIdx].x - curr->x;
                 double dy = grains[neighborIdx].y - curr->y;
                 if (dx * dx + dy * dy < distThreshSq) {
-                  // Check Misorientation relative to SEED (i) or CURRENT
-                  // (currIdx)? Standard region growing usually checks relative
-                  // to SEED to prevent drift, or CURRENT for connectivity.
-                  // Given HEDM context, we want Grain Average. Since we printed
-                  // the Seed orientation as the grain orientation, we should
-                  // check if neighbor matches the Seed.
-
                   OrientMat2Quat(grains[neighborIdx].orientMat, quat2);
                   GetMisOrientation(quat1, quat2, axis, &ang, sgNr);
 
                   if (ang < maxAng) {
                     grains[neighborIdx].used = true;
                     enqueue(q, neighborIdx);
+                    nVox++;
                   }
                 }
               }
@@ -417,7 +401,15 @@ int main(int argc, char *argv[]) {
         }
       }
 
-      grainID++;
+      // Buffer the unique grain
+      if (nUnique >= uniqueCapacity) {
+        uniqueCapacity *= 2;
+        uniqueGrains = realloc(uniqueGrains, uniqueCapacity * sizeof(UniqueGrain));
+      }
+      memcpy(uniqueGrains[nUnique].orientMat, grains[i].orientMat, 9 * sizeof(double));
+      uniqueGrains[nUnique].x = grains[i].x;
+      uniqueGrains[nUnique].y = grains[i].y;
+      uniqueGrains[nUnique].nVoxels = nVox;
       nUnique++;
     }
 
@@ -434,10 +426,56 @@ int main(int argc, char *argv[]) {
     free(grid);
   }
 
+  // --- Write output with 9-line header ---
+  FILE *fout = fopen(outFN, "w");
+  if (!fout) {
+    printf("Error opening output file %s\n", outFN);
+    free(grains);
+    free(uniqueGrains);
+    return 1;
+  }
+
+  // 9-line header (IndexerOMP skips line 1 for nGrains, then 8 more)
+  fprintf(fout, "%%NumGrains %d\n", nUnique);
+  fprintf(fout, "%%GrainID OrientMat(9) X Y Z LatC(6) 0 0 0 Radius Confidence\n");
+  fprintf(fout, "%%Generated by Mic2GrainsList from %s\n", micFN);
+  fprintf(fout, "%%SpaceGroup %d\n", sgNr);
+  fprintf(fout, "%%MaxAngle %.4lf\n", maxAng);
+  fprintf(fout, "%%MinConfidence %.4lf\n", minConf);
+  fprintf(fout, "%%LatticeParameter %.6lf %.6lf %.6lf %.6lf %.6lf %.6lf\n",
+          latP[0], latP[1], latP[2], latP[3], latP[4], latP[5]);
+  fprintf(fout, "%%DoNeighborSearch %d\n", doNeighborSearch);
+  fprintf(fout, "%%TriEdgeSize %.6lf\n", triEdgeSize);
+
+  // Voxel area for radius computation: equilateral triangle = side^2 * sqrt(3)/4
+  double voxelArea = triEdgeSize * triEdgeSize * sqrt(3.0) / 4.0;
+
+  // Write data rows: ID O(9) X Y 0 LatC(6) 0 0 0 radius 1
+  for (int i = 0; i < nUnique; i++) {
+    double area = uniqueGrains[i].nVoxels * voxelArea;
+    double radius = sqrt(area / M_PI);
+    fprintf(fout,
+            "%d %.12lf %.12lf %.12lf %.12lf %.12lf %.12lf %.12lf %.12lf %.12lf "
+            "%.6lf %.6lf 0 "
+            "%.6lf %.6lf %.6lf %.6lf %.6lf %.6lf "
+            "0 0 0 %.6lf 1\n",
+            i + 1,
+            uniqueGrains[i].orientMat[0], uniqueGrains[i].orientMat[1],
+            uniqueGrains[i].orientMat[2], uniqueGrains[i].orientMat[3],
+            uniqueGrains[i].orientMat[4], uniqueGrains[i].orientMat[5],
+            uniqueGrains[i].orientMat[6], uniqueGrains[i].orientMat[7],
+            uniqueGrains[i].orientMat[8],
+            uniqueGrains[i].x, uniqueGrains[i].y,
+            latP[0], latP[1], latP[2], latP[3], latP[4], latP[5],
+            radius);
+  }
+
   fclose(fout);
+  free(uniqueGrains);
   free(grains);
 
   printf("Values written: %d unique grains found.\n", nUnique);
 
   return 0;
 }
+
