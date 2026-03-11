@@ -350,6 +350,7 @@ class FFViewer(QtWidgets.QMainWindow):
         self.n_frames_per_file = 1
         self.frame_nr = 0
         self.dark_stem = ''
+        self.dark_folder = ''
         self.dark_num = 0
         self.det_nr = -1
         self.sep_folder = False
@@ -1043,13 +1044,14 @@ class FFViewer(QtWidgets.QMainWindow):
         fn, _ = QtWidgets.QFileDialog.getOpenFileName(self, "Select Dark File")
         if not fn:
             return
+        self.dark_folder = os.path.dirname(fn) + '/'
         basename = os.path.basename(fn)
         parsed = _parse_numbered_filename(basename)
         if parsed:
             self.dark_stem = parsed[0]
             self.dark_num = parsed[1]
         self.dark_check.setChecked(True)
-        print(f"Dark: {self.dark_stem}_{self.dark_num}")
+        print(f"Dark: {fn}")
 
     def _on_load_zip(self):
         fn, _ = QtWidgets.QFileDialog.getOpenFileName(
@@ -1093,6 +1095,7 @@ class FFViewer(QtWidgets.QMainWindow):
             else:
                 self.hdf5_data_path = item
                 self.h5data_edit.setText(item)
+            self._load_and_display()
 
     def _on_browse_mask(self):
         fn, _ = QtWidgets.QFileDialog.getOpenFileName(
@@ -1202,12 +1205,36 @@ class FFViewer(QtWidgets.QMainWindow):
         # Dark subtraction
         dark_data = None
         if self.use_dark and not self.zarr_store:
-            dark_fn = build_filename(self.folder, self.dark_stem, self.dark_num,
+            dark_folder = self.dark_folder if self.dark_folder else self.folder
+            dark_fn = build_filename(dark_folder, self.dark_stem, self.dark_num,
                                      self.padding, self.det_nr, self.ext)
             if os.path.exists(dark_fn):
-                dark_data = read_image(dark_fn, self.header_size, self.bytes_per_pixel,
-                                       self.ny, self.nz, 0,
-                                       self.do_transpose, self.hflip, self.vflip)
+                ext_lower = os.path.splitext(dark_fn)[1].lower()
+                if ext_lower in ['.h5', '.hdf', '.hdf5', '.nxs'] and h5py:
+                    # HDF5 dark: average all frames in the dark dataset
+                    try:
+                        with h5py.File(dark_fn, 'r') as f:
+                            dpath = self.hdf5_dark_path
+                            if dpath in f:
+                                dset = f[dpath]
+                                if dset.ndim == 3:
+                                    dark_data = np.mean(dset[:], axis=0).astype(float)
+                                else:
+                                    dark_data = dset[:].astype(float)
+                                if self.do_transpose:
+                                    dark_data = np.transpose(dark_data)
+                                if self.hflip and self.vflip:
+                                    dark_data = dark_data[::-1, ::-1].copy()
+                                elif self.hflip:
+                                    dark_data = dark_data[::-1, :].copy()
+                                elif self.vflip:
+                                    dark_data = dark_data[:, ::-1].copy()
+                    except Exception as e:
+                        print(f"Error reading HDF5 dark: {e}")
+                else:
+                    dark_data = read_image(dark_fn, self.header_size, self.bytes_per_pixel,
+                                           self.ny, self.nz, 0,
+                                           self.do_transpose, self.hflip, self.vflip)
 
         # MaxOverFrames / SumOverFrames
         if self.max_check.isChecked() or self.sum_check.isChecked():
