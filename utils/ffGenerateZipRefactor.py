@@ -144,9 +144,7 @@ def _copy_hdf5_group_to_zarr(hf_group, z_group, path_prefix='', exclude_paths=No
                 data = item[()]
                 if not isinstance(data, np.ndarray):
                     data = np.array([data])
-                if key in z_group:
-                    del z_group[key]
-                z_group.create_dataset(key, data=data)
+                z_group.create_dataset(key, data=data, overwrite=True)
                 print(f"    - Copied: {full_path} (shape={data.shape})")
         except Exception as e:
             print(f"    - Warning: Could not copy '{full_path}': {e}")
@@ -233,11 +231,9 @@ def write_analysis_parameters(z_groups, config):
         forced_dbl = {'OverlapLength': (3.0, sp_pro_analysis)}
         for k, (dt, grp) in forced.items():
             val = 0 if k == 'doPeakFit' else 1
-            if k in grp: del grp[k]
-            grp.create_dataset(k, data=np.array([val], dtype=dt))
+            grp.create_dataset(k, data=np.array([val], dtype=dt), overwrite=True)
         for k, (v, grp) in forced_dbl.items():
-            if k in grp: del grp[k]
-            grp.create_dataset(k, data=np.array([v], dtype=np.double))
+            grp.create_dataset(k, data=np.array([v], dtype=np.double), overwrite=True)
 
     essential_datasets = {
         'RingThresh':   {'default': np.zeros((1, 2), dtype=np.double)},
