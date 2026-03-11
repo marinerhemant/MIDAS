@@ -20,7 +20,6 @@
 #include "midas_paths.h"
 #include "midas_version.h"
 #include <ctype.h>
-#include <limits.h>
 #include <math.h>
 #include <nlopt.h>
 #include <omp.h>
@@ -761,6 +760,8 @@ struct my_func_data {
   double *snrWeights;  // per-point SNR-based weight (NULL=uniform)
   int weightByRadius;  // flag for Feature 4
   int useL2;           // flag: 1 = squared objective
+  int fitWavelength;   // flag: 1 = wavelength is a fitting parameter
+  double *PointDSpacing; // per-point d-spacing (only when fitWavelength=1)
 };
 
 static double problem_function(unsigned n, const double *x, double *grad,
@@ -866,7 +867,15 @@ static double problem_function(unsigned n, const double *x, double *grad,
     }
     DistortFunc += 1;
     Rcorr = Rad * DistortFunc;
-    RIdeal = panelLsd * tan(deg2rad * IdealTtheta[i]);
+    double thisTtheta;
+    if (f_data->fitWavelength) {
+      double wl = x[10]; // wavelength parameter
+      double d = f_data->PointDSpacing[i];
+      thisTtheta = 2.0 * asin(wl / (2.0 * d)) / deg2rad;
+    } else {
+      thisTtheta = IdealTtheta[i];
+    }
+    RIdeal = panelLsd * tan(deg2rad * thisTtheta);
     double Diff = 1 - (Rcorr / RIdeal);
     double w = (f_data->Weights != NULL) ? f_data->Weights[i] : 1.0;
     if (f_data->weightByRadius)
@@ -897,8 +906,10 @@ void FitTiltBCLsd(int nIndices, double *YMean, double *ZMean,
                   double tolLsdPanel, int PerPanelDistortion, double tolP2Panel,
                   int WeightByRadius, double *snrWeights, double *p4Out,
                   int verbose, int L2Objective, double *initParams,
-                  Panel *initPanels) {
-  int nBase = 10;
+                  Panel *initPanels, int fitWavelength, double wavelengthIn,
+                  double tolWavelength, double *PointDSpacing,
+                  double *wavelengthOut) {
+  int nBase = fitWavelength ? 11 : 10;
   unsigned n = nBase;
   if (tolShifts > EPS && nPanels > 1) {
     int stride = (tolRotation > EPS) ? 3 : 2;
@@ -925,6 +936,8 @@ void FitTiltBCLsd(int nIndices, double *YMean, double *ZMean,
   f_data.weightByRadius = WeightByRadius;
   f_data.snrWeights = snrWeights;
   f_data.useL2 = L2Objective;
+  f_data.fitWavelength = fitWavelength;
+  f_data.PointDSpacing = PointDSpacing;
   double x[n], xl[n], xu[n];
   // When initParams is non-NULL, anchor bounds to initial values to prevent
   // multi-iteration drift.  The optimizer still starts at the current value.
@@ -968,6 +981,12 @@ void FitTiltBCLsd(int nIndices, double *YMean, double *ZMean,
   x[9] = p4in;
   xl[9] = bp4 - tolP4;
   xu[9] = bp4 + tolP4;
+  if (fitWavelength) {
+    double bwl = (initParams ? initParams[10] : wavelengthIn);
+    x[10] = wavelengthIn;
+    xl[10] = bwl - tolWavelength;
+    xu[10] = bwl + tolWavelength;
+  }
 
   if (tolShifts > EPS && nPanels > 1) {
     int panelCounts[nPanels];
@@ -1103,6 +1122,8 @@ void FitTiltBCLsd(int nIndices, double *YMean, double *ZMean,
   *p3 = x[8];
   if (nBase > 9 && p4Out)
     *p4Out = x[9];
+  if (fitWavelength && wavelengthOut)
+    *wavelengthOut = x[10];
 
   // 2. Update panel shifts if applicable
   if (nPanels > 0) {
@@ -1533,6 +1554,8 @@ typedef struct {
   int L2Objective;
   int PerPanelLsd;
   int PerPanelDistortion;
+  int FitWavelength;
+  double tolWavelength;
 
   // Image transformations
   int NrTransOpt;
@@ -1591,6 +1614,8 @@ static int parse_parameters(const char *filename, CalibConfig *cfg) {
   cfg->lineoutRBinSize = 0.25;
   cfg->lineoutRMin = 10.0;
   cfg->lineoutRMax = 0.0;
+  cfg->FitWavelength = 0;
+  cfg->tolWavelength = 0.001;
   sprintf(cfg->darkDatasetName, "exchange/dark");
   sprintf(cfg->dataDatasetName, "exchange/data");
 
@@ -1973,6 +1998,16 @@ static int parse_parameters(const char *filename, CalibConfig *cfg) {
       sscanf(aline, "%s %d", dummy, &cfg->L2Objective);
       continue;
     }
+    str = "FitWavelength ";
+    if (!strncmp(aline, str, strlen(str))) {
+      sscanf(aline, "%s %d", dummy, &cfg->FitWavelength);
+      continue;
+    }
+    str = "tolWavelength ";
+    if (!strncmp(aline, str, strlen(str))) {
+      sscanf(aline, "%s %lf", dummy, &cfg->tolWavelength);
+      continue;
+    }
     str = "DistortionOrder ";
     if (!strncmp(aline, str, strlen(str))) {
       continue;
@@ -2118,6 +2153,10 @@ static void print_parameter_summary(const CalibConfig *c) {
     printf("║    WeightByFitSNR: %-40s ║\n", "ON");
   if (c->L2Objective)
     printf("║    L2Objective:   %-40s ║\n", "ON (squared strain)");
+  if (c->FitWavelength) {
+    printf("║    FitWavelength:  %-40s ║\n", "ON");
+    printf("║    tolWavelength:  %-40.6f ║\n", c->tolWavelength);
+  }
   if (c->OutlierIterations > 1)
     printf("║    OutlierIters:   %-40d ║\n", c->OutlierIterations);
   if (c->PerPanelLsd)
@@ -2211,6 +2250,8 @@ int main(int argc, char *argv[]) {
       PerPanelDistortion = cfg.PerPanelDistortion;
   double tolP4 = cfg.tolP4, p4in = cfg.p4in;
   double tolLsdPanel = cfg.tolLsdPanel, tolP2Panel = cfg.tolP2Panel;
+  int FitWavelength = cfg.FitWavelength;
+  double tolWavelength = cfg.tolWavelength;
   int Padding = cfg.Padding, NrPixelsY = cfg.NrPixelsY,
       NrPixelsZ = cfg.NrPixelsZ, NrPixels = cfg.NrPixels;
   int NrTransOpt = cfg.NrTransOpt, RBinWidth = cfg.RBinWidth;
@@ -2255,9 +2296,12 @@ int main(int argc, char *argv[]) {
       printf("Transpose.\n");
   }
   double Thetas[100];
+  double DSpacings[100];
   int RingIDs[100];
-  for (i = 0; i < 100; i++)
+  for (i = 0; i < 100; i++) {
     Thetas[i] = 0;
+    DSpacings[i] = 0;
+  }
   int n_hkls = 0;
 
   run_midas_binary("GetHKLList", ParamFN);
@@ -2285,6 +2329,7 @@ int main(int argc, char *argv[]) {
     }
     if (Exclude == 0 && tRnr > LastRingDone) {
       Thetas[n_hkls] = theta;
+      DSpacings[n_hkls] = Wavelength / (2.0 * sin(theta * deg2rad));
       RingIDs[n_hkls] = tRnr;
       LastRingDone = tRnr;
       double ringRadPx = Lsd * tan(deg2rad * 2 * theta) / px;
@@ -2494,10 +2539,9 @@ int main(int argc, char *argv[]) {
     printf("Mask file read: %s\n", MaskFN);
   }
   int a;
-  double means[12];
-  for (a = 0; a < 11; a++)
+  double means[13];
+  for (a = 0; a < 13; a++)
     means[a] = 0;
-  means[11] = 0;
   double medStrain = 0, q25Strain = 0, q75Strain = 0, minStrain = 0,
          maxStrain = 0;
   // Radius residual statistics (signed and absolute)
@@ -2646,6 +2690,7 @@ int main(int argc, char *argv[]) {
            *DiffIns = NULL;
     double *RMean = NULL, *EtaMean = NULL, *YMean = NULL, *ZMean = NULL;
     double *IdealTtheta = NULL;
+    double *PointDSpacing = NULL;
     int *RingNumbers = NULL;
     int nIndices = nEtaBins * n_hkls;
     int nIndicesFinal = 0;
@@ -2729,15 +2774,18 @@ int main(int argc, char *argv[]) {
               p3in, MaxRingRad, Lsd, p4in, NrPixels, maxPerBin_0);
 
       IdealTtheta = malloc(nIndices * sizeof(*IdealTtheta));
+      PointDSpacing = FitWavelength ? malloc(nIndices * sizeof(double)) : NULL;
       RingNumbers = malloc(nIndices * sizeof(*RingNumbers));
       RMean = malloc(nIndices * sizeof(*RMean));
       EtaMean = malloc(nIndices * sizeof(*EtaMean));
       int NrPtsForFit_0 =
           (int)((floor)((Rmaxs_0[0] - Rmins_0[0]) / px)) * RBinWidth;
       for (i = 0; i < nIndices; i++) {
-        IdealTtheta[i] =
-            rad2deg * atan(IdealRs_0[(int)(floor((float)i / nEtaBins))] / Lsd);
-        RingNumbers[i] = RingIDs[(int)(floor((float)i / nEtaBins))];
+        int ringIdx = (int)(floor((float)i / nEtaBins));
+        IdealTtheta[i] = rad2deg * atan(IdealRs_0[ringIdx] / Lsd);
+        RingNumbers[i] = RingIDs[ringIdx];
+        if (PointDSpacing)
+          PointDSpacing[i] = DSpacings[ringIdx];
       }
 
       // Find peak positions
@@ -2758,12 +2806,16 @@ int main(int argc, char *argv[]) {
       double *RMean2_0 = malloc(nIndices * sizeof(*RMean2_0));
       double *EtaMean2_0 = malloc(nIndices * sizeof(*EtaMean2_0));
       double *IdealTtheta2_0 = malloc(nIndices * sizeof(*IdealTtheta2_0));
+      double *PointDSpacing2_0 =
+          FitWavelength ? malloc(nIndices * sizeof(double)) : NULL;
       int *RingNumbers2_0 = malloc(nIndices * sizeof(*RingNumbers2_0));
       for (i = 0; i < nIndices; i++) {
         if (RMean[i] != 0) {
           RMean2_0[countr_0] = RMean[i];
           EtaMean2_0[countr_0] = EtaMean[i];
           IdealTtheta2_0[countr_0] = IdealTtheta[i];
+          if (PointDSpacing2_0)
+            PointDSpacing2_0[countr_0] = PointDSpacing[i];
           RingNumbers2_0[countr_0] = RingNumbers[i];
           countr_0++;
         }
@@ -2775,10 +2827,12 @@ int main(int argc, char *argv[]) {
       free(RMean);
       free(EtaMean);
       free(IdealTtheta);
+      free(PointDSpacing);
       free(RingNumbers);
       RMean = RMean2_0;
       EtaMean = EtaMean2_0;
       IdealTtheta = IdealTtheta2_0;
+      PointDSpacing = PointDSpacing2_0;
       RingNumbers = RingNumbers2_0;
 
       // Convert to detector coords
@@ -2814,8 +2868,8 @@ int main(int argc, char *argv[]) {
     // iterations. Without this, bounds drift because each iteration re-centers
     // bounds on the latest fitted values, allowing parameters to walk
     // arbitrarily far.
-    double initParams[10] = {Lsd,  ybc,  zbc,  tyin, tzin,
-                             p0in, p1in, p2in, p3in, p4in};
+    double initParams[11] = {Lsd,  ybc,  zbc,  tyin, tzin,      p0in,
+                             p1in, p2in, p3in, p4in, Wavelength};
     Panel *initPanels = NULL;
     if (nPanels > 0) {
       initPanels = malloc(nPanels * sizeof(Panel));
@@ -2890,17 +2944,22 @@ int main(int argc, char *argv[]) {
         double *IdealRmins = malloc(nIndices * sizeof(*IdealRmins));
         double *IdealRmaxs = malloc(nIndices * sizeof(*IdealRmaxs));
         IdealTtheta = malloc(nIndices * sizeof(*IdealTtheta));
+        if (FitWavelength)
+          PointDSpacing = malloc(nIndices * sizeof(double));
         RingNumbers = malloc(nIndices * sizeof(*RingNumbers));
         RMean = malloc(nIndices * sizeof(*RMean));
         EtaMean = malloc(nIndices * sizeof(*EtaMean));
         int NrPtsForFit;
         NrPtsForFit = (int)((floor)((Rmaxs[0] - Rmins[0]) / px)) * RBinWidth;
         for (i = 0; i < nIndices; i++) {
-          IdealR[i] = IdealRs[(int)(floor((float)i / nEtaBins))];
-          IdealRmins[i] = Rmins[(int)(floor((float)i / nEtaBins))];
-          IdealRmaxs[i] = Rmaxs[(int)(floor((float)i / nEtaBins))];
+          int ringIdx = (int)(floor((float)i / nEtaBins));
+          IdealR[i] = IdealRs[ringIdx];
+          IdealRmins[i] = Rmins[ringIdx];
+          IdealRmaxs[i] = Rmaxs[ringIdx];
           IdealTtheta[i] = rad2deg * atan(IdealR[i] / Lsd);
-          RingNumbers[i] = RingIDs[(int)(floor((float)i / nEtaBins))];
+          RingNumbers[i] = RingIDs[ringIdx];
+          if (PointDSpacing)
+            PointDSpacing[i] = DSpacings[ringIdx];
         }
 
         // Find peak positions
@@ -2926,6 +2985,8 @@ int main(int argc, char *argv[]) {
         double *RMean2 = malloc(nIndices * sizeof(*RMean2));
         double *EtaMean2 = malloc(nIndices * sizeof(*EtaMean2));
         double *IdealTtheta2 = malloc(nIndices * sizeof(*IdealTtheta2));
+        double *PointDSpacing2 =
+            FitWavelength ? malloc(nIndices * sizeof(double)) : NULL;
         int *RingNumbers2 = malloc(nIndices * sizeof(*RingNumbers2));
         double *FitSNR2 = malloc(nIndices * sizeof(*FitSNR2));
         for (i = 0; i < nIndices; i++) {
@@ -2933,6 +2994,8 @@ int main(int argc, char *argv[]) {
             RMean2[countr] = RMean[i];
             EtaMean2[countr] = EtaMean[i];
             IdealTtheta2[countr] = IdealTtheta[i];
+            if (PointDSpacing2)
+              PointDSpacing2[countr] = PointDSpacing[i];
             RingNumbers2[countr] = RingNumbers[i];
             FitSNR2[countr] = FitSNR[i];
             countr++;
@@ -2946,12 +3009,14 @@ int main(int argc, char *argv[]) {
         free(RMean);
         free(EtaMean);
         free(IdealTtheta);
+        free(PointDSpacing);
         free(RingNumbers);
         if (didInitBin)
           free(FitSNR);
         RMean = RMean2;
         EtaMean = EtaMean2;
         IdealTtheta = IdealTtheta2;
+        PointDSpacing = PointDSpacing2;
         RingNumbers = RingNumbers2;
         FitSNR = FitSNR2;
 
@@ -3084,6 +3149,7 @@ int main(int argc, char *argv[]) {
 
       // Optimize
       double p4 = p4in;
+      double wavelengthFit = Wavelength;
       FitTiltBCLsd(nIndices, Yc, Zc, IdealTtheta, Lsd, MaxRingRad, ybc, zbc, tx,
                    tyin, tzin, p0in, p1in, p2in, p3in, &ty, &tz, &LsdFit,
                    &ybcFit, &zbcFit, &p0, &p1, &p2, &p3, &MeanDiff, tolTilts,
@@ -3091,7 +3157,11 @@ int main(int argc, char *argv[]) {
                    tolRotation, px, outlierFactor, MinIndicesForFit, FixPanelID,
                    RingWeights, p4in, tolP4, PerPanelLsd, tolLsdPanel,
                    PerPanelDistortion, tolP2Panel, WeightByRadius, snrWeights,
-                   &p4, iter == 0, L2Objective, initParams, initPanels);
+                   &p4, iter == 0, L2Objective, initParams, initPanels,
+                   FitWavelength, Wavelength, tolWavelength, PointDSpacing,
+                   &wavelengthFit);
+      if (FitWavelength)
+        Wavelength = wavelengthFit;
       if (iter == 0) {
         printf("Number of function calls: %lld\n", NrCalls);
       }
@@ -3109,9 +3179,11 @@ int main(int argc, char *argv[]) {
         free(RMean);
         free(EtaMean);
         free(IdealTtheta);
+        free(PointDSpacing);
         free(RingNumbers);
         YMean = ZMean = Yc = Zc = EtaIns = RadIns = DiffIns = NULL;
         RMean = EtaMean = IdealTtheta = NULL;
+        PointDSpacing = NULL;
         RingNumbers = NULL;
 
         // Recompute radii for optimized Lsd
@@ -3158,6 +3230,8 @@ int main(int argc, char *argv[]) {
         double *IRmins_rf = malloc(nIdx_rf * sizeof(*IRmins_rf));
         double *IRmaxs_rf = malloc(nIdx_rf * sizeof(*IRmaxs_rf));
         IdealTtheta = malloc(nIdx_rf * sizeof(*IdealTtheta));
+        if (FitWavelength)
+          PointDSpacing = malloc(nIdx_rf * sizeof(double));
         RingNumbers = malloc(nIdx_rf * sizeof(*RingNumbers));
         RMean = malloc(nIdx_rf * sizeof(*RMean));
         EtaMean = malloc(nIdx_rf * sizeof(*EtaMean));
@@ -3169,6 +3243,8 @@ int main(int argc, char *argv[]) {
           IRmaxs_rf[i] = Rmaxs_rf[ri];
           IdealTtheta[i] = rad2deg * atan(IdealRs_rf[ri] / LsdFit);
           RingNumbers[i] = RingIDs[ri];
+          if (PointDSpacing)
+            PointDSpacing[i] = DSpacings[ri];
         }
 
         double *FitSNR_rf = calloc(nIdx_rf, sizeof(*FitSNR_rf));
@@ -3188,6 +3264,7 @@ int main(int argc, char *argv[]) {
         double *RM2 = malloc(nIdx_rf * sizeof(*RM2));
         double *EM2 = malloc(nIdx_rf * sizeof(*EM2));
         double *IT2 = malloc(nIdx_rf * sizeof(*IT2));
+        double *PD2 = FitWavelength ? malloc(nIdx_rf * sizeof(double)) : NULL;
         int *RN2 = malloc(nIdx_rf * sizeof(*RN2));
         double *FS2 = malloc(nIdx_rf * sizeof(*FS2)); // compacted FitSNR
         for (i = 0; i < nIdx_rf; i++) {
@@ -3195,6 +3272,8 @@ int main(int argc, char *argv[]) {
             RM2[cnt_rf] = RMean[i];
             EM2[cnt_rf] = EtaMean[i];
             IT2[cnt_rf] = IdealTtheta[i];
+            if (PD2)
+              PD2[cnt_rf] = PointDSpacing[i];
             RN2[cnt_rf] = RingNumbers[i];
             FS2[cnt_rf] = FitSNR_rf[i];
             cnt_rf++;
@@ -3203,6 +3282,7 @@ int main(int argc, char *argv[]) {
         free(RMean);
         free(EtaMean);
         free(IdealTtheta);
+        free(PointDSpacing);
         free(RingNumbers);
         free(FitSNR_rf);
         if (FitSNR)
@@ -3210,6 +3290,7 @@ int main(int argc, char *argv[]) {
         RMean = RM2;
         EtaMean = EM2;
         IdealTtheta = IT2;
+        PointDSpacing = PD2;
         RingNumbers = RN2;
         FitSNR = FS2; // persist for next iter's snrWeights
         nIndices = cnt_rf;
@@ -3367,6 +3448,7 @@ int main(int argc, char *argv[]) {
         free(YMean);
         free(ZMean);
         free(IdealTtheta);
+        free(PointDSpacing);
         free(RingNumbers);
         free(Yc);
         free(Zc);
@@ -3427,6 +3509,7 @@ int main(int argc, char *argv[]) {
       free(YMean);
       free(ZMean);
       free(IdealTtheta);
+      free(PointDSpacing);
       free(RingNumbers);
       free(Yc);
       free(Zc);
@@ -3476,6 +3559,8 @@ int main(int argc, char *argv[]) {
       double *IRmins_pl = malloc(nIdx_pl * sizeof(*IRmins_pl));
       double *IRmaxs_pl = malloc(nIdx_pl * sizeof(*IRmaxs_pl));
       IdealTtheta = malloc(nIdx_pl * sizeof(*IdealTtheta));
+      if (FitWavelength)
+        PointDSpacing = malloc(nIdx_pl * sizeof(double));
       RingNumbers = malloc(nIdx_pl * sizeof(*RingNumbers));
       RMean = malloc(nIdx_pl * sizeof(*RMean));
       EtaMean = malloc(nIdx_pl * sizeof(*EtaMean));
@@ -3486,6 +3571,8 @@ int main(int argc, char *argv[]) {
         IRmaxs_pl[i] = Rmaxs_pl[ri];
         IdealTtheta[i] = rad2deg * atan(IdealRs_pl[ri] / LsdFit);
         RingNumbers[i] = RingIDs[ri];
+        if (PointDSpacing)
+          PointDSpacing[i] = DSpacings[ri];
       }
       double *FitSNR_pl = calloc(nIdx_pl, sizeof(*FitSNR_pl));
       if (FitWeightMean == 1) {
@@ -3502,12 +3589,15 @@ int main(int argc, char *argv[]) {
       double *RM2 = malloc(nIdx_pl * sizeof(*RM2));
       double *EM2 = malloc(nIdx_pl * sizeof(*EM2));
       double *IT2 = malloc(nIdx_pl * sizeof(*IT2));
+      double *PD2 = FitWavelength ? malloc(nIdx_pl * sizeof(double)) : NULL;
       int *RN2 = malloc(nIdx_pl * sizeof(*RN2));
       for (i = 0; i < nIdx_pl; i++) {
         if (RMean[i] != 0) {
           RM2[cnt_pl] = RMean[i];
           EM2[cnt_pl] = EtaMean[i];
           IT2[cnt_pl] = IdealTtheta[i];
+          if (PD2)
+            PD2[cnt_pl] = PointDSpacing[i];
           RN2[cnt_pl] = RingNumbers[i];
           cnt_pl++;
         }
@@ -3515,10 +3605,12 @@ int main(int argc, char *argv[]) {
       free(RMean);
       free(EtaMean);
       free(IdealTtheta);
+      free(PointDSpacing);
       free(RingNumbers);
       RMean = RM2;
       EtaMean = EM2;
       IdealTtheta = IT2;
+      PointDSpacing = PD2;
       RingNumbers = RN2;
       nIndices = cnt_pl;
       nIndicesFinal = nIndices;
@@ -3711,6 +3803,7 @@ int main(int argc, char *argv[]) {
     means[9] += MeanDiff;
     means[10] += StdDiff;
     means[11] += p4in;
+    means[12] += Wavelength;
     FILE *Out;
     char OutFileName[1024];
     sprintf(OutFileName, "%s_%0*d%s.%s", fn, Padding, a, Ext, "corr.csv");
@@ -4037,8 +4130,10 @@ int main(int argc, char *argv[]) {
     // Free arrays kept from the final iteration
     // (R, Eta, Indices, NrEachIndexBin, IdealR, IdealRmins, IdealRmaxs
     //  were already freed inside the iteration loop)
-    if (IdealTtheta)
+    if (IdealTtheta) {
       free(IdealTtheta);
+      free(PointDSpacing);
+    }
     if (RMean)
       free(RMean);
     if (EtaMean)
@@ -4170,8 +4265,8 @@ int main(int argc, char *argv[]) {
     double lo_start = omp_get_wtime();
 
     // Use mean fitted parameters (averaged across all files)
-    double lo_means[12];
-    for (int mi = 0; mi < 12; mi++)
+    double lo_means[13];
+    for (int mi = 0; mi < 13; mi++)
       lo_means[mi] = means[mi] / (EndNr - StartNr + 1);
     double lo_Lsd = lo_means[0];
     double lo_ybc = lo_means[1];
@@ -4729,7 +4824,7 @@ int main(int argc, char *argv[]) {
   }
   // Print final fitted parameters (moved to end for easy copy/paste)
   printf("\n*******************Mean Values*******************\n");
-  for (a = 0; a < 12; a++)
+  for (a = 0; a < 13; a++)
     means[a] /= (EndNr - StartNr + 1);
   printf("Lsd        %0.12f\n"
          "BC         %0.12f %0.12f\n"
@@ -4742,6 +4837,11 @@ int main(int argc, char *argv[]) {
          means[0], means[1], means[2], means[3], means[4], means[5], means[6],
          means[7], means[8]);
   printf("p4         %0.12f\n", means[11]);
+  if (FitWavelength) {
+    printf("Wavelength %0.12f\n", means[12]);
+    double energy_keV = 12.398419843320026 / means[12];
+    printf("Energy(keV) %0.6f\n", energy_keV);
+  }
   printf("           *** microstrain ***\n");
   printf("MeanStrain %0.6lf\nStdStrain  %0.6lf\n", means[9] * 1e6,
          means[10] * 1e6);
