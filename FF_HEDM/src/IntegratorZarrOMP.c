@@ -987,12 +987,16 @@ int main(int argc, char **argv) {
     }
     if (strstr(finfo->name,
                "analysis/process/analysis_parameters/GapIntensity/0") != NULL) {
-      ReadZarrChunk(arch, count, &GapIntensity, sizeof(long long int));
+      double tmpGap;
+      ReadZarrChunk(arch, count, &tmpGap, sizeof(double));
+      GapIntensity = (long long int)tmpGap;
     }
     if (strstr(finfo->name,
                "analysis/process/analysis_parameters/BadPxIntensity/0") !=
         NULL) {
-      ReadZarrChunk(arch, count, &BadPxIntensity, sizeof(long long int));
+      double tmpBad;
+      ReadZarrChunk(arch, count, &tmpBad, sizeof(double));
+      BadPxIntensity = (long long int)tmpBad;
     }
     if (strstr(finfo->name, "exchange/data/.zarray") != NULL) {
       char *s = NULL;
