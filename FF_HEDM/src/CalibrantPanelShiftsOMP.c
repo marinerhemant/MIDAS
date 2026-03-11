@@ -449,7 +449,7 @@ static double problem_function_doublet_profile(unsigned n, const double *x,
 void FitDoubletPeakShape(int NrPtsForFit, double *Rs, double *PeakShape,
                          double *Rfit1, double *Rfit2, double *fitSNR1,
                          double *fitSNR2, double Rstep, double Rmean1,
-                         double Rmean2) {
+                         double Rmean2, double Rmid) {
   unsigned n = 8;
   double x[8], xl[8], xu[8];
   struct my_profile_func_data f_data;
@@ -469,30 +469,30 @@ void FitDoubletPeakShape(int NrPtsForFit, double *Rs, double *PeakShape,
   double ImaxGuess = MaxI - BG0;
   if (ImaxGuess < 1e-6)
     ImaxGuess = 1e-6;
-  // Rcen1
+  // Rcen1 — constrained to inner half (below Rmid) to prevent label swap
   x[0] = Rmean1;
   xl[0] = Rs[0];
-  xu[0] = Rs[NrPtsForFit - 1];
-  // Rcen2
+  xu[0] = Rmid;
+  // Rcen2 — constrained to outer half (above Rmid) to prevent label swap
   x[1] = Rmean2;
-  xl[1] = Rs[0];
+  xl[1] = Rmid;
   xu[1] = Rs[NrPtsForFit - 1];
   // Mu (shared)
   x[2] = 0.5;
   xl[2] = 0;
   xu[2] = 1;
-  // Gamma1 (FWHM of peak 1)
+  // Gamma1 (FWHM of peak 1) — Issue #5: match singlet /2 bound
   x[3] = GammaGuess;
   xl[3] = Rstep / 2;
-  xu[3] = Rstep * NrPtsForFit / 4;
+  xu[3] = Rstep * NrPtsForFit / 2;
   // Imax1
   x[4] = ImaxGuess * 0.6;
   xl[4] = ImaxGuess / 100;
   xu[4] = MaxI * 1.5;
-  // Gamma2 (FWHM of peak 2)
+  // Gamma2 (FWHM of peak 2) — Issue #5: match singlet /2 bound
   x[5] = GammaGuess;
   xl[5] = Rstep / 2;
-  xu[5] = Rstep * NrPtsForFit / 4;
+  xu[5] = Rstep * NrPtsForFit / 2;
   // Imax2
   x[6] = ImaxGuess * 0.6;
   xl[6] = ImaxGuess / 100;
@@ -548,6 +548,20 @@ void CalcFittedMean(int nIndices, int *NrEachIndexBin, int **Indices,
   int NrPixels =
       NrPixelsY > NrPixelsZ ? NrPixelsY : NrPixelsZ; // square image stride
   int idxThis;
+
+  // Issue #1: Pre-initialize secondary doublet slots to 0 before the OMP loop
+  // so they have defined values even if the primary thread hasn't run yet.
+  if (doubletFlag != NULL) {
+    for (idxThis = 0; idxThis < nIndices; idxThis++) {
+      int ringIdx = idxThis / nBinsPerRing;
+      if (doubletFlag[ringIdx] == 2) {
+        RMean[idxThis] = 0;
+        FitSNR[idxThis] = 0;
+        EtaMean[idxThis] = 0;
+      }
+    }
+  }
+
 #pragma omp parallel for num_threads(numProcs) private(idxThis)                \
     schedule(dynamic)
   for (idxThis = 0; idxThis < nIndices; idxThis++) {
@@ -604,7 +618,63 @@ void CalcFittedMean(int nIndices, int *NrEachIndexBin, int **Indices,
       Rmax = IdealRmaxs[idxThis];
     }
 
-    // Compute NrPtsForFit for this bin based on the window size
+    BinNr = etaBin;
+    EtaMi = -180 + BinNr * (360.0 / nBinsPerRing);
+    EtaMa = -180 + (BinNr + 1) * (360.0 / nBinsPerRing);
+
+    // Detector boundary check using the (possibly merged) Rmax.
+    // Issue #4: For doublets, if the merged window (using partner's Rmax)
+    // clips the detector edge, fall back to singlet fitting for the primary
+    // ring using its own Rmax instead of rejecting both rings.
+    double RmaxCheck = Rmax;
+    int doubletFellBackToSinglet = 0;
+    ytr = ybc - (-RmaxCheck * sin(EtaMa * deg2rad)) / px;
+    ztr = zbc + (RmaxCheck * cos(EtaMa * deg2rad)) / px;
+    int edgeClip1 = (((int)ytr > NrPixelsY - 3) || ((int)ytr < 3) ||
+                     ((int)ztr > NrPixelsZ - 3) || ((int)ztr < 3));
+    ytr = ybc - (-RmaxCheck * sin(EtaMi * deg2rad)) / px;
+    ztr = zbc + (RmaxCheck * cos(EtaMi * deg2rad)) / px;
+    int edgeClip2 = (((int)ytr > NrPixelsY - 3) || ((int)ytr < 3) ||
+                     ((int)ztr > NrPixelsZ - 3) || ((int)ztr < 3));
+    if (edgeClip1 || edgeClip2) {
+      if (isDoublet) {
+        // Merged window clips edge — try primary ring's own window
+        double primaryRmax = IdealRmaxs[idxThis];
+        ytr = ybc - (-primaryRmax * sin(EtaMa * deg2rad)) / px;
+        ztr = zbc + (primaryRmax * cos(EtaMa * deg2rad)) / px;
+        int primaryClip1 = (((int)ytr > NrPixelsY - 3) || ((int)ytr < 3) ||
+                            ((int)ztr > NrPixelsZ - 3) || ((int)ztr < 3));
+        ytr = ybc - (-primaryRmax * sin(EtaMi * deg2rad)) / px;
+        ztr = zbc + (primaryRmax * cos(EtaMi * deg2rad)) / px;
+        int primaryClip2 = (((int)ytr > NrPixelsY - 3) || ((int)ytr < 3) ||
+                            ((int)ztr > NrPixelsZ - 3) || ((int)ztr < 3));
+        if (primaryClip1 || primaryClip2) {
+          // Primary ring also clips — zero both
+          RMean[idxThis] = 0;
+          FitSNR[idxThis] = 0;
+          RMean[partnerIdx] = 0;
+          FitSNR[partnerIdx] = 0;
+          continue;  // arrays not yet allocated, skip cleanup
+        }
+        // Primary fits — fall back to singlet for primary, zero partner
+        isDoublet = 0;
+        doubletFellBackToSinglet = 1;
+        Rmax = primaryRmax;
+        Rmin = IdealRmins[idxThis];
+        RMean[partnerIdx] = 0;
+        FitSNR[partnerIdx] = 0;
+      } else {
+        RMean[idxThis] = 0;
+        FitSNR[idxThis] = 0;
+        continue;  // arrays not yet allocated, skip cleanup
+      }
+    }
+    EtaMean[idxThis] = (EtaMi + EtaMa) / 2;
+    if (isDoublet)
+      EtaMean[partnerIdx] = EtaMean[idxThis];
+
+    // Compute NrPtsLocal AFTER boundary check (Rmax may have changed
+    // due to doublet-to-singlet fallback)
     int NrPtsLocal = (int)((Rmax - Rmin) / px) * 4;
     if (NrPtsLocal < NrPtsForFit)
       NrPtsLocal = NrPtsForFit;
@@ -618,38 +688,6 @@ void CalcFittedMean(int nIndices, int *NrEachIndexBin, int **Indices,
 
     AllZero = 1;
     Rstep = (Rmax - Rmin) / NrPtsLocal;
-    BinNr = etaBin;
-    EtaMi = -180 + BinNr * (360.0 / nBinsPerRing);
-    EtaMa = -180 + (BinNr + 1) * (360.0 / nBinsPerRing);
-
-    // Detector boundary check using the (possibly merged) Rmax
-    ytr = ybc - (-Rmax * sin(EtaMa * deg2rad)) / px;
-    ztr = zbc + (Rmax * cos(EtaMa * deg2rad)) / px;
-    if (((int)ytr > NrPixelsY - 3) || ((int)ytr < 3) ||
-        ((int)ztr > NrPixelsZ - 3) || ((int)ztr < 3)) {
-      RMean[idxThis] = 0;
-      FitSNR[idxThis] = 0;
-      if (isDoublet) {
-        RMean[partnerIdx] = 0;
-        FitSNR[partnerIdx] = 0;
-      }
-      goto cleanup;
-    }
-    ytr = ybc - (-Rmax * sin(EtaMi * deg2rad)) / px;
-    ztr = zbc + (Rmax * cos(EtaMi * deg2rad)) / px;
-    if (((int)ytr > NrPixelsY - 3) || ((int)ytr < 3) ||
-        ((int)ztr > NrPixelsZ - 3) || ((int)ztr < 3)) {
-      RMean[idxThis] = 0;
-      FitSNR[idxThis] = 0;
-      if (isDoublet) {
-        RMean[partnerIdx] = 0;
-        FitSNR[partnerIdx] = 0;
-      }
-      goto cleanup;
-    }
-    EtaMean[idxThis] = (EtaMi + EtaMa) / 2;
-    if (isDoublet)
-      EtaMean[partnerIdx] = EtaMean[idxThis];
 
     // Merge indices from both rings for the profile calculation
     {
@@ -683,33 +721,20 @@ void CalcFittedMean(int nIndices, int *NrEachIndexBin, int **Indices,
 
       if (AllZero != 1) {
         if (isDoublet) {
-          // For doublet: compute weighted means in each ring's sub-window
-          // as initial guesses, then fit the doublet
-          double Rmean1 = 0, Rmean2 = 0;
-          double W1 = 0, W2 = 0;
+          // Issue #3: Use ideal theoretical radii as initial guesses
+          // instead of intensity-weighted means, which fail when peaks
+          // heavily overlap and the midpoint falls on a peak.
+          double Rmean1 = (IdealRmins[idxThis] + IdealRmaxs[idxThis]) / 2;
+          double Rmean2 = (IdealRmins[partnerIdx] + IdealRmaxs[partnerIdx]) / 2;
+          // Issue #2: Rmid constrains Rcen1 <= Rmid and Rcen2 >= Rmid
+          // to prevent the optimizer from swapping which center belongs
+          // to which ring.
           double Rmid = (IdealRmaxs[idxThis] + IdealRmins[partnerIdx]) / 2;
-          for (j = 0; j < NrPtsLocal; j++) {
-            if (Rs[j] < Rmid) {
-              Rmean1 += Rs[j] * PeakShape[j];
-              W1 += PeakShape[j];
-            } else {
-              Rmean2 += Rs[j] * PeakShape[j];
-              W2 += PeakShape[j];
-            }
-          }
-          if (W1 > 0)
-            Rmean1 /= W1;
-          else
-            Rmean1 = (IdealRmins[idxThis] + IdealRmaxs[idxThis]) / 2;
-          if (W2 > 0)
-            Rmean2 /= W2;
-          else
-            Rmean2 = (IdealRmins[partnerIdx] + IdealRmaxs[partnerIdx]) / 2;
 
           double Rfit1 = 0, Rfit2 = 0;
           double snr1 = 0, snr2 = 0;
           FitDoubletPeakShape(NrPtsLocal, Rs, PeakShape, &Rfit1, &Rfit2, &snr1,
-                              &snr2, Rstep, Rmean1, Rmean2);
+                              &snr2, Rstep, Rmean1, Rmean2, Rmid);
           RMean[idxThis] = Rfit1;
           RMean[partnerIdx] = Rfit2;
           FitSNR[idxThis] = snr1;
@@ -743,6 +768,12 @@ void CalcFittedMean(int nIndices, int *NrEachIndexBin, int **Indices,
   }
 }
 
+// qsort comparator for doubles
+static int cmp_double(const void *a, const void *b) {
+  double da = *(const double *)a, db = *(const double *)b;
+  return (da > db) - (da < db);
+}
+
 struct my_func_data {
   int nIndices;
   double *YMean;
@@ -762,6 +793,7 @@ struct my_func_data {
   int useL2;           // flag: 1 = squared objective
   int fitWavelength;   // flag: 1 = wavelength is a fitting parameter
   double *PointDSpacing; // per-point d-spacing (only when fitWavelength=1)
+  int fitParallax;     // flag: 1 = parallax is a fitting parameter
 };
 
 static double problem_function(unsigned n, const double *x, double *grad,
@@ -880,6 +912,10 @@ static double problem_function(unsigned n, const double *x, double *grad,
       thisTtheta = IdealTtheta[i];
     }
     RIdeal = panelLsd * tan(deg2rad * thisTtheta);
+    if (f_data->fitParallax) {
+      int parIdx = 11; // parallax is always at index 11
+      RIdeal += x[parIdx] * sin(deg2rad * thisTtheta);
+    }
     double Diff = 1 - (Rcorr / RIdeal);
     double w = (f_data->Weights != NULL) ? f_data->Weights[i] : 1.0;
     if (f_data->weightByRadius)
@@ -913,9 +949,13 @@ void FitTiltBCLsd(int nIndices, double *YMean, double *ZMean,
                   int verbose, int L2Objective, double *initParams,
                   Panel *initPanels, int fitWavelength, double wavelengthIn,
                   double tolWavelength, double *PointDSpacing,
-                  double *wavelengthOut) {
+                  double *wavelengthOut,
+                  double parallaxIn, double tolParallax,
+                  double *parallaxOut) {
+  int fitParallax = (tolParallax > EPS) ? 1 : 0;
   int nBase = 11; // Lsd, ybc, zbc, ty, tz, p0-p3, p4, p5
-  if (fitWavelength) nBase = 12;
+  if (fitParallax) nBase++;    // parallax at index 11
+  if (fitWavelength) nBase++;  // wavelength always last
   unsigned n = nBase;
   if (tolShifts > EPS && nPanels > 1) {
     int stride = (tolRotation > EPS) ? 3 : 2;
@@ -944,6 +984,7 @@ void FitTiltBCLsd(int nIndices, double *YMean, double *ZMean,
   f_data.useL2 = L2Objective;
   f_data.fitWavelength = fitWavelength;
   f_data.PointDSpacing = PointDSpacing;
+  f_data.fitParallax = fitParallax;
   double x[n], xl[n], xu[n];
   // When initParams is non-NULL, anchor bounds to initial values to prevent
   // multi-iteration drift.  The optimizer still starts at the current value.
@@ -991,11 +1032,18 @@ void FitTiltBCLsd(int nIndices, double *YMean, double *ZMean,
   x[10] = p5in;
   xl[10] = bp5 - tolP5;
   xu[10] = bp5 + tolP5;
+  if (fitParallax) {
+    double bpar = (initParams ? initParams[11] : parallaxIn);
+    x[11] = parallaxIn;
+    xl[11] = bpar - tolParallax;
+    xu[11] = bpar + tolParallax;
+  }
   if (fitWavelength) {
-    double bwl = (initParams ? initParams[11] : wavelengthIn);
-    x[11] = wavelengthIn;
-    xl[11] = bwl - tolWavelength;
-    xu[11] = bwl + tolWavelength;
+    int wlIdx = nBase - 1; // wavelength always last
+    double bwl = (initParams ? initParams[wlIdx] : wavelengthIn);
+    x[wlIdx] = wavelengthIn;
+    xl[wlIdx] = bwl - tolWavelength;
+    xu[wlIdx] = bwl + tolWavelength;
   }
 
   if (tolShifts > EPS && nPanels > 1) {
@@ -1134,6 +1182,8 @@ void FitTiltBCLsd(int nIndices, double *YMean, double *ZMean,
     *p4Out = x[9];
   if (p5Out)
     *p5Out = x[10];
+  if (fitParallax && parallaxOut)
+    *parallaxOut = x[11];
   if (fitWavelength && wavelengthOut)
     *wavelengthOut = x[nBase - 1];
 
@@ -1254,6 +1304,8 @@ void FitTiltBCLsd(int nIndices, double *YMean, double *ZMean,
       DistortFunc += 1;
       Rcorr = Rad * DistortFunc;
       RIdeal = panelLsd * tan(deg2rad * IdealTtheta[i]);
+      if (fitParallax && parallaxOut)
+        RIdeal += (*parallaxOut) * sin(deg2rad * IdealTtheta[i]);
       Diff = fabs(1 - (Rcorr / RIdeal));
       tempDiffs[i] = Diff;
       totalSum += Diff;
@@ -1304,7 +1356,7 @@ static inline void CorrectTiltSpatialDistortion(
     double *Etas, double *Diffs, double *RadOuts, double *StdDiff,
     double outlierFactor, int *IsOutlier, double p4, double p5,
     int OutlierIterations,
-    int verbose, double *MeanDiffOut) {
+    int verbose, double *MeanDiffOut, double parallax) {
   double txr, tyr, tzr;
   txr = deg2rad * tx;
   tyr = deg2rad * ty;
@@ -1371,6 +1423,8 @@ static inline void CorrectTiltSpatialDistortion(
     DistortFunc += 1;
     Rcorr = Rad * DistortFunc;
     RIdeal = panelLsd * tan(deg2rad * IdealTtheta[i]);
+    if (parallax != 0.0)
+      RIdeal += parallax * sin(deg2rad * IdealTtheta[i]);
     Diff = fabs(1 - (Rcorr / RIdeal));
     Etas[i] = Eta;
     Diffs[i] = Diff;
@@ -1570,6 +1624,12 @@ typedef struct {
   int PerPanelDistortion;
   int FitWavelength;
   double tolWavelength;
+
+  // Parallax correction
+  int FitParallax;
+  double parallaxIn;
+  double tolParallax;
+
 
   // Image transformations
   int NrTransOpt;
@@ -1963,6 +2023,21 @@ static int parse_parameters(const char *filename, CalibConfig *cfg) {
       sscanf(aline, "%s %d", dummy, &cfg->MaxRingNumber);
       continue;
     }
+    str = "FitParallax ";
+    if (!strncmp(aline, str, strlen(str))) {
+      sscanf(aline, "%s %d", dummy, &cfg->FitParallax);
+      continue;
+    }
+    str = "Parallax ";
+    if (!strncmp(aline, str, strlen(str))) {
+      sscanf(aline, "%s %lf", dummy, &cfg->parallaxIn);
+      continue;
+    }
+    str = "tolParallax ";
+    if (!strncmp(aline, str, strlen(str))) {
+      sscanf(aline, "%s %lf", dummy, &cfg->tolParallax);
+      continue;
+    }
     str = "RBinSize ";
     if (!strncmp(aline, str, strlen(str))) {
       sscanf(aline, "%s %lf", dummy, &cfg->lineoutRBinSize);
@@ -2028,6 +2103,7 @@ static int parse_parameters(const char *filename, CalibConfig *cfg) {
       sscanf(aline, "%s %lf", dummy, &cfg->tolWavelength);
       continue;
     }
+
     str = "DistortionOrder ";
     if (!strncmp(aline, str, strlen(str))) {
       continue;
@@ -2209,8 +2285,15 @@ static void print_parameter_summary(const CalibConfig *c) {
       printf(" ");
     printf("║\n");
   }
+
   if (c->MaxRingNumber > 0)
     printf("║    MaxRingNumber:  %-40d ║\n", c->MaxRingNumber);
+  if (c->FitParallax)
+    printf("║    FitParallax:    %-40d ║\n", c->FitParallax);
+  if (c->FitParallax || c->parallaxIn != 0.0)
+    printf("║    Parallax(µm):   %-40.6f ║\n", c->parallaxIn);
+  if (c->FitParallax)
+    printf("║    tolParallax:    %-40.6f ║\n", c->tolParallax);
   if (nPanels > 0) {
     printf(
         "╠══════════════════════════════════════════════════════════════╣\n");
@@ -2291,6 +2374,11 @@ int main(int argc, char *argv[]) {
   double tolLsdPanel = cfg.tolLsdPanel, tolP2Panel = cfg.tolP2Panel;
   int FitWavelength = cfg.FitWavelength;
   double tolWavelength = cfg.tolWavelength;
+  int FitParallax = cfg.FitParallax;
+  double parallaxIn = cfg.parallaxIn;
+  double tolParallax = cfg.tolParallax;
+  if (FitParallax && tolParallax < 1e-12) tolParallax = 200.0;
+
   int Padding = cfg.Padding, NrPixelsY = cfg.NrPixelsY,
       NrPixelsZ = cfg.NrPixelsZ, NrPixels = cfg.NrPixels;
   int NrTransOpt = cfg.NrTransOpt, RBinWidth = cfg.RBinWidth;
@@ -2581,8 +2669,8 @@ int main(int argc, char *argv[]) {
     printf("Mask file read: %s\n", MaskFN);
   }
   int a;
-  double means[14];
-  for (a = 0; a < 14; a++)
+  double means[15];
+  for (a = 0; a < 15; a++)
     means[a] = 0;
   double medStrain = 0, q25Strain = 0, q75Strain = 0, minStrain = 0,
          maxStrain = 0;
@@ -2603,6 +2691,8 @@ int main(int argc, char *argv[]) {
   double ringMaxAbsRadRes[MAX_RINGS_STAT] = {0};
   double ringIdealR[MAX_RINGS_STAT] = {0};
   int ringCountRadRes[MAX_RINGS_STAT] = {0};
+  double ringMeanSNR[MAX_RINGS_STAT] = {0};
+  double ringMeanStrain[MAX_RINGS_STAT] = {0};
   // Per-ring 2theta residual accumulators
   double ringMean2thRes[MAX_RINGS_STAT] = {0};
   double ringMeanAbs2thRes[MAX_RINGS_STAT] = {0};
@@ -2743,6 +2833,7 @@ int main(int argc, char *argv[]) {
     double bestLsd, bestYbc, bestZbc, bestTy, bestTz;
     double bestP0, bestP1, bestP2, bestP3, bestP4 = 0;
     double bestP5 = 0;
+    double bestParallax = 0;
     int stagnantCount = 0;
     double prevIterMeanDiff = -1;
     Panel *bestPanels = NULL;
@@ -2844,6 +2935,7 @@ int main(int argc, char *argv[]) {
                        doubletPartner_0);
       }
 
+
       // Compact: remove zero-RMean entries
       int countr_0 = 0;
       double *RMean2_0 = malloc(nIndices * sizeof(*RMean2_0));
@@ -2894,8 +2986,9 @@ int main(int argc, char *argv[]) {
       CorrectTiltSpatialDistortion(
           nIndices, MaxRingRad, Yc, Zc, IdealTtheta, px, Lsd, ybc, zbc, tx,
           tyin, tzin, p0in, p1in, p2in, p3in, EtaIns, DiffIns, RadIns, &StdDiff,
-          outlierFactor, NULL, p4in, p5in, OutlierIterations, 1, &MeanDiff);
+          outlierFactor, NULL, p4in, p5in, OutlierIterations, 1, &MeanDiff, parallaxIn);
       printf("MeanStrain (input params): %.6f µε\n", MeanDiff * 1e6);
+
 
       // Cleanup
       free(R_0);
@@ -2911,8 +3004,8 @@ int main(int argc, char *argv[]) {
     // iterations. Without this, bounds drift because each iteration re-centers
     // bounds on the latest fitted values, allowing parameters to walk
     // arbitrarily far.
-    double initParams[12] = {Lsd,  ybc,  zbc,  tyin, tzin,      p0in,
-                             p1in, p2in, p3in, p4in, p5in, Wavelength};
+    double initParams[13] = {Lsd,  ybc,  zbc,  tyin, tzin,      p0in,
+                             p1in, p2in, p3in, p4in, p5in, parallaxIn, Wavelength};
     Panel *initPanels = NULL;
     if (nPanels > 0) {
       initPanels = malloc(nPanels * sizeof(Panel));
@@ -3090,7 +3183,7 @@ int main(int argc, char *argv[]) {
                                      px, Lsd, ybc, zbc, tx, tyin, tzin, p0in,
                                      p1in, p2in, p3in, EtaIns, DiffIns, RadIns,
                                      &StdDiff, outlierFactor, NULL, p4in, p5in,
-                                     OutlierIterations, iter == 0, NULL);
+                                     OutlierIterations, iter == 0, NULL, parallaxIn);
         NrCalls = 0;
 
       } // end if (iter == 0 || perturbedFlag) — initial bin+fit
@@ -3193,6 +3286,7 @@ int main(int argc, char *argv[]) {
       double p4 = p4in;
       double p5 = p5in;
       double wavelengthFit = Wavelength;
+      double parallaxFit = parallaxIn;
       FitTiltBCLsd(nIndices, Yc, Zc, IdealTtheta, Lsd, MaxRingRad, ybc, zbc, tx,
                    tyin, tzin, p0in, p1in, p2in, p3in, &ty, &tz, &LsdFit,
                    &ybcFit, &zbcFit, &p0, &p1, &p2, &p3, &MeanDiff, tolTilts,
@@ -3203,7 +3297,10 @@ int main(int argc, char *argv[]) {
                    &p4, p5in, tolP5, &p5,
                    iter == 0, L2Objective, initParams, initPanels,
                    FitWavelength, Wavelength, tolWavelength, PointDSpacing,
-                   &wavelengthFit);
+                   &wavelengthFit,
+                   parallaxIn, tolParallax, &parallaxFit);
+      if (FitParallax)
+        parallaxIn = parallaxFit;
       if (FitWavelength)
         Wavelength = wavelengthFit;
       if (iter == 0) {
@@ -3355,7 +3452,7 @@ int main(int argc, char *argv[]) {
         CorrectTiltSpatialDistortion(
             nIndices, MaxRingRad, Yc, Zc, IdealTtheta, px, LsdFit, ybcFit,
             zbcFit, tx, ty, tz, p0, p1, p2, p3, EtaIns, DiffIns, RadIns,
-            &StdDiff, outlierFactor, NULL, p4, p5, OutlierIterations, 0, &MeanDiff);
+            &StdDiff, outlierFactor, NULL, p4, p5, OutlierIterations, 0, &MeanDiff, parallaxIn);
         printf("Iter %2d/%d  MeanStrain %8.3f  StdStrain %8.3f\n", iter + 1,
                nIterations, MeanDiff * 1e6, StdDiff * 1e6);
 
@@ -3396,6 +3493,7 @@ int main(int argc, char *argv[]) {
         bestP3 = p3;
         bestP4 = p4;
         bestP5 = p5;
+        bestParallax = parallaxIn;
         if (bestPanels && nPanels > 0)
           memcpy(bestPanels, panels, nPanels * sizeof(Panel));
       }
@@ -3422,6 +3520,7 @@ int main(int argc, char *argv[]) {
         p3in = bestP3;
         p4in = bestP4;
         p5in = bestP5;
+        parallaxIn = bestParallax;
         if (bestPanels && nPanels > 0)
           memcpy(panels, bestPanels, nPanels * sizeof(Panel));
 
@@ -3459,6 +3558,10 @@ int main(int argc, char *argv[]) {
                           initParams[9] + tolP4);
         p5in = PERT_CLAMP(p5in, tolP5, initParams[10] - tolP5,
                           initParams[10] + tolP5);
+        if (FitParallax) {
+          parallaxIn = PERT_CLAMP(parallaxIn, tolParallax, initParams[11] - tolParallax,
+                                  initParams[11] + tolParallax);
+        }
 #undef PERT_CLAMP
 #undef LCG_NEXT
 #undef LCG_DOUBLE
@@ -3527,6 +3630,7 @@ int main(int argc, char *argv[]) {
         p3 = bestP3;
         p4in = bestP4;
         p5in = bestP5;
+        parallaxIn = bestParallax;
         Lsd = bestLsd;
         ybc = bestYbc;
         zbc = bestZbc;
@@ -3679,7 +3783,7 @@ int main(int argc, char *argv[]) {
       CorrectTiltSpatialDistortion(
           nIndices, MaxRingRad, Yc, Zc, IdealTtheta, px, LsdFit, ybcFit, zbcFit,
           tx, ty, tz, p0, p1, p2, p3, EtaIns, DiffIns, RadIns, &StdDiff,
-          outlierFactor, NULL, p4in, p5in, OutlierIterations, 0, &MeanDiff);
+          outlierFactor, NULL, p4in, p5in, OutlierIterations, 0, &MeanDiff, parallaxIn);
       printf("Post-loop re-fit MeanStrain %0.6lf\n", MeanDiff * 1e6);
       free(R_pl);
       free(Eta_pl);
@@ -3702,7 +3806,7 @@ int main(int argc, char *argv[]) {
     CorrectTiltSpatialDistortion(
         nIndices, MaxRingRad, Yc, Zc, IdealTtheta, px, LsdFit, ybcFit, zbcFit,
         tx, ty, tz, p0, p1, p2, p3, Etas, Diffs, RadOuts, &StdDiff,
-        outlierFactor, IsOutlier, p4in, p5in, OutlierIterations, 1, &MeanDiff);
+        outlierFactor, IsOutlier, p4in, p5in, OutlierIterations, 1, &MeanDiff, parallaxIn);
     printf("StdStrain %0.12lf\n", StdDiff);
     // Compute strain statistics from valid (non-outlier) diffs
     nValid = 0;
@@ -3854,6 +3958,7 @@ int main(int argc, char *argv[]) {
     means[11] += p4in;
     means[12] += Wavelength;
     means[13] += p5in;
+    means[14] += parallaxIn;
     FILE *Out;
     char OutFileName[1024];
     sprintf(OutFileName, "%s_%0*d%s.%s", fn, Padding, a, Ext, "corr.csv");
@@ -3900,6 +4005,10 @@ int main(int argc, char *argv[]) {
     double localRingMax[MAX_RINGS_STAT] = {0};
     double localRingIdealR[MAX_RINGS_STAT] = {0};
     int localRingCount[MAX_RINGS_STAT] = {0};
+    double localRingSNRSum[MAX_RINGS_STAT] = {0};
+    int localRingSNRCount[MAX_RINGS_STAT] = {0};
+    double localRingStrainSum[MAX_RINGS_STAT] = {0};
+    int localRingStrainCount[MAX_RINGS_STAT] = {0};
     // Per-ring 2theta accumulators for this file
     double localRing2thSum[MAX_RINGS_STAT] = {0};
     double localRing2thAbsSum[MAX_RINGS_STAT] = {0};
@@ -3963,7 +4072,19 @@ int main(int argc, char *argv[]) {
       DistortG += 1;
       double RadGlobal = RadG * DistortG;
       double IdealR = LsdFit * tan(deg2rad * IdealTtheta[i]);
-      double Fit2Theta = atan(RadGlobal / LsdFit) / deg2rad;
+      if (FitParallax || parallaxIn != 0.0) {
+        IdealR += parallaxIn * sin(deg2rad * IdealTtheta[i]);
+      }
+      
+      double TthRad = atan(RadGlobal / LsdFit); // initial guess
+      if (FitParallax || parallaxIn != 0.0) {
+        for (int k = 0; k < 5; k++) {
+          double f = LsdFit * tan(TthRad) + parallaxIn * sin(TthRad) - RadGlobal;
+          double df = LsdFit / (cos(TthRad) * cos(TthRad)) + parallaxIn * cos(TthRad);
+          TthRad -= f / df;
+        }
+      }
+      double Fit2Theta = TthRad / deg2rad;
       // Compute fit lattice parameter: a_fit = a_ideal * sin(ideal_theta) /
       // sin(fit_theta)
       double sinIdeal = sin(deg2rad * IdealTtheta[i] / 2.0);
@@ -3994,6 +4115,12 @@ int main(int argc, char *argv[]) {
             localRingMax[rn] = fabs(dR);
           localRingIdealR[rn] = IdealR; // same for all points on this ring
           localRingCount[rn]++;
+          if (FitSNR != NULL) {
+            localRingSNRSum[rn] += FitSNR[i];
+            localRingSNRCount[rn]++;
+          }
+          localRingStrainSum[rn] += fabs(Diffs[i]);
+          localRingStrainCount[rn]++;
         }
         // Per-panel accumulation
         if (pIdx >= 0 && pIdx < nPanels) {
@@ -4098,6 +4225,12 @@ int main(int argc, char *argv[]) {
       ringMaxAbsRadRes[rr] = localRingMax[rr];
       ringIdealR[rr] = localRingIdealR[rr];
       ringCountRadRes[rr] = localRingCount[rr];
+      ringMeanSNR[rr] = (localRingSNRCount[rr] > 0)
+                             ? localRingSNRSum[rr] / localRingSNRCount[rr]
+                             : 0;
+      ringMeanStrain[rr] = (localRingStrainCount[rr] > 0)
+                               ? localRingStrainSum[rr] / localRingStrainCount[rr]
+                               : 0;
     }
     // Copy per-ring 2theta stats
     for (int rr = 0; rr < MAX_RINGS_STAT; rr++) {
@@ -4234,20 +4367,21 @@ int main(int argc, char *argv[]) {
   // Per-ring summary in final output
   printf("\n           *** per-ring radius residual (\u03bcm) ***\n");
   printf("  Ring    IdealR(\u03bcm)  NPoints   Mean|\u0394R|    Max|\u0394R|   "
-         "  Mean\u0394R\n");
+         "  Mean\u0394R      MeanSNR  MeanStrain(\u03bc\u03b5)\n");
   printf(
       "  "
-      "------------------------------------------------------------------\n");
+      "------------------------------------------------------------------------------------\n");
   for (int rr = 0; rr < MAX_RINGS_STAT; rr++) {
     if (ringCountRadRes[rr] > 0) {
-      printf("  %4d  %11.2f  %6d  %10.4f  %10.4f  %+10.4f\n", rr,
+      printf("  %4d  %11.2f  %6d  %10.4f  %10.4f  %+10.4f  %8.1f  %10.1f\n", rr,
              ringIdealR[rr], ringCountRadRes[rr], ringMeanAbsRadRes[rr],
-             ringMaxAbsRadRes[rr], ringMeanRadRes[rr]);
+             ringMaxAbsRadRes[rr], ringMeanRadRes[rr], ringMeanSNR[rr],
+             ringMeanStrain[rr] * 1e6);
     }
   }
   printf(
       "  "
-      "------------------------------------------------------------------\n");
+      "------------------------------------------------------------------------------------\n");
 
   // --- Aggregate 2theta residual statistics ---
   printf("           *** 2theta residual (deg) ***\n");
@@ -4889,6 +5023,9 @@ int main(int argc, char *argv[]) {
          means[7], means[8]);
   printf("p4         %0.12f\n", means[11]);
   printf("p5         %0.12f\n", means[13]);
+  if (FitParallax) {
+    printf("parallax   %0.12f\n", means[14]);
+  }
   if (FitWavelength) {
     printf("Wavelength %0.12f\n", means[12]);
     double energy_keV = 12.398419843320026 / means[12];

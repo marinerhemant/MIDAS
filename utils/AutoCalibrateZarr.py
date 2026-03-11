@@ -129,6 +129,11 @@ class CalibState:
     rings_to_exclude: list = field(default_factory=list)
     max_ring_number: int = 0  # 0 = no limit, >0 = exclude rings > this
 
+    # Parallax
+    fit_parallax: int = 0
+    parallax_in: float = 0.0
+    tol_parallax: float = 200.0
+
     # Image / file
     nr_pixels_y: int = 0
     nr_pixels_z: int = 0
@@ -1279,6 +1284,10 @@ def runMIDAS(rawFN, state, n_iterations=40, mult_factor=2.5,
                 pf.write(f'RingsToExclude {ringNr}\n')
             if state.max_ring_number > 0:
                 pf.write(f'MaxRingNumber {state.max_ring_number}\n')
+            if state.fit_parallax > 0:
+                pf.write(f'FitParallax {state.fit_parallax}\n')
+                pf.write(f'Parallax {state.parallax_in}\n')
+                pf.write(f'tolParallax {state.tol_parallax}\n')
 
             # File info
             pf.write(f'Folder {state.folder}\n')
@@ -1482,6 +1491,12 @@ def main():
                             help='First ring number to use')
         parser.add_argument('--max-ring', '-MaxRingNumber', type=int, default=0,
                             help='Maximum ring number to use (0 = no limit)')
+        parser.add_argument('--fit-parallax', type=int, default=0,
+                            help='Fit parallax correction (0=no, 1=yes)')
+        parser.add_argument('--parallax-guess', type=float, default=0.0,
+                            help='Initial guess for parallax (µm)')
+        parser.add_argument('--tol-parallax', type=float, default=200.0,
+                            help='Tolerance for parallax bounds (µm)')
         parser.add_argument('--eta-bin-size', '-EtaBinSize', type=float, default=5.0,
                             help='Azimuthal bin size (degrees)')
 
@@ -1567,6 +1582,9 @@ def main():
         noMedian = args.no_median
         n_cpus = args.cpus if args.cpus > 0 else os.cpu_count() or 8
         state.max_ring_number = args.max_ring
+        state.fit_parallax = args.fit_parallax
+        state.parallax_in = args.parallax_guess
+        state.tol_parallax = args.tol_parallax
 
         # HDF5 output
         if args.save_hdf:
@@ -1965,6 +1983,18 @@ def main():
                             parts = line.split()
                             if len(parts) > 1 and args.max_ring == 0:
                                 state.max_ring_number = int(parts[1])
+                        elif line.startswith('FitParallax'):
+                            parts = line.split()
+                            if len(parts) > 1 and args.fit_parallax == 0:
+                                state.fit_parallax = int(parts[1])
+                        elif line.startswith('Parallax'):
+                            parts = line.split()
+                            if len(parts) > 1 and args.parallax_guess == 0.0:
+                                state.parallax_in = float(parts[1])
+                        elif line.startswith('tolParallax'):
+                            parts = line.split()
+                            if len(parts) > 1 and args.tol_parallax == 200.0:
+                                state.tol_parallax = float(parts[1])
                         elif any(line.startswith(pk) for pk in [
                             'NPanelsY', 'NPanelsZ', 'PanelSizeY', 'PanelSizeZ',
                             'PanelGapsY', 'PanelGapsZ', 'FixPanelID',

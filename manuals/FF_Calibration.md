@@ -1,20 +1,20 @@
 # AutoCalibrateZarr.py User Manual
 
-**Version:** 11.0  
+**Version:** 12.0  
 **Contact:** hsharma@anl.gov
 
 ---
 
 ## 1. Introduction
 
-`AutoCalibrateZarr.py` is a utility script within the MIDAS framework designed to automatically determine the precise geometry of a powder X-ray diffraction experiment. It analyzes a 2D diffraction image containing Debye-Scherrer rings from a known calibrant material (e.g., CeO2, LaB6) and refines a comprehensive set of geometric parameters via a single call to the `CalibrantPanelShiftsOMP` C/OpenMP binary (40 iterations, doublet detection, SNR weighting).
+`AutoCalibrateZarr.py` is a utility script within the MIDAS framework designed to automatically determine the precise geometry of a powder X-ray diffraction experiment. It analyzes a 2D diffraction image containing Debye-Scherrer rings from a known calibrant material (e.g., CeO2, LaB6) and refines a comprehensive set of geometric parameters (including optional parallax correction) via a single call to the `CalibrantPanelShiftsOMP` C/OpenMP binary (40 iterations, doublet detection, SNR weighting).
 
 The script is a crucial first step for any HEDM analysis, as an accurate geometric calibration is fundamental to correctly interpreting diffraction data. It can process several input file formats (Zarr, HDF5, TIFF, GE) and produces a refined parameter file (`refined_MIDAS_params.txt`) ready for use in subsequent MIDAS analysis scripts like `ff_MIDAS.py`.
 
 ### Key Features
 *   **Single-Call C-Side Refinement:** The script calls `CalibrantPanelShiftsOMP` once with `nIterations=40` — all iteration, outlier rejection, doublet detection, and convergence are handled inside the optimized C/OpenMP binary.
 *   **Auto-Detect File Format:** Automatically determines input format from the file extension (`.zip`, `.h5`, `.tif`, `.ge*`). No need to specify `-ConvertFile`.
-*   **Comprehensive Parameter Fitting:** Refines `Lsd`, `BC`, tilts, distortion (`p0`–`p5`), with doublet detection (`DoubletSeparation=25px`), ring weight normalization, and SNR-based weighting all enabled by default.
+*   **Comprehensive Parameter Fitting:** Refines `Lsd`, `BC`, tilts, distortion (`p0`–`p5`), optional parallax and wavelength, with doublet detection (`DoubletSeparation=25px`), ring weight normalization, and SNR-based weighting all enabled by default.
 *   **Modern CLI:** Uses `--flag` convention (e.g., `--data`, `--params`, `--lsd-guess`) with backward-compatible aliases for legacy `-dataFN`, `-paramFN`, etc.
 *   **Robust Image Processing:** Median filtering for background subtraction, automatic thresholding, and JIT-accelerated beam center detection.
 *   **Flexible Input:** Handles Zarr .zip, HDF5, GE binary, and TIFF formats.
@@ -141,6 +141,12 @@ The script follows a logical, multi-step process to achieve a converged geometri
 
     $$I(R) = BG + I_{max,1}\bigl[\mu\,L_1(R) + (1-\mu)\,G_1(R)\bigr] + I_{max,2}\bigl[\mu\,L_2(R) + (1-\mu)\,G_2(R)\bigr]$$
 
+    The doublet fitter uses several safeguards to ensure robust results:
+    - **Center constraints:** $R_1$ is constrained below the theoretical midpoint $R_{mid}$ and $R_2$ above it, preventing the optimizer from swapping peak assignments.
+    - **Ideal-radius initialization:** Initial guesses use the theoretical ring radii rather than intensity-weighted means, which fail when peaks heavily overlap.
+    - **Edge-clip fallback:** If the merged doublet window extends beyond the detector, the primary ring falls back to singlet fitting instead of discarding both rings.
+    - **Pre-initialized partner slots:** Secondary doublet array slots are zeroed before the parallel region to avoid undefined values from uninitialized memory.
+
 *   **Parallelization:** The peak fitting process is parallelized using **OpenMP**, distributing the azimuthal bins across available CPU cores.
 
 ---
@@ -184,6 +190,9 @@ The script uses `--flag` convention with backward-compatible aliases for all leg
 | `--px` | — | Pixel size (µm). Enables param-file-free usage for non-Zarr. | `0` (auto) | `--px 172` |
 | `--tx` | — | Detector tilt tx (radians). Not fitted, passed through to `CalibrantPanelShiftsOMP`. | `0.0` | `--tx 0.001` |
 | `--mask` | `-MaskFile` | Mask TIFF for bad/gap pixels (passed as `MaskFile`). Convention: `0` = bad, `1` = good. | `''` | `--mask mask.tif` |
+| `--fit-parallax` | — | Fit parallax correction (0=off, 1=on) | `0` | `--fit-parallax 1` |
+| `--parallax-guess` | — | Initial guess for parallax value (µm) | `0.0` | `--parallax-guess 50.0` |
+| `--tol-parallax` | — | Tolerance for parallax bounds (µm) | `200.0` | `--tol-parallax 100.0` |
 | `--cpus` | — | Number of CPUs for CalibrantPanelShiftsOMP (0=all) | `0` | `--cpus 32` |
 
 > [!TIP]
@@ -361,8 +370,10 @@ When `PerPanelDistortion` is enabled, `p2` is replaced by `p2 + dP2` (per-panel 
 The corrected radius and ideal radius are:
 ```
 R_corr = R · (1 + D(R,η))
-R_ideal = Lsd_eff · tan(2θ_hkl)
+R_ideal = Lsd_eff · tan(2θ_hkl) + parallax · sin(2θ_hkl)
 ```
+
+The parallax term accounts for the depth-dependent offset of X-ray conversion in thick scintillator detectors. When `FitParallax` is enabled, the parallax value is optimized alongside the geometry; when a fixed non-zero `Parallax` value is provided, it is applied as a correction without fitting.
 
 #### 5. Objective Function
 
@@ -434,7 +445,7 @@ where the weight `wᵢ` is:
 
     The program produces the following output:
 
-    *   **Console:** Refined geometry (`Lsd`, `BC`, tilts, distortion), per-ring deviation tables, and the "Indices per Panel" coverage map.
+    *   **Console:** Refined geometry (`Lsd`, `BC`, tilts, distortion, parallax if fitted), per-ring deviation tables (with `MeanSNR` and `MeanStrain(µε)` columns), and the "Indices per Panel" coverage map.
     *   **`panelshifts.txt`** — Per-panel corrections in text format:
         ```text
         # ID dY dZ dTheta dLsd dP2
@@ -527,6 +538,10 @@ The following table lists all parameters recognized by `CalibrantPanelShiftsOMP`
 | `L2Objective` | int | 0 | `1` = use squared strain (L2 norm) instead of absolute strain (L1) |
 | **Outlier Rejection** | | | |
 | `OutlierIterations` | int | 1 | Number of iterative sigma-clipping passes |
+| **Parallax Correction** | | | |
+| `FitParallax` | int | 0 | `1` = fit parallax correction alongside geometry |
+| `Parallax` | double | 0 | Initial parallax value (µm). Applied even if `FitParallax` is 0 when non-zero. |
+| `tolParallax` | double | 200 | Search range for parallax (µm). If `FitParallax=1` and `tolParallax` is unset, defaults to 200 µm. |
 | **Wavelength Fitting** | | | |
 | `FitWavelength` | int | 0 | `1` = refine wavelength alongside geometry |
 | `tolWavelength` | double | 0.001 | Search range for wavelength (Å) |
@@ -551,6 +566,11 @@ The following optional features can be enabled to improve calibration accuracy, 
 #### Doublet Fitting
 Closely spaced rings (within `DoubletSeparation` pixels) are automatically detected and fitted simultaneously using an 8-parameter dual height-normalized Pseudo-Voigt model with shared Mu and background, each peak having its own independent FWHM (Gamma) and peak height (Imax). This eliminates bias from overlapping peaks that would otherwise require excluding those rings.
 
+The doublet fitter includes several robustness improvements:
+- **Center constraints:** Each peak center is constrained to its side of the theoretical midpoint, preventing label swaps.
+- **Ideal-radius initial guesses:** Uses theoretical ring positions instead of intensity-weighted means, which are unreliable for heavily overlapping peaks.
+- **Edge-clip fallback:** When the merged window extends beyond the detector boundary, the primary ring falls back to singlet fitting rather than discarding both rings.
+
 ```text
 DoubletSeparation 25
 ```
@@ -574,6 +594,20 @@ tolP4 0.002
 
 > [!WARNING]
 > The isotropic radial terms (p2, p5, p4) are correlated with Lsd. When opening their tolerances wider than ~0.002, consider constraining `tolLsd` to prevent the optimizer from finding spurious minima.
+
+#### Parallax Correction
+For thick-scintillator detectors, X-rays converting at different depths within the scintillator produce a 2θ-dependent radial offset. The parallax correction adds a term `parallax · sin(2θ)` to the ideal radius. When `FitParallax` is enabled, the parallax value is optimized alongside the standard geometry parameters.
+
+```text
+FitParallax 1
+Parallax 50.0
+tolParallax 200.0
+```
+
+A fixed (non-fitted) parallax can also be applied by setting `Parallax` to a non-zero value without enabling `FitParallax`.
+
+> [!WARNING]
+> Parallax is partially correlated with Lsd and the isotropic radial distortion terms. When fitting parallax, consider constraining `tolLsd` and `tolP2` to avoid degeneracy.
 
 #### Wavelength Fitting
 Optionally refine the X-ray wavelength alongside geometry to account for uncertainties in the incident energy. When enabled, the optimizer adjusts wavelength by recomputing per-point ideal 2θ from Bragg's law (λ/2d).
