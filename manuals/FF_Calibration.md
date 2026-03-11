@@ -14,7 +14,7 @@ The script is a crucial first step for any HEDM analysis, as an accurate geometr
 ### Key Features
 *   **Single-Call C-Side Refinement:** The script calls `CalibrantPanelShiftsOMP` once with `nIterations=40` — all iteration, outlier rejection, doublet detection, and convergence are handled inside the optimized C/OpenMP binary.
 *   **Auto-Detect File Format:** Automatically determines input format from the file extension (`.zip`, `.h5`, `.tif`, `.ge*`). No need to specify `-ConvertFile`.
-*   **Comprehensive Parameter Fitting:** Refines `Lsd`, `BC`, tilts, distortion (`p0`–`p4`), with doublet detection (`DoubletSeparation=25px`), ring weight normalization, and SNR-based weighting all enabled by default.
+*   **Comprehensive Parameter Fitting:** Refines `Lsd`, `BC`, tilts, distortion (`p0`–`p5`), with doublet detection (`DoubletSeparation=25px`), ring weight normalization, and SNR-based weighting all enabled by default.
 *   **Modern CLI:** Uses `--flag` convention (e.g., `--data`, `--params`, `--lsd-guess`) with backward-compatible aliases for legacy `-dataFN`, `-paramFN`, etc.
 *   **Robust Image Processing:** Median filtering for background subtraction, automatic thresholding, and JIT-accelerated beam center detection.
 *   **Flexible Input:** Handles Zarr .zip, HDF5, GE binary, and TIFF formats.
@@ -349,15 +349,12 @@ R = (Lsd_eff / XYZ[0]) · sqrt(Y_lab² + Z_lab²)
 
 The distortion model corrects for non-ideal detector response. The normalized radius is `RNorm = R / Rmax`:
 
-**Standard model (DistortionOrder 4):**
 ```
-D(R,η) = p0·RNorm²·cos(2·(90-η)) + p1·RNorm⁴·cos(4·(90-η) + p3) + p2·RNorm²
+D(R,η) = p0·RNorm²·cos(2·(90-η)) + p1·RNorm⁴·cos(4·(90-η) + p3)   [azimuthal]
+        + p2·RNorm²  +  p5·RNorm⁴  +  p4·RNorm⁶                    [isotropic radial]
 ```
 
-**Extended model (DistortionOrder 6):**
-```
-D(R,η) = [standard terms] + p4·RNorm⁶
-```
+The isotropic radial terms form a polynomial in RNorm: `p2·R² + p5·R⁴ + p4·R⁶`. The `p5·R⁴` term (new in v10) fills the gap between `p2·R²` and `p4·R⁶`, enabling the model to capture residual patterns with two zero crossings.
 
 When `PerPanelDistortion` is enabled, `p2` is replaced by `p2 + dP2` (per-panel offset).
 
@@ -486,7 +483,7 @@ The following table lists all parameters recognized by `CalibrantPanelShiftsOMP`
 | `BC` | 2×double | — | Beam center (Y Z) in pixels |
 | `tx` | double | 0 | Detector tilt X (fixed) |
 | `ty` / `tz` | double | 0 | Detector tilts Y, Z (initial) |
-| `p0` – `p3` | double | 0 | Distortion coefficients (initial) |
+| `p0` – `p5` | double | 0 | Distortion coefficients (initial). `p0`/`p1` are azimuthal, `p2`/`p5`/`p4` are isotropic radial, `p3` is azimuthal phase. |
 | `ImTransOpt` | int | 0 | Image transform (repeatable) |
 | **Crystallography** | | | |
 | `SpaceGroup` | int | — | Space group number |
@@ -501,8 +498,10 @@ The following table lists all parameters recognized by `CalibrantPanelShiftsOMP`
 | `tolTilts` | double | — | Search range for ty, tz (°) |
 | `tolBC` | double | — | Search range for BC (pixels) |
 | `tolLsd` | double | — | Search range for Lsd (μm) |
-| `tolP` | double | — | Default range for p0–p2 |
+| `tolP` | double | — | Default range for distortion coefficients |
 | `tolP0` – `tolP3` | double | =tolP | Per-coefficient overrides |
+| `tolP4` | double | =tolP | Search range for p4 (R⁶) coefficient |
+| `tolP5` | double | =tolP | Search range for p5 (R⁴) coefficient |
 | `tolShifts` | double | 1.0 | Search range for panel dY, dZ (pixels) |
 | `tolRotation` | double | 0.0 | Search range for panel dTheta (°) |
 | **Calibration Control** | | | |
@@ -528,9 +527,10 @@ The following table lists all parameters recognized by `CalibrantPanelShiftsOMP`
 | `L2Objective` | int | 0 | `1` = use squared strain (L2 norm) instead of absolute strain (L1) |
 | **Outlier Rejection** | | | |
 | `OutlierIterations` | int | 1 | Number of iterative sigma-clipping passes |
-| **Distortion Model** | | | |
-| `DistortionOrder` | int | 4 | `4` = standard (p0–p3); `6` = adds R⁶ term (p4) |
-| `tolP4` | double | 0 | Search range for p4 coefficient |
+| **Wavelength Fitting** | | | |
+| `FitWavelength` | int | 0 | `1` = refine wavelength alongside geometry |
+| `tolWavelength` | double | 0.001 | Search range for wavelength (Å) |
+| `PointDSpacing` | — | auto | Per-ring d-spacings computed from lattice parameters |
 | **Per-Panel Advanced** | | | |
 | `PerPanelLsd` | int | 0 | `1` = fit per-panel Lsd offset (detector non-planarity) |
 | `tolLsdPanel` | double | 100 | Search range for per-panel dLsd (μm) |
@@ -562,13 +562,29 @@ By default, inner rings near the beam center have more eta bins on the detector 
 NormalizeRingWeights 1
 ```
 
-#### Higher-Order Distortion
-The standard distortion model uses 4 parameters (p0–p3). Enabling `DistortionOrder 6` adds an R⁶ radially-symmetric term (p4) that can dramatically reduce StdStrain (up to ~74% improvement observed):
+#### Isotropic Radial Distortion (p2, p5, p4)
+The distortion model includes three isotropic radial terms: `p2·R²`, `p5·R⁴` (new in v10), and `p4·R⁶`. All three are always active with tolerances defaulting to `tolP`. The R⁴ term fills the gap between R² and R⁶, enabling the model to capture residual patterns with two zero crossings. The R⁶ term can reduce StdStrain by up to ~74%.
+
+To set per-coefficient search ranges:
+```text
+tolP2 0.002
+tolP5 0.002
+tolP4 0.002
+```
+
+> [!WARNING]
+> The isotropic radial terms (p2, p5, p4) are correlated with Lsd. When opening their tolerances wider than ~0.002, consider constraining `tolLsd` to prevent the optimizer from finding spurious minima.
+
+#### Wavelength Fitting
+Optionally refine the X-ray wavelength alongside geometry to account for uncertainties in the incident energy. When enabled, the optimizer adjusts wavelength by recomputing per-point ideal 2θ from Bragg's law (λ/2d).
 
 ```text
-DistortionOrder 6
-tolP4 0.0001
+FitWavelength 1
+tolWavelength 0.01
 ```
+
+> [!IMPORTANT]
+> Wavelength fitting is degenerate with lattice parameter. Only enable this when the lattice parameter of the calibrant is well known and the energy/wavelength has measurable uncertainty.
 
 #### Per-Panel Corrections
 For tiled detectors where panels may not be perfectly co-planar or uniformly flat:
@@ -616,11 +632,10 @@ The output includes `MeanStrain`, `StdStrain`, per-panel microstrain, and a `.li
 > ```text
 > nIterations 10
 > NormalizeRingWeights 1
-> DistortionOrder 6
-> tolP4 0.0001
 > PerPanelDistortion 1
 > OutlierIterations 3
 > DoubletSeparation 25
+> L2Objective 1
 > ```
 
 ---
@@ -644,7 +659,7 @@ The `parameters.txt` file is organized into clearly labeled sections with commen
 - **Beam / Sample** — wavelength, RhoD
 - **Calibrant Material** — space group, lattice constants
 - **Radial & Azimuthal Binning** — R range, eta range, bin sizes
-- **Spatial Distortion Model** — p0–p4 coefficients with DistortionOrder
+- **Spatial Distortion Model** — p0–p5 distortion coefficients
 - **Optimization Tolerances** — search ranges for all parameters
 - **Iteration & Convergence** — nIterations, outlier rejection, MultFactor
 - **Objective Function Weights** — ring normalization, radius weighting, SNR weighting, L2

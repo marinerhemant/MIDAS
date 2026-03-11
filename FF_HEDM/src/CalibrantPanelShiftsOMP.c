@@ -2160,6 +2160,8 @@ static void print_parameter_summary(const CalibConfig *c) {
   printf("║    tolP1:          %-40.8f ║\n", c->tolP1);
   printf("║    tolP2:          %-40.8f ║\n", c->tolP2);
   printf("║    tolP3:          %-40.8f ║\n", c->tolP3);
+  printf("║    tolP4:          %-40.8f ║\n", c->tolP4);
+  printf("║    tolP5:          %-40.8f ║\n", c->tolP5);
   printf("║    tolShifts:      %-40.6f ║\n", c->tolShifts);
   printf("║    tolRotation:    %-40.6f ║\n", c->tolRotation);
   printf("╠══════════════════════════════════════════════════════════════╣\n");
