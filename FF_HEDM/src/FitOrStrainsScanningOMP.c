@@ -1218,7 +1218,7 @@ inline int StrainTensorKenesei(int nspots, double **SpotsInfo, double Distance,
   return 1;
 }
 
-static int DoDynamicReassignment = 1;
+static int DoDynamicReassignment = 0;
 
 static int ReassignSpotsFromBins(
     double x[12], int nhkls, double **hklsIn, double Lsd, double Wavelength,
@@ -1330,7 +1330,7 @@ static int ReassignSpotsFromBins(
 }
 
 int main(int argc, char *argv[]) {
-	printf("Version: %s\n", MIDAS_VERSION_STRING);
+  printf("Version: %s\n", MIDAS_VERSION_STRING);
   if (argc != 6) {
     printf("Supply a parameter file, blockNr, nBlocks, nSpotsToIndex, numProcs "
            "as arguments.\n");
