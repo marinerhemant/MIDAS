@@ -33,6 +33,13 @@ inline double sin_cos_to_angle(double s, double c) {
 inline void normalizeQuat(double quat[4]) {
   double norm = sqrt(quat[0] * quat[0] + quat[1] * quat[1] + quat[2] * quat[2] +
                      quat[3] * quat[3]);
+  if (norm < 1e-15) {
+    quat[0] = 1.0;
+    quat[1] = 0.0;
+    quat[2] = 0.0;
+    quat[3] = 0.0;
+    return;
+  }
   quat[0] /= norm;
   quat[1] /= norm;
   quat[2] /= norm;
@@ -186,7 +193,7 @@ inline int MakeSymmetries(int SGNr, double Sym[24][4]) {
 inline void BringDownToFundamentalRegionSym(double QuatIn[4], double QuatOut[4],
                                             int NrSymmetries,
                                             double Sym[24][4]) {
-  int i, maxCosRowNr;
+  int i, maxCosRowNr = 0;
   double qps[NrSymmetries][4], q2[4], qt[4], maxCos = -10000;
   for (i = 0; i < NrSymmetries; i++) {
     q2[0] = Sym[i][0];

@@ -248,8 +248,13 @@ def fit(psFN: str, nodeNr: int, nNodes: int, numProcs: int, logDir: str, resultF
     with open(f'{logDir}/fit{nodeNr}_out.csv', 'w') as f, \
          open(f'{logDir}/fit{nodeNr}_err.csv', 'w') as f_err:
         cmd = os.path.join(bin_dir, "FitOrientationOMP") + f' {psFN} {nodeNr} {nNodes} {numProcs}'
-        f.write(cmd)
-        subprocess.call(cmd, shell=True, stdout=f, stderr=f_err, cwd=resultFolder, env=os.environ)
+        f.write(cmd + '\n')
+        f.flush()
+        rc = subprocess.call(cmd, shell=True, stdout=f, stderr=f_err, cwd=resultFolder, env=os.environ)
+    if rc != 0:
+        with open(f'{logDir}/fit{nodeNr}_err.csv', 'r') as ef:
+            err_text = ef.read()
+        raise RuntimeError(f"FitOrientationOMP (node {nodeNr}) failed with exit code {rc}.\nStderr:\n{err_text}")
 
 # --- WORKFLOW STAGE FUNCTIONS ---
 

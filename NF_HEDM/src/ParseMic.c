@@ -126,6 +126,14 @@ static double *ReadMicBinary(const char *inputfile, size_t *sz) {
   *sz = ftell(inp);
   rewind(inp);
 
+  if (*sz == 0) {
+    fprintf(stderr, "Warning: Binary mic file %s is empty (0 bytes). "
+            "No voxels passed the confidence threshold during fitting.\n",
+            inputfile);
+    fclose(inp);
+    return NULL;
+  }
+
   double *MicContents = malloc(*sz);
   if (MicContents == NULL) {
     fprintf(stderr,
@@ -136,7 +144,8 @@ static double *ReadMicBinary(const char *inputfile, size_t *sz) {
   }
 
   if (fread(MicContents, *sz, 1, inp) != 1) {
-    fprintf(stderr, "Error: Failed to read MicContents\n");
+    fprintf(stderr, "Error: Failed to read MicContents from %s (%zu bytes)\n",
+            inputfile, *sz);
     free(MicContents);
     fclose(inp);
     return NULL;
