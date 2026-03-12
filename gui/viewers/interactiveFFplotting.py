@@ -388,8 +388,14 @@ except Exception:
 
 if __name__ == '__main__':
     parser = MyParser(description='''MIDAS FF Interactive Plotter''', formatter_class=argparse.ArgumentDefaultsHelpFormatter)
-    parser.add_argument('-resultFolder', type=str, required=True, help='Folder where the reconstruction exists')
-    parser.add_argument('-dataFileName', type=str, required=True, help='Path to the input Zarr datafile')
+    # Auto-detect default dataFileName: first .MIDAS.zip in cwd
+    _cwd = os.getcwd()
+    _default_data_file = None
+    _midas_zips = glob.glob(os.path.join(_cwd, '*.MIDAS.zip'))
+    if _midas_zips:
+        _default_data_file = _midas_zips[0]
+    parser.add_argument('-resultFolder', type=str, required=False, default=_cwd, help='Folder where the reconstruction exists')
+    parser.add_argument('-dataFileName', type=str, required=False, default=_default_data_file, help='Path to the input Zarr datafile')
     parser.add_argument('-HostName', type=str, required=False, default="0.0.0.0", help='HostName IP')
     parser.add_argument('-portNr', type=int, required=False, default=8050, help='Port number')
     args, unparsed = parser.parse_known_args()
