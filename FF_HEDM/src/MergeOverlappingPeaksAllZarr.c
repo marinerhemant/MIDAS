@@ -324,20 +324,20 @@ static int FindBestOverlap(int *labelMap, int nrPixels, PeakPixels *pp,
 
 static inline int ReadSortFiles(char OutFolderName[1024], char FileStem[1024],
                                 int FileNr, int Padding,
-                                double **SortedMatrix) {
-  char aline[1000], dummy[1000];
+                                double **SortedMatrix,
+                                struct InputData *MyData) {
+  char aline[1000];
   char InFile[1024];
   sprintf(InFile, "%s/%s_%0*d_PS.csv", OutFolderName, FileStem, Padding,
           FileNr);
   FILE *infileread;
   infileread = fopen(InFile, "r");
-  if (infileread == NULL)
+  if (infileread == NULL) {
     printf("Could not read the input file %s\n", InFile);
-  struct InputData *MyData;
-  MyData = malloc(nOverlapsMaxPerImage * sizeof(*MyData));
+    return 0;
+  }
   int counter = 0;
-  fgets(aline, 1000, infileread);
-  double maxY, maxZ;
+  fgets(aline, 1000, infileread); // skip header
   while (fgets(aline, 1000, infileread) != NULL) {
     if (counter >= nOverlapsMaxPerImage) {
       printf("Warning: Maximum number of peaks reached (%d). Skipping rest of "
@@ -345,35 +345,51 @@ static inline int ReadSortFiles(char OutFolderName[1024], char FileStem[1024],
              nOverlapsMaxPerImage, InFile);
       break;
     }
-    sscanf(aline,
-           "%lf %lf %lf %lf %lf %lf %lf %lf %lf %lf %lf %lf %lf %lf %lf "
-           "%lf %lf %lf %lf %lf %lf %lf %lf %lf %lf %lf %lf %lf %lf",
-           &(MyData[counter].SpotID), &(MyData[counter].IntegratedIntensity),
-           &(MyData[counter].Omega), &(MyData[counter].YCen),
-           &(MyData[counter].ZCen), &(MyData[counter].IMax),
-           &(MyData[counter].Radius), &(MyData[counter].Eta),
-           &(MyData[counter].SigmaR), &(MyData[counter].SigmaEta),
-           &(MyData[counter].NrPx), &(MyData[counter].NrPxTot),
-           &(MyData[counter].nPeaks), &(MyData[counter].maxY),
-           &(MyData[counter].maxZ), &(MyData[counter].diffY),
-           &(MyData[counter].diffZ), &(MyData[counter].rawIMax),
-           &(MyData[counter].returnCode), &(MyData[counter].retVal),
-           &(MyData[counter].BG), &(MyData[counter].SigmaGR),
-           &(MyData[counter].SigmaLR), &(MyData[counter].SigmaGEta),
-           &(MyData[counter].SigmaLEta), &(MyData[counter].MU),
-           &(MyData[counter].RawSumIntensity), &(MyData[counter].maskTouched),
-           &(MyData[counter].FitRMSE));
-    maxY = MyData[counter].maxY;
-    maxZ = MyData[counter].maxZ;
+    // Fast parsing with strtod instead of sscanf (3-5x faster for 29 doubles)
+    char *p = aline, *end;
+    double vals[N_PS_COLS];
+    for (int c = 0; c < N_PS_COLS; c++) {
+      vals[c] = strtod(p, &end);
+      p = end;
+    }
+    MyData[counter].SpotID = vals[0];
+    MyData[counter].IntegratedIntensity = vals[1];
+    MyData[counter].Omega = vals[2];
+    MyData[counter].YCen = vals[3];
+    MyData[counter].ZCen = vals[4];
+    MyData[counter].IMax = vals[5];
+    MyData[counter].Radius = vals[6];
+    MyData[counter].Eta = vals[7];
+    MyData[counter].SigmaR = vals[8];
+    MyData[counter].SigmaEta = vals[9];
+    MyData[counter].NrPx = vals[10];
+    MyData[counter].NrPxTot = vals[11];
+    MyData[counter].nPeaks = vals[12];
+    MyData[counter].maxY = vals[13];
+    MyData[counter].maxZ = vals[14];
+    MyData[counter].diffY = vals[15];
+    MyData[counter].diffZ = vals[16];
+    MyData[counter].rawIMax = vals[17];
+    MyData[counter].returnCode = vals[18];
+    MyData[counter].retVal = vals[19];
+    MyData[counter].BG = vals[20];
+    MyData[counter].SigmaGR = vals[21];
+    MyData[counter].SigmaLR = vals[22];
+    MyData[counter].SigmaGEta = vals[23];
+    MyData[counter].SigmaLEta = vals[24];
+    MyData[counter].MU = vals[25];
+    MyData[counter].RawSumIntensity = vals[26];
+    MyData[counter].maskTouched = vals[27];
+    MyData[counter].FitRMSE = vals[28];
     if (UseMaximaPositions == 1) {
-      MyData[counter].YCen = maxY;
-      MyData[counter].ZCen = maxZ;
+      MyData[counter].YCen = vals[13]; // maxY
+      MyData[counter].ZCen = vals[14]; // maxZ
     }
     counter++;
   }
   fclose(infileread);
   qsort(MyData, counter, sizeof(struct InputData), cmpfunc);
-  int i, j, counter2 = 0;
+  int i, counter2 = 0;
   for (i = 0; i < counter; i++) {
     if (MyData[i].IntegratedIntensity < 1) {
       continue;
@@ -409,7 +425,6 @@ static inline int ReadSortFiles(char OutFolderName[1024], char FileStem[1024],
     SortedMatrix[counter2][28] = MyData[i].FitRMSE;
     counter2++;
   }
-  free(MyData);
   return counter2;
 }
 
@@ -625,6 +640,15 @@ int main(int argc, char *argv[]) {
   CurrentIDs = allocMatrix(nOverlapsMaxPerImage, 19);
   TempIDs = allocMatrix(nOverlapsMaxPerImage, 19);
 
+  // Pre-allocate reusable buffer for ReadSortFiles (avoids malloc/free per frame)
+  struct InputData *MyData = malloc(nOverlapsMaxPerImage * sizeof(*MyData));
+
+  // Pool allocator for ConstituentNode (avoids ~766K individual mallocs)
+  // Max nodes = nOverlapsMaxPerImage * (EndNr - StartNr + 1) but cap at 2M
+  int cnPoolCap = 2000000;
+  ConstituentNode *cnPool = malloc(cnPoolCap * sizeof(ConstituentNode));
+  int cnPoolUsed = 0;
+
   // Lightweight constituent tracking: per-slot linked lists of (FrameNr,
   // PeakID)
   ConstituentNode **constituents =
@@ -637,7 +661,8 @@ int main(int argc, char *argv[]) {
   FILE *MergeMapFile = fopen(MergeMapFileName, "w");
   fprintf(MergeMapFile, "%%MergedSpotID\tFrameNr\tPeakID\n");
 
-  nSpots = ReadSortFiles(OutFolderName, FileStem, FileNr, Padding, NewIDs);
+  nSpots = ReadSortFiles(OutFolderName, FileStem, FileNr, Padding, NewIDs,
+                         MyData);
   for (i = 0; i < nSpots; i++) {
     CurrentIDs[i][0] = NewIDs[i][0];                // SpotID
     CurrentIDs[i][1] = NewIDs[i][1];                // IntegratedIntensity
@@ -659,7 +684,7 @@ int main(int argc, char *argv[]) {
     CurrentIDs[i][17] = NewIDs[i][27];              // maskTouched
     CurrentIDs[i][18] = NewIDs[i][28];              // FitRMSE
     // Record first constituent peak
-    ConstituentNode *node = malloc(sizeof(ConstituentNode));
+    ConstituentNode *node = (cnPoolUsed < cnPoolCap) ? &cnPool[cnPoolUsed++] : malloc(sizeof(ConstituentNode));
     node->frameNr = FileNr;
     node->peakID = (int)NewIDs[i][0];
     node->next = NULL;
@@ -723,7 +748,8 @@ int main(int argc, char *argv[]) {
   } else { // If there are multiple files:
     for (FileNr = (StartNr + 1); FileNr <= EndNr; FileNr++) {
       nSpotsNew =
-          ReadSortFiles(OutFolderName, FileStem, FileNr, Padding, NewIDs);
+          ReadSortFiles(OutFolderName, FileStem, FileNr, Padding, NewIDs,
+                        MyData);
       fflush(stdout);
 
       // Read new frame pixel data if in pixel-overlap mode
@@ -813,7 +839,7 @@ int main(int argc, char *argv[]) {
               CurrentIDs[i][17] = 1.0;
             if (NewIDs[BestID][28] > CurrentIDs[i][18])
               CurrentIDs[i][18] = NewIDs[BestID][28];
-            ConstituentNode *node = malloc(sizeof(ConstituentNode));
+            ConstituentNode *node = (cnPoolUsed < cnPoolCap) ? &cnPool[cnPoolUsed++] : malloc(sizeof(ConstituentNode));
             node->frameNr = FileNr;
             node->peakID = (int)NewIDs[BestID][0];
             node->next = constituents[i];
@@ -894,7 +920,7 @@ int main(int argc, char *argv[]) {
             if (NewIDs[BestID][28] > CurrentIDs[i][18])
               CurrentIDs[i][18] = NewIDs[BestID][28];
             // Record constituent peak (prepend to linked list)
-            ConstituentNode *node = malloc(sizeof(ConstituentNode));
+            ConstituentNode *node = (cnPoolUsed < cnPoolCap) ? &cnPool[cnPoolUsed++] : malloc(sizeof(ConstituentNode));
             node->frameNr = FileNr;
             node->peakID = (int)NewIDs[BestID][0];
             node->next = constituents[i];
@@ -924,13 +950,7 @@ int main(int argc, char *argv[]) {
                       cn->peakID);
               cn = cn->next;
             }
-            // Free the list
-            cn = constituents[i];
-            while (cn) {
-              ConstituentNode *tmp = cn->next;
-              free(cn);
-              cn = tmp;
-            }
+            // Pool nodes freed in bulk at exit; just clear the pointer
             constituents[i] = NULL;
           }
           SpotIDNr++;
@@ -986,7 +1006,7 @@ int main(int argc, char *argv[]) {
           TempIDs[counter][17] = NewIDs[i][27]; // maskTouched
           TempIDs[counter][18] = NewIDs[i][28]; // FitRMSE
           // New spot: single constituent
-          ConstituentNode *node = malloc(sizeof(ConstituentNode));
+          ConstituentNode *node = (cnPoolUsed < cnPoolCap) ? &cnPool[cnPoolUsed++] : malloc(sizeof(ConstituentNode));
           node->frameNr = FileNr;
           node->peakID = (int)NewIDs[i][0];
           node->next = NULL;
@@ -1041,10 +1061,9 @@ int main(int argc, char *argv[]) {
       while (cn) {
         fprintf(MergeMapFile, "%d\t%d\t%d\n", SpotIDNr, cn->frameNr,
                 cn->peakID);
-        ConstituentNode *tmp = cn->next;
-        free(cn);
-        cn = tmp;
+        cn = cn->next;
       }
+      // Pool nodes freed in bulk at exit
       constituents[i] = NULL;
     }
     SpotIDNr++;
@@ -1059,6 +1078,8 @@ int main(int argc, char *argv[]) {
   free(TempIDsNew);
   shash_free(&shNew);
   shash_free(&shCur);
+  free(cnPool);
+  free(MyData);
   free(constituents);
   free(tmpConstituents);
   // Free pixel-overlap resources
