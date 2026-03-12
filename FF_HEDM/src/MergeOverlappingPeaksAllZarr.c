@@ -413,6 +413,95 @@ static inline int ReadSortFiles(char OutFolderName[1024], char FileStem[1024],
   return counter2;
 }
 
+// --- Spatial hash grid for O(N) nearest-neighbour matching ---
+// Cell size should be >= MarginOmegaOverlap so that all candidates
+// within the merge radius fall in the same or adjacent cells.
+
+#define SHASH_NBUCKETS 65521  // prime bucket count for good distribution
+
+typedef struct SHashEntry {
+  int idx;                  // index into NewIDs / CurrentIDs array
+  struct SHashEntry *next;  // chain pointer
+} SHashEntry;
+
+typedef struct {
+  SHashEntry **buckets;     // hash table (array of chains)
+  SHashEntry *pool;         // pre-allocated entry pool (avoids per-entry malloc)
+  int poolUsed;
+  int poolCap;
+  double cellSize;
+} SpatialHash;
+
+static inline uint32_t shash_key(int cx, int cy) {
+  // Combine two grid coordinates into a single hash.
+  // Use a simple multiplicative hash for speed.
+  uint32_t h = (uint32_t)(cx * 73856093u) ^ (uint32_t)(cy * 19349663u);
+  return h % SHASH_NBUCKETS;
+}
+
+static void shash_init(SpatialHash *sh, double cellSize, int maxEntries) {
+  sh->buckets = calloc(SHASH_NBUCKETS, sizeof(SHashEntry *));
+  sh->pool = malloc(maxEntries * sizeof(SHashEntry));
+  sh->poolUsed = 0;
+  sh->poolCap = maxEntries;
+  sh->cellSize = cellSize;
+}
+
+static void shash_clear(SpatialHash *sh) {
+  // Fast clear: just reset pool counter and zero bucket heads
+  memset(sh->buckets, 0, SHASH_NBUCKETS * sizeof(SHashEntry *));
+  sh->poolUsed = 0;
+}
+
+static void shash_free(SpatialHash *sh) {
+  free(sh->buckets);
+  free(sh->pool);
+  sh->buckets = NULL;
+  sh->pool = NULL;
+}
+
+static void shash_insert(SpatialHash *sh, double y, double z, int idx) {
+  if (sh->poolUsed >= sh->poolCap) return;  // safety
+  int cx = (int)floor(y / sh->cellSize);
+  int cy = (int)floor(z / sh->cellSize);
+  uint32_t h = shash_key(cx, cy);
+  SHashEntry *e = &sh->pool[sh->poolUsed++];
+  e->idx = idx;
+  e->next = sh->buckets[h];
+  sh->buckets[h] = e;
+}
+
+// Find the nearest peak in the hash within `radius` of (qy, qz).
+// Returns the index, or -1 if none found. *bestDist receives the distance.
+static int shash_find_nearest(SpatialHash *sh, double qy, double qz,
+                              double radius, double **PeakArray,
+                              int yCol, int zCol,
+                              int *skipFlags, double *bestDist) {
+  double cs = sh->cellSize;
+  int cx0 = (int)floor(qy / cs);
+  int cy0 = (int)floor(qz / cs);
+  double best = radius;
+  int bestIdx = -1;
+
+  for (int dx = -1; dx <= 1; dx++) {
+    for (int dy = -1; dy <= 1; dy++) {
+      uint32_t h = shash_key(cx0 + dx, cy0 + dy);
+      for (SHashEntry *e = sh->buckets[h]; e != NULL; e = e->next) {
+        int j = e->idx;
+        if (skipFlags && skipFlags[j]) continue;
+        double d = CalcNorm2(PeakArray[j][yCol] - qy,
+                             PeakArray[j][zCol] - qz);
+        if (d < best) {
+          best = d;
+          bestIdx = j;
+        }
+      }
+    }
+  }
+  *bestDist = best;
+  return bestIdx;
+}
+
 int main(int argc, char *argv[]) {
   printf("Version: %s\n", MIDAS_VERSION_STRING);
   if (argc < 2) {
@@ -604,6 +693,11 @@ int main(int argc, char *argv[]) {
            NrPixels);
   }
 
+  // Initialize spatial hashes for distance-based merge
+  SpatialHash shNew, shCur;
+  shash_init(&shNew, MarginOmegaOverlap, nOverlapsMaxPerImage);
+  shash_init(&shCur, MarginOmegaOverlap, nOverlapsMaxPerImage);
+
   int SpotIDNr = 1, counter;
   if (StartNr == EndNr) { // If there is only one file.
     for (i = 0; i < nSpots; i++) {
@@ -723,40 +817,40 @@ int main(int argc, char *argv[]) {
         free(newToCurCount);
 
       } else {
-        // --- Original distance-based merge path ---
+        // --- Spatial-hash accelerated distance-based merge path ---
+        // Build spatial hash of new peaks (keyed by YCen, ZCen)
+        shash_clear(&shNew);
+        for (j = 0; j < nSpotsNew; j++) {
+          shash_insert(&shNew, NewIDs[j][3], NewIDs[j][4], j);
+        }
+        // Build spatial hash of current peaks (keyed by YCen, ZCen in cols 8,9)
+        shash_clear(&shCur);
         for (i = 0; i < nSpots; i++) {
-          minLen = 10000000;
+          shash_insert(&shCur, CurrentIDs[i][8], CurrentIDs[i][9], i);
+        }
+
+        for (i = 0; i < nSpots; i++) {
           IDFound = 0;
           yThis = CurrentIDs[i][8];
           zThis = CurrentIDs[i][9];
-          for (j = 0; j < nSpotsNew;
-               j++) { // Try to find the smallest difference in Y,Z.
-            if (TempIDsNew[j] != 1) {
-              diffLen = CalcNorm2(NewIDs[j][3] - yThis, NewIDs[j][4] - zThis);
-              if (diffLen < MarginOmegaOverlap && diffLen < minLen) {
-                minLen = diffLen;
-                BestID = j;
-                IDFound = 1;
-              }
-            }
-          }
-          if (IDFound == 1) { // If a candidate for overlapping has been
-                              // detected, check if it is the best pair.
+          // Forward: find nearest new peak within MarginOmegaOverlap
+          BestID = shash_find_nearest(&shNew, yThis, zThis,
+                                      MarginOmegaOverlap, NewIDs, 3, 4,
+                                      TempIDsNew, &minLen);
+          if (BestID >= 0) {
+            IDFound = 1;
+            // Mutual-best check: is current peak i the closest to BestID?
             yFwd = NewIDs[BestID][3];
             zFwd = NewIDs[BestID][4];
-            for (k = 0; k < nSpots; k++) {
-              if (k != i && TempIDsCurrent[k] != 1) {
-                diffLenFwd =
-                    CalcNorm2(CurrentIDs[k][8] - yFwd, CurrentIDs[k][9] - zFwd);
-                if (diffLenFwd < minLen) {
-                  IDFound = 0;
-                  break;
-                }
-              }
+            double revDist;
+            int revBest = shash_find_nearest(&shCur, yFwd, zFwd,
+                                             minLen, CurrentIDs, 8, 9,
+                                             TempIDsCurrent, &revDist);
+            if (revBest >= 0 && revBest != i) {
+              IDFound = 0; // another current peak is closer
             }
           }
-          if (IDFound == 1) { // If the best pair for overlapping was found,
-                              // update current IDs.
+          if (IDFound == 1) { // Mutual best pair found — merge
             TempIDsCurrent[i] = 1;
             TempIDsNew[BestID] = 1;
             CurrentIDs[i][1] += NewIDs[BestID][1];
@@ -954,6 +1048,8 @@ int main(int argc, char *argv[]) {
   FreeMemMatrix(TempIDs, nOverlapsMaxPerImage);
   free(TempIDsCurrent);
   free(TempIDsNew);
+  shash_free(&shNew);
+  shash_free(&shCur);
   free(constituents);
   free(tmpConstituents);
   // Free pixel-overlap resources
