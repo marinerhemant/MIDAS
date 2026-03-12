@@ -417,16 +417,16 @@ static inline int ReadSortFiles(char OutFolderName[1024], char FileStem[1024],
 // Cell size should be >= MarginOmegaOverlap so that all candidates
 // within the merge radius fall in the same or adjacent cells.
 
-#define SHASH_NBUCKETS 65521  // prime bucket count for good distribution
+#define SHASH_NBUCKETS 65521 // prime bucket count for good distribution
 
 typedef struct SHashEntry {
-  int idx;                  // index into NewIDs / CurrentIDs array
-  struct SHashEntry *next;  // chain pointer
+  int idx;                 // index into NewIDs / CurrentIDs array
+  struct SHashEntry *next; // chain pointer
 } SHashEntry;
 
 typedef struct {
-  SHashEntry **buckets;     // hash table (array of chains)
-  SHashEntry *pool;         // pre-allocated entry pool (avoids per-entry malloc)
+  SHashEntry **buckets; // hash table (array of chains)
+  SHashEntry *pool;     // pre-allocated entry pool (avoids per-entry malloc)
   int poolUsed;
   int poolCap;
   double cellSize;
@@ -461,7 +461,8 @@ static void shash_free(SpatialHash *sh) {
 }
 
 static void shash_insert(SpatialHash *sh, double y, double z, int idx) {
-  if (sh->poolUsed >= sh->poolCap) return;  // safety
+  if (sh->poolUsed >= sh->poolCap)
+    return; // safety
   int cx = (int)floor(y / sh->cellSize);
   int cy = (int)floor(z / sh->cellSize);
   uint32_t h = shash_key(cx, cy);
@@ -471,12 +472,14 @@ static void shash_insert(SpatialHash *sh, double y, double z, int idx) {
   sh->buckets[h] = e;
 }
 
-// Find the nearest peak in the hash within `radius` of (qy, qz).
-// Returns the index, or -1 if none found. *bestDist receives the distance.
+// Find the nearest peak in the hash within `radius` of (qy, qz),
+// optionally filtering by a radius column (ring radius) tolerance.
+// radiusCol < 0 disables the radius filter.
 static int shash_find_nearest(SpatialHash *sh, double qy, double qz,
-                              double radius, double **PeakArray,
-                              int yCol, int zCol,
-                              int *skipFlags, double *bestDist) {
+                              double radius, double **PeakArray, int yCol,
+                              int zCol, int radiusCol, double qRadius,
+                              double radiusTol, int *skipFlags,
+                              double *bestDist) {
   double cs = sh->cellSize;
   int cx0 = (int)floor(qy / cs);
   int cy0 = (int)floor(qz / cs);
@@ -488,9 +491,13 @@ static int shash_find_nearest(SpatialHash *sh, double qy, double qz,
       uint32_t h = shash_key(cx0 + dx, cy0 + dy);
       for (SHashEntry *e = sh->buckets[h]; e != NULL; e = e->next) {
         int j = e->idx;
-        if (skipFlags && skipFlags[j]) continue;
-        double d = CalcNorm2(PeakArray[j][yCol] - qy,
-                             PeakArray[j][zCol] - qz);
+        if (skipFlags && skipFlags[j])
+          continue;
+        // Early reject: peaks on different rings can't match
+        if (radiusCol >= 0 &&
+            fabs(PeakArray[j][radiusCol] - qRadius) > radiusTol)
+          continue;
+        double d = CalcNorm2(PeakArray[j][yCol] - qy, PeakArray[j][zCol] - qz);
         if (d < best) {
           best = d;
           bestIdx = j;
@@ -834,18 +841,21 @@ int main(int argc, char *argv[]) {
           yThis = CurrentIDs[i][8];
           zThis = CurrentIDs[i][9];
           // Forward: find nearest new peak within MarginOmegaOverlap
-          BestID = shash_find_nearest(&shNew, yThis, zThis,
-                                      MarginOmegaOverlap, NewIDs, 3, 4,
-                                      TempIDsNew, &minLen);
+          // Also filter by ring radius (col 6) to avoid cross-ring matches
+          double rThis = CurrentIDs[i][6]; // Radius of current peak
+          BestID = shash_find_nearest(&shNew, yThis, zThis, MarginOmegaOverlap,
+                                      NewIDs, 3, 4, 6, rThis,
+                                      MarginOmegaOverlap, TempIDsNew, &minLen);
           if (BestID >= 0) {
             IDFound = 1;
             // Mutual-best check: is current peak i the closest to BestID?
             yFwd = NewIDs[BestID][3];
             zFwd = NewIDs[BestID][4];
+            double rFwd = NewIDs[BestID][6];
             double revDist;
-            int revBest = shash_find_nearest(&shCur, yFwd, zFwd,
-                                             minLen, CurrentIDs, 8, 9,
-                                             TempIDsCurrent, &revDist);
+            int revBest = shash_find_nearest(
+                &shCur, yFwd, zFwd, minLen, CurrentIDs, 8, 9, 6, rFwd,
+                MarginOmegaOverlap, TempIDsCurrent, &revDist);
             if (revBest >= 0 && revBest != i) {
               IDFound = 0; // another current peak is closer
             }
@@ -1017,15 +1027,14 @@ int main(int argc, char *argv[]) {
     }
   }
   for (i = 0; i < nSpots; i++) {
-    fprintf(
-        OutFile,
-        "%d %lf %lf %lf %lf %lf %lf %lf %lf %lf %lf %lf %lf %lf %lf %lf %lf\n",
-        SpotIDNr, CurrentIDs[i][1], (CurrentIDs[i][2] / CurrentIDs[i][1]),
-        (CurrentIDs[i][3] / CurrentIDs[i][1]),
-        (CurrentIDs[i][4] / CurrentIDs[i][1]), CurrentIDs[i][5],
-        CurrentIDs[i][10], CurrentIDs[i][11], CurrentIDs[i][12],
-        CurrentIDs[i][13], CurrentIDs[i][14], CurrentIDs[i][15],
-        CurrentIDs[i][6], CurrentIDs[i][7], CurrentIDs[i][16]);
+    fprintf(OutFile,
+            "%d %lf %lf %lf %lf %lf %lf %lf %lf %lf %lf %lf %lf %lf %lf\n",
+            SpotIDNr, CurrentIDs[i][1], (CurrentIDs[i][2] / CurrentIDs[i][1]),
+            (CurrentIDs[i][3] / CurrentIDs[i][1]),
+            (CurrentIDs[i][4] / CurrentIDs[i][1]), CurrentIDs[i][5],
+            CurrentIDs[i][10], CurrentIDs[i][11], CurrentIDs[i][12],
+            CurrentIDs[i][13], CurrentIDs[i][14], CurrentIDs[i][15],
+            CurrentIDs[i][6], CurrentIDs[i][7], CurrentIDs[i][16]);
     // Write final MergeMap entries
     {
       ConstituentNode *cn = constituents[i];
