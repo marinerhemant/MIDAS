@@ -7,13 +7,17 @@
 #include "midas_version.h"
 #include "nf_headers.h"
 #include <ctype.h>
+#include <errno.h>
+#include <fcntl.h>
 #include <math.h>
 #include <nlopt.h>
 #include <omp.h>
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
+#include <sys/mman.h>
 #include <sys/stat.h>
+#include <sys/types.h>
 #include <time.h>
 
 #define RealType double
@@ -756,15 +760,13 @@ int main(int argc, char *argv[]) {
   nOmeRang = NoOfOmegaRanges;
   gs = gSze;
   fclose(fileParam);
-  // Read bin files
+  // Read SpotsInfo.bin
   if (outputDir[0] == '\0')
     strcpy(outputDir, direct);
   char fnG[1000];
   sprintf(fnG, "%s/grid.txt", outputDir);
   sprintf(fn, "%s/%s", outputDir, fn2);
-  char *ext = "bin";
   int *ObsSpotsInfo;
-  int ReadCode;
   nrFiles = EndNr - StartNr + 1;
   nrPixels = NrPixelsY * NrPixelsZ;
   long long int SizeObsSpots, iT;
@@ -772,20 +774,18 @@ int main(int argc, char *argv[]) {
   SizeObsSpots *= nrPixels;
   SizeObsSpots *= nrFiles;
   SizeObsSpots /= 32;
-  ObsSpotsInfo = malloc(SizeObsSpots * sizeof(*ObsSpotsInfo));
-  if (ObsSpotsInfo == NULL) {
-    printf("Could not allocate ObsSpotsInfo.\n");
-    return 0;
-  }
-  memset(ObsSpotsInfo, 0, SizeObsSpots * sizeof(*ObsSpotsInfo));
-  printf("Size of spot info: %llu mb\n",
-         SizeObsSpots * sizeof(int) / (1024 * 1024));
-  ReadCode = ReadBinFiles(fn, ext, StartNr, EndNr, ObsSpotsInfo, nLayers,
-                          SizeObsSpots, NrPixelsY, NrPixelsZ);
-  if (ReadCode == 0) {
-    printf("Reading bin files did not go well. Please check.\n");
-    return 0;
-  }
+
+  // mmap SpotsInfo.bin (pre-computed by ProcessImagesCombined/MMapImageInfo)
+  char spotsInfoFN[1024];
+  sprintf(spotsInfoFN, "%s/SpotsInfo.bin", outputDir);
+  int siFD = open(spotsInfoFN, O_RDONLY);
+  check(siFD < 0, "open %s failed: %s", spotsInfoFN, strerror(errno));
+  struct stat siStat;
+  fstat(siFD, &siStat);
+  ObsSpotsInfo = mmap(0, siStat.st_size, PROT_READ, MAP_SHARED, siFD, 0);
+  check(ObsSpotsInfo == MAP_FAILED, "mmap %s failed: %s", spotsInfoFN, strerror(errno));
+  printf("Size of spot info: %llu mb (mmap'd from %s)\n",
+         (unsigned long long)(siStat.st_size / (1024 * 1024)), spotsInfoFN);
   double *LsdFit, *TiltsFit, **BCsFit;
   double TiltsOrig[3];
   TiltsOrig[0] = tx;
@@ -871,5 +871,7 @@ int main(int argc, char *argv[]) {
   end = clock();
   diftotal = ((double)(end - start)) / CLOCKS_PER_SEC;
   printf("Time elapsed in comparing diffraction spots: %f [s]\n", diftotal);
+  munmap(ObsSpotsInfo, siStat.st_size);
+  close(siFD);
   return 0;
 }

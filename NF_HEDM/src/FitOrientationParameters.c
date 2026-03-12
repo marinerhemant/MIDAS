@@ -579,9 +579,7 @@ int main(int argc, char *argv[]) {
   char fnG[1000];
   sprintf(fnG, "%s/grid.txt", outputDir);
   sprintf(fn, "%s/%s", outputDir, fn2);
-  char *ext = "bin";
   int *ObsSpotsInfo;
-  int ReadCode;
   nrFiles = EndNr - StartNr + 1;
   nrPixels = NrPixelsY * NrPixelsZ;
   long long int SizeObsSpots, iT;
@@ -589,20 +587,18 @@ int main(int argc, char *argv[]) {
   SizeObsSpots *= nrPixels;
   SizeObsSpots *= nrFiles;
   SizeObsSpots /= 32;
-  ObsSpotsInfo = malloc(SizeObsSpots * sizeof(*ObsSpotsInfo));
-  if (ObsSpotsInfo == NULL) {
-    printf("Could not allocate ObsSpotsInfo.\n");
-    return 0;
-  }
-  memset(ObsSpotsInfo, 0, SizeObsSpots * sizeof(*ObsSpotsInfo));
-  printf("Size of spot info: %llu mb\n",
-         SizeObsSpots * sizeof(int) / (1024 * 1024));
-  ReadCode = ReadBinFiles(fn, ext, StartNr, EndNr, ObsSpotsInfo, nLayers,
-                          SizeObsSpots, NrPixelsY, NrPixelsZ);
-  if (ReadCode == 0) {
-    printf("Reading bin files did not go well. Please check.\n");
-    return 0;
-  }
+
+  // mmap SpotsInfo.bin (pre-computed by ProcessImagesCombined/MMapImageInfo)
+  char spotsInfoFN[1024];
+  sprintf(spotsInfoFN, "%s/SpotsInfo.bin", outputDir);
+  int siFD = open(spotsInfoFN, O_RDONLY);
+  check(siFD < 0, "open %s failed: %s", spotsInfoFN, strerror(errno));
+  struct stat siStat;
+  fstat(siFD, &siStat);
+  ObsSpotsInfo = mmap(0, siStat.st_size, PROT_READ, MAP_SHARED, siFD, 0);
+  check(ObsSpotsInfo == MAP_FAILED, "mmap %s failed: %s", spotsInfoFN, strerror(errno));
+  printf("Size of spot info: %llu mb (mmap'd from %s)\n",
+         (unsigned long long)(siStat.st_size / (1024 * 1024)), spotsInfoFN);
   // Read position.
   int rown = atoi(argv[2]);
   FILE *fp;
@@ -917,7 +913,8 @@ int main(int argc, char *argv[]) {
   close(dsfd);
   munmap(NrSpots, keyStat.st_size);
   close(keyfd);
-  free(ObsSpotsInfo);
+  munmap(ObsSpotsInfo, siStat.st_size);
+  close(siFD);
   FreeMemMatrix(XY, 3);
   munmap(OrientationMatrix, omStat.st_size);
   close(omfd);
