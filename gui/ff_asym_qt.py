@@ -540,6 +540,8 @@ class FFViewer(QtWidgets.QMainWindow):
         tb.addWidget(self.max_intensity_edit)
         apply_btn = QtWidgets.QPushButton("Apply")
         apply_btn.clicked.connect(self._apply_intensity_levels)
+        self.min_intensity_edit.returnPressed.connect(self._apply_intensity_levels)
+        self.max_intensity_edit.returnPressed.connect(self._apply_intensity_levels)
         tb.addWidget(apply_btn)
 
         # Export
