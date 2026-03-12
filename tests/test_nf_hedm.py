@@ -15,7 +15,8 @@ import subprocess
 import shutil
 import numpy as np
 from pathlib import Path
-from test_common import add_common_args, run_preflight, print_environment
+from test_common import (add_common_args, run_preflight, print_environment,
+                         DiagnosticReporter)
 
 
 def parse_args():
@@ -190,7 +191,7 @@ def read_mic_file(mic_path):
     return voxels
 
 
-def compare_reconstructions(ref_mic_path, test_mic_path, sg_num=225):
+def compare_reconstructions(ref_mic_path, test_mic_path, reporter=None, sg_num=225):
     """Compare orientations between reference and test mic files.
 
     Matches voxels by (X, Y) position and computes misorientation angles.
@@ -243,6 +244,9 @@ def compare_reconstructions(ref_mic_path, test_mic_path, sg_num=225):
 
     if not misorientations:
         print("Error: No matched voxels found for comparison.")
+        if reporter:
+            reporter.record('misorientation', passed=False,
+                            failure_type='all_zeros')
         return False
 
     miso = np.array(misorientations)
@@ -263,7 +267,7 @@ def compare_reconstructions(ref_mic_path, test_mic_path, sg_num=225):
     print(f"\n--- Fraction below threshold ---")
     for t in thresholds:
         frac = np.sum(miso < t) / len(miso) * 100
-        print(f"  < {t:5.2f}°: {frac:6.2f}%")
+        print(f"  < {t:5.2f}\u00b0: {frac:6.2f}%")
 
     print(f"\n--- Confidence Statistics ---")
     print(f"  Reference  - Mean: {np.mean(conf_r):.4f}, Median: {np.median(conf_r):.4f}")
@@ -273,7 +277,14 @@ def compare_reconstructions(ref_mic_path, test_mic_path, sg_num=225):
     pct_below_025 = np.sum(miso < 0.25) / len(miso) * 100
     passed = pct_below_025 > 80.0
     status = "PASSED" if passed else "FAILED"
-    print(f"\n  Benchmark result: {status} ({pct_below_025:.1f}% of voxels < 0.25° misorientation)")
+    print(f"\n  Benchmark result: {status} ({pct_below_025:.1f}% of voxels < 0.25\u00b0 misorientation)")
+
+    if reporter:
+        reporter.record('misorientation/pct_below_0.25deg', passed=passed,
+                        max_diff=float(np.max(miso)),
+                        n_mismatch=int(np.sum(miso >= 0.25)),
+                        n_total=len(miso))
+
     return passed
 
 
@@ -322,6 +333,8 @@ def main():
     local_param = work_dir / param_path.name
     local_mic = work_dir / mic_path.name
 
+    reporter = DiagnosticReporter(test_name='test_nf_hedm', args=args)
+
     print(f"NF-HEDM Benchmark Test")
     print(f"  MIDAS home:  {midas_home}")
     print(f"  Param file:  {param_path} -> {local_param}")
@@ -344,7 +357,7 @@ def main():
     test_mic = work_dir / "Au_txt_Reconstructed.mic"
 
     if ref_mic.exists() and test_mic.exists():
-        passed = compare_reconstructions(ref_mic, test_mic)
+        passed = compare_reconstructions(ref_mic, test_mic, reporter=reporter)
     elif not ref_mic.exists():
         print(f"\nSkipping comparison: reference mic not found at {ref_mic}")
         passed = None
@@ -355,6 +368,10 @@ def main():
     print(f"\n{'='*60}")
     print(f"  NF-HEDM Benchmark Test Completed")
     print(f"{'='*60}")
+
+    reporter.summary()
+    if reporter.has_failures:
+        reporter.save_report()
 
     # Cleanup sim directory
     if work_dir.exists():

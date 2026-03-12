@@ -77,7 +77,7 @@ Remaining here: `sino_cleanup_tomo.py` — sinogram cleanup and tomo reconstruct
 | `sim_ff_transformed.py` | Generate transformed FF-HEDM simulation data. |
 | `compressedSimulationReader.py` | Read compressed forward simulation output. |
 
-Tests moved to [`tests/`](../tests/): `test_ff_hedm.py`, `test_nf_hedm.py`, `test_ff_calibration.py`, `test_integrator_peaks.py`, `test_phase_id.py`, `test_live_viewer.py`.
+Tests moved to [`tests/`](../tests/): `test_ff_hedm.py`, `test_nf_hedm.py`, `test_calibration_integration.py`, `test_phase_id.py`, `test_live_viewer.py`.
 
 ## Scanning / Point-Focus HEDM
 

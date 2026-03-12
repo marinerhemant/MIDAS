@@ -27,7 +27,8 @@ import subprocess
 import sys
 import tempfile
 from pathlib import Path
-from test_common import add_common_args, run_preflight, print_environment
+from test_common import (add_common_args, run_preflight, print_environment,
+                         DiagnosticReporter)
 
 SCRIPT_DIR = Path(__file__).resolve().parent
 MIDAS_HOME = SCRIPT_DIR.parent
@@ -55,7 +56,8 @@ def write_test_phases(path: Path):
 
 
 def check_assertions(fits, rings, phases, geom, snr_threshold,
-                     rel_intensity_threshold, pipeline_label):
+                     rel_intensity_threshold, pipeline_label,
+                     reporter=None):
     """Run assertions on fit results. Returns True if all pass."""
     global_max_imax = max((f.Imax for f in fits if f.Imax > 0), default=1.0)
     min_sigma = 0.5 * geom['RBinSize']
@@ -177,12 +179,25 @@ def check_assertions(fits, rings, phases, geom, snr_threshold,
     else:
         print(f"  ❌ [{pipeline_label}] SOME ASSERTIONS FAILED")
     print()
+
+    if reporter:
+        pfx = f"{pipeline_label}/"
+        reporter.record(f'{pfx}CeO2_detection', passed=ceo2_pass,
+                        max_diff=ceo2_ratio, n_mismatch=ceo2_tot - ceo2_det,
+                        n_total=ceo2_tot)
+        reporter.record(f'{pfx}Au_absence', passed=au_pass,
+                        max_diff=au_det)
+        reporter.record(f'{pfx}CeO2_lattice_param', passed=a_pass,
+                        max_diff=delta_ppm)
+        reporter.record(f'{pfx}CeO2_confidence', passed=conf_pass,
+                        max_diff=ceo2_conf)
+
     return pass_all
 
 
 def run_test(n_cpus=4, max_rings=15, keep_work=False,
              work_dir_override=None, snr_threshold=5.0,
-             rel_intensity_threshold=0.01):
+             rel_intensity_threshold=0.01, reporter=None):
     """Run the phase identification benchmark on both pipelines."""
     param_path = CALIB_DIR / "parameters.txt"
     data_file = CALIB_DIR / "CeO2_Pil_100x100_att000_650mm_71p676keV_001956.tif"
@@ -281,7 +296,7 @@ def run_test(n_cpus=4, max_rings=15, keep_work=False,
                       rel_intensity_threshold, phases)
         pass_zarr = check_assertions(fits_zarr, rings, phases, geom,
                                      snr_threshold, rel_intensity_threshold,
-                                     "Zarr")
+                                     "Zarr", reporter=reporter)
 
         # ==============================================================
         #  Clean up Zarr artifacts, regenerate DetectorMapper
@@ -339,7 +354,7 @@ def run_test(n_cpus=4, max_rings=15, keep_work=False,
                       rel_intensity_threshold, phases)
         pass_direct = check_assertions(fits_direct, rings, phases, geom,
                                        snr_threshold, rel_intensity_threshold,
-                                       "Direct")
+                                       "Direct", reporter=reporter)
 
         # ==============================================================
         #  Final verdict
@@ -376,12 +391,20 @@ def main():
     add_common_args(parser)
     args = parser.parse_args()
 
+    reporter = DiagnosticReporter(test_name='test_phase_id', args=args)
+
     success = run_test(
         n_cpus=args.nCPUs,
         max_rings=args.max_rings,
         keep_work=args.keep_work_dir,
         work_dir_override=args.work_dir,
+        reporter=reporter,
     )
+
+    reporter.summary()
+    if reporter.has_failures:
+        reporter.save_report()
+
     sys.exit(0 if success else 1)
 
 

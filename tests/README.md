@@ -25,8 +25,7 @@ cd ~/opt/MIDAS
 # Core pipeline tests (recommended for new installations)
 python tests/test_ff_hedm.py -nCPUs 4          # ~60s
 python tests/test_nf_hedm.py -nCPUs 4          # ~120s
-python tests/test_ff_calibration.py -nCPUs 4   # ~30s
-python tests/test_integrator_peaks.py -nCPUs 4 # ~60s
+python tests/test_calibration_integration.py -nCPUs 4  # ~90s (calibration + integration)
 python tests/test_phase_id.py -nCPUs 4         # ~60s
 python tests/test_tomo.py -nCPUs 4             # ~30s
 ```
@@ -226,69 +225,23 @@ python tests/test_nf_hedm.py -nCPUs 4
 
 ---
 
-## Test 3: Calibrant Ring Fitting (`test_ff_calibration.py`)
+## Test 3: Calibration + Integration (`test_calibration_integration.py`)
 
 ### What It Tests
 
-Detector geometry calibration using a known calibrant (CeO2). Validates that `CalibrantPanelShiftsOMP` can refine detector distance, beam center, tilts, and distortion parameters to produce low strain residuals.
+Combined test for detector geometry calibration and azimuthal integration peak fitting. First validates that `CalibrantPanelShiftsOMP` produces low strain residuals, then validates that `IntegratorZarrOMP` produces peak positions matching crystallographic predictions from CeO2.
 
 ### How It Works
 
 ```
-Step 1: Prepare workspace
-   Action: Copies calibration parameter file to a temp directory
-           Links the CeO2 calibration TIFF data
+Step 0: Calibration (CalibrantPanelShiftsOMP)
+   Action: Runs calibrant fitting to optimize detector geometry
+   Validates: MeanStrain ≤ 50 µε (configurable via -strainThreshold)
 
-Step 2: GetHKLList
-   Input:  SpaceGroup=225, LatticeConstant=5.4116 Å
-   Action: Generates theoretical hkl list with ring radii
-   Output: hkls.csv
-
-Step 3: CalibrantPanelShiftsOMP
-   Input:  CeO2 TIFF, parameter file, hkls.csv
-   Action: Multi-iteration least-squares fitting:
-           - Finds diffraction rings in the calibrant image
-           - Fits ellipses to extract ring positions
-           - Optimizes: Lsd, BC (beam center), ty, tz (tilts), p0–p4 (distortion)
-           - Reports strain statistics across all fitted ring points
-   Output: Refined parameters + strain metrics
-```
-
-### What Gets Compared
-
-The test parses the "Mean Values" section of the calibrant output for:
-- **MeanStrain** (µε) — mean absolute strain across all ring points
-- **StdStrain**, **MedianStrain**, **Q25**, **Q75**, **MinStrain**, **MaxStrain** — for diagnostics
-- **Refined parameters:** Lsd, BC, ty, tz, p0–p4
-
-### Pass Criteria
-
-**MeanStrain ≤ 50 µε** (configurable via `-strainThreshold`)
-
-```bash
-python tests/test_ff_calibration.py -nCPUs 4
-python tests/test_ff_calibration.py -nCPUs 4 -strainThreshold 200
-```
-
-**Data directory:** `FF_HEDM/Example/Calibration/`
-
----
-
-## Test 4: Integrator + Peak Fitting (`test_integrator_peaks.py`)
-
-### What It Tests
-
-The azimuthal integration and 1D peak fitting pipeline. Validates that `IntegratorZarrOMP` produces peak positions matching crystallographic predictions from a known calibrant (CeO2).
-
-### How It Works
-
-```
-Step 0: Calibration (reuses test_ff_calibration logic)
-   Action: Runs CalibrantPanelShiftsOMP to get optimized detector geometry
+   With --calibration-only, stops here.
 
 Step 1: Create Zarr zip
-   Action: Creates a MIDAS Zarr zip from the calibration TIFF using
-           ffGenerateZipRefactor (with parameter injection)
+   Action: Creates a MIDAS Zarr zip from the calibration TIFF
 
 Step 2: GetHKLList → ring radii
    Action: Generates theoretical ring radii in µm
@@ -296,48 +249,36 @@ Step 2: GetHKLList → ring radii
 
 Step 3: DetectorMapper
    Action: Pre-computes the detector geometry mapping
-           (pixel → 2θ, η lookup tables)
 
 Step 4: IntegratorZarrOMP (with peak fitting)
    Input:  Zarr zip + peak_params.txt (with PeakLocation entries)
    Action: Azimuthal integration followed by 1D pseudo-Voigt peak fitting
    Output: _lineout.bin (1D profile), _fit.bin (fitted peak parameters)
 
-Step 5: Read fit.bin
-   Format: 7 doubles per peak: [Area, Center, Sig, Gam, FWHM, Eta, ChiSq]
-   Action: Parse binary to extract fitted peak centers
-
-Step 6: Strain benchmark comparison
+Step 5: Strain benchmark comparison
    Action: For each ring, compute:
            ΔR = R_fitted - R_theory
            strain (ppm) = (ΔR / R_theory) × 10⁶
 ```
 
-### What Gets Compared
-
-| Metric | How Computed | Threshold |
-|---|---|---|
-| Per-ring strain (ppm) | `(R_fitted - R_theory) / R_theory × 1e6` | Warning if max |strain| > 500 ppm |
-| Mean strain | Average across all rings | Reported |
-| Std strain | Standard deviation | Reported |
-
 ### Pass Criteria
 
-**Max |strain residual| < 500 ppm** (warning, not hard fail)
-
-The test also runs an **auto-detect mode** (no `PeakLocation` entries), which validates that at least 10 theoretical rings are detected in at least 50% of eta bins, with mean center error < 500 ppm.
+- **Calibration:** MeanStrain ≤ 50 µε (configurable via `-strainThreshold`)
+- **Integration:** Max |strain residual| < 500 ppm
 
 ```bash
-python tests/test_integrator_peaks.py -nCPUs 4
-python tests/test_integrator_peaks.py -nCPUs 4 --keep-work-dir
-python tests/test_integrator_peaks.py -nCPUs 4 --mode autodetect
+python tests/test_calibration_integration.py -nCPUs 4
+python tests/test_calibration_integration.py -nCPUs 4 --calibration-only
+python tests/test_calibration_integration.py -nCPUs 4 -strainThreshold 200
+python tests/test_calibration_integration.py -nCPUs 4 --mode autodetect
+python tests/test_calibration_integration.py -nCPUs 4 --keep-work-dir
 ```
 
 **Data directory:** `FF_HEDM/Example/Calibration/`
 
 ---
 
-## Test 5: Phase Identification (`test_phase_id.py`)
+## Test 4: Phase Identification (`test_phase_id.py`)
 
 ### What It Tests
 
@@ -396,7 +337,7 @@ python tests/test_phase_id.py --keep-work-dir --work-dir /tmp/phase_test
 
 ---
 
-## Test 6: Tomography Reconstruction (`test_tomo.py`)
+## Test 5: Tomography Reconstruction (`test_tomo.py`)
 
 ### What It Tests
 
@@ -467,7 +408,7 @@ python tests/test_tomo.py --keep-work-dir --plot
 
 ---
 
-## Test 7: Live Viewer Data Generator (`test_live_viewer.py`)
+## Test 6: Live Viewer Data Generator (`test_live_viewer.py`)
 
 ### What It Tests
 
@@ -591,13 +532,12 @@ If a test fails and you can't resolve it:
 
 ```
 tests/
-├── README.md                  # This file
-├── test_common.py             # Shared diagnostics framework
-├── test_ff_hedm.py            # FF-HEDM full pipeline benchmark
-├── test_nf_hedm.py            # NF-HEDM reconstruction benchmark
-├── test_ff_calibration.py     # Calibrant ring fitting benchmark
-├── test_integrator_peaks.py   # Integrator + peak fitting benchmark
-├── test_phase_id.py           # Phase identification benchmark
-├── test_tomo.py               # Tomography reconstruction benchmark
-└── test_live_viewer.py        # Live viewer data generator (manual)
+├── README.md                       # This file
+├── test_common.py                  # Shared diagnostics framework
+├── test_ff_hedm.py                 # FF-HEDM full pipeline benchmark
+├── test_nf_hedm.py                 # NF-HEDM reconstruction benchmark
+├── test_calibration_integration.py  # Calibration + integration benchmark
+├── test_phase_id.py                # Phase identification benchmark
+├── test_tomo.py                    # Tomography reconstruction benchmark
+└── test_live_viewer.py             # Live viewer data generator (manual)
 ```

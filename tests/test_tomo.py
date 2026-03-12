@@ -27,7 +27,8 @@ import time
 from pathlib import Path
 
 import numpy as np
-from test_common import add_common_args, run_preflight, print_environment
+from test_common import (add_common_args, run_preflight, print_environment,
+                         DiagnosticReporter)
 
 # ---------------------------------------------------------------------------
 # Locate MIDAS
@@ -158,7 +159,7 @@ def plot_results(phantom, sinogram, recon_full, recon_sino, thetas):
 # ---------------------------------------------------------------------------
 def run_test(n_cpus: int = 4, phantom_size: int = 256,
              n_thetas: int = 1800, keep_work: bool = False,
-             plot: bool = False) -> bool:
+             plot: bool = False, reporter=None) -> bool:
     """Run the tomography benchmark.
 
     Metrics validated:
@@ -250,6 +251,12 @@ def run_test(n_cpus: int = 4, phantom_size: int = 256,
               f"  (err={centre_err:.1%}, tol {CENTRE_TOL:.0%})"
               f"  {'PASS' if centre_ok else 'FAIL'}")
 
+        if reporter:
+            reporter.record('full_pipeline/correlation', passed=corr_ok,
+                            max_diff=abs(1.0 - corr))
+            reporter.record('full_pipeline/centre_value', passed=centre_ok,
+                            max_diff=centre_err)
+
         # 5. Sinogram pipeline
         print("\n[5/6] Reconstructing via run_tomo_from_sinos()...", flush=True)
         recon_sino = run_tomo_from_sinos(
@@ -276,6 +283,12 @@ def run_test(n_cpus: int = 4, phantom_size: int = 256,
         print(f"    Centre value: {sino_centre:.4f} vs {phantom_centre_val:.4f}"
               f"  (err={centre_err_s:.1%}, tol {CENTRE_TOL:.0%})"
               f"  {'PASS' if centre_ok_s else 'FAIL'}")
+
+        if reporter:
+            reporter.record('sino_pipeline/correlation', passed=corr_ok_s,
+                            max_diff=abs(1.0 - corr_s))
+            reporter.record('sino_pipeline/centre_value', passed=centre_ok_s,
+                            max_diff=centre_err_s)
 
         # 6. Cross-check: both pipelines should agree closely
         cross_corr = pearson_correlation(recon_norm, sino_norm)
@@ -320,13 +333,21 @@ def main():
     add_common_args(parser)
     args = parser.parse_args()
 
+    reporter = DiagnosticReporter(test_name='test_tomo', args=args)
+
     success = run_test(
         n_cpus=args.nCPUs,
         phantom_size=args.phantom_size,
         n_thetas=args.n_thetas,
         keep_work=args.keep_work_dir,
         plot=args.plot,
+        reporter=reporter,
     )
+
+    reporter.summary()
+    if reporter.has_failures:
+        reporter.save_report()
+
     sys.exit(0 if success else 1)
 
 

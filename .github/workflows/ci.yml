@@ -94,17 +94,11 @@ jobs:
           MIDAS_HOME: ${{ github.workspace }}
         run: python tests/test_ff_hedm.py -nCPUs 2 --px-overlap --dual-dataset
 
-      - name: Test FF Calibration
+      - name: Test Calibration + Integration
         if: always() && steps.build.outcome == 'success'
         env:
           MIDAS_HOME: ${{ github.workspace }}
-        run: python tests/test_ff_calibration.py -nCPUs 2
-
-      - name: Test Integrator Peaks
-        if: always() && steps.build.outcome == 'success'
-        env:
-          MIDAS_HOME: ${{ github.workspace }}
-        run: python tests/test_integrator_peaks.py -nCPUs 2
+        run: python tests/test_calibration_integration.py -nCPUs 2
 
       - name: Test Phase ID
         if: always() && steps.build.outcome == 'success'
