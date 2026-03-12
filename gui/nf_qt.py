@@ -282,6 +282,20 @@ class NFViewer(QtWidgets.QMainWindow):
         self.mic_view.setAspectLocked(True)
         self.mic_scatter = pg.ScatterPlotItem(size=5, pen=None)
         self.mic_view.addItem(self.mic_scatter)
+
+        # Colorbar for mic scatter
+        self._mic_cmap = pg.colormap.get('turbo')
+        self._mic_colorbar = pg.ColorBarItem(colorMap=self._mic_cmap, interactive=False, width=15)
+        self._mic_colorbar.setImageItem(pg.ImageItem(), insert_in=self.mic_view.plotItem)
+        self._mic_colorbar.setVisible(False)
+
+        # Mouse tracking for mic scatter
+        self._mic_proxy = pg.SignalProxy(self.mic_view.scene().sigMouseMoved, rateLimit=30, slot=self._on_mic_cursor_moved)
+        self._mic_color_values = None  # set during _plot_mic
+        self._mic_color_label = ''     # current color column label
+        self._mic_cmin = 0.0
+        self._mic_cmax = 1.0
+
         self.right_widget.addWidget(self.mic_view)
 
         # Mic image view (for binary map type)
@@ -1035,6 +1049,21 @@ class NFViewer(QtWidgets.QMainWindow):
     def _on_cursor_moved(self, x, y, val):
         self.status_label.setText(f"x={x:.1f}  y={y:.1f}  I={val:.0f}")
 
+    def _on_mic_cursor_moved(self, args):
+        """Show nearest grain position and color value when hovering over mic scatter."""
+        if self.mic_data_cut is None or len(self.mic_data_cut) == 0:
+            return
+        pos = args[0]
+        mouse_pt = self.mic_view.plotItem.vb.mapSceneToView(pos)
+        mx, my = mouse_pt.x(), mouse_pt.y()
+        xs = self.mic_data_cut[:, 3]
+        ys = self.mic_data_cut[:, 4]
+        dists = (xs - mx)**2 + (ys - my)**2
+        idx = np.argmin(dists)
+        gx, gy = xs[idx], ys[idx]
+        val = self._mic_color_values[idx] if self._mic_color_values is not None and idx < len(self._mic_color_values) else 0.0
+        self.status_label.setText(f"x={gx:.2f}  y={gy:.2f}  {self._mic_color_label}={val:.4f}")
+
     def _on_stats_updated(self, dmin, dmax, p2, p98):
         self.stats_label.setText(f"Min={dmin:.0f}  Max={dmax:.0f}  [P2={p2:.0f}  P98={p98:.0f}]")
         # Only auto-populate MinI/MaxI on the very first image load
@@ -1597,7 +1626,7 @@ class NFViewer(QtWidgets.QMainWindow):
             ys = data[:, 4]
             colors = data[:, col] if col < data.shape[1] else data[:, 10]
 
-            # Normalize colors to jet colormap
+            # Normalize colors to turbo colormap
             cmin = colors.min()
             cmax = colors.max()
             if col == 10:
@@ -1612,6 +1641,12 @@ class NFViewer(QtWidgets.QMainWindow):
             brush_indices = (norm * 255).astype(int)
             brushes = [pg.mkBrush(*lut[i]) for i in brush_indices]
 
+            # Store color info for cursor tracking
+            self._mic_color_values = colors
+            self._mic_color_label = col_labels.get(col, 'Col ' + str(col))
+            self._mic_cmin = cmin
+            self._mic_cmax = cmax
+
             # Save current view range before updating data
             vb = self.mic_view.plotItem.vb
             had_data = self.mic_scatter.data is not None and len(self.mic_scatter.data) > 0
@@ -1620,6 +1655,10 @@ class NFViewer(QtWidgets.QMainWindow):
             vb.enableAutoRange(enable=False)
             self.mic_scatter.setData(xs, ys, brush=brushes)
             self.mic_view.setTitle(f"Mic ({col_labels.get(col, 'Col ' + str(col))})")
+
+            # Update colorbar
+            self._mic_colorbar.setLevels(values=(cmin, cmax))
+            self._mic_colorbar.setVisible(True)
 
             if saved_range is not None:
                 vb.setRange(xRange=saved_range[0], yRange=saved_range[1], padding=0)
