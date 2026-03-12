@@ -935,47 +935,113 @@ def main():
     parser.add_argument('-restartFrom', type=str, default='',
                         help='Stage to restart from (e.g. loop_1_seeded, loop_2_unseeded). '
                              'Use -resume to see available stages.')
+    parser.add_argument('-startLayerNr', type=int, default=1,
+                        help='Start layer number (default: 1).')
+    parser.add_argument('-endLayerNr', type=int, default=1,
+                        help='End layer number (default: 1). Process layers startLayerNr..endLayerNr.')
+    parser.add_argument('-resultFolder', type=str, default='',
+                        help='Top-level result folder. Overrides OutputDirectory from param file. '
+                             'Per-layer results go into <resultFolder>/LayerNr_N/.')
     args = parser.parse_args()
 
     # --- 2. Configuration from Parsed Arguments and Files ---
     params = parse_parameters(args.paramFN)
+
+    # Determine the top-level result folder
+    if args.resultFolder:
+        baseResultFolder = os.path.abspath(args.resultFolder)
+    else:
+        baseResultFolder = params.get('OutputDirectory', params.get('DataDirectory'))
+    if not baseResultFolder:
+        logger.error("Neither -resultFolder, OutputDirectory, nor DataDirectory found.")
+        sys.exit(1)
+    os.makedirs(baseResultFolder, exist_ok=True)
+
+    # Save original RawStartNr for per-layer offset
+    originalRawStartNr = int(params.get('RawStartNr', 0))
+    nDistances = int(params.get('nDistances', 1))
+    nrFilesPerDistance = int(params.get('NrFilesPerDistance', 1))
+
+    try:
+        args.nCPUs, args.nNodes = load_machine_config(args.machineName, args.nNodes, args.nCPUs)
+    except Exception as e:
+        logger.error(f"Failed to load machine configuration: {e}", exc_info=True)
+        sys.exit(1)
+
+    # --- 3. Layer Loop ---
+    start_layer = args.startLayerNr
+    end_layer = args.endLayerNr
+    if end_layer < start_layer:
+        logger.error(f"endLayerNr ({end_layer}) < startLayerNr ({start_layer})")
+        sys.exit(1)
+
+    total_layers = end_layer - start_layer + 1
+    logger.info(f"Processing {total_layers} layer(s): {start_layer} to {end_layer}")
+
+    for layer_nr in range(start_layer, end_layer + 1):
+        layer_t0 = time.time()
+        layerFolder = os.path.join(baseResultFolder, f'LayerNr_{layer_nr}')
+        os.makedirs(layerFolder, exist_ok=True)
+
+        # Copy param file to layer directory and update per-layer values
+        layer_param = os.path.join(layerFolder, os.path.basename(args.paramFN))
+        shutil.copy2(args.paramFN, layer_param)
+
+        layer_raw_start = originalRawStartNr + (layer_nr - 1) * nDistances * nrFilesPerDistance
+        update_param_file(layer_param, {
+            'OutputDirectory': layerFolder,
+            'RawStartNr': str(layer_raw_start),
+        })
+        logger.info(f"Layer {layer_nr}/{end_layer}: resultFolder={layerFolder}, RawStartNr={layer_raw_start}")
+
+        # Re-parse the layer-specific param file
+        layer_params = parse_parameters(layer_param)
+        layer_args = argparse.Namespace(**vars(args))
+        layer_args.paramFN = layer_param
+
+        try:
+            process_layer(layer_args, layer_params, layer_t0)
+        except Exception as e:
+            logger.error(f"Failed to process layer {layer_nr}: {e}", exc_info=True)
+            sys.exit(1)
+
+        logger.info(f"Layer {layer_nr}/{end_layer} completed in {time.time() - layer_t0:.2f}s")
+
+    logger.info(f"All {total_layers} layer(s) processed. Total time: {time.time() - t0:.2f}s")
+
+    # Parsl cleanup after all layers complete
+    try:
+        parsl.dfk().cleanup()
+    except Exception:
+        pass
+
+
+def process_layer(args, params, t0):
+    """Process a single NF layer. Runs the full multi-resolution or single-resolution workflow."""
     resultFolder = params.get('OutputDirectory', params.get('DataDirectory'))
     if not resultFolder:
-        logger.error("Neither OutputDirectory nor DataDirectory found in parameter file.")
-        sys.exit(1)
-    if 'OutputDirectory' in params:
-        logger.info(f"Using OutputDirectory for results: {resultFolder}")
-        os.makedirs(resultFolder, exist_ok=True)
-        param_dest = os.path.join(resultFolder, os.path.basename(args.paramFN))
-        if os.path.abspath(args.paramFN) != os.path.abspath(param_dest):
-            shutil.copy2(args.paramFN, param_dest)
-            logger.info(f"Copied parameter file to OutputDirectory: {param_dest}")
-            args.paramFN = param_dest
-    
+        logger.error("OutputDirectory not found in layer parameter file.")
+        return
+    os.makedirs(resultFolder, exist_ok=True)
+
     logDir = os.path.join(resultFolder, 'midas_log')
     params['logDir'] = logDir
     params['resultFolder'] = resultFolder
 
     os.makedirs(logDir, exist_ok=True)
 
-    # Setup file logging to capture all output permanently
+    # Setup file logging for this layer
     log_file_path = os.path.join(logDir, 'midas_nf_workflow_multires.log')
-    file_handler = logging.FileHandler(log_file_path, mode='a') # Append mode
+    file_handler = logging.FileHandler(log_file_path, mode='a')
     formatter = logging.Formatter('%(asctime)s - %(name)s - %(levelname)s - %(message)s', datefmt='%Y-%m-%d %H:%M:%S')
     file_handler.setFormatter(formatter)
-    logging.getLogger('').addHandler(file_handler) # Add handler to the root logger
+    logging.getLogger('').addHandler(file_handler)
     logger.info(f"Logging to console and to file: {log_file_path}")
 
     os.environ['MIDAS_SCRIPT_DIR'] = resultFolder
-    
-    try:
-        args.nCPUs, args.nNodes = load_machine_config(args.machineName, args.nNodes, args.nCPUs)
-    except Exception as e:
-        logger.error(f"Failed to load machine configuration: {e}", exc_info=True)
-        sys.exit(1)
-    
+
     os.makedirs(logDir, exist_ok=True)
-    
+
     # --- Initialize Pipeline H5 ---
     with open(args.paramFN, 'r') as pf:
         param_text = pf.read()
@@ -987,21 +1053,19 @@ def main():
     ph5.__enter__()
     ph5.write_dataset('parameters/resultFolder', resultFolder)
     ph5.write_dataset('parameters/paramFN', os.path.abspath(args.paramFN))
-    
+
     # --- Resume handling ---
     resume_from_stage = ''
     if args.resume:
         if not os.path.exists(args.resume):
             logger.error(f"Resume H5 not found: {args.resume}")
-            sys.exit(1)
+            return
         completed = get_completed_stages(args.resume)
         if completed:
-            # Build full stage list to find next stage after last completed
             num_loops = int(params.get('GridRefactor', [0, 0, 0])[2]) if 'GridRefactor' in params else 0
             all_stages = ['loop_0_initial']
             for li in range(1, num_loops + 1):
                 all_stages.extend([f'loop_{li}_seeded', f'loop_{li}_unseeded', f'loop_{li}_merge'])
-            # Find first incomplete
             for s in all_stages:
                 if s not in completed:
                     resume_from_stage = s
@@ -1009,22 +1073,16 @@ def main():
             if not resume_from_stage:
                 logger.info("All stages already complete. Re-running last merge.")
                 resume_from_stage = all_stages[-1]
-            
-            logger.info(f"\n{'='*60}")
-            logger.info(f"  RESUME: Picking up from stage '{resume_from_stage}'")
+
+            logger.info(f"RESUME: Picking up from stage '{resume_from_stage}'")
             logger.info(f"  Completed stages: {completed}")
-            logger.info(f"  Available stages: {all_stages}")
-            logger.info(f"{'='*60}\n")
-            logger.info(f"  To restart from a different stage, use:")
-            logger.info(f"    -restartFrom <stage_name>")
-            logger.info(f"  Example: -restartFrom loop_1_seeded")
         else:
             logger.info("No completed stages found. Starting from beginning.")
     elif args.restartFrom:
         resume_from_stage = args.restartFrom
         logger.info(f"Restarting from explicit stage: {resume_from_stage}")
-    
-    # --- 3. Workflow Execution with Guaranteed Cleanup ---
+
+    # --- Workflow Execution ---
     with change_directory(resultFolder):
         # Delete stale MicFileBinary if it exists from a previous run
         mic_bin = params.get('MicFileBinary')
@@ -1061,11 +1119,11 @@ def main():
                  run_fitting_and_postprocessing(args, params, t0)
 
         finally:
-            logger.info("Initiating Parsl cleanup.")
-            parsl.dfk().cleanup()
+            pass  # Parsl cleanup happens once in main() after all layers
 
     ph5.__exit__(None, None, None)
-    logger.info(f"Workflow completed successfully. Total time taken: {time.time() - t0:.2f} seconds.")
+    logger.info(f"Layer completed. Time taken: {time.time() - t0:.2f} seconds.")
+    logging.getLogger('').removeHandler(file_handler)  # Avoid duplicate handlers across layers
 
 # MIDAS version banner
 try:
