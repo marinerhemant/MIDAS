@@ -941,7 +941,9 @@ def main():
                         help='End layer number (default: 1). Process layers startLayerNr..endLayerNr.')
     parser.add_argument('-resultFolder', type=str, default='',
                         help='Top-level result folder. Overrides OutputDirectory from param file. '
-                             'Per-layer results go into <resultFolder>/LayerNr_N/.')
+                             'Per-layer results go into <resultFolder>/LayerNr_N/. Default: cwd.')
+    parser.add_argument('-minConfidence', type=float, default=0.6,
+                        help='MinConfidence for Mic2GrainsList run at end of each layer (default: 0.6).')
     args = parser.parse_args()
 
     # --- 2. Configuration from Parsed Arguments and Files ---
@@ -953,8 +955,7 @@ def main():
     else:
         baseResultFolder = params.get('OutputDirectory', params.get('DataDirectory'))
     if not baseResultFolder:
-        logger.error("Neither -resultFolder, OutputDirectory, nor DataDirectory found.")
-        sys.exit(1)
+        baseResultFolder = os.getcwd()
     os.makedirs(baseResultFolder, exist_ok=True)
 
     # Save original RawStartNr for per-layer offset
@@ -1006,6 +1007,33 @@ def main():
             sys.exit(1)
 
         logger.info(f"Layer {layer_nr}/{end_layer} completed in {time.time() - layer_t0:.2f}s")
+
+        # Run Mic2GrainsList on the last seeded mic file → GrainsLayer{layer_nr}.csv
+        import re as _re_mic
+        mic_text_raw = layer_params.get('MicFileText', 'nf_output')
+        mic_file_base = _re_mic.sub(r'(_all_solutions|_merged)?(\.[0-9]+)+$', '', mic_text_raw)
+        if 'GridRefactor' in layer_params:
+            num_loops = int(layer_params['GridRefactor'][2])
+            # Last seeded mic is {base}.{num_loops}.mic
+            last_mic = os.path.join(layerFolder, f"{mic_file_base}.{num_loops}.mic")
+        else:
+            last_mic = os.path.join(layerFolder, f"{mic_file_base}.mic")
+
+        grains_out = os.path.join(baseResultFolder, f"GrainsLayer{layer_nr}.csv")
+        if os.path.exists(last_mic):
+            mic2grains_cmd = (
+                f"{os.path.join(bin_dir, 'Mic2GrainsList')} "
+                f"{layer_param} {last_mic} {grains_out} 0 {args.nCPUs} {args.minConfidence}"
+            )
+            logger.info(f"Running Mic2GrainsList: {last_mic} -> {grains_out} (minConf={args.minConfidence})")
+            run_command(
+                cmd=mic2grains_cmd,
+                working_dir=layerFolder,
+                out_file=os.path.join(layerFolder, 'midas_log', 'mic2grains_layer_out.csv'),
+                err_file=os.path.join(layerFolder, 'midas_log', 'mic2grains_layer_err.csv')
+            )
+        else:
+            logger.warning(f"Last mic file not found: {last_mic}. Skipping Mic2GrainsList.")
 
     logger.info(f"All {total_layers} layer(s) processed. Total time: {time.time() - t0:.2f}s")
 
