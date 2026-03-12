@@ -600,12 +600,8 @@ int main(int argc, char *argv[]) {
     sprintf(fnG, "%s/%s", outputDir, gridfn);
   else
     sprintf(fnG, "%s/grid.txt", outputDir);
-  char fnDS[1000];
   char fnKey[1000];
-  char fnOr[1000];
-  sprintf(fnDS, "%s/DiffractionSpots.txt", outputDir);
-  sprintf(fnKey, "%s/Key.txt", outputDir);
-  sprintf(fnOr, "%s/OrientMat.txt", outputDir);
+  sprintf(fnKey, "%s/Key.bin", outputDir);
   char *ext = "bin";
   int *ObsSpotsInfo;
   nrFiles = EndNr - StartNr + 1;
@@ -666,25 +662,26 @@ int main(int argc, char *argv[]) {
   check(OrientationMatrix == MAP_FAILED, "mmap %s failed: %s", omfn,
         strerror(errno));
 
-  // Read Key
+  // Read Key.bin
   char line[1024];
   clock_t startthis;
   startthis = clock();
-  FILE *fk;
   int NrOrientations, TotalDiffrSpots;
-  fk = fopen(fnKey, "r");
-  fgets(line, 1000, fk);
-  sscanf(line, "%d", &NrOrientations);
+  int keyfd = open(fnKey, O_RDONLY);
+  check(keyfd < 0, "open %s failed: %s", fnKey, strerror(errno));
+  struct stat keyStat;
+  fstat(keyfd, &keyStat);
+  int *KeyData = mmap(0, keyStat.st_size, PROT_READ, MAP_SHARED, keyfd, 0);
+  check(KeyData == MAP_FAILED, "mmap %s failed: %s", fnKey, strerror(errno));
+  NrOrientations = keyStat.st_size / (2 * sizeof(int));
   int **NrSpots;
   NrSpots = allocMatrixIntF(NrOrientations, 2);
   TotalDiffrSpots = 0;
   for (it = 0; it < NrOrientations; it++) {
-    fgets(line, 1000, fk);
-    sscanf(line, "%d", &NrSpots[it][0]);
+    NrSpots[it][0] = KeyData[2 * it];
+    NrSpots[it][1] = KeyData[2 * it + 1];
     TotalDiffrSpots += NrSpots[it][0];
-    NrSpots[it][1] = TotalDiffrSpots - NrSpots[it][0];
   }
-  fclose(fk);
 
   // Read position.
   FILE *fp;
@@ -1143,6 +1140,8 @@ int main(int argc, char *argv[]) {
   close(spf);
   munmap(OrientationMatrix, size3);
   close(omf);
+  munmap(KeyData, keyStat.st_size);
+  close(keyfd);
   free(OrientMatrixAll);
   free(ThrSpsAll);
   FreeMemMatrixInt(NrSpots, NrOrientations);

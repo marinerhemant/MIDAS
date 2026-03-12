@@ -262,10 +262,9 @@ def fit(psFN: str, nodeNr: int, nNodes: int, numProcs: int, logDir: str, resultF
 
 # --- WORKFLOW STAGE FUNCTIONS ---
 
-# Diffraction spot simulation output files (grid-independent, orientation-dependent)
+# Diffraction spot simulation output files (binary-only; .txt no longer produced)
 _DIFFR_SPOT_FILES = [
-    'DiffractionSpots.txt', 'DiffractionSpots.bin',
-    'OrientMat.txt', 'OrientMat.bin', 'Key.txt',
+    'DiffractionSpots.bin', 'OrientMat.bin', 'Key.bin',
 ]
 
 
@@ -392,13 +391,20 @@ def run_fitting_and_postprocessing(args: argparse.Namespace, params: Dict, t0: f
     """Handles memory mapping, fitting, and final parsing."""
     logDir, resultFolder = params['logDir'], params['resultFolder']
 
-    logger.info("Mapping image info to memory-mapped files.")
-    run_command(
-        cmd=os.path.join(bin_dir, "MMapImageInfo") + f" {args.paramFN} {args.nCPUs}",
-        working_dir=resultFolder,
-        out_file=f'{logDir}/map_out.csv',
-        err_file=f'{logDir}/map_err.csv'
-    )
+    # Skip MMapImageInfo if all binary files already exist
+    required_bins = ['SpotsInfo.bin', 'DiffractionSpots.bin', 'Key.bin', 'OrientMat.bin']
+    all_bins_exist = all(os.path.exists(os.path.join(resultFolder, f)) for f in required_bins)
+    if all_bins_exist:
+        logger.info("All binary files exist — skipping MMapImageInfo.")
+    else:
+        missing = [f for f in required_bins if not os.path.exists(os.path.join(resultFolder, f))]
+        logger.info(f"Missing binary files {missing} — running MMapImageInfo.")
+        run_command(
+            cmd=os.path.join(bin_dir, "MMapImageInfo") + f" {args.paramFN} {args.nCPUs}",
+            working_dir=resultFolder,
+            out_file=f'{logDir}/map_out.csv',
+            err_file=f'{logDir}/map_err.csv'
+        )
     
     logger.info("Fitting orientations.")
     
@@ -569,11 +575,6 @@ def run_multi_resolution_workflow(args, params, t0, ph5=None, resume_from_stage=
 
         # Backup diffraction spots for reuse in unseeded passes
         _backup_diffr_spots(params['resultFolder'])
-
-        # Enable PrecomputedSpotsInfo for all subsequent MMapImageInfo calls
-        # (images don't change — SpotsInfo.bin from loop 0 is reusable)
-        update_param_file(args.paramFN, {'PrecomputedSpotsInfo': '1'})
-        logger.info("Enabled PrecomputedSpotsInfo for subsequent loops.")
     else:
         logger.info("Skipping loop 0 initial pass (resumed past this stage).")
 

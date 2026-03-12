@@ -343,13 +343,21 @@ def run_fitting_and_postprocessing(args: argparse.Namespace, params: Dict, t0: f
     """Handles memory mapping, fitting, and final parsing."""
     logDir, resultFolder = params['logDir'], params['resultFolder']
 
-    logger.info("Mapping image info to memory-mapped files.")
-    run_command(
-        cmd=os.path.join(bin_dir, "MMapImageInfo") + f" {args.paramFN} {args.nCPUs}",
-        working_dir=resultFolder,
-        out_file=f'{logDir}/map_out.csv',
-        err_file=f'{logDir}/map_err.csv'
-    )
+    # Skip MMapImageInfo if all binary files already exist
+    # (MakeDiffrSpots now writes .bin directly, ImageProcessing writes SpotsInfo.bin)
+    required_bins = ['SpotsInfo.bin', 'DiffractionSpots.bin', 'Key.bin', 'OrientMat.bin']
+    all_bins_exist = all(os.path.exists(os.path.join(resultFolder, f)) for f in required_bins)
+    if all_bins_exist:
+        logger.info("All binary files exist — skipping MMapImageInfo.")
+    else:
+        missing = [f for f in required_bins if not os.path.exists(os.path.join(resultFolder, f))]
+        logger.info(f"Missing binary files {missing} — running MMapImageInfo.")
+        run_command(
+            cmd=os.path.join(bin_dir, "MMapImageInfo") + f" {args.paramFN} {args.nCPUs}",
+            working_dir=resultFolder,
+            out_file=f'{logDir}/map_out.csv',
+            err_file=f'{logDir}/map_err.csv'
+        )
     if ph5 is not None:
         ph5.mark('mmap')
     

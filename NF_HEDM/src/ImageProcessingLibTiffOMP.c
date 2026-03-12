@@ -4,12 +4,16 @@
 //
 
 #include <ctype.h>
+#include <errno.h>
+#include <fcntl.h>
 #include <math.h>
 #include <omp.h>
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
+#include <sys/mman.h>
 #include <sys/stat.h>
+#include <sys/types.h>
 #include <tiffio.h>
 #include <time.h>
 #include <unistd.h>
@@ -829,6 +833,7 @@ int main(int argc, char *argv[]) {
                                        MeanFiltRadius, WriteFinImage = 0;
   int NrPixelsY = 0, NrPixelsZ = 0;
   int LoGMaskRadius, doDeblur = 0;
+  int Ice9Flag = 0, writeLegacyBin = 0;
   double sigma;
   int DoLoGFilter = 1, WFImages = 0, nDistances, stNr = 0;
   while (fgets(aline, 1000, fileParam) != NULL) {
@@ -958,6 +963,18 @@ int main(int argc, char *argv[]) {
       sscanf(aline, "%s %d", dummy, &NrPixelsZ);
       continue;
     }
+    str = "Ice9Input ";
+    LowNr = strncmp(aline, str, strlen(str));
+    if (LowNr == 0) {
+      Ice9Flag = 1; // deprecated, not used
+      continue;
+    }
+    str = "WriteLegacyBin ";
+    LowNr = strncmp(aline, str, strlen(str));
+    if (LowNr == 0) {
+      sscanf(aline, "%s %d", dummy, &writeLegacyBin);
+      continue;
+    }
   }
   // Apply backward-compatible defaults
   if (NrPixelsY == 0 && NrPixelsZ == 0) {
@@ -1046,6 +1063,34 @@ int main(int argc, char *argv[]) {
   Images2 = malloc(bigArrSz * sizeof(*Images2)); // Median filtered image.
   Images3 = malloc(bigArrSz * sizeof(*Images3));
   FinalImages = malloc(bigArrSz * sizeof(*FinalImages));
+
+  // Pre-create and mmap SpotsInfo.bin for direct SetBit
+  long long int NrOfPixels = (long long)NrPixelsY * NrPixelsZ;
+  long long int kT = (long long)nDistances * NrOfPixels * NrFilesPerLayer;
+  long long int SizeObsSpots = kT / 32;
+  size_t siBytes = SizeObsSpots * sizeof(int);
+  char siFN[1024];
+  sprintf(siFN, "%s/SpotsInfo.bin", outputDir);
+  int sifd = open(siFN, O_RDWR | O_CREAT, S_IRUSR | S_IWUSR | S_IRGRP | S_IROTH);
+  if (sifd < 0) {
+    printf("Could not open %s: %s\n", siFN, strerror(errno));
+    return 1;
+  }
+  // Extend file to full size and zero-fill
+  if (ftruncate(sifd, siBytes) != 0) {
+    printf("ftruncate failed on %s: %s\n", siFN, strerror(errno));
+    close(sifd);
+    return 1;
+  }
+  int *ObsSpotsInfo = mmap(0, siBytes, PROT_READ | PROT_WRITE, MAP_SHARED, sifd, 0);
+  if (ObsSpotsInfo == MAP_FAILED) {
+    printf("mmap failed on %s: %s\n", siFN, strerror(errno));
+    close(sifd);
+    return 1;
+  }
+  memset(ObsSpotsInfo, 0, siBytes);
+  printf("SpotsInfo.bin: %llu MB (mmap'd for direct write)\n",
+         (unsigned long long)(siBytes / (1024 * 1024)));
 // OMP
 #pragma omp parallel for num_threads(numProcs) private(fnr)
   for (fnr = startNr; fnr < endNr; fnr++) {
@@ -1054,13 +1099,15 @@ int main(int argc, char *argv[]) {
     layerNr = fnr / NrFilesPerLayer + 1;
     ImageNr = fnr % NrFilesPerLayer;
     int i, j, k;
-    FILE *fk;
     char OutFN[5024];
     sprintf(OutFN, "%s/%s_%06d.%s%d", outputDir, ReducedFileName, ImageNr,
             extReduced, layerNr - 1);
     char OutFileName[5024];
     strcpy(OutFileName, OutFN);
-    fk = fopen(OutFileName, "wb");
+    FILE *fk = NULL;
+    if (writeLegacyBin) {
+      fk = fopen(OutFileName, "wb");
+    }
 
     pixelvalue *Image, *Image2;
     char FileName[1024];
@@ -1284,21 +1331,43 @@ int main(int argc, char *argv[]) {
         PeaksFilledCounter++;
       }
     }
-    // Write the result file.
-    FILE *ft;
-    char OutFNt[4096];
-    sprintf(OutFNt, "%s.txtOld", OutFileName);
-    ft = fopen(OutFNt, "w");
-    fprintf(ft, "YPos\tZPos\tpeakID\tIntensity\n");
-    for (i = 0; i < TotPixelsInt; i++) {
-      fprintf(ft, "%d\t%d\t%d\t%lf\n", (int)ys[i], (int)zs[i], (int)peakID[i],
-              (double)intensity[i]);
+
+    // SetBit directly into SpotsInfo.bin mmap for each spot pixel
+    int layer = layerNr - 1;
+    for (i = 0; i < PeaksFilledCounter; i++) {
+      int ythis = (int)ys[i];
+      int zthis = (int)zs[i];
+      if (ythis >= 0 && ythis < NrPixelsY && zthis >= 0 && zthis < NrPixelsZ) {
+        long long int BinNr = (long long)layer * NrFilesPerLayer * NrOfPixels
+                            + (long long)ImageNr * NrOfPixels
+                            + (long long)ythis * NrPixelsZ
+                            + zthis;
+        if (BinNr >= 0 && BinNr < kT) {
+          SetBit(ObsSpotsInfo, BinNr);
+        }
+      }
     }
-    fclose(ft);
 
-    if (doDeblur != 0)
+    // Legacy text output (disabled by default)
+    if (writeLegacyBin) {
+      FILE *ft;
+      char OutFNt[4096];
+      sprintf(OutFNt, "%s.txtOld", OutFileName);
+      ft = fopen(OutFNt, "w");
+      fprintf(ft, "YPos\tZPos\tpeakID\tIntensity\n");
+      for (i = 0; i < TotPixelsInt; i++) {
+        fprintf(ft, "%d\t%d\t%d\t%lf\n", (int)ys[i], (int)zs[i], (int)peakID[i],
+                (double)intensity[i]);
+      }
+      fclose(ft);
+    }
+
+    if (doDeblur != 0) {
+      free(ys); free(zs); free(peakID); free(intensity);
       continue;
+    }
 
+    if (writeLegacyBin) {
     float32_t dummy1 = 1;
     uint32_t dummy2 = 1;
     pixelvalue dummy3 = 1;
@@ -1375,11 +1444,17 @@ int main(int argc, char *argv[]) {
     // Now write PeakIDs.
     fwrite(peakID, TotPixelsInt * sizeof(pixelvalue), 1, fk);
     fclose(fk);
+    } // end writeLegacyBin
     free(ys);
     free(zs);
     free(peakID);
     free(intensity);
   }
+  // Sync and unmap SpotsInfo.bin
+  msync(ObsSpotsInfo, siBytes, MS_SYNC);
+  munmap(ObsSpotsInfo, siBytes);
+  close(sifd);
+  printf("SpotsInfo.bin written to %s\n", siFN);
   free(MedFltImg);
   double time = omp_get_wtime() - start_time;
   printf("Finished, time elapsed: %lf seconds.\n", time);

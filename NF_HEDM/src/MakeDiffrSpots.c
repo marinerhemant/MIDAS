@@ -572,62 +572,103 @@ int main(int argc, char *argv[]) {
     free(SpotsLocal);
   }
 
-  // Sequential writes in j-loop order
-  FILE *ft;
-  char DSFN[1024];
-  char KeyFN[1024];
-  char OMFN[1024];
-  sprintf(DSFN, "%s/DiffractionSpots.txt", outputDir);
-  sprintf(KeyFN, "%s/Key.txt", outputDir);
-  sprintf(OMFN, "%s/OrientMat.txt", outputDir);
-
-  ft = fopen(DSFN, "w");
-  FILE *fg = fopen(KeyFN, "w");
-  FILE *fl = fopen(OMFN, "w");
-
-  if (ft == NULL || fg == NULL || fl == NULL) {
-    printf("Could not open one or more output files for writing.\n");
-    if (ft)
-      fclose(ft);
-    if (fg)
-      fclose(fg);
-    if (fl)
-      fclose(fl);
-    return (1);
+  // Write binary output files (direct — no MMapImageInfo needed)
+  // Build Key data: NrSpots[i*2+0] = count, NrSpots[i*2+1] = cumulative offset
+  int TotalDiffrSpots = 0;
+  int *KeyData = malloc(NrOrientations * 2 * sizeof(*KeyData));
+  for (j = 0; j < NrOrientations; j++) {
+    KeyData[j * 2 + 0] = allNTspots[j];
+    KeyData[j * 2 + 1] = TotalDiffrSpots;
+    TotalDiffrSpots += allNTspots[j];
   }
 
-  // Use large buffers for output streams (1MB)
-  char buf_ft[1048576];
-  char buf_fg[1048576];
-  char buf_fl[1048576];
-  setvbuf(ft, buf_ft, _IOFBF, sizeof(buf_ft));
-  setvbuf(fg, buf_fg, _IOFBF, sizeof(buf_fg));
-  setvbuf(fl, buf_fl, _IOFBF, sizeof(buf_fl));
-
-  fprintf(fg, "%i\n", NrOrientations);
+  // Build flat DiffractionSpots array
+  double *SpotsFlat = malloc(TotalDiffrSpots * 3 * sizeof(*SpotsFlat));
+  int offset = 0;
   for (j = 0; j < NrOrientations; j++) {
-    fprintf(fg, "%i\n", allNTspots[j]);
-    for (t = 0; t < 3; t++) {
-      for (p = 0; p < 3; p++) {
-        fprintf(fl, "%f ", allOrientMatr[j * 9 + t * 3 + p]);
+    if (allNTspots[j] > 0 && allSpots[j] != NULL) {
+      memcpy(SpotsFlat + offset, allSpots[j],
+             allNTspots[j] * 3 * sizeof(double));
+      offset += allNTspots[j] * 3;
+    }
+  }
+
+  // Write Key.bin
+  char KeyBinFN[1024];
+  sprintf(KeyBinFN, "%s/Key.bin", outputDir);
+  FILE *fKeyBin = fopen(KeyBinFN, "wb");
+  if (fKeyBin == NULL) {
+    printf("Could not open %s for writing.\n", KeyBinFN);
+    return 1;
+  }
+  fwrite(KeyData, NrOrientations * 2 * sizeof(int), 1, fKeyBin);
+  fclose(fKeyBin);
+
+  // Write DiffractionSpots.bin
+  char DSBinFN[1024];
+  sprintf(DSBinFN, "%s/DiffractionSpots.bin", outputDir);
+  FILE *fDSBin = fopen(DSBinFN, "wb");
+  if (fDSBin == NULL) {
+    printf("Could not open %s for writing.\n", DSBinFN);
+    return 1;
+  }
+  fwrite(SpotsFlat, TotalDiffrSpots * 3 * sizeof(double), 1, fDSBin);
+  fclose(fDSBin);
+
+  // Write OrientMat.bin
+  char OMBinFN[1024];
+  sprintf(OMBinFN, "%s/OrientMat.bin", outputDir);
+  FILE *fOMBin = fopen(OMBinFN, "wb");
+  if (fOMBin == NULL) {
+    printf("Could not open %s for writing.\n", OMBinFN);
+    return 1;
+  }
+  fwrite(allOrientMatr, NrOrientations * 9 * sizeof(double), 1, fOMBin);
+  fclose(fOMBin);
+
+  printf("Wrote binary files: %s (%d orientations, %d total spots)\n",
+         outputDir, NrOrientations, TotalDiffrSpots);
+
+  free(KeyData);
+  free(SpotsFlat);
+
+  // Optional: write legacy text files (disabled by default)
+  int writeLegacyText = 0;
+  if (writeLegacyText) {
+    char DSFN[1024], KeyFN[1024], OMFN[1024];
+    sprintf(DSFN, "%s/DiffractionSpots.txt", outputDir);
+    sprintf(KeyFN, "%s/Key.txt", outputDir);
+    sprintf(OMFN, "%s/OrientMat.txt", outputDir);
+    FILE *ft = fopen(DSFN, "w");
+    FILE *fg = fopen(KeyFN, "w");
+    FILE *fl = fopen(OMFN, "w");
+    if (ft && fg && fl) {
+      char buf_ft[1048576], buf_fg[1048576], buf_fl[1048576];
+      setvbuf(ft, buf_ft, _IOFBF, sizeof(buf_ft));
+      setvbuf(fg, buf_fg, _IOFBF, sizeof(buf_fg));
+      setvbuf(fl, buf_fl, _IOFBF, sizeof(buf_fl));
+      fprintf(fg, "%i\n", NrOrientations);
+      for (j = 0; j < NrOrientations; j++) {
+        fprintf(fg, "%i\n", allNTspots[j]);
+        for (t = 0; t < 3; t++)
+          for (p = 0; p < 3; p++)
+            fprintf(fl, "%f ", allOrientMatr[j * 9 + t * 3 + p]);
+        fprintf(fl, "\n");
+        for (i = 0; i < allNTspots[j]; i++)
+          fprintf(ft, "%f %f %f\n", allSpots[j][i * 3 + 0],
+                  allSpots[j][i * 3 + 1], allSpots[j][i * 3 + 2]);
       }
     }
-    fprintf(fl, "\n");
-    for (i = 0; i < allNTspots[j]; i++) {
-      fprintf(ft, "%f %f %f\n", allSpots[j][i * 3 + 0], allSpots[j][i * 3 + 1],
-              allSpots[j][i * 3 + 2]);
-    }
+    if (ft) fclose(ft);
+    if (fg) fclose(fg);
+    if (fl) fclose(fl);
+    printf("Wrote legacy text files.\n");
   }
 
   // Cleanup
-  fclose(ft);
-  fclose(fg);
-  fclose(fl);
   FreeMemMatrix(randQ, NrOrientations);
-
   free(allNTspots);
   free(allOrientMatr);
-
   for (j = 0; j < NrOrientations; j++) {
     if (allSpots[j] != NULL)
       free(allSpots[j]);
