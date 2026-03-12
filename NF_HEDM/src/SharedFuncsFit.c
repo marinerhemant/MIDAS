@@ -216,11 +216,11 @@ int ReadBinFiles(char FileStem[1000], char *ext, int StartNr, int EndNr,
     }
     counter = 0;
   }
-  return 1;
   free(ys);
   free(zs);
   free(peakID);
   free(intensity);
+  return 1;
 }
 
 void MatrixMultF(RealType m[3][3], RealType v[3], RealType r[3]) {
@@ -644,9 +644,7 @@ void CalcFracOverlap(const int NrOfFiles, const int nLayers, const int nTspots,
         BinNr += TempCntr;
         BinNr += MultZ;
         if (TestBit(ObsSpotsInfo, BinNr)) {
-          if (AllDistsFound == 1) {
-            AllDistsFound = 1;
-          }
+          // Bit is set — AllDistsFound stays 1
         } else {
           AllDistsFound = 0;
         }
@@ -886,7 +884,8 @@ void NormalizeMat(double OMIn[9], double OMOut[9]) {
   determinant = (OMIn[0] * ((OMIn[4] * OMIn[8]) - (OMIn[5] * OMIn[7]))) -
                 (OMIn[1] * ((OMIn[3] * OMIn[8]) - (OMIn[5] * OMIn[6]))) +
                 (OMIn[2] * ((OMIn[3] * OMIn[7]) - (OMIn[4] * OMIn[6])));
+  double scale = cbrt(determinant);
   for (i = 0; i < 9; i++) {
-    OMOut[i] = OMIn[i] / determinant;
+    OMOut[i] = OMIn[i] / scale;
   }
 }

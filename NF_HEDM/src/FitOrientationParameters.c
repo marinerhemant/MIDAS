@@ -4,19 +4,17 @@
 //
 
 #include "MIDAS_Math.h"
+#include "midas_version.h"
 #include "nf_headers.h"
 #include <ctype.h>
-#include <limits.h>
 #include <math.h>
 #include <nlopt.h>
 #include <omp.h>
-#include <stdint.h>
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
 #include <sys/stat.h>
 #include <time.h>
-#include "midas_version.h"
 
 #define RealType double
 #define float32_t float
@@ -110,7 +108,7 @@ static double problem_function(unsigned n, const double *x, double *grad,
   double hkls[5000][4];
   int n_hkls = f_data->n_hkls;
   double Thetas[5000];
-  for (i = 0; i < 5000; i++) {
+  for (i = 0; i < n_hkls; i++) {
     hkls[i][0] = f_data->hkls[i][0];
     hkls[i][1] = f_data->hkls[i][1];
     hkls[i][2] = f_data->hkls[i][2];
@@ -263,7 +261,6 @@ void FitOrientation(
   f_data.px = px;
   f_data.gs = gs;
   f_data.NoOfOmegaRanges = NoOfOmegaRanges;
-  f_data.NoOfOmegaRanges = NoOfOmegaRanges;
   f_data.NrPixelsGrid = NrPixelsGrid;
   f_data.NrPixelsY = NrPixelsY;
   f_data.NrPixelsZ = NrPixelsZ;
@@ -307,7 +304,7 @@ void FitOrientation(
 }
 
 int main(int argc, char *argv[]) {
-	printf("Version: %s\n", MIDAS_VERSION_STRING);
+  printf("Version: %s\n", MIDAS_VERSION_STRING);
   double start, end, diftotal;
   start = omp_get_wtime();
 
@@ -572,7 +569,6 @@ int main(int argc, char *argv[]) {
   nOmeRang = NoOfOmegaRanges;
   fclose(fileParam);
   MaxTtheta = rad2deg * atan(MaxRingRad / Lsd[0]);
-  int x = 0;
   // Read bin files
   if (outputDir[0] == '\0')
     strcpy(outputDir, direct);
@@ -596,16 +592,13 @@ int main(int argc, char *argv[]) {
   SizeObsSpots *= nrFiles;
   SizeObsSpots /= 32;
   ObsSpotsInfo = malloc(SizeObsSpots * sizeof(*ObsSpotsInfo));
-  for (iT = 0; iT < SizeObsSpots; iT++) {
-    ObsSpotsInfo[i] = 0;
-  }
-  memset(ObsSpotsInfo, 0, SizeObsSpots * sizeof(*ObsSpotsInfo));
-  printf("Size of spot info: %llu mb\n",
-         SizeObsSpots * sizeof(int) / (1024 * 1024));
   if (ObsSpotsInfo == NULL) {
     printf("Could not allocate ObsSpotsInfo.\n");
     return 0;
   }
+  memset(ObsSpotsInfo, 0, SizeObsSpots * sizeof(*ObsSpotsInfo));
+  printf("Size of spot info: %llu mb\n",
+         SizeObsSpots * sizeof(int) / (1024 * 1024));
   ReadCode = ReadBinFiles(fn, ext, StartNr, EndNr, ObsSpotsInfo, nLayers,
                           SizeObsSpots, NrPixelsY, NrPixelsZ);
   if (ReadCode == 0) {

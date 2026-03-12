@@ -3,16 +3,15 @@
 // See LICENSE file.
 //
 #include "MIDAS_Math.h"
+#include "midas_version.h"
 #include "nf_headers.h"
 #include <ctype.h>
 #include <errno.h>
 #include <fcntl.h>
-#include <limits.h>
 #include <math.h>
 #include <nlopt.h>
 #include <omp.h>
 #include <stdarg.h>
-#include <stdint.h>
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
@@ -22,7 +21,6 @@
 #include <sys/stat.h>
 #include <sys/types.h>
 #include <time.h>
-#include "midas_version.h"
 
 #define RealType double
 #define float32_t float
@@ -272,7 +270,7 @@ static inline void QuatToOrientMat(double Quat[4], double OrientMat[3][3]) {
 }
 
 int main(int argc, char *argv[]) {
-	printf("Version: %s\n", MIDAS_VERSION_STRING);
+  printf("Version: %s\n", MIDAS_VERSION_STRING);
   if (argc != 5) {
     printf("Usage:\n FitOrientation params.txt blockNr nBlocks nCPUs\n");
     return 1;
@@ -636,13 +634,11 @@ int main(int argc, char *argv[]) {
   int spf;
   struct stat s2;
   int status2;
-  size_t size2;
-  int rc2;
   spf = open(spfn, O_RDONLY);
   check(spf < 0, "open %s failed: %s", spfn, strerror(errno));
   status2 = fstat(spf, &s2);
   check(status2 < 0, "stat %s failed: %s", spfn, strerror(errno));
-  size2 = s2.st_size;
+  size_t size2 = s2.st_size;
   SpotsMat = mmap(0, size2, PROT_READ, MAP_SHARED, spf, 0);
   check(SpotsMat == MAP_FAILED, "mmap %s failed: %s", spfn, strerror(errno));
 
@@ -653,13 +649,11 @@ int main(int argc, char *argv[]) {
   int omf;
   struct stat s3;
   int status3;
-  size_t size3;
-  int rc3;
   omf = open(omfn, O_RDONLY);
   check(omf < 0, "open %s failed: %s", omfn, strerror(errno));
   status3 = fstat(omf, &s3);
   check(status3 < 0, "stat %s failed: %s", omfn, strerror(errno));
-  size3 = s3.st_size;
+  size_t size3 = s3.st_size;
   OrientationMatrix = mmap(0, size3, PROT_READ, MAP_SHARED, omf, 0);
   check(OrientationMatrix == MAP_FAILED, "mmap %s failed: %s", omfn,
         strerror(errno));
@@ -935,6 +929,8 @@ int main(int argc, char *argv[]) {
         OrientMatrix[OrientationGoodID * 10 + 9] = (double)
             i; // Store the row nr in OrientationsList for grainID determination
         OrientationGoodID++;
+        if (OrientationGoodID >= MAX_POINTS_GRID_GOOD)
+          break;
       }
     }
     FreeMemMatrixInt(InPixels, NrPixelsGrid);
@@ -966,7 +962,7 @@ int main(int argc, char *argv[]) {
         ResultMatr[7 + i * 4 + 2] = 0;
         ResultMatr[7 + i * 4 + 3] = 0;
       }
-      int firstSol = 0, UpdSol = 0;
+      int firstSol = 0;
       for (i = 0; i < OrientationGoodID; i++) {
         for (j = 0; j < 9; j++)
           OMTemp[j] = OrientMatrix[i * 10 + j];
@@ -1029,6 +1025,7 @@ int main(int argc, char *argv[]) {
                 ResultMatr[7 + j * 4 + 1] = EulerOutB;
                 ResultMatr[7 + j * 4 + 2] = EulerOutC;
                 ResultMatr[7 + j * 4 + 3] = Fractions;
+                break; // inserted at position j, stop scanning
               }
             }
           }
@@ -1090,11 +1087,20 @@ int main(int argc, char *argv[]) {
     // OrientMatrix[i] = 0; // Maybe not needed.
   }
 
-  // Close files after loop
+  // Close files and clean up mmap'd regions
   free(parsed_lines);
   free(Gs);
   close(result);
   close(result2);
+  munmap(ObsSpotsInfo, size);
+  close(descp);
+  munmap(SpotsMat, size2);
+  close(spf);
+  munmap(OrientationMatrix, size3);
+  close(omf);
+  free(OrientMatrixAll);
+  free(ThrSpsAll);
+  FreeMemMatrixInt(NrSpots, NrOrientations);
   double time = omp_get_wtime() - start_time;
   printf("Finished, time elapsed: %lf seconds.\n", time);
   return 0;

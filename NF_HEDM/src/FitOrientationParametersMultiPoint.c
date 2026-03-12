@@ -4,19 +4,17 @@
 //
 
 #include "MIDAS_Math.h"
+#include "midas_version.h"
 #include "nf_headers.h"
 #include <ctype.h>
-#include <limits.h>
 #include <math.h>
 #include <nlopt.h>
 #include <omp.h>
-#include <stdint.h>
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
 #include <sys/stat.h>
 #include <time.h>
-#include "midas_version.h"
 
 #define RealType double
 #define float32_t float
@@ -240,7 +238,7 @@ void FitOrientation(
   f_data.NrOfFiles = NrOfFiles;
   f_data.nLayers = nLayers;
   f_data.n_hkls = n_hkls;
-  for (i = 0; i < 5000; i++) {
+  for (i = 0; i < n_hkls; i++) {
     f_data.hkls[i][0] = hkls[i][0];
     f_data.hkls[i][1] = hkls[i][1];
     f_data.hkls[i][2] = hkls[i][2];
@@ -476,7 +474,7 @@ void FitOrientation(
 }
 
 int main(int argc, char *argv[]) {
-	printf("Version: %s\n", MIDAS_VERSION_STRING);
+  printf("Version: %s\n", MIDAS_VERSION_STRING);
   clock_t start, end;
   double diftotal;
   start = clock();
@@ -781,16 +779,13 @@ int main(int argc, char *argv[]) {
   SizeObsSpots *= nrFiles;
   SizeObsSpots /= 32;
   ObsSpotsInfo = malloc(SizeObsSpots * sizeof(*ObsSpotsInfo));
-  for (iT = 0; iT < SizeObsSpots; iT++) {
-    ObsSpotsInfo[i] = 0;
-  }
-  memset(ObsSpotsInfo, 0, SizeObsSpots * sizeof(*ObsSpotsInfo));
-  printf("Size of spot info: %llu mb\n",
-         SizeObsSpots * sizeof(int) / (1024 * 1024));
   if (ObsSpotsInfo == NULL) {
     printf("Could not allocate ObsSpotsInfo.\n");
     return 0;
   }
+  memset(ObsSpotsInfo, 0, SizeObsSpots * sizeof(*ObsSpotsInfo));
+  printf("Size of spot info: %llu mb\n",
+         SizeObsSpots * sizeof(int) / (1024 * 1024));
   ReadCode = ReadBinFiles(fn, ext, StartNr, EndNr, ObsSpotsInfo, nLayers,
                           SizeObsSpots, NrPixelsY, NrPixelsZ);
   if (ReadCode == 0) {
@@ -803,12 +798,13 @@ int main(int argc, char *argv[]) {
   TiltsOrig[1] = ty;
   TiltsOrig[2] = tz;
   LsdFit = malloc(nLayers * sizeof(*LsdFit));
-  TiltsFit = malloc(nLayers + sizeof(*TiltsFit));
+  TiltsFit = malloc(3 * sizeof(*TiltsFit));
   BCsFit = allocMatrixF(nLayers, 2);
   int n_hkls = 0;
   double hkls[5000][4];
   double Thetas[5000];
-  char *hklfn = "hkls.csv";
+  char hklfn[1024];
+  sprintf(hklfn, "%s/hkls.csv", outputDir);
   FILE *hklf = fopen(hklfn, "r");
   fgets(aline, 1000, hklf);
   double RotMatTilts[3][3];
