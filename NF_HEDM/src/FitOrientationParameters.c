@@ -7,13 +7,17 @@
 #include "midas_version.h"
 #include "nf_headers.h"
 #include <ctype.h>
+#include <errno.h>
+#include <fcntl.h>
 #include <math.h>
 #include <nlopt.h>
 #include <omp.h>
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
+#include <sys/mman.h>
 #include <sys/stat.h>
+#include <sys/types.h>
 #include <time.h>
 
 #define RealType double
@@ -574,12 +578,6 @@ int main(int argc, char *argv[]) {
     strcpy(outputDir, direct);
   char fnG[1000];
   sprintf(fnG, "%s/grid.txt", outputDir);
-  char fnDS[1000];
-  char fnKey[1000];
-  char fnOr[1000];
-  sprintf(fnDS, "%s/DiffractionSpots.txt", outputDir);
-  sprintf(fnKey, "%s/Key.txt", outputDir);
-  sprintf(fnOr, "%s/OrientMat.txt", outputDir);
   sprintf(fn, "%s/%s", outputDir, fn2);
   char *ext = "bin";
   int *ObsSpotsInfo;
@@ -643,48 +641,49 @@ int main(int argc, char *argv[]) {
   }
   double GridSize = 2 * gs;
 
-  // Read Orientations
+  // Read Orientations from binary files (written by MMapImageInfo)
   double startthis;
   startthis = omp_get_wtime();
-  FILE *fd, *fk, *fo;
   int NrOrientations, TotalDiffrSpots;
-  fd = fopen(fnDS, "r");
-  fk = fopen(fnKey, "r");
-  fo = fopen(fnOr, "r");
-  fgets(line, 1000, fk);
-  sscanf(line, "%d", &NrOrientations);
-  int **NrSpots;
-  NrSpots = allocMatrixIntF(NrOrientations, 2);
+
+  // Read Key.bin
+  char fnKeyBin[1000];
+  sprintf(fnKeyBin, "%s/Key.bin", outputDir);
+  int keyfd = open(fnKeyBin, O_RDONLY);
+  check(keyfd < 0, "open %s failed: %s", fnKeyBin, strerror(errno));
+  struct stat keyStat;
+  fstat(keyfd, &keyStat);
+  int *NrSpots = mmap(0, keyStat.st_size, PROT_READ, MAP_SHARED, keyfd, 0);
+  check(NrSpots == MAP_FAILED, "mmap %s failed: %s", fnKeyBin, strerror(errno));
+  NrOrientations = keyStat.st_size / (2 * sizeof(int));
   TotalDiffrSpots = 0;
   for (i = 0; i < NrOrientations; i++) {
-    fgets(line, 1000, fk);
-    sscanf(line, "%d", &NrSpots[i][0]);
-    TotalDiffrSpots += NrSpots[i][0];
-    NrSpots[i][1] = TotalDiffrSpots - NrSpots[i][0];
+    TotalDiffrSpots += NrSpots[2 * i];
   }
-  double **SpotsMat;
-  SpotsMat = allocMatrixF(TotalDiffrSpots, 3);
+
+  // Read DiffractionSpots.bin
+  char fnDSBin[1000];
+  sprintf(fnDSBin, "%s/DiffractionSpots.bin", outputDir);
+  int dsfd = open(fnDSBin, O_RDONLY);
+  check(dsfd < 0, "open %s failed: %s", fnDSBin, strerror(errno));
+  struct stat dsStat;
+  fstat(dsfd, &dsStat);
+  double *SpotsMat = mmap(0, dsStat.st_size, PROT_READ, MAP_SHARED, dsfd, 0);
+  check(SpotsMat == MAP_FAILED, "mmap %s failed: %s", fnDSBin, strerror(errno));
   printf("Diffraction spots: %lu mb\n",
-         (TotalDiffrSpots * (3 * sizeof(double) + sizeof(*ObsSpotsInfo))) /
-             (1024 * 1024));
-  for (i = 0; i < TotalDiffrSpots; i++) {
-    fgets(line, 1000, fd);
-    sscanf(line, "%lf %lf %lf", &SpotsMat[i][0], &SpotsMat[i][1],
-           &SpotsMat[i][2]);
-  }
-  double **OrientationMatrix;
-  OrientationMatrix = allocMatrixF(NrOrientations, 9);
-  for (i = 0; i < NrOrientations; i++) {
-    fgets(line, 1000, fo);
-    sscanf(line, "%lf %lf %lf %lf %lf %lf %lf %lf %lf",
-           &OrientationMatrix[i][0], &OrientationMatrix[i][1],
-           &OrientationMatrix[i][2], &OrientationMatrix[i][3],
-           &OrientationMatrix[i][4], &OrientationMatrix[i][5],
-           &OrientationMatrix[i][6], &OrientationMatrix[i][7],
-           &OrientationMatrix[i][8]);
-  }
+         (size_t)(TotalDiffrSpots * 3 * sizeof(double)) / (1024 * 1024));
+
+  // Read OrientMat.bin
+  char fnOrBin[1000];
+  sprintf(fnOrBin, "%s/OrientMat.bin", outputDir);
+  int omfd = open(fnOrBin, O_RDONLY);
+  check(omfd < 0, "open %s failed: %s", fnOrBin, strerror(errno));
+  struct stat omStat;
+  fstat(omfd, &omStat);
+  double *OrientationMatrix = mmap(0, omStat.st_size, PROT_READ, MAP_SHARED, omfd, 0);
+  check(OrientationMatrix == MAP_FAILED, "mmap %s failed: %s", fnOrBin, strerror(errno));
   printf("NrOrientations: %lu mb\n",
-         NrOrientations * 10 * sizeof(double) / (1024 * 1024));
+         (size_t)(NrOrientations * 9 * sizeof(double)) / (1024 * 1024));
   // Go through each orientation and compare with observed spots.
   double startthis2;
   startthis2 = omp_get_wtime();
@@ -715,11 +714,11 @@ int main(int argc, char *argv[]) {
     YG[j] = XY[j][1];
   }
   for (i = 0; i < NrOrientations; i++) {
-    NrSpotsThis = NrSpots[i][0];
-    StartingRowNr = NrSpots[i][1];
+    NrSpotsThis = NrSpots[2 * i];
+    StartingRowNr = NrSpots[2 * i + 1];
     m = 0;
     for (m = 0; m < 9; m++) {
-      OrientationMatThisUnNorm[m] = OrientationMatrix[i][m];
+      OrientationMatThisUnNorm[m] = OrientationMatrix[i * 9 + m];
       fflush(stdout);
       if (OrientationMatThisUnNorm[m] == -0.0) {
         OrientationMatThisUnNorm[m] = 0;
@@ -728,9 +727,9 @@ int main(int argc, char *argv[]) {
     m = 0;
     NormalizeMat(OrientationMatThisUnNorm, OrientationMatThis);
     for (j = StartingRowNr; j < (StartingRowNr + NrSpotsThis); j++) {
-      ThrSps[m * 3 + 0] = SpotsMat[j][0];
-      ThrSps[m * 3 + 1] = SpotsMat[j][1];
-      ThrSps[m * 3 + 2] = SpotsMat[j][2];
+      ThrSps[m * 3 + 0] = SpotsMat[j * 3 + 0];
+      ThrSps[m * 3 + 1] = SpotsMat[j * 3 + 1];
+      ThrSps[m * 3 + 2] = SpotsMat[j * 3 + 2];
       m++;
     }
     Convert9To3x3(OrientationMatThis, OrientMatIn);
@@ -914,11 +913,14 @@ int main(int argc, char *argv[]) {
     }
   }
   // Free memory
-  FreeMemMatrix(SpotsMat, TotalDiffrSpots);
-  FreeMemMatrixInt(NrSpots, NrOrientations);
+  munmap(SpotsMat, dsStat.st_size);
+  close(dsfd);
+  munmap(NrSpots, keyStat.st_size);
+  close(keyfd);
   free(ObsSpotsInfo);
   FreeMemMatrix(XY, 3);
-  FreeMemMatrix(OrientationMatrix, NrOrientations);
+  munmap(OrientationMatrix, omStat.st_size);
+  close(omfd);
   FreeMemMatrix(OrientMatrix, MAX_POINTS_GRID_GOOD);
   end = omp_get_wtime();
   printf("Time elapsed in reading bin files: %f [s]\n", startthis - start);

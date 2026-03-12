@@ -761,12 +761,6 @@ int main(int argc, char *argv[]) {
     strcpy(outputDir, direct);
   char fnG[1000];
   sprintf(fnG, "%s/grid.txt", outputDir);
-  char fnDS[1000];
-  char fnKey[1000];
-  char fnOr[1000];
-  sprintf(fnDS, "%s/DiffractionSpots.txt", outputDir);
-  sprintf(fnKey, "%s/Key.txt", outputDir);
-  sprintf(fnOr, "%s/OrientMat.txt", outputDir);
   sprintf(fn, "%s/%s", outputDir, fn2);
   char *ext = "bin";
   int *ObsSpotsInfo;
