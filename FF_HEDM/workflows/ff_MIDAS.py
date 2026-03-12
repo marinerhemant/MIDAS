@@ -1899,6 +1899,11 @@ def main():
                         help='If want override the rawDir in the Parameter file.')
     parser.add_argument('-grainsFile', type=str, required=False, default='', 
                         help='Optional input file containing seed grains to use for grain finding. If not provided, grains will be determined from scratch.')
+    parser.add_argument('-nfResultDir', type=str, required=False, default='',
+                        help='Path to NF result directory containing GrainsLayer{N}.csv files. '
+                             'When set, each layer auto-uses the corresponding NF grains as seeds, '
+                             'overriding -grainsFile. The GrainsFile is written to both the '
+                             'layer parameter file and paramstest.txt.')
     parser.add_argument('-reprocess', type=int, required=False, default=0,
                         help='Set to 1 to re-run peak merging (MergeMap.csv) and consolidated HDF5 generation on existing results. Only needs -resultFolder (or runs in current dir).')
     parser.add_argument('-batchMode', type=int, required=False, default=0,
@@ -2082,6 +2087,17 @@ def main():
                 # Update FileStem in the parameter file for this layer
                 update_parameter_file(ps_fn, {'FileStem': filestem})
 
+                # Override grains_file from NF results if -nfResultDir is set
+                layer_grains = grains_file
+                if args.nfResultDir:
+                    nf_grains = os.path.join(os.path.abspath(args.nfResultDir), f'GrainsLayer{layer_nr}.csv')
+                    if os.path.exists(nf_grains):
+                        layer_grains = nf_grains
+                        logger.info(f"Using NF grains for layer {layer_nr}: {nf_grains}")
+                        update_parameter_file(ps_fn, {'GrainsFile': nf_grains})
+                    else:
+                        logger.warning(f"NF grains not found: {nf_grains}, proceeding without")
+
                 try:
                     process_layer(
                         layer_nr=layer_nr,
@@ -2098,7 +2114,7 @@ def main():
                         do_peak_search=do_peak_search,
                         peak_search_only=peak_search_only,
                         bin_directory=bin_dir,
-                        grains_file=grains_file,
+                        grains_file=layer_grains,
                         resume_from_stage=resume_from_stage
                     )
 
@@ -2114,6 +2130,17 @@ def main():
             progress = ProgressTracker(end_layer_nr - start_layer_nr + 1, "Layer processing")
             
             for layer_nr in range(start_layer_nr, end_layer_nr + 1):
+                # Override grains_file from NF results if -nfResultDir is set
+                layer_grains = grains_file
+                if args.nfResultDir:
+                    nf_grains = os.path.join(os.path.abspath(args.nfResultDir), f'GrainsLayer{layer_nr}.csv')
+                    if os.path.exists(nf_grains):
+                        layer_grains = nf_grains
+                        logger.info(f"Using NF grains for layer {layer_nr}: {nf_grains}")
+                        update_parameter_file(ps_fn, {'GrainsFile': nf_grains})
+                    else:
+                        logger.warning(f"NF grains not found: {nf_grains}, proceeding without")
+
                 try:
                     process_layer(
                         layer_nr=layer_nr, 
@@ -2130,7 +2157,7 @@ def main():
                         do_peak_search=do_peak_search, 
                         peak_search_only=peak_search_only,
                         bin_directory=bin_dir,
-                        grains_file=grains_file,
+                        grains_file=layer_grains,
                         resume_from_stage=resume_from_stage
                     )
                     
