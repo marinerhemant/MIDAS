@@ -394,7 +394,7 @@ def run_fitting_and_postprocessing(args: argparse.Namespace, params: Dict, t0: f
 
     logger.info("Mapping image info to memory-mapped files.")
     run_command(
-        cmd=os.path.join(bin_dir, "MMapImageInfo") + f" {args.paramFN}",
+        cmd=os.path.join(bin_dir, "MMapImageInfo") + f" {args.paramFN} {args.nCPUs}",
         working_dir=resultFolder,
         out_file=f'{logDir}/map_out.csv',
         err_file=f'{logDir}/map_err.csv'

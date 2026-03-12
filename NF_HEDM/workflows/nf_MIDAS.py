@@ -345,7 +345,7 @@ def run_fitting_and_postprocessing(args: argparse.Namespace, params: Dict, t0: f
 
     logger.info("Mapping image info to memory-mapped files.")
     run_command(
-        cmd=os.path.join(bin_dir, "MMapImageInfo") + f" {args.paramFN}",
+        cmd=os.path.join(bin_dir, "MMapImageInfo") + f" {args.paramFN} {args.nCPUs}",
         working_dir=resultFolder,
         out_file=f'{logDir}/map_out.csv',
         err_file=f'{logDir}/map_err.csv'
@@ -681,6 +681,20 @@ def main():
                     ph5.mark('image_processing')
                 else:
                     logger.info("Skipping image_processing (resumed past this stage).")
+            else:
+                # doImageProcessing=0: ensure MMapImageInfo can find spot data
+                spots_bin = os.path.join(resultFolder, 'SpotsInfo.bin')
+                with open(args.paramFN, 'r') as f:
+                    param_content = f.read()
+                if 'PrecomputedSpotsInfo' not in param_content:
+                    if os.path.exists(spots_bin):
+                        with open(args.paramFN, 'a') as f:
+                            f.write('\nPrecomputedSpotsInfo 1\n')
+                        logger.info("doImageProcessing=0: using existing SpotsInfo.bin")
+                    elif 'SkipImageBinning' not in param_content:
+                        with open(args.paramFN, 'a') as f:
+                            f.write('\nSkipImageBinning 1\n')
+                        logger.warning("doImageProcessing=0 and no SpotsInfo.bin found — added SkipImageBinning")
                 
             if _should_run('mmap'):
                 run_fitting_and_postprocessing(args, params, t0, ph5=ph5)

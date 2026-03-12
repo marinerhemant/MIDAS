@@ -1236,41 +1236,175 @@ class FFViewer(QtWidgets.QMainWindow):
                                            self.ny, self.nz, 0,
                                            self.do_transpose, self.hflip, self.vflip)
 
-        # MaxOverFrames / SumOverFrames
+        # MaxOverFrames / SumOverFrames — parallel computation
         if self.max_check.isChecked() or self.sum_check.isChecked():
             n_accum = self.max_frames_spin.value()
             use_sum = self.sum_check.isChecked()
-            data_accum = None
             start_frame = self.frame_nr
-            for i in range(n_accum):
-                fr = start_frame + i
-                f_nr = self.first_file_nr + fr // max(1, self.n_frames_per_file)
-                f_in = fr % max(1, self.n_frames_per_file)
-                fn = build_filename(self.folder, self.file_stem, f_nr,
-                                    self.padding, self.det_nr, self.ext,
-                                    self.sep_folder)
-                try:
-                    frame = read_image(
-                        fn, self.header_size, self.bytes_per_pixel,
-                        self.ny, self.nz, f_in,
-                        self.do_transpose, self.hflip, self.vflip,
-                        mask, self.zarr_store, self.zarr_dark_mean,
-                        hdf5_data_path=self.hdf5_data_path,
-                        hdf5_dark_path=self.hdf5_dark_path)
-                except Exception:
-                    break
-                if dark_data is not None:
-                    frame = np.maximum(frame - dark_data, 0)
-                if data_accum is None:
-                    data_accum = frame.astype(np.float64)
-                else:
-                    if use_sum:
-                        data_accum += frame
-                    else:
-                        np.maximum(data_accum, frame, out=data_accum)
-            data = data_accum if data_accum is not None else np.zeros((self.ny, self.nz))
             mode_str = "Sum" if use_sum else "Max"
-            print(f"{mode_str}OverFrames: {n_accum} frames from frame {start_frame}")
+
+            # Disable controls while computing
+            self.max_check.setEnabled(False)
+            self.sum_check.setEnabled(False)
+            self.frame_label.setText(f"Computing {mode_str} over {n_accum} frames...")
+
+            # Capture all parameters for the worker thread
+            params = dict(
+                n_accum=n_accum, use_sum=use_sum, start_frame=start_frame,
+                folder=self.folder, file_stem=self.file_stem,
+                first_file_nr=self.first_file_nr, padding=self.padding,
+                det_nr=self.det_nr, ext=self.ext, sep_folder=self.sep_folder,
+                header_size=self.header_size, bytes_per_pixel=self.bytes_per_pixel,
+                ny=self.ny, nz=self.nz,
+                do_transpose=self.do_transpose, hflip=self.hflip, vflip=self.vflip,
+                mask=mask, dark_data=dark_data,
+                zarr_store=self.zarr_store, zarr_dark_mean=self.zarr_dark_mean,
+                hdf5_data_path=self.hdf5_data_path,
+                hdf5_dark_path=self.hdf5_dark_path,
+                n_frames_per_file=self.n_frames_per_file,
+            )
+
+            def _parallel_accum():
+                import concurrent.futures, time as _time
+                t0 = _time.monotonic()
+                p = params
+
+                # ── Fast path: Zarr slab read ──
+                if p['zarr_store'] is not None and 'exchange/data' in p['zarr_store']:
+                    dset = p['zarr_store']['exchange/data']
+                    end_frame = min(p['start_frame'] + p['n_accum'], dset.shape[0])
+                    slab = dset[p['start_frame']:end_frame, :, :]  # (N, ny, nz)
+                    if p['use_sum']:
+                        result = np.sum(slab.astype(np.float64), axis=0)
+                    else:
+                        result = np.max(slab.astype(np.float64), axis=0)
+                    # Apply same transforms as read_image for zarr
+                    result = result[::-1, ::-1].copy()
+                    if p['do_transpose']: result = np.transpose(result)
+                    if p['hflip'] and p['vflip']: result = result[::-1, ::-1].copy()
+                    elif p['hflip']: result = result[::-1, :].copy()
+                    elif p['vflip']: result = result[:, ::-1].copy()
+                    if p['mask'] is not None and p['mask'].shape == result.shape:
+                        result[p['mask'] == 1] = 0
+                    if p['dark_data'] is not None:
+                        result = np.maximum(result - p['dark_data'], 0)
+                    elapsed = _time.monotonic() - t0
+                    return result, end_frame - p['start_frame'], elapsed
+
+                # ── Fast path: single HDF5 file with slab read ──
+                n_fpf = max(1, p['n_frames_per_file'])
+                first_file = p['first_file_nr'] + p['start_frame'] // n_fpf
+                last_file = p['first_file_nr'] + (p['start_frame'] + p['n_accum'] - 1) // n_fpf
+                fn0 = build_filename(p['folder'], p['file_stem'], first_file,
+                                     p['padding'], p['det_nr'], p['ext'], p['sep_folder'])
+                ext_lower = os.path.splitext(fn0)[1].lower()
+                if (first_file == last_file and ext_lower in ['.h5', '.hdf', '.hdf5', '.nxs']
+                        and h5py and os.path.exists(fn0)):
+                    try:
+                        with h5py.File(fn0, 'r') as f:
+                            dp = p['hdf5_data_path']
+                            if dp in f and f[dp].ndim == 3:
+                                dset = f[dp]
+                                f_start = p['start_frame'] % n_fpf
+                                f_end = min(f_start + p['n_accum'], dset.shape[0])
+                                slab = dset[f_start:f_end, :, :].astype(np.float64)
+                                if p['use_sum']:
+                                    result = np.sum(slab, axis=0)
+                                else:
+                                    result = np.max(slab, axis=0)
+                                if p['do_transpose']: result = np.transpose(result)
+                                if p['hflip'] and p['vflip']: result = result[::-1, ::-1].copy()
+                                elif p['hflip']: result = result[::-1, :].copy()
+                                elif p['vflip']: result = result[:, ::-1].copy()
+                                if p['mask'] is not None and p['mask'].shape == result.shape:
+                                    result[p['mask'] == 1] = 0
+                                if p['dark_data'] is not None:
+                                    result = np.maximum(result - p['dark_data'], 0)
+                                elapsed = _time.monotonic() - t0
+                                return result, f_end - f_start, elapsed
+                    except Exception as e:
+                        print(f"HDF5 slab read failed, falling back to parallel: {e}")
+
+                # ── General path: ThreadPoolExecutor for raw/TIFF/multi-file ──
+                def _read_one(frame_idx):
+                    fr = p['start_frame'] + frame_idx
+                    f_nr = p['first_file_nr'] + fr // n_fpf
+                    f_in = fr % n_fpf
+                    fn = build_filename(p['folder'], p['file_stem'], f_nr,
+                                        p['padding'], p['det_nr'], p['ext'],
+                                        p['sep_folder'])
+                    return read_image(
+                        fn, p['header_size'], p['bytes_per_pixel'],
+                        p['ny'], p['nz'], f_in,
+                        p['do_transpose'], p['hflip'], p['vflip'],
+                        p['mask'], p['zarr_store'], p['zarr_dark_mean'],
+                        hdf5_data_path=p['hdf5_data_path'],
+                        hdf5_dark_path=p['hdf5_dark_path'])
+
+                n_workers = min(p['n_accum'], os.cpu_count() or 4, 8)
+                data_accum = None
+                count = 0
+                with concurrent.futures.ThreadPoolExecutor(max_workers=n_workers) as pool:
+                    futures = {pool.submit(_read_one, i): i for i in range(p['n_accum'])}
+                    for future in concurrent.futures.as_completed(futures):
+                        try:
+                            frame = future.result()
+                        except Exception:
+                            continue
+                        if p['dark_data'] is not None:
+                            frame = np.maximum(frame - p['dark_data'], 0)
+                        if data_accum is None:
+                            data_accum = frame.astype(np.float64)
+                        else:
+                            if p['use_sum']:
+                                data_accum += frame
+                            else:
+                                np.maximum(data_accum, frame, out=data_accum)
+                        count += 1
+
+                if data_accum is None:
+                    data_accum = np.zeros((p['ny'], p['nz']))
+                elapsed = _time.monotonic() - t0
+                return data_accum, count, elapsed
+
+            worker = AsyncWorker(target=_parallel_accum)
+
+            def _on_accum_done(result):
+                data_out, n_done, elapsed = result
+                self.bdata = data_out
+                if getattr(self, '_levels_initialized', False):
+                    try:
+                        lo = float(self.min_intensity_edit.text())
+                        hi = float(self.max_intensity_edit.text())
+                        self.image_view.set_image_data(data_out, auto_levels=False, levels=(lo, hi))
+                    except ValueError:
+                        self.image_view.set_image_data(data_out)
+                else:
+                    self.image_view.set_image_data(data_out)
+                self.max_check.setEnabled(True)
+                self.sum_check.setEnabled(True)
+                fn_display = (os.path.basename(self.zarr_zip_path or '')
+                              if self.zarr_store else os.path.basename(
+                                  build_filename(self.folder, self.file_stem,
+                                                 self.first_file_nr, self.padding,
+                                                 self.det_nr, self.ext, self.sep_folder)))
+                self.frame_label.setText(f"Frame {self.frame_nr}  |  {fn_display}")
+                self.setWindowTitle(f"FF Viewer — {fn_display} [frame {self.frame_nr}]")
+                if self.show_rings and self.ring_rads:
+                    self._draw_rings()
+                print(f"{mode_str}OverFrames: {n_done} frames from frame {start_frame} in {elapsed:.2f}s")
+
+            def _on_accum_error(msg):
+                print(f"Error in {mode_str}OverFrames: {msg}")
+                self.max_check.setEnabled(True)
+                self.sum_check.setEnabled(True)
+                self.frame_label.setText(f"Frame {self.frame_nr}  |  Error")
+
+            worker.finished_signal.connect(_on_accum_done)
+            worker.error_signal.connect(_on_accum_error)
+            worker.start()
+            self._accum_worker = worker  # prevent GC
+            return  # display handled by callback
         else:
             # Single frame
             file_nr = self.first_file_nr + self.frame_nr // max(1, self.n_frames_per_file)

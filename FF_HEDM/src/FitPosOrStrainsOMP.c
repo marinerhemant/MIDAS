@@ -1904,6 +1904,7 @@ int main(int argc, char *argv[]) {
   char OutputFolder[1024], ResultFolder[1024];
   int DiscModel = 0, TopLayer = 0, TakeGrainMax = 0;
   int isGrainsInput = 0;
+  int LocalMaximaOnly = 0;
   char GrainsFileName[4096];
   int cntrdet = 0;
   while (fgets(aline, 1000, fileParam) != NULL) {
@@ -2054,6 +2055,12 @@ int main(int argc, char *argv[]) {
     if (LowNr == 0) {
       isGrainsInput = 1;
       sscanf(aline, "%s %s", dummy, GrainsFileName);
+      continue;
+    }
+    str = "LocalMaximaOnly ";
+    LowNr = strncmp(aline, str, strlen(str));
+    if (LowNr == 0) {
+      sscanf(aline, "%s %d", dummy, &LocalMaximaOnly);
       continue;
     }
     str = "ResultFolder ";
@@ -3246,6 +3253,83 @@ int main(int argc, char *argv[]) {
       }
       double a = LatCin[0], b = LatCin[1], c = LatCin[2], alph = LatCin[3],
              bet = LatCin[4], gamm = LatCin[5];
+
+      // === LocalMaximaOnly: fit orientation before strain ===
+      if (LocalMaximaOnly == 1) {
+        double X0_2[9];
+        X0_2[0] = Euler0[0]; X0_2[1] = Euler0[1]; X0_2[2] = Euler0[2];
+        for (i = 0; i < 6; i++) X0_2[i + 3] = LatCin[i];
+        double lb2[9], ub2[9];
+        for (i = 0; i < 3; i++) {
+          lb2[i] = Euler0[i] - MargOme2;
+          ub2[i] = Euler0[i] + MargOme2;
+        }
+        lb2[3] = a * (1 - (MargABC / 100));
+        lb2[4] = b * (1 - (MargABC / 100));
+        lb2[5] = c * (1 - (MargABC / 100));
+        lb2[6] = alph * (1 - (MargABG / 100));
+        lb2[7] = bet * (1 - (MargABG / 100));
+        lb2[8] = gamm * (1 - (MargABG / 100));
+        ub2[3] = a * (1 + (MargABC / 100));
+        ub2[4] = b * (1 + (MargABC / 100));
+        ub2[5] = c * (1 + (MargABC / 100));
+        ub2[6] = alph * (1 + (MargABG / 100));
+        ub2[7] = bet * (1 + (MargABG / 100));
+        ub2[8] = gamm * (1 + (MargABG / 100));
+        double *XFit2 = malloc(9 * sizeof(*XFit2));
+        FitOrientIni(X0_2, nSpotsComp, spotsYZONew, nhkls, hkls, Lsd,
+                     Wavelength, nOmeRanges, OmegaRanges, BoxSizes, MinEta,
+                     wedge, chi, XFit2, lb2, ub2, Pos0);
+        // Update Euler0 with fitted orientation
+        for (i = 0; i < 3; i++) Euler0[i] = XFit2[i];
+        // Recalculate with new orientation
+        double UseXFitO[12];
+        for (i = 0; i < 3; i++) UseXFitO[i] = Pos0[i];
+        for (i = 0; i < 3; i++) UseXFitO[i + 3] = Euler0[i];
+        for (i = 0; i < 6; i++) UseXFitO[i + 6] = LatCin[i];
+        CalcAngleErrors(nSpotsComp, nhkls, nOmeRanges, UseXFitO, spotsYZONew,
+                        hkls, Lsd, Wavelength, OmegaRanges, BoxSizes, MinEta,
+                        wedge, chi, SpotsComp, Splist, ErrorIni, &nSpotsComp,
+                        GlobalDebugFlag);
+        for (i = 0; i < nSpotsComp; i++)
+          for (j = 0; j < 11; j++)
+            spotsYZONew[i][j] = Splist[i][j];
+        // Dynamic Reassignment after Orient Fit
+        {
+          int nReassigned = ReassignSpotsFromBins(
+              UseXFitO, nhkls, hkls, Lsd, Wavelength, nOmeRanges, OmegaRanges,
+              BoxSizes, MinEta, wedge, chi, spotsYZONew, MaxNSpotsBest,
+              AllSpots, nSpots);
+          if (nReassigned > 0) {
+            nSpotsComp = nReassigned;
+            CalcAngleErrors(nSpotsComp, nhkls, nOmeRanges, UseXFitO,
+                            spotsYZONew, hkls, Lsd, Wavelength, OmegaRanges,
+                            BoxSizes, MinEta, wedge, chi, SpotsComp, Splist,
+                            ErrorIni, &nSpotsComp, 0);
+            for (i = 0; i < nSpotsComp; i++)
+              for (j = 0; j < 11; j++)
+                spotsYZONew[i][j] = Splist[i][j];
+            // Re-fit orientation with reassigned spots
+            FitOrientIni(X0_2, nSpotsComp, spotsYZONew, nhkls, hkls, Lsd,
+                         Wavelength, nOmeRanges, OmegaRanges, BoxSizes, MinEta,
+                         wedge, chi, XFit2, lb2, ub2, Pos0);
+            for (i = 0; i < 3; i++) Euler0[i] = XFit2[i];
+            for (i = 0; i < 3; i++) UseXFitO[i + 3] = Euler0[i];
+            CalcAngleErrors(nSpotsComp, nhkls, nOmeRanges, UseXFitO,
+                            spotsYZONew, hkls, Lsd, Wavelength, OmegaRanges,
+                            BoxSizes, MinEta, wedge, chi, SpotsComp, Splist,
+                            ErrorIni, &nSpotsComp, GlobalDebugFlag);
+            for (i = 0; i < nSpotsComp; i++)
+              for (j = 0; j < 11; j++)
+                spotsYZONew[i][j] = Splist[i][j];
+          }
+        }
+        // Recompute Orient0 from fitted Euler0
+        Euler2OrientMat(Euler0, Orient0_3);
+        Convert3x3To9(Orient0_3, Orient0);
+        free(XFit2);
+      }
+
       double X0_3[6];
       for (i = 0; i < 6; i++)
         X0_3[i] = LatCin[i];

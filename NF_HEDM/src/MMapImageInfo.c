@@ -5,6 +5,7 @@
 
 #include "midas_version.h"
 #include <ctype.h>
+#include <omp.h>
 #include <stdint.h>
 #include <stdio.h>
 #include <stdlib.h>
@@ -65,102 +66,96 @@ int checkFOPEN(FILE *f, char *fn) {
 
 int ReadBinFiles(char FileStem[1000], char *ext, int StartNr, int EndNr,
                  int *ObsSpotsMat, int nLayers, long long int ObsSpotsSize,
-                 int NrPixelsY, int NrPixelsZ) {
-  int i, j, k, nElements = 0, nElements_previous, nCheck, ythis, zthis,
-               NrOfFiles;
-  long long NrOfPixels;
-  long long int BinNr;
-  long long int TempCntr;
-  float32_t dummy;
-  uint32_t dummy2;
-  FILE *fp;
-  char FileName[1024];
-  struct Theader Header1;
-  uint16_t *ys = NULL, *zs = NULL, *peakID = NULL;
-  float32_t *intensity = NULL;
-  int counter = 0;
-  NrOfFiles = EndNr - StartNr + 1;
-  NrOfPixels = (long long)NrPixelsY * NrPixelsZ;
-  long long int kT;
-  kT = nLayers;
-  kT *= NrOfPixels;
-  kT *= NrOfFiles;
+                 int NrPixelsY, int NrPixelsZ, int nCPUs) {
+  int k;
+  int NrOfFiles = EndNr - StartNr + 1;
+  long long NrOfPixels = (long long)NrPixelsY * NrPixelsZ;
+  long long int kT = (long long)nLayers * NrOfPixels * NrOfFiles;
+  int readError = 0;
+
   for (k = 0; k < nLayers; k++) {
-    for (i = StartNr; i <= EndNr; i++) {
+    #pragma omp parallel for num_threads(nCPUs) schedule(dynamic)
+    for (int i = StartNr; i <= EndNr; i++) {
+      if (readError) continue;
+      int counter = i - StartNr;
+      char FileName[1024];
       sprintf(FileName, "%s_%06d.%s%d", FileStem, i, ext, k);
-      fp = fopen(FileName, "r");
-      if (checkFOPEN(fp, FileName))
-        return 0;
+      FILE *fp = fopen(FileName, "r");
+      if (fp == NULL) {
+        printf("Could not open %s\n", FileName);
+        #pragma omp atomic write
+        readError = 1;
+        continue;
+      }
+      float32_t fdummy;
+      uint32_t udummy;
+      struct Theader Header1;
       size_t sz;
-      sz = fread(&dummy, sizeof(float32_t), 1, fp);
+      sz = fread(&fdummy, sizeof(float32_t), 1, fp);
       ReadHeader(fp, &Header1);
-      sz = fread(&dummy2, sizeof(uint32_t), 1, fp);
-      sz = fread(&dummy2, sizeof(uint32_t), 1, fp);
-      sz = fread(&dummy2, sizeof(uint32_t), 1, fp);
-      sz = fread(&dummy2, sizeof(uint32_t), 1, fp);
-      sz = fread(&dummy2, sizeof(uint32_t), 1, fp);
+      for (int d = 0; d < 5; d++) sz = fread(&udummy, sizeof(uint32_t), 1, fp);
       ReadHeader(fp, &Header1);
-      nElements_previous = nElements;
-      nElements = (Header1.DataSize - Header1.NameSize) / 2;
-      realloc_buffers(nElements, nElements_previous, &ys, &zs, &peakID,
-                      &intensity);
+      int nElements = (Header1.DataSize - Header1.NameSize) / 2;
+
+      uint16_t *ys = malloc(nElements * sizeof(uint16_t));
+      uint16_t *zs = malloc(nElements * sizeof(uint16_t));
+      float32_t *intensity = malloc(nElements * sizeof(float32_t));
+      uint16_t *peakID = malloc(nElements * sizeof(uint16_t));
+
       sz = fread(ys, sizeof(uint16_t) * nElements, 1, fp);
       ReadHeader(fp, &Header1);
-      nCheck = (Header1.DataSize - Header1.NameSize) / 2;
+      int nCheck = (Header1.DataSize - Header1.NameSize) / 2;
       if (nCheck != nElements) {
-        printf("Number of elements mismatch.\n");
-        return 0;
+        printf("Number of elements mismatch in %s.\n", FileName);
+        fclose(fp); free(ys); free(zs); free(intensity); free(peakID);
+        #pragma omp atomic write
+        readError = 1;
+        continue;
       }
       sz = fread(zs, sizeof(uint16_t) * nElements, 1, fp);
       ReadHeader(fp, &Header1);
       nCheck = (Header1.DataSize - Header1.NameSize) / 4;
       if (nCheck != nElements) {
-        printf("Number of elements mismatch.\n");
-        return 0;
+        printf("Number of elements mismatch in %s.\n", FileName);
+        fclose(fp); free(ys); free(zs); free(intensity); free(peakID);
+        #pragma omp atomic write
+        readError = 1;
+        continue;
       }
       sz = fread(intensity, sizeof(float32_t) * nElements, 1, fp);
       ReadHeader(fp, &Header1);
       nCheck = (Header1.DataSize - Header1.NameSize) / 2;
       if (nCheck != nElements) {
-        printf("Number of elements mismatch.\n");
-        return 0;
+        printf("Number of elements mismatch in %s.\n", FileName);
+        fclose(fp); free(ys); free(zs); free(intensity); free(peakID);
+        #pragma omp atomic write
+        readError = 1;
+        continue;
       }
       sz = fread(peakID, sizeof(uint16_t) * nElements, 1, fp);
-      for (j = 0; j < nElements; j++) {
-        ythis = (int)ys[j];
-        zthis = (int)zs[j];
+      (void)sz; // suppress unused warning
+      fclose(fp);
+
+      for (int j = 0; j < nElements; j++) {
+        int ythis = (int)ys[j];
+        int zthis = (int)zs[j];
         if (Flag == 1)
           zthis = NrPixelsZ - zthis;
-        BinNr = k;
-        BinNr *= NrOfFiles;
-        BinNr *= NrOfPixels;
-        TempCntr = counter;
-        TempCntr *= NrOfPixels;
-        BinNr += TempCntr;
-        BinNr += (ythis * ((long long int)NrPixelsZ));
-        BinNr += zthis;
+        long long int BinNr = (long long)k * NrOfFiles * NrOfPixels
+                            + (long long)counter * NrOfPixels
+                            + (long long)ythis * NrPixelsZ
+                            + zthis;
         if (BinNr < 0 || BinNr >= kT) {
-          printf("%lld %d %d %d %lld %d %d %d %d %d %d %d\n", BinNr, k,
-                 NrOfFiles, (int)NrOfPixels, TempCntr, ythis, zthis, nElements,
-                 j, (int)ys[j], (int)zs[j], i);
-          printf("Something was wrong with the Binary Files. Distance %d and "
-                 "FileNr %d contained %d for y and %d for z position. Please "
-                 "check, exiting.\n",
-                 k, i, ythis, zthis);
-          return 0;
+          printf("OOB: BinNr=%lld k=%d file=%d y=%d z=%d\n",
+                 BinNr, k, i, ythis, zthis);
+          continue; // skip bad pixel instead of aborting
         }
         SetBit(ObsSpotsMat, BinNr);
       }
-      fclose(fp);
-      counter += 1;
+      free(ys); free(zs); free(intensity); free(peakID);
     }
-    counter = 0;
   }
-  return 1;
-  free(ys);
-  free(zs);
-  free(peakID);
-  free(intensity);
+  return readError ? 0 : 1;
 }
 
 int main(int argc, char *argv[]) {
@@ -168,6 +163,12 @@ int main(int argc, char *argv[]) {
   clock_t start, end;
   double diftotal;
   start = clock();
+  int nCPUs = 1;
+  if (argc >= 3) {
+    nCPUs = atoi(argv[2]);
+    if (nCPUs < 1) nCPUs = 1;
+  }
+  printf("Running with %d OpenMP threads.\n", nCPUs);
 
   // Read params file.
   char *ParamFN;
@@ -284,6 +285,7 @@ int main(int argc, char *argv[]) {
   printf("  Ice9Input:            %s\n", Flag ? "YES" : "NO");
   printf("  SkipImageBinning:     %s\n", skipBin ? "YES" : "NO");
   printf("  PrecomputedSpotsInfo: %s\n", precomputedSpotsInfo ? "YES" : "NO");
+  printf("  nCPUs:                %d\n", nCPUs);
   printf(
       "================================================================\n\n");
 
@@ -334,7 +336,7 @@ int main(int argc, char *argv[]) {
     ReadCode = 1;
   } else if (skipBin == 0) {
     ReadCode = ReadBinFiles(fn, ext, StartNr, EndNr, ObsSpotsInfo, nLayers,
-                            SizeObsSpots, NrPixelsY, NrPixelsZ);
+                            SizeObsSpots, NrPixelsY, NrPixelsZ, nCPUs);
   } else {
     ReadCode = 1;
   }

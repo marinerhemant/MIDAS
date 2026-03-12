@@ -1119,6 +1119,17 @@ def process_layer(layer_nr: int, top_res_dir: str, ps_fn: str, data_fn: str, num
         except Exception as e:
             logger.error(f"Failed to propagate RingsToExcludeFraction: {e}")
 
+        # Propagate LocalMaximaOnly if set in parameter file
+        try:
+            with open(ps_fn, 'r') as pf:
+                for line in pf:
+                    if line.strip().startswith('LocalMaximaOnly'):
+                         with open(f"{result_dir}/paramstest.txt", "a") as paramstestF:
+                             paramstestF.write(line)
+                         break
+        except Exception as e:
+            logger.error(f"Failed to propagate LocalMaximaOnly: {e}")
+
         # Bin data
         if _should_run('binning'):
             logger.info(f"Binning data. Time till now: {time.time() - t0}, workingdir: {result_dir}")
