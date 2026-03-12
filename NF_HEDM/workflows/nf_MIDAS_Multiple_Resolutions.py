@@ -1014,10 +1014,10 @@ def main():
         mic_file_base = _re_mic.sub(r'(_all_solutions|_merged)?(\.[0-9]+)+$', '', mic_text_raw)
         if 'GridRefactor' in layer_params:
             num_loops = int(layer_params['GridRefactor'][2])
-            # Last seeded mic is {base}.{num_loops}.mic
-            last_mic = os.path.join(layerFolder, f"{mic_file_base}.{num_loops}.mic")
+            # Last seeded mic: MicFileText already includes .mic, e.g. holder3_txt.mic.3
+            last_mic = os.path.join(layerFolder, f"{mic_file_base}.{num_loops}")
         else:
-            last_mic = os.path.join(layerFolder, f"{mic_file_base}.mic")
+            last_mic = os.path.join(layerFolder, mic_file_base)
 
         grains_out = os.path.join(baseResultFolder, f"GrainsLayer{layer_nr}.csv")
         if os.path.exists(last_mic):
