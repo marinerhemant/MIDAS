@@ -51,10 +51,18 @@ def read_map_header(path: Path) -> Optional[dict]:
         return None
 
     param_hash = data[8:40]
+    # Version 2+ fields
+    q_mode = 0
+    wavelength = 0.0
+    if version >= 2:
+        q_mode = data[40]
+        wavelength = struct.unpack_from('<d', data, 48)[0]
     return {
         'magic': magic,
         'version': version,
         'hash': param_hash.hex(),
+        'q_mode': q_mode,
+        'wavelength': wavelength,
     }
 
 
@@ -68,6 +76,7 @@ def compute_param_hash(
     RMin: float, RMax: float, EtaMin: float, EtaMax: float,
     NrPixelsY: int, NrPixelsZ: int,
     NrTransOpt: int = 0, TransOpt: list = None,
+    qMode: int = 0, Wavelength: float = 0.0,
 ) -> str:
     """Compute the same SHA-256 hash as MapHeader.h's map_header_compute().
 
@@ -90,6 +99,8 @@ def compute_param_hash(
         f"pxY={pxY:.6f}|pxZ={pxZ:.6f}|"
         f"tx={tx:.6f}|ty={ty:.6f}|tz={tz:.6f}"
     )
+    if qMode:
+        canonical += f"|qMode=1|Wavelength={Wavelength:.8f}"
     return hashlib.sha256(canonical.encode()).hexdigest()
 
 

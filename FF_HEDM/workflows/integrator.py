@@ -1177,6 +1177,7 @@ class MidasIntegrator:
                     n_peaks_viewer = 0
                     try:
                         rmin, rmax, rbinsize = 0.0, 1000.0, 1.0
+                        qbinsize, qmin, qmax = 0.0, 0.0, 0.0
                         with open(self.params.param_file) as pf:
                             for line in pf:
                                 parts = line.strip().split()
@@ -1184,8 +1185,14 @@ class MidasIntegrator:
                                     if parts[0] == 'RMin': rmin = float(parts[1])
                                     elif parts[0] == 'RMax': rmax = float(parts[1])
                                     elif parts[0] == 'RBinSize': rbinsize = float(parts[1])
+                                    elif parts[0] == 'QBinSize': qbinsize = float(parts[1])
+                                    elif parts[0] == 'QMin': qmin = float(parts[1])
+                                    elif parts[0] == 'QMax': qmax = float(parts[1])
                         import math
-                        n_rbins = int(math.ceil((rmax - rmin) / rbinsize))
+                        if qbinsize > 0 and qmin > 0 and qmax > 0:
+                            n_rbins = int(math.ceil((qmax - qmin) / qbinsize))
+                        else:
+                            n_rbins = int(math.ceil((rmax - rmin) / rbinsize))
                         # Count peaks from peak params file
                         if ppfn_for_viewer and Path(ppfn_for_viewer).exists():
                             with open(ppfn_for_viewer) as ppf:

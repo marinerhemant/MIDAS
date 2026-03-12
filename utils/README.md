@@ -19,7 +19,7 @@ Core data processing, calibration, and analysis scripts for the MIDAS pipeline.
 | `extract_lineouts.py` | **Batch lineout extraction.** Direct-mode `IntegratorZarrOMP` with SNIP background, SavGol peak detection, and multiplet pseudo-Voigt fitting. |
 | `fit_caked_peaks.py` | **Caked peak fitting.** Fits GSAS-II pseudo-Voigt profiles per η-bin on `_caked.hdf.zarr.zip` output. Produces `_caked_peaks.h5` for `plot_caked_peaks.py`. |
 | `gsas_ii_refine.py` | Import caked 1D profiles into GSAS-II for powder diffraction refinement. |
-| `map_header.py` | `Map.bin` header reader — detects stale mapping files via parameter hashes. |
+| `map_header.py` | `Map.bin` header reader — detects stale mapping files via parameter hashes. Supports MapHeader v2 (Q-mode + wavelength). |
 | `midas_config.py` | MIDAS configuration and environment variable management. |
 
 Integrator scripts moved to [`FF_HEDM/workflows/`](../FF_HEDM/workflows/): `integrator.py`, `integrator_batch_process.py`, `integrator_server.py`, `integrator_stream_process_h5.py`, `integrate_and_refine.py`.
@@ -28,7 +28,7 @@ Integrator scripts moved to [`FF_HEDM/workflows/`](../FF_HEDM/workflows/): `inte
 
 | Script | Description |
 |--------|-------------|
-| `ffGenerateZipRefactor.py` | Convert raw detector data (HDF5 / GE / TIFF) into MIDAS Zarr-ZIP archives. |
+| `ffGenerateZipRefactor.py` | Convert raw detector data (HDF5 / GE / TIFF / CBF) into MIDAS Zarr-ZIP archives. Supports Q-spacing params (`QBinSize`, `QMin`, `QMax`). |
 | `updateZarrDset.py` | Update datasets/metadata within existing Zarr-ZIP archives. |
 
 See [`converters/`](converters/) for standalone format converters: `GE2Tiff.py`, `ang2mic.py`, `esrf2zip_pf.py`, `esrf_to_ge.py`, `ff2midas.py`, `mergeGEfiles.py`, `mergeH5s.py`, `mergePeaks.py`, `midas2zip.py`, `SpotMatrixToSpotsHDF.py`, `GFF2Grains.py`, `vtkSimExportBin.py`.

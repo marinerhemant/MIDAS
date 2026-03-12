@@ -38,15 +38,18 @@
 
 /* Magic = "MAP0" in little-endian */
 #define MAP_HEADER_MAGIC 0x3050414D
-#define MAP_HEADER_VERSION 1
+#define MAP_HEADER_VERSION 2
 #define MAP_HEADER_SIZE 64
 
 #pragma pack(push, 1)
 struct MapHeader {
   uint32_t magic;         /*  4 bytes: 0x3050414D = "MAP0" */
-  uint32_t version;       /*  4 bytes: 1 */
+  uint32_t version;       /*  4 bytes: 2 */
   uint8_t param_hash[32]; /* 32 bytes: SHA-256 of parameters */
-  uint8_t reserved[24];   /* 24 bytes: zero-filled, future use */
+  uint8_t  q_mode;        /*  1 byte:  0=R-mode, 1=Q-mode */
+  uint8_t  reserved_pad[7]; /* 7 bytes: alignment padding */
+  double   wavelength;    /*  8 bytes: wavelength in Å (0 if R-mode) */
+  uint8_t  reserved[8];   /*  8 bytes: zero-filled, future use */
 };
 #pragma pack(pop)
 
@@ -190,6 +193,8 @@ static void mh_sha256_final(MH_SHA256_CTX *ctx, uint8_t hash[32]) {
 /**
  * Compute the parameter hash and populate a MapHeader.
  * All geometry/binning parameters that affect the mapping are included.
+ * qMode: 0 = equal-R bins, 1 = equal-Q bins.
+ * Wavelength: in Å (only used and hashed when qMode=1).
  */
 static void map_header_compute(struct MapHeader *hdr, double Lsd, double yCen,
                                double zCen, double pxY, double pxZ, double tx,
@@ -198,10 +203,13 @@ static void map_header_compute(struct MapHeader *hdr, double Lsd, double yCen,
                                double RBinSize, double EtaBinSize, double RMin,
                                double RMax, double EtaMin, double EtaMax,
                                int NrPixelsY, int NrPixelsZ, int NrTransOpt,
-                               const int TransOpt[10]) {
+                               const int TransOpt[10], int qMode,
+                               double Wavelength) {
   memset(hdr, 0, sizeof(*hdr));
   hdr->magic = MAP_HEADER_MAGIC;
   hdr->version = MAP_HEADER_VERSION;
+  hdr->q_mode = (uint8_t)qMode;
+  hdr->wavelength = Wavelength;
 
   /* Build canonical parameter string (alphabetical keys) */
   char buf[2048];
@@ -219,6 +227,10 @@ static void map_header_compute(struct MapHeader *hdr, double Lsd, double yCen,
                 "|p0=%.6f|p1=%.6f|p2=%.6f|p3=%.6f|p4=%.6f|"
                 "pxY=%.6f|pxZ=%.6f|tx=%.6f|ty=%.6f|tz=%.6f",
                 p0, p1, p2, p3, p4, pxY, pxZ, tx, ty, tz);
+  if (qMode) {
+    n += snprintf(buf + n, sizeof(buf) - n,
+                  "|qMode=1|Wavelength=%.8f", Wavelength);
+  }
 
   MH_SHA256_CTX ctx;
   mh_sha256_init(&ctx);

@@ -551,6 +551,8 @@ int main(int argc, char *argv[]) {
   MaskFN[0] = '\0';
   int useMask = 0;
   double *mask = NULL;
+  // Q-spacing mode parameters
+  double QBinSize = 0, QMin = 0, QMax = 0, Wavelength = 0;
 
   // ── Mode A: Read parameters from text file ─────────────────────
   if (ParamFN != NULL) {
@@ -696,6 +698,22 @@ int main(int argc, char *argv[]) {
       if (StartsWith(aline, str) == 1) {
         sscanf(aline, "%s %lf", dummy, &EtaMin);
       }
+      str = "QBinSize ";
+      if (StartsWith(aline, str) == 1) {
+        sscanf(aline, "%s %lf", dummy, &QBinSize);
+      }
+      str = "QMin ";
+      if (StartsWith(aline, str) == 1) {
+        sscanf(aline, "%s %lf", dummy, &QMin);
+      }
+      str = "QMax ";
+      if (StartsWith(aline, str) == 1) {
+        sscanf(aline, "%s %lf", dummy, &QMax);
+      }
+      str = "Wavelength ";
+      if (StartsWith(aline, str) == 1) {
+        sscanf(aline, "%s %lf", dummy, &Wavelength);
+      }
       str = "NrPixelsY ";
       if (StartsWith(aline, str) == 1) {
         sscanf(aline, "%s %d", dummy, &NrPixelsY);
@@ -817,6 +835,18 @@ int main(int argc, char *argv[]) {
       if (strstr(finfo->name,
                  "analysis/process/analysis_parameters/EtaMin/0") != NULL)
         ReadZarrChunk(arch, count, &EtaMin, sizeof(double));
+      if (strstr(finfo->name,
+                 "analysis/process/analysis_parameters/QBinSize/0") != NULL)
+        ReadZarrChunk(arch, count, &QBinSize, sizeof(double));
+      if (strstr(finfo->name,
+                 "analysis/process/analysis_parameters/QMin/0") != NULL)
+        ReadZarrChunk(arch, count, &QMin, sizeof(double));
+      if (strstr(finfo->name,
+                 "analysis/process/analysis_parameters/QMax/0") != NULL)
+        ReadZarrChunk(arch, count, &QMax, sizeof(double));
+      if (strstr(finfo->name,
+                 "analysis/process/analysis_parameters/Wavelength/0") != NULL)
+        ReadZarrChunk(arch, count, &Wavelength, sizeof(double));
       if (strstr(finfo->name, "analysis/process/analysis_parameters/Lsd/0") !=
           NULL)
         ReadZarrChunk(arch, count, &Lsd, sizeof(double));
@@ -990,7 +1020,22 @@ int main(int argc, char *argv[]) {
 
   // Bin edges
   int nEtaBins = (int)ceil((EtaMax - EtaMin) / EtaBinSize);
-  int nRBins = (int)ceil((RMax - RMin) / RBinSize);
+  int qMode = (QBinSize > 0 && Wavelength > 0);
+  int nRBins;
+  if (qMode) {
+    // Q-mode: compute RMin/RMax from QMin/QMax, then nRBins from QBinSize
+    if (QMin > 0)
+      RMin = (Lsd / pxY) * tan(2.0 * asin(QMin * Wavelength / (4.0 * M_PI)));
+    if (QMax > 0)
+      RMax = (Lsd / pxY) * tan(2.0 * asin(QMax * Wavelength / (4.0 * M_PI)));
+    nRBins = (int)ceil((QMax - QMin) / QBinSize);
+    printf("Q-mode: %d Q-bins [%.4f, %.4f] inv-Angstrom, step %.4f\n",
+           nRBins, QMin, QMax, QBinSize);
+    printf("  Wavelength: %.6f Angstrom\n", Wavelength);
+    printf("  -> R range [%.2f, %.2f] pixels\n", RMin, RMax);
+  } else {
+    nRBins = (int)ceil((RMax - RMin) / RBinSize);
+  }
   printf("Creating a mapper for integration.\nNumber of eta bins: %d, number "
          "of R bins: %d.\n",
          nEtaBins, nRBins);
@@ -998,8 +1043,23 @@ int main(int argc, char *argv[]) {
   double *EtaBinsHigh = malloc(nEtaBins * sizeof(*EtaBinsHigh));
   double *RBinsLow = malloc(nRBins * sizeof(*RBinsLow));
   double *RBinsHigh = malloc(nRBins * sizeof(*RBinsHigh));
-  dg_build_bin_edges(RMin, EtaMin, nRBins, nEtaBins, RBinSize, EtaBinSize,
-                     RBinsLow, RBinsHigh, EtaBinsLow, EtaBinsHigh);
+  if (qMode) {
+    // Equal Q bins -> non-uniform R bins
+    for (int qi = 0; qi < nRBins; qi++) {
+      double qLow  = QMin + QBinSize * qi;
+      double qHigh = QMin + QBinSize * (qi + 1);
+      RBinsLow[qi]  = (Lsd / pxY) * tan(2.0 * asin(qLow  * Wavelength / (4.0 * M_PI)));
+      RBinsHigh[qi] = (Lsd / pxY) * tan(2.0 * asin(qHigh * Wavelength / (4.0 * M_PI)));
+    }
+    // Build eta bins normally
+    for (int ei = 0; ei < nEtaBins; ei++) {
+      EtaBinsLow[ei]  = EtaBinSize * ei + EtaMin;
+      EtaBinsHigh[ei] = EtaBinSize * (ei + 1) + EtaMin;
+    }
+  } else {
+    dg_build_bin_edges(RMin, EtaMin, nRBins, nEtaBins, RBinSize, EtaBinSize,
+                       RBinsLow, RBinsHigh, EtaBinsLow, EtaBinsHigh);
+  }
 
   // Initialize pixel-list arrays
   struct data ***pxList = malloc(nRBins * sizeof(*pxList));
@@ -1062,7 +1122,8 @@ int main(int argc, char *argv[]) {
   struct MapHeader map_hdr;
   map_header_compute(&map_hdr, Lsd, yCen, zCen, pxY, pxZ, tx, ty, tz, p0, p1,
                      p2, p3, p4, RhoD, RBinSize, EtaBinSize, RMin, RMax, EtaMin,
-                     EtaMax, NrPixelsY, NrPixelsZ, NrTransOpt, TransOpt);
+                     EtaMax, NrPixelsY, NrPixelsZ, NrTransOpt, TransOpt,
+                     qMode, Wavelength);
   map_header_print("Map.bin", &map_hdr);
 
   // Write output (to resultFolder if set, else cwd)

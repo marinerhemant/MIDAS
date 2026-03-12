@@ -405,6 +405,7 @@ static inline void MakeSquare(int NrPixels, int NrPixelsY, int NrPixelsZ,
 struct IntegratorParams {
   double RMax, RMin, RBinSize, EtaMax, EtaMin, EtaBinSize;
   double Lsd, px, Lam;
+  double QBinSize, QMin, QMax;
   double Polariz, SHpL, U, V, W, X, Y, Z;
   double omeStart, omeStep;
   int NrPixelsY, NrPixelsZ, Normalize, skipFrame;
@@ -474,6 +475,12 @@ static int readParamFile(const char *filename, struct IntegratorParams *p) {
       p->px = atof(rest);
     else if (strcmp(key, "Wavelength") == 0)
       p->Lam = atof(rest);
+    else if (strcmp(key, "QBinSize") == 0)
+      p->QBinSize = atof(rest);
+    else if (strcmp(key, "QMin") == 0)
+      p->QMin = atof(rest);
+    else if (strcmp(key, "QMax") == 0)
+      p->QMax = atof(rest);
     else if (strcmp(key, "NrPixels") == 0) {
       p->NrPixelsY = atoi(rest);
       p->NrPixelsZ = atoi(rest);
@@ -677,6 +684,7 @@ int main(int argc, char **argv) {
   double omeStart = 0, omeStep = 0;
   double Lam = 0.172978, Polariz = 0.99, SHpL = 0.002, U = 1.163, V = -0.126,
          W = 0.063, X = 0.0, Y = 0.0, Z = 0.0;
+  double QBinSize = 0.0, QMin = 0.0, QMax = 0.0;
   // Peak fitting parameters
   int doPeakFit = 0, nPeakLocations = 0, fitROIPadding = 20;
   int autoDetectPeaks = 0, snipIterations = 50;
@@ -737,6 +745,12 @@ int main(int argc, char **argv) {
     RMax = ip.RMax;
     RMin = ip.RMin;
     RBinSize = ip.RBinSize;
+    if (ip.QBinSize > 0)
+      QBinSize = ip.QBinSize;
+    if (ip.QMin > 0)
+      QMin = ip.QMin;
+    if (ip.QMax > 0)
+      QMax = ip.QMax;
     EtaMax = ip.EtaMax;
     EtaMin = ip.EtaMin;
     EtaBinSize = ip.EtaBinSize;
@@ -920,6 +934,18 @@ int main(int argc, char **argv) {
     if (strstr(finfo->name,
                "analysis/process/analysis_parameters/RBinSize/0") != NULL) {
       ReadZarrChunk(arch, count, &RBinSize, sizeof(double));
+    }
+    if (strstr(finfo->name,
+               "analysis/process/analysis_parameters/QBinSize/0") != NULL) {
+      ReadZarrChunk(arch, count, &QBinSize, sizeof(double));
+    }
+    if (strstr(finfo->name,
+               "analysis/process/analysis_parameters/QMin/0") != NULL) {
+      ReadZarrChunk(arch, count, &QMin, sizeof(double));
+    }
+    if (strstr(finfo->name,
+               "analysis/process/analysis_parameters/QMax/0") != NULL) {
+      ReadZarrChunk(arch, count, &QMax, sizeof(double));
     }
     if (strstr(finfo->name, "analysis/process/analysis_parameters/RMax/0") !=
         NULL) {
@@ -1371,7 +1397,14 @@ integration_start:
   if (!nPixels)
     nPixels = NrPixelsY * NrPixelsZ;
   Image = malloc(nPixels * sizeof(*Image));
-  nRBins = (int)ceil((RMax - RMin) / RBinSize);
+  int qMode = (QBinSize > 0 && Lam > 0 && QMin > 0 && QMax > 0);
+  if (qMode) {
+    nRBins = (int)ceil((QMax - QMin) / QBinSize);
+    printf("Q-mode: nQBins=%d, QMin=%.4f, QMax=%.4f, QBinSize=%.6f\n",
+           nRBins, QMin, QMax, QBinSize);
+  } else {
+    nRBins = (int)ceil((RMax - RMin) / RBinSize);
+  }
   nEtaBins = (int)ceil((EtaMax - EtaMin) / EtaBinSize);
   double *EtaBinsLow, *EtaBinsHigh;
   double *RBinsLow, *RBinsHigh;
@@ -1379,8 +1412,23 @@ integration_start:
   EtaBinsHigh = malloc(nEtaBins * sizeof(*EtaBinsHigh));
   RBinsLow = malloc(nRBins * sizeof(*RBinsLow));
   RBinsHigh = malloc(nRBins * sizeof(*RBinsHigh));
-  REtaMapper(RMin, EtaMin, nEtaBins, nRBins, EtaBinSize, RBinSize, EtaBinsLow,
-             EtaBinsHigh, RBinsLow, RBinsHigh);
+  if (qMode) {
+    // Eta bins are still uniform
+    for (int i = 0; i < nEtaBins; i++) {
+      EtaBinsLow[i] = EtaBinSize * i + EtaMin;
+      EtaBinsHigh[i] = EtaBinSize * (i + 1) + EtaMin;
+    }
+    // R bins from uniform Q spacing: R(Q) = (Lsd/px) * tan(2*asin(Q*Lam/(4*PI)))
+    for (int i = 0; i < nRBins; i++) {
+      double QLow = QMin + QBinSize * i;
+      double QHigh = QMin + QBinSize * (i + 1);
+      RBinsLow[i] = (Lsd / px) * tan(2.0 * asin(QLow * Lam / (4.0 * M_PI)));
+      RBinsHigh[i] = (Lsd / px) * tan(2.0 * asin(QHigh * Lam / (4.0 * M_PI)));
+    }
+  } else {
+    REtaMapper(RMin, EtaMin, nEtaBins, nRBins, EtaBinSize, RBinSize, EtaBinsLow,
+               EtaBinsHigh, RBinsLow, RBinsHigh);
+  }
 
   // Compute R bin centers for peak fitting and lineout output
   double *RBinCenters = malloc(nRBins * sizeof(double));
@@ -1589,7 +1637,7 @@ integration_start:
         sprintf(gName, "/OmegaSumFrame", chunkFiles);
         H5Gcreate(file_id, gName, H5P_DEFAULT, H5P_DEFAULT, H5P_DEFAULT);
       }
-      PerFrameArr = malloc(bigArrSize * 4 * sizeof(*PerFrameArr));
+      PerFrameArr = malloc(bigArrSize * 5 * sizeof(*PerFrameArr));
     }
     memset(IntArrPerFrame, 0, bigArrSize * sizeof(double));
     // Diagnostic: count mapped pixels with value -1 or -2
@@ -1666,6 +1714,9 @@ integration_start:
               atand(RMean * px / Lsd);
           PerFrameArr[2 * bigArrSize + (j * nEtaBins + k)] = EtaMean;
           PerFrameArr[3 * bigArrSize + (j * nEtaBins + k)] = totArea;
+          double twoTheta_rad = atan(RMean * px / Lsd);
+          PerFrameArr[4 * bigArrSize + (j * nEtaBins + k)] =
+              (Lam > 0) ? (4.0 * M_PI / Lam) * sin(twoTheta_rad / 2.0) : 0.0;
         }
         IntArrPerFrame[j * nEtaBins + k] = Intensity;
         // If this bin is flagged as contaminated by a masked pixel, force NAN
@@ -1824,15 +1875,15 @@ integration_start:
     free(lineout1D);
 
     if (i == 0) {
-      hsize_t dims[3] = {4, nRBins, nEtaBins};
+      hsize_t dims[3] = {5, nRBins, nEtaBins};
       status_f =
           H5LTmake_dataset_double(file_id, "/REtaMap", 3, dims, PerFrameArr);
       H5LTset_attribute_int(file_id, "/REtaMap", "nEtaBins", &nEtaBins, 1);
       H5LTset_attribute_int(file_id, "/REtaMap", "nRBins", &nRBins, 1);
       H5LTset_attribute_string(file_id, "/REtaMap", "Header",
-                               "Radius,2Theta,Eta,BinArea");
+                               "Radius,2Theta,Eta,BinArea,Q");
       H5LTset_attribute_string(file_id, "/REtaMap", "Units",
-                               "Pixels,Degrees,Degrees,Pixels");
+                               "Pixels,Degrees,Degrees,Pixels,InvAngstrom");
     }
     hsize_t dim[2] = {nRBins, nEtaBins};
     char dsetName[1024];

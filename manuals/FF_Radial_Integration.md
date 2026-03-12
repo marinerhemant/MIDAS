@@ -422,6 +422,8 @@ The `-nCPUs N` flag parallelizes the mapping computation with OpenMP. When run v
 
 The mapping uses the shared `DetectorGeometry` library (`dg_pixel_to_REta`, `dg_polygon_area`, etc.) for pixel-to-(R, η) coordinate transforms with full distortion correction (tilts, p0–p4, per-panel Lsd/dP2).
 
+`DetectorMapper` supports an optional **Q-spacing mode** where radial bins are equally spaced in Q (Å⁻¹) instead of R (pixels). When `QBinSize`, `QMin`, `QMax`, and `Wavelength` are all specified, non-uniform R bin edges are computed from equal Q spacing. See [Parameter Reference §A.2a](#a2a-q-spacing-mode-optional).
+
 When `ImTransOpt` is set, `DetectorMapper` applies the inverse image transformation to pixel coordinates at map-generation time. This means the pixel indices stored in `Map.bin` reference **raw (untransformed) image coordinates**, so the integrators (`IntegratorZarrOMP`, `IntegratorFitPeaksGPUStream`) can consume raw pixel data directly without per-frame transformation overhead. Changing `ImTransOpt` triggers a `Map.bin` rebuild (via the parameter hash).
 
 > [!NOTE]
@@ -449,6 +451,34 @@ The parameter file is a text file containing key-value pairs used by both the `i
 | `EtaMin` | `float` | Minimum azimuth angle | degrees |
 | `EtaMax` | `float` | Maximum azimuth angle | degrees |
 | `EtaBinSize` | `float` | Azimuthal bin size | degrees |
+
+### A.2a. Q-Spacing Mode (Optional)
+
+By default, radial bins are equally spaced in **R** (pixels). To use equally spaced **Q** (Å⁻¹) bins instead, add the following parameters:
+
+| Parameter | Type | Description | Units / Notes |
+| :--- | :--- | :--- | :--- |
+| `QBinSize` | `float` | Q-spacing bin size | Å⁻¹ |
+| `QMin` | `float` | Minimum Q value | Å⁻¹ |
+| `QMax` | `float` | Maximum Q value | Å⁻¹ |
+| `Wavelength` | `float` | X-ray wavelength (also required for standard mode Q output) | Å |
+
+When all four parameters are present and positive, Q-mode activates automatically. The number of bins becomes `ceil((QMax − QMin) / QBinSize)`, and each bin's R edges are computed from:
+
+$$R(Q) = \frac{L_{sd}}{px} \cdot \tan\!\left(2\arcsin\!\left(\frac{Q\,\lambda}{4\pi}\right)\right)$$
+
+This produces **non-uniform R bins** whose Q spacing is uniform. Eta bins remain uniformly spaced.
+
+> [!NOTE]
+> When Q-mode is active, the `RMin`, `RMax`, and `RBinSize` parameters are ignored for bin construction. The `MapHeader` version is bumped to 2 and the Q-mode flag + wavelength are included in the parameter hash, so changing Q parameters triggers a `Map.bin` rebuild.
+
+**Example:**
+```text
+QBinSize 0.01
+QMin 1.0
+QMax 5.0
+Wavelength 0.1839
+```
  
 ### A.3. Corrections & Advanced
 | Parameter | Type | Description |
@@ -496,9 +526,11 @@ Both workflows produce hierarchical data files containing:
 
 ### 6.2. GSAS-II Compatible zarr.zip
 Both workflows also produce a `.zarr.zip` file compatible with GSAS-II's MIDAS zarr importer. This file contains:
-*   `REtaMap` — (4 × R × η) geometry array: radius, 2θ, η, bin area
+*   `REtaMap` — (5 × R × η) geometry array: radius, 2θ, η, bin area, Q (Å⁻¹)
 *   `OmegaSumFrame` — Summed 2D caked frames with omega attributes
 *   `InstrumentParameters` — Wavelength, profile parameters, distance
+
+The Q row (row 4) is always computed when `Wavelength` is available: $Q = \frac{4\pi}{\lambda} \sin\theta$, where $\theta = \frac{1}{2}\arctan\!\left(\frac{R \cdot px}{L_{sd}}\right)$. Legacy files with 4-row `REtaMap` are auto-detected and handled transparently.
 
 Instrument parameters are read from the parameter file if present (keys `Wavelength`, `Lsd`, `U`, `V`, `W`, `SHpL`, `Polariz`, `X`, `Y`, `Z`), otherwise sensible defaults are used.
 

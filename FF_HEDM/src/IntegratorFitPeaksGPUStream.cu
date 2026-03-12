@@ -832,7 +832,7 @@ __global__ void initialize_PerFrameArr_Area_kernel(
     int NrPixelsZ, // Need detector dimensions for bounds/mask check
     const int *dMapMask,
     size_t mapMaskWordCount, // Mask info (dMapMask can be NULL)
-    double px, double Lsd) {
+    double px, double Lsd, double Lam) {
   const size_t idx = (size_t)blockIdx.x * blockDim.x + threadIdx.x;
   if (idx >= bigArrSize)
     return;
@@ -910,6 +910,10 @@ __global__ void initialize_PerFrameArr_Area_kernel(
     dPerFrameArr[2 * bigArrSize + idx] = EtaMean;
     // Area values start at index 3 * bigArrSize
     dPerFrameArr[3 * bigArrSize + idx] = totArea;
+    // Q values start at index 4 * bigArrSize
+    double twoTheta_rad = atan(RMean * px / Lsd);
+    dPerFrameArr[4 * bigArrSize + idx] =
+        (Lam > 0) ? (4.0 * M_PI / Lam) * sin(twoTheta_rad / 2.0) : 0.0;
   }
 }
 
@@ -1790,6 +1794,7 @@ int main(int argc, char *argv[]) {
   double RMax = 0, RMin = 0, RBinSize = 0;
   double EtaMax = 0, EtaMin = 0, EtaBinSize = 0;
   double Lsd = 0, px = 0;
+  double QBinSize = 0, QMin_param = 0, QMax_param = 0;
   int NrPixelsY = 0, NrPixelsZ = 0;
   int Normalize = 1;
   int nEtaBins = 0, nRBins = 0;
@@ -1882,6 +1887,12 @@ int main(int argc, char *argv[]) {
         sscanf(val_str, "%d", &fitROIPadding);
       else if (strcmp(key, "Wavelength") == 0)
         sscanf(val_str, "%lf", &g_Lam);
+      else if (strcmp(key, "QBinSize") == 0)
+        sscanf(val_str, "%lf", &QBinSize);
+      else if (strcmp(key, "QMin") == 0)
+        sscanf(val_str, "%lf", &QMin_param);
+      else if (strcmp(key, "QMax") == 0)
+        sscanf(val_str, "%lf", &QMax_param);
       else if (strcmp(key, "FitROIAuto") == 0)
         sscanf(val_str, "%d", &fitROIAuto);
       else if (strcmp(key, "PeakLocation") == 0) {
@@ -1932,7 +1943,14 @@ int main(int argc, char *argv[]) {
   }
 
   // Calculate number of bins
-  nRBins = (RBinSize > 1e-9) ? (int)ceil((RMax - RMin) / RBinSize) : 0;
+  int qMode = (QBinSize > 0 && g_Lam > 0 && QMin_param > 0 && QMax_param > 0);
+  if (qMode) {
+    nRBins = (int)ceil((QMax_param - QMin_param) / QBinSize);
+    printf("Q-mode: nQBins=%d, QMin=%.4f, QMax=%.4f, QBinSize=%.6f\n",
+           nRBins, QMin_param, QMax_param, QBinSize);
+  } else {
+    nRBins = (RBinSize > 1e-9) ? (int)ceil((RMax - RMin) / RBinSize) : 0;
+  }
   nEtaBins =
       (EtaBinSize > 1e-9) ? (int)ceil((EtaMax - EtaMin) / EtaBinSize) : 0;
   check(nRBins <= 0 || nEtaBins <= 0,
@@ -1993,6 +2011,15 @@ int main(int argc, char *argv[]) {
         "Allocation failed for host bin edge arrays");
   REtaMapper(RMin, EtaMin, nEtaBins, nRBins, EtaBinSize, RBinSize, hEtaLo,
              hEtaHi, hRLo, hRHi);
+  if (qMode) {
+    // Override R bins with Q-mode non-uniform R bins
+    for (int i = 0; i < nRBins; i++) {
+      double QLow = QMin_param + QBinSize * i;
+      double QHigh = QMin_param + QBinSize * (i + 1);
+      hRLo[i] = (Lsd / px) * tan(2.0 * asin(QLow * g_Lam / (4.0 * M_PI)));
+      hRHi[i] = (Lsd / px) * tan(2.0 * asin(QHigh * g_Lam / (4.0 * M_PI)));
+    }
+  }
 
   // --- Host Memory Allocations ---
   double *hAvgDark = NULL;  // Averaged dark frame (double) on host
@@ -2026,7 +2053,7 @@ int main(int argc, char *argv[]) {
   // --- Global GPU Allocations (Geometry & Maps) ---
   gpuErrchk(cudaMalloc(&dPxList, szPxList));
   gpuErrchk(cudaMalloc(&dNPxList, szNPxList));
-  gpuErrchk(cudaMalloc(&dPerFrame, bigArrSize * 4 * sizeof(double)));
+  gpuErrchk(cudaMalloc(&dPerFrame, bigArrSize * 5 * sizeof(double)));
   gpuErrchk(cudaMalloc(&dEtaLo, nEtaBins * sizeof(double)));
   gpuErrchk(cudaMalloc(&dEtaHi, nEtaBins * sizeof(double)));
   gpuErrchk(cudaMalloc(&dRLo, nRBins * sizeof(double)));
@@ -2157,7 +2184,8 @@ int main(int argc, char *argv[]) {
   int initBlocks = (bigArrSize + initTPB - 1) / initTPB;
   initialize_PerFrameArr_Area_kernel<<<initBlocks, initTPB>>>(
       dPerFrame, bigArrSize, nRBins, nEtaBins, dRLo, dRHi, dEtaLo, dEtaHi,
-      dPxList, dNPxList, NrPixelsY, NrPixelsZ, dMapMask, mapMaskWC, px, Lsd);
+      dPxList, dNPxList, NrPixelsY, NrPixelsZ, dMapMask, mapMaskWC, px, Lsd,
+      g_Lam);
 
   // --- Precompute Offsets/Weights ---
   // No, nBins for dNPxList is 2 * bigArrSize (stride 2).
@@ -2173,8 +2201,8 @@ int main(int argc, char *argv[]) {
   // --- Initialize Host R/Eta from GPU ---
   double *hPerFrame = NULL;
   gpuErrchk(
-      cudaMallocHost((void **)&hPerFrame, bigArrSize * 4 * sizeof(double)));
-  gpuErrchk(cudaMemcpy(hPerFrame, dPerFrame, bigArrSize * 4 * sizeof(double),
+      cudaMallocHost((void **)&hPerFrame, bigArrSize * 5 * sizeof(double)));
+  gpuErrchk(cudaMemcpy(hPerFrame, dPerFrame, bigArrSize * 5 * sizeof(double),
                        cudaMemcpyDeviceToHost));
 
   hR = (double *)calloc(nRBins, sizeof(double));
@@ -2187,7 +2215,7 @@ int main(int argc, char *argv[]) {
   printf("Writing R, TTh, Eta, Area map to RTthEtaAreaMap.bin...\n");
   FILE *fMap = fopen("RTthEtaAreaMap.bin", "wb");
   if (fMap) {
-    size_t elements_to_write = bigArrSize * 4;
+    size_t elements_to_write = bigArrSize * 5;
     size_t elements_written =
         fwrite(hPerFrame, sizeof(double), elements_to_write, fMap);
     if (elements_written == elements_to_write) {

@@ -14,7 +14,6 @@
 #include "ZarrReader.h"
 #include <blosc2.h>
 #include <ctype.h>
-#include <limits.h>
 #include <math.h>
 #include <omp.h>
 #include <stdint.h>
@@ -26,11 +25,11 @@
 #include <zip.h>
 
 #include "DetectorGeometry.h"
+#include "Panel.h"
 
 double *distortionMapY;
 double *distortionMapZ;
 int distortionFile;
-#include "Panel.h"
 int numProcs;
 static Panel *panels = NULL;
 static int nPanels = 0;
@@ -835,7 +834,7 @@ int main(int argc, char *argv[]) {
   struct MapHeader map_hdr;
   map_header_compute(&map_hdr, Lsd, yCen, zCen, pxY, pxZ, tx, ty, tz, p0, p1,
                      p2, p3, p4, RhoD, RBinSize, EtaBinSize, RMin, RMax, EtaMin,
-                     EtaMax, NrPixelsY, NrPixelsZ);
+                     EtaMax, NrPixelsY, NrPixelsZ, 0, NULL, 0, 0.0);
   map_header_print("Map.bin", &map_hdr);
 
   // Write out

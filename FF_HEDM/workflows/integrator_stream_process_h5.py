@@ -291,8 +291,9 @@ def create_hdf5_file_streamed(output_file,
         # --- Write Geometry Maps (Small, Single Read) ---
         if map_data_file and os.path.exists(map_data_file):
             raw_map = np.fromfile(map_data_file, dtype=np.float64)
-            if len(raw_map) == 4 * nRBins * nEtaBins:
-                map_reshaped = raw_map.reshape(4, nRBins, nEtaBins)
+            n_map_rows = len(raw_map) // (nRBins * nEtaBins)
+            if n_map_rows >= 4 and len(raw_map) == n_map_rows * nRBins * nEtaBins:
+                map_reshaped = raw_map.reshape(n_map_rows, nRBins, nEtaBins)
                 
                 ds_r = grp_geom.create_dataset('R_map', data=map_reshaped[0], track_times=False)
                 ds_r.attrs['description'] = np.bytes_("R-center for each bin")
@@ -309,7 +310,13 @@ def create_hdf5_file_streamed(output_file,
                 ds_area = grp_geom.create_dataset('Area_map', data=map_reshaped[3], track_times=False)
                 ds_area.attrs['description'] = np.bytes_("Effective pixel area for each bin")
                 ds_area.attrs['units'] = np.bytes_("fractional pixels")
-                print("Geometry maps written.")
+                
+                if n_map_rows >= 5:
+                    ds_q = grp_geom.create_dataset('Q_map', data=map_reshaped[4], track_times=False)
+                    ds_q.attrs['description'] = np.bytes_("Q-center for each bin")
+                    ds_q.attrs['units'] = np.bytes_("inv_Angstrom")
+                
+                print(f"Geometry maps written ({n_map_rows} rows).")
         
         # --- Sorting Logic ---
         frame_indices = list(range(num_frames))
@@ -496,17 +503,18 @@ def create_zarr_zip(zarr_output,
     if stamp_zarr is not None:
         stamp_zarr(root)
 
-    # --- 1. REtaMap (4, nRBins, nEtaBins) from RTthEtaAreaMap.bin ---
+    # --- 1. REtaMap from RTthEtaAreaMap.bin ---
     raw_map = np.fromfile(map_data_file, dtype=np.float64)
-    expected_size = 4 * nRBins * nEtaBins
-    if len(raw_map) != expected_size:
+    n_map_rows = len(raw_map) // (nRBins * nEtaBins)
+    expected_size = n_map_rows * nRBins * nEtaBins
+    if n_map_rows < 4 or len(raw_map) != expected_size:
         print(f"WARNING: Map file size mismatch: got {len(raw_map)}, expected {expected_size}")
         store.close()
         return
 
-    remap = raw_map.reshape(4, nRBins, nEtaBins)
+    remap = raw_map.reshape(n_map_rows, nRBins, nEtaBins)
     root.array('REtaMap', data=remap, dtype='float64', chunks=False)
-    print("  Written: REtaMap")
+    print(f"  Written: REtaMap ({n_map_rows} rows)")
 
     # --- 2. OmegaSumFrame group ---
     osf_grp = root.create_group('OmegaSumFrame')
