@@ -27,6 +27,20 @@ GRAIN_SIZE_COL = 22; GRAIN_COMPLETENESS_COL = 23; GRAIN_ERROR_COL = 19
 GRAIN_EULER_0_COL = -3; GRAIN_EULER_1_COL = -2; GRAIN_EULER_2_COL = -1
 GRAIN_STRAIN_ERROR_COL = -5
 
+# All column names in Grains.csv (from ProcessGrains.c)
+GRAINS_COL_NAMES = [
+    'GrainID', 'O11','O12','O13','O21','O22','O23','O31','O32','O33',
+    'X','Y','Z', 'a','b','c','alpha','beta','gamma',
+    'DiffPos','DiffOme','DiffAngle', 'GrainRadius','Confidence',
+    'eFab11','eFab12','eFab13','eFab21','eFab22','eFab23','eFab31','eFab32','eFab33',
+    'eKen11','eKen12','eKen13','eKen21','eKen22','eKen23','eKen31','eKen32','eKen33',
+    'RMSErrorStrain','PhaseNr','Eul0','Eul1','Eul2'
+]
+# Columns suitable for color mapping (after rename in load_grain_data)
+_RENAME_MAP = {'X': 'x', 'Y': 'y', 'Z': 'z', 'DiffAngle': 'Error', 'RMSErrorStrain': 'StrainError',
+               'Eul0': 'Euler0', 'Eul1': 'Euler1', 'Eul2': 'Euler2'}
+GRAINS_COLOR_OPTIONS = [_RENAME_MAP.get(c, c) for c in GRAINS_COL_NAMES if c != 'GrainID'] + ['IDColor']
+
 # SpotMatrix File Columns
 SPOT_GRAIN_ID_COL = 0; SPOT_ID_COL = 1; SPOT_OMEGA_COL = 2
 SPOT_DET_Y_PX_COL = 3; SPOT_DET_Z_PX_COL = 4; SPOT_OMEGA_RAW_COL = 5
@@ -183,15 +197,16 @@ def load_grain_data(grains_file):
                               MIN_MARKER_SIZE_VISUAL, MAX_MARKER_SIZE_VISUAL * 2),
                       MIN_MARKER_SIZE_VISUAL)
 
-    grains_df = pd.DataFrame({
-        'x': grains[:, GRAIN_X_COL], 'y': grains[:, GRAIN_Y_COL], 'z': grains[:, GRAIN_Z_COL],
-        'RawGrainSize': raw_size, 'GrainSize': scaled,
-        'Confidence': grains[:, GRAIN_COMPLETENESS_COL],
-        'ID': grains[:, GRAIN_ID_COL].astype(int),
-        'IDColor': [str(int(x)) for x in grains[:, GRAIN_ID_COL]],
-        'Euler0': grains[:, GRAIN_EULER_0_COL], 'Euler1': grains[:, GRAIN_EULER_1_COL], 'Euler2': grains[:, GRAIN_EULER_2_COL],
-        'StrainError': grains[:, GRAIN_STRAIN_ERROR_COL], 'Error': grains[:, GRAIN_ERROR_COL],
-    })
+    # Build DataFrame with all Grains.csv columns
+    ncols = min(grains.shape[1], len(GRAINS_COL_NAMES))
+    grains_df = pd.DataFrame({GRAINS_COL_NAMES[i]: grains[:, i] for i in range(ncols)})
+    grains_df['IDColor'] = grains_df['GrainID'].astype(int).astype(str)
+    grains_df['ID'] = grains_df['GrainID'].astype(int)
+    grains_df['RawGrainSize'] = raw_size
+    grains_df['GrainSize'] = scaled
+    # Rename for backward compat with existing callbacks
+    grains_df.rename(columns={'X': 'x', 'Y': 'y', 'Z': 'z', 'DiffAngle': 'Error', 'RMSErrorStrain': 'StrainError',
+                               'Eul0': 'Euler0', 'Eul1': 'Euler1', 'Eul2': 'Euler2'}, inplace=True)
     grains_df = grains_df.sort_values(by=['ID'])
     print(f"Processed {len(grains_df)} grains.")
     return grains_df
@@ -463,7 +478,7 @@ if __name__ == '__main__':
                 dbc.Row([dbc.Col(dbc.Label("2θ Range (°):"), width=3, className="text-end"), dbc.Col(dcc.RangeSlider(id='tth-range-slider', min=tth_min, max=tth_max, step=slider_step, value=[tth_min, tth_max], marks=None, tooltip={"placement": "bottom", "always_visible": True}), width=9)]),
                 dbc.Row([dbc.Col(dbc.Label("Omega Range (°):"), width=3, className="text-end"), dbc.Col(dcc.RangeSlider(id='omega-range-slider', min=ome_min, max=ome_max, step=omega_step, value=[ome_min, ome_max], marks=None, tooltip={"placement": "bottom", "always_visible": True}), width=9)]), # <-- NEW Omega Slider
                 dbc.Row([dbc.Col(dbc.Label("Show Grain ID:"), width=3, className="text-end"), dbc.Col(dcc.Input(id='grain-id-input', type='number', placeholder="Enter Grain ID (optional)", debounce=True, style={'color': '#000'}), width=9)]), # <-- NEW Grain ID Input
-                html.Hr(), dbc.Label("Grain Color (3D Map):"), dbc.RadioItems(options=[{"label": x, "value": x} for x in ['Confidence', 'GrainSize', 'IDColor', 'Error','Euler0','Euler1','Euler2','StrainError']], value='IDColor', inline=True, id='radio-buttons-grains')
+                html.Hr(), dbc.Label("Grain Color (3D Map):"), dcc.Dropdown(options=[{'label': c, 'value': c} for c in GRAINS_COLOR_OPTIONS], value='IDColor', clearable=False, id='radio-buttons-grains', style={'color': '#000', 'width': '220px'})
             ], width=6),
             dbc.Col([html.Div(style={'height': '155px'}), html.Hr(), dbc.Label("Filtered Spot Color (per Grain):"), dbc.RadioItems(options=[{"label": x, "value": x} for x in ['ringNr', 'grainIDColor','strain','spotSize', 'tTheta', 'eta', 'ds']], value='strain', inline=True, id='radio-buttons-spots_filtered')], width=6), # Adjusted height for alignment
         ]),
@@ -542,7 +557,7 @@ if __name__ == '__main__':
             if grains_to_plot.empty:
                 return fig.update_layout(title="No grains found matching all filters", **COMMON_LAYOUT_SETTINGS)
 
-            numeric_cols_grain = ['x', 'y', 'z', 'GrainSize', 'RawGrainSize', 'Confidence', 'Euler0', 'Euler1', 'Euler2', 'Error', 'StrainError']
+            numeric_cols_grain = [c for c in grains_to_plot.columns if c not in ('IDColor', 'ID')]
             for col in numeric_cols_grain:
                 if col in grains_to_plot.columns: grains_to_plot.loc[:, col] = pd.to_numeric(grains_to_plot[col], errors='coerce')
 
