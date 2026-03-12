@@ -817,39 +817,22 @@ int main(int argc, char *argv[]) {
   printf(
       "================================================================\n\n");
 
-  // ===================== PHASE 1+2: Streaming Histogram Median =====================
-  // Instead of loading all TIFFs into RAM (~11.5 GB for 1440 frames),
-  // stream one TIFF at a time and build a per-pixel histogram.
-  // Since pixel values are uint16 (0-65535), we use 65536 bins per pixel.
-  printf("Phase 1+2: Computing streaming median from %d TIFF files...\n", NrFilesPerLayer);
-
-  // Choose bin type based on frame count
-  int useWideHist = (NrFilesPerLayer > 65535);
-  size_t histBinSize = useWideHist ? sizeof(uint32_t) : sizeof(uint16_t);
-  size_t histBytes = nPixelsTotal * 65536 * histBinSize;
-  printf("  Histogram: %.0f MB (%s bins)\n",
-         (double)histBytes / (1024.0 * 1024.0),
-         useWideHist ? "uint32" : "uint16");
-
-  void *histograms = calloc(nPixelsTotal * 65536, histBinSize);
-  if (histograms == NULL) {
-    printf("Could not allocate %.2f GB for histograms.\n",
-           (double)histBytes / (1024.0 * 1024.0 * 1024.0));
+  // ===================== PHASE 1: Read all TIFFs =====================
+  printf("Phase 1: Reading %d TIFF files...\n", NrFilesPerLayer);
+  pixelvalue *AllIntensities =
+      malloc(nPixelsTotal * NrFilesPerLayer * sizeof(pixelvalue));
+  if (AllIntensities == NULL) {
+    printf("Could not allocate %.2f GB for intensity data.\n",
+           (double)(nPixelsTotal * NrFilesPerLayer * sizeof(pixelvalue)) /
+               (1024.0 * 1024.0 * 1024.0));
     return 1;
   }
-  pixelvalue *MedianArray = malloc(nPixelsTotal * sizeof(pixelvalue));
-  if (MedianArray == NULL) {
-    printf("Could not allocate median array.\n");
-    free(histograms);
-    return 1;
-  }
-
-  // Stream TIFFs one at a time — build histogram
   int badRead = 0;
-  pixelvalue *frameBuf = malloc(nPixelsTotal * sizeof(pixelvalue));
   TIFFErrorHandler oldhandler = TIFFSetWarningHandler(NULL);
-
-  for (int j = 0; j < NrFilesPerLayer && !badRead; j++) {
+#pragma omp parallel for num_threads(numProcs) schedule(dynamic)
+  for (int j = 0; j < NrFilesPerLayer; j++) {
+    if (badRead)
+      continue;
     char FileName[1024];
     int FileNr = ((nLayers - 1) * NrFilesPerLayer) + StartNr + j;
     sprintf(FileName, "%s_%06d.%s", fn, FileNr, extOrig);
@@ -857,75 +840,42 @@ int main(int argc, char *argv[]) {
     if (tif == NULL) {
       printf("%s not found.\n", FileName);
       badRead = 1;
-      break;
+      continue;
     }
-    tdata_t tbuf = _TIFFmalloc(TIFFScanlineSize(tif));
+    tdata_t buf = _TIFFmalloc(TIFFScanlineSize(tif));
     for (int roil = 0; roil < NrPixelsZ; roil++) {
-      TIFFReadScanline(tif, tbuf, roil, 1);
-      pixelvalue *datar = (pixelvalue *)tbuf;
-      size_t rowOff = (size_t)roil * NrPixelsY;
+      TIFFReadScanline(tif, buf, roil, 1);
+      pixelvalue *datar = (pixelvalue *)buf;
       for (int i = 0; i < NrPixelsY; i++)
-        frameBuf[rowOff + i] = datar[i];
+        AllIntensities[(size_t)(roil * NrPixelsY + i) * NrFilesPerLayer + j] =
+            datar[i];
     }
-    _TIFFfree(tbuf);
+    _TIFFfree(buf);
     TIFFClose(tif);
-
-    // Increment histogram bins (parallelized — each pixel's histogram is independent)
-    if (useWideHist) {
-      uint32_t *hist32 = (uint32_t *)histograms;
-      #pragma omp parallel for num_threads(numProcs) schedule(static)
-      for (size_t px = 0; px < nPixelsTotal; px++)
-        hist32[px * 65536 + frameBuf[px]]++;
-    } else {
-      uint16_t *hist16 = (uint16_t *)histograms;
-      #pragma omp parallel for num_threads(numProcs) schedule(static)
-      for (size_t px = 0; px < nPixelsTotal; px++)
-        hist16[px * 65536 + frameBuf[px]]++;
-    }
-    if ((j + 1) % 200 == 0)
-      printf("  Read %d/%d TIFFs (%.1f s)\n", j + 1, NrFilesPerLayer,
-             omp_get_wtime() - start);
   }
-  free(frameBuf);
   TIFFSetWarningHandler(oldhandler);
   if (badRead) {
-    free(histograms);
-    free(MedianArray);
+    free(AllIntensities);
     return 1;
   }
+  printf("Phase 1 complete. Time: %.2f s\n", omp_get_wtime() - start);
 
-  // Extract median from histograms
-  int halfN = NrFilesPerLayer / 2;
-  if (useWideHist) {
-    uint32_t *hist32 = (uint32_t *)histograms;
-    #pragma omp parallel for num_threads(numProcs) schedule(static)
-    for (size_t px = 0; px < nPixelsTotal; px++) {
-      uint32_t *h = &hist32[px * 65536];
-      uint32_t count = 0;
-      pixelvalue med = 0;
-      for (int bin = 0; bin < 65536; bin++) {
-        count += h[bin];
-        if ((int)count >= halfN) { med = (pixelvalue)bin; break; }
-      }
-      MedianArray[px] = med;
+  // ===================== PHASE 2: Compute Median =====================
+  printf("Phase 2: Computing temporal median with %d threads...\n", numProcs);
+  pixelvalue *MedianArray = malloc(nPixelsTotal * sizeof(pixelvalue));
+#pragma omp parallel num_threads(numProcs)
+  {
+    pixelvalue *SubArr = malloc(NrFilesPerLayer * sizeof(pixelvalue));
+#pragma omp for schedule(dynamic, 1024)
+    for (size_t i = 0; i < nPixelsTotal; i++) {
+      pixelvalue *src = &AllIntensities[i * NrFilesPerLayer];
+      for (int j = 0; j < NrFilesPerLayer; j++)
+        SubArr[j] = src[j];
+      MedianArray[i] = quick_select(SubArr, NrFilesPerLayer);
     }
-  } else {
-    uint16_t *hist16 = (uint16_t *)histograms;
-    #pragma omp parallel for num_threads(numProcs) schedule(static)
-    for (size_t px = 0; px < nPixelsTotal; px++) {
-      uint16_t *h = &hist16[px * 65536];
-      int count = 0;
-      pixelvalue med = 0;
-      for (int bin = 0; bin < 65536; bin++) {
-        count += h[bin];
-        if (count >= halfN) { med = (pixelvalue)bin; break; }
-      }
-      MedianArray[px] = med;
-    }
+    free(SubArr);
   }
-  free(histograms);
-
-  // Write median to disk for backward compatibility
+  // Optionally write median to disk for backward compatibility
   char MedianFileName[1024];
   sprintf(MedianFileName, "%s/%s_Median_Background_Distance_%d.%s", outputDir,
           ReducedFileName, nLayers - 1, extReduced);
@@ -934,13 +884,13 @@ int main(int argc, char *argv[]) {
       open(MedianFileName, O_CREAT | O_WRONLY | O_TRUNC, S_IRUSR | S_IWUSR);
   pwrite(fb, MedianArray, SizeOutFile, 0);
   close(fb);
-  printf("Phase 1+2 complete. Median written to %s. Time: %.2f s\n",
+  printf("Phase 2 complete. Median written to %s. Time: %.2f s\n",
          MedianFileName, omp_get_wtime() - start);
 
   // ===================== PHASE 3: Process Images =====================
   printf("Phase 3: Processing %d images with %d threads...\n", NrFilesPerLayer,
          numProcs);
-  // Allocate per-thread working buffers (+ raw frame buffer for TIFF re-read)
+  // Allocate per-thread working buffers
   size_t bufSz = (size_t)NrPixelsY * NrPixelsZ;
   pixelvalue *ImgBuf =
       malloc(numProcs * bufSz * sizeof(pixelvalue)); // After median subtraction
@@ -948,8 +898,6 @@ int main(int argc, char *argv[]) {
       malloc(numProcs * bufSz * sizeof(pixelvalue)); // After spatial filter
   pixelvalue *FinBuf =
       malloc(numProcs * bufSz * sizeof(pixelvalue)); // Final peak image
-  pixelvalue *RawBuf =
-      malloc(numProcs * bufSz * sizeof(pixelvalue)); // Raw TIFF frame (per thread)
 
   // mmap SpotsInfo.bin for direct SetBit
   long long int NrOfPixels = (long long)NrPixelsY * NrPixelsZ;
@@ -994,30 +942,12 @@ int main(int argc, char *argv[]) {
     pixelvalue *Image = &ImgBuf[off];
     pixelvalue *Image2 = &FiltBuf[off];
     pixelvalue *FinalImage = &FinBuf[off];
-    pixelvalue *RawFrame = &RawBuf[off];
     int i, j, k;
 
-    // 3a: Re-read this frame from disk (OS page cache makes this fast)
-    char FileName[1024];
-    int FileNr = ((nLayers - 1) * NrFilesPerLayer) + StartNr + imgIdx;
-    sprintf(FileName, "%s_%06d.%s", fn, FileNr, extOrig);
-    TIFF *tif = TIFFOpen(FileName, "r");
-    if (tif != NULL) {
-      tdata_t tbuf = _TIFFmalloc(TIFFScanlineSize(tif));
-      for (int roil = 0; roil < NrPixelsZ; roil++) {
-        TIFFReadScanline(tif, tbuf, roil, 1);
-        pixelvalue *datar = (pixelvalue *)tbuf;
-        size_t rowOff = (size_t)roil * NrPixelsY;
-        for (i = 0; i < NrPixelsY; i++)
-          RawFrame[rowOff + i] = datar[i];
-      }
-      _TIFFfree(tbuf);
-      TIFFClose(tif);
-    }
-
-    // 3b: Median subtraction
+    // 3a: Median subtraction — extract frame from AllIntensities
     for (size_t px = 0; px < nPixelsTotal; px++) {
-      int interInt = (int)RawFrame[px] - (int)MedianArray[px] - BlanketSubtraction;
+      int interInt = (int)AllIntensities[px * NrFilesPerLayer + imgIdx] -
+                     (int)MedianArray[px] - BlanketSubtraction;
       Image[px] = (pixelvalue)(interInt > 0 ? interInt : 0);
     }
 
@@ -1244,11 +1174,11 @@ int main(int argc, char *argv[]) {
   close(sifd);
   printf("SpotsInfo.bin synced for layer %d.\n", nLayers);
 
+  free(AllIntensities);
   free(MedianArray);
   free(ImgBuf);
   free(FiltBuf);
   free(FinBuf);
-  free(RawBuf);
 
   double elapsed = omp_get_wtime() - start;
   printf("ProcessImagesCombined complete for layer %d. Total time: %.2f s\n",
