@@ -659,6 +659,7 @@ void CalcFittedMean(int nIndices, int *NrEachIndexBin, int **Indices,
         // Primary fits — fall back to singlet for primary, zero partner
         isDoublet = 0;
         doubletFellBackToSinglet = 1;
+        NrIndicesPartner = 0;  // prevent stale partner count from inflating totalIndices
         Rmax = primaryRmax;
         Rmin = IdealRmins[idxThis];
         RMean[partnerIdx] = 0;
@@ -5009,7 +5010,7 @@ int main(int argc, char *argv[]) {
   }
   // Print final fitted parameters (moved to end for easy copy/paste)
   printf("\n*******************Mean Values*******************\n");
-  for (a = 0; a < 14; a++)
+  for (a = 0; a < 15; a++)
     means[a] /= (EndNr - StartNr + 1);
   printf("Lsd        %0.12f\n"
          "BC         %0.12f %0.12f\n"

@@ -254,7 +254,7 @@ def main():
         print(f"  Best Iter:    {results['bestIter']}/{results['nIters']}")
 
     # Key parameters
-    param_keys = ['Lsd', 'BC', 'ty', 'tz', 'p0', 'p1', 'p2', 'p3', 'p4']
+    param_keys = ['Lsd', 'BC', 'ty', 'tz', 'p0', 'p1', 'p2', 'p3', 'p4', 'p5', 'parallax']
     printed_params = False
     for k in param_keys:
         if k in results:
