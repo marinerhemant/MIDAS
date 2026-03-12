@@ -967,7 +967,7 @@ class NFViewer(QtWidgets.QMainWindow):
                 print(f"Crop dist {d}: shape={crop_data.shape}, "
                       f"min={crop_data.min():.0f}, max={crop_data.max():.0f}")
                 img = pg.ImageItem()
-                img.setImage(crop_data, autoLevels=True)
+                img.setImage(crop_data.T, autoLevels=True)
                 p.addItem(img)
                 p.setAspectLocked(True)
                 # Crosshair at center of crop
