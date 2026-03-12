@@ -311,6 +311,7 @@ int main(int argc, char *argv[]) {
   int gridfnfound = 0;
   Wedge = 0;
   int MinMiso = 0;
+  double MinMisoNSaves = 1.0; // degrees, default
   int NrPixelsY = 2048, NrPixelsZ = 2048;
   while (fgets(aline, 1000, fileParam) != NULL) {
     str = "ReducedFileName ";
@@ -505,6 +506,12 @@ int main(int argc, char *argv[]) {
       sscanf(aline, "%s %d", dummy, &MinMiso);
       continue;
     }
+    str = "MinMisoNSaves ";
+    LowNr = strncmp(aline, str, strlen(str));
+    if (LowNr == 0) {
+      sscanf(aline, "%s %lf", dummy, &MinMisoNSaves);
+      continue;
+    }
     str = "NrPixels ";
     LowNr = strncmp(aline, str, strlen(str));
     if (LowNr == 0) {
@@ -556,6 +563,7 @@ int main(int argc, char *argv[]) {
   printf("  Rot. Tilts      : tx:%.3f, ty:%.3f, tz:%.3f\n", tx, ty, tz);
   printf("  Optimization    : OrientTol:%.3f, MinFrac:%.3f, nSaves:%d\n", tol,
          minFracOverlap, nSaves);
+  printf("  MinMisoNSaves   : %.3f deg\n", MinMisoNSaves);
   printf("  Ice9Input       : %s\n", Flag ? "Yes" : "No");
   printf("  NearestMiso     : %d\n", MinMiso);
   printf("  OmegaRanges (%d) : ", NoOfOmegaRanges);
@@ -806,6 +814,10 @@ int main(int argc, char *argv[]) {
   ThrSpsAll = calloc(numProcs * MAX_N_SPOTS * 3, sizeof(*ThrSpsAll));
   printf("Number of individual diffracting planes: %d\n", n_hkls);
 
+  // Precompute crystal symmetries for misorientation uniqueness check
+  double Sym[24][4];
+  int NrSymmetries = MakeSymmetries(SpaceGroup, Sym);
+
   //~ double *OutResultAll, *ResultMatrAll;
   //~ size_t numJobs = endRowNr - startRowNr + 1;
   //~ OutResultAll = calloc(numJobs*11,sizeof(*OutResultAll));
@@ -1000,37 +1012,70 @@ int main(int argc, char *argv[]) {
             break;
         }
         if (nSaves > 1) {
-          if (firstSol == 0) { // Put initial first solution in!!!
-            ResultMatr[7 + 0] = EulerOutA;
-            ResultMatr[7 + 1] = EulerOutB;
-            ResultMatr[7 + 2] = EulerOutC;
-            ResultMatr[7 + 3] = Fractions;
-            firstSol = 1;
-          } else {
-            for (j = 0; j < nFilled;
-                 j++) { // ResultMatr format: 7 initial common things, then 4
-                        // values for each match, Angle, Angle, Angle and
-                        // Confidence
-              if (Fractions >= ResultMatr[7 + j * 4 + 3]) { // Put this solution
-                                                            // in the array.
-                for (m = nFilled - 1; m >= j; m--) { // Move everything upto j
-                  if (m == nSaves - 1)
-                    continue; // Worst match, trash
-                  for (t = 0; t < 4; t++) {
-                    ResultMatr[7 + (m + 1) * 4 + t] =
-                        ResultMatr[7 + (m) * 4 + t];
-                  }
-                }
-                ResultMatr[7 + j * 4] = EulerOutA;
-                ResultMatr[7 + j * 4 + 1] = EulerOutB;
-                ResultMatr[7 + j * 4 + 2] = EulerOutC;
-                ResultMatr[7 + j * 4 + 3] = Fractions;
-                break; // inserted at position j, stop scanning
-              }
+          // Convert candidate Euler angles to quaternion for miso check
+          double candEul[3] = {EulerOutA * rad2deg, EulerOutB * rad2deg,
+                               EulerOutC * rad2deg};
+          double candOM[3][3], candOM9[9], candQuat[4];
+          Euler2OrientMat(candEul, candOM);
+          for (int q = 0; q < 3; q++)
+            for (int r = 0; r < 3; r++)
+              candOM9[q * 3 + r] = candOM[q][r];
+          OrientMat2Quat(candOM9, candQuat);
+
+          // Check uniqueness against existing saved solutions
+          int isUnique = 1;
+          for (int s = 0; s < nFilled; s++) {
+            double existEul[3] = {ResultMatr[7 + s * 4 + 0] * rad2deg,
+                                  ResultMatr[7 + s * 4 + 1] * rad2deg,
+                                  ResultMatr[7 + s * 4 + 2] * rad2deg};
+            double existOM[3][3], existOM9[9], existQuat[4];
+            Euler2OrientMat(existEul, existOM);
+            for (int q = 0; q < 3; q++)
+              for (int r = 0; r < 3; r++)
+                existOM9[q * 3 + r] = existOM[q][r];
+            OrientMat2Quat(existOM9, existQuat);
+            double misoAngle;
+            GetMisOrientationAngle(candQuat, existQuat, &misoAngle,
+                                   NrSymmetries, Sym);
+            if (misoAngle < MinMisoNSaves) {
+              isUnique = 0;
+              break;
             }
           }
-          if (nFilled < nSaves)
+          if (!isUnique)
+            continue; // skip duplicate orientation
+
+          int inserted = 0;
+          // Walk sorted array; insert where Fractions >= existing entry
+          for (j = 0; j < nFilled; j++) {
+            if (Fractions >= ResultMatr[7 + j * 4 + 3]) {
+              // Shift entries [j..nFilled-1] down by one (last falls off if full)
+              for (m = nFilled - 1; m >= j; m--) {
+                if (m == nSaves - 1)
+                  continue; // last slot, discard
+                for (t = 0; t < 4; t++) {
+                  ResultMatr[7 + (m + 1) * 4 + t] =
+                      ResultMatr[7 + (m) * 4 + t];
+                }
+              }
+              ResultMatr[7 + j * 4] = EulerOutA;
+              ResultMatr[7 + j * 4 + 1] = EulerOutB;
+              ResultMatr[7 + j * 4 + 2] = EulerOutC;
+              ResultMatr[7 + j * 4 + 3] = Fractions;
+              inserted = 1;
+              if (nFilled < nSaves)
+                nFilled++;
+              break;
+            }
+          }
+          // Worse than all existing, but room remains — append at end
+          if (!inserted && nFilled < nSaves) {
+            ResultMatr[7 + nFilled * 4] = EulerOutA;
+            ResultMatr[7 + nFilled * 4 + 1] = EulerOutB;
+            ResultMatr[7 + nFilled * 4 + 2] = EulerOutC;
+            ResultMatr[7 + nFilled * 4 + 3] = Fractions;
             nFilled++;
+          }
         }
       }
     } else {
