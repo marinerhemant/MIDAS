@@ -58,7 +58,7 @@ int compare_grains(const void *a, const void *b) {
 static inline void usage(void) {
   printf("Mic2GrainsList usage: ./Mic2GrainsList <ParamFile> <MicFile> "
          "<OutputFile> [DoNeighborSearch (0/1, default 0)] [nCPUs (default "
-         "all)]\n");
+         "all)] [MinConfidence (overrides param file)]\n");
 }
 
 // Queue for BFS
@@ -117,6 +117,14 @@ int main(int argc, char *argv[]) {
   }
   omp_set_num_threads(nCPUs);
 
+  // Command-line MinConfidence override (applied after param file parsing)
+  int hasMinConfOverride = 0;
+  double minConfOverride = 0.0;
+  if (argc >= 7) {
+    hasMinConfOverride = 1;
+    minConfOverride = atof(argv[6]);
+  }
+
   // Default parameters
   int sgNr = 225; // Default to cubic if not found
   double maxAng = 1.0;
@@ -159,6 +167,13 @@ int main(int argc, char *argv[]) {
     }
   }
   fclose(pParam);
+
+  // Apply command-line MinConfidence override if given
+  if (hasMinConfOverride) {
+    printf("  MinConfidence override from command line: %lf -> %lf\n", minConf,
+           minConfOverride);
+    minConf = minConfOverride;
+  }
 
   printf("Parameters:\n");
   printf("  MicFile: %s\n", micFN);
