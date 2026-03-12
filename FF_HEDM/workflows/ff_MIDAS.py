@@ -858,7 +858,7 @@ def process_layer(layer_nr: int, top_res_dir: str, ps_fn: str, data_fn: str, num
                  n_nodes: int, n_chunks: int, preproc: int, inp_file_name: str, 
                  provide_input_all: int, convert_files: int, do_peak_search: int, 
                  peak_search_only: int, bin_directory: str, grains_file: str = '',
-                 resume_from_stage: str = '') -> None:
+                 resume_from_stage: str = '', generate_h5: bool = False) -> None:
     """Process a single layer.
     
     Args:
@@ -1195,7 +1195,7 @@ def process_layer(layer_nr: int, top_res_dir: str, ps_fn: str, data_fn: str, num
         get_grains_info(result_dir)
         
         # Generate consolidated HDF5 output with full provenance (optional)
-        if args.generateH5:
+        if generate_h5:
             try:
                 generate_consolidated_hdf5(result_dir, outFStem)
                 ph5.mark('consolidation')
@@ -2118,7 +2118,8 @@ def main():
                         peak_search_only=peak_search_only,
                         bin_directory=bin_dir,
                         grains_file=layer_grains,
-                        resume_from_stage=resume_from_stage
+                        resume_from_stage=resume_from_stage,
+                        generate_h5=bool(args.generateH5)
                     )
 
                     progress.update(message=f"Layer {layer_nr} (file {file_nr}, {filestem}) completed")
@@ -2161,7 +2162,8 @@ def main():
                         peak_search_only=peak_search_only,
                         bin_directory=bin_dir,
                         grains_file=layer_grains,
-                        resume_from_stage=resume_from_stage
+                        resume_from_stage=resume_from_stage,
+                        generate_h5=bool(args.generateH5)
                     )
                     
                     progress.update(message=f"Layer {layer_nr} completed successfully")
