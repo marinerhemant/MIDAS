@@ -56,6 +56,10 @@ VOLUME_WINDOW_FRAME = 7
 # Plotting Settings
 COMMON_LAYOUT_SETTINGS = dict(margin=dict(l=0, r=0, b=0, t=50), height=700, template="plotly_white") # Use white template
 DEFAULT_CONTINUOUS_COLOR_SCALE = 'Viridis'
+COLORMAP_OPTIONS = ['Viridis', 'Plasma', 'Inferno', 'Magma', 'Cividis',
+                    'Turbo', 'Hot', 'Jet', 'Rainbow', 'Blues', 'Reds', 'Greens',
+                    'YlOrRd', 'YlGnBu', 'RdBu', 'Portland', 'Picnic',
+                    'Blackbody', 'Electric', 'Bluered', 'Greys']
 MAX_MARKER_SIZE_VISUAL = 10
 MIN_MARKER_SIZE_VISUAL = 2
 DEFAULT_MARKER_SIZE = 4
@@ -458,8 +462,8 @@ if __name__ == '__main__':
         ]),
         dbc.Collapse(id='overview-plots-collapse', is_open=False, children=[
             dbc.Row([
-                dbc.Col([dbc.Label("Spot Color (3D View):"), dbc.RadioItems(options=[{"label": x, "value": x} for x in ['ringNr', 'grainIDColor','strain','spotSize']], value='grainIDColor', inline=True, id='radio-buttons-spots')], width=6),
-                dbc.Col([dbc.Label("G-Vector Color (Reciprocal Space):"), dbc.RadioItems(options=[{"label": x, "value": x} for x in ['ringNr', 'grainIDColor','strain','ds']], value='grainIDColor', inline=True, id='radio-buttons-spots_polar')], width=6),
+                dbc.Col([dbc.Label("Spot Color (3D View):"), dbc.RadioItems(options=[{"label": x, "value": x} for x in ['ringNr', 'grainIDColor','strain','spotSize']], value='grainIDColor', inline=True, id='radio-buttons-spots'), dbc.Label("Colormap:", className="mt-1"), dcc.Dropdown(options=[{'label': c, 'value': c} for c in COLORMAP_OPTIONS], value=DEFAULT_CONTINUOUS_COLOR_SCALE, clearable=False, id='cmap-spots', style={'color': '#000', 'width': '150px'})], width=6),
+                dbc.Col([dbc.Label("G-Vector Color (Reciprocal Space):"), dbc.RadioItems(options=[{"label": x, "value": x} for x in ['ringNr', 'grainIDColor','strain','ds']], value='grainIDColor', inline=True, id='radio-buttons-spots_polar'), dbc.Label("Colormap:", className="mt-1"), dcc.Dropdown(options=[{'label': c, 'value': c} for c in COLORMAP_OPTIONS], value=DEFAULT_CONTINUOUS_COLOR_SCALE, clearable=False, id='cmap-spots-polar', style={'color': '#000', 'width': '150px'})], width=6),
             ]),
             dbc.Row([
                  dbc.Col([dbc.Label("Select Rings (3D View):")],width=2), dbc.Col([dcc.Checklist(id="checklist_spots", options=ring_nr_options, value=[], inline=True)],width=4),
@@ -478,9 +482,10 @@ if __name__ == '__main__':
                 dbc.Row([dbc.Col(dbc.Label("2θ Range (°):"), width=3, className="text-end"), dbc.Col(dcc.RangeSlider(id='tth-range-slider', min=tth_min, max=tth_max, step=slider_step, value=[tth_min, tth_max], marks=None, tooltip={"placement": "bottom", "always_visible": True}), width=9)]),
                 dbc.Row([dbc.Col(dbc.Label("Omega Range (°):"), width=3, className="text-end"), dbc.Col(dcc.RangeSlider(id='omega-range-slider', min=ome_min, max=ome_max, step=omega_step, value=[ome_min, ome_max], marks=None, tooltip={"placement": "bottom", "always_visible": True}), width=9)]), # <-- NEW Omega Slider
                 dbc.Row([dbc.Col(dbc.Label("Show Grain ID:"), width=3, className="text-end"), dbc.Col(dcc.Input(id='grain-id-input', type='number', placeholder="Enter Grain ID (optional)", debounce=True, style={'color': '#000'}), width=9)]), # <-- NEW Grain ID Input
-                html.Hr(), dbc.Label("Grain Color (3D Map):"), dcc.Dropdown(options=[{'label': c, 'value': c} for c in GRAINS_COLOR_OPTIONS], value='IDColor', clearable=False, id='radio-buttons-grains', style={'color': '#000', 'width': '220px'})
+                html.Hr(), dbc.Label("Grain Color (3D Map):"), dcc.Dropdown(options=[{'label': c, 'value': c} for c in GRAINS_COLOR_OPTIONS], value='IDColor', clearable=False, id='radio-buttons-grains', style={'color': '#000', 'width': '220px'}),
+                dbc.Label("Colormap:", className="mt-1"), dcc.Dropdown(options=[{'label': c, 'value': c} for c in COLORMAP_OPTIONS], value=DEFAULT_CONTINUOUS_COLOR_SCALE, clearable=False, id='cmap-grains', style={'color': '#000', 'width': '150px'})
             ], width=6),
-            dbc.Col([html.Div(style={'height': '155px'}), html.Hr(), dbc.Label("Filtered Spot Color (per Grain):"), dbc.RadioItems(options=[{"label": x, "value": x} for x in ['ringNr', 'grainIDColor','strain','spotSize', 'tTheta', 'eta', 'ds']], value='strain', inline=True, id='radio-buttons-spots_filtered')], width=6), # Adjusted height for alignment
+            dbc.Col([html.Div(style={'height': '155px'}), html.Hr(), dbc.Label("Filtered Spot Color (per Grain):"), dbc.RadioItems(options=[{"label": x, "value": x} for x in ['ringNr', 'grainIDColor','strain','spotSize', 'tTheta', 'eta', 'ds']], value='strain', inline=True, id='radio-buttons-spots_filtered'), dbc.Label("Colormap:", className="mt-1"), dcc.Dropdown(options=[{'label': c, 'value': c} for c in COLORMAP_OPTIONS], value=DEFAULT_CONTINUOUS_COLOR_SCALE, clearable=False, id='cmap-filtered-spots', style={'color': '#000', 'width': '150px'})], width=6), # Adjusted height for alignment
         ]),
         # --- Plots Below Filters ---
         dbc.Row([
@@ -520,10 +525,11 @@ if __name__ == '__main__':
         Input('radio-buttons-grains', 'value'),
         Input('eta-range-slider', 'value'),
         Input('tth-range-slider', 'value'),
-        Input('omega-range-slider', 'value'), # <-- NEW Input
-        Input('grain-id-input', 'value')      # <-- NEW Input
+        Input('omega-range-slider', 'value'),
+        Input('grain-id-input', 'value'),
+        Input('cmap-grains', 'value')
     )
-    def update_grains_plot(grain_color_choice, eta_range, tth_range, omega_range, specific_grain_id):
+    def update_grains_plot(grain_color_choice, eta_range, tth_range, omega_range, specific_grain_id, grain_cmap):
         fig = go.Figure()
         if grains_df is None or grains_df.empty or spots_df is None or spots_df.empty: return fig.update_layout(title="Grains/Spots data not loaded", **COMMON_LAYOUT_SETTINGS)
 
@@ -584,7 +590,7 @@ if __name__ == '__main__':
 
             if color_col_actual in numeric_cols_grain and color_col_actual in grains_df_cleaned.columns:
                  if not grains_df_cleaned[color_col_actual].isnull().all():
-                      is_continuous_color = True; marker_props['color'] = grains_df_cleaned[color_col_actual]; marker_props['colorscale'] = DEFAULT_CONTINUOUS_COLOR_SCALE
+                      is_continuous_color = True; marker_props['color'] = grains_df_cleaned[color_col_actual]; marker_props['colorscale'] = grain_cmap or DEFAULT_CONTINUOUS_COLOR_SCALE
                       marker_props['colorbar'] = dict(title=color_col_actual)
                  else: color_col_actual = 'IDColor' # Fallback if all NaN
             elif color_col_actual not in ['IDColor']: color_col_actual = 'IDColor' # Fallback if col missing/invalid
@@ -619,9 +625,10 @@ if __name__ == '__main__':
     @callback(
         Output('filtered_spots', 'figure'), Output('selected-grain-id-store', 'data'),
         Input('grains', 'clickData'), Input('radio-buttons-spots_filtered', 'value'),
+        Input('cmap-filtered-spots', 'value'),
         prevent_initial_call=True
     )
-    def update_filtered_spots_3d(clickData, spots_color_choice):
+    def update_filtered_spots_3d(clickData, spots_color_choice, filtered_cmap):
         fig = go.Figure(); selected_id = no_update
         if not (clickData and clickData['points']): return fig.update_layout(title="Click a grain", **COMMON_LAYOUT_SETTINGS), no_update
         try:
@@ -681,7 +688,7 @@ if __name__ == '__main__':
                                         color=color_arg, # Pass column name or None
                                         size=size_col, size_max=MAX_MARKER_SIZE_VISUAL+2, title=title,
                                         hover_name='spotID', hover_data=valid_hover, custom_data=['spotID'],
-                                        color_continuous_scale=DEFAULT_CONTINUOUS_COLOR_SCALE,
+                                        color_continuous_scale=filtered_cmap or DEFAULT_CONTINUOUS_COLOR_SCALE,
                                         color_discrete_map="identity" if color_arg == 'grainIDColor' else None, # Identity only for grainIDColor if we map it
                                         color_discrete_sequence=px.colors.qualitative.Plotly if is_discrete_color else None # Sequence for multi-ringNr
                                         )
@@ -695,8 +702,8 @@ if __name__ == '__main__':
         return fig, selected_id if selected_id is not no_update else None
 
     # --- Filtered Spots 2D Callback ---
-    @callback( Output('filtered_spots_2d', 'figure'), Input('selected-grain-id-store', 'data'), Input('radio-buttons-spots_filtered', 'value'), prevent_initial_call=True)
-    def update_filtered_spots_2d(selected_grain_id, spots_color_choice):
+    @callback( Output('filtered_spots_2d', 'figure'), Input('selected-grain-id-store', 'data'), Input('radio-buttons-spots_filtered', 'value'), Input('cmap-filtered-spots', 'value'), prevent_initial_call=True)
+    def update_filtered_spots_2d(selected_grain_id, spots_color_choice, filtered_cmap):
         fig = go.Figure()
         if selected_grain_id is None: return fig.update_layout(title="Select a grain", **COMMON_LAYOUT_SETTINGS)
         try:
@@ -740,7 +747,7 @@ if __name__ == '__main__':
                                 color=color_arg, # Pass column name or None
                                 size=size_col, size_max=MAX_MARKER_SIZE_VISUAL+2, title=title,
                                 hover_name='spotID', hover_data=valid_hover, custom_data=['spotID'],
-                                color_continuous_scale=DEFAULT_CONTINUOUS_COLOR_SCALE,
+                                color_continuous_scale=filtered_cmap or DEFAULT_CONTINUOUS_COLOR_SCALE,
                                 color_discrete_map="identity" if color_arg == 'grainIDColor' else None, # Identity only for grainIDColor if we map it
                                 color_discrete_sequence=px.colors.qualitative.Plotly if is_discrete_color else None)
 
@@ -809,8 +816,8 @@ if __name__ == '__main__':
     def toggle_overview(is_on): return is_on
 
     # --- All Spots 3D Callback ---
-    @callback( Output('spots', 'figure'), Input('radio-buttons-spots', 'value'), Input("checklist_spots", "value"), Input('toggle-overview-plots', 'value'))
-    def update_all_spots_3d(spots_color_choice, selected_ring_nrs, is_enabled):
+    @callback( Output('spots', 'figure'), Input('radio-buttons-spots', 'value'), Input("checklist_spots", "value"), Input('toggle-overview-plots', 'value'), Input('cmap-spots', 'value'))
+    def update_all_spots_3d(spots_color_choice, selected_ring_nrs, is_enabled, spots_cmap):
         fig = go.Figure()
         if not is_enabled: return fig.update_layout(title='Enable overview plots above', **COMMON_LAYOUT_SETTINGS)
         if spots_df is None or spots_df.empty: return fig.update_layout(title='Spots data empty', **COMMON_LAYOUT_SETTINGS)
@@ -842,7 +849,7 @@ if __name__ == '__main__':
                  if not dff_cleaned[color_col].isnull().all():
                       is_cont_color = True
                       marker_props['color'] = dff_cleaned[color_col]
-                      marker_props['colorscale'] = DEFAULT_CONTINUOUS_COLOR_SCALE
+                      marker_props['colorscale'] = spots_cmap or DEFAULT_CONTINUOUS_COLOR_SCALE
                       marker_props['colorbar'] = dict(title=color_col)
                  else: color_col = 'ringNr' # Fallback if all NaN
             elif color_col not in ['grainIDColor', 'ringNr']: color_col = 'ringNr' # Fallback if col missing
@@ -869,8 +876,8 @@ if __name__ == '__main__':
         return fig
 
     # --- G-Vector Plot Callback ---
-    @callback( Output('spots_polar', 'figure'), Input('radio-buttons-spots_polar', 'value'), Input("checklist_spots_polar", "value"), Input('toggle-overview-plots', 'value'))
-    def update_g_vector_plot(gvector_color_choice, selected_ring_nrs, is_enabled):
+    @callback( Output('spots_polar', 'figure'), Input('radio-buttons-spots_polar', 'value'), Input("checklist_spots_polar", "value"), Input('toggle-overview-plots', 'value'), Input('cmap-spots-polar', 'value'))
+    def update_g_vector_plot(gvector_color_choice, selected_ring_nrs, is_enabled, polar_cmap):
         fig = go.Figure(); scene_settings = dict(aspectmode='cube')
         if not is_enabled: return fig.update_layout(title='Enable overview plots above', scene=scene_settings, **COMMON_LAYOUT_SETTINGS)
         if spots_df is None or spots_df.empty: return fig.update_layout(title='Spots data empty', scene=scene_settings, **COMMON_LAYOUT_SETTINGS)
@@ -952,7 +959,7 @@ if __name__ == '__main__':
                                 color=color_arg, # Pass column name or None
                                 size=size_arg, size_max=MAX_MARKER_SIZE_VISUAL+2,
                                 title=plot_title, hover_name='spotID', hover_data=valid_hover, custom_data=['spotID'],
-                                color_continuous_scale=DEFAULT_CONTINUOUS_COLOR_SCALE if not is_discrete_color and manual_color_map is None else None,
+                                color_continuous_scale=(polar_cmap or DEFAULT_CONTINUOUS_COLOR_SCALE) if not is_discrete_color and manual_color_map is None else None,
                                 color_discrete_sequence=px.colors.qualitative.Plotly if (is_discrete_color and manual_color_map is None and color_arg != 'grainIDColor') else None,
                                 color_discrete_map=manual_color_map if manual_color_map else None
                                )
