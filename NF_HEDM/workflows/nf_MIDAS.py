@@ -221,15 +221,6 @@ def median_local(distanceNr: int, psFN: str, numProcs: int, logDir: str, resultF
         subprocess.call(cmd, shell=True, stdout=f, stderr=f_err, cwd=resultFolder, env=get_midas_env())
     return 1
 
-@create_app_with_retry
-def image(psFN: str, nodeNr: int, nNodes: int, numProcs: int, logDir: str, resultFolder: str, bin_dir: str) -> None:
-    """Run image processing remotely via Parsl."""
-    import os, subprocess
-    with open(f'{logDir}/image{nodeNr}_out.csv', 'w') as f, \
-         open(f'{logDir}/image{nodeNr}_err.csv', 'w') as f_err:
-        cmd = os.path.join(bin_dir, "ImageProcessingLibTiffOMP") + f' {psFN} {nodeNr} {nNodes} {numProcs}'
-        f.write(cmd)
-        subprocess.call(cmd, shell=True, stdout=f, stderr=f_err, cwd=resultFolder, env=os.environ)
 
 @create_app_with_retry
 def fit(psFN: str, nodeNr: int, nNodes: int, numProcs: int, logDir: str, resultFolder: str, bin_dir: str) -> None:
