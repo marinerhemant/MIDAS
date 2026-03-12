@@ -1194,12 +1194,13 @@ def process_layer(layer_nr: int, top_res_dir: str, ps_fn: str, data_fn: str, num
             raise RuntimeError(f"Failed to process grains: {e}")
         get_grains_info(result_dir)
         
-        # Generate consolidated HDF5 output with full provenance
-        try:
-            generate_consolidated_hdf5(result_dir, outFStem)
-            ph5.mark('consolidation')
-        except Exception as e:
-            logger.warning(f"Failed to generate consolidated HDF5: {e}")
+        # Generate consolidated HDF5 output with full provenance (optional)
+        if args.generateH5:
+            try:
+                generate_consolidated_hdf5(result_dir, outFStem)
+                ph5.mark('consolidation')
+            except Exception as e:
+                logger.warning(f"Failed to generate consolidated HDF5: {e}")
 
         ph5.__exit__(None, None, None)
         logger.info(f"Done Layer {layer_nr}. Total time elapsed: {time.time() - t0}")
@@ -1912,6 +1913,8 @@ def main():
                         help='Path to a pipeline H5 file to resume from. Auto-detects the first incomplete stage.')
     parser.add_argument('-restartFrom', type=str, required=False, default='',
                         help=f'Stage name to restart from (re-runs all stages from that point). Valid stages: {", ".join(FF_STAGE_ORDER)}')
+    parser.add_argument('-generateH5', type=int, required=False, default=0,
+                        help='Set to 1 to generate consolidated HDF5 at the end of each layer. Disabled by default.')
     
     # Parse arguments
     if len(sys.argv) == 1:

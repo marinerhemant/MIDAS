@@ -283,20 +283,35 @@ class NFViewer(QtWidgets.QMainWindow):
         self.mic_scatter = pg.ScatterPlotItem(size=5, pen=None)
         self.mic_view.addItem(self.mic_scatter)
 
-        # Colorbar for mic scatter
-        self._mic_cmap = pg.colormap.get('turbo')
-        self._mic_colorbar = pg.ColorBarItem(colorMap=self._mic_cmap, interactive=False, width=15)
-        self._mic_colorbar.setImageItem(pg.ImageItem(), insert_in=self.mic_view.plotItem)
-        self._mic_colorbar.setVisible(False)
+        # Colorbar: use a gradient ImageItem in its own ViewBox
+        self._mic_cb_img = pg.ImageItem()
+        self._mic_cb_plot = pg.PlotItem()
+        self._mic_cb_plot.setMaximumWidth(80)
+        self._mic_cb_plot.hideAxis('bottom')
+        self._mic_cb_plot.getAxis('left').setWidth(40)
+        self._mic_cb_plot.addItem(self._mic_cb_img)
+        self._mic_cb_plot.hideButtons()
+        self._mic_cb_plot.setMouseEnabled(x=False, y=False)
 
-        # Mouse tracking for mic scatter
-        self._mic_proxy = pg.SignalProxy(self.mic_view.scene().sigMouseMoved, rateLimit=30, slot=self._on_mic_cursor_moved)
-        self._mic_color_values = None  # set during _plot_mic
-        self._mic_color_label = ''     # current color column label
+        # Container widget with mic_view + colorbar side by side
+        mic_container = QtWidgets.QWidget()
+        mic_layout = QtWidgets.QHBoxLayout(mic_container)
+        mic_layout.setContentsMargins(0, 0, 0, 0)
+        mic_layout.setSpacing(0)
+        mic_layout.addWidget(self.mic_view, stretch=1)
+        cb_gv = pg.GraphicsLayoutWidget()
+        cb_gv.setMaximumWidth(80)
+        cb_gv.addItem(self._mic_cb_plot)
+        mic_layout.addWidget(cb_gv)
+
+        # Mouse tracking state
+        self._mic_proxy = None  # created on first plot
+        self._mic_color_values = None
+        self._mic_color_label = ''
         self._mic_cmin = 0.0
         self._mic_cmax = 1.0
 
-        self.right_widget.addWidget(self.mic_view)
+        self.right_widget.addWidget(mic_container)
 
         # Mic image view (for binary map type)
         self.mic_image_view = MIDASImageView(self, name='MicMap')
@@ -1658,9 +1673,21 @@ class NFViewer(QtWidgets.QMainWindow):
             self.mic_scatter.setData(xs, ys, brush=brushes)
             self.mic_view.setTitle(f"Mic ({col_labels.get(col, 'Col ' + str(col))})")
 
-            # Update colorbar
-            self._mic_colorbar.setLevels(values=(cmin, cmax))
-            self._mic_colorbar.setVisible(True)
+            # Update gradient colorbar
+            gradient = np.linspace(0, 1, 256).reshape(256, 1)
+            gradient_rgb = np.zeros((256, 1, 4), dtype=np.ubyte)
+            for i in range(256):
+                gradient_rgb[i, 0, :] = lut[i] if len(lut[i]) == 4 else list(lut[i]) + [255]
+            self._mic_cb_img.setImage(gradient_rgb)
+            self._mic_cb_img.setRect(0, cmin, 1, cmax - cmin)
+            self._mic_cb_plot.setYRange(cmin, cmax)
+            self._mic_cb_plot.setTitle(self._mic_color_label)
+
+            # Connect mouse proxy (once, after scene is ready)
+            if self._mic_proxy is None:
+                self._mic_proxy = pg.SignalProxy(
+                    self.mic_view.scene().sigMouseMoved, rateLimit=30,
+                    slot=self._on_mic_cursor_moved)
 
             if saved_range is not None:
                 vb.setRange(xRange=saved_range[0], yRange=saved_range[1], padding=0)
