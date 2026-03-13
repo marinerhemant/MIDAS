@@ -144,7 +144,7 @@ static inline void Car2Pol(int n_hkls, int nEtaBins, int y, int z, double ybc,
                            int *NrEachIndexbin, int **Indices, double tx,
                            double ty, double tz, double p0, double p1,
                            double p2, double p3, double RhoD, double Lsd,
-                           double p4, int NrPixelsStride, int maxPerBin) {
+                           double p4, double p5, int NrPixelsStride, int maxPerBin) {
   int i, j, k, l, counter = 0, ctr = 0;
   for (i = 0; i < nIndices; i++)
     NrEachIndexbin[i] = 0;
@@ -168,8 +168,8 @@ static inline void Car2Pol(int n_hkls, int nEtaBins, int y, int z, double ybc,
       double ypr = (double)j + pdY;
       double zpr = (double)i + pdZ;
       double EtaS_tilted;
-      dg_pixel_to_REta(ypr, zpr, ybc, zbc, TRs, Lsd, RhoD, p0, p1, p2, p3, p4,
-                       px, dLsd, dP2, &Rt_px, &EtaS_tilted, &EtaS);
+      dg_pixel_to_REta(ypr, zpr, ybc, zbc, TRs, Lsd, RhoD, p0, p1, p2, p3, p4, p5,
+                       px, dLsd, dP2, 0, &Rt_px, &EtaS_tilted, &EtaS);
       double Rt = Rt_px * px; // convert from pixels to microns
       R[counter] = Rt;
       Eta[counter] = EtaS;
@@ -2965,7 +2965,7 @@ int main(int argc, char *argv[]) {
       Car2Pol(n_hkls, nEtaBins, NrPixels, NrPixels, ybc, zbc, px, R_0, Eta_0,
               Rmins_0, Rmaxs_0, EtaBinsLow, EtaBinsHigh, nIndices,
               NrEachIndexBin_0, Indices_0, tx, tyin, tzin, p0in, p1in, p2in,
-              p3in, MaxRingRad, Lsd, p4in, NrPixels, maxPerBin_0);
+              p3in, MaxRingRad, Lsd, p4in, p5in, NrPixels, maxPerBin_0);
 
       IdealTtheta = malloc(nIndices * sizeof(*IdealTtheta));
       PointDSpacing = FitWavelength ? malloc(nIndices * sizeof(double)) : NULL;
@@ -3134,7 +3134,7 @@ int main(int argc, char *argv[]) {
         Car2Pol(n_hkls, nEtaBins, NrPixels, NrPixels, ybc, zbc, px, R, Eta,
                 Rmins, Rmaxs, EtaBinsLow, EtaBinsHigh, nIndices, NrEachIndexBin,
                 Indices, tx, tyin, tzin, p0in, p1in, p2in, p3in, MaxRingRad,
-                Lsd, p4in, NrPixels, maxPerBin);
+                Lsd, p4in, p5in, NrPixels, maxPerBin);
 
         double *IdealR = malloc(nIndices * sizeof(*IdealR));
         double *IdealRmins = malloc(nIndices * sizeof(*IdealRmins));
@@ -3427,7 +3427,7 @@ int main(int argc, char *argv[]) {
         Car2Pol(n_hkls, nEtaBins, NrPixels, NrPixels, ybcFit, zbcFit, px, R_rf,
                 Eta_rf, Rmins_rf, Rmaxs_rf, EtaBinsLow, EtaBinsHigh, nIdx_rf,
                 NrBin_rf, Idx_rf, tx, ty, tz, p0, p1, p2, p3, MaxRingRad,
-                LsdFit, p4, NrPixels, maxPerBin_rf);
+                LsdFit, p4, p5, NrPixels, maxPerBin_rf);
 
         double *IRmins_rf = malloc(nIdx_rf * sizeof(*IRmins_rf));
         double *IRmaxs_rf = malloc(nIdx_rf * sizeof(*IRmaxs_rf));
@@ -3814,7 +3814,7 @@ int main(int argc, char *argv[]) {
       Car2Pol(n_hkls, nEtaBins, NrPixels, NrPixels, ybcFit, zbcFit, px, R_pl,
               Eta_pl, Rmins_pl, Rmaxs_pl, EtaBinsLow, EtaBinsHigh, nIdx_pl,
               NrBin_pl, Idx_pl, tx, ty, tz, p0, p1, p2, p3, MaxRingRad, LsdFit,
-              p4in, NrPixels, maxPerBin_pl);
+              p4in, p5in, NrPixels, maxPerBin_pl);
       double *IRmins_pl = malloc(nIdx_pl * sizeof(*IRmins_pl));
       double *IRmaxs_pl = malloc(nIdx_pl * sizeof(*IRmaxs_pl));
       IdealTtheta = malloc(nIdx_pl * sizeof(*IdealTtheta));
@@ -4556,8 +4556,8 @@ int main(int argc, char *argv[]) {
     double lo_start = omp_get_wtime();
 
     // Use mean fitted parameters (averaged across all files)
-    double lo_means[14];
-    for (int mi = 0; mi < 14; mi++)
+    double lo_means[15];
+    for (int mi = 0; mi < 15; mi++)
       lo_means[mi] = means[mi] / (EndNr - StartNr + 1);
     double lo_Lsd = lo_means[0];
     double lo_ybc = lo_means[1];
@@ -4569,6 +4569,8 @@ int main(int argc, char *argv[]) {
     double lo_p2 = lo_means[7];
     double lo_p3 = lo_means[8];
     double lo_p4 = lo_means[11];
+    double lo_p5 = lo_means[13];
+    double lo_parallax = lo_means[14];
 
     // Auto-compute RMax from detector diagonal if not set
     double lo_RMax = lineoutRMax;
@@ -4650,8 +4652,8 @@ int main(int argc, char *argv[]) {
           double zc = (double)iz + pdZ + cornerDZ[c];
           double Rc, Ec, Ec_untilted;
           dg_pixel_to_REta(yc, zc, lo_ybc, lo_zbc, lo_TRs, lo_Lsd, MaxRingRad,
-                           lo_p0, lo_p1, lo_p2, lo_p3, lo_p4, px, dLsd, dP2,
-                           &Rc, &Ec, &Ec_untilted);
+                           lo_p0, lo_p1, lo_p2, lo_p3, lo_p4, lo_p5, px, dLsd, dP2,
+                           lo_parallax, &Rc, &Ec, &Ec_untilted);
           Ec = Ec_untilted; // use untilted Eta for boundary checks
           if (Rc < Rmin_corner)
             Rmin_corner = Rc;
@@ -4740,8 +4742,8 @@ int main(int argc, char *argv[]) {
       double zpr = (double)diagZ + pdZ;
       double Rt_d, Eta_d, Eta_d_untilted;
       dg_pixel_to_REta(ypr, zpr, lo_ybc, lo_zbc, lo_TRs, lo_Lsd, MaxRingRad,
-                       lo_p0, lo_p1, lo_p2, lo_p3, lo_p4, px, dLsd, dP2, &Rt_d,
-                       &Eta_d, &Eta_d_untilted);
+                       lo_p0, lo_p1, lo_p2, lo_p3, lo_p4, lo_p5, px, dLsd, dP2,
+                       lo_parallax, &Rt_d, &Eta_d, &Eta_d_untilted);
       Eta_d = Eta_d_untilted; // use untilted for dg_REta_to_YZ
       double pixY_d, pixZ_d;
       dg_REta_to_YZ(Rt_d, Eta_d, &pixY_d, &pixZ_d);
@@ -4850,8 +4852,8 @@ int main(int argc, char *argv[]) {
           double zpr = (double)iz + pdZ;
           double Rt_center, Eta_center, Eta_center_untilted;
           dg_pixel_to_REta(ypr, zpr, lo_ybc, lo_zbc, lo_TRs, lo_Lsd, MaxRingRad,
-                           lo_p0, lo_p1, lo_p2, lo_p3, lo_p4, px, dLsd, dP2,
-                           &Rt_center, &Eta_center, &Eta_center_untilted);
+                           lo_p0, lo_p1, lo_p2, lo_p3, lo_p4, lo_p5, px, dLsd, dP2,
+                           lo_parallax, &Rt_center, &Eta_center, &Eta_center_untilted);
           Eta_center = Eta_center_untilted; // use untilted for dg_REta_to_YZ
           double pixY, pixZ;
           dg_REta_to_YZ(Rt_center, Eta_center, &pixY, &pixZ);

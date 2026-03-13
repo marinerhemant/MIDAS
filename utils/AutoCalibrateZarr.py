@@ -304,259 +304,117 @@ def detect_panels_from_mask(mask_file, min_panel_pixels=1000, bc_guess=None):
                 f"fixPanel={best_panel_id}")
     return pg
 
-# ---- Blocking 2×2 image viewer (PyQt6 + pyqtgraph) ----
-COLORMAPS = ['viridis', 'inferno', 'plasma', 'magma', 'cividis',
-             'gray', 'hot', 'cool', 'bone', 'copper']
-
-_qapp = None  # lazy singleton
-
-def _ensure_qapp():
-    """Create QApplication if needed."""
-    global _qapp
-    from PyQt6.QtWidgets import QApplication
-    if _qapp is None:
-        _qapp = QApplication.instance() or QApplication(sys.argv)
-    return _qapp
+# ---- Blocking 2×2 image viewer (matplotlib) ----
 
 
 class CalibImageViewer:
-    """Blocking PyQt6/pyqtgraph 2×2 image viewer with shared zoom.
+    """Matplotlib 2×2 image viewer for calibration.
 
     Panels: Raw | Background | Corrected | Corrected + Rings
-    Controls: colormap dropdown, clim min/max, Continue button.
-    show_and_wait() blocks until 'Continue' is clicked.
+    show_and_wait() blocks until the figure is closed.
     """
 
     def __init__(self, title='AutoCalibrateZarr'):
-        _ensure_qapp()
-        import pyqtgraph as pg
-        from PyQt6.QtWidgets import (QMainWindow, QWidget, QVBoxLayout,
-                                     QHBoxLayout, QComboBox, QLabel,
-                                     QLineEdit, QPushButton)
-
-        self._pg = pg
-        self.win = QMainWindow()
-        self.win.setWindowTitle(title)
-        self.win.resize(1400, 900)
-        self._continued = False
-
-        central = QWidget()
-        self.win.setCentralWidget(central)
-        layout = QVBoxLayout(central)
-
-        # Control bar
-        controls = QHBoxLayout()
-
-        controls.addWidget(QLabel('Colormap:'))
-        self.cmap_combo = QComboBox()
-        self.cmap_combo.addItems(COLORMAPS)
-        self.cmap_combo.setCurrentText('viridis')
-        self.cmap_combo.currentTextChanged.connect(self._on_cmap)
-        controls.addWidget(self.cmap_combo)
-
-        controls.addWidget(QLabel('  Clim Min:'))
-        self.edit_cmin = QLineEdit()
-        self.edit_cmin.setPlaceholderText('auto')
-        self.edit_cmin.setFixedWidth(80)
-        self.edit_cmin.editingFinished.connect(self._on_clim)
-        controls.addWidget(self.edit_cmin)
-
-        controls.addWidget(QLabel('  Max:'))
-        self.edit_cmax = QLineEdit()
-        self.edit_cmax.setPlaceholderText('auto')
-        self.edit_cmax.setFixedWidth(80)
-        self.edit_cmax.editingFinished.connect(self._on_clim)
-        controls.addWidget(self.edit_cmax)
-
-        auto_btn = QPushButton('Auto Range')
-        auto_btn.clicked.connect(self._on_auto)
-        controls.addWidget(auto_btn)
-
-        self.zoom_btn = QPushButton('🔍 Zoom Box')
-        self.zoom_btn.setCheckable(True)
-        self.zoom_btn.setToolTip('Toggle: left-click drag to zoom into a rectangle')
-        self.zoom_btn.clicked.connect(self._on_zoom_toggle)
-        controls.addWidget(self.zoom_btn)
-
-        controls.addStretch()
-
-        self.continue_btn = QPushButton('▶ Continue')
-        self.continue_btn.setStyleSheet(
-            'QPushButton { background-color: #2ecc71; color: white; '
-            'font-weight: bold; padding: 6px 20px; border-radius: 4px; }')
-        self.continue_btn.clicked.connect(self._on_continue)
-        controls.addWidget(self.continue_btn)
-
-        layout.addLayout(controls)
-
-        # 2×2 pyqtgraph grid with shared zoom
-        gw = pg.GraphicsLayoutWidget()
-        layout.addWidget(gw)
-
-        self.panels = {}
-        self.items = {}
-        labels = [('Raw', 0, 0), ('Background', 0, 1),
-                  ('Corrected', 1, 0), ('Corrected + Rings', 1, 1)]
-
-        first_vb = None
-        for name, row, col in labels:
-            p = gw.addPlot(row=row, col=col, title=name)
-            p.setAspectLocked(True)
-            p.invertY(False)
-            img = pg.ImageItem()
-            p.addItem(img)
-            self.panels[name] = p
-            self.items[name] = img
-            if first_vb is None:
-                first_vb = p.getViewBox()
-            else:
-                p.getViewBox().setXLink(first_vb)
-                p.getViewBox().setYLink(first_vb)
-
-        self._ring_items = []
-        self._lut = None
-        self._on_cmap('viridis')  # set initial colormap LUT
-        self.win.show()
-
-    def _set_image(self, name, img):
-        """Set image on a panel and auto-range the view."""
-        item = self.items[name]
-        # pyqtgraph ImageItem expects (x, y) = (cols, rows), so transpose
-        item.setImage(img.T, autoLevels=False)
-        if self._lut is not None:
-            item.setLookupTable(self._lut)
-        # Apply current clim if set, otherwise auto
-        self._apply_clim_to(item, img)
-        # Auto-range the first panel's view (linked panels follow)
-        if name == 'Raw':
-            self.panels[name].getViewBox().autoRange()
-
-    def _apply_clim_to(self, item, img=None):
-        """Apply current clim values to an ImageItem."""
-        # Only apply manual clim to Raw panel
-        if item is self.items.get('Raw'):
-            try:
-                vmin = float(self.edit_cmin.text()) if self.edit_cmin.text().strip() else None
-            except ValueError:
-                vmin = None
-            try:
-                vmax = float(self.edit_cmax.text()) if self.edit_cmax.text().strip() else None
-            except ValueError:
-                vmax = None
-            if vmin is not None and vmax is not None:
-                item.setLevels([vmin, vmax])
-            elif img is not None:
-                item.setLevels([np.nanmin(img), np.nanmax(img)])
-        elif img is not None:
-            # Non-Raw panels: always auto-level from their own data
-            item.setLevels([np.nanmin(img), np.nanmax(img)])
+        self._title = title
+        self._cmap = 'viridis'
+        self._raw_img = None
+        self._bg_img = None
+        self._corr_img = None
+        self._rings_img = None
+        self._ring_radii = None
+        self._ring_bc = None
+        self._rings_to_exclude = None
 
     def set_raw(self, img):
         self._raw_img = img
-        self._set_image('Raw', img)
-        # Auto clim from raw
-        pos = img[img > 0] if np.any(img > 0) else img.ravel()
-        m, s = np.median(pos), np.std(pos)
-        self.edit_cmin.setText(f'{m:.1f}')
-        self.edit_cmax.setText(f'{m + 2*s:.1f}')
-        self._on_clim()
 
     def set_bg(self, img):
-        self._set_image('Background', img)
+        self._bg_img = img
 
     def set_corr(self, img):
-        self._set_image('Corrected', img)
+        self._corr_img = img
 
     def set_rings(self, img, ring_radii, bc, rings_to_exclude=None):
-        self._set_image('Corrected + Rings', img)
-        pg = self._pg
-        p = self.panels['Corrected + Rings']
-        # Remove old ring overlays
-        for item in self._ring_items:
-            p.removeItem(item)
-        self._ring_items = []
-        # Disable auto-range on ALL panels before adding overlays (they are linked)
-        saved_ranges = {}
-        for name, panel in self.panels.items():
-            vb = panel.getViewBox()
-            vb.disableAutoRange()
-            saved_ranges[name] = (vb.viewRange()[0][:], vb.viewRange()[1][:])
-        # Draw new rings as ellipses (CircleROI)
-        for i, rad in enumerate(ring_radii):
-            ring_nr = i + 1
-            if rings_to_exclude and ring_nr in rings_to_exclude:
-                continue
-            # sim_rads is already in pixels; do NOT divide by _px again
-            r_px = rad
-            circle = pg.CircleROI(
-                [bc[1] - r_px, bc[0] - r_px], [2 * r_px, 2 * r_px],
-                pen=pg.mkPen('c', width=1), movable=False)
-            # Remove resize/rotate handles
-            for h in circle.getHandles():
-                circle.removeHandle(h)
-            p.addItem(circle)
-            self._ring_items.append(circle)
-        # Restore view range on all panels to image dimensions
-        img_range = {'x': [0, img.shape[1]], 'y': [0, img.shape[0]]}
-        for name, panel in self.panels.items():
-            panel.getViewBox().setRange(xRange=img_range['x'],
-                                        yRange=img_range['y'], padding=0.02)
+        self._rings_img = img
+        self._ring_radii = ring_radii
+        self._ring_bc = bc
+        self._rings_to_exclude = rings_to_exclude
 
     def show_and_wait(self):
-        """Block until user clicks Continue."""
-        self.continue_btn.setEnabled(True)
-        _qapp.processEvents()
-        _qapp.exec()
+        """Build the 2x2 figure and block until it is closed."""
+        import matplotlib
+        matplotlib.use('TkAgg')
+        import matplotlib.pyplot as plt
+        from matplotlib.patches import Circle
 
-    def _on_continue(self):
-        self._continued = True
-        _qapp.quit()
+        fig, axes = plt.subplots(2, 2, figsize=(14, 10), sharex=True, sharey=True)
+        fig.canvas.manager.set_window_title(self._title)
 
-    def _on_cmap(self, name):
-        pg = self._pg
-        try:
-            cmap = pg.colormap.get(name, source='matplotlib')
-        except Exception:
-            cmap = pg.colormap.get('viridis', source='matplotlib')
-        self._lut = cmap.getLookupTable(nPts=256)
-        for item in self.items.values():
-            item.setLookupTable(self._lut)
-
-    def _on_clim(self):
-        try:
-            vmin = float(self.edit_cmin.text()) if self.edit_cmin.text().strip() else None
-        except ValueError:
-            vmin = None
-        try:
-            vmax = float(self.edit_cmax.text()) if self.edit_cmax.text().strip() else None
-        except ValueError:
-            vmax = None
-        if vmin is not None and vmax is not None:
-            # Only apply manual clim to Raw and Background panels
-            for name in ('Raw', 'Background'):
-                if name in self.items:
-                    self.items[name].setLevels([vmin, vmax])
-
-    def _on_auto(self):
-        if hasattr(self, '_raw_img'):
+        # Compute clim from raw image
+        vmin, vmax = None, None
+        if self._raw_img is not None:
             pos = self._raw_img[self._raw_img > 0] if np.any(self._raw_img > 0) else self._raw_img.ravel()
             m, s = np.median(pos), np.std(pos)
-            self.edit_cmin.setText(f'{m:.1f}')
-            self.edit_cmax.setText(f'{m + 2*s:.1f}')
-            self._on_clim()
+            vmin, vmax = m, m + 2 * s
 
-    def _on_zoom_toggle(self, checked):
-        """Toggle between zoom-box (RectMode) and pan (PanMode) for all panels."""
-        pg = self._pg
-        mode = pg.ViewBox.RectMode if checked else pg.ViewBox.PanMode
-        for p in self.panels.values():
-            p.getViewBox().setMouseMode(mode)
-        self.zoom_btn.setText('🔍 Zoom Box (ON)' if checked else '🔍 Zoom Box')
+        # Raw
+        ax = axes[0, 0]
+        ax.set_title('Raw')
+        if self._raw_img is not None:
+            ax.imshow(self._raw_img, cmap=self._cmap, vmin=vmin, vmax=vmax,
+                      origin='lower', aspect='equal')
+
+        # Background
+        ax = axes[0, 1]
+        ax.set_title('Background')
+        if self._bg_img is not None:
+            ax.imshow(self._bg_img, cmap=self._cmap, vmin=vmin, vmax=vmax,
+                      origin='lower', aspect='equal')
+
+        # Corrected
+        ax = axes[1, 0]
+        ax.set_title('Corrected')
+        if self._corr_img is not None:
+            ax.imshow(self._corr_img, cmap=self._cmap, origin='lower', aspect='equal')
+
+        # Corrected + Rings
+        ax = axes[1, 1]
+        ax.set_title('Corrected + Rings')
+        if self._rings_img is not None:
+            ax.imshow(self._rings_img, cmap=self._cmap, origin='lower', aspect='equal')
+        if self._ring_radii is not None and self._ring_bc is not None:
+            for i, rad in enumerate(self._ring_radii):
+                ring_nr = i + 1
+                if self._rings_to_exclude and ring_nr in self._rings_to_exclude:
+                    continue
+                circle = Circle((self._ring_bc[1], self._ring_bc[0]), rad,
+                                fill=False, edgecolor='cyan', linewidth=0.8)
+                ax.add_patch(circle)
+
+        fig.tight_layout()
+        # Leave space at bottom for Continue/Cancel buttons
+        fig.subplots_adjust(bottom=0.07)
+        from matplotlib.widgets import Button
+        ax_cont = fig.add_axes([0.36, 0.01, 0.14, 0.04])
+        btn_cont = Button(ax_cont, '▶ Continue', color='#2ecc71', hovercolor='#27ae60')
+        btn_cont.label.set_color('white')
+        btn_cont.label.set_fontweight('bold')
+        btn_cont.on_clicked(lambda event: plt.close(fig))
+
+        ax_cancel = fig.add_axes([0.52, 0.01, 0.12, 0.04])
+        btn_cancel = Button(ax_cancel, '✕ Cancel', color='#e74c3c', hovercolor='#c0392b')
+        btn_cancel.label.set_color('white')
+        btn_cancel.label.set_fontweight('bold')
+        def _cancel(event):
+            plt.close(fig)
+            logger.info("Calibration cancelled by user.")
+            sys.exit(0)
+        btn_cancel.on_clicked(_cancel)
+        plt.show(block=True)
 
     def process_events(self):
-        """Process Qt events (non-blocking)."""
-        if _qapp:
-            _qapp.processEvents()
+        """No-op for matplotlib backend."""
+        pass
 
 
 class MyParser(argparse.ArgumentParser):
@@ -1190,28 +1048,64 @@ def detect_ring_radii(labels, props, bc_computed, minArea):
         return np.array([])
 
 
-def estimate_lsd(rads, sim_rads, sim_rad_ratios, firstRing, initialLsd):
-    """Estimate sample-to-detector distance from ring radii."""
+def estimate_lsd(rads, sim_rads, sim_rad_ratios, firstRing, initialLsd, max_ring=0):
+    """Estimate sample-to-detector distance from ring radii.
+    
+    Try assigning the first detected ring to each simulated ring in turn,
+    compute a trial Lsd, then count how many other detected rings match.
+    Pick the assignment with the most consistent matches.
+    """
     if len(rads) == 0:
         return initialLsd
     try:
-        radRatios = rads / rads[0]
-        lsds = []
-        for i in range(len(rads)):
-            bestMatch = 10000
-            bestRowNr = -1
-            for j in range(firstRing - 1, len(sim_rads)):
-                if np.abs(1 - (radRatios[i] / sim_rad_ratios[j])) < 0.02:
-                    match_quality = np.abs(1 - (radRatios[i] / sim_rad_ratios[j]))
-                    if match_quality < bestMatch:
-                        bestMatch = match_quality
-                        bestRowNr = j
-            if bestRowNr != -1:
-                lsds.append(initialLsd * rads[i] / sim_rads[bestRowNr])
-        if not lsds:
-            logger.warning("Could not estimate Lsd from rings - using initial guess")
-            return initialLsd
-        return np.median(lsds)
+        n_sim = len(sim_rads) if max_ring <= 0 else min(max_ring, len(sim_rads))
+        logger.info(f"  estimate_lsd: {len(rads)} detected rings, "
+                    f"{n_sim} simulated rings (firstRing={firstRing}, max_ring={max_ring})")
+        logger.info(f"  estimate_lsd: initialLsd={initialLsd:.1f}, "
+                    f"detected radii (px): {np.round(rads, 1)}")
+        logger.info(f"  estimate_lsd: sim radii (px, first {min(n_sim,10)}): "
+                    f"{np.round(sim_rads[:min(n_sim,10)], 1)}")
+
+        best_lsd = initialLsd
+        best_score = (0, 1e9)  # (match_count, std_of_lsd_estimates) — max count, min std
+        best_hypothesis = -1
+        min_matches = max(3, len(rads) // 2)  # require at least half the rings
+
+        # Try each simulated ring as the identity of the first detected ring
+        for hyp in range(firstRing - 1, n_sim):
+            # Trial Lsd: first detected ring = sim ring 'hyp'
+            trial_lsd = initialLsd * rads[0] / sim_rads[hyp]
+            # At this trial Lsd, what would the sim radii be in pixels?
+            scale = trial_lsd / initialLsd
+            trial_sim_px = sim_rads * scale
+
+            # Count how many detected rings match a simulated ring (within 5%)
+            matches = 0
+            lsds_this = []
+            for det_rad in rads:
+                diffs = np.abs(trial_sim_px[:n_sim] - det_rad)
+                best_j = np.argmin(diffs)
+                rel_err = diffs[best_j] / det_rad
+                if rel_err < 0.05:
+                    matches += 1
+                    lsds_this.append(initialLsd * det_rad / sim_rads[best_j])
+
+            lsd_std = np.std(lsds_this) if len(lsds_this) >= 2 else 1e9
+            # Only consider hypotheses with enough matches
+            if matches >= min_matches:
+                # Primary: lowest std of Lsd estimates (most consistent)
+                if lsd_std < best_score[1] or best_score[0] < min_matches:
+                    best_score = (matches, lsd_std)
+                    best_hypothesis = hyp
+                    best_lsd = np.median(lsds_this)
+
+            logger.debug(f"    hyp: det[0]→sim[{hyp+1}], trial_lsd={trial_lsd:.0f}, "
+                         f"matches={matches}/{len(rads)}, lsd_std={lsd_std:.1f}")
+
+        logger.info(f"  estimate_lsd: best hypothesis: det ring 0 → sim ring {best_hypothesis+1}, "
+                    f"{best_score[0]}/{len(rads)} matches, "
+                    f"lsd_std={best_score[1]:.1f}, Lsd={best_lsd:.1f}")
+        return best_lsd
     except Exception as e:
         logger.error(f"Error estimating Lsd: {e}")
         return initialLsd
@@ -1772,6 +1666,8 @@ def main():
             if 'wavelength' in filename_hints:
                 state.wavelength = filename_hints['wavelength']
 
+            logger.info(f"Using pixel size: {state.px:.1f} µm")
+
             # Read additional params from param file
             if args.params:
                 try:
@@ -2013,8 +1909,11 @@ def main():
             logger.info(f"  Ring radii detection: {t4-t3:.3f}s  (total BC pipeline: {t4-t0:.3f}s)")
 
             if args.lsd_guess == 1000000:
+                # Use estimate_lsd regardless of filename hint;
+                # initialLsd (from filename or default) serves as seed
                 initialLsd = estimate_lsd(rads, sim_rads, sim_rad_ratios,
-                                          firstRing, initialLsd)
+                                          firstRing, initialLsd,
+                                          max_ring=state.max_ring_number)
         else:
             bc_computed = np.flip(np.array(bcg))
 
@@ -2027,6 +1926,11 @@ def main():
             initialLsd, state.rhod)
         sim_rads = np.unique(hkls[:, -1]) / state.px
         sim_rad_ratios = sim_rads / sim_rads[0]
+        # Filter to max_ring for display
+        if state.max_ring_number > 0 and state.max_ring_number < len(sim_rads):
+            sim_rads_display = sim_rads[:state.max_ring_number]
+        else:
+            sim_rads_display = sim_rads
 
         if state.h5_file:
             save_ring_data(thresh, bc_new, sim_rads, state.h5_file)
@@ -2079,10 +1983,10 @@ def main():
         NrPixelsZ = state.nr_pixels_z if state.nr_pixels_z > 0 else 2048
         if DrawPlots and viewer:
             if noMedian == 0:
-                viewer.set_rings(thresh, sim_rads, bc_new, state.rings_to_exclude)
+                viewer.set_rings(thresh, sim_rads_display, bc_new, state.rings_to_exclude)
             else:
                 log_img = np.log(data_corr + 1)
-                viewer.set_rings(log_img, sim_rads, bc_new, state.rings_to_exclude)
+                viewer.set_rings(log_img, sim_rads_display, bc_new, state.rings_to_exclude)
             logger.info("Showing image viewer — click 'Continue' to proceed")
             viewer.show_and_wait()
 
