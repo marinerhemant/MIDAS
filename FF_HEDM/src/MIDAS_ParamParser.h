@@ -100,6 +100,15 @@ typedef struct {
   char darkDatasetName[MAX_LINE_LENGTH];
   char dataDatasetName[MAX_LINE_LENGTH];
 
+  // ── Output / Input paths ──
+  char OutputFolder[MAX_LINE_LENGTH];
+  char ResultFolder[MAX_LINE_LENGTH];
+  char InputFileName[MAX_LINE_LENGTH];   // RefinementFileName, InFileName
+  char GrainsFile[MAX_LINE_LENGTH];
+  char SeedOrientations[MAX_LINE_LENGTH];
+  char DataDirectory[MAX_LINE_LENGTH];
+  char GridFileName[MAX_LINE_LENGTH];
+
   // ── Detector Geometry ──
   int    NrPixelsY, NrPixelsZ, NrPixels;
   double px;
@@ -108,6 +117,11 @@ typedef struct {
   double p0, p1, p2, p3, p4, p5;
   double Wedge;
   double RhoD;
+
+  // ── Multi-detector geometry ──
+  double DetParams[10][10];
+  int    nDetParams;
+  int    BigDetSize;
 
   // ── Crystallography ──
   int    SpaceGroup;
@@ -147,6 +161,10 @@ typedef struct {
   int nRingThresh;
   int RingThresh[MAX_N_RINGS];
   int MaxRingNumber;
+  int nRingNumbers;
+  int RingNumbers[MAX_N_RINGS];
+  int nRingRadii;
+  double RingRadii[MAX_N_RINGS];
 
   // ── Calibration control ──
   double Width, EtaBinSize;
@@ -170,9 +188,54 @@ typedef struct {
   int    PerPanelLsd;
   int    PerPanelDistortion;
 
+  // ── FitPos/Strain control ──
+  int    TopLayer;
+  int    TakeGrainMax;
+  int    LocalMaximaOnly;
+  double MargABC, MargABG;
+  int    DebugMode;
+  double OmeBinSize;
+  double WeightMask, WeightFitRMSE;
+  int    DoDynamicReassignment;
+
   // ── NF/Sample parameters ──
   double MinEta;
   double Hbeam, Rsample;
+  double BeamSize, BeamThickness;
+
+  // ── NF image processing ──
+  int    Deblur;
+  int    DoLoGFilter;
+  int    GaussFiltRadius;
+  double GaussWidth;
+  int    LoGMaskRadius;
+  int    MedFiltRadius;
+  int    BlanketSubtraction;
+  int    SkipImageBinning;
+
+  // ── NF orientation/grid ──
+  double StepSizeOrient;
+  int    NrOrientations;
+  double EResolution;
+  int    nDistances;
+  int    NrFilesPerDistance;
+  double LsdMean;
+  double OrientTol;
+  double Twins;
+  double GBAngle;
+  double MarginOme, MarginEta;
+  double MinConfidence;
+  double MinFracAccept;
+
+  // ── ProcessGrains / Forward ──
+  int    nScans;
+  int    PhaseNr;
+  int    NumPhases;
+  double GridSize;
+  double EdgeLength;
+  int    GridPoints;
+  int    WriteLegacyBin;
+  int    SimulationBatches;
 
   // ── Panel config ──
   int  NPanelsY, NPanelsZ;

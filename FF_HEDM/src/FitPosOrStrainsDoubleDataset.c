@@ -21,6 +21,7 @@
 
 #include "MIDAS_Limits.h"
 #include "MIDAS_Math.h"
+#include "MIDAS_ParamParser.h"
 #include <ctype.h>
 #include <errno.h>
 #include <fcntl.h>
@@ -1706,233 +1707,78 @@ int main(int argc, char *argv[]) {
   }
   double start_time = omp_get_wtime();
   char *ParamFN;
-  FILE *fileParam;
   ParamFN = argv[1];
   char aline[1000];
-  fileParam = fopen(ParamFN, "r");
+
+  // Parse all parameters via shared parser
+  MIDASConfig cfg;
+  if (midas_parse_params(ParamFN, &cfg) != 0)
+    return 1;
+
+  // Unpack into local variables (keeps rest of main unchanged)
   char *str, dummy[1000], outfolder[1000], spotsfilename[1000],
       inputfilename[1000];
   int LowNr;
-  double Wavelength, Lsd;
+  double Wavelength = cfg.Wavelength, Lsd = cfg.Lsd;
   double LatCinT[6];
-  double wedge, MinEta, OmegaRanges[MAXNOMEGARANGES][2],
-      BoxSizes[MAXNOMEGARANGES][4], MaxRingRad;
-  int RingNumbers[200], cs = 0, cs2 = 0, nOmeRanges = 0, nBoxSizes = 0,
-                        CellStruct;
-  double Rsample, Hbeam, RingRadii[200], MargABC = 0.3, MargABG = 0.3;
+  memcpy(LatCinT, cfg.LatticeConstant, sizeof(LatCinT));
+  double wedge = cfg.Wedge, MinEta = cfg.MinEta,
+      OmegaRanges[MAXNOMEGARANGES][2],
+      BoxSizes[MAXNOMEGARANGES][4], MaxRingRad = cfg.RhoD;
+  for (int i = 0; i < cfg.nOmeRanges && i < MAXNOMEGARANGES; i++) {
+    OmegaRanges[i][0] = cfg.OmegaRanges[i][0];
+    OmegaRanges[i][1] = cfg.OmegaRanges[i][1];
+  }
+  int nOmeRanges = cfg.nOmeRanges;
+  for (int i = 0; i < cfg.nBoxSizes && i < MAXNOMEGARANGES; i++) {
+    BoxSizes[i][0] = cfg.BoxSizes[i][0];
+    BoxSizes[i][1] = cfg.BoxSizes[i][1];
+    BoxSizes[i][2] = cfg.BoxSizes[i][2];
+    BoxSizes[i][3] = cfg.BoxSizes[i][3];
+  }
+  int nBoxSizes = cfg.nBoxSizes;
+  int RingNumbers[200], cs = cfg.nRingNumbers, cs2 = cfg.nRingRadii;
+  for (int i = 0; i < cs; i++) RingNumbers[i] = cfg.RingNumbers[i];
+  int CellStruct;
+  double Rsample = cfg.Rsample, Hbeam = cfg.Hbeam, RingRadii[200],
+      MargABC = cfg.MargABC, MargABG = cfg.MargABG;
+  for (int i = 0; i < cs2; i++) RingRadii[i] = cfg.RingRadii[i];
   char OutputFolder[1024], ResultFolder[1024], dataSet2Folder[1024];
+  strcpy(OutputFolder, cfg.OutputFolder);
+  strcpy(ResultFolder, cfg.ResultFolder);
+  strcpy(inputfilename, cfg.InputFileName);
   dataSet2Folder[0] = '\0';
-  int DiscModel = 0, TopLayer = 0, TakeGrainMax = 0;
-  int isGrainsInput = 0;
+  int DiscModel = 0, TopLayer = cfg.TopLayer, TakeGrainMax = cfg.TakeGrainMax;
+  int isGrainsInput = (cfg.GrainsFile[0] != '\0') ? 1 : 0;
   char GrainsFileName[4096];
+  strcpy(GrainsFileName, cfg.GrainsFile);
   double offsetX = 0, offsetY = 0, offsetZ = 0, offsetOmega = 0;
-  int cntrdet = 0;
-  while (fgets(aline, 1000, fileParam) != NULL) {
-    str = "LatticeParameter ";
-    LowNr = strncmp(aline, str, strlen(str));
-    if (LowNr == 0) {
-      sscanf(aline, "%s %lf %lf %lf %lf %lf %lf", dummy, &LatCinT[0],
-             &LatCinT[1], &LatCinT[2], &LatCinT[3], &LatCinT[4], &LatCinT[5]);
-      continue;
-    }
-    str = "LatticeConstant ";
-    LowNr = strncmp(aline, str, strlen(str));
-    if (LowNr == 0) {
-      sscanf(aline, "%s %lf %lf %lf %lf %lf %lf", dummy, &LatCinT[0],
-             &LatCinT[1], &LatCinT[2], &LatCinT[3], &LatCinT[4], &LatCinT[5]);
-      continue;
-    }
-    str = "px ";
-    LowNr = strncmp(aline, str, strlen(str));
-    if (LowNr == 0) {
-      sscanf(aline, "%s %lf", dummy, &pixelsize);
-      continue;
-    }
-    str = "DetParams ";
-    LowNr = strncmp(aline, str, strlen(str));
-    if (LowNr == 0) {
-      sscanf(aline, "%s %lf %lf %lf %lf %lf %lf %lf %lf %lf %lf", dummy,
-             &DetParams[cntrdet][0], &DetParams[cntrdet][1],
-             &DetParams[cntrdet][2], &DetParams[cntrdet][3],
-             &DetParams[cntrdet][4], &DetParams[cntrdet][5],
-             &DetParams[cntrdet][6], &DetParams[cntrdet][7],
-             &DetParams[cntrdet][8], &DetParams[cntrdet][9]);
-      cntrdet++;
-      continue;
-    }
-    str = "BigDetSize ";
-    LowNr = strncmp(aline, str, strlen(str));
-    if (LowNr == 0) {
-      sscanf(aline, "%s %d", dummy, &BigDetSize);
-      continue;
-    }
-    str = "Wavelength ";
-    LowNr = strncmp(aline, str, strlen(str));
-    if (LowNr == 0) {
-      sscanf(aline, "%s %lf", dummy, &Wavelength);
-      continue;
-    }
-    str = "Distance ";
-    LowNr = strncmp(aline, str, strlen(str));
-    if (LowNr == 0) {
-      sscanf(aline, "%s %lf", dummy, &Lsd);
-      continue;
-    }
-    str = "Lsd ";
-    LowNr = strncmp(aline, str, strlen(str));
-    if (LowNr == 0) {
-      sscanf(aline, "%s %lf", dummy, &Lsd);
-      continue;
-    }
-    str = "MaxRingRad ";
-    LowNr = strncmp(aline, str, strlen(str));
-    if (LowNr == 0) {
-      sscanf(aline, "%s %lf", dummy, &MaxRingRad);
-      continue;
-    }
-    str = "ExcludePoleAngle ";
-    LowNr = strncmp(aline, str, strlen(str));
-    if (LowNr == 0) {
-      sscanf(aline, "%s %lf", dummy, &MinEta);
-      continue;
-    }
-    str = "MinEta ";
-    LowNr = strncmp(aline, str, strlen(str));
-    if (LowNr == 0) {
-      sscanf(aline, "%s %lf", dummy, &MinEta);
-      continue;
-    }
-    str = "TopLayer ";
-    LowNr = strncmp(aline, str, strlen(str));
-    if (LowNr == 0) {
-      sscanf(aline, "%s %d", dummy, &TopLayer);
-      continue;
-    }
-    str = "Hbeam ";
-    LowNr = strncmp(aline, str, strlen(str));
-    if (LowNr == 0) {
-      sscanf(aline, "%s %lf", dummy, &Hbeam);
-      continue;
-    }
-    str = "Rsample ";
-    LowNr = strncmp(aline, str, strlen(str));
-    if (LowNr == 0) {
-      sscanf(aline, "%s %lf", dummy, &Rsample);
-      continue;
-    }
-    str = "Wedge ";
-    LowNr = strncmp(aline, str, strlen(str));
-    if (LowNr == 0) {
-      sscanf(aline, "%s %lf", dummy, &wedge);
-      continue;
-    }
-    str = "RingNumbers ";
-    LowNr = strncmp(aline, str, strlen(str));
-    if (LowNr == 0) {
-      sscanf(aline, "%s %d", dummy, &RingNumbers[cs]);
-      cs++;
-      continue;
-    }
-    str = "RingRadii ";
-    LowNr = strncmp(aline, str, strlen(str));
-    if (LowNr == 0) {
-      sscanf(aline, "%s %lf", dummy, &RingRadii[cs2]);
-      cs2++;
-      continue;
-    }
-    str = "OmegaRange ";
-    LowNr = strncmp(aline, str, strlen(str));
-    if (LowNr == 0) {
-      sscanf(aline, "%s %lf %lf", dummy, &OmegaRanges[nOmeRanges][0],
-             &OmegaRanges[nOmeRanges][1]);
-      nOmeRanges++;
-      continue;
-    }
-    str = "BoxSize ";
-    LowNr = strncmp(aline, str, strlen(str));
-    if (LowNr == 0) {
-      sscanf(aline, "%s %lf %lf %lf %lf", dummy, &BoxSizes[nBoxSizes][0],
-             &BoxSizes[nBoxSizes][1], &BoxSizes[nBoxSizes][2],
-             &BoxSizes[nBoxSizes][3]);
-      nBoxSizes++;
-      continue;
-    }
-    str = "OutputFolder ";
-    LowNr = strncmp(aline, str, strlen(str));
-    if (LowNr == 0) {
-      sscanf(aline, "%s %s", dummy, OutputFolder);
-      continue;
-    }
-    str = "GrainsFile ";
-    LowNr = strncmp(aline, str, strlen(str));
-    if (LowNr == 0) {
-      isGrainsInput = 1;
-      sscanf(aline, "%s %s", dummy, GrainsFileName);
-      continue;
-    }
-    str = "ResultFolder ";
-    LowNr = strncmp(aline, str, strlen(str));
-    if (LowNr == 0) {
-      sscanf(aline, "%s %s", dummy, ResultFolder);
-      continue;
-    }
-    str = "RefinementFileName ";
-    LowNr = strncmp(aline, str, strlen(str));
-    if (LowNr == 0) {
-      sscanf(aline, "%s %s", dummy, inputfilename);
-      continue;
-    }
-    str = "Dataset2Folder ";
-    LowNr = strncmp(aline, str, strlen(str));
-    if (LowNr == 0) {
-      sscanf(aline, "%s %s %lf %lf %lf %lf", dummy, dataSet2Folder, &offsetX,
-             &offsetY, &offsetZ, &offsetOmega);
-      continue;
-    }
-    str = "TakeGrainMax ";
-    LowNr = strncmp(aline, str, strlen(str));
-    if (LowNr == 0) {
-      sscanf(aline, "%s %d", dummy, &TakeGrainMax);
-      continue;
-    }
-    str = "MargABC ";
-    LowNr = strncmp(aline, str, strlen(str));
-    if (LowNr == 0) {
-      sscanf(aline, "%s %lf", dummy, &MargABC);
-      continue;
-    }
-    str = "MargABG ";
-    LowNr = strncmp(aline, str, strlen(str));
-    if (LowNr == 0) {
-      sscanf(aline, "%s %lf", dummy, &MargABG);
-      continue;
-    }
-    str = "EtaBinSize ";
-    LowNr = strncmp(aline, str, strlen(str));
-    if (LowNr == 0) {
-      sscanf(aline, "%s %lf", dummy, &gEtaBinSize);
-      continue;
-    }
-    str = "OmeBinSize ";
-    LowNr = strncmp(aline, str, strlen(str));
-    if (LowNr == 0) {
-      sscanf(aline, "%s %lf", dummy, &gOmeBinSize);
-      continue;
-    }
-    str = "WeightMask ";
-    LowNr = strncmp(aline, str, strlen(str));
-    if (LowNr == 0) {
-      sscanf(aline, "%s %lf", dummy, &WeightMask);
-      continue;
-    }
-    str = "WeightFitRMSE ";
-    LowNr = strncmp(aline, str, strlen(str));
-    if (LowNr == 0) {
-      sscanf(aline, "%s %lf", dummy, &WeightFitRMSE);
-      continue;
+  pixelsize = cfg.px;
+  gEtaBinSize = cfg.EtaBinSize;
+  gOmeBinSize = cfg.OmeBinSize;
+  WeightMask = cfg.WeightMask;
+  WeightFitRMSE = cfg.WeightFitRMSE;
+  int cntrdet = cfg.nDetParams;
+  for (int i = 0; i < cntrdet; i++)
+    for (int j = 0; j < 10; j++)
+      DetParams[i][j] = cfg.DetParams[i][j];
+  BigDetSize = cfg.BigDetSize;
+
+  // Dataset2Folder is too specialized for the generic parser — handle separately
+  {
+    FILE *fp2 = fopen(ParamFN, "r");
+    if (fp2) {
+      char line2[1000];
+      while (fgets(line2, 1000, fp2) != NULL) {
+        if (key_match(line2, "Dataset2Folder")) {
+          sscanf(line2, "%*s %s %lf %lf %lf %lf", dataSet2Folder,
+                 &offsetX, &offsetY, &offsetZ, &offsetOmega);
+          break;
+        }
+      }
+      fclose(fp2);
     }
   }
-  fclose(fileParam);
   double *AllSpots;
   int fd;
   struct stat s;

@@ -26,6 +26,11 @@ void midas_config_defaults(MIDASConfig *cfg) {
   cfg->lineoutRMin = 10.0;
   sprintf(cfg->darkDatasetName, "exchange/dark");
   sprintf(cfg->dataDatasetName, "exchange/data");
+  cfg->MargABC = 0.3;
+  cfg->MargABG = 0.3;
+  cfg->NrFilesPerDistance = 1;
+  cfg->NumPhases = 1;
+  cfg->MinFracAccept = 0.5;
 }
 
 void midas_apply_tol_defaults(MIDASConfig *cfg) {
@@ -74,6 +79,16 @@ int midas_parse_params(const char *filename, MIDASConfig *cfg) {
     if (param_str(aline, "dataDataset", cfg->dataDatasetName, sizeof(cfg->dataDatasetName))) continue;
     if (param_str(aline, "dataLoc", cfg->dataDatasetName, sizeof(cfg->dataDatasetName))) continue;
 
+    // ── Output / Input paths ──
+    if (param_str(aline, "OutputFolder", cfg->OutputFolder, sizeof(cfg->OutputFolder))) continue;
+    if (param_str(aline, "ResultFolder", cfg->ResultFolder, sizeof(cfg->ResultFolder))) continue;
+    if (param_str(aline, "RefinementFileName", cfg->InputFileName, sizeof(cfg->InputFileName))) continue;
+    if (param_str(aline, "InFileName", cfg->InputFileName, sizeof(cfg->InputFileName))) continue;
+    if (param_str(aline, "GrainsFile", cfg->GrainsFile, sizeof(cfg->GrainsFile))) continue;
+    if (param_str(aline, "SeedOrientations", cfg->SeedOrientations, sizeof(cfg->SeedOrientations))) continue;
+    if (param_str(aline, "DataDirectory", cfg->DataDirectory, sizeof(cfg->DataDirectory))) continue;
+    if (param_str(aline, "GridFileName", cfg->GridFileName, sizeof(cfg->GridFileName))) continue;
+
     // ── Detector Geometry ──
     if (key_match(aline, "NrPixels")) {
       sscanf(aline, "%*s %d", &cfg->NrPixelsY);
@@ -84,6 +99,7 @@ int midas_parse_params(const char *filename, MIDASConfig *cfg) {
     if (param_int(aline, "NrPixelsZ", &cfg->NrPixelsZ)) continue;
     if (param_double(aline, "px", &cfg->px)) continue;
     if (param_double(aline, "Lsd", &cfg->Lsd)) continue;
+    if (param_double(aline, "Distance", &cfg->Lsd)) continue;  // alias
     if (param_double2(aline, "BC", &cfg->ybc, &cfg->zbc)) continue;
     if (param_double(aline, "tx", &cfg->tx)) continue;
     if (param_double(aline, "ty", &cfg->ty)) continue;
@@ -96,6 +112,21 @@ int midas_parse_params(const char *filename, MIDASConfig *cfg) {
     if (param_double(aline, "p5", &cfg->p5)) continue;
     if (param_double(aline, "Wedge", &cfg->Wedge)) continue;
     if (param_double(aline, "RhoD", &cfg->RhoD)) continue;
+
+    // ── Multi-detector geometry ──
+    if (key_match(aline, "DetParams")) {
+      if (cfg->nDetParams < 10) {
+        sscanf(aline, "%*s %lf %lf %lf %lf %lf %lf %lf %lf %lf %lf",
+               &cfg->DetParams[cfg->nDetParams][0], &cfg->DetParams[cfg->nDetParams][1],
+               &cfg->DetParams[cfg->nDetParams][2], &cfg->DetParams[cfg->nDetParams][3],
+               &cfg->DetParams[cfg->nDetParams][4], &cfg->DetParams[cfg->nDetParams][5],
+               &cfg->DetParams[cfg->nDetParams][6], &cfg->DetParams[cfg->nDetParams][7],
+               &cfg->DetParams[cfg->nDetParams][8], &cfg->DetParams[cfg->nDetParams][9]);
+        cfg->nDetParams++;
+      }
+      continue;
+    }
+    if (param_int(aline, "BigDetSize", &cfg->BigDetSize)) continue;
 
     // ── Crystallography ──
     if (param_int(aline, "SpaceGroup", &cfg->SpaceGroup)) continue;
@@ -168,6 +199,11 @@ int midas_parse_params(const char *filename, MIDASConfig *cfg) {
         sscanf(aline, "%*s %d", &cfg->RingsExclude[cfg->nRingsExclude++]);
       continue;
     }
+    if (key_match(aline, "RingsToReject")) {  // alias for RingsToExclude
+      if (cfg->nRingsExclude < MAX_N_RINGS)
+        sscanf(aline, "%*s %d", &cfg->RingsExclude[cfg->nRingsExclude++]);
+      continue;
+    }
     if (key_match(aline, "RingThresh")) {
       if (cfg->nRingThresh < MAX_N_RINGS)
         sscanf(aline, "%*s %d", &cfg->RingThresh[cfg->nRingThresh++]);
@@ -175,6 +211,16 @@ int midas_parse_params(const char *filename, MIDASConfig *cfg) {
     }
     if (param_int(aline, "MaxRingNumber", &cfg->MaxRingNumber)) continue;
     if (param_double(aline, "MaxRingRad", &cfg->RhoD)) continue;
+    if (key_match(aline, "RingNumbers")) {
+      if (cfg->nRingNumbers < MAX_N_RINGS)
+        sscanf(aline, "%*s %d", &cfg->RingNumbers[cfg->nRingNumbers++]);
+      continue;
+    }
+    if (key_match(aline, "RingRadii")) {
+      if (cfg->nRingRadii < MAX_N_RINGS)
+        sscanf(aline, "%*s %lf", &cfg->RingRadii[cfg->nRingRadii++]);
+      continue;
+    }
 
     // ── Optimization Tolerances ──
     if (param_double(aline, "tolTilts", &cfg->tolTilts)) continue;
@@ -242,11 +288,61 @@ int midas_parse_params(const char *filename, MIDASConfig *cfg) {
     if (param_int(aline, "PerPanelDistortion", &cfg->PerPanelDistortion)) continue;
     if (param_int(aline, "FixPanelID", &cfg->FixPanelID)) continue;
 
+    // ── FitPos/Strain control ──
+    if (param_int(aline, "TopLayer", &cfg->TopLayer)) continue;
+    if (param_int(aline, "TakeGrainMax", &cfg->TakeGrainMax)) continue;
+    if (param_int(aline, "LocalMaximaOnly", &cfg->LocalMaximaOnly)) continue;
+    if (param_double(aline, "MargABC", &cfg->MargABC)) continue;
+    if (param_double(aline, "MargABG", &cfg->MargABG)) continue;
+    if (param_int(aline, "DebugMode", &cfg->DebugMode)) continue;
+    if (param_double(aline, "OmeBinSize", &cfg->OmeBinSize)) continue;
+    if (param_double(aline, "WeightMask", &cfg->WeightMask)) continue;
+    if (param_double(aline, "WeightFitRMSE", &cfg->WeightFitRMSE)) continue;
+    if (param_int(aline, "DoDynamicReassignment", &cfg->DoDynamicReassignment)) continue;
+
     // ── NF/Sample parameters ──
     if (param_double(aline, "ExcludePoleAngle", &cfg->MinEta)) continue;
     if (param_double(aline, "MinEta", &cfg->MinEta)) continue;
     if (param_double(aline, "Hbeam", &cfg->Hbeam)) continue;
     if (param_double(aline, "Rsample", &cfg->Rsample)) continue;
+    if (param_double(aline, "BeamSize", &cfg->BeamSize)) continue;
+    if (param_double(aline, "BeamThickness", &cfg->BeamThickness)) continue;
+
+    // ── NF image processing ──
+    if (param_int(aline, "Deblur", &cfg->Deblur)) continue;
+    if (param_int(aline, "DoLoGFilter", &cfg->DoLoGFilter)) continue;
+    if (param_int(aline, "GaussFiltRadius", &cfg->GaussFiltRadius)) continue;
+    if (param_double(aline, "GaussWidth", &cfg->GaussWidth)) continue;
+    if (param_int(aline, "LoGMaskRadius", &cfg->LoGMaskRadius)) continue;
+    if (param_int(aline, "MedFiltRadius", &cfg->MedFiltRadius)) continue;
+    if (param_int(aline, "BlanketSubtraction", &cfg->BlanketSubtraction)) continue;
+    if (param_int(aline, "SkipImageBinning", &cfg->SkipImageBinning)) continue;
+
+    // ── NF orientation/grid ──
+    if (param_double(aline, "StepSizeOrient", &cfg->StepSizeOrient)) continue;
+    if (param_double(aline, "StepsizeOrient", &cfg->StepSizeOrient)) continue;  // alias
+    if (param_int(aline, "NrOrientations", &cfg->NrOrientations)) continue;
+    if (param_double(aline, "EResolution", &cfg->EResolution)) continue;
+    if (param_int(aline, "nDistances", &cfg->nDistances)) continue;
+    if (param_int(aline, "NrFilesPerDistance", &cfg->NrFilesPerDistance)) continue;
+    if (param_double(aline, "LsdMean", &cfg->LsdMean)) continue;
+    if (param_double(aline, "OrientTol", &cfg->OrientTol)) continue;
+    if (param_double(aline, "Twins", &cfg->Twins)) continue;
+    if (param_double(aline, "GBAngle", &cfg->GBAngle)) continue;
+    if (param_double(aline, "MarginOme", &cfg->MarginOme)) continue;
+    if (param_double(aline, "MarginEta", &cfg->MarginEta)) continue;
+    if (param_double(aline, "MinConfidence", &cfg->MinConfidence)) continue;
+    if (param_double(aline, "MinFracAccept", &cfg->MinFracAccept)) continue;
+
+    // ── ProcessGrains / Forward ──
+    if (param_int(aline, "nScans", &cfg->nScans)) continue;
+    if (param_int(aline, "PhaseNr", &cfg->PhaseNr)) continue;
+    if (param_int(aline, "NumPhases", &cfg->NumPhases)) continue;
+    if (param_double(aline, "GridSize", &cfg->GridSize)) continue;
+    if (param_double(aline, "EdgeLength", &cfg->EdgeLength)) continue;
+    if (param_int(aline, "GridPoints", &cfg->GridPoints)) continue;
+    if (param_int(aline, "WriteLegacyBin", &cfg->WriteLegacyBin)) continue;
+    if (param_int(aline, "SimulationBatches", &cfg->SimulationBatches)) continue;
 
     // ── Panel config ──
     if (param_int(aline, "NPanelsY", &cfg->NPanelsY)) continue;
