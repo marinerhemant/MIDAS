@@ -177,6 +177,9 @@ class CalibState:
     # Image transforms
     im_trans_opt: list = field(default_factory=lambda: [0])
 
+    # Extra params from user's param file (pass-through to CalibrantPanelShiftsOMP)
+    extra_params: dict = field(default_factory=dict)
+
     @property
     def bc(self) -> str:
         """Backward-compat: 'ybc zbc' string for param file writing."""
@@ -1313,6 +1316,13 @@ def runMIDAS(rawFN, state, n_iterations=40, mult_factor=2.5,
             if state.mask_file:
                 pf.write(f'MaskFile {state.mask_file}\n')
 
+            # Pass-through extra params from user's param file (last-wins
+            # semantics: appending at the end overrides any earlier defaults)
+            if state.extra_params:
+                pf.write('\n# Extra parameters from user param file\n')
+                for k, v in state.extra_params.items():
+                    pf.write(f'{k} {v}\n')
+
         # Run CalibrantPanelShiftsOMP with all available CPUs
         calibrant_exe = os.path.join(INSTALL_PATH, 'FF_HEDM/bin/CalibrantPanelShiftsOMP')
         calibrant_cmd = f"{calibrant_exe} {ps_file} {n_cpus}"
@@ -1350,8 +1360,8 @@ def _make_temp_param_file(args, calibrant, filename_hints):
     This allows running without --params when --px and calibrant/energy
     info are available (from filename or defaults).
     """
-    px = args.px if args.px > 0 else 200.0
-    wavelength = args.wavelength if args.wavelength > 0 else filename_hints.get('wavelength', 0.0)
+    px = args.px if args.px is not None else 200.0
+    wavelength = args.wavelength if args.wavelength is not None else filename_hints.get('wavelength', 0.0)
     latc = calibrant['lattice']
     sg = calibrant['space_group']
 
@@ -1369,7 +1379,7 @@ def _make_temp_param_file(args, calibrant, filename_hints):
         f.write(f"Wavelength {wavelength}\n")
         f.write(f"px {px}\n")
         f.write(f"SkipFrame 0\n")
-        f.write(f"tx {args.tx}\n")
+        f.write(f"tx {args.tx if args.tx is not None else 0.0}\n")
     logger.info(f"Auto-generated temp param file: {temp_fn} "
                 f"(SG={sg}, px={px}, λ={wavelength:.5f}Å, {calibrant['name']})")
     return temp_fn
@@ -1413,13 +1423,13 @@ def main():
                             help='Per-ring outlier removal iterations')
         parser.add_argument('--first-ring', '-FirstRingNr', type=int, default=1,
                             help='First ring number to use')
-        parser.add_argument('--max-ring', '-MaxRingNumber', type=int, default=0,
-                            help='Maximum ring number to use (0 = no limit)')
-        parser.add_argument('--fit-parallax', type=int, default=0,
+        parser.add_argument('--max-ring', '-MaxRingNumber', type=int, default=None,
+                            help='Maximum ring number to use (0 = no limit, default: auto)')
+        parser.add_argument('--fit-parallax', type=int, default=None,
                             help='Fit parallax correction (0=no, 1=yes)')
-        parser.add_argument('--parallax-guess', type=float, default=0.0,
+        parser.add_argument('--parallax-guess', type=float, default=None,
                             help='Initial guess for parallax (µm)')
-        parser.add_argument('--tol-parallax', type=float, default=200.0,
+        parser.add_argument('--tol-parallax', type=float, default=None,
                             help='Tolerance for parallax bounds (µm)')
         parser.add_argument('--trimmed-mean-fraction', type=float, default=0.75,
                             help='Fraction of points to keep in optimizer objective '
@@ -1431,18 +1441,18 @@ def main():
                             help='Azimuthal bin size (degrees)')
 
         # Geometry guesses
-        parser.add_argument('--lsd-guess', '-LsdGuess', type=float, default=1000000,
-                            help='Initial guess for detector distance (µm)')
-        parser.add_argument('--bc-guess', '-BCGuess', type=float, default=[0.0, 0.0], nargs=2,
+        parser.add_argument('--lsd-guess', '-LsdGuess', type=float, default=None,
+                            help='Initial guess for detector distance (µm, default: 1000000)')
+        parser.add_argument('--bc-guess', '-BCGuess', type=float, default=None, nargs=2,
                             help='Initial guess for beam center [Y Z] (pixels)')
-        parser.add_argument('--px', type=float, default=0,
+        parser.add_argument('--px', type=float, default=None,
                             help='Pixel size in µm (e.g. 200, 172). If set, no param file needed for non-Zarr inputs.')
-        parser.add_argument('--tx', type=float, default=0.0,
+        parser.add_argument('--tx', type=float, default=None,
                             help='Detector tilt tx (radians, not fitted but passed to CalibrantPanelShiftsOMP)')
-        parser.add_argument('--wavelength', '-wl', type=float, default=0.0,
+        parser.add_argument('--wavelength', '-wl', type=float, default=None,
                             help='X-ray wavelength in Angstroms (e.g. 0.2066). Overrides filename and param file.')
-        parser.add_argument('--material', '-mat', type=str, default='',
-                            choices=['', 'ceo2', 'lab6'],
+        parser.add_argument('--material', '-mat', type=str, default=None,
+                            choices=[None, 'ceo2', 'lab6'],
                             help='Calibrant material: ceo2 or lab6. Overrides filename detection.')
         parser.add_argument('--mask', '-MaskFile', type=str, default='',
                             help='Mask TIFF file for bad/gap pixels (passed as MaskFile to CalibrantPanelShiftsOMP)')
@@ -1511,10 +1521,15 @@ def main():
         threshold = args.threshold
         noMedian = args.no_median
         n_cpus = args.cpus if args.cpus > 0 else os.cpu_count() or 8
-        state.max_ring_number = args.max_ring
-        state.fit_parallax = args.fit_parallax
-        state.parallax_in = args.parallax_guess
-        state.tol_parallax = args.tol_parallax
+        # Initialize from CLI (None = not provided; will be filled from param file or defaults later)
+        if args.max_ring is not None:
+            state.max_ring_number = args.max_ring
+        if args.fit_parallax is not None:
+            state.fit_parallax = args.fit_parallax
+        if args.parallax_guess is not None:
+            state.parallax_in = args.parallax_guess
+        if args.tol_parallax is not None:
+            state.tol_parallax = args.tol_parallax
 
         # HDF5 output
         if args.save_hdf:
@@ -1526,15 +1541,16 @@ def main():
 
         # Constants
         mrr = 2000000  # maximum radius to simulate rings
-        initialLsd = args.lsd_guess
+        initialLsd = args.lsd_guess if args.lsd_guess is not None else 1000000.0
+        _lsd_from_cli = args.lsd_guess is not None
         minArea = 300
         maxW = 1000
 
+        # Track which params came from the param file (vs auto-detection)
+        param_file_keys = set()
+
         # Parse energy/distance hints from filename
         filename_hints = parse_filename_hints(args.data)
-        if 'lsd' in filename_hints and args.lsd_guess == 1000000:
-            initialLsd = filename_hints['lsd']
-            logger.info(f"Using Lsd from filename: {initialLsd:.0f} µm")
 
         logger.info(f"Starting automated calibration for: {dataFN}")
 
@@ -1594,7 +1610,7 @@ def main():
                 state.skip_frame = dataF[f'{ap}/SkipFrame'][0].item()
             if f'{ap}/PixelSize' in dataF:
                 state.px = dataF[f'{ap}/PixelSize'][0].item()
-            elif args.px > 0:
+            elif args.px is not None:
                 state.px = args.px
             if f'{ap}/LatticeParameter' in dataF:
                 state.latc = dataF[f'{ap}/LatticeParameter'][:]
@@ -1611,100 +1627,225 @@ def main():
                 if isinstance(mf, bytes): mf = mf.decode()
                 state.mask_file = str(mf)
         else:
-            # Non-Zarr: use calibrant defaults and CLI args
+            # Non-Zarr: read param file FIRST, then auto-detect only
+            # for values not explicitly set by the param file.
             state.space_group = calibrant['space_group']
-            state.latc = calibrant['lattice']
-            if args.px > 0:
-                state.px = args.px
-            elif convertFile == 4:
-                # Auto-sense pixel size from CBF header (Pilatus sub-header)
-                from read_cbf import read_cbf_metadata
-                cbf_hdr = read_cbf_metadata(dataFN)
-                # Pixel_size lives inside the 'pilatus' sub-header dict
-                pilatus_hdr = cbf_hdr.get('pilatus', {})
-                if not isinstance(pilatus_hdr, dict):
-                    pilatus_hdr = {}
-                px_vals = pilatus_hdr.get('Pixel_size', None)
-                if px_vals and isinstance(px_vals, (list, tuple)) and len(px_vals) > 0:
-                    cbf_px_m = float(px_vals[0])
-                    if cbf_px_m > 0:
-                        state.px = cbf_px_m * 1e6  # meters → microns
-                        logger.info(f"Auto-sensed pixel size from CBF header: {state.px:.1f} µm")
-                    else:
-                        state.px = 200.0
-                else:
-                    state.px = 200.0
-            elif state.px == 0:
-                # Auto-detect pixel size from detector type
-                base_lower = Path(dataFN).name.lower()
-                fn_ext = Path(dataFN).suffix.lower()
-                if '.vrx' in base_lower or 'varex' in base_lower:
-                    state.px = 150.0
-                    logger.info("Auto-detected Varex detector → pixel size 150 µm")
-                elif fn_ext in ('.tif', '.tiff', '.h5', '.hdf5', '.hdf', '.nxs'):
-                    # Check for Pilatus dimensions (1475×1679)
-                    _pil_detected = False
-                    try:
-                        if fn_ext in ('.tif', '.tiff'):
-                            _img = Image.open(dataFN)
-                            _shape = (_img.size[1], _img.size[0])  # (H, W)
-                        else:
-                            with h5py.File(dataFN, 'r') as _f:
-                                _dloc = args.data_loc or 'exchange/data'
-                                _shape = _f[_dloc].shape[-2:]
-                        if sorted(_shape) == [1475, 1679]:
-                            state.px = 172.0
-                            _pil_detected = True
-                            logger.info("Auto-detected Pilatus detector "
-                                        f"({_shape[0]}×{_shape[1]}) → pixel size 172 µm")
-                    except Exception:
-                        pass
-                    if not _pil_detected:
-                        state.px = 200.0
-                else:
-                    state.px = 200.0  # GE and other raw formats
-            if 'wavelength' in filename_hints:
-                state.wavelength = filename_hints['wavelength']
+            state.latc = calibrant['lattice'].copy()
 
-            logger.info(f"Using pixel size: {state.px:.1f} µm")
+            # Keys we explicitly parse and apply to state/initialLsd
+            _KNOWN_PARAM_KEYS = {
+                'Wavelength', 'SpaceGroup', 'LatticeConstant', 'LatticeParameter',
+                'px', 'lsd', 'Lsd', 'BC', 'bc', 'tx', 'NrPixels', 'NrPixelsY',
+                'NrPixelsZ', 'RhoD', 'rhod',
+                # Second-pass keys also parsed here now:
+                'RingsToExclude', 'MaxRingNumber', 'FitParallax', 'Parallax',
+                'tolParallax', 'MaskFile', 'MaskFN',
+                'ImTransOpt', 'BadPxIntensity', 'GapIntensity',
+                'Dark', 'dataLoc', 'darkLoc', 'skipFrame', 'SkipFrame',
+                'DataType',
+            }
 
-            # Read additional params from param file
+            # --- Single-pass param file read ---
             if args.params:
                 try:
                     with open(args.params) as pf:
                         for line in pf:
-                            parts = line.split()
+                            line_stripped = line.strip()
+                            if not line_stripped or line_stripped.startswith('#'):
+                                continue
+                            parts = line_stripped.split()
                             if len(parts) < 2:
                                 continue
                             key = parts[0]
+
+                            # --- Explicitly parsed keys ---
                             if key == 'Wavelength':
                                 state.wavelength = float(parts[1])
+                                param_file_keys.add('Wavelength')
                             elif key == 'SpaceGroup':
                                 state.space_group = int(parts[1])
+                                param_file_keys.add('SpaceGroup')
                             elif key in ('LatticeConstant', 'LatticeParameter'):
                                 state.latc = np.array([float(x) for x in parts[1:7]])
+                                param_file_keys.add('LatticeParameter')
                             elif key == 'px':
-                                state.px = float(parts[1])
+                                if args.px is None:  # CLI not provided → use param file
+                                    state.px = float(parts[1])
+                                param_file_keys.add('px')
+                            elif key in ('lsd', 'Lsd'):
+                                if not _lsd_from_cli:  # CLI not provided → use param file
+                                    initialLsd = float(parts[1])
+                                param_file_keys.add('lsd')
+                            elif key in ('BC', 'bc'):
+                                if len(parts) >= 3 and args.bc_guess is None:
+                                    args.bc_guess = [float(parts[1]), float(parts[2])]
+                                param_file_keys.add('BC')
                             elif key == 'tx':
-                                state.tx = float(parts[1])
+                                if args.tx is None:
+                                    state.tx = float(parts[1])
+                                param_file_keys.add('tx')
                             elif key in ('NrPixels', 'NrPixelsY'):
                                 state.nr_pixels_y = int(parts[1])
+                                param_file_keys.add('NrPixelsY')
                             elif key == 'NrPixelsZ':
                                 state.nr_pixels_z = int(parts[1])
+                                param_file_keys.add('NrPixelsZ')
+                            elif key in ('RhoD', 'rhod'):
+                                state.rhod = float(parts[1])
+                                param_file_keys.add('RhoD')
+                            elif key == 'RingsToExclude':
+                                state.rings_to_exclude.append(int(parts[1]))
+                                param_file_keys.add('RingsToExclude')
+                            elif key == 'MaxRingNumber':
+                                if args.max_ring is None:  # CLI not provided
+                                    state.max_ring_number = int(parts[1])
+                                param_file_keys.add('MaxRingNumber')
+                            elif key == 'FitParallax':
+                                if args.fit_parallax is None:
+                                    state.fit_parallax = int(parts[1])
+                                param_file_keys.add('FitParallax')
+                            elif key == 'Parallax':
+                                if args.parallax_guess is None:
+                                    state.parallax_in = float(parts[1])
+                                param_file_keys.add('Parallax')
+                            elif key == 'tolParallax':
+                                if args.tol_parallax is None:
+                                    state.tol_parallax = float(parts[1])
+                                param_file_keys.add('tolParallax')
+                            elif key in ('MaskFile', 'MaskFN'):
+                                if not args.mask:
+                                    state.mask_file = parts[1]
+                                param_file_keys.add('MaskFile')
+                            elif key == 'ImTransOpt':
+                                # Collect all ImTransOpt lines
+                                if 'ImTransOpt' not in param_file_keys:
+                                    state.im_trans_opt = []
+                                state.im_trans_opt.append(int(parts[1]))
+                                param_file_keys.add('ImTransOpt')
+                            elif key == 'BadPxIntensity':
+                                state.bad_px_intensity = float(parts[1])
+                                param_file_keys.add('BadPxIntensity')
+                            elif key == 'GapIntensity':
+                                state.gap_intensity = float(parts[1])
+                                param_file_keys.add('GapIntensity')
+                            elif key == 'Dark':
+                                if not darkFN:
+                                    darkFN = parts[1]
+                                param_file_keys.add('Dark')
+                            elif key == 'dataLoc':
+                                if not state.data_loc:
+                                    state.data_loc = parts[1]
+                                param_file_keys.add('dataLoc')
+                            elif key == 'darkLoc':
+                                if not state.dark_loc:
+                                    state.dark_loc = parts[1]
+                                param_file_keys.add('darkLoc')
+                            elif key in ('skipFrame', 'SkipFrame'):
+                                state.skip_frame = int(parts[1])
+                                param_file_keys.add('SkipFrame')
+                            elif key == 'DataType':
+                                if args.data_type < 0:  # CLI not provided
+                                    state.midas_dtype = int(parts[1])
+                                param_file_keys.add('DataType')
+                            else:
+                                # Unrecognized key → store for pass-through
+                                # to CalibrantPanelShiftsOMP
+                                if key not in state.extra_params:
+                                    state.extra_params[key] = ' '.join(parts[1:])
+                                    param_file_keys.add(key)
+
+                    if param_file_keys:
+                        logger.info(f"Loaded from parameter file: {sorted(param_file_keys)}")
+                    if state.extra_params:
+                        logger.info(f"Pass-through params for CalibrantPanelShiftsOMP: "
+                                    f"{sorted(state.extra_params.keys())}")
                 except Exception as e:
                     logger.warning(f"Could not fully parse param file: {e}")
 
-        # CLI overrides
-        if args.tx != 0.0:
-            state.tx = args.tx
-        if args.wavelength > 0:
-            state.wavelength = args.wavelength
-            logger.info(f"Wavelength from --wavelength: {state.wavelength:.6f} Å")
-        if args.material:
-            state.space_group = calibrant['space_group']
-            state.latc = calibrant['lattice']
-            logger.info(f"Material from --material: {calibrant['name']} "
-                        f"(SG={state.space_group}, a={state.latc[0]:.4f})")
+            # --- px: CLI > param file > auto-detect ---
+            if args.px is not None:
+                state.px = args.px
+                logger.info(f"Using px from --px: {state.px:.1f} µm")
+            elif 'px' not in param_file_keys:
+                if convertFile == 4:
+                    from read_cbf import read_cbf_metadata
+                    cbf_hdr = read_cbf_metadata(dataFN)
+                    pilatus_hdr = cbf_hdr.get('pilatus', {})
+                    if not isinstance(pilatus_hdr, dict):
+                        pilatus_hdr = {}
+                    px_vals = pilatus_hdr.get('Pixel_size', None)
+                    if px_vals and isinstance(px_vals, (list, tuple)) and len(px_vals) > 0:
+                        cbf_px_m = float(px_vals[0])
+                        if cbf_px_m > 0:
+                            state.px = cbf_px_m * 1e6
+                            logger.info(f"Auto-sensed pixel size from CBF header: {state.px:.1f} µm")
+                        else:
+                            state.px = 200.0
+                    else:
+                        state.px = 200.0
+                elif state.px == 200.0:  # still at default
+                    base_lower = Path(dataFN).name.lower()
+                    fn_ext = Path(dataFN).suffix.lower()
+                    if '.vrx' in base_lower or 'varex' in base_lower:
+                        state.px = 150.0
+                        logger.info("Auto-detected Varex detector → pixel size 150 µm")
+                    elif fn_ext in ('.tif', '.tiff', '.h5', '.hdf5', '.hdf', '.nxs'):
+                        _pil_detected = False
+                        try:
+                            if fn_ext in ('.tif', '.tiff'):
+                                _img = Image.open(dataFN)
+                                _shape = (_img.size[1], _img.size[0])
+                            else:
+                                with h5py.File(dataFN, 'r') as _f:
+                                    _dloc = args.data_loc or 'exchange/data'
+                                    _shape = _f[_dloc].shape[-2:]
+                            if sorted(_shape) == [1475, 1679]:
+                                state.px = 172.0
+                                _pil_detected = True
+                                logger.info(f"Auto-detected Pilatus detector "
+                                            f"({_shape[0]}×{_shape[1]}) → pixel size 172 µm")
+                        except Exception:
+                            pass
+                        if not _pil_detected:
+                            state.px = 200.0
+                    else:
+                        state.px = 200.0
+            else:
+                logger.info(f"Using px from parameter file: {state.px:.1f} µm")
+
+            # --- wavelength: CLI > param file > filename hint > 0 ---
+            if args.wavelength is not None:
+                state.wavelength = args.wavelength
+                logger.info(f"Using wavelength from --wavelength: {state.wavelength:.6f} Å")
+            elif 'Wavelength' not in param_file_keys and 'wavelength' in filename_hints:
+                state.wavelength = filename_hints['wavelength']
+                logger.info(f"Using wavelength from filename: {state.wavelength:.6f} Å")
+            elif 'Wavelength' in param_file_keys:
+                logger.info(f"Using wavelength from parameter file: {state.wavelength:.6f} Å")
+
+            # --- lsd: CLI > param file > filename hint > default ---
+            if _lsd_from_cli:
+                logger.info(f"Using Lsd from --lsd-guess: {initialLsd:.0f} µm")
+            elif 'lsd' in param_file_keys:
+                logger.info(f"Using Lsd from parameter file: {initialLsd:.0f} µm")
+            elif 'lsd' in filename_hints:
+                initialLsd = filename_hints['lsd']
+                logger.info(f"Using Lsd from filename: {initialLsd:.0f} µm")
+
+            # --- tx: CLI > param file > default ---
+            if args.tx is not None:
+                state.tx = args.tx
+                logger.info(f"Using tx from --tx: {state.tx}")
+
+            # --- material: CLI > param file > calibrant auto-detect ---
+            if args.material:
+                state.space_group = calibrant['space_group']
+                state.latc = calibrant['lattice'].copy()
+                logger.info(f"Material from --material: {calibrant['name']} "
+                            f"(SG={state.space_group}, a={state.latc[0]:.4f})")
+
+            logger.info(f"Using pixel size: {state.px:.1f} µm")
+
         # Save pre-mask copy for viewer display
         raw_for_display = raw.copy()
 
@@ -1880,7 +2021,7 @@ def main():
 
         # ---- Beam center and ring detection ----
         bcg = args.bc_guess
-        if bcg[0] == 0:
+        if bcg is None or bcg[0] == 0:
             import time as _time
             logger.info("Auto-detecting beam center")
             t0 = _time.perf_counter()
@@ -1908,7 +2049,7 @@ def main():
             t4 = _time.perf_counter()
             logger.info(f"  Ring radii detection: {t4-t3:.3f}s  (total BC pipeline: {t4-t0:.3f}s)")
 
-            if args.lsd_guess == 1000000:
+            if not _lsd_from_cli and 'lsd' not in param_file_keys:
                 # Use estimate_lsd regardless of filename hint;
                 # initialLsd (from filename or default) serves as seed
                 initialLsd = estimate_lsd(rads, sim_rads, sim_rad_ratios,
@@ -1935,48 +2076,42 @@ def main():
         if state.h5_file:
             save_ring_data(thresh, bc_new, sim_rads, state.h5_file)
 
-        # Read RingsToExclude and panel params from param file
-        state.rings_to_exclude = []
-        state.panel_params = []
-        if args.params:
+        # Rings/panel params already loaded in the single-pass param-file
+        # read above (non-Zarr branch), or from Zarr metadata.
+        # For Zarr inputs, read rings/panels from the param file if provided.
+        if (convertFile == 0 or dataFN.endswith('.zip')) and args.params:
             try:
                 with open(args.params, 'r') as pf:
                     for line in pf:
-                        if line.startswith('RingsToExclude'):
-                            parts = line.split()
-                            if len(parts) > 1:
-                                state.rings_to_exclude.append(int(parts[1]))
-                        elif line.startswith('MaxRingNumber'):
-                            parts = line.split()
-                            if len(parts) > 1 and args.max_ring == 0:
+                        line_stripped = line.strip()
+                        if not line_stripped or line_stripped.startswith('#'):
+                            continue
+                        parts = line_stripped.split()
+                        if len(parts) < 2:
+                            continue
+                        key = parts[0]
+                        if key == 'RingsToExclude':
+                            state.rings_to_exclude.append(int(parts[1]))
+                        elif key == 'MaxRingNumber':
+                            if args.max_ring is None:
                                 state.max_ring_number = int(parts[1])
-                        elif line.startswith('FitParallax'):
-                            parts = line.split()
-                            if len(parts) > 1 and args.fit_parallax == 0:
+                        elif key == 'FitParallax':
+                            if args.fit_parallax is None:
                                 state.fit_parallax = int(parts[1])
-                        elif line.startswith('Parallax'):
-                            parts = line.split()
-                            if len(parts) > 1 and args.parallax_guess == 0.0:
+                        elif key == 'Parallax':
+                            if args.parallax_guess is None:
                                 state.parallax_in = float(parts[1])
-                        elif line.startswith('tolParallax'):
-                            parts = line.split()
-                            if len(parts) > 1 and args.tol_parallax == 200.0:
+                        elif key == 'tolParallax':
+                            if args.tol_parallax is None:
                                 state.tol_parallax = float(parts[1])
-                        elif any(line.startswith(pk) for pk in [
-                            'NPanelsY', 'NPanelsZ', 'PanelSizeY', 'PanelSizeZ',
-                            'PanelGapsY', 'PanelGapsZ', 'FixPanelID',
-                            'PerPanelLsd', 'PerPanelDistortion',
-                            'DistortionOrder', 'tolP4', 'tolLsdPanel', 'tolP2Panel',
-                            'OutlierIterations', 'WeightByRadius',
-                            'WeightByFitSNR', 'L2Objective',
-                            'NormalizeRingWeights', 'nIterations',
-                            'DoubletSeparation', 'tolRotation',
-                            'MinIndicesForFit',
-                        ]):
-                            state.panel_params.append(line.strip())
+                        elif key not in param_file_keys:
+                            # Extra pass-through for Zarr inputs
+                            state.extra_params[key] = ' '.join(parts[1:])
                 logger.info(f"Loaded manual exclusions: {state.rings_to_exclude}")
             except Exception as e:
                 logger.warning(f"Could not read params from {args.params}: {e}")
+        elif state.rings_to_exclude:
+            logger.info(f"Loaded manual exclusions: {state.rings_to_exclude}")
 
         # Display rings overlay
         NrPixelsY = state.nr_pixels_y if state.nr_pixels_y > 0 else 2048
