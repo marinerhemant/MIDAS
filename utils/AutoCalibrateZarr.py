@@ -1423,7 +1423,7 @@ def main():
                             help='Tolerance for parallax bounds (µm)')
         parser.add_argument('--trimmed-mean-fraction', type=float, default=0.75,
                             help='Fraction of points to keep in optimizer objective '
-                                 '(e.g. 0.75 = trim worst 25%). 1.0 = off. Default: 0.75')
+                                 '(e.g. 0.75 = trim worst 25%%). 1.0 = off.')
         parser.add_argument('--remove-outliers-between-iters', type=int, default=1,
                             help='Remove outlier points between calibration iterations '
                                  '(0=off, 1=on). Default: 1')
