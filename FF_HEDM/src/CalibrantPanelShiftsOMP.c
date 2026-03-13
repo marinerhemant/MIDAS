@@ -795,6 +795,8 @@ struct my_func_data {
   int fitWavelength;   // flag: 1 = wavelength is a fitting parameter
   double *PointDSpacing; // per-point d-spacing (only when fitWavelength=1)
   int fitParallax;     // flag: 1 = parallax is a fitting parameter
+  double trimFraction; // Trimmed mean: fraction of points to keep (1.0=all)
+  double *trimScratch; // Pre-allocated scratch array for sorting (size nIndices)
 };
 
 static double problem_function(unsigned n, const double *x, double *grad,
@@ -832,6 +834,7 @@ static double problem_function(unsigned n, const double *x, double *grad,
   MatrixMultF33(Rx, TRint, TRs);
   int i;
   double TotalDiff = 0;
+  int doTrim = (f_data->trimFraction < 1.0 - 1e-9 && f_data->trimScratch != NULL);
 
 #pragma omp parallel for num_threads(numProcs) reduction(+ : TotalDiff)
   for (i = 0; i < nIndices; i++) {
@@ -842,6 +845,7 @@ static double problem_function(unsigned n, const double *x, double *grad,
     if (nPanels > 0) {
       pIdx = GetPanelIndex((double)YMean[i], (double)ZMean[i], nPanels, panels);
       if (pIdx == -1) {
+        if (doTrim) f_data->trimScratch[i] = -1.0; // sentinel
         continue;
       }
     }
@@ -923,7 +927,30 @@ static double problem_function(unsigned n, const double *x, double *grad,
       w *= RNorm;
     if (f_data->snrWeights != NULL)
       w *= f_data->snrWeights[i];
-    TotalDiff += (f_data->useL2 ? Diff * Diff : fabs(Diff)) * w;
+    double val = (f_data->useL2 ? Diff * Diff : fabs(Diff)) * w;
+    if (doTrim) {
+      f_data->trimScratch[i] = val;
+    } else {
+      TotalDiff += val;
+    }
+  }
+
+  // Trimmed mean: sort residuals and sum only the bottom fraction
+  if (doTrim) {
+    // Compact valid values (skip sentinels from skipped panels)
+    int nValid = 0;
+    for (i = 0; i < nIndices; i++) {
+      if (f_data->trimScratch[i] >= 0.0) {
+        f_data->trimScratch[nValid++] = f_data->trimScratch[i];
+      }
+    }
+    qsort(f_data->trimScratch, nValid, sizeof(double), cmp_double);
+    int trimCount = (int)(nValid * f_data->trimFraction);
+    if (trimCount < 1) trimCount = 1;
+    TotalDiff = 0;
+    for (i = 0; i < trimCount; i++) {
+      TotalDiff += f_data->trimScratch[i];
+    }
   }
 
   NrCalls++;
@@ -952,7 +979,8 @@ void FitTiltBCLsd(int nIndices, double *YMean, double *ZMean,
                   double tolWavelength, double *PointDSpacing,
                   double *wavelengthOut,
                   double parallaxIn, double tolParallax,
-                  double *parallaxOut) {
+                  double *parallaxOut,
+                  double trimmedMeanFraction) {
   int fitParallax = (tolParallax > EPS) ? 1 : 0;
   int nBase = 11; // Lsd, ybc, zbc, ty, tz, p0-p3, p4, p5
   if (fitParallax) nBase++;    // parallax at index 11
@@ -986,6 +1014,11 @@ void FitTiltBCLsd(int nIndices, double *YMean, double *ZMean,
   f_data.fitWavelength = fitWavelength;
   f_data.PointDSpacing = PointDSpacing;
   f_data.fitParallax = fitParallax;
+  f_data.trimFraction = trimmedMeanFraction;
+  f_data.trimScratch = NULL;
+  if (trimmedMeanFraction < 1.0 - 1e-9) {
+    f_data.trimScratch = malloc(nIndices * sizeof(double));
+  }
   double x[n], xl[n], xu[n];
   // When initParams is non-NULL, anchor bounds to initial values to prevent
   // multi-iteration drift.  The optimizer still starts at the current value.
@@ -1168,6 +1201,12 @@ void FitTiltBCLsd(int nIndices, double *YMean, double *ZMean,
     run_nlopt_optimization(NLOPT_LN_NELDERMEAD, &config);
   minf = config.min_function_val;
   *MeanDiff = minf / nIndices;
+
+  // Free trimmed mean scratch array
+  if (f_data.trimScratch) {
+    free(f_data.trimScratch);
+    f_data.trimScratch = NULL;
+  }
 
   // 1. Update output parameters with optimized values
   *LsdFit = x[0];
@@ -1618,6 +1657,8 @@ typedef struct {
   double DoubletSeparation;
   int NormalizeRingWeights;
   int OutlierIterations;
+  int RemoveOutliersBetweenIters;  // Feature 1: remove flagged outliers between iterations
+  double TrimmedMeanFraction;     // Feature 2: fraction of points to keep in objective (1.0=all)
   int WeightByRadius;
   int WeightByFitSNR;
   int L2Objective;
@@ -1685,6 +1726,8 @@ static int parse_parameters(const char *filename, CalibConfig *cfg) {
   cfg->MinIndicesForFit = 1;
   cfg->nIterations = 1;
   cfg->OutlierIterations = 1;
+  cfg->RemoveOutliersBetweenIters = 0;
+  cfg->TrimmedMeanFraction = 1.0;
   cfg->tolLsdPanel = 100;
   cfg->tolP2Panel = 0.0001;
   cfg->lineoutRBinSize = 0.25;
@@ -2079,6 +2122,16 @@ static int parse_parameters(const char *filename, CalibConfig *cfg) {
       sscanf(aline, "%s %d", dummy, &cfg->OutlierIterations);
       continue;
     }
+    str = "RemoveOutliersBetweenIters ";
+    if (!strncmp(aline, str, strlen(str))) {
+      sscanf(aline, "%s %d", dummy, &cfg->RemoveOutliersBetweenIters);
+      continue;
+    }
+    str = "TrimmedMeanFraction ";
+    if (!strncmp(aline, str, strlen(str))) {
+      sscanf(aline, "%s %lf", dummy, &cfg->TrimmedMeanFraction);
+      continue;
+    }
     str = "WeightByRadius ";
     if (!strncmp(aline, str, strlen(str))) {
       sscanf(aline, "%s %d", dummy, &cfg->WeightByRadius);
@@ -2272,6 +2325,10 @@ static void print_parameter_summary(const CalibConfig *c) {
   }
   if (c->OutlierIterations > 1)
     printf("║    OutlierIters:   %-40d ║\n", c->OutlierIterations);
+  if (c->RemoveOutliersBetweenIters)
+    printf("║    RemoveOutliers: %-40s ║\n", "ON (between iterations)");
+  if (c->TrimmedMeanFraction < 1.0 - 1e-9)
+    printf("║    TrimmedMean:    %-40.2f ║\n", c->TrimmedMeanFraction);
   if (c->PerPanelLsd)
     printf("║    PerPanelLsd:    %-40s (tol=%.1f) ║\n", "ON", c->tolLsdPanel);
   if (c->PerPanelDistortion)
@@ -2366,6 +2423,8 @@ int main(int argc, char *argv[]) {
   double DoubletSeparation = cfg.DoubletSeparation;
   int NormalizeRingWeights = cfg.NormalizeRingWeights;
   int OutlierIterations = cfg.OutlierIterations;
+  int RemoveOutliersBetweenIters = cfg.RemoveOutliersBetweenIters;
+  double TrimmedMeanFraction = cfg.TrimmedMeanFraction;
   int WeightByRadius = cfg.WeightByRadius, WeightByFitSNR = cfg.WeightByFitSNR;
   int L2Objective = cfg.L2Objective;
   int PerPanelLsd = cfg.PerPanelLsd,
@@ -3299,7 +3358,8 @@ int main(int argc, char *argv[]) {
                    iter == 0, L2Objective, initParams, initPanels,
                    FitWavelength, Wavelength, tolWavelength, PointDSpacing,
                    &wavelengthFit,
-                   parallaxIn, tolParallax, &parallaxFit);
+                   parallaxIn, tolParallax, &parallaxFit,
+                   TrimmedMeanFraction);
       if (FitParallax)
         parallaxIn = parallaxFit;
       if (FitWavelength)
@@ -3450,12 +3510,57 @@ int main(int argc, char *argv[]) {
           Yc[i] = ybcFit - (YMean[i] / px);
           Zc[i] = zbcFit + (ZMean[i] / px);
         }
+        // Feature 1: pass IsOutlier array when removal is enabled
+        int *iterOutlier = NULL;
+        if (RemoveOutliersBetweenIters && outlierFactor > 0 &&
+            iter < nIterations - 1) {
+          iterOutlier = calloc(nIndices, sizeof(int));
+        }
         CorrectTiltSpatialDistortion(
             nIndices, MaxRingRad, Yc, Zc, IdealTtheta, px, LsdFit, ybcFit,
             zbcFit, tx, ty, tz, p0, p1, p2, p3, EtaIns, DiffIns, RadIns,
-            &StdDiff, outlierFactor, NULL, p4, p5, OutlierIterations, 0, &MeanDiff, parallaxIn);
+            &StdDiff, outlierFactor, iterOutlier, p4, p5, OutlierIterations, 0, &MeanDiff, parallaxIn);
         printf("Iter %2d/%d  MeanStrain %8.3f  StdStrain %8.3f\n", iter + 1,
                nIterations, MeanDiff * 1e6, StdDiff * 1e6);
+
+        // Feature 1: Remove flagged outliers between iterations
+        if (iterOutlier != NULL) {
+          int nOutliers = 0;
+          for (i = 0; i < nIndices; i++) {
+            if (iterOutlier[i]) nOutliers++;
+          }
+          // Safety: don't remove more than 50% of points
+          if (nOutliers > 0 && nOutliers < nIndices / 2) {
+            int newCount = 0;
+            for (i = 0; i < nIndices; i++) {
+              if (!iterOutlier[i]) {
+                RMean[newCount] = RMean[i];
+                EtaMean[newCount] = EtaMean[i];
+                IdealTtheta[newCount] = IdealTtheta[i];
+                if (PointDSpacing)
+                  PointDSpacing[newCount] = PointDSpacing[i];
+                RingNumbers[newCount] = RingNumbers[i];
+                FitSNR[newCount] = FitSNR[i];
+                YMean[newCount] = YMean[i];
+                ZMean[newCount] = ZMean[i];
+                Yc[newCount] = Yc[i];
+                Zc[newCount] = Zc[i];
+                EtaIns[newCount] = EtaIns[i];
+                RadIns[newCount] = RadIns[i];
+                DiffIns[newCount] = DiffIns[i];
+                newCount++;
+              }
+            }
+            printf("  RemoveOutliers: removed %d / %d points (%.1f%%)\n",
+                   nOutliers, nIndices,
+                   100.0 * nOutliers / nIndices);
+            nIndices = newCount;
+          } else if (nOutliers > 0) {
+            printf("  RemoveOutliers: skipped — would remove %d / %d (>50%%)\n",
+                   nOutliers, nIndices);
+          }
+          free(iterOutlier);
+        }
 
         // Free temp pixel arrays
         free(R_rf);
