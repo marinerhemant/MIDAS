@@ -77,7 +77,7 @@ add_ff_hedm_executable(CalibrantPanelShiftsOMP SOURCES src/CalibrantPanelShiftsO
 # add_ff_hedm_executable(FitSetup SOURCES src/FitSetupParamsAll.c)
 # add_ff_hedm_executable(FitTiltBCLsdSample SOURCES src/FitTiltBCLsdSampleOmegaCorrection.c)
 # add_ff_hedm_executable(ForwardSimulation SOURCES src/ForwardSimulation.c)
-add_ff_hedm_executable(ForwardSimulationCompressed SOURCES src/ForwardSimulationCompressed.c src/Panel.c src/FileReader.c src/MIDAS_Math.c LINK_LIBRARIES TIFF::TIFF OMP)
+add_ff_hedm_executable(ForwardSimulationCompressed SOURCES src/ForwardSimulationCompressed.c src/Panel.c src/FileReader.c src/MIDAS_Math.c src/MIDAS_ParamParser.c LINK_LIBRARIES TIFF::TIFF OMP)
 
 add_ff_hedm_executable(FitPosOrStrainsOMP SOURCES src/FitPosOrStrainsOMP.c src/CalcDiffractionSpots.c src/MIDAS_Math.c src/MIDAS_ParamParser.c OMP)
 add_ff_hedm_executable(FitPosOrStrainsDoubleDataset SOURCES src/FitPosOrStrainsDoubleDataset.c src/CalcDiffractionSpots.c src/MIDAS_Math.c src/MIDAS_ParamParser.c OMP)

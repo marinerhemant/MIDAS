@@ -22,6 +22,7 @@
 #include "Panel.h"
 #include "midas_paths.h"
 #include "midas_version.h"
+#include "MIDAS_ParamParser.h"
 #include <blosc.h>
 #include <ctype.h>
 #include <math.h>
@@ -1068,343 +1069,63 @@ int main(int argc, char *argv[]) {
 
   // Read params file.
   char *ParamFN;
-  FILE *fileParam;
   ParamFN = argv[1];
   int nCPUs = atoi(argv[2]);
   run_midas_binary("GetHKLList", ParamFN);
-  int LowNr;
-  char *str, dummy[4096], aline[4096];
-  fileParam = fopen(ParamFN, "r");
+  char dummy[4096], aline[4096];
+
+  MIDASConfig cfg;
+  if (midas_parse_params(ParamFN, &cfg) != 0) {
+    printf("Error parsing param file: %s\n", ParamFN);
+    return 1;
+  }
+
   char InFileName[4096], OutFileName[4096];
-  int Padding = 6, NrPixels;
-  double Lsd, tx, ty, tz, yBC, zBC, OmegaStep, OmegaStart, OmegaEnd, px;
-  int RingsToUse[500], nRings = 0;
-  double LatC[6], Wavelength, Wedge = 0, p0, p1, p2, p3 = 0, p4 = 0, p5 = 0, RhoD,
-                              GaussWidth = 1, PeakIntensity = 2000;
-  int NPanelsY = 0, NPanelsZ = 0, PanelSizeY = 0, PanelSizeZ = 0;
+  strcpy(InFileName, cfg.InFileName);
+  strcpy(OutFileName, cfg.OutFileName);
+  int Padding = 6, NrPixels = cfg.NrPixels;
+  double Lsd = cfg.Lsd, tx = cfg.tx, ty = cfg.ty, tz = cfg.tz;
+  double yBC = cfg.ybc, zBC = cfg.zbc;
+  double OmegaStep = cfg.OmegaStep, OmegaStart = cfg.OmegaStart, OmegaEnd = cfg.OmegaEnd;
+  double px = cfg.px;
+  int RingsToUse[500], nRings = cfg.nRingsToUse;
+  for (int ri = 0; ri < nRings; ri++) RingsToUse[ri] = cfg.RingsToUse[ri];
+  double LatC[6], Wavelength = cfg.Wavelength, Wedge = cfg.Wedge;
+  memcpy(LatC, cfg.LatticeConstant, sizeof(LatC));
+  double p0 = cfg.p0, p1 = cfg.p1, p2 = cfg.p2, p3 = cfg.p3;
+  double p4 = cfg.p4, p5 = cfg.p5, RhoD = cfg.RhoD;
+  double GaussWidth = cfg.GaussWidth > 0 ? cfg.GaussWidth : 1;
+  double PeakIntensity = cfg.PeakIntensity;
+  int NPanelsY = cfg.NPanelsY, NPanelsZ = cfg.NPanelsZ;
+  int PanelSizeY = cfg.PanelSizeY, PanelSizeZ = cfg.PanelSizeZ;
   int *PanelGapsY = NULL, *PanelGapsZ = NULL;
-  char PanelShiftsFile[1024] = "";
-  int writeSpots = 1, isBin = 0;
-  int LoadNr = 0, UpdatedOrientations = 1, nfOutput = 0, WriteImage = 1;
-  double minConfidence = 0;
-  int nScans = 1;
-  double *positions, beamSize = -1;
-  double eResolution = 0.0; // Default to monochromatic (zero spread)
-  char IntensitiesFile[4096] = "";
-  double maxOutputIntensity = DEFAULT_MAX_OUTPUT_INTENSITY;
-  char MaskFN[4096] = "";
-  int useMask = 0;
+  char PanelShiftsFile[1024];
+  strcpy(PanelShiftsFile, cfg.PanelShiftsFile);
+  if (NPanelsY > 1) {
+    PanelGapsY = (int *)malloc((NPanelsY - 1) * sizeof(int));
+    for (int k = 0; k < NPanelsY - 1; k++) PanelGapsY[k] = cfg.PanelGapsY[k];
+  }
+  if (NPanelsZ > 1) {
+    PanelGapsZ = (int *)malloc((NPanelsZ - 1) * sizeof(int));
+    for (int k = 0; k < NPanelsZ - 1; k++) PanelGapsZ[k] = cfg.PanelGapsZ[k];
+  }
+  int writeSpots = cfg.WriteSpots, isBin = cfg.IsBinary;
+  int LoadNr = cfg.LoadNr, UpdatedOrientations = cfg.UpdatedOrientations;
+  int nfOutput = cfg.NFOutput, WriteImage = cfg.WriteImage;
+  double minConfidence = cfg.MinConfidence;
+  int nScans = cfg.nScans;
+  double *positions, beamSize = cfg.BeamSize;
+  double eResolution = cfg.EResolution;
+  char IntensitiesFile[4096];
+  strcpy(IntensitiesFile, cfg.IntensitiesFile);
+  double maxOutputIntensity = cfg.MaxOutputIntensity;
+  char MaskFN[4096];
+  strcpy(MaskFN, cfg.MaskFile);
+  int useMask = cfg.useMask;
   double *mask = NULL;
   double RingNrIntensity[500];
-  int num_lambda_samples = 1;
-  int SimulationBatches = 0; // 0 = auto-detect based on system RAM
-  while (fgets(aline, 4096, fileParam) != NULL) {
-    str = "IntensitiesFile ";
-    LowNr = strncmp(aline, str, strlen(str));
-    if (LowNr == 0) {
-      sscanf(aline, "%s %s", dummy, IntensitiesFile);
-      continue;
-    }
-    str = "RingsToUse ";
-    LowNr = strncmp(aline, str, strlen(str));
-    if (LowNr == 0) {
-      sscanf(aline, "%s %d", dummy, &RingsToUse[nRings]);
-      nRings++;
-      continue;
-    }
-    str = "RingThresh ";
-    LowNr = strncmp(aline, str, strlen(str));
-    if (LowNr == 0) {
-      sscanf(aline, "%s %d", dummy, &RingsToUse[nRings]);
-      nRings++;
-      continue;
-    }
-    str = "LatticeParameter ";
-    LowNr = strncmp(aline, str, strlen(str));
-    if (LowNr == 0) {
-      sscanf(aline, "%s %lf %lf %lf %lf %lf %lf", dummy, &LatC[0], &LatC[1],
-             &LatC[2], &LatC[3], &LatC[4], &LatC[5]);
-      continue;
-    }
-    str = "LatticeConstant ";
-    LowNr = strncmp(aline, str, strlen(str));
-    if (LowNr == 0) {
-      sscanf(aline, "%s %lf %lf %lf %lf %lf %lf", dummy, &LatC[0], &LatC[1],
-             &LatC[2], &LatC[3], &LatC[4], &LatC[5]);
-      continue;
-    }
-    str = "InFileName ";
-    LowNr = strncmp(aline, str, strlen(str));
-    if (LowNr == 0) {
-      sscanf(aline, "%s %s", dummy, InFileName);
-      continue;
-    }
-    str = "OutFileName ";
-    LowNr = strncmp(aline, str, strlen(str));
-    if (LowNr == 0) {
-      sscanf(aline, "%s %s", dummy, OutFileName);
-      continue;
-    }
-    str = "Lsd ";
-    LowNr = strncmp(aline, str, strlen(str));
-    if (LowNr == 0) {
-      sscanf(aline, "%s %lf", dummy, &Lsd);
-      continue;
-    }
-    str = "MinConfidence ";
-    LowNr = strncmp(aline, str, strlen(str));
-    if (LowNr == 0) {
-      sscanf(aline, "%s %lf", dummy, &minConfidence);
-      continue;
-    }
-    str = "tx ";
-    LowNr = strncmp(aline, str, strlen(str));
-    if (LowNr == 0) {
-      sscanf(aline, "%s %lf", dummy, &tx);
-      continue;
-    }
-    str = "ty ";
-    LowNr = strncmp(aline, str, strlen(str));
-    if (LowNr == 0) {
-      sscanf(aline, "%s %lf", dummy, &ty);
-      continue;
-    }
-    str = "tz ";
-    LowNr = strncmp(aline, str, strlen(str));
-    if (LowNr == 0) {
-      sscanf(aline, "%s %lf", dummy, &tz);
-      continue;
-    }
-    str = "RhoD ";
-    LowNr = strncmp(aline, str, strlen(str));
-    if (LowNr == 0) {
-      sscanf(aline, "%s %lf", dummy, &RhoD);
-      continue;
-    }
-    str = "p0 ";
-    LowNr = strncmp(aline, str, strlen(str));
-    if (LowNr == 0) {
-      sscanf(aline, "%s %lf", dummy, &p0);
-      continue;
-    }
-    str = "p1 ";
-    LowNr = strncmp(aline, str, strlen(str));
-    if (LowNr == 0) {
-      sscanf(aline, "%s %lf", dummy, &p1);
-      continue;
-    }
-    str = "p2 ";
-    LowNr = strncmp(aline, str, strlen(str));
-    if (LowNr == 0) {
-      sscanf(aline, "%s %lf", dummy, &p2);
-      continue;
-    }
-    str = "p3 ";
-    LowNr = strncmp(aline, str, strlen(str));
-    if (LowNr == 0) {
-      sscanf(aline, "%s %lf", dummy, &p3);
-      continue;
-    }
-    str = "p4 ";
-    LowNr = strncmp(aline, str, strlen(str));
-    if (LowNr == 0) {
-      sscanf(aline, "%s %lf", dummy, &p4);
-      continue;
-    }
-    str = "p5 ";
-    LowNr = strncmp(aline, str, strlen(str));
-    if (LowNr == 0) {
-      sscanf(aline, "%s %lf", dummy, &p5);
-      continue;
-    }
-    str = "NPanelsY ";
-    LowNr = strncmp(aline, str, strlen(str));
-    if (LowNr == 0) {
-      sscanf(aline, "%s %d", dummy, &NPanelsY);
-      continue;
-    }
-    str = "NPanelsZ ";
-    LowNr = strncmp(aline, str, strlen(str));
-    if (LowNr == 0) {
-      sscanf(aline, "%s %d", dummy, &NPanelsZ);
-      continue;
-    }
-    str = "PanelSizeY ";
-    LowNr = strncmp(aline, str, strlen(str));
-    if (LowNr == 0) {
-      sscanf(aline, "%s %d", dummy, &PanelSizeY);
-      continue;
-    }
-    str = "PanelSizeZ ";
-    LowNr = strncmp(aline, str, strlen(str));
-    if (LowNr == 0) {
-      sscanf(aline, "%s %d", dummy, &PanelSizeZ);
-      continue;
-    }
-    str = "PanelShiftsFile ";
-    LowNr = strncmp(aline, str, strlen(str));
-    if (LowNr == 0) {
-      sscanf(aline, "%s %s", dummy, PanelShiftsFile);
-      continue;
-    }
-    str = "PanelGapsY ";
-    LowNr = strncmp(aline, str, strlen(str));
-    if (LowNr == 0) {
-      char *ptr = aline + strlen(str);
-      if (NPanelsY > 1) {
-        PanelGapsY = (int *)malloc((NPanelsY - 1) * sizeof(int));
-        for (int k = 0; k < NPanelsY - 1; k++) {
-          PanelGapsY[k] = strtol(ptr, &ptr, 10);
-        }
-      }
-      continue;
-    }
-    str = "PanelGapsZ ";
-    LowNr = strncmp(aline, str, strlen(str));
-    if (LowNr == 0) {
-      char *ptr = aline + strlen(str);
-      if (NPanelsZ > 1) {
-        PanelGapsZ = (int *)malloc((NPanelsZ - 1) * sizeof(int));
-        for (int k = 0; k < NPanelsZ - 1; k++) {
-          PanelGapsZ[k] = strtol(ptr, &ptr, 10);
-        }
-      }
-      continue;
-    }
-    str = "BC ";
-    LowNr = strncmp(aline, str, strlen(str));
-    if (LowNr == 0) {
-      sscanf(aline, "%s %lf %lf", dummy, &yBC, &zBC);
-      continue;
-    }
-    str = "OmegaStep ";
-    LowNr = strncmp(aline, str, strlen(str));
-    if (LowNr == 0) {
-      sscanf(aline, "%s %lf", dummy, &OmegaStep);
-      continue;
-    }
-    str = "OmegaStart ";
-    LowNr = strncmp(aline, str, strlen(str));
-    if (LowNr == 0) {
-      sscanf(aline, "%s %lf", dummy, &OmegaStart);
-      continue;
-    }
-    str = "OmegaEnd ";
-    LowNr = strncmp(aline, str, strlen(str));
-    if (LowNr == 0) {
-      sscanf(aline, "%s %lf", dummy, &OmegaEnd);
-      continue;
-    }
-    str = "Wavelength ";
-    LowNr = strncmp(aline, str, strlen(str));
-    if (LowNr == 0) {
-      sscanf(aline, "%s %lf", dummy, &Wavelength);
-      continue;
-    }
-    str = "Wedge ";
-    LowNr = strncmp(aline, str, strlen(str));
-    if (LowNr == 0) {
-      sscanf(aline, "%s %lf", dummy, &Wedge);
-      continue;
-    }
-    str = "NrPixels ";
-    LowNr = strncmp(aline, str, strlen(str));
-    if (LowNr == 0) {
-      sscanf(aline, "%s %d", dummy, &NrPixels);
-      continue;
-    }
-    str = "nScans ";
-    LowNr = strncmp(aline, str, strlen(str));
-    if (LowNr == 0) {
-      sscanf(aline, "%s %d", dummy, &nScans);
-      continue;
-    }
-    str = "BeamSize ";
-    LowNr = strncmp(aline, str, strlen(str));
-    if (LowNr == 0) {
-      sscanf(aline, "%s %lf", dummy, &beamSize);
-      continue;
-    }
-    str = "WriteSpots ";
-    LowNr = strncmp(aline, str, strlen(str));
-    if (LowNr == 0) {
-      sscanf(aline, "%s %d", dummy, &writeSpots);
-      continue;
-    }
-    str = "WriteImage ";
-    LowNr = strncmp(aline, str, strlen(str));
-    if (LowNr == 0) {
-      sscanf(aline, "%s %d", dummy, &WriteImage);
-      continue;
-    }
-    str = "LoadNr ";
-    LowNr = strncmp(aline, str, strlen(str));
-    if (LowNr == 0) {
-      sscanf(aline, "%s %d", dummy, &LoadNr);
-      continue;
-    }
-    str = "UpdatedOrientations ";
-    LowNr = strncmp(aline, str, strlen(str));
-    if (LowNr == 0) {
-      sscanf(aline, "%s %d", dummy, &UpdatedOrientations);
-      continue;
-    }
-    str = "px ";
-    LowNr = strncmp(aline, str, strlen(str));
-    if (LowNr == 0) {
-      sscanf(aline, "%s %lf", dummy, &px);
-      continue;
-    }
-    str = "GaussWidth ";
-    LowNr = strncmp(aline, str, strlen(str));
-    if (LowNr == 0) {
-      sscanf(aline, "%s %lf", dummy, &GaussWidth);
-      continue;
-    }
-    str = "PeakIntensity ";
-    LowNr = strncmp(aline, str, strlen(str));
-    if (LowNr == 0) {
-      sscanf(aline, "%s %lf", dummy, &PeakIntensity);
-      continue;
-    }
-    str = "IsBinary ";
-    LowNr = strncmp(aline, str, strlen(str));
-    if (LowNr == 0) {
-      sscanf(aline, "%s %d", dummy, &isBin);
-      continue;
-    }
-    str = "NFOutput ";
-    LowNr = strncmp(aline, str, strlen(str));
-    if (LowNr == 0) {
-      sscanf(aline, "%s %d", dummy, &nfOutput);
-      continue;
-    }
-    str = "EResolution ";
-    LowNr = strncmp(aline, str, strlen(str));
-    if (LowNr == 0) {
-      sscanf(aline, "%s %lf %d", dummy, &eResolution, &num_lambda_samples);
-      continue;
-    }
-    str = "MaxOutputIntensity ";
-    LowNr = strncmp(aline, str, strlen(str));
-    if (LowNr == 0) {
-      sscanf(aline, "%s %lf", dummy, &maxOutputIntensity);
-      continue;
-    }
-    str = "MaskFile ";
-    LowNr = strncmp(aline, str, strlen(str));
-    if (LowNr == 0) {
-      sscanf(aline, "%s %s", dummy, MaskFN);
-      useMask = 1;
-      continue;
-    }
-    str = "SimulationBatches ";
-    LowNr = strncmp(aline, str, strlen(str));
-    if (LowNr == 0) {
-      sscanf(aline, "%s %d", dummy, &SimulationBatches);
-      continue;
-    }
-  }
+  int num_lambda_samples = cfg.num_lambda_samples;
+  int SimulationBatches = cfg.SimulationBatches;
 
   // Generate Panels
   if (NPanelsY > 0 && NPanelsZ > 0) {

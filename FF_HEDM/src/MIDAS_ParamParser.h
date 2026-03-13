@@ -253,6 +253,24 @@ typedef struct {
   double lineoutRMin;
   double lineoutRMax;
 
+  // ── ForwardSimulation ──
+  char   InFileName[MAX_LINE_LENGTH];
+  char   OutFileName[MAX_LINE_LENGTH];
+  char   IntensitiesFile[MAX_LINE_LENGTH];
+  char   MaskFile[MAX_LINE_LENGTH];
+  int    WriteSpots;
+  int    WriteImage;
+  int    IsBinary;
+  int    LoadNr;
+  int    UpdatedOrientations;
+  int    NFOutput;
+  double PeakIntensity;
+  double MaxOutputIntensity;
+  int    RingsToUse[500];
+  int    nRingsToUse;
+  int    num_lambda_samples;
+  int    useMask;
+
 } MIDASConfig;
 
 // Parse a standard MIDAS parameter file into a MIDASConfig struct.

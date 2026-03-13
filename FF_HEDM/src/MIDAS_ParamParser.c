@@ -33,6 +33,12 @@ void midas_config_defaults(MIDASConfig *cfg) {
   cfg->MinFracAccept = 0.5;
   cfg->MinNrSpots = 1;
   cfg->SpaceGroup = 225;
+  cfg->WriteSpots = 1;
+  cfg->WriteImage = 1;
+  cfg->UpdatedOrientations = 1;
+  cfg->PeakIntensity = 2000.0;
+  cfg->MaxOutputIntensity = 65000.0;
+  cfg->num_lambda_samples = 1;
 }
 
 void midas_apply_tol_defaults(MIDASConfig *cfg) {
@@ -349,6 +355,37 @@ int midas_parse_params(const char *filename, MIDASConfig *cfg) {
     if (param_int(aline, "GridPoints", &cfg->GridPoints)) continue;
     if (param_int(aline, "WriteLegacyBin", &cfg->WriteLegacyBin)) continue;
     if (param_int(aline, "SimulationBatches", &cfg->SimulationBatches)) continue;
+
+    // ── ForwardSimulation ──
+    if (param_str(aline, "InFileName", cfg->InFileName, sizeof(cfg->InFileName))) continue;
+    if (param_str(aline, "OutFileName", cfg->OutFileName, sizeof(cfg->OutFileName))) continue;
+    if (param_str(aline, "IntensitiesFile", cfg->IntensitiesFile, sizeof(cfg->IntensitiesFile))) continue;
+    if (key_match(aline, "MaskFile")) {
+      param_str(aline, "MaskFile", cfg->MaskFile, sizeof(cfg->MaskFile));
+      cfg->useMask = 1;
+      continue;
+    }
+    if (param_int(aline, "WriteSpots", &cfg->WriteSpots)) continue;
+    if (param_int(aline, "WriteImage", &cfg->WriteImage)) continue;
+    if (param_int(aline, "IsBinary", &cfg->IsBinary)) continue;
+    if (param_int(aline, "LoadNr", &cfg->LoadNr)) continue;
+    if (param_int(aline, "UpdatedOrientations", &cfg->UpdatedOrientations)) continue;
+    if (param_int(aline, "NFOutput", &cfg->NFOutput)) continue;
+    if (param_double(aline, "PeakIntensity", &cfg->PeakIntensity)) continue;
+    if (param_double(aline, "MaxOutputIntensity", &cfg->MaxOutputIntensity)) continue;
+    if (key_match(aline, "RingsToUse") || key_match(aline, "RingThresh")) {
+      if (cfg->nRingsToUse < 500) {
+        char tmpd[256]; int tmpv;
+        if (sscanf(aline, "%s %d", tmpd, &tmpv) == 2)
+          cfg->RingsToUse[cfg->nRingsToUse++] = tmpv;
+      }
+      continue;
+    }
+    if (key_match(aline, "EResolution")) {
+      char tmpd[256];
+      sscanf(aline, "%s %lf %d", tmpd, &cfg->EResolution, &cfg->num_lambda_samples);
+      continue;
+    }
 
     // ── Panel config ──
     if (param_int(aline, "NPanelsY", &cfg->NPanelsY)) continue;
