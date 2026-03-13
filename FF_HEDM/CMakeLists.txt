@@ -91,15 +91,15 @@ add_ff_hedm_executable(FitOrStrainsScanningOMP SOURCES src/FitOrStrainsScanningO
 # add_ff_hedm_executable(CalcRadius SOURCES src/archive/CalcRadius.c)
 # add_ff_hedm_executable(CalcRadiusAll SOURCES src/archive/CalcRadiusAll.c)
 # add_ff_hedm_executable(FindSaturatedPixels SOURCES src/FindSaturatedPixels.c)
-add_ff_hedm_executable(GrainTracking SOURCES src/GrainTracking.c src/MIDAS_ParamParser.c)
+# add_ff_hedm_executable(GrainTracking ...)  # deprecated → src/archive/GrainTracking.c
 # add_ff_hedm_executable(MergeMultipleRings SOURCES src/MergeMultipleRings.c)
 add_ff_hedm_executable(GenMedianDark SOURCES src/GenMedianDark.c src/FileReader.c LINK_LIBRARIES TIFF::TIFF OMP)
 
 add_ff_hedm_executable(FitMultipleGrains SOURCES src/FitMultipleGrains.c src/CalcDiffractionSpots.c src/Panel.c src/MIDAS_Math.c src/MIDAS_ParamParser.c OMP)
 # add_ff_hedm_executable(FitScanningGrain SOURCES src/FitScanningGrain.c)
 # add_ff_hedm_executable(FitTiltX SOURCES src/FitTiltX.c)
-add_ff_hedm_executable(FitWedge SOURCES src/FitWedge.c src/Panel.c src/MIDAS_Math.c)
-add_ff_hedm_executable(FitWedgeParallel SOURCES src/FitWedgeParallel.c src/Panel.c src/MIDAS_Math.c OMP)
+# add_ff_hedm_executable(FitWedge ...)  # deprecated → src/archive/FitWedge.c
+add_ff_hedm_executable(FitWedgeParallel SOURCES src/FitWedgeParallel.c src/Panel.c src/MIDAS_Math.c src/MIDAS_ParamParser.c OMP)
 add_ff_hedm_executable(MapDatasets SOURCES src/MapDatasets.c OMP)
 
 add_ff_hedm_executable(GetHKLList SOURCES src/GetHKLList.c src/sgclib.c src/sgfind.c src/sghkl.c src/sgsi.c src/sgio.c src/MIDAS_ParamParser.c)
@@ -114,8 +114,8 @@ add_ff_hedm_executable(ProcessGrains SOURCES src/ProcessGrains.c src/ZarrReader.
 add_ff_hedm_executable(IndexerOMP SOURCES src/IndexerOMP.c src/MIDAS_Math.c OMP)
 add_ff_hedm_executable(IndexerScanningOMP SOURCES src/IndexerScanningOMP.c src/MIDAS_Math.c OMP)
 
-add_ff_hedm_executable(SaveBinData SOURCES src/SaveBinData.c)
-add_ff_hedm_executable(SaveBinDataScanning SOURCES src/SaveBinDataScanning.c)
+add_ff_hedm_executable(SaveBinData SOURCES src/SaveBinData.c src/MIDAS_ParamParser.c)
+add_ff_hedm_executable(SaveBinDataScanning SOURCES src/SaveBinDataScanning.c src/MIDAS_ParamParser.c)
 add_ff_hedm_executable(MergeMultipleScans SOURCES src/MergeMultipleScans.c)
 
 # add_ff_hedm_executable(ProcessGrains_paramFN_only ...)  # archived → src/archive/ProcessGrains.c

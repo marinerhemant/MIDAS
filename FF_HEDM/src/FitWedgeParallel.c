@@ -25,6 +25,7 @@
 #include <sys/stat.h>
 #include <time.h>
 #include "midas_version.h"
+#include "MIDAS_ParamParser.h"
 
 static Panel *panels = NULL;
 static int nPanels = 0;
@@ -369,92 +370,38 @@ int main(int argc, char *argv[]) {
   omp_set_num_threads(nCPUs);
 
   // --- Read Parameters ---
-  FILE *fileParam = fopen(ParamFN, "r");
-  if (!fileParam) {
-    printf("Error opening param file: %s\n", ParamFN);
+  MIDASConfig cfg;
+  if (midas_parse_params(ParamFN, &cfg) != 0) {
+    printf("Error parsing param file: %s\n", ParamFN);
     return 1;
   }
 
+  double Ycen = cfg.ybc, Zcen = cfg.zbc;
+  double px = cfg.px, Lsd = cfg.Lsd;
+  double tx = cfg.tx, ty = cfg.ty, tz = cfg.tz;
+  double Wedge = cfg.Wedge;
+  double p0 = cfg.p0, p1 = cfg.p1, p2 = cfg.p2, p3 = cfg.p3;
+  double p4 = cfg.p4, p5 = cfg.p5;
+  double MaxRad = cfg.RhoD;
+  double Wavelength = cfg.Wavelength;
+  double OmegaStart = cfg.OmegaStart;
+  double OmegaStep = cfg.OmegaStep;
+  int NPanelsY = cfg.NPanelsY, NPanelsZ = cfg.NPanelsZ;
+  int PanelSizeY = cfg.PanelSizeY, PanelSizeZ = cfg.PanelSizeZ;
+  char PanelShiftsFile[1024];
+  strcpy(PanelShiftsFile, cfg.PanelShiftsFile);
   char aline[1024];
-  char dummy[1024];
-  char *str;
-  int LowNr;
-  double Ycen, Zcen, px, Lsd, ty, tz, p0, p1, p2, p3, p4 = 0, p5 = 0, MaxRad, tx;
-  double Wavelength, Wedge = 0.0;
-  double OmegaStart = 0.0;
-  double OmegaStep = 0.0;
-  int NPanelsY = 0, NPanelsZ = 0, PanelSizeY = 0, PanelSizeZ = 0;
   int *PanelGapsY = NULL, *PanelGapsZ = NULL;
-  char PanelShiftsFile[1024] = "";
-
-  // Initialize defaults
-  Ycen = Zcen = 1024.0;
-  px = 0.1;
-  Lsd = 1000.0;
-  p0 = p1 = p2 = p3 = 0.0;
-
-  while (fgets(aline, 1024, fileParam) != NULL) {
-    if (strncmp(aline, "BC ", 3) == 0)
-      sscanf(aline, "%s %lf %lf", dummy, &Ycen, &Zcen);
-    else if (strncmp(aline, "px ", 3) == 0)
-      sscanf(aline, "%s %lf", dummy, &px);
-    else if (strncmp(aline, "Lsd ", 4) == 0)
-      sscanf(aline, "%s %lf", dummy, &Lsd);
-    else if (strncmp(aline, "tx ", 3) == 0)
-      sscanf(aline, "%s %lf", dummy, &tx);
-    else if (strncmp(aline, "ty ", 3) == 0)
-      sscanf(aline, "%s %lf", dummy, &ty);
-    else if (strncmp(aline, "tz ", 3) == 0)
-      sscanf(aline, "%s %lf", dummy, &tz);
-    else if (strncmp(aline, "Wedge ", 6) == 0)
-      sscanf(aline, "%s %lf", dummy, &Wedge);
-    else if (strncmp(aline, "p0 ", 3) == 0)
-      sscanf(aline, "%s %lf", dummy, &p0);
-    else if (strncmp(aline, "p1 ", 3) == 0)
-      sscanf(aline, "%s %lf", dummy, &p1);
-    else if (strncmp(aline, "p2 ", 3) == 0)
-      sscanf(aline, "%s %lf", dummy, &p2);
-    else if (strncmp(aline, "p3 ", 3) == 0)
-      sscanf(aline, "%s %lf", dummy, &p3);
-    else if (strncmp(aline, "p4 ", 3) == 0)
-      sscanf(aline, "%s %lf", dummy, &p4);
-    else if (strncmp(aline, "p5 ", 3) == 0)
-      sscanf(aline, "%s %lf", dummy, &p5);
-    else if (strncmp(aline, "RhoD ", 5) == 0)
-      sscanf(aline, "%s %lf", dummy, &MaxRad);
-    else if (strncmp(aline, "Wavelength ", 11) == 0)
-      sscanf(aline, "%s %lf", dummy, &Wavelength);
-    else if (strncmp(aline, "OmegaStart ", 11) == 0)
-      sscanf(aline, "%s %lf", dummy, &OmegaStart);
-    else if (strncmp(aline, "OmegaStep ", 10) == 0)
-      sscanf(aline, "%s %lf", dummy, &OmegaStep);
-    else if (strncmp(aline, "NPanelsY ", 9) == 0)
-      sscanf(aline, "%s %d", dummy, &NPanelsY);
-    else if (strncmp(aline, "NPanelsZ ", 9) == 0)
-      sscanf(aline, "%s %d", dummy, &NPanelsZ);
-    else if (strncmp(aline, "PanelSizeY ", 11) == 0)
-      sscanf(aline, "%s %d", dummy, &PanelSizeY);
-    else if (strncmp(aline, "PanelSizeZ ", 11) == 0)
-      sscanf(aline, "%s %d", dummy, &PanelSizeZ);
-    else if (strncmp(aline, "PanelShiftsFile ", 16) == 0)
-      sscanf(aline, "%s %s", dummy, PanelShiftsFile);
-    else if (strncmp(aline, "PanelGapsY ", 11) == 0) {
-      char *ptr = aline + 11;
-      if (NPanelsY > 1) {
-        PanelGapsY = (int *)malloc((NPanelsY - 1) * sizeof(int));
-        for (int k = 0; k < NPanelsY - 1; k++)
-          PanelGapsY[k] = strtol(ptr, &ptr, 10);
-      }
-    } else if (strncmp(aline, "PanelGapsZ ", 11) == 0) {
-      char *ptr = aline + 11;
-      if (NPanelsZ > 1) {
-        PanelGapsZ = (int *)malloc((NPanelsZ - 1) * sizeof(int));
-        for (int k = 0; k < NPanelsZ - 1; k++)
-          PanelGapsZ[k] = strtol(ptr, &ptr, 10);
-      }
-    }
+  if (NPanelsY > 1) {
+    PanelGapsY = (int *)malloc((NPanelsY - 1) * sizeof(int));
+    for (int k = 0; k < NPanelsY - 1; k++)
+      PanelGapsY[k] = cfg.PanelGapsY[k];
   }
-  fclose(fileParam);
+  if (NPanelsZ > 1) {
+    PanelGapsZ = (int *)malloc((NPanelsZ - 1) * sizeof(int));
+    for (int k = 0; k < NPanelsZ - 1; k++)
+      PanelGapsZ[k] = cfg.PanelGapsZ[k];
+  }
 
   // Generate Panels
   if (NPanelsY > 0 && NPanelsZ > 0) {

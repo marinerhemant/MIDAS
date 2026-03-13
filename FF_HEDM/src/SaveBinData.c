@@ -18,6 +18,7 @@
 #include <sys/stat.h>
 #include <time.h>
 #include "midas_version.h"
+#include "MIDAS_ParamParser.h"
 
 #define deg2rad 0.0174532925199433
 #define rad2deg 57.2957795130823
@@ -138,77 +139,21 @@ int main(int arc, char *argv[]) {
            "something. Exiting\n");
     return 1;
   }
-  char *ParamFN = "paramstest.txt", dummy[1024], *str;
-  int LowNr;
-  FILE *fileParam;
-  fileParam = fopen(ParamFN, "r");
-  if (fileParam == NULL) {
-    printf("Could not open %s. Exiting.\n", ParamFN);
+  char *ParamFN = "paramstest.txt";
+  MIDASConfig cfg;
+  if (midas_parse_params(ParamFN, &cfg) != 0) {
+    printf("Could not parse %s. Exiting.\n", ParamFN);
     return 1;
   }
-  int NrOfRings = 0, NoRingNumbers = 0, RingNumbers[MAX_N_RINGS];
-  double omemargin0, etamargin0, rotationstep, RingRadii[MAX_N_RINGS],
-      RingRadiiUser[MAX_N_RINGS], etabinsize, omebinsize;
-  int nosaveall = 0;
-  while (fgets(aline, 4096, fileParam) != NULL) {
-    str = "NoSaveAll ";
-    LowNr = strncmp(aline, str, strlen(str));
-    if (LowNr == 0) {
-      sscanf(aline, "%s %d", dummy, &nosaveall);
-      continue;
-    }
-    str = "MarginOme ";
-    LowNr = strncmp(aline, str, strlen(str));
-    if (LowNr == 0) {
-      sscanf(aline, "%s %lf", dummy, &omemargin0);
-      continue;
-    }
-    str = "MarginEta ";
-    LowNr = strncmp(aline, str, strlen(str));
-    if (LowNr == 0) {
-      sscanf(aline, "%s %lf", dummy, &etamargin0);
-      continue;
-    }
-    str = "EtaBinSize ";
-    LowNr = strncmp(aline, str, strlen(str));
-    if (LowNr == 0) {
-      sscanf(aline, "%s %lf", dummy, &etabinsize);
-      continue;
-    }
-    str = "StepsizeOrient ";
-    LowNr = strncmp(aline, str, strlen(str));
-    if (LowNr == 0) {
-      sscanf(aline, "%s %lf", dummy, &rotationstep);
-      continue;
-    }
-    str = "StepSizeOrient ";
-    LowNr = strncmp(aline, str, strlen(str));
-    if (LowNr == 0) {
-      sscanf(aline, "%s %lf", dummy, &rotationstep);
-      continue;
-    }
-    str = "OmeBinSize ";
-    LowNr = strncmp(aline, str, strlen(str));
-    if (LowNr == 0) {
-      sscanf(aline, "%s %lf", dummy, &omebinsize);
-      continue;
-    }
-    str = "RingRadii ";
-    LowNr = strncmp(aline, str, strlen(str));
-    if (LowNr == 0) {
-      sscanf(aline, "%s %lf", dummy, &RingRadiiUser[NrOfRings]);
-      NrOfRings++;
-      continue;
-    }
-    str = "RingNumbers ";
-    LowNr = strncmp(aline, str, strlen(str));
-    if (LowNr == 0) {
-      sscanf(aline, "%s %d", dummy, &RingNumbers[NoRingNumbers]);
-      NoRingNumbers++;
-      continue;
-    }
-  }
-  fclose(fileParam);
+  int NrOfRings = cfg.nRingRadii, NoRingNumbers = cfg.nRingNumbers;
+  int RingNumbers[MAX_N_RINGS];
+  for (int i = 0; i < NoRingNumbers; i++) RingNumbers[i] = cfg.RingNumbers[i];
+  double omemargin0 = cfg.MarginOme, etamargin0 = cfg.MarginEta;
+  double rotationstep = cfg.StepSizeOrient;
+  double RingRadiiUser[MAX_N_RINGS], RingRadii[MAX_N_RINGS];
+  for (int i = 0; i < NrOfRings; i++) RingRadiiUser[i] = cfg.RingRadii[i];
+  double etabinsize = cfg.EtaBinSize, omebinsize = cfg.OmeBinSize;
+  int nosaveall = cfg.NoSaveAll;
   printf("Read Parameters:\n\tNoSaveAll: %d\n\tMarginOme: %lf\n\tMarginEta: "
          "%lf\n\tEtaBinSize: %lf\n\tStepSizeOrient: %lf\n\tOmeBinSize: "
          "%lf\n\tNrOfRings: %d\n\tNoRingNumbers: %d\n",
