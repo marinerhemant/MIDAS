@@ -223,21 +223,8 @@ int ReadBinFiles(char FileStem[1000], char *ext, int StartNr, int EndNr,
   return 1;
 }
 
-void MatrixMultF(RealType m[3][3], RealType v[3], RealType r[3]) {
-  int i;
-  for (i = 0; i < 3; i++) {
-    r[i] = m[i][0] * v[0] + m[i][1] * v[1] + m[i][2] * v[2];
-  }
-}
-
-void MatrixMultF33(RealType m[3][3], RealType n[3][3], RealType res[3][3]) {
-  int r;
-  for (r = 0; r < 3; r++) {
-    res[r][0] = m[r][0] * n[0][0] + m[r][1] * n[1][0] + m[r][2] * n[2][0];
-    res[r][1] = m[r][0] * n[0][1] + m[r][1] * n[1][1] + m[r][2] * n[2][1];
-    res[r][2] = m[r][0] * n[0][2] + m[r][1] * n[1][2] + m[r][2] * n[2][2];
-  }
-}
+/* MatrixMultF, MatrixMultF33, and RotateAroundZ are now provided by MIDAS_Math.c.
+   Declarations remain in nf_headers.h. */
 
 void RotationTilts(double tx, double ty, double tz, double RotMatOut[3][3]) {
   tx = deg2rad * tx;
@@ -276,13 +263,6 @@ void RotationTilts(double tx, double ty, double tz, double RotMatOut[3][3]) {
   r3[2][2] = cos(tx);
   MatrixMultF33(r1, r2, r1r2);
   MatrixMultF33(r1r2, r3, RotMatOut);
-}
-
-void RotateAroundZ(RealType v1[3], RealType alpha, RealType v2[3]) {
-  RealType cosa = cos(alpha * deg2rad);
-  RealType sina = sin(alpha * deg2rad);
-  RealType mat[3][3] = {{cosa, -sina, 0}, {sina, cosa, 0}, {0, 0, 1}};
-  MatrixMultF(mat, v1, v2);
 }
 
 void DisplacementSpots(RealType a, RealType b, RealType Lsd, RealType yi,
