@@ -89,7 +89,7 @@ struct my_func_data {
 };
 
 void YsZsCalc(double Lsd, double Ycen, double Zcen, double p0, double p1,
-              double p2, double p3, double p4, double MaxRad, double tx,
+              double p2, double p3, double p4, double p5, double MaxRad, double tx,
               double ty, double tz, double px, double Ys, double Zs,
               double *YOut, double *ZOut, int nPanels, Panel *panels) {
   double txr = deg2rad * tx;
@@ -131,7 +131,8 @@ void YsZsCalc(double Lsd, double Ycen, double Zcen, double p0, double p1,
   EtaT = 90 - Eta;
   DistortFunc = (p0 * (pow(RNorm, n0)) * (cos(deg2rad * (2 * EtaT)))) +
                 (p1 * (pow(RNorm, n1)) * (cos(deg2rad * (4 * EtaT + p3)))) +
-                (panelP2 * (pow(RNorm, n2))) + p4 * pow(RNorm, 6.0) + 1;
+                (panelP2 * (pow(RNorm, n2))) + p4 * pow(RNorm, 6.0) +
+                p5 * pow(RNorm, 4.0) + 1;
   Rcorr = Rad * DistortFunc;
   Rcorr = Rcorr * (Lsd / panelLsd); // re-project to global Lsd plane
   *YOut = -Rcorr * sin(deg2rad * Eta);
@@ -265,7 +266,7 @@ static double problem_function(unsigned n, const double *x, double *grad,
 // Thread-safe FitWedge function with Hessian calculation
 // Returns 0 if success, 1 if hit bounds
 int FitWedgeThreadSafe(double Lsd, double Ycen, double Zcen, double p0,
-                       double p1, double p2, double p3, double p4,
+                       double p1, double p2, double p3, double p4, double p5,
                        double MaxRad, double tx, double ty, double tz,
                        double px, double Ys, double Zs, double MinOme,
                        double MaxOme, double WedgeIn, double *WedgeFit,
@@ -277,7 +278,7 @@ int FitWedgeThreadSafe(double Lsd, double Ycen, double Zcen, double p0,
   f_data.Ome2 = MaxOme;
   f_data.Wavelength = Wavelength;
   double Y, Z;
-  YsZsCalc(Lsd, Ycen, Zcen, p0, p1, p2, p3, p4, MaxRad, tx, ty, tz, px, Ys, Zs,
+  YsZsCalc(Lsd, Ycen, Zcen, p0, p1, p2, p3, p4, p5, MaxRad, tx, ty, tz, px, Ys, Zs,
            &Y, &Z, nPanels, panels);
   f_data.Ys = Y;
   f_data.Zs = Z;
@@ -378,7 +379,7 @@ int main(int argc, char *argv[]) {
   char dummy[1024];
   char *str;
   int LowNr;
-  double Ycen, Zcen, px, Lsd, ty, tz, p0, p1, p2, p3, p4 = 0, MaxRad, tx;
+  double Ycen, Zcen, px, Lsd, ty, tz, p0, p1, p2, p3, p4 = 0, p5 = 0, MaxRad, tx;
   double Wavelength, Wedge = 0.0;
   double OmegaStart = 0.0;
   double OmegaStep = 0.0;
@@ -417,6 +418,8 @@ int main(int argc, char *argv[]) {
       sscanf(aline, "%s %lf", dummy, &p3);
     else if (strncmp(aline, "p4 ", 3) == 0)
       sscanf(aline, "%s %lf", dummy, &p4);
+    else if (strncmp(aline, "p5 ", 3) == 0)
+      sscanf(aline, "%s %lf", dummy, &p5);
     else if (strncmp(aline, "RhoD ", 5) == 0)
       sscanf(aline, "%s %lf", dummy, &MaxRad);
     else if (strncmp(aline, "Wavelength ", 11) == 0)
@@ -628,7 +631,7 @@ int main(int argc, char *argv[]) {
     double resMinF = 0;
     double resNumUncertainty = 0;
     int status = FitWedgeThreadSafe(
-        Lsd, Ycen, Zcen, p0, p1, p2, p3, p4, MaxRad, tx, ty, tz, px, YsUse,
+        Lsd, Ycen, Zcen, p0, p1, p2, p3, p4, p5, MaxRad, tx, ty, tz, px, YsUse,
         ZsUse, MinOme, MaxOme, Wedge, &resWedge, &resMinF, &resNumUncertainty,
         Wavelength, nPanels, panels);
 

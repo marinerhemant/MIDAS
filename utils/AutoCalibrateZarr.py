@@ -120,6 +120,7 @@ class CalibState:
     p2: float = 0.0
     p3: float = 0.0
     p4: float = 0.0
+    p5: float = 0.0
     mean_strain: float = 1.0
     std_strain: float = 0.0
     rhod: float = 0.0
@@ -854,22 +855,41 @@ def read_image_for_estimation(data_fn, dark_fn, data_loc, dark_loc,
         dtype_map = {1: np.uint16, 2: np.float64, 3: np.float32,
                      4: np.uint32, 5: np.int32}
         np_dtype = dtype_map.get(dt, np.uint16)
-        raw = np.fromfile(data_fn, dtype=np_dtype)
-        # Assume square detector
-        side = int(np.sqrt(len(raw)))
-        if side * side != len(raw):
-            # Try with 8192-byte header
-            raw = np.fromfile(data_fn, dtype=np_dtype, offset=8192)
-            side = int(np.sqrt(len(raw)))
-        raw = raw.reshape(side, side).astype(np.float64)
+        header_size = 8192  # standard GE header
+
+        def _read_ge(fn, offset):
+            """Read a GE file, return averaged 2D frame."""
+            arr = np.fromfile(fn, dtype=np_dtype, offset=offset)
+            total = len(arr)
+            # Try to find a square side that divides evenly
+            for candidate in [2048, 4096, 1024, 512]:
+                frame_px = candidate * candidate
+                if total >= frame_px and total % frame_px == 0:
+                    nframes = total // frame_px
+                    arr = arr.reshape(nframes, candidate, candidate)
+                    return np.mean(arr, axis=0).astype(np.float64)
+            # Fallback: single square frame
+            side = int(np.sqrt(total))
+            if side * side == total:
+                return arr.reshape(side, side).astype(np.float64)
+            raise ValueError(
+                f"Cannot reshape {total} pixels into square frames "
+                f"(tried 2048², 4096², 1024², 512², √{total}={side})")
+
+        # Try with header first, then without
+        try:
+            raw = _read_ge(data_fn, header_size)
+        except (ValueError, Exception):
+            raw = _read_ge(data_fn, 0)
+
         nz, ny = raw.shape
         raw[raw < 1] = 1
         dark = np.zeros_like(raw)
         if dark_fn and os.path.exists(dark_fn):
-            dark = np.fromfile(dark_fn, dtype=np_dtype)
-            if len(dark) > side * side:
-                dark = np.fromfile(dark_fn, dtype=np_dtype, offset=8192)
-            dark = dark[:side*side].reshape(side, side).astype(np.float64)
+            try:
+                dark = _read_ge(dark_fn, header_size)
+            except (ValueError, Exception):
+                dark = _read_ge(dark_fn, 0)
         return raw, dark, ny, nz
 
 
@@ -1011,6 +1031,10 @@ def process_calibrant_output(output_file, state):
                     state.p3 = float(parts[1])
                 if 'p4 ' in line:
                     state.p4 = float(parts[1])
+                if 'p5 ' in line:
+                    state.p5 = float(parts[1])
+                if 'parallax ' in line:
+                    state.parallax_in = float(parts[1])
                 if 'RhoD ' in line:
                     state.rhod = float(parts[1])
                 if 'MeanStrain ' in line:
@@ -1265,7 +1289,9 @@ def run_get_hkl_list(param_file):
 def runMIDAS(rawFN, state, n_iterations=40, mult_factor=2.5,
              doublet_separation=25, outlier_iterations=3,
              eta_bin_size=5.0, max_width=1000, n_cpus=None,
-             stage=0, stage_label=''):
+             stage=0, stage_label='',
+             trimmed_mean_fraction=0.75,
+             remove_outliers_between_iters=1):
     """Run CalibrantPanelShiftsOMP.
 
     stage=0: full optimization (legacy behavior)
@@ -1317,6 +1343,8 @@ def runMIDAS(rawFN, state, n_iterations=40, mult_factor=2.5,
             pf.write(f'p3 {state.p3}\n')
             if state.p4 != 0.0:
                 pf.write(f'p4 {state.p4}\n')
+            if state.p5 != 0.0:
+                pf.write(f'p5 {state.p5}\n')
             pf.write(f'EtaBinSize {eta_bin_size}\n')
             pf.write('HeadSize 0\n')
 
@@ -1359,6 +1387,8 @@ def runMIDAS(rawFN, state, n_iterations=40, mult_factor=2.5,
             pf.write('WeightByRadius 1\n')
             pf.write('WeightByFitSNR 1\n')
             pf.write('L2Objective 1\n')
+            pf.write(f'TrimmedMeanFraction {trimmed_mean_fraction}\n')
+            pf.write(f'RemoveOutliersBetweenIters {remove_outliers_between_iters}\n')
 
             # Panel parameters — only in stage 2 or stage 0
             if stage != 1:
@@ -1497,6 +1527,12 @@ def main():
                             help='Initial guess for parallax (µm)')
         parser.add_argument('--tol-parallax', type=float, default=200.0,
                             help='Tolerance for parallax bounds (µm)')
+        parser.add_argument('--trimmed-mean-fraction', type=float, default=0.75,
+                            help='Fraction of points to keep in optimizer objective '
+                                 '(e.g. 0.75 = trim worst 25%). 1.0 = off. Default: 0.75')
+        parser.add_argument('--remove-outliers-between-iters', type=int, default=1,
+                            help='Remove outlier points between calibration iterations '
+                                 '(0=off, 1=on). Default: 1')
         parser.add_argument('--eta-bin-size', '-EtaBinSize', type=float, default=5.0,
                             help='Azimuthal bin size (degrees)')
 
@@ -1705,7 +1741,34 @@ def main():
                 else:
                     state.px = 200.0
             elif state.px == 0:
-                state.px = 200.0
+                # Auto-detect pixel size from detector type
+                base_lower = Path(dataFN).name.lower()
+                fn_ext = Path(dataFN).suffix.lower()
+                if '.vrx' in base_lower or 'varex' in base_lower:
+                    state.px = 150.0
+                    logger.info("Auto-detected Varex detector → pixel size 150 µm")
+                elif fn_ext in ('.tif', '.tiff', '.h5', '.hdf5', '.hdf', '.nxs'):
+                    # Check for Pilatus dimensions (1475×1679)
+                    _pil_detected = False
+                    try:
+                        if fn_ext in ('.tif', '.tiff'):
+                            _img = Image.open(dataFN)
+                            _shape = (_img.size[1], _img.size[0])  # (H, W)
+                        else:
+                            with h5py.File(dataFN, 'r') as _f:
+                                _dloc = args.data_loc or 'exchange/data'
+                                _shape = _f[_dloc].shape[-2:]
+                        if sorted(_shape) == [1475, 1679]:
+                            state.px = 172.0
+                            _pil_detected = True
+                            logger.info("Auto-detected Pilatus detector "
+                                        f"({_shape[0]}×{_shape[1]}) → pixel size 172 µm")
+                    except Exception:
+                        pass
+                    if not _pil_detected:
+                        state.px = 200.0
+                else:
+                    state.px = 200.0  # GE and other raw formats
             if 'wavelength' in filename_hints:
                 state.wavelength = filename_hints['wavelength']
 
@@ -2074,7 +2137,9 @@ def main():
                  max_width=maxW,
                  n_cpus=n_cpus,
                  stage=1,
-                 stage_label='[Stage 1/2] ')
+                 stage_label='[Stage 1/2] ',
+                 trimmed_mean_fraction=args.trimmed_mean_fraction,
+                 remove_outliers_between_iters=args.remove_outliers_between_iters)
 
         logger.info(f"Stage 1 result: Lsd={state.lsd:.1f}, "
                      f"BC=({state.ybc:.2f}, {state.zbc:.2f}), "
@@ -2094,7 +2159,9 @@ def main():
                  max_width=maxW,
                  n_cpus=n_cpus,
                  stage=2,
-                 stage_label='[Stage 2/2] ')
+                 stage_label='[Stage 2/2] ',
+                 trimmed_mean_fraction=args.trimmed_mean_fraction,
+                 remove_outliers_between_iters=args.remove_outliers_between_iters)
 
         # ---- Generate final results ----
         logger.info("Generating final results data")
@@ -2190,6 +2257,10 @@ def main():
 
         if state.p4 != 0.0:
             final_params['p4'] = state.p4
+        if state.p5 != 0.0:
+            final_params['p5'] = state.p5
+        if state.parallax_in != 0.0:
+            final_params['Parallax'] = state.parallax_in
 
         if state.mask_file:
             final_params['MaskFile'] = state.mask_file

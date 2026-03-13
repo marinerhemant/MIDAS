@@ -80,8 +80,9 @@ void dg_build_tilt_matrix(double tx_deg, double ty_deg, double tz_deg,
 
 void dg_pixel_to_REta(double Y, double Z, double Ycen, double Zcen,
                       double TRs[3][3], double Lsd, double RhoD, double p0,
-                      double p1, double p2, double p3, double p4, double px,
-                      double dLsd, double dP2, double *R_out, double *Eta_out,
+                      double p1, double p2, double p3, double p4, double p5,
+                      double px, double dLsd, double dP2, double parallax,
+                      double *R_out, double *Eta_out,
                       double *Eta_untilted_out) {
   double panelLsd = Lsd + dLsd;
   double panelP2 = p2 + dP2;
@@ -107,6 +108,7 @@ void dg_pixel_to_REta(double Y, double Z, double Ycen, double Zcen,
       (p1 * pow(RNorm, n1) * cos(DG_DEG2RAD * (4 * EtaT + p3))) +
       (panelP2 * pow(RNorm, n2));
   DistortFunc += p4 * pow(RNorm, 6.0);
+  DistortFunc += p5 * pow(RNorm, 4.0);
   DistortFunc += 1;
   double Rt = Rad * DistortFunc / px; // in pixels
   Rt = Rt * (Lsd / panelLsd);         // re-project to global Lsd plane

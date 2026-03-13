@@ -72,7 +72,7 @@ mapperfcn(double tx, double ty, double tz, int NrPixelsY, int NrPixelsZ,
           double RhoD, double p0, double p1, double p2, double p3,
           double *EtaBinsLow, double *EtaBinsHigh, double *RBinsLow,
           double *RBinsHigh, int nRBins, int nEtaBins, struct data ***pxList,
-          int **nPxList, int **maxnPx, double *mask, double p4,
+          int **nPxList, int **maxnPx, double *mask, double p4, double p5,
           int *binMaskFlag, int NrTransOpt, const int TransOpt[10]) {
   double TRs[3][3];
   dg_build_tilt_matrix(tx, ty, tz, TRs);
@@ -119,8 +119,8 @@ mapperfcn(double tx, double ty, double tz, int NrPixelsY, int NrPixelsZ,
         for (l = 0; l < 2; l++) {
           double Y = ypr + dg_dy[k];
           double Z = zpr + dg_dz[l];
-          dg_pixel_to_REta(Y, Z, Ycen, Zcen, TRs, Lsd, RhoD, p0, p1, p2, p3, p4,
-                           pxY, dLsd, dP2, &Rt, &Eta, NULL);
+          dg_pixel_to_REta(Y, Z, Ycen, Zcen, TRs, Lsd, RhoD, p0, p1, p2, p3, p4, p5,
+                           pxY, dLsd, dP2, 0, &Rt, &Eta, NULL);
           RetVals[0] = Eta;
           RetVals[1] = Rt;
           if (Eta < EtaMi)
@@ -134,8 +134,8 @@ mapperfcn(double tx, double ty, double tz, int NrPixelsY, int NrPixelsZ,
         }
       }
       // Get corrected Y, Z for this position.
-      dg_pixel_to_REta(ypr, zpr, Ycen, Zcen, TRs, Lsd, RhoD, p0, p1, p2, p3, p4,
-                       pxY, dLsd, dP2, &Rt, &Eta, NULL);
+      dg_pixel_to_REta(ypr, zpr, Ycen, Zcen, TRs, Lsd, RhoD, p0, p1, p2, p3, p4, p5,
+                       pxY, dLsd, dP2, 0, &Rt, &Eta, NULL);
       dg_REta_to_YZ(Rt, Eta, &YZ[0], &YZ[1]);
       // Now check which eta, R ranges should have this pixel
       int nrRChosen = 0;
@@ -440,8 +440,8 @@ mapperfcn(double tx, double ty, double tz, int NrPixelsY, int NrPixelsZ,
     for (int si = 0; si < 4; si++) {
       double Rdbg, Etadbg;
       dg_pixel_to_REta((double)sampleY[si], (double)sampleZ[si], Ycen, Zcen,
-                       TRsDbg, Lsd, RhoD, p0, p1, p2, p3, p4, pxY, 0, 0, &Rdbg,
-                       &Etadbg, NULL);
+                       TRsDbg, Lsd, RhoD, p0, p1, p2, p3, p4, p5, pxY, 0, 0, 0,
+                       &Rdbg, &Etadbg, NULL);
       printf("  pixel(%4d,%4d): R=%10.2f  Eta=%8.2f\n", sampleY[si],
              sampleZ[si], Rdbg, Etadbg);
     }
@@ -534,7 +534,7 @@ int main(int argc, char *argv[]) {
 
   // ── Shared variables ─────────────────────────────────────────────
   double tx = 0, ty = 0, tz = 0, pxY = 200, pxZ = 200, yCen = 1024, zCen = 1024,
-         Lsd = 1e6, RhoD = 2e5, p0 = 0, p1 = 0, p2 = 0, p3 = 0, p4 = 0,
+         Lsd = 1e6, RhoD = 2e5, p0 = 0, p1 = 0, p2 = 0, p3 = 0, p4 = 0, p5 = 0,
          EtaBinSize = 5, RBinSize = 0.25, RMax = 1524, RMin = 10, EtaMax = 180,
          EtaMin = -180;
   int NrPixelsY = 2048, NrPixelsZ = 2048;
@@ -670,6 +670,10 @@ int main(int argc, char *argv[]) {
       if (StartsWith(aline, str) == 1) {
         sscanf(aline, "%s %lf", dummy, &p4);
       }
+      str = "p5 ";
+      if (StartsWith(aline, str) == 1) {
+        sscanf(aline, "%s %lf", dummy, &p5);
+      }
       str = "DistortionOrder ";
       if (StartsWith(aline, str) == 1) {
         continue;
@@ -789,6 +793,9 @@ int main(int argc, char *argv[]) {
       if (strstr(finfo->name, "analysis/process/analysis_parameters/p4/0") !=
           NULL)
         ReadZarrChunk(arch, count, &p4, sizeof(double));
+      if (strstr(finfo->name, "analysis/process/analysis_parameters/p5/0") !=
+          NULL)
+        ReadZarrChunk(arch, count, &p5, sizeof(double));
       if (strstr(finfo->name,
                  "analysis/process/analysis_parameters/DistortionOrder/0") !=
           NULL)
@@ -1085,7 +1092,7 @@ int main(int argc, char *argv[]) {
   long long int TotNrOfBins = mapperfcn(
       tx, ty, tz, NrPixelsY, NrPixelsZ, pxY, pxZ, yCen, zCen, Lsd, RhoD, p0, p1,
       p2, p3, EtaBinsLow, EtaBinsHigh, RBinsLow, RBinsHigh, nRBins, nEtaBins,
-      pxList, nPxList, maxnPx, mask, p4, binMaskFlag, NrTransOpt, TransOpt);
+      pxList, nPxList, maxnPx, mask, p4, p5, binMaskFlag, NrTransOpt, TransOpt);
   printf("Total Number of bins %lld\n", TotNrOfBins);
   fflush(stdout);
 

@@ -599,7 +599,7 @@ static inline double CorrectWedge(double eta, double theta, double wl,
 static inline void CorrectTiltSpatialDistortion(
     double px, double Lsd, double ybc, double zbc, double tx, double ty,
     double tz, double RhoD, double p0, double p1, double p2, double p3,
-    double p4, int NrPixels, double *yDispl, double *zDispl, int nPanels,
+    double p4, double p5, int NrPixels, double *yDispl, double *zDispl, int nPanels,
     Panel *panels, int nCPUs) {
   double txr, tyr, tzr;
   txr = deg2rad * tx;
@@ -652,7 +652,8 @@ static inline void CorrectTiltSpatialDistortion(
       double DistortFunc =
           (p0 * (pow(RNorm, n0)) * (cos(deg2rad * (2 * EtaT)))) +
           (p1 * (pow(RNorm, n1)) * (cos(deg2rad * (4 * EtaT + p3)))) +
-          (panelP2 * (pow(RNorm, n2))) + p4 * pow(RNorm, 6.0) + 1;
+          (panelP2 * (pow(RNorm, n2))) + p4 * pow(RNorm, 6.0) +
+          p5 * pow(RNorm, 4.0) + 1;
       double Rcorr = Rad * DistortFunc;
       double YCorr = -Rcorr * sin(Eta * deg2rad);
       double ZCorr = Rcorr * cos(Eta * deg2rad);
@@ -1078,7 +1079,7 @@ int main(int argc, char *argv[]) {
   int Padding = 6, NrPixels;
   double Lsd, tx, ty, tz, yBC, zBC, OmegaStep, OmegaStart, OmegaEnd, px;
   int RingsToUse[500], nRings = 0;
-  double LatC[6], Wavelength, Wedge = 0, p0, p1, p2, p3 = 0, p4 = 0, RhoD,
+  double LatC[6], Wavelength, Wedge = 0, p0, p1, p2, p3 = 0, p4 = 0, p5 = 0, RhoD,
                               GaussWidth = 1, PeakIntensity = 2000;
   int NPanelsY = 0, NPanelsZ = 0, PanelSizeY = 0, PanelSizeZ = 0;
   int *PanelGapsY = NULL, *PanelGapsZ = NULL;
@@ -1208,6 +1209,12 @@ int main(int argc, char *argv[]) {
     LowNr = strncmp(aline, str, strlen(str));
     if (LowNr == 0) {
       sscanf(aline, "%s %lf", dummy, &p4);
+      continue;
+    }
+    str = "p5 ";
+    LowNr = strncmp(aline, str, strlen(str));
+    if (LowNr == 0) {
+      sscanf(aline, "%s %lf", dummy, &p5);
       continue;
     }
     str = "NPanelsY ";
@@ -1715,7 +1722,7 @@ int main(int argc, char *argv[]) {
         -32100.0; // Set to a special number to check if it was set or not.
   }
   CorrectTiltSpatialDistortion(px, Lsd, yBC, zBC, tx, ty, tz, RhoD, p0, p1, p2,
-                               p3, p4, NrPixels, yDispl, zDispl, nPanels,
+                               p3, p4, p5, NrPixels, yDispl, zDispl, nPanels,
                                panels, nCPUs);
   end_time = omp_get_wtime();
   diftotal = end_time - start0;

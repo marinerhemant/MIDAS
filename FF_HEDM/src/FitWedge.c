@@ -97,7 +97,7 @@ struct my_func_data {
 };
 
 void YsZsCalc(double Lsd, double Ycen, double Zcen, double p0, double p1,
-              double p2, double p3, double p4, double MaxRad, double tx,
+              double p2, double p3, double p4, double p5, double MaxRad, double tx,
               double ty, double tz, double px, double Ys, double Zs,
               double *YOut, double *ZOut, int nPanels, Panel *panels) {
   double txr = deg2rad * tx;
@@ -136,7 +136,8 @@ void YsZsCalc(double Lsd, double Ycen, double Zcen, double p0, double p1,
   EtaT = 90 - Eta;
   DistortFunc = (p0 * (pow(RNorm, n0)) * (cos(deg2rad * (2 * EtaT)))) +
                 (p1 * (pow(RNorm, n1)) * (cos(deg2rad * (4 * EtaT + p3)))) +
-                (panelP2 * (pow(RNorm, n2))) + p4 * pow(RNorm, 6.0) + 1;
+                (panelP2 * (pow(RNorm, n2))) + p4 * pow(RNorm, 6.0) +
+                p5 * pow(RNorm, 4.0) + 1;
   Rcorr = Rad * DistortFunc;
   Rcorr = Rcorr * (Lsd / panelLsd); // re-project to global Lsd plane
   *YOut = -Rcorr * sin(deg2rad * Eta);
@@ -276,7 +277,7 @@ static double problem_function(unsigned n, const double *x, double *grad,
 }
 
 void FitWedge(double Lsd, double Ycen, double Zcen, double p0, double p1,
-              double p2, double p3, double p4, double MaxRad, double tx,
+              double p2, double p3, double p4, double p5, double MaxRad, double tx,
               double ty, double tz, double px, double Ys, double Zs,
               double MinOme, double MaxOme, double WedgeIn, double *WedgeFit,
               double Wavelength, int nPanels, Panel *panels) {
@@ -286,7 +287,7 @@ void FitWedge(double Lsd, double Ycen, double Zcen, double p0, double p1,
   f_data.Ome2 = MaxOme;
   f_data.Wavelength = Wavelength;
   double Y, Z;
-  YsZsCalc(Lsd, Ycen, Zcen, p0, p1, p2, p3, p4, MaxRad, tx, ty, tz, px, Ys, Zs,
+  YsZsCalc(Lsd, Ycen, Zcen, p0, p1, p2, p3, p4, p5, MaxRad, tx, ty, tz, px, Ys, Zs,
            &Y, &Z, nPanels, panels);
   f_data.Ys = Y;
   f_data.Zs = Z;
@@ -329,7 +330,7 @@ int main(int argc, char *argv[]) {
   fileParam = fopen(ParamFN, "r");
   char *str, dummy[1000];
   int LowNr;
-  double Ycen, Zcen, px, Lsd, ty, tz, p0, p1, p2, p3 = 0, p4 = 0, MaxRad, tx,
+  double Ycen, Zcen, px, Lsd, ty, tz, p0, p1, p2, p3 = 0, p4 = 0, p5 = 0, MaxRad, tx,
                                                   Ys[2];
   double Wavelength, Zs[2], Y[2], Z[2], Omegas[2], Wedge;
   Panel *panels = NULL;
@@ -408,6 +409,12 @@ int main(int argc, char *argv[]) {
       sscanf(aline, "%s %lf", dummy, &p4);
       continue;
     }
+    str = "p5 ";
+    LowNr = strncmp(aline, str, strlen(str));
+    if (LowNr == 0) {
+      sscanf(aline, "%s %lf", dummy, &p5);
+      continue;
+    }
     str = "RhoD ";
     LowNr = strncmp(aline, str, strlen(str));
     if (LowNr == 0) {
@@ -454,7 +461,7 @@ int main(int argc, char *argv[]) {
   Ys[1] = Y[Second];
   Zs[1] = Z[Second];
   double WedgeFit;
-  FitWedge(Lsd, Ycen, Zcen, p0, p1, p2, p3, p4, MaxRad, tx, ty, tz, px, Ys[0],
+  FitWedge(Lsd, Ycen, Zcen, p0, p1, p2, p3, p4, p5, MaxRad, tx, ty, tz, px, Ys[0],
            Zs[0], MinOme, MaxOme, Wedge, &WedgeFit, Wavelength, nPanels,
            panels);
   printf("Refined Wedge: %10.30f\n", WedgeFit);
