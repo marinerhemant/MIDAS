@@ -94,7 +94,7 @@ The script follows a logical, multi-step process to achieve a converged geometri
 
 3.  **Initial Guess Estimation:**
     *   **Beam Center:** JIT-accelerated parallel algorithm, or manual guess via `--bc-guess`.
-    *   **Ring Radii & Lsd:** Automatic matching of ring radius ratios to HKL spacings.
+    *   **Ring Radii & Lsd:** Multi-hypothesis estimation — tries all possible assignments of the first detected ring to simulated rings, scores by Lsd consistency (std of individual estimates), and selects the most internally consistent match. Robust even when the first ring is weak or missing.
 
 4.  **Single-Call Refinement:**
     *   A single call to `CalibrantPanelShiftsOMP` with all features enabled:
@@ -118,7 +118,8 @@ The script follows a logical, multi-step process to achieve a converged geometri
 
 ### 4.1. AutoCalibrateZarr.py (The Orchestrator)
 *   **Beam Center Detection:** Uses `scikit-image` (`measure.label`) to identify potential ring arcs. A custom, JIT-compiled function (`numba`) then calculates the geometric center of these arcs. This process is parallelized using Python's `multiprocessing` module.
-*   **Initial Guess Logic:** Ring radii ratios are matched to HKL spacing ratios to estimate `Lsd`.
+*   **Initial Guess Logic:** Multi-hypothesis Lsd estimation — for each possible assignment of the first detected ring to a simulated ring, a trial Lsd is computed and all detected rings are checked against simulated positions at that distance. The hypothesis producing the most internally consistent Lsd values (lowest std across individual ring estimates) is selected. This handles cases where the first CeO2 ring is below detection threshold or the initial Lsd guess is far from the true value.
+*   **Interactive Viewer:** When `--plots 1` is specified, a matplotlib-based viewer displays 4 panels (Raw, Background, Corrected, Corrected + Rings) with linked zoom/pan. Continue and Cancel buttons allow the user to proceed or abort after inspecting the initial guess.
 *   **Single C Call:** Instead of a Python iteration loop, the script makes a single call to `CalibrantPanelShiftsOMP` with `nIterations=40` and all advanced features (doublets, SNR weighting, ring normalization). The C code handles all iteration, outlier rejection, and convergence internally.
 *   **State Management:** Uses a `CalibState` dataclass to manage all calibration parameters cleanly.
 
@@ -194,6 +195,7 @@ The script uses `--flag` convention with backward-compatible aliases for all leg
 | `--parallax-guess` | — | Initial guess for parallax value (µm) | `0.0` | `--parallax-guess 50.0` |
 | `--tol-parallax` | — | Tolerance for parallax bounds (µm) | `200.0` | `--tol-parallax 100.0` |
 | `--cpus` | — | Number of CPUs for CalibrantPanelShiftsOMP (0=all) | `0` | `--cpus 32` |
+| `--max-ring` | `-MaxRingNumber` | Maximum ring number to use for calibration (0=no limit) | `0` | `--max-ring 21` |
 
 > [!TIP]
 > The following C-side features are enabled by default and do not need explicit flags:
@@ -220,7 +222,7 @@ When input is not a pre-existing Zarr file, provide a parameter file with initia
 
 | New Flag | Legacy Alias | Description | Default | Example |
 | :--- | :--- | :--- | :--- | :--- |
-| `--plots` | `-MakePlots`, `-P` | Make plots: `0`=no, `1`=yes | `0` | `--plots 1` |
+| `--plots` | `-MakePlots`, `-P` | Interactive viewer: `0`=off, `1`=show matplotlib viewer with Continue/Cancel buttons. All 4 panels have linked zoom/pan. | `0` | `--plots 1` |
 | `--save-hdf` | `-SavePlotsHDF` | Save arrays to HDF5 file | `''` | `--save-hdf cal.h5` |
 
 ---
