@@ -65,6 +65,8 @@ static inline void inverse_transform_pixel(int y_in, int z_in, int *y_out,
   *z_out = z;
 }
 
+#define N_BIN_LOCKS 4096
+
 static long long int
 mapperfcn(double tx, double ty, double tz, int NrPixelsY, int NrPixelsZ,
           double pxY, double pxZ, double Ycen, double Zcen, double Lsd,
@@ -72,7 +74,8 @@ mapperfcn(double tx, double ty, double tz, int NrPixelsY, int NrPixelsZ,
           double *EtaBinsLow, double *EtaBinsHigh, double *RBinsLow,
           double *RBinsHigh, int nRBins, int nEtaBins, struct data ***pxList,
           int **nPxList, int **maxnPx, double *mask, double p4, double p5,
-          int *binMaskFlag, int NrTransOpt, const int TransOpt[10]) {
+          int *binMaskFlag, int NrTransOpt, const int TransOpt[10],
+          omp_lock_t *binLocks) {
   double TRs[3][3];
   dg_build_tilt_matrix(tx, ty, tz, TRs);
   int i;
@@ -391,9 +394,10 @@ mapperfcn(double tx, double ty, double tz, int NrPixelsY, int NrPixelsZ,
             nrContinued3++;
             continue;
           }
-          // Populate the arrays (thread-safe)
-#pragma omp critical
+          // Populate the arrays (thread-safe via per-bin lock striping)
           {
+            int lockIdx = ((long long)RChosen[k] * nEtaBins + EtaChosen[l]) % N_BIN_LOCKS;
+            omp_set_lock(&binLocks[lockIdx]);
             int maxnVal = maxnPx[RChosen[k]][EtaChosen[l]];
             int nVal = nPxList[RChosen[k]][EtaChosen[l]];
             if (nVal >= maxnVal) {
@@ -414,6 +418,7 @@ mapperfcn(double tx, double ty, double tz, int NrPixelsY, int NrPixelsZ,
             pxList[RChosen[k]][EtaChosen[l]][nVal].z = raw_z;
             pxList[RChosen[k]][EtaChosen[l]][nVal].frac = Area;
             (nPxList[RChosen[k]][EtaChosen[l]])++;
+            omp_unset_lock(&binLocks[lockIdx]);
           }
           totPxArea += Area;
           TotNrOfBins++;
@@ -502,9 +507,8 @@ static inline void DoImageTransformations(int NrTransOpt, int TransOpt[10],
 
 int main(int argc, char *argv[]) {
   printf("Version: %s\n", MIDAS_VERSION_STRING);
-  clock_t start0, end0;
-  start0 = clock();
-  double diftotal;
+  double start0, end0, diftotal;
+  start0 = omp_get_wtime();
   numProcs = omp_get_max_threads();
 
   // ── CLI parsing ──────────────────────────────────────────────────
@@ -1089,13 +1093,23 @@ int main(int argc, char *argv[]) {
   long long int nBinTotal = (long long int)nRBins * nEtaBins;
   int *binMaskFlag = calloc(nBinTotal, sizeof(int));
 
+  // Initialize per-bin striped locks for thread-safe bin population
+  omp_lock_t binLocks[N_BIN_LOCKS];
+  for (int li = 0; li < N_BIN_LOCKS; li++)
+    omp_init_lock(&binLocks[li]);
+
   // Run mapper
   long long int TotNrOfBins = mapperfcn(
       tx, ty, tz, NrPixelsY, NrPixelsZ, pxY, pxZ, yCen, zCen, Lsd, RhoD, p0, p1,
       p2, p3, EtaBinsLow, EtaBinsHigh, RBinsLow, RBinsHigh, nRBins, nEtaBins,
-      pxList, nPxList, maxnPx, mask, p4, p5, binMaskFlag, NrTransOpt, TransOpt);
+      pxList, nPxList, maxnPx, mask, p4, p5, binMaskFlag, NrTransOpt, TransOpt,
+      binLocks);
   printf("Total Number of bins %lld\n", TotNrOfBins);
   fflush(stdout);
+
+  // Destroy locks
+  for (int li = 0; li < N_BIN_LOCKS; li++)
+    omp_destroy_lock(&binLocks[li]);
 
   // Count flagged bins
   int nFlaggedBins = 0;
@@ -1174,8 +1188,8 @@ int main(int argc, char *argv[]) {
   }
   free(binMaskFlag);
 
-  end0 = clock();
-  diftotal = ((double)(end0 - start0)) / CLOCKS_PER_SEC;
+  end0 = omp_get_wtime();
+  diftotal = end0 - start0;
   printf("Total time elapsed:\t%f s.\n", diftotal);
   return 0;
 }
