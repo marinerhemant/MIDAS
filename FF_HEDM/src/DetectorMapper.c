@@ -148,29 +148,31 @@ mapperfcn(double tx, double ty, double tz, int NrPixelsY, int NrPixelsZ,
           nrRChosen++;
         }
       }
-      for (k = 0; k < nEtaBins;
-           k++) { // If Eta is smaller than 0, check for eta, eta+360, if eta is
-                  // greater than 0, check for eta, eta-360
-        // First check if the pixel is a special case
-        if (EtaMa - EtaMi > 180) {
-          double EtaMiTr = EtaMa;
-          double EtaMaTr = 360 + EtaMi;
-          EtaMa = EtaMaTr;
-          EtaMi = EtaMiTr;
-        }
-        if ((EtaBinsHigh[k] >= EtaMi && EtaBinsLow[k] <= EtaMa)) {
+      // Compute wrapped eta range ONCE, using copies (never mutate EtaMi/EtaMa)
+      double etaLo = EtaMi, etaHi = EtaMa;
+      int wrapsAround = (etaHi - etaLo > 180);
+      if (wrapsAround) {
+        // Pixel straddles the ±180° branch cut.
+        // Remap to a contiguous range above +180.
+        double tmp = etaHi;
+        etaHi = 360 + etaLo;
+        etaLo = tmp;
+      }
+      for (k = 0; k < nEtaBins; k++) {
+        // Test the primary range
+        if (EtaBinsHigh[k] >= etaLo && EtaBinsLow[k] <= etaHi) {
           EtaChosen[nrEtaChosen] = k;
           nrEtaChosen++;
           continue;
         }
-        if (EtaMi < 0) {
-          EtaMi += 360;
-          EtaMa += 360;
-        } else {
-          EtaMi -= 360;
-          EtaMa -= 360;
+        // Test shifted by +360
+        if (EtaBinsHigh[k] >= etaLo + 360 && EtaBinsLow[k] <= etaHi + 360) {
+          EtaChosen[nrEtaChosen] = k;
+          nrEtaChosen++;
+          continue;
         }
-        if ((EtaBinsHigh[k] >= EtaMi && EtaBinsLow[k] <= EtaMa)) {
+        // Test shifted by -360
+        if (EtaBinsHigh[k] >= etaLo - 360 && EtaBinsLow[k] <= etaHi - 360) {
           EtaChosen[nrEtaChosen] = k;
           nrEtaChosen++;
           continue;
@@ -308,74 +310,64 @@ mapperfcn(double tx, double ty, double tz, int NrPixelsY, int NrPixelsZ,
               }
             }
             // EtaMin,Max and yMin,Max
-            if (fabs(EtaMin) < 1E-5 || fabs(fabs(EtaMin) - 180) < 1E-5) {
-              zTempMin = 0;
-              zTempMax = 0;
-            } else {
+            // At eta ≈ 0°/180° the ray is parallel to y-edges, skip
+            if (!(fabs(EtaMin) < 1E-5 || fabs(fabs(EtaMin) - 180) < 1E-5)) {
               zTempMin = -yMin / tan(EtaMin * DG_DEG2RAD);
               zTempMax = -yMax / tan(EtaMin * DG_DEG2RAD);
+              if (dg_between(zTempMin, zMin, zMax) == 1) {
+                Edges[nEdges][0] = yMin;
+                Edges[nEdges][1] = zTempMin;
+                nEdges++;
+              }
+              if (dg_between(zTempMax, zMin, zMax) == 1) {
+                Edges[nEdges][0] = yMax;
+                Edges[nEdges][1] = zTempMax;
+                nEdges++;
+              }
             }
-            if (dg_between(zTempMin, zMin, zMax) == 1) {
-              Edges[nEdges][0] = yMin;
-              Edges[nEdges][1] = zTempMin;
-              nEdges++;
-            }
-            if (dg_between(zTempMax, zMin, zMax) == 1) {
-              Edges[nEdges][0] = yMax;
-              Edges[nEdges][1] = zTempMax;
-              nEdges++;
-            }
-            if (fabs(EtaMax) < 1E-5 || fabs(fabs(EtaMax) - 180) < 1E-5) {
-              zTempMin = 0;
-              zTempMax = 0;
-            } else {
+            if (!(fabs(EtaMax) < 1E-5 || fabs(fabs(EtaMax) - 180) < 1E-5)) {
               zTempMin = -yMin / tan(EtaMax * DG_DEG2RAD);
               zTempMax = -yMax / tan(EtaMax * DG_DEG2RAD);
-            }
-            if (dg_between(zTempMin, zMin, zMax) == 1) {
-              Edges[nEdges][0] = yMin;
-              Edges[nEdges][1] = zTempMin;
-              nEdges++;
-            }
-            if (dg_between(zTempMax, zMin, zMax) == 1) {
-              Edges[nEdges][0] = yMax;
-              Edges[nEdges][1] = zTempMax;
-              nEdges++;
+              if (dg_between(zTempMin, zMin, zMax) == 1) {
+                Edges[nEdges][0] = yMin;
+                Edges[nEdges][1] = zTempMin;
+                nEdges++;
+              }
+              if (dg_between(zTempMax, zMin, zMax) == 1) {
+                Edges[nEdges][0] = yMax;
+                Edges[nEdges][1] = zTempMax;
+                nEdges++;
+              }
             }
             // EtaMin,Max and zMin,Max
-            if (fabs(fabs(EtaMin) - 90) < 1E-5) {
-              yTempMin = 0;
-              yTempMax = 0;
-            } else {
+            // At eta ≈ ±90° the ray is parallel to z-edges, skip
+            if (!(fabs(fabs(EtaMin) - 90) < 1E-5)) {
               yTempMin = -zMin * tan(EtaMin * DG_DEG2RAD);
               yTempMax = -zMax * tan(EtaMin * DG_DEG2RAD);
+              if (dg_between(yTempMin, yMin, yMax) == 1) {
+                Edges[nEdges][0] = yTempMin;
+                Edges[nEdges][1] = zMin;
+                nEdges++;
+              }
+              if (dg_between(yTempMax, yMin, yMax) == 1) {
+                Edges[nEdges][0] = yTempMax;
+                Edges[nEdges][1] = zMax;
+                nEdges++;
+              }
             }
-            if (dg_between(yTempMin, yMin, yMax) == 1) {
-              Edges[nEdges][0] = yTempMin;
-              Edges[nEdges][1] = zMin;
-              nEdges++;
-            }
-            if (dg_between(yTempMax, yMin, yMax) == 1) {
-              Edges[nEdges][0] = yTempMax;
-              Edges[nEdges][1] = zMax;
-              nEdges++;
-            }
-            if (fabs(fabs(EtaMax) - 90) < 1E-5) {
-              yTempMin = 0;
-              yTempMax = 0;
-            } else {
+            if (!(fabs(fabs(EtaMax) - 90) < 1E-5)) {
               yTempMin = -zMin * tan(EtaMax * DG_DEG2RAD);
               yTempMax = -zMax * tan(EtaMax * DG_DEG2RAD);
-            }
-            if (dg_between(yTempMin, yMin, yMax) == 1) {
-              Edges[nEdges][0] = yTempMin;
-              Edges[nEdges][1] = zMin;
-              nEdges++;
-            }
-            if (dg_between(yTempMax, yMin, yMax) == 1) {
-              Edges[nEdges][0] = yTempMax;
-              Edges[nEdges][1] = zMax;
-              nEdges++;
+              if (dg_between(yTempMin, yMin, yMax) == 1) {
+                Edges[nEdges][0] = yTempMin;
+                Edges[nEdges][1] = zMin;
+                nEdges++;
+              }
+              if (dg_between(yTempMax, yMin, yMax) == 1) {
+                Edges[nEdges][0] = yTempMax;
+                Edges[nEdges][1] = zMax;
+                nEdges++;
+              }
             }
           }
           if (nEdges < 3) {
