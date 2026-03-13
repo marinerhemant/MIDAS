@@ -14,7 +14,6 @@
 #include "ZarrReader.h"
 #include <blosc2.h>
 #include <ctype.h>
-#include <limits.h>
 #include <math.h>
 #include <stdint.h>
 #include <stdio.h>
@@ -119,8 +118,8 @@ mapperfcn(double tx, double ty, double tz, int NrPixelsY, int NrPixelsZ,
         for (l = 0; l < 2; l++) {
           double Y = ypr + dg_dy[k];
           double Z = zpr + dg_dz[l];
-          dg_pixel_to_REta(Y, Z, Ycen, Zcen, TRs, Lsd, RhoD, p0, p1, p2, p3, p4, p5,
-                           pxY, dLsd, dP2, 0, &Rt, &Eta, NULL);
+          dg_pixel_to_REta(Y, Z, Ycen, Zcen, TRs, Lsd, RhoD, p0, p1, p2, p3, p4,
+                           p5, pxY, dLsd, dP2, 0, &Rt, &Eta, NULL);
           RetVals[0] = Eta;
           RetVals[1] = Rt;
           if (Eta < EtaMi)
@@ -134,8 +133,8 @@ mapperfcn(double tx, double ty, double tz, int NrPixelsY, int NrPixelsZ,
         }
       }
       // Get corrected Y, Z for this position.
-      dg_pixel_to_REta(ypr, zpr, Ycen, Zcen, TRs, Lsd, RhoD, p0, p1, p2, p3, p4, p5,
-                       pxY, dLsd, dP2, 0, &Rt, &Eta, NULL);
+      dg_pixel_to_REta(ypr, zpr, Ycen, Zcen, TRs, Lsd, RhoD, p0, p1, p2, p3, p4,
+                       p5, pxY, dLsd, dP2, 0, &Rt, &Eta, NULL);
       dg_REta_to_YZ(Rt, Eta, &YZ[0], &YZ[1]);
       // Now check which eta, R ranges should have this pixel
       int nrRChosen = 0;
@@ -502,7 +501,7 @@ static inline void DoImageTransformations(int NrTransOpt, int TransOpt[10],
 }
 
 int main(int argc, char *argv[]) {
-	printf("Version: %s\n", MIDAS_VERSION_STRING);
+  printf("Version: %s\n", MIDAS_VERSION_STRING);
   clock_t start0, end0;
   start0 = clock();
   double diftotal;
@@ -845,11 +844,11 @@ int main(int argc, char *argv[]) {
       if (strstr(finfo->name,
                  "analysis/process/analysis_parameters/QBinSize/0") != NULL)
         ReadZarrChunk(arch, count, &QBinSize, sizeof(double));
-      if (strstr(finfo->name,
-                 "analysis/process/analysis_parameters/QMin/0") != NULL)
+      if (strstr(finfo->name, "analysis/process/analysis_parameters/QMin/0") !=
+          NULL)
         ReadZarrChunk(arch, count, &QMin, sizeof(double));
-      if (strstr(finfo->name,
-                 "analysis/process/analysis_parameters/QMax/0") != NULL)
+      if (strstr(finfo->name, "analysis/process/analysis_parameters/QMax/0") !=
+          NULL)
         ReadZarrChunk(arch, count, &QMax, sizeof(double));
       if (strstr(finfo->name,
                  "analysis/process/analysis_parameters/Wavelength/0") != NULL)
@@ -1036,8 +1035,8 @@ int main(int argc, char *argv[]) {
     if (QMax > 0)
       RMax = (Lsd / pxY) * tan(2.0 * asin(QMax * Wavelength / (4.0 * M_PI)));
     nRBins = (int)ceil((QMax - QMin) / QBinSize);
-    printf("Q-mode: %d Q-bins [%.4f, %.4f] inv-Angstrom, step %.4f\n",
-           nRBins, QMin, QMax, QBinSize);
+    printf("Q-mode: %d Q-bins [%.4f, %.4f] inv-Angstrom, step %.4f\n", nRBins,
+           QMin, QMax, QBinSize);
     printf("  Wavelength: %.6f Angstrom\n", Wavelength);
     printf("  -> R range [%.2f, %.2f] pixels\n", RMin, RMax);
   } else {
@@ -1053,14 +1052,16 @@ int main(int argc, char *argv[]) {
   if (qMode) {
     // Equal Q bins -> non-uniform R bins
     for (int qi = 0; qi < nRBins; qi++) {
-      double qLow  = QMin + QBinSize * qi;
+      double qLow = QMin + QBinSize * qi;
       double qHigh = QMin + QBinSize * (qi + 1);
-      RBinsLow[qi]  = (Lsd / pxY) * tan(2.0 * asin(qLow  * Wavelength / (4.0 * M_PI)));
-      RBinsHigh[qi] = (Lsd / pxY) * tan(2.0 * asin(qHigh * Wavelength / (4.0 * M_PI)));
+      RBinsLow[qi] =
+          (Lsd / pxY) * tan(2.0 * asin(qLow * Wavelength / (4.0 * M_PI)));
+      RBinsHigh[qi] =
+          (Lsd / pxY) * tan(2.0 * asin(qHigh * Wavelength / (4.0 * M_PI)));
     }
     // Build eta bins normally
     for (int ei = 0; ei < nEtaBins; ei++) {
-      EtaBinsLow[ei]  = EtaBinSize * ei + EtaMin;
+      EtaBinsLow[ei] = EtaBinSize * ei + EtaMin;
       EtaBinsHigh[ei] = EtaBinSize * (ei + 1) + EtaMin;
     }
   } else {
@@ -1129,8 +1130,8 @@ int main(int argc, char *argv[]) {
   struct MapHeader map_hdr;
   map_header_compute(&map_hdr, Lsd, yCen, zCen, pxY, pxZ, tx, ty, tz, p0, p1,
                      p2, p3, p4, RhoD, RBinSize, EtaBinSize, RMin, RMax, EtaMin,
-                     EtaMax, NrPixelsY, NrPixelsZ, NrTransOpt, TransOpt,
-                     qMode, Wavelength);
+                     EtaMax, NrPixelsY, NrPixelsZ, NrTransOpt, TransOpt, qMode,
+                     Wavelength);
   map_header_print("Map.bin", &map_hdr);
 
   // Write output (to resultFolder if set, else cwd)

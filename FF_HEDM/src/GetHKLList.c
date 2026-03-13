@@ -20,6 +20,7 @@
 #include <stdlib.h>
 #include <string.h>
 #include "midas_version.h"
+#include "MIDAS_ParamParser.h"
 
 static inline double **allocMatrix(int nrows, int ncols) {
   double **arr;
@@ -197,73 +198,14 @@ int main(int argc, char *argv[]) {
              "--maxR.\n");
       exit(1);
     }
-    FILE *fileParam = fopen(ParamFN, "r");
-    if (!fileParam) {
-      printf("Error: cannot open %s\n", ParamFN);
+    MIDASConfig cfg;
+    if (midas_parse_params(ParamFN, &cfg) != 0)
       exit(1);
-    }
-    char aline[1000], dummy[1000];
-    int LowNr;
-    const char *str;
-    while (fgets(aline, 1000, fileParam) != NULL) {
-      str = "SpaceGroup ";
-      LowNr = strncmp(aline, str, strlen(str));
-      if (LowNr == 0) {
-        sscanf(aline, "%s %d", dummy, &SpaceGrp);
-        continue;
-      }
-      str = "LatticeConstant ";
-      LowNr = strncmp(aline, str, strlen(str));
-      if (LowNr == 0) {
-        sscanf(aline, "%s %lf %lf %lf %lf %lf %lf", dummy, &LatC[0], &LatC[1],
-               &LatC[2], &LatC[3], &LatC[4], &LatC[5]);
-        continue;
-      }
-      str = "LatticeParameter ";
-      LowNr = strncmp(aline, str, strlen(str));
-      if (LowNr == 0) {
-        sscanf(aline, "%s %lf %lf %lf %lf %lf %lf", dummy, &LatC[0], &LatC[1],
-               &LatC[2], &LatC[3], &LatC[4], &LatC[5]);
-        continue;
-      }
-      str = "Wavelength ";
-      LowNr = strncmp(aline, str, strlen(str));
-      if (LowNr == 0) {
-        sscanf(aline, "%s %lf", dummy, &wl);
-        continue;
-      }
-      str = "Lsd ";
-      LowNr = strncmp(aline, str, strlen(str));
-      if (LowNr == 0) {
-        sscanf(aline, "%s %lf", dummy, &Lsd);
-        continue;
-      }
-      str = "LsdMean ";
-      LowNr = strncmp(aline, str, strlen(str));
-      if (LowNr == 0) {
-        sscanf(aline, "%s %lf", dummy, &Lsd);
-        continue;
-      }
-      str = "DetParams ";
-      LowNr = strncmp(aline, str, strlen(str));
-      if (LowNr == 0) {
-        sscanf(aline, "%s %lf", dummy, &Lsd);
-        continue;
-      }
-      str = "MaxRingRad ";
-      LowNr = strncmp(aline, str, strlen(str));
-      if (LowNr == 0) {
-        sscanf(aline, "%s %lf", dummy, &MaxRingRad);
-        continue;
-      }
-      str = "RhoD ";
-      LowNr = strncmp(aline, str, strlen(str));
-      if (LowNr == 0) {
-        sscanf(aline, "%s %lf", dummy, &MaxRingRad);
-        continue;
-      }
-    }
-    fclose(fileParam);
+    SpaceGrp = cfg.SpaceGroup;
+    memcpy(LatC, cfg.LatticeConstant, sizeof(LatC));
+    wl = cfg.Wavelength;
+    Lsd = cfg.Lsd;
+    MaxRingRad = cfg.RhoD;
     for (int a = 2; a < argc; a++) {
       if (strcmp(argv[a], "--stdout") == 0)
         useStdout = 1;

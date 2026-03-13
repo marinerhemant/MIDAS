@@ -91,7 +91,7 @@ add_ff_hedm_executable(FitOrStrainsScanningOMP SOURCES src/FitOrStrainsScanningO
 # add_ff_hedm_executable(CalcRadius SOURCES src/archive/CalcRadius.c)
 # add_ff_hedm_executable(CalcRadiusAll SOURCES src/archive/CalcRadiusAll.c)
 # add_ff_hedm_executable(FindSaturatedPixels SOURCES src/FindSaturatedPixels.c)
-add_ff_hedm_executable(GrainTracking SOURCES src/GrainTracking.c)
+add_ff_hedm_executable(GrainTracking SOURCES src/GrainTracking.c src/MIDAS_ParamParser.c)
 # add_ff_hedm_executable(MergeMultipleRings SOURCES src/MergeMultipleRings.c)
 add_ff_hedm_executable(GenMedianDark SOURCES src/GenMedianDark.c src/FileReader.c LINK_LIBRARIES TIFF::TIFF OMP)
 
@@ -102,14 +102,14 @@ add_ff_hedm_executable(FitWedge SOURCES src/FitWedge.c src/Panel.c src/MIDAS_Mat
 add_ff_hedm_executable(FitWedgeParallel SOURCES src/FitWedgeParallel.c src/Panel.c src/MIDAS_Math.c OMP)
 add_ff_hedm_executable(MapDatasets SOURCES src/MapDatasets.c OMP)
 
-add_ff_hedm_executable(GetHKLList SOURCES src/GetHKLList.c src/sgclib.c src/sgfind.c src/sghkl.c src/sgsi.c src/sgio.c)
+add_ff_hedm_executable(GetHKLList SOURCES src/GetHKLList.c src/sgclib.c src/sgfind.c src/sghkl.c src/sgsi.c src/sgio.c src/MIDAS_ParamParser.c)
 # add_ff_hedm_executable(PeaksFittingOMPZarr SOURCES src/archive/PeaksFittingOMPZarr.c OMP)
 add_ff_hedm_executable(PeaksFittingOMPZarrRefactor SOURCES src/PeaksFittingOMPZarrRefactor.c src/ZarrReader.c src/MIDAS_Math.c src/Panel.c OMP)
 add_ff_hedm_executable(GetHKLListZarr SOURCES src/GetHKLListZarr.c src/ZarrReader.c src/sgclib.c src/sgfind.c src/sghkl.c src/sgsi.c src/sgio.c)
 add_ff_hedm_executable(MergeOverlappingPeaksAllZarr SOURCES src/MergeOverlappingPeaksAllZarr.c src/ZarrReader.c)
 add_ff_hedm_executable(CalcRadiusAllZarr SOURCES src/CalcRadiusAllZarr.c src/ZarrReader.c)
 add_ff_hedm_executable(FitSetupZarr SOURCES src/FitSetupParamsAllZarr.c src/ZarrReader.c src/Panel.c src/MIDAS_Math.c)
-add_ff_hedm_executable(ProcessGrains SOURCES src/ProcessGrains.c src/ZarrReader.c src/GetMisorientation.c src/CalcStrains.c src/MIDAS_Math.c OMP)
+add_ff_hedm_executable(ProcessGrains SOURCES src/ProcessGrains.c src/ZarrReader.c src/GetMisorientation.c src/CalcStrains.c src/MIDAS_Math.c src/MIDAS_ParamParser.c OMP)
 
 add_ff_hedm_executable(IndexerOMP SOURCES src/IndexerOMP.c src/MIDAS_Math.c OMP)
 add_ff_hedm_executable(IndexerScanningOMP SOURCES src/IndexerScanningOMP.c src/MIDAS_Math.c OMP)
@@ -120,7 +120,7 @@ add_ff_hedm_executable(MergeMultipleScans SOURCES src/MergeMultipleScans.c)
 
 # add_ff_hedm_executable(ProcessGrains_paramFN_only ...)  # archived → src/archive/ProcessGrains.c
 # add_ff_hedm_executable(ProcessGrainsZarr ...)  # archived → src/archive/ProcessGrainsZarr.c; consolidated into ProcessGrains
-add_ff_hedm_executable(ProcessGrainsScanningHEDM SOURCES src/ProcessGrainsScanningHEDM.c src/GetMisorientation.c src/CalcStrains.c src/MIDAS_Math.c)
+add_ff_hedm_executable(ProcessGrainsScanningHEDM SOURCES src/ProcessGrainsScanningHEDM.c src/GetMisorientation.c src/CalcStrains.c src/MIDAS_Math.c src/MIDAS_ParamParser.c)
 add_ff_hedm_executable(MatchGrains SOURCES src/MatchGrains.c src/GetMisorientation.c)
 
 add_ff_hedm_executable(DetectorMapper SOURCES src/DetectorMapper.c src/DetectorGeometry.c src/ZarrReader.c src/Panel.c src/FileReader.c src/MIDAS_Math.c OMP)

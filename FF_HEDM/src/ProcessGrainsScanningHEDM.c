@@ -36,6 +36,7 @@
 #include <unistd.h>
 
 #include "MIDAS_Limits.h"
+#include "MIDAS_ParamParser.h"
 #include "midas_version.h"
 #define NR_MAX_IDS_PER_GRAIN 5000
 #define IAColNr 20 // 20 for Internal Angle, 18 for position, 19 for omega
@@ -172,91 +173,23 @@ int main(int argc, char *argv[]) {
   clock_t start, end;
   double diftotal;
   start = clock();
-  char BestFileName[1024], ResultFileName[1024];
-  FILE *BestFile, *ResultFile;
-  char line[5024];
   char *ParamFN;
-  FILE *fileParam;
   ParamFN = argv[1];
   char aline[1000];
-  fileParam = fopen(ParamFN, "r");
-  char *str, dummy[1000];
-  int LowNr;
-  int SGNr;
+  char dummy[1000];
+
+  // Parse all parameters via shared parser
+  MIDASConfig cfg;
+  if (midas_parse_params(ParamFN, &cfg) != 0)
+    return 1;
+
+  int SGNr = cfg.SpaceGroup;
   char OutDirPath[4096];
-  double Distance, wavelength, LatCin[6];
-  double BeamThickness = 0, GlobalPosition = 0;
-  int NumPhases = 1, PhaseNr = 1;
-  while (fgets(aline, 1000, fileParam) != NULL) {
-    str = "Wavelength ";
-    LowNr = strncmp(aline, str, strlen(str));
-    if (LowNr == 0) {
-      sscanf(aline, "%s %lf", dummy, &wavelength);
-      continue;
-    }
-    str = "BeamThickness ";
-    LowNr = strncmp(aline, str, strlen(str));
-    if (LowNr == 0) {
-      sscanf(aline, "%s %lf", dummy, &BeamThickness);
-      continue;
-    }
-    str = "GlobalPosition ";
-    LowNr = strncmp(aline, str, strlen(str));
-    if (LowNr == 0) {
-      sscanf(aline, "%s %lf", dummy, &GlobalPosition);
-      continue;
-    }
-    str = "NumPhases ";
-    LowNr = strncmp(aline, str, strlen(str));
-    if (LowNr == 0) {
-      sscanf(aline, "%s %d", dummy, &NumPhases);
-      continue;
-    }
-    str = "PhaseNr ";
-    LowNr = strncmp(aline, str, strlen(str));
-    if (LowNr == 0) {
-      sscanf(aline, "%s %d", dummy, &PhaseNr);
-      continue;
-    }
-    str = "SpaceGroup ";
-    LowNr = strncmp(aline, str, strlen(str));
-    if (LowNr == 0) {
-      sscanf(aline, "%s %d", dummy, &SGNr);
-      continue;
-    }
-    str = "Lsd ";
-    LowNr = strncmp(aline, str, strlen(str));
-    if (LowNr == 0) {
-      sscanf(aline, "%s %lf", dummy, &Distance);
-      continue;
-    }
-    str = "Wavelength ";
-    LowNr = strncmp(aline, str, strlen(str));
-    if (LowNr == 0) {
-      sscanf(aline, "%s %lf", dummy, &wavelength);
-      continue;
-    }
-    str = "OutDirPath ";
-    LowNr = strncmp(aline, str, strlen(str));
-    if (LowNr == 0) {
-      sscanf(aline, "%s %s", dummy, OutDirPath);
-      continue;
-    }
-    str = "LatticeConstant ";
-    LowNr = strncmp(aline, str, strlen(str));
-    if (LowNr == 0) {
-      sscanf(aline, "%s %lf %lf %lf %lf %lf %lf", dummy, &LatCin[0], &LatCin[1],
-             &LatCin[2], &LatCin[3], &LatCin[4], &LatCin[5]);
-      continue;
-    }
-    str = "LatticeParameter ";
-    LowNr = strncmp(aline, str, strlen(str));
-    if (LowNr == 0) {
-      sscanf(aline, "%s %lf %lf %lf %lf %lf %lf", dummy, &LatCin[0], &LatCin[1],
-             &LatCin[2], &LatCin[3], &LatCin[4], &LatCin[5]);
-      continue;
-    }
-  }
+  strcpy(OutDirPath, cfg.OutDirPath);
+  double Distance = cfg.Lsd, wavelength = cfg.Wavelength, LatCin[6];
+  memcpy(LatCin, cfg.LatticeConstant, sizeof(LatCin));
+  double BeamThickness = cfg.BeamThickness, GlobalPosition = cfg.GlobalPosition;
+  int NumPhases = cfg.NumPhases, PhaseNr = cfg.PhaseNr;
 
   char fnkey[1024], fnopfit[1024], fnprocesskey[1024], fnfullinfo[4096];
   sprintf(fnkey, "%s/Key.bin", OutDirPath);

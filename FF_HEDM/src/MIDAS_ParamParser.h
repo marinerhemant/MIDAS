@@ -221,7 +221,7 @@ typedef struct {
   int    NrFilesPerDistance;
   double LsdMean;
   double OrientTol;
-  double Twins;
+  int    Twins;
   double GBAngle;
   double MarginOme, MarginEta;
   double MinConfidence;
@@ -231,6 +231,10 @@ typedef struct {
   int    nScans;
   int    PhaseNr;
   int    NumPhases;
+  int    MinNrSpots;
+  double GlobalPosition;
+  char   OutDirPath[MAX_LINE_LENGTH];
+  int    NoSaveAll;
   double GridSize;
   double EdgeLength;
   int    GridPoints;

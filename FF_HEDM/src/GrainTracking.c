@@ -27,6 +27,7 @@
 // 6.	Write a csv file to match previous IDs with new IDs.
 
 #include "midas_version.h"
+#include "MIDAS_ParamParser.h"
 #include <ctype.h>
 #include <errno.h>
 #include <fcntl.h>
@@ -49,7 +50,9 @@
 #define MAX_N_RINGS                                                            \
   500 // max nr of rings that can be stored (applies to the arrays ringttheta,
       // ringhkl, etc)
+#ifndef MAX_N_SPOTS
 #define MAX_N_SPOTS 5000
+#endif
 #define MAX_N_MATCHES 200
 // conversions constants
 #define deg2rad 0.0174532925199433
@@ -94,16 +97,7 @@ int *data;
 int *ndata;
 RealType *ObsSpotsLab;
 
-static void check(int test, const char *message, ...) {
-  if (test) {
-    va_list args;
-    va_start(args, message);
-    vfprintf(stderr, message, args);
-    va_end(args);
-    fprintf(stderr, "\n");
-    exit(EXIT_FAILURE);
-  }
-}
+// check() now provided by MIDAS_Limits.h via MIDAS_ParamParser.h
 
 static inline double **allocMatrix(int nrows, int ncols) {
   double **arr;
@@ -284,38 +278,14 @@ int main(int argc,
   int n_spots = ReadSpots();
   int rc = ReadBins();
   // Necessary parameters: EtaBinSize, OmeBinSize
-  FILE *ParamsFile = fopen(ParamsFN, "r");
-  int LowNr;
-  char *str;
-  double etabinsize, omebinsize, Distance;
+  MIDASConfig cfg;
+  if (midas_parse_params(ParamsFN, &cfg) != 0)
+    return 1;
+  double etabinsize = cfg.EtaBinSize, omebinsize = cfg.OmeBinSize,
+         Distance = cfg.Lsd;
   int n_eta_bins, n_ome_bins;
   char outfolder[MAX_LINE_LENGTH];
-  while (fgets(aline, MAX_LINE_LENGTH, ParamsFile) != NULL) {
-    str = "EtaBinSize ";
-    LowNr = strncmp(aline, str, strlen(str));
-    if (LowNr == 0) {
-      sscanf(aline, "%s %lf", dummy, &etabinsize);
-      continue;
-    }
-    str = "OmeBinSize ";
-    LowNr = strncmp(aline, str, strlen(str));
-    if (LowNr == 0) {
-      sscanf(aline, "%s %lf", dummy, &omebinsize);
-      continue;
-    }
-    str = "Distance ";
-    LowNr = strncmp(aline, str, strlen(str));
-    if (LowNr == 0) {
-      sscanf(aline, "%s %lf", dummy, &Distance);
-      continue;
-    }
-    str = "OutputFolder ";
-    LowNr = strncmp(aline, str, strlen(str));
-    if (LowNr == 0) {
-      sscanf(aline, "%s %s", dummy, outfolder);
-      continue;
-    }
-  }
+  strcpy(outfolder, cfg.OutputFolder);
   n_ome_bins = ceil(360.0 / omebinsize);
   n_eta_bins = ceil(360.0 / etabinsize);
 

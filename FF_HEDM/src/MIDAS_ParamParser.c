@@ -31,6 +31,8 @@ void midas_config_defaults(MIDASConfig *cfg) {
   cfg->NrFilesPerDistance = 1;
   cfg->NumPhases = 1;
   cfg->MinFracAccept = 0.5;
+  cfg->MinNrSpots = 1;
+  cfg->SpaceGroup = 225;
 }
 
 void midas_apply_tol_defaults(MIDASConfig *cfg) {
@@ -327,7 +329,7 @@ int midas_parse_params(const char *filename, MIDASConfig *cfg) {
     if (param_int(aline, "NrFilesPerDistance", &cfg->NrFilesPerDistance)) continue;
     if (param_double(aline, "LsdMean", &cfg->LsdMean)) continue;
     if (param_double(aline, "OrientTol", &cfg->OrientTol)) continue;
-    if (param_double(aline, "Twins", &cfg->Twins)) continue;
+    if (param_int(aline, "Twins", &cfg->Twins)) continue;
     if (param_double(aline, "GBAngle", &cfg->GBAngle)) continue;
     if (param_double(aline, "MarginOme", &cfg->MarginOme)) continue;
     if (param_double(aline, "MarginEta", &cfg->MarginEta)) continue;
@@ -338,6 +340,10 @@ int midas_parse_params(const char *filename, MIDASConfig *cfg) {
     if (param_int(aline, "nScans", &cfg->nScans)) continue;
     if (param_int(aline, "PhaseNr", &cfg->PhaseNr)) continue;
     if (param_int(aline, "NumPhases", &cfg->NumPhases)) continue;
+    if (param_int(aline, "MinNrSpots", &cfg->MinNrSpots)) continue;
+    if (param_double(aline, "GlobalPosition", &cfg->GlobalPosition)) continue;
+    if (param_str(aline, "OutDirPath", cfg->OutDirPath, sizeof(cfg->OutDirPath))) continue;
+    if (param_int(aline, "NoSaveAll", &cfg->NoSaveAll)) continue;
     if (param_double(aline, "GridSize", &cfg->GridSize)) continue;
     if (param_double(aline, "EdgeLength", &cfg->EdgeLength)) continue;
     if (param_int(aline, "GridPoints", &cfg->GridPoints)) continue;
