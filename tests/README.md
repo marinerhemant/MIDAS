@@ -272,6 +272,7 @@ python tests/test_calibration_integration.py -nCPUs 4 --calibration-only
 python tests/test_calibration_integration.py -nCPUs 4 -strainThreshold 200
 python tests/test_calibration_integration.py -nCPUs 4 --mode autodetect
 python tests/test_calibration_integration.py -nCPUs 4 --keep-work-dir
+python tests/test_calibration_integration.py -nCPUs 4 --robustness-test  # 4 configs: baseline, outlier removal, trimmed mean, both
 ```
 
 **Data directory:** `FF_HEDM/Example/Calibration/`

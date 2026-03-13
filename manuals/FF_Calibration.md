@@ -538,6 +538,8 @@ The following table lists all parameters recognized by `CalibrantPanelShiftsOMP`
 | `L2Objective` | int | 0 | `1` = use squared strain (L2 norm) instead of absolute strain (L1) |
 | **Outlier Rejection** | | | |
 | `OutlierIterations` | int | 1 | Number of iterative sigma-clipping passes |
+| `RemoveOutliersBetweenIters` | int | 0 | `1` = physically remove outlier points between calibration iterations (requires `MultFactor > 0`) |
+| `TrimmedMeanFraction` | double | 1.0 | Fraction of points to keep in the optimizer objective (e.g., `0.75` = trim worst 25%). `1.0` = use all points (off). |
 | **Parallax Correction** | | | |
 | `FitParallax` | int | 0 | `1` = fit parallax correction alongside geometry |
 | `Parallax` | double | 0 | Initial parallax value (µm). Applied even if `FitParallax` is 0 when non-zero. |
@@ -640,6 +642,43 @@ The standard outlier rejection uses a single pass with `MultFactor × MeanStrain
 OutlierIterations 3
 ```
 
+#### Robust Optimization (Trimmed Mean + Inter-Iteration Outlier Removal)
+
+Two opt-in features to make calibration robust against bad or contaminated rings **without** manual `RingsToExclude`:
+
+**Trimmed Mean Objective** — makes the optimizer blind to the worst outliers by sorting per-point residuals and summing only the bottom fraction:
+
+```text
+TrimmedMeanFraction 0.75     # keep best 75%, trim worst 25%
+```
+
+The optimizer sees a smooth, outlier-resistant objective. Setting this to `1.0` (default) disables trimming with zero overhead. Values of `0.6`–`0.8` work well depending on how many rings are problematic.
+
+**Inter-Iteration Outlier Removal** — after each iteration, points flagged by `MultFactor × MeanStrain` are physically removed from the data arrays before the next `FitTiltBCLsd` call:
+
+```text
+RemoveOutliersBetweenIters 1
+MultFactor 2
+nIterations 5
+```
+
+Safety guards: removal is skipped on the final iteration (full data needed for statistics) and capped at 50% of points to prevent runaway data loss. Diagnostics are printed:
+```
+  RemoveOutliers: removed 2931 / 7560 points (38.8%)
+```
+
+> [!TIP]
+> For challenging datasets with bad rings, a recommended starting configuration:
+> ```text
+> TrimmedMeanFraction 0.75
+> RemoveOutliersBetweenIters 1
+> MultFactor 2
+> nIterations 10
+> NormalizeRingWeights 1
+> L2Objective 1
+> OutlierIterations 3
+> ```
+
 #### Best-Iteration Tracking
 When `nIterations > 1`, the optimizer tracks the best result (lowest MeanStrain) across all iterations and automatically restores those parameters at the end, preventing oscillation from degrading the final result:
 
@@ -722,6 +761,9 @@ python tests/test_calibration_integration.py --calibration-only -paramFN /path/t
 
 # Adjust pass/fail threshold (default: 50 microstrain)
 python tests/test_calibration_integration.py --calibration-only -strainThreshold 40
+
+# Robustness tests (4 configs: baseline, outlier removal, trimmed mean, both)
+python tests/test_calibration_integration.py -nCPUs 4 --robustness-test
 ```
 
 ### What it Does
