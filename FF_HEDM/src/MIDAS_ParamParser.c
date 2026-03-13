@@ -1,0 +1,296 @@
+//
+// Copyright (c) 2014, UChicago Argonne, LLC
+// See LICENSE file.
+//
+// MIDAS_ParamParser.c — Implementation of centralized parameter file parser
+//
+
+#include "MIDAS_ParamParser.h"
+
+void midas_config_defaults(MIDASConfig *cfg) {
+  memset(cfg, 0, sizeof(*cfg));
+  cfg->Padding = 6;
+  cfg->HeadSize = 0;
+  cfg->DataType = 1;
+  cfg->RBinWidth = 4;
+  cfg->tolP3 = 45;          // Historical default
+  cfg->tolShifts = 1.0;
+  cfg->MinIndicesForFit = 1;
+  cfg->nIterations = 1;
+  cfg->OutlierIterations = 1;
+  cfg->TrimmedMeanFraction = 1.0;
+  cfg->lineoutRBinSize = 0.25;
+  cfg->lineoutRMin = 10.0;
+}
+
+void midas_apply_tol_defaults(MIDASConfig *cfg) {
+  if (!cfg->tolP0Set && cfg->tolP0 == 0)
+    cfg->tolP0 = cfg->tolP;
+  if (!cfg->tolP1Set && cfg->tolP1 == 0)
+    cfg->tolP1 = cfg->tolP;
+  if (!cfg->tolP2Set && cfg->tolP2 == 0)
+    cfg->tolP2 = cfg->tolP;
+  if (!cfg->tolP3Set && cfg->tolP3 == 45)
+    cfg->tolP3 = cfg->tolP;
+  if (!cfg->tolP4Set && cfg->tolP4 == 0)
+    cfg->tolP4 = cfg->tolP;
+  if (!cfg->tolP5Set && cfg->tolP5 == 0)
+    cfg->tolP5 = cfg->tolP;
+}
+
+int midas_parse_params(const char *filename, MIDASConfig *cfg) {
+  FILE *f = fopen(filename, "r");
+  if (!f) {
+    fprintf(stderr, "Error: cannot open parameter file %s\n", filename);
+    return -1;
+  }
+
+  midas_config_defaults(cfg);
+
+  char aline[MAX_LINE_LENGTH];
+  while (fgets(aline, MAX_LINE_LENGTH, f) != NULL) {
+    if (param_skip_line(aline)) continue;
+
+    // ── File I/O ──
+    if (param_str(aline, "FileStem", cfg->FileStem, sizeof(cfg->FileStem))) continue;
+    if (param_str(aline, "Folder", cfg->Folder, sizeof(cfg->Folder))) continue;
+    if (param_str(aline, "Ext", cfg->Ext, sizeof(cfg->Ext))) continue;
+    if (param_str(aline, "Dark", cfg->Dark, sizeof(cfg->Dark))) continue;
+    if (param_int(aline, "StartNr", &cfg->StartNr)) continue;
+    if (param_int(aline, "EndNr", &cfg->EndNr)) continue;
+    if (param_int(aline, "Padding", &cfg->Padding)) continue;
+    if (param_int(aline, "HeadSize", &cfg->HeadSize)) continue;
+    if (param_int(aline, "DataType", &cfg->DataType)) continue;
+    if (param_int(aline, "SkipFrame", &cfg->SkipFrame)) continue;
+
+    // ── HDF5/Zarr dataset names ──
+    if (param_str(aline, "darkDataset", cfg->darkDatasetName, sizeof(cfg->darkDatasetName))) continue;
+    if (param_str(aline, "darkLoc", cfg->darkDatasetName, sizeof(cfg->darkDatasetName))) continue;
+    if (param_str(aline, "dataDataset", cfg->dataDatasetName, sizeof(cfg->dataDatasetName))) continue;
+    if (param_str(aline, "dataLoc", cfg->dataDatasetName, sizeof(cfg->dataDatasetName))) continue;
+
+    // ── Detector Geometry ──
+    if (key_match(aline, "NrPixels")) {
+      sscanf(aline, "%*s %d", &cfg->NrPixelsY);
+      cfg->NrPixelsZ = cfg->NrPixelsY;
+      continue;
+    }
+    if (param_int(aline, "NrPixelsY", &cfg->NrPixelsY)) continue;
+    if (param_int(aline, "NrPixelsZ", &cfg->NrPixelsZ)) continue;
+    if (param_double(aline, "px", &cfg->px)) continue;
+    if (param_double(aline, "Lsd", &cfg->Lsd)) continue;
+    if (param_double2(aline, "BC", &cfg->ybc, &cfg->zbc)) continue;
+    if (param_double(aline, "tx", &cfg->tx)) continue;
+    if (param_double(aline, "ty", &cfg->ty)) continue;
+    if (param_double(aline, "tz", &cfg->tz)) continue;
+    if (param_double(aline, "p0", &cfg->p0)) continue;
+    if (param_double(aline, "p1", &cfg->p1)) continue;
+    if (param_double(aline, "p2", &cfg->p2)) continue;
+    if (param_double(aline, "p3", &cfg->p3)) continue;
+    if (param_double(aline, "p4", &cfg->p4)) continue;
+    if (param_double(aline, "p5", &cfg->p5)) continue;
+    if (param_double(aline, "Wedge", &cfg->Wedge)) continue;
+    if (param_double(aline, "RhoD", &cfg->RhoD)) continue;
+
+    // ── Crystallography ──
+    if (param_int(aline, "SpaceGroup", &cfg->SpaceGroup)) continue;
+    if (param_double6(aline, "LatticeConstant", cfg->LatticeConstant)) continue;
+    if (param_double6(aline, "LatticeParameter", cfg->LatticeConstant)) continue;
+    if (param_double(aline, "Wavelength", &cfg->Wavelength)) continue;
+
+    // ── Image Transforms ──
+    if (key_match(aline, "ImTransOpt")) {
+      if (cfg->NrTransOpt < 10)
+        sscanf(aline, "%*s %d", &cfg->TransOpt[cfg->NrTransOpt++]);
+      continue;
+    }
+
+    // ── Masking ──
+    if (key_match(aline, "MaskFile")) {
+      sscanf(aline, "%*s %s", cfg->MaskFN);
+      cfg->makeMap = 3;
+      continue;
+    }
+    if (key_match(aline, "GapFile")) {
+      sscanf(aline, "%*s %s", cfg->GapFN);
+      cfg->makeMap = 2;
+      continue;
+    }
+    if (key_match(aline, "BadPxFile")) {
+      sscanf(aline, "%*s %s", cfg->BadPxFN);
+      cfg->makeMap = 2;
+      continue;
+    }
+    if (key_match(aline, "GapIntensity")) {
+      sscanf(aline, "%*s %lld", &cfg->GapIntensity);
+      cfg->makeMap = 1;
+      continue;
+    }
+    if (key_match(aline, "BadPxIntensity")) {
+      sscanf(aline, "%*s %lld", &cfg->BadPxIntensity);
+      cfg->makeMap = 1;
+      continue;
+    }
+
+    // ── Omega/Box ranges ──
+    if (key_match(aline, "OmegaRange")) {
+      if (cfg->nOmeRanges < MAX_N_OMEGA_RANGES) {
+        sscanf(aline, "%*s %lf %lf",
+               &cfg->OmegaRanges[cfg->nOmeRanges][0],
+               &cfg->OmegaRanges[cfg->nOmeRanges][1]);
+        cfg->nOmeRanges++;
+      }
+      continue;
+    }
+    if (key_match(aline, "BoxSize")) {
+      if (cfg->nBoxSizes < MAX_N_OMEGA_RANGES) {
+        sscanf(aline, "%*s %lf %lf %lf %lf",
+               &cfg->BoxSizes[cfg->nBoxSizes][0],
+               &cfg->BoxSizes[cfg->nBoxSizes][1],
+               &cfg->BoxSizes[cfg->nBoxSizes][2],
+               &cfg->BoxSizes[cfg->nBoxSizes][3]);
+        cfg->nBoxSizes++;
+      }
+      continue;
+    }
+    if (param_double(aline, "OmegaStart", &cfg->OmegaStart)) continue;
+    if (param_double(aline, "OmegaEnd", &cfg->OmegaEnd)) continue;
+    if (param_double(aline, "OmegaStep", &cfg->OmegaStep)) continue;
+
+    // ── Ring selection ──
+    if (key_match(aline, "RingsToExclude")) {
+      if (cfg->nRingsExclude < MAX_N_RINGS)
+        sscanf(aline, "%*s %d", &cfg->RingsExclude[cfg->nRingsExclude++]);
+      continue;
+    }
+    if (key_match(aline, "RingThresh")) {
+      if (cfg->nRingThresh < MAX_N_RINGS)
+        sscanf(aline, "%*s %d", &cfg->RingThresh[cfg->nRingThresh++]);
+      continue;
+    }
+    if (param_int(aline, "MaxRingNumber", &cfg->MaxRingNumber)) continue;
+    if (param_double(aline, "MaxRingRad", &cfg->RhoD)) continue;
+
+    // ── Optimization Tolerances ──
+    if (param_double(aline, "tolTilts", &cfg->tolTilts)) continue;
+    if (param_double(aline, "tolBC", &cfg->tolBC)) continue;
+    if (param_double(aline, "tolLsd", &cfg->tolLsd)) continue;
+    if (param_double(aline, "tolP", &cfg->tolP)) continue;
+    if (key_match(aline, "tolP0")) {
+      sscanf(aline, "%*s %lf", &cfg->tolP0);
+      cfg->tolP0Set = 1;
+      continue;
+    }
+    if (key_match(aline, "tolP1")) {
+      sscanf(aline, "%*s %lf", &cfg->tolP1);
+      cfg->tolP1Set = 1;
+      continue;
+    }
+    if (key_match(aline, "tolP2")) {
+      sscanf(aline, "%*s %lf", &cfg->tolP2);
+      cfg->tolP2Set = 1;
+      continue;
+    }
+    if (key_match(aline, "tolP3")) {
+      sscanf(aline, "%*s %lf", &cfg->tolP3);
+      cfg->tolP3Set = 1;
+      continue;
+    }
+    if (key_match(aline, "tolP4")) {
+      sscanf(aline, "%*s %lf", &cfg->tolP4);
+      cfg->tolP4Set = 1;
+      continue;
+    }
+    if (key_match(aline, "tolP5")) {
+      sscanf(aline, "%*s %lf", &cfg->tolP5);
+      cfg->tolP5Set = 1;
+      continue;
+    }
+    if (param_double(aline, "tolShifts", &cfg->tolShifts)) continue;
+    if (param_double(aline, "tolRotation", &cfg->tolRotation)) continue;
+    if (param_double(aline, "tolLsdPanel", &cfg->tolLsdPanel)) continue;
+    if (param_double(aline, "tolP2Panel", &cfg->tolP2Panel)) continue;
+    if (param_double(aline, "tolWavelength", &cfg->tolWavelength)) continue;
+    if (param_double(aline, "tolParallax", &cfg->tolParallax)) continue;
+
+    // ── Calibration control ──
+    if (param_double(aline, "Width", &cfg->Width)) continue;
+    if (param_double(aline, "EtaBinSize", &cfg->EtaBinSize)) continue;
+    if (param_int(aline, "RBinDivisions", &cfg->RBinWidth)) continue;
+    if (param_double(aline, "MultFactor", &cfg->outlierFactor)) continue;
+    if (param_int(aline, "MinIndicesForFit", &cfg->MinIndicesForFit)) continue;
+    if (param_int(aline, "FitOrWeightedMean", &cfg->FitWeightMean)) continue;
+    if (param_int(aline, "nIterations", &cfg->nIterations)) continue;
+    if (param_double(aline, "DoubletSeparation", &cfg->DoubletSeparation)) continue;
+    if (param_int(aline, "NormalizeRingWeights", &cfg->NormalizeRingWeights)) continue;
+    if (param_int(aline, "OutlierIterations", &cfg->OutlierIterations)) continue;
+    if (param_int(aline, "RemoveOutliersBetweenIters", &cfg->RemoveOutliersBetweenIters)) continue;
+    if (param_double(aline, "TrimmedMeanFraction", &cfg->TrimmedMeanFraction)) continue;
+    if (param_int(aline, "WeightByRadius", &cfg->WeightByRadius)) continue;
+    if (param_int(aline, "WeightByFitSNR", &cfg->WeightByFitSNR)) continue;
+    if (param_int(aline, "L2Objective", &cfg->L2Objective)) continue;
+    if (param_int(aline, "FitWavelength", &cfg->FitWavelength)) continue;
+    if (param_int(aline, "FitParallax", &cfg->FitParallax)) continue;
+    if (param_double(aline, "Parallax", &cfg->parallaxIn)) continue;
+    if (param_int(aline, "PerPanelLsd", &cfg->PerPanelLsd)) continue;
+    if (param_int(aline, "PerPanelDistortion", &cfg->PerPanelDistortion)) continue;
+    if (param_int(aline, "FixPanelID", &cfg->FixPanelID)) continue;
+
+    // ── NF/Sample parameters ──
+    if (param_double(aline, "ExcludePoleAngle", &cfg->MinEta)) continue;
+    if (param_double(aline, "MinEta", &cfg->MinEta)) continue;
+    if (param_double(aline, "Hbeam", &cfg->Hbeam)) continue;
+    if (param_double(aline, "Rsample", &cfg->Rsample)) continue;
+
+    // ── Panel config ──
+    if (param_int(aline, "NPanelsY", &cfg->NPanelsY)) continue;
+    if (param_int(aline, "NPanelsZ", &cfg->NPanelsZ)) continue;
+    if (param_int(aline, "PanelSizeY", &cfg->PanelSizeY)) continue;
+    if (param_int(aline, "PanelSizeZ", &cfg->PanelSizeZ)) continue;
+    if (key_match(aline, "PanelGapsY")) {
+      char *ptr = (char *)aline + strlen("PanelGapsY");
+      while (*ptr && isspace((unsigned char)*ptr)) ptr++;
+      int gi = 0;
+      int val;
+      while (gi < 10 && sscanf(ptr, "%d", &val) == 1) {
+        cfg->PanelGapsY[gi++] = val;
+        while (*ptr && !isspace((unsigned char)*ptr)) ptr++;
+        while (*ptr && isspace((unsigned char)*ptr)) ptr++;
+      }
+      continue;
+    }
+    if (key_match(aline, "PanelGapsZ")) {
+      char *ptr = (char *)aline + strlen("PanelGapsZ");
+      while (*ptr && isspace((unsigned char)*ptr)) ptr++;
+      int gi = 0;
+      int val;
+      while (gi < 10 && sscanf(ptr, "%d", &val) == 1) {
+        cfg->PanelGapsZ[gi++] = val;
+        while (*ptr && !isspace((unsigned char)*ptr)) ptr++;
+        while (*ptr && isspace((unsigned char)*ptr)) ptr++;
+      }
+      continue;
+    }
+    if (param_str(aline, "PanelShiftsFile", cfg->PanelShiftsFile, sizeof(cfg->PanelShiftsFile))) continue;
+
+    // ── Lineout parameters ──
+    if (param_double(aline, "RBinSize", &cfg->lineoutRBinSize)) continue;
+    if (param_double(aline, "RMin", &cfg->lineoutRMin)) continue;
+    if (param_double(aline, "RMax", &cfg->lineoutRMax)) continue;
+
+    // ── Silently consumed (no-op) keys ──
+    if (key_match(aline, "DistortionOrder")) continue;
+
+    // Unrecognized keys are silently skipped.
+  }
+
+  fclose(f);
+
+  // Derive NrPixels
+  cfg->NrPixels = (cfg->NrPixelsY > cfg->NrPixelsZ) ? cfg->NrPixelsY : cfg->NrPixelsZ;
+
+  // Apply tolerance fallbacks
+  midas_apply_tol_defaults(cfg);
+
+  return 0;
+}

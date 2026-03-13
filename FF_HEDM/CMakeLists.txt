@@ -95,7 +95,7 @@ add_ff_hedm_executable(GrainTracking SOURCES src/GrainTracking.c)
 # add_ff_hedm_executable(MergeMultipleRings SOURCES src/MergeMultipleRings.c)
 add_ff_hedm_executable(GenMedianDark SOURCES src/GenMedianDark.c src/FileReader.c LINK_LIBRARIES TIFF::TIFF OMP)
 
-add_ff_hedm_executable(FitMultipleGrains SOURCES src/FitMultipleGrains.c src/CalcDiffractionSpots.c src/Panel.c src/MIDAS_Math.c OMP)
+add_ff_hedm_executable(FitMultipleGrains SOURCES src/FitMultipleGrains.c src/CalcDiffractionSpots.c src/Panel.c src/MIDAS_Math.c src/MIDAS_ParamParser.c OMP)
 # add_ff_hedm_executable(FitScanningGrain SOURCES src/FitScanningGrain.c)
 # add_ff_hedm_executable(FitTiltX SOURCES src/FitTiltX.c)
 add_ff_hedm_executable(FitWedge SOURCES src/FitWedge.c src/Panel.c src/MIDAS_Math.c)

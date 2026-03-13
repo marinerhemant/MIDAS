@@ -531,6 +531,7 @@ The following table lists all parameters recognized by `CalibrantPanelShiftsOMP`
 | `FixPanelID` | int | 0 | Panel held fixed |
 | **Iterative Refinement** | | | |
 | `nIterations` | int | 1 | Number of refinement iterations (best result is kept). Set to `0` to skip optimization and evaluate input parameters directly (strain + lineout output only). |
+| `ReFitPeaks` | int | 0 | `1` = re-bin and re-fit peak positions each iteration using optimized geometry. Default `0` = re-optimize geometry on the same peak positions (no re-binning), which is more stable. |
 | **Doublet Fitting** | | | |
 | `DoubletSeparation` | double | 0 | Max pixel separation for doublet ring detection; 0 = disabled |
 | **Objective Function Weighting** | | | |
@@ -687,6 +688,13 @@ When `nIterations > 1`, the optimizer tracks the best result (lowest MeanStrain)
 ```text
 nIterations 10
 ```
+
+Two automatic stability guards prevent the iteration loop from running away:
+
+- **Divergence guard** — if MeanStrain exceeds 1.5× the best so far, the code reverts to the best parameters and exits the loop early.
+- **Oscillation detector** — if MeanStrain alternates between two values for 3 consecutive cycles (a 2-cycle limit), the code reverts to the best and exits.
+
+Both guards print diagnostic messages when triggered.
 
 #### Evaluate-Only Mode (`nIterations 0`)
 

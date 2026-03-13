@@ -18,6 +18,7 @@
 // provide cs), 				RingRadii,
 
 #include "MIDAS_Math.h"
+#include "MIDAS_ParamParser.h"
 #include <ctype.h>
 #include <errno.h>
 #include <fcntl.h>
@@ -44,6 +45,8 @@
 #define CalcNorm2(x, y) sqrt((x) * (x) + (y) * (y))
 // #define MAX_LINE_LENGTH 4096 (now in MIDAS_Limits.h)
 #define MaxNSpotsBest 1000
+
+// key_match() is now provided by MIDAS_ParamParser.h
 
 // For detector mapping!
 extern int BigDetSize;
@@ -994,346 +997,50 @@ int main(int argc, char *argv[]) {
   double diftotal;
   start = clock();
   char aline[MAX_LINE_LENGTH];
-  int LowNr;
+  char dummy[MAX_LINE_LENGTH];
   int GrainID = atoi(argv[3]);
-  FILE *fileParam;
-  char *ParamFN;
-  ParamFN = argv[2];
-  fileParam = fopen(ParamFN, "r");
-  char *str, dummy[MAX_LINE_LENGTH];
-  double tx, ty, tz, Lsd, p0, p1, p2, p3,
-      p4 = 0, p5 = 0, RhoD, yBC, zBC, wedge, px, a, b, c, alpha, beta, gamma,
-      OmegaRanges[2000][2], BoxSizes[2000][4], MaxRingRad, MaxTtheta,
-      Wavelength, MinEta, Hbeam, Rsample;
-  int NrPixels, nOmeRanges = 0, nBoxSizes = 0, cs = 0, RingNumbers[200],
-                cs2 = 0;
-  double tolShifts = 1.0;
-  double tolBC = 1.0, tolTilts = 1.0, tolP0 = 1E-3, tolP1 = 1E-3, tolP2 = 1E-3,
-         tolP3 = 45.0, tolP4 = 0, tolTiltX, tolTiltY, tolTiltZ;
-  int FixPanelID = 0;
+  char *ParamFN = argv[2];
 
-  // Panel parameters
-  int nPanelsY = 0;
-  int nPanelsZ = 0;
-  int panelSizeY = 0;
-  int panelSizeZ = 0;
-  int nGapsY = 0;
-  int nGapsZ = 0;
-  int panelGapsY[10]; // Assuming max 10 gaps for now
-  int panelGapsZ[10];
-  char panelShiftsFile[MAX_LINE_LENGTH] = "";
-  while (fgets(aline, MAX_LINE_LENGTH, fileParam) != NULL) {
-    str = "tx ";
-    LowNr = strncmp(aline, str, strlen(str));
-    if (LowNr == 0) {
-      sscanf(aline, "%s %lf", dummy, &tx);
-      continue;
-    }
-    str = "ty ";
-    LowNr = strncmp(aline, str, strlen(str));
-    if (LowNr == 0) {
-      sscanf(aline, "%s %lf", dummy, &ty);
-      continue;
-    }
-    str = "tz ";
-    LowNr = strncmp(aline, str, strlen(str));
-    if (LowNr == 0) {
-      sscanf(aline, "%s %lf", dummy, &tz);
-      continue;
-    }
-    str = "Lsd ";
-    LowNr = strncmp(aline, str, strlen(str));
-    if (LowNr == 0) {
-      sscanf(aline, "%s %lf", dummy, &Lsd);
-      continue;
-    }
-    str = "p0 ";
-    LowNr = strncmp(aline, str, strlen(str));
-    if (LowNr == 0) {
-      sscanf(aline, "%s %lf", dummy, &p0);
-      continue;
-    }
-    str = "p1 ";
-    LowNr = strncmp(aline, str, strlen(str));
-    if (LowNr == 0) {
-      sscanf(aline, "%s %lf", dummy, &p1);
-      continue;
-    }
-    str = "p2 ";
-    LowNr = strncmp(aline, str, strlen(str));
-    if (LowNr == 0) {
-      sscanf(aline, "%s %lf", dummy, &p2);
-      continue;
-    }
-    str = "p3 ";
-    LowNr = strncmp(aline, str, strlen(str));
-    if (LowNr == 0) {
-      sscanf(aline, "%s %lf", dummy, &p3);
-      continue;
-    }
-    str = "p4 ";
-    LowNr = strncmp(aline, str, strlen(str));
-    if (LowNr == 0) {
-      sscanf(aline, "%s %lf", dummy, &p4);
-      continue;
-    }
-    str = "p5 ";
-    LowNr = strncmp(aline, str, strlen(str));
-    if (LowNr == 0) {
-      sscanf(aline, "%s %lf", dummy, &p5);
-      continue;
-    }
-    str = "RhoD ";
-    LowNr = strncmp(aline, str, strlen(str));
-    if (LowNr == 0) {
-      sscanf(aline, "%s %lf", dummy, &RhoD);
-      continue;
-    }
-    str = "BC ";
-    LowNr = strncmp(aline, str, strlen(str));
-    if (LowNr == 0) {
-      sscanf(aline, "%s %lf %lf", dummy, &yBC, &zBC);
-      continue;
-    }
-    str = "Wedge ";
-    LowNr = strncmp(aline, str, strlen(str));
-    if (LowNr == 0) {
-      sscanf(aline, "%s %lf", dummy, &wedge);
-      continue;
-    }
-    str = "px ";
-    LowNr = strncmp(aline, str, strlen(str));
-    if (LowNr == 0) {
-      sscanf(aline, "%s %lf", dummy, &px);
-      continue;
-    }
-    str = "Wavelength ";
-    LowNr = strncmp(aline, str, strlen(str));
-    if (LowNr == 0) {
-      sscanf(aline, "%s %lf", dummy, &Wavelength);
-      continue;
-    }
-    str = "ExcludePoleAngle ";
-    LowNr = strncmp(aline, str, strlen(str));
-    if (LowNr == 0) {
-      sscanf(aline, "%s %lf", dummy, &MinEta);
-      continue;
-    }
-    str = "MinEta ";
-    LowNr = strncmp(aline, str, strlen(str));
-    if (LowNr == 0) {
-      sscanf(aline, "%s %lf", dummy, &MinEta);
-      continue;
-    }
-    str = "Hbeam ";
-    LowNr = strncmp(aline, str, strlen(str));
-    if (LowNr == 0) {
-      sscanf(aline, "%s %lf", dummy, &Hbeam);
-      continue;
-    }
-    str = "Rsample ";
-    LowNr = strncmp(aline, str, strlen(str));
-    if (LowNr == 0) {
-      sscanf(aline, "%s %lf", dummy, &Rsample);
-      continue;
-    }
-    str = "NrPixels ";
-    LowNr = strncmp(aline, str, strlen(str));
-    if (LowNr == 0) {
-      sscanf(aline, "%s %d", dummy, &NrPixels);
-      continue;
-    }
-    str = "OmegaRange ";
-    LowNr = strncmp(aline, str, strlen(str));
-    if (LowNr == 0) {
-      sscanf(aline, "%s %lf %lf", dummy, &OmegaRanges[nOmeRanges][0],
-             &OmegaRanges[nOmeRanges][1]);
-      nOmeRanges++;
-      continue;
-    }
-    str = "BoxSize ";
-    LowNr = strncmp(aline, str, strlen(str));
-    if (LowNr == 0) {
-      sscanf(aline, "%s %lf %lf %lf %lf", dummy, &BoxSizes[nBoxSizes][0],
-             &BoxSizes[nBoxSizes][1], &BoxSizes[nBoxSizes][2],
-             &BoxSizes[nBoxSizes][3]);
-      nBoxSizes++;
-      continue;
-    }
-    str = "RingThresh ";
-    LowNr = strncmp(aline, str, strlen(str));
-    if (LowNr == 0) {
-      sscanf(aline, "%s %d", dummy, &RingNumbers[cs]);
-      cs++;
-      continue;
-    }
-    str = "MaxRingRad ";
-    LowNr = strncmp(aline, str, strlen(str));
-    if (LowNr == 0) {
-      sscanf(aline, "%s %lf", dummy, &MaxRingRad);
-      continue;
-    }
-
-    // Panel parameter parsing
-    str = "NPanelsY ";
-    LowNr = strncmp(aline, str, strlen(str));
-    if (LowNr == 0) {
-      sscanf(aline, "%s %d", dummy, &nPanelsY);
-      continue;
-    }
-    str = "NPanelsZ ";
-    LowNr = strncmp(aline, str, strlen(str));
-    if (LowNr == 0) {
-      sscanf(aline, "%s %d", dummy, &nPanelsZ);
-      continue;
-    }
-    str = "PanelSizeY ";
-    LowNr = strncmp(aline, str, strlen(str));
-    if (LowNr == 0) {
-      sscanf(aline, "%s %d", dummy, &panelSizeY);
-      continue;
-    }
-    str = "PanelSizeZ ";
-    LowNr = strncmp(aline, str, strlen(str));
-    if (LowNr == 0) {
-      sscanf(aline, "%s %d", dummy, &panelSizeZ);
-      continue;
-    }
-    str = "PanelGapsY ";
-    LowNr = strncmp(aline, str, strlen(str));
-    if (LowNr == 0) {
-      char *ptr = aline + strlen(str); // Skip "PanelGapsY "
-      int gapVal;
-      int gapIdx = 0;
-      while (sscanf(ptr, "%d", &gapVal) == 1) {
-        panelGapsY[gapIdx++] = gapVal;
-        // Advance ptr to next number
-        while (*ptr && *ptr != ' ')
-          ptr++; // current number
-        while (*ptr && *ptr == ' ')
-          ptr++; // whitespace
-        if (gapIdx >= 10)
-          break; // Safety
-      }
-      continue;
-    }
-    str = "PanelGapsZ ";
-    LowNr = strncmp(aline, str, strlen(str));
-    if (LowNr == 0) {
-      char *ptr = aline + strlen(str); // Skip "PanelGapsZ "
-      int gapVal;
-      int gapIdx = 0;
-      while (sscanf(ptr, "%d", &gapVal) == 1) {
-        panelGapsZ[gapIdx++] = gapVal;
-        // Advance ptr to next number
-        while (*ptr && *ptr != ' ')
-          ptr++;
-        while (*ptr && *ptr == ' ')
-          ptr++;
-        if (gapIdx >= 10)
-          break;
-      }
-      continue;
-    }
-    str = "PanelShiftsFile ";
-    LowNr = strncmp(aline, str, strlen(str));
-    if (LowNr == 0) {
-      sscanf(aline, "%s %s", dummy, panelShiftsFile);
-      continue;
-    }
-    str = "tolShifts ";
-    LowNr = strncmp(aline, str, strlen(str));
-    if (LowNr == 0) {
-      sscanf(aline, "%s %lf", dummy, &tolShifts);
-      continue;
-    }
-    str = "tolBC ";
-    LowNr = strncmp(aline, str, strlen(str));
-    if (LowNr == 0) {
-      sscanf(aline, "%s %lf", dummy, &tolBC);
-      continue;
-    }
-    str = "tolTilts ";
-    LowNr = strncmp(aline, str, strlen(str));
-    if (LowNr == 0) {
-      sscanf(aline, "%s %lf", dummy, &tolTilts);
-      tolTiltX = tolTilts;
-      tolTiltY = tolTilts;
-      tolTiltZ = tolTilts;
-      continue;
-    }
-    str = "tolTiltX ";
-    LowNr = strncmp(aline, str, strlen(str));
-    if (LowNr == 0) {
-      sscanf(aline, "%s %lf", dummy, &tolTiltX);
-      continue;
-    }
-    str = "tolTiltY ";
-    LowNr = strncmp(aline, str, strlen(str));
-    if (LowNr == 0) {
-      sscanf(aline, "%s %lf", dummy, &tolTiltY);
-      continue;
-    }
-    str = "tolTiltZ ";
-    LowNr = strncmp(aline, str, strlen(str));
-    if (LowNr == 0) {
-      sscanf(aline, "%s %lf", dummy, &tolTiltZ);
-      continue;
-    }
-    str = "tolP ";
-    LowNr = strncmp(aline, str, strlen(str));
-    if (LowNr == 0) {
-      sscanf(aline, "%s %lf", dummy, &tolP0);
-      tolP1 = tolP0;
-      tolP2 = tolP0;
-      continue;
-    }
-    str = "tolP0 ";
-    LowNr = strncmp(aline, str, strlen(str));
-    if (LowNr == 0) {
-      sscanf(aline, "%s %lf", dummy, &tolP0);
-      continue;
-    }
-    str = "tolP1 ";
-    LowNr = strncmp(aline, str, strlen(str));
-    if (LowNr == 0) {
-      sscanf(aline, "%s %lf", dummy, &tolP1);
-      continue;
-    }
-    str = "tolP2 ";
-    LowNr = strncmp(aline, str, strlen(str));
-    if (LowNr == 0) {
-      sscanf(aline, "%s %lf", dummy, &tolP2);
-      continue;
-    }
-    str = "tolP3 ";
-    LowNr = strncmp(aline, str, strlen(str));
-    if (LowNr == 0) {
-      sscanf(aline, "%s %lf", dummy, &tolP3);
-      continue;
-    }
-    str = "FixPanelID ";
-    LowNr = strncmp(aline, str, strlen(str));
-    if (LowNr == 0) {
-      sscanf(aline, "%s %d", dummy, &FixPanelID);
-      continue;
-    }
+  // ── Parse parameter file using centralized parser ──
+  MIDASConfig cfg;
+  if (midas_parse_params(ParamFN, &cfg) != 0) {
+    printf("Error: cannot open parameter file %s\n", ParamFN);
+    return 1;
   }
+
+  // Local aliases for heavily-used params (reduces downstream diff)
+  double tx = cfg.tx, ty = cfg.ty, tz = cfg.tz;
+  double Lsd = cfg.Lsd, px = cfg.px, Wavelength = cfg.Wavelength;
+  double p0 = cfg.p0, p1 = cfg.p1, p2 = cfg.p2, p3 = cfg.p3;
+  double p4 = cfg.p4, p5 = cfg.p5;
+  double RhoD = cfg.RhoD, yBC = cfg.ybc, zBC = cfg.zbc, wedge = cfg.Wedge;
+  double MinEta = cfg.MinEta;
+  int NrPixels = cfg.NrPixels;
+  int nOmeRanges = cfg.nOmeRanges, nBoxSizes = cfg.nBoxSizes;
+  int cs = cfg.nRingThresh; // nRings
+  int *RingNumbers = cfg.RingThresh;
+  double tolShifts = cfg.tolShifts;
+  double tolBC = cfg.tolBC;
+  double tolP0 = cfg.tolP0, tolP1 = cfg.tolP1, tolP2 = cfg.tolP2;
+  double tolP3 = cfg.tolP3, tolP4 = cfg.tolP4;
+  double tolTiltX = cfg.tolTilts, tolTiltY = cfg.tolTilts, tolTiltZ = cfg.tolTilts;
+  int FixPanelID = cfg.FixPanelID;
+  int nPanelsY = cfg.NPanelsY, nPanelsZ = cfg.NPanelsZ;
 
   // Generate Panels
   Panel *panels = NULL;
   int nPanels = 0;
   if (nPanelsY > 0 && nPanelsZ > 0) {
-    int ret = GeneratePanels(nPanelsY, nPanelsZ, panelSizeY, panelSizeZ,
-                             panelGapsY, panelGapsZ, &panels, &nPanels);
+    int ret = GeneratePanels(nPanelsY, nPanelsZ, cfg.PanelSizeY, cfg.PanelSizeZ,
+                             cfg.PanelGapsY, cfg.PanelGapsZ, &panels, &nPanels);
     if (ret != 0) {
       printf("Error generating panels.\n");
       return 1;
     }
 
-    if (strlen(panelShiftsFile) > 0) {
+    if (strlen(cfg.PanelShiftsFile) > 0) {
       char fullPath[MAX_LINE_LENGTH];
-      sprintf(fullPath, "%s/%s", argv[1], panelShiftsFile);
+      sprintf(fullPath, "%s/%s", argv[1], cfg.PanelShiftsFile);
       if (LoadPanelShifts(fullPath, nPanels, panels) != 0) {
         printf(
             "Warning: Could not load panel shifts from %s. Using 0 shifts.\n",
@@ -1415,14 +1122,14 @@ int main(int argc, char *argv[]) {
     gd->Wavelength = Wavelength;
     gd->MinEta = MinEta;
     for (i = 0; i < nOmeRanges; i++) {
-      gd->OmegaRanges[i][0] = OmegaRanges[i][0];
-      gd->OmegaRanges[i][1] = OmegaRanges[i][1];
+      gd->OmegaRanges[i][0] = cfg.OmegaRanges[i][0];
+      gd->OmegaRanges[i][1] = cfg.OmegaRanges[i][1];
     }
     for (i = 0; i < nBoxSizes; i++) {
-      gd->BoxSizes[i][0] = BoxSizes[i][0];
-      gd->BoxSizes[i][1] = BoxSizes[i][1];
-      gd->BoxSizes[i][2] = BoxSizes[i][2];
-      gd->BoxSizes[i][3] = BoxSizes[i][3];
+      gd->BoxSizes[i][0] = cfg.BoxSizes[i][0];
+      gd->BoxSizes[i][1] = cfg.BoxSizes[i][1];
+      gd->BoxSizes[i][2] = cfg.BoxSizes[i][2];
+      gd->BoxSizes[i][3] = cfg.BoxSizes[i][3];
     }
 
     // Reload Grains.csv to get params for THIS grain

@@ -1659,6 +1659,7 @@ typedef struct {
   int OutlierIterations;
   int RemoveOutliersBetweenIters;  // Feature 1: remove flagged outliers between iterations
   double TrimmedMeanFraction;     // Feature 2: fraction of points to keep in objective (1.0=all)
+  int ReFitPeaks;                 // re-fit peak positions each iteration (0=off, default)
   int WeightByRadius;
   int WeightByFitSNR;
   int L2Objective;
@@ -1727,6 +1728,7 @@ static int parse_parameters(const char *filename, CalibConfig *cfg) {
   cfg->nIterations = 1;
   cfg->OutlierIterations = 1;
   cfg->RemoveOutliersBetweenIters = 0;
+  cfg->ReFitPeaks = 0;
   cfg->TrimmedMeanFraction = 1.0;
   cfg->tolLsdPanel = 100;
   cfg->tolP2Panel = 0.0001;
@@ -2145,6 +2147,11 @@ static int parse_parameters(const char *filename, CalibConfig *cfg) {
       sscanf(aline, "%s %d", dummy, &cfg->RemoveOutliersBetweenIters);
       continue;
     }
+    str = "ReFitPeaks ";
+    if (!strncmp(aline, str, strlen(str))) {
+      sscanf(aline, "%s %d", dummy, &cfg->ReFitPeaks);
+      continue;
+    }
     str = "TrimmedMeanFraction ";
     if (!strncmp(aline, str, strlen(str))) {
       sscanf(aline, "%s %lf", dummy, &cfg->TrimmedMeanFraction);
@@ -2354,6 +2361,8 @@ static void print_parameter_summary(const CalibConfig *c) {
     printf("║    OutlierIters:   %-40d ║\n", c->OutlierIterations);
   if (c->RemoveOutliersBetweenIters)
     printf("║    RemoveOutliers: %-40s ║\n", "ON (between iterations)");
+  if (c->ReFitPeaks)
+    printf("║    ReFitPeaks:     %-40s ║\n", "ON (re-bin+fit each iter)");
   if (c->TrimmedMeanFraction < 1.0 - 1e-9)
     printf("║    TrimmedMean:    %-40.2f ║\n", c->TrimmedMeanFraction);
   if (c->PerPanelLsd)
@@ -2451,6 +2460,7 @@ int main(int argc, char *argv[]) {
   int NormalizeRingWeights = cfg.NormalizeRingWeights;
   int OutlierIterations = cfg.OutlierIterations;
   int RemoveOutliersBetweenIters = cfg.RemoveOutliersBetweenIters;
+  int ReFitPeaks = cfg.ReFitPeaks;
   double TrimmedMeanFraction = cfg.TrimmedMeanFraction;
   int WeightByRadius = cfg.WeightByRadius, WeightByFitSNR = cfg.WeightByFitSNR;
   int L2Objective = cfg.L2Objective;
@@ -2923,6 +2933,8 @@ int main(int argc, char *argv[]) {
     double bestParallax = 0;
     int stagnantCount = 0;
     double prevIterMeanDiff = -1;
+    int oscillationCount = 0;
+    double prevPrevIterMeanDiff = -1;
     Panel *bestPanels = NULL;
     if (nPanels > 0)
       bestPanels = malloc(nPanels * sizeof(Panel));
@@ -3396,7 +3408,7 @@ int main(int argc, char *argv[]) {
       }
 
       // --- PER-ITERATION RE-FIT with optimized parameters ---
-      {
+      if (ReFitPeaks) {
         // Free pre-optimization peak arrays
         free(YMean);
         free(ZMean);
@@ -3596,8 +3608,62 @@ int main(int argc, char *argv[]) {
         FreeMemMatrixInt(Idx_rf, nIdx_rf);
         free(IRmins_rf);
         free(IRmaxs_rf);
-      }
       // --- END PER-ITERATION RE-FIT ---
+      } else {
+        // Lightweight path (ReFitPeaks=0, default): recompute strain with
+        // optimized params on the *same* peak positions — no re-binning,
+        // no re-fitting, no feedback loop.
+        int *iterOutlier = NULL;
+        if (RemoveOutliersBetweenIters && outlierFactor > 0 &&
+            iter < nIterations - 1) {
+          iterOutlier = calloc(nIndices, sizeof(int));
+        }
+        CorrectTiltSpatialDistortion(
+            nIndices, MaxRingRad, Yc, Zc, IdealTtheta, px, LsdFit, ybcFit,
+            zbcFit, tx, ty, tz, p0, p1, p2, p3, EtaIns, DiffIns, RadIns,
+            &StdDiff, outlierFactor, iterOutlier, p4, p5, OutlierIterations,
+            0, &MeanDiff, parallaxIn);
+        printf("Iter %2d/%d  MeanStrain %8.3f  StdStrain %8.3f\n",
+               iter + 1, nIterations, MeanDiff * 1e6, StdDiff * 1e6);
+
+        // Remove flagged outliers (same logic as re-fit path)
+        if (iterOutlier != NULL) {
+          int nOutliers = 0;
+          for (i = 0; i < nIndices; i++) {
+            if (iterOutlier[i]) nOutliers++;
+          }
+          if (nOutliers > 0 && nOutliers < nIndices / 2) {
+            int newCount = 0;
+            for (i = 0; i < nIndices; i++) {
+              if (!iterOutlier[i]) {
+                RMean[newCount] = RMean[i];
+                EtaMean[newCount] = EtaMean[i];
+                IdealTtheta[newCount] = IdealTtheta[i];
+                if (PointDSpacing)
+                  PointDSpacing[newCount] = PointDSpacing[i];
+                RingNumbers[newCount] = RingNumbers[i];
+                if (FitSNR) FitSNR[newCount] = FitSNR[i];
+                YMean[newCount] = YMean[i];
+                ZMean[newCount] = ZMean[i];
+                Yc[newCount] = Yc[i];
+                Zc[newCount] = Zc[i];
+                EtaIns[newCount] = EtaIns[i];
+                RadIns[newCount] = RadIns[i];
+                DiffIns[newCount] = DiffIns[i];
+                newCount++;
+              }
+            }
+            printf("  RemoveOutliers: removed %d / %d points (%.1f%%)\n",
+                   nOutliers, nIndices,
+                   100.0 * nOutliers / nIndices);
+            nIndices = newCount;
+          } else if (nOutliers > 0) {
+            printf("  RemoveOutliers: skipped — would remove %d / %d (>50%%)\n",
+                   nOutliers, nIndices);
+          }
+          free(iterOutlier);
+        }
+      }
 
       // Feed outputs back as inputs for next iteration
       p4in = p4;
@@ -3637,7 +3703,54 @@ int main(int argc, char *argv[]) {
       } else {
         stagnantCount = 0;
       }
+
+      // 2-cycle oscillation: compare to 2 iterations ago
+      if (iter > 1 && fabs(MeanDiff - prevPrevIterMeanDiff) < 1e-9) {
+        oscillationCount++;
+      } else {
+        oscillationCount = 0;
+      }
+      prevPrevIterMeanDiff = prevIterMeanDiff;
       prevIterMeanDiff = MeanDiff;
+
+      // Divergence guard: revert to best and exit if strain increased > 50%
+      if (iter > 0 && bestMeanDiff > 0 &&
+          MeanDiff > 1.5 * bestMeanDiff) {
+        printf("  [Divergence guard] MeanStrain %.3f > 1.5 x best %.3f "
+               "-- reverting to best (iter %d)\n",
+               MeanDiff * 1e6, bestMeanDiff * 1e6, bestIter + 1);
+        LsdFit = bestLsd; ybcFit = bestYbc; zbcFit = bestZbc;
+        ty = bestTy; tz = bestTz;
+        p0 = bestP0; p1 = bestP1; p2 = bestP2; p3 = bestP3;
+        p4in = bestP4; p5in = bestP5;
+        parallaxIn = bestParallax;
+        Lsd = bestLsd; ybc = bestYbc; zbc = bestZbc;
+        tyin = bestTy; tzin = bestTz;
+        p0in = bestP0; p1in = bestP1; p2in = bestP2; p3in = bestP3;
+        MeanDiff = bestMeanDiff;
+        if (bestPanels && nPanels > 0)
+          memcpy(panels, bestPanels, nPanels * sizeof(Panel));
+        break;
+      }
+
+      // Oscillation guard: exit after 3 consecutive 2-cycles
+      if (oscillationCount >= 3) {
+        printf("  [Oscillation detected] MeanStrain alternating for %d "
+               "cycles -- stopping at best iter %d\n",
+               oscillationCount, bestIter + 1);
+        LsdFit = bestLsd; ybcFit = bestYbc; zbcFit = bestZbc;
+        ty = bestTy; tz = bestTz;
+        p0 = bestP0; p1 = bestP1; p2 = bestP2; p3 = bestP3;
+        p4in = bestP4; p5in = bestP5;
+        parallaxIn = bestParallax;
+        Lsd = bestLsd; ybc = bestYbc; zbc = bestZbc;
+        tyin = bestTy; tzin = bestTz;
+        p0in = bestP0; p1in = bestP1; p2in = bestP2; p3in = bestP3;
+        MeanDiff = bestMeanDiff;
+        if (bestPanels && nPanels > 0)
+          memcpy(panels, bestPanels, nPanels * sizeof(Panel));
+        break;
+      }
 
       // Perturbation: if stagnant for 3+ iterations, kick parameters
       if (stagnantCount >= 5 && iter < nIterations - 1) {
