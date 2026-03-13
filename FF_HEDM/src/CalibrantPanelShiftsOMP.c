@@ -1643,7 +1643,7 @@ typedef struct {
   // Optimization tolerances
   double tolTilts, tolLsd, tolBC, tolP;
   double tolP0, tolP1, tolP2, tolP3, tolP4, tolP5;
-  int tolP4Set, tolP5Set;
+  int tolP0Set, tolP1Set, tolP2Set, tolP3Set, tolP4Set, tolP5Set;
   double tolShifts, tolRotation;
   double tolLsdPanel, tolP2Panel;
 
@@ -2011,6 +2011,24 @@ static int parse_parameters(const char *filename, CalibConfig *cfg) {
       sscanf(aline, "%s %lf", dummy, &cfg->tolP);
       continue;
     }
+    str = "tolP0 ";
+    if (!strncmp(aline, str, strlen(str))) {
+      sscanf(aline, "%s %lf", dummy, &cfg->tolP0);
+      cfg->tolP0Set = 1;
+      continue;
+    }
+    str = "tolP1 ";
+    if (!strncmp(aline, str, strlen(str))) {
+      sscanf(aline, "%s %lf", dummy, &cfg->tolP1);
+      cfg->tolP1Set = 1;
+      continue;
+    }
+    str = "tolP2 ";
+    if (!strncmp(aline, str, strlen(str))) {
+      sscanf(aline, "%s %lf", dummy, &cfg->tolP2);
+      cfg->tolP2Set = 1;
+      continue;
+    }
     str = "p4 ";
     if (!strncmp(aline, str, strlen(str))) {
       sscanf(aline, "%s %lf", dummy, &cfg->p4in);
@@ -2172,6 +2190,12 @@ static int parse_parameters(const char *filename, CalibConfig *cfg) {
       sscanf(aline, "%s %d", dummy, &cfg->PerPanelDistortion);
       continue;
     }
+    str = "tolP3 ";
+    if (!strncmp(aline, str, strlen(str))) {
+      sscanf(aline, "%s %lf", dummy, &cfg->tolP3);
+      cfg->tolP3Set = 1;
+      continue;
+    }
     str = "tolP4 ";
     if (!strncmp(aline, str, strlen(str))) {
       sscanf(aline, "%s %lf", dummy, &cfg->tolP4);
@@ -2214,12 +2238,15 @@ static int parse_parameters(const char *filename, CalibConfig *cfg) {
   }
 
   // Apply tolerance defaults
-  if (cfg->tolP0 == 0)
+  // Apply tolerance defaults: only fall back to tolP if not explicitly set
+  if (!cfg->tolP0Set && cfg->tolP0 == 0)
     cfg->tolP0 = cfg->tolP;
-  if (cfg->tolP1 == 0)
+  if (!cfg->tolP1Set && cfg->tolP1 == 0)
     cfg->tolP1 = cfg->tolP;
-  if (cfg->tolP2 == 0)
+  if (!cfg->tolP2Set && cfg->tolP2 == 0)
     cfg->tolP2 = cfg->tolP;
+  if (!cfg->tolP3Set && cfg->tolP3 == 45)
+    cfg->tolP3 = cfg->tolP;
   if (!cfg->tolP4Set && cfg->tolP4 == 0)
     cfg->tolP4 = cfg->tolP;
   if (!cfg->tolP5Set && cfg->tolP5 == 0)

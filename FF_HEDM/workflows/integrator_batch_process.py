@@ -69,6 +69,7 @@ def read_parameters_from_file(param_file):
     rmax, rmin, rbin_size = 100, 10, 0.1  # Defaults match integrator_stream_process_h5.py
     n_peaks = 0
     peak_fit = False
+    panel_shifts_file = None
     
     with open(param_file, 'r') as f:
         for line in f:
