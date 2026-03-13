@@ -643,6 +643,12 @@ def main():
     if args.compress:
         server_cmd.append("--compress")
     
+    # Remove stale mapping file from a previous run to prevent hangs
+    mapping_path = output_dir / mapping_file
+    if mapping_path.exists():
+        print(f"Removing existing mapping file: {mapping_path}")
+        mapping_path.unlink()
+
     # Start integrator server
     print(f"Starting integrator_server.py with command: {' '.join(server_cmd)}")
     with open(server_log, 'w') as logfile:
