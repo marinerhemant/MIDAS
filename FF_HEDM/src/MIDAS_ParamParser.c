@@ -153,6 +153,9 @@ int midas_parse_params(const char *filename, MIDASConfig *cfg) {
     if (key_match(aline, "MaskFile")) {
       sscanf(aline, "%*s %s", cfg->MaskFN);
       cfg->makeMap = 3;
+      // Also populate ForwardSim MaskFile + useMask
+      strncpy(cfg->MaskFile, cfg->MaskFN, sizeof(cfg->MaskFile) - 1);
+      cfg->useMask = 1;
       continue;
     }
     if (key_match(aline, "GapFile")) {
@@ -213,8 +216,14 @@ int midas_parse_params(const char *filename, MIDASConfig *cfg) {
       continue;
     }
     if (key_match(aline, "RingThresh")) {
-      if (cfg->nRingThresh < MAX_N_RINGS)
-        sscanf(aline, "%*s %d", &cfg->RingThresh[cfg->nRingThresh++]);
+      if (cfg->nRingThresh < MAX_N_RINGS) {
+        int ringVal;
+        sscanf(aline, "%*s %d", &ringVal);
+        cfg->RingThresh[cfg->nRingThresh++] = ringVal;
+        // Also populate RingsToUse for ForwardSim compatibility
+        if (cfg->nRingsToUse < 500)
+          cfg->RingsToUse[cfg->nRingsToUse++] = ringVal;
+      }
       continue;
     }
     if (param_int(aline, "MaxRingNumber", &cfg->MaxRingNumber)) continue;
@@ -330,7 +339,7 @@ int midas_parse_params(const char *filename, MIDASConfig *cfg) {
     if (param_double(aline, "StepSizeOrient", &cfg->StepSizeOrient)) continue;
     if (param_double(aline, "StepsizeOrient", &cfg->StepSizeOrient)) continue;  // alias
     if (param_int(aline, "NrOrientations", &cfg->NrOrientations)) continue;
-    if (param_double(aline, "EResolution", &cfg->EResolution)) continue;
+    // EResolution is handled below via key_match to also read num_lambda_samples
     if (param_int(aline, "nDistances", &cfg->nDistances)) continue;
     if (param_int(aline, "NrFilesPerDistance", &cfg->NrFilesPerDistance)) continue;
     if (param_double(aline, "LsdMean", &cfg->LsdMean)) continue;
@@ -357,14 +366,10 @@ int midas_parse_params(const char *filename, MIDASConfig *cfg) {
     if (param_int(aline, "SimulationBatches", &cfg->SimulationBatches)) continue;
 
     // ── ForwardSimulation ──
-    if (param_str(aline, "InFileName", cfg->InFileName, sizeof(cfg->InFileName))) continue;
+    // InFileName is already handled at line ~94 as InputFileName
     if (param_str(aline, "OutFileName", cfg->OutFileName, sizeof(cfg->OutFileName))) continue;
     if (param_str(aline, "IntensitiesFile", cfg->IntensitiesFile, sizeof(cfg->IntensitiesFile))) continue;
-    if (key_match(aline, "MaskFile")) {
-      param_str(aline, "MaskFile", cfg->MaskFile, sizeof(cfg->MaskFile));
-      cfg->useMask = 1;
-      continue;
-    }
+    // MaskFile is handled above in the Masking section (line ~153)
     if (param_int(aline, "WriteSpots", &cfg->WriteSpots)) continue;
     if (param_int(aline, "WriteImage", &cfg->WriteImage)) continue;
     if (param_int(aline, "IsBinary", &cfg->IsBinary)) continue;
@@ -373,7 +378,7 @@ int midas_parse_params(const char *filename, MIDASConfig *cfg) {
     if (param_int(aline, "NFOutput", &cfg->NFOutput)) continue;
     if (param_double(aline, "PeakIntensity", &cfg->PeakIntensity)) continue;
     if (param_double(aline, "MaxOutputIntensity", &cfg->MaxOutputIntensity)) continue;
-    if (key_match(aline, "RingsToUse") || key_match(aline, "RingThresh")) {
+    if (key_match(aline, "RingsToUse")) {
       if (cfg->nRingsToUse < 500) {
         char tmpd[256]; int tmpv;
         if (sscanf(aline, "%s %d", tmpd, &tmpv) == 2)

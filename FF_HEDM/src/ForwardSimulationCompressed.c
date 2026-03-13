@@ -1081,7 +1081,7 @@ int main(int argc, char *argv[]) {
   }
 
   char InFileName[4096], OutFileName[4096];
-  strcpy(InFileName, cfg.InFileName);
+  strcpy(InFileName, cfg.InputFileName);
   strcpy(OutFileName, cfg.OutFileName);
   int Padding = 6, NrPixels = cfg.NrPixels;
   double Lsd = cfg.Lsd, tx = cfg.tx, ty = cfg.ty, tz = cfg.tz;

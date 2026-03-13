@@ -254,7 +254,7 @@ typedef struct {
   double lineoutRMax;
 
   // ── ForwardSimulation ──
-  char   InFileName[MAX_LINE_LENGTH];
+  // Note: InFileName is stored in InputFileName above (shared with RefinementFileName)
   char   OutFileName[MAX_LINE_LENGTH];
   char   IntensitiesFile[MAX_LINE_LENGTH];
   char   MaskFile[MAX_LINE_LENGTH];
