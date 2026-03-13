@@ -669,7 +669,7 @@ def main():
             print(f"Processing files with extension .{args.extension} from {args.folder}")
             
             # Handle different file types
-            if args.extension.lower() == 'tif':
+            if args.extension.lower() == 'tif' or args.extension.lower() == 'tiff':
                 # Process TIFF files
                 process_tif_files_pipelined(sock, args.folder, frame_mapping, args.mapping_file, args.save_interval, compress=args.compress)
                     
