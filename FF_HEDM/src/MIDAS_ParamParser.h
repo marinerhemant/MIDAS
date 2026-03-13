@@ -159,6 +159,7 @@ typedef struct {
   int    NormalizeRingWeights;
   int    OutlierIterations;
   int    RemoveOutliersBetweenIters;
+  int    ReFitPeaks;
   double TrimmedMeanFraction;
   int    WeightByRadius;
   int    WeightByFitSNR;

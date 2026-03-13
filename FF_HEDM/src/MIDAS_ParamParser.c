@@ -19,8 +19,13 @@ void midas_config_defaults(MIDASConfig *cfg) {
   cfg->nIterations = 1;
   cfg->OutlierIterations = 1;
   cfg->TrimmedMeanFraction = 1.0;
+  cfg->tolLsdPanel = 100;
+  cfg->tolP2Panel = 0.0001;
+  cfg->tolWavelength = 0.001;
   cfg->lineoutRBinSize = 0.25;
   cfg->lineoutRMin = 10.0;
+  sprintf(cfg->darkDatasetName, "exchange/dark");
+  sprintf(cfg->dataDatasetName, "exchange/data");
 }
 
 void midas_apply_tol_defaults(MIDASConfig *cfg) {
@@ -225,6 +230,7 @@ int midas_parse_params(const char *filename, MIDASConfig *cfg) {
     if (param_int(aline, "NormalizeRingWeights", &cfg->NormalizeRingWeights)) continue;
     if (param_int(aline, "OutlierIterations", &cfg->OutlierIterations)) continue;
     if (param_int(aline, "RemoveOutliersBetweenIters", &cfg->RemoveOutliersBetweenIters)) continue;
+    if (param_int(aline, "ReFitPeaks", &cfg->ReFitPeaks)) continue;
     if (param_double(aline, "TrimmedMeanFraction", &cfg->TrimmedMeanFraction)) continue;
     if (param_int(aline, "WeightByRadius", &cfg->WeightByRadius)) continue;
     if (param_int(aline, "WeightByFitSNR", &cfg->WeightByFitSNR)) continue;

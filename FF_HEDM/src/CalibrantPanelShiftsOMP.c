@@ -16,6 +16,7 @@
 #include "DetectorGeometry.h"
 #include "FileReader.h"
 #include "MIDAS_Math.h"
+#include "MIDAS_ParamParser.h"
 #include "Panel.h"
 #include "midas_paths.h"
 #include "midas_version.h"
@@ -1615,623 +1616,16 @@ static inline void MakeSquare(int NrPixels, int NrPixelsY, int NrPixelsZ,
 // } // End of fileReader function
 // This section is being removed.
 
-// ─── CalibConfig: holds all parsed parameters ─────────────────────
-typedef struct {
-  // File I/O
-  char fn[1024];
-  char folder[1024];
-  char Ext[1024];
-  char Dark[1024];
-  int StartNr, EndNr;
-  int Padding;
-  int HeadSize;
-  int dType;
+// ─── Parsing: delegate to shared MIDASConfig parser ───────────────
+// CalibConfig has been replaced by MIDASConfig (from MIDAS_ParamParser.h).
+// This thin wrapper performs CalibrantPanelShiftsOMP-specific post-processing.
 
-  // Detector geometry
-  int NrPixelsY, NrPixelsZ, NrPixels;
-  double px;
-  double Lsd, ybc, zbc;
-  double tx, tyin, tzin;
-  double p0in, p1in, p2in, p3in, p4in, p5in;
-
-  // Crystallography
-  int SpaceGroup;
-  double LatticeConstant[6];
-  double Wavelength;
-  double MaxRingRad;
-
-  // Optimization tolerances
-  double tolTilts, tolLsd, tolBC, tolP;
-  double tolP0, tolP1, tolP2, tolP3, tolP4, tolP5;
-  int tolP0Set, tolP1Set, tolP2Set, tolP3Set, tolP4Set, tolP5Set;
-  double tolShifts, tolRotation;
-  double tolLsdPanel, tolP2Panel;
-
-  // Calibration control
-  double Width, EtaBinSize;
-  int RBinWidth;
-  double outlierFactor;
-  int MinIndicesForFit;
-  int FitWeightMean;
-  int nIterations;
-  double DoubletSeparation;
-  int NormalizeRingWeights;
-  int OutlierIterations;
-  int RemoveOutliersBetweenIters;  // Feature 1: remove flagged outliers between iterations
-  double TrimmedMeanFraction;     // Feature 2: fraction of points to keep in objective (1.0=all)
-  int ReFitPeaks;                 // re-fit peak positions each iteration (0=off, default)
-  int WeightByRadius;
-  int WeightByFitSNR;
-  int L2Objective;
-  int PerPanelLsd;
-  int PerPanelDistortion;
-  int FitWavelength;
-  double tolWavelength;
-
-  // Parallax correction
-  int FitParallax;
-  double parallaxIn;
-  double tolParallax;
-
-
-  // Image transformations
-  int NrTransOpt;
-  int TransOpt[10];
-
-  // Masking
-  long long int GapIntensity, BadPxIntensity;
-  int makeMap;
-  char GapFN[4096], BadPxFN[4096], MaskFN[4096];
-
-  // Excluded rings
-  int nRingsExclude;
-  int RingsExclude[50];
-  int MaxRingNumber;  // 0 = no limit, >0 = exclude rings with RingNr > this
-
-  // Panel configuration
-  int NPanelsY, NPanelsZ;
-  int PanelSizeY, PanelSizeZ;
-  int *PanelGapsY, *PanelGapsZ;
-  char PanelShiftsFile[1024];
-  int FixPanelID;
-
-  // HDF5 dataset names
-  char darkDatasetName[4096];
-  char dataDatasetName[4096];
-
-  // Lineout parameters (full-range integration)
-  double lineoutRBinSize; // px, default 0.25
-  double lineoutRMin;     // px, default 10
-  double lineoutRMax;     // px, default 0 → auto from detector diagonal
-
-  // Derived
-  double MaxTtheta;
-  double padY, padZ;
-} CalibConfig;
-
-// ─── parse_parameters: read parameter file into CalibConfig ───────
-static int parse_parameters(const char *filename, CalibConfig *cfg) {
-  FILE *f = fopen(filename, "r");
-  if (!f) {
-    fprintf(stderr, "Error: cannot open parameter file %s\n", filename);
+static int parse_parameters(const char *filename, MIDASConfig *cfg) {
+  if (midas_parse_params(filename, cfg) != 0)
     return -1;
-  }
-  // Set defaults
-  memset(cfg, 0, sizeof(*cfg));
-  cfg->Padding = 6;
-  cfg->HeadSize = 0;
-  cfg->dType = 1;
-  cfg->RBinWidth = 4;
-  cfg->tolP3 = 45;
-  cfg->tolShifts = 1.0;
-  cfg->MinIndicesForFit = 1;
-  cfg->nIterations = 1;
-  cfg->OutlierIterations = 1;
-  cfg->RemoveOutliersBetweenIters = 0;
-  cfg->ReFitPeaks = 0;
-  cfg->TrimmedMeanFraction = 1.0;
-  cfg->tolLsdPanel = 100;
-  cfg->tolP2Panel = 0.0001;
-  cfg->lineoutRBinSize = 0.25;
-  cfg->lineoutRMin = 10.0;
-  cfg->lineoutRMax = 0.0;
-  cfg->FitWavelength = 0;
-  cfg->tolWavelength = 0.001;
-  sprintf(cfg->darkDatasetName, "exchange/dark");
-  sprintf(cfg->dataDatasetName, "exchange/data");
 
-  char aline[1000], dummy[1000];
-  const char *str;
-  while (fgets(aline, 1000, f) != NULL) {
-    str = "FileStem ";
-    if (!strncmp(aline, str, strlen(str))) {
-      sscanf(aline, "%s %s", dummy, cfg->fn);
-      continue;
-    }
-    str = "darkDataset ";
-    if (!strncmp(aline, str, strlen(str))) {
-      sscanf(aline, "%s %s", dummy, cfg->darkDatasetName);
-      continue;
-    }
-    str = "darkLoc ";
-    if (!strncmp(aline, str, strlen(str))) {
-      sscanf(aline, "%s %s", dummy, cfg->darkDatasetName);
-      continue;
-    }
-    str = "dataDataset ";
-    if (!strncmp(aline, str, strlen(str))) {
-      sscanf(aline, "%s %s", dummy, cfg->dataDatasetName);
-      continue;
-    }
-    str = "dataLoc ";
-    if (!strncmp(aline, str, strlen(str))) {
-      sscanf(aline, "%s %s", dummy, cfg->dataDatasetName);
-      continue;
-    }
-    str = "Folder ";
-    if (!strncmp(aline, str, strlen(str))) {
-      sscanf(aline, "%s %s", dummy, cfg->folder);
-      continue;
-    }
-    str = "MaskFile ";
-    if (!strncmp(aline, str, strlen(str))) {
-      sscanf(aline, "%s %s", dummy, cfg->MaskFN);
-      cfg->makeMap = 3;
-      continue;
-    }
-    str = "GapFile ";
-    if (!strncmp(aline, str, strlen(str))) {
-      sscanf(aline, "%s %s", dummy, cfg->GapFN);
-      cfg->makeMap = 2;
-      continue;
-    }
-    str = "BadPxFile ";
-    if (!strncmp(aline, str, strlen(str))) {
-      sscanf(aline, "%s %s", dummy, cfg->BadPxFN);
-      cfg->makeMap = 2;
-      continue;
-    }
-    str = "DataType ";
-    if (!strncmp(aline, str, strlen(str))) {
-      sscanf(aline, "%s %d", dummy, &cfg->dType);
-      continue;
-    }
-    str = "RBinDivisions ";
-    if (!strncmp(aline, str, strlen(str))) {
-      sscanf(aline, "%s %d", dummy, &cfg->RBinWidth);
-      continue;
-    }
-    str = "SkipFrame ";
-    if (!strncmp(aline, str, strlen(str))) {
-      sscanf(aline, "%s %d", dummy, &skipFrame);
-      continue;
-    }
-    str = "GapIntensity ";
-    if (!strncmp(aline, str, strlen(str))) {
-      sscanf(aline, "%s %lld", dummy, &cfg->GapIntensity);
-      cfg->makeMap = 1;
-      continue;
-    }
-    str = "BadPxIntensity ";
-    if (!strncmp(aline, str, strlen(str))) {
-      sscanf(aline, "%s %lld", dummy, &cfg->BadPxIntensity);
-      cfg->makeMap = 1;
-      continue;
-    }
-    str = "Ext ";
-    if (!strncmp(aline, str, strlen(str))) {
-      sscanf(aline, "%s %s", dummy, cfg->Ext);
-      continue;
-    }
-    str = "Dark ";
-    if (!strncmp(aline, str, strlen(str))) {
-      sscanf(aline, "%s %s", dummy, cfg->Dark);
-      continue;
-    }
-    str = "Padding ";
-    if (!strncmp(aline, str, strlen(str))) {
-      sscanf(aline, "%s %d", dummy, &cfg->Padding);
-      continue;
-    }
-    str = "StartNr ";
-    if (!strncmp(aline, str, strlen(str))) {
-      sscanf(aline, "%s %d", dummy, &cfg->StartNr);
-      continue;
-    }
-    str = "EndNr ";
-    if (!strncmp(aline, str, strlen(str))) {
-      sscanf(aline, "%s %d", dummy, &cfg->EndNr);
-      continue;
-    }
-    str = "NrPixels ";
-    if (!strncmp(aline, str, strlen(str))) {
-      sscanf(aline, "%s %d", dummy, &cfg->NrPixelsY);
-      cfg->NrPixelsZ = cfg->NrPixelsY;
-      continue;
-    }
-    str = "NrPixelsY ";
-    if (!strncmp(aline, str, strlen(str))) {
-      sscanf(aline, "%s %d", dummy, &cfg->NrPixelsY);
-      continue;
-    }
-    str = "NrPixelsZ ";
-    if (!strncmp(aline, str, strlen(str))) {
-      sscanf(aline, "%s %d", dummy, &cfg->NrPixelsZ);
-      continue;
-    }
-    str = "ImTransOpt ";
-    if (!strncmp(aline, str, strlen(str))) {
-      sscanf(aline, "%s %d", dummy, &cfg->TransOpt[cfg->NrTransOpt]);
-      cfg->NrTransOpt++;
-      continue;
-    }
-    str = "SpaceGroup ";
-    if (!strncmp(aline, str, strlen(str))) {
-      sscanf(aline, "%s %d", dummy, &cfg->SpaceGroup);
-      continue;
-    }
-    str = "NPanelsY ";
-    if (!strncmp(aline, str, strlen(str))) {
-      sscanf(aline, "%s %d", dummy, &cfg->NPanelsY);
-      continue;
-    }
-    str = "NPanelsZ ";
-    if (!strncmp(aline, str, strlen(str))) {
-      sscanf(aline, "%s %d", dummy, &cfg->NPanelsZ);
-      continue;
-    }
-    str = "PanelSizeY ";
-    if (!strncmp(aline, str, strlen(str))) {
-      sscanf(aline, "%s %d", dummy, &cfg->PanelSizeY);
-      continue;
-    }
-    str = "PanelSizeZ ";
-    if (!strncmp(aline, str, strlen(str))) {
-      sscanf(aline, "%s %d", dummy, &cfg->PanelSizeZ);
-      continue;
-    }
-    str = "PanelShiftsFile ";
-    if (!strncmp(aline, str, strlen(str))) {
-      sscanf(aline, "%s %s", dummy, cfg->PanelShiftsFile);
-      continue;
-    }
-    str = "PanelGapsY ";
-    if (!strncmp(aline, str, strlen(str))) {
-      char *ptr = aline + strlen(str);
-      if (cfg->NPanelsY > 1) {
-        cfg->PanelGapsY = malloc((cfg->NPanelsY - 1) * sizeof(int));
-        for (int gi = 0; gi < cfg->NPanelsY - 1; gi++) {
-          cfg->PanelGapsY[gi] = (int)strtol(ptr, &ptr, 10);
-        }
-      }
-      continue;
-    }
-    str = "PanelGapsZ ";
-    if (!strncmp(aline, str, strlen(str))) {
-      char *ptr = aline + strlen(str);
-      if (cfg->NPanelsZ > 1) {
-        cfg->PanelGapsZ = malloc((cfg->NPanelsZ - 1) * sizeof(int));
-        for (int gi = 0; gi < cfg->NPanelsZ - 1; gi++) {
-          cfg->PanelGapsZ[gi] = (int)strtol(ptr, &ptr, 10);
-        }
-      }
-      continue;
-    }
-    str = "LatticeConstant ";
-    if (!strncmp(aline, str, strlen(str))) {
-      sscanf(aline, "%s %lf %lf %lf %lf %lf %lf", dummy,
-             &cfg->LatticeConstant[0], &cfg->LatticeConstant[1],
-             &cfg->LatticeConstant[2], &cfg->LatticeConstant[3],
-             &cfg->LatticeConstant[4], &cfg->LatticeConstant[5]);
-      continue;
-    }
-    str = "LatticeParameter ";
-    if (!strncmp(aline, str, strlen(str))) {
-      sscanf(aline, "%s %lf %lf %lf %lf %lf %lf", dummy,
-             &cfg->LatticeConstant[0], &cfg->LatticeConstant[1],
-             &cfg->LatticeConstant[2], &cfg->LatticeConstant[3],
-             &cfg->LatticeConstant[4], &cfg->LatticeConstant[5]);
-      continue;
-    }
-    str = "Wavelength ";
-    if (!strncmp(aline, str, strlen(str))) {
-      sscanf(aline, "%s %lf", dummy, &cfg->Wavelength);
-      continue;
-    }
-    str = "Lsd ";
-    if (!strncmp(aline, str, strlen(str))) {
-      sscanf(aline, "%s %lf", dummy, &cfg->Lsd);
-      continue;
-    }
-    str = "RhoD ";
-    if (!strncmp(aline, str, strlen(str))) {
-      sscanf(aline, "%s %lf", dummy, &cfg->MaxRingRad);
-      continue;
-    }
-    str = "BC ";
-    if (!strncmp(aline, str, strlen(str))) {
-      sscanf(aline, "%s %lf %lf", dummy, &cfg->ybc, &cfg->zbc);
-      continue;
-    }
-    str = "ty ";
-    if (!strncmp(aline, str, strlen(str))) {
-      sscanf(aline, "%s %lf", dummy, &cfg->tyin);
-      continue;
-    }
-    str = "tz ";
-    if (!strncmp(aline, str, strlen(str))) {
-      sscanf(aline, "%s %lf", dummy, &cfg->tzin);
-      continue;
-    }
-    str = "p0 ";
-    if (!strncmp(aline, str, strlen(str))) {
-      sscanf(aline, "%s %lf", dummy, &cfg->p0in);
-      continue;
-    }
-    str = "p1 ";
-    if (!strncmp(aline, str, strlen(str))) {
-      sscanf(aline, "%s %lf", dummy, &cfg->p1in);
-      continue;
-    }
-    str = "p2 ";
-    if (!strncmp(aline, str, strlen(str))) {
-      sscanf(aline, "%s %lf", dummy, &cfg->p2in);
-      continue;
-    }
-    str = "p3 ";
-    if (!strncmp(aline, str, strlen(str))) {
-      sscanf(aline, "%s %lf", dummy, &cfg->p3in);
-      continue;
-    }
-    str = "Width ";
-    if (!strncmp(aline, str, strlen(str))) {
-      sscanf(aline, "%s %lf", dummy, &cfg->Width);
-      continue;
-    }
-    str = "EtaBinSize ";
-    if (!strncmp(aline, str, strlen(str))) {
-      sscanf(aline, "%s %lf", dummy, &cfg->EtaBinSize);
-      continue;
-    }
-    str = "tolTilts ";
-    if (!strncmp(aline, str, strlen(str))) {
-      sscanf(aline, "%s %lf", dummy, &cfg->tolTilts);
-      continue;
-    }
-    str = "tolBC ";
-    if (!strncmp(aline, str, strlen(str))) {
-      sscanf(aline, "%s %lf", dummy, &cfg->tolBC);
-      continue;
-    }
-    str = "tolLsd ";
-    if (!strncmp(aline, str, strlen(str))) {
-      sscanf(aline, "%s %lf", dummy, &cfg->tolLsd);
-      continue;
-    }
-    str = "tolP ";
-    if (!strncmp(aline, str, strlen(str))) {
-      sscanf(aline, "%s %lf", dummy, &cfg->tolP);
-      continue;
-    }
-    str = "tolP0 ";
-    if (!strncmp(aline, str, strlen(str))) {
-      sscanf(aline, "%s %lf", dummy, &cfg->tolP0);
-      cfg->tolP0Set = 1;
-      continue;
-    }
-    str = "tolP1 ";
-    if (!strncmp(aline, str, strlen(str))) {
-      sscanf(aline, "%s %lf", dummy, &cfg->tolP1);
-      cfg->tolP1Set = 1;
-      continue;
-    }
-    str = "tolP2 ";
-    if (!strncmp(aline, str, strlen(str))) {
-      sscanf(aline, "%s %lf", dummy, &cfg->tolP2);
-      cfg->tolP2Set = 1;
-      continue;
-    }
-    str = "p4 ";
-    if (!strncmp(aline, str, strlen(str))) {
-      sscanf(aline, "%s %lf", dummy, &cfg->p4in);
-      continue;
-    }
-    str = "px ";
-    if (!strncmp(aline, str, strlen(str))) {
-      sscanf(aline, "%s %lf", dummy, &cfg->px);
-      continue;
-    }
-    str = "tolShifts ";
-    if (!strncmp(aline, str, strlen(str))) {
-      sscanf(aline, "%s %lf", dummy, &cfg->tolShifts);
-      continue;
-    }
-    str = "tolRotation ";
-    if (!strncmp(aline, str, strlen(str))) {
-      sscanf(aline, "%s %lf", dummy, &cfg->tolRotation);
-      continue;
-    }
-    str = "MultFactor ";
-    if (!strncmp(aline, str, strlen(str))) {
-      sscanf(aline, "%s %lf", dummy, &cfg->outlierFactor);
-      continue;
-    }
-    str = "MinIndicesForFit ";
-    if (!strncmp(aline, str, strlen(str))) {
-      sscanf(aline, "%s %d", dummy, &cfg->MinIndicesForFit);
-      continue;
-    }
-    str = "FixPanelID ";
-    if (!strncmp(aline, str, strlen(str))) {
-      sscanf(aline, "%s %d", dummy, &cfg->FixPanelID);
-      continue;
-    }
-    str = "tx ";
-    if (!strncmp(aline, str, strlen(str))) {
-      sscanf(aline, "%s %lf", dummy, &cfg->tx);
-      continue;
-    }
-    str = "FitOrWeightedMean ";
-    if (!strncmp(aline, str, strlen(str))) {
-      sscanf(aline, "%s %d", dummy, &cfg->FitWeightMean);
-      continue;
-    }
-    str = "RingsToExclude ";
-    if (!strncmp(aline, str, strlen(str))) {
-      sscanf(aline, "%s %d", dummy, &cfg->RingsExclude[cfg->nRingsExclude]);
-      cfg->nRingsExclude++;
-      continue;
-    }
-    str = "MaxRingNumber ";
-    if (!strncmp(aline, str, strlen(str))) {
-      sscanf(aline, "%s %d", dummy, &cfg->MaxRingNumber);
-      continue;
-    }
-    str = "FitParallax ";
-    if (!strncmp(aline, str, strlen(str))) {
-      sscanf(aline, "%s %d", dummy, &cfg->FitParallax);
-      continue;
-    }
-    str = "Parallax ";
-    if (!strncmp(aline, str, strlen(str))) {
-      sscanf(aline, "%s %lf", dummy, &cfg->parallaxIn);
-      continue;
-    }
-    str = "tolParallax ";
-    if (!strncmp(aline, str, strlen(str))) {
-      sscanf(aline, "%s %lf", dummy, &cfg->tolParallax);
-      continue;
-    }
-    str = "RBinSize ";
-    if (!strncmp(aline, str, strlen(str))) {
-      sscanf(aline, "%s %lf", dummy, &cfg->lineoutRBinSize);
-      continue;
-    }
-    str = "RMin ";
-    if (!strncmp(aline, str, strlen(str))) {
-      sscanf(aline, "%s %lf", dummy, &cfg->lineoutRMin);
-      continue;
-    }
-    str = "RMax ";
-    if (!strncmp(aline, str, strlen(str))) {
-      sscanf(aline, "%s %lf", dummy, &cfg->lineoutRMax);
-      continue;
-    }
-    str = "HeadSize ";
-    if (!strncmp(aline, str, strlen(str))) {
-      sscanf(aline, "%s %d", dummy, &cfg->HeadSize);
-      continue;
-    }
-    str = "nIterations ";
-    if (!strncmp(aline, str, strlen(str))) {
-      sscanf(aline, "%s %d", dummy, &cfg->nIterations);
-      continue;
-    }
-    str = "DoubletSeparation ";
-    if (!strncmp(aline, str, strlen(str))) {
-      sscanf(aline, "%s %lf", dummy, &cfg->DoubletSeparation);
-      continue;
-    }
-    str = "NormalizeRingWeights ";
-    if (!strncmp(aline, str, strlen(str))) {
-      sscanf(aline, "%s %d", dummy, &cfg->NormalizeRingWeights);
-      continue;
-    }
-    str = "OutlierIterations ";
-    if (!strncmp(aline, str, strlen(str))) {
-      sscanf(aline, "%s %d", dummy, &cfg->OutlierIterations);
-      continue;
-    }
-    str = "RemoveOutliersBetweenIters ";
-    if (!strncmp(aline, str, strlen(str))) {
-      sscanf(aline, "%s %d", dummy, &cfg->RemoveOutliersBetweenIters);
-      continue;
-    }
-    str = "ReFitPeaks ";
-    if (!strncmp(aline, str, strlen(str))) {
-      sscanf(aline, "%s %d", dummy, &cfg->ReFitPeaks);
-      continue;
-    }
-    str = "TrimmedMeanFraction ";
-    if (!strncmp(aline, str, strlen(str))) {
-      sscanf(aline, "%s %lf", dummy, &cfg->TrimmedMeanFraction);
-      continue;
-    }
-    str = "WeightByRadius ";
-    if (!strncmp(aline, str, strlen(str))) {
-      sscanf(aline, "%s %d", dummy, &cfg->WeightByRadius);
-      continue;
-    }
-    str = "WeightByFitSNR ";
-    if (!strncmp(aline, str, strlen(str))) {
-      sscanf(aline, "%s %d", dummy, &cfg->WeightByFitSNR);
-      continue;
-    }
-    str = "L2Objective ";
-    if (!strncmp(aline, str, strlen(str))) {
-      sscanf(aline, "%s %d", dummy, &cfg->L2Objective);
-      continue;
-    }
-    str = "FitWavelength ";
-    if (!strncmp(aline, str, strlen(str))) {
-      sscanf(aline, "%s %d", dummy, &cfg->FitWavelength);
-      continue;
-    }
-    str = "tolWavelength ";
-    if (!strncmp(aline, str, strlen(str))) {
-      sscanf(aline, "%s %lf", dummy, &cfg->tolWavelength);
-      continue;
-    }
-
-    str = "DistortionOrder ";
-    if (!strncmp(aline, str, strlen(str))) {
-      continue;
-    }
-    str = "PerPanelLsd ";
-    if (!strncmp(aline, str, strlen(str))) {
-      sscanf(aline, "%s %d", dummy, &cfg->PerPanelLsd);
-      continue;
-    }
-    str = "PerPanelDistortion ";
-    if (!strncmp(aline, str, strlen(str))) {
-      sscanf(aline, "%s %d", dummy, &cfg->PerPanelDistortion);
-      continue;
-    }
-    str = "tolP3 ";
-    if (!strncmp(aline, str, strlen(str))) {
-      sscanf(aline, "%s %lf", dummy, &cfg->tolP3);
-      cfg->tolP3Set = 1;
-      continue;
-    }
-    str = "tolP4 ";
-    if (!strncmp(aline, str, strlen(str))) {
-      sscanf(aline, "%s %lf", dummy, &cfg->tolP4);
-      cfg->tolP4Set = 1;
-      continue;
-    }
-    str = "tolP5 ";
-    if (!strncmp(aline, str, strlen(str))) {
-      sscanf(aline, "%s %lf", dummy, &cfg->tolP5);
-      cfg->tolP5Set = 1;
-      continue;
-    }
-    str = "p5 ";
-    if (!strncmp(aline, str, strlen(str))) {
-      sscanf(aline, "%s %lf", dummy, &cfg->p5in);
-      continue;
-    }
-    str = "tolLsdPanel ";
-    if (!strncmp(aline, str, strlen(str))) {
-      sscanf(aline, "%s %lf", dummy, &cfg->tolLsdPanel);
-      continue;
-    }
-    str = "tolP2Panel ";
-    if (!strncmp(aline, str, strlen(str))) {
-      sscanf(aline, "%s %lf", dummy, &cfg->tolP2Panel);
-      continue;
-    }
-  }
-  fclose(f);
+  // CalibConfig-specific: SkipFrame was stored in a global
+  skipFrame = cfg->SkipFrame;
 
   // Generate Panels
   if (cfg->NPanelsY > 0 && cfg->NPanelsZ > 0) {
@@ -2244,50 +1638,34 @@ static int parse_parameters(const char *filename, CalibConfig *cfg) {
     printf("Generated %d panels.\n", nPanels);
   }
 
-  // Apply tolerance defaults
-  // Apply tolerance defaults: only fall back to tolP if not explicitly set
-  if (!cfg->tolP0Set && cfg->tolP0 == 0)
-    cfg->tolP0 = cfg->tolP;
-  if (!cfg->tolP1Set && cfg->tolP1 == 0)
-    cfg->tolP1 = cfg->tolP;
-  if (!cfg->tolP2Set && cfg->tolP2 == 0)
-    cfg->tolP2 = cfg->tolP;
-  if (!cfg->tolP3Set && cfg->tolP3 == 45)
-    cfg->tolP3 = cfg->tolP;
-  if (!cfg->tolP4Set && cfg->tolP4 == 0)
-    cfg->tolP4 = cfg->tolP;
-  if (!cfg->tolP5Set && cfg->tolP5 == 0)
-    cfg->tolP5 = cfg->tolP;
-
-  // Derive NrPixels
-  cfg->NrPixels =
-      (cfg->NrPixelsY > cfg->NrPixelsZ) ? cfg->NrPixelsY : cfg->NrPixelsZ;
-
   // Load panel shifts file if specified
   if (cfg->PanelShiftsFile[0] != '\0') {
     LoadPanelShifts(cfg->PanelShiftsFile, nPanels, panels);
   }
 
-  cfg->MaxTtheta = rad2deg * atan(cfg->MaxRingRad / cfg->Lsd);
+  // Set default parallax tolerance if fitting is enabled but tol not set
+  if (cfg->FitParallax && cfg->tolParallax < 1e-12)
+    cfg->tolParallax = 200.0;
+
   return 0;
 }
 
 // ─── print_parameter_summary ──────────────────────────────────────
-static void print_parameter_summary(const CalibConfig *c) {
+static void print_parameter_summary(const MIDASConfig *c) {
   printf("\n");
   printf("╔══════════════════════════════════════════════════════════════╗\n");
   printf("║           CalibrantPanelShiftsOMP — Parameter Summary       ║\n");
   printf("╠══════════════════════════════════════════════════════════════╣\n");
   printf("║  FILE I/O                                                   ║\n");
-  printf("║    FileStem:       %-40s ║\n", c->fn);
-  printf("║    Folder:         %-40s ║\n", c->folder);
+  printf("║    FileStem:       %-40s ║\n", c->FileStem);
+  printf("║    Folder:         %-40s ║\n", c->Folder);
   printf("║    Ext:            %-40s ║\n", c->Ext);
   printf("║    Dark:           %-40s ║\n", c->Dark);
   printf("║    StartNr:        %-40d ║\n", c->StartNr);
   printf("║    EndNr:          %-40d ║\n", c->EndNr);
   printf("║    Padding:        %-40d ║\n", c->Padding);
   printf("║    HeadSize:       %-40d ║\n", c->HeadSize);
-  printf("║    DataType:       %-40d ║\n", c->dType);
+  printf("║    DataType:       %-40d ║\n", c->DataType);
   printf("║    SkipFrame:      %-40d ║\n", skipFrame);
   printf("╠══════════════════════════════════════════════════════════════╣\n");
   printf("║  DETECTOR GEOMETRY                                          ║\n");
@@ -2298,14 +1676,14 @@ static void print_parameter_summary(const CalibConfig *c) {
   printf("║    Lsd:            %-40.2f ║\n", c->Lsd);
   printf("║    BC:             %-20.4f %-19.4f ║\n", c->ybc, c->zbc);
   printf("║    tx (fixed):     %-40.6f ║\n", c->tx);
-  printf("║    ty (initial):   %-40.6f ║\n", c->tyin);
-  printf("║    tz (initial):   %-40.6f ║\n", c->tzin);
-  printf("║    p0 (initial):   %-40.8f ║\n", c->p0in);
-  printf("║    p1 (initial):   %-40.8f ║\n", c->p1in);
-  printf("║    p2 (initial):   %-40.8f ║\n", c->p2in);
-  printf("║    p3 (initial):   %-40.8f ║\n", c->p3in);
-  printf("║    p4 (initial):   %-40.8f ║\n", c->p4in);
-  printf("║    p5 (initial):   %-40.8f ║\n", c->p5in);
+  printf("║    ty (initial):   %-40.6f ║\n", c->ty);
+  printf("║    tz (initial):   %-40.6f ║\n", c->tz);
+  printf("║    p0 (initial):   %-40.8f ║\n", c->p0);
+  printf("║    p1 (initial):   %-40.8f ║\n", c->p1);
+  printf("║    p2 (initial):   %-40.8f ║\n", c->p2);
+  printf("║    p3 (initial):   %-40.8f ║\n", c->p3);
+  printf("║    p4 (initial):   %-40.8f ║\n", c->p4);
+  printf("║    p5 (initial):   %-40.8f ║\n", c->p5);
   printf("╠══════════════════════════════════════════════════════════════╣\n");
   printf("║  CRYSTALLOGRAPHY                                            ║\n");
   printf("║    SpaceGroup:     %-40d ║\n", c->SpaceGroup);
@@ -2313,7 +1691,7 @@ static void print_parameter_summary(const CalibConfig *c) {
          c->LatticeConstant[0], c->LatticeConstant[1], c->LatticeConstant[2],
          c->LatticeConstant[3], c->LatticeConstant[4], c->LatticeConstant[5]);
   printf("║    Wavelength:     %-40.8f ║\n", c->Wavelength);
-  printf("║    RhoD:           %-40.2f ║\n", c->MaxRingRad);
+  printf("║    RhoD:           %-40.2f ║\n", c->RhoD);
   printf("╠══════════════════════════════════════════════════════════════╣\n");
   printf("║  MASKING                                                    ║\n");
   printf("║    BadPxIntensity: %-40lld ║\n", c->BadPxIntensity);
@@ -2427,8 +1805,8 @@ int main(int argc, char *argv[]) {
   char *ParamFN = argv[1];
   numProcs = atoi(argv[2]);
 
-  // Parse all parameters into CalibConfig struct
-  CalibConfig cfg;
+  // Parse all parameters into MIDASConfig struct
+  MIDASConfig cfg;
   if (parse_parameters(ParamFN, &cfg) != 0)
     return 1;
 
@@ -2436,22 +1814,22 @@ int main(int argc, char *argv[]) {
   char aline[1000];
   char *str, dummy[1000];
   char fn[1024], folder[1024], Ext[1024], Dark[1024];
-  strcpy(fn, cfg.fn);
-  strcpy(folder, cfg.folder);
+  strcpy(fn, cfg.FileStem);
+  strcpy(folder, cfg.Folder);
   strcpy(Ext, cfg.Ext);
   strcpy(Dark, cfg.Dark);
   int StartNr = cfg.StartNr, EndNr = cfg.EndNr, LowNr;
   int SpaceGroup = cfg.SpaceGroup, FitWeightMean = cfg.FitWeightMean;
   double LatticeConstant[6],
-      Wavelength = cfg.Wavelength, MaxRingRad = cfg.MaxRingRad, Lsd = cfg.Lsd,
-      MaxTtheta = cfg.MaxTtheta, TthetaTol, ybc = cfg.ybc, zbc = cfg.zbc,
+      Wavelength = cfg.Wavelength, MaxRingRad = cfg.RhoD, Lsd = cfg.Lsd,
+      MaxTtheta = rad2deg * atan(cfg.RhoD / cfg.Lsd), TthetaTol, ybc = cfg.ybc, zbc = cfg.zbc,
       EtaBinSize = cfg.EtaBinSize, px = cfg.px, Width = cfg.Width;
   memcpy(LatticeConstant, cfg.LatticeConstant, sizeof(LatticeConstant));
   double tx = cfg.tx, tolTilts = cfg.tolTilts, tolLsd = cfg.tolLsd,
          tolBC = cfg.tolBC, tolP = cfg.tolP, tolP0 = cfg.tolP0,
          tolP1 = cfg.tolP1, tolP2 = cfg.tolP2, tolP3 = cfg.tolP3,
-         tyin = cfg.tyin, tzin = cfg.tzin, p0in = cfg.p0in, p1in = cfg.p1in,
-         p2in = cfg.p2in, p3in = cfg.p3in, padY = cfg.padY, padZ = cfg.padZ;
+         tyin = cfg.ty, tzin = cfg.tz, p0in = cfg.p0, p1in = cfg.p1,
+         p2in = cfg.p2, p3in = cfg.p3, padY = 0, padZ = 0;
   double tolShifts = cfg.tolShifts, tolRotation = cfg.tolRotation;
   double outlierFactor = cfg.outlierFactor;
   int MinIndicesForFit = cfg.MinIndicesForFit, FixPanelID = cfg.FixPanelID;
@@ -2466,15 +1844,14 @@ int main(int argc, char *argv[]) {
   int L2Objective = cfg.L2Objective;
   int PerPanelLsd = cfg.PerPanelLsd,
       PerPanelDistortion = cfg.PerPanelDistortion;
-  double tolP4 = cfg.tolP4, p4in = cfg.p4in;
-  double tolP5 = cfg.tolP5, p5in = cfg.p5in;
+  double tolP4 = cfg.tolP4, p4in = cfg.p4;
+  double tolP5 = cfg.tolP5, p5in = cfg.p5;
   double tolLsdPanel = cfg.tolLsdPanel, tolP2Panel = cfg.tolP2Panel;
   int FitWavelength = cfg.FitWavelength;
   double tolWavelength = cfg.tolWavelength;
   int FitParallax = cfg.FitParallax;
   double parallaxIn = cfg.parallaxIn;
   double tolParallax = cfg.tolParallax;
-  if (FitParallax && tolParallax < 1e-12) tolParallax = 200.0;
 
   int Padding = cfg.Padding, NrPixelsY = cfg.NrPixelsY,
       NrPixelsZ = cfg.NrPixelsZ, NrPixels = cfg.NrPixels;
@@ -2490,7 +1867,7 @@ int main(int argc, char *argv[]) {
   double lineoutRMax = cfg.lineoutRMax;
   int makeMap = cfg.makeMap;
   int HeadSize = cfg.HeadSize;
-  int dType = cfg.dType;
+  int dType = cfg.DataType;
   char GapFN[4096], BadPxFN[4096], MaskFN[4096];
   strcpy(GapFN, cfg.GapFN);
   strcpy(BadPxFN, cfg.BadPxFN);
