@@ -95,6 +95,13 @@ double dg_calc_pixel_bin_area(double pixY, double pixZ, double RMin,
                               double RMax, double EtaMin, double EtaMax,
                               double **Edges, double **EdgesOut);
 
+// Compute the intersection area of a pixel quadrilateral (cornerYZ[4][2])
+// with the (R, Eta) bin [RMin..RMax] × [EtaMin..EtaMax].
+// Uses actual pixel corners in remapped (Y,Z) space instead of unit square.
+double dg_calc_pixel_bin_area_quad(double cornerYZ[4][2], double RMin,
+                                   double RMax, double EtaMin, double EtaMax,
+                                   double **Edges, double **EdgesOut);
+
 // ── Small helpers ───────────────────────────────────────────────────
 
 double dg_calc_eta_angle(double y, double z);

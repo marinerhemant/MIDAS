@@ -56,13 +56,19 @@ inline void CalcPeakProfileParallel(int *Indices, int NrEachIndexBin, int idx,
                                     double *Average, double Rmi, double Rma,
                                     double EtaMi, double EtaMa, double ybc,
                                     double zbc, double px, int NrPixelsY,
-                                    double *ReturnValue);
+                                    double *ReturnValue,
+                                    double TRs[3][3], double Lsd, double RhoD,
+                                    double p0, double p1, double p2, double p3,
+                                    double p4, double p5);
 
 inline void CalcPeakProfileRaw(int *Indices, int NrEachIndexBin, int idx,
                                double *Average, double Rmi, double Rma,
                                double EtaMi, double EtaMa, double ybc,
                                double zbc, double px, int NrPixelsY,
-                               double *outSumIntensity, double *outTotalArea);
+                               double *outSumIntensity, double *outTotalArea,
+                               double TRs[3][3], double Lsd, double RhoD,
+                               double p0, double p1, double p2, double p3,
+                               double p4, double p5);
 
 static inline pixelvalue **allocMatrixPX(int nrows, int ncols) {
   pixelvalue **arr;
@@ -545,7 +551,19 @@ void CalcFittedMean(int nIndices, int *NrEachIndexBin, int **Indices,
                     double ybc, double zbc, double px, int NrPixelsY,
                     int NrPixelsZ, double EtaBinsLow[nBinsPerRing],
                     double EtaBinsHigh[nBinsPerRing], int *doubletFlag,
-                    int *doubletPartner) {
+                    int *doubletPartner,
+                    double tx, double ty, double tz,
+                    double p0, double p1, double p2, double p3,
+                    double p4, double p5, double Lsd, double RhoD) {
+  // NOTE: We pass TRs=NULL to CalcPeakProfileParallel to use the unit-square
+  // fallback.  The quad-based area requires per-panel corrections (pdY, pdZ,
+  // dLsd, dP2) which are not available inside CalcPeakProfileParallel.
+  // Using the quad without panel corrections produces a coordinate mismatch
+  // that degrades peak fitting accuracy (~10x worse strain).
+  double (*TRs)[3] = NULL;
+  (void)tx; (void)ty; (void)tz;
+  (void)p0; (void)p1; (void)p2; (void)p3; (void)p4; (void)p5;
+  (void)Lsd; (void)RhoD;
   int NrPixels =
       NrPixelsY > NrPixelsZ ? NrPixelsY : NrPixelsZ; // square image stride
   int idxThis;
@@ -712,7 +730,7 @@ void CalcFittedMean(int nIndices, int *NrEachIndexBin, int **Indices,
         Rma = Rs[j] + Rstep / 2;
         CalcPeakProfileParallel(IndicesThis, NrIndicesMerged, idxThis, Average,
                                 Rmi, Rma, EtaMi, EtaMa, ybc, zbc, px, NrPixels,
-                                &RetVal);
+                                &RetVal, TRs, Lsd, RhoD, p0, p1, p2, p3, p4, p5);
         PeakShape[j] = RetVal;
         if (RetVal != 0)
           AllZero = 0;
@@ -2408,7 +2426,9 @@ int main(int argc, char *argv[]) {
                        Eta_0, RMean, EtaMean, FitSNR_0, NrPtsForFit_0, Rmins_0,
                        Rmaxs_0, nEtaBins, ybc, zbc, px, NrPixelsY, NrPixelsZ,
                        EtaBinsLow, EtaBinsHigh, doubletFlag_0,
-                       doubletPartner_0);
+                       doubletPartner_0,
+                       tx, tyin, tzin, p0in, p1in, p2in, p3in,
+                       p4in, p5in, Lsd, MaxRingRad);
       }
 
 
@@ -2589,7 +2609,9 @@ int main(int argc, char *argv[]) {
                          RMean, EtaMean, FitSNR, NrPtsForFit, IdealRmins,
                          IdealRmaxs, nEtaBins, ybc, zbc, px, NrPixelsY,
                          NrPixelsZ, EtaBinsLow, EtaBinsHigh, doubletFlag,
-                         doubletPartner);
+                         doubletPartner,
+                         tx, tyin, tzin, p0in, p1in, p2in, p3in,
+                         p4in, p5in, Lsd, MaxRingRad);
         }
 
         // Compact: remove zero-RMean entries
@@ -2873,7 +2895,9 @@ int main(int argc, char *argv[]) {
           CalcFittedMean(nIdx_rf, NrBin_rf, Idx_rf, Average, R_rf, Eta_rf,
                          RMean, EtaMean, FitSNR_rf, NPF_rf, IRmins_rf,
                          IRmaxs_rf, nEtaBins, ybcFit, zbcFit, px, NrPixelsY,
-                         NrPixelsZ, EtaBinsLow, EtaBinsHigh, dbf_rf, dbp_rf);
+                         NrPixelsZ, EtaBinsLow, EtaBinsHigh, dbf_rf, dbp_rf,
+                         tx, ty, tz, p0, p1, p2, p3,
+                         p4, p5, LsdFit, MaxRingRad);
         }
         // Don't free FitSNR_rf — compact it and save for next iter snrWeights
 
@@ -3358,7 +3382,9 @@ int main(int argc, char *argv[]) {
         CalcFittedMean(nIdx_pl, NrBin_pl, Idx_pl, Average, R_pl, Eta_pl, RMean,
                        EtaMean, FitSNR_pl, NPF_pl, IRmins_pl, IRmaxs_pl,
                        nEtaBins, ybcFit, zbcFit, px, NrPixelsY, NrPixelsZ,
-                       EtaBinsLow, EtaBinsHigh, dbf_pl, dbp_pl);
+                       EtaBinsLow, EtaBinsHigh, dbf_pl, dbp_pl,
+                       tx, ty, tz, p0, p1, p2, p3,
+                       p4in, p5in, LsdFit, MaxRingRad);
       }
       free(FitSNR_pl);
       int cnt_pl = 0;

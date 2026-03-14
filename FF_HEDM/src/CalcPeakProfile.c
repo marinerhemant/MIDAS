@@ -1,14 +1,4 @@
-//
-// Copyright (c) 2014, UChicago Argonne, LLC
-// See LICENSE file.
-//
-
-//
-//
-// CalcPeakProfile.c
-//
-// Created by Hemant Sharma on 2014/07/26
-//
+// CalcPeakProfile.c — updated with tilt-transformed pixel quad support
 
 #include <math.h>
 #include <stdio.h>
@@ -52,263 +42,22 @@ static inline void FreeMemMatrix(double **mat, int nrows) {
   free(mat);
 }
 
-double PosMatrix[4][2] = {{-0.5, -0.5}, {-0.5, 0.5}, {0.5, 0.5}, {0.5, -0.5}};
-
-#define FindSmaller(Val1, Val2) Val1 > Val2 ? Val2 : Val1
-#define FindLarger(Val1, Val2) Val1 > Val2 ? Val1 : Val2
-#define Len2d(x, y) sqrt(x *x + y * y)
-
-// CalcAreaPolygon/CalcAreaPolygonParallel removed — now using dg_polygon_area
-// from DetectorGeometry.h (thread-safe centroid-relative sort + shoelace).
-//
-// local FindUniques: simple deduplication only (no R/Eta clipping, unlike
-// dg_find_unique_vertices which is for the DetectorMapper coordinate space).
-static inline int FindUniques(double **EdgesIn, double **EdgesOut,
-                              int nEdgesIn) {
-  int i, j, nEdgesOut = 0, duplicate;
-  for (i = 0; i < nEdgesIn; i++) {
-    duplicate = 0;
-    for (j = i + 1; j < nEdgesIn; j++) {
-      double dx = EdgesIn[i][0] - EdgesIn[j][0];
-      double dy = EdgesIn[i][1] - EdgesIn[j][1];
-      if (dx == 0 && dy == 0) {
-        duplicate = 1;
-      }
-    }
-    if (!duplicate) {
-      EdgesOut[nEdgesOut][0] = EdgesIn[i][0];
-      EdgesOut[nEdgesOut][1] = EdgesIn[i][1];
-      nEdgesOut++;
-    }
-  }
-  return nEdgesOut;
-}
-
-static inline int
-CalcNEdges(double **BoxEdges, int *Pos,
-           double **Edges) // Box Edges
-                           // should be 5, first should be repeated to the end
-{
-  int i, j;
-  double Px[4], Py[4];
-  for (i = 0; i < 4; i++) {
-    Px[i] = Pos[0] + PosMatrix[i][0];
-    Py[i] = Pos[1] + PosMatrix[i][1];
-  }
-  int nEdges = 0;
-  for (i = 0; i < 4; i++) { // If the pixel is completely inside the box
-    if (BoxEdges[i][0] >= Px[0] && BoxEdges[i][0] <= Px[2] &&
-        BoxEdges[i][1] >= Py[0] && BoxEdges[i][1] <= Py[2]) {
-      Edges[nEdges][0] = BoxEdges[i][0];
-      Edges[nEdges][1] = BoxEdges[i][1];
-      nEdges++;
-    }
-  }
-  if (nEdges == 4) {
-    return nEdges;
-  }
-  // Should we use the code used in DetectorMapper?????
-  double XIntersect, YIntersect, XP1, XP2, YP1, YP2, M, YP, XP;
-  double SmallX, LargeX, SmallY, LargeY;
-  double Intersects[10][2];
-  int nIntersects;
-  double Temp1, Temp2;
-  for (i = 0; i < 4; i++) {
-    XP = Px[i];
-    YP = Py[i];
-    nIntersects = 0;
-    Temp1 = 1;
-    Temp2 = 1;
-    for (j = 0; j < 4; j++) {
-      XP1 = BoxEdges[j][0];
-      XP2 = BoxEdges[j + 1][0];
-      YP1 = BoxEdges[j][1];
-      YP2 = BoxEdges[j + 1][1];
-      SmallX = FindSmaller(XP1, XP2);
-      LargeX = FindLarger(XP1, XP2);
-      SmallY = FindSmaller(YP1, YP2);
-      LargeY = FindLarger(YP1, YP2);
-      if (fabs(XP1 - XP2) < 1E-5) {
-        if (YP > SmallY && YP < LargeY) {
-          Intersects[nIntersects][0] = XP1;
-          Intersects[nIntersects][1] = YP;
-          nIntersects++;
-        }
-        continue;
-      }
-      if (fabs(YP1 - YP2) < 1E-5) {
-        if (XP > SmallX && XP < LargeX) {
-          Intersects[nIntersects][0] = XP;
-          Intersects[nIntersects][1] = YP1;
-          nIntersects++;
-        }
-        continue;
-      }
-      M = (YP2 - YP1) / (XP2 - XP1);
-      YIntersect = (XP - XP1) * M + YP1;
-      XIntersect = (YP - YP1) / M + XP1;
-      if (YIntersect > SmallY && YIntersect < LargeY) {
-        Intersects[nIntersects][0] = XP;
-        Intersects[nIntersects][1] = YIntersect;
-        nIntersects++;
-      }
-      if (XIntersect > SmallX && XIntersect < LargeX) {
-        Intersects[nIntersects][0] = XIntersect;
-        Intersects[nIntersects][1] = YP;
-        nIntersects++;
-      }
-    }
-    if (nIntersects == 4) {
-      for (j = 0; j < 4; j++) {
-        if (Intersects[j][0] - XP == 0) {
-          Temp1 *= Intersects[j][1] - YP;
-        } else if (Intersects[j][1] - YP == 0) {
-          Temp2 *= Intersects[j][0] - XP;
-        }
-      }
-      if (Temp1 < 0 && Temp2 < 0) {
-        Edges[nEdges][0] = XP;
-        Edges[nEdges][1] = YP;
-        nEdges++;
-      }
-    }
-  }
-  for (j = 0; j < 4; j++) {
-    XP1 = BoxEdges[j][0];
-    XP2 = BoxEdges[j + 1][0];
-    YP1 = BoxEdges[j][1];
-    YP2 = BoxEdges[j + 1][1];
-    SmallX = FindSmaller(XP1, XP2);
-    LargeX = FindLarger(XP1, XP2);
-    SmallY = FindSmaller(YP1, YP2);
-    LargeY = FindLarger(YP1, YP2);
-
-    XIntersect = Px[0];           // Case 1: taking 1 and 2
-    if (fabs(XP1 - XP2) < 1E-5) { // Special case, vertical line
-      if (fabs(XIntersect - XP1) < 1E-5) {
-        if (Py[0] <= LargeY && Py[0] >= SmallY) {
-          Edges[nEdges][0] = XIntersect;
-          Edges[nEdges][1] = Py[0];
-          nEdges++;
-        }
-        if (Py[1] <= LargeY && Py[1] >= SmallY) {
-          Edges[nEdges][0] = XIntersect;
-          Edges[nEdges][1] = Py[1];
-          nEdges++;
-        }
-      }
-    } else {
-      M = (YP2 - YP1) / (XP2 - XP1);
-      YIntersect = (XIntersect - XP1) * M + YP1;
-      if (YIntersect >= Py[0] && YIntersect <= Py[1] && YIntersect >= SmallY &&
-          YIntersect <= LargeY) {
-        Edges[nEdges][0] = XIntersect;
-        Edges[nEdges][1] = YIntersect;
-        nEdges++;
-      }
-    }
-
-    XIntersect = Px[2];           // Case 2: taking 3 and 4
-    if (fabs(XP1 - XP2) < 1E-5) { // Special case, vertical line
-      if (fabs(XIntersect - XP1) < 1E-5) {
-        if (Py[2] <= LargeY && Py[2] >= SmallY) {
-          Edges[nEdges][0] = XIntersect;
-          Edges[nEdges][1] = Py[2];
-          nEdges++;
-        }
-        if (Py[3] <= LargeY && Py[3] >= SmallY) {
-          Edges[nEdges][0] = XIntersect;
-          Edges[nEdges][1] = Py[3];
-          nEdges++;
-        }
-      }
-    } else {
-      M = (YP2 - YP1) / (XP2 - XP1);
-      YIntersect = (XIntersect - XP1) * M + YP1;
-      if (YIntersect >= Py[3] && YIntersect <= Py[2] && YIntersect >= SmallY &&
-          YIntersect <= LargeY) {
-        Edges[nEdges][0] = XIntersect;
-        Edges[nEdges][1] = YIntersect;
-        nEdges++;
-      }
-    }
-
-    YIntersect = Py[1];           // Case 3: taking 2 and 3
-    if (fabs(YP1 - YP2) < 1E-5) { // Special case, horizontal line
-      if (fabs(YIntersect - YP1) < 1E-5) {
-        if (Px[1] <= LargeX && Px[1] >= SmallX) {
-          Edges[nEdges][1] = YIntersect;
-          Edges[nEdges][0] = Px[1];
-          nEdges++;
-        }
-        if (Px[2] < LargeX && Px[2] > SmallX) {
-          Edges[nEdges][1] = YIntersect;
-          Edges[nEdges][0] = Px[2];
-          nEdges++;
-        }
-      }
-    } else {
-      M = (YP2 - YP1) / (XP2 - XP1);
-      XIntersect = (YIntersect - YP1) / M + XP1;
-      if (XIntersect >= Px[1] && XIntersect <= Px[2] && XIntersect >= SmallX &&
-          XIntersect <= LargeX) {
-        Edges[nEdges][0] = XIntersect;
-        Edges[nEdges][1] = YIntersect;
-        nEdges++;
-      }
-    }
-    YIntersect = Py[0];           // Case 4: taking 1 and 4
-    if (fabs(YP1 - YP2) < 1E-5) { // Special case, horizontal line
-      if (fabs(YIntersect - YP1) < 1E-5) {
-        if (Px[0] <= LargeX && Px[0] >= SmallX) {
-          Edges[nEdges][1] = YIntersect;
-          Edges[nEdges][0] = Px[0];
-          nEdges++;
-        }
-        if (Px[3] <= LargeX && Px[3] >= SmallX) {
-          Edges[nEdges][1] = YIntersect;
-          Edges[nEdges][0] = Px[3];
-          nEdges++;
-        }
-      }
-    } else {
-      M = (YP2 - YP1) / (XP2 - XP1);
-      XIntersect = (YIntersect - YP1) / M + XP1;
-      if (XIntersect > Px[0] && XIntersect < Px[3] && XIntersect >= SmallX &&
-          XIntersect <= LargeX) {
-        Edges[nEdges][0] = XIntersect;
-        Edges[nEdges][1] = YIntersect;
-        nEdges++;
-      }
-    }
-  }
-
-  return nEdges;
-}
-
-static inline void YZMat4mREta(int NrElements, double *R, double *Eta,
-                               double **YZ, double ybc, double zbc, double px) {
-  int i;
-  for (i = 0; i < NrElements; i++) {
-    YZ[i][0] = -R[i] * sin(Eta[i] * deg2rad);
-    YZ[i][1] = R[i] * cos(Eta[i] * deg2rad);
-    YZ[i][0] = ybc - (YZ[i][0] / px);
-    YZ[i][1] = zbc + (YZ[i][1] / px);
-  }
-}
-
-// CalcPeakProfile removed — only CalcPeakProfileParallel is used.
+// CalcPeakProfileParallel: compute area-weighted mean intensity for a radial
+// profile bin.  When tilt parameters are provided (TRs != NULL), uses the
+// actual pixel quadrilateral in remapped (Y,Z) space for exact area.
+// Otherwise falls back to unit-square approximation.
 
 inline void CalcPeakProfileParallel(int *Indices, int NrEachIndexBin, int idx,
                                     double *Average, double Rmi, double Rma,
                                     double EtaMi, double EtaMa, double ybc,
                                     double zbc, double px, int NrPixelsY,
-                                    double *ReturnValue) {
-  // Allocate scratch arrays for dg_calc_pixel_bin_area (50×2 each)
+                                    double *ReturnValue,
+                                    double TRs[3][3], double Lsd, double RhoD,
+                                    double p0, double p1, double p2, double p3,
+                                    double p4, double p5) {
   double **EdgesIn = allocMatrix(50, 2);
   double **EdgesOut = allocMatrix(50, 2);
 
-  // Convert R bounds from microns to pixel-centered units
   double RmiPx = Rmi / px;
   double RmaPx = Rma / px;
 
@@ -325,13 +74,33 @@ inline void CalcPeakProfileParallel(int *Indices, int NrEachIndexBin, int idx,
     }
     int iy = Indices[i] % NrPixelsY;
     int iz = Indices[i] / NrPixelsY;
-    // Raw beam-centered coordinates (self-consistent with
-    // CorrectTiltSpatialDistortion)
-    double pixY = -(double)(iy - ybc);
-    double pixZ = (double)(iz - zbc);
 
-    double ThisArea = dg_calc_pixel_bin_area(pixY, pixZ, RmiPx, RmaPx, EtaMi,
+    double ThisArea;
+    if (TRs != NULL) {
+      // Compute 4 pixel corners in remapped (Y,Z) space
+      double cornerYZ[4][2];
+      int k, l;
+      for (k = 0; k < 2; k++) {
+        for (l = 0; l < 2; l++) {
+          double Y = (double)iy + dg_dy[k];
+          double Z = (double)iz + dg_dz[l];
+          double Rt, Eta;
+          dg_pixel_to_REta(Y, Z, ybc, zbc, TRs, Lsd, RhoD, p0, p1, p2, p3,
+                           p4, p5, px, 0, 0, 0, &Rt, &Eta, NULL);
+          dg_REta_to_YZ(Rt, Eta, &cornerYZ[k * 2 + l][0],
+                        &cornerYZ[k * 2 + l][1]);
+        }
+      }
+      ThisArea = dg_calc_pixel_bin_area_quad(cornerYZ, RmiPx, RmaPx, EtaMi,
                                              EtaMa, EdgesIn, EdgesOut);
+    } else {
+      // Fallback: unit-square (untilted)
+      double pixY = -(double)(iy - ybc);
+      double pixZ = (double)(iz - zbc);
+      ThisArea = dg_calc_pixel_bin_area(pixY, pixZ, RmiPx, RmaPx, EtaMi,
+                                        EtaMa, EdgesIn, EdgesOut);
+    }
+
     TotArea += ThisArea;
     SumIntensity += Average[Indices[i]] * ThisArea;
   }
@@ -348,7 +117,10 @@ inline void CalcPeakProfileRaw(int *Indices, int NrEachIndexBin, int idx,
                                double *Average, double Rmi, double Rma,
                                double EtaMi, double EtaMa, double ybc,
                                double zbc, double px, int NrPixelsY,
-                               double *outSumIntensity, double *outTotalArea) {
+                               double *outSumIntensity, double *outTotalArea,
+                               double TRs[3][3], double Lsd, double RhoD,
+                               double p0, double p1, double p2, double p3,
+                               double p4, double p5) {
   double **EdgesIn = allocMatrix(50, 2);
   double **EdgesOut = allocMatrix(50, 2);
 
@@ -365,11 +137,31 @@ inline void CalcPeakProfileRaw(int *Indices, int NrEachIndexBin, int idx,
     }
     int iy = Indices[i] % NrPixelsY;
     int iz = Indices[i] / NrPixelsY;
-    double pixY = -(double)(iy - ybc);
-    double pixZ = (double)(iz - zbc);
 
-    double ThisArea = dg_calc_pixel_bin_area(pixY, pixZ, RmiPx, RmaPx, EtaMi,
+    double ThisArea;
+    if (TRs != NULL) {
+      double cornerYZ[4][2];
+      int k, l;
+      for (k = 0; k < 2; k++) {
+        for (l = 0; l < 2; l++) {
+          double Y = (double)iy + dg_dy[k];
+          double Z = (double)iz + dg_dz[l];
+          double Rt, Eta;
+          dg_pixel_to_REta(Y, Z, ybc, zbc, TRs, Lsd, RhoD, p0, p1, p2, p3,
+                           p4, p5, px, 0, 0, 0, &Rt, &Eta, NULL);
+          dg_REta_to_YZ(Rt, Eta, &cornerYZ[k * 2 + l][0],
+                        &cornerYZ[k * 2 + l][1]);
+        }
+      }
+      ThisArea = dg_calc_pixel_bin_area_quad(cornerYZ, RmiPx, RmaPx, EtaMi,
                                              EtaMa, EdgesIn, EdgesOut);
+    } else {
+      double pixY = -(double)(iy - ybc);
+      double pixZ = (double)(iz - zbc);
+      ThisArea = dg_calc_pixel_bin_area(pixY, pixZ, RmiPx, RmaPx, EtaMi,
+                                        EtaMa, EdgesIn, EdgesOut);
+    }
+
     TotArea += ThisArea;
     SumIntensity += Average[Indices[i]] * ThisArea;
   }

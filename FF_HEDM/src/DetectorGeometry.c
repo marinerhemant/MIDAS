@@ -593,3 +593,110 @@ double dg_calc_pixel_bin_area(double pixY, double pixZ, double RMin,
 
   return dg_polygon_area(EdgesOut, nEdges, RMin, RMax);
 }
+
+// ── Quad-based pixel-bin area ──────────────────────────────────────
+
+double dg_calc_pixel_bin_area_quad(double cornerYZ[4][2], double RMin,
+                                   double RMax, double EtaMin, double EtaMax,
+                                   double **Edges, double **EdgesOut) {
+  int nEdges = 0;
+  int m;
+
+  // (1) Check which pixel quad corners lie inside the (R,Eta) bin
+  for (m = 0; m < 4; m++) {
+    double RThis = sqrt(cornerYZ[m][0] * cornerYZ[m][0] +
+                        cornerYZ[m][1] * cornerYZ[m][1]);
+    double EtaThis = dg_calc_eta_angle(cornerYZ[m][0], cornerYZ[m][1]);
+    if (EtaMin < -180 && dg_sign(EtaThis) != dg_sign(EtaMin))
+      EtaThis -= 360;
+    if (EtaMax > 180 && dg_sign(EtaThis) != dg_sign(EtaMax))
+      EtaThis += 360;
+    if (RThis >= RMin && RThis <= RMax && EtaThis >= EtaMin &&
+        EtaThis <= EtaMax) {
+      Edges[nEdges][0] = cornerYZ[m][0];
+      Edges[nEdges][1] = cornerYZ[m][1];
+      nEdges++;
+    }
+  }
+
+  // (2) Check which bin corners lie inside the pixel quad
+  double boxEdge[4][2];
+  dg_REta_to_YZ(RMin, EtaMin, &boxEdge[0][0], &boxEdge[0][1]);
+  dg_REta_to_YZ(RMin, EtaMax, &boxEdge[1][0], &boxEdge[1][1]);
+  dg_REta_to_YZ(RMax, EtaMin, &boxEdge[2][0], &boxEdge[2][1]);
+  dg_REta_to_YZ(RMax, EtaMax, &boxEdge[3][0], &boxEdge[3][1]);
+  for (m = 0; m < 4; m++) {
+    if (dg_point_in_quad(boxEdge[m][0], boxEdge[m][1], cornerYZ)) {
+      Edges[nEdges][0] = boxEdge[m][0];
+      Edges[nEdges][1] = boxEdge[m][1];
+      nEdges++;
+    }
+  }
+
+  // (3) Intersections of R-arcs and eta-rays with pixel quad edges
+  if (nEdges < 4) {
+    for (int e = 0; e < 4; e++) {
+      int i0 = DG_QUAD_ORDER[e], i1 = DG_QUAD_ORDER[(e + 1) % 4];
+      double py1 = cornerYZ[i0][0], pz1 = cornerYZ[i0][1];
+      double py2 = cornerYZ[i1][0], pz2 = cornerYZ[i1][1];
+      double hits[2][2];
+      int nhits, h;
+
+      nhits = dg_circle_seg_intersect(py1, pz1, py2, pz2, RMin, hits);
+      for (h = 0; h < nhits; h++) {
+        double EtaH = dg_calc_eta_angle(hits[h][0], hits[h][1]);
+        if (EtaMin < -180 && dg_sign(EtaH) != dg_sign(EtaMin))
+          EtaH -= 360;
+        if (EtaMax > 180 && dg_sign(EtaH) != dg_sign(EtaMax))
+          EtaH += 360;
+        if (EtaH >= EtaMin - DG_EPS && EtaH <= EtaMax + DG_EPS) {
+          Edges[nEdges][0] = hits[h][0];
+          Edges[nEdges][1] = hits[h][1];
+          nEdges++;
+        }
+      }
+
+      nhits = dg_circle_seg_intersect(py1, pz1, py2, pz2, RMax, hits);
+      for (h = 0; h < nhits; h++) {
+        double EtaH = dg_calc_eta_angle(hits[h][0], hits[h][1]);
+        if (EtaMin < -180 && dg_sign(EtaH) != dg_sign(EtaMin))
+          EtaH -= 360;
+        if (EtaMax > 180 && dg_sign(EtaH) != dg_sign(EtaMax))
+          EtaH += 360;
+        if (EtaH >= EtaMin - DG_EPS && EtaH <= EtaMax + DG_EPS) {
+          Edges[nEdges][0] = hits[h][0];
+          Edges[nEdges][1] = hits[h][1];
+          nEdges++;
+        }
+      }
+
+      double hy, hz;
+      if (dg_ray_seg_intersect(py1, pz1, py2, pz2, EtaMin, &hy, &hz)) {
+        double RH = sqrt(hy * hy + hz * hz);
+        if (RH >= RMin - DG_EPS && RH <= RMax + DG_EPS) {
+          Edges[nEdges][0] = hy;
+          Edges[nEdges][1] = hz;
+          nEdges++;
+        }
+      }
+      if (dg_ray_seg_intersect(py1, pz1, py2, pz2, EtaMax, &hy, &hz)) {
+        double RH = sqrt(hy * hy + hz * hz);
+        if (RH >= RMin - DG_EPS && RH <= RMax + DG_EPS) {
+          Edges[nEdges][0] = hy;
+          Edges[nEdges][1] = hz;
+          nEdges++;
+        }
+      }
+    }
+  }
+
+  if (nEdges < 3)
+    return 0.0;
+
+  nEdges = dg_find_unique_vertices(Edges, EdgesOut, nEdges, RMin, RMax, EtaMin,
+                                   EtaMax);
+  if (nEdges < 3)
+    return 0.0;
+
+  return dg_polygon_area(EdgesOut, nEdges, RMin, RMax);
+}
