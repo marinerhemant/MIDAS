@@ -352,7 +352,7 @@ mapperfcn(double tx, double ty, double tz, int NrPixelsY, int NrPixelsZ,
             continue;
           }
           // Now we have all the edges, let's calculate the area.
-          double Area = dg_polygon_area(EdgesOut, nEdges);
+          double Area = dg_polygon_area(EdgesOut, nEdges, RMin, RMax);
           if (Area < 1E-5) {
             nrContinued++;
             continue;

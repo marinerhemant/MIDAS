@@ -207,7 +207,7 @@ static int dg_cmp_angle(const void *ia, const void *ib, void *ctx) {
   return d1 > d2 ? 1 : -1;
 }
 
-double dg_polygon_area(double **Edges, int nEdges) {
+double dg_polygon_area(double **Edges, int nEdges, double RMin, double RMax) {
   int i;
   dg_point *pts = malloc(nEdges * sizeof(*pts));
   dg_sort_ctx ctx = {0, 0};
@@ -228,15 +228,121 @@ double dg_polygon_area(double **Edges, int nEdges) {
   qsort_r(pts, nEdges, sizeof(dg_point), dg_cmp_angle, &ctx);
 #endif
 
-  // Shoelace formula
+  // Exact area via Green's theorem with mixed boundary:
+  //
+  //   A = (1/2) ∮ (x dy − y dx)
+  //
+  // For straight edges: standard Shoelace term = (x₁y₂ − x₂y₁)/2
+  // For arc edges (both endpoints on same R-circle):
+  //   ∫ along arc of radius R from angle α to β = (R²/2)(β − α)
+  //   where angles are measured with atan2(y, x).
+  //
+  // The polygon winding is counterclockwise (positive area),
+  // so arc edges go counterclockwise (increasing angle) on RMax
+  // and clockwise (decreasing angle) on RMin.
+
+  double RMin2 = RMin * RMin, RMax2 = RMax * RMax;
+  double tol = 1e-6;
   double Area = 0;
+
   for (i = 0; i < nEdges; i++) {
     int next = (i + 1) % nEdges;
-    Area += 0.5 * (pts[i].x * pts[next].y - pts[next].x * pts[i].y);
+    double r1sq = pts[i].x * pts[i].x + pts[i].y * pts[i].y;
+    double r2sq = pts[next].x * pts[next].x + pts[next].y * pts[next].y;
+
+    int onRMin = (fabs(r1sq - RMin2) < tol * RMin2 &&
+                  fabs(r2sq - RMin2) < tol * RMin2);
+    int onRMax = (fabs(r1sq - RMax2) < tol * RMax2 &&
+                  fabs(r2sq - RMax2) < tol * RMax2);
+
+    if (onRMin || onRMax) {
+      // Arc edge: use exact integral (R²/2)(β − α)
+      double R = onRMin ? RMin : RMax;
+      double a1 = atan2(pts[i].y, pts[i].x);
+      double a2 = atan2(pts[next].y, pts[next].x);
+      double dAngle = a2 - a1;
+      // Normalize to (-π, π] to take the short arc
+      if (dAngle > M_PI) dAngle -= 2.0 * M_PI;
+      if (dAngle < -M_PI) dAngle += 2.0 * M_PI;
+      Area += (R * R / 2.0) * dAngle;
+    } else {
+      // Straight edge: standard Shoelace term
+      Area += 0.5 * (pts[i].x * pts[next].y - pts[next].x * pts[i].y);
+    }
   }
 
   free(pts);
   return Area;
+}
+
+// ── General-quadrilateral pixel helpers ──────────────────────────────
+
+// Vertex ordering for pixel quad traversal.
+// Corner indices: 0=(dy-,dz-), 1=(dy-,dz+), 2=(dy+,dz-), 3=(dy+,dz+).
+// Order 0→1→3→2 traces the perimeter.
+const int DG_QUAD_ORDER[4] = {0, 1, 3, 2};
+
+int dg_circle_seg_intersect(double y1, double z1, double y2, double z2,
+                            double R, double hits[2][2]) {
+  double dy = y2 - y1, dz = z2 - z1;
+  double a = dy * dy + dz * dz;
+  if (a < 1e-30) return 0;  // degenerate segment
+  double b = 2.0 * (y1 * dy + z1 * dz);
+  double c = y1 * y1 + z1 * z1 - R * R;
+  double disc = b * b - 4.0 * a * c;
+  if (disc < 0) return 0;
+  double sqrtDisc = sqrt(disc);
+  double inv2a = 0.5 / a;
+  int n = 0;
+  double t1 = (-b - sqrtDisc) * inv2a;
+  if (t1 >= -DG_EPS && t1 <= 1.0 + DG_EPS) {
+    double tc = fmax(0.0, fmin(1.0, t1));
+    hits[n][0] = y1 + tc * dy;
+    hits[n][1] = z1 + tc * dz;
+    n++;
+  }
+  double t2 = (-b + sqrtDisc) * inv2a;
+  if (t2 >= -DG_EPS && t2 <= 1.0 + DG_EPS && fabs(t2 - t1) > 1e-12) {
+    double tc = fmax(0.0, fmin(1.0, t2));
+    hits[n][0] = y1 + tc * dy;
+    hits[n][1] = z1 + tc * dz;
+    n++;
+  }
+  return n;
+}
+
+int dg_ray_seg_intersect(double y1, double z1, double y2, double z2,
+                         double eta_deg, double *hy, double *hz) {
+  // Eta-ray from origin: y*cos(η) + z*sin(η) = 0  (in radians)
+  double eta_rad = eta_deg * DG_DEG2RAD;
+  double ce = cos(eta_rad), se = sin(eta_rad);
+  double dy = y2 - y1, dz = z2 - z1;
+  double denom = dy * ce + dz * se;
+  if (fabs(denom) < 1e-30) return 0;  // parallel
+  double t = -(y1 * ce + z1 * se) / denom;
+  if (t < -DG_EPS || t > 1.0 + DG_EPS) return 0;
+  t = fmax(0.0, fmin(1.0, t));
+  *hy = y1 + t * dy;
+  *hz = z1 + t * dz;
+  // Check the point is on the POSITIVE ray (correct half-plane)
+  // Ray direction: (-sin(η), cos(η)).  Dot with (hy, hz) must be > 0.
+  if ((-se) * (*hy) + ce * (*hz) < 0) return 0;
+  return 1;
+}
+
+int dg_point_in_quad(double py, double pz, double quad[4][2]) {
+  // Cross-product sign test for convex polygon.
+  // Check that the point is on the same side of all 4 edges.
+  int pos = 0, neg = 0;
+  for (int e = 0; e < 4; e++) {
+    int i0 = DG_QUAD_ORDER[e], i1 = DG_QUAD_ORDER[(e + 1) % 4];
+    double ey = quad[i1][0] - quad[i0][0];
+    double ez = quad[i1][1] - quad[i0][1];
+    double cross = ey * (pz - quad[i0][1]) - ez * (py - quad[i0][0]);
+    if (cross > 0) pos++;
+    else if (cross < 0) neg++;
+  }
+  return (pos == 0 || neg == 0) ? 1 : 0;
 }
 
 // ── Vertex deduplication & clipping ─────────────────────────────────
@@ -328,74 +434,82 @@ double dg_calc_pixel_bin_area(double pixY, double pixZ, double RMin,
   }
 
   if (nEdges < 4) {
-    // (3) R-arc × pixel-edge intercepts
-    double zTemp, yTemp;
+    // (3) R-arc × pixel-edge intercepts — check BOTH ±sqrt roots
+    double disc, zTemp, yTemp;
 
     // RMin arc vs y = yMin, y = yMax
     if (RMin >= fabs(yMin)) {
-      zTemp = dg_sign(pixZ) * sqrt(RMin * RMin - yMin * yMin);
-      if (dg_between(zTemp, zMin, zMax) == 1) {
-        Edges[nEdges][0] = yMin;
-        Edges[nEdges][1] = zTemp;
-        nEdges++;
+      disc = sqrt(RMin * RMin - yMin * yMin);
+      if (dg_between(disc, zMin, zMax) == 1) {
+        Edges[nEdges][0] = yMin; Edges[nEdges][1] = disc; nEdges++;
+      }
+      if (dg_between(-disc, zMin, zMax) == 1) {
+        Edges[nEdges][0] = yMin; Edges[nEdges][1] = -disc; nEdges++;
       }
     }
     if (RMin >= fabs(yMax)) {
-      zTemp = dg_sign(pixZ) * sqrt(RMin * RMin - yMax * yMax);
-      if (dg_between(zTemp, zMin, zMax) == 1) {
-        Edges[nEdges][0] = yMax;
-        Edges[nEdges][1] = zTemp;
-        nEdges++;
+      disc = sqrt(RMin * RMin - yMax * yMax);
+      if (dg_between(disc, zMin, zMax) == 1) {
+        Edges[nEdges][0] = yMax; Edges[nEdges][1] = disc; nEdges++;
+      }
+      if (dg_between(-disc, zMin, zMax) == 1) {
+        Edges[nEdges][0] = yMax; Edges[nEdges][1] = -disc; nEdges++;
       }
     }
     if (RMax >= fabs(yMin)) {
-      zTemp = dg_sign(pixZ) * sqrt(RMax * RMax - yMin * yMin);
-      if (dg_between(zTemp, zMin, zMax) == 1) {
-        Edges[nEdges][0] = yMin;
-        Edges[nEdges][1] = zTemp;
-        nEdges++;
+      disc = sqrt(RMax * RMax - yMin * yMin);
+      if (dg_between(disc, zMin, zMax) == 1) {
+        Edges[nEdges][0] = yMin; Edges[nEdges][1] = disc; nEdges++;
+      }
+      if (dg_between(-disc, zMin, zMax) == 1) {
+        Edges[nEdges][0] = yMin; Edges[nEdges][1] = -disc; nEdges++;
       }
     }
     if (RMax >= fabs(yMax)) {
-      zTemp = dg_sign(pixZ) * sqrt(RMax * RMax - yMax * yMax);
-      if (dg_between(zTemp, zMin, zMax) == 1) {
-        Edges[nEdges][0] = yMax;
-        Edges[nEdges][1] = zTemp;
-        nEdges++;
+      disc = sqrt(RMax * RMax - yMax * yMax);
+      if (dg_between(disc, zMin, zMax) == 1) {
+        Edges[nEdges][0] = yMax; Edges[nEdges][1] = disc; nEdges++;
+      }
+      if (dg_between(-disc, zMin, zMax) == 1) {
+        Edges[nEdges][0] = yMax; Edges[nEdges][1] = -disc; nEdges++;
       }
     }
 
     // RMin/RMax arc vs z = zMin, z = zMax
     if (RMin >= fabs(zMin)) {
-      yTemp = dg_sign(pixY) * sqrt(RMin * RMin - zMin * zMin);
-      if (dg_between(yTemp, yMin, yMax) == 1) {
-        Edges[nEdges][0] = yTemp;
-        Edges[nEdges][1] = zMin;
-        nEdges++;
+      disc = sqrt(RMin * RMin - zMin * zMin);
+      if (dg_between(disc, yMin, yMax) == 1) {
+        Edges[nEdges][0] = disc; Edges[nEdges][1] = zMin; nEdges++;
+      }
+      if (dg_between(-disc, yMin, yMax) == 1) {
+        Edges[nEdges][0] = -disc; Edges[nEdges][1] = zMin; nEdges++;
       }
     }
     if (RMin >= fabs(zMax)) {
-      yTemp = dg_sign(pixY) * sqrt(RMin * RMin - zMax * zMax);
-      if (dg_between(yTemp, yMin, yMax) == 1) {
-        Edges[nEdges][0] = yTemp;
-        Edges[nEdges][1] = zMax;
-        nEdges++;
+      disc = sqrt(RMin * RMin - zMax * zMax);
+      if (dg_between(disc, yMin, yMax) == 1) {
+        Edges[nEdges][0] = disc; Edges[nEdges][1] = zMax; nEdges++;
+      }
+      if (dg_between(-disc, yMin, yMax) == 1) {
+        Edges[nEdges][0] = -disc; Edges[nEdges][1] = zMax; nEdges++;
       }
     }
     if (RMax >= fabs(zMin)) {
-      yTemp = dg_sign(pixY) * sqrt(RMax * RMax - zMin * zMin);
-      if (dg_between(yTemp, yMin, yMax) == 1) {
-        Edges[nEdges][0] = yTemp;
-        Edges[nEdges][1] = zMin;
-        nEdges++;
+      disc = sqrt(RMax * RMax - zMin * zMin);
+      if (dg_between(disc, yMin, yMax) == 1) {
+        Edges[nEdges][0] = disc; Edges[nEdges][1] = zMin; nEdges++;
+      }
+      if (dg_between(-disc, yMin, yMax) == 1) {
+        Edges[nEdges][0] = -disc; Edges[nEdges][1] = zMin; nEdges++;
       }
     }
     if (RMax >= fabs(zMax)) {
-      yTemp = dg_sign(pixY) * sqrt(RMax * RMax - zMax * zMax);
-      if (dg_between(yTemp, yMin, yMax) == 1) {
-        Edges[nEdges][0] = yTemp;
-        Edges[nEdges][1] = zMax;
-        nEdges++;
+      disc = sqrt(RMax * RMax - zMax * zMax);
+      if (dg_between(disc, yMin, yMax) == 1) {
+        Edges[nEdges][0] = disc; Edges[nEdges][1] = zMax; nEdges++;
+      }
+      if (dg_between(-disc, yMin, yMax) == 1) {
+        Edges[nEdges][0] = -disc; Edges[nEdges][1] = zMax; nEdges++;
       }
     }
 
@@ -477,5 +591,5 @@ double dg_calc_pixel_bin_area(double pixY, double pixZ, double RMin,
   if (nEdges < 3)
     return 0.0;
 
-  return dg_polygon_area(EdgesOut, nEdges);
+  return dg_polygon_area(EdgesOut, nEdges, RMin, RMax);
 }
