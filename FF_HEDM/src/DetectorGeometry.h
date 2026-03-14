@@ -56,15 +56,36 @@ double **dg_alloc_matrix(int nrows, int ncols);
 void dg_free_matrix(double **mat, int nrows);
 
 // Compute area of a convex polygon given as nEdges (Y,Z) vertices
-// (Shoelace formula with angular sort).
+// (Shoelace formula with angular sort), then apply circular-segment
+// corrections for adjacent vertex pairs on the same R-circle.
 // Thread-safe: uses local sorting state.
-double dg_polygon_area(double **Edges, int nEdges);
+double dg_polygon_area(double **Edges, int nEdges, double RMin, double RMax);
 
 // Deduplicate polygon vertices and clip to (R, η) bin boundaries.
 // Returns the number of unique, in-bounds vertices written to EdgesOut.
 int dg_find_unique_vertices(double **EdgesIn, double **EdgesOut, int nEdgesIn,
                             double RMin, double RMax, double EtaMin,
                             double EtaMax);
+
+// ── General-quadrilateral pixel helpers ─────────────────────────────
+
+// Pixel quad vertex ordering for traversal (counterclockwise).
+// Indices into cornerYZ[4][2]: edges are QUAD_ORDER[e]→QUAD_ORDER[(e+1)%4].
+extern const int DG_QUAD_ORDER[4];
+
+// Find intersections of circle y²+z²=R² with line segment P1→P2.
+// Returns 0, 1, or 2.  Valid intersection points stored in hits[][2].
+int dg_circle_seg_intersect(double y1, double z1, double y2, double z2,
+                            double R, double hits[2][2]);
+
+// Find intersection of eta-ray (from origin at angle eta_deg) with segment P1→P2.
+// Returns 1 if found (result in *hy, *hz), 0 otherwise.
+int dg_ray_seg_intersect(double y1, double z1, double y2, double z2,
+                         double eta_deg, double *hy, double *hz);
+
+// Check if point (py,pz) is inside the convex quadrilateral defined by
+// cornerYZ[DG_QUAD_ORDER[0..3]].  Returns 1 if inside, 0 otherwise.
+int dg_point_in_quad(double py, double pz, double quad[4][2]);
 
 // Compute the intersection area of a unit pixel centered at (pixY, pixZ)
 // with the (R, Eta) bin [RMin..RMax] × [EtaMin..EtaMax].

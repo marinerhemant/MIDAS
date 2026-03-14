@@ -93,6 +93,7 @@ mapperfcn(double tx, double ty, double tz, int NrPixelsY, int NrPixelsZ,
     double **EdgesOut = dg_alloc_matrix(50, 2);
     double boxEdge[4][2];
     double YZ[2];
+    double cornerYZ[4][2];
     int RChosen[500], EtaChosen[500];
     int j, k, l, m;
     for (j = 0; j < NrPixelsZ; j++) {
@@ -133,8 +134,19 @@ mapperfcn(double tx, double ty, double tz, int NrPixelsY, int NrPixelsZ,
             RMi = Rt;
           if (Rt > RMa)
             RMa = Rt;
+          // Also store remapped (Y,Z) for Jacobian computation
+          dg_REta_to_YZ(Rt, Eta, &cornerYZ[k * 2 + l][0],
+                        &cornerYZ[k * 2 + l][1]);
         }
       }
+      // Compute Jacobian: area of the pixel quadrilateral in remapped (Y,Z)
+      // space. Corners are indexed as: 0=(--), 1=(-+), 2=(+-), 3=(++).
+      // Use Shoelace on the ordered quadrilateral: 0→1→3→2.
+      double pixelJacobian = fabs(
+          0.5 * ((cornerYZ[0][0] * cornerYZ[1][1] - cornerYZ[1][0] * cornerYZ[0][1]) +
+                 (cornerYZ[1][0] * cornerYZ[3][1] - cornerYZ[3][0] * cornerYZ[1][1]) +
+                 (cornerYZ[3][0] * cornerYZ[2][1] - cornerYZ[2][0] * cornerYZ[3][1]) +
+                 (cornerYZ[2][0] * cornerYZ[0][1] - cornerYZ[0][0] * cornerYZ[2][1])));
       // Get corrected Y, Z for this position.
       dg_pixel_to_REta(ypr, zpr, Ycen, Zcen, TRs, Lsd, RhoD, p0, p1, p2, p3, p4,
                        p5, pxY, dLsd, dP2, 0, &Rt, &Eta, NULL);
@@ -190,183 +202,97 @@ mapperfcn(double tx, double ty, double tz, int NrPixelsY, int NrPixelsZ,
         }
         continue; // skip area computation for masked pixels
       }
-      double yMin = YZ[0] - 0.5;
-      double yMax = YZ[0] + 0.5;
-      double zMin = YZ[1] - 0.5;
-      double zMax = YZ[1] + 0.5;
       sumNrBins += nrRChosen * nrEtaChosen;
       double totPxArea = 0;
-      // Line Intercepts ordering: RMin: ymin, ymax, zmin, zmax. RMax: ymin,
-      // ymax, zmin, zmax
-      //							 EtaMin: ymin,
-      // ymax, zmin, zmax. EtaMax: ymin, ymax, zmin, zmax.
       for (k = 0; k < nrRChosen; k++) {
         double RMin = RBinsLow[RChosen[k]];
         double RMax = RBinsHigh[RChosen[k]];
         for (l = 0; l < nrEtaChosen; l++) {
           double EtaMin = EtaBinsLow[EtaChosen[l]];
           double EtaMax = EtaBinsHigh[EtaChosen[l]];
-          // Find YZ of the polar mask.
+          // Find YZ of the polar mask (bin corners).
           dg_REta_to_YZ(RMin, EtaMin, &boxEdge[0][0], &boxEdge[0][1]);
           dg_REta_to_YZ(RMin, EtaMax, &boxEdge[1][0], &boxEdge[1][1]);
           dg_REta_to_YZ(RMax, EtaMin, &boxEdge[2][0], &boxEdge[2][1]);
           dg_REta_to_YZ(RMax, EtaMax, &boxEdge[3][0], &boxEdge[3][1]);
           int nEdges = 0;
-          // Now check if any edge of the pixel is within the polar mask
+          // Step 1: Check if pixel quad corners are inside the R-eta bin
           for (m = 0; m < 4; m++) {
             double RThis = sqrt(
-                (YZ[0] + dg_PosMatrix[m][0]) * (YZ[0] + dg_PosMatrix[m][0]) +
-                (YZ[1] + dg_PosMatrix[m][1]) * (YZ[1] + dg_PosMatrix[m][1]));
-            double EtaThis = dg_calc_eta_angle(YZ[0] + dg_PosMatrix[m][0],
-                                               YZ[1] + dg_PosMatrix[m][1]);
+                cornerYZ[m][0] * cornerYZ[m][0] +
+                cornerYZ[m][1] * cornerYZ[m][1]);
+            double EtaThis = dg_calc_eta_angle(cornerYZ[m][0], cornerYZ[m][1]);
             if (EtaMin < -180 && dg_sign(EtaThis) != dg_sign(EtaMin))
               EtaThis -= 360;
             if (EtaMax > 180 && dg_sign(EtaThis) != dg_sign(EtaMax))
               EtaThis += 360;
             if (RThis >= RMin && RThis <= RMax && EtaThis >= EtaMin &&
                 EtaThis <= EtaMax) {
-              Edges[nEdges][0] = YZ[0] + dg_PosMatrix[m][0];
-              Edges[nEdges][1] = YZ[1] + dg_PosMatrix[m][1];
+              Edges[nEdges][0] = cornerYZ[m][0];
+              Edges[nEdges][1] = cornerYZ[m][1];
               nEdges++;
             }
           }
-          for (m = 0; m < 4; m++) { // Check if any edge of the polar mask is
-                                    // within the pixel edges.
-            if (boxEdge[m][0] >= yMin && boxEdge[m][0] <= yMax &&
-                boxEdge[m][1] >= zMin && boxEdge[m][1] <= zMax) {
+          // Step 2: Check if bin corners are inside the pixel quad
+          for (m = 0; m < 4; m++) {
+            if (dg_point_in_quad(boxEdge[m][0], boxEdge[m][1], cornerYZ)) {
               Edges[nEdges][0] = boxEdge[m][0];
               Edges[nEdges][1] = boxEdge[m][1];
               nEdges++;
             }
           }
+          // Step 3: Intersections of R-arcs and eta-rays with pixel quad edges
           if (nEdges < 4) {
-            // Now go through Rmin, Rmax, EtaMin, EtaMax and calculate
-            // intercepts and check if within the pixel.
-            // RMin,Max and yMin,Max
-            double yTemp, zTemp, yTempMin, yTempMax, zTempMin, zTempMax;
-            if (RMin >= yMin) {
-              zTemp = dg_sign(YZ[1]) * sqrt(RMin * RMin - yMin * yMin);
-              if (dg_between(zTemp, zMin, zMax) == 1) {
-                Edges[nEdges][0] = yMin;
-                Edges[nEdges][1] = zTemp;
-                nEdges++;
+            for (int e = 0; e < 4; e++) {
+              int i0 = DG_QUAD_ORDER[e], i1 = DG_QUAD_ORDER[(e + 1) % 4];
+              double py1 = cornerYZ[i0][0], pz1 = cornerYZ[i0][1];
+              double py2 = cornerYZ[i1][0], pz2 = cornerYZ[i1][1];
+              double hits[2][2];
+              int nhits, h;
+              // R-arc intersections (RMin and RMax)
+              nhits = dg_circle_seg_intersect(py1, pz1, py2, pz2, RMin, hits);
+              for (h = 0; h < nhits; h++) {
+                double EtaH = dg_calc_eta_angle(hits[h][0], hits[h][1]);
+                if (EtaMin < -180 && dg_sign(EtaH) != dg_sign(EtaMin))
+                  EtaH -= 360;
+                if (EtaMax > 180 && dg_sign(EtaH) != dg_sign(EtaMax))
+                  EtaH += 360;
+                if (EtaH >= EtaMin - DG_EPS && EtaH <= EtaMax + DG_EPS) {
+                  Edges[nEdges][0] = hits[h][0];
+                  Edges[nEdges][1] = hits[h][1];
+                  nEdges++;
+                }
               }
-            }
-            if (RMin >= yMax) {
-              zTemp = dg_sign(YZ[1]) * sqrt(RMin * RMin - yMax * yMax);
-              if (dg_between(zTemp, zMin, zMax) == 1) {
-                Edges[nEdges][0] = yMax;
-                Edges[nEdges][1] = zTemp;
-                nEdges++;
+              nhits = dg_circle_seg_intersect(py1, pz1, py2, pz2, RMax, hits);
+              for (h = 0; h < nhits; h++) {
+                double EtaH = dg_calc_eta_angle(hits[h][0], hits[h][1]);
+                if (EtaMin < -180 && dg_sign(EtaH) != dg_sign(EtaMin))
+                  EtaH -= 360;
+                if (EtaMax > 180 && dg_sign(EtaH) != dg_sign(EtaMax))
+                  EtaH += 360;
+                if (EtaH >= EtaMin - DG_EPS && EtaH <= EtaMax + DG_EPS) {
+                  Edges[nEdges][0] = hits[h][0];
+                  Edges[nEdges][1] = hits[h][1];
+                  nEdges++;
+                }
               }
-            }
-            if (RMax >= yMin) {
-              zTemp = dg_sign(YZ[1]) * sqrt(RMax * RMax - yMin * yMin);
-              if (dg_between(zTemp, zMin, zMax) == 1) {
-                Edges[nEdges][0] = yMin;
-                Edges[nEdges][1] = zTemp;
-                nEdges++;
+              // Eta-ray intersections (EtaMin and EtaMax)
+              double hy, hz;
+              if (dg_ray_seg_intersect(py1, pz1, py2, pz2, EtaMin, &hy, &hz)) {
+                double RH = sqrt(hy * hy + hz * hz);
+                if (RH >= RMin - DG_EPS && RH <= RMax + DG_EPS) {
+                  Edges[nEdges][0] = hy;
+                  Edges[nEdges][1] = hz;
+                  nEdges++;
+                }
               }
-            }
-            if (RMax >= yMax) {
-              zTemp = dg_sign(YZ[1]) * sqrt(RMax * RMax - yMax * yMax);
-              if (dg_between(zTemp, zMin, zMax) == 1) {
-                Edges[nEdges][0] = yMax;
-                Edges[nEdges][1] = zTemp;
-                nEdges++;
-              }
-            }
-            // RMin,Max and zMin,Max
-            if (RMin >= zMin) {
-              yTemp = dg_sign(YZ[0]) * sqrt(RMin * RMin - zMin * zMin);
-              if (dg_between(yTemp, yMin, yMax) == 1) {
-                Edges[nEdges][0] = yTemp;
-                Edges[nEdges][1] = zMin;
-                nEdges++;
-              }
-            }
-            if (RMin >= zMax) {
-              yTemp = dg_sign(YZ[0]) * sqrt(RMin * RMin - zMax * zMax);
-              if (dg_between(yTemp, yMin, yMax) == 1) {
-                Edges[nEdges][0] = yTemp;
-                Edges[nEdges][1] = zMax;
-                nEdges++;
-              }
-            }
-            if (RMax >= zMin) {
-              yTemp = dg_sign(YZ[0]) * sqrt(RMax * RMax - zMin * zMin);
-              if (dg_between(yTemp, yMin, yMax) == 1) {
-                Edges[nEdges][0] = yTemp;
-                Edges[nEdges][1] = zMin;
-                nEdges++;
-              }
-            }
-            if (RMax >= zMax) {
-              yTemp = dg_sign(YZ[0]) * sqrt(RMax * RMax - zMax * zMax);
-              if (dg_between(yTemp, yMin, yMax) == 1) {
-                Edges[nEdges][0] = yTemp;
-                Edges[nEdges][1] = zMax;
-                nEdges++;
-              }
-            }
-            // EtaMin,Max and yMin,Max
-            // At eta ≈ 0°/180° the ray is parallel to y-edges, skip
-            if (!(fabs(EtaMin) < 1E-5 || fabs(fabs(EtaMin) - 180) < 1E-5)) {
-              zTempMin = -yMin / tan(EtaMin * DG_DEG2RAD);
-              zTempMax = -yMax / tan(EtaMin * DG_DEG2RAD);
-              if (dg_between(zTempMin, zMin, zMax) == 1) {
-                Edges[nEdges][0] = yMin;
-                Edges[nEdges][1] = zTempMin;
-                nEdges++;
-              }
-              if (dg_between(zTempMax, zMin, zMax) == 1) {
-                Edges[nEdges][0] = yMax;
-                Edges[nEdges][1] = zTempMax;
-                nEdges++;
-              }
-            }
-            if (!(fabs(EtaMax) < 1E-5 || fabs(fabs(EtaMax) - 180) < 1E-5)) {
-              zTempMin = -yMin / tan(EtaMax * DG_DEG2RAD);
-              zTempMax = -yMax / tan(EtaMax * DG_DEG2RAD);
-              if (dg_between(zTempMin, zMin, zMax) == 1) {
-                Edges[nEdges][0] = yMin;
-                Edges[nEdges][1] = zTempMin;
-                nEdges++;
-              }
-              if (dg_between(zTempMax, zMin, zMax) == 1) {
-                Edges[nEdges][0] = yMax;
-                Edges[nEdges][1] = zTempMax;
-                nEdges++;
-              }
-            }
-            // EtaMin,Max and zMin,Max
-            // At eta ≈ ±90° the ray is parallel to z-edges, skip
-            if (!(fabs(fabs(EtaMin) - 90) < 1E-5)) {
-              yTempMin = -zMin * tan(EtaMin * DG_DEG2RAD);
-              yTempMax = -zMax * tan(EtaMin * DG_DEG2RAD);
-              if (dg_between(yTempMin, yMin, yMax) == 1) {
-                Edges[nEdges][0] = yTempMin;
-                Edges[nEdges][1] = zMin;
-                nEdges++;
-              }
-              if (dg_between(yTempMax, yMin, yMax) == 1) {
-                Edges[nEdges][0] = yTempMax;
-                Edges[nEdges][1] = zMax;
-                nEdges++;
-              }
-            }
-            if (!(fabs(fabs(EtaMax) - 90) < 1E-5)) {
-              yTempMin = -zMin * tan(EtaMax * DG_DEG2RAD);
-              yTempMax = -zMax * tan(EtaMax * DG_DEG2RAD);
-              if (dg_between(yTempMin, yMin, yMax) == 1) {
-                Edges[nEdges][0] = yTempMin;
-                Edges[nEdges][1] = zMin;
-                nEdges++;
-              }
-              if (dg_between(yTempMax, yMin, yMax) == 1) {
-                Edges[nEdges][0] = yTempMax;
-                Edges[nEdges][1] = zMax;
-                nEdges++;
+              if (dg_ray_seg_intersect(py1, pz1, py2, pz2, EtaMax, &hy, &hz)) {
+                double RH = sqrt(hy * hy + hz * hz);
+                if (RH >= RMin - DG_EPS && RH <= RMax + DG_EPS) {
+                  Edges[nEdges][0] = hy;
+                  Edges[nEdges][1] = hz;
+                  nEdges++;
+                }
               }
             }
           }
@@ -381,7 +307,7 @@ mapperfcn(double tx, double ty, double tz, int NrPixelsY, int NrPixelsZ,
             continue;
           }
           // Now we have all the edges, let's calculate the area.
-          double Area = dg_polygon_area(EdgesOut, nEdges);
+          double Area = dg_polygon_area(EdgesOut, nEdges, RMin, RMax);
           if (Area < 1E-5) {
             nrContinued3++;
             continue;
