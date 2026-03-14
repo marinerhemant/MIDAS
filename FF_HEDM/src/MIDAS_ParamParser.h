@@ -187,6 +187,7 @@ typedef struct {
   double parallaxIn;
   int    PerPanelLsd;
   int    PerPanelDistortion;
+  int    GradientCorrection;
 
   // ── FitPos/Strain control ──
   int    TopLayer;

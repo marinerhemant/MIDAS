@@ -59,7 +59,8 @@ inline void CalcPeakProfileParallel(int *Indices, int NrEachIndexBin, int idx,
                                     double *ReturnValue,
                                     double TRs[3][3], double Lsd, double RhoD,
                                     double p0, double p1, double p2, double p3,
-                                    double p4, double p5);
+                                    double p4, double p5,
+                                    int gradientCorrection, int NrPixelsZ);
 
 inline void CalcPeakProfileRaw(int *Indices, int NrEachIndexBin, int idx,
                                double *Average, double Rmi, double Rma,
@@ -68,7 +69,8 @@ inline void CalcPeakProfileRaw(int *Indices, int NrEachIndexBin, int idx,
                                double *outSumIntensity, double *outTotalArea,
                                double TRs[3][3], double Lsd, double RhoD,
                                double p0, double p1, double p2, double p3,
-                               double p4, double p5);
+                               double p4, double p5,
+                               int gradientCorrection, int NrPixelsZ);
 
 static inline pixelvalue **allocMatrixPX(int nrows, int ncols) {
   pixelvalue **arr;
@@ -554,7 +556,8 @@ void CalcFittedMean(int nIndices, int *NrEachIndexBin, int **Indices,
                     int *doubletPartner,
                     double tx, double ty, double tz,
                     double p0, double p1, double p2, double p3,
-                    double p4, double p5, double Lsd, double RhoD) {
+                    double p4, double p5, double Lsd, double RhoD,
+                    int gradientCorrection) {
   // NOTE: We pass TRs=NULL to CalcPeakProfileParallel to use the unit-square
   // fallback.  The quad-based area requires per-panel corrections (pdY, pdZ,
   // dLsd, dP2) which are not available inside CalcPeakProfileParallel.
@@ -730,7 +733,8 @@ void CalcFittedMean(int nIndices, int *NrEachIndexBin, int **Indices,
         Rma = Rs[j] + Rstep / 2;
         CalcPeakProfileParallel(IndicesThis, NrIndicesMerged, idxThis, Average,
                                 Rmi, Rma, EtaMi, EtaMa, ybc, zbc, px, NrPixels,
-                                &RetVal, TRs, Lsd, RhoD, p0, p1, p2, p3, p4, p5);
+                                &RetVal, TRs, Lsd, RhoD, p0, p1, p2, p3, p4, p5,
+                                gradientCorrection, NrPixelsZ);
         PeakShape[j] = RetVal;
         if (RetVal != 0)
           AllZero = 0;
@@ -1884,6 +1888,7 @@ int main(int argc, char *argv[]) {
   double lineoutRMin = cfg.lineoutRMin;
   double lineoutRMax = cfg.lineoutRMax;
   int makeMap = cfg.makeMap;
+  int GradientCorrection = cfg.GradientCorrection;
   int HeadSize = cfg.HeadSize;
   int dType = cfg.DataType;
   char GapFN[4096], BadPxFN[4096], MaskFN[4096];
@@ -2428,7 +2433,7 @@ int main(int argc, char *argv[]) {
                        EtaBinsLow, EtaBinsHigh, doubletFlag_0,
                        doubletPartner_0,
                        tx, tyin, tzin, p0in, p1in, p2in, p3in,
-                       p4in, p5in, Lsd, MaxRingRad);
+                       p4in, p5in, Lsd, MaxRingRad, GradientCorrection);
       }
 
 
@@ -2611,7 +2616,7 @@ int main(int argc, char *argv[]) {
                          NrPixelsZ, EtaBinsLow, EtaBinsHigh, doubletFlag,
                          doubletPartner,
                          tx, tyin, tzin, p0in, p1in, p2in, p3in,
-                         p4in, p5in, Lsd, MaxRingRad);
+                         p4in, p5in, Lsd, MaxRingRad, GradientCorrection);
         }
 
         // Compact: remove zero-RMean entries
@@ -2897,7 +2902,7 @@ int main(int argc, char *argv[]) {
                          IRmaxs_rf, nEtaBins, ybcFit, zbcFit, px, NrPixelsY,
                          NrPixelsZ, EtaBinsLow, EtaBinsHigh, dbf_rf, dbp_rf,
                          tx, ty, tz, p0, p1, p2, p3,
-                         p4, p5, LsdFit, MaxRingRad);
+                         p4, p5, LsdFit, MaxRingRad, GradientCorrection);
         }
         // Don't free FitSNR_rf — compact it and save for next iter snrWeights
 
@@ -3384,7 +3389,7 @@ int main(int argc, char *argv[]) {
                        nEtaBins, ybcFit, zbcFit, px, NrPixelsY, NrPixelsZ,
                        EtaBinsLow, EtaBinsHigh, dbf_pl, dbp_pl,
                        tx, ty, tz, p0, p1, p2, p3,
-                       p4in, p5in, LsdFit, MaxRingRad);
+                       p4in, p5in, LsdFit, MaxRingRad, GradientCorrection);
       }
       free(FitSNR_pl);
       int cnt_pl = 0;
@@ -4404,7 +4409,36 @@ int main(int argc, char *argv[]) {
           double thisArea =
               dg_calc_pixel_bin_area(pixY, pixZ, Rmi_px, Rma_px, lo_EtaMi,
                                      lo_EtaMa, tEdges, tEdgesOut);
-          binSumI += Average[pixIdx] * thisArea;
+          // Gradient correction: bilinear-interpolated radial resampling
+          double pixIntensity;
+          if (GradientCorrection) {
+            double RbinCen = (Rmi_px + Rma_px) * 0.5;
+            double dy = (double)iy - lo_ybc;
+            double dz = (double)iz - lo_zbc;
+            double Rpx = sqrt(dy * dy + dz * dz);
+            if (Rpx > 1.0) {
+              double dR = Rpx - RbinCen;
+              double ry = (double)iy - dR * dy / Rpx;
+              double rz = (double)iz - dR * dz / Rpx;
+              // Bilinear interpolation with boundary clamping
+              int iy0 = (int)floor(ry), iz0 = (int)floor(rz);
+              double fy = ry - iy0, fz = rz - iz0;
+              if (iy0 < 0) { iy0 = 0; fy = 0; }
+              if (iy0 >= NrPixels - 1) { iy0 = NrPixels - 2; fy = 1; }
+              if (iz0 < 0) { iz0 = 0; fz = 0; }
+              if (iz0 >= NrPixels - 1) { iz0 = NrPixels - 2; fz = 1; }
+              pixIntensity =
+                  Average[(size_t)iz0 * NrPixels + iy0] * (1 - fy) * (1 - fz) +
+                  Average[(size_t)iz0 * NrPixels + iy0 + 1] * fy * (1 - fz) +
+                  Average[(size_t)(iz0+1) * NrPixels + iy0] * (1 - fy) * fz +
+                  Average[(size_t)(iz0+1) * NrPixels + iy0 + 1] * fy * fz;
+            } else {
+              pixIntensity = Average[pixIdx];
+            }
+          } else {
+            pixIntensity = Average[pixIdx];
+          }
+          binSumI += pixIntensity * thisArea;
           binArea += thisArea;
         }
         // Step 1: per-eta-bin normalized intensity (skip contaminated bins)

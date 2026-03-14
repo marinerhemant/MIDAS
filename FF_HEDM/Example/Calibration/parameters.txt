@@ -204,6 +204,8 @@ MaskFile mask_upd.tif
 # Auto-detect and fit doublet rings (separation threshold in pixels)
 DoubletSeparation 25
 
+# Enable gradient correction
+GradientCorrection 1
 
 # =============================================================================
 #  RING SELECTION
