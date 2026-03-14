@@ -143,8 +143,8 @@ tGap 0.15                       # Dead time between frames (seconds)
 ImTransOpt 0                    # 0 = no transform (see manual for transform codes)
 
 # Detector saturation level (counts)
-# MUST be >15000 for simulated experiments
-UpperBoundThreshold 16000
+# Must exceed MaxOutputIntensity (default 65000) for simulated experiments
+UpperBoundThreshold 70000
 
 # Number of files per layer (for multi-wedge scans)
 NrFilesPerSweep 1
