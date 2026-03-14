@@ -11,6 +11,20 @@
 #define MAX_N_OMEGA_RANGES 20
 // MAX_POINTS_GRID_GOOD defined in MIDAS_Limits.h
 
+/* --- Spot-first batching support for simulateNF --- */
+typedef struct {
+  uint16_t layer;
+  uint16_t omeBin;
+  uint16_t multY;
+  uint16_t multZ;
+} NFPixelHit;
+
+typedef struct {
+  NFPixelHit *hits;
+  int count;
+  int capacity;
+} NFHitBuffer;
+
 void MatrixMultF(RealType m[3][3], RealType v[3], RealType r[3]);
 
 void MatrixMultF33(RealType m[3][3], RealType n[3][3], RealType res[3][3]);
@@ -39,6 +53,19 @@ void SimulateAccOrient(
     const int NrPixelsGrid, uint16_t *ObsSpotsInfo, double OrientMatIn[3][3],
     double *TheorSpots, int voxNr, FILE *spF, int **InPixels, double *Gs,
     int NrPixelsY, int NrPixelsZ);
+
+void SimulateAccOrientBuffered(
+    const int NrOfFiles, const int nLayers, const double ExcludePoleAngle,
+    const double Lsd[nLayers], const long long int SizeObsSpots,
+    const double XGrain[3], const double YGrain[3], double RotMatTilts[3][3],
+    const double OmegaStart, const double OmegaStep, const double px,
+    const double ybc[nLayers], const double zbc[nLayers], const double gs,
+    double hkls[5000][4], int n_hkls, double Thetas[5000],
+    double OmegaRanges[MAX_N_OMEGA_RANGES][2], const int NoOfOmegaRanges,
+    double BoxSizes[MAX_N_OMEGA_RANGES][4], double P0[nLayers][3],
+    const int NrPixelsGrid, double OrientMatIn[3][3],
+    double *TheorSpots, int voxNr, FILE *spF, int **InPixels, double *Gs,
+    int NrPixelsY, int NrPixelsZ, NFHitBuffer *hitBuf);
 
 void RotateAroundZ(RealType v1[3], RealType alpha, RealType v2[3]);
 

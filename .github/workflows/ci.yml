@@ -85,8 +85,12 @@ jobs:
             scipy fsspec tqdm diskcache multiprocess
 
       # ── Benchmark tests (2 vCPUs on standard GitHub runners) ─────────
-      # NOTE: test_nf_hedm.py is skipped — simulateNF needs ~24 GB RAM,
-      #       exceeding the ~7 GB available on standard GitHub runners.
+
+      - name: Test NF-HEDM
+        if: always() && steps.build.outcome == 'success'
+        env:
+          MIDAS_HOME: ${{ github.workspace }}
+        run: python tests/test_nf_hedm.py -nCPUs 2
 
       - name: Test FF-HEDM
         if: always() && steps.build.outcome == 'success'

@@ -869,3 +869,175 @@ void NormalizeMat(double OMIn[9], double OMOut[9]) {
     OMOut[i] = OMIn[i] / scale;
   }
 }
+
+/* --- Buffered variant for spot-first batching ---
+   Instead of incrementing ObsSpotsInfo[BinNr], appends {layer, omeBin, multY, multZ}
+   to the caller-provided NFHitBuffer. */
+static void SimulateDiffractionImageBuffered(
+    const int NrOfFiles, const int nLayers, const int nTspots,
+    double *TheorSpots, double OmegaStart, double OmegaStep, double XGrain[3],
+    double YGrain[3], const double Lsds[nLayers],
+    const long long int SizeObsSpots, double RotMatTilts[3][3], const double px,
+    const double ybcs[nLayers], const double zbcs[nLayers], const double gs,
+    double P0All[nLayers][3], const int NrPixelsGrid,
+    double OrientMatIn[3][3], int voxNr, FILE *spF, int **InPixels,
+    int NrPixelsY, int NrPixelsZ, NFHitBuffer *hitBuf) {
+  int j, OmeBin, OutofBounds, k, l;
+  double OmegaThis, ythis, zthis, XGT, YGT, Displ_Y, Displ_Z, ytemp, ztemp,
+      xyz[3], P1[3], ABC[3], outxyz[3], YZSpots[3][2], Lsd, ybc, zbc, P0[3],
+      YZSpotsTemp[2], YZSpotsT[3][2];
+  int NrInPixels, Layer, omeRangNr;
+  double eta, RingRadius, theta, omediff;
+  int MultY, MultZ;
+  for (k = 0; k < 3; k++) {
+    P0[k] = P0All[0][k];
+  }
+  Lsd = Lsds[0];
+  ybc = ybcs[0];
+  zbc = zbcs[0];
+  for (j = 0; j < nTspots; j++) {
+    ythis = TheorSpots[j * 3 + 0];
+    zthis = TheorSpots[j * 3 + 1];
+    OutofBounds = 1;
+    if (Wedge != 0) {
+      eta = CalcEta(ythis, zthis);
+      RingRadius = sqrt(ythis * ythis + zthis * zthis);
+      theta = rad2deg * atan(RingRadius / Lsds[0]);
+      omediff = CorrectWedge(eta, theta, Wavelength, Wedge);
+      OmegaThis = TheorSpots[j * 3 + 2] - omediff;
+      if (OmegaThis >= 180) {
+        OmegaThis -= 360;
+      } else if (OmegaThis <= -180) {
+        OmegaThis += 360;
+      }
+      for (omeRangNr = 0; omeRangNr < nOmeRang; omeRangNr++) {
+        if (OmegaThis > OmegaRang[omeRangNr][0] &&
+            OmegaThis < OmegaRang[omeRangNr][1]) {
+          OutofBounds = 0;
+          break;
+        }
+      }
+    } else {
+      OmegaThis = TheorSpots[j * 3 + 2];
+      OutofBounds = 0;
+    }
+    OmeBin = (int)floor((-OmegaStart + OmegaThis) / OmegaStep);
+    if (OmeBin < 0 || OmeBin >= NrOfFiles) {
+      OutofBounds = 1;
+    }
+    double OmegaRad = deg2rad * OmegaThis;
+    double sinOme = sin(OmegaRad);
+    double cosOme = cos(OmegaRad);
+    for (k = 0; k < 3; k++) {
+      XGT = XGrain[k];
+      YGT = YGrain[k];
+      DisplacementSpotsPrecomp(XGT, YGT, Lsd, ythis, zthis, sinOme, cosOme,
+                               &Displ_Y, &Displ_Z);
+      ytemp = Displ_Y;
+      ztemp = Displ_Z;
+      xyz[0] = 0;
+      xyz[1] = ytemp;
+      xyz[2] = ztemp;
+      MatrixMultF(RotMatTilts, xyz, P1);
+      for (l = 0; l < 3; l++) {
+        ABC[l] = P1[l] - P0[l];
+      }
+      outxyz[0] = 0;
+      outxyz[1] = P0[1] - (ABC[1] * P0[0]) / (ABC[0]);
+      outxyz[2] = P0[2] - (ABC[2] * P0[0]) / (ABC[0]);
+      YZSpotsT[k][0] = (outxyz[1]) / px + ybc;
+      YZSpotsT[k][1] = (outxyz[2]) / px + zbc;
+      if (k == 2) {
+        xyz[0] = 0;
+        xyz[1] = ythis;
+        xyz[2] = zthis;
+        MatrixMultF(RotMatTilts, xyz, P1);
+        for (l = 0; l < 3; l++) {
+          ABC[l] = P1[l] - P0[l];
+        }
+        outxyz[0] = 0;
+        outxyz[1] = P0[1] - (ABC[1] * P0[0]) / (ABC[0]);
+        outxyz[2] = P0[2] - (ABC[2] * P0[0]) / (ABC[0]);
+        YZSpotsTemp[0] = (outxyz[1]) / px + ybc;
+        YZSpotsTemp[1] = (outxyz[2]) / px + zbc;
+        for (l = 0; l < 3; l++) {
+          YZSpots[l][0] = YZSpotsT[l][0] - YZSpotsTemp[0];
+          YZSpots[l][1] = YZSpotsT[l][1] - YZSpotsTemp[1];
+        }
+      }
+    }
+    if (OutofBounds == 1) {
+      continue;
+    }
+    if (gs * 2 > px) {
+      CalcPixels2(YZSpots, InPixels, &NrInPixels);
+    } else {
+      InPixels[0][0] =
+          (int)round((YZSpots[0][0] + YZSpots[1][0] + YZSpots[2][0]) / 3);
+      InPixels[0][1] =
+          (int)round((YZSpots[0][1] + YZSpots[1][1] + YZSpots[2][1]) / 3);
+      NrInPixels = 1;
+    }
+    for (k = 0; k < NrInPixels; k++) {
+      for (Layer = 0; Layer < nLayers; Layer++) {
+        MultY = (int)floor(((((double)(YZSpotsTemp[0] - ybc)) * px) *
+                            (Lsds[Layer] / Lsd)) /
+                               px +
+                           ybcs[Layer]) +
+                InPixels[k][0];
+        MultZ = (int)floor(((((double)(YZSpotsTemp[1] - zbc)) * px) *
+                            (Lsds[Layer] / Lsd)) /
+                               px +
+                           zbcs[Layer]) +
+                InPixels[k][1];
+        if (MultY >= NrPixelsY || MultY < 0 || MultZ >= NrPixelsZ ||
+            MultZ < 0) {
+          break;
+        }
+        if (spF != NULL) {
+#pragma omp critical(spF_write)
+          fprintf(spF, "%d\t%d\t%d\t%d\t%d\t%lf\t%lf\t%lf\n", voxNr, Layer,
+                  OmeBin, MultY, MultZ, OmegaThis, ythis, zthis);
+        }
+        /* Append hit to buffer instead of incrementing ObsSpotsInfo */
+        if (hitBuf->count >= hitBuf->capacity) {
+          hitBuf->capacity *= 2;
+          hitBuf->hits =
+              realloc(hitBuf->hits, hitBuf->capacity * sizeof(NFPixelHit));
+        }
+        NFPixelHit *hit = &hitBuf->hits[hitBuf->count++];
+        hit->layer = (uint16_t)Layer;
+        hit->omeBin = (uint16_t)OmeBin;
+        hit->multY = (uint16_t)MultY;
+        hit->multZ = (uint16_t)MultZ;
+      }
+    }
+  }
+}
+
+void SimulateAccOrientBuffered(
+    const int NrOfFiles, const int nLayers, const double ExcludePoleAngle,
+    const double Lsd[nLayers], const long long int SizeObsSpots,
+    const double XGrain[3], const double YGrain[3], double RotMatTilts[3][3],
+    const double OmegaStart, const double OmegaStep, const double px,
+    const double ybc[nLayers], const double zbc[nLayers], const double gs,
+    double hkls[5000][4], int n_hkls, double Thetas[5000],
+    double OmegaRanges[MAX_N_OMEGA_RANGES][2], const int NoOfOmegaRanges,
+    double BoxSizes[MAX_N_OMEGA_RANGES][4], double P0[nLayers][3],
+    const int NrPixelsGrid, double OrientMatIn[3][3],
+    double *TheorSpots, int voxNr, FILE *spF, int **InPixels, double *Gs,
+    int NrPixelsY, int NrPixelsZ, NFHitBuffer *hitBuf) {
+  int nTspots, i;
+  CalcDiffractionSpots(Lsd[0], ExcludePoleAngle, OmegaRanges, NoOfOmegaRanges,
+                       hkls, n_hkls, Thetas, BoxSizes, &nTspots, OrientMatIn,
+                       TheorSpots, Gs);
+  double XG[3], YG[3];
+  for (i = 0; i < 3; i++) {
+    XG[i] = XGrain[i];
+    YG[i] = YGrain[i];
+  }
+  SimulateDiffractionImageBuffered(
+      NrOfFiles, nLayers, nTspots, TheorSpots, OmegaStart, OmegaStep, XG, YG,
+      Lsd, SizeObsSpots, RotMatTilts, px, ybc, zbc, gs, P0, NrPixelsGrid,
+      OrientMatIn, voxNr, spF, InPixels, NrPixelsY, NrPixelsZ, hitBuf);
+}

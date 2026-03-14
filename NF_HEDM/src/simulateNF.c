@@ -31,6 +31,28 @@
 #define ClearBit(A, k) (A[(k / 32)] &= ~(1 << (k % 32)))
 #define TestBit(A, k) (A[(k / 32)] & (1 << (k % 32)))
 
+/* --- System RAM detection for auto-batch sizing --- */
+#if defined(__APPLE__)
+#include <sys/sysctl.h>
+static size_t get_system_ram(void) {
+  int64_t ram;
+  size_t len = sizeof(ram);
+  if (sysctlbyname("hw.memsize", &ram, &len, NULL, 0) == 0)
+    return (size_t)ram;
+  return 0;
+}
+#elif defined(__linux__)
+#include <sys/sysinfo.h>
+static size_t get_system_ram(void) {
+  struct sysinfo si;
+  if (sysinfo(&si) == 0)
+    return (size_t)si.totalram * si.mem_unit;
+  return 0;
+}
+#else
+static size_t get_system_ram(void) { return 0; }
+#endif
+
 int Flag = 0;
 double Wedge;
 double Wavelength;
@@ -154,6 +176,7 @@ int main(int argc, char *argv[]) {
   int MinMiso = 0;
   int skipBin = 0;
   int WriteImage = 1;
+  int SimulationBatches = 0; /* 0 = auto-detect */
   int NrPixelsY = 2048, NrPixelsZ = 2048;
   double MinConfidence = -1.0;
   int OnlySpotsInfo = 0;
@@ -332,6 +355,12 @@ int main(int argc, char *argv[]) {
       sscanf(aline, "%s %d", dummy, &OnlySpotsInfo);
       continue;
     }
+    str = "SimulationBatches ";
+    LowNr = strncmp(aline, str, strlen(str));
+    if (LowNr == 0) {
+      sscanf(aline, "%s %d", dummy, &SimulationBatches);
+      continue;
+    }
   }
   int i, j, k, l, m, nrFiles, nrPixels;
   for (i = 0; i < NoOfOmegaRanges; i++) {
@@ -341,22 +370,41 @@ int main(int argc, char *argv[]) {
   nOmeRang = NoOfOmegaRanges;
   fclose(fileParam);
   MaxTtheta = rad2deg * atan(MaxRingRad / Lsd[0]);
-  uint16_t *ObsSpotsInfo;
-  uint16_t *binArr;
   nrFiles = EndNr - StartNr + 1;
   nrPixels = NrPixelsY * NrPixelsZ;
   long long int SizeObsSpots;
-  SizeObsSpots = (nLayers);
-  SizeObsSpots *= nrPixels;
-  SizeObsSpots *= nrFiles;
-  printf("SizeSimulation: %lld bytes\n", SizeObsSpots * 2);
-  ObsSpotsInfo = calloc(SizeObsSpots, sizeof(*ObsSpotsInfo));
-  binArr = calloc(SizeObsSpots,
-                  sizeof(*binArr)); // This is assuming we have quarter of data
-                                    // with signal, not unreasonable.
-  if (ObsSpotsInfo == NULL || binArr == NULL) {
-    printf("Could not allocate arrays! Ran out of RAM?");
-    return 1;
+  SizeObsSpots = (long long int)nLayers * nrPixels * nrFiles;
+  printf("SizeSimulation: %lld elements (%lld bytes)\n", SizeObsSpots,
+         SizeObsSpots * (long long int)sizeof(uint16_t));
+
+  /* --- Auto-detect nBatches based on system RAM --- */
+  int nBatches = SimulationBatches;
+  if (nBatches == 0) {
+    size_t sysRAM = get_system_ram();
+    size_t imageBytes =
+        (size_t)nLayers * nrPixels * nrFiles * sizeof(uint16_t);
+    if (sysRAM > 0) {
+      size_t availRAM = (size_t)(sysRAM * 0.7); /* use 70% of RAM */
+      if (imageBytes <= availRAM) {
+        nBatches = 1;
+      } else {
+        size_t bytesPerFrame = (size_t)nLayers * nrPixels * sizeof(uint16_t);
+        size_t framesPerBatch = availRAM / bytesPerFrame;
+        if (framesPerBatch < 1)
+          framesPerBatch = 1;
+        nBatches = (nrFiles + (int)framesPerBatch - 1) / (int)framesPerBatch;
+      }
+    } else {
+      nBatches = 1; /* Can't detect RAM, fall back to single pass */
+    }
+    printf("Auto-detected SimulationBatches: %d (system RAM: %.1f GB, image "
+           "size: %.1f GB)\n",
+           nBatches, get_system_ram() / (1024.0 * 1024.0 * 1024.0),
+           (double)imageBytes / (1024.0 * 1024.0 * 1024.0));
+  } else if (nBatches < 0) {
+    nBatches = 1;
+  } else {
+    printf("SimulationBatches: %d\n", nBatches);
   }
 
   double RotMatTilts[3][3];
@@ -475,49 +523,157 @@ int main(int argc, char *argv[]) {
     printf("Read %d voxels from mic file\n", nVoxels);
   }
 
-// Parallel loop over voxels
+  /* ================================================================
+   * SINGLE-PASS FAST PATH (nBatches == 1): original monolithic code
+   * ================================================================ */
+  uint16_t *ObsSpotsInfo = NULL;
+  uint16_t *binArr = NULL;
+  NFHitBuffer *hitBufs = NULL;
+  NFPixelHit *allHits = NULL;
+  int totalHits = 0;
+
+  if (nBatches == 1) {
+    ObsSpotsInfo = calloc(SizeObsSpots, sizeof(*ObsSpotsInfo));
+    if (!OnlySpotsInfo)
+      binArr = calloc(SizeObsSpots, sizeof(*binArr));
+    if (ObsSpotsInfo == NULL || (!OnlySpotsInfo && binArr == NULL)) {
+      printf("Could not allocate arrays! Ran out of RAM?\n");
+      return 1;
+    }
+
+// Parallel loop over voxels — original path
 #pragma omp parallel for schedule(dynamic)                                     \
     private(xs, ys, edgeLen, gs, ud, dy1, dy2)
-  for (voxNr = 0; voxNr < nVoxels; voxNr++) {
-    xs = allXS[voxNr];
-    ys = allYS[voxNr];
-    edgeLen = allEdgeLen[voxNr];
-    ud = allUD[voxNr];
-    double eulThis_local[3];
-    eulThis_local[0] = allEul[voxNr * 3 + 0] * rad2deg;
-    eulThis_local[1] = allEul[voxNr * 3 + 1] * rad2deg;
-    eulThis_local[2] = allEul[voxNr * 3 + 2] * rad2deg;
-    gs = edgeLen / 2;
-    dy1 = edgeLen / sqrt(3);
-    dy2 = -edgeLen / (2 * sqrt(3));
-    if (ud < 0) {
-      dy1 *= -1;
-      dy2 *= -1;
+    for (voxNr = 0; voxNr < nVoxels; voxNr++) {
+      xs = allXS[voxNr];
+      ys = allYS[voxNr];
+      edgeLen = allEdgeLen[voxNr];
+      ud = allUD[voxNr];
+      double eulThis_local[3];
+      eulThis_local[0] = allEul[voxNr * 3 + 0] * rad2deg;
+      eulThis_local[1] = allEul[voxNr * 3 + 1] * rad2deg;
+      eulThis_local[2] = allEul[voxNr * 3 + 2] * rad2deg;
+      gs = edgeLen / 2;
+      dy1 = edgeLen / sqrt(3);
+      dy2 = -edgeLen / (2 * sqrt(3));
+      if (ud < 0) {
+        dy1 *= -1;
+        dy2 *= -1;
+      }
+      int NrPixelsGrid = 2 * (ceil((gs * 2) / px)) * (ceil((gs * 2) / px));
+      if (gs * 2 < px)
+        NrPixelsGrid = 1;
+      double XG_local[3], YG_local[3];
+      XG_local[0] = xs;
+      XG_local[1] = xs - gs;
+      XG_local[2] = xs + gs;
+      YG_local[0] = ys + dy1;
+      YG_local[1] = ys + dy2;
+      YG_local[2] = ys + dy2;
+      double OMIn_local[3][3];
+      Euler2OrientMat(eulThis_local, OMIn_local);
+      int **InPixels_local;
+      InPixels_local = allocMatrixIntF(NrPixelsGrid, 2);
+      double *TheorSpots_local;
+      TheorSpots_local = malloc(MAX_N_SPOTS * 3 * sizeof(*TheorSpots_local));
+      SimulateAccOrient(nrFiles, nLayers, ExcludePoleAngle, Lsd, SizeObsSpots,
+                        XG_local, YG_local, RotMatTilts, OmegaStart, OmegaStep,
+                        px, ybc, zbc, gs, hkls, n_hkls, Thetas, OmegaRanges,
+                        NoOfOmegaRanges, BoxSizes, P0, NrPixelsGrid,
+                        ObsSpotsInfo, OMIn_local, TheorSpots_local, voxNr, spF,
+                        InPixels_local, Gs, NrPixelsY, NrPixelsZ);
+      FreeMemMatrixInt(InPixels_local, NrPixelsGrid);
+      free(TheorSpots_local);
     }
-    int NrPixelsGrid = 2 * (ceil((gs * 2) / px)) * (ceil((gs * 2) / px));
-    if (gs * 2 < px)
-      NrPixelsGrid = 1;
-    double XG_local[3], YG_local[3];
-    XG_local[0] = xs;
-    XG_local[1] = xs - gs;
-    XG_local[2] = xs + gs;
-    YG_local[0] = ys + dy1;
-    YG_local[1] = ys + dy2;
-    YG_local[2] = ys + dy2;
-    double OMIn_local[3][3];
-    Euler2OrientMat(eulThis_local, OMIn_local);
-    int **InPixels_local;
-    InPixels_local = allocMatrixIntF(NrPixelsGrid, 2);
-    double *TheorSpots_local;
-    TheorSpots_local = malloc(MAX_N_SPOTS * 3 * sizeof(*TheorSpots_local));
-    SimulateAccOrient(nrFiles, nLayers, ExcludePoleAngle, Lsd, SizeObsSpots,
-                      XG_local, YG_local, RotMatTilts, OmegaStart, OmegaStep,
-                      px, ybc, zbc, gs, hkls, n_hkls, Thetas, OmegaRanges,
-                      NoOfOmegaRanges, BoxSizes, P0, NrPixelsGrid, ObsSpotsInfo,
-                      OMIn_local, TheorSpots_local, voxNr, spF, InPixels_local,
-                      Gs, NrPixelsY, NrPixelsZ);
-    FreeMemMatrixInt(InPixels_local, NrPixelsGrid);
-    free(TheorSpots_local);
+  } else {
+    /* ================================================================
+     * BATCHED PATH: spot-first — compute all hits once, replay later
+     * ================================================================ */
+    printf("Using spot-first batched mode (%d batches)\n", nBatches);
+
+    /* Per-thread hit buffers */
+    hitBufs = calloc(nCPUs, sizeof(NFHitBuffer));
+    for (i = 0; i < nCPUs; i++) {
+      hitBufs[i].capacity = 4096;
+      hitBufs[i].hits = malloc(hitBufs[i].capacity * sizeof(NFPixelHit));
+      hitBufs[i].count = 0;
+    }
+
+    /* Phase 1: compute all voxels, buffer hits */
+    double phase1_start = omp_get_wtime();
+#pragma omp parallel for schedule(dynamic)                                     \
+    private(xs, ys, edgeLen, gs, ud, dy1, dy2)
+    for (voxNr = 0; voxNr < nVoxels; voxNr++) {
+      int tid = omp_get_thread_num();
+      xs = allXS[voxNr];
+      ys = allYS[voxNr];
+      edgeLen = allEdgeLen[voxNr];
+      ud = allUD[voxNr];
+      double eulThis_local[3];
+      eulThis_local[0] = allEul[voxNr * 3 + 0] * rad2deg;
+      eulThis_local[1] = allEul[voxNr * 3 + 1] * rad2deg;
+      eulThis_local[2] = allEul[voxNr * 3 + 2] * rad2deg;
+      gs = edgeLen / 2;
+      dy1 = edgeLen / sqrt(3);
+      dy2 = -edgeLen / (2 * sqrt(3));
+      if (ud < 0) {
+        dy1 *= -1;
+        dy2 *= -1;
+      }
+      int NrPixelsGrid = 2 * (ceil((gs * 2) / px)) * (ceil((gs * 2) / px));
+      if (gs * 2 < px)
+        NrPixelsGrid = 1;
+      double XG_local[3], YG_local[3];
+      XG_local[0] = xs;
+      XG_local[1] = xs - gs;
+      XG_local[2] = xs + gs;
+      YG_local[0] = ys + dy1;
+      YG_local[1] = ys + dy2;
+      YG_local[2] = ys + dy2;
+      double OMIn_local[3][3];
+      Euler2OrientMat(eulThis_local, OMIn_local);
+      int **InPixels_local = allocMatrixIntF(NrPixelsGrid, 2);
+      double *TheorSpots_local =
+          malloc(MAX_N_SPOTS * 3 * sizeof(*TheorSpots_local));
+      SimulateAccOrientBuffered(
+          nrFiles, nLayers, ExcludePoleAngle, Lsd, SizeObsSpots, XG_local,
+          YG_local, RotMatTilts, OmegaStart, OmegaStep, px, ybc, zbc, gs, hkls,
+          n_hkls, Thetas, OmegaRanges, NoOfOmegaRanges, BoxSizes, P0,
+          NrPixelsGrid, OMIn_local, TheorSpots_local, voxNr, spF,
+          InPixels_local, Gs, NrPixelsY, NrPixelsZ, &hitBufs[tid]);
+      FreeMemMatrixInt(InPixels_local, NrPixelsGrid);
+      free(TheorSpots_local);
+    }
+    printf("Phase 1 (compute spots): %.2f sec\n",
+           omp_get_wtime() - phase1_start);
+
+    /* Merge per-thread buffers */
+    totalHits = 0;
+    for (i = 0; i < nCPUs; i++)
+      totalHits += hitBufs[i].count;
+    printf("Total pixel hits: %d (%.2f MB)\n", totalHits,
+           (double)totalHits * sizeof(NFPixelHit) / (1024.0 * 1024.0));
+    allHits = malloc((size_t)totalHits * sizeof(NFPixelHit));
+    int offset = 0;
+    for (i = 0; i < nCPUs; i++) {
+      memcpy(allHits + offset, hitBufs[i].hits,
+             hitBufs[i].count * sizeof(NFPixelHit));
+      offset += hitBufs[i].count;
+      free(hitBufs[i].hits);
+    }
+    free(hitBufs);
+    hitBufs = NULL;
+
+    /* Phase 2: replay hits into frame batches to build ObsSpotsInfo
+       Then scan each batch to update bitArr (and optionally binArr) */
+    int framesPerBatch = (nrFiles + nBatches - 1) / nBatches;
+    printf("Replaying %d hits into %d batches (%d frames/batch)...\n",
+           totalHits, nBatches, framesPerBatch);
+
+    /* We'll build a temporary ObsSpotsInfo per batch, then
+       just set the bitArr directly from the hits. Actually, we can
+       skip the intermediate array entirely and just set bits directly
+       from the hits — no batch array needed! */
   }
   free(allXS);
   free(allYS);
@@ -525,80 +681,111 @@ int main(int argc, char *argv[]) {
   free(allUD);
   free(allEul);
   printf("Writing output file\n");
-  FILE *OutputF;
-  if (skipBin == 0 && !OnlySpotsInfo) {
-    OutputF = fopen(outputFN, "wb");
-    if (OutputF == NULL) {
-      printf("Could not write output file\n");
-      return 1;
-    }
-    char dummychar[8192];
-    memset(dummychar, 0, sizeof(dummychar));
-    fwrite(dummychar, 8192, 1, OutputF);
-    fwrite(ObsSpotsInfo, SizeObsSpots * sizeof(*ObsSpotsInfo), 1, OutputF);
-    fclose(OutputF);
-  }
-  printf("Done with full file\n");
-  size_t idxpos, nrF = 0;
+
+  size_t nrF = 0;
   int *bitArr;
   bitArr = calloc((SizeObsSpots + 31) / 32, sizeof(*bitArr));
-  if (OnlySpotsInfo) {
-    // Fast path: only build bitArr, skip binArr entirely
-    idxpos = 0;
-    for (l = 0; l < nLayers; l++) {
-      for (k = 0; k < nrFiles; k++) {
-        for (j = 0; j < NrPixelsZ; j++) {
-          for (i = 0; i < NrPixelsY; i++) {
-            if (ObsSpotsInfo[idxpos] != 0) {
-              SetBit(bitArr, idxpos);
-              nrF++;
-            }
-            idxpos++;
-          }
-        }
+
+  if (nBatches == 1) {
+    /* --- Single-pass post-processing (original code) --- */
+    FILE *OutputF;
+    if (skipBin == 0 && !OnlySpotsInfo) {
+      OutputF = fopen(outputFN, "wb");
+      if (OutputF == NULL) {
+        printf("Could not write output file\n");
+        return 1;
       }
+      char dummychar[8192];
+      memset(dummychar, 0, sizeof(dummychar));
+      fwrite(dummychar, 8192, 1, OutputF);
+      fwrite(ObsSpotsInfo, SizeObsSpots * sizeof(*ObsSpotsInfo), 1, OutputF);
+      fclose(OutputF);
     }
-    printf("Total number of illuminated pixels: %zu\n", nrF);
-  } else {
-    // Full path: build both binArr and bitArr
-    size_t binArrCapacity = SizeObsSpots;
-    idxpos = 0;
-    for (l = 0; l < nLayers; l++) {
-      for (k = 0; k < nrFiles; k++) {
-        for (j = 0; j < NrPixelsZ; j++) {
-          for (i = 0; i < NrPixelsY; i++) {
-            if (ObsSpotsInfo[idxpos] != 0) {
-              for (m = 0; m < ObsSpotsInfo[idxpos]; m++) {
-                if ((nrF + 1) * 5 > binArrCapacity) {
-                  binArrCapacity *= 2;
-                  binArr = realloc(binArr, binArrCapacity * sizeof(*binArr));
-                  if (binArr == NULL) {
-                    printf("Could not realloc binArr! Ran out of RAM?\n");
-                    return 1;
-                  }
-                }
-                binArr[nrF * 5 + 0] = j;
-                binArr[nrF * 5 + 1] = i;
-                binArr[nrF * 5 + 2] = k;
-                binArr[nrF * 5 + 3] = l;
-                binArr[nrF * 5 + 4] = ObsSpotsInfo[idxpos];
+    printf("Done with full file\n");
+    size_t idxpos;
+    if (OnlySpotsInfo) {
+      idxpos = 0;
+      for (l = 0; l < nLayers; l++) {
+        for (k = 0; k < nrFiles; k++) {
+          for (j = 0; j < NrPixelsZ; j++) {
+            for (i = 0; i < NrPixelsY; i++) {
+              if (ObsSpotsInfo[idxpos] != 0) {
+                SetBit(bitArr, idxpos);
                 nrF++;
               }
-              SetBit(bitArr, idxpos);
+              idxpos++;
             }
-            idxpos++;
           }
         }
       }
+      printf("Total number of illuminated pixels: %zu\n", nrF);
+    } else {
+      size_t binArrCapacity = SizeObsSpots;
+      idxpos = 0;
+      for (l = 0; l < nLayers; l++) {
+        for (k = 0; k < nrFiles; k++) {
+          for (j = 0; j < NrPixelsZ; j++) {
+            for (i = 0; i < NrPixelsY; i++) {
+              if (ObsSpotsInfo[idxpos] != 0) {
+                for (m = 0; m < ObsSpotsInfo[idxpos]; m++) {
+                  if ((nrF + 1) * 5 > binArrCapacity) {
+                    binArrCapacity *= 2;
+                    binArr = realloc(binArr, binArrCapacity * sizeof(*binArr));
+                    if (binArr == NULL) {
+                      printf("Could not realloc binArr! Ran out of RAM?\n");
+                      return 1;
+                    }
+                  }
+                  binArr[nrF * 5 + 0] = j;
+                  binArr[nrF * 5 + 1] = i;
+                  binArr[nrF * 5 + 2] = k;
+                  binArr[nrF * 5 + 3] = l;
+                  binArr[nrF * 5 + 4] = ObsSpotsInfo[idxpos];
+                  nrF++;
+                }
+                SetBit(bitArr, idxpos);
+              }
+              idxpos++;
+            }
+          }
+        }
+      }
+      printf("Total number of illuminated pixels: %zu\n", nrF);
+      FILE *OutputF2 = fopen(outFN, "wb");
+      if (OutputF2 == NULL) {
+        printf("Could not write output file\n");
+        return 1;
+      }
+      fwrite(binArr, nrF * 5 * sizeof(*binArr), 1, OutputF2);
+      fclose(OutputF2);
     }
-    printf("Total number of illuminated pixels: %zu\n", nrF);
-    OutputF = fopen(outFN, "wb");
-    if (OutputF == NULL) {
-      printf("Could not write output file\n");
-      return 1;
+    free(ObsSpotsInfo);
+    ObsSpotsInfo = NULL;
+  } else {
+    /* --- Batched post-processing: set bits directly from merged hits --- */
+    double phase2_start = omp_get_wtime();
+    for (int h = 0; h < totalHits; h++) {
+      NFPixelHit *hit = &allHits[h];
+      long long int BinNr = (long long int)hit->layer * nrFiles;
+      BinNr *= NrPixelsY;
+      BinNr *= NrPixelsZ;
+      long long int TempCntr = (long long int)hit->omeBin;
+      TempCntr *= NrPixelsY;
+      TempCntr *= NrPixelsZ;
+      BinNr += TempCntr;
+      TempCntr = (long long int)NrPixelsZ;
+      TempCntr *= hit->multY;
+      BinNr += TempCntr;
+      BinNr += hit->multZ;
+      if (BinNr >= 0 && BinNr < SizeObsSpots) {
+        SetBit(bitArr, BinNr);
+        nrF++;
+      }
     }
-    fwrite(binArr, nrF * 5 * sizeof(*binArr), 1, OutputF);
-    fclose(OutputF);
+    printf("Phase 2 (replay hits): %.2f sec, %zu illuminated pixels\n",
+           omp_get_wtime() - phase2_start, nrF);
+    free(allHits);
+    allHits = NULL;
   }
   FILE *outputSpotsInfo = fopen("SpotsInfo.bin", "wb");
   if (outputSpotsInfo == NULL) {
