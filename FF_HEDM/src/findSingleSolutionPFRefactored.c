@@ -25,7 +25,6 @@
 #include <errno.h>
 #include <fcntl.h>
 #include <libgen.h>
-#include <limits.h>
 #include <math.h>
 #include <omp.h>
 #include <stdarg.h>
@@ -43,9 +42,9 @@
 #include <unistd.h>
 
 /* Zarr/Blosc/Zip includes for patch extraction */
+#include "midas_version.h"
 #include <blosc2.h>
 #include <zip.h>
-#include "midas_version.h"
 
 /* Error codes for better error management */
 #define SUCCESS 0
@@ -236,7 +235,7 @@ extern double GetMisOrientation(const double *Quat1, const double *Quat2,
  * @return Program exit code
  */
 int main(int argc, char *argv[]) {
-	printf("Version: %s\n", MIDAS_VERSION_STRING);
+  printf("Version: %s\n", MIDAS_VERSION_STRING);
   double start_time = omp_get_wtime();
   printf("\n\n\t\tFinding Single Solution in PF-HEDM.\n\n");
 
@@ -1375,6 +1374,12 @@ void generate_sinograms(SpotList *spotList,
     omeArr[i] = -10000.0;
   }
 
+  /* --- Lock-striping: per-bin locks for sinogram accumulation --- */
+  size_t nBins = uniqueResult->nUniques * maxNHKLs;
+  omp_lock_t *binLocks = malloc(nBins * sizeof(omp_lock_t));
+  for (size_t i = 0; i < nBins; i++)
+    omp_init_lock(&binLocks[i]);
+
   /* Process each scan in parallel */
   printf("Processing sinograms in parallel with %d threads...\n", numProcs);
 
@@ -1434,21 +1439,25 @@ void generate_sinograms(SpotList *spotList,
                 allSpots[SPOTS_ARRAY_COLS * spotIdx + 1]; /* zCen_det */
           }
 
-/* Critical section to prevent race conditions */
-#pragma omp critical
-          {
-            if (maxIntArr[maxIntIdx] < currentIntensity) {
-              maxIntArr[maxIntIdx] = currentIntensity;
-            }
-            if (currentIntensity > 0) {
-              sumOmeArr[maxIntIdx] += currentOmega;
-              countOmeArr[maxIntIdx]++;
-            }
+          /* Per-bin lock to prevent race conditions (lock-striping) */
+          omp_set_lock(&binLocks[maxIntIdx]);
+          if (maxIntArr[maxIntIdx] < currentIntensity) {
+            maxIntArr[maxIntIdx] = currentIntensity;
           }
+          if (currentIntensity > 0) {
+            sumOmeArr[maxIntIdx] += currentOmega;
+            countOmeArr[maxIntIdx]++;
+          }
+          omp_unset_lock(&binLocks[maxIntIdx]);
         }
       }
     }
   }
+  /* Clean up per-bin locks */
+  for (size_t i = 0; i < nBins; i++)
+    omp_destroy_lock(&binLocks[i]);
+  free(binLocks);
+
   for (size_t g = 0; g < uniqueResult->nUniques; g++) {
     int nSp = nrHKLsPerGrain[g];
     int filled = 0;

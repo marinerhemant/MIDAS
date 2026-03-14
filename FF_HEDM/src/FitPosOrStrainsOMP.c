@@ -2138,6 +2138,11 @@ int main(int argc, char *argv[]) {
     }
     fclose(spotsFile);
     int thisRowNr;
+    /* Hoist file descriptors before parallel region — pwrite at
+       non-overlapping offsets is thread-safe on a single fd */
+    char hoistKeyFN[1024];
+    sprintf(hoistKeyFN, "%s/Key.bin", ResultFolder);
+    int hoistKeyFD = open(hoistKeyFN, O_CREAT | O_WRONLY, S_IRUSR | S_IWUSR);
 #pragma omp parallel for num_threads(numProcs) private(thisRowNr)              \
     schedule(dynamic)
     for (thisRowNr = 0; thisRowNr < nSptIDs; thisRowNr++) {
@@ -2198,13 +2203,8 @@ int main(int argc, char *argv[]) {
         size_t OffStKeyFile = SizeKeyFile;
         OffStKeyFile *= rowNr;
         int KeyInfo[2] = {0, 0};
-#pragma omp critical
-        {
-          int resultKeyFN = open(KeyFN, O_CREAT | O_WRONLY, S_IRUSR | S_IWUSR);
-          if (resultKeyFN > 0) {
-            pwrite(resultKeyFN, KeyInfo, SizeKeyFile, OffStKeyFile);
-            close(resultKeyFN);
-          }
+        if (hoistKeyFD > 0) {
+          pwrite(hoistKeyFD, KeyInfo, SizeKeyFile, OffStKeyFile);
         }
         continue;
       }
@@ -2216,17 +2216,13 @@ int main(int argc, char *argv[]) {
         size_t OffStKeyFile = SizeKeyFile;
         OffStKeyFile *= rowNr;
         int KeyInfo[2] = {0, 0};
-#pragma omp critical
-        {
-          int resultKeyFN = open(KeyFN, O_CREAT | O_WRONLY, S_IRUSR | S_IWUSR);
-          if (resultKeyFN <= 0) {
-            printf("Could not open output file.\n");
-          }
-          int rc = pwrite(resultKeyFN, KeyInfo, SizeKeyFile, OffStKeyFile);
+        if (hoistKeyFD > 0) {
+          int rc = pwrite(hoistKeyFD, KeyInfo, SizeKeyFile, OffStKeyFile);
           if (rc < 0) {
             printf("Could not write to output file.\n");
           }
-          close(resultKeyFN);
+        } else {
+          printf("Could not open output file.\n");
         }
         continue;
       }
@@ -2802,16 +2798,14 @@ int main(int argc, char *argv[]) {
       }
 #pragma omp critical
       {
-        int resultKeyFN = open(KeyFN, O_CREAT | O_WRONLY, S_IRUSR | S_IWUSR);
-        if (resultKeyFN <= 0) {
+        if (hoistKeyFD > 0) {
+          int rcKey = pwrite(hoistKeyFD, KeyInfo, SizeKeyFile, OffStKeyFile);
+          if (rcKey < 0) {
+            printf("Could not write to output file.\n");
+          }
+        } else {
           printf("Could not open output file. %s\n", KeyFN);
         }
-        int rcKey = pwrite(resultKeyFN, KeyInfo, SizeKeyFile, OffStKeyFile);
-        if (rcKey < 0) {
-          printf("Could not write to output file.\n");
-          rcKey = close(resultKeyFN);
-        }
-        rcKey = close(resultKeyFN);
         int ProcessKeyFN =
             open(ProcessGrainsFN, O_CREAT | O_WRONLY, S_IRUSR | S_IWUSR);
         if (ProcessKeyFN <= 0) {
@@ -2860,6 +2854,8 @@ int main(int argc, char *argv[]) {
       free(XFit4);
       free(ErrorFin);
     }
+    if (hoistKeyFD > 0)
+      close(hoistKeyFD);
 
     FreeMemMatrix(hkls, MaxNHKLS);
     free(SptIDs);
@@ -2891,6 +2887,10 @@ int main(int argc, char *argv[]) {
       it++;
     }
     fclose(spotsFile);
+    /* Hoist Key.bin fd before parallel region */
+    char hoistKeyFN2[1024];
+    sprintf(hoistKeyFN2, "%s/Key.bin", ResultFolder);
+    int hoistKeyFD2 = open(hoistKeyFN2, O_CREAT | O_WRONLY, S_IRUSR | S_IWUSR);
 // do openmp on each of these lines
 #pragma omp parallel for num_threads(numProcs) private(it) schedule(dynamic)
     for (it = 0; it < nSptIDs; it++) {
@@ -2904,17 +2904,13 @@ int main(int argc, char *argv[]) {
         size_t OffStKeyFile = SizeKeyFile;
         OffStKeyFile *= it;
         int KeyInfo[2] = {0, 0};
-#pragma omp critical
-        {
-          int resultKeyFN = open(KeyFN, O_CREAT | O_WRONLY, S_IRUSR | S_IWUSR);
-          if (resultKeyFN <= 0) {
-            printf("Could not open output file.\n");
-          }
-          int rc = pwrite(resultKeyFN, KeyInfo, SizeKeyFile, OffStKeyFile);
+        if (hoistKeyFD2 > 0) {
+          int rc = pwrite(hoistKeyFD2, KeyInfo, SizeKeyFile, OffStKeyFile);
           if (rc < 0) {
             printf("Could not write to output file.\n");
           }
-          close(resultKeyFN);
+        } else {
+          printf("Could not open output file.\n");
         }
         continue;
       }
@@ -2941,13 +2937,8 @@ int main(int argc, char *argv[]) {
         size_t OffStKeyFile = SizeKeyFile;
         OffStKeyFile *= it;
         int KeyInfo[2] = {0, 0};
-#pragma omp critical
-        {
-          int resultKeyFN = open(KeyFN, O_CREAT | O_WRONLY, S_IRUSR | S_IWUSR);
-          if (resultKeyFN > 0) {
-            pwrite(resultKeyFN, KeyInfo, SizeKeyFile, OffStKeyFile);
-            close(resultKeyFN);
-          }
+        if (hoistKeyFD2 > 0) {
+          pwrite(hoistKeyFD2, KeyInfo, SizeKeyFile, OffStKeyFile);
         }
         continue;
       }
@@ -2959,17 +2950,13 @@ int main(int argc, char *argv[]) {
         size_t OffStKeyFile = SizeKeyFile;
         OffStKeyFile *= it;
         int KeyInfo[2] = {0, 0};
-#pragma omp critical
-        {
-          int resultKeyFN = open(KeyFN, O_CREAT | O_WRONLY, S_IRUSR | S_IWUSR);
-          if (resultKeyFN <= 0) {
-            printf("Could not open output file.\n");
-          }
-          int rc = pwrite(resultKeyFN, KeyInfo, SizeKeyFile, OffStKeyFile);
+        if (hoistKeyFD2 > 0) {
+          int rc = pwrite(hoistKeyFD2, KeyInfo, SizeKeyFile, OffStKeyFile);
           if (rc < 0) {
             printf("Could not write to output file.\n");
           }
-          close(resultKeyFN);
+        } else {
+          printf("Could not open output file.\n");
         }
         continue;
       }
@@ -3261,16 +3248,14 @@ int main(int argc, char *argv[]) {
       }
 #pragma omp critical
       {
-        int resultKeyFN = open(KeyFN, O_CREAT | O_WRONLY, S_IRUSR | S_IWUSR);
-        if (resultKeyFN <= 0) {
+        if (hoistKeyFD2 > 0) {
+          int rcKey = pwrite(hoistKeyFD2, KeyInfo, SizeKeyFile, OffStKeyFile);
+          if (rcKey < 0) {
+            printf("Could not write to output file.\n");
+          }
+        } else {
           printf("Could not open output file. %s\n", KeyFN);
         }
-        int rcKey = pwrite(resultKeyFN, KeyInfo, SizeKeyFile, OffStKeyFile);
-        if (rcKey < 0) {
-          printf("Could not write to output file.\n");
-          rcKey = close(resultKeyFN);
-        }
-        rcKey = close(resultKeyFN);
         int ProcessKeyFN =
             open(ProcessGrainsFN, O_CREAT | O_WRONLY, S_IRUSR | S_IWUSR);
         if (ProcessKeyFN <= 0) {
@@ -3314,6 +3299,8 @@ int main(int argc, char *argv[]) {
       free(spotIDS);
       free(ErrorFin);
     }
+    if (hoistKeyFD2 > 0)
+      close(hoistKeyFD2);
   }
   return 0;
 }

@@ -802,12 +802,24 @@ int main(int argc, char *argv[]) {
     printf("Fitting %d candidate orientations using %d threads...\n",
            OrientationGoodID, nCPUs);
     fflush(stdout);
-#pragma omp parallel for schedule(dynamic)                                     \
-    shared(BestFrac, BestEuler, BestLsdFit, BestTiltsFit, BestBCsFit,          \
-               BestOrientIdx, done, progressCount)
+    /* Per-thread local-best storage for lock-free reduction */
+    int nThreads = nCPUs;
+    double *tBestFrac = malloc(nThreads * sizeof(double));
+    double *tBestEuler = malloc(nThreads * 3 * sizeof(double));
+    int *tBestIdx = malloc(nThreads * sizeof(int));
+    double *tBestLsd = malloc(nThreads * nLayers * sizeof(double));
+    double *tBestTilts = malloc(nThreads * 3 * sizeof(double));
+    double *tBestBCs = malloc(nThreads * nLayers * 2 * sizeof(double));
+    for (int t = 0; t < nThreads; t++) {
+      tBestFrac[t] = -1;
+      tBestIdx[t] = -1;
+    }
+#pragma omp parallel for schedule(dynamic) num_threads(nCPUs) \
+    shared(done, progressCount)
     for (i = 0; i < OrientationGoodID; i++) {
       if (done)
         continue;
+      int tid = omp_get_thread_num();
       int j_local, m_local;
       double OMTemp[9], OrientIn[3][3], EulerIn[3];
       double FracOut, EulerOutA, EulerOutB, EulerOutC;
@@ -828,33 +840,23 @@ int main(int argc, char *argv[]) {
                      TiltsFit, BCsFit, lsdtol, lsdtolrel, tiltstol, bctola,
                      bctolb, NrPixelsY, NrPixelsZ);
       double Frac = 1 - FracOut;
-#pragma omp critical
-      {
-        if (Frac > BestFrac) {
-          BestFrac = Frac;
-          BestEuler[0] = EulerOutA;
-          BestEuler[1] = EulerOutB;
-          BestEuler[2] = EulerOutC;
-          BestOrientIdx = i;
-          for (j_local = 0; j_local < nLayers; j_local++) {
-            BestLsdFit[j_local] = LsdFit[j_local];
-            BestBCsFit[j_local][0] = BCsFit[j_local][0];
-            BestBCsFit[j_local][1] = BCsFit[j_local][1];
-          }
-          BestTiltsFit[0] = TiltsFit[0];
-          BestTiltsFit[1] = TiltsFit[1];
-          BestTiltsFit[2] = TiltsFit[2];
-          printf(
-              "\nBest fraction till now: %f, Orientation number: %d of %d.\n",
-              BestFrac, i + 1, OrientationGoodID);
-          printf("Euler angles: %f %f %f, ConfidenceIndex: %f, Before fit: "
-                 "%f\nTilts: %f %f %f\n",
-                 EulerOutA, EulerOutB, EulerOutC, Frac, OrientMatrix[i][9],
-                 TiltsFit[0], TiltsFit[1], TiltsFit[2]);
-          fflush(stdout);
-          if (1 - BestFrac < 0.0001)
-            done = 1;
+      /* Thread-local best update — no lock needed */
+      if (Frac > tBestFrac[tid]) {
+        tBestFrac[tid] = Frac;
+        tBestEuler[tid * 3 + 0] = EulerOutA;
+        tBestEuler[tid * 3 + 1] = EulerOutB;
+        tBestEuler[tid * 3 + 2] = EulerOutC;
+        tBestIdx[tid] = i;
+        for (j_local = 0; j_local < nLayers; j_local++) {
+          tBestLsd[tid * nLayers + j_local] = LsdFit[j_local];
+          tBestBCs[tid * nLayers * 2 + j_local * 2 + 0] = BCsFit[j_local][0];
+          tBestBCs[tid * nLayers * 2 + j_local * 2 + 1] = BCsFit[j_local][1];
         }
+        tBestTilts[tid * 3 + 0] = TiltsFit[0];
+        tBestTilts[tid * 3 + 1] = TiltsFit[1];
+        tBestTilts[tid * 3 + 2] = TiltsFit[2];
+        if (1 - Frac < 0.0001)
+          done = 1;
       }
       free(LsdFit);
       free(TiltsFit);
@@ -866,13 +868,38 @@ int main(int argc, char *argv[]) {
       if (myCount % progressInterval == 0 || myCount == OrientationGoodID) {
         double pct = 100.0 * myCount / OrientationGoodID;
         double elapsed = omp_get_wtime() - tFitStart;
-#pragma omp critical
-        {
-          printf("\rProgress: %d/%d (%.0f%%) | Elapsed: %.1fs | Best: %.4f   ",
-                 myCount, OrientationGoodID, pct, elapsed, BestFrac);
-          fflush(stdout);
-        }
+        printf("\rProgress: %d/%d (%.0f%%) | Elapsed: %.1fs              ",
+               myCount, OrientationGoodID, pct, elapsed);
+        fflush(stdout);
       }
+    }
+    /* Serial reduction: pick global best from per-thread results */
+    for (int t = 0; t < nThreads; t++) {
+      if (tBestFrac[t] > BestFrac) {
+        BestFrac = tBestFrac[t];
+        BestEuler[0] = tBestEuler[t * 3 + 0];
+        BestEuler[1] = tBestEuler[t * 3 + 1];
+        BestEuler[2] = tBestEuler[t * 3 + 2];
+        BestOrientIdx = tBestIdx[t];
+        for (j = 0; j < nLayers; j++) {
+          BestLsdFit[j] = tBestLsd[t * nLayers + j];
+          BestBCsFit[j][0] = tBestBCs[t * nLayers * 2 + j * 2 + 0];
+          BestBCsFit[j][1] = tBestBCs[t * nLayers * 2 + j * 2 + 1];
+        }
+        BestTiltsFit[0] = tBestTilts[t * 3 + 0];
+        BestTiltsFit[1] = tBestTilts[t * 3 + 1];
+        BestTiltsFit[2] = tBestTilts[t * 3 + 2];
+      }
+    }
+    free(tBestFrac);
+    free(tBestEuler);
+    free(tBestIdx);
+    free(tBestLsd);
+    free(tBestTilts);
+    free(tBestBCs);
+    if (BestOrientIdx >= 0) {
+      printf("\nBest fraction: %f, Orientation number: %d of %d.\n",
+             BestFrac, BestOrientIdx + 1, OrientationGoodID);
     }
     printf("\n"); // Newline after progress bar
     // Print final best result summary
