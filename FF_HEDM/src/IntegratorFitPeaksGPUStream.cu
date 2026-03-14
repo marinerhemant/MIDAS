@@ -235,6 +235,8 @@ struct data {
   int y;
   int z;
   double frac;
+  float deltaR;    /* R_sub_centroid - R_bin_center (gradient correction) */
+  float _reserved; /* padding to 24 bytes */
 };
 
 // --- Stream Context Structure ---
@@ -920,7 +922,8 @@ __global__ void initialize_PerFrameArr_Area_kernel(
 __global__ void PrecomputeOffsets_kernel(const struct data *dPxList,
                                          const int *dNPxList, int nBins,
                                          int NrPixelsY, int *dOffsets,
-                                         float *dWeights) {
+                                         float *dWeights, float *dDeltaR,
+                                         float *dPxY, float *dPxZ) {
   const size_t idx = (size_t)blockIdx.x * blockDim.x + threadIdx.x;
   if (idx >= nBins)
     return;
@@ -933,8 +936,60 @@ __global__ void PrecomputeOffsets_kernel(const struct data *dPxList,
     long long offset = (long long)ThisVal.z * NrPixelsY + ThisVal.y;
     dOffsets[dataPos + l] = (int)offset;
     dWeights[dataPos + l] = ThisVal.frac;
+    dDeltaR[dataPos + l] = ThisVal.deltaR;
+    dPxY[dataPos + l] = ThisVal.y;
+    dPxZ[dataPos + l] = ThisVal.z;
   }
 }
+
+/* ── GPU kernel: compute radial gradient image dI/dR ────────── */
+__global__ void compute_radial_gradient_kernel(
+    const float *dImage, float *dGradImage,
+    int NrPixelsY, int NrPixelsZ,
+    float BC_y, float BC_z) {
+  const int iy = blockIdx.x * blockDim.x + threadIdx.x;
+  const int iz = blockIdx.y * blockDim.y + threadIdx.y;
+  if (iy >= NrPixelsY || iz >= NrPixelsZ) return;
+
+  float dy = (float)iy - BC_y;
+  float dz = (float)iz - BC_z;
+  float R = sqrtf(dy * dy + dz * dz);
+  size_t idx = (size_t)iz * NrPixelsY + iy;
+  if (R < 1.0f) { dGradImage[idx] = 0.0f; return; }
+
+  /* Unit radial vector */
+  float ury = dy / R, urz = dz / R;
+  /* Sample at ±1 pixel along radial direction */
+  float yp = iy + ury, zp = iz + urz;
+  float ym = iy - ury, zm = iz - urz;
+
+  /* Clamp + bilinear interpolation */
+  int iyp = (int)floorf(yp), izp = (int)floorf(zp);
+  int iym = (int)floorf(ym), izm = (int)floorf(zm);
+  if (iyp < 0) iyp = 0; if (iyp >= NrPixelsY - 1) iyp = NrPixelsY - 2;
+  if (izp < 0) izp = 0; if (izp >= NrPixelsZ - 1) izp = NrPixelsZ - 2;
+  if (iym < 0) iym = 0; if (iym >= NrPixelsY - 1) iym = NrPixelsY - 2;
+  if (izm < 0) izm = 0; if (izm >= NrPixelsZ - 1) izm = NrPixelsZ - 2;
+  float fyp = yp - iyp, fzp = zp - izp;
+  float fym = ym - iym, fzm = zm - izm;
+  if (fyp < 0) fyp = 0; if (fyp > 1) fyp = 1;
+  if (fzp < 0) fzp = 0; if (fzp > 1) fzp = 1;
+  if (fym < 0) fym = 0; if (fym > 1) fym = 1;
+  if (fzm < 0) fzm = 0; if (fzm > 1) fzm = 1;
+
+  float Ip =
+      __ldg(&dImage[(size_t)izp * NrPixelsY + iyp]) * (1-fyp) * (1-fzp) +
+      __ldg(&dImage[(size_t)izp * NrPixelsY + iyp + 1]) * fyp * (1-fzp) +
+      __ldg(&dImage[(size_t)(izp+1) * NrPixelsY + iyp]) * (1-fyp) * fzp +
+      __ldg(&dImage[(size_t)(izp+1) * NrPixelsY + iyp + 1]) * fyp * fzp;
+  float Im =
+      __ldg(&dImage[(size_t)izm * NrPixelsY + iym]) * (1-fym) * (1-fzm) +
+      __ldg(&dImage[(size_t)izm * NrPixelsY + iym + 1]) * fym * (1-fzm) +
+      __ldg(&dImage[(size_t)(izm+1) * NrPixelsY + iym]) * (1-fym) * fzm +
+      __ldg(&dImage[(size_t)(izm+1) * NrPixelsY + iym + 1]) * fym * fzm;
+  dGradImage[idx] = (Ip - Im) * 0.5f;
+}
+
 
 __global__ void integrate_noMapMask(double px, double Lsd, size_t bigArrSize,
                                     int Normalize, int sumImages, int frameIdx,
@@ -942,7 +997,11 @@ __global__ void integrate_noMapMask(double px, double Lsd, size_t bigArrSize,
                                     int NrPixelsZ, const float *dImage,
                                     double *dIntArrPerFrame, double *dSumMatrix,
                                     const int *dOffsets, const float *dWeights,
-                                    const int *dSortedIndices) {
+                                    const int *dSortedIndices,
+                                    int gradientCorrection,
+                                    const float *dDeltaR,
+                                    const float *dPxY, const float *dPxZ,
+                                    float BC_y, float BC_z) {
   const size_t tid = (size_t)blockIdx.x * blockDim.x + threadIdx.x;
   if (tid >= bigArrSize)
     return;
@@ -951,7 +1010,7 @@ __global__ void integrate_noMapMask(double px, double Lsd, size_t bigArrSize,
   const int idx = dSortedIndices[tid];
 
   float Intensity = 0.0f;
-  float totArea = 0.0f; // <<< RE-INTRODUCED local area calculation
+  float totArea = 0.0f;
 
   long long nPixels = 0;
   long long dataPos = 0;
@@ -961,10 +1020,37 @@ __global__ void integrate_noMapMask(double px, double Lsd, size_t bigArrSize,
   dataPos = dNPxList[nPxListIndex + 1];
 
   for (long long l = 0; l < nPixels; l++) {
-    int testPos = dOffsets[dataPos + l];
     float weight = dWeights[dataPos + l];
-    Intensity += __ldg(&dImage[testPos]) * weight; // Direct float read
-    totArea += weight; // <<< Accumulate area locally
+    float pixVal;
+    if (gradientCorrection) {
+      /* Resampling: shift read position to R_bin_center along radial ray */
+      float py = dPxY[dataPos + l];
+      float pz = dPxZ[dataPos + l];
+      float deltaR = dDeltaR[dataPos + l];
+      float dy = py - BC_y;
+      float dz = pz - BC_z;
+      float R = sqrtf(dy * dy + dz * dz);
+      float ry = py, rz = pz;
+      if (R > 1.0f) {
+        ry -= deltaR * dy / R;
+        rz -= deltaR * dz / R;
+      }
+      int iy = (int)floorf(ry), iz = (int)floorf(rz);
+      float fy = ry - iy, fz = rz - iz;
+      if (iy < 0) { iy = 0; fy = 0; }
+      if (iy >= NrPixelsY - 1) { iy = NrPixelsY - 2; fy = 1; }
+      if (iz < 0) { iz = 0; fz = 0; }
+      if (iz >= NrPixelsZ - 1) { iz = NrPixelsZ - 2; fz = 1; }
+      pixVal = __ldg(&dImage[(size_t)iz * NrPixelsY + iy]) * (1-fy) * (1-fz) +
+               __ldg(&dImage[(size_t)iz * NrPixelsY + iy + 1]) * fy * (1-fz) +
+               __ldg(&dImage[(size_t)(iz+1) * NrPixelsY + iy]) * (1-fy) * fz +
+               __ldg(&dImage[(size_t)(iz+1) * NrPixelsY + iy + 1]) * fy * fz;
+    } else {
+      int testPos = dOffsets[dataPos + l];
+      pixVal = __ldg(&dImage[testPos]);
+    }
+    Intensity += pixVal * weight;
+    totArea += weight;
   }
 
   // Use the *locally calculated* totArea for threshold and normalization
@@ -1797,6 +1883,8 @@ int main(int argc, char *argv[]) {
   double QBinSize = 0, QMin_param = 0, QMax_param = 0;
   int NrPixelsY = 0, NrPixelsZ = 0;
   int Normalize = 1;
+  int GradientCorrection = 0;
+  double BC_y = 0.0, BC_z = 0.0;
   int nEtaBins = 0, nRBins = 0;
   char *ParamFN = argv[1];
   FILE *pF = fopen(ParamFN, "r");
@@ -1856,6 +1944,10 @@ int main(int argc, char *argv[]) {
       } // Shortcut
       else if (strcmp(key, "Normalize") == 0)
         sscanf(val_str, "%d", &Normalize);
+      else if (strcmp(key, "GradientCorrection") == 0)
+        sscanf(val_str, "%d", &GradientCorrection);
+      else if (strcmp(key, "BC") == 0)
+        sscanf(val_str, "%lf %lf", &BC_y, &BC_z);
       else if (strcmp(key, "GapIntensity") == 0) {
         sscanf(val_str, "%lld", &GapI);
         mkMap = 1;
@@ -2048,7 +2140,14 @@ int main(int argc, char *argv[]) {
          *dRHi = NULL; // Bin edges on GPU
   int *dPixelOffsets = NULL;
   float *dPixelWeights = NULL;
+  float *dDeltaR_gpu = NULL;  /* gradient correction: per-entry R offsets */
+  float *dPxY_gpu = NULL, *dPxZ_gpu = NULL; /* sub-pixel float coordinates */
   int *dSortedIndices = NULL; // New: Sorted bin indices for load balancing
+
+  // --- Allocate sub-pixel coordinate arrays ---
+  if (GradientCorrection) {
+    printf("GradientCorrection=1: GPU resampling mode enabled\n");
+  }
 
   // --- Global GPU Allocations (Geometry & Maps) ---
   gpuErrchk(cudaMalloc(&dPxList, szPxList));
@@ -2069,6 +2168,9 @@ int main(int argc, char *argv[]) {
   size_t pxListCount = szPxList / sizeof(struct data);
   gpuErrchk(cudaMalloc(&dPixelOffsets, pxListCount * sizeof(int)));
   gpuErrchk(cudaMalloc(&dPixelWeights, pxListCount * sizeof(float)));
+  gpuErrchk(cudaMalloc(&dDeltaR_gpu, pxListCount * sizeof(float)));
+  gpuErrchk(cudaMalloc(&dPxY_gpu, pxListCount * sizeof(float)));
+  gpuErrchk(cudaMalloc(&dPxZ_gpu, pxListCount * sizeof(float)));
   gpuErrchk(cudaMalloc(&dSortedIndices, bigArrSize * sizeof(int)));
 
   if (sumI) {
@@ -2194,7 +2296,8 @@ int main(int argc, char *argv[]) {
   // So `idx` corresponds to `bigArrSize` (total bins).
   int pcBlocks2 = (bigArrSize + initTPB - 1) / initTPB;
   PrecomputeOffsets_kernel<<<pcBlocks2, initTPB>>>(
-      dPxList, dNPxList, bigArrSize, NrPixelsY, dPixelOffsets, dPixelWeights);
+      dPxList, dNPxList, bigArrSize, NrPixelsY, dPixelOffsets, dPixelWeights,
+      dDeltaR_gpu, dPxY_gpu, dPxZ_gpu);
 
   gpuErrchk(cudaDeviceSynchronize());
 
@@ -2590,11 +2693,15 @@ int main(int argc, char *argv[]) {
     int integTPB = THREADS_PER_BLOCK_INTEGRATE;
     int nrVox = (bigArrSize + integTPB - 1) / integTPB;
 
+
+
     if (!dMapMask) {
       integrate_noMapMask<<<nrVox, integTPB, 0, ctx->stream>>>(
           px, Lsd, bigArrSize, Normalize, sumI, ctx->frameIdx, dNPxList,
           NrPixelsY, NrPixelsZ, ctx->dProcessedImage, ctx->dIntArrFrame,
-          dSumMatrix, dPixelOffsets, dPixelWeights, dSortedIndices);
+          dSumMatrix, dPixelOffsets, dPixelWeights, dSortedIndices,
+          GradientCorrection, dDeltaR_gpu, dPxY_gpu, dPxZ_gpu,
+          (float)BC_y, (float)BC_z);
     } else {
       integrate_MapMask<<<nrVox, integTPB, 0, ctx->stream>>>(
           px, Lsd, bigArrSize, Normalize, sumI, ctx->frameIdx, mapMaskWC,

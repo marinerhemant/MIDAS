@@ -80,9 +80,11 @@ static inline double **allocMatrix(int nrows, int ncols) {
 }
 
 struct data {
-  int y;
-  int z;
+  float y;
+  float z;
   double frac;
+  float deltaR;    /* R_sub_centroid - R_bin_center (gradient correction) */
+  float _reserved; /* padding to 24 bytes */
 };
 
 struct data *pxList;
@@ -408,7 +410,9 @@ struct IntegratorParams {
   double QBinSize, QMin, QMax;
   double Polariz, SHpL, U, V, W, X, Y, Z;
   double omeStart, omeStep;
+  double BC_y, BC_z; // beam center for bilinear interpolation
   int NrPixelsY, NrPixelsZ, Normalize, skipFrame;
+  int GradientCorrection; /* 0=off, 1=apply radial gradient correction */
   int NrTransOpt;
   int TransOpt[10];
   int sumImages, chunkFiles, individualSave;
@@ -429,6 +433,7 @@ static void initIntegratorParams(struct IntegratorParams *p) {
   p->NrPixelsY = 2048;
   p->NrPixelsZ = 2048;
   p->Normalize = 1;
+  p->GradientCorrection = 0;
   p->Lam = 0.172978;
   p->Polariz = 0.99;
   p->SHpL = 0.002;
@@ -461,6 +466,8 @@ static int readParamFile(const char *filename, struct IntegratorParams *p) {
       p->RMax = atof(rest);
     else if (strcmp(key, "RBinSize") == 0)
       p->RBinSize = atof(rest);
+    else if (strcmp(key, "BC") == 0)
+      sscanf(rest, "%lf %lf", &p->BC_y, &p->BC_z);
     else if (strcmp(key, "EtaMin") == 0 || strcmp(key, "MinEta") == 0)
       p->EtaMin = atof(rest);
     else if (strcmp(key, "EtaMax") == 0)
@@ -503,6 +510,8 @@ static int readParamFile(const char *filename, struct IntegratorParams *p) {
       }
     } else if (strcmp(key, "Normalize") == 0)
       p->Normalize = atoi(rest);
+    else if (strcmp(key, "GradientCorrection") == 0)
+      p->GradientCorrection = atoi(rest);
     else if (strcmp(key, "SkipFrame") == 0)
       p->skipFrame = atoi(rest);
     else if (strcmp(key, "OmegaStart") == 0 ||
@@ -584,7 +593,7 @@ static int readDataFile(const char *filename, size_t NrPixels,
     return -1;
   }
   if (strcasecmp(ext, ".tif") == 0 || strcasecmp(ext, ".tiff") == 0) {
-    return ReadTiffFrame(filename, 6, NrPixels, returnArr, 0);
+    return ReadTiffFrame(filename, 0, NrPixels, returnArr, 0);
   } else if (strcasecmp(ext, ".h5") == 0 || strcasecmp(ext, ".hdf5") == 0 ||
              strcasecmp(ext, ".hdf") == 0) {
     return ReadHDF5Frame(filename, "exchange/data", NrPixels, returnArr, 0);
@@ -667,7 +676,10 @@ int main(int argc, char **argv) {
   printf("Running with %d OpenMP threads.\n", nCPUs);
 
   double RMax, RMin, RBinSize, EtaMax, EtaMin, EtaBinSize, Lsd, px;
+  double BC_y = 0, BC_z = 0;
   int NrPixelsY = 2048, NrPixelsZ = 2048, Normalize = 1;
+  int GradientCorrection = 0;
+  double *dIdR = NULL; /* radial gradient image (pre-computed per frame) */
   int nEtaBins, nRBins;
   char aline[4096], dummy[4096], *str;
   int HeadSize = 8192;
@@ -757,9 +769,12 @@ int main(int argc, char **argv) {
     Lsd = ip.Lsd;
     px = ip.px;
     Lam = ip.Lam;
+    BC_y = ip.BC_y;
+    BC_z = ip.BC_z;
     NrPixelsY = ip.NrPixelsY;
     NrPixelsZ = ip.NrPixelsZ;
     Normalize = ip.Normalize;
+    GradientCorrection = ip.GradientCorrection;
     skipFrame = ip.skipFrame;
     NrTransOpt = ip.NrTransOpt;
     for (int i = 0; i < NrTransOpt; i++)
@@ -1687,18 +1702,64 @@ integration_start:
         if (mapMaskSize != 0) {
           for (l = 0; l < nPixels; l++) {
             ThisVal = pxList[dataPos + l];
-            testPos = (size_t)ThisVal.z * NrPixelsY + ThisVal.y;
+            int iy = (int)floorf(ThisVal.y);
+            int iz = (int)floorf(ThisVal.z);
+            testPos = (size_t)iz * NrPixelsY + iy;
             if (TestBit(mapMask, testPos)) {
               continue;
             }
-            Intensity += Image[testPos] * ThisVal.frac;
+            // Bilinear interpolation — optionally shifted to R_bin_center
+            double read_y = ThisVal.y, read_z = ThisVal.z;
+            if (GradientCorrection && ThisVal.deltaR != 0.0f) {
+              double dy = ThisVal.y - BC_y;
+              double dz = ThisVal.z - BC_z;
+              double R = sqrt(dy * dy + dz * dz);
+              if (R > 1.0) {
+                read_y -= ThisVal.deltaR * dy / R;
+                read_z -= ThisVal.deltaR * dz / R;
+              }
+            }
+            int riy = (int)floorf(read_y);
+            int riz = (int)floorf(read_z);
+            double fy = read_y - riy, fz = read_z - riz;
+            if (riy < 0) { riy = 0; fy = 0; }
+            if (riy >= NrPixelsY - 1) { riy = NrPixelsY - 2; fy = 1; }
+            if (riz < 0) { riz = 0; fz = 0; }
+            if (riz >= NrPixelsZ - 1) { riz = NrPixelsZ - 2; fz = 1; }
+            double pixVal =
+                Image[(size_t)riz * NrPixelsY + riy] * (1 - fy) * (1 - fz) +
+                Image[(size_t)riz * NrPixelsY + riy + 1] * fy * (1 - fz) +
+                Image[(size_t)(riz + 1) * NrPixelsY + riy] * (1 - fy) * fz +
+                Image[(size_t)(riz + 1) * NrPixelsY + riy + 1] * fy * fz;
+            Intensity += pixVal * ThisVal.frac;
             totArea += ThisVal.frac;
           }
         } else {
           for (l = 0; l < nPixels; l++) {
             ThisVal = pxList[dataPos + l];
-            Intensity +=
-                Image[(size_t)ThisVal.z * NrPixelsY + ThisVal.y] * ThisVal.frac;
+            double read_y = ThisVal.y, read_z = ThisVal.z;
+            if (GradientCorrection && ThisVal.deltaR != 0.0f) {
+              double dy = ThisVal.y - BC_y;
+              double dz = ThisVal.z - BC_z;
+              double R = sqrt(dy * dy + dz * dz);
+              if (R > 1.0) {
+                read_y -= ThisVal.deltaR * dy / R;
+                read_z -= ThisVal.deltaR * dz / R;
+              }
+            }
+            int iy = (int)floorf(read_y);
+            int iz = (int)floorf(read_z);
+            double fy = read_y - iy, fz = read_z - iz;
+            if (iy < 0) { iy = 0; fy = 0; }
+            if (iy >= NrPixelsY - 1) { iy = NrPixelsY - 2; fy = 1; }
+            if (iz < 0) { iz = 0; fz = 0; }
+            if (iz >= NrPixelsZ - 1) { iz = NrPixelsZ - 2; fz = 1; }
+            double pixVal =
+                Image[(size_t)iz * NrPixelsY + iy] * (1 - fy) * (1 - fz) +
+                Image[(size_t)iz * NrPixelsY + iy + 1] * fy * (1 - fz) +
+                Image[(size_t)(iz + 1) * NrPixelsY + iy] * (1 - fy) * fz +
+                Image[(size_t)(iz + 1) * NrPixelsY + iy + 1] * fy * fz;
+            Intensity += pixVal * ThisVal.frac;
             totArea += ThisVal.frac;
           }
         }

@@ -83,6 +83,22 @@ int ReadTiffFrame(const char *filename, int dType, size_t NrPixels,
     }
   }
 
+  /* Auto-detect sample format when dType == 0 */
+  if (dType == 0) {
+    uint16_t bps = 0, fmt = SAMPLEFORMAT_UINT;
+    TIFFGetFieldDefaulted(tif, TIFFTAG_BITSPERSAMPLE, &bps);
+    TIFFGetFieldDefaulted(tif, TIFFTAG_SAMPLEFORMAT, &fmt);
+    if (fmt == SAMPLEFORMAT_IEEEFP) {
+      dType = (bps == 64) ? 11 : 10;          /* float64 / float32 */
+    } else if (fmt == SAMPLEFORMAT_INT) {
+      dType = (bps == 16) ? 9 : 6;            /* int16 / int32 */
+    } else { /* UINT or unknown */
+      if (bps == 8)       dType = 7;           /* uint8 */
+      else if (bps == 16) dType = 9;           /* uint16 */
+      else                dType = 6;           /* uint32 / int32 */
+    }
+  }
+
   uint32_t imagelength;
   tsize_t scanline;
   TIFFGetField(tif, TIFFTAG_IMAGELENGTH, &imagelength); // Rows
@@ -95,13 +111,7 @@ int ReadTiffFrame(const char *filename, int dType, size_t NrPixels,
   }
 
   int rnr;
-  size_t pxIndex = 0;
   int i;
-
-  // Check scanline size vs expected width
-  // We assume the caller knows the dimensions implicitly via NrPixels?
-  // original code calculates index: rnr * (scanline / sizeof_type) + i
-  // We strictly follow original logic.
 
   if (dType == 6) { // int32
     int32_t *datar;
@@ -114,16 +124,7 @@ int ReadTiffFrame(const char *filename, int dType, size_t NrPixels,
     }
   } else if (dType == 7) { // uint8 (bitmap logic)
     uint8_t *datar;
-    // Initialize to 0 first? Original code: if (datar[i] == 1) returnArr[...] =
-    // 1; The original code does NOT set 0 if datar[i] != 1. It assumes
-    // returnArr is pre-cleared or something. But here we are producing values.
-    // Let's assume we copy values unless it is strictly a mask?
-    // Original code: "if (datar[i] == 1) returnArr[...] = 1;"
-    // This implies returnArr should be initialized to 0 by caller or here.
-    // We will initialize returnArr to 0 here to be safe for dType 7 usage
-    // (usually masks).
     memset(returnArr, 0, NrPixels * sizeof(double));
-
     for (rnr = 0; rnr < imagelength; rnr++) {
       TIFFReadScanline(tif, buf, rnr, 1);
       datar = (uint8_t *)buf;
@@ -133,7 +134,7 @@ int ReadTiffFrame(const char *filename, int dType, size_t NrPixels,
         }
       }
     }
-  } else if (dType == 9) { // uint16 (NEW)
+  } else if (dType == 9) { // uint16
     uint16_t *datar;
     for (rnr = 0; rnr < imagelength; rnr++) {
       TIFFReadScanline(tif, buf, rnr, 1);
@@ -142,12 +143,31 @@ int ReadTiffFrame(const char *filename, int dType, size_t NrPixels,
         returnArr[rnr * (scanline / sizeof(uint16_t)) + i] = (double)datar[i];
       }
     }
+  } else if (dType == 10) { // float32
+    float *datar;
+    for (rnr = 0; rnr < imagelength; rnr++) {
+      TIFFReadScanline(tif, buf, rnr, 1);
+      datar = (float *)buf;
+      for (i = 0; i < scanline / sizeof(float); i++) {
+        returnArr[rnr * (scanline / sizeof(float)) + i] = (double)datar[i];
+      }
+    }
+  } else if (dType == 11) { // float64
+    double *datar;
+    for (rnr = 0; rnr < imagelength; rnr++) {
+      TIFFReadScanline(tif, buf, rnr, 1);
+      datar = (double *)buf;
+      for (i = 0; i < scanline / sizeof(double); i++) {
+        returnArr[rnr * (scanline / sizeof(double)) + i] = datar[i];
+      }
+    }
   }
 
   _TIFFfree(buf);
   TIFFClose(tif);
   return FR_SUCCESS;
 }
+
 
 // --- HDF5 Reading ---
 

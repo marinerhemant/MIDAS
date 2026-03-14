@@ -38,16 +38,17 @@
 
 /* Magic = "MAP0" in little-endian */
 #define MAP_HEADER_MAGIC 0x3050414D
-#define MAP_HEADER_VERSION 2
+#define MAP_HEADER_VERSION 3
 #define MAP_HEADER_SIZE 64
 
 #pragma pack(push, 1)
 struct MapHeader {
   uint32_t magic;         /*  4 bytes: 0x3050414D = "MAP0" */
-  uint32_t version;       /*  4 bytes: 2 */
+  uint32_t version;       /*  4 bytes: 3 */
   uint8_t param_hash[32]; /* 32 bytes: SHA-256 of parameters */
   uint8_t  q_mode;        /*  1 byte:  0=R-mode, 1=Q-mode */
-  uint8_t  reserved_pad[7]; /* 7 bytes: alignment padding */
+  uint8_t  gradient_mode; /*  1 byte:  0=no deltaR, 1=deltaR populated (v3+) */
+  uint8_t  reserved_pad[6]; /* 6 bytes: alignment padding */
   double   wavelength;    /*  8 bytes: wavelength in Å (0 if R-mode) */
   uint8_t  reserved[8];   /*  8 bytes: zero-filled, future use */
 };

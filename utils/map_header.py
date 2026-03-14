@@ -54,15 +54,19 @@ def read_map_header(path: Path) -> Optional[dict]:
     # Version 2+ fields
     q_mode = 0
     wavelength = 0.0
+    gradient_mode = 0
     if version >= 2:
         q_mode = data[40]
         wavelength = struct.unpack_from('<d', data, 48)[0]
+    if version >= 3:
+        gradient_mode = data[41]
     return {
         'magic': magic,
         'version': version,
         'hash': param_hash.hex(),
         'q_mode': q_mode,
         'wavelength': wavelength,
+        'gradient_mode': gradient_mode,
     }
 
 
