@@ -111,6 +111,13 @@ void dg_pixel_to_REta(double Y, double Z, double Ycen, double Zcen,
   DistortFunc += 1;
   double Rt = Rad * DistortFunc / px; // in pixels
   Rt = Rt * (Lsd / panelLsd);         // re-project to global Lsd plane
+  // Parallax/absorption correction: X-rays penetrate the sensor at an
+  // angle-dependent depth, shifting the apparent radial position.
+  // parallax is in µm; convert to pixels via /px.
+  if (parallax != 0.0) {
+    double twoTheta = atan(Rad / panelLsd);
+    Rt += parallax * sin(twoTheta) / px;
+  }
   *R_out = Rt;
   *Eta_out = EtaTilted;
   if (Eta_untilted_out != NULL)

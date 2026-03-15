@@ -128,6 +128,9 @@ add_ff_hedm_executable(DetectorMapper SOURCES src/DetectorMapper.c src/DetectorG
 # add_ff_hedm_executable(Integrator SOURCES src/Integrator.c src/FileReader.c)  # archived → src/archive/Integrator.c
 # add_ff_hedm_executable(IntegratorZarr SOURCES src/archive/IntegratorZarr.c)
 add_ff_hedm_executable(IntegratorZarrOMP SOURCES src/IntegratorZarrOMP.c src/ZarrReader.c src/PeakFit.c src/PeakFitIO.c src/FileReader.c OMP)
+# Float32 accumulation variant for precision testing (reviewer response)
+add_ff_hedm_executable(IntegratorZarrOMP_f32 SOURCES src/IntegratorZarrOMP.c src/ZarrReader.c src/PeakFit.c src/PeakFitIO.c src/FileReader.c OMP)
+target_compile_definitions(IntegratorZarrOMP_f32 PRIVATE FLOAT32_ACCUM)
 # add_ff_hedm_executable(ConvTiffToGE SOURCES src/ConvTiffToGE.c)
 # add_ff_hedm_executable(MapBND SOURCES src/MapBND.c)
 

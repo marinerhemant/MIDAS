@@ -1946,6 +1946,15 @@ int main(int argc, char *argv[]) {
         sscanf(val_str, "%d", &Normalize);
       else if (strcmp(key, "GradientCorrection") == 0)
         sscanf(val_str, "%d", &GradientCorrection);
+      // Physical corrections (informational: corrections are baked into map weights)
+      else if (strcmp(key, "SolidAngleCorrection") == 0)
+        printf("Note: SolidAngleCorrection is applied during map generation\n");
+      else if (strcmp(key, "PolarizationCorrection") == 0)
+        printf("Note: PolarizationCorrection is applied during map generation\n");
+      else if (strcmp(key, "PolarizationFraction") == 0)
+        printf("Note: PolarizationFraction is applied during map generation\n");
+      else if (strcmp(key, "Parallax") == 0)
+        printf("Note: Parallax correction is applied during map generation\n");
       else if (strcmp(key, "BC") == 0)
         sscanf(val_str, "%lf %lf", &BC_y, &BC_z);
       else if (strcmp(key, "GapIntensity") == 0) {

@@ -77,7 +77,9 @@ mapperfcn(double tx, double ty, double tz, int NrPixelsY, int NrPixelsZ,
           double *RBinsHigh, int nRBins, int nEtaBins, struct data ***pxList,
           int **nPxList, int **maxnPx, double *mask, double p4, double p5,
           int *binMaskFlag, int NrTransOpt, const int TransOpt[10],
-          omp_lock_t *binLocks, int SubPixelLevel, double SubPixelCardinalWidth) {
+          omp_lock_t *binLocks, int SubPixelLevel, double SubPixelCardinalWidth,
+          double parallax, int solidAngleCorr, int polarizationCorr,
+          double polFraction) {
   double TRs[3][3];
   dg_build_tilt_matrix(tx, ty, tz, TRs);
   int i;
@@ -122,7 +124,7 @@ mapperfcn(double tx, double ty, double tz, int NrPixelsY, int NrPixelsZ,
       if (SubPixelLevel > 1) {
         double Rt_cen, Eta_cen;
         dg_pixel_to_REta(ypr, zpr, Ycen, Zcen, TRs, Lsd, RhoD, p0, p1, p2,
-                         p3, p4, p5, pxY, dLsd, dP2, 0, &Rt_cen, &Eta_cen,
+                         p3, p4, p5, pxY, dLsd, dP2, parallax, &Rt_cen, &Eta_cen,
                          NULL);
         // Check if near a cardinal angle (0, +-90, +-180)
         double absEta = fabs(Eta_cen);
@@ -158,7 +160,7 @@ mapperfcn(double tx, double ty, double tz, int NrPixelsY, int NrPixelsZ,
               double Y = ypr + sp_dy[k];
               double Z = zpr + sp_dz[l];
               dg_pixel_to_REta(Y, Z, Ycen, Zcen, TRs, Lsd, RhoD, p0, p1, p2,
-                               p3, p4, p5, pxY, dLsd, dP2, 0, &Rt, &Eta,
+                               p3, p4, p5, pxY, dLsd, dP2, parallax, &Rt, &Eta,
                                NULL);
               RetVals[0] = Eta;
               RetVals[1] = Rt;
@@ -180,7 +182,7 @@ mapperfcn(double tx, double ty, double tz, int NrPixelsY, int NrPixelsZ,
           double ypr_sub = ypr + sp_cy;
           double zpr_sub = zpr + sp_cz;
           dg_pixel_to_REta(ypr_sub, zpr_sub, Ycen, Zcen, TRs, Lsd, RhoD, p0,
-                           p1, p2, p3, p4, p5, pxY, dLsd, dP2, 0, &Rt, &Eta,
+                           p1, p2, p3, p4, p5, pxY, dLsd, dP2, parallax, &Rt, &Eta,
                            NULL);
           double YZ_local[2];
           dg_REta_to_YZ(Rt, Eta, &YZ_local[0], &YZ_local[1]);
@@ -341,6 +343,22 @@ mapperfcn(double tx, double ty, double tz, int NrPixelsY, int NrPixelsZ,
                 nrContinued3++;
                 continue;
               }
+              // Physical corrections: bake into weight so integrators need no change
+              if (solidAngleCorr || polarizationCorr) {
+                double R_bin_cen = (RBinsLow[RChosen[k]] + RBinsHigh[RChosen[k]]) * 0.5;
+                double twoTheta = atan(R_bin_cen * pxY / Lsd);
+                if (solidAngleCorr) {
+                  double c2t = cos(twoTheta);
+                  Area /= (c2t * c2t * c2t); // divide by cos³(2θ)
+                }
+                if (polarizationCorr) {
+                  double Eta_bin_cen = (EtaBinsLow[EtaChosen[l]] + EtaBinsHigh[EtaChosen[l]]) * 0.5;
+                  double s2t = sin(twoTheta);
+                  double ce = cos(Eta_bin_cen * DG_DEG2RAD);
+                  double polFactor = 1.0 - polFraction * s2t * s2t * ce * ce;
+                  if (polFactor > 1e-6) Area /= polFactor;
+                }
+              }
               // Store entry with sub-pixel center position
               {
                 int lockIdx =
@@ -409,7 +427,7 @@ mapperfcn(double tx, double ty, double tz, int NrPixelsY, int NrPixelsZ,
     for (int si = 0; si < 4; si++) {
       double Rdbg, Etadbg;
       dg_pixel_to_REta((double)sampleY[si], (double)sampleZ[si], Ycen, Zcen,
-                       TRsDbg, Lsd, RhoD, p0, p1, p2, p3, p4, p5, pxY, 0, 0, 0,
+                       TRsDbg, Lsd, RhoD, p0, p1, p2, p3, p4, p5, pxY, 0, 0, parallax,
                        &Rdbg, &Etadbg, NULL);
       printf("  pixel(%4d,%4d): R=%10.2f  Eta=%8.2f\n", sampleY[si],
              sampleZ[si], Rdbg, Etadbg);
@@ -523,6 +541,11 @@ int main(int argc, char *argv[]) {
   double QBinSize = 0, QMin = 0, QMax = 0, Wavelength = 0;
   int SubPixelLevel = 1;
   double SubPixelCardinalWidth = 10.0;
+  // Physical corrections
+  double Parallax = 0.0;
+  int SolidAngleCorrection = 0;
+  int PolarizationCorrection = 0;
+  double PolarizationFraction = 0.99;
 
   // ── Mode A: Read parameters from text file ─────────────────────
   if (ParamFN != NULL) {
@@ -724,6 +747,22 @@ int main(int argc, char *argv[]) {
       if (StartsWith(aline, str) == 1) {
         sscanf(aline, "%s %s", dummy, MaskFN);
         useMask = 1;
+      }
+      str = "Parallax ";
+      if (StartsWith(aline, str) == 1) {
+        sscanf(aline, "%s %lf", dummy, &Parallax);
+      }
+      str = "SolidAngleCorrection ";
+      if (StartsWith(aline, str) == 1) {
+        sscanf(aline, "%s %d", dummy, &SolidAngleCorrection);
+      }
+      str = "PolarizationCorrection ";
+      if (StartsWith(aline, str) == 1) {
+        sscanf(aline, "%s %d", dummy, &PolarizationCorrection);
+      }
+      str = "PolarizationFraction ";
+      if (StartsWith(aline, str) == 1) {
+        sscanf(aline, "%s %lf", dummy, &PolarizationFraction);
       }
     }
     fclose(paramFile);
@@ -1074,11 +1113,18 @@ int main(int argc, char *argv[]) {
     omp_init_lock(&binLocks[li]);
 
   // Run mapper
+  if (SolidAngleCorrection)
+    printf("  SolidAngleCorrection: ON (cos^3(2theta))\n");
+  if (PolarizationCorrection)
+    printf("  PolarizationCorrection: ON (fraction=%.4f)\n", PolarizationFraction);
+  if (Parallax != 0.0)
+    printf("  Parallax: %.2f µm\n", Parallax);
   long long int TotNrOfBins = mapperfcn(
       tx, ty, tz, NrPixelsY, NrPixelsZ, pxY, pxZ, yCen, zCen, Lsd, RhoD, p0, p1,
       p2, p3, EtaBinsLow, EtaBinsHigh, RBinsLow, RBinsHigh, nRBins, nEtaBins,
       pxList, nPxList, maxnPx, mask, p4, p5, binMaskFlag, NrTransOpt, TransOpt,
-      binLocks, SubPixelLevel, SubPixelCardinalWidth);
+      binLocks, SubPixelLevel, SubPixelCardinalWidth,
+      Parallax, SolidAngleCorrection, PolarizationCorrection, PolarizationFraction);
   printf("Total Number of bins %lld\n", TotNrOfBins);
   fflush(stdout);
 

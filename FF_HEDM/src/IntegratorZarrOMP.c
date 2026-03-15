@@ -1568,7 +1568,13 @@ integration_start:
   char outFN1d[4096];
   char dmyt[10000];
   FILE *out1d;
+  // Use float accumulators when FLOAT32_ACCUM is defined (precision test)
+#ifdef FLOAT32_ACCUM
+  float Intensity, totArea;
+  double ThisInt;
+#else
   double Intensity, totArea, ThisInt;
+#endif
   size_t testPos;
   double RMean, EtaMean;
   size_t bigArrSize = nEtaBins * nRBins;
@@ -1688,7 +1694,7 @@ integration_start:
              neg1_total, neg1_used, neg2_total, neg2_used);
     }
     t_0 = omp_get_wtime();
-#pragma omp parallel for private(j, k, l, Pos, nPixels, dataPos, Intensity,    \
+#pragma omp parallel for schedule(dynamic, 64) private(j, k, l, Pos, nPixels, dataPos, Intensity,    \
                                      totArea, ThisVal, testPos, ThisInt,       \
                                      RMean, EtaMean)
     for (j = 0; j < nRBins; j++) {
