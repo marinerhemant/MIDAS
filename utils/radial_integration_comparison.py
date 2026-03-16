@@ -1872,7 +1872,9 @@ def benchmark_detector_config(det, n_iters=TABLE2_ITERS, warmup=TABLE2_WARMUP):
         print(f"      cd ~/opt/MIDAS/build && cmake --build . "
               f"--target {exe_name} -j")
         if r.stderr:
-            print(f"    stderr: {r.stderr[:200]}")
+            print(f"    stderr: {r.stderr[:500]}")
+        if r.stdout:
+            print(f"    stdout (last 500): {r.stdout[-500:]}")
         return None
 
     t_arr = np.array(timings_total)
