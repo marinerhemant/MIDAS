@@ -1756,6 +1756,12 @@ def benchmark_detector_config(det, n_iters=TABLE2_ITERS, warmup=TABLE2_WARMUP):
     timings = timings[warmup:]
     if not timings:
         print(f"    WARNING: no benchmark timings parsed")
+        print(f"    HINT: Rebuild MIDAS binary — the -benchmark flag may not "
+              f"be compiled in.")
+        print(f"      cd ~/opt/MIDAS/build && cmake --build . "
+              f"--target {exe_name} -j")
+        if r.stderr:
+            print(f"    stderr: {r.stderr[:200]}")
         return None
 
     t_arr = np.array(timings)
