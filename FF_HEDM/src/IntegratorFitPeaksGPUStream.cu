@@ -2341,10 +2341,9 @@ int main(int argc, char *argv[]) {
     printf("  Bins:      %d R × %d Eta = %zu total\n",
            nRBins, nEtaBins, bigArrSize);
 
-    // Read image from file (binary uint16 TIFF or raw)
-    // Try to read as raw uint16 first (simplest for synthetic data)
-    size_t imgBytes = totalPixels * sizeof(uint16_t);
-    uint16_t *hImg = (uint16_t *)malloc(imgBytes);
+    // Read image from file (binary uint32 TIFF or raw)
+    size_t imgBytes = totalPixels * sizeof(uint32_t);
+    uint32_t *hImg = (uint32_t *)malloc(imgBytes);
     check(!hImg, "malloc failed for benchmark image");
 
     FILE *fImg = fopen(benchmarkDataFN, "rb");
@@ -2434,7 +2433,7 @@ int main(int argc, char *argv[]) {
       // H→D copy + cast + dark subtract
       ProcessImageGPU(hPinnedImg, dBenchProcessed, dAvgDark, Nopt, Topt,
                       NrPixelsY, NrPixelsZ, darkSubEnabled, dBenchTemp1,
-                      dBenchTemp2, 1 /* uint16 */, benchStream,
+                      dBenchTemp2, 2 /* uint32 */, benchStream,
                       evCopyStart, evCopyStop, evTransStart, evTransStop);
 
       // Mark end of H→D + preprocess, start of kernel

@@ -1715,14 +1715,14 @@ TABLE2_WARMUP  = 5
 
 
 def generate_synthetic_image(width, height, n_rings=10, seed=42):
-    """Generate synthetic uint16 image with Debye-Scherrer rings.
+    """Generate synthetic uint32 image with Debye-Scherrer rings.
 
     Matches the paper methodology: 10 rings at random radial positions,
-    ring thickness ~5 px, pixel values uniform [2000, 16000], beam center
+    ring thickness ~5 px, pixel values uniform [2000, 40000], beam center
     at geometric center.
     """
     rng = np.random.RandomState(seed)
-    img = rng.randint(50, 200, size=(height, width), dtype=np.uint16)
+    img = rng.randint(50, 200, size=(height, width), dtype=np.uint32)
 
     cy, cx = height / 2.0, width / 2.0
     max_r = np.sqrt(cx**2 + cy**2) * 0.95
@@ -1734,7 +1734,7 @@ def generate_synthetic_image(width, height, n_rings=10, seed=42):
 
     for r0 in ring_radii:
         mask = np.abs(rr - r0) <= ring_width / 2
-        ring_vals = rng.randint(2000, 16000, size=mask.sum()).astype(np.uint16)
+        ring_vals = rng.randint(2000, 40000, size=mask.sum()).astype(np.uint32)
         img[mask] = ring_vals
 
     return img
