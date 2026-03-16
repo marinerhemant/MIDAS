@@ -1380,32 +1380,53 @@ def benchmark_pyfai_method(method_tuple, n_iters=BENCHMARK_ITERS,
     lsd_m = LSD_UM * 1e-6
     wl_m = WL_A * 1e-10
 
-    img_path = os.path.join(DATA_DIR, DATA_FILE)
-    img_raw = tifffile.imread(img_path).astype(np.float64)
-    img = np.flipud(img_raw).T
+    # Use real data if available, otherwise fall back to synthetic
+    real_img_path = os.path.join(DATA_DIR, DATA_FILE)
+    if os.path.isfile(real_img_path):
+        img_raw = tifffile.imread(real_img_path).astype(np.float64)
+        img = np.flipud(img_raw).T
 
-    dark_files = [fn for fn in os.listdir(DATA_DIR)
-                  if fn.startswith('dark') and fn.endswith('.tif')]
-    if dark_files:
-        dark_raw = tifffile.imread(
-            os.path.join(DATA_DIR, dark_files[0])).astype(np.float64)
-        dark = np.flipud(dark_raw).T
-        img -= dark
+        dark_files = [fn for fn in os.listdir(DATA_DIR)
+                      if fn.startswith('dark') and fn.endswith('.tif')]
+        if dark_files:
+            dark_raw = tifffile.imread(
+                os.path.join(DATA_DIR, dark_files[0])).astype(np.float64)
+            dark = np.flipud(dark_raw).T
+            img -= dark
+    else:
+        # Synthetic fallback — use the workdir image
+        work_dir = _ensure_varex_workdir()
+        if not work_dir:
+            signal.signal(signal.SIGINT, old_handler)
+            return None
+        synth_path = os.path.join(work_dir, DATA_FILE)
+        if not os.path.isfile(synth_path):
+            synth_path = os.path.join(work_dir, 'synthetic.tif')
+        img = tifffile.imread(synth_path).astype(np.float64)
+        # Synthetic uses centered BC and 150µm pixel
+        px_m = 150e-6
+        print(f"    Using synthetic data (no real CeO₂ available)")
 
     det = Detector(pixel1=px_m, pixel2=px_m,
                    max_shape=(img.shape[0], img.shape[1]))
-    poni1 = (BC_Y + 0.5) * px_m
-    poni2 = (BC_Z + 0.5) * px_m
+    # Beam center: real data uses BC_Y/BC_Z, synthetic uses image center
+    if os.path.isfile(real_img_path):
+        poni1 = (BC_Y + 0.5) * px_m
+        poni2 = (BC_Z + 0.5) * px_m
+    else:
+        poni1 = (img.shape[0] / 2.0 + 0.5) * px_m
+        poni2 = (img.shape[1] / 2.0 + 0.5) * px_m
     ai = AzimuthalIntegrator(
         dist=lsd_m, poni1=poni1, poni2=poni2,
         wavelength=wl_m, detector=det
     )
 
     dr = BENCHMARK_DR
-    npt_rad = int((R_MAX - R_MIN) / dr)
+    r_max_px = np.sqrt((img.shape[0]/2)**2 + (img.shape[1]/2)**2)
+    npt_rad = int((r_max_px - R_MIN) / dr)
     npt_azim = int((ETA_MAX - ETA_MIN) / ETA_BIN)
     r_min_mm = R_MIN * px_m * 1e3
-    r_max_mm = R_MAX * px_m * 1e3
+    r_max_mm = r_max_px * px_m * 1e3
     kwargs = dict(npt_rad=npt_rad, npt_azim=npt_azim, unit="r_mm",
                   method=method_tuple,
                   radial_range=(r_min_mm, r_max_mm),
