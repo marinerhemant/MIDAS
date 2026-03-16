@@ -1805,7 +1805,7 @@ def benchmark_detector_config(det, n_iters=TABLE2_ITERS, warmup=TABLE2_WARMUP):
     wall = time.time() - t0
 
     if r.returncode != 0:
-        print(f"    IntegratorZarrOMP FAILED (rc={r.returncode})")
+        print(f"    {exe_name} FAILED (rc={r.returncode})")
         if r.stderr:
             print(f"    stderr: {r.stderr[:300]}")
         return None

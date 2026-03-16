@@ -1859,14 +1859,17 @@ int main(int argc, char *argv[]) {
     return 1;
   }
 
-  // --- Parse optional CLI flags: -benchmark N, -dataFN ---
+  // --- Parse optional CLI flags: -benchmark N, -dataFN, -paramFN ---
   int benchmarkN = 0;
   char *benchmarkDataFN = NULL;
+  char *flagParamFN = NULL;
   for (int ai = 1; ai < argc; ai++) {
     if (strcmp(argv[ai], "-benchmark") == 0 && ai + 1 < argc) {
       benchmarkN = atoi(argv[++ai]);
     } else if (strcmp(argv[ai], "-dataFN") == 0 && ai + 1 < argc) {
       benchmarkDataFN = argv[++ai];
+    } else if (strcmp(argv[ai], "-paramFN") == 0 && ai + 1 < argc) {
+      flagParamFN = argv[++ai];
     }
   }
 
@@ -1902,7 +1905,8 @@ int main(int argc, char *argv[]) {
   int GradientCorrection = 0;
   double BC_y = 0.0, BC_z = 0.0;
   int nEtaBins = 0, nRBins = 0;
-  char *ParamFN = argv[1];
+  // ParamFN: prefer -paramFN flag, fall back to argv[1] (positional)
+  char *ParamFN = flagParamFN ? flagParamFN : argv[1];
   FILE *pF = fopen(ParamFN, "r");
   check(!pF, "Failed open param file: %s", ParamFN);
 
