@@ -82,9 +82,9 @@ static inline double **allocMatrix(int nrows, int ncols) {
 struct data {
   float y;
   float z;
-  double frac;
-  float deltaR;    /* R_sub_centroid - R_bin_center (gradient correction) */
-  float _reserved; /* padding to 24 bytes */
+  double frac;       /* corrected weight: Area / C  (C = solid-angle × polarization) */
+  float deltaR;      /* R_sub_centroid - R_bin_center (gradient correction) */
+  float areaWeight;  /* uncorrected geometric area weight */
 };
 
 struct data *pxList;
@@ -1741,7 +1741,7 @@ integration_start:
                 Image[(size_t)(riz + 1) * NrPixelsY + riy] * (1 - fy) * fz +
                 Image[(size_t)(riz + 1) * NrPixelsY + riy + 1] * fy * fz;
             Intensity += pixVal * ThisVal.frac;
-            totArea += ThisVal.frac;
+            totArea += ThisVal.areaWeight;
           }
         } else {
           for (l = 0; l < nPixels; l++) {
@@ -1769,7 +1769,7 @@ integration_start:
                 Image[(size_t)(iz + 1) * NrPixelsY + iy] * (1 - fy) * fz +
                 Image[(size_t)(iz + 1) * NrPixelsY + iy + 1] * fy * fz;
             Intensity += pixVal * ThisVal.frac;
-            totArea += ThisVal.frac;
+            totArea += ThisVal.areaWeight;
           }
         }
         if (Intensity != 0) {
@@ -1839,7 +1839,7 @@ integration_start:
                   Image[(size_t)(iz + 1) * NrPixelsY + iy] * (1 - fy) * fz +
                   Image[(size_t)(iz + 1) * NrPixelsY + iy + 1] * fy * fz;
               Intensity += pixVal * ThisVal.frac;
-              totArea += ThisVal.frac;
+              totArea += ThisVal.areaWeight;
             }
             if (Intensity != 0 && Normalize == 1) {
               Intensity /= totArea;

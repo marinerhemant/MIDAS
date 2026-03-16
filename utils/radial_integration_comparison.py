@@ -238,6 +238,10 @@ def run_midas_experiments():
             'p5': '0',
             'Normalize': '1',
             'SubPixelLevel': '1',
+            # Physical corrections: match pyFAI's convention
+            'SolidAngleCorrection': '1',
+            'PolarizationCorrection': '1',
+            'polFraction': '0.99',
         }
 
         print(f"\n  ΔR = {dr} px:")
@@ -336,16 +340,15 @@ def run_pyfai_experiments():
         print(f"\n  ΔR = {dr} px (npt_rad={npt_rad}, npt_azim={npt_azim}):")
 
         try:
-            # correctSolidAngle=False: MIDAS does not apply solid-angle
-            # correction (cos³(2θ)), so we disable it in pyFAI to match.
-            # With it enabled, there is a systematic ~2.5% offset.
+            # Enable solid-angle and polarization corrections to match MIDAS
             res = ai.integrate2d(
                 img, npt_rad=npt_rad, npt_azim=npt_azim,
                 unit="r_mm",
                 method=("full", "histogram", "cython"),
                 radial_range=(r_min_mm, r_max_mm),
                 azimuth_range=(ETA_MIN, ETA_MAX),
-                correctSolidAngle=False,
+                correctSolidAngle=True,
+                polarization_factor=0.99,
             )
             # Convert radial axis from mm to pixels
             R_px = res.radial / (px_m * 1e3)
@@ -1013,6 +1016,14 @@ def plot_precision(results):
     ax.set_title(f'(b) Bin-by-bin correlation\nr = {np.corrcoef(I64[valid], I32[valid])[0,1]:.10f}')
     ax.set_aspect('equal')
     ax.legend()
+    # Fix overlapping tick labels on both axes
+    from matplotlib.ticker import ScalarFormatter
+    for axis in [ax.xaxis, ax.yaxis]:
+        fmt = ScalarFormatter(useMathText=True)
+        fmt.set_scientific(True)
+        fmt.set_powerlimits((-2, 4))
+        axis.set_major_formatter(fmt)
+    ax.tick_params(axis='x', rotation=30)
 
     # (c) Error vs R (radial dependence)
     ax = axes[1, 0]

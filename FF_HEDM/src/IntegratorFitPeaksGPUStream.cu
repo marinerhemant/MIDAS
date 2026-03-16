@@ -234,9 +234,9 @@ void writer_queue_destroy(WriterQueue *queue);
 struct data {
   float y;
   float z;
-  double frac;
-  float deltaR;    /* R_sub_centroid - R_bin_center (gradient correction) */
-  float _reserved; /* padding to 24 bytes */
+  double frac;       /* corrected weight: Area / C  (C = solid-angle × polarization) */
+  float deltaR;      /* R_sub_centroid - R_bin_center (gradient correction) */
+  float areaWeight;  /* uncorrected geometric area weight */
 };
 
 // --- Stream Context Structure ---
@@ -896,7 +896,7 @@ __global__ void initialize_PerFrameArr_Area_kernel(
       // --- End Mask Application ---
 
       if (!isMasked) {
-        totArea += ThisVal.frac; // Accumulate area only if not masked
+        totArea += ThisVal.areaWeight; // Accumulate uncorrected area weight
       }
     }
   } // else: No pixels for this bin, totArea remains 0.0
@@ -922,7 +922,8 @@ __global__ void initialize_PerFrameArr_Area_kernel(
 __global__ void PrecomputeOffsets_kernel(const struct data *dPxList,
                                          const int *dNPxList, int nBins,
                                          int NrPixelsY, int *dOffsets,
-                                         float *dWeights, float *dDeltaR,
+                                         float *dWeights, float *dAreaWeights,
+                                         float *dDeltaR,
                                          float *dPxY, float *dPxZ) {
   const size_t idx = (size_t)blockIdx.x * blockDim.x + threadIdx.x;
   if (idx >= nBins)
@@ -936,6 +937,7 @@ __global__ void PrecomputeOffsets_kernel(const struct data *dPxList,
     long long offset = (long long)ThisVal.z * NrPixelsY + ThisVal.y;
     dOffsets[dataPos + l] = (int)offset;
     dWeights[dataPos + l] = ThisVal.frac;
+    dAreaWeights[dataPos + l] = ThisVal.areaWeight;
     dDeltaR[dataPos + l] = ThisVal.deltaR;
     dPxY[dataPos + l] = ThisVal.y;
     dPxZ[dataPos + l] = ThisVal.z;
@@ -997,6 +999,7 @@ __global__ void integrate_noMapMask(double px, double Lsd, size_t bigArrSize,
                                     int NrPixelsZ, const float *dImage,
                                     double *dIntArrPerFrame, double *dSumMatrix,
                                     const int *dOffsets, const float *dWeights,
+                                    const float *dAreaWeights,
                                     const int *dSortedIndices,
                                     int gradientCorrection,
                                     const float *dDeltaR,
@@ -1050,7 +1053,7 @@ __global__ void integrate_noMapMask(double px, double Lsd, size_t bigArrSize,
       pixVal = __ldg(&dImage[testPos]);
     }
     Intensity += pixVal * weight;
-    totArea += weight;
+    totArea += dAreaWeights[dataPos + l];
   }
 
   // Use the *locally calculated* totArea for threshold and normalization
@@ -1072,7 +1075,8 @@ __global__ void integrate_MapMask(
     int frameIdx, size_t mapMaskWordCount, const int *dMapMask, int nRBins,
     int nEtaBins, int NrPixelsY, int NrPixelsZ, const int *dNPxList,
     const float *dImage, double *dIntArrPerFrame, double *dSumMatrix,
-    const int *dOffsets, const float *dWeights, const int *dSortedIndices) {
+    const int *dOffsets, const float *dWeights, const float *dAreaWeights,
+    const int *dSortedIndices) {
   const size_t tid = (size_t)blockIdx.x * blockDim.x + threadIdx.x;
   if (tid >= bigArrSize)
     return;
@@ -1100,7 +1104,7 @@ __global__ void integrate_MapMask(
     if (!isMasked) {
       float weight = dWeights[dataPos + l];
       Intensity += __ldg(&dImage[testPos]) * weight; // Direct float read
-      totArea += weight; // <<< Accumulate area locally (only for non-masked)
+      totArea += dAreaWeights[dataPos + l]; // Accumulate uncorrected area
     }
   }
 
@@ -2169,6 +2173,7 @@ int main(int argc, char *argv[]) {
          *dRHi = NULL; // Bin edges on GPU
   int *dPixelOffsets = NULL;
   float *dPixelWeights = NULL;
+  float *dPixelAreaWeights = NULL;
   float *dDeltaR_gpu = NULL;  /* gradient correction: per-entry R offsets */
   float *dPxY_gpu = NULL, *dPxZ_gpu = NULL; /* sub-pixel float coordinates */
   int *dSortedIndices = NULL; // New: Sorted bin indices for load balancing
@@ -2197,6 +2202,7 @@ int main(int argc, char *argv[]) {
   size_t pxListCount = szPxList / sizeof(struct data);
   gpuErrchk(cudaMalloc(&dPixelOffsets, pxListCount * sizeof(int)));
   gpuErrchk(cudaMalloc(&dPixelWeights, pxListCount * sizeof(float)));
+  gpuErrchk(cudaMalloc(&dPixelAreaWeights, pxListCount * sizeof(float)));
   gpuErrchk(cudaMalloc(&dDeltaR_gpu, pxListCount * sizeof(float)));
   gpuErrchk(cudaMalloc(&dPxY_gpu, pxListCount * sizeof(float)));
   gpuErrchk(cudaMalloc(&dPxZ_gpu, pxListCount * sizeof(float)));
@@ -2326,7 +2332,7 @@ int main(int argc, char *argv[]) {
   int pcBlocks2 = (bigArrSize + initTPB - 1) / initTPB;
   PrecomputeOffsets_kernel<<<pcBlocks2, initTPB>>>(
       dPxList, dNPxList, bigArrSize, NrPixelsY, dPixelOffsets, dPixelWeights,
-      dDeltaR_gpu, dPxY_gpu, dPxZ_gpu);
+      dPixelAreaWeights, dDeltaR_gpu, dPxY_gpu, dPxZ_gpu);
 
   gpuErrchk(cudaDeviceSynchronize());
 
@@ -2445,14 +2451,14 @@ int main(int argc, char *argv[]) {
             px, Lsd, bigArrSize, Normalize, 0 /* no sumI */, 0 /* frameIdx */,
             dNPxList, NrPixelsY, NrPixelsZ, dBenchProcessed, dBenchIntArr,
             NULL /* no sum matrix */, dPixelOffsets, dPixelWeights,
-            dSortedIndices, GradientCorrection, dDeltaR_gpu,
+            dPixelAreaWeights, dSortedIndices, GradientCorrection, dDeltaR_gpu,
             dPxY_gpu, dPxZ_gpu, (float)BC_y, (float)BC_z);
       } else {
         integrate_MapMask<<<nrVox, integTPB, 0, benchStream>>>(
             px, Lsd, bigArrSize, Normalize, 0, 0, mapMaskWC,
             dMapMask, nRBins, nEtaBins, NrPixelsY, NrPixelsZ, dNPxList,
             dBenchProcessed, dBenchIntArr, NULL, dPixelOffsets,
-            dPixelWeights, dSortedIndices);
+            dPixelWeights, dPixelAreaWeights, dSortedIndices);
       }
 
       // 1D profile reduction
@@ -2905,7 +2911,8 @@ int main(int argc, char *argv[]) {
       integrate_noMapMask<<<nrVox, integTPB, 0, ctx->stream>>>(
           px, Lsd, bigArrSize, Normalize, sumI, ctx->frameIdx, dNPxList,
           NrPixelsY, NrPixelsZ, ctx->dProcessedImage, ctx->dIntArrFrame,
-          dSumMatrix, dPixelOffsets, dPixelWeights, dSortedIndices,
+          dSumMatrix, dPixelOffsets, dPixelWeights, dPixelAreaWeights,
+          dSortedIndices,
           GradientCorrection, dDeltaR_gpu, dPxY_gpu, dPxZ_gpu,
           (float)BC_y, (float)BC_z);
     } else {
@@ -2913,7 +2920,7 @@ int main(int argc, char *argv[]) {
           px, Lsd, bigArrSize, Normalize, sumI, ctx->frameIdx, mapMaskWC,
           dMapMask, nRBins, nEtaBins, NrPixelsY, NrPixelsZ, dNPxList,
           ctx->dProcessedImage, ctx->dIntArrFrame, dSumMatrix, dPixelOffsets,
-          dPixelWeights, dSortedIndices);
+          dPixelWeights, dPixelAreaWeights, dSortedIndices);
     }
     double t_int_end = get_wall_time_ms();
     gpuErrchk(cudaEventRecord(ctx->stop_int, ctx->stream));
@@ -3103,6 +3110,8 @@ int main(int argc, char *argv[]) {
     cudaFree(dPixelOffsets);
   if (dPixelWeights)
     cudaFree(dPixelWeights);
+  if (dPixelAreaWeights)
+    cudaFree(dPixelAreaWeights);
   if (dSortedIndices)
     cudaFree(dSortedIndices);
 

@@ -39,9 +39,9 @@ static int nPanels = 0;
 struct data {
   float y;
   float z;
-  double frac;
-  float deltaR;    /* R_sub_centroid - R_bin_center (gradient correction) */
-  float _reserved; /* padding to 24 bytes */
+  double frac;       /* corrected weight: Area / C  (C = solid-angle × polarization) */
+  float deltaR;      /* R_sub_centroid - R_bin_center (gradient correction) */
+  float areaWeight;  /* uncorrected geometric area weight */
 };
 
 static inline void inverse_transform_pixel(int y_in, int z_in, int *y_out,
@@ -344,20 +344,22 @@ mapperfcn(double tx, double ty, double tz, int NrPixelsY, int NrPixelsZ,
                 nrContinued3++;
                 continue;
               }
-              // Physical corrections: bake into weight so integrators need no change
+              // Physical corrections: pyFAI convention.
+              // frac = Area / C  (corrected weight, used for intensity accumulation)
+              // areaWeight = Area (uncorrected, used for normalization denominator)
+              // This gives I_norm = Σ(w/C · I) / Σ(w), matching pyFAI.
+              double correctedArea = Area;
               if (solidAngleCorr || polarizationCorr) {
-                double R_bin_cen = (RBinsLow[RChosen[k]] + RBinsHigh[RChosen[k]]) * 0.5;
-                double twoTheta = atan(R_bin_cen * pxY / Lsd);
+                double twoTheta = atan(Rt * pxY / Lsd);
                 if (solidAngleCorr) {
                   double c2t = cos(twoTheta);
-                  Area /= (c2t * c2t * c2t); // divide by cos³(2θ)
+                  correctedArea /= (c2t * c2t * c2t);
                 }
                 if (polarizationCorr) {
-                  double Eta_bin_cen = (EtaBinsLow[EtaChosen[l]] + EtaBinsHigh[EtaChosen[l]]) * 0.5;
                   double s2t = sin(twoTheta);
-                  double ce = cos(Eta_bin_cen * DG_DEG2RAD);
+                  double ce = cos(Eta * DG_DEG2RAD);
                   double polFactor = 1.0 - polFraction * s2t * s2t * ce * ce;
-                  if (polFactor > 1e-6) Area /= polFactor;
+                  if (polFactor > 1e-6) correctedArea /= polFactor;
                 }
               }
               // Store entry with sub-pixel center position
@@ -388,7 +390,7 @@ mapperfcn(double tx, double ty, double tz, int NrPixelsY, int NrPixelsZ,
                     (float)raw_y + (float)sp_cy;
                 pxList[RChosen[k]][EtaChosen[l]][nVal].z =
                     (float)raw_z + (float)sp_cz;
-                pxList[RChosen[k]][EtaChosen[l]][nVal].frac = Area;
+                pxList[RChosen[k]][EtaChosen[l]][nVal].frac = correctedArea;
                 /* Gradient correction: offset of sub-pixel center
                    from R-bin center.  Rt was computed at line ~182
                    by dg_pixel_to_REta(ypr_sub, zpr_sub, ...). */
@@ -398,7 +400,7 @@ mapperfcn(double tx, double ty, double tz, int NrPixelsY, int NrPixelsZ,
                   pxList[RChosen[k]][EtaChosen[l]][nVal].deltaR =
                       (float)(Rt - R_bin_center);
                 }
-                pxList[RChosen[k]][EtaChosen[l]][nVal]._reserved = 0.0f;
+                pxList[RChosen[k]][EtaChosen[l]][nVal].areaWeight = (float)Area;
                 (nPxList[RChosen[k]][EtaChosen[l]])++;
                 omp_unset_lock(&binLocks[lockIdx]);
               }
@@ -1160,7 +1162,7 @@ int main(int argc, char *argv[]) {
         pxListStore[localCounter + k].z = pxList[i][j][k].z;
         pxListStore[localCounter + k].frac = pxList[i][j][k].frac;
         pxListStore[localCounter + k].deltaR = pxList[i][j][k].deltaR;
-        pxListStore[localCounter + k]._reserved = 0.0f;
+        pxListStore[localCounter + k].areaWeight = pxList[i][j][k].areaWeight;
       }
       localCounter += localNPxVal;
     }
