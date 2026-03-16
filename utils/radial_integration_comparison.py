@@ -1187,14 +1187,59 @@ def _set_omp_threads(n):
 
 
 def _ensure_varex_workdir():
-    """Ensure Varex compare_dr_1p0 workdir exists with Map.bin."""
+    """Ensure Varex benchmark workdir exists with Map.bin.
+
+    If real CeO₂ data is available, uses existing Map.bin.
+    Otherwise, generates synthetic Varex data + runs DetectorMapper
+    so benchmarks work on any machine.
+    """
     tag = f"compare_dr_{str(BENCHMARK_DR).replace('.', 'p')}"
     work_dir = os.path.join(WORK_BASE, tag)
     map_bin = os.path.join(work_dir, 'Map.bin')
-    if not os.path.isfile(map_bin):
-        print(f"  Map.bin not found in {work_dir}.")
-        print(f"  Run the main validation experiments first to generate it.")
+
+    if os.path.isfile(map_bin):
+        return work_dir
+
+    # Map.bin doesn't exist — try to generate from synthetic data
+    print(f"  Map.bin not found — generating synthetic Varex workdir...")
+    import tifffile
+    os.makedirs(work_dir, exist_ok=True)
+
+    # Generate synthetic image if real data not available
+    data_path = os.path.join(work_dir, DATA_FILE)
+    if not os.path.isfile(data_path):
+        real_data = os.path.join(DATA_DIR, DATA_FILE)
+        if os.path.isfile(real_data):
+            import shutil
+            shutil.copy2(real_data, data_path)
+            print(f"    Copied real CeO₂ data")
+        else:
+            print(f"    Generating synthetic 2880×2880 image...")
+            img = generate_synthetic_image(2880, 2880)
+            tifffile.imwrite(data_path, img)
+
+    # Generate param file
+    det = {'name': 'Varex 2923', 'px_um': 150, 'width': 2880, 'height': 2880}
+    ps_fn = os.path.join(work_dir, 'ps_test.txt')
+    if not os.path.isfile(ps_fn):
+        generate_param_file(det, work_dir)
+        # Rename ps_bench.txt to ps_test.txt for Experiment 5 compatibility
+        bench_fn = os.path.join(work_dir, 'ps_bench.txt')
+        if os.path.isfile(bench_fn):
+            os.rename(bench_fn, ps_fn)
+
+    # Run DetectorMapper
+    mapper = os.path.join(MIDAS_BIN, 'DetectorMapper')
+    cmd = [mapper, ps_fn, '-nCPUs', str(BENCHMARK_NCPUS)]
+    print(f"    Running DetectorMapper...")
+    r = subprocess.run(cmd, capture_output=True, text=True,
+                       timeout=600, cwd=work_dir)
+    if r.returncode != 0:
+        print(f"    DetectorMapper FAILED (rc={r.returncode})")
+        if r.stderr:
+            print(f"    stderr: {r.stderr[:300]}")
         return None
+    print(f"    DetectorMapper done, Map.bin created")
     return work_dir
 
 
@@ -1897,51 +1942,61 @@ def main():
     print("║  MIDAS Radial Integration — Comprehensive Validation Suite ║")
     print("╚" + "═" * 62 + "╝")
 
-    # ── Experiment 1: Varex MIDAS vs pyFAI ──
-    midas_results = run_midas_experiments()
-    pyfai_results = run_pyfai_experiments()
+    # Check if real Varex data is available for Experiments 1-4
+    has_real_data = os.path.isdir(DATA_DIR) and os.path.isfile(
+        os.path.join(DATA_DIR, PARAM_FILE))
 
-    if pyfai_results:
-        for dr in DELTA_RS:
-            if dr not in midas_results or dr not in pyfai_results:
-                print(f"\n  Skipping ΔR={dr}: missing data")
-                continue
+    if has_real_data:
+        # ── Experiment 1: Varex MIDAS vs pyFAI ──
+        midas_results = run_midas_experiments()
+        pyfai_results = run_pyfai_experiments()
 
-            print(f"\n{'='*60}")
-            print(f"  VAREX COMPARISON: ΔR = {dr} px")
-            print(f"{'='*60}")
+        if pyfai_results:
+            for dr in DELTA_RS:
+                if dr not in midas_results or dr not in pyfai_results:
+                    print(f"\n  Skipping ΔR={dr}: missing data")
+                    continue
 
-            md = midas_results[dr]
-            pd = pyfai_results[dr]
+                print(f"\n{'='*60}")
+                print(f"  VAREX COMPARISON: ΔR = {dr} px")
+                print(f"{'='*60}")
 
-            pI_interp = interpolate_pyfai_to_midas_grid(
-                md['R'], md['Eta'], pd['R'], pd['Eta'], pd['I_norm'])
+                md = midas_results[dr]
+                pd = pyfai_results[dr]
 
-            stats = compute_statistics(md['I_norm'], pI_interp,
-                                       label=f"Normalized, ΔR={dr}")
+                pI_interp = interpolate_pyfai_to_midas_grid(
+                    md['R'], md['Eta'], pd['R'], pd['Eta'], pd['I_norm'])
 
-            tag = str(dr).replace('.', 'p')
-            plot_cake_comparison(md, pd, dr, f'compare_cake_dr{tag}')
-            plot_scatter(md['I_norm'], pI_interp, dr, f'compare_scatter_dr{tag}')
-            if stats and 'rel_diff_values' in stats:
-                plot_histogram(stats['rel_diff_values'], dr,
-                              f'compare_hist_dr{tag}')
-            plot_lineouts(md, pd, pI_interp, dr, f'compare_lineouts_dr{tag}')
-            plot_1d_profiles(md, pd, dr, f'compare_1d_dr{tag}')
+                stats = compute_statistics(md['I_norm'], pI_interp,
+                                           label=f"Normalized, ΔR={dr}")
+
+                tag = str(dr).replace('.', 'p')
+                plot_cake_comparison(md, pd, dr, f'compare_cake_dr{tag}')
+                plot_scatter(md['I_norm'], pI_interp, dr,
+                             f'compare_scatter_dr{tag}')
+                if stats and 'rel_diff_values' in stats:
+                    plot_histogram(stats['rel_diff_values'], dr,
+                                  f'compare_hist_dr{tag}')
+                plot_lineouts(md, pd, pI_interp, dr,
+                              f'compare_lineouts_dr{tag}')
+                plot_1d_profiles(md, pd, dr, f'compare_1d_dr{tag}')
+        else:
+            print("\nWARNING: pyFAI not available — skipping comparison.")
+
+        # ── Experiment 2: Pilatus CeO₂ ──
+        pil_midas = run_pilatus_midas()
+
+        # ── Experiment 3: Precision test ──
+        prec = run_precision_test()
+        if prec:
+            plot_precision(prec)
+
+        # ── Experiment 4: pyFAI cake aliasing ──
+        plot_pyfai_cake_aliasing()
     else:
-        print("\nWARNING: pyFAI not available — skipping Varex comparison.")
-
-    # ── Experiment 2: Pilatus CeO₂ (MIDAS only — needed for precision test) ──
-    # pyFAI comparison skipped for multi-panel detectors (different geometry model)
-    pil_midas = run_pilatus_midas()
-
-    # ── Experiment 3: Precision test ──
-    prec = run_precision_test()
-    if prec:
-        plot_precision(prec)
-
-    # ── Experiment 4: pyFAI cake aliasing ──
-    plot_pyfai_cake_aliasing()
+        print(f"\n  NOTE: Real Varex data not found at {DATA_DIR}")
+        print(f"  Skipping Experiments 1-4 (require real CeO₂ data).")
+        print(f"  Running Experiments 5-6 with synthetic data.\n")
 
     # ── Experiment 5: CPU runtime benchmark ──
     run_benchmark_experiment()
