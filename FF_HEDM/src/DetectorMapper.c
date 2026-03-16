@@ -98,7 +98,8 @@ mapperfcn(double tx, double ty, double tz, int NrPixelsY, int NrPixelsZ,
     double boxEdge[4][2];
     double YZ[2];
     double cornerYZ[4][2];
-    int RChosen[500], EtaChosen[500];
+    int *RChosen = malloc(nRBins * sizeof(int));
+    int *EtaChosen = malloc(nEtaBins * sizeof(int));
     int j, k, l, m;
     for (j = 0; j < NrPixelsZ; j++) {
       long long int testPos = j;
@@ -410,6 +411,8 @@ mapperfcn(double tx, double ty, double tz, int NrPixelsY, int NrPixelsZ,
     }
     dg_free_matrix(Edges, 50);
     dg_free_matrix(EdgesOut, 50);
+    free(RChosen);
+    free(EtaChosen);
   }
   printf("%lld %lld %lld\n", nrContinued1, nrContinued2, nrContinued3);
 
