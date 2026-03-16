@@ -619,6 +619,7 @@ int main(int argc, char **argv) {
   double diftotal;
   int nCPUs = 4;
   char *PeakParamsFN = NULL;
+  int benchmarkIters = 0; /* -benchmark N: repeat integration kernel N times */
 
   // ── Mode detection ────────────────────────────────────────────
   int useParamFile = 0;
@@ -638,6 +639,8 @@ int main(int argc, char **argv) {
         nCPUs = atoi(argv[++i]);
       else if (strcmp(argv[i], "-PeakParamsFN") == 0 && i + 1 < argc)
         PeakParamsFN = argv[++i];
+      else if (strcmp(argv[i], "-benchmark") == 0 && i + 1 < argc)
+        benchmarkIters = atoi(argv[++i]);
     }
     if (!paramFN || !dataFN_arg) {
       fprintf(stderr,
@@ -1801,6 +1804,54 @@ integration_start:
       }
     }
     t_integration += (omp_get_wtime() - t_0);
+
+    /* ── Benchmark mode: repeat kernel N-1 more times (first iter above) ── */
+    if (benchmarkIters > 1 && i == 0) {
+      printf("BENCHMARK_CSV_HEADER,iter,wall_sec\n");
+      printf("BENCHMARK_CSV,0,%.9f\n", omp_get_wtime() - t_0);
+      for (int bm = 1; bm < benchmarkIters; bm++) {
+        memset(IntArrPerFrame, 0, bigArrSize * sizeof(double));
+        double bm_t0 = omp_get_wtime();
+#pragma omp parallel for schedule(dynamic, 64) private(j, k, l, Pos, nPixels,  \
+                                         dataPos, Intensity, totArea, ThisVal, \
+                                         testPos, ThisInt, RMean, EtaMean)
+        for (j = 0; j < nRBins; j++) {
+          RMean = (RBinsLow[j] + RBinsHigh[j]) / 2;
+          for (k = 0; k < nEtaBins; k++) {
+            Pos = j * nEtaBins + k;
+            nPixels = nPxList[2 * Pos + 0];
+            dataPos = nPxList[2 * Pos + 1];
+            Intensity = 0;
+            totArea = 0;
+            for (l = 0; l < nPixels; l++) {
+              ThisVal = pxList[dataPos + l];
+              double read_y = ThisVal.y, read_z = ThisVal.z;
+              int iy = (int)floorf(read_y);
+              int iz = (int)floorf(read_z);
+              double fy = read_y - iy, fz = read_z - iz;
+              if (iy < 0) { iy = 0; fy = 0; }
+              if (iy >= NrPixelsY - 1) { iy = NrPixelsY - 2; fy = 1; }
+              if (iz < 0) { iz = 0; fz = 0; }
+              if (iz >= NrPixelsZ - 1) { iz = NrPixelsZ - 2; fz = 1; }
+              double pixVal =
+                  Image[(size_t)iz * NrPixelsY + iy] * (1 - fy) * (1 - fz) +
+                  Image[(size_t)iz * NrPixelsY + iy + 1] * fy * (1 - fz) +
+                  Image[(size_t)(iz + 1) * NrPixelsY + iy] * (1 - fy) * fz +
+                  Image[(size_t)(iz + 1) * NrPixelsY + iy + 1] * fy * fz;
+              Intensity += pixVal * ThisVal.frac;
+              totArea += ThisVal.frac;
+            }
+            if (Intensity != 0 && Normalize == 1) {
+              Intensity /= totArea;
+            }
+            IntArrPerFrame[j * nEtaBins + k] = Intensity;
+          }
+        }
+        double bm_dt = omp_get_wtime() - bm_t0;
+        printf("BENCHMARK_CSV,%d,%.9f\n", bm, bm_dt);
+      }
+      fflush(stdout);
+    }
 
     // --- Compute eta-summed 1D lineout and write binary output ---
     double *lineout1D = (double *)calloc(nRBins, sizeof(double));

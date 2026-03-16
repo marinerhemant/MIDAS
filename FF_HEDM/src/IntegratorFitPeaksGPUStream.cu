@@ -232,8 +232,8 @@ int writer_queue_pop(WriterQueue *queue, WriteJob *job);
 void writer_queue_destroy(WriterQueue *queue);
 
 struct data {
-  int y;
-  int z;
+  float y;
+  float z;
   double frac;
   float deltaR;    /* R_sub_centroid - R_bin_center (gradient correction) */
   float _reserved; /* padding to 24 bytes */
@@ -1852,8 +1852,24 @@ int main(int argc, char *argv[]) {
     printf("  ParamFN:   Path to parameter file.\n");
     printf("  DarkAvgFN: Optional path to dark frame file (binary int64_t, "
            "averaged if multiple frames).\n");
+    printf("  -dataFN FN:    Path to raw image file (TIFF/binary) for "
+           "standalone mode.\n");
+    printf("  -benchmark N:  Run integration kernel N times and print "
+           "per-iteration GPU timings as CSV.\n");
     return 1;
   }
+
+  // --- Parse optional CLI flags: -benchmark N, -dataFN ---
+  int benchmarkN = 0;
+  char *benchmarkDataFN = NULL;
+  for (int ai = 1; ai < argc; ai++) {
+    if (strcmp(argv[ai], "-benchmark") == 0 && ai + 1 < argc) {
+      benchmarkN = atoi(argv[++ai]);
+    } else if (strcmp(argv[ai], "-dataFN") == 0 && ai + 1 < argc) {
+      benchmarkDataFN = argv[++ai];
+    }
+  }
+
   printf("[%s] - Starting...\n", argv[0]);
   double t_start_main = get_wall_time_ms();
 
@@ -2309,6 +2325,163 @@ int main(int argc, char *argv[]) {
       dDeltaR_gpu, dPxY_gpu, dPxZ_gpu);
 
   gpuErrchk(cudaDeviceSynchronize());
+
+  // ═══════════════════════════════════════════════════════════════
+  //  Standalone Benchmark Mode (-benchmark N -dataFN <file>)
+  // ═══════════════════════════════════════════════════════════════
+  if (benchmarkN > 0 && benchmarkDataFN != NULL) {
+    printf("\n═══ GPU BENCHMARK MODE: %d iterations ═══\n", benchmarkN);
+    printf("  Data file: %s\n", benchmarkDataFN);
+    printf("  Detector:  %d × %d (%zu pixels)\n",
+           NrPixelsY, NrPixelsZ, totalPixels);
+    printf("  Bins:      %d R × %d Eta = %zu total\n",
+           nRBins, nEtaBins, bigArrSize);
+
+    // Read image from file (binary uint16 TIFF or raw)
+    // Try to read as raw uint16 first (simplest for synthetic data)
+    size_t imgBytes = totalPixels * sizeof(uint16_t);
+    uint16_t *hImg = (uint16_t *)malloc(imgBytes);
+    check(!hImg, "malloc failed for benchmark image");
+
+    FILE *fImg = fopen(benchmarkDataFN, "rb");
+    check(!fImg, "Cannot open data file: %s", benchmarkDataFN);
+    fseek(fImg, 0, SEEK_END);
+    long fileSize = ftell(fImg);
+    rewind(fImg);
+
+    // If file has TIFF header (first 2 bytes are 'II' or 'MM'), skip
+    // header; for raw binary, read directly
+    uint8_t magic[4];
+    fread(magic, 1, 4, fImg);
+    rewind(fImg);
+
+    if ((magic[0] == 'I' && magic[1] == 'I') ||
+        (magic[0] == 'M' && magic[1] == 'M')) {
+      // TIFF file — try to find IFD and strip offset
+      // Simple approach: scan for the image data after TIFF headers
+      // For benchmark, read from the end of file backwards
+      long dataOffset = fileSize - (long)imgBytes;
+      if (dataOffset < 0) dataOffset = 0;
+      fseek(fImg, dataOffset, SEEK_SET);
+      size_t nread = fread(hImg, 1, imgBytes, fImg);
+      printf("  Read %zu bytes from TIFF (offset %ld)\n", nread, dataOffset);
+    } else {
+      // Raw binary
+      size_t nread = fread(hImg, 1, imgBytes, fImg);
+      printf("  Read %zu bytes from raw binary\n", nread);
+    }
+    fclose(fImg);
+
+    // Allocate pinned host buffer and copy image
+    void *hPinnedImg = NULL;
+    gpuErrchk(cudaMallocHost(&hPinnedImg, imgBytes));
+    memcpy(hPinnedImg, hImg, imgBytes);
+    free(hImg);
+
+    // Allocate single-stream GPU buffers
+    cudaStream_t benchStream;
+    gpuErrchk(cudaStreamCreate(&benchStream));
+
+    float *dBenchProcessed = NULL;
+    double *dBenchIntArr = NULL;
+    double *dBench1D = NULL;
+    double *dBench1DSimple = NULL;
+    float *dBenchTemp1 = NULL, *dBenchTemp2 = NULL;
+    double *hBench1D = NULL;
+    size_t tempBufSz = totalPixels * sizeof(int64_t);
+
+    gpuErrchk(cudaMalloc(&dBenchProcessed, totalPixels * sizeof(float)));
+    gpuErrchk(cudaMalloc(&dBenchIntArr, bigArrSize * sizeof(double)));
+    gpuErrchk(cudaMalloc(&dBench1D, nRBins * sizeof(double)));
+    gpuErrchk(cudaMalloc(&dBench1DSimple, nRBins * sizeof(double)));
+    gpuErrchk(cudaMalloc(&dBenchTemp1, tempBufSz));
+    gpuErrchk(cudaMalloc(&dBenchTemp2, tempBufSz));
+    gpuErrchk(cudaMallocHost((void **)&hBench1D, nRBins * sizeof(double)));
+
+    // CUDA events for precise GPU timing
+    cudaEvent_t evStart, evStop;
+    gpuErrchk(cudaEventCreate(&evStart));
+    gpuErrchk(cudaEventCreate(&evStop));
+
+    // Timing events for copy/transform phases
+    cudaEvent_t evCopyStart, evCopyStop, evTransStart, evTransStop;
+    gpuErrchk(cudaEventCreate(&evCopyStart));
+    gpuErrchk(cudaEventCreate(&evCopyStop));
+    gpuErrchk(cudaEventCreate(&evTransStart));
+    gpuErrchk(cudaEventCreate(&evTransStop));
+
+    printf("BENCHMARK_CSV_HEADER,iteration,gpu_total_ms\n");
+    fflush(stdout);
+
+    int integTPB = THREADS_PER_BLOCK_INTEGRATE;
+    int nrVox = (bigArrSize + integTPB - 1) / integTPB;
+    size_t profileSharedMem =
+        (THREADS_PER_BLOCK_PROFILE / 32) * sizeof(double) * 2;
+
+    for (int iter = 0; iter < benchmarkN; iter++) {
+      gpuErrchk(cudaEventRecord(evStart, benchStream));
+
+      // H→D copy + cast + dark subtract
+      ProcessImageGPU(hPinnedImg, dBenchProcessed, dAvgDark, Nopt, Topt,
+                      NrPixelsY, NrPixelsZ, darkSubEnabled, dBenchTemp1,
+                      dBenchTemp2, 1 /* uint16 */, benchStream,
+                      evCopyStart, evCopyStop, evTransStart, evTransStop);
+
+      // Integration kernel
+      if (!dMapMask) {
+        integrate_noMapMask<<<nrVox, integTPB, 0, benchStream>>>(
+            px, Lsd, bigArrSize, Normalize, 0 /* no sumI */, 0 /* frameIdx */,
+            dNPxList, NrPixelsY, NrPixelsZ, dBenchProcessed, dBenchIntArr,
+            NULL /* no sum matrix */, dPixelOffsets, dPixelWeights,
+            dSortedIndices, GradientCorrection, dDeltaR_gpu,
+            dPxY_gpu, dPxZ_gpu, (float)BC_y, (float)BC_z);
+      } else {
+        integrate_MapMask<<<nrVox, integTPB, 0, benchStream>>>(
+            px, Lsd, bigArrSize, Normalize, 0, 0, mapMaskWC,
+            dMapMask, nRBins, nEtaBins, NrPixelsY, NrPixelsZ, dNPxList,
+            dBenchProcessed, dBenchIntArr, NULL, dPixelOffsets,
+            dPixelWeights, dSortedIndices);
+      }
+
+      // 1D profile reduction
+      calculate_1D_profile_kernel<<<nRBins, THREADS_PER_BLOCK_PROFILE,
+                                    profileSharedMem, benchStream>>>(
+          dBenchIntArr, dPerFrame, dBench1D, nRBins, nEtaBins, bigArrSize);
+
+      // D→H copy (1D profile only)
+      gpuErrchk(cudaMemcpyAsync(hBench1D, dBench1D,
+                                nRBins * sizeof(double),
+                                cudaMemcpyDeviceToHost, benchStream));
+
+      gpuErrchk(cudaEventRecord(evStop, benchStream));
+      gpuErrchk(cudaStreamSynchronize(benchStream));
+
+      float gpu_ms = 0;
+      gpuErrchk(cudaEventElapsedTime(&gpu_ms, evStart, evStop));
+      printf("BENCHMARK_CSV,%d,%.6f\n", iter, (double)gpu_ms / 1000.0);
+      fflush(stdout);
+    }
+
+    // Cleanup benchmark resources
+    gpuErrchk(cudaEventDestroy(evStart));
+    gpuErrchk(cudaEventDestroy(evStop));
+    gpuErrchk(cudaEventDestroy(evCopyStart));
+    gpuErrchk(cudaEventDestroy(evCopyStop));
+    gpuErrchk(cudaEventDestroy(evTransStart));
+    gpuErrchk(cudaEventDestroy(evTransStop));
+    gpuErrchk(cudaFree(dBenchProcessed));
+    gpuErrchk(cudaFree(dBenchIntArr));
+    gpuErrchk(cudaFree(dBench1D));
+    gpuErrchk(cudaFree(dBench1DSimple));
+    gpuErrchk(cudaFree(dBenchTemp1));
+    gpuErrchk(cudaFree(dBenchTemp2));
+    gpuErrchk(cudaFreeHost(hBench1D));
+    gpuErrchk(cudaFreeHost(hPinnedImg));
+    gpuErrchk(cudaStreamDestroy(benchStream));
+
+    printf("═══ GPU BENCHMARK COMPLETE ═══\n");
+    return 0;
+  }
 
   // --- Initialize Host R/Eta from GPU ---
   double *hPerFrame = NULL;
