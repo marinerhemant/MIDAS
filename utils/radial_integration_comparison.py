@@ -1335,12 +1335,12 @@ def benchmark_midas_charness(n_iters=BENCHMARK_ITERS,
         if line.startswith('BENCHMARK_CSV,') and \
            not line.startswith('BENCHMARK_CSV_HEADER'):
             parts = line.strip().split(',')
-            if len(parts) == 5:  # new format
-                timings_h2d.append(float(parts[1]))
-                timings_kernel.append(float(parts[2]))
-                timings_d2h.append(float(parts[3]))
-                timings_total.append(float(parts[4]))
-            elif len(parts) == 3:  # old format
+            if len(parts) == 6:  # new format: BENCHMARK_CSV,iter,h2d,kernel,d2h,total
+                timings_h2d.append(float(parts[2]))
+                timings_kernel.append(float(parts[3]))
+                timings_d2h.append(float(parts[4]))
+                timings_total.append(float(parts[5]))
+            elif len(parts) == 3:  # old format: BENCHMARK_CSV,iter,total
                 timings_total.append(float(parts[2]))
 
     if len(timings_total) < total:
@@ -1853,12 +1853,12 @@ def benchmark_detector_config(det, n_iters=TABLE2_ITERS, warmup=TABLE2_WARMUP):
         if line.startswith('BENCHMARK_CSV,') and \
            not line.startswith('BENCHMARK_CSV_HEADER'):
             parts = line.strip().split(',')
-            if len(parts) == 5:  # new format
-                timings_h2d.append(float(parts[1]))
-                timings_kernel.append(float(parts[2]))
-                timings_d2h.append(float(parts[3]))
-                timings_total.append(float(parts[4]))
-            elif len(parts) == 3:  # old format
+            if len(parts) == 6:  # new format: BENCHMARK_CSV,iter,h2d,kernel,d2h,total
+                timings_h2d.append(float(parts[2]))
+                timings_kernel.append(float(parts[3]))
+                timings_d2h.append(float(parts[4]))
+                timings_total.append(float(parts[5]))
+            elif len(parts) == 3:  # old format: BENCHMARK_CSV,iter,total
                 timings_total.append(float(parts[2]))
 
     timings_total = timings_total[warmup:]
