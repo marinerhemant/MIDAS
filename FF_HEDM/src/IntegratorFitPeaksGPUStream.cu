@@ -2414,7 +2414,13 @@ int main(int argc, char *argv[]) {
     gpuErrchk(cudaEventCreate(&evTransStart));
     gpuErrchk(cudaEventCreate(&evTransStop));
 
-    printf("BENCHMARK_CSV_HEADER,iteration,gpu_total_ms\n");
+    // Timing events for kernel and D→H phases
+    cudaEvent_t evKernelStart, evKernelStop, evD2HStop;
+    gpuErrchk(cudaEventCreate(&evKernelStart));
+    gpuErrchk(cudaEventCreate(&evKernelStop));
+    gpuErrchk(cudaEventCreate(&evD2HStop));
+
+    printf("BENCHMARK_CSV_HEADER,iteration,h2d_ms,kernel_ms,d2h_ms,total_ms\n");
     fflush(stdout);
 
     int integTPB = THREADS_PER_BLOCK_INTEGRATE;
@@ -2430,6 +2436,9 @@ int main(int argc, char *argv[]) {
                       NrPixelsY, NrPixelsZ, darkSubEnabled, dBenchTemp1,
                       dBenchTemp2, 1 /* uint16 */, benchStream,
                       evCopyStart, evCopyStop, evTransStart, evTransStop);
+
+      // Mark end of H→D + preprocess, start of kernel
+      gpuErrchk(cudaEventRecord(evKernelStart, benchStream));
 
       // Integration kernel
       if (!dMapMask) {
@@ -2452,17 +2461,26 @@ int main(int argc, char *argv[]) {
                                     profileSharedMem, benchStream>>>(
           dBenchIntArr, dPerFrame, dBench1D, nRBins, nEtaBins, bigArrSize);
 
+      // Mark end of kernel, start of D→H
+      gpuErrchk(cudaEventRecord(evKernelStop, benchStream));
+
       // D→H copy (1D profile only)
       gpuErrchk(cudaMemcpyAsync(hBench1D, dBench1D,
                                 nRBins * sizeof(double),
                                 cudaMemcpyDeviceToHost, benchStream));
 
+      gpuErrchk(cudaEventRecord(evD2HStop, benchStream));
       gpuErrchk(cudaEventRecord(evStop, benchStream));
       gpuErrchk(cudaStreamSynchronize(benchStream));
 
-      float gpu_ms = 0;
-      gpuErrchk(cudaEventElapsedTime(&gpu_ms, evStart, evStop));
-      printf("BENCHMARK_CSV,%d,%.6f\n", iter, (double)gpu_ms / 1000.0);
+      float total_ms = 0, h2d_ms = 0, kernel_ms = 0, d2h_ms = 0;
+      gpuErrchk(cudaEventElapsedTime(&total_ms, evStart, evStop));
+      gpuErrchk(cudaEventElapsedTime(&h2d_ms, evStart, evKernelStart));
+      gpuErrchk(cudaEventElapsedTime(&kernel_ms, evKernelStart, evKernelStop));
+      gpuErrchk(cudaEventElapsedTime(&d2h_ms, evKernelStop, evD2HStop));
+      printf("BENCHMARK_CSV,%d,%.6f,%.6f,%.6f,%.6f\n", iter,
+             (double)h2d_ms / 1000.0, (double)kernel_ms / 1000.0,
+             (double)d2h_ms / 1000.0, (double)total_ms / 1000.0);
       fflush(stdout);
     }
 
@@ -2473,6 +2491,9 @@ int main(int argc, char *argv[]) {
     gpuErrchk(cudaEventDestroy(evCopyStop));
     gpuErrchk(cudaEventDestroy(evTransStart));
     gpuErrchk(cudaEventDestroy(evTransStop));
+    gpuErrchk(cudaEventDestroy(evKernelStart));
+    gpuErrchk(cudaEventDestroy(evKernelStop));
+    gpuErrchk(cudaEventDestroy(evD2HStop));
     gpuErrchk(cudaFree(dBenchProcessed));
     gpuErrchk(cudaFree(dBenchIntArr));
     gpuErrchk(cudaFree(dBench1D));

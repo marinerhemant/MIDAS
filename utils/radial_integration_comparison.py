@@ -1325,23 +1325,53 @@ def benchmark_midas_charness(n_iters=BENCHMARK_ITERS,
         return None
 
     # Parse BENCHMARK_CSV lines from stdout
-    timings = []
+    # New format: iteration,h2d_ms,kernel_ms,d2h_ms,total_ms
+    # Old format: iteration,total_ms
+    timings_total = []
+    timings_h2d = []
+    timings_kernel = []
+    timings_d2h = []
     for line in r.stdout.split('\n'):
         if line.startswith('BENCHMARK_CSV,') and \
            not line.startswith('BENCHMARK_CSV_HEADER'):
             parts = line.strip().split(',')
-            if len(parts) == 3:
-                timings.append(float(parts[2]))
+            if len(parts) == 5:  # new format
+                timings_h2d.append(float(parts[1]))
+                timings_kernel.append(float(parts[2]))
+                timings_d2h.append(float(parts[3]))
+                timings_total.append(float(parts[4]))
+            elif len(parts) == 3:  # old format
+                timings_total.append(float(parts[2]))
 
-    if len(timings) < total:
-        print(f"    WARNING: only parsed {len(timings)} of {total} timings")
+    if len(timings_total) < total:
+        print(f"    WARNING: only parsed {len(timings_total)} of {total} "
+              f"timings")
 
     # Discard warmup
-    timings = timings[warmup:]
-    if timings:
-        print(f"    Parsed {len(timings)} benchmark timings "
+    timings_total = timings_total[warmup:]
+    timings_h2d = timings_h2d[warmup:]
+    timings_kernel = timings_kernel[warmup:]
+    timings_d2h = timings_d2h[warmup:]
+    if timings_total:
+        print(f"    Parsed {len(timings_total)} benchmark timings "
               f"(after {warmup} warmup)")
-    return np.array(timings) if timings else None
+        if timings_h2d:
+            h2d_med = np.median(timings_h2d) * 1000
+            ker_med = np.median(timings_kernel) * 1000
+            d2h_med = np.median(timings_d2h) * 1000
+            tot_med = np.median(timings_total) * 1000
+            print(f"    Breakdown: H→D {h2d_med:.3f} ms | "
+                  f"Kernel {ker_med:.3f} ms | "
+                  f"D→H {d2h_med:.3f} ms | "
+                  f"Total {tot_med:.3f} ms")
+    if not timings_total:
+        return None
+    result = {'total': np.array(timings_total)}
+    if timings_h2d:
+        result['h2d'] = np.array(timings_h2d)
+        result['kernel'] = np.array(timings_kernel)
+        result['d2h'] = np.array(timings_d2h)
+    return result
 
 
 def benchmark_pyfai_method(method_tuple, n_iters=BENCHMARK_ITERS,
@@ -1589,7 +1619,9 @@ def run_benchmark_experiment():
     all_stats = {}
 
     # 1. MIDAS C-harness (pure kernel, ~11ms/frame)
-    t_cha = benchmark_midas_charness()
+    t_cha_result = benchmark_midas_charness()
+    t_cha = t_cha_result['total'] if isinstance(t_cha_result, dict) \
+        else t_cha_result
     s_cha = compute_benchmark_stats(t_cha, 'MIDAS (C-harness)')
     all_stats['MIDAS (C-harness)'] = s_cha
 
@@ -1811,16 +1843,29 @@ def benchmark_detector_config(det, n_iters=TABLE2_ITERS, warmup=TABLE2_WARMUP):
         return None
 
     # Parse BENCHMARK_CSV timings
-    timings = []
+    # New format: iteration,h2d_ms,kernel_ms,d2h_ms,total_ms
+    # Old format: iteration,total_ms
+    timings_total = []
+    timings_h2d = []
+    timings_kernel = []
+    timings_d2h = []
     for line in r.stdout.split('\n'):
         if line.startswith('BENCHMARK_CSV,') and \
            not line.startswith('BENCHMARK_CSV_HEADER'):
             parts = line.strip().split(',')
-            if len(parts) == 3:
-                timings.append(float(parts[2]))
+            if len(parts) == 5:  # new format
+                timings_h2d.append(float(parts[1]))
+                timings_kernel.append(float(parts[2]))
+                timings_d2h.append(float(parts[3]))
+                timings_total.append(float(parts[4]))
+            elif len(parts) == 3:  # old format
+                timings_total.append(float(parts[2]))
 
-    timings = timings[warmup:]
-    if not timings:
+    timings_total = timings_total[warmup:]
+    timings_h2d = timings_h2d[warmup:]
+    timings_kernel = timings_kernel[warmup:]
+    timings_d2h = timings_d2h[warmup:]
+    if not timings_total:
         print(f"    WARNING: no benchmark timings parsed")
         print(f"    HINT: Rebuild MIDAS binary — the -benchmark flag may not "
               f"be compiled in.")
@@ -1830,12 +1875,13 @@ def benchmark_detector_config(det, n_iters=TABLE2_ITERS, warmup=TABLE2_WARMUP):
             print(f"    stderr: {r.stderr[:200]}")
         return None
 
-    t_arr = np.array(timings)
+    t_arr = np.array(timings_total)
     med_ms = np.median(t_arr) * 1000
     fps = 1000.0 / med_ms
-    print(f"    {len(timings)} iters → {med_ms:.2f} ms/frame ({fps:.0f} fps)")
+    print(f"    {len(timings_total)} iters → {med_ms:.2f} ms/frame "
+          f"({fps:.0f} fps)")
 
-    return {
+    result = {
         'name': name,
         'width': det['width'],
         'height': det['height'],
@@ -1847,6 +1893,19 @@ def benchmark_detector_config(det, n_iters=TABLE2_ITERS, warmup=TABLE2_WARMUP):
         'fps': fps,
         'raw_s': t_arr,
     }
+
+    if timings_h2d:
+        h2d_med = np.median(timings_h2d) * 1000
+        ker_med = np.median(timings_kernel) * 1000
+        d2h_med = np.median(timings_d2h) * 1000
+        result['h2d_ms'] = h2d_med
+        result['kernel_ms'] = ker_med
+        result['d2h_ms'] = d2h_med
+        print(f"    Breakdown: H→D {h2d_med:.3f} ms | "
+              f"Kernel {ker_med:.3f} ms | "
+              f"D→H {d2h_med:.3f} ms")
+
+    return result
 
 
 def plot_table2_results(results, fname='benchmark_table2'):
