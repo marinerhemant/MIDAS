@@ -1637,7 +1637,7 @@ int main(int argc, char *argv[]) {
             DisplacementInTheSpot(InputInfo[voxNr][9], InputInfo[voxNr][10],
                                   InputInfo[voxNr][11], Lsd, yTemp, zTemp,
                                   omeThis, 0.0, 0.0, &DisplY2, &DisplZ2);
-            yThis = yTemp + DisplY2 + yOffset;
+            yThis = yTemp + DisplY2 - yOffset;
             zThis = zTemp + DisplZ2;
             yTrans = (int)(-yThis / px + yBC);
             zTrans = (int)(zThis / px + zBC);
@@ -1811,9 +1811,10 @@ int main(int argc, char *argv[]) {
     // Flush all thread spot buffers to file (serial, after parallel region)
     if (writeSpots == 1) {
       int totalSpots = 0;
-      int grainSpotCounts[nrPoints];
-      for (i = 0; i < nrPoints; i++)
-        grainSpotCounts[i] = 0;
+      int *grainSpotCounts = calloc(nrPoints, sizeof(int));
+      if (grainSpotCounts == NULL) {
+        fprintf(stderr, "Warning: could not allocate grainSpotCounts\n");
+      }
       for (i = 0; i < nCPUs; i++) {
         for (j = 0; j < spotBuffers[i].count; j++) {
           SpotRecord *r = &spotBuffers[i].records[j];
@@ -1823,14 +1824,23 @@ int main(int argc, char *argv[]) {
                   r->grainID, r->spotID, r->omega, r->detHor, r->detVert,
                   r->omeRaw, r->eta, r->ringNr, r->yLab, r->zLab, r->theta, 0.0,
                   r->scanNr, r->ringRad, r->omeBin);
-          if (r->grainID >= 1 && r->grainID <= nrPoints)
+          if (grainSpotCounts && r->grainID >= 1 && r->grainID <= nrPoints)
             grainSpotCounts[r->grainID - 1]++;
           totalSpots++;
         }
       }
       printf("SpotMatrixGen summary: %d total spots\n", totalSpots);
-      for (i = 0; i < nrPoints; i++)
-        printf("  Grain %d: %d spots\n", i + 1, grainSpotCounts[i]);
+      if (grainSpotCounts) {
+        int nWithSpots = 0;
+        for (i = 0; i < nrPoints; i++)
+          if (grainSpotCounts[i] > 0) nWithSpots++;
+        printf("  Voxels with spots: %d / %ld\n", nWithSpots, nrPoints);
+        if (nrPoints <= 100) {
+          for (i = 0; i < nrPoints; i++)
+            printf("  Grain %d: %d spots\n", i + 1, grainSpotCounts[i]);
+        }
+        free(grainSpotCounts);
+      }
     }
     maxInt = 0.0;
     printf("Scan %d simulation done in %.3f sec.\n", scanNr,

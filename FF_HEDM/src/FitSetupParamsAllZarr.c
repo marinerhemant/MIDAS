@@ -1415,8 +1415,8 @@ int main(int argc, char *argv[]) {
   IndexAllNoHeader = fopen(fnIndexAllNoHeader, "w");
   ExtraInfo = fopen(fnExtraInfo, "w");
   fprintf(IndexAll,
-          "%YLab ZLab Omega GrainRadius SpotID RingNumber Eta Ttheta\n");
-  fprintf(ExtraInfo, "%YLab ZLab Omega GrainRadius SpotID RingNumber Eta "
+          "%%YLab ZLab Omega GrainRadius SpotID RingNumber Eta Ttheta\n");
+  fprintf(ExtraInfo, "%%YLab ZLab Omega GrainRadius SpotID RingNumber Eta "
                      "Ttheta OmegaIni(NoWedgeCorr) YOrig(NoWedgeCorr) "
                      "ZOrig(NoWedgeCorr) YOrig(DetCor) ZOrig(DetCor) "
                      "OmegaOrig(DetCor) IntegratedIntensity(count) "

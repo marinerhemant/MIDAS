@@ -465,10 +465,12 @@ def parallel_peaks(layerNr, positions, startNrFirstLayer, nrFilesPerSweep, topdi
         try:
             # Read and process fitting data
             dfAllF = pd.read_csv('InputAllExtraInfoFittingAll.csv', delimiter=' ', skipinitialspace=True)
-            dfAllF.loc[dfAllF['GrainRadius'] > 0.001, '%YLab'] += ypos
+            # Handle both '%YLab' (correct) and 'YLab' (old binaries where %Y was consumed by printf)
+            ylab_col = '%YLab' if '%YLab' in dfAllF.columns else 'YLab'
+            dfAllF.loc[dfAllF['GrainRadius'] > 0.001, ylab_col] += ypos
             dfAllF.loc[dfAllF['GrainRadius'] > 0.001, 'YOrig(NoWedgeCorr)'] += ypos
-            dfAllF['Eta'] = CalcEtaAngleAll(dfAllF['%YLab'], dfAllF['ZLab'])
-            dfAllF['Ttheta'] = rad2deg * np.arctan(np.linalg.norm(np.array([dfAllF['%YLab'], dfAllF['ZLab']]), axis=0) / Lsd)
+            dfAllF['Eta'] = CalcEtaAngleAll(dfAllF[ylab_col], dfAllF['ZLab'])
+            dfAllF['Ttheta'] = rad2deg * np.arctan(np.linalg.norm(np.array([dfAllF[ylab_col], dfAllF['ZLab']]), axis=0) / Lsd)
             
             logger.info(f"Spots shape final for layer {layerNr}: {dfAllF.shape}")
             
