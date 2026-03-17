@@ -1564,7 +1564,7 @@ def run_get_hkl_list(param_file):
         raise
 
 
-def runMIDAS(rawFN, state, n_iterations=40, mult_factor=2.5,
+def runMIDAS(rawFN, state, n_iterations=40, mult_factor=5,
              doublet_separation=25, outlier_iterations=3,
              eta_bin_size=1.0, max_width=1000, n_cpus=None,
              stage=0, stage_label='',
@@ -1801,7 +1801,7 @@ def main():
         # Calibration control
         parser.add_argument('--n-iterations', type=int, default=40,
                             help='Number of C-side calibration iterations')
-        parser.add_argument('--mult-factor', '-MultFactor', type=float, default=2.5,
+        parser.add_argument('--mult-factor', '-MultFactor', type=float, default=5,
                             help='Outlier ring rejection factor (× median strain)')
         parser.add_argument('--doublet-separation', type=float, default=25.0,
                             help='Doublet detection threshold (pixels)')
