@@ -2344,6 +2344,7 @@ int main(int argc, char *argv[]) {
     int *bestRingNumbers = NULL;
     double *bestYMean = NULL, *bestZMean = NULL;
     double *bestEtaIns = NULL, *bestDiffIns = NULL, *bestRadIns = NULL;
+    double *bestYc = NULL, *bestZc = NULL;
     int bestNIndices = 0;
     int perturbedFlag =
         0; // set by perturbation logic; triggers re-bin next iter
@@ -3152,6 +3153,10 @@ int main(int argc, char *argv[]) {
         memcpy(bestEtaIns, EtaIns, nIndices * sizeof(double));
         memcpy(bestDiffIns, DiffIns, nIndices * sizeof(double));
         memcpy(bestRadIns, RadIns, nIndices * sizeof(double));
+        bestYc = realloc(bestYc, nIndices * sizeof(double));
+        bestZc = realloc(bestZc, nIndices * sizeof(double));
+        memcpy(bestYc, Yc, nIndices * sizeof(double));
+        memcpy(bestZc, Zc, nIndices * sizeof(double));
         if (PointDSpacing) {
           bestPointDSpacing = realloc(bestPointDSpacing, nIndices * sizeof(double));
           memcpy(bestPointDSpacing, PointDSpacing, nIndices * sizeof(double));
@@ -3442,12 +3447,8 @@ int main(int argc, char *argv[]) {
       DiffIns = bestDiffIns;    bestDiffIns = NULL;
       RadIns = bestRadIns;      bestRadIns = NULL;
       PointDSpacing = bestPointDSpacing; bestPointDSpacing = NULL;
-      Yc = malloc(nIndices * sizeof(*Yc));
-      Zc = malloc(nIndices * sizeof(*Zc));
-      for (i = 0; i < nIndices; i++) {
-        Yc[i] = ybcFit - (YMean[i] / px);
-        Zc[i] = zbcFit + (ZMean[i] / px);
-      }
+      Yc = bestYc;              bestYc = NULL;
+      Zc = bestZc;              bestZc = NULL;
       MeanDiff = bestMeanDiff;
       printf("Post-loop restore: %d bins, MeanStrain %.6f\n",
              nIndices, MeanDiff * 1e6);
@@ -3463,6 +3464,8 @@ int main(int argc, char *argv[]) {
     free(bestEtaIns);
     free(bestDiffIns);
     free(bestRadIns);
+    free(bestYc);
+    free(bestZc);
     // Reassign nIndices for post-loop code
     if (initPanels)
       free(initPanels);
