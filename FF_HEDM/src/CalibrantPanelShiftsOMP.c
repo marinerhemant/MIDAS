@@ -2673,6 +2673,9 @@ int main(int argc, char *argv[]) {
                  countr);
         int nIndicesOrig = nIndices; // save for freeing Indices
         nIndices = countr;
+        // Reset skipBin for the new bin set
+        free(skipBin);
+        skipBin = calloc(nIndices, sizeof(int));
         free(RMean);
         free(EtaMean);
         free(IdealTtheta);
