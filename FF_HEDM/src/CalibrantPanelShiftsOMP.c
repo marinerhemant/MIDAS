@@ -820,6 +820,7 @@ struct my_func_data {
   int fitParallax;     // flag: 1 = parallax is a fitting parameter
   double trimFraction; // Trimmed mean: fraction of points to keep (1.0=all)
   double *trimScratch; // Pre-allocated scratch array for sorting (size nIndices)
+  const int *skipBin;  // Per-point skip mask (NULL=no skipping)
 };
 
 static double problem_function(unsigned n, const double *x, double *grad,
@@ -871,6 +872,10 @@ static double problem_function(unsigned n, const double *x, double *grad,
         if (doTrim) f_data->trimScratch[i] = -1.0; // sentinel
         continue;
       }
+    }
+    if (f_data->skipBin && f_data->skipBin[i]) {
+      if (doTrim) f_data->trimScratch[i] = -1.0; // sentinel
+      continue;
     }
 
     dY = 0;
@@ -1003,7 +1008,8 @@ void FitTiltBCLsd(int nIndices, double *YMean, double *ZMean,
                   double *wavelengthOut,
                   double parallaxIn, double tolParallax,
                   double *parallaxOut,
-                  double trimmedMeanFraction) {
+                  double trimmedMeanFraction,
+                  const int *skipBin) {
   int fitParallax = (tolParallax > EPS) ? 1 : 0;
   int nBase = 11; // Lsd, ybc, zbc, ty, tz, p0-p3, p4, p5
   if (fitParallax) nBase++;    // parallax at index 11
@@ -1042,6 +1048,7 @@ void FitTiltBCLsd(int nIndices, double *YMean, double *ZMean,
   if (trimmedMeanFraction < 1.0 - 1e-9) {
     f_data.trimScratch = malloc(nIndices * sizeof(double));
   }
+  f_data.skipBin = skipBin;
   double x[n], xl[n], xu[n];
   // When initParams is non-NULL, anchor bounds to initial values to prevent
   // multi-iteration drift.  The optimizer still starts at the current value.
@@ -2822,8 +2829,8 @@ int main(int argc, char *argv[]) {
                    iter == 0, L2Objective, initParams, initPanels,
                    FitWavelength, Wavelength, tolWavelength, PointDSpacing,
                    &wavelengthFit,
-                   parallaxIn, tolParallax, &parallaxFit,
-                   TrimmedMeanFraction);
+                    parallaxIn, tolParallax, &parallaxFit,
+                    TrimmedMeanFraction, skipBin);
       if (FitParallax)
         parallaxIn = parallaxFit;
       if (FitWavelength)
