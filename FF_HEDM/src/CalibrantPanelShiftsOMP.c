@@ -3507,11 +3507,13 @@ int main(int argc, char *argv[]) {
         Yc[i] = ybcFit - (YMean[i] / px);
         Zc[i] = zbcFit + (ZMean[i] / px);
       }
+      int *IsOutlier_pl = calloc(nIndices, sizeof(int));
       CorrectTiltSpatialDistortion(
           nIndices, MaxRingRad, Yc, Zc, IdealTtheta, px, LsdFit, ybcFit, zbcFit,
           tx, ty, tz, p0, p1, p2, p3, EtaIns, DiffIns, RadIns, &StdDiff,
-          outlierFactor, NULL, p4in, p5in, OutlierIterations, 0, &MeanDiff, parallaxIn);
+          outlierFactor, IsOutlier_pl, p4in, p5in, OutlierIterations, 1, &MeanDiff, parallaxIn);
       printf("Post-loop re-fit MeanStrain %0.6lf\n", MeanDiff * 1e6);
+      free(IsOutlier_pl);
       free(R_pl);
       free(Eta_pl);
       free(NrBin_pl);
