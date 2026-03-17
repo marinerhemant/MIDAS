@@ -2338,7 +2338,13 @@ int main(int argc, char *argv[]) {
     Panel *bestPanels = NULL;
     if (nPanels > 0)
       bestPanels = malloc(nPanels * sizeof(Panel));
-
+    // Best-iteration bin arrays
+    double *bestRMean = NULL, *bestEtaMean = NULL, *bestIdealTtheta = NULL;
+    double *bestPointDSpacing = NULL;
+    int *bestRingNumbers = NULL;
+    double *bestYMean = NULL, *bestZMean = NULL;
+    double *bestEtaIns = NULL, *bestDiffIns = NULL, *bestRadIns = NULL;
+    int bestNIndices = 0;
     int perturbedFlag =
         0; // set by perturbation logic; triggers re-bin next iter
     int postPerturbGrace =
@@ -3126,6 +3132,30 @@ int main(int argc, char *argv[]) {
         bestParallax = parallaxIn;
         if (bestPanels && nPanels > 0)
           memcpy(bestPanels, panels, nPanels * sizeof(Panel));
+        // Save bin arrays from this best iteration
+        bestNIndices = nIndices;
+        bestRMean = realloc(bestRMean, nIndices * sizeof(double));
+        bestEtaMean = realloc(bestEtaMean, nIndices * sizeof(double));
+        bestIdealTtheta = realloc(bestIdealTtheta, nIndices * sizeof(double));
+        bestRingNumbers = realloc(bestRingNumbers, nIndices * sizeof(int));
+        bestYMean = realloc(bestYMean, nIndices * sizeof(double));
+        bestZMean = realloc(bestZMean, nIndices * sizeof(double));
+        bestEtaIns = realloc(bestEtaIns, nIndices * sizeof(double));
+        bestDiffIns = realloc(bestDiffIns, nIndices * sizeof(double));
+        bestRadIns = realloc(bestRadIns, nIndices * sizeof(double));
+        memcpy(bestRMean, RMean, nIndices * sizeof(double));
+        memcpy(bestEtaMean, EtaMean, nIndices * sizeof(double));
+        memcpy(bestIdealTtheta, IdealTtheta, nIndices * sizeof(double));
+        memcpy(bestRingNumbers, RingNumbers, nIndices * sizeof(int));
+        memcpy(bestYMean, YMean, nIndices * sizeof(double));
+        memcpy(bestZMean, ZMean, nIndices * sizeof(double));
+        memcpy(bestEtaIns, EtaIns, nIndices * sizeof(double));
+        memcpy(bestDiffIns, DiffIns, nIndices * sizeof(double));
+        memcpy(bestRadIns, RadIns, nIndices * sizeof(double));
+        if (PointDSpacing) {
+          bestPointDSpacing = realloc(bestPointDSpacing, nIndices * sizeof(double));
+          memcpy(bestPointDSpacing, PointDSpacing, nIndices * sizeof(double));
+        }
       }
 
       // Stagnation: detect when optimizer is truly stuck (identical results)
@@ -3377,11 +3407,16 @@ int main(int argc, char *argv[]) {
     if (bestPanels)
       free(bestPanels);
 
-    // --- POST-LOOP RE-FIT (only if best iteration != final) ---
-    // When bestIter == last, the per-iteration re-fit already produced
-    // correct arrays. When restoring from an earlier best, we must re-fit.
-    if (nIterations > 1 && bestIter >= 0 && bestIter != nIterations - 1) {
-      printf("\n*** Post-loop re-fit with restored best parameters ***\n");
+    // --- POST-LOOP RESTORE (only if best iteration != final) ---
+    // Restore saved bin arrays from the best iteration directly,
+    // instead of re-fitting from scratch (which produces different
+    // peak positions and inflated strain).
+    if (nIterations > 1 && bestIter >= 0 && bestIter != nIterations - 1
+        && bestNIndices > 0) {
+      printf("\n*** Restoring bin arrays from best iteration %d/%d "
+             "(%d bins, MeanStrain %.3f) ***\n",
+             bestIter + 1, nIterations, bestNIndices,
+             bestMeanDiff * 1e6);
       free(RMean);
       free(EtaMean);
       free(YMean);
@@ -3394,176 +3429,40 @@ int main(int argc, char *argv[]) {
       free(EtaIns);
       free(RadIns);
       free(DiffIns);
-      YMean = ZMean = Yc = Zc = EtaIns = RadIns = DiffIns = NULL;
-      RMean = EtaMean = IdealTtheta = NULL;
-      RingNumbers = NULL;
 
-      double IdealRs_pl[n_hkls], Rmins_pl[n_hkls], Rmaxs_pl[n_hkls];
-      for (i = 0; i < n_hkls; i++) {
-        IdealRs_pl[i] = R4mTtheta(IdealTthetas[i], LsdFit);
-        Rmins_pl[i] = R4mTtheta(TthetaMins[i], LsdFit);
-        Rmaxs_pl[i] = R4mTtheta(TthetaMaxs[i], LsdFit);
-      }
-      int dbf_pl[n_hkls], dbp_pl[n_hkls];
-      for (i = 0; i < n_hkls; i++) {
-        dbf_pl[i] = 0;
-        dbp_pl[i] = -1;
-      }
-      if (DoubletSeparation > 0) {
-        double sepT = DoubletSeparation * px;
-        for (i = 0; i < n_hkls - 1; i++) {
-          if (dbf_pl[i] != 0)
-            continue;
-          if (fabs(IdealRs_pl[i + 1] - IdealRs_pl[i]) < sepT) {
-            dbf_pl[i] = 1;
-            dbf_pl[i + 1] = 2;
-            dbp_pl[i] = i + 1;
-            dbp_pl[i + 1] = i;
-          }
-        }
-      }
-      int nIdx_pl = nEtaBins * n_hkls;
-      double *R_pl = malloc(NrPixels * NrPixels * sizeof(*R_pl));
-      double *Eta_pl = malloc(NrPixels * NrPixels * sizeof(*Eta_pl));
-      int *NrBin_pl = malloc(nIdx_pl * sizeof(*NrBin_pl));
-      int maxPerBin_pl = (NrPixels * NrPixels / nIdx_pl) * 4;
-      if (maxPerBin_pl < 1000)
-        maxPerBin_pl = 1000;
-      int **Idx_pl = allocMatrixInt(nIdx_pl, maxPerBin_pl);
-      Car2Pol(n_hkls, nEtaBins, NrPixels, NrPixels, ybcFit, zbcFit, px, R_pl,
-              Eta_pl, Rmins_pl, Rmaxs_pl, EtaBinsLow, EtaBinsHigh, nIdx_pl,
-              NrBin_pl, Idx_pl, tx, ty, tz, p0, p1, p2, p3, MaxRingRad, LsdFit,
-              p4in, p5in, NrPixels, maxPerBin_pl);
-      double *IRmins_pl = malloc(nIdx_pl * sizeof(*IRmins_pl));
-      double *IRmaxs_pl = malloc(nIdx_pl * sizeof(*IRmaxs_pl));
-      IdealTtheta = malloc(nIdx_pl * sizeof(*IdealTtheta));
-      if (FitWavelength)
-        PointDSpacing = malloc(nIdx_pl * sizeof(double));
-      RingNumbers = malloc(nIdx_pl * sizeof(*RingNumbers));
-      RMean = malloc(nIdx_pl * sizeof(*RMean));
-      EtaMean = malloc(nIdx_pl * sizeof(*EtaMean));
-      int NPF_pl = (int)((floor)((Rmaxs_pl[0] - Rmins_pl[0]) / px)) * RBinWidth;
-      for (i = 0; i < nIdx_pl; i++) {
-        int ri = (int)(floor((float)i / nEtaBins));
-        IRmins_pl[i] = Rmins_pl[ri];
-        IRmaxs_pl[i] = Rmaxs_pl[ri];
-        IdealTtheta[i] = rad2deg * atan(IdealRs_pl[ri] / LsdFit);
-        RingNumbers[i] = RingIDs[ri];
-        if (PointDSpacing)
-          PointDSpacing[i] = DSpacings[ri];
-      }
-      double *FitSNR_pl = calloc(nIdx_pl, sizeof(*FitSNR_pl));
-      if (FitWeightMean == 1) {
-        CalcWeightedMean(nIdx_pl, NrBin_pl, Idx_pl, Average, R_pl, Eta_pl,
-                         RMean, EtaMean);
-      } else {
-        CalcFittedMean(nIdx_pl, NrBin_pl, Idx_pl, Average, R_pl, Eta_pl, RMean,
-                       EtaMean, FitSNR_pl, NPF_pl, IRmins_pl, IRmaxs_pl,
-                       nEtaBins, ybcFit, zbcFit, px, NrPixelsY, NrPixelsZ,
-                       EtaBinsLow, EtaBinsHigh, dbf_pl, dbp_pl,
-                       tx, ty, tz, p0, p1, p2, p3,
-                       p4in, p5in, LsdFit, MaxRingRad, GradientCorrection);
-      }
-      free(FitSNR_pl);
-      int cnt_pl = 0;
-      double *RM2 = malloc(nIdx_pl * sizeof(*RM2));
-      double *EM2 = malloc(nIdx_pl * sizeof(*EM2));
-      double *IT2 = malloc(nIdx_pl * sizeof(*IT2));
-      double *PD2 = FitWavelength ? malloc(nIdx_pl * sizeof(double)) : NULL;
-      int *RN2 = malloc(nIdx_pl * sizeof(*RN2));
-      for (i = 0; i < nIdx_pl; i++) {
-        if (RMean[i] != 0) {
-          RM2[cnt_pl] = RMean[i];
-          EM2[cnt_pl] = EtaMean[i];
-          IT2[cnt_pl] = IdealTtheta[i];
-          if (PD2)
-            PD2[cnt_pl] = PointDSpacing[i];
-          RN2[cnt_pl] = RingNumbers[i];
-          cnt_pl++;
-        }
-      }
-      free(RMean);
-      free(EtaMean);
-      free(IdealTtheta);
-      free(PointDSpacing);
-      free(RingNumbers);
-      RMean = RM2;
-      EtaMean = EM2;
-      IdealTtheta = IT2;
-      PointDSpacing = PD2;
-      RingNumbers = RN2;
-      nIndices = cnt_pl;
+      nIndices = bestNIndices;
       nIndicesFinal = nIndices;
-      printf("Post-loop re-fit: %d valid slices.\n", cnt_pl);
-      YMean = malloc(nIndices * sizeof(*YMean));
-      ZMean = malloc(nIndices * sizeof(*ZMean));
-      YZ4mREta(nIndices, RMean, EtaMean, YMean, ZMean);
+      RMean = bestRMean;        bestRMean = NULL;
+      EtaMean = bestEtaMean;    bestEtaMean = NULL;
+      IdealTtheta = bestIdealTtheta; bestIdealTtheta = NULL;
+      RingNumbers = bestRingNumbers; bestRingNumbers = NULL;
+      YMean = bestYMean;        bestYMean = NULL;
+      ZMean = bestZMean;        bestZMean = NULL;
+      EtaIns = bestEtaIns;      bestEtaIns = NULL;
+      DiffIns = bestDiffIns;    bestDiffIns = NULL;
+      RadIns = bestRadIns;      bestRadIns = NULL;
+      PointDSpacing = bestPointDSpacing; bestPointDSpacing = NULL;
       Yc = malloc(nIndices * sizeof(*Yc));
       Zc = malloc(nIndices * sizeof(*Zc));
-      EtaIns = malloc(nIndices * sizeof(*EtaIns));
-      RadIns = malloc(nIndices * sizeof(*RadIns));
-      DiffIns = malloc(nIndices * sizeof(*DiffIns));
-      // Iterative outlier removal in post-loop re-fit
-      // (mirrors the inter-iteration outlier removal in the main loop)
-      int maxOutlierPasses = 5;
-      for (int olPass = 0; olPass < maxOutlierPasses; olPass++) {
-        for (i = 0; i < nIndices; i++) {
-          Yc[i] = ybcFit - (YMean[i] / px);
-          Zc[i] = zbcFit + (ZMean[i] / px);
-        }
-        int *IsOutlier_pl = calloc(nIndices, sizeof(int));
-        CorrectTiltSpatialDistortion(
-            nIndices, MaxRingRad, Yc, Zc, IdealTtheta, px, LsdFit, ybcFit, zbcFit,
-            tx, ty, tz, p0, p1, p2, p3, EtaIns, DiffIns, RadIns, &StdDiff,
-            outlierFactor, IsOutlier_pl, p4in, p5in, OutlierIterations, 1, &MeanDiff, parallaxIn);
-
-        // Count and remove outliers
-        int nOutliers = 0;
-        for (i = 0; i < nIndices; i++) {
-          if (IsOutlier_pl[i]) nOutliers++;
-        }
-        if (nOutliers > 0 && nOutliers < nIndices / 2) {
-          int newCount = 0;
-          for (i = 0; i < nIndices; i++) {
-            if (!IsOutlier_pl[i]) {
-              RMean[newCount] = RMean[i];
-              EtaMean[newCount] = EtaMean[i];
-              IdealTtheta[newCount] = IdealTtheta[i];
-              if (PointDSpacing)
-                PointDSpacing[newCount] = PointDSpacing[i];
-              RingNumbers[newCount] = RingNumbers[i];
-              YMean[newCount] = YMean[i];
-              ZMean[newCount] = ZMean[i];
-              Yc[newCount] = Yc[i];
-              Zc[newCount] = Zc[i];
-              EtaIns[newCount] = EtaIns[i];
-              RadIns[newCount] = RadIns[i];
-              DiffIns[newCount] = DiffIns[i];
-              newCount++;
-            }
-          }
-          printf("  Post-loop outlier pass %d: removed %d / %d (%.1f%%), "
-                 "MeanStrain %.3f\n",
-                 olPass + 1, nOutliers, nIndices,
-                 100.0 * nOutliers / nIndices, MeanDiff * 1e6);
-          nIndices = newCount;
-          nIndicesFinal = nIndices;
-          free(IsOutlier_pl);
-        } else {
-          // No more outliers or too many — done
-          free(IsOutlier_pl);
-          break;
-        }
+      for (i = 0; i < nIndices; i++) {
+        Yc[i] = ybcFit - (YMean[i] / px);
+        Zc[i] = zbcFit + (ZMean[i] / px);
       }
-      printf("Post-loop re-fit: %d valid slices.\n", nIndices);
-      printf("Post-loop re-fit MeanStrain %0.6lf\n", MeanDiff * 1e6);
-      free(R_pl);
-      free(Eta_pl);
-      free(NrBin_pl);
-      FreeMemMatrixInt(Idx_pl, nIdx_pl);
-      free(IRmins_pl);
-      free(IRmaxs_pl);
+      MeanDiff = bestMeanDiff;
+      printf("Post-loop restore: %d bins, MeanStrain %.6f\n",
+             nIndices, MeanDiff * 1e6);
     }
+    // Free any remaining best-iteration arrays
+    free(bestRMean);
+    free(bestEtaMean);
+    free(bestIdealTtheta);
+    free(bestPointDSpacing);
+    free(bestRingNumbers);
+    free(bestYMean);
+    free(bestZMean);
+    free(bestEtaIns);
+    free(bestDiffIns);
+    free(bestRadIns);
     // Reassign nIndices for post-loop code
     if (initPanels)
       free(initPanels);
