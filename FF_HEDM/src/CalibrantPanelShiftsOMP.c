@@ -2341,6 +2341,8 @@ int main(int argc, char *argv[]) {
 
     int perturbedFlag =
         0; // set by perturbation logic; triggers re-bin next iter
+    int postPerturbGrace =
+        0; // grace period: skip divergence guard for N iters after perturbation
     double *FitSNR = NULL; // persists across iterations for snrWeights
 
     // ─── nIterations=0: evaluate input parameters without optimization ───
@@ -2511,6 +2513,15 @@ int main(int argc, char *argv[]) {
     if (nPanels > 0) {
       initPanels = malloc(nPanels * sizeof(Panel));
       memcpy(initPanels, panels, nPanels * sizeof(Panel));
+    }
+
+    // ─── Convergence history CSV ───
+    char convHistFN[4096];
+    snprintf(convHistFN, sizeof(convHistFN), "%s/%s_convergence_history.csv", folder, fn);
+    FILE *convHistFP = fopen(convHistFN, "w");
+    if (convHistFP) {
+      fprintf(convHistFP, "Iter,MeanStrain_ue,StdStrain_ue,Lsd,BC_Y,BC_Z,ty,tz,p0,p1,p2,p3,p4,p5\n");
+      fflush(convHistFP);
     }
 
     for (int iter = 0; iter < nIterations; iter++) {
@@ -2967,6 +2978,13 @@ int main(int argc, char *argv[]) {
             &StdDiff, outlierFactor, iterOutlier, p4, p5, OutlierIterations, 0, &MeanDiff, parallaxIn);
         printf("Iter %2d/%d  MeanStrain %8.3f  StdStrain %8.3f\n", iter + 1,
                nIterations, MeanDiff * 1e6, StdDiff * 1e6);
+        // Write convergence history row
+        if (convHistFP) {
+          fprintf(convHistFP, "%d,%.6e,%.6e,%.6f,%.6f,%.6f,%.8f,%.8f,%.8e,%.8e,%.8e,%.8e,%.8e,%.8e\n",
+                  iter + 1, MeanDiff * 1e6, StdDiff * 1e6,
+                  LsdFit, ybcFit, zbcFit, ty, tz, p0, p1, p2, p3, p4, p5);
+          fflush(convHistFP);
+        }
 
         // Feature 1: Remove flagged outliers between iterations
         if (iterOutlier != NULL) {
@@ -3031,6 +3049,13 @@ int main(int argc, char *argv[]) {
             0, &MeanDiff, parallaxIn);
         printf("Iter %2d/%d  MeanStrain %8.3f  StdStrain %8.3f\n",
                iter + 1, nIterations, MeanDiff * 1e6, StdDiff * 1e6);
+        // Write convergence history row (multi-panel / re-fit path)
+        if (convHistFP) {
+          fprintf(convHistFP, "%d,%.6e,%.6e,%.6f,%.6f,%.6f,%.8f,%.8f,%.8e,%.8e,%.8e,%.8e,%.8e,%.8e\n",
+                  iter + 1, MeanDiff * 1e6, StdDiff * 1e6,
+                  LsdFit, ybcFit, zbcFit, ty, tz, p0, p1, p2, p3, p4, p5);
+          fflush(convHistFP);
+        }
 
         // Remove flagged outliers (same logic as re-fit path)
         if (iterOutlier != NULL) {
@@ -3120,7 +3145,10 @@ int main(int argc, char *argv[]) {
       prevIterMeanDiff = MeanDiff;
 
       // Divergence guard: revert to best and exit if strain increased > 50%
-      if (iter > 0 && bestMeanDiff > 0 &&
+      // Skip check during grace period after perturbation
+      if (postPerturbGrace > 0) {
+        postPerturbGrace--;
+      } else if (iter > 0 && bestMeanDiff > 0 &&
           MeanDiff > 1.5 * bestMeanDiff) {
         printf("  [Divergence guard] MeanStrain %.3f > 1.5 x best %.3f "
                "-- reverting to best (iter %d)\n",
@@ -3139,23 +3167,67 @@ int main(int argc, char *argv[]) {
         break;
       }
 
-      // Oscillation guard: exit after 3 consecutive 2-cycles
-      if (oscillationCount >= 3) {
+      // Oscillation guard: perturb and continue after 3 consecutive 2-cycles
+      if (oscillationCount >= 3 && iter < nIterations - 1) {
         printf("  [Oscillation detected] MeanStrain alternating for %d "
-               "cycles -- stopping at best iter %d\n",
+               "cycles -- perturbing from best iter %d\n",
                oscillationCount, bestIter + 1);
-        LsdFit = bestLsd; ybcFit = bestYbc; zbcFit = bestZbc;
-        ty = bestTy; tz = bestTz;
-        p0 = bestP0; p1 = bestP1; p2 = bestP2; p3 = bestP3;
-        p4in = bestP4; p5in = bestP5;
-        parallaxIn = bestParallax;
+        // Restore from best
         Lsd = bestLsd; ybc = bestYbc; zbc = bestZbc;
         tyin = bestTy; tzin = bestTz;
         p0in = bestP0; p1in = bestP1; p2in = bestP2; p3in = bestP3;
+        p4in = bestP4; p5in = bestP5;
+        parallaxIn = bestParallax;
         MeanDiff = bestMeanDiff;
         if (bestPanels && nPanels > 0)
           memcpy(panels, bestPanels, nPanels * sizeof(Panel));
-        break;
+
+        // Apply perturbation (same LCG RNG as stagnation perturbation)
+        unsigned long long lcg_osc = 137ULL + iter;
+#define LCG_NEXT_OSC(s) \
+  ((s) = (s) * 6364136223846793005ULL + 1442695040888963407ULL)
+#define LCG_DOUBLE_OSC(s) \
+  ((double)(LCG_NEXT_OSC(s) >> 33) / (double)(1ULL << 31))
+        double pertFracOsc = 0.08;  // slightly larger kick than stagnation
+#define PERT_CLAMP_OSC(val, tol, lo, hi)                     \
+  fmin(fmax((val) + pertFracOsc * (tol) *                     \
+            (2.0 * LCG_DOUBLE_OSC(lcg_osc) - 1.0), (lo)), (hi))
+        Lsd = PERT_CLAMP_OSC(Lsd, tolLsd, initParams[0] - tolLsd,
+                             initParams[0] + tolLsd);
+        ybc = PERT_CLAMP_OSC(ybc, tolBC, initParams[1] - tolBC,
+                             initParams[1] + tolBC);
+        zbc = PERT_CLAMP_OSC(zbc, tolBC, initParams[2] - tolBC,
+                             initParams[2] + tolBC);
+        tyin = PERT_CLAMP_OSC(tyin, tolTilts, initParams[3] - tolTilts,
+                              initParams[3] + tolTilts);
+        tzin = PERT_CLAMP_OSC(tzin, tolTilts, initParams[4] - tolTilts,
+                              initParams[4] + tolTilts);
+        p0in = PERT_CLAMP_OSC(p0in, tolP, initParams[5] - tolP0,
+                              initParams[5] + tolP0);
+        p1in = PERT_CLAMP_OSC(p1in, tolP, initParams[6] - tolP1,
+                              initParams[6] + tolP1);
+        p2in = PERT_CLAMP_OSC(p2in, tolP, initParams[7] - tolP2,
+                              initParams[7] + tolP2);
+        p3in = PERT_CLAMP_OSC(p3in, tolP3, initParams[8] - tolP3,
+                              initParams[8] + tolP3);
+        p4in = PERT_CLAMP_OSC(p4in, tolP4, initParams[9] - tolP4,
+                              initParams[9] + tolP4);
+        p5in = PERT_CLAMP_OSC(p5in, tolP5, initParams[10] - tolP5,
+                              initParams[10] + tolP5);
+        if (FitParallax) {
+          parallaxIn = PERT_CLAMP_OSC(parallaxIn, tolParallax,
+                                      initParams[11] - tolParallax,
+                                      initParams[11] + tolParallax);
+        }
+#undef PERT_CLAMP_OSC
+#undef LCG_NEXT_OSC
+#undef LCG_DOUBLE_OSC
+        printf("  [Oscillation perturbation applied, "
+               "continuing from iter %d/%d]\n",
+               iter + 1, nIterations);
+        oscillationCount = 0;
+        perturbedFlag = 1;  // re-bin on next iteration
+        postPerturbGrace = 3;  // skip divergence guard for 3 iters
       }
 
       // Perturbation: if stagnant for 3+ iterations, kick parameters
@@ -3222,6 +3294,7 @@ int main(int argc, char *argv[]) {
                stagnantCount, bestIter + 1);
         stagnantCount = 0;
         perturbedFlag = 1; // next iteration will re-bin
+        postPerturbGrace = 3;  // skip divergence guard for 3 iters
       }
 
       // Save final nIndices for post-loop processing
@@ -3450,6 +3523,11 @@ int main(int argc, char *argv[]) {
     if (initPanels)
       free(initPanels);
   post_iteration_loop:
+    // Close convergence history CSV
+    if (convHistFP) {
+      fclose(convHistFP);
+      printf("Convergence history saved to: %s\n", convHistFN);
+    }
     nIndices = nIndicesFinal;
 
     double *Etas, *Diffs, *RadOuts;

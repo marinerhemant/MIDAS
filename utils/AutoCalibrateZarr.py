@@ -80,6 +80,33 @@ def _safe_median_filter(data, kernel_size=101, n_iters=5):
             data = ndimage.median_filter(data, size=kernel_size)
         return data
 
+
+def apply_imtrans(img, im_trans_opts):
+    """Apply MIDAS image transformations (same as C DoImageTransformations).
+
+    Parameters
+    ----------
+    img : ndarray (nz, ny)
+        Image in row=Z, col=Y layout.
+    im_trans_opts : list of int
+        Transformation codes: 0 = no-op, 1 = flip Y (cols),
+        2 = flip Z (rows), 3 = transpose.
+
+    Returns
+    -------
+    img : ndarray
+        Transformed image.
+    """
+    for opt in im_trans_opts:
+        if opt == 1:
+            img = img[:, ::-1]   # flip Y (columns)
+        elif opt == 2:
+            img = img[::-1, :]   # flip Z (rows)
+        elif opt == 3:
+            img = img.T          # transpose
+    return np.ascontiguousarray(img)
+
+
 # Set up logging
 logging.basicConfig(
     level=logging.INFO,
@@ -1054,9 +1081,12 @@ def detect_ring_radii(labels, props, bc_computed, minArea):
 def estimate_lsd(rads, sim_rads, sim_rad_ratios, firstRing, initialLsd, max_ring=0):
     """Estimate sample-to-detector distance from ring radii.
     
-    Try assigning the first detected ring to each simulated ring in turn,
+    Try assigning detected ring k to simulated ring j (for multiple k),
     compute a trial Lsd, then count how many other detected rings match.
     Pick the assignment with the most consistent matches.
+    
+    Tests det[0], det[1], det[2] as starting points to handle spurious
+    detections at small radii (e.g. panel artifacts on Pilatus).
     """
     if len(rads) == 0:
         return initialLsd
@@ -1070,48 +1100,399 @@ def estimate_lsd(rads, sim_rads, sim_rad_ratios, firstRing, initialLsd, max_ring
                     f"{np.round(sim_rads[:min(n_sim,10)], 1)}")
 
         best_lsd = initialLsd
-        best_score = (0, 1e9)  # (match_count, std_of_lsd_estimates) — max count, min std
-        best_hypothesis = -1
-        min_matches = max(3, len(rads) // 2)  # require at least half the rings
+        best_score = (0, 1e9)  # (match_count, -lsd_std) — max count, then min std
+        best_hypothesis = (-1, -1)
 
-        # Try each simulated ring as the identity of the first detected ring
-        for hyp in range(firstRing - 1, n_sim):
-            # Trial Lsd: first detected ring = sim ring 'hyp'
-            trial_lsd = initialLsd * rads[0] / sim_rads[hyp]
-            # At this trial Lsd, what would the sim radii be in pixels?
-            scale = trial_lsd / initialLsd
-            trial_sim_px = sim_rads * scale
+        # Try multiple detected rings as the starting point
+        max_det_start = min(3, len(rads))
+        for det_start in range(max_det_start):
+            for hyp in range(firstRing - 1, n_sim):
+                # Trial Lsd: detected ring 'det_start' = sim ring 'hyp'
+                trial_lsd = initialLsd * rads[det_start] / sim_rads[hyp]
 
-            # Count how many detected rings match a simulated ring (within 5%)
-            matches = 0
-            lsds_this = []
-            for det_rad in rads:
-                diffs = np.abs(trial_sim_px[:n_sim] - det_rad)
-                best_j = np.argmin(diffs)
-                rel_err = diffs[best_j] / det_rad
-                if rel_err < 0.05:
-                    matches += 1
-                    lsds_this.append(initialLsd * det_rad / sim_rads[best_j])
+                # At this trial Lsd, what would the sim radii be in pixels?
+                scale = trial_lsd / initialLsd
+                trial_sim_px = sim_rads * scale
 
-            lsd_std = np.std(lsds_this) if len(lsds_this) >= 2 else 1e9
-            # Only consider hypotheses with enough matches
-            if matches >= min_matches:
-                # Primary: lowest std of Lsd estimates (most consistent)
-                if lsd_std < best_score[1] or best_score[0] < min_matches:
+                # Count how many detected rings match a simulated ring (within 5%)
+                matches = 0
+                lsds_this = []
+                for det_rad in rads:
+                    diffs = np.abs(trial_sim_px[:n_sim] - det_rad)
+                    best_j = np.argmin(diffs)
+                    rel_err = diffs[best_j] / det_rad
+                    if rel_err < 0.05:
+                        matches += 1
+                        lsds_this.append(initialLsd * det_rad / sim_rads[best_j])
+
+                lsd_std = np.std(lsds_this) if len(lsds_this) >= 2 else 1e9
+                lsd_median = np.median(lsds_this) if lsds_this else trial_lsd
+
+                # Score: primary = most matches, secondary = lowest std
+                is_better = False
+                if matches > best_score[0]:
+                    is_better = True
+                elif matches == best_score[0] and lsd_std < best_score[1]:
+                    is_better = True
+
+                if is_better:
                     best_score = (matches, lsd_std)
-                    best_hypothesis = hyp
-                    best_lsd = np.median(lsds_this)
+                    best_hypothesis = (det_start, hyp)
+                    best_lsd = lsd_median
 
-            logger.debug(f"    hyp: det[0]→sim[{hyp+1}], trial_lsd={trial_lsd:.0f}, "
-                         f"matches={matches}/{len(rads)}, lsd_std={lsd_std:.1f}")
+                logger.info(f"    hyp det[{det_start}]→sim[{hyp}], "
+                            f"trial_lsd={trial_lsd:.0f}, "
+                            f"matches={matches}/{len(rads)}, lsd_std={lsd_std:.1f}, "
+                            f"lsd_median={lsd_median:.1f}"
+                            f"{' ← BEST' if is_better else ''}")
 
-        logger.info(f"  estimate_lsd: best hypothesis: det ring 0 → sim ring {best_hypothesis+1}, "
+        logger.info(f"  estimate_lsd: best hypothesis: det ring {best_hypothesis[0]} "
+                    f"→ sim ring {best_hypothesis[1]}, "
                     f"{best_score[0]}/{len(rads)} matches, "
                     f"lsd_std={best_score[1]:.1f}, Lsd={best_lsd:.1f}")
+
         return best_lsd
     except Exception as e:
         logger.error(f"Error estimating Lsd: {e}")
         return initialLsd
+
+
+# ---- Auto-detect max ring number ----
+
+def auto_detect_max_ring(sim_rads_px, npy, npz, bc_y, bc_z,
+                         data=None, min_separation_px=5.0,
+                         max_overlap_run=3, snr_threshold=3.0):
+    """Auto-detect the maximum usable ring number.
+
+    Criteria (applied in order):
+    1. Ring must fit on the detector (R < 95% of max BC-to-corner distance).
+    2. Adjacent rings must be separated by >= min_separation_px.
+       Stop after max_overlap_run consecutive too-close pairs.
+    3. If data is provided, compute radial intensity profile and check
+       SNR of each ring.  Drop rings with SNR < snr_threshold.
+
+    Parameters
+    ----------
+    sim_rads_px : array
+        Simulated ring radii in pixels, sorted ascending.
+    npy, npz : int
+        Detector dimensions.
+    bc_y, bc_z : float
+        Beam center in pixels.
+    data : ndarray or None
+        Background-subtracted image (for SNR estimation).
+        Shape can be (nz, ny) or (ny, nz).
+    min_separation_px : float
+        Minimum required separation between adjacent rings (pixels).
+    max_overlap_run : int
+        Stop after this many consecutive too-close pairs.
+    snr_threshold : float
+        Minimum ring SNR to include (peak / background_std).
+
+    Returns
+    -------
+    max_ring : int
+        Number of usable rings (0 = use all).
+    """
+    if len(sim_rads_px) <= 1:
+        return 0  # no limit
+
+    # --- Criterion 1: Detector extent ---
+    corners = np.array([
+        [0, 0], [0, npz - 1], [npy - 1, 0], [npy - 1, npz - 1]
+    ], dtype=float)
+    max_R = max(np.sqrt((c[0] - bc_y)**2 + (c[1] - bc_z)**2)
+                for c in corners)
+    extent_limit = 0.95 * max_R
+
+    # --- Criterion 2: Ring separation ---
+    # Find where consecutive close pairs start
+    close_run = 0
+    separation_limit = len(sim_rads_px)
+    for i in range(len(sim_rads_px)):
+        if sim_rads_px[i] > extent_limit:
+            separation_limit = i
+            logger.info(f"  auto_detect_max_ring: ring {i+1} "
+                        f"(R={sim_rads_px[i]:.1f}px) exceeds detector "
+                        f"extent ({extent_limit:.1f}px)")
+            break
+        if i < len(sim_rads_px) - 1:
+            sep = sim_rads_px[i + 1] - sim_rads_px[i]
+            if sep < min_separation_px:
+                close_run += 1
+                if close_run >= max_overlap_run:
+                    separation_limit = i + 2 - max_overlap_run
+                    logger.info(
+                        f"  auto_detect_max_ring: {max_overlap_run} consecutive "
+                        f"close ring pairs at ring {separation_limit+1} "
+                        f"(sep < {min_separation_px}px)")
+                    break
+            else:
+                close_run = 0
+
+    max_ring = separation_limit
+
+    # --- Criterion 3: SNR from radial profile ---
+    if data is not None and max_ring > 0:
+        try:
+            # Compute radial distance for each pixel
+            nz_img, ny_img = data.shape
+            yy, zz = np.meshgrid(np.arange(ny_img), np.arange(nz_img))
+            # BC is (y_px, z_px); image is (z_row, y_col)
+            R_img = np.sqrt((yy - bc_y)**2 + (zz - bc_z)**2)
+
+            # Compute azimuthally-averaged radial profile (1px bins)
+            max_r_int = int(np.ceil(sim_rads_px[min(max_ring, len(sim_rads_px)) - 1])) + 30
+            max_r_int = min(max_r_int, int(np.max(R_img)))
+            r_bins = np.arange(0, max_r_int + 1)
+            r_idx = np.clip(R_img.astype(int), 0, max_r_int)
+            radial_sum = np.bincount(r_idx.ravel(), weights=data.ravel(),
+                                     minlength=max_r_int + 1)
+            radial_count = np.bincount(r_idx.ravel(), minlength=max_r_int + 1)
+            radial_count[radial_count == 0] = 1  # avoid div by zero
+            radial_profile = radial_sum / radial_count
+
+            # Estimate per-ring SNR
+            snr_limit = max_ring
+            low_snr_run = 0
+            max_low_snr_run = 3  # consecutive weak rings before cutoff
+            for i in range(min(max_ring, len(sim_rads_px))):
+                rc = int(round(sim_rads_px[i]))
+                if rc >= len(radial_profile):
+                    snr_limit = i
+                    break
+
+                # Adaptive window: ±max(8, 3% of rc) to handle Lsd errors
+                pk_hw = max(8, int(0.03 * rc))  # peak half-width
+                bg_hw = 3 * pk_hw               # background half-width
+
+                # Peak: max in window around ring
+                lo_pk = max(0, rc - pk_hw)
+                hi_pk = min(len(radial_profile), rc + pk_hw + 1)
+                peak_val = np.max(radial_profile[lo_pk:hi_pk])
+
+                # Background: wider annulus excluding ring core
+                lo_bg = max(0, rc - bg_hw)
+                hi_bg = min(len(radial_profile), rc + bg_hw + 1)
+                bg_mask = np.ones(hi_bg - lo_bg, dtype=bool)
+                # Exclude peak zone from background
+                core_lo = max(0, rc - pk_hw - lo_bg)
+                core_hi = min(hi_bg - lo_bg, rc + pk_hw + 1 - lo_bg)
+                bg_mask[core_lo:core_hi] = False
+                bg_vals = radial_profile[lo_bg:hi_bg][bg_mask]
+
+                if len(bg_vals) > 2:
+                    bg_mean = np.mean(bg_vals)
+                    bg_std = max(np.std(bg_vals), 1e-10)
+                    snr = (peak_val - bg_mean) / bg_std
+                else:
+                    snr = 0.0
+
+                logger.debug(f"    ring {i+1} R={sim_rads_px[i]:.1f}px SNR={snr:.1f}")
+
+                if snr < snr_threshold:
+                    low_snr_run += 1
+                    if low_snr_run >= max_low_snr_run:
+                        snr_limit = i + 1 - max_low_snr_run
+                        logger.info(
+                            f"  auto_detect_max_ring: {max_low_snr_run} "
+                            f"consecutive low-SNR rings starting at ring "
+                            f"{snr_limit+1} (SNR < {snr_threshold})")
+                        break
+                else:
+                    low_snr_run = 0
+
+            max_ring = min(max_ring, snr_limit)
+        except Exception as e:
+            logger.warning(f"  auto_detect_max_ring: SNR estimation failed: {e}")
+
+    if max_ring >= len(sim_rads_px) or max_ring <= 0:
+        # If SNR gave 0 (all rings failed SNR from the start),
+        # the SNR calculation is unreliable — fall back to extent limit
+        if max_ring <= 0 and separation_limit > 0 and separation_limit < len(sim_rads_px):
+            # SNR unreliable, use extent-based limit, cap at 25
+            max_ring = min(separation_limit, 25)
+            logger.info(f"  auto_detect_max_ring: SNR unreliable, "
+                        f"using extent-based limit: {max_ring} of "
+                        f"{len(sim_rads_px)} rings")
+            return max_ring
+        logger.info(f"  auto_detect_max_ring: all {len(sim_rads_px)} rings usable")
+        return 0  # 0 means no limit
+    else:
+        logger.info(f"  auto_detect_max_ring: using {max_ring} of "
+                    f"{len(sim_rads_px)} rings")
+        return max_ring
+
+
+# ---- Tilted-detector auto-guess (direct geometry fit) ----
+
+def _pixel_to_R(y_px, z_px, bc_y, bc_z, lsd, ty_deg, tz_deg, px):
+    """Compute radial distance R (in pixels) for given pixel coords and geometry.
+
+    Uses the exact MIDAS convention from DetectorGeometry.c:
+      Yc = (-Y + Ycen) * px    (Y is flipped)
+      Zc = (Z - Zcen) * px
+      ABC = [0, Yc, Zc]
+      ABCPr = TRs @ ABC        where TRs = Rx @ (Ry @ Rz)
+      XYZ = [Lsd + ABCPr[0], ABCPr[1], ABCPr[2]]
+      R_um = (Lsd / XYZ[0]) * sqrt(XYZ[1]^2 + XYZ[2]^2)
+      R_px = R_um / px
+
+    Parameters
+    ----------
+    y_px, z_px : array-like
+        Pixel coordinates (row, col in MIDAS convention).
+    bc_y, bc_z : float
+        Beam center in pixels.
+    lsd : float
+        Sample-to-detector distance in µm.
+    ty_deg, tz_deg : float
+        Detector tilts in degrees.
+    px : float
+        Pixel size in µm.
+
+    Returns
+    -------
+    R_px : ndarray
+        Radial distance in pixels for each input pixel.
+    """
+    tyr = np.deg2rad(ty_deg)
+    tzr = np.deg2rad(tz_deg)
+    # TRs = Rx @ (Ry @ Rz), with tx=0 → Rx = I
+    cy, sy = np.cos(tyr), np.sin(tyr)
+    cz, sz = np.cos(tzr), np.sin(tzr)
+    # Ry @ Rz (tx=0, so Rx=I → TRs = Ry @ Rz)
+    TRs = np.array([[ cy*cz, -cy*sz,  sy],
+                     [    sz,     cz,   0],
+                     [-sy*cz,  sy*sz,  cy]])
+
+    Yc = (-np.asarray(y_px, dtype=np.float64) + bc_y) * px
+    Zc = (np.asarray(z_px, dtype=np.float64) - bc_z) * px
+
+    # ABCPr = TRs @ [0, Yc, Zc]  →  only columns 1,2 of TRs matter
+    ABCPr_0 = TRs[0, 1] * Yc + TRs[0, 2] * Zc
+    ABCPr_1 = TRs[1, 1] * Yc + TRs[1, 2] * Zc
+    ABCPr_2 = TRs[2, 1] * Yc + TRs[2, 2] * Zc
+
+    XYZ_0 = lsd + ABCPr_0
+    XYZ_1 = ABCPr_1
+    XYZ_2 = ABCPr_2
+
+    R_um = (lsd / XYZ_0) * np.sqrt(XYZ_1**2 + XYZ_2**2)
+    return R_um / px
+
+
+def auto_guess_tilted(arc_coords, sim_rads_px, bc_init, lsd_init, px,
+                      max_tilt=5.0):
+    """Refine (BC_Y, BC_Z, Lsd, ty, tz) by direct geometry fit on arc pixels.
+
+    Instead of fitting ellipses, this uses the MIDAS forward model to compute
+    the expected radial distance R for each arc pixel given trial geometry
+    parameters. The objective minimizes the sum of squared residuals between
+    computed R and the nearest known ring radius.
+
+    Parameters
+    ----------
+    arc_coords : ndarray, shape (N, 2)
+        Detected arc pixel coordinates (y_px, z_px).
+    sim_rads_px : ndarray
+        Known ring radii in pixels (from GetHKLList).
+        Should be limited to the usable rings (max_ring_number).
+    bc_init : tuple (bc_y, bc_z)
+        Initial beam center guess in pixels.
+    lsd_init : float
+        Initial Lsd guess in µm.
+    px : float
+        Pixel size in µm.
+    max_tilt : float
+        Maximum tilt angle bound in degrees.
+
+    Returns
+    -------
+    result : dict with keys 'bc_y', 'bc_z', 'lsd', 'ty', 'tz', 'residual'
+    """
+    from scipy.optimize import minimize
+
+    y_arc = arc_coords[:, 0]
+    z_arc = arc_coords[:, 1]
+
+    # Subsample for speed if too many pixels
+    max_pts = 10000
+    if len(y_arc) > max_pts:
+        idx = np.random.default_rng(42).choice(len(y_arc), max_pts, replace=False)
+        y_arc = y_arc[idx]
+        z_arc = z_arc[idx]
+
+    def objective(params):
+        bc_y, bc_z, lsd, ty, tz = params
+        R_computed = _pixel_to_R(y_arc, z_arc, bc_y, bc_z, lsd, ty, tz, px)
+        # For each pixel, find distance to nearest known ring
+        diffs = np.abs(R_computed[:, None] - sim_rads_px[None, :])
+        min_diffs = np.min(diffs, axis=1)
+        return np.sum(min_diffs**2)
+
+    x0 = [bc_init[0], bc_init[1], lsd_init, 0.0, 0.0]
+    # Bounds: BC ± 200 px, Lsd ± 15%, tilts ± max_tilt
+    bounds = [
+        (bc_init[0] - 200, bc_init[0] + 200),
+        (bc_init[1] - 200, bc_init[1] + 200),
+        (lsd_init * 0.85, lsd_init * 1.15),
+        (-max_tilt, max_tilt),
+        (-max_tilt, max_tilt),
+    ]
+
+    logger.info(f"  auto_guess_tilted: fitting {len(y_arc)} arc pixels "
+                f"against {len(sim_rads_px)} rings")
+    logger.info(f"  initial: BC=({bc_init[0]:.1f}, {bc_init[1]:.1f}), "
+                f"Lsd={lsd_init:.0f}, ty=0, tz=0")
+
+    # Evaluate objective at initial point (no tilts)
+    initial_obj = objective(x0)
+    initial_residual = initial_obj / len(y_arc)
+    logger.info(f"  initial residual: {initial_residual:.4f} px²/pixel")
+
+    # If initial residual is already very good, skip optimization
+    # (tilts would be near-zero and optimizer may create spurious minima)
+    if initial_residual < 5.0:
+        logger.info(f"  Skipping tilt optimization — initial geometry already good "
+                    f"(residual {initial_residual:.2f} < 5.0 px²/pixel)")
+        return {
+            'bc_y': bc_init[0], 'bc_z': bc_init[1],
+            'lsd': lsd_init, 'ty': 0.0, 'tz': 0.0,
+            'residual': initial_residual
+        }
+
+    result = minimize(objective, x0, method='L-BFGS-B', bounds=bounds,
+                      options={'maxiter': 500, 'ftol': 1e-12})
+
+    bc_y, bc_z, lsd, ty, tz = result.x
+    residual = result.fun / len(y_arc)
+
+    logger.info(f"  auto_guess_tilted result: BC=({bc_y:.1f}, {bc_z:.1f}), "
+                f"Lsd={lsd:.0f}, ty={ty:.3f}°, tz={tz:.3f}°, "
+                f"residual={residual:.4f} px²")
+
+    # Reject if optimizer hit bounds (sign of runaway) or got worse
+    at_bound = (abs(ty) >= max_tilt - 0.01 or abs(tz) >= max_tilt - 0.01 or
+                lsd <= lsd_init * 0.86 or lsd >= lsd_init * 1.14)
+    if at_bound or residual > initial_residual:
+        logger.warning(f"  Rejecting tilt optimization — "
+                       f"{'at bounds' if at_bound else 'residual increased'}, "
+                       f"using initial estimates")
+        return {
+            'bc_y': bc_init[0], 'bc_z': bc_init[1],
+            'lsd': lsd_init, 'ty': 0.0, 'tz': 0.0,
+            'residual': initial_residual
+        }
+
+    return {
+        'bc_y': bc_y,
+        'bc_z': bc_z,
+        'lsd': lsd,
+        'ty': ty,
+        'tz': tz,
+        'residual': residual,
+    }
 
 
 def create_param_file(output_file, params):
@@ -1185,7 +1566,7 @@ def run_get_hkl_list(param_file):
 
 def runMIDAS(rawFN, state, n_iterations=40, mult_factor=2.5,
              doublet_separation=25, outlier_iterations=3,
-             eta_bin_size=5.0, max_width=1000, n_cpus=None,
+             eta_bin_size=1.0, max_width=1000, n_cpus=None,
              stage=0, stage_label='',
              trimmed_mean_fraction=0.75,
              remove_outliers_between_iters=1):
@@ -1340,11 +1721,16 @@ def runMIDAS(rawFN, state, n_iterations=40, mult_factor=2.5,
             )
             for line in proc.stdout:
                 f.write(line)
-                # Print iteration progress to terminal
-                if 'MeanStrain' in line or 'Iteration' in line or 'Restoring best' in line:
-                    print(f"  {line.rstrip()}")
-                elif 'Doublet detected' in line:
-                    print(f"  {line.rstrip()}")
+                # Print key output to terminal
+                stripped = line.rstrip()
+                if any(kw in line for kw in ['MeanStrain', 'Iteration', 'Restoring best',
+                                              'Doublet detected', 'nIterations',
+                                              'per-ring', 'Ring ', '---',
+                                              'Best result', 'Post-loop']):
+                    print(f"  {stripped}")
+                # Per-ring table rows: start with spaces then digits (e.g. "     4  70256.63 ...")
+                elif stripped and stripped.lstrip().replace('.','',1).replace('-','',1).replace('+','',1)[:4].replace(' ','').isdigit():
+                    print(f"  {stripped}")
             proc.wait()
 
         # Parse output for refined parameters
@@ -1437,7 +1823,7 @@ def main():
         parser.add_argument('--remove-outliers-between-iters', type=int, default=1,
                             help='Remove outlier points between calibration iterations '
                                  '(0=off, 1=on). Default: 1')
-        parser.add_argument('--eta-bin-size', '-EtaBinSize', type=float, default=5.0,
+        parser.add_argument('--eta-bin-size', '-EtaBinSize', type=float, default=1.0,
                             help='Azimuthal bin size (degrees)')
 
         # Geometry guesses
@@ -1784,32 +2170,48 @@ def main():
                     else:
                         state.px = 200.0
                 elif state.px == 200.0:  # still at default
-                    base_lower = Path(dataFN).name.lower()
-                    fn_ext = Path(dataFN).suffix.lower()
-                    if '.vrx' in base_lower or 'varex' in base_lower:
-                        state.px = 150.0
-                        logger.info("Auto-detected Varex detector → pixel size 150 µm")
-                    elif fn_ext in ('.tif', '.tiff', '.h5', '.hdf5', '.hdf', '.nxs'):
-                        _pil_detected = False
-                        try:
-                            if fn_ext in ('.tif', '.tiff'):
-                                _img = Image.open(dataFN)
-                                _shape = (_img.size[1], _img.size[0])
-                            else:
-                                with h5py.File(dataFN, 'r') as _f:
-                                    _dloc = args.data_loc or 'exchange/data'
-                                    _shape = _f[_dloc].shape[-2:]
-                            if sorted(_shape) == [1475, 1679]:
+                    # Auto-detect pixel size from detector shape
+                    _px_detected = False
+                    try:
+                        fn_ext = Path(dataFN).suffix.lower()
+                        if fn_ext in ('.tif', '.tiff'):
+                            _img = Image.open(dataFN)
+                            _shape = (_img.size[1], _img.size[0])
+                        elif fn_ext in ('.h5', '.hdf5', '.hdf', '.nxs'):
+                            with h5py.File(dataFN, 'r') as _f:
+                                _dloc = args.data_loc or 'exchange/data'
+                                _shape = _f[_dloc].shape[-2:]
+                        else:
+                            _shape = None
+
+                        if _shape is not None:
+                            _sorted = sorted(_shape)
+                            if _sorted == [1475, 1679]:
                                 state.px = 172.0
-                                _pil_detected = True
+                                _px_detected = True
                                 logger.info(f"Auto-detected Pilatus detector "
                                             f"({_shape[0]}×{_shape[1]}) → pixel size 172 µm")
-                        except Exception:
-                            pass
-                        if not _pil_detected:
+                            elif _sorted == [2048, 2048]:
+                                state.px = 200.0
+                                _px_detected = True
+                                logger.info(f"Auto-detected GE detector "
+                                            f"({_shape[0]}×{_shape[1]}) → pixel size 200 µm")
+                            elif _sorted == [2880, 2880]:
+                                state.px = 150.0
+                                _px_detected = True
+                                logger.info(f"Auto-detected Varex detector "
+                                            f"({_shape[0]}×{_shape[1]}) → pixel size 150 µm")
+                    except Exception:
+                        pass
+
+                    if not _px_detected:
+                        # Fallback: check filename keywords
+                        base_lower = Path(dataFN).name.lower()
+                        if '.vrx' in base_lower or 'varex' in base_lower:
+                            state.px = 150.0
+                            logger.info("Auto-detected Varex detector from filename → pixel size 150 µm")
+                        else:
                             state.px = 200.0
-                    else:
-                        state.px = 200.0
             else:
                 logger.info(f"Using px from parameter file: {state.px:.1f} µm")
 
@@ -2020,6 +2422,8 @@ def main():
             viewer.process_events()
 
         # ---- Beam center and ring detection ----
+        # NOTE: BC detection runs on the UN-TRANSFORMED image, then we apply
+        #       ImTransOpt as a coordinate transform afterwards.
         bcg = args.bc_guess
         if bcg is None or bcg[0] == 0:
             import time as _time
@@ -2041,13 +2445,30 @@ def main():
             logger.info(f"  Bulk filter: {t2-t1:.3f}s  ({n_kept} regions kept, {nlabels-n_kept} removed)")
 
             # Beam center uses internal 4× downsampling for speed
-            bc_computed = detect_beam_center_optimized(thresh, minArea)
+            # Returns [row, col] — image is already in MIDAS convention
+            # (flipped at load time, lines 2248-2261), so row=BC_Z, col=BC_Y
+            bc_raw = detect_beam_center_optimized(thresh, minArea)
             t3 = _time.perf_counter()
-            logger.info(f"  Beam center detection: {t3-t2:.3f}s")
+            logger.info(f"  Beam center detection: {t3-t2:.3f}s  "
+                        f"BC_Y(col)={bc_raw[1]:.1f}, BC_Z(row)={bc_raw[0]:.1f}")
+
+            # bc_computed = [row, col] = [BC_Z, BC_Y] (MIDAS convention)
+            bc_computed = bc_raw
 
             rads = detect_ring_radii(labels, props, bc_computed, minArea)
             t4 = _time.perf_counter()
             logger.info(f"  Ring radii detection: {t4-t3:.3f}s  (total BC pipeline: {t4-t0:.3f}s)")
+
+            # Auto-detect max ring number if not already set
+            # bc_computed = [row, col] = [BC_Z, BC_Y]
+            # auto_detect_max_ring wants (bc_y, bc_z) = (col, row)
+            if state.max_ring_number <= 0:
+                NrPixelsY_det = state.nr_pixels_y if state.nr_pixels_y > 0 else data.shape[1]
+                NrPixelsZ_det = state.nr_pixels_z if state.nr_pixels_z > 0 else data.shape[0]
+                state.max_ring_number = auto_detect_max_ring(
+                    sim_rads, NrPixelsY_det, NrPixelsZ_det,
+                    bc_computed[1], bc_computed[0],  # (bc_y=col, bc_z=row)
+                    data=data)
 
             if not _lsd_from_cli and 'lsd' not in param_file_keys:
                 # Use estimate_lsd regardless of filename hint;
@@ -2055,11 +2476,20 @@ def main():
                 initialLsd = estimate_lsd(rads, sim_rads, sim_rad_ratios,
                                           firstRing, initialLsd,
                                           max_ring=state.max_ring_number)
+
+            # --- Tilted-detector geometry refinement ---
+            # Disabled: auto_guess_tilted has not been validated on real
+            # images.  CalibrantPanelShiftsOMP will find tilts iteratively.
+            state.ty = 0.0
+            state.tz = 0.0
+            logger.info("  Tilt estimation disabled — tilts set to 0 "
+                        "(CalibrantPanelShiftsOMP will refine)")
         else:
             bc_computed = np.flip(np.array(bcg))
 
         bc_new = bc_computed
-        logger.info(f"FN: {rawFN}, Beam Center guess: {np.flip(bc_new)}, Lsd guess: {initialLsd}")
+        logger.info(f"FN: {rawFN}, Beam Center guess: {np.flip(bc_new)}, Lsd guess: {initialLsd}, "
+                     f"ty guess: {state.ty:.3f}°, tz guess: {state.tz:.3f}°")
 
         # Re-run ring simulation with updated Lsd (CLI mode)
         hkls = run_get_hkl_list_cli(
@@ -2290,7 +2720,7 @@ def main():
             # D7: Integration params (user requested)
             'RMin': 10, 'RMax': 1000, 'RBinSize': 1,
             'EtaMin': -180, 'EtaMax': 180,
-            'EtaBinSize': 5, 'DoSmoothing': 1, 'DoPeakFit': 1,
+            'EtaBinSize': 1, 'DoSmoothing': 1, 'DoPeakFit': 1,
             'MultiplePeaks': 1,
         }
 
