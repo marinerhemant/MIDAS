@@ -3503,17 +3503,60 @@ int main(int argc, char *argv[]) {
       EtaIns = malloc(nIndices * sizeof(*EtaIns));
       RadIns = malloc(nIndices * sizeof(*RadIns));
       DiffIns = malloc(nIndices * sizeof(*DiffIns));
-      for (i = 0; i < nIndices; i++) {
-        Yc[i] = ybcFit - (YMean[i] / px);
-        Zc[i] = zbcFit + (ZMean[i] / px);
+      // Iterative outlier removal in post-loop re-fit
+      // (mirrors the inter-iteration outlier removal in the main loop)
+      int maxOutlierPasses = 5;
+      for (int olPass = 0; olPass < maxOutlierPasses; olPass++) {
+        for (i = 0; i < nIndices; i++) {
+          Yc[i] = ybcFit - (YMean[i] / px);
+          Zc[i] = zbcFit + (ZMean[i] / px);
+        }
+        int *IsOutlier_pl = calloc(nIndices, sizeof(int));
+        CorrectTiltSpatialDistortion(
+            nIndices, MaxRingRad, Yc, Zc, IdealTtheta, px, LsdFit, ybcFit, zbcFit,
+            tx, ty, tz, p0, p1, p2, p3, EtaIns, DiffIns, RadIns, &StdDiff,
+            outlierFactor, IsOutlier_pl, p4in, p5in, OutlierIterations, 1, &MeanDiff, parallaxIn);
+
+        // Count and remove outliers
+        int nOutliers = 0;
+        for (i = 0; i < nIndices; i++) {
+          if (IsOutlier_pl[i]) nOutliers++;
+        }
+        if (nOutliers > 0 && nOutliers < nIndices / 2) {
+          int newCount = 0;
+          for (i = 0; i < nIndices; i++) {
+            if (!IsOutlier_pl[i]) {
+              RMean[newCount] = RMean[i];
+              EtaMean[newCount] = EtaMean[i];
+              IdealTtheta[newCount] = IdealTtheta[i];
+              if (PointDSpacing)
+                PointDSpacing[newCount] = PointDSpacing[i];
+              RingNumbers[newCount] = RingNumbers[i];
+              YMean[newCount] = YMean[i];
+              ZMean[newCount] = ZMean[i];
+              Yc[newCount] = Yc[i];
+              Zc[newCount] = Zc[i];
+              EtaIns[newCount] = EtaIns[i];
+              RadIns[newCount] = RadIns[i];
+              DiffIns[newCount] = DiffIns[i];
+              newCount++;
+            }
+          }
+          printf("  Post-loop outlier pass %d: removed %d / %d (%.1f%%), "
+                 "MeanStrain %.3f\n",
+                 olPass + 1, nOutliers, nIndices,
+                 100.0 * nOutliers / nIndices, MeanDiff * 1e6);
+          nIndices = newCount;
+          nIndicesFinal = nIndices;
+          free(IsOutlier_pl);
+        } else {
+          // No more outliers or too many — done
+          free(IsOutlier_pl);
+          break;
+        }
       }
-      int *IsOutlier_pl = calloc(nIndices, sizeof(int));
-      CorrectTiltSpatialDistortion(
-          nIndices, MaxRingRad, Yc, Zc, IdealTtheta, px, LsdFit, ybcFit, zbcFit,
-          tx, ty, tz, p0, p1, p2, p3, EtaIns, DiffIns, RadIns, &StdDiff,
-          outlierFactor, IsOutlier_pl, p4in, p5in, OutlierIterations, 1, &MeanDiff, parallaxIn);
+      printf("Post-loop re-fit: %d valid slices.\n", nIndices);
       printf("Post-loop re-fit MeanStrain %0.6lf\n", MeanDiff * 1e6);
-      free(IsOutlier_pl);
       free(R_pl);
       free(Eta_pl);
       free(NrBin_pl);
