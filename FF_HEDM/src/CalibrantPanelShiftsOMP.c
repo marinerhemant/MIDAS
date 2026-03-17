@@ -3483,6 +3483,7 @@ int main(int argc, char *argv[]) {
         nIndices, MaxRingRad, Yc, Zc, IdealTtheta, px, LsdFit, ybcFit, zbcFit,
         tx, ty, tz, p0, p1, p2, p3, Etas, Diffs, RadOuts, &StdDiff,
         outlierFactor, IsOutlier, p4in, p5in, OutlierIterations, 1, &MeanDiff, parallaxIn);
+    printf("Output-loop recomputed MeanStrain %0.6lf (nIndices=%d)\n", MeanDiff * 1e6, nIndices);
     printf("StdStrain %0.12lf\n", StdDiff);
     // Compute strain statistics from valid (non-outlier) diffs
     nValid = 0;
