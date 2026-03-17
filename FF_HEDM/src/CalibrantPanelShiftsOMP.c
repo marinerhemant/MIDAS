@@ -2349,9 +2349,16 @@ int main(int argc, char *argv[]) {
     Panel *bestPanels = NULL;
     if (nPanels > 0)
       bestPanels = malloc(nPanels * sizeof(Panel));
-    // Best-iteration skip-bin mask (replaces physical array removal)
+    // Best-iteration skip-bin mask + bin arrays
+    // (bin arrays must be saved because perturbation re-creates them)
     int *skipBin = NULL;       // active mask: 1 = excluded from fitting
     int *bestSkipBin = NULL;   // snapshot from best iteration
+    double *bestRMean = NULL, *bestEtaMean = NULL, *bestIdealTtheta = NULL;
+    double *bestPointDSpacing = NULL;
+    int *bestRingNumbers = NULL;
+    double *bestYMean = NULL, *bestZMean = NULL;
+    double *bestEtaIns = NULL, *bestDiffIns = NULL, *bestRadIns = NULL;
+    double *bestYc = NULL, *bestZc = NULL;
     int bestNIndices = 0;
     int perturbedFlag =
         0; // set by perturbation logic; triggers re-bin next iter
@@ -3110,11 +3117,37 @@ int main(int argc, char *argv[]) {
         bestParallax = parallaxIn;
         if (bestPanels && nPanels > 0)
           memcpy(bestPanels, panels, nPanels * sizeof(Panel));
-        // Save skipBin snapshot from this best iteration
+        // Save skipBin + bin arrays from this best iteration
         bestNIndices = nIndices;
         if (!bestSkipBin)
           bestSkipBin = malloc(nIndices * sizeof(int));
         memcpy(bestSkipBin, skipBin, nIndices * sizeof(int));
+        bestRMean = realloc(bestRMean, nIndices * sizeof(double));
+        bestEtaMean = realloc(bestEtaMean, nIndices * sizeof(double));
+        bestIdealTtheta = realloc(bestIdealTtheta, nIndices * sizeof(double));
+        bestRingNumbers = realloc(bestRingNumbers, nIndices * sizeof(int));
+        bestYMean = realloc(bestYMean, nIndices * sizeof(double));
+        bestZMean = realloc(bestZMean, nIndices * sizeof(double));
+        bestEtaIns = realloc(bestEtaIns, nIndices * sizeof(double));
+        bestDiffIns = realloc(bestDiffIns, nIndices * sizeof(double));
+        bestRadIns = realloc(bestRadIns, nIndices * sizeof(double));
+        bestYc = realloc(bestYc, nIndices * sizeof(double));
+        bestZc = realloc(bestZc, nIndices * sizeof(double));
+        memcpy(bestRMean, RMean, nIndices * sizeof(double));
+        memcpy(bestEtaMean, EtaMean, nIndices * sizeof(double));
+        memcpy(bestIdealTtheta, IdealTtheta, nIndices * sizeof(double));
+        memcpy(bestRingNumbers, RingNumbers, nIndices * sizeof(int));
+        memcpy(bestYMean, YMean, nIndices * sizeof(double));
+        memcpy(bestZMean, ZMean, nIndices * sizeof(double));
+        memcpy(bestEtaIns, EtaIns, nIndices * sizeof(double));
+        memcpy(bestDiffIns, DiffIns, nIndices * sizeof(double));
+        memcpy(bestRadIns, RadIns, nIndices * sizeof(double));
+        memcpy(bestYc, Yc, nIndices * sizeof(double));
+        memcpy(bestZc, Zc, nIndices * sizeof(double));
+        if (PointDSpacing) {
+          bestPointDSpacing = realloc(bestPointDSpacing, nIndices * sizeof(double));
+          memcpy(bestPointDSpacing, PointDSpacing, nIndices * sizeof(double));
+        }
       }
 
       // Stagnation: detect when optimizer is truly stuck (identical results)
@@ -3367,16 +3400,33 @@ int main(int argc, char *argv[]) {
       free(bestPanels);
 
     // --- POST-LOOP RESTORE (only if best iteration != final) ---
-    // Restore skipBin mask from the best iteration.
-    // Since nIndices is constant (no physical removal), the bin arrays
-    // are still valid — only the mask needs restoring.
+    // Restore skipBin mask AND bin arrays from the best iteration.
+    // Bin arrays must be restored because perturbation re-creates them.
     if (nIterations > 1 && bestIter >= 0 && bestIter != nIterations - 1
-        && bestSkipBin != NULL) {
-      printf("\n*** Restoring skipBin mask from best iteration %d/%d "
+        && bestSkipBin != NULL && bestNIndices > 0) {
+      printf("\n*** Restoring from best iteration %d/%d "
              "(MeanStrain %.3f) ***\n",
              bestIter + 1, nIterations, bestMeanDiff * 1e6);
-      memcpy(skipBin, bestSkipBin, nIndices * sizeof(int));
+      free(RMean); free(EtaMean); free(YMean); free(ZMean);
+      free(IdealTtheta); free(PointDSpacing); free(RingNumbers);
+      free(Yc); free(Zc); free(EtaIns); free(RadIns); free(DiffIns);
+      free(skipBin);
+
+      nIndices = bestNIndices;
       nIndicesFinal = nIndices;
+      RMean = bestRMean;        bestRMean = NULL;
+      EtaMean = bestEtaMean;    bestEtaMean = NULL;
+      IdealTtheta = bestIdealTtheta; bestIdealTtheta = NULL;
+      RingNumbers = bestRingNumbers; bestRingNumbers = NULL;
+      YMean = bestYMean;        bestYMean = NULL;
+      ZMean = bestZMean;        bestZMean = NULL;
+      EtaIns = bestEtaIns;      bestEtaIns = NULL;
+      DiffIns = bestDiffIns;    bestDiffIns = NULL;
+      RadIns = bestRadIns;      bestRadIns = NULL;
+      PointDSpacing = bestPointDSpacing; bestPointDSpacing = NULL;
+      Yc = bestYc;              bestYc = NULL;
+      Zc = bestZc;              bestZc = NULL;
+      skipBin = bestSkipBin;    bestSkipBin = NULL;
       MeanDiff = bestMeanDiff;
       int nSkipped = 0;
       for (i = 0; i < nIndices; i++)
@@ -3384,7 +3434,13 @@ int main(int argc, char *argv[]) {
       printf("Post-loop restore: %d total bins, %d active, MeanStrain %.6f\n",
              nIndices, nIndices - nSkipped, MeanDiff * 1e6);
     }
+    // Free any remaining best-iteration arrays
     free(bestSkipBin);
+    free(bestRMean); free(bestEtaMean); free(bestIdealTtheta);
+    free(bestPointDSpacing); free(bestRingNumbers);
+    free(bestYMean); free(bestZMean);
+    free(bestEtaIns); free(bestDiffIns); free(bestRadIns);
+    free(bestYc); free(bestZc);
     // Reassign nIndices for post-loop code
     if (initPanels)
       free(initPanels);
