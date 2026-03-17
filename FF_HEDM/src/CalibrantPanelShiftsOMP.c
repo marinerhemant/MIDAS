@@ -1419,7 +1419,8 @@ static inline void CorrectTiltSpatialDistortion(
     double *Etas, double *Diffs, double *RadOuts, double *StdDiff,
     double outlierFactor, int *IsOutlier, double p4, double p5,
     int OutlierIterations,
-    int verbose, double *MeanDiffOut, double parallax) {
+    int verbose, double *MeanDiffOut, double parallax,
+    const int *skipBin) {
   double txr, tyr, tzr;
   txr = deg2rad * tx;
   tyr = deg2rad * ty;
@@ -1438,6 +1439,12 @@ static inline void CorrectTiltSpatialDistortion(
   double Rad, Eta, RNorm, DistortFunc, Rcorr, RIdeal, EtaT, Diff, MeanDiff = 0;
   int nValidPoints = 0;
   for (i = 0; i < nIndices; i++) {
+    if (skipBin && skipBin[i]) {
+      Diffs[i] = -1.0;
+      RadOuts[i] = 0;
+      Etas[i] = 0;
+      continue;
+    }
     double dY = 0, dZ = 0, dTheta = 0, dLsd = 0, dP2 = 0;
     int pIdx = -1;
     if (nPanels > 0) {
@@ -2338,13 +2345,9 @@ int main(int argc, char *argv[]) {
     Panel *bestPanels = NULL;
     if (nPanels > 0)
       bestPanels = malloc(nPanels * sizeof(Panel));
-    // Best-iteration bin arrays
-    double *bestRMean = NULL, *bestEtaMean = NULL, *bestIdealTtheta = NULL;
-    double *bestPointDSpacing = NULL;
-    int *bestRingNumbers = NULL;
-    double *bestYMean = NULL, *bestZMean = NULL;
-    double *bestEtaIns = NULL, *bestDiffIns = NULL, *bestRadIns = NULL;
-    double *bestYc = NULL, *bestZc = NULL;
+    // Best-iteration skip-bin mask (replaces physical array removal)
+    int *skipBin = NULL;       // active mask: 1 = excluded from fitting
+    int *bestSkipBin = NULL;   // snapshot from best iteration
     int bestNIndices = 0;
     int perturbedFlag =
         0; // set by perturbation logic; triggers re-bin next iter
@@ -2469,6 +2472,8 @@ int main(int argc, char *argv[]) {
       int nIndicesOrig_0 = nIndices;
       nIndices = countr_0;
       nIndicesFinal = nIndices;
+      // Allocate skip-bin mask (all zeros = all active)
+      skipBin = calloc(nIndices, sizeof(int));
       free(RMean);
       free(EtaMean);
       free(IdealTtheta);
@@ -2496,7 +2501,8 @@ int main(int argc, char *argv[]) {
       CorrectTiltSpatialDistortion(
           nIndices, MaxRingRad, Yc, Zc, IdealTtheta, px, Lsd, ybc, zbc, tx,
           tyin, tzin, p0in, p1in, p2in, p3in, EtaIns, DiffIns, RadIns, &StdDiff,
-          outlierFactor, NULL, p4in, p5in, OutlierIterations, 1, &MeanDiff, parallaxIn);
+          outlierFactor, NULL, p4in, p5in, OutlierIterations, 1, &MeanDiff,
+          parallaxIn, NULL);
       printf("MeanStrain (input params): %.6f µε\n", MeanDiff * 1e6);
 
 
@@ -2704,7 +2710,7 @@ int main(int argc, char *argv[]) {
                                      px, Lsd, ybc, zbc, tx, tyin, tzin, p0in,
                                      p1in, p2in, p3in, EtaIns, DiffIns, RadIns,
                                      &StdDiff, outlierFactor, NULL, p4in, p5in,
-                                     OutlierIterations, iter == 0, NULL, parallaxIn);
+                                     OutlierIterations, iter == 0, NULL, parallaxIn, NULL);
         NrCalls = 0;
 
       } // end if (iter == 0 || perturbedFlag) — initial bin+fit
@@ -2959,6 +2965,9 @@ int main(int argc, char *argv[]) {
         RingNumbers = RN2;
         FitSNR = FS2; // persist for next iter's snrWeights
         nIndices = cnt_rf;
+        // Re-fit creates fresh bins: reset skipBin
+        free(skipBin);
+        skipBin = calloc(nIndices, sizeof(int));
 
         // Recompute Yc, Zc
         YMean = malloc(nIndices * sizeof(*YMean));
@@ -2982,7 +2991,7 @@ int main(int argc, char *argv[]) {
         CorrectTiltSpatialDistortion(
             nIndices, MaxRingRad, Yc, Zc, IdealTtheta, px, LsdFit, ybcFit,
             zbcFit, tx, ty, tz, p0, p1, p2, p3, EtaIns, DiffIns, RadIns,
-            &StdDiff, outlierFactor, iterOutlier, p4, p5, OutlierIterations, 0, &MeanDiff, parallaxIn);
+            &StdDiff, outlierFactor, iterOutlier, p4, p5, OutlierIterations, 0, &MeanDiff, parallaxIn, skipBin);
         printf("Iter %2d/%d  MeanStrain %8.3f  StdStrain %8.3f\n", iter + 1,
                nIterations, MeanDiff * 1e6, StdDiff * 1e6);
         // Write convergence history row
@@ -2993,41 +3002,21 @@ int main(int argc, char *argv[]) {
           fflush(convHistFP);
         }
 
-        // Feature 1: Remove flagged outliers between iterations
+        // Feature 1: Mark flagged outliers in skipBin (no physical removal)
         if (iterOutlier != NULL) {
           int nOutliers = 0;
+          int nNewlySkipped = 0;
           for (i = 0; i < nIndices; i++) {
-            if (iterOutlier[i]) nOutliers++;
-          }
-          // Safety: don't remove more than 50% of points
-          if (nOutliers > 0 && nOutliers < nIndices / 2) {
-            int newCount = 0;
-            for (i = 0; i < nIndices; i++) {
-              if (!iterOutlier[i]) {
-                RMean[newCount] = RMean[i];
-                EtaMean[newCount] = EtaMean[i];
-                IdealTtheta[newCount] = IdealTtheta[i];
-                if (PointDSpacing)
-                  PointDSpacing[newCount] = PointDSpacing[i];
-                RingNumbers[newCount] = RingNumbers[i];
-                FitSNR[newCount] = FitSNR[i];
-                YMean[newCount] = YMean[i];
-                ZMean[newCount] = ZMean[i];
-                Yc[newCount] = Yc[i];
-                Zc[newCount] = Zc[i];
-                EtaIns[newCount] = EtaIns[i];
-                RadIns[newCount] = RadIns[i];
-                DiffIns[newCount] = DiffIns[i];
-                newCount++;
-              }
+            if (iterOutlier[i] && !skipBin[i]) {
+              skipBin[i] = 1;
+              nNewlySkipped++;
             }
-            printf("  RemoveOutliers: removed %d / %d points (%.1f%%)\n",
-                   nOutliers, nIndices,
+            if (skipBin[i]) nOutliers++;
+          }
+          if (nNewlySkipped > 0) {
+            printf("  RemoveOutliers: marked %d new, %d / %d total skipped (%.1f%%)\n",
+                   nNewlySkipped, nOutliers, nIndices,
                    100.0 * nOutliers / nIndices);
-            nIndices = newCount;
-          } else if (nOutliers > 0) {
-            printf("  RemoveOutliers: skipped — would remove %d / %d (>50%%)\n",
-                   nOutliers, nIndices);
           }
           free(iterOutlier);
         }
@@ -3053,7 +3042,7 @@ int main(int argc, char *argv[]) {
             nIndices, MaxRingRad, Yc, Zc, IdealTtheta, px, LsdFit, ybcFit,
             zbcFit, tx, ty, tz, p0, p1, p2, p3, EtaIns, DiffIns, RadIns,
             &StdDiff, outlierFactor, iterOutlier, p4, p5, OutlierIterations,
-            0, &MeanDiff, parallaxIn);
+            0, &MeanDiff, parallaxIn, skipBin);
         printf("Iter %2d/%d  MeanStrain %8.3f  StdStrain %8.3f\n",
                iter + 1, nIterations, MeanDiff * 1e6, StdDiff * 1e6);
         // Write convergence history row (multi-panel / re-fit path)
@@ -3064,40 +3053,21 @@ int main(int argc, char *argv[]) {
           fflush(convHistFP);
         }
 
-        // Remove flagged outliers (same logic as re-fit path)
+        // Mark flagged outliers in skipBin (no physical removal)
         if (iterOutlier != NULL) {
           int nOutliers = 0;
+          int nNewlySkipped = 0;
           for (i = 0; i < nIndices; i++) {
-            if (iterOutlier[i]) nOutliers++;
-          }
-          if (nOutliers > 0 && nOutliers < nIndices / 2) {
-            int newCount = 0;
-            for (i = 0; i < nIndices; i++) {
-              if (!iterOutlier[i]) {
-                RMean[newCount] = RMean[i];
-                EtaMean[newCount] = EtaMean[i];
-                IdealTtheta[newCount] = IdealTtheta[i];
-                if (PointDSpacing)
-                  PointDSpacing[newCount] = PointDSpacing[i];
-                RingNumbers[newCount] = RingNumbers[i];
-                if (FitSNR) FitSNR[newCount] = FitSNR[i];
-                YMean[newCount] = YMean[i];
-                ZMean[newCount] = ZMean[i];
-                Yc[newCount] = Yc[i];
-                Zc[newCount] = Zc[i];
-                EtaIns[newCount] = EtaIns[i];
-                RadIns[newCount] = RadIns[i];
-                DiffIns[newCount] = DiffIns[i];
-                newCount++;
-              }
+            if (iterOutlier[i] && !skipBin[i]) {
+              skipBin[i] = 1;
+              nNewlySkipped++;
             }
-            printf("  RemoveOutliers: removed %d / %d points (%.1f%%)\n",
-                   nOutliers, nIndices,
+            if (skipBin[i]) nOutliers++;
+          }
+          if (nNewlySkipped > 0) {
+            printf("  RemoveOutliers: marked %d new, %d / %d total skipped (%.1f%%)\n",
+                   nNewlySkipped, nOutliers, nIndices,
                    100.0 * nOutliers / nIndices);
-            nIndices = newCount;
-          } else if (nOutliers > 0) {
-            printf("  RemoveOutliers: skipped — would remove %d / %d (>50%%)\n",
-                   nOutliers, nIndices);
           }
           free(iterOutlier);
         }
@@ -3133,34 +3103,11 @@ int main(int argc, char *argv[]) {
         bestParallax = parallaxIn;
         if (bestPanels && nPanels > 0)
           memcpy(bestPanels, panels, nPanels * sizeof(Panel));
-        // Save bin arrays from this best iteration
+        // Save skipBin snapshot from this best iteration
         bestNIndices = nIndices;
-        bestRMean = realloc(bestRMean, nIndices * sizeof(double));
-        bestEtaMean = realloc(bestEtaMean, nIndices * sizeof(double));
-        bestIdealTtheta = realloc(bestIdealTtheta, nIndices * sizeof(double));
-        bestRingNumbers = realloc(bestRingNumbers, nIndices * sizeof(int));
-        bestYMean = realloc(bestYMean, nIndices * sizeof(double));
-        bestZMean = realloc(bestZMean, nIndices * sizeof(double));
-        bestEtaIns = realloc(bestEtaIns, nIndices * sizeof(double));
-        bestDiffIns = realloc(bestDiffIns, nIndices * sizeof(double));
-        bestRadIns = realloc(bestRadIns, nIndices * sizeof(double));
-        memcpy(bestRMean, RMean, nIndices * sizeof(double));
-        memcpy(bestEtaMean, EtaMean, nIndices * sizeof(double));
-        memcpy(bestIdealTtheta, IdealTtheta, nIndices * sizeof(double));
-        memcpy(bestRingNumbers, RingNumbers, nIndices * sizeof(int));
-        memcpy(bestYMean, YMean, nIndices * sizeof(double));
-        memcpy(bestZMean, ZMean, nIndices * sizeof(double));
-        memcpy(bestEtaIns, EtaIns, nIndices * sizeof(double));
-        memcpy(bestDiffIns, DiffIns, nIndices * sizeof(double));
-        memcpy(bestRadIns, RadIns, nIndices * sizeof(double));
-        bestYc = realloc(bestYc, nIndices * sizeof(double));
-        bestZc = realloc(bestZc, nIndices * sizeof(double));
-        memcpy(bestYc, Yc, nIndices * sizeof(double));
-        memcpy(bestZc, Zc, nIndices * sizeof(double));
-        if (PointDSpacing) {
-          bestPointDSpacing = realloc(bestPointDSpacing, nIndices * sizeof(double));
-          memcpy(bestPointDSpacing, PointDSpacing, nIndices * sizeof(double));
-        }
+        if (!bestSkipBin)
+          bestSkipBin = malloc(nIndices * sizeof(int));
+        memcpy(bestSkipBin, skipBin, nIndices * sizeof(int));
       }
 
       // Stagnation: detect when optimizer is truly stuck (identical results)
@@ -3413,59 +3360,24 @@ int main(int argc, char *argv[]) {
       free(bestPanels);
 
     // --- POST-LOOP RESTORE (only if best iteration != final) ---
-    // Restore saved bin arrays from the best iteration directly,
-    // instead of re-fitting from scratch (which produces different
-    // peak positions and inflated strain).
+    // Restore skipBin mask from the best iteration.
+    // Since nIndices is constant (no physical removal), the bin arrays
+    // are still valid — only the mask needs restoring.
     if (nIterations > 1 && bestIter >= 0 && bestIter != nIterations - 1
-        && bestNIndices > 0) {
-      printf("\n*** Restoring bin arrays from best iteration %d/%d "
-             "(%d bins, MeanStrain %.3f) ***\n",
-             bestIter + 1, nIterations, bestNIndices,
-             bestMeanDiff * 1e6);
-      free(RMean);
-      free(EtaMean);
-      free(YMean);
-      free(ZMean);
-      free(IdealTtheta);
-      free(PointDSpacing);
-      free(RingNumbers);
-      free(Yc);
-      free(Zc);
-      free(EtaIns);
-      free(RadIns);
-      free(DiffIns);
-
-      nIndices = bestNIndices;
+        && bestSkipBin != NULL) {
+      printf("\n*** Restoring skipBin mask from best iteration %d/%d "
+             "(MeanStrain %.3f) ***\n",
+             bestIter + 1, nIterations, bestMeanDiff * 1e6);
+      memcpy(skipBin, bestSkipBin, nIndices * sizeof(int));
       nIndicesFinal = nIndices;
-      RMean = bestRMean;        bestRMean = NULL;
-      EtaMean = bestEtaMean;    bestEtaMean = NULL;
-      IdealTtheta = bestIdealTtheta; bestIdealTtheta = NULL;
-      RingNumbers = bestRingNumbers; bestRingNumbers = NULL;
-      YMean = bestYMean;        bestYMean = NULL;
-      ZMean = bestZMean;        bestZMean = NULL;
-      EtaIns = bestEtaIns;      bestEtaIns = NULL;
-      DiffIns = bestDiffIns;    bestDiffIns = NULL;
-      RadIns = bestRadIns;      bestRadIns = NULL;
-      PointDSpacing = bestPointDSpacing; bestPointDSpacing = NULL;
-      Yc = bestYc;              bestYc = NULL;
-      Zc = bestZc;              bestZc = NULL;
       MeanDiff = bestMeanDiff;
-      printf("Post-loop restore: %d bins, MeanStrain %.6f\n",
-             nIndices, MeanDiff * 1e6);
+      int nSkipped = 0;
+      for (i = 0; i < nIndices; i++)
+        if (skipBin[i]) nSkipped++;
+      printf("Post-loop restore: %d total bins, %d active, MeanStrain %.6f\n",
+             nIndices, nIndices - nSkipped, MeanDiff * 1e6);
     }
-    // Free any remaining best-iteration arrays
-    free(bestRMean);
-    free(bestEtaMean);
-    free(bestIdealTtheta);
-    free(bestPointDSpacing);
-    free(bestRingNumbers);
-    free(bestYMean);
-    free(bestZMean);
-    free(bestEtaIns);
-    free(bestDiffIns);
-    free(bestRadIns);
-    free(bestYc);
-    free(bestZc);
+    free(bestSkipBin);
     // Reassign nIndices for post-loop code
     if (initPanels)
       free(initPanels);
@@ -3485,7 +3397,12 @@ int main(int argc, char *argv[]) {
     CorrectTiltSpatialDistortion(
         nIndices, MaxRingRad, Yc, Zc, IdealTtheta, px, LsdFit, ybcFit, zbcFit,
         tx, ty, tz, p0, p1, p2, p3, Etas, Diffs, RadOuts, &StdDiff,
-        outlierFactor, IsOutlier, p4in, p5in, OutlierIterations, 1, &MeanDiff, parallaxIn);
+        outlierFactor, IsOutlier, p4in, p5in, OutlierIterations, 1, &MeanDiff, parallaxIn, skipBin);
+    // Merge: any bin marked in skipBin is also an outlier in the output
+    if (skipBin) {
+      for (i = 0; i < nIndices; i++)
+        if (skipBin[i]) IsOutlier[i] = 1;
+    }
     printf("StdStrain %0.12lf\n", StdDiff);
     // Compute strain statistics from valid (non-outlier) diffs
     nValid = 0;
@@ -4022,6 +3939,7 @@ int main(int argc, char *argv[]) {
     free(Diffs);
     free(Etas);
     free(IsOutlier);
+    free(skipBin); skipBin = NULL;
     end = omp_get_wtime();
     diftotal = end - start;
     printf("Time elapsed for this file:\t%f s.\n", diftotal);
