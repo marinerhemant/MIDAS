@@ -1439,12 +1439,6 @@ static inline void CorrectTiltSpatialDistortion(
   double Rad, Eta, RNorm, DistortFunc, Rcorr, RIdeal, EtaT, Diff, MeanDiff = 0;
   int nValidPoints = 0;
   for (i = 0; i < nIndices; i++) {
-    if (skipBin && skipBin[i]) {
-      Diffs[i] = -1.0;
-      RadOuts[i] = 0;
-      Etas[i] = 0;
-      continue;
-    }
     double dY = 0, dZ = 0, dTheta = 0, dLsd = 0, dP2 = 0;
     int pIdx = -1;
     if (nPanels > 0) {
@@ -1454,7 +1448,6 @@ static inline void CorrectTiltSpatialDistortion(
         continue;
       }
     }
-    nValidPoints++;
 
     if (pIdx >= 0) {
       dY = panels[pIdx].dY;
@@ -1498,8 +1491,12 @@ static inline void CorrectTiltSpatialDistortion(
     Diff = fabs(1 - (Rcorr / RIdeal));
     Etas[i] = Eta;
     Diffs[i] = Diff;
-    MeanDiff += Diff;
     RadOuts[i] = Rcorr;
+    // Skip-bin: geometry computed (for output) but excluded from stats
+    if (skipBin && skipBin[i])
+      continue;
+    nValidPoints++;
+    MeanDiff += Diff;
   }
   if (nValidPoints > 0) {
     MeanDiff /= nValidPoints;
@@ -1515,7 +1512,7 @@ static inline void CorrectTiltSpatialDistortion(
     // Initialize: all valid points are inliers
     for (i = 0; i < nIndices; i++) {
       if (IsOutlier)
-        IsOutlier[i] = (Diffs[i] < 0) ? 1 : 0;
+        IsOutlier[i] = (Diffs[i] < 0 || (skipBin && skipBin[i])) ? 1 : 0;
     }
 
     int nIter = (OutlierIterations > 0) ? OutlierIterations : 1;
@@ -1525,7 +1522,7 @@ static inline void CorrectTiltSpatialDistortion(
       validCount = 0;
 
       for (i = 0; i < nIndices; i++) {
-        if (Diffs[i] < 0)
+        if (Diffs[i] < 0 || (skipBin && skipBin[i]))
           continue;
         if (Diffs[i] <= threshold) {
           if (IsOutlier)
@@ -1554,7 +1551,7 @@ static inline void CorrectTiltSpatialDistortion(
     }
   } else {
     for (i = 0; i < nIndices; i++) {
-      if (Diffs[i] >= 0) {
+      if (Diffs[i] >= 0 && !(skipBin && skipBin[i])) {
         if (IsOutlier)
           IsOutlier[i] = 0;
         validDiffs[validCount] = Diffs[i];
