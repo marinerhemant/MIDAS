@@ -2199,6 +2199,7 @@ int main(int argc, char *argv[]) {
   double ringMaxAbsRadRes[MAX_RINGS_STAT] = {0};
   double ringIdealR[MAX_RINGS_STAT] = {0};
   int ringCountRadRes[MAX_RINGS_STAT] = {0};
+  int ringBadCount[MAX_RINGS_STAT] = {0};
   double ringMeanSNR[MAX_RINGS_STAT] = {0};
   double ringMeanStrain[MAX_RINGS_STAT] = {0};
   // Per-ring 2theta residual accumulators
@@ -3668,6 +3669,7 @@ int main(int argc, char *argv[]) {
     int localRingSNRCount[MAX_RINGS_STAT] = {0};
     double localRingStrainSum[MAX_RINGS_STAT] = {0};
     int localRingStrainCount[MAX_RINGS_STAT] = {0};
+    int localRingBadCount[MAX_RINGS_STAT] = {0};
     // Per-ring 2theta accumulators for this file
     double localRing2thSum[MAX_RINGS_STAT] = {0};
     double localRing2thAbsSum[MAX_RINGS_STAT] = {0};
@@ -3756,6 +3758,12 @@ int main(int argc, char *argv[]) {
           Etas[i], Diffs[i], RadOuts[i], EtaIns[i], DiffIns[i], RadIns[i],
           IdealTtheta[i], IsOutlier[i], YRawCorr, ZRawCorr, RingNumbers[i],
           RadGlobal, IdealR, Fit2Theta, IdealA, FitA);
+      // Count outlier bins per ring (before skipping them)
+      if (IsOutlier[i]) {
+        int rn = RingNumbers[i];
+        if (rn >= 0 && rn < MAX_RINGS_STAT)
+          localRingBadCount[rn]++;
+      }
       // Accumulate radius residual statistics (non-outlier only)
       if (!IsOutlier[i]) {
         double dR = RadGlobal - IdealR; // signed residual in microns
@@ -3890,6 +3898,7 @@ int main(int argc, char *argv[]) {
       ringMeanStrain[rr] = (localRingStrainCount[rr] > 0)
                                ? localRingStrainSum[rr] / localRingStrainCount[rr]
                                : 0;
+      ringBadCount[rr] = localRingBadCount[rr];
     }
     // Copy per-ring 2theta stats
     for (int rr = 0; rr < MAX_RINGS_STAT; rr++) {
@@ -4026,22 +4035,23 @@ int main(int argc, char *argv[]) {
   printf("  NPoints    %12d\n", nValidRadRes);
   // Per-ring summary in final output
   printf("\n           *** per-ring radius residual (\u03bcm) ***\n");
-  printf("  Ring    IdealR(\u03bcm)  NPoints   Mean|\u0394R|    Max|\u0394R|   "
+  printf("  Ring    IdealR(\u03bcm)  NPoints    NBad   Mean|\u0394R|    Max|\u0394R|   "
          "  Mean\u0394R      MeanSNR  MeanStrain(\u03bc\u03b5)\n");
   printf(
       "  "
-      "------------------------------------------------------------------------------------\n");
+      "--------------------------------------------------------------------------------------------\n");
   for (int rr = 0; rr < MAX_RINGS_STAT; rr++) {
-    if (ringCountRadRes[rr] > 0) {
-      printf("  %4d  %11.2f  %6d  %10.4f  %10.4f  %+10.4f  %8.1f  %10.1f\n", rr,
-             ringIdealR[rr], ringCountRadRes[rr], ringMeanAbsRadRes[rr],
+    if (ringCountRadRes[rr] > 0 || ringBadCount[rr] > 0) {
+      printf("  %4d  %11.2f  %6d  %6d  %10.4f  %10.4f  %+10.4f  %8.1f  %10.1f\n", rr,
+             ringIdealR[rr], ringCountRadRes[rr], ringBadCount[rr],
+             ringMeanAbsRadRes[rr],
              ringMaxAbsRadRes[rr], ringMeanRadRes[rr], ringMeanSNR[rr],
              ringMeanStrain[rr] * 1e6);
     }
   }
   printf(
       "  "
-      "------------------------------------------------------------------------------------\n");
+      "--------------------------------------------------------------------------------------------\n");
 
   // --- Aggregate 2theta residual statistics ---
   printf("           *** 2theta residual (deg) ***\n");
