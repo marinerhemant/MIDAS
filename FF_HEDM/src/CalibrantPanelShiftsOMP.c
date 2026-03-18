@@ -740,6 +740,7 @@ void CalcFittedMean(int nIndices, int *NrEachIndexBin, int **Indices,
           AllZero = 0;
       }
 
+
       for (j = 0; j < NrPtsLocal; j++)
         Etas[j] = EtaMean[idxThis];
 
@@ -2366,6 +2367,7 @@ int main(int argc, char *argv[]) {
     int postPerturbGrace =
         0; // grace period: skip divergence guard for N iters after perturbation
     double *FitSNR = NULL; // persists across iterations for snrWeights
+    FILE *convHistFP = NULL; // initialize here for nIterations=0 goto path
 
     // ─── nIterations=0: evaluate input parameters without optimization ───
     if (nIterations == 0) {
@@ -2430,6 +2432,25 @@ int main(int argc, char *argv[]) {
               NrEachIndexBin_0, Indices_0, tx, tyin, tzin, p0in, p1in, p2in,
               p3in, MaxRingRad, Lsd, p4in, p5in, NrPixels, maxPerBin_0);
 
+      // DEBUG: ring boundaries and bin counts
+      printf("\n=== DEBUG nIter=0: Ring boundaries ===\n");
+      for (i = 0; i < n_hkls; i++) {
+        printf("  Ring %d: IdealR=%.2f Rmin=%.2f Rmax=%.2f (width=%.2f px)\n",
+               RingIDs[i], IdealRs_0[i]/px, Rmins_0[i]/px, Rmaxs_0[i]/px,
+               (Rmaxs_0[i]-Rmins_0[i])/px);
+      }
+      printf("\n=== DEBUG nIter=0: Bin pixel counts (first ring, every 30 eta) ===\n");
+      int totalNonzero = 0;
+      for (i = 0; i < nIndices; i++) {
+        if (NrEachIndexBin_0[i] > 0) totalNonzero++;
+        int ringIdx = i / nEtaBins;
+        int etaIdx = i % nEtaBins;
+        if (ringIdx == 0 && etaIdx % 30 == 0)
+          printf("  Ring %d eta_bin=%d: %d pixels\n",
+                 RingIDs[ringIdx], etaIdx, NrEachIndexBin_0[i]);
+      }
+      printf("  Total non-zero bins: %d / %d\n", totalNonzero, nIndices);
+
       IdealTtheta = malloc(nIndices * sizeof(*IdealTtheta));
       PointDSpacing = FitWavelength ? malloc(nIndices * sizeof(double)) : NULL;
       RingNumbers = malloc(nIndices * sizeof(*RingNumbers));
@@ -2437,6 +2458,8 @@ int main(int argc, char *argv[]) {
       EtaMean = malloc(nIndices * sizeof(*EtaMean));
       int NrPtsForFit_0 =
           (int)((floor)((Rmaxs_0[0] - Rmins_0[0]) / px)) * RBinWidth;
+      printf("  NrPtsForFit_0 = %d (RBinWidth=%d, ring_width=%.2f px)\n",
+             NrPtsForFit_0, RBinWidth, (Rmaxs_0[0] - Rmins_0[0]) / px);
       for (i = 0; i < nIndices; i++) {
         int ringIdx = (int)(floor((float)i / nEtaBins));
         IdealTtheta[i] = rad2deg * atan(IdealRs_0[ringIdx] / Lsd);
@@ -2447,6 +2470,7 @@ int main(int argc, char *argv[]) {
 
       // Find peak positions
       double *FitSNR_0 = calloc(nIndices, sizeof(*FitSNR_0));
+      printf("  FitWeightMean=%d\n", FitWeightMean);
       if (FitWeightMean == 1) {
         CalcWeightedMean(nIndices, NrEachIndexBin_0, Indices_0, Average, R_0,
                          Eta_0, RMean, EtaMean);
@@ -2458,6 +2482,13 @@ int main(int argc, char *argv[]) {
                        doubletPartner_0,
                        tx, tyin, tzin, p0in, p1in, p2in, p3in,
                        p4in, p5in, Lsd, MaxRingRad, GradientCorrection);
+      }
+
+      // DEBUG: show fitted peak positions for first ring
+      printf("\n=== DEBUG nIter=0: CalcFittedMean results (Ring 1, every 30 eta) ===\n");
+      for (i = 0; i < nEtaBins && i < nIndices; i += 30) {
+        printf("  eta_bin=%d: RMean=%.4f EtaMean=%.6f SNR=%.2f (nPix=%d)\n",
+               i, RMean[i], EtaMean[i], FitSNR_0[i], NrEachIndexBin_0[i]);
       }
 
 
@@ -2523,7 +2554,7 @@ int main(int argc, char *argv[]) {
       free(Eta_0);
       free(NrEachIndexBin_0);
       FreeMemMatrixInt(Indices_0, nIndicesOrig_0);
-      free(FitSNR_0);
+      FitSNR = FitSNR_0;  // preserve for post-loop corr.csv writer
 
       goto post_iteration_loop;
     }
@@ -2543,7 +2574,7 @@ int main(int argc, char *argv[]) {
     // ─── Convergence history CSV ───
     char convHistFN[4096];
     snprintf(convHistFN, sizeof(convHistFN), "%s/%s_convergence_history.csv", folder, fn);
-    FILE *convHistFP = fopen(convHistFN, "w");
+    convHistFP = fopen(convHistFN, "w");
     if (convHistFP) {
       fprintf(convHistFP, "Iter,MeanStrain_ue,StdStrain_ue,Lsd,BC_Y,BC_Z,ty,tz,p0,p1,p2,p3,p4,p5\n");
       fflush(convHistFP);

@@ -83,20 +83,28 @@ int ReadTiffFrame(const char *filename, int dType, size_t NrPixels,
     }
   }
 
-  /* Auto-detect sample format when dType == 0 */
-  if (dType == 0) {
+  /* Always auto-detect sample format from TIFF tags, except for
+     dType=7 (bitmap/mask) which has special semantics (only checks ==1). */
+  if (dType != 7) {
     uint16_t bps = 0, fmt = SAMPLEFORMAT_UINT;
     TIFFGetFieldDefaulted(tif, TIFFTAG_BITSPERSAMPLE, &bps);
     TIFFGetFieldDefaulted(tif, TIFFTAG_SAMPLEFORMAT, &fmt);
+    int autoType;
     if (fmt == SAMPLEFORMAT_IEEEFP) {
-      dType = (bps == 64) ? 11 : 10;          /* float64 / float32 */
+      autoType = (bps == 64) ? 11 : 10;          /* float64 / float32 */
     } else if (fmt == SAMPLEFORMAT_INT) {
-      dType = (bps == 16) ? 9 : 6;            /* int16 / int32 */
+      autoType = (bps == 16) ? 9 : 6;            /* int16 / int32 */
     } else { /* UINT or unknown */
-      if (bps == 8)       dType = 7;           /* uint8 */
-      else if (bps == 16) dType = 9;           /* uint16 */
-      else                dType = 6;           /* uint32 / int32 */
+      if (bps == 8)       autoType = 7;           /* uint8 */
+      else if (bps == 16) autoType = 9;           /* uint16 */
+      else                autoType = 6;           /* uint32 */
     }
+    if (autoType != dType && dType != 0) {
+      printf("ReadTiffFrame: auto-detected format %d (bps=%u fmt=%u) "
+             "overrides caller dType=%d for %s\n",
+             autoType, bps, fmt, dType, filename);
+    }
+    dType = autoType;
   }
 
   uint32_t imagelength;

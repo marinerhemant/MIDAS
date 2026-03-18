@@ -10,6 +10,7 @@
 //
 
 #include "FileReader.h"
+// CalibPeakFit.h removed — peak fitting unified in PeakFit.h
 #include "MapHeader.h"
 #include "PeakFit.h"
 #include "PeakFitIO.h"
@@ -1806,14 +1807,43 @@ integration_start:
 
         memset(etaFitResults, 0,
                nPeaksThisFit * PF_PARAMS_PER_PEAK * sizeof(double));
-        int nf;
+        int nf = 0;
         if (autoDetectPeaks > 0) {
           nf = fitPeaksAutoDetect(RBinCenters, etaProfile, nRBins,
                                   autoDetectPeaks, RBinSize, fitROIPadding,
                                   etaFitResults, snipIterations);
         } else {
-          nf = fitPeaks(RBinCenters, etaProfile, nRBins, peakLocations,
-                        nPeakLocations, RBinSize, fitROIPadding, etaFitResults);
+          // Use CI's peak fitting for each peak individually
+          for (int pp = 0; pp < nPeakLocations; pp++) {
+            // Extract ROI around this peak
+            double peakR = peakLocations[pp];
+            int lo = -1, hi = -1;
+            for (int rb = 0; rb < nRBins; rb++) {
+              if (RBinCenters[rb] >= peakR - fitROIPadding * RBinSize && lo < 0) lo = rb;
+              if (RBinCenters[rb] <= peakR + fitROIPadding * RBinSize) hi = rb;
+            }
+            if (lo < 0 || hi < 0 || hi - lo < 5) continue;
+            int roiN = hi - lo + 1;
+            double *roiR = &RBinCenters[lo];
+            double *roiI = (double *)malloc(roiN * sizeof(double));
+            for (int rb = 0; rb < roiN; rb++)
+              roiI[rb] = etaProfile[lo + rb];
+            double Rfit, snrFit;
+            pf_fit_single_peak(PF_MODE_PV, roiN, roiR, roiI, &Rfit, &snrFit, RBinSize, peakR);
+            free(roiI);
+            if (snrFit > 1.0) {
+              // Store at peak index pp (not nf) to preserve peak-to-ring mapping
+              int base = pp * PF_PARAMS_PER_PEAK;
+              etaFitResults[base + 0] = 0; // area
+              etaFitResults[base + 1] = Rfit; // center
+              etaFitResults[base + 2] = 0; // sig
+              etaFitResults[base + 3] = 0; // gam
+              etaFitResults[base + 4] = 0; // FWHM
+              etaFitResults[base + 5] = 0; // eta
+              etaFitResults[base + 6] = snrFit; // SNR
+            }
+          }
+          nf = nPeakLocations; // report all slots (unfitted ones remain 0)
         }
         if (nf > 0) {
           totalPerEtaFitted += nf;

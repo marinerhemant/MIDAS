@@ -10,6 +10,7 @@ Usage:  python plot_calibrant_results.py [file.corr.csv]
 """
 
 import glob
+import os
 import sys
 
 import matplotlib
@@ -23,18 +24,56 @@ from matplotlib.figure import Figure
 
 from PyQt6.QtCore import Qt
 from PyQt6.QtWidgets import (
-    QApplication, QCheckBox, QComboBox, QHBoxLayout, QLabel,
+    QApplication, QCheckBox, QComboBox, QFileDialog, QHBoxLayout, QLabel,
     QLineEdit, QMainWindow, QPushButton, QVBoxLayout, QWidget,
 )
 
 # ── CSV column map (from CalibrantPanelShiftsOMP header) ────────────────
-COLUMNS = [
+# Legacy 16-column space-separated format
+COLUMNS_LEGACY = [
     'Eta', 'Strain', 'RadFit', 'EtaCalc', 'DiffCalc', 'RadCalc',
     'Ideal2Theta', 'Outlier', 'YRawCorr', 'ZRawCorr', 'RingNr',
     'RadGlobal', 'IdealR', 'Fit2Theta', 'IdealA', 'FitA',
 ]
+
+# CalibrantIntegratorOMP per-bin CSV columns
+COLUMNS_INTEGRATOR = ['RingNr', 'Eta', 'Diff', 'Rad', 'Y', 'Z', 'IsOutlier']
+
+# Unified column list used by the viewer (superset)
+COLUMNS = COLUMNS_LEGACY
 COL = {name: idx for idx, name in enumerate(COLUMNS)}
 PLOTTABLE = [c for c in COLUMNS if c != 'Outlier']
+
+
+def _load_corr_csv(filename):
+    """Auto-detect CalibrantIntegratorOMP vs CalibrantPanelShiftsOMP format.
+
+    CalibrantIntegratorOMP: geometry header (comma-delimited, 2 lines),
+      blank line, then '%Eta Strain ...' header + 16-col space-separated data.
+    CalibrantPanelShiftsOMP: '%Eta Strain ...' header + 16-col data directly.
+
+    Returns (data_array, column_names).
+    """
+    with open(filename) as f:
+        lines = f.readlines()
+
+    # Find the per-bin data header line (starts with '%Eta' or '%' followed by column names)
+    data_start = None
+    for i, line in enumerate(lines):
+        stripped = line.strip()
+        if stripped.startswith('%Eta') or stripped.startswith('% Eta'):
+            data_start = i
+            break
+
+    if data_start is not None:
+        # Standard 16-column space-separated format (both executables)
+        data = np.genfromtxt(filename, skip_header=data_start + 1)
+        return data, COLUMNS_LEGACY
+
+    # Fallback: try legacy format (first line is the header)
+    data = np.genfromtxt(filename, skip_header=1)
+    return data, COLUMNS_LEGACY
+
 
 COLORMAPS = [
     'viridis', 'plasma', 'inferno', 'magma', 'cividis',
@@ -71,11 +110,15 @@ def choose_file(files):
 
 # ── Qt Main Window ──────────────────────────────────────────────────────
 class CalibrantViewer(QMainWindow):
-    def __init__(self, filename):
+    def __init__(self, filename=None):
         super().__init__()
-        self.filename = filename
-        self.raw = np.genfromtxt(filename, skip_header=1)
-        self.setWindowTitle(f'Calibrant Viewer — {filename}')
+        self.filename = filename or ''
+        if filename and os.path.isfile(filename):
+            self.raw, _ = _load_corr_csv(filename)
+        else:
+            self.raw = np.empty((0, 16))
+        self.setWindowTitle(f'Calibrant Viewer — {self.filename}' if self.filename
+                            else 'Calibrant Viewer')
         self.resize(1200, 750)
 
         # State
@@ -95,6 +138,20 @@ class CalibrantViewer(QMainWindow):
 
         # ── Control bar ─────────────────────────────────────────────
         controls = QHBoxLayout()
+
+        # File selector
+        controls.addWidget(QLabel('File:'))
+        self.combo_file = QComboBox()
+        self.combo_file.setMinimumWidth(200)
+        self._populate_file_list()
+        self.combo_file.currentTextChanged.connect(self._on_file_changed)
+        controls.addWidget(self.combo_file)
+
+        btn_open = QPushButton('Open…')
+        btn_open.clicked.connect(self._on_open_file)
+        controls.addWidget(btn_open)
+
+        controls.addWidget(self._vsep())
 
         # X axis
         controls.addWidget(QLabel('X:'))
@@ -160,6 +217,11 @@ class CalibrantViewer(QMainWindow):
         self.chk_outlier.toggled.connect(self._on_outlier)
         controls.addWidget(self.chk_outlier)
 
+        # Polar plot toggle
+        self.chk_polar = QCheckBox('Polar')
+        self.chk_polar.toggled.connect(self._on_polar)
+        controls.addWidget(self.chk_polar)
+
         # Auto-range button
         self.btn_autorng = QPushButton('Auto range')
         self.btn_autorng.clicked.connect(self._on_autorange)
@@ -173,6 +235,7 @@ class CalibrantViewer(QMainWindow):
         # Fixed axes positions so colorbar doesn't steal space
         self.ax = self.fig.add_axes([0.08, 0.12, 0.78, 0.82])
         self.cax = self.fig.add_axes([0.88, 0.12, 0.02, 0.82])
+        self.polar_mode = False
         self.canvas = FigureCanvasQTAgg(self.fig)
         toolbar = NavigationToolbar2QT(self.canvas, self)
         main_layout.addWidget(toolbar)
@@ -240,15 +303,70 @@ class CalibrantViewer(QMainWindow):
         self.exclude_outliers = not checked
         self._update()
 
+    def _on_polar(self, checked):
+        self.polar_mode = checked
+        self._rebuild_axes()
+        self._update()
+
     def _on_autorange(self):
         self._clear_crange()
         self._update()
+
+    def _populate_file_list(self):
+        """Refresh the file combo with *corr.csv files in cwd."""
+        self.combo_file.blockSignals(True)
+        current = self.filename
+        self.combo_file.clear()
+        files = find_corr_files()
+        self.combo_file.addItems(files)
+        if current in files:
+            self.combo_file.setCurrentText(current)
+        elif files:
+            self.combo_file.setCurrentText(files[0])
+        self.combo_file.blockSignals(False)
+
+    def _on_file_changed(self, text):
+        if text and text != self.filename and os.path.isfile(text):
+            self._load_file(text)
+
+    def _on_open_file(self):
+        path, _ = QFileDialog.getOpenFileName(
+            self, 'Open corr.csv', '', 'CSV files (*corr.csv);;All files (*)')
+        if path:
+            self._load_file(path)
+
+    def _load_file(self, path):
+        try:
+            data, _ = _load_corr_csv(path)
+            self.raw = data
+            self.filename = os.path.basename(path)
+            self.setWindowTitle(f'Calibrant Viewer — {self.filename}')
+            # Add to combo if not present
+            if self.combo_file.findText(self.filename) < 0:
+                self.combo_file.addItem(self.filename)
+            self.combo_file.blockSignals(True)
+            self.combo_file.setCurrentText(self.filename)
+            self.combo_file.blockSignals(False)
+            self._update()
+        except Exception as e:
+            print(f'Error loading {path}: {e}')
 
     def _clear_crange(self):
         self.c_min = None
         self.c_max = None
         self.edit_cmin.clear()
         self.edit_cmax.clear()
+
+    # ── Axes management ──────────────────────────────────────────────
+    def _rebuild_axes(self):
+        """Recreate axes when switching between Cartesian and polar."""
+        self.fig.clear()
+        if self.polar_mode:
+            self.ax = self.fig.add_axes([0.05, 0.05, 0.80, 0.88], polar=True)
+            self.cax = self.fig.add_axes([0.90, 0.12, 0.02, 0.76])
+        else:
+            self.ax = self.fig.add_axes([0.08, 0.12, 0.78, 0.82])
+            self.cax = self.fig.add_axes([0.88, 0.12, 0.02, 0.82])
 
     # ── Redraw ──────────────────────────────────────────────────────
     def _update(self):
@@ -279,38 +397,58 @@ class CalibrantViewer(QMainWindow):
         else:
             norm = Normalize(vmin=vmin, vmax=vmax)
 
-        sc = self.ax.scatter(d[:, xi], d[:, yi], c=c_data,
-                             cmap=self.cmap, norm=norm,
-                             s=30, alpha=0.7, edgecolors='none')
+        n_total = len(self.raw)
+        n_shown = len(d)
+
+        if self.polar_mode:
+            # Polar plot: angular = Eta (degrees → radians), radial = Strain (µε)
+            eta_rad = np.radians(d[:, COL['Eta']])
+            strain_ue = d[:, COL['Strain']] * 1e6  # always use Strain as radial
+            sc = self.ax.scatter(eta_rad, strain_ue, c=c_data,
+                                 cmap=self.cmap, norm=norm,
+                                 s=20, alpha=0.7, edgecolors='none')
+            self.ax.set_theta_zero_location('N')  # 0° at top
+            self.ax.set_theta_direction(-1)        # clockwise
+            self.ax.set_title(f'{self.filename}  ({n_shown}/{n_total} pts)\n'
+                              f'Radial: Strain (µε), Angular: η',
+                              fontsize=10, pad=20)
+        else:
+            sc = self.ax.scatter(d[:, xi], d[:, yi], c=c_data,
+                                 cmap=self.cmap, norm=norm,
+                                 s=30, alpha=0.7, edgecolors='none')
+
+            # Reference line for lattice parameter plot
+            if self.y_col == 'FitA':
+                ideal_a = d[0, COL['IdealA']]
+                self.ax.axhline(ideal_a, color='red', ls='-', alpha=0.5,
+                                label=f'Ideal a = {ideal_a:.6f} Å')
+                self.ax.legend(fontsize=8)
+
+            self.ax.set_xlabel(self.x_col)
+            self.ax.set_ylabel(self.y_col)
+            self.ax.set_title(f'{self.filename}  ({n_shown}/{n_total} pts)', fontsize=10)
 
         # Colorbar — reuse fixed cax
         self.cax.clear()
         self._cbar = self.fig.colorbar(sc, cax=self.cax, label=c_label)
-
-        # Reference line for lattice parameter plot
-        if self.y_col == 'FitA':
-            ideal_a = d[0, COL['IdealA']]
-            self.ax.axhline(ideal_a, color='red', ls='-', alpha=0.5,
-                            label=f'Ideal a = {ideal_a:.6f} Å')
-            self.ax.legend(fontsize=8)
-
-        n_total = len(self.raw)
-        n_shown = len(d)
-        self.ax.set_xlabel(self.x_col)
-        self.ax.set_ylabel(self.y_col)
-        self.ax.set_title(f'{self.filename}  ({n_shown}/{n_total} pts)', fontsize=10)
         self.canvas.draw_idle()
 
 
 # ── Entry point ─────────────────────────────────────────────────────────
 def main():
+    app = QApplication.instance() or QApplication(sys.argv)
+
     if len(sys.argv) > 1:
         filename = sys.argv[1]
     else:
-        filename = choose_file(find_corr_files())
+        files = find_corr_files()
+        filename = files[0] if files else None
 
-    print(f'Loading {filename} …')
-    app = QApplication.instance() or QApplication(sys.argv)
+    if filename:
+        print(f'Loading {filename} …')
+    else:
+        print('No *corr.csv in cwd — use File > Open… in the viewer')
+
     viewer = CalibrantViewer(filename)
     viewer.show()
     sys.exit(app.exec())

@@ -129,6 +129,71 @@ void dg_REta_to_YZ(double R, double Eta_deg, double *Y_out, double *Z_out) {
   *Z_out = R * cos(Eta_deg * DG_DEG2RAD);
 }
 
+// Numerical inversion: given target (R_px, Eta_deg) in corrected space,
+// find the raw pixel (Y, Z) such that dg_pixel_to_REta(Y, Z, ...) = (R, Eta).
+// Uses Newton-Raphson with the flat-detector formula as initial guess.
+void dg_invert_REta_to_pixel(
+    double R_target, double Eta_target,
+    double Ycen, double Zcen, double TRs[3][3],
+    double Lsd, double RhoD,
+    double p0, double p1, double p2, double p3, double p4, double p5,
+    double px, double dLsd, double dP2, double parallax,
+    double *Y_out, double *Z_out) {
+
+  // Initial guess: flat-detector polar formula
+  double Y = Ycen + R_target * sin(Eta_target * DG_DEG2RAD);
+  double Z = Zcen + R_target * cos(Eta_target * DG_DEG2RAD);
+
+  const int MAX_ITER = 10;
+  const double TOL_R = 1e-8;   // pixels
+  const double TOL_ETA = 1e-8; // degrees
+  const double h = 0.01;       // finite-difference step (pixels)
+
+  for (int iter = 0; iter < MAX_ITER; iter++) {
+    // Evaluate forward function at current (Y, Z)
+    double R_eval, Eta_eval;
+    dg_pixel_to_REta(Y, Z, Ycen, Zcen, TRs, Lsd, RhoD,
+                     p0, p1, p2, p3, p4, p5, px, dLsd, dP2, parallax,
+                     &R_eval, &Eta_eval, NULL);
+
+    double dR = R_target - R_eval;
+    double dEta = Eta_target - Eta_eval;
+    // Handle η wraparound near ±180°
+    if (dEta > 180.0) dEta -= 360.0;
+    if (dEta < -180.0) dEta += 360.0;
+
+    if (fabs(dR) < TOL_R && fabs(dEta) < TOL_ETA)
+      break;
+
+    // Numerical Jacobian: ∂(R,η)/∂(Y,Z)
+    double R_dY, Eta_dY, R_dZ, Eta_dZ;
+    dg_pixel_to_REta(Y + h, Z, Ycen, Zcen, TRs, Lsd, RhoD,
+                     p0, p1, p2, p3, p4, p5, px, dLsd, dP2, parallax,
+                     &R_dY, &Eta_dY, NULL);
+    dg_pixel_to_REta(Y, Z + h, Ycen, Zcen, TRs, Lsd, RhoD,
+                     p0, p1, p2, p3, p4, p5, px, dLsd, dP2, parallax,
+                     &R_dZ, &Eta_dZ, NULL);
+
+    double dRdY = (R_dY - R_eval) / h;
+    double dRdZ = (R_dZ - R_eval) / h;
+    double dEdY = (Eta_dY - Eta_eval) / h;
+    double dEdZ = (Eta_dZ - Eta_eval) / h;
+
+    // Solve 2×2 system: J · [ΔY, ΔZ]ᵀ = [dR, dEta]ᵀ
+    double det = dRdY * dEdZ - dRdZ * dEdY;
+    if (fabs(det) < 1e-30) break; // singular Jacobian — bail out
+
+    double deltaY = (dEdZ * dR - dRdZ * dEta) / det;
+    double deltaZ = (dRdY * dEta - dEdY * dR) / det;
+
+    Y += deltaY;
+    Z += deltaZ;
+  }
+
+  *Y_out = Y;
+  *Z_out = Z;
+}
+
 // ── Bin construction ────────────────────────────────────────────────
 
 void dg_build_bin_edges(double RMin, double EtaMin, int nRBins, int nEtaBins,

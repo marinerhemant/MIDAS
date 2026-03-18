@@ -3,7 +3,7 @@
 AutoCalibrateZarr — Automated detector geometry calibration using WAXS calibrant rings.
 
 Accepts Zarr .zip, HDF5, GE binary, or TIFF images.  File format is auto-detected
-from the extension.  Calls CalibrantPanelShiftsOMP (C/OpenMP) for the heavy lifting,
+from the extension.  Calls CalibrantPanelShiftsOMP or CalibrantIntegratorOMP (C/OpenMP) for the heavy lifting,
 including multi-iteration refinement, outlier ring rejection, and doublet detection.
 
 Usage examples
@@ -161,6 +161,9 @@ class CalibState:
     fit_parallax: int = 0
     parallax_in: float = 0.0
     tol_parallax: float = 200.0
+
+    # Peak fitting mode (0=pV default, 1=TCH GSAS-II)
+    peak_fit_mode: int = 0
 
     # Image / file
     nr_pixels_y: int = 0
@@ -1632,11 +1635,17 @@ def run_integrator_validation(refined_params_file, data_file, dark_file,
             return
 
         sorted_rings = sorted(ring_radii.items())  # [(ring_nr, (R_um, d, 2th)), ...]
-        logger.info(f"Integrator validation: {len(sorted_rings)} rings")
+        if state.max_ring_number > 0:
+            sorted_rings = [(rn, v) for rn, v in sorted_rings if rn <= state.max_ring_number]
+        logger.info(f"Integrator validation: {len(sorted_rings)} rings (max_ring={state.max_ring_number})")
 
         # --- 2. Write integrator parameter file ---
         max_r_px = max(r_um / state.px for _, (r_um, _, _) in sorted_rings)
         integ_params = os.path.join(work_dir, 'integrator_params.txt')
+        logger.info(f"Integrator params: Lsd={state.lsd:.3f} BC=({state.ybc:.4f},{state.zbc:.4f}) "
+                    f"ty={state.ty:.8f} tz={state.tz:.8f} "
+                    f"p0={state.p0:.6e} p1={state.p1:.6e} p2={state.p2:.6e} p3={state.p3:.6e} "
+                    f"p4={state.p4:.6e} p5={state.p5:.6e}")
         with open(integ_params, 'w') as f:
             f.write(f"Lsd {state.lsd}\n")
             f.write(f"BC {state.ybc} {state.zbc}\n")
@@ -1750,9 +1759,8 @@ def run_integrator_validation(refined_params_file, data_file, dark_file,
         data_basename = os.path.basename(data_file)
         data_stem = os.path.splitext(data_basename)[0]
         corr_csv_name = f"integrator_{data_stem}.corr.csv"
-        # Write next to the original data file
-        corr_csv_path = os.path.join(os.path.dirname(os.path.abspath(data_file)),
-                                     corr_csv_name)
+        # Write to cwd (data dir may be read-only)
+        corr_csv_path = os.path.join(os.getcwd(), corr_csv_name)
 
         n_written = 0
         with open(corr_csv_path, 'w') as out:
@@ -1815,12 +1823,13 @@ def run_integrator_validation(refined_params_file, data_file, dark_file,
     except Exception as e:
         logger.error(f"Integrator validation failed: {traceback.format_exc()}")
     finally:
-        # Clean up work directory
-        import shutil
-        try:
-            shutil.rmtree(work_dir, ignore_errors=True)
-        except Exception:
-            pass
+        # Clean up work directory (disabled for debugging)
+        # import shutil
+        # try:
+        #     shutil.rmtree(work_dir, ignore_errors=True)
+        # except Exception:
+        #     pass
+        logger.info(f"Keeping work dir for debugging: {work_dir}")
 
 
 def runMIDAS(rawFN, state, n_iterations=40, mult_factor=5,
@@ -1828,8 +1837,9 @@ def runMIDAS(rawFN, state, n_iterations=40, mult_factor=5,
              eta_bin_size=1.0, max_width=1000, n_cpus=None,
              stage=0, stage_label='',
              trimmed_mean_fraction=0.75,
-             remove_outliers_between_iters=1):
-    """Run CalibrantPanelShiftsOMP.
+             remove_outliers_between_iters=1,
+             use_integrator=False):
+    """Run CalibrantPanelShiftsOMP or CalibrantIntegratorOMP.
 
     stage=0: full optimization (legacy behavior)
     stage=1: geometry only — Lsd, BC, tilts (tolP=0, no panels)
@@ -1851,6 +1861,8 @@ def runMIDAS(rawFN, state, n_iterations=40, mult_factor=5,
                 pf.write(f'FitParallax {state.fit_parallax}\n')
                 pf.write(f'Parallax {state.parallax_in}\n')
                 pf.write(f'tolParallax {state.tol_parallax}\n')
+            if state.peak_fit_mode > 0:
+                pf.write(f'PeakFitMode {state.peak_fit_mode}\n')
 
             # File info
             pf.write(f'Folder {state.folder}\n')
@@ -1927,6 +1939,10 @@ def runMIDAS(rawFN, state, n_iterations=40, mult_factor=5,
             pf.write(f'TrimmedMeanFraction {trimmed_mean_fraction}\n')
             pf.write(f'RemoveOutliersBetweenIters {remove_outliers_between_iters}\n')
 
+            # CalibrantIntegratorOMP-specific parameters
+            if use_integrator:
+                pf.write('RBinWidth 4\n')
+
             # Panel parameters — only in stage 2 or stage 0
             if stage != 1:
                 if state.panel_grid is not None:
@@ -1963,11 +1979,16 @@ def runMIDAS(rawFN, state, n_iterations=40, mult_factor=5,
                 for k, v in state.extra_params.items():
                     pf.write(f'{k} {v}\n')
 
-        # Run CalibrantPanelShiftsOMP with all available CPUs
-        calibrant_exe = os.path.join(INSTALL_PATH, 'FF_HEDM/bin/CalibrantPanelShiftsOMP')
+        # Run calibrant executable with all available CPUs
+        if use_integrator:
+            calibrant_exe = os.path.join(INSTALL_PATH, 'FF_HEDM/bin/CalibrantIntegratorOMP')
+            exe_name = 'CalibrantIntegratorOMP'
+        else:
+            calibrant_exe = os.path.join(INSTALL_PATH, 'FF_HEDM/bin/CalibrantPanelShiftsOMP')
+            exe_name = 'CalibrantPanelShiftsOMP'
         calibrant_cmd = f"{calibrant_exe} {ps_file} {n_cpus}"
 
-        logger.info(f"{stage_label}Running CalibrantPanelShiftsOMP with {n_cpus} CPUs, "
+        logger.info(f"{stage_label}Running {exe_name} with {n_cpus} CPUs, "
                      f"{n_iterations} iterations, DoubletSep={doublet_separation}px")
 
         # Run and capture output in real-time while also saving to file
@@ -2076,6 +2097,8 @@ def main():
                             help='Initial guess for parallax (µm)')
         parser.add_argument('--tol-parallax', type=float, default=None,
                             help='Tolerance for parallax bounds (µm)')
+        parser.add_argument('--peak-fit-mode', type=int, default=None,
+                            help='Peak fitting mode: 0=pV (default), 1=TCH (GSAS-II)')
         parser.add_argument('--trimmed-mean-fraction', type=float, default=0.75,
                             help='Fraction of points to keep in optimizer objective '
                                  '(e.g. 0.75 = trim worst 25%%). 1.0 = off.')
@@ -2140,6 +2163,11 @@ def main():
                                  '1=uint16-raw, 6=tiff-uint32, 7=tiff-uint8, '
                                  '8=HDF5, 9=tiff-uint16. Default: auto-detect.')
 
+        # Calibrant executable selection
+        parser.add_argument('--use-integrator', action='store_true',
+                            help='Use CalibrantIntegratorOMP (Green\'s theorem sub-pixel mapping) '
+                                 'instead of CalibrantPanelShiftsOMP')
+
         # Output
         parser.add_argument('--output', '-o', type=str, default='',
                             help='Output parameter filename (default: refined_MIDAS_params_<stem>.txt)')
@@ -2177,6 +2205,8 @@ def main():
             state.parallax_in = args.parallax_guess
         if args.tol_parallax is not None:
             state.tol_parallax = args.tol_parallax
+        if args.peak_fit_mode is not None:
+            state.peak_fit_mode = args.peak_fit_mode
 
         # HDF5 output
         if args.save_hdf:
@@ -2289,7 +2319,7 @@ def main():
                 'tolParallax', 'MaskFile', 'MaskFN',
                 'ImTransOpt', 'BadPxIntensity', 'GapIntensity',
                 'Dark', 'dataLoc', 'darkLoc', 'skipFrame', 'SkipFrame',
-                'DataType',
+                'DataType', 'PeakFitMode',
             }
 
             # --- Single-pass param file read ---
@@ -2359,6 +2389,9 @@ def main():
                                 if args.tol_parallax is None:
                                     state.tol_parallax = float(parts[1])
                                 param_file_keys.add('tolParallax')
+                            elif key == 'PeakFitMode':
+                                state.peak_fit_mode = int(parts[1])
+                                param_file_keys.add('PeakFitMode')
                             elif key in ('MaskFile', 'MaskFN'):
                                 if not args.mask:
                                     state.mask_file = parts[1]
@@ -2869,7 +2902,8 @@ def main():
                  stage=1,
                  stage_label='[Stage 1/2] ',
                  trimmed_mean_fraction=args.trimmed_mean_fraction,
-                 remove_outliers_between_iters=args.remove_outliers_between_iters)
+                 remove_outliers_between_iters=args.remove_outliers_between_iters,
+                 use_integrator=args.use_integrator)
 
         logger.info(f"Stage 1 result: Lsd={state.lsd:.1f}, "
                      f"BC=({state.ybc:.2f}, {state.zbc:.2f}), "
@@ -2891,7 +2925,8 @@ def main():
                  stage=2,
                  stage_label='[Stage 2/2] ',
                  trimmed_mean_fraction=args.trimmed_mean_fraction,
-                 remove_outliers_between_iters=args.remove_outliers_between_iters)
+                 remove_outliers_between_iters=args.remove_outliers_between_iters,
+                 use_integrator=args.use_integrator)
 
         # ---- Generate final results ----
         logger.info("Generating final results data")
@@ -2943,6 +2978,10 @@ def main():
         print(f"  p1             {state.p1}")
         print(f"  p2             {state.p2}")
         print(f"  p3             {state.p3}")
+        if state.p4 != 0.0:
+            print(f"  p4             {state.p4}")
+        if state.p5 != 0.0:
+            print(f"  p5             {state.p5}")
         print(f"  RhoD           {state.rhod}")
         print(f"  Mean Strain    {state.mean_strain}")
         print(f"  Std Strain     {state.std_strain}")
@@ -2983,6 +3022,7 @@ def main():
             'EtaMin': -180, 'EtaMax': 180,
             'EtaBinSize': 1, 'DoSmoothing': 1, 'DoPeakFit': 1,
             'MultiplePeaks': 1,
+            'PeakFitMode': state.peak_fit_mode,
         }
 
         if state.p4 != 0.0:

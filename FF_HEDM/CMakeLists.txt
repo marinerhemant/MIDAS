@@ -74,6 +74,8 @@ endfunction()
 # add_ff_hedm_executable(Calibrant SOURCES src/Calibrant.c src/CalcPeakProfile.c)
 # add_ff_hedm_executable(CalibrantOMP SOURCES src/CalibrantOMP.c src/CalcPeakProfile.c src/MIDAS_Math.c OMP)  # Archived: CalibrantPanelShiftsOMP is the active superset
 add_ff_hedm_executable(CalibrantPanelShiftsOMP SOURCES src/CalibrantPanelShiftsOMP.c src/CalcPeakProfile.c src/DetectorGeometry.c src/Panel.c src/FileReader.c src/MIDAS_Math.c src/MIDAS_ParamParser.c OMP)
+add_ff_hedm_executable(CalibrantIntegratorOMP SOURCES src/CalibrantIntegratorOMP.c src/DetectorGeometry.c src/Panel.c src/FileReader.c src/MIDAS_Math.c src/MIDAS_ParamParser.c OMP)
+target_link_libraries(CalibrantIntegratorOMP PRIVATE midas_integration)
 # add_ff_hedm_executable(FitSetup SOURCES src/FitSetupParamsAll.c)
 # add_ff_hedm_executable(FitTiltBCLsdSample SOURCES src/FitTiltBCLsdSampleOmegaCorrection.c)
 # add_ff_hedm_executable(ForwardSimulation SOURCES src/ForwardSimulation.c)
@@ -131,22 +133,27 @@ add_library(midas_integration STATIC
     src/MapperCore.c
     src/ImageUtils.c
     src/IntegrationCore.c
+    src/CalibrationCore.c
+    src/PeakFit.c
 )
 target_include_directories(midas_integration PUBLIC ${CMAKE_CURRENT_SOURCE_DIR}/src)
 if(BUILD_OMP AND OpenMP_C_FOUND)
     target_link_libraries(midas_integration PUBLIC OpenMP::OpenMP_C)
 endif()
 target_link_libraries(midas_integration PUBLIC m)
+if(TARGET NLOPT::NLOPT)
+    target_link_libraries(midas_integration PUBLIC NLOPT::NLOPT)
+endif()
 
 add_ff_hedm_executable(DetectorMapper SOURCES src/DetectorMapper.c src/DetectorGeometry.c src/ZarrReader.c src/Panel.c src/FileReader.c src/MIDAS_Math.c OMP)
 target_link_libraries(DetectorMapper PRIVATE midas_integration)
 # add_ff_hedm_executable(DetectorMapperZarr ...)  # archived → src/archive/DetectorMapperZarr.c
 # add_ff_hedm_executable(Integrator SOURCES src/Integrator.c src/FileReader.c)  # archived → src/archive/Integrator.c
 # add_ff_hedm_executable(IntegratorZarr SOURCES src/archive/IntegratorZarr.c)
-add_ff_hedm_executable(IntegratorZarrOMP SOURCES src/IntegratorZarrOMP.c src/ZarrReader.c src/PeakFit.c src/PeakFitIO.c src/FileReader.c OMP)
+add_ff_hedm_executable(IntegratorZarrOMP SOURCES src/IntegratorZarrOMP.c src/ZarrReader.c src/PeakFitIO.c src/FileReader.c OMP)
 target_link_libraries(IntegratorZarrOMP PRIVATE midas_integration)
 # Float32 accumulation variant for precision testing (reviewer response)
-add_ff_hedm_executable(IntegratorZarrOMP_f32 SOURCES src/IntegratorZarrOMP.c src/ZarrReader.c src/PeakFit.c src/PeakFitIO.c src/FileReader.c OMP)
+add_ff_hedm_executable(IntegratorZarrOMP_f32 SOURCES src/IntegratorZarrOMP.c src/ZarrReader.c src/PeakFitIO.c src/FileReader.c OMP)
 target_compile_definitions(IntegratorZarrOMP_f32 PRIVATE FLOAT32_ACCUM)
 target_link_libraries(IntegratorZarrOMP_f32 PRIVATE midas_integration)
 # add_ff_hedm_executable(ConvTiffToGE SOURCES src/ConvTiffToGE.c)

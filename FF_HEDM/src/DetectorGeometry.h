@@ -39,6 +39,17 @@ void dg_pixel_to_REta(double Y, double Z, double Ycen, double Zcen,
 // Coordinates are centered at beam center (0,0).
 void dg_REta_to_YZ(double R, double Eta_deg, double *Y_out, double *Z_out);
 
+// Numerical inversion: given target (R_px, Eta_deg) in corrected space,
+// find the raw pixel (Y, Z) such that dg_pixel_to_REta(Y, Z, ...) ≈ (R, Eta).
+// Uses Newton-Raphson with the flat-detector formula as initial guess.
+void dg_invert_REta_to_pixel(
+    double R_target, double Eta_target,
+    double Ycen, double Zcen, double TRs[3][3],
+    double Lsd, double RhoD,
+    double p0, double p1, double p2, double p3, double p4, double p5,
+    double px, double dLsd, double dP2, double parallax,
+    double *Y_out, double *Z_out);
+
 // ── Bin construction ────────────────────────────────────────────────
 
 // Build uniform R and Eta bin edges.

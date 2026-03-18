@@ -304,6 +304,7 @@ int midas_parse_params(const char *filename, MIDASConfig *cfg) {
     if (param_int(aline, "PerPanelLsd", &cfg->PerPanelLsd)) continue;
     if (param_int(aline, "PerPanelDistortion", &cfg->PerPanelDistortion)) continue;
     if (param_int(aline, "GradientCorrection", &cfg->GradientCorrection)) continue;
+    if (param_int(aline, "PeakFitMode", &cfg->PeakFitMode)) continue;
     if (param_int(aline, "FixPanelID", &cfg->FixPanelID)) continue;
 
     // ── FitPos/Strain control ──
