@@ -354,10 +354,10 @@ void FitPeakShape(int NrPtsForFit, double Rs[NrPtsForFit],
   config.objective_function = problem_function_profile;
   config.obj_data = trp;
   config.initial_guess = x;
-  config.max_evaluations = 5000;
+  config.max_evaluations = 10000;
   config.max_time_seconds = 30;
-  config.ftol_rel = 1e-5;
-  config.xtol_rel = 1e-5;
+  config.ftol_rel = 1e-8;
+  config.xtol_rel = 1e-8;
 
   double minf, MeanDiff;
   double x_init[5];
@@ -1217,10 +1217,10 @@ void FitTiltBCLsd(int nIndices, double *YMean, double *ZMean,
   config.objective_function = problem_function;
   config.obj_data = trp;
   config.initial_guess = x;
-  config.max_evaluations = 5000;
-  config.max_time_seconds = 30;
-  config.ftol_rel = 1e-5;
-  config.xtol_rel = 1e-5;
+  config.max_evaluations = 50000;
+  config.max_time_seconds = 120;
+  config.ftol_rel = 1e-10;
+  config.xtol_rel = 1e-10;
 
   double minf;
   // Use SBPLX (subplex) for high-dimensional problems; it partitions the

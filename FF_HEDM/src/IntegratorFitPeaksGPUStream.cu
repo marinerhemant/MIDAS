@@ -809,18 +809,8 @@ void UnmapBins() {
 }
 
 // --- Binning Setup ---
-static inline void REtaMapper(double Rmin, double EtaMin, int nEta, int nR,
-                              double EtaStep, double RStep, double *EtaLo,
-                              double *EtaHi, double *RLo, double *RHi) {
-  for (int i = 0; i < nEta; ++i) {
-    EtaLo[i] = EtaStep * i + EtaMin;
-    EtaHi[i] = EtaStep * (i + 1) + EtaMin;
-  }
-  for (int i = 0; i < nR; ++i) {
-    RLo[i] = RStep * i + Rmin;
-    RHi[i] = RStep * (i + 1) + Rmin;
-  }
-}
+// REtaMapper removed — now midas_reta_mapper() in ImageUtils.h
+// (not used by GPU path; REtaMapper was only used for CPU fallback)
 
 // --- GPU Kernels ---
 
@@ -831,9 +821,7 @@ __global__ void initialize_PerFrameArr_Area_kernel(
     const struct data *dPxList,
     const int *dNPxList, // Need map data to calculate area
     int NrPixelsY,
-    int NrPixelsZ, // Need detector dimensions for bounds/mask check
-    const int *dMapMask,
-    size_t mapMaskWordCount, // Mask info (dMapMask can be NULL)
+    int NrPixelsZ, // Need detector dimensions for bounds check
     double px, double Lsd, double Lam) {
   const size_t idx = (size_t)blockIdx.x * blockDim.x + threadIdx.x;
   if (idx >= bigArrSize)
@@ -886,18 +874,9 @@ __global__ void initialize_PerFrameArr_Area_kernel(
         continue;
       }
 
-      // --- Apply Mask if provided ---
-      bool isMasked = false;
-      if (dMapMask != NULL && mapMaskWordCount > 0) {
-        if (TestBit(dMapMask, testPos)) {
-          isMasked = true; // Masked pixel
-        }
-      }
-      // --- End Mask Application ---
-
-      if (!isMasked) {
-        totArea += ThisVal.areaWeight; // Accumulate uncorrected area weight
-      }
+      // Per-pixel masking removed — DetectorMapper's binMaskFlag handles
+      // bin-level masking
+      totArea += ThisVal.areaWeight; // Accumulate uncorrected area weight
     }
   } // else: No pixels for this bin, totArea remains 0.0
 
@@ -1070,57 +1049,8 @@ __global__ void integrate_noMapMask(double px, double Lsd, size_t bigArrSize,
   }
 }
 
-__global__ void integrate_MapMask(
-    double px, double Lsd, size_t bigArrSize, int Normalize, int sumImages,
-    int frameIdx, size_t mapMaskWordCount, const int *dMapMask, int nRBins,
-    int nEtaBins, int NrPixelsY, int NrPixelsZ, const int *dNPxList,
-    const float *dImage, double *dIntArrPerFrame, double *dSumMatrix,
-    const int *dOffsets, const float *dWeights, const float *dAreaWeights,
-    const int *dSortedIndices) {
-  const size_t tid = (size_t)blockIdx.x * blockDim.x + threadIdx.x;
-  if (tid >= bigArrSize)
-    return;
-
-  // Map thread ID to sorted bin index
-  const int idx = dSortedIndices[tid];
-
-  float Intensity = 0.0f;
-  float totArea = 0.0f; // <<< RE-INTRODUCED local area calculation
-
-  long long nPixels = 0;
-  long long dataPos = 0;
-  const size_t nPxListIndex = 2 * idx;
-
-  nPixels = dNPxList[nPxListIndex];
-  dataPos = dNPxList[nPxListIndex + 1];
-
-  // <<< RE-INTRODUCED area and intensity calculation loop (with mask) >>>
-  for (long long l = 0; l < nPixels; l++) {
-    int testPos = dOffsets[dataPos + l];
-    bool isMasked = false;
-    if (TestBit(dMapMask, testPos))
-      isMasked = true;
-
-    if (!isMasked) {
-      float weight = dWeights[dataPos + l];
-      Intensity += __ldg(&dImage[testPos]) * weight; // Direct float read
-      totArea += dAreaWeights[dataPos + l]; // Accumulate uncorrected area
-    }
-  }
-
-  // Use the *locally calculated* totArea for threshold and normalization
-  if (totArea > AREA_THRESHOLD) {
-    if (Normalize) {
-      Intensity /= totArea; // <<< Normalize with local area
-    }
-    dIntArrPerFrame[idx] = Intensity;
-    if (sumImages && dSumMatrix) {
-      atomicAdd(&dSumMatrix[idx], Intensity);
-    }
-  } else {
-    dIntArrPerFrame[idx] = 0.0;
-  }
-}
+// integrate_MapMask kernel removed — per-pixel masking is now handled at the
+// bin level by DetectorMapper's maskMap.bin (binMaskFlag).
 
 // Templated sequential transform
 template <typename InT, typename OutT>
@@ -1988,14 +1918,9 @@ int main(int argc, char *argv[]) {
         sscanf(val_str, "%lld", &BadPxI);
         mkMap = 1;
       } else if (strcmp(key, "ImTransOpt") == 0) {
+        // ImTransOpt parsed but disabled — transforms baked into Map.bin
         if (Nopt < MAX_TRANSFORM_OPS)
           sscanf(val_str, "%d", &Topt[Nopt++]);
-        else
-          printf("Warn: Max %d ImTransOpt reached, ignoring further options.\n",
-                 MAX_TRANSFORM_OPS);
-        // NOTE: Topt values are parsed but Nopt will be zeroed below.
-        // Map.bin now stores raw pixel coordinates, so image transforms
-        // are baked into the map and no longer applied per-frame.
       } else if (strcmp(key, "SumImages") == 0)
         sscanf(val_str, "%d", &sumI);
       else if (strcmp(key, "Write2D") == 0)
@@ -2134,8 +2059,14 @@ int main(int argc, char *argv[]) {
   hRHi = (double *)malloc(nRBins * sizeof(double));
   check(!hEtaLo || !hEtaHi || !hRLo || !hRHi,
         "Allocation failed for host bin edge arrays");
-  REtaMapper(RMin, EtaMin, nEtaBins, nRBins, EtaBinSize, RBinSize, hEtaLo,
-             hEtaHi, hRLo, hRHi);
+  for (int i = 0; i < nEtaBins; i++) {
+    hEtaLo[i] = EtaBinSize * i + EtaMin;
+    hEtaHi[i] = EtaBinSize * (i + 1) + EtaMin;
+  }
+  for (int i = 0; i < nRBins; i++) {
+    hRLo[i] = RBinSize * i + RMin;
+    hRHi[i] = RBinSize * (i + 1) + RMin;
+  }
   if (qMode) {
     // Override R bins with Q-mode non-uniform R bins
     for (int i = 0; i < nRBins; i++) {
@@ -2162,8 +2093,7 @@ int main(int argc, char *argv[]) {
 
   // --- Device Memory Allocations (Persistent) ---
   float *dAvgDark = NULL;      // Averaged dark frame on GPU (now float)
-  int *dMapMask = NULL;        // Pixel mask on GPU (optional)
-  size_t mapMaskWC = 0;        // Word count for the mask array
+  // dMapMask removed — per-pixel masking now handled by binMaskFlag
   int *dNPxList = NULL;        // nMap data (pixel counts, offsets) on GPU
   struct data *dPxList = NULL; // Map data (pixel coords, fractions) on GPU
   double *dSumMatrix =
@@ -2260,7 +2190,6 @@ int main(int argc, char *argv[]) {
 
   // --- Dark Frame Processing ---
   bool darkSubEnabled = (argc > 2);
-  int *hMapMask = NULL;
 
   if (darkSubEnabled) {
     char *darkFN = argv[2];
@@ -2280,18 +2209,10 @@ int main(int argc, char *argv[]) {
       }
       // Map.bin stores raw pixel coordinates — no transformation needed
 
+      // Per-pixel masking from dark frame removed —
+      // DetectorMapper's maskMap.bin + binMaskFlag handles this.
       if (mkMap == 1 && i == 0) {
-        mapMaskWC = (totalPixels + 31) / 32;
-        hMapMask = (int *)calloc(mapMaskWC, sizeof(int));
-        for (size_t j = 0; j < totalPixels; ++j) {
-          if (hDarkInT[j] == GapI || hDarkInT[j] == BadPxI) {
-            SetBit(hMapMask, j);
-          }
-        }
-        gpuErrchk(cudaMalloc(&dMapMask, mapMaskWC * sizeof(int)));
-        gpuErrchk(cudaMemcpy(dMapMask, hMapMask, mapMaskWC * sizeof(int),
-                             cudaMemcpyHostToDevice));
-        mkMap = 0;
+        mkMap = 0; // Consumed
       }
 
       for (size_t j = 0; j < totalPixels; ++j) {
@@ -2321,7 +2242,7 @@ int main(int argc, char *argv[]) {
   int initBlocks = (bigArrSize + initTPB - 1) / initTPB;
   initialize_PerFrameArr_Area_kernel<<<initBlocks, initTPB>>>(
       dPerFrame, bigArrSize, nRBins, nEtaBins, dRLo, dRHi, dEtaLo, dEtaHi,
-      dPxList, dNPxList, NrPixelsY, NrPixelsZ, dMapMask, mapMaskWC, px, Lsd,
+      dPxList, dNPxList, NrPixelsY, NrPixelsZ, px, Lsd,
       g_Lam);
 
   // --- Precompute Offsets/Weights ---
@@ -2446,20 +2367,12 @@ int main(int argc, char *argv[]) {
       gpuErrchk(cudaEventRecord(evKernelStart, benchStream));
 
       // Integration kernel
-      if (!dMapMask) {
-        integrate_noMapMask<<<nrVox, integTPB, 0, benchStream>>>(
-            px, Lsd, bigArrSize, Normalize, 0 /* no sumI */, 0 /* frameIdx */,
-            dNPxList, NrPixelsY, NrPixelsZ, dBenchProcessed, dBenchIntArr,
-            NULL /* no sum matrix */, dPixelOffsets, dPixelWeights,
-            dPixelAreaWeights, dSortedIndices, GradientCorrection, dDeltaR_gpu,
-            dPxY_gpu, dPxZ_gpu, (float)BC_y, (float)BC_z);
-      } else {
-        integrate_MapMask<<<nrVox, integTPB, 0, benchStream>>>(
-            px, Lsd, bigArrSize, Normalize, 0, 0, mapMaskWC,
-            dMapMask, nRBins, nEtaBins, NrPixelsY, NrPixelsZ, dNPxList,
-            dBenchProcessed, dBenchIntArr, NULL, dPixelOffsets,
-            dPixelWeights, dPixelAreaWeights, dSortedIndices);
-      }
+      integrate_noMapMask<<<nrVox, integTPB, 0, benchStream>>>(
+          px, Lsd, bigArrSize, Normalize, 0 /* no sumI */, 0 /* frameIdx */,
+          dNPxList, NrPixelsY, NrPixelsZ, dBenchProcessed, dBenchIntArr,
+          NULL /* no sum matrix */, dPixelOffsets, dPixelWeights,
+          dPixelAreaWeights, dSortedIndices, GradientCorrection, dDeltaR_gpu,
+          dPxY_gpu, dPxZ_gpu, (float)BC_y, (float)BC_z);
 
       // 1D profile reduction
       calculate_1D_profile_kernel<<<nRBins, THREADS_PER_BLOCK_PROFILE,
@@ -2907,21 +2820,13 @@ int main(int argc, char *argv[]) {
 
 
 
-    if (!dMapMask) {
-      integrate_noMapMask<<<nrVox, integTPB, 0, ctx->stream>>>(
-          px, Lsd, bigArrSize, Normalize, sumI, ctx->frameIdx, dNPxList,
-          NrPixelsY, NrPixelsZ, ctx->dProcessedImage, ctx->dIntArrFrame,
-          dSumMatrix, dPixelOffsets, dPixelWeights, dPixelAreaWeights,
-          dSortedIndices,
-          GradientCorrection, dDeltaR_gpu, dPxY_gpu, dPxZ_gpu,
-          (float)BC_y, (float)BC_z);
-    } else {
-      integrate_MapMask<<<nrVox, integTPB, 0, ctx->stream>>>(
-          px, Lsd, bigArrSize, Normalize, sumI, ctx->frameIdx, mapMaskWC,
-          dMapMask, nRBins, nEtaBins, NrPixelsY, NrPixelsZ, dNPxList,
-          ctx->dProcessedImage, ctx->dIntArrFrame, dSumMatrix, dPixelOffsets,
-          dPixelWeights, dPixelAreaWeights, dSortedIndices);
-    }
+    integrate_noMapMask<<<nrVox, integTPB, 0, ctx->stream>>>(
+        px, Lsd, bigArrSize, Normalize, sumI, ctx->frameIdx, dNPxList,
+        NrPixelsY, NrPixelsZ, ctx->dProcessedImage, ctx->dIntArrFrame,
+        dSumMatrix, dPixelOffsets, dPixelWeights, dPixelAreaWeights,
+        dSortedIndices,
+        GradientCorrection, dDeltaR_gpu, dPxY_gpu, dPxZ_gpu,
+        (float)BC_y, (float)BC_z);
     double t_int_end = get_wall_time_ms();
     gpuErrchk(cudaEventRecord(ctx->stop_int, ctx->stream));
 

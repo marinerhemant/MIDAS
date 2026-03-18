@@ -15,6 +15,7 @@
 #include "PeakFitIO.h"
 #include "ZarrReader.h"
 #include "midas_version.h"
+#include "ImageUtils.h"
 #include <assert.h>
 #include <blosc2.h>
 #include <ctype.h>
@@ -203,56 +204,8 @@ static inline void Transposer(double *x, int n1, int n2, double *y) {
   }
 }
 
-static inline void REtaMapper(double Rmin, double EtaMin, int nEtaBins,
-                              int nRBins, double EtaBinSize, double RBinSize,
-                              double *EtaBinsLow, double *EtaBinsHigh,
-                              double *RBinsLow, double *RBinsHigh) {
-  int i, j, k, l;
-  for (i = 0; i < nEtaBins; i++) {
-    EtaBinsLow[i] = EtaBinSize * i + EtaMin;
-    EtaBinsHigh[i] = EtaBinSize * (i + 1) + EtaMin;
-  }
-  for (i = 0; i < nRBins; i++) {
-    RBinsLow[i] = RBinSize * i + Rmin;
-    RBinsHigh[i] = RBinSize * (i + 1) + Rmin;
-  }
-}
-
-static inline void DoImageTransformations(int NrTransOpt, int TransOpt[10],
-                                          pixelvalue *ImageIn,
-                                          pixelvalue *ImageOut, int NrPixelsY,
-                                          int NrPixelsZ) {
-  int i, k, l;
-  // Always copy input to output first
-  if (ImageIn != ImageOut) {
-    memcpy(ImageOut, ImageIn, NrPixelsY * NrPixelsZ * sizeof(*ImageIn));
-  }
-  if (NrTransOpt == 0) {
-    return;
-  }
-  pixelvalue buffer;
-  for (i = 0; i < NrTransOpt; i++) {
-    if (TransOpt[i] == 1) { // Invert Y (columns) — Flip Left Right
-      for (l = 0; l < NrPixelsZ; l++) {
-        for (k = 0; k < NrPixelsY / 2; k++) {
-          buffer = ImageOut[l * NrPixelsY + k];
-          ImageOut[l * NrPixelsY + k] =
-              ImageOut[l * NrPixelsY + (NrPixelsY - k - 1)];
-          ImageOut[l * NrPixelsY + (NrPixelsY - k - 1)] = buffer;
-        }
-      }
-    } else if (TransOpt[i] == 2) { // Invert Z (rows) — Flip Top Bottom
-      for (l = 0; l < NrPixelsZ / 2; l++) {
-        for (k = 0; k < NrPixelsY; k++) {
-          buffer = ImageOut[l * NrPixelsY + k];
-          ImageOut[l * NrPixelsY + k] =
-              ImageOut[(NrPixelsZ - l - 1) * NrPixelsY + k];
-          ImageOut[(NrPixelsZ - l - 1) * NrPixelsY + k] = buffer;
-        }
-      }
-    }
-  }
-}
+// REtaMapper, DoImageTransformations, MakeSquare removed — now in shared library
+// (ImageUtils.h: midas_reta_mapper, midas_image_transform, midas_make_square)
 
 int fileReader(FILE *f, char fn[], int dType, int NrPixels, double *returnArr) {
   int i;
@@ -384,22 +337,7 @@ static inline void rawToDouble(const char *raw, double *out, int nPixels,
   }
 }
 
-static inline void MakeSquare(int NrPixels, int NrPixelsY, int NrPixelsZ,
-                              pixelvalue *InImage, pixelvalue *OutImage) {
-  int i, j, k;
-  if (NrPixelsY == NrPixelsZ) {
-    memcpy(OutImage, InImage, NrPixels * NrPixels * sizeof(*InImage));
-  } else {
-    if (NrPixelsY > NrPixelsZ) { // Filling along the slow direction // easy
-      memcpy(OutImage, InImage, NrPixelsY * NrPixelsZ * sizeof(*InImage));
-    } else {
-      for (i = 0; i < NrPixelsZ; i++) {
-        memcpy(OutImage + i * NrPixelsZ, InImage + i * NrPixelsY,
-               NrPixelsY * sizeof(*InImage));
-      }
-    }
-  }
-}
+// MakeSquare removed — now midas_make_square() in ImageUtils.h
 
 // ─────────────────────────────────────────────────────────────────
 // readParamFile: parse MIDAS parameter file into integrator vars
@@ -1444,8 +1382,8 @@ integration_start:
       RBinsHigh[i] = (Lsd / px) * tan(2.0 * asin(QHigh * Lam / (4.0 * M_PI)));
     }
   } else {
-    REtaMapper(RMin, EtaMin, nEtaBins, nRBins, EtaBinSize, RBinSize, EtaBinsLow,
-               EtaBinsHigh, RBinsLow, RBinsHigh);
+    midas_reta_mapper(RMin, EtaMin, nEtaBins, nRBins, EtaBinSize, RBinSize,
+                      EtaBinsLow, EtaBinsHigh, RBinsLow, RBinsHigh);
   }
 
   // Compute R bin centers for peak fitting and lineout output
@@ -1527,35 +1465,9 @@ integration_start:
   double *omeArr;
   int nrdone = 0;
   FILE *fdd;
-  if (makeMap == 2) {
-    mapMaskSize = NrPixelsY;
-    mapMaskSize *= NrPixelsZ;
-    mapMaskSize /= 32;
-    mapMaskSize++;
-    mapMask = calloc(mapMaskSize, sizeof(*mapMask));
-    double *mapper;
-    mapper = calloc(NrPixelsY * NrPixelsZ, sizeof(*mapper));
-    double *mapperOut;
-    mapperOut = calloc(NrPixelsY * NrPixelsZ, sizeof(*mapperOut));
-    // Map.bin stores raw pixel coordinates, so skip mask transformation
-    fileReader(fdd, GapFN, 7, NrPixelsY * NrPixelsZ, mapper);
-    for (i = 0; i < NrPixelsY * NrPixelsZ; i++) {
-      if (mapper[i] != 0) {
-        SetBit(mapMask, i);
-        mapper[i] = 0;
-        nrdone++;
-      }
-    }
-    fileReader(fdd, BadPxFN, 7, NrPixelsY * NrPixelsZ, mapper);
-    for (i = 0; i < NrPixelsY * NrPixelsZ; i++) {
-      if (mapper[i] != 0) {
-        SetBit(mapMask, i);
-        mapper[i] = 0;
-        nrdone++;
-      }
-    }
-    printf("Nr mask pixels: %d\n", nrdone);
-  }
+  // Per-pixel masking removed: DetectorMapper's maskMap.bin provides
+  // bin-level mask via binMaskFlag (applied at L1793).
+  (void)makeMap; (void)mapMask; (void)mapMaskSize;
   printf("Number of eta bins: %d, number of R bins: %d. Number of frames in "
          "the file: %d\n",
          nEtaBins, nRBins, (int)nFrames);
@@ -1665,10 +1577,8 @@ integration_start:
     }
     memset(IntArrPerFrame, 0, bigArrSize * sizeof(double));
     // Diagnostic: count mapped pixels with value -1 or -2
-    // Only checks pixels actually in Map.bin (what the integrator uses)
     {
-      long neg1_total = 0, neg1_used = 0;
-      long neg2_total = 0, neg2_used = 0;
+      long neg1_total = 0, neg2_total = 0;
       for (j = 0; j < nRBins; j++) {
         for (k = 0; k < nEtaBins; k++) {
           long long int pos = (long long int)j * nEtaBins + k;
@@ -1676,25 +1586,15 @@ integration_start:
           int dp = nPxList[2 * pos + 1];
           for (l = 0; l < npx; l++) {
             size_t tp = (size_t)pxList[dp + l].z * NrPixelsY + pxList[dp + l].y;
-            int is_gap_masked = (mapMaskSize != 0 && TestBit(mapMask, tp));
             double val = Image[tp];
-            if (val == -1.0) {
-              neg1_total++;
-              if (!is_gap_masked)
-                neg1_used++;
-            } else if (val == -2.0) {
-              neg2_total++;
-              if (!is_gap_masked)
-                neg2_used++;
-            }
+            if (val == -1.0) neg1_total++;
+            else if (val == -2.0) neg2_total++;
           }
         }
       }
-      // if (neg1_total + neg2_total > 0)
       printf("  Pixel diagnostic (mapped only): "
-             "val=-1: %ld in map (%ld used); "
-             "val=-2: %ld in map (%ld used)\n",
-             neg1_total, neg1_used, neg2_total, neg2_used);
+             "val=-1: %ld in map; val=-2: %ld in map\n",
+             neg1_total, neg2_total);
     }
     t_0 = omp_get_wtime();
 #pragma omp parallel for schedule(dynamic, 64) private(j, k, l, Pos, nPixels, dataPos, Intensity,    \
@@ -1708,69 +1608,32 @@ integration_start:
         dataPos = nPxList[2 * Pos + 1];
         Intensity = 0;
         totArea = 0;
-        if (mapMaskSize != 0) {
-          for (l = 0; l < nPixels; l++) {
-            ThisVal = pxList[dataPos + l];
-            int iy = (int)floorf(ThisVal.y);
-            int iz = (int)floorf(ThisVal.z);
-            testPos = (size_t)iz * NrPixelsY + iy;
-            if (TestBit(mapMask, testPos)) {
-              continue;
+        for (l = 0; l < nPixels; l++) {
+          ThisVal = pxList[dataPos + l];
+          double read_y = ThisVal.y, read_z = ThisVal.z;
+          if (GradientCorrection && ThisVal.deltaR != 0.0f) {
+            double dy = ThisVal.y - BC_y;
+            double dz = ThisVal.z - BC_z;
+            double R = sqrt(dy * dy + dz * dz);
+            if (R > 1.0) {
+              read_y -= ThisVal.deltaR * dy / R;
+              read_z -= ThisVal.deltaR * dz / R;
             }
-            // Bilinear interpolation — optionally shifted to R_bin_center
-            double read_y = ThisVal.y, read_z = ThisVal.z;
-            if (GradientCorrection && ThisVal.deltaR != 0.0f) {
-              double dy = ThisVal.y - BC_y;
-              double dz = ThisVal.z - BC_z;
-              double R = sqrt(dy * dy + dz * dz);
-              if (R > 1.0) {
-                read_y -= ThisVal.deltaR * dy / R;
-                read_z -= ThisVal.deltaR * dz / R;
-              }
-            }
-            int riy = (int)floorf(read_y);
-            int riz = (int)floorf(read_z);
-            double fy = read_y - riy, fz = read_z - riz;
-            if (riy < 0) { riy = 0; fy = 0; }
-            if (riy >= NrPixelsY - 1) { riy = NrPixelsY - 2; fy = 1; }
-            if (riz < 0) { riz = 0; fz = 0; }
-            if (riz >= NrPixelsZ - 1) { riz = NrPixelsZ - 2; fz = 1; }
-            double pixVal =
-                Image[(size_t)riz * NrPixelsY + riy] * (1 - fy) * (1 - fz) +
-                Image[(size_t)riz * NrPixelsY + riy + 1] * fy * (1 - fz) +
-                Image[(size_t)(riz + 1) * NrPixelsY + riy] * (1 - fy) * fz +
-                Image[(size_t)(riz + 1) * NrPixelsY + riy + 1] * fy * fz;
-            Intensity += pixVal * ThisVal.frac;
-            totArea += ThisVal.areaWeight;
           }
-        } else {
-          for (l = 0; l < nPixels; l++) {
-            ThisVal = pxList[dataPos + l];
-            double read_y = ThisVal.y, read_z = ThisVal.z;
-            if (GradientCorrection && ThisVal.deltaR != 0.0f) {
-              double dy = ThisVal.y - BC_y;
-              double dz = ThisVal.z - BC_z;
-              double R = sqrt(dy * dy + dz * dz);
-              if (R > 1.0) {
-                read_y -= ThisVal.deltaR * dy / R;
-                read_z -= ThisVal.deltaR * dz / R;
-              }
-            }
-            int iy = (int)floorf(read_y);
-            int iz = (int)floorf(read_z);
-            double fy = read_y - iy, fz = read_z - iz;
-            if (iy < 0) { iy = 0; fy = 0; }
-            if (iy >= NrPixelsY - 1) { iy = NrPixelsY - 2; fy = 1; }
-            if (iz < 0) { iz = 0; fz = 0; }
-            if (iz >= NrPixelsZ - 1) { iz = NrPixelsZ - 2; fz = 1; }
-            double pixVal =
-                Image[(size_t)iz * NrPixelsY + iy] * (1 - fy) * (1 - fz) +
-                Image[(size_t)iz * NrPixelsY + iy + 1] * fy * (1 - fz) +
-                Image[(size_t)(iz + 1) * NrPixelsY + iy] * (1 - fy) * fz +
-                Image[(size_t)(iz + 1) * NrPixelsY + iy + 1] * fy * fz;
-            Intensity += pixVal * ThisVal.frac;
-            totArea += ThisVal.areaWeight;
-          }
+          int iy = (int)floorf(read_y);
+          int iz = (int)floorf(read_z);
+          double fy = read_y - iy, fz = read_z - iz;
+          if (iy < 0) { iy = 0; fy = 0; }
+          if (iy >= NrPixelsY - 1) { iy = NrPixelsY - 2; fy = 1; }
+          if (iz < 0) { iz = 0; fz = 0; }
+          if (iz >= NrPixelsZ - 1) { iz = NrPixelsZ - 2; fz = 1; }
+          double pixVal =
+              Image[(size_t)iz * NrPixelsY + iy] * (1 - fy) * (1 - fz) +
+              Image[(size_t)iz * NrPixelsY + iy + 1] * fy * (1 - fz) +
+              Image[(size_t)(iz + 1) * NrPixelsY + iy] * (1 - fy) * fz +
+              Image[(size_t)(iz + 1) * NrPixelsY + iy + 1] * fy * fz;
+          Intensity += pixVal * ThisVal.frac;
+          totArea += ThisVal.areaWeight;
         }
         if (Intensity != 0) {
           if (Normalize == 1) {

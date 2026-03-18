@@ -1564,6 +1564,265 @@ def run_get_hkl_list(param_file):
         raise
 
 
+def run_integrator_validation(refined_params_file, data_file, dark_file,
+                              state, n_cpus=4):
+    """Run DetectorMapper + IntegratorZarrOMP to independently validate calibration.
+
+    Uses the refined geometry to integrate the calibrant image, fits peaks at
+    the known ring positions, and writes an integrator_<fn>.corr.csv in the
+    same 16-column format as CalibrantPanelShiftsOMP's corr.csv.
+
+    Parameters
+    ----------
+    refined_params_file : str
+        Path to the refined_MIDAS_params_<stem>.txt file.
+    data_file : str
+        Path to the calibrant data file (TIFF, HDF5, etc.).
+    dark_file : str
+        Path to the dark file (or '' if none).
+    state : CalibState
+        The calibration state with refined geometry.
+    n_cpus : int
+        Number of CPUs for the integrator.
+    """
+    import csv
+    import tempfile
+
+    mapper_bin = os.path.join(INSTALL_PATH, 'FF_HEDM/bin/DetectorMapper')
+    integrator_bin = os.path.join(INSTALL_PATH, 'FF_HEDM/bin/IntegratorZarrOMP')
+    hkl_bin = os.path.join(INSTALL_PATH, 'FF_HEDM/bin/GetHKLList')
+
+    for b in [mapper_bin, integrator_bin, hkl_bin]:
+        if not os.path.exists(b):
+            logger.warning(f"Validation skipped: {b} not found")
+            return
+
+    work_dir = tempfile.mkdtemp(prefix='midas_intval_')
+    logger.info(f"Integrator validation work dir: {work_dir}")
+
+    try:
+        # --- 1. Get ring radii from GetHKLList ---
+        hkl_result = subprocess.run(
+            [hkl_bin,
+             '--sg', str(int(state.space_group)),
+             '--lp', *[f'{x:.6f}' for x in state.latc],
+             '--wl', f'{state.wavelength:.6f}',
+             '--lsd', f'{state.lsd:.1f}',
+             '--maxR', f'{state.rhod:.1f}',
+             '--stdout'],
+            capture_output=True, text=True, env=env)
+
+        # Parse ring radii (columns: h k l D-spacing RingNr ... Radius)
+        ring_radii = {}  # RingNr -> (Radius_um, DSpacing, Ideal2Theta)
+        for line in hkl_result.stdout.strip().split('\n'):
+            parts = line.strip().split()
+            if len(parts) >= 11:
+                try:
+                    ring_nr = int(float(parts[4]))
+                    d_spacing = float(parts[3])
+                    ideal_2theta = float(parts[9])
+                    radius_um = float(parts[10])
+                    if ring_nr not in ring_radii:
+                        ring_radii[ring_nr] = (radius_um, d_spacing, ideal_2theta)
+                except (ValueError, IndexError):
+                    continue
+
+        if not ring_radii:
+            logger.warning("Validation skipped: no ring radii from GetHKLList")
+            return
+
+        sorted_rings = sorted(ring_radii.items())  # [(ring_nr, (R_um, d, 2th)), ...]
+        logger.info(f"Integrator validation: {len(sorted_rings)} rings")
+
+        # --- 2. Write integrator parameter file ---
+        max_r_px = max(r_um / state.px for _, (r_um, _, _) in sorted_rings)
+        integ_params = os.path.join(work_dir, 'integrator_params.txt')
+        with open(integ_params, 'w') as f:
+            f.write(f"Lsd {state.lsd}\n")
+            f.write(f"BC {state.ybc} {state.zbc}\n")
+            f.write(f"tx {state.tx}\n")
+            f.write(f"ty {state.ty}\n")
+            f.write(f"tz {state.tz}\n")
+            f.write(f"p0 {state.p0}\n")
+            f.write(f"p1 {state.p1}\n")
+            f.write(f"p2 {state.p2}\n")
+            f.write(f"p3 {state.p3}\n")
+            if state.p4 != 0.0:
+                f.write(f"p4 {state.p4}\n")
+            if state.p5 != 0.0:
+                f.write(f"p5 {state.p5}\n")
+            f.write(f"RhoD {state.rhod}\n")
+            f.write(f"Wavelength {state.wavelength}\n")
+            f.write(f"px {state.px}\n")
+            f.write(f"NrPixelsY {state.nr_pixels_y}\n")
+            f.write(f"NrPixelsZ {state.nr_pixels_z}\n")
+            f.write(f"RMin 10\n")
+            f.write(f"RMax {max_r_px + 50:.0f}\n")
+            f.write(f"RBinSize 0.25\n")
+            f.write(f"EtaMin -180\n")
+            f.write(f"EtaMax 180\n")
+            f.write(f"EtaBinSize 1\n")
+            f.write(f"Normalize 1\n")
+            f.write(f"Folder {work_dir}\n")
+            for transOpt in state.im_trans_opt:
+                f.write(f"ImTransOpt {transOpt}\n")
+            if state.mask_file:
+                f.write(f"MaskFile {state.mask_file}\n")
+            if state.parallax_in != 0.0:
+                f.write(f"Parallax {state.parallax_in}\n")
+
+        # --- 3. Run DetectorMapper ---
+        logger.info("Running DetectorMapper...")
+        dm_result = subprocess.run(
+            [mapper_bin, integ_params, '-nCPUs', str(n_cpus)],
+            capture_output=True, text=True, cwd=work_dir, env=env)
+        if dm_result.returncode != 0:
+            logger.error(f"DetectorMapper failed: {dm_result.stderr[-500:]}")
+            return
+
+        map_bin_path = os.path.join(work_dir, 'Map.bin')
+        if not os.path.exists(map_bin_path):
+            logger.error("DetectorMapper did not produce Map.bin")
+            return
+
+        # --- 4. Write peak params file ---
+        peak_params_fn = os.path.join(work_dir, 'peak_params.txt')
+        max_peaks = min(len(sorted_rings), 25)
+        with open(peak_params_fn, 'w') as f:
+            f.write("DoPeakFit 1\n")
+            f.write("FitROIPadding 30\n")
+            for i, (ring_nr, (r_um, _, _)) in enumerate(sorted_rings):
+                if i >= max_peaks:
+                    break
+                r_px = r_um / state.px
+                f.write(f"PeakLocation {r_px:.6f}\n")
+
+        # --- 5. Run IntegratorZarrOMP ---
+        logger.info("Running IntegratorZarrOMP...")
+        integ_cmd = [
+            integrator_bin,
+            '-paramFN', integ_params,
+            '-dataFN', os.path.abspath(data_file),
+            '-nCPUs', str(n_cpus),
+            '-PeakParamsFN', peak_params_fn,
+        ]
+        if dark_file and os.path.exists(dark_file):
+            integ_cmd.extend(['-darkFN', os.path.abspath(dark_file)])
+
+        integ_result = subprocess.run(
+            integ_cmd, capture_output=True, text=True, cwd=work_dir, env=env)
+        if integ_result.returncode != 0:
+            logger.error(f"IntegratorZarrOMP failed: {integ_result.stderr[-500:]}")
+            return
+
+        # --- 6. Parse _fit_per_eta.csv ---
+        # Find the output file
+        fit_csvs = [f for f in os.listdir(work_dir) if f.endswith('_fit_per_eta.csv')]
+        if not fit_csvs:
+            logger.warning("No _fit_per_eta.csv found — integrator may not have produced peak fits")
+            return
+
+        fit_csv_path = os.path.join(work_dir, fit_csvs[0])
+        per_eta_rows = []
+        with open(fit_csv_path) as csvf:
+            reader = csv.DictReader(csvf)
+            for row in reader:
+                try:
+                    per_eta_rows.append({
+                        'eta_deg': float(row['EtaCen']),
+                        'peak_nr': int(row['PeakIdx']),
+                        'center_px': float(row['R_px']),
+                        'tth_deg': float(row['TwoTheta_deg']),
+                    })
+                except (KeyError, ValueError):
+                    continue
+
+        if not per_eta_rows:
+            logger.warning("No peak fit data in _fit_per_eta.csv")
+            return
+
+        logger.info(f"Parsed {len(per_eta_rows)} per-eta peak fits")
+
+        # --- 7. Write integrator_fn.corr.csv ---
+        # Compute lattice parameter 'a' from fitted 2theta using Bragg's law
+        # For cubic: a = d * sqrt(h^2+k^2+l^2), but since we don't have hkl per row,
+        # we use: d = wavelength / (2 * sin(theta)), and IdealA from ideal 2theta.
+        data_basename = os.path.basename(data_file)
+        data_stem = os.path.splitext(data_basename)[0]
+        corr_csv_name = f"integrator_{data_stem}.corr.csv"
+        # Write next to the original data file
+        corr_csv_path = os.path.join(os.path.dirname(os.path.abspath(data_file)),
+                                     corr_csv_name)
+
+        n_written = 0
+        with open(corr_csv_path, 'w') as out:
+            out.write("%Eta Strain RadFit EtaCalc DiffCalc RadCalc "
+                      "Ideal2Theta Outlier YRawCorr ZRawCorr RingNr "
+                      "RadGlobal IdealR Fit2Theta IdealA FitA\n")
+
+            for row in per_eta_rows:
+                peak_idx = row['peak_nr']
+                if peak_idx >= len(sorted_rings):
+                    continue
+
+                ring_nr, (ideal_r_um, d_spacing, ideal_2theta) = sorted_rings[peak_idx]
+                ideal_r_px = ideal_r_um / state.px
+                fitted_r_px = row['center_px']
+                eta_deg = row['eta_deg']
+                fitted_2theta = row['tth_deg']
+
+                # Skip zero/invalid fits
+                if fitted_r_px <= 0 or fitted_2theta <= 0:
+                    continue
+
+                strain = (fitted_r_px - ideal_r_px) / ideal_r_px if ideal_r_px > 0 else 0
+                diff_calc = abs(strain)
+
+                # Y/Z from R,Eta (approximate: ignoring distortion)
+                eta_rad = math.radians(eta_deg)
+                y_raw = state.ybc - fitted_r_px * math.sin(eta_rad)
+                z_raw = state.zbc + fitted_r_px * math.cos(eta_rad)
+
+                # Filter points outside detector extent
+                if y_raw < 0 or y_raw > state.nr_pixels_y or z_raw < 0 or z_raw > state.nr_pixels_z:
+                    continue
+
+                # Lattice parameter from Bragg's law
+                # d_fit = wavelength / (2 * sin(fitted_2theta/2 * deg2rad))
+                # For cubic: a = d * sqrt(h²+k²+l²)
+                # We compute ratio: a_fit / a_ideal = d_fit / d_ideal
+                ideal_theta_rad = math.radians(ideal_2theta / 2.0)
+                fit_theta_rad = math.radians(fitted_2theta / 2.0)
+
+                d_ideal = state.wavelength / (2.0 * math.sin(ideal_theta_rad)) if ideal_theta_rad > 0 else 0
+                d_fit = state.wavelength / (2.0 * math.sin(fit_theta_rad)) if fit_theta_rad > 0 else 0
+
+                # Ideal lattice param (assume cubic, from first lattice const)
+                ideal_a = state.latc[0] if state.latc[0] > 0 else d_ideal
+                fit_a = ideal_a * (d_fit / d_ideal) if d_ideal > 0 else ideal_a
+
+                out.write(f"{eta_deg:.6f} {strain:.10e} {fitted_r_px:.6f} "
+                          f"{eta_deg:.6f} {diff_calc:.10e} {fitted_r_px:.6f} "
+                          f"{ideal_2theta:.6f} 0 {y_raw:.4f} {z_raw:.4f} "
+                          f"{ring_nr} {fitted_r_px:.6f} {ideal_r_px:.6f} "
+                          f"{fitted_2theta:.6f} {ideal_a:.6f} {fit_a:.6f}\n")
+                n_written += 1
+
+        logger.info(f"Wrote {n_written} entries to {corr_csv_path}")
+        print(f"\n  Integrator validation: {corr_csv_path}")
+        print(f"  ({n_written} peak-fit entries across {len(sorted_rings)} rings)")
+
+    except Exception as e:
+        logger.error(f"Integrator validation failed: {traceback.format_exc()}")
+    finally:
+        # Clean up work directory
+        import shutil
+        try:
+            shutil.rmtree(work_dir, ignore_errors=True)
+        except Exception:
+            pass
+
+
 def runMIDAS(rawFN, state, n_iterations=40, mult_factor=5,
              doublet_separation=25, outlier_iterations=3,
              eta_bin_size=1.0, max_width=1000, n_cpus=None,
@@ -1884,6 +2143,8 @@ def main():
         # Output
         parser.add_argument('--output', '-o', type=str, default='',
                             help='Output parameter filename (default: refined_MIDAS_params_<stem>.txt)')
+        parser.add_argument('--no-validate', action='store_true',
+                            help='Skip post-calibration integrator validation')
 
         args, unparsed = parser.parse_known_args()
 
@@ -2774,6 +3035,17 @@ def main():
 
         logger.info("Calibration completed successfully")
         print(f"\n  Output written to: {psName}")
+
+        # ---- Integrator validation ----
+        if not args.no_validate:
+            logger.info("Running integrator validation...")
+            run_integrator_validation(
+                refined_params_file=psName,
+                data_file=dataFN,
+                dark_file=darkFN,
+                state=state,
+                n_cpus=n_cpus,
+            )
 
         # ---- Cleanup intermediate files ----
         cleanup_files = [

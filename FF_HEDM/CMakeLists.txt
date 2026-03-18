@@ -123,14 +123,32 @@ add_ff_hedm_executable(MergeMultipleScans SOURCES src/MergeMultipleScans.c)
 add_ff_hedm_executable(ProcessGrainsScanningHEDM SOURCES src/ProcessGrainsScanningHEDM.c src/GetMisorientation.c src/CalcStrains.c src/MIDAS_Math.c src/MIDAS_ParamParser.c)
 add_ff_hedm_executable(MatchGrains SOURCES src/MatchGrains.c src/GetMisorientation.c)
 
+
+# --- Shared integration library ---
+# Consolidates mapping, image utils, and integration code shared across
+# DetectorMapper, IntegratorZarrOMP, and CalibrantIntegratorOMP.
+add_library(midas_integration STATIC
+    src/MapperCore.c
+    src/ImageUtils.c
+    src/IntegrationCore.c
+)
+target_include_directories(midas_integration PUBLIC ${CMAKE_CURRENT_SOURCE_DIR}/src)
+if(BUILD_OMP AND OpenMP_C_FOUND)
+    target_link_libraries(midas_integration PUBLIC OpenMP::OpenMP_C)
+endif()
+target_link_libraries(midas_integration PUBLIC m)
+
 add_ff_hedm_executable(DetectorMapper SOURCES src/DetectorMapper.c src/DetectorGeometry.c src/ZarrReader.c src/Panel.c src/FileReader.c src/MIDAS_Math.c OMP)
+target_link_libraries(DetectorMapper PRIVATE midas_integration)
 # add_ff_hedm_executable(DetectorMapperZarr ...)  # archived → src/archive/DetectorMapperZarr.c
 # add_ff_hedm_executable(Integrator SOURCES src/Integrator.c src/FileReader.c)  # archived → src/archive/Integrator.c
 # add_ff_hedm_executable(IntegratorZarr SOURCES src/archive/IntegratorZarr.c)
 add_ff_hedm_executable(IntegratorZarrOMP SOURCES src/IntegratorZarrOMP.c src/ZarrReader.c src/PeakFit.c src/PeakFitIO.c src/FileReader.c OMP)
+target_link_libraries(IntegratorZarrOMP PRIVATE midas_integration)
 # Float32 accumulation variant for precision testing (reviewer response)
 add_ff_hedm_executable(IntegratorZarrOMP_f32 SOURCES src/IntegratorZarrOMP.c src/ZarrReader.c src/PeakFit.c src/PeakFitIO.c src/FileReader.c OMP)
 target_compile_definitions(IntegratorZarrOMP_f32 PRIVATE FLOAT32_ACCUM)
+target_link_libraries(IntegratorZarrOMP_f32 PRIVATE midas_integration)
 # add_ff_hedm_executable(ConvTiffToGE SOURCES src/ConvTiffToGE.c)
 # add_ff_hedm_executable(MapBND SOURCES src/MapBND.c)
 
