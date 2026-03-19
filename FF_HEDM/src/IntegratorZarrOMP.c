@@ -1415,7 +1415,10 @@ integration_start:
   sprintf(lineoutXYFN, "%s_lineout.xy", dataPrefix);
   FILE *fLineoutXY = fopen(lineoutXYFN, "w");
   if (fLineoutXY) {
-    fprintf(fLineoutXY, "# 2theta_deg  intensity\n");
+    if (qMode)
+      fprintf(fLineoutXY, "# Q_invA  intensity\n");
+    else
+      fprintf(fLineoutXY, "# 2theta_deg  intensity\n");
     printf("Opened %s for text lineout output.\n", lineoutXYFN);
   }
   FILE *fFitPerEta = NULL;
@@ -1742,8 +1745,13 @@ integration_start:
       for (j = 0; j < nRBins; j++) {
         if (isnan(lineout1D[j]))
           continue; // skip contaminated bins
-        double tth = atand(RBinCenters[j] * px / Lsd);
-        fprintf(fLineoutXY, "%.6f  %.6f\n", tth, lineout1D[j]);
+        if (qMode) {
+          double qVal = QMin + QBinSize * (j + 0.5);
+          fprintf(fLineoutXY, "%.6f  %.6f\n", qVal, lineout1D[j]);
+        } else {
+          double tth = atand(RBinCenters[j] * px / Lsd);
+          fprintf(fLineoutXY, "%.6f  %.6f\n", tth, lineout1D[j]);
+        }
       }
       fflush(fLineoutXY);
     }
