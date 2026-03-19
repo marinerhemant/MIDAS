@@ -73,7 +73,7 @@ endfunction()
 
 # add_ff_hedm_executable(Calibrant SOURCES src/Calibrant.c src/CalcPeakProfile.c)
 # add_ff_hedm_executable(CalibrantOMP SOURCES src/CalibrantOMP.c src/CalcPeakProfile.c src/MIDAS_Math.c OMP)  # Archived: CalibrantPanelShiftsOMP is the active superset
-add_ff_hedm_executable(CalibrantPanelShiftsOMP SOURCES src/CalibrantPanelShiftsOMP.c src/CalcPeakProfile.c src/DetectorGeometry.c src/Panel.c src/FileReader.c src/MIDAS_Math.c src/MIDAS_ParamParser.c OMP)
+# add_ff_hedm_executable(CalibrantPanelShiftsOMP SOURCES src/CalibrantPanelShiftsOMP.c src/CalcPeakProfile.c src/DetectorGeometry.c src/Panel.c src/FileReader.c src/MIDAS_Math.c src/MIDAS_ParamParser.c OMP)  # Archived: CalibrantIntegratorOMP is the active replacement
 add_ff_hedm_executable(CalibrantIntegratorOMP SOURCES src/CalibrantIntegratorOMP.c src/DetectorGeometry.c src/Panel.c src/FileReader.c src/MIDAS_Math.c src/MIDAS_ParamParser.c OMP)
 target_link_libraries(CalibrantIntegratorOMP PRIVATE midas_integration)
 # add_ff_hedm_executable(FitSetup SOURCES src/FitSetupParamsAll.c)
@@ -188,7 +188,7 @@ add_ff_hedm_executable(IntegratorFitPeaksGPUStream SOURCES src/IntegratorFitPeak
 
 # --- Aggregate target for all FF_HEDM executables (optional convenience) ---
 set(FF_HEDM_ALL_NON_CUDA_TARGETS_LIST
- CalibrantPanelShiftsOMP ForwardSimulationCompressed
+ CalibrantIntegratorOMP ForwardSimulationCompressed
  FitPosOrStrains FitPosOrStrainsOMP FitOrStrainsScanningOMP FitPosOrStrainsScanningHEDM
  PeaksFittingPerFile PeaksFittingOMP MergeOverlappingPeaks MergeOverlappingPeaksAll
  CalcRadius CalcRadiusAll GrainTracking GenMedianDark

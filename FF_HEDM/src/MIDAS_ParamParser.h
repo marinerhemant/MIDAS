@@ -189,6 +189,8 @@ typedef struct {
   int    PerPanelDistortion;
   int    GradientCorrection;
   int    PeakFitMode;  // 0=pV (default), 1=TCH (GSAS-II)
+  int    SubPixelLevel;           // Sub-pixel splitting level for cardinal angles (1=off, 4=default)
+  double SubPixelCardinalWidth;   // Half-width in degrees around cardinal η for sub-pixel splitting
 
   // ── FitPos/Strain control ──
   int    TopLayer;

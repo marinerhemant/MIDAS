@@ -78,6 +78,7 @@ static int run_estep(
     double *mask, double DoubletSeparation,
     double Wavelength, double Width,
     int peakFitMode,
+    int SubPixelLevel, double SubPixelCardinalWidth,
     // outputs:
     double **out_RMean, double **out_EtaMean,
     double **out_YMean, double **out_ZMean,
@@ -172,7 +173,7 @@ static int run_estep(
       pxList, nPxList, maxnPx,
       mask, binMaskFlag,
       NrTransOpt, TransOpt,
-      binLocks, 1, 360.0, // SubPixelLevel=1: no sub-pixel splitting
+      binLocks, SubPixelLevel, SubPixelCardinalWidth,
       parallax, 0, 0, 0.0, // no solid angle/polarization correction
       distortionMapY, distortionMapZ,
       panels, nPanels);
@@ -340,15 +341,32 @@ static int run_estep(
       cPD[cnt] = PointDSpacing[i];
       cRN[cnt] = RingNumbers[i];
       cFS[cnt] = FitSNR[i];
-      // Convert (R, Eta) → raw pixel coords via numerical inversion
-      // This correctly inverts the tilt/distortion correction,
-      // unlike the old flat-detector polar formula.
+      // Convert (R, Eta) → raw pixel coords via panel-aware inversion.
+      // The forward map applied panel dLsd/dP2/dY/dZ/dTheta, so the
+      // inversion must undo all of these to yield raw pixel coords
+      // that the M-step's GetPanelIndex will correctly assign.
       double R_px = cRM[cnt] / px;
       double Y_inv, Z_inv;
-      dg_invert_REta_to_pixel(R_px, cEM[cnt],
+
+      // Determine which panel this bin belongs to using map pixel data.
+      // Use the flat-detector approximation to find approximate pixel,
+      // then look up panel.
+      int r = i / nEtaBins;
+      int e = i % nEtaBins;
+      const Panel *binPanel = NULL;
+      if (nPanels > 0) {
+        // Approximate pixel from flat-detector formula
+        double approxY = ybc + R_px * sin(cEM[cnt] * deg2rad);
+        double approxZ = zbc + R_px * cos(cEM[cnt] * deg2rad);
+        int pIdx = GetPanelIndex(approxY, approxZ, nPanels, panels);
+        if (pIdx >= 0)
+          binPanel = &panels[pIdx];
+      }
+
+      dg_invert_REta_to_pixel_panel(R_px, cEM[cnt],
                                ybc, zbc, TRs_estep, Lsd, MaxRingRad_local,
                                p0, p1, p2, p3, p4, p5,
-                               px, 0, 0, parallax,
+                               px, parallax, binPanel,
                                &Y_inv, &Z_inv);
       cYM[cnt] = Y_inv;
       cZM[cnt] = Z_inv;
@@ -650,6 +668,7 @@ int main(int argc, char *argv[]) {
         parallaxIn, n_hkls, Thetas, DSpacings, RingIDs,
         NrTransOpt, TransOpt, mask, DoubletSeparation, Wavelength,
         cfg.Width, peakFitMode,
+        cfg.SubPixelLevel, cfg.SubPixelCardinalWidth,
         &RMean, &EtaMean, &YMean, &ZMean,
         &IdealTtheta, &PointDSpacing, &RingNumbers, &FitSNR, &skipBin);
     if (nIndices >= 3) {
@@ -710,6 +729,7 @@ int main(int argc, char *argv[]) {
           parallaxIn, n_hkls, Thetas, DSpacings, RingIDs,
           NrTransOpt, TransOpt, mask, DoubletSeparation, Wavelength,
           cfg.Width, peakFitMode,
+          cfg.SubPixelLevel, cfg.SubPixelCardinalWidth,
           &RMean, &EtaMean, &YMean, &ZMean,
           &IdealTtheta, &PointDSpacing, &RingNumbers, &FitSNR, &skipBin);
 
@@ -1004,6 +1024,7 @@ int main(int argc, char *argv[]) {
         parallaxIn, n_hkls, Thetas, DSpacings, RingIDs,
         NrTransOpt, TransOpt, mask, DoubletSeparation, Wavelength,
         cfg.Width, peakFitMode,
+        cfg.SubPixelLevel, cfg.SubPixelCardinalWidth,
         &RMean, &EtaMean, &YMean, &ZMean,
         &IdealTtheta, &PointDSpacing, &RingNumbers, &FitSNR, &skipBin);
 

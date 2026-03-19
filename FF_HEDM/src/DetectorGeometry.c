@@ -194,6 +194,94 @@ void dg_invert_REta_to_pixel(
   *Z_out = Z;
 }
 
+// ── Panel-aware numerical inversion ─────────────────────────────────
+// Given target (R_px, Eta_deg) from the forward model (which included
+// per-panel dLsd/dP2 and panel dY/dZ/dTheta corrections), find the
+// RAW pixel (Y, Z) such that the full forward pipeline reproduces the
+// same (R, Eta).
+//
+// Strategy:
+//   1. Newton-Raphson using dg_pixel_to_REta with panel's dLsd/dP2
+//      in the forward step.  The initial guess and iteration variables
+//      are in panel-CORRECTED pixel space (i.e., after ApplyPanelCorrection).
+//   2. After convergence the corrected pixel is passed through
+//      UnApplyPanelCorrection to recover the raw pixel position.
+//
+// If panel == NULL, falls back to the non-panel version with dLsd=dP2=0.
+
+void dg_invert_REta_to_pixel_panel(
+    double R_target, double Eta_target,
+    double Ycen, double Zcen, double TRs[3][3],
+    double Lsd, double RhoD,
+    double p0, double p1, double p2, double p3, double p4, double p5,
+    double px, double parallax,
+    const Panel *panel,
+    double *Y_out, double *Z_out) {
+
+  if (panel == NULL) {
+    dg_invert_REta_to_pixel(R_target, Eta_target, Ycen, Zcen, TRs,
+                            Lsd, RhoD, p0, p1, p2, p3, p4, p5,
+                            px, 0, 0, parallax, Y_out, Z_out);
+    return;
+  }
+
+  double dLsd = panel->dLsd;
+  double dP2  = panel->dP2;
+
+  // Initial guess: flat-detector polar formula (in panel-corrected space)
+  double Y = Ycen + R_target * sin(Eta_target * DG_DEG2RAD);
+  double Z = Zcen + R_target * cos(Eta_target * DG_DEG2RAD);
+
+  const int MAX_ITER = 10;
+  const double TOL_R = 1e-8;
+  const double TOL_ETA = 1e-8;
+  const double h = 0.01;
+
+  for (int iter = 0; iter < MAX_ITER; iter++) {
+    // Forward: panel-corrected pixel → (R, Eta) with panel dLsd/dP2
+    double R_eval, Eta_eval;
+    dg_pixel_to_REta(Y, Z, Ycen, Zcen, TRs, Lsd, RhoD,
+                     p0, p1, p2, p3, p4, p5, px, dLsd, dP2, parallax,
+                     &R_eval, &Eta_eval, NULL);
+
+    double dR = R_target - R_eval;
+    double dEta = Eta_target - Eta_eval;
+    if (dEta >  180.0) dEta -= 360.0;
+    if (dEta < -180.0) dEta += 360.0;
+
+    if (fabs(dR) < TOL_R && fabs(dEta) < TOL_ETA)
+      break;
+
+    // Numerical Jacobian
+    double R_dY, Eta_dY, R_dZ, Eta_dZ;
+    dg_pixel_to_REta(Y + h, Z, Ycen, Zcen, TRs, Lsd, RhoD,
+                     p0, p1, p2, p3, p4, p5, px, dLsd, dP2, parallax,
+                     &R_dY, &Eta_dY, NULL);
+    dg_pixel_to_REta(Y, Z + h, Ycen, Zcen, TRs, Lsd, RhoD,
+                     p0, p1, p2, p3, p4, p5, px, dLsd, dP2, parallax,
+                     &R_dZ, &Eta_dZ, NULL);
+
+    double dRdY = (R_dY - R_eval) / h;
+    double dRdZ = (R_dZ - R_eval) / h;
+    double dEdY = (Eta_dY - Eta_eval) / h;
+    double dEdZ = (Eta_dZ - Eta_eval) / h;
+
+    double det = dRdY * dEdZ - dRdZ * dEdY;
+    if (fabs(det) < 1e-30) break;
+
+    double deltaY = (dEdZ * dR - dRdZ * dEta) / det;
+    double deltaZ = (dRdY * dEta - dEdY * dR) / det;
+    Y += deltaY;
+    Z += deltaZ;
+  }
+
+  // Y,Z are now panel-corrected pixel coords.  Undo panel dY/dZ/dTheta
+  // to get the raw pixel position that the M-step expects.
+  double rawY, rawZ;
+  UnApplyPanelCorrection(Y, Z, panel, &rawY, &rawZ);
+  *Y_out = rawY;
+  *Z_out = rawZ;
+}
 // ── Bin construction ────────────────────────────────────────────────
 
 void dg_build_bin_edges(double RMin, double EtaMin, int nRBins, int nEtaBins,

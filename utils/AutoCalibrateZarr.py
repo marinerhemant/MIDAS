@@ -1837,9 +1837,8 @@ def runMIDAS(rawFN, state, n_iterations=40, mult_factor=5,
              eta_bin_size=1.0, max_width=1000, n_cpus=None,
              stage=0, stage_label='',
              trimmed_mean_fraction=0.75,
-             remove_outliers_between_iters=1,
-             use_integrator=False):
-    """Run CalibrantPanelShiftsOMP or CalibrantIntegratorOMP.
+             remove_outliers_between_iters=1):
+    """Run CalibrantIntegratorOMP.
 
     stage=0: full optimization (legacy behavior)
     stage=1: geometry only — Lsd, BC, tilts (tolP=0, no panels)
@@ -1939,9 +1938,8 @@ def runMIDAS(rawFN, state, n_iterations=40, mult_factor=5,
             pf.write(f'TrimmedMeanFraction {trimmed_mean_fraction}\n')
             pf.write(f'RemoveOutliersBetweenIters {remove_outliers_between_iters}\n')
 
-            # CalibrantIntegratorOMP-specific parameters
-            if use_integrator:
-                pf.write('RBinWidth 4\n')
+            # CalibrantIntegratorOMP parameters
+            pf.write('RBinWidth 4\n')
 
             # Panel parameters — only in stage 2 or stage 0
             if stage != 1:
@@ -1979,13 +1977,9 @@ def runMIDAS(rawFN, state, n_iterations=40, mult_factor=5,
                 for k, v in state.extra_params.items():
                     pf.write(f'{k} {v}\n')
 
-        # Run calibrant executable with all available CPUs
-        if use_integrator:
-            calibrant_exe = os.path.join(INSTALL_PATH, 'FF_HEDM/bin/CalibrantIntegratorOMP')
-            exe_name = 'CalibrantIntegratorOMP'
-        else:
-            calibrant_exe = os.path.join(INSTALL_PATH, 'FF_HEDM/bin/CalibrantPanelShiftsOMP')
-            exe_name = 'CalibrantPanelShiftsOMP'
+        # Run calibrant executable (CalibrantIntegratorOMP)
+        calibrant_exe = os.path.join(INSTALL_PATH, 'FF_HEDM/bin/CalibrantIntegratorOMP')
+        exe_name = 'CalibrantIntegratorOMP'
         calibrant_cmd = f"{calibrant_exe} {ps_file} {n_cpus}"
 
         logger.info(f"{stage_label}Running {exe_name} with {n_cpus} CPUs, "
@@ -2163,10 +2157,7 @@ def main():
                                  '1=uint16-raw, 6=tiff-uint32, 7=tiff-uint8, '
                                  '8=HDF5, 9=tiff-uint16. Default: auto-detect.')
 
-        # Calibrant executable selection
-        parser.add_argument('--use-integrator', action='store_true',
-                            help='Use CalibrantIntegratorOMP (Green\'s theorem sub-pixel mapping) '
-                                 'instead of CalibrantPanelShiftsOMP')
+        # (--use-integrator removed: CalibrantIntegratorOMP is now the sole exe)
 
         # Output
         parser.add_argument('--output', '-o', type=str, default='',
@@ -2902,8 +2893,7 @@ def main():
                  stage=1,
                  stage_label='[Stage 1/2] ',
                  trimmed_mean_fraction=args.trimmed_mean_fraction,
-                 remove_outliers_between_iters=args.remove_outliers_between_iters,
-                 use_integrator=args.use_integrator)
+                 remove_outliers_between_iters=args.remove_outliers_between_iters)
 
         logger.info(f"Stage 1 result: Lsd={state.lsd:.1f}, "
                      f"BC=({state.ybc:.2f}, {state.zbc:.2f}), "
@@ -2925,8 +2915,7 @@ def main():
                  stage=2,
                  stage_label='[Stage 2/2] ',
                  trimmed_mean_fraction=args.trimmed_mean_fraction,
-                 remove_outliers_between_iters=args.remove_outliers_between_iters,
-                 use_integrator=args.use_integrator)
+                 remove_outliers_between_iters=args.remove_outliers_between_iters)
 
         # ---- Generate final results ----
         logger.info("Generating final results data")

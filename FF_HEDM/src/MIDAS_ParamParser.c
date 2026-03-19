@@ -39,6 +39,8 @@ void midas_config_defaults(MIDASConfig *cfg) {
   cfg->PeakIntensity = 2000.0;
   cfg->MaxOutputIntensity = 65000.0;
   cfg->num_lambda_samples = 1;
+  cfg->SubPixelLevel = 1;
+  cfg->SubPixelCardinalWidth = 5.0;
 }
 
 void midas_apply_tol_defaults(MIDASConfig *cfg) {
@@ -305,6 +307,8 @@ int midas_parse_params(const char *filename, MIDASConfig *cfg) {
     if (param_int(aline, "PerPanelDistortion", &cfg->PerPanelDistortion)) continue;
     if (param_int(aline, "GradientCorrection", &cfg->GradientCorrection)) continue;
     if (param_int(aline, "PeakFitMode", &cfg->PeakFitMode)) continue;
+    if (param_int(aline, "SubPixelLevel", &cfg->SubPixelLevel)) continue;
+    if (param_double(aline, "SubPixelCardinalWidth", &cfg->SubPixelCardinalWidth)) continue;
     if (param_int(aline, "FixPanelID", &cfg->FixPanelID)) continue;
 
     // ── FitPos/Strain control ──

@@ -5,13 +5,14 @@
 // DetectorGeometry.h — Shared pixel↔(R,η) coordinate transforms and
 // area-weighted binning for MIDAS detector mapping.
 //
-// Used by: DetectorMapper, DetectorMapperZarr, CalibrantPanelShiftsOMP
+// Used by: DetectorMapper, DetectorMapperZarr, CalibrantIntegratorOMP
 //
 
 #ifndef DETECTOR_GEOMETRY_H
 #define DETECTOR_GEOMETRY_H
 
 #include <math.h>
+#include "Panel.h"
 
 #define DG_DEG2RAD 0.0174532925199433
 #define DG_RAD2DEG 57.2957795130823
@@ -48,6 +49,21 @@ void dg_invert_REta_to_pixel(
     double Lsd, double RhoD,
     double p0, double p1, double p2, double p3, double p4, double p5,
     double px, double dLsd, double dP2, double parallax,
+    double *Y_out, double *Z_out);
+
+// Panel-aware numerical inversion: like dg_invert_REta_to_pixel but
+// accounts for per-panel corrections (dY, dZ, dTheta, dLsd, dP2).
+// The forward model used in Newton iteration includes panel dLsd/dP2;
+// after convergence, UnApplyPanelCorrection reverses dY/dZ/dTheta to
+// yield raw (un-shifted) pixel coordinates for the M-step.
+// Pass panel=NULL if no panel correction is needed.
+void dg_invert_REta_to_pixel_panel(
+    double R_target, double Eta_target,
+    double Ycen, double Zcen, double TRs[3][3],
+    double Lsd, double RhoD,
+    double p0, double p1, double p2, double p3, double p4, double p5,
+    double px, double parallax,
+    const Panel *panel,
     double *Y_out, double *Z_out);
 
 // ── Bin construction ────────────────────────────────────────────────

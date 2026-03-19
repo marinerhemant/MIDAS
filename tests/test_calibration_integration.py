@@ -2,7 +2,7 @@
 """
 MIDAS Calibration + Integration Benchmark Test
 
-Consolidated test for calibrant fitting (CalibrantPanelShiftsOMP) and
+Consolidated test for calibrant fitting (CalibrantIntegratorOMP) and
 integrator peak fitting (IntegratorZarrOMP). Validates:
   - Calibration: MeanStrain below threshold (µε)
   - Integration: fitted peak R-positions vs theoretical ring radii
@@ -112,13 +112,13 @@ def prepare_calibration_dir(param_path: Path, extra_params: list = None) -> Path
 
 
 def run_calibration(param_file: Path, nCPUs: int, work_dir: Path) -> dict:
-    """Run CalibrantPanelShiftsOMP and parse optimized parameters."""
+    """Run CalibrantIntegratorOMP and parse optimized parameters."""
     # Generate HKLs
     hkl_bin = MIDAS_BIN / "GetHKLList"
     run_cmd([str(hkl_bin), str(param_file)], cwd=str(work_dir))
 
     # Run calibrant fitting
-    calib_bin = MIDAS_BIN / "CalibrantPanelShiftsOMP"
+    calib_bin = MIDAS_BIN / "CalibrantIntegratorOMP"
     output = run_cmd([str(calib_bin), str(param_file), str(nCPUs)],
                      cwd=str(work_dir), stream=True)
 
@@ -156,7 +156,7 @@ def run_calibration(param_file: Path, nCPUs: int, work_dir: Path) -> dict:
 
 
 def parse_mean_strain(output: str) -> float:
-    """Parse MeanStrain from CalibrantPanelShiftsOMP output."""
+    """Parse MeanStrain from CalibrantIntegratorOMP output."""
     for line in output.split('\n'):
         stripped = line.strip()
         if stripped.startswith('MeanStrain '):
@@ -222,7 +222,7 @@ def run_robustness_tests(param_path: Path, nCPUs: int, threshold: float,
             run_cmd([str(hkl_bin), str(calib_param)], cwd=str(work_dir))
 
             # Run calibrant fitting
-            calib_bin = MIDAS_BIN / "CalibrantPanelShiftsOMP"
+            calib_bin = MIDAS_BIN / "CalibrantIntegratorOMP"
             output = run_cmd([str(calib_bin), str(calib_param), str(nCPUs)],
                              cwd=str(work_dir), stream=True)
 
@@ -790,7 +790,7 @@ def main():
     print_environment()
 
     if not getattr(args, 'skip_preflight', False):
-        req_bins = ["CalibrantPanelShiftsOMP", "GetHKLList"]
+        req_bins = ["CalibrantIntegratorOMP", "GetHKLList"]
         if not args.calibration_only:
             req_bins += ["IntegratorZarrOMP", "DetectorMapper"]
         run_preflight(
@@ -847,7 +847,7 @@ def main():
             run_cmd([str(hkl_bin), str(integrator_param)], cwd=str(work_dir))
         else:
             n_steps = 1 if args.calibration_only else 5
-            print(f"[0/{n_steps}] Running calibration (CalibrantPanelShiftsOMP)...")
+            print(f"[0/{n_steps}] Running calibration (CalibrantIntegratorOMP)...")
             calib_dir, calib_param = prepare_calibration_dir(param_path)
             optimized = run_calibration(calib_param, args.nCPUs, calib_dir)
 
