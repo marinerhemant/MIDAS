@@ -17,16 +17,9 @@
 extern "C" {
 #endif
 
-// Forward declarations — we only need opaque pointers in this header.
-// The actual struct definitions live in tomo_heads.h (included by .c/.cu files).
-struct gridrecParams_tag;   // not needed if tomo_heads.h is already included
-typedef struct GLOBAL_CONFIG_OPTS GLOBAL_CONFIG_OPTS;
-typedef struct LOCAL_CONFIG_OPTS_TAG LOCAL_CONFIG_OPTS_TAG;
-
-// ---------------------------------------------------------------------------
-// Opaque handle to the GPU reconstruction context.
-// Holds device memory, cuFFT plans, CUDA streams, and pre-computed tables.
-// ---------------------------------------------------------------------------
+// NOTE: This header is always included from tomo_heads.h (after all struct
+// definitions), so no forward declarations of GLOBAL_CONFIG_OPTS etc. are
+// needed.  The only opaque type is TomoGPUContext, defined in tomo_gpu.cu.
 typedef struct TomoGPUContext TomoGPUContext;
 
 // ---------------------------------------------------------------------------
