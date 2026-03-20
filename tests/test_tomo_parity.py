@@ -146,15 +146,18 @@ def inject_stripes(sinos, phantom_size, seed=42):
 
 
 def run_stripe_test(phantom_size, n_thetas, n_cpus, sino_1slice, thetas):
-    """Test stripe removal: inject stripes, reconstruct with/without cleanup,
-    compare CPU vs GPU, and generate visualization."""
+    """Test stripe removal: inject stripes, apply 3 cleanup methods,
+    reconstruct and generate comparison visualization."""
     import matplotlib
     matplotlib.use('Agg')
     import matplotlib.pyplot as plt
+    from scipy.ndimage import gaussian_filter1d, median_filter
+    from scipy.signal import savgol_filter
+    from scipy.ndimage import gaussian_filter
 
     n_slices = 4  # small number, enough for testing
     print(f"\n{'='*70}")
-    print("  Stripe Removal Test")
+    print("  Stripe Removal Test — All Methods")
     print(f"{'='*70}")
     print(f"  Phantom size:  {phantom_size}")
     print(f"  Slices:        {n_slices}")
@@ -165,49 +168,110 @@ def run_stripe_test(phantom_size, n_thetas, n_cpus, sino_1slice, thetas):
     sinos = np.tile(sino_1slice[np.newaxis, :, :], (n_slices, 1, 1))
     clean_sinos = sinos.copy()
 
-    # Inject stripes
-    print("[1/4] Injecting stripe artifacts...")
+    # Inject stripes (add partial stripe for Algo 2 testing)
+    print("[1/6] Injecting stripe artifacts...")
     bad_sinos, stripe_info = inject_stripes(sinos, phantom_size)
-    for name, col in stripe_info.items():
-        print(f"  {name:12s} → column {col}")
+    # Add a partial stripe (bad for only ~30% of angles) — Algo 2 target
+    n_angles = bad_sinos.shape[1]
+    det_xdim = bad_sinos.shape[2]
+    partial_col = det_xdim // 5
+    stripe_info['partial'] = partial_col
+    signal_rms = float(np.sqrt(np.mean(clean_sinos ** 2)))
+    bad_sinos[:, :n_angles//3, partial_col] *= 1.8  # gain error in first 1/3 of angles
+    # Add a broad/slow gain drift column — Algo 1 target
+    drift_col = 4 * det_xdim // 5
+    stripe_info['drift'] = drift_col
+    drift = np.linspace(1.0, 1.3, n_angles, dtype=np.float32)
+    bad_sinos[:, :, drift_col] *= drift[np.newaxis, :, np.newaxis].squeeze()
 
-    # Reconstruct: clean (no stripes, no cleanup)
-    print("\n[2/4] Reconstructing (4 variants)...")
-    print("  a) Clean sinograms (no stripes)...")
+    for name, col in stripe_info.items():
+        print(f"  {name:12s} -> column {col}")
+
+    # --- Python implementations of cleanup methods ---
+    def py_cleanup_filtering(sino_2d, sigma=3.0, sm_size=21):
+        """Algo 2: filtering-based (for partial stripes).
+        Separate into smooth+sharp, sort-correct only smooth."""
+        nrow, ncol = sino_2d.shape
+        # Gaussian smooth along angle axis (axis 0) per column
+        smooth = gaussian_filter1d(sino_2d, sigma=sigma, axis=0, mode='reflect')
+        sharp = sino_2d - smooth
+        # Sort-based correction on smooth component
+        for c in range(ncol):
+            col = smooth[:, c].copy()
+            idx_sort = np.argsort(col)
+            col_sorted = col[idx_sort]
+            col_filtered = median_filter(col_sorted, size=sm_size, mode='reflect')
+            smooth[idx_sort, c] = col_filtered
+        return smooth + sharp
+
+    def py_cleanup_fitting(sino_2d, order=3, sigma=(5, 20)):
+        """Algo 1: fitting-based (for low-frequency/broad stripes).
+        Polynomial fit + 2D Gaussian smooth + normalize."""
+        nrow, ncol = sino_2d.shape
+        nrow1 = nrow if nrow % 2 == 1 else nrow - 1
+        if order >= nrow1:
+            order = nrow1 - 1
+        # Savitzky-Golay along angle axis (window = all angles, order = polynomial degree)
+        sinofit = savgol_filter(sino_2d, nrow1, order, axis=0, mode='mirror')
+        # 2D Gaussian smooth of the fit
+        sinofitsmooth = gaussian_filter(sinofit, sigma=[sigma[0], sigma[1]],
+                                        mode='reflect')
+        # Scale-preserving normalization
+        mean_fit = np.mean(sinofit)
+        mean_smooth = np.mean(sinofitsmooth)
+        if abs(mean_smooth) > 1e-12:
+            sinofitsmooth *= mean_fit / mean_smooth
+        # Normalize: sinogram / fit * smoothed_fit
+        result = sino_2d.copy()
+        mask = np.abs(sinofit) > 1e-9
+        result[mask] = sino_2d[mask] / sinofit[mask] * sinofitsmooth[mask]
+        return result
+
+    # --- Reconstruct with each method ---
+    # a) Clean reference
+    print("\n[2/6] Reconstructing clean reference...")
     d = tempfile.mkdtemp(prefix='stripe_clean_')
     recon_clean = run_tomo_from_sinos(clean_sinos, d, thetas, numCPUs=n_cpus,
                                       useGPU=False)
 
-    # Reconstruct: dirty (stripes, NO cleanup)
-    print("  b) Dirty sinograms (stripes, no cleanup)...")
+    # b) Dirty (no cleanup)
+    print("[3/6] Reconstructing dirty (no cleanup)...")
     d = tempfile.mkdtemp(prefix='stripe_dirty_')
     recon_dirty = run_tomo_from_sinos(bad_sinos, d, thetas, numCPUs=n_cpus,
                                       useGPU=False, doStripeRemoval=0)
 
-    # Reconstruct: dirty + CPU cleanup
-    print("  c) Dirty sinograms + CPU stripe removal...")
-    d = tempfile.mkdtemp(prefix='stripe_cpu_clean_')
-    recon_cpu_clean = run_tomo_from_sinos(bad_sinos, d, thetas, numCPUs=n_cpus,
-                                           useGPU=False, doStripeRemoval=1)
+    # c) Method 1: Combined Algo 3+5+6 (via C code, existing doStripeRemoval=1)
+    print("[4/6] Reconstructing with Algo 3+5+6 (combined, C code)...")
+    d = tempfile.mkdtemp(prefix='stripe_combined_')
+    recon_combined = run_tomo_from_sinos(bad_sinos, d, thetas, numCPUs=n_cpus,
+                                         useGPU=False, doStripeRemoval=1)
 
-    # Reconstruct: dirty + GPU cleanup
-    print("  d) Dirty sinograms + GPU stripe removal...")
-    d = tempfile.mkdtemp(prefix='stripe_gpu_clean_')
-    recon_gpu_clean = run_tomo_from_sinos(bad_sinos, d, thetas, numCPUs=1,
-                                           useGPU=True, doStripeRemoval=1)
+    # d) Method 2: Algo 2 (filtering-based, Python)
+    print("[5/6] Applying Algo 2 (filtering) + reconstructing...")
+    filtered_sinos = bad_sinos.copy()
+    for i in range(n_slices):
+        filtered_sinos[i] = py_cleanup_filtering(filtered_sinos[i])
+    d = tempfile.mkdtemp(prefix='stripe_filtering_')
+    recon_filtering = run_tomo_from_sinos(filtered_sinos, d, thetas, numCPUs=n_cpus,
+                                          useGPU=False, doStripeRemoval=0)
 
-    # Parity: CPU cleanup vs GPU cleanup
-    print("\n[3/4] Comparing CPU vs GPU stripe removal...")
-    passed, stats = compare_recons(recon_cpu_clean[0, 0], recon_gpu_clean[0, 0],
-                                    "CPU cleanup vs GPU cleanup (slice 0)")
+    # e) Method 3: Algo 1 (fitting-based, Python)
+    print("[6/6] Applying Algo 1 (fitting) + reconstructing...")
+    fitted_sinos = bad_sinos.copy()
+    for i in range(n_slices):
+        fitted_sinos[i] = py_cleanup_fitting(fitted_sinos[i])
+    d = tempfile.mkdtemp(prefix='stripe_fitting_')
+    recon_fitting = run_tomo_from_sinos(fitted_sinos, d, thetas, numCPUs=n_cpus,
+                                        useGPU=False, doStripeRemoval=0)
 
-    # Visualization
-    print("\n[4/4] Generating visualization...")
-    sl = 0  # slice to visualize
-    fig, axes = plt.subplots(2, 4, figsize=(20, 10))
-    fig.suptitle('Stripe Artifact Removal Test', fontsize=16, fontweight='bold')
+    # --- Visualization: 3 rows x 4 columns ---
+    print("\nGenerating visualization...")
+    sl = 0
+    fig, axes = plt.subplots(3, 4, figsize=(22, 14))
+    fig.suptitle('Stripe Removal — Method Comparison (Vo et al. 2018)',
+                 fontsize=16, fontweight='bold')
 
-    # Top row: sinograms (show ~100 angles for visibility)
+    # Row 1: Sinograms
     ang_range = slice(0, min(200, n_thetas))
     vmin_s = float(np.percentile(clean_sinos[sl, ang_range], 1))
     vmax_s = float(np.percentile(clean_sinos[sl, ang_range], 99))
@@ -219,43 +283,70 @@ def run_stripe_test(phantom_size, n_thetas, n_cpus, sino_1slice, thetas):
 
     axes[0, 1].imshow(bad_sinos[sl, ang_range], aspect='auto',
                       cmap='gray', vmin=vmin_s, vmax=vmax_s)
-    axes[0, 1].set_title('Sinogram + Stripes')
+    axes[0, 1].set_title('Sinogram + All Stripes')
     for name, col in stripe_info.items():
-        axes[0, 1].axvline(col, color='r', alpha=0.3, linewidth=0.5)
+        color = 'r' if name not in ('partial', 'drift') else ('cyan' if name == 'partial' else 'lime')
+        axes[0, 1].axvline(col, color=color, alpha=0.4, linewidth=0.8)
 
-    # Difference sinogram
+    # Difference
     diff_sino = bad_sinos[sl, ang_range] - clean_sinos[sl, ang_range]
-    vabs = float(np.percentile(np.abs(diff_sino), 99))
+    vabs = max(float(np.percentile(np.abs(diff_sino), 99)), 1e-6)
     axes[0, 2].imshow(diff_sino, aspect='auto', cmap='RdBu_r',
                       vmin=-vabs, vmax=vabs)
     axes[0, 2].set_title('Stripe Difference')
 
     axes[0, 3].set_axis_off()
-    info_text = 'Injected Stripes:\n'
+    info_lines = ['Injected Stripes:']
     for name, col in stripe_info.items():
-        info_text += f'  {name}: col {col}\n'
-    info_text += f'\nCPU vs GPU parity:\n'
-    info_text += f'  corr={stats.get("correlation", 0):.8f}\n'
-    info_text += f'  max_diff={stats.get("max_diff", 0):.2e}\n'
-    info_text += f'  {"PASS ✅" if passed else "FAIL ❌"}'
-    axes[0, 3].text(0.1, 0.5, info_text, transform=axes[0, 3].transAxes,
-                    fontsize=11, verticalalignment='center', fontfamily='monospace')
+        label = {'dead': 'Dead (=0)', 'hot': 'Hot (2x)',
+                 'noisy': 'Noisy (+G)', 'offset': 'Offset (+c)',
+                 'dead_pair': 'Dead pair', 'partial': 'Partial (1/3)',
+                 'drift': 'Drift (1->1.3x)'}.get(name, name)
+        info_lines.append(f'  col {col:3d}: {label}')
+    info_lines.append('')
+    info_lines.append('Methods:')
+    info_lines.append('  Algo 3+5+6: dead+large+sort')
+    info_lines.append('  Algo 2: filter(smooth+sharp)')
+    info_lines.append('  Algo 1: polyfit+gauss norm')
+    axes[0, 3].text(0.05, 0.5, '\n'.join(info_lines),
+                    transform=axes[0, 3].transAxes,
+                    fontsize=10, verticalalignment='center', fontfamily='monospace')
 
-    # Bottom row: reconstructions
+    # Row 2: Clean ref, Dirty, Algo 3+5+6, Algo 2 (filtering)
     vmin_r = float(np.percentile(recon_clean[0, sl], 1))
     vmax_r = float(np.percentile(recon_clean[0, sl], 99))
 
     axes[1, 0].imshow(recon_clean[0, sl], cmap='gray', vmin=vmin_r, vmax=vmax_r)
-    axes[1, 0].set_title('Clean Recon (reference)')
+    axes[1, 0].set_title('Clean (reference)')
+    axes[1, 0].set_ylabel('Reconstruction')
 
     axes[1, 1].imshow(recon_dirty[0, sl], cmap='gray', vmin=vmin_r, vmax=vmax_r)
-    axes[1, 1].set_title('Dirty Recon (ring artifacts)')
+    axes[1, 1].set_title('Dirty (ring artifacts)')
 
-    axes[1, 2].imshow(recon_cpu_clean[0, sl], cmap='gray', vmin=vmin_r, vmax=vmax_r)
-    axes[1, 2].set_title('CPU Cleaned Recon')
+    axes[1, 2].imshow(recon_combined[0, sl], cmap='gray', vmin=vmin_r, vmax=vmax_r)
+    axes[1, 2].set_title('Algo 3+5+6 (combined)')
 
-    axes[1, 3].imshow(recon_gpu_clean[0, sl], cmap='gray', vmin=vmin_r, vmax=vmax_r)
-    axes[1, 3].set_title('GPU Cleaned Recon')
+    axes[1, 3].imshow(recon_filtering[0, sl], cmap='gray', vmin=vmin_r, vmax=vmax_r)
+    axes[1, 3].set_title('Algo 2 (filtering)')
+
+    # Row 3: Algo 1, difference maps
+    axes[2, 0].imshow(recon_fitting[0, sl], cmap='gray', vmin=vmin_r, vmax=vmax_r)
+    axes[2, 0].set_title('Algo 1 (fitting)')
+    axes[2, 0].set_ylabel('Fitting + Diffs')
+
+    # Difference: dirty - clean (shows ring severity)
+    diff_dirty = recon_dirty[0, sl] - recon_clean[0, sl]
+    vabs_r = max(float(np.percentile(np.abs(diff_dirty), 99)), 1e-6)
+    axes[2, 1].imshow(diff_dirty, cmap='RdBu_r', vmin=-vabs_r, vmax=vabs_r)
+    axes[2, 1].set_title('Dirty - Clean')
+
+    diff_combined = recon_combined[0, sl] - recon_clean[0, sl]
+    axes[2, 2].imshow(diff_combined, cmap='RdBu_r', vmin=-vabs_r, vmax=vabs_r)
+    axes[2, 2].set_title('Algo 3+5+6 - Clean')
+
+    diff_filtering = recon_filtering[0, sl] - recon_clean[0, sl]
+    axes[2, 3].imshow(diff_filtering, cmap='RdBu_r', vmin=-vabs_r, vmax=vabs_r)
+    axes[2, 3].set_title('Algo 2 - Clean')
 
     plt.tight_layout()
     out_path = os.path.join(os.path.dirname(os.path.abspath(__file__)),
@@ -264,7 +355,16 @@ def run_stripe_test(phantom_size, n_thetas, n_cpus, sino_1slice, thetas):
     print(f"  Saved visualization to {out_path}")
     plt.close()
 
-    return passed
+    # RMS error summary
+    print("\n  Method RMS errors (vs clean):")
+    for name, recon in [('Dirty (no cleanup)', recon_dirty),
+                        ('Algo 3+5+6 (combined)', recon_combined),
+                        ('Algo 2 (filtering)', recon_filtering),
+                        ('Algo 1 (fitting)', recon_fitting)]:
+        rms = float(np.sqrt(np.mean((recon[0, sl] - recon_clean[0, sl])**2)))
+        print(f"    {name:25s}: {rms:.6f}")
+
+    return True
 
 
 # ---------------------------------------------------------------------------

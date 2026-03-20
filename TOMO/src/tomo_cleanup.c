@@ -628,3 +628,235 @@ void cleanup_sinogram_stripes(float *sinogram, int nrow, int ncol, float snr,
   // Phase 2: Correct small-to-medium stripes via sorting
   correct_by_sorting(sinogram, nrow, ncol, sm_size, dim);
 }
+
+// ============================================================================
+// 1D Gaussian smoothing kernel (spatial domain convolution).
+// Convolves 'in' with a Gaussian of standard deviation 'sigma'.
+// Uses reflected boundary conditions.  Result in 'out'.
+// ============================================================================
+static void gaussian_smooth_1d(const float *in, float *out, int n, float sigma) {
+  int radius = (int)ceilf(3.0f * sigma);
+  if (radius < 1) radius = 1;
+  int ksize = 2 * radius + 1;
+  // Build kernel
+  float *kernel = (float *)malloc(sizeof(float) * ksize);
+  float sum = 0.0f;
+  for (int i = 0; i < ksize; i++) {
+    float x = (float)(i - radius);
+    kernel[i] = expf(-0.5f * x * x / (sigma * sigma));
+    sum += kernel[i];
+  }
+  for (int i = 0; i < ksize; i++) kernel[i] /= sum;
+  // Convolve with reflected boundaries
+  for (int i = 0; i < n; i++) {
+    float val = 0.0f;
+    for (int k = 0; k < ksize; k++) {
+      int idx = reflect_index(i + k - radius, n);
+      val += in[idx] * kernel[k];
+    }
+    out[i] = val;
+  }
+  free(kernel);
+}
+
+// ============================================================================
+// Column-wise Gaussian smoothing: smooth each column independently using
+// a 1D Gaussian of standard deviation 'sigma' along the row (angle) axis.
+// ============================================================================
+static void gaussian_smooth_columns(const float *data, float *out, int nrow,
+                                    int ncol, float sigma) {
+  float *col_in = (float *)malloc(sizeof(float) * nrow);
+  float *col_out = (float *)malloc(sizeof(float) * nrow);
+  for (int c = 0; c < ncol; c++) {
+    for (int r = 0; r < nrow; r++) col_in[r] = data[r * ncol + c];
+    gaussian_smooth_1d(col_in, col_out, nrow, sigma);
+    for (int r = 0; r < nrow; r++) out[r * ncol + c] = col_out[r];
+  }
+  free(col_in);
+  free(col_out);
+}
+
+// ============================================================================
+// cleanup_sinogram_filtering: Public API (Vo et al. 2018, Algorithm 2).
+//
+// Remove stripe artifacts using frequency filtering.
+// Separates the sinogram into smooth (low-pass) and sharp (high-pass)
+// components using a Gaussian filter, applies sorting-based correction
+// only to the smooth component, then recombines.
+// Best for: partial stripes (columns bad at only certain angles).
+//
+// sinogram: [nrow x ncol] row-major float array, modified in-place.
+// sigma:    Std-dev of Gaussian used to separate low/high-pass (default 3)
+// sm_size:  Median filter window for sorting-based correction (default 21)
+// dim:      Median filter dimension for sorting method (1 or 2)
+// ============================================================================
+void cleanup_sinogram_filtering(float *sinogram, int nrow, int ncol,
+                                float sigma, int sm_size, int dim) {
+  if (!sinogram || nrow < 2 || ncol < 4) return;
+  if (sm_size % 2 == 0) sm_size++;
+  if (sm_size > nrow) sm_size = (nrow % 2 == 0) ? nrow - 1 : nrow;
+
+  size_t total = (size_t)nrow * ncol;
+
+  // Smooth: Gaussian low-pass along columns (angle axis)
+  float *smooth = (float *)malloc(sizeof(float) * total);
+  gaussian_smooth_columns(sinogram, smooth, nrow, ncol, sigma);
+
+  // Sharp = original - smooth (high-frequency component)
+  float *sharp = (float *)malloc(sizeof(float) * total);
+  for (size_t i = 0; i < total; i++) sharp[i] = sinogram[i] - smooth[i];
+
+  // Apply sorting-based correction only to the smooth component
+  correct_by_sorting(smooth, nrow, ncol, sm_size, dim);
+
+  // Recombine: corrected_smooth + sharp
+  for (size_t i = 0; i < total; i++) sinogram[i] = smooth[i] + sharp[i];
+
+  free(smooth);
+  free(sharp);
+}
+
+// ============================================================================
+// Least-squares polynomial fit of degree 'order' to n data points.
+// Solves for coefficients c[0..order] such that y_fit[i] = sum(c[k] * i^k).
+// Uses normal equations (A^T A c = A^T y) solved by Gaussian elimination.
+// ============================================================================
+static void polyfit_eval(const float *y, float *y_fit, int n, int order) {
+  if (order >= n) order = n - 1;
+  int ncoeffs = order + 1;
+  // Build A^T A and A^T y using double precision for stability
+  double *ATA = (double *)calloc(ncoeffs * ncoeffs, sizeof(double));
+  double *ATy = (double *)calloc(ncoeffs, sizeof(double));
+  // Pre-compute powers of i
+  for (int i = 0; i < n; i++) {
+    double xi = (double)i / (double)(n > 1 ? n - 1 : 1);  // normalize to [0,1]
+    double xpow[16];  // max order 15
+    xpow[0] = 1.0;
+    for (int k = 1; k < ncoeffs; k++) xpow[k] = xpow[k - 1] * xi;
+    for (int j = 0; j < ncoeffs; j++) {
+      for (int k = 0; k < ncoeffs; k++) ATA[j * ncoeffs + k] += xpow[j] * xpow[k];
+      ATy[j] += xpow[j] * (double)y[i];
+    }
+  }
+  // Gaussian elimination with partial pivoting
+  double *aug = (double *)malloc(sizeof(double) * ncoeffs * (ncoeffs + 1));
+  for (int j = 0; j < ncoeffs; j++) {
+    for (int k = 0; k < ncoeffs; k++) aug[j * (ncoeffs + 1) + k] = ATA[j * ncoeffs + k];
+    aug[j * (ncoeffs + 1) + ncoeffs] = ATy[j];
+  }
+  for (int j = 0; j < ncoeffs; j++) {
+    // Pivot
+    int maxrow = j;
+    for (int k = j + 1; k < ncoeffs; k++)
+      if (fabs(aug[k * (ncoeffs + 1) + j]) > fabs(aug[maxrow * (ncoeffs + 1) + j]))
+        maxrow = k;
+    if (maxrow != j)
+      for (int k = 0; k <= ncoeffs; k++) {
+        double tmp = aug[j * (ncoeffs + 1) + k];
+        aug[j * (ncoeffs + 1) + k] = aug[maxrow * (ncoeffs + 1) + k];
+        aug[maxrow * (ncoeffs + 1) + k] = tmp;
+      }
+    double pivot = aug[j * (ncoeffs + 1) + j];
+    if (fabs(pivot) < 1e-15) continue;
+    for (int k = j; k <= ncoeffs; k++) aug[j * (ncoeffs + 1) + k] /= pivot;
+    for (int i = 0; i < ncoeffs; i++) {
+      if (i == j) continue;
+      double factor = aug[i * (ncoeffs + 1) + j];
+      for (int k = j; k <= ncoeffs; k++) aug[i * (ncoeffs + 1) + k] -= factor * aug[j * (ncoeffs + 1) + k];
+    }
+  }
+  double *coeffs = (double *)malloc(sizeof(double) * ncoeffs);
+  for (int j = 0; j < ncoeffs; j++) coeffs[j] = aug[j * (ncoeffs + 1) + ncoeffs];
+
+  // Evaluate polynomial at each point
+  for (int i = 0; i < n; i++) {
+    double xi = (double)i / (double)(n > 1 ? n - 1 : 1);
+    double val = coeffs[0];
+    double xpow = xi;
+    for (int k = 1; k < ncoeffs; k++) { val += coeffs[k] * xpow; xpow *= xi; }
+    y_fit[i] = (float)val;
+  }
+
+  free(ATA); free(ATy); free(aug); free(coeffs);
+}
+
+// ============================================================================
+// 2D Gaussian smoothing (separable): first smooth along rows, then columns.
+// ============================================================================
+static void gaussian_smooth_2d(const float *data, float *out, int nrow,
+                               int ncol, float sigma_row, float sigma_col) {
+  float *temp = (float *)malloc(sizeof(float) * nrow * ncol);
+  // Smooth along rows (each row independently)
+  float *row_in = (float *)malloc(sizeof(float) * ncol);
+  float *row_out = (float *)malloc(sizeof(float) * ncol);
+  for (int r = 0; r < nrow; r++) {
+    memcpy(row_in, &data[r * ncol], sizeof(float) * ncol);
+    gaussian_smooth_1d(row_in, row_out, ncol, sigma_col);
+    memcpy(&temp[r * ncol], row_out, sizeof(float) * ncol);
+  }
+  free(row_in); free(row_out);
+  // Smooth along columns
+  gaussian_smooth_columns(temp, out, nrow, ncol, sigma_row);
+  free(temp);
+}
+
+// ============================================================================
+// cleanup_sinogram_fitting: Public API (Vo et al. 2018, Algorithm 1).
+//
+// Remove low-frequency stripe artifacts using polynomial fitting.
+// Fits a polynomial along each column (angle axis) to capture the
+// slowly-varying component, then 2D-Gaussian-smooths the fit to remove
+// column-specific biases, and normalizes the sinogram.
+// Best for: broad, low-frequency stripes (gradual gain variations).
+//
+// sinogram:  [nrow x ncol] row-major float array, modified in-place.
+// order:     Polynomial fit order (default 3, range 1-5)
+// sigma_x:   Gaussian sigma along detector axis (default 20)
+// sigma_y:   Gaussian sigma along angle axis (default 5)
+// ============================================================================
+void cleanup_sinogram_fitting(float *sinogram, int nrow, int ncol,
+                              int order, float sigma_x, float sigma_y) {
+  if (!sinogram || nrow < 2 || ncol < 4) return;
+  if (order < 1) order = 1;
+  if (order > 10) order = 10;
+
+  size_t total = (size_t)nrow * ncol;
+
+  // Step 1: Polynomial fit along each column (angle axis)
+  float *sinofit = (float *)malloc(sizeof(float) * total);
+  float *col_in = (float *)malloc(sizeof(float) * nrow);
+  float *col_out = (float *)malloc(sizeof(float) * nrow);
+  for (int c = 0; c < ncol; c++) {
+    for (int r = 0; r < nrow; r++) col_in[r] = sinogram[r * ncol + c];
+    polyfit_eval(col_in, col_out, nrow, order);
+    for (int r = 0; r < nrow; r++) sinofit[r * ncol + c] = col_out[r];
+  }
+  free(col_in); free(col_out);
+
+  // Step 2: 2D Gaussian smooth the polynomial fit
+  float *sinofitsmooth = (float *)malloc(sizeof(float) * total);
+  gaussian_smooth_2d(sinofit, sinofitsmooth, nrow, ncol, sigma_y, sigma_x);
+
+  // Scale-preserving normalization
+  double mean_fit = 0, mean_smooth = 0;
+  for (size_t i = 0; i < total; i++) {
+    mean_fit += sinofit[i];
+    mean_smooth += sinofitsmooth[i];
+  }
+  mean_fit /= total;
+  mean_smooth /= total;
+  if (fabs(mean_smooth) > 1e-12) {
+    double scale = mean_fit / mean_smooth;
+    for (size_t i = 0; i < total; i++) sinofitsmooth[i] *= (float)scale;
+  }
+
+  // Step 3: Normalize sinogram = sinogram / sinofit * sinofitsmooth
+  for (size_t i = 0; i < total; i++) {
+    if (fabsf(sinofit[i]) > 1e-9f)
+      sinogram[i] = sinogram[i] / sinofit[i] * sinofitsmooth[i];
+  }
+
+  free(sinofit);
+  free(sinofitsmooth);
+}
+

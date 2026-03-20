@@ -174,6 +174,10 @@ void Pad(SINO_READ_OPTS *readStruct,
 // Stripe removal (Vo et al. 2018)
 void cleanup_sinogram_stripes(float *sinogram, int nrow, int ncol, float snr,
                               int la_size, int sm_size, int dim);
+void cleanup_sinogram_filtering(float *sinogram, int nrow, int ncol,
+                                float sigma, int sm_size, int dim);
+void cleanup_sinogram_fitting(float *sinogram, int nrow, int ncol,
+                              int order, float sigma_x, float sigma_y);
 
 //--------------------------------------------------------------------------------------------------------------------------
 // Processing code
