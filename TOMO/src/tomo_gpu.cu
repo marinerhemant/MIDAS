@@ -978,7 +978,7 @@ int tomo_gpu_reconstruct_batch(TomoGPUContext *ctx,
             cudaMemcpyHostToDevice, ctx->stream_h2d));
     }
     CUDA_CHECK(cudaEventRecord(ctx->event_h2d_done, ctx->stream_h2d));
-    CUDA_CHECK(cudaStreamSynchronize(ctx->stream_h2d));
+    // No CPU sync needed — stream_compute waits via event
     t_h2d = gpu_timer_sec() - th;
 
     // ── Compute ──
@@ -1038,7 +1038,7 @@ int tomo_gpu_reconstruct_batch(TomoGPUContext *ctx,
     }
 
     CUDA_CHECK(cudaEventRecord(ctx->event_compute_done, ctx->stream_compute));
-    CUDA_CHECK(cudaStreamSynchronize(ctx->stream_compute));
+    // No CPU sync needed — stream_d2h waits via event
     t_compute = gpu_timer_sec() - tc;
 
     // ── D2H: copy all results back ──
