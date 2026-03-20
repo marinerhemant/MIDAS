@@ -105,6 +105,13 @@ struct GPUOrientHeader {
   int spotOffset;
 };
 
+/// Comparison function for sorting GPUSpots by omeBin (L2 locality optimization)
+static int nf_gpu_spot_cmp_omebin(const void *a, const void *b) {
+  int oa = ((const GPUSpot *)a)->omeBin;
+  int ob = ((const GPUSpot *)b)->omeBin;
+  return (oa > ob) - (oa < ob);
+}
+
 // ─────────────────────────────────────────────────────────────
 // GPU context
 // ─────────────────────────────────────────────────────────────
@@ -671,6 +678,11 @@ extern "C" int nf_gpu_upload_orientations(NFGPUContext *ctx,
       h_spots[offset + s].omeBin = omeBin;
       h_spots[offset + s].valid = outOfBounds ? 0 : 1;
     }
+
+    // Sort this orientation's spots by omeBin for L2 locality
+    // (adjacent spots access same omega frame → same 512KB bitfield region)
+    qsort(&h_spots[offset], nSpotsThis, sizeof(GPUSpot),
+          nf_gpu_spot_cmp_omebin);
   }
 
   // Upload to device
