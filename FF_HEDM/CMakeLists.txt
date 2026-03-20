@@ -50,6 +50,12 @@ function(add_ff_hedm_executable TARGET_NAME)
  # Link OpenMP if enabled for this target
  if(USE_OMP_FOR_TARGET)
  target_link_libraries(${TARGET_NAME} PRIVATE OpenMP::OpenMP_C)
+ # nvcc needs explicit -fopenmp passed to host compiler for .cu files
+ if(FF_HEDM_EXEC_CUDA)
+   target_compile_options(${TARGET_NAME} PRIVATE
+     $<$<COMPILE_LANGUAGE:CUDA>:-Xcompiler=-fopenmp>
+   )
+ endif()
  endif()
 
  # Install the executable to the globally defined binary directory

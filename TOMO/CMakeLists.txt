@@ -46,6 +46,10 @@ if(USE_CUDA AND CUDA_FOUND)
 
     if(OpenMP_C_FOUND AND BUILD_OMP)
         target_link_libraries(MIDAS_TOMO_GPU PRIVATE OpenMP::OpenMP_C)
+        # nvcc needs explicit -fopenmp passed to host compiler for .cu files
+        target_compile_options(MIDAS_TOMO_GPU PRIVATE
+          $<$<COMPILE_LANGUAGE:CUDA>:-Xcompiler=-fopenmp>
+        )
     endif()
 
     # Set CUDA properties
