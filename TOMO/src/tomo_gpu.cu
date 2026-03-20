@@ -557,6 +557,17 @@ void tomo_gpu_destroy(TomoGPUContext *ctx) {
 }
 
 // ═════════════════════════════════════════════════════════════
+//  MEMORY QUERY (for dynamic batch sizing)
+// ═════════════════════════════════════════════════════════════
+
+extern "C"
+size_t tomo_gpu_get_free_memory(void) {
+    size_t free_bytes = 0, total_bytes = 0;
+    cudaMemGetInfo(&free_bytes, &total_bytes);
+    return free_bytes;
+}
+
+// ═════════════════════════════════════════════════════════════
 //  PINNED MEMORY WRAPPERS (for use from C code)
 // ═════════════════════════════════════════════════════════════
 
