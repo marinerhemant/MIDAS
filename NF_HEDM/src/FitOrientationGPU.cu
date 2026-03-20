@@ -1470,9 +1470,22 @@ extern "C" int nf_gpu_screen(NFGPUContext *ctx,
       // Diagonal approach: nVoxels=nPass1, nOrientations=nPass1
       // Candidate i is processed by the diagonal thread where oriIdx=i AND voxIdx=i
       // For 541 candidates → 541^2=293K threads — trivially fast on GPU
+      //
+      // IMPORTANT: reallocate winner buffer for pass 2 grid size.
+      // With small orientation counts, pass 1 can produce many candidates
+      // (e.g., 9239 from 4 orientations), creating a 9239^2 = 85M grid.
+      // Off-diagonal pairs can flood the original winner buffer (sized
+      // for totalPairs), crowding out the diagonal results we need.
+      long long pass2Pairs = (long long)nPass1 * nPass1;
+      int pass2MaxWinners = (int)fmin((double)pass2Pairs, 50000000.0) + 10000;
+      if (pass2MaxWinners > ctx->maxWinners) {
+        cudaFree(ctx->d_winners);
+        CUDA_CHECK(cudaMalloc(&ctx->d_winners,
+                              pass2MaxWinners * sizeof(NFGPUWinner)));
+        ctx->maxWinners = pass2MaxWinners;
+      }
       CUDA_CHECK(cudaMemset(ctx->d_nWinners, 0, sizeof(int)));
 
-      long long pass2Pairs = (long long)nPass1 * nPass1;
       int gridSize2 = (int)((pass2Pairs + blockSize - 1) / blockSize);
       screen_pairs_kernel<<<gridSize2, blockSize, 0, ctx->stream>>>(
           ctx->d_obsFlat,
