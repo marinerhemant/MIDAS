@@ -874,40 +874,50 @@ int main(int argc, char *argv[]) {
       goto cpu_fallback;
     }
 
-    // Prepare voxel data: extract XGrain, YGrain from parsed_lines
-    int nVoxels = endRowNr - startRowNr + 1;
+    // Prepare ALL voxels for GPU screening (not just current block).
+    // The GPU replaces the multi-process fan-out — it screens every voxel in
+    // one kernel launch.
+    int nVoxels = TotalNrSpots;
     double *allXG = (double *)malloc(nVoxels * 3 * sizeof(double));
     double *allYG = (double *)malloc(nVoxels * 3 * sizeof(double));
 
+    // Voxel data for GPU Phase 2 fitting (same fields as parsed_lines)
+    struct ParsedLine *gpu_parsed =
+        (struct ParsedLine *)malloc(nVoxels * sizeof(struct ParsedLine));
+
+    // Re-read grid file from the top to get ALL voxels
+    FILE *fp_gpu = fopen(fnG, "r");
+    char gpu_line[1000];
+    fgets(gpu_line, sizeof(gpu_line), fp_gpu); // skip header (TotalNrSpots)
     for (int v = 0; v < nVoxels; v++) {
-      if (!parsed_lines[v].valid) {
-        // Invalid voxel — place at origin (will get 0 overlap)
+      struct ParsedLine *gp = &gpu_parsed[v];
+      if (!fgets(gpu_line, sizeof(gpu_line), fp_gpu) ||
+          sscanf(gpu_line, "%lf %lf %lf %lf %lf",
+                 &gp->y1, &gp->y2, &gp->xs, &gp->ys, &gp->gs) != 5) {
+        gp->valid = 0;
         for (int k = 0; k < 3; k++) {
           allXG[v * 3 + k] = 0;
           allYG[v * 3 + k] = 0;
         }
         continue;
       }
-      double y1 = parsed_lines[v].y1;
-      double y2 = parsed_lines[v].y2;
-      double xs_v = parsed_lines[v].xs;
-      double ys_v = parsed_lines[v].ys;
-      double gs_v = parsed_lines[v].gs;
+      gp->valid = 1;
       double XY[3][3];
-      if (y1 > y2) {
-        XY[0][0] = xs_v; XY[0][1] = ys_v - y1;
-        XY[1][0] = xs_v - gs_v; XY[1][1] = ys_v + y2;
-        XY[2][0] = xs_v + gs_v; XY[2][1] = ys_v + y2;
+      if (gp->y1 > gp->y2) {
+        XY[0][0] = gp->xs;         XY[0][1] = gp->ys - gp->y1;
+        XY[1][0] = gp->xs - gp->gs; XY[1][1] = gp->ys + gp->y2;
+        XY[2][0] = gp->xs + gp->gs; XY[2][1] = gp->ys + gp->y2;
       } else {
-        XY[0][0] = xs_v; XY[0][1] = ys_v + y2;
-        XY[1][0] = xs_v - gs_v; XY[1][1] = ys_v - y1;
-        XY[2][0] = xs_v + gs_v; XY[2][1] = ys_v - y1;
+        XY[0][0] = gp->xs;         XY[0][1] = gp->ys + gp->y2;
+        XY[1][0] = gp->xs - gp->gs; XY[1][1] = gp->ys - gp->y1;
+        XY[2][0] = gp->xs + gp->gs; XY[2][1] = gp->ys - gp->y1;
       }
       for (int k = 0; k < 3; k++) {
         allXG[v * 3 + k] = XY[k][0];
         allYG[v * 3 + k] = XY[k][1];
       }
     }
+    fclose(fp_gpu);
 
     // Run GPU screening
     NFGPUWinner *gpuWinners = NULL;
@@ -915,7 +925,7 @@ int main(int argc, char *argv[]) {
     if (nf_gpu_screen(gpuCtx, allXG, allYG, nVoxels,
                       minFracOverlap, &gpuWinners, &nGpuWinners) != 0) {
       fprintf(stderr, "NF GPU: screening failed\n");
-      free(allXG); free(allYG);
+      free(allXG); free(allYG); free(gpu_parsed);
       nf_gpu_destroy(gpuCtx);
       goto cpu_fallback;
     }
@@ -959,15 +969,15 @@ int main(int argc, char *argv[]) {
     // OMP parallel over voxels (same structure as CPU path)
 #pragma omp parallel for num_threads(numProcs) schedule(dynamic)
     for (int vIdx = 0; vIdx < nVoxels; vIdx++) {
-      int rown_gpu = startRowNr + vIdx;
-      if (!parsed_lines[vIdx].valid) continue;
+      int rown_gpu = vIdx;  // Direct index into TotalNrSpots
+      if (!gpu_parsed[vIdx].valid) continue;
       int nWinnersThisVoxel = winnerCount[vIdx];
 
-      double y1 = parsed_lines[vIdx].y1;
-      double y2 = parsed_lines[vIdx].y2;
-      double xs = parsed_lines[vIdx].xs;
-      double ys = parsed_lines[vIdx].ys;
-      double gs_v = parsed_lines[vIdx].gs;
+      double y1 = gpu_parsed[vIdx].y1;
+      double y2 = gpu_parsed[vIdx].y2;
+      double xs = gpu_parsed[vIdx].xs;
+      double ys = gpu_parsed[vIdx].ys;
+      double gs_v = gpu_parsed[vIdx].gs;
 
       double XY[3][3];
       int UD;
@@ -1159,6 +1169,7 @@ int main(int argc, char *argv[]) {
     free(winnerIdx);
     free(allXG);
     free(allYG);
+    free(gpu_parsed);
     if (gpuWinners) free(gpuWinners);
     nf_gpu_destroy(gpuCtx);
 
