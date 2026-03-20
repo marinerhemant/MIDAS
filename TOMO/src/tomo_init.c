@@ -528,8 +528,6 @@ int main(int argc, char *argv[]) {
             ti.mean_vect = thrbufs[_tid].mean_vect; \
             ti.mean_sino_line_data = thrbufs[_tid].mean_sino; \
             ti.low_pass_sino_lines_data = thrbufs[_tid].low_pass; \
-            memset(ti.sinograms_boundary_padding, 0, sizeof(float) * sa_size * 4); \
-            memset(ti.reconstructions_boundary_padding, 0, sizeof(float) * rc_size * 8); \
             SINO_READ_OPTS trs; \
             trs.norm_sino = thrbufs[_tid].norm_sino; \
             int pi = (batchStart) + b; \
@@ -538,7 +536,6 @@ int main(int argc, char *argv[]) {
             int sr = startSliceNr + pi * 2; \
             int sn = recon_info_record.slices_to_process[sr]; \
             buf[sIdx].oldSliceNr[b] = sn; \
-            memset(trs.norm_sino, 0, sizeof(float) * sa_xdim * n_thetas); \
             memsets(&ti, &recon_info_record); \
             if (sino_mmap) { \
               trs.init_sinogram = sino_mmap + (size_t)sn * recon_info_record.det_xdim * n_thetas; \
@@ -552,7 +549,6 @@ int main(int argc, char *argv[]) {
             memcpy(buf[sIdx].sino_bp[b], &ti.sinograms_boundary_padding[0], sa_size * 2 * sizeof(float)); \
             sn = recon_info_record.slices_to_process[sr + 1]; \
             buf[sIdx].sliceNr[b] = sn; \
-            memset(trs.norm_sino, 0, sizeof(float) * sa_xdim * n_thetas); \
             if (sino_mmap) { \
               trs.init_sinogram = sino_mmap + (size_t)sn * recon_info_record.det_xdim * n_thetas; \
               Pad(&trs, &recon_info_record); \
@@ -681,9 +677,6 @@ int main(int argc, char *argv[]) {
       {
       for (numSlice = 0; numSlice < totalPairs;
            numSlice++) {
-        memset(readStruct.norm_sino, 0,
-               sizeof(float) * recon_info_record.sinogram_adjusted_xdim *
-                   recon_info_record.theta_list_size);
         memsets(&information, &recon_info_record);
         int sliceNr;
         sliceRowNr = startSliceNr + numSlice * 2;

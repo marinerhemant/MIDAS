@@ -516,14 +516,9 @@ void setReadStructSize(GLOBAL_CONFIG_OPTS *recon_info_record) {
 
 void memsets(LOCAL_CONFIG_OPTS *information,
              const GLOBAL_CONFIG_OPTS *recon_info_record) {
-  // Only zero buffers where partial writes leave uninitialized regions.
-  // sino_calc_buffer and recon_calc_buffer are fully overwritten by memcpy,
-  // so they don't need zeroing. Boundary-padding buffers have padding
-  // regions that are not always written to.
-  memset(information->shifted_recon, 0,
-         sizeof(float) * information->reconstruction_size);
-  memset(information->shifted_sinogram, 0,
-         sizeof(float) * information->sinogram_adjusted_size);
+  // shifted_sinogram: fully overwritten by reconCentering interpolation loop
+  // shifted_recon: getRecons does its own memset when auto_centering
+  // Only zero boundary-padding buffers (padding regions not always written)
   memset(information->sinograms_boundary_padding, 0,
          sizeof(float) * information->sinogram_adjusted_size * 2 *
              2); // Hold two sinos
