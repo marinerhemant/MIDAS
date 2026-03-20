@@ -249,14 +249,23 @@ void screen_pairs_kernel(
     float minFracOverlap,
     NFGPUWinner *winners,
     int *nWinners,
-    int maxWinners) {
+    int maxWinners,
+    int diagonal) {
 
   long long tid = (long long)blockIdx.x * blockDim.x + threadIdx.x;
-  long long totalPairs = (long long)nVoxels * nOrientations;
-  if (tid >= totalPairs) return;
-
-  int oriIdx = tid / nVoxels;
-  int voxIdx = tid % nVoxels;
+  int oriIdx, voxIdx;
+  if (diagonal) {
+    // 1:1 mode: each thread evaluates one candidate (oriIdx == voxIdx == tid)
+    if (tid >= nVoxels) return;
+    oriIdx = (int)tid;
+    voxIdx = (int)tid;
+  } else {
+    // 2D grid mode: tid maps to (oriIdx, voxIdx) pair
+    long long totalPairs = (long long)nVoxels * nOrientations;
+    if (tid >= totalPairs) return;
+    oriIdx = (int)(tid / nVoxels);
+    voxIdx = (int)(tid % nVoxels);
+  }
 
   float RM[9];
   #pragma unroll
@@ -1389,7 +1398,8 @@ extern "C" int nf_gpu_screen(NFGPUContext *ctx,
         (float)(minFracOverlap * 0.9),  // slightly lower threshold for pass 1
         // (single-layer TotalPixels can increase when layer-1 OOB pixels
         //  are in-bounds on layer 0, lowering fracOverlap slightly)
-        ctx->d_winners, ctx->d_nWinners, ctx->maxWinners);
+        ctx->d_winners, ctx->d_nWinners, ctx->maxWinners,
+        0);  // not diagonal
 
     CUDA_CHECK(cudaStreamSynchronize(ctx->stream));
     double dtPass1 = nf_gpu_timer_sec() - tKernel0;
@@ -1466,68 +1476,59 @@ extern "C" int nf_gpu_screen(NFGPUContext *ctx,
         CUDA_CHECK(cudaMemcpyToSymbol(c_P0, h_P0, ctx->nLayers * 3 * sizeof(float)));
       }
 
-      // Reset winner count and launch pass 2
-      // Diagonal approach: nVoxels=nPass1, nOrientations=nPass1
-      // Candidate i is processed by the diagonal thread where oriIdx=i AND voxIdx=i
-      // For 541 candidates → 541^2=293K threads — trivially fast on GPU
-      //
-      // IMPORTANT: reallocate winner buffer for pass 2 grid size.
-      // With small orientation counts, pass 1 can produce many candidates
-      // (e.g., 9239 from 4 orientations), creating a 9239^2 = 85M grid.
-      // Off-diagonal pairs can flood the original winner buffer (sized
-      // for totalPairs), crowding out the diagonal results we need.
-      long long pass2Pairs = (long long)nPass1 * nPass1;
-      int pass2MaxWinners = (int)fmin((double)pass2Pairs, 50000000.0) + 10000;
-      if (pass2MaxWinners > ctx->maxWinners) {
-        cudaFree(ctx->d_winners);
-        CUDA_CHECK(cudaMalloc(&ctx->d_winners,
-                              pass2MaxWinners * sizeof(NFGPUWinner)));
-        ctx->maxWinners = pass2MaxWinners;
-      }
+      // --- Pass 2: linear 1:1 evaluation ---
+      // Each of the nPass1 candidates gets its own thread.
+      // diagonal=1 → thread i evaluates (voxel=i, orient=i) directly.
+      // No N² grid, no off-diagonal waste, no buffer overflow.
       CUDA_CHECK(cudaMemset(ctx->d_nWinners, 0, sizeof(int)));
 
-      int gridSize2 = (int)((pass2Pairs + blockSize - 1) / blockSize);
+      // Ensure winner buffer can hold nPass1 results
+      if (nPass1 > ctx->maxWinners) {
+        cudaFree(ctx->d_winners);
+        CUDA_CHECK(cudaMalloc(&ctx->d_winners,
+                              (nPass1 + 1000) * sizeof(NFGPUWinner)));
+        ctx->maxWinners = nPass1 + 1000;
+      }
+
+      int gridSize2 = (nPass1 + blockSize - 1) / blockSize;
       screen_pairs_kernel<<<gridSize2, blockSize, 0, ctx->stream>>>(
           ctx->d_obsFlat,
           ctx->d_spots,
           d_hdr2,
           d_XG2, d_YG2,
-          nPass1,  // nVoxels = nPass1
-          nPass1,  // nOrientations = nPass1
+          nPass1,  // nVoxels = nPass1 (used as total count in diagonal mode)
+          nPass1,  // nOrientations (unused in diagonal mode)
           ctx->nLayers, ctx->nrFiles,
           ctx->nrPixelsY, ctx->nrPixelsZ,
           frameBatchSize,
           ctx->px, ctx->gs,
           (float)minFracOverlap,
-          ctx->d_winners, ctx->d_nWinners, ctx->maxWinners);
+          ctx->d_winners, ctx->d_nWinners, ctx->maxWinners,
+          1);  // diagonal=1: 1:1 candidate evaluation
 
       CUDA_CHECK(cudaStreamSynchronize(ctx->stream));
       double dtPass2 = nf_gpu_timer_sec() - tKernel0 - dtPass1;
       printf("NF GPU: pass 2 (all %d layers) — verified %d candidates in %.2f s\n",
              ctx->nLayers, nPass1, dtPass2);
 
-      // Download pass-2 winners and filter to diagonal only (oriIdx == voxIdx)
-      int nPass2Raw = 0;
-      CUDA_CHECK(cudaMemcpy(&nPass2Raw, ctx->d_nWinners, sizeof(int),
-                            cudaMemcpyDeviceToHost));
-      if (nPass2Raw > ctx->maxWinners) nPass2Raw = ctx->maxWinners;
-
-      NFGPUWinner *h_pass2Raw = (NFGPUWinner *)malloc(nPass2Raw * sizeof(NFGPUWinner));
-      CUDA_CHECK(cudaMemcpy(h_pass2Raw, ctx->d_winners,
-                            nPass2Raw * sizeof(NFGPUWinner),
-                            cudaMemcpyDeviceToHost));
-
-      // Filter: keep only diagonal results and remap to original indices
-      NFGPUWinner *h_pass2 = (NFGPUWinner *)malloc(nPass2Raw * sizeof(NFGPUWinner));
+      // Download pass-2 winners — already 1:1, just remap to original indices
       int nPass2 = 0;
-      for (int i = 0; i < nPass2Raw; i++) {
-        if (h_pass2Raw[i].voxelIdx == h_pass2Raw[i].orientIdx) {
-          int p1Idx = h_pass2Raw[i].orientIdx;  // index into h_pass1
-          h_pass2[nPass2].voxelIdx = h_pass1[p1Idx].voxelIdx;
-          h_pass2[nPass2].orientIdx = h_pass1[p1Idx].orientIdx;
-          h_pass2[nPass2].fracOverlap = h_pass2Raw[i].fracOverlap;
-          nPass2++;
-        }
+      CUDA_CHECK(cudaMemcpy(&nPass2, ctx->d_nWinners, sizeof(int),
+                            cudaMemcpyDeviceToHost));
+      if (nPass2 > ctx->maxWinners) nPass2 = ctx->maxWinners;
+
+      NFGPUWinner *h_pass2Raw = (NFGPUWinner *)malloc(nPass2 * sizeof(NFGPUWinner));
+      CUDA_CHECK(cudaMemcpy(h_pass2Raw, ctx->d_winners,
+                            nPass2 * sizeof(NFGPUWinner),
+                            cudaMemcpyDeviceToHost));
+
+      // Remap to original indices (pass2 voxelIdx/orientIdx are pass1 indices)
+      NFGPUWinner *h_pass2 = (NFGPUWinner *)malloc(nPass2 * sizeof(NFGPUWinner));
+      for (int i = 0; i < nPass2; i++) {
+        int p1Idx = h_pass2Raw[i].voxelIdx;  // == orientIdx in diagonal mode
+        h_pass2[i].voxelIdx = h_pass1[p1Idx].voxelIdx;
+        h_pass2[i].orientIdx = h_pass1[p1Idx].orientIdx;
+        h_pass2[i].fracOverlap = h_pass2Raw[i].fracOverlap;
       }
 
       *h_winners = h_pass2;
@@ -1561,7 +1562,8 @@ extern "C" int nf_gpu_screen(NFGPUContext *ctx,
         frameBatchSize,
         ctx->px, ctx->gs,
         (float)minFracOverlap,
-        ctx->d_winners, ctx->d_nWinners, ctx->maxWinners);
+        ctx->d_winners, ctx->d_nWinners, ctx->maxWinners,
+        0);  // not diagonal
 
     CUDA_CHECK(cudaStreamSynchronize(ctx->stream));
     double dtKernel = nf_gpu_timer_sec() - tKernel0;
@@ -1810,7 +1812,7 @@ extern "C" int nf_gpu_fit(NFGPUContext *ctx,
     results[j].eulerA = h_results[j * 3 + 0] * (float)rad2deg;
     results[j].eulerB = h_results[j * 3 + 1] * (float)rad2deg;
     results[j].eulerC = h_results[j * 3 + 2] * (float)rad2deg;
-    results[j].fracOverlap = h_fvals[j];
+    results[j].fracOverlap = 1.0f - h_fvals[j];  // NM minimizes 1-frac
   }
 
   *fitResults = results;
