@@ -104,6 +104,25 @@ int tomo_gpu_reconstruct(TomoGPUContext *ctx,
                          float *reconstruction2,
                          long M, long M0, long M02, long pdim);
 
+/// Batched GPU reconstruction of multiple sinogram pairs at once.
+/// Processes n_pairs slice-pairs simultaneously on the GPU for maximum
+/// throughput.  Each element of the pointer arrays corresponds to one pair.
+///
+/// @param ctx        GPU context.
+/// @param n_pairs    Number of slice-pairs to process.
+/// @param sinogram1s  Array of n_pairs host sinogram1 pointers.
+/// @param sinogram2s  Array of n_pairs host sinogram2 pointers.
+/// @param recon1s     Array of n_pairs host reconstruction1 output pointers.
+/// @param recon2s     Array of n_pairs host reconstruction2 output pointers.
+/// @return 0 on success.
+int tomo_gpu_reconstruct_batch(TomoGPUContext *ctx,
+                               int n_pairs,
+                               const float **sinogram1s,
+                               const float **sinogram2s,
+                               float **recon1s,
+                               float **recon2s,
+                               long M, long M0, long M02, long pdim);
+
 // ---------------------------------------------------------------------------
 // Preprocessing kernels (optional — can also be done on CPU)
 // ---------------------------------------------------------------------------
