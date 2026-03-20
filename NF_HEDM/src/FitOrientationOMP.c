@@ -981,6 +981,34 @@ int main(int argc, char *argv[]) {
       printf("NF GPU: screen-only mode — skipping Phase 2 fitting\n");
       printf("NF GPU: Phase 1 screening: %d winners in %.2f s\n",
              nGpuWinners, gpu_screen_time_only);
+
+      // Dump GPU screening results for diagnostics
+      // Sort winners by (voxelIdx, orientIdx) for easy diffing
+      for (int i = 0; i < nGpuWinners; i++) {
+        for (int j = i + 1; j < nGpuWinners; j++) {
+          if (gpuWinners[j].voxelIdx < gpuWinners[i].voxelIdx ||
+              (gpuWinners[j].voxelIdx == gpuWinners[i].voxelIdx &&
+               gpuWinners[j].orientIdx < gpuWinners[i].orientIdx)) {
+            NFGPUWinner tmp = gpuWinners[i];
+            gpuWinners[i] = gpuWinners[j];
+            gpuWinners[j] = tmp;
+          }
+        }
+      }
+      FILE *fp_diag = fopen("screen_gpu.csv", "w");
+      if (fp_diag) {
+        fprintf(fp_diag, "voxelIdx,orientIdx,fracOverlap\n");
+        for (int i = 0; i < nGpuWinners; i++) {
+          fprintf(fp_diag, "%d,%d,%.6f\n",
+                  gpuWinners[i].voxelIdx,
+                  gpuWinners[i].orientIdx,
+                  gpuWinners[i].fracOverlap);
+        }
+        fclose(fp_diag);
+        printf("NF GPU: diagnostic dump written to screen_gpu.csv (%d records)\n",
+               nGpuWinners);
+      }
+
       printf("=== END GPU PATH (screen-only) ===\n");
       free(winnerCount);
       free(winnerStart);
@@ -1223,6 +1251,13 @@ cpu_fallback:
   double cpu_fit_accum = 0.0;     // accumulated Phase 2 time across threads
   int cpu_total_winners = 0;
 
+  // Diagnostic collection for screen_cpu.csv
+  int cpu_diag_cap = 100000;
+  int cpu_diag_count = 0;
+  int *cpu_diag_vox = (int *)malloc(cpu_diag_cap * sizeof(int));
+  int *cpu_diag_ori = (int *)malloc(cpu_diag_cap * sizeof(int));
+  double *cpu_diag_frac = (double *)malloc(cpu_diag_cap * sizeof(double));
+
 #pragma omp parallel for num_threads(numProcs) private(rown) schedule(dynamic) \
     reduction(+:cpu_screen_accum, cpu_fit_accum, cpu_total_winners)
   for (rown = startRowNr; rown <= endRowNr; rown++) {
@@ -1326,6 +1361,20 @@ cpu_fallback:
         OrientMatrix[OrientationGoodID * 10 + 9] = (double)
             i; // Store the row nr in OrientationsList for grainID determination
         OrientationGoodID++;
+
+        // Collect for diagnostic dump
+        if (screen_only) {
+          #pragma omp critical
+          {
+            if (cpu_diag_count < cpu_diag_cap) {
+              cpu_diag_vox[cpu_diag_count] = rown;
+              cpu_diag_ori[cpu_diag_count] = i;
+              cpu_diag_frac[cpu_diag_count] = FracOverT;
+              cpu_diag_count++;
+            }
+          }
+        }
+
         if (OrientationGoodID >= MAX_POINTS_GRID_GOOD)
           break;
       }
@@ -1521,6 +1570,36 @@ cpu_fallback:
   }
 
   double cpu_wall_elapsed = omp_get_wtime() - cpu_wall_t0;
+
+  // Dump CPU screening results for diagnostics (sort by voxelIdx, orientIdx)
+  if (screen_only && cpu_diag_count > 0) {
+    for (int i = 0; i < cpu_diag_count; i++) {
+      for (int j = i + 1; j < cpu_diag_count; j++) {
+        if (cpu_diag_vox[j] < cpu_diag_vox[i] ||
+            (cpu_diag_vox[j] == cpu_diag_vox[i] &&
+             cpu_diag_ori[j] < cpu_diag_ori[i])) {
+          int tv = cpu_diag_vox[i]; cpu_diag_vox[i] = cpu_diag_vox[j]; cpu_diag_vox[j] = tv;
+          int to = cpu_diag_ori[i]; cpu_diag_ori[i] = cpu_diag_ori[j]; cpu_diag_ori[j] = to;
+          double tf = cpu_diag_frac[i]; cpu_diag_frac[i] = cpu_diag_frac[j]; cpu_diag_frac[j] = tf;
+        }
+      }
+    }
+    FILE *fp_diag = fopen("screen_cpu.csv", "w");
+    if (fp_diag) {
+      fprintf(fp_diag, "voxelIdx,orientIdx,fracOverlap\n");
+      for (int i = 0; i < cpu_diag_count; i++) {
+        fprintf(fp_diag, "%d,%d,%.6f\n",
+                cpu_diag_vox[i], cpu_diag_ori[i], cpu_diag_frac[i]);
+      }
+      fclose(fp_diag);
+      printf("NF CPU: diagnostic dump written to screen_cpu.csv (%d records)\n",
+             cpu_diag_count);
+    }
+  }
+  free(cpu_diag_vox);
+  free(cpu_diag_ori);
+  free(cpu_diag_frac);
+
   printf("\n=== CPU PATH TIMING ===\n");
   printf("NF CPU: Phase 1 screening: %.2f s (sum of per-thread times)\n", cpu_screen_accum);
   printf("NF CPU: Phase 2 fitting:   %.2f s (sum of per-thread times)\n", cpu_fit_accum);

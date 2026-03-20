@@ -155,3 +155,29 @@ echo ""
 echo "--- GPU ---"
 grep -E "^NF GPU:|screen-only|^=== (GPU|END GPU)" gpu_bench.log || true
 echo "========================================"
+
+# --- Diagnostic CSV comparison ---
+if [ -f screen_cpu.csv ] && [ -f screen_gpu.csv ]; then
+  echo ""
+  echo "========================================"
+  echo "       SCREENING PARITY CHECK"
+  echo "========================================"
+  CPU_COUNT=$(tail -n +2 screen_cpu.csv | wc -l | tr -d ' ')
+  GPU_COUNT=$(tail -n +2 screen_gpu.csv | wc -l | tr -d ' ')
+  echo "CPU winners: $CPU_COUNT"
+  echo "GPU winners: $GPU_COUNT"
+
+  # Compare sorted CSVs
+  if diff -q screen_cpu.csv screen_gpu.csv > /dev/null 2>&1; then
+    echo "RESULT: ✓ EXACT MATCH"
+  else
+    echo "RESULT: ✗ MISMATCH"
+    echo ""
+    echo "--- CPU only (not in GPU) ---"
+    comm -23 <(tail -n +2 screen_cpu.csv | sort) <(tail -n +2 screen_gpu.csv | sort) | head -20
+    echo ""
+    echo "--- GPU only (not in CPU) ---"
+    comm -13 <(tail -n +2 screen_cpu.csv | sort) <(tail -n +2 screen_gpu.csv | sort) | head -20
+  fi
+  echo "========================================"
+fi
