@@ -467,6 +467,7 @@ extern "C" size_t nf_gpu_get_free_memory(void) {
 extern "C" NFGPUContext *nf_gpu_init(int deviceId,
                                      int nrPixelsY, int nrPixelsZ,
                                      int nrFiles, int nLayers) {
+  double tInit0 = nf_gpu_timer_sec();
   cudaError_t err = cudaSetDevice(deviceId);
   if (err != cudaSuccess) {
     fprintf(stderr, "NF GPU: failed to set device %d: %s\n",
@@ -495,9 +496,10 @@ extern "C" NFGPUContext *nf_gpu_init(int deviceId,
 
   CUDA_CHECK_NULL(cudaStreamCreate(&ctx->stream));
 
+  double dtInit = nf_gpu_timer_sec() - tInit0;
   long long totalBits = (long long)nLayers * nrFiles * nrPixelsY * nrPixelsZ;
-  printf("NF GPU: context initialised — %dx%d detector, %d frames, %d layers\n",
-         nrPixelsY, nrPixelsZ, nrFiles, nLayers);
+  printf("NF GPU: context initialised — %dx%d detector, %d frames, %d layers (%.2f s)\n",
+         nrPixelsY, nrPixelsZ, nrFiles, nLayers, dtInit);
   printf("NF GPU: ObsSpotsInfo flat size = %.1f MB (%lld bits)\n",
          (totalBits / 8.0) / (1024.0 * 1024.0), totalBits);
 
@@ -780,7 +782,11 @@ extern "C" int nf_gpu_screen(NFGPUContext *ctx,
   CUDA_CHECK(cudaMalloc(&ctx->d_nWinners, sizeof(int)));
   CUDA_CHECK(cudaMemset(ctx->d_nWinners, 0, sizeof(int)));
 
-  int blockSize = 128;
+  // Auto-tune block size for maximum occupancy
+  int blockSize, minGridSize;
+  cudaOccupancyMaxPotentialBlockSize(&minGridSize, &blockSize,
+                                     screen_pairs_kernel, 0, 0);
+  printf("NF GPU: auto-tuned blockSize=%d (minGrid=%d)\n", blockSize, minGridSize);
   double tKernel0 = nf_gpu_timer_sec();
 
   if (ctx->nLayers > 1) {
@@ -845,6 +851,13 @@ extern "C" int nf_gpu_screen(NFGPUContext *ctx,
       float *h_YG2 = (float *)malloc(nPass1 * 3 * sizeof(float));
       GPUOrientHeader *h_hdr2 = (GPUOrientHeader *)malloc(nPass1 * sizeof(GPUOrientHeader));
 
+      // Batch-download all orient headers once (avoid N individual cudaMemcpy calls)
+      GPUOrientHeader *h_allHeaders = (GPUOrientHeader *)malloc(
+          ctx->nOrientations * sizeof(GPUOrientHeader));
+      CUDA_CHECK(cudaMemcpy(h_allHeaders, ctx->d_orientHeaders,
+                            ctx->nOrientations * sizeof(GPUOrientHeader),
+                            cudaMemcpyDeviceToHost));
+
       // We need each pass-1 winner to be its own (voxel=0, orient=i) pair.
       // Re-pack: for each candidate, copy its voxel triangle and orient header.
       for (int i = 0; i < nPass1; i++) {
@@ -854,12 +867,9 @@ extern "C" int nf_gpu_screen(NFGPUContext *ctx,
           h_XG2[i * 3 + k] = (float)h_XGrains[vI * 3 + k];
           h_YG2[i * 3 + k] = (float)h_YGrains[vI * 3 + k];
         }
-        // Copy the original orient header but set a 1:1 mapping
-        GPUOrientHeader origHdr;
-        CUDA_CHECK(cudaMemcpy(&origHdr, &ctx->d_orientHeaders[oI],
-                              sizeof(GPUOrientHeader), cudaMemcpyDeviceToHost));
-        h_hdr2[i] = origHdr;
+        h_hdr2[i] = h_allHeaders[oI];
       }
+      free(h_allHeaders);
 
       // Upload pass-2 data
       float *d_XG2, *d_YG2;
