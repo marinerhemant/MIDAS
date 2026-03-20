@@ -2,8 +2,9 @@
 #
 # GPU vs CPU benchmark for NF-HEDM FitOrientation
 #
-# Usage: bash benchmark_gpu.sh [nCPUs]
-#   nCPUs: number of CPU threads (default: 96)
+# Usage: bash benchmark_gpu.sh [nCPUs] [--screen-only]
+#   nCPUs:        number of CPU threads (default: 96)
+#   --screen-only: skip Phase 2 fitting (pure screening benchmark)
 #
 # Prerequisites:
 #   - MIDAS built with CUDA (FitOrientationGPU + FitOrientationOMP in bin/)
@@ -12,7 +13,15 @@
 #
 set -euo pipefail
 
-NCPUS=${1:-96}
+NCPUS=96
+SCREEN_ONLY=0
+for arg in "$@"; do
+  case "$arg" in
+    --screen-only) SCREEN_ONLY=1 ;;
+    [0-9]*) NCPUS=$arg ;;
+  esac
+done
+
 SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
 MIDAS_DIR="$(cd "$SCRIPT_DIR/../.." && pwd)"
 BIN_DIR="$MIDAS_DIR/NF_HEDM/bin"
@@ -26,6 +35,7 @@ echo "MIDAS_DIR:  $MIDAS_DIR"
 echo "BIN_DIR:    $BIN_DIR"
 echo "SEED_FILE:  $SEED_FILE"
 echo "nCPUs:      $NCPUS"
+[ "$SCREEN_ONLY" = 1 ] && echo "MODE:       screen-only (Phase 2 skipped)"
 
 # --- Setup benchmark directory ---
 if [ -d "$BENCH_DIR" ]; then
@@ -73,6 +83,9 @@ GRID_SIZE=$(grep "^GridSize " "$PARAM_FILE" | awk '{print $2}')
 RSAMPLE=$(grep "^Rsample " "$PARAM_FILE" | awk '{print $2}')
 echo "GridSize: $GRID_SIZE, Rsample: $RSAMPLE"
 
+# Set environment for screen-only mode
+export MIDAS_SCREEN_ONLY=$SCREEN_ONLY
+
 # --- Run preprocessing (generates binary files) ---
 echo ""
 echo "=== STEP 1: Preprocessing ==="
@@ -103,21 +116,21 @@ echo ""
 echo "=== STEP 2: CPU Benchmark ==="
 echo "Running FitOrientationOMP with $NCPUS CPUs..."
 time "$BIN_DIR/FitOrientationOMP" "$PARAM_FILE" 0 1 "$NCPUS" 2>&1 | tee cpu_output.log
-cp Au_bin_Reconstructed.mic cpu_benchmark.mic
 echo "CPU benchmark complete."
 
 # --- Run GPU benchmark ---
 echo ""
 echo "=== STEP 3: GPU Benchmark ==="
-echo "Running FitOrientationGPU with $NCPUS CPUs for Phase 2..."
+echo "Running FitOrientationGPU with $NCPUS CPUs..."
 time "$BIN_DIR/FitOrientationGPU" "$PARAM_FILE" 0 1 "$NCPUS" 2>&1 | tee gpu_output.log
-cp Au_bin_Reconstructed.mic gpu_benchmark.mic
 echo "GPU benchmark complete."
 
-# --- Compare results ---
-echo ""
-echo "=== STEP 4: Parity Check ==="
-python3 -c "
+# --- Compare results (only if Phase 2 ran) ---
+if [ "$SCREEN_ONLY" = 0 ]; then
+  echo ""
+  echo "=== STEP 4: Parity Check ==="
+  cp Au_bin_Reconstructed.mic gpu_benchmark.mic
+  python3 -c "
 import struct
 def read_mic(fn):
     with open(fn,'rb') as f: data=f.read()
@@ -139,6 +152,10 @@ print(f'Match(<2%): {match}')
 print(f'Mismatch:   {mismatch}')
 print(f'Match rate: {match/active*100:.1f}%' if active>0 else 'Match rate: N/A')
 "
+else
+  echo ""
+  echo "(Parity check skipped in screen-only mode)"
+fi
 
 # --- Extract timing summary ---
 echo ""

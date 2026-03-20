@@ -283,6 +283,13 @@ int main(int argc, char *argv[]) {
     const char *v = getenv("MIDAS_VERBOSE");
     if (v && atoi(v) > 0) verbose = 1;
   }
+  // Screen-only mode: set MIDAS_SCREEN_ONLY=1 to skip Phase 2 fitting
+  int screen_only = 0;
+  {
+    const char *v = getenv("MIDAS_SCREEN_ONLY");
+    if (v && atoi(v) > 0) screen_only = 1;
+  }
+  if (screen_only) printf("*** SCREEN-ONLY MODE: Phase 2 fitting will be skipped ***\n");
   // Read params file.
   char *ParamFN;
   FILE *fileParam;
@@ -968,6 +975,24 @@ int main(int argc, char *argv[]) {
     }
     free(winnerPos);
 
+    // Skip Phase 2 if screen-only mode
+    if (screen_only) {
+      double gpu_screen_time_only = omp_get_wtime() - gpu_t0;
+      printf("NF GPU: screen-only mode — skipping Phase 2 fitting\n");
+      printf("NF GPU: Phase 1 screening: %d winners in %.2f s\n",
+             nGpuWinners, gpu_screen_time_only);
+      printf("=== END GPU PATH (screen-only) ===\n");
+      free(winnerCount);
+      free(winnerStart);
+      free(winnerIdx);
+      free(allXG);
+      free(allYG);
+      free(gpu_parsed);
+      if (gpuWinners) free(gpuWinners);
+      nf_gpu_destroy(gpuCtx);
+      goto skip_cpu_path;
+    }
+
     printf("NF GPU: Phase 2 (CPU fitting) starting, %d voxels with winners...\n",
            nVoxels);
     double gpu_fit_t0 = omp_get_wtime();
@@ -1310,6 +1335,8 @@ cpu_fallback:
     cpu_screen_accum += (tScreenEnd - tScreenStart);
     cpu_total_winners += OrientationGoodID;
     fflush(stdout);
+    // Skip Phase 2 if screen-only mode
+    if (screen_only) continue;
     double tFitStart = omp_get_wtime();
     int totalNloptEvals = 0;
     double BestFrac, BestEuler[3];
