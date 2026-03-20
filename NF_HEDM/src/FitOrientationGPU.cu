@@ -613,13 +613,21 @@ __device__ static float gpu_calc_frac_overlap(
     const float RM[9], const float P0_0[3],
     int nLayers, int nrFiles, int nrPixelsY, int nrPixelsZ,
     float px, float gs,
-    const float *d_hkls, const float *d_Gs, int n_hkls) {
+    const float *d_hkls, const float *d_Gs, int n_hkls,
+    int debugPrint = 0) {
 
   // 1. Euler → orientation matrix
   float orient[3][3];
   gpu_euler2orient(euler_deg, orient);
 
   int OverlapPixels = 0, TotalPixels = 0;
+  int nValidSpots = 0;
+
+  if (debugPrint) {
+    printf("  gpu_frac: euler=(%.2f,%.2f,%.2f) Lsd0=%.2f ybc0=%.2f zbc0=%.2f P0=(%.2f,%.2f,%.2f) nLayers=%d nHkls=%d px=%.3f gs=%.3f\n",
+           euler_deg[0], euler_deg[1], euler_deg[2],
+           Lsd0, ybc0, zbc0, P0_0[0], P0_0[1], P0_0[2], nLayers, n_hkls, px, gs);
+  }
 
   // 2. For each HKL, compute spots
   for (int ih = 0; ih < n_hkls; ih++) {
@@ -679,6 +687,8 @@ __device__ static float gpu_calc_frac_overlap(
       // OmeBin
       int omeBin = (int)floorf((-c_omegaStart + Omega) / c_omegaStep);
       if (omeBin < 0 || omeBin >= nrFiles) continue;
+
+      nValidSpots++;
 
       float sinOme = sinf(Omega * (float)deg2rad);
       float cosOme = cosf(Omega * (float)deg2rad);
@@ -807,6 +817,11 @@ __device__ static float gpu_calc_frac_overlap(
     }
   }
 
+  if (debugPrint) {
+    printf("  gpu_frac: nValidSpots=%d OverlapPixels=%d TotalPixels=%d frac=%.6f\n",
+           nValidSpots, OverlapPixels, TotalPixels,
+           TotalPixels > 0 ? (float)OverlapPixels / (float)TotalPixels : 0.0f);
+  }
   return (TotalPixels > 0) ? (float)OverlapPixels / (float)TotalPixels : 0.0f;
 }
 
@@ -823,16 +838,20 @@ struct NFFitObjective {
   const float *d_hkls;  // [n_hkls * 4] in global memory
   const float *d_Gs;    // [n_hkls] in global memory
   int n_hkls;
+  mutable int evalCount;  // for debug printing
+  int debugJob;           // 1 = print diagnostics for this job
 
   __device__ float operator()(const float *x, int ndim) const {
     float euler_deg[3] = { x[0] * (float)rad2deg,
                            x[1] * (float)rad2deg,
                            x[2] * (float)rad2deg };
+    int doPrint = (debugJob && evalCount == 0) ? 1 : 0;
+    const_cast<NFFitObjective*>(this)->evalCount++;
     float frac = gpu_calc_frac_overlap(
         euler_deg, XG, YG, obsFlat,
         Lsd0, ybc0, zbc0, RM, P0_0,
         nLayers, nrFiles, nrPixelsY, nrPixelsZ, px, gs,
-        d_hkls, d_Gs, n_hkls);
+        d_hkls, d_Gs, n_hkls, doPrint);
     return 1.0f - frac;
   }
 };
@@ -880,6 +899,8 @@ __global__ void nm_fit_kernel(
   obj.d_hkls = d_hkls;
   obj.d_Gs = d_Gs;
   obj.n_hkls = n_hkls;
+  obj.evalCount = 0;
+  obj.debugJob = (jobIdx == 0) ? 1 : 0;  // debug only first job
 
   // Load per-job bounds
   float lo[3], hi[3];
