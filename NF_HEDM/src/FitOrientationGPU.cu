@@ -312,11 +312,11 @@ __global__ void screen_pairs_kernel(
     float refZpx = refOutZ / px + zbc0;
 
     // Precompute per-layer base positions for this spot
+    // Keep * px / px to match CPU float precision exactly
     float layerBaseY[MAX_LAYERS], layerBaseZ[MAX_LAYERS];
     for (int l = 0; l < nLayers; l++) {
-      float scale = c_Lsd[l] / Lsd0;
-      layerBaseY[l] = floorf((refYpx - ybc0) * scale + c_ybc[l]);
-      layerBaseZ[l] = floorf((refZpx - zbc0) * scale + c_zbc[l]);
+      layerBaseY[l] = floorf(((refYpx - ybc0) * px * (c_Lsd[l] / Lsd0)) / px + c_ybc[l]);
+      layerBaseZ[l] = floorf(((refZpx - zbc0) * px * (c_Lsd[l] / Lsd0)) / px + c_zbc[l]);
     }
 
     // Relative triangle: subtract reference
