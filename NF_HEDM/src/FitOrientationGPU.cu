@@ -841,8 +841,8 @@ struct NFFitObjective {
 __global__ void nm_fit_kernel(
     int nJobs,
     const float *startEulers,   // [nJobs * 3] initial Euler angles (radians)
-    const float *lowerBounds,   // [3]
-    const float *upperBounds,   // [3]
+    const float *lowerBounds,   // [nJobs * 3] per-job lower bounds (radians)
+    const float *upperBounds,   // [nJobs * 3] per-job upper bounds (radians)
     const float *voxXG,         // [nJobs * 3] per-job voxel XG
     const float *voxYG,         // [nJobs * 3] per-job voxel YG
     const uint32_t *obsFlat,
@@ -881,9 +881,12 @@ __global__ void nm_fit_kernel(
   obj.d_Gs = d_Gs;
   obj.n_hkls = n_hkls;
 
-  // Load bounds
+  // Load per-job bounds
   float lo[3], hi[3];
-  for (int i = 0; i < 3; i++) { lo[i] = lowerBounds[i]; hi[i] = upperBounds[i]; }
+  for (int i = 0; i < 3; i++) {
+    lo[i] = lowerBounds[jobIdx * 3 + i];
+    hi[i] = upperBounds[jobIdx * 3 + i];
+  }
 
   // Initialize simplex
   NMParams nm = nm_default_params();
@@ -897,6 +900,15 @@ __global__ void nm_fit_kernel(
     if (simplex[0][j] > hi[j]) simplex[0][j] = hi[j];
   }
   fvals[0] = obj(simplex[0], 3);
+
+  // Debug print for first 5 jobs
+  if (jobIdx < 5) {
+    printf("GPU-NM job %d: start=(%.6f,%.6f,%.6f) deg, bounds=[%.6f±%.6f], fval0=%.6f (frac=%.6f)\n",
+           jobIdx,
+           x0[0]*(float)rad2deg, x0[1]*(float)rad2deg, x0[2]*(float)rad2deg,
+           x0[0]*(float)rad2deg, (hi[0]-lo[0])*0.5f*(float)rad2deg,
+           fvals[0], 1.0f - fvals[0]);
+  }
 
   for (int i = 1; i <= 3; i++) {
     for (int j = 0; j < 3; j++) simplex[i][j] = simplex[0][j];
@@ -998,7 +1010,7 @@ __global__ void nm_fit_kernel(
 
   for (int j = 0; j < 3; j++)
     results[jobIdx * 3 + j] = simplex[best][j];
-  fvals_out[jobIdx] = 1.0f - fvals[best];  // convert back to fracOverlap
+  fvals_out[jobIdx] = fvals[best];  // raw NM objective (= 1 - fracOverlap)
 }
 
 
