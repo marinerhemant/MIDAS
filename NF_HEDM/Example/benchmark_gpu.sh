@@ -2,10 +2,12 @@
 #
 # GPU vs CPU benchmark for NF-HEDM FitOrientation
 #
-# Usage: bash benchmark_gpu.sh [nCPUs] [--screen-only] [--gpu-only]
+# Usage: bash benchmark_gpu.sh [nCPUs] [--screen-only] [--gpu-only] [--small] [--gpu-fit]
 #   nCPUs:        number of CPU threads (default: 96)
 #   --screen-only: skip Phase 2 fitting (pure screening benchmark)
 #   --gpu-only:    skip preprocessing and CPU benchmark
+#   --small:       use grs.csv (4 orientations) instead of cubicSeed.txt
+#   --gpu-fit:     enable GPU Phase 2 NM fitting (MIDAS_GPU_FIT=1)
 #
 # Run this from the NF_HEDM/Example/sim directory (where SpotsInfo.bin
 # and the diffraction images live).
@@ -15,10 +17,14 @@ set -euo pipefail
 NCPUS=96
 SCREEN_ONLY=0
 GPU_ONLY=0
+USE_SMALL=0
+GPU_FIT=0
 for arg in "$@"; do
   case "$arg" in
     --screen-only) SCREEN_ONLY=1 ;;
     --gpu-only) GPU_ONLY=1 ;;
+    --small) USE_SMALL=1 ;;
+    --gpu-fit) GPU_FIT=1 ;;
     [0-9]*) NCPUS=$arg ;;
   esac
 done
@@ -26,7 +32,11 @@ done
 SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
 MIDAS_DIR="$(cd "$SCRIPT_DIR/../.." && pwd)"
 BIN_DIR="$MIDAS_DIR/NF_HEDM/bin"
-SEED_FILE="$MIDAS_DIR/NF_HEDM/cubicSeed.txt"
+if [ "$USE_SMALL" = 1 ]; then
+  SEED_FILE="$SCRIPT_DIR/grs.csv"
+else
+  SEED_FILE="$MIDAS_DIR/NF_HEDM/cubicSeed.txt"
+fi
 PARAM_FILE="ps_au.txt"
 
 echo "=== NF-HEDM GPU Benchmark ==="
@@ -36,9 +46,14 @@ echo "SEED_FILE:  $SEED_FILE"
 echo "nCPUs:      $NCPUS"
 [ "$SCREEN_ONLY" = 1 ] && echo "MODE:       screen-only (Phase 2 skipped)"
 [ "$GPU_ONLY" = 1 ] && echo "MODE:       gpu-only (skipping preprocessing + CPU)"
+[ "$USE_SMALL" = 1 ] && echo "MODE:       small dataset (grs.csv, 4 orientations)"
+[ "$GPU_FIT" = 1 ] && echo "MODE:       GPU Phase 2 fitting enabled"
 
 # Set env vars
 export MIDAS_SCREEN_ONLY=$SCREEN_ONLY
+if [ "$GPU_FIT" = 1 ]; then
+  export MIDAS_GPU_FIT=1
+fi
 
 # Check we're in a directory with SpotsInfo.bin
 if [ ! -f SpotsInfo.bin ]; then
@@ -50,7 +65,20 @@ fi
 if [ "$GPU_ONLY" = 0 ]; then
 # --- Regenerate orientation-dependent binary files ---
 echo ""
-echo "=== STEP 1: Regenerating orientation files with cubicSeed.txt ==="
+echo "=== STEP 1: Regenerating orientation files ==="
+
+# For --small, convert grs.csv to seedOrientations.txt format
+if [ "$USE_SMALL" = 1 ]; then
+  echo "  Converting grs.csv to seedOrientations.txt..."
+  "$BIN_DIR/GenSeedOrientationsFF2NFHEDM" "$SEED_FILE" seedOrientations.txt
+  SEED_FILE="$(pwd)/seedOrientations.txt"
+  # Also set GrainsFile
+  if ! grep -q "^GrainsFile " "$PARAM_FILE"; then
+    echo "GrainsFile $SCRIPT_DIR/grs.csv" >> "$PARAM_FILE"
+  else
+    sed -i.bak "s|^GrainsFile .*|GrainsFile $SCRIPT_DIR/grs.csv|" "$PARAM_FILE"
+  fi
+fi
 
 # Update NrOrientations in param file
 NR_ORIENT=$(wc -l < "$SEED_FILE")
