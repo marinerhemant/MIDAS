@@ -277,6 +277,12 @@ int main(int argc, char *argv[]) {
     return 1;
   }
   double start_time = omp_get_wtime();
+  // Verbosity: set MIDAS_VERBOSE=1 for per-voxel output
+  int verbose = 0;
+  {
+    const char *v = getenv("MIDAS_VERBOSE");
+    if (v && atoi(v) > 0) verbose = 1;
+  }
   // Read params file.
   char *ParamFN;
   FILE *fileParam;
@@ -1140,12 +1146,14 @@ int main(int argc, char *argv[]) {
         pwrite(result, outresult, SizeWritten, OffsetHere);
         pwrite(result2, ResultMatr_v, SizeWritten2, OffsetThis);
 
+        if (verbose) {
 #pragma omp critical
-        {
-          printf("%zu %d ", OffsetHere, rown_gpu);
-          for (int i = 0; i < 11; i++) printf("%.5f ", outresult[i]);
-          printf("\n");
-          fflush(stdout);
+          {
+            printf("%zu %d ", OffsetHere, rown_gpu);
+            for (int i = 0; i < 11; i++) printf("%.5f ", outresult[i]);
+            printf("\n");
+            fflush(stdout);
+          }
         }
       } else {
         // No winners — write empty result
@@ -1426,7 +1434,7 @@ cpu_fallback:
         }
       }
     } else {
-      printf("No good ID found.\n");
+      if (verbose) printf("No good ID found.\n");
       continue;
     }
     double tFitElapsed = omp_get_wtime() - tFitStart;
@@ -1457,14 +1465,16 @@ cpu_fallback:
 // printf is thread-safe but output might be interleaved.
 // Using critical for clean output if desired, or removing for speed.
 // Keeping critical for now as user expects feedback.
+      if (verbose) {
 #pragma omp critical
-      {
-        printf("%zu %d ", OffsetHere, rown);
-        for (i = 0; i < 11; i++) {
-          printf("%.5f ", outresult[i]);
+        {
+          printf("%zu %d ", OffsetHere, rown);
+          for (i = 0; i < 11; i++) {
+            printf("%.5f ", outresult[i]);
+          }
+          printf("\n");
+          fflush(stdout);
         }
-        printf("\n");
-        fflush(stdout);
       }
     }
     int rc5 = pwrite(result2, ResultMatr, SizeWritten2, OffsetThis);
