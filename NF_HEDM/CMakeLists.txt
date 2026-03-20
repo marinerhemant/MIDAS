@@ -124,6 +124,40 @@ add_custom_command(TARGET FitOrientationOMP POST_BUILD
   VERBATIM
 )
 
+# --- GPU-accelerated FitOrientation (requires USE_CUDA=ON) ---
+if(USE_CUDA AND CUDA_FOUND)
+  set(NF_GPU_SOURCES
+    ${NF_SRCDIR}/FitOrientationOMP.c
+    ${NF_SHARED_FIT_SOURCES}
+    ${CMAKE_SOURCE_DIR}/FF_HEDM/src/MIDAS_Math.c
+    ${NF_SRCDIR}/FitOrientationGPU.cu
+  )
+
+  add_executable(FitOrientationGPU ${NF_GPU_SOURCES})
+  target_link_libraries(FitOrientationGPU PRIVATE NLOPT::NLOPT ${COMMON_LINK_LIBRARIES})
+  target_link_libraries(FitOrientationGPU PRIVATE cudart)
+  target_compile_definitions(FitOrientationGPU PRIVATE ENABLE_CUDA)
+
+  if(OpenMP_C_FOUND AND BUILD_OMP)
+    target_link_libraries(FitOrientationGPU PRIVATE OpenMP::OpenMP_C)
+  endif()
+
+  set_target_properties(FitOrientationGPU PROPERTIES
+    CUDA_SEPARABLE_COMPILATION ON
+  )
+
+  install(TARGETS FitOrientationGPU RUNTIME DESTINATION ${MIDAS_INSTALL_BINDIR})
+  add_custom_command(TARGET FitOrientationGPU POST_BUILD
+    COMMAND ${CMAKE_COMMAND} -E make_directory "${CMAKE_CURRENT_SOURCE_DIR}/bin"
+    COMMAND ${CMAKE_COMMAND} -E copy $<TARGET_FILE:FitOrientationGPU> "${CMAKE_CURRENT_SOURCE_DIR}/bin/"
+    COMMENT "Copied FitOrientationGPU to ${CMAKE_CURRENT_SOURCE_DIR}/bin/"
+    VERBATIM
+  )
+  message(STATUS "NF_HEDM: GPU target FitOrientationGPU enabled")
+else()
+  message(STATUS "NF_HEDM: GPU target FitOrientationGPU skipped (USE_CUDA=${USE_CUDA})")
+endif()
+
 # --- Shared Library ---
 add_library(NFGrainsCalc SHARED ${NF_SRCDIR}/NFGrainsCalc.c ${NF_SRCDIR}/GetMisorientation.c)
 target_link_libraries(NFGrainsCalc PRIVATE ${COMMON_LINK_LIBRARIES})

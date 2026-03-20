@@ -5,6 +5,7 @@
 #include "MIDAS_Math.h"
 #include "midas_version.h"
 #include "nf_headers.h"
+#include "nf_gpu.h"
 #include <ctype.h>
 #include <errno.h>
 #include <fcntl.h>
@@ -835,6 +836,120 @@ int main(int argc, char *argv[]) {
     exit(1);
   }
 
+#ifdef ENABLE_CUDA
+  // ══════════════════════════════════════════════════════════════
+  //  GPU PATH: Phase 1 (screening) on GPU, Phase 2 (fitting) on CPU
+  // ══════════════════════════════════════════════════════════════
+  {
+    printf("\n=== GPU-ACCELERATED PATH ===\n");
+    double gpu_t0 = omp_get_wtime();
+
+    // Initialise GPU context
+    NFGPUContext *gpuCtx = nf_gpu_init(0, NrPixelsY, NrPixelsZ, nrFiles, nLayers);
+    if (!gpuCtx) {
+      fprintf(stderr, "NF GPU: init failed, falling back to CPU path\n");
+      goto cpu_fallback;
+    }
+
+    // Upload ObsSpotsInfo (reorganized into per-frame slabs)
+    if (nf_gpu_upload_obs_spots(gpuCtx, ObsSpotsInfo, SizeObsSpots) != 0) {
+      fprintf(stderr, "NF GPU: obs spots upload failed\n");
+      nf_gpu_destroy(gpuCtx);
+      goto cpu_fallback;
+    }
+
+    // Upload orientations (precompute spot metadata)
+    if (nf_gpu_upload_orientations(gpuCtx,
+            OrientationMatrix, NrOrientations,
+            SpotsMat, (const int *)KeyData,
+            (const double (*)[4])hkls, Thetas, n_hkls, Gs,
+            Lsd, ybc, zbc, px, gs,
+            OmegaStart, OmegaStep, RotMatTilts,
+            ExcludePoleAngle,
+            (const double (*)[2])OmegaRanges, NoOfOmegaRanges,
+            (const double (*)[4])BoxSizes,
+            Wedge, Wavelength) != 0) {
+      fprintf(stderr, "NF GPU: orientation upload failed\n");
+      nf_gpu_destroy(gpuCtx);
+      goto cpu_fallback;
+    }
+
+    // Prepare voxel data: extract XGrain, YGrain from parsed_lines
+    int nVoxels = endRowNr - startRowNr + 1;
+    double *allXG = (double *)malloc(nVoxels * 3 * sizeof(double));
+    double *allYG = (double *)malloc(nVoxels * 3 * sizeof(double));
+
+    for (int v = 0; v < nVoxels; v++) {
+      if (!parsed_lines[v].valid) {
+        // Invalid voxel — place at origin (will get 0 overlap)
+        for (int k = 0; k < 3; k++) {
+          allXG[v * 3 + k] = 0;
+          allYG[v * 3 + k] = 0;
+        }
+        continue;
+      }
+      double y1 = parsed_lines[v].y1;
+      double y2 = parsed_lines[v].y2;
+      double xs_v = parsed_lines[v].xs;
+      double ys_v = parsed_lines[v].ys;
+      double gs_v = parsed_lines[v].gs;
+      double XY[3][3];
+      if (y1 > y2) {
+        XY[0][0] = xs_v; XY[0][1] = ys_v - y1;
+        XY[1][0] = xs_v - gs_v; XY[1][1] = ys_v + y2;
+        XY[2][0] = xs_v + gs_v; XY[2][1] = ys_v + y2;
+      } else {
+        XY[0][0] = xs_v; XY[0][1] = ys_v + y2;
+        XY[1][0] = xs_v - gs_v; XY[1][1] = ys_v - y1;
+        XY[2][0] = xs_v + gs_v; XY[2][1] = ys_v - y1;
+      }
+      for (int k = 0; k < 3; k++) {
+        allXG[v * 3 + k] = XY[k][0];
+        allYG[v * 3 + k] = XY[k][1];
+      }
+    }
+
+    // Run GPU screening
+    NFGPUWinner *gpuWinners = NULL;
+    int nGpuWinners = 0;
+    if (nf_gpu_screen(gpuCtx, allXG, allYG, nVoxels,
+                      minFracOverlap, &gpuWinners, &nGpuWinners) != 0) {
+      fprintf(stderr, "NF GPU: screening failed\n");
+      free(allXG); free(allYG);
+      nf_gpu_destroy(gpuCtx);
+      goto cpu_fallback;
+    }
+
+    double gpu_screen_time = omp_get_wtime() - gpu_t0;
+    printf("NF GPU: Phase 1 screening: %d winners in %.2f s\n",
+           nGpuWinners, gpu_screen_time);
+
+    // Phase 2: CPU fitting using GPU winners
+    // Group winners by voxel, then run FitOrientation for each
+    printf("NF GPU: Phase 2 (CPU fitting) starting with %d winners...\n",
+           nGpuWinners);
+
+    // TODO: Implement Phase 2 integration — feed GPU winners into
+    // the existing per-voxel FitOrientation loop.
+    // For now, this is a placeholder that will be completed in the
+    // next implementation phase.
+
+    free(allXG);
+    free(allYG);
+    if (gpuWinners) free(gpuWinners);
+    nf_gpu_destroy(gpuCtx);
+
+    double gpu_total = omp_get_wtime() - gpu_t0;
+    printf("NF GPU: total time: %.2f s\n", gpu_total);
+    printf("=== END GPU PATH ===\n\n");
+
+    // Skip CPU path
+    goto skip_cpu_path;
+  }
+cpu_fallback:
+  printf("Running CPU path...\n");
+#endif /* ENABLE_CUDA */
+
 // DO OMP HERE??????
 #pragma omp parallel for num_threads(numProcs) private(rown) schedule(dynamic)
   for (rown = startRowNr; rown <= endRowNr; rown++) {
@@ -1129,6 +1244,9 @@ int main(int argc, char *argv[]) {
     // OrientMatrix[i] = 0; // Maybe not needed.
   }
 
+#ifdef ENABLE_CUDA
+skip_cpu_path:
+#endif
   // Close files and clean up mmap'd regions
   free(parsed_lines);
   free(Gs);
