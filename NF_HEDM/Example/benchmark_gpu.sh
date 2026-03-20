@@ -2,9 +2,10 @@
 #
 # GPU vs CPU benchmark for NF-HEDM FitOrientation
 #
-# Usage: bash benchmark_gpu.sh [nCPUs] [--screen-only]
+# Usage: bash benchmark_gpu.sh [nCPUs] [--screen-only] [--gpu-only]
 #   nCPUs:        number of CPU threads (default: 96)
 #   --screen-only: skip Phase 2 fitting (pure screening benchmark)
+#   --gpu-only:    skip preprocessing and CPU benchmark
 #
 # Run this from the NF_HEDM/Example/sim directory (where SpotsInfo.bin
 # and the diffraction images live).
@@ -13,9 +14,11 @@ set -euo pipefail
 
 NCPUS=96
 SCREEN_ONLY=0
+GPU_ONLY=0
 for arg in "$@"; do
   case "$arg" in
     --screen-only) SCREEN_ONLY=1 ;;
+    --gpu-only) GPU_ONLY=1 ;;
     [0-9]*) NCPUS=$arg ;;
   esac
 done
@@ -32,6 +35,7 @@ echo "Working in: $(pwd)"
 echo "SEED_FILE:  $SEED_FILE"
 echo "nCPUs:      $NCPUS"
 [ "$SCREEN_ONLY" = 1 ] && echo "MODE:       screen-only (Phase 2 skipped)"
+[ "$GPU_ONLY" = 1 ] && echo "MODE:       gpu-only (skipping preprocessing + CPU)"
 
 # Set env vars
 export MIDAS_SCREEN_ONLY=$SCREEN_ONLY
@@ -43,6 +47,7 @@ if [ ! -f SpotsInfo.bin ]; then
   exit 1
 fi
 
+if [ "$GPU_ONLY" = 0 ]; then
 # --- Regenerate orientation-dependent binary files ---
 echo ""
 echo "=== STEP 1: Regenerating orientation files with cubicSeed.txt ==="
@@ -89,6 +94,9 @@ for f in OrientMat.bin Key.bin DiffractionSpots.bin SpotsInfo.bin; do
   echo "  $f: $(du -h "$f" | cut -f1)"
 done
 
+fi  # end if GPU_ONLY=0 (preprocessing + CPU)
+
+if [ "$GPU_ONLY" = 0 ]; then
 # --- Run CPU benchmark ---
 echo ""
 echo "=== STEP 2: CPU Benchmark ($NCPUS threads) ==="
@@ -97,6 +105,7 @@ if [ "$SCREEN_ONLY" = 0 ]; then
   cp Au_bin_Reconstructed.mic cpu_benchmark.mic
 fi
 echo "CPU done."
+fi  # end CPU benchmark
 
 # --- Run GPU benchmark ---
 echo ""
