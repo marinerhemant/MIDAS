@@ -7,6 +7,8 @@
 #include "tomo_heads.h"
 #include <ctype.h>
 #include <fcntl.h>
+#include <sys/mman.h>
+#include <sys/stat.h>
 #include <limits.h>
 #include <time.h>
 #include <math.h>
@@ -400,6 +402,29 @@ int main(int argc, char *argv[]) {
                 "%zu MB free, %d batches)\n",
                 gpu_batch_pairs, per_pair_gpu >> 20, gpu_free >> 20, nBatches);
 
+        // ── mmap sinogram input for zero-copy reads (areSinos mode) ──
+        float *sino_mmap = NULL;
+        size_t sino_mmap_len = 0;
+        size_t sino_slice_bytes = (size_t)recon_info_record.det_xdim
+            * recon_info_record.theta_list_size * sizeof(float);
+        if (recon_info_record.are_sinos) {
+          int mfd = open(recon_info_record.DataFileName, O_RDONLY);
+          if (mfd >= 0) {
+            struct stat st;
+            fstat(mfd, &st);
+            sino_mmap_len = st.st_size;
+            sino_mmap = (float *)mmap(NULL, sino_mmap_len,
+                                      PROT_READ, MAP_PRIVATE, mfd, 0);
+            close(mfd);
+            if (sino_mmap == MAP_FAILED) sino_mmap = NULL;
+            else {
+              madvise(sino_mmap, sino_mmap_len, MADV_SEQUENTIAL);
+              fprintf(stderr, "TOMO GPU: sinogram mmap'd (%zu MB)\n",
+                      sino_mmap_len >> 20);
+            }
+          }
+        }
+
         // ── Double-buffered batch state ──
         typedef struct {
           const float **sino1;
@@ -466,8 +491,12 @@ int main(int argc, char *argv[]) {
             buf[sIdx].oldSliceNr[b] = sn; \
             memset(trs.norm_sino, 0, sizeof(float) * recon_info_record.sinogram_adjusted_xdim * recon_info_record.theta_list_size); \
             memsets(&ti, &recon_info_record); \
-            if (recon_info_record.are_sinos) readSino(sn, &recon_info_record, &trs); \
-            else readRaw(sn, &recon_info_record, &trs, input_fd); \
+            if (sino_mmap) { \
+              trs.init_sinogram = sino_mmap + (size_t)sn * recon_info_record.det_xdim * recon_info_record.theta_list_size; \
+              Pad(&trs, &recon_info_record); \
+              trs.init_sinogram = NULL; \
+            } else if (recon_info_record.are_sinos) { readSino(sn, &recon_info_record, &trs); \
+            } else { readRaw(sn, &recon_info_record, &trs, input_fd); } \
             if (recon_info_record.doStripeRemoval) cleanup_sinogram_stripes(trs.norm_sino, recon_info_record.theta_list_size, recon_info_record.sinogram_adjusted_xdim, recon_info_record.stripeSnr, recon_info_record.stripeLaSize, recon_info_record.stripeSmSize, 1); \
             memcpy(ti.sino_calc_buffer, trs.norm_sino, sizeof(float) * ti.sinogram_adjusted_xdim * recon_info_record.theta_list_size); \
             reconCentering(&ti, &recon_info_record, 0, recon_info_record.doLogProj); \
@@ -475,8 +504,12 @@ int main(int argc, char *argv[]) {
             sn = recon_info_record.slices_to_process[sr + 1]; \
             buf[sIdx].sliceNr[b] = sn; \
             memset(trs.norm_sino, 0, sizeof(float) * recon_info_record.sinogram_adjusted_xdim * recon_info_record.theta_list_size); \
-            if (recon_info_record.are_sinos) readSino(sn, &recon_info_record, &trs); \
-            else readRaw(sn, &recon_info_record, &trs, input_fd); \
+            if (sino_mmap) { \
+              trs.init_sinogram = sino_mmap + (size_t)sn * recon_info_record.det_xdim * recon_info_record.theta_list_size; \
+              Pad(&trs, &recon_info_record); \
+              trs.init_sinogram = NULL; \
+            } else if (recon_info_record.are_sinos) { readSino(sn, &recon_info_record, &trs); \
+            } else { readRaw(sn, &recon_info_record, &trs, input_fd); } \
             if (recon_info_record.doStripeRemoval) cleanup_sinogram_stripes(trs.norm_sino, recon_info_record.theta_list_size, recon_info_record.sinogram_adjusted_xdim, recon_info_record.stripeSnr, recon_info_record.stripeLaSize, recon_info_record.stripeSmSize, 1); \
             memcpy(ti.sino_calc_buffer, trs.norm_sino, sizeof(float) * ti.sinogram_adjusted_xdim * recon_info_record.theta_list_size); \
             size_t of2 = ti.sinogram_adjusted_size * 2; \
@@ -587,6 +620,7 @@ int main(int argc, char *argv[]) {
           free(buf[s].oldSliceNr); free(buf[s].sliceNr);
           free(buf[s].offsetRecons);
         }
+        if (sino_mmap) munmap(sino_mmap, sino_mmap_len);
       } else
 #endif
       {
