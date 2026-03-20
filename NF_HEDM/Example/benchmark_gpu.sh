@@ -59,6 +59,13 @@ else
   sed -i.bak "s|^SeedOrientations .*|SeedOrientations $SEED_FILE|" "$PARAM_FILE"
 fi
 
+# Ensure DataDirectory is set to current dir
+if ! grep -q "^DataDirectory " "$PARAM_FILE"; then
+  echo "DataDirectory ." >> "$PARAM_FILE"
+else
+  sed -i.bak 's|^DataDirectory .*|DataDirectory .|' "$PARAM_FILE"
+fi
+
 # HKLs
 "$BIN_DIR/GetHKLListNF" "$PARAM_FILE"
 echo "  HKLs generated"
