@@ -90,8 +90,8 @@ __device__ static inline void nm_centroid(
  *
  * @param nJobs       Number of independent optimization jobs
  * @param startPoints [nJobs × NDIM] initial guesses
- * @param lowerBounds [NDIM] lower bounds
- * @param upperBounds [NDIM] upper bounds
+ * @param lowerBounds [nJobs × NDIM] per-job lower bounds
+ * @param upperBounds [nJobs × NDIM] per-job upper bounds
  * @param results     [nJobs × NDIM] optimized parameters (output)
  * @param fvals_out   [nJobs] final objective values (output)
  * @param objFunc     Objective function functor
@@ -117,12 +117,12 @@ __global__ void gpu_simplex_batch_kernel(
 
   NMParams nm = nm_default_params();
 
-  // Load bounds into registers
+  // Load per-job bounds into registers
   float lo[NDIM], hi[NDIM];
   #pragma unroll
   for (int i = 0; i < NDIM; i++) {
-    lo[i] = lowerBounds[i];
-    hi[i] = upperBounds[i];
+    lo[i] = lowerBounds[jobIdx * NDIM + i];
+    hi[i] = upperBounds[jobIdx * NDIM + i];
   }
 
   // Initialize simplex: vertex 0 = start point, vertex i = start + step along dim i

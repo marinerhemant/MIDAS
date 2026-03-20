@@ -1733,15 +1733,17 @@ extern "C" int nf_gpu_fit(NFGPUContext *ctx,
     }
   }
 
-  // Bounds: euler ± eulerTol (in radians)
-  float h_lb[3], h_ub[3];
-  // Global bounds (not per-job, just [-2π, 2π] clipped by eulerTol around the start)
-  h_lb[0] = -2.0f * (float)M_PI;
-  h_lb[1] = -2.0f * (float)M_PI;
-  h_lb[2] = -2.0f * (float)M_PI;
-  h_ub[0] = 2.0f * (float)M_PI;
-  h_ub[1] = 2.0f * (float)M_PI;
-  h_ub[2] = 2.0f * (float)M_PI;
+  // Per-job bounds: euler ± eulerTol (matching CPU NLOPT setup)
+  // eulerTol is in degrees, convert to radians for the bounds
+  float tolRad = (float)(eulerTol * M_PI / 180.0);  // typically 2° → 0.0349 rad
+  float *h_lb = (float*)malloc(nJobs * 3 * sizeof(float));
+  float *h_ub = (float*)malloc(nJobs * 3 * sizeof(float));
+  for (int j = 0; j < nJobs; j++) {
+    for (int d = 0; d < 3; d++) {
+      h_lb[j * 3 + d] = h_startEulers[j * 3 + d] - tolRad;
+      h_ub[j * 3 + d] = h_startEulers[j * 3 + d] + tolRad;
+    }
+  }
 
   // Upload to device
   float *d_startEulers, *d_voxXG, *d_voxYG;
@@ -1750,8 +1752,8 @@ extern "C" int nf_gpu_fit(NFGPUContext *ctx,
   CUDA_CHECK(cudaMalloc(&d_startEulers, nJobs * 3 * sizeof(float)));
   CUDA_CHECK(cudaMalloc(&d_voxXG, nJobs * 3 * sizeof(float)));
   CUDA_CHECK(cudaMalloc(&d_voxYG, nJobs * 3 * sizeof(float)));
-  CUDA_CHECK(cudaMalloc(&d_lb, 3 * sizeof(float)));
-  CUDA_CHECK(cudaMalloc(&d_ub, 3 * sizeof(float)));
+  CUDA_CHECK(cudaMalloc(&d_lb, nJobs * 3 * sizeof(float)));
+  CUDA_CHECK(cudaMalloc(&d_ub, nJobs * 3 * sizeof(float)));
   CUDA_CHECK(cudaMalloc(&d_results, nJobs * 3 * sizeof(float)));
   CUDA_CHECK(cudaMalloc(&d_fvals, nJobs * sizeof(float)));
   CUDA_CHECK(cudaMalloc(&d_RM, 9 * sizeof(float)));
@@ -1760,8 +1762,8 @@ extern "C" int nf_gpu_fit(NFGPUContext *ctx,
   CUDA_CHECK(cudaMemcpy(d_startEulers, h_startEulers, nJobs * 3 * sizeof(float), cudaMemcpyHostToDevice));
   CUDA_CHECK(cudaMemcpy(d_voxXG, h_voxXG, nJobs * 3 * sizeof(float), cudaMemcpyHostToDevice));
   CUDA_CHECK(cudaMemcpy(d_voxYG, h_voxYG, nJobs * 3 * sizeof(float), cudaMemcpyHostToDevice));
-  CUDA_CHECK(cudaMemcpy(d_lb, h_lb, 3 * sizeof(float), cudaMemcpyHostToDevice));
-  CUDA_CHECK(cudaMemcpy(d_ub, h_ub, 3 * sizeof(float), cudaMemcpyHostToDevice));
+  CUDA_CHECK(cudaMemcpy(d_lb, h_lb, nJobs * 3 * sizeof(float), cudaMemcpyHostToDevice));
+  CUDA_CHECK(cudaMemcpy(d_ub, h_ub, nJobs * 3 * sizeof(float), cudaMemcpyHostToDevice));
   CUDA_CHECK(cudaMemcpy(d_RM, ctx->rotMatTilts, 9 * sizeof(float), cudaMemcpyHostToDevice));
 
   // P0 layer 0
@@ -1775,12 +1777,12 @@ extern "C" int nf_gpu_fit(NFGPUContext *ctx,
   CUDA_CHECK(cudaMemcpyFromSymbol(&h_ybc0, c_ybc, sizeof(float)));
   CUDA_CHECK(cudaMemcpyFromSymbol(&h_zbc0, c_zbc, sizeof(float)));
 
-  // Launch fitting kernel
+  // Launch fitting kernel — match CPU NM parameters
   int blockSize = 64;  // Each thread does heavy work, smaller blocks
   int gridSize = (nJobs + blockSize - 1) / blockSize;
-  float tol = 1e-5f;
-  int maxIter = 500;
-  float initStep = 0.05f;  // 5% of bound range
+  float ftol = 1e-5f;    // matches CPU ftol_rel
+  int maxIter = 1000;     // CPU uses 5000 evals; each NM iter uses ~4 evals
+  float initStep = 0.25f; // 25% of bound range = 0.25 * 2*tolRad ≈ 0.5°
 
   printf("NF GPU: Phase 2 fitting — %d jobs, blockSize=%d\n", nJobs, blockSize);
 
@@ -1792,7 +1794,7 @@ extern "C" int nf_gpu_fit(NFGPUContext *ctx,
       d_RM, d_P0,
       ctx->nLayers, ctx->nrFiles, ctx->nrPixelsY, ctx->nrPixelsZ,
       ctx->px, ctx->gs,
-      tol, maxIter, initStep,
+      ftol, maxIter, initStep,
       ctx->d_hkls, ctx->d_Gs, ctx->n_hkls,
       d_results, d_fvals);
 
@@ -1821,7 +1823,7 @@ extern "C" int nf_gpu_fit(NFGPUContext *ctx,
   printf("NF GPU: Phase 2 fitting complete — %d results in %.2f s\n", nJobs, dtKernel);
 
   // Cleanup
-  free(h_startEulers); free(h_voxXG); free(h_voxYG);
+  free(h_startEulers); free(h_voxXG); free(h_voxYG); free(h_lb); free(h_ub);
   free(h_results); free(h_fvals);
   cudaFree(d_startEulers); cudaFree(d_voxXG); cudaFree(d_voxYG);
   cudaFree(d_lb); cudaFree(d_ub);
