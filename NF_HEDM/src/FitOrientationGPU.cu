@@ -283,9 +283,8 @@ __global__ void screen_pairs_kernel(
       float ABCy = P1y - P0_0[1];
       float ABCz = P1z - P0_0[2];
 
-      float invABCx = 1.0f / ABCx;
-      float outY = P0_0[1] - ABCy * P0_0[0] * invABCx;
-      float outZ = P0_0[2] - ABCz * P0_0[0] * invABCx;
+      float outY = P0_0[1] - (ABCy * P0_0[0]) / ABCx;
+      float outZ = P0_0[2] - (ABCz * P0_0[0]) / ABCx;
 
       YZSpotsT[k][0] = outY / px + ybc0;
       YZSpotsT[k][1] = outZ / px + zbc0;
@@ -304,9 +303,11 @@ __global__ void screen_pairs_kernel(
     float refP1z = RM[2*3+1] * ythis + RM[2*3+2] * zthis;
 
     float refABCx = refP1x - P0_0[0];
-    float refInvABCx = 1.0f / refABCx;
-    float refOutY = P0_0[1] - (refP1y - P0_0[1]) * P0_0[0] * refInvABCx;
-    float refOutZ = P0_0[2] - (refP1z - P0_0[2]) * P0_0[0] * refInvABCx;
+    float refABCy = refP1y - P0_0[1];
+    float refABCz = refP1z - P0_0[2];
+
+    float refOutY = P0_0[1] - (refABCy * P0_0[0]) / refABCx;
+    float refOutZ = P0_0[2] - (refABCz * P0_0[0]) / refABCx;
     float refYpx = refOutY / px + ybc0;
     float refZpx = refOutZ / px + zbc0;
 
