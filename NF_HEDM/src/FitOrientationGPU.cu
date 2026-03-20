@@ -247,7 +247,7 @@ __global__ void screen_pairs_kernel(
   float zbc0 = c_zbc[0];
   float P0_0[3] = { c_P0[0], c_P0[1], c_P0[2] };
 
-  GPUOrientHeader hdr = __ldg(&headers[oriIdx]);
+  GPUOrientHeader hdr = headers[oriIdx];
 
   int OverlapPixels = 0;
   int TotalPixels = 0;
@@ -269,7 +269,7 @@ __global__ void screen_pairs_kernel(
       }
     }
 
-    GPUSpot spot = __ldg(&spots[hdr.spotOffset + s]);
+    GPUSpot spot = spots[hdr.spotOffset + s];
     if (!spot.valid) continue;
     spotsProcessed++;
 
