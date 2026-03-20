@@ -107,12 +107,6 @@ struct GPUOrientHeader {
 // GPU context
 // ─────────────────────────────────────────────────────────────
 
-// Coarse occupancy grid: 1 bit per (layer, omeBin, tileY, tileZ)
-// where tileY = pixY >> COARSE_TILE_SHIFT, etc.
-// Fits in L2 (~1.5 MB for typical detector) → fast rejection of empty tiles.
-#define COARSE_TILE_SHIFT 5   // 32×32 pixel tiles
-#define COARSE_TILE_SIZE (1 << COARSE_TILE_SHIFT)
-
 struct NFGPUContext {
   int deviceId;
   int nrPixelsY, nrPixelsZ;
@@ -124,11 +118,6 @@ struct NFGPUContext {
   uint32_t *d_obsFlat;
   long long obsFlatSize;  // Number of bits
   int obsUploaded;
-
-  // Coarse occupancy grid on device (L2-friendly prefilter)
-  uint32_t *d_coarseObs;
-  int coarseTilesY, coarseTilesZ;
-  long long coarseTotalBits;
 
   // Precomputed spot data on device
   GPUSpot *d_spots;
@@ -161,19 +150,6 @@ __device__ static inline int gpu_test_bit(const uint32_t *obs, long long bitIdx)
   int word = (int)(bitIdx / 32);
   int bit  = (int)(bitIdx % 32);
   return (obs[word] >> bit) & 1;
-}
-
-__device__ static inline int gpu_test_coarse_bit(
-    const uint32_t * __restrict__ coarseObs,
-    int layer, int omeBin, int tileY, int tileZ,
-    int nrFiles, int coarseTilesY, int coarseTilesZ) {
-  long long bitIdx = (long long)layer * nrFiles * coarseTilesY * coarseTilesZ
-                   + (long long)omeBin * coarseTilesY * coarseTilesZ
-                   + (long long)tileY * coarseTilesZ
-                   + tileZ;
-  int word = (int)(bitIdx / 32);
-  int bit  = (int)(bitIdx % 32);
-  return (coarseObs[word] >> bit) & 1;
 }
 
 // ═════════════════════════════════════════════════════════════
@@ -218,7 +194,6 @@ __constant__ float c_RM[9];
 
 __global__ void screen_pairs_kernel(
     const uint32_t * __restrict__ obsFlat,
-    const uint32_t * __restrict__ coarseObs,
     const GPUSpot * __restrict__ spots,
     const GPUOrientHeader * __restrict__ headers,
     const float * __restrict__ voxXG,
@@ -228,7 +203,6 @@ __global__ void screen_pairs_kernel(
     int nLayers,
     int nrFiles,
     int nrPixelsY, int nrPixelsZ,
-    int coarseTilesY, int coarseTilesZ,
     float px, float gs,
     float minFracOverlap,
     NFGPUWinner *winners,
@@ -387,15 +361,6 @@ __global__ void screen_pairs_kernel(
                 break;
               }
 
-              // Coarse prefilter: check if tile has any data (L2-resident)
-              int tY = MultY >> COARSE_TILE_SHIFT;
-              int tZ = MultZ >> COARSE_TILE_SHIFT;
-              if (!gpu_test_coarse_bit(coarseObs, layer, omeBin, tY, tZ,
-                                       nrFiles, coarseTilesY, coarseTilesZ)) {
-                allFound = 0;
-                continue;  // still check remaining layers for pixOob
-              }
-
               long long binNr = layerBinBase[layer]
                               + (long long)MultY * nrPixelsZ
                               + MultZ;
@@ -425,15 +390,6 @@ __global__ void screen_pairs_kernel(
         if (MultY >= nrPixelsY || MultY < 0 || MultZ >= nrPixelsZ || MultZ < 0) {
           pixOob = 1;
           break;
-        }
-
-        // Coarse prefilter
-        int tY = MultY >> COARSE_TILE_SHIFT;
-        int tZ = MultZ >> COARSE_TILE_SHIFT;
-        if (!gpu_test_coarse_bit(coarseObs, layer, omeBin, tY, tZ,
-                                 nrFiles, coarseTilesY, coarseTilesZ)) {
-          allFound = 0;
-          continue;
         }
 
         long long binNr = layerBinBase[layer]
@@ -534,7 +490,6 @@ extern "C" void nf_gpu_destroy(NFGPUContext *ctx) {
   cudaSetDevice(ctx->deviceId);
 
   if (ctx->d_obsFlat)       cudaFree(ctx->d_obsFlat);
-  if (ctx->d_coarseObs)     cudaFree(ctx->d_coarseObs);
   if (ctx->d_spots)         cudaFree(ctx->d_spots);
   if (ctx->d_orientHeaders) cudaFree(ctx->d_orientHeaders);
   if (ctx->d_Lsd)           cudaFree(ctx->d_Lsd);
@@ -579,69 +534,6 @@ extern "C" int nf_gpu_upload_obs_spots(NFGPUContext *ctx,
   printf("NF GPU: ObsSpotsInfo uploaded (%.1f MB, %.2f s)\n",
          flatBytes / (1024.0 * 1024.0), dt);
 
-  // Build coarse occupancy grid: 1 bit per (layer, omeBin, tileY, tileZ)
-  // A coarse bit is SET if ANY fine bit within the 32×32 pixel tile is set.
-  {
-    double tc0 = nf_gpu_timer_sec();
-    int cTilesY = (ctx->nrPixelsY + COARSE_TILE_SIZE - 1) / COARSE_TILE_SIZE;
-    int cTilesZ = (ctx->nrPixelsZ + COARSE_TILE_SIZE - 1) / COARSE_TILE_SIZE;
-    ctx->coarseTilesY = cTilesY;
-    ctx->coarseTilesZ = cTilesZ;
-
-    long long coarseTotalBits = (long long)ctx->nLayers * ctx->nrFiles * cTilesY * cTilesZ;
-    ctx->coarseTotalBits = coarseTotalBits;
-    long long coarseWords = (coarseTotalBits + 31) / 32;
-    uint32_t *h_coarse = (uint32_t *)calloc(coarseWords + 1, sizeof(uint32_t));
-
-    // Iterate over all set bits in obsFlat and set corresponding coarse bits
-    // obsFlat layout: bit = layer*nrFiles*nPxY*nPxZ + omeBin*nPxY*nPxZ + pixY*nPxZ + pixZ
-    long long frameStride = (long long)ctx->nrPixelsY * ctx->nrPixelsZ;
-    long long layerStride = (long long)ctx->nrFiles * frameStride;
-
-    #pragma omp parallel for schedule(dynamic, 4096)
-    for (long long w = 0; w < (long long)nWords; w++) {
-      uint32_t word = ((const uint32_t *)h_obsSpots)[w];
-      if (word == 0) continue;  // Skip empty words quickly
-
-      for (int b = 0; b < 32; b++) {
-        if (!((word >> b) & 1)) continue;
-
-        long long bitIdx = w * 32 + b;
-        if (bitIdx >= ctx->obsFlatSize) break;
-
-        // Decode flat index → (layer, omeBin, pixY, pixZ)
-        int layer  = (int)(bitIdx / layerStride);
-        long long rem = bitIdx - (long long)layer * layerStride;
-        int omeBin = (int)(rem / frameStride);
-        rem -= (long long)omeBin * frameStride;
-        int pixY = (int)(rem / ctx->nrPixelsZ);
-        int pixZ = (int)(rem % ctx->nrPixelsZ);
-
-        int tileY = pixY >> COARSE_TILE_SHIFT;
-        int tileZ = pixZ >> COARSE_TILE_SHIFT;
-
-        // Set coarse bit (atomic for thread safety)
-        long long cBit = (long long)layer * ctx->nrFiles * cTilesY * cTilesZ
-                       + (long long)omeBin * cTilesY * cTilesZ
-                       + (long long)tileY * cTilesZ
-                       + tileZ;
-        int cWord = (int)(cBit / 32);
-        int cBitOff = (int)(cBit % 32);
-        #pragma omp atomic
-        h_coarse[cWord] |= (1u << cBitOff);
-      }
-    }
-
-    size_t coarseBytes = (coarseWords + 1) * sizeof(uint32_t);
-    CUDA_CHECK(cudaMalloc(&ctx->d_coarseObs, coarseBytes));
-    CUDA_CHECK(cudaMemcpy(ctx->d_coarseObs, h_coarse, coarseBytes,
-                          cudaMemcpyHostToDevice));
-    free(h_coarse);
-
-    double dtc = nf_gpu_timer_sec() - tc0;
-    printf("NF GPU: coarse occupancy grid built (%dx%d tiles, %.2f MB, %.2f s)\n",
-           cTilesY, cTilesZ, coarseBytes / (1024.0 * 1024.0), dtc);
-  }
 
   return 0;
 }
@@ -850,47 +742,205 @@ extern "C" int nf_gpu_screen(NFGPUContext *ctx,
   CUDA_CHECK(cudaMalloc(&ctx->d_nWinners, sizeof(int)));
   CUDA_CHECK(cudaMemset(ctx->d_nWinners, 0, sizeof(int)));
 
-  // Launch per-pair kernel
   int blockSize = 256;
-  int gridSize = (int)((totalPairs + blockSize - 1) / blockSize);
-
   double tKernel0 = nf_gpu_timer_sec();
 
-  screen_pairs_kernel<<<gridSize, blockSize, 0, ctx->stream>>>(
-      ctx->d_obsFlat,
-      ctx->d_coarseObs,
-      ctx->d_spots,
-      ctx->d_orientHeaders,
-      d_XG, d_YG,
-      nVoxels, nOrient,
-      ctx->nLayers, ctx->nrFiles,
-      ctx->nrPixelsY, ctx->nrPixelsZ,
-      ctx->coarseTilesY, ctx->coarseTilesZ,
-      ctx->px, ctx->gs,
-      (float)minFracOverlap,
-      ctx->d_winners, ctx->d_nWinners, ctx->maxWinners);
+  if (ctx->nLayers > 1) {
+    // ─── TWO-PASS FUNNEL ───
+    // Pass 1: screen with single layer (layer 0) — produces a superset of winners.
+    // Pass 2: re-evaluate only pass-1 winners with ALL layers.
+    // This halves the bitfield working set and gives ~2× kernel speedup for pass 1,
+    // and pass 2 processes only O(1000) pairs instead of O(10^9).
 
-  CUDA_CHECK(cudaStreamSynchronize(ctx->stream));
-  double dtKernel = nf_gpu_timer_sec() - tKernel0;
-  printf("NF GPU: screening kernel completed in %.2f s\n", dtKernel);
+    // --- Pass 1: single-layer screening ---
+    int gridSize1 = (int)((totalPairs + blockSize - 1) / blockSize);
 
-  // Download winner count
-  int h_nW = 0;
-  CUDA_CHECK(cudaMemcpy(&h_nW, ctx->d_nWinners, sizeof(int),
-                        cudaMemcpyDeviceToHost));
+    // Upload layer-0-only geometry to constant memory
+    {
+      float h_Lsd1[1], h_ybc1[1], h_zbc1[1], h_P0_1[3];
+      CUDA_CHECK(cudaMemcpy(h_Lsd1, ctx->d_Lsd, sizeof(float), cudaMemcpyDeviceToHost));
+      CUDA_CHECK(cudaMemcpy(h_ybc1, ctx->d_ybc, sizeof(float), cudaMemcpyDeviceToHost));
+      CUDA_CHECK(cudaMemcpy(h_zbc1, ctx->d_zbc, sizeof(float), cudaMemcpyDeviceToHost));
+      CUDA_CHECK(cudaMemcpy(h_P0_1, ctx->d_P0, 3 * sizeof(float), cudaMemcpyDeviceToHost));
+      CUDA_CHECK(cudaMemcpyToSymbol(c_Lsd, h_Lsd1, sizeof(float)));
+      CUDA_CHECK(cudaMemcpyToSymbol(c_ybc, h_ybc1, sizeof(float)));
+      CUDA_CHECK(cudaMemcpyToSymbol(c_zbc, h_zbc1, sizeof(float)));
+      CUDA_CHECK(cudaMemcpyToSymbol(c_P0, h_P0_1, 3 * sizeof(float)));
+    }
 
-  if (h_nW > ctx->maxWinners) {
-    printf("NF GPU: WARNING: winner buffer overflow (%d > %d), "
-           "results truncated\n", h_nW, ctx->maxWinners);
-    h_nW = ctx->maxWinners;
+    screen_pairs_kernel<<<gridSize1, blockSize, 0, ctx->stream>>>(
+        ctx->d_obsFlat,
+        ctx->d_spots,
+        ctx->d_orientHeaders,
+        d_XG, d_YG,
+        nVoxels, nOrient,
+        1,  // nLayers = 1 for pass 1
+        ctx->nrFiles,
+        ctx->nrPixelsY, ctx->nrPixelsZ,
+        ctx->px, ctx->gs,
+        (float)minFracOverlap,
+        ctx->d_winners, ctx->d_nWinners, ctx->maxWinners);
+
+    CUDA_CHECK(cudaStreamSynchronize(ctx->stream));
+    double dtPass1 = nf_gpu_timer_sec() - tKernel0;
+
+    // Download pass-1 winners
+    int nPass1 = 0;
+    CUDA_CHECK(cudaMemcpy(&nPass1, ctx->d_nWinners, sizeof(int),
+                          cudaMemcpyDeviceToHost));
+    if (nPass1 > ctx->maxWinners) nPass1 = ctx->maxWinners;
+
+    printf("NF GPU: pass 1 (layer 0 only) — %d candidates in %.2f s\n",
+           nPass1, dtPass1);
+
+    if (nPass1 > 0) {
+      NFGPUWinner *h_pass1 = (NFGPUWinner *)malloc(nPass1 * sizeof(NFGPUWinner));
+      CUDA_CHECK(cudaMemcpy(h_pass1, ctx->d_winners,
+                            nPass1 * sizeof(NFGPUWinner),
+                            cudaMemcpyDeviceToHost));
+
+      // --- Pass 2: re-evaluate candidates with ALL layers ---
+      // Build per-candidate voxel XG/YG arrays
+      float *h_XG2 = (float *)malloc(nPass1 * 3 * sizeof(float));
+      float *h_YG2 = (float *)malloc(nPass1 * 3 * sizeof(float));
+      GPUOrientHeader *h_hdr2 = (GPUOrientHeader *)malloc(nPass1 * sizeof(GPUOrientHeader));
+
+      // We need each pass-1 winner to be its own (voxel=0, orient=i) pair.
+      // Re-pack: for each candidate, copy its voxel triangle and orient header.
+      for (int i = 0; i < nPass1; i++) {
+        int vI = h_pass1[i].voxelIdx;
+        int oI = h_pass1[i].orientIdx;
+        for (int k = 0; k < 3; k++) {
+          h_XG2[i * 3 + k] = (float)h_XGrains[vI * 3 + k];
+          h_YG2[i * 3 + k] = (float)h_YGrains[vI * 3 + k];
+        }
+        // Copy the original orient header but set a 1:1 mapping
+        GPUOrientHeader origHdr;
+        CUDA_CHECK(cudaMemcpy(&origHdr, &ctx->d_orientHeaders[oI],
+                              sizeof(GPUOrientHeader), cudaMemcpyDeviceToHost));
+        h_hdr2[i] = origHdr;
+      }
+
+      // Upload pass-2 data
+      float *d_XG2, *d_YG2;
+      GPUOrientHeader *d_hdr2;
+      CUDA_CHECK(cudaMalloc(&d_XG2, nPass1 * 3 * sizeof(float)));
+      CUDA_CHECK(cudaMalloc(&d_YG2, nPass1 * 3 * sizeof(float)));
+      CUDA_CHECK(cudaMalloc(&d_hdr2, nPass1 * sizeof(GPUOrientHeader)));
+      CUDA_CHECK(cudaMemcpy(d_XG2, h_XG2, nPass1 * 3 * sizeof(float),
+                            cudaMemcpyHostToDevice));
+      CUDA_CHECK(cudaMemcpy(d_YG2, h_YG2, nPass1 * 3 * sizeof(float),
+                            cudaMemcpyHostToDevice));
+      CUDA_CHECK(cudaMemcpy(d_hdr2, h_hdr2, nPass1 * sizeof(GPUOrientHeader),
+                            cudaMemcpyHostToDevice));
+
+      // Re-upload full geometry to constant memory
+      {
+        float h_Lsd[MAX_LAYERS], h_ybc[MAX_LAYERS], h_zbc[MAX_LAYERS];
+        float h_P0[MAX_LAYERS * 3];
+        CUDA_CHECK(cudaMemcpy(h_Lsd, ctx->d_Lsd, ctx->nLayers * sizeof(float),
+                              cudaMemcpyDeviceToHost));
+        CUDA_CHECK(cudaMemcpy(h_ybc, ctx->d_ybc, ctx->nLayers * sizeof(float),
+                              cudaMemcpyDeviceToHost));
+        CUDA_CHECK(cudaMemcpy(h_zbc, ctx->d_zbc, ctx->nLayers * sizeof(float),
+                              cudaMemcpyDeviceToHost));
+        CUDA_CHECK(cudaMemcpy(h_P0, ctx->d_P0, ctx->nLayers * 3 * sizeof(float),
+                              cudaMemcpyDeviceToHost));
+        CUDA_CHECK(cudaMemcpyToSymbol(c_Lsd, h_Lsd, ctx->nLayers * sizeof(float)));
+        CUDA_CHECK(cudaMemcpyToSymbol(c_ybc, h_ybc, ctx->nLayers * sizeof(float)));
+        CUDA_CHECK(cudaMemcpyToSymbol(c_zbc, h_zbc, ctx->nLayers * sizeof(float)));
+        CUDA_CHECK(cudaMemcpyToSymbol(c_P0, h_P0, ctx->nLayers * 3 * sizeof(float)));
+      }
+
+      // Reset winner count and launch pass 2
+      // Each "pair" is (voxIdx=i, oriIdx=i) with nVoxels=1, nOrientations=nPass1
+      // Thread i processes voxel XG2[i], orient hdr2[i]
+      CUDA_CHECK(cudaMemset(ctx->d_nWinners, 0, sizeof(int)));
+
+      int gridSize2 = (nPass1 + blockSize - 1) / blockSize;
+      screen_pairs_kernel<<<gridSize2, blockSize, 0, ctx->stream>>>(
+          ctx->d_obsFlat,
+          ctx->d_spots,
+          d_hdr2,
+          d_XG2, d_YG2,
+          1,       // nVoxels = 1 (each candidate is its own "voxel")
+          nPass1,  // nOrientations = number of candidates
+          ctx->nLayers, ctx->nrFiles,
+          ctx->nrPixelsY, ctx->nrPixelsZ,
+          ctx->px, ctx->gs,
+          (float)minFracOverlap,
+          ctx->d_winners, ctx->d_nWinners, ctx->maxWinners);
+
+      CUDA_CHECK(cudaStreamSynchronize(ctx->stream));
+      double dtPass2 = nf_gpu_timer_sec() - tKernel0 - dtPass1;
+      printf("NF GPU: pass 2 (all %d layers) — verified %d candidates in %.2f s\n",
+             ctx->nLayers, nPass1, dtPass2);
+
+      // Download pass-2 winners and remap voxel/orient indices
+      int nPass2 = 0;
+      CUDA_CHECK(cudaMemcpy(&nPass2, ctx->d_nWinners, sizeof(int),
+                            cudaMemcpyDeviceToHost));
+      if (nPass2 > ctx->maxWinners) nPass2 = ctx->maxWinners;
+
+      NFGPUWinner *h_pass2 = (NFGPUWinner *)malloc(nPass2 * sizeof(NFGPUWinner));
+      CUDA_CHECK(cudaMemcpy(h_pass2, ctx->d_winners,
+                            nPass2 * sizeof(NFGPUWinner),
+                            cudaMemcpyDeviceToHost));
+
+      // Remap indices: pass-2 oriIdx is the index into pass-1 winners
+      for (int i = 0; i < nPass2; i++) {
+        int p1Idx = h_pass2[i].orientIdx;  // index into h_pass1
+        h_pass2[i].voxelIdx = h_pass1[p1Idx].voxelIdx;
+        h_pass2[i].orientIdx = h_pass1[p1Idx].orientIdx;
+      }
+
+      *h_winners = h_pass2;
+      *nWinners = nPass2;
+
+      cudaFree(d_XG2); cudaFree(d_YG2); cudaFree(d_hdr2);
+      free(h_XG2); free(h_YG2); free(h_hdr2); free(h_pass1);
+
+    } else {
+      // No pass-1 winners → no pass-2 needed
+      *h_winners = (NFGPUWinner *)malloc(1);
+      *nWinners = 0;
+    }
+
+    double dtKernel = nf_gpu_timer_sec() - tKernel0;
+    printf("NF GPU: screening kernel completed in %.2f s\n", dtKernel);
+
+  } else {
+    // ─── Single layer: no funnel needed, direct screening ───
+    int gridSize = (int)((totalPairs + blockSize - 1) / blockSize);
+
+    screen_pairs_kernel<<<gridSize, blockSize, 0, ctx->stream>>>(
+        ctx->d_obsFlat,
+        ctx->d_spots,
+        ctx->d_orientHeaders,
+        d_XG, d_YG,
+        nVoxels, nOrient,
+        ctx->nLayers, ctx->nrFiles,
+        ctx->nrPixelsY, ctx->nrPixelsZ,
+        ctx->px, ctx->gs,
+        (float)minFracOverlap,
+        ctx->d_winners, ctx->d_nWinners, ctx->maxWinners);
+
+    CUDA_CHECK(cudaStreamSynchronize(ctx->stream));
+    double dtKernel = nf_gpu_timer_sec() - tKernel0;
+    printf("NF GPU: screening kernel completed in %.2f s\n", dtKernel);
+
+    // Download winner count
+    int h_nW = 0;
+    CUDA_CHECK(cudaMemcpy(&h_nW, ctx->d_nWinners, sizeof(int),
+                          cudaMemcpyDeviceToHost));
+    if (h_nW > ctx->maxWinners) h_nW = ctx->maxWinners;
+
+    *h_winners = (NFGPUWinner *)malloc(h_nW * sizeof(NFGPUWinner));
+    CUDA_CHECK(cudaMemcpy(*h_winners, ctx->d_winners,
+                          h_nW * sizeof(NFGPUWinner),
+                          cudaMemcpyDeviceToHost));
+    *nWinners = h_nW;
   }
-
-  // Download winners
-  *h_winners = (NFGPUWinner *)malloc(h_nW * sizeof(NFGPUWinner));
-  CUDA_CHECK(cudaMemcpy(*h_winners, ctx->d_winners,
-                        h_nW * sizeof(NFGPUWinner),
-                        cudaMemcpyDeviceToHost));
-  *nWinners = h_nW;
 
   // Cleanup
   cudaFree(d_XG);
@@ -901,7 +951,7 @@ extern "C" int nf_gpu_screen(NFGPUContext *ctx,
   double dt = nf_gpu_timer_sec() - t0;
   printf("NF GPU: screening complete — %d winners from %lld pairs "
          "(%.4f%% pass rate, %.2f s total)\n",
-         h_nW, totalPairs, 100.0 * h_nW / totalPairs, dt);
+         *nWinners, totalPairs, 100.0 * *nWinners / totalPairs, dt);
 
   return 0;
 }
