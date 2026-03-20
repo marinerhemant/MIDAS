@@ -350,7 +350,8 @@ int main(int argc, char *argv[]) {
       int totalPairs = (endSliceNr - startSliceNr) / 2;
 #ifdef ENABLE_CUDA
       if (useGPU && gpu_ctx) {
-        // GPU: double-buffered pipeline with OMP-parallel read/write
+        // GPU: OMP-parallel read + GPU compute + OMP-parallel write
+        // Uses pinned host memory for true async DMA transfers
         int gpu_batch_pairs = 50;
         size_t sino_bp_size = information.sinogram_adjusted_size * 4;
         size_t recon_bp_size = information.reconstruction_size * 8;
@@ -361,200 +362,151 @@ int main(int argc, char *argv[]) {
         int gpu_read_threads = omp_get_max_threads();
         if (!recon_info_record.are_sinos) gpu_read_threads = 1;
 
-        // Double-buffered batch state: buf[0] and buf[1]
-        typedef struct {
-          const float **sino1;
-          const float **sino2;
-          float **recon1;
-          float **recon2;
-          int *oldSliceNr;
-          int *sliceNr;
-          size_t *offsetRecons;
-          float **sino_bp;
-          float **recon_bp;
-          int count;  // how many pairs in this batch
-        } BatchBuf;
-        BatchBuf buf[2];
-        for (int s = 0; s < 2; s++) {
-          buf[s].sino1 = (const float **)malloc(gpu_batch_pairs * sizeof(float *));
-          buf[s].sino2 = (const float **)malloc(gpu_batch_pairs * sizeof(float *));
-          buf[s].recon1 = (float **)malloc(gpu_batch_pairs * sizeof(float *));
-          buf[s].recon2 = (float **)malloc(gpu_batch_pairs * sizeof(float *));
-          buf[s].oldSliceNr = (int *)malloc(gpu_batch_pairs * sizeof(int));
-          buf[s].sliceNr = (int *)malloc(gpu_batch_pairs * sizeof(int));
-          buf[s].offsetRecons = (size_t *)malloc(gpu_batch_pairs * sizeof(size_t));
-          buf[s].sino_bp = (float **)malloc(gpu_batch_pairs * sizeof(float *));
-          buf[s].recon_bp = (float **)malloc(gpu_batch_pairs * sizeof(float *));
-          for (int b = 0; b < gpu_batch_pairs; b++) {
-            buf[s].sino_bp[b] = (float *)calloc(sino_bp_size, sizeof(float));
-            buf[s].recon_bp[b] = (float *)calloc(recon_bp_size, sizeof(float));
-          }
-          buf[s].count = 0;
+        // Allocate batch pointer arrays and metadata
+        const float **batch_sino1 = (const float **)malloc(gpu_batch_pairs * sizeof(float *));
+        const float **batch_sino2 = (const float **)malloc(gpu_batch_pairs * sizeof(float *));
+        float **batch_recon1 = (float **)malloc(gpu_batch_pairs * sizeof(float *));
+        float **batch_recon2 = (float **)malloc(gpu_batch_pairs * sizeof(float *));
+        int *batch_oldSliceNr = (int *)malloc(gpu_batch_pairs * sizeof(int));
+        int *batch_sliceNr = (int *)malloc(gpu_batch_pairs * sizeof(int));
+        size_t *batch_offsetRecons = (size_t *)malloc(gpu_batch_pairs * sizeof(size_t));
+
+        // Allocate per-pair sinogram/recon buffers using PINNED memory
+        // (enables true async DMA for cudaMemcpyAsync)
+        float **batch_sino_bp = (float **)malloc(gpu_batch_pairs * sizeof(float *));
+        float **batch_recon_bp = (float **)malloc(gpu_batch_pairs * sizeof(float *));
+#ifdef ENABLE_CUDA
+        for (int b = 0; b < gpu_batch_pairs; b++) {
+          tomo_gpu_pinned_alloc((void **)&batch_sino_bp[b],  sino_bp_size * sizeof(float));
+          tomo_gpu_pinned_alloc((void **)&batch_recon_bp[b], recon_bp_size * sizeof(float));
+          memset(batch_sino_bp[b],  0, sino_bp_size * sizeof(float));
+          memset(batch_recon_bp[b], 0, recon_bp_size * sizeof(float));
         }
+#endif
 
-        // ── Helper: read a batch into buf[s] ──
-        #define GPU_READ_BATCH(s, batchStart) do { \
-          int _this = totalPairs - (batchStart); \
-          if (_this > gpu_batch_pairs) _this = gpu_batch_pairs; \
-          buf[s].count = _this; \
-          _Pragma("omp parallel for schedule(dynamic, 1) num_threads(gpu_read_threads)") \
-          for (int b = 0; b < _this; b++) { \
-            LOCAL_CONFIG_OPTS ti; \
-            ti.sinogram_adjusted_xdim = information.sinogram_adjusted_xdim; \
-            ti.sinogram_adjusted_size = information.sinogram_adjusted_size; \
-            ti.reconstruction_size = information.reconstruction_size; \
-            ti.shift = information.shift; \
-            ti.shifted_sinogram = (float *)malloc(sizeof(float) * ti.sinogram_adjusted_size); \
-            ti.sinograms_boundary_padding = (float *)calloc(ti.sinogram_adjusted_size * 4, sizeof(float)); \
-            ti.sino_calc_buffer = (float *)malloc(sizeof(float) * ti.sinogram_adjusted_xdim * recon_info_record.theta_list_size); \
-            ti.reconstructions_boundary_padding = (float *)calloc(ti.reconstruction_size * 8, sizeof(float)); \
-            ti.shifted_recon = (float *)malloc(sizeof(float) * ti.reconstruction_size); \
-            ti.recon_calc_buffer = (float *)malloc(sizeof(float) * ti.reconstruction_size * 2); \
-            ti.mean_vect = (float *)malloc(sizeof(float) * recon_info_record.sinogram_ydim); \
-            ti.mean_sino_line_data = (float *)malloc(sizeof(float) * ti.sinogram_adjusted_xdim); \
-            ti.low_pass_sino_lines_data = (float *)malloc(sizeof(float) * ti.sinogram_adjusted_xdim); \
-            SINO_READ_OPTS trs; \
-            trs.norm_sino = (float *)malloc(sizeof(float) * recon_info_record.sinogram_adjusted_xdim * recon_info_record.theta_list_size); \
-            int pi = (batchStart) + b; \
-            memset(buf[s].sino_bp[b], 0, sino_bp_size * sizeof(float)); \
-            memset(buf[s].recon_bp[b], 0, recon_bp_size * sizeof(float)); \
-            /* slice 1 */ \
-            int sr = startSliceNr + pi * 2; \
-            int sn = recon_info_record.slices_to_process[sr]; \
-            buf[s].oldSliceNr[b] = sn; \
-            memset(trs.norm_sino, 0, sizeof(float) * recon_info_record.sinogram_adjusted_xdim * recon_info_record.theta_list_size); \
-            memsets(&ti, &recon_info_record); \
-            if (recon_info_record.are_sinos) readSino(sn, &recon_info_record, &trs); \
-            else readRaw(sn, &recon_info_record, &trs, input_fd); \
-            if (recon_info_record.doStripeRemoval) cleanup_sinogram_stripes(trs.norm_sino, recon_info_record.theta_list_size, recon_info_record.sinogram_adjusted_xdim, recon_info_record.stripeSnr, recon_info_record.stripeLaSize, recon_info_record.stripeSmSize, 1); \
-            memcpy(ti.sino_calc_buffer, trs.norm_sino, sizeof(float) * ti.sinogram_adjusted_xdim * recon_info_record.theta_list_size); \
-            reconCentering(&ti, &recon_info_record, 0, recon_info_record.doLogProj); \
-            memcpy(buf[s].sino_bp[b], &ti.sinograms_boundary_padding[0], ti.sinogram_adjusted_size * 2 * sizeof(float)); \
-            /* slice 2 */ \
-            sn = recon_info_record.slices_to_process[sr + 1]; \
-            buf[s].sliceNr[b] = sn; \
-            memset(trs.norm_sino, 0, sizeof(float) * recon_info_record.sinogram_adjusted_xdim * recon_info_record.theta_list_size); \
-            if (recon_info_record.are_sinos) readSino(sn, &recon_info_record, &trs); \
-            else readRaw(sn, &recon_info_record, &trs, input_fd); \
-            if (recon_info_record.doStripeRemoval) cleanup_sinogram_stripes(trs.norm_sino, recon_info_record.theta_list_size, recon_info_record.sinogram_adjusted_xdim, recon_info_record.stripeSnr, recon_info_record.stripeLaSize, recon_info_record.stripeSmSize, 1); \
-            memcpy(ti.sino_calc_buffer, trs.norm_sino, sizeof(float) * ti.sinogram_adjusted_xdim * recon_info_record.theta_list_size); \
-            size_t of2 = ti.sinogram_adjusted_size * 2; \
-            size_t or2 = ti.reconstruction_size * 4; \
-            buf[s].offsetRecons[b] = or2; \
-            reconCentering(&ti, &recon_info_record, of2, recon_info_record.doLogProj); \
-            memcpy(&buf[s].sino_bp[b][of2], &ti.sinograms_boundary_padding[of2], ti.sinogram_adjusted_size * 2 * sizeof(float)); \
-            buf[s].sino1[b] = &buf[s].sino_bp[b][0]; \
-            buf[s].sino2[b] = &buf[s].sino_bp[b][of2]; \
-            buf[s].recon1[b] = &buf[s].recon_bp[b][0]; \
-            buf[s].recon2[b] = &buf[s].recon_bp[b][or2]; \
-            free(ti.shifted_sinogram); free(ti.sinograms_boundary_padding); free(ti.sino_calc_buffer); \
-            free(ti.reconstructions_boundary_padding); free(ti.shifted_recon); free(ti.recon_calc_buffer); \
-            free(ti.mean_vect); free(ti.mean_sino_line_data); free(ti.low_pass_sino_lines_data); free(trs.norm_sino); \
-          } \
-        } while(0)
+        for (numSlice = 0; numSlice < totalPairs; numSlice += gpu_batch_pairs) {
+          int this_batch = totalPairs - numSlice;
+          if (this_batch > gpu_batch_pairs) this_batch = gpu_batch_pairs;
 
-        // ── Helper: write a batch from buf[s] (OMP-parallel) ──
-        #define GPU_WRITE_BATCH(s) do { \
-          int _cnt = buf[s].count; \
-          _Pragma("omp parallel for schedule(dynamic, 1) num_threads(gpu_read_threads)") \
-          for (int b = 0; b < _cnt; b++) { \
-            LOCAL_CONFIG_OPTS wi; \
-            wi.sinogram_adjusted_xdim = information.sinogram_adjusted_xdim; \
-            wi.sinogram_adjusted_size = information.sinogram_adjusted_size; \
-            wi.reconstruction_size = information.reconstruction_size; \
-            wi.shift = information.shift; \
-            wi.sinograms_boundary_padding = buf[s].sino_bp[b]; \
-            wi.reconstructions_boundary_padding = buf[s].recon_bp[b]; \
-            wi.recon_calc_buffer = (float *)malloc(sizeof(float) * wi.reconstruction_size * 2); \
-            wi.shifted_recon = (float *)malloc(sizeof(float) * wi.reconstruction_size); \
-            gridrecParams wp; \
-            setSinoAndReconBuffers(1, &buf[s].sino_bp[b][0], &buf[s].recon_bp[b][0], &wp); \
-            setSinoAndReconBuffers(2, &buf[s].sino_bp[b][wi.sinogram_adjusted_size * 2], &buf[s].recon_bp[b][buf[s].offsetRecons[b]], &wp); \
-            getRecons(&wi, &recon_info_record, &wp, 0); \
-            writeRecon(buf[s].oldSliceNr[b], &wi, &recon_info_record, 0, output_fd); \
-            getRecons(&wi, &recon_info_record, &wp, buf[s].offsetRecons[b]); \
-            writeRecon(buf[s].sliceNr[b], &wi, &recon_info_record, 0, output_fd); \
-            free(wi.recon_calc_buffer); \
-            free(wi.shifted_recon); \
-          } \
-        } while(0)
+          // ── Phase 1: OMP-parallel read ──
+          double tr0 = TOMO_WTIME();
+          #pragma omp parallel for schedule(dynamic, 1) num_threads(gpu_read_threads)
+          for (int b = 0; b < this_batch; b++) {
+            LOCAL_CONFIG_OPTS ti;
+            ti.sinogram_adjusted_xdim = information.sinogram_adjusted_xdim;
+            ti.sinogram_adjusted_size = information.sinogram_adjusted_size;
+            ti.reconstruction_size = information.reconstruction_size;
+            ti.shift = information.shift;
+            ti.shifted_sinogram = (float *)malloc(sizeof(float) * ti.sinogram_adjusted_size);
+            ti.sinograms_boundary_padding = (float *)calloc(ti.sinogram_adjusted_size * 4, sizeof(float));
+            ti.sino_calc_buffer = (float *)malloc(sizeof(float) * ti.sinogram_adjusted_xdim * recon_info_record.theta_list_size);
+            ti.reconstructions_boundary_padding = (float *)calloc(ti.reconstruction_size * 8, sizeof(float));
+            ti.shifted_recon = (float *)malloc(sizeof(float) * ti.reconstruction_size);
+            ti.recon_calc_buffer = (float *)malloc(sizeof(float) * ti.reconstruction_size * 2);
+            ti.mean_vect = (float *)malloc(sizeof(float) * recon_info_record.sinogram_ydim);
+            ti.mean_sino_line_data = (float *)malloc(sizeof(float) * ti.sinogram_adjusted_xdim);
+            ti.low_pass_sino_lines_data = (float *)malloc(sizeof(float) * ti.sinogram_adjusted_xdim);
+            SINO_READ_OPTS trs;
+            trs.norm_sino = (float *)malloc(sizeof(float) * recon_info_record.sinogram_adjusted_xdim * recon_info_record.theta_list_size);
 
-        // ── Pipeline: read[0] → { compute[cur] | read[nxt] | write[prev] } ──
-        int nBatches = (totalPairs + gpu_batch_pairs - 1) / gpu_batch_pairs;
-        int cur = 0;
-        // Prime: read first batch
-        double tr0 = TOMO_WTIME();
-        GPU_READ_BATCH(cur, 0);
-        gpu_t_read += TOMO_WTIME() - tr0;
+            int pairIdx = numSlice + b;
+            memset(batch_sino_bp[b], 0, sino_bp_size * sizeof(float));
+            memset(batch_recon_bp[b], 0, recon_bp_size * sizeof(float));
 
-        for (int bi = 0; bi < nBatches; bi++) {
-          int nxt = 1 - cur;
-          int nextBatchStart = (bi + 1) * gpu_batch_pairs;
-          int hasNext = (nextBatchStart < totalPairs);
-          int hasPrev = (bi > 0);
+            // Slice 1
+            int sr = startSliceNr + pairIdx * 2;
+            int sn = recon_info_record.slices_to_process[sr];
+            batch_oldSliceNr[b] = sn;
+            memset(trs.norm_sino, 0, sizeof(float) * recon_info_record.sinogram_adjusted_xdim * recon_info_record.theta_list_size);
+            memsets(&ti, &recon_info_record);
+            if (recon_info_record.are_sinos) readSino(sn, &recon_info_record, &trs);
+            else readRaw(sn, &recon_info_record, &trs, input_fd);
+            if (recon_info_record.doStripeRemoval)
+              cleanup_sinogram_stripes(trs.norm_sino, recon_info_record.theta_list_size, recon_info_record.sinogram_adjusted_xdim, recon_info_record.stripeSnr, recon_info_record.stripeLaSize, recon_info_record.stripeSmSize, 1);
+            memcpy(ti.sino_calc_buffer, trs.norm_sino, sizeof(float) * ti.sinogram_adjusted_xdim * recon_info_record.theta_list_size);
+            reconCentering(&ti, &recon_info_record, 0, recon_info_record.doLogProj);
+            memcpy(batch_sino_bp[b], &ti.sinograms_boundary_padding[0], ti.sinogram_adjusted_size * 2 * sizeof(float));
 
-          // Launch GPU compute for buf[cur] (async — returns quickly)
+            // Slice 2
+            sn = recon_info_record.slices_to_process[sr + 1];
+            batch_sliceNr[b] = sn;
+            memset(trs.norm_sino, 0, sizeof(float) * recon_info_record.sinogram_adjusted_xdim * recon_info_record.theta_list_size);
+            if (recon_info_record.are_sinos) readSino(sn, &recon_info_record, &trs);
+            else readRaw(sn, &recon_info_record, &trs, input_fd);
+            if (recon_info_record.doStripeRemoval)
+              cleanup_sinogram_stripes(trs.norm_sino, recon_info_record.theta_list_size, recon_info_record.sinogram_adjusted_xdim, recon_info_record.stripeSnr, recon_info_record.stripeLaSize, recon_info_record.stripeSmSize, 1);
+            memcpy(ti.sino_calc_buffer, trs.norm_sino, sizeof(float) * ti.sinogram_adjusted_xdim * recon_info_record.theta_list_size);
+            size_t of2 = ti.sinogram_adjusted_size * 2;
+            size_t or2 = ti.reconstruction_size * 4;
+            batch_offsetRecons[b] = or2;
+            reconCentering(&ti, &recon_info_record, of2, recon_info_record.doLogProj);
+            memcpy(&batch_sino_bp[b][of2], &ti.sinograms_boundary_padding[of2], ti.sinogram_adjusted_size * 2 * sizeof(float));
+
+            batch_sino1[b] = &batch_sino_bp[b][0];
+            batch_sino2[b] = &batch_sino_bp[b][of2];
+            batch_recon1[b] = &batch_recon_bp[b][0];
+            batch_recon2[b] = &batch_recon_bp[b][or2];
+
+            free(ti.shifted_sinogram); free(ti.sinograms_boundary_padding);
+            free(ti.sino_calc_buffer); free(ti.reconstructions_boundary_padding);
+            free(ti.shifted_recon); free(ti.recon_calc_buffer);
+            free(ti.mean_vect); free(ti.mean_sino_line_data);
+            free(ti.low_pass_sino_lines_data); free(trs.norm_sino);
+          }
+          gpu_t_read += TOMO_WTIME() - tr0;
+
+          // ── Phase 2: GPU compute ──
           double tc0 = TOMO_WTIME();
           tomo_gpu_reconstruct_batch(gpu_ctx,
-              buf[cur].count,
-              buf[cur].sino1, buf[cur].sino2,
-              buf[cur].recon1, buf[cur].recon2,
+              this_batch,
+              batch_sino1, batch_sino2,
+              batch_recon1, batch_recon2,
               param.M, param.M0, param.M02, param.pdim);
           gpu_t_compute += TOMO_WTIME() - tc0;
 
-          // While GPU was computing, we could have overlapped read+write
-          // but tomo_gpu_reconstruct_batch is currently synchronous.
-          // So we do read+write after compute for now, but they overlap each other.
-          #pragma omp parallel sections num_threads(2)
-          {
-            #pragma omp section
-            {
-              if (hasNext) {
-                double tr = TOMO_WTIME();
-                GPU_READ_BATCH(nxt, nextBatchStart);
-                gpu_t_read += TOMO_WTIME() - tr;
-              }
-            }
-            #pragma omp section
-            {
-              if (hasPrev) {
-                int prev = 1 - cur;
-                double tw = TOMO_WTIME();
-                GPU_WRITE_BATCH(prev);
-                gpu_t_write += TOMO_WTIME() - tw;
-              }
-            }
+          // ── Phase 3: OMP-parallel write ──
+          double tw0 = TOMO_WTIME();
+          #pragma omp parallel for schedule(dynamic, 1) num_threads(gpu_read_threads)
+          for (int b = 0; b < this_batch; b++) {
+            LOCAL_CONFIG_OPTS wi;
+            wi.sinogram_adjusted_xdim = information.sinogram_adjusted_xdim;
+            wi.sinogram_adjusted_size = information.sinogram_adjusted_size;
+            wi.reconstruction_size = information.reconstruction_size;
+            wi.shift = information.shift;
+            wi.sinograms_boundary_padding = batch_sino_bp[b];
+            wi.reconstructions_boundary_padding = batch_recon_bp[b];
+            wi.recon_calc_buffer = (float *)malloc(sizeof(float) * wi.reconstruction_size * 2);
+            wi.shifted_recon = (float *)malloc(sizeof(float) * wi.reconstruction_size);
+            gridrecParams wp;
+            setSinoAndReconBuffers(1, &batch_sino_bp[b][0], &batch_recon_bp[b][0], &wp);
+            setSinoAndReconBuffers(2, &batch_sino_bp[b][wi.sinogram_adjusted_size * 2],
+                                  &batch_recon_bp[b][batch_offsetRecons[b]], &wp);
+            getRecons(&wi, &recon_info_record, &wp, 0);
+            writeRecon(batch_oldSliceNr[b], &wi, &recon_info_record, 0, output_fd);
+            getRecons(&wi, &recon_info_record, &wp, batch_offsetRecons[b]);
+            writeRecon(batch_sliceNr[b], &wi, &recon_info_record, 0, output_fd);
+            free(wi.recon_calc_buffer);
+            free(wi.shifted_recon);
           }
-
-          cur = nxt;
+          gpu_t_write += TOMO_WTIME() - tw0;
         }
-        // Write last batch
-        {
-          int last = 1 - cur;
-          double tw = TOMO_WTIME();
-          GPU_WRITE_BATCH(last);
-          gpu_t_write += TOMO_WTIME() - tw;
-        }
-
         fprintf(stderr, "TOMO GPU dispatch: read=%.3fs compute=%.3fs write=%.3fs total=%.3fs\n",
                 gpu_t_read, gpu_t_compute, gpu_t_write,
                 gpu_t_read + gpu_t_compute + gpu_t_write);
-        #undef GPU_READ_BATCH
-        #undef GPU_WRITE_BATCH
         #undef TOMO_WTIME
 
         // Cleanup
-        for (int s = 0; s < 2; s++) {
-          for (int b = 0; b < gpu_batch_pairs; b++) {
-            free(buf[s].sino_bp[b]);
-            free(buf[s].recon_bp[b]);
-          }
-          free(buf[s].sino_bp); free(buf[s].recon_bp);
-          free(buf[s].sino1); free(buf[s].sino2);
-          free(buf[s].recon1); free(buf[s].recon2);
-          free(buf[s].oldSliceNr); free(buf[s].sliceNr);
-          free(buf[s].offsetRecons);
+#ifdef ENABLE_CUDA
+        for (int b = 0; b < gpu_batch_pairs; b++) {
+          tomo_gpu_pinned_free(batch_sino_bp[b]);
+          tomo_gpu_pinned_free(batch_recon_bp[b]);
         }
+#endif
+        free(batch_sino_bp); free(batch_recon_bp);
+        free(batch_sino1); free(batch_sino2);
+        free(batch_recon1); free(batch_recon2);
+        free(batch_oldSliceNr); free(batch_sliceNr);
+        free(batch_offsetRecons);
       } else
 #endif
       {

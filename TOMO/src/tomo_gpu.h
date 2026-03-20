@@ -162,6 +162,15 @@ int tomo_gpu_preprocess(TomoGPUContext *ctx,
 /// Print GPU device info to stdout.
 void tomo_gpu_print_info(int deviceId);
 
+/// Allocate pinned (page-locked) host memory for async DMA.
+/// @param ptr  Pointer to receive the allocation.
+/// @param size Bytes to allocate.
+/// @return 0 on success.
+int tomo_gpu_pinned_alloc(void **ptr, size_t size);
+
+/// Free pinned host memory.
+void tomo_gpu_pinned_free(void *ptr);
+
 #ifdef __cplusplus
 }
 #endif

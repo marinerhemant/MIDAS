@@ -556,6 +556,26 @@ void tomo_gpu_destroy(TomoGPUContext *ctx) {
     printf("TOMO GPU: context destroyed\n");
 }
 
+// ═════════════════════════════════════════════════════════════
+//  PINNED MEMORY WRAPPERS (for use from C code)
+// ═════════════════════════════════════════════════════════════
+
+extern "C"
+int tomo_gpu_pinned_alloc(void **ptr, size_t size) {
+    cudaError_t err = cudaMallocHost(ptr, size);
+    if (err != cudaSuccess) {
+        fprintf(stderr, "TOMO GPU: cudaMallocHost failed (%zu bytes): %s\n",
+                size, cudaGetErrorString(err));
+        return -1;
+    }
+    return 0;
+}
+
+extern "C"
+void tomo_gpu_pinned_free(void *ptr) {
+    if (ptr) cudaFreeHost(ptr);
+}
+
 
 // ═════════════════════════════════════════════════════════════
 //  TABLE UPLOAD (from CPU initGridRec → GPU)
