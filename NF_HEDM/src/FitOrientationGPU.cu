@@ -466,10 +466,9 @@ void screen_pairs_kernel(
         if (allFound) OverlapPixels++;
         TotalPixels++;
       }
-    }
-    }
-    }
-  }  // end frame batch loop
+    }  // end if/else (multi-pixel vs single-pixel)
+    }  // end spot loop (for s)
+  }  // end frame batch loop (for fbStart)
 
   if (TotalPixels > 0) {
     float fracOverlap = (float)OverlapPixels / (float)TotalPixels;
