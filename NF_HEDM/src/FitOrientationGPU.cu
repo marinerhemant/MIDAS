@@ -751,6 +751,13 @@ __device__ static float gpu_calc_frac_overlap(
         int pz = (int)roundf((YZSpots[0][1]+YZSpots[1][1]+YZSpots[2][1])/3.0f);
         int allFound = 1;
         int pixOob = 0;
+
+        // Debug print for first spot
+        if (debugPrint && nValidSpots <= 3) {
+          printf("  spot %d: yl=%.2f zl=%.2f ome=%.2f omeBin=%d refYpx=%.2f refZpx=%.2f py=%d pz=%d\n",
+                 nValidSpots, yl, zl, Omega, omeBin, refYpx, refZpx, py, pz);
+        }
+
         for (int layer = 0; layer < nLayers; layer++) {
           int MultY = layerBaseY[layer] + py;
           int MultZ = layerBaseZ[layer] + pz;
@@ -758,7 +765,14 @@ __device__ static float gpu_calc_frac_overlap(
             pixOob = 1; break;
           }
           long long binNr = layerBinBase[layer] + (long long)MultY*nrPixelsZ + MultZ;
-          if (!gpu_test_bit(obsFlat, binNr)) { allFound = 0; break; }
+          int bitVal = gpu_test_bit(obsFlat, binNr) ? 1 : 0;
+
+          if (debugPrint && nValidSpots <= 3) {
+            printf("    layer %d: MultY=%d MultZ=%d binNr=%lld bit=%d\n",
+                   layer, MultY, MultZ, binNr, bitVal);
+          }
+
+          if (!bitVal) { allFound = 0; break; }
         }
         if (!pixOob) {
           if (allFound) OverlapPixels++;
