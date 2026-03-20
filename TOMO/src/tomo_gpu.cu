@@ -61,7 +61,7 @@ struct TomoGPUContext {
     int deviceId;
 
     // Problem dimensions
-    unsigned long sinogram_x_dim;
+    unsigned long sinogram_x_dim;  // = adjusted_xdim * 2 (padded, complex-doubled)
     int theta_list_size;
     int filter_type;
     int useFftwBridge;
@@ -84,7 +84,7 @@ struct TomoGPUContext {
     float *d_sino2;
     cufftComplex *d_cproj;       // [pdim] — 1D FFT work buffer
     cufftComplex *d_H;           // [(M+1)*(M+1)] — Fourier grid
-    float *d_recon1;             // [M0 * sinogram_x_dim]
+    float *d_recon1;             // [M0 * sinogram_x_dim] (stride = sinogram_x_dim)
     float *d_recon2;
 
     // cuFFT plans
@@ -111,11 +111,15 @@ struct TomoGPUContext {
 // ═════════════════════════════════════════════════════════════
 
 // ── Load one sinogram row into cproj as complex ──
-// cproj[0] is unused (Numerical Recipes 1-indexed convention is handled
-// by offsetting the pointer passed to cuFFT).
-// G1[n][0..sinogram_x_dim-1] → real part
-// G2[n][0..sinogram_x_dim-1] → imag part
-// Remaining [sinogram_x_dim..pdim-1] are zero-padded.
+// CPU phase1 does:
+//   cproj[j].r = G1[n][j-1],  cproj[j].i = G2[n][j-1]   for j=1..sinogram_x_dim
+//   cproj[j] = 0                                          for j=sinogram_x_dim+1..pdim-1
+// Then four1((float*)cproj + 1, pdim, ...) which does FFT on cproj[1..pdim].
+//
+// For GPU: we use 0-indexed cproj[0..pdim-1] and pass it directly to cuFFT.
+// So we load: cproj[j].x = G1[n][j] for j=0..sinogram_x_dim-1, cproj[j]=0 otherwise.
+//
+// G1[n] = sinogram1[n * sinogram_x_dim]  (flat array, stride = sinogram_x_dim)
 __global__ void load_sinogram_row_kernel(
     cufftComplex *cproj,            // output [pdim]
     const float *sino1,             // [theta_list_size * sinogram_x_dim]
@@ -138,10 +142,17 @@ __global__ void load_sinogram_row_kernel(
 }
 
 // ── Apply filter × phase to FFT output + scatter to H grid ──
-// Combined kernel: one thread per frequency bin j ∈ [1, pdim/2).
-// For each j:
-//   1. Apply filphase → Cdata1 (positive freq), Cdata2 (negative freq / mirror)
-//   2. Scatter both to H grid using PSWF convolution lookup table
+// One thread per frequency bin j ∈ [1, pdim/2).
+//
+// CPU four1 interface:
+//   four1((float *)param->cproj + 1, param->pdim, 1, param)
+//   This copies from data+1 = (float*)cproj+2, i.e. starting at cproj[1],
+//   forward pdim complex values → FFT → copy back.
+//   After FFT: CPU reads cproj[j+1] for positive freq, cproj[(pdim-j)+1] for mirror.
+//
+// Our GPU cuFFT operates on d_cproj[0..pdim-1] (0-indexed).
+// cuFFT inverse of 0-indexed data ≡ FFTW backward of 1-indexed data shifted.
+// Net mapping: CPU cproj[j+1] → GPU d_cproj[j], CPU cproj[(pdim-j)+1] → GPU d_cproj[pdim-j].
 __global__ void filter_and_scatter_kernel(
     cufftComplex *H,                // [(M+1)*(M+1)]
     const cufftComplex *cproj,      // [pdim], post-FFT
@@ -165,17 +176,12 @@ __global__ void filter_and_scatter_kernel(
     float fi = filphase[j * 2 + 1];
 
     // Apply filter to positive frequency: Cdata1 = filphase[j] * cproj[j]
-    // Note: CPU uses 1-indexed cproj[j+1], but our cproj is 0-indexed
-    // CPU passes (float *)cproj + 1 to four1, then four1 does data+1.
-    // Net effect: FFT operates on cproj[1..pdim] in 1-indexed = cproj[0..pdim-1] in our 0-indexed.
-    // After FFT, CPU reads cproj[j+1] in 1-indexed = index j in our 0-indexed.
     float cr = cproj[j].x;
     float ci = cproj[j].y;
     float d1r = fr * cr - fi * ci;
     float d1i = fr * ci + fi * cr;
 
     // Mirror frequency: Cdata2 = conj(filphase[j]) * cproj[pdim - j]
-    // CPU: cproj[(pdim-j)+1] in 1-indexed = cproj[pdim-j] in our 0-indexed
     float mr = cproj[pdim - j].x;
     float mi = cproj[pdim - j].y;
     float d2r =  fr * mr + fi * mi;   // conj: fi → -fi
@@ -198,7 +204,7 @@ __global__ void filter_and_scatter_kernel(
     if (ivl < 1) ivl = 1;
     if (ivh >= M) ivh = M - 1;
 
-    // Pre-compute V-direction weights (L ≈ 7, so ≤ 8 entries)
+    // Pre-compute V-direction weights (L ≈ 3.8, so ≤ 5 entries)
     float work[16];
     int k = 0;
     for (long iv = ivl; iv <= ivh; iv++, k++) {
@@ -238,16 +244,27 @@ __global__ void filter_and_scatter_kernel(
 }
 
 // ── Phase 3: PSWF correction + extraction ──
-// Maps the oversampled M×M Fourier grid back to M0×M0 image,
-// with wrap-around indexing and PSWF deconvolution correction.
-// Output goes to S1 (real part = recon of sino1) and S2 (imag part = recon of sino2).
+// CPU phase3 maps M×M Fourier grid to M0×M0 output using wrap-around
+// indexing and PSWF correction.  Output S1/S2 have stride sinogram_x_dim
+// (NOT M0!), matching setSinoAndReconBuffers.
+//
+// CPU loop structure:
+//   j=0: iu starts at M-M02, goes to M-1   (M02+1 values, but first block is M02 values since ufin=M is exclusive... wait)
+//   Actually: ustart=M-M02, ufin=M → iu goes M-M02..M-1 → that's M02 iterations
+//   Then ustart=0, ufin=M02+1 → iu goes 0..M02 → that's M02+1 iterations
+//   Total = M02 + M02 + 1 = 2*M02 + 1 = M0 ✓
+//
+// Mapping: output pixel (tj, tk) → grid (iu, iv):
+//   tj ∈ [0, M02): iu = (M-M02) + tj
+//   tj ∈ [M02, M0): iu = tj - M02
+//   Same for tk → iv
 __global__ void pswf_extract_kernel(
     const cufftComplex *H,
-    float *S1,                      // [M0 * sinogram_x_dim]
+    float *S1,                      // [M0 * sinogram_x_dim]  (stride = sinogram_x_dim)
     float *S2,
     const float *winv,              // [M0]
     long M, long M0, long M02,
-    unsigned long sinogram_x_dim)
+    unsigned long sinogram_x_dim)   // stride for output
 {
     int tj = blockIdx.x * blockDim.x + threadIdx.x;
     int tk = blockIdx.y * blockDim.y + threadIdx.y;
@@ -255,26 +272,25 @@ __global__ void pswf_extract_kernel(
 
     float corrn = winv[tj] * winv[tk];
 
-    // Wrap-around indexing (matches CPU phase3):
-    // CPU loops j=0..M0-1 with:
-    //   first block: iu = M-M02 .. M-1  (j = 0 .. M02-1)      → ustart = M-M02
-    //   second block: iu = 0 .. M02     (j = M02 .. M0-1)      → ustart = 0
+    // Wrap-around: first M02 pixels come from end of grid, rest from start
     long iu, iv;
-    if (tj < (int)(M02 + 1)) {
-        iu = (M - M02) + tj;        // first block: wraps from end of grid
+    if (tj < M02) {
+        iu = (M - M02) + tj;       // tj=0 → iu=M-M02, tj=M02-1 → iu=M-1
     } else {
-        iu = tj - M02 - 1;          // second block: start of grid
+        iu = tj - M02;             // tj=M02 → iu=0, tj=M0-1 → iu=M02
     }
-    if (tk < (int)(M02 + 1)) {
+    if (tk < M02) {
         iv = (M - M02) + tk;
     } else {
-        iv = tk - M02 - 1;
+        iv = tk - M02;
     }
 
     // H[iu*M + iv + 1] — same indexing as phase1 scatter
     long h_idx = iu * M + iv + 1;
-    S1[tj * sinogram_x_dim + tk] = corrn * H[h_idx].x;
-    S2[tj * sinogram_x_dim + tk] = corrn * H[h_idx].y;
+    // Output uses sinogram_x_dim as stride (matching CPU's S1[j][k] = recon1[j*sinogram_x_dim + k])
+    long out_idx = (long)tj * sinogram_x_dim + tk;
+    S1[out_idx] = corrn * H[h_idx].x;
+    S2[out_idx] = corrn * H[h_idx].y;
 }
 
 
@@ -363,6 +379,7 @@ TomoGPUContext *tomo_gpu_init(int deviceId,
                                (ctx->pdim / 2 + 1) * 2 * sizeof(float)));
 
     // ── Allocate device work buffers ──
+    // Sinogram: flat array [theta_list_size * sinogram_x_dim]
     size_t sino_size = (size_t)theta_list_size * sinogram_x_dim * sizeof(float);
     CUDA_CHECK_VOID(cudaMalloc(&ctx->d_sino1, sino_size));
     CUDA_CHECK_VOID(cudaMalloc(&ctx->d_sino2, sino_size));
@@ -374,7 +391,8 @@ TomoGPUContext *tomo_gpu_init(int deviceId,
     // 1D FFT work buffer
     CUDA_CHECK_VOID(cudaMalloc(&ctx->d_cproj, ctx->pdim * sizeof(cufftComplex)));
 
-    // Reconstruction output
+    // Reconstruction output: M0 rows × sinogram_x_dim cols (stride = sinogram_x_dim)
+    // This matches CPU: S1[j] = &reconstruction1[j * sinogram_x_dim]
     size_t recon_size = (size_t)ctx->M0 * sinogram_x_dim * sizeof(float);
     CUDA_CHECK_VOID(cudaMalloc(&ctx->d_recon1, recon_size));
     CUDA_CHECK_VOID(cudaMalloc(&ctx->d_recon2, recon_size));
@@ -403,9 +421,9 @@ TomoGPUContext *tomo_gpu_init(int deviceId,
         ctx->h_fft_bridge_size = bridge_size;
     }
 
-    printf("TOMO GPU: context initialised — M=%ld, M0=%ld, pdim=%ld, L=%.1f, "
-           "%s mode, 3 streams\n",
-           ctx->M, ctx->M0, ctx->pdim, ctx->L,
+    printf("TOMO GPU: context initialised — sinogram_x_dim=%lu, M=%ld, M0=%ld, "
+           "pdim=%ld, L=%.1f, %s mode, 3 streams\n",
+           sinogram_x_dim, ctx->M, ctx->M0, ctx->pdim, ctx->L,
            useFftwBridge ? "FFTW-bridge" : "cuFFT");
 
     return ctx;
@@ -507,6 +525,8 @@ int tomo_gpu_reconstruct(TomoGPUContext *ctx,
     size_t sino_bytes = (size_t)ctx->theta_list_size *
                         ctx->sinogram_x_dim * sizeof(float);
     size_t H_elems = (size_t)(M + 1) * (M + 1);
+    // Reconstruction buffer: M0 rows × sinogram_x_dim columns
+    size_t recon_bytes = (size_t)M0 * ctx->sinogram_x_dim * sizeof(float);
 
     float tblspcg = 2.0f * ctx->ltbl / ctx->L;
 
@@ -529,6 +549,13 @@ int tomo_gpu_reconstruct(TomoGPUContext *ctx,
     CUDA_CHECK(cudaMemsetAsync(ctx->d_H, 0, H_elems * sizeof(cufftComplex),
                                ctx->stream_compute));
 
+    // Clear recon buffers (output has stride sinogram_x_dim, may have
+    // uninitialised padding beyond column M0)
+    CUDA_CHECK(cudaMemsetAsync(ctx->d_recon1, 0, recon_bytes,
+                               ctx->stream_compute));
+    CUDA_CHECK(cudaMemsetAsync(ctx->d_recon2, 0, recon_bytes,
+                               ctx->stream_compute));
+
     // ─── Phase 1: per-angle 1D FFT + filter + PSWF scatter ───
     int blockSize = 256;
     int gridSize_pdim = ((int)pdim + blockSize - 1) / blockSize;
@@ -548,10 +575,6 @@ int tomo_gpu_reconstruct(TomoGPUContext *ctx,
             CUDA_CHECK(cudaMemcpy(ctx->h_fft_bridge, ctx->d_cproj,
                                   pdim * sizeof(cufftComplex),
                                   cudaMemcpyDeviceToHost));
-            // Use the CPU's four1 via FFTW — call it from host
-            // We need an FFTW plan; reuse the one from gridrecParams
-            // For FFTW-bridge mode, the caller should have set up wisdom.
-            // NOTE: This is a synchronous CPU call.
             {
                 fftwf_complex *fft_buf =
                     (fftwf_complex *)ctx->h_fft_bridge;
@@ -584,14 +607,11 @@ int tomo_gpu_reconstruct(TomoGPUContext *ctx,
     }
 
     // ─── Phase 2: 2D forward FFT of H grid ───
-    // The CPU does fourn((float*)H + 1, ...) which FFTs M×M complex values
-    // starting at H[1] (1-indexed).  Our d_H is cufftComplex*, so d_H+1
-    // gives the same M×M contiguous block.
+    // CPU: fourn((float*)H + 1, ...) which FFTs M×M complex values at H[1..M*M].
+    // GPU: d_H+1 gives the same contiguous block.
     if (ctx->useFftwBridge) {
-        // D2H → CPU 2D FFT → H2D
         CUDA_CHECK(cudaStreamSynchronize(ctx->stream_compute));
         size_t fft2d_bytes = (size_t)M * M * sizeof(cufftComplex);
-        // Copy M*M elements starting at d_H[1]
         CUDA_CHECK(cudaMemcpy(ctx->h_fft_bridge, ctx->d_H + 1,
                               fft2d_bytes, cudaMemcpyDeviceToHost));
         {
@@ -605,7 +625,6 @@ int tomo_gpu_reconstruct(TomoGPUContext *ctx,
         CUDA_CHECK(cudaMemcpy(ctx->d_H + 1, ctx->h_fft_bridge,
                               fft2d_bytes, cudaMemcpyHostToDevice));
     } else {
-        // cuFFT: in-place forward FFT of the M×M grid at d_H+1
         CUFFT_CHECK(cufftExecC2C(ctx->plan2d, ctx->d_H + 1,
                                  ctx->d_H + 1, CUFFT_FORWARD));
     }
@@ -627,7 +646,6 @@ int tomo_gpu_reconstruct(TomoGPUContext *ctx,
     CUDA_CHECK(cudaStreamWaitEvent(ctx->stream_d2h,
                                    ctx->event_compute_done, 0));
 
-    size_t recon_bytes = (size_t)M0 * ctx->sinogram_x_dim * sizeof(float);
     CUDA_CHECK(cudaMemcpyAsync(reconstruction1, ctx->d_recon1, recon_bytes,
                                cudaMemcpyDeviceToHost, ctx->stream_d2h));
     CUDA_CHECK(cudaMemcpyAsync(reconstruction2, ctx->d_recon2, recon_bytes,
