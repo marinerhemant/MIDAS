@@ -388,7 +388,7 @@ int main(int argc, char *argv[]) {
             recon_info_record.ReconFileName, recon_info_record.n_shifts,
             recon_info_record.n_slices, recon_info_record.reconstruction_xdim,
             recon_info_record.reconstruction_xdim);
-        output_fd = open(outFileName, O_CREAT | O_WRONLY, S_IRUSR | S_IWUSR);
+        output_fd = open(outFileName, O_CREAT | O_RDWR, S_IRUSR | S_IWUSR);
       }
       int totalPairs = (endSliceNr - startSliceNr) / 2;
 #ifdef ENABLE_CUDA
@@ -487,6 +487,22 @@ int main(int argc, char *argv[]) {
         size_t pinned_mb = (2 * gpu_batch_pairs * 2 * (raw_sino_bytes_per + compact_recon_bytes_per)) >> 20;
         fprintf(stderr, "TOMO GPU: raw batch buffers allocated (%zu MB pinned)\n", pinned_mb);
 
+        // ── mmap output file for fast writes ──
+        float *output_mmap = NULL;
+        size_t output_mmap_len = 0;
+        if (output_fd >= 0) {
+          output_mmap_len = (size_t)recon_info_record.n_slices * compact_recon_bytes_per;
+          ftruncate(output_fd, output_mmap_len);
+          output_mmap = (float *)mmap(NULL, output_mmap_len, PROT_WRITE,
+                                      MAP_SHARED, output_fd, 0);
+          if (output_mmap == MAP_FAILED) {
+            fprintf(stderr, "TOMO GPU: output mmap failed, falling back to pwrite\n");
+            output_mmap = NULL;
+          } else {
+            fprintf(stderr, "TOMO GPU: output mmap'd (%zu MB)\n", output_mmap_len >> 20);
+          }
+        }
+
         // ── Helper: read raw sinograms into buf (OMP-parallel memcpy) ──
         #define GPU_READ_BATCH(sIdx, batchStart) do { \
           int _this = totalPairs - (batchStart); \
@@ -512,10 +528,21 @@ int main(int argc, char *argv[]) {
               pread(input_fd, buf[sIdx].raw_buf[b*2+1], raw_sino_bytes_per, \
                     (off_t)sn2 * raw_sino_bytes_per); \
             } else { \
-              /* Raw detector input: readRaw produces norm_sino (padded, adj_xdim). */ \
-              /* GPU raw-batch kernel expects det_xdim input. */ \
-              /* For raw mode, fall back to reading raw sinograms via pread. */ \
-              fprintf(stderr, "TOMO GPU: raw detector input not yet supported in GPU raw-batch mode\\n"); \
+              /* Raw detector input: readRaw produces norm_sino at adj_xdim width. */ \
+              /* Extract center det_xdim pixels (skip padding) for GPU kernel. */ \
+              SINO_READ_OPTS _trs; \
+              _trs.norm_sino = (float *)malloc(sizeof(float) * recon_info_record.sinogram_adjusted_xdim * n_angles); \
+              readRaw(sn1, &recon_info_record, &_trs, input_fd); \
+              for (int _a = 0; _a < n_angles; _a++) \
+                memcpy(&buf[sIdx].raw_buf[b*2][(size_t)_a * det_xdim_raw], \
+                       &_trs.norm_sino[(size_t)_a * recon_info_record.sinogram_adjusted_xdim + pad_front_raw], \
+                       det_xdim_raw * sizeof(float)); \
+              readRaw(sn2, &recon_info_record, &_trs, input_fd); \
+              for (int _a = 0; _a < n_angles; _a++) \
+                memcpy(&buf[sIdx].raw_buf[b*2+1][(size_t)_a * det_xdim_raw], \
+                       &_trs.norm_sino[(size_t)_a * recon_info_record.sinogram_adjusted_xdim + pad_front_raw], \
+                       det_xdim_raw * sizeof(float)); \
+              free(_trs.norm_sino); \
             } \
             buf[sIdx].sino1[b] = buf[sIdx].raw_buf[b*2]; \
             buf[sIdx].sino2[b] = buf[sIdx].raw_buf[b*2+1]; \
@@ -524,15 +551,20 @@ int main(int argc, char *argv[]) {
           } \
         } while(0)
 
-        // ── Helper: write compact recons to output (OMP-parallel pwrite) ──
+        // ── Helper: write compact recons to output (OMP-parallel memcpy via mmap) ──
         #define GPU_WRITE_BATCH(sIdx) do { \
           int _cnt = buf[sIdx].count; \
           _Pragma("omp parallel for schedule(dynamic, 1) num_threads(gpu_rw_threads)") \
           for (int b = 0; b < _cnt; b++) { \
             size_t off1 = (size_t)buf[sIdx].oldSliceNr[b] * compact_recon_bytes_per; \
             size_t off2 = (size_t)buf[sIdx].sliceNr[b] * compact_recon_bytes_per; \
-            pwrite(output_fd, buf[sIdx].compact_buf[b*2], compact_recon_bytes_per, off1); \
-            pwrite(output_fd, buf[sIdx].compact_buf[b*2+1], compact_recon_bytes_per, off2); \
+            if (output_mmap) { \
+              memcpy((char *)output_mmap + off1, buf[sIdx].compact_buf[b*2], compact_recon_bytes_per); \
+              memcpy((char *)output_mmap + off2, buf[sIdx].compact_buf[b*2+1], compact_recon_bytes_per); \
+            } else { \
+              pwrite(output_fd, buf[sIdx].compact_buf[b*2], compact_recon_bytes_per, off1); \
+              pwrite(output_fd, buf[sIdx].compact_buf[b*2+1], compact_recon_bytes_per, off2); \
+            } \
           } \
         } while(0)
 
@@ -615,6 +647,10 @@ int main(int argc, char *argv[]) {
           free(buf[s].oldSliceNr); free(buf[s].sliceNr);
         }
         if (sino_mmap) munmap(sino_mmap, sino_mmap_len);
+        if (output_mmap) {
+          msync(output_mmap, output_mmap_len, MS_SYNC);
+          munmap(output_mmap, output_mmap_len);
+        }
       } else
 #endif
       {
