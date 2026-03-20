@@ -72,19 +72,41 @@ def shepp_logan_phantom(size: int = 256) -> np.ndarray:
 
 
 def radon_transform(image: np.ndarray, thetas_deg: np.ndarray) -> np.ndarray:
-    """Radon transform via scikit-image or scipy fallback."""
+    """Radon transform — fast.  Tries scikit-image, then numpy vectorized."""
     try:
         from skimage.transform import radon
         sino = radon(image, theta=thetas_deg, circle=True)
         return sino.T.astype(np.float32)
     except ImportError:
-        from scipy.ndimage import rotate
-        N = image.shape[0]
-        sinogram = np.zeros((len(thetas_deg), N), dtype=np.float32)
-        for i, theta in enumerate(thetas_deg):
-            rotated = rotate(image, theta, reshape=False, order=1)
-            sinogram[i, :] = np.sum(rotated, axis=0)
-        return sinogram
+        pass
+
+    # Fast vectorized projection: for each angle, sum along rotated lines
+    # Using scipy.ndimage.rotate on a downsampled image for speed, then
+    # upscale the sinogram.  Or just do straight line integrals via interp.
+    N = image.shape[0]
+    n_angles = len(thetas_deg)
+    sinogram = np.zeros((n_angles, N), dtype=np.float32)
+
+    # Coordinate grid (centered)
+    coords = np.arange(N, dtype=np.float32) - N / 2.0 + 0.5
+    x_grid, y_grid = np.meshgrid(coords, coords)  # both (N, N)
+
+    for i, theta in enumerate(thetas_deg):
+        # Project each pixel onto the detector axis
+        theta_rad = np.radians(theta)
+        cos_t = np.cos(theta_rad)
+        sin_t = np.sin(theta_rad)
+        # Projection coordinate for each pixel
+        t = x_grid * cos_t + y_grid * sin_t  # (N, N)
+        # Bin into detector pixels using histogram
+        t_idx = t + N / 2.0  # shift to [0, N] range
+        # Use np.add.at for exact binning (no interpolation needed for benchmark)
+        t_bin = np.clip(t_idx.astype(np.int32), 0, N - 1)
+        np.add.at(sinogram[i], t_bin.ravel(), image.ravel())
+        if (i + 1) % 200 == 0:
+            print(f"    angle {i+1}/{n_angles}...", flush=True)
+
+    return sinogram
 
 
 # ---------------------------------------------------------------------------
