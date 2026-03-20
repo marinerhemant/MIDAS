@@ -5,14 +5,12 @@
 // GPU-accelerated NF-HEDM orientation screening for MIDAS.
 //
 // Architecture:
-//   Phase 1 (screening): For each (voxel, orientation) pair, project
-//   theoretical diffraction spots to detector pixels, rasterize the voxel
-//   triangle footprint, and check hits against ObsSpotsInfo.
-//
-//   Key optimization: ObsSpotsInfo is reorganized into per-frame bitfield
-//   slabs (512 KB for 2048×2048).  The kernel processes one frame at a
-//   time, loading the slab into shared memory (19 TB/s) instead of
-//   random-reading from the 1 GB flat array in HBM (~300 GB/s effective).
+//   Phase 1 (screening): Each GPU thread handles one (voxel, orientation) pair.
+//   It iterates over all theoretical spots for the orientation, displaces each
+//   for the voxel position, rasterizes the triangle footprint using
+//   CalcPixels2-equivalent logic, and checks each pixel against ALL layers in
+//   ObsSpotsInfo.  Produces FracOverlap per pair; winners above threshold are
+//   atomically appended to an output buffer.
 //
 //   Phase 2 (fitting) remains on CPU — the GPU returns a sparse list of
 //   (voxel, orientation, FracOverlap) winners that the existing NLopt
@@ -56,7 +54,7 @@ int CalcDiffractionSpots(double Distance, double ExcludePoleAngle,
 }
 
 // ─────────────────────────────────────────────────────────────
-// Error-checking macros (same pattern as tomo_gpu.cu)
+// Error-checking macros
 // ─────────────────────────────────────────────────────────────
 
 #define CUDA_CHECK(call)                                                       \
@@ -79,15 +77,6 @@ int CalcDiffractionSpots(double Distance, double ExcludePoleAngle,
     }                                                                          \
   } while (0)
 
-#define CUDA_CHECK_VOID(call)                                                  \
-  do {                                                                         \
-    cudaError_t err = (call);                                                  \
-    if (err != cudaSuccess) {                                                  \
-      fprintf(stderr, "NF GPU CUDA error at %s:%d: %s\n", __FILE__, __LINE__, \
-              cudaGetErrorString(err));                                         \
-    }                                                                          \
-  } while (0)
-
 static double nf_gpu_timer_sec(void) {
   struct timespec ts;
   clock_gettime(CLOCK_MONOTONIC, &ts);
@@ -99,7 +88,6 @@ static double nf_gpu_timer_sec(void) {
 // ─────────────────────────────────────────────────────────────
 
 /// Per-spot metadata, precomputed once per orientation (voxel-independent).
-/// Stored in a flat array: spots[orientIdx * maxSpotsPerOrient + spotIdx].
 struct GPUSpot {
   float y;        ///< Detector-space Y of theoretical spot
   float z;        ///< Detector-space Z of theoretical spot
@@ -111,8 +99,8 @@ struct GPUSpot {
 
 /// Per-orientation header: number of spots and offset into spot array.
 struct GPUOrientHeader {
-  int nSpots;     ///< Number of valid spots for this orientation
-  int spotOffset; ///< Offset into the flat GPUSpot array
+  int nSpots;
+  int spotOffset;
 };
 
 // ─────────────────────────────────────────────────────────────
@@ -121,201 +109,158 @@ struct GPUOrientHeader {
 
 struct NFGPUContext {
   int deviceId;
-
-  // Detector / scan geometry
-  int nrPixelsY;
-  int nrPixelsZ;
+  int nrPixelsY, nrPixelsZ;
   int nrFiles;        // Number of omega frames
   int nLayers;
 
-  // Per-frame ObsSpotsInfo slabs on device
-  // Layout: d_obsSlabs[slabIdx * slabWords + word]
-  //   slabIdx = frame * nLayers + layer
-  //   Each slab: (nrPixelsY * nrPixelsZ + 31) / 32 uint32_t words
-  uint32_t *d_obsSlabs;
-  int slabWords;       // Words per slab
-  int nSlabs;          // Total number of slabs = nrFiles * nLayers
+  // Flat ObsSpotsInfo on device (same layout as CPU)
+  // Bit = layer*nrFiles*nPxY*nPxZ + omeBin*nPxY*nPxZ + pixY*nPxZ + pixZ
+  uint32_t *d_obsFlat;
+  long long obsFlatSize;  // Number of bits
   int obsUploaded;
 
   // Precomputed spot data on device
-  GPUSpot *d_spots;              // Flat array of all spots for all orientations
-  GPUOrientHeader *d_orientHeaders; // Per-orientation metadata
-  int nOrientations;             // Current batch size
-  int totalSpots;                // Total spots in d_spots
+  GPUSpot *d_spots;
+  GPUOrientHeader *d_orientHeaders;
+  int nOrientations;
+  int totalSpots;
   int orientsUploaded;
 
   // Geometry constants (uploaded once)
   float *d_Lsd;   // [nLayers]
   float *d_ybc;   // [nLayers]
   float *d_zbc;   // [nLayers]
-  float px;
-  float gs;
+  float px, gs;
   float rotMatTilts[9]; // Flattened 3x3
-
-  // P0 per layer (precomputed from Lsd + tilts)
   float *d_P0;    // [nLayers * 3]
 
   // Screening output
-  NFGPUWinner *d_winners;   // Device-side winner buffer
-  int *d_nWinners;          // Atomic counter on device
-  int maxWinners;           // Size of d_winners buffer
+  NFGPUWinner *d_winners;
+  int *d_nWinners;
+  int maxWinners;
 
-  // Per-voxel intermediate accumulators
-  // (hit counts accumulated across all frames)
-  int *d_hitCounts;    // [nVoxels * nOrientations]
-  int *d_totalPixels;  // [nVoxels * nOrientations]
-
-  // CUDA resources
   cudaStream_t stream;
 };
 
 // ═════════════════════════════════════════════════════════════
-//  CUDA KERNELS
+//  GPU HELPER: Test bit in flat ObsSpotsInfo (same as CPU TestBit)
 // ═════════════════════════════════════════════════════════════
 
-// ── Kernel: Reorganize flat ObsSpotsInfo into per-frame slabs ──
-// One thread per pixel in one (frame, layer) slab.
-__global__ void reorganize_obs_kernel(
-    const uint32_t *flatObs,     // Original flat bitfield
-    uint32_t *slabs,             // Output per-frame slabs
-    int nrPixelsY, int nrPixelsZ,
-    int nrFiles, int nLayers,
-    int slabWords) {
-  // Grid: (ceil(nrPixelsY * nrPixelsZ / 256), nrFiles * nLayers)
-  int pixelIdx = blockIdx.x * blockDim.x + threadIdx.x;
-  int slabIdx = blockIdx.y;  // = frame * nLayers + layer
-
-  int totalPixels = nrPixelsY * nrPixelsZ;
-  if (pixelIdx >= totalPixels || slabIdx >= nrFiles * nLayers)
-    return;
-
-  int frame = slabIdx / nLayers;
-  int layer = slabIdx % nLayers;
-
-  // Compute bit index in original flat layout:
-  // bit = layer * nrFiles * totalPixels + frame * totalPixels + pixelIdx
-  long long flatBitIdx = (long long)layer * nrFiles * totalPixels
-                       + (long long)frame * totalPixels
-                       + pixelIdx;
-  int flatWord = (int)(flatBitIdx / 32);
-  int flatBit  = (int)(flatBitIdx % 32);
-
-  int isSet = (flatObs[flatWord] >> flatBit) & 1;
-
-  // Write to slab layout
-  if (isSet) {
-    int slabWord = pixelIdx / 32;
-    int slabBit  = pixelIdx % 32;
-    atomicOr(&slabs[slabIdx * slabWords + slabWord], (1u << slabBit));
-  }
+__device__ static inline int gpu_test_bit(const uint32_t *obs, long long bitIdx) {
+  int word = (int)(bitIdx / 32);
+  int bit  = (int)(bitIdx % 32);
+  return (obs[word] >> bit) & 1;
 }
 
-// ── Kernel: Per-frame screening with shared-memory bitfield ──
-// Loads one frame's slab into shared memory, then each thread
-// evaluates one (voxel, orientation) pair for spots in that frame.
-//
-// Grid:  (ceil(nVoxels / blockDim.x), nOrientBatch)
-// Block: (256, 1)
-//
-// For the multi-pixel triangle case (gs*2 > px), each thread
-// rasterizes the small triangle via edge functions and checks
-// each pixel against the shared-memory bitfield.
+// ═════════════════════════════════════════════════════════════
+//  GPU HELPER: DisplacementSpotsPrecomp (same as CPU)
+// ═════════════════════════════════════════════════════════════
 
-// Note: shared memory is loaded in tiles since 512 KB > 48 KB SMEM.
-// Each tile covers a range of pixel rows.
+__device__ static inline void gpu_displacement(
+    float XGT, float YGT, float Lsd,
+    float ythis, float zthis, float sinOme, float cosOme,
+    float *Displ_Y, float *Displ_Z) {
+  float xa = XGT * cosOme - YGT * sinOme;
+  float ya = XGT * sinOme + YGT * cosOme;
+  float t = 1.0f - (xa / Lsd);
+  *Displ_Y = ya + ythis * t;
+  *Displ_Z = t * zthis;
+}
 
-__global__ void screen_frame_kernel(
-    const uint32_t *obsSlabs,     // All slabs on device
-    const GPUSpot *spots,         // Precomputed spot data
+// ═════════════════════════════════════════════════════════════
+//  MAIN SCREENING KERNEL: one thread = one (voxel, orientation) pair
+//
+//  Matches CPU CalcFracOverlap exactly:
+//  1. For each spot: compute 3-corner displacement -> 3 pixel positions
+//  2. Subtract reference (undisplaced spot) to get relative triangle
+//  3. Rasterize triangle (CalcPixels2-equivalent)
+//  4. For each rasterized pixel: check ALL layers with scaling
+//  5. Accumulate OverlapPixels / TotalPixels
+//  6. If FracOverlap >= threshold: atomically append winner
+// ═════════════════════════════════════════════════════════════
+
+__global__ void screen_pairs_kernel(
+    const uint32_t *obsFlat,         // Flat ObsSpotsInfo bitfield
+    const GPUSpot *spots,            // Precomputed spot data
     const GPUOrientHeader *headers,
-    const float *voxXG,           // [nVoxels * 3] triangle X corners
-    const float *voxYG,           // [nVoxels * 3] triangle Y corners
-    int *hitCounts,               // [nVoxels * nOrient] accumulators
-    int *totalPixels,             // [nVoxels * nOrient] accumulators
+    const float *voxXG,              // [nVoxels * 3]
+    const float *voxYG,              // [nVoxels * 3]
     int nVoxels,
     int nOrientations,
-    int frameIdx,                 // Which omega frame we're processing
-    int layerIdx,                 // Which layer
-    int slabWords,
+    int nLayers,
+    int nrFiles,
     int nrPixelsY, int nrPixelsZ,
     float px, float gs,
-    const float *Lsd,
-    const float *ybc, const float *zbc,
-    const float *P0,              // [nLayers * 3]
-    const float *rotMatTilts      // [9] flattened
-    ) {
-  // Thread identifies one (voxel, orientation) pair
-  int voxIdx = blockIdx.x * blockDim.x + threadIdx.x;
-  int oriIdx = blockIdx.y;
+    const float *Lsd,                // [nLayers]
+    const float *ybc, const float *zbc, // [nLayers]
+    const float *P0,                 // [nLayers * 3]
+    const float *rotMatTilts,        // [9]
+    float minFracOverlap,
+    NFGPUWinner *winners,
+    int *nWinners,
+    int maxWinners) {
 
-  if (voxIdx >= nVoxels || oriIdx >= nOrientations)
-    return;
+  // Linearised thread ID -> (voxIdx, oriIdx)
+  int tid = blockIdx.x * blockDim.x + threadIdx.x;
+  long long totalPairs = (long long)nVoxels * nOrientations;
+  if (tid >= totalPairs) return;
 
-  // Load this frame+layer slab pointer
-  int slabIdx = frameIdx * 1 + layerIdx; // nLayers handled in host loop
-  const uint32_t *slab = &obsSlabs[slabIdx * slabWords];
+  int voxIdx = tid / nOrientations;
+  int oriIdx = tid % nOrientations;
 
-  // Get spot list for this orientation
-  GPUOrientHeader hdr = headers[oriIdx];
+  // Load rotation matrix into registers
+  float RM[9];
+  for (int i = 0; i < 9; i++) RM[i] = rotMatTilts[i];
 
-  float Lsd0 = Lsd[layerIdx];
-  float ybc0 = ybc[layerIdx];
-  float zbc0 = zbc[layerIdx];
-  float P0x = P0[layerIdx * 3 + 0];
-  float P0y = P0[layerIdx * 3 + 1];
-  float P0z = P0[layerIdx * 3 + 2];
-
-  // Load voxel triangle corners
+  // Load voxel corners
   float XG[3], YG[3];
   for (int k = 0; k < 3; k++) {
     XG[k] = voxXG[voxIdx * 3 + k];
     YG[k] = voxYG[voxIdx * 3 + k];
   }
 
-  // Rotation matrix (from shared constant or registers)
-  float RM[9];
-  for (int i = 0; i < 9; i++) RM[i] = rotMatTilts[i];
+  // Load layer-0 geometry (used for displacement; other layers for scaling)
+  float Lsd0 = Lsd[0];
+  float ybc0 = ybc[0];
+  float zbc0 = zbc[0];
+  float P0_0[3] = { P0[0], P0[1], P0[2] };
 
-  int localHits = 0;
-  int localTotal = 0;
+  GPUOrientHeader hdr = headers[oriIdx];
 
-  // Iterate over spots for this orientation that land in this frame
+  int OverlapPixels = 0;
+  int TotalPixels = 0;
+
+  // Iterate over all spots for this orientation
   for (int s = 0; s < hdr.nSpots; s++) {
     GPUSpot spot = spots[hdr.spotOffset + s];
-    if (!spot.valid || spot.omeBin != frameIdx)
-      continue;
+    if (!spot.valid) continue;
 
     float ythis = spot.y;
     float zthis = spot.z;
+    int omeBin = spot.omeBin;
     float sinOme = spot.sinOme;
     float cosOme = spot.cosOme;
 
-    // Compute displaced spot position for each triangle corner
-    float YZSpotsT[3][2];
+    // Compute displaced pixel positions for 3 triangle corners
+    float YZSpotsT[3][2];  // Absolute pixel coords
     int oob = 0;
 
     for (int k = 0; k < 3; k++) {
-      float a = XG[k];
-      float b = YG[k];
+      float Displ_Y, Displ_Z;
+      gpu_displacement(XG[k], YG[k], Lsd0, ythis, zthis, sinOme, cosOme,
+                       &Displ_Y, &Displ_Z);
 
-      // DisplacementSpotsPrecomp
-      float xa = a * cosOme - b * sinOme;
-      float ya = a * sinOme + b * cosOme;
-      float t = 1.0f - (xa / Lsd0);
-      float Displ_Y = ya + (ythis * t);
-      float Displ_Z = t * zthis;
-
-      // RotMatTilts × [0, Displ_Y, Displ_Z]
+      // RotMatTilts × [0, Displ_Y, Displ_Z] = P1
       float P1x = RM[0*3+1] * Displ_Y + RM[0*3+2] * Displ_Z;
       float P1y = RM[1*3+1] * Displ_Y + RM[1*3+2] * Displ_Z;
       float P1z = RM[2*3+1] * Displ_Y + RM[2*3+2] * Displ_Z;
 
-      float ABCx = P1x - P0x;
-      float ABCy = P1y - P0y;
-      float ABCz = P1z - P0z;
+      float ABCx = P1x - P0_0[0];
+      float ABCy = P1y - P0_0[1];
+      float ABCz = P1z - P0_0[2];
 
-      float outY = P0y - (ABCy * P0x) / ABCx;
-      float outZ = P0z - (ABCz * P0x) / ABCx;
+      float outY = P0_0[1] - (ABCy * P0_0[0]) / ABCx;
+      float outZ = P0_0[2] - (ABCz * P0_0[0]) / ABCx;
 
       YZSpotsT[k][0] = outY / px + ybc0;
       YZSpotsT[k][1] = outZ / px + zbc0;
@@ -325,161 +270,134 @@ __global__ void screen_frame_kernel(
         oob = 1;
         break;
       }
-
-      // On the last corner, also compute undisplaced reference
-      if (k == 2) {
-        float refP1x = RM[0*3+1] * ythis + RM[0*3+2] * zthis;
-        float refP1y = RM[1*3+1] * ythis + RM[1*3+2] * zthis;
-        float refP1z = RM[2*3+1] * ythis + RM[2*3+2] * zthis;
-
-        float refABCx = refP1x - P0x;
-        float refABCy = refP1y - P0y;
-        float refABCz = refP1z - P0z;
-
-        float refOutY = P0y - (refABCy * P0x) / refABCx;
-        float refOutZ = P0z - (refABCz * P0x) / refABCx;
-        float refYpx = refOutY / px + ybc0;
-        float refZpx = refOutZ / px + zbc0;
-
-        // Subtract reference to get relative triangle
-        for (int l = 0; l < 3; l++) {
-          YZSpotsT[l][0] -= refYpx;
-          YZSpotsT[l][1] -= refZpx;
-        }
-      }
     }
-
     if (oob) continue;
 
-    // Rasterize triangle and check pixels
+    // Compute undisplaced reference (spot mapped without voxel displacement)
+    // xyz = RotMatTilts × [0, ythis, zthis]
+    float refP1x = RM[0*3+1] * ythis + RM[0*3+2] * zthis;
+    float refP1y = RM[1*3+1] * ythis + RM[1*3+2] * zthis;
+    float refP1z = RM[2*3+1] * ythis + RM[2*3+2] * zthis;
+
+    float refABCx = refP1x - P0_0[0];
+    float refABCy = refP1y - P0_0[1];
+    float refABCz = refP1z - P0_0[2];
+
+    float refOutY = P0_0[1] - (refABCy * P0_0[0]) / refABCx;
+    float refOutZ = P0_0[2] - (refABCz * P0_0[0]) / refABCx;
+    float refYpx = refOutY / px + ybc0;
+    float refZpx = refOutZ / px + zbc0;
+
+    // Relative triangle: subtract reference
+    float YZSpots[3][2];
+    for (int l = 0; l < 3; l++) {
+      YZSpots[l][0] = YZSpotsT[l][0] - refYpx;
+      YZSpots[l][1] = YZSpotsT[l][1] - refZpx;
+    }
+
+    // Rasterize triangle to get pixel offsets
+    // Store in local arrays (max ~20 pixels for typical voxels)
+    int inPixY[64], inPixZ[64];
+    int nInPixels = 0;
+
     if (gs * 2.0f > px) {
-      // Multi-pixel case: edge-function rasterization
-      // Round corners and find bounding box
-      float minY = 1e9f, maxY = -1e9f, minZ = 1e9f, maxZ = -1e9f;
+      // Multi-pixel: CalcPixels2-equivalent edge-function rasterization
       float edges[3][2];
+      float minY = 1e9f, maxY = -1e9f, minZ = 1e9f, maxZ = -1e9f;
       for (int i = 0; i < 3; i++) {
-        edges[i][0] = roundf(YZSpotsT[i][0]);
-        edges[i][1] = roundf(YZSpotsT[i][1]);
+        edges[i][0] = roundf(YZSpots[i][0]);
+        edges[i][1] = roundf(YZSpots[i][1]);
         if (edges[i][0] < minY) minY = edges[i][0];
         if (edges[i][0] > maxY) maxY = edges[i][0];
         if (edges[i][1] < minZ) minZ = edges[i][1];
         if (edges[i][1] > maxZ) maxZ = edges[i][1];
       }
 
-      int A01 = (int)edges[0][1] - (int)edges[1][1];
-      int B01 = (int)edges[1][0] - (int)edges[0][0];
-      int A12 = (int)edges[1][1] - (int)edges[2][1];
-      int B12 = (int)edges[2][0] - (int)edges[1][0];
-      int A20 = (int)edges[2][1] - (int)edges[0][1];
-      int B20 = (int)edges[0][0] - (int)edges[2][0];
-
-      // Check pixels in bounding box
-      for (int pz = (int)minZ; pz <= (int)maxZ; pz++) {
-        for (int py = (int)minY; py <= (int)maxY; py++) {
+      for (int pz = (int)minZ; pz <= (int)maxZ && nInPixels < 64; pz++) {
+        for (int py = (int)minY; py <= (int)maxY && nInPixels < 64; py++) {
           // Edge function test
-          int w0 = A12 * (py - (int)edges[1][0]) + B12 * (pz - (int)edges[1][1]);
-          int w1 = A20 * (py - (int)edges[2][0]) + B20 * (pz - (int)edges[2][1]);
-          int w2 = A01 * (py - (int)edges[0][0]) + B01 * (pz - (int)edges[0][1]);
+          int w0 = ((int)edges[1][1]-(int)edges[2][1]) * (py-(int)edges[1][0])
+                 + ((int)edges[2][0]-(int)edges[1][0]) * (pz-(int)edges[1][1]);
+          int w1 = ((int)edges[2][1]-(int)edges[0][1]) * (py-(int)edges[2][0])
+                 + ((int)edges[0][0]-(int)edges[2][0]) * (pz-(int)edges[2][1]);
+          int w2 = ((int)edges[0][1]-(int)edges[1][1]) * (py-(int)edges[0][0])
+                 + ((int)edges[1][0]-(int)edges[0][0]) * (pz-(int)edges[0][1]);
 
           int inside = (w0 >= 0 && w1 >= 0 && w2 >= 0);
 
           if (!inside) {
-            // Distance-based edge inclusion (matches CPU CalcPixels2)
-            // distSq2d for each edge
-            float num, denSq;
-            // Edge v1-v2
-            num = (float)((int)edges[1][0]-(int)edges[0][0]) * (pz-(int)edges[0][1])
-                - (float)((int)edges[1][1]-(int)edges[0][1]) * (py-(int)edges[0][0]);
-            denSq = (float)((int)edges[0][1]-(int)edges[1][1]) * ((int)edges[0][1]-(int)edges[1][1])
-                  + (float)((int)edges[1][0]-(int)edges[0][0]) * ((int)edges[1][0]-(int)edges[0][0]);
-            if (denSq > 0 && (num*num)/denSq < 0.9801f) inside = 1;
-            if (!inside) {
-              num = (float)((int)edges[2][0]-(int)edges[1][0]) * (pz-(int)edges[1][1])
-                  - (float)((int)edges[2][1]-(int)edges[1][1]) * (py-(int)edges[1][0]);
-              denSq = (float)((int)edges[1][1]-(int)edges[2][1]) * ((int)edges[1][1]-(int)edges[2][1])
-                    + (float)((int)edges[2][0]-(int)edges[1][0]) * ((int)edges[2][0]-(int)edges[1][0]);
-              if (denSq > 0 && (num*num)/denSq < 0.9801f) inside = 1;
-            }
-            if (!inside) {
-              num = (float)((int)edges[0][0]-(int)edges[2][0]) * (pz-(int)edges[2][1])
-                  - (float)((int)edges[0][1]-(int)edges[2][1]) * (py-(int)edges[2][0]);
-              denSq = (float)((int)edges[2][1]-(int)edges[0][1]) * ((int)edges[2][1]-(int)edges[0][1])
-                    + (float)((int)edges[0][0]-(int)edges[2][0]) * ((int)edges[0][0]-(int)edges[2][0]);
-              if (denSq > 0 && (num*num)/denSq < 0.9801f) inside = 1;
+            // Distance-to-edge test (matches CPU CalcPixels2)
+            for (int e = 0; e < 3 && !inside; e++) {
+              int i0 = e, i1 = (e + 1) % 3;
+              float dx = edges[i1][0] - edges[i0][0];
+              float dz = edges[i1][1] - edges[i0][1];
+              float num = dx * (pz - (int)edges[i0][1])
+                        - dz * (py - (int)edges[i0][0]);
+              float den = dz * dz + dx * dx;
+              if (den > 0 && (num * num) / den < 0.9801f)
+                inside = 1;
             }
           }
 
           if (inside) {
-            // Check against ObsSpotsInfo slab
-            // Also handle multi-layer scaling (like CPU)
-            int allFound = 1;
-            // For the primary layer only (multi-layer handled in host loop)
-            int MultY = py; // Already in correct pixel coords for this layer
-            int MultZ = pz;
-            if (MultY >= 0 && MultY < nrPixelsY &&
-                MultZ >= 0 && MultZ < nrPixelsZ) {
-              int pixIdx = MultY * nrPixelsZ + MultZ;
-              int word = pixIdx / 32;
-              int bit  = pixIdx % 32;
-              int isSet = (slab[word] >> bit) & 1;
-              if (!isSet) allFound = 0;
-            } else {
-              allFound = 0;
-            }
-            if (allFound) localHits++;
-            localTotal++;
+            inPixY[nInPixels] = py;
+            inPixZ[nInPixels] = pz;
+            nInPixels++;
           }
         }
       }
     } else {
-      // Single-pixel case
-      int py = (int)roundf((YZSpotsT[0][0] + YZSpotsT[1][0] + YZSpotsT[2][0]) / 3.0f);
-      int pz = (int)roundf((YZSpotsT[0][1] + YZSpotsT[1][1] + YZSpotsT[2][1]) / 3.0f);
+      // Single pixel: centroid
+      inPixY[0] = (int)roundf((YZSpots[0][0] + YZSpots[1][0] + YZSpots[2][0]) / 3.0f);
+      inPixZ[0] = (int)roundf((YZSpots[0][1] + YZSpots[1][1] + YZSpots[2][1]) / 3.0f);
+      nInPixels = 1;
+    }
 
-      if (py >= 0 && py < nrPixelsY && pz >= 0 && pz < nrPixelsZ) {
-        int pixIdx = py * nrPixelsZ + pz;
-        int word = pixIdx / 32;
-        int bit  = pixIdx % 32;
-        int isSet = (slab[word] >> bit) & 1;
-        if (isSet) localHits++;
-        localTotal++;
+    // Check each rasterized pixel against ALL layers
+    // (matches CPU CalcFracOverlap logic: lines 597-638)
+    for (int p = 0; p < nInPixels; p++) {
+      int allFound = 1;
+      int pixOob = 0;
+
+      for (int layer = 0; layer < nLayers; layer++) {
+        // Multi-layer scaling: rescale reference position to this layer's detector
+        // MultY = floor(((refYpx - ybc0) * px * (Lsd_layer / Lsd0)) / px + ybc_layer) + inPixY[p]
+        int MultY = (int)floorf(((refYpx - ybc0) * px * (Lsd[layer] / Lsd0)) / px
+                                + ybc[layer]) + inPixY[p];
+        int MultZ = (int)floorf(((refZpx - zbc0) * px * (Lsd[layer] / Lsd0)) / px
+                                + zbc[layer]) + inPixZ[p];
+
+        if (MultY >= nrPixelsY || MultY < 0 || MultZ >= nrPixelsZ || MultZ < 0) {
+          pixOob = 1;
+          break;
+        }
+
+        // Flat bitfield index: layer*nrFiles*nPxY*nPxZ + omeBin*nPxY*nPxZ + MultY*nPxZ + MultZ
+        long long binNr = (long long)layer * nrFiles * nrPixelsY * nrPixelsZ
+                        + (long long)omeBin * nrPixelsY * nrPixelsZ
+                        + (long long)MultY * nrPixelsZ
+                        + MultZ;
+
+        if (!gpu_test_bit(obsFlat, binNr)) {
+          allFound = 0;
+        }
       }
+
+      if (pixOob) continue;
+      if (allFound) OverlapPixels++;
+      TotalPixels++;
     }
   }
 
-  // Accumulate into global hit/total arrays
-  int pairIdx = voxIdx * nOrientations + oriIdx;
-  atomicAdd(&hitCounts[pairIdx], localHits);
-  atomicAdd(&totalPixels[pairIdx], localTotal);
-}
-
-// ── Kernel: Collect winners from hit/total arrays ──
-__global__ void collect_winners_kernel(
-    const int *hitCounts,
-    const int *totalPixels,
-    int nVoxels, int nOrientations,
-    float minFracOverlap,
-    NFGPUWinner *winners,
-    int *nWinners,
-    int maxWinners) {
-  int idx = blockIdx.x * blockDim.x + threadIdx.x;
-  int total = nVoxels * nOrientations;
-  if (idx >= total)
-    return;
-
-  int hits = hitCounts[idx];
-  int totalPx = totalPixels[idx];
-
-  if (totalPx > 0) {
-    float frac = (float)hits / (float)totalPx;
-    if (frac >= (float)minFracOverlap) {
+  // Compute FracOverlap and check threshold
+  if (TotalPixels > 0) {
+    float fracOverlap = (float)OverlapPixels / (float)TotalPixels;
+    if (fracOverlap >= minFracOverlap) {
       int pos = atomicAdd(nWinners, 1);
       if (pos < maxWinners) {
-        int voxIdx = idx / nOrientations;
-        int oriIdx = idx % nOrientations;
         winners[pos].voxelIdx = voxIdx;
         winners[pos].orientIdx = oriIdx;
-        winners[pos].fracOverlap = frac;
+        winners[pos].fracOverlap = fracOverlap;
       }
     }
   }
@@ -531,26 +449,19 @@ extern "C" NFGPUContext *nf_gpu_init(int deviceId,
   ctx->obsUploaded = 0;
   ctx->orientsUploaded = 0;
 
-  // Compute slab dimensions
-  int totalPixels = nrPixelsY * nrPixelsZ;
-  ctx->slabWords = (totalPixels + 31) / 32;
-  ctx->nSlabs = nrFiles * nLayers;
-
   // Allocate per-layer geometry arrays
   CUDA_CHECK_NULL(cudaMalloc(&ctx->d_Lsd, nLayers * sizeof(float)));
   CUDA_CHECK_NULL(cudaMalloc(&ctx->d_ybc, nLayers * sizeof(float)));
   CUDA_CHECK_NULL(cudaMalloc(&ctx->d_zbc, nLayers * sizeof(float)));
   CUDA_CHECK_NULL(cudaMalloc(&ctx->d_P0, nLayers * 3 * sizeof(float)));
 
-  // CUDA stream
   CUDA_CHECK_NULL(cudaStreamCreate(&ctx->stream));
 
-  size_t slabBytes = (size_t)ctx->nSlabs * ctx->slabWords * sizeof(uint32_t);
+  long long totalBits = (long long)nLayers * nrFiles * nrPixelsY * nrPixelsZ;
   printf("NF GPU: context initialised — %dx%d detector, %d frames, %d layers\n",
          nrPixelsY, nrPixelsZ, nrFiles, nLayers);
-  printf("NF GPU: slab size = %d words (%zu KB), total %d slabs = %.1f MB\n",
-         ctx->slabWords, (size_t)ctx->slabWords * 4 / 1024,
-         ctx->nSlabs, slabBytes / (1024.0 * 1024.0));
+  printf("NF GPU: ObsSpotsInfo flat size = %.1f MB (%lld bits)\n",
+         (totalBits / 8.0) / (1024.0 * 1024.0), totalBits);
 
   return ctx;
 }
@@ -559,7 +470,7 @@ extern "C" void nf_gpu_destroy(NFGPUContext *ctx) {
   if (!ctx) return;
   cudaSetDevice(ctx->deviceId);
 
-  if (ctx->d_obsSlabs)      cudaFree(ctx->d_obsSlabs);
+  if (ctx->d_obsFlat)       cudaFree(ctx->d_obsFlat);
   if (ctx->d_spots)         cudaFree(ctx->d_spots);
   if (ctx->d_orientHeaders) cudaFree(ctx->d_orientHeaders);
   if (ctx->d_Lsd)           cudaFree(ctx->d_Lsd);
@@ -568,8 +479,6 @@ extern "C" void nf_gpu_destroy(NFGPUContext *ctx) {
   if (ctx->d_P0)            cudaFree(ctx->d_P0);
   if (ctx->d_winners)       cudaFree(ctx->d_winners);
   if (ctx->d_nWinners)      cudaFree(ctx->d_nWinners);
-  if (ctx->d_hitCounts)     cudaFree(ctx->d_hitCounts);
-  if (ctx->d_totalPixels)   cudaFree(ctx->d_totalPixels);
 
   if (ctx->stream) cudaStreamDestroy(ctx->stream);
 
@@ -588,39 +497,20 @@ extern "C" int nf_gpu_upload_obs_spots(NFGPUContext *ctx,
   cudaSetDevice(ctx->deviceId);
   double t0 = nf_gpu_timer_sec();
 
-  // Allocate slab storage on device (zeroed)
-  size_t slabBytes = (size_t)ctx->nSlabs * ctx->slabWords * sizeof(uint32_t);
-  CUDA_CHECK(cudaMalloc(&ctx->d_obsSlabs, slabBytes));
-  CUDA_CHECK(cudaMemset(ctx->d_obsSlabs, 0, slabBytes));
+  // Upload flat bitfield directly — no reorganization needed
+  // sizeObsSpots = total number of bits; stored as packed uint32_t
+  ctx->obsFlatSize = sizeObsSpots;
+  size_t nWords = (sizeObsSpots + 31) / 32;
+  size_t flatBytes = nWords * sizeof(uint32_t);
 
-  // Upload flat bitfield to device temporarily
-  size_t flatBytes = (size_t)(sizeObsSpots + 1) * sizeof(uint32_t);
-  uint32_t *d_flatObs = NULL;
-  CUDA_CHECK(cudaMalloc(&d_flatObs, flatBytes));
-  CUDA_CHECK(cudaMemcpy(d_flatObs, h_obsSpots, flatBytes,
+  CUDA_CHECK(cudaMalloc(&ctx->d_obsFlat, flatBytes));
+  CUDA_CHECK(cudaMemcpy(ctx->d_obsFlat, h_obsSpots, flatBytes,
                         cudaMemcpyHostToDevice));
-
-  // Launch reorganization kernel
-  int totalPixels = ctx->nrPixelsY * ctx->nrPixelsZ;
-  int blockSize = 256;
-  int gridX = (totalPixels + blockSize - 1) / blockSize;
-  dim3 grid(gridX, ctx->nSlabs);
-  reorganize_obs_kernel<<<grid, blockSize, 0, ctx->stream>>>(
-      d_flatObs, ctx->d_obsSlabs,
-      ctx->nrPixelsY, ctx->nrPixelsZ,
-      ctx->nrFiles, ctx->nLayers,
-      ctx->slabWords);
-
-  CUDA_CHECK(cudaStreamSynchronize(ctx->stream));
-
-  // Free temporary flat copy
-  cudaFree(d_flatObs);
 
   ctx->obsUploaded = 1;
   double dt = nf_gpu_timer_sec() - t0;
-  printf("NF GPU: ObsSpotsInfo uploaded and reorganized into %d slabs "
-         "(%.1f MB, %.2f s)\n",
-         ctx->nSlabs, slabBytes / (1024.0 * 1024.0), dt);
+  printf("NF GPU: ObsSpotsInfo uploaded (%.1f MB, %.2f s)\n",
+         flatBytes / (1024.0 * 1024.0), dt);
 
   return 0;
 }
@@ -668,10 +558,9 @@ extern "C" int nf_gpu_upload_orientations(NFGPUContext *ctx,
     h_zbc_f[i] = (float)zbc[i];
 
     // Compute P0 = RotMatTilts * [-Lsd, 0, 0]
-    double MatIn[3] = {-Lsd[i], 0.0, 0.0};
-    h_P0_f[i*3+0] = (float)(rotMatTilts[0][0]*MatIn[0]);
-    h_P0_f[i*3+1] = (float)(rotMatTilts[1][0]*MatIn[0]);
-    h_P0_f[i*3+2] = (float)(rotMatTilts[2][0]*MatIn[0]);
+    h_P0_f[i*3+0] = (float)(rotMatTilts[0][0] * (-Lsd[i]));
+    h_P0_f[i*3+1] = (float)(rotMatTilts[1][0] * (-Lsd[i]));
+    h_P0_f[i*3+2] = (float)(rotMatTilts[2][0] * (-Lsd[i]));
   }
 
   CUDA_CHECK(cudaMemcpy(ctx->d_Lsd, h_Lsd_f, ctx->nLayers * sizeof(float),
@@ -689,8 +578,6 @@ extern "C" int nf_gpu_upload_orientations(NFGPUContext *ctx,
   free(h_P0_f);
 
   // Precompute per-orientation spot data on CPU, then upload
-  // For each orientation: run CalcDiffractionSpots to get theoretical spots,
-  // then precompute GPUSpot metadata.
   ctx->nOrientations = nOrientations;
 
   // First pass: compute total spot count
@@ -698,11 +585,9 @@ extern "C" int nf_gpu_upload_orientations(NFGPUContext *ctx,
   GPUOrientHeader *h_headers = (GPUOrientHeader *)malloc(
       nOrientations * sizeof(GPUOrientHeader));
 
-  // Allocate temporary buffer for CalcDiffractionSpots output
   double *TheorSpots = (double *)malloc(NF_MAX_N_SPOTS * 3 * sizeof(double));
 
   for (int i = 0; i < nOrientations; i++) {
-    // Get orientation matrix for this candidate
     double OMTemp[9], OrientMatIn[3][3];
     for (int j = 0; j < 9; j++)
       OMTemp[j] = h_orientationMatrix[i * 9 + j];
@@ -715,7 +600,6 @@ extern "C" int nf_gpu_upload_orientations(NFGPUContext *ctx,
     for (int j = 0; j < 9; j++)
       OMTemp[j] /= scale;
 
-    // Convert 9-element to 3x3
     for (int r = 0; r < 3; r++)
       for (int c = 0; c < 3; c++)
         OrientMatIn[r][c] = OMTemp[r*3+c];
@@ -734,7 +618,8 @@ extern "C" int nf_gpu_upload_orientations(NFGPUContext *ctx,
 
   ctx->totalSpots = totalSpots;
   printf("NF GPU: %d orientations, %d total spots (avg %.1f/orient)\n",
-         nOrientations, totalSpots, (float)totalSpots / nOrientations);
+         nOrientations, totalSpots,
+         nOrientations > 0 ? (float)totalSpots / nOrientations : 0.0f);
 
   // Second pass: fill GPUSpot array
   GPUSpot *h_spots = (GPUSpot *)malloc(totalSpots * sizeof(GPUSpot));
@@ -766,12 +651,10 @@ extern "C" int nf_gpu_upload_orientations(NFGPUContext *ctx,
       float zthis = (float)TheorSpots[s*3+1];
       float omegaThis = (float)TheorSpots[s*3+2];
 
-      // Wedge correction would go here (same as CPU CalcFracOverlap)
-      // For now, assume Wedge == 0 (most common case)
       int outOfBounds = 0;
+      // Wedge correction: skip for now (Wedge=0 most common)
       if (fabs(wedge) > 1e-10) {
-        // TODO: implement wedge correction on GPU precompute
-        // For now, mark as valid and let CPU handle wedge cases
+        // TODO: wedge correction
       }
 
       int omeBin = (int)floor((-omegaStart + omegaThis) / omegaStep);
@@ -854,62 +737,42 @@ extern "C" int nf_gpu_screen(NFGPUContext *ctx,
   free(h_XG);
   free(h_YG);
 
-  // Allocate hit/total accumulators
-  CUDA_CHECK(cudaMalloc(&ctx->d_hitCounts, totalPairs * sizeof(int)));
-  CUDA_CHECK(cudaMalloc(&ctx->d_totalPixels, totalPairs * sizeof(int)));
-  CUDA_CHECK(cudaMemset(ctx->d_hitCounts, 0, totalPairs * sizeof(int)));
-  CUDA_CHECK(cudaMemset(ctx->d_totalPixels, 0, totalPairs * sizeof(int)));
-
-  // Upload rotation matrix to device (constant for all kernels)
+  // Upload rotation matrix
   float *d_rotMat;
   CUDA_CHECK(cudaMalloc(&d_rotMat, 9 * sizeof(float)));
   CUDA_CHECK(cudaMemcpy(d_rotMat, ctx->rotMatTilts, 9 * sizeof(float),
                         cudaMemcpyHostToDevice));
 
-  // Launch frame-major screening
-  int blockSize = 256;
-  dim3 grid((nVoxels + blockSize - 1) / blockSize, nOrient);
-
-  double tKernel0 = nf_gpu_timer_sec();
-
-  for (int layer = 0; layer < ctx->nLayers; layer++) {
-    for (int frame = 0; frame < ctx->nrFiles; frame++) {
-      screen_frame_kernel<<<grid, blockSize, 0, ctx->stream>>>(
-          ctx->d_obsSlabs,
-          ctx->d_spots,
-          ctx->d_orientHeaders,
-          d_XG, d_YG,
-          ctx->d_hitCounts,
-          ctx->d_totalPixels,
-          nVoxels, nOrient,
-          frame, layer,
-          ctx->slabWords,
-          ctx->nrPixelsY, ctx->nrPixelsZ,
-          ctx->px, ctx->gs,
-          ctx->d_Lsd, ctx->d_ybc, ctx->d_zbc,
-          ctx->d_P0, d_rotMat);
-    }
-  }
-
-  CUDA_CHECK(cudaStreamSynchronize(ctx->stream));
-  double dtKernel = nf_gpu_timer_sec() - tKernel0;
-  printf("NF GPU: screening kernels completed in %.2f s\n", dtKernel);
-
-  // Collect winners
-  ctx->maxWinners = (int)(totalPairs * 0.01) + 10000; // Generous estimate
+  // Allocate winner buffer
+  ctx->maxWinners = (int)fmin((double)totalPairs, 10000000.0) + 10000;
   CUDA_CHECK(cudaMalloc(&ctx->d_winners,
                         ctx->maxWinners * sizeof(NFGPUWinner)));
   CUDA_CHECK(cudaMalloc(&ctx->d_nWinners, sizeof(int)));
   CUDA_CHECK(cudaMemset(ctx->d_nWinners, 0, sizeof(int)));
 
-  int collectGrid = (int)((totalPairs + blockSize - 1) / blockSize);
-  collect_winners_kernel<<<collectGrid, blockSize, 0, ctx->stream>>>(
-      ctx->d_hitCounts, ctx->d_totalPixels,
+  // Launch per-pair kernel
+  int blockSize = 256;
+  int gridSize = (int)((totalPairs + blockSize - 1) / blockSize);
+
+  double tKernel0 = nf_gpu_timer_sec();
+
+  screen_pairs_kernel<<<gridSize, blockSize, 0, ctx->stream>>>(
+      ctx->d_obsFlat,
+      ctx->d_spots,
+      ctx->d_orientHeaders,
+      d_XG, d_YG,
       nVoxels, nOrient,
+      ctx->nLayers, ctx->nrFiles,
+      ctx->nrPixelsY, ctx->nrPixelsZ,
+      ctx->px, ctx->gs,
+      ctx->d_Lsd, ctx->d_ybc, ctx->d_zbc,
+      ctx->d_P0, d_rotMat,
       (float)minFracOverlap,
       ctx->d_winners, ctx->d_nWinners, ctx->maxWinners);
 
   CUDA_CHECK(cudaStreamSynchronize(ctx->stream));
+  double dtKernel = nf_gpu_timer_sec() - tKernel0;
+  printf("NF GPU: screening kernel completed in %.2f s\n", dtKernel);
 
   // Download winner count
   int h_nW = 0;
@@ -929,14 +792,12 @@ extern "C" int nf_gpu_screen(NFGPUContext *ctx,
                         cudaMemcpyDeviceToHost));
   *nWinners = h_nW;
 
-  // Cleanup temporary buffers
+  // Cleanup
   cudaFree(d_XG);
   cudaFree(d_YG);
   cudaFree(d_rotMat);
-  cudaFree(ctx->d_hitCounts);     ctx->d_hitCounts = NULL;
-  cudaFree(ctx->d_totalPixels);   ctx->d_totalPixels = NULL;
-  cudaFree(ctx->d_winners);       ctx->d_winners = NULL;
-  cudaFree(ctx->d_nWinners);      ctx->d_nWinners = NULL;
+  cudaFree(ctx->d_winners);   ctx->d_winners = NULL;
+  cudaFree(ctx->d_nWinners);  ctx->d_nWinners = NULL;
 
   double dt = nf_gpu_timer_sec() - t0;
   printf("NF GPU: screening complete — %d winners from %lld pairs "
