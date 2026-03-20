@@ -1,0 +1,159 @@
+//
+// Copyright (c) 2024, UChicago Argonne, LLC
+// See LICENSE file.
+//
+// GPU-accelerated tomographic reconstruction for MIDAS TOMO.
+// This header provides the public C API for the CUDA implementation.
+// All functions are guarded by ENABLE_CUDA — on CPU-only builds,
+// including this header is safe and the functions simply won't exist.
+//
+
+#ifndef TOMO_GPU_H
+#define TOMO_GPU_H
+
+#ifdef ENABLE_CUDA
+
+#ifdef __cplusplus
+extern "C" {
+#endif
+
+// Forward declarations — we only need opaque pointers in this header.
+// The actual struct definitions live in tomo_heads.h (included by .c/.cu files).
+struct gridrecParams_tag;   // not needed if tomo_heads.h is already included
+typedef struct GLOBAL_CONFIG_OPTS GLOBAL_CONFIG_OPTS;
+typedef struct LOCAL_CONFIG_OPTS_TAG LOCAL_CONFIG_OPTS_TAG;
+
+// ---------------------------------------------------------------------------
+// Opaque handle to the GPU reconstruction context.
+// Holds device memory, cuFFT plans, CUDA streams, and pre-computed tables.
+// ---------------------------------------------------------------------------
+typedef struct TomoGPUContext TomoGPUContext;
+
+// ---------------------------------------------------------------------------
+// Lifecycle
+// ---------------------------------------------------------------------------
+
+/// Initialise GPU context.  Call once before any reconstruction.
+///
+/// @param deviceId   CUDA device ordinal (0 for the first GPU).
+/// @param sinogram_x_dim  Width of the padded sinogram (param->sinogram_x_dim).
+/// @param theta_list_size Number of projection angles.
+/// @param theta_list      Pointer to the angle table (host, float[theta_list_size]).
+/// @param filter_type     Filter enum (FILTER_NONE, FILTER_HANN, …).
+/// @param useFftwBridge   If non-zero, 1D and 2D FFTs are performed on the CPU
+///                        (via FFTW) and data is transferred GPU↔CPU around
+///                        each FFT call.  This guarantees byte-identical output
+///                        to the CPU-only code path.
+///                        If zero, cuFFT is used (faster, but output differs
+///                        from FFTW by ~1e-6 per pixel).
+/// @return Opaque context handle, or NULL on error.
+TomoGPUContext *tomo_gpu_init(int deviceId,
+                              unsigned long sinogram_x_dim,
+                              int theta_list_size,
+                              const float *theta_list,
+                              int filter_type,
+                              int useFftwBridge);
+
+/// Free all GPU resources.
+void tomo_gpu_destroy(TomoGPUContext *ctx);
+
+/// Upload pre-computed tables from CPU gridrecParams to GPU.
+/// Must be called once after initGridRec() on the CPU side, before any
+/// tomo_gpu_reconstruct() calls.  Copies SINE, COSE, wtbl, winv, and
+/// filphase arrays from host to device, ensuring exact numeric parity.
+///
+/// @param ctx   Opaque GPU context.
+/// @param SINE  Host array [theta_list_size].
+/// @param COSE  Host array [theta_list_size].
+/// @param wtbl  Host array [ltbl+1].
+/// @param winv  Host array [M0].
+/// @param filphase  Host array of complex {r,i} pairs [(pdim/2+1)*2 floats].
+/// @param ltbl  PSWF table length (512).
+/// @param M0    Output image size.
+/// @param pdim  Padded FFT dimension.
+/// @return 0 on success.
+int tomo_gpu_upload_tables(TomoGPUContext *ctx,
+                           const float *SINE, const float *COSE,
+                           const float *wtbl, const float *winv,
+                           const float *filphase,
+                           long ltbl, long M0, long pdim);
+
+// ---------------------------------------------------------------------------
+// Reconstruction (replaces CPU reconstruct() call)
+// ---------------------------------------------------------------------------
+
+/// GPU-accelerated reconstruction of a sinogram pair (like the CPU's
+/// reconstruct()).
+///
+/// The caller is responsible for:
+///   1. Setting up sinograms_boundary_padding and reconstructions_boundary_padding
+///      (identical to the CPU path — reconCentering + setSinoAndReconBuffers).
+///   2. Calling this function instead of reconstruct(&param).
+///   3. The function copies sinogram data to the GPU, runs phase1+phase2+phase3,
+///      and copies the reconstruction back.
+///
+/// @param ctx        Opaque GPU context returned by tomo_gpu_init().
+/// @param sinogram1  Host pointer to padded sinogram 1
+///                   (float[theta_list_size * sinogram_x_dim]).
+/// @param sinogram2  Host pointer to padded sinogram 2.
+/// @param reconstruction1  Host output buffer for reconstruction 1
+///                         (float[M0 * sinogram_x_dim]).
+/// @param reconstruction2  Host output buffer for reconstruction 2.
+/// @param M          Grid size (power of 2, from gridrecParams.M).
+/// @param M0         Output image size (from gridrecParams.M0).
+/// @param M02        Half of (M0-1), from gridrecParams.M02.
+/// @param pdim       Padded FFT dimension (from gridrecParams.pdim).
+/// @return 0 on success, non-zero on error.
+int tomo_gpu_reconstruct(TomoGPUContext *ctx,
+                         const float *sinogram1,
+                         const float *sinogram2,
+                         float *reconstruction1,
+                         float *reconstruction2,
+                         long M, long M0, long M02, long pdim);
+
+// ---------------------------------------------------------------------------
+// Preprocessing kernels (optional — can also be done on CPU)
+// ---------------------------------------------------------------------------
+
+/// GPU-accelerated sinogram preprocessing.
+/// Performs: Normalize → LogProj → reconCentering → RingCorrection
+/// in a single GPU pipeline, avoiding round-trips.
+///
+/// @param ctx        GPU context.
+/// @param short_sinogram  Raw uint16 sinogram (host, [theta_list_size * det_xdim]).
+/// @param dark_field      Dark field average (host, float[det_xdim]).
+/// @param white_field     Two white fields (host, float[2 * det_xdim]).
+/// @param norm_sino_out   Output normalised sinogram (host, float[theta_list_size * adjusted_xdim]).
+/// @param det_xdim        Raw detector width.
+/// @param adjusted_xdim   Padded detector width.
+/// @param theta_list_size Number of projection angles.
+/// @param doLog           Apply -log transform.
+/// @param shift           Rotation-axis shift.
+/// @param ring_coeff      Ring removal coefficient (0 to disable).
+/// @return 0 on success.
+int tomo_gpu_preprocess(TomoGPUContext *ctx,
+                        const unsigned short *short_sinogram,
+                        const float *dark_field,
+                        const float *white_field,
+                        float *norm_sino_out,
+                        int det_xdim,
+                        int adjusted_xdim,
+                        int theta_list_size,
+                        int doLog,
+                        float shift,
+                        float ring_coeff);
+
+// ---------------------------------------------------------------------------
+// Utility
+// ---------------------------------------------------------------------------
+
+/// Print GPU device info to stdout.
+void tomo_gpu_print_info(int deviceId);
+
+#ifdef __cplusplus
+}
+#endif
+
+#endif /* ENABLE_CUDA */
+
+#endif /* TOMO_GPU_H */

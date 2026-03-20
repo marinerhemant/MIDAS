@@ -1769,12 +1769,6 @@ def run_integrator_validation(refined_params_file, data_file, dark_file,
                       "RadGlobal IdealR Fit2Theta IdealA FitA\n")
 
             for row in per_eta_rows:
-                peak_idx = row['peak_nr']
-                if peak_idx >= len(sorted_rings):
-                    continue
-
-                ring_nr, (ideal_r_um, d_spacing, ideal_2theta) = sorted_rings[peak_idx]
-                ideal_r_px = ideal_r_um / state.px
                 fitted_r_px = row['center_px']
                 eta_deg = row['eta_deg']
                 fitted_2theta = row['tth_deg']
@@ -1782,6 +1776,21 @@ def run_integrator_validation(refined_params_file, data_file, dark_file,
                 # Skip zero/invalid fits
                 if fitted_r_px <= 0 or fitted_2theta <= 0:
                     continue
+
+                # Dynamically match fitted radius to the closest valid ideal ring
+                best_match = None
+                best_err = 0.05  # 5% relative error tracking ceiling
+                for idx, (rng_nr, (i_r_um, d_sp, i_2th)) in enumerate(sorted_rings):
+                    i_r_px = i_r_um / state.px
+                    err = abs(fitted_r_px - i_r_px) / (i_r_px if i_r_px > 0 else 1.0)
+                    if err < best_err:
+                        best_err = err
+                        best_match = (rng_nr, i_r_px, i_2th, d_sp)
+
+                if best_match is None:
+                    continue  # Noise or completely mismatched peak
+
+                ring_nr, ideal_r_px, ideal_2theta, d_spacing = best_match
 
                 strain = (fitted_r_px - ideal_r_px) / ideal_r_px if ideal_r_px > 0 else 0
                 diff_calc = abs(strain)
@@ -1791,9 +1800,10 @@ def run_integrator_validation(refined_params_file, data_file, dark_file,
                 y_raw = state.ybc - fitted_r_px * math.sin(eta_rad)
                 z_raw = state.zbc + fitted_r_px * math.cos(eta_rad)
 
-                # Filter points outside detector extent
-                if y_raw < 0 or y_raw > state.nr_pixels_y or z_raw < 0 or z_raw > state.nr_pixels_z:
-                    continue
+                # Note: no detector-extent filter here — the integrator
+                # already constrains output to physical detector pixels.
+                # Filtering by y_raw/z_raw vs NrPixels is incorrect for
+                # offset detectors where BC lies outside the sensor.
 
                 # Lattice parameter from Bragg's law
                 # d_fit = wavelength / (2 * sin(fitted_2theta/2 * deg2rad))
@@ -1837,7 +1847,8 @@ def runMIDAS(rawFN, state, n_iterations=40, mult_factor=5,
              eta_bin_size=1.0, max_width=1000, n_cpus=None,
              stage=0, stage_label='',
              trimmed_mean_fraction=0.75,
-             remove_outliers_between_iters=1):
+             remove_outliers_between_iters=1,
+             iter_offset=0):
     """Run CalibrantIntegratorOMP.
 
     stage=0: full optimization (legacy behavior)
@@ -1928,7 +1939,9 @@ def runMIDAS(rawFN, state, n_iterations=40, mult_factor=5,
 
             # C-side iteration and advanced features
             pf.write(f'nIterations {n_iterations}\n')
+            pf.write(f'IterOffset {iter_offset}\n')
             pf.write(f'DoubletSeparation {doublet_separation}\n')
+            pf.write(f'MultFactor {mult_factor}\n')
             pf.write(f'OutlierIterations {outlier_iterations}\n')
             pf.write('NormalizeRingWeights 1\n')
             pf.write('MinIndicesForFit 5\n')
@@ -2118,6 +2131,9 @@ def main():
                             help='Calibrant material: ceo2 or lab6. Overrides filename detection.')
         parser.add_argument('--mask', '-MaskFile', type=str, default='',
                             help='Mask TIFF file for bad/gap pixels (passed as MaskFile to CalibrantPanelShiftsOMP)')
+
+        parser.add_argument('--skip-panels', action='store_true', default=False,
+                            help='Use mask for pixel masking but skip panel auto-detection and fitting')
 
         # Panel optimization (auto-detected from mask)
         parser.add_argument('--tol-shifts', type=float, default=3.0,
@@ -2584,11 +2600,14 @@ def main():
             except Exception as e:
                 logger.error(f"Failed to read mask file {state.mask_file}: {e}")
 
-            # Auto-detect panel layout from mask
-            bc_guess = None
-            if state.ybc > 0 and state.zbc > 0:
-                bc_guess = (state.ybc, state.zbc)
-            state.panel_grid = detect_panels_from_mask(state.mask_file, bc_guess=bc_guess)
+            # Auto-detect panel layout from mask (unless --skip-panels)
+            if not args.skip_panels:
+                bc_guess = None
+                if state.ybc > 0 and state.zbc > 0:
+                    bc_guess = (state.ybc, state.zbc)
+                state.panel_grid = detect_panels_from_mask(state.mask_file, bc_guess=bc_guess)
+            else:
+                logger.info("--skip-panels: mask used for pixel masking only, no panel fitting")
 
         # Parse raw filename for CalibrantPanelShiftsOMP file naming
         rawFN = os.path.abspath(dataFN)
@@ -2915,7 +2934,8 @@ def main():
                  stage=2,
                  stage_label='[Stage 2/2] ',
                  trimmed_mean_fraction=args.trimmed_mean_fraction,
-                 remove_outliers_between_iters=args.remove_outliers_between_iters)
+                 remove_outliers_between_iters=args.remove_outliers_between_iters,
+                 iter_offset=stage1_iters)
 
         # ---- Generate final results ----
         logger.info("Generating final results data")

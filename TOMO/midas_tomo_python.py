@@ -41,8 +41,9 @@ def _next_power_of_2(n):
     return 1 << int(ceil(log2(n))) if n > 1 else 1
 
 
-def _find_tomo_exe():
-    """Locate the MIDAS_TOMO binary."""
+def _find_tomo_exe(useGPU=False):
+    """Locate the MIDAS_TOMO binary (or MIDAS_TOMO_GPU if useGPU=True)."""
+    binary_name = 'MIDAS_TOMO_GPU' if useGPU else 'MIDAS_TOMO'
     try:
         utils_dir = os.path.join(
             os.path.dirname(os.path.dirname(os.path.abspath(__file__))),
@@ -50,9 +51,22 @@ def _find_tomo_exe():
         if utils_dir not in sys.path:
             sys.path.append(utils_dir)
         import midas_config
-        return os.path.join(midas_config.MIDAS_TOMO_BIN_DIR, 'MIDAS_TOMO')
+        path = os.path.join(midas_config.MIDAS_TOMO_BIN_DIR, binary_name)
+        if os.path.isfile(path):
+            return path
+        # Fall back to CPU binary if GPU not found
+        if useGPU:
+            print(f'Warning: {binary_name} not found, falling back to MIDAS_TOMO')
+            return os.path.join(midas_config.MIDAS_TOMO_BIN_DIR, 'MIDAS_TOMO')
+        return path
     except ImportError:
-        return os.path.expanduser("~/opt/MIDAS/TOMO/bin/MIDAS_TOMO")
+        path = os.path.expanduser(f"~/opt/MIDAS/TOMO/bin/{binary_name}")
+        if os.path.isfile(path):
+            return path
+        if useGPU:
+            print(f'Warning: {binary_name} not found, falling back to MIDAS_TOMO')
+            return os.path.expanduser("~/opt/MIDAS/TOMO/bin/MIDAS_TOMO")
+        return path
 
 
 def _write_thetas(thetas, path):
@@ -89,7 +103,7 @@ def run_tomo(data, dark, whites, workingdir, thetas,
              shifts=0.0, filterNr=2, doLog=1, extraPad=0,
              autoCentering=1, numCPUs=40, doCleanup=1, ringRemoval=0,
              doStripeRemoval=0, stripeSnr=3.0, stripeLaSize=61,
-             stripeSmSize=21):
+             stripeSmSize=21, useGPU=False, fftwBridge=False):
     """Reconstruct from raw projection data.
 
     Parameters
@@ -129,6 +143,11 @@ def run_tomo(data, dark, whites, workingdir, thetas,
         Median filter window for large stripes (default 61, must be odd).
     stripeSmSize : int
         Median filter window for small stripes (default 21, must be odd).
+    useGPU : bool
+        If True, use GPU-accelerated reconstruction (MIDAS_TOMO_GPU binary).
+    fftwBridge : bool
+        If True (and useGPU=True), use CPU FFTW for FFTs to ensure
+        byte-identical output to the CPU path (slower).
 
     Returns
     -------
@@ -194,8 +213,13 @@ def run_tomo(data, dark, whites, workingdir, thetas,
     print(f'Time elapsed in preprocessing: {time.time() - start_time:.3f}s.')
 
     # Run MIDAS_TOMO
-    tomo_exe = _find_tomo_exe()
-    subprocess.run([tomo_exe, configFN, str(numCPUs)], check=True)
+    tomo_exe = _find_tomo_exe(useGPU=useGPU)
+    cmd = [tomo_exe, configFN, str(numCPUs)]
+    if useGPU:
+        cmd.append('--gpu')
+        if fftwBridge:
+            cmd.append('--fftw-bridge')
+    subprocess.run(cmd, check=True)
 
     # Read result
     start_time = time.time()
@@ -221,7 +245,8 @@ def run_tomo_from_sinos(sinograms, workingdir, thetas,
                         shifts=0.0, filterNr=2, doLog=0, extraPad=0,
                         autoCentering=1, numCPUs=1, doCleanup=1,
                         ringRemoval=0, doStripeRemoval=0, stripeSnr=3.0,
-                        stripeLaSize=61, stripeSmSize=21):
+                        stripeLaSize=61, stripeSmSize=21,
+                        useGPU=False, fftwBridge=False):
     """Reconstruct from pre-formed sinograms (areSinos=1 mode).
 
     Parameters
@@ -259,6 +284,11 @@ def run_tomo_from_sinos(sinograms, workingdir, thetas,
         Median filter window for large stripes (default 61, must be odd).
     stripeSmSize : int
         Median filter window for small stripes (default 21, must be odd).
+    useGPU : bool
+        If True, use GPU-accelerated reconstruction (MIDAS_TOMO_GPU binary).
+    fftwBridge : bool
+        If True (and useGPU=True), use CPU FFTW for FFTs to ensure
+        byte-identical output to the CPU path (slower).
 
     Returns
     -------
@@ -322,8 +352,13 @@ def run_tomo_from_sinos(sinograms, workingdir, thetas,
     print(f'Time elapsed in preprocessing: {time.time() - start_time:.3f}s.')
 
     # Run MIDAS_TOMO
-    tomo_exe = _find_tomo_exe()
-    subprocess.run([tomo_exe, configFN, str(numCPUs)], check=True)
+    tomo_exe = _find_tomo_exe(useGPU=useGPU)
+    cmd = [tomo_exe, configFN, str(numCPUs)]
+    if useGPU:
+        cmd.append('--gpu')
+        if fftwBridge:
+            cmd.append('--fftw-bridge')
+    subprocess.run(cmd, check=True)
 
     # Read result
     start_time = time.time()

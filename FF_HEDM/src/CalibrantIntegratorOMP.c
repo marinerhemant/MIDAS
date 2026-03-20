@@ -443,6 +443,7 @@ int main(int argc, char *argv[]) {
   double outlierFactor = cfg.outlierFactor;
   int MinIndicesForFit = cfg.MinIndicesForFit, FixPanelID = cfg.FixPanelID;
   int nIterations = cfg.nIterations;
+  int iterOffset = cfg.iterOffset;   // iteration numbering offset for multi-stage runs
   double DoubletSeparation = cfg.DoubletSeparation;
   int NormalizeRingWeights = cfg.NormalizeRingWeights;
   int OutlierIterations = cfg.OutlierIterations;
@@ -652,8 +653,8 @@ int main(int argc, char *argv[]) {
   // Convergence CSV (in cwd)
   char convHistFN[4096];
   snprintf(convHistFN, sizeof(convHistFN), "%s.convergence_history.csv", rawFN);
-  FILE *convHistFP = fopen(convHistFN, "w");
-  if (convHistFP)
+  FILE *convHistFP = fopen(convHistFN, iterOffset > 0 ? "a" : "w");
+  if (convHistFP && iterOffset == 0)
     fprintf(convHistFP, "Iter,MeanStrain_ppm,StdStrain_ppm,Lsd,ybc,zbc,"
                         "ty,tz,p0,p1,p2,p3,p4,p5\n");
 
@@ -792,6 +793,12 @@ int main(int argc, char *argv[]) {
     printf("  DEBUG M-step iter %d INPUT:  Lsd=%.3f BC=(%.6f,%.6f) ty=%.6f tz=%.6f p0=%.2e p1=%.2e p2=%.2e p3=%.2e\n",
            iter+1, Lsd, ybc, zbc, tyin, tzin, p0in, p1in, p2in, p3in);
 
+    // Open per-evaluation trace file for this iteration
+    char traceFN[4096];
+    snprintf(traceFN, sizeof(traceFN), "%s.m_step_trace_iter%d.csv",
+             rawFN, iter + 1 + iterOffset);
+    calib_set_trace_file(traceFN);
+
     calib_fit_tilt_bc_lsd(
         nIndices, Yc, Zc, IdealTtheta, Lsd, MaxRingRad, ybc, zbc, tx,
         tyin, tzin, p0in, p1in, p2in, p3in, &ty, &tz, &LsdFit,
@@ -806,6 +813,9 @@ int main(int argc, char *argv[]) {
         &wavelengthFit,
         parallaxIn, tolParallax, &parallaxFit,
         TrimmedMeanFraction, skipBin);
+
+    // Close per-evaluation trace file
+    calib_close_trace_file();
 
     // DEBUG M-step: print output params
     printf("  DEBUG M-step iter %d OUTPUT: Lsd=%.3f BC=(%.6f,%.6f) ty=%.6f tz=%.6f p0=%.2e p1=%.2e p2=%.2e p3=%.2e MeanDiff=%.6f\n",
@@ -829,13 +839,49 @@ int main(int argc, char *argv[]) {
 
     // Per-ring diagnostic summary
     if (iter == 0 || iter == nIterations - 1) {
+      // Determine outlier threshold: same sigma-clip as M-step
+      double outlierThreshold = 0;
+      if (outlierFactor > 0) {
+        // Compute raw mean|Diff| for threshold (before rejection)
+        double rawMean = 0;
+        int rawCount = 0;
+        for (int bi = 0; bi < nIndices; bi++) {
+          if (skipBin[bi]) continue;
+          rawMean += fabs(DiffIns[bi]);
+          rawCount++;
+        }
+        if (rawCount > 0) rawMean /= rawCount;
+        // Iterative sigma-clip to find stable threshold
+        int nClipIter = (OutlierIterations > 0) ? OutlierIterations : 1;
+        double clipMean = rawMean;
+        for (int ci = 0; ci < nClipIter; ci++) {
+          double thresh = outlierFactor * clipMean;
+          double newSum = 0;
+          int newCnt = 0;
+          for (int bi = 0; bi < nIndices; bi++) {
+            if (skipBin[bi]) continue;
+            if (fabs(DiffIns[bi]) <= thresh) {
+              newSum += fabs(DiffIns[bi]);
+              newCnt++;
+            }
+          }
+          if (newCnt > 0) clipMean = newSum / newCnt;
+        }
+        outlierThreshold = outlierFactor * clipMean;
+      }
+
       printf("  Ring  NPoints   Mean(ΔR) µε  Med(ΔR) µε  Mean|ΔR| µε  Med|ΔR| µε  MeanSNR\n");
       printf("  ----  -------   -----------  ----------  -----------  ----------  -------\n");
       for (int ri = 0; ri < n_hkls; ri++) {
-        // Collect per-ring deltaR values
+        // Collect per-ring deltaR values, excluding outliers
         int cnt = 0;
-        for (int bi = 0; bi < nIndices; bi++)
-          if (RingNumbers[bi] == RingIDs[ri] && !skipBin[bi]) cnt++;
+        for (int bi = 0; bi < nIndices; bi++) {
+          if (RingNumbers[bi] == RingIDs[ri] && !skipBin[bi]) {
+            if (outlierThreshold > 0 && fabs(DiffIns[bi]) > outlierThreshold)
+              continue;
+            cnt++;
+          }
+        }
         if (cnt == 0) continue;
         double *drs = (double *)malloc(cnt * sizeof(double));
         double *adrs = (double *)malloc(cnt * sizeof(double));
@@ -843,6 +889,8 @@ int main(int argc, char *argv[]) {
         int k = 0;
         for (int bi = 0; bi < nIndices; bi++) {
           if (RingNumbers[bi] == RingIDs[ri] && !skipBin[bi]) {
+            if (outlierThreshold > 0 && fabs(DiffIns[bi]) > outlierThreshold)
+              continue;
             drs[k] = DiffIns[bi];
             adrs[k] = fabs(DiffIns[bi]);
             sumSNR += FitSNR[bi];
@@ -870,7 +918,7 @@ int main(int argc, char *argv[]) {
     if (convHistFP) {
       fprintf(convHistFP,
               "%d,%.6e,%.6e,%.6f,%.6f,%.6f,%.8f,%.8f,%.8e,%.8e,%.8e,%.8e,%.8e,%.8e\n",
-              iter + 1, MeanDiff * 1e6, StdDiff * 1e6,
+              iter + 1 + iterOffset, MeanDiff * 1e6, StdDiff * 1e6,
               LsdFit, ybcFit, zbcFit, ty, tz, p0, p1, p2, p3, p4, p5);
       fflush(convHistFP);
     }
@@ -1102,7 +1150,7 @@ int main(int argc, char *argv[]) {
       // Per-bin data — 16 columns matching CalibrantPanelShiftsOMP format
       fprintf(corrFP, "\n%%Eta Strain RadFit EtaCalc DiffCalc RadCalc "
                        "Ideal2Theta Outlier YRawCorr ZRawCorr RingNr "
-                       "RadGlobal IdealR Fit2Theta IdealA FitA\n");
+                       "RadGlobal IdealR Fit2Theta IdealA FitA DeltaR\n");
       for (int i = 0; i < nIndices; i++) {
         double eta = EtaIns[i];
         double strain = DiffIns[i];  // signed: (1 - R_fitted/R_ideal)
@@ -1114,12 +1162,13 @@ int main(int argc, char *argv[]) {
         double sinIdeal = sin(deg2rad * ideal2theta / 2.0);
         double sinFit = sin(deg2rad * fit2theta / 2.0);
         double fitA = (sinFit > 1e-15) ? IdealA * sinIdeal / sinFit : IdealA;
+        double deltaR = radFit - idealR;  // microns
         fprintf(corrFP, "%.6f %.10e %.6f %.6f %.10e %.6f "
                          "%.6f %d %.6f %.6f %d "
-                         "%.6f %.6f %.6f %.10f %.10f\n",
+                         "%.6f %.6f %.6f %.10f %.10f %.6f\n",
                 eta, strain, radFit, eta, fabs(strain), radCalc,
                 ideal2theta, IsOutlier[i], Yc[i], Zc[i], RingNumbers[i],
-                radFit, idealR, fit2theta, IdealA, fitA);
+                radFit, idealR, fit2theta, IdealA, fitA, deltaR);
       }
       fclose(corrFP);
       printf("Results written to: %s\n", corrFN);

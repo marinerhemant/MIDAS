@@ -44,7 +44,9 @@ void usage() {
       "MIDAS-TOMO Code to do tomo recon using Gridrec. Based on tomompi "
       "implementation from Brian Tiemann, APS. Maintained by Hemant Sharma, "
       "APS (hsharma@anl.gov).\nUsage is: \n"
-      "tomo ParamsFile.txt numberOfParallelJobs\n"
+      "tomo ParamsFile.txt numberOfParallelJobs [--gpu] [--fftw-bridge]\n"
+      "  --gpu          Use GPU-accelerated reconstruction (requires CUDA build)\n"
+      "  --fftw-bridge  GPU mode: use CPU FFTW for FFTs (byte-identical to CPU; slower)\n"
       "Params file must have the following parameters:\n"
       "Input file is a text file name with a data link: sino data is a "
       "!!!single!!! binary file with darks, whites and tomo data in that "
@@ -135,10 +137,32 @@ void usage() {
 
 int main(int argc, char *argv[]) {
   printf("Version: %s\n", MIDAS_VERSION_STRING);
-  if (argc != 3) {
+  if (argc < 3) {
     usage();
     return 1;
   }
+
+  // Parse optional GPU flags from argv[3..]
+  int useGPU = 0;
+  int useFftwBridge = 0;
+  for (int argi = 3; argi < argc; argi++) {
+    if (strcmp(argv[argi], "--gpu") == 0) {
+      useGPU = 1;
+    } else if (strcmp(argv[argi], "--fftw-bridge") == 0) {
+      useFftwBridge = 1;
+    }
+  }
+#ifdef ENABLE_CUDA
+  if (useGPU)
+    printf("GPU reconstruction enabled%s.\n",
+           useFftwBridge ? " (FFTW-bridge mode)" : "");
+#else
+  if (useGPU) {
+    printf("Warning: --gpu requested but this binary was built without CUDA. "
+           "Using CPU path.\n");
+    useGPU = 0;
+  }
+#endif
   GLOBAL_CONFIG_OPTS recon_info_record;
   recon_info_record.sizeMatrices = 0;
   char *fileName;
@@ -228,6 +252,51 @@ int main(int argc, char *argv[]) {
     return 1;
   }
   int rc = fftwf_import_wisdom_from_filename("fftwf_wisdom_1d.txt");
+
+  // ── GPU context initialisation ──
+#ifdef ENABLE_CUDA
+  TomoGPUContext *gpu_ctx = NULL;
+  if (useGPU) {
+    gridrecParams pm_gpu;
+    pm_gpu.sinogram_x_dim = recon_info_record.sinogram_adjusted_xdim * 2;
+    pm_gpu.theta_list = recon_info_record.theta_list;
+    pm_gpu.filter_type = recon_info_record.filter;
+    pm_gpu.theta_list_size = recon_info_record.theta_list_size;
+    pm_gpu.setPlan = 0;
+    pm_gpu.wisdom_string = NULL;
+    getGridRecFourSizes(&pm_gpu);
+    gpu_ctx = tomo_gpu_init(
+        0,  /* deviceId */
+        pm_gpu.sinogram_x_dim,
+        recon_info_record.theta_list_size,
+        recon_info_record.theta_list,
+        recon_info_record.filter,
+        useFftwBridge);
+    if (!gpu_ctx) {
+      printf("Failed to initialise GPU context. Falling back to CPU.\n");
+      useGPU = 0;
+    } else {
+      // Compute PSWF tables on CPU and upload to GPU
+      setGridRecPSWF(&pm_gpu);
+      initGridRec(&pm_gpu);
+      tomo_gpu_upload_tables(gpu_ctx,
+          pm_gpu.SINE, pm_gpu.COSE,
+          pm_gpu.wtbl, pm_gpu.winv,
+          (const float *)pm_gpu.filphase,
+          pm_gpu.ltbl, pm_gpu.M0, pm_gpu.pdim);
+      // Free the temporary CPU tables
+      if (pm_gpu.cproj) free(pm_gpu.cproj);
+      if (pm_gpu.filphase) free(pm_gpu.filphase);
+      if (pm_gpu.wtbl) free(pm_gpu.wtbl);
+      if (pm_gpu.winv) free(pm_gpu.winv);
+      if (pm_gpu.work) free(pm_gpu.work);
+      if (pm_gpu.H) free(pm_gpu.H);
+      if (pm_gpu.SINE) free(pm_gpu.SINE);
+      if (pm_gpu.COSE) free(pm_gpu.COSE);
+    }
+  }
+#endif
+
   double start_time = omp_get_wtime();
   if (recon_info_record.n_shifts == 1) {
     printf("Starting processing of all slices with %d threads.\n", numProcs);
@@ -345,7 +414,17 @@ int main(int argc, char *argv[]) {
             2, &information.sinograms_boundary_padding[offt],
             &information.reconstructions_boundary_padding[offsetRecons],
             &param);
-        reconstruct(&param);
+#ifdef ENABLE_CUDA
+        if (useGPU && gpu_ctx) {
+          tomo_gpu_reconstruct(gpu_ctx,
+              param.sinogram1, param.sinogram2,
+              param.reconstruction1, param.reconstruction2,
+              param.M, param.M0, param.M02, param.pdim);
+        } else
+#endif
+        {
+          reconstruct(&param);
+        }
 
         getRecons(&information, &recon_info_record, &param, 0);
         int rw = writeRecon(oldSliceNr, &information, &recon_info_record, 0,
@@ -489,7 +568,17 @@ int main(int argc, char *argv[]) {
             2, &information.sinograms_boundary_padding[offt],
             &information.reconstructions_boundary_padding[offsetRecons],
             &param);
-        reconstruct(&param);
+#ifdef ENABLE_CUDA
+        if (useGPU && gpu_ctx) {
+          tomo_gpu_reconstruct(gpu_ctx,
+              param.sinogram1, param.sinogram2,
+              param.reconstruction1, param.reconstruction2,
+              param.M, param.M0, param.M02, param.pdim);
+        } else
+#endif
+        {
+          reconstruct(&param);
+        }
         information.shift = recon_info_record.shift_values[shiftNr];
         getRecons(&information, &recon_info_record, &param, 0);
         int rw = writeRecon(localSliceNr, &information, &recon_info_record,
@@ -508,6 +597,13 @@ int main(int argc, char *argv[]) {
       close(output_fd);
     }
   }
+#ifdef ENABLE_CUDA
+  if (gpu_ctx) {
+    tomo_gpu_destroy(gpu_ctx);
+    gpu_ctx = NULL;
+  }
+#endif
+
   double time = omp_get_wtime() - start_time;
   printf("Finished, time elapsed: %lf seconds.\n", time);
   return 0;

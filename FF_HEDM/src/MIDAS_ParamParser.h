@@ -173,6 +173,7 @@ typedef struct {
   int    MinIndicesForFit;
   int    FitWeightMean;       // FitOrWeightedMean
   int    nIterations;
+  int    iterOffset;            // Iteration numbering offset (for multi-stage runs)
   double DoubletSeparation;
   int    NormalizeRingWeights;
   int    OutlierIterations;

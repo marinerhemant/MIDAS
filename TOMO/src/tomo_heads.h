@@ -188,4 +188,9 @@ int writeRecon(int sliceNr, LOCAL_CONFIG_OPTS *information,
                int fd);
 void createPlanFile(GLOBAL_CONFIG_OPTS *recon_info_record);
 
+// GPU-accelerated reconstruction (only available when built with CUDA)
+#ifdef ENABLE_CUDA
+#include "tomo_gpu.h"
+#endif
+
 #endif

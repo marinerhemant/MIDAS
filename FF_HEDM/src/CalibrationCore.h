@@ -24,6 +24,15 @@ extern int nPanels;
 extern int numProcs;
 extern long long int NrCalls;
 
+// ── Per-evaluation M-step tracing ──────────────────────────────────
+
+// Open a CSV trace file for per-evaluation logging.  The header is
+// written automatically.  Pass NULL to disable tracing.
+void calib_set_trace_file(const char *filename);
+
+// Close the trace file (safe to call even if no file is open).
+void calib_close_trace_file(void);
+
 // ── Coordinate conversion helpers ──────────────────────────────────
 
 static inline double calib_R4mTtheta(double Ttheta_deg, double Lsd) {

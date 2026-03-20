@@ -138,7 +138,7 @@ tolP4 0.0001
 # =============================================================================
 
 # Number of full optimization iterations (best result is kept)
-nIterations 30
+nIterations 5
 
 # Outlier rejection: factor * mean_strain threshold, iterated N times
 OutlierIterations 3

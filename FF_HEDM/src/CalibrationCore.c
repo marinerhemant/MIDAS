@@ -16,6 +16,29 @@
 
 #define EPS 1E-12
 
+// ── Per-evaluation trace file ─────────────────────────────────────
+
+static FILE *calib_trace_fp = NULL;
+
+void calib_set_trace_file(const char *filename) {
+  calib_close_trace_file();
+  if (filename == NULL) return;
+  calib_trace_fp = fopen(filename, "w");
+  if (calib_trace_fp) {
+    fprintf(calib_trace_fp,
+            "Eval,Objective,MeanStrain_ue,Lsd,ybc,zbc,ty,tz,"
+            "p0,p1,p2,p3,p4,p5\n");
+    fflush(calib_trace_fp);
+  }
+}
+
+void calib_close_trace_file(void) {
+  if (calib_trace_fp) {
+    fclose(calib_trace_fp);
+    calib_trace_fp = NULL;
+  }
+}
+
 // ── qsort comparator ──────────────────────────────────────────────
 
 int calib_cmp_double(const void *a, const void *b) {
@@ -396,6 +419,21 @@ double calib_problem_function(unsigned n, const double *x, double *grad,
   }
 
   NrCalls++;
+
+  // Per-evaluation trace
+  if (calib_trace_fp) {
+    double meanStrain_ue = (nIndices > 0)
+        ? (TotalDiff / nIndices) * 1e6
+        : 0.0;
+    fprintf(calib_trace_fp,
+            "%lld,%.10e,%.6f,%.6f,%.6f,%.6f,%.8f,%.8f,"
+            "%.8e,%.8e,%.8e,%.8e,%.8e,%.8e\n",
+            NrCalls, TotalDiff, meanStrain_ue,
+            Lsd, ybc, zbc, ty, tz,
+            p0, p1, p2, p3, p4, p5);
+    fflush(calib_trace_fp);
+  }
+
   return TotalDiff;
 }
 

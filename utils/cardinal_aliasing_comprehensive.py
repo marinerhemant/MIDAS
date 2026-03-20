@@ -516,15 +516,15 @@ def plot_cake(midas_results, dr_key, title_suffix, fname):
     rmask = (R >= R_RING - r_half) & (R <= R_RING + r_half)
     r_idx = np.where(rmask)[0]
 
-    fig, ax = plt.subplots(figsize=(12, 7))
+    fig, ax = plt.subplots(figsize=(6, 5))
     Rsub = R[r_idx]
     Isub = I[r_idx, :].T.astype(float)
     Isub[Isub <= 0] = np.nan
-    from matplotlib.colors import LogNorm
-    vmin_log = max(1, np.nanpercentile(Isub[np.isfinite(Isub)], 1))
-    vmax = np.nanpercentile(Isub[np.isfinite(Isub)], 99.5)
-    im = ax.pcolormesh(Rsub, Eta, Isub, shading='auto', cmap='viridis',
-                       norm=LogNorm(vmin=vmin_log, vmax=vmax), rasterized=True)
+    peak_vals = Isub[np.isfinite(Isub)]
+    vmin_lin = np.percentile(peak_vals, 5)
+    vmax_lin = np.percentile(peak_vals, 95)
+    im = ax.pcolormesh(Rsub, Eta, Isub, shading='auto', cmap='inferno',
+                       vmin=vmin_lin, vmax=vmax_lin, rasterized=True)
     ax.set_xlabel('R (pixels)', fontsize=12)
     ax.set_ylabel('η (°)', fontsize=12)
     ax.set_title(f'MIDAS cake (ΔR = {dr_key} px) — {title_suffix}',
@@ -583,7 +583,7 @@ def plot_raw_vs_caked(midas_results, fname):
 
     ring_Rs = [377, 617, 955]
 
-    fig, (ax1, ax2) = plt.subplots(1, 2, figsize=(14, 6),
+    fig, (ax1, ax2) = plt.subplots(1, 2, figsize=(12, 5),
                                      gridspec_kw={'width_ratios': [1, 1.3]})
 
     vmax = np.percentile(raw[raw > 0], 99.5)
@@ -639,13 +639,13 @@ def plot_raw_vs_caked(midas_results, fname):
     ax1.text(arr_x + arr_len + 10, arr_y + 5, 'Y', color='yellow',
              fontsize=9, fontweight='bold')
 
-    from matplotlib.colors import LogNorm as _LN
     cake_display = I_cake.copy().astype(float)
     cake_display[cake_display <= 0] = np.nan
-    vmin_cake = max(1, np.nanpercentile(cake_display[np.isfinite(cake_display)], 1))
-    vmax_cake = np.nanpercentile(cake_display[np.isfinite(cake_display)], 99.5)
-    ax2.imshow(cake_display, origin='lower', cmap='viridis',
-               norm=_LN(vmin=vmin_cake, vmax=vmax_cake), aspect='auto',
+    peak_vals = cake_display[np.isfinite(cake_display)]
+    vmin_cake = np.percentile(peak_vals, 5)
+    vmax_cake = np.percentile(peak_vals, 95)
+    ax2.imshow(cake_display, origin='lower', cmap='inferno',
+               vmin=vmin_cake, vmax=vmax_cake, aspect='auto',
                extent=[Eta.min(), Eta.max(), R.min(), R.max()])
     ax2.set_xlabel('η (degrees)', fontsize=11)
     ax2.set_ylabel('R (pixels)', fontsize=11)
@@ -671,7 +671,7 @@ def plot_cake_comparison(midas_results, fname):
     # Extra panel for ΔR=0.5 residual
     nrows = len(available)
     fig, axes = plt.subplots(nrows, 1,
-                             figsize=(12, 3.5 * nrows),
+                             figsize=(6, 3 * nrows),
                              sharex=False)
     if nrows == 1:
         axes = [axes]
@@ -691,13 +691,13 @@ def plot_cake_comparison(midas_results, fname):
 
         Isub = Isub.astype(float)
         Isub[Isub <= 0] = np.nan
-        from matplotlib.colors import LogNorm as _LN2
-        vmin_log = max(1, np.nanpercentile(Isub[np.isfinite(Isub)], 1))
-        vmax = np.nanpercentile(Isub[np.isfinite(Isub)], 99.5)
+        peak_vals = Isub[np.isfinite(Isub)]
+        vmin_lin = np.percentile(peak_vals, 5)
+        vmax_lin = np.percentile(peak_vals, 95)
 
         ax = axes[ax_idx]
-        im = ax.pcolormesh(Rsub, Eta, Isub, shading='auto', cmap='viridis',
-                           norm=_LN2(vmin=vmin_log, vmax=vmax), rasterized=True)
+        im = ax.pcolormesh(Rsub, Eta, Isub, shading='auto', cmap='inferno',
+                           vmin=vmin_lin, vmax=vmax_lin, rasterized=True)
         ax.set_ylabel('η (°)', fontsize=11)
         label = '← ALIASED (striping at cardinal angles)' if dr < 1.0 else '← CLEAN'
         ax.set_title(f'ΔR = {dr} px  {label}', fontsize=11, loc='left')
@@ -720,9 +720,8 @@ def plot_pyfai_cake(midas_zt_results, pyfai_results, fname):
     if dr not in pyfai_results or dr not in midas_zt_results:
         return
 
-    from matplotlib.colors import LogNorm as _LN3
 
-    fig, (ax1, ax2) = plt.subplots(1, 2, figsize=(16, 6),
+    fig, (ax1, ax2) = plt.subplots(1, 2, figsize=(12, 5),
                                     gridspec_kw={'width_ratios': [1, 1]})
     fig.suptitle(f'2D Cake comparison at ΔR = {dr} px — cardinal aliasing in both integrators',
                  fontsize=13, fontweight='bold')
@@ -737,11 +736,12 @@ def plot_pyfai_cake(midas_zt_results, pyfai_results, fname):
     Rsub_m = R_m[r_idx_m]
     Isub_m = I_m[r_idx_m, :].T.astype(float)
     Isub_m[Isub_m <= 0] = np.nan
-    vmin_m = max(1, np.nanpercentile(Isub_m[np.isfinite(Isub_m)], 1))
-    vmax_m = np.nanpercentile(Isub_m[np.isfinite(Isub_m)], 99.5)
+    peak_vals_m = Isub_m[np.isfinite(Isub_m)]
+    vmin_m = np.percentile(peak_vals_m, 5)
+    vmax_m = np.percentile(peak_vals_m, 95)
 
-    im1 = ax1.pcolormesh(Rsub_m, Eta_m, Isub_m, shading='auto', cmap='viridis',
-                         norm=_LN3(vmin=vmin_m, vmax=vmax_m), rasterized=True)
+    im1 = ax1.pcolormesh(Rsub_m, Eta_m, Isub_m, shading='auto', cmap='inferno',
+                         vmin=vmin_m, vmax=vmax_m, rasterized=True)
     ax1.set_xlabel('R (pixels)', fontsize=11)
     ax1.set_ylabel('η (°)', fontsize=11)
     ax1.set_title(f'(a) MIDAS — ΔR = {dr} px', fontsize=12)
@@ -763,11 +763,12 @@ def plot_pyfai_cake(midas_zt_results, pyfai_results, fname):
     Rsub_p = r_px[r_idx_p]
     Isub_p = I2d_p[:, r_idx_p]  # shape (nEta, nR_sub)
 
-    vmin_p = max(1, np.nanpercentile(Isub_p[np.isfinite(Isub_p)], 1))
-    vmax_p = np.nanpercentile(Isub_p[np.isfinite(Isub_p)], 99.5)
+    peak_vals_p = Isub_p[np.isfinite(Isub_p)]
+    vmin_p = np.percentile(peak_vals_p, 5)
+    vmax_p = np.percentile(peak_vals_p, 95)
 
-    im2 = ax2.pcolormesh(Rsub_p, eta_p, Isub_p, shading='auto', cmap='viridis',
-                         norm=_LN3(vmin=vmin_p, vmax=vmax_p), rasterized=True)
+    im2 = ax2.pcolormesh(Rsub_p, eta_p, Isub_p, shading='auto', cmap='inferno',
+                         vmin=vmin_p, vmax=vmax_p, rasterized=True)
     ax2.set_xlabel('R (pixels)', fontsize=11)
     ax2.set_ylabel('η (°)', fontsize=11)
     ax2.set_title(f'(b) pyFAI — ΔR = {dr} px', fontsize=12)
@@ -1258,25 +1259,25 @@ def plot_correction_cake(grad_results, fname):
     I_cor[I_cor == 0] = np.nan
     diff = I_cor - I_std
 
-    from matplotlib.colors import LogNorm as _LN3
-    vmin_log = max(1, np.nanpercentile(I_std[np.isfinite(I_std)], 1))
-    vmax = np.nanpercentile(I_std[np.isfinite(I_std)], 99.5)
+    peak_vals = I_std[np.isfinite(I_std)]
+    vmin_lin = np.percentile(peak_vals, 5)
+    vmax_lin = np.percentile(peak_vals, 95)
     dlim = np.nanpercentile(np.abs(diff[np.isfinite(diff)]), 97)
 
-    fig, axes = plt.subplots(3, 1, figsize=(12, 10.5), sharex=True)
+    fig, axes = plt.subplots(3, 1, figsize=(6, 9), sharex=True)
     fig.suptitle(f'Resampling correction effect on 2D cake (ΔR = 0.5 px, R ≈ {R_RING} px)',
                  fontsize=13, fontweight='bold')
 
     # (a) Standard
-    im0 = axes[0].pcolormesh(Rsub, Eta, I_std, shading='auto', cmap='viridis',
-                              norm=_LN3(vmin=vmin_log, vmax=vmax), rasterized=True)
+    im0 = axes[0].pcolormesh(Rsub, Eta, I_std, shading='auto', cmap='inferno',
+                              vmin=vmin_lin, vmax=vmax_lin, rasterized=True)
     axes[0].set_title('(a) Standard integration', fontsize=11, loc='left')
     axes[0].set_ylabel('η (°)', fontsize=11)
     fig.colorbar(im0, ax=axes[0], label='Intensity (counts)', pad=0.02, shrink=0.9)
 
     # (b) Corrected
-    im1 = axes[1].pcolormesh(Rsub, Eta, I_cor, shading='auto', cmap='viridis',
-                              norm=_LN3(vmin=vmin_log, vmax=vmax), rasterized=True)
+    im1 = axes[1].pcolormesh(Rsub, Eta, I_cor, shading='auto', cmap='inferno',
+                              vmin=vmin_lin, vmax=vmax_lin, rasterized=True)
     axes[1].set_title('(b) With resampling correction', fontsize=11, loc='left')
     axes[1].set_ylabel('η (°)', fontsize=11)
     fig.colorbar(im1, ax=axes[1], label='Intensity (counts)', pad=0.02, shrink=0.9)
@@ -2162,6 +2163,7 @@ def main():
     bench_results  = experiment_benchmark()    # Exp 8: throughput benchmark
     fourier_results = experiment_fourier_analysis(midas_results) if midas_results else {}
     flux_results   = experiment_flux_fwhm(grad_results) if grad_results else None
+    spl_results    = experiment_subpixel_splitting()     # Exp 9: sub-pixel splitting
 
     # ── Generate all paper figures ───────────────────────────────
     print("\n" + "=" * 60)
@@ -2222,6 +2224,10 @@ def main():
     # Fig 6b: MIDAS vs pyFAI 2D cake side-by-side
     if pyfai_results and midas_for_comp:
         plot_pyfai_cake(midas_for_comp, pyfai_results, 'aliasing_pyfai_cake')
+
+    # Sub-pixel splitting experiment
+    if spl_results:
+        plot_subpixel_splitting(spl_results, 'subpixel_splitting')
 
     # Fourier spectrum of I(η)
     if fourier_results:

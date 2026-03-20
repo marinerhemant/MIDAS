@@ -17,6 +17,7 @@ void midas_config_defaults(MIDASConfig *cfg) {
   cfg->tolShifts = 1.0;
   cfg->MinIndicesForFit = 1;
   cfg->nIterations = 1;
+  cfg->iterOffset = 0;
   cfg->OutlierIterations = 1;
   cfg->TrimmedMeanFraction = 1.0;
   cfg->tolLsdPanel = 100;
@@ -291,6 +292,7 @@ int midas_parse_params(const char *filename, MIDASConfig *cfg) {
     if (param_int(aline, "MinIndicesForFit", &cfg->MinIndicesForFit)) continue;
     if (param_int(aline, "FitOrWeightedMean", &cfg->FitWeightMean)) continue;
     if (param_int(aline, "nIterations", &cfg->nIterations)) continue;
+    if (param_int(aline, "IterOffset", &cfg->iterOffset)) continue;
     if (param_double(aline, "DoubletSeparation", &cfg->DoubletSeparation)) continue;
     if (param_int(aline, "NormalizeRingWeights", &cfg->NormalizeRingWeights)) continue;
     if (param_int(aline, "OutlierIterations", &cfg->OutlierIterations)) continue;

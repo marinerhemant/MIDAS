@@ -29,7 +29,51 @@ add_custom_command(TARGET MIDAS_TOMO POST_BUILD
   VERBATIM
 )
 
+# --- GPU-accelerated target: MIDAS_TOMO_GPU (requires USE_CUDA=ON) ---
+if(USE_CUDA AND CUDA_FOUND)
+    set(TOMO_GPU_SOURCES
+        ${TOMO_SRCDIR}/tomo_init.c
+        ${TOMO_SRCDIR}/tomo_gridrec.c
+        ${TOMO_SRCDIR}/tomo_utils.c
+        ${TOMO_SRCDIR}/tomo_cleanup.c
+        ${TOMO_SRCDIR}/tomo_gpu.cu
+    )
+
+    add_executable(MIDAS_TOMO_GPU ${TOMO_GPU_SOURCES})
+    target_link_libraries(MIDAS_TOMO_GPU PRIVATE ${COMMON_LINK_LIBRARIES})
+    target_link_libraries(MIDAS_TOMO_GPU PRIVATE cufft cudart)
+    target_compile_definitions(MIDAS_TOMO_GPU PRIVATE PI=M_PI ENABLE_CUDA)
+
+    if(OpenMP_C_FOUND AND BUILD_OMP)
+        target_link_libraries(MIDAS_TOMO_GPU PRIVATE OpenMP::OpenMP_C)
+    endif()
+
+    # Set CUDA properties
+    set_target_properties(MIDAS_TOMO_GPU PROPERTIES
+        CUDA_SEPARABLE_COMPILATION ON
+    )
+
+    install(TARGETS MIDAS_TOMO_GPU
+        RUNTIME DESTINATION ${MIDAS_INSTALL_BINDIR}
+    )
+
+    add_custom_command(TARGET MIDAS_TOMO_GPU POST_BUILD
+        COMMAND ${CMAKE_COMMAND} -E make_directory "${CMAKE_CURRENT_SOURCE_DIR}/bin"
+        COMMAND ${CMAKE_COMMAND} -E copy $<TARGET_FILE:MIDAS_TOMO_GPU> "${CMAKE_CURRENT_SOURCE_DIR}/bin/"
+        COMMENT "Copied MIDAS_TOMO_GPU to ${CMAKE_CURRENT_SOURCE_DIR}/bin/"
+        VERBATIM
+    )
+
+    message(STATUS "TOMO: GPU target MIDAS_TOMO_GPU enabled")
+else()
+    message(STATUS "TOMO: GPU target MIDAS_TOMO_GPU skipped (USE_CUDA=${USE_CUDA})")
+endif()
+
 # Optional: Add a custom target to build all executables in this subdirectory
+set(TOMO_ALL_TARGETS MIDAS_TOMO)
+if(TARGET MIDAS_TOMO_GPU)
+    list(APPEND TOMO_ALL_TARGETS MIDAS_TOMO_GPU)
+endif()
 add_custom_target(midas_tomo_all_executables DEPENDS
-    MIDAS_TOMO
+    ${TOMO_ALL_TARGETS}
 )
