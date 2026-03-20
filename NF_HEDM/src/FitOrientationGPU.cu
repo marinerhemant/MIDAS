@@ -178,23 +178,41 @@ __device__ static inline void gpu_displacement(
 //  5. Accumulate OverlapPixels / TotalPixels
 //  6. If FracOverlap >= threshold: atomically append winner
 // ═════════════════════════════════════════════════════════════
+//  Constant memory for geometry (broadcast to all threads)
+// ═════════════════════════════════════════════════════════════
+#define MAX_LAYERS 8
+__constant__ float c_Lsd[MAX_LAYERS];
+__constant__ float c_ybc[MAX_LAYERS];
+__constant__ float c_zbc[MAX_LAYERS];
+__constant__ float c_P0[MAX_LAYERS * 3];
+__constant__ float c_RM[9];         // rotMatTilts flattened
+__constant__ float c_layerScaleY[MAX_LAYERS]; // precomputed (refY - ybc0) * Lsd[l]/Lsd0 factor
+__constant__ float c_layerScaleZ[MAX_LAYERS]; // same for Z
+
+// ═════════════════════════════════════════════════════════════
+//  MAIN SCREENING KERNEL: one thread = one (voxel, orientation) pair
+//
+//  Optimizations applied:
+//  1. Inline pixel processing (no local arrays)
+//  2. __ldg() for read-only global memory
+//  3. Constant memory for geometry
+//  4. Early exit when remaining spots can't reach threshold
+//  5. Precomputed layer scaling
+//  6. Break on first layer miss
+// ═════════════════════════════════════════════════════════════
 
 __global__ void screen_pairs_kernel(
-    const uint32_t *obsFlat,         // Flat ObsSpotsInfo bitfield
-    const GPUSpot *spots,            // Precomputed spot data
-    const GPUOrientHeader *headers,
-    const float *voxXG,              // [nVoxels * 3]
-    const float *voxYG,              // [nVoxels * 3]
+    const uint32_t * __restrict__ obsFlat,
+    const GPUSpot * __restrict__ spots,
+    const GPUOrientHeader * __restrict__ headers,
+    const float * __restrict__ voxXG,
+    const float * __restrict__ voxYG,
     int nVoxels,
     int nOrientations,
     int nLayers,
     int nrFiles,
     int nrPixelsY, int nrPixelsZ,
     float px, float gs,
-    const float *Lsd,                // [nLayers]
-    const float *ybc, const float *zbc, // [nLayers]
-    const float *P0,                 // [nLayers * 3]
-    const float *rotMatTilts,        // [9]
     float minFracOverlap,
     NFGPUWinner *winners,
     int *nWinners,
@@ -210,33 +228,50 @@ __global__ void screen_pairs_kernel(
   int oriIdx = tid / nVoxels;
   int voxIdx = tid % nVoxels;
 
-  // Load rotation matrix into registers
+  // Load rotation matrix from constant memory into registers
   float RM[9];
-  for (int i = 0; i < 9; i++) RM[i] = rotMatTilts[i];
+  #pragma unroll
+  for (int i = 0; i < 9; i++) RM[i] = c_RM[i];
 
-  // Load voxel corners
+  // Load voxel corners (different per thread — from global via __ldg)
   float XG[3], YG[3];
+  #pragma unroll
   for (int k = 0; k < 3; k++) {
-    XG[k] = voxXG[voxIdx * 3 + k];
-    YG[k] = voxYG[voxIdx * 3 + k];
+    XG[k] = __ldg(&voxXG[voxIdx * 3 + k]);
+    YG[k] = __ldg(&voxYG[voxIdx * 3 + k]);
   }
 
-  // Load layer-0 geometry (used for displacement; other layers for scaling)
-  float Lsd0 = Lsd[0];
-  float ybc0 = ybc[0];
-  float zbc0 = zbc[0];
-  float P0_0[3] = { P0[0], P0[1], P0[2] };
+  // Load layer-0 geometry from constant memory
+  float Lsd0 = c_Lsd[0];
+  float ybc0 = c_ybc[0];
+  float zbc0 = c_zbc[0];
+  float P0_0[3] = { c_P0[0], c_P0[1], c_P0[2] };
 
-  GPUOrientHeader hdr = headers[oriIdx];
-
+  GPUOrientHeader hdr = __ldg(&headers[oriIdx]);
 
   int OverlapPixels = 0;
   int TotalPixels = 0;
+  int totalSpotsThisOri = hdr.nSpots;
+  int spotsProcessed = 0;
 
   // Iterate over all spots for this orientation
-  for (int s = 0; s < hdr.nSpots; s++) {
-    GPUSpot spot = spots[hdr.spotOffset + s];
+  for (int s = 0; s < totalSpotsThisOri; s++) {
+    // Early termination: if remaining spots can't reach threshold
+    // Max possible additional overlap = remaining spots * ~5 pixels each (generous)
+    // If (OverlapPixels + remainingMax) / (TotalPixels + remainingMax) < threshold, exit
+    if (TotalPixels > 0 && spotsProcessed > 20) {
+      int remaining = totalSpotsThisOri - s;
+      int maxRemaining = remaining * 5;  // ~5 pixels per spot max
+      // If even perfect overlap on all remaining can't reach threshold
+      if ((float)(OverlapPixels + maxRemaining) / (float)(TotalPixels + maxRemaining)
+          < minFracOverlap) {
+        break;
+      }
+    }
+
+    GPUSpot spot = __ldg(&spots[hdr.spotOffset + s]);
     if (!spot.valid) continue;
+    spotsProcessed++;
 
     float ythis = spot.y;
     float zthis = spot.z;
@@ -248,6 +283,7 @@ __global__ void screen_pairs_kernel(
     float YZSpotsT[3][2];  // Absolute pixel coords
     int oob = 0;
 
+    #pragma unroll
     for (int k = 0; k < 3; k++) {
       float Displ_Y, Displ_Z;
       gpu_displacement(XG[k], YG[k], Lsd0, ythis, zthis, sinOme, cosOme,
@@ -262,8 +298,9 @@ __global__ void screen_pairs_kernel(
       float ABCy = P1y - P0_0[1];
       float ABCz = P1z - P0_0[2];
 
-      float outY = P0_0[1] - (ABCy * P0_0[0]) / ABCx;
-      float outZ = P0_0[2] - (ABCz * P0_0[0]) / ABCx;
+      float invABCx = 1.0f / ABCx;
+      float outY = P0_0[1] - ABCy * P0_0[0] * invABCx;
+      float outZ = P0_0[2] - ABCz * P0_0[0] * invABCx;
 
       YZSpotsT[k][0] = outY / px + ybc0;
       YZSpotsT[k][1] = outZ / px + zbc0;
@@ -276,68 +313,67 @@ __global__ void screen_pairs_kernel(
     }
     if (oob) continue;
 
-    // Compute undisplaced reference (spot mapped without voxel displacement)
-    // xyz = RotMatTilts × [0, ythis, zthis]
+    // Compute undisplaced reference
     float refP1x = RM[0*3+1] * ythis + RM[0*3+2] * zthis;
     float refP1y = RM[1*3+1] * ythis + RM[1*3+2] * zthis;
     float refP1z = RM[2*3+1] * ythis + RM[2*3+2] * zthis;
 
     float refABCx = refP1x - P0_0[0];
-    float refABCy = refP1y - P0_0[1];
-    float refABCz = refP1z - P0_0[2];
-
-    float refOutY = P0_0[1] - (refABCy * P0_0[0]) / refABCx;
-    float refOutZ = P0_0[2] - (refABCz * P0_0[0]) / refABCx;
+    float refInvABCx = 1.0f / refABCx;
+    float refOutY = P0_0[1] - (refP1y - P0_0[1]) * P0_0[0] * refInvABCx;
+    float refOutZ = P0_0[2] - (refP1z - P0_0[2]) * P0_0[0] * refInvABCx;
     float refYpx = refOutY / px + ybc0;
     float refZpx = refOutZ / px + zbc0;
 
+    // Precompute per-layer base positions for this spot
+    float layerBaseY[MAX_LAYERS], layerBaseZ[MAX_LAYERS];
+    for (int l = 0; l < nLayers; l++) {
+      float scale = c_Lsd[l] / Lsd0;
+      layerBaseY[l] = floorf((refYpx - ybc0) * scale + c_ybc[l]);
+      layerBaseZ[l] = floorf((refZpx - zbc0) * scale + c_zbc[l]);
+    }
+
     // Relative triangle: subtract reference
     float YZSpots[3][2];
+    #pragma unroll
     for (int l = 0; l < 3; l++) {
       YZSpots[l][0] = YZSpotsT[l][0] - refYpx;
       YZSpots[l][1] = YZSpotsT[l][1] - refZpx;
     }
 
-
-
-    // Rasterize triangle to get pixel offsets
-    // Store in local arrays (max ~20 pixels for typical voxels)
-    int inPixY[64], inPixZ[64];
-    int nInPixels = 0;
-
+    // Inline pixel processing: rasterize + check bitfield in one pass
+    // No local arrays needed
     if (gs * 2.0f > px) {
-      // Multi-pixel: CalcPixels2-equivalent edge-function rasterization
-      float edges[3][2];
-      float minY = 1e9f, maxY = -1e9f, minZ = 1e9f, maxZ = -1e9f;
-      for (int i = 0; i < 3; i++) {
-        edges[i][0] = roundf(YZSpots[i][0]);
-        edges[i][1] = roundf(YZSpots[i][1]);
-        if (edges[i][0] < minY) minY = edges[i][0];
-        if (edges[i][0] > maxY) maxY = edges[i][0];
-        if (edges[i][1] < minZ) minZ = edges[i][1];
-        if (edges[i][1] > maxZ) maxZ = edges[i][1];
-      }
+      // Multi-pixel: edge-function rasterization
+      int e0y = (int)roundf(YZSpots[0][0]), e0z = (int)roundf(YZSpots[0][1]);
+      int e1y = (int)roundf(YZSpots[1][0]), e1z = (int)roundf(YZSpots[1][1]);
+      int e2y = (int)roundf(YZSpots[2][0]), e2z = (int)roundf(YZSpots[2][1]);
 
-      for (int pz = (int)minZ; pz <= (int)maxZ && nInPixels < 64; pz++) {
-        for (int py = (int)minY; py <= (int)maxY && nInPixels < 64; py++) {
+      int minY = min(e0y, min(e1y, e2y));
+      int maxY = max(e0y, max(e1y, e2y));
+      int minZ = min(e0z, min(e1z, e2z));
+      int maxZ = max(e0z, max(e1z, e2z));
+
+      // For distance test
+      float edgeYs[3] = {(float)e0y, (float)e1y, (float)e2y};
+      float edgeZs[3] = {(float)e0z, (float)e1z, (float)e2z};
+
+      for (int pz = minZ; pz <= maxZ; pz++) {
+        for (int py = minY; py <= maxY; py++) {
           // Edge function test
-          int w0 = ((int)edges[1][1]-(int)edges[2][1]) * (py-(int)edges[1][0])
-                 + ((int)edges[2][0]-(int)edges[1][0]) * (pz-(int)edges[1][1]);
-          int w1 = ((int)edges[2][1]-(int)edges[0][1]) * (py-(int)edges[2][0])
-                 + ((int)edges[0][0]-(int)edges[2][0]) * (pz-(int)edges[2][1]);
-          int w2 = ((int)edges[0][1]-(int)edges[1][1]) * (py-(int)edges[0][0])
-                 + ((int)edges[1][0]-(int)edges[0][0]) * (pz-(int)edges[0][1]);
+          int w0_ = (e1z - e2z) * (py - e1y) + (e2y - e1y) * (pz - e1z);
+          int w1_ = (e2z - e0z) * (py - e2y) + (e0y - e2y) * (pz - e2z);
+          int w2_ = (e0z - e1z) * (py - e0y) + (e1y - e0y) * (pz - e0z);
 
-          int inside = (w0 >= 0 && w1 >= 0 && w2 >= 0);
+          int inside = (w0_ >= 0 && w1_ >= 0 && w2_ >= 0);
 
           if (!inside) {
-            // Distance-to-edge test (matches CPU CalcPixels2)
+            // Distance-to-edge test
             for (int e = 0; e < 3 && !inside; e++) {
-              int i0 = e, i1 = (e + 1) % 3;
-              float dx = edges[i1][0] - edges[i0][0];
-              float dz = edges[i1][1] - edges[i0][1];
-              float num = dx * (pz - (int)edges[i0][1])
-                        - dz * (py - (int)edges[i0][0]);
+              int i1 = (e + 1) % 3;
+              float dx = edgeYs[i1] - edgeYs[e];
+              float dz = edgeZs[i1] - edgeZs[e];
+              float num = dx * (pz - edgeZs[e]) - dz * (py - edgeYs[e]);
               float den = dz * dz + dx * dx;
               if (den > 0 && (num * num) / den < 0.9801f)
                 inside = 1;
@@ -345,39 +381,53 @@ __global__ void screen_pairs_kernel(
           }
 
           if (inside) {
-            inPixY[nInPixels] = py;
-            inPixZ[nInPixels] = pz;
-            nInPixels++;
+            // Immediately check bitfield (inline — no storage needed)
+            int allFound = 1;
+            int pixOob = 0;
+
+            for (int layer = 0; layer < nLayers; layer++) {
+              int MultY = (int)layerBaseY[layer] + py;
+              int MultZ = (int)layerBaseZ[layer] + pz;
+
+              if (MultY >= nrPixelsY || MultY < 0 || MultZ >= nrPixelsZ || MultZ < 0) {
+                pixOob = 1;
+                break;
+              }
+
+              long long binNr = (long long)layer * nrFiles * nrPixelsY * nrPixelsZ
+                              + (long long)omeBin * nrPixelsY * nrPixelsZ
+                              + (long long)MultY * nrPixelsZ
+                              + MultZ;
+
+              if (!gpu_test_bit(obsFlat, binNr)) {
+                allFound = 0;
+                break;  // No need to check remaining layers
+              }
+            }
+
+            if (!pixOob) {
+              if (allFound) OverlapPixels++;
+              TotalPixels++;
+            }
           }
         }
       }
     } else {
       // Single pixel: centroid
-      inPixY[0] = (int)roundf((YZSpots[0][0] + YZSpots[1][0] + YZSpots[2][0]) / 3.0f);
-      inPixZ[0] = (int)roundf((YZSpots[0][1] + YZSpots[1][1] + YZSpots[2][1]) / 3.0f);
-      nInPixels = 1;
-    }
+      int py = (int)roundf((YZSpots[0][0] + YZSpots[1][0] + YZSpots[2][0]) / 3.0f);
+      int pz = (int)roundf((YZSpots[0][1] + YZSpots[1][1] + YZSpots[2][1]) / 3.0f);
 
-    // Check each rasterized pixel against ALL layers
-    // (matches CPU CalcFracOverlap logic: lines 597-638)
-    for (int p = 0; p < nInPixels; p++) {
       int allFound = 1;
       int pixOob = 0;
-
       for (int layer = 0; layer < nLayers; layer++) {
-        // Multi-layer scaling: rescale reference position to this layer's detector
-        // MultY = floor(((refYpx - ybc0) * px * (Lsd_layer / Lsd0)) / px + ybc_layer) + inPixY[p]
-        int MultY = (int)floorf(((refYpx - ybc0) * px * (Lsd[layer] / Lsd0)) / px
-                                + ybc[layer]) + inPixY[p];
-        int MultZ = (int)floorf(((refZpx - zbc0) * px * (Lsd[layer] / Lsd0)) / px
-                                + zbc[layer]) + inPixZ[p];
+        int MultY = (int)layerBaseY[layer] + py;
+        int MultZ = (int)layerBaseZ[layer] + pz;
 
         if (MultY >= nrPixelsY || MultY < 0 || MultZ >= nrPixelsZ || MultZ < 0) {
           pixOob = 1;
           break;
         }
 
-        // Flat bitfield index: layer*nrFiles*nPxY*nPxZ + omeBin*nPxY*nPxZ + MultY*nPxZ + MultZ
         long long binNr = (long long)layer * nrFiles * nrPixelsY * nrPixelsZ
                         + (long long)omeBin * nrPixelsY * nrPixelsZ
                         + (long long)MultY * nrPixelsZ
@@ -385,17 +435,16 @@ __global__ void screen_pairs_kernel(
 
         if (!gpu_test_bit(obsFlat, binNr)) {
           allFound = 0;
+          break;
         }
       }
 
-      if (pixOob) continue;
-      if (allFound) OverlapPixels++;
-      TotalPixels++;
-
-
+      if (!pixOob) {
+        if (allFound) OverlapPixels++;
+        TotalPixels++;
+      }
     }
   }
-
 
   // Compute FracOverlap and check threshold
   if (TotalPixels > 0) {
@@ -701,11 +750,27 @@ extern "C" int nf_gpu_screen(NFGPUContext *ctx,
   free(h_XG);
   free(h_YG);
 
-  // Upload rotation matrix
-  float *d_rotMat;
-  CUDA_CHECK(cudaMalloc(&d_rotMat, 9 * sizeof(float)));
-  CUDA_CHECK(cudaMemcpy(d_rotMat, ctx->rotMatTilts, 9 * sizeof(float),
-                        cudaMemcpyHostToDevice));
+  // Upload geometry to constant memory
+  {
+    float h_Lsd[MAX_LAYERS], h_ybc[MAX_LAYERS], h_zbc[MAX_LAYERS];
+    float h_P0[MAX_LAYERS * 3];
+
+    // Read from device arrays back to host (they were uploaded in upload_orientations)
+    CUDA_CHECK(cudaMemcpy(h_Lsd, ctx->d_Lsd, ctx->nLayers * sizeof(float),
+                          cudaMemcpyDeviceToHost));
+    CUDA_CHECK(cudaMemcpy(h_ybc, ctx->d_ybc, ctx->nLayers * sizeof(float),
+                          cudaMemcpyDeviceToHost));
+    CUDA_CHECK(cudaMemcpy(h_zbc, ctx->d_zbc, ctx->nLayers * sizeof(float),
+                          cudaMemcpyDeviceToHost));
+    CUDA_CHECK(cudaMemcpy(h_P0, ctx->d_P0, ctx->nLayers * 3 * sizeof(float),
+                          cudaMemcpyDeviceToHost));
+
+    CUDA_CHECK(cudaMemcpyToSymbol(c_Lsd, h_Lsd, ctx->nLayers * sizeof(float)));
+    CUDA_CHECK(cudaMemcpyToSymbol(c_ybc, h_ybc, ctx->nLayers * sizeof(float)));
+    CUDA_CHECK(cudaMemcpyToSymbol(c_zbc, h_zbc, ctx->nLayers * sizeof(float)));
+    CUDA_CHECK(cudaMemcpyToSymbol(c_P0, h_P0, ctx->nLayers * 3 * sizeof(float)));
+    CUDA_CHECK(cudaMemcpyToSymbol(c_RM, ctx->rotMatTilts, 9 * sizeof(float)));
+  }
 
   // Allocate winner buffer
   ctx->maxWinners = (int)fmin((double)totalPairs, 10000000.0) + 10000;
@@ -729,8 +794,6 @@ extern "C" int nf_gpu_screen(NFGPUContext *ctx,
       ctx->nLayers, ctx->nrFiles,
       ctx->nrPixelsY, ctx->nrPixelsZ,
       ctx->px, ctx->gs,
-      ctx->d_Lsd, ctx->d_ybc, ctx->d_zbc,
-      ctx->d_P0, d_rotMat,
       (float)minFracOverlap,
       ctx->d_winners, ctx->d_nWinners, ctx->maxWinners);
 
@@ -759,7 +822,6 @@ extern "C" int nf_gpu_screen(NFGPUContext *ctx,
   // Cleanup
   cudaFree(d_XG);
   cudaFree(d_YG);
-  cudaFree(d_rotMat);
   cudaFree(ctx->d_winners);   ctx->d_winners = NULL;
   cudaFree(ctx->d_nWinners);  ctx->d_nWinners = NULL;
 
