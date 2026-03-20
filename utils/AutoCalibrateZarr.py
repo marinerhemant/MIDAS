@@ -1918,7 +1918,7 @@ def runMIDAS(rawFN, state, n_iterations=40, mult_factor=5,
             if state.p5 != 0.0:
                 pf.write(f'p5 {state.p5}\n')
             pf.write(f'EtaBinSize {eta_bin_size}\n')
-            pf.write(f'HeadSize {8192 if state.data_type == 1 else 0}\n')
+            pf.write(f'HeadSize {8192 if state.midas_dtype == 1 else 0}\n')
 
             # Bad pixel / gap
             if not math.isnan(state.bad_px_intensity):
