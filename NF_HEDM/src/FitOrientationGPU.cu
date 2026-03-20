@@ -251,27 +251,12 @@ __global__ void screen_pairs_kernel(
 
   int OverlapPixels = 0;
   int TotalPixels = 0;
-  int totalSpotsThisOri = hdr.nSpots;
-  int spotsProcessed = 0;
 
   // Iterate over all spots for this orientation
-  for (int s = 0; s < totalSpotsThisOri; s++) {
-    // Early termination: if remaining spots can't reach threshold
-    // Max possible additional overlap = remaining spots * ~5 pixels each (generous)
-    // If (OverlapPixels + remainingMax) / (TotalPixels + remainingMax) < threshold, exit
-    if (TotalPixels > 0 && spotsProcessed > 20) {
-      int remaining = totalSpotsThisOri - s;
-      int maxRemaining = remaining * 5;  // ~5 pixels per spot max
-      // If even perfect overlap on all remaining can't reach threshold
-      if ((float)(OverlapPixels + maxRemaining) / (float)(TotalPixels + maxRemaining)
-          < minFracOverlap) {
-        break;
-      }
-    }
+  for (int s = 0; s < hdr.nSpots; s++) {
 
     GPUSpot spot = spots[hdr.spotOffset + s];
     if (!spot.valid) continue;
-    spotsProcessed++;
 
     float ythis = spot.y;
     float zthis = spot.z;
