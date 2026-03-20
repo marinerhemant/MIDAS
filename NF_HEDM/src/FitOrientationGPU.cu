@@ -185,28 +185,19 @@ __constant__ float c_Lsd[MAX_LAYERS];
 __constant__ float c_ybc[MAX_LAYERS];
 __constant__ float c_zbc[MAX_LAYERS];
 __constant__ float c_P0[MAX_LAYERS * 3];
-__constant__ float c_RM[9];         // rotMatTilts flattened
-__constant__ float c_layerScaleY[MAX_LAYERS]; // precomputed (refY - ybc0) * Lsd[l]/Lsd0 factor
-__constant__ float c_layerScaleZ[MAX_LAYERS]; // same for Z
+__constant__ float c_RM[9];
 
 // ═════════════════════════════════════════════════════════════
 //  MAIN SCREENING KERNEL: one thread = one (voxel, orientation) pair
-//
-//  Optimizations applied:
-//  1. Inline pixel processing (no local arrays)
-//  2. __ldg() for read-only global memory
-//  3. Constant memory for geometry
-//  4. Early exit when remaining spots can't reach threshold
-//  5. Precomputed layer scaling
-//  6. Break on first layer miss
+//  Exact same logic as original, but reads geometry from __constant__.
 // ═════════════════════════════════════════════════════════════
 
 __global__ void screen_pairs_kernel(
-    const uint32_t * __restrict__ obsFlat,
-    const GPUSpot * __restrict__ spots,
-    const GPUOrientHeader * __restrict__ headers,
-    const float * __restrict__ voxXG,
-    const float * __restrict__ voxYG,
+    const uint32_t *obsFlat,
+    const GPUSpot *spots,
+    const GPUOrientHeader *headers,
+    const float *voxXG,
+    const float *voxYG,
     int nVoxels,
     int nOrientations,
     int nLayers,
@@ -218,9 +209,6 @@ __global__ void screen_pairs_kernel(
     int *nWinners,
     int maxWinners) {
 
-  // Linearised thread ID → (oriIdx, voxIdx)
-  // Adjacent threads process different voxels with the SAME orientation
-  // → same GPUSpot data → excellent L1/L2 cache reuse
   long long tid = (long long)blockIdx.x * blockDim.x + threadIdx.x;
   long long totalPairs = (long long)nVoxels * nOrientations;
   if (tid >= totalPairs) return;
@@ -228,20 +216,15 @@ __global__ void screen_pairs_kernel(
   int oriIdx = tid / nVoxels;
   int voxIdx = tid % nVoxels;
 
-  // Load rotation matrix from constant memory into registers
   float RM[9];
-  #pragma unroll
   for (int i = 0; i < 9; i++) RM[i] = c_RM[i];
 
-  // Load voxel corners (different per thread — from global via __ldg)
   float XG[3], YG[3];
-  #pragma unroll
   for (int k = 0; k < 3; k++) {
-    XG[k] = __ldg(&voxXG[voxIdx * 3 + k]);
-    YG[k] = __ldg(&voxYG[voxIdx * 3 + k]);
+    XG[k] = voxXG[voxIdx * 3 + k];
+    YG[k] = voxYG[voxIdx * 3 + k];
   }
 
-  // Load layer-0 geometry from constant memory
   float Lsd0 = c_Lsd[0];
   float ybc0 = c_ybc[0];
   float zbc0 = c_zbc[0];
@@ -252,9 +235,7 @@ __global__ void screen_pairs_kernel(
   int OverlapPixels = 0;
   int TotalPixels = 0;
 
-  // Iterate over all spots for this orientation
   for (int s = 0; s < hdr.nSpots; s++) {
-
     GPUSpot spot = spots[hdr.spotOffset + s];
     if (!spot.valid) continue;
 
@@ -264,17 +245,14 @@ __global__ void screen_pairs_kernel(
     float sinOme = spot.sinOme;
     float cosOme = spot.cosOme;
 
-    // Compute displaced pixel positions for 3 triangle corners
-    float YZSpotsT[3][2];  // Absolute pixel coords
+    float YZSpotsT[3][2];
     int oob = 0;
 
-    #pragma unroll
     for (int k = 0; k < 3; k++) {
       float Displ_Y, Displ_Z;
       gpu_displacement(XG[k], YG[k], Lsd0, ythis, zthis, sinOme, cosOme,
                        &Displ_Y, &Displ_Z);
 
-      // RotMatTilts × [0, Displ_Y, Displ_Z] = P1
       float P1x = RM[0*3+1] * Displ_Y + RM[0*3+2] * Displ_Z;
       float P1y = RM[1*3+1] * Displ_Y + RM[1*3+2] * Displ_Z;
       float P1z = RM[2*3+1] * Displ_Y + RM[2*3+2] * Displ_Z;
@@ -297,7 +275,6 @@ __global__ void screen_pairs_kernel(
     }
     if (oob) continue;
 
-    // Compute undisplaced reference
     float refP1x = RM[0*3+1] * ythis + RM[0*3+2] * zthis;
     float refP1y = RM[1*3+1] * ythis + RM[1*3+2] * zthis;
     float refP1z = RM[2*3+1] * ythis + RM[2*3+2] * zthis;
@@ -311,55 +288,46 @@ __global__ void screen_pairs_kernel(
     float refYpx = refOutY / px + ybc0;
     float refZpx = refOutZ / px + zbc0;
 
-    // Precompute per-layer base positions for this spot
-    // Keep * px / px to match CPU float precision exactly
-    float layerBaseY[MAX_LAYERS], layerBaseZ[MAX_LAYERS];
-    for (int l = 0; l < nLayers; l++) {
-      layerBaseY[l] = floorf(((refYpx - ybc0) * px * (c_Lsd[l] / Lsd0)) / px + c_ybc[l]);
-      layerBaseZ[l] = floorf(((refZpx - zbc0) * px * (c_Lsd[l] / Lsd0)) / px + c_zbc[l]);
-    }
-
-    // Relative triangle: subtract reference
     float YZSpots[3][2];
-    #pragma unroll
     for (int l = 0; l < 3; l++) {
       YZSpots[l][0] = YZSpotsT[l][0] - refYpx;
       YZSpots[l][1] = YZSpotsT[l][1] - refZpx;
     }
 
-    // Inline pixel processing: rasterize + check bitfield in one pass
-    // No local arrays needed
+    // Rasterize triangle — original logic with local arrays
+    int inPixY[64], inPixZ[64];
+    int nInPixels = 0;
+
     if (gs * 2.0f > px) {
-      // Multi-pixel: edge-function rasterization
-      int e0y = (int)roundf(YZSpots[0][0]), e0z = (int)roundf(YZSpots[0][1]);
-      int e1y = (int)roundf(YZSpots[1][0]), e1z = (int)roundf(YZSpots[1][1]);
-      int e2y = (int)roundf(YZSpots[2][0]), e2z = (int)roundf(YZSpots[2][1]);
+      float edges[3][2];
+      float minY = 1e9f, maxY = -1e9f, minZ = 1e9f, maxZ = -1e9f;
+      for (int i = 0; i < 3; i++) {
+        edges[i][0] = roundf(YZSpots[i][0]);
+        edges[i][1] = roundf(YZSpots[i][1]);
+        if (edges[i][0] < minY) minY = edges[i][0];
+        if (edges[i][0] > maxY) maxY = edges[i][0];
+        if (edges[i][1] < minZ) minZ = edges[i][1];
+        if (edges[i][1] > maxZ) maxZ = edges[i][1];
+      }
 
-      int minY = min(e0y, min(e1y, e2y));
-      int maxY = max(e0y, max(e1y, e2y));
-      int minZ = min(e0z, min(e1z, e2z));
-      int maxZ = max(e0z, max(e1z, e2z));
+      for (int pz = (int)minZ; pz <= (int)maxZ && nInPixels < 64; pz++) {
+        for (int py = (int)minY; py <= (int)maxY && nInPixels < 64; py++) {
+          int w0 = ((int)edges[1][1]-(int)edges[2][1]) * (py-(int)edges[1][0])
+                 + ((int)edges[2][0]-(int)edges[1][0]) * (pz-(int)edges[1][1]);
+          int w1 = ((int)edges[2][1]-(int)edges[0][1]) * (py-(int)edges[2][0])
+                 + ((int)edges[0][0]-(int)edges[2][0]) * (pz-(int)edges[2][1]);
+          int w2 = ((int)edges[0][1]-(int)edges[1][1]) * (py-(int)edges[0][0])
+                 + ((int)edges[1][0]-(int)edges[0][0]) * (pz-(int)edges[0][1]);
 
-      // For distance test
-      float edgeYs[3] = {(float)e0y, (float)e1y, (float)e2y};
-      float edgeZs[3] = {(float)e0z, (float)e1z, (float)e2z};
-
-      for (int pz = minZ; pz <= maxZ; pz++) {
-        for (int py = minY; py <= maxY; py++) {
-          // Edge function test
-          int w0_ = (e1z - e2z) * (py - e1y) + (e2y - e1y) * (pz - e1z);
-          int w1_ = (e2z - e0z) * (py - e2y) + (e0y - e2y) * (pz - e2z);
-          int w2_ = (e0z - e1z) * (py - e0y) + (e1y - e0y) * (pz - e0z);
-
-          int inside = (w0_ >= 0 && w1_ >= 0 && w2_ >= 0);
+          int inside = (w0 >= 0 && w1 >= 0 && w2 >= 0);
 
           if (!inside) {
-            // Distance-to-edge test
             for (int e = 0; e < 3 && !inside; e++) {
-              int i1 = (e + 1) % 3;
-              float dx = edgeYs[i1] - edgeYs[e];
-              float dz = edgeZs[i1] - edgeZs[e];
-              float num = dx * (pz - edgeZs[e]) - dz * (py - edgeYs[e]);
+              int i0 = e, i1 = (e + 1) % 3;
+              float dx = edges[i1][0] - edges[i0][0];
+              float dz = edges[i1][1] - edges[i0][1];
+              float num = dx * (pz - (int)edges[i0][1])
+                        - dz * (py - (int)edges[i0][0]);
               float den = dz * dz + dx * dx;
               if (den > 0 && (num * num) / den < 0.9801f)
                 inside = 1;
@@ -367,47 +335,28 @@ __global__ void screen_pairs_kernel(
           }
 
           if (inside) {
-            // Immediately check bitfield (inline — no storage needed)
-            int allFound = 1;
-            int pixOob = 0;
-
-            for (int layer = 0; layer < nLayers; layer++) {
-              int MultY = (int)layerBaseY[layer] + py;
-              int MultZ = (int)layerBaseZ[layer] + pz;
-
-              if (MultY >= nrPixelsY || MultY < 0 || MultZ >= nrPixelsZ || MultZ < 0) {
-                pixOob = 1;
-                break;
-              }
-
-              long long binNr = (long long)layer * nrFiles * nrPixelsY * nrPixelsZ
-                              + (long long)omeBin * nrPixelsY * nrPixelsZ
-                              + (long long)MultY * nrPixelsZ
-                              + MultZ;
-
-              if (!gpu_test_bit(obsFlat, binNr)) {
-                allFound = 0;
-                break;  // No need to check remaining layers
-              }
-            }
-
-            if (!pixOob) {
-              if (allFound) OverlapPixels++;
-              TotalPixels++;
-            }
+            inPixY[nInPixels] = py;
+            inPixZ[nInPixels] = pz;
+            nInPixels++;
           }
         }
       }
     } else {
-      // Single pixel: centroid
-      int py = (int)roundf((YZSpots[0][0] + YZSpots[1][0] + YZSpots[2][0]) / 3.0f);
-      int pz = (int)roundf((YZSpots[0][1] + YZSpots[1][1] + YZSpots[2][1]) / 3.0f);
+      inPixY[0] = (int)roundf((YZSpots[0][0] + YZSpots[1][0] + YZSpots[2][0]) / 3.0f);
+      inPixZ[0] = (int)roundf((YZSpots[0][1] + YZSpots[1][1] + YZSpots[2][1]) / 3.0f);
+      nInPixels = 1;
+    }
 
+    // Check pixels against ALL layers — original logic (no break on miss)
+    for (int p = 0; p < nInPixels; p++) {
       int allFound = 1;
       int pixOob = 0;
+
       for (int layer = 0; layer < nLayers; layer++) {
-        int MultY = (int)layerBaseY[layer] + py;
-        int MultZ = (int)layerBaseZ[layer] + pz;
+        int MultY = (int)floorf(((refYpx - ybc0) * px * (c_Lsd[layer] / Lsd0)) / px
+                                + c_ybc[layer]) + inPixY[p];
+        int MultZ = (int)floorf(((refZpx - zbc0) * px * (c_Lsd[layer] / Lsd0)) / px
+                                + c_zbc[layer]) + inPixZ[p];
 
         if (MultY >= nrPixelsY || MultY < 0 || MultZ >= nrPixelsZ || MultZ < 0) {
           pixOob = 1;
@@ -421,18 +370,15 @@ __global__ void screen_pairs_kernel(
 
         if (!gpu_test_bit(obsFlat, binNr)) {
           allFound = 0;
-          break;
         }
       }
 
-      if (!pixOob) {
-        if (allFound) OverlapPixels++;
-        TotalPixels++;
-      }
+      if (pixOob) continue;
+      if (allFound) OverlapPixels++;
+      TotalPixels++;
     }
   }
 
-  // Compute FracOverlap and check threshold
   if (TotalPixels > 0) {
     float fracOverlap = (float)OverlapPixels / (float)TotalPixels;
     if (fracOverlap >= minFracOverlap) {
@@ -445,6 +391,7 @@ __global__ void screen_pairs_kernel(
     }
   }
 }
+
 
 // ═════════════════════════════════════════════════════════════
 //  CONTEXT LIFECYCLE
