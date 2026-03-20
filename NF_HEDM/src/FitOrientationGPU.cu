@@ -778,7 +778,9 @@ extern "C" int nf_gpu_screen(NFGPUContext *ctx,
         ctx->nrFiles,
         ctx->nrPixelsY, ctx->nrPixelsZ,
         ctx->px, ctx->gs,
-        (float)minFracOverlap,
+        (float)(minFracOverlap * 0.9),  // slightly lower threshold for pass 1
+        // (single-layer TotalPixels can increase when layer-1 OOB pixels
+        //  are in-bounds on layer 0, lowering fracOverlap slightly)
         ctx->d_winners, ctx->d_nWinners, ctx->maxWinners);
 
     CUDA_CHECK(cudaStreamSynchronize(ctx->stream));
