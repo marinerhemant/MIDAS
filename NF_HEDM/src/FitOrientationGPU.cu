@@ -93,6 +93,8 @@ struct GPUSpot {
   float z;        ///< Detector-space Z of theoretical spot
   float sinOme;   ///< sin(omega) — precomputed
   float cosOme;   ///< cos(omega) — precomputed
+  float refYpx;   ///< Reference pixel Y (undisplaced, voxel-independent)
+  float refZpx;   ///< Reference pixel Z (undisplaced, voxel-independent)
   int   omeBin;   ///< Omega frame index
   int   valid;    ///< 1 if spot is in range, 0 if out-of-bounds
 };
@@ -278,18 +280,9 @@ __global__ void screen_pairs_kernel(
     }
     if (oob) continue;
 
-    float refP1x = RM[0*3+1] * ythis + RM[0*3+2] * zthis;
-    float refP1y = RM[1*3+1] * ythis + RM[1*3+2] * zthis;
-    float refP1z = RM[2*3+1] * ythis + RM[2*3+2] * zthis;
-
-    float refABCx = refP1x - P0_0[0];
-    float refABCy = refP1y - P0_0[1];
-    float refABCz = refP1z - P0_0[2];
-
-    float refOutY = P0_0[1] - (refABCy * P0_0[0]) / refABCx;
-    float refOutZ = P0_0[2] - (refABCz * P0_0[0]) / refABCx;
-    float refYpx = refOutY / px + ybc0;
-    float refZpx = refOutZ / px + zbc0;
+    // Reference pixel position: precomputed on CPU (voxel-independent)
+    float refYpx = spot.refYpx;
+    float refZpx = spot.refZpx;
 
     float YZSpots[3][2];
     #pragma unroll
@@ -623,7 +616,17 @@ extern "C" int nf_gpu_upload_orientations(NFGPUContext *ctx,
          nOrientations > 0 ? (float)totalSpots / nOrientations : 0.0f);
 
   // Fill GPUSpot array from SpotsMat — parallelized with OMP
+  // Precompute reference pixel position using layer-0 geometry
   GPUSpot *h_spots = (GPUSpot *)malloc(totalSpots * sizeof(GPUSpot));
+  float RM_f[9];
+  for (int i = 0; i < 9; i++) RM_f[i] = ctx->rotMatTilts[i];
+  float P0_f[3];
+  P0_f[0] = (float)(rotMatTilts[0][0] * (-Lsd[0]));
+  P0_f[1] = (float)(rotMatTilts[1][0] * (-Lsd[0]));
+  P0_f[2] = (float)(rotMatTilts[2][0] * (-Lsd[0]));
+  float px_f = ctx->px;
+  float ybc0_f = (float)ybc[0];
+  float zbc0_f = (float)zbc[0];
 
   #pragma omp parallel for schedule(dynamic, 1000)
   for (int i = 0; i < nOrientations; i++) {
@@ -641,10 +644,26 @@ extern "C" int nf_gpu_upload_orientations(NFGPUContext *ctx,
       int outOfBounds = (omeBin < 0 || omeBin >= ctx->nrFiles) ? 1 : 0;
 
       float omegaRad = (float)(omegaThis * M_PI / 180.0);
+
+      // Precompute voxel-independent reference pixel position:
+      // refP1 = RM * [0, ythis, zthis]^T, then project through P0 to detector
+      float refP1x = RM_f[0*3+1] * ythis + RM_f[0*3+2] * zthis;
+      float refP1y = RM_f[1*3+1] * ythis + RM_f[1*3+2] * zthis;
+      float refP1z = RM_f[2*3+1] * ythis + RM_f[2*3+2] * zthis;
+      float refABCx = refP1x - P0_f[0];
+      float refABCy = refP1y - P0_f[1];
+      float refABCz = refP1z - P0_f[2];
+      float refOutY = P0_f[1] - (refABCy * P0_f[0]) / refABCx;
+      float refOutZ = P0_f[2] - (refABCz * P0_f[0]) / refABCx;
+      float refYpx = refOutY / px_f + ybc0_f;
+      float refZpx = refOutZ / px_f + zbc0_f;
+
       h_spots[offset + s].y = ythis;
       h_spots[offset + s].z = zthis;
       h_spots[offset + s].sinOme = sinf(omegaRad);
       h_spots[offset + s].cosOme = cosf(omegaRad);
+      h_spots[offset + s].refYpx = refYpx;
+      h_spots[offset + s].refZpx = refZpx;
       h_spots[offset + s].omeBin = omeBin;
       h_spots[offset + s].valid = outOfBounds ? 0 : 1;
     }
