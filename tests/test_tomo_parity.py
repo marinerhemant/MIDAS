@@ -180,16 +180,27 @@ def run_parity_test(phantom_size=256, n_thetas=1800, n_slices=2, n_cpus=1,
     print(f"  Data size:     {data_size_gb:.2f} GB (sinograms)")
     print()
 
-    # Generate phantom = single slice sinogram
-    print("[1/5] Generating Shepp-Logan phantom...")
-    phantom = shepp_logan_phantom(phantom_size)
-    print(f"  Shape: {phantom.shape}")
+    # Generate phantom + sinogram (cached to avoid 2min recomputation)
+    cache_dir = os.path.dirname(os.path.abspath(__file__))
+    cache_file = os.path.join(cache_dir,
+                              f"cached_sino_{phantom_size}x{n_thetas}.npy")
+    if os.path.exists(cache_file):
+        print(f"[1/5] Loading cached sinogram from {os.path.basename(cache_file)}...")
+        sino_1slice = np.load(cache_file)
+        print(f"  Sinogram: {sino_1slice.shape} (cached)")
+    else:
+        print("[1/5] Generating Shepp-Logan phantom...")
+        phantom = shepp_logan_phantom(phantom_size)
+        print(f"  Shape: {phantom.shape}")
 
-    print("[2/5] Computing Radon transform for one slice...")
+        print("[2/5] Computing Radon transform for one slice...")
+        thetas = np.linspace(0, 179.9, n_thetas, dtype=np.float32)
+        t0 = time.time()
+        sino_1slice = radon_transform(phantom, thetas)
+        print(f"  Sinogram: {sino_1slice.shape}, computed in {time.time()-t0:.1f}s")
+        np.save(cache_file, sino_1slice)
+        print(f"  Saved to {os.path.basename(cache_file)}")
     thetas = np.linspace(0, 179.9, n_thetas, dtype=np.float32)
-    t0 = time.time()
-    sino_1slice = radon_transform(phantom, thetas)
-    print(f"  Sinogram: {sino_1slice.shape}, computed in {time.time()-t0:.1f}s")
 
     # Replicate into n_slices
     print(f"[3/5] Replicating to {n_slices} slices...")
