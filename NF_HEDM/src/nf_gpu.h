@@ -154,6 +154,51 @@ int nf_gpu_screen(NFGPUContext *ctx,
                   int *nWinners);
 
 // ──────────────────────────────────────────────────────────────
+// Phase 2: GPU Nelder-Mead Fitting
+// ──────────────────────────────────────────────────────────────
+
+/// GPU fitting result for a single winner.
+typedef struct {
+    int voxelIdx;
+    float eulerA, eulerB, eulerC;  ///< Refined Euler angles (degrees)
+    float fracOverlap;             ///< Refined FracOverlap
+} NFGPUFitResult;
+
+/// Upload HKL data to GPU constant memory for Phase 2 fitting.
+/// Must be called before nf_gpu_fit.
+int nf_gpu_upload_hkls(NFGPUContext *ctx,
+                       const double hkls[][4],
+                       const double *Gs,
+                       int n_hkls,
+                       double excludePoleAngle,
+                       double omegaStart, double omegaStep,
+                       const double omegaRanges[][2],
+                       int nOmeRanges,
+                       const double boxSizes[][4]);
+
+/// Run GPU Phase 2 NM fitting for Phase 1 winners.
+///
+/// @param ctx              GPU context with Phase 1 data uploaded.
+/// @param winners          Phase 1 winners (from nf_gpu_screen).
+/// @param nWinners         Number of winners.
+/// @param h_XGrains        Voxel triangle X-corners [nVoxels * 3].
+/// @param h_YGrains        Voxel triangle Y-corners [nVoxels * 3].
+/// @param eulerTol         Euler angle tolerance for NM bounds (radians).
+/// @param h_orientMatrix   Orientation matrices [nOrient * 9] (for initial guess).
+/// @param fitResults       Output: array of NFGPUFitResult. Caller must free().
+/// @param nFitResults      Output: number of results.
+/// @return 0 on success.
+int nf_gpu_fit(NFGPUContext *ctx,
+               const NFGPUWinner *winners,
+               int nWinners,
+               const double *h_XGrains,
+               const double *h_YGrains,
+               double eulerTol,
+               const double *h_orientMatrix,
+               NFGPUFitResult **fitResults,
+               int *nFitResults);
+
+// ──────────────────────────────────────────────────────────────
 // Utility
 // ──────────────────────────────────────────────────────────────
 

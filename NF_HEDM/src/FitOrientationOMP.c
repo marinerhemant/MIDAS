@@ -1020,6 +1020,126 @@ int main(int argc, char *argv[]) {
       nf_gpu_destroy(gpuCtx);
       goto skip_cpu_path;
     }
+    // ── GPU Phase 2 fitting (optional, enabled by MIDAS_GPU_FIT=1) ──
+    int gpu_fit = 0;
+    {
+      const char *env = getenv("MIDAS_GPU_FIT");
+      if (env && atoi(env)) gpu_fit = 1;
+    }
+
+    if (gpu_fit) {
+      printf("NF GPU: Phase 2 (GPU fitting) starting, %d winners...\n", nGpuWinners);
+      double gpu_fit_t0 = omp_get_wtime();
+
+      // Upload HKL data for on-device spot computation
+      int rc = nf_gpu_upload_hkls(gpuCtx, hkls, Gs, n_hkls,
+                                  ExcludePoleAngle, OmegaStart, OmegaStep,
+                                  OmegaRanges, nOmeRang, BoxSizes);
+      if (rc != 0) {
+        fprintf(stderr, "NF GPU: failed to upload HKL data, falling back to CPU\n");
+        gpu_fit = 0;
+        goto gpu_fit_fallback;
+      }
+
+      // Run GPU fitting
+      NFGPUFitResult *gpuFitResults = NULL;
+      int nGpuFitResults = 0;
+      rc = nf_gpu_fit(gpuCtx, gpuWinners, nGpuWinners,
+                      allXG, allYG, tol,
+                      OrientationMatrix, &gpuFitResults, &nGpuFitResults);
+      if (rc != 0) {
+        fprintf(stderr, "NF GPU: fitting kernel failed, falling back to CPU\n");
+        gpu_fit = 0;
+        goto gpu_fit_fallback;
+      }
+
+      double gpu_fit_time = omp_get_wtime() - gpu_fit_t0;
+      printf("NF GPU: Phase 2 (GPU fitting) complete: %d results in %.2f s\n",
+             nGpuFitResults, gpu_fit_time);
+
+      // Post-process: find best per voxel and write output files
+      // Build per-voxel best result from GPU fit results
+      for (int vIdx = 0; vIdx < nVoxels; vIdx++) {
+        if (!gpu_parsed[vIdx].valid) continue;
+        double xs = gpu_parsed[vIdx].xs;
+        double ys = gpu_parsed[vIdx].ys;
+        double gs_v = gpu_parsed[vIdx].gs;
+        double y1 = gpu_parsed[vIdx].y1;
+        double y2 = gpu_parsed[vIdx].y2;
+        int UD = (y1 > y2) ? -1 : 1;
+        double GridSize_v = 2 * gs_v;
+
+        double BestFrac = -1, BestEuler[3] = {0};
+        double bestRowNr_v = 0;
+        int nWinnersThisVoxel = winnerCount[vIdx];
+
+        // Scan GPU fit results for this voxel
+        for (int r = 0; r < nGpuFitResults; r++) {
+          if (gpuFitResults[r].voxelIdx != vIdx) continue;
+          double frac = gpuFitResults[r].fracOverlap;
+          if (frac >= BestFrac) {
+            BestFrac = frac;
+            BestEuler[0] = gpuFitResults[r].eulerA * deg2rad;
+            BestEuler[1] = gpuFitResults[r].eulerB * deg2rad;
+            BestEuler[2] = gpuFitResults[r].eulerC * deg2rad;
+            // Find matching winner to get orientIdx
+            for (int w = 0; w < nWinnersThisVoxel; w++) {
+              int gpuIdx = winnerIdx[winnerStart[vIdx] + w];
+              if (gpuWinners[gpuIdx].orientIdx >= 0) {
+                bestRowNr_v = (double)gpuWinners[gpuIdx].orientIdx;
+              }
+            }
+          }
+        }
+
+        double outresult[11] = {bestRowNr_v, (double)nWinnersThisVoxel,
+                                0.0, xs, ys, GridSize_v,
+                                (double)UD, BestEuler[0], BestEuler[1],
+                                BestEuler[2], BestFrac};
+        int SizeWritten = 11 * sizeof(double);
+        size_t OffsetHere = (size_t)vIdx * SizeWritten;
+
+        double ResultMatr_v[7 + (nSaves * 4)];
+        ResultMatr_v[0] = (double)atoi(argv[2]);
+        ResultMatr_v[1] = (double)nWinnersThisVoxel;
+        ResultMatr_v[2] = 0;
+        ResultMatr_v[3] = xs;
+        ResultMatr_v[4] = ys;
+        ResultMatr_v[5] = GridSize_v;
+        ResultMatr_v[6] = (double)UD;
+        for (int i = 0; i < nSaves; i++) {
+          ResultMatr_v[7 + i * 4] = 0;
+          ResultMatr_v[7 + i * 4 + 1] = 0;
+          ResultMatr_v[7 + i * 4 + 2] = 0;
+          ResultMatr_v[7 + i * 4 + 3] = 0;
+        }
+        if (BestFrac >= 0) {
+          ResultMatr_v[7 + 0] = BestEuler[0];
+          ResultMatr_v[7 + 1] = BestEuler[1];
+          ResultMatr_v[7 + 2] = BestEuler[2];
+          ResultMatr_v[7 + 3] = BestFrac;
+        }
+        int SizeWritten2 = (7 + (nSaves * 4)) * sizeof(double);
+        size_t OffsetThis = (size_t)vIdx * SizeWritten2;
+        pwrite(result, outresult, SizeWritten, OffsetHere);
+        pwrite(result2, ResultMatr_v, SizeWritten2, OffsetThis);
+      }
+
+      if (gpuFitResults) free(gpuFitResults);
+
+      // Cleanup and skip CPU path
+      free(winnerCount);
+      free(winnerStart);
+      free(winnerIdx);
+      free(allXG);
+      free(allYG);
+      free(gpu_parsed);
+      if (gpuWinners) free(gpuWinners);
+      nf_gpu_destroy(gpuCtx);
+      goto skip_cpu_path;
+    }
+
+gpu_fit_fallback:
 
     printf("NF GPU: Phase 2 (CPU fitting) starting, %d voxels with winners...\n",
            nVoxels);

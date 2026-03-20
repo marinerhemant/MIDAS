@@ -1564,4 +1564,227 @@ extern "C" int nf_gpu_screen(NFGPUContext *ctx,
   return 0;
 }
 
+
+// ═════════════════════════════════════════════════════════════
+//  PHASE 2: GPU NM FITTING — Host functions
+// ═════════════════════════════════════════════════════════════
+
+extern "C" int nf_gpu_upload_hkls(NFGPUContext *ctx,
+                                   const double hkls[][4],
+                                   const double *Gs,
+                                   int n_hkls,
+                                   double excludePoleAngle,
+                                   double omegaStart, double omegaStep,
+                                   const double omegaRanges[][2],
+                                   int nOmeRanges,
+                                   const double boxSizes[][4]) {
+  if (n_hkls > GPU_MAX_HKLS) {
+    fprintf(stderr, "NF GPU: n_hkls=%d exceeds GPU_MAX_HKLS=%d\n", n_hkls, GPU_MAX_HKLS);
+    return -1;
+  }
+
+  // Convert HKLs to float and upload to constant memory
+  float h_hkls[GPU_MAX_HKLS][4];
+  float h_Gs[GPU_MAX_HKLS];
+  for (int i = 0; i < n_hkls; i++) {
+    h_hkls[i][0] = (float)hkls[i][0];
+    h_hkls[i][1] = (float)hkls[i][1];
+    h_hkls[i][2] = (float)hkls[i][2];
+    h_hkls[i][3] = (float)hkls[i][3];
+    h_Gs[i] = (float)Gs[i];
+  }
+  CUDA_CHECK(cudaMemcpyToSymbol(c_hkls, h_hkls, n_hkls * 4 * sizeof(float)));
+  CUDA_CHECK(cudaMemcpyToSymbol(c_Gs, h_Gs, n_hkls * sizeof(float)));
+  CUDA_CHECK(cudaMemcpyToSymbol(c_n_hkls, &n_hkls, sizeof(int)));
+
+  float h_excl = (float)excludePoleAngle;
+  float h_omeStart = (float)omegaStart;
+  float h_omeStep = (float)omegaStep;
+  CUDA_CHECK(cudaMemcpyToSymbol(c_excludePoleAngle, &h_excl, sizeof(float)));
+  CUDA_CHECK(cudaMemcpyToSymbol(c_omegaStart, &h_omeStart, sizeof(float)));
+  CUDA_CHECK(cudaMemcpyToSymbol(c_omegaStep, &h_omeStep, sizeof(float)));
+  CUDA_CHECK(cudaMemcpyToSymbol(c_nOmeRanges, &nOmeRanges, sizeof(int)));
+
+  float h_omeRanges[20][2], h_boxSizes[20][4];
+  for (int i = 0; i < nOmeRanges; i++) {
+    h_omeRanges[i][0] = (float)omegaRanges[i][0];
+    h_omeRanges[i][1] = (float)omegaRanges[i][1];
+    h_boxSizes[i][0] = (float)boxSizes[i][0];
+    h_boxSizes[i][1] = (float)boxSizes[i][1];
+    h_boxSizes[i][2] = (float)boxSizes[i][2];
+    h_boxSizes[i][3] = (float)boxSizes[i][3];
+  }
+  CUDA_CHECK(cudaMemcpyToSymbol(c_omegaRanges, h_omeRanges, nOmeRanges * 2 * sizeof(float)));
+  CUDA_CHECK(cudaMemcpyToSymbol(c_boxSizes, h_boxSizes, nOmeRanges * 4 * sizeof(float)));
+
+  printf("NF GPU: HKL data uploaded (%d reflections)\n", n_hkls);
+  return 0;
+}
+
+/// Helper: convert orientation matrix (row-major double[9]) to Euler angles (degrees)
+static void orientMat9ToEuler(const double *m, double euler[3]) {
+  // Same as OrientMat2Euler in FitPosOrStrainsOMP.c
+  double phi, psi, theta, sph;
+  if (fabs(m[8] - 1.0) < 1e-12) {
+    phi = 0;
+  } else {
+    phi = acos(m[8]);
+  }
+  sph = sin(phi);
+  if (fabs(sph) < 1e-12) {
+    psi = 0.0;
+    if (fabs(m[8] - 1.0) < 1e-12) {
+      theta = atan2(m[3], m[0]);
+    } else {
+      theta = atan2(-m[3], m[0]);
+    }
+  } else {
+    psi = atan2(m[2] / sph, -m[5] / sph);
+    theta = atan2(m[6] / sph, m[7] / sph);
+  }
+  euler[0] = psi * rad2deg;
+  euler[1] = phi * rad2deg;
+  euler[2] = theta * rad2deg;
+}
+
+extern "C" int nf_gpu_fit(NFGPUContext *ctx,
+                           const NFGPUWinner *winners,
+                           int nWinners,
+                           const double *h_XGrains,
+                           const double *h_YGrains,
+                           double eulerTol,
+                           const double *h_orientMatrix,
+                           NFGPUFitResult **fitResults,
+                           int *nFitResults) {
+  if (nWinners == 0) {
+    *fitResults = NULL;
+    *nFitResults = 0;
+    return 0;
+  }
+
+  double t0 = nf_gpu_timer_sec();
+
+  // Prepare per-job arrays on host
+  int nJobs = nWinners;
+  float *h_startEulers = (float*)malloc(nJobs * 3 * sizeof(float));
+  float *h_voxXG = (float*)malloc(nJobs * 3 * sizeof(float));
+  float *h_voxYG = (float*)malloc(nJobs * 3 * sizeof(float));
+
+  for (int j = 0; j < nJobs; j++) {
+    int oriIdx = winners[j].orientIdx;
+    int voxIdx = winners[j].voxelIdx;
+
+    // Convert orient matrix to Euler angles for initial guess
+    double euler[3];
+    orientMat9ToEuler(&h_orientMatrix[oriIdx * 9], euler);
+
+    // NM works in radians
+    h_startEulers[j * 3 + 0] = (float)(euler[0] * deg2rad);
+    h_startEulers[j * 3 + 1] = (float)(euler[1] * deg2rad);
+    h_startEulers[j * 3 + 2] = (float)(euler[2] * deg2rad);
+
+    // Voxel corners
+    for (int k = 0; k < 3; k++) {
+      h_voxXG[j * 3 + k] = (float)h_XGrains[voxIdx * 3 + k];
+      h_voxYG[j * 3 + k] = (float)h_YGrains[voxIdx * 3 + k];
+    }
+  }
+
+  // Bounds: euler ± eulerTol (in radians)
+  float h_lb[3], h_ub[3];
+  // Global bounds (not per-job, just [-2π, 2π] clipped by eulerTol around the start)
+  h_lb[0] = -2.0f * (float)M_PI;
+  h_lb[1] = -2.0f * (float)M_PI;
+  h_lb[2] = -2.0f * (float)M_PI;
+  h_ub[0] = 2.0f * (float)M_PI;
+  h_ub[1] = 2.0f * (float)M_PI;
+  h_ub[2] = 2.0f * (float)M_PI;
+
+  // Upload to device
+  float *d_startEulers, *d_voxXG, *d_voxYG;
+  float *d_lb, *d_ub, *d_results, *d_fvals;
+  float *d_RM, *d_P0;
+  CUDA_CHECK(cudaMalloc(&d_startEulers, nJobs * 3 * sizeof(float)));
+  CUDA_CHECK(cudaMalloc(&d_voxXG, nJobs * 3 * sizeof(float)));
+  CUDA_CHECK(cudaMalloc(&d_voxYG, nJobs * 3 * sizeof(float)));
+  CUDA_CHECK(cudaMalloc(&d_lb, 3 * sizeof(float)));
+  CUDA_CHECK(cudaMalloc(&d_ub, 3 * sizeof(float)));
+  CUDA_CHECK(cudaMalloc(&d_results, nJobs * 3 * sizeof(float)));
+  CUDA_CHECK(cudaMalloc(&d_fvals, nJobs * sizeof(float)));
+  CUDA_CHECK(cudaMalloc(&d_RM, 9 * sizeof(float)));
+  CUDA_CHECK(cudaMalloc(&d_P0, 3 * sizeof(float)));
+
+  CUDA_CHECK(cudaMemcpy(d_startEulers, h_startEulers, nJobs * 3 * sizeof(float), cudaMemcpyHostToDevice));
+  CUDA_CHECK(cudaMemcpy(d_voxXG, h_voxXG, nJobs * 3 * sizeof(float), cudaMemcpyHostToDevice));
+  CUDA_CHECK(cudaMemcpy(d_voxYG, h_voxYG, nJobs * 3 * sizeof(float), cudaMemcpyHostToDevice));
+  CUDA_CHECK(cudaMemcpy(d_lb, h_lb, 3 * sizeof(float), cudaMemcpyHostToDevice));
+  CUDA_CHECK(cudaMemcpy(d_ub, h_ub, 3 * sizeof(float), cudaMemcpyHostToDevice));
+  CUDA_CHECK(cudaMemcpy(d_RM, ctx->rotMatTilts, 9 * sizeof(float), cudaMemcpyHostToDevice));
+
+  // P0 layer 0
+  float h_P0[3];
+  CUDA_CHECK(cudaMemcpy(h_P0, ctx->d_P0, 3 * sizeof(float), cudaMemcpyDeviceToHost));
+  CUDA_CHECK(cudaMemcpy(d_P0, h_P0, 3 * sizeof(float), cudaMemcpyHostToDevice));
+
+  // Lsd0, ybc0, zbc0 from constant memory
+  float h_Lsd0, h_ybc0, h_zbc0;
+  CUDA_CHECK(cudaMemcpyFromSymbol(&h_Lsd0, c_Lsd, sizeof(float)));
+  CUDA_CHECK(cudaMemcpyFromSymbol(&h_ybc0, c_ybc, sizeof(float)));
+  CUDA_CHECK(cudaMemcpyFromSymbol(&h_zbc0, c_zbc, sizeof(float)));
+
+  // Launch fitting kernel
+  int blockSize = 64;  // Each thread does heavy work, smaller blocks
+  int gridSize = (nJobs + blockSize - 1) / blockSize;
+  float tol = 1e-5f;
+  int maxIter = 500;
+  float initStep = 0.05f;  // 5% of bound range
+
+  printf("NF GPU: Phase 2 fitting — %d jobs, blockSize=%d\n", nJobs, blockSize);
+
+  nm_fit_kernel<<<gridSize, blockSize, 0, ctx->stream>>>(
+      nJobs, d_startEulers, d_lb, d_ub,
+      d_voxXG, d_voxYG,
+      ctx->d_obsFlat,
+      h_Lsd0, h_ybc0, h_zbc0,
+      d_RM, d_P0,
+      ctx->nLayers, ctx->nrFiles, ctx->nrPixelsY, ctx->nrPixelsZ,
+      ctx->px, ctx->gs,
+      tol, maxIter, initStep,
+      d_results, d_fvals);
+
+  CUDA_CHECK(cudaStreamSynchronize(ctx->stream));
+  double dtKernel = nf_gpu_timer_sec() - t0;
+
+  // Download results
+  float *h_results = (float*)malloc(nJobs * 3 * sizeof(float));
+  float *h_fvals = (float*)malloc(nJobs * sizeof(float));
+  CUDA_CHECK(cudaMemcpy(h_results, d_results, nJobs * 3 * sizeof(float), cudaMemcpyDeviceToHost));
+  CUDA_CHECK(cudaMemcpy(h_fvals, d_fvals, nJobs * sizeof(float), cudaMemcpyDeviceToHost));
+
+  // Build output
+  NFGPUFitResult *results = (NFGPUFitResult*)malloc(nJobs * sizeof(NFGPUFitResult));
+  for (int j = 0; j < nJobs; j++) {
+    results[j].voxelIdx = winners[j].voxelIdx;
+    results[j].eulerA = h_results[j * 3 + 0] * (float)rad2deg;
+    results[j].eulerB = h_results[j * 3 + 1] * (float)rad2deg;
+    results[j].eulerC = h_results[j * 3 + 2] * (float)rad2deg;
+    results[j].fracOverlap = h_fvals[j];
+  }
+
+  *fitResults = results;
+  *nFitResults = nJobs;
+
+  printf("NF GPU: Phase 2 fitting complete — %d results in %.2f s\n", nJobs, dtKernel);
+
+  // Cleanup
+  free(h_startEulers); free(h_voxXG); free(h_voxYG);
+  free(h_results); free(h_fvals);
+  cudaFree(d_startEulers); cudaFree(d_voxXG); cudaFree(d_voxYG);
+  cudaFree(d_lb); cudaFree(d_ub);
+  cudaFree(d_results); cudaFree(d_fvals);
+  cudaFree(d_RM); cudaFree(d_P0);
+
+  return 0;
+}
+
 #endif /* ENABLE_CUDA */
