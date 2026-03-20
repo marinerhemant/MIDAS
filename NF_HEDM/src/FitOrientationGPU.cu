@@ -836,17 +836,9 @@ extern "C" int nf_gpu_screen(NFGPUContext *ctx,
                                      screen_pairs_kernel, 0, 0);
   printf("NF GPU: auto-tuned blockSize=%d (minGrid=%d)\n", blockSize, minGridSize);
 
-  // Compute frame batch size from L2 cache size
-  // Each omega frame = nrPixelsY * nrPixelsZ bits = (nrPixelsY * nrPixelsZ / 8) bytes
-  cudaDeviceProp prop;
-  cudaGetDeviceProperties(&prop, ctx->deviceId);
-  int l2CacheBytes = prop.l2CacheSize;  // L2 cache size in bytes
-  int bytesPerFrame = (ctx->nrPixelsY * ctx->nrPixelsZ) / 8;  // bits→bytes
-  int frameBatchSize = l2CacheBytes / bytesPerFrame;
-  if (frameBatchSize < 1) frameBatchSize = 1;
-  if (frameBatchSize > ctx->nrFiles) frameBatchSize = ctx->nrFiles;
-  printf("NF GPU: L2=%d MB, frameBatchSize=%d (of %d frames)\n",
-         l2CacheBytes / (1024*1024), frameBatchSize, ctx->nrFiles);
+  // Frame batching disabled — overhead of binary search per batch outweighs L2 benefit
+  // (A6000: 12 frames/batch = 120 iterations → too much loop overhead)
+  int frameBatchSize = ctx->nrFiles;  // single batch = original simple loop
   double tKernel0 = nf_gpu_timer_sec();
 
   if (ctx->nLayers > 1) {
