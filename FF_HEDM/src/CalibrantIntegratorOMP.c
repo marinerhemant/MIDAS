@@ -196,6 +196,30 @@ static int run_estep(
       profiles[b] = 0;
   }
 
+  // Save profiles for diagnostics (ci_profiles.csv)
+  {
+    FILE *pf = fopen("ci_profiles.csv", "w");
+    if (pf) {
+      fprintf(pf, "Ring,RBin,EtaBin,RCenter,EtaCenter,Intensity,Norm\n");
+      for (int r = 0; r < n_hkls; r++) {
+        for (int rb = 0; rb < ringNRBins[r]; rb++) {
+          int globalRIdx = ringRBinStart[r] + rb;
+          double rCenter = (RBinsLow[globalRIdx] + RBinsHigh[globalRIdx]) * 0.5;
+          for (int e = 0; e < nEtaBins; e++) {
+            long long fPos = (long long)globalRIdx * nEtaBins + e;
+            double etaCenter = (EtaBinsLow[e] + EtaBinsHigh[e]) * 0.5;
+            if (profiles[fPos] != 0 || norm[fPos] > 0)
+              fprintf(pf, "%d,%d,%d,%.6f,%.4f,%.6f,%.6f\n",
+                      RingIDs[r], rb, e, rCenter, etaCenter, profiles[fPos], norm[fPos]);
+          }
+        }
+      }
+      fclose(pf);
+      printf("Saved ci_profiles.csv (%d rings, %d R bins, %d Eta bins)\n",
+             n_hkls, totalRBins, nEtaBins);
+    }
+  }
+
 
   // Peak fitting: for each ring × eta, extract 1D radial profile and fit
   int maxBins = n_hkls * nEtaBins;

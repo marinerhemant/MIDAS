@@ -42,6 +42,7 @@ void midas_config_defaults(MIDASConfig *cfg) {
   cfg->num_lambda_samples = 1;
   cfg->SubPixelLevel = 1;
   cfg->SubPixelCardinalWidth = 5.0;
+  cfg->Width = 1500;  // ring half-width in µm (Width/px = pixels)
 }
 
 void midas_apply_tol_defaults(MIDASConfig *cfg) {
@@ -449,6 +450,11 @@ int midas_parse_params(const char *filename, MIDASConfig *cfg) {
 
   // Apply tolerance fallbacks
   midas_apply_tol_defaults(cfg);
+
+  // GE binary (DataType 1) has an 8192-byte header that must be skipped.
+  // Auto-default if user didn't set HeadSize explicitly.
+  if (cfg->DataType == 1 && cfg->HeadSize == 0)
+    cfg->HeadSize = 8192;
 
   return 0;
 }

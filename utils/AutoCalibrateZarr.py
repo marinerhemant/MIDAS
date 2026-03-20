@@ -1753,6 +1753,13 @@ def run_integrator_validation(refined_params_file, data_file, dark_file,
         logger.info(f"Parsed {len(per_eta_rows)} per-eta peak fits")
 
         # --- 7. Write integrator_fn.corr.csv ---
+        # Note: CI's M-step (CalibrationCore.c:386) computes
+        #   RIdeal = Lsd * tan(2θ) / px  (no distortion polynomial)
+        # and compares against R from dg_pixel_to_REta (which includes
+        # distortion).  After calibration the two match closely (~10 µε).
+        # IZOMP's peak fitter (pf_fit_single_peak) produces slightly
+        # different centres than CI's (calib_fit_peak_shape), so the
+        # validation strain will be somewhat larger than CI's.
         # Compute lattice parameter 'a' from fitted 2theta using Bragg's law
         # For cubic: a = d * sqrt(h^2+k^2+l^2), but since we don't have hkl per row,
         # we use: d = wavelength / (2 * sin(theta)), and IdealA from ideal 2theta.
@@ -1781,7 +1788,7 @@ def run_integrator_validation(refined_params_file, data_file, dark_file,
                 best_match = None
                 best_err = 0.05  # 5% relative error tracking ceiling
                 for idx, (rng_nr, (i_r_um, d_sp, i_2th)) in enumerate(sorted_rings):
-                    i_r_px = i_r_um / state.px
+                    i_r_px = i_r_um / state.px  # Lsd*tan(2θ)/px (undistorted, CI convention)
                     err = abs(fitted_r_px - i_r_px) / (i_r_px if i_r_px > 0 else 1.0)
                     if err < best_err:
                         best_err = err
@@ -1792,12 +1799,18 @@ def run_integrator_validation(refined_params_file, data_file, dark_file,
 
                 ring_nr, ideal_r_px, ideal_2theta, d_spacing = best_match
 
-                strain = (fitted_r_px - ideal_r_px) / ideal_r_px if ideal_r_px > 0 else 0
+                # Strain matching CI convention (CalibrationCore.c:388):
+                #   strain = 1 - R_px / RIdeal_px
+                # Both R values are now in the same distortion-corrected
+                # pixel space (IZOMP fitted R vs distorted ideal R).
+                strain = 1.0 - fitted_r_px / ideal_r_px if ideal_r_px > 0 else 0.0
                 diff_calc = abs(strain)
 
                 # Y/Z from R,Eta (approximate: ignoring distortion)
                 eta_rad = math.radians(eta_deg)
-                y_raw = state.ybc - fitted_r_px * math.sin(eta_rad)
+                # MIDAS convention (DetectorGeometry.c): Yc = (-Y + Ycen)*px
+                # → Y_pixel = Ycen + R*sin(η)  (CI uses same: line 298)
+                y_raw = state.ybc + fitted_r_px * math.sin(eta_rad)
                 z_raw = state.zbc + fitted_r_px * math.cos(eta_rad)
 
                 # Note: no detector-extent filter here — the integrator
@@ -1905,7 +1918,7 @@ def runMIDAS(rawFN, state, n_iterations=40, mult_factor=5,
             if state.p5 != 0.0:
                 pf.write(f'p5 {state.p5}\n')
             pf.write(f'EtaBinSize {eta_bin_size}\n')
-            pf.write('HeadSize 0\n')
+            pf.write(f'HeadSize {8192 if state.data_type == 1 else 0}\n')
 
             # Bad pixel / gap
             if not math.isnan(state.bad_px_intensity):
