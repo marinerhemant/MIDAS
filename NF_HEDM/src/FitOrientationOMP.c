@@ -1193,8 +1193,13 @@ cpu_fallback:
   printf("Running CPU path...\n");
 #endif /* ENABLE_CUDA */
 
-// DO OMP HERE??????
-#pragma omp parallel for num_threads(numProcs) private(rown) schedule(dynamic)
+  double cpu_wall_t0 = omp_get_wtime();
+  double cpu_screen_accum = 0.0;  // accumulated Phase 1 time across threads
+  double cpu_fit_accum = 0.0;     // accumulated Phase 2 time across threads
+  int cpu_total_winners = 0;
+
+#pragma omp parallel for num_threads(numProcs) private(rown) schedule(dynamic) \
+    reduction(+:cpu_screen_accum, cpu_fit_accum, cpu_total_winners)
   for (rown = startRowNr; rown <= endRowNr; rown++) {
     //~ clock_t start, end;
     //~ double diftotal;
@@ -1261,10 +1266,10 @@ cpu_fallback:
     }
     double *OrientMatrix;
     OrientMatrix = &OrientMatrixAll[MAX_POINTS_GRID_GOOD * 10 * procNum];
-    //~ printf("Checking orientation grid.\n");
     // Hoisted InPixels allocation
     int **InPixels;
     InPixels = allocMatrixIntF(NrPixelsGrid, 2);
+    double tScreenStart = omp_get_wtime();
     for (i = 0; i < NrOrientations; i++) {
       NrSpotsThis = NrSpots[i][0];
       StartingRowNr = NrSpots[i][1];
@@ -1301,9 +1306,9 @@ cpu_fallback:
       }
     }
     FreeMemMatrixInt(InPixels, NrPixelsGrid);
-    // printf("Finished checking orientation grid for point %d. Now fitting %d"
-    //        " orientations.\n",
-    //        rown, OrientationGoodID);
+    double tScreenEnd = omp_get_wtime();
+    cpu_screen_accum += (tScreenEnd - tScreenStart);
+    cpu_total_winners += OrientationGoodID;
     fflush(stdout);
     double tFitStart = omp_get_wtime();
     int totalNloptEvals = 0;
@@ -1484,10 +1489,20 @@ cpu_fallback:
              startRowNr, endRowNr);
     }
 
-    //~ printf("Time elapsed in comparing diffraction spots: %f
-    //[s]\n",diftotal); ~ for (i=0;i<MAX_POINTS_GRID_GOOD*10;i++)
-    // OrientMatrix[i] = 0; // Maybe not needed.
+    double tFitEnd = omp_get_wtime();
+    cpu_fit_accum += (tFitEnd - tFitStart);
   }
+
+  double cpu_wall_elapsed = omp_get_wtime() - cpu_wall_t0;
+  printf("\n=== CPU PATH TIMING ===\n");
+  printf("NF CPU: Phase 1 screening: %.2f s (sum of per-thread times)\n", cpu_screen_accum);
+  printf("NF CPU: Phase 2 fitting:   %.2f s (sum of per-thread times)\n", cpu_fit_accum);
+  printf("NF CPU: wall time:         %.2f s (%d voxels, %d orientations, %d threads)\n",
+         cpu_wall_elapsed, endRowNr - startRowNr + 1, NrOrientations, numProcs);
+  printf("NF CPU: total winners:     %d (avg %.1f/voxel)\n",
+         cpu_total_winners,
+         (endRowNr - startRowNr + 1) > 0 ? (double)cpu_total_winners / (endRowNr - startRowNr + 1) : 0);
+  printf("=== END CPU PATH ===\n");
 
 #ifdef ENABLE_CUDA
 skip_cpu_path:
