@@ -548,6 +548,15 @@ int main(int argc, char *argv[]) {
             buf[sIdx].sino2[b] = buf[sIdx].raw_buf[b*2+1]; \
             buf[sIdx].recon1[b] = buf[sIdx].compact_buf[b*2]; \
             buf[sIdx].recon2[b] = buf[sIdx].compact_buf[b*2+1]; \
+            /* Stripe removal on raw sinograms (before GPU upload) */ \
+            if (recon_info_record.doStripeRemoval) { \
+              cleanup_sinogram_stripes(buf[sIdx].raw_buf[b*2], n_angles, det_xdim_raw, \
+                  recon_info_record.stripeSnr, recon_info_record.stripeLaSize, \
+                  recon_info_record.stripeSmSize, 1); \
+              cleanup_sinogram_stripes(buf[sIdx].raw_buf[b*2+1], n_angles, det_xdim_raw, \
+                  recon_info_record.stripeSnr, recon_info_record.stripeLaSize, \
+                  recon_info_record.stripeSmSize, 1); \
+            } \
           } \
         } while(0)
 
