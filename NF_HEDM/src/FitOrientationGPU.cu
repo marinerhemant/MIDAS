@@ -238,6 +238,7 @@ void screen_pairs_kernel(
     int nLayers,
     int nrFiles,
     int nrPixelsY, int nrPixelsZ,
+    int frameBatchSize,
     float px, float gs,
     float minFracOverlap,
     NFGPUWinner *winners,
@@ -272,8 +273,42 @@ void screen_pairs_kernel(
   int OverlapPixels = 0;
   int TotalPixels = 0;
 
-  for (int s = 0; s < hdr.nSpots; s++) {
-    GPUSpot spot = spots[hdr.spotOffset + s];
+  // Frame-synchronized spot processing: iterate over omega frame batches.
+  // All threads on the SM process the same frame range simultaneously,
+  // so the bitfield data for these frames stays L2-resident.
+  // Spots are sorted by omeBin, so binary search finds the sub-range.
+  const GPUSpot *mySpots = &spots[hdr.spotOffset];
+  int nSpots = hdr.nSpots;
+
+  for (int fbStart = 0; fbStart < nrFiles; fbStart += frameBatchSize) {
+    int fbEnd = fbStart + frameBatchSize;
+    if (fbEnd > nrFiles) fbEnd = nrFiles;
+
+    // Binary search: first spot with omeBin >= fbStart
+    int sLo;
+    {
+      int lo = 0, hi = nSpots;
+      while (lo < hi) {
+        int mid = (lo + hi) >> 1;
+        if (mySpots[mid].omeBin < fbStart) lo = mid + 1;
+        else hi = mid;
+      }
+      sLo = lo;
+    }
+    // Binary search: first spot with omeBin >= fbEnd
+    int sHi;
+    {
+      int lo = sLo, hi = nSpots;
+      while (lo < hi) {
+        int mid = (lo + hi) >> 1;
+        if (mySpots[mid].omeBin < fbEnd) lo = mid + 1;
+        else hi = mid;
+      }
+      sHi = lo;
+    }
+
+    for (int s = sLo; s < sHi; s++) {
+    GPUSpot spot = mySpots[s];
     if (!spot.valid) continue;
 
     float ythis = spot.y;
@@ -432,7 +467,9 @@ void screen_pairs_kernel(
         TotalPixels++;
       }
     }
-  }
+    }
+    }
+  }  // end frame batch loop
 
   if (TotalPixels > 0) {
     float fracOverlap = (float)OverlapPixels / (float)TotalPixels;
@@ -799,6 +836,18 @@ extern "C" int nf_gpu_screen(NFGPUContext *ctx,
   cudaOccupancyMaxPotentialBlockSize(&minGridSize, &blockSize,
                                      screen_pairs_kernel, 0, 0);
   printf("NF GPU: auto-tuned blockSize=%d (minGrid=%d)\n", blockSize, minGridSize);
+
+  // Compute frame batch size from L2 cache size
+  // Each omega frame = nrPixelsY * nrPixelsZ bits = (nrPixelsY * nrPixelsZ / 8) bytes
+  cudaDeviceProp prop;
+  cudaGetDeviceProperties(&prop, ctx->deviceId);
+  int l2CacheBytes = prop.l2CacheSize;  // L2 cache size in bytes
+  int bytesPerFrame = (ctx->nrPixelsY * ctx->nrPixelsZ) / 8;  // bits→bytes
+  int frameBatchSize = l2CacheBytes / bytesPerFrame;
+  if (frameBatchSize < 1) frameBatchSize = 1;
+  if (frameBatchSize > ctx->nrFiles) frameBatchSize = ctx->nrFiles;
+  printf("NF GPU: L2=%d MB, frameBatchSize=%d (of %d frames)\n",
+         l2CacheBytes / (1024*1024), frameBatchSize, ctx->nrFiles);
   double tKernel0 = nf_gpu_timer_sec();
 
   if (ctx->nLayers > 1) {
@@ -833,6 +882,7 @@ extern "C" int nf_gpu_screen(NFGPUContext *ctx,
         1,  // nLayers = 1 for pass 1
         ctx->nrFiles,
         ctx->nrPixelsY, ctx->nrPixelsZ,
+        frameBatchSize,
         ctx->px, ctx->gs,
         (float)(minFracOverlap * 0.9),  // slightly lower threshold for pass 1
         // (single-layer TotalPixels can increase when layer-1 OOB pixels
@@ -931,6 +981,7 @@ extern "C" int nf_gpu_screen(NFGPUContext *ctx,
           nPass1,  // nOrientations = nPass1
           ctx->nLayers, ctx->nrFiles,
           ctx->nrPixelsY, ctx->nrPixelsZ,
+          frameBatchSize,
           ctx->px, ctx->gs,
           (float)minFracOverlap,
           ctx->d_winners, ctx->d_nWinners, ctx->maxWinners);
@@ -992,6 +1043,7 @@ extern "C" int nf_gpu_screen(NFGPUContext *ctx,
         nVoxels, nOrient,
         ctx->nLayers, ctx->nrFiles,
         ctx->nrPixelsY, ctx->nrPixelsZ,
+        frameBatchSize,
         ctx->px, ctx->gs,
         (float)minFracOverlap,
         ctx->d_winners, ctx->d_nWinners, ctx->maxWinners);
