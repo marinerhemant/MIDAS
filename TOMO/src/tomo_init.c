@@ -444,6 +444,11 @@ int main(int argc, char *argv[]) {
       if (output_fd != -1) {
         close(output_fd);
       }
+#ifdef ENABLE_CUDA
+      // GPU path never calls reconstruct(), so FFTW plans were never
+      // created.  Only destroy them when the CPU path was used.
+      if (!(useGPU && gpu_ctx))
+#endif
       destroyFFTMemoryStructures(&param);
     }
   } else { // We have multiple shifts, (possibly multiple slices_to_process)
