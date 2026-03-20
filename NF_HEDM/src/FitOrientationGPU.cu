@@ -298,6 +298,19 @@ __global__ void screen_pairs_kernel(
       YZSpots[l][1] = YZSpotsT[l][1] - refZpx;
     }
 
+    // Precompute per-layer base positions once per spot (no pixel dependency)
+    // Same arithmetic as original: floorf(((refYpx - ybc0) * px * (Lsd[l]/Lsd0)) / px + ybc[l])
+    int layerBaseY[MAX_LAYERS], layerBaseZ[MAX_LAYERS];
+    long long layerBinBase[MAX_LAYERS];
+    for (int layer = 0; layer < nLayers; layer++) {
+      layerBaseY[layer] = (int)floorf(((refYpx - ybc0) * px * (c_Lsd[layer] / Lsd0)) / px
+                                      + c_ybc[layer]);
+      layerBaseZ[layer] = (int)floorf(((refZpx - zbc0) * px * (c_Lsd[layer] / Lsd0)) / px
+                                      + c_zbc[layer]);
+      layerBinBase[layer] = (long long)layer * nrFiles * nrPixelsY * nrPixelsZ
+                          + (long long)omeBin * nrPixelsY * nrPixelsZ;
+    }
+
     // One-pass: rasterize + check bitfield inline (no local arrays needed)
     if (gs * 2.0f > px) {
       float edges[3][2];
@@ -336,23 +349,19 @@ __global__ void screen_pairs_kernel(
           }
 
           if (inside) {
-            // Inline layer check — must check ALL layers (no break on miss)
             int allFound = 1;
             int pixOob = 0;
 
             for (int layer = 0; layer < nLayers; layer++) {
-              int MultY = (int)floorf(((refYpx - ybc0) * px * (c_Lsd[layer] / Lsd0)) / px
-                                      + c_ybc[layer]) + py;
-              int MultZ = (int)floorf(((refZpx - zbc0) * px * (c_Lsd[layer] / Lsd0)) / px
-                                      + c_zbc[layer]) + pz;
+              int MultY = layerBaseY[layer] + py;
+              int MultZ = layerBaseZ[layer] + pz;
 
               if (MultY >= nrPixelsY || MultY < 0 || MultZ >= nrPixelsZ || MultZ < 0) {
                 pixOob = 1;
                 break;
               }
 
-              long long binNr = (long long)layer * nrFiles * nrPixelsY * nrPixelsZ
-                              + (long long)omeBin * nrPixelsY * nrPixelsZ
+              long long binNr = layerBinBase[layer]
                               + (long long)MultY * nrPixelsZ
                               + MultZ;
 
@@ -375,18 +384,15 @@ __global__ void screen_pairs_kernel(
       int allFound = 1;
       int pixOob = 0;
       for (int layer = 0; layer < nLayers; layer++) {
-        int MultY = (int)floorf(((refYpx - ybc0) * px * (c_Lsd[layer] / Lsd0)) / px
-                                + c_ybc[layer]) + py;
-        int MultZ = (int)floorf(((refZpx - zbc0) * px * (c_Lsd[layer] / Lsd0)) / px
-                                + c_zbc[layer]) + pz;
+        int MultY = layerBaseY[layer] + py;
+        int MultZ = layerBaseZ[layer] + pz;
 
         if (MultY >= nrPixelsY || MultY < 0 || MultZ >= nrPixelsZ || MultZ < 0) {
           pixOob = 1;
           break;
         }
 
-        long long binNr = (long long)layer * nrFiles * nrPixelsY * nrPixelsZ
-                        + (long long)omeBin * nrPixelsY * nrPixelsZ
+        long long binNr = layerBinBase[layer]
                         + (long long)MultY * nrPixelsZ
                         + MultZ;
 
