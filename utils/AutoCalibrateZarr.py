@@ -2181,7 +2181,7 @@ def main():
         parser.add_argument('--no-validate', action='store_true',
                             help='Skip post-calibration integrator validation')
 
-        args, unparsed = parser.parse_known_args()
+        args = parser.parse_args()
 
         # ---- Initialize state ----
         state = CalibState()
