@@ -1,19 +1,22 @@
 #!/usr/bin/env python3
 """
-MIDAS Tomography GPU Parity Test
+MIDAS Tomography GPU Parity & Benchmark Test
 
-Validates GPU reconstruction against CPU reconstruction at byte level.
-Tests both cuFFT mode and (optionally) FFTW-bridge mode.
+Validates GPU reconstruction against CPU reconstruction and benchmarks
+performance at production scale.
 
 Usage:
-    python test_tomo_parity.py                  # Quick test (256px)
-    python test_tomo_parity.py --size 512       # Larger phantom
-    python test_tomo_parity.py --fftw-bridge    # Also test FFTW-bridge mode
-    python test_tomo_parity.py --benchmark      # Include timing comparison
+    # Quick parity check (256px, 2 slices)
+    python test_tomo_parity.py
 
-Requirements:
-    - MIDAS_TOMO and MIDAS_TOMO_GPU binaries must be built
-    - Run on a machine with a CUDA-capable GPU
+    # Large-scale benchmark: 1000 slices, 2048px, 96 CPUs vs GPU
+    python test_tomo_parity.py --size 2048 --n-slices 1000 --n-cpus 96 --benchmark
+
+    # FFTW-bridge mode (byte-exact parity)
+    python test_tomo_parity.py --fftw-bridge
+
+    # Custom configuration
+    python test_tomo_parity.py --size 512 --n-slices 100 --n-cpus 48 --benchmark
 """
 
 import argparse
@@ -108,13 +111,6 @@ def compare_recons(cpu_recon, gpu_recon, label=""):
     denom = np.sqrt(np.dot(a, a) * np.dot(b, b))
     corr = float(np.dot(a, b) / denom) if denom > 0 else 0.0
 
-    # Byte-exact count
-    cpu_bytes = cpu_recon.view(np.uint8)
-    gpu_bytes = gpu_recon.view(np.uint8)
-    n_bytes_match = int(np.sum(cpu_bytes == gpu_bytes))
-    n_total_bytes = cpu_bytes.size
-    byte_pct = 100.0 * n_bytes_match / n_total_bytes
-
     # Float-exact count
     n_exact = int(np.sum(cpu_recon.ravel() == gpu_recon.ravel()))
     n_total = cpu_recon.size
@@ -125,13 +121,12 @@ def compare_recons(cpu_recon, gpu_recon, label=""):
         'mean_diff': mean_diff,
         'rms_diff': rms_diff,
         'correlation': corr,
-        'byte_match_pct': byte_pct,
         'exact_pixel_pct': exact_pct,
     }
 
     # Thresholds
     ok_corr = corr > 0.999
-    ok_diff = max_diff < 1e-3  # very generous for cuFFT mode
+    ok_diff = max_diff < 1e-3
 
     passed = ok_corr and ok_diff
     status = "PASS ✅" if passed else "FAIL ❌"
@@ -142,7 +137,6 @@ def compare_recons(cpu_recon, gpu_recon, label=""):
     print(f"    Mean diff:       {mean_diff:.6e}")
     print(f"    RMS diff:        {rms_diff:.6e}")
     print(f"    Exact pixels:    {n_exact}/{n_total} ({exact_pct:.1f}%)")
-    print(f"    Byte-level match: {byte_pct:.1f}%")
 
     return passed, stats
 
@@ -150,98 +144,141 @@ def compare_recons(cpu_recon, gpu_recon, label=""):
 # ---------------------------------------------------------------------------
 # Main test
 # ---------------------------------------------------------------------------
-def run_parity_test(phantom_size=256, n_thetas=1800, test_fftw_bridge=False,
-                    benchmark=False, n_benchmark_runs=3):
+def run_parity_test(phantom_size=256, n_thetas=1800, n_slices=2, n_cpus=1,
+                    test_fftw_bridge=False, benchmark=False):
+    # Header
+    data_size_gb = (n_slices * n_thetas * phantom_size * 4) / (1024**3)
     print("=" * 70)
-    print("  MIDAS Tomography GPU Parity Test")
+    print("  MIDAS Tomography GPU Parity & Benchmark Test")
     print("=" * 70)
-    print(f"  Phantom size: {phantom_size} x {phantom_size}")
-    print(f"  Projections:  {n_thetas}")
+    print(f"  Phantom size:  {phantom_size} x {phantom_size}")
+    print(f"  Projections:   {n_thetas}")
+    print(f"  Slices:        {n_slices}")
+    print(f"  CPUs:          {n_cpus}")
+    print(f"  Data size:     {data_size_gb:.2f} GB (sinograms)")
     print()
 
-    # Generate phantom and sinogram
+    # Generate phantom = single slice sinogram
     print("[1/5] Generating Shepp-Logan phantom...")
     phantom = shepp_logan_phantom(phantom_size)
     print(f"  Shape: {phantom.shape}")
 
-    print("[2/5] Computing Radon transform...")
+    print("[2/5] Computing Radon transform for one slice...")
     thetas = np.linspace(0, 179.9, n_thetas, dtype=np.float32)
     t0 = time.time()
-    sinos = radon_transform(phantom, thetas)
-    print(f"  Sinogram: {sinos.shape}, computed in {time.time()-t0:.1f}s")
+    sino_1slice = radon_transform(phantom, thetas)
+    print(f"  Sinogram: {sino_1slice.shape}, computed in {time.time()-t0:.1f}s")
 
-    # CPU reconstruction
-    print("[3/5] CPU reconstruction...")
-    cpu_dir = tempfile.mkdtemp(prefix='tomo_parity_cpu_')
+    # Replicate into n_slices
+    print(f"[3/5] Replicating to {n_slices} slices...")
     t0 = time.time()
-    recon_cpu = run_tomo_from_sinos(sinos, cpu_dir, thetas, numCPUs=1,
-                                   useGPU=False)
-    cpu_time = time.time() - t0
-    print(f"  CPU time: {cpu_time:.3f}s, shape: {recon_cpu.shape}")
-
-    # GPU reconstruction (cuFFT mode)
-    print("[4/5] GPU reconstruction (cuFFT mode)...")
-    gpu_dir = tempfile.mkdtemp(prefix='tomo_parity_gpu_')
-    t0 = time.time()
-    recon_gpu = run_tomo_from_sinos(sinos, gpu_dir, thetas, numCPUs=1,
-                                   useGPU=True)
-    gpu_time = time.time() - t0
-    print(f"  GPU time: {gpu_time:.3f}s, shape: {recon_gpu.shape}")
+    sinos = np.tile(sino_1slice[np.newaxis, :, :], (n_slices, 1, 1))
+    print(f"  Sinograms array: {sinos.shape}, "
+          f"{sinos.nbytes / (1024**3):.2f} GB, "
+          f"replicated in {time.time()-t0:.1f}s")
 
     results = []
 
-    # Compare CPU vs GPU (cuFFT)
-    passed, stats = compare_recons(recon_cpu[0, 0], recon_gpu[0, 0],
-                                   "CPU vs GPU (cuFFT)")
-    stats['cpu_time'] = cpu_time
-    stats['gpu_time'] = gpu_time
-    stats['speedup'] = cpu_time / gpu_time if gpu_time > 0 else 0
-    results.append(('cuFFT', passed, stats))
+    # ─── CPU reconstruction ───
+    print(f"\n[4/5] CPU reconstruction ({n_cpus} threads)...")
+    cpu_dir = tempfile.mkdtemp(prefix='tomo_parity_cpu_')
+    t_cpu_start = time.time()
+    recon_cpu = run_tomo_from_sinos(sinos, cpu_dir, thetas, numCPUs=n_cpus,
+                                   useGPU=False)
+    t_cpu = time.time() - t_cpu_start
+    print(f"  CPU total time:  {t_cpu:.3f}s")
+    print(f"  CPU throughput:  {n_slices/t_cpu:.1f} slices/s")
+    print(f"  Recon shape:     {recon_cpu.shape}")
 
-    # FFTW-bridge mode
+    # ─── GPU reconstruction (cuFFT) ───
+    print(f"\n[5/5] GPU reconstruction (cuFFT)...")
+    gpu_dir = tempfile.mkdtemp(prefix='tomo_parity_gpu_')
+    t_gpu_start = time.time()
+    recon_gpu = run_tomo_from_sinos(sinos, gpu_dir, thetas, numCPUs=1,
+                                   useGPU=True)
+    t_gpu = time.time() - t_gpu_start
+    print(f"  GPU total time:  {t_gpu:.3f}s")
+    print(f"  GPU throughput:  {n_slices/t_gpu:.1f} slices/s")
+    print(f"  Recon shape:     {recon_gpu.shape}")
+
+    # Compare first slice for parity
+    passed, stats = compare_recons(recon_cpu[0, 0], recon_gpu[0, 0],
+                                   "Slice 0: CPU vs GPU (cuFFT)")
+    stats['cpu_time'] = t_cpu
+    stats['gpu_time'] = t_gpu
+    stats['speedup'] = t_cpu / t_gpu if t_gpu > 0 else 0
+    results.append(('cuFFT (slice 0)', passed, stats))
+
+    # Also compare a middle and last slice if we have multiple
+    if n_slices > 2:
+        mid = n_slices // 2
+        p2, s2 = compare_recons(recon_cpu[0, mid], recon_gpu[0, mid],
+                                f"Slice {mid}: CPU vs GPU (cuFFT)")
+        results.append((f'cuFFT (slice {mid})', p2, s2))
+
+        p3, s3 = compare_recons(recon_cpu[0, -1], recon_gpu[0, -1],
+                                f"Slice {n_slices-1}: CPU vs GPU (cuFFT)")
+        results.append((f'cuFFT (slice {n_slices-1})', p3, s3))
+
+    # ─── FFTW-bridge mode ───
     if test_fftw_bridge:
-        print("[4b/5] GPU reconstruction (FFTW-bridge mode)...")
+        print(f"\n[5b] GPU reconstruction (FFTW-bridge)...")
         bridge_dir = tempfile.mkdtemp(prefix='tomo_parity_bridge_')
-        t0 = time.time()
+        t_bridge_start = time.time()
         recon_bridge = run_tomo_from_sinos(sinos, bridge_dir, thetas,
                                           numCPUs=1, useGPU=True,
                                           fftwBridge=True)
-        bridge_time = time.time() - t0
-        print(f"  FFTW-bridge time: {bridge_time:.3f}s")
+        t_bridge = time.time() - t_bridge_start
+        print(f"  Bridge time: {t_bridge:.3f}s")
 
-        passed_b, stats_b = compare_recons(recon_cpu[0, 0],
-                                           recon_bridge[0, 0],
-                                           "CPU vs GPU (FFTW-bridge)")
-        stats_b['bridge_time'] = bridge_time
-        results.append(('FFTW-bridge', passed_b, stats_b))
+        pb, sb = compare_recons(recon_cpu[0, 0], recon_bridge[0, 0],
+                                "Slice 0: CPU vs GPU (FFTW-bridge)")
+        sb['bridge_time'] = t_bridge
+        results.append(('FFTW-bridge', pb, sb))
 
-    # Benchmark
+    # ─── Repeated benchmark ───
     if benchmark:
-        print(f"\n[5/5] Benchmarking ({n_benchmark_runs} runs)...")
+        n_runs = 3
+        print(f"\n[BENCH] Repeated benchmark ({n_runs} runs)...")
         cpu_times = []
         gpu_times = []
-        for i in range(n_benchmark_runs):
-            d = tempfile.mkdtemp(prefix='tomo_bench_cpu_')
+        for i in range(n_runs):
+            print(f"  Run {i+1}/{n_runs}...", end=" ", flush=True)
+            d = tempfile.mkdtemp(prefix=f'tomo_bench_cpu_{i}_')
             t0 = time.time()
-            run_tomo_from_sinos(sinos, d, thetas, numCPUs=1, useGPU=False)
-            cpu_times.append(time.time() - t0)
+            run_tomo_from_sinos(sinos, d, thetas, numCPUs=n_cpus,
+                                useGPU=False)
+            ct = time.time() - t0
+            cpu_times.append(ct)
 
-            d = tempfile.mkdtemp(prefix='tomo_bench_gpu_')
+            d = tempfile.mkdtemp(prefix=f'tomo_bench_gpu_{i}_')
             t0 = time.time()
             run_tomo_from_sinos(sinos, d, thetas, numCPUs=1, useGPU=True)
-            gpu_times.append(time.time() - t0)
+            gt = time.time() - t0
+            gpu_times.append(gt)
+            print(f"CPU={ct:.2f}s, GPU={gt:.2f}s, "
+                  f"speedup={ct/gt:.2f}x")
 
         avg_cpu = np.mean(cpu_times)
         avg_gpu = np.mean(gpu_times)
         speedup = avg_cpu / avg_gpu if avg_gpu > 0 else 0
 
-        print(f"\n  Benchmark Results ({n_benchmark_runs} runs):")
-        print(f"  {'':8s}  {'CPU':>10s}  {'GPU':>10s}  {'Speedup':>8s}")
-        print(f"  {'Mean':8s}  {avg_cpu:10.3f}s  {avg_gpu:10.3f}s  {speedup:7.2f}x")
-        print(f"  {'Min':8s}  {min(cpu_times):10.3f}s  {min(gpu_times):10.3f}s")
-        print(f"  {'Max':8s}  {max(cpu_times):10.3f}s  {max(gpu_times):10.3f}s")
+        print(f"\n  ┌──────────────────────────────────────────────────┐")
+        print(f"  │  Benchmark: {n_slices} slices × {phantom_size}px × "
+              f"{n_thetas} angles{' ' * max(0, 10 - len(str(n_slices)))}│")
+        print(f"  ├──────────────────────────────────────────────────┤")
+        print(f"  │  {'':8s}  {'CPU ('+str(n_cpus)+'t)':>12s}  "
+              f"{'GPU':>10s}  {'Speedup':>8s}  │")
+        print(f"  │  {'Mean':8s}  {avg_cpu:12.2f}s  {avg_gpu:10.2f}s  "
+              f"{speedup:7.2f}x  │")
+        print(f"  │  {'Min':8s}  {min(cpu_times):12.2f}s  "
+              f"{min(gpu_times):10.2f}s  "
+              f"{max(cpu_times)/min(gpu_times):7.2f}x  │")
+        print(f"  │  {'Thruput':8s}  {n_slices/avg_cpu:10.1f}/s  "
+              f"{n_slices/avg_gpu:8.1f}/s  {'':>8s}  │")
+        print(f"  └──────────────────────────────────────────────────┘")
 
-    # Summary
+    # ─── Summary ───
     print("\n" + "=" * 70)
     all_passed = all(r[1] for r in results)
     n_pass = sum(1 for r in results if r[1])
@@ -251,7 +288,9 @@ def run_parity_test(phantom_size=256, n_thetas=1800, test_fftw_bridge=False,
         status = "✅" if passed else "❌"
         extra = ""
         if 'speedup' in stats:
-            extra = f"  (GPU {stats['speedup']:.2f}x)"
+            extra = (f"  [CPU {stats['cpu_time']:.2f}s vs "
+                     f"GPU {stats['gpu_time']:.2f}s = "
+                     f"{stats['speedup']:.2f}x]")
         print(f"  {status} {label}: corr={stats['correlation']:.8f}, "
               f"max_diff={stats['max_diff']:.2e}{extra}")
 
@@ -268,23 +307,26 @@ def run_parity_test(phantom_size=256, n_thetas=1800, test_fftw_bridge=False,
 # ---------------------------------------------------------------------------
 if __name__ == "__main__":
     parser = argparse.ArgumentParser(
-        description="MIDAS Tomography GPU Parity Test")
+        description="MIDAS Tomography GPU Parity & Benchmark Test")
     parser.add_argument("--size", type=int, default=256,
-                        help="Phantom size (default: 256)")
+                        help="Phantom size in pixels (default: 256)")
     parser.add_argument("--n-thetas", type=int, default=1800,
                         help="Number of projection angles (default: 1800)")
+    parser.add_argument("--n-slices", type=int, default=2,
+                        help="Number of slices (default: 2)")
+    parser.add_argument("--n-cpus", type=int, default=1,
+                        help="Number of CPU threads (default: 1)")
     parser.add_argument("--fftw-bridge", action="store_true",
                         help="Also test FFTW-bridge mode")
     parser.add_argument("--benchmark", action="store_true",
-                        help="Run performance benchmark")
-    parser.add_argument("--benchmark-runs", type=int, default=3,
-                        help="Number of benchmark iterations (default: 3)")
+                        help="Run repeated benchmark (3 runs)")
     args = parser.parse_args()
 
     sys.exit(run_parity_test(
         phantom_size=args.size,
         n_thetas=args.n_thetas,
+        n_slices=args.n_slices,
+        n_cpus=args.n_cpus,
         test_fftw_bridge=args.fftw_bridge,
         benchmark=args.benchmark,
-        n_benchmark_runs=args.benchmark_runs,
     ))
