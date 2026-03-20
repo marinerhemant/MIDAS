@@ -863,7 +863,7 @@ int main(int argc, char *argv[]) {
             OrientationMatrix, NrOrientations,
             SpotsMat, (const int *)KeyData,
             (const double (*)[4])hkls, Thetas, n_hkls, Gs,
-            Lsd, ybc, zbc, px, gs,
+            Lsd, ybc, zbc, px, parsed_lines[0].gs,
             OmegaStart, OmegaStep, RotMatTilts,
             ExcludePoleAngle,
             (const double (*)[2])OmegaRanges, NoOfOmegaRanges,

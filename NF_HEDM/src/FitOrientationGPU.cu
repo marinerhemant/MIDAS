@@ -30,9 +30,29 @@
 #include <string.h>
 #include <time.h>
 
-// NF-HEDM shared functions and math (C linkage)
+// Forward-declare only what we need from NF-HEDM.
+// We cannot include nf_headers.h directly because it uses C99 VLAs
+// (e.g., double Lsd[nLayers]) which are illegal in C++ / CUDA.
 extern "C" {
-#include "nf_headers.h"
+
+#define RealType double
+#define deg2rad 0.0174532925199433
+#define rad2deg 57.2957795130823
+
+// NF-HEDM uses MAX_N_SPOTS=5000 and MAX_N_OMEGA_RANGES=20 for
+// CalcDiffractionSpots (these are array-size hints only, decay to pointers).
+#define NF_MAX_N_SPOTS 5000
+#define NF_MAX_N_OMEGA_RANGES 20
+
+int CalcDiffractionSpots(double Distance, double ExcludePoleAngle,
+                         double OmegaRanges[NF_MAX_N_OMEGA_RANGES][2],
+                         int NoOfOmegaRanges,
+                         double hkls[NF_MAX_N_SPOTS][4], int n_hkls,
+                         double Thetas[NF_MAX_N_SPOTS],
+                         double BoxSizes[NF_MAX_N_OMEGA_RANGES][4],
+                         int *nTspots,
+                         double OrientMatr[3][3], double *TheorSpots,
+                         double *Gs);
 }
 
 // ─────────────────────────────────────────────────────────────
@@ -679,7 +699,7 @@ extern "C" int nf_gpu_upload_orientations(NFGPUContext *ctx,
       nOrientations * sizeof(GPUOrientHeader));
 
   // Allocate temporary buffer for CalcDiffractionSpots output
-  double *TheorSpots = (double *)malloc(MAX_N_SPOTS * 3 * sizeof(double));
+  double *TheorSpots = (double *)malloc(NF_MAX_N_SPOTS * 3 * sizeof(double));
 
   for (int i = 0; i < nOrientations; i++) {
     // Get orientation matrix for this candidate
