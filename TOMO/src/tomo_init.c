@@ -778,14 +778,14 @@ int main(int argc, char *argv[]) {
       if (output_fd != -1) {
         close(output_fd);
       }
-      if (cpu_sino_mmap) munmap(cpu_sino_mmap, cpu_sino_mmap_len);
 #ifdef ENABLE_CUDA
       // GPU path never calls reconstruct(), so FFTW plans were never
       // created.  Only destroy them when the CPU path was used.
       if (!(useGPU && gpu_ctx))
 #endif
       destroyFFTMemoryStructures(&param);
-    }
+    } // end #pragma omp parallel
+    if (cpu_sino_mmap) munmap(cpu_sino_mmap, cpu_sino_mmap_len);
   } else { // We have multiple shifts, (possibly multiple slices_to_process)
     SINO_READ_OPTS *readStruct;
     readStruct = malloc(recon_info_record.n_slices * sizeof(*readStruct));
