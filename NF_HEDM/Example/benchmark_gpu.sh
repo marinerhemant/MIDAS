@@ -71,6 +71,11 @@ fi
 # Ensure OnlySpotsInfo is off so we do full reconstruction
 sed -i.bak 's/^OnlySpotsInfo .*/OnlySpotsInfo 0/' "$PARAM_FILE"
 
+# Ensure DataDirectory is set (nf_MIDAS.py requires it)
+if ! grep -q "^DataDirectory " "$PARAM_FILE" && ! grep -q "^OutputDirectory " "$PARAM_FILE"; then
+  echo "DataDirectory ." >> "$PARAM_FILE"
+fi
+
 # Count orientations
 NR_ORIENT=$(wc -l < "$SEED_FILE")
 echo "Seed orientations: $NR_ORIENT"
