@@ -485,6 +485,500 @@ void screen_pairs_kernel(
 
 
 // ═════════════════════════════════════════════════════════════
+//  PHASE 2: GPU NM FITTING — Device functions
+// ═════════════════════════════════════════════════════════════
+
+#include "../../utils/gpu_simplex.cuh"
+
+// Maximum HKLs supported on GPU (matches CPU MAX_N_HKLS)
+#define GPU_MAX_HKLS 5000
+#define GPU_MAX_SPOTS_PER_ORIENT 500
+#define GPU_MAX_LAYERS 8
+
+/// HKL data in constant memory (broadcast to all threads)
+__constant__ float c_hkls[GPU_MAX_HKLS][4];  // [h,k,l, unused]
+__constant__ float c_Gs[GPU_MAX_HKLS];       // precomputed G magnitude
+__constant__ int   c_n_hkls;
+__constant__ float c_omegaStart;
+__constant__ float c_omegaStep;
+__constant__ float c_excludePoleAngle;
+__constant__ float c_omegaRanges[20][2];
+__constant__ float c_boxSizes[20][4];
+__constant__ int   c_nOmeRanges;
+
+/// Device: Euler angles (degrees) → 3×3 orientation matrix
+__device__ static inline void gpu_euler2orient(const float euler[3], float m[3][3]) {
+  float psi = euler[0] * (float)deg2rad;
+  float phi = euler[1] * (float)deg2rad;
+  float theta = euler[2] * (float)deg2rad;
+  float cps = cosf(psi), sps = sinf(psi);
+  float cph = cosf(phi), sph = sinf(phi);
+  float cth = cosf(theta), sth = sinf(theta);
+  m[0][0] = cth * cps - sth * cph * sps;
+  m[0][1] = -cth * cph * sps - sth * cps;
+  m[0][2] = sph * sps;
+  m[1][0] = cth * sps + sth * cph * cps;
+  m[1][1] = cth * cph * cps - sth * sps;
+  m[1][2] = -sph * cps;
+  m[2][0] = sth * sph;
+  m[2][1] = cth * sph;
+  m[2][2] = cph;
+}
+
+/// Device: Compute omega solutions for a reciprocal lattice vector.
+/// CalcOmega from CalcDiffractionSpots.c — up to 2 solutions.
+__device__ static inline int gpu_calc_omega(
+    float gx, float gy, float gz, float v,
+    float omegas[4], float etas[4]) {
+  int nsol = 0;
+  float almostzero = 1e-4f;
+
+  if (fabsf(gy) < almostzero) {
+    if (gx != 0.0f) {
+      float cosome1 = -v / gx;
+      if (fabsf(cosome1) <= 1.0f) {
+        float ome = acosf(cosome1) * (float)rad2deg;
+        omegas[nsol++] = ome;
+        omegas[nsol++] = -ome;
+      }
+    }
+  } else {
+    float y2 = gy * gy;
+    float a = 1.0f + (gx * gx) / y2;
+    float b = (2.0f * v * gx) / y2;
+    float c = (v * v) / y2 - 1.0f;
+    float discr = b * b - 4.0f * a * c;
+    if (discr >= 0.0f) {
+      float sd = sqrtf(discr);
+      float cosome1 = (-b + sd) / (2.0f * a);
+      if (fabsf(cosome1) <= 1.0f) {
+        float ome1a = acosf(cosome1);
+        float ome1b = -ome1a;
+        float eqa = -gx * cosf(ome1a) + gy * sinf(ome1a);
+        float eqb = -gx * cosf(ome1b) + gy * sinf(ome1b);
+        omegas[nsol++] = (fabsf(eqa - v) < fabsf(eqb - v))
+                       ? ome1a * (float)rad2deg
+                       : ome1b * (float)rad2deg;
+      }
+      float cosome2 = (-b - sd) / (2.0f * a);
+      if (fabsf(cosome2) <= 1.0f) {
+        float ome2a = acosf(cosome2);
+        float ome2b = -ome2a;
+        float eqa = -gx * cosf(ome2a) + gy * sinf(ome2a);
+        float eqb = -gx * cosf(ome2b) + gy * sinf(ome2b);
+        omegas[nsol++] = (fabsf(eqa - v) < fabsf(eqb - v))
+                       ? ome2a * (float)rad2deg
+                       : ome2b * (float)rad2deg;
+      }
+    }
+  }
+
+  // Compute eta for each solution
+  for (int i = 0; i < nsol; i++) {
+    float omeRad = omegas[i] * (float)deg2rad;
+    float cosO = cosf(omeRad), sinO = sinf(omeRad);
+    float gw1 = gx * cosO + gy * sinO;
+    float gw2 = -gx * sinO + gy * cosO;
+    float gw3 = gz;
+    // CalcEtaAngle
+    float r = sqrtf(gw2 * gw2 + gw3 * gw3);
+    float eta = (r > 1e-10f) ? (float)rad2deg * acosf(gw3 / r) : 0.0f;
+    if (gw2 > 0.0f) eta = -eta;
+    etas[i] = eta;
+  }
+  return nsol;
+}
+
+/// Device: Compute fracOverlap for a trial orientation.
+/// This is the GPU version of CalcOverlapAccOrient:
+///   Euler → OrientMat → CalcDiffrSpots → check bitfield
+__device__ static float gpu_calc_frac_overlap(
+    const float euler_deg[3],
+    const float XG[3], const float YG[3],
+    const uint32_t *obsFlat,
+    float Lsd0, float ybc0, float zbc0,
+    const float RM[9], const float P0_0[3],
+    int nLayers, int nrFiles, int nrPixelsY, int nrPixelsZ,
+    float px, float gs) {
+
+  // 1. Euler → orientation matrix
+  float orient[3][3];
+  gpu_euler2orient(euler_deg, orient);
+
+  int OverlapPixels = 0, TotalPixels = 0;
+
+  // 2. For each HKL, compute spots
+  for (int ih = 0; ih < c_n_hkls; ih++) {
+    float Ghkl[3] = { c_hkls[ih][0], c_hkls[ih][1], c_hkls[ih][2] };
+    float Gc[3]; // orient * Ghkl
+    Gc[0] = orient[0][0]*Ghkl[0] + orient[0][1]*Ghkl[1] + orient[0][2]*Ghkl[2];
+    Gc[1] = orient[1][0]*Ghkl[0] + orient[1][1]*Ghkl[1] + orient[1][2]*Ghkl[2];
+    Gc[2] = orient[2][0]*Ghkl[0] + orient[2][1]*Ghkl[1] + orient[2][2]*Ghkl[2];
+
+    float v = c_Gs[ih];
+    float omegas[4], etas[4];
+    int nsol = gpu_calc_omega(Gc[0], Gc[1], Gc[2], v, omegas, etas);
+
+    for (int isol = 0; isol < nsol; isol++) {
+      float Omega = omegas[isol];
+      float Eta = etas[isol];
+      float EtaAbs = fabsf(Eta);
+
+      // Pole angle exclusion
+      if (EtaAbs < c_excludePoleAngle ||
+          (180.0f - EtaAbs) < c_excludePoleAngle) continue;
+
+      // Ring radius and spot position
+      float Lsd_dist = c_Lsd[0];  // Use Lsd[0] for ring radius
+      // Thetas already baked into Gs, need ringrad from theta
+      // RingRadius = distance * tan(2 * theta)
+      // But theta = Thetas[ih] which is asin(wavelength/(2*d))
+      // We need to recompute or pass ringrad. Simpler: position from eta + ringrad.
+      float ringRad = Lsd_dist * tanf(2.0f * acosf(-v / sqrtf(Gc[0]*Gc[0] + Gc[1]*Gc[1] + Gc[2]*Gc[2])));
+      // Actually, theta is already in Thetas. We can approximate:
+      // We passed Gs[ih] = sin(theta)*|Ghkl| to CalcOmega. But we need
+      // RingRadius = Lsd * tan(2*theta). Since v = sin(theta)*|G|:
+      float lenG = sqrtf(Gc[0]*Gc[0] + Gc[1]*Gc[1] + Gc[2]*Gc[2]);
+      float sinTheta = v / lenG;
+      if (fabsf(sinTheta) > 1.0f) continue;
+      float theta = asinf(sinTheta);
+      float tan2th = tanf(2.0f * theta);
+      float RingRadius = Lsd_dist * tan2th;
+
+      // Spot position (yl, zl) from eta + ring radius
+      float etaRad = Eta * (float)deg2rad;
+      float yl = -sinf(etaRad) * RingRadius;
+      float zl = cosf(etaRad) * RingRadius;
+
+      // Omega range check
+      int keepSpot = 0;
+      for (int r = 0; r < c_nOmeRanges; r++) {
+        if (Omega > c_omegaRanges[r][0] && Omega < c_omegaRanges[r][1] &&
+            yl > c_boxSizes[r][0] && yl < c_boxSizes[r][1] &&
+            zl > c_boxSizes[r][2] && zl < c_boxSizes[r][3]) {
+          keepSpot = 1;
+          break;
+        }
+      }
+      if (!keepSpot) continue;
+
+      // OmeBin
+      int omeBin = (int)floorf((-c_omegaStart + Omega) / c_omegaStep);
+      if (omeBin < 0 || omeBin >= nrFiles) continue;
+
+      float sinOme = sinf(Omega * (float)deg2rad);
+      float cosOme = cosf(Omega * (float)deg2rad);
+
+      // 3. Displacement + projection (same as screening kernel)
+      float YZSpotsT[3][2];
+      int oob = 0;
+      for (int k = 0; k < 3; k++) {
+        float Displ_Y, Displ_Z;
+        gpu_displacement(XG[k], YG[k], Lsd0, yl, zl, sinOme, cosOme,
+                         &Displ_Y, &Displ_Z);
+        float P1x = RM[0*3+1] * Displ_Y + RM[0*3+2] * Displ_Z;
+        float P1y = RM[1*3+1] * Displ_Y + RM[1*3+2] * Displ_Z;
+        float P1z = RM[2*3+1] * Displ_Y + RM[2*3+2] * Displ_Z;
+        float ABCx = P1x - P0_0[0];
+        float ABCy = P1y - P0_0[1];
+        float ABCz = P1z - P0_0[2];
+        float outY = P0_0[1] - (ABCy * P0_0[0]) / ABCx;
+        float outZ = P0_0[2] - (ABCz * P0_0[0]) / ABCx;
+        YZSpotsT[k][0] = outY / px + ybc0;
+        YZSpotsT[k][1] = outZ / px + zbc0;
+        if (YZSpotsT[k][0] > nrPixelsY || YZSpotsT[k][0] < 0 ||
+            YZSpotsT[k][1] > nrPixelsZ || YZSpotsT[k][1] < 0) {
+          oob = 1; break;
+        }
+      }
+      if (oob) continue;
+
+      // Reference pixel (undisplaced)
+      float refP1x = RM[0*3+1] * yl + RM[0*3+2] * zl;
+      float refP1y = RM[1*3+1] * yl + RM[1*3+2] * zl;
+      float refP1z = RM[2*3+1] * yl + RM[2*3+2] * zl;
+      float refABCx = refP1x - P0_0[0];
+      float refABCy = refP1y - P0_0[1];
+      float refABCz = refP1z - P0_0[2];
+      float refOutY = P0_0[1] - (refABCy * P0_0[0]) / refABCx;
+      float refOutZ = P0_0[2] - (refABCz * P0_0[0]) / refABCx;
+      float refYpx = refOutY / px + ybc0;
+      float refZpx = refOutZ / px + zbc0;
+
+      float YZSpots[3][2];
+      for (int l = 0; l < 3; l++) {
+        YZSpots[l][0] = YZSpotsT[l][0] - refYpx;
+        YZSpots[l][1] = YZSpotsT[l][1] - refZpx;
+      }
+
+      // Layer base positions
+      int layerBaseY[GPU_MAX_LAYERS], layerBaseZ[GPU_MAX_LAYERS];
+      long long layerBinBase[GPU_MAX_LAYERS];
+      for (int layer = 0; layer < nLayers; layer++) {
+        layerBaseY[layer] = (int)floorf(((refYpx - ybc0) * px * (c_Lsd[layer]/Lsd0))/px + c_ybc[layer]);
+        layerBaseZ[layer] = (int)floorf(((refZpx - zbc0) * px * (c_Lsd[layer]/Lsd0))/px + c_zbc[layer]);
+        layerBinBase[layer] = (long long)layer * nrFiles * nrPixelsY * nrPixelsZ
+                            + (long long)omeBin * nrPixelsY * nrPixelsZ;
+      }
+
+      // 4. Single-pixel check (gs*2 <= px in typical NF)
+      if (gs * 2.0f <= px) {
+        int py = (int)roundf((YZSpots[0][0]+YZSpots[1][0]+YZSpots[2][0])/3.0f);
+        int pz = (int)roundf((YZSpots[0][1]+YZSpots[1][1]+YZSpots[2][1])/3.0f);
+        int allFound = 1;
+        int pixOob = 0;
+        for (int layer = 0; layer < nLayers; layer++) {
+          int MultY = layerBaseY[layer] + py;
+          int MultZ = layerBaseZ[layer] + pz;
+          if (MultY >= nrPixelsY || MultY < 0 || MultZ >= nrPixelsZ || MultZ < 0) {
+            pixOob = 1; break;
+          }
+          long long binNr = layerBinBase[layer] + (long long)MultY*nrPixelsZ + MultZ;
+          if (!gpu_test_bit(obsFlat, binNr)) { allFound = 0; break; }
+        }
+        if (!pixOob) {
+          if (allFound) OverlapPixels++;
+          TotalPixels++;
+        }
+      } else {
+        // Multi-pixel: rasterize triangle (same as screening kernel)
+        float edges[3][2];
+        float minY = 1e9f, maxY = -1e9f, minZ = 1e9f, maxZ = -1e9f;
+        for (int i = 0; i < 3; i++) {
+          edges[i][0] = roundf(YZSpots[i][0]);
+          edges[i][1] = roundf(YZSpots[i][1]);
+          if (edges[i][0] < minY) minY = edges[i][0];
+          if (edges[i][0] > maxY) maxY = edges[i][0];
+          if (edges[i][1] < minZ) minZ = edges[i][1];
+          if (edges[i][1] > maxZ) maxZ = edges[i][1];
+        }
+        for (int pz = (int)minZ; pz <= (int)maxZ; pz++) {
+          for (int py = (int)minY; py <= (int)maxY; py++) {
+            int w0 = ((int)edges[1][1]-(int)edges[2][1])*(py-(int)edges[1][0])
+                   + ((int)edges[2][0]-(int)edges[1][0])*(pz-(int)edges[1][1]);
+            int w1 = ((int)edges[2][1]-(int)edges[0][1])*(py-(int)edges[2][0])
+                   + ((int)edges[0][0]-(int)edges[2][0])*(pz-(int)edges[2][1]);
+            int w2 = ((int)edges[0][1]-(int)edges[1][1])*(py-(int)edges[0][0])
+                   + ((int)edges[1][0]-(int)edges[0][0])*(pz-(int)edges[0][1]);
+            int inside = (w0 >= 0 && w1 >= 0 && w2 >= 0);
+            if (!inside) {
+              for (int e = 0; e < 3 && !inside; e++) {
+                int i0 = e, i1 = (e+1)%3;
+                float dx = edges[i1][0] - edges[i0][0];
+                float dz = edges[i1][1] - edges[i0][1];
+                float num = dx*(pz-(int)edges[i0][1]) - dz*(py-(int)edges[i0][0]);
+                float den = dz*dz + dx*dx;
+                if (den > 0 && (num*num)/den < 0.9801f) inside = 1;
+              }
+            }
+            if (inside) {
+              int allFound = 1, pixOob = 0;
+              for (int layer = 0; layer < nLayers; layer++) {
+                int MultY = layerBaseY[layer] + py;
+                int MultZ = layerBaseZ[layer] + pz;
+                if (MultY >= nrPixelsY || MultY < 0 || MultZ >= nrPixelsZ || MultZ < 0) {
+                  pixOob = 1; break;
+                }
+                long long binNr = layerBinBase[layer] + (long long)MultY*nrPixelsZ + MultZ;
+                if (!gpu_test_bit(obsFlat, binNr)) { allFound = 0; break; }
+              }
+              if (!pixOob) {
+                if (allFound) OverlapPixels++;
+                TotalPixels++;
+              }
+            }
+          }
+        }
+      }
+    }
+  }
+
+  return (TotalPixels > 0) ? (float)OverlapPixels / (float)TotalPixels : 0.0f;
+}
+
+/// GPU NM fitting functor: evaluates 1 - fracOverlap for trial Euler angles.
+struct NFFitObjective {
+  const uint32_t *obsFlat;
+  const float *XG;    // [3] for this voxel
+  const float *YG;    // [3] for this voxel
+  float Lsd0, ybc0, zbc0;
+  float RM[9];
+  float P0_0[3];
+  int nLayers, nrFiles, nrPixelsY, nrPixelsZ;
+  float px, gs;
+
+  __device__ float operator()(const float *x, int ndim) const {
+    float euler_deg[3] = { x[0] * (float)rad2deg,
+                           x[1] * (float)rad2deg,
+                           x[2] * (float)rad2deg };
+    float frac = gpu_calc_frac_overlap(
+        euler_deg, XG, YG, obsFlat,
+        Lsd0, ybc0, zbc0, RM, P0_0,
+        nLayers, nrFiles, nrPixelsY, nrPixelsZ, px, gs);
+    return 1.0f - frac;
+  }
+};
+
+/// Phase 2 fitting kernel: one thread per winner, runs NM simplex.
+__global__ void nm_fit_kernel(
+    int nJobs,
+    const float *startEulers,   // [nJobs * 3] initial Euler angles (radians)
+    const float *lowerBounds,   // [3]
+    const float *upperBounds,   // [3]
+    const float *voxXG,         // [nJobs * 3] per-job voxel XG
+    const float *voxYG,         // [nJobs * 3] per-job voxel YG
+    const uint32_t *obsFlat,
+    float Lsd0, float ybc0, float zbc0,
+    const float *RM,            // [9] rotation matrix
+    const float *P0_0,          // [3] P0 layer 0
+    int nLayers, int nrFiles, int nrPixelsY, int nrPixelsZ,
+    float px, float gs,
+    float tol, int maxIter, float initStep,
+    float *results,             // [nJobs * 3] output Euler angles
+    float *fvals_out) {         // [nJobs] output fracOverlap
+
+  int jobIdx = blockIdx.x * blockDim.x + threadIdx.x;
+  if (jobIdx >= nJobs) return;
+
+  // Build per-thread objective functor
+  NFFitObjective obj;
+  obj.obsFlat = obsFlat;
+  obj.XG = &voxXG[jobIdx * 3];
+  obj.YG = &voxYG[jobIdx * 3];
+  obj.Lsd0 = Lsd0;
+  obj.ybc0 = ybc0;
+  obj.zbc0 = zbc0;
+  for (int i = 0; i < 9; i++) obj.RM[i] = RM[i];
+  for (int i = 0; i < 3; i++) obj.P0_0[i] = P0_0[i];
+  obj.nLayers = nLayers;
+  obj.nrFiles = nrFiles;
+  obj.nrPixelsY = nrPixelsY;
+  obj.nrPixelsZ = nrPixelsZ;
+  obj.px = px;
+  obj.gs = gs;
+
+  // Load bounds
+  float lo[3], hi[3];
+  for (int i = 0; i < 3; i++) { lo[i] = lowerBounds[i]; hi[i] = upperBounds[i]; }
+
+  // Initialize simplex
+  NMParams nm = nm_default_params();
+  float simplex[4][3];  // NDIM+1 × NDIM (3+1 × 3)
+  float fvals[4];
+
+  const float *x0 = &startEulers[jobIdx * 3];
+  for (int j = 0; j < 3; j++) simplex[0][j] = x0[j];
+  for (int j = 0; j < 3; j++) {
+    if (simplex[0][j] < lo[j]) simplex[0][j] = lo[j];
+    if (simplex[0][j] > hi[j]) simplex[0][j] = hi[j];
+  }
+  fvals[0] = obj(simplex[0], 3);
+
+  for (int i = 1; i <= 3; i++) {
+    for (int j = 0; j < 3; j++) simplex[i][j] = simplex[0][j];
+    float step = initStep * (hi[i-1] - lo[i-1]);
+    if (step < 1e-8f) step = 1e-4f;
+    simplex[i][i-1] += step;
+    if (simplex[i][i-1] > hi[i-1]) simplex[i][i-1] = hi[i-1];
+    fvals[i] = obj(simplex[i], 3);
+  }
+
+  // Main NM loop (inlined for NDIM=3)
+  float trial[3], centroid[3];
+
+  for (int iter = 0; iter < maxIter; iter++) {
+    // Find best, worst, second_worst
+    int best = 0, worst = 0, sw = 0;
+    for (int i = 1; i <= 3; i++) {
+      if (fvals[i] < fvals[best]) best = i;
+      if (fvals[i] > fvals[worst]) worst = i;
+    }
+    sw = best;
+    for (int i = 0; i <= 3; i++) {
+      if (i == worst) continue;
+      if (fvals[i] > fvals[sw]) sw = i;
+    }
+
+    if (fvals[worst] - fvals[best] < tol) break;
+
+    // Centroid (exclude worst)
+    for (int j = 0; j < 3; j++) centroid[j] = 0;
+    for (int i = 0; i <= 3; i++) {
+      if (i == worst) continue;
+      for (int j = 0; j < 3; j++) centroid[j] += simplex[i][j];
+    }
+    for (int j = 0; j < 3; j++) centroid[j] /= 3.0f;
+
+    // Reflection
+    for (int j = 0; j < 3; j++) {
+      trial[j] = centroid[j] + nm.alpha * (centroid[j] - simplex[worst][j]);
+      if (trial[j] < lo[j]) trial[j] = lo[j];
+      if (trial[j] > hi[j]) trial[j] = hi[j];
+    }
+    float f_r = obj(trial, 3);
+
+    if (f_r < fvals[sw] && f_r >= fvals[best]) {
+      for (int j = 0; j < 3; j++) simplex[worst][j] = trial[j];
+      fvals[worst] = f_r;
+      continue;
+    }
+
+    if (f_r < fvals[best]) {
+      // Expansion
+      float trial_e[3];
+      for (int j = 0; j < 3; j++) {
+        trial_e[j] = centroid[j] + nm.gamma * (trial[j] - centroid[j]);
+        if (trial_e[j] < lo[j]) trial_e[j] = lo[j];
+        if (trial_e[j] > hi[j]) trial_e[j] = hi[j];
+      }
+      float f_e = obj(trial_e, 3);
+      if (f_e < f_r) {
+        for (int j = 0; j < 3; j++) simplex[worst][j] = trial_e[j];
+        fvals[worst] = f_e;
+      } else {
+        for (int j = 0; j < 3; j++) simplex[worst][j] = trial[j];
+        fvals[worst] = f_r;
+      }
+      continue;
+    }
+
+    // Contraction
+    for (int j = 0; j < 3; j++) {
+      trial[j] = centroid[j] + nm.rho * (simplex[worst][j] - centroid[j]);
+      if (trial[j] < lo[j]) trial[j] = lo[j];
+      if (trial[j] > hi[j]) trial[j] = hi[j];
+    }
+    float f_c = obj(trial, 3);
+    if (f_c < fvals[worst]) {
+      for (int j = 0; j < 3; j++) simplex[worst][j] = trial[j];
+      fvals[worst] = f_c;
+      continue;
+    }
+
+    // Shrink
+    for (int i = 0; i <= 3; i++) {
+      if (i == best) continue;
+      for (int j = 0; j < 3; j++) {
+        simplex[i][j] = simplex[best][j] + nm.sigma * (simplex[i][j] - simplex[best][j]);
+        if (simplex[i][j] < lo[j]) simplex[i][j] = lo[j];
+        if (simplex[i][j] > hi[j]) simplex[i][j] = hi[j];
+      }
+      fvals[i] = obj(simplex[i], 3);
+    }
+  }
+
+  // Output best
+  int best = 0;
+  for (int i = 1; i <= 3; i++)
+    if (fvals[i] < fvals[best]) best = i;
+
+  for (int j = 0; j < 3; j++)
+    results[jobIdx * 3 + j] = simplex[best][j];
+  fvals_out[jobIdx] = 1.0f - fvals[best];  // convert back to fracOverlap
+}
+
+
+// ═════════════════════════════════════════════════════════════
 //  CONTEXT LIFECYCLE
 // ═════════════════════════════════════════════════════════════
 
