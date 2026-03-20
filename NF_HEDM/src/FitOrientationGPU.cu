@@ -200,13 +200,15 @@ __global__ void screen_pairs_kernel(
     int *nWinners,
     int maxWinners) {
 
-  // Linearised thread ID -> (voxIdx, oriIdx)
+  // Linearised thread ID → (oriIdx, voxIdx)
+  // Adjacent threads process different voxels with the SAME orientation
+  // → same GPUSpot data → excellent L1/L2 cache reuse
   long long tid = (long long)blockIdx.x * blockDim.x + threadIdx.x;
   long long totalPairs = (long long)nVoxels * nOrientations;
   if (tid >= totalPairs) return;
 
-  int voxIdx = tid / nOrientations;
-  int oriIdx = tid % nOrientations;
+  int oriIdx = tid / nVoxels;
+  int voxIdx = tid % nVoxels;
 
   // Load rotation matrix into registers
   float RM[9];
@@ -586,43 +588,21 @@ extern "C" int nf_gpu_upload_orientations(NFGPUContext *ctx,
   free(h_zbc_f);
   free(h_P0_f);
 
-  // Precompute per-orientation spot data on CPU, then upload
+  // Build GPUSpot array directly from precomputed SpotsMat + Key.bin
+  // h_nrSpots layout: [nSpots_0, startRow_0, nSpots_1, startRow_1, ...]
+  // h_spotsMat layout: [y_0, z_0, omega_0, y_1, z_1, omega_1, ...]
   ctx->nOrientations = nOrientations;
 
-  // First pass: compute total spot count
+  // Compute total spots and headers from Key.bin (no CalcDiffractionSpots needed!)
   int totalSpots = 0;
   GPUOrientHeader *h_headers = (GPUOrientHeader *)malloc(
       nOrientations * sizeof(GPUOrientHeader));
 
-  double *TheorSpots = (double *)malloc(NF_MAX_N_SPOTS * 3 * sizeof(double));
-
   for (int i = 0; i < nOrientations; i++) {
-    double OMTemp[9], OrientMatIn[3][3];
-    for (int j = 0; j < 9; j++)
-      OMTemp[j] = h_orientationMatrix[i * 9 + j];
-
-    // Normalize
-    double det = (OMTemp[0]*(OMTemp[4]*OMTemp[8]-OMTemp[5]*OMTemp[7]))
-               - (OMTemp[1]*(OMTemp[3]*OMTemp[8]-OMTemp[5]*OMTemp[6]))
-               + (OMTemp[2]*(OMTemp[3]*OMTemp[7]-OMTemp[4]*OMTemp[6]));
-    double scale = cbrt(det);
-    for (int j = 0; j < 9; j++)
-      OMTemp[j] /= scale;
-
-    for (int r = 0; r < 3; r++)
-      for (int c = 0; c < 3; c++)
-        OrientMatIn[r][c] = OMTemp[r*3+c];
-
-    int nTspots = 0;
-    CalcDiffractionSpots(Lsd[0], excludePoleAngle,
-                         (double (*)[2])omegaRanges, nOmeRanges,
-                         (double (*)[4])hkls, n_hkls,
-                         (double *)thetas, (double (*)[4])boxSizes,
-                         &nTspots, OrientMatIn, TheorSpots, (double *)Gs);
-
-    h_headers[i].nSpots = nTspots;
+    int nSpotsThis = h_nrSpots[i * 2];
+    h_headers[i].nSpots = nSpotsThis;
     h_headers[i].spotOffset = totalSpots;
-    totalSpots += nTspots;
+    totalSpots += nSpotsThis;
   }
 
   ctx->totalSpots = totalSpots;
@@ -630,46 +610,23 @@ extern "C" int nf_gpu_upload_orientations(NFGPUContext *ctx,
          nOrientations, totalSpots,
          nOrientations > 0 ? (float)totalSpots / nOrientations : 0.0f);
 
-  // Second pass: fill GPUSpot array
+  // Fill GPUSpot array from SpotsMat — parallelized with OMP
   GPUSpot *h_spots = (GPUSpot *)malloc(totalSpots * sizeof(GPUSpot));
 
+  #pragma omp parallel for schedule(dynamic, 1000)
   for (int i = 0; i < nOrientations; i++) {
-    double OMTemp[9], OrientMatIn[3][3];
-    for (int j = 0; j < 9; j++)
-      OMTemp[j] = h_orientationMatrix[i * 9 + j];
-    double det = (OMTemp[0]*(OMTemp[4]*OMTemp[8]-OMTemp[5]*OMTemp[7]))
-               - (OMTemp[1]*(OMTemp[3]*OMTemp[8]-OMTemp[5]*OMTemp[6]))
-               + (OMTemp[2]*(OMTemp[3]*OMTemp[7]-OMTemp[4]*OMTemp[6]));
-    double scl = cbrt(det);
-    for (int j = 0; j < 9; j++)
-      OMTemp[j] /= scl;
-    for (int r = 0; r < 3; r++)
-      for (int c = 0; c < 3; c++)
-        OrientMatIn[r][c] = OMTemp[r*3+c];
+    int nSpotsThis = h_nrSpots[i * 2];
+    int startRow   = h_nrSpots[i * 2 + 1];
+    int offset     = h_headers[i].spotOffset;
 
-    int nTspots = 0;
-    CalcDiffractionSpots(Lsd[0], excludePoleAngle,
-                         (double (*)[2])omegaRanges, nOmeRanges,
-                         (double (*)[4])hkls, n_hkls,
-                         (double *)thetas, (double (*)[4])boxSizes,
-                         &nTspots, OrientMatIn, TheorSpots, (double *)Gs);
-
-    int offset = h_headers[i].spotOffset;
-    for (int s = 0; s < nTspots; s++) {
-      float ythis = (float)TheorSpots[s*3+0];
-      float zthis = (float)TheorSpots[s*3+1];
-      float omegaThis = (float)TheorSpots[s*3+2];
-
-      int outOfBounds = 0;
-      // Wedge correction: skip for now (Wedge=0 most common)
-      if (fabs(wedge) > 1e-10) {
-        // TODO: wedge correction
-      }
+    for (int s = 0; s < nSpotsThis; s++) {
+      int srcIdx = startRow + s;
+      float ythis = (float)h_spotsMat[srcIdx * 3 + 0];
+      float zthis = (float)h_spotsMat[srcIdx * 3 + 1];
+      float omegaThis = (float)h_spotsMat[srcIdx * 3 + 2];
 
       int omeBin = (int)floor((-omegaStart + omegaThis) / omegaStep);
-      if (omeBin < 0 || omeBin >= ctx->nrFiles) {
-        outOfBounds = 1;
-      }
+      int outOfBounds = (omeBin < 0 || omeBin >= ctx->nrFiles) ? 1 : 0;
 
       float omegaRad = (float)(omegaThis * M_PI / 180.0);
       h_spots[offset + s].y = ythis;
@@ -680,8 +637,6 @@ extern "C" int nf_gpu_upload_orientations(NFGPUContext *ctx,
       h_spots[offset + s].valid = outOfBounds ? 0 : 1;
     }
   }
-
-  free(TheorSpots);
 
   // Upload to device
   CUDA_CHECK(cudaMalloc(&ctx->d_spots, totalSpots * sizeof(GPUSpot)));
@@ -699,7 +654,7 @@ extern "C" int nf_gpu_upload_orientations(NFGPUContext *ctx,
 
   ctx->orientsUploaded = 1;
   double dt = nf_gpu_timer_sec() - t0;
-  printf("NF GPU: orientations precomputed and uploaded (%.2f s)\n", dt);
+  printf("NF GPU: orientations loaded and uploaded (%.2f s)\n", dt);
 
   return 0;
 }
