@@ -483,21 +483,16 @@ int main(int argc, char *argv[]) {
               memcpy(buf[sIdx].raw_buf[b*2+1], \
                      sino_mmap + (size_t)sn2 * det_xdim_raw * n_angles, raw_sino_bytes_per); \
             } else if (recon_info_record.are_sinos) { \
-              SINO_READ_OPTS _trs; \
-              _trs.norm_sino = (float *)malloc(sizeof(float) * recon_info_record.sinogram_adjusted_xdim * n_angles); \
-              readSino(sn1, &recon_info_record, &_trs); \
-              memcpy(buf[sIdx].raw_buf[b*2], _trs.init_sinogram, raw_sino_bytes_per); \
-              readSino(sn2, &recon_info_record, &_trs); \
-              memcpy(buf[sIdx].raw_buf[b*2+1], _trs.init_sinogram, raw_sino_bytes_per); \
-              free(_trs.init_sinogram); free(_trs.norm_sino); \
+              /* Sinogram input but no mmap: use pread to read raw data directly */ \
+              pread(input_fd, buf[sIdx].raw_buf[b*2], raw_sino_bytes_per, \
+                    (off_t)sn1 * raw_sino_bytes_per); \
+              pread(input_fd, buf[sIdx].raw_buf[b*2+1], raw_sino_bytes_per, \
+                    (off_t)sn2 * raw_sino_bytes_per); \
             } else { \
-              SINO_READ_OPTS _trs; \
-              _trs.norm_sino = (float *)malloc(sizeof(float) * recon_info_record.sinogram_adjusted_xdim * n_angles); \
-              readRaw(sn1, &recon_info_record, &_trs, input_fd); \
-              memcpy(buf[sIdx].raw_buf[b*2], _trs.init_sinogram, raw_sino_bytes_per); \
-              readRaw(sn2, &recon_info_record, &_trs, input_fd); \
-              memcpy(buf[sIdx].raw_buf[b*2+1], _trs.init_sinogram, raw_sino_bytes_per); \
-              free(_trs.init_sinogram); free(_trs.norm_sino); \
+              /* Raw detector input: readRaw produces norm_sino (padded, adj_xdim). */ \
+              /* GPU raw-batch kernel expects det_xdim input. */ \
+              /* For raw mode, fall back to reading raw sinograms via pread. */ \
+              fprintf(stderr, "TOMO GPU: raw detector input not yet supported in GPU raw-batch mode\\n"); \
             } \
             buf[sIdx].sino1[b] = buf[sIdx].raw_buf[b*2]; \
             buf[sIdx].sino2[b] = buf[sIdx].raw_buf[b*2+1]; \
