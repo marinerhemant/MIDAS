@@ -155,6 +155,16 @@ __device__ static inline int gpu_test_bit(const uint32_t *obs, long long bitIdx)
 }
 
 // ═════════════════════════════════════════════════════════════
+//  Constant memory for geometry (broadcast to all threads)
+// ═════════════════════════════════════════════════════════════
+#define MAX_LAYERS 8
+__constant__ float c_Lsd[MAX_LAYERS];
+__constant__ float c_ybc[MAX_LAYERS];
+__constant__ float c_zbc[MAX_LAYERS];
+__constant__ float c_P0[MAX_LAYERS * 3];
+__constant__ float c_RM[9];
+
+// ═════════════════════════════════════════════════════════════
 //  GPU HELPER: Precompute reference pixel positions (voxel-independent)
 //  Must use the SAME GPU FMA arithmetic as the screening kernel.
 // ═════════════════════════════════════════════════════════════
@@ -202,25 +212,7 @@ __device__ static inline void gpu_displacement(
   *Displ_Z = t * zthis;
 }
 
-// ═════════════════════════════════════════════════════════════
-//  MAIN SCREENING KERNEL: one thread = one (voxel, orientation) pair
-//
-//  Matches CPU CalcFracOverlap exactly:
-//  1. For each spot: compute 3-corner displacement -> 3 pixel positions
-//  2. Subtract reference (undisplaced spot) to get relative triangle
-//  3. Rasterize triangle (CalcPixels2-equivalent)
-//  4. For each rasterized pixel: check ALL layers with scaling
-//  5. Accumulate OverlapPixels / TotalPixels
-//  6. If FracOverlap >= threshold: atomically append winner
-// ═════════════════════════════════════════════════════════════
-//  Constant memory for geometry (broadcast to all threads)
-// ═════════════════════════════════════════════════════════════
-#define MAX_LAYERS 8
-__constant__ float c_Lsd[MAX_LAYERS];
-__constant__ float c_ybc[MAX_LAYERS];
-__constant__ float c_zbc[MAX_LAYERS];
-__constant__ float c_P0[MAX_LAYERS * 3];
-__constant__ float c_RM[9];
+
 
 // ═════════════════════════════════════════════════════════════
 //  MAIN SCREENING KERNEL: one thread = one (voxel, orientation) pair
