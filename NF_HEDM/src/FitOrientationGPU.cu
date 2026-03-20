@@ -298,10 +298,7 @@ __global__ void screen_pairs_kernel(
       YZSpots[l][1] = YZSpotsT[l][1] - refZpx;
     }
 
-    // Rasterize triangle — original logic with local arrays
-    int inPixY[64], inPixZ[64];
-    int nInPixels = 0;
-
+    // One-pass: rasterize + check bitfield inline (no local arrays needed)
     if (gs * 2.0f > px) {
       float edges[3][2];
       float minY = 1e9f, maxY = -1e9f, minZ = 1e9f, maxZ = -1e9f;
@@ -314,8 +311,8 @@ __global__ void screen_pairs_kernel(
         if (edges[i][1] > maxZ) maxZ = edges[i][1];
       }
 
-      for (int pz = (int)minZ; pz <= (int)maxZ && nInPixels < 64; pz++) {
-        for (int py = (int)minY; py <= (int)maxY && nInPixels < 64; py++) {
+      for (int pz = (int)minZ; pz <= (int)maxZ; pz++) {
+        for (int py = (int)minY; py <= (int)maxY; py++) {
           int w0 = ((int)edges[1][1]-(int)edges[2][1]) * (py-(int)edges[1][0])
                  + ((int)edges[2][0]-(int)edges[1][0]) * (pz-(int)edges[1][1]);
           int w1 = ((int)edges[2][1]-(int)edges[0][1]) * (py-(int)edges[2][0])
@@ -339,29 +336,49 @@ __global__ void screen_pairs_kernel(
           }
 
           if (inside) {
-            inPixY[nInPixels] = py;
-            inPixZ[nInPixels] = pz;
-            nInPixels++;
+            // Inline layer check — must check ALL layers (no break on miss)
+            int allFound = 1;
+            int pixOob = 0;
+
+            for (int layer = 0; layer < nLayers; layer++) {
+              int MultY = (int)floorf(((refYpx - ybc0) * px * (c_Lsd[layer] / Lsd0)) / px
+                                      + c_ybc[layer]) + py;
+              int MultZ = (int)floorf(((refZpx - zbc0) * px * (c_Lsd[layer] / Lsd0)) / px
+                                      + c_zbc[layer]) + pz;
+
+              if (MultY >= nrPixelsY || MultY < 0 || MultZ >= nrPixelsZ || MultZ < 0) {
+                pixOob = 1;
+                break;
+              }
+
+              long long binNr = (long long)layer * nrFiles * nrPixelsY * nrPixelsZ
+                              + (long long)omeBin * nrPixelsY * nrPixelsZ
+                              + (long long)MultY * nrPixelsZ
+                              + MultZ;
+
+              if (!gpu_test_bit(obsFlat, binNr)) {
+                allFound = 0;
+              }
+            }
+
+            if (!pixOob) {
+              if (allFound) OverlapPixels++;
+              TotalPixels++;
+            }
           }
         }
       }
     } else {
-      inPixY[0] = (int)roundf((YZSpots[0][0] + YZSpots[1][0] + YZSpots[2][0]) / 3.0f);
-      inPixZ[0] = (int)roundf((YZSpots[0][1] + YZSpots[1][1] + YZSpots[2][1]) / 3.0f);
-      nInPixels = 1;
-    }
+      int py = (int)roundf((YZSpots[0][0] + YZSpots[1][0] + YZSpots[2][0]) / 3.0f);
+      int pz = (int)roundf((YZSpots[0][1] + YZSpots[1][1] + YZSpots[2][1]) / 3.0f);
 
-    // Check pixels — must check ALL layers even after allFound=0 because
-    // a later layer could set pixOob=1 (excluding this pixel from TotalPixels)
-    for (int p = 0; p < nInPixels; p++) {
       int allFound = 1;
       int pixOob = 0;
-
       for (int layer = 0; layer < nLayers; layer++) {
         int MultY = (int)floorf(((refYpx - ybc0) * px * (c_Lsd[layer] / Lsd0)) / px
-                                + c_ybc[layer]) + inPixY[p];
+                                + c_ybc[layer]) + py;
         int MultZ = (int)floorf(((refZpx - zbc0) * px * (c_Lsd[layer] / Lsd0)) / px
-                                + c_zbc[layer]) + inPixZ[p];
+                                + c_zbc[layer]) + pz;
 
         if (MultY >= nrPixelsY || MultY < 0 || MultZ >= nrPixelsZ || MultZ < 0) {
           pixOob = 1;
@@ -378,9 +395,10 @@ __global__ void screen_pairs_kernel(
         }
       }
 
-      if (pixOob) continue;
-      if (allFound) OverlapPixels++;
-      TotalPixels++;
+      if (!pixOob) {
+        if (allFound) OverlapPixels++;
+        TotalPixels++;
+      }
     }
   }
 
