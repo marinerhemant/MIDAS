@@ -123,6 +123,33 @@ int tomo_gpu_reconstruct_batch(TomoGPUContext *ctx,
                                float **recon2s,
                                long M, long M0, long M02, long pdim);
 
+/// Batched GPU reconstruction from RAW sinograms (no CPU preprocessing needed).
+/// Performs Pad + shift + boundary-replicate on GPU, then reconstruct, then
+/// extract compact reconstructions on GPU before D2H.
+///
+/// @param raw_sino1s  Array of n_pairs host raw sinogram1 pointers [det_xdim × n_angles each]
+/// @param raw_sino2s  Array of n_pairs host raw sinogram2 pointers
+/// @param compact_recon1s  Output: compact recon [recon_xdim × recon_xdim each]
+/// @param compact_recon2s  Output: compact recon
+/// @param det_xdim       Raw detector width
+/// @param adjusted_xdim  Padded detector width
+/// @param sino_xdim      Sinogram X dimension (may differ from det_xdim)
+/// @param recon_xdim     Reconstruction width
+/// @param pad_front      Front padding size for Pad()
+/// @param shift          Rotation-axis shift
+/// @param doLog          Apply -log transform
+/// @param auto_centering Apply auto-centering shift to output
+int tomo_gpu_reconstruct_batch_raw(TomoGPUContext *ctx,
+                                   int n_pairs,
+                                   const float **raw_sino1s,
+                                   const float **raw_sino2s,
+                                   float **compact_recon1s,
+                                   float **compact_recon2s,
+                                   long M, long M0, long M02, long pdim,
+                                   int det_xdim, int adjusted_xdim,
+                                   int sino_xdim, int recon_xdim,
+                                   int pad_front, float shift,
+                                   int doLog, int auto_centering);
 // ---------------------------------------------------------------------------
 // Preprocessing kernels (optional — can also be done on CPU)
 // ---------------------------------------------------------------------------

@@ -124,6 +124,15 @@ struct TomoGPUContext {
     cufftHandle plan1d_multi;
     cufftHandle plan2d_multi;
     int batch_plans_created;
+
+    // Raw-sinogram batch buffers (lazy-allocated)
+    int raw_batch_max_pairs;
+    int raw_det_xdim;
+    int raw_recon_xdim;
+    float *d_raw_sino1_multi;    // [n_pairs * det_xdim * n_angles]
+    float *d_raw_sino2_multi;
+    float *d_compact_recon1_multi; // [n_pairs * recon_xdim * recon_xdim]
+    float *d_compact_recon2_multi;
 };
 
 
@@ -786,6 +795,148 @@ int tomo_gpu_reconstruct(TomoGPUContext *ctx,
     return 0;
 }
 
+// ═════════════════════════════════════════════════════════════
+//  GPU PREPROCESSING KERNELS
+// ═════════════════════════════════════════════════════════════
+
+// Fused Pad + shift + boundary-replicate kernel
+// Input:  raw sinogram (det_xdim × n_angles) per slice — compact detector layout
+// Output: boundary-padded sinogram (sinogram_x_dim × n_angles) per slice
+//         ready for the cuFFT load kernel
+//
+// Each output pixel (angle, col) in the sinogram_x_dim-wide row:
+//   1. The output has stride sinogram_x_dim (= adjusted_xdim * 2)
+//   2. The adjusted_xdim center portion lives at [adjusted_xdim/2 .. adjusted_xdim/2 + adjusted_xdim)
+//   3. Within that center: sub-pixel shift interpolation from padded source
+//   4. Left/right edges: boundary replication (constant extension)
+//
+// Parameters that are CONSTANT across all sinograms (computed once on host):
+//   det_xdim, adjusted_xdim, sinogram_x_dim, pad_front, shift_int, w0, w1
+__global__ void pad_shift_boundary_kernel(
+    float *out,                 // output: [sinogram_x_dim × n_angles], pre-processed
+    const float *raw_sino,      // input:  [det_xdim × n_angles], raw from detector
+    int det_xdim,               // detector width (e.g. 2048)
+    int adjusted_xdim,          // padded width (e.g. 2048 for pow2, or next_pow2)
+    int sinogram_x_dim,         // output stride = adjusted_xdim * 2 (e.g. 4096)
+    int n_angles,               // number of projection angles
+    int pad_front,              // front padding size for Pad()
+    int sino_xdim,              // original sinogram_xdim (may differ from det_xdim)
+    int shift_int,              // integer part of shift
+    float w0, float w1,         // interpolation weights (1-frac, frac)
+    int doLog)                  // apply -log transform?
+{
+    int col = blockIdx.x * blockDim.x + threadIdx.x;  // output column [0..sinogram_x_dim)
+    int angle = blockIdx.y;                             // angle index
+    if (col >= sinogram_x_dim || angle >= n_angles) return;
+
+    long out_idx = (long)angle * sinogram_x_dim + col;
+
+    // Step 1: determine position within the adjusted_xdim center band
+    int half = adjusted_xdim / 2;
+    // The center band in the output is [half .. half + adjusted_xdim)
+    // Boundary replication: left of half = value at half, right of half+adjusted_xdim = value at half+adjusted_xdim-1
+
+    // First compute the shifted+padded sinogram value at position 'col_center'
+    // where col_center is the column index within the adjusted_xdim center band
+    int col_center = col - half;  // position relative to center band start
+
+    float val;
+    if (col_center < 0) {
+        // Left boundary replication region — will be filled after we know the edge value
+        // We need the value at col_center=0 (the leftmost center pixel)
+        col_center = 0;
+    } else if (col_center >= adjusted_xdim) {
+        // Right boundary replication region
+        col_center = adjusted_xdim - 1;
+    }
+
+    // Step 2: Apply sub-pixel shift interpolation
+    // col_center is now in [0..adjusted_xdim), which maps to the "sino_calc_buffer" space
+    // The shift interpolation: dst[k] = src[k-shift_int]*w0 + src[k-shift_int-1]*w1
+    // where src is the padded sinogram (after Pad)
+    int nkk = col_center - shift_int;
+
+    // Step 3: Get the Pad'd value at position nkk (and nkk-1) in the padded sinogram
+    // Pad maps: padded[col] = raw[col - pad_front] with edge replication
+    auto getPadded = [&](int padded_col) -> float {
+        float v;
+        if (padded_col < pad_front) {
+            // Left pad: replicate first pixel
+            v = raw_sino[(long)angle * det_xdim + 0];
+        } else if (padded_col >= pad_front + sino_xdim) {
+            // Right pad: replicate last pixel
+            v = raw_sino[(long)angle * det_xdim + (sino_xdim - 1)];
+        } else {
+            // Center: direct mapping
+            v = raw_sino[(long)angle * det_xdim + (padded_col - pad_front)];
+        }
+        if (doLog && v > 0.0f) v = -logf(v);
+        return v;
+    };
+
+    float fInterpPixel = 0.0f;
+    float fInterpWeight = 0.0f;
+    if (nkk >= 0 && nkk < adjusted_xdim) {
+        fInterpPixel += getPadded(nkk) * w0;
+        fInterpWeight += w0;
+    }
+    if (nkk - 1 >= 0 && nkk - 1 < adjusted_xdim) {
+        fInterpPixel += getPadded(nkk - 1) * w1;
+        fInterpWeight += w1;
+    }
+    val = (fInterpWeight < 1e-5f) ? 0.0f : fInterpPixel / fInterpWeight;
+
+    out[out_idx] = val;
+}
+
+// Extract compact reconstruction from boundary-padded GPU output
+// Input:  recon_boundary_padding [M0 × sinogram_x_dim] on GPU
+// Output: compact recon [recon_xdim × recon_xdim] for direct D2H
+__global__ void extract_recon_kernel(
+    float *compact_out,           // output: [recon_xdim × recon_xdim]
+    const float *recon_bp,        // input:  [M0 × sinogram_x_dim] boundary-padded
+    int recon_xdim,               // reconstruction width (e.g. 2048)
+    int sinogram_x_dim,           // padded stride (e.g. 4096)
+    int M0,                       // reconstruction grid dim (e.g. 4095)
+    int shift_round,              // round(shift) for auto-centering
+    int auto_centering)           // whether to apply shift correction
+{
+    int col = blockIdx.x * blockDim.x + threadIdx.x;
+    int row = blockIdx.y * blockDim.y + threadIdx.y;
+    if (col >= recon_xdim || row >= recon_xdim) return;
+
+    // getRecons extraction: source at (row + xdim/2, col + xdim/2) in boundary-padded buffer
+    int half = recon_xdim / 2;
+    int src_row = row + half;
+    int src_col = col + half;
+    float val = recon_bp[(long)src_row * sinogram_x_dim + src_col];
+
+    // Auto-centering shift
+    if (auto_centering) {
+        int dst_col, src_col_shifted;
+        if (shift_round >= 0) {
+            // shifted_recon[j*xdim + k] = recon_buffer[j*xdim + k + shift_round]
+            dst_col = col;
+            src_col_shifted = col + shift_round;
+            if (src_col_shifted >= recon_xdim) val = 0.0f;
+            else {
+                int sc = src_col_shifted + half;
+                val = recon_bp[(long)src_row * sinogram_x_dim + sc];
+            }
+        } else {
+            dst_col = col;
+            int abs_shift = -shift_round;
+            if (col < abs_shift) val = 0.0f;
+            else {
+                int sc = (col - abs_shift) + half;
+                val = recon_bp[(long)src_row * sinogram_x_dim + sc];
+            }
+        }
+    }
+
+    compact_out[(long)row * recon_xdim + col] = val;
+}
+
 
 // ═════════════════════════════════════════════════════════════
 //  MULTI-PAIR BATCHED GPU RECONSTRUCTION
@@ -1097,11 +1248,251 @@ int tomo_gpu_preprocess(TomoGPUContext *ctx,
                         float shift,
                         float ring_coeff) {
     if (!ctx) return -1;
-    // Preprocessing remains on CPU for now — it's I/O-bound and not
-    // the bottleneck.  The GPU acceleration targets the reconstruction
-    // (phase1/phase2/phase3) which dominates compute time.
     fprintf(stderr, "TOMO GPU: preprocess not yet implemented, use CPU path\n");
     return -1;
+}
+
+// ═════════════════════════════════════════════════════════════
+//  RAW-SINOGRAM BATCH RECONSTRUCTION
+// ═════════════════════════════════════════════════════════════
+
+extern "C"
+int tomo_gpu_reconstruct_batch_raw(TomoGPUContext *ctx,
+                                   int n_pairs,
+                                   const float **raw_sino1s,
+                                   const float **raw_sino2s,
+                                   float **compact_recon1s,
+                                   float **compact_recon2s,
+                                   long M, long M0, long M02, long pdim,
+                                   int det_xdim, int adjusted_xdim,
+                                   int sino_xdim, int recon_xdim,
+                                   int pad_front, float shift,
+                                   int doLog, int auto_centering) {
+    if (!ctx || n_pairs <= 0) return -1;
+    cudaSetDevice(ctx->deviceId);
+
+    double t0 = gpu_timer_sec();
+    int n_angles = ctx->theta_list_size;
+    int sinogram_x_dim = (int)ctx->sinogram_x_dim;
+    size_t raw_sino_per_slice = (size_t)det_xdim * n_angles;
+    size_t raw_sino_bytes = raw_sino_per_slice * sizeof(float);
+    size_t compact_recon_per_slice = (size_t)recon_xdim * recon_xdim;
+    size_t compact_recon_bytes = compact_recon_per_slice * sizeof(float);
+    long pdim2 = pdim >> 1;
+    size_t sino_per_pair = (size_t)n_angles * sinogram_x_dim;
+    size_t H_stride = (size_t)(M + 1) * (M + 1);
+    size_t recon_per_pair = (size_t)M0 * sinogram_x_dim;
+    float tblspcg = 2.0f * ctx->ltbl / ctx->L;
+    size_t cproj_per_pair = (size_t)n_angles * pdim;
+
+    // Precompute shift parameters (constant for all sinograms)
+    int shift_int = (int)floorf(shift);
+    float frac = shift - (float)shift_int;
+    float w0 = 1.0f - frac;
+    float w1 = frac;
+    int shift_round = (int)roundf(shift);
+
+    // ── Lazy-allocate raw batch GPU buffers ──
+    if (ctx->raw_batch_max_pairs < n_pairs ||
+        ctx->raw_det_xdim != det_xdim ||
+        ctx->raw_recon_xdim != recon_xdim) {
+        // Free old
+        if (ctx->raw_batch_max_pairs > 0) {
+            cudaFree(ctx->d_raw_sino1_multi);
+            cudaFree(ctx->d_raw_sino2_multi);
+            cudaFree(ctx->d_compact_recon1_multi);
+            cudaFree(ctx->d_compact_recon2_multi);
+        }
+        CUDA_CHECK(cudaMalloc(&ctx->d_raw_sino1_multi,
+                   (size_t)n_pairs * raw_sino_bytes));
+        CUDA_CHECK(cudaMalloc(&ctx->d_raw_sino2_multi,
+                   (size_t)n_pairs * raw_sino_bytes));
+        CUDA_CHECK(cudaMalloc(&ctx->d_compact_recon1_multi,
+                   (size_t)n_pairs * compact_recon_bytes));
+        CUDA_CHECK(cudaMalloc(&ctx->d_compact_recon2_multi,
+                   (size_t)n_pairs * compact_recon_bytes));
+        ctx->raw_batch_max_pairs = n_pairs;
+        ctx->raw_det_xdim = det_xdim;
+        ctx->raw_recon_xdim = recon_xdim;
+    }
+
+    // ── Ensure cuFFT-format batch buffers exist (reuse from regular batch) ──
+    size_t sino_pair_bytes = sino_per_pair * sizeof(float);
+    size_t recon_pair_bytes = recon_per_pair * sizeof(float);
+    if (ctx->batch_max_pairs < n_pairs) {
+        if (ctx->batch_max_pairs > 0) {
+            cudaFree(ctx->d_sino1_multi);
+            cudaFree(ctx->d_sino2_multi);
+            cudaFree(ctx->d_cproj_multi);
+            cudaFree(ctx->d_H_multi);
+            cudaFree(ctx->d_recon1_multi);
+            cudaFree(ctx->d_recon2_multi);
+            if (ctx->batch_plans_created) {
+                cufftDestroy(ctx->plan1d_multi);
+                cufftDestroy(ctx->plan2d_multi);
+            }
+        }
+        CUDA_CHECK(cudaMalloc(&ctx->d_sino1_multi, (size_t)n_pairs * sino_pair_bytes));
+        CUDA_CHECK(cudaMalloc(&ctx->d_sino2_multi, (size_t)n_pairs * sino_pair_bytes));
+        CUDA_CHECK(cudaMalloc(&ctx->d_cproj_multi,
+                   (size_t)n_pairs * cproj_per_pair * sizeof(cufftComplex)));
+        CUDA_CHECK(cudaMalloc(&ctx->d_H_multi,
+                   (size_t)n_pairs * H_stride * sizeof(cufftComplex)));
+        CUDA_CHECK(cudaMalloc(&ctx->d_recon1_multi, (size_t)n_pairs * recon_pair_bytes));
+        CUDA_CHECK(cudaMalloc(&ctx->d_recon2_multi, (size_t)n_pairs * recon_pair_bytes));
+
+        int pdim_int = (int)pdim;
+        cufftPlanMany(&ctx->plan1d_multi, 1, &pdim_int,
+                      NULL, 1, pdim_int, NULL, 1, pdim_int,
+                      CUFFT_C2C, n_pairs * n_angles);
+        int M_int = (int)M;
+        int n2d[2] = {M_int, M_int};
+        int inembed[2] = {M_int, M_int};
+        cufftPlanMany(&ctx->plan2d_multi, 2, n2d,
+                      inembed, 1, (int)H_stride,
+                      inembed, 1, (int)H_stride,
+                      CUFFT_C2C, n_pairs);
+        cufftSetStream(ctx->plan1d_multi, ctx->stream_compute);
+        cufftSetStream(ctx->plan2d_multi, ctx->stream_compute);
+        ctx->batch_plans_created = 1;
+        ctx->batch_max_pairs = n_pairs;
+    }
+
+    // ── H2D: upload raw sinograms (smaller than boundary-padded) ──
+    double th = gpu_timer_sec();
+    for (int i = 0; i < n_pairs; i++) {
+        CUDA_CHECK(cudaMemcpyAsync(
+            ctx->d_raw_sino1_multi + i * raw_sino_per_slice,
+            raw_sino1s[i], raw_sino_bytes,
+            cudaMemcpyHostToDevice, ctx->stream_h2d));
+        CUDA_CHECK(cudaMemcpyAsync(
+            ctx->d_raw_sino2_multi + i * raw_sino_per_slice,
+            raw_sino2s[i], raw_sino_bytes,
+            cudaMemcpyHostToDevice, ctx->stream_h2d));
+    }
+    CUDA_CHECK(cudaEventRecord(ctx->event_h2d_done, ctx->stream_h2d));
+    double t_h2d = gpu_timer_sec() - th;
+
+    // ── GPU preprocessing: pad + shift + boundary-replicate ──
+    double tp = gpu_timer_sec();
+    CUDA_CHECK(cudaStreamWaitEvent(ctx->stream_compute, ctx->event_h2d_done, 0));
+    {
+        int blockSize = 256;
+        int gridX = (sinogram_x_dim + blockSize - 1) / blockSize;
+        // Process all slices (2 per pair)
+        for (int i = 0; i < n_pairs; i++) {
+            dim3 grid(gridX, n_angles);
+            // Slice 1
+            pad_shift_boundary_kernel<<<grid, blockSize, 0, ctx->stream_compute>>>(
+                ctx->d_sino1_multi + i * sino_per_pair,
+                ctx->d_raw_sino1_multi + i * raw_sino_per_slice,
+                det_xdim, adjusted_xdim, sinogram_x_dim, n_angles,
+                pad_front, sino_xdim, shift_int, w0, w1, doLog);
+            // Slice 2
+            pad_shift_boundary_kernel<<<grid, blockSize, 0, ctx->stream_compute>>>(
+                ctx->d_sino2_multi + i * sino_per_pair,
+                ctx->d_raw_sino2_multi + i * raw_sino_per_slice,
+                det_xdim, adjusted_xdim, sinogram_x_dim, n_angles,
+                pad_front, sino_xdim, shift_int, w0, w1, doLog);
+        }
+    }
+    double t_preproc = gpu_timer_sec() - tp;
+
+    // ── Compute: same pipeline as regular batch ──
+    double tc = gpu_timer_sec();
+    CUDA_CHECK(cudaMemsetAsync(ctx->d_H_multi, 0,
+               (size_t)n_pairs * H_stride * sizeof(cufftComplex),
+               ctx->stream_compute));
+    CUDA_CHECK(cudaMemsetAsync(ctx->d_recon1_multi, 0,
+               (size_t)n_pairs * recon_pair_bytes, ctx->stream_compute));
+    CUDA_CHECK(cudaMemsetAsync(ctx->d_recon2_multi, 0,
+               (size_t)n_pairs * recon_pair_bytes, ctx->stream_compute));
+
+    // Phase 1: load + FFT + scatter
+    {
+        int blockSize = 256;
+        int gridSize_pdim = ((int)pdim + blockSize - 1) / blockSize;
+        int gridSize_scatter = ((int)pdim2 + blockSize - 1) / blockSize;
+
+        dim3 loadGrid(gridSize_pdim, n_angles, n_pairs);
+        load_all_sinogram_rows_multi_kernel<<<loadGrid, blockSize, 0,
+                                              ctx->stream_compute>>>(
+            ctx->d_cproj_multi, ctx->d_sino1_multi, ctx->d_sino2_multi,
+            ctx->sinogram_x_dim, pdim, n_angles, n_pairs);
+
+        CUFFT_CHECK(cufftExecC2C(ctx->plan1d_multi, ctx->d_cproj_multi,
+                                 ctx->d_cproj_multi, CUFFT_INVERSE));
+
+        dim3 scatterGrid(gridSize_scatter, n_angles, n_pairs);
+        filter_and_scatter_multi_kernel<<<scatterGrid, blockSize, 0,
+                                          ctx->stream_compute>>>(
+            ctx->d_H_multi, ctx->d_cproj_multi, ctx->d_filphase,
+            ctx->d_COSE, ctx->d_SINE, ctx->d_wtbl,
+            pdim, M, ctx->ltbl,
+            ctx->L, ctx->scale, tblspcg,
+            n_angles, n_pairs, (long)H_stride);
+    }
+
+    // Phase 2: batched 2D FFT
+    CUFFT_CHECK(cufftExecC2C(ctx->plan2d_multi, ctx->d_H_multi + 1,
+                             ctx->d_H_multi + 1, CUFFT_FORWARD));
+
+    // Phase 3: PSWF extraction to recon buffers
+    {
+        dim3 block3(16, 16);
+        dim3 grid3(((int)M0 + 15) / 16, ((int)M0 + 15) / 16, n_pairs);
+        pswf_extract_multi_kernel<<<grid3, block3, 0,
+                                    ctx->stream_compute>>>(
+            ctx->d_H_multi, ctx->d_recon1_multi, ctx->d_recon2_multi,
+            ctx->d_winv, M, M0, M02, ctx->sinogram_x_dim,
+            n_pairs, (long)H_stride, (long)recon_per_pair);
+    }
+
+    // Phase 4: extract compact reconstructions on GPU
+    {
+        dim3 block4(16, 16);
+        dim3 grid4((recon_xdim + 15) / 16, (recon_xdim + 15) / 16);
+        for (int i = 0; i < n_pairs; i++) {
+            extract_recon_kernel<<<grid4, block4, 0, ctx->stream_compute>>>(
+                ctx->d_compact_recon1_multi + i * compact_recon_per_slice,
+                ctx->d_recon1_multi + i * recon_per_pair,
+                recon_xdim, sinogram_x_dim, (int)M0,
+                shift_round, auto_centering);
+            extract_recon_kernel<<<grid4, block4, 0, ctx->stream_compute>>>(
+                ctx->d_compact_recon2_multi + i * compact_recon_per_slice,
+                ctx->d_recon2_multi + i * recon_per_pair,
+                recon_xdim, sinogram_x_dim, (int)M0,
+                shift_round, auto_centering);
+        }
+    }
+
+    CUDA_CHECK(cudaEventRecord(ctx->event_compute_done, ctx->stream_compute));
+    double t_compute = gpu_timer_sec() - tc;
+
+    // ── D2H: download compact reconstructions (much smaller) ──
+    double td = gpu_timer_sec();
+    CUDA_CHECK(cudaStreamWaitEvent(ctx->stream_d2h, ctx->event_compute_done, 0));
+    for (int i = 0; i < n_pairs; i++) {
+        CUDA_CHECK(cudaMemcpyAsync(
+            compact_recon1s[i],
+            ctx->d_compact_recon1_multi + i * compact_recon_per_slice,
+            compact_recon_bytes,
+            cudaMemcpyDeviceToHost, ctx->stream_d2h));
+        CUDA_CHECK(cudaMemcpyAsync(
+            compact_recon2s[i],
+            ctx->d_compact_recon2_multi + i * compact_recon_per_slice,
+            compact_recon_bytes,
+            cudaMemcpyDeviceToHost, ctx->stream_d2h));
+    }
+    CUDA_CHECK(cudaStreamSynchronize(ctx->stream_d2h));
+    double t_d2h = gpu_timer_sec() - td;
+
+    double t_total = gpu_timer_sec() - t0;
+    fprintf(stderr, "TOMO GPU raw-batch(%d pairs): "
+            "H2D=%.3fs preproc=%.3fs compute=%.3fs D2H=%.3fs total=%.3fs\n",
+            n_pairs, t_h2d, t_preproc, t_compute - t_preproc, t_d2h, t_total);
+
+    return 0;
 }
 
 #endif /* ENABLE_CUDA */
