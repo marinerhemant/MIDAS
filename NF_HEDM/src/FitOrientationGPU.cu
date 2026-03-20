@@ -193,11 +193,11 @@ __constant__ float c_RM[9];
 // ═════════════════════════════════════════════════════════════
 
 __global__ void screen_pairs_kernel(
-    const uint32_t *obsFlat,
-    const GPUSpot *spots,
-    const GPUOrientHeader *headers,
-    const float *voxXG,
-    const float *voxYG,
+    const uint32_t * __restrict__ obsFlat,
+    const GPUSpot * __restrict__ spots,
+    const GPUOrientHeader * __restrict__ headers,
+    const float * __restrict__ voxXG,
+    const float * __restrict__ voxYG,
     int nVoxels,
     int nOrientations,
     int nLayers,
@@ -217,12 +217,14 @@ __global__ void screen_pairs_kernel(
   int voxIdx = tid % nVoxels;
 
   float RM[9];
+  #pragma unroll
   for (int i = 0; i < 9; i++) RM[i] = c_RM[i];
 
   float XG[3], YG[3];
+  #pragma unroll
   for (int k = 0; k < 3; k++) {
-    XG[k] = voxXG[voxIdx * 3 + k];
-    YG[k] = voxYG[voxIdx * 3 + k];
+    XG[k] = __ldg(&voxXG[voxIdx * 3 + k]);
+    YG[k] = __ldg(&voxYG[voxIdx * 3 + k]);
   }
 
   float Lsd0 = c_Lsd[0];
@@ -248,6 +250,7 @@ __global__ void screen_pairs_kernel(
     float YZSpotsT[3][2];
     int oob = 0;
 
+    #pragma unroll
     for (int k = 0; k < 3; k++) {
       float Displ_Y, Displ_Z;
       gpu_displacement(XG[k], YG[k], Lsd0, ythis, zthis, sinOme, cosOme,
@@ -289,6 +292,7 @@ __global__ void screen_pairs_kernel(
     float refZpx = refOutZ / px + zbc0;
 
     float YZSpots[3][2];
+    #pragma unroll
     for (int l = 0; l < 3; l++) {
       YZSpots[l][0] = YZSpotsT[l][0] - refYpx;
       YZSpots[l][1] = YZSpotsT[l][1] - refZpx;
@@ -347,7 +351,8 @@ __global__ void screen_pairs_kernel(
       nInPixels = 1;
     }
 
-    // Check pixels against ALL layers — original logic (no break on miss)
+    // Check pixels — break on first layer miss
+    // (safe: if allFound=0, it stays 0 regardless of remaining layers)
     for (int p = 0; p < nInPixels; p++) {
       int allFound = 1;
       int pixOob = 0;
@@ -370,6 +375,7 @@ __global__ void screen_pairs_kernel(
 
         if (!gpu_test_bit(obsFlat, binNr)) {
           allFound = 0;
+          break;
         }
       }
 
