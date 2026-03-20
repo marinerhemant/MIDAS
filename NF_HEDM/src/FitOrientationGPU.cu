@@ -148,6 +148,12 @@ struct NFGPUContext {
   int *d_nWinners;
   int maxWinners;
 
+  // Phase 2 fitting: HKL data in global memory (too large for __constant__)
+  float *d_hkls;    // [n_hkls * 4]
+  float *d_Gs;      // [n_hkls]
+  int n_hkls;
+  int hklsUploaded;
+
   cudaStream_t stream;
 };
 
@@ -495,10 +501,8 @@ void screen_pairs_kernel(
 #define GPU_MAX_SPOTS_PER_ORIENT 500
 #define GPU_MAX_LAYERS 8
 
-/// HKL data in constant memory (broadcast to all threads)
-__constant__ float c_hkls[GPU_MAX_HKLS][4];  // [h,k,l, unused]
-__constant__ float c_Gs[GPU_MAX_HKLS];       // precomputed G magnitude
-__constant__ int   c_n_hkls;
+// Note: HKL data (hkls, Gs) stored in global device memory (NFGPUContext)
+// because arrays are too large for __constant__ (64KB limit).
 __constant__ float c_omegaStart;
 __constant__ float c_omegaStep;
 __constant__ float c_excludePoleAngle;
@@ -577,7 +581,7 @@ __device__ static inline int gpu_calc_omega(
   for (int i = 0; i < nsol; i++) {
     float omeRad = omegas[i] * (float)deg2rad;
     float cosO = cosf(omeRad), sinO = sinf(omeRad);
-    float gw1 = gx * cosO + gy * sinO;
+    // gw1 = gx * cosO + gy * sinO; (not needed for eta calc)
     float gw2 = -gx * sinO + gy * cosO;
     float gw3 = gz;
     // CalcEtaAngle
@@ -599,7 +603,8 @@ __device__ static float gpu_calc_frac_overlap(
     float Lsd0, float ybc0, float zbc0,
     const float RM[9], const float P0_0[3],
     int nLayers, int nrFiles, int nrPixelsY, int nrPixelsZ,
-    float px, float gs) {
+    float px, float gs,
+    const float *d_hkls, const float *d_Gs, int n_hkls) {
 
   // 1. Euler → orientation matrix
   float orient[3][3];
@@ -608,14 +613,14 @@ __device__ static float gpu_calc_frac_overlap(
   int OverlapPixels = 0, TotalPixels = 0;
 
   // 2. For each HKL, compute spots
-  for (int ih = 0; ih < c_n_hkls; ih++) {
-    float Ghkl[3] = { c_hkls[ih][0], c_hkls[ih][1], c_hkls[ih][2] };
+  for (int ih = 0; ih < n_hkls; ih++) {
+    float Ghkl[3] = { d_hkls[ih*4+0], d_hkls[ih*4+1], d_hkls[ih*4+2] };
     float Gc[3]; // orient * Ghkl
     Gc[0] = orient[0][0]*Ghkl[0] + orient[0][1]*Ghkl[1] + orient[0][2]*Ghkl[2];
     Gc[1] = orient[1][0]*Ghkl[0] + orient[1][1]*Ghkl[1] + orient[1][2]*Ghkl[2];
     Gc[2] = orient[2][0]*Ghkl[0] + orient[2][1]*Ghkl[1] + orient[2][2]*Ghkl[2];
 
-    float v = c_Gs[ih];
+    float v = d_Gs[ih];
     float omegas[4], etas[4];
     int nsol = gpu_calc_omega(Gc[0], Gc[1], Gc[2], v, omegas, etas);
 
@@ -806,6 +811,9 @@ struct NFFitObjective {
   float P0_0[3];
   int nLayers, nrFiles, nrPixelsY, nrPixelsZ;
   float px, gs;
+  const float *d_hkls;  // [n_hkls * 4] in global memory
+  const float *d_Gs;    // [n_hkls] in global memory
+  int n_hkls;
 
   __device__ float operator()(const float *x, int ndim) const {
     float euler_deg[3] = { x[0] * (float)rad2deg,
@@ -814,7 +822,8 @@ struct NFFitObjective {
     float frac = gpu_calc_frac_overlap(
         euler_deg, XG, YG, obsFlat,
         Lsd0, ybc0, zbc0, RM, P0_0,
-        nLayers, nrFiles, nrPixelsY, nrPixelsZ, px, gs);
+        nLayers, nrFiles, nrPixelsY, nrPixelsZ, px, gs,
+        d_hkls, d_Gs, n_hkls);
     return 1.0f - frac;
   }
 };
@@ -834,6 +843,9 @@ __global__ void nm_fit_kernel(
     int nLayers, int nrFiles, int nrPixelsY, int nrPixelsZ,
     float px, float gs,
     float tol, int maxIter, float initStep,
+    const float *d_hkls,        // [n_hkls * 4] HKL data
+    const float *d_Gs,          // [n_hkls] G magnitudes
+    int n_hkls,
     float *results,             // [nJobs * 3] output Euler angles
     float *fvals_out) {         // [nJobs] output fracOverlap
 
@@ -856,6 +868,9 @@ __global__ void nm_fit_kernel(
   obj.nrPixelsZ = nrPixelsZ;
   obj.px = px;
   obj.gs = gs;
+  obj.d_hkls = d_hkls;
+  obj.d_Gs = d_Gs;
+  obj.n_hkls = n_hkls;
 
   // Load bounds
   float lo[3], hi[3];
@@ -1056,6 +1071,8 @@ extern "C" void nf_gpu_destroy(NFGPUContext *ctx) {
   if (ctx->d_P0)            cudaFree(ctx->d_P0);
   if (ctx->d_winners)       cudaFree(ctx->d_winners);
   if (ctx->d_nWinners)      cudaFree(ctx->d_nWinners);
+  if (ctx->d_hkls)          cudaFree(ctx->d_hkls);
+  if (ctx->d_Gs)            cudaFree(ctx->d_Gs);
 
   if (ctx->stream) cudaStreamDestroy(ctx->stream);
 
@@ -1583,19 +1600,29 @@ extern "C" int nf_gpu_upload_hkls(NFGPUContext *ctx,
     return -1;
   }
 
-  // Convert HKLs to float and upload to constant memory
-  float h_hkls[GPU_MAX_HKLS][4];
-  float h_Gs[GPU_MAX_HKLS];
+  // Convert HKLs to float and upload to global device memory
+  float *h_hkls = (float*)malloc(n_hkls * 4 * sizeof(float));
+  float *h_Gs = (float*)malloc(n_hkls * sizeof(float));
   for (int i = 0; i < n_hkls; i++) {
-    h_hkls[i][0] = (float)hkls[i][0];
-    h_hkls[i][1] = (float)hkls[i][1];
-    h_hkls[i][2] = (float)hkls[i][2];
-    h_hkls[i][3] = (float)hkls[i][3];
+    h_hkls[i*4+0] = (float)hkls[i][0];
+    h_hkls[i*4+1] = (float)hkls[i][1];
+    h_hkls[i*4+2] = (float)hkls[i][2];
+    h_hkls[i*4+3] = (float)hkls[i][3];
     h_Gs[i] = (float)Gs[i];
   }
-  CUDA_CHECK(cudaMemcpyToSymbol(c_hkls, h_hkls, n_hkls * 4 * sizeof(float)));
-  CUDA_CHECK(cudaMemcpyToSymbol(c_Gs, h_Gs, n_hkls * sizeof(float)));
-  CUDA_CHECK(cudaMemcpyToSymbol(c_n_hkls, &n_hkls, sizeof(int)));
+
+  // Free old device buffers if re-uploading
+  if (ctx->d_hkls) cudaFree(ctx->d_hkls);
+  if (ctx->d_Gs)   cudaFree(ctx->d_Gs);
+
+  CUDA_CHECK(cudaMalloc(&ctx->d_hkls, n_hkls * 4 * sizeof(float)));
+  CUDA_CHECK(cudaMalloc(&ctx->d_Gs, n_hkls * sizeof(float)));
+  CUDA_CHECK(cudaMemcpy(ctx->d_hkls, h_hkls, n_hkls * 4 * sizeof(float), cudaMemcpyHostToDevice));
+  CUDA_CHECK(cudaMemcpy(ctx->d_Gs, h_Gs, n_hkls * sizeof(float), cudaMemcpyHostToDevice));
+  ctx->n_hkls = n_hkls;
+  ctx->hklsUploaded = 1;
+  free(h_hkls);
+  free(h_Gs);
 
   float h_excl = (float)excludePoleAngle;
   float h_omeStart = (float)omegaStart;
@@ -1617,7 +1644,8 @@ extern "C" int nf_gpu_upload_hkls(NFGPUContext *ctx,
   CUDA_CHECK(cudaMemcpyToSymbol(c_omegaRanges, h_omeRanges, nOmeRanges * 2 * sizeof(float)));
   CUDA_CHECK(cudaMemcpyToSymbol(c_boxSizes, h_boxSizes, nOmeRanges * 4 * sizeof(float)));
 
-  printf("NF GPU: HKL data uploaded (%d reflections)\n", n_hkls);
+  printf("NF GPU: HKL data uploaded (%d reflections, %.1f KB global)\n",
+         n_hkls, (n_hkls * 4 + n_hkls) * sizeof(float) / 1024.0);
   return 0;
 }
 
@@ -1750,6 +1778,7 @@ extern "C" int nf_gpu_fit(NFGPUContext *ctx,
       ctx->nLayers, ctx->nrFiles, ctx->nrPixelsY, ctx->nrPixelsZ,
       ctx->px, ctx->gs,
       tol, maxIter, initStep,
+      ctx->d_hkls, ctx->d_Gs, ctx->n_hkls,
       d_results, d_fvals);
 
   CUDA_CHECK(cudaStreamSynchronize(ctx->stream));
