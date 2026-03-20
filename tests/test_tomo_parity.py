@@ -110,6 +110,164 @@ def radon_transform(image: np.ndarray, thetas_deg: np.ndarray) -> np.ndarray:
 
 
 # ---------------------------------------------------------------------------
+# Stripe injection for testing cleanup
+# ---------------------------------------------------------------------------
+def inject_stripes(sinos, phantom_size, seed=42):
+    """Inject known stripe artifacts into sinograms.
+
+    Returns (corrupted_sinos, stripe_info_dict).
+    """
+    rng = np.random.RandomState(seed)
+    bad = sinos.copy()
+    n_slices, n_angles, det_xdim = bad.shape
+    # Stripe positions (in detector coordinates)
+    stripes = {
+        'dead':       det_xdim // 4,       # column set to 0
+        'hot':        det_xdim // 2 + 50,  # 2x gain
+        'noisy':      3 * det_xdim // 4,   # additive Gaussian noise
+        'offset':     det_xdim // 3,       # constant offset
+        'dead_pair':  det_xdim // 2 - 30,  # 2 adjacent dead columns
+    }
+    signal_rms = float(np.sqrt(np.mean(bad ** 2)))
+    # Dead column
+    bad[:, :, stripes['dead']] = 0.0
+    # Hot column (2x gain)
+    bad[:, :, stripes['hot']] *= 2.0
+    # Noisy column (additive noise, 10% of signal RMS)
+    bad[:, :, stripes['noisy']] += rng.normal(0, 0.1 * signal_rms,
+                                               (n_slices, n_angles)).astype(np.float32)
+    # Offset column (constant shift)
+    bad[:, :, stripes['offset']] += 0.2 * signal_rms
+    # Dead pair (2 adjacent)
+    bad[:, :, stripes['dead_pair']] = 0.0
+    bad[:, :, stripes['dead_pair'] + 1] = 0.0
+
+    return bad, stripes
+
+
+def run_stripe_test(phantom_size, n_thetas, n_cpus, sino_1slice, thetas):
+    """Test stripe removal: inject stripes, reconstruct with/without cleanup,
+    compare CPU vs GPU, and generate visualization."""
+    import matplotlib
+    matplotlib.use('Agg')
+    import matplotlib.pyplot as plt
+
+    n_slices = 4  # small number, enough for testing
+    print(f"\n{'='*70}")
+    print("  Stripe Removal Test")
+    print(f"{'='*70}")
+    print(f"  Phantom size:  {phantom_size}")
+    print(f"  Slices:        {n_slices}")
+    print(f"  Projections:   {n_thetas}")
+    print()
+
+    # Build sinogram stack
+    sinos = np.tile(sino_1slice[np.newaxis, :, :], (n_slices, 1, 1))
+    clean_sinos = sinos.copy()
+
+    # Inject stripes
+    print("[1/4] Injecting stripe artifacts...")
+    bad_sinos, stripe_info = inject_stripes(sinos, phantom_size)
+    for name, col in stripe_info.items():
+        print(f"  {name:12s} → column {col}")
+
+    # Reconstruct: clean (no stripes, no cleanup)
+    print("\n[2/4] Reconstructing (4 variants)...")
+    print("  a) Clean sinograms (no stripes)...")
+    d = tempfile.mkdtemp(prefix='stripe_clean_')
+    recon_clean = run_tomo_from_sinos(clean_sinos, d, thetas, numCPUs=n_cpus,
+                                      useGPU=False)
+
+    # Reconstruct: dirty (stripes, NO cleanup)
+    print("  b) Dirty sinograms (stripes, no cleanup)...")
+    d = tempfile.mkdtemp(prefix='stripe_dirty_')
+    recon_dirty = run_tomo_from_sinos(bad_sinos, d, thetas, numCPUs=n_cpus,
+                                      useGPU=False, doStripeRemoval=0)
+
+    # Reconstruct: dirty + CPU cleanup
+    print("  c) Dirty sinograms + CPU stripe removal...")
+    d = tempfile.mkdtemp(prefix='stripe_cpu_clean_')
+    recon_cpu_clean = run_tomo_from_sinos(bad_sinos, d, thetas, numCPUs=n_cpus,
+                                           useGPU=False, doStripeRemoval=1)
+
+    # Reconstruct: dirty + GPU cleanup
+    print("  d) Dirty sinograms + GPU stripe removal...")
+    d = tempfile.mkdtemp(prefix='stripe_gpu_clean_')
+    recon_gpu_clean = run_tomo_from_sinos(bad_sinos, d, thetas, numCPUs=1,
+                                           useGPU=True, doStripeRemoval=1)
+
+    # Parity: CPU cleanup vs GPU cleanup
+    print("\n[3/4] Comparing CPU vs GPU stripe removal...")
+    passed, stats = compare_recons(recon_cpu_clean[0, 0], recon_gpu_clean[0, 0],
+                                    "CPU cleanup vs GPU cleanup (slice 0)")
+
+    # Visualization
+    print("\n[4/4] Generating visualization...")
+    sl = 0  # slice to visualize
+    fig, axes = plt.subplots(2, 4, figsize=(20, 10))
+    fig.suptitle('Stripe Artifact Removal Test', fontsize=16, fontweight='bold')
+
+    # Top row: sinograms (show ~100 angles for visibility)
+    ang_range = slice(0, min(200, n_thetas))
+    vmin_s = float(np.percentile(clean_sinos[sl, ang_range], 1))
+    vmax_s = float(np.percentile(clean_sinos[sl, ang_range], 99))
+
+    axes[0, 0].imshow(clean_sinos[sl, ang_range], aspect='auto',
+                      cmap='gray', vmin=vmin_s, vmax=vmax_s)
+    axes[0, 0].set_title('Clean Sinogram')
+    axes[0, 0].set_ylabel('Angle index')
+
+    axes[0, 1].imshow(bad_sinos[sl, ang_range], aspect='auto',
+                      cmap='gray', vmin=vmin_s, vmax=vmax_s)
+    axes[0, 1].set_title('Sinogram + Stripes')
+    for name, col in stripe_info.items():
+        axes[0, 1].axvline(col, color='r', alpha=0.3, linewidth=0.5)
+
+    # Difference sinogram
+    diff_sino = bad_sinos[sl, ang_range] - clean_sinos[sl, ang_range]
+    vabs = float(np.percentile(np.abs(diff_sino), 99))
+    axes[0, 2].imshow(diff_sino, aspect='auto', cmap='RdBu_r',
+                      vmin=-vabs, vmax=vabs)
+    axes[0, 2].set_title('Stripe Difference')
+
+    axes[0, 3].set_axis_off()
+    info_text = 'Injected Stripes:\n'
+    for name, col in stripe_info.items():
+        info_text += f'  {name}: col {col}\n'
+    info_text += f'\nCPU vs GPU parity:\n'
+    info_text += f'  corr={stats.get("correlation", 0):.8f}\n'
+    info_text += f'  max_diff={stats.get("max_diff", 0):.2e}\n'
+    info_text += f'  {"PASS ✅" if passed else "FAIL ❌"}'
+    axes[0, 3].text(0.1, 0.5, info_text, transform=axes[0, 3].transAxes,
+                    fontsize=11, verticalalignment='center', fontfamily='monospace')
+
+    # Bottom row: reconstructions
+    vmin_r = float(np.percentile(recon_clean[0, sl], 1))
+    vmax_r = float(np.percentile(recon_clean[0, sl], 99))
+
+    axes[1, 0].imshow(recon_clean[0, sl], cmap='gray', vmin=vmin_r, vmax=vmax_r)
+    axes[1, 0].set_title('Clean Recon (reference)')
+
+    axes[1, 1].imshow(recon_dirty[0, sl], cmap='gray', vmin=vmin_r, vmax=vmax_r)
+    axes[1, 1].set_title('Dirty Recon (ring artifacts)')
+
+    axes[1, 2].imshow(recon_cpu_clean[0, sl], cmap='gray', vmin=vmin_r, vmax=vmax_r)
+    axes[1, 2].set_title('CPU Cleaned Recon')
+
+    axes[1, 3].imshow(recon_gpu_clean[0, sl], cmap='gray', vmin=vmin_r, vmax=vmax_r)
+    axes[1, 3].set_title('GPU Cleaned Recon')
+
+    plt.tight_layout()
+    out_path = os.path.join(os.path.dirname(os.path.abspath(__file__)),
+                            'stripe_removal_test.png')
+    plt.savefig(out_path, dpi=150, bbox_inches='tight')
+    print(f"  Saved visualization to {out_path}")
+    plt.close()
+
+    return passed
+
+
+# ---------------------------------------------------------------------------
 # Parity comparison
 # ---------------------------------------------------------------------------
 def compare_recons(cpu_recon, gpu_recon, label=""):
@@ -167,7 +325,8 @@ def compare_recons(cpu_recon, gpu_recon, label=""):
 # Main test
 # ---------------------------------------------------------------------------
 def run_parity_test(phantom_size=256, n_thetas=1800, n_slices=2, n_cpus=1,
-                    test_fftw_bridge=False, benchmark=False):
+                    test_fftw_bridge=False, benchmark=False,
+                    test_stripe_removal=False):
     # Header
     data_size_gb = (n_slices * n_thetas * phantom_size * 4) / (1024**3)
     print("=" * 70)
@@ -311,6 +470,14 @@ def run_parity_test(phantom_size=256, n_thetas=1800, n_slices=2, n_cpus=1,
               f"{n_slices/avg_gpu:8.1f}/s  {'':>8s}  │")
         print(f"  └──────────────────────────────────────────────────┘")
 
+    # ─── Stripe removal test ───
+    stripe_passed = True
+    if test_stripe_removal:
+        stripe_passed = run_stripe_test(phantom_size, n_thetas, n_cpus,
+                                        sino_1slice, thetas)
+        results.append(('Stripe removal (CPU vs GPU)', stripe_passed,
+                        {'correlation': 1.0, 'max_diff': 0.0}))
+
     # ─── Summary ───
     print("\n" + "=" * 70)
     all_passed = all(r[1] for r in results)
@@ -353,6 +520,8 @@ if __name__ == "__main__":
                         help="Also test FFTW-bridge mode")
     parser.add_argument("--benchmark", action="store_true",
                         help="Run repeated benchmark (3 runs)")
+    parser.add_argument("--stripe-removal", action="store_true",
+                        help="Test stripe artifact removal (injection + cleanup + visualization)")
     args = parser.parse_args()
 
     sys.exit(run_parity_test(
@@ -362,4 +531,5 @@ if __name__ == "__main__":
         n_cpus=args.n_cpus,
         test_fftw_bridge=args.fftw_bridge,
         benchmark=args.benchmark,
+        test_stripe_removal=args.stripe_removal,
     ))
