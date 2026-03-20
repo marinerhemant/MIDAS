@@ -140,6 +140,10 @@ if(USE_CUDA AND CUDA_FOUND)
 
   if(OpenMP_C_FOUND AND BUILD_OMP)
     target_link_libraries(FitOrientationGPU PRIVATE OpenMP::OpenMP_C)
+    # nvcc needs explicit -fopenmp passed to host compiler for .cu files
+    target_compile_options(FitOrientationGPU PRIVATE
+      $<$<COMPILE_LANGUAGE:CUDA>:-Xcompiler=-fopenmp>
+    )
   endif()
 
   set_target_properties(FitOrientationGPU PROPERTIES
