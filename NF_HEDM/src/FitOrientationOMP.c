@@ -924,23 +924,247 @@ int main(int argc, char *argv[]) {
     printf("NF GPU: Phase 1 screening: %d winners in %.2f s\n",
            nGpuWinners, gpu_screen_time);
 
-    // Phase 2: CPU fitting using GPU winners
-    // Group winners by voxel, then run FitOrientation for each
-    printf("NF GPU: Phase 2 (CPU fitting) starting with %d winners...\n",
-           nGpuWinners);
+    // ── Phase 2: CPU fitting using GPU winners ──
+    // Build per-voxel winner index
+    // winnerStart[v] = first index into gpuWinners for voxel v
+    // winnerCount[v] = number of winners for voxel v
+    int *winnerCount = (int *)calloc(nVoxels, sizeof(int));
+    for (int w = 0; w < nGpuWinners; w++) {
+      int v = gpuWinners[w].voxelIdx;
+      if (v >= 0 && v < nVoxels)
+        winnerCount[v]++;
+    }
+    int *winnerStart = (int *)malloc(nVoxels * sizeof(int));
+    int *winnerPos   = (int *)calloc(nVoxels, sizeof(int));
+    int cumulative = 0;
+    for (int v = 0; v < nVoxels; v++) {
+      winnerStart[v] = cumulative;
+      cumulative += winnerCount[v];
+    }
+    // Build sorted index: winnerIdx[winnerStart[v] + k] = index into gpuWinners
+    int *winnerIdx = (int *)malloc(nGpuWinners * sizeof(int));
+    for (int w = 0; w < nGpuWinners; w++) {
+      int v = gpuWinners[w].voxelIdx;
+      if (v >= 0 && v < nVoxels) {
+        winnerIdx[winnerStart[v] + winnerPos[v]] = w;
+        winnerPos[v]++;
+      }
+    }
+    free(winnerPos);
 
-    // TODO: Implement Phase 2 integration — feed GPU winners into
-    // the existing per-voxel FitOrientation loop.
-    // For now, this is a placeholder that will be completed in the
-    // next implementation phase.
+    printf("NF GPU: Phase 2 (CPU fitting) starting, %d voxels with winners...\n",
+           nVoxels);
+    double gpu_fit_t0 = omp_get_wtime();
 
+    // OMP parallel over voxels (same structure as CPU path)
+#pragma omp parallel for num_threads(numProcs) schedule(dynamic)
+    for (int vIdx = 0; vIdx < nVoxels; vIdx++) {
+      int rown_gpu = startRowNr + vIdx;
+      if (!parsed_lines[vIdx].valid) continue;
+      int nWinnersThisVoxel = winnerCount[vIdx];
+
+      double y1 = parsed_lines[vIdx].y1;
+      double y2 = parsed_lines[vIdx].y2;
+      double xs = parsed_lines[vIdx].xs;
+      double ys = parsed_lines[vIdx].ys;
+      double gs_v = parsed_lines[vIdx].gs;
+
+      double XY[3][3];
+      int UD;
+      if (y1 > y2) {
+        UD = -1;
+        XY[0][0] = xs;      XY[0][1] = ys - y1;
+        XY[1][0] = xs - gs_v; XY[1][1] = ys + y2;
+        XY[2][0] = xs + gs_v; XY[2][1] = ys + y2;
+      } else {
+        UD = 1;
+        XY[0][0] = xs;      XY[0][1] = ys + y2;
+        XY[1][0] = xs - gs_v; XY[1][1] = ys - y1;
+        XY[2][0] = xs + gs_v; XY[2][1] = ys - y1;
+      }
+      double GridSize_v = 2 * gs_v;
+      int NrPixelsGrid_v = 2 * (int)(ceil((gs_v * 2) / px)) * (int)(ceil((gs_v * 2) / px));
+
+      double MatIn_v[3], P0_v[nLayers][3], P0T_v[3], XG_v[3], YG_v[3];
+      MatIn_v[0] = 0; MatIn_v[1] = 0; MatIn_v[2] = 0;
+      for (int i = 0; i < nLayers; i++) {
+        MatIn_v[0] = -Lsd[i];
+        MatrixMultF(RotMatTilts, MatIn_v, P0T_v);
+        for (int j = 0; j < 3; j++) P0_v[i][j] = P0T_v[j];
+      }
+      for (int j = 0; j < 3; j++) {
+        XG_v[j] = XY[j][0];
+        YG_v[j] = XY[j][1];
+      }
+
+      // Setup result tracking (same as CPU path)
+      double BestFrac = -1, BestEuler[3] = {0};
+      double ResultMatr_v[7 + (nSaves * 4)];
+      double bestRowNr_v = 0;
+      int OrientationGoodID_v = nWinnersThisVoxel;
+
+      ResultMatr_v[0] = (double)atoi(argv[2]);
+      ResultMatr_v[1] = (double)nWinnersThisVoxel;
+      ResultMatr_v[2] = 0;
+      ResultMatr_v[3] = xs;
+      ResultMatr_v[4] = ys;
+      ResultMatr_v[5] = GridSize_v;
+      ResultMatr_v[6] = (double)UD;
+      int nFilled = 0;
+      for (int i = 0; i < nSaves; i++) {
+        ResultMatr_v[7 + i * 4] = 0;
+        ResultMatr_v[7 + i * 4 + 1] = 0;
+        ResultMatr_v[7 + i * 4 + 2] = 0;
+        ResultMatr_v[7 + i * 4 + 3] = 0;
+      }
+
+      if (nWinnersThisVoxel > 0) {
+        double tFitStart = omp_get_wtime();
+        int totalNloptEvals = 0;
+
+        for (int wi = 0; wi < nWinnersThisVoxel; wi++) {
+          int gpuIdx = winnerIdx[winnerStart[vIdx] + wi];
+          int oriIdx = gpuWinners[gpuIdx].orientIdx;
+
+          // Get orientation matrix, normalize, convert to Euler
+          double OMTemp[9], OrientIn[3][3], EulerIn[3];
+          for (int j = 0; j < 9; j++) {
+            OMTemp[j] = OrientationMatrix[oriIdx * 9 + j];
+            if (OMTemp[j] == -0.0) OMTemp[j] = 0;
+          }
+          double OMNorm[9];
+          NormalizeMat(OMTemp, OMNorm);
+          Convert9To3x3(OMNorm, OrientIn);
+          OrientMat2Euler(OrientIn, EulerIn);
+
+          int fitNevals = 0, fitRetcode = 0;
+          double EulerOutA, EulerOutB, EulerOutC, FracOut;
+          FitOrientation(nrFiles, nLayers, ExcludePoleAngle, Lsd, SizeObsSpots,
+                         XG_v, YG_v, RotMatTilts, OmegaStart, OmegaStep, px,
+                         ybc, zbc, gs_v, OmegaRanges, nOmeRang, BoxSizes,
+                         P0_v, NrPixelsGrid_v, ObsSpotsInfo, EulerIn, tol,
+                         &EulerOutA, &EulerOutB, &EulerOutC, &FracOut,
+                         hkls, Thetas, n_hkls, Gs,
+                         &fitNevals, &fitRetcode, NrPixelsY, NrPixelsZ);
+          totalNloptEvals += fitNevals;
+
+          double Fractions = 1 - FracOut;
+          if (Fractions >= BestFrac) {
+            bestRowNr_v = (double)oriIdx;
+            BestFrac = Fractions;
+            BestEuler[0] = EulerOutA;
+            BestEuler[1] = EulerOutB;
+            BestEuler[2] = EulerOutC;
+            if (1 - BestFrac < 0.0001 && nSaves == 1)
+              break;
+          }
+          if (nSaves > 1) {
+            // Uniqueness check + sorted insertion (same as CPU path)
+            double candEul[3] = {EulerOutA * rad2deg, EulerOutB * rad2deg,
+                                 EulerOutC * rad2deg};
+            double candOM[3][3], candOM9[9], candQuat[4];
+            Euler2OrientMat(candEul, candOM);
+            for (int q = 0; q < 3; q++)
+              for (int r = 0; r < 3; r++)
+                candOM9[q * 3 + r] = candOM[q][r];
+            OrientMat2Quat(candOM9, candQuat);
+
+            int isUnique = 1;
+            for (int s = 0; s < nFilled; s++) {
+              double existEul[3] = {ResultMatr_v[7 + s * 4 + 0] * rad2deg,
+                                    ResultMatr_v[7 + s * 4 + 1] * rad2deg,
+                                    ResultMatr_v[7 + s * 4 + 2] * rad2deg};
+              double existOM[3][3], existOM9[9], existQuat[4];
+              Euler2OrientMat(existEul, existOM);
+              for (int q = 0; q < 3; q++)
+                for (int r = 0; r < 3; r++)
+                  existOM9[q * 3 + r] = existOM[q][r];
+              OrientMat2Quat(existOM9, existQuat);
+              double misoAngle;
+              GetMisOrientationAngle(candQuat, existQuat, &misoAngle,
+                                     NrSymmetries, Sym);
+              if (misoAngle < MinMisoNSaves) {
+                isUnique = 0;
+                break;
+              }
+            }
+            if (!isUnique) continue;
+
+            int inserted = 0;
+            for (int j = 0; j < nFilled; j++) {
+              if (Fractions >= ResultMatr_v[7 + j * 4 + 3]) {
+                for (int m = nFilled - 1; m >= j; m--) {
+                  if (m == nSaves - 1) continue;
+                  for (int t = 0; t < 4; t++)
+                    ResultMatr_v[7 + (m + 1) * 4 + t] = ResultMatr_v[7 + m * 4 + t];
+                }
+                ResultMatr_v[7 + j * 4] = EulerOutA;
+                ResultMatr_v[7 + j * 4 + 1] = EulerOutB;
+                ResultMatr_v[7 + j * 4 + 2] = EulerOutC;
+                ResultMatr_v[7 + j * 4 + 3] = Fractions;
+                inserted = 1;
+                if (nFilled < nSaves) nFilled++;
+                break;
+              }
+            }
+            if (!inserted && nFilled < nSaves) {
+              ResultMatr_v[7 + nFilled * 4] = EulerOutA;
+              ResultMatr_v[7 + nFilled * 4 + 1] = EulerOutB;
+              ResultMatr_v[7 + nFilled * 4 + 2] = EulerOutC;
+              ResultMatr_v[7 + nFilled * 4 + 3] = Fractions;
+              nFilled++;
+            }
+          }
+        }
+
+        double tFitElapsed = omp_get_wtime() - tFitStart;
+        double outresult[11] = {bestRowNr_v, (double)nWinnersThisVoxel,
+                                tFitElapsed, xs, ys, GridSize_v,
+                                (double)UD, BestEuler[0], BestEuler[1],
+                                BestEuler[2], BestFrac};
+        int SizeWritten = 11 * sizeof(double);
+        size_t OffsetHere = (size_t)rown_gpu * SizeWritten;
+        int SizeWritten2 = (7 + (nSaves * 4)) * sizeof(double);
+        size_t OffsetThis = (size_t)rown_gpu * SizeWritten2;
+
+        pwrite(result, outresult, SizeWritten, OffsetHere);
+        pwrite(result2, ResultMatr_v, SizeWritten2, OffsetThis);
+
+#pragma omp critical
+        {
+          printf("%zu %d ", OffsetHere, rown_gpu);
+          for (int i = 0; i < 11; i++) printf("%.5f ", outresult[i]);
+          printf("\n");
+          fflush(stdout);
+        }
+      } else {
+        // No winners — write empty result
+        double outresult[11] = {0, 0, 0, xs, ys, GridSize_v, (double)UD,
+                                0, 0, 0, 0};
+        int SizeWritten = 11 * sizeof(double);
+        size_t OffsetHere = (size_t)rown_gpu * SizeWritten;
+        int SizeWritten2 = (7 + (nSaves * 4)) * sizeof(double);
+        size_t OffsetThis = (size_t)rown_gpu * SizeWritten2;
+        ResultMatr_v[2] = 0;
+        pwrite(result, outresult, SizeWritten, OffsetHere);
+        pwrite(result2, ResultMatr_v, SizeWritten2, OffsetThis);
+      }
+    }
+
+    double gpu_fit_time = omp_get_wtime() - gpu_fit_t0;
+    printf("NF GPU: Phase 2 fitting: %.2f s\n", gpu_fit_time);
+
+    free(winnerCount);
+    free(winnerStart);
+    free(winnerIdx);
     free(allXG);
     free(allYG);
     if (gpuWinners) free(gpuWinners);
     nf_gpu_destroy(gpuCtx);
 
     double gpu_total = omp_get_wtime() - gpu_t0;
-    printf("NF GPU: total time: %.2f s\n", gpu_total);
+    printf("NF GPU: total time: %.2f s (screen %.2f + fit %.2f)\n",
+           gpu_total, gpu_screen_time, gpu_fit_time);
     printf("=== END GPU PATH ===\n\n");
 
     // Skip CPU path
