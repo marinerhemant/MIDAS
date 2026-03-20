@@ -477,13 +477,10 @@ int main(int argc, char *argv[]) {
             wi.reconstructions_boundary_padding = batch_recon_bp[b];
             wi.recon_calc_buffer = (float *)malloc(sizeof(float) * wi.reconstruction_size * 2);
             wi.shifted_recon = (float *)malloc(sizeof(float) * wi.reconstruction_size);
-            gridrecParams wp;
-            setSinoAndReconBuffers(1, &batch_sino_bp[b][0], &batch_recon_bp[b][0], &wp);
-            setSinoAndReconBuffers(2, &batch_sino_bp[b][wi.sinogram_adjusted_size * 2],
-                                  &batch_recon_bp[b][batch_offsetRecons[b]], &wp);
-            getRecons(&wi, &recon_info_record, &wp, 0);
+            // getRecons doesn't use the gridrecParams* arg, pass NULL
+            getRecons(&wi, &recon_info_record, NULL, 0);
             writeRecon(batch_oldSliceNr[b], &wi, &recon_info_record, 0, output_fd);
-            getRecons(&wi, &recon_info_record, &wp, batch_offsetRecons[b]);
+            getRecons(&wi, &recon_info_record, NULL, batch_offsetRecons[b]);
             writeRecon(batch_sliceNr[b], &wi, &recon_info_record, 0, output_fd);
             free(wi.recon_calc_buffer);
             free(wi.shifted_recon);
