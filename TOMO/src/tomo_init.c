@@ -17,6 +17,29 @@
 #include <stdbool.h>
 #include <stdint.h>
 
+// GPU pthread compute — file-scope for C compatibility
+#ifdef ENABLE_CUDA
+typedef struct {
+  void *ctx;  // TomoGPUContext*
+  int count;
+  const float **sino1, **sino2;
+  float **recon1, **recon2;
+  long M, M0, M02, pdim;
+  int det_xdim, adjusted_xdim, sino_xdim, recon_xdim;
+  int pad_front, doLog, auto_centering;
+  float shift;
+} GPURawWork;
+static void *gpu_raw_compute_func(void *arg) {
+  GPURawWork *w = (GPURawWork *)arg;
+  tomo_gpu_reconstruct_batch_raw((TomoGPUContext *)w->ctx, w->count,
+      w->sino1, w->sino2, w->recon1, w->recon2,
+      w->M, w->M0, w->M02, w->pdim,
+      w->det_xdim, w->adjusted_xdim, w->sino_xdim, w->recon_xdim,
+      w->pad_front, w->shift, w->doLog, w->auto_centering);
+  return NULL;
+}
+#endif
+
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
@@ -526,19 +549,27 @@ int main(int argc, char *argv[]) {
           int hasNext = (nextStart < totalPairs);
           int hasPrev = (bi > 0);
 
-          // Launch GPU compute (raw batch) — synchronous (GPU does async internally)
+          // Launch GPU compute in a dedicated pthread
+          GPURawWork gw;
+          gw.ctx = gpu_ctx;
+          gw.count = buf[cur].count;
+          gw.sino1 = buf[cur].sino1; gw.sino2 = buf[cur].sino2;
+          gw.recon1 = buf[cur].recon1; gw.recon2 = buf[cur].recon2;
+          gw.M = param.M; gw.M0 = param.M0;
+          gw.M02 = param.M02; gw.pdim = param.pdim;
+          gw.det_xdim = det_xdim_raw;
+          gw.adjusted_xdim = recon_info_record.sinogram_adjusted_xdim;
+          gw.sino_xdim = recon_info_record.sinogram_xdim;
+          gw.recon_xdim = recon_xdim_out;
+          gw.pad_front = pad_front_raw;
+          gw.shift = information.shift;
+          gw.doLog = recon_info_record.doLogProj;
+          gw.auto_centering = recon_info_record.auto_centering;
+          pthread_t gpu_thr;
           double tc0 = TOMO_WTIME();
-          tomo_gpu_reconstruct_batch_raw(gpu_ctx, buf[cur].count,
-              buf[cur].sino1, buf[cur].sino2,
-              buf[cur].recon1, buf[cur].recon2,
-              param.M, param.M0, param.M02, param.pdim,
-              det_xdim_raw, recon_info_record.sinogram_adjusted_xdim,
-              recon_info_record.sinogram_xdim, recon_xdim_out,
-              pad_front_raw, information.shift,
-              recon_info_record.doLogProj, recon_info_record.auto_centering);
-          gpu_t_compute += TOMO_WTIME() - tc0;
+          pthread_create(&gpu_thr, NULL, gpu_raw_compute_func, &gw);
 
-          // Meanwhile write prev results + read next batch
+          // Meanwhile on main thread: write prev results + read next batch
           if (hasPrev) {
             double tw0 = TOMO_WTIME();
             GPU_WRITE_BATCH(nxt);  // nxt == prev buffer (just swapped)
@@ -549,6 +580,10 @@ int main(int argc, char *argv[]) {
             GPU_READ_BATCH(nxt, nextStart);
             gpu_t_read += TOMO_WTIME() - trN;
           }
+
+          // Wait for GPU compute to finish
+          pthread_join(gpu_thr, NULL);
+          gpu_t_compute += TOMO_WTIME() - tc0;
         }
 
         // Write last batch
