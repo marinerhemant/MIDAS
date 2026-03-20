@@ -82,13 +82,15 @@ struct TomoGPUContext {
     // Device buffers
     float *d_sino1;              // [theta_list_size * sinogram_x_dim]
     float *d_sino2;
-    cufftComplex *d_cproj;       // [pdim] — 1D FFT work buffer
+    cufftComplex *d_cproj;       // [pdim] — 1D FFT work buffer (FFTW-bridge only)
+    cufftComplex *d_cproj_batch; // [theta_list_size * pdim] — batched 1D FFT buffer
     cufftComplex *d_H;           // [(M+1)*(M+1)] — Fourier grid
     float *d_recon1;             // [M0 * sinogram_x_dim] (stride = sinogram_x_dim)
     float *d_recon2;
 
     // cuFFT plans
-    cufftHandle plan1d;
+    cufftHandle plan1d;          // single 1D FFT (FFTW-bridge fallback)
+    cufftHandle plan1d_batch;    // batched 1D FFT: all angles at once
     cufftHandle plan2d;
     int cufft_plans_created;
 
@@ -110,16 +112,7 @@ struct TomoGPUContext {
 //  CUDA KERNELS
 // ═════════════════════════════════════════════════════════════
 
-// ── Load one sinogram row into cproj as complex ──
-// CPU phase1 does:
-//   cproj[j].r = G1[n][j-1],  cproj[j].i = G2[n][j-1]   for j=1..sinogram_x_dim
-//   cproj[j] = 0                                          for j=sinogram_x_dim+1..pdim-1
-// Then four1((float*)cproj + 1, pdim, ...) which does FFT on cproj[1..pdim].
-//
-// For GPU: we use 0-indexed cproj[0..pdim-1] and pass it directly to cuFFT.
-// So we load: cproj[j].x = G1[n][j] for j=0..sinogram_x_dim-1, cproj[j]=0 otherwise.
-//
-// G1[n] = sinogram1[n * sinogram_x_dim]  (flat array, stride = sinogram_x_dim)
+// ── Load one sinogram row into cproj as complex (FFTW-bridge fallback) ──
 __global__ void load_sinogram_row_kernel(
     cufftComplex *cproj,            // output [pdim]
     const float *sino1,             // [theta_list_size * sinogram_x_dim]
@@ -141,6 +134,31 @@ __global__ void load_sinogram_row_kernel(
     }
 }
 
+// ── Batched: load ALL sinogram rows into cproj_batch ──
+// Grid: (ceil(pdim/256), theta_list_size), Block: (256, 1)
+__global__ void load_all_sinogram_rows_kernel(
+    cufftComplex *cproj_batch,      // output [theta_list_size * pdim]
+    const float *sino1,
+    const float *sino2,
+    unsigned long sinogram_x_dim,
+    long pdim,
+    int n_angles)
+{
+    int j = blockIdx.x * blockDim.x + threadIdx.x;
+    int angle = blockIdx.y;
+    if (j >= pdim || angle >= n_angles) return;
+
+    long out_idx = (long)angle * pdim + j;
+    if (j < (int)sinogram_x_dim) {
+        long row_off = (long)angle * sinogram_x_dim;
+        cproj_batch[out_idx].x = sino1[row_off + j];
+        cproj_batch[out_idx].y = sino2[row_off + j];
+    } else {
+        cproj_batch[out_idx].x = 0.0f;
+        cproj_batch[out_idx].y = 0.0f;
+    }
+}
+
 // ── Apply filter × phase to FFT output + scatter to H grid ──
 // One thread per frequency bin j ∈ [1, pdim/2).
 //
@@ -153,43 +171,34 @@ __global__ void load_sinogram_row_kernel(
 // Our GPU cuFFT operates on d_cproj[0..pdim-1] (0-indexed).
 // cuFFT inverse of 0-indexed data ≡ FFTW backward of 1-indexed data shifted.
 // Net mapping: CPU cproj[j+1] → GPU d_cproj[j], CPU cproj[(pdim-j)+1] → GPU d_cproj[pdim-j].
-__global__ void filter_and_scatter_kernel(
-    cufftComplex *H,                // [(M+1)*(M+1)]
-    const cufftComplex *cproj,      // [pdim], post-FFT
-    const float *filphase,          // [(pdim/2+1)*2], interleaved r,i
-    const float *COSE,
-    const float *SINE,
-    const float *wtbl,              // [ltbl+1]
+// ── Shared scatter logic (used by both single and batched kernels) ──
+__device__ void scatter_to_H(
+    cufftComplex *H,
+    const float *filphase,
+    const cufftComplex *cproj_row,   // [pdim], post-FFT for one angle
+    const float *wtbl,
     int angle_idx,
+    int j,                           // frequency bin
     long pdim, long M, long ltbl,
-    float L, float scale, float tblspcg)
+    float L, float scale, float tblspcg,
+    float cosE, float sinE)
 {
-    int j = blockIdx.x * blockDim.x + threadIdx.x;
-    long pdim2 = pdim >> 1;
-    if (j < 1 || j >= pdim2) return;
-
     float L2 = L / 2.0f;
     long M2 = M >> 1;
 
-    // Read filter × phase for this frequency bin
     float fr = filphase[j * 2];
     float fi = filphase[j * 2 + 1];
 
-    // Apply filter to positive frequency: Cdata1 = filphase[j] * cproj[j]
-    float cr = cproj[j].x;
-    float ci = cproj[j].y;
+    float cr = cproj_row[j].x;
+    float ci = cproj_row[j].y;
     float d1r = fr * cr - fi * ci;
     float d1i = fr * ci + fi * cr;
 
-    // Mirror frequency: Cdata2 = conj(filphase[j]) * cproj[pdim - j]
-    float mr = cproj[pdim - j].x;
-    float mi = cproj[pdim - j].y;
-    float d2r =  fr * mr + fi * mi;   // conj: fi → -fi
-    float d2i = -fi * mr + fr * mi;   // = fr*mi - fi*mr
+    float mr = cproj_row[pdim - j].x;
+    float mi = cproj_row[pdim - j].y;
+    float d2r =  fr * mr + fi * mi;
+    float d2i = -fi * mr + fr * mi;
 
-    // Compute grid position
-    float cosE = COSE[angle_idx];
-    float sinE = SINE[angle_idx];
     float rtmp = scale * j;
     float U = rtmp * cosE + M2;
     float V = rtmp * sinE + M2;
@@ -204,7 +213,6 @@ __global__ void filter_and_scatter_kernel(
     if (ivl < 1) ivl = 1;
     if (ivh >= M) ivh = M - 1;
 
-    // Pre-compute V-direction weights (L ≈ 3.8, so ≤ 5 entries)
     float work[16];
     int k = 0;
     for (long iv = ivl; iv <= ivh; iv++, k++) {
@@ -217,7 +225,6 @@ __global__ void filter_and_scatter_kernel(
 #endif
     }
 
-    // Scatter to H grid
     for (long iu = iul; iu <= iuh; iu++) {
         float absU = fabsf(U - iu) * tblspcg;
 #ifndef INTERP
@@ -229,18 +236,57 @@ __global__ void filter_and_scatter_kernel(
         k = 0;
         for (long iv = ivl; iv <= ivh; iv++, k++) {
             float convolv = convU * work[k];
-
-            // H[iu*M + iv + 1] — the +1 accounts for 1-indexed H array
             long idx1 = iu * M + iv + 1;
             atomicAdd(&H[idx1].x, convolv * d1r);
             atomicAdd(&H[idx1].y, convolv * d1i);
-
-            // Mirror: H[(M-iu)*M + (M-iv) + 1]
             long idx2 = (M - iu) * M + (M - iv) + 1;
             atomicAdd(&H[idx2].x, convolv * d2r);
             atomicAdd(&H[idx2].y, convolv * d2i);
         }
     }
+}
+
+// ── Single-angle scatter (FFTW-bridge fallback) ──
+__global__ void filter_and_scatter_kernel(
+    cufftComplex *H,
+    const cufftComplex *cproj,
+    const float *filphase,
+    const float *COSE, const float *SINE,
+    const float *wtbl,
+    int angle_idx,
+    long pdim, long M, long ltbl,
+    float L, float scale, float tblspcg)
+{
+    int j = blockIdx.x * blockDim.x + threadIdx.x;
+    long pdim2 = pdim >> 1;
+    if (j < 1 || j >= pdim2) return;
+
+    scatter_to_H(H, filphase, cproj, wtbl, angle_idx, j,
+                 pdim, M, ltbl, L, scale, tblspcg,
+                 COSE[angle_idx], SINE[angle_idx]);
+}
+
+// ── Batched: scatter ALL angles at once ──
+// Grid: (ceil(pdim2/256), n_angles), Block: (256, 1)
+__global__ void filter_and_scatter_all_kernel(
+    cufftComplex *H,
+    const cufftComplex *cproj_batch,  // [n_angles * pdim], post-FFT
+    const float *filphase,
+    const float *COSE, const float *SINE,
+    const float *wtbl,
+    long pdim, long M, long ltbl,
+    float L, float scale, float tblspcg,
+    int n_angles)
+{
+    int j = blockIdx.x * blockDim.x + threadIdx.x;
+    int angle = blockIdx.y;
+    long pdim2 = pdim >> 1;
+    if (j < 1 || j >= pdim2 || angle >= n_angles) return;
+
+    const cufftComplex *cproj_row = cproj_batch + (long)angle * pdim;
+    scatter_to_H(H, filphase, cproj_row, wtbl, angle, j,
+                 pdim, M, ltbl, L, scale, tblspcg,
+                 COSE[angle], SINE[angle]);
 }
 
 // ── Phase 3: PSWF correction + extraction ──
@@ -388,26 +434,39 @@ TomoGPUContext *tomo_gpu_init(int deviceId,
     size_t H_elems = (size_t)(ctx->M + 1) * (ctx->M + 1);
     CUDA_CHECK_VOID(cudaMalloc(&ctx->d_H, H_elems * sizeof(cufftComplex)));
 
-    // 1D FFT work buffer
+    // 1D FFT work buffer (single — used by FFTW-bridge fallback)
     CUDA_CHECK_VOID(cudaMalloc(&ctx->d_cproj, ctx->pdim * sizeof(cufftComplex)));
 
+    // Batched 1D FFT buffer: all angles at once
+    size_t cproj_batch_size = (size_t)theta_list_size * ctx->pdim * sizeof(cufftComplex);
+    CUDA_CHECK_VOID(cudaMalloc(&ctx->d_cproj_batch, cproj_batch_size));
+
     // Reconstruction output: M0 rows × sinogram_x_dim cols (stride = sinogram_x_dim)
-    // This matches CPU: S1[j] = &reconstruction1[j * sinogram_x_dim]
     size_t recon_size = (size_t)ctx->M0 * sinogram_x_dim * sizeof(float);
     CUDA_CHECK_VOID(cudaMalloc(&ctx->d_recon1, recon_size));
     CUDA_CHECK_VOID(cudaMalloc(&ctx->d_recon2, recon_size));
 
     // ── cuFFT plans ──
     if (!useFftwBridge) {
+        // Single 1D plan (kept for FFTW-bridge fallback)
         cufftResult r1 = cufftPlan1d(&ctx->plan1d, (int)ctx->pdim, CUFFT_C2C, 1);
+        // Batched 1D plan: all angles in one call
+        int pdim_int = (int)ctx->pdim;
+        cufftResult r1b = cufftPlanMany(&ctx->plan1d_batch,
+                                        1, &pdim_int,       // rank, n
+                                        NULL, 1, pdim_int,  // inembed, istride, idist
+                                        NULL, 1, pdim_int,  // onembed, ostride, odist
+                                        CUFFT_C2C, theta_list_size);
         cufftResult r2 = cufftPlan2d(&ctx->plan2d, (int)ctx->M, (int)ctx->M,
                                      CUFFT_C2C);
-        if (r1 != CUFFT_SUCCESS || r2 != CUFFT_SUCCESS) {
-            fprintf(stderr, "TOMO GPU: cuFFT plan creation failed\n");
+        if (r1 != CUFFT_SUCCESS || r1b != CUFFT_SUCCESS || r2 != CUFFT_SUCCESS) {
+            fprintf(stderr, "TOMO GPU: cuFFT plan creation failed (r1=%d, r1b=%d, r2=%d)\n",
+                    (int)r1, (int)r1b, (int)r2);
             tomo_gpu_destroy(ctx);
             return NULL;
         }
         cufftSetStream(ctx->plan1d, ctx->stream_compute);
+        cufftSetStream(ctx->plan1d_batch, ctx->stream_compute);
         cufftSetStream(ctx->plan2d, ctx->stream_compute);
         ctx->cufft_plans_created = 1;
     }
@@ -441,13 +500,15 @@ void tomo_gpu_destroy(TomoGPUContext *ctx) {
     if (ctx->d_filphase) cudaFree(ctx->d_filphase);
     if (ctx->d_sino1)    cudaFree(ctx->d_sino1);
     if (ctx->d_sino2)    cudaFree(ctx->d_sino2);
-    if (ctx->d_H)        cudaFree(ctx->d_H);
-    if (ctx->d_cproj)    cudaFree(ctx->d_cproj);
-    if (ctx->d_recon1)   cudaFree(ctx->d_recon1);
-    if (ctx->d_recon2)   cudaFree(ctx->d_recon2);
+    if (ctx->d_H)            cudaFree(ctx->d_H);
+    if (ctx->d_cproj)        cudaFree(ctx->d_cproj);
+    if (ctx->d_cproj_batch)  cudaFree(ctx->d_cproj_batch);
+    if (ctx->d_recon1)       cudaFree(ctx->d_recon1);
+    if (ctx->d_recon2)       cudaFree(ctx->d_recon2);
 
     if (ctx->cufft_plans_created) {
         cufftDestroy(ctx->plan1d);
+        cufftDestroy(ctx->plan1d_batch);
         cufftDestroy(ctx->plan2d);
     }
     if (ctx->h_fft_bridge) cudaFreeHost(ctx->h_fft_bridge);
@@ -554,20 +615,20 @@ int tomo_gpu_reconstruct(TomoGPUContext *ctx,
     CUDA_CHECK(cudaMemsetAsync(ctx->d_recon2, 0, recon_bytes,
                                ctx->stream_compute));
 
-    // ─── Phase 1: per-angle 1D FFT + filter + PSWF scatter ───
+    // ─── Phase 1: 1D FFT + filter + PSWF scatter ───
     int blockSize = 256;
     int gridSize_pdim = ((int)pdim + blockSize - 1) / blockSize;
     int gridSize_scatter = ((int)pdim2 + blockSize - 1) / blockSize;
+    int n_angles = ctx->theta_list_size;
 
-    for (int n = 0; n < ctx->theta_list_size; n++) {
-        // 1a. Load sinogram row into cproj
-        load_sinogram_row_kernel<<<gridSize_pdim, blockSize, 0,
-                                   ctx->stream_compute>>>(
-            ctx->d_cproj, ctx->d_sino1, ctx->d_sino2,
-            n, ctx->sinogram_x_dim, pdim);
+    if (ctx->useFftwBridge) {
+        // FFTW-bridge: must stay serial (CPU FFT per angle)
+        for (int n = 0; n < n_angles; n++) {
+            load_sinogram_row_kernel<<<gridSize_pdim, blockSize, 0,
+                                       ctx->stream_compute>>>(
+                ctx->d_cproj, ctx->d_sino1, ctx->d_sino2,
+                n, ctx->sinogram_x_dim, pdim);
 
-        // 1b. 1D backward FFT
-        if (ctx->useFftwBridge) {
             CUDA_CHECK(cudaStreamSynchronize(ctx->stream_compute));
             CUDA_CHECK(cudaMemcpy(ctx->h_fft_bridge, ctx->d_cproj,
                                   pdim * sizeof(cufftComplex),
@@ -583,18 +644,36 @@ int tomo_gpu_reconstruct(TomoGPUContext *ctx,
             CUDA_CHECK(cudaMemcpy(ctx->d_cproj, ctx->h_fft_bridge,
                                   pdim * sizeof(cufftComplex),
                                   cudaMemcpyHostToDevice));
-        } else {
-            CUFFT_CHECK(cufftExecC2C(ctx->plan1d, ctx->d_cproj,
-                                     ctx->d_cproj, CUFFT_INVERSE));
-        }
 
-        // 1c. Apply filter+phase and scatter to H grid
-        filter_and_scatter_kernel<<<gridSize_scatter, blockSize, 0,
-                                    ctx->stream_compute>>>(
-            ctx->d_H, ctx->d_cproj, ctx->d_filphase,
+            filter_and_scatter_kernel<<<gridSize_scatter, blockSize, 0,
+                                        ctx->stream_compute>>>(
+                ctx->d_H, ctx->d_cproj, ctx->d_filphase,
+                ctx->d_COSE, ctx->d_SINE, ctx->d_wtbl,
+                n, pdim, M, ctx->ltbl,
+                ctx->L, ctx->scale, tblspcg);
+        }
+    } else {
+        // Batched cuFFT path: 3 operations instead of 3×n_angles
+
+        // 1a. Load ALL sinogram rows into cproj_batch
+        dim3 loadGrid(gridSize_pdim, n_angles);
+        load_all_sinogram_rows_kernel<<<loadGrid, blockSize, 0,
+                                        ctx->stream_compute>>>(
+            ctx->d_cproj_batch, ctx->d_sino1, ctx->d_sino2,
+            ctx->sinogram_x_dim, pdim, n_angles);
+
+        // 1b. Batched 1D backward FFT (all angles at once)
+        CUFFT_CHECK(cufftExecC2C(ctx->plan1d_batch, ctx->d_cproj_batch,
+                                 ctx->d_cproj_batch, CUFFT_INVERSE));
+
+        // 1c. Batched filter+scatter (all angles at once)
+        dim3 scatterGrid(gridSize_scatter, n_angles);
+        filter_and_scatter_all_kernel<<<scatterGrid, blockSize, 0,
+                                        ctx->stream_compute>>>(
+            ctx->d_H, ctx->d_cproj_batch, ctx->d_filphase,
             ctx->d_COSE, ctx->d_SINE, ctx->d_wtbl,
-            n, pdim, M, ctx->ltbl,
-            ctx->L, ctx->scale, tblspcg);
+            pdim, M, ctx->ltbl,
+            ctx->L, ctx->scale, tblspcg, n_angles);
     }
 
     // ─── Phase 2: 2D forward FFT of H grid ───
