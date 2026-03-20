@@ -201,7 +201,7 @@ __global__ void screen_pairs_kernel(
     int maxWinners) {
 
   // Linearised thread ID -> (voxIdx, oriIdx)
-  int tid = blockIdx.x * blockDim.x + threadIdx.x;
+  long long tid = (long long)blockIdx.x * blockDim.x + threadIdx.x;
   long long totalPairs = (long long)nVoxels * nOrientations;
   if (tid >= totalPairs) return;
 
@@ -226,6 +226,17 @@ __global__ void screen_pairs_kernel(
   float P0_0[3] = { P0[0], P0[1], P0[2] };
 
   GPUOrientHeader hdr = headers[oriIdx];
+
+  // Debug: print info for the first pair
+  int debugPair = (voxIdx == 0 && oriIdx == 0) ? 1 : 0;
+  if (debugPair) {
+    printf("GPU DBG: vox=%d ori=%d nSpots=%d XG=[%.2f,%.2f,%.2f] YG=[%.2f,%.2f,%.2f]\n",
+           voxIdx, oriIdx, hdr.nSpots, XG[0], XG[1], XG[2], YG[0], YG[1], YG[2]);
+    printf("GPU DBG: Lsd0=%.2f ybc0=%.2f zbc0=%.2f P0=[%.2f,%.2f,%.2f]\n",
+           Lsd0, ybc0, zbc0, P0_0[0], P0_0[1], P0_0[2]);
+    printf("GPU DBG: RM=[%.6f,%.6f,%.6f; %.6f,%.6f,%.6f; %.6f,%.6f,%.6f]\n",
+           RM[0],RM[1],RM[2],RM[3],RM[4],RM[5],RM[6],RM[7],RM[8]);
+  }
 
   int OverlapPixels = 0;
   int TotalPixels = 0;
@@ -293,6 +304,14 @@ __global__ void screen_pairs_kernel(
     for (int l = 0; l < 3; l++) {
       YZSpots[l][0] = YZSpotsT[l][0] - refYpx;
       YZSpots[l][1] = YZSpotsT[l][1] - refZpx;
+    }
+
+    if (debugPair && s < 3) {
+      printf("GPU DBG: spot=%d omeBin=%d y=%.2f z=%.2f ref=(%.2f,%.2f) "
+             "absCorner0=(%.2f,%.2f) rel=(%.2f,%.2f)\n",
+             s, omeBin, ythis, zthis, refYpx, refZpx,
+             YZSpotsT[0][0], YZSpotsT[0][1],
+             YZSpots[0][0], YZSpots[0][1]);
     }
 
     // Rasterize triangle to get pixel offsets
@@ -386,7 +405,28 @@ __global__ void screen_pairs_kernel(
       if (pixOob) continue;
       if (allFound) OverlapPixels++;
       TotalPixels++;
+
+      if (debugPair && s < 2 && p == 0) {
+        // Show pixel check details for first spot
+        int MultY0 = (int)floorf(((refYpx - ybc0) * px * (Lsd[0] / Lsd0)) / px
+                                  + ybc[0]) + inPixY[p];
+        int MultZ0 = (int)floorf(((refZpx - zbc0) * px * (Lsd[0] / Lsd0)) / px
+                                  + zbc[0]) + inPixZ[p];
+        long long binNr0 = (long long)0 * nrFiles * nrPixelsY * nrPixelsZ
+                         + (long long)omeBin * nrPixelsY * nrPixelsZ
+                         + (long long)MultY0 * nrPixelsZ + MultZ0;
+        printf("GPU DBG: spot=%d pix=%d inPix=(%d,%d) MultYZ=(%d,%d) binNr=%lld "
+               "allFound=%d\n",
+               s, p, inPixY[p], inPixZ[p], MultY0, MultZ0, binNr0, allFound);
+      }
     }
+  }
+
+  // Debug: report final result for first pair
+  if (debugPair) {
+    float frac = TotalPixels > 0 ? (float)OverlapPixels / (float)TotalPixels : 0;
+    printf("GPU DBG: RESULT vox=%d ori=%d overlap=%d total=%d frac=%.4f\n",
+           voxIdx, oriIdx, OverlapPixels, TotalPixels, frac);
   }
 
   // Compute FracOverlap and check threshold
@@ -497,11 +537,14 @@ extern "C" int nf_gpu_upload_obs_spots(NFGPUContext *ctx,
   cudaSetDevice(ctx->deviceId);
   double t0 = nf_gpu_timer_sec();
 
-  // Upload flat bitfield directly — no reorganization needed
-  // sizeObsSpots = total number of bits; stored as packed uint32_t
-  ctx->obsFlatSize = sizeObsSpots;
-  size_t nWords = (sizeObsSpots + 31) / 32;
+  // sizeObsSpots = number of int words (CPU already divided totalBits by 32).
+  // Total bits = sizeObsSpots * 32.
+  ctx->obsFlatSize = sizeObsSpots * 32;  // Store total number of BITS
+  size_t nWords = (size_t)(sizeObsSpots + 1);  // +1 for safety (same as CPU mmap)
   size_t flatBytes = nWords * sizeof(uint32_t);
+
+  printf("NF GPU: uploading ObsSpotsInfo: %lld words = %zu bytes (%.1f MB)\n",
+         sizeObsSpots, flatBytes, flatBytes / (1024.0 * 1024.0));
 
   CUDA_CHECK(cudaMalloc(&ctx->d_obsFlat, flatBytes));
   CUDA_CHECK(cudaMemcpy(ctx->d_obsFlat, h_obsSpots, flatBytes,
