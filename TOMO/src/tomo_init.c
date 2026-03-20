@@ -378,94 +378,125 @@ int main(int argc, char *argv[]) {
           int this_batch = totalPairs - numSlice;
           if (this_batch > gpu_batch_pairs) this_batch = gpu_batch_pairs;
 
-          // Read and prepare all pairs in this batch
+          // Read and prepare all pairs in this batch (OMP-parallel)
           double tr0 = TOMO_WTIME();
+          int gpu_read_threads = omp_get_max_threads();
+          if (!recon_info_record.are_sinos) gpu_read_threads = 1; // raw data shares fd
+          #pragma omp parallel for schedule(dynamic, 1) num_threads(gpu_read_threads)
           for (int b = 0; b < this_batch; b++) {
+            // Per-thread scratch buffers
+            LOCAL_CONFIG_OPTS thr_info;
+            thr_info.sinogram_adjusted_xdim = information.sinogram_adjusted_xdim;
+            thr_info.sinogram_adjusted_size = information.sinogram_adjusted_size;
+            thr_info.reconstruction_size = information.reconstruction_size;
+            thr_info.shift = information.shift;
+            thr_info.shifted_sinogram =
+                (float *)malloc(sizeof(float) * thr_info.sinogram_adjusted_size);
+            thr_info.sinograms_boundary_padding =
+                (float *)calloc(thr_info.sinogram_adjusted_size * 4, sizeof(float));
+            thr_info.sino_calc_buffer =
+                (float *)malloc(sizeof(float) * thr_info.sinogram_adjusted_xdim *
+                    recon_info_record.theta_list_size);
+            thr_info.reconstructions_boundary_padding =
+                (float *)calloc(thr_info.reconstruction_size * 8, sizeof(float));
+            thr_info.shifted_recon =
+                (float *)malloc(sizeof(float) * thr_info.reconstruction_size);
+            thr_info.recon_calc_buffer =
+                (float *)malloc(sizeof(float) * thr_info.reconstruction_size * 2);
+            thr_info.mean_vect =
+                (float *)malloc(sizeof(float) * recon_info_record.sinogram_ydim);
+            thr_info.mean_sino_line_data =
+                (float *)malloc(sizeof(float) * thr_info.sinogram_adjusted_xdim);
+            thr_info.low_pass_sino_lines_data =
+                (float *)malloc(sizeof(float) * thr_info.sinogram_adjusted_xdim);
+            SINO_READ_OPTS thr_rs;
+            thr_rs.norm_sino = (float *)malloc(
+                sizeof(float) * recon_info_record.sinogram_adjusted_xdim *
+                recon_info_record.theta_list_size);
+
             int pairIdx = numSlice + b;
             // Zero the per-pair buffers
             memset(batch_sino_bp[b], 0, sino_bp_size * sizeof(float));
             memset(batch_recon_bp[b], 0, recon_bp_size * sizeof(float));
 
             // First slice of pair
-            sliceRowNr = startSliceNr + pairIdx * 2;
-            int sliceNr = recon_info_record.slices_to_process[sliceRowNr];
+            int thr_sliceRowNr = startSliceNr + pairIdx * 2;
+            int sliceNr = recon_info_record.slices_to_process[thr_sliceRowNr];
             batch_oldSliceNr[b] = sliceNr;
-            memset(readStruct.norm_sino, 0,
+            memset(thr_rs.norm_sino, 0,
                    sizeof(float) * recon_info_record.sinogram_adjusted_xdim *
                        recon_info_record.theta_list_size);
-            // Reuse the shared information for centering
-            // but copy into per-pair buffers
-            memsets(&information, &recon_info_record);
+            memsets(&thr_info, &recon_info_record);
             if (recon_info_record.are_sinos) {
-              readSino(sliceNr, &recon_info_record, &readStruct);
+              readSino(sliceNr, &recon_info_record, &thr_rs);
             } else {
-              readRaw(sliceNr, &recon_info_record, &readStruct, input_fd);
+              readRaw(sliceNr, &recon_info_record, &thr_rs, input_fd);
             }
             if (recon_info_record.doStripeRemoval) {
               cleanup_sinogram_stripes(
-                  readStruct.norm_sino, recon_info_record.theta_list_size,
+                  thr_rs.norm_sino, recon_info_record.theta_list_size,
                   recon_info_record.sinogram_adjusted_xdim,
                   recon_info_record.stripeSnr, recon_info_record.stripeLaSize,
                   recon_info_record.stripeSmSize, 1);
             }
-            memcpy(information.sino_calc_buffer, readStruct.norm_sino,
-                   sizeof(float) * information.sinogram_adjusted_xdim *
+            memcpy(thr_info.sino_calc_buffer, thr_rs.norm_sino,
+                   sizeof(float) * thr_info.sinogram_adjusted_xdim *
                        recon_info_record.theta_list_size);
-            offt = 0;
-            offsetRecons = 0;
-            reconCentering(&information, &recon_info_record, offt,
+            size_t thr_offt = 0;
+            reconCentering(&thr_info, &recon_info_record, thr_offt,
                            recon_info_record.doLogProj);
-            // Copy centered sinogram into per-pair buffer
             memcpy(batch_sino_bp[b],
-                   &information.sinograms_boundary_padding[offt],
-                   information.sinogram_adjusted_size * 2 * sizeof(float));
+                   &thr_info.sinograms_boundary_padding[thr_offt],
+                   thr_info.sinogram_adjusted_size * 2 * sizeof(float));
 
             // Second slice of pair
-            sliceRowNr++;
-            sliceNr = recon_info_record.slices_to_process[sliceRowNr];
+            thr_sliceRowNr++;
+            sliceNr = recon_info_record.slices_to_process[thr_sliceRowNr];
             batch_sliceNr[b] = sliceNr;
-            memset(readStruct.norm_sino, 0,
+            memset(thr_rs.norm_sino, 0,
                    sizeof(float) * recon_info_record.sinogram_adjusted_xdim *
                        recon_info_record.theta_list_size);
             if (recon_info_record.are_sinos) {
-              readSino(sliceNr, &recon_info_record, &readStruct);
+              readSino(sliceNr, &recon_info_record, &thr_rs);
             } else {
-              readRaw(sliceNr, &recon_info_record, &readStruct, input_fd);
+              readRaw(sliceNr, &recon_info_record, &thr_rs, input_fd);
             }
             if (recon_info_record.doStripeRemoval) {
               cleanup_sinogram_stripes(
-                  readStruct.norm_sino, recon_info_record.theta_list_size,
+                  thr_rs.norm_sino, recon_info_record.theta_list_size,
                   recon_info_record.sinogram_adjusted_xdim,
                   recon_info_record.stripeSnr, recon_info_record.stripeLaSize,
                   recon_info_record.stripeSmSize, 1);
             }
-            memcpy(information.sino_calc_buffer, readStruct.norm_sino,
-                   sizeof(float) * information.sinogram_adjusted_xdim *
+            memcpy(thr_info.sino_calc_buffer, thr_rs.norm_sino,
+                   sizeof(float) * thr_info.sinogram_adjusted_xdim *
                        recon_info_record.theta_list_size);
-            offt = information.sinogram_adjusted_size * 2;
-            offsetRecons = information.reconstruction_size * 4;
-            batch_offsetRecons[b] = offsetRecons;
-            reconCentering(&information, &recon_info_record, offt,
+            thr_offt = thr_info.sinogram_adjusted_size * 2;
+            size_t thr_offsetRecons = thr_info.reconstruction_size * 4;
+            batch_offsetRecons[b] = thr_offsetRecons;
+            reconCentering(&thr_info, &recon_info_record, thr_offt,
                            recon_info_record.doLogProj);
-            memcpy(&batch_sino_bp[b][information.sinogram_adjusted_size * 2],
-                   &information.sinograms_boundary_padding[offt],
-                   information.sinogram_adjusted_size * 2 * sizeof(float));
+            memcpy(&batch_sino_bp[b][thr_info.sinogram_adjusted_size * 2],
+                   &thr_info.sinograms_boundary_padding[thr_offt],
+                   thr_info.sinogram_adjusted_size * 2 * sizeof(float));
 
-            // Set up pointers for the GPU batch call
-            // setSinoAndReconBuffers equivalent: sinogram1 = sino_bp[0], sinogram2 = sino_bp[offt]
-            // These have stride = sinogram_x_dim = information.sinogram_adjusted_xdim * 2
-            setSinoAndReconBuffers(
-                1, &batch_sino_bp[b][0],
-                &batch_recon_bp[b][0],
-                &param);
-            setSinoAndReconBuffers(
-                2, &batch_sino_bp[b][information.sinogram_adjusted_size * 2],
-                &batch_recon_bp[b][offsetRecons],
-                &param);
-            batch_sino1[b] = param.sinogram1;
-            batch_sino2[b] = param.sinogram2;
-            batch_recon1[b] = param.reconstruction1;
-            batch_recon2[b] = param.reconstruction2;
+            // Set up pointers (sinogram1/2 point into batch_sino_bp[b])
+            batch_sino1[b] = &batch_sino_bp[b][0];
+            batch_sino2[b] = &batch_sino_bp[b][thr_info.sinogram_adjusted_size * 2];
+            batch_recon1[b] = &batch_recon_bp[b][0];
+            batch_recon2[b] = &batch_recon_bp[b][thr_offsetRecons];
+
+            // Free per-thread scratch
+            free(thr_info.shifted_sinogram);
+            free(thr_info.sinograms_boundary_padding);
+            free(thr_info.sino_calc_buffer);
+            free(thr_info.reconstructions_boundary_padding);
+            free(thr_info.shifted_recon);
+            free(thr_info.recon_calc_buffer);
+            free(thr_info.mean_vect);
+            free(thr_info.mean_sino_line_data);
+            free(thr_info.low_pass_sino_lines_data);
+            free(thr_rs.norm_sino);
           }
           gpu_t_read += TOMO_WTIME() - tr0;
 
