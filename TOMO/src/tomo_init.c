@@ -390,6 +390,9 @@ int main(int argc, char *argv[]) {
           + 2 * (size_t)param.M0 * sinogram_x_dim_gpu * sizeof(float); // recon1+recon2
         size_t gpu_free = tomo_gpu_get_free_memory();
         int gpu_batch_pairs = (int)((gpu_free * 3 / 4) / per_pair_gpu);
+        // Cap at 50 pairs: larger batches waste pinned host memory (double-buffered)
+        // which evicts page cache and makes file I/O much slower
+        if (gpu_batch_pairs > 50) gpu_batch_pairs = 50;
         if (gpu_batch_pairs > totalPairs) gpu_batch_pairs = totalPairs;
         if (gpu_batch_pairs < 1) gpu_batch_pairs = 1;
         int nBatches = (totalPairs + gpu_batch_pairs - 1) / gpu_batch_pairs;
