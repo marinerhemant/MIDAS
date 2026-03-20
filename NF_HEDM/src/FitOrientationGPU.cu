@@ -107,6 +107,12 @@ struct GPUOrientHeader {
 // GPU context
 // ─────────────────────────────────────────────────────────────
 
+// Coarse occupancy grid: 1 bit per (layer, omeBin, tileY, tileZ)
+// where tileY = pixY >> COARSE_TILE_SHIFT, etc.
+// Fits in L2 (~1.5 MB for typical detector) → fast rejection of empty tiles.
+#define COARSE_TILE_SHIFT 5   // 32×32 pixel tiles
+#define COARSE_TILE_SIZE (1 << COARSE_TILE_SHIFT)
+
 struct NFGPUContext {
   int deviceId;
   int nrPixelsY, nrPixelsZ;
@@ -118,6 +124,11 @@ struct NFGPUContext {
   uint32_t *d_obsFlat;
   long long obsFlatSize;  // Number of bits
   int obsUploaded;
+
+  // Coarse occupancy grid on device (L2-friendly prefilter)
+  uint32_t *d_coarseObs;
+  int coarseTilesY, coarseTilesZ;
+  long long coarseTotalBits;
 
   // Precomputed spot data on device
   GPUSpot *d_spots;
@@ -150,6 +161,19 @@ __device__ static inline int gpu_test_bit(const uint32_t *obs, long long bitIdx)
   int word = (int)(bitIdx / 32);
   int bit  = (int)(bitIdx % 32);
   return (obs[word] >> bit) & 1;
+}
+
+__device__ static inline int gpu_test_coarse_bit(
+    const uint32_t * __restrict__ coarseObs,
+    int layer, int omeBin, int tileY, int tileZ,
+    int nrFiles, int coarseTilesY, int coarseTilesZ) {
+  long long bitIdx = (long long)layer * nrFiles * coarseTilesY * coarseTilesZ
+                   + (long long)omeBin * coarseTilesY * coarseTilesZ
+                   + (long long)tileY * coarseTilesZ
+                   + tileZ;
+  int word = (int)(bitIdx / 32);
+  int bit  = (int)(bitIdx % 32);
+  return (coarseObs[word] >> bit) & 1;
 }
 
 // ═════════════════════════════════════════════════════════════
@@ -194,6 +218,7 @@ __constant__ float c_RM[9];
 
 __global__ void screen_pairs_kernel(
     const uint32_t * __restrict__ obsFlat,
+    const uint32_t * __restrict__ coarseObs,
     const GPUSpot * __restrict__ spots,
     const GPUOrientHeader * __restrict__ headers,
     const float * __restrict__ voxXG,
@@ -203,6 +228,7 @@ __global__ void screen_pairs_kernel(
     int nLayers,
     int nrFiles,
     int nrPixelsY, int nrPixelsZ,
+    int coarseTilesY, int coarseTilesZ,
     float px, float gs,
     float minFracOverlap,
     NFGPUWinner *winners,
@@ -361,6 +387,15 @@ __global__ void screen_pairs_kernel(
                 break;
               }
 
+              // Coarse prefilter: check if tile has any data (L2-resident)
+              int tY = MultY >> COARSE_TILE_SHIFT;
+              int tZ = MultZ >> COARSE_TILE_SHIFT;
+              if (!gpu_test_coarse_bit(coarseObs, layer, omeBin, tY, tZ,
+                                       nrFiles, coarseTilesY, coarseTilesZ)) {
+                allFound = 0;
+                continue;  // still check remaining layers for pixOob
+              }
+
               long long binNr = layerBinBase[layer]
                               + (long long)MultY * nrPixelsZ
                               + MultZ;
@@ -390,6 +425,15 @@ __global__ void screen_pairs_kernel(
         if (MultY >= nrPixelsY || MultY < 0 || MultZ >= nrPixelsZ || MultZ < 0) {
           pixOob = 1;
           break;
+        }
+
+        // Coarse prefilter
+        int tY = MultY >> COARSE_TILE_SHIFT;
+        int tZ = MultZ >> COARSE_TILE_SHIFT;
+        if (!gpu_test_coarse_bit(coarseObs, layer, omeBin, tY, tZ,
+                                 nrFiles, coarseTilesY, coarseTilesZ)) {
+          allFound = 0;
+          continue;
         }
 
         long long binNr = layerBinBase[layer]
@@ -490,6 +534,7 @@ extern "C" void nf_gpu_destroy(NFGPUContext *ctx) {
   cudaSetDevice(ctx->deviceId);
 
   if (ctx->d_obsFlat)       cudaFree(ctx->d_obsFlat);
+  if (ctx->d_coarseObs)     cudaFree(ctx->d_coarseObs);
   if (ctx->d_spots)         cudaFree(ctx->d_spots);
   if (ctx->d_orientHeaders) cudaFree(ctx->d_orientHeaders);
   if (ctx->d_Lsd)           cudaFree(ctx->d_Lsd);
@@ -533,6 +578,70 @@ extern "C" int nf_gpu_upload_obs_spots(NFGPUContext *ctx,
   double dt = nf_gpu_timer_sec() - t0;
   printf("NF GPU: ObsSpotsInfo uploaded (%.1f MB, %.2f s)\n",
          flatBytes / (1024.0 * 1024.0), dt);
+
+  // Build coarse occupancy grid: 1 bit per (layer, omeBin, tileY, tileZ)
+  // A coarse bit is SET if ANY fine bit within the 32×32 pixel tile is set.
+  {
+    double tc0 = nf_gpu_timer_sec();
+    int cTilesY = (ctx->nrPixelsY + COARSE_TILE_SIZE - 1) / COARSE_TILE_SIZE;
+    int cTilesZ = (ctx->nrPixelsZ + COARSE_TILE_SIZE - 1) / COARSE_TILE_SIZE;
+    ctx->coarseTilesY = cTilesY;
+    ctx->coarseTilesZ = cTilesZ;
+
+    long long coarseTotalBits = (long long)ctx->nLayers * ctx->nrFiles * cTilesY * cTilesZ;
+    ctx->coarseTotalBits = coarseTotalBits;
+    long long coarseWords = (coarseTotalBits + 31) / 32;
+    uint32_t *h_coarse = (uint32_t *)calloc(coarseWords + 1, sizeof(uint32_t));
+
+    // Iterate over all set bits in obsFlat and set corresponding coarse bits
+    // obsFlat layout: bit = layer*nrFiles*nPxY*nPxZ + omeBin*nPxY*nPxZ + pixY*nPxZ + pixZ
+    long long frameStride = (long long)ctx->nrPixelsY * ctx->nrPixelsZ;
+    long long layerStride = (long long)ctx->nrFiles * frameStride;
+
+    #pragma omp parallel for schedule(dynamic, 4096)
+    for (long long w = 0; w < (long long)nWords; w++) {
+      uint32_t word = ((const uint32_t *)h_obsSpots)[w];
+      if (word == 0) continue;  // Skip empty words quickly
+
+      for (int b = 0; b < 32; b++) {
+        if (!((word >> b) & 1)) continue;
+
+        long long bitIdx = w * 32 + b;
+        if (bitIdx >= ctx->obsFlatSize) break;
+
+        // Decode flat index → (layer, omeBin, pixY, pixZ)
+        int layer  = (int)(bitIdx / layerStride);
+        long long rem = bitIdx - (long long)layer * layerStride;
+        int omeBin = (int)(rem / frameStride);
+        rem -= (long long)omeBin * frameStride;
+        int pixY = (int)(rem / ctx->nrPixelsZ);
+        int pixZ = (int)(rem % ctx->nrPixelsZ);
+
+        int tileY = pixY >> COARSE_TILE_SHIFT;
+        int tileZ = pixZ >> COARSE_TILE_SHIFT;
+
+        // Set coarse bit (atomic for thread safety)
+        long long cBit = (long long)layer * ctx->nrFiles * cTilesY * cTilesZ
+                       + (long long)omeBin * cTilesY * cTilesZ
+                       + (long long)tileY * cTilesZ
+                       + tileZ;
+        int cWord = (int)(cBit / 32);
+        int cBitOff = (int)(cBit % 32);
+        #pragma omp atomic
+        h_coarse[cWord] |= (1u << cBitOff);
+      }
+    }
+
+    size_t coarseBytes = (coarseWords + 1) * sizeof(uint32_t);
+    CUDA_CHECK(cudaMalloc(&ctx->d_coarseObs, coarseBytes));
+    CUDA_CHECK(cudaMemcpy(ctx->d_coarseObs, h_coarse, coarseBytes,
+                          cudaMemcpyHostToDevice));
+    free(h_coarse);
+
+    double dtc = nf_gpu_timer_sec() - tc0;
+    printf("NF GPU: coarse occupancy grid built (%dx%d tiles, %.2f MB, %.2f s)\n",
+           cTilesY, cTilesZ, coarseBytes / (1024.0 * 1024.0), dtc);
+  }
 
   return 0;
 }
@@ -749,12 +858,14 @@ extern "C" int nf_gpu_screen(NFGPUContext *ctx,
 
   screen_pairs_kernel<<<gridSize, blockSize, 0, ctx->stream>>>(
       ctx->d_obsFlat,
+      ctx->d_coarseObs,
       ctx->d_spots,
       ctx->d_orientHeaders,
       d_XG, d_YG,
       nVoxels, nOrient,
       ctx->nLayers, ctx->nrFiles,
       ctx->nrPixelsY, ctx->nrPixelsZ,
+      ctx->coarseTilesY, ctx->coarseTilesZ,
       ctx->px, ctx->gs,
       (float)minFracOverlap,
       ctx->d_winners, ctx->d_nWinners, ctx->maxWinners);
