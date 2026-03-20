@@ -219,7 +219,8 @@ __device__ static inline void gpu_displacement(
 //  Exact same logic as original, but reads geometry from __constant__.
 // ═════════════════════════════════════════════════════════════
 
-__global__ void screen_pairs_kernel(
+__global__ __launch_bounds__(128, 8)
+void screen_pairs_kernel(
     const uint32_t * __restrict__ obsFlat,
     const GPUSpot * __restrict__ spots,
     const GPUOrientHeader * __restrict__ headers,
@@ -779,7 +780,7 @@ extern "C" int nf_gpu_screen(NFGPUContext *ctx,
   CUDA_CHECK(cudaMalloc(&ctx->d_nWinners, sizeof(int)));
   CUDA_CHECK(cudaMemset(ctx->d_nWinners, 0, sizeof(int)));
 
-  int blockSize = 256;
+  int blockSize = 128;
   double tKernel0 = nf_gpu_timer_sec();
 
   if (ctx->nLayers > 1) {
