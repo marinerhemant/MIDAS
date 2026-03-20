@@ -513,31 +513,50 @@ int tomo_gpu_reconstruct(TomoGPUContext *ctx,
                          float *reconstruction1,
                          float *reconstruction2,
                          long M, long M0, long M02, long pdim) {
-    if (!ctx) return -1;
+    if (!ctx) { fprintf(stderr, "TOMO GPU: ctx is NULL\n"); return -1; }
     if (!ctx->tables_uploaded) {
-        fprintf(stderr, "TOMO GPU: tables not uploaded yet "
-                "(call tomo_gpu_upload_tables first)\n");
+        fprintf(stderr, "TOMO GPU: tables not uploaded yet\n");
         return -1;
     }
     cudaSetDevice(ctx->deviceId);
+
+    fprintf(stderr, "TOMO GPU reconstruct: sinogram1=%p sinogram2=%p recon1=%p recon2=%p\n",
+            (void*)sinogram1, (void*)sinogram2,
+            (void*)reconstruction1, (void*)reconstruction2);
+    fprintf(stderr, "TOMO GPU reconstruct: M=%ld M0=%ld M02=%ld pdim=%ld "
+            "sinogram_x_dim=%lu theta=%d\n",
+            M, M0, M02, pdim, ctx->sinogram_x_dim, ctx->theta_list_size);
+
+    if (!sinogram1 || !sinogram2 || !reconstruction1 || !reconstruction2) {
+        fprintf(stderr, "TOMO GPU: NULL buffer pointer!\n");
+        return -1;
+    }
 
     long pdim2 = pdim >> 1;
     size_t sino_bytes = (size_t)ctx->theta_list_size *
                         ctx->sinogram_x_dim * sizeof(float);
     size_t H_elems = (size_t)(M + 1) * (M + 1);
-    // Reconstruction buffer: M0 rows × sinogram_x_dim columns
     size_t recon_bytes = (size_t)M0 * ctx->sinogram_x_dim * sizeof(float);
+
+    fprintf(stderr, "TOMO GPU: sino_bytes=%zu H_elems=%zu recon_bytes=%zu\n",
+            sino_bytes, H_elems, recon_bytes);
 
     float tblspcg = 2.0f * ctx->ltbl / ctx->L;
 
     // ════════════════════════════════════════════════════════
     // Step 1: H2D — copy sinograms to GPU
     // ════════════════════════════════════════════════════════
+    fprintf(stderr, "TOMO GPU: H2D sino1...\n"); fflush(stderr);
     CUDA_CHECK(cudaMemcpyAsync(ctx->d_sino1, sinogram1, sino_bytes,
                                cudaMemcpyHostToDevice, ctx->stream_h2d));
+    fprintf(stderr, "TOMO GPU: H2D sino2...\n"); fflush(stderr);
     CUDA_CHECK(cudaMemcpyAsync(ctx->d_sino2, sinogram2, sino_bytes,
                                cudaMemcpyHostToDevice, ctx->stream_h2d));
     CUDA_CHECK(cudaEventRecord(ctx->event_h2d_done, ctx->stream_h2d));
+
+    // Sync to ensure H2D completes before we proceed (debug)
+    CUDA_CHECK(cudaStreamSynchronize(ctx->stream_h2d));
+    fprintf(stderr, "TOMO GPU: H2D done\n"); fflush(stderr);
 
     // ════════════════════════════════════════════════════════
     // Step 2: Compute — phase1 + phase2 + phase3
@@ -548,9 +567,6 @@ int tomo_gpu_reconstruct(TomoGPUContext *ctx,
     // Clear H grid
     CUDA_CHECK(cudaMemsetAsync(ctx->d_H, 0, H_elems * sizeof(cufftComplex),
                                ctx->stream_compute));
-
-    // Clear recon buffers (output has stride sinogram_x_dim, may have
-    // uninitialised padding beyond column M0)
     CUDA_CHECK(cudaMemsetAsync(ctx->d_recon1, 0, recon_bytes,
                                ctx->stream_compute));
     CUDA_CHECK(cudaMemsetAsync(ctx->d_recon2, 0, recon_bytes,
@@ -561,6 +577,9 @@ int tomo_gpu_reconstruct(TomoGPUContext *ctx,
     int gridSize_pdim = ((int)pdim + blockSize - 1) / blockSize;
     int gridSize_scatter = ((int)pdim2 + blockSize - 1) / blockSize;
 
+    fprintf(stderr, "TOMO GPU: Phase 1 starting (%d angles)...\n",
+            ctx->theta_list_size); fflush(stderr);
+
     for (int n = 0; n < ctx->theta_list_size; n++) {
         // 1a. Load sinogram row n into cproj
         load_sinogram_row_kernel<<<gridSize_pdim, blockSize, 0,
@@ -568,16 +587,24 @@ int tomo_gpu_reconstruct(TomoGPUContext *ctx,
             ctx->d_cproj, ctx->d_sino1, ctx->d_sino2,
             n, ctx->sinogram_x_dim, pdim);
 
+        // Check for launch error
+        {
+            cudaError_t kerr = cudaGetLastError();
+            if (kerr != cudaSuccess) {
+                fprintf(stderr, "TOMO GPU: load_sinogram_row launch error at angle %d: %s\n",
+                        n, cudaGetErrorString(kerr));
+                return -1;
+            }
+        }
+
         // 1b. 1D backward FFT of cproj
         if (ctx->useFftwBridge) {
-            // FFTW-bridge: D2H → CPU FFTW → H2D
             CUDA_CHECK(cudaStreamSynchronize(ctx->stream_compute));
             CUDA_CHECK(cudaMemcpy(ctx->h_fft_bridge, ctx->d_cproj,
                                   pdim * sizeof(cufftComplex),
                                   cudaMemcpyDeviceToHost));
             {
-                fftwf_complex *fft_buf =
-                    (fftwf_complex *)ctx->h_fft_bridge;
+                fftwf_complex *fft_buf = (fftwf_complex *)ctx->h_fft_bridge;
                 fftwf_plan plan = fftwf_plan_dft_1d(
                     (int)pdim, fft_buf, fft_buf,
                     FFTW_BACKWARD, FFTW_ESTIMATE);
@@ -588,9 +615,13 @@ int tomo_gpu_reconstruct(TomoGPUContext *ctx,
                                   pdim * sizeof(cufftComplex),
                                   cudaMemcpyHostToDevice));
         } else {
-            // cuFFT: in-place backward (inverse) FFT
-            CUFFT_CHECK(cufftExecC2C(ctx->plan1d, ctx->d_cproj,
-                                     ctx->d_cproj, CUFFT_INVERSE));
+            cufftResult fft_res = cufftExecC2C(ctx->plan1d, ctx->d_cproj,
+                                               ctx->d_cproj, CUFFT_INVERSE);
+            if (fft_res != CUFFT_SUCCESS) {
+                fprintf(stderr, "TOMO GPU: cuFFT 1D error at angle %d: %d\n",
+                        n, (int)fft_res);
+                return -1;
+            }
         }
 
         // 1c. Apply filter+phase and scatter to H grid
@@ -604,13 +635,32 @@ int tomo_gpu_reconstruct(TomoGPUContext *ctx,
             n,
             pdim, M, ctx->ltbl,
             ctx->L, ctx->scale, tblspcg);
+
+        {
+            cudaError_t kerr = cudaGetLastError();
+            if (kerr != cudaSuccess) {
+                fprintf(stderr, "TOMO GPU: filter_and_scatter launch error at angle %d: %s\n",
+                        n, cudaGetErrorString(kerr));
+                return -1;
+            }
+        }
+
+        // Print progress every 100 angles
+        if (n == 0 || (n + 1) % 500 == 0) {
+            CUDA_CHECK(cudaStreamSynchronize(ctx->stream_compute));
+            fprintf(stderr, "TOMO GPU: Phase 1 angle %d/%d done\n",
+                    n + 1, ctx->theta_list_size);
+            fflush(stderr);
+        }
     }
 
+    // Sync phase 1
+    CUDA_CHECK(cudaStreamSynchronize(ctx->stream_compute));
+    fprintf(stderr, "TOMO GPU: Phase 1 complete\n"); fflush(stderr);
+
     // ─── Phase 2: 2D forward FFT of H grid ───
-    // CPU: fourn((float*)H + 1, ...) which FFTs M×M complex values at H[1..M*M].
-    // GPU: d_H+1 gives the same contiguous block.
+    fprintf(stderr, "TOMO GPU: Phase 2 (2D FFT)...\n"); fflush(stderr);
     if (ctx->useFftwBridge) {
-        CUDA_CHECK(cudaStreamSynchronize(ctx->stream_compute));
         size_t fft2d_bytes = (size_t)M * M * sizeof(cufftComplex);
         CUDA_CHECK(cudaMemcpy(ctx->h_fft_bridge, ctx->d_H + 1,
                               fft2d_bytes, cudaMemcpyDeviceToHost));
@@ -627,9 +677,13 @@ int tomo_gpu_reconstruct(TomoGPUContext *ctx,
     } else {
         CUFFT_CHECK(cufftExecC2C(ctx->plan2d, ctx->d_H + 1,
                                  ctx->d_H + 1, CUFFT_FORWARD));
+        CUDA_CHECK(cudaStreamSynchronize(ctx->stream_compute));
     }
+    fprintf(stderr, "TOMO GPU: Phase 2 complete\n"); fflush(stderr);
 
     // ─── Phase 3: PSWF extraction ───
+    fprintf(stderr, "TOMO GPU: Phase 3 (extract M0=%ld, stride=%lu)...\n",
+            M0, ctx->sinogram_x_dim); fflush(stderr);
     dim3 block3(16, 16);
     dim3 grid3(((int)M0 + 15) / 16, ((int)M0 + 15) / 16);
     pswf_extract_kernel<<<grid3, block3, 0, ctx->stream_compute>>>(
@@ -637,12 +691,25 @@ int tomo_gpu_reconstruct(TomoGPUContext *ctx,
         ctx->d_winv,
         M, M0, M02, ctx->sinogram_x_dim);
 
+    {
+        cudaError_t kerr = cudaGetLastError();
+        if (kerr != cudaSuccess) {
+            fprintf(stderr, "TOMO GPU: pswf_extract launch error: %s\n",
+                    cudaGetErrorString(kerr));
+            return -1;
+        }
+    }
+    CUDA_CHECK(cudaStreamSynchronize(ctx->stream_compute));
+    fprintf(stderr, "TOMO GPU: Phase 3 complete\n"); fflush(stderr);
+
     CUDA_CHECK(cudaEventRecord(ctx->event_compute_done,
                                ctx->stream_compute));
 
     // ════════════════════════════════════════════════════════
     // Step 3: D2H — copy reconstructions back
     // ════════════════════════════════════════════════════════
+    fprintf(stderr, "TOMO GPU: D2H recon (recon_bytes=%zu)...\n",
+            recon_bytes); fflush(stderr);
     CUDA_CHECK(cudaStreamWaitEvent(ctx->stream_d2h,
                                    ctx->event_compute_done, 0));
 
@@ -652,8 +719,8 @@ int tomo_gpu_reconstruct(TomoGPUContext *ctx,
                                cudaMemcpyDeviceToHost, ctx->stream_d2h));
     CUDA_CHECK(cudaEventRecord(ctx->event_d2h_done, ctx->stream_d2h));
 
-    // Synchronize — caller expects results to be ready when we return
     CUDA_CHECK(cudaStreamSynchronize(ctx->stream_d2h));
+    fprintf(stderr, "TOMO GPU: D2H complete, reconstruct done\n"); fflush(stderr);
 
     return 0;
 }
