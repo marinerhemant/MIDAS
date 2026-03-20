@@ -351,8 +351,8 @@ __global__ void screen_pairs_kernel(
       nInPixels = 1;
     }
 
-    // Check pixels — break on first layer miss
-    // (safe: if allFound=0, it stays 0 regardless of remaining layers)
+    // Check pixels — must check ALL layers even after allFound=0 because
+    // a later layer could set pixOob=1 (excluding this pixel from TotalPixels)
     for (int p = 0; p < nInPixels; p++) {
       int allFound = 1;
       int pixOob = 0;
@@ -375,7 +375,6 @@ __global__ void screen_pairs_kernel(
 
         if (!gpu_test_bit(obsFlat, binNr)) {
           allFound = 0;
-          break;
         }
       }
 
