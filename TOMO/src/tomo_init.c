@@ -322,6 +322,22 @@ int main(int argc, char *argv[]) {
   double start_time = omp_get_wtime();
   if (recon_info_record.n_shifts == 1) {
     printf("Starting processing of all slices with %d threads.\n", numProcs);
+    // mmap sinogram input for CPU path (same optimization as GPU)
+    float *cpu_sino_mmap = NULL;
+    size_t cpu_sino_mmap_len = 0;
+    if (recon_info_record.are_sinos) {
+      int mfd = open(recon_info_record.DataFileName, O_RDONLY);
+      if (mfd >= 0) {
+        struct stat st;
+        fstat(mfd, &st);
+        cpu_sino_mmap_len = st.st_size;
+        cpu_sino_mmap = (float *)mmap(NULL, cpu_sino_mmap_len,
+                                      PROT_READ, MAP_PRIVATE, mfd, 0);
+        close(mfd);
+        if (cpu_sino_mmap == MAP_FAILED) cpu_sino_mmap = NULL;
+        else madvise(cpu_sino_mmap, cpu_sino_mmap_len, MADV_SEQUENTIAL);
+      }
+    }
 #pragma omp parallel num_threads(numProcs)
     {
       int procNr = omp_get_thread_num();
@@ -673,7 +689,11 @@ int main(int argc, char *argv[]) {
         sliceRowNr = startSliceNr + numSlice * 2;
         sliceNr = recon_info_record.slices_to_process[sliceRowNr];
         oldSliceNr = sliceNr;
-        if (recon_info_record.are_sinos) {
+        if (cpu_sino_mmap) {
+          readStruct.init_sinogram = cpu_sino_mmap + (size_t)sliceNr * recon_info_record.det_xdim * recon_info_record.theta_list_size;
+          Pad(&readStruct, &recon_info_record);
+          readStruct.init_sinogram = NULL;
+        } else if (recon_info_record.are_sinos) {
           int rc = readSino(sliceNr, &recon_info_record, &readStruct);
           if (rc == 1)
             continue;
@@ -703,7 +723,11 @@ int main(int argc, char *argv[]) {
             &param);
         sliceRowNr++;
         sliceNr = recon_info_record.slices_to_process[sliceRowNr];
-        if (recon_info_record.are_sinos) {
+        if (cpu_sino_mmap) {
+          readStruct.init_sinogram = cpu_sino_mmap + (size_t)sliceNr * recon_info_record.det_xdim * recon_info_record.theta_list_size;
+          Pad(&readStruct, &recon_info_record);
+          readStruct.init_sinogram = NULL;
+        } else if (recon_info_record.are_sinos) {
           int rc = readSino(sliceNr, &recon_info_record, &readStruct);
           if (rc == 1)
             continue;
@@ -754,6 +778,7 @@ int main(int argc, char *argv[]) {
       if (output_fd != -1) {
         close(output_fd);
       }
+      if (cpu_sino_mmap) munmap(cpu_sino_mmap, cpu_sino_mmap_len);
 #ifdef ENABLE_CUDA
       // GPU path never calls reconstruct(), so FFTW plans were never
       // created.  Only destroy them when the CPU path was used.
