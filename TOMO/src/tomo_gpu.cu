@@ -17,6 +17,13 @@
 #include <stdlib.h>
 #include <string.h>
 #include <math.h>
+#include <time.h>
+
+static double gpu_timer_sec(void) {
+    struct timespec ts;
+    clock_gettime(CLOCK_MONOTONIC, &ts);
+    return ts.tv_sec + ts.tv_nsec * 1e-9;
+}
 
 // Include the CPU header for constants and struct definitions
 extern "C" {
@@ -105,6 +112,18 @@ struct TomoGPUContext {
     cudaEvent_t  event_h2d_done;
     cudaEvent_t  event_compute_done;
     cudaEvent_t  event_d2h_done;
+
+    // Multi-pair batch buffers (lazy-allocated on first batch call)
+    int batch_max_pairs;         // max pairs these buffers can hold
+    float *d_sino1_multi;
+    float *d_sino2_multi;
+    cufftComplex *d_cproj_multi;
+    cufftComplex *d_H_multi;
+    float *d_recon1_multi;
+    float *d_recon2_multi;
+    cufftHandle plan1d_multi;
+    cufftHandle plan2d_multi;
+    int batch_plans_created;
 };
 
 
@@ -511,6 +530,19 @@ void tomo_gpu_destroy(TomoGPUContext *ctx) {
         cufftDestroy(ctx->plan1d_batch);
         cufftDestroy(ctx->plan2d);
     }
+    // Multi-pair batch buffers
+    if (ctx->batch_max_pairs > 0) {
+        cudaFree(ctx->d_sino1_multi);
+        cudaFree(ctx->d_sino2_multi);
+        cudaFree(ctx->d_cproj_multi);
+        cudaFree(ctx->d_H_multi);
+        cudaFree(ctx->d_recon1_multi);
+        cudaFree(ctx->d_recon2_multi);
+        if (ctx->batch_plans_created) {
+            cufftDestroy(ctx->plan1d_multi);
+            cufftDestroy(ctx->plan2d_multi);
+        }
+    }
     if (ctx->h_fft_bridge) cudaFreeHost(ctx->h_fft_bridge);
 
     cudaStreamDestroy(ctx->stream_h2d);
@@ -838,6 +870,9 @@ int tomo_gpu_reconstruct_batch(TomoGPUContext *ctx,
 
     cudaSetDevice(ctx->deviceId);
 
+    double t0 = gpu_timer_sec();
+    double t_alloc = 0, t_plan = 0, t_h2d, t_compute, t_d2h;
+
     long pdim2 = pdim >> 1;
     int n_angles = ctx->theta_list_size;
     size_t sino_per_pair = (size_t)n_angles * ctx->sinogram_x_dim;
@@ -846,75 +881,99 @@ int tomo_gpu_reconstruct_batch(TomoGPUContext *ctx,
     size_t recon_per_pair = (size_t)M0 * ctx->sinogram_x_dim;
     size_t recon_pair_bytes = recon_per_pair * sizeof(float);
     float tblspcg = 2.0f * ctx->ltbl / ctx->L;
-
-    // ── Allocate batch GPU buffers ──
-    float *d_sino1_multi = NULL, *d_sino2_multi = NULL;
-    cufftComplex *d_cproj_multi = NULL, *d_H_multi = NULL;
-    float *d_recon1_multi = NULL, *d_recon2_multi = NULL;
-
     size_t cproj_per_pair = (size_t)n_angles * pdim;
 
-    CUDA_CHECK(cudaMalloc(&d_sino1_multi, (size_t)n_pairs * sino_pair_bytes));
-    CUDA_CHECK(cudaMalloc(&d_sino2_multi, (size_t)n_pairs * sino_pair_bytes));
-    CUDA_CHECK(cudaMalloc(&d_cproj_multi,
-               (size_t)n_pairs * cproj_per_pair * sizeof(cufftComplex)));
-    CUDA_CHECK(cudaMalloc(&d_H_multi,
-               (size_t)n_pairs * H_stride * sizeof(cufftComplex)));
-    CUDA_CHECK(cudaMalloc(&d_recon1_multi, (size_t)n_pairs * recon_pair_bytes));
-    CUDA_CHECK(cudaMalloc(&d_recon2_multi, (size_t)n_pairs * recon_pair_bytes));
+    // ── Lazy-allocate batch GPU buffers (once, reused across all batches) ──
+    if (ctx->batch_max_pairs < n_pairs) {
+        // Free old buffers if resizing
+        if (ctx->batch_max_pairs > 0) {
+            cudaFree(ctx->d_sino1_multi);
+            cudaFree(ctx->d_sino2_multi);
+            cudaFree(ctx->d_cproj_multi);
+            cudaFree(ctx->d_H_multi);
+            cudaFree(ctx->d_recon1_multi);
+            cudaFree(ctx->d_recon2_multi);
+            if (ctx->batch_plans_created) {
+                cufftDestroy(ctx->plan1d_multi);
+                cufftDestroy(ctx->plan2d_multi);
+            }
+        }
 
-    // ── Create batch cuFFT plans ──
-    int pdim_int = (int)pdim;
-    cufftHandle plan1d_multi, plan2d_multi;
+        double ta = gpu_timer_sec();
+        size_t total_gpu_mb = ((size_t)n_pairs * (2*sino_pair_bytes
+            + cproj_per_pair*sizeof(cufftComplex)
+            + H_stride*sizeof(cufftComplex)
+            + 2*recon_pair_bytes)) >> 20;
 
-    // Batched 1D: n_pairs × n_angles transforms of size pdim
-    cufftResult r1 = cufftPlanMany(&plan1d_multi,
-                                    1, &pdim_int,
-                                    NULL, 1, pdim_int,
-                                    NULL, 1, pdim_int,
-                                    CUFFT_C2C, n_pairs * n_angles);
-    // Batched 2D: n_pairs transforms of size M×M
-    int M_int = (int)M;
-    int n2d[2] = {M_int, M_int};
-    int inembed[2] = {M_int, M_int};
-    cufftResult r2 = cufftPlanMany(&plan2d_multi,
-                                    2, n2d,
-                                    inembed, 1, (int)H_stride,
-                                    inembed, 1, (int)H_stride,
-                                    CUFFT_C2C, n_pairs);
-    if (r1 != CUFFT_SUCCESS || r2 != CUFFT_SUCCESS) {
-        fprintf(stderr, "TOMO GPU: batch cuFFT plan creation failed (r1=%d, r2=%d)\n",
-                (int)r1, (int)r2);
-        goto cleanup;
+        CUDA_CHECK(cudaMalloc(&ctx->d_sino1_multi, (size_t)n_pairs * sino_pair_bytes));
+        CUDA_CHECK(cudaMalloc(&ctx->d_sino2_multi, (size_t)n_pairs * sino_pair_bytes));
+        CUDA_CHECK(cudaMalloc(&ctx->d_cproj_multi,
+                   (size_t)n_pairs * cproj_per_pair * sizeof(cufftComplex)));
+        CUDA_CHECK(cudaMalloc(&ctx->d_H_multi,
+                   (size_t)n_pairs * H_stride * sizeof(cufftComplex)));
+        CUDA_CHECK(cudaMalloc(&ctx->d_recon1_multi, (size_t)n_pairs * recon_pair_bytes));
+        CUDA_CHECK(cudaMalloc(&ctx->d_recon2_multi, (size_t)n_pairs * recon_pair_bytes));
+        t_alloc = gpu_timer_sec() - ta;
+
+        double tp = gpu_timer_sec();
+        int pdim_int = (int)pdim;
+        cufftResult r1 = cufftPlanMany(&ctx->plan1d_multi,
+                                        1, &pdim_int,
+                                        NULL, 1, pdim_int,
+                                        NULL, 1, pdim_int,
+                                        CUFFT_C2C, n_pairs * n_angles);
+        int M_int = (int)M;
+        int n2d[2] = {M_int, M_int};
+        int inembed[2] = {M_int, M_int};
+        cufftResult r2 = cufftPlanMany(&ctx->plan2d_multi,
+                                        2, n2d,
+                                        inembed, 1, (int)H_stride,
+                                        inembed, 1, (int)H_stride,
+                                        CUFFT_C2C, n_pairs);
+        if (r1 != CUFFT_SUCCESS || r2 != CUFFT_SUCCESS) {
+            fprintf(stderr, "TOMO GPU: batch cuFFT plan creation failed (r1=%d, r2=%d)\n",
+                    (int)r1, (int)r2);
+            return -1;
+        }
+        cufftSetStream(ctx->plan1d_multi, ctx->stream_compute);
+        cufftSetStream(ctx->plan2d_multi, ctx->stream_compute);
+        ctx->batch_plans_created = 1;
+        t_plan = gpu_timer_sec() - tp;
+
+        ctx->batch_max_pairs = n_pairs;
+        fprintf(stderr, "TOMO GPU: batch buffers allocated (%zu MB, %d pairs): "
+                "alloc=%.3fs plan=%.3fs\n", total_gpu_mb, n_pairs, t_alloc, t_plan);
     }
-    cufftSetStream(plan1d_multi, ctx->stream_compute);
-    cufftSetStream(plan2d_multi, ctx->stream_compute);
 
     // ── H2D: copy all N sinogram pairs to GPU ──
+    double th = gpu_timer_sec();
     for (int i = 0; i < n_pairs; i++) {
         CUDA_CHECK(cudaMemcpyAsync(
-            d_sino1_multi + i * sino_per_pair,
+            ctx->d_sino1_multi + i * sino_per_pair,
             sinogram1s[i], sino_pair_bytes,
             cudaMemcpyHostToDevice, ctx->stream_h2d));
         CUDA_CHECK(cudaMemcpyAsync(
-            d_sino2_multi + i * sino_per_pair,
+            ctx->d_sino2_multi + i * sino_per_pair,
             sinogram2s[i], sino_pair_bytes,
             cudaMemcpyHostToDevice, ctx->stream_h2d));
     }
     CUDA_CHECK(cudaEventRecord(ctx->event_h2d_done, ctx->stream_h2d));
+    CUDA_CHECK(cudaStreamSynchronize(ctx->stream_h2d));
+    t_h2d = gpu_timer_sec() - th;
 
     // ── Compute ──
+    double tc = gpu_timer_sec();
     CUDA_CHECK(cudaStreamWaitEvent(ctx->stream_compute,
                                    ctx->event_h2d_done, 0));
 
     // Clear all H grids and recon buffers
-    CUDA_CHECK(cudaMemsetAsync(d_H_multi, 0,
+    CUDA_CHECK(cudaMemsetAsync(ctx->d_H_multi, 0,
                (size_t)n_pairs * H_stride * sizeof(cufftComplex),
                ctx->stream_compute));
-    CUDA_CHECK(cudaMemsetAsync(d_recon1_multi, 0,
+    CUDA_CHECK(cudaMemsetAsync(ctx->d_recon1_multi, 0,
                (size_t)n_pairs * recon_pair_bytes,
                ctx->stream_compute));
-    CUDA_CHECK(cudaMemsetAsync(d_recon2_multi, 0,
+    CUDA_CHECK(cudaMemsetAsync(ctx->d_recon2_multi, 0,
                (size_t)n_pairs * recon_pair_bytes,
                ctx->stream_compute));
 
@@ -924,74 +983,67 @@ int tomo_gpu_reconstruct_batch(TomoGPUContext *ctx,
         int gridSize_pdim = ((int)pdim + blockSize - 1) / blockSize;
         int gridSize_scatter = ((int)pdim2 + blockSize - 1) / blockSize;
 
-        // 1a. Load all sinogram rows for all pairs
         dim3 loadGrid(gridSize_pdim, n_angles, n_pairs);
         load_all_sinogram_rows_multi_kernel<<<loadGrid, blockSize, 0,
                                               ctx->stream_compute>>>(
-            d_cproj_multi, d_sino1_multi, d_sino2_multi,
+            ctx->d_cproj_multi, ctx->d_sino1_multi, ctx->d_sino2_multi,
             ctx->sinogram_x_dim, pdim, n_angles, n_pairs);
 
-        // 1b. Batched 1D FFT (all pairs × all angles)
-        CUFFT_CHECK(cufftExecC2C(plan1d_multi, d_cproj_multi,
-                                 d_cproj_multi, CUFFT_INVERSE));
+        CUFFT_CHECK(cufftExecC2C(ctx->plan1d_multi, ctx->d_cproj_multi,
+                                 ctx->d_cproj_multi, CUFFT_INVERSE));
 
-        // 1c. Batched scatter (all pairs × all angles → N H grids)
         dim3 scatterGrid(gridSize_scatter, n_angles, n_pairs);
         filter_and_scatter_multi_kernel<<<scatterGrid, blockSize, 0,
                                           ctx->stream_compute>>>(
-            d_H_multi, d_cproj_multi, ctx->d_filphase,
+            ctx->d_H_multi, ctx->d_cproj_multi, ctx->d_filphase,
             ctx->d_COSE, ctx->d_SINE, ctx->d_wtbl,
             pdim, M, ctx->ltbl,
             ctx->L, ctx->scale, tblspcg,
             n_angles, n_pairs, (long)H_stride);
     }
 
-    // Phase 2: batched 2D FFT (all pairs)
-    // Each pair's FFT data starts at d_H_multi + pair * H_stride + 1
-    // With PlanMany, idist = H_stride handles this if we pass d_H_multi + 1
-    CUFFT_CHECK(cufftExecC2C(plan2d_multi, d_H_multi + 1,
-                             d_H_multi + 1, CUFFT_FORWARD));
+    // Phase 2: batched 2D FFT
+    CUFFT_CHECK(cufftExecC2C(ctx->plan2d_multi, ctx->d_H_multi + 1,
+                             ctx->d_H_multi + 1, CUFFT_FORWARD));
 
-    // Phase 3: batched extraction (all pairs)
+    // Phase 3: batched extraction
     {
         dim3 block3(16, 16);
         dim3 grid3(((int)M0 + 15) / 16, ((int)M0 + 15) / 16, n_pairs);
         pswf_extract_multi_kernel<<<grid3, block3, 0,
                                     ctx->stream_compute>>>(
-            d_H_multi, d_recon1_multi, d_recon2_multi,
+            ctx->d_H_multi, ctx->d_recon1_multi, ctx->d_recon2_multi,
             ctx->d_winv, M, M0, M02, ctx->sinogram_x_dim,
             n_pairs, (long)H_stride, (long)recon_per_pair);
     }
 
     CUDA_CHECK(cudaEventRecord(ctx->event_compute_done, ctx->stream_compute));
+    CUDA_CHECK(cudaStreamSynchronize(ctx->stream_compute));
+    t_compute = gpu_timer_sec() - tc;
 
     // ── D2H: copy all results back ──
+    double td = gpu_timer_sec();
     CUDA_CHECK(cudaStreamWaitEvent(ctx->stream_d2h,
                                    ctx->event_compute_done, 0));
     for (int i = 0; i < n_pairs; i++) {
         CUDA_CHECK(cudaMemcpyAsync(
             recon1s[i],
-            d_recon1_multi + i * recon_per_pair,
+            ctx->d_recon1_multi + i * recon_per_pair,
             recon_pair_bytes,
             cudaMemcpyDeviceToHost, ctx->stream_d2h));
         CUDA_CHECK(cudaMemcpyAsync(
             recon2s[i],
-            d_recon2_multi + i * recon_per_pair,
+            ctx->d_recon2_multi + i * recon_per_pair,
             recon_pair_bytes,
             cudaMemcpyDeviceToHost, ctx->stream_d2h));
     }
     CUDA_CHECK(cudaStreamSynchronize(ctx->stream_d2h));
+    t_d2h = gpu_timer_sec() - td;
 
-cleanup:
-    // Destroy batch plans and free buffers
-    cufftDestroy(plan1d_multi);
-    cufftDestroy(plan2d_multi);
-    if (d_sino1_multi)   cudaFree(d_sino1_multi);
-    if (d_sino2_multi)   cudaFree(d_sino2_multi);
-    if (d_cproj_multi)   cudaFree(d_cproj_multi);
-    if (d_H_multi)       cudaFree(d_H_multi);
-    if (d_recon1_multi)  cudaFree(d_recon1_multi);
-    if (d_recon2_multi)  cudaFree(d_recon2_multi);
+    double t_total = gpu_timer_sec() - t0;
+    fprintf(stderr, "TOMO GPU batch(%d pairs): "
+            "H2D=%.3fs compute=%.3fs D2H=%.3fs total=%.3fs\n",
+            n_pairs, t_h2d, t_compute, t_d2h, t_total);
 
     return 0;
 }

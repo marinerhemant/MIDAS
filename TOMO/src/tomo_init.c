@@ -8,6 +8,7 @@
 #include <ctype.h>
 #include <fcntl.h>
 #include <limits.h>
+#include <time.h>
 #include <math.h>
 #include <omp.h>
 #include <stdbool.h>
@@ -368,12 +369,17 @@ int main(int argc, char *argv[]) {
           batch_sino_bp[b] = (float *)calloc(sino_bp_size, sizeof(float));
           batch_recon_bp[b] = (float *)calloc(recon_bp_size, sizeof(float));
         }
+        double gpu_t_read = 0, gpu_t_compute = 0, gpu_t_write = 0;
+        struct timespec ts_tmp;
+        #define TOMO_WTIME() (clock_gettime(CLOCK_MONOTONIC, &ts_tmp), \
+                              ts_tmp.tv_sec + ts_tmp.tv_nsec * 1e-9)
 
         for (numSlice = 0; numSlice < totalPairs; numSlice += gpu_batch_pairs) {
           int this_batch = totalPairs - numSlice;
           if (this_batch > gpu_batch_pairs) this_batch = gpu_batch_pairs;
 
           // Read and prepare all pairs in this batch
+          double tr0 = TOMO_WTIME();
           for (int b = 0; b < this_batch; b++) {
             int pairIdx = numSlice + b;
             // Zero the per-pair buffers
@@ -461,15 +467,19 @@ int main(int argc, char *argv[]) {
             batch_recon1[b] = param.reconstruction1;
             batch_recon2[b] = param.reconstruction2;
           }
+          gpu_t_read += TOMO_WTIME() - tr0;
 
           // Dispatch entire batch to GPU
+          double tc0 = TOMO_WTIME();
           tomo_gpu_reconstruct_batch(gpu_ctx,
               this_batch,
               batch_sino1, batch_sino2,
               batch_recon1, batch_recon2,
               param.M, param.M0, param.M02, param.pdim);
+          gpu_t_compute += TOMO_WTIME() - tc0;
 
           // Post-process all pairs in this batch
+          double tw0 = TOMO_WTIME();
           for (int b = 0; b < this_batch; b++) {
             // Point information buffers at this pair's data
             memcpy(&information.sinograms_boundary_padding[0],
@@ -496,7 +506,11 @@ int main(int argc, char *argv[]) {
             writeRecon(batch_sliceNr[b], &information, &recon_info_record, 0,
                        output_fd);
           }
+          gpu_t_write += TOMO_WTIME() - tw0;
         }
+        fprintf(stderr, "TOMO GPU dispatch: read=%.3fs compute=%.3fs write=%.3fs total=%.3fs\n",
+                gpu_t_read, gpu_t_compute, gpu_t_write,
+                gpu_t_read + gpu_t_compute + gpu_t_write);
 
         // Cleanup batch buffers
         for (int b = 0; b < gpu_batch_pairs; b++) {
