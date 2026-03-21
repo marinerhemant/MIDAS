@@ -1764,9 +1764,22 @@ extern "C" int nf_gpu_fit(NFGPUContext *ctx,
     int oriIdx = winners[j].orientIdx;
     int voxIdx = winners[j].voxelIdx;
 
-    // Convert orient matrix to Euler angles for initial guess
+    // Normalize orient matrix (same as CPU NormalizeMat: divide by cbrt(det))
+    // This ensures det=1 before extracting Euler angles via acos(m[8]).
+    double OMRaw[9], OMNorm[9];
+    for (int k = 0; k < 9; k++) {
+      OMRaw[k] = h_orientMatrix[oriIdx * 9 + k];
+      if (OMRaw[k] == -0.0) OMRaw[k] = 0.0;
+    }
+    double det = OMRaw[0] * (OMRaw[4]*OMRaw[8] - OMRaw[5]*OMRaw[7])
+               - OMRaw[1] * (OMRaw[3]*OMRaw[8] - OMRaw[5]*OMRaw[6])
+               + OMRaw[2] * (OMRaw[3]*OMRaw[7] - OMRaw[4]*OMRaw[6]);
+    double scale = cbrt(det);
+    for (int k = 0; k < 9; k++) OMNorm[k] = OMRaw[k] / scale;
+
+    // Convert normalized orient matrix to Euler angles for initial guess
     double euler[3];
-    orientMat9ToEuler(&h_orientMatrix[oriIdx * 9], euler);
+    orientMat9ToEuler(OMNorm, euler);
 
     // NM works in radians
     h_startEulers[j * 3 + 0] = (float)(euler[0] * deg2rad);
