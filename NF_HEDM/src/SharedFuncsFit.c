@@ -21,6 +21,7 @@
 
 extern int Flag;
 extern double Wedge;
+int g_debugCalcFrac = 0;  // Debug: print per-spot rejection in CalcFracOverlap
 extern double Wavelength;
 extern double OmegaRang[MAX_N_OMEGA_RANGES][2];
 extern int nOmeRang;
@@ -534,6 +535,8 @@ void CalcFracOverlap(const int NrOfFiles, const int nLayers, const int nTspots,
     }
     OmeBin = (int)floor((-OmegaStart + OmegaThis) / OmegaStep);
     if (OmeBin < 0 || OmeBin >= NrOfFiles) {
+      if (g_debugCalcFrac) printf("  CPU spot %d REJECTED: OmeBin=%d (omega=%.4f, start=%.4f, step=%.4f)\n",
+                                  j, OmeBin, OmegaThis, OmegaStart, OmegaStep);
       OutofBounds = 1;
     }
     double OmegaRad = deg2rad * OmegaThis;
@@ -560,6 +563,8 @@ void CalcFracOverlap(const int NrOfFiles, const int nLayers, const int nTspots,
       YZSpotsT[k][1] = (outxyz[2]) / px + zbc;
       if (YZSpotsT[k][0] > NrPixelsY || YZSpotsT[k][0] < 0 ||
           YZSpotsT[k][1] > NrPixelsZ || YZSpotsT[k][1] < 0) {
+        if (g_debugCalcFrac) printf("  CPU spot %d REJECTED: vertex %d OOB (Y=%.2f Z=%.2f, max=%d,%d)\n",
+                                    j, k, YZSpotsT[k][0], YZSpotsT[k][1], NrPixelsY, NrPixelsZ);
         OutofBounds = 1;
         break;
       }
@@ -609,6 +614,8 @@ void CalcFracOverlap(const int NrOfFiles, const int nLayers, const int nTspots,
                 InPixels[k][1];
         if (MultY >= NrPixelsY || MultY < 0 || MultZ >= NrPixelsZ ||
             MultZ < 0) {
+          if (g_debugCalcFrac) printf("  CPU spot %d REJECTED: layer %d pixel OOB (MultY=%d MultZ=%d, max=%d,%d)\n",
+                                      j, Layer, MultY, MultZ, NrPixelsY, NrPixelsZ);
           OutofBounds = 1;
           break;
         }
@@ -641,6 +648,8 @@ void CalcFracOverlap(const int NrOfFiles, const int nLayers, const int nTspots,
   if (TotalPixels > 0) {
     *FracOver = (double)((double)OverlapPixels) / ((double)TotalPixels);
   }
+  if (g_debugCalcFrac) printf("  CPU CalcFracOverlap: nTspots=%d TotalPx=%d OverlapPx=%d frac=%.6f\n",
+                              nTspots, TotalPixels, OverlapPixels, *FracOver);
   // FreeMemMatrixInt(InPixels, NrPixelsGrid); // Hoisted to caller
 }
 

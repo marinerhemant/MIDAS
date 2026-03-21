@@ -188,6 +188,7 @@ double nf_cpu_eval_at_euler(
 
   // Split into CalcDiffractionSpots + CalcFracOverlap to get nTspots
   int nTspots = 0;
+  extern int g_debugCalcFrac;
   CalcDiffractionSpots(
       Lsd[0], ExcludePoleAngle,
       (double (*)[2])OmegaRanges_flat, NoOfOmegaRanges,
@@ -195,6 +196,7 @@ double nf_cpu_eval_at_euler(
       (double (*)[4])BoxSizes_flat, &nTspots, OrientMatIn,
       TheorSpots, (double *)Gs);
 
+  g_debugCalcFrac = 1;
   CalcFracOverlap(
       NrOfFiles, nLayers, nTspots, TheorSpots,
       OmegaStart, OmegaStep,
@@ -205,6 +207,7 @@ double nf_cpu_eval_at_euler(
       (double (*)[3])P0Flat,
       NrPixelsGrid, ObsSpotsInfo, OrientMatIn, &FracOverlap,
       InPixels, NrPixelsY, NrPixelsZ);
+  g_debugCalcFrac = 0;
 
   printf("CPU eval debug: nTspots=%d frac=%.6f\n", nTspots, FracOverlap);
 
