@@ -141,13 +141,6 @@ static double problem_function(unsigned n, const double *x, double *grad,
       Thetas, OmegaRanges, NoOfOmegaRanges, BoxSizes, P0, NrPixelsGrid,
       ObsSpotsInfo, OrientMatIn, &FracOverlap, TheorSpots, f_data->InPixels, Gs,
       f_data->NrPixelsY, f_data->NrPixelsZ);
-  // Debug trace: print Euler angles and fracOverlap for first evaluations
-  static int cpuEvalCounter = 0;
-  if (cpuEvalCounter < 10) {
-    printf("CPU-NM eval %d: euler=(%.6f,%.6f,%.6f) deg, frac=%.6f, obj=%.6f\n",
-           cpuEvalCounter, x2[0], x2[1], x2[2], FracOverlap, 1 - FracOverlap);
-    cpuEvalCounter++;
-  }
   return (1 - FracOverlap);
 }
 
@@ -228,7 +221,7 @@ void FitOrientation(
   config.objective_function = problem_function;
   config.obj_data = trp;
   config.initial_guess = x;
-  config.max_evaluations = 3;  // DEBUG: low eval count for trajectory comparison
+  config.max_evaluations = 5000;
   config.max_time_seconds = 30;
   config.ftol_rel = 1e-5;
   config.xtol_rel = 1e-5;

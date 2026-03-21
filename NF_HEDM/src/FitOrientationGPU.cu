@@ -817,8 +817,6 @@ struct NFFitObjective {
   const float *d_hkls;
   const float *d_Gs;
   int n_hkls;
-  int debugJob;
-  mutable int evalCount;
 
   __device__ float operator()(const float *x, int ndim) const {
     float euler_deg[3] = { x[0] * (float)rad2deg,
@@ -829,11 +827,6 @@ struct NFFitObjective {
         Lsd0, ybc0, zbc0, RM, P0_0,
         nLayers, nrFiles, nrPixelsY, nrPixelsZ, px, gs,
         d_hkls, d_Gs, n_hkls);
-    if (debugJob && evalCount < 10) {
-      printf("GPU-NM eval %d: euler=(%.6f,%.6f,%.6f) deg, frac=%.6f, obj=%.6f\n",
-             evalCount, euler_deg[0], euler_deg[1], euler_deg[2], frac, 1.0f - frac);
-    }
-    const_cast<NFFitObjective*>(this)->evalCount++;
     return 1.0f - frac;
   }
 };
@@ -881,8 +874,6 @@ __global__ void nm_fit_kernel(
   obj.d_hkls = d_hkls;
   obj.d_Gs = d_Gs;
   obj.n_hkls = n_hkls;
-  obj.debugJob = (jobIdx == 0) ? 1 : 0;
-  obj.evalCount = 0;
 
   // Load per-job bounds
   float lo[3], hi[3];
@@ -1671,25 +1662,39 @@ extern "C" int nf_gpu_upload_hkls(NFGPUContext *ctx,
 }
 
 /// Helper: convert orientation matrix (row-major double[9]) to Euler angles (degrees)
+/// Uses sin_cos_to_angle (returns [0,2π]) to match CPU OrientMat2Euler exactly.
+static inline double sin_cos_to_angle(double s, double c) {
+  return (s >= 0.0) ? acos(c) : 2.0 * M_PI - acos(c);
+}
 static void orientMat9ToEuler(const double *m, double euler[3]) {
-  // Same as OrientMat2Euler in FitPosOrStrainsOMP.c
+  // m is row-major [9]: m[row*3+col], matching OrientMat2Euler(m[row][col])
+  // m[0][2]=m[2], m[1][2]=m[5], m[2][0]=m[6], m[2][1]=m[7], m[2][2]=m[8]
   double phi, psi, theta, sph;
-  if (fabs(m[8] - 1.0) < 1e-12) {
+  if (fabs(m[8] - 1.0) < 1e-9) {
     phi = 0;
   } else {
     phi = acos(m[8]);
   }
   sph = sin(phi);
-  if (fabs(sph) < 1e-12) {
+  if (fabs(sph) < 1e-9) {
     psi = 0.0;
-    if (fabs(m[8] - 1.0) < 1e-12) {
-      theta = atan2(m[3], m[0]);
+    if (fabs(m[8] - 1.0) < 1e-9) {
+      // m[1][0]=m[3], m[0][0]=m[0]
+      theta = sin_cos_to_angle(m[3], m[0]);
     } else {
-      theta = atan2(-m[3], m[0]);
+      theta = sin_cos_to_angle(-m[3], m[0]);
     }
   } else {
-    psi = atan2(m[2] / sph, -m[5] / sph);
-    theta = atan2(m[6] / sph, m[7] / sph);
+    // psi = sin_cos_to_angle(m[0][2]/sph, -m[1][2]/sph)
+    double sp = m[2] / sph;
+    double cp = -m[5] / sph;
+    if (fabs(cp) > 1.0) cp = (cp > 0) ? 1.0 : -1.0;
+    psi = sin_cos_to_angle(sp, cp);
+    // theta = sin_cos_to_angle(m[2][0]/sph, m[2][1]/sph)
+    double st = m[6] / sph;
+    double ct = m[7] / sph;
+    if (fabs(ct) > 1.0) ct = (ct > 0) ? 1.0 : -1.0;
+    theta = sin_cos_to_angle(st, ct);
   }
   euler[0] = psi * rad2deg;
   euler[1] = phi * rad2deg;
@@ -1800,7 +1805,7 @@ extern "C" int nf_gpu_fit(NFGPUContext *ctx,
   int blockSize = 64;  // Each thread does heavy work, smaller blocks
   int gridSize = (nJobs + blockSize - 1) / blockSize;
   float ftol = 1e-5f;    // matches CPU ftol_rel
-  int maxIter = 1;      // DEBUG: low iteration count for trajectory comparison
+  int maxIter = 1000;     // CPU uses 5000 evals; each NM iter uses ~4 evals
   float initStep = 0.25f; // 25% of bound range = 0.25 * 2*tolRad ≈ 0.5°
 
   printf("NF GPU: Phase 2 fitting — %d jobs, blockSize=%d\n", nJobs, blockSize);
