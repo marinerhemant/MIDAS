@@ -590,8 +590,10 @@ __device__ static inline int gpu_calc_omega(
   for (int i = 0; i < nsol; i++) {
     float omeRad = omegas[i] * (float)deg2rad;
     float cosO = cosf(omeRad), sinO = sinf(omeRad);
-    // gw1 = gx * cosO + gy * sinO; (not needed for eta calc)
-    float gw2 = -gx * sinO + gy * cosO;
+    // RotateAroundZ: mat = {{cosO, -sinO, 0}, {sinO, cosO, 0}, {0, 0, 1}}
+    // gw[0] = cosO*gx - sinO*gy (unused for eta)
+    // gw[1] = sinO*gx + cosO*gy
+    float gw2 = gx * sinO + gy * cosO;
     float gw3 = gz;
     // CalcEtaAngle
     float r = sqrtf(gw2 * gw2 + gw3 * gw3);
