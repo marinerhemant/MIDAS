@@ -155,6 +155,58 @@ static double problem_function(unsigned n, const double *x, double *grad,
   return (1 - FracOverlap);
 }
 
+/// CPU objective evaluation wrapper — callable from C++ (.cu) code.
+/// Takes Euler angles in RADIANS, returns fracOverlap.
+/// All array params are flat (no VLAs) so it's C++ compatible.
+double nf_cpu_eval_at_euler(
+    const double euler_rad[3],
+    const double XGrain[3], const double YGrain[3],
+    int NrOfFiles, int nLayers, double ExcludePoleAngle,
+    const double *Lsd, long long int SizeObsSpots,
+    const double *RotMatTiltsFlat,  // [9] row-major
+    double OmegaStart, double OmegaStep, double px,
+    const double *ybc, const double *zbc, double gs,
+    const double *hkls_flat, int n_hkls,
+    const double *Thetas, const double *Gs,
+    const double *OmegaRanges_flat, int NoOfOmegaRanges,
+    const double *BoxSizes_flat,
+    const double *P0Flat,  // [nLayers*3]
+    int NrPixelsGrid,
+    int *ObsSpotsInfo,
+    int NrPixelsY, int NrPixelsZ) {
+
+  // Convert euler_rad → degrees → OrientMat
+  double x2[3] = { euler_rad[0] * rad2deg, euler_rad[1] * rad2deg, euler_rad[2] * rad2deg };
+  double OrientMatIn[3][3];
+  Euler2OrientMat(x2, OrientMatIn);
+
+  // We need to call CalcOverlapAccOrient which uses VLA-typed parameters.
+  // At ABI level they're just pointers, so we cast appropriately.
+  double FracOverlap = 0;
+  double *TheorSpots = malloc(MAX_N_SPOTS * 3 * sizeof(double));
+  int **InPixels = allocMatrixIntF(NrPixelsGrid, 2);
+
+  CalcOverlapAccOrient(
+      NrOfFiles, nLayers, ExcludePoleAngle,
+      (double *)Lsd, SizeObsSpots,
+      (double *)XGrain, (double *)YGrain,
+      (double (*)[3])RotMatTiltsFlat,
+      OmegaStart, OmegaStep, px,
+      (double *)ybc, (double *)zbc, gs,
+      (double (*)[4])hkls_flat, n_hkls, (double *)Thetas,
+      (double (*)[2])OmegaRanges_flat, NoOfOmegaRanges,
+      (double (*)[4])BoxSizes_flat,
+      (double (*)[3])P0Flat,
+      NrPixelsGrid, ObsSpotsInfo, OrientMatIn, &FracOverlap,
+      TheorSpots, InPixels, (double *)Gs,
+      NrPixelsY, NrPixelsZ);
+
+  free(TheorSpots);
+  for (int i = 0; i < NrPixelsGrid; i++) free(InPixels[i]);
+  free(InPixels);
+  return FracOverlap;
+}
+
 void FitOrientation(
     const int NrOfFiles, const int nLayers, const double ExcludePoleAngle,
     double Lsd[nLayers], const long long int SizeObsSpots,
@@ -1044,6 +1096,56 @@ int main(int argc, char *argv[]) {
     if (gpu_fit) {
       printf("NF GPU: Phase 2 (GPU fitting) starting, %d winners...\n", nGpuWinners);
       double gpu_fit_t0 = omp_get_wtime();
+
+      // Debug: evaluate CPU objective at GPU job 0's starting Euler angles
+      if (nGpuWinners > 0) {
+        int dbgOriIdx = gpuWinners[0].orientIdx;
+        int dbgVoxIdx = gpuWinners[0].voxelIdx;
+        // Reproduce GPU's orient→Euler conversion
+        double OMRaw[9], OMNorm[9];
+        for (int j = 0; j < 9; j++) {
+          OMRaw[j] = OrientationMatrix[dbgOriIdx * 9 + j];
+          if (OMRaw[j] == -0.0) OMRaw[j] = 0.0;
+        }
+        double det = OMRaw[0]*(OMRaw[4]*OMRaw[8]-OMRaw[5]*OMRaw[7])
+                   - OMRaw[1]*(OMRaw[3]*OMRaw[8]-OMRaw[5]*OMRaw[6])
+                   + OMRaw[2]*(OMRaw[3]*OMRaw[7]-OMRaw[4]*OMRaw[6]);
+        double scale = cbrt(det);
+        for (int j = 0; j < 9; j++) OMNorm[j] = OMRaw[j] / scale;
+        // CPU Euler: OrientMat2Euler (3x3)
+        double OrientIn[3][3];
+        for (int r = 0; r < 3; r++) for (int c = 0; c < 3; c++) OrientIn[r][c] = OMNorm[r*3+c];
+        double cpuEuler[3];
+        OrientMat2Euler(OrientIn, cpuEuler);  // returns radians
+        // Voxel corners
+        double dbgXG[3] = {allXG[dbgVoxIdx*3+0], allXG[dbgVoxIdx*3+1], allXG[dbgVoxIdx*3+2]};
+        double dbgYG[3] = {allYG[dbgVoxIdx*3+0], allYG[dbgVoxIdx*3+1], allYG[dbgVoxIdx*3+2]};
+        // Flatten RotMatTilts
+        double rmFlat[9];
+        for (int r = 0; r < 3; r++) for (int c = 0; c < 3; c++) rmFlat[r*3+c] = RotMatTilts[r][c];
+        // Flatten P0
+        double p0Flat[MAX_LAYERS*3];
+        for (int la = 0; la < nLayers; la++) {
+          p0Flat[la*3+0] = P0[la][0]; p0Flat[la*3+1] = P0[la][1]; p0Flat[la*3+2] = P0[la][2];
+        }
+        // Flatten OmegaRanges and BoxSizes
+        double omeFlat[MAX_N_OMEGA_RANGES*2], boxFlat[MAX_N_OMEGA_RANGES*4];
+        for (int r = 0; r < nOmeRang; r++) {
+          omeFlat[r*2+0] = OmegaRanges[r][0]; omeFlat[r*2+1] = OmegaRanges[r][1];
+          boxFlat[r*4+0] = BoxSizes[r][0]; boxFlat[r*4+1] = BoxSizes[r][1];
+          boxFlat[r*4+2] = BoxSizes[r][2]; boxFlat[r*4+3] = BoxSizes[r][3];
+        }
+        double cpuFrac = nf_cpu_eval_at_euler(
+            cpuEuler, dbgXG, dbgYG,
+            nrFiles, nLayers, ExcludePoleAngle,
+            Lsd, SizeObsSpots, rmFlat,
+            OmegaStart, OmegaStep, px, ybc, zbc, gs_v,
+            (double*)hkls, n_hkls, Thetas, Gs,
+            omeFlat, nOmeRang, boxFlat, p0Flat,
+            NrPixelsGrid_v, ObsSpotsInfo, NrPixelsY, NrPixelsZ);
+        printf("CPU eval at GPU job 0: voxIdx=%d oriIdx=%d euler_deg=(%.6f,%.6f,%.6f) frac=%.6f\n",
+               dbgVoxIdx, dbgOriIdx, cpuEuler[0]*rad2deg, cpuEuler[1]*rad2deg, cpuEuler[2]*rad2deg, cpuFrac);
+      }
 
       // Upload HKL data for on-device spot computation
       int rc = nf_gpu_upload_hkls(gpuCtx, hkls, Gs, n_hkls,
