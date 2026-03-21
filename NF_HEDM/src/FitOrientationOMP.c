@@ -186,20 +186,27 @@ double nf_cpu_eval_at_euler(
   double *TheorSpots = malloc(MAX_N_SPOTS * 3 * sizeof(double));
   int **InPixels = allocMatrixIntF(NrPixelsGrid, 2);
 
-  CalcOverlapAccOrient(
-      NrOfFiles, nLayers, ExcludePoleAngle,
-      (double *)Lsd, SizeObsSpots,
-      (double *)XGrain, (double *)YGrain,
-      (double (*)[3])RotMatTiltsFlat,
-      OmegaStart, OmegaStep, px,
-      (double *)ybc, (double *)zbc, gs,
-      (double (*)[4])hkls_flat, n_hkls, (double *)Thetas,
+  // Split into CalcDiffractionSpots + CalcFracOverlap to get nTspots
+  int nTspots = 0;
+  CalcDiffractionSpots(
+      Lsd[0], ExcludePoleAngle,
       (double (*)[2])OmegaRanges_flat, NoOfOmegaRanges,
-      (double (*)[4])BoxSizes_flat,
+      (double (*)[4])hkls_flat, n_hkls, (double *)Thetas,
+      (double (*)[4])BoxSizes_flat, &nTspots, OrientMatIn,
+      TheorSpots, (double *)Gs);
+
+  CalcFracOverlap(
+      NrOfFiles, nLayers, nTspots, TheorSpots,
+      OmegaStart, OmegaStep,
+      (double *)XGrain, (double *)YGrain,
+      (double *)Lsd, SizeObsSpots,
+      (double (*)[3])RotMatTiltsFlat, px,
+      (double *)ybc, (double *)zbc, gs,
       (double (*)[3])P0Flat,
       NrPixelsGrid, ObsSpotsInfo, OrientMatIn, &FracOverlap,
-      TheorSpots, InPixels, (double *)Gs,
-      NrPixelsY, NrPixelsZ);
+      InPixels, NrPixelsY, NrPixelsZ);
+
+  printf("CPU eval debug: nTspots=%d frac=%.6f\n", nTspots, FracOverlap);
 
   free(TheorSpots);
   for (int i = 0; i < NrPixelsGrid; i++) free(InPixels[i]);

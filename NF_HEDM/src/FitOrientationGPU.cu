@@ -801,6 +801,66 @@ __device__ static float gpu_calc_frac_overlap(
   return (TotalPixels > 0) ? (float)OverlapPixels / (float)TotalPixels : 0.0f;
 }
 
+// Debug version that also prints TotalPixels/OverlapPixels
+__device__ static float gpu_calc_frac_overlap_debug(
+    const float euler_deg[3],
+    const float XG[3], const float YG[3],
+    const uint32_t *obsFlat,
+    float Lsd0, float ybc0, float zbc0,
+    const float RM[9], const float P0_0[3],
+    int nLayers, int nrFiles, int nrPixelsY, int nrPixelsZ,
+    float px, float gs,
+    const float *d_hkls, const float *d_Gs, int n_hkls,
+    int *out_total, int *out_overlap, int *out_nspots) {
+  float frac = gpu_calc_frac_overlap(
+      euler_deg, XG, YG, obsFlat,
+      Lsd0, ybc0, zbc0, RM, P0_0,
+      nLayers, nrFiles, nrPixelsY, nrPixelsZ, px, gs,
+      d_hkls, d_Gs, n_hkls);
+  // Re-evaluate to count — hacky but avoids modifying gpu_calc_frac_overlap signature
+  // Actually let's inline a counting version:
+  float orient[3][3];
+  gpu_euler2orient(euler_deg, orient);
+  int OverlapPixels = 0, TotalPixels = 0, nSpots = 0;
+  for (int ih = 0; ih < n_hkls; ih++) {
+    float Ghkl[3] = { d_hkls[ih*4+0], d_hkls[ih*4+1], d_hkls[ih*4+2] };
+    float Gc[3];
+    Gc[0] = orient[0][0]*Ghkl[0] + orient[0][1]*Ghkl[1] + orient[0][2]*Ghkl[2];
+    Gc[1] = orient[1][0]*Ghkl[0] + orient[1][1]*Ghkl[1] + orient[1][2]*Ghkl[2];
+    Gc[2] = orient[2][0]*Ghkl[0] + orient[2][1]*Ghkl[1] + orient[2][2]*Ghkl[2];
+    float v = d_Gs[ih];
+    float omegas[4], etas[4];
+    int nsol = gpu_calc_omega(Gc[0], Gc[1], Gc[2], v, omegas, etas);
+    for (int isol = 0; isol < nsol; isol++) {
+      float Omega = omegas[isol], Eta = etas[isol];
+      float EtaAbs = fabsf(Eta);
+      if (EtaAbs < c_excludePoleAngle || (180.0f-EtaAbs) < c_excludePoleAngle) continue;
+      float lenG = sqrtf(Gc[0]*Gc[0]+Gc[1]*Gc[1]+Gc[2]*Gc[2]);
+      float sinTheta = v/lenG; if (fabsf(sinTheta) > 1.0f) continue;
+      float theta = asinf(sinTheta);
+      float RingRadius = c_Lsd[0]*tanf(2.0f*theta);
+      float etaRad = Eta*(float)deg2rad;
+      float yl = -sinf(etaRad)*RingRadius, zl = cosf(etaRad)*RingRadius;
+      int keepSpot = 0;
+      for (int r = 0; r < c_nOmeRanges; r++) {
+        if (Omega > c_omegaRanges[r][0] && Omega < c_omegaRanges[r][1] &&
+            yl > c_boxSizes[r][0] && yl < c_boxSizes[r][1] &&
+            zl > c_boxSizes[r][2] && zl < c_boxSizes[r][3]) { keepSpot=1; break; }
+      }
+      if (!keepSpot) continue;
+      nSpots++;
+    }
+  }
+  // The TotalPixels/OverlapPixels are the same as frac computation (single-pixel path)
+  *out_nspots = nSpots;
+  *out_total = (int)roundf(frac > 0 ? nSpots * frac / (frac) : 0);  // approximate
+  // Actually just compute it properly:
+  // frac = overlap/total, so total~=nSpots (single pixel), overlap=frac*total
+  *out_total = nSpots;  // In single-pixel mode, TotalPixels = nSpots
+  *out_overlap = (int)roundf(frac * nSpots);
+  return frac;
+}
+
 // ═════════════════════════════════════════════════════════════
 //  DOUBLE-PRECISION VARIANTS (optional, enabled by MIDAS_GPU_DOUBLE=1)
 //  These match CPU CalcOverlapAccOrient exactly.
@@ -1089,9 +1149,24 @@ struct NFFitObjective {
           d_hkls, d_Gs, n_hkls);
     }
     if (debugJob && evalCount < 10) {
-      printf("GPU-NM eval %d: euler_rad=(%.9f,%.9f,%.9f) euler_deg=(%.6f,%.6f,%.6f) frac=%.6f obj=%.6f%s\n",
-             evalCount, x[0], x[1], x[2], euler_deg[0], euler_deg[1], euler_deg[2], frac, 1.0f - frac,
-             useDouble ? " [DOUBLE]" : "");
+      if (evalCount == 0) {
+        // Detailed count on first eval for debugging
+        int dbg_total, dbg_overlap, dbg_nspots;
+        gpu_calc_frac_overlap_debug(
+            euler_deg, XG, YG, obsFlat,
+            Lsd0, ybc0, zbc0, RM, P0_0,
+            nLayers, nrFiles, nrPixelsY, nrPixelsZ, px, gs,
+            d_hkls, d_Gs, n_hkls,
+            &dbg_total, &dbg_overlap, &dbg_nspots);
+        printf("GPU-NM eval 0: euler_deg=(%.6f,%.6f,%.6f) frac=%.6f nSpots=%d TotalPx=%d OverlapPx=%d%s\n",
+               euler_deg[0], euler_deg[1], euler_deg[2], frac,
+               dbg_nspots, dbg_total, dbg_overlap,
+               useDouble ? " [DOUBLE]" : "");
+      } else {
+        printf("GPU-NM eval %d: euler_rad=(%.9f,%.9f,%.9f) euler_deg=(%.6f,%.6f,%.6f) frac=%.6f obj=%.6f%s\n",
+               evalCount, x[0], x[1], x[2], euler_deg[0], euler_deg[1], euler_deg[2], frac, 1.0f - frac,
+               useDouble ? " [DOUBLE]" : "");
+      }
     }
     const_cast<NFFitObjective*>(this)->evalCount++;
     return 1.0f - frac;
