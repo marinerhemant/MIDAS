@@ -97,7 +97,12 @@ struct my_func_data {
   double *Gs;
   int NrPixelsY;
   int NrPixelsZ;
+  int debugTrace;  // >0 = print first N evals
+  int evalCount;
 };
+
+// Global debug flag: when >0, next FitOrientation call enables trace
+static int g_debugNextFit = 0;
 
 static double problem_function(unsigned n, const double *x, double *grad,
                                void *f_data_trial) {
@@ -141,6 +146,12 @@ static double problem_function(unsigned n, const double *x, double *grad,
       Thetas, OmegaRanges, NoOfOmegaRanges, BoxSizes, P0, NrPixelsGrid,
       ObsSpotsInfo, OrientMatIn, &FracOverlap, TheorSpots, f_data->InPixels, Gs,
       f_data->NrPixelsY, f_data->NrPixelsZ);
+  // Debug trace: print evals when trace is enabled
+  if (f_data->debugTrace > 0 && f_data->evalCount < 10) {
+    printf("CPU-NM eval %d: euler_rad=(%.9f,%.9f,%.9f) euler_deg=(%.6f,%.6f,%.6f) frac=%.6f obj=%.6f\n",
+           f_data->evalCount, x[0], x[1], x[2], x2[0], x2[1], x2[2], FracOverlap, 1 - FracOverlap);
+    f_data->evalCount++;
+  }
   return (1 - FracOverlap);
 }
 
@@ -210,6 +221,9 @@ void FitOrientation(
   f_data.Gs = Gs;
   f_data.NrPixelsY = NrPixelsY;
   f_data.NrPixelsZ = NrPixelsZ;
+  f_data.debugTrace = g_debugNextFit;
+  f_data.evalCount = 0;
+  if (g_debugNextFit) g_debugNextFit = 0;  // one-shot
   struct my_func_data *f_datat;
   f_datat = &f_data;
   void *trp = (struct my_func_data *)f_datat;
@@ -1228,6 +1242,17 @@ gpu_fit_fallback:
 
           int fitNevals = 0, fitRetcode = 0;
           double EulerOutA, EulerOutB, EulerOutC, FracOut;
+
+          // Debug: activate trace for first voxel's first winner
+          static int cpuDebugDone = 0;
+          if (!cpuDebugDone && wi == 0) {
+            int voxBase = gpuWinners[gpuIdx].voxelIdx;
+            printf("CPU FIT debug: voxIdx=%d oriIdx=%d euler_deg=(%.6f,%.6f,%.6f) XG=(%.4f,%.4f,%.4f)\n",
+                   voxBase, oriIdx, EulerIn[0]*57.2957795130823, EulerIn[1]*57.2957795130823, EulerIn[2]*57.2957795130823,
+                   XG_v[0], XG_v[1], XG_v[2]);
+            g_debugNextFit = 1;  // enable trace for next FitOrientation call
+          }
+
           FitOrientation(nrFiles, nLayers, ExcludePoleAngle, Lsd, SizeObsSpots,
                          XG_v, YG_v, RotMatTilts, OmegaStart, OmegaStep, px,
                          ybc, zbc, gs_v, OmegaRanges, nOmeRang, BoxSizes,
@@ -1235,6 +1260,7 @@ gpu_fit_fallback:
                          &EulerOutA, &EulerOutB, &EulerOutC, &FracOut,
                          hkls, Thetas, n_hkls, Gs,
                          &fitNevals, &fitRetcode, NrPixelsY, NrPixelsZ);
+          if (!cpuDebugDone && wi == 0) cpuDebugDone = 1;
           totalNloptEvals += fitNevals;
 
           double Fractions = 1 - FracOut;
