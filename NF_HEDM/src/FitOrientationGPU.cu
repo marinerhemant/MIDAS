@@ -801,7 +801,7 @@ __device__ static float gpu_calc_frac_overlap(
   return (TotalPixels > 0) ? (float)OverlapPixels / (float)TotalPixels : 0.0f;
 }
 
-// Debug version that also prints TotalPixels/OverlapPixels
+// Debug version that prints per-spot TotalPixels/OverlapPixels and layer rejections
 __device__ static float gpu_calc_frac_overlap_debug(
     const float euler_deg[3],
     const float XG[3], const float YG[3],
@@ -812,16 +812,11 @@ __device__ static float gpu_calc_frac_overlap_debug(
     float px, float gs,
     const float *d_hkls, const float *d_Gs, int n_hkls,
     int *out_total, int *out_overlap, int *out_nspots) {
-  float frac = gpu_calc_frac_overlap(
-      euler_deg, XG, YG, obsFlat,
-      Lsd0, ybc0, zbc0, RM, P0_0,
-      nLayers, nrFiles, nrPixelsY, nrPixelsZ, px, gs,
-      d_hkls, d_Gs, n_hkls);
-  // Re-evaluate to count — hacky but avoids modifying gpu_calc_frac_overlap signature
-  // Actually let's inline a counting version:
+
   float orient[3][3];
   gpu_euler2orient(euler_deg, orient);
-  int OverlapPixels = 0, TotalPixels = 0, nSpots = 0;
+  int OverlapPixels = 0, TotalPixels = 0, spotNr = 0;
+
   for (int ih = 0; ih < n_hkls; ih++) {
     float Ghkl[3] = { d_hkls[ih*4+0], d_hkls[ih*4+1], d_hkls[ih*4+2] };
     float Gc[3];
@@ -848,17 +843,75 @@ __device__ static float gpu_calc_frac_overlap_debug(
             zl > c_boxSizes[r][2] && zl < c_boxSizes[r][3]) { keepSpot=1; break; }
       }
       if (!keepSpot) continue;
-      nSpots++;
+
+      // OmeBin check
+      int omeBin = (int)floorf((-c_omegaStart + Omega) / c_omegaStep);
+      if (omeBin < 0 || omeBin >= nrFiles) {
+        printf("  GPU spot %d REJECTED: OmeBin=%d (omega=%.4f)\n", spotNr, omeBin, Omega);
+        spotNr++; continue;
+      }
+
+      // Vertex displacement check
+      float sinOme = sinf(Omega*(float)deg2rad), cosOme = cosf(Omega*(float)deg2rad);
+      float YZSpotsT[3][2];
+      int oob = 0;
+      for (int k = 0; k < 3; k++) {
+        float Displ_Y, Displ_Z;
+        gpu_displacement(XG[k], YG[k], Lsd0, yl, zl, sinOme, cosOme, &Displ_Y, &Displ_Z);
+        float P1x = RM[0*3+1]*Displ_Y + RM[0*3+2]*Displ_Z;
+        float P1y = RM[1*3+1]*Displ_Y + RM[1*3+2]*Displ_Z;
+        float P1z = RM[2*3+1]*Displ_Y + RM[2*3+2]*Displ_Z;
+        float ABCx = P1x-P0_0[0], ABCy = P1y-P0_0[1], ABCz = P1z-P0_0[2];
+        float outY = P0_0[1] - (ABCy*P0_0[0])/ABCx;
+        float outZ = P0_0[2] - (ABCz*P0_0[0])/ABCx;
+        YZSpotsT[k][0] = outY/px + ybc0;
+        YZSpotsT[k][1] = outZ/px + zbc0;
+        if (YZSpotsT[k][0] > nrPixelsY || YZSpotsT[k][0] < 0 ||
+            YZSpotsT[k][1] > nrPixelsZ || YZSpotsT[k][1] < 0) { oob=1; break; }
+      }
+      if (oob) {
+        printf("  GPU spot %d REJECTED: vertex OOB\n", spotNr);
+        spotNr++; continue;
+      }
+
+      // Reference pixel
+      float refP1x = RM[0*3+1]*yl + RM[0*3+2]*zl;
+      float refP1y = RM[1*3+1]*yl + RM[1*3+2]*zl;
+      float refP1z = RM[2*3+1]*yl + RM[2*3+2]*zl;
+      float refABCx = refP1x-P0_0[0], refABCy = refP1y-P0_0[1], refABCz = refP1z-P0_0[2];
+      float refOutY = P0_0[1] - (refABCy*P0_0[0])/refABCx;
+      float refOutZ = P0_0[2] - (refABCz*P0_0[0])/refABCx;
+      float refYpx = refOutY/px + ybc0;
+      float refZpx = refOutZ/px + zbc0;
+
+      // Layer check
+      int pixOob = 0;
+      for (int layer = 0; layer < nLayers; layer++) {
+        int lbY = (int)floorf(((refYpx - ybc0)*px*(c_Lsd[layer]/Lsd0))/px + c_ybc[layer]);
+        int lbZ = (int)floorf(((refZpx - zbc0)*px*(c_Lsd[layer]/Lsd0))/px + c_zbc[layer]);
+        float YZSpots[3][2];
+        for (int l = 0; l < 3; l++) { YZSpots[l][0] = YZSpotsT[l][0]-refYpx; YZSpots[l][1] = YZSpotsT[l][1]-refZpx; }
+        int py = (int)roundf((YZSpots[0][0]+YZSpots[1][0]+YZSpots[2][0])/3.0f);
+        int pz = (int)roundf((YZSpots[0][1]+YZSpots[1][1]+YZSpots[2][1])/3.0f);
+        int MultY = lbY + py, MultZ = lbZ + pz;
+        if (MultY >= nrPixelsY || MultY < 0 || MultZ >= nrPixelsZ || MultZ < 0) {
+          printf("  GPU spot %d REJECTED: layer %d pixel OOB (MultY=%d MultZ=%d, max=%d,%d) refYpx=%.2f refZpx=%.2f\n",
+                 spotNr, layer, MultY, MultZ, nrPixelsY, nrPixelsZ, refYpx, refZpx);
+          pixOob = 1; break;
+        }
+      }
+      if (!pixOob) TotalPixels++;
+      spotNr++;
     }
   }
-  // The TotalPixels/OverlapPixels are the same as frac computation (single-pixel path)
-  *out_nspots = nSpots;
-  *out_total = (int)roundf(frac > 0 ? nSpots * frac / (frac) : 0);  // approximate
-  // Actually just compute it properly:
-  // frac = overlap/total, so total~=nSpots (single pixel), overlap=frac*total
-  *out_total = nSpots;  // In single-pixel mode, TotalPixels = nSpots
-  *out_overlap = (int)roundf(frac * nSpots);
-  return frac;
+
+  *out_nspots = spotNr;
+  *out_total = TotalPixels;
+  *out_overlap = (int)roundf(TotalPixels > 0 ? ((float)TotalPixels * gpu_calc_frac_overlap(
+      euler_deg, XG, YG, obsFlat, Lsd0, ybc0, zbc0, RM, P0_0,
+      nLayers, nrFiles, nrPixelsY, nrPixelsZ, px, gs, d_hkls, d_Gs, n_hkls)) : 0);
+  return gpu_calc_frac_overlap(euler_deg, XG, YG, obsFlat, Lsd0, ybc0, zbc0, RM, P0_0,
+      nLayers, nrFiles, nrPixelsY, nrPixelsZ, px, gs, d_hkls, d_Gs, n_hkls);
 }
 
 // ═════════════════════════════════════════════════════════════
