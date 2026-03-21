@@ -1367,12 +1367,12 @@ __global__ void nm_fit_kernel(
     int best = 0, worst = 0, sw = 0;
     for (int i = 1; i <= 3; i++) {
       if (fvals_d[i] < fvals_d[best]) best = i;
-      if (fvals_d[i] > fvals_d[worst]) worst = i;
+      if (fvals_d[i] >= fvals_d[worst]) worst = i;  // >= matches NLOPT tie-break (last max wins)
     }
     sw = best;
     for (int i = 0; i <= 3; i++) {
       if (i == worst) continue;
-      if (fvals_d[i] > fvals_d[sw]) sw = i;
+      if (fvals_d[i] >= fvals_d[sw]) sw = i;
     }
 
     double fl = fvals_d[best];
