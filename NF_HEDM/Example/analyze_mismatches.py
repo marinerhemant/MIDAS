@@ -2,6 +2,8 @@
 """Analyze mismatching voxels between CPU and GPU mic files."""
 import struct, sys, math
 
+show_all = '--all' in sys.argv
+
 def read_mic(fn):
     with open(fn, 'rb') as f:
         data = f.read()
@@ -19,27 +21,26 @@ print(f"{'VoxIdx':>6} {'CPU_frac':>9} {'GPU_frac':>9} {'Δfrac':>8} {'CPU_win':>
 print("-" * 110)
 
 categories = {'gpu_better': 0, 'cpu_better': 0, 'both_low': 0,
-              'screen_diff': 0, 'orientation_diff': 0}
+              'screen_diff': 0, 'orientation_diff': 0, 'match': 0, 'both_zero': 0}
 
-mismatches = []
+rows = []
 for i in range(n):
     cf, gf = cpu[i][10], gpu[i][10]
-    if cf == 0 and gf == 0:
-        continue
-    if abs(cf - gf) < 0.02:
-        continue
-
-    # Mismatch found
     cwin = int(cpu[i][1])
     gwin = int(gpu[i][1])
-    cori = int(cpu[i][0])  # bestRowNr (orientation index)
+    cori = int(cpu[i][0])
     gori = int(gpu[i][0])
     xs = cpu[i][3]
     ys = cpu[i][4]
     delta = gf - cf
 
-    # Categorize
-    if cwin != gwin:
+    if cf == 0 and gf == 0:
+        cat = "BOTH_ZERO"
+        categories['both_zero'] += 1
+    elif abs(cf - gf) < 0.02:
+        cat = "MATCH"
+        categories['match'] += 1
+    elif cwin != gwin:
         cat = "SCREEN_DIFF"
         categories['screen_diff'] += 1
     elif cori != gori:
@@ -48,33 +49,38 @@ for i in range(n):
     elif gf > cf:
         cat = "GPU_BETTER"
         categories['gpu_better'] += 1
-    elif cf > gf:
+    else:
         cat = "CPU_BETTER"
         categories['cpu_better'] += 1
-    else:
-        cat = "TIED"
 
-    if cf < 0.04 and gf < 0.04:
+    if cf < 0.04 and gf < 0.04 and cat not in ('MATCH', 'BOTH_ZERO'):
         cat += " (both_low)"
         categories['both_low'] += 1
 
-    mismatches.append((i, cf, gf, delta, cwin, gwin, cori, gori, xs, ys, cat))
+    rows.append((i, cf, gf, delta, cwin, gwin, cori, gori, xs, ys, cat))
 
-# Sort by |delta| descending
-mismatches.sort(key=lambda x: -abs(x[3]))
+# Filter and sort
+if show_all:
+    display = rows
+else:
+    display = [r for r in rows if r[10] not in ('MATCH', 'BOTH_ZERO')]
+    display.sort(key=lambda x: -abs(x[3]))
 
-for m in mismatches:
+for m in display:
     i, cf, gf, delta, cwin, gwin, cori, gori, xs, ys, cat = m
     print(f"{i:6d} {cf:9.6f} {gf:9.6f} {delta:+8.5f} {cwin:7d} {gwin:7d} {cori:7d} {gori:7d} {xs:7.1f} {ys:7.1f} {cat}")
 
-print(f"\n=== Summary ({len(mismatches)} mismatches) ===")
-print(f"  Screen diff (different winner count): {categories['screen_diff']}")
-print(f"  Orientation diff (same count, diff ori): {categories['orientation_diff']}")
-print(f"  GPU better (same ori, GPU frac > CPU):  {categories['gpu_better']}")
-print(f"  CPU better (same ori, CPU frac > GPU):  {categories['cpu_better']}")
-print(f"  Both low (<0.04, near MinFrac threshold): {categories['both_low']}")
+total = categories['match'] + categories['screen_diff'] + categories['orientation_diff'] + categories['gpu_better'] + categories['cpu_better']
+nmis = categories['screen_diff'] + categories['orientation_diff'] + categories['gpu_better'] + categories['cpu_better']
+print(f"\n=== Summary ({n} voxels, {total} active, {nmis} mismatches) ===")
+print(f"  Both zero:    {categories['both_zero']}")
+print(f"  Match (<2%):  {categories['match']}")
+print(f"  Screen diff:  {categories['screen_diff']}")
+print(f"  Ori diff:     {categories['orientation_diff']}")
+print(f"  GPU better:   {categories['gpu_better']}")
+print(f"  CPU better:   {categories['cpu_better']}")
 
-# Distribution of |delta|
-deltas = [abs(m[3]) for m in mismatches]
+deltas = [abs(r[3]) for r in rows if r[10] not in ('MATCH', 'BOTH_ZERO')]
 if deltas:
     print(f"\n  |Δfrac| stats: min={min(deltas):.4f} median={sorted(deltas)[len(deltas)//2]:.4f} max={max(deltas):.4f}")
+
