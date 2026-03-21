@@ -1791,6 +1791,45 @@ extern "C" int nf_gpu_fit(NFGPUContext *ctx,
       h_voxXG[j * 3 + k] = (float)h_XGrains[voxIdx * 3 + k];
       h_voxYG[j * 3 + k] = (float)h_YGrains[voxIdx * 3 + k];
     }
+
+    // Debug: orient matrix round-trip for first job
+    if (j == 0) {
+      printf("NF GPU FIT DEBUG job 0: oriIdx=%d voxIdx=%d det=%.9f scale=%.9f\n", oriIdx, voxIdx, det, scale);
+      printf("  OMRaw:  [%.6f %.6f %.6f; %.6f %.6f %.6f; %.6f %.6f %.6f]\n",
+             OMRaw[0],OMRaw[1],OMRaw[2],OMRaw[3],OMRaw[4],OMRaw[5],OMRaw[6],OMRaw[7],OMRaw[8]);
+      printf("  OMNorm: [%.6f %.6f %.6f; %.6f %.6f %.6f; %.6f %.6f %.6f]\n",
+             OMNorm[0],OMNorm[1],OMNorm[2],OMNorm[3],OMNorm[4],OMNorm[5],OMNorm[6],OMNorm[7],OMNorm[8]);
+      printf("  Euler(deg): psi=%.6f phi=%.6f theta=%.6f\n", euler[0], euler[1], euler[2]);
+      // Reconstruct orient matrix from Euler to check round-trip (host-side)
+      double psi_r=euler[0]*deg2rad, phi_r=euler[1]*deg2rad, theta_r=euler[2]*deg2rad;
+      double cps=cos(psi_r), sps=sin(psi_r), cph=cos(phi_r), sph=sin(phi_r), cth=cos(theta_r), sth=sin(theta_r);
+      double recon[9] = {
+        cth*cps - sth*cph*sps, -cth*cph*sps - sth*cps, sph*sps,
+        cth*sps + sth*cph*cps,  cth*cph*cps - sth*sps, -sph*cps,
+        sth*sph,                cth*sph,                 cph
+      };
+      printf("  Recon:  [%.6f %.6f %.6f; %.6f %.6f %.6f; %.6f %.6f %.6f]\n",
+             recon[0],recon[1],recon[2],recon[3],recon[4],recon[5],recon[6],recon[7],recon[8]);
+      printf("  XG=(%.4f,%.4f,%.4f) YG=(%.4f,%.4f,%.4f)\n",
+             h_voxXG[j*3+0], h_voxXG[j*3+1], h_voxXG[j*3+2],
+             h_voxYG[j*3+0], h_voxYG[j*3+1], h_voxYG[j*3+2]);
+
+      // Print precomputed screening spots for this orientation
+      // These are the known-good spot positions that the screening kernel used
+      GPUOrientHeader h_hdr;
+      cudaMemcpy(&h_hdr, &ctx->d_orientHeaders[oriIdx], sizeof(GPUOrientHeader), cudaMemcpyDeviceToHost);
+      int nShow = (h_hdr.nSpots < 5) ? h_hdr.nSpots : 5;
+      GPUSpot h_dbgSpots[5];
+      cudaMemcpy(h_dbgSpots, &ctx->d_spots[h_hdr.spotOffset], nShow * sizeof(GPUSpot), cudaMemcpyDeviceToHost);
+      printf("  Screening spots for orient %d (first %d of %d):\n", oriIdx, nShow, h_hdr.nSpots);
+      for (int s = 0; s < nShow; s++) {
+        if (!h_dbgSpots[s].valid) continue;
+        float ome = atan2f(h_dbgSpots[s].sinOme, h_dbgSpots[s].cosOme) * (float)rad2deg;
+        printf("    spot[%d]: y=%.2f z=%.2f ome=%.2f omeBin=%d refYpx=%.2f refZpx=%.2f\n",
+               s, h_dbgSpots[s].y, h_dbgSpots[s].z, ome, h_dbgSpots[s].omeBin,
+               h_dbgSpots[s].refYpx, h_dbgSpots[s].refZpx);
+      }
+    }
   }
 
   // Per-job bounds: euler ± eulerTol (matching CPU NLOPT setup)
