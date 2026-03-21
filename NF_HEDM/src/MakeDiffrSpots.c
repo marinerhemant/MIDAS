@@ -262,7 +262,6 @@ CalcDiffrSpots_Furnace(RealType OrientMatrix[3][3], RealType distance,
         spots[spotnr * 3 + 1] = zl;
         spots[spotnr * 3 + 2] = omegas[i];
         spotnr++;
-        spotnr++;
       }
     }
   }

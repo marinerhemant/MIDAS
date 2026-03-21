@@ -615,21 +615,13 @@ __device__ static float gpu_calc_frac_overlap(
     const float RM[9], const float P0_0[3],
     int nLayers, int nrFiles, int nrPixelsY, int nrPixelsZ,
     float px, float gs,
-    const float *d_hkls, const float *d_Gs, int n_hkls,
-    int debugPrint = 0) {
+    const float *d_hkls, const float *d_Gs, int n_hkls) {
 
   // 1. Euler → orientation matrix
   float orient[3][3];
   gpu_euler2orient(euler_deg, orient);
 
   int OverlapPixels = 0, TotalPixels = 0;
-  int nValidSpots = 0;
-
-  if (debugPrint) {
-    printf("  gpu_frac: euler=(%.2f,%.2f,%.2f) Lsd0=%.2f ybc0=%.2f zbc0=%.2f P0=(%.2f,%.2f,%.2f) nLayers=%d nHkls=%d px=%.3f gs=%.3f\n",
-           euler_deg[0], euler_deg[1], euler_deg[2],
-           Lsd0, ybc0, zbc0, P0_0[0], P0_0[1], P0_0[2], nLayers, n_hkls, px, gs);
-  }
 
   // 2. For each HKL, compute spots
   for (int ih = 0; ih < n_hkls; ih++) {
@@ -653,21 +645,12 @@ __device__ static float gpu_calc_frac_overlap(
           (180.0f - EtaAbs) < c_excludePoleAngle) continue;
 
       // Ring radius and spot position
-      float Lsd_dist = c_Lsd[0];  // Use Lsd[0] for ring radius
-      // Thetas already baked into Gs, need ringrad from theta
-      // RingRadius = distance * tan(2 * theta)
-      // But theta = Thetas[ih] which is asin(wavelength/(2*d))
-      // We need to recompute or pass ringrad. Simpler: position from eta + ringrad.
-      float ringRad = Lsd_dist * tanf(2.0f * acosf(-v / sqrtf(Gc[0]*Gc[0] + Gc[1]*Gc[1] + Gc[2]*Gc[2])));
-      // Actually, theta is already in Thetas. We can approximate:
-      // We passed Gs[ih] = sin(theta)*|Ghkl| to CalcOmega. But we need
-      // RingRadius = Lsd * tan(2*theta). Since v = sin(theta)*|G|:
+      float Lsd_dist = c_Lsd[0];
       float lenG = sqrtf(Gc[0]*Gc[0] + Gc[1]*Gc[1] + Gc[2]*Gc[2]);
       float sinTheta = v / lenG;
       if (fabsf(sinTheta) > 1.0f) continue;
       float theta = asinf(sinTheta);
-      float tan2th = tanf(2.0f * theta);
-      float RingRadius = Lsd_dist * tan2th;
+      float RingRadius = Lsd_dist * tanf(2.0f * theta);
 
       // Spot position (yl, zl) from eta + ring radius
       float etaRad = Eta * (float)deg2rad;
@@ -689,8 +672,6 @@ __device__ static float gpu_calc_frac_overlap(
       // OmeBin
       int omeBin = (int)floorf((-c_omegaStart + Omega) / c_omegaStep);
       if (omeBin < 0 || omeBin >= nrFiles) continue;
-
-      nValidSpots++;
 
       float sinOme = sinf(Omega * (float)deg2rad);
       float cosOme = cosf(Omega * (float)deg2rad);
@@ -753,13 +734,6 @@ __device__ static float gpu_calc_frac_overlap(
         int pz = (int)roundf((YZSpots[0][1]+YZSpots[1][1]+YZSpots[2][1])/3.0f);
         int allFound = 1;
         int pixOob = 0;
-
-        // Debug print for first spot
-        if (debugPrint && nValidSpots <= 3) {
-          printf("  spot %d: yl=%.2f zl=%.2f ome=%.2f omeBin=%d refYpx=%.2f refZpx=%.2f py=%d pz=%d\n",
-                 nValidSpots, yl, zl, Omega, omeBin, refYpx, refZpx, py, pz);
-        }
-
         for (int layer = 0; layer < nLayers; layer++) {
           int MultY = layerBaseY[layer] + py;
           int MultZ = layerBaseZ[layer] + pz;
@@ -767,14 +741,7 @@ __device__ static float gpu_calc_frac_overlap(
             pixOob = 1; break;
           }
           long long binNr = layerBinBase[layer] + (long long)MultY*nrPixelsZ + MultZ;
-          int bitVal = gpu_test_bit(obsFlat, binNr) ? 1 : 0;
-
-          if (debugPrint && nValidSpots <= 3) {
-            printf("    layer %d: MultY=%d MultZ=%d binNr=%lld bit=%d\n",
-                   layer, MultY, MultZ, binNr, bitVal);
-          }
-
-          if (!bitVal) { allFound = 0; break; }
+          if (!gpu_test_bit(obsFlat, binNr)) { allFound = 0; break; }
         }
         if (!pixOob) {
           if (allFound) OverlapPixels++;
@@ -833,41 +800,32 @@ __device__ static float gpu_calc_frac_overlap(
     }
   }
 
-  if (debugPrint) {
-    printf("  gpu_frac: nValidSpots=%d OverlapPixels=%d TotalPixels=%d frac=%.6f\n",
-           nValidSpots, OverlapPixels, TotalPixels,
-           TotalPixels > 0 ? (float)OverlapPixels / (float)TotalPixels : 0.0f);
-  }
   return (TotalPixels > 0) ? (float)OverlapPixels / (float)TotalPixels : 0.0f;
 }
 
 /// GPU NM fitting functor: evaluates 1 - fracOverlap for trial Euler angles.
 struct NFFitObjective {
   const uint32_t *obsFlat;
-  const float *XG;    // [3] for this voxel
-  const float *YG;    // [3] for this voxel
+  const float *XG;
+  const float *YG;
   float Lsd0, ybc0, zbc0;
   float RM[9];
   float P0_0[3];
   int nLayers, nrFiles, nrPixelsY, nrPixelsZ;
   float px, gs;
-  const float *d_hkls;  // [n_hkls * 4] in global memory
-  const float *d_Gs;    // [n_hkls] in global memory
+  const float *d_hkls;
+  const float *d_Gs;
   int n_hkls;
-  mutable int evalCount;  // for debug printing
-  int debugJob;           // 1 = print diagnostics for this job
 
   __device__ float operator()(const float *x, int ndim) const {
     float euler_deg[3] = { x[0] * (float)rad2deg,
                            x[1] * (float)rad2deg,
                            x[2] * (float)rad2deg };
-    int doPrint = (debugJob && evalCount == 0) ? 1 : 0;
-    const_cast<NFFitObjective*>(this)->evalCount++;
     float frac = gpu_calc_frac_overlap(
         euler_deg, XG, YG, obsFlat,
         Lsd0, ybc0, zbc0, RM, P0_0,
         nLayers, nrFiles, nrPixelsY, nrPixelsZ, px, gs,
-        d_hkls, d_Gs, n_hkls, doPrint);
+        d_hkls, d_Gs, n_hkls);
     return 1.0f - frac;
   }
 };
@@ -915,8 +873,6 @@ __global__ void nm_fit_kernel(
   obj.d_hkls = d_hkls;
   obj.d_Gs = d_Gs;
   obj.n_hkls = n_hkls;
-  obj.evalCount = 0;
-  obj.debugJob = (jobIdx == 0) ? 1 : 0;  // debug only first job
 
   // Load per-job bounds
   float lo[3], hi[3];
@@ -937,15 +893,6 @@ __global__ void nm_fit_kernel(
     if (simplex[0][j] > hi[j]) simplex[0][j] = hi[j];
   }
   fvals[0] = obj(simplex[0], 3);
-
-  // Debug print for first 5 jobs
-  if (jobIdx < 5) {
-    printf("GPU-NM job %d: start=(%.6f,%.6f,%.6f) deg, bounds=[%.6f±%.6f], fval0=%.6f (frac=%.6f)\n",
-           jobIdx,
-           x0[0]*(float)rad2deg, x0[1]*(float)rad2deg, x0[2]*(float)rad2deg,
-           x0[0]*(float)rad2deg, (hi[0]-lo[0])*0.5f*(float)rad2deg,
-           fvals[0], 1.0f - fvals[0]);
-  }
 
   for (int i = 1; i <= 3; i++) {
     for (int j = 0; j < 3; j++) simplex[i][j] = simplex[0][j];
@@ -1792,45 +1739,6 @@ extern "C" int nf_gpu_fit(NFGPUContext *ctx,
     for (int k = 0; k < 3; k++) {
       h_voxXG[j * 3 + k] = (float)h_XGrains[voxIdx * 3 + k];
       h_voxYG[j * 3 + k] = (float)h_YGrains[voxIdx * 3 + k];
-    }
-
-    // Debug: orient matrix round-trip for first job
-    if (j == 0) {
-      printf("NF GPU FIT DEBUG job 0: oriIdx=%d voxIdx=%d det=%.9f scale=%.9f\n", oriIdx, voxIdx, det, scale);
-      printf("  OMRaw:  [%.6f %.6f %.6f; %.6f %.6f %.6f; %.6f %.6f %.6f]\n",
-             OMRaw[0],OMRaw[1],OMRaw[2],OMRaw[3],OMRaw[4],OMRaw[5],OMRaw[6],OMRaw[7],OMRaw[8]);
-      printf("  OMNorm: [%.6f %.6f %.6f; %.6f %.6f %.6f; %.6f %.6f %.6f]\n",
-             OMNorm[0],OMNorm[1],OMNorm[2],OMNorm[3],OMNorm[4],OMNorm[5],OMNorm[6],OMNorm[7],OMNorm[8]);
-      printf("  Euler(deg): psi=%.6f phi=%.6f theta=%.6f\n", euler[0], euler[1], euler[2]);
-      // Reconstruct orient matrix from Euler to check round-trip (host-side)
-      double psi_r=euler[0]*deg2rad, phi_r=euler[1]*deg2rad, theta_r=euler[2]*deg2rad;
-      double cps=cos(psi_r), sps=sin(psi_r), cph=cos(phi_r), sph=sin(phi_r), cth=cos(theta_r), sth=sin(theta_r);
-      double recon[9] = {
-        cth*cps - sth*cph*sps, -cth*cph*sps - sth*cps, sph*sps,
-        cth*sps + sth*cph*cps,  cth*cph*cps - sth*sps, -sph*cps,
-        sth*sph,                cth*sph,                 cph
-      };
-      printf("  Recon:  [%.6f %.6f %.6f; %.6f %.6f %.6f; %.6f %.6f %.6f]\n",
-             recon[0],recon[1],recon[2],recon[3],recon[4],recon[5],recon[6],recon[7],recon[8]);
-      printf("  XG=(%.4f,%.4f,%.4f) YG=(%.4f,%.4f,%.4f)\n",
-             h_voxXG[j*3+0], h_voxXG[j*3+1], h_voxXG[j*3+2],
-             h_voxYG[j*3+0], h_voxYG[j*3+1], h_voxYG[j*3+2]);
-
-      // Print precomputed screening spots for this orientation
-      // These are the known-good spot positions that the screening kernel used
-      GPUOrientHeader h_hdr;
-      cudaMemcpy(&h_hdr, &ctx->d_orientHeaders[oriIdx], sizeof(GPUOrientHeader), cudaMemcpyDeviceToHost);
-      int nShow = (h_hdr.nSpots < 5) ? h_hdr.nSpots : 5;
-      GPUSpot h_dbgSpots[5];
-      cudaMemcpy(h_dbgSpots, &ctx->d_spots[h_hdr.spotOffset], nShow * sizeof(GPUSpot), cudaMemcpyDeviceToHost);
-      printf("  Screening spots for orient %d (first %d of %d):\n", oriIdx, nShow, h_hdr.nSpots);
-      for (int s = 0; s < nShow; s++) {
-        if (!h_dbgSpots[s].valid) continue;
-        float ome = atan2f(h_dbgSpots[s].sinOme, h_dbgSpots[s].cosOme) * (float)rad2deg;
-        printf("    spot[%d]: y=%.2f z=%.2f ome=%.2f omeBin=%d refYpx=%.2f refZpx=%.2f\n",
-               s, h_dbgSpots[s].y, h_dbgSpots[s].z, ome, h_dbgSpots[s].omeBin,
-               h_dbgSpots[s].refYpx, h_dbgSpots[s].refZpx);
-      }
     }
   }
 
