@@ -145,17 +145,66 @@ fi  # end CPU benchmark
 # --- Run GPU benchmark ---
 echo ""
 echo "=== STEP 3: GPU Benchmark ==="
-time "$BIN_DIR/FitOrientationGPU" "$PARAM_FILE" 0 1 "$NCPUS" 2>&1 | tee gpu_bench.log
-if [ "$SCREEN_ONLY" = 0 ]; then
-  cp Au_bin_Reconstructed.mic gpu_benchmark.mic
+
+if [ "$GPU_DOUBLE" = 1 ] && [ "$SCREEN_ONLY" = 0 ]; then
+  # Run FLOAT mode first
+  echo "--- STEP 3a: GPU Float Mode ---"
+  unset MIDAS_GPU_DOUBLE
+  export MIDAS_GPU_FIT=1
+  time "$BIN_DIR/FitOrientationGPU" "$PARAM_FILE" 0 1 "$NCPUS" 2>&1 | tee gpu_bench_float.log
+  cp Au_bin_Reconstructed.mic gpu_float.mic
+  echo "GPU float done."
+
+  # Run DOUBLE mode
+  echo ""
+  echo "--- STEP 3b: GPU Double Mode ---"
+  export MIDAS_GPU_DOUBLE=1
+  time "$BIN_DIR/FitOrientationGPU" "$PARAM_FILE" 0 1 "$NCPUS" 2>&1 | tee gpu_bench_double.log
+  cp Au_bin_Reconstructed.mic gpu_double.mic
+  cp Au_bin_Reconstructed.mic gpu_benchmark.mic  # default for parity check
+  echo "GPU double done."
+else
+  time "$BIN_DIR/FitOrientationGPU" "$PARAM_FILE" 0 1 "$NCPUS" 2>&1 | tee gpu_bench.log
+  if [ "$SCREEN_ONLY" = 0 ]; then
+    cp Au_bin_Reconstructed.mic gpu_benchmark.mic
+  fi
+  echo "GPU done."
 fi
-echo "GPU done."
 
 # --- Parity check (only if Phase 2 ran) ---
 if [ "$SCREEN_ONLY" = 0 ]; then
   echo ""
   echo "=== STEP 4: Parity Check ==="
-  python3 -c "
+
+  if [ "$GPU_DOUBLE" = 1 ] && [ -f gpu_float.mic ] && [ -f gpu_double.mic ]; then
+    # Parity check for both modes
+    for MODE_NAME in float double; do
+      echo "--- ${MODE_NAME} mode ---"
+      python3 -c "
+import struct
+def read_mic(fn):
+    with open(fn,'rb') as f: data=f.read()
+    n=len(data)//(11*8)
+    return [struct.unpack_from('11d',data,i*11*8) for i in range(n)]
+cpu=read_mic('cpu_benchmark.mic')
+gpu=read_mic('gpu_${MODE_NAME}.mic')
+n=min(len(cpu),len(gpu))
+match=mismatch=both0=0
+for i in range(n):
+    cf,gf=cpu[i][10],gpu[i][10]
+    if cf==0 and gf==0: both0+=1
+    elif abs(cf-gf)<0.02: match+=1
+    else: mismatch+=1
+active=match+mismatch
+print(f'Rows:       {n}')
+print(f'Both zero:  {both0}')
+print(f'Match(<2%): {match}')
+print(f'Mismatch:   {mismatch}')
+print(f'Match rate: {match/active*100:.1f}%' if active>0 else 'Match rate: N/A')
+"
+    done
+  else
+    python3 -c "
 import struct
 def read_mic(fn):
     with open(fn,'rb') as f: data=f.read()
@@ -177,13 +226,18 @@ print(f'Match(<2%): {match}')
 print(f'Mismatch:   {mismatch}')
 print(f'Match rate: {match/active*100:.1f}%' if active>0 else 'Match rate: N/A')
 "
+  fi
 
   # Spatial parity maps
   echo ""
   echo "=== STEP 5: Spatial Parity Maps ==="
   PARITY_SCRIPT="$SCRIPT_DIR/parity_maps.py"
   if [ -f "$PARITY_SCRIPT" ]; then
-    python3 "$PARITY_SCRIPT" cpu_benchmark.mic gpu_benchmark.mic 225
+    if [ "$GPU_DOUBLE" = 1 ] && [ -f gpu_float.mic ] && [ -f gpu_double.mic ]; then
+      python3 "$PARITY_SCRIPT" cpu_benchmark.mic gpu_float.mic gpu_double.mic 225
+    else
+      python3 "$PARITY_SCRIPT" cpu_benchmark.mic gpu_benchmark.mic 225
+    fi
   else
     echo "WARNING: parity_maps.py not found at $PARITY_SCRIPT"
   fi

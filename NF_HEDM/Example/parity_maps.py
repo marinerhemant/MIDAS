@@ -1,12 +1,10 @@
 #!/usr/bin/env python3
 """
 Spatial parity maps: compare CPU vs GPU .mic files.
-Produces two PNG maps:
-  1. Confidence difference (|cpu_frac - gpu_frac|)
-  2. Misorientation angle (degrees) between CPU and GPU Euler angles
 
-Usage: python3 parity_maps.py cpu_benchmark.mic gpu_benchmark.mic [SGNum]
-  SGNum defaults to 225 (cubic, FCC aluminum)
+Usage:
+  2-panel: python3 parity_maps.py cpu.mic gpu.mic [SGNum]
+  4-panel: python3 parity_maps.py cpu.mic gpu_float.mic gpu_double.mic [SGNum]
 """
 
 import sys
@@ -15,10 +13,9 @@ import numpy as np
 from math import sin, cos, acos, sqrt, fabs
 
 rad2deg = 57.2957795130823
-deg2rad = 0.0174532925199433
 EPS = 1e-12
 
-# ── Misorientation functions (from utils/CalcMiso.py) ──
+# ── Misorientation (from CalcMiso.py, cubic only) ──
 
 CubSym = [[1,0,0,0],[0.70711,0.70711,0,0],[0,1,0,0],[0.70711,-0.70711,0,0],
            [0.70711,0,0.70711,0],[0,0,1,0],[0.70711,0,-0.70711,0],
@@ -76,119 +73,154 @@ def _bringdown(qin, sym):
             maxc = qt[0]; best = qt
     return _normalize(best)
 
-def calc_miso_deg(euler1_rad, euler2_rad, sg=225):
-    """Misorientation angle in degrees between two Euler-angle sets (radians)."""
+def calc_miso_deg(euler1_rad, euler2_rad):
     q1 = _om2quat(_euler2om(euler1_rad))
     q2 = _om2quat(_euler2om(euler2_rad))
-    # For cubic (SG 195-230)
-    sym = CubSym
-    q1f = _bringdown(q1, sym)
-    q2f = _bringdown(q2, sym)
+    q1f = _bringdown(q1, CubSym)
+    q2f = _bringdown(q2, CubSym)
     q1f[0] = -q1f[0]
     qp = _qprod(q1f, q2f)
-    mv = _bringdown(qp, sym)
+    mv = _bringdown(qp, CubSym)
     if mv[0] > 1: mv[0] = 1
     return 2*acos(mv[0])*rad2deg
 
 
 def read_mic(fn):
-    """Read binary .mic file: 11 doubles per row."""
-    with open(fn, 'rb') as f:
-        data = f.read()
+    with open(fn, 'rb') as f: data = f.read()
     n = len(data) // (11 * 8)
-    rows = []
-    for i in range(n):
-        row = struct.unpack_from('11d', data, i * 11 * 8)
-        rows.append(row)
-    return rows
+    return [struct.unpack_from('11d', data, i * 11 * 8) for i in range(n)]
 
 
-def main():
-    if len(sys.argv) < 3:
-        print("Usage: python3 parity_maps.py cpu.mic gpu.mic [SGNum]")
-        sys.exit(1)
-
-    cpu_file = sys.argv[1]
-    gpu_file = sys.argv[2]
-    sg_num = int(sys.argv[3]) if len(sys.argv) > 3 else 225
-
-    cpu = read_mic(cpu_file)
-    gpu = read_mic(gpu_file)
-    n = min(len(cpu), len(gpu))
-    print(f"Read {n} voxels from each .mic file (SGNum={sg_num})")
-
-    # Fields: row[3]=x, row[4]=y, row[7:10]=euler (rad), row[10]=frac
-    xs = np.array([r[3] for r in cpu[:n]])
-    ys = np.array([r[4] for r in cpu[:n]])
+def compute_parity(cpu, gpu, n):
+    """Returns (frac_diff, miso_deg, active_mask, stats_dict)."""
     cpu_frac = np.array([r[10] for r in cpu[:n]])
     gpu_frac = np.array([r[10] for r in gpu[:n]])
     frac_diff = np.abs(cpu_frac - gpu_frac)
 
-    # Misorientation
-    miso_deg = np.zeros(n)
+    miso = np.zeros(n)
     for i in range(n):
-        if cpu_frac[i] == 0 and gpu_frac[i] == 0:
-            continue
-        e1 = [cpu[i][7], cpu[i][8], cpu[i][9]]
-        e2 = [gpu[i][7], gpu[i][8], gpu[i][9]]
+        if cpu_frac[i] == 0 and gpu_frac[i] == 0: continue
         try:
-            miso_deg[i] = calc_miso_deg(e1, e2, sg_num)
-        except Exception:
-            miso_deg[i] = 0
+            miso[i] = calc_miso_deg(
+                [cpu[i][7], cpu[i][8], cpu[i][9]],
+                [gpu[i][7], gpu[i][8], gpu[i][9]])
+        except: pass
 
-    # Stats
     active = (cpu_frac > 0) | (gpu_frac > 0)
-    n_active = np.sum(active)
-    match_mask = frac_diff < 0.02
-    n_match = np.sum(match_mask & active)
-    n_mismatch = np.sum(~match_mask & active)
-    print(f"Active voxels: {n_active}")
-    print(f"Match (<2% frac diff): {n_match} ({100*n_match/n_active:.1f}%)")
-    print(f"Mismatch: {n_mismatch} ({100*n_mismatch/n_active:.1f}%)")
-    print(f"Confidence diff: mean={np.mean(frac_diff[active]):.4f}, "
-          f"max={np.max(frac_diff[active]):.4f}, "
-          f"median={np.median(frac_diff[active]):.4f}")
-    print(f"Misorientation: mean={np.mean(miso_deg[active]):.4f}°, "
-          f"max={np.max(miso_deg[active]):.4f}°, "
-          f"median={np.median(miso_deg[active]):.4f}°")
+    na = np.sum(active)
+    match = np.sum((frac_diff < 0.02) & active)
+    stats = dict(n_active=na, n_match=int(match), n_mismatch=int(na-match),
+                 frac_mean=np.mean(frac_diff[active]),
+                 frac_max=np.max(frac_diff[active]),
+                 miso_mean=np.mean(miso[active]),
+                 miso_max=np.max(miso[active]),
+                 match_pct=100*match/na if na>0 else 0)
+    return frac_diff, miso, active, stats
 
-    # Plotting
-    try:
-        import matplotlib
-        matplotlib.use('Agg')
-        import matplotlib.pyplot as plt
-    except ImportError:
-        print("matplotlib not available, skipping plots")
-        return
 
-    fig, axes = plt.subplots(1, 2, figsize=(16, 7))
+def plot_pair(axes_row, xs, ys, frac_diff, miso, active, stats, label):
+    """Plot confidence diff + misorientation on a row of 2 axes."""
+    ax1, ax2 = axes_row
 
-    # Map 1: Confidence difference
-    ax = axes[0]
     vmax1 = max(0.1, np.percentile(frac_diff[active], 95))
-    sc = ax.scatter(xs, ys, c=frac_diff, cmap='RdYlGn_r', s=8, vmin=0, vmax=vmax1)
-    ax.set_xlabel('X (µm)'); ax.set_ylabel('Y (µm)')
-    ax.set_title(f'|CPU frac − GPU frac|\n'
-                 f'mean={np.mean(frac_diff[active]):.4f}, match={100*n_match/n_active:.1f}%')
-    ax.set_aspect('equal')
-    plt.colorbar(sc, ax=ax, label='|Δfrac|')
+    sc1 = ax1.scatter(xs, ys, c=frac_diff, cmap='RdYlGn_r', s=6, vmin=0, vmax=vmax1)
+    ax1.set_xlabel('X (µm)'); ax1.set_ylabel('Y (µm)')
+    ax1.set_title(f'{label}: |Δfrac|\n'
+                  f'mean={stats["frac_mean"]:.4f}, match={stats["match_pct"]:.1f}%')
+    ax1.set_aspect('equal')
+    import matplotlib.pyplot as plt
+    plt.colorbar(sc1, ax=ax1, label='|Δfrac|')
 
-    # Map 2: Misorientation
-    ax = axes[1]
-    vmax2 = max(1.0, np.percentile(miso_deg[active], 95))
-    sc2 = ax.scatter(xs, ys, c=miso_deg, cmap='hot', s=8, vmin=0, vmax=vmax2)
-    ax.set_xlabel('X (µm)'); ax.set_ylabel('Y (µm)')
-    ax.set_title(f'Misorientation CPU vs GPU (°)\n'
-                 f'mean={np.mean(miso_deg[active]):.2f}°, max={np.max(miso_deg[active]):.2f}°')
-    ax.set_aspect('equal')
-    plt.colorbar(sc2, ax=ax, label='Misorientation (°)')
+    vmax2 = max(1.0, np.percentile(miso[active], 95))
+    sc2 = ax2.scatter(xs, ys, c=miso, cmap='hot', s=6, vmin=0, vmax=vmax2)
+    ax2.set_xlabel('X (µm)'); ax2.set_ylabel('Y (µm)')
+    ax2.set_title(f'{label}: Misorientation (°)\n'
+                  f'mean={stats["miso_mean"]:.2f}°, max={stats["miso_max"]:.2f}°')
+    ax2.set_aspect('equal')
+    plt.colorbar(sc2, ax=ax2, label='Miso (°)')
 
-    plt.suptitle(f'CPU vs GPU Phase 2 Parity — {n_active} active voxels, SGNum={sg_num}',
-                 fontsize=14, fontweight='bold')
-    plt.tight_layout()
-    out_fn = 'parity_maps.png'
-    plt.savefig(out_fn, dpi=150)
-    print(f"\nSaved spatial parity maps to {out_fn}")
+
+def main():
+    args = [a for a in sys.argv[1:] if not a.startswith('-')]
+    if len(args) < 2:
+        print("Usage: parity_maps.py cpu.mic gpu.mic [SGNum]")
+        print("       parity_maps.py cpu.mic gpu_float.mic gpu_double.mic [SGNum]")
+        sys.exit(1)
+
+    # Detect 2-file or 3-file mode
+    try:
+        int(args[-1])
+        sg = int(args[-1])
+        mic_files = args[:-1]
+    except ValueError:
+        sg = 225
+        mic_files = args
+
+    cpu = read_mic(mic_files[0])
+    n = len(cpu)
+    xs = np.array([r[3] for r in cpu[:n]])
+    ys = np.array([r[4] for r in cpu[:n]])
+
+    two_mode = (len(mic_files) == 3)
+
+    if two_mode:
+        gpu_float = read_mic(mic_files[1])
+        gpu_double = read_mic(mic_files[2])
+        n = min(n, len(gpu_float), len(gpu_double))
+        xs, ys = xs[:n], ys[:n]
+
+        fd_f, mi_f, act_f, st_f = compute_parity(cpu, gpu_float, n)
+        fd_d, mi_d, act_d, st_d = compute_parity(cpu, gpu_double, n)
+
+        print(f"=== GPU Float vs CPU ===")
+        print(f"  Active: {st_f['n_active']}, Match: {st_f['n_match']} ({st_f['match_pct']:.1f}%)")
+        print(f"  Δfrac: mean={st_f['frac_mean']:.4f}, max={st_f['frac_max']:.4f}")
+        print(f"  Miso:  mean={st_f['miso_mean']:.2f}°, max={st_f['miso_max']:.2f}°")
+        print(f"\n=== GPU Double vs CPU ===")
+        print(f"  Active: {st_d['n_active']}, Match: {st_d['n_match']} ({st_d['match_pct']:.1f}%)")
+        print(f"  Δfrac: mean={st_d['frac_mean']:.4f}, max={st_d['frac_max']:.4f}")
+        print(f"  Miso:  mean={st_d['miso_mean']:.2f}°, max={st_d['miso_max']:.2f}°")
+
+        try:
+            import matplotlib
+            matplotlib.use('Agg')
+            import matplotlib.pyplot as plt
+        except ImportError:
+            print("matplotlib not available"); return
+
+        fig, axes = plt.subplots(2, 2, figsize=(16, 14))
+        plot_pair(axes[0], xs, ys, fd_f, mi_f, act_f, st_f, 'GPU Float')
+        plot_pair(axes[1], xs, ys, fd_d, mi_d, act_d, st_d, 'GPU Double')
+        plt.suptitle(f'CPU vs GPU Parity — Float vs Double — {st_f["n_active"]} active voxels',
+                     fontsize=15, fontweight='bold')
+        plt.tight_layout()
+        plt.savefig('parity_maps.png', dpi=150)
+        print(f"\nSaved 4-panel figure to parity_maps.png")
+
+    else:
+        gpu = read_mic(mic_files[1])
+        n = min(n, len(gpu))
+        xs, ys = xs[:n], ys[:n]
+
+        fd, mi, act, st = compute_parity(cpu, gpu, n)
+        print(f"Active: {st['n_active']}, Match: {st['n_match']} ({st['match_pct']:.1f}%)")
+        print(f"Δfrac: mean={st['frac_mean']:.4f}, max={st['frac_max']:.4f}")
+        print(f"Miso:  mean={st['miso_mean']:.2f}°, max={st['miso_max']:.2f}°")
+
+        try:
+            import matplotlib
+            matplotlib.use('Agg')
+            import matplotlib.pyplot as plt
+        except ImportError:
+            print("matplotlib not available"); return
+
+        fig, axes = plt.subplots(1, 2, figsize=(16, 7))
+        plot_pair(axes, xs, ys, fd, mi, act, st, 'GPU')
+        plt.suptitle(f'CPU vs GPU Parity — {st["n_active"]} active voxels',
+                     fontsize=14, fontweight='bold')
+        plt.tight_layout()
+        plt.savefig('parity_maps.png', dpi=150)
+        print(f"\nSaved 2-panel figure to parity_maps.png")
 
 
 if __name__ == '__main__':
