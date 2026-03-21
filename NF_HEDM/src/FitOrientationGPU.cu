@@ -1949,28 +1949,7 @@ extern "C" int nf_gpu_fit(NFGPUContext *ctx,
   int maxIter = 1000;     // CPU uses 5000 evals; each NM iter uses ~4 evals
   float initStep = 0.25f; // 25% of bound range = 0.25 * 2*tolRad ≈ 0.5°
 
-  // Check for double-precision mode
-  int useDouble = 0;
-  {
-    const char *envd = getenv("MIDAS_GPU_DOUBLE");
-    if (envd && atoi(envd)) useDouble = 1;
-  }
-
-  printf("NF GPU: Phase 2 fitting — %d jobs, blockSize=%d%s\n",
-         nJobs, blockSize, useDouble ? ", DOUBLE precision" : "");
-
-  // Find debug job: first job with voxelIdx==620 for same-voxel comparison with CPU
-  int debugJobIdx = -1;
-  for (int j = 0; j < nJobs; j++) {
-    if (winners[j].voxelIdx == 620 && winners[j].orientIdx == 3) {
-      debugJobIdx = j;
-      break;
-    }
-  }
-  if (debugJobIdx >= 0) {
-    printf("GPU debug: tracing job %d (voxIdx=%d oriIdx=%d)\n",
-           debugJobIdx, winners[debugJobIdx].voxelIdx, winners[debugJobIdx].orientIdx);
-  }
+  printf("NF GPU: Phase 2 fitting — %d jobs, blockSize=%d\n", nJobs, blockSize);
 
   nm_fit_kernel<<<gridSize, blockSize, 0, ctx->stream>>>(
       nJobs, d_startEulers, d_lb, d_ub,
@@ -1982,7 +1961,6 @@ extern "C" int nf_gpu_fit(NFGPUContext *ctx,
       ctx->px, ctx->gs,
       ftol, maxIter, initStep,
       ctx->d_hkls, ctx->d_Gs, ctx->n_hkls,
-
       d_results, d_fvals);
 
   CUDA_CHECK(cudaStreamSynchronize(ctx->stream));

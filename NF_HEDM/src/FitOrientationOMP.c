@@ -1234,16 +1234,6 @@ gpu_fit_fallback:
           int fitNevals = 0, fitRetcode = 0;
           double EulerOutA, EulerOutB, EulerOutC, FracOut;
 
-          // Debug: activate trace for first voxel's first winner
-          static int cpuDebugDone = 0;
-          if (!cpuDebugDone && wi == 0) {
-            int voxBase = gpuWinners[gpuIdx].voxelIdx;
-            printf("CPU FIT debug: voxIdx=%d oriIdx=%d euler_deg=(%.6f,%.6f,%.6f) XG=(%.4f,%.4f,%.4f)\n",
-                   voxBase, oriIdx, EulerIn[0]*57.2957795130823, EulerIn[1]*57.2957795130823, EulerIn[2]*57.2957795130823,
-                   XG_v[0], XG_v[1], XG_v[2]);
-            g_debugNextFit = 1;  // enable trace for next FitOrientation call
-          }
-
           FitOrientation(nrFiles, nLayers, ExcludePoleAngle, Lsd, SizeObsSpots,
                          XG_v, YG_v, RotMatTilts, OmegaStart, OmegaStep, px,
                          ybc, zbc, gs_v, OmegaRanges, nOmeRang, BoxSizes,
@@ -1251,7 +1241,6 @@ gpu_fit_fallback:
                          &EulerOutA, &EulerOutB, &EulerOutC, &FracOut,
                          hkls, Thetas, n_hkls, Gs,
                          &fitNevals, &fitRetcode, NrPixelsY, NrPixelsZ);
-          if (!cpuDebugDone && wi == 0) cpuDebugDone = 1;
           totalNloptEvals += fitNevals;
 
           double Fractions = 1 - FracOut;
