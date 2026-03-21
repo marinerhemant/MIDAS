@@ -739,7 +739,7 @@ __device__ static float gpu_calc_frac_overlap(
             pixOob = 1; break;
           }
           long long binNr = layerBinBase[layer] + (long long)MultY*nrPixelsZ + MultZ;
-          if (!gpu_test_bit(obsFlat, binNr)) { allFound = 0; break; }
+          if (!gpu_test_bit(obsFlat, binNr)) { allFound = 0; }
         }
         if (!pixOob) {
           if (allFound) OverlapPixels++;
@@ -785,7 +785,7 @@ __device__ static float gpu_calc_frac_overlap(
                   pixOob = 1; break;
                 }
                 long long binNr = layerBinBase[layer] + (long long)MultY*nrPixelsZ + MultZ;
-                if (!gpu_test_bit(obsFlat, binNr)) { allFound = 0; break; }
+                if (!gpu_test_bit(obsFlat, binNr)) { allFound = 0; }
               }
               if (!pixOob) {
                 if (allFound) OverlapPixels++;
@@ -1112,7 +1112,7 @@ __device__ static float gpu_calc_frac_overlap_d(
           int MultZ = layerBaseZ[layer] + pz;
           if (MultY >= nrPixelsY || MultY < 0 || MultZ >= nrPixelsZ || MultZ < 0) { pixOob = 1; break; }
           long long binNr = layerBinBase[layer] + (long long)MultY*nrPixelsZ + MultZ;
-          if (!gpu_test_bit(obsFlat, binNr)) { allFound = 0; break; }
+          if (!gpu_test_bit(obsFlat, binNr)) { allFound = 0; }
         }
         if (!pixOob) { if (allFound) OverlapPixels++; TotalPixels++; }
       } else {
@@ -1153,7 +1153,7 @@ __device__ static float gpu_calc_frac_overlap_d(
                 int MultZ = layerBaseZ[layer] + pz;
                 if (MultY >= nrPixelsY || MultY < 0 || MultZ >= nrPixelsZ || MultZ < 0) { pixOob = 1; break; }
                 long long binNr = layerBinBase[layer] + (long long)MultY*nrPixelsZ + MultZ;
-                if (!gpu_test_bit(obsFlat, binNr)) { allFound = 0; break; }
+                if (!gpu_test_bit(obsFlat, binNr)) { allFound = 0; }
               }
               if (!pixOob) { if (allFound) OverlapPixels++; TotalPixels++; }
             }
