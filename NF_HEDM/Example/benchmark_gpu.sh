@@ -170,6 +170,16 @@ print(f'Match(<2%): {match}')
 print(f'Mismatch:   {mismatch}')
 print(f'Match rate: {match/active*100:.1f}%' if active>0 else 'Match rate: N/A')
 "
+
+  # Spatial parity maps
+  echo ""
+  echo "=== STEP 5: Spatial Parity Maps ==="
+  PARITY_SCRIPT="$SCRIPT_DIR/parity_maps.py"
+  if [ -f "$PARITY_SCRIPT" ]; then
+    python3 "$PARITY_SCRIPT" cpu_benchmark.mic gpu_benchmark.mic 225
+  else
+    echo "WARNING: parity_maps.py not found at $PARITY_SCRIPT"
+  fi
 fi
 
 # --- Timing summary ---
