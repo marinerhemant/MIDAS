@@ -2,12 +2,13 @@
 #
 # GPU vs CPU benchmark for NF-HEDM FitOrientation
 #
-# Usage: bash benchmark_gpu.sh [nCPUs] [--screen-only] [--gpu-only] [--small] [--gpu-fit]
+# Usage: bash benchmark_gpu.sh [nCPUs] [--screen-only] [--gpu-only] [--small] [--gpu-fit] [--gpu-double]
 #   nCPUs:        number of CPU threads (default: 96)
 #   --screen-only: skip Phase 2 fitting (pure screening benchmark)
 #   --gpu-only:    skip preprocessing and CPU benchmark
 #   --small:       use grs.csv (4 orientations) instead of cubicSeed.txt
 #   --gpu-fit:     enable GPU Phase 2 NM fitting (MIDAS_GPU_FIT=1)
+#   --gpu-double:  use double-precision objective (MIDAS_GPU_DOUBLE=1, slower but matches CPU)
 #
 # Run this from the NF_HEDM/Example/sim directory (where SpotsInfo.bin
 # and the diffraction images live).
@@ -19,12 +20,14 @@ SCREEN_ONLY=0
 GPU_ONLY=0
 USE_SMALL=0
 GPU_FIT=0
+GPU_DOUBLE=0
 for arg in "$@"; do
   case "$arg" in
     --screen-only) SCREEN_ONLY=1 ;;
     --gpu-only) GPU_ONLY=1 ;;
     --small) USE_SMALL=1 ;;
     --gpu-fit) GPU_FIT=1 ;;
+    --gpu-double) GPU_DOUBLE=1; GPU_FIT=1 ;;
     [0-9]*) NCPUS=$arg ;;
   esac
 done
@@ -53,6 +56,10 @@ echo "nCPUs:      $NCPUS"
 export MIDAS_SCREEN_ONLY=$SCREEN_ONLY
 if [ "$GPU_FIT" = 1 ]; then
   export MIDAS_GPU_FIT=1
+fi
+if [ "$GPU_DOUBLE" = 1 ]; then
+  export MIDAS_GPU_DOUBLE=1
+  echo "MODE:       GPU double-precision objective (CPU-matching)"
 fi
 
 # Check we're in a directory with SpotsInfo.bin
