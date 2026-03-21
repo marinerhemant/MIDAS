@@ -983,7 +983,7 @@ __device__ static inline int gpu_calc_omega_d(
 }
 
 __device__ static float gpu_calc_frac_overlap_d(
-    const float euler_deg_f[3],
+    const double euler_deg[3],
     const float XG[3], const float YG[3],
     const uint32_t *obsFlat,
     float Lsd0, float ybc0, float zbc0,
@@ -992,8 +992,6 @@ __device__ static float gpu_calc_frac_overlap_d(
     float px, float gs,
     const float *d_hkls, const float *d_Gs, int n_hkls) {
 
-  // Promote all geometry to double
-  double euler_deg[3] = { (double)euler_deg_f[0], (double)euler_deg_f[1], (double)euler_deg_f[2] };
   double orient[3][3];
   gpu_euler2orient_d(euler_deg, orient);
 
@@ -1193,17 +1191,30 @@ struct NFFitObjective {
   // Double overload: preserves full precision through rad→deg conversion
   // This matches NLOPT's double arithmetic in problem_function
   __device__ float operator()(const double *x, int ndim) const {
-    float euler_deg[3] = { (float)(x[0] * rad2deg),
-                           (float)(x[1] * rad2deg),
-                           (float)(x[2] * rad2deg) };
-    return eval_at_euler(euler_deg);
+    double euler_deg_d[3] = { x[0] * rad2deg,
+                              x[1] * rad2deg,
+                              x[2] * rad2deg };
+    if (useDouble) {
+      // Full double-precision path: double Euler degrees → double spot calc
+      float frac = gpu_calc_frac_overlap_d(
+          euler_deg_d, XG, YG, obsFlat,
+          Lsd0, ybc0, zbc0, RM, P0_0,
+          nLayers, nrFiles, nrPixelsY, nrPixelsZ, px, gs,
+          d_hkls, d_Gs, n_hkls);
+      float euler_deg_f[3] = { (float)euler_deg_d[0], (float)euler_deg_d[1], (float)euler_deg_d[2] };
+      return eval_at_euler_inner(euler_deg_f, frac);
+    }
+    // Float path: truncate to float for the spot calc
+    float euler_deg_f[3] = { (float)euler_deg_d[0], (float)euler_deg_d[1], (float)euler_deg_d[2] };
+    return eval_at_euler(euler_deg_f);
   }
 
   __device__ float eval_at_euler(const float euler_deg[3]) const {
     float frac;
     if (useDouble) {
+      double euler_deg_d[3] = { (double)euler_deg[0], (double)euler_deg[1], (double)euler_deg[2] };
       frac = gpu_calc_frac_overlap_d(
-          euler_deg, XG, YG, obsFlat,
+          euler_deg_d, XG, YG, obsFlat,
           Lsd0, ybc0, zbc0, RM, P0_0,
           nLayers, nrFiles, nrPixelsY, nrPixelsZ, px, gs,
           d_hkls, d_Gs, n_hkls);
@@ -1214,6 +1225,10 @@ struct NFFitObjective {
           nLayers, nrFiles, nrPixelsY, nrPixelsZ, px, gs,
           d_hkls, d_Gs, n_hkls);
     }
+    return eval_at_euler_inner(euler_deg, frac);
+  }
+
+  __device__ float eval_at_euler_inner(const float euler_deg[3], float frac) const {
     if (debugJob && evalCount < 10) {
       if (evalCount == 0) {
         // Detailed count on first eval for debugging
