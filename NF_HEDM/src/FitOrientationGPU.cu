@@ -1298,12 +1298,29 @@ __global__ void nm_fit_kernel(
     for (int j = 0; j < 3; j++) simplex[i][j] = simplex[0][j];
     float step = initStep * (hi[i-1] - lo[i-1]);
     if (step < 1e-8f) step = 1e-4f;
-    simplex[i][i-1] += step;
-    if (simplex[i][i-1] > hi[i-1]) simplex[i][i-1] = hi[i-1];
+    float newval = simplex[0][i-1] + step;
+    // NLOPT-style direction reversal near bounds
+    if (newval > hi[i-1]) {
+      if (hi[i-1] - simplex[0][i-1] > fabsf(step) * 0.1f)
+        newval = hi[i-1];
+      else
+        newval = simplex[0][i-1] - fabsf(step);
+    }
+    if (newval < lo[i-1]) {
+      if (simplex[0][i-1] - lo[i-1] > fabsf(step) * 0.1f)
+        newval = lo[i-1];
+      else {
+        newval = simplex[0][i-1] + fabsf(step);
+        if (newval > hi[i-1])
+          newval = 0.5f * ((hi[i-1] - simplex[0][i-1] > simplex[0][i-1] - lo[i-1]
+                            ? hi[i-1] : lo[i-1]) + simplex[0][i-1]);
+      }
+    }
+    simplex[i][i-1] = newval;
     fvals[i] = obj(simplex[i], 3);
   }
 
-  // Main NM loop (inlined for NDIM=3)
+  // Main NM loop (NLOPT-matching algorithm)
   float trial[3], centroid[3];
 
   for (int iter = 0; iter < maxIter; iter++) {
@@ -1319,7 +1336,9 @@ __global__ void nm_fit_kernel(
       if (fvals[i] > fvals[sw]) sw = i;
     }
 
-    if (fvals[worst] - fvals[best] < tol) break;
+    float fl = fvals[best];
+    float fh = fvals[worst];
+    if (fh - fl < tol) break;
 
     // Centroid (exclude worst)
     for (int j = 0; j < 3; j++) centroid[j] = 0;
@@ -1329,49 +1348,55 @@ __global__ void nm_fit_kernel(
     }
     for (int j = 0; j < 3; j++) centroid[j] /= 3.0f;
 
-    // Reflection
+    // Reflection: trial = c + alpha * (c - worst)
     for (int j = 0; j < 3; j++) {
       trial[j] = centroid[j] + nm.alpha * (centroid[j] - simplex[worst][j]);
       if (trial[j] < lo[j]) trial[j] = lo[j];
       if (trial[j] > hi[j]) trial[j] = hi[j];
     }
-    float f_r = obj(trial, 3);
+    float fr = obj(trial, 3);
 
-    if (f_r < fvals[sw] && f_r >= fvals[best]) {
-      for (int j = 0; j < 3; j++) simplex[worst][j] = trial[j];
-      fvals[worst] = f_r;
-      continue;
-    }
-
-    if (f_r < fvals[best]) {
-      // Expansion
+    if (fr < fl) {
+      // Expansion: try c + gamma * (c - worst)
       float trial_e[3];
       for (int j = 0; j < 3; j++) {
-        trial_e[j] = centroid[j] + nm.gamma * (trial[j] - centroid[j]);
+        trial_e[j] = centroid[j] + nm.gamma * (centroid[j] - simplex[worst][j]);
         if (trial_e[j] < lo[j]) trial_e[j] = lo[j];
         if (trial_e[j] > hi[j]) trial_e[j] = hi[j];
       }
-      float f_e = obj(trial_e, 3);
-      if (f_e < f_r) {
+      float fe = obj(trial_e, 3);
+      if (fe < fr) {
         for (int j = 0; j < 3; j++) simplex[worst][j] = trial_e[j];
-        fvals[worst] = f_e;
+        fvals[worst] = fe;
       } else {
         for (int j = 0; j < 3; j++) simplex[worst][j] = trial[j];
-        fvals[worst] = f_r;
+        fvals[worst] = fr;
       }
       continue;
     }
 
-    // Contraction
-    for (int j = 0; j < 3; j++) {
-      trial[j] = centroid[j] + nm.rho * (simplex[worst][j] - centroid[j]);
-      if (trial[j] < lo[j]) trial[j] = lo[j];
-      if (trial[j] > hi[j]) trial[j] = hi[j];
-    }
-    float f_c = obj(trial, 3);
-    if (f_c < fvals[worst]) {
+    if (fr < fvals[sw]) {
+      // Accept reflection
       for (int j = 0; j < 3; j++) simplex[worst][j] = trial[j];
-      fvals[worst] = f_c;
+      fvals[worst] = fr;
+      continue;
+    }
+
+    // Contraction (NLOPT-style: inside or outside based on fh vs fr)
+    // fh <= fr → inside contraction (scale = -rho: toward centroid from worst)
+    // fh >  fr → outside contraction (scale = +rho: toward reflected from centroid)
+    float cscale = (fh <= fr) ? -nm.rho : nm.rho;
+    float trial_c[3];
+    for (int j = 0; j < 3; j++) {
+      trial_c[j] = centroid[j] + cscale * (centroid[j] - simplex[worst][j]);
+      if (trial_c[j] < lo[j]) trial_c[j] = lo[j];
+      if (trial_c[j] > hi[j]) trial_c[j] = hi[j];
+    }
+    float fc = obj(trial_c, 3);
+    if (fc < fr && fc < fh) {
+      // Successful contraction
+      for (int j = 0; j < 3; j++) simplex[worst][j] = trial_c[j];
+      fvals[worst] = fc;
       continue;
     }
 

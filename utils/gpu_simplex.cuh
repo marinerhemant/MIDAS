@@ -3,9 +3,17 @@
  *
  * Copyright (c) 2014, UChicago Argonne, LLC. See LICENSE file.
  *
+ * Algorithm matches NLOPT's nldrmd.c implementation exactly:
+ * - Reflection α=1, Expansion γ=2, Contraction β=0.5, Shrink δ=0.5
+ * - Inside AND outside contraction (based on fh vs fr)
+ * - Contraction accepted when fc < fr AND fc < fh
+ * - Shrink: all vertices contract toward best
+ * - Initial simplex: direction reversal near bounds
+ * - Convergence: frange < tol
+ *
  * Usage:
  *   1. Define a functor with __device__ float operator()(const float *x, int ndim)
- *   2. Call gpu_simplex_batch_kernel<NDIM, Functor><<<grid, block>>>(...);
+ *   2. Call from kernel with nm_optimize<NDIM>(...)
  *
  * Each thread runs one independent NM optimization.
  * Template on NDIM for compile-time unrolling (typical: 3, 6, 12).
@@ -20,12 +28,12 @@
 // Maximum dimension supported (for static arrays)
 #define GPU_SIMPLEX_MAX_DIM 12
 
-/// Nelder-Mead parameters (standard values)
+/// Nelder-Mead parameters (matching NLOPT: ALPHA=1, BETA=0.5, GAMMA=2, DELTA=0.5)
 struct NMParams {
   float alpha;  // reflection:  1.0
   float gamma;  // expansion:   2.0
-  float rho;    // contraction:  0.5
-  float sigma;  // shrink:       0.5
+  float rho;    // contraction:  0.5 (NLOPT calls this BETA)
+  float sigma;  // shrink:       0.5 (NLOPT calls this DELTA)
 };
 
 __device__ static inline NMParams nm_default_params() {
@@ -81,8 +89,21 @@ __device__ static inline void nm_centroid(
   for (int j = 0; j < NDIM; j++) centroid[j] *= inv;
 }
 
+/// Reflect: xnew = c + scale * (c - xold), then clamp to bounds. (matches NLOPT reflectpt)
+template <int NDIM>
+__device__ static inline void nm_reflect(
+    float *xnew, const float *c, float scale, const float *xold,
+    const float *lo, const float *hi) {
+  #pragma unroll
+  for (int j = 0; j < NDIM; j++) {
+    xnew[j] = c[j] + scale * (c[j] - xold[j]);
+  }
+  nm_clamp<NDIM>(xnew, lo, hi);
+}
+
 /**
  * GPU Nelder-Mead simplex optimization — runs ONE optimization per thread.
+ * Algorithm matches NLOPT's nldrmd_minimize_ exactly.
  *
  * Template parameters:
  *   NDIM    — dimension of optimization (e.g., 3 for Euler angles)
@@ -125,7 +146,7 @@ __global__ void gpu_simplex_batch_kernel(
     hi[i] = upperBounds[jobIdx * NDIM + i];
   }
 
-  // Initialize simplex: vertex 0 = start point, vertex i = start + step along dim i
+  // Initialize simplex: vertex 0 = start point
   float simplex[GPU_SIMPLEX_MAX_DIM + 1][GPU_SIMPLEX_MAX_DIM];
   float fvals[GPU_SIMPLEX_MAX_DIM + 1];
 
@@ -137,18 +158,36 @@ __global__ void gpu_simplex_batch_kernel(
   nm_clamp<NDIM>(simplex[0], lo, hi);
   fvals[0] = objFunc(simplex[0], NDIM);
 
-  // Vertices 1..NDIM: perturb along each dimension
+  // Vertices 1..NDIM: perturb along each dimension (matching NLOPT initial simplex)
   for (int i = 1; i <= NDIM; i++) {
     #pragma unroll
     for (int j = 0; j < NDIM; j++) simplex[i][j] = simplex[0][j];
     float step = initStep * (hi[i-1] - lo[i-1]);
     if (step < 1e-8f) step = 1e-4f;
-    simplex[i][i-1] += step;
+    float newval = simplex[0][i-1] + step;
+    // NLOPT-style direction reversal near bounds
+    if (newval > hi[i-1]) {
+      if (hi[i-1] - simplex[0][i-1] > fabsf(step) * 0.1f)
+        newval = hi[i-1];
+      else
+        newval = simplex[0][i-1] - fabsf(step);
+    }
+    if (newval < lo[i-1]) {
+      if (simplex[0][i-1] - lo[i-1] > fabsf(step) * 0.1f)
+        newval = lo[i-1];
+      else {
+        newval = simplex[0][i-1] + fabsf(step);
+        if (newval > hi[i-1])
+          newval = 0.5f * ((hi[i-1] - simplex[0][i-1] > simplex[0][i-1] - lo[i-1]
+                            ? hi[i-1] : lo[i-1]) + simplex[0][i-1]);
+      }
+    }
+    simplex[i][i-1] = newval;
     nm_clamp<NDIM>(simplex[i], lo, hi);
     fvals[i] = objFunc(simplex[i], NDIM);
   }
 
-  // Main NM loop
+  // Main NM loop — matches NLOPT's nldrmd algorithm
   float trial[GPU_SIMPLEX_MAX_DIM];
   float centroid[GPU_SIMPLEX_MAX_DIM];
 
@@ -156,64 +195,65 @@ __global__ void gpu_simplex_batch_kernel(
     int best, worst, second_worst;
     nm_find_indices<NDIM>(fvals, &best, &worst, &second_worst);
 
+    float fl = fvals[best];
+    float fh = fvals[worst];
+
     // Check convergence: range of function values
-    float frange = fvals[worst] - fvals[best];
+    float frange = fh - fl;
     if (frange < tol) break;
 
     // Centroid of all vertices except worst
     nm_centroid<NDIM>(simplex, worst, centroid);
 
-    // --- Reflection ---
-    #pragma unroll
-    for (int j = 0; j < NDIM; j++)
-      trial[j] = centroid[j] + nm.alpha * (centroid[j] - simplex[worst][j]);
-    nm_clamp<NDIM>(trial, lo, hi);
-    float f_reflect = objFunc(trial, NDIM);
+    // --- Reflection: xcur = c + alpha * (c - xh) ---
+    nm_reflect<NDIM>(trial, centroid, nm.alpha, simplex[worst], lo, hi);
+    float fr = objFunc(trial, NDIM);
 
-    if (f_reflect < fvals[second_worst] && f_reflect >= fvals[best]) {
-      // Accept reflection
-      #pragma unroll
-      for (int j = 0; j < NDIM; j++) simplex[worst][j] = trial[j];
-      fvals[worst] = f_reflect;
-      continue;
-    }
-
-    if (f_reflect < fvals[best]) {
-      // --- Expansion ---
+    if (fr < fl) {
+      // --- Expansion: try c + gamma * (c - xh) ---
       float trial_e[GPU_SIMPLEX_MAX_DIM];
-      #pragma unroll
-      for (int j = 0; j < NDIM; j++)
-        trial_e[j] = centroid[j] + nm.gamma * (trial[j] - centroid[j]);
-      nm_clamp<NDIM>(trial_e, lo, hi);
-      float f_expand = objFunc(trial_e, NDIM);
+      nm_reflect<NDIM>(trial_e, centroid, nm.gamma, simplex[worst], lo, hi);
+      float fe = objFunc(trial_e, NDIM);
 
-      if (f_expand < f_reflect) {
+      if (fe < fr) {
+        // Expansion is better — replace worst with expanded
         #pragma unroll
         for (int j = 0; j < NDIM; j++) simplex[worst][j] = trial_e[j];
-        fvals[worst] = f_expand;
+        fvals[worst] = fe;
       } else {
+        // Expansion didn't improve — use reflection
         #pragma unroll
         for (int j = 0; j < NDIM; j++) simplex[worst][j] = trial[j];
-        fvals[worst] = f_reflect;
+        fvals[worst] = fr;
       }
       continue;
     }
 
-    // --- Contraction ---
-    #pragma unroll
-    for (int j = 0; j < NDIM; j++)
-      trial[j] = centroid[j] + nm.rho * (simplex[worst][j] - centroid[j]);
-    nm_clamp<NDIM>(trial, lo, hi);
-    float f_contract = objFunc(trial, NDIM);
-
-    if (f_contract < fvals[worst]) {
+    if (fr < fvals[second_worst]) {
+      // --- Accept reflection ---
       #pragma unroll
       for (int j = 0; j < NDIM; j++) simplex[worst][j] = trial[j];
-      fvals[worst] = f_contract;
+      fvals[worst] = fr;
       continue;
     }
 
-    // --- Shrink ---
+    // --- Contraction (NLOPT-style: inside or outside based on fh vs fr) ---
+    // If fh <= fr: inside contraction  → scale = -beta (toward centroid from worst)
+    // If fh >  fr: outside contraction → scale = +beta (toward reflected from centroid)
+    float cscale = (fh <= fr) ? -nm.rho : nm.rho;
+    float trial_c[GPU_SIMPLEX_MAX_DIM];
+    nm_reflect<NDIM>(trial_c, centroid, cscale, simplex[worst], lo, hi);
+    float fc = objFunc(trial_c, NDIM);
+
+    if (fc < fr && fc < fh) {
+      // Successful contraction — accept
+      #pragma unroll
+      for (int j = 0; j < NDIM; j++) simplex[worst][j] = trial_c[j];
+      fvals[worst] = fc;
+      continue;
+    }
+
+    // --- Shrink: all vertices toward best ---
     for (int i = 0; i <= NDIM; i++) {
       if (i == best) continue;
       #pragma unroll
