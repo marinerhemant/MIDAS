@@ -1123,11 +1123,17 @@ int main(int argc, char *argv[]) {
         // Flatten RotMatTilts
         double rmFlat[9];
         for (int r = 0; r < 3; r++) for (int c = 0; c < 3; c++) rmFlat[r*3+c] = RotMatTilts[r][c];
-        // Flatten P0
-        double p0Flat[MAX_LAYERS*3];
+        // Compute P0 (same as CPU path: P0[i] = RotMatTilts * [-Lsd[i], 0, 0])
+        double p0Flat[8*3]; // max 8 layers
         for (int la = 0; la < nLayers; la++) {
-          p0Flat[la*3+0] = P0[la][0]; p0Flat[la*3+1] = P0[la][1]; p0Flat[la*3+2] = P0[la][2];
+          double matIn[3] = {-Lsd[la], 0, 0};
+          double p0t[3];
+          MatrixMultF(RotMatTilts, matIn, p0t);
+          p0Flat[la*3+0] = p0t[0]; p0Flat[la*3+1] = p0t[1]; p0Flat[la*3+2] = p0t[2];
         }
+        // gs and NrPixelsGrid
+        double dbgGs = parsed_lines[0].gs;
+        int dbgNrPixelsGrid = 2 * (int)(ceil((dbgGs * 2) / px)) * (int)(ceil((dbgGs * 2) / px));
         // Flatten OmegaRanges and BoxSizes
         double omeFlat[MAX_N_OMEGA_RANGES*2], boxFlat[MAX_N_OMEGA_RANGES*4];
         for (int r = 0; r < nOmeRang; r++) {
@@ -1139,10 +1145,10 @@ int main(int argc, char *argv[]) {
             cpuEuler, dbgXG, dbgYG,
             nrFiles, nLayers, ExcludePoleAngle,
             Lsd, SizeObsSpots, rmFlat,
-            OmegaStart, OmegaStep, px, ybc, zbc, gs_v,
+            OmegaStart, OmegaStep, px, ybc, zbc, dbgGs,
             (double*)hkls, n_hkls, Thetas, Gs,
             omeFlat, nOmeRang, boxFlat, p0Flat,
-            NrPixelsGrid_v, ObsSpotsInfo, NrPixelsY, NrPixelsZ);
+            dbgNrPixelsGrid, ObsSpotsInfo, NrPixelsY, NrPixelsZ);
         printf("CPU eval at GPU job 0: voxIdx=%d oriIdx=%d euler_deg=(%.6f,%.6f,%.6f) frac=%.6f\n",
                dbgVoxIdx, dbgOriIdx, cpuEuler[0]*rad2deg, cpuEuler[1]*rad2deg, cpuEuler[2]*rad2deg, cpuFrac);
       }
