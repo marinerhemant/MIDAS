@@ -2,12 +2,13 @@
 #
 # GPU vs CPU benchmark for NF-HEDM FitOrientation
 #
-# Usage: bash benchmark_gpu.sh [nCPUs] [--screen-only] [--gpu-only] [--small] [--gpu-fit]
+# Usage: bash benchmark_gpu.sh [nCPUs] [--screen-only] [--skip-cpu] [--small] [--gpu-fit] [--voxels N]
 #   nCPUs:        number of CPU threads (default: 96)
 #   --screen-only: skip Phase 2 fitting (pure screening benchmark)
-#   --gpu-only:    skip preprocessing and CPU benchmark
+#   --skip-cpu:    skip CPU benchmark (still runs preprocessing + GPU)
 #   --small:       use grs.csv (4 orientations) instead of cubicSeed.txt
 #   --gpu-fit:     enable GPU Phase 2 NM fitting (MIDAS_GPU_FIT=1)
+#   --voxels N:    target approximate number of voxels (adjusts GridSize)
 #
 # Run this from the NF_HEDM/Example/sim directory (where SpotsInfo.bin
 # and the diffraction images live).
@@ -16,15 +17,23 @@ set -euo pipefail
 
 NCPUS=96
 SCREEN_ONLY=0
-GPU_ONLY=0
+SKIP_CPU=0
 USE_SMALL=0
 GPU_FIT=0
+TARGET_VOXELS=0
+NEXT_IS_VOXELS=0
 for arg in "$@"; do
+  if [ "$NEXT_IS_VOXELS" = 1 ]; then
+    TARGET_VOXELS=$arg
+    NEXT_IS_VOXELS=0
+    continue
+  fi
   case "$arg" in
     --screen-only) SCREEN_ONLY=1 ;;
-    --gpu-only) GPU_ONLY=1 ;;
+    --skip-cpu) SKIP_CPU=1 ;;
     --small) USE_SMALL=1 ;;
     --gpu-fit) GPU_FIT=1 ;;
+    --voxels) NEXT_IS_VOXELS=1 ;;
     [0-9]*) NCPUS=$arg ;;
   esac
 done
@@ -45,16 +54,16 @@ echo "Working in: $(pwd)"
 echo "SEED_FILE:  $SEED_FILE"
 echo "nCPUs:      $NCPUS"
 [ "$SCREEN_ONLY" = 1 ] && echo "MODE:       screen-only (Phase 2 skipped)"
-[ "$GPU_ONLY" = 1 ] && echo "MODE:       gpu-only (skipping preprocessing + CPU)"
+[ "$SKIP_CPU" = 1 ] && echo "MODE:       skip-cpu (GPU only)"
 [ "$USE_SMALL" = 1 ] && echo "MODE:       small dataset (grs.csv, 4 orientations)"
 [ "$GPU_FIT" = 1 ] && echo "MODE:       GPU Phase 2 fitting enabled"
+[ "$TARGET_VOXELS" != 0 ] && echo "MODE:       target ~$TARGET_VOXELS voxels"
 
 # Set env vars
 export MIDAS_SCREEN_ONLY=$SCREEN_ONLY
 if [ "$GPU_FIT" = 1 ]; then
   export MIDAS_GPU_FIT=1
 fi
-
 
 # Check we're in a directory with SpotsInfo.bin
 if [ ! -f SpotsInfo.bin ]; then
@@ -63,8 +72,27 @@ if [ ! -f SpotsInfo.bin ]; then
   exit 1
 fi
 
-if [ "$GPU_ONLY" = 0 ]; then
-# --- Regenerate orientation-dependent binary files ---
+# === STEP 0: Adjust GridSize if --voxels was specified ===
+if [ "$TARGET_VOXELS" != 0 ]; then
+  echo ""
+  echo "=== STEP 0: Adjusting grid for ~$TARGET_VOXELS voxels ==="
+  # Read current Rsample and GridSize from param file
+  RSAMPLE=$(grep "^Rsample " "$PARAM_FILE" | awk '{print $2}')
+  OLD_GRIDSIZE=$(grep "^GridSize " "$PARAM_FILE" | awk '{print $2}')
+  # Compute new GridSize: for hex grid, N ≈ π·R²/(√3/2·gs²)
+  # So gs_new = sqrt(π·R² / (√3/2·N))
+  NEW_GRIDSIZE=$(python3 -c "
+import math
+R = $RSAMPLE
+N = $TARGET_VOXELS
+gs = math.sqrt(math.pi * R**2 / (math.sqrt(3)/2 * N))
+print(f'{gs:.6f}')
+")
+  echo "  Rsample=$RSAMPLE, old GridSize=$OLD_GRIDSIZE, new GridSize=$NEW_GRIDSIZE"
+  sed -i.bak "s/^GridSize .*/GridSize $NEW_GRIDSIZE/" "$PARAM_FILE"
+fi
+
+# === STEP 1: Regenerate orientation + grid files ===
 echo ""
 echo "=== STEP 1: Regenerating orientation files ==="
 
@@ -123,20 +151,18 @@ for f in OrientMat.bin Key.bin DiffractionSpots.bin SpotsInfo.bin; do
   echo "  $f: $(du -h "$f" | cut -f1)"
 done
 
-fi  # end if GPU_ONLY=0 (preprocessing + CPU)
-
-if [ "$GPU_ONLY" = 0 ]; then
-# --- Run CPU benchmark ---
-echo ""
-echo "=== STEP 2: CPU Benchmark ($NCPUS threads) ==="
-time "$BIN_DIR/FitOrientationOMP" "$PARAM_FILE" 0 1 "$NCPUS" 2>&1 | tee cpu_bench.log
-if [ "$SCREEN_ONLY" = 0 ]; then
-  cp Au_bin_Reconstructed.mic cpu_benchmark.mic
+# === STEP 2: CPU Benchmark (optional) ===
+if [ "$SKIP_CPU" = 0 ]; then
+  echo ""
+  echo "=== STEP 2: CPU Benchmark ($NCPUS threads) ==="
+  time "$BIN_DIR/FitOrientationOMP" "$PARAM_FILE" 0 1 "$NCPUS" 2>&1 | tee cpu_bench.log
+  if [ "$SCREEN_ONLY" = 0 ]; then
+    cp Au_bin_Reconstructed.mic cpu_benchmark.mic
+  fi
+  echo "CPU done."
 fi
-echo "CPU done."
-fi  # end CPU benchmark
 
-# --- Run GPU benchmark ---
+# === STEP 3: GPU Benchmark ===
 echo ""
 echo "=== STEP 3: GPU Benchmark ==="
 
@@ -146,8 +172,8 @@ if [ "$SCREEN_ONLY" = 0 ]; then
 fi
 echo "GPU done."
 
-# --- Parity check (only if Phase 2 ran) ---
-if [ "$SCREEN_ONLY" = 0 ]; then
+# --- Parity check (only if Phase 2 ran and CPU ran) ---
+if [ "$SCREEN_ONLY" = 0 ] && [ "$SKIP_CPU" = 0 ]; then
   echo ""
   echo "=== STEP 4: Parity Check ==="
 
@@ -190,9 +216,11 @@ echo ""
 echo "========================================"
 echo "           TIMING SUMMARY"
 echo "========================================"
-echo "--- CPU ---"
-grep -E "^NF CPU:|^=== (CPU|END CPU)" cpu_bench.log || true
-echo ""
+if [ "$SKIP_CPU" = 0 ]; then
+  echo "--- CPU ---"
+  grep -E "^NF CPU:|^=== (CPU|END CPU)" cpu_bench.log || true
+  echo ""
+fi
 echo "--- GPU ---"
 grep -E "^NF GPU:|screen-only|^=== (GPU|END GPU)" gpu_bench.log || true
 echo "========================================"
