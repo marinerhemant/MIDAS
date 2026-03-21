@@ -147,9 +147,9 @@ static double problem_function(unsigned n, const double *x, double *grad,
       ObsSpotsInfo, OrientMatIn, &FracOverlap, TheorSpots, f_data->InPixels, Gs,
       f_data->NrPixelsY, f_data->NrPixelsZ);
   // Debug trace: print evals when trace is enabled
-  if (f_data->debugTrace > 0 && f_data->evalCount < 10) {
-    printf("CPU-NM eval %d: euler_rad=(%.9f,%.9f,%.9f) euler_deg=(%.6f,%.6f,%.6f) frac=%.6f obj=%.6f\n",
-           f_data->evalCount, x[0], x[1], x[2], x2[0], x2[1], x2[2], FracOverlap, 1 - FracOverlap);
+  if (f_data->debugTrace > 0 && f_data->evalCount < 30) {
+    printf("CPU-NM eval %d: euler_deg=(%.6f,%.6f,%.6f) frac=%.6f obj=%.6f\n",
+           f_data->evalCount, x2[0], x2[1], x2[2], FracOverlap, 1 - FracOverlap);
     f_data->evalCount++;
   }
   return (1 - FracOverlap);

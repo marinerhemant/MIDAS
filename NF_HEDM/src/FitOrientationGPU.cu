@@ -1229,7 +1229,7 @@ struct NFFitObjective {
   }
 
   __device__ float eval_at_euler_inner(const float euler_deg[3], float frac) const {
-    if (debugJob && evalCount < 10) {
+    if (debugJob && evalCount < 30) {
       if (evalCount == 0) {
         // Detailed count on first eval for debugging
         int dbg_total, dbg_overlap, dbg_nspots;
@@ -1347,6 +1347,16 @@ __global__ void nm_fit_kernel(
     simplex[i][i-1] = newval;
     fvals_d[i] = obj(simplex[i], 3);
   }
+  int debugNM = (jobIdx == 0) ? 1 : 0;
+
+  // Print initial simplex for debugging
+  if (debugNM) {
+    for (int i = 0; i <= 3; i++) {
+      double ed[3] = { simplex[i][0] * rad2deg, simplex[i][1] * rad2deg, simplex[i][2] * rad2deg };
+      printf("GPU-NM simplex[%d]: euler_deg=(%.6f,%.6f,%.6f) fval=%.6f\n",
+             i, ed[0], ed[1], ed[2], fvals_d[i]);
+    }
+  }
 
   // Main NM loop (double-precision simplex, NLOPT-matching algorithm)
   double trial_d[3], centroid_d[3];
@@ -1366,7 +1376,10 @@ __global__ void nm_fit_kernel(
 
     double fl = fvals_d[best];
     double fh = fvals_d[worst];
-    if (fh - fl < (double)tol) break;
+    if (fh - fl < (double)tol) {
+      if (debugNM) printf("GPU-NM iter %d: CONVERGED frange=%.9f < tol=%.9f\n", iter, fh - fl, (double)tol);
+      break;
+    }
 
     // Centroid (exclude worst)
     for (int j = 0; j < 3; j++) centroid_d[j] = 0;
@@ -1396,9 +1409,11 @@ __global__ void nm_fit_kernel(
       if (fe < fr) {
         for (int j = 0; j < 3; j++) simplex[worst][j] = trial_e[j];
         fvals_d[worst] = fe;
+        if (debugNM && iter < 20) printf("GPU-NM iter %d: EXPAND best=%d worst=%d fl=%.6f fh=%.6f fr=%.6f fe=%.6f -> fval=%.6f\n", iter, best, worst, fl, fh, fr, fe, fe);
       } else {
         for (int j = 0; j < 3; j++) simplex[worst][j] = trial_d[j];
         fvals_d[worst] = fr;
+        if (debugNM && iter < 20) printf("GPU-NM iter %d: REFLECT(expand_fail) best=%d worst=%d fl=%.6f fh=%.6f fr=%.6f fe=%.6f -> fval=%.6f\n", iter, best, worst, fl, fh, fr, fe, fr);
       }
       continue;
     }
@@ -1407,6 +1422,7 @@ __global__ void nm_fit_kernel(
       // Accept reflection
       for (int j = 0; j < 3; j++) simplex[worst][j] = trial_d[j];
       fvals_d[worst] = fr;
+      if (debugNM && iter < 20) printf("GPU-NM iter %d: REFLECT best=%d worst=%d fl=%.6f fh=%.6f fr=%.6f fsw=%.6f -> fval=%.6f\n", iter, best, worst, fl, fh, fr, fvals_d[sw], fr);
       continue;
     }
 
@@ -1423,10 +1439,12 @@ __global__ void nm_fit_kernel(
       // Successful contraction
       for (int j = 0; j < 3; j++) simplex[worst][j] = trial_c[j];
       fvals_d[worst] = fc;
+      if (debugNM && iter < 20) printf("GPU-NM iter %d: CONTRACT_%s best=%d worst=%d fl=%.6f fh=%.6f fr=%.6f fc=%.6f -> fval=%.6f\n", iter, (cscale < 0 ? "IN" : "OUT"), best, worst, fl, fh, fr, fc, fc);
       continue;
     }
 
     // Shrink
+    if (debugNM && iter < 20) printf("GPU-NM iter %d: SHRINK best=%d worst=%d fl=%.6f fh=%.6f fr=%.6f fc=%.6f\n", iter, best, worst, fl, fh, fr, fc);
     for (int i = 0; i <= 3; i++) {
       if (i == best) continue;
       for (int j = 0; j < 3; j++) {
