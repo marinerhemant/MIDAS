@@ -1687,9 +1687,9 @@ cpu_fallback:
         // InPixels internally or be passed it? Let's check problem_function in
         // SharedFuncsFit.c first.
         int fitNevals = 0, fitRetcode = 0;
-        // CPU-only trace: print first fit for voxel 0
+        // CPU-only trace: print first fit for voxel 1728 (near grid center)
         static int cpuOnlyDebugDone = 0;
-        if (!cpuOnlyDebugDone && rown == 0 && i == 0) {
+        if (!cpuOnlyDebugDone && rown == 1728 && i == 0) {
           printf("CPU-ONLY FIT debug: rown=%ld oriIdx=%d euler_rad=(%.9f,%.9f,%.9f) euler_deg=(%.6f,%.6f,%.6f) XG=(%.4f,%.4f,%.4f)\n",
                  rown, (int)OrientMatrix[i * 10 + 9], EulerIn[0], EulerIn[1], EulerIn[2],
                  EulerIn[0]*rad2deg, EulerIn[1]*rad2deg, EulerIn[2]*rad2deg,
