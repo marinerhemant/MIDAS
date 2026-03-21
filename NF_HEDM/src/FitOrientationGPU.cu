@@ -1273,6 +1273,7 @@ __global__ void nm_fit_kernel(
     const float *d_Gs,          // [n_hkls] G magnitudes
     int n_hkls,
     int useDouble,              // 0=float, 1=double precision
+    int debugJobIdx,            // job index to trace (-1 = none)
     float *results,             // [nJobs * 3] output Euler angles
     float *fvals_out) {         // [nJobs] output fracOverlap
 
@@ -1298,7 +1299,7 @@ __global__ void nm_fit_kernel(
   obj.d_hkls = d_hkls;
   obj.d_Gs = d_Gs;
   obj.n_hkls = n_hkls;
-  obj.debugJob = (jobIdx == 0) ? 1 : 0;
+  obj.debugJob = (jobIdx == debugJobIdx) ? 1 : 0;
   obj.evalCount = 0;
   obj.useDouble = useDouble;
 
@@ -1347,7 +1348,7 @@ __global__ void nm_fit_kernel(
     simplex[i][i-1] = newval;
     fvals_d[i] = obj(simplex[i], 3);
   }
-  int debugNM = (jobIdx == 0) ? 1 : 0;
+  int debugNM = (jobIdx == debugJobIdx) ? 1 : 0;
 
   // Print initial simplex for debugging
   if (debugNM) {
@@ -2292,6 +2293,19 @@ extern "C" int nf_gpu_fit(NFGPUContext *ctx,
   printf("NF GPU: Phase 2 fitting — %d jobs, blockSize=%d%s\n",
          nJobs, blockSize, useDouble ? ", DOUBLE precision" : "");
 
+  // Find debug job: first job with voxelIdx==0 for same-voxel comparison with CPU
+  int debugJobIdx = -1;
+  for (int j = 0; j < nJobs; j++) {
+    if (winners[j].voxelIdx == 0) {
+      debugJobIdx = j;
+      break;
+    }
+  }
+  if (debugJobIdx >= 0) {
+    printf("GPU debug: tracing job %d (voxIdx=%d oriIdx=%d)\n",
+           debugJobIdx, winners[debugJobIdx].voxelIdx, winners[debugJobIdx].orientIdx);
+  }
+
   nm_fit_kernel<<<gridSize, blockSize, 0, ctx->stream>>>(
       nJobs, d_startEulers, d_lb, d_ub,
       d_voxXG, d_voxYG,
@@ -2303,6 +2317,7 @@ extern "C" int nf_gpu_fit(NFGPUContext *ctx,
       ftol, maxIter, initStep,
       ctx->d_hkls, ctx->d_Gs, ctx->n_hkls,
       useDouble,
+      debugJobIdx,
       d_results, d_fvals);
 
   CUDA_CHECK(cudaStreamSynchronize(ctx->stream));
