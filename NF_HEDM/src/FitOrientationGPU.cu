@@ -1187,6 +1187,19 @@ struct NFFitObjective {
     float euler_deg[3] = { x[0] * (float)rad2deg,
                            x[1] * (float)rad2deg,
                            x[2] * (float)rad2deg };
+    return eval_at_euler(euler_deg);
+  }
+
+  // Double overload: preserves full precision through rad→deg conversion
+  // This matches NLOPT's double arithmetic in problem_function
+  __device__ float operator()(const double *x, int ndim) const {
+    float euler_deg[3] = { (float)(x[0] * rad2deg),
+                           (float)(x[1] * rad2deg),
+                           (float)(x[2] * rad2deg) };
+    return eval_at_euler(euler_deg);
+  }
+
+  __device__ float eval_at_euler(const float euler_deg[3]) const {
     float frac;
     if (useDouble) {
       frac = gpu_calc_frac_overlap_d(
@@ -1216,8 +1229,8 @@ struct NFFitObjective {
                dbg_nspots, dbg_total, dbg_overlap,
                useDouble ? " [DOUBLE]" : "");
       } else {
-        printf("GPU-NM eval %d: euler_rad=(%.9f,%.9f,%.9f) euler_deg=(%.6f,%.6f,%.6f) frac=%.6f obj=%.6f%s\n",
-               evalCount, x[0], x[1], x[2], euler_deg[0], euler_deg[1], euler_deg[2], frac, 1.0f - frac,
+        printf("GPU-NM eval %d: euler_deg=(%.6f,%.6f,%.6f) frac=%.6f obj=%.6f%s\n",
+               evalCount, euler_deg[0], euler_deg[1], euler_deg[2], frac, 1.0f - frac,
                useDouble ? " [DOUBLE]" : "");
       }
     }
@@ -1292,7 +1305,7 @@ __global__ void nm_fit_kernel(
     if (simplex[0][j] < lo[j]) simplex[0][j] = lo[j];
     if (simplex[0][j] > hi[j]) simplex[0][j] = hi[j];
   }
-  { float xf[3]; for (int j=0;j<3;j++) xf[j]=(float)simplex[0][j]; fvals_d[0] = obj(xf, 3); }
+  fvals_d[0] = obj(simplex[0], 3);
 
   for (int i = 1; i <= 3; i++) {
     for (int j = 0; j < 3; j++) simplex[i][j] = simplex[0][j];
@@ -1317,7 +1330,7 @@ __global__ void nm_fit_kernel(
       }
     }
     simplex[i][i-1] = newval;
-    { float xf[3]; for (int j=0;j<3;j++) xf[j]=(float)simplex[i][j]; fvals_d[i] = obj(xf, 3); }
+    fvals_d[i] = obj(simplex[i], 3);
   }
 
   // Main NM loop (double-precision simplex, NLOPT-matching algorithm)
@@ -1354,8 +1367,7 @@ __global__ void nm_fit_kernel(
       if (trial_d[j] < lo[j]) trial_d[j] = lo[j];
       if (trial_d[j] > hi[j]) trial_d[j] = hi[j];
     }
-    double fr;
-    { float xf[3]; for (int j=0;j<3;j++) xf[j]=(float)trial_d[j]; fr = obj(xf, 3); }
+    double fr = obj(trial_d, 3);
 
     if (fr < fl) {
       // Expansion: try c + gamma * (c - worst)
@@ -1365,8 +1377,7 @@ __global__ void nm_fit_kernel(
         if (trial_e[j] < lo[j]) trial_e[j] = lo[j];
         if (trial_e[j] > hi[j]) trial_e[j] = hi[j];
       }
-      double fe;
-      { float xf[3]; for (int j=0;j<3;j++) xf[j]=(float)trial_e[j]; fe = obj(xf, 3); }
+      double fe = obj(trial_e, 3);
       if (fe < fr) {
         for (int j = 0; j < 3; j++) simplex[worst][j] = trial_e[j];
         fvals_d[worst] = fe;
@@ -1392,8 +1403,7 @@ __global__ void nm_fit_kernel(
       if (trial_c[j] < lo[j]) trial_c[j] = lo[j];
       if (trial_c[j] > hi[j]) trial_c[j] = hi[j];
     }
-    double fc;
-    { float xf[3]; for (int j=0;j<3;j++) xf[j]=(float)trial_c[j]; fc = obj(xf, 3); }
+    double fc = obj(trial_c, 3);
     if (fc < fr && fc < fh) {
       // Successful contraction
       for (int j = 0; j < 3; j++) simplex[worst][j] = trial_c[j];
@@ -1409,7 +1419,7 @@ __global__ void nm_fit_kernel(
         if (simplex[i][j] < lo[j]) simplex[i][j] = lo[j];
         if (simplex[i][j] > hi[j]) simplex[i][j] = hi[j];
       }
-      { float xf[3]; for (int j2=0;j2<3;j2++) xf[j2]=(float)simplex[i][j2]; fvals_d[i] = obj(xf, 3); }
+      fvals_d[i] = obj(simplex[i], 3);
     }
   }
 
