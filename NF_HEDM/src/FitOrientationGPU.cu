@@ -1274,129 +1274,130 @@ __global__ void nm_fit_kernel(
   obj.evalCount = 0;
   obj.useDouble = useDouble;
 
-  // Load per-job bounds
-  float lo[3], hi[3];
+  // Load per-job bounds (double precision for NM, matching NLOPT)
+  double lo[3], hi[3];
   for (int i = 0; i < 3; i++) {
-    lo[i] = lowerBounds[jobIdx * 3 + i];
-    hi[i] = upperBounds[jobIdx * 3 + i];
+    lo[i] = (double)lowerBounds[jobIdx * 3 + i];
+    hi[i] = (double)upperBounds[jobIdx * 3 + i];
   }
 
-  // Initialize simplex
+  // Initialize simplex (double precision matching NLOPT)
   NMParams nm = nm_default_params();
-  float simplex[4][3];  // NDIM+1 × NDIM (3+1 × 3)
-  float fvals[4];
+  double simplex[4][3];  // NDIM+1 × NDIM (3+1 × 3)
+  double fvals_d[4];
 
   const float *x0 = &startEulers[jobIdx * 3];
-  for (int j = 0; j < 3; j++) simplex[0][j] = x0[j];
   for (int j = 0; j < 3; j++) {
+    simplex[0][j] = (double)x0[j];
     if (simplex[0][j] < lo[j]) simplex[0][j] = lo[j];
     if (simplex[0][j] > hi[j]) simplex[0][j] = hi[j];
   }
-  fvals[0] = obj(simplex[0], 3);
+  { float xf[3]; for (int j=0;j<3;j++) xf[j]=(float)simplex[0][j]; fvals_d[0] = obj(xf, 3); }
 
   for (int i = 1; i <= 3; i++) {
     for (int j = 0; j < 3; j++) simplex[i][j] = simplex[0][j];
-    float step = initStep * (hi[i-1] - lo[i-1]);
-    if (step < 1e-8f) step = 1e-4f;
-    float newval = simplex[0][i-1] + step;
+    double step = (double)initStep * (hi[i-1] - lo[i-1]);
+    if (step < 1e-8) step = 1e-4;
+    double newval = simplex[0][i-1] + step;
     // NLOPT-style direction reversal near bounds
     if (newval > hi[i-1]) {
-      if (hi[i-1] - simplex[0][i-1] > fabsf(step) * 0.1f)
+      if (hi[i-1] - simplex[0][i-1] > fabs(step) * 0.1)
         newval = hi[i-1];
       else
-        newval = simplex[0][i-1] - fabsf(step);
+        newval = simplex[0][i-1] - fabs(step);
     }
     if (newval < lo[i-1]) {
-      if (simplex[0][i-1] - lo[i-1] > fabsf(step) * 0.1f)
+      if (simplex[0][i-1] - lo[i-1] > fabs(step) * 0.1)
         newval = lo[i-1];
       else {
-        newval = simplex[0][i-1] + fabsf(step);
+        newval = simplex[0][i-1] + fabs(step);
         if (newval > hi[i-1])
-          newval = 0.5f * ((hi[i-1] - simplex[0][i-1] > simplex[0][i-1] - lo[i-1]
-                            ? hi[i-1] : lo[i-1]) + simplex[0][i-1]);
+          newval = 0.5 * ((hi[i-1] - simplex[0][i-1] > simplex[0][i-1] - lo[i-1]
+                           ? hi[i-1] : lo[i-1]) + simplex[0][i-1]);
       }
     }
     simplex[i][i-1] = newval;
-    fvals[i] = obj(simplex[i], 3);
+    { float xf[3]; for (int j=0;j<3;j++) xf[j]=(float)simplex[i][j]; fvals_d[i] = obj(xf, 3); }
   }
 
-  // Main NM loop (NLOPT-matching algorithm)
-  float trial[3], centroid[3];
+  // Main NM loop (double-precision simplex, NLOPT-matching algorithm)
+  double trial_d[3], centroid_d[3];
 
   for (int iter = 0; iter < maxIter; iter++) {
     // Find best, worst, second_worst
     int best = 0, worst = 0, sw = 0;
     for (int i = 1; i <= 3; i++) {
-      if (fvals[i] < fvals[best]) best = i;
-      if (fvals[i] > fvals[worst]) worst = i;
+      if (fvals_d[i] < fvals_d[best]) best = i;
+      if (fvals_d[i] > fvals_d[worst]) worst = i;
     }
     sw = best;
     for (int i = 0; i <= 3; i++) {
       if (i == worst) continue;
-      if (fvals[i] > fvals[sw]) sw = i;
+      if (fvals_d[i] > fvals_d[sw]) sw = i;
     }
 
-    float fl = fvals[best];
-    float fh = fvals[worst];
-    if (fh - fl < tol) break;
+    double fl = fvals_d[best];
+    double fh = fvals_d[worst];
+    if (fh - fl < (double)tol) break;
 
     // Centroid (exclude worst)
-    for (int j = 0; j < 3; j++) centroid[j] = 0;
+    for (int j = 0; j < 3; j++) centroid_d[j] = 0;
     for (int i = 0; i <= 3; i++) {
       if (i == worst) continue;
-      for (int j = 0; j < 3; j++) centroid[j] += simplex[i][j];
+      for (int j = 0; j < 3; j++) centroid_d[j] += simplex[i][j];
     }
-    for (int j = 0; j < 3; j++) centroid[j] /= 3.0f;
+    for (int j = 0; j < 3; j++) centroid_d[j] /= 3.0;
 
     // Reflection: trial = c + alpha * (c - worst)
     for (int j = 0; j < 3; j++) {
-      trial[j] = centroid[j] + nm.alpha * (centroid[j] - simplex[worst][j]);
-      if (trial[j] < lo[j]) trial[j] = lo[j];
-      if (trial[j] > hi[j]) trial[j] = hi[j];
+      trial_d[j] = centroid_d[j] + (double)nm.alpha * (centroid_d[j] - simplex[worst][j]);
+      if (trial_d[j] < lo[j]) trial_d[j] = lo[j];
+      if (trial_d[j] > hi[j]) trial_d[j] = hi[j];
     }
-    float fr = obj(trial, 3);
+    double fr;
+    { float xf[3]; for (int j=0;j<3;j++) xf[j]=(float)trial_d[j]; fr = obj(xf, 3); }
 
     if (fr < fl) {
       // Expansion: try c + gamma * (c - worst)
-      float trial_e[3];
+      double trial_e[3];
       for (int j = 0; j < 3; j++) {
-        trial_e[j] = centroid[j] + nm.gamma * (centroid[j] - simplex[worst][j]);
+        trial_e[j] = centroid_d[j] + (double)nm.gamma * (centroid_d[j] - simplex[worst][j]);
         if (trial_e[j] < lo[j]) trial_e[j] = lo[j];
         if (trial_e[j] > hi[j]) trial_e[j] = hi[j];
       }
-      float fe = obj(trial_e, 3);
+      double fe;
+      { float xf[3]; for (int j=0;j<3;j++) xf[j]=(float)trial_e[j]; fe = obj(xf, 3); }
       if (fe < fr) {
         for (int j = 0; j < 3; j++) simplex[worst][j] = trial_e[j];
-        fvals[worst] = fe;
+        fvals_d[worst] = fe;
       } else {
-        for (int j = 0; j < 3; j++) simplex[worst][j] = trial[j];
-        fvals[worst] = fr;
+        for (int j = 0; j < 3; j++) simplex[worst][j] = trial_d[j];
+        fvals_d[worst] = fr;
       }
       continue;
     }
 
-    if (fr < fvals[sw]) {
+    if (fr < fvals_d[sw]) {
       // Accept reflection
-      for (int j = 0; j < 3; j++) simplex[worst][j] = trial[j];
-      fvals[worst] = fr;
+      for (int j = 0; j < 3; j++) simplex[worst][j] = trial_d[j];
+      fvals_d[worst] = fr;
       continue;
     }
 
     // Contraction (NLOPT-style: inside or outside based on fh vs fr)
-    // fh <= fr → inside contraction (scale = -rho: toward centroid from worst)
-    // fh >  fr → outside contraction (scale = +rho: toward reflected from centroid)
-    float cscale = (fh <= fr) ? -nm.rho : nm.rho;
-    float trial_c[3];
+    double cscale = (fh <= fr) ? -(double)nm.rho : (double)nm.rho;
+    double trial_c[3];
     for (int j = 0; j < 3; j++) {
-      trial_c[j] = centroid[j] + cscale * (centroid[j] - simplex[worst][j]);
+      trial_c[j] = centroid_d[j] + cscale * (centroid_d[j] - simplex[worst][j]);
       if (trial_c[j] < lo[j]) trial_c[j] = lo[j];
       if (trial_c[j] > hi[j]) trial_c[j] = hi[j];
     }
-    float fc = obj(trial_c, 3);
+    double fc;
+    { float xf[3]; for (int j=0;j<3;j++) xf[j]=(float)trial_c[j]; fc = obj(xf, 3); }
     if (fc < fr && fc < fh) {
       // Successful contraction
       for (int j = 0; j < 3; j++) simplex[worst][j] = trial_c[j];
-      fvals[worst] = fc;
+      fvals_d[worst] = fc;
       continue;
     }
 
@@ -1404,22 +1405,22 @@ __global__ void nm_fit_kernel(
     for (int i = 0; i <= 3; i++) {
       if (i == best) continue;
       for (int j = 0; j < 3; j++) {
-        simplex[i][j] = simplex[best][j] + nm.sigma * (simplex[i][j] - simplex[best][j]);
+        simplex[i][j] = simplex[best][j] + (double)nm.sigma * (simplex[i][j] - simplex[best][j]);
         if (simplex[i][j] < lo[j]) simplex[i][j] = lo[j];
         if (simplex[i][j] > hi[j]) simplex[i][j] = hi[j];
       }
-      fvals[i] = obj(simplex[i], 3);
+      { float xf[3]; for (int j2=0;j2<3;j2++) xf[j2]=(float)simplex[i][j2]; fvals_d[i] = obj(xf, 3); }
     }
   }
 
   // Output best
   int best = 0;
   for (int i = 1; i <= 3; i++)
-    if (fvals[i] < fvals[best]) best = i;
+    if (fvals_d[i] < fvals_d[best]) best = i;
 
   for (int j = 0; j < 3; j++)
-    results[jobIdx * 3 + j] = simplex[best][j];
-  fvals_out[jobIdx] = fvals[best];  // raw NM objective (= 1 - fracOverlap)
+    results[jobIdx * 3 + j] = (float)simplex[best][j];
+  fvals_out[jobIdx] = (float)fvals_d[best];  // raw NM objective (= 1 - fracOverlap)
 }
 
 
