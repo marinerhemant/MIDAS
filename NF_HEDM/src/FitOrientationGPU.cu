@@ -544,62 +544,63 @@ __device__ static inline int gpu_calc_omega(
     float gx, float gy, float gz, float v,
     float omegas[4], float etas[4]) {
   int nsol = 0;
-  float almostzero = 1e-4f;
+  // Use double precision to match CPU CalcOmega (RealType=double).
+  // Float precision causes different omeBin/eta values → different spot sets.
+  double dGx = (double)gx, dGy = (double)gy, dGz = (double)gz, dV = (double)v;
+  double almostzero = 1e-4;
 
-  if (fabsf(gy) < almostzero) {
-    if (gx != 0.0f) {
-      float cosome1 = -v / gx;
-      if (fabsf(cosome1) <= 1.0f) {
-        float ome = acosf(cosome1) * (float)rad2deg;
-        omegas[nsol++] = ome;
-        omegas[nsol++] = -ome;
+  if (fabs(dGy) < almostzero) {
+    if (dGx != 0.0) {
+      double cosome1 = -dV / dGx;
+      if (fabs(cosome1) <= 1.0) {
+        double ome = acos(cosome1) * rad2deg;
+        omegas[nsol++] = (float)ome;
+        omegas[nsol++] = (float)(-ome);
       }
     }
   } else {
-    float y2 = gy * gy;
-    float a = 1.0f + (gx * gx) / y2;
-    float b = (2.0f * v * gx) / y2;
-    float c = (v * v) / y2 - 1.0f;
-    float discr = b * b - 4.0f * a * c;
-    if (discr >= 0.0f) {
-      float sd = sqrtf(discr);
-      float cosome1 = (-b + sd) / (2.0f * a);
-      if (fabsf(cosome1) <= 1.0f) {
-        float ome1a = acosf(cosome1);
-        float ome1b = -ome1a;
-        float eqa = -gx * cosf(ome1a) + gy * sinf(ome1a);
-        float eqb = -gx * cosf(ome1b) + gy * sinf(ome1b);
-        omegas[nsol++] = (fabsf(eqa - v) < fabsf(eqb - v))
-                       ? ome1a * (float)rad2deg
-                       : ome1b * (float)rad2deg;
+    double y2 = dGy * dGy;
+    double a = 1.0 + (dGx * dGx) / y2;
+    double b = (2.0 * dV * dGx) / y2;
+    double c = (dV * dV) / y2 - 1.0;
+    double discr = b * b - 4.0 * a * c;
+    if (discr >= 0.0) {
+      double sd = sqrt(discr);
+      double cosome1 = (-b + sd) / (2.0 * a);
+      if (fabs(cosome1) <= 1.0) {
+        double ome1a = acos(cosome1);
+        double ome1b = -ome1a;
+        double eqa = -dGx * cos(ome1a) + dGy * sin(ome1a);
+        double eqb = -dGx * cos(ome1b) + dGy * sin(ome1b);
+        omegas[nsol++] = (float)((fabs(eqa - dV) < fabs(eqb - dV))
+                       ? ome1a * rad2deg
+                       : ome1b * rad2deg);
       }
-      float cosome2 = (-b - sd) / (2.0f * a);
-      if (fabsf(cosome2) <= 1.0f) {
-        float ome2a = acosf(cosome2);
-        float ome2b = -ome2a;
-        float eqa = -gx * cosf(ome2a) + gy * sinf(ome2a);
-        float eqb = -gx * cosf(ome2b) + gy * sinf(ome2b);
-        omegas[nsol++] = (fabsf(eqa - v) < fabsf(eqb - v))
-                       ? ome2a * (float)rad2deg
-                       : ome2b * (float)rad2deg;
+      double cosome2 = (-b - sd) / (2.0 * a);
+      if (fabs(cosome2) <= 1.0) {
+        double ome2a = acos(cosome2);
+        double ome2b = -ome2a;
+        double eqa = -dGx * cos(ome2a) + dGy * sin(ome2a);
+        double eqb = -dGx * cos(ome2b) + dGy * sin(ome2b);
+        omegas[nsol++] = (float)((fabs(eqa - dV) < fabs(eqb - dV))
+                       ? ome2a * rad2deg
+                       : ome2b * rad2deg);
       }
     }
   }
 
-  // Compute eta for each solution
+  // Compute eta for each solution (also in double for precision)
   for (int i = 0; i < nsol; i++) {
-    float omeRad = omegas[i] * (float)deg2rad;
-    float cosO = cosf(omeRad), sinO = sinf(omeRad);
-    // RotateAroundZ: mat = {{cosO, -sinO, 0}, {sinO, cosO, 0}, {0, 0, 1}}
-    // gw[0] = cosO*gx - sinO*gy (unused for eta)
-    // gw[1] = sinO*gx + cosO*gy
-    float gw2 = gx * sinO + gy * cosO;
-    float gw3 = gz;
+    double omeRad = (double)omegas[i] * deg2rad;
+    double cosO = cos(omeRad), sinO = sin(omeRad);
+    // RotateAroundZ: gw[1] = sinO*gx + cosO*gy
+    double gw2 = dGx * sinO + dGy * cosO;
+    double gw3 = dGz;
     // CalcEtaAngle
-    float r = sqrtf(gw2 * gw2 + gw3 * gw3);
-    float eta = (r > 1e-10f) ? (float)rad2deg * acosf(gw3 / r) : 0.0f;
-    if (gw2 > 0.0f) eta = -eta;
-    etas[i] = eta;
+    double r = sqrt(gw2 * gw2 + gw3 * gw3);
+    double eta = (r > 1e-10) ? rad2deg * acos(gw3 / r) : 0.0;
+    if (gw2 > 0.0) eta = -eta;
+    etas[i] = (float)eta;
   }
   return nsol;
 }
