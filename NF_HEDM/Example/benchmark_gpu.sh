@@ -2,13 +2,12 @@
 #
 # GPU vs CPU benchmark for NF-HEDM FitOrientation
 #
-# Usage: bash benchmark_gpu.sh [nCPUs] [--screen-only] [--gpu-only] [--small] [--gpu-fit] [--gpu-double]
+# Usage: bash benchmark_gpu.sh [nCPUs] [--screen-only] [--gpu-only] [--small] [--gpu-fit]
 #   nCPUs:        number of CPU threads (default: 96)
 #   --screen-only: skip Phase 2 fitting (pure screening benchmark)
 #   --gpu-only:    skip preprocessing and CPU benchmark
 #   --small:       use grs.csv (4 orientations) instead of cubicSeed.txt
 #   --gpu-fit:     enable GPU Phase 2 NM fitting (MIDAS_GPU_FIT=1)
-#   --gpu-double:  use double-precision objective (MIDAS_GPU_DOUBLE=1, slower but matches CPU)
 #
 # Run this from the NF_HEDM/Example/sim directory (where SpotsInfo.bin
 # and the diffraction images live).
@@ -20,14 +19,12 @@ SCREEN_ONLY=0
 GPU_ONLY=0
 USE_SMALL=0
 GPU_FIT=0
-GPU_DOUBLE=0
 for arg in "$@"; do
   case "$arg" in
     --screen-only) SCREEN_ONLY=1 ;;
     --gpu-only) GPU_ONLY=1 ;;
     --small) USE_SMALL=1 ;;
     --gpu-fit) GPU_FIT=1 ;;
-    --gpu-double) GPU_DOUBLE=1; GPU_FIT=1 ;;
     [0-9]*) NCPUS=$arg ;;
   esac
 done
@@ -57,10 +54,7 @@ export MIDAS_SCREEN_ONLY=$SCREEN_ONLY
 if [ "$GPU_FIT" = 1 ]; then
   export MIDAS_GPU_FIT=1
 fi
-if [ "$GPU_DOUBLE" = 1 ]; then
-  export MIDAS_GPU_DOUBLE=1
-  echo "MODE:       GPU double-precision objective (CPU-matching)"
-fi
+
 
 # Check we're in a directory with SpotsInfo.bin
 if [ ! -f SpotsInfo.bin ]; then
@@ -146,65 +140,18 @@ fi  # end CPU benchmark
 echo ""
 echo "=== STEP 3: GPU Benchmark ==="
 
-if [ "$GPU_DOUBLE" = 1 ] && [ "$SCREEN_ONLY" = 0 ]; then
-  # Run FLOAT mode first
-  echo "--- STEP 3a: GPU Float Mode ---"
-  unset MIDAS_GPU_DOUBLE
-  export MIDAS_GPU_FIT=1
-  time "$BIN_DIR/FitOrientationGPU" "$PARAM_FILE" 0 1 "$NCPUS" 2>&1 | tee gpu_bench_float.log
-  cp Au_bin_Reconstructed.mic gpu_float.mic
-  echo "GPU float done."
-
-  # Run DOUBLE mode
-  echo ""
-  echo "--- STEP 3b: GPU Double Mode ---"
-  export MIDAS_GPU_DOUBLE=1
-  time "$BIN_DIR/FitOrientationGPU" "$PARAM_FILE" 0 1 "$NCPUS" 2>&1 | tee gpu_bench_double.log
-  cp Au_bin_Reconstructed.mic gpu_double.mic
-  cp Au_bin_Reconstructed.mic gpu_benchmark.mic  # default for parity check
-  echo "GPU double done."
-else
-  time "$BIN_DIR/FitOrientationGPU" "$PARAM_FILE" 0 1 "$NCPUS" 2>&1 | tee gpu_bench.log
-  if [ "$SCREEN_ONLY" = 0 ]; then
-    cp Au_bin_Reconstructed.mic gpu_benchmark.mic
-  fi
-  echo "GPU done."
+time "$BIN_DIR/FitOrientationGPU" "$PARAM_FILE" 0 1 "$NCPUS" 2>&1 | tee gpu_bench.log
+if [ "$SCREEN_ONLY" = 0 ]; then
+  cp Au_bin_Reconstructed.mic gpu_benchmark.mic
 fi
+echo "GPU done."
 
 # --- Parity check (only if Phase 2 ran) ---
 if [ "$SCREEN_ONLY" = 0 ]; then
   echo ""
   echo "=== STEP 4: Parity Check ==="
 
-  if [ "$GPU_DOUBLE" = 1 ] && [ -f gpu_float.mic ] && [ -f gpu_double.mic ]; then
-    # Parity check for both modes
-    for MODE_NAME in float double; do
-      echo "--- ${MODE_NAME} mode ---"
-      python3 -c "
-import struct
-def read_mic(fn):
-    with open(fn,'rb') as f: data=f.read()
-    n=len(data)//(11*8)
-    return [struct.unpack_from('11d',data,i*11*8) for i in range(n)]
-cpu=read_mic('cpu_benchmark.mic')
-gpu=read_mic('gpu_${MODE_NAME}.mic')
-n=min(len(cpu),len(gpu))
-match=mismatch=both0=0
-for i in range(n):
-    cf,gf=cpu[i][10],gpu[i][10]
-    if cf==0 and gf==0: both0+=1
-    elif abs(cf-gf)<0.02: match+=1
-    else: mismatch+=1
-active=match+mismatch
-print(f'Rows:       {n}')
-print(f'Both zero:  {both0}')
-print(f'Match(<2%): {match}')
-print(f'Mismatch:   {mismatch}')
-print(f'Match rate: {match/active*100:.1f}%' if active>0 else 'Match rate: N/A')
-"
-    done
-  else
-    python3 -c "
+  python3 -c "
 import struct
 def read_mic(fn):
     with open(fn,'rb') as f: data=f.read()
@@ -226,18 +173,13 @@ print(f'Match(<2%): {match}')
 print(f'Mismatch:   {mismatch}')
 print(f'Match rate: {match/active*100:.1f}%' if active>0 else 'Match rate: N/A')
 "
-  fi
 
   # Spatial parity maps
   echo ""
   echo "=== STEP 5: Spatial Parity Maps ==="
   PARITY_SCRIPT="$SCRIPT_DIR/parity_maps.py"
   if [ -f "$PARITY_SCRIPT" ]; then
-    if [ "$GPU_DOUBLE" = 1 ] && [ -f gpu_float.mic ] && [ -f gpu_double.mic ]; then
-      python3 "$PARITY_SCRIPT" cpu_benchmark.mic gpu_float.mic gpu_double.mic 225
-    else
-      python3 "$PARITY_SCRIPT" cpu_benchmark.mic gpu_benchmark.mic 225
-    fi
+    python3 "$PARITY_SCRIPT" cpu_benchmark.mic gpu_benchmark.mic 225
   else
     echo "WARNING: parity_maps.py not found at $PARITY_SCRIPT"
   fi
