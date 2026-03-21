@@ -817,6 +817,8 @@ struct NFFitObjective {
   const float *d_hkls;
   const float *d_Gs;
   int n_hkls;
+  int debugJob;
+  mutable int evalCount;
 
   __device__ float operator()(const float *x, int ndim) const {
     float euler_deg[3] = { x[0] * (float)rad2deg,
@@ -827,6 +829,11 @@ struct NFFitObjective {
         Lsd0, ybc0, zbc0, RM, P0_0,
         nLayers, nrFiles, nrPixelsY, nrPixelsZ, px, gs,
         d_hkls, d_Gs, n_hkls);
+    if (debugJob && evalCount < 10) {
+      printf("GPU-NM eval %d: euler=(%.6f,%.6f,%.6f) deg, frac=%.6f, obj=%.6f\n",
+             evalCount, euler_deg[0], euler_deg[1], euler_deg[2], frac, 1.0f - frac);
+    }
+    const_cast<NFFitObjective*>(this)->evalCount++;
     return 1.0f - frac;
   }
 };
@@ -874,6 +881,8 @@ __global__ void nm_fit_kernel(
   obj.d_hkls = d_hkls;
   obj.d_Gs = d_Gs;
   obj.n_hkls = n_hkls;
+  obj.debugJob = (jobIdx == 0) ? 1 : 0;
+  obj.evalCount = 0;
 
   // Load per-job bounds
   float lo[3], hi[3];
@@ -1791,7 +1800,7 @@ extern "C" int nf_gpu_fit(NFGPUContext *ctx,
   int blockSize = 64;  // Each thread does heavy work, smaller blocks
   int gridSize = (nJobs + blockSize - 1) / blockSize;
   float ftol = 1e-5f;    // matches CPU ftol_rel
-  int maxIter = 1000;     // CPU uses 5000 evals; each NM iter uses ~4 evals
+  int maxIter = 1;      // DEBUG: low iteration count for trajectory comparison
   float initStep = 0.25f; // 25% of bound range = 0.25 * 2*tolRad ≈ 0.5°
 
   printf("NF GPU: Phase 2 fitting — %d jobs, blockSize=%d\n", nJobs, blockSize);
