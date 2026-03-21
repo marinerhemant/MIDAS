@@ -2293,10 +2293,10 @@ extern "C" int nf_gpu_fit(NFGPUContext *ctx,
   printf("NF GPU: Phase 2 fitting — %d jobs, blockSize=%d%s\n",
          nJobs, blockSize, useDouble ? ", DOUBLE precision" : "");
 
-  // Find debug job: first job with voxelIdx==1728 (near grid center) for same-voxel comparison with CPU
+  // Find debug job: first job with voxelIdx==620 for same-voxel comparison with CPU
   int debugJobIdx = -1;
   for (int j = 0; j < nJobs; j++) {
-    if (winners[j].voxelIdx == 1728) {
+    if (winners[j].voxelIdx == 620 && winners[j].orientIdx == 3) {
       debugJobIdx = j;
       break;
     }
