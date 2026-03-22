@@ -642,9 +642,10 @@ def run_multi_resolution_workflow(args, params, t0, ph5=None, resume_from_stage=
         
         logger.info(f"Generating clustered seeds from {current_mic_file} -> {grains_file}")
         
-        # Mic2GrainsList <ParamFile> <PrevMicFile> <GrainsFile>
+        # Mic2GrainsList <ParamFile> <PrevMicFile> <GrainsFile> 0 <nCPUs> <minConfidence>
         run_command(
-            cmd=os.path.join(bin_dir, "Mic2GrainsList") + f" {args.paramFN} {prev_mic_path} {grains_path}",
+            cmd=(os.path.join(bin_dir, "Mic2GrainsList") +
+                 f" {args.paramFN} {prev_mic_path} {grains_path} 0 {args.nCPUs} {args.minConfidence}"),
             working_dir=params['resultFolder'],
             out_file=f"{params['logDir']}/mic2grains_{loop_idx}_out.csv",
             err_file=f"{params['logDir']}/mic2grains_{loop_idx}_err.csv"
