@@ -187,6 +187,11 @@ add_ff_hedm_executable(mergeScansScanning SOURCES src/mergeScansScanning.c OMP)
 
 # CUDA specific targets
 add_ff_hedm_executable(IntegratorFitPeaksGPUStream SOURCES src/IntegratorFitPeaksGPUStream.cu src/PeakFit.c src/PeakFitIO.c CUDA OMP)
+add_ff_hedm_executable(IndexerGPU SOURCES src/IndexerGPU.cu CUDA OMP)
+if(TARGET IndexerGPU)
+  target_include_directories(IndexerGPU PRIVATE ${CMAKE_SOURCE_DIR}/utils)
+  target_link_libraries(IndexerGPU PRIVATE cudart)
+endif()
 # Example for other CUDA targets if they were to be re-added:
 # add_ff_hedm_executable(IndexerCUDA SOURCES src/IndexerRefineNLOPT.cu CUDA)
 # add_ff_hedm_executable(PeaksCUDA SOURCES src/PeaksNLMD.cu CUDA)

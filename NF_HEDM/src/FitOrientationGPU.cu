@@ -22,6 +22,7 @@
 #ifdef ENABLE_CUDA
 
 #include <cuda_runtime.h>
+#include "midas_gpu_math.cuh"  // Shared GPU math (utils/)
 #include <math.h>
 #include <stdio.h>
 #include <stdlib.h>
