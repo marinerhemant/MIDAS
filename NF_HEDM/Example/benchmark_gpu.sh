@@ -83,9 +83,13 @@ fi
 
 # === Dilate SpotsInfo.bin if requested ===
 if [ "$DILATE_RADIUS" != 0 ]; then
+  # Omega radius: orientation offset shifts spots in omega too.
+  # At 0.25°/frame, a typical ~1°/pixel angular scale gives omega_radius ≈ spatial/4
+  OMEGA_RADIUS=$(( DILATE_RADIUS / 4 ))
+  [ "$OMEGA_RADIUS" -lt 1 ] && OMEGA_RADIUS=1
   echo ""
-  echo "=== Dilating SpotsInfo.bin (radius=$DILATE_RADIUS) ==="
-  python3 "$DILATE_SCRIPT" "$PARAM_FILE" --radius "$DILATE_RADIUS" --backup
+  echo "=== Dilating SpotsInfo.bin (spatial=$DILATE_RADIUS, omega=$OMEGA_RADIUS) ==="
+  python3 "$DILATE_SCRIPT" "$PARAM_FILE" --radius "$DILATE_RADIUS" --omega-radius "$OMEGA_RADIUS" --backup
 fi
 
 # === STEP 0: Adjust GridSize if --voxels was specified ===

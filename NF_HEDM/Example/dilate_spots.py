@@ -61,7 +61,7 @@ def parse_param_file(param_path):
     return nrPixelsY, nrPixelsZ, nrFiles, nLayers, data_dir
 
 
-def dilate_spotsinfo(spots_path, nrPixelsY, nrPixelsZ, nrFiles, nLayers, radius):
+def dilate_spotsinfo(spots_path, nrPixelsY, nrPixelsZ, nrFiles, nLayers, radius, omega_radius):
     """Dilate SpotsInfo.bin in-place using byte-level OR shifts."""
     nF = nrFiles
     nZ = nrPixelsZ
@@ -77,17 +77,15 @@ def dilate_spotsinfo(spots_path, nrPixelsY, nrPixelsZ, nrFiles, nLayers, radius)
 
     file_size = os.path.getsize(spots_path)
     expected_size = nLayers * bytes_per_layer
-    # File may be stored as 4-byte-aligned ints
     if file_size < expected_size:
         print(f"ERROR: SpotsInfo.bin is {file_size} bytes, expected at least {expected_size}")
         sys.exit(1)
 
     print(f"Dilating SpotsInfo.bin:")
     print(f"  Detector: {nY} x {nZ}, {nF} frames, {nLayers} layers")
-    print(f"  Radius: {radius} pixels")
+    print(f"  Spatial radius: {radius} pixels (y,z)")
+    print(f"  Omega radius: {omega_radius} frames")
     print(f"  File size: {file_size} bytes ({file_size/1e6:.1f} MB)")
-    print(f"  Shift per z-pixel: {shift_z} bytes")
-    print(f"  Shift per y-pixel: {shift_y} bytes")
 
     # Read the entire file
     data = np.fromfile(spots_path, dtype=np.uint8)
@@ -98,28 +96,46 @@ def dilate_spotsinfo(spots_path, nrPixelsY, nrPixelsZ, nrFiles, nLayers, radius)
         chunk = data[start:end].copy()
         result = chunk.copy()
 
-        # Count spots before
-        bits_before = sum(bin(b).count('1') for b in chunk[:10000])
+        # Sample density from middle of layer (edges may be empty)
+        mid = len(chunk) // 2
+        sample = chunk[mid:mid+10000]
+        bits_before = sum(bin(b).count('1') for b in sample)
 
-        # Iterative dilation: dilate by 1 pixel, radius times
+        # --- Spatial dilation (y, z) ---
         for r in range(radius):
             new = result.copy()
-            # Dilate in z direction (+/- 1 pixel)
             if shift_z < len(result):
                 new[shift_z:] |= result[:-shift_z]      # z+1
                 new[:-shift_z] |= result[shift_z:]       # z-1
-            # Dilate in y direction (+/- 1 pixel)
             if shift_y < len(result):
                 new[shift_y:] |= result[:-shift_y]      # y+1
                 new[:-shift_y] |= result[shift_y:]       # y-1
             result = new
 
+        # --- Omega dilation (bit-level shifts within packed bytes) ---
+        # Omega is the fastest-varying index, packed LSB-first in bytes.
+        # Shift +1 omega = left-shift bits by 1 with carry between bytes.
+        # Shift -1 omega = right-shift bits by 1 with carry between bytes.
+        for r in range(omega_radius):
+            new = result.copy()
+            # Omega +1: left-shift by 1 bit
+            left = ((result.astype(np.uint16) << 1) & 0xFF).astype(np.uint8)
+            carry = result >> 7  # bit 7 carries to bit 0 of next byte
+            left[1:] |= carry[:-1]
+            new |= left
+            # Omega -1: right-shift by 1 bit
+            right = result >> 1
+            carry = (result & 1) << 7  # bit 0 carries to bit 7 of prev byte
+            right[:-1] |= carry[1:]
+            new |= right
+            result = new
+
         data[start:end] = result
 
         # Count spots after (sample)
-        bits_after = sum(bin(b).count('1') for b in result[:10000])
+        bits_after = sum(bin(b).count('1') for b in result[mid:mid+10000])
         ratio = bits_after / max(bits_before, 1)
-        print(f"  Layer {layer}: spot density increased ~{ratio:.1f}x (sampled)")
+        print(f"  Layer {layer}: spot density increased ~{ratio:.1f}x (sampled from middle)")
 
     # Write back
     data.tofile(spots_path)
@@ -130,7 +146,9 @@ def main():
     parser = argparse.ArgumentParser(description='Dilate SpotsInfo.bin for realistic spot sizes')
     parser.add_argument('param_file', help='MIDAS parameter file')
     parser.add_argument('--radius', type=int, default=3,
-                        help='Dilation radius in pixels (default: 3)')
+                        help='Spatial dilation radius in pixels (default: 3)')
+    parser.add_argument('--omega-radius', type=int, default=0,
+                        help='Omega dilation radius in frames (default: 0)')
     parser.add_argument('--backup', action='store_true',
                         help='Create SpotsInfo.bin.orig backup before dilation')
     args = parser.parse_args()
@@ -151,7 +169,7 @@ def main():
             print(f"Backing up to {backup}")
             shutil.copy2(spots_path, backup)
 
-    dilate_spotsinfo(spots_path, nY, nZ, nF, nLayers, args.radius)
+    dilate_spotsinfo(spots_path, nY, nZ, nF, nLayers, args.radius, args.omega_radius)
     print("Done.")
 
 
