@@ -1129,20 +1129,22 @@ extern "C" int nf_gpu_upload_obs_spots(NFGPUContext *ctx,
   // sizeObsSpots = number of int words (CPU already divided totalBits by 32).
   // Total bits = sizeObsSpots * 32.
   ctx->obsFlatSize = sizeObsSpots * 32;  // Store total number of BITS
-  size_t nWords = (size_t)(sizeObsSpots + 1);  // +1 for safety (same as CPU mmap)
-  size_t flatBytes = nWords * sizeof(uint32_t);
+  size_t nWords = (size_t)sizeObsSpots;
+  size_t copyBytes = nWords * sizeof(uint32_t);           // exact host data
+  size_t allocBytes = (nWords + 1) * sizeof(uint32_t);    // +1 padding on GPU
 
   printf("NF GPU: uploading ObsSpotsInfo: %lld words = %zu bytes (%.1f MB)\n",
-         sizeObsSpots, flatBytes, flatBytes / (1024.0 * 1024.0));
+         sizeObsSpots, copyBytes, copyBytes / (1024.0 * 1024.0));
 
-  CUDA_CHECK(cudaMalloc(&ctx->d_obsFlat, flatBytes));
-  CUDA_CHECK(cudaMemcpy(ctx->d_obsFlat, h_obsSpots, flatBytes,
+  CUDA_CHECK(cudaMalloc(&ctx->d_obsFlat, allocBytes));
+  CUDA_CHECK(cudaMemset(ctx->d_obsFlat, 0, allocBytes));  // zero padding word
+  CUDA_CHECK(cudaMemcpy(ctx->d_obsFlat, h_obsSpots, copyBytes,
                         cudaMemcpyHostToDevice));
 
   ctx->obsUploaded = 1;
   double dt = nf_gpu_timer_sec() - t0;
   printf("NF GPU: ObsSpotsInfo uploaded (%.1f MB, %.2f s)\n",
-         flatBytes / (1024.0 * 1024.0), dt);
+         copyBytes / (1024.0 * 1024.0), dt);
 
 
   return 0;
