@@ -454,7 +454,7 @@ __global__ void indexer_eval_kernel(
 
   // 3. Compare with observed spots
   int nMatchesFracCalc;
-  int debugThread = (tid == 0) ? 1 : 0;
+  int debugThread = 0;  // disabled for now; winning thread debug below
   int nMatches = gpu_CompareSpots(
     TheorSpots, nTspots, d_ObsSpotsLab, t.RefRad,
     d_data, d_ndata,
@@ -462,6 +462,17 @@ __global__ void indexer_eval_kernel(
     &nMatchesFracCalc, debugThread);
 
   float fracMatches = (float)nMatchesFracCalc / (float)nTspotsFracCalc;
+
+  // Debug: print when a high-confidence match is found (only for spotIdx 0)
+  if (spotIdx == 0 && fracMatches > 0.5f) {
+    printf("[WIN tid=%d spot=0] frac=%.4f nT=%d nM=%d nMfrac=%d nTfrac=%d RefRad=%.2f\n",
+           tid, fracMatches, nTspots, nMatches, nMatchesFracCalc, nTspotsFracCalc, t.RefRad);
+    // Re-run CompareSpots with debug on for this winner
+    int dummyFrac;
+    gpu_CompareSpots(TheorSpots, nTspots, d_ObsSpotsLab, t.RefRad,
+                     d_data, d_ndata, d_ringsToReject, nRingsToRejectCalc,
+                     &dummyFrac, 1);
+  }
 
   // 4. Atomic best-match update per spotID
   SpotResult *res = &d_results[spotIdx];
