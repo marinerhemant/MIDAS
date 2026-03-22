@@ -599,6 +599,11 @@ int main(int argc, char *argv[]) {
       printf("%d ", RingsToUse[i_print]);
     printf("\n");
   }
+  {
+    const char *gpu_env = getenv("MIDAS_GPU_FIT");
+    int gpu_requested = (gpu_env && atoi(gpu_env) == 1);
+    printf("  GPU Mode        : %s\n", gpu_requested ? "ENABLED (MIDAS_GPU_FIT=1)" : "disabled");
+  }
   printf("======================================================\n\n");
   fflush(stdout);
 
