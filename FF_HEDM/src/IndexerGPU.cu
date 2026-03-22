@@ -494,8 +494,11 @@ __global__ void indexer_eval_kernel(
   // 4. Atomic best-match update per spotID using 64-bit packed key:
   //    upper 32 bits = frac (maximize), lower 32 bits = -IA (minimize IA)
   //    __float_as_int requires float; cast for ordering only, actual values stored as double.
+  //    For IA: we want lower IA → higher key. Since avgIA > 0, __float_as_int is monotonically
+  //    increasing for positive floats. Bitwise complement (~) inverts the ordering: lower IA → higher bits.
+  //    NOTE: __float_as_int(-avgIA) is WRONG because negative float bit patterns have reversed ordering.
   unsigned int fracBits = (unsigned int)__float_as_int((float)fracMatches);
-  unsigned int iaBits   = (unsigned int)__float_as_int((float)(-avgIA));
+  unsigned int iaBits   = ~(unsigned int)__float_as_int((float)avgIA);
   unsigned long long newKey = ((unsigned long long)fracBits << 32) | (unsigned long long)iaBits;
 
   SpotResult *res = &d_results[spotIdx];
@@ -895,7 +898,7 @@ static void h_GenerateIdealSpotsFriedelMixed(
   double FPCandidates[2000][3];
   int FPCandidatesUnique[2000];
   int nFPCandidates = 0;
-  double EtaTolDeg = rad2deg * atanf(EtaTol / Ring_rad);
+  double EtaTolDeg = rad2deg * atan(EtaTol / Ring_rad);
 
   for (int SpOnRing = 0; SpOnRing < NoOfSpots; SpOnRing++) {
     double y0 = y0_vector[SpOnRing], z0 = z0_vector[SpOnRing];
@@ -975,7 +978,7 @@ static void h_GenerateIdealSpots(double ys, double zs, double ttheta, double eta
   // Simplified version: generate y0 along the illuminated arc
   int qc2=0; double eh,qc,cy=0,cz=0,ymax_z0,ymin_z0,ymax=0,ymin=0,zmin=0,zmax=0;
   if(eta>90) eh=180-eta; else if(eta<-90) eh=180-fabs(eta); else eh=90-fabs(eta);
-  Hbeam += 2*(Rsample*tanf(ttheta*deg2rad))*sin(eh*deg2rad);
+  Hbeam += 2*(Rsample*tan(ttheta*deg2rad))*sin(eh*deg2rad);
   double epole=1+rad2deg*acos(1-Hbeam/Ring_rad);
   double eeq=1+rad2deg*acos(1-Rsample/Ring_rad);
   if(eta>=epole&&eta<=(90-eeq)){qc=1;cy=-1;cz=1;}
@@ -999,7 +1002,7 @@ static void h_GenerateIdealSpots(double ys, double zs, double ttheta, double eta
   if(!qc2){y1=ymin;z1=cz*sqrt(Ring_rad*Ring_rad-y1*y1);y2=ymax;z2=cz*sqrt(Ring_rad*Ring_rad-y2*y2);}
   else{z1=zmin;y1=cy*sqrt(Ring_rad*Ring_rad-z1*z1);z2=zmax;y2=cy*sqrt(Ring_rad*Ring_rad-z2*z2);}
   double yd=y1-y2,zd=z1-z2; double len=sqrt(yd*yd+zd*zd);
-  ns=(int)ceilf(len/step_size); if(ns%2==0) ns++; if(ns<1) ns=1;
+  ns=(int)ceil(len/step_size); if(ns%2==0) ns++; if(ns<1) ns=1;
   if(ns==1){
     if(!qc2){y0v[0]=(ymax+ymin)/2;z0v[0]=cz*sqrt(Ring_rad*Ring_rad-y0v[0]*y0v[0]);}
     else{z0v[0]=(zmax+zmin)/2;y0v[0]=cy*sqrt(Ring_rad*Ring_rad-z0v[0]*z0v[0]);}
