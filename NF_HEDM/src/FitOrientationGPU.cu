@@ -22,7 +22,7 @@
 #ifdef ENABLE_CUDA
 
 #include <cuda_runtime.h>
-#define RealType double
+#define RealType float
 #include "midas_gpu_math.cuh"  // Shared GPU math (utils/)
 #include <math.h>
 #include <stdio.h>
