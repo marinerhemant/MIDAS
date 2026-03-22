@@ -669,16 +669,21 @@ def run_multi_resolution_workflow(args, params, t0, ph5=None, resume_from_stage=
         if _should_run(loop_idx, 'seeded'):
             run_preprocessing(args, params, t0, skip_hex_grid=False) # MAKE FULL HEX GRID
             
-            # Capture the full grid for later (Pass 2 Needs exact columns)
-            grid_pass1_map = {}
+            # Capture the full grid for later: map (x,y) -> (grid_line, voxel_index)
+            grid_pass1_map = {}  # (x,y) -> grid_line_text
+            grid_pass1_idx = {}  # (x,y) -> 0-based voxel index in binary
             with open(os.path.join(params['resultFolder'], 'grid.txt'), 'r') as f:
+                voxel_idx = 0
                 for line in f:
                     vals = line.split()
-                    if len(vals) < 5: continue
+                    if len(vals) < 5: continue  # skip header (count line)
                     try:
                         kx, ky = float(vals[2]), float(vals[3])
                         grid_pass1_map[(kx, ky)] = line.strip()
+                        grid_pass1_idx[(kx, ky)] = voxel_idx
+                        voxel_idx += 1
                     except ValueError: continue
+            total_full_grid_voxels = voxel_idx
 
             if args.doImageProcessing == 1:
                  run_image_processing(args, params, t0)
@@ -702,10 +707,12 @@ def run_multi_resolution_workflow(args, params, t0, ph5=None, resume_from_stage=
                 ph5.mark(_stage_name(loop_idx, 'seeded'))
         else:
             logger.info(f"Skipping loop {loop_idx} seeded pass (resumed past this stage).")
-            # Need to rebuild grid_pass1_map from existing grid.txt for later filtering
+            # Need to rebuild grid_pass1_map and grid_pass1_idx from existing grid.txt
             grid_pass1_map = {}
+            grid_pass1_idx = {}
             grid_path = os.path.join(params['resultFolder'], 'grid.txt')
             if os.path.exists(grid_path):
+                voxel_idx = 0
                 with open(grid_path, 'r') as f:
                     for line in f:
                         vals = line.split()
@@ -713,7 +720,12 @@ def run_multi_resolution_workflow(args, params, t0, ph5=None, resume_from_stage=
                         try:
                             kx, ky = float(vals[2]), float(vals[3])
                             grid_pass1_map[(kx, ky)] = line.strip()
+                            grid_pass1_idx[(kx, ky)] = voxel_idx
+                            voxel_idx += 1
                         except ValueError: continue
+                total_full_grid_voxels = voxel_idx
+            else:
+                total_full_grid_voxels = 0
         
         # d. Filter & Grid Update for "Bad" Solutions
         logger.info(f"Filtering bad solutions from Pass 1.")
@@ -725,7 +737,7 @@ def run_multi_resolution_workflow(args, params, t0, ph5=None, resume_from_stage=
         min_conf = float(params.get('MinConfidence', '0.5'))
         
         bad_points_lines = []
-        mic_pass1_good_lines = [] # Keep good lines for merge
+        bad_point_full_indices = []  # full-grid voxel index for each bad point
         
         header_lines = []
         with open(mic_pass1_path, 'r') as f:
@@ -741,33 +753,41 @@ def run_multi_resolution_workflow(args, params, t0, ph5=None, resume_from_stage=
                 y_val = float(vals[4])
                 
                 if conf < min_conf:
-                    # Lookup original grid line
-                    # Note: float comparison equality is risky. Using small tolerance?
-                    # Or matching based on proximity.
-                    # Simple matching: find closest in map?
-                    # The grid generation is deterministic. The Mic output should be exact representation of a grid point.
-                    # We iterate through map? No, slow.
-                    # Try direct match first.
+                    # Lookup original grid line and full-grid index
                     found_line = grid_pass1_map.get((x_val, y_val))
-                    if not found_line:
+                    found_idx = grid_pass1_idx.get((x_val, y_val))
+                    if found_line is None or found_idx is None:
                         # Fallback: search with tolerance
                         for (gx, gy), gline in grid_pass1_map.items():
                              if abs(gx - x_val) < 1e-5 and abs(gy - y_val) < 1e-5:
                                  found_line = gline
+                                 found_idx = grid_pass1_idx[(gx, gy)]
                                  break
                     
-                    if found_line:
+                    if found_line is not None and found_idx is not None:
                         bad_points_lines.append(found_line)
+                        bad_point_full_indices.append(found_idx)
                     else:
                         logger.warning(f"Could not find original grid line for bad point ({x_val}, {y_val})")
-                else:
-                    mic_pass1_good_lines.append(line)
 
         logger.info(f"Found {len(bad_points_lines)} bad points. Writing to grid.txt.")
         
         if not bad_points_lines:
             logger.info("No bad points found. Skipping Pass 2 (Unseeded).")
+            # No bad points: seeded binary is the final result — run ParseMic
             current_mic_file = target_mic_pass1
+            # Update MicFileText to the merged name and run ParseMic
+            merged_mic_name = f"{mic_file_base}_merged.{loop_idx}"
+            update_param_file(args.paramFN, {'MicFileText': merged_mic_name})
+            params_merge = reload_params(f'loop_{loop_idx}_merge')
+            logger.info("Running ParseMic on seeded result (no bad points).")
+            run_command(
+                cmd=os.path.join(bin_dir, "ParseMic") + f" {args.paramFN}",
+                working_dir=params_merge['resultFolder'],
+                out_file=f'{params_merge["logDir"]}/parse_out.csv',
+                err_file=f'{params_merge["logDir"]}/parse_err.csv'
+            )
+            current_mic_file = merged_mic_name
             continue
             
         with open(os.path.join(params['resultFolder'], 'grid.txt'), 'w') as f:
@@ -792,6 +812,20 @@ def run_multi_resolution_workflow(args, params, t0, ph5=None, resume_from_stage=
             # SKIP MakeHexGrid (grid was already written above for bad points)
             # SKIP MakeDiffrSpots (reuse loop 0 output — same SeedOrientationsAll)
             run_preprocessing(args, params, t0, skip_hex_grid=True, skip_diffr_spots=True)
+            
+            # Backup seeded binary before unseeded pass overwrites it
+            mic_file_binary = params.get('MicFileBinary', '')
+            if mic_file_binary:
+                seeded_src = os.path.join(_resultFolder, mic_file_binary)
+                seeded_bak = os.path.join(_resultFolder, f"{mic_file_binary}.seeded_backup")
+                if os.path.exists(seeded_src):
+                    shutil.copy2(seeded_src, seeded_bak)
+                    logger.info(f"Backed up seeded binary: {seeded_bak}")
+                seeded_all_src = f"{seeded_src}.AllMatches"
+                seeded_all_bak = f"{seeded_bak}.AllMatches"
+                if os.path.exists(seeded_all_src):
+                    shutil.copy2(seeded_all_src, seeded_all_bak)
+            
             if args.doImageProcessing == 1:
                  run_image_processing(args, params, t0)
             run_fitting_and_postprocessing(args, params, t0)
@@ -814,45 +848,80 @@ def run_multi_resolution_workflow(args, params, t0, ph5=None, resume_from_stage=
         else:
             logger.info(f"Skipping loop {loop_idx} unseeded pass (resumed past this stage).")
         
-        # f. Merge Results
-        logger.info("Merging Pass 1 and Pass 2 results.")
+        # f. Binary Merge: overlay unseeded records onto seeded binary
+        logger.info("Merging Pass 1 and Pass 2 binary results.")
         
-        final_lines = list(mic_pass1_good_lines) # Start with good from Pass 1
+        mic_file_binary = params.get('MicFileBinary', '')
+        nSaves = int(params.get('SaveNSolutions', '1'))
+        record_size_mic = 11 * 8  # 11 doubles × 8 bytes
+        record_size_all = (7 + nSaves * 4) * 8
         
-        # Read Pass 2 (Recovered bad)
-        mic_pass2_path = os.path.join(params['resultFolder'], target_mic_pass2)
-        if os.path.exists(mic_pass2_path):
-            with open(mic_pass2_path, 'r') as f:
-                for line in f:
-                    if line.startswith('%'): continue
-                    # Add all results from Pass 2 (filtered or unfiltered based on confidence? User suggested Mic2GrainsList handles filtering)
-                    # We just merge everything.
-                    final_lines.append(line)
-        
-        # Sort by Y (col 4), then X (col 3)
-        def sort_key(line):
-            v = line.split()
-            # Ensure float parsing is robust
-            try:
-                return (float(v[4]), float(v[3])) 
-            except:
-                return (0.0, 0.0)
+        if mic_file_binary:
+            # The seeded binary was backed up before the unseeded pass
+            seeded_bin_path = os.path.join(_resultFolder, f"{mic_file_binary}.seeded_backup")
+            unseeded_bin_path = os.path.join(_resultFolder, mic_file_binary)
+            merged_bin_path = os.path.join(_resultFolder, mic_file_binary)  # overwrite in place
             
-        final_lines.sort(key=sort_key)
-        
-        # Write merged file to a NEW filename so Pass 1 and Pass 2 are preserved
-        current_mic_file = f"{mic_file_base}_merged.{loop_idx}"
-        final_path = os.path.join(params['resultFolder'], current_mic_file)
-        
-        with open(final_path, 'w') as f:
-            for h in header_lines:
-                f.write(h)
-            for l in final_lines:
-                f.write(l)
+            if os.path.exists(seeded_bin_path) and os.path.exists(unseeded_bin_path):
+                # Save unseeded output before overwriting
+                unseeded_save = os.path.join(_resultFolder, f"{mic_file_binary}.unseeded_backup")
+                shutil.copy2(unseeded_bin_path, unseeded_save)
+                unseeded_all_save = f"{unseeded_save}.AllMatches"
+                if os.path.exists(f"{unseeded_bin_path}.AllMatches"):
+                    shutil.copy2(f"{unseeded_bin_path}.AllMatches", unseeded_all_save)
                 
-        logger.info(f"Loop {loop_idx} complete. Merged result in {current_mic_file}.")
+                # Start from seeded backup, overlay unseeded at correct offsets
+                shutil.copy2(seeded_bin_path, merged_bin_path)
+                
+                with open(unseeded_save, 'rb') as f_uns:
+                    with open(merged_bin_path, 'r+b') as f_merged:
+                        for unseeded_idx, full_idx in enumerate(bad_point_full_indices):
+                            # Read record from unseeded binary (0-based index)
+                            f_uns.seek(unseeded_idx * record_size_mic)
+                            record = f_uns.read(record_size_mic)
+                            if len(record) == record_size_mic:
+                                # Write to correct position in merged binary
+                                f_merged.seek(full_idx * record_size_mic)
+                                f_merged.write(record)
+                
+                logger.info(f"Merged {len(bad_point_full_indices)} unseeded records into seeded binary.")
+                
+                # Also merge AllMatches
+                seeded_all_path = f"{seeded_bin_path}.AllMatches"
+                merged_all_path = f"{merged_bin_path}.AllMatches"
+                
+                if os.path.exists(seeded_all_path) and os.path.exists(unseeded_all_save):
+                    shutil.copy2(seeded_all_path, merged_all_path)
+                    with open(unseeded_all_save, 'rb') as f_uns:
+                        with open(merged_all_path, 'r+b') as f_merged:
+                            for unseeded_idx, full_idx in enumerate(bad_point_full_indices):
+                                f_uns.seek(unseeded_idx * record_size_all)
+                                record = f_uns.read(record_size_all)
+                                if len(record) == record_size_all:
+                                    f_merged.seek(full_idx * record_size_all)
+                                    f_merged.write(record)
+                    logger.info("Merged AllMatches binary.")
+            else:
+                logger.warning("Seeded or unseeded binary not found for merge. Skipping binary merge.")
+        
+        # Run ParseMic on the merged binary to generate .mic text + .map + .kam + .grainId + .grod
+        merged_mic_name = f"{mic_file_base}_merged.{loop_idx}"
+        update_param_file(args.paramFN, {'MicFileText': merged_mic_name})
+        params_merge = reload_params(f'loop_{loop_idx}_merge')
+        
+        logger.info("Running ParseMic on merged binary.")
+        run_command(
+            cmd=os.path.join(bin_dir, "ParseMic") + f" {args.paramFN}",
+            working_dir=params_merge['resultFolder'],
+            out_file=f'{params_merge["logDir"]}/parse_out.csv',
+            err_file=f'{params_merge["logDir"]}/parse_err.csv'
+        )
+        
+        current_mic_file = merged_mic_name
+        logger.info(f"Loop {loop_idx} complete. Merged result: {merged_mic_name}.mic")
 
         # Add merged resolution to consolidated H5
+        final_path = os.path.join(_resultFolder, f"{merged_mic_name}.mic")
         if os.path.exists(h5_path) and os.path.exists(final_path):
             try:
                 add_resolution_to_h5(
@@ -866,65 +935,6 @@ def run_multi_resolution_workflow(args, params, t0, ph5=None, resume_from_stage=
                 logger.error(f"Failed to add merged resolution to H5: {e}", exc_info=True)
         if ph5 is not None:
             ph5.mark(_stage_name(loop_idx, 'merge'))
-
-    # --- FINAL SEEDED RECONSTRUCTION PASS ---
-    # Use the merged output from the last loop, run Mic2GrainsList with
-    # MinConfidence=0 to get the densest possible seed set, then do one
-    # final full-grid seeded reconstruction at the finest resolution.
-    logger.info(">>> Running Final Seeded Reconstruction Pass")
-
-    final_grid_size = starting_grid_size / (scaling_factor ** num_loops)
-    final_mic_merged = current_mic_file  # e.g. mic_merged.N
-    final_mic_merged_path = os.path.join(_resultFolder, final_mic_merged)
-
-    if not os.path.exists(final_mic_merged_path):
-        logger.warning(f"Merged mic file not found: {final_mic_merged_path}. Skipping final pass.")
-    else:
-        # 1. Mic2GrainsList with MinConfidence=0 for densest seeds
-        grains_final = os.path.join(_resultFolder, 'Grains.csv.final')
-        logger.info(f"Generating dense seeds from {final_mic_merged} with MinConfidence=0")
-        run_command(
-            cmd=(os.path.join(bin_dir, "Mic2GrainsList") +
-                 f" {args.paramFN} {final_mic_merged_path} {grains_final} 0 {args.nCPUs} 0"),
-            working_dir=_resultFolder,
-            out_file=f"{_logDir}/mic2grains_final_out.csv",
-            err_file=f"{_logDir}/mic2grains_final_err.csv"
-        )
-
-        # 2. Configure the final seeded pass
-        final_seed = f"{seed_file_base}.final"
-        final_mic_name = f"{mic_file_base}_final"
-        update_param_file(args.paramFN, {
-            'GrainsFile': grains_final,
-            'MicFileText': final_mic_name,
-            'SeedOrientations': final_seed,
-            'GridSize': f"{final_grid_size:.6f}",
-        })
-
-        args.ffSeedOrientations = 1  # Seeded
-        params = reload_params('final_seeded')
-
-        # 3. Full grid + seed orientations + fit
-        run_preprocessing(args, params, t0, skip_hex_grid=False)
-        run_fitting_and_postprocessing(args, params, t0)
-
-        logger.info(f"Final seeded reconstruction complete: {final_mic_name}.mic")
-
-        # Add to consolidated H5
-        final_mic_path = os.path.join(_resultFolder, f"{final_mic_name}.mic")
-        if os.path.exists(h5_path) and os.path.exists(final_mic_path):
-            try:
-                add_resolution_to_h5(
-                    h5_path=h5_path,
-                    mic_text_path=final_mic_path,
-                    resolution_label="final_seeded",
-                    grid_size=final_grid_size,
-                    pass_type="final_seeded",
-                )
-            except Exception as e:
-                logger.error(f"Failed to add final seeded resolution to H5: {e}", exc_info=True)
-        if ph5 is not None:
-            ph5.mark('final_seeded')
 
 # --- SYSTEM UTILITIES AND CONFIGURATION ---
 
