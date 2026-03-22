@@ -163,6 +163,7 @@ struct EvalTuple {
 
 // Per-spotID best result (GPU output, one per spotID)
 struct SpotResult {
+  unsigned long long atomicKey;  // Packed (frac, -IA) for 64-bit atomicCAS — MUST be first for alignment
   float bestFrac;      // Best fraction of matches (confidence)
   float bestIA;        // Best internal angle
   float bestOrMat[9];  // Best orientation matrix
@@ -297,10 +298,15 @@ int gpu_CompareSpots(
     const int *d_ndata,
     const int *d_ringsToReject,
     int nRingsToRejectCalc,
-    int *nMatchesFracCalc)
+    int *nMatchesFracCalc,
+    float ga, float gb, float gc,  // grain position for IA
+    float *avgIA)                   // output: average internal angle
 {
   int nMatched = 0;
   int nMatchedFrac = 0;
+  float iaSum = 0.0f;
+  int iaCount = 0;
+  float Distance = c_params.Distance;
 
   for (int sp = 0; sp < nTspots; sp++) {
     float *s = &spots[sp * N_COL_THEORSPOTS];
@@ -310,6 +316,8 @@ int gpu_CompareSpots(
     float theorEta = s[12];
     float theorOme = s[6];
     float theorRadDiff = s[13];
+    float theorY = s[10];
+    float theorZ = s[11];
 
     int iRing = RingNr - 1;
     int iEta = (int)floorf((180.0f + theorEta) / c_params.EtaBinSize);
@@ -335,6 +343,7 @@ int gpu_CompareSpots(
     }
 
     int matchFound = 0;
+    int bestSpotRow = -1;
     float diffOmeBest = 100000.0f;  // match CPU: find closest, no threshold
 
     for (int is = 0; is < nInBin; is++) {
@@ -360,11 +369,10 @@ int gpu_CompareSpots(
       float diffOme = fabsf(theorOme - obsOme);
       if (diffOme < diffOmeBest) {
         diffOmeBest = diffOme;
+        bestSpotRow = spotRow;
         matchFound = 1;
       }
     }
-
-
 
     if (matchFound) {
       nMatched++;
@@ -373,9 +381,25 @@ int gpu_CompareSpots(
         if (RingNr == d_ringsToReject[rr]) { rejected = 1; break; }
       }
       if (!rejected) nMatchedFrac++;
+
+      // Compute internal angle for this matched spot
+      int base = bestSpotRow * N_COL_OBSSPOTS;
+      float obsY = d_ObsSpotsLab[base + 0];
+      float obsZ = d_ObsSpotsLab[base + 1];
+      float obsOme = d_ObsSpotsLab[base + 2];
+      float gv1x, gv1y, gv1z, gv2x, gv2y, gv2z;
+      midas_spot_to_gv_pos(Distance, theorY, theorZ, theorOme, ga, gb, gc, &gv1x, &gv1y, &gv1z);
+      midas_spot_to_gv_pos(Distance, obsY,   obsZ,   obsOme,   ga, gb, gc, &gv2x, &gv2y, &gv2z);
+      float ia;
+      midas_CalcInternalAngle(gv1x, gv1y, gv1z, gv2x, gv2y, gv2z, &ia);
+      if (ia < 999.0f) {
+        iaSum += ia;
+        iaCount++;
+      }
     }
   }
   *nMatchesFracCalc = nMatchedFrac;
+  *avgIA = (iaCount > 0) ? (iaSum / (float)iaCount) : 999.0f;
   return nMatched;
 }
 
@@ -433,28 +457,37 @@ __global__ void indexer_eval_kernel(
     s[13] = sqrtf(s[10]*s[10] + s[11]*s[11]) - c_RingRadii[rn];
   }
 
-  // 3. Compare with observed spots
+  // 3. Compare with observed spots + compute IA
   int nMatchesFracCalc;
+  float avgIA;
   int nMatches = gpu_CompareSpots(
     TheorSpots, nTspots, d_ObsSpotsLab, t.RefRad,
     d_data, d_ndata,
     d_ringsToReject, nRingsToRejectCalc,
-    &nMatchesFracCalc);
+    &nMatchesFracCalc,
+    t.ga, t.gb, t.gc, &avgIA);
 
   float fracMatches = (float)nMatchesFracCalc / (float)nTspotsFracCalc;
 
-  // 4. Atomic best-match update per spotID
+  // 4. Atomic best-match update per spotID using 64-bit packed key:
+  //    upper 32 bits = frac (maximize), lower 32 bits = -IA (minimize IA)
+  //    For positive floats, __float_as_int preserves ordering.
+  unsigned int fracBits = (unsigned int)__float_as_int(fracMatches);
+  unsigned int iaBits   = (unsigned int)__float_as_int(-avgIA);  // negate: smaller IA → larger -IA
+  unsigned long long newKey = ((unsigned long long)fracBits << 32) | (unsigned long long)iaBits;
+
   SpotResult *res = &d_results[spotIdx];
-  int *fracAddr = (int *)&res->bestFrac;
+  unsigned long long *keyAddr = &res->atomicKey;
 
   while (true) {
-    float oldFrac = res->bestFrac;
-    if (fracMatches <= oldFrac) break;
+    unsigned long long oldKey = *keyAddr;
+    if (newKey <= oldKey) break;
 
-    int oldInt = __float_as_int(oldFrac);
-    int newInt = __float_as_int(fracMatches);
-    int prev = atomicCAS(fracAddr, oldInt, newInt);
-    if (prev == oldInt) {
+    unsigned long long prev = atomicCAS(keyAddr, oldKey, newKey);
+    if (prev == oldKey) {
+      // Won the race — copy all result fields
+      res->bestFrac = fracMatches;
+      res->bestIA = avgIA;
       for (int i = 0; i < 9; i++) res->bestOrMat[i] = t.OrMat[i];
       res->bestPos[0] = t.ga;
       res->bestPos[1] = t.gb;
@@ -862,7 +895,11 @@ int main(int argc, char *argv[]) {
   CUDA_CHECK(cudaMalloc(&d_results, nSpotIDs*sizeof(SpotResult)));
 
   SpotResult *h_results = (SpotResult*)calloc(nSpotIDs, sizeof(SpotResult));
-  for (int i=0;i<nSpotIDs;i++) h_results[i].bestFrac = -1.0f;
+  for (int i=0;i<nSpotIDs;i++) {
+    h_results[i].atomicKey = 0ULL;
+    h_results[i].bestFrac = -1.0f;
+    h_results[i].bestIA = 999.0f;
+  }
   CUDA_CHECK(cudaMemcpy(d_results, h_results, nSpotIDs*sizeof(SpotResult), cudaMemcpyHostToDevice));
 
   printf("GPU data uploaded. Starting tuple generation...\n");
@@ -1074,7 +1111,7 @@ int main(int argc, char *argv[]) {
 
     // Write IndexBest.bin (same format as IndexerOMP)
     double res[15];
-    res[0] = 0; // IA placeholder — matches CPU format (confidence = res[14]/res[13])
+    res[0] = (double)h_results[si].bestIA; // IA — matches CPU format (confidence = res[14]/res[13])
     for (int k=0;k<9;k++) res[k+1] = (double)h_results[si].bestOrMat[k];
     res[10]=(double)h_results[si].bestPos[0];
     res[11]=(double)h_results[si].bestPos[1];
