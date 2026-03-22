@@ -508,13 +508,19 @@ def run_multi_resolution_workflow(args, params, t0, ph5=None, resume_from_stage=
     
     # Capture runtime-injected keys that are NOT in the parameter file.
     # These must be re-injected after every parse_parameters() call.
-    _logDir = params['logDir']
+    _logDir = params['logDir']  # top-level midas_log
     _resultFolder = params['resultFolder']
     
-    def reload_params():
+    def _sub_log_dir(label):
+        """Create and return a sub-log directory, e.g. midas_log/loop_0_initial."""
+        d = os.path.join(_logDir, label)
+        os.makedirs(d, exist_ok=True)
+        return d
+    
+    def reload_params(sub_log_label=None):
         """Re-parse the parameter file and re-inject runtime keys."""
         p = parse_parameters(args.paramFN)
-        p['logDir'] = _logDir
+        p['logDir'] = _sub_log_dir(sub_log_label) if sub_log_label else _logDir
         p['resultFolder'] = _resultFolder
         return p
     
@@ -568,7 +574,7 @@ def run_multi_resolution_workflow(args, params, t0, ph5=None, resume_from_stage=
     
     # 2. Run standard workflow Unseeded
     args.ffSeedOrientations = 0 # Ensure unseeded
-    params = reload_params()
+    params = reload_params('loop_0_initial')
     
     if _should_run(0, 'initial'):
         run_preprocessing(args, params, t0)
@@ -657,7 +663,7 @@ def run_multi_resolution_workflow(args, params, t0, ph5=None, resume_from_stage=
         })
         
         args.ffSeedOrientations = 1 # Enable seeded mode
-        params = reload_params()
+        params = reload_params(f'loop_{loop_idx}_seeded')
         
         if _should_run(loop_idx, 'seeded'):
             run_preprocessing(args, params, t0, skip_hex_grid=False) # MAKE FULL HEX GRID
@@ -779,7 +785,7 @@ def run_multi_resolution_workflow(args, params, t0, ph5=None, resume_from_stage=
         })
         
         args.ffSeedOrientations = 0
-        params = reload_params()
+        params = reload_params(f'loop_{loop_idx}_unseeded')
         
         if _should_run(loop_idx, 'unseeded'):
             # SKIP MakeHexGrid (grid was already written above for bad points)
@@ -859,6 +865,65 @@ def run_multi_resolution_workflow(args, params, t0, ph5=None, resume_from_stage=
                 logger.error(f"Failed to add merged resolution to H5: {e}", exc_info=True)
         if ph5 is not None:
             ph5.mark(_stage_name(loop_idx, 'merge'))
+
+    # --- FINAL SEEDED RECONSTRUCTION PASS ---
+    # Use the merged output from the last loop, run Mic2GrainsList with
+    # MinConfidence=0 to get the densest possible seed set, then do one
+    # final full-grid seeded reconstruction at the finest resolution.
+    logger.info(">>> Running Final Seeded Reconstruction Pass")
+
+    final_grid_size = starting_grid_size / (scaling_factor ** num_loops)
+    final_mic_merged = current_mic_file  # e.g. mic_merged.N
+    final_mic_merged_path = os.path.join(_resultFolder, final_mic_merged)
+
+    if not os.path.exists(final_mic_merged_path):
+        logger.warning(f"Merged mic file not found: {final_mic_merged_path}. Skipping final pass.")
+    else:
+        # 1. Mic2GrainsList with MinConfidence=0 for densest seeds
+        grains_final = os.path.join(_resultFolder, 'Grains.csv.final')
+        logger.info(f"Generating dense seeds from {final_mic_merged} with MinConfidence=0")
+        run_command(
+            cmd=(os.path.join(bin_dir, "Mic2GrainsList") +
+                 f" {args.paramFN} {final_mic_merged_path} {grains_final} 0 {args.nCPUs} 0"),
+            working_dir=_resultFolder,
+            out_file=f"{_logDir}/mic2grains_final_out.csv",
+            err_file=f"{_logDir}/mic2grains_final_err.csv"
+        )
+
+        # 2. Configure the final seeded pass
+        final_seed = f"{seed_file_base}.final"
+        final_mic_name = f"{mic_file_base}_final"
+        update_param_file(args.paramFN, {
+            'GrainsFile': grains_final,
+            'MicFileText': final_mic_name,
+            'SeedOrientations': final_seed,
+            'GridSize': f"{final_grid_size:.6f}",
+        })
+
+        args.ffSeedOrientations = 1  # Seeded
+        params = reload_params('final_seeded')
+
+        # 3. Full grid + seed orientations + fit
+        run_preprocessing(args, params, t0, skip_hex_grid=False)
+        run_fitting_and_postprocessing(args, params, t0)
+
+        logger.info(f"Final seeded reconstruction complete: {final_mic_name}.mic")
+
+        # Add to consolidated H5
+        final_mic_path = os.path.join(_resultFolder, f"{final_mic_name}.mic")
+        if os.path.exists(h5_path) and os.path.exists(final_mic_path):
+            try:
+                add_resolution_to_h5(
+                    h5_path=h5_path,
+                    mic_text_path=final_mic_path,
+                    resolution_label="final_seeded",
+                    grid_size=final_grid_size,
+                    pass_type="final_seeded",
+                )
+            except Exception as e:
+                logger.error(f"Failed to add final seeded resolution to H5: {e}", exc_info=True)
+        if ph5 is not None:
+            ph5.mark('final_seeded')
 
 # --- SYSTEM UTILITIES AND CONFIGURATION ---
 
