@@ -382,16 +382,37 @@ int gpu_CompareSpots(
       }
       if (!rejected) nMatchedFrac++;
 
-      // Compute internal angle for this matched spot
+      // Compute internal angle for this matched spot — ALL in double
       int base = bestSpotRow * N_COL_OBSSPOTS;
-      float obsY = d_ObsSpotsLab[base + 0];
-      float obsZ = d_ObsSpotsLab[base + 1];
-      float obsOme = d_ObsSpotsLab[base + 2];
-      float gv1x, gv1y, gv1z, gv2x, gv2y, gv2z;
-      midas_spot_to_gv_pos(Distance, theorY, theorZ, theorOme, ga, gb, gc, &gv1x, &gv1y, &gv1z);
-      midas_spot_to_gv_pos(Distance, obsY,   obsZ,   obsOme,   ga, gb, gc, &gv2x, &gv2y, &gv2z);
-      float ia;
-      midas_CalcInternalAngle(gv1x, gv1y, gv1z, gv2x, gv2y, gv2z, &ia);
+      double obsY_d = (double)d_ObsSpotsLab[base + 0];
+      double obsZ_d = (double)d_ObsSpotsLab[base + 1];
+      double obsOme_d = (double)d_ObsSpotsLab[base + 2];
+      double tY_d = (double)theorY, tZ_d = (double)theorZ, tO_d = (double)theorOme;
+      double ga_d = (double)ga, gb_d = (double)gb, gc_d = (double)gc, Dist_d = (double)Distance;
+      // gv1 = spot_to_gv_pos(Dist, theorY, theorZ, theorOme, ga, gb, gc)
+      double ca1=cos(deg2rad*tO_d),sa1=sin(deg2rad*tO_d);
+      double vr1x=ca1*ga_d-sa1*gb_d, vr1y=sa1*ga_d+ca1*gb_d, vr1z=gc_d;
+      double xi1=Dist_d-vr1x, yi1=tY_d-vr1y, zi1=tZ_d-vr1z;
+      double l1=sqrt(xi1*xi1+yi1*yi1+zi1*zi1);
+      double xn1=xi1/l1, yn1=yi1/l1, zn1=zi1/l1;
+      double g1r1=-1.0+xn1, g2r1=yn1;
+      double co1=cos(-tO_d*deg2rad), so1=sin(-tO_d*deg2rad);
+      double gv1x_d=g1r1*co1-g2r1*so1, gv1y_d=g1r1*so1+g2r1*co1, gv1z_d=zn1;
+      // gv2 = spot_to_gv_pos(Dist, obsY, obsZ, obsOme, ga, gb, gc)
+      double ca2=cos(deg2rad*obsOme_d),sa2=sin(deg2rad*obsOme_d);
+      double vr2x=ca2*ga_d-sa2*gb_d, vr2y=sa2*ga_d+ca2*gb_d, vr2z=gc_d;
+      double xi2=Dist_d-vr2x, yi2=obsY_d-vr2y, zi2=obsZ_d-vr2z;
+      double l2=sqrt(xi2*xi2+yi2*yi2+zi2*zi2);
+      double xn2=xi2/l2, yn2=yi2/l2, zn2=zi2/l2;
+      double g1r2=-1.0+xn2, g2r2=yn2;
+      double co2=cos(-obsOme_d*deg2rad), so2=sin(-obsOme_d*deg2rad);
+      double gv2x_d=g1r2*co2-g2r2*so2, gv2y_d=g1r2*so2+g2r2*co2, gv2z_d=zn2;
+      // CalcInternalAngle in double
+      double la=sqrt(gv1x_d*gv1x_d+gv1y_d*gv1y_d+gv1z_d*gv1z_d);
+      double lb=sqrt(gv2x_d*gv2x_d+gv2y_d*gv2y_d+gv2z_d*gv2z_d);
+      double dp=(gv1x_d*gv2x_d+gv1y_d*gv2y_d+gv1z_d*gv2z_d)/(la*lb);
+      if(dp>1.0)dp=1.0; if(dp<-1.0)dp=-1.0;
+      float ia = (float)(rad2deg * acos(dp));
       if (ia < 999.0f) {
         iaSum += ia;
         iaCount++;
