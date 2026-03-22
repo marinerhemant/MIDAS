@@ -287,9 +287,9 @@ void midas_CalcInternalAngle(float x1, float y1, float z1,
     return;
   }
   float v1[3] = {x1,y1,z1}, v2[3] = {x2,y2,z2};
-  float tmp = midas_dot3(v1, v2) / (l1 * l2);
-  tmp = fmaxf(-1.0f, fminf(1.0f, tmp));
-  *ia = MIDAS_GPU_RAD2DEG * acosf(tmp);
+  double tmp = (double)midas_dot3(v1, v2) / ((double)l1 * (double)l2);
+  if (tmp > 1.0) tmp = 1.0; if (tmp < -1.0) tmp = -1.0;
+  *ia = (float)(MIDAS_GPU_RAD2DEG * acos(tmp));
 }
 
 /// Euler angles (degrees) → 3x3 orientation matrix.
