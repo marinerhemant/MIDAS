@@ -569,7 +569,7 @@ def main():
     parser.add_argument('-doImageProcessing', type=int, default=1, help='Perform image processing (1=yes, 0=no).')
     parser.add_argument('-refineParameters', type=int, default=0, help='Refine setup parameters (1=yes, 0=no).')
     parser.add_argument('-multiGridPoints', type=int, default=0, help='If refining parameters, use multiple grid points (1=yes, 0=no).')
-    parser.add_argument('-gpuFit', type=int, default=0, help='Enable GPU Phase 2 fitting (1=yes, 0=no).')
+    parser.add_argument('-gpuFit', type=int, default=0, help='Enable GPU-accelerated screening and fitting (1=yes, 0=no).')
     parser.add_argument('-resume', type=str, default='',
                         help='Path to pipeline H5 to resume from.')
     parser.add_argument('-restartFrom', type=str, default='',

@@ -933,7 +933,7 @@ def main():
     parser.add_argument('-nNodes', type=int, default=1, help='Number of nodes for execution.')
     parser.add_argument('-ffSeedOrientations', type=int, default=0, help='Use seed orientations from far-field results (1=yes, 0=no).')
     parser.add_argument('-doImageProcessing', type=int, default=1, help='Perform image processing (1=yes, 0=no).')
-    parser.add_argument('-gpuFit', type=int, default=0, help='Enable GPU Phase 2 fitting (1=yes, 0=no).')
+    parser.add_argument('-gpuFit', type=int, default=0, help='Enable GPU-accelerated screening and fitting (1=yes, 0=no).')
     parser.add_argument('-resume', type=str, default='',
                         help='Path to pipeline H5 to resume from. Auto-detects the last completed stage.')
     parser.add_argument('-restartFrom', type=str, default='',
