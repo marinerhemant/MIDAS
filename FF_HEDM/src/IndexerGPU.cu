@@ -300,7 +300,8 @@ int gpu_CompareSpots(
     int nRingsToRejectCalc,
     int *nMatchesFracCalc,
     float ga, float gb, float gc,  // grain position for IA
-    float *avgIA)                   // output: average internal angle
+    float *avgIA,                   // output: average internal angle
+    int debugSpot)                  // if 1, print per-spot IA trace
 {
   int nMatched = 0;
   int nMatchedFrac = 0;
@@ -392,6 +393,12 @@ int gpu_CompareSpots(
       midas_spot_to_gv_pos(Distance, obsY,   obsZ,   obsOme,   ga, gb, gc, &gv2x, &gv2y, &gv2z);
       float ia;
       midas_CalcInternalAngle(gv1x, gv1y, gv1z, gv2x, gv2y, gv2z, &ia);
+      if (debugSpot) {
+        printf("[GPU IA sp=%d] row=%d ring=%d theorY=%.6f theorZ=%.6f theorOme=%.6f obsY=%.6f obsZ=%.6f obsOme=%.6f\n",
+               sp, bestSpotRow, RingNr, theorY, theorZ, theorOme, obsY, obsZ, obsOme);
+        printf("  dist=%.2f ga=%.6f gb=%.6f gc=%.6f gv1=(%.8f,%.8f,%.8f) gv2=(%.8f,%.8f,%.8f) ia=%.8f\n",
+               Distance, ga, gb, gc, gv1x, gv1y, gv1z, gv2x, gv2y, gv2z, ia);
+      }
       if (ia < 999.0f) {
         iaSum += ia;
         iaCount++;
@@ -400,6 +407,10 @@ int gpu_CompareSpots(
   }
   *nMatchesFracCalc = nMatchedFrac;
   *avgIA = (iaCount > 0) ? (iaSum / (float)iaCount) : 999.0f;
+  if (debugSpot) {
+    printf("[GPU IA SUMMARY] nMatched=%d iaSum=%.8f iaCount=%d avgIA=%.8f\n",
+           nMatched, iaSum, iaCount, *avgIA);
+  }
   return nMatched;
 }
 
@@ -460,12 +471,13 @@ __global__ void indexer_eval_kernel(
   // 3. Compare with observed spots + compute IA
   int nMatchesFracCalc;
   float avgIA;
+  int debugSpot = (spotIdx == 0) ? 1 : 0;
   int nMatches = gpu_CompareSpots(
     TheorSpots, nTspots, d_ObsSpotsLab, t.RefRad,
     d_data, d_ndata,
     d_ringsToReject, nRingsToRejectCalc,
     &nMatchesFracCalc,
-    t.ga, t.gb, t.gc, &avgIA);
+    t.ga, t.gb, t.gc, &avgIA, debugSpot);
 
   float fracMatches = (float)nMatchesFracCalc / (float)nTspotsFracCalc;
 

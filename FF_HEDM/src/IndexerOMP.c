@@ -1652,7 +1652,7 @@ int WriteBestMatchBin(RealType **GrainMatches, RealType **AllGrainSpots,
 }
 
 void CalcIA(RealType **GrainMatches, int ngrains, RealType **AllGrainSpots,
-            RealType distance) {
+            RealType distance, int debugIA) {
   RealType *IAgrainspots;
   int r, g;
   RealType g1x, g1y, g1z;
@@ -1662,6 +1662,8 @@ void CalcIA(RealType **GrainMatches, int ngrains, RealType **AllGrainSpots,
   IAgrainspots = malloc(2 * MAX_N_HKLS * sizeof(*IAgrainspots));
   for (g = 0; g < ngrains; g++) {
     nspots = GrainMatches[g][12];
+    RealType iaSum = 0;
+    int iaCount = 0;
     for (r = 0; r < nspots; r++) {
       if (AllGrainSpots[rt][0] < 0) {
         AllGrainSpots[rt][16] = 999;
@@ -1684,10 +1686,24 @@ void CalcIA(RealType **GrainMatches, int ngrains, RealType **AllGrainSpots,
       spot_to_gv_pos(x2, y2, z2, w2, g1x, g1y, g1z, &gv2x, &gv2y, &gv2z);
       CalcInternalAngle(gv1x, gv1y, gv1z, gv2x, gv2y, gv2z,
                         &AllGrainSpots[rt][16]);
+      if (debugIA) {
+        printf("[CPU IA sp=%d] theorY=%.6f theorZ=%.6f theorOme=%.6f obsY=%.6f obsZ=%.6f obsOme=%.6f\n",
+               r, y1, z1, w1, y2, z2, w2);
+        printf("  dist=%.2f ga=%.6f gb=%.6f gc=%.6f gv1=(%.8f,%.8f,%.8f) gv2=(%.8f,%.8f,%.8f) ia=%.8f\n",
+               distance, g1x, g1y, g1z, gv1x, gv1y, gv1z, gv2x, gv2y, gv2z, AllGrainSpots[rt][16]);
+      }
       IAgrainspots[r] = AllGrainSpots[rt][16];
+      if (AllGrainSpots[rt][16] < 999) {
+        iaSum += fabs(AllGrainSpots[rt][16]);
+        iaCount++;
+      }
       rt++;
     }
     GrainMatches[g][15] = CalcAvgIA(IAgrainspots, nspots);
+    if (debugIA) {
+      printf("[CPU IA SUMMARY] nspots=%d iaSum=%.8f iaCount=%d avgIA=%.8f\n",
+             nspots, iaSum, iaCount, GrainMatches[g][15]);
+    }
   }
   free(IAgrainspots);
 }
@@ -1903,7 +1919,7 @@ int DoIndexing(int SpotIDs, struct TParams Params, int offsetLoc, int idNr,
               AllGrainSpotsT[r][c] = GrainSpots[r][c];
             AllGrainSpotsT[r][15] = 1;
           }
-          CalcIA(GrainMatchesT, 1, AllGrainSpotsT, Params.Distance);
+          CalcIA(GrainMatchesT, 1, AllGrainSpotsT, Params.Distance, (idNr == 0) ? 1 : 0);
           if (fracMatchesThis > bestFracTillNow ||
               (fracMatchesThis == bestFracTillNow &&
                GrainMatchesT[0][15] < MinInternalAngle)) {
@@ -2052,7 +2068,7 @@ int DoIndexingSeed(double orMat[9], double posThis[3], double RefRad,
       AllGrainSpots[r][c] = GrainSpots[r][c];
     AllGrainSpots[r][15] = 1;
   }
-  CalcIA(GrainMatches, 1, AllGrainSpots, Params.Distance);
+  CalcIA(GrainMatches, 1, AllGrainSpots, Params.Distance, 0);
   rownr = nTspots;
   double enTm = omp_get_wtime() - sttm;
   WriteBestMatchBin(GrainMatches, AllGrainSpots, rownr, Params.IndexBestFD,
