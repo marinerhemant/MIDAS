@@ -1510,8 +1510,9 @@ int main(int argc, char *argv[]) {
             nTsp++;
           }
         }
-        // Compute IA in double
+        // Compute IA in double, with per-step trace for first matched spot
         double iaSum=0; int iaCount=0, nMatchD=0;
+        int traceDone=0;
         for(int sp=0;sp<nTsp;sp++){
           if(!theorMatched[sp]) continue;
           nMatchD++;
@@ -1535,6 +1536,61 @@ int main(int argc, char *argv[]) {
           double dp=(gv1x*gv2x+gv1y*gv2y+gv1z*gv2z)/(la*lb);
           if(dp>1)dp=1;if(dp<-1)dp=-1;
           double ia=rad2deg*acos(dp);
+
+          // Per-step trace for first matched spot of this candidate
+          if (!traceDone) {
+            // Now do the same in float for comparison
+            float obsY_f=ObsSpotsLab[br*N_COL_OBSSPOTS+0];
+            float obsZ_f=ObsSpotsLab[br*N_COL_OBSSPOTS+1];
+            float obsOme_f=ObsSpotsLab[br*N_COL_OBSSPOTS+2];
+            float tY_f=(float)theorY[sp],tZ_f=(float)theorZ[sp],tO_f=(float)theorOme[sp];
+            float ga_f=(float)ga,gb_f=(float)gb,gc_f=(float)gc,Dist_f=(float)Dist;
+            // Step 1: RotateAroundZ
+            float v1f[3]={ga_f,gb_f,gc_f},vr1f[3];
+            {float ca=cosf(deg2rad*tO_f),sa=sinf(deg2rad*tO_f);vr1f[0]=ca*v1f[0]-sa*v1f[1];vr1f[1]=sa*v1f[0]+ca*v1f[1];vr1f[2]=v1f[2];}
+            // Step 2: subtract
+            float xi1f=Dist_f-vr1f[0],yi1f=tY_f-vr1f[1],zi1f=tZ_f-vr1f[2];
+            // Step 3: normalize
+            float l1f=sqrtf(xi1f*xi1f+yi1f*yi1f+zi1f*zi1f);
+            float xn1f=xi1f/l1f,yn1f=yi1f/l1f,zn1f=zi1f/l1f;
+            // Step 4: g1r,g2r
+            float g1rf=-1+xn1f,g2rf=yn1f;
+            // Step 5: rotate by -omega
+            float co1f=cosf(-tO_f*deg2rad),so1f=sinf(-tO_f*deg2rad);
+            float gv1xf=g1rf*co1f-g2rf*so1f,gv1yf=g1rf*so1f+g2rf*co1f,gv1zf=zn1f;
+            // Same for obs
+            float vr2f[3];{float ca=cosf(deg2rad*obsOme_f),sa=sinf(deg2rad*obsOme_f);vr2f[0]=ca*v1f[0]-sa*v1f[1];vr2f[1]=sa*v1f[0]+ca*v1f[1];vr2f[2]=v1f[2];}
+            float xi2f=Dist_f-vr2f[0],yi2f=obsY_f-vr2f[1],zi2f=obsZ_f-vr2f[2];
+            float l2f=sqrtf(xi2f*xi2f+yi2f*yi2f+zi2f*zi2f);
+            float xn2f=xi2f/l2f,yn2f=yi2f/l2f,zn2f=zi2f/l2f;
+            float g1r2f=-1+xn2f,g2r2f=yn2f;
+            float co2f=cosf(-obsOme_f*deg2rad),so2f=sinf(-obsOme_f*deg2rad);
+            float gv2xf=g1r2f*co2f-g2r2f*so2f,gv2yf=g1r2f*so2f+g2r2f*co2f,gv2zf=zn2f;
+            float laf=sqrtf(gv1xf*gv1xf+gv1yf*gv1yf+gv1zf*gv1zf);
+            float lbf=sqrtf(gv2xf*gv2xf+gv2yf*gv2yf+gv2zf*gv2zf);
+            float dpf=(gv1xf*gv2xf+gv1yf*gv2yf+gv1zf*gv2zf)/(laf*lbf);
+            if(dpf>1)dpf=1;if(dpf<-1)dpf=-1;
+            float iaf=rad2deg*acosf(dpf);
+
+            printf("[IA TRACE] pos=(%.2f,%.2f,%.2f) spot=%d obsRow=%d theorOme=%.6f obsOme=%.6f\n",
+                   t->ga,t->gb,t->gc, sp, br, theorOme[sp], obsOme);
+            printf("  [STEP1 RotZ]  vr_dbl=(%.10f,%.10f,%.10f)  vr_flt=(%.10f,%.10f,%.10f)\n",
+                   vr1[0],vr1[1],vr1[2], (double)vr1f[0],(double)vr1f[1],(double)vr1f[2]);
+            printf("  [STEP2 sub]   xi_dbl=%.10f yi_dbl=%.10f zi_dbl=%.10f\n", xi1, yi1, zi1);
+            printf("                xi_flt=%.10f yi_flt=%.10f zi_flt=%.10f\n", (double)xi1f,(double)yi1f,(double)zi1f);
+            printf("  [STEP3 norm]  xn_dbl=%.12f yn_dbl=%.12f zn_dbl=%.12f  len=%.10f\n", xn1,yn1,zn1,l1);
+            printf("                xn_flt=%.12f yn_flt=%.12f zn_flt=%.12f  len=%.10f\n", (double)xn1f,(double)yn1f,(double)zn1f,(double)l1f);
+            printf("  [STEP4 g1g2]  g1r_dbl=%.15e g2r_dbl=%.15e\n", g1r, g2r);
+            printf("                g1r_flt=%.15e g2r_flt=%.15e\n", (double)g1rf, (double)g2rf);
+            printf("  [STEP5 gv1]   gv_dbl=(%.12f,%.12f,%.12f)\n", gv1x,gv1y,gv1z);
+            printf("                gv_flt=(%.12f,%.12f,%.12f)\n", (double)gv1xf,(double)gv1yf,(double)gv1zf);
+            printf("  [STEP5 gv2]   gv_dbl=(%.12f,%.12f,%.12f)\n", gv2x,gv2y,gv2z);
+            printf("                gv_flt=(%.12f,%.12f,%.12f)\n", (double)gv2xf,(double)gv2yf,(double)gv2zf);
+            printf("  [STEP6 dot]   dp_dbl=%.15e  dp_flt=%.15e\n", dp, (double)dpf);
+            printf("  [STEP7 ia]    ia_dbl=%.10f  ia_flt=%.10f\n", ia, (double)iaf);
+            traceDone = 1;
+          }
+
           iaSum+=fabs(ia); iaCount++;
         }
         double avgIA_double = (iaCount>0) ? iaSum/iaCount : 999.0;
