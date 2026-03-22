@@ -1468,7 +1468,7 @@ cleanup:
   free(SpotIDs);
   for (int t = 0; t < numProcs; t++) free(OrTmp_all[t]);
   free(OrTmp_all);
-  if (ObsSpotsLab) free(ObsSpotsLab);
+  // ObsSpotsLab points to mmap'd memory (ObsSpotsLab_d), do not free
 
   close(Params.IndexBestFD);
   close(Params.IndexBestFullFD);
