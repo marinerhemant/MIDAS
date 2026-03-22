@@ -71,6 +71,9 @@ def get_midas_env() -> Dict[str, str]:
         env['MIDAS_INSTALL_DIR'] = get_installation_dir()
     if 'MIDAS_HOME' not in env:
         env['MIDAS_HOME'] = get_installation_dir()
+    # GPU fitting mode (set globally via -gpuFit flag)
+    if os.environ.get('MIDAS_GPU_FIT') == '1':
+        env['MIDAS_GPU_FIT'] = '1'
     return env
 
 def run_command(cmd: str, working_dir: str, out_file: str, err_file: str) -> int:
@@ -930,6 +933,7 @@ def main():
     parser.add_argument('-nNodes', type=int, default=1, help='Number of nodes for execution.')
     parser.add_argument('-ffSeedOrientations', type=int, default=0, help='Use seed orientations from far-field results (1=yes, 0=no).')
     parser.add_argument('-doImageProcessing', type=int, default=1, help='Perform image processing (1=yes, 0=no).')
+    parser.add_argument('-gpuFit', type=int, default=0, help='Enable GPU Phase 2 fitting (1=yes, 0=no).')
     parser.add_argument('-resume', type=str, default='',
                         help='Path to pipeline H5 to resume from. Auto-detects the last completed stage.')
     parser.add_argument('-restartFrom', type=str, default='',
@@ -945,6 +949,11 @@ def main():
     parser.add_argument('-minConfidence', type=float, default=0.6,
                         help='MinConfidence for Mic2GrainsList run at end of each layer (default: 0.6).')
     args = parser.parse_args()
+
+    # Enable GPU fitting if requested
+    if args.gpuFit == 1:
+        os.environ['MIDAS_GPU_FIT'] = '1'
+        logger.info("GPU Phase 2 fitting enabled (MIDAS_GPU_FIT=1)")
 
     # --- 2. Configuration from Parsed Arguments and Files ---
     params = parse_parameters(args.paramFN)
