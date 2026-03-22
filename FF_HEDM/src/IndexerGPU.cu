@@ -90,7 +90,8 @@ static void check_host(int test, const char *msg, ...) {
 // ─────────────────────────────────────────────────────────────
 // Global host data (same layout as IndexerOMP.c)
 // ─────────────────────────────────────────────────────────────
-static RealType *ObsSpotsLab = NULL;
+static double *ObsSpotsLab_d = NULL;  // mmap'd as double (file format)
+static float  *ObsSpotsLab = NULL;    // converted to float for CPU/GPU use
 static size_t *data = NULL;
 static size_t *ndata = NULL;
 static size_t n_spots = 0;
@@ -653,9 +654,16 @@ static int ReadSpots(char *cwd) {
   char fn[2048]; sprintf(fn,"%s/Spots.bin",cwd);
   int fd=open(fn,O_RDONLY); check(fd<0,"open %s: %s",fn,strerror(errno));
   struct stat s; fstat(fd,&s);
-  ObsSpotsLab=(RealType*)mmap(0,s.st_size,PROT_READ,MAP_SHARED,fd,0);
-  check(ObsSpotsLab==MAP_FAILED,"mmap %s: %s",fn,strerror(errno));
-  return (int)(s.st_size/(N_COL_OBSSPOTS*sizeof(RealType)));
+  ObsSpotsLab_d=(double*)mmap(0,s.st_size,PROT_READ,MAP_SHARED,fd,0);
+  check(ObsSpotsLab_d==MAP_FAILED,"mmap %s: %s",fn,strerror(errno));
+  int nsp = (int)(s.st_size/(N_COL_OBSSPOTS*sizeof(double)));
+  // Convert double → float for CPU lookups and GPU upload
+  ObsSpotsLab = (float*)malloc(nsp * N_COL_OBSSPOTS * sizeof(float));
+  check(!ObsSpotsLab, "malloc ObsSpotsLab float conversion");
+  for (int i = 0; i < nsp * N_COL_OBSSPOTS; i++)
+    ObsSpotsLab[i] = (float)ObsSpotsLab_d[i];
+  printf("Spots.bin: %d spots (converted double→float)\n", nsp);
+  return nsp;
 }
 
 static void ReadBins(char *cwd) {
