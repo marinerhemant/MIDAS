@@ -230,11 +230,12 @@ def fit(psFN: str, nodeNr: int, nNodes: int, numProcs: int, logDir: str, resultF
     """Run orientation fitting remotely via Parsl."""
     import os, subprocess
     env = dict(os.environ)
+    binary = "FitOrientationGPU" if gpuFit == 1 else "FitOrientationOMP"
     if gpuFit == 1:
         env['MIDAS_GPU_FIT'] = '1'
     with open(f'{logDir}/fit{nodeNr}_out.csv', 'w') as f, \
          open(f'{logDir}/fit{nodeNr}_err.csv', 'w') as f_err:
-        cmd = os.path.join(bin_dir, "FitOrientationOMP") + f' {psFN} {nodeNr} {nNodes} {numProcs}'
+        cmd = os.path.join(bin_dir, binary) + f' {psFN} {nodeNr} {nNodes} {numProcs}'
         f.write(cmd)
         subprocess.call(cmd, shell=True, stdout=f, stderr=f_err, cwd=resultFolder, env=env)
 
