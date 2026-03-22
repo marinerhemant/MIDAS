@@ -2,13 +2,14 @@
 #
 # GPU vs CPU benchmark for NF-HEDM FitOrientation
 #
-# Usage: bash benchmark_gpu.sh [nCPUs] [--screen-only] [--skip-cpu] [--small] [--gpu-fit] [--voxels N]
+# Usage: bash benchmark_gpu.sh [nCPUs] [--screen-only] [--skip-cpu] [--small] [--gpu-fit] [--voxels N] [--dilate N]
 #   nCPUs:        number of CPU threads (default: 96)
 #   --screen-only: skip Phase 2 fitting (pure screening benchmark)
 #   --skip-cpu:    skip CPU benchmark (still runs preprocessing + GPU)
 #   --small:       use grs.csv (4 orientations) instead of cubicSeed.txt
 #   --gpu-fit:     enable GPU Phase 2 NM fitting (MIDAS_GPU_FIT=1)
 #   --voxels N:    target approximate number of voxels (adjusts GridSize)
+#   --dilate N:    dilate SpotsInfo.bin by N pixels (broadens sharp simulated spots)
 #
 # Run this from the NF_HEDM/Example/sim directory (where SpotsInfo.bin
 # and the diffraction images live).
@@ -21,11 +22,16 @@ SKIP_CPU=0
 USE_SMALL=0
 GPU_FIT=0
 TARGET_VOXELS=0
-NEXT_IS_VOXELS=0
+DILATE_RADIUS=0
+NEXT_ARG=""
 for arg in "$@"; do
-  if [ "$NEXT_IS_VOXELS" = 1 ]; then
+  if [ "$NEXT_ARG" = "voxels" ]; then
     TARGET_VOXELS=$arg
-    NEXT_IS_VOXELS=0
+    NEXT_ARG=""
+    continue
+  elif [ "$NEXT_ARG" = "dilate" ]; then
+    DILATE_RADIUS=$arg
+    NEXT_ARG=""
     continue
   fi
   case "$arg" in
@@ -33,7 +39,8 @@ for arg in "$@"; do
     --skip-cpu) SKIP_CPU=1 ;;
     --small) USE_SMALL=1 ;;
     --gpu-fit) GPU_FIT=1 ;;
-    --voxels) NEXT_IS_VOXELS=1 ;;
+    --voxels) NEXT_ARG="voxels" ;;
+    --dilate) NEXT_ARG="dilate" ;;
     [0-9]*) NCPUS=$arg ;;
   esac
 done
@@ -47,6 +54,7 @@ else
   SEED_FILE="$MIDAS_DIR/NF_HEDM/cubicSeed.txt"
 fi
 PARAM_FILE="ps_au.txt"
+DILATE_SCRIPT="$SCRIPT_DIR/dilate_spots.py"
 
 echo "=== NF-HEDM GPU Benchmark ==="
 echo "MIDAS_DIR:  $MIDAS_DIR"
@@ -57,6 +65,7 @@ echo "nCPUs:      $NCPUS"
 [ "$SKIP_CPU" = 1 ] && echo "MODE:       skip-cpu (GPU only)"
 [ "$USE_SMALL" = 1 ] && echo "MODE:       small dataset (grs.csv, 4 orientations)"
 [ "$GPU_FIT" = 1 ] && echo "MODE:       GPU Phase 2 fitting enabled"
+[ "$DILATE_RADIUS" != 0 ] && echo "MODE:       dilate SpotsInfo.bin by $DILATE_RADIUS pixels"
 [ "$TARGET_VOXELS" != 0 ] && echo "MODE:       target ~$TARGET_VOXELS voxels"
 
 # Set env vars
@@ -70,6 +79,13 @@ if [ ! -f SpotsInfo.bin ]; then
   echo "ERROR: SpotsInfo.bin not found in $(pwd)"
   echo "Run this script from the sim/ directory that has processed image data."
   exit 1
+fi
+
+# === Dilate SpotsInfo.bin if requested ===
+if [ "$DILATE_RADIUS" != 0 ]; then
+  echo ""
+  echo "=== Dilating SpotsInfo.bin (radius=$DILATE_RADIUS) ==="
+  python3 "$DILATE_SCRIPT" "$PARAM_FILE" --radius "$DILATE_RADIUS" --backup
 fi
 
 # === STEP 0: Adjust GridSize if --voxels was specified ===
