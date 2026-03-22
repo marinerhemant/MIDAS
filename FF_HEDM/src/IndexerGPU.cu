@@ -92,8 +92,8 @@ static void check_host(int test, const char *msg, ...) {
 // ─────────────────────────────────────────────────────────────
 static double *ObsSpotsLab_d = NULL;  // mmap'd as double (file format)
 static float  *ObsSpotsLab = NULL;    // converted to float for CPU/GPU use
-static size_t *data = NULL;
-static size_t *ndata = NULL;
+static int *data = NULL;
+static int *ndata = NULL;
 static size_t n_spots = 0;
 static int n_hkls = 0;
 static RealType hkls[MAX_N_HKLS][7];
@@ -292,8 +292,8 @@ int gpu_CompareSpots(
     int nTspots,
     const float *d_ObsSpotsLab, // [n_spots × 9]
     float RefRad,
-    const size_t *d_data,
-    const size_t *d_ndata,
+    const int *d_data,
+    const int *d_ndata,
     const int *d_ringsToReject,
     int nRingsToRejectCalc,
     int *nMatchesFracCalc)
@@ -322,8 +322,8 @@ int gpu_CompareSpots(
     Pos *= (size_t)c_params.n_ome_bins;
     Pos += (size_t)iOme;
 
-    size_t nInBin = d_ndata[Pos * 2 + 0];
-    size_t DataPos = d_ndata[Pos * 2 + 1];
+    int nInBin = d_ndata[Pos * 2 + 0];
+    int DataPos = d_ndata[Pos * 2 + 1];
 
     float etamargin = c_etamargins[RingNr];
     int ome_idx = (int)floorf(fabsf(theorEta));
@@ -332,8 +332,8 @@ int gpu_CompareSpots(
     int matchFound = 0;
     float diffOmeBest = c_params.MarginOme + 0.00001f;
 
-    for (size_t is = 0; is < nInBin; is++) {
-      size_t spotRow = d_data[DataPos + is];  // single-indexed (not pairs)
+    for (int is = 0; is < nInBin; is++) {
+      int spotRow = d_data[DataPos + is];  // single-indexed (not pairs)
       int base = spotRow * N_COL_OBSSPOTS;
 
       float obsRadDiff = d_ObsSpotsLab[base + 8];
@@ -372,8 +372,8 @@ __global__ void indexer_eval_kernel(
     const float *d_hkls_flat,
     int n_hkls_d,
     const float *d_ObsSpotsLab,
-    const size_t *d_data,
-    const size_t *d_ndata,
+    const int *d_data,
+    const int *d_ndata,
     const int *d_ringsToReject,
     int nRingsToRejectCalc,
     SpotResult *d_results,    // [nSpotIDs] — per-spotID best
@@ -625,13 +625,13 @@ static void ReadBins(char *cwd) {
   char fn1[2048]; sprintf(fn1,"%s/Data.bin",cwd);
   int fd1=open(fn1,O_RDONLY); check(fd1<0,"open %s: %s",fn1,strerror(errno));
   struct stat s1; fstat(fd1,&s1);
-  data=(size_t*)mmap(0,s1.st_size,PROT_READ,MAP_SHARED,fd1,0);
+  data=(int*)mmap(0,s1.st_size,PROT_READ,MAP_SHARED,fd1,0);
   check(data==MAP_FAILED,"mmap %s",fn1);
 
   char fn2[2048]; sprintf(fn2,"%s/nData.bin",cwd);
   int fd2=open(fn2,O_RDONLY); check(fd2<0,"open %s: %s",fn2,strerror(errno));
   struct stat s2; fstat(fd2,&s2);
-  ndata=(size_t*)mmap(0,s2.st_size,PROT_READ,MAP_SHARED,fd2,0);
+  ndata=(int*)mmap(0,s2.st_size,PROT_READ,MAP_SHARED,fd2,0);
   check(ndata==MAP_FAILED,"mmap %s",fn2);
   printf("Data.bin read. nData.bin read.\n");
 }
@@ -824,7 +824,7 @@ int main(int argc, char *argv[]) {
   CUDA_CHECK(cudaMalloc(&d_ObsSpotsLab, n_spots*N_COL_OBSSPOTS*sizeof(float)));
   CUDA_CHECK(cudaMemcpy(d_ObsSpotsLab, ObsSpotsLab, n_spots*N_COL_OBSSPOTS*sizeof(float), cudaMemcpyHostToDevice));
 
-  size_t *d_data, *d_ndata;
+  int *d_data, *d_ndata;
   // Determine data sizes from file sizes
   {
     char fn1[2048]; sprintf(fn1,"%s/Data.bin",cwdstr);
