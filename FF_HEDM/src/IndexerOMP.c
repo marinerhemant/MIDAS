@@ -1881,18 +1881,12 @@ int DoIndexing(int SpotIDs, struct TParams Params, int offsetLoc, int idNr,
                      Params.MarginRadial, etamargins, omemargins, &nMatches,
                      GrainSpots, ringsToRejectCalc, nRingsToRejectCalc,
                      &nMatchesFracCalc);
-        double fracMatchesThis = (RealType)((RealType)nMatchesFracCalc) /
-                                 ((RealType)nTspotsFracCalc);
-        // Debug: print for first spot only
-        if (idNr == 0 && fracMatchesThis > 0.5) {
-          printf("[CPU WIN] frac=%.4f nT=%d nM=%d nMfrac=%d nTfrac=%d RefRad=%.2f MarginRad=%.2f MarginRadial=%.2f nRRCalc=%d\n",
-                 fracMatchesThis, nTspots, nMatches, nMatchesFracCalc, nTspotsFracCalc,
-                 RefRad, Params.MarginRad, Params.MarginRadial, nRingsToRejectCalc);
-        }
         if (nMatchesFracCalc > bestnMatchesPos) {
           bestnMatchesPos = nMatchesFracCalc;
           bestnTspotsPos = nTspotsFracCalc;
         }
+        double fracMatchesThis = (RealType)((RealType)nMatchesFracCalc) /
+                                 ((RealType)nTspotsFracCalc);
         if (nMatchesFracCalc >= MinMatchesToAccept &&
             fracMatchesThis >= bestFracTillNow) {
           bestMatchFound = 1;

@@ -297,16 +297,10 @@ int gpu_CompareSpots(
     const int *d_ndata,
     const int *d_ringsToReject,
     int nRingsToRejectCalc,
-    int *nMatchesFracCalc,
-    int debugThread)          // if 1, print diagnostics
+    int *nMatchesFracCalc)
 {
   int nMatched = 0;
   int nMatchedFrac = 0;
-
-  if (debugThread) {
-    printf("  [DBG CompareSpots] nTspots=%d, RefRad=%.2f, MarginRad=%.4f, MarginRadial=%.4f, nRingsToRejectCalc=%d\n",
-           nTspots, RefRad, c_params.MarginRad, c_params.MarginRadial, nRingsToRejectCalc);
-  }
 
   for (int sp = 0; sp < nTspots; sp++) {
     float *s = &spots[sp * N_COL_THEORSPOTS];
@@ -343,13 +337,6 @@ int gpu_CompareSpots(
     int matchFound = 0;
     float diffOmeBest = 100000.0f;  // match CPU: find closest, no threshold
 
-    if (debugThread && sp < 3) {
-      printf("  [DBG sp=%d] RingNr=%d iRing=%d iEta=%d iOme=%d Pos=%llu nInBin=%d skip=%d eta=%.2f ome=%.2f radDiff=%.4f\n",
-             sp, RingNr, iRing, iEta, iOme, (unsigned long long)Pos, nInBin, skipRadialFilter,
-             theorEta, theorOme, theorRadDiff);
-    }
-
-    int nPassRad=0, nPassRefRad=0, nPassEta=0;
     for (int is = 0; is < nInBin; is++) {
       int spotRow = d_data[DataPos + is];
       int base = spotRow * N_COL_OBSSPOTS;
@@ -357,19 +344,16 @@ int gpu_CompareSpots(
       // Filter 1: radial difference (MarginRadial)
       float obsRadDiff = d_ObsSpotsLab[base + 8];
       if (fabsf(theorRadDiff - obsRadDiff) >= c_params.MarginRadial) continue;
-      nPassRad++;
 
       // Filter 2: RefRad check (MarginRad) — skip if ring is excluded
       if (!skipRadialFilter) {
         float obsRefRad = d_ObsSpotsLab[base + 3];
         if (fabsf(RefRad - obsRefRad) >= c_params.MarginRad) continue;
       }
-      nPassRefRad++;
 
       // Filter 3: eta margin
       float obsEta = d_ObsSpotsLab[base + 6];
       if (fabsf(theorEta - obsEta) >= etamargin) continue;
-      nPassEta++;
 
       // Find closest omega match (no threshold)
       float obsOme = d_ObsSpotsLab[base + 2];
@@ -380,10 +364,7 @@ int gpu_CompareSpots(
       }
     }
 
-    if (debugThread && sp < 3) {
-      printf("  [DBG sp=%d] passRad=%d passRefRad=%d passEta=%d matched=%d\n",
-             sp, nPassRad, nPassRefRad, nPassEta, matchFound);
-    }
+
 
     if (matchFound) {
       nMatched++;
@@ -454,25 +435,13 @@ __global__ void indexer_eval_kernel(
 
   // 3. Compare with observed spots
   int nMatchesFracCalc;
-  int debugThread = 0;  // disabled for now; winning thread debug below
   int nMatches = gpu_CompareSpots(
     TheorSpots, nTspots, d_ObsSpotsLab, t.RefRad,
     d_data, d_ndata,
     d_ringsToReject, nRingsToRejectCalc,
-    &nMatchesFracCalc, debugThread);
+    &nMatchesFracCalc);
 
   float fracMatches = (float)nMatchesFracCalc / (float)nTspotsFracCalc;
-
-  // Debug: print when a high-confidence match is found (only for spotIdx 0)
-  if (spotIdx == 0 && fracMatches > 0.5f) {
-    printf("[WIN tid=%d spot=0] frac=%.4f nT=%d nM=%d nMfrac=%d nTfrac=%d RefRad=%.2f\n",
-           tid, fracMatches, nTspots, nMatches, nMatchesFracCalc, nTspotsFracCalc, t.RefRad);
-    // Re-run CompareSpots with debug on for this winner
-    int dummyFrac;
-    gpu_CompareSpots(TheorSpots, nTspots, d_ObsSpotsLab, t.RefRad,
-                     d_data, d_ndata, d_ringsToReject, nRingsToRejectCalc,
-                     &dummyFrac, 1);
-  }
 
   // 4. Atomic best-match update per spotID
   SpotResult *res = &d_results[spotIdx];
@@ -1105,16 +1074,13 @@ int main(int argc, char *argv[]) {
 
     // Write IndexBest.bin (same format as IndexerOMP)
     double res[15];
-    res[0] = 0; // IA placeholder (can be computed post-hoc)
+    res[0] = 0; // IA placeholder — matches CPU format (confidence = res[14]/res[13])
     for (int k=0;k<9;k++) res[k+1] = (double)h_results[si].bestOrMat[k];
     res[10]=(double)h_results[si].bestPos[0];
     res[11]=(double)h_results[si].bestPos[1];
     res[12]=(double)h_results[si].bestPos[2];
     res[13]=(double)h_results[si].nTspots;   // nExp
-    res[14]=(double)h_results[si].nMatches;  // nObs (using nMatches, not nTspots)
-
-    // Overwrite: res[0] should be the IA, but we skip it here (set to confidence)
-    res[0] = (double)h_results[si].bestFrac;
+    res[14]=(double)h_results[si].nMatches;  // nObs
 
     size_t offset = (size_t)(si + startRow) * 15 * sizeof(double);
     pwrite(Params.IndexBestFD, res, 15*sizeof(double), offset);
