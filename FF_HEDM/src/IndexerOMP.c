@@ -2068,7 +2068,7 @@ int DoIndexingSeed(double orMat[9], double posThis[3], double RefRad,
       AllGrainSpots[r][c] = GrainSpots[r][c];
     AllGrainSpots[r][15] = 1;
   }
-  CalcIA(GrainMatches, 1, AllGrainSpots, Params.Distance, 0);
+  CalcIA(GrainMatches, 1, AllGrainSpots, Params.Distance, (idNr == 0) ? 1 : 0);
   rownr = nTspots;
   double enTm = omp_get_wtime() - sttm;
   WriteBestMatchBin(GrainMatches, AllGrainSpots, rownr, Params.IndexBestFD,
