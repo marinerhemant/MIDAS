@@ -333,7 +333,7 @@ int gpu_CompareSpots(
     float diffOmeBest = c_params.MarginOme + 0.00001f;
 
     for (size_t is = 0; is < nInBin; is++) {
-      size_t spotRow = d_data[(DataPos + is) * 2 + 0];
+      size_t spotRow = d_data[DataPos + is];  // single-indexed (not pairs)
       int base = spotRow * N_COL_OBSSPOTS;
 
       float obsRadDiff = d_ObsSpotsLab[base + 8];
