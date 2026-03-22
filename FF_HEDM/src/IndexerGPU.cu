@@ -1216,9 +1216,9 @@ int main(int argc, char *argv[]) {
       int iRing=RingNr-1;
       int iEta=(int)floor((180.0+theorEta)/Params.EtaBinSize);
       int iOme=(int)floor((180.0+theorOme)/Params.OmeBinSize);
-      if(iEta<0)iEta=0; if(iEta>=nEtaBins)iEta=nEtaBins-1;
-      if(iOme<0)iOme=0; if(iOme>=nOmeBins)iOme=nOmeBins-1;
-      size_t Pos=(size_t)iRing*nEtaBins*nOmeBins+(size_t)iEta*nOmeBins+iOme;
+      if(iEta<0)iEta=0; if(iEta>=n_eta_bins)iEta=n_eta_bins-1;
+      if(iOme<0)iOme=0; if(iOme>=n_ome_bins)iOme=n_ome_bins-1;
+      size_t Pos=(size_t)iRing*n_eta_bins*n_ome_bins+(size_t)iEta*n_ome_bins+iOme;
       int nInBin=ndata[(int)(Pos*2+0)], DataPos_=ndata[(int)(Pos*2+1)];
       double etam=etamargins[RingNr];
       int matchFound=0; double diffOmeBest=1e9; int bestRow=-1;
