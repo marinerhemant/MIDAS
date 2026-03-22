@@ -226,14 +226,17 @@ def median_local(distanceNr: int, psFN: str, numProcs: int, logDir: str, resultF
 
 
 @create_app_with_retry
-def fit(psFN: str, nodeNr: int, nNodes: int, numProcs: int, logDir: str, resultFolder: str, bin_dir: str) -> None:
+def fit(psFN: str, nodeNr: int, nNodes: int, numProcs: int, logDir: str, resultFolder: str, bin_dir: str, gpuFit: int = 0) -> None:
     """Run orientation fitting remotely via Parsl."""
     import os, subprocess
+    env = dict(os.environ)
+    if gpuFit == 1:
+        env['MIDAS_GPU_FIT'] = '1'
     with open(f'{logDir}/fit{nodeNr}_out.csv', 'w') as f, \
          open(f'{logDir}/fit{nodeNr}_err.csv', 'w') as f_err:
         cmd = os.path.join(bin_dir, "FitOrientationOMP") + f' {psFN} {nodeNr} {nNodes} {numProcs}'
         f.write(cmd)
-        subprocess.call(cmd, shell=True, stdout=f, stderr=f_err, cwd=resultFolder, env=os.environ)
+        subprocess.call(cmd, shell=True, stdout=f, stderr=f_err, cwd=resultFolder, env=env)
 
 # --- WORKFLOW STAGE FUNCTIONS ---
 
@@ -372,7 +375,7 @@ def run_fitting_and_postprocessing(args: argparse.Namespace, params: Dict, t0: f
                     total_points = None
 
                 # Start the single fitting task (nodeNr=0)
-                fit_future = fit(args.paramFN, 0, args.nNodes, args.nCPUs, logDir, resultFolder, bin_dir)
+                fit_future = fit(args.paramFN, 0, args.nNodes, args.nCPUs, logDir, resultFolder, bin_dir, gpuFit=args.gpuFit)
                 
                 outfile = os.path.join(logDir, 'fit0_out.csv')
                 pbar = tqdm(total=total_points, desc="Fitting Orientations", unit="pts")
@@ -406,7 +409,7 @@ def run_fitting_and_postprocessing(args: argparse.Namespace, params: Dict, t0: f
                 fit_future.result() # Raise exception if task failed
             else:
                 # --- Multi-Node: Standard Future completion tracking ---
-                fit_futures = [fit(args.paramFN, i, args.nNodes, args.nCPUs, logDir, resultFolder, bin_dir) for i in range(args.nNodes)]
+                fit_futures = [fit(args.paramFN, i, args.nNodes, args.nCPUs, logDir, resultFolder, bin_dir, gpuFit=args.gpuFit) for i in range(args.nNodes)]
                 [f.result() for f in tqdm(fit_futures, desc="Fitting Orientations")]
         except Exception as e:
             logger.error("A failure occurred during the orientation fitting stage. Aborting workflow.")
