@@ -469,6 +469,11 @@ __global__ void indexer_eval_kernel(
 
   float fracMatches = (float)nMatchesFracCalc / (float)nTspotsFracCalc;
 
+  if (spotIdx == 0) {
+    printf("[GPU CAND] pos=(%.2f,%.2f,%.2f) conf=%.6f nObs=%d nExp=%d IA=%.6f\n",
+           t.ga, t.gb, t.gc, fracMatches, nMatchesFracCalc, nTspotsFracCalc, avgIA);
+  }
+
   // 4. Atomic best-match update per spotID using 64-bit packed key:
   //    upper 32 bits = frac (maximize), lower 32 bits = -IA (minimize IA)
   //    For positive floats, __float_as_int preserves ordering.
@@ -1104,169 +1109,6 @@ int main(int argc, char *argv[]) {
   //  Download results and write output
   // ═══════════════════════════════════════════════════════════
   CUDA_CHECK(cudaMemcpy(h_results, d_results, nSpotIDs*sizeof(SpotResult), cudaMemcpyDeviceToHost));
-
-  // ═══════════════════════════════════════════════════════════
-  //  Debug: for spot 0, re-run IA on host using GPU's winning OrMat/pos
-  //  in double precision, matching the CPU CalcIA debug format
-  // ═══════════════════════════════════════════════════════════
-  if (nSpotIDs > 0 && h_results[0].bestFrac > 0) {
-    printf("\n[GPU HOST-SIDE IA DEBUG for spot 0]\n");
-    printf("  GPU bestFrac=%.6f bestIA=%.6f pos=(%.2f,%.2f,%.2f)\n",
-           h_results[0].bestFrac, h_results[0].bestIA,
-           h_results[0].bestPos[0], h_results[0].bestPos[1], h_results[0].bestPos[2]);
-
-    // Re-run CalcDiffrSpots on host using GPU's winning OrMat
-    double OrMat[3][3];
-    for (int r=0;r<3;r++) for (int c=0;c<3;c++)
-      OrMat[r][c] = (double)h_results[0].bestOrMat[r*3+c];
-    double ga = (double)h_results[0].bestPos[0];
-    double gb = (double)h_results[0].bestPos[1];
-    double gcd = (double)h_results[0].bestPos[2];
-    double Dist = (double)Params.Distance;
-
-    // Allocate theor spots
-    int maxDbgSpots = n_hkls*2;
-    double *dbg_yl = (double*)malloc(maxDbgSpots*sizeof(double));
-    double *dbg_zl = (double*)malloc(maxDbgSpots*sizeof(double));
-    double *dbg_ome = (double*)malloc(maxDbgSpots*sizeof(double));
-    int *dbg_ring = (int*)malloc(maxDbgSpots*sizeof(int));
-    int nTspDbg = 0;
-
-    for (int ih=0; ih<n_hkls; ih++) {
-      double Ghkl[3] = {hkls[ih][0], hkls[ih][1], hkls[ih][2]};
-      int ringnr = (int)hkls[ih][3];
-      if (ringnr<0||ringnr>=MAX_N_RINGS) continue;
-      double RingRadius = Params.RingRadii[ringnr];
-      if (RingRadius < 1e-9) continue;
-      double theta = hkls[ih][5];
-      // MatrixMult double
-      double Gc[3]; for (int r=0;r<3;r++) Gc[r]=OrMat[r][0]*Ghkl[0]+OrMat[r][1]*Ghkl[1]+OrMat[r][2]*Ghkl[2];
-      // CalcOmega inline (double)
-      double len = sqrt(Gc[0]*Gc[0]+Gc[1]*Gc[1]+Gc[2]*Gc[2]);
-      if (len < 1e-9) continue;
-      double v_ = sin(deg2rad*theta)*len;
-      double omegas[4], etas[4]; int nsol = 0;
-      if (fabs(Gc[1]) < 1e-4) {
-        if (fabs(Gc[0]) > 1e-4) {
-          double co = -v_/Gc[0];
-          if (fabs(co)<=1.0) { double om=acos(co)*rad2deg; omegas[nsol++]=om; omegas[nsol++]=-om; }
-        }
-      } else {
-        double y2=Gc[1]*Gc[1], a=1.0+(Gc[0]*Gc[0])/y2, b=(2.0*v_*Gc[0])/y2, cc=(v_*v_)/y2-1.0;
-        double D=b*b-4.0*a*cc;
-        if (D>=0 && fabs(a)>1e-9) {
-          double sd=sqrt(D), ta=2.0*a;
-          double co1=(-b+sd)/ta; if (fabs(co1)<=1.0) {
-            double oa=acos(co1),ob=-oa;
-            double ea=-Gc[0]*cos(oa)+Gc[1]*sin(oa), eb=-Gc[0]*cos(ob)+Gc[1]*sin(ob);
-            omegas[nsol++]=(fabs(ea-v_)<fabs(eb-v_)?oa:ob)*rad2deg;
-          }
-          double co2=(-b-sd)/ta; if (fabs(co2)<=1.0) {
-            double oa=acos(co2),ob=-oa;
-            double ea=-Gc[0]*cos(oa)+Gc[1]*sin(oa), eb=-Gc[0]*cos(ob)+Gc[1]*sin(ob);
-            omegas[nsol++]=(fabs(ea-v_)<fabs(eb-v_)?oa:ob)*rad2deg;
-          }
-        }
-      }
-      // Compute eta for each omega
-      for (int i=0;i<nsol;i++) {
-        double cosA=cos(deg2rad*omegas[i]), sinA=sin(deg2rad*omegas[i]);
-        double gw1=cosA*Gc[0]-sinA*Gc[1], gw2=sinA*Gc[0]+cosA*Gc[1], gw3=Gc[2];
-        double den=sqrt(gw2*gw2+gw3*gw3);
-        if (den<1e-9) { etas[i]=0; continue; }
-        double cv=gw3/den; if (cv>1)cv=1; if (cv<-1)cv=-1;
-        etas[i] = rad2deg*acos(cv); if (gw2>0) etas[i]=-etas[i];
-      }
-      for (int i=0;i<nsol;i++) {
-        double EtaAbs = fabs(etas[i]);
-        if (EtaAbs < Params.ExcludePoleAngle || (180.0-EtaAbs) < Params.ExcludePoleAngle) continue;
-        // CalcSpotPosition
-        double eR = deg2rad*etas[i];
-        double yl = -(sin(eR)*RingRadius);
-        double zl = cos(eR)*RingRadius;
-        int keep=0;
-        for (int orn=0;orn<Params.NoOfOmegaRanges;orn++) {
-          if (omegas[i]>Params.OmegaRanges[orn][0] && omegas[i]<Params.OmegaRanges[orn][1] &&
-              yl>Params.BoxSizes[orn][0] && yl<Params.BoxSizes[orn][1] &&
-              zl>Params.BoxSizes[orn][2] && zl<Params.BoxSizes[orn][3]) { keep=1; break; }
-        }
-        if (!keep) continue;
-        dbg_yl[nTspDbg]=yl; dbg_zl[nTspDbg]=zl; dbg_ome[nTspDbg]=omegas[i]; dbg_ring[nTspDbg]=ringnr;
-        nTspDbg++;
-      }
-    }
-    printf("  nTheorSpots=%d\n", nTspDbg);
-
-    double iaSum=0; int iaCount=0;
-    for (int sp=0; sp<nTspDbg; sp++) {
-      // Displacement (inline)
-      double xi0=Dist, yi0=dbg_yl[sp], zi0=dbg_zl[sp], ome0=dbg_ome[sp];
-      double lenInv = 1.0/sqrt(xi0*xi0+yi0*yi0+zi0*zi0);
-      double xn=xi0*lenInv, yn=yi0*lenInv, zn=zi0*lenInv;
-      double sO=sin(deg2rad*ome0), cO=cos(deg2rad*ome0);
-      double tval=(ga*cO-gb*sO)/xn;
-      double Dy=(ga*sO+gb*cO)-tval*yn, Dz=gcd-tval*zn;
-      double theorY=yi0+Dy, theorZ=zi0+Dz, theorOme=ome0;
-      // Eta
-      double thDen=sqrt(theorY*theorY+theorZ*theorZ);
-      double theorEta=0; if(thDen>1e-9){double cv2=theorZ/thDen; if(cv2>1)cv2=1; if(cv2<-1)cv2=-1; theorEta=rad2deg*acos(cv2); if(theorY>0)theorEta=-theorEta;}
-      int RingNr=dbg_ring[sp];
-      double theorRadDiff=thDen-Params.RingRadii[RingNr];
-      // Bin lookup
-      int iRing=RingNr-1;
-      int iEta=(int)floor((180.0+theorEta)/Params.EtaBinSize);
-      int iOme=(int)floor((180.0+theorOme)/Params.OmeBinSize);
-      if(iEta<0)iEta=0; if(iEta>=n_eta_bins)iEta=n_eta_bins-1;
-      if(iOme<0)iOme=0; if(iOme>=n_ome_bins)iOme=n_ome_bins-1;
-      size_t Pos=(size_t)iRing*n_eta_bins*n_ome_bins+(size_t)iEta*n_ome_bins+iOme;
-      int nInBin=ndata[(int)(Pos*2+0)], DataPos_=ndata[(int)(Pos*2+1)];
-      double etam=etamargins[RingNr];
-      int matchFound=0; double diffOmeBest=1e9; int bestRow=-1;
-      for(int is=0;is<nInBin;is++){
-        int r=data[DataPos_+is]; int base=r*N_COL_OBSSPOTS;
-        double obsRadDiff=(double)ObsSpotsLab[base+8];
-        if(fabs(theorRadDiff-obsRadDiff)>=Params.MarginRadial)continue;
-        double obsEta=(double)ObsSpotsLab[base+6];
-        if(fabs(theorEta-obsEta)>=etam)continue;
-        double obsOme=(double)ObsSpotsLab[base+2];
-        double dO=fabs(theorOme-obsOme);
-        if(dO<diffOmeBest){diffOmeBest=dO;bestRow=r;matchFound=1;}
-      }
-      if(matchFound){
-        double obsY=(double)ObsSpotsLab[bestRow*N_COL_OBSSPOTS+0];
-        double obsZ=(double)ObsSpotsLab[bestRow*N_COL_OBSSPOTS+1];
-        double obsOme=(double)ObsSpotsLab[bestRow*N_COL_OBSSPOTS+2];
-        // spot_to_gv_pos inline (double)
-        // gv1 = spot_to_gv_pos(Dist, theorY, theorZ, theorOme, ga, gb, gc)
-        double v1[3]={ga,gb,gcd},vr1[3]; {double ca=cos(deg2rad*theorOme),sa=sin(deg2rad*theorOme); vr1[0]=ca*v1[0]-sa*v1[1]; vr1[1]=sa*v1[0]+ca*v1[1]; vr1[2]=v1[2];}
-        double xi1=Dist-vr1[0],yi1=theorY-vr1[1],zi1=theorZ-vr1[2];
-        double l1=sqrt(xi1*xi1+yi1*yi1+zi1*zi1); double xn1=xi1/l1,yn1=yi1/l1,zn1=zi1/l1;
-        double g1r=-1+xn1,g2r=yn1; double co1=cos(-theorOme*deg2rad),so1=sin(-theorOme*deg2rad);
-        double gv1x=g1r*co1-g2r*so1, gv1y=g1r*so1+g2r*co1, gv1z=zn1;
-        // gv2 = spot_to_gv_pos(Dist, obsY, obsZ, obsOme, ga, gb, gc)
-        double vr2[3]; {double ca=cos(deg2rad*obsOme),sa=sin(deg2rad*obsOme); vr2[0]=ca*v1[0]-sa*v1[1]; vr2[1]=sa*v1[0]+ca*v1[1]; vr2[2]=v1[2];}
-        double xi2=Dist-vr2[0],yi2=obsY-vr2[1],zi2=obsZ-vr2[2];
-        double l2=sqrt(xi2*xi2+yi2*yi2+zi2*zi2); double xn2=xi2/l2,yn2=yi2/l2,zn2=zi2/l2;
-        double g1r2=-1+xn2,g2r2=yn2; double co2=cos(-obsOme*deg2rad),so2=sin(-obsOme*deg2rad);
-        double gv2x=g1r2*co2-g2r2*so2, gv2y=g1r2*so2+g2r2*co2, gv2z=zn2;
-        // CalcInternalAngle
-        double la=sqrt(gv1x*gv1x+gv1y*gv1y+gv1z*gv1z), lb=sqrt(gv2x*gv2x+gv2y*gv2y+gv2z*gv2z);
-        double dp=(gv1x*gv2x+gv1y*gv2y+gv1z*gv2z)/(la*lb);
-        if(dp>1)dp=1; if(dp<-1)dp=-1;
-        double ia=rad2deg*acos(dp);
-        if (sp < 5) {
-          printf("[GPU-HOST IA sp=%d] theorY=%.6f theorZ=%.6f theorOme=%.6f obsY=%.6f obsZ=%.6f obsOme=%.6f\n",
-                 sp, theorY, theorZ, theorOme, obsY, obsZ, obsOme);
-          printf("  dist=%.2f ga=%.6f gb=%.6f gc=%.6f gv1=(%.8f,%.8f,%.8f) gv2=(%.8f,%.8f,%.8f) ia=%.8f\n",
-                 Dist, ga, gb, gcd, gv1x, gv1y, gv1z, gv2x, gv2y, gv2z, ia);
-        }
-        iaSum+=fabs(ia); iaCount++;
-      }
-    }
-    printf("[GPU-HOST IA SUMMARY] iaSum=%.8f iaCount=%d avgIA=%.8f (GPU kernel IA=%.8f)\n",
-           iaSum, iaCount, iaCount>0 ? iaSum/iaCount : 999.0, h_results[0].bestIA);
-    free(dbg_yl); free(dbg_zl); free(dbg_ome); free(dbg_ring);
-  }
 
   for (int si=0; si<nSpotIDs; si++) {
     if (h_results[si].bestFrac <= 0) continue;

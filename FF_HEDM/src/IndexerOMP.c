@@ -1903,6 +1903,25 @@ int DoIndexing(int SpotIDs, struct TParams Params, int offsetLoc, int idNr,
         }
         double fracMatchesThis = (RealType)((RealType)nMatchesFracCalc) /
                                  ((RealType)nTspotsFracCalc);
+        // Debug: for idNr==0, compute IA and print for ALL candidates (like GPU does)
+        if (idNr == 0) {
+          for (i = 0; i < 9; i++)
+            GrainMatchesT[0][i] = orThis[i / 3][i % 3];
+          GrainMatchesT[0][9] = ga;
+          GrainMatchesT[0][10] = gb;
+          GrainMatchesT[0][11] = gc;
+          GrainMatchesT[0][12] = (double)nTspots;
+          GrainMatchesT[0][13] = (double)nMatches;
+          GrainMatchesT[0][14] = 1;
+          for (r = 0; r < nTspots; r++) {
+            for (c = 0; c < 15; c++)
+              AllGrainSpotsT[r][c] = GrainSpots[r][c];
+            AllGrainSpotsT[r][15] = 1;
+          }
+          CalcIA(GrainMatchesT, 1, AllGrainSpotsT, Params.Distance, 0);
+          printf("[CPU CAND] pos=(%.2f,%.2f,%.2f) conf=%.6f nObs=%d nExp=%d IA=%.6f\n",
+                 ga, gb, gc, fracMatchesThis, nMatchesFracCalc, nTspotsFracCalc, GrainMatchesT[0][15]);
+        }
         if (nMatchesFracCalc >= MinMatchesToAccept &&
             fracMatchesThis >= bestFracTillNow) {
           bestMatchFound = 1;
@@ -1919,7 +1938,7 @@ int DoIndexing(int SpotIDs, struct TParams Params, int offsetLoc, int idNr,
               AllGrainSpotsT[r][c] = GrainSpots[r][c];
             AllGrainSpotsT[r][15] = 1;
           }
-          CalcIA(GrainMatchesT, 1, AllGrainSpotsT, Params.Distance, (idNr == 0) ? 1 : 0);
+          CalcIA(GrainMatchesT, 1, AllGrainSpotsT, Params.Distance, 0);
           if (fracMatchesThis > bestFracTillNow ||
               (fracMatchesThis == bestFracTillNow &&
                GrainMatchesT[0][15] < MinInternalAngle)) {
@@ -1938,12 +1957,13 @@ int DoIndexing(int SpotIDs, struct TParams Params, int offsetLoc, int idNr,
           }
         }
         nDelta = 1;
-        if (nTspotsFracCalc != 0) {
-          fracMatches = (RealType)nMatchesFracCalc / nTspotsFracCalc;
-          if (fracMatches < 0.5) {
-            nDelta = 5 - round(fracMatches * (5 - 1) / 0.5);
-          }
-        }
+        // DISABLED: adaptive skipping for debugging
+        // if (nTspotsFracCalc != 0) {
+        //   fracMatches = (RealType)nMatchesFracCalc / nTspotsFracCalc;
+        //   if (fracMatches < 0.5) {
+        //     nDelta = 5 - round(fracMatches * (5 - 1) / 0.5);
+        //   }
+        // }
         n = n + nDelta;
       }
       if (bestnMatchesPos > bestnMatchesRot) {
@@ -1957,11 +1977,12 @@ int DoIndexing(int SpotIDs, struct TParams Params, int offsetLoc, int idNr,
       bestnTspotsIsp = bestnTspotsRot;
     }
     ispDelta = 1;
-    if ((!usingFriedelPair) && (bestnTspotsRot != 0)) {
-      fracMatches = (RealType)bestnMatchesRot / bestnTspotsRot;
-      if (fracMatches < 0.5)
-        ispDelta = 3 - round(fracMatches * (3 - 1) / 0.5);
-    }
+    // DISABLED: adaptive skipping for debugging
+    // if ((!usingFriedelPair) && (bestnTspotsRot != 0)) {
+    //   fracMatches = (RealType)bestnMatchesRot / bestnTspotsRot;
+    //   if (fracMatches < 0.5)
+    //     ispDelta = 3 - round(fracMatches * (3 - 1) / 0.5);
+    // }
     isp = isp + ispDelta;
   }
   fracMatches = bestFracTillNow;
@@ -2068,7 +2089,7 @@ int DoIndexingSeed(double orMat[9], double posThis[3], double RefRad,
       AllGrainSpots[r][c] = GrainSpots[r][c];
     AllGrainSpots[r][15] = 1;
   }
-  CalcIA(GrainMatches, 1, AllGrainSpots, Params.Distance, (idNr == 0) ? 1 : 0);
+  CalcIA(GrainMatches, 1, AllGrainSpots, Params.Distance, 0);
   rownr = nTspots;
   double enTm = omp_get_wtime() - sttm;
   WriteBestMatchBin(GrainMatches, AllGrainSpots, rownr, Params.IndexBestFD,
