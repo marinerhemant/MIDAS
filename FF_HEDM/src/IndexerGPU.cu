@@ -297,10 +297,16 @@ int gpu_CompareSpots(
     const int *d_ndata,
     const int *d_ringsToReject,
     int nRingsToRejectCalc,
-    int *nMatchesFracCalc)
+    int *nMatchesFracCalc,
+    int debugThread)          // if 1, print diagnostics
 {
   int nMatched = 0;
   int nMatchedFrac = 0;
+
+  if (debugThread) {
+    printf("  [DBG CompareSpots] nTspots=%d, RefRad=%.2f, MarginRad=%.4f, MarginRadial=%.4f, nRingsToRejectCalc=%d\n",
+           nTspots, RefRad, c_params.MarginRad, c_params.MarginRadial, nRingsToRejectCalc);
+  }
 
   for (int sp = 0; sp < nTspots; sp++) {
     float *s = &spots[sp * N_COL_THEORSPOTS];
@@ -337,6 +343,13 @@ int gpu_CompareSpots(
     int matchFound = 0;
     float diffOmeBest = 100000.0f;  // match CPU: find closest, no threshold
 
+    if (debugThread && sp < 3) {
+      printf("  [DBG sp=%d] RingNr=%d iRing=%d iEta=%d iOme=%d Pos=%llu nInBin=%d skip=%d eta=%.2f ome=%.2f radDiff=%.4f\n",
+             sp, RingNr, iRing, iEta, iOme, (unsigned long long)Pos, nInBin, skipRadialFilter,
+             theorEta, theorOme, theorRadDiff);
+    }
+
+    int nPassRad=0, nPassRefRad=0, nPassEta=0;
     for (int is = 0; is < nInBin; is++) {
       int spotRow = d_data[DataPos + is];
       int base = spotRow * N_COL_OBSSPOTS;
@@ -344,16 +357,19 @@ int gpu_CompareSpots(
       // Filter 1: radial difference (MarginRadial)
       float obsRadDiff = d_ObsSpotsLab[base + 8];
       if (fabsf(theorRadDiff - obsRadDiff) >= c_params.MarginRadial) continue;
+      nPassRad++;
 
       // Filter 2: RefRad check (MarginRad) — skip if ring is excluded
       if (!skipRadialFilter) {
         float obsRefRad = d_ObsSpotsLab[base + 3];
         if (fabsf(RefRad - obsRefRad) >= c_params.MarginRad) continue;
       }
+      nPassRefRad++;
 
       // Filter 3: eta margin
       float obsEta = d_ObsSpotsLab[base + 6];
       if (fabsf(theorEta - obsEta) >= etamargin) continue;
+      nPassEta++;
 
       // Find closest omega match (no threshold)
       float obsOme = d_ObsSpotsLab[base + 2];
@@ -362,6 +378,11 @@ int gpu_CompareSpots(
         diffOmeBest = diffOme;
         matchFound = 1;
       }
+    }
+
+    if (debugThread && sp < 3) {
+      printf("  [DBG sp=%d] passRad=%d passRefRad=%d passEta=%d matched=%d\n",
+             sp, nPassRad, nPassRefRad, nPassEta, matchFound);
     }
 
     if (matchFound) {
@@ -433,11 +454,12 @@ __global__ void indexer_eval_kernel(
 
   // 3. Compare with observed spots
   int nMatchesFracCalc;
+  int debugThread = (tid == 0) ? 1 : 0;
   int nMatches = gpu_CompareSpots(
     TheorSpots, nTspots, d_ObsSpotsLab, t.RefRad,
     d_data, d_ndata,
     d_ringsToReject, nRingsToRejectCalc,
-    &nMatchesFracCalc);
+    &nMatchesFracCalc, debugThread);
 
   float fracMatches = (float)nMatchesFracCalc / (float)nTspotsFracCalc;
 
