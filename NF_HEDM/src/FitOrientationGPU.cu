@@ -1371,10 +1371,26 @@ extern "C" int nf_gpu_screen(NFGPUContext *ctx,
     CUDA_CHECK(cudaMemcpyToSymbol(c_RM, ctx->rotMatTilts, 9 * sizeof(float)));
   }
 
-  // Allocate winner buffer
-  ctx->maxWinners = (int)fmin((double)totalPairs, 10000000.0) + 10000;
+  // Allocate winner buffer — sized from available GPU memory
+  {
+    size_t freeMem = 0, totalGPUMem = 0;
+    cudaMemGetInfo(&freeMem, &totalGPUMem);
+    size_t winnerBudget = freeMem / 2;
+    size_t maxEntries = winnerBudget / sizeof(NFGPUWinner);
+    // Cap to INT_MAX (atomicAdd uses int counter) and to totalPairs
+    if (maxEntries > (size_t)INT_MAX - 1) maxEntries = (size_t)INT_MAX - 1;
+    if (maxEntries > (size_t)totalPairs) maxEntries = (size_t)totalPairs;
+    // Ensure a reasonable minimum
+    if (maxEntries < 10010000 && totalPairs >= 10010000) maxEntries = 10010000;
+    ctx->maxWinners = (int)maxEntries;
+    printf("NF GPU: winner buffer: %d entries (%.1f MB, %.0f%% of %.1f MB free)\n",
+           ctx->maxWinners,
+           (double)ctx->maxWinners * sizeof(NFGPUWinner) / (1024.0 * 1024.0),
+           100.0 * ctx->maxWinners * sizeof(NFGPUWinner) / freeMem,
+           freeMem / (1024.0 * 1024.0));
+  }
   CUDA_CHECK(cudaMalloc(&ctx->d_winners,
-                        ctx->maxWinners * sizeof(NFGPUWinner)));
+                        (size_t)ctx->maxWinners * sizeof(NFGPUWinner)));
   CUDA_CHECK(cudaMalloc(&ctx->d_nWinners, sizeof(int)));
   CUDA_CHECK(cudaMemset(ctx->d_nWinners, 0, sizeof(int)));
 
@@ -1412,6 +1428,7 @@ extern "C" int nf_gpu_screen(NFGPUContext *ctx,
       CUDA_CHECK(cudaMemcpyToSymbol(c_P0, h_P0_1, 3 * sizeof(float)));
     }
 
+    // Attempt single launch for all voxels
     screen_pairs_kernel<<<gridSize1, blockSize, 0, ctx->stream>>>(
         ctx->d_obsFlat,
         ctx->d_spots,
@@ -1424,28 +1441,112 @@ extern "C" int nf_gpu_screen(NFGPUContext *ctx,
         frameBatchSize,
         ctx->px, ctx->gs,
         (float)(minFracOverlap * 0.9),  // slightly lower threshold for pass 1
-        // (single-layer TotalPixels can increase when layer-1 OOB pixels
-        //  are in-bounds on layer 0, lowering fracOverlap slightly)
         ctx->d_winners, ctx->d_nWinners, ctx->maxWinners,
         0);  // not diagonal
 
     CUDA_CHECK(cudaStreamSynchronize(ctx->stream));
     double dtPass1 = nf_gpu_timer_sec() - tKernel0;
 
-    // Download pass-1 winners
-    int nPass1 = 0;
-    CUDA_CHECK(cudaMemcpy(&nPass1, ctx->d_nWinners, sizeof(int),
+    // Read TRUE candidate count (atomicAdd keeps counting past maxWinners)
+    int truePass1 = 0;
+    CUDA_CHECK(cudaMemcpy(&truePass1, ctx->d_nWinners, sizeof(int),
                           cudaMemcpyDeviceToHost));
-    if (nPass1 > ctx->maxWinners) nPass1 = ctx->maxWinners;
 
-    printf("NF GPU: pass 1 (layer 0 only) — %d candidates in %.2f s\n",
-           nPass1, dtPass1);
+    int nPass1 = 0;
+    NFGPUWinner *h_pass1 = NULL;
+
+    if (truePass1 <= ctx->maxWinners) {
+      // No overflow — single launch captured all candidates
+      nPass1 = truePass1;
+      printf("NF GPU: pass 1 (layer 0 only) — %d candidates in %.2f s\n",
+             nPass1, dtPass1);
+      if (nPass1 > 0) {
+        h_pass1 = (NFGPUWinner *)malloc(nPass1 * sizeof(NFGPUWinner));
+        CUDA_CHECK(cudaMemcpy(h_pass1, ctx->d_winners,
+                              nPass1 * sizeof(NFGPUWinner),
+                              cudaMemcpyDeviceToHost));
+      }
+    } else {
+      // Overflow — re-run pass 1 in voxel batches
+      printf("NF GPU: pass 1 OVERFLOW — %d true candidates > %d buffer "
+             "(%.1fx), re-running in batches...\n",
+             truePass1, ctx->maxWinners,
+             (double)truePass1 / ctx->maxWinners);
+
+      double overflowRatio = (double)truePass1 / ctx->maxWinners;
+      int nBatches = (int)ceil(overflowRatio * 1.5);
+      if (nBatches < 2) nBatches = 2;
+      int voxelsPerBatch = (nVoxels + nBatches - 1) / nBatches;
+
+      int pass1Cap = truePass1 + 10000;
+      h_pass1 = (NFGPUWinner *)malloc(pass1Cap * sizeof(NFGPUWinner));
+      int totalCollected = 0;
+
+      double tBatch0 = nf_gpu_timer_sec();
+      int bStart = 0;
+      int batchCount = 0;
+      while (bStart < nVoxels) {
+        int bSize = voxelsPerBatch;
+        if (bStart + bSize > nVoxels) bSize = nVoxels - bStart;
+
+        CUDA_CHECK(cudaMemset(ctx->d_nWinners, 0, sizeof(int)));
+        long long batchPairs = (long long)bSize * nOrient;
+        int bGrid = (int)((batchPairs + blockSize - 1) / blockSize);
+
+        screen_pairs_kernel<<<bGrid, blockSize, 0, ctx->stream>>>(
+            ctx->d_obsFlat, ctx->d_spots, ctx->d_orientHeaders,
+            d_XG + bStart * 3, d_YG + bStart * 3,
+            bSize, nOrient,
+            1, ctx->nrFiles, ctx->nrPixelsY, ctx->nrPixelsZ,
+            frameBatchSize, ctx->px, ctx->gs,
+            (float)(minFracOverlap * 0.9),
+            ctx->d_winners, ctx->d_nWinners, ctx->maxWinners,
+            0);
+
+        CUDA_CHECK(cudaStreamSynchronize(ctx->stream));
+
+        int batchTrue = 0;
+        CUDA_CHECK(cudaMemcpy(&batchTrue, ctx->d_nWinners, sizeof(int),
+                              cudaMemcpyDeviceToHost));
+
+        if (batchTrue > ctx->maxWinners) {
+          // Even this batch overflowed — halve batch size and retry
+          printf("NF GPU:   batch [%d-%d) overflow (%d > %d), halving\n",
+                 bStart, bStart + bSize, batchTrue, ctx->maxWinners);
+          voxelsPerBatch = voxelsPerBatch / 2;
+          if (voxelsPerBatch < 1) voxelsPerBatch = 1;
+          continue;  // retry from same bStart
+        }
+
+        // Grow host buffer if needed
+        if (totalCollected + batchTrue > pass1Cap) {
+          pass1Cap = (totalCollected + batchTrue) * 2;
+          h_pass1 = (NFGPUWinner *)realloc(h_pass1,
+                     pass1Cap * sizeof(NFGPUWinner));
+        }
+
+        CUDA_CHECK(cudaMemcpy(h_pass1 + totalCollected, ctx->d_winners,
+                              batchTrue * sizeof(NFGPUWinner),
+                              cudaMemcpyDeviceToHost));
+
+        // Offset voxelIdx to global index
+        for (int i = 0; i < batchTrue; i++) {
+          h_pass1[totalCollected + i].voxelIdx += bStart;
+        }
+
+        totalCollected += batchTrue;
+        batchCount++;
+        bStart += bSize;
+      }
+
+      nPass1 = totalCollected;
+      double dtBatch = nf_gpu_timer_sec() - tBatch0;
+      printf("NF GPU: pass 1 batched — %d candidates in %.2f s "
+             "(initial: %.2f s + %d batches: %.2f s)\n",
+             nPass1, dtPass1 + dtBatch, dtPass1, batchCount, dtBatch);
+    }
 
     if (nPass1 > 0) {
-      NFGPUWinner *h_pass1 = (NFGPUWinner *)malloc(nPass1 * sizeof(NFGPUWinner));
-      CUDA_CHECK(cudaMemcpy(h_pass1, ctx->d_winners,
-                            nPass1 * sizeof(NFGPUWinner),
-                            cudaMemcpyDeviceToHost));
 
       // --- Pass 2: re-evaluate candidates with ALL layers ---
       // Build per-candidate voxel XG/YG arrays
@@ -1597,17 +1698,93 @@ extern "C" int nf_gpu_screen(NFGPUContext *ctx,
     double dtKernel = nf_gpu_timer_sec() - tKernel0;
     printf("NF GPU: screening kernel completed in %.2f s\n", dtKernel);
 
-    // Download winner count
-    int h_nW = 0;
-    CUDA_CHECK(cudaMemcpy(&h_nW, ctx->d_nWinners, sizeof(int),
+    // Read TRUE winner count (atomicAdd keeps counting past maxWinners)
+    int trueCount = 0;
+    CUDA_CHECK(cudaMemcpy(&trueCount, ctx->d_nWinners, sizeof(int),
                           cudaMemcpyDeviceToHost));
-    if (h_nW > ctx->maxWinners) h_nW = ctx->maxWinners;
 
-    *h_winners = (NFGPUWinner *)malloc(h_nW * sizeof(NFGPUWinner));
-    CUDA_CHECK(cudaMemcpy(*h_winners, ctx->d_winners,
-                          h_nW * sizeof(NFGPUWinner),
-                          cudaMemcpyDeviceToHost));
-    *nWinners = h_nW;
+    if (trueCount <= ctx->maxWinners) {
+      // No overflow
+      *h_winners = (NFGPUWinner *)malloc(trueCount * sizeof(NFGPUWinner));
+      CUDA_CHECK(cudaMemcpy(*h_winners, ctx->d_winners,
+                            trueCount * sizeof(NFGPUWinner),
+                            cudaMemcpyDeviceToHost));
+      *nWinners = trueCount;
+    } else {
+      // Overflow — re-run in voxel batches
+      printf("NF GPU: OVERFLOW — %d true winners > %d buffer "
+             "(%.1fx), re-running in batches...\n",
+             trueCount, ctx->maxWinners,
+             (double)trueCount / ctx->maxWinners);
+
+      double overflowRatio = (double)trueCount / ctx->maxWinners;
+      int nBatches = (int)ceil(overflowRatio * 1.5);
+      if (nBatches < 2) nBatches = 2;
+      int voxelsPerBatch = (nVoxels + nBatches - 1) / nBatches;
+
+      int winCap = trueCount + 10000;
+      NFGPUWinner *h_all = (NFGPUWinner *)malloc(winCap * sizeof(NFGPUWinner));
+      int totalCollected = 0;
+
+      int bStart = 0;
+      int batchCount = 0;
+      while (bStart < nVoxels) {
+        int bSize = voxelsPerBatch;
+        if (bStart + bSize > nVoxels) bSize = nVoxels - bStart;
+
+        CUDA_CHECK(cudaMemset(ctx->d_nWinners, 0, sizeof(int)));
+        long long batchPairs = (long long)bSize * nOrient;
+        int bGrid = (int)((batchPairs + blockSize - 1) / blockSize);
+
+        screen_pairs_kernel<<<bGrid, blockSize, 0, ctx->stream>>>(
+            ctx->d_obsFlat, ctx->d_spots, ctx->d_orientHeaders,
+            d_XG + bStart * 3, d_YG + bStart * 3,
+            bSize, nOrient,
+            ctx->nLayers, ctx->nrFiles,
+            ctx->nrPixelsY, ctx->nrPixelsZ,
+            frameBatchSize, ctx->px, ctx->gs,
+            (float)minFracOverlap,
+            ctx->d_winners, ctx->d_nWinners, ctx->maxWinners,
+            0);
+
+        CUDA_CHECK(cudaStreamSynchronize(ctx->stream));
+
+        int batchTrue = 0;
+        CUDA_CHECK(cudaMemcpy(&batchTrue, ctx->d_nWinners, sizeof(int),
+                              cudaMemcpyDeviceToHost));
+
+        if (batchTrue > ctx->maxWinners) {
+          printf("NF GPU:   batch [%d-%d) overflow (%d > %d), halving\n",
+                 bStart, bStart + bSize, batchTrue, ctx->maxWinners);
+          voxelsPerBatch = voxelsPerBatch / 2;
+          if (voxelsPerBatch < 1) voxelsPerBatch = 1;
+          continue;
+        }
+
+        if (totalCollected + batchTrue > winCap) {
+          winCap = (totalCollected + batchTrue) * 2;
+          h_all = (NFGPUWinner *)realloc(h_all,
+                   winCap * sizeof(NFGPUWinner));
+        }
+
+        CUDA_CHECK(cudaMemcpy(h_all + totalCollected, ctx->d_winners,
+                              batchTrue * sizeof(NFGPUWinner),
+                              cudaMemcpyDeviceToHost));
+
+        for (int i = 0; i < batchTrue; i++) {
+          h_all[totalCollected + i].voxelIdx += bStart;
+        }
+
+        totalCollected += batchTrue;
+        batchCount++;
+        bStart += bSize;
+      }
+
+      *h_winners = h_all;
+      *nWinners = totalCollected;
+      printf("NF GPU: batched screening — %d winners (%d batches)\n",
+             totalCollected, batchCount);
+    }
   }
 
   // Cleanup
