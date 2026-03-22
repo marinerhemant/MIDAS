@@ -691,6 +691,264 @@ static void ReadBins(char *cwd) {
 }
 
 // ─── Generate ideal spot positions (simplified Friedel-free) ──
+static inline void h_CalcSpotPosition(float RingRadius, float eta, float *yl, float *zl) {
+  float etaRad = deg2rad * eta;
+  *yl = -(sinf(etaRad) * RingRadius);
+  *zl = cosf(etaRad) * RingRadius;
+}
+
+static inline void h_RotateAroundZ(float v1[3], float alpha, float v2[3]) {
+  float cosa = cosf(alpha * deg2rad);
+  float sina = sinf(alpha * deg2rad);
+  v2[0] = cosa*v1[0] - sina*v1[1];
+  v2[1] = sina*v1[0] + cosa*v1[1];
+  v2[2] = v1[2];
+}
+
+static void h_CalcOmega(float x, float y, float z, float theta,
+    float omegas[4], float etas[4], int *nsol) {
+  *nsol = 0;
+  float len = sqrtf(x*x + y*y + z*z);
+  float v = sinf(theta * deg2rad) * len;
+  float almostzero = 1e-4f;
+  if (fabsf(y) < almostzero) {
+    if (x != 0) {
+      float cosome1 = -v / x;
+      if (fabsf(cosome1) <= 1.0f) {
+        float ome = acosf(cosome1) * rad2deg;
+        omegas[(*nsol)++] = ome;
+        omegas[(*nsol)++] = -ome;
+      }
+    }
+  } else {
+    float y2 = y*y;
+    float a = 1 + (x*x)/y2;
+    float b = (2*v*x)/y2;
+    float c = (v*v)/y2 - 1;
+    float discr = b*b - 4*a*c;
+    if (discr >= 0) {
+      float cosome1 = (-b + sqrtf(discr)) / (2*a);
+      if (fabsf(cosome1) <= 1.0f) {
+        float ome1a = acosf(cosome1);
+        float ome1b = -ome1a;
+        float eqa = -x*cosf(ome1a) + y*sinf(ome1a);
+        float eqb = -x*cosf(ome1b) + y*sinf(ome1b);
+        omegas[(*nsol)++] = (fabsf(eqa-v) < fabsf(eqb-v) ? ome1a : ome1b) * rad2deg;
+      }
+      float cosome2 = (-b - sqrtf(discr)) / (2*a);
+      if (fabsf(cosome2) <= 1.0f) {
+        float ome2a = acosf(cosome2);
+        float ome2b = -ome2a;
+        float eqa = -x*cosf(ome2a) + y*sinf(ome2a);
+        float eqb = -x*cosf(ome2b) + y*sinf(ome2b);
+        omegas[(*nsol)++] = (fabsf(eqa-v) < fabsf(eqb-v) ? ome2a : ome2b) * rad2deg;
+      }
+    }
+  }
+  float gw[3], gv[3] = {x, y, z};
+  for (int i = 0; i < *nsol; i++) {
+    h_RotateAroundZ(gv, omegas[i], gw);
+    h_CalcEtaAngle(gw[1], gw[2], &etas[i]);
+  }
+}
+
+static inline void h_displacement_spot_needed_COM(float a, float b, float c,
+    float xi, float yi, float zi, float omega, float *Displ_y, float *Displ_z) {
+  float lenInv = 1.0f / sqrtf(xi*xi + yi*yi + zi*zi);
+  xi *= lenInv; yi *= lenInv; zi *= lenInv;
+  float OmegaRad = deg2rad * omega;
+  float sinOme = sinf(OmegaRad), cosOme = cosf(OmegaRad);
+  float t = (a*cosOme - b*sinOme) / xi;
+  *Displ_y = (a*sinOme + b*cosOme) - t*yi;
+  *Displ_z = c - t*zi;
+}
+
+static void h_FriedelEtaCalculation(float ys, float zs, float ttheta,
+    float eta, float Ring_rad, float Rsample, float Hbeam,
+    float *EtaMinFr, float *EtaMaxFr) {
+  float quadr_coeff2 = 0;
+  float eta_Hbeam, quadr_coeff, coeff_y0=0, coeff_z0=0, y0_max_z0=0, y0_min_z0=0;
+  float y0_max=0, y0_min=0, z0_min=0, z0_max=0;
+  if (eta > 90)       eta_Hbeam = 180 - eta;
+  else if (eta < -90) eta_Hbeam = 180 - fabsf(eta);
+  else                eta_Hbeam = 90 - fabsf(eta);
+  Hbeam = Hbeam + 2*(Rsample*tanf(ttheta*deg2rad))*sinf(eta_Hbeam*deg2rad);
+  float eta_pole = 1 + rad2deg*acosf(1 - Hbeam/Ring_rad);
+  float eta_equator = 1 + rad2deg*acosf(1 - Rsample/Ring_rad);
+  if (eta>=eta_pole && eta<=(90-eta_equator))           { quadr_coeff=1; coeff_y0=-1; coeff_z0=1; }
+  else if (eta>=(90+eta_equator) && eta<=(180-eta_pole)) { quadr_coeff=2; coeff_y0=-1; coeff_z0=-1; }
+  else if (eta>=(-90+eta_equator) && eta<=-eta_pole)     { quadr_coeff=2; coeff_y0=1;  coeff_z0=1; }
+  else if (eta>=(-180+eta_pole) && eta<=(-90-eta_equator)) { quadr_coeff=1; coeff_y0=1; coeff_z0=-1; }
+  else quadr_coeff = 0;
+  float y0_max_R = ys + Rsample, y0_min_R = ys - Rsample;
+  float z0_max_H = zs + 0.5f*Hbeam, z0_min_H = zs - 0.5f*Hbeam;
+  if (quadr_coeff == 1) {
+    y0_max_z0 = coeff_y0*sqrtf(Ring_rad*Ring_rad - z0_max_H*z0_max_H);
+    y0_min_z0 = coeff_y0*sqrtf(Ring_rad*Ring_rad - z0_min_H*z0_min_H);
+  } else if (quadr_coeff == 2) {
+    y0_max_z0 = coeff_y0*sqrtf(Ring_rad*Ring_rad - z0_min_H*z0_min_H);
+    y0_min_z0 = coeff_y0*sqrtf(Ring_rad*Ring_rad - z0_max_H*z0_max_H);
+  }
+  if (quadr_coeff > 0) {
+    y0_max = fminf(y0_max_R, y0_max_z0);
+    y0_min = fmaxf(y0_min_R, y0_min_z0);
+  } else {
+    if (eta > -eta_pole && eta < eta_pole)              { y0_max=y0_max_R; y0_min=y0_min_R; coeff_z0=1; }
+    else if (eta < (-180+eta_pole))                     { y0_max=y0_max_R; y0_min=y0_min_R; coeff_z0=-1; }
+    else if (eta > (180-eta_pole))                      { y0_max=y0_max_R; y0_min=y0_min_R; coeff_z0=-1; }
+    else if (eta>(90-eta_equator) && eta<(90+eta_equator))   { quadr_coeff2=1; z0_max=z0_max_H; z0_min=z0_min_H; coeff_y0=-1; }
+    else if (eta>(-90-eta_equator) && eta<(-90+eta_equator)) { quadr_coeff2=1; z0_max=z0_max_H; z0_min=z0_min_H; coeff_y0=1; }
+  }
+  if (quadr_coeff2 == 0) {
+    z0_min = coeff_z0*sqrtf(Ring_rad*Ring_rad - y0_min*y0_min);
+    z0_max = coeff_z0*sqrtf(Ring_rad*Ring_rad - y0_max*y0_max);
+  } else {
+    y0_min = coeff_y0*sqrtf(Ring_rad*Ring_rad - z0_min*z0_min);
+    y0_max = coeff_y0*sqrtf(Ring_rad*Ring_rad - z0_max*z0_max);
+  }
+  float dYMin = ys-y0_min, dYMax = ys-y0_max, dZMin = zs-z0_min, dZMax = zs-z0_max;
+  float YMinFr = y0_min - dYMin, YMaxFr = y0_max - dYMax;
+  float ZMinFr = -z0_min + dZMin, ZMaxFr = -z0_max + dZMax;
+  float Eta1, Eta2;
+  h_CalcEtaAngle(YMinFr+ys, ZMinFr-zs, &Eta1);
+  h_CalcEtaAngle(YMaxFr+ys, ZMaxFr-zs, &Eta2);
+  *EtaMinFr = fminf(Eta1, Eta2);
+  *EtaMaxFr = fmaxf(Eta1, Eta2);
+}
+
+static void h_GenerateIdealSpotsFriedel(float ys, float zs, float ttheta,
+    float eta, float omega, int ringno, float Ring_rad, float Rsample,
+    float Hbeam, float OmeTol, float RadiusTol,
+    float y0v[], float z0v[], int *nSteps) {
+  *nSteps = 0;
+  float OmeF = (omega < 0) ? omega + 180 : omega - 180;
+  float EtaF = (eta < 0) ? -180 - eta : 180 - eta;
+  for (int r = 0; r < (int)n_spots; r++) {
+    int rno_obs = (int)roundf(ObsSpotsLab[r*N_COL_OBSSPOTS+5]);
+    float ome_obs = ObsSpotsLab[r*N_COL_OBSSPOTS+2];
+    if (rno_obs != ringno) continue;
+    if (fabsf(ome_obs - OmeF) > OmeTol) continue;
+    float yf = ObsSpotsLab[r*N_COL_OBSSPOTS+0];
+    float zf = ObsSpotsLab[r*N_COL_OBSSPOTS+1];
+    float EtaTransf;
+    h_CalcEtaAngle(yf+ys, zf-zs, &EtaTransf);
+    float radius = sqrtf((yf+ys)*(yf+ys) + (zf-zs)*(zf-zs));
+    if (fabsf(radius - 2*Ring_rad) > RadiusTol) continue;
+    float EtaMinF, EtaMaxF;
+    h_FriedelEtaCalculation(ys, zs, ttheta, eta, Ring_rad, Rsample, Hbeam, &EtaMinF, &EtaMaxF);
+    if (EtaTransf < EtaMinF || EtaTransf > EtaMaxF) continue;
+    float ZPosAccZ = zs - (zf+zs)/2;
+    float YPosAccY = ys - (-yf+ys)/2;
+    float etaIdealF;
+    h_CalcEtaAngle(YPosAccY, ZPosAccZ, &etaIdealF);
+    float IdealYPos, IdealZPos;
+    h_CalcSpotPosition(Ring_rad, etaIdealF, &IdealYPos, &IdealZPos);
+    y0v[*nSteps] = IdealYPos;
+    z0v[*nSteps] = IdealZPos;
+    (*nSteps)++;
+  }
+}
+
+static int h_AddUnique(int *arr, int *n, int val) {
+  for (int i = 0; i < *n; i++) if (arr[i] == val) return 0;
+  arr[*n] = val;
+  (*n)++;
+  return 1;
+}
+
+static void h_GenerateIdealSpotsFriedelMixed(
+    float ys, float zs, float Ttheta, float Eta, float Omega,
+    int RingNr, float Ring_rad, float Lsd, float Rsample,
+    float Hbeam, float StepSizePos, float OmeTol, float RadialTol,
+    float EtaTol, float spots_y[], float spots_z[], int *nSteps) {
+  const int MinEtaReject = 10;
+  float theta = Ttheta / 2;
+  float SinMinEtaReject = sinf(MinEtaReject * deg2rad);
+  *nSteps = 0;
+  if (fabsf(sinf(Eta * deg2rad)) < SinMinEtaReject) return;
+
+  float y0_vector[2000], z0_vector[2000];
+  int NoOfSpots;
+  h_GenerateIdealSpots(ys, zs, Ttheta, Eta, Ring_rad, Rsample, Hbeam,
+                       StepSizePos, y0_vector, z0_vector, &NoOfSpots);
+
+  float FPCandidates[2000][3];
+  int FPCandidatesUnique[2000];
+  int nFPCandidates = 0;
+  float EtaTolDeg = rad2deg * atanf(EtaTol / Ring_rad);
+
+  for (int SpOnRing = 0; SpOnRing < NoOfSpots; SpOnRing++) {
+    float y0 = y0_vector[SpOnRing], z0 = z0_vector[SpOnRing];
+    float xi, yi, zi;
+    h_MakeUnitLength(Lsd, y0, z0, &xi, &yi, &zi);
+    float G1, G2, G3;
+    h_spot_to_gv(xi, yi, zi, Omega, &G1, &G2, &G3);
+    float omegasFP[4], etasFP[4]; int nsol;
+    h_CalcOmega(-G1, -G2, -G3, theta, omegasFP, etasFP, &nsol);
+    if (nsol <= 1) continue;
+    float diff0 = fabsf(omegasFP[0] - Omega);
+    if (diff0 > 180) diff0 = 360 - diff0;
+    float diff1 = fabsf(omegasFP[1] - Omega);
+    if (diff1 > 180) diff1 = 360 - diff1;
+    float OmegaFP, EtaFP;
+    if (diff0 < diff1) { OmegaFP = omegasFP[0]; EtaFP = etasFP[0]; }
+    else               { OmegaFP = omegasFP[1]; EtaFP = etasFP[1]; }
+    float YFP1, ZFP1;
+    h_CalcSpotPosition(Ring_rad, EtaFP, &YFP1, &ZFP1);
+    int nMax, nMin;
+    h_calc_n_max_min(xi, yi, ys, y0, Rsample, (int)StepSizePos, &nMax, &nMin);
+    for (int n = nMin; n <= nMax; n++) {
+      float a, b, c;
+      h_spot_to_unrotated(xi, yi, zi, ys, zs, y0, z0, StepSizePos, n, Omega, &a, &b, &c);
+      if (fabsf(c) > Hbeam/2) continue;
+      float Dy, Dz;
+      h_displacement_spot_needed_COM(a, b, c, Lsd, YFP1, ZFP1, OmegaFP, &Dy, &Dz);
+      float YFP = YFP1 + Dy, ZFP = ZFP1 + Dz;
+      float RadialPosFP = sqrtf(YFP*YFP + ZFP*ZFP) - Ring_rad;
+      float EtaFPCorr;
+      h_CalcEtaAngle(YFP, ZFP, &EtaFPCorr);
+      // Bin lookup (inline GetBin)
+      int iRing = RingNr - 1;
+      int iEta = (int)floorf((180.0f + EtaFPCorr) / Params.EtaBinSize);
+      int iOme = (int)floorf((180.0f + OmegaFP) / Params.OmeBinSize);
+      if (iEta<0) iEta=0; if (iEta>=n_eta_bins) iEta=n_eta_bins-1;
+      if (iOme<0) iOme=0; if (iOme>=n_ome_bins) iOme=n_ome_bins-1;
+      size_t Pos = (size_t)iRing*n_eta_bins*n_ome_bins + (size_t)iEta*n_ome_bins + iOme;
+      int nInBin = ndata[(int)(Pos*2+0)], DataPos_ = ndata[(int)(Pos*2+1)];
+      for (int iSpot = 0; iSpot < nInBin; iSpot++) {
+        int spotRow = data[DataPos_ + iSpot];
+        int base = spotRow * N_COL_OBSSPOTS;
+        if (fabsf(RadialPosFP - ObsSpotsLab[base+8]) >= RadialTol) continue;
+        if (fabsf(OmegaFP - ObsSpotsLab[base+2]) >= OmeTol) continue;
+        if (fabsf(EtaFPCorr - ObsSpotsLab[base+6]) >= EtaTolDeg) continue;
+        float dy = YFP - ObsSpotsLab[base+0], dz = ZFP - ObsSpotsLab[base+1];
+        float diffPos2 = dy*dy + dz*dz;
+        int idx = nFPCandidates;
+        for (int i = 0; i < nFPCandidates; i++) {
+          if (FPCandidates[i][0] == ObsSpotsLab[base+4]) {
+            idx = (diffPos2 < FPCandidates[i][2]) ? i : -1;
+            break;
+          }
+        }
+        if (idx >= 0) {
+          FPCandidates[idx][0] = ObsSpotsLab[base+4];
+          FPCandidates[idx][1] = (float)SpOnRing;
+          FPCandidates[idx][2] = diffPos2;
+          if (idx == nFPCandidates) nFPCandidates++;
+        }
+      }
+    }
+  }
+  int nFPCandidatesUniq = 0;
+  for (int i = 0; i < nFPCandidates; i++)
+    h_AddUnique(FPCandidatesUnique, &nFPCandidatesUniq, (int)FPCandidates[i][1]);
+  for (int i = 0; i < nFPCandidatesUniq; i++) {
+    spots_y[i] = y0_vector[FPCandidatesUnique[i]];
+    spots_z[i] = z0_vector[FPCandidatesUnique[i]];
+  }
+  *nSteps = nFPCandidatesUniq;
+}
+
 static void h_GenerateIdealSpots(float ys, float zs, float ttheta, float eta,
     float Ring_rad, float Rsample, float Hbeam, float step_size,
     float y0v[], float z0v[], int *nSteps) {
@@ -939,12 +1197,31 @@ int main(int argc, char *argv[]) {
     float eta = ObsSpotsLab[SpotRowNo*N_COL_OBSSPOTS+6];
     int ringnr = (int)ObsSpotsLab[SpotRowNo*N_COL_OBSSPOTS+5];
 
-    // Generate plane normals
+    // Generate plane normals — match CPU's Friedel pair logic
     float y0v[MAX_N_STEPS], z0v[MAX_N_STEPS];
-    int nPN;
-    h_GenerateIdealSpots(ys, zs, RingTtheta[ringnr], eta,
-                         Params.RingRadii[ringnr], Params.Rsample,
-                         Params.Hbeam, Params.StepsizePos, y0v, z0v, &nPN);
+    int nPN = 0;
+    int usingFriedelPair = 0;
+    if (Params.UseFriedelPairs == 1) {
+      usingFriedelPair = 1;
+      h_GenerateIdealSpotsFriedel(ys, zs, RingTtheta[ringnr], eta, omega, ringnr,
+                                  Params.RingRadii[ringnr], Params.Rsample,
+                                  Params.Hbeam, Params.MarginOme,
+                                  Params.MarginRadial, y0v, z0v, &nPN);
+      if (nPN == 0) {
+        h_GenerateIdealSpotsFriedelMixed(ys, zs, RingTtheta[ringnr], eta, omega,
+                                         ringnr, Params.RingRadii[ringnr],
+                                         Params.Distance, Params.Rsample,
+                                         Params.Hbeam, Params.StepsizePos,
+                                         Params.MarginOme, Params.MarginRadial,
+                                         Params.MarginEta, y0v, z0v, &nPN);
+      }
+    }
+    if (nPN == 0) {
+      if (usingFriedelPair == 1) continue;  // CPU skips spots with no Friedel match
+      h_GenerateIdealSpots(ys, zs, RingTtheta[ringnr], eta,
+                           Params.RingRadii[ringnr], Params.Rsample,
+                           Params.Hbeam, Params.StepsizePos, y0v, z0v, &nPN);
+    }
 
     int count = 0;
     for (int isp=0; isp<nPN; isp++) {
@@ -1012,10 +1289,29 @@ int main(int argc, char *argv[]) {
       int ringnr = (int)ObsSpotsLab[SpotRowNo*N_COL_OBSSPOTS+5];
 
       float y0v[MAX_N_STEPS], z0v[MAX_N_STEPS];
-      int nPN;
-      h_GenerateIdealSpots(ys, zs, RingTtheta[ringnr], eta,
-                           Params.RingRadii[ringnr], Params.Rsample,
-                           Params.Hbeam, Params.StepsizePos, y0v, z0v, &nPN);
+      int nPN = 0;
+      int usingFriedelPair = 0;
+      if (Params.UseFriedelPairs == 1) {
+        usingFriedelPair = 1;
+        h_GenerateIdealSpotsFriedel(ys, zs, RingTtheta[ringnr], eta, omega, ringnr,
+                                    Params.RingRadii[ringnr], Params.Rsample,
+                                    Params.Hbeam, Params.MarginOme,
+                                    Params.MarginRadial, y0v, z0v, &nPN);
+        if (nPN == 0) {
+          h_GenerateIdealSpotsFriedelMixed(ys, zs, RingTtheta[ringnr], eta, omega,
+                                           ringnr, Params.RingRadii[ringnr],
+                                           Params.Distance, Params.Rsample,
+                                           Params.Hbeam, Params.StepsizePos,
+                                           Params.MarginOme, Params.MarginRadial,
+                                           Params.MarginEta, y0v, z0v, &nPN);
+        }
+      }
+      if (nPN == 0) {
+        if (usingFriedelPair == 1) continue;
+        h_GenerateIdealSpots(ys, zs, RingTtheta[ringnr], eta,
+                             Params.RingRadii[ringnr], Params.Rsample,
+                             Params.Hbeam, Params.StepsizePos, y0v, z0v, &nPN);
+      }
       int idx = tupleOffsets[si];
       for (int isp=0; isp<nPN; isp++) {
         float xi,yi,zi;
