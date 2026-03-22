@@ -207,7 +207,7 @@ int gpu_CalcDiffrSpots(
     const float OrMat[3][3],
     const float *d_hkls_flat, // [n_hkls × 7]
     int n_hkls_d,
-    float spots_out[][N_COL_THEORSPOTS], // thread-local output
+    float *spots_out,         // flat: [max_spots × N_COL_THEORSPOTS]
     int max_spots,
     const int *d_ringsToReject,
     int nRingsToRejectCalc,
@@ -258,16 +258,17 @@ int gpu_CalcDiffrSpots(
       }
       if (!keep) continue;
 
-      spots_out[spotnr][0] = 0;
-      spots_out[spotnr][1] = (float)spotnr;
-      spots_out[spotnr][2] = (float)ih;
-      spots_out[spotnr][3] = c_params.Distance;
-      spots_out[spotnr][4] = yl;
-      spots_out[spotnr][5] = zl;
-      spots_out[spotnr][6] = Omega;
-      spots_out[spotnr][7] = Eta;
-      spots_out[spotnr][8] = theta;
-      spots_out[spotnr][9] = (float)ringnr;
+      float *sp = &spots_out[spotnr * N_COL_THEORSPOTS];
+      sp[0] = 0;
+      sp[1] = (float)spotnr;
+      sp[2] = (float)ih;
+      sp[3] = c_params.Distance;
+      sp[4] = yl;
+      sp[5] = zl;
+      sp[6] = Omega;
+      sp[7] = Eta;
+      sp[8] = theta;
+      sp[9] = (float)ringnr;
 
       // Check if ring is excluded from fraction calc
       int rejected = 0;
@@ -287,7 +288,7 @@ int gpu_CalcDiffrSpots(
 // ─────────────────────────────────────────────────────────────
 __device__
 int gpu_CompareSpots(
-    float spots[][N_COL_THEORSPOTS],
+    float *spots,             // flat: [nTspots × N_COL_THEORSPOTS]
     int nTspots,
     const float *d_ObsSpotsLab, // [n_spots × 9]
     float RefRad,
@@ -301,12 +302,13 @@ int gpu_CompareSpots(
   int nMatchedFrac = 0;
 
   for (int sp = 0; sp < nTspots; sp++) {
-    int RingNr = (int)spots[sp][9];
+    float *s = &spots[sp * N_COL_THEORSPOTS];
+    int RingNr = (int)s[9];
     if (RingNr <= 0 || RingNr >= MAX_N_RINGS) continue;
 
-    float theorEta = spots[sp][12];
-    float theorOme = spots[sp][6];
-    float theorRadDiff = spots[sp][13];
+    float theorEta = s[12];
+    float theorOme = s[6];
+    float theorRadDiff = s[13];
 
     int iRing = RingNr - 1;
     int iEta = (int)floorf((180.0f + theorEta) / c_params.EtaBinSize);
@@ -329,7 +331,6 @@ int gpu_CompareSpots(
 
     int matchFound = 0;
     float diffOmeBest = c_params.MarginOme + 0.00001f;
-    size_t spotRowBest = 0;
 
     for (size_t is = 0; is < nInBin; is++) {
       size_t spotRow = d_data[(DataPos + is) * 2 + 0];
@@ -345,7 +346,6 @@ int gpu_CompareSpots(
       float diffOme = fabsf(theorOme - obsOme);
       if (diffOme < diffOmeBest) {
         diffOmeBest = diffOme;
-        spotRowBest = spotRow;
         matchFound = 1;
       }
     }
@@ -376,8 +376,9 @@ __global__ void indexer_eval_kernel(
     const size_t *d_ndata,
     const int *d_ringsToReject,
     int nRingsToRejectCalc,
-    SpotResult *d_results,   // [nSpotIDs] — per-spotID best
-    float RefRad_unused       // kept for compatibility
+    SpotResult *d_results,    // [nSpotIDs] — per-spotID best
+    float *d_theorScratch,    // [batchSize × maxTheorSpots × N_COL_THEORSPOTS]
+    int maxTheorSpots
 ) {
   int tid = blockIdx.x * blockDim.x + threadIdx.x;
   if (tid >= nTuples) return;
@@ -391,30 +392,29 @@ __global__ void indexer_eval_kernel(
     for (int c=0; c<3; c++)
       OrMat[r][c] = t.OrMat[r*3+c];
 
+  // Per-thread scratch slice in global memory
+  float *TheorSpots = &d_theorScratch[(long long)tid * maxTheorSpots * N_COL_THEORSPOTS];
+
   // 1. Compute theoretical diffraction spots
-  float TheorSpots[MAX_N_HKLS][N_COL_THEORSPOTS]; // Thread-local
   int nTspots, nTspotsFracCalc;
   nTspots = gpu_CalcDiffrSpots(OrMat, d_hkls_flat, n_hkls_d,
-                               TheorSpots, MAX_N_HKLS,
+                               TheorSpots, maxTheorSpots,
                                d_ringsToReject, nRingsToRejectCalc,
                                &nTspotsFracCalc);
   if (nTspots == 0 || nTspotsFracCalc == 0) return;
 
   // 2. Apply displacement for this position
   for (int sp = 0; sp < nTspots; sp++) {
+    float *s = &TheorSpots[sp * N_COL_THEORSPOTS];
     float Displ_y, Displ_z;
     midas_displacement_spot_COM(
       t.ga, t.gb, t.gc,
-      TheorSpots[sp][3], TheorSpots[sp][4], TheorSpots[sp][5],
-      TheorSpots[sp][6], &Displ_y, &Displ_z);
-    TheorSpots[sp][10] = TheorSpots[sp][4] + Displ_y;
-    TheorSpots[sp][11] = TheorSpots[sp][5] + Displ_z;
-    midas_CalcEtaAngle(TheorSpots[sp][10], TheorSpots[sp][11],
-                       &TheorSpots[sp][12]);
-    int rn = (int)TheorSpots[sp][9];
-    TheorSpots[sp][13] = sqrtf(TheorSpots[sp][10]*TheorSpots[sp][10] +
-                               TheorSpots[sp][11]*TheorSpots[sp][11]) -
-                         c_RingRadii[rn];
+      s[3], s[4], s[5], s[6], &Displ_y, &Displ_z);
+    s[10] = s[4] + Displ_y;
+    s[11] = s[5] + Displ_z;
+    midas_CalcEtaAngle(s[10], s[11], &s[12]);
+    int rn = (int)s[9];
+    s[13] = sqrtf(s[10]*s[10] + s[11]*s[11]) - c_RingRadii[rn];
   }
 
   // 3. Compare with observed spots
@@ -428,7 +428,6 @@ __global__ void indexer_eval_kernel(
   float fracMatches = (float)nMatchesFracCalc / (float)nTspotsFracCalc;
 
   // 4. Atomic best-match update per spotID
-  // Use atomicCAS loop on bestFrac (float, reinterpreted as int)
   SpotResult *res = &d_results[spotIdx];
   int *fracAddr = (int *)&res->bestFrac;
 
@@ -440,7 +439,6 @@ __global__ void indexer_eval_kernel(
     int newInt = __float_as_int(fracMatches);
     int prev = atomicCAS(fracAddr, oldInt, newInt);
     if (prev == oldInt) {
-      // Won the CAS — write rest of the result
       for (int i = 0; i < 9; i++) res->bestOrMat[i] = t.OrMat[i];
       res->bestPos[0] = t.ga;
       res->bestPos[1] = t.gb;
@@ -449,7 +447,6 @@ __global__ void indexer_eval_kernel(
       res->nMatches = nMatches;
       break;
     }
-    // Lost CAS — retry with fresh value
   }
 }
 
@@ -466,15 +463,9 @@ static inline void h_CalcEtaAngle(float y, float z, float *alpha) {
   if (y > 0) *alpha = -(*alpha);
 }
 
-static inline void h_CalcSpotPosition(float RingRadius, float eta,
-                                      float *yl, float *zl) {
-  *yl = -(sinf(deg2rad*eta)*RingRadius);
-  *zl =   cosf(deg2rad*eta)*RingRadius;
-}
+// h_CalcSpotPosition removed — unused on host side
 
-static inline void h_MatrixMultF(float m[3][3], float v[3], float r[3]) {
-  for (int i=0;i<3;i++) r[i]=m[i][0]*v[0]+m[i][1]*v[1]+m[i][2]*v[2];
-}
+// h_MatrixMultF removed — unused on host side
 
 static inline void h_MatrixMultF33(float m[3][3], float n[3][3], float res[3][3]) {
   for (int r=0;r<3;r++) for(int c=0;c<3;c++)
@@ -491,43 +482,7 @@ static inline void h_AxisAngle2RotMatrix(float axis[3], float angle, float R[3][
   R[2][0]=-v*si+w*u*omc; R[2][1]=u*si+w*v*omc; R[2][2]=co+w*w*omc;
 }
 
-static inline void h_CalcOmega(float x, float y, float z, float theta,
-                               float omegas[4], float etas[4], int *nsol) {
-  *nsol = 0;
-  float len = sqrtf(x*x+y*y+z*z);
-  if (len < EPS) return;
-  float vv = sinf(deg2rad*theta)*len;
-  if (fabsf(y) < 1e-4f) {
-    if (fabsf(x) > 1e-4f) {
-      float c1 = -vv/x;
-      if (fabsf(c1)<=1.0f) {
-        float o = acosf(c1)*rad2deg;
-        omegas[(*nsol)++] = o; omegas[(*nsol)++] = -o;
-      }
-    }
-  } else {
-    float y2=y*y, a=1+(x*x)/y2, b=(2*vv*x)/y2, c=(vv*vv)/y2-1;
-    float d=b*b-4*a*c;
-    if (d>=0&&fabsf(a)>EPS) {
-      float sd=sqrtf(d), ta=2*a;
-      float c1=(-b+sd)/ta;
-      if (fabsf(c1)<=1) { float oa=acosf(c1),ob=-oa;
-        float ea=-x*cosf(oa)+y*sinf(oa), eb=-x*cosf(ob)+y*sinf(ob);
-        omegas[(*nsol)++]=(fabsf(ea-vv)<fabsf(eb-vv)?oa:ob)*rad2deg; }
-      float c2=(-b-sd)/ta;
-      if (fabsf(c2)<=1) { float oa=acosf(c2),ob=-oa;
-        float ea=-x*cosf(oa)+y*sinf(oa), eb=-x*cosf(ob)+y*sinf(ob);
-        omegas[(*nsol)++]=(fabsf(ea-vv)<fabsf(eb-vv)?oa:ob)*rad2deg; }
-    }
-  }
-  for (int i=0;i<*nsol;i++) {
-    float sa=sinf(deg2rad*omegas[i]),ca=cosf(deg2rad*omegas[i]);
-    float gw1 = ca*x - sa*y;  // unused but keeping RotateAroundZ pattern
-    float gw1y = sa*x + ca*y;
-    float gw1z = z;
-    h_CalcEtaAngle(gw1y, gw1z, &etas[i]);
-  }
-}
+// h_CalcOmega removed — unused on host side
 
 static float h_CalcRotationAngle(int RingNr) {
   int habs=0,kabs=0,labs=0,i;
@@ -750,7 +705,7 @@ int main(int argc, char *argv[]) {
   // 2. Read HKLs
   FILE *hklf = fopen("hkls.csv","r");
   if (!hklf) { printf("Cannot open hkls.csv\n"); exit(1); }
-  char aline[4096], dummy[1024];
+  char aline[4096];
   fgets(aline,1000,hklf);
   int hi,ki,li,Rnr; float hc,kc,lc,RRd,Ds,tht,tth;
   while (fgets(aline,1000,hklf)) {
@@ -904,6 +859,11 @@ int main(int argc, char *argv[]) {
   // Phase 1: Count tuples per spotID (parallel)
   int *tupleCounts = (int*)calloc(nSpotIDs, sizeof(int));
 
+  // Pre-allocate per-thread OrTmp buffers (MAX_N_OR*9 floats = 1.3 MB each)
+  float **OrTmp_all = (float**)malloc(numProcs * sizeof(float*));
+  for (int t = 0; t < numProcs; t++)
+    OrTmp_all[t] = (float*)malloc(MAX_N_OR * 9 * sizeof(float));
+
   #pragma omp parallel for num_threads(numProcs) schedule(dynamic)
   for (int si = 0; si < nSpotIDs; si++) {
     if (SpotIDs[si] == -1) continue;
@@ -937,7 +897,7 @@ int main(int argc, char *argv[]) {
       float hn[3]={g1,g2,g3};
       double hkl_d[3]={RingHKL[ringnr][0],RingHKL[ringnr][1],RingHKL[ringnr][2]};
       int nOr;
-      float OrTmp[MAX_N_OR*9];
+      float *OrTmp = OrTmp_all[omp_get_thread_num()];
       h_GenerateCandidateOrientations(hkl_d, hn, Params.StepsizeOrient, OrTmp, &nOr, ringnr);
 
       for (int or_=0; or_<nOr; or_++) {
@@ -1005,7 +965,7 @@ int main(int argc, char *argv[]) {
         h_spot_to_gv(xi,yi,zi,omega,&g1,&g2,&g3);
         float hn[3]={g1,g2,g3};
         double hkl_d[3]={RingHKL[ringnr][0],RingHKL[ringnr][1],RingHKL[ringnr][2]};
-        int nOr; float OrTmp[MAX_N_OR*9];
+        int nOr; float *OrTmp = OrTmp_all[omp_get_thread_num()];
         h_GenerateCandidateOrientations(hkl_d, hn, Params.StepsizeOrient, OrTmp, &nOr, ringnr);
 
         for (int or_=0; or_<nOr; or_++) {
@@ -1031,22 +991,31 @@ int main(int argc, char *argv[]) {
     //  GPU DISPATCH: Upload tuples and launch kernel
     // ═════════════════════════════════════════════════════════
 
-    // Process in batches if too large for GPU memory
+    // Compute dynamic scratch size: each HKL can produce at most 2 omega solutions
+    int maxTheorSpots = n_hkls * 2;
+    size_t scratchPerThread = (size_t)maxTheorSpots * N_COL_THEORSPOTS * sizeof(float);
+
+    // Process in batches — account for both tuples AND scratch memory
     size_t freeMem, totalMem;
     CUDA_CHECK(cudaMemGetInfo(&freeMem, &totalMem));
-    size_t tupleBytes = totalTuples * sizeof(EvalTuple);
-    size_t maxBatch = (freeMem / 2) / sizeof(EvalTuple);
+    size_t bytesPerThread = sizeof(EvalTuple) + scratchPerThread;
+    size_t maxBatch = (freeMem / 2) / bytesPerThread;
+    if (maxBatch < 1) maxBatch = 1;
     int nBatches = (int)((totalTuples + maxBatch - 1) / maxBatch);
     if (nBatches < 1) nBatches = 1;
 
-    printf("GPU free: %.0f MB, tupleBytes: %.0f MB, batches: %d\n",
-           freeMem/1e6, tupleBytes/1e6, nBatches);
+    long long batchSize = (totalTuples + nBatches - 1) / nBatches;
+
+    printf("GPU free: %.0f MB, tupleBytes: %.0f MB, scratchPerThread: %zu B, maxTheorSpots: %d, batches: %d, batchSize: %lld\n",
+           freeMem/1e6, totalTuples*sizeof(EvalTuple)/1e6, scratchPerThread, maxTheorSpots, nBatches, batchSize);
 
     EvalTuple *d_tuples;
-    long long batchSize = (totalTuples + nBatches - 1) / nBatches;
     CUDA_CHECK(cudaMalloc(&d_tuples, batchSize * sizeof(EvalTuple)));
 
-    int blockSize = 64; // Lower occupancy per thread due to register pressure
+    float *d_theorScratch;
+    CUDA_CHECK(cudaMalloc(&d_theorScratch, batchSize * scratchPerThread));
+
+    int blockSize = 256;
 
     for (int b=0; b<nBatches; b++) {
       long long bStart = b * batchSize;
@@ -1065,13 +1034,14 @@ int main(int argc, char *argv[]) {
         d_hkls_flat, n_hkls,
         d_ObsSpotsLab, d_data, d_ndata,
         d_ringsToReject, Params.nRingsToRejectCalc,
-        d_results, 0.0f);
+        d_results, d_theorScratch, maxTheorSpots);
 
       CUDA_CHECK(cudaGetLastError());
       CUDA_CHECK(cudaDeviceSynchronize());
     }
 
     CUDA_CHECK(cudaFree(d_tuples));
+    CUDA_CHECK(cudaFree(d_theorScratch));
     free(h_tuples);
   }
 
@@ -1120,6 +1090,9 @@ cleanup:
   free(tupleCounts);
   free(tupleOffsets);
   free(SpotIDs);
+  for (int t = 0; t < numProcs; t++) free(OrTmp_all[t]);
+  free(OrTmp_all);
+  if (ObsSpotsLab) free(ObsSpotsLab);
 
   close(Params.IndexBestFD);
   close(Params.IndexBestFullFD);
