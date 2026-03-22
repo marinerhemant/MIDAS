@@ -690,7 +690,13 @@ static void ReadBins(char *cwd) {
   printf("Data.bin read. nData.bin read.\n");
 }
 
-// ─── Generate ideal spot positions (simplified Friedel-free) ──
+// ─── Generate ideal spot positions ──────────────────────────
+
+// Forward declaration (needed by h_GenerateIdealSpotsFriedelMixed)
+static void h_GenerateIdealSpots(float ys, float zs, float ttheta, float eta,
+    float Ring_rad, float Rsample, float Hbeam, float step_size,
+    float y0v[], float z0v[], int *nSteps);
+
 static inline void h_CalcSpotPosition(float RingRadius, float eta, float *yl, float *zl) {
   float etaRad = deg2rad * eta;
   *yl = -(sinf(etaRad) * RingRadius);
@@ -860,6 +866,7 @@ static void h_GenerateIdealSpotsFriedelMixed(
     float ys, float zs, float Ttheta, float Eta, float Omega,
     int RingNr, float Ring_rad, float Lsd, float Rsample,
     float Hbeam, float StepSizePos, float OmeTol, float RadialTol,
+    float EtaBinSz, float OmeBinSz,
     float EtaTol, float spots_y[], float spots_z[], int *nSteps) {
   const int MinEtaReject = 10;
   float theta = Ttheta / 2;
@@ -909,8 +916,8 @@ static void h_GenerateIdealSpotsFriedelMixed(
       h_CalcEtaAngle(YFP, ZFP, &EtaFPCorr);
       // Bin lookup (inline GetBin)
       int iRing = RingNr - 1;
-      int iEta = (int)floorf((180.0f + EtaFPCorr) / Params.EtaBinSize);
-      int iOme = (int)floorf((180.0f + OmegaFP) / Params.OmeBinSize);
+      int iEta = (int)floorf((180.0f + EtaFPCorr) / EtaBinSz);
+      int iOme = (int)floorf((180.0f + OmegaFP) / OmeBinSz);
       if (iEta<0) iEta=0; if (iEta>=n_eta_bins) iEta=n_eta_bins-1;
       if (iOme<0) iOme=0; if (iOme>=n_ome_bins) iOme=n_ome_bins-1;
       size_t Pos = (size_t)iRing*n_eta_bins*n_ome_bins + (size_t)iEta*n_ome_bins + iOme;
@@ -1213,6 +1220,7 @@ int main(int argc, char *argv[]) {
                                          Params.Distance, Params.Rsample,
                                          Params.Hbeam, Params.StepsizePos,
                                          Params.MarginOme, Params.MarginRadial,
+                                         Params.EtaBinSize, Params.OmeBinSize,
                                          Params.MarginEta, y0v, z0v, &nPN);
       }
     }
@@ -1303,6 +1311,7 @@ int main(int argc, char *argv[]) {
                                            Params.Distance, Params.Rsample,
                                            Params.Hbeam, Params.StepsizePos,
                                            Params.MarginOme, Params.MarginRadial,
+                                           Params.EtaBinSize, Params.OmeBinSize,
                                            Params.MarginEta, y0v, z0v, &nPN);
         }
       }
