@@ -1444,7 +1444,7 @@ int main(int argc, char *argv[]) {
           if(RR<1e-9) continue;
           // Check reject
           int reject=0;
-          for(int rr=0;rr<Params.nRingsToRejectCalc;rr++) if(ringsToRejectCalc[rr]==ringnr){reject=1;break;}
+          for(int rr=0;rr<Params.nRingsToRejectCalc;rr++) if(Params.RingsToReject[rr]==ringnr){reject=1;break;}
           if(reject) continue;
           double theta=hkls[ih][5];
           double Gc[3]; for(int r=0;r<3;r++) Gc[r]=OrMat[r][0]*Ghkl[0]+OrMat[r][1]*Ghkl[1]+OrMat[r][2]*Ghkl[2];
