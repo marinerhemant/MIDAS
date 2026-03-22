@@ -175,12 +175,12 @@ struct SpotResult {
 // ─────────────────────────────────────────────────────────────
 // GPU constant memory for geometry/margins
 // ─────────────────────────────────────────────────────────────
-__constant__ double c_RingRadii[MAX_N_RINGS];
-__constant__ double c_OmegaRanges[MAX_N_OMEGARANGES][2];
-__constant__ double c_BoxSizes[MAX_N_OMEGARANGES][4];
-__constant__ double c_omemargins[181];
-__constant__ double c_etamargins[MAX_N_RINGS];
-__constant__ int   c_ringsToReject[MAX_N_RINGS];
+__device__ double c_RingRadii[MAX_N_RINGS];
+__device__ double c_OmegaRanges[MAX_N_OMEGARANGES][2];
+__device__ double c_BoxSizes[MAX_N_OMEGARANGES][4];
+__device__ double c_omemargins[181];
+__device__ double c_etamargins[MAX_N_RINGS];
+__device__ int   c_ringsToReject[MAX_N_RINGS];
 
 // Scalar constants in constant memory
 struct GPUParams {
