@@ -158,6 +158,7 @@ struct EvalTuple {
   int spotIdx;      // Index back to spotID array (for reduction)
   float OrMat[9];   // Orientation matrix (flattened 3x3)
   float ga, gb, gc; // Sample position in lab frame
+  float RefRad;     // Reference radial position of the spot
 };
 
 // Per-spotID best result (GPU output, one per spotID)
@@ -326,22 +327,35 @@ int gpu_CompareSpots(
     int DataPos = d_ndata[Pos * 2 + 1];
 
     float etamargin = c_etamargins[RingNr];
-    int ome_idx = (int)floorf(fabsf(theorEta));
-    ome_idx = max(0, min(180, ome_idx));
+
+    // Check if this ring is excluded from radial filter
+    int skipRadialFilter = 0;
+    for (int rr = 0; rr < nRingsToRejectCalc; rr++) {
+      if (RingNr == d_ringsToReject[rr]) { skipRadialFilter = 1; break; }
+    }
 
     int matchFound = 0;
-    float diffOmeBest = c_params.MarginOme + 0.00001f;
+    float diffOmeBest = 100000.0f;  // match CPU: find closest, no threshold
 
     for (int is = 0; is < nInBin; is++) {
-      int spotRow = d_data[DataPos + is];  // single-indexed (not pairs)
+      int spotRow = d_data[DataPos + is];
       int base = spotRow * N_COL_OBSSPOTS;
 
+      // Filter 1: radial difference (MarginRadial)
       float obsRadDiff = d_ObsSpotsLab[base + 8];
       if (fabsf(theorRadDiff - obsRadDiff) >= c_params.MarginRadial) continue;
 
+      // Filter 2: RefRad check (MarginRad) — skip if ring is excluded
+      if (!skipRadialFilter) {
+        float obsRefRad = d_ObsSpotsLab[base + 3];
+        if (fabsf(RefRad - obsRefRad) >= c_params.MarginRad) continue;
+      }
+
+      // Filter 3: eta margin
       float obsEta = d_ObsSpotsLab[base + 6];
       if (fabsf(theorEta - obsEta) >= etamargin) continue;
 
+      // Find closest omega match (no threshold)
       float obsOme = d_ObsSpotsLab[base + 2];
       float diffOme = fabsf(theorOme - obsOme);
       if (diffOme < diffOmeBest) {
@@ -420,7 +434,7 @@ __global__ void indexer_eval_kernel(
   // 3. Compare with observed spots
   int nMatchesFracCalc;
   int nMatches = gpu_CompareSpots(
-    TheorSpots, nTspots, d_ObsSpotsLab, 0.0f,
+    TheorSpots, nTspots, d_ObsSpotsLab, t.RefRad,
     d_data, d_ndata,
     d_ringsToReject, nRingsToRejectCalc,
     &nMatchesFracCalc);
@@ -949,6 +963,7 @@ int main(int argc, char *argv[]) {
       float ys = ObsSpotsLab[SpotRowNo*N_COL_OBSSPOTS+0];
       float zs = ObsSpotsLab[SpotRowNo*N_COL_OBSSPOTS+1];
       float omega = ObsSpotsLab[SpotRowNo*N_COL_OBSSPOTS+2];
+      float RefRad = ObsSpotsLab[SpotRowNo*N_COL_OBSSPOTS+3];
       float eta = ObsSpotsLab[SpotRowNo*N_COL_OBSSPOTS+6];
       int ringnr = (int)ObsSpotsLab[SpotRowNo*N_COL_OBSSPOTS+5];
 
@@ -980,6 +995,7 @@ int main(int argc, char *argv[]) {
             t->spotIdx = si;
             for(int k=0;k<9;k++) t->OrMat[k] = OrTmp[or_*9+k];
             t->ga = ga; t->gb = gb; t->gc = gc;
+            t->RefRad = RefRad;
           }
         }
       }
