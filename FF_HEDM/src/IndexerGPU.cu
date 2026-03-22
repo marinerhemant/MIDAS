@@ -33,6 +33,7 @@
 #include <libgen.h>
 #include <unistd.h>
 #include <cuda_runtime.h>
+#define RealType double
 #include "midas_gpu_math.cuh"
 #include "midas_version.h"
 
@@ -51,9 +52,8 @@
 // ─────────────────────────────────────────────────────────────
 // Constants and types
 // ─────────────────────────────────────────────────────────────
-#define RealType float
-#define deg2rad 0.0174532925199433f
-#define rad2deg 57.2957795130823f
+#define deg2rad 0.0174532925199433
+#define rad2deg 57.2957795130823
 
 #define MAX_N_SPOTS    100000000
 #define MAX_N_OR       7200
@@ -72,7 +72,7 @@
   (a)[1] = (b)[2]*(c)[0] - (c)[2]*(b)[0]; \
   (a)[2] = (b)[0]*(c)[1] - (c)[0]*(b)[1];
 #define dot(v,q) ((v)[0]*(q)[0]+(v)[1]*(q)[1]+(v)[2]*(q)[2])
-#define CalcLength(x,y,z) sqrtf((x)*(x)+(y)*(y)+(z)*(z))
+#define CalcLength(x,y,z) sqrt((x)*(x)+(y)*(y)+(z)*(z))
 #define TestBit(A,k) (A[(k/32)] & (1 << (k%32)))
 
 static void check_host(int test, const char *msg, ...) {
@@ -91,7 +91,7 @@ static void check_host(int test, const char *msg, ...) {
 // Global host data (same layout as IndexerOMP.c)
 // ─────────────────────────────────────────────────────────────
 static double *ObsSpotsLab_d = NULL;  // mmap'd as double (file format)
-static float  *ObsSpotsLab = NULL;    // converted to float for CPU/GPU use
+static double  *ObsSpotsLab = NULL;    // converted to double for CPU/GPU use
 static int *data = NULL;
 static int *ndata = NULL;
 static size_t n_spots = 0;
@@ -155,19 +155,19 @@ struct TParams {
 // A flattened evaluation tuple (CPU → GPU)
 // ─────────────────────────────────────────────────────────────
 struct EvalTuple {
-  int spotIdx;      // Index back to spotID array (for reduction)
-  float OrMat[9];   // Orientation matrix (flattened 3x3)
-  float ga, gb, gc; // Sample position in lab frame
-  float RefRad;     // Reference radial position of the spot
+  int spotIdx;       // Index back to spotID array (for reduction)
+  double OrMat[9];   // Orientation matrix (flattened 3x3)
+  double ga, gb, gc; // Sample position in lab frame
+  double RefRad;     // Reference radial position of the spot
 };
 
 // Per-spotID best result (GPU output, one per spotID)
 struct SpotResult {
   unsigned long long atomicKey;  // Packed (frac, -IA) for 64-bit atomicCAS — MUST be first for alignment
-  float bestFrac;      // Best fraction of matches (confidence)
-  float bestIA;        // Best internal angle
-  float bestOrMat[9];  // Best orientation matrix
-  float bestPos[3];    // Best position (ga, gb, gc)
+  double bestFrac;      // Best fraction of matches (confidence)
+  double bestIA;        // Best internal angle
+  double bestOrMat[9];  // Best orientation matrix
+  double bestPos[3];    // Best position (ga, gb, gc)
   int   nTspots;       // Number of theoretical spots for best match
   int   nMatches;      // Number of matches for best match
 };
@@ -175,28 +175,28 @@ struct SpotResult {
 // ─────────────────────────────────────────────────────────────
 // GPU constant memory for geometry/margins
 // ─────────────────────────────────────────────────────────────
-__constant__ float c_RingRadii[MAX_N_RINGS];
-__constant__ float c_OmegaRanges[MAX_N_OMEGARANGES][2];
-__constant__ float c_BoxSizes[MAX_N_OMEGARANGES][4];
-__constant__ float c_omemargins[181];
-__constant__ float c_etamargins[MAX_N_RINGS];
+__constant__ double c_RingRadii[MAX_N_RINGS];
+__constant__ double c_OmegaRanges[MAX_N_OMEGARANGES][2];
+__constant__ double c_BoxSizes[MAX_N_OMEGARANGES][4];
+__constant__ double c_omemargins[181];
+__constant__ double c_etamargins[MAX_N_RINGS];
 __constant__ int   c_ringsToReject[MAX_N_RINGS];
 
 // Scalar constants in constant memory
 struct GPUParams {
-  float Distance;
-  float Wavelength;
-  float ExcludePoleAngle;
-  float MarginRad;
-  float MarginRadial;
-  float MarginOme;
+  double Distance;
+  double Wavelength;
+  double ExcludePoleAngle;
+  double MarginRad;
+  double MarginRadial;
+  double MarginOme;
   int   NoOfOmegaRanges;
   int   nRingsToRejectCalc;
   int   n_ring_bins;
   int   n_eta_bins;
   int   n_ome_bins;
-  float EtaBinSize;
-  float OmeBinSize;
+  double EtaBinSize;
+  double OmeBinSize;
 };
 __constant__ GPUParams c_params;
 
@@ -206,10 +206,10 @@ __constant__ GPUParams c_params;
 // ─────────────────────────────────────────────────────────────
 __device__
 int gpu_CalcDiffrSpots(
-    const float OrMat[3][3],
-    const float *d_hkls_flat, // [n_hkls × 7]
+    const double OrMat[3][3],
+    const double *d_hkls_flat, // [n_hkls × 7]
     int n_hkls_d,
-    float *spots_out,         // flat: [max_spots × N_COL_THEORSPOTS]
+    double *spots_out,         // flat: [max_spots × N_COL_THEORSPOTS]
     int max_spots,
     const int *d_ringsToReject,
     int nRingsToRejectCalc,
@@ -219,35 +219,35 @@ int gpu_CalcDiffrSpots(
   int nFracCalc = 0;
 
   for (int ih = 0; ih < n_hkls_d && spotnr < max_spots; ih++) {
-    float Ghkl[3] = {
+    double Ghkl[3] = {
       d_hkls_flat[ih*7+0],
       d_hkls_flat[ih*7+1],
       d_hkls_flat[ih*7+2]
     };
     int ringnr = (int)d_hkls_flat[ih*7+3];
     if (ringnr < 0 || ringnr >= MAX_N_RINGS) continue;
-    float RingRadius = c_RingRadii[ringnr];
+    double RingRadius = c_RingRadii[ringnr];
     if (RingRadius < EPS) continue;
-    float theta = d_hkls_flat[ih*7+5];
+    double theta = d_hkls_flat[ih*7+5];
 
-    float Gc[3];
-    float OrM[3][3];
+    double Gc[3];
+    double OrM[3][3];
     for (int r=0; r<3; r++) for (int cc=0; cc<3; cc++) OrM[r][cc] = OrMat[r][cc];
     midas_MatrixMultF(OrM, Ghkl, Gc);
 
-    float omegas[4], etas[4];
+    double omegas[4], etas[4];
     int nsol;
     midas_CalcOmega(Gc[0], Gc[1], Gc[2], theta, omegas, etas, &nsol);
 
     for (int i = 0; i < nsol && spotnr < max_spots; i++) {
-      float Omega = omegas[i];
-      float Eta = etas[i];
-      float EtaAbs = fabsf(Eta);
+      double Omega = omegas[i];
+      double Eta = etas[i];
+      double EtaAbs = fabs(Eta);
 
       if (EtaAbs < c_params.ExcludePoleAngle ||
-          (180.0f - EtaAbs) < c_params.ExcludePoleAngle) continue;
+          (180.0 - EtaAbs) < c_params.ExcludePoleAngle) continue;
 
-      float yl, zl;
+      double yl, zl;
       midas_CalcSpotPosition(RingRadius, Eta, &yl, &zl);
 
       int keep = 0;
@@ -260,17 +260,17 @@ int gpu_CalcDiffrSpots(
       }
       if (!keep) continue;
 
-      float *sp = &spots_out[spotnr * N_COL_THEORSPOTS];
+      double *sp = &spots_out[spotnr * N_COL_THEORSPOTS];
       sp[0] = 0;
-      sp[1] = (float)spotnr;
-      sp[2] = (float)ih;
+      sp[1] = (double)spotnr;
+      sp[2] = (double)ih;
       sp[3] = c_params.Distance;
       sp[4] = yl;
       sp[5] = zl;
       sp[6] = Omega;
       sp[7] = Eta;
       sp[8] = theta;
-      sp[9] = (float)ringnr;
+      sp[9] = (double)ringnr;
 
       // Check if ring is excluded from fraction calc
       int rejected = 0;
@@ -290,38 +290,38 @@ int gpu_CalcDiffrSpots(
 // ─────────────────────────────────────────────────────────────
 __device__
 int gpu_CompareSpots(
-    float *spots,             // flat: [nTspots × N_COL_THEORSPOTS]
+    double *spots,             // flat: [nTspots × N_COL_THEORSPOTS]
     int nTspots,
-    const float *d_ObsSpotsLab, // [n_spots × 9]
-    float RefRad,
+    const double *d_ObsSpotsLab, // [n_spots × 9]
+    double RefRad,
     const int *d_data,
     const int *d_ndata,
     const int *d_ringsToReject,
     int nRingsToRejectCalc,
     int *nMatchesFracCalc,
-    float ga, float gb, float gc,  // grain position for IA
-    float *avgIA)                   // output: average internal angle
+    double ga, double gb, double gc,  // grain position for IA
+    double *avgIA)                   // output: average internal angle
 {
   int nMatched = 0;
   int nMatchedFrac = 0;
-  float iaSum = 0.0f;
+  double iaSum = 0.0;
   int iaCount = 0;
-  float Distance = c_params.Distance;
+  double Distance = c_params.Distance;
 
   for (int sp = 0; sp < nTspots; sp++) {
-    float *s = &spots[sp * N_COL_THEORSPOTS];
+    double *s = &spots[sp * N_COL_THEORSPOTS];
     int RingNr = (int)s[9];
     if (RingNr <= 0 || RingNr >= MAX_N_RINGS) continue;
 
-    float theorEta = s[12];
-    float theorOme = s[6];
-    float theorRadDiff = s[13];
-    float theorY = s[10];
-    float theorZ = s[11];
+    double theorEta = s[12];
+    double theorOme = s[6];
+    double theorRadDiff = s[13];
+    double theorY = s[10];
+    double theorZ = s[11];
 
     int iRing = RingNr - 1;
-    int iEta = (int)floorf((180.0f + theorEta) / c_params.EtaBinSize);
-    int iOme = (int)floorf((180.0f + theorOme) / c_params.OmeBinSize);
+    int iEta = (int)floor((180.0 + theorEta) / c_params.EtaBinSize);
+    int iOme = (int)floor((180.0 + theorOme) / c_params.OmeBinSize);
     iEta = max(0, min(c_params.n_eta_bins - 1, iEta));
     iOme = max(0, min(c_params.n_ome_bins - 1, iOme));
 
@@ -334,7 +334,7 @@ int gpu_CompareSpots(
     int nInBin = d_ndata[Pos * 2 + 0];
     int DataPos = d_ndata[Pos * 2 + 1];
 
-    float etamargin = c_etamargins[RingNr];
+    double etamargin = c_etamargins[RingNr];
 
     // Check if this ring is excluded from radial filter
     int skipRadialFilter = 0;
@@ -344,29 +344,29 @@ int gpu_CompareSpots(
 
     int matchFound = 0;
     int bestSpotRow = -1;
-    float diffOmeBest = 100000.0f;  // match CPU: find closest, no threshold
+    double diffOmeBest = 100000.0;  // match CPU: find closest, no threshold
 
     for (int is = 0; is < nInBin; is++) {
       int spotRow = d_data[DataPos + is];
       int base = spotRow * N_COL_OBSSPOTS;
 
       // Filter 1: radial difference (MarginRadial)
-      float obsRadDiff = d_ObsSpotsLab[base + 8];
-      if (fabsf(theorRadDiff - obsRadDiff) >= c_params.MarginRadial) continue;
+      double obsRadDiff = d_ObsSpotsLab[base + 8];
+      if (fabs(theorRadDiff - obsRadDiff) >= c_params.MarginRadial) continue;
 
       // Filter 2: RefRad check (MarginRad) — skip if ring is excluded
       if (!skipRadialFilter) {
-        float obsRefRad = d_ObsSpotsLab[base + 3];
-        if (fabsf(RefRad - obsRefRad) >= c_params.MarginRad) continue;
+        double obsRefRad = d_ObsSpotsLab[base + 3];
+        if (fabs(RefRad - obsRefRad) >= c_params.MarginRad) continue;
       }
 
       // Filter 3: eta margin
-      float obsEta = d_ObsSpotsLab[base + 6];
-      if (fabsf(theorEta - obsEta) >= etamargin) continue;
+      double obsEta = d_ObsSpotsLab[base + 6];
+      if (fabs(theorEta - obsEta) >= etamargin) continue;
 
       // Find closest omega match (no threshold)
-      float obsOme = d_ObsSpotsLab[base + 2];
-      float diffOme = fabsf(theorOme - obsOme);
+      double obsOme = d_ObsSpotsLab[base + 2];
+      double diffOme = fabs(theorOme - obsOme);
       if (diffOme < diffOmeBest) {
         diffOmeBest = diffOme;
         bestSpotRow = spotRow;
@@ -412,15 +412,15 @@ int gpu_CompareSpots(
       double lb=sqrt(gv2x_d*gv2x_d+gv2y_d*gv2y_d+gv2z_d*gv2z_d);
       double dp=(gv1x_d*gv2x_d+gv1y_d*gv2y_d+gv1z_d*gv2z_d)/(la*lb);
       if(dp>1.0)dp=1.0; if(dp<-1.0)dp=-1.0;
-      float ia = (float)(rad2deg * acos(dp));
-      if (ia < 999.0f) {
+      double ia = (double)(rad2deg * acos(dp));
+      if (ia < 999.0) {
         iaSum += ia;
         iaCount++;
       }
     }
   }
   *nMatchesFracCalc = nMatchedFrac;
-  *avgIA = (iaCount > 0) ? (iaSum / (float)iaCount) : 999.0f;
+  *avgIA = (iaCount > 0) ? (iaSum / (double)iaCount) : 999.0;
   return nMatched;
 }
 
@@ -430,15 +430,15 @@ int gpu_CompareSpots(
 __global__ void indexer_eval_kernel(
     const EvalTuple *tuples,
     int nTuples,
-    const float *d_hkls_flat,
+    const double *d_hkls_flat,
     int n_hkls_d,
-    const float *d_ObsSpotsLab,
+    const double *d_ObsSpotsLab,
     const int *d_data,
     const int *d_ndata,
     const int *d_ringsToReject,
     int nRingsToRejectCalc,
     SpotResult *d_results,    // [nSpotIDs] — per-spotID best
-    float *d_theorScratch,    // [batchSize × maxTheorSpots × N_COL_THEORSPOTS]
+    double *d_theorScratch,    // [batchSize × maxTheorSpots × N_COL_THEORSPOTS]
     int maxTheorSpots
 ) {
   int tid = blockIdx.x * blockDim.x + threadIdx.x;
@@ -448,13 +448,13 @@ __global__ void indexer_eval_kernel(
   int spotIdx = t.spotIdx;
 
   // Build orientation matrix
-  float OrMat[3][3];
+  double OrMat[3][3];
   for (int r=0; r<3; r++)
     for (int c=0; c<3; c++)
       OrMat[r][c] = t.OrMat[r*3+c];
 
   // Per-thread scratch slice in global memory
-  float *TheorSpots = &d_theorScratch[(long long)tid * maxTheorSpots * N_COL_THEORSPOTS];
+  double *TheorSpots = &d_theorScratch[(long long)tid * maxTheorSpots * N_COL_THEORSPOTS];
 
   // 1. Compute theoretical diffraction spots
   int nTspots, nTspotsFracCalc;
@@ -466,8 +466,8 @@ __global__ void indexer_eval_kernel(
 
   // 2. Apply displacement for this position
   for (int sp = 0; sp < nTspots; sp++) {
-    float *s = &TheorSpots[sp * N_COL_THEORSPOTS];
-    float Displ_y, Displ_z;
+    double *s = &TheorSpots[sp * N_COL_THEORSPOTS];
+    double Displ_y, Displ_z;
     midas_displacement_spot_COM(
       t.ga, t.gb, t.gc,
       s[3], s[4], s[5], s[6], &Displ_y, &Displ_z);
@@ -475,12 +475,12 @@ __global__ void indexer_eval_kernel(
     s[11] = s[5] + Displ_z;
     midas_CalcEtaAngle(s[10], s[11], &s[12]);
     int rn = (int)s[9];
-    s[13] = sqrtf(s[10]*s[10] + s[11]*s[11]) - c_RingRadii[rn];
+    s[13] = sqrt(s[10]*s[10] + s[11]*s[11]) - c_RingRadii[rn];
   }
 
   // 3. Compare with observed spots + compute IA
   int nMatchesFracCalc;
-  float avgIA;
+  double avgIA;
   int nMatches = gpu_CompareSpots(
     TheorSpots, nTspots, d_ObsSpotsLab, t.RefRad,
     d_data, d_ndata,
@@ -488,14 +488,14 @@ __global__ void indexer_eval_kernel(
     &nMatchesFracCalc,
     t.ga, t.gb, t.gc, &avgIA);
 
-  float fracMatches = (float)nMatchesFracCalc / (float)nTspotsFracCalc;
+  double fracMatches = (double)nMatchesFracCalc / (double)nTspotsFracCalc;
 
 
   // 4. Atomic best-match update per spotID using 64-bit packed key:
   //    upper 32 bits = frac (maximize), lower 32 bits = -IA (minimize IA)
-  //    For positive floats, __float_as_int preserves ordering.
-  unsigned int fracBits = (unsigned int)__float_as_int(fracMatches);
-  unsigned int iaBits   = (unsigned int)__float_as_int(-avgIA);  // negate: smaller IA → larger -IA
+  //    __float_as_int requires float; cast for ordering only, actual values stored as double.
+  unsigned int fracBits = (unsigned int)__float_as_int((float)fracMatches);
+  unsigned int iaBits   = (unsigned int)__float_as_int((float)(-avgIA));
   unsigned long long newKey = ((unsigned long long)fracBits << 32) | (unsigned long long)iaBits;
 
   SpotResult *res = &d_results[spotIdx];
@@ -527,10 +527,10 @@ __global__ void indexer_eval_kernel(
 
 // ─── CPU math helpers (same as IndexerOMP) ──────────────────
 
-static inline void h_CalcEtaAngle(float y, float z, float *alpha) {
-  float denom = sqrtf(y*y + z*z);
+static inline void h_CalcEtaAngle(double y, double z, double *alpha) {
+  double denom = sqrt(y*y + z*z);
   if (denom < EPS) { *alpha = 0; return; }
-  *alpha = rad2deg * acosf(fmaxf(-1.0f, fminf(1.0f, z/denom)));
+  *alpha = rad2deg * acos(fmax(-1.0, fmin(1.0, z/denom)));
   if (y > 0) *alpha = -(*alpha);
 }
 
@@ -538,16 +538,16 @@ static inline void h_CalcEtaAngle(float y, float z, float *alpha) {
 
 // h_MatrixMultF removed — unused on host side
 
-static inline void h_MatrixMultF33(float m[3][3], float n[3][3], float res[3][3]) {
+static inline void h_MatrixMultF33(double m[3][3], double n[3][3], double res[3][3]) {
   for (int r=0;r<3;r++) for(int c=0;c<3;c++)
     res[r][c] = m[r][0]*n[0][c] + m[r][1]*n[1][c] + m[r][2]*n[2][c];
 }
 
-static inline void h_AxisAngle2RotMatrix(float axis[3], float angle, float R[3][3]) {
-  float n2 = axis[0]*axis[0]+axis[1]*axis[1]+axis[2]*axis[2];
+static inline void h_AxisAngle2RotMatrix(double axis[3], double angle, double R[3][3]) {
+  double n2 = axis[0]*axis[0]+axis[1]*axis[1]+axis[2]*axis[2];
   if (n2 < EPS) { R[0][0]=1;R[0][1]=0;R[0][2]=0;R[1][0]=0;R[1][1]=1;R[1][2]=0;R[2][0]=0;R[2][1]=0;R[2][2]=1; return; }
-  float inv=1.0f/sqrtf(n2); float u=axis[0]*inv,v=axis[1]*inv,w=axis[2]*inv;
-  float rad=deg2rad*angle, co=cosf(rad), si=sinf(rad), omc=1-co;
+  double inv=1.0/sqrt(n2); double u=axis[0]*inv,v=axis[1]*inv,w=axis[2]*inv;
+  double rad=deg2rad*angle, co=cos(rad), si=sin(rad), omc=1-co;
   R[0][0]=co+u*u*omc; R[0][1]=-w*si+u*v*omc; R[0][2]=v*si+u*w*omc;
   R[1][0]=w*si+v*u*omc; R[1][1]=co+v*v*omc; R[1][2]=-u*si+v*w*omc;
   R[2][0]=-v*si+w*u*omc; R[2][1]=u*si+w*v*omc; R[2][2]=co+w*w*omc;
@@ -555,7 +555,7 @@ static inline void h_AxisAngle2RotMatrix(float axis[3], float angle, float R[3][
 
 // h_CalcOmega removed — unused on host side
 
-static float h_CalcRotationAngle(int RingNr) {
+static double h_CalcRotationAngle(int RingNr) {
   int habs=0,kabs=0,labs=0,i;
   for (i=0;i<n_hkls;i++) if(HKLints[i][3]==RingNr){habs=abs(HKLints[i][0]);kabs=abs(HKLints[i][1]);labs=abs(HKLints[i][2]);break;}
   int nz=0; if(!habs)nz++; if(!kabs)nz++; if(!labs)nz++;
@@ -570,17 +570,17 @@ static float h_CalcRotationAngle(int RingNr) {
   return 0;
 }
 
-static int h_GenerateCandidateOrientations(double hkl[3], float hklnormal[3],
-    float stepsize, float *OrMat, int *nOrient, int RingNr) {
-  float v[3]; float hkl_f[3]={(float)hkl[0],(float)hkl[1],(float)hkl[2]};
+static int h_GenerateCandidateOrientations(double hkl[3], double hklnormal[3],
+    double stepsize, double *OrMat, int *nOrient, int RingNr) {
+  double v[3]; double hkl_f[3]={(double)hkl[0],(double)hkl[1],(double)hkl[2]};
   crossProduct(v, hkl_f, hklnormal);
-  float hl=CalcLength(hkl_f[0],hkl_f[1],hkl_f[2]);
-  float nl=CalcLength(hklnormal[0],hklnormal[1],hklnormal[2]);
-  float dp=dot(hkl_f,hklnormal);
-  float angled=rad2deg*acosf(fmaxf(-1.0f,fminf(1.0f,dp/(hl*nl))));
-  float RM[3][3],RM2[3][3],RM3[3][3];
+  double hl=CalcLength(hkl_f[0],hkl_f[1],hkl_f[2]);
+  double nl=CalcLength(hklnormal[0],hklnormal[1],hklnormal[2]);
+  double dp=dot(hkl_f,hklnormal);
+  double angled=rad2deg*acos(fmax(-1.0,fmin(1.0,dp/(hl*nl))));
+  double RM[3][3],RM2[3][3],RM3[3][3];
   h_AxisAngle2RotMatrix(v, angled, RM);
-  float MaxAngle = h_CalcRotationAngle(RingNr);
+  double MaxAngle = h_CalcRotationAngle(RingNr);
   int nsteps = (int)(MaxAngle/stepsize);
   for (int o=0;o<nsteps;o++) {
     h_AxisAngle2RotMatrix(hklnormal, o*stepsize, RM2);
@@ -591,33 +591,33 @@ static int h_GenerateCandidateOrientations(double hkl[3], float hklnormal[3],
   return 0;
 }
 
-static inline void h_MakeUnitLength(float d, float y, float z,
-                                    float *xu, float *yu, float *zu) {
-  float l=sqrtf(d*d+y*y+z*z); if(l<EPS){*xu=*yu=*zu=0;return;}
-  float inv=1.0f/l; *xu=d*inv; *yu=y*inv; *zu=z*inv;
+static inline void h_MakeUnitLength(double d, double y, double z,
+                                    double *xu, double *yu, double *zu) {
+  double l=sqrt(d*d+y*y+z*z); if(l<EPS){*xu=*yu=*zu=0;return;}
+  double inv=1.0/l; *xu=d*inv; *yu=y*inv; *zu=z*inv;
 }
 
-static inline void h_spot_to_gv(float xi,float yi,float zi,float omega,
-                                float *g1,float *g2,float *g3){
-  float l=sqrtf(xi*xi+yi*yi+zi*zi); if(l<EPS){*g1=*g2=*g3=0;return;}
-  float xn=xi/l,yn=yi/l; float g1r=-1+xn,g2r=yn;
-  float co=cosf(-omega*deg2rad),so=sinf(-omega*deg2rad);
+static inline void h_spot_to_gv(double xi,double yi,double zi,double omega,
+                                double *g1,double *g2,double *g3){
+  double l=sqrt(xi*xi+yi*yi+zi*zi); if(l<EPS){*g1=*g2=*g3=0;return;}
+  double xn=xi/l,yn=yi/l; double g1r=-1+xn,g2r=yn;
+  double co=cos(-omega*deg2rad),so=sin(-omega*deg2rad);
   *g1=g1r*co-g2r*so; *g2=g1r*so+g2r*co; *g3=zi/l;
 }
 
-static inline void h_calc_n_max_min(float xi,float yi,float ys,float y0,
-    float Rsamp,int step,int *nmax,int *nmin){
-  float dy=ys-y0, a=xi*xi+yi*yi, b=2*yi*dy, c=dy*dy-Rsamp*Rsamp;
-  float D=b*b-4*a*c, P=sqrtf(fabsf(D));
-  float lmax=(-b+P)/(2*a)+20;
+static inline void h_calc_n_max_min(double xi,double yi,double ys,double y0,
+    double Rsamp,int step,int *nmax,int *nmin){
+  double dy=ys-y0, a=xi*xi+yi*yi, b=2*yi*dy, c=dy*dy-Rsamp*Rsamp;
+  double D=b*b-4*a*c, P=sqrt(fabs(D));
+  double lmax=(-b+P)/(2*a)+20;
   *nmax=(int)((lmax*xi)/step); *nmin=-(*nmax);
 }
 
-static inline void h_spot_to_unrotated(float xi,float yi,float zi,
-    float ys,float zs,float y0,float z0,float ss,int n,float omega,
-    float *a,float *b,float *c){
-  float lam=ss*(n/xi); float x1=lam*xi, y1=ys-y0+lam*yi, z1=zs-z0+lam*zi;
-  float co=cosf(omega*deg2rad),so=sinf(omega*deg2rad);
+static inline void h_spot_to_unrotated(double xi,double yi,double zi,
+    double ys,double zs,double y0,double z0,double ss,int n,double omega,
+    double *a,double *b,double *c){
+  double lam=ss*(n/xi); double x1=lam*xi, y1=ys-y0+lam*yi, z1=zs-z0+lam*zi;
+  double co=cos(omega*deg2rad),so=sin(omega*deg2rad);
   *a=x1*co+y1*so; *b=y1*co-x1*so; *c=z1;
 }
 
@@ -641,31 +641,31 @@ static int ReadParams(char *fn, struct TParams *P) {
     if(!strncmp(line,"RingNumbers ",12)){sscanf(line,"%s %d",dummy,&P->RingNumbers[NoRingNumbers++]);continue;}
     if(!strncmp(line,"RingsToExcludeFraction ",23)){sscanf(line,"%s %d",dummy,&P->RingsToReject[P->nRingsToRejectCalc++]);continue;}
     if(!strncmp(line,"BigDetSize ",11)){sscanf(line,"%s %d",dummy,&BigDetSize);totNrPixelsBigDetector=(long long)BigDetSize*BigDetSize/32+1;continue;}
-    if(!strncmp(line,"px ",3)){sscanf(line,"%s %f",dummy,&pixelsize);continue;}
+    if(!strncmp(line,"px ",3)){sscanf(line,"%s %lf",dummy,&pixelsize);continue;}
     if(!strncmp(line,"SpaceGroup ",11)){sscanf(line,"%s %d",dummy,&P->SpaceGroupNum);SGNum=P->SpaceGroupNum;continue;}
     if(!strncmp(line,"LatticeParameter ",17)||!strncmp(line,"LatticeConstant ",16)){
-      sscanf(line,"%s %f",dummy,&P->LatticeConstant);
+      sscanf(line,"%s %lf",dummy,&P->LatticeConstant);
       sscanf(line,"%s %lf %lf %lf %lf %lf %lf",dummy,&ABCABG[0],&ABCABG[1],&ABCABG[2],&ABCABG[3],&ABCABG[4],&ABCABG[5]);continue;}
-    if(!strncmp(line,"Wavelength ",11)){sscanf(line,"%s %f",dummy,&P->Wavelength);continue;}
-    if(!strncmp(line,"Distance ",9)||!strncmp(line,"Lsd ",4)){sscanf(line,"%s %f",dummy,&P->Distance);continue;}
-    if(!strncmp(line,"Rsample ",8)){sscanf(line,"%s %f",dummy,&P->Rsample);continue;}
-    if(!strncmp(line,"Hbeam ",6)){sscanf(line,"%s %f",dummy,&P->Hbeam);continue;}
-    if(!strncmp(line,"StepsizePos ",12)){sscanf(line,"%s %f",dummy,&P->StepsizePos);continue;}
-    if(!strncmp(line,"StepsizeOrient ",15)||!strncmp(line,"StepSizeOrient ",15)){sscanf(line,"%s %f",dummy,&P->StepsizeOrient);continue;}
-    if(!strncmp(line,"MarginOme ",10)){sscanf(line,"%s %f",dummy,&P->MarginOme);continue;}
-    if(!strncmp(line,"MarginRadius ",13)){sscanf(line,"%s %f",dummy,&P->MarginRad);continue;}
-    if(!strncmp(line,"MarginRadial ",13)){sscanf(line,"%s %f",dummy,&P->MarginRadial);continue;}
-    if(!strncmp(line,"EtaBinSize ",11)){sscanf(line,"%s %f",dummy,&P->EtaBinSize);continue;}
-    if(!strncmp(line,"OmeBinSize ",11)){sscanf(line,"%s %f",dummy,&P->OmeBinSize);continue;}
-    if(!strncmp(line,"MinMatchesToAcceptFrac ",22)||!strncmp(line,"Completeness ",13)){sscanf(line,"%s %f",dummy,&P->MinMatchesToAcceptFrac);continue;}
-    if(!strncmp(line,"ExcludePoleAngle ",17)||!strncmp(line,"MinEta ",7)){sscanf(line,"%s %f",dummy,&P->ExcludePoleAngle);continue;}
-    if(!strncmp(line,"RingRadii ",10)){sscanf(line,"%s %f",dummy,&P->RingRadiiUser[P->NrOfRings]);P->NrOfRings++;continue;}
-    if(!strncmp(line,"OmegaRange ",11)){sscanf(line,"%s %f %f",dummy,&P->OmegaRanges[P->NoOfOmegaRanges][0],&P->OmegaRanges[P->NoOfOmegaRanges][1]);P->NoOfOmegaRanges++;continue;}
-    if(!strncmp(line,"BoxSize ",8)){sscanf(line,"%s %f %f %f %f",dummy,&P->BoxSizes[NrOfBoxSizes][0],&P->BoxSizes[NrOfBoxSizes][1],&P->BoxSizes[NrOfBoxSizes][2],&P->BoxSizes[NrOfBoxSizes][3]);NrOfBoxSizes++;continue;}
+    if(!strncmp(line,"Wavelength ",11)){sscanf(line,"%s %lf",dummy,&P->Wavelength);continue;}
+    if(!strncmp(line,"Distance ",9)||!strncmp(line,"Lsd ",4)){sscanf(line,"%s %lf",dummy,&P->Distance);continue;}
+    if(!strncmp(line,"Rsample ",8)){sscanf(line,"%s %lf",dummy,&P->Rsample);continue;}
+    if(!strncmp(line,"Hbeam ",6)){sscanf(line,"%s %lf",dummy,&P->Hbeam);continue;}
+    if(!strncmp(line,"StepsizePos ",12)){sscanf(line,"%s %lf",dummy,&P->StepsizePos);continue;}
+    if(!strncmp(line,"StepsizeOrient ",15)||!strncmp(line,"StepSizeOrient ",15)){sscanf(line,"%s %lf",dummy,&P->StepsizeOrient);continue;}
+    if(!strncmp(line,"MarginOme ",10)){sscanf(line,"%s %lf",dummy,&P->MarginOme);continue;}
+    if(!strncmp(line,"MarginRadius ",13)){sscanf(line,"%s %lf",dummy,&P->MarginRad);continue;}
+    if(!strncmp(line,"MarginRadial ",13)){sscanf(line,"%s %lf",dummy,&P->MarginRadial);continue;}
+    if(!strncmp(line,"EtaBinSize ",11)){sscanf(line,"%s %lf",dummy,&P->EtaBinSize);continue;}
+    if(!strncmp(line,"OmeBinSize ",11)){sscanf(line,"%s %lf",dummy,&P->OmeBinSize);continue;}
+    if(!strncmp(line,"MinMatchesToAcceptFrac ",22)||!strncmp(line,"Completeness ",13)){sscanf(line,"%s %lf",dummy,&P->MinMatchesToAcceptFrac);continue;}
+    if(!strncmp(line,"ExcludePoleAngle ",17)||!strncmp(line,"MinEta ",7)){sscanf(line,"%s %lf",dummy,&P->ExcludePoleAngle);continue;}
+    if(!strncmp(line,"RingRadii ",10)){sscanf(line,"%s %lf",dummy,&P->RingRadiiUser[P->NrOfRings]);P->NrOfRings++;continue;}
+    if(!strncmp(line,"OmegaRange ",11)){sscanf(line,"%s %lf %lf",dummy,&P->OmegaRanges[P->NoOfOmegaRanges][0],&P->OmegaRanges[P->NoOfOmegaRanges][1]);P->NoOfOmegaRanges++;continue;}
+    if(!strncmp(line,"BoxSize ",8)){sscanf(line,"%s %lf %lf %lf %lf",dummy,&P->BoxSizes[NrOfBoxSizes][0],&P->BoxSizes[NrOfBoxSizes][1],&P->BoxSizes[NrOfBoxSizes][2],&P->BoxSizes[NrOfBoxSizes][3]);NrOfBoxSizes++;continue;}
     if(!strncmp(line,"SpotsFileName ",14)){sscanf(line,"%s %s",dummy,P->SpotsFileName);continue;}
     if(!strncmp(line,"GrainsFile ",11)){P->isGrainsInput=1;sscanf(line,"%s %s",dummy,P->GrainsFileName);continue;}
     if(!strncmp(line,"IDsFileName ",12)){sscanf(line,"%s %s",dummy,P->IDsFileName);continue;}
-    if(!strncmp(line,"MarginEta ",10)){sscanf(line,"%s %f",dummy,&P->MarginEta);continue;}
+    if(!strncmp(line,"MarginEta ",10)){sscanf(line,"%s %lf",dummy,&P->MarginEta);continue;}
     if(!strncmp(line,"UseFriedelPairs ",16)){sscanf(line,"%s %d",dummy,&P->UseFriedelPairs);continue;}
     if(!strncmp(line,"OutputFolder ",13)){sscanf(line,"%s %s",dummy,P->OutputFolder);continue;}
   }
@@ -683,12 +683,8 @@ static int ReadSpots(char *cwd) {
   ObsSpotsLab_d=(double*)mmap(0,s.st_size,PROT_READ,MAP_SHARED,fd,0);
   check(ObsSpotsLab_d==MAP_FAILED,"mmap %s: %s",fn,strerror(errno));
   int nsp = (int)(s.st_size/(N_COL_OBSSPOTS*sizeof(double)));
-  // Convert double → float for CPU lookups and GPU upload
-  ObsSpotsLab = (float*)malloc(nsp * N_COL_OBSSPOTS * sizeof(float));
-  check(!ObsSpotsLab, "malloc ObsSpotsLab float conversion");
-  for (int i = 0; i < nsp * N_COL_OBSSPOTS; i++)
-    ObsSpotsLab[i] = (float)ObsSpotsLab_d[i];
-  printf("Spots.bin: %d spots (converted double→float)\n", nsp);
+  ObsSpotsLab = ObsSpotsLab_d;  // Both are double now, no conversion needed
+  printf("Spots.bin: %d spots (double precision)\n", nsp);
   return nsp;
 }
 
@@ -710,111 +706,111 @@ static void ReadBins(char *cwd) {
 // ─── Generate ideal spot positions ──────────────────────────
 
 // Forward declaration (needed by h_GenerateIdealSpotsFriedelMixed)
-static void h_GenerateIdealSpots(float ys, float zs, float ttheta, float eta,
-    float Ring_rad, float Rsample, float Hbeam, float step_size,
-    float y0v[], float z0v[], int *nSteps);
+static void h_GenerateIdealSpots(double ys, double zs, double ttheta, double eta,
+    double Ring_rad, double Rsample, double Hbeam, double step_size,
+    double y0v[], double z0v[], int *nSteps);
 
-static inline void h_CalcSpotPosition(float RingRadius, float eta, float *yl, float *zl) {
-  float etaRad = deg2rad * eta;
-  *yl = -(sinf(etaRad) * RingRadius);
-  *zl = cosf(etaRad) * RingRadius;
+static inline void h_CalcSpotPosition(double RingRadius, double eta, double *yl, double *zl) {
+  double etaRad = deg2rad * eta;
+  *yl = -(sin(etaRad) * RingRadius);
+  *zl = cos(etaRad) * RingRadius;
 }
 
-static inline void h_RotateAroundZ(float v1[3], float alpha, float v2[3]) {
-  float cosa = cosf(alpha * deg2rad);
-  float sina = sinf(alpha * deg2rad);
+static inline void h_RotateAroundZ(double v1[3], double alpha, double v2[3]) {
+  double cosa = cos(alpha * deg2rad);
+  double sina = sin(alpha * deg2rad);
   v2[0] = cosa*v1[0] - sina*v1[1];
   v2[1] = sina*v1[0] + cosa*v1[1];
   v2[2] = v1[2];
 }
 
-static void h_CalcOmega(float x, float y, float z, float theta,
-    float omegas[4], float etas[4], int *nsol) {
+static void h_CalcOmega(double x, double y, double z, double theta,
+    double omegas[4], double etas[4], int *nsol) {
   *nsol = 0;
-  float len = sqrtf(x*x + y*y + z*z);
-  float v = sinf(theta * deg2rad) * len;
-  float almostzero = 1e-4f;
-  if (fabsf(y) < almostzero) {
+  double len = sqrt(x*x + y*y + z*z);
+  double v = sin(theta * deg2rad) * len;
+  double almostzero = 1e-4f;
+  if (fabs(y) < almostzero) {
     if (x != 0) {
-      float cosome1 = -v / x;
-      if (fabsf(cosome1) <= 1.0f) {
-        float ome = acosf(cosome1) * rad2deg;
+      double cosome1 = -v / x;
+      if (fabs(cosome1) <= 1.0) {
+        double ome = acos(cosome1) * rad2deg;
         omegas[(*nsol)++] = ome;
         omegas[(*nsol)++] = -ome;
       }
     }
   } else {
-    float y2 = y*y;
-    float a = 1 + (x*x)/y2;
-    float b = (2*v*x)/y2;
-    float c = (v*v)/y2 - 1;
-    float discr = b*b - 4*a*c;
+    double y2 = y*y;
+    double a = 1 + (x*x)/y2;
+    double b = (2*v*x)/y2;
+    double c = (v*v)/y2 - 1;
+    double discr = b*b - 4*a*c;
     if (discr >= 0) {
-      float cosome1 = (-b + sqrtf(discr)) / (2*a);
-      if (fabsf(cosome1) <= 1.0f) {
-        float ome1a = acosf(cosome1);
-        float ome1b = -ome1a;
-        float eqa = -x*cosf(ome1a) + y*sinf(ome1a);
-        float eqb = -x*cosf(ome1b) + y*sinf(ome1b);
-        omegas[(*nsol)++] = (fabsf(eqa-v) < fabsf(eqb-v) ? ome1a : ome1b) * rad2deg;
+      double cosome1 = (-b + sqrt(discr)) / (2*a);
+      if (fabs(cosome1) <= 1.0) {
+        double ome1a = acos(cosome1);
+        double ome1b = -ome1a;
+        double eqa = -x*cos(ome1a) + y*sin(ome1a);
+        double eqb = -x*cos(ome1b) + y*sin(ome1b);
+        omegas[(*nsol)++] = (fabs(eqa-v) < fabs(eqb-v) ? ome1a : ome1b) * rad2deg;
       }
-      float cosome2 = (-b - sqrtf(discr)) / (2*a);
-      if (fabsf(cosome2) <= 1.0f) {
-        float ome2a = acosf(cosome2);
-        float ome2b = -ome2a;
-        float eqa = -x*cosf(ome2a) + y*sinf(ome2a);
-        float eqb = -x*cosf(ome2b) + y*sinf(ome2b);
-        omegas[(*nsol)++] = (fabsf(eqa-v) < fabsf(eqb-v) ? ome2a : ome2b) * rad2deg;
+      double cosome2 = (-b - sqrt(discr)) / (2*a);
+      if (fabs(cosome2) <= 1.0) {
+        double ome2a = acos(cosome2);
+        double ome2b = -ome2a;
+        double eqa = -x*cos(ome2a) + y*sin(ome2a);
+        double eqb = -x*cos(ome2b) + y*sin(ome2b);
+        omegas[(*nsol)++] = (fabs(eqa-v) < fabs(eqb-v) ? ome2a : ome2b) * rad2deg;
       }
     }
   }
-  float gw[3], gv[3] = {x, y, z};
+  double gw[3], gv[3] = {x, y, z};
   for (int i = 0; i < *nsol; i++) {
     h_RotateAroundZ(gv, omegas[i], gw);
     h_CalcEtaAngle(gw[1], gw[2], &etas[i]);
   }
 }
 
-static inline void h_displacement_spot_needed_COM(float a, float b, float c,
-    float xi, float yi, float zi, float omega, float *Displ_y, float *Displ_z) {
-  float lenInv = 1.0f / sqrtf(xi*xi + yi*yi + zi*zi);
+static inline void h_displacement_spot_needed_COM(double a, double b, double c,
+    double xi, double yi, double zi, double omega, double *Displ_y, double *Displ_z) {
+  double lenInv = 1.0 / sqrt(xi*xi + yi*yi + zi*zi);
   xi *= lenInv; yi *= lenInv; zi *= lenInv;
-  float OmegaRad = deg2rad * omega;
-  float sinOme = sinf(OmegaRad), cosOme = cosf(OmegaRad);
-  float t = (a*cosOme - b*sinOme) / xi;
+  double OmegaRad = deg2rad * omega;
+  double sinOme = sin(OmegaRad), cosOme = cos(OmegaRad);
+  double t = (a*cosOme - b*sinOme) / xi;
   *Displ_y = (a*sinOme + b*cosOme) - t*yi;
   *Displ_z = c - t*zi;
 }
 
-static void h_FriedelEtaCalculation(float ys, float zs, float ttheta,
-    float eta, float Ring_rad, float Rsample, float Hbeam,
-    float *EtaMinFr, float *EtaMaxFr) {
-  float quadr_coeff2 = 0;
-  float eta_Hbeam, quadr_coeff, coeff_y0=0, coeff_z0=0, y0_max_z0=0, y0_min_z0=0;
-  float y0_max=0, y0_min=0, z0_min=0, z0_max=0;
+static void h_FriedelEtaCalculation(double ys, double zs, double ttheta,
+    double eta, double Ring_rad, double Rsample, double Hbeam,
+    double *EtaMinFr, double *EtaMaxFr) {
+  double quadr_coeff2 = 0;
+  double eta_Hbeam, quadr_coeff, coeff_y0=0, coeff_z0=0, y0_max_z0=0, y0_min_z0=0;
+  double y0_max=0, y0_min=0, z0_min=0, z0_max=0;
   if (eta > 90)       eta_Hbeam = 180 - eta;
-  else if (eta < -90) eta_Hbeam = 180 - fabsf(eta);
-  else                eta_Hbeam = 90 - fabsf(eta);
-  Hbeam = Hbeam + 2*(Rsample*tanf(ttheta*deg2rad))*sinf(eta_Hbeam*deg2rad);
-  float eta_pole = 1 + rad2deg*acosf(1 - Hbeam/Ring_rad);
-  float eta_equator = 1 + rad2deg*acosf(1 - Rsample/Ring_rad);
+  else if (eta < -90) eta_Hbeam = 180 - fabs(eta);
+  else                eta_Hbeam = 90 - fabs(eta);
+  Hbeam = Hbeam + 2*(Rsample*tanf(ttheta*deg2rad))*sin(eta_Hbeam*deg2rad);
+  double eta_pole = 1 + rad2deg*acos(1 - Hbeam/Ring_rad);
+  double eta_equator = 1 + rad2deg*acos(1 - Rsample/Ring_rad);
   if (eta>=eta_pole && eta<=(90-eta_equator))           { quadr_coeff=1; coeff_y0=-1; coeff_z0=1; }
   else if (eta>=(90+eta_equator) && eta<=(180-eta_pole)) { quadr_coeff=2; coeff_y0=-1; coeff_z0=-1; }
   else if (eta>=(-90+eta_equator) && eta<=-eta_pole)     { quadr_coeff=2; coeff_y0=1;  coeff_z0=1; }
   else if (eta>=(-180+eta_pole) && eta<=(-90-eta_equator)) { quadr_coeff=1; coeff_y0=1; coeff_z0=-1; }
   else quadr_coeff = 0;
-  float y0_max_R = ys + Rsample, y0_min_R = ys - Rsample;
-  float z0_max_H = zs + 0.5f*Hbeam, z0_min_H = zs - 0.5f*Hbeam;
+  double y0_max_R = ys + Rsample, y0_min_R = ys - Rsample;
+  double z0_max_H = zs + 0.5*Hbeam, z0_min_H = zs - 0.5*Hbeam;
   if (quadr_coeff == 1) {
-    y0_max_z0 = coeff_y0*sqrtf(Ring_rad*Ring_rad - z0_max_H*z0_max_H);
-    y0_min_z0 = coeff_y0*sqrtf(Ring_rad*Ring_rad - z0_min_H*z0_min_H);
+    y0_max_z0 = coeff_y0*sqrt(Ring_rad*Ring_rad - z0_max_H*z0_max_H);
+    y0_min_z0 = coeff_y0*sqrt(Ring_rad*Ring_rad - z0_min_H*z0_min_H);
   } else if (quadr_coeff == 2) {
-    y0_max_z0 = coeff_y0*sqrtf(Ring_rad*Ring_rad - z0_min_H*z0_min_H);
-    y0_min_z0 = coeff_y0*sqrtf(Ring_rad*Ring_rad - z0_max_H*z0_max_H);
+    y0_max_z0 = coeff_y0*sqrt(Ring_rad*Ring_rad - z0_min_H*z0_min_H);
+    y0_min_z0 = coeff_y0*sqrt(Ring_rad*Ring_rad - z0_max_H*z0_max_H);
   }
   if (quadr_coeff > 0) {
-    y0_max = fminf(y0_max_R, y0_max_z0);
-    y0_min = fmaxf(y0_min_R, y0_min_z0);
+    y0_max = fmin(y0_max_R, y0_max_z0);
+    y0_min = fmax(y0_min_R, y0_min_z0);
   } else {
     if (eta > -eta_pole && eta < eta_pole)              { y0_max=y0_max_R; y0_min=y0_min_R; coeff_z0=1; }
     else if (eta < (-180+eta_pole))                     { y0_max=y0_max_R; y0_min=y0_min_R; coeff_z0=-1; }
@@ -823,48 +819,48 @@ static void h_FriedelEtaCalculation(float ys, float zs, float ttheta,
     else if (eta>(-90-eta_equator) && eta<(-90+eta_equator)) { quadr_coeff2=1; z0_max=z0_max_H; z0_min=z0_min_H; coeff_y0=1; }
   }
   if (quadr_coeff2 == 0) {
-    z0_min = coeff_z0*sqrtf(Ring_rad*Ring_rad - y0_min*y0_min);
-    z0_max = coeff_z0*sqrtf(Ring_rad*Ring_rad - y0_max*y0_max);
+    z0_min = coeff_z0*sqrt(Ring_rad*Ring_rad - y0_min*y0_min);
+    z0_max = coeff_z0*sqrt(Ring_rad*Ring_rad - y0_max*y0_max);
   } else {
-    y0_min = coeff_y0*sqrtf(Ring_rad*Ring_rad - z0_min*z0_min);
-    y0_max = coeff_y0*sqrtf(Ring_rad*Ring_rad - z0_max*z0_max);
+    y0_min = coeff_y0*sqrt(Ring_rad*Ring_rad - z0_min*z0_min);
+    y0_max = coeff_y0*sqrt(Ring_rad*Ring_rad - z0_max*z0_max);
   }
-  float dYMin = ys-y0_min, dYMax = ys-y0_max, dZMin = zs-z0_min, dZMax = zs-z0_max;
-  float YMinFr = y0_min - dYMin, YMaxFr = y0_max - dYMax;
-  float ZMinFr = -z0_min + dZMin, ZMaxFr = -z0_max + dZMax;
-  float Eta1, Eta2;
+  double dYMin = ys-y0_min, dYMax = ys-y0_max, dZMin = zs-z0_min, dZMax = zs-z0_max;
+  double YMinFr = y0_min - dYMin, YMaxFr = y0_max - dYMax;
+  double ZMinFr = -z0_min + dZMin, ZMaxFr = -z0_max + dZMax;
+  double Eta1, Eta2;
   h_CalcEtaAngle(YMinFr+ys, ZMinFr-zs, &Eta1);
   h_CalcEtaAngle(YMaxFr+ys, ZMaxFr-zs, &Eta2);
-  *EtaMinFr = fminf(Eta1, Eta2);
-  *EtaMaxFr = fmaxf(Eta1, Eta2);
+  *EtaMinFr = fmin(Eta1, Eta2);
+  *EtaMaxFr = fmax(Eta1, Eta2);
 }
 
-static void h_GenerateIdealSpotsFriedel(float ys, float zs, float ttheta,
-    float eta, float omega, int ringno, float Ring_rad, float Rsample,
-    float Hbeam, float OmeTol, float RadiusTol,
-    float y0v[], float z0v[], int *nSteps) {
+static void h_GenerateIdealSpotsFriedel(double ys, double zs, double ttheta,
+    double eta, double omega, int ringno, double Ring_rad, double Rsample,
+    double Hbeam, double OmeTol, double RadiusTol,
+    double y0v[], double z0v[], int *nSteps) {
   *nSteps = 0;
-  float OmeF = (omega < 0) ? omega + 180 : omega - 180;
-  float EtaF = (eta < 0) ? -180 - eta : 180 - eta;
+  double OmeF = (omega < 0) ? omega + 180 : omega - 180;
+  double EtaF = (eta < 0) ? -180 - eta : 180 - eta;
   for (int r = 0; r < (int)n_spots; r++) {
     int rno_obs = (int)roundf(ObsSpotsLab[r*N_COL_OBSSPOTS+5]);
-    float ome_obs = ObsSpotsLab[r*N_COL_OBSSPOTS+2];
+    double ome_obs = ObsSpotsLab[r*N_COL_OBSSPOTS+2];
     if (rno_obs != ringno) continue;
-    if (fabsf(ome_obs - OmeF) > OmeTol) continue;
-    float yf = ObsSpotsLab[r*N_COL_OBSSPOTS+0];
-    float zf = ObsSpotsLab[r*N_COL_OBSSPOTS+1];
-    float EtaTransf;
+    if (fabs(ome_obs - OmeF) > OmeTol) continue;
+    double yf = ObsSpotsLab[r*N_COL_OBSSPOTS+0];
+    double zf = ObsSpotsLab[r*N_COL_OBSSPOTS+1];
+    double EtaTransf;
     h_CalcEtaAngle(yf+ys, zf-zs, &EtaTransf);
-    float radius = sqrtf((yf+ys)*(yf+ys) + (zf-zs)*(zf-zs));
-    if (fabsf(radius - 2*Ring_rad) > RadiusTol) continue;
-    float EtaMinF, EtaMaxF;
+    double radius = sqrt((yf+ys)*(yf+ys) + (zf-zs)*(zf-zs));
+    if (fabs(radius - 2*Ring_rad) > RadiusTol) continue;
+    double EtaMinF, EtaMaxF;
     h_FriedelEtaCalculation(ys, zs, ttheta, eta, Ring_rad, Rsample, Hbeam, &EtaMinF, &EtaMaxF);
     if (EtaTransf < EtaMinF || EtaTransf > EtaMaxF) continue;
-    float ZPosAccZ = zs - (zf+zs)/2;
-    float YPosAccY = ys - (-yf+ys)/2;
-    float etaIdealF;
+    double ZPosAccZ = zs - (zf+zs)/2;
+    double YPosAccY = ys - (-yf+ys)/2;
+    double etaIdealF;
     h_CalcEtaAngle(YPosAccY, ZPosAccZ, &etaIdealF);
-    float IdealYPos, IdealZPos;
+    double IdealYPos, IdealZPos;
     h_CalcSpotPosition(Ring_rad, etaIdealF, &IdealYPos, &IdealZPos);
     y0v[*nSteps] = IdealYPos;
     z0v[*nSteps] = IdealZPos;
@@ -880,61 +876,61 @@ static int h_AddUnique(int *arr, int *n, int val) {
 }
 
 static void h_GenerateIdealSpotsFriedelMixed(
-    float ys, float zs, float Ttheta, float Eta, float Omega,
-    int RingNr, float Ring_rad, float Lsd, float Rsample,
-    float Hbeam, float StepSizePos, float OmeTol, float RadialTol,
-    float EtaBinSz, float OmeBinSz,
-    float EtaTol, float spots_y[], float spots_z[], int *nSteps) {
+    double ys, double zs, double Ttheta, double Eta, double Omega,
+    int RingNr, double Ring_rad, double Lsd, double Rsample,
+    double Hbeam, double StepSizePos, double OmeTol, double RadialTol,
+    double EtaBinSz, double OmeBinSz,
+    double EtaTol, double spots_y[], double spots_z[], int *nSteps) {
   const int MinEtaReject = 10;
-  float theta = Ttheta / 2;
-  float SinMinEtaReject = sinf(MinEtaReject * deg2rad);
+  double theta = Ttheta / 2;
+  double SinMinEtaReject = sin(MinEtaReject * deg2rad);
   *nSteps = 0;
-  if (fabsf(sinf(Eta * deg2rad)) < SinMinEtaReject) return;
+  if (fabs(sin(Eta * deg2rad)) < SinMinEtaReject) return;
 
-  float y0_vector[2000], z0_vector[2000];
+  double y0_vector[2000], z0_vector[2000];
   int NoOfSpots;
   h_GenerateIdealSpots(ys, zs, Ttheta, Eta, Ring_rad, Rsample, Hbeam,
                        StepSizePos, y0_vector, z0_vector, &NoOfSpots);
 
-  float FPCandidates[2000][3];
+  double FPCandidates[2000][3];
   int FPCandidatesUnique[2000];
   int nFPCandidates = 0;
-  float EtaTolDeg = rad2deg * atanf(EtaTol / Ring_rad);
+  double EtaTolDeg = rad2deg * atanf(EtaTol / Ring_rad);
 
   for (int SpOnRing = 0; SpOnRing < NoOfSpots; SpOnRing++) {
-    float y0 = y0_vector[SpOnRing], z0 = z0_vector[SpOnRing];
-    float xi, yi, zi;
+    double y0 = y0_vector[SpOnRing], z0 = z0_vector[SpOnRing];
+    double xi, yi, zi;
     h_MakeUnitLength(Lsd, y0, z0, &xi, &yi, &zi);
-    float G1, G2, G3;
+    double G1, G2, G3;
     h_spot_to_gv(xi, yi, zi, Omega, &G1, &G2, &G3);
-    float omegasFP[4], etasFP[4]; int nsol;
+    double omegasFP[4], etasFP[4]; int nsol;
     h_CalcOmega(-G1, -G2, -G3, theta, omegasFP, etasFP, &nsol);
     if (nsol <= 1) continue;
-    float diff0 = fabsf(omegasFP[0] - Omega);
+    double diff0 = fabs(omegasFP[0] - Omega);
     if (diff0 > 180) diff0 = 360 - diff0;
-    float diff1 = fabsf(omegasFP[1] - Omega);
+    double diff1 = fabs(omegasFP[1] - Omega);
     if (diff1 > 180) diff1 = 360 - diff1;
-    float OmegaFP, EtaFP;
+    double OmegaFP, EtaFP;
     if (diff0 < diff1) { OmegaFP = omegasFP[0]; EtaFP = etasFP[0]; }
     else               { OmegaFP = omegasFP[1]; EtaFP = etasFP[1]; }
-    float YFP1, ZFP1;
+    double YFP1, ZFP1;
     h_CalcSpotPosition(Ring_rad, EtaFP, &YFP1, &ZFP1);
     int nMax, nMin;
     h_calc_n_max_min(xi, yi, ys, y0, Rsample, (int)StepSizePos, &nMax, &nMin);
     for (int n = nMin; n <= nMax; n++) {
-      float a, b, c;
+      double a, b, c;
       h_spot_to_unrotated(xi, yi, zi, ys, zs, y0, z0, StepSizePos, n, Omega, &a, &b, &c);
-      if (fabsf(c) > Hbeam/2) continue;
-      float Dy, Dz;
+      if (fabs(c) > Hbeam/2) continue;
+      double Dy, Dz;
       h_displacement_spot_needed_COM(a, b, c, Lsd, YFP1, ZFP1, OmegaFP, &Dy, &Dz);
-      float YFP = YFP1 + Dy, ZFP = ZFP1 + Dz;
-      float RadialPosFP = sqrtf(YFP*YFP + ZFP*ZFP) - Ring_rad;
-      float EtaFPCorr;
+      double YFP = YFP1 + Dy, ZFP = ZFP1 + Dz;
+      double RadialPosFP = sqrt(YFP*YFP + ZFP*ZFP) - Ring_rad;
+      double EtaFPCorr;
       h_CalcEtaAngle(YFP, ZFP, &EtaFPCorr);
       // Bin lookup (inline GetBin)
       int iRing = RingNr - 1;
-      int iEta = (int)floorf((180.0f + EtaFPCorr) / EtaBinSz);
-      int iOme = (int)floorf((180.0f + OmegaFP) / OmeBinSz);
+      int iEta = (int)floor((180.0 + EtaFPCorr) / EtaBinSz);
+      int iOme = (int)floor((180.0 + OmegaFP) / OmeBinSz);
       if (iEta<0) iEta=0; if (iEta>=n_eta_bins) iEta=n_eta_bins-1;
       if (iOme<0) iOme=0; if (iOme>=n_ome_bins) iOme=n_ome_bins-1;
       size_t Pos = (size_t)iRing*n_eta_bins*n_ome_bins + (size_t)iEta*n_ome_bins + iOme;
@@ -942,11 +938,11 @@ static void h_GenerateIdealSpotsFriedelMixed(
       for (int iSpot = 0; iSpot < nInBin; iSpot++) {
         int spotRow = data[DataPos_ + iSpot];
         int base = spotRow * N_COL_OBSSPOTS;
-        if (fabsf(RadialPosFP - ObsSpotsLab[base+8]) >= RadialTol) continue;
-        if (fabsf(OmegaFP - ObsSpotsLab[base+2]) >= OmeTol) continue;
-        if (fabsf(EtaFPCorr - ObsSpotsLab[base+6]) >= EtaTolDeg) continue;
-        float dy = YFP - ObsSpotsLab[base+0], dz = ZFP - ObsSpotsLab[base+1];
-        float diffPos2 = dy*dy + dz*dz;
+        if (fabs(RadialPosFP - ObsSpotsLab[base+8]) >= RadialTol) continue;
+        if (fabs(OmegaFP - ObsSpotsLab[base+2]) >= OmeTol) continue;
+        if (fabs(EtaFPCorr - ObsSpotsLab[base+6]) >= EtaTolDeg) continue;
+        double dy = YFP - ObsSpotsLab[base+0], dz = ZFP - ObsSpotsLab[base+1];
+        double diffPos2 = dy*dy + dz*dz;
         int idx = nFPCandidates;
         for (int i = 0; i < nFPCandidates; i++) {
           if (FPCandidates[i][0] == ObsSpotsLab[base+4]) {
@@ -956,7 +952,7 @@ static void h_GenerateIdealSpotsFriedelMixed(
         }
         if (idx >= 0) {
           FPCandidates[idx][0] = ObsSpotsLab[base+4];
-          FPCandidates[idx][1] = (float)SpOnRing;
+          FPCandidates[idx][1] = (double)SpOnRing;
           FPCandidates[idx][2] = diffPos2;
           if (idx == nFPCandidates) nFPCandidates++;
         }
@@ -973,25 +969,25 @@ static void h_GenerateIdealSpotsFriedelMixed(
   *nSteps = nFPCandidatesUniq;
 }
 
-static void h_GenerateIdealSpots(float ys, float zs, float ttheta, float eta,
-    float Ring_rad, float Rsample, float Hbeam, float step_size,
-    float y0v[], float z0v[], int *nSteps) {
+static void h_GenerateIdealSpots(double ys, double zs, double ttheta, double eta,
+    double Ring_rad, double Rsample, double Hbeam, double step_size,
+    double y0v[], double z0v[], int *nSteps) {
   // Simplified version: generate y0 along the illuminated arc
-  int qc2=0; float eh,qc,cy=0,cz=0,ymax_z0,ymin_z0,ymax=0,ymin=0,zmin=0,zmax=0;
-  if(eta>90) eh=180-eta; else if(eta<-90) eh=180-fabsf(eta); else eh=90-fabsf(eta);
-  Hbeam += 2*(Rsample*tanf(ttheta*deg2rad))*sinf(eh*deg2rad);
-  float epole=1+rad2deg*acosf(1-Hbeam/Ring_rad);
-  float eeq=1+rad2deg*acosf(1-Rsample/Ring_rad);
+  int qc2=0; double eh,qc,cy=0,cz=0,ymax_z0,ymin_z0,ymax=0,ymin=0,zmin=0,zmax=0;
+  if(eta>90) eh=180-eta; else if(eta<-90) eh=180-fabs(eta); else eh=90-fabs(eta);
+  Hbeam += 2*(Rsample*tanf(ttheta*deg2rad))*sin(eh*deg2rad);
+  double epole=1+rad2deg*acos(1-Hbeam/Ring_rad);
+  double eeq=1+rad2deg*acos(1-Rsample/Ring_rad);
   if(eta>=epole&&eta<=(90-eeq)){qc=1;cy=-1;cz=1;}
   else if(eta>=(90+eeq)&&eta<=(180-epole)){qc=2;cy=-1;cz=-1;}
   else if(eta>=(-90+eeq)&&eta<=-epole){qc=2;cy=1;cz=1;}
   else if(eta>=(-180+epole)&&eta<=(-90-eeq)){qc=1;cy=1;cz=-1;}
   else qc=0;
-  float ymaxR=ys+Rsample, yminR=ys-Rsample;
-  float zmaxH=zs+0.5f*Hbeam, zminH=zs-0.5f*Hbeam;
-  if(qc==1){ymax_z0=cy*sqrtf(Ring_rad*Ring_rad-zmaxH*zmaxH);ymin_z0=cy*sqrtf(Ring_rad*Ring_rad-zminH*zminH);}
-  else if(qc==2){ymax_z0=cy*sqrtf(Ring_rad*Ring_rad-zminH*zminH);ymin_z0=cy*sqrtf(Ring_rad*Ring_rad-zmaxH*zmaxH);}
-  if(qc>0){ymax=fminf(ymaxR,ymax_z0);ymin=fmaxf(yminR,ymin_z0);}
+  double ymaxR=ys+Rsample, yminR=ys-Rsample;
+  double zmaxH=zs+0.5*Hbeam, zminH=zs-0.5*Hbeam;
+  if(qc==1){ymax_z0=cy*sqrt(Ring_rad*Ring_rad-zmaxH*zmaxH);ymin_z0=cy*sqrt(Ring_rad*Ring_rad-zminH*zminH);}
+  else if(qc==2){ymax_z0=cy*sqrt(Ring_rad*Ring_rad-zminH*zminH);ymin_z0=cy*sqrt(Ring_rad*Ring_rad-zmaxH*zmaxH);}
+  if(qc>0){ymax=fmin(ymaxR,ymax_z0);ymin=fmax(yminR,ymin_z0);}
   else {
     if(eta>-epole&&eta<epole){ymax=ymaxR;ymin=yminR;cz=1;}
     else if(eta<(-180+epole)){ymax=ymaxR;ymin=yminR;cz=-1;}
@@ -999,19 +995,19 @@ static void h_GenerateIdealSpots(float ys, float zs, float ttheta, float eta,
     else if(eta>(90-eeq)&&eta<(90+eeq)){qc2=1;zmax=zmaxH;zmin=zminH;cy=-1;}
     else if(eta>(-90-eeq)&&eta<(-90+eeq)){qc2=1;zmax=zmaxH;zmin=zminH;cy=1;}
   }
-  float y1,z1,y2,z2; int ns;
-  if(!qc2){y1=ymin;z1=cz*sqrtf(Ring_rad*Ring_rad-y1*y1);y2=ymax;z2=cz*sqrtf(Ring_rad*Ring_rad-y2*y2);}
-  else{z1=zmin;y1=cy*sqrtf(Ring_rad*Ring_rad-z1*z1);z2=zmax;y2=cy*sqrtf(Ring_rad*Ring_rad-z2*z2);}
-  float yd=y1-y2,zd=z1-z2; float len=sqrtf(yd*yd+zd*zd);
+  double y1,z1,y2,z2; int ns;
+  if(!qc2){y1=ymin;z1=cz*sqrt(Ring_rad*Ring_rad-y1*y1);y2=ymax;z2=cz*sqrt(Ring_rad*Ring_rad-y2*y2);}
+  else{z1=zmin;y1=cy*sqrt(Ring_rad*Ring_rad-z1*z1);z2=zmax;y2=cy*sqrt(Ring_rad*Ring_rad-z2*z2);}
+  double yd=y1-y2,zd=z1-z2; double len=sqrt(yd*yd+zd*zd);
   ns=(int)ceilf(len/step_size); if(ns%2==0) ns++; if(ns<1) ns=1;
   if(ns==1){
-    if(!qc2){y0v[0]=(ymax+ymin)/2;z0v[0]=cz*sqrtf(Ring_rad*Ring_rad-y0v[0]*y0v[0]);}
-    else{z0v[0]=(zmax+zmin)/2;y0v[0]=cy*sqrtf(Ring_rad*Ring_rad-z0v[0]*z0v[0]);}
+    if(!qc2){y0v[0]=(ymax+ymin)/2;z0v[0]=cz*sqrt(Ring_rad*Ring_rad-y0v[0]*y0v[0]);}
+    else{z0v[0]=(zmax+zmin)/2;y0v[0]=cy*sqrt(Ring_rad*Ring_rad-z0v[0]*z0v[0]);}
   } else {
-    float sy=(ymax-ymin)/(ns-1), sz=(zmax-zmin)/(ns-1);
+    double sy=(ymax-ymin)/(ns-1), sz=(zmax-zmin)/(ns-1);
     for(int i=0;i<ns;i++){
-      if(!qc2){y0v[i]=ymin+i*sy;z0v[i]=cz*sqrtf(Ring_rad*Ring_rad-y0v[i]*y0v[i]);}
-      else{z0v[i]=zmin+i*sz;y0v[i]=cy*sqrtf(Ring_rad*Ring_rad-z0v[i]*z0v[i]);}
+      if(!qc2){y0v[i]=ymin+i*sy;z0v[i]=cz*sqrt(Ring_rad*Ring_rad-y0v[i]*y0v[i]);}
+      else{z0v[i]=zmin+i*sz;y0v[i]=cy*sqrt(Ring_rad*Ring_rad-z0v[i]*z0v[i]);}
     }
   }
   *nSteps=ns;
@@ -1043,9 +1039,9 @@ int main(int argc, char *argv[]) {
   if (!hklf) { printf("Cannot open hkls.csv\n"); exit(1); }
   char aline[4096];
   fgets(aline,1000,hklf);
-  int hi,ki,li,Rnr; float hc,kc,lc,RRd,Ds,tht,tth;
+  int hi,ki,li,Rnr; double hc,kc,lc,RRd,Ds,tht,tth;
   while (fgets(aline,1000,hklf)) {
-    sscanf(aline,"%d %d %d %f %d %f %f %f %f %f %f",
+    sscanf(aline,"%d %d %d %lf %d %lf %lf %lf %lf %lf %lf",
            &hi,&ki,&li,&Ds,&Rnr,&hc,&kc,&lc,&tht,&tth,&RRd);
     RingHKL[Rnr][0]=hc; RingHKL[Rnr][1]=kc; RingHKL[Rnr][2]=lc;
     RingTtheta[Rnr]=tth;
@@ -1054,7 +1050,7 @@ int main(int argc, char *argv[]) {
         HKLints[n_hkls][0]=hi; HKLints[n_hkls][1]=ki;
         HKLints[n_hkls][2]=li; HKLints[n_hkls][3]=Rnr;
         hkls[n_hkls][0]=hc; hkls[n_hkls][1]=kc; hkls[n_hkls][2]=lc;
-        hkls[n_hkls][3]=(float)Rnr; hkls[n_hkls][4]=Ds;
+        hkls[n_hkls][3]=(double)Rnr; hkls[n_hkls][4]=Ds;
         hkls[n_hkls][5]=tht; hkls[n_hkls][6]=RRd;
         n_hkls++; break;
       }
@@ -1073,18 +1069,18 @@ int main(int argc, char *argv[]) {
   int HighestRingNo = 0;
   for (int i=0;i<MAX_N_RINGS;i++) if(Params.RingRadii[i]) HighestRingNo=i;
   n_ring_bins = HighestRingNo;
-  n_eta_bins = (int)ceilf(360.0f / Params.EtaBinSize);
-  n_ome_bins = (int)ceilf(360.0f / Params.OmeBinSize);
+  n_eta_bins = (int)ceilf(360.0 / Params.EtaBinSize);
+  n_ome_bins = (int)ceilf(360.0 / Params.OmeBinSize);
   EtaBinSize = Params.EtaBinSize; OmeBinSize = Params.OmeBinSize;
   printf("Bins: ring=%d eta=%d ome=%d\n", n_ring_bins, n_eta_bins, n_ome_bins);
 
   // 4. Precompute margins
-  float omemargins[181], etamargins[MAX_N_RINGS];
-  for (int i=1;i<180;i++) omemargins[i]=Params.MarginOme+(0.5f*Params.StepsizeOrient/fabsf(sinf(i*deg2rad)));
+  double omemargins[181], etamargins[MAX_N_RINGS];
+  for (int i=1;i<180;i++) omemargins[i]=Params.MarginOme+(0.5*Params.StepsizeOrient/fabs(sin(i*deg2rad)));
   omemargins[0]=omemargins[1]; omemargins[180]=omemargins[1];
   for (int i=0;i<MAX_N_RINGS;i++) {
     if (Params.RingRadii[i]==0) etamargins[i]=0;
-    else etamargins[i]=rad2deg*atanf(Params.MarginEta/Params.RingRadii[i])+0.5f*Params.StepsizeOrient;
+    else etamargins[i]=rad2deg*atanf(Params.MarginEta/Params.RingRadii[i])+0.5*Params.StepsizeOrient;
   }
 
   // 5. Open output files
@@ -1104,8 +1100,8 @@ int main(int argc, char *argv[]) {
 
   // 6. Read spot IDs
   int nBlocks = atoi(argv[3]);
-  int startRow = (int)(ceilf((float)nSpotsToIndex/nBlocks))*blockNr;
-  int tmp = (int)(ceilf((float)nSpotsToIndex/nBlocks))*(blockNr+1);
+  int startRow = (int)(ceilf((double)nSpotsToIndex/nBlocks))*blockNr;
+  int tmp = (int)(ceilf((double)nSpotsToIndex/nBlocks))*(blockNr+1);
   int endRow = tmp < (nSpotsToIndex-1) ? tmp : (nSpotsToIndex-1);
   int nSpotIDs = endRow - startRow + 1;
   int *SpotIDs = (int*)malloc(nSpotIDs*sizeof(int));
@@ -1152,13 +1148,13 @@ int main(int argc, char *argv[]) {
   CUDA_CHECK(cudaMemcpyToSymbol(c_params, &gp, sizeof(GPUParams)));
 
   // Upload persistent data to GPU
-  float *d_hkls_flat;
-  CUDA_CHECK(cudaMalloc(&d_hkls_flat, n_hkls*7*sizeof(float)));
-  CUDA_CHECK(cudaMemcpy(d_hkls_flat, hkls, n_hkls*7*sizeof(float), cudaMemcpyHostToDevice));
+  double *d_hkls_flat;
+  CUDA_CHECK(cudaMalloc(&d_hkls_flat, n_hkls*7*sizeof(double)));
+  CUDA_CHECK(cudaMemcpy(d_hkls_flat, hkls, n_hkls*7*sizeof(double), cudaMemcpyHostToDevice));
 
-  float *d_ObsSpotsLab;
-  CUDA_CHECK(cudaMalloc(&d_ObsSpotsLab, n_spots*N_COL_OBSSPOTS*sizeof(float)));
-  CUDA_CHECK(cudaMemcpy(d_ObsSpotsLab, ObsSpotsLab, n_spots*N_COL_OBSSPOTS*sizeof(float), cudaMemcpyHostToDevice));
+  double *d_ObsSpotsLab;
+  CUDA_CHECK(cudaMalloc(&d_ObsSpotsLab, n_spots*N_COL_OBSSPOTS*sizeof(double)));
+  CUDA_CHECK(cudaMemcpy(d_ObsSpotsLab, ObsSpotsLab, n_spots*N_COL_OBSSPOTS*sizeof(double), cudaMemcpyHostToDevice));
 
   int *d_data, *d_ndata;
   // Determine data sizes from file sizes
@@ -1184,8 +1180,8 @@ int main(int argc, char *argv[]) {
   SpotResult *h_results = (SpotResult*)calloc(nSpotIDs, sizeof(SpotResult));
   for (int i=0;i<nSpotIDs;i++) {
     h_results[i].atomicKey = 0ULL;
-    h_results[i].bestFrac = -1.0f;
-    h_results[i].bestIA = 999.0f;
+    h_results[i].bestFrac = -1.0;
+    h_results[i].bestIA = 999.0;
   }
   CUDA_CHECK(cudaMemcpy(d_results, h_results, nSpotIDs*sizeof(SpotResult), cudaMemcpyHostToDevice));
 
@@ -1200,9 +1196,9 @@ int main(int argc, char *argv[]) {
   int *tupleCounts = (int*)calloc(nSpotIDs, sizeof(int));
 
   // Pre-allocate per-thread OrTmp buffers (MAX_N_OR*9 floats = 1.3 MB each)
-  float **OrTmp_all = (float**)malloc(numProcs * sizeof(float*));
+  double **OrTmp_all = (double**)malloc(numProcs * sizeof(double*));
   for (int t = 0; t < numProcs; t++)
-    OrTmp_all[t] = (float*)malloc(MAX_N_OR * 9 * sizeof(float));
+    OrTmp_all[t] = (double*)malloc(MAX_N_OR * 9 * sizeof(double));
 
   #pragma omp parallel for num_threads(numProcs) schedule(dynamic)
   for (int si = 0; si < nSpotIDs; si++) {
@@ -1215,14 +1211,14 @@ int main(int argc, char *argv[]) {
     }
     if (SpotRowNo < 0) continue;
 
-    float ys = ObsSpotsLab[SpotRowNo*N_COL_OBSSPOTS+0];
-    float zs = ObsSpotsLab[SpotRowNo*N_COL_OBSSPOTS+1];
-    float omega = ObsSpotsLab[SpotRowNo*N_COL_OBSSPOTS+2];
-    float eta = ObsSpotsLab[SpotRowNo*N_COL_OBSSPOTS+6];
+    double ys = ObsSpotsLab[SpotRowNo*N_COL_OBSSPOTS+0];
+    double zs = ObsSpotsLab[SpotRowNo*N_COL_OBSSPOTS+1];
+    double omega = ObsSpotsLab[SpotRowNo*N_COL_OBSSPOTS+2];
+    double eta = ObsSpotsLab[SpotRowNo*N_COL_OBSSPOTS+6];
     int ringnr = (int)ObsSpotsLab[SpotRowNo*N_COL_OBSSPOTS+5];
 
     // Generate plane normals — match CPU's Friedel pair logic
-    float y0v[MAX_N_STEPS], z0v[MAX_N_STEPS];
+    double y0v[MAX_N_STEPS], z0v[MAX_N_STEPS];
     int nPN = 0;
     int usingFriedelPair = 0;
     if (Params.UseFriedelPairs == 1) {
@@ -1250,24 +1246,24 @@ int main(int argc, char *argv[]) {
 
     int count = 0;
     for (int isp=0; isp<nPN; isp++) {
-      float xi,yi,zi;
+      double xi,yi,zi;
       h_MakeUnitLength(Params.Distance, y0v[isp], z0v[isp], &xi, &yi, &zi);
-      float g1,g2,g3;
+      double g1,g2,g3;
       h_spot_to_gv(xi,yi,zi,omega,&g1,&g2,&g3);
-      float hn[3]={g1,g2,g3};
+      double hn[3]={g1,g2,g3};
       double hkl_d[3]={RingHKL[ringnr][0],RingHKL[ringnr][1],RingHKL[ringnr][2]};
       int nOr;
-      float *OrTmp = OrTmp_all[omp_get_thread_num()];
+      double *OrTmp = OrTmp_all[omp_get_thread_num()];
       h_GenerateCandidateOrientations(hkl_d, hn, Params.StepsizeOrient, OrTmp, &nOr, ringnr);
 
       for (int or_=0; or_<nOr; or_++) {
         int nmax,nmin;
         h_calc_n_max_min(xi,yi,ys,y0v[isp],Params.Rsample,Params.StepsizePos,&nmax,&nmin);
         for (int n=nmin; n<=nmax; n++) {
-          float ga,gb,gc;
+          double ga,gb,gc;
           h_spot_to_unrotated(xi,yi,zi,ys,zs,y0v[isp],z0v[isp],
                               Params.StepsizePos,n,omega,&ga,&gb,&gc);
-          if (fabsf(gc) > Params.Hbeam/2) continue;
+          if (fabs(gc) > Params.Hbeam/2) continue;
           count++;
         }
       }
@@ -1306,14 +1302,14 @@ int main(int argc, char *argv[]) {
       }
       if (SpotRowNo < 0) continue;
 
-      float ys = ObsSpotsLab[SpotRowNo*N_COL_OBSSPOTS+0];
-      float zs = ObsSpotsLab[SpotRowNo*N_COL_OBSSPOTS+1];
-      float omega = ObsSpotsLab[SpotRowNo*N_COL_OBSSPOTS+2];
-      float RefRad = ObsSpotsLab[SpotRowNo*N_COL_OBSSPOTS+3];
-      float eta = ObsSpotsLab[SpotRowNo*N_COL_OBSSPOTS+6];
+      double ys = ObsSpotsLab[SpotRowNo*N_COL_OBSSPOTS+0];
+      double zs = ObsSpotsLab[SpotRowNo*N_COL_OBSSPOTS+1];
+      double omega = ObsSpotsLab[SpotRowNo*N_COL_OBSSPOTS+2];
+      double RefRad = ObsSpotsLab[SpotRowNo*N_COL_OBSSPOTS+3];
+      double eta = ObsSpotsLab[SpotRowNo*N_COL_OBSSPOTS+6];
       int ringnr = (int)ObsSpotsLab[SpotRowNo*N_COL_OBSSPOTS+5];
 
-      float y0v[MAX_N_STEPS], z0v[MAX_N_STEPS];
+      double y0v[MAX_N_STEPS], z0v[MAX_N_STEPS];
       int nPN = 0;
       int usingFriedelPair = 0;
       if (Params.UseFriedelPairs == 1) {
@@ -1340,23 +1336,23 @@ int main(int argc, char *argv[]) {
       }
       int idx = tupleOffsets[si];
       for (int isp=0; isp<nPN; isp++) {
-        float xi,yi,zi;
+        double xi,yi,zi;
         h_MakeUnitLength(Params.Distance, y0v[isp], z0v[isp], &xi, &yi, &zi);
-        float g1,g2,g3;
+        double g1,g2,g3;
         h_spot_to_gv(xi,yi,zi,omega,&g1,&g2,&g3);
-        float hn[3]={g1,g2,g3};
+        double hn[3]={g1,g2,g3};
         double hkl_d[3]={RingHKL[ringnr][0],RingHKL[ringnr][1],RingHKL[ringnr][2]};
-        int nOr; float *OrTmp = OrTmp_all[omp_get_thread_num()];
+        int nOr; double *OrTmp = OrTmp_all[omp_get_thread_num()];
         h_GenerateCandidateOrientations(hkl_d, hn, Params.StepsizeOrient, OrTmp, &nOr, ringnr);
 
         for (int or_=0; or_<nOr; or_++) {
           int nmax,nmin;
           h_calc_n_max_min(xi,yi,ys,y0v[isp],Params.Rsample,Params.StepsizePos,&nmax,&nmin);
           for (int n=nmin; n<=nmax; n++) {
-            float ga,gb,gc;
+            double ga,gb,gc;
             h_spot_to_unrotated(xi,yi,zi,ys,zs,y0v[isp],z0v[isp],
                                 Params.StepsizePos,n,omega,&ga,&gb,&gc);
-            if (fabsf(gc) > Params.Hbeam/2) continue;
+            if (fabs(gc) > Params.Hbeam/2) continue;
             EvalTuple *t = &h_tuples[idx++];
             t->spotIdx = si;
             for(int k=0;k<9;k++) t->OrMat[k] = OrTmp[or_*9+k];
@@ -1375,7 +1371,7 @@ int main(int argc, char *argv[]) {
 
     // Compute dynamic scratch size: each HKL can produce at most 2 omega solutions
     int maxTheorSpots = n_hkls * 2;
-    size_t scratchPerThread = (size_t)maxTheorSpots * N_COL_THEORSPOTS * sizeof(float);
+    size_t scratchPerThread = (size_t)maxTheorSpots * N_COL_THEORSPOTS * sizeof(double);
 
     // Process in batches — account for both tuples AND scratch memory
     size_t freeMem, totalMem;
@@ -1394,7 +1390,7 @@ int main(int argc, char *argv[]) {
     EvalTuple *d_tuples;
     CUDA_CHECK(cudaMalloc(&d_tuples, batchSize * sizeof(EvalTuple)));
 
-    float *d_theorScratch;
+    double *d_theorScratch;
     CUDA_CHECK(cudaMalloc(&d_theorScratch, batchSize * scratchPerThread));
 
     int blockSize = 256;

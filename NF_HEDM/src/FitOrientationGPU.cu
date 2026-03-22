@@ -22,6 +22,7 @@
 #ifdef ENABLE_CUDA
 
 #include <cuda_runtime.h>
+#define RealType double
 #include "midas_gpu_math.cuh"  // Shared GPU math (utils/)
 #include <math.h>
 #include <stdio.h>
@@ -34,7 +35,6 @@
 // (e.g., double Lsd[nLayers]) which are illegal in C++ / CUDA.
 extern "C" {
 
-#define RealType double
 #define deg2rad 0.0174532925199433
 #define rad2deg 57.2957795130823
 
