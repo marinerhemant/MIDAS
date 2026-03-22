@@ -545,7 +545,7 @@ static float h_CalcRotationAngle(int RingNr) {
 
 static int h_GenerateCandidateOrientations(double hkl[3], float hklnormal[3],
     float stepsize, float *OrMat, int *nOrient, int RingNr) {
-  float v[3]; float hkl_f[3]={hkl[0],hkl[1],hkl[2]};
+  float v[3]; float hkl_f[3]={(float)hkl[0],(float)hkl[1],(float)hkl[2]};
   crossProduct(v, hkl_f, hklnormal);
   float hl=CalcLength(hkl_f[0],hkl_f[1],hkl_f[2]);
   float nl=CalcLength(hklnormal[0],hklnormal[1],hklnormal[2]);
@@ -955,6 +955,8 @@ int main(int argc, char *argv[]) {
   printf("Total evaluation tuples: %lld (%.1f avg per spot). Count time: %.2fs\n",
          totalTuples, (double)totalTuples/nSpotIDs, omp_get_wtime()-tuple_start);
 
+  int nGood = 0;
+
   if (totalTuples == 0) {
     printf("No tuples to evaluate. Exiting.\n");
     goto cleanup;
@@ -1070,7 +1072,6 @@ int main(int argc, char *argv[]) {
   // ═══════════════════════════════════════════════════════════
   CUDA_CHECK(cudaMemcpy(h_results, d_results, nSpotIDs*sizeof(SpotResult), cudaMemcpyDeviceToHost));
 
-  int nGood = 0;
   for (int si=0; si<nSpotIDs; si++) {
     if (h_results[si].bestFrac <= 0) continue;
     nGood++;
