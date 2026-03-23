@@ -1290,7 +1290,7 @@ int main(int argc, char *argv[]) {
     spotCosOme[i] = cos(omeRad);
   }
   // Compute spot range for RingToIndex (matching OMP behavior)
-  int RingToIndex = Params.RingToIndex;
+  int RingToIndex = Params.RingNumbers[0];
   size_t startRowNrSp = n_spots, endRowNrSp = 0;
   for (size_t i = 0; i < n_spots; i++) {
     if ((int)ObsSpotsLab[i * N_COL_OBSSPOTS + 5] == RingToIndex && startRowNrSp > i)
