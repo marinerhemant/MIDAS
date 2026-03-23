@@ -615,7 +615,7 @@ def _peaks_impl(resultDir: str, zipFN: str, numProcs: int, bin_dir: str, blockNr
 peaks = create_app_with_retry(_peaks_impl)
 
 def _index_impl(resultDir: str, numProcs: int, bin_dir: str, blockNr: int = 0, 
-               numBlocks: int = 1, logger=None):
+               numBlocks: int = 1, useGPU: int = 0, logger=None):
     """Implementation of indexing function.
     
     Args:
@@ -665,10 +665,11 @@ def _index_impl(resultDir: str, numProcs: int, bin_dir: str, blockNr: int = 0,
     outfile = f'{resultDir}/midas_log/indexing_out{blockNr}.csv'
     errfile = f'{resultDir}/midas_log/indexing_err{blockNr}.csv'
     
-    logger.info(f"Running IndexerOMP in {resultDir} for block {blockNr}/{numBlocks}")
+    indexer_bin = 'IndexerGPU' if useGPU else 'IndexerOMP'
+    logger.info(f"Running {indexer_bin} in {resultDir} for block {blockNr}/{numBlocks}")
     
     with open(outfile, 'w') as f, open(errfile, 'w') as f_err:
-        cmd = f"{os.path.join(bin_dir, 'IndexerOMP')} paramstest.txt {blockNr} {numBlocks} {num_lines} {numProcs}"
+        cmd = f"{os.path.join(bin_dir, indexer_bin)} paramstest.txt {blockNr} {numBlocks} {num_lines} {numProcs}"
         logger.info(f"Executing command: {cmd}")
         
         process = subprocess.Popen(
@@ -689,13 +690,13 @@ def _index_impl(resultDir: str, numProcs: int, bin_dir: str, blockNr: int = 0,
             logger.error(error_msg)
             raise RuntimeError(error_msg)
         
-        logger.info(f"IndexerOMP completed successfully for block {blockNr}/{numBlocks}")
+        logger.info(f"{indexer_bin} completed successfully for block {blockNr}/{numBlocks}")
 
 # Create retry-capable app
 index = create_app_with_retry(_index_impl)
 
 def _refine_impl(resultDir: str, numProcs: int, bin_dir: str, blockNr: int = 0, 
-                numBlocks: int = 1, logger=None):
+                numBlocks: int = 1, useGPU: int = 0, logger=None):
     """Implementation of refinement function.
     
     Args:
@@ -746,13 +747,14 @@ def _refine_impl(resultDir: str, numProcs: int, bin_dir: str, blockNr: int = 0,
     outfile = f'{resultDir}/midas_log/refining_out{blockNr}.csv'
     errfile = f'{resultDir}/midas_log/refining_err{blockNr}.csv'
     
-    logger.info(f"Running FitPosOrStrainsOMP in {resultDir} for block {blockNr}/{numBlocks}")
+    refine_bin = 'FitPosOrStrainsGPU' if useGPU else 'FitPosOrStrainsOMP'
+    logger.info(f"Running {refine_bin} in {resultDir} for block {blockNr}/{numBlocks}")
     
     # Enable core dumps
     resource.setrlimit(resource.RLIMIT_CORE, (resource.RLIM_INFINITY, resource.RLIM_INFINITY))
     
     with open(outfile, 'w') as f, open(errfile, 'w') as f_err:
-        cmd = f"{os.path.join(bin_dir, 'FitPosOrStrainsOMP')} paramstest.txt {blockNr} {numBlocks} {num_lines} {numProcs}"
+        cmd = f"{os.path.join(bin_dir, refine_bin)} paramstest.txt {blockNr} {numBlocks} {num_lines} {numProcs}"
         logger.info(f"Executing command: {cmd}")
         
         process = subprocess.Popen(
@@ -773,7 +775,7 @@ def _refine_impl(resultDir: str, numProcs: int, bin_dir: str, blockNr: int = 0,
             logger.error(error_msg)
             raise RuntimeError(error_msg)
         
-        logger.info(f"FitPosOrStrainsOMP completed successfully for block {blockNr}/{numBlocks}")
+        logger.info(f"{refine_bin} completed successfully for block {blockNr}/{numBlocks}")
 
 # Create retry-capable app
 refine = create_app_with_retry(_refine_impl)
@@ -858,7 +860,7 @@ def process_layer(layer_nr: int, top_res_dir: str, ps_fn: str, data_fn: str, num
                  n_nodes: int, n_chunks: int, preproc: int, inp_file_name: str, 
                  provide_input_all: int, convert_files: int, do_peak_search: int, 
                  peak_search_only: int, bin_directory: str, grains_file: str = '',
-                 resume_from_stage: str = '', generate_h5: bool = False) -> None:
+                 resume_from_stage: str = '', generate_h5: bool = False, useGPU: int = 0) -> None:
     """Process a single layer.
     
     Args:
@@ -1151,7 +1153,7 @@ def process_layer(layer_nr: int, top_res_dir: str, ps_fn: str, data_fn: str, num
             try:
                 res_index = []
                 for nodeNr in range(n_nodes):
-                    res_index.append(index(result_dir, num_procs, bin_directory, blockNr=nodeNr, numBlocks=n_nodes))
+                    res_index.append(index(result_dir, num_procs, bin_directory, blockNr=nodeNr, numBlocks=n_nodes, useGPU=useGPU))
                 output_index = [i.result() for i in res_index]
                 ph5.mark('indexing')
             except Exception as e:
@@ -1166,7 +1168,7 @@ def process_layer(layer_nr: int, top_res_dir: str, ps_fn: str, data_fn: str, num
             try:
                 res_refine = []
                 for nodeNr in range(n_nodes):
-                    res_refine.append(refine(result_dir, num_procs, bin_directory, blockNr=nodeNr, numBlocks=n_nodes))
+                    res_refine.append(refine(result_dir, num_procs, bin_directory, blockNr=nodeNr, numBlocks=n_nodes, useGPU=useGPU))
                 output_refine = [i.result() for i in res_refine]
                 ph5.mark('refinement')
             except Exception as e:
@@ -1913,6 +1915,8 @@ def main():
                         help='Path to a pipeline H5 file to resume from. Auto-detects the first incomplete stage.')
     parser.add_argument('-restartFrom', type=str, required=False, default='',
                         help=f'Stage name to restart from (re-runs all stages from that point). Valid stages: {", ".join(FF_STAGE_ORDER)}')
+    parser.add_argument('-useGPU', type=int, required=False, default=0,
+                        help='Use GPU binaries (IndexerGPU, FitPosOrStrainsGPU) instead of OMP versions. Default: 0')
     parser.add_argument('-generateH5', type=int, required=False, default=0,
                         help='Set to 1 to generate consolidated HDF5 at the end of each layer. Disabled by default.')
     
@@ -2119,7 +2123,8 @@ def main():
                         bin_directory=bin_dir,
                         grains_file=layer_grains,
                         resume_from_stage=resume_from_stage,
-                        generate_h5=bool(args.generateH5)
+                        generate_h5=bool(args.generateH5),
+                        useGPU=args.useGPU
                     )
 
                     progress.update(message=f"Layer {layer_nr} (file {file_nr}, {filestem}) completed")
@@ -2163,7 +2168,8 @@ def main():
                         bin_directory=bin_dir,
                         grains_file=layer_grains,
                         resume_from_stage=resume_from_stage,
-                        generate_h5=bool(args.generateH5)
+                        generate_h5=bool(args.generateH5),
+                        useGPU=args.useGPU
                     )
                     
                     progress.update(message=f"Layer {layer_nr} completed successfully")

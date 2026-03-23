@@ -4,8 +4,12 @@ Generates a synthetic microstructure, simulates multi-scan diffraction data
 using ForwardSimulationCompressed, organizes output into the folder layout
 expected by pf_MIDAS.py, and runs the full reconstruction pipeline.
 
+Supports GPU parity testing: run with --gpu to compare GPU vs OMP output.
+
 Usage:
     python tests/test_pf_hedm.py -nCPUs 8
+    python tests/test_pf_hedm.py -nCPUs 8 --doTomo 1
+    python tests/test_pf_hedm.py -nCPUs 8 --gpu --no-cleanup
 """
 
 import argparse
@@ -45,6 +49,10 @@ def parse_args():
                         help='Number of CPUs for simulation and pipeline')
     parser.add_argument('--no-cleanup', action='store_true',
                         help='Skip cleanup of generated files after the test')
+    parser.add_argument('--doTomo', type=int, default=0,
+                        help='0=skip tomography (faster, default), 1=full tomo pipeline')
+    parser.add_argument('--gpu', action='store_true',
+                        help='Run GPU parity test: run OMP first, then GPU, compare results')
     return parser.parse_args()
 
 
@@ -235,10 +243,10 @@ def organize_for_pf_pipeline(work_dir, nCPUs):
     print('  File organization and metadata enrichment complete.')
 
 
-def run_pf_pipeline(work_dir, nCPUs):
+def run_pf_pipeline(work_dir, nCPUs, doTomo=0, useGPU=0):
     """Run pf_MIDAS.py reconstruction pipeline."""
     print('\n' + '='*70)
-    print('  Step 4: Running pf_MIDAS.py reconstruction pipeline')
+    print(f'  Step 4: Running pf_MIDAS.py (doTomo={doTomo}, useGPU={useGPU})')
     print('='*70)
 
     pf_script = MIDAS_HOME / 'FF_HEDM' / 'workflows' / 'pf_MIDAS.py'
@@ -253,7 +261,8 @@ def run_pf_pipeline(work_dir, nCPUs):
         '-nCPUsLocal', str(nCPUs),
         '-convertFiles', '0',
         '-doPeakSearch', '1',
-        '-doTomo', '1',
+        '-doTomo', str(doTomo),
+        '-useGPU', str(useGPU),
         '-machineName', 'local',
         '-resultDir', str(work_dir),
     ]
@@ -267,7 +276,7 @@ def run_pf_pipeline(work_dir, nCPUs):
         print('  pf_MIDAS.py completed successfully.')
 
 
-def validate_results(work_dir):
+def validate_results(work_dir, doTomo=0):
     """Validate reconstruction output."""
     print('\n' + '='*70)
     print('  Step 5: Validating results')
@@ -275,23 +284,24 @@ def validate_results(work_dir):
 
     passed = True
 
-    # Check microstructure H5
-    h5_path = work_dir / 'Recons' / 'microstructure.hdf'
-    if h5_path.exists():
-        import h5py
-        with h5py.File(str(h5_path), 'r') as f:
-            if 'images' in f:
-                imgs = f['images'][:]
-                print(f'  ✓ microstructure.hdf exists ({h5_path.stat().st_size / 1024:.0f} KB)')
-                print(f'    images shape: {imgs.shape}')
-            else:
-                print(f'  ✗ microstructure.hdf exists but has no images dataset')
-                passed = False
-    else:
-        print(f'  ✗ microstructure.hdf not found at {h5_path}')
-        passed = False
+    if doTomo == 1:
+        # Check microstructure H5
+        h5_path = work_dir / 'Recons' / 'microstructure.hdf'
+        if h5_path.exists():
+            import h5py
+            with h5py.File(str(h5_path), 'r') as f:
+                if 'images' in f:
+                    imgs = f['images'][:]
+                    print(f'  ✓ microstructure.hdf exists ({h5_path.stat().st_size / 1024:.0f} KB)')
+                    print(f'    images shape: {imgs.shape}')
+                else:
+                    print(f'  ✗ microstructure.hdf exists but has no images dataset')
+                    passed = False
+        else:
+            print(f'  ✗ microstructure.hdf not found at {h5_path}')
+            passed = False
 
-    # Check microstrFull.csv
+    # Check microstrFull.csv (always produced)
     csv_path = work_dir / 'Recons' / 'microstrFull.csv'
     if csv_path.exists():
         data = np.genfromtxt(str(csv_path), delimiter=',', skip_header=1)
@@ -323,21 +333,38 @@ def validate_results(work_dir):
     else:
         print(f'  ✗ Spots.bin not found')
 
-    # Check sinogram output
-    sinos_dir = work_dir / 'Sinos'
-    if sinos_dir.exists():
-        sino_files = list(sinos_dir.glob('*.tif'))
-        print(f'  ✓ Sinos/ directory: {len(sino_files)} TIF files')
+    # Check IndexBest_all.bin (consolidated indexer output)
+    idx_bin = work_dir / 'Output' / 'IndexBest_all.bin'
+    if idx_bin.exists():
+        print(f'  ✓ IndexBest_all.bin exists ({idx_bin.stat().st_size / 1024:.0f} KB)')
     else:
-        print(f'  ✗ Sinos/ directory not found')
+        print(f'  ✗ IndexBest_all.bin not found')
 
-    # Check recon output
-    recons_dir = work_dir / 'Recons'
-    if recons_dir.exists():
-        recon_files = list(recons_dir.glob('recon_grNr_*.tif'))
-        print(f'  ✓ Recons/ directory: {len(recon_files)} reconstruction TIF files')
+    # Check Results CSVs (refinement output)
+    results_dir = work_dir / 'Results'
+    if results_dir.exists():
+        result_csvs = list(results_dir.glob('*.csv'))
+        print(f'  ✓ Results/ directory: {len(result_csvs)} CSV files')
     else:
-        print(f'  ✗ Recons/ directory not found')
+        print(f'  ✗ Results/ directory not found')
+        passed = False
+
+    if doTomo == 1:
+        # Check sinogram output
+        sinos_dir = work_dir / 'Sinos'
+        if sinos_dir.exists():
+            sino_files = list(sinos_dir.glob('*.tif'))
+            print(f'  ✓ Sinos/ directory: {len(sino_files)} TIF files')
+        else:
+            print(f'  ✗ Sinos/ directory not found')
+
+        # Check recon output
+        recons_dir = work_dir / 'Recons'
+        if recons_dir.exists():
+            recon_files = list(recons_dir.glob('recon_grNr_*.tif'))
+            print(f'  ✓ Recons/ directory: {len(recon_files)} reconstruction TIF files')
+        else:
+            print(f'  ✗ Recons/ directory not found')
 
     print()
     if passed:
@@ -349,12 +376,128 @@ def validate_results(work_dir):
     return passed
 
 
+def copy_outputs(work_dir, dest_dir):
+    """Copy pipeline output directories for comparison."""
+    for subdir in ['Output', 'Results', 'Recons']:
+        src = work_dir / subdir
+        dst = dest_dir / subdir
+        if src.exists():
+            if dst.exists():
+                shutil.rmtree(str(dst))
+            shutil.copytree(str(src), str(dst))
+
+
+def compare_gpu_omp(omp_dir, gpu_dir):
+    """Compare GPU and OMP pipeline outputs numerically.
+
+    Returns True if all differences are within tolerance.
+    """
+    print('\n' + '='*70)
+    print('  GPU vs OMP Parity Comparison')
+    print('='*70)
+
+    passed = True
+
+    # Compare microstrFull.csv
+    omp_csv = omp_dir / 'Recons' / 'microstrFull.csv'
+    gpu_csv = gpu_dir / 'Recons' / 'microstrFull.csv'
+
+    if not omp_csv.exists() or not gpu_csv.exists():
+        print(f'  ✗ Cannot compare: OMP csv exists={omp_csv.exists()}, GPU csv exists={gpu_csv.exists()}')
+        return False
+
+    omp_data = np.genfromtxt(str(omp_csv), delimiter=',', skip_header=1)
+    gpu_data = np.genfromtxt(str(gpu_csv), delimiter=',', skip_header=1)
+
+    if omp_data.shape != gpu_data.shape:
+        print(f'  ✗ Shape mismatch: OMP={omp_data.shape}, GPU={gpu_data.shape}')
+        return False
+
+    print(f'  Rows: OMP={omp_data.shape[0]}, GPU={gpu_data.shape[0]}')
+
+    # Filter valid rows (both must have valid completeness at column 26)
+    omp_valid = ~np.isnan(omp_data[:, 26]) if len(omp_data.shape) > 1 else np.array([])
+    gpu_valid = ~np.isnan(gpu_data[:, 26]) if len(gpu_data.shape) > 1 else np.array([])
+    both_valid = omp_valid & gpu_valid
+
+    n_both = np.sum(both_valid)
+    print(f'  Valid in both: {n_both}')
+
+    if n_both == 0:
+        print('  ✗ No valid rows to compare')
+        return False
+
+    omp_v = omp_data[both_valid]
+    gpu_v = gpu_data[both_valid]
+
+    # Orientation matrix: columns 1-9
+    om_diff = np.max(np.abs(omp_v[:, 1:10] - gpu_v[:, 1:10]))
+    om_ok = om_diff < 0.01
+    print(f'  Orientation matrix max diff: {om_diff:.6f} {"✓" if om_ok else "✗"} (tol=0.01)')
+    passed = passed and om_ok
+
+    # Position: columns 11-13 (x, y, z in µm)
+    pos_diff = np.max(np.abs(omp_v[:, 11:14] - gpu_v[:, 11:14]))
+    pos_ok = pos_diff < 1.0
+    print(f'  Position max diff: {pos_diff:.6f} µm {"✓" if pos_ok else "✗"} (tol=1.0 µm)')
+    passed = passed and pos_ok
+
+    # Lattice parameters: columns 15-20 (a, b, c, alpha, beta, gamma)
+    # Use 0.01% relative tolerance
+    omp_lat = omp_v[:, 15:21]
+    gpu_lat = gpu_v[:, 15:21]
+    lat_mask = np.abs(omp_lat) > 1e-10  # avoid division by zero
+    if np.any(lat_mask):
+        lat_rel_diff = np.max(np.abs((omp_lat[lat_mask] - gpu_lat[lat_mask]) / omp_lat[lat_mask])) * 100
+        lat_ok = lat_rel_diff < 0.01
+        print(f'  Lattice param max rel diff: {lat_rel_diff:.6f}% {"✓" if lat_ok else "✗"} (tol=0.01%)')
+        passed = passed and lat_ok
+    else:
+        print('  Lattice params: skipped (all zero)')
+
+    # Completeness: column 26
+    comp_diff = np.max(np.abs(omp_v[:, 26] - gpu_v[:, 26]))
+    comp_ok = comp_diff < 0.05
+    print(f'  Completeness max diff: {comp_diff:.6f} {"✓" if comp_ok else "✗"} (tol=0.05)')
+    passed = passed and comp_ok
+
+    # Strain: columns 27-35
+    strain_diff = np.max(np.abs(omp_v[:, 27:36] - gpu_v[:, 27:36]))
+    strain_ok = strain_diff < 0.001
+    print(f'  Strain tensor max diff: {strain_diff:.9f} {"✓" if strain_ok else "✗"} (tol=0.001)')
+    passed = passed and strain_ok
+
+    print()
+    if passed:
+        print('  *** GPU vs OMP PARITY TEST PASSED ***')
+    else:
+        print('  *** GPU vs OMP PARITY TEST FAILED ***')
+
+    return passed
+
+
 def cleanup(work_dir):
     """Remove generated test artifacts."""
     print('\n  Cleaning up test artifacts...')
     if work_dir.exists():
         shutil.rmtree(str(work_dir))
     print('  Cleanup complete.')
+
+
+def reset_pipeline_outputs(work_dir):
+    """Remove pipeline outputs to allow re-running with different settings."""
+    for subdir in ['Output', 'Results', 'Recons', 'Sinos', 'Thetas', 'Tomo',
+                    'fullOutput', 'fullResults']:
+        d = work_dir / subdir
+        if d.exists():
+            shutil.rmtree(str(d))
+        d.mkdir(parents=True, exist_ok=True)
+    # Remove pipeline intermediates
+    for pattern in ['SpotsToIndex.csv', 'UniqueOrientations.csv',
+                    'singleSolution.mic', 'sinos_*.bin', 'omegas_*.bin', 'nrHKLs_*.bin']:
+        import glob
+        for f in glob.glob(str(work_dir / pattern)):
+            os.remove(f)
 
 
 def main():
@@ -370,13 +513,48 @@ def main():
     print(f'Working directory: {work_dir}')
     print(f'Configuration: {NGRAINS} grains, {SIZE_UM}×{SIZE_UM} µm, '
           f'{STEP_UM} µm step, {NSCANS} scans, {BEAMSIZE} µm beam')
+    print(f'doTomo={args.doTomo}, gpu={args.gpu}')
 
     try:
+        # Steps 1-3: Generate data (same for OMP and GPU)
         generate_microstructure(work_dir)
         run_forward_simulation(work_dir, args.nCPUs)
         organize_for_pf_pipeline(work_dir, args.nCPUs)
-        run_pf_pipeline(work_dir, args.nCPUs)
-        passed = validate_results(work_dir)
+
+        if args.gpu:
+            # GPU parity test: run OMP, save results, run GPU, compare
+            print('\n' + '#'*70)
+            print('  GPU PARITY TEST MODE')
+            print('#'*70)
+
+            # --- OMP run ---
+            print('\n  >>> Running OMP pipeline...')
+            run_pf_pipeline(work_dir, args.nCPUs, doTomo=args.doTomo, useGPU=0)
+            omp_passed = validate_results(work_dir, doTomo=args.doTomo)
+
+            # Save OMP results
+            omp_dir = work_dir / '_omp_results'
+            omp_dir.mkdir(exist_ok=True)
+            copy_outputs(work_dir, omp_dir)
+
+            # --- GPU run ---
+            print('\n  >>> Running GPU pipeline...')
+            reset_pipeline_outputs(work_dir)
+            run_pf_pipeline(work_dir, args.nCPUs, doTomo=args.doTomo, useGPU=1)
+            gpu_passed = validate_results(work_dir, doTomo=args.doTomo)
+
+            # --- Compare ---
+            if omp_passed and gpu_passed:
+                parity_passed = compare_gpu_omp(omp_dir, work_dir)
+                passed = parity_passed
+            else:
+                print('\n  ✗ Cannot compare: OMP passed={omp_passed}, GPU passed={gpu_passed}')
+                passed = False
+        else:
+            # Standard OMP test
+            run_pf_pipeline(work_dir, args.nCPUs, doTomo=args.doTomo)
+            passed = validate_results(work_dir, doTomo=args.doTomo)
+
     except Exception as e:
         print(f'\nERROR: Test failed with exception: {e}')
         import traceback

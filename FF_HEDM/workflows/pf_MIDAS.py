@@ -727,7 +727,7 @@ def binData(resultDir, num_scans, midas_path):
         return f"Failed with exception: {str(e)}"
 
 @python_app
-def indexscanning(resultDir, numProcs, num_scans, midas_path, blockNr=0, numBlocks=1):
+def indexscanning(resultDir, numProcs, num_scans, midas_path, blockNr=0, numBlocks=1, useGPU=0):
     """
     Run indexing for scanning.
     
@@ -784,9 +784,9 @@ def indexscanning(resultDir, numProcs, num_scans, midas_path, blockNr=0, numBloc
     
     try:
         with open(f_out_path, 'w') as f, open(f_err_path, 'w') as f_err:
-            # Build command
-            cmd_this = f"{os.path.join(midas_path, 'FF_HEDM/bin/IndexerScanningOMP')} paramstest.txt {blockNr} {numBlocks} {num_scans} {numProcs}"
-            logger.info(f"Running IndexerScanningOMP: {cmd_this}")
+            indexer_bin = 'IndexerScanningGPU' if useGPU else 'IndexerScanningOMP'
+            cmd_this = f"{os.path.join(midas_path, 'FF_HEDM/bin/' + indexer_bin)} paramstest.txt {blockNr} {numBlocks} {num_scans} {numProcs}"
+            logger.info(f"Running {indexer_bin}: {cmd_this}")
             
             # Run command
             subprocess.call(cmd_this, shell=True, stdout=f, stderr=f_err)
@@ -807,7 +807,7 @@ def indexscanning(resultDir, numProcs, num_scans, midas_path, blockNr=0, numBloc
         return f"Failed with exception for block {blockNr}"
 
 @python_app
-def refinescanning(resultDir, numProcs, midas_path, blockNr=0, numBlocks=1):
+def refinescanning(resultDir, numProcs, midas_path, blockNr=0, numBlocks=1, useGPU=0):
     """
     Run refinement for scanning.
     
@@ -868,9 +868,9 @@ def refinescanning(resultDir, numProcs, midas_path, blockNr=0, numBlocks=1):
         
         logger.info(f"Number of spots to refine: {num_lines}")
         
-        # Build command
-        cmd = f"{os.path.join(midas_path, 'FF_HEDM/bin/FitOrStrainsScanningOMP')} paramstest.txt {blockNr} {numBlocks} {num_lines} {numProcs}"
-        logger.info(f"Running refining command: {cmd}")
+        refine_bin = 'FitOrStrainsScanningGPU' if useGPU else 'FitOrStrainsScanningOMP'
+        cmd = f"{os.path.join(midas_path, 'FF_HEDM/bin/' + refine_bin)} paramstest.txt {blockNr} {numBlocks} {num_lines} {numProcs}"
+        logger.info(f"Running {refine_bin}: {cmd}")
         
         with open(f_out_path, 'w') as f, open(f_err_path, 'w') as f_err:
             # Run command
@@ -954,6 +954,7 @@ def main():
     parser.add_argument('-numFrameChunks', type=int, required=False, default=-1, help='If low on RAM, it can process parts of the dataset at the time. -1 will disable.')
     parser.add_argument('-preProcThresh', type=int, required=False, default=-1, help='If want to save the dark corrected data, then put to whatever threshold wanted above dark. -1 will disable. 0 will just subtract dark. Negative values will be reset to 0.')
     parser.add_argument('-doTomo', type=int, required=False, default=1, help='If want to do tomography, put to 1. Only for OneSolPerVox.')
+    parser.add_argument('-useGPU', type=int, required=False, default=0, help='Use GPU binaries (IndexerScanningGPU, FitOrStrainsScanningGPU) instead of OMP versions. Default: 0')
     parser.add_argument('-normalizeIntensities', type=int, required=False, default=2, help='Normalization mode for intensity in sinograms: 0=equivalent grain size, 1=powder-scaled, 2=integrated intensity (default), 3=raw sum intensity from PeaksFitting.')
     parser.add_argument('-convertFiles', type=int, required=False, default=1, help='If want to convert to zarr, if zarr files exist already, put to 0.')
     parser.add_argument('-runIndexing', type=int, required=False, default=1, help='If want to skip Indexing, put to 0.')
@@ -981,6 +982,7 @@ def main():
     nchunks = args.numFrameChunks
     preproc = args.preProcThresh
     doTomo = args.doTomo
+    useGPU = args.useGPU
     ConvertFiles = args.convertFiles
     runIndexing = args.runIndexing
     NormalizeIntensities = args.normalizeIntensities
@@ -1443,7 +1445,7 @@ def main():
                 # Run indexing in parallel
                 resIndex = []
                 for nodeNr in range(nNodes):
-                    resIndex.append(indexscanning(topdir, numProcs, nScans, midas_path, blockNr=nodeNr, numBlocks=nNodes))
+                    resIndex.append(indexscanning(topdir, numProcs, nScans, midas_path, blockNr=nodeNr, numBlocks=nNodes, useGPU=useGPU))
                     
                 # Wait for all indexing tasks to complete
                 outputIndex = [i.result() for i in resIndex]
@@ -1635,7 +1637,7 @@ def main():
                         consol_file = f'{topdir}/Output/IndexBest_all.bin'
                         if not os.path.exists(consol_file):
                             logger.error(f"Consolidated file not found: {consol_file}")
-                            continue
+                            sys.exit(1)
                         with open(consol_file, 'rb') as cf:
                             nVoxels = np.frombuffer(cf.read(4), dtype=np.int32)[0]
                             nSolArr = np.frombuffer(cf.read(4 * nVoxels), dtype=np.int32)
@@ -1682,7 +1684,7 @@ def main():
                     
                     resIndex = []
                     for nodeNr in range(nNodes):
-                        resIndex.append(indexscanning(topdir, numProcs, nScans, midas_path, blockNr=nodeNr, numBlocks=nNodes))
+                        resIndex.append(indexscanning(topdir, numProcs, nScans, midas_path, blockNr=nodeNr, numBlocks=nNodes, useGPU=useGPU))
                         
                     outputIndex = [i.result() for i in resIndex]
                     
@@ -1719,7 +1721,7 @@ def main():
             
             resRefine = []
             for nodeNr in range(nNodes):
-                resRefine.append(refinescanning(topdir, numProcs, midas_path, blockNr=nodeNr, numBlocks=nNodes))
+                resRefine.append(refinescanning(topdir, numProcs, midas_path, blockNr=nodeNr, numBlocks=nNodes, useGPU=useGPU))
                 
             outputRefine = [i.result() for i in resRefine]
             
@@ -1851,7 +1853,7 @@ def main():
             # Run refinement
             resRefine = []
             for nodeNr in range(nNodes):
-                resRefine.append(refinescanning(topdir, numProcs, midas_path, blockNr=nodeNr, numBlocks=nNodes))
+                resRefine.append(refinescanning(topdir, numProcs, midas_path, blockNr=nodeNr, numBlocks=nNodes, useGPU=useGPU))
                 
             outputRefine = [inter.result() for inter in resRefine]
             
