@@ -1881,10 +1881,25 @@ int main(int argc, char *argv[]) {
     struct stat s1, s2;
     stat(fn1, &s1);
     stat(fn2, &s2);
+    printf("Data.bin: %lld bytes, nData.bin: %lld bytes\n",
+           (long long)s1.st_size, (long long)s2.st_size);
+    // Verify host ndata has data
+    size_t nElems = s2.st_size / sizeof(size_t);
+    size_t nonzero = 0;
+    for (size_t i = 0; i < nElems && i < 100; i++) {
+      if (ndata[i] != 0) nonzero++;
+    }
+    printf("HOST ndata first 100 entries: %zu nonzero, ndata[0]=%zu ndata[1]=%zu ndata[2]=%zu\n",
+           nonzero, ndata[0], ndata[1], ndata[2]);
     CUDA_CHECK(cudaMalloc(&d_data, s1.st_size));
     CUDA_CHECK(cudaMemcpy(d_data, data, s1.st_size, cudaMemcpyHostToDevice));
     CUDA_CHECK(cudaMalloc(&d_ndata, s2.st_size));
     CUDA_CHECK(cudaMemcpy(d_ndata, ndata, s2.st_size, cudaMemcpyHostToDevice));
+    // Verify GPU got the data
+    size_t check[6];
+    CUDA_CHECK(cudaMemcpy(check, d_ndata, 6 * sizeof(size_t), cudaMemcpyDeviceToHost));
+    printf("GPU d_ndata readback: [%zu, %zu, %zu, %zu, %zu, %zu]\n",
+           check[0], check[1], check[2], check[3], check[4], check[5]);
   }
 
   // Upload ypos for beam proximity checks in kernel
