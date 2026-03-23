@@ -789,12 +789,14 @@ __global__ void indexer_spotdriven_kernel(
   double RefRad = d_ObsSpotsLab[idnr * N_COL_OBSSPOTS + 3];
   int ringnr = (int)d_ObsSpotsLab[idnr * N_COL_OBSSPOTS + 5];
 
-  // Generate ideal spots
-  double y0v[MAX_N_STEPS], z0v[MAX_N_STEPS];
+  // Generate ideal spots — use small GPU-friendly limit (nPN is typically 1-3)
+  const int MAX_GPU_STEPS = 16;
+  double y0v[MAX_GPU_STEPS], z0v[MAX_GPU_STEPS];
   int nPN = 0;
   d_GenerateIdealSpots(ys, zs, d_RingTtheta[ringnr], eta,
                        c_RingRadii[ringnr], Rsample, Hbeam, StepsizePos,
                        y0v, z0v, &nPN);
+  if (nPN > MAX_GPU_STEPS) nPN = MAX_GPU_STEPS;
 
   // Per-thread scratch for theoretical spots
   long long globalTid = (long long)voxelIdx * nSpotsRange + spotLocalIdx;
@@ -889,6 +891,310 @@ __global__ void indexer_spotdriven_kernel(
     } // end orientation loop
   } // end ideal spot loop
 }
+
+// ─────────────────────────────────────────────────────────────
+// Fused zero-scratch kernel: one thread = one (spot, voxel) pair
+// Generates orientations, and for each orientation fuses
+// CalcDiffrSpots + displacement + CompareSpots in a single HKL loop.
+// No per-thread scratch memory — everything stays in registers.
+// ─────────────────────────────────────────────────────────────
+__global__ void indexer_fused_kernel(
+    const RealType *d_ObsSpotsLab, int nSpots,
+    const RealType *d_hkls_flat, int n_hkls_d,
+    const size_t *d_data, const size_t *d_ndata,
+    const int *d_ringsToReject, int nRingsToRejectCalc,
+    SpotResult *d_results,     // [nVoxels × nSpotsRange]
+    const double *d_ypos, double BeamSize,
+    const double *d_spotSinOme, const double *d_spotCosOme,
+    const double *d_grid, int startRowNr,
+    int startRowNrSp, int endRowNrSp,
+    int nVoxels, int nSpotsRange,
+    double StepsizeOrient, double StepsizePos,
+    double Distance, double Rsample, double Hbeam)
+{
+  int spotLocalIdx = blockIdx.x * blockDim.x + threadIdx.x;
+  int voxelIdx = blockIdx.y;
+
+  if (spotLocalIdx >= nSpotsRange || voxelIdx >= nVoxels)
+    return;
+
+  int idnr = startRowNrSp + spotLocalIdx;
+  int thisRowNr = startRowNr + voxelIdx;
+  double xThis = d_grid[thisRowNr * 2 + 0];
+  double yThis = d_grid[thisRowNr * 2 + 1];
+
+  // Beam proximity check
+  double newY = xThis * d_spotSinOme[idnr] + yThis * d_spotCosOme[idnr];
+  if (fabs(newY - d_ypos[(int)d_ObsSpotsLab[idnr * N_COL_OBSSPOTS + 9]]) > BeamSize / 2)
+    return;
+
+  // Compute seedIdx (count passing spots before this one)
+  int seedIdx = 0;
+  for (int j = startRowNrSp; j < idnr; j++) {
+    double nY = xThis * d_spotSinOme[j] + yThis * d_spotCosOme[j];
+    if (fabs(nY - d_ypos[(int)d_ObsSpotsLab[j * N_COL_OBSSPOTS + 9]]) <= BeamSize / 2)
+      seedIdx++;
+  }
+
+  // Read spot data
+  double ys = d_ObsSpotsLab[idnr * N_COL_OBSSPOTS + 0];
+  double zs = d_ObsSpotsLab[idnr * N_COL_OBSSPOTS + 1];
+  double omega = d_ObsSpotsLab[idnr * N_COL_OBSSPOTS + 2];
+  double eta = d_ObsSpotsLab[idnr * N_COL_OBSSPOTS + 6];
+  double RefRad = d_ObsSpotsLab[idnr * N_COL_OBSSPOTS + 3];
+  int ringnr = (int)d_ObsSpotsLab[idnr * N_COL_OBSSPOTS + 5];
+
+  // Generate ideal spots — use small GPU-friendly limit (nPN is typically 1-3)
+  const int MAX_GPU_STEPS = 16;
+  double y0v[MAX_GPU_STEPS], z0v[MAX_GPU_STEPS];
+  int nPN = 0;
+  d_GenerateIdealSpots(ys, zs, d_RingTtheta[ringnr], eta,
+                       c_RingRadii[ringnr], Rsample, Hbeam, StepsizePos,
+                       y0v, z0v, &nPN);
+  if (nPN > MAX_GPU_STEPS) nPN = MAX_GPU_STEPS;
+
+  SpotResult *res = &d_results[voxelIdx * nSpotsRange + seedIdx];
+
+  for (int isp = 0; isp < nPN; isp++) {
+    double xi, yi, zi;
+    d_MakeUnitLength(Distance, y0v[isp], z0v[isp], &xi, &yi, &zi);
+    double g1, g2, g3;
+    d_spot_to_gv(xi, yi, zi, omega, &g1, &g2, &g3);
+
+    double hn[3] = {g1, g2, g3};
+    double hkl_d[3] = {d_RingHKL[ringnr][0], d_RingHKL[ringnr][1], d_RingHKL[ringnr][2]};
+
+    // Generate candidate orientations
+    double v[3];
+    crossProduct(v, hkl_d, hn);
+    double hl = CalcLength(hkl_d[0], hkl_d[1], hkl_d[2]);
+    double nl = CalcLength(hn[0], hn[1], hn[2]);
+    double dpp = dot(hkl_d, hn);
+    double angled = rad2deg * acos(fmax(-1.0, fmin(1.0, dpp / (hl * nl))));
+    double RM[3][3];
+    d_AxisAngle2RotMatrix(v, angled, RM);
+    double MaxAngle = d_CalcRotationAngle(ringnr, n_hkls_d);
+    int nsteps = (int)(MaxAngle / StepsizeOrient);
+
+    // For each candidate orientation: FUSED CalcDiffrSpots + CompareSpots
+    for (int o = 0; o < nsteps; o++) {
+      double RM2[3][3], RM3[3][3];
+      d_AxisAngle2RotMatrix(hn, o * StepsizeOrient, RM2);
+      d_MatrixMultF33(RM2, RM, RM3);
+
+      // Build OrMat
+      RealType OrMat[3][3];
+      for (int r = 0; r < 3; r++)
+        for (int c = 0; c < 3; c++)
+          OrMat[r][c] = (RealType)RM3[r][c];
+
+      // ═══ FUSED CalcDiffrSpots + displacement + CompareSpots ═══
+      // No scratch buffer — one HKL at a time, match immediately.
+      int nTspots = 0;
+      int nTspotsFracCalc = 0;
+      int nMatched = 0;
+      int nMatchedFrac = 0;
+      RealType iaSum = 0.0;
+      int iaCount = 0;
+
+      for (int ih = 0; ih < n_hkls_d; ih++) {
+        RealType Ghkl[3] = {d_hkls_flat[ih * 7 + 0], d_hkls_flat[ih * 7 + 1],
+                            d_hkls_flat[ih * 7 + 2]};
+        int rn = (int)d_hkls_flat[ih * 7 + 3];
+        if (rn < 0 || rn >= MAX_N_RINGS) continue;
+        RealType RingRadius = c_RingRadii[rn];
+        if (RingRadius < EPS) continue;
+        RealType theta = d_hkls_flat[ih * 7 + 5];
+
+        // Matrix multiply: Gc = OrMat × Ghkl
+        RealType Gc[3];
+        for (int r = 0; r < 3; r++)
+          Gc[r] = OrMat[r][0] * Ghkl[0] + OrMat[r][1] * Ghkl[1] + OrMat[r][2] * Ghkl[2];
+
+        RealType omegas_t[4], etas_t[4];
+        int nsol;
+        midas_CalcOmega(Gc[0], Gc[1], Gc[2], theta, omegas_t, etas_t, &nsol);
+
+        for (int isol = 0; isol < nsol; isol++) {
+          RealType Omega = omegas_t[isol];
+          RealType Eta = etas_t[isol];
+          RealType EtaAbs = fabs(Eta);
+
+          if (EtaAbs < c_params.ExcludePoleAngle ||
+              (180.0 - EtaAbs) < c_params.ExcludePoleAngle)
+            continue;
+
+          RealType yl, zl;
+          midas_CalcSpotPosition(RingRadius, Eta, &yl, &zl);
+
+          int keep = 0;
+          for (int orn = 0; orn < c_params.NoOfOmegaRanges; orn++) {
+            if (Omega > c_OmegaRanges[orn][0] && Omega < c_OmegaRanges[orn][1] &&
+                yl > c_BoxSizes[orn][0] && yl < c_BoxSizes[orn][1] &&
+                zl > c_BoxSizes[orn][2] && zl < c_BoxSizes[orn][3]) {
+              keep = 1; break;
+            }
+          }
+          if (!keep) continue;
+
+          nTspots++;
+
+          // Check ring rejection for fraction calc
+          int isRejected = 0;
+          for (int rr = 0; rr < nRingsToRejectCalc; rr++) {
+            if (rn == d_ringsToReject[rr]) { isRejected = 1; break; }
+          }
+          if (!isRejected) nTspotsFracCalc++;
+
+          // ─── Apply displacement (inline) ───
+          RealType theorOmeRad = Omega * deg2rad;
+          RealType sinOme = sin(theorOmeRad), cosOme = cos(theorOmeRad);
+          RealType Displ_y, Displ_z;
+          midas_displacement_spot_COM(xThis, yThis, 0, c_params.Distance, yl, zl, Omega,
+                                      &Displ_y, &Displ_z);
+          RealType theorY = yl + Displ_y;
+          RealType theorZ = zl + Displ_z;
+          RealType theorEta;
+          midas_CalcEtaAngle(theorY, theorZ, &theorEta);
+          RealType theorRadDiff = sqrt(theorY * theorY + theorZ * theorZ) - RingRadius;
+
+          // ─── Match against observed spots (inline CompareSpots) ───
+          int iRing = rn - 1;
+          int iEta = (int)floor((180.0 + theorEta) / c_params.EtaBinSize);
+          int iOme = (int)floor((180.0 + Omega) / c_params.OmeBinSize);
+          iEta = max(0, min(c_params.n_eta_bins - 1, iEta));
+          iOme = max(0, min(c_params.n_ome_bins - 1, iOme));
+
+          size_t Pos = (size_t)iRing;
+          Pos *= (size_t)c_params.n_eta_bins;
+          Pos += (size_t)iEta;
+          Pos *= (size_t)c_params.n_ome_bins;
+          Pos += (size_t)iOme;
+
+          size_t nInBin = d_ndata[Pos * 2 + 0];
+          size_t DataPos = d_ndata[Pos * 2 + 1];
+
+          RealType etamargin = c_etamargins[rn];
+
+          int skipRadialFilter = isRejected;
+
+          int matchFound = 0;
+          int bestSpotRow = -1;
+          RealType diffOmeBest = 100000.0;
+
+          for (int is = 0; is < nInBin; is++) {
+            int spotRow = (int)d_data[(DataPos + is) * 2 + 0];
+            int scannrobs = (int)d_data[(DataPos + is) * 2 + 1];
+            int base = spotRow * N_COL_OBSSPOTS;
+
+            // Filter 0: beam proximity
+            if (d_ypos != nullptr && BeamSize > 0) {
+              RealType yRot = xThis * sin(theorOmeRad) + yThis * cos(theorOmeRad);
+              if (fabs(yRot - d_ypos[scannrobs]) >= BeamSize / 2.0)
+                continue;
+            }
+
+            // Filter 1: radial difference
+            RealType obsRadDiff = d_ObsSpotsLab[base + 8];
+            if (fabs(theorRadDiff - obsRadDiff) >= c_params.MarginRadial)
+              continue;
+
+            // Filter 2: RefRad
+            if (!skipRadialFilter) {
+              RealType obsRefRad = d_ObsSpotsLab[base + 3];
+              if (fabs(RefRad - obsRefRad) >= c_params.MarginRad)
+                continue;
+            }
+
+            // Filter 3: eta margin
+            RealType obsEta = d_ObsSpotsLab[base + 6];
+            if (fabs(theorEta - obsEta) >= etamargin)
+              continue;
+
+            // Find closest omega match
+            RealType obsOme = d_ObsSpotsLab[base + 2];
+            RealType diffOme = fabs(Omega - obsOme);
+            if (diffOme < diffOmeBest) {
+              diffOmeBest = diffOme;
+              bestSpotRow = spotRow;
+              matchFound = 1;
+            }
+          }
+
+          if (matchFound) {
+            nMatched++;
+            if (!isRejected) nMatchedFrac++;
+
+            // Compute internal angle
+            int base = bestSpotRow * N_COL_OBSSPOTS;
+            RealType obsY_d = d_ObsSpotsLab[base + 0];
+            RealType obsZ_d = d_ObsSpotsLab[base + 1];
+            RealType obsOme_d = d_ObsSpotsLab[base + 2];
+            RealType Dist_d = (RealType)Distance;
+            RealType ga_d = xThis, gb_d = yThis, gc_d = 0;
+
+            RealType ca1 = cos(deg2rad * Omega), sa1 = sin(deg2rad * Omega);
+            RealType vr1x = ca1 * ga_d - sa1 * gb_d, vr1y = sa1 * ga_d + ca1 * gb_d;
+            RealType xi1 = Dist_d - vr1x, yi1 = theorY - vr1y, zi1 = theorZ - gc_d;
+            RealType l1 = sqrt(xi1*xi1 + yi1*yi1 + zi1*zi1);
+            RealType xn1 = xi1/l1, yn1 = yi1/l1, zn1 = zi1/l1;
+            RealType g1r1 = -1.0 + xn1, g2r1 = yn1;
+            RealType co1 = cos(-Omega * deg2rad), so1 = sin(-Omega * deg2rad);
+            RealType gv1x = g1r1*co1 - g2r1*so1, gv1y = g1r1*so1 + g2r1*co1, gv1z = zn1;
+
+            RealType ca2 = cos(deg2rad * obsOme_d), sa2 = sin(deg2rad * obsOme_d);
+            RealType vr2x = ca2 * ga_d - sa2 * gb_d, vr2y = sa2 * ga_d + ca2 * gb_d;
+            RealType xi2 = Dist_d - vr2x, yi2 = obsY_d - vr2y, zi2 = obsZ_d - gc_d;
+            RealType l2 = sqrt(xi2*xi2 + yi2*yi2 + zi2*zi2);
+            RealType xn2 = xi2/l2, yn2 = yi2/l2, zn2 = zi2/l2;
+            RealType g1r2 = -1.0 + xn2, g2r2 = yn2;
+            RealType co2 = cos(-obsOme_d * deg2rad), so2 = sin(-obsOme_d * deg2rad);
+            RealType gv2x = g1r2*co2 - g2r2*so2, gv2y = g1r2*so2 + g2r2*co2, gv2z = zn2;
+
+            RealType la = sqrt(gv1x*gv1x + gv1y*gv1y + gv1z*gv1z);
+            RealType lb = sqrt(gv2x*gv2x + gv2y*gv2y + gv2z*gv2z);
+            RealType dpc = (gv1x*gv2x + gv1y*gv2y + gv1z*gv2z) / (la * lb);
+            if (dpc > 1.0) dpc = 1.0;
+            if (dpc < -1.0) dpc = -1.0;
+            RealType ia = (RealType)(rad2deg * acos(dpc));
+            if (ia < 999.0) { iaSum += ia; iaCount++; }
+          }
+        } // nsol
+      } // HKL loop
+
+      // ═══ End of fused CalcDiffrSpots + CompareSpots ═══
+
+      if (nTspots == 0 || nTspotsFracCalc == 0) continue;
+
+      RealType fracMatches = (RealType)nMatchedFrac / (RealType)nTspotsFracCalc;
+      RealType avgIA = (iaCount > 0) ? (iaSum / (RealType)iaCount) : 999.0;
+
+      // Atomic best-match update
+      unsigned int fracBits = (unsigned int)__float_as_int((float)fracMatches);
+      unsigned int iaBits = ~(unsigned int)__float_as_int((float)avgIA);
+      unsigned long long newKey = ((unsigned long long)fracBits << 32) | (unsigned long long)iaBits;
+
+      unsigned long long *keyAddr = &res->atomicKey;
+      while (true) {
+        unsigned long long oldKey = *keyAddr;
+        if (newKey <= oldKey) break;
+        unsigned long long prev = atomicCAS(keyAddr, oldKey, newKey);
+        if (prev == oldKey) {
+          res->bestFrac = fracMatches;
+          res->bestIA = avgIA;
+          for (int i = 0; i < 9; i++) res->bestOrMat[i] = OrMat[i / 3][i % 3];
+          res->bestPos[0] = xThis;
+          res->bestPos[1] = yThis;
+          res->bestPos[2] = 0;
+          res->nTspots = nTspots;
+          res->nMatches = nMatched;
+          break;
+        }
+      }
+    } // orientation loop
+  } // ideal spot loop
+}
+
 
 
 // ═════════════════════════════════════════════════════════════
@@ -1778,64 +2084,31 @@ int main(int argc, char *argv[]) {
     CUDA_CHECK(cudaMalloc(&d_spotResults, totalResultSlots * sizeof(SpotResult)));
     CUDA_CHECK(cudaMemcpy(d_spotResults, h_allResults, totalResultSlots * sizeof(SpotResult), cudaMemcpyHostToDevice));
 
-    // Allocate per-thread scratch for theoretical spots
-    // Total threads = nVoxels × nSpotsRange, but we can't allocate scratch for ALL
-    // Use batched approach: process voxels in groups sized by GPU memory
-    size_t freeMem2, totalMem2;
-    CUDA_CHECK(cudaMemGetInfo(&freeMem2, &totalMem2));
-    size_t scratchPerThread2 = (size_t)maxTheorSpots * N_COL_THEORSPOTS * sizeof(RealType);
-    size_t availForScratch = (freeMem2 > 512*1024*1024) ? (freeMem2 - 512*1024*1024) : (256*1024*1024);
-    int maxThreadsGPU = (int)(availForScratch / scratchPerThread2);
-    int voxelsPerBatch = maxThreadsGPU / nSpotsRange;
-    if (voxelsPerBatch < 1) voxelsPerBatch = 1;
-    if (voxelsPerBatch > nVoxels) voxelsPerBatch = nVoxels;
-
-    int batchThreads = voxelsPerBatch * nSpotsRange;
-    RealType *d_batchScratch;
-    CUDA_CHECK(cudaMalloc(&d_batchScratch, (size_t)batchThreads * scratchPerThread2));
-
-    int nBatches = (nVoxels + voxelsPerBatch - 1) / voxelsPerBatch;
-    printf("  GPU batch: %d voxels/batch, %d batches, scratch=%.0f MB\n",
-           voxelsPerBatch, nBatches,
-           (double)batchThreads * scratchPerThread2 / 1048576.0);
-
-    // Launch kernel in voxel batches
+    // Launch fused kernel — no scratch memory needed
     double tAllocEnd = omp_get_wtime();
     printf("  GPU alloc+init: %.3f s\n", tAllocEnd - tSpotDrivenStart);
 
     dim3 block(256, 1);
+    dim3 grid2((nSpotsRange + block.x - 1) / block.x, nVoxels);
+    printf("  Launching fused kernel: grid=(%d,%d), block=%d\n",
+           grid2.x, grid2.y, block.x);
+
     double tKernelStart = omp_get_wtime();
-    for (int bi = 0; bi < nBatches; bi++) {
-      int vStart = bi * voxelsPerBatch;
-      int vEnd = vStart + voxelsPerBatch;
-      if (vEnd > nVoxels) vEnd = nVoxels;
-      int vN = vEnd - vStart;
-
-      dim3 grid2((nSpotsRange + block.x - 1) / block.x, vN);
-
-      // Adjust results pointer for this batch
-      SpotResult *d_batchResults = d_spotResults + vStart * nSpotsRange;
-
-      double tBatchStart = omp_get_wtime();
-      indexer_spotdriven_kernel<<<grid2, block>>>(
-          d_ObsSpotsLab, (int)n_spots,
-          d_hkls_flat, n_hkls,
-          d_data, d_ndata,
-          d_ringsToReject, Params.nRingsToRejectCalc,
-          d_batchResults,
-          d_batchScratch, maxTheorSpots,
-          d_ypos, BeamSize,
-          d_spotSinOme, d_spotCosOme,
-          d_gridGPU, startRowNr + vStart,
-          startRowNrSp, endRowNrSp,
-          vN, nSpotsRange,
-          Params.StepsizeOrient, Params.StepsizePos,
-          Params.Distance, Params.Rsample, Params.Hbeam);
-      CUDA_CHECK(cudaGetLastError());
-      CUDA_CHECK(cudaDeviceSynchronize());
-      printf("  Batch %d/%d: %d voxels, grid=(%d,%d), %.3f s\n",
-             bi + 1, nBatches, vN, grid2.x, grid2.y, omp_get_wtime() - tBatchStart);
-    }
+    indexer_fused_kernel<<<grid2, block>>>(
+        d_ObsSpotsLab, (int)n_spots,
+        d_hkls_flat, n_hkls,
+        d_data, d_ndata,
+        d_ringsToReject, Params.nRingsToRejectCalc,
+        d_spotResults,
+        d_ypos, BeamSize,
+        d_spotSinOme, d_spotCosOme,
+        d_gridGPU, startRowNr,
+        startRowNrSp, endRowNrSp,
+        nVoxels, nSpotsRange,
+        Params.StepsizeOrient, Params.StepsizePos,
+        Params.Distance, Params.Rsample, Params.Hbeam);
+    CUDA_CHECK(cudaGetLastError());
+    CUDA_CHECK(cudaDeviceSynchronize());
 
     double tKernelEnd = omp_get_wtime();
     printf("  Kernel total: %.3f s\n", tKernelEnd - tKernelStart);
@@ -1869,7 +2142,7 @@ int main(int argc, char *argv[]) {
     // Cleanup
     free(h_allResults);
     CUDA_CHECK(cudaFree(d_spotResults));
-    CUDA_CHECK(cudaFree(d_batchScratch));
+
     CUDA_CHECK(cudaFree(d_spotSinOme));
     CUDA_CHECK(cudaFree(d_spotCosOme));
     CUDA_CHECK(cudaFree(d_gridGPU));
