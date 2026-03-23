@@ -1104,21 +1104,7 @@ static void LoadPositions(const char *fn) {
   printf("positions.csv: %d scan positions\n", nYpos);
 }
 
-static void LoadGrid(const char *fn) {
-  FILE *f = fopen(fn, "r");
-  if (!f) { printf("Cannot open grid file %s\n", fn); return; }
-  char line[4096];
-  int cap = 1024;
-  grid = (double *)malloc(cap * 2 * sizeof(double));
-  int n = 0;
-  while (fgets(line, 4096, f)) {
-    if (n >= cap) { cap *= 2; grid = (double *)realloc(grid, cap * 2 * sizeof(double)); }
-    sscanf(line, "%lf %lf", &grid[n * 2], &grid[n * 2 + 1]);
-    n++;
-  }
-  fclose(f);
-  printf("Grid: %d voxels\n", n);
-}
+
 
 static void LoadMic(const char *fn) {
   FILE *f = fopen(fn, "r");
@@ -1407,19 +1393,22 @@ int main(int argc, char *argv[]) {
   // ═══════════════════════════════════════════════════════════
   //  VOXEL LOOP — process each voxel on GPU
   // ═══════════════════════════════════════════════════════════
-  printf("Starting scanning indexer for %d voxels...\n", nVoxels);
+  printf("Starting scanning indexer for %d voxels...\n", nVoxels); fflush(stdout);
 
   // Allocate per-voxel accumulators for consolidated output
   VoxelAccumulator *accs = (VoxelAccumulator *)calloc(nVoxels, sizeof(VoxelAccumulator));
   for (int vi = 0; vi < nVoxels; vi++)
     VoxelAccum_init(&accs[vi]);
+  printf("[DBG] Accumulators allocated\n"); fflush(stdout);
 
   // GPU memory for results — reused across voxels
   // For seeded modes, results array = 1 slot per seed
   // For spot-driven, results array = 1 slot per spotID
   int maxResultSlots = (hasMic || hasGrains) ? (hasGrains ? nrGrains : 1) : (int)n_spots;
+  printf("[DBG] maxResultSlots=%d, sizeof(SpotResult)=%zu\n", maxResultSlots, sizeof(SpotResult)); fflush(stdout);
   SpotResult *d_results;
   CUDA_CHECK(cudaMalloc(&d_results, maxResultSlots * sizeof(SpotResult)));
+  printf("[DBG] d_results allocated\n"); fflush(stdout);
 
   // Determine max batch size from GPU memory
   size_t freeMem, totalMem;
@@ -1427,11 +1416,13 @@ int main(int argc, char *argv[]) {
   size_t bytesPerThread = sizeof(EvalTuple) + scratchPerThread;
   size_t maxBatchGPU = (freeMem / 3) / bytesPerThread;
   if (maxBatchGPU < 1024) maxBatchGPU = 1024;
+  printf("[DBG] maxBatchGPU=%zu, freeMem=%zu MB\n", maxBatchGPU, freeMem / 1048576); fflush(stdout);
 
   EvalTuple *d_tuples;
   CUDA_CHECK(cudaMalloc(&d_tuples, maxBatchGPU * sizeof(EvalTuple)));
   RealType *d_theorScratch;
   CUDA_CHECK(cudaMalloc(&d_theorScratch, maxBatchGPU * scratchPerThread));
+  printf("[DBG] GPU memory allocated, entering voxel loop\n"); fflush(stdout);
 
   int blockSize = 256;
 
@@ -1440,6 +1431,7 @@ int main(int argc, char *argv[]) {
     VoxelAccumulator *acc = &accs[vi];
     double xThis = grid[thisRowNr * 2 + 0];
     double yThis = grid[thisRowNr * 2 + 1];
+    if (vi == 0) { printf("[DBG] Voxel 0: x=%.2f y=%.2f\n", xThis, yThis); fflush(stdout); }
 
     // ─── MODE 1: MicFile-seeded ────────────────────────────
     if (hasMic == 1) {
