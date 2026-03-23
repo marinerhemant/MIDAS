@@ -1528,7 +1528,7 @@ int main(int argc, char *argv[]) {
                                                 d_ObsSpotsLab, d_data, d_ndata,
                                                 d_ringsToReject, Params.nRingsToRejectCalc,
                                                 d_results, d_theorScratch, maxTheorSpots,
-                                                d_ypos, BeamSize);
+                                                d_ypos, BeamSize, nSeeds);
       CUDA_CHECK(cudaDeviceSynchronize());
       CUDA_CHECK(cudaMemcpy(h_res, d_results, nSeeds * sizeof(SpotResult), cudaMemcpyDeviceToHost));
 
