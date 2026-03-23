@@ -888,8 +888,15 @@ int fit2DPeaks(unsigned nPeaks, int nrPixelsThisRegion, double *z,
   if (EtaMax - EtaMin > 180)
     maxEtaWidth -= 180;
 
+  // Floor to prevent upper bounds from falling below the sigma clamp floor
+  // (fixes NLOPT_INVALID_ARGS on tiny 2-pixel regions at large radii)
+  if (maxRWidth < 0.1)
+    maxRWidth = 0.1;
+  if (maxEtaWidth < 0.1)
+    maxEtaWidth = 0.1;
+
   // Estimate initial width based on region size and number of peaks
-  double width = sqrt(nrPixelsThisRegion / nPeaks);
+  double width = sqrt((double)nrPixelsThisRegion / nPeaks);
   if (width > maxRWidth)
     width = maxRWidth;
 
@@ -1013,6 +1020,15 @@ int fit2DPeaks(unsigned nPeaks, int nrPixelsThisRegion, double *z,
                          .pkInvSigmaGEta2 = fitPeakBuf + 6 * nPeaks,
                          .pkInvSigmaLEta2 = fitPeakBuf + 7 * nPeaks};
 
+  // Clamp initial guesses to [lb, ub] as a safety net
+  // (prevents NLOPT_INVALID_ARGS if estimates fall outside bounds)
+  for (unsigned i = 0; i < n; i++) {
+    if (x[i] < xl[i])
+      x[i] = xl[i];
+    if (x[i] > xu[i])
+      x[i] = xu[i];
+  }
+
   int rc = 0;
   double minf = 0;
 
@@ -1024,7 +1040,7 @@ int fit2DPeaks(unsigned nPeaks, int nrPixelsThisRegion, double *z,
   config.objective_function = peakFittingObjectiveFunction;
   config.obj_data = &f_data;
   config.initial_guess = x;
-  config.max_evaluations = 5000;
+  config.max_evaluations = 5000 * (int)nPeaks; // Scale with nPeaks for high-dimensional multi-peak fits
   config.max_time_seconds = 30;
   config.ftol_rel = 1e-5;
   config.xtol_rel = 1e-5;
@@ -1883,8 +1899,8 @@ static ErrorCode parseZarrMetadata(const char *dataFile,
   params->doPeakFit = 1;
   params->localMaximaOnly = 0;
   params->bc = DEFAULT_BC;
-  params->Ycen = DEFAULT_NR_PIXELS / 2;
-  params->Zcen = DEFAULT_NR_PIXELS / 2;
+  params->Ycen = (double)DEFAULT_NR_PIXELS / 2;
+  params->Zcen = (double)DEFAULT_NR_PIXELS / 2;
   params->IntSat = DEFAULT_INT_SAT;
   params->Lsd = DEFAULT_LSD;
   params->px = DEFAULT_PIXEL_SIZE;
