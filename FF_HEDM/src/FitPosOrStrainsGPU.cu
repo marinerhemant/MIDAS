@@ -384,6 +384,102 @@ __device__ static double gpu_FitErrorsStrains(
 }
 
 // ═══════════════════════════════════════════
+//  Dynamic Spot Reassignment (device-side)
+// ═══════════════════════════════════════════
+
+// Reassign observed spots to theoretical spots using bin structure.
+// Returns new nSpots (replaces spot data in-place).
+__device__ static int gpu_ReassignSpotsFromBins(
+    const double *x12,       // [12] current pos+euler+latc
+    const double *hklsRaw, double *scratch,
+    double *spotsYZO,        // [maxSpots*11] — will be REWRITTEN
+    int maxSpots,
+    const double *AllSpotsPtr, int totalNSpots,
+    const double *ObsSpotsLab, int nSpotsBin,
+    const int *BinData, const int *nBinData,
+    int nMaxTheor) {
+
+  double *hkls = scratch;
+  double *theorSpots = scratch + d_params.nhkls * 7;
+  // 1. Correct HKLs for current lattice
+  gpu_CorrectHKLsLatC(&x12[6], hklsRaw, d_params.nhkls, d_params.Lsd,
+                       d_params.Wavelength, hkls);
+  // 2. Orient matrix from current Euler
+  double orient[3][3];
+  gpu_Euler2OrientMat(&x12[3], orient);
+  // 3. Generate theoretical spots
+  int nTspots = gpu_CalcDiffrSpots(orient, d_params.Lsd,
+      d_params.OmegaRanges, d_params.nOmeRanges, d_params.BoxSizes,
+      hkls, d_params.nhkls, d_params.MinEta, theorSpots);
+
+  // 4. For each theoretical spot, search bin structure for best observed match
+  int nMatched = 0;
+  int usedSpotIDs[256]; // enough for typical grains
+  for (int i = 0; i < 256; i++) usedSpotIDs[i] = -1;
+
+  for (int sp = 0; sp < nTspots && nMatched < maxSpots; sp++) {
+    int RingNr = (int)theorSpots[sp*9+7];
+    double theorOmega = theorSpots[sp*9+2];
+    double theorYl = theorSpots[sp*9+0], theorZl = theorSpots[sp*9+1];
+    double theorEta = gpu_CalcEtaAngle(theorYl, theorZl);
+
+    int iRing = RingNr - 1;
+    if (iRing < 0 || iRing >= d_params.nRingBins) continue;
+    int iEta = (int)floor((180.0 + theorEta) / d_params.EtaBinSize);
+    int iOme = (int)floor((180.0 + theorOmega) / d_params.OmeBinSize);
+    if (iEta < 0) iEta = 0;
+    if (iEta >= d_params.nEtaBins) iEta = d_params.nEtaBins - 1;
+    if (iOme < 0) iOme = 0;
+    if (iOme >= d_params.nOmeBins) iOme = d_params.nOmeBins - 1;
+
+    long long int Pos = (long long int)iRing * d_params.nEtaBins * d_params.nOmeBins
+                        + iEta * d_params.nOmeBins + iOme;
+    int nInBin = nBinData[Pos * 2];
+    int DataPos = nBinData[Pos * 2 + 1];
+    if (nInBin == 0) continue;
+
+    double bestDiffOme = 1e9;
+    int bestRow = -1;
+    for (int iSpot = 0; iSpot < nInBin; iSpot++) {
+      int spotRow = BinData[DataPos + iSpot];
+      if (spotRow < 0 || spotRow >= nSpotsBin) continue;
+      // Check if already used
+      int alreadyUsed = 0;
+      for (int u = 0; u < nMatched; u++) {
+        if (usedSpotIDs[u] == spotRow) { alreadyUsed = 1; break; }
+      }
+      if (alreadyUsed) continue;
+      double obsOmega = ObsSpotsLab[spotRow * 9 + 2];
+      double diffOme = fabs(theorOmega - obsOmega);
+      if (diffOme < 5.0 && diffOme < bestDiffOme) {
+        bestDiffOme = diffOme;
+        bestRow = spotRow;
+      }
+    }
+    if (bestRow >= 0 && nMatched < 256) {
+      usedSpotIDs[nMatched] = bestRow;
+      size_t spos = (size_t)bestRow;
+      if (spos < (size_t)totalNSpots) {
+        double *s = &spotsYZO[nMatched * 11];
+        s[0]  = AllSpotsPtr[spos*16+0];  // YLab
+        s[1]  = AllSpotsPtr[spos*16+1];  // ZLab
+        s[2]  = AllSpotsPtr[spos*16+2];  // Omega
+        s[3]  = AllSpotsPtr[spos*16+4];  // SpotID
+        s[4]  = AllSpotsPtr[spos*16+8];  // OmegaIni
+        s[5]  = AllSpotsPtr[spos*16+9];  // YOrig
+        s[6]  = AllSpotsPtr[spos*16+10]; // ZOrig
+        s[7]  = AllSpotsPtr[spos*16+5];  // RingNr
+        s[8]  = theorSpots[sp*9+8];      // nrhkls sequence number
+        s[9]  = AllSpotsPtr[spos*16+14]; // maskTouched
+        s[10] = AllSpotsPtr[spos*16+15]; // FitRMSE
+        nMatched++;
+      }
+    }
+  }
+  return nMatched;
+}
+
+// ═══════════════════════════════════════════
 //  Functors for gpu_simplex
 // ═══════════════════════════════════════════
 
@@ -436,14 +532,19 @@ __global__ void fitGrainsKernel(
     int nGrains,
     const double *d_initData,    // [nGrains*15] from IndexBest.bin
     double *d_spotData,             // [nGrains*MaxNHKLS*11] observed spots per grain (modified in-place)
-    const int *d_nSpotsPerGrain, // [nGrains] number of spots per grain
+    int *d_nSpotsPerGrain,       // [nGrains] number of spots per grain (modified by reassign)
     const double *d_hklsRaw,     // [nhkls*7] raw HKL data (shared)
     double *d_scratch,           // [nGrains*scratchSize]
     const double *d_LatCin,      // [6] nominal lattice params
     double d_Rsample, double d_Hbeam,
     double d_MargPos, double d_MargOme, double d_MargABC, double d_MargABG,
     double *d_results,           // [nGrains*27] output
-    int scratchPerGrain, int nMaxTheor)
+    int scratchPerGrain, int nMaxTheor,
+    // Bin data for dynamic reassignment
+    const double *d_AllSpots, int d_totalNSpots,
+    const double *d_ObsSpotsLab, int d_nSpotsBin,
+    const int *d_BinData, const int *d_nBinData,
+    int doDynReassign)
 {
   int gIdx = blockIdx.x * blockDim.x + threadIdx.x;
   if (gIdx >= nGrains) return;
@@ -540,6 +641,17 @@ __global__ void fitGrainsKernel(
   nm_optimize<12>(x0_12,lb12,ub12,res12,f1,1e-5,5000,0.05);
   nm_optimize<12>(res12,lb12,ub12,res12,f1,1e-5,5000,0.05);
 
+  // Dynamic reassignment after Stage 1
+  if (doDynReassign && d_BinData != nullptr) {
+    double x12_cur[12] = {res12[0],res12[1],res12[2],
+                          Euler0[0],Euler0[1],Euler0[2],
+                          LatCin[0],LatCin[1],LatCin[2],LatCin[3],LatCin[4],LatCin[5]};
+    int nNew = gpu_ReassignSpotsFromBins(x12_cur, d_hklsRaw, scratch,
+        spots, MaxNHKLS, d_AllSpots, d_totalNSpots,
+        d_ObsSpotsLab, d_nSpotsBin, d_BinData, d_nBinData, nMaxTheor);
+    if (nNew > 0) { nSpots = nNew; d_nSpotsPerGrain[gIdx] = nNew; }
+  }
+
   // Reset orient to initial, keep position from Stage 1
   for(int i=0;i<3;i++) res12[i+3]=Euler0[i];
   for(int i=0;i<6;i++) res12[i+6]=LatCin[i];
@@ -559,6 +671,17 @@ __global__ void fitGrainsKernel(
   nm_optimize<9>(x0_9,lb9,ub9,res9,f2,1e-5,5000,0.05);
   nm_optimize<9>(res9,lb9,ub9,res9,f2,1e-5,5000,0.05);
 
+  // Dynamic reassignment after Stage 2
+  if (doDynReassign && d_BinData != nullptr) {
+    double x12_cur[12] = {res12[0],res12[1],res12[2],
+                          res9[0],res9[1],res9[2],
+                          res9[3],res9[4],res9[5],res9[6],res9[7],res9[8]};
+    int nNew = gpu_ReassignSpotsFromBins(x12_cur, d_hklsRaw, scratch,
+        spots, MaxNHKLS, d_AllSpots, d_totalNSpots,
+        d_ObsSpotsLab, d_nSpotsBin, d_BinData, d_nBinData, nMaxTheor);
+    if (nNew > 0) { nSpots = nNew; d_nSpotsPerGrain[gIdx] = nNew; }
+  }
+
   // ─── Stage 3: Fit Strain (6D), pos+orient fixed ───
   double x0_6[6], lb6[6], ub6[6], res6[6];
   for(int i=0;i<6;i++) x0_6[i]=LatCin[i];
@@ -571,6 +694,17 @@ __global__ void fitGrainsKernel(
   for(int i=0;i<3;i++) f3.Orient[i]=res9[i];
   nm_optimize<6>(x0_6,lb6,ub6,res6,f3,1e-5,5000,0.05);
   nm_optimize<6>(res6,lb6,ub6,res6,f3,1e-5,5000,0.05);
+
+  // Dynamic reassignment after Stage 3
+  if (doDynReassign && d_BinData != nullptr) {
+    double x12_cur[12] = {res12[0],res12[1],res12[2],
+                          res9[0],res9[1],res9[2],
+                          res6[0],res6[1],res6[2],res6[3],res6[4],res6[5]};
+    int nNew = gpu_ReassignSpotsFromBins(x12_cur, d_hklsRaw, scratch,
+        spots, MaxNHKLS, d_AllSpots, d_totalNSpots,
+        d_ObsSpotsLab, d_nSpotsBin, d_BinData, d_nBinData, nMaxTheor);
+    if (nNew > 0) { nSpots = nNew; d_nSpotsPerGrain[gIdx] = nNew; }
+  }
 
   // ─── Stage 4: Fit Pos (3D), orient+strain fixed ───
   double x0_3[3], lb3[3], ub3[3], res3[3];
@@ -855,8 +989,19 @@ int main(int argc, char *argv[]) {
   CUDA_CHECK(cudaMalloc(&d_scratch, (size_t)nSptIDs * scratchPerGrain * sizeof(double)));
   CUDA_CHECK(cudaMalloc(&d_results, (size_t)nSptIDs * 27 * sizeof(double)));
 
+  // Upload AllSpots for reassignment (already mmap'd)
+  double *d_AllSpotsGPU = nullptr;
+  CUDA_CHECK(cudaMalloc(&d_AllSpotsGPU, (size_t)nSpots * 16 * sizeof(double)));
+  CUDA_CHECK(cudaMemcpy(d_AllSpotsGPU, AllSpots, (size_t)nSpots*16*sizeof(double), cudaMemcpyHostToDevice));
+
+  // Bin data for dynamic reassignment — disabled for initial validation
+  // TODO: Load ObsSpotsLab.bin, BinData.bin, nBinData.bin and upload
+  double *d_ObsSpotsLabGPU = nullptr;
+  int *d_BinDataGPU = nullptr, *d_nBinDataGPU = nullptr;
+  int doDynReassign = 0; // set to 1 once bin data is loaded
+
   size_t totalGPUMB = ((size_t)nSptIDs*(15+MaxNSpotsBest*11+scratchPerGrain+27)*sizeof(double)
-                       + nhkls*7*sizeof(double)) / (1024*1024);
+                       + nhkls*7*sizeof(double) + (size_t)nSpots*16*sizeof(double)) / (1024*1024);
   printf("GPU memory: ~%zu MB for %d grains\n", totalGPUMB, nSptIDs);
 
   // ─── Launch kernel ───
@@ -868,7 +1013,9 @@ int main(int argc, char *argv[]) {
   fitGrainsKernel<<<blocks, threadsPerBlock>>>(
       nSptIDs, d_initData, d_spotData, d_nSpotsPerGrain, d_hklsRaw,
       d_scratch, d_LatCin, Rsample, Hbeam, MargPos, 0.01, MargABC, MargABG,
-      d_results, scratchPerGrain, nMaxTheor);
+      d_results, scratchPerGrain, nMaxTheor,
+      d_AllSpotsGPU, nSpots, d_ObsSpotsLabGPU, 0,
+      d_BinDataGPU, d_nBinDataGPU, doDynReassign);
   CUDA_CHECK(cudaDeviceSynchronize());
   printf("Kernel done: %.2f s\n", getTimeSec() - tKernel);
 
@@ -928,6 +1075,10 @@ int main(int argc, char *argv[]) {
   free(h_nSpotsPerGrain); free(h_SpotIDs); free(hklsFlat); free(SptIDs);
   cudaFree(d_initData); cudaFree(d_spotData); cudaFree(d_nSpotsPerGrain);
   cudaFree(d_hklsRaw); cudaFree(d_scratch); cudaFree(d_LatCin); cudaFree(d_results);
+  cudaFree(d_AllSpotsGPU);
+  if (d_ObsSpotsLabGPU) cudaFree(d_ObsSpotsLabGPU);
+  if (d_BinDataGPU) cudaFree(d_BinDataGPU);
+  if (d_nBinDataGPU) cudaFree(d_nBinDataGPU);
 
   printf("Finished, time elapsed: %.2f seconds.\n", getTimeSec() - t0);
   return 0;
