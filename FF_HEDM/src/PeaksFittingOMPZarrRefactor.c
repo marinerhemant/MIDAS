@@ -18,7 +18,6 @@
 #include <errno.h>
 #include <fcntl.h>
 #include <libgen.h>
-#include <limits.h>
 #include <math.h>
 #include <nlopt.h>
 #include <omp.h>
@@ -1040,7 +1039,9 @@ int fit2DPeaks(unsigned nPeaks, int nrPixelsThisRegion, double *z,
   config.objective_function = peakFittingObjectiveFunction;
   config.obj_data = &f_data;
   config.initial_guess = x;
-  config.max_evaluations = 5000 * (int)nPeaks; // Scale with nPeaks for high-dimensional multi-peak fits
+  config.max_evaluations =
+      5000 *
+      (int)nPeaks; // Scale with nPeaks for high-dimensional multi-peak fits
   config.max_time_seconds = 30;
   config.ftol_rel = 1e-5;
   config.xtol_rel = 1e-5;
@@ -1564,7 +1565,8 @@ static ErrorCode processImageFrame(int fileNr, char *allData, size_t *sizeArr,
         ws->etas[pi] = calcEtaAngle(-maxY + params->Ycen, maxZ - params->Zcen);
         // Apportion raw intensity by IMax fraction
         if (totalIMax > 0)
-          ws->integratedIntensity[pi] = rawSumForRegion * ws->maximaValues[pi] / totalIMax;
+          ws->integratedIntensity[pi] =
+              rawSumForRegion * ws->maximaValues[pi] / totalIMax;
         else
           ws->integratedIntensity[pi] = rawSumForRegion / nPeaks;
         ws->rawSumIntensity[pi] = ws->integratedIntensity[pi];

@@ -1566,8 +1566,9 @@ int main(int argc, char *argv[]) {
     double tSpotDrivenStart = omp_get_wtime();
 
     // Free Mode 1/2 GPU buffers — not needed for spot-driven
-    CUDA_CHECK(cudaFree(d_tuples));
-    CUDA_CHECK(cudaFree(d_theorScratch));
+    CUDA_CHECK(cudaFree(d_tuples)); d_tuples = NULL;
+    CUDA_CHECK(cudaFree(d_theorScratch)); d_theorScratch = NULL;
+    CUDA_CHECK(cudaFree(d_results)); d_results = NULL;
 
     // ─── Phase 1: Count tuples and spots per voxel (parallel) ───
     long long *tuplesPerVoxel = (long long *)calloc(nVoxels, sizeof(long long));
@@ -1818,7 +1819,7 @@ int main(int argc, char *argv[]) {
     CUDA_CHECK(cudaStreamDestroy(streams[1]));
   }
 
-  write_output:
+
 
 
   // ═══════════════════════════════════════════════════════════
@@ -1837,9 +1838,9 @@ int main(int argc, char *argv[]) {
   CUDA_CHECK(cudaFree(d_ypos));
   CUDA_CHECK(cudaFree(d_ndata));
   CUDA_CHECK(cudaFree(d_ringsToReject));
-  CUDA_CHECK(cudaFree(d_results));
-  CUDA_CHECK(cudaFree(d_tuples));
-  CUDA_CHECK(cudaFree(d_theorScratch));
+  if (d_results) CUDA_CHECK(cudaFree(d_results));
+  if (d_tuples) CUDA_CHECK(cudaFree(d_tuples));
+  if (d_theorScratch) CUDA_CHECK(cudaFree(d_theorScratch));
 
   for (int t = 0; t < numProcs; t++) free(OrTmp_all[t]);
   free(OrTmp_all);
