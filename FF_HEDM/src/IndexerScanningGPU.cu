@@ -1563,8 +1563,11 @@ int main(int argc, char *argv[]) {
   //  MODE 3: Multi-voxel batched spot-driven indexing
   // ═══════════════════════════════════════════════════════════
   if (!hasMic && !hasGrains) {
-    printf("Spot-driven mode: generating tuples for %d voxels...\n", nVoxels);
-    double tTupleStart = omp_get_wtime();
+    double tSpotDrivenStart = omp_get_wtime();
+
+    // Free Mode 1/2 GPU buffers — not needed for spot-driven
+    CUDA_CHECK(cudaFree(d_tuples));
+    CUDA_CHECK(cudaFree(d_theorScratch));
 
     // ─── Phase 1: Count tuples and spots per voxel (parallel) ───
     long long *tuplesPerVoxel = (long long *)calloc(nVoxels, sizeof(long long));
@@ -1608,188 +1611,215 @@ int main(int argc, char *argv[]) {
       spotsPerVoxel[vi] = nPassing;
     }
 
-    // Prefix sum for offsets
-    long long *tupleOffsets = (long long *)malloc((nVoxels + 1) * sizeof(long long));
-    tupleOffsets[0] = 0;
     int maxSpotsAny = 0;
+    long long maxTuplesPerVoxel = 0;
     for (int vi = 0; vi < nVoxels; vi++) {
-      tupleOffsets[vi + 1] = tupleOffsets[vi] + tuplesPerVoxel[vi];
       if (spotsPerVoxel[vi] > maxSpotsAny) maxSpotsAny = spotsPerVoxel[vi];
+      if (tuplesPerVoxel[vi] > maxTuplesPerVoxel) maxTuplesPerVoxel = tuplesPerVoxel[vi];
     }
-    long long totalTuples = tupleOffsets[nVoxels];
     if (maxSpotsAny == 0) maxSpotsAny = 1;
 
-    printf("  Total tuples: %lld across %d voxels (max %d spots/voxel)\n",
-           totalTuples, nVoxels, maxSpotsAny);
+    printf("Spot-driven mode: %d voxels, max %lld tuples/voxel, max %d spots/voxel\n",
+           nVoxels, maxTuplesPerVoxel, maxSpotsAny);
+    printf("  Tuple counting: %.3f s\n", omp_get_wtime() - tSpotDrivenStart);
 
-    if (totalTuples == 0) {
-      printf("  No tuples generated, skipping.\n");
-      free(tuplesPerVoxel); free(spotsPerVoxel); free(tupleOffsets);
-      goto write_output;
-    }
+    // ─── Determine voxel group size from available memory ───
+    size_t maxHostBytes = (size_t)4 * 1024 * 1024 * 1024ULL;
+    int voxelsPerGroup = (maxTuplesPerVoxel > 0) ?
+        (int)(maxHostBytes / ((size_t)maxTuplesPerVoxel * sizeof(EvalTuple))) : nVoxels;
+    if (voxelsPerGroup < 1) voxelsPerGroup = 1;
+    if (voxelsPerGroup > nVoxels) voxelsPerGroup = nVoxels;
 
-    // ─── Phase 2: Fill tuples for all voxels (parallel) ───
-    EvalTuple *h_allTuples = (EvalTuple *)malloc(totalTuples * sizeof(EvalTuple));
-    if (!h_allTuples) {
-      printf("Cannot allocate %lld tuples (%.1f MB)\n", totalTuples,
-             totalTuples * sizeof(EvalTuple) / 1048576.0);
-      free(tuplesPerVoxel); free(spotsPerVoxel); free(tupleOffsets);
-      goto write_output;
-    }
+    // GPU memory for double-buffered streams
+    size_t freeMem2, totalMem2;
+    CUDA_CHECK(cudaMemGetInfo(&freeMem2, &totalMem2));
+    size_t resultBytes = (size_t)voxelsPerGroup * maxSpotsAny * sizeof(SpotResult);
+    size_t availForBatch = (freeMem2 > resultBytes + 128*1024*1024) ?
+                           (freeMem2 - resultBytes - 128*1024*1024) : (128*1024*1024);
+    size_t bytesPerThread2 = sizeof(EvalTuple) + scratchPerThread;
+    size_t gpuBatchSize = availForBatch / (2 * bytesPerThread2);
+    if (gpuBatchSize < 1024) gpuBatchSize = 1024;
 
-    #pragma omp parallel for schedule(dynamic)
-    for (int vi = 0; vi < nVoxels; vi++) {
-      int thisRowNr = startRowNr + vi;
-      double xThis = grid[thisRowNr * 2 + 0];
-      double yThis = grid[thisRowNr * 2 + 1];
-      long long base = tupleOffsets[vi];
-      long long idx = 0;
-      int seedIdx = 0;
-      for (int idnr = startRowNrSp; idnr <= endRowNrSp; idnr++) {
-        double newY = xThis * spotSinOme[idnr] + yThis * spotCosOme[idnr];
-        if (fabs(newY - ypos[(int)ObsSpotsLab[idnr * N_COL_OBSSPOTS + 9]]) > BeamSize / 2)
-          continue;
-        int ringnr = (int)ObsSpotsLab[idnr * N_COL_OBSSPOTS + 5];
-        double ys = ObsSpotsLab[idnr * N_COL_OBSSPOTS + 0];
-        double zs = ObsSpotsLab[idnr * N_COL_OBSSPOTS + 1];
-        double omega = ObsSpotsLab[idnr * N_COL_OBSSPOTS + 2];
-        double eta = ObsSpotsLab[idnr * N_COL_OBSSPOTS + 6];
-        double RefRad = ObsSpotsLab[idnr * N_COL_OBSSPOTS + 3];
-        double y0v[MAX_N_STEPS], z0v[MAX_N_STEPS];
-        int nPN = 0;
-        h_GenerateIdealSpots(ys, zs, RingTtheta[ringnr], eta,
-                             Params.RingRadii[ringnr], Params.Rsample,
-                             Params.Hbeam, Params.StepsizePos, y0v, z0v, &nPN);
-        for (int isp = 0; isp < nPN; isp++) {
-          double xi, yi, zi;
-          h_MakeUnitLength(Params.Distance, y0v[isp], z0v[isp], &xi, &yi, &zi);
-          double g1, g2, g3;
-          h_spot_to_gv(xi, yi, zi, omega, &g1, &g2, &g3);
-          double hn[3] = {g1, g2, g3};
-          double hkl_d2[3] = {RingHKL[ringnr][0], RingHKL[ringnr][1], RingHKL[ringnr][2]};
-          int nOr;
-          double OrTmp[MAX_N_OR * 9];
-          h_GenerateCandidateOrientations(hkl_d2, hn, Params.StepsizeOrient, OrTmp, &nOr, ringnr);
-          for (int or_ = 0; or_ < nOr && (base + idx) < totalTuples; or_++) {
-            EvalTuple *t = &h_allTuples[base + idx++];
-            t->spotIdx = seedIdx;
-            t->voxelIdx = vi;
-            for (int k = 0; k < 9; k++) t->OrMat[k] = OrTmp[or_ * 9 + k];
-            t->ga = xThis; t->gb = yThis; t->gc = 0;
-            t->RefRad = RefRad;
-          }
-        }
-        seedIdx++;
-      }
-    }
+    printf("  Group size: %d voxels, GPU batch: %zu tuples\n", voxelsPerGroup, gpuBatchSize);
 
-    double tTupleEnd = omp_get_wtime();
-    printf("  Tuple generation: %.3f s\n", tTupleEnd - tTupleStart);
-
-    // ─── Phase 3: GPU results array for all voxels ───
-    int totalResultSlots = nVoxels * maxSpotsAny;
-    SpotResult *h_allResults = (SpotResult *)calloc(totalResultSlots, sizeof(SpotResult));
-    for (int i = 0; i < totalResultSlots; i++) {
-      h_allResults[i].bestFrac = -1.0;
-      h_allResults[i].bestIA = 999.0;
-      h_allResults[i].atomicKey = 0;
-    }
-
-    // Reallocate GPU results if needed
-    if (totalResultSlots > maxResultSlots) {
-      CUDA_CHECK(cudaFree(d_results));
-      maxResultSlots = totalResultSlots;
-      CUDA_CHECK(cudaMalloc(&d_results, maxResultSlots * sizeof(SpotResult)));
-    }
-    CUDA_CHECK(cudaMemcpy(d_results, h_allResults, totalResultSlots * sizeof(SpotResult), cudaMemcpyHostToDevice));
-
-    // ─── Phase 4: Launch kernel with double-buffered streams ───
+    // ─── Allocate GPU double-buffers ───
     cudaStream_t streams[2];
     CUDA_CHECK(cudaStreamCreate(&streams[0]));
     CUDA_CHECK(cudaStreamCreate(&streams[1]));
 
-    // Allocate double buffers for tuples
-    size_t batchBytes = maxBatchGPU * sizeof(EvalTuple);
     EvalTuple *d_tuplesBuf[2];
+    size_t batchBytes = gpuBatchSize * sizeof(EvalTuple);
     CUDA_CHECK(cudaMalloc(&d_tuplesBuf[0], batchBytes));
     CUDA_CHECK(cudaMalloc(&d_tuplesBuf[1], batchBytes));
 
-    // Reallocate scratch for double-buffered execution
     RealType *d_scratchBuf[2];
-    size_t scratchBufBytes = maxBatchGPU * scratchPerThread;
+    size_t scratchBufBytes = gpuBatchSize * scratchPerThread;
     CUDA_CHECK(cudaMalloc(&d_scratchBuf[0], scratchBufBytes));
     CUDA_CHECK(cudaMalloc(&d_scratchBuf[1], scratchBufBytes));
 
-    double tKernelStart = omp_get_wtime();
-    int nBatches = (int)((totalTuples + (long long)maxBatchGPU - 1) / (long long)maxBatchGPU);
-    printf("  Launching %d batch(es) on GPU...\n", nBatches);
+    int maxGroupResultSlots = voxelsPerGroup * maxSpotsAny;
+    SpotResult *d_groupResults;
+    CUDA_CHECK(cudaMalloc(&d_groupResults, maxGroupResultSlots * sizeof(SpotResult)));
+    SpotResult *h_groupResults = (SpotResult *)malloc(maxGroupResultSlots * sizeof(SpotResult));
 
-    for (int bi = 0; bi < nBatches; bi++) {
-      int buf = bi % 2;
-      long long bStart = (long long)bi * (long long)maxBatchGPU;
-      long long bEnd = bStart + (long long)maxBatchGPU;
-      if (bEnd > totalTuples) bEnd = totalTuples;
-      int bN = (int)(bEnd - bStart);
+    // ─── Process voxels in groups ───
+    int nGroups = (nVoxels + voxelsPerGroup - 1) / voxelsPerGroup;
+    printf("  Processing %d group(s)...\n", nGroups);
 
-      // Upload this batch on its stream
-      CUDA_CHECK(cudaMemcpyAsync(d_tuplesBuf[buf], h_allTuples + bStart,
-                                  bN * sizeof(EvalTuple), cudaMemcpyHostToDevice, streams[buf]));
+    for (int gi = 0; gi < nGroups; gi++) {
+      int gStart = gi * voxelsPerGroup;
+      int gEnd = gStart + voxelsPerGroup;
+      if (gEnd > nVoxels) gEnd = nVoxels;
+      int gN = gEnd - gStart;
+      double tGen = omp_get_wtime();
 
-      // Launch kernel on this stream
-      int nBlks2 = (bN + blockSize - 1) / blockSize;
-      indexer_eval_kernel<<<nBlks2, blockSize, 0, streams[buf]>>>(
-          d_tuplesBuf[buf], bN, d_hkls_flat, n_hkls,
-          d_ObsSpotsLab, d_data, d_ndata,
-          d_ringsToReject, Params.nRingsToRejectCalc,
-          d_results, d_scratchBuf[buf], maxTheorSpots,
-          d_ypos, BeamSize, maxSpotsAny);
-      CUDA_CHECK(cudaGetLastError());
-    }
-
-    // Wait for all streams to finish
-    CUDA_CHECK(cudaStreamSynchronize(streams[0]));
-    CUDA_CHECK(cudaStreamSynchronize(streams[1]));
-
-    double tKernelEnd = omp_get_wtime();
-    printf("  Kernel execution: %.3f s\n", tKernelEnd - tKernelStart);
-
-    // ─── Phase 5: Download results and distribute to accumulators ───
-    CUDA_CHECK(cudaMemcpy(h_allResults, d_results, totalResultSlots * sizeof(SpotResult), cudaMemcpyDeviceToHost));
-
-    for (int vi = 0; vi < nVoxels; vi++) {
-      VoxelAccumulator *acc = &accs[vi];
-      int nSlots = spotsPerVoxel[vi];
-      for (int si = 0; si < nSlots; si++) {
-        SpotResult *r = &h_allResults[vi * maxSpotsAny + si];
-        if (r->bestFrac <= 0) continue;
-        double outArr[16] = {(double)si, r->bestIA,
-          r->bestOrMat[0], r->bestOrMat[1], r->bestOrMat[2],
-          r->bestOrMat[3], r->bestOrMat[4], r->bestOrMat[5],
-          r->bestOrMat[6], r->bestOrMat[7], r->bestOrMat[8],
-          r->bestPos[0], r->bestPos[1], r->bestPos[2],
-          (double)r->nTspots, (double)r->nMatches};
-        size_t keyArr[4] = {(size_t)si, (size_t)r->nMatches, 0, 0};
-        VoxelAccum_addSolution(acc, outArr, keyArr, NULL, 0);
+      long long groupTuples = 0;
+      int groupMaxSpots = 0;
+      for (int vi = gStart; vi < gEnd; vi++) {
+        groupTuples += tuplesPerVoxel[vi];
+        if (spotsPerVoxel[vi] > groupMaxSpots) groupMaxSpots = spotsPerVoxel[vi];
       }
+      if (groupMaxSpots == 0) groupMaxSpots = 1;
+      if (groupTuples == 0) continue;
+
+      // Prefix sum for this group
+      long long *gOffsets = (long long *)malloc((gN + 1) * sizeof(long long));
+      gOffsets[0] = 0;
+      for (int i = 0; i < gN; i++)
+        gOffsets[i + 1] = gOffsets[i] + tuplesPerVoxel[gStart + i];
+
+      // Fill tuples (parallel)
+      EvalTuple *h_groupTuples = (EvalTuple *)malloc(groupTuples * sizeof(EvalTuple));
+      if (!h_groupTuples) {
+        printf("Cannot allocate %lld tuples for group %d\n", groupTuples, gi);
+        free(gOffsets); continue;
+      }
+
+      #pragma omp parallel for schedule(dynamic)
+      for (int li = 0; li < gN; li++) {
+        int vi = gStart + li;
+        int thisRowNr = startRowNr + vi;
+        double xThis = grid[thisRowNr * 2 + 0];
+        double yThis = grid[thisRowNr * 2 + 1];
+        long long base = gOffsets[li];
+        long long idx = 0;
+        int seedIdx = 0;
+        for (int idnr = startRowNrSp; idnr <= endRowNrSp; idnr++) {
+          double newY = xThis * spotSinOme[idnr] + yThis * spotCosOme[idnr];
+          if (fabs(newY - ypos[(int)ObsSpotsLab[idnr * N_COL_OBSSPOTS + 9]]) > BeamSize / 2)
+            continue;
+          int ringnr = (int)ObsSpotsLab[idnr * N_COL_OBSSPOTS + 5];
+          double ys = ObsSpotsLab[idnr * N_COL_OBSSPOTS + 0];
+          double zs = ObsSpotsLab[idnr * N_COL_OBSSPOTS + 1];
+          double omega = ObsSpotsLab[idnr * N_COL_OBSSPOTS + 2];
+          double eta = ObsSpotsLab[idnr * N_COL_OBSSPOTS + 6];
+          double RefRad = ObsSpotsLab[idnr * N_COL_OBSSPOTS + 3];
+          double y0v[MAX_N_STEPS], z0v[MAX_N_STEPS];
+          int nPN = 0;
+          h_GenerateIdealSpots(ys, zs, RingTtheta[ringnr], eta,
+                               Params.RingRadii[ringnr], Params.Rsample,
+                               Params.Hbeam, Params.StepsizePos, y0v, z0v, &nPN);
+          for (int isp = 0; isp < nPN; isp++) {
+            double xi, yi, zi;
+            h_MakeUnitLength(Params.Distance, y0v[isp], z0v[isp], &xi, &yi, &zi);
+            double g1, g2, g3;
+            h_spot_to_gv(xi, yi, zi, omega, &g1, &g2, &g3);
+            double hn[3] = {g1, g2, g3};
+            double hkl_d2[3] = {RingHKL[ringnr][0], RingHKL[ringnr][1], RingHKL[ringnr][2]};
+            int nOr;
+            double OrTmp[MAX_N_OR * 9];
+            h_GenerateCandidateOrientations(hkl_d2, hn, Params.StepsizeOrient, OrTmp, &nOr, ringnr);
+            for (int or_ = 0; or_ < nOr; or_++) {
+              EvalTuple *t = &h_groupTuples[base + idx++];
+              t->spotIdx = seedIdx;
+              t->voxelIdx = li;
+              for (int k = 0; k < 9; k++) t->OrMat[k] = OrTmp[or_ * 9 + k];
+              t->ga = xThis; t->gb = yThis; t->gc = 0;
+              t->RefRad = RefRad;
+            }
+          }
+          seedIdx++;
+        }
+      }
+
+      // Init results for this group
+      int gResultSlots = gN * groupMaxSpots;
+      for (int i = 0; i < gResultSlots; i++) {
+        h_groupResults[i].bestFrac = -1.0;
+        h_groupResults[i].bestIA = 999.0;
+        h_groupResults[i].atomicKey = 0;
+      }
+      CUDA_CHECK(cudaMemcpy(d_groupResults, h_groupResults,
+                             gResultSlots * sizeof(SpotResult), cudaMemcpyHostToDevice));
+
+      // Launch kernel batches
+      int nBatches = (int)((groupTuples + (long long)gpuBatchSize - 1) / (long long)gpuBatchSize);
+      for (int bi = 0; bi < nBatches; bi++) {
+        int buf = bi % 2;
+        long long bStart = (long long)bi * (long long)gpuBatchSize;
+        long long bEnd = bStart + (long long)gpuBatchSize;
+        if (bEnd > groupTuples) bEnd = groupTuples;
+        int bN = (int)(bEnd - bStart);
+
+        CUDA_CHECK(cudaMemcpyAsync(d_tuplesBuf[buf], h_groupTuples + bStart,
+                                    bN * sizeof(EvalTuple), cudaMemcpyHostToDevice, streams[buf]));
+        int nBlks2 = (bN + blockSize - 1) / blockSize;
+        indexer_eval_kernel<<<nBlks2, blockSize, 0, streams[buf]>>>(
+            d_tuplesBuf[buf], bN, d_hkls_flat, n_hkls,
+            d_ObsSpotsLab, d_data, d_ndata,
+            d_ringsToReject, Params.nRingsToRejectCalc,
+            d_groupResults, d_scratchBuf[buf], maxTheorSpots,
+            d_ypos, BeamSize, groupMaxSpots);
+        CUDA_CHECK(cudaGetLastError());
+      }
+
+      CUDA_CHECK(cudaStreamSynchronize(streams[0]));
+      CUDA_CHECK(cudaStreamSynchronize(streams[1]));
+
+      // Download and accumulate
+      CUDA_CHECK(cudaMemcpy(h_groupResults, d_groupResults,
+                             gResultSlots * sizeof(SpotResult), cudaMemcpyDeviceToHost));
+
+      for (int li = 0; li < gN; li++) {
+        int vi = gStart + li;
+        VoxelAccumulator *acc = &accs[vi];
+        int nSlots = spotsPerVoxel[vi];
+        for (int si = 0; si < nSlots; si++) {
+          SpotResult *r = &h_groupResults[li * groupMaxSpots + si];
+          if (r->bestFrac <= 0) continue;
+          double outArr[16] = {(double)si, r->bestIA,
+            r->bestOrMat[0], r->bestOrMat[1], r->bestOrMat[2],
+            r->bestOrMat[3], r->bestOrMat[4], r->bestOrMat[5],
+            r->bestOrMat[6], r->bestOrMat[7], r->bestOrMat[8],
+            r->bestPos[0], r->bestPos[1], r->bestPos[2],
+            (double)r->nTspots, (double)r->nMatches};
+          size_t keyArr[4] = {(size_t)si, (size_t)r->nMatches, 0, 0};
+          VoxelAccum_addSolution(acc, outArr, keyArr, NULL, 0);
+        }
+      }
+
+      free(h_groupTuples);
+      free(gOffsets);
+      printf("  Group %d/%d: %d voxels, %lld tuples, %.3f s\n",
+             gi + 1, nGroups, gN, groupTuples, omp_get_wtime() - tGen);
     }
 
-    printf("  Total spot-driven time: %.3f s\n", omp_get_wtime() - tTupleStart);
+    printf("  Total spot-driven time: %.3f s\n", omp_get_wtime() - tSpotDrivenStart);
 
-    // Cleanup
-    free(h_allTuples);
-    free(h_allResults);
     free(tuplesPerVoxel);
     free(spotsPerVoxel);
-    free(tupleOffsets);
+    free(h_groupResults);
     CUDA_CHECK(cudaFree(d_tuplesBuf[0]));
     CUDA_CHECK(cudaFree(d_tuplesBuf[1]));
     CUDA_CHECK(cudaFree(d_scratchBuf[0]));
     CUDA_CHECK(cudaFree(d_scratchBuf[1]));
+    CUDA_CHECK(cudaFree(d_groupResults));
     CUDA_CHECK(cudaStreamDestroy(streams[0]));
     CUDA_CHECK(cudaStreamDestroy(streams[1]));
   }
 
   write_output:
+
 
   // ═══════════════════════════════════════════════════════════
   //  Write consolidated output
