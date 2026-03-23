@@ -555,6 +555,342 @@ __global__ void indexer_eval_kernel(
   }
 }
 
+
+// ─────────────────────────────────────────────────────────────
+// Device constant memory for on-GPU orientation generation
+// ─────────────────────────────────────────────────────────────
+__device__ int d_HKLints[MAX_N_HKLS][4];
+__device__ double d_RingHKL[MAX_N_RINGS][3];
+__device__ double d_RingTtheta[MAX_N_RINGS];
+__device__ int d_SGNum;
+__device__ double d_ABCABG[6];
+
+// ─────────────────────────────────────────────────────────────
+// Device: pure math helpers for orientation generation
+// ─────────────────────────────────────────────────────────────
+__device__ static inline void d_MatrixMultF33(double m[3][3], double n[3][3], double res[3][3]) {
+  for (int r = 0; r < 3; r++)
+    for (int c = 0; c < 3; c++)
+      res[r][c] = m[r][0] * n[0][c] + m[r][1] * n[1][c] + m[r][2] * n[2][c];
+}
+
+__device__ static inline void d_AxisAngle2RotMatrix(double axis[3], double angle, double R[3][3]) {
+  double n2 = axis[0] * axis[0] + axis[1] * axis[1] + axis[2] * axis[2];
+  if (n2 < EPS) {
+    R[0][0] = 1; R[0][1] = 0; R[0][2] = 0;
+    R[1][0] = 0; R[1][1] = 1; R[1][2] = 0;
+    R[2][0] = 0; R[2][1] = 0; R[2][2] = 1;
+    return;
+  }
+  double inv = 1.0 / sqrt(n2);
+  double u = axis[0] * inv, v = axis[1] * inv, w = axis[2] * inv;
+  double rad = deg2rad * angle, co = cos(rad), si = sin(rad), omc = 1 - co;
+  R[0][0] = co + u * u * omc;
+  R[0][1] = -w * si + u * v * omc;
+  R[0][2] = v * si + u * w * omc;
+  R[1][0] = w * si + v * u * omc;
+  R[1][1] = co + v * v * omc;
+  R[1][2] = -u * si + v * w * omc;
+  R[2][0] = -v * si + w * u * omc;
+  R[2][1] = u * si + w * v * omc;
+  R[2][2] = co + w * w * omc;
+}
+
+__device__ static double d_CalcRotationAngle(int RingNr, int n_hkls_d) {
+  int habs = 0, kabs = 0, labs = 0;
+  for (int i = 0; i < n_hkls_d; i++)
+    if (d_HKLints[i][3] == RingNr) {
+      habs = abs(d_HKLints[i][0]);
+      kabs = abs(d_HKLints[i][1]);
+      labs = abs(d_HKLints[i][2]);
+      break;
+    }
+  int nz = 0;
+  if (!habs) nz++;
+  if (!kabs) nz++;
+  if (!labs) nz++;
+  if (nz == 3) return 0;
+  int sg = d_SGNum;
+  if (sg <= 2) return 360;
+  if (sg <= 15) {
+    if (nz != 2) return 360;
+    if (d_ABCABG[3] == 90 && d_ABCABG[4] == 90 && labs) return 180;
+    if (d_ABCABG[3] == 90 && d_ABCABG[5] == 90 && habs) return 180;
+    if (d_ABCABG[3] == 90 && d_ABCABG[5] == 90 && kabs) return 180;
+    return 360;
+  }
+  if (sg <= 74) { if (nz != 2) return 360; return 180; }
+  if (sg <= 142) {
+    if (!nz) return 360;
+    if (nz == 1 && !labs && habs == kabs) return 180;
+    if (nz == 2) return labs ? 90 : 180;
+    return 360;
+  }
+  if (sg <= 167) {
+    if (!nz) return 360;
+    if (nz == 2 && labs) return 120;
+    return 360;
+  }
+  if (sg <= 194) { if (nz == 2 && labs) return 60; return 360; }
+  if (sg <= 230) {
+    if (nz == 2) return 90;
+    if (nz == 1 && (habs == kabs || kabs == labs || habs == labs)) return 180;
+    if (!nz && habs == kabs && kabs == labs) return 120;
+    return 360;
+  }
+  return 0;
+}
+
+__device__ static void d_GenerateIdealSpots(double ys, double zs, double ttheta,
+                                 double eta, double Ring_rad, double Rsample,
+                                 double Hbeam, double step_size, double y0v[],
+                                 double z0v[], int *nSteps) {
+  int qc2 = 0;
+  double eh, qc, cy = 0, cz = 0, ymax_z0 = 0, ymin_z0 = 0, ymax = 0, ymin = 0, zmin = 0, zmax = 0;
+  if (eta > 90) eh = 180 - eta;
+  else if (eta < -90) eh = 180 - fabs(eta);
+  else eh = 90 - fabs(eta);
+  Hbeam += 2 * (Rsample * tan(ttheta * deg2rad)) * sin(eh * deg2rad);
+  double epole = 1 + rad2deg * acos(1 - Hbeam / Ring_rad);
+  double eeq = 1 + rad2deg * acos(1 - Rsample / Ring_rad);
+  if (eta >= epole && eta <= (90 - eeq)) { qc = 1; cy = -1; cz = 1; }
+  else if (eta >= (90 + eeq) && eta <= (180 - epole)) { qc = 2; cy = -1; cz = -1; }
+  else if (eta >= (-90 + eeq) && eta <= -epole) { qc = 2; cy = 1; cz = 1; }
+  else if (eta >= (-180 + epole) && eta <= (-90 - eeq)) { qc = 1; cy = 1; cz = -1; }
+  else qc = 0;
+  double ymaxR = ys + Rsample, yminR = ys - Rsample;
+  double zmaxH = zs + 0.5 * Hbeam, zminH = zs - 0.5 * Hbeam;
+  if (qc == 1) {
+    ymax_z0 = cy * sqrt(Ring_rad * Ring_rad - zmaxH * zmaxH);
+    ymin_z0 = cy * sqrt(Ring_rad * Ring_rad - zminH * zminH);
+  } else if (qc == 2) {
+    ymax_z0 = cy * sqrt(Ring_rad * Ring_rad - zminH * zminH);
+    ymin_z0 = cy * sqrt(Ring_rad * Ring_rad - zmaxH * zmaxH);
+  }
+  if (qc > 0) {
+    ymax = fmin(ymaxR, ymax_z0);
+    ymin = fmax(yminR, ymin_z0);
+  } else {
+    if (eta > -epole && eta < epole) { ymax = ymaxR; ymin = yminR; cz = 1; }
+    else if (eta < (-180 + epole)) { ymax = ymaxR; ymin = yminR; cz = -1; }
+    else if (eta > (180 - epole)) { ymax = ymaxR; ymin = yminR; cz = -1; }
+    else if (eta > (90 - eeq) && eta < (90 + eeq)) { qc2 = 1; zmax = zmaxH; zmin = zminH; cy = -1; }
+    else if (eta > (-90 - eeq) && eta < (-90 + eeq)) { qc2 = 1; zmax = zmaxH; zmin = zminH; cy = 1; }
+  }
+  double y1, z1, y2, z2;
+  int ns;
+  if (!qc2) {
+    y1 = ymin; z1 = cz * sqrt(Ring_rad * Ring_rad - y1 * y1);
+    y2 = ymax; z2 = cz * sqrt(Ring_rad * Ring_rad - y2 * y2);
+  } else {
+    z1 = zmin; y1 = cy * sqrt(Ring_rad * Ring_rad - z1 * z1);
+    z2 = zmax; y2 = cy * sqrt(Ring_rad * Ring_rad - z2 * z2);
+  }
+  double yd = y1 - y2, zd = z1 - z2;
+  double len = sqrt(yd * yd + zd * zd);
+  ns = (int)ceil(len / step_size);
+  if (ns % 2 == 0) ns++;
+  if (ns < 1) ns = 1;
+  if (ns > MAX_N_STEPS) ns = MAX_N_STEPS;
+  if (ns == 1) {
+    if (!qc2) {
+      y0v[0] = (ymax + ymin) / 2;
+      z0v[0] = cz * sqrt(Ring_rad * Ring_rad - y0v[0] * y0v[0]);
+    } else {
+      z0v[0] = (zmax + zmin) / 2;
+      y0v[0] = cy * sqrt(Ring_rad * Ring_rad - z0v[0] * z0v[0]);
+    }
+  } else {
+    double sy = (ymax - ymin) / (ns - 1), sz = (zmax - zmin) / (ns - 1);
+    for (int i = 0; i < ns; i++) {
+      if (!qc2) {
+        y0v[i] = ymin + i * sy;
+        z0v[i] = cz * sqrt(Ring_rad * Ring_rad - y0v[i] * y0v[i]);
+      } else {
+        z0v[i] = zmin + i * sz;
+        y0v[i] = cy * sqrt(Ring_rad * Ring_rad - z0v[i] * z0v[i]);
+      }
+    }
+  }
+  *nSteps = ns;
+}
+
+__device__ static inline void d_MakeUnitLength(double d, double y, double z,
+                                                double *xu, double *yu, double *zu) {
+  double l = sqrt(d * d + y * y + z * z);
+  if (l < EPS) { *xu = *yu = *zu = 0; return; }
+  double inv = 1.0 / l;
+  *xu = d * inv; *yu = y * inv; *zu = z * inv;
+}
+
+__device__ static inline void d_spot_to_gv(double xi, double yi, double zi, double omega,
+                                            double *g1, double *g2, double *g3) {
+  double l = sqrt(xi * xi + yi * yi + zi * zi);
+  if (l < EPS) { *g1 = *g2 = *g3 = 0; return; }
+  double xn = xi / l, yn = yi / l;
+  double g1r = -1 + xn, g2r = yn;
+  double co = cos(-omega * deg2rad), so = sin(-omega * deg2rad);
+  *g1 = g1r * co - g2r * so;
+  *g2 = g1r * so + g2r * co;
+  *g3 = zi / l;
+}
+
+// ─────────────────────────────────────────────────────────────
+// New on-GPU kernel: each thread = one (spot, voxel) pair
+// Generates orientations internally and evaluates + atomicCAS
+// ─────────────────────────────────────────────────────────────
+__global__ void indexer_spotdriven_kernel(
+    const RealType *d_ObsSpotsLab, int nSpots,
+    const RealType *d_hkls_flat, int n_hkls_d,
+    const size_t *d_data, const size_t *d_ndata,
+    const int *d_ringsToReject, int nRingsToRejectCalc,
+    SpotResult *d_results,     // [nVoxels × nSpots]
+    RealType *d_theorScratch,  // [totalThreads × maxTheorSpots × N_COL_THEORSPOTS]
+    int maxTheorSpots,
+    const double *d_ypos, double BeamSize,
+    const double *d_spotSinOme, const double *d_spotCosOme,
+    const double *d_grid, int startRowNr,
+    int startRowNrSp, int endRowNrSp,
+    int nVoxels, int nSpotsRange,
+    double StepsizeOrient, double StepsizePos,
+    double Distance, double Rsample, double Hbeam)
+{
+  // 2D grid: x = spot index within range, y = voxel index
+  int spotLocalIdx = blockIdx.x * blockDim.x + threadIdx.x;
+  int voxelIdx = blockIdx.y;
+
+  if (spotLocalIdx >= nSpotsRange || voxelIdx >= nVoxels)
+    return;
+
+  int idnr = startRowNrSp + spotLocalIdx;
+
+  int thisRowNr = startRowNr + voxelIdx;
+  double xThis = d_grid[thisRowNr * 2 + 0];
+  double yThis = d_grid[thisRowNr * 2 + 1];
+
+  // Beam proximity check
+  double newY = xThis * d_spotSinOme[idnr] + yThis * d_spotCosOme[idnr];
+  if (fabs(newY - d_ypos[(int)d_ObsSpotsLab[idnr * N_COL_OBSSPOTS + 9]]) > BeamSize / 2)
+    return;
+
+  // Compute seedIdx: count how many spots before this one pass beam check
+  int seedIdx = 0;
+  for (int j = startRowNrSp; j < idnr; j++) {
+    double nY = xThis * d_spotSinOme[j] + yThis * d_spotCosOme[j];
+    if (fabs(nY - d_ypos[(int)d_ObsSpotsLab[j * N_COL_OBSSPOTS + 9]]) <= BeamSize / 2)
+      seedIdx++;
+  }
+
+  // Read spot data
+  double ys = d_ObsSpotsLab[idnr * N_COL_OBSSPOTS + 0];
+  double zs = d_ObsSpotsLab[idnr * N_COL_OBSSPOTS + 1];
+  double omega = d_ObsSpotsLab[idnr * N_COL_OBSSPOTS + 2];
+  double eta = d_ObsSpotsLab[idnr * N_COL_OBSSPOTS + 6];
+  double RefRad = d_ObsSpotsLab[idnr * N_COL_OBSSPOTS + 3];
+  int ringnr = (int)d_ObsSpotsLab[idnr * N_COL_OBSSPOTS + 5];
+
+  // Generate ideal spots
+  double y0v[MAX_N_STEPS], z0v[MAX_N_STEPS];
+  int nPN = 0;
+  d_GenerateIdealSpots(ys, zs, d_RingTtheta[ringnr], eta,
+                       c_RingRadii[ringnr], Rsample, Hbeam, StepsizePos,
+                       y0v, z0v, &nPN);
+
+  // Per-thread scratch for theoretical spots
+  long long globalTid = (long long)voxelIdx * nSpotsRange + spotLocalIdx;
+  RealType *TheorSpots = &d_theorScratch[globalTid * maxTheorSpots * N_COL_THEORSPOTS];
+
+  for (int isp = 0; isp < nPN; isp++) {
+    double xi, yi, zi;
+    d_MakeUnitLength(Distance, y0v[isp], z0v[isp], &xi, &yi, &zi);
+    double g1, g2, g3;
+    d_spot_to_gv(xi, yi, zi, omega, &g1, &g2, &g3);
+
+    double hn[3] = {g1, g2, g3};
+    double hkl_d[3] = {d_RingHKL[ringnr][0], d_RingHKL[ringnr][1], d_RingHKL[ringnr][2]};
+
+    // Generate candidate orientations
+    double v[3];
+    crossProduct(v, hkl_d, hn);
+    double hl = CalcLength(hkl_d[0], hkl_d[1], hkl_d[2]);
+    double nl = CalcLength(hn[0], hn[1], hn[2]);
+    double dp = dot(hkl_d, hn);
+    double angled = rad2deg * acos(fmax(-1.0, fmin(1.0, dp / (hl * nl))));
+    double RM[3][3];
+    d_AxisAngle2RotMatrix(v, angled, RM);
+    double MaxAngle = d_CalcRotationAngle(ringnr, n_hkls_d);
+    int nsteps = (int)(MaxAngle / StepsizeOrient);
+
+    for (int o = 0; o < nsteps; o++) {
+      double RM2[3][3], RM3[3][3];
+      d_AxisAngle2RotMatrix(hn, o * StepsizeOrient, RM2);
+      d_MatrixMultF33(RM2, RM, RM3);
+
+      // Build OrMat for eval
+      RealType OrMat[3][3];
+      for (int r = 0; r < 3; r++)
+        for (int c = 0; c < 3; c++)
+          OrMat[r][c] = (RealType)RM3[r][c];
+
+      // CalcDiffrSpots
+      int nTspotsFracCalc;
+      int nTspots = gpu_CalcDiffrSpots(OrMat, d_hkls_flat, n_hkls_d, TheorSpots,
+                                       maxTheorSpots, d_ringsToReject,
+                                       nRingsToRejectCalc, &nTspotsFracCalc);
+      if (nTspots == 0 || nTspotsFracCalc == 0) continue;
+
+      // Apply displacement
+      for (int sp = 0; sp < nTspots; sp++) {
+        RealType *s = &TheorSpots[sp * N_COL_THEORSPOTS];
+        RealType Displ_y, Displ_z;
+        midas_displacement_spot_COM(xThis, yThis, 0, s[3], s[4], s[5], s[6],
+                                    &Displ_y, &Displ_z);
+        s[10] = s[4] + Displ_y;
+        s[11] = s[5] + Displ_z;
+        midas_CalcEtaAngle(s[10], s[11], &s[12]);
+        int rn = (int)s[9];
+        s[13] = sqrt(s[10] * s[10] + s[11] * s[11]) - c_RingRadii[rn];
+      }
+
+      // CompareSpots
+      int nMatchesFracCalc;
+      RealType avgIA;
+      int nMatches = gpu_CompareSpots(TheorSpots, nTspots, d_ObsSpotsLab, RefRad,
+                                      d_data, d_ndata, d_ringsToReject, nRingsToRejectCalc,
+                                      &nMatchesFracCalc, xThis, yThis, 0, &avgIA,
+                                      d_ypos, BeamSize);
+
+      RealType fracMatches = (RealType)nMatchesFracCalc / (RealType)nTspotsFracCalc;
+
+      // Atomic best update per (voxel, spot)
+      unsigned int fracBits = (unsigned int)__float_as_int((float)fracMatches);
+      unsigned int iaBits = ~(unsigned int)__float_as_int((float)avgIA);
+      unsigned long long newKey = ((unsigned long long)fracBits << 32) | (unsigned long long)iaBits;
+
+      SpotResult *res = &d_results[voxelIdx * nSpotsRange + seedIdx];
+      unsigned long long *keyAddr = &res->atomicKey;
+
+      while (true) {
+        unsigned long long oldKey = *keyAddr;
+        if (newKey <= oldKey) break;
+        unsigned long long prev = atomicCAS(keyAddr, oldKey, newKey);
+        if (prev == oldKey) {
+          res->bestFrac = fracMatches;
+          res->bestIA = avgIA;
+          for (int i = 0; i < 9; i++) res->bestOrMat[i] = OrMat[i / 3][i % 3];
+          res->bestPos[0] = xThis;
+          res->bestPos[1] = yThis;
+          res->bestPos[2] = 0;
+          res->nTspots = nTspots;
+          res->nMatches = nMatches;
+          break;
+        }
+      }
+    } // end orientation loop
+  } // end ideal spot loop
+}
+
+
 // ═════════════════════════════════════════════════════════════
 //  HOST-SIDE CPU FUNCTIONS
 // ═════════════════════════════════════════════════════════════
@@ -1362,6 +1698,13 @@ int main(int argc, char *argv[]) {
   gp.OmeBinSize = (RealType)OmeBinSize;
   CUDA_CHECK(cudaMemcpyToSymbol(c_params, &gp, sizeof(GPUParams)));
 
+  // Upload data for on-GPU orientation generation
+  CUDA_CHECK(cudaMemcpyToSymbol(d_HKLints, HKLints, sizeof(HKLints)));
+  CUDA_CHECK(cudaMemcpyToSymbol(d_RingHKL, RingHKL, sizeof(RingHKL)));
+  CUDA_CHECK(cudaMemcpyToSymbol(d_RingTtheta, RingTtheta, sizeof(RingTtheta)));
+  CUDA_CHECK(cudaMemcpyToSymbol(d_SGNum, &SGNum, sizeof(int)));
+  CUDA_CHECK(cudaMemcpyToSymbol(d_ABCABG, ABCABG, sizeof(ABCABG)));
+
   // Upload persistent data to GPU
   RealType *d_hkls_flat;
   CUDA_CHECK(cudaMalloc(&d_hkls_flat, (size_t)n_hkls * 7 * sizeof(RealType)));
@@ -1560,7 +1903,7 @@ int main(int argc, char *argv[]) {
   }
 
   // ═══════════════════════════════════════════════════════════
-  //  MODE 3: Multi-voxel batched spot-driven indexing
+  //  MODE 3: On-GPU spot-driven indexing (no tuple materialization)
   // ═══════════════════════════════════════════════════════════
   if (!hasMic && !hasGrains) {
     double tSpotDrivenStart = omp_get_wtime();
@@ -1570,256 +1913,121 @@ int main(int argc, char *argv[]) {
     CUDA_CHECK(cudaFree(d_theorScratch)); d_theorScratch = NULL;
     CUDA_CHECK(cudaFree(d_results)); d_results = NULL;
 
-    // ─── Phase 1: Count tuples and spots per voxel (parallel) ───
-    long long *tuplesPerVoxel = (long long *)calloc(nVoxels, sizeof(long long));
-    int *spotsPerVoxel = (int *)calloc(nVoxels, sizeof(int));
+    int nSpotsRange = endRowNrSp - startRowNrSp + 1;
+    printf("Spot-driven mode (on-GPU): %d voxels × %d spots = %d threads\n",
+           nVoxels, nSpotsRange, nVoxels * nSpotsRange);
 
-    #pragma omp parallel for schedule(dynamic)
-    for (int vi = 0; vi < nVoxels; vi++) {
-      int thisRowNr = startRowNr + vi;
-      double xThis = grid[thisRowNr * 2 + 0];
-      double yThis = grid[thisRowNr * 2 + 1];
-      long long count = 0;
-      int nPassing = 0;
-      for (int idnr = startRowNrSp; idnr <= endRowNrSp; idnr++) {
-        double newY = xThis * spotSinOme[idnr] + yThis * spotCosOme[idnr];
-        if (fabs(newY - ypos[(int)ObsSpotsLab[idnr * N_COL_OBSSPOTS + 9]]) > BeamSize / 2)
-          continue;
-        nPassing++;
-        int ringnr = (int)ObsSpotsLab[idnr * N_COL_OBSSPOTS + 5];
-        double ys = ObsSpotsLab[idnr * N_COL_OBSSPOTS + 0];
-        double zs = ObsSpotsLab[idnr * N_COL_OBSSPOTS + 1];
-        double eta = ObsSpotsLab[idnr * N_COL_OBSSPOTS + 6];
-        double y0v[MAX_N_STEPS], z0v[MAX_N_STEPS];
-        int nPN = 0;
-        h_GenerateIdealSpots(ys, zs, RingTtheta[ringnr], eta,
-                             Params.RingRadii[ringnr], Params.Rsample,
-                             Params.Hbeam, Params.StepsizePos, y0v, z0v, &nPN);
-        for (int isp = 0; isp < nPN; isp++) {
-          double xi, yi, zi;
-          h_MakeUnitLength(Params.Distance, y0v[isp], z0v[isp], &xi, &yi, &zi);
-          double g1, g2, g3;
-          h_spot_to_gv(xi, yi, zi, ObsSpotsLab[idnr * N_COL_OBSSPOTS + 2], &g1, &g2, &g3);
-          double hn[3] = {g1, g2, g3};
-          double hkl_d[3] = {RingHKL[ringnr][0], RingHKL[ringnr][1], RingHKL[ringnr][2]};
-          int nOr;
-          double OrTmp[MAX_N_OR * 9];
-          h_GenerateCandidateOrientations(hkl_d, hn, Params.StepsizeOrient, OrTmp, &nOr, ringnr);
-          count += nOr;
-        }
-      }
-      tuplesPerVoxel[vi] = count;
-      spotsPerVoxel[vi] = nPassing;
+    // Upload spotSinOme, spotCosOme, grid to GPU
+    double *d_spotSinOme, *d_spotCosOme, *d_gridGPU;
+    CUDA_CHECK(cudaMalloc(&d_spotSinOme, n_spots * sizeof(double)));
+    CUDA_CHECK(cudaMalloc(&d_spotCosOme, n_spots * sizeof(double)));
+    CUDA_CHECK(cudaMalloc(&d_gridGPU, totalVoxels * 2 * sizeof(double)));
+    CUDA_CHECK(cudaMemcpy(d_spotSinOme, spotSinOme, n_spots * sizeof(double), cudaMemcpyHostToDevice));
+    CUDA_CHECK(cudaMemcpy(d_spotCosOme, spotCosOme, n_spots * sizeof(double), cudaMemcpyHostToDevice));
+    CUDA_CHECK(cudaMemcpy(d_gridGPU, grid, totalVoxels * 2 * sizeof(double), cudaMemcpyHostToDevice));
+
+    // Allocate results: nVoxels × nSpotsRange
+    int totalResultSlots = nVoxels * nSpotsRange;
+    SpotResult *h_allResults = (SpotResult *)calloc(totalResultSlots, sizeof(SpotResult));
+    for (int i = 0; i < totalResultSlots; i++) {
+      h_allResults[i].bestFrac = -1.0;
+      h_allResults[i].bestIA = 999.0;
+      h_allResults[i].atomicKey = 0;
     }
+    SpotResult *d_spotResults;
+    CUDA_CHECK(cudaMalloc(&d_spotResults, totalResultSlots * sizeof(SpotResult)));
+    CUDA_CHECK(cudaMemcpy(d_spotResults, h_allResults, totalResultSlots * sizeof(SpotResult), cudaMemcpyHostToDevice));
 
-    int maxSpotsAny = 0;
-    long long maxTuplesPerVoxel = 0;
-    for (int vi = 0; vi < nVoxels; vi++) {
-      if (spotsPerVoxel[vi] > maxSpotsAny) maxSpotsAny = spotsPerVoxel[vi];
-      if (tuplesPerVoxel[vi] > maxTuplesPerVoxel) maxTuplesPerVoxel = tuplesPerVoxel[vi];
-    }
-    if (maxSpotsAny == 0) maxSpotsAny = 1;
-
-    printf("Spot-driven mode: %d voxels, max %lld tuples/voxel, max %d spots/voxel\n",
-           nVoxels, maxTuplesPerVoxel, maxSpotsAny);
-    printf("  Tuple counting: %.3f s\n", omp_get_wtime() - tSpotDrivenStart);
-
-    // ─── Determine voxel group size from available memory ───
-    size_t maxHostBytes = (size_t)4 * 1024 * 1024 * 1024ULL;
-    int voxelsPerGroup = (maxTuplesPerVoxel > 0) ?
-        (int)(maxHostBytes / ((size_t)maxTuplesPerVoxel * sizeof(EvalTuple))) : nVoxels;
-    if (voxelsPerGroup < 1) voxelsPerGroup = 1;
-    if (voxelsPerGroup > nVoxels) voxelsPerGroup = nVoxels;
-
-    // GPU memory for double-buffered streams
+    // Allocate per-thread scratch for theoretical spots
+    // Total threads = nVoxels × nSpotsRange, but we can't allocate scratch for ALL
+    // Use batched approach: process voxels in groups sized by GPU memory
     size_t freeMem2, totalMem2;
     CUDA_CHECK(cudaMemGetInfo(&freeMem2, &totalMem2));
-    size_t resultBytes = (size_t)voxelsPerGroup * maxSpotsAny * sizeof(SpotResult);
-    size_t availForBatch = (freeMem2 > resultBytes + 128*1024*1024) ?
-                           (freeMem2 - resultBytes - 128*1024*1024) : (128*1024*1024);
-    size_t bytesPerThread2 = sizeof(EvalTuple) + scratchPerThread;
-    size_t gpuBatchSize = availForBatch / (2 * bytesPerThread2);
-    if (gpuBatchSize < 1024) gpuBatchSize = 1024;
+    size_t scratchPerThread2 = (size_t)maxTheorSpots * N_COL_THEORSPOTS * sizeof(RealType);
+    size_t availForScratch = (freeMem2 > 512*1024*1024) ? (freeMem2 - 512*1024*1024) : (256*1024*1024);
+    int maxThreadsGPU = (int)(availForScratch / scratchPerThread2);
+    int voxelsPerBatch = maxThreadsGPU / nSpotsRange;
+    if (voxelsPerBatch < 1) voxelsPerBatch = 1;
+    if (voxelsPerBatch > nVoxels) voxelsPerBatch = nVoxels;
 
-    printf("  Group size: %d voxels, GPU batch: %zu tuples\n", voxelsPerGroup, gpuBatchSize);
+    int batchThreads = voxelsPerBatch * nSpotsRange;
+    RealType *d_batchScratch;
+    CUDA_CHECK(cudaMalloc(&d_batchScratch, (size_t)batchThreads * scratchPerThread2));
 
-    // ─── Allocate GPU double-buffers ───
-    cudaStream_t streams[2];
-    CUDA_CHECK(cudaStreamCreate(&streams[0]));
-    CUDA_CHECK(cudaStreamCreate(&streams[1]));
+    int nBatches = (nVoxels + voxelsPerBatch - 1) / voxelsPerBatch;
+    printf("  GPU batch: %d voxels/batch, %d batches, scratch=%.0f MB\n",
+           voxelsPerBatch, nBatches,
+           (double)batchThreads * scratchPerThread2 / 1048576.0);
 
-    EvalTuple *d_tuplesBuf[2];
-    size_t batchBytes = gpuBatchSize * sizeof(EvalTuple);
-    CUDA_CHECK(cudaMalloc(&d_tuplesBuf[0], batchBytes));
-    CUDA_CHECK(cudaMalloc(&d_tuplesBuf[1], batchBytes));
+    // Launch kernel in voxel batches
+    dim3 block(256, 1);
+    for (int bi = 0; bi < nBatches; bi++) {
+      int vStart = bi * voxelsPerBatch;
+      int vEnd = vStart + voxelsPerBatch;
+      if (vEnd > nVoxels) vEnd = nVoxels;
+      int vN = vEnd - vStart;
 
-    RealType *d_scratchBuf[2];
-    size_t scratchBufBytes = gpuBatchSize * scratchPerThread;
-    CUDA_CHECK(cudaMalloc(&d_scratchBuf[0], scratchBufBytes));
-    CUDA_CHECK(cudaMalloc(&d_scratchBuf[1], scratchBufBytes));
+      dim3 grid2((nSpotsRange + block.x - 1) / block.x, vN);
 
-    int maxGroupResultSlots = voxelsPerGroup * maxSpotsAny;
-    SpotResult *d_groupResults;
-    CUDA_CHECK(cudaMalloc(&d_groupResults, maxGroupResultSlots * sizeof(SpotResult)));
-    SpotResult *h_groupResults = (SpotResult *)malloc(maxGroupResultSlots * sizeof(SpotResult));
+      // Adjust results pointer for this batch
+      SpotResult *d_batchResults = d_spotResults + vStart * nSpotsRange;
 
-    // ─── Process voxels in groups ───
-    int nGroups = (nVoxels + voxelsPerGroup - 1) / voxelsPerGroup;
-    printf("  Processing %d group(s)...\n", nGroups);
+      indexer_spotdriven_kernel<<<grid2, block>>>(
+          d_ObsSpotsLab, (int)n_spots,
+          d_hkls_flat, n_hkls,
+          d_data, d_ndata,
+          d_ringsToReject, Params.nRingsToRejectCalc,
+          d_batchResults,
+          d_batchScratch, maxTheorSpots,
+          d_ypos, BeamSize,
+          d_spotSinOme, d_spotCosOme,
+          d_gridGPU, startRowNr + vStart,
+          startRowNrSp, endRowNrSp,
+          vN, nSpotsRange,
+          Params.StepsizeOrient, Params.StepsizePos,
+          Params.Distance, Params.Rsample, Params.Hbeam);
+      CUDA_CHECK(cudaGetLastError());
+      CUDA_CHECK(cudaDeviceSynchronize());
 
-    for (int gi = 0; gi < nGroups; gi++) {
-      int gStart = gi * voxelsPerGroup;
-      int gEnd = gStart + voxelsPerGroup;
-      if (gEnd > nVoxels) gEnd = nVoxels;
-      int gN = gEnd - gStart;
-      double tGen = omp_get_wtime();
+      if (nBatches > 1)
+        printf("  Batch %d/%d: %d voxels, %.3f s\n",
+               bi + 1, nBatches, vN, omp_get_wtime() - tSpotDrivenStart);
+    }
 
-      long long groupTuples = 0;
-      int groupMaxSpots = 0;
-      for (int vi = gStart; vi < gEnd; vi++) {
-        groupTuples += tuplesPerVoxel[vi];
-        if (spotsPerVoxel[vi] > groupMaxSpots) groupMaxSpots = spotsPerVoxel[vi];
+    double tKernelEnd = omp_get_wtime();
+    printf("  Kernel execution: %.3f s\n", tKernelEnd - tSpotDrivenStart);
+
+    // Download results
+    CUDA_CHECK(cudaMemcpy(h_allResults, d_spotResults, totalResultSlots * sizeof(SpotResult), cudaMemcpyDeviceToHost));
+
+    // Distribute to accumulators
+    // Need to map seedIdx back: for each voxel, count passing spots and map
+    for (int vi = 0; vi < nVoxels; vi++) {
+      VoxelAccumulator *acc = &accs[vi];
+      for (int si = 0; si < nSpotsRange; si++) {
+        SpotResult *r = &h_allResults[vi * nSpotsRange + si];
+        if (r->bestFrac <= 0) continue;
+        double outArr[16] = {(double)si, r->bestIA,
+          r->bestOrMat[0], r->bestOrMat[1], r->bestOrMat[2],
+          r->bestOrMat[3], r->bestOrMat[4], r->bestOrMat[5],
+          r->bestOrMat[6], r->bestOrMat[7], r->bestOrMat[8],
+          r->bestPos[0], r->bestPos[1], r->bestPos[2],
+          (double)r->nTspots, (double)r->nMatches};
+        size_t keyArr[4] = {(size_t)si, (size_t)r->nMatches, 0, 0};
+        VoxelAccum_addSolution(acc, outArr, keyArr, NULL, 0);
       }
-      if (groupMaxSpots == 0) groupMaxSpots = 1;
-      if (groupTuples == 0) continue;
-
-      // Prefix sum for this group
-      long long *gOffsets = (long long *)malloc((gN + 1) * sizeof(long long));
-      gOffsets[0] = 0;
-      for (int i = 0; i < gN; i++)
-        gOffsets[i + 1] = gOffsets[i] + tuplesPerVoxel[gStart + i];
-
-      // Fill tuples (parallel)
-      EvalTuple *h_groupTuples = (EvalTuple *)malloc(groupTuples * sizeof(EvalTuple));
-      if (!h_groupTuples) {
-        printf("Cannot allocate %lld tuples for group %d\n", groupTuples, gi);
-        free(gOffsets); continue;
-      }
-
-      #pragma omp parallel for schedule(dynamic)
-      for (int li = 0; li < gN; li++) {
-        int vi = gStart + li;
-        int thisRowNr = startRowNr + vi;
-        double xThis = grid[thisRowNr * 2 + 0];
-        double yThis = grid[thisRowNr * 2 + 1];
-        long long base = gOffsets[li];
-        long long idx = 0;
-        int seedIdx = 0;
-        for (int idnr = startRowNrSp; idnr <= endRowNrSp; idnr++) {
-          double newY = xThis * spotSinOme[idnr] + yThis * spotCosOme[idnr];
-          if (fabs(newY - ypos[(int)ObsSpotsLab[idnr * N_COL_OBSSPOTS + 9]]) > BeamSize / 2)
-            continue;
-          int ringnr = (int)ObsSpotsLab[idnr * N_COL_OBSSPOTS + 5];
-          double ys = ObsSpotsLab[idnr * N_COL_OBSSPOTS + 0];
-          double zs = ObsSpotsLab[idnr * N_COL_OBSSPOTS + 1];
-          double omega = ObsSpotsLab[idnr * N_COL_OBSSPOTS + 2];
-          double eta = ObsSpotsLab[idnr * N_COL_OBSSPOTS + 6];
-          double RefRad = ObsSpotsLab[idnr * N_COL_OBSSPOTS + 3];
-          double y0v[MAX_N_STEPS], z0v[MAX_N_STEPS];
-          int nPN = 0;
-          h_GenerateIdealSpots(ys, zs, RingTtheta[ringnr], eta,
-                               Params.RingRadii[ringnr], Params.Rsample,
-                               Params.Hbeam, Params.StepsizePos, y0v, z0v, &nPN);
-          for (int isp = 0; isp < nPN; isp++) {
-            double xi, yi, zi;
-            h_MakeUnitLength(Params.Distance, y0v[isp], z0v[isp], &xi, &yi, &zi);
-            double g1, g2, g3;
-            h_spot_to_gv(xi, yi, zi, omega, &g1, &g2, &g3);
-            double hn[3] = {g1, g2, g3};
-            double hkl_d2[3] = {RingHKL[ringnr][0], RingHKL[ringnr][1], RingHKL[ringnr][2]};
-            int nOr;
-            double OrTmp[MAX_N_OR * 9];
-            h_GenerateCandidateOrientations(hkl_d2, hn, Params.StepsizeOrient, OrTmp, &nOr, ringnr);
-            for (int or_ = 0; or_ < nOr; or_++) {
-              EvalTuple *t = &h_groupTuples[base + idx++];
-              t->spotIdx = seedIdx;
-              t->voxelIdx = li;
-              for (int k = 0; k < 9; k++) t->OrMat[k] = OrTmp[or_ * 9 + k];
-              t->ga = xThis; t->gb = yThis; t->gc = 0;
-              t->RefRad = RefRad;
-            }
-          }
-          seedIdx++;
-        }
-      }
-
-      // Init results for this group
-      int gResultSlots = gN * groupMaxSpots;
-      for (int i = 0; i < gResultSlots; i++) {
-        h_groupResults[i].bestFrac = -1.0;
-        h_groupResults[i].bestIA = 999.0;
-        h_groupResults[i].atomicKey = 0;
-      }
-      CUDA_CHECK(cudaMemcpy(d_groupResults, h_groupResults,
-                             gResultSlots * sizeof(SpotResult), cudaMemcpyHostToDevice));
-
-      // Launch kernel batches
-      int nBatches = (int)((groupTuples + (long long)gpuBatchSize - 1) / (long long)gpuBatchSize);
-      for (int bi = 0; bi < nBatches; bi++) {
-        int buf = bi % 2;
-        long long bStart = (long long)bi * (long long)gpuBatchSize;
-        long long bEnd = bStart + (long long)gpuBatchSize;
-        if (bEnd > groupTuples) bEnd = groupTuples;
-        int bN = (int)(bEnd - bStart);
-
-        CUDA_CHECK(cudaMemcpyAsync(d_tuplesBuf[buf], h_groupTuples + bStart,
-                                    bN * sizeof(EvalTuple), cudaMemcpyHostToDevice, streams[buf]));
-        int nBlks2 = (bN + blockSize - 1) / blockSize;
-        indexer_eval_kernel<<<nBlks2, blockSize, 0, streams[buf]>>>(
-            d_tuplesBuf[buf], bN, d_hkls_flat, n_hkls,
-            d_ObsSpotsLab, d_data, d_ndata,
-            d_ringsToReject, Params.nRingsToRejectCalc,
-            d_groupResults, d_scratchBuf[buf], maxTheorSpots,
-            d_ypos, BeamSize, groupMaxSpots);
-        CUDA_CHECK(cudaGetLastError());
-      }
-
-      CUDA_CHECK(cudaStreamSynchronize(streams[0]));
-      CUDA_CHECK(cudaStreamSynchronize(streams[1]));
-
-      // Download and accumulate
-      CUDA_CHECK(cudaMemcpy(h_groupResults, d_groupResults,
-                             gResultSlots * sizeof(SpotResult), cudaMemcpyDeviceToHost));
-
-      for (int li = 0; li < gN; li++) {
-        int vi = gStart + li;
-        VoxelAccumulator *acc = &accs[vi];
-        int nSlots = spotsPerVoxel[vi];
-        for (int si = 0; si < nSlots; si++) {
-          SpotResult *r = &h_groupResults[li * groupMaxSpots + si];
-          if (r->bestFrac <= 0) continue;
-          double outArr[16] = {(double)si, r->bestIA,
-            r->bestOrMat[0], r->bestOrMat[1], r->bestOrMat[2],
-            r->bestOrMat[3], r->bestOrMat[4], r->bestOrMat[5],
-            r->bestOrMat[6], r->bestOrMat[7], r->bestOrMat[8],
-            r->bestPos[0], r->bestPos[1], r->bestPos[2],
-            (double)r->nTspots, (double)r->nMatches};
-          size_t keyArr[4] = {(size_t)si, (size_t)r->nMatches, 0, 0};
-          VoxelAccum_addSolution(acc, outArr, keyArr, NULL, 0);
-        }
-      }
-
-      free(h_groupTuples);
-      free(gOffsets);
-      printf("  Group %d/%d: %d voxels, %lld tuples, %.3f s\n",
-             gi + 1, nGroups, gN, groupTuples, omp_get_wtime() - tGen);
     }
 
     printf("  Total spot-driven time: %.3f s\n", omp_get_wtime() - tSpotDrivenStart);
 
-    free(tuplesPerVoxel);
-    free(spotsPerVoxel);
-    free(h_groupResults);
-    CUDA_CHECK(cudaFree(d_tuplesBuf[0]));
-    CUDA_CHECK(cudaFree(d_tuplesBuf[1]));
-    CUDA_CHECK(cudaFree(d_scratchBuf[0]));
-    CUDA_CHECK(cudaFree(d_scratchBuf[1]));
-    CUDA_CHECK(cudaFree(d_groupResults));
-    CUDA_CHECK(cudaStreamDestroy(streams[0]));
-    CUDA_CHECK(cudaStreamDestroy(streams[1]));
+    // Cleanup
+    free(h_allResults);
+    CUDA_CHECK(cudaFree(d_spotResults));
+    CUDA_CHECK(cudaFree(d_batchScratch));
+    CUDA_CHECK(cudaFree(d_spotSinOme));
+    CUDA_CHECK(cudaFree(d_spotCosOme));
+    CUDA_CHECK(cudaFree(d_gridGPU));
   }
-
-
 
 
   // ═══════════════════════════════════════════════════════════
