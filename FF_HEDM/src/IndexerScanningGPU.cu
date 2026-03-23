@@ -1289,6 +1289,17 @@ int main(int argc, char *argv[]) {
     spotSinOme[i] = sin(omeRad);
     spotCosOme[i] = cos(omeRad);
   }
+  // Compute spot range for RingToIndex (matching OMP behavior)
+  int RingToIndex = Params.RingToIndex;
+  size_t startRowNrSp = n_spots, endRowNrSp = 0;
+  for (size_t i = 0; i < n_spots; i++) {
+    if ((int)ObsSpotsLab[i * N_COL_OBSSPOTS + 5] == RingToIndex && startRowNrSp > i)
+      startRowNrSp = i;
+    if ((int)ObsSpotsLab[i * N_COL_OBSSPOTS + 5] == RingToIndex && endRowNrSp < i)
+      endRowNrSp = i;
+  }
+  printf("Spot-driven range: RingToIndex=%d, startRowNrSp=%zu, endRowNrSp=%zu\n",
+         RingToIndex, startRowNrSp, endRowNrSp);
 
   // 5. Precompute margins
   double omemargins[181], etamargins[MAX_N_RINGS];
