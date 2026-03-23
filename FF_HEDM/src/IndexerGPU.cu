@@ -1541,6 +1541,8 @@ int main(int argc, char *argv[]) {
 
       size_t offset2 = (size_t)(si + startRow) * MAX_N_HKLS * 2 * sizeof(double);
       pwrite(Params.IndexBestFullFD, outArr, MAX_N_HKLS * 2 * sizeof(double), offset2);
+      printf("  IndexBestFull: grain %d, nTspots=%d, nMatched=%d, offset=%zu\n",
+             si, nTspots, nMatched, offset2);
       free(outArr);
     }
 
