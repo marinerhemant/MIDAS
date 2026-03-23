@@ -435,7 +435,7 @@ struct FunctorPos { // Stage 4: NDIM=3
 __global__ void fitGrainsKernel(
     int nGrains,
     const double *d_initData,    // [nGrains*15] from IndexBest.bin
-    const double *d_spotData,    // [nGrains*MaxNHKLS*11] observed spots per grain
+    double *d_spotData,             // [nGrains*MaxNHKLS*11] observed spots per grain (modified in-place)
     const int *d_nSpotsPerGrain, // [nGrains] number of spots per grain
     const double *d_hklsRaw,     // [nhkls*7] raw HKL data (shared)
     double *d_scratch,           // [nGrains*scratchSize]
@@ -465,11 +465,53 @@ __global__ void fitGrainsKernel(
   // Pointers
   int nSpots = d_nSpotsPerGrain[gIdx];
   if (nSpots <= 0) return;
-  const double *spots = &d_spotData[gIdx * MaxNHKLS * 11];
+  double *spots = &d_spotData[gIdx * MaxNHKLS * 11];
   double *scratch = &d_scratch[gIdx * scratchPerGrain];
 
   double LatCin[6];
   for(int i=0;i<6;i++) LatCin[i]=d_LatCin[i];
+
+  // ─── Initialize spot→HKL mapping ───
+  // Compute theoretical spots from initial orientation and match against
+  // observed spots. Sets spotsYZO cols 4(omega_theor), 5(yl_theor),
+  // 6(zl_theor), 8(nrhkls sequence number). This mirrors the CPU's
+  // CalcAngleErrors initial assignment.
+  {
+    double *initHkls = scratch;
+    double *initTheorSpots = scratch + d_params.nhkls * 7;
+    // Use raw HKLs (no lattice correction for initial matching)
+    for(int i=0; i<d_params.nhkls*7; i++) initHkls[i] = d_hklsRaw[i];
+    int nInitT = gpu_CalcDiffrSpots(O3, d_params.Lsd,
+        d_params.OmegaRanges, d_params.nOmeRanges, d_params.BoxSizes,
+        initHkls, d_params.nhkls, d_params.MinEta, initTheorSpots);
+
+    for(int sp=0; sp<nSpots; sp++){
+      double *s = &spots[sp*11];
+      double obsY=s[0], obsZ=s[1], obsOme=s[2];
+      double bestDist = 1e20;
+      int bestIdx = -1;
+      for(int t=0; t<nInitT; t++){
+        double tyl=initTheorSpots[t*9+0], tzl=initTheorSpots[t*9+1];
+        double tome=initTheorSpots[t*9+2];
+        // Compute displaced theoretical position for initial grain pos
+        double DisplY=0, DisplZ=0;
+        gpu_DisplacementInTheSpot(Pos0[0],Pos0[1],Pos0[2],
+            d_params.Lsd, tyl, tzl, tome,
+            d_params.wedge, d_params.chi, &DisplY, &DisplZ);
+        double dyl = tyl - DisplY, dzl = tzl - DisplZ;
+        double dy = obsY - dyl, dz = obsZ - dzl;
+        double dOme = obsOme - tome;
+        double dist = dy*dy + dz*dz + dOme*dOme;
+        if(dist < bestDist){ bestDist = dist; bestIdx = t; }
+      }
+      if(bestIdx >= 0){
+        s[4] = initTheorSpots[bestIdx*9+2]; // omega theor
+        s[5] = initTheorSpots[bestIdx*9+0]; // yl theor
+        s[6] = initTheorSpots[bestIdx*9+1]; // zl theor
+        s[8] = initTheorSpots[bestIdx*9+8]; // nrhkls sequence number
+      }
+    }
+  }
 
   // ─── Stage 1: Fit Pos+Orient+Strain (12D) ───
   double x0_12[12], lb12[12], ub12[12], res12[12];
