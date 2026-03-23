@@ -33,7 +33,7 @@
 #include <libgen.h>
 #include <unistd.h>
 #include <cuda_runtime.h>
-#define RealType float
+#define RealType double
 #include "midas_gpu_math.cuh"
 #include "midas_version.h"
 

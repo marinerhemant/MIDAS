@@ -4,7 +4,7 @@
 // (position, orientation, strain, position) with dynamic spot reassignment.
 
 #include <cuda_runtime.h>
-#define RealType float
+#define RealType double
 #include "midas_gpu_math.cuh"
 #include "../../utils/gpu_simplex.cuh"
 #include <math.h>
@@ -638,8 +638,8 @@ __global__ void fitGrainsKernel(
   FunctorPosOrientStrain f1;
   f1.spotsYZO=spots; f1.nSpots=nSpots; f1.hklsRaw=d_hklsRaw;
   f1.scratch=scratch; f1.nMaxTheor=nMaxTheor;
-  nm_optimize<12>(x0_12,lb12,ub12,res12,f1,1e-4,5000,0.05);
-  nm_optimize<12>(res12,lb12,ub12,res12,f1,1e-4,5000,0.05);
+  nm_optimize<12>(x0_12,lb12,ub12,res12,f1,1e-5,5000,0.05);
+  nm_optimize<12>(res12,lb12,ub12,res12,f1,1e-5,5000,0.05);
 
   // Dynamic reassignment after Stage 1
   if (doDynReassign && d_BinData != nullptr) {
@@ -668,8 +668,8 @@ __global__ void fitGrainsKernel(
   f2.spotsYZO=spots; f2.nSpots=nSpots; f2.hklsRaw=d_hklsRaw;
   f2.scratch=scratch; f2.nMaxTheor=nMaxTheor;
   for(int i=0;i<3;i++) f2.Pos[i]=res12[i];
-  nm_optimize<9>(x0_9,lb9,ub9,res9,f2,1e-4,5000,0.05);
-  nm_optimize<9>(res9,lb9,ub9,res9,f2,1e-4,5000,0.05);
+  nm_optimize<9>(x0_9,lb9,ub9,res9,f2,1e-5,5000,0.05);
+  nm_optimize<9>(res9,lb9,ub9,res9,f2,1e-5,5000,0.05);
 
   // Dynamic reassignment after Stage 2
   if (doDynReassign && d_BinData != nullptr) {
@@ -692,8 +692,8 @@ __global__ void fitGrainsKernel(
   f3.scratch=scratch; f3.nMaxTheor=nMaxTheor;
   for(int i=0;i<3;i++) f3.Pos[i]=res12[i];
   for(int i=0;i<3;i++) f3.Orient[i]=res9[i];
-  nm_optimize<6>(x0_6,lb6,ub6,res6,f3,1e-4,5000,0.05);
-  nm_optimize<6>(res6,lb6,ub6,res6,f3,1e-4,5000,0.05);
+  nm_optimize<6>(x0_6,lb6,ub6,res6,f3,1e-5,5000,0.05);
+  nm_optimize<6>(res6,lb6,ub6,res6,f3,1e-5,5000,0.05);
 
   // Dynamic reassignment after Stage 3
   if (doDynReassign && d_BinData != nullptr) {
@@ -721,8 +721,8 @@ __global__ void fitGrainsKernel(
   f4.scratch=scratch; f4.nMaxTheor=nMaxTheor;
   for(int i=0;i<3;i++) f4.Orient[i]=res9[i];
   for(int i=0;i<6;i++) f4.Strains[i]=res6[i];
-  nm_optimize<3>(x0_3,lb3,ub3,res3,f4,1e-4,5000,0.05);
-  nm_optimize<3>(res3,lb3,ub3,res3,f4,1e-4,5000,0.05);
+  nm_optimize<3>(x0_3,lb3,ub3,res3,f4,1e-5,5000,0.05);
+  nm_optimize<3>(res3,lb3,ub3,res3,f4,1e-5,5000,0.05);
 
   // ─── Write results ───
   // Final: pos=res3, orient=res9[0..2], strain=res6[0..5]
