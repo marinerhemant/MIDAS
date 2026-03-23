@@ -1022,7 +1022,7 @@ static int ReadHKLs(const char *fn, double *hkls, int maxHKLs, int *RingNumbers,
     return 0;
   }
   char line[1024];
-  fgets(line, sizeof(line), f); // skip header
+  (void)fgets(line, sizeof(line), f); // skip header
   int nhkls = 0;
   int h, k, l, Rnr;
   double ds, tht;
@@ -1149,9 +1149,9 @@ int main(int argc, char *argv[]) {
     char line[5024];
     int it;
     for (it = 0; it < startRowNr; it++)
-      fgets(line, sizeof(line), sf);
+      (void)fgets(line, sizeof(line), sf);
     for (it = 0; it < nSptIDs; it++) {
-      fgets(line, sizeof(line), sf);
+      (void)fgets(line, sizeof(line), sf);
       sscanf(line, "%d", &SptIDs[it]);
     }
     fclose(sf);
@@ -1189,7 +1189,7 @@ int main(int argc, char *argv[]) {
     rewind(sf2);
     allSpotIDs_csv = (int *)malloc(totalCSVLines * sizeof(int));
     for (int i = 0; i < totalCSVLines; i++) {
-      fgets(line, sizeof(line), sf2);
+      (void)fgets(line, sizeof(line), sf2);
       sscanf(line, "%d", &allSpotIDs_csv[i]);
     }
     fclose(sf2);
@@ -1251,7 +1251,7 @@ int main(int argc, char *argv[]) {
     }
     size_t offst2 = (size_t)rowNr * MaxNHKLS * 2 * sizeof(double);
     double *locArr2 = (double *)calloc(nObs * 2, sizeof(double));
-    pread(inpF2, locArr2, nObs * 2 * sizeof(double), offst2);
+    (void)pread(inpF2, locArr2, nObs * 2 * sizeof(double), offst2);
     close(inpF2);
 
     // SpotIDs are at even indices: locArr2[i*2+0]=spotID,
@@ -1471,13 +1471,13 @@ int main(int argc, char *argv[]) {
     size_t offKey = (size_t)SizeKey * rowNr;
     int KeyInfo[2] = {(nSpotsComp > 0) ? SpId : 0, nSpotsComp};
     if (keyFD > 0)
-      pwrite(keyFD, KeyInfo, SizeKey, offKey);
+      (void)pwrite(keyFD, KeyInfo, SizeKey, offKey);
 
     // OrientPosFit.bin
     if (nSpotsComp > 0) {
       int outFD = open(OutFN, O_CREAT | O_WRONLY, S_IRUSR | S_IWUSR);
       if (outFD > 0) {
-        pwrite(outFD, out, 27 * sizeof(double),
+        (void)pwrite(outFD, out, 27 * sizeof(double),
                (size_t)rowNr * 27 * sizeof(double));
         close(outFD);
       }

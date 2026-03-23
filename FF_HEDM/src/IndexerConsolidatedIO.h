@@ -117,7 +117,7 @@ static inline void WriteConsolidatedFiles(const VoxelAccumulator *accs,
                                            int nVoxels,
                                            int startVoxel, int endVoxel,
                                            const char *outputFolder) {
-  char fn[2048];
+  char fn[4096];
   FILE *f;
   int32_t nv = nVoxels;
   int nLocal = endVoxel - startVoxel;
@@ -253,7 +253,7 @@ static inline int ConsolidatedReader_open(ConsolidatedReader *r, const char *fil
   r->data = malloc(r->dataSize);
   if (r->data && r->dataSize > 0) {
     fseek(f, r->headerSize, SEEK_SET);
-    fread(r->data, 1, r->dataSize, f);
+    (void)fread(r->data, 1, r->dataSize, f);
   }
   r->rawMap = NULL;
   r->rawMapSize = 0;

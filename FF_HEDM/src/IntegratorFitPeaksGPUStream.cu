@@ -2282,7 +2282,7 @@ int main(int argc, char *argv[]) {
     // If file has TIFF header (first 2 bytes are 'II' or 'MM'), skip
     // header; for raw binary, read directly
     uint8_t magic[4];
-    fread(magic, 1, 4, fImg);
+    (void)fread(magic, 1, 4, fImg);
     rewind(fImg);
 
     if ((magic[0] == 'I' && magic[1] == 'I') ||

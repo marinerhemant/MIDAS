@@ -1023,7 +1023,7 @@ static int ReadHKLs(const char *fn, double *hkls, int maxHKLs, int *RingNumbers,
     return 0;
   }
   char line[1024];
-  fgets(line, sizeof(line), f); // skip header
+  (void)fgets(line, sizeof(line), f); // skip header
   int nhkls = 0;
   int h, k, l, Rnr;
   double ds, tht;
@@ -1150,9 +1150,9 @@ int main(int argc, char *argv[]) {
     char line[5024];
     int it;
     for (it = 0; it < startRowNr; it++)
-      fgets(line, sizeof(line), sf);
+      (void)fgets(line, sizeof(line), sf);
     for (it = 0; it < nSptIDs; it++) {
-      fgets(line, sizeof(line), sf);
+      (void)fgets(line, sizeof(line), sf);
       sscanf(line, "%d", &SptIDs[it]);
     }
     fclose(sf);
@@ -1214,12 +1214,12 @@ int main(int argc, char *argv[]) {
     int solIdx = stiEntries[g].solIdx;
 
     // Read from consolidated vals file
-    size_t nSolsThisVox, valOffset;
-    ConsolidatedReader_getKeys(&keysReader, voxNr, &nSolsThisVox, &valOffset);
-    if (solIdx < 0 || (size_t)solIdx >= nSolsThisVox) continue;
+    int nSolsThisVox = valsReader.nSolutions[voxNr];
+    if (nSolsThisVox <= 0 || solIdx < 0 || solIdx >= nSolsThisVox) continue;
 
-    size_t solOffset = valOffset + (size_t)solIdx * 16;
-    const double *solData = ConsolidatedReader_getVals(&valsReader, solOffset);
+    const double *voxVals = ConsolidatedReader_getVals(&valsReader, voxNr);
+    if (!voxVals) continue;
+    const double *solData = &voxVals[solIdx * CONSOLIDATED_VALS_COLS];
     if (!solData) continue;
 
     // Map consolidated format [16 doubles] → IndexBest format [15 doubles]
@@ -1240,18 +1240,15 @@ int main(int argc, char *argv[]) {
     if (nObs > MaxNSpotsBest || nObs <= 0) continue;
 
     // Read spot IDs from consolidated IDs file
-    size_t nSolsID, idOffset;
-    ConsolidatedReader_getKeys(&keysReader, voxNr, &nSolsID, &idOffset);
-    // IDs offset: each solution has nObs spot IDs stored sequentially
-    // We need to compute the cumulative offset for this solution
-    size_t idBaseOffset = 0;
+    const int *voxIDs = ConsolidatedReader_getIDs(&idsReader, voxNr);
+    // Compute cumulative ID offset for this solution within the voxel
+    int idBaseOffset = 0;
     for (int s = 0; s < solIdx; s++) {
       // Each solution's nObs is in its val data at position [15]
-      size_t prevSolOffset = valOffset + (size_t)s * 16;
-      const double *prevSol = ConsolidatedReader_getVals(&valsReader, prevSolOffset);
-      if (prevSol) idBaseOffset += (size_t)(int)prevSol[15];
+      int prevNObs = (int)voxVals[s * CONSOLIDATED_VALS_COLS + 15];
+      idBaseOffset += prevNObs;
     }
-    const double *idData = ConsolidatedReader_getVals(&idsReader, idBaseOffset);
+    const int *idData = (voxIDs) ? &voxIDs[idBaseOffset] : NULL;
 
     int nFound = 0;
     for (int i = 0; i < nObs && nFound < MaxNSpotsBest; i++) {
@@ -1464,13 +1461,13 @@ int main(int argc, char *argv[]) {
     size_t offKey = (size_t)SizeKey * rowNr;
     int KeyInfo[2] = {(nSpotsComp > 0) ? SpId : 0, nSpotsComp};
     if (keyFD > 0)
-      pwrite(keyFD, KeyInfo, SizeKey, offKey);
+      (void)pwrite(keyFD, KeyInfo, SizeKey, offKey);
 
     // OrientPosFit.bin
     if (nSpotsComp > 0) {
       int outFD = open(OutFN, O_CREAT | O_WRONLY, S_IRUSR | S_IWUSR);
       if (outFD > 0) {
-        pwrite(outFD, out, 27 * sizeof(double),
+        (void)pwrite(outFD, out, 27 * sizeof(double),
                (size_t)rowNr * 27 * sizeof(double));
         close(outFD);
       }

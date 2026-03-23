@@ -1127,45 +1127,7 @@ static void h_FriedelEtaCalculation(double ys, double zs, double ttheta,
   *EtaMaxFr = fmax(Eta1, Eta2);
 }
 
-static void h_GenerateIdealSpotsFriedel(double ys, double zs, double ttheta,
-                                        double eta, double omega, int ringno,
-                                        double Ring_rad, double Rsample,
-                                        double Hbeam, double OmeTol,
-                                        double RadiusTol, double y0v[],
-                                        double z0v[], int *nSteps) {
-  *nSteps = 0;
-  double OmeF = (omega < 0) ? omega + 180 : omega - 180;
-  double EtaF = (eta < 0) ? -180 - eta : 180 - eta;
-  for (int r = 0; r < (int)n_spots; r++) {
-    int rno_obs = (int)roundf(ObsSpotsLab[r * N_COL_OBSSPOTS + 5]);
-    double ome_obs = ObsSpotsLab[r * N_COL_OBSSPOTS + 2];
-    if (rno_obs != ringno)
-      continue;
-    if (fabs(ome_obs - OmeF) > OmeTol)
-      continue;
-    double yf = ObsSpotsLab[r * N_COL_OBSSPOTS + 0];
-    double zf = ObsSpotsLab[r * N_COL_OBSSPOTS + 1];
-    double EtaTransf;
-    h_CalcEtaAngle(yf + ys, zf - zs, &EtaTransf);
-    double radius = sqrt((yf + ys) * (yf + ys) + (zf - zs) * (zf - zs));
-    if (fabs(radius - 2 * Ring_rad) > RadiusTol)
-      continue;
-    double EtaMinF, EtaMaxF;
-    h_FriedelEtaCalculation(ys, zs, ttheta, eta, Ring_rad, Rsample, Hbeam,
-                            &EtaMinF, &EtaMaxF);
-    if (EtaTransf < EtaMinF || EtaTransf > EtaMaxF)
-      continue;
-    double ZPosAccZ = zs - (zf + zs) / 2;
-    double YPosAccY = ys - (-yf + ys) / 2;
-    double etaIdealF;
-    h_CalcEtaAngle(YPosAccY, ZPosAccZ, &etaIdealF);
-    double IdealYPos, IdealZPos;
-    h_CalcSpotPosition(Ring_rad, etaIdealF, &IdealYPos, &IdealZPos);
-    y0v[*nSteps] = IdealYPos;
-    z0v[*nSteps] = IdealZPos;
-    (*nSteps)++;
-  }
-}
+// h_GenerateIdealSpotsFriedel removed — unused in scanning GPU path
 
 static int h_AddUnique(int *arr, int *n, int val) {
   for (int i = 0; i < *n; i++)
@@ -1176,126 +1138,7 @@ static int h_AddUnique(int *arr, int *n, int val) {
   return 1;
 }
 
-static void h_GenerateIdealSpotsFriedelMixed(
-    double ys, double zs, double Ttheta, double Eta, double Omega, int RingNr,
-    double Ring_rad, double Lsd, double Rsample, double Hbeam,
-    double StepSizePos, double OmeTol, double RadialTol, double EtaBinSz,
-    double OmeBinSz, double EtaTol, double spots_y[], double spots_z[],
-    int *nSteps) {
-  const int MinEtaReject = 10;
-  double theta = Ttheta / 2;
-  double SinMinEtaReject = sin(MinEtaReject * deg2rad);
-  *nSteps = 0;
-  if (fabs(sin(Eta * deg2rad)) < SinMinEtaReject)
-    return;
-
-  double y0_vector[2000], z0_vector[2000];
-  int NoOfSpots;
-  h_GenerateIdealSpots(ys, zs, Ttheta, Eta, Ring_rad, Rsample, Hbeam,
-                       StepSizePos, y0_vector, z0_vector, &NoOfSpots);
-
-  double FPCandidates[2000][3];
-  int FPCandidatesUnique[2000];
-  int nFPCandidates = 0;
-  double EtaTolDeg = rad2deg * atan(EtaTol / Ring_rad);
-
-  for (int SpOnRing = 0; SpOnRing < NoOfSpots; SpOnRing++) {
-    double y0 = y0_vector[SpOnRing], z0 = z0_vector[SpOnRing];
-    double xi, yi, zi;
-    h_MakeUnitLength(Lsd, y0, z0, &xi, &yi, &zi);
-    double G1, G2, G3;
-    h_spot_to_gv(xi, yi, zi, Omega, &G1, &G2, &G3);
-    double omegasFP[4], etasFP[4];
-    int nsol;
-    h_CalcOmega(-G1, -G2, -G3, theta, omegasFP, etasFP, &nsol);
-    if (nsol <= 1)
-      continue;
-    double diff0 = fabs(omegasFP[0] - Omega);
-    if (diff0 > 180)
-      diff0 = 360 - diff0;
-    double diff1 = fabs(omegasFP[1] - Omega);
-    if (diff1 > 180)
-      diff1 = 360 - diff1;
-    double OmegaFP, EtaFP;
-    if (diff0 < diff1) {
-      OmegaFP = omegasFP[0];
-      EtaFP = etasFP[0];
-    } else {
-      OmegaFP = omegasFP[1];
-      EtaFP = etasFP[1];
-    }
-    double YFP1, ZFP1;
-    h_CalcSpotPosition(Ring_rad, EtaFP, &YFP1, &ZFP1);
-    int nMax, nMin;
-    h_calc_n_max_min(xi, yi, ys, y0, Rsample, (int)StepSizePos, &nMax, &nMin);
-    for (int n = nMin; n <= nMax; n++) {
-      double a, b, c;
-      h_spot_to_unrotated(xi, yi, zi, ys, zs, y0, z0, StepSizePos, n, Omega, &a,
-                          &b, &c);
-      if (fabs(c) > Hbeam / 2)
-        continue;
-      double Dy, Dz;
-      h_displacement_spot_needed_COM(a, b, c, Lsd, YFP1, ZFP1, OmegaFP, &Dy,
-                                     &Dz);
-      double YFP = YFP1 + Dy, ZFP = ZFP1 + Dz;
-      double RadialPosFP = sqrt(YFP * YFP + ZFP * ZFP) - Ring_rad;
-      double EtaFPCorr;
-      h_CalcEtaAngle(YFP, ZFP, &EtaFPCorr);
-      // Bin lookup (inline GetBin)
-      int iRing = RingNr - 1;
-      int iEta = (int)floor((180.0 + EtaFPCorr) / EtaBinSz);
-      int iOme = (int)floor((180.0 + OmegaFP) / OmeBinSz);
-      if (iEta < 0)
-        iEta = 0;
-      if (iEta >= n_eta_bins)
-        iEta = n_eta_bins - 1;
-      if (iOme < 0)
-        iOme = 0;
-      if (iOme >= n_ome_bins)
-        iOme = n_ome_bins - 1;
-      size_t Pos = (size_t)iRing * n_eta_bins * n_ome_bins +
-                   (size_t)iEta * n_ome_bins + iOme;
-      int nInBin = ndata[(int)(Pos * 2 + 0)],
-          DataPos_ = ndata[(int)(Pos * 2 + 1)];
-      for (int iSpot = 0; iSpot < nInBin; iSpot++) {
-        int spotRow = data[DataPos_ + iSpot];
-        int base = spotRow * N_COL_OBSSPOTS;
-        if (fabs(RadialPosFP - ObsSpotsLab[base + 8]) >= RadialTol)
-          continue;
-        if (fabs(OmegaFP - ObsSpotsLab[base + 2]) >= OmeTol)
-          continue;
-        if (fabs(EtaFPCorr - ObsSpotsLab[base + 6]) >= EtaTolDeg)
-          continue;
-        double dy = YFP - ObsSpotsLab[base + 0],
-               dz = ZFP - ObsSpotsLab[base + 1];
-        double diffPos2 = dy * dy + dz * dz;
-        int idx = nFPCandidates;
-        for (int i = 0; i < nFPCandidates; i++) {
-          if (FPCandidates[i][0] == ObsSpotsLab[base + 4]) {
-            idx = (diffPos2 < FPCandidates[i][2]) ? i : -1;
-            break;
-          }
-        }
-        if (idx >= 0) {
-          FPCandidates[idx][0] = ObsSpotsLab[base + 4];
-          FPCandidates[idx][1] = (double)SpOnRing;
-          FPCandidates[idx][2] = diffPos2;
-          if (idx == nFPCandidates)
-            nFPCandidates++;
-        }
-      }
-    }
-  }
-  int nFPCandidatesUniq = 0;
-  for (int i = 0; i < nFPCandidates; i++)
-    h_AddUnique(FPCandidatesUnique, &nFPCandidatesUniq,
-                (int)FPCandidates[i][1]);
-  for (int i = 0; i < nFPCandidatesUniq; i++) {
-    spots_y[i] = y0_vector[FPCandidatesUnique[i]];
-    spots_z[i] = z0_vector[FPCandidatesUnique[i]];
-  }
-  *nSteps = nFPCandidatesUniq;
-}
+// h_GenerateIdealSpotsFriedelMixed removed — unused in scanning GPU path
 
 static void h_GenerateIdealSpots(double ys, double zs, double ttheta,
                                  double eta, double Ring_rad, double Rsample,
@@ -1470,7 +1313,7 @@ static void LoadPositions(const char *fn) {
   FILE *f = fopen(fn, "r");
   if (!f) { printf("Cannot open %s\n", fn); return; }
   char line[4096];
-  fgets(line, 4096, f); // header
+  (void)fgets(line, 4096, f); // header
   int cap = 1024;
   ypos = (double *)malloc(cap * sizeof(double));
   nYpos = 0;
@@ -1505,7 +1348,7 @@ static void LoadMic(const char *fn) {
   if (!f) { hasMic = 0; return; }
   char line[4096];
   // skip 4 header lines
-  for (int i = 0; i < 4; i++) fgets(line, 4096, f);
+  for (int i = 0; i < 4; i++) (void)fgets(line, 4096, f);
   int cap = 1024;
   mic = (double *)malloc(cap * 5 * sizeof(double));
   nrMic = 0;
@@ -1598,7 +1441,7 @@ int main(int argc, char *argv[]) {
   sprintf(hklfn, "%s/hkls.csv", Params.OutputFolder);
   FILE *hklf = fopen(hklfn, "r");
   check(!hklf, "Cannot open %s", hklfn);
-  fgets(aline, 4096, hklf);
+  (void)fgets(aline, 4096, hklf);
   while (fgets(aline, 4096, hklf)) {
     double h, k, l, rn, ds, th, rr;
     sscanf(aline, "%lf %lf %lf %lf %lf %lf %lf", &h, &k, &l, &rn, &ds, &th, &rr);
@@ -1623,7 +1466,7 @@ int main(int argc, char *argv[]) {
   printf("HKLs: %d\n", n_hkls);
 
   // 3. Read observed spots and bins
-  char tmpstr[2048];
+  char tmpstr[4096];
   sprintf(tmpstr, "%s", Params.OutputFolder);
   char *cwdstr = dirname(tmpstr);
   n_spots = ReadSpots(cwdstr);

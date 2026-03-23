@@ -1447,7 +1447,7 @@ int main(int argc, char *argv[]) {
     exit(1);
   }
   char aline[4096];
-  fgets(aline, 1000, hklf);
+  (void)fgets(aline, 1000, hklf);
   int hi, ki, li, Rnr;
   double hc, kc, lc, RRd, Ds, tht, tth;
   while (fgets(aline, 1000, hklf)) {
@@ -1479,8 +1479,8 @@ int main(int argc, char *argv[]) {
   printf("HKLs: %d\n", n_hkls);
 
   // 3. Read observed spots and bins
-  char tmpstr[2048];
-  sprintf(tmpstr, "%s", Params.OutputFolder);
+  char tmpstr[4096];
+  snprintf(tmpstr, sizeof(tmpstr), "%s", Params.OutputFolder);
   char *cwdstr = dirname(tmpstr);
   n_spots = ReadSpots(cwdstr);
   printf("Spots: %zu\n", n_spots);
@@ -1523,8 +1523,8 @@ int main(int argc, char *argv[]) {
   sprintf(outFN, "%s/IndexBestFull.bin", Params.OutputFolder);
   Params.IndexBestFullFD = open(outFN, openFlags, S_IRUSR | S_IWUSR);
   if (blockNr == 0) {
-    ftruncate(Params.IndexBestFD, (off_t)nSpotsToIndex * 15 * sizeof(double));
-    ftruncate(Params.IndexBestFullFD,
+    (void)ftruncate(Params.IndexBestFD, (off_t)nSpotsToIndex * 15 * sizeof(double));
+    (void)ftruncate(Params.IndexBestFullFD,
               (off_t)nSpotsToIndex * MAX_N_HKLS * 2 * sizeof(double));
   }
 
@@ -1544,7 +1544,7 @@ int main(int argc, char *argv[]) {
     exit(1);
   }
   for (int i = 0; i < startRow; i++)
-    fgets(aline, 1000, sf);
+    (void)fgets(aline, 1000, sf);
   for (int i = 0; i < nSpotIDs; i++) {
     if (fgets(aline, 1000, sf))
       sscanf(aline, "%d", &SpotIDs[i]);
@@ -1972,7 +1972,7 @@ int main(int argc, char *argv[]) {
     res[14] = (double)h_results[si].nMatches; // nObs
 
     size_t offset = (size_t)(si + startRow) * 15 * sizeof(double);
-    pwrite(Params.IndexBestFD, res, 15 * sizeof(double), offset);
+    (void)pwrite(Params.IndexBestFD, res, 15 * sizeof(double), offset);
 
     // ── Write IndexBestFull.bin (re-match spots on CPU) ──
     // Use the best orientation to compute theoretical spots, match against
@@ -2083,7 +2083,7 @@ int main(int argc, char *argv[]) {
 
       size_t offset2 =
           (size_t)(si + startRow) * MAX_N_HKLS * 2 * sizeof(double);
-      pwrite(Params.IndexBestFullFD, outArr, MAX_N_HKLS * 2 * sizeof(double),
+      (void)pwrite(Params.IndexBestFullFD, outArr, MAX_N_HKLS * 2 * sizeof(double),
              offset2);
       printf("  IndexBestFull: grain %d, nTspots=%d, nMatched=%d, offset=%zu\n",
              si, nTspots, nMatched, offset2);
