@@ -307,13 +307,13 @@ def file_reader_worker(file_list, data_queue):
     data_queue.put(None)
 
 
-def process_tif_files_pipelined(sock, folder, frame_mapping, mapping_file, save_interval, compress=False):
+def process_tif_files_pipelined(sock, folder, frame_mapping, mapping_file, save_interval, compress=False, extension='tif'):
     """
     Main processing logic using the producer-consumer pipeline.
     """
-    files = sorted(glob.glob(os.path.join(folder, '*.tif')))
+    files = sorted(glob.glob(os.path.join(folder, '*.' + extension)))
     if not files:
-        print("No TIF files found.")
+        print("No " + extension + " files found.")
         return
 
     # A queue to hold data that is ready to be sent.
@@ -671,7 +671,7 @@ def main():
             # Handle different file types
             if args.extension.lower() == 'tif' or args.extension.lower() == 'tiff':
                 # Process TIFF files
-                process_tif_files_pipelined(sock, args.folder, frame_mapping, args.mapping_file, args.save_interval, compress=args.compress)
+                process_tif_files_pipelined(sock, args.folder, frame_mapping, args.mapping_file, args.save_interval, compress=args.compress, extension=args.extension)
                     
             elif args.extension.lower().startswith('ge') and args.extension[2:].isdigit():
                 # Process .geX binary files
