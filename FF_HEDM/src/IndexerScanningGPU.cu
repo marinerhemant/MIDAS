@@ -61,7 +61,7 @@
 #define MAX_N_STEPS 2000
 #define MAX_N_OMEGARANGES 2000
 #define N_COL_THEORSPOTS 14
-#define N_COL_OBSSPOTS 9
+#define N_COL_OBSSPOTS 10
 #define N_COL_GRAINSPOTS 17
 #define N_COL_GRAINMATCHES 16
 #define EPS 1e-9f
@@ -1533,7 +1533,7 @@ int main(int argc, char *argv[]) {
 
       for (int idnr = startRowNrSp; idnr <= endRowNrSp; idnr++) {
         double newY = xThis * spotSinOme[idnr] + yThis * spotCosOme[idnr];
-        if (fabs(newY - ypos[(int)ObsSpotsLab[idnr * N_COL_OBSSPOTS + 8]]) > BeamSize / 2)
+        if (fabs(newY - ypos[(int)ObsSpotsLab[idnr * N_COL_OBSSPOTS + 9]]) > BeamSize / 2)
           continue;
         nSpotsPassing++;
         int SpotRowNo = idnr;
@@ -1584,7 +1584,7 @@ int main(int argc, char *argv[]) {
       int seedIdx = 0;
       for (int idnr = startRowNrSp; idnr <= endRowNrSp; idnr++) {
         double newY = xThis * spotSinOme[idnr] + yThis * spotCosOme[idnr];
-        if (fabs(newY - ypos[(int)ObsSpotsLab[idnr * N_COL_OBSSPOTS + 8]]) > BeamSize / 2)
+        if (fabs(newY - ypos[(int)ObsSpotsLab[idnr * N_COL_OBSSPOTS + 9]]) > BeamSize / 2)
           continue;
 
         int SpotRowNo = idnr;
