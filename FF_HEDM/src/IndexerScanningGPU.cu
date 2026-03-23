@@ -1060,6 +1060,7 @@ __global__ void indexer_fused_kernel(
 
           // ─── Match against observed spots (inline CompareSpots) ───
           int iRing = rn - 1;
+          if (iRing < 0 || iRing >= c_params.n_ring_bins) continue;
           int iEta = (int)floor((180.0 + theorEta) / c_params.EtaBinSize);
           int iOme = (int)floor((180.0 + Omega) / c_params.OmeBinSize);
           iEta = max(0, min(c_params.n_eta_bins - 1, iEta));
@@ -1073,6 +1074,7 @@ __global__ void indexer_fused_kernel(
 
           size_t nInBin = d_ndata[Pos * 2 + 0];
           size_t DataPos = d_ndata[Pos * 2 + 1];
+          if (nInBin == 0) continue;
 
           RealType etamargin = c_etamargins[rn];
 
@@ -1082,9 +1084,10 @@ __global__ void indexer_fused_kernel(
           int bestSpotRow = -1;
           RealType diffOmeBest = 100000.0;
 
-          for (int is = 0; is < nInBin; is++) {
+          for (int is = 0; is < (int)nInBin; is++) {
             int spotRow = (int)d_data[(DataPos + is) * 2 + 0];
             int scannrobs = (int)d_data[(DataPos + is) * 2 + 1];
+            if (spotRow < 0 || spotRow >= nSpots) continue;
             int base = spotRow * N_COL_OBSSPOTS;
 
             // Filter 0: beam proximity
