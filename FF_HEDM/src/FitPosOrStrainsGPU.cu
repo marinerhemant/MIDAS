@@ -246,7 +246,7 @@ struct FitGPUParams {
   double EtaBinSize, OmeBinSize;
   int nRingBins, nEtaBins, nOmeBins, nSpotsBin;
 };
-__constant__ FitGPUParams d_params;
+__device__ FitGPUParams d_params;
 
 // ═══════════════════════════════════════════
 //  Objective function: shared evaluation core
@@ -601,25 +601,7 @@ static int ReadHKLs(const char *fn, double *hkls, int maxHKLs, int *RingNumbers,
   return nhkls;
 }
 
-// Euler2OrientMat (host version)
-static void h_Euler2OrientMat(const double e[3], double m[3][3]) {
-  double p=e[0]*deg2rad, ph=e[1]*deg2rad, t=e[2]*deg2rad;
-  double cp=cos(p),sp=sin(p),cph=cos(ph),sph=sin(ph),ct=cos(t),st=sin(t);
-  m[0][0]=ct*cp-st*cph*sp; m[0][1]=-ct*cph*sp-st*cp; m[0][2]=sph*sp;
-  m[1][0]=ct*sp+st*cph*cp; m[1][1]=ct*cph*cp-st*sp;  m[1][2]=-sph*cp;
-  m[2][0]=st*sph;          m[2][1]=ct*sph;            m[2][2]=cph;
-}
-static void h_OrientMat2Euler(double m[3][3], double E[3]) {
-  double phi,psi,theta,sph;
-  if(fabs(m[2][2]-1.0)<1e-12)phi=0;else phi=acos(m[2][2]);
-  sph=sin(phi);
-  if(fabs(sph)<1e-12){psi=0;theta=(m[1][0]>=0)?acos(m[0][0]):2*M_PI-acos(m[0][0]);}
-  else{double r1=fabs(-m[1][2]/sph)<=1?-m[1][2]/sph:1;
-    psi=(m[0][2]/sph>=0)?acos(r1):2*M_PI-acos(r1);
-    double r2=fabs(m[2][1]/sph)<=1?m[2][1]/sph:1;
-    theta=(m[2][0]/sph>=0)?acos(r2):2*M_PI-acos(r2);}
-  E[0]=rad2deg*psi;E[1]=rad2deg*phi;E[2]=rad2deg*theta;
-}
+// Host Euler functions removed — not needed (all fitting is on GPU)
 
 static double getTimeSec() {
   struct timespec ts; clock_gettime(CLOCK_MONOTONIC, &ts);
@@ -661,8 +643,6 @@ int main(int argc, char *argv[]) {
   double MaxRingRad=cfg.RhoD;
   char OutputFolder[1024], ResultFolder[1024];
   strcpy(OutputFolder, cfg.OutputFolder); strcpy(ResultFolder, cfg.ResultFolder);
-  double pixelsize_h = cfg.px;
-  int TakeGrainMax = cfg.TakeGrainMax;
 
   printf("Wavelength: %lf, Lsd: %lf, nHKL rings: %d\n", Wavelength, Lsd, nRings);
 
