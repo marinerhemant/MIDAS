@@ -1177,13 +1177,11 @@ int main(int argc, char *argv[]) {
     return dst;
   };
 
-  // Upload persistent data to GPU (double→float conversion)
+  // Upload persistent data to GPU
   RealType *d_hkls_flat;
   size_t nHkls7 = (size_t)n_hkls * 7;
-  RealType *f_hkls = d2f(hkls, nHkls7);
   CUDA_CHECK(cudaMalloc(&d_hkls_flat, nHkls7*sizeof(RealType)));
-  CUDA_CHECK(cudaMemcpy(d_hkls_flat, f_hkls, nHkls7*sizeof(RealType), cudaMemcpyHostToDevice));
-  free(f_hkls);
+  CUDA_CHECK(cudaMemcpy(d_hkls_flat, hkls, nHkls7*sizeof(RealType), cudaMemcpyHostToDevice));
 
   RealType *d_ObsSpotsLab;
   size_t nObsElems = (size_t)n_spots * N_COL_OBSSPOTS;
