@@ -1631,18 +1631,32 @@ def main():
                     with open(micFN, 'w') as micF:
                         micF.write("header\nheader\nheader\nheader\n")
                         
+                        # Load consolidated IndexBest_all.bin
+                        consol_file = f'{topdir}/Output/IndexBest_all.bin'
+                        if not os.path.exists(consol_file):
+                            logger.error(f"Consolidated file not found: {consol_file}")
+                            continue
+                        with open(consol_file, 'rb') as cf:
+                            nVoxels = np.frombuffer(cf.read(4), dtype=np.int32)[0]
+                            nSolArr = np.frombuffer(cf.read(4 * nVoxels), dtype=np.int32)
+                            offArr = np.frombuffer(cf.read(8 * nVoxels), dtype=np.int64)
+                            headerSize = 4 + 4 * nVoxels + 8 * nVoxels
+                            allData = np.frombuffer(cf.read(), dtype=np.double)
+                        
                         for spot in spotsToIndex:
                             voxNr = int(spot[0])
-                            loc = int(spot[3])
+                            solIdx = int(spot[3])
                             
-                            index_file = f'{topdir}/Output/IndexBest_voxNr_{str(voxNr).zfill(6)}.bin'
-                            if not os.path.exists(index_file):
-                                logger.warning(f"Index file not found: {index_file}")
+                            if voxNr >= nVoxels or nSolArr[voxNr] == 0:
+                                logger.warning(f"No data for voxNr={voxNr}")
                                 continue
-                                
-                            data = np.fromfile(index_file, dtype=np.double, count=16, offset=loc * 16 * 8)
+                            
+                            # Offset from start of data section
+                            dataOffset = (offArr[voxNr] - headerSize) // 8  # convert byte offset to double index
+                            data = allData[dataOffset + solIdx * 16 : dataOffset + solIdx * 16 + 16]
+                            
                             if data.size < 16:
-                                logger.warning(f"IndexBest for voxNr={voxNr} too small at row {loc}")
+                                logger.warning(f"IndexBest for voxNr={voxNr} too small at sol {solIdx}")
                                 continue
                             xThis = data[11]
                             yThis = data[12]

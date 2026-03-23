@@ -11,12 +11,15 @@
 #include <time.h>
 
 #include "MIDAS_Limits.h"
+#include "IndexerConsolidatedIO.h"
 #include "midas_version.h"
 #define BUFFER_SIZE MAX_BUFFER_SIZE
 
 // Function prototypes
 void processVoxel(int voxNr, const char *folderName, int sgNr, double maxAng,
-                  int nScans, double minConf);
+                  int nScans, double minConf,
+                  const ConsolidatedReader *valsReader,
+                  const ConsolidatedReader *keysReader);
 void writeSpotsToIndex(const char *folderName, const char *originalFolder,
                        int nScans);
 inline void OrientMat2Quat(double OrientMat[9], double Quat[4]);
@@ -47,10 +50,29 @@ int main(int argc, char *argv[]) {
     printf("Minimum confidence: %lf\n", minConf);
   }
 
+  /* Load consolidated files */
+  char consolValsFN[BUFFER_SIZE], consolKeysFN[BUFFER_SIZE];
+  sprintf(consolValsFN, "%s/IndexBest_all.bin", folderName);
+  sprintf(consolKeysFN, "%s/IndexKey_all.bin", folderName);
+  ConsolidatedReader valsReader, keysReader;
+  if (ConsolidatedReader_open(&valsReader, consolValsFN) != 0) {
+    fprintf(stderr, "Failed to open %s\n", consolValsFN);
+    return 1;
+  }
+  if (ConsolidatedReader_open(&keysReader, consolKeysFN) != 0) {
+    fprintf(stderr, "Failed to open %s\n", consolKeysFN);
+    return 1;
+  }
+  printf("Loaded consolidated indexer files (%d voxels)\n", valsReader.nVoxels);
+
 #pragma omp parallel for num_threads(numProcs) schedule(dynamic)
   for (int voxNr = 0; voxNr < nScans * nScans; voxNr++) {
-    processVoxel(voxNr, folderName, sgNr, maxAng, nScans, minConf);
+    processVoxel(voxNr, folderName, sgNr, maxAng, nScans, minConf,
+                 &valsReader, &keysReader);
   }
+
+  ConsolidatedReader_close(&valsReader);
+  ConsolidatedReader_close(&keysReader);
 
   writeSpotsToIndex(folderName, argv[1], nScans);
 
@@ -60,75 +82,41 @@ int main(int argc, char *argv[]) {
 }
 
 void processVoxel(int voxNr, const char *folderName, int sgNr, double maxAng,
-                  int nScans, double minConf) {
-  char valsFN[BUFFER_SIZE], keyFN[BUFFER_SIZE];
-  sprintf(valsFN, "%s/IndexBest_voxNr_%0*d.bin", folderName, 6, voxNr);
-  sprintf(keyFN, "%s/IndexKey_voxNr_%0*d.txt", folderName, 6, voxNr);
+                  int nScans, double minConf,
+                  const ConsolidatedReader *valsReader,
+                  const ConsolidatedReader *keysReader) {
+  /* Read from consolidated files */
+  int nIDs = keysReader->nSolutions[voxNr];
+  if (nIDs <= 0) return;
 
-  FILE *valsF = fopen(valsFN, "rb");
-  FILE *keyF = fopen(keyFN, "r");
-  if (!valsF || !keyF) {
-    if (valsF)
-      fclose(valsF);
-    if (keyF)
-      fclose(keyF);
-    return;
+  const double *valsData = ConsolidatedReader_getVals(valsReader, voxNr);
+  const size_t *keysData = ConsolidatedReader_getKeys(keysReader, voxNr);
+  if (!valsData || !keysData) return;
+
+  size_t *keys = calloc(nIDs * 4, sizeof(*keys));
+  for (int i = 0; i < nIDs; i++) {
+    keys[i * 4 + 0] = keysData[i * CONSOLIDATED_KEY_COLS + 0];
+    keys[i * 4 + 1] = keysData[i * CONSOLIDATED_KEY_COLS + 1];
+    keys[i * 4 + 2] = 0;
+    keys[i * 4 + 3] = 0;
   }
 
-  size_t *keys = calloc(MAX_N_SOLUTIONS_PER_VOX * 4, sizeof(*keys));
-  if (!keys) {
-    fclose(valsF);
-    fclose(keyF);
-    return;
-  }
-
-  char aline[BUFFER_SIZE];
-  int nIDs = 0;
-  while (fgets(aline, BUFFER_SIZE, keyF) != NULL) {
-    if (nIDs >= MAX_N_SOLUTIONS_PER_VOX) {
-      fprintf(stderr,
-              "Warning: voxel %d exceeds MAX_N_SOLUTIONS_PER_VOX (%d), "
-              "truncating.\n",
-              voxNr, MAX_N_SOLUTIONS_PER_VOX);
-      break;
-    }
-    sscanf(aline, "%zu %zu %zu %zu", &keys[nIDs * 4 + 0], &keys[nIDs * 4 + 1],
-           &keys[nIDs * 4 + 2], &keys[nIDs * 4 + 3]);
-    nIDs++;
-  }
-  fclose(keyF);
-
-  if (nIDs == 0) {
-    free(keys);
-    fclose(valsF);
-    return;
-  }
-
-  keys = realloc(keys, nIDs * 4 * sizeof(*keys));
   double *OMArr = calloc(nIDs * 9, sizeof(double));
   double *confIAArr = calloc(nIDs * 2, sizeof(double));
-  double *tmpArr = calloc(nIDs * 16, sizeof(double));
-  if (!OMArr || !confIAArr || !tmpArr) {
+  if (!OMArr || !confIAArr) {
     free(keys);
     free(OMArr);
     free(confIAArr);
-    free(tmpArr);
-    fclose(valsF);
     return;
   }
 
-  if (fread(tmpArr, nIDs * 16 * sizeof(double), 1, valsF) != 1) {
-    fprintf(stderr, "Warning: incomplete read from %s\n", valsFN);
-  }
-  fclose(valsF);
-
   for (int i = 0; i < nIDs; i++) {
-    confIAArr[i * 2 + 0] = tmpArr[i * 16 + 15] / tmpArr[i * 16 + 14];
-    confIAArr[i * 2 + 1] = tmpArr[i * 16 + 1];
+    const double *row = &valsData[i * CONSOLIDATED_VALS_COLS];
+    confIAArr[i * 2 + 0] = row[15] / row[14];
+    confIAArr[i * 2 + 1] = row[1];
     for (int j = 0; j < 9; j++)
-      OMArr[i * 9 + j] = tmpArr[i * 16 + 2 + j];
+      OMArr[i * 9 + j] = row[2 + j];
   }
-  free(tmpArr);
 
   bool *markArr = calloc(nIDs, sizeof(*markArr));
   size_t *uniqueArr = calloc(nIDs * 4, sizeof(*uniqueArr));

@@ -43,6 +43,7 @@
 
 /* Zarr/Blosc/Zip includes for patch extraction */
 #include "midas_version.h"
+#include "IndexerConsolidatedIO.h"
 #include <blosc2.h>
 #include <zip.h>
 
@@ -159,7 +160,9 @@ void print_usage(const char *program_name);
 double *read_memory_mapped_file(const char *filename, size_t *size_out);
 int compare_sino_data(const void *a, const void *b);
 void process_voxel(int voxNr, const char *folderName, int sgNr, double maxAng,
-                   size_t *allKeyArr, double *allOrientationsArr, int ib);
+                   size_t *allKeyArr, double *allOrientationsArr, int ib,
+                   const ConsolidatedReader *valsReader,
+                   const ConsolidatedReader *keysReader);
 UniqueOrientationsResult find_unique_orientations(size_t *allKeyArr,
                                                   double *allOrientationsArr,
                                                   size_t nScans, int sgNr,
@@ -296,10 +299,21 @@ int main(int argc, char *argv[]) {
     fatal_error("Failed to open %s: %s", outKeyFN, strerror(errno));
   }
 
+  /* Load consolidated files */
+  char consolValsFN[MAX_PATH_LEN], consolKeysFN[MAX_PATH_LEN];
+  sprintf(consolValsFN, "%s/IndexBest_all.bin", folderName);
+  sprintf(consolKeysFN, "%s/IndexKey_all.bin", folderName);
+  ConsolidatedReader valsReader, keysReader;
+  if (ConsolidatedReader_open(&valsReader, consolValsFN) != 0)
+    fatal_error("Failed to open %s", consolValsFN);
+  if (ConsolidatedReader_open(&keysReader, consolKeysFN) != 0)
+    fatal_error("Failed to open %s", consolKeysFN);
+  printf("Loaded consolidated indexer files (%d voxels)\n", valsReader.nVoxels);
+
 #pragma omp parallel for num_threads(numProcs) schedule(dynamic)
   for (int voxNr = 0; voxNr < nScans * nScans; voxNr++) {
     process_voxel(voxNr, folderName, sgNr, maxAng, allKeyArr,
-                  allOrientationsArr, ib);
+                  allOrientationsArr, ib, &valsReader, &keysReader);
   }
   close(ib);
 
@@ -538,133 +552,58 @@ int compare_sino_data(const void *a, const void *b) {
  * @param maxAng Maximum misorientation angle for grouping orientations
  */
 void process_voxel(int voxNr, const char *folderName, int sgNr, double maxAng,
-                   size_t *allKeyArr, double *allOrientationsArr, int ib) {
-  /* Construct input filenames for this voxel */
-  FILE *valsF = NULL, *keyF = NULL;
-  char valsFN[MAX_PATH_LEN], keyFN[MAX_PATH_LEN];
-  sprintf(valsFN, "%s/IndexBest_voxNr_%06d.bin", folderName, voxNr);
-  sprintf(keyFN, "%s/IndexKey_voxNr_%06d.txt", folderName, voxNr);
-
-  /* Open input files */
-  valsF = fopen(valsFN, "rb");
-  keyF = fopen(keyFN, "r");
-
-  /* Check if files opened successfully */
-  if (!keyF || !valsF) {
-    if (!keyF)
-      log_error("Could not open key file %s", keyFN);
-    if (!valsF)
-      log_error("Could not open vals file %s", valsFN);
-
-    /* Write empty result */
-    size_t outarr[5] = {0};
-    pwrite(ib, outarr, 5 * sizeof(size_t), 5 * sizeof(size_t) * voxNr);
-    allKeyArr[voxNr * KEY_ARRAY_COLS] = INVALID_VOX;
-
-    /* Clean up */
-    if (keyF)
-      fclose(keyF);
-    if (valsF)
-      fclose(valsF);
-    return;
-  }
-
-  /* Check if key file is empty */
-  fseek(keyF, 0L, SEEK_END);
-  size_t szt = ftell(keyF);
-  rewind(keyF);
-
-  if (szt == 0) {
-    /* Write empty result for empty key file */
-    fclose(keyF);
-    fclose(valsF);
-
+                   size_t *allKeyArr, double *allOrientationsArr, int ib,
+                   const ConsolidatedReader *valsReader,
+                   const ConsolidatedReader *keysReader) {
+  /* Read from consolidated files */
+  int nIDs = keysReader->nSolutions[voxNr];
+  if (nIDs <= 0) {
     size_t outarr[5] = {0};
     pwrite(ib, outarr, 5 * sizeof(size_t), 5 * sizeof(size_t) * voxNr);
     allKeyArr[voxNr * KEY_ARRAY_COLS] = INVALID_VOX;
     return;
   }
 
-  /* Read key file */
-  size_t *keys =
-      calloc(MAX_N_SOLUTIONS_PER_VOX * KEY_ARRAY_COLS, sizeof(*keys));
-  if (!keys) {
-    log_error("Failed to allocate memory for keys");
-    fclose(keyF);
-    fclose(valsF);
+  const double *valsData = ConsolidatedReader_getVals(valsReader, voxNr);
+  const size_t *keysData = ConsolidatedReader_getKeys(keysReader, voxNr);
+  if (!valsData || !keysData) {
+    size_t outarr[5] = {0};
+    pwrite(ib, outarr, 5 * sizeof(size_t), 5 * sizeof(size_t) * voxNr);
+    allKeyArr[voxNr * KEY_ARRAY_COLS] = INVALID_VOX;
     return;
   }
 
-  char aline[MAX_PATH_LEN];
-  int nIDs = 0;
-
-  /* Parse each line in the key file */
-  while (fgets(aline, MAX_PATH_LEN, keyF) != NULL &&
-         nIDs < MAX_N_SOLUTIONS_PER_VOX) {
-    /* Extract key values from each line */
-    if (sscanf(aline, "%zu %zu %zu %zu",
-               &keys[nIDs * KEY_ARRAY_COLS + 0], /* grainID */
-               &keys[nIDs * KEY_ARRAY_COLS + 1], /* nSpots */
-               &keys[nIDs * KEY_ARRAY_COLS + 2], /* startRowNr */
-               &keys[nIDs * KEY_ARRAY_COLS + 3]) /* spotListStartPos */
-        != 4) {
-      /* Skip lines that don't have 4 values */
-      continue;
-    }
-    nIDs++;
+  /* Copy keys into local array */
+  size_t *keys = calloc(nIDs * KEY_ARRAY_COLS, sizeof(*keys));
+  for (int i = 0; i < nIDs; i++) {
+    keys[i * KEY_ARRAY_COLS + 0] = keysData[i * CONSOLIDATED_KEY_COLS + 0];
+    keys[i * KEY_ARRAY_COLS + 1] = keysData[i * CONSOLIDATED_KEY_COLS + 1];
+    keys[i * KEY_ARRAY_COLS + 2] = 0; /* Offsets not meaningful in consolidated format */
+    keys[i * KEY_ARRAY_COLS + 3] = 0;
   }
 
-  /* Resize keys array to actual size */
-  if (nIDs > 0) {
-    size_t *resized_keys = realloc(keys, nIDs * KEY_ARRAY_COLS * sizeof(*keys));
-    if (resized_keys) {
-      keys = resized_keys;
-    }
-    /* If realloc fails, we continue with the original larger array */
-  }
-
-  fclose(keyF);
-
-  /* Read values file for orientations, confidence, and internal angle */
+  /* Allocate arrays for orientations, confidence, and internal angle */
   double *OMArr = calloc(nIDs * ORIENT_ARRAY_COLS, sizeof(double));
   double *confIAArr = calloc(nIDs * CONF_IA_ARRAY_COLS, sizeof(double));
-  double *tmpArr = calloc(nIDs * TMP_ARRAY_COLS, sizeof(double));
 
-  if (!OMArr || !confIAArr || !tmpArr) {
+  if (!OMArr || !confIAArr) {
     log_error("Failed to allocate memory for orientation arrays");
     free(keys);
-    free(OMArr);     /* Safe to free NULL */
-    free(confIAArr); /* Safe to free NULL */
-    free(tmpArr);    /* Safe to free NULL */
-    fclose(valsF);
+    free(OMArr);
+    free(confIAArr);
     return;
   }
 
-  /* Read orientation values from binary file */
-  size_t items_read =
-      fread(tmpArr, sizeof(double), nIDs * TMP_ARRAY_COLS, valsF);
-  fclose(valsF);
-
-  /* Check if we read the expected number of items */
-  if (items_read != nIDs * TMP_ARRAY_COLS) {
-    log_error("Failed to read expected number of values from %s. Expected %d, "
-              "got %zu",
-              valsFN, nIDs * TMP_ARRAY_COLS, items_read);
-    /* Continue with partial data */
-  }
-
-  /* Extract confidence, internal angle, and orientation matrix values */
+  /* Extract orientation values directly from consolidated data */
   for (int i = 0; i < nIDs; i++) {
+    const double *row = &valsData[i * CONSOLIDATED_VALS_COLS];
     /* Calculate confidence as ratio of matched spots to total spots */
-    confIAArr[i * CONF_IA_ARRAY_COLS + 0] =
-        tmpArr[i * TMP_ARRAY_COLS + 15] / tmpArr[i * TMP_ARRAY_COLS + 14];
-
-    /* Store internal angle (measure of solution quality) */
-    confIAArr[i * CONF_IA_ARRAY_COLS + 1] = tmpArr[i * TMP_ARRAY_COLS + 1];
-
-    /* Extract orientation matrix (9 values) */
+    confIAArr[i * CONF_IA_ARRAY_COLS + 0] = row[15] / row[14];
+    /* Store internal angle */
+    confIAArr[i * CONF_IA_ARRAY_COLS + 1] = row[1];
+    /* Extract orientation matrix (9 values starting at offset 2) */
     for (int k = 0; k < ORIENT_ARRAY_COLS; k++) {
-      OMArr[i * ORIENT_ARRAY_COLS + k] = tmpArr[i * TMP_ARRAY_COLS + 2 + k];
+      OMArr[i * ORIENT_ARRAY_COLS + k] = row[2 + k];
     }
   }
 
@@ -675,7 +614,6 @@ void process_voxel(int voxNr, const char *folderName, int sgNr, double maxAng,
     free(keys);
     free(OMArr);
     free(confIAArr);
-    free(tmpArr);
     return;
   }
 
@@ -725,8 +663,7 @@ void process_voxel(int voxNr, const char *folderName, int sgNr, double maxAng,
       free(keys);
       free(OMArr);
       free(confIAArr);
-      free(tmpArr);
-      free(markArr);
+        free(markArr);
       free(uniqueArrThis);       /* Safe to free NULL */
       free(uniqueOrientArrThis); /* Safe to free NULL */
       return;

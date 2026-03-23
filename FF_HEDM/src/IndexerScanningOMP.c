@@ -25,6 +25,7 @@
 #include <time.h>
 
 #include "MIDAS_Math.h"
+#include "IndexerConsolidatedIO.h"
 #include "midas_version.h"
 
 // check() - using MIDAS_CHECK_DEFINED guard (cannot include MIDAS_Limits.h due
@@ -1130,7 +1131,7 @@ void MakeFullFileName(char *fullFileName, char *aPath, char *aFileName) {
 }
 
 int DoIndexingSingle(int voxNr, double OM[3][3], double xThis, double yThis,
-                     struct TParams Params, FILE *valsF, FILE *allF, FILE *keyF,
+                     struct TParams Params, VoxelAccumulator *acc,
                      struct IndexerScratch *scratch) {
   RealType ga = xThis, gb = yThis, gc = 0;
   RealType **TheorSpots = scratch->TheorSpots;
@@ -1192,25 +1193,20 @@ int DoIndexingSingle(int voxNr, double OM[3][3], double xThis, double yThis,
       GrainMatches[0][7],  GrainMatches[0][8],  GrainMatches[0][9],
       GrainMatches[0][10], GrainMatches[0][11], GrainMatches[0][12],
       GrainMatches[0][13]};
-  size_t locVals, locAll;
-  locVals = ftell(valsF);
-  locAll = ftell(allF);
-  fwrite(outArr, 16 * sizeof(double), 1, valsF);
   int *outArr2;
   outArr2 = malloc(nMatches * sizeof(*outArr2));
   for (i = 0; i < nMatches; i++)
     outArr2[i] = (int)AllGrainSpots[i][14];
-  fwrite(outArr2, nMatches * sizeof(int), 1, allF);
+  size_t keyArr[4] = {(size_t)SpotID, (size_t)nMatches, 0, 0};
+  VoxelAccum_addSolution(acc, outArr, keyArr, outArr2, nMatches);
   free(outArr2);
-  fprintf(keyF, "%zu %zu %zu %zu\n", (size_t)SpotID, (size_t)nMatches, locVals,
-          locAll);
   printf("ID: %d, voxNr: %d, Confidence: %lf\n", SpotID, voxNr, FracThis);
   return 0;
 }
 
 int DoIndexing(int SpotID, int voxNr, double xThis, double yThis, double zThis,
-               struct TParams Params, int SpotRowNo, FILE *valsF, FILE *allF,
-               FILE *keyF, struct IndexerScratch *scratch) {
+               struct TParams Params, int SpotRowNo, VoxelAccumulator *acc,
+               struct IndexerScratch *scratch) {
   int i;
   RealType ga = xThis, gb = yThis, gc = zThis;
   RealType y0 = ObsSpotsLab[SpotRowNo * 10 + 0];
@@ -1329,20 +1325,14 @@ int DoIndexing(int SpotID, int voxNr, double xThis, double yThis, double zThis,
       GrainMatches[0][7],  GrainMatches[0][8],  GrainMatches[0][9],
       GrainMatches[0][10], GrainMatches[0][11], GrainMatches[0][12],
       GrainMatches[0][13]};
-  size_t locVals, locAll;
-  locVals = ftell(valsF);
-  locAll = ftell(allF);
-  fwrite(outArr, 16 * sizeof(double), 1, valsF);
   int *outArr2;
   int matchedNrSpots = GrainMatches[0][13];
-  // printf("matchedNrSpots: %d\n", matchedNrSpots);
   outArr2 = malloc(matchedNrSpots * sizeof(*outArr2));
   for (i = 0; i < matchedNrSpots; i++)
     outArr2[i] = (int)AllGrainSpots[i][14];
-  fwrite(outArr2, matchedNrSpots * sizeof(int), 1, allF);
+  size_t keyArr[4] = {(size_t)SpotID, (size_t)matchedNrSpots, 0, 0};
+  VoxelAccum_addSolution(acc, outArr, keyArr, outArr2, matchedNrSpots);
   free(outArr2);
-  fprintf(keyF, "%zu %zu %zu %zu\n", (size_t)SpotID, (size_t)matchedNrSpots,
-          locVals, locAll);
   printf("ID: %d, voxNr: %d, Confidence: %lf, IA: %lf\n", SpotID, voxNr,
          fracMatches, GrainMatches[0][15]);
 }
@@ -1703,6 +1693,12 @@ int main(int argc, char *argv[]) {
     spotCosOme[i] = cos(omeRad);
   }
 
+  /* Allocate per-voxel accumulators */
+  int nLocal = endRowNr - startRowNr;
+  VoxelAccumulator *accs = (VoxelAccumulator *)calloc(nLocal, sizeof(VoxelAccumulator));
+  for (int vi = 0; vi < nLocal; vi++)
+    VoxelAccum_init(&accs[vi]);
+
   int thisRowNr;
   printf("%s %d %d %d %d\n", Params.MicFN, nrMic, hasMic, (int)startRowNrSp,
          (int)endRowNrSp);
@@ -1721,17 +1717,7 @@ int main(int argc, char *argv[]) {
 
 #pragma omp for schedule(dynamic)
     for (thisRowNr = startRowNr; thisRowNr < endRowNr; thisRowNr++) {
-      FILE *valsF, *allF, *keyF;
-      char valsFN[2048], allFN[2048], keyFN[2048];
-      sprintf(valsFN, "%s/IndexBest_voxNr_%0*d.bin", Params.OutputFolder, 6,
-              thisRowNr);
-      valsF = fopen(valsFN, "wb");
-      sprintf(allFN, "%s/IndexBest_IDs_voxNr_%0*d.bin", Params.OutputFolder, 6,
-              thisRowNr);
-      allF = fopen(allFN, "wb");
-      sprintf(keyFN, "%s/IndexKey_voxNr_%0*d.txt", Params.OutputFolder, 6,
-              thisRowNr);
-      keyF = fopen(keyFN, "w");
+      VoxelAccumulator *acc = &accs[thisRowNr - startRowNr];
       double xThis = 0, yThis = 0;
       xThis = grid[thisRowNr * 2 + 0];
       yThis = grid[thisRowNr * 2 + 1];
@@ -1755,8 +1741,8 @@ int main(int argc, char *argv[]) {
           eulerThis[2] = mic[bestRow * 5 + 4] * rad2deg;
           Euler2OrientMat(eulerThis, OMThis);
         }
-        DoIndexingSingle(thisRowNr, OMThis, xThis, yThis, Params, valsF, allF,
-                         keyF, &scratch);
+        DoIndexingSingle(thisRowNr, OMThis, xThis, yThis, Params, acc,
+                         &scratch);
       } else if (hasGrains == 1) {
         if (omp_get_thread_num() == 0 && thisRowNr == startRowNr)
           printf(
@@ -1774,8 +1760,8 @@ int main(int argc, char *argv[]) {
           OMThis[2][0] = grainsOM[iter * 9 + 6];
           OMThis[2][1] = grainsOM[iter * 9 + 7];
           OMThis[2][2] = grainsOM[iter * 9 + 8];
-          DoIndexingSingle(thisRowNr, OMThis, xThis, yThis, Params, valsF, allF,
-                           keyF, &scratch);
+          DoIndexingSingle(thisRowNr, OMThis, xThis, yThis, Params, acc,
+                           &scratch);
         }
       } else {
         int idnr;
@@ -1789,14 +1775,11 @@ int main(int argc, char *argv[]) {
           newY = xThis * spotSinOme[idnr] + yThis * spotCosOme[idnr];
           if (fabs(newY - ypos[(int)ObsSpotsLab[idnr * 10 + 9]]) <=
               BeamSize / 2) {
-            DoIndexing(thisID, thisRowNr, xThis, yThis, 0, Params, idnr, valsF,
-                       allF, keyF, &scratch);
+            DoIndexing(thisID, thisRowNr, xThis, yThis, 0, Params, idnr, acc,
+                       &scratch);
           }
         }
       }
-      fclose(valsF);
-      fclose(allF);
-      fclose(keyF);
     }
     FreeMemMatrix(scratch.GrainMatches, MAX_N_MATCHES);
     FreeMemMatrix(scratch.GrainMatchesT, MAX_N_MATCHES);
@@ -1806,6 +1789,16 @@ int main(int argc, char *argv[]) {
     FreeMemMatrix(scratch.TheorSpots, nRowsPerGrain);
     free(scratch.IAgrainspots);
   }
+
+  /* Write consolidated output files */
+  printf("Writing consolidated output files...\n");
+  WriteConsolidatedFiles(accs, nVoxels, startRowNr, endRowNr, Params.OutputFolder);
+
+  /* Free accumulators */
+  for (int vi = 0; vi < nLocal; vi++)
+    VoxelAccum_free(&accs[vi]);
+  free(accs);
+
   free(spotSinOme);
   free(spotCosOme);
   double time = omp_get_wtime() - start_time;

@@ -21,6 +21,7 @@
 
 #include "MIDAS_Math.h"
 #include "MIDAS_ParamParser.h"
+#include "IndexerConsolidatedIO.h"
 #include <ctype.h>
 #include <errno.h>
 #include <fcntl.h>
@@ -72,6 +73,11 @@ static int g_n_ring_bins = 0;
 static int g_n_eta_bins = 0;
 static int g_n_ome_bins = 0;
 static int gNSpotsBin = 0; // total spots (from Spots.bin)
+
+// Beam proximity filter globals (scanning-specific)
+static double *gYpos = NULL;  // scan positions from positions.csv
+static int gNumScans = 0;
+static double gBeamSize = 0;
 
 int CalcDiffractionSpots(double Distance, double ExcludePoleAngle,
                          double OmegaRanges[MAX_N_OMEGA_RANGES][2],
@@ -1225,7 +1231,8 @@ static int ReassignSpotsFromBins(
     double x[12], int nhkls, double **hklsIn, double Lsd, double Wavelength,
     int nOmegaRanges, double OmegaRange[MAXNOMEGARANGES][2],
     double BoxSize[MAXNOMEGARANGES][4], double MinEta, double wedge, double chi,
-    double **spotsYZO, int maxSpots, double *AllSpotsPtr, int totalNSpots) {
+    double **spotsYZO, int maxSpots, double *AllSpotsPtr, int totalNSpots,
+    double grainPosX, double grainPosY) {
   if (!DoDynamicReassignment)
     return 0;
   if (ObsSpotsLab == NULL || BinData == NULL || nBinData == NULL)
@@ -1288,6 +1295,16 @@ static int ReassignSpotsFromBins(
       int spotRow = BinData[(DataPos + iSpot) * 2];
       if (spotRow < 0 || spotRow >= gNSpotsBin)
         continue;
+      // Beam proximity check: verify this spot's scan position illuminates the grain
+      if (gYpos != NULL && gBeamSize > 0) {
+        int scanNr = BinData[(DataPos + iSpot) * 2 + 1];
+        if (scanNr >= 0 && scanNr < gNumScans) {
+          double yRot = grainPosX * sin(theorOmega * deg2rad) +
+                        grainPosY * cos(theorOmega * deg2rad);
+          if (fabs(yRot - gYpos[scanNr]) >= gBeamSize / 2.0)
+            continue;
+        }
+      }
       // Check if already assigned to a previous theoretical spot
       int alreadyUsed = 0;
       for (int u = 0; u < nMatched; u++) {
@@ -1463,6 +1480,29 @@ int main(int argc, char *argv[]) {
            "OmeBinSize=%.1f)\n",
            g_n_ring_bins, g_n_eta_bins, g_n_ome_bins, gEtaBinSize, gOmeBinSize);
   }
+  // Load positions.csv for beam proximity filtering in ReassignSpotsFromBins
+  gBeamSize = cfg.BeamSize;
+  {
+    char posFN[2048];
+    sprintf(posFN, "%s/positions.csv", cwd);
+    FILE *posF = fopen(posFN, "r");
+    if (posF != NULL) {
+      // Count lines
+      int nLines = 0;
+      while (fgets(aline, 1000, posF) != NULL) nLines++;
+      rewind(posF);
+      gNumScans = nLines;
+      gYpos = malloc(gNumScans * sizeof(*gYpos));
+      for (int pi = 0; pi < gNumScans; pi++) {
+        fgets(aline, 1000, posF);
+        sscanf(aline, "%lf", &gYpos[pi]);
+      }
+      fclose(posF);
+      printf("positions.csv loaded: %d scans, BeamSize=%.4f\n", gNumScans, gBeamSize);
+    } else {
+      printf("Warning: positions.csv not found at %s, beam proximity disabled in reassignment.\n", posFN);
+    }
+  }
   if (BigDetSize != 0) {
     long long int size2 = ReadBigDet(cwd);
     totNrPixelsBigDetector = BigDetSize;
@@ -1539,6 +1579,24 @@ int main(int argc, char *argv[]) {
            "Exiting!\n");
     return 0;
   }
+
+  /* Load consolidated indexer output files */
+  ConsolidatedReader consolVals, consolIDs;
+  {
+    char consolFN[2048];
+    sprintf(consolFN, "Output/IndexBest_all.bin");
+    if (ConsolidatedReader_open(&consolVals, consolFN) != 0) {
+      printf("Failed to open %s. Exiting.\n", consolFN);
+      return 1;
+    }
+    sprintf(consolFN, "Output/IndexBest_IDs_all.bin");
+    if (ConsolidatedReader_open(&consolIDs, consolFN) != 0) {
+      printf("Failed to open %s. Exiting.\n", consolFN);
+      return 1;
+    }
+    printf("Loaded consolidated indexer files (%d voxels)\n", consolVals.nVoxels);
+  }
+
   double MargOme2 = 2, chi = 0;
   int thisRowNr;
 #pragma omp parallel for num_threads(numProcs) private(thisRowNr)              \
@@ -1558,34 +1616,38 @@ int main(int argc, char *argv[]) {
     int voxNr = (int)infoArr[thisRowNr * 5 + 0];
     int nSpotsBest = (int)infoArr[thisRowNr * 5 + 2];
     int *spotIDS = malloc(nSpotsBest * sizeof(*spotIDS));
-    size_t locOffsetVals = infoArr[thisRowNr * 5 + 3],
-           locOffsetIDs = infoArr[thisRowNr * 5 + 4];
-    char fnVals[2048], fnIDs[2048];
-    sprintf(fnVals, "Output/IndexBest_voxNr_%0*d.bin", 6, voxNr);
-    sprintf(fnIDs, "Output/IndexBest_IDs_voxNr_%0*d.bin", 6, voxNr);
-    FILE *fVals = fopen(fnVals, "rb");
-    FILE *fIDs = fopen(fnIDs, "rb");
-    if (!fVals || !fIDs) {
-      printf("Warning: could not open %s or %s, skipping voxel %d\n", fnVals,
-             fnIDs, voxNr);
-      if (fVals)
-        fclose(fVals);
-      if (fIDs)
-        fclose(fIDs);
+    size_t solIndex = infoArr[thisRowNr * 5 + 3];
+
+    /* Read from consolidated files */
+    const double *voxVals = ConsolidatedReader_getVals(&consolVals, voxNr);
+    const int *voxIDs = ConsolidatedReader_getIDs(&consolIDs, voxNr);
+    if (!voxVals || !voxIDs) {
+      printf("Warning: no consolidated data for voxel %d, skipping\n", voxNr);
       free(spotIDS);
       continue;
     }
-    fseek(fVals, locOffsetVals, SEEK_SET);
+
+    /* Find the solution at solIndex within this voxel's data */
     double tmpArr[16];
-    if (fread(tmpArr, 16 * sizeof(double), 1, fVals) != 1) {
-      fprintf(stderr, "Warning: incomplete read from %s\n", fnVals);
+    memcpy(tmpArr, &voxVals[solIndex * CONSOLIDATED_VALS_COLS],
+           CONSOLIDATED_VALS_COLS * sizeof(double));
+
+    /* Compute offset into IDs array: sum nIDs from keys for solutions before solIndex */
+    const size_t *voxKeys = ConsolidatedReader_getKeys(
+        (const ConsolidatedReader *)&consolVals, voxNr);
+    /* For IDs, we need to find the right offset. The IDs for each solution are
+       concatenated, with the count stored in keys[sol*4+2] (nIDs per solution).
+       But in our consolidated format, we stored total IDs per voxel.
+       Since SpotsToIndex only references ONE specific solution per voxel,
+       and that solution has nSpotsBest IDs, we read them from the IDs pool. */
+    /* For the simple case: use infoArr[4] as the ID offset index within the voxel */
+    size_t idStartIdx = infoArr[thisRowNr * 5 + 4];
+    if (idStartIdx + nSpotsBest <= (size_t)consolIDs.nSolutions[voxNr]) {
+      memcpy(spotIDS, &voxIDs[idStartIdx], nSpotsBest * sizeof(int));
+    } else {
+      /* Fallback: read from start of IDs for this voxel */
+      memcpy(spotIDS, voxIDs, nSpotsBest * sizeof(int));
     }
-    fclose(fVals);
-    fseek(fIDs, locOffsetIDs, SEEK_SET);
-    if (fread(spotIDS, nSpotsBest * sizeof(int), 1, fIDs) != 1) {
-      fprintf(stderr, "Warning: incomplete read from %s\n", fnIDs);
-    }
-    fclose(fIDs);
 
     // Extract initial values from binary record
     double Orient0[9], Pos0[3], Euler0[3], Orient0_3[3][3];
@@ -1699,7 +1761,7 @@ int main(int argc, char *argv[]) {
       int nReassigned = ReassignSpotsFromBins(
           UseXFit, nhkls, hkls, Lsd, Wavelength, nOmeRanges, OmegaRanges,
           BoxSizes, MinEta, wedge, chi, spotsYZONew, MaxNSpotsBest, AllSpots,
-          nSpots);
+          nSpots, Pos0[0], Pos0[1]);
       if (nReassigned > 0) {
         nSpotsComp = nReassigned;
         FitOrientIni(X0_2, nSpotsComp, spotsYZONew, nhkls, hkls, Lsd,
@@ -1775,7 +1837,7 @@ int main(int argc, char *argv[]) {
       int nReassigned = ReassignSpotsFromBins(
           UseXFitS, nhkls, hkls, Lsd, Wavelength, nOmeRanges, OmegaRanges,
           BoxSizes, MinEta, wedge, chi, spotsYZONew, MaxNSpotsBest, AllSpots,
-          nSpots);
+          nSpots, Pos0[0], Pos0[1]);
       if (nReassigned > 0) {
         nSpotsComp = nReassigned;
         FitStrainIni(X0_3, nSpotsComp, spotsYZONew, nhkls, hkls, Lsd,
