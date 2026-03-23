@@ -537,8 +537,8 @@ __device__ static int gpu_ReassignSpotsFromBins(
     const RealType *hklsRaw, RealType *scratch,
     RealType *spotsYZO, // [maxSpots*11] — will be REWRITTEN
     int maxSpots, const RealType *AllSpotsPtr, int totalNSpots,
-    const RealType *ObsSpotsLab, int nSpotsBin, const int *BinData,
-    const int *nBinData, int nMaxTheor,
+    const RealType *ObsSpotsLab, int nSpotsBin, const size_t *BinData,
+    const size_t *nBinData, int nMaxTheor,
     const double *d_ypos, int nYpos, double BeamSize) {
 
   RealType *hkls = scratch;
@@ -583,20 +583,20 @@ __device__ static int gpu_ReassignSpotsFromBins(
     long long int Pos =
         (long long int)iRing * d_params.nEtaBins * d_params.nOmeBins +
         iEta * d_params.nOmeBins + iOme;
-    int nInBin = nBinData[Pos * 2];
-    int DataPos = nBinData[Pos * 2 + 1];
+    size_t nInBin = nBinData[Pos * 2];
+    size_t DataPos = nBinData[Pos * 2 + 1];
     if (nInBin == 0)
       continue;
 
     RealType bestDiffOme = 1e9;
     int bestRow = -1;
     for (int iSpot = 0; iSpot < nInBin; iSpot++) {
-      int spotRow = BinData[(DataPos + iSpot) * 2];
+      int spotRow = (int)BinData[(DataPos + iSpot) * 2];
       if (spotRow < 0 || spotRow >= nSpotsBin)
         continue;
       // Beam proximity check (matching OMP)
       if (d_ypos != nullptr && BeamSize > 0 && nYpos > 0) {
-        int scanNr = BinData[(DataPos + iSpot) * 2 + 1];
+        int scanNr = (int)BinData[(DataPos + iSpot) * 2 + 1];
         if (scanNr >= 0 && scanNr < nYpos) {
           RealType theorOmeRad = theorOmega * deg2rad;
           RealType yRot = x12[0] * sin(theorOmeRad) + x12[1] * cos(theorOmeRad);
@@ -728,7 +728,7 @@ fitGrainsKernel(int nGrains,
                 // Bin data for dynamic reassignment
                 const RealType *d_AllSpots, int d_totalNSpots,
                 const RealType *d_ObsSpotsLab, int d_nSpotsBin,
-                const int *d_BinData, const int *d_nBinData,
+                const size_t *d_BinData, const size_t *d_nBinData,
                 int doDynReassign,
                 const double *d_ypos, int nYpos) {
   int gIdx = blockIdx.x * blockDim.x + threadIdx.x;
@@ -1374,7 +1374,7 @@ int main(int argc, char *argv[]) {
 
   // Bin data for dynamic reassignment — disabled for initial validation
   RealType *d_ObsSpotsLabGPU = nullptr;
-  int *d_BinDataGPU = nullptr, *d_nBinDataGPU = nullptr;
+  size_t *d_BinDataGPU = nullptr, *d_nBinDataGPU = nullptr;
   int doDynReassign = 0;
 
   // Load positions.csv for beam proximity in dynamic reassignment

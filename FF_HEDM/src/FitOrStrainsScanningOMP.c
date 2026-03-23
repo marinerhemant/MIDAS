@@ -65,8 +65,8 @@ double WeightFitRMSE = 0.0;
 // IndexerScanningOMP)
 static double
     *ObsSpotsLab;     // mmap of Spots.bin (10 doubles per spot for scanning)
-static int *BinData;  // mmap of Data.bin (spot row indices + scan numbers)
-static int *nBinData; // mmap of nData.bin (count, offset pairs)
+static size_t *BinData;  // mmap of Data.bin (spot row indices + scan numbers)
+static size_t *nBinData; // mmap of nData.bin (count, offset pairs)
 static double gEtaBinSize = 2.0;
 static double gOmeBinSize = 2.0;
 static int g_n_ring_bins = 0;
@@ -1280,8 +1280,8 @@ static int ReassignSpotsFromBins(
       iOme = g_n_ome_bins - 1;
     long long int Pos = (long long int)iRing * g_n_eta_bins * g_n_ome_bins +
                         iEta * g_n_ome_bins + iOme;
-    int nInBin = nBinData[Pos * 2];
-    int DataPos = nBinData[Pos * 2 + 1];
+    size_t nInBin = nBinData[Pos * 2];
+    size_t DataPos = nBinData[Pos * 2 + 1];
     if (nInBin == 0)
       continue;
     // Compute theoretical g-vector for angular comparison
@@ -1292,12 +1292,12 @@ static int ReassignSpotsFromBins(
     int bestRow = -1;
     for (int iSpot = 0; iSpot < nInBin; iSpot++) {
       // Data.bin for scanning stores (rowno, scanno) pairs
-      int spotRow = BinData[(DataPos + iSpot) * 2];
+      int spotRow = (int)BinData[(DataPos + iSpot) * 2];
       if (spotRow < 0 || spotRow >= gNSpotsBin)
         continue;
       // Beam proximity check: verify this spot's scan position illuminates the grain
       if (gYpos != NULL && gBeamSize > 0) {
-        int scanNr = BinData[(DataPos + iSpot) * 2 + 1];
+        int scanNr = (int)BinData[(DataPos + iSpot) * 2 + 1];
         if (scanNr >= 0 && scanNr < gNumScans) {
           double yRot = grainPosX * sin(theorOmega * deg2rad) +
                         grainPosY * cos(theorOmega * deg2rad);
@@ -1448,7 +1448,7 @@ int main(int argc, char *argv[]) {
     int fdData = open(binFN, O_RDONLY);
     if (fdData >= 0) {
       fstat(fdData, &bs);
-      BinData = mmap(0, bs.st_size, PROT_READ, MAP_SHARED, fdData, 0);
+      BinData = (size_t *)mmap(0, bs.st_size, PROT_READ, MAP_SHARED, fdData, 0);
       if (BinData == MAP_FAILED)
         BinData = NULL;
       printf("Data.bin mapped: %lld bytes\n", (long long int)bs.st_size);
@@ -1460,7 +1460,7 @@ int main(int argc, char *argv[]) {
     int fdNData = open(binFN, O_RDONLY);
     if (fdNData >= 0) {
       fstat(fdNData, &bs);
-      nBinData = mmap(0, bs.st_size, PROT_READ, MAP_SHARED, fdNData, 0);
+      nBinData = (size_t *)mmap(0, bs.st_size, PROT_READ, MAP_SHARED, fdNData, 0);
       if (nBinData == MAP_FAILED)
         nBinData = NULL;
       printf("nData.bin mapped: %lld bytes\n", (long long int)bs.st_size);
