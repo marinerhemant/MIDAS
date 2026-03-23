@@ -1001,7 +1001,7 @@ __global__ void indexer_fused_kernel(
         RealType Ghkl[3] = {d_hkls_flat[ih * 7 + 0], d_hkls_flat[ih * 7 + 1],
                             d_hkls_flat[ih * 7 + 2]};
         int rn = (int)d_hkls_flat[ih * 7 + 3];
-        if (rn < 0 || rn >= MAX_N_RINGS) continue;
+        if (rn <= 0 || rn >= MAX_N_RINGS) continue;
         RealType RingRadius = c_RingRadii[rn];
         if (RingRadius < EPS) continue;
         RealType theta = d_hkls_flat[ih * 7 + 5];
