@@ -644,7 +644,7 @@ __device__ static double d_CalcRotationAngle(int RingNr, int n_hkls_d) {
 __device__ static void d_GenerateIdealSpots(double ys, double zs, double ttheta,
                                  double eta, double Ring_rad, double Rsample,
                                  double Hbeam, double step_size, double y0v[],
-                                 double z0v[], int *nSteps) {
+                                 double z0v[], int *nSteps, int maxSize) {
   int qc2 = 0;
   double eh, qc, cy = 0, cz = 0, ymax_z0 = 0, ymin_z0 = 0, ymax = 0, ymin = 0, zmin = 0, zmax = 0;
   if (eta > 90) eh = 180 - eta;
@@ -691,7 +691,7 @@ __device__ static void d_GenerateIdealSpots(double ys, double zs, double ttheta,
   ns = (int)ceil(len / step_size);
   if (ns % 2 == 0) ns++;
   if (ns < 1) ns = 1;
-  if (ns > MAX_N_STEPS) ns = MAX_N_STEPS;
+  if (ns > maxSize) ns = maxSize;
   if (ns == 1) {
     if (!qc2) {
       y0v[0] = (ymax + ymin) / 2;
@@ -795,7 +795,7 @@ __global__ void indexer_spotdriven_kernel(
   int nPN = 0;
   d_GenerateIdealSpots(ys, zs, d_RingTtheta[ringnr], eta,
                        c_RingRadii[ringnr], Rsample, Hbeam, StepsizePos,
-                       y0v, z0v, &nPN);
+                       y0v, z0v, &nPN, MAX_GPU_STEPS);
   if (nPN > MAX_GPU_STEPS) nPN = MAX_GPU_STEPS;
 
   // Per-thread scratch for theoretical spots
@@ -950,7 +950,7 @@ __global__ void indexer_fused_kernel(
   int nPN = 0;
   d_GenerateIdealSpots(ys, zs, d_RingTtheta[ringnr], eta,
                        c_RingRadii[ringnr], Rsample, Hbeam, StepsizePos,
-                       y0v, z0v, &nPN);
+                       y0v, z0v, &nPN, MAX_GPU_STEPS);
   if (nPN > MAX_GPU_STEPS) nPN = MAX_GPU_STEPS;
 
   SpotResult *res = &d_results[voxelIdx * nSpotsRange + seedIdx];
