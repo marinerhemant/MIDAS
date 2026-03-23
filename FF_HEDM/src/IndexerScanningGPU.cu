@@ -1058,16 +1058,6 @@ __global__ void indexer_fused_kernel(
           midas_CalcEtaAngle(theorY, theorZ, &theorEta);
           RealType theorRadDiff = sqrt(theorY * theorY + theorZ * theorZ) - RingRadius;
 
-          // DEBUG: print first few HKLs for voxel 0, spot 0, orientation 0
-          if (voxelIdx == 0 && spotLocalIdx == 0 && o == 0 && ih < 3) {
-            printf("DEBUG ih=%d rn=%d Omega=%.4f Eta=%.4f yl=%.4f zl=%.4f "
-                   "Displ_y=%.6f Displ_z=%.6f theorY=%.4f theorZ=%.4f "
-                   "theorEta=%.4f theorRadDiff=%.6f\n",
-                   ih, rn, (double)Omega, (double)Eta, (double)yl, (double)zl,
-                   (double)Displ_y, (double)Displ_z,
-                   (double)theorY, (double)theorZ, (double)theorEta, (double)theorRadDiff);
-          }
-
           // ─── Match against observed spots (inline CompareSpots) ───
           int iRing = rn - 1;
           if (iRing < 0 || iRing >= c_params.n_ring_bins) continue;
@@ -1075,6 +1065,20 @@ __global__ void indexer_fused_kernel(
           int iOme = (int)floor((180.0 + Omega) / c_params.OmeBinSize);
           iEta = max(0, min(c_params.n_eta_bins - 1, iEta));
           iOme = max(0, min(c_params.n_ome_bins - 1, iOme));
+
+          // DEBUG: print bin lookup + filter outcomes for voxel 0, spot 0, orient 0
+          if (voxelIdx == 0 && spotLocalIdx == 0 && o == 0 && isp == 0 && ih < 5) {
+            size_t dPos = (size_t)iRing * c_params.n_eta_bins * c_params.n_ome_bins
+                        + (size_t)iEta * c_params.n_ome_bins + (size_t)iOme;
+            size_t dNInBin = d_ndata[dPos * 2 + 0];
+            printf("MATCH ih=%d rn=%d iRing=%d iEta=%d iOme=%d Pos=%lu nInBin=%lu "
+                   "theorEta=%.2f Omega=%.2f theorRadDiff=%.4f RefRad=%.2f "
+                   "MarginRad=%.4f MarginRadial=%.4f etamargin=%.4f\n",
+                   ih, rn, iRing, iEta, iOme, (unsigned long)dPos, (unsigned long)dNInBin,
+                   (double)theorEta, (double)Omega, (double)theorRadDiff, (double)RefRad,
+                   (double)c_params.MarginRad, (double)c_params.MarginRadial,
+                   (double)c_etamargins[rn]);
+          }
 
           size_t Pos = (size_t)iRing;
           Pos *= (size_t)c_params.n_eta_bins;
