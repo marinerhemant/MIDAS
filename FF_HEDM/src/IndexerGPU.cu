@@ -1450,47 +1450,70 @@ int main(int argc, char *argv[]) {
     pwrite(Params.IndexBestFD, res, 15*sizeof(double), offset);
 
     // ── Write IndexBestFull.bin (re-match spots on CPU) ──
-    // Re-compute theoretical spots from best orientation, match against
-    // observed spots using bin structure (same as the kernel did),
-    // write interleaved [spotID, distance] pairs.
+    // Use the best orientation to compute theoretical spots, match against
+    // observed using bin structure, write interleaved [spotID, distance].
     {
       double OrM[3][3];
-      for (int r=0;r<3;r++) for (int cc=0;cc<3;cc++)
-        OrM[r][cc] = h_results[si].bestOrMat[r*3+cc];
-      double posG[3] = {h_results[si].bestPos[0],
-                        h_results[si].bestPos[1],
-                        h_results[si].bestPos[2]};
+      for (int r2=0;r2<3;r2++) for (int cc=0;cc<3;cc++)
+        OrM[r2][cc] = h_results[si].bestOrMat[r2*3+cc];
 
-      // Compute theoretical spots — need RealType** wrapper for static hkls array
-      RealType **hklsPtr = allocMatrix(n_hkls, 7);
-      for (int ih=0;ih<n_hkls;ih++) for (int jj=0;jj<7;jj++) hklsPtr[ih][jj]=hkls[ih][jj];
-      RealType **TheorSpots = allocMatrix(MAX_N_HKLS, 9);
+      // Compute theoretical spots inline (mirrors gpu_CalcDiffrSpots)
+      double theorBuf[MAX_N_HKLS * 9];
       int nTspots = 0;
-      CalcDiffractionSpots(Params.Distance, Params.ExcludePoleAngle,
-          Params.OmegaRanges, Params.NoOfOmegaRanges,
-          hklsPtr, n_hkls, Params.BoxSizes, &nTspots,
-          OrM, TheorSpots);
+      for (int ih = 0; ih < n_hkls && nTspots < MAX_N_HKLS; ih++) {
+        double theta = hkls[ih][5];
+        double RingRadius = hkls[ih][6];
+        int RingNr = (int)hkls[ih][3];
+        double gHat[3] = {
+          hkls[ih][0] * OrM[0][0] + hkls[ih][1] * OrM[0][1] + hkls[ih][2] * OrM[0][2],
+          hkls[ih][0] * OrM[1][0] + hkls[ih][1] * OrM[1][1] + hkls[ih][2] * OrM[1][2],
+          hkls[ih][0] * OrM[2][0] + hkls[ih][1] * OrM[2][1] + hkls[ih][2] * OrM[2][2]
+        };
+        double omegas[4], etas[4]; int nOme;
+        h_CalcOmega(gHat[0], gHat[1], gHat[2], theta, omegas, etas, &nOme);
+        for (int om = 0; om < nOme; om++) {
+          double ome = omegas[om];
+          int inRange = 0;
+          for (int or2 = 0; or2 < Params.NoOfOmegaRanges; or2++) {
+            if (ome >= Params.OmegaRanges[or2][0] && ome <= Params.OmegaRanges[or2][1]) {
+              inRange = 1; break;
+            }
+          }
+          if (!inRange) continue;
+          double eta = etas[om];
+          if (fabs(eta) < Params.ExcludePoleAngle) continue;
+          double yl, zl;
+          h_CalcSpotPosition(RingRadius, eta, &yl, &zl);
+          double *ts = &theorBuf[nTspots*9];
+          ts[0] = yl; ts[1] = zl; ts[2] = ome;
+          ts[7] = RingNr;
+          nTspots++;
+          if (nTspots >= MAX_N_HKLS) break;
+        }
+      }
 
       // Match theoretical spots against observed using bin structure
       double *outArr = (double*)calloc(MAX_N_HKLS * 2, sizeof(double));
       int nMatched = 0;
       for (int sp = 0; sp < nTspots && nMatched < MAX_N_HKLS; sp++) {
-        double theorYl = TheorSpots[sp][0], theorZl = TheorSpots[sp][1];
-        double theorOmega = TheorSpots[sp][2];
-        int RingNr = (int)TheorSpots[sp][7];
-        double theorEta = CalcEtaAngle(theorYl, theorZl);
+        double theorYl = theorBuf[sp*9+0], theorZl = theorBuf[sp*9+1];
+        double theorOmega = theorBuf[sp*9+2];
+        int RingNr = (int)theorBuf[sp*9+7];
+        // Inline CalcEtaAngle
+        double theorEta = (theorYl != 0) ? atan(theorZl/theorYl) * rad2deg :
+                          ((theorZl > 0) ? 90.0 : -90.0);
 
         int iRing = RingNr - 1;
-        if (iRing < 0 || iRing >= Params.n_ring_bins) continue;
-        int iEta = (int)floor((180.0+theorEta)/Params.EtaBinSize);
-        int iOme = (int)floor((180.0+theorOmega)/Params.OmeBinSize);
+        if (iRing < 0 || iRing >= n_ring_bins) continue;
+        int iEta = (int)floor((180.0+theorEta)/EtaBinSize);
+        int iOme = (int)floor((180.0+theorOmega)/OmeBinSize);
         if (iEta < 0) iEta = 0;
-        if (iEta >= Params.n_eta_bins) iEta = Params.n_eta_bins - 1;
+        if (iEta >= n_eta_bins) iEta = n_eta_bins - 1;
         if (iOme < 0) iOme = 0;
-        if (iOme >= Params.n_ome_bins) iOme = Params.n_ome_bins - 1;
+        if (iOme >= n_ome_bins) iOme = n_ome_bins - 1;
 
-        long long int Pos2 = (long long int)iRing * Params.n_eta_bins * Params.n_ome_bins
-                            + iEta * Params.n_ome_bins + iOme;
+        long long int Pos2 = (long long int)iRing * n_eta_bins * n_ome_bins
+                            + iEta * n_ome_bins + iOme;
         int nInBin = ndata[Pos2 * 2];
         int DataPos = ndata[Pos2 * 2 + 1];
         if (nInBin == 0) continue;
@@ -1499,7 +1522,7 @@ int main(int argc, char *argv[]) {
         int bestRow = -1;
         for (int iSpot = 0; iSpot < nInBin; iSpot++) {
           int spotRow = data[DataPos + iSpot];
-          if (spotRow < 0 || spotRow >= nSpotsBin) continue;
+          if (spotRow < 0 || spotRow >= (int)n_spots) continue;
           double obsOme = ObsSpotsLab_d[spotRow * 9 + 2];
           double diffOme = fabs(theorOmega - obsOme);
           if (diffOme < 5.0 && diffOme < bestDiffOme) {
@@ -1508,9 +1531,7 @@ int main(int argc, char *argv[]) {
           }
         }
         if (bestRow >= 0) {
-          // spotID in AllSpots = bestRow + 1 (1-indexed)
-          outArr[nMatched*2+0] = (double)(bestRow + 1);
-          // distance = radius from detector center
+          outArr[nMatched*2+0] = (double)(bestRow + 1); // 1-indexed spotID
           double obsY = ObsSpotsLab_d[bestRow*9+0];
           double obsZ = ObsSpotsLab_d[bestRow*9+1];
           outArr[nMatched*2+1] = sqrt(obsY*obsY + obsZ*obsZ);
@@ -1521,8 +1542,6 @@ int main(int argc, char *argv[]) {
       size_t offset2 = (size_t)(si + startRow) * MAX_N_HKLS * 2 * sizeof(double);
       pwrite(Params.IndexBestFullFD, outArr, MAX_N_HKLS * 2 * sizeof(double), offset2);
       free(outArr);
-      FreeMemMatrix(hklsPtr, n_hkls);
-      FreeMemMatrix(TheorSpots, MAX_N_HKLS);
     }
 
     printf("IDNr: %d, ID: %d, Confidence: %.4f, nExp: %d, nObs: %d\n",
