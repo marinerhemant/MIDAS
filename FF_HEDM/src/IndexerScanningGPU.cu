@@ -1067,17 +1067,19 @@ __global__ void indexer_fused_kernel(
           iOme = max(0, min(c_params.n_ome_bins - 1, iOme));
 
           // DEBUG: print bin lookup + filter outcomes for voxel 0, spot 0, orient 0
-          if (voxelIdx == 0 && spotLocalIdx == 0 && o == 0 && isp == 0 && ih < 5) {
+          if (voxelIdx == 0 && spotLocalIdx == 0 && o == 0 && isp == 0 && ih < 2) {
             size_t dPos = (size_t)iRing * c_params.n_eta_bins * c_params.n_ome_bins
                         + (size_t)iEta * c_params.n_ome_bins + (size_t)iOme;
             size_t dNInBin = d_ndata[dPos * 2 + 0];
-            printf("MATCH ih=%d rn=%d iRing=%d iEta=%d iOme=%d Pos=%lu nInBin=%lu "
-                   "theorEta=%.2f Omega=%.2f theorRadDiff=%.4f RefRad=%.2f "
-                   "MarginRad=%.4f MarginRadial=%.4f etamargin=%.4f\n",
+            // Also check first few entries of d_ndata to verify data is populated
+            printf("MATCH ih=%d rn=%d iR=%d iE=%d iO=%d Pos=%lu nInBin=%lu "
+                   "tEta=%.2f Ome=%.2f c_neta=%d c_nome=%d c_nring=%d "
+                   "ndata[0]=%lu ndata[2]=%lu ndata[4]=%lu\n",
                    ih, rn, iRing, iEta, iOme, (unsigned long)dPos, (unsigned long)dNInBin,
-                   (double)theorEta, (double)Omega, (double)theorRadDiff, (double)RefRad,
-                   (double)c_params.MarginRad, (double)c_params.MarginRadial,
-                   (double)c_etamargins[rn]);
+                   (double)theorEta, (double)Omega,
+                   c_params.n_eta_bins, c_params.n_ome_bins, c_params.n_ring_bins,
+                   (unsigned long)d_ndata[0], (unsigned long)d_ndata[2],
+                   (unsigned long)d_ndata[4]);
           }
 
           size_t Pos = (size_t)iRing;
