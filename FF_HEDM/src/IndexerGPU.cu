@@ -1499,9 +1499,9 @@ int main(int argc, char *argv[]) {
         double theorYl = theorBuf[sp*9+0], theorZl = theorBuf[sp*9+1];
         double theorOmega = theorBuf[sp*9+2];
         int RingNr = (int)theorBuf[sp*9+7];
-        // Inline CalcEtaAngle
-        double theorEta = (theorYl != 0) ? atan(theorZl/theorYl) * rad2deg :
-                          ((theorZl > 0) ? 90.0 : -90.0);
+        // Use h_CalcEtaAngle (same as bin construction uses)
+        double theorEta;
+        h_CalcEtaAngle(theorYl, theorZl, &theorEta);
 
         int iRing = RingNr - 1;
         if (iRing < 0 || iRing >= n_ring_bins) continue;
