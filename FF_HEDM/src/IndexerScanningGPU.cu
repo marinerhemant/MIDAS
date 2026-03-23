@@ -976,6 +976,11 @@ __global__ void indexer_fused_kernel(
     double MaxAngle = d_CalcRotationAngle(ringnr, n_hkls_d);
     int nsteps = (int)(MaxAngle / StepsizeOrient);
 
+    if (voxelIdx == 0 && spotLocalIdx == 0 && isp == 0) {
+      printf("ORIENT vox=0 spot=0 isp=0: ringnr=%d nPN=%d MaxAngle=%.2f StepsizeOrient=%.6f nsteps=%d\n",
+             ringnr, nPN, MaxAngle, StepsizeOrient, nsteps);
+    }
+
     // For each candidate orientation: FUSED CalcDiffrSpots + CompareSpots
     for (int o = 0; o < nsteps; o++) {
       double RM2[3][3], RM3[3][3];
