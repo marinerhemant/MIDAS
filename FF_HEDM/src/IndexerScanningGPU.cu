@@ -1216,7 +1216,7 @@ int main(int argc, char *argv[]) {
 
   // 2. Read HKLs
   char hklfn[4096], aline[4096];
-  sprintf(hklfn, "%s/hkls.csv", Params.OutputFolder);
+  sprintf(hklfn, "hkls.csv");
   FILE *hklf = fopen(hklfn, "r");
   check(!hklf, "Cannot open %s", hklfn);
   (void)fgets(aline, 4096, hklf);

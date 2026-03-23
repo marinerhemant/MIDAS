@@ -642,12 +642,21 @@ def main():
                 omp_dir.mkdir(exist_ok=True)
                 copy_outputs(work_dir, omp_dir)
 
-                # Clear Output/ and Results/ only (keep Spots.bin, Data.bin, etc.)
-                for subdir in ['Output', 'Results']:
-                    d = work_dir / subdir
-                    if d.exists():
-                        shutil.rmtree(str(d))
-                    d.mkdir(parents=True, exist_ok=True)
+                # Clear indexer/refiner outputs only (keep hkls.csv, etc. in Output/)
+                import glob
+                for pattern in ['Output/IndexBest*', 'Output/IndexBestFull*',
+                                'SpotsToIndex.csv', 'UniqueOrientations.csv',
+                                'singleSolution.mic', 'sinos_*.bin',
+                                'omegas_*.bin', 'nrHKLs_*.bin',
+                                'spotMapping_*.bin', 'spotMeta_*.bin',
+                                'spotPositions_*.bin', 'patches_*.bin']:
+                    for f in glob.glob(str(work_dir / pattern)):
+                        os.remove(f)
+                # Clear Results/ fully
+                results_d = work_dir / 'Results'
+                if results_d.exists():
+                    shutil.rmtree(str(results_d))
+                results_d.mkdir(parents=True, exist_ok=True)
 
                 # --- GPU run (just indexer + refiner) ---
                 print('\n  >>> Running GPU indexer + refiner on same data...')
