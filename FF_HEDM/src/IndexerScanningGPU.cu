@@ -91,8 +91,8 @@ static void check_host(int test, const char *msg, ...) {
 // ─────────────────────────────────────────────────────────────
 static double *ObsSpotsLab_d = NULL; // mmap'd as double (file format)
 static double *ObsSpotsLab = NULL;   // converted to double for CPU/GPU use
-static int *data = NULL;
-static int *ndata = NULL;
+static size_t *data = NULL;
+static size_t *ndata = NULL;
 static size_t n_spots = 0;
 static int n_hkls = 0;
 static RealType hkls[MAX_N_HKLS][7];
@@ -296,7 +296,7 @@ __device__ int
 gpu_CompareSpots(RealType *spots, // flat: [nTspots × N_COL_THEORSPOTS]
                  int nTspots,
                  const RealType *d_ObsSpotsLab, // [n_spots × N_COL_OBSSPOTS]
-                 RealType RefRad, const int *d_data, const int *d_ndata,
+                 RealType RefRad, const size_t *d_data, const size_t *d_ndata,
                  const int *d_ringsToReject, int nRingsToRejectCalc,
                  int *nMatchesFracCalc, RealType ga, RealType gb,
                  RealType gc,     // grain position for IA
@@ -333,8 +333,8 @@ gpu_CompareSpots(RealType *spots, // flat: [nTspots × N_COL_THEORSPOTS]
     Pos *= (size_t)c_params.n_ome_bins;
     Pos += (size_t)iOme;
 
-    int nInBin = d_ndata[Pos * 2 + 0];
-    int DataPos = d_ndata[Pos * 2 + 1];
+    size_t nInBin = d_ndata[Pos * 2 + 0];
+    size_t DataPos = d_ndata[Pos * 2 + 1];
 
     RealType etamargin = c_etamargins[RingNr];
 
@@ -352,8 +352,8 @@ gpu_CompareSpots(RealType *spots, // flat: [nTspots × N_COL_THEORSPOTS]
     RealType diffOmeBest = 100000.0; // match CPU: find closest, no threshold
 
     for (int is = 0; is < nInBin; is++) {
-      int spotRow = d_data[(DataPos + is) * 2 + 0];
-      int scannrobs = d_data[(DataPos + is) * 2 + 1];
+      int spotRow = (int)d_data[(DataPos + is) * 2 + 0];
+      int scannrobs = (int)d_data[(DataPos + is) * 2 + 1];
       int base = spotRow * N_COL_OBSSPOTS;
 
       // Filter 0: beam proximity check (matching OMP)
@@ -460,8 +460,8 @@ gpu_CompareSpots(RealType *spots, // flat: [nTspots × N_COL_THEORSPOTS]
 // ─────────────────────────────────────────────────────────────
 __global__ void indexer_eval_kernel(
     const EvalTuple *tuples, int nTuples, const RealType *d_hkls_flat,
-    int n_hkls_d, const RealType *d_ObsSpotsLab, const int *d_data,
-    const int *d_ndata, const int *d_ringsToReject, int nRingsToRejectCalc,
+    int n_hkls_d, const RealType *d_ObsSpotsLab, const size_t *d_data,
+    const size_t *d_ndata, const int *d_ringsToReject, int nRingsToRejectCalc,
     SpotResult *d_results,    // [nSpotIDs] — per-spotID best
     RealType *d_theorScratch, // [batchSize × maxTheorSpots × N_COL_THEORSPOTS]
     int maxTheorSpots,
@@ -913,7 +913,7 @@ static void ReadBins(char *cwd) {
   check(fd1 < 0, "open %s: %s", fn1, strerror(errno));
   struct stat s1;
   fstat(fd1, &s1);
-  data = (int *)mmap(0, s1.st_size, PROT_READ, MAP_SHARED, fd1, 0);
+  data = (size_t *)mmap(0, s1.st_size, PROT_READ, MAP_SHARED, fd1, 0);
   check(data == MAP_FAILED, "mmap %s", fn1);
 
   char fn2[2048];
@@ -922,9 +922,17 @@ static void ReadBins(char *cwd) {
   check(fd2 < 0, "open %s: %s", fn2, strerror(errno));
   struct stat s2;
   fstat(fd2, &s2);
-  ndata = (int *)mmap(0, s2.st_size, PROT_READ, MAP_SHARED, fd2, 0);
+  ndata = (size_t *)mmap(0, s2.st_size, PROT_READ, MAP_SHARED, fd2, 0);
   check(ndata == MAP_FAILED, "mmap %s", fn2);
   printf("Data.bin read. nData.bin read.\n");
+  // Print first non-empty bin for verification
+  size_t nBins = s2.st_size / (2 * sizeof(size_t));
+  for (size_t b = 0; b < nBins && b < 100000; b++) {
+    if (ndata[b * 2] > 0) {
+      printf("  nData sample: bin %zu -> count=%zu, offset=%zu\n", b, ndata[b * 2], ndata[b * 2 + 1]);
+      break;
+    }
+  }
 }
 
 // ─── Generate ideal spot positions ──────────────────────────
@@ -1361,17 +1369,11 @@ int main(int argc, char *argv[]) {
   CUDA_CHECK(cudaMemcpyToSymbol(c_params, &gp, sizeof(GPUParams)));
 
   // Upload persistent data to GPU
-  auto d2f = [](const double *src, size_t n) -> RealType * {
-    RealType *dst = (RealType *)malloc(n * sizeof(RealType));
-    for (size_t i = 0; i < n; i++) dst[i] = (RealType)src[i];
-    return dst;
-  };
-
   RealType *d_hkls_flat;
   CUDA_CHECK(cudaMalloc(&d_hkls_flat, (size_t)n_hkls * 7 * sizeof(RealType)));
   CUDA_CHECK(cudaMemcpy(d_hkls_flat, hkls, (size_t)n_hkls * 7 * sizeof(RealType), cudaMemcpyHostToDevice));
 
-  int *d_data, *d_ndata;
+  size_t *d_data, *d_ndata;
   {
     char fn1[2048], fn2[2048];
     sprintf(fn1, "%s/Data.bin", cwdstr);
