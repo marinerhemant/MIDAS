@@ -484,20 +484,120 @@ def cleanup(work_dir):
     print('  Cleanup complete.')
 
 
-def reset_pipeline_outputs(work_dir):
-    """Remove pipeline outputs to allow re-running with different settings."""
-    for subdir in ['Output', 'Results', 'Recons', 'Sinos', 'Thetas', 'Tomo',
-                    'fullOutput', 'fullResults']:
-        d = work_dir / subdir
-        if d.exists():
-            shutil.rmtree(str(d))
-        d.mkdir(parents=True, exist_ok=True)
-    # Remove pipeline intermediates
-    for pattern in ['SpotsToIndex.csv', 'UniqueOrientations.csv',
-                    'singleSolution.mic', 'sinos_*.bin', 'omegas_*.bin', 'nrHKLs_*.bin']:
-        import glob
-        for f in glob.glob(str(work_dir / pattern)):
-            os.remove(f)
+def run_gpu_binaries(work_dir, nCPUs):
+    """Run GPU indexer and refiner directly on prepared data.
+
+    Expects Spots.bin, Data.bin, nData.bin, paramstest.txt, hkls.csv,
+    SpotsToIndex.csv, positions.csv to already exist in work_dir.
+    """
+    print('\n' + '='*70)
+    print('  Running GPU binaries directly')
+    print('='*70)
+
+    bin_dir = MIDAS_HOME / 'FF_HEDM' / 'bin'
+
+    # --- IndexerScanningGPU ---
+    indexer = bin_dir / 'IndexerScanningGPU'
+    if not indexer.exists():
+        print(f'  ERROR: {indexer} not found')
+        return False
+
+    cmd = f"{indexer} paramstest.txt 0 1 {NSCANS} {nCPUs}"
+    print(f'  IndexerScanningGPU: {cmd}')
+    result = subprocess.run(cmd, shell=True, cwd=str(work_dir),
+                            capture_output=True, text=True)
+    print(f'  stdout: {result.stdout[:500]}' if result.stdout else '  (no stdout)')
+    if result.stderr:
+        print(f'  stderr: {result.stderr[:500]}')
+    if result.returncode != 0:
+        print(f'  ERROR: IndexerScanningGPU failed with return code {result.returncode}')
+        return False
+
+    # Check IndexBest_all.bin was produced
+    idx_bin = work_dir / 'Output' / 'IndexBest_all.bin'
+    if not idx_bin.exists():
+        print(f'  ERROR: IndexBest_all.bin not produced by GPU indexer')
+        return False
+    print(f'  ✓ IndexBest_all.bin produced ({idx_bin.stat().st_size / 1024:.0f} KB)')
+
+    # --- findSingleSolutionPFRefactored (same for both, uses IndexBest_all.bin) ---
+    # Read params to get needed values
+    params = parse_parameter_file(work_dir / 'paramstest.txt')
+    sgnum = params.get('SpaceGroup', 225)
+    maxang = 1.0
+    tol_ome = params.get('MarginOme', 1.0)
+    tol_eta = params.get('MarginEta', 1.0)
+
+    fss = bin_dir / 'findSingleSolutionPFRefactored'
+    cmd = f"{fss} {work_dir} {sgnum} {maxang} {NSCANS} {nCPUs} {tol_ome} {tol_eta} Parameters_pfhedm.txt 2 1 0"
+    print(f'  findSingleSolutionPF: {cmd}')
+    result = subprocess.run(cmd, shell=True, cwd=str(work_dir),
+                            capture_output=True, text=True)
+    if result.stdout:
+        print(f'  stdout (last 300): ...{result.stdout[-300:]}')
+    if result.returncode != 0:
+        print(f'  WARNING: findSingleSolutionPFRefactored returned {result.returncode}')
+
+    # --- FitOrStrainsScanningGPU ---
+    spots_file = work_dir / 'SpotsToIndex.csv'
+    if not spots_file.exists():
+        print(f'  ERROR: SpotsToIndex.csv not found')
+        return False
+    with open(str(spots_file), 'r') as f:
+        num_spots = len(f.readlines())
+    print(f'  SpotsToIndex.csv: {num_spots} spots')
+
+    refiner = bin_dir / 'FitOrStrainsScanningGPU'
+    if not refiner.exists():
+        print(f'  ERROR: {refiner} not found')
+        return False
+
+    cmd = f"{refiner} paramstest.txt 0 1 {num_spots} {nCPUs}"
+    print(f'  FitOrStrainsScanningGPU: {cmd}')
+    result = subprocess.run(cmd, shell=True, cwd=str(work_dir),
+                            capture_output=True, text=True)
+    if result.stdout:
+        print(f'  stdout: {result.stdout[:500]}')
+    if result.stderr:
+        print(f'  stderr: {result.stderr[:500]}')
+    if result.returncode != 0:
+        print(f'  ERROR: FitOrStrainsScanningGPU failed with return code {result.returncode}')
+        return False
+
+    result_csvs = list((work_dir / 'Results').glob('*.csv'))
+    print(f'  ✓ Results/: {len(result_csvs)} CSV files')
+    return True
+
+
+def compare_consolidated_bins(omp_dir, gpu_dir, label='IndexBest_all.bin'):
+    """Compare consolidated binary files between OMP and GPU."""
+    omp_file = omp_dir / 'Output' / label
+    gpu_file = gpu_dir / 'Output' / label
+    if not omp_file.exists() or not gpu_file.exists():
+        print(f'  ✗ Cannot compare {label}: OMP exists={omp_file.exists()}, GPU exists={gpu_file.exists()}')
+        return False
+
+    omp_data = np.fromfile(str(omp_file), dtype=np.uint8)
+    gpu_data = np.fromfile(str(gpu_file), dtype=np.uint8)
+    if omp_data.shape != gpu_data.shape:
+        print(f'  ✗ {label}: size mismatch OMP={omp_data.shape[0]} vs GPU={gpu_data.shape[0]} bytes')
+        return False
+
+    n_diff = np.sum(omp_data != gpu_data)
+    if n_diff == 0:
+        print(f'  ✓ {label}: binary identical ({omp_data.shape[0]} bytes)')
+        return True
+    else:
+        print(f'  ≈ {label}: {n_diff}/{omp_data.shape[0]} bytes differ (reading as doubles for numerical comparison)')
+        # Try numerical comparison on the data section
+        # The header is: 4 bytes (nVoxels int32) + 4*nVoxels (nSolArr int32) + 8*nVoxels (offArr int64)
+        # Then the rest is doubles
+        with open(str(omp_file), 'rb') as f:
+            nVox_omp = np.frombuffer(f.read(4), dtype=np.int32)[0]
+        with open(str(gpu_file), 'rb') as f:
+            nVox_gpu = np.frombuffer(f.read(4), dtype=np.int32)[0]
+        print(f'    nVoxels: OMP={nVox_omp}, GPU={nVox_gpu}')
+        return False  # Not identical, but report the diff
 
 
 def main():
@@ -522,34 +622,47 @@ def main():
         organize_for_pf_pipeline(work_dir, args.nCPUs)
 
         if args.gpu:
-            # GPU parity test: run OMP, save results, run GPU, compare
+            # GPU parity test: run full OMP pipeline, then re-run just
+            # indexer + refiner with GPU binaries and compare
             print('\n' + '#'*70)
             print('  GPU PARITY TEST MODE')
             print('#'*70)
 
-            # --- OMP run ---
-            print('\n  >>> Running OMP pipeline...')
+            # --- OMP run (full pipeline) ---
+            print('\n  >>> Running full OMP pipeline...')
             run_pf_pipeline(work_dir, args.nCPUs, doTomo=args.doTomo, useGPU=0)
             omp_passed = validate_results(work_dir, doTomo=args.doTomo)
 
-            # Save OMP results
-            omp_dir = work_dir / '_omp_results'
-            omp_dir.mkdir(exist_ok=True)
-            copy_outputs(work_dir, omp_dir)
-
-            # --- GPU run ---
-            print('\n  >>> Running GPU pipeline...')
-            reset_pipeline_outputs(work_dir)
-            run_pf_pipeline(work_dir, args.nCPUs, doTomo=args.doTomo, useGPU=1)
-            gpu_passed = validate_results(work_dir, doTomo=args.doTomo)
-
-            # --- Compare ---
-            if omp_passed and gpu_passed:
-                parity_passed = compare_gpu_omp(omp_dir, work_dir)
-                passed = parity_passed
-            else:
-                print('\n  ✗ Cannot compare: OMP passed={omp_passed}, GPU passed={gpu_passed}')
+            if not omp_passed:
+                print('\n  ✗ OMP pipeline failed — cannot do GPU comparison')
                 passed = False
+            else:
+                # Save OMP Output/ and Results/
+                omp_dir = work_dir / '_omp_results'
+                omp_dir.mkdir(exist_ok=True)
+                copy_outputs(work_dir, omp_dir)
+
+                # Clear Output/ and Results/ only (keep Spots.bin, Data.bin, etc.)
+                for subdir in ['Output', 'Results']:
+                    d = work_dir / subdir
+                    if d.exists():
+                        shutil.rmtree(str(d))
+                    d.mkdir(parents=True, exist_ok=True)
+
+                # --- GPU run (just indexer + refiner) ---
+                print('\n  >>> Running GPU indexer + refiner on same data...')
+                gpu_ok = run_gpu_binaries(work_dir, args.nCPUs)
+
+                if gpu_ok:
+                    # Compare consolidated Index files
+                    compare_consolidated_bins(omp_dir, work_dir, 'IndexBest_all.bin')
+
+                    # Compare microstrFull.csv if refinement produced results
+                    parity_passed = compare_gpu_omp(omp_dir, work_dir)
+                    passed = parity_passed
+                else:
+                    print('\n  ✗ GPU binaries failed — check error output above')
+                    passed = False
         else:
             # Standard OMP test
             run_pf_pipeline(work_dir, args.nCPUs, doTomo=args.doTomo)
@@ -569,3 +682,4 @@ def main():
 
 if __name__ == '__main__':
     main()
+

@@ -182,10 +182,9 @@ typedef struct {
   double *Rs;
   double *Etas;
   // Pre-allocated per-peak parameter caches (Fix 5: eliminate VLAs)
-  // Height-normalized pV: 6 params per peak (Imax, R, Eta, Mu, GammaR,
-  // GammaEta)
-  double *pkImax, *pkR, *pkEta, *pkMu;
-  double *pkInvGammaR2, *pkInvGammaEta2;
+  double *pkIMAX, *pkR, *pkEta, *pkMu;
+  double *pkInvSigmaGR2, *pkInvSigmaLR2;
+  double *pkInvSigmaGEta2, *pkInvSigmaLEta2;
 } FunctionData;
 
 // Structure to hold all temporary buffers for a single thread
@@ -519,7 +518,7 @@ ErrorCode allocateWorkspace(ThreadWorkspace *ws, const ImageMetadata *metadata,
   ws->dfsStackX = malloc(nrPixelsSq * sizeof(int));
   ws->dfsStackY = malloc(nrPixelsSq * sizeof(int));
   // Peak fit parameter cache (Fix 5): 8 arrays of maxNPeaks doubles
-  ws->fitPeakBuf = malloc((size_t)params->maxNPeaks * 6 * sizeof(double));
+  ws->fitPeakBuf = malloc((size_t)params->maxNPeaks * 8 * sizeof(double));
 
   // Check if any allocation failed
   if (!ws->imgCorrBC || !ws->boolImage || !ws->connectedComponents ||
@@ -692,11 +691,10 @@ static inline unsigned findRegionalMaxima(double *z, int *pixelPositions,
  */
 
 /**
- * Height-normalized Pseudo-Voigt 2D objective with shared FWHM per dimension.
- * 6 params per peak: Imax, R, Eta, Mu, GammaR, GammaEta.
- * L(R,Eta) = L_R(R) * L_Eta(Eta)  [each peaks at 1]
- * G(R,Eta) = G_R(R) * G_Eta(Eta)  [each peaks at 1]
- * I = BG + sum_j Imax_j * (Mu_j * L_j + (1-Mu_j) * G_j)
+ * Objective function for peak fitting
+ * (Item 3): Pre-computes reciprocal sigma-squared values; replaces pow(x,2)
+ * with multiplication.
+ * (Fix 5): Uses pre-allocated buffers from FunctionData instead of VLAs.
  */
 static double peakFittingObjectiveFunction(unsigned n, const double *x,
                                            double *grad, void *f_data_trial) {
@@ -708,25 +706,30 @@ static double peakFittingObjectiveFunction(unsigned n, const double *x,
   int nPeaks = f_data->nPeaks;
 
   double bg = x[0]; // Background intensity
-  double C0 = 4.0 * log(2.0);
 
-  // Extract peak parameters into pre-allocated caches
-  double *Imax = f_data->pkImax;
+  // Extract peak parameters into pre-allocated caches (Fix 5)
+  double *IMAX = f_data->pkIMAX;
   double *R = f_data->pkR;
   double *Eta = f_data->pkEta;
   double *Mu = f_data->pkMu;
-  double *invGammaR2 = f_data->pkInvGammaR2;
-  double *invGammaEta2 = f_data->pkInvGammaEta2;
+  double *invSigmaGR2 = f_data->pkInvSigmaGR2;
+  double *invSigmaLR2 = f_data->pkInvSigmaLR2;
+  double *invSigmaGEta2 = f_data->pkInvSigmaGEta2;
+  double *invSigmaLEta2 = f_data->pkInvSigmaLEta2;
 
   for (int i = 0; i < nPeaks; i++) {
-    Imax[i] = x[(6 * i) + 1];
-    R[i] = x[(6 * i) + 2];
-    Eta[i] = x[(6 * i) + 3];
-    Mu[i] = x[(6 * i) + 4];
-    double gammaR = x[(6 * i) + 5];
-    double gammaEta = x[(6 * i) + 6];
-    invGammaR2[i] = 1.0 / (gammaR * gammaR);
-    invGammaEta2[i] = 1.0 / (gammaEta * gammaEta);
+    IMAX[i] = x[(8 * i) + 1];
+    R[i] = x[(8 * i) + 2];
+    Eta[i] = x[(8 * i) + 3];
+    Mu[i] = x[(8 * i) + 4];
+    double sgr = x[(8 * i) + 5];
+    double slr = x[(8 * i) + 6];
+    double sge = x[(8 * i) + 7];
+    double sle = x[(8 * i) + 8];
+    invSigmaGR2[i] = 1.0 / (sgr * sgr);
+    invSigmaLR2[i] = 1.0 / (slr * slr);
+    invSigmaGEta2[i] = 1.0 / (sge * sge);
+    invSigmaLEta2[i] = 1.0 / (sle * sle);
   }
 
   // Calculate total square difference between model and actual intensity
@@ -741,27 +744,27 @@ static double peakFittingObjectiveFunction(unsigned n, const double *x,
       double DE = Etas[i] - Eta[j];
       double E2 = DE * DE;
 
-      // Height-normalized 2D Lorentzian: product of 1D (peaks at 1)
-      double LR = 1.0 / (1.0 + 4.0 * R2 * invGammaR2[j]);
-      double LEta = 1.0 / (1.0 + 4.0 * E2 * invGammaEta2[j]);
-      double L = LR * LEta;
+      // Lorentzian component (using pre-computed reciprocals)
+      double L =
+          1.0 / ((R2 * invSigmaLR2[j] + 1.0) * (E2 * invSigmaLEta2[j] + 1.0));
 
-      // Height-normalized 2D Gaussian: product of 1D (peaks at 1)
-      double G = exp(-C0 * (R2 * invGammaR2[j] + E2 * invGammaEta2[j]));
+      // Gaussian component (using pre-computed reciprocals)
+      double G = exp(-0.5 * (R2 * invSigmaGR2[j] + E2 * invSigmaGEta2[j]));
 
-      // Pseudo-Voigt profile
-      intPeaks += Imax[j] * (Mu[j] * L + (1.0 - Mu[j]) * G);
+      // Pseudo-Voigt profile (weighted sum of Lorentzian and Gaussian)
+      intPeaks += IMAX[j] * ((Mu[j] * L) + ((1 - Mu[j]) * G));
     }
 
     double diff = bg + intPeaks - z[i];
-    totalDifferenceIntensity += diff * diff;
+    totalDifferenceIntensity += diff * diff; // Item 3: replaces pow(x, 2)
   }
 
   return totalDifferenceIntensity;
 }
 
 /**
- * Calculate integrated intensity of fitted peaks (area-normalized TCH).
+ * Calculate integrated intensity of fitted peaks
+ * (Item 3): Pre-computes reciprocal sigma-squared values.
  */
 static inline void calculateIntegratedIntensity(int nPeaks, double *x,
                                                 double *Rs, double *Etas,
@@ -769,29 +772,32 @@ static inline void calculateIntegratedIntensity(int nPeaks, double *x,
                                                 double *integratedIntensity,
                                                 int *nrOfPixels) {
   double bg = x[0];
-  double C0 = 4.0 * log(2.0);
 
-  double *Imax = malloc(nPeaks * sizeof(double));
-  double *R = malloc(nPeaks * sizeof(double));
-  double *Eta = malloc(nPeaks * sizeof(double));
-  double *Mu = malloc(nPeaks * sizeof(double));
-  double *invGammaR2 = malloc(nPeaks * sizeof(double));
-  double *invGammaEta2 = malloc(nPeaks * sizeof(double));
+  // Extract peak parameters and pre-compute reciprocals
+  double IMAX[nPeaks], R[nPeaks], Eta[nPeaks], Mu[nPeaks];
+  double invSigmaGR2[nPeaks], invSigmaLR2[nPeaks];
+  double invSigmaGEta2[nPeaks], invSigmaLEta2[nPeaks];
 
   for (int i = 0; i < nPeaks; i++) {
-    Imax[i] = x[(6 * i) + 1];
-    R[i] = x[(6 * i) + 2];
-    Eta[i] = x[(6 * i) + 3];
-    Mu[i] = x[(6 * i) + 4];
-    double gammaR = x[(6 * i) + 5];
-    double gammaEta = x[(6 * i) + 6];
-    invGammaR2[i] = 1.0 / (gammaR * gammaR);
-    invGammaEta2[i] = 1.0 / (gammaEta * gammaEta);
+    IMAX[i] = x[(8 * i) + 1];
+    R[i] = x[(8 * i) + 2];
+    Eta[i] = x[(8 * i) + 3];
+    Mu[i] = x[(8 * i) + 4];
+    double sgr = x[(8 * i) + 5];
+    double slr = x[(8 * i) + 6];
+    double sge = x[(8 * i) + 7];
+    double sle = x[(8 * i) + 8];
+    invSigmaGR2[i] = 1.0 / (sgr * sgr);
+    invSigmaLR2[i] = 1.0 / (slr * slr);
+    invSigmaGEta2[i] = 1.0 / (sge * sge);
+    invSigmaLEta2[i] = 1.0 / (sle * sle);
 
+    // Initialize counters
     nrOfPixels[i] = 0;
     integratedIntensity[i] = 0;
   }
 
+  // Calculate for each peak
   for (int j = 0; j < nPeaks; j++) {
     for (int i = 0; i < nrPixelsThisRegion; i++) {
       double DR = Rs[i] - R[j];
@@ -799,11 +805,17 @@ static inline void calculateIntegratedIntensity(int nPeaks, double *x,
       double DE = Etas[i] - Eta[j];
       double E2 = DE * DE;
 
-      double LR = 1.0 / (1.0 + 4.0 * R2 * invGammaR2[j]);
-      double LEta = 1.0 / (1.0 + 4.0 * E2 * invGammaEta2[j]);
-      double G = exp(-C0 * (R2 * invGammaR2[j] + E2 * invGammaEta2[j]));
-      double intPeaks = Imax[j] * (Mu[j] * LR * LEta + (1.0 - Mu[j]) * G);
+      // Lorentzian component (using pre-computed reciprocals)
+      double L =
+          1.0 / ((R2 * invSigmaLR2[j] + 1.0) * (E2 * invSigmaLEta2[j] + 1.0));
 
+      // Gaussian component (using pre-computed reciprocals)
+      double G = exp(-0.5 * (R2 * invSigmaGR2[j] + E2 * invSigmaGEta2[j]));
+
+      // Pseudo-Voigt profile
+      double intPeaks = IMAX[j] * ((Mu[j] * L) + ((1 - Mu[j]) * G));
+
+      // Add to integrated intensity if above background
       double bgToAdd = 0;
       if (intPeaks > bg) {
         nrOfPixels[j]++;
@@ -813,13 +825,6 @@ static inline void calculateIntegratedIntensity(int nPeaks, double *x,
       integratedIntensity[j] += (bgToAdd + intPeaks);
     }
   }
-
-  free(Imax);
-  free(R);
-  free(Eta);
-  free(Mu);
-  free(invGammaR2);
-  free(invGammaEta2);
 }
 
 /**
@@ -836,8 +841,8 @@ int fit2DPeaks(unsigned nPeaks, int nrPixelsThisRegion, double *z,
                double zCen, double thresh, int *nrPx, double *otherInfo,
                int nrPixels, double *retVal, double *Rs, double *Etas,
                double *fitPeakBuf) {
-  // Total parameters: 1 background + 6 per peak
-  unsigned n = 1 + (6 * nPeaks);
+  // Total parameters: 1 background + 8 per peak
+  unsigned n = 1 + (8 * nPeaks);
   double *x = malloc(n * sizeof(double));
   double *xl = malloc(n * sizeof(double));
   double *xu = malloc(n * sizeof(double));
@@ -958,52 +963,55 @@ int fit2DPeaks(unsigned nPeaks, int nrPixelsThisRegion, double *z,
     // The original code used `atand(width/peakR)`.
     // Let's use the explicit estimate.
 
-    // Estimate FWHM from estimated sigma: FWHM = 2*sqrt(2*ln2)*sigma
-    // ~ 2.355*sigma
-    double gammaRGuess = 2.0 * sqrt(2.0 * log(2.0)) * estimSigmaR;
-    double gammaEtaGuess = 2.0 * sqrt(2.0 * log(2.0)) * estimSigmaEta;
-
-    // Initial values (6 params per peak)
-    x[(6 * i) + 1] = maximaValues[i]; // Imax (peak height)
-    x[(6 * i) + 2] = peakR;           // Radius
-    x[(6 * i) + 3] = peakEta;         // Eta
-    x[(6 * i) + 4] = 0.5;             // Mu (mix parameter)
-    x[(6 * i) + 5] = gammaRGuess;     // GammaR (FWHM in R)
-    x[(6 * i) + 6] = gammaEtaGuess;   // GammaEta (FWHM in Eta)
+    // Initial values
+    x[(8 * i) + 1] = maximaValues[i]; // Imax
+    x[(8 * i) + 2] = peakR;           // Radius
+    x[(8 * i) + 3] = peakEta;         // Eta
+    x[(8 * i) + 4] = 0.5;             // Mu (mix parameter)
+    x[(8 * i) + 5] = estimSigmaR;     // SigmaGR
+    x[(8 * i) + 6] = estimSigmaR;     // SigmaLR
+    x[(8 * i) + 7] = estimSigmaEta;   // SigmaGEta
+    x[(8 * i) + 8] = estimSigmaEta;   // SigmaLEta
 
     // Calculate bounds for parameters
     double dEta = RAD2DEG * atan(1 / peakR);
 
     // Lower bounds
-    xl[(6 * i) + 1] = maximaValues[i] / 2; // Imax lower bound
-    xl[(6 * i) + 2] = peakR - 1;           // R lower bound
-    xl[(6 * i) + 3] = peakEta - dEta;      // Eta lower bound
-    xl[(6 * i) + 4] = 0;                   // Mu lower bound (pure Gaussian)
-    xl[(6 * i) + 5] = 0.02;                // GammaR lower bound
-    xl[(6 * i) + 6] = 0.01;                // GammaEta lower bound
+    xl[(8 * i) + 1] = maximaValues[i] / 2; // Imax lower bound
+    xl[(8 * i) + 2] = peakR - 1;           // R lower bound
+    xl[(8 * i) + 3] = peakEta - dEta;      // Eta lower bound
+    xl[(8 * i) + 4] = 0;                   // Mu lower bound (pure Gaussian)
+    xl[(8 * i) + 5] = 0.01;                // SigmaGR lower bound
+    xl[(8 * i) + 6] = 0.01;                // SigmaLR lower bound
+    xl[(8 * i) + 7] = 0.005;               // SigmaGEta lower bound
+    xl[(8 * i) + 8] = 0.005;               // SigmaLEta lower bound
 
     // Upper bounds
-    xu[(6 * i) + 1] = maximaValues[i] * 5; // Imax upper bound
-    xu[(6 * i) + 2] = peakR + 1;           // R upper bound
-    xu[(6 * i) + 3] = peakEta + dEta;      // Eta upper bound
-    xu[(6 * i) + 4] = 1;                   // Mu upper bound (pure Lorentzian)
-    xu[(6 * i) + 5] = 2 * maxRWidth;       // GammaR upper bound
-    xu[(6 * i) + 6] = 2 * maxEtaWidth;     // GammaEta upper bound
+    xu[(8 * i) + 1] = maximaValues[i] * 5; // Imax upper bound
+    xu[(8 * i) + 2] = peakR + 1;           // R upper bound
+    xu[(8 * i) + 3] = peakEta + dEta;      // Eta upper bound
+    xu[(8 * i) + 4] = 1;                   // Mu upper bound (pure Lorentzian)
+    xu[(8 * i) + 5] = 2 * maxRWidth;       // SigmaGR upper bound
+    xu[(8 * i) + 6] = 2 * maxRWidth;       // SigmaLR upper bound
+    xu[(8 * i) + 7] = 2 * maxEtaWidth;     // SigmaGEta upper bound
+    xu[(8 * i) + 8] = 2 * maxEtaWidth;     // SigmaLEta upper bound
   }
 
   // Set up FunctionData with pre-allocated peak buffers (Fix 5)
-  // fitPeakBuf is a single block of nPeaks*6 doubles, carved into 6 arrays:
+  // fitPeakBuf is a single block of nPeaks*8 doubles, carved into 8 arrays:
   FunctionData f_data = {.NrPixels = nrPixelsThisRegion,
                          .nPeaks = (int)nPeaks,
                          .Rs = Rs,
                          .Etas = Etas,
                          .z = z,
-                         .pkImax = fitPeakBuf + 0 * nPeaks,
+                         .pkIMAX = fitPeakBuf + 0 * nPeaks,
                          .pkR = fitPeakBuf + 1 * nPeaks,
                          .pkEta = fitPeakBuf + 2 * nPeaks,
                          .pkMu = fitPeakBuf + 3 * nPeaks,
-                         .pkInvGammaR2 = fitPeakBuf + 4 * nPeaks,
-                         .pkInvGammaEta2 = fitPeakBuf + 5 * nPeaks};
+                         .pkInvSigmaGR2 = fitPeakBuf + 4 * nPeaks,
+                         .pkInvSigmaLR2 = fitPeakBuf + 5 * nPeaks,
+                         .pkInvSigmaGEta2 = fitPeakBuf + 6 * nPeaks,
+                         .pkInvSigmaLEta2 = fitPeakBuf + 7 * nPeaks};
 
   int rc = 0;
   double minf = 0;
@@ -1024,34 +1032,25 @@ int fit2DPeaks(unsigned nPeaks, int nrPixelsThisRegion, double *z,
   rc = run_nlopt_optimization(NLOPT_LN_NELDERMEAD, &config);
   minf = config.min_function_val;
 
-  // Extract results (6 params per peak)
-  // Convert Gamma back to equivalent sigmas for backward compatibility:
-  //   SigmaG = Gamma / (2*sqrt(2*ln2)) ≈ Gamma / 2.355
-  //   SigmaL = Gamma / 2
-  double FWHM_to_sigmaG = 1.0 / (2.0 * sqrt(2.0 * log(2.0))); // ~0.4247
+  // Extract results
   for (int i = 0; i < nPeaks; i++) {
-    IMAX[i] = x[(6 * i) + 1]; // Imax (peak height)
-    RCens[i] = x[(6 * i) + 2];
-    EtaCens[i] = x[(6 * i) + 3];
+    IMAX[i] = x[(8 * i) + 1];
+    RCens[i] = x[(8 * i) + 2];
+    EtaCens[i] = x[(8 * i) + 3];
 
-    double mu_i = x[(6 * i) + 4];
-    double gammaR = x[(6 * i) + 5];
-    double gammaEta = x[(6 * i) + 6];
-    // Convert to equivalent sigmas
-    double sigmaGR = gammaR * FWHM_to_sigmaG;
-    double sigmaLR = gammaR / 2.0;
-    double sigmaGEta = gammaEta * FWHM_to_sigmaG;
-    double sigmaLEta = gammaEta / 2.0;
-    // otherInfo uses 8-stride for output compatibility
-    otherInfo[8 * i + 0] = x[0];      // Background
-    otherInfo[8 * i + 1] = sigmaGR;   // SigmaGR (Gaussian-equiv sigma in R)
-    otherInfo[8 * i + 2] = sigmaLR;   // SigmaLR (Lorentzian-equiv sigma in R)
-    otherInfo[8 * i + 3] = sigmaGEta; // SigmaGEta
-    otherInfo[8 * i + 4] = sigmaLEta; // SigmaLEta
-    otherInfo[8 * i + 5] = mu_i;      // Mu
-    // Effective sigma: Mu*sigmaL + (1-Mu)*sigmaG
-    otherInfo[8 * i + 6] = mu_i * sigmaLR + (1.0 - mu_i) * sigmaGR;
-    otherInfo[8 * i + 7] = mu_i * sigmaLEta + (1.0 - mu_i) * sigmaGEta;
+    // Store additional information
+    otherInfo[8 * i + 0] = x[0];           // Background
+    otherInfo[8 * i + 1] = x[(8 * i) + 5]; // SigmaGR
+    otherInfo[8 * i + 2] = x[(8 * i) + 6]; // SigmaLR
+    otherInfo[8 * i + 3] = x[(8 * i) + 7]; // SigmaGEta
+    otherInfo[8 * i + 4] = x[(8 * i) + 8]; // SigmaLEta
+    otherInfo[8 * i + 5] = x[(8 * i) + 4]; // Mu
+
+    // Store maximum sigma values
+    otherInfo[8 * i + 6] =
+        fmax(x[(8 * i) + 5], x[(8 * i) + 6]); // Max sigma in R
+    otherInfo[8 * i + 7] =
+        fmax(x[(8 * i) + 7], x[(8 * i) + 8]); // Max sigma in Eta
   }
 
   // Calculate Y and Z coordinates from R and Eta
