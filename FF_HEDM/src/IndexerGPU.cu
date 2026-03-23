@@ -33,7 +33,7 @@
 #include <libgen.h>
 #include <unistd.h>
 #include <cuda_runtime.h>
-#define RealType double
+#define RealType float
 #include "midas_gpu_math.cuh"
 #include "midas_version.h"
 
@@ -175,28 +175,28 @@ struct SpotResult {
 // ─────────────────────────────────────────────────────────────
 // GPU constant memory for geometry/margins
 // ─────────────────────────────────────────────────────────────
-__device__ double c_RingRadii[MAX_N_RINGS];
-__device__ double c_OmegaRanges[MAX_N_OMEGARANGES][2];
-__device__ double c_BoxSizes[MAX_N_OMEGARANGES][4];
-__device__ double c_omemargins[181];
-__device__ double c_etamargins[MAX_N_RINGS];
+__device__ RealType c_RingRadii[MAX_N_RINGS];
+__device__ RealType c_OmegaRanges[MAX_N_OMEGARANGES][2];
+__device__ RealType c_BoxSizes[MAX_N_OMEGARANGES][4];
+__device__ RealType c_omemargins[181];
+__device__ RealType c_etamargins[MAX_N_RINGS];
 __device__ int   c_ringsToReject[MAX_N_RINGS];
 
 // Scalar constants in constant memory
 struct GPUParams {
-  double Distance;
-  double Wavelength;
-  double ExcludePoleAngle;
-  double MarginRad;
-  double MarginRadial;
-  double MarginOme;
+  RealType Distance;
+  RealType Wavelength;
+  RealType ExcludePoleAngle;
+  RealType MarginRad;
+  RealType MarginRadial;
+  RealType MarginOme;
   int   NoOfOmegaRanges;
   int   nRingsToRejectCalc;
   int   n_ring_bins;
   int   n_eta_bins;
   int   n_ome_bins;
-  double EtaBinSize;
-  double OmeBinSize;
+  RealType EtaBinSize;
+  RealType OmeBinSize;
 };
 __constant__ GPUParams c_params;
 
@@ -206,10 +206,10 @@ __constant__ GPUParams c_params;
 // ─────────────────────────────────────────────────────────────
 __device__
 int gpu_CalcDiffrSpots(
-    const double OrMat[3][3],
-    const double *d_hkls_flat, // [n_hkls × 7]
+    const RealType OrMat[3][3],
+    const RealType *d_hkls_flat, // [n_hkls × 7]
     int n_hkls_d,
-    double *spots_out,         // flat: [max_spots × N_COL_THEORSPOTS]
+    RealType *spots_out,         // flat: [max_spots × N_COL_THEORSPOTS]
     int max_spots,
     const int *d_ringsToReject,
     int nRingsToRejectCalc,
@@ -219,35 +219,35 @@ int gpu_CalcDiffrSpots(
   int nFracCalc = 0;
 
   for (int ih = 0; ih < n_hkls_d && spotnr < max_spots; ih++) {
-    double Ghkl[3] = {
+    RealType Ghkl[3] = {
       d_hkls_flat[ih*7+0],
       d_hkls_flat[ih*7+1],
       d_hkls_flat[ih*7+2]
     };
     int ringnr = (int)d_hkls_flat[ih*7+3];
     if (ringnr < 0 || ringnr >= MAX_N_RINGS) continue;
-    double RingRadius = c_RingRadii[ringnr];
+    RealType RingRadius = c_RingRadii[ringnr];
     if (RingRadius < EPS) continue;
-    double theta = d_hkls_flat[ih*7+5];
+    RealType theta = d_hkls_flat[ih*7+5];
 
-    double Gc[3];
-    double OrM[3][3];
+    RealType Gc[3];
+    RealType OrM[3][3];
     for (int r=0; r<3; r++) for (int cc=0; cc<3; cc++) OrM[r][cc] = OrMat[r][cc];
     midas_MatrixMultF(OrM, Ghkl, Gc);
 
-    double omegas[4], etas[4];
+    RealType omegas[4], etas[4];
     int nsol;
     midas_CalcOmega(Gc[0], Gc[1], Gc[2], theta, omegas, etas, &nsol);
 
     for (int i = 0; i < nsol && spotnr < max_spots; i++) {
-      double Omega = omegas[i];
-      double Eta = etas[i];
-      double EtaAbs = fabs(Eta);
+      RealType Omega = omegas[i];
+      RealType Eta = etas[i];
+      RealType EtaAbs = fabs(Eta);
 
       if (EtaAbs < c_params.ExcludePoleAngle ||
           (180.0 - EtaAbs) < c_params.ExcludePoleAngle) continue;
 
-      double yl, zl;
+      RealType yl, zl;
       midas_CalcSpotPosition(RingRadius, Eta, &yl, &zl);
 
       int keep = 0;
@@ -260,17 +260,17 @@ int gpu_CalcDiffrSpots(
       }
       if (!keep) continue;
 
-      double *sp = &spots_out[spotnr * N_COL_THEORSPOTS];
+      RealType *sp = &spots_out[spotnr * N_COL_THEORSPOTS];
       sp[0] = 0;
-      sp[1] = (double)spotnr;
-      sp[2] = (double)ih;
+      sp[1] = (RealType)spotnr;
+      sp[2] = (RealType)ih;
       sp[3] = c_params.Distance;
       sp[4] = yl;
       sp[5] = zl;
       sp[6] = Omega;
       sp[7] = Eta;
       sp[8] = theta;
-      sp[9] = (double)ringnr;
+      sp[9] = (RealType)ringnr;
 
       // Check if ring is excluded from fraction calc
       int rejected = 0;
@@ -290,34 +290,34 @@ int gpu_CalcDiffrSpots(
 // ─────────────────────────────────────────────────────────────
 __device__
 int gpu_CompareSpots(
-    double *spots,             // flat: [nTspots × N_COL_THEORSPOTS]
+    RealType *spots,             // flat: [nTspots × N_COL_THEORSPOTS]
     int nTspots,
-    const double *d_ObsSpotsLab, // [n_spots × 9]
-    double RefRad,
+    const RealType *d_ObsSpotsLab, // [n_spots × 9]
+    RealType RefRad,
     const int *d_data,
     const int *d_ndata,
     const int *d_ringsToReject,
     int nRingsToRejectCalc,
     int *nMatchesFracCalc,
-    double ga, double gb, double gc,  // grain position for IA
-    double *avgIA)                   // output: average internal angle
+    RealType ga, RealType gb, RealType gc,  // grain position for IA
+    RealType *avgIA)                   // output: average internal angle
 {
   int nMatched = 0;
   int nMatchedFrac = 0;
-  double iaSum = 0.0;
+  RealType iaSum = 0.0;
   int iaCount = 0;
-  double Distance = c_params.Distance;
+  RealType Distance = c_params.Distance;
 
   for (int sp = 0; sp < nTspots; sp++) {
-    double *s = &spots[sp * N_COL_THEORSPOTS];
+    RealType *s = &spots[sp * N_COL_THEORSPOTS];
     int RingNr = (int)s[9];
     if (RingNr <= 0 || RingNr >= MAX_N_RINGS) continue;
 
-    double theorEta = s[12];
-    double theorOme = s[6];
-    double theorRadDiff = s[13];
-    double theorY = s[10];
-    double theorZ = s[11];
+    RealType theorEta = s[12];
+    RealType theorOme = s[6];
+    RealType theorRadDiff = s[13];
+    RealType theorY = s[10];
+    RealType theorZ = s[11];
 
     int iRing = RingNr - 1;
     int iEta = (int)floor((180.0 + theorEta) / c_params.EtaBinSize);
@@ -334,7 +334,7 @@ int gpu_CompareSpots(
     int nInBin = d_ndata[Pos * 2 + 0];
     int DataPos = d_ndata[Pos * 2 + 1];
 
-    double etamargin = c_etamargins[RingNr];
+    RealType etamargin = c_etamargins[RingNr];
 
     // Check if this ring is excluded from radial filter
     int skipRadialFilter = 0;
@@ -344,29 +344,29 @@ int gpu_CompareSpots(
 
     int matchFound = 0;
     int bestSpotRow = -1;
-    double diffOmeBest = 100000.0;  // match CPU: find closest, no threshold
+    RealType diffOmeBest = 100000.0;  // match CPU: find closest, no threshold
 
     for (int is = 0; is < nInBin; is++) {
       int spotRow = d_data[DataPos + is];
       int base = spotRow * N_COL_OBSSPOTS;
 
       // Filter 1: radial difference (MarginRadial)
-      double obsRadDiff = d_ObsSpotsLab[base + 8];
+      RealType obsRadDiff = d_ObsSpotsLab[base + 8];
       if (fabs(theorRadDiff - obsRadDiff) >= c_params.MarginRadial) continue;
 
       // Filter 2: RefRad check (MarginRad) — skip if ring is excluded
       if (!skipRadialFilter) {
-        double obsRefRad = d_ObsSpotsLab[base + 3];
+        RealType obsRefRad = d_ObsSpotsLab[base + 3];
         if (fabs(RefRad - obsRefRad) >= c_params.MarginRad) continue;
       }
 
       // Filter 3: eta margin
-      double obsEta = d_ObsSpotsLab[base + 6];
+      RealType obsEta = d_ObsSpotsLab[base + 6];
       if (fabs(theorEta - obsEta) >= etamargin) continue;
 
       // Find closest omega match (no threshold)
-      double obsOme = d_ObsSpotsLab[base + 2];
-      double diffOme = fabs(theorOme - obsOme);
+      RealType obsOme = d_ObsSpotsLab[base + 2];
+      RealType diffOme = fabs(theorOme - obsOme);
       if (diffOme < diffOmeBest) {
         diffOmeBest = diffOme;
         bestSpotRow = spotRow;
@@ -382,37 +382,37 @@ int gpu_CompareSpots(
       }
       if (!rejected) nMatchedFrac++;
 
-      // Compute internal angle for this matched spot — ALL in double
+      // Compute internal angle for this matched spot — ALL in RealType
       int base = bestSpotRow * N_COL_OBSSPOTS;
-      double obsY_d = (double)d_ObsSpotsLab[base + 0];
-      double obsZ_d = (double)d_ObsSpotsLab[base + 1];
-      double obsOme_d = (double)d_ObsSpotsLab[base + 2];
-      double tY_d = (double)theorY, tZ_d = (double)theorZ, tO_d = (double)theorOme;
-      double ga_d = (double)ga, gb_d = (double)gb, gc_d = (double)gc, Dist_d = (double)Distance;
+      RealType obsY_d = (RealType)d_ObsSpotsLab[base + 0];
+      RealType obsZ_d = (RealType)d_ObsSpotsLab[base + 1];
+      RealType obsOme_d = (RealType)d_ObsSpotsLab[base + 2];
+      RealType tY_d = (RealType)theorY, tZ_d = (RealType)theorZ, tO_d = (RealType)theorOme;
+      RealType ga_d = (RealType)ga, gb_d = (RealType)gb, gc_d = (RealType)gc, Dist_d = (RealType)Distance;
       // gv1 = spot_to_gv_pos(Dist, theorY, theorZ, theorOme, ga, gb, gc)
-      double ca1=cos(deg2rad*tO_d),sa1=sin(deg2rad*tO_d);
-      double vr1x=ca1*ga_d-sa1*gb_d, vr1y=sa1*ga_d+ca1*gb_d, vr1z=gc_d;
-      double xi1=Dist_d-vr1x, yi1=tY_d-vr1y, zi1=tZ_d-vr1z;
-      double l1=sqrt(xi1*xi1+yi1*yi1+zi1*zi1);
-      double xn1=xi1/l1, yn1=yi1/l1, zn1=zi1/l1;
-      double g1r1=-1.0+xn1, g2r1=yn1;
-      double co1=cos(-tO_d*deg2rad), so1=sin(-tO_d*deg2rad);
-      double gv1x_d=g1r1*co1-g2r1*so1, gv1y_d=g1r1*so1+g2r1*co1, gv1z_d=zn1;
+      RealType ca1=cos(deg2rad*tO_d),sa1=sin(deg2rad*tO_d);
+      RealType vr1x=ca1*ga_d-sa1*gb_d, vr1y=sa1*ga_d+ca1*gb_d, vr1z=gc_d;
+      RealType xi1=Dist_d-vr1x, yi1=tY_d-vr1y, zi1=tZ_d-vr1z;
+      RealType l1=sqrt(xi1*xi1+yi1*yi1+zi1*zi1);
+      RealType xn1=xi1/l1, yn1=yi1/l1, zn1=zi1/l1;
+      RealType g1r1=-1.0+xn1, g2r1=yn1;
+      RealType co1=cos(-tO_d*deg2rad), so1=sin(-tO_d*deg2rad);
+      RealType gv1x_d=g1r1*co1-g2r1*so1, gv1y_d=g1r1*so1+g2r1*co1, gv1z_d=zn1;
       // gv2 = spot_to_gv_pos(Dist, obsY, obsZ, obsOme, ga, gb, gc)
-      double ca2=cos(deg2rad*obsOme_d),sa2=sin(deg2rad*obsOme_d);
-      double vr2x=ca2*ga_d-sa2*gb_d, vr2y=sa2*ga_d+ca2*gb_d, vr2z=gc_d;
-      double xi2=Dist_d-vr2x, yi2=obsY_d-vr2y, zi2=obsZ_d-vr2z;
-      double l2=sqrt(xi2*xi2+yi2*yi2+zi2*zi2);
-      double xn2=xi2/l2, yn2=yi2/l2, zn2=zi2/l2;
-      double g1r2=-1.0+xn2, g2r2=yn2;
-      double co2=cos(-obsOme_d*deg2rad), so2=sin(-obsOme_d*deg2rad);
-      double gv2x_d=g1r2*co2-g2r2*so2, gv2y_d=g1r2*so2+g2r2*co2, gv2z_d=zn2;
-      // CalcInternalAngle in double
-      double la=sqrt(gv1x_d*gv1x_d+gv1y_d*gv1y_d+gv1z_d*gv1z_d);
-      double lb=sqrt(gv2x_d*gv2x_d+gv2y_d*gv2y_d+gv2z_d*gv2z_d);
-      double dp=(gv1x_d*gv2x_d+gv1y_d*gv2y_d+gv1z_d*gv2z_d)/(la*lb);
+      RealType ca2=cos(deg2rad*obsOme_d),sa2=sin(deg2rad*obsOme_d);
+      RealType vr2x=ca2*ga_d-sa2*gb_d, vr2y=sa2*ga_d+ca2*gb_d, vr2z=gc_d;
+      RealType xi2=Dist_d-vr2x, yi2=obsY_d-vr2y, zi2=obsZ_d-vr2z;
+      RealType l2=sqrt(xi2*xi2+yi2*yi2+zi2*zi2);
+      RealType xn2=xi2/l2, yn2=yi2/l2, zn2=zi2/l2;
+      RealType g1r2=-1.0+xn2, g2r2=yn2;
+      RealType co2=cos(-obsOme_d*deg2rad), so2=sin(-obsOme_d*deg2rad);
+      RealType gv2x_d=g1r2*co2-g2r2*so2, gv2y_d=g1r2*so2+g2r2*co2, gv2z_d=zn2;
+      // CalcInternalAngle in RealType
+      RealType la=sqrt(gv1x_d*gv1x_d+gv1y_d*gv1y_d+gv1z_d*gv1z_d);
+      RealType lb=sqrt(gv2x_d*gv2x_d+gv2y_d*gv2y_d+gv2z_d*gv2z_d);
+      RealType dp=(gv1x_d*gv2x_d+gv1y_d*gv2y_d+gv1z_d*gv2z_d)/(la*lb);
       if(dp>1.0)dp=1.0; if(dp<-1.0)dp=-1.0;
-      double ia = (double)(rad2deg * acos(dp));
+      RealType ia = (RealType)(rad2deg * acos(dp));
       if (ia < 999.0) {
         iaSum += ia;
         iaCount++;
@@ -420,7 +420,7 @@ int gpu_CompareSpots(
     }
   }
   *nMatchesFracCalc = nMatchedFrac;
-  *avgIA = (iaCount > 0) ? (iaSum / (double)iaCount) : 999.0;
+  *avgIA = (iaCount > 0) ? (iaSum / (RealType)iaCount) : 999.0;
   return nMatched;
 }
 
@@ -430,15 +430,15 @@ int gpu_CompareSpots(
 __global__ void indexer_eval_kernel(
     const EvalTuple *tuples,
     int nTuples,
-    const double *d_hkls_flat,
+    const RealType *d_hkls_flat,
     int n_hkls_d,
-    const double *d_ObsSpotsLab,
+    const RealType *d_ObsSpotsLab,
     const int *d_data,
     const int *d_ndata,
     const int *d_ringsToReject,
     int nRingsToRejectCalc,
     SpotResult *d_results,    // [nSpotIDs] — per-spotID best
-    double *d_theorScratch,    // [batchSize × maxTheorSpots × N_COL_THEORSPOTS]
+    RealType *d_theorScratch,    // [batchSize × maxTheorSpots × N_COL_THEORSPOTS]
     int maxTheorSpots
 ) {
   int tid = blockIdx.x * blockDim.x + threadIdx.x;
@@ -448,13 +448,13 @@ __global__ void indexer_eval_kernel(
   int spotIdx = t.spotIdx;
 
   // Build orientation matrix
-  double OrMat[3][3];
+  RealType OrMat[3][3];
   for (int r=0; r<3; r++)
     for (int c=0; c<3; c++)
       OrMat[r][c] = t.OrMat[r*3+c];
 
   // Per-thread scratch slice in global memory
-  double *TheorSpots = &d_theorScratch[(long long)tid * maxTheorSpots * N_COL_THEORSPOTS];
+  RealType *TheorSpots = &d_theorScratch[(long long)tid * maxTheorSpots * N_COL_THEORSPOTS];
 
   // 1. Compute theoretical diffraction spots
   int nTspots, nTspotsFracCalc;
@@ -466,8 +466,8 @@ __global__ void indexer_eval_kernel(
 
   // 2. Apply displacement for this position
   for (int sp = 0; sp < nTspots; sp++) {
-    double *s = &TheorSpots[sp * N_COL_THEORSPOTS];
-    double Displ_y, Displ_z;
+    RealType *s = &TheorSpots[sp * N_COL_THEORSPOTS];
+    RealType Displ_y, Displ_z;
     midas_displacement_spot_COM(
       t.ga, t.gb, t.gc,
       s[3], s[4], s[5], s[6], &Displ_y, &Displ_z);
@@ -480,7 +480,7 @@ __global__ void indexer_eval_kernel(
 
   // 3. Compare with observed spots + compute IA
   int nMatchesFracCalc;
-  double avgIA;
+  RealType avgIA;
   int nMatches = gpu_CompareSpots(
     TheorSpots, nTspots, d_ObsSpotsLab, t.RefRad,
     d_data, d_ndata,
@@ -488,12 +488,12 @@ __global__ void indexer_eval_kernel(
     &nMatchesFracCalc,
     t.ga, t.gb, t.gc, &avgIA);
 
-  double fracMatches = (double)nMatchesFracCalc / (double)nTspotsFracCalc;
+  RealType fracMatches = (RealType)nMatchesFracCalc / (RealType)nTspotsFracCalc;
 
 
   // 4. Atomic best-match update per spotID using 64-bit packed key:
   //    upper 32 bits = frac (maximize), lower 32 bits = -IA (minimize IA)
-  //    __float_as_int requires float; cast for ordering only, actual values stored as double.
+  //    __float_as_int requires float; cast for ordering only, actual values stored as RealType.
   //    For IA: we want lower IA → higher key. Since avgIA > 0, __float_as_int is monotonically
   //    increasing for positive floats. Bitwise complement (~) inverts the ordering: lower IA → higher bits.
   //    NOTE: __float_as_int(-avgIA) is WRONG because negative float bit patterns have reversed ordering.
@@ -1126,38 +1126,71 @@ int main(int argc, char *argv[]) {
   CUDA_CHECK(cudaGetDeviceProperties(&prop, deviceId));
   printf("GPU: %s (%.0f MB)\n", prop.name, prop.totalGlobalMem/1048576.0);
 
-  // Upload constant memory
-  CUDA_CHECK(cudaMemcpyToSymbol(c_RingRadii, Params.RingRadii, sizeof(Params.RingRadii)));
-  CUDA_CHECK(cudaMemcpyToSymbol(c_OmegaRanges, Params.OmegaRanges, sizeof(Params.OmegaRanges)));
-  CUDA_CHECK(cudaMemcpyToSymbol(c_BoxSizes, Params.BoxSizes, sizeof(Params.BoxSizes)));
-  CUDA_CHECK(cudaMemcpyToSymbol(c_omemargins, omemargins, sizeof(omemargins)));
-  CUDA_CHECK(cudaMemcpyToSymbol(c_etamargins, etamargins, sizeof(etamargins)));
+  // Upload constant memory (convert double→float)
+  {
+    RealType f_RingRadii[MAX_N_RINGS];
+    for (int i = 0; i < MAX_N_RINGS; i++) f_RingRadii[i] = (RealType)Params.RingRadii[i];
+    CUDA_CHECK(cudaMemcpyToSymbol(c_RingRadii, f_RingRadii, sizeof(f_RingRadii)));
+
+    RealType f_OmegaRanges[MAX_N_OMEGARANGES][2];
+    for (int i = 0; i < MAX_N_OMEGARANGES; i++) {
+      f_OmegaRanges[i][0] = (RealType)Params.OmegaRanges[i][0];
+      f_OmegaRanges[i][1] = (RealType)Params.OmegaRanges[i][1];
+    }
+    CUDA_CHECK(cudaMemcpyToSymbol(c_OmegaRanges, f_OmegaRanges, sizeof(f_OmegaRanges)));
+
+    RealType f_BoxSizes[MAX_N_OMEGARANGES][4];
+    for (int i = 0; i < MAX_N_OMEGARANGES; i++)
+      for (int j = 0; j < 4; j++) f_BoxSizes[i][j] = (RealType)Params.BoxSizes[i][j];
+    CUDA_CHECK(cudaMemcpyToSymbol(c_BoxSizes, f_BoxSizes, sizeof(f_BoxSizes)));
+
+    RealType f_omemargins[181];
+    for (int i = 0; i < 181; i++) f_omemargins[i] = (RealType)omemargins[i];
+    CUDA_CHECK(cudaMemcpyToSymbol(c_omemargins, f_omemargins, sizeof(f_omemargins)));
+
+    RealType f_etamargins[MAX_N_RINGS];
+    for (int i = 0; i < MAX_N_RINGS; i++) f_etamargins[i] = (RealType)etamargins[i];
+    CUDA_CHECK(cudaMemcpyToSymbol(c_etamargins, f_etamargins, sizeof(f_etamargins)));
+  }
   CUDA_CHECK(cudaMemcpyToSymbol(c_ringsToReject, Params.RingsToReject, sizeof(Params.RingsToReject)));
 
   GPUParams gp;
-  gp.Distance = Params.Distance;
-  gp.Wavelength = Params.Wavelength;
-  gp.ExcludePoleAngle = Params.ExcludePoleAngle;
-  gp.MarginRad = Params.MarginRad;
-  gp.MarginRadial = Params.MarginRadial;
-  gp.MarginOme = Params.MarginOme;
+  gp.Distance = (RealType)Params.Distance;
+  gp.Wavelength = (RealType)Params.Wavelength;
+  gp.ExcludePoleAngle = (RealType)Params.ExcludePoleAngle;
+  gp.MarginRad = (RealType)Params.MarginRad;
+  gp.MarginRadial = (RealType)Params.MarginRadial;
+  gp.MarginOme = (RealType)Params.MarginOme;
   gp.NoOfOmegaRanges = Params.NoOfOmegaRanges;
   gp.nRingsToRejectCalc = Params.nRingsToRejectCalc;
   gp.n_ring_bins = n_ring_bins;
   gp.n_eta_bins = n_eta_bins;
   gp.n_ome_bins = n_ome_bins;
-  gp.EtaBinSize = EtaBinSize;
-  gp.OmeBinSize = OmeBinSize;
+  gp.EtaBinSize = (RealType)EtaBinSize;
+  gp.OmeBinSize = (RealType)OmeBinSize;
   CUDA_CHECK(cudaMemcpyToSymbol(c_params, &gp, sizeof(GPUParams)));
 
-  // Upload persistent data to GPU
-  double *d_hkls_flat;
-  CUDA_CHECK(cudaMalloc(&d_hkls_flat, n_hkls*7*sizeof(double)));
-  CUDA_CHECK(cudaMemcpy(d_hkls_flat, hkls, n_hkls*7*sizeof(double), cudaMemcpyHostToDevice));
+  // Helper: convert double array to float
+  auto d2f = [](const double *src, size_t n) -> RealType* {
+    RealType *dst = (RealType*)malloc(n * sizeof(RealType));
+    for (size_t i = 0; i < n; i++) dst[i] = (RealType)src[i];
+    return dst;
+  };
 
-  double *d_ObsSpotsLab;
-  CUDA_CHECK(cudaMalloc(&d_ObsSpotsLab, n_spots*N_COL_OBSSPOTS*sizeof(double)));
-  CUDA_CHECK(cudaMemcpy(d_ObsSpotsLab, ObsSpotsLab, n_spots*N_COL_OBSSPOTS*sizeof(double), cudaMemcpyHostToDevice));
+  // Upload persistent data to GPU (double→float conversion)
+  RealType *d_hkls_flat;
+  size_t nHkls7 = (size_t)n_hkls * 7;
+  RealType *f_hkls = d2f(hkls, nHkls7);
+  CUDA_CHECK(cudaMalloc(&d_hkls_flat, nHkls7*sizeof(RealType)));
+  CUDA_CHECK(cudaMemcpy(d_hkls_flat, f_hkls, nHkls7*sizeof(RealType), cudaMemcpyHostToDevice));
+  free(f_hkls);
+
+  RealType *d_ObsSpotsLab;
+  size_t nObsElems = (size_t)n_spots * N_COL_OBSSPOTS;
+  RealType *f_obs = d2f(ObsSpotsLab, nObsElems);
+  CUDA_CHECK(cudaMalloc(&d_ObsSpotsLab, nObsElems*sizeof(RealType)));
+  CUDA_CHECK(cudaMemcpy(d_ObsSpotsLab, f_obs, nObsElems*sizeof(RealType), cudaMemcpyHostToDevice));
+  free(f_obs);
 
   int *d_data, *d_ndata;
   // Determine data sizes from file sizes
@@ -1374,7 +1407,7 @@ int main(int argc, char *argv[]) {
 
     // Compute dynamic scratch size: each HKL can produce at most 2 omega solutions
     int maxTheorSpots = n_hkls * 2;
-    size_t scratchPerThread = (size_t)maxTheorSpots * N_COL_THEORSPOTS * sizeof(double);
+    size_t scratchPerThread = (size_t)maxTheorSpots * N_COL_THEORSPOTS * sizeof(RealType);
 
     // Process in batches — account for both tuples AND scratch memory
     size_t freeMem, totalMem;
@@ -1393,7 +1426,7 @@ int main(int argc, char *argv[]) {
     EvalTuple *d_tuples;
     CUDA_CHECK(cudaMalloc(&d_tuples, batchSize * sizeof(EvalTuple)));
 
-    double *d_theorScratch;
+    RealType *d_theorScratch;
     CUDA_CHECK(cudaMalloc(&d_theorScratch, batchSize * scratchPerThread));
 
     int blockSize = 256;
