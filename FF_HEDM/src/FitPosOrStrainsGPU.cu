@@ -920,17 +920,18 @@ int main(int argc, char *argv[]) {
     printf("    nObs=%d, reading IndexBestFull.bin\n", nObs);
 
     // Read from IndexBestFull.bin → get spot IDs
+    // Layout: [MaxNHKLS spotIDs] [MaxNHKLS distances] per row
     int inpF2 = open(InpFN2, O_RDONLY);
     if (inpF2 < 0) { printf("    SKIP: cannot open %s\n", InpFN2); continue; }
     size_t offst2 = (size_t)rowNr * MaxNHKLS * 2 * sizeof(double);
-    double *locArr2 = (double*)calloc(nObs * 2, sizeof(double));
-    pread(inpF2, locArr2, nObs * 2 * sizeof(double), offst2);
+    double *locArr2 = (double*)calloc(MaxNHKLS * 2, sizeof(double));
+    pread(inpF2, locArr2, MaxNHKLS * 2 * sizeof(double), offst2);
     close(inpF2);
 
-    // Build spotsYZO from AllSpots
+    // SpotIDs are the first nObs consecutive doubles (NOT interleaved)
     int nFound = 0;
     for (int i = 0; i < nObs && nFound < MaxNSpotsBest; i++) {
-      int spotID = (int)locArr2[i*2];
+      int spotID = (int)locArr2[i]; // consecutive, not i*2
       int spotPos = spotID - 1;
       if (spotPos < 0 || spotPos >= nSpots) { printf("    spot %d: invalid spotPos=%d\n", i, spotPos); continue; }
       double *sp = &h_spotData[(size_t)g * MaxNSpotsBest * 11 + nFound * 11];
