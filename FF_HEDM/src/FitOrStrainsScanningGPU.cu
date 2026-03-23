@@ -538,7 +538,8 @@ __device__ static int gpu_ReassignSpotsFromBins(
     RealType *spotsYZO, // [maxSpots*11] — will be REWRITTEN
     int maxSpots, const RealType *AllSpotsPtr, int totalNSpots,
     const RealType *ObsSpotsLab, int nSpotsBin, const int *BinData,
-    const int *nBinData, int nMaxTheor) {
+    const int *nBinData, int nMaxTheor,
+    const double *d_ypos, int nYpos, double BeamSize) {
 
   RealType *hkls = scratch;
   RealType *theorSpots = scratch + d_params.nhkls * 7;
@@ -590,9 +591,19 @@ __device__ static int gpu_ReassignSpotsFromBins(
     RealType bestDiffOme = 1e9;
     int bestRow = -1;
     for (int iSpot = 0; iSpot < nInBin; iSpot++) {
-      int spotRow = BinData[DataPos + iSpot];
+      int spotRow = BinData[(DataPos + iSpot) * 2];
       if (spotRow < 0 || spotRow >= nSpotsBin)
         continue;
+      // Beam proximity check (matching OMP)
+      if (d_ypos != nullptr && BeamSize > 0 && nYpos > 0) {
+        int scanNr = BinData[(DataPos + iSpot) * 2 + 1];
+        if (scanNr >= 0 && scanNr < nYpos) {
+          RealType theorOmeRad = theorOmega * deg2rad;
+          RealType yRot = x12[0] * sin(theorOmeRad) + x12[1] * cos(theorOmeRad);
+          if (fabs(yRot - d_ypos[scanNr]) >= BeamSize / 2.0)
+            continue;
+        }
+      }
       // Check if already used
       int alreadyUsed = 0;
       for (int u = 0; u < nMatched; u++) {
@@ -603,7 +614,7 @@ __device__ static int gpu_ReassignSpotsFromBins(
       }
       if (alreadyUsed)
         continue;
-      RealType obsOmega = ObsSpotsLab[spotRow * 9 + 2];
+      RealType obsOmega = ObsSpotsLab[spotRow * 10 + 2];
       RealType diffOme = fabs(theorOmega - obsOmega);
       if (diffOme < 5.0 && diffOme < bestDiffOme) {
         bestDiffOme = diffOme;
@@ -718,7 +729,8 @@ fitGrainsKernel(int nGrains,
                 const RealType *d_AllSpots, int d_totalNSpots,
                 const RealType *d_ObsSpotsLab, int d_nSpotsBin,
                 const int *d_BinData, const int *d_nBinData,
-                int doDynReassign) {
+                int doDynReassign,
+                const double *d_ypos, int nYpos) {
   int gIdx = blockIdx.x * blockDim.x + threadIdx.x;
   if (gIdx >= nGrains)
     return;
@@ -854,7 +866,8 @@ fitGrainsKernel(int nGrains,
                             LatCin[2], LatCin[3], LatCin[4], LatCin[5]};
     int nNew = gpu_ReassignSpotsFromBins(
         x12_cur, d_hklsRaw, scratch, spots, MaxNHKLS, d_AllSpots, d_totalNSpots,
-        d_ObsSpotsLab, d_nSpotsBin, d_BinData, d_nBinData, nMaxTheor);
+        d_ObsSpotsLab, d_nSpotsBin, d_BinData, d_nBinData, nMaxTheor,
+        d_ypos, nYpos, (double)d_Hbeam);
     if (nNew > 0) {
       nSpots = nNew;
       d_nSpotsPerGrain[gIdx] = nNew;
@@ -901,7 +914,8 @@ fitGrainsKernel(int nGrains,
                             res9[5],  res9[6],  res9[7],  res9[8]};
     int nNew = gpu_ReassignSpotsFromBins(
         x12_cur, d_hklsRaw, scratch, spots, MaxNHKLS, d_AllSpots, d_totalNSpots,
-        d_ObsSpotsLab, d_nSpotsBin, d_BinData, d_nBinData, nMaxTheor);
+        d_ObsSpotsLab, d_nSpotsBin, d_BinData, d_nBinData, nMaxTheor,
+        d_ypos, nYpos, (double)d_Hbeam);
     if (nNew > 0) {
       nSpots = nNew;
       d_nSpotsPerGrain[gIdx] = nNew;
@@ -937,7 +951,8 @@ fitGrainsKernel(int nGrains,
                             res6[2],  res6[3],  res6[4],  res6[5]};
     int nNew = gpu_ReassignSpotsFromBins(
         x12_cur, d_hklsRaw, scratch, spots, MaxNHKLS, d_AllSpots, d_totalNSpots,
-        d_ObsSpotsLab, d_nSpotsBin, d_BinData, d_nBinData, nMaxTheor);
+        d_ObsSpotsLab, d_nSpotsBin, d_BinData, d_nBinData, nMaxTheor,
+        d_ypos, nYpos, (double)d_Hbeam);
     if (nNew > 0) {
       nSpots = nNew;
       d_nSpotsPerGrain[gIdx] = nNew;
@@ -1362,6 +1377,37 @@ int main(int argc, char *argv[]) {
   int *d_BinDataGPU = nullptr, *d_nBinDataGPU = nullptr;
   int doDynReassign = 0;
 
+  // Load positions.csv for beam proximity in dynamic reassignment
+  double *d_yposGPU = nullptr;
+  int nYposGPU = 0;
+  {
+    char posFN[2048];
+    char cwd[2048];
+    getcwd(cwd, sizeof(cwd));
+    sprintf(posFN, "%s/positions.csv", cwd);
+    FILE *pf = fopen(posFN, "r");
+    if (pf) {
+      // Count lines
+      char aline[1024];
+      int nLines = 0;
+      while (fgets(aline, sizeof(aline), pf)) nLines++;
+      rewind(pf);
+      nYposGPU = nLines;
+      double *h_ypos = (double *)malloc(nYposGPU * sizeof(double));
+      for (int pi = 0; pi < nYposGPU; pi++) {
+        fgets(aline, sizeof(aline), pf);
+        sscanf(aline, "%lf", &h_ypos[pi]);
+      }
+      fclose(pf);
+      CUDA_CHECK(cudaMalloc(&d_yposGPU, nYposGPU * sizeof(double)));
+      CUDA_CHECK(cudaMemcpy(d_yposGPU, h_ypos, nYposGPU * sizeof(double), cudaMemcpyHostToDevice));
+      free(h_ypos);
+      printf("positions.csv loaded for GPU: %d scan positions\n", nYposGPU);
+    } else {
+      printf("Warning: positions.csv not found, beam proximity disabled in reassignment.\n");
+    }
+  }
+
   size_t totalGPUMB =
       ((size_t)nSptIDs * (15 + MaxNSpotsBest * 11 + scratchPerGrain + 27) *
            sizeof(RealType) +
@@ -1389,7 +1435,8 @@ int main(int argc, char *argv[]) {
       d_LatCin, (RealType)Rsample, (RealType)Hbeam, (RealType)MargPos,
       (RealType)0.01, (RealType)MargABC, (RealType)MargABG, d_results,
       scratchPerGrain, nMaxTheor, d_AllSpotsGPU, nSpots, d_ObsSpotsLabGPU, 0,
-      d_BinDataGPU, d_nBinDataGPU, doDynReassign);
+      d_BinDataGPU, d_nBinDataGPU, doDynReassign,
+      d_yposGPU, nYposGPU);
   cudaEventRecord(evKernelEnd);
   CUDA_CHECK(cudaDeviceSynchronize());
 
@@ -1506,6 +1553,8 @@ int main(int argc, char *argv[]) {
     cudaFree(d_BinDataGPU);
   if (d_nBinDataGPU)
     cudaFree(d_nBinDataGPU);
+  if (d_yposGPU)
+    cudaFree(d_yposGPU);
 
   printf("Finished, time elapsed: %.2f seconds.\n", getTimeSec() - t0);
   ConsolidatedReader_close(&valsReader);

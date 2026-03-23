@@ -295,12 +295,13 @@ gpu_CalcDiffrSpots(const RealType OrMat[3][3],
 __device__ int
 gpu_CompareSpots(RealType *spots, // flat: [nTspots × N_COL_THEORSPOTS]
                  int nTspots,
-                 const RealType *d_ObsSpotsLab, // [n_spots × 9]
+                 const RealType *d_ObsSpotsLab, // [n_spots × N_COL_OBSSPOTS]
                  RealType RefRad, const int *d_data, const int *d_ndata,
                  const int *d_ringsToReject, int nRingsToRejectCalc,
                  int *nMatchesFracCalc, RealType ga, RealType gb,
                  RealType gc,     // grain position for IA
-                 RealType *avgIA) // output: average internal angle
+                 RealType *avgIA, // output: average internal angle
+                 const double *d_ypos, double BeamSize) // beam proximity
 {
   int nMatched = 0;
   int nMatchedFrac = 0;
@@ -351,8 +352,17 @@ gpu_CompareSpots(RealType *spots, // flat: [nTspots × N_COL_THEORSPOTS]
     RealType diffOmeBest = 100000.0; // match CPU: find closest, no threshold
 
     for (int is = 0; is < nInBin; is++) {
-      int spotRow = d_data[DataPos + is];
+      int spotRow = d_data[(DataPos + is) * 2 + 0];
+      int scannrobs = d_data[(DataPos + is) * 2 + 1];
       int base = spotRow * N_COL_OBSSPOTS;
+
+      // Filter 0: beam proximity check (matching OMP)
+      if (d_ypos != nullptr && BeamSize > 0) {
+        RealType theorOmeRad = spots[sp * N_COL_THEORSPOTS + 6] * deg2rad;
+        RealType yRot = ga * sin(theorOmeRad) + gb * cos(theorOmeRad);
+        if (fabs(yRot - d_ypos[scannrobs]) >= BeamSize / 2.0)
+          continue;
+      }
 
       // Filter 1: radial difference (MarginRadial)
       RealType obsRadDiff = d_ObsSpotsLab[base + 8];
@@ -454,7 +464,8 @@ __global__ void indexer_eval_kernel(
     const int *d_ndata, const int *d_ringsToReject, int nRingsToRejectCalc,
     SpotResult *d_results,    // [nSpotIDs] — per-spotID best
     RealType *d_theorScratch, // [batchSize × maxTheorSpots × N_COL_THEORSPOTS]
-    int maxTheorSpots) {
+    int maxTheorSpots,
+    const double *d_ypos, double BeamSize) {
   int tid = blockIdx.x * blockDim.x + threadIdx.x;
   if (tid >= nTuples)
     return;
@@ -499,7 +510,8 @@ __global__ void indexer_eval_kernel(
   int nMatches =
       gpu_CompareSpots(TheorSpots, nTspots, d_ObsSpotsLab, t.RefRad, d_data,
                        d_ndata, d_ringsToReject, nRingsToRejectCalc,
-                       &nMatchesFracCalc, t.ga, t.gb, t.gc, &avgIA);
+                       &nMatchesFracCalc, t.ga, t.gb, t.gc, &avgIA,
+                       d_ypos, BeamSize);
 
   RealType fracMatches = (RealType)nMatchesFracCalc / (RealType)nTspotsFracCalc;
 
@@ -1359,24 +1371,38 @@ int main(int argc, char *argv[]) {
   CUDA_CHECK(cudaMalloc(&d_hkls_flat, (size_t)n_hkls * 7 * sizeof(RealType)));
   CUDA_CHECK(cudaMemcpy(d_hkls_flat, hkls, (size_t)n_hkls * 7 * sizeof(RealType), cudaMemcpyHostToDevice));
 
-  RealType *d_ObsSpotsLab;
-  size_t nObsElems = (size_t)n_spots * N_COL_OBSSPOTS;
-  RealType *f_obs = d2f(ObsSpotsLab, nObsElems);
-  CUDA_CHECK(cudaMalloc(&d_ObsSpotsLab, nObsElems * sizeof(RealType)));
-  CUDA_CHECK(cudaMemcpy(d_ObsSpotsLab, f_obs, nObsElems * sizeof(RealType), cudaMemcpyHostToDevice));
-  free(f_obs);
-
   int *d_data, *d_ndata;
   {
-    char fn1[2048]; sprintf(fn1, "%s/Data.bin", cwdstr);
-    struct stat s1; stat(fn1, &s1);
+    char fn1[2048], fn2[2048];
+    sprintf(fn1, "%s/Data.bin", cwdstr);
+    sprintf(fn2, "%s/nData.bin", cwdstr);
+    struct stat s1, s2;
+    stat(fn1, &s1);
+    stat(fn2, &s2);
     CUDA_CHECK(cudaMalloc(&d_data, s1.st_size));
     CUDA_CHECK(cudaMemcpy(d_data, data, s1.st_size, cudaMemcpyHostToDevice));
-    char fn2[2048]; sprintf(fn2, "%s/nData.bin", cwdstr);
-    struct stat s2; stat(fn2, &s2);
     CUDA_CHECK(cudaMalloc(&d_ndata, s2.st_size));
     CUDA_CHECK(cudaMemcpy(d_ndata, ndata, s2.st_size, cudaMemcpyHostToDevice));
   }
+
+  // Upload ypos for beam proximity checks in kernel
+  double *d_ypos;
+  CUDA_CHECK(cudaMalloc(&d_ypos, nYpos * sizeof(double)));
+  CUDA_CHECK(cudaMemcpy(d_ypos, ypos, nYpos * sizeof(double), cudaMemcpyHostToDevice));
+  double BeamSize = Params.Hbeam;
+
+  size_t nObsElems = (size_t)n_spots * N_COL_OBSSPOTS;
+  RealType *d_ObsSpotsLab;
+  CUDA_CHECK(cudaMalloc(&d_ObsSpotsLab, nObsElems * sizeof(RealType)));
+  {
+    RealType *h_obs = (RealType *)malloc(nObsElems * sizeof(RealType));
+    for (size_t i = 0; i < nObsElems; i++)
+      h_obs[i] = (RealType)ObsSpotsLab[i];
+    CUDA_CHECK(
+        cudaMemcpy(d_ObsSpotsLab, h_obs, nObsElems * sizeof(RealType), cudaMemcpyHostToDevice));
+    free(h_obs);
+  }
+  printf("GPU obs spots uploaded (%zu elements)\n", nObsElems);
 
   int *d_ringsToReject;
   CUDA_CHECK(cudaMalloc(&d_ringsToReject, MAX_N_RINGS * sizeof(int)));
@@ -1466,7 +1492,8 @@ int main(int argc, char *argv[]) {
       indexer_eval_kernel<<<1, 1>>>(d_tuples, 1, d_hkls_flat, n_hkls,
                                      d_ObsSpotsLab, d_data, d_ndata,
                                      d_ringsToReject, Params.nRingsToRejectCalc,
-                                     d_results, d_theorScratch, maxTheorSpots);
+                                     d_results, d_theorScratch, maxTheorSpots,
+                                     d_ypos, BeamSize);
       CUDA_CHECK(cudaDeviceSynchronize());
       CUDA_CHECK(cudaMemcpy(&h_res, d_results, sizeof(SpotResult), cudaMemcpyDeviceToHost));
 
@@ -1502,7 +1529,8 @@ int main(int argc, char *argv[]) {
       indexer_eval_kernel<<<nBlks, blockSize>>>(d_tuples, nSeeds, d_hkls_flat, n_hkls,
                                                 d_ObsSpotsLab, d_data, d_ndata,
                                                 d_ringsToReject, Params.nRingsToRejectCalc,
-                                                d_results, d_theorScratch, maxTheorSpots);
+                                                d_results, d_theorScratch, maxTheorSpots,
+                                                d_ypos, BeamSize);
       CUDA_CHECK(cudaDeviceSynchronize());
       CUDA_CHECK(cudaMemcpy(h_res, d_results, nSeeds * sizeof(SpotResult), cudaMemcpyDeviceToHost));
 
@@ -1642,7 +1670,8 @@ int main(int argc, char *argv[]) {
         indexer_eval_kernel<<<nBlks2, blockSize>>>(d_tuples, (int)bN, d_hkls_flat, n_hkls,
                                                     d_ObsSpotsLab, d_data, d_ndata,
                                                     d_ringsToReject, Params.nRingsToRejectCalc,
-                                                    d_results, d_theorScratch, maxTheorSpots);
+                                                    d_results, d_theorScratch, maxTheorSpots,
+                                                    d_ypos, BeamSize);
         CUDA_CHECK(cudaGetLastError());
         CUDA_CHECK(cudaDeviceSynchronize());
       }
@@ -1685,6 +1714,7 @@ int main(int argc, char *argv[]) {
   CUDA_CHECK(cudaFree(d_hkls_flat));
   CUDA_CHECK(cudaFree(d_ObsSpotsLab));
   CUDA_CHECK(cudaFree(d_data));
+  CUDA_CHECK(cudaFree(d_ypos));
   CUDA_CHECK(cudaFree(d_ndata));
   CUDA_CHECK(cudaFree(d_ringsToReject));
   CUDA_CHECK(cudaFree(d_results));
