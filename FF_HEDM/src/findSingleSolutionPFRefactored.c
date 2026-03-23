@@ -793,7 +793,6 @@ void process_voxel(int voxNr, const char *folderName, int sgNr, double maxAng,
   free(keys);
   free(OMArr);
   free(confIAArr);
-  free(tmpArr);
   free(markArr);
 }
 
