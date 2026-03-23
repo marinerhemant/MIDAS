@@ -556,21 +556,6 @@ static inline void h_CalcEtaAngle(double y, double z, double *alpha) {
   *alpha = rad2deg * acos(fmax(-1.0, fmin(1.0, z / denom)));
   if (y > 0)
     *alpha = -(*alpha);
-// ═════════════════════════════════════════════════════════════
-//  HOST-SIDE CPU FUNCTIONS
-// ═════════════════════════════════════════════════════════════
-
-// ─── CPU math helpers (same as IndexerOMP) ──────────────────
-
-static inline void h_CalcEtaAngle(double y, double z, double *alpha) {
-  double denom = sqrt(y * y + z * z);
-  if (denom < EPS) {
-    *alpha = 0;
-    return;
-  }
-  *alpha = rad2deg * acos(fmax(-1.0, fmin(1.0, z / denom)));
-  if (y > 0)
-    *alpha = -(*alpha);
 }
 
 // h_CalcSpotPosition removed — unused on host side
