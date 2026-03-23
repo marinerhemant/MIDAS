@@ -1921,10 +1921,10 @@ int main(int argc, char *argv[]) {
     double *d_spotSinOme, *d_spotCosOme, *d_gridGPU;
     CUDA_CHECK(cudaMalloc(&d_spotSinOme, n_spots * sizeof(double)));
     CUDA_CHECK(cudaMalloc(&d_spotCosOme, n_spots * sizeof(double)));
-    CUDA_CHECK(cudaMalloc(&d_gridGPU, totalVox * 2 * sizeof(double)));
+    CUDA_CHECK(cudaMalloc(&d_gridGPU, endRowNr * 2 * sizeof(double)));
     CUDA_CHECK(cudaMemcpy(d_spotSinOme, spotSinOme, n_spots * sizeof(double), cudaMemcpyHostToDevice));
     CUDA_CHECK(cudaMemcpy(d_spotCosOme, spotCosOme, n_spots * sizeof(double), cudaMemcpyHostToDevice));
-    CUDA_CHECK(cudaMemcpy(d_gridGPU, grid, totalVox * 2 * sizeof(double), cudaMemcpyHostToDevice));
+    CUDA_CHECK(cudaMemcpy(d_gridGPU, grid, endRowNr * 2 * sizeof(double), cudaMemcpyHostToDevice));
 
     // Allocate results: nVoxels × nSpotsRange
     int totalResultSlots = nVoxels * nSpotsRange;
