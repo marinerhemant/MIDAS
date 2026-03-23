@@ -1091,7 +1091,6 @@ static void LoadPositions(const char *fn) {
   FILE *f = fopen(fn, "r");
   if (!f) { printf("Cannot open %s\n", fn); return; }
   char line[4096];
-  (void)fgets(line, 4096, f); // header
   int cap = 1024;
   ypos = (double *)malloc(cap * sizeof(double));
   nYpos = 0;
@@ -1195,7 +1194,7 @@ int main(int argc, char *argv[]) {
   printf("IndexerScanningGPU %s\n", MIDAS_VERSION);
 
   if (argc < 6) {
-    printf("Usage: %s paramsFile startRowNr endRowNr numProcs startRowNrSp endRowNrSp\n", argv[0]);
+    printf("Usage: %s paramtest.txt blockNr nBlocks numScans numProcs\n", argv[0]);
     return 1;
   }
 
@@ -1205,14 +1204,19 @@ int main(int argc, char *argv[]) {
   ReadParams(argv[1], &Params);
   ReadScanParams(argv[1]);
 
-  int startRowNr = atoi(argv[2]);
-  int endRowNr = atoi(argv[3]);
-  int numProcs = atoi(argv[4]);
-  int startRowNrSp = (argc > 5) ? atoi(argv[5]) : 0;
-  int endRowNrSp = (argc > 6) ? atoi(argv[6]) : 0;
-  int nVoxels = endRowNr - startRowNr;
+  int blockNr = atoi(argv[2]);
+  int nBlocks = atoi(argv[3]);
+  numScans = atoi(argv[4]);
+  int numProcs = atoi(argv[5]);
 
-  printf("Voxels: %d-%d (%d total), Procs: %d\n", startRowNr, endRowNr, nVoxels, numProcs);
+  int nVoxels = numScans * numScans;
+  int startRowNr = (int)(ceil((double)nVoxels / (double)nBlocks)) * blockNr;
+  int tmp = (int)(ceil((double)nVoxels / (double)nBlocks)) * (blockNr + 1);
+  int endRowNr = tmp < nVoxels ? tmp : nVoxels;
+  nVoxels = endRowNr - startRowNr;
+
+  printf("numScans=%d, totalVoxels=%d, block=%d/%d, rows=%d-%d (%d voxels), procs=%d\n",
+         numScans, numScans * numScans, blockNr, nBlocks, startRowNr, endRowNr, nVoxels, numProcs);
 
   // 2. Read HKLs
   char hklfn[4096], aline[4096];
@@ -1263,9 +1267,17 @@ int main(int argc, char *argv[]) {
 
   // 4. Scanning-specific loading
   LoadPositions("positions.csv");
-  char gridFN[4096];
-  sprintf(gridFN, "%s/grid.txt", Params.OutputFolder);
-  LoadGrid(gridFN);
+  // Build grid from positions (matching OMP behavior)
+  {
+    int totalVox = numScans * numScans;
+    grid = (double *)malloc(totalVox * 2 * sizeof(double));
+    for (int i = 0; i < numScans; i++)
+      for (int j = 0; j < numScans; j++) {
+        grid[(i * numScans + j) * 2 + 0] = ypos[i];
+        grid[(i * numScans + j) * 2 + 1] = ypos[j];
+      }
+    printf("Grid: %d voxels (from positions.csv)\n", totalVox);
+  }
   if (hasMic && strlen(MicFN) > 0) LoadMic(MicFN);
   if (Params.isGrainsInput) LoadGrains(Params.GrainsFileName);
 
