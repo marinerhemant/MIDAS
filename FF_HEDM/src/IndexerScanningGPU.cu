@@ -1058,6 +1058,16 @@ __global__ void indexer_fused_kernel(
           midas_CalcEtaAngle(theorY, theorZ, &theorEta);
           RealType theorRadDiff = sqrt(theorY * theorY + theorZ * theorZ) - RingRadius;
 
+          // DEBUG: print first few HKLs for voxel 0, spot 0, orientation 0
+          if (voxelIdx == 0 && spotLocalIdx == 0 && o == 0 && ih < 3) {
+            printf("DEBUG ih=%d rn=%d Omega=%.4f Eta=%.4f yl=%.4f zl=%.4f "
+                   "Displ_y=%.6f Displ_z=%.6f theorY=%.4f theorZ=%.4f "
+                   "theorEta=%.4f theorRadDiff=%.6f\n",
+                   ih, rn, (double)Omega, (double)Eta, (double)yl, (double)zl,
+                   (double)Displ_y, (double)Displ_z,
+                   (double)theorY, (double)theorZ, (double)theorEta, (double)theorRadDiff);
+          }
+
           // ─── Match against observed spots (inline CompareSpots) ───
           int iRing = rn - 1;
           if (iRing < 0 || iRing >= c_params.n_ring_bins) continue;
