@@ -790,13 +790,12 @@ __global__ void indexer_spotdriven_kernel(
   int ringnr = (int)d_ObsSpotsLab[idnr * N_COL_OBSSPOTS + 5];
 
   // Generate ideal spots — use small GPU-friendly limit (nPN is typically 1-3)
-  const int MAX_GPU_STEPS = 16;
-  double y0v[MAX_GPU_STEPS], z0v[MAX_GPU_STEPS];
+  double y0v[MAX_N_STEPS], z0v[MAX_N_STEPS];
   int nPN = 0;
   d_GenerateIdealSpots(ys, zs, d_RingTtheta[ringnr], eta,
                        c_RingRadii[ringnr], Rsample, Hbeam, StepsizePos,
-                       y0v, z0v, &nPN, MAX_GPU_STEPS);
-  if (nPN > MAX_GPU_STEPS) nPN = MAX_GPU_STEPS;
+                       y0v, z0v, &nPN, MAX_N_STEPS);
+  if (nPN > MAX_N_STEPS) nPN = MAX_N_STEPS;
 
   // Per-thread scratch for theoretical spots
   long long globalTid = (long long)voxelIdx * nSpotsRange + spotLocalIdx;
@@ -944,14 +943,13 @@ __global__ void indexer_fused_kernel(
   double RefRad = d_ObsSpotsLab[idnr * N_COL_OBSSPOTS + 3];
   int ringnr = (int)d_ObsSpotsLab[idnr * N_COL_OBSSPOTS + 5];
 
-  // Generate ideal spots — use small GPU-friendly limit (nPN is typically 1-3)
-  const int MAX_GPU_STEPS = 16;
-  double y0v[MAX_GPU_STEPS], z0v[MAX_GPU_STEPS];
+  // Generate ideal spots — use same limit as CPU (MAX_N_STEPS)
+  double y0v[MAX_N_STEPS], z0v[MAX_N_STEPS];
   int nPN = 0;
   d_GenerateIdealSpots(ys, zs, d_RingTtheta[ringnr], eta,
                        c_RingRadii[ringnr], Rsample, Hbeam, StepsizePos,
-                       y0v, z0v, &nPN, MAX_GPU_STEPS);
-  if (nPN > MAX_GPU_STEPS) nPN = MAX_GPU_STEPS;
+                       y0v, z0v, &nPN, MAX_N_STEPS);
+  if (nPN > MAX_N_STEPS) nPN = MAX_N_STEPS;
 
   SpotResult *res = &d_results[voxelIdx * nSpotsRange + seedIdx];
 
@@ -975,11 +973,6 @@ __global__ void indexer_fused_kernel(
     d_AxisAngle2RotMatrix(v, angled, RM);
     double MaxAngle = d_CalcRotationAngle(ringnr, n_hkls_d);
     int nsteps = (int)(MaxAngle / StepsizeOrient);
-
-    if (voxelIdx == 0 && spotLocalIdx == 0 && isp == 0) {
-      printf("ORIENT vox=0 spot=0 isp=0: ringnr=%d nPN=%d MaxAngle=%.2f StepsizeOrient=%.6f nsteps=%d\n",
-             ringnr, nPN, MaxAngle, StepsizeOrient, nsteps);
-    }
 
     // For each candidate orientation: FUSED CalcDiffrSpots + CompareSpots
     for (int o = 0; o < nsteps; o++) {
@@ -1071,21 +1064,7 @@ __global__ void indexer_fused_kernel(
           iEta = max(0, min(c_params.n_eta_bins - 1, iEta));
           iOme = max(0, min(c_params.n_ome_bins - 1, iOme));
 
-          // DEBUG: print bin lookup + filter outcomes for voxel 0, spot 0, orient 0
-          if (voxelIdx == 0 && spotLocalIdx == 0 && o == 0 && isp == 0 && ih < 2) {
-            size_t dPos = (size_t)iRing * c_params.n_eta_bins * c_params.n_ome_bins
-                        + (size_t)iEta * c_params.n_ome_bins + (size_t)iOme;
-            size_t dNInBin = d_ndata[dPos * 2 + 0];
-            // Also check first few entries of d_ndata to verify data is populated
-            printf("MATCH ih=%d rn=%d iR=%d iE=%d iO=%d Pos=%lu nInBin=%lu "
-                   "tEta=%.2f Ome=%.2f c_neta=%d c_nome=%d c_nring=%d "
-                   "ndata[0]=%lu ndata[2]=%lu ndata[4]=%lu\n",
-                   ih, rn, iRing, iEta, iOme, (unsigned long)dPos, (unsigned long)dNInBin,
-                   (double)theorEta, (double)Omega,
-                   c_params.n_eta_bins, c_params.n_ome_bins, c_params.n_ring_bins,
-                   (unsigned long)d_ndata[0], (unsigned long)d_ndata[2],
-                   (unsigned long)d_ndata[4]);
-          }
+
 
           size_t Pos = (size_t)iRing;
           Pos *= (size_t)c_params.n_eta_bins;
@@ -1886,25 +1865,10 @@ int main(int argc, char *argv[]) {
     struct stat s1, s2;
     stat(fn1, &s1);
     stat(fn2, &s2);
-    printf("Data.bin: %lld bytes, nData.bin: %lld bytes\n",
-           (long long)s1.st_size, (long long)s2.st_size);
-    // Verify host ndata has data
-    size_t nElems = s2.st_size / sizeof(size_t);
-    size_t nonzero = 0;
-    for (size_t i = 0; i < nElems && i < 100; i++) {
-      if (ndata[i] != 0) nonzero++;
-    }
-    printf("HOST ndata first 100 entries: %zu nonzero, ndata[0]=%zu ndata[1]=%zu ndata[2]=%zu\n",
-           nonzero, ndata[0], ndata[1], ndata[2]);
     CUDA_CHECK(cudaMalloc(&d_data, s1.st_size));
     CUDA_CHECK(cudaMemcpy(d_data, data, s1.st_size, cudaMemcpyHostToDevice));
     CUDA_CHECK(cudaMalloc(&d_ndata, s2.st_size));
     CUDA_CHECK(cudaMemcpy(d_ndata, ndata, s2.st_size, cudaMemcpyHostToDevice));
-    // Verify GPU got the data
-    size_t check[6];
-    CUDA_CHECK(cudaMemcpy(check, d_ndata, 6 * sizeof(size_t), cudaMemcpyDeviceToHost));
-    printf("GPU d_ndata readback: [%zu, %zu, %zu, %zu, %zu, %zu]\n",
-           check[0], check[1], check[2], check[3], check[4], check[5]);
   }
 
   // Upload ypos for beam proximity checks in kernel
