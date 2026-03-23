@@ -11,9 +11,14 @@
  * - Initial simplex: direction reversal near bounds
  * - Convergence: frange < tol
  *
+ * Precision controlled by RealType (define before including):
+ *   #define RealType float   // for NF-HEDM
+ *   #define RealType double  // for FF-HEDM
+ *
  * Usage:
- *   1. Define a functor with __device__ float operator()(const float *x, int ndim)
- *   2. Call from kernel with nm_optimize<NDIM>(...)
+ *   1. Define a functor with __device__ RealType operator()(const RealType *x, int ndim)
+ *   2. Call gpu_simplex_batch_kernel<NDIM>(...) as a kernel, OR
+ *   3. Call nm_optimize<NDIM>(...) from within another kernel (device-callable)
  *
  * Each thread runs one independent NM optimization.
  * Template on NDIM for compile-time unrolling (typical: 3, 6, 12).
@@ -25,29 +30,34 @@
 #include <cuda_runtime.h>
 #include <float.h>
 
+// Default RealType to double if not defined by the including .cu file
+#ifndef RealType
+#define RealType double
+#endif
+
 // Maximum dimension supported (for static arrays)
 #define GPU_SIMPLEX_MAX_DIM 12
 
 /// Nelder-Mead parameters (matching NLOPT: ALPHA=1, BETA=0.5, GAMMA=2, DELTA=0.5)
 struct NMParams {
-  float alpha;  // reflection:  1.0
-  float gamma;  // expansion:   2.0
-  float rho;    // contraction:  0.5 (NLOPT calls this BETA)
-  float sigma;  // shrink:       0.5 (NLOPT calls this DELTA)
+  RealType alpha;  // reflection:  1.0
+  RealType gamma;  // expansion:   2.0
+  RealType rho;    // contraction:  0.5 (NLOPT calls this BETA)
+  RealType sigma;  // shrink:       0.5 (NLOPT calls this DELTA)
 };
 
 __device__ static inline NMParams nm_default_params() {
   NMParams p;
-  p.alpha = 1.0f;
-  p.gamma = 2.0f;
-  p.rho   = 0.5f;
-  p.sigma = 0.5f;
+  p.alpha = (RealType)1.0;
+  p.gamma = (RealType)2.0;
+  p.rho   = (RealType)0.5;
+  p.sigma = (RealType)0.5;
   return p;
 }
 
 /// Clamp x[i] to [lo[i], hi[i]]
 template <int NDIM>
-__device__ static inline void nm_clamp(float *x, const float *lo, const float *hi) {
+__device__ static inline void nm_clamp(RealType *x, const RealType *lo, const RealType *hi) {
   #pragma unroll
   for (int i = 0; i < NDIM; i++) {
     if (x[i] < lo[i]) x[i] = lo[i];
@@ -58,7 +68,7 @@ __device__ static inline void nm_clamp(float *x, const float *lo, const float *h
 /// Find indices of best, worst, second-worst vertices
 template <int NDIM>
 __device__ static inline void nm_find_indices(
-    const float fvals[NDIM + 1], int *best, int *worst, int *second_worst) {
+    const RealType fvals[NDIM + 1], int *best, int *worst, int *second_worst) {
   *best = 0; *worst = 0; *second_worst = 0;
   for (int i = 1; i <= NDIM; i++) {
     if (fvals[i] < fvals[*best]) *best = i;
@@ -75,16 +85,16 @@ __device__ static inline void nm_find_indices(
 /// Compute centroid of all vertices except 'exclude'
 template <int NDIM>
 __device__ static inline void nm_centroid(
-    const float simplex[GPU_SIMPLEX_MAX_DIM + 1][GPU_SIMPLEX_MAX_DIM],
-    int exclude, float centroid[GPU_SIMPLEX_MAX_DIM]) {
+    const RealType simplex[GPU_SIMPLEX_MAX_DIM + 1][GPU_SIMPLEX_MAX_DIM],
+    int exclude, RealType centroid[GPU_SIMPLEX_MAX_DIM]) {
   #pragma unroll
-  for (int j = 0; j < NDIM; j++) centroid[j] = 0.0f;
+  for (int j = 0; j < NDIM; j++) centroid[j] = (RealType)0.0;
   for (int i = 0; i <= NDIM; i++) {
     if (i == exclude) continue;
     #pragma unroll
     for (int j = 0; j < NDIM; j++) centroid[j] += simplex[i][j];
   }
-  float inv = 1.0f / (float)NDIM;
+  RealType inv = (RealType)1.0 / (RealType)NDIM;
   #pragma unroll
   for (int j = 0; j < NDIM; j++) centroid[j] *= inv;
 }
@@ -92,8 +102,8 @@ __device__ static inline void nm_centroid(
 /// Reflect: xnew = c + scale * (c - xold), then clamp to bounds. (matches NLOPT reflectpt)
 template <int NDIM>
 __device__ static inline void nm_reflect(
-    float *xnew, const float *c, float scale, const float *xold,
-    const float *lo, const float *hi) {
+    RealType *xnew, const RealType *c, RealType scale, const RealType *xold,
+    const RealType *lo, const RealType *hi) {
   #pragma unroll
   for (int j = 0; j < NDIM; j++) {
     xnew[j] = c[j] + scale * (c[j] - xold[j]);
@@ -102,55 +112,40 @@ __device__ static inline void nm_reflect(
 }
 
 /**
- * GPU Nelder-Mead simplex optimization — runs ONE optimization per thread.
+ * Device-callable Nelder-Mead simplex optimization — runs ONE optimization inline.
+ * Can be called from within another kernel (no kernel launch overhead).
  * Algorithm matches NLOPT's nldrmd_minimize_ exactly.
  *
  * Template parameters:
- *   NDIM    — dimension of optimization (e.g., 3 for Euler angles)
- *   ObjFunc — functor type with: __device__ float operator()(const float *x, int ndim)
+ *   NDIM    — dimension of optimization (e.g., 3, 6, 9, 12)
+ *   ObjFunc — functor type with: __device__ RealType operator()(const RealType *x, int ndim)
  *
- * @param nJobs       Number of independent optimization jobs
- * @param startPoints [nJobs × NDIM] initial guesses
- * @param lowerBounds [nJobs × NDIM] per-job lower bounds
- * @param upperBounds [nJobs × NDIM] per-job upper bounds
- * @param results     [nJobs × NDIM] optimized parameters (output)
- * @param fvals_out   [nJobs] final objective values (output)
- * @param objFunc     Objective function functor
- * @param tol         Convergence tolerance (on function value range)
- * @param maxIter     Maximum iterations per job
- * @param initStep    Initial simplex step size (fraction of bound range)
+ * @param x0       [NDIM] initial guess (input)
+ * @param lo       [NDIM] lower bounds
+ * @param hi       [NDIM] upper bounds
+ * @param result   [NDIM] optimized parameters (output)
+ * @param objFunc  Objective function functor
+ * @param tol      Convergence tolerance (on function value range)
+ * @param maxIter  Maximum iterations
+ * @param initStep Initial simplex step size (fraction of bound range)
+ * @return         Final objective value at best vertex
  */
 template <int NDIM, typename ObjFunc>
-__global__ void gpu_simplex_batch_kernel(
-    int nJobs,
-    const float * __restrict__ startPoints,
-    const float * __restrict__ lowerBounds,
-    const float * __restrict__ upperBounds,
-    float *results,
-    float *fvals_out,
-    ObjFunc objFunc,
-    float tol,
+__device__ RealType nm_optimize(
+    const RealType *x0,
+    const RealType *lo,
+    const RealType *hi,
+    RealType *result,
+    ObjFunc &objFunc,
+    RealType tol,
     int maxIter,
-    float initStep) {
-
-  int jobIdx = blockIdx.x * blockDim.x + threadIdx.x;
-  if (jobIdx >= nJobs) return;
+    RealType initStep) {
 
   NMParams nm = nm_default_params();
 
-  // Load per-job bounds into registers
-  float lo[NDIM], hi[NDIM];
-  #pragma unroll
-  for (int i = 0; i < NDIM; i++) {
-    lo[i] = lowerBounds[jobIdx * NDIM + i];
-    hi[i] = upperBounds[jobIdx * NDIM + i];
-  }
-
   // Initialize simplex: vertex 0 = start point
-  float simplex[GPU_SIMPLEX_MAX_DIM + 1][GPU_SIMPLEX_MAX_DIM];
-  float fvals[GPU_SIMPLEX_MAX_DIM + 1];
-
-  const float *x0 = &startPoints[jobIdx * NDIM];
+  RealType simplex[GPU_SIMPLEX_MAX_DIM + 1][GPU_SIMPLEX_MAX_DIM];
+  RealType fvals[GPU_SIMPLEX_MAX_DIM + 1];
 
   // Vertex 0 = starting point
   #pragma unroll
@@ -162,23 +157,23 @@ __global__ void gpu_simplex_batch_kernel(
   for (int i = 1; i <= NDIM; i++) {
     #pragma unroll
     for (int j = 0; j < NDIM; j++) simplex[i][j] = simplex[0][j];
-    float step = initStep * (hi[i-1] - lo[i-1]);
-    if (step < 1e-8f) step = 1e-4f;
-    float newval = simplex[0][i-1] + step;
+    RealType step = initStep * (hi[i-1] - lo[i-1]);
+    if (step < (RealType)1e-8) step = (RealType)1e-4;
+    RealType newval = simplex[0][i-1] + step;
     // NLOPT-style direction reversal near bounds
     if (newval > hi[i-1]) {
-      if (hi[i-1] - simplex[0][i-1] > fabsf(step) * 0.1f)
+      if (hi[i-1] - simplex[0][i-1] > fabs(step) * (RealType)0.1)
         newval = hi[i-1];
       else
-        newval = simplex[0][i-1] - fabsf(step);
+        newval = simplex[0][i-1] - fabs(step);
     }
     if (newval < lo[i-1]) {
-      if (simplex[0][i-1] - lo[i-1] > fabsf(step) * 0.1f)
+      if (simplex[0][i-1] - lo[i-1] > fabs(step) * (RealType)0.1)
         newval = lo[i-1];
       else {
-        newval = simplex[0][i-1] + fabsf(step);
+        newval = simplex[0][i-1] + fabs(step);
         if (newval > hi[i-1])
-          newval = 0.5f * ((hi[i-1] - simplex[0][i-1] > simplex[0][i-1] - lo[i-1]
+          newval = (RealType)0.5 * ((hi[i-1] - simplex[0][i-1] > simplex[0][i-1] - lo[i-1]
                             ? hi[i-1] : lo[i-1]) + simplex[0][i-1]);
       }
     }
@@ -188,18 +183,18 @@ __global__ void gpu_simplex_batch_kernel(
   }
 
   // Main NM loop — matches NLOPT's nldrmd algorithm
-  float trial[GPU_SIMPLEX_MAX_DIM];
-  float centroid[GPU_SIMPLEX_MAX_DIM];
+  RealType trial[GPU_SIMPLEX_MAX_DIM];
+  RealType centroid[GPU_SIMPLEX_MAX_DIM];
 
   for (int iter = 0; iter < maxIter; iter++) {
     int best, worst, second_worst;
     nm_find_indices<NDIM>(fvals, &best, &worst, &second_worst);
 
-    float fl = fvals[best];
-    float fh = fvals[worst];
+    RealType fl = fvals[best];
+    RealType fh = fvals[worst];
 
     // Check convergence: range of function values
-    float frange = fh - fl;
+    RealType frange = fh - fl;
     if (frange < tol) break;
 
     // Centroid of all vertices except worst
@@ -207,13 +202,13 @@ __global__ void gpu_simplex_batch_kernel(
 
     // --- Reflection: xcur = c + alpha * (c - xh) ---
     nm_reflect<NDIM>(trial, centroid, nm.alpha, simplex[worst], lo, hi);
-    float fr = objFunc(trial, NDIM);
+    RealType fr = objFunc(trial, NDIM);
 
     if (fr < fl) {
       // --- Expansion: try c + gamma * (c - xh) ---
-      float trial_e[GPU_SIMPLEX_MAX_DIM];
+      RealType trial_e[GPU_SIMPLEX_MAX_DIM];
       nm_reflect<NDIM>(trial_e, centroid, nm.gamma, simplex[worst], lo, hi);
-      float fe = objFunc(trial_e, NDIM);
+      RealType fe = objFunc(trial_e, NDIM);
 
       if (fe < fr) {
         // Expansion is better — replace worst with expanded
@@ -240,10 +235,10 @@ __global__ void gpu_simplex_batch_kernel(
     // --- Contraction (NLOPT-style: inside or outside based on fh vs fr) ---
     // If fh <= fr: inside contraction  → scale = -beta (toward centroid from worst)
     // If fh >  fr: outside contraction → scale = +beta (toward reflected from centroid)
-    float cscale = (fh <= fr) ? -nm.rho : nm.rho;
-    float trial_c[GPU_SIMPLEX_MAX_DIM];
+    RealType cscale = (fh <= fr) ? -nm.rho : nm.rho;
+    RealType trial_c[GPU_SIMPLEX_MAX_DIM];
     nm_reflect<NDIM>(trial_c, centroid, cscale, simplex[worst], lo, hi);
-    float fc = objFunc(trial_c, NDIM);
+    RealType fc = objFunc(trial_c, NDIM);
 
     if (fc < fr && fc < fh) {
       // Successful contraction — accept
@@ -270,8 +265,61 @@ __global__ void gpu_simplex_batch_kernel(
 
   #pragma unroll
   for (int j = 0; j < NDIM; j++)
-    results[jobIdx * NDIM + j] = simplex[best][j];
-  fvals_out[jobIdx] = fvals[best];
+    result[j] = simplex[best][j];
+  return fvals[best];
+}
+
+/**
+ * GPU Nelder-Mead simplex optimization — batch kernel version.
+ * Each thread runs one independent optimization from startPoints arrays.
+ *
+ * Template parameters:
+ *   NDIM    — dimension of optimization (e.g., 3 for Euler angles)
+ *   ObjFunc — functor type with: __device__ RealType operator()(const RealType *x, int ndim)
+ *
+ * @param nJobs       Number of independent optimization jobs
+ * @param startPoints [nJobs × NDIM] initial guesses
+ * @param lowerBounds [nJobs × NDIM] per-job lower bounds
+ * @param upperBounds [nJobs × NDIM] per-job upper bounds
+ * @param results     [nJobs × NDIM] optimized parameters (output)
+ * @param fvals_out   [nJobs] final objective values (output)
+ * @param objFunc     Objective function functor
+ * @param tol         Convergence tolerance (on function value range)
+ * @param maxIter     Maximum iterations per job
+ * @param initStep    Initial simplex step size (fraction of bound range)
+ */
+template <int NDIM, typename ObjFunc>
+__global__ void gpu_simplex_batch_kernel(
+    int nJobs,
+    const RealType * __restrict__ startPoints,
+    const RealType * __restrict__ lowerBounds,
+    const RealType * __restrict__ upperBounds,
+    RealType *results,
+    RealType *fvals_out,
+    ObjFunc objFunc,
+    RealType tol,
+    int maxIter,
+    RealType initStep) {
+
+  int jobIdx = blockIdx.x * blockDim.x + threadIdx.x;
+  if (jobIdx >= nJobs) return;
+
+  // Load per-job start and bounds
+  RealType x0[NDIM], lo[NDIM], hi[NDIM], result[NDIM];
+  #pragma unroll
+  for (int i = 0; i < NDIM; i++) {
+    x0[i] = startPoints[jobIdx * NDIM + i];
+    lo[i] = lowerBounds[jobIdx * NDIM + i];
+    hi[i] = upperBounds[jobIdx * NDIM + i];
+  }
+
+  RealType fval = nm_optimize<NDIM>(x0, lo, hi, result, objFunc, tol, maxIter, initStep);
+
+  // Write output
+  #pragma unroll
+  for (int j = 0; j < NDIM; j++)
+    results[jobIdx * NDIM + j] = result[j];
+  fvals_out[jobIdx] = fval;
 }
 
 #endif // GPU_SIMPLEX_CUH
