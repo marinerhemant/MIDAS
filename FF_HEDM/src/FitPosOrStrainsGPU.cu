@@ -890,33 +890,38 @@ int main(int argc, char *argv[]) {
   for (int g = 0; g < nSptIDs; g++) {
     int SpId = SptIDs[g];
     h_SpotIDs[g] = SpId;
-    if (SpId == -1) continue;
+    printf("  Grain %d: SpId=%d\n", g, SpId);
+    if (SpId == -1) { printf("    SKIP: SpId==-1\n"); continue; }
 
     // Find rowNr for this SpId
     int rowNr = -1;
     for (int c = 0; c < totalCSVLines; c++) {
       if (allSpotIDs_csv[c] == SpId) { rowNr = c; break; }
     }
-    if (rowNr < 0) continue;
+    if (rowNr < 0) { printf("    SKIP: rowNr not found in CSV (%d lines)\n", totalCSVLines); continue; }
+    printf("    rowNr=%d\n", rowNr);
 
     // Read from IndexBest.bin
     int inpF = open(InpFN, O_RDONLY);
-    if (inpF < 0) continue;
+    if (inpF < 0) { printf("    SKIP: cannot open %s\n", InpFN); continue; }
     size_t offst = (size_t)rowNr * 15 * sizeof(double);
     double locArr[15] = {0};
     ssize_t rc = pread(inpF, locArr, sizeof(locArr), offst);
     close(inpF);
-    if (rc < (ssize_t)sizeof(locArr)) continue;
-    if (locArr[14] == 0) continue;
+    printf("    pread: offset=%zu, rc=%zd (need %zu)\n", offst, rc, sizeof(locArr));
+    if (rc < (ssize_t)sizeof(locArr)) { printf("    SKIP: short read\n"); continue; }
+    printf("    locArr[0]=%.1f locArr[13]=%.1f locArr[14]=%.1f\n", locArr[0], locArr[13], locArr[14]);
+    if (locArr[14] == 0) { printf("    SKIP: NrObs==0\n"); continue; }
 
     memcpy(&h_initData[g * 15], locArr, sizeof(locArr));
 
     int nObs = (int)locArr[14];
-    if (nObs > MaxNSpotsBest || nObs <= 0) continue;
+    if (nObs > MaxNSpotsBest || nObs <= 0) { printf("    SKIP: nObs=%d out of range\n", nObs); continue; }
+    printf("    nObs=%d, reading IndexBestFull.bin\n", nObs);
 
     // Read from IndexBestFull.bin → get spot IDs
     int inpF2 = open(InpFN2, O_RDONLY);
-    if (inpF2 < 0) continue;
+    if (inpF2 < 0) { printf("    SKIP: cannot open %s\n", InpFN2); continue; }
     size_t offst2 = (size_t)rowNr * MaxNHKLS * 2 * sizeof(double);
     double *locArr2 = (double*)calloc(nObs * 2, sizeof(double));
     pread(inpF2, locArr2, nObs * 2 * sizeof(double), offst2);
@@ -927,22 +932,23 @@ int main(int argc, char *argv[]) {
     for (int i = 0; i < nObs && nFound < MaxNSpotsBest; i++) {
       int spotID = (int)locArr2[i*2];
       int spotPos = spotID - 1;
-      if (spotPos < 0 || spotPos >= nSpots) continue;
+      if (spotPos < 0 || spotPos >= nSpots) { printf("    spot %d: invalid spotPos=%d\n", i, spotPos); continue; }
       double *sp = &h_spotData[(size_t)g * MaxNSpotsBest * 11 + nFound * 11];
-      sp[0] = AllSpots[spotPos*16+0]; // Y
-      sp[1] = AllSpots[spotPos*16+1]; // Z
-      sp[2] = AllSpots[spotPos*16+2]; // Omega
-      sp[3] = AllSpots[spotPos*16+4]; // SpotID
-      sp[4] = AllSpots[spotPos*16+8]; // Omega (from different col)
-      sp[5] = AllSpots[spotPos*16+9]; // RingNr → actually Y corrected
-      sp[6] = AllSpots[spotPos*16+10]; // Z corrected
-      sp[7] = AllSpots[spotPos*16+5]; // IntegratedIntensity
-      sp[8] = AllSpots[spotPos*16+14]; // SpotNr theoretical
-      sp[9] = AllSpots[spotPos*16+15]; // GrainVolume
+      sp[0] = AllSpots[spotPos*16+0];
+      sp[1] = AllSpots[spotPos*16+1];
+      sp[2] = AllSpots[spotPos*16+2];
+      sp[3] = AllSpots[spotPos*16+4];
+      sp[4] = AllSpots[spotPos*16+8];
+      sp[5] = AllSpots[spotPos*16+9];
+      sp[6] = AllSpots[spotPos*16+10];
+      sp[7] = AllSpots[spotPos*16+5];
+      sp[8] = AllSpots[spotPos*16+14];
+      sp[9] = AllSpots[spotPos*16+15];
       nFound++;
     }
     free(locArr2);
     h_nSpotsPerGrain[g] = nFound;
+    printf("    nFound=%d spots\n", nFound);
     if (nFound > 0) nValidGrains++;
   }
   free(allSpotIDs_csv);
