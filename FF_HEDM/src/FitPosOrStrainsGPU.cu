@@ -743,7 +743,9 @@ __global__ void fitGrainsKernel(
                      res6[0],res6[1],res6[2],res6[3],res6[4],res6[5]};
   double finalErr = gpu_FitErrorsPosT(finalX, spots, nSpots, d_hklsRaw,
                                        scratch, nMaxTheor);
-  out[22]=finalErr; out[23]=0; out[24]=0;
+  // Average error per spot (matches CPU normalization)
+  out[22] = (nSpots > 0) ? finalErr / nSpots : finalErr;
+  out[23]=0; out[24]=0;
   out[25]=0; // meanRadius placeholder
   out[26]=NrObs/NrExp; // completeness
 }
@@ -890,7 +892,6 @@ int main(int argc, char *argv[]) {
   for (int g = 0; g < nSptIDs; g++) {
     int SpId = SptIDs[g];
     h_SpotIDs[g] = SpId;
-    printf("  Grain %d: SpId=%d\n", g, SpId);
     if (SpId == -1) { printf("    SKIP: SpId==-1\n"); continue; }
 
     // Find rowNr for this SpId
@@ -898,8 +899,7 @@ int main(int argc, char *argv[]) {
     for (int c = 0; c < totalCSVLines; c++) {
       if (allSpotIDs_csv[c] == SpId) { rowNr = c; break; }
     }
-    if (rowNr < 0) { printf("    SKIP: rowNr not found in CSV (%d lines)\n", totalCSVLines); continue; }
-    printf("    rowNr=%d\n", rowNr);
+    if (rowNr < 0) { continue; }
 
     // Read from IndexBest.bin
     int inpF = open(InpFN, O_RDONLY);
@@ -908,16 +908,14 @@ int main(int argc, char *argv[]) {
     double locArr[15] = {0};
     ssize_t rc = pread(inpF, locArr, sizeof(locArr), offst);
     close(inpF);
-    printf("    pread: offset=%zu, rc=%zd (need %zu)\n", offst, rc, sizeof(locArr));
-    if (rc < (ssize_t)sizeof(locArr)) { printf("    SKIP: short read\n"); continue; }
-    printf("    locArr[0]=%.1f locArr[13]=%.1f locArr[14]=%.1f\n", locArr[0], locArr[13], locArr[14]);
+    if (rc < (ssize_t)sizeof(locArr)) { continue; }
     if (locArr[14] == 0) { printf("    SKIP: NrObs==0\n"); continue; }
 
     memcpy(&h_initData[g * 15], locArr, sizeof(locArr));
 
     int nObs = (int)locArr[14];
     if (nObs > MaxNSpotsBest || nObs <= 0) { printf("    SKIP: nObs=%d out of range\n", nObs); continue; }
-    printf("    nObs=%d, reading IndexBestFull.bin\n", nObs);
+
 
     // Read from IndexBestFull.bin → get spot IDs
     // CPU format: interleaved [spotID, distance, spotID, distance, ...]
@@ -933,7 +931,7 @@ int main(int argc, char *argv[]) {
     for (int i = 0; i < nObs && nFound < MaxNSpotsBest; i++) {
       int spotID = (int)locArr2[i * 2]; // interleaved format
       int spotPos = spotID - 1;
-      if (spotPos < 0 || spotPos >= nSpots) { printf("    spot %d: invalid spotPos=%d\n", i, spotPos); continue; }
+      if (spotPos < 0 || spotPos >= nSpots) { continue; }
       double *sp = &h_spotData[(size_t)g * MaxNSpotsBest * 11 + nFound * 11];
       sp[0] = AllSpots[spotPos*16+0];
       sp[1] = AllSpots[spotPos*16+1];
@@ -949,7 +947,6 @@ int main(int argc, char *argv[]) {
     }
     free(locArr2);
     h_nSpotsPerGrain[g] = nFound;
-    printf("    nFound=%d spots\n", nFound);
     if (nFound > 0) nValidGrains++;
   }
   free(allSpotIDs_csv);
@@ -1011,24 +1008,46 @@ int main(int argc, char *argv[]) {
                        + nhkls*7*sizeof(double) + (size_t)nSpots*16*sizeof(double)) / (1024*1024);
   printf("GPU memory: ~%zu MB for %d grains\n", totalGPUMB, nSptIDs);
 
-  // ─── Launch kernel ───
+  // ─── Launch kernel with CUDA event timers ───
   int threadsPerBlock = 64; // low occupancy per thread due to register pressure
   int blocks = (nSptIDs + threadsPerBlock - 1) / threadsPerBlock;
   printf("Launching kernel: %d blocks × %d threads\n", blocks, threadsPerBlock);
-  double tKernel = getTimeSec();
 
+  cudaEvent_t evKernelStart, evKernelEnd, evDownEnd;
+  cudaEventCreate(&evKernelStart);
+  cudaEventCreate(&evKernelEnd);
+  cudaEventCreate(&evDownEnd);
+
+  double tUpload = getTimeSec() - t0;
+  printf("  Upload + setup: %.3f s\n", tUpload);
+
+  cudaEventRecord(evKernelStart);
   fitGrainsKernel<<<blocks, threadsPerBlock>>>(
       nSptIDs, d_initData, d_spotData, d_nSpotsPerGrain, d_hklsRaw,
       d_scratch, d_LatCin, Rsample, Hbeam, MargPos, 0.01, MargABC, MargABG,
       d_results, scratchPerGrain, nMaxTheor,
       d_AllSpotsGPU, nSpots, d_ObsSpotsLabGPU, 0,
       d_BinDataGPU, d_nBinDataGPU, doDynReassign);
+  cudaEventRecord(evKernelEnd);
   CUDA_CHECK(cudaDeviceSynchronize());
-  printf("Kernel done: %.2f s\n", getTimeSec() - tKernel);
+
+  float kernelMs = 0;
+  cudaEventElapsedTime(&kernelMs, evKernelStart, evKernelEnd);
+  printf("  Kernel: %.3f s\n", kernelMs / 1000.0f);
 
   // ─── Download results ───
   double *h_results = (double*)malloc((size_t)nSptIDs * 27 * sizeof(double));
   CUDA_CHECK(cudaMemcpy(h_results, d_results, (size_t)nSptIDs*27*sizeof(double), cudaMemcpyDeviceToHost));
+  cudaEventRecord(evDownEnd);
+  cudaEventSynchronize(evDownEnd);
+
+  float downloadMs = 0;
+  cudaEventElapsedTime(&downloadMs, evKernelEnd, evDownEnd);
+  printf("  Download: %.3f s\n", downloadMs / 1000.0f);
+
+  cudaEventDestroy(evKernelStart);
+  cudaEventDestroy(evKernelEnd);
+  cudaEventDestroy(evDownEnd);
 
   // ─── Write output files ───
   char KeyFN[1024]; sprintf(KeyFN, "%s/Key.bin", ResultFolder);
