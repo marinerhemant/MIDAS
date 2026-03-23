@@ -505,9 +505,9 @@ __global__ void fitGrainsKernel(
         if(dist < bestDist){ bestDist = dist; bestIdx = t; }
       }
       if(bestIdx >= 0){
-        s[4] = initTheorSpots[bestIdx*9+2]; // omega theor
-        s[5] = initTheorSpots[bestIdx*9+0]; // yl theor
-        s[6] = initTheorSpots[bestIdx*9+1]; // zl theor
+        // Only set col 8 = theoretical spot sequence number (nrhkls).
+        // Cols 4,5,6 are OBSERVED positions from AllSpots — they stay as loaded.
+        // CalcAngleErrors in the CPU also only changes col 8, not 4,5,6.
         s[8] = initTheorSpots[bestIdx*9+8]; // nrhkls sequence number
       }
     }
