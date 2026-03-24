@@ -997,6 +997,7 @@ __global__ void indexer_fused_kernel(
       int nMatchedFrac = 0;
       RealType iaSum = 0.0;
       int iaCount = 0;
+      int dbg_nonEmptyThis = 0;
 
       for (int ih = 0; ih < n_hkls_d; ih++) {
         RealType Ghkl[3] = {d_hkls_flat[ih * 7 + 0], d_hkls_flat[ih * 7 + 1],
@@ -1077,6 +1078,7 @@ __global__ void indexer_fused_kernel(
 
           size_t nInBin = d_ndata[Pos * 2 + 0];
           size_t DataPos = d_ndata[Pos * 2 + 1];
+          if (nInBin > 0) dbg_nonEmptyThis++;
           if (nInBin == 0) continue;
 
           RealType etamargin = c_etamargins[rn];
@@ -1172,7 +1174,10 @@ __global__ void indexer_fused_kernel(
 
       if (voxelIdx == 0 && spotLocalIdx == 0) {
         dbg_totalOrients++;
-        if (nMatched > dbg_maxMatched) dbg_maxMatched = nMatched;
+        if (nMatched > dbg_maxMatched) {
+          dbg_maxMatched = nMatched;
+          dbg_nonEmptyBins = dbg_nonEmptyThis;
+        }
       }
 
       if (nTspots == 0 || nTspotsFracCalc == 0) continue;
@@ -1206,8 +1211,8 @@ __global__ void indexer_fused_kernel(
   } // ideal spot loop
 
   if (voxelIdx == 0 && spotLocalIdx == 0) {
-    printf("DEBUG vox0 spot0: nPN=%d totalOrients=%d maxMatched=%d bestFrac=%.4f bestIA=%.4f\n",
-           nPN, dbg_totalOrients, dbg_maxMatched, (double)res->bestFrac, (double)res->bestIA);
+    printf("DEBUG vox0 spot0: nPN=%d totalOrients=%d maxMatched=%d nonEmptyBins=%d bestFrac=%.4f bestIA=%.4f\n",
+           nPN, dbg_totalOrients, dbg_maxMatched, dbg_nonEmptyBins, (double)res->bestFrac, (double)res->bestIA);
   }
 }
 
