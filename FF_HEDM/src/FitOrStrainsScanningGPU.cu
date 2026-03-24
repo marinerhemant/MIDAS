@@ -431,7 +431,7 @@ gpu_FitErrorsPosT(const RealType *x, // [12] = pos(3)+euler(3)+latc(6)
   return Error;
 }
 
-// Orient+Strain objective (pos fixed)
+// Orient+Strain objective (pos fixed) — distance-based, matches FitErrorsPosT
 __device__ static RealType
 gpu_FitErrorsOrientStrains(const RealType *x, // [9] = euler(3)+latc(6)
                            const RealType *spotsYZO, int nSpots,
@@ -456,32 +456,14 @@ gpu_FitErrorsOrientStrains(const RealType *x, // [9] = euler(3)+latc(6)
     RealType yt = s[5] - DisplY, zt = s[6] - DisplZ;
     gpu_CorrectForOme(yt, zt, d_params.Lsd, s[4], d_params.Wavelength,
                       d_params.wedge, &ys, &zs, &Omega);
-    RealType lenK = sqrt(d_params.Lsd * d_params.Lsd + ys * ys + zs * zs);
-    RealType Radius = sqrt(ys * ys + zs * zs);
-    RealType Theta = 0.5 * atan(Radius / d_params.Lsd) * rad2deg;
-    RealType g1, g2, g3;
-    gpu_SpotToGv(d_params.Lsd / lenK, ys / lenK, zs / lenK, Omega, Theta, &g1,
-                 &g2, &g3);
-    RealType NormGObs = sqrt(g1 * g1 + g2 * g2 + g3 * g3);
     int spnr = (int)s[8];
     for (int k = 0; k < nTspots; k++) {
-      if ((int)theorSpots[k * 9 + 8] != spnr)
-        continue;
-      RealType gt0 = theorSpots[k * 9 + 3], gt1 = theorSpots[k * 9 + 4],
-               gt2 = theorSpots[k * 9 + 5];
-      RealType NGt = sqrt(gt0 * gt0 + gt1 * gt1 + gt2 * gt2);
-      RealType dot = g1 * gt0 + g2 * gt1 + g3 * gt2;
-      RealType ratio = dot / (NormGObs * NGt);
-      if (ratio > 1)
-        ratio = 1;
-      if (ratio < -1)
-        ratio = -1;
-      if (ratio >= 0.9975640502598242) {
-        RealType angle = fabs(acos(ratio) * rad2deg);
-        if (angle < 4)
-          Error += angle;
+      if ((int)theorSpots[k * 9 + 8] == spnr) {
+        RealType dy = ys - theorSpots[k * 9 + 0];
+        RealType dz = zs - theorSpots[k * 9 + 1];
+        Error += sqrt(dy * dy + dz * dz);
+        break;
       }
-      break;
     }
   }
   return Error;
