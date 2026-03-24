@@ -1417,9 +1417,9 @@ int main(int argc, char *argv[]) {
 
     // Print per-grain result
     if (nSpotsComp > 0) {
-      printf("SpotID %6d, %3d spots, Err: %7.2f, Pos: %7.2f %7.2f %7.2f, "
+      printf("SpotID %6d, %3d spots, Err: %7.2f, "
              "LatC: %6.4f %6.4f %6.4f %7.3f %7.3f %7.3f\n",
-             SpId, nSpotsComp, out[22], out[11], out[12], out[13], out[15],
+             SpId, nSpotsComp, out[22], out[15],
              out[16], out[17], out[18], out[19], out[20]);
     }
   }

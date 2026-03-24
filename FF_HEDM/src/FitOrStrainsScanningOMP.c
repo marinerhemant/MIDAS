@@ -1476,12 +1476,13 @@ int main(int argc, char *argv[]) {
     FreeMemMatrix(scratch.TheorSpots, MaxNSpotsBest);
     printf("SpotID %6d, %3d spots, IniErr: %8.2f, Orient: %7.2f %7.2f %7.2f -> "
            "%7.2f %7.2f %7.2f, LatC: %.4f %.4f %.4f %6.3f %6.3f %6.3f, FinalErr: %8.2f\n",
-           SpId, nSpotsComp, initError,
+           SpId, nSpotsComp,
+           (nSpotsComp > 0) ? initError / nSpotsComp : initError,
            Euler0[0], Euler0[1], Euler0[2],
            FinalResult[3], FinalResult[4], FinalResult[5],
            FinalResult[6], FinalResult[7], FinalResult[8],
            FinalResult[9], FinalResult[10], FinalResult[11],
-           finalError);
+           (nSpotsComp > 0) ? finalError / nSpotsComp : finalError);
     double OF[3][3], OrientFit[9], EulerFit[3], PositionFit[3],
         LatticeParameterFit[6];
     for (i = 0; i < 3; i++)
