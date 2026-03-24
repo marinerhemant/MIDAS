@@ -1526,6 +1526,13 @@ int main(int argc, char *argv[]) {
     for (i = 0; i < 6; i++)
       LatticeParameterFit[i] = FinalResult[i + 6];
     Euler2OrientMat(EulerFit, OF);
+    // Debug: print orient matrix for SpotID 78
+    if (SpId == 78) {
+      printf("CPU SpotID78 OrientMatrix: [%.6f %.6f %.6f; %.6f %.6f %.6f; %.6f %.6f %.6f]\n",
+             OF[0][0], OF[0][1], OF[0][2], OF[1][0], OF[1][1], OF[1][2],
+             OF[2][0], OF[2][1], OF[2][2]);
+      printf("CPU SpotID78 Euler: %.4f %.4f %.4f\n", EulerFit[0], EulerFit[1], EulerFit[2]);
+    }
     Convert3x3To9(OF, OrientFit);
     double OrientsFit[10], PositionsFit[4], StrainsFit[7], ErrorsFin[4];
     OrientsFit[0] = SpId;
