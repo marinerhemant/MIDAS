@@ -903,12 +903,14 @@ __global__ void indexer_fused_kernel(
     int startRowNrSp, int endRowNrSp,
     int nVoxels, int nSpotsRange,
     double StepsizeOrient, double StepsizePos,
-    double Distance, double Rsample, double Hbeam)
+    double Distance, double Rsample, double Hbeam,
+    int nstepsPerSpot)  // uniform nsteps for all seed spots (same ring)
 {
-  int spotLocalIdx = blockIdx.x * blockDim.x + threadIdx.x;
-  int voxelIdx = blockIdx.y;
+  int spotLocalIdx = blockIdx.x;           // one x-slice per spot
+  int orientIdx = blockIdx.y * blockDim.x + threadIdx.x;  // orientation index
+  int voxelIdx = blockIdx.z;               // one z-slice per voxel
 
-  if (spotLocalIdx >= nSpotsRange || voxelIdx >= nVoxels)
+  if (spotLocalIdx >= nSpotsRange || orientIdx >= nstepsPerSpot || voxelIdx >= nVoxels)
     return;
 
   int idnr = startRowNrSp + spotLocalIdx;
@@ -965,11 +967,9 @@ __global__ void indexer_fused_kernel(
     double angled = rad2deg * acos(fmax(-1.0, fmin(1.0, dpp / (hl * nl))));
     double RM[3][3];
     d_AxisAngle2RotMatrix(v, angled, RM);
-    double MaxAngle = d_CalcRotationAngle(ringnr, n_hkls_d);
-    int nsteps = (int)(MaxAngle / StepsizeOrient);
 
-    // For each candidate orientation: FUSED CalcDiffrSpots + CompareSpots
-    for (int o = 0; o < nsteps; o++) {
+    // This thread handles ONE orientation step (o = orientIdx, bounded by nstepsPerSpot)
+    int o = orientIdx;
       double RM2[3][3], RM3[3][3];
       d_AxisAngle2RotMatrix(hn, o * StepsizeOrient, RM2);
       d_MatrixMultF33(RM2, RM, RM3);
@@ -1183,8 +1183,7 @@ __global__ void indexer_fused_kernel(
           break;
         }
       }
-    } // orientation loop
-  } // ideal spot loop
+    } // ideal spot loop
 
 
 }
@@ -1205,6 +1204,52 @@ __global__ void indexer_fused_kernel(
 
 
 // Host-side math helpers removed — orientation generation is done on GPU
+
+// Host-side CalcRotationAngle — computes MaxAngle for a given ring number
+// Must match d_CalcRotationAngle exactly.
+static double h_CalcRotationAngle(int RingNr) {
+  int habs = 0, kabs = 0, labs_v = 0;
+  for (int i = 0; i < n_hkls; i++)
+    if (HKLints[i][3] == RingNr) {
+      habs = abs(HKLints[i][0]);
+      kabs = abs(HKLints[i][1]);
+      labs_v = abs(HKLints[i][2]);
+      break;
+    }
+  int nz = 0;
+  if (!habs) nz++;
+  if (!kabs) nz++;
+  if (!labs_v) nz++;
+  if (nz == 3) return 0;
+  if (SGNum <= 2) return 360;
+  if (SGNum <= 15) {
+    if (nz != 2) return 360;
+    if (ABCABG[3] == 90 && ABCABG[4] == 90 && labs_v) return 180;
+    if (ABCABG[3] == 90 && ABCABG[5] == 90 && habs) return 180;
+    if (ABCABG[3] == 90 && ABCABG[5] == 90 && kabs) return 180;
+    return 360;
+  }
+  if (SGNum <= 74) { if (nz != 2) return 360; return 180; }
+  if (SGNum <= 142) {
+    if (!nz) return 360;
+    if (nz == 1 && !labs_v && habs == kabs) return 180;
+    if (nz == 2) return labs_v ? 90 : 180;
+    return 360;
+  }
+  if (SGNum <= 167) {
+    if (!nz) return 360;
+    if (nz == 2 && labs_v) return 120;
+    return 360;
+  }
+  if (SGNum <= 194) { if (nz == 2 && labs_v) return 60; return 360; }
+  if (SGNum <= 230) {
+    if (nz == 2) return 90;
+    if (nz == 1 && (habs == kabs || kabs == labs_v || habs == labs_v)) return 180;
+    if (!nz && habs == kabs && kabs == labs_v) return 120;
+    return 360;
+  }
+  return 0;
+}
 
 
 
@@ -1982,10 +2027,16 @@ int main(int argc, char *argv[]) {
     double tAllocEnd = omp_get_wtime();
     printf("  GPU alloc+init: %.3f s\n", tAllocEnd - tSpotDrivenStart);
 
-    dim3 block(256, 1);
-    dim3 grid2((nSpotsRange + block.x - 1) / block.x, nVoxels);
-    printf("  Launching fused kernel: grid=(%d,%d), block=%d\n",
-           grid2.x, grid2.y, block.x);
+    // Compute nsteps for RingToIndex (uniform for all seed spots)
+    double MaxAngle = h_CalcRotationAngle(RingToIndex);
+    int nstepsPerSpot = (int)(MaxAngle / Params.StepsizeOrient);
+    printf("  Orientation parallelism: RingToIndex=%d MaxAngle=%.0f nsteps=%d\n",
+           RingToIndex, MaxAngle, nstepsPerSpot);
+
+    dim3 block(256);
+    dim3 grid2(nSpotsRange, (nstepsPerSpot + block.x - 1) / block.x, nVoxels);
+    printf("  Launching fused kernel: grid=(%d,%d,%d), block=%d\n",
+           grid2.x, grid2.y, grid2.z, block.x);
 
     double tKernelStart = omp_get_wtime();
     indexer_fused_kernel<<<grid2, block>>>(
@@ -2000,7 +2051,8 @@ int main(int argc, char *argv[]) {
         startRowNrSp, endRowNrSp,
         nVoxels, nSpotsRange,
         Params.StepsizeOrient, Params.StepsizePos,
-        Params.Distance, Params.Rsample, Params.Hbeam);
+        Params.Distance, Params.Rsample, Params.Hbeam,
+        nstepsPerSpot);
     CUDA_CHECK(cudaGetLastError());
     CUDA_CHECK(cudaDeviceSynchronize());
 
