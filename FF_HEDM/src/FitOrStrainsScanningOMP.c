@@ -616,9 +616,6 @@ static double FitErrors12D(double x[12], int nSpots, double **spotsYZO,
                        BoxSizes, &nTspots, OrientMatrix, TheorSpots);
   double Error = 0;
   int nMatched = 0;
-  static int dbgPerSpot = 0;
-  int doPrint = (dbgPerSpot < 1);
-  if (doPrint) printf("  Per-spot errors (first FitErrors12D eval, nSpots=%d nTspots=%d):\n", nSpots, nTspots);
   for (int sp = 0; sp < nSpots; sp++) {
     double DisplY, DisplZ, ys, zs, Omega;
     DisplacementInTheSpot(x[0], x[1], x[2], Lsd, spotsYZO[sp][5],
@@ -629,29 +626,15 @@ static double FitErrors12D(double x[12], int nSpots, double **spotsYZO,
     CorrectForOme(yt, zt, Lsd, spotsYZO[sp][4], Wavelength, wedge, &ys, &zs,
                   &Omega);
     int spnr = (int)spotsYZO[sp][8];
-    int found = 0;
     for (int k = 0; k < nTspots; k++) {
       if ((int)TheorSpots[k][8] == spnr) {
         double dy = ys - TheorSpots[k][0];
         double dz = zs - TheorSpots[k][1];
-        double dist = sqrt(dy * dy + dz * dz);
-        Error += dist;
+        Error += sqrt(dy * dy + dz * dz);
         nMatched++;
-        found = 1;
-        if (doPrint && sp < 10) {
-          printf("    sp[%d] nrhkls=%d: obs(%.2f,%.2f) theor(%.2f,%.2f) dy=%.2f dz=%.2f dist=%.2f\n",
-                 sp, spnr, ys, zs, TheorSpots[k][0], TheorSpots[k][1], dy, dz, dist);
-        }
         break;
       }
     }
-    if (!found && doPrint && sp < 10) {
-      printf("    sp[%d] nrhkls=%d: NO MATCH in %d theor spots\n", sp, spnr, nTspots);
-    }
-  }
-  if (doPrint) {
-    printf("  Total: nMatched=%d/%d Error=%.4f\n", nMatched, nSpots, Error);
-    dbgPerSpot++;
   }
   return Error;
 }
@@ -679,8 +662,6 @@ static double obj_12D(unsigned n, const double *x, double *grad, void *data) {
                       d->MinEta, d->wedge, d->chi, d->scratch);
 }
 
-static int g_trace9D = 0; // set to 1 to trace all obj_9D calls
-
 static double obj_9D(unsigned n, const double *x, double *grad, void *data) {
   struct data_Fit12D *d = (struct data_Fit12D *)data;
   double x12[12];
@@ -688,14 +669,9 @@ static double obj_9D(unsigned n, const double *x, double *grad, void *data) {
     x12[i] = d->FixedPos[i];
   for (int i = 0; i < 9; i++)
     x12[i + 3] = x[i];
-  double err = FitErrors12D(x12, d->nSpots, d->spotsYZO, d->nhkls, d->hkls, d->Lsd,
+  return FitErrors12D(x12, d->nSpots, d->spotsYZO, d->nhkls, d->hkls, d->Lsd,
                       d->Wavelength, d->nOmeRanges, d->OmegaRanges, d->BoxSizes,
                       d->MinEta, d->wedge, d->chi, d->scratch);
-  if (g_trace9D) {
-    printf("  e=%.2f eu=%.4f,%.4f,%.4f a=%.6f b=%.6f c=%.6f al=%.4f be=%.4f ga=%.4f\n",
-           err, x[0], x[1], x[2], x[3], x[4], x[5], x[6], x[7], x[8]);
-  }
-  return err;
 }
 
 static double obj_6D(unsigned n, const double *x, double *grad, void *data) {
@@ -744,38 +720,20 @@ static void RunFit(int dim, double *x0, double *lb, double *ub,
     for (i = 3; i < 6; i++) steps[i] = 0.01;
   }
 
-  // Call NLopt directly (bypass run_nlopt_optimization wrapper)
-  nlopt_opt opt = nlopt_create(NLOPT_LN_NELDERMEAD, dim);
-  nlopt_set_lower_bounds(opt, lb);
-  nlopt_set_upper_bounds(opt, ub);
-  nlopt_set_min_objective(opt, objfn, data);
-  nlopt_set_initial_step(opt, steps);
-  nlopt_set_maxeval(opt, 5000);
-  nlopt_set_ftol_rel(opt, 1e-10);
-  nlopt_set_xtol_rel(opt, 1e-10);
-  double minf1 = 0;
-  int rc1 = nlopt_optimize(opt, x, &minf1);
-  double minf2 = 0;
-  int rc2 = nlopt_optimize(opt, x, &minf2);
-  nlopt_destroy(opt);
-
-  static int dbgRunFit = 0;
-  if (dbgRunFit < 4) {
-    printf("  RunFit dim=%d: rc1=%d minf1=%.4f, rc2=%d minf2=%.4f\n",
-           dim, rc1, minf1, rc2, minf2);
-    printf("    x0: ");
-    for (i = 0; i < dim; i++) printf("%.4f ", x0[i]);
-    printf("\n    xf: ");
-    for (i = 0; i < dim; i++) printf("%.4f ", x[i]);
-    printf("\n    lb: ");
-    for (i = 0; i < dim; i++) printf("%.4f ", lb[i]);
-    printf("\n    ub: ");
-    for (i = 0; i < dim; i++) printf("%.4f ", ub[i]);
-    printf("\n    st: ");
-    for (i = 0; i < dim; i++) printf("%.4f ", steps[i]);
-    printf("\n");
-    dbgRunFit++;
-  }
+  NLoptConfig config = {0};
+  config.dimension = dim;
+  config.lower_bounds = lb;
+  config.upper_bounds = ub;
+  config.objective_function = objfn;
+  config.obj_data = data;
+  config.initial_guess = x;
+  config.step_sizes = steps;
+  config.max_evaluations = 5000;
+  config.max_time_seconds = 30;
+  config.ftol_rel = 1e-10;
+  config.xtol_rel = 1e-10;
+  run_nlopt_optimization(NLOPT_LN_NELDERMEAD, &config);
+  run_nlopt_optimization(NLOPT_LN_NELDERMEAD, &config);
   for (i = 0; i < dim; i++)
     xOut[i] = x[i];
 }
@@ -1414,22 +1372,6 @@ int main(int argc, char *argv[]) {
     //  2-Stage Fitting (matching GPU architecture)
     // ═══════════════════════════════════════════════════════════
 
-    // Debug: show matched spots for first grain
-    static int dbgSpots = 0;
-    if (dbgSpots < 1) {
-      printf("  Matched %d spots for voxNr=%d (from %d indexer spots)\n",
-             nSpotsComp, voxNr, nSpotsBest);
-      int nShow = nSpotsComp < 5 ? nSpotsComp : 5;
-      for (i = 0; i < nShow; i++) {
-        printf("    sp[%d]: yl=%.2f zl=%.2f ome=%.2f ring=%.0f eta=%.2f "
-               "nrhkls=%.0f maskT=%.0f fitRMSE=%.4f\n",
-               i, spotsYZONew[i][5], spotsYZONew[i][6], spotsYZONew[i][4],
-               spotsYZONew[i][7], spotsYZONew[i][3],
-               spotsYZONew[i][8], spotsYZONew[i][9], spotsYZONew[i][10]);
-      }
-      dbgSpots++;
-    }
-
     // Allocate shared scratch memory for FitErrors12D
     struct FitScratch scratch;
     scratch.hkls = allocMatrix(nhkls, 7);
@@ -1478,31 +1420,14 @@ int main(int argc, char *argv[]) {
     for (i = 0; i < 3; i++)
       fdata.FixedPos[i] = Pos0[i];
 
-    // --- Direct sensitivity test (first grain only) ---
-    static int dbgSens = 0;
-    if (dbgSens < 1) {
-      printf("  hkls[0] = %.1f %.1f %.1f ds=%.6f theta=%.4f rad=%.2f ring=%.0f\n",
-             hkls[0][0], hkls[0][1], hkls[0][2], hkls[0][3], hkls[0][4],
-             hkls[0][5], hkls[0][6]);
-      printf("  hkls[1] = %.1f %.1f %.1f ds=%.6f theta=%.4f rad=%.2f ring=%.0f\n",
-             hkls[1][0], hkls[1][1], hkls[1][2], hkls[1][3], hkls[1][4],
-             hkls[1][5], hkls[1][6]);
-      double xA[12], xB[12];
-      for (i = 0; i < 3; i++) xA[i] = xB[i] = Pos0[i];
-      for (i = 0; i < 3; i++) xA[i+3] = xB[i+3] = Euler0[i];
-      for (i = 0; i < 6; i++) xA[i+6] = LatCin[i];
-      for (i = 0; i < 6; i++) xB[i+6] = LatCin[i];
-      xB[6] += 0.002; // a + 0.002
-      double eA = FitErrors12D(xA, nSpotsComp, spotsYZONew, nhkls, hkls, Lsd,
-                               Wavelength, nOmeRanges, OmegaRanges, BoxSizes,
-                               MinEta, wedge, chi, &scratch);
-      double eB = FitErrors12D(xB, nSpotsComp, spotsYZONew, nhkls, hkls, Lsd,
-                               Wavelength, nOmeRanges, OmegaRanges, BoxSizes,
-                               MinEta, wedge, chi, &scratch);
-      printf("  SENSITIVITY TEST: a=%.4f err=%.4f, a=%.4f err=%.4f, diff=%.6f\n",
-             xA[6], eA, xB[6], eB, eB - eA);
-      dbgSens++;
-    }
+    // Compute initial error
+    double xIni[12];
+    for (i = 0; i < 3; i++) xIni[i] = Pos0[i];
+    for (i = 0; i < 3; i++) xIni[i+3] = Euler0[i];
+    for (i = 0; i < 6; i++) xIni[i+6] = LatCin[i];
+    double initError = FitErrors12D(xIni, nSpotsComp, spotsYZONew, nhkls, hkls,
+                                    Lsd, Wavelength, nOmeRanges, OmegaRanges,
+                                    BoxSizes, MinEta, wedge, chi, &scratch);
 
     // --- Stage 1: 9D fit (orient + strain, pos fixed) ---
     double x9[9], r9[9];
@@ -1517,10 +1442,7 @@ int main(int argc, char *argv[]) {
       lb9[i + 3] = lbABC[i];
       ub9[i + 3] = ubABC[i];
     }
-    static int firstGrain9D = 0;
-    if (firstGrain9D == 0) { g_trace9D = 1; firstGrain9D = 1; }
     RunFit(9, x9, lb9, ub9, obj_9D, &fdata, r9);
-    g_trace9D = 0;
 
     // --- Stage 2: 6D fit (strain only, pos+orient fixed) ---
     double x6[6], r6[6];
@@ -1552,13 +1474,14 @@ int main(int argc, char *argv[]) {
     FreeMemMatrix(scratch.hkls, nhkls);
     FreeMemMatrix(scratch.hklsIn2, nhkls);
     FreeMemMatrix(scratch.TheorSpots, MaxNSpotsBest);
-    printf("Fitvals: Error: %7.2f, Pos: %7.2f %7.2f %7.2f, Orient: %7.2f %7.2f "
-           "%7.2f, LatC: "
-           "%6.4f %6.4f %6.4f %7.3f %7.3f %7.3f\n",
-           ErrorFin[0], FinalResult[0], FinalResult[1], FinalResult[2],
-           FinalResult[3], FinalResult[4], FinalResult[5], FinalResult[6],
-           FinalResult[7], FinalResult[8], FinalResult[9], FinalResult[10],
-           FinalResult[11]);
+    printf("SpotID %6d, %3d spots, IniErr: %8.2f, Orient: %7.2f %7.2f %7.2f -> "
+           "%7.2f %7.2f %7.2f, LatC: %.4f %.4f %.4f %6.3f %6.3f %6.3f, FinalErr: %8.2f\n",
+           SpId, nSpotsComp, initError,
+           Euler0[0], Euler0[1], Euler0[2],
+           FinalResult[3], FinalResult[4], FinalResult[5],
+           FinalResult[6], FinalResult[7], FinalResult[8],
+           FinalResult[9], FinalResult[10], FinalResult[11],
+           finalError);
     double OF[3][3], OrientFit[9], EulerFit[3], PositionFit[3],
         LatticeParameterFit[6];
     for (i = 0; i < 3; i++)
