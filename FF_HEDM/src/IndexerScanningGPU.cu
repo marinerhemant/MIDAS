@@ -1104,6 +1104,9 @@ __global__ void indexer_fused_kernel(
           int bestSpotRow = -1;
           RealType diffOmeBest = 100000.0;
 
+          // DEBUG: track filter stats for first non-empty bin of vox0/spot0
+          int dbg_filterPrint = (voxelIdx == 0 && spotLocalIdx == 0 && dbg_nonEmptyBins <= 1 && nInBin > 0);
+
           for (int is = 0; is < (int)nInBin; is++) {
             int spotRow = (int)d_data[(DataPos + is) * 2 + 0];
             int scannrobs = (int)d_data[(DataPos + is) * 2 + 1];
@@ -1113,26 +1116,43 @@ __global__ void indexer_fused_kernel(
             // Filter 0: beam proximity
             if (d_ypos != nullptr && BeamSize > 0) {
               RealType yRot = xThis * sin(theorOmeRad) + yThis * cos(theorOmeRad);
-              if (fabs(yRot - d_ypos[scannrobs]) >= BeamSize / 2.0)
+              RealType ySpot = d_ypos[scannrobs];
+              if (fabs(yRot - ySpot) >= BeamSize / 2.0) {
+                if (dbg_filterPrint && is < 3)
+                  printf("  REJECT_BEAM is=%d yRot=%.2f ySpot=%.2f diff=%.2f beam=%.2f\n",
+                         is, (double)yRot, (double)ySpot, (double)fabs(yRot - ySpot), (double)(BeamSize/2.0));
                 continue;
+              }
             }
 
             // Filter 1: radial difference
             RealType obsRadDiff = d_ObsSpotsLab[base + 8];
-            if (fabs(theorRadDiff - obsRadDiff) >= c_params.MarginRadial)
+            if (fabs(theorRadDiff - obsRadDiff) >= c_params.MarginRadial) {
+              if (dbg_filterPrint && is < 3)
+                printf("  REJECT_RAD is=%d theorRad=%.2f obsRad=%.2f diff=%.2f margin=%.2f\n",
+                       is, (double)theorRadDiff, (double)obsRadDiff, (double)fabs(theorRadDiff-obsRadDiff), (double)c_params.MarginRadial);
               continue;
+            }
 
             // Filter 2: RefRad
             if (!skipRadialFilter) {
               RealType obsRefRad = d_ObsSpotsLab[base + 3];
-              if (fabs(RefRad - obsRefRad) >= c_params.MarginRad)
+              if (fabs(RefRad - obsRefRad) >= c_params.MarginRad) {
+                if (dbg_filterPrint && is < 3)
+                  printf("  REJECT_REFRAD is=%d RefRad=%.2f obsRefRad=%.2f diff=%.2f margin=%.2f\n",
+                         is, (double)RefRad, (double)obsRefRad, (double)fabs(RefRad-obsRefRad), (double)c_params.MarginRad);
                 continue;
+              }
             }
 
             // Filter 3: eta margin
             RealType obsEta = d_ObsSpotsLab[base + 6];
-            if (fabs(theorEta - obsEta) >= etamargin)
+            if (fabs(theorEta - obsEta) >= etamargin) {
+              if (dbg_filterPrint && is < 3)
+                printf("  REJECT_ETA is=%d theorEta=%.4f obsEta=%.4f diff=%.4f margin=%.4f\n",
+                       is, (double)theorEta, (double)obsEta, (double)fabs(theorEta-obsEta), (double)etamargin);
               continue;
+            }
 
             // Find closest omega match
             RealType obsOme = d_ObsSpotsLab[base + 2];
