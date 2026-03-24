@@ -59,6 +59,7 @@
 #define MAX_N_RINGS 500
 #define MAX_N_HKLS 5000
 #define MAX_N_STEPS 2000
+#define GPU_MAX_N_STEPS 10  // nPN is typically 1-5; keep per-thread arrays small
 #define MAX_N_OMEGARANGES 2000
 #define N_COL_THEORSPOTS 14
 #define N_COL_OBSSPOTS 10
@@ -923,71 +924,53 @@ __global__ void indexer_fused_kernel(
   if (fabs(newY - d_ypos[(int)d_ObsSpotsLab[idnr * N_COL_OBSSPOTS + 9]]) > BeamSize / 2)
     return;
 
-  // Compute seedIdx (count passing spots before this one)
-  int seedIdx = 0;
-  for (int j = startRowNrSp; j < idnr; j++) {
-    double nY = xThis * d_spotSinOme[j] + yThis * d_spotCosOme[j];
-    if (fabs(nY - d_ypos[(int)d_ObsSpotsLab[j * N_COL_OBSSPOTS + 9]]) <= BeamSize / 2)
-      seedIdx++;
-  }
-
   // Read spot data
   double ys = d_ObsSpotsLab[idnr * N_COL_OBSSPOTS + 0];
   double zs = d_ObsSpotsLab[idnr * N_COL_OBSSPOTS + 1];
   double omega = d_ObsSpotsLab[idnr * N_COL_OBSSPOTS + 2];
-  double eta = d_ObsSpotsLab[idnr * N_COL_OBSSPOTS + 6];
   int ringnr = (int)d_ObsSpotsLab[idnr * N_COL_OBSSPOTS + 5];
 
-  // Generate ideal spots — use same limit as CPU (MAX_N_STEPS)
-  double y0v[MAX_N_STEPS], z0v[MAX_N_STEPS];
-  int nPN = 0;
-  d_GenerateIdealSpots(ys, zs, d_RingTtheta[ringnr], eta,
-                       c_RingRadii[ringnr], Rsample, Hbeam, StepsizePos,
-                       y0v, z0v, &nPN, MAX_N_STEPS);
-  if (nPN > MAX_N_STEPS) nPN = MAX_N_STEPS;
+  // Use spotLocalIdx directly for result indexing (avoids O(n) seedIdx scan)
+  SpotResult *res = &d_results[voxelIdx * nSpotsRange + spotLocalIdx];
 
-  SpotResult *res = &d_results[voxelIdx * nSpotsRange + seedIdx];
+  // Use observed spot position directly (matching CPU DoIndexing)
+  double xi, yi, zi;
+  d_MakeUnitLength(Distance, ys, zs, &xi, &yi, &zi);
+  double g1, g2, g3;
+  d_spot_to_gv(xi, yi, zi, omega, &g1, &g2, &g3);
 
+  double hn[3] = {g1, g2, g3};
+  double hkl_d[3] = {d_RingHKL[ringnr][0], d_RingHKL[ringnr][1], d_RingHKL[ringnr][2]};
 
-  for (int isp = 0; isp < nPN; isp++) {
-    double xi, yi, zi;
-    d_MakeUnitLength(Distance, y0v[isp], z0v[isp], &xi, &yi, &zi);
-    double g1, g2, g3;
-    d_spot_to_gv(xi, yi, zi, omega, &g1, &g2, &g3);
+  // Generate candidate orientation base matrix (matching CPU GenerateCandidateOrientationsF)
+  double v[3];
+  crossProduct(v, hkl_d, hn);
+  double hl = CalcLength(hkl_d[0], hkl_d[1], hkl_d[2]);
+  double nl = CalcLength(hn[0], hn[1], hn[2]);
+  double dpp = dot(hkl_d, hn);
+  double angled = rad2deg * acos(fmax(-1.0, fmin(1.0, dpp / (hl * nl))));
+  double RM[3][3];
+  d_AxisAngle2RotMatrix(v, angled, RM);
 
-    double hn[3] = {g1, g2, g3};
-    double hkl_d[3] = {d_RingHKL[ringnr][0], d_RingHKL[ringnr][1], d_RingHKL[ringnr][2]};
+  // This thread handles ONE orientation step (o = orientIdx, bounded by nstepsPerSpot)
+  int o = orientIdx;
+  double RM2[3][3], RM3[3][3];
+  d_AxisAngle2RotMatrix(hn, o * StepsizeOrient, RM2);
+  d_MatrixMultF33(RM2, RM, RM3);
 
-    // Generate candidate orientations
-    double v[3];
-    crossProduct(v, hkl_d, hn);
-    double hl = CalcLength(hkl_d[0], hkl_d[1], hkl_d[2]);
-    double nl = CalcLength(hn[0], hn[1], hn[2]);
-    double dpp = dot(hkl_d, hn);
-    double angled = rad2deg * acos(fmax(-1.0, fmin(1.0, dpp / (hl * nl))));
-    double RM[3][3];
-    d_AxisAngle2RotMatrix(v, angled, RM);
+  // Build OrMat
+  RealType OrMat[3][3];
+  for (int r = 0; r < 3; r++)
+    for (int c = 0; c < 3; c++)
+      OrMat[r][c] = (RealType)RM3[r][c];
 
-    // This thread handles ONE orientation step (o = orientIdx, bounded by nstepsPerSpot)
-    int o = orientIdx;
-      double RM2[3][3], RM3[3][3];
-      d_AxisAngle2RotMatrix(hn, o * StepsizeOrient, RM2);
-      d_MatrixMultF33(RM2, RM, RM3);
-
-      // Build OrMat
-      RealType OrMat[3][3];
-      for (int r = 0; r < 3; r++)
-        for (int c = 0; c < 3; c++)
-          OrMat[r][c] = (RealType)RM3[r][c];
-
-      // ═══ FUSED CalcDiffrSpots + displacement + CompareSpots ═══
-      // No scratch buffer — one HKL at a time, match immediately.
-      int nTspots = 0;
-      int nTspotsFracCalc = 0;
-      int nMatched = 0;
-      int nMatchedFrac = 0;
-      RealType iaSum = 0.0;
-      int iaCount = 0;
+  // ═══ FUSED CalcDiffrSpots + displacement + CompareSpots ═══
+  int nTspots = 0;
+  int nTspotsFracCalc = 0;
+  int nMatched = 0;
+  int nMatchedFrac = 0;
+  RealType iaSum = 0.0;
+  int iaCount = 0;
 
 
       for (int ih = 0; ih < n_hkls_d; ih++) {
@@ -1153,7 +1136,7 @@ __global__ void indexer_fused_kernel(
 
       // ═══ End of fused CalcDiffrSpots + CompareSpots ═══
 
-      if (nTspots == 0 || nTspotsFracCalc == 0) continue;
+      if (nTspots == 0 || nTspotsFracCalc == 0) return;
 
       RealType fracMatches = (RealType)nMatchedFrac / (RealType)nTspotsFracCalc;
       RealType avgIA = (iaCount > 0) ? (iaSum / (RealType)iaCount) : 999.0;
@@ -1183,8 +1166,7 @@ __global__ void indexer_fused_kernel(
           break;
         }
       }
-    } // ideal spot loop
-
+  }
 
 }
 
