@@ -105,9 +105,6 @@ static int n_eta_bins = 0;
 static int n_ome_bins = 0;
 static RealType EtaBinSize = 0;
 static RealType OmeBinSize = 0;
-static int BigDetSize = 0;
-static int *BigDetector = NULL;
-static long long int totNrPixelsBigDetector = 0;
 static double pixelsize = 0; // sscanf %lf writes here
 static double ABCABG[6];
 static int SGNum = 0;
@@ -905,7 +902,7 @@ __global__ void indexer_fused_kernel(
     int nVoxels, int nSpotsRange,
     double StepsizeOrient, double StepsizePos,
     double Distance, double Rsample, double Hbeam,
-    int nstepsPerSpot)  // uniform nsteps for all seed spots (same ring)
+    int nstepsPerSpot, double MarginOme, double MinMatchesToAcceptFrac)
 {
   int spotLocalIdx = blockIdx.x;           // one x-slice per spot
   int orientIdx = blockIdx.y * blockDim.x + threadIdx.x;  // orientation index
@@ -966,9 +963,7 @@ __global__ void indexer_fused_kernel(
 
   // ═══ FUSED CalcDiffrSpots + displacement + CompareSpots ═══
   int nTspots = 0;
-  int nTspotsFracCalc = 0;
   int nMatched = 0;
-  int nMatchedFrac = 0;
   RealType iaSum = 0.0;
   int iaCount = 0;
 
@@ -1014,15 +1009,8 @@ __global__ void indexer_fused_kernel(
           if (!keep) continue;
 
 
-
           nTspots++;
 
-          // Check ring rejection for fraction calc
-          int isRejected = 0;
-          for (int rr = 0; rr < nRingsToRejectCalc; rr++) {
-            if (rn == d_ringsToReject[rr]) { isRejected = 1; break; }
-          }
-          if (!isRejected) nTspotsFracCalc++;
 
           // ─── Apply displacement (inline) ───
           RealType theorOmeRad = Omega * deg2rad;
@@ -1060,7 +1048,7 @@ __global__ void indexer_fused_kernel(
 
           int matchFound = 0;
           size_t bestSpotRow = 0;
-          RealType diffOmeBest = 100000.0;
+          RealType diffOmeBest = MarginOme + 0.00001;  // match CPU CompareSpots
 
           for (size_t is = 0; is < nInBin; is++) {
             size_t spotRow = d_data[(DataPos + is) * 2 + 0];
@@ -1095,7 +1083,6 @@ __global__ void indexer_fused_kernel(
 
           if (matchFound) {
             nMatched++;
-            if (!isRejected) nMatchedFrac++;
 
             // Compute internal angle
             size_t base = bestSpotRow * N_COL_OBSSPOTS;
@@ -1136,15 +1123,13 @@ __global__ void indexer_fused_kernel(
 
       // ═══ End of fused CalcDiffrSpots + CompareSpots ═══
 
-      if (nTspots == 0 || nTspotsFracCalc == 0) return;
+      if (nTspots == 0) return;
 
-      RealType fracMatches = (RealType)nMatchedFrac / (RealType)nTspotsFracCalc;
+      RealType fracMatches = (RealType)nMatched / (RealType)nTspots;
+      if (fracMatches < MinMatchesToAcceptFrac) return;  // match CPU filter
       RealType avgIA = (iaCount > 0) ? (iaSum / (RealType)iaCount) : 999.0;
 
       // Atomic best-match update — double-precision comparison
-      // Pack fracMatches (high 32 bits) and ~avgIA (low 32 bits) into 64-bit key
-      // using __double_as_longlong for full double precision on fracMatches.
-      // For the IA tiebreaker, use float (sufficient for angle precision).
       unsigned long long fracBits = __double_as_longlong(fracMatches);
       unsigned int iaBits = ~__float_as_int((float)avgIA);
       unsigned long long newKey = (fracBits & 0xFFFFFFFF00000000ULL) | (unsigned long long)iaBits;
@@ -1166,8 +1151,6 @@ __global__ void indexer_fused_kernel(
           break;
         }
       }
-  }
-
 }
 
 
@@ -1237,17 +1220,7 @@ static double h_CalcRotationAngle(int RingNr) {
 
 // ─── Data I/O (same as IndexerOMP) ─────────────────────────
 
-static size_t ReadBigDet(char *cwd) {
-  char fn[2048];
-  sprintf(fn, "%s/BigDetectorMask.bin", cwd);
-  int fd = open(fn, O_RDONLY);
-  check(fd < 0, "open %s: %s", fn, strerror(errno));
-  struct stat s;
-  fstat(fd, &s);
-  BigDetector = (int *)mmap(0, s.st_size, PROT_READ, MAP_SHARED, fd, 0);
-  check(BigDetector == MAP_FAILED, "mmap %s: %s", fn, strerror(errno));
-  return s.st_size;
-}
+
 
 static int ReadParams(char *fn, struct TParams *P) {
   FILE *fp = fopen(fn, "r");
@@ -1261,7 +1234,6 @@ static int ReadParams(char *fn, struct TParams *P) {
   P->NoOfOmegaRanges = 0;
   P->isGrainsInput = 0;
   P->nRingsToRejectCalc = 0;
-  totNrPixelsBigDetector = 0;
   while (fgets(line, 4096, fp)) {
     if (!strncmp(line, "RingNumbers ", 12)) {
       sscanf(line, "%s %d", dummy, &P->RingNumbers[NoRingNumbers++]);
@@ -1271,11 +1243,7 @@ static int ReadParams(char *fn, struct TParams *P) {
       sscanf(line, "%s %d", dummy, &P->RingsToReject[P->nRingsToRejectCalc++]);
       continue;
     }
-    if (!strncmp(line, "BigDetSize ", 11)) {
-      sscanf(line, "%s %d", dummy, &BigDetSize);
-      totNrPixelsBigDetector = (long long)BigDetSize * BigDetSize / 32 + 1;
-      continue;
-    }
+
     if (!strncmp(line, "px ", 3)) {
       sscanf(line, "%s %lf", dummy, &pixelsize);
       continue;
@@ -1392,8 +1360,6 @@ static int ReadParams(char *fn, struct TParams *P) {
     }
   }
   fclose(fp);
-  if (totNrPixelsBigDetector)
-    ReadBigDet(dirname(P->OutputFolder));
   for (int i = 0; i < MAX_N_RINGS; i++)
     P->RingRadii[i] = 0;
   for (int i = 0; i < P->NrOfRings; i++)
@@ -2034,7 +2000,7 @@ int main(int argc, char *argv[]) {
         nVoxels, nSpotsRange,
         Params.StepsizeOrient, Params.StepsizePos,
         Params.Distance, Params.Rsample, Params.Hbeam,
-        nstepsPerSpot);
+        nstepsPerSpot, Params.MarginOme, Params.MinMatchesToAcceptFrac);
     CUDA_CHECK(cudaGetLastError());
     CUDA_CHECK(cudaDeviceSynchronize());
 

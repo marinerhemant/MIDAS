@@ -114,14 +114,9 @@ double ABCABG[6];
 //~ int   RingMult[MAX_N_RINGS];
 double RingHKL[MAX_N_RINGS][3];
 
-// For detector mapping!
-int BigDetSize = 0;
-int *BigDetector;
-long long int totNrPixelsBigDetector;
 double pixelsize;
 double BeamSize;
 int numScans;
-#define TestBit(A, k) (A[(k / 32)] & (1 << (k % 32)))
 
 RealType omemargins[181];
 RealType etamargins[MAX_N_RINGS];
@@ -398,8 +393,6 @@ void CalcDiffrSpots_Furnace(RealType OrientMatrix[3][3],
   int spotid = 0;
   int OrientID = 0;
   int ringnr = 0;
-  int YCInt, ZCInt;
-  long long int idx;
   for (indexhkl = 0; indexhkl < n_hkls; indexhkl++) {
     Ghkl[0] = hkls[indexhkl][0];
     Ghkl[1] = hkls[indexhkl][1];
@@ -428,14 +421,6 @@ void CalcDiffrSpots_Furnace(RealType OrientMatrix[3][3],
             (zl < BoxSizes[OmegaRangeNo][3])) {
           KeepSpot = 1;
           break;
-        }
-      }
-      if (BigDetSize != 0 && KeepSpot == 1) {
-        YCInt = (int)floor((BigDetSize / 2) - (-yl / pixelsize));
-        ZCInt = (int)floor(((zl / pixelsize + (BigDetSize / 2))));
-        idx = (long long int)(YCInt + BigDetSize * ZCInt);
-        if (!TestBit(BigDetector, idx)) {
-          KeepSpot = 0;
         }
       }
       if (KeepSpot) {
@@ -797,24 +782,7 @@ struct IndexerScratch {
   RealType *IAgrainspots;
 };
 
-size_t ReadBigDet(char *cwd) {
-  int fd;
-  struct stat s;
-  int status;
-  size_t size;
-  char filename[2048];
-  sprintf(filename, "%s/BigDetectorMask.bin", cwd);
-  int rc;
-  fd = open(filename, O_RDONLY);
-  check(fd < 0, "open %s failed: %s", filename, strerror(errno));
-  status = fstat(fd, &s);
-  check(status < 0, "stat %s failed: %s", filename, strerror(errno));
-  size = s.st_size;
-  BigDetector = mmap(0, size, PROT_READ, MAP_SHARED, fd, 0);
-  check(BigDetector == MAP_FAILED, "mmap %s failed: %s", filename,
-        strerror(errno));
-  return size;
-}
+
 
 int ReadParams(char FileName[], struct TParams *Params) {
 #define MAX_LINE_LENGTH 4096
@@ -834,7 +802,6 @@ int ReadParams(char FileName[], struct TParams *Params) {
     printf("Cannot open file: %s.\n", FileName);
     return (1);
   }
-  totNrPixelsBigDetector = 0;
   while (fgets(line, MAX_LINE_LENGTH, fp) != NULL) {
     str = "RingNumbers ";
     cmpres = strncmp(line, str, strlen(str));
@@ -850,16 +817,7 @@ int ReadParams(char FileName[], struct TParams *Params) {
       NoRingNumbers++;
       continue;
     }
-    str = "BigDetSize ";
-    cmpres = strncmp(line, str, strlen(str));
-    if (cmpres == 0) {
-      sscanf(line, "%s %d", dummy, &BigDetSize);
-      totNrPixelsBigDetector = BigDetSize;
-      totNrPixelsBigDetector *= BigDetSize;
-      totNrPixelsBigDetector /= 32;
-      totNrPixelsBigDetector++;
-      continue;
-    }
+
     str = "px ";
     cmpres = strncmp(line, str, strlen(str));
     if (cmpres == 0) {
@@ -1051,10 +1009,6 @@ int ReadParams(char FileName[], struct TParams *Params) {
     }
     printf("Warning: skipping line in parameters file:\n");
     printf("%s\n", line);
-  }
-  if (totNrPixelsBigDetector != 0) {
-    char *cwd = dirname(Params->OutputFolder);
-    size_t sz = ReadBigDet(cwd);
   }
   int i;
   for (i = 0; i < MAX_N_RINGS; i++)
@@ -1462,8 +1416,6 @@ int main(int argc, char *argv[]) {
          Params.Distance);
   printf("║    PixelSize       : %-10.4f µm                          ║\n",
          pixelsize);
-  printf("║    BigDetSize      : %-6d px                            ║\n",
-         BigDetSize);
   printf("║    Rsample         : %-10.4f                            ║\n",
          Params.Rsample);
   printf("║    Hbeam           : %-10.4f                            ║\n",
