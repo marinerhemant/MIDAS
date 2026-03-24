@@ -1374,23 +1374,8 @@ int main(int argc, char *argv[]) {
     int nSpotsComp = h_nSpotsPerGrain[g];
     double *out = &h_results[g * 27];
 
-    // Find rowNr
-    int rowNr = -1;
-    FILE *sf = fopen("SpotsToIndex.csv", "r");
-    char line[5024];
-    int cnt = 0;
-    while (fgets(line, sizeof(line), sf)) {
-      int id;
-      sscanf(line, "%d", &id);
-      if (id == SpId) {
-        rowNr = cnt;
-        break;
-      }
-      cnt++;
-    }
-    fclose(sf);
-    if (rowNr < 0)
-      rowNr = g;
+    // rowNr = grain index (grains are processed in SpotsToIndex.csv order)
+    int rowNr = g;
 
     // Fix SpotID in output
     out[0] = SpId;
