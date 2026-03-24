@@ -748,15 +748,12 @@ fitGrainsKernel(int nGrains,
   for (int i = 0; i < 6; i++)
     LatCin[i] = d_LatCin[i];
 
-  // ─── Initialize spot→HKL mapping ───
-  // Compute theoretical spots from initial orientation and match against
-  // observed spots. Sets spotsYZO cols 4(omega_theor), 5(yl_theor),
-  // 6(zl_theor), 8(nrhkls sequence number). This mirrors the CPU's
-  // CalcAngleErrors initial assignment.
+  // ─── Initialize spot→HKL mapping (matching CPU CalcAngleErrors) ───
+  // Match observed spots to theoretical by ring number, omega proximity,
+  // and G-vector angle. Only keep spots with min angle < 1°.
   {
     RealType *initHkls = scratch;
     RealType *initTheorSpots = scratch + d_params.nhkls * 7;
-    // Use raw HKLs (no lattice correction for initial matching)
     for (int i = 0; i < d_params.nhkls * 7; i++)
       initHkls[i] = d_hklsRaw[i];
     int nInitT =
@@ -764,37 +761,64 @@ fitGrainsKernel(int nGrains,
                            d_params.nOmeRanges, d_params.BoxSizes, initHkls,
                            d_params.nhkls, d_params.MinEta, initTheorSpots);
 
+    int nMatched = 0;
     for (int sp = 0; sp < nSpots; sp++) {
       RealType *s = &spots[sp * 11];
-      RealType obsY = s[0], obsZ = s[1], obsOme = s[2];
-      RealType bestDist = 1e20;
+      // Compute corrected position and G-vector for observed spot
+      RealType DisplY, DisplZ, ys, zs, Omega;
+      gpu_DisplacementInTheSpot(Pos0[0], Pos0[1], Pos0[2], d_params.Lsd,
+                                s[5], s[6], s[4], d_params.wedge, d_params.chi,
+                                &DisplY, &DisplZ);
+      RealType yt = s[5] - DisplY, zt = s[6] - DisplZ;
+      gpu_CorrectForOme(yt, zt, d_params.Lsd, s[4], d_params.Wavelength,
+                        d_params.wedge, &ys, &zs, &Omega);
+      RealType lenK = sqrt(d_params.Lsd * d_params.Lsd + ys * ys + zs * zs);
+      RealType Radius = sqrt(ys * ys + zs * zs);
+      RealType Theta = 0.5 * atan(Radius / d_params.Lsd) * rad2deg;
+      RealType g1, g2, g3;
+      gpu_SpotToGv(d_params.Lsd / lenK, ys / lenK, zs / lenK, Omega, Theta,
+                   &g1, &g2, &g3);
+      RealType NormGObs = sqrt(g1 * g1 + g2 * g2 + g3 * g3);
+      int obsRing = (int)s[7];
+
+      // Find best matching theoretical spot: ring match + omega < 5° + min angle
+      RealType minAngle = 1000000;
       int bestIdx = -1;
       for (int t = 0; t < nInitT; t++) {
-        RealType tyl = initTheorSpots[t * 9 + 0],
-                 tzl = initTheorSpots[t * 9 + 1];
-        RealType tome = initTheorSpots[t * 9 + 2];
-        // Compute displaced theoretical position for initial grain pos
-        RealType DisplY = 0, DisplZ = 0;
-        gpu_DisplacementInTheSpot(Pos0[0], Pos0[1], Pos0[2], d_params.Lsd, tyl,
-                                  tzl, tome, d_params.wedge, d_params.chi,
-                                  &DisplY, &DisplZ);
-        RealType dyl = tyl - DisplY, dzl = tzl - DisplZ;
-        RealType dy = obsY - dyl, dz = obsZ - dzl;
-        RealType dOme = obsOme - tome;
-        RealType dist = dy * dy + dz * dz + dOme * dOme;
-        if (dist < bestDist) {
-          bestDist = dist;
+        int theorRing = (int)initTheorSpots[t * 9 + 7];
+        if (theorRing != obsRing)
+          continue;
+        RealType theorOme = initTheorSpots[t * 9 + 2];
+        if (fabs(Omega - theorOme) > 5.0)
+          continue;
+        // G-vector angle
+        RealType gt0 = initTheorSpots[t * 9 + 3],
+                 gt1 = initTheorSpots[t * 9 + 4],
+                 gt2 = initTheorSpots[t * 9 + 5];
+        RealType NGt = sqrt(gt0 * gt0 + gt1 * gt1 + gt2 * gt2);
+        RealType dot = g1 * gt0 + g2 * gt1 + g3 * gt2;
+        RealType ratio = dot / (NormGObs * NGt);
+        if (ratio > 1) ratio = 1;
+        if (ratio < -1) ratio = -1;
+        RealType angle = fabs(acos(ratio) * rad2deg);
+        if (angle < minAngle) {
+          minAngle = angle;
           bestIdx = t;
         }
       }
-      if (bestIdx >= 0) {
-        // Only set col 8 = theoretical spot sequence number (nrhkls).
-        // Cols 4,5,6 are OBSERVED positions from AllSpots — they stay as
-        // loaded. CalcAngleErrors in the CPU also only changes col 8, not
-        // 4,5,6.
-        s[8] = initTheorSpots[bestIdx * 9 + 8]; // nrhkls sequence number
+
+      if (bestIdx >= 0 && minAngle < 1.0) {
+        // Compact matched spots in-place
+        if (nMatched != sp) {
+          for (int k = 0; k < 11; k++)
+            spots[nMatched * 11 + k] = s[k];
+        }
+        spots[nMatched * 11 + 8] = initTheorSpots[bestIdx * 9 + 8]; // nrhkls
+        nMatched++;
       }
     }
+    nSpots = nMatched;
+    d_nSpotsPerGrain[gIdx] = nMatched;
   }
 
   // ─── Scanning mode: positions are FIXED from the voxel grid ───
