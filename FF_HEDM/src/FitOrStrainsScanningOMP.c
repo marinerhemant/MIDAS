@@ -1368,6 +1368,14 @@ int main(int argc, char *argv[]) {
       for (j = 0; j < 11; j++)
         spotsYZONew[i][j] = Splist[i][j];
 
+    // Debug: print nrhkls assignments for SpotID 78
+    if (SpId == 78) {
+      printf("CPU SpotID78 Matched %d spots (from %d). nrhkls:", nSpotsComp, nSpotsBest);
+      for (i = 0; i < nSpotsComp && i < 20; i++)
+        printf(" %d", (int)spotsYZONew[i][8]);
+      printf("\n");
+    }
+
     // ═══════════════════════════════════════════════════════════
     //  2-Stage Fitting (matching GPU architecture)
     // ═══════════════════════════════════════════════════════════

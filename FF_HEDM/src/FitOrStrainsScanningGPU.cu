@@ -819,6 +819,14 @@ fitGrainsKernel(int nGrains,
     }
     nSpots = nMatched;
     d_nSpotsPerGrain[gIdx] = nMatched;
+
+    // Debug: print nrhkls assignments for first grain
+    if (gIdx == 0) {
+      printf("GPU[0] Matched %d spots. nrhkls:", nMatched);
+      for (int i = 0; i < nMatched && i < 20; i++)
+        printf(" %d", (int)spots[i * 11 + 8]);
+      printf("\n");
+    }
   }
 
   // ─── Scanning mode: positions are FIXED from the voxel grid ───
