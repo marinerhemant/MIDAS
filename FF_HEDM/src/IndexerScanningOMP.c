@@ -1257,6 +1257,19 @@ int DoIndexing(int SpotID, int voxNr, double xThis, double yThis, double zThis,
     MinMatchesToAccept = nTspots * Params.MinMatchesToAcceptFrac;
     bestnMatchesPos = -1;
     bestnTspotsPos = 0;
+    // DEBUG: dump theor spots for first orientation of first voxel
+    {
+      static int cpu_theor_dumped = 0;
+      if (or == 0 && cpu_theor_dumped < 1) {
+        cpu_theor_dumped++;
+        for (sp = 0; sp < nTspots; sp++) {
+          printf("CPU_THEOR sp=%d rn=%d eta=%.4f ome=%.4f yl=%.2f zl=%.2f rad=%.2f\n",
+                 sp, (int)TheorSpots[sp][9], TheorSpots[sp][7], TheorSpots[sp][6],
+                 TheorSpots[sp][4], TheorSpots[sp][5],
+                 Params.RingRadii[(int)TheorSpots[sp][9]]);
+        }
+      }
+    }
     for (sp = 0; sp < nTspots; sp++) {
       displacement_spot_needed_COM(
           ga, gb, gc, TheorSpots[sp][3], TheorSpots[sp][4], TheorSpots[sp][5],

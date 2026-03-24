@@ -1039,6 +1039,12 @@ __global__ void indexer_fused_kernel(
           }
           if (!keep) continue;
 
+          // DEBUG: dump theor spot positions for vox0/spot0/isp0/o=0
+          if (voxelIdx == 0 && spotLocalIdx == 0 && isp == 0 && o == 0) {
+            printf("GPU_THEOR ih=%d rn=%d eta=%.4f ome=%.4f yl=%.2f zl=%.2f rad=%.2f\n",
+                   ih, rn, (double)Eta, (double)Omega, (double)yl, (double)zl, (double)RingRadius);
+          }
+
           nTspots++;
 
           // Check ring rejection for fraction calc
