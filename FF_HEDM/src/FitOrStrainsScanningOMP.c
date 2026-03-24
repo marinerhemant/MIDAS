@@ -669,9 +669,16 @@ static double obj_9D(unsigned n, const double *x, double *grad, void *data) {
     x12[i] = d->FixedPos[i];
   for (int i = 0; i < 9; i++)
     x12[i + 3] = x[i];
-  return FitErrors12D(x12, d->nSpots, d->spotsYZO, d->nhkls, d->hkls, d->Lsd,
+  double err = FitErrors12D(x12, d->nSpots, d->spotsYZO, d->nhkls, d->hkls, d->Lsd,
                       d->Wavelength, d->nOmeRanges, d->OmegaRanges, d->BoxSizes,
                       d->MinEta, d->wedge, d->chi, d->scratch);
+  static int obj9D_count = 0;
+  if (obj9D_count < 15) {
+    printf("    obj_9D[%d]: e=%.2f a=%.6f b=%.6f c=%.6f al=%.4f be=%.4f ga=%.4f\n",
+           obj9D_count, err, x[3], x[4], x[5], x[6], x[7], x[8]);
+    obj9D_count++;
+  }
+  return err;
 }
 
 static double obj_6D(unsigned n, const double *x, double *grad, void *data) {
@@ -1387,8 +1394,24 @@ int main(int argc, char *argv[]) {
         spotsYZONew[i][j] = Splist[i][j];
 
     // ═══════════════════════════════════════════════════════════
-    //  4-Stage Fitting (matching GPU architecture)
+    //  2-Stage Fitting (matching GPU architecture)
     // ═══════════════════════════════════════════════════════════
+
+    // Debug: show matched spots for first grain
+    static int dbgSpots = 0;
+    if (dbgSpots < 1) {
+      printf("  Matched %d spots for voxNr=%d (from %d indexer spots)\n",
+             nSpotsComp, voxNr, nSpotsBest);
+      int nShow = nSpotsComp < 5 ? nSpotsComp : 5;
+      for (i = 0; i < nShow; i++) {
+        printf("    sp[%d]: yl=%.2f zl=%.2f ome=%.2f ring=%.0f eta=%.2f "
+               "nrhkls=%.0f maskT=%.0f fitRMSE=%.4f\n",
+               i, spotsYZONew[i][5], spotsYZONew[i][6], spotsYZONew[i][4],
+               spotsYZONew[i][7], spotsYZONew[i][3],
+               spotsYZONew[i][8], spotsYZONew[i][9], spotsYZONew[i][10]);
+      }
+      dbgSpots++;
+    }
 
     // Allocate shared scratch memory for FitErrors12D
     struct FitScratch scratch;
