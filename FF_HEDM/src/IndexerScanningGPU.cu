@@ -2287,13 +2287,13 @@ int main(int argc, char *argv[]) {
     // ═══ DEBUG: single-OrMat evaluation kernel ═══
     {
       printf("  === DEBUG: Evaluating CPU best OrMat on GPU ===\n");
-      // CPU best: vox=40 ga=16.666667 gb=16.666667
+      // CPU best: vox=25 ga=0.000000 gb=8.333333
       double h_testOM[9] = {
-        0.6287136945, 0.7144123299, -0.3071385896,
-       -0.5816895223, 0.1699280787, -0.7954632284,
-       -0.5160972679, 0.6787779246,  0.5224022771
+        0.6287306926, 0.7143927190, -0.3071494086,
+       -0.5816900491, 0.1699358833, -0.7954611759,
+       -0.5160759663, 0.6787966106,  0.5223990414
       };
-      double h_ga = 16.666667, h_gb = 16.666667;
+      double h_ga = 0.000000, h_gb = 8.333333;
       // Upload OrMat to GPU
       double *d_testOM;
       CUDA_CHECK(cudaMalloc(&d_testOM, 9 * sizeof(double)));
