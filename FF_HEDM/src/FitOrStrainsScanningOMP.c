@@ -710,7 +710,16 @@ static void RunFit(int dim, double *x0, double *lb, double *ub,
   double x[24], steps[24];
   for (i = 0; i < dim; i++) {
     x[i] = x0[i];
-    steps[i] = 0.05; // Match GPU's nm_optimize init_step
+    steps[i] = 0.05; // default for euler angles
+  }
+  // For 9D: [euler3, latc6] — smaller steps for lattice params
+  // For 6D: [latc6] — all lattice params
+  if (dim == 9) {
+    for (i = 3; i < 6; i++) steps[i] = 0.001;  // a, b, c
+    for (i = 6; i < 9; i++) steps[i] = 0.01;   // alpha, beta, gamma
+  } else if (dim == 6) {
+    for (i = 0; i < 3; i++) steps[i] = 0.001;  // a, b, c
+    for (i = 3; i < 6; i++) steps[i] = 0.01;   // alpha, beta, gamma
   }
   NLoptConfig config = {0};
   config.dimension = dim;
@@ -722,8 +731,8 @@ static void RunFit(int dim, double *x0, double *lb, double *ub,
   config.step_sizes = steps;
   config.max_evaluations = 5000;
   config.max_time_seconds = 30;
-  config.ftol_rel = 1e-5;
-  config.xtol_rel = 1e-5;
+  config.ftol_rel = 1e-10;
+  config.xtol_rel = 1e-10;
   int rc1 = run_nlopt_optimization(NLOPT_LN_NELDERMEAD, &config);
   double minf1 = config.min_function_val;
   int rc2 = run_nlopt_optimization(NLOPT_LN_NELDERMEAD, &config);
@@ -731,13 +740,19 @@ static void RunFit(int dim, double *x0, double *lb, double *ub,
   static int dbgRunFit = 0;
   if (dbgRunFit < 4) {
     printf("  RunFit dim=%d: rc1=%d minf1=%.4f, rc2=%d minf2=%.4f, "
-           "ftol=%.1e xtol=%.1e step=%.3f\n",
+           "ftol=%.1e xtol=%.1e\n",
            dim, rc1, minf1, rc2, minf2,
-           config.ftol_rel, config.xtol_rel, steps[0]);
+           config.ftol_rel, config.xtol_rel);
     printf("    x0: ");
     for (i = 0; i < dim; i++) printf("%.4f ", x0[i]);
     printf("\n    xf: ");
     for (i = 0; i < dim; i++) printf("%.4f ", x[i]);
+    printf("\n    lb: ");
+    for (i = 0; i < dim; i++) printf("%.4f ", lb[i]);
+    printf("\n    ub: ");
+    for (i = 0; i < dim; i++) printf("%.4f ", ub[i]);
+    printf("\n    st: ");
+    for (i = 0; i < dim; i++) printf("%.4f ", steps[i]);
     printf("\n");
     dbgRunFit++;
   }
