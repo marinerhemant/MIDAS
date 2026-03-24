@@ -1512,6 +1512,26 @@ int main(int argc, char *argv[]) {
     ErrorFin[1] = 0;
     ErrorFin[2] = 0;
 
+    // Cross-check: evaluate CPU error at GPU's orientation for SpotID 78
+    if (SpId == 78) {
+      struct FitScratch xchk_scratch;
+      xchk_scratch.hkls = allocMatrix(nhkls, 7);
+      xchk_scratch.hklsIn2 = allocMatrix(nhkls, 7);
+      xchk_scratch.TheorSpots = allocMatrix(MaxNSpotsBest, 9);
+      double gpuResult[12];
+      for (i = 0; i < 3; i++) gpuResult[i] = Pos0[i];
+      gpuResult[3] = 170.9562; gpuResult[4] = 141.8357; gpuResult[5] = 259.7820; // GPU Euler
+      for (i = 0; i < 6; i++) gpuResult[i+6] = FinalResult[i+6]; // same LatC
+      double gpuErr = FitErrors12D(gpuResult, nSpotsComp, spotsYZONew, nhkls, hkls,
+                                    Lsd, Wavelength, nOmeRanges, OmegaRanges,
+                                    BoxSizes, MinEta, wedge, chi, &xchk_scratch);
+      printf("CPU SpotID78 XCHECK: CPU_orient err=%.2f (%.2f/sp), GPU_orient err=%.2f (%.2f/sp)\n",
+             finalError, finalError/nSpotsComp, gpuErr, gpuErr/nSpotsComp);
+      FreeMemMatrix(xchk_scratch.hkls, nhkls);
+      FreeMemMatrix(xchk_scratch.hklsIn2, nhkls);
+      FreeMemMatrix(xchk_scratch.TheorSpots, MaxNSpotsBest);
+    }
+
     // Free scratch
     FreeMemMatrix(scratch.hkls, nhkls);
     FreeMemMatrix(scratch.hklsIn2, nhkls);
