@@ -679,6 +679,8 @@ static double obj_12D(unsigned n, const double *x, double *grad, void *data) {
                       d->MinEta, d->wedge, d->chi, d->scratch);
 }
 
+static int g_trace9D = 0; // set to 1 to trace all obj_9D calls
+
 static double obj_9D(unsigned n, const double *x, double *grad, void *data) {
   struct data_Fit12D *d = (struct data_Fit12D *)data;
   double x12[12];
@@ -689,11 +691,9 @@ static double obj_9D(unsigned n, const double *x, double *grad, void *data) {
   double err = FitErrors12D(x12, d->nSpots, d->spotsYZO, d->nhkls, d->hkls, d->Lsd,
                       d->Wavelength, d->nOmeRanges, d->OmegaRanges, d->BoxSizes,
                       d->MinEta, d->wedge, d->chi, d->scratch);
-  static int obj9D_count = 0;
-  if (obj9D_count < 15) {
-    printf("    obj_9D[%d]: e=%.2f a=%.6f b=%.6f c=%.6f al=%.4f be=%.4f ga=%.4f\n",
-           obj9D_count, err, x[3], x[4], x[5], x[6], x[7], x[8]);
-    obj9D_count++;
+  if (g_trace9D) {
+    printf("  e=%.2f eu=%.4f,%.4f,%.4f a=%.6f b=%.6f c=%.6f al=%.4f be=%.4f ga=%.4f\n",
+           err, x[0], x[1], x[2], x[3], x[4], x[5], x[6], x[7], x[8]);
   }
   return err;
 }
@@ -1517,7 +1517,10 @@ int main(int argc, char *argv[]) {
       lb9[i + 3] = lbABC[i];
       ub9[i + 3] = ubABC[i];
     }
+    static int firstGrain9D = 0;
+    if (firstGrain9D == 0) { g_trace9D = 1; firstGrain9D = 1; }
     RunFit(9, x9, lb9, ub9, obj_9D, &fdata, r9);
+    g_trace9D = 0;
 
     // --- Stage 2: 6D fit (strain only, pos+orient fixed) ---
     double x6[6], r6[6];
