@@ -1314,10 +1314,10 @@ int DoIndexing(int SpotID, int voxNr, double xThis, double yThis, double zThis,
   // ═══ DEBUG: dump COMPLETE best match info ═══
   {
     if (bestMatchFound) {
-      // Re-evaluate CalcDiffrSpots with best OrMat
+      // Re-evaluate CalcDiffrSpots with best OrMat (from search, NOT refinement)
       RealType bestOM[3][3];
       for (int i = 0; i < 9; i++)
-        bestOM[i / 3][i % 3] = GrainMatches[0][i];
+        bestOM[i / 3][i % 3] = GrainMatchesT[0][i];
       printf("CPU_BEST vox=%d spot=%d nMatches=%d/%d ga=%.6f gb=%.6f gc=%.6f\n",
              voxNr, SpotRowNo, bestnMatchesIsp, bestnTspotsIsp, ga, gb, gc);
       printf("CPU_ORMAT %.10f %.10f %.10f %.10f %.10f %.10f %.10f %.10f %.10f\n",
