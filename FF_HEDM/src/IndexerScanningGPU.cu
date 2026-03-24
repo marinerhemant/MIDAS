@@ -505,7 +505,7 @@ __global__ void indexer_eval_kernel(
   int nMatchesFracCalc;
   RealType avgIA;
   int nMatches =
-      gpu_CompareSpots(TheorSpots, nTspots, d_ObsSpotsLab, t.RefRad, d_data,
+      gpu_CompareSpots(TheorSpots, nTspots, d_ObsSpotsLab, d_data,
                        d_ndata, d_ringsToReject, nRingsToRejectCalc,
                        &nMatchesFracCalc, t.ga, t.gb, t.gc, &avgIA,
                        d_ypos, BeamSize);
@@ -893,89 +893,6 @@ __global__ void indexer_spotdriven_kernel(
   } // end ideal spot loop
 }
 
-// ─────────────────────────────────────────────────────────────
-    RealType Ghkl[3] = {d_hkls_flat[ih * 7 + 0], d_hkls_flat[ih * 7 + 1],
-                        d_hkls_flat[ih * 7 + 2]};
-    int rn = (int)d_hkls_flat[ih * 7 + 3];
-    if (rn <= 0 || rn >= MAX_N_RINGS) continue;
-    RealType RingRadius = c_RingRadii[rn];
-    if (RingRadius < 1e-9) continue;
-    RealType theta = d_hkls_flat[ih * 7 + 5];
-
-    RealType Gc[3];
-    for (int r = 0; r < 3; r++)
-      Gc[r] = OrMat[r][0] * Ghkl[0] + OrMat[r][1] * Ghkl[1] + OrMat[r][2] * Ghkl[2];
-
-    RealType omegas_t[4], etas_t[4];
-    int nsol;
-    midas_CalcOmega(Gc[0], Gc[1], Gc[2], theta, omegas_t, etas_t, &nsol);
-
-    for (int isol = 0; isol < nsol; isol++) {
-      RealType Omega = omegas_t[isol];
-      RealType Eta = etas_t[isol];
-      RealType EtaAbs = fabs(Eta);
-      if (EtaAbs < c_params.ExcludePoleAngle ||
-          (180.0 - EtaAbs) < c_params.ExcludePoleAngle) {
-        if (rn == 1) r1_skip_pole++;
-        continue;
-      }
-
-      RealType yl, zl;
-      midas_CalcSpotPosition(RingRadius, Eta, &yl, &zl);
-
-      int keep = 0;
-      for (int orn = 0; orn < c_params.NoOfOmegaRanges; orn++) {
-        if (Omega > c_OmegaRanges[orn][0] && Omega < c_OmegaRanges[orn][1] &&
-            yl > c_BoxSizes[orn][0] && yl < c_BoxSizes[orn][1] &&
-            zl > c_BoxSizes[orn][2] && zl < c_BoxSizes[orn][3]) {
-          keep = 1; break;
-        }
-      }
-      if (!keep) {
-        if (rn == 1) r1_skip_ome++;
-        continue;
-      }
-      nTspots++;
-      if (rn == 1) r1_spots++;
-
-      // Apply displacement
-      RealType theorOmeRad = Omega * deg2rad;
-      RealType Displ_y, Displ_z;
-      midas_displacement_spot_COM((RealType)ga, (RealType)gb, (RealType)0,
-                                  c_params.Distance, yl, zl, Omega,
-                                  &Displ_y, &Displ_z);
-      RealType theorY = yl + Displ_y;
-      RealType theorZ = zl + Displ_z;
-      RealType theorEta;
-      midas_CalcEtaAngle(theorY, theorZ, &theorEta);
-      RealType theorRadDiff = sqrt(theorY * theorY + theorZ * theorZ) - RingRadius;
-
-      // Bin lookup
-      int iRing = rn - 1;
-      int iEta = (int)floor((180.0 + theorEta) / c_params.EtaBinSize);
-      int iOme = (int)floor((180.0 + Omega) / c_params.OmeBinSize);
-      iEta = max(0, min(c_params.n_eta_bins - 1, iEta));
-      iOme = max(0, min(c_params.n_ome_bins - 1, iOme));
-
-      long long Pos = (long long)iRing * c_params.n_eta_bins * c_params.n_ome_bins
-                    + (long long)iEta * c_params.n_ome_bins + iOme;
-      long long nInBin = (long long)d_ndata[Pos * 2 + 0];
-
-      // Print ALL spots
-      printf("GPU_SP sp=%d rn=%d tEta=%.6f tOme=%.6f yl=%.2f zl=%.2f "
-             "iE=%d iO=%d Pos=%lld nInBin=%lld\n",
-             spotCount, rn, (double)theorEta, (double)Omega,
-             (double)theorY, (double)theorZ,
-             iEta, iOme, Pos, nInBin);
-      spotCount++;
-
-      if (nInBin == 0) continue;
-      nMatched++;  // simplified: just count non-empty bins for now
-    }
-  }
-  printf("GPU_DEBUG_EVAL: nTspots=%d nMatched=%d r1_spots=%d r1_skip_pole=%d r1_skip_ome=%d\n",
-         nTspots, nMatched, r1_spots, r1_skip_pole, r1_skip_ome);
-}
 
 // ─────────────────────────────────────────────────────────────
 // Fused zero-scratch kernel: one thread = one (spot, voxel) pair
@@ -2180,7 +2097,7 @@ int main(int argc, char *argv[]) {
 
     dim3 block(256, 1);
     dim3 grid2((nSpotsRange + block.x - 1) / block.x, nVoxels);
-    printf("  Launching fused kernel: grid=(%d,%d), block=%d\\n",
+    printf("  Launching fused kernel: grid=(%d,%d), block=%d\n",
            grid2.x, grid2.y, block.x);
 
     double tKernelStart = omp_get_wtime();
