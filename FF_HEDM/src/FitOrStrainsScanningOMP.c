@@ -1402,63 +1402,27 @@ int main(int argc, char *argv[]) {
     ubABC[4] = bet * (1 + (MargABG / 100));
     ubABC[5] = gamm * (1 + (MargABG / 100));
 
-    // --- Stage 1: 12D fit (pos + orient + strain) ---
-    double x12[12], r12[12];
-    double lb12[12], ub12[12];
-    for (i = 0; i < 3; i++) {
-      x12[i] = Pos0[i];
-    }
-    for (i = 0; i < 3; i++) {
-      x12[i + 3] = Euler0[i];
-    }
-    for (i = 0; i < 6; i++) {
-      x12[i + 6] = LatCin[i];
-    }
-    for (i = 0; i < 3; i++) {
-      lb12[i] = Pos0[i] - Rsample / 2;
-      ub12[i] = Pos0[i] + Rsample / 2;
-    }
-    // Clamp pos bounds
-    if (lb12[0] < -Rsample)
-      lb12[0] = -Rsample;
-    if (ub12[0] > Rsample)
-      ub12[0] = Rsample;
-    if (lb12[1] < -Rsample)
-      lb12[1] = -Rsample;
-    if (ub12[1] > Rsample)
-      ub12[1] = Rsample;
-    if (lb12[2] < -Hbeam / 2.0)
-      lb12[2] = -Hbeam / 2.0;
-    if (ub12[2] > Hbeam / 2.0)
-      ub12[2] = Hbeam / 2.0;
-    for (i = 0; i < 3; i++) {
-      lb12[i + 3] = Euler0[i] - MargOme2;
-      ub12[i + 3] = Euler0[i] + MargOme2;
-    }
-    for (i = 0; i < 6; i++) {
-      lb12[i + 6] = lbABC[i];
-      ub12[i + 6] = ubABC[i];
-    }
-    RunFit(12, x12, lb12, ub12, obj_12D, &fdata, r12);
+    // ─── Scanning mode: positions are FIXED from the voxel grid ───
+    // Only fit Orient+Strain (9D) and Strain (6D). No position refinement.
+    for (i = 0; i < 3; i++)
+      fdata.FixedPos[i] = Pos0[i];
 
-    // --- Stage 2: 9D fit (orient + strain, pos fixed from stage 1) ---
+    // --- Stage 1: 9D fit (orient + strain, pos fixed) ---
     double x9[9], r9[9];
     double lb9[9], ub9[9];
-    for (i = 0; i < 3; i++)
-      fdata.FixedPos[i] = r12[i];
     for (i = 0; i < 3; i++) {
-      x9[i] = r12[i + 3];
-      lb9[i] = r12[i + 3] - 2.0;
-      ub9[i] = r12[i + 3] + 2.0;
+      x9[i] = Euler0[i];
+      lb9[i] = Euler0[i] - MargOme2;
+      ub9[i] = Euler0[i] + MargOme2;
     }
     for (i = 0; i < 6; i++) {
-      x9[i + 3] = r12[i + 6];
+      x9[i + 3] = LatCin[i];
       lb9[i + 3] = lbABC[i];
       ub9[i + 3] = ubABC[i];
     }
     RunFit(9, x9, lb9, ub9, obj_9D, &fdata, r9);
 
-    // --- Stage 3: 6D fit (strain only, pos+orient fixed) ---
+    // --- Stage 2: 6D fit (strain only, pos+orient fixed) ---
     double x6[6], r6[6];
     for (i = 0; i < 3; i++)
       fdata.FixedOrient[i] = r9[i];
@@ -1466,22 +1430,10 @@ int main(int argc, char *argv[]) {
       x6[i] = r9[i + 3];
     RunFit(6, x6, lbABC, ubABC, obj_6D, &fdata, r6);
 
-    // --- Stage 4: 3D fit (pos only, orient+strain fixed) ---
-    double x3[3], r3[3];
-    double lb3[3], ub3[3];
-    for (i = 0; i < 6; i++)
-      fdata.FixedLatC[i] = r6[i];
-    for (i = 0; i < 3; i++) {
-      x3[i] = r12[i]; // Start from stage 1 pos
-      lb3[i] = lb12[i];
-      ub3[i] = ub12[i];
-    }
-    RunFit(3, x3, lb3, ub3, obj_3D, &fdata, r3);
-
-    // Build final result: [pos3, orient3, latc6]
+    // Build final result: [pos3(fixed), orient3, latc6]
     double FinalResult[12];
     for (i = 0; i < 3; i++)
-      FinalResult[i] = r3[i];
+      FinalResult[i] = Pos0[i];
     for (i = 0; i < 3; i++)
       FinalResult[i + 3] = r9[i];
     for (i = 0; i < 6; i++)

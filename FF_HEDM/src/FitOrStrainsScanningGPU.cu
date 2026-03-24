@@ -815,73 +815,21 @@ fitGrainsKernel(int nGrains,
     }
   }
 
-  // ─── Stage 1: Fit Pos+Orient+Strain (12D) ───
-  RealType x0_12[12], lb12[12], ub12[12], res12[12];
+  // ─── Scanning mode: positions are FIXED from the voxel grid ───
+  // Only fit Orient+Strain (9D) and Strain (6D). No position refinement.
+
+  // Lattice parameter bounds
+  RealType lbABC[6], ubABC[6];
   for (int i = 0; i < 3; i++) {
-    x0_12[i] = Pos0[i];
-    x0_12[i + 3] = Euler0[i];
-  }
-  for (int i = 0; i < 6; i++)
-    x0_12[i + 6] = LatCin[i];
-  for (int i = 0; i < 3; i++) {
-    lb12[i] = Pos0[i] - d_MargPos;
-    ub12[i] = Pos0[i] + d_MargPos;
-    lb12[i + 3] = Euler0[i] - 0.01;
-    ub12[i + 3] = Euler0[i] + 0.01;
-  }
-  // Clamp position bounds
-  if (lb12[0] < -d_Rsample)
-    lb12[0] = -d_Rsample;
-  if (ub12[0] > d_Rsample)
-    ub12[0] = d_Rsample;
-  if (lb12[1] < -d_Rsample)
-    lb12[1] = -d_Rsample;
-  if (ub12[1] > d_Rsample)
-    ub12[1] = d_Rsample;
-  if (lb12[2] < -d_Hbeam / 2)
-    lb12[2] = -d_Hbeam / 2;
-  if (ub12[2] > d_Hbeam / 2)
-    ub12[2] = d_Hbeam / 2;
-  for (int i = 0; i < 6; i++) {
-    lb12[6 + i] = LatCin[i] * (1 - d_MargABC / 100);
-    ub12[6 + i] = LatCin[i] * (1 + d_MargABC / 100);
+    lbABC[i] = LatCin[i] * (1 - d_MargABC / 100);
+    ubABC[i] = LatCin[i] * (1 + d_MargABC / 100);
   }
   for (int i = 3; i < 6; i++) {
-    lb12[6 + i] = LatCin[i] * (1 - d_MargABG / 100);
-    ub12[6 + i] = LatCin[i] * (1 + d_MargABG / 100);
+    lbABC[i] = LatCin[i] * (1 - d_MargABG / 100);
+    ubABC[i] = LatCin[i] * (1 + d_MargABG / 100);
   }
 
-  FunctorPosOrientStrain f1;
-  f1.spotsYZO = spots;
-  f1.nSpots = nSpots;
-  f1.hklsRaw = d_hklsRaw;
-  f1.scratch = scratch;
-  f1.nMaxTheor = nMaxTheor;
-  nm_optimize<12>(x0_12, lb12, ub12, res12, f1, 1e-5, 5000, 0.05);
-  nm_optimize<12>(res12, lb12, ub12, res12, f1, 1e-5, 5000, 0.05);
-
-  // Dynamic reassignment after Stage 1
-  if (doDynReassign && d_BinData != nullptr) {
-    RealType x12_cur[12] = {res12[0],  res12[1],  res12[2],  Euler0[0],
-                            Euler0[1], Euler0[2], LatCin[0], LatCin[1],
-                            LatCin[2], LatCin[3], LatCin[4], LatCin[5]};
-    int nNew = gpu_ReassignSpotsFromBins(
-        x12_cur, d_hklsRaw, scratch, spots, MaxNHKLS, d_AllSpots, d_totalNSpots,
-        d_ObsSpotsLab, d_nSpotsBin, d_BinData, d_nBinData, nMaxTheor,
-        d_ypos, nYpos, d_BeamSize);
-    if (nNew > 0) {
-      nSpots = nNew;
-      d_nSpotsPerGrain[gIdx] = nNew;
-    }
-  }
-
-  // Reset orient to initial, keep position from Stage 1
-  for (int i = 0; i < 3; i++)
-    res12[i + 3] = Euler0[i];
-  for (int i = 0; i < 6; i++)
-    res12[i + 6] = LatCin[i];
-
-  // ─── Stage 2: Fit Orient+Strain (9D), pos fixed ───
+  // ─── Stage 1: Fit Orient+Strain (9D), pos fixed ───
   RealType x0_9[9], lb9[9], ub9[9], res9[9];
   for (int i = 0; i < 3; i++)
     x0_9[i] = Euler0[i];
@@ -893,8 +841,8 @@ fitGrainsKernel(int nGrains,
     ub9[i] = Euler0[i] + MargOme2;
   }
   for (int i = 0; i < 6; i++) {
-    lb9[3 + i] = lb12[6 + i];
-    ub9[3 + i] = ub12[6 + i];
+    lb9[3 + i] = lbABC[i];
+    ub9[3 + i] = ubABC[i];
   }
 
   FunctorOrientStrain f2;
@@ -904,15 +852,15 @@ fitGrainsKernel(int nGrains,
   f2.scratch = scratch;
   f2.nMaxTheor = nMaxTheor;
   for (int i = 0; i < 3; i++)
-    f2.Pos[i] = res12[i];
+    f2.Pos[i] = Pos0[i];
   nm_optimize<9>(x0_9, lb9, ub9, res9, f2, 1e-5, 5000, 0.05);
   nm_optimize<9>(res9, lb9, ub9, res9, f2, 1e-5, 5000, 0.05);
 
-  // Dynamic reassignment after Stage 2
+  // Dynamic reassignment after Stage 1
   if (doDynReassign && d_BinData != nullptr) {
-    RealType x12_cur[12] = {res12[0], res12[1], res12[2], res9[0],
-                            res9[1],  res9[2],  res9[3],  res9[4],
-                            res9[5],  res9[6],  res9[7],  res9[8]};
+    RealType x12_cur[12] = {Pos0[0], Pos0[1], Pos0[2], res9[0],
+                            res9[1], res9[2], res9[3],  res9[4],
+                            res9[5], res9[6], res9[7],  res9[8]};
     int nNew = gpu_ReassignSpotsFromBins(
         x12_cur, d_hklsRaw, scratch, spots, MaxNHKLS, d_AllSpots, d_totalNSpots,
         d_ObsSpotsLab, d_nSpotsBin, d_BinData, d_nBinData, nMaxTheor,
@@ -923,13 +871,13 @@ fitGrainsKernel(int nGrains,
     }
   }
 
-  // ─── Stage 3: Fit Strain (6D), pos+orient fixed ───
+  // ─── Stage 2: Fit Strain (6D), pos+orient fixed ───
   RealType x0_6[6], lb6[6], ub6[6], res6[6];
   for (int i = 0; i < 6; i++)
     x0_6[i] = LatCin[i];
   for (int i = 0; i < 6; i++) {
-    lb6[i] = lb12[6 + i];
-    ub6[i] = ub12[6 + i];
+    lb6[i] = lbABC[i];
+    ub6[i] = ubABC[i];
   }
 
   FunctorStrain f3;
@@ -939,63 +887,14 @@ fitGrainsKernel(int nGrains,
   f3.scratch = scratch;
   f3.nMaxTheor = nMaxTheor;
   for (int i = 0; i < 3; i++)
-    f3.Pos[i] = res12[i];
+    f3.Pos[i] = Pos0[i];
   for (int i = 0; i < 3; i++)
     f3.Orient[i] = res9[i];
   nm_optimize<6>(x0_6, lb6, ub6, res6, f3, 1e-5, 5000, 0.05);
   nm_optimize<6>(res6, lb6, ub6, res6, f3, 1e-5, 5000, 0.05);
 
-  // Dynamic reassignment after Stage 3
-  if (doDynReassign && d_BinData != nullptr) {
-    RealType x12_cur[12] = {res12[0], res12[1], res12[2], res9[0],
-                            res9[1],  res9[2],  res6[0],  res6[1],
-                            res6[2],  res6[3],  res6[4],  res6[5]};
-    int nNew = gpu_ReassignSpotsFromBins(
-        x12_cur, d_hklsRaw, scratch, spots, MaxNHKLS, d_AllSpots, d_totalNSpots,
-        d_ObsSpotsLab, d_nSpotsBin, d_BinData, d_nBinData, nMaxTheor,
-        d_ypos, nYpos, d_BeamSize);
-    if (nNew > 0) {
-      nSpots = nNew;
-      d_nSpotsPerGrain[gIdx] = nNew;
-    }
-  }
-
-  // ─── Stage 4: Fit Pos (3D), orient+strain fixed ───
-  RealType x0_3[3], lb3[3], ub3[3], res3[3];
-  for (int i = 0; i < 3; i++)
-    x0_3[i] = res12[i];
-  for (int i = 0; i < 3; i++) {
-    lb3[i] = x0_3[i] - d_MargPos;
-    ub3[i] = x0_3[i] + d_MargPos;
-  }
-  if (lb3[0] < -d_Rsample)
-    lb3[0] = -d_Rsample;
-  if (ub3[0] > d_Rsample)
-    ub3[0] = d_Rsample;
-  if (lb3[1] < -d_Rsample)
-    lb3[1] = -d_Rsample;
-  if (ub3[1] > d_Rsample)
-    ub3[1] = d_Rsample;
-  if (lb3[2] < -d_Hbeam / 2)
-    lb3[2] = -d_Hbeam / 2;
-  if (ub3[2] > d_Hbeam / 2)
-    ub3[2] = d_Hbeam / 2;
-
-  FunctorPos f4;
-  f4.spotsYZO = spots;
-  f4.nSpots = nSpots;
-  f4.hklsRaw = d_hklsRaw;
-  f4.scratch = scratch;
-  f4.nMaxTheor = nMaxTheor;
-  for (int i = 0; i < 3; i++)
-    f4.Orient[i] = res9[i];
-  for (int i = 0; i < 6; i++)
-    f4.Strains[i] = res6[i];
-  nm_optimize<3>(x0_3, lb3, ub3, res3, f4, 1e-5, 5000, 0.05);
-  nm_optimize<3>(res3, lb3, ub3, res3, f4, 1e-5, 5000, 0.05);
-
   // ─── Write results ───
-  // Final: pos=res3, orient=res9[0..2], strain=res6[0..5]
+  // Final: pos=Pos0 (fixed), orient=res9[0..2], strain=res6[0..5]
   RealType *out = &d_results[gIdx * 27];
   // OrientsFit: [SpID, orient9]
   RealType EulerFit[3] = {res9[0], res9[1], res9[2]};
@@ -1007,16 +906,16 @@ fitGrainsKernel(int nGrains,
       out[1 + i * 3 + j] = OF[i][j];
   // PositionsFit: [SpID, pos3]
   out[10] = (RealType)(gIdx);
-  out[11] = res3[0];
-  out[12] = res3[1];
-  out[13] = res3[2];
+  out[11] = Pos0[0];
+  out[12] = Pos0[1];
+  out[13] = Pos0[2];
   // StrainsFit: [SpID, latc6]
   out[14] = (RealType)(gIdx);
   for (int i = 0; i < 6; i++)
     out[15 + i] = res6[i];
   // ErrorsFin: [SpID, err3] — compute final error
   out[21] = (RealType)(gIdx);
-  RealType finalX[12] = {res3[0], res3[1], res3[2], res9[0], res9[1], res9[2],
+  RealType finalX[12] = {Pos0[0], Pos0[1], Pos0[2], res9[0], res9[1], res9[2],
                          res6[0], res6[1], res6[2], res6[3], res6[4], res6[5]};
   RealType finalErr =
       gpu_FitErrorsPosT(finalX, spots, nSpots, d_hklsRaw, scratch, nMaxTheor);
