@@ -892,6 +892,127 @@ __global__ void indexer_spotdriven_kernel(
 }
 
 // ─────────────────────────────────────────────────────────────
+// ─────────────────────────────────────────────────────────────
+// DEBUG: Single-OrMat evaluation kernel for side-by-side CPU comparison
+// ─────────────────────────────────────────────────────────────
+__global__ void debug_eval_kernel(
+    const double *testOM, double ga, double gb,
+    const RealType *d_hkls_flat, int n_hkls_d,
+    const size_t *d_ndata,
+    const RealType *d_ObsSpotsLab, int nSpots,
+    const size_t *d_data,
+    const double *d_ypos, double BeamSize)
+{
+  // Build OrMat from flat array
+  RealType OrMat[3][3];
+  for (int i = 0; i < 9; i++)
+    OrMat[i / 3][i % 3] = (RealType)testOM[i];
+
+  int spotCount = 0;
+  int nTspots = 0;
+  int nMatched = 0;
+
+  for (int ih = 0; ih < n_hkls_d; ih++) {
+    RealType Ghkl[3] = {d_hkls_flat[ih * 7 + 0], d_hkls_flat[ih * 7 + 1],
+                        d_hkls_flat[ih * 7 + 2]};
+    int rn = (int)d_hkls_flat[ih * 7 + 3];
+    if (rn <= 0 || rn >= MAX_N_RINGS) continue;
+    RealType RingRadius = c_RingRadii[rn];
+    if (RingRadius < 1e-9) continue;
+    RealType theta = d_hkls_flat[ih * 7 + 5];
+
+    RealType Gc[3];
+    for (int r = 0; r < 3; r++)
+      Gc[r] = OrMat[r][0] * Ghkl[0] + OrMat[r][1] * Ghkl[1] + OrMat[r][2] * Ghkl[2];
+
+    RealType omegas_t[4], etas_t[4];
+    int nsol;
+    midas_CalcOmega(Gc[0], Gc[1], Gc[2], theta, omegas_t, etas_t, &nsol);
+
+    for (int isol = 0; isol < nsol; isol++) {
+      RealType Omega = omegas_t[isol];
+      RealType Eta = etas_t[isol];
+      RealType EtaAbs = fabs(Eta);
+      if (EtaAbs < c_params.ExcludePoleAngle ||
+          (180.0 - EtaAbs) < c_params.ExcludePoleAngle)
+        continue;
+
+      RealType yl, zl;
+      midas_CalcSpotPosition(RingRadius, Eta, &yl, &zl);
+
+      int keep = 0;
+      for (int orn = 0; orn < c_params.NoOfOmegaRanges; orn++) {
+        if (Omega > c_OmegaRanges[orn][0] && Omega < c_OmegaRanges[orn][1] &&
+            yl > c_BoxSizes[orn][0] && yl < c_BoxSizes[orn][1] &&
+            zl > c_BoxSizes[orn][2] && zl < c_BoxSizes[orn][3]) {
+          keep = 1; break;
+        }
+      }
+      if (!keep) continue;
+      nTspots++;
+
+      // Apply displacement
+      RealType theorOmeRad = Omega * deg2rad;
+      RealType Displ_y, Displ_z;
+      midas_displacement_spot_COM((RealType)ga, (RealType)gb, (RealType)0,
+                                  c_params.Distance, yl, zl, Omega,
+                                  &Displ_y, &Displ_z);
+      RealType theorY = yl + Displ_y;
+      RealType theorZ = zl + Displ_z;
+      RealType theorEta;
+      midas_CalcEtaAngle(theorY, theorZ, &theorEta);
+      RealType theorRadDiff = sqrt(theorY * theorY + theorZ * theorZ) - RingRadius;
+
+      // Bin lookup
+      int iRing = rn - 1;
+      int iEta = (int)floor((180.0 + theorEta) / c_params.EtaBinSize);
+      int iOme = (int)floor((180.0 + Omega) / c_params.OmeBinSize);
+      iEta = max(0, min(c_params.n_eta_bins - 1, iEta));
+      iOme = max(0, min(c_params.n_ome_bins - 1, iOme));
+
+      long long Pos = (long long)iRing * c_params.n_eta_bins * c_params.n_ome_bins
+                    + (long long)iEta * c_params.n_ome_bins + iOme;
+      long long nInBin = (long long)d_ndata[Pos * 2 + 0];
+
+      // Print first 10 spots
+      if (spotCount < 10) {
+        printf("GPU_SP sp=%d rn=%d tEta=%.6f tOme=%.6f yl=%.2f zl=%.2f radDiff=%.4f "
+               "iR=%d iE=%d iO=%d Pos=%lld nInBin=%lld\n",
+               spotCount, rn, (double)theorEta, (double)Omega,
+               (double)theorY, (double)theorZ, (double)theorRadDiff,
+               iRing, iEta, iOme, Pos, nInBin);
+      }
+      spotCount++;
+
+      if (nInBin == 0) continue;
+
+      // Run filter chain and count matches
+      size_t DataPos = d_ndata[Pos * 2 + 1];
+      RealType etamargin = c_etamargins[rn];
+      int matchFound = 0;
+      for (int is = 0; is < (int)nInBin; is++) {
+        int spotRow = (int)d_data[(DataPos + is) * 2 + 0];
+        int scannrobs = (int)d_data[(DataPos + is) * 2 + 1];
+        if (spotRow < 0 || spotRow >= nSpots) continue;
+        int base = spotRow * N_COL_OBSSPOTS;
+        if (d_ypos != nullptr && BeamSize > 0) {
+          RealType yRot = (RealType)ga * sin(theorOmeRad) + (RealType)gb * cos(theorOmeRad);
+          if (fabs(yRot - d_ypos[scannrobs]) >= BeamSize / 2.0) continue;
+        }
+        RealType obsRadDiff = d_ObsSpotsLab[base + 8];
+        if (fabs(theorRadDiff - obsRadDiff) >= c_params.MarginRadial) continue;
+        RealType obsEta = d_ObsSpotsLab[base + 6];
+        if (fabs(theorEta - obsEta) >= etamargin) continue;
+        matchFound = 1;
+        break;
+      }
+      if (matchFound) nMatched++;
+    }
+  }
+  printf("GPU_DEBUG_EVAL: nTspots=%d nMatched=%d\n", nTspots, nMatched);
+}
+
+// ─────────────────────────────────────────────────────────────
 // Fused zero-scratch kernel: one thread = one (spot, voxel) pair
 // Generates orientations, and for each orientation fuses
 // CalcDiffrSpots + displacement + CompareSpots in a single HKL loop.
@@ -2149,6 +2270,39 @@ int main(int argc, char *argv[]) {
     dim3 grid2((nSpotsRange + block.x - 1) / block.x, nVoxels);
     printf("  Launching fused kernel: grid=(%d,%d), block=%d\n",
            grid2.x, grid2.y, block.x);
+    // ═══ DEBUG: single-OrMat evaluation kernel ═══
+    {
+      printf("  === DEBUG: Evaluating CPU best OrMat on GPU ===\n");
+      // CPU best: vox=40 ga=16.666667 gb=16.666667
+      double h_testOM[9] = {
+        0.6287136945, 0.7144123299, -0.3071385896,
+       -0.5816895223, 0.1699280787, -0.7954632284,
+       -0.5160972679, 0.6787779246,  0.5224022771
+      };
+      double h_ga = 16.666667, h_gb = 16.666667;
+      // Upload OrMat to GPU
+      double *d_testOM;
+      CUDA_CHECK(cudaMalloc(&d_testOM, 9 * sizeof(double)));
+      CUDA_CHECK(cudaMemcpy(d_testOM, h_testOM, 9 * sizeof(double), cudaMemcpyHostToDevice));
+      // Run a simple 1-thread kernel
+      extern __global__ void debug_eval_kernel(
+          const double *testOM, double ga, double gb,
+          const RealType *d_hkls_flat, int n_hkls_d,
+          const size_t *d_ndata,
+          const RealType *d_ObsSpotsLab, int nSpots,
+          const size_t *d_data,
+          const double *d_ypos, double BeamSize);
+      debug_eval_kernel<<<1,1>>>(
+          d_testOM, h_ga, h_gb,
+          d_hkls_flat, n_hkls,
+          d_ndata,
+          d_ObsSpotsLab, (int)n_spots,
+          d_data,
+          d_ypos, BeamSize);
+      CUDA_CHECK(cudaDeviceSynchronize());
+      cudaFree(d_testOM);
+      printf("  === DEBUG done ===\n");
+    }
 
     double tKernelStart = omp_get_wtime();
     indexer_fused_kernel<<<grid2, block>>>(
