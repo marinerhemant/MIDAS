@@ -809,7 +809,7 @@ FitErrorsStrains(double x[6], int nSpotsComp, double **spotsYZO, int nhkls,
   for (sp = 0; sp < nrMatchedIndexer; sp++) {
     PosObs[0] = SpotsYZOGCorr[sp][0];
     PosObs[1] = SpotsYZOGCorr[sp][1];
-    int Spnr = (int)SpotsYZOGCorr[sp][2];
+    int Spnr = (int)SpotsYZOGCorr[sp][3];
     if (Spnr >= 0 && Spnr <= MaxSpnr) {
       int t_idx = SpotLookup[Spnr];
       if (t_idx != -1) {

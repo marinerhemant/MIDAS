@@ -1153,12 +1153,18 @@ int main(int argc, char *argv[]) {
   printf("AllSpots: %d spots from ExtraInfo.bin\n", nSpots);
 
   // ─── Read SpotsToIndex.csv ───
+  // Format: voxNr SpId nObs solIndex idStartIdx (5 columns, matches OMP)
   int startRowNr = (int)(ceil((double)nSpotsToIndex / nBlocks)) * blockNr;
   int endRowNr = (int)(ceil((double)nSpotsToIndex / nBlocks)) * (blockNr + 1);
   if (endRowNr > nSpotsToIndex - 1)
     endRowNr = nSpotsToIndex - 1;
   int nSptIDs = endRowNr - startRowNr + 1;
-  int *SptIDs = (int *)malloc(nSptIDs * sizeof(int));
+
+  struct SpotsToIndexEntry {
+    int voxNr, spId, nObs, solIdx, idStartIdx;
+  };
+  struct SpotsToIndexEntry *stiEntries =
+      (struct SpotsToIndexEntry *)calloc(nSptIDs, sizeof(struct SpotsToIndexEntry));
   {
     FILE *sf = fopen("SpotsToIndex.csv", "r");
     if (!sf) {
@@ -1166,12 +1172,15 @@ int main(int argc, char *argv[]) {
       return 1;
     }
     char line[5024];
-    int it;
-    for (it = 0; it < startRowNr; it++)
+    // Skip lines before startRowNr
+    for (int it = 0; it < startRowNr; it++)
       (void)fgets(line, sizeof(line), sf);
-    for (it = 0; it < nSptIDs; it++) {
+    for (int it = 0; it < nSptIDs; it++) {
       (void)fgets(line, sizeof(line), sf);
-      sscanf(line, "%d", &SptIDs[it]);
+      sscanf(line, "%d %d %d %d %d",
+             &stiEntries[it].voxNr, &stiEntries[it].spId,
+             &stiEntries[it].nObs, &stiEntries[it].solIdx,
+             &stiEntries[it].idStartIdx);
     }
     fclose(sf);
   }
@@ -1207,24 +1216,9 @@ int main(int argc, char *argv[]) {
     return 1;
   }
 
-  // Read SpotsToIndex to find voxNr + solIdx for each entry
-  FILE *sf2 = fopen("SpotsToIndex.csv", "r");
-  if (!sf2) { printf("Cannot open SpotsToIndex.csv\n"); return 1; }
-  struct SpotsToIndexEntry { int voxNr; int solIdx; int nObs; double infoArr[15]; };
-  struct SpotsToIndexEntry *stiEntries = (struct SpotsToIndexEntry *)calloc(nSptIDs, sizeof(struct SpotsToIndexEntry));
-  {
-    char line2[4096];
-    int lineIdx = 0;
-    while (fgets(line2, sizeof(line2), sf2) && lineIdx < nSptIDs) {
-      sscanf(line2, "%d %d", &stiEntries[lineIdx].voxNr, &stiEntries[lineIdx].solIdx);
-      lineIdx++;
-    }
-    fclose(sf2);
-  }
-
   int nValidGrains = 0;
   for (int g = 0; g < nSptIDs; g++) {
-    int SpId = SptIDs[g];
+    int SpId = stiEntries[g].spId;
     h_SpotIDs[g] = SpId;
     if (SpId == -1) continue;
 
@@ -1257,22 +1251,19 @@ int main(int argc, char *argv[]) {
     int nObs = (int)locArr[14];
     if (nObs > MaxNSpotsBest || nObs <= 0) continue;
 
-    // Read spot IDs from consolidated IDs file
+    // Read spot IDs from consolidated IDs file using idStartIdx from SpotsToIndex
     const int *voxIDs = ConsolidatedReader_getIDs(&idsReader, voxNr);
-    // Compute cumulative ID offset for this solution within the voxel
-    int idBaseOffset = 0;
-    for (int s = 0; s < solIdx; s++) {
-      // Each solution's nObs is in its val data at position [15]
-      int prevNObs = (int)voxVals[s * CONSOLIDATED_VALS_COLS + 15];
-      idBaseOffset += prevNObs;
-    }
+    int idBaseOffset = stiEntries[g].idStartIdx;
     const int *idData = (voxIDs) ? &voxIDs[idBaseOffset] : NULL;
 
     int nFound = 0;
     for (int i = 0; i < nObs && nFound < MaxNSpotsBest; i++) {
       int spotID = (idData) ? (int)idData[i] : 0;
       int spotPos = spotID - 1;
-      if (spotPos < 0 || spotPos >= nSpots) continue;
+      if (spotPos < 0 || spotPos >= nSpots) {
+        if (i < 3) printf("  grain %d: spot %d/%d has invalid spotPos=%d (nSpots=%d)\n", g, i, nObs, spotPos, nSpots);
+        continue;
+      }
       double *sp = &h_spotData[(size_t)g * MaxNSpotsBest * 11 + nFound * 11];
       sp[0] = AllSpots[spotPos * 16 + 0];
       sp[1] = AllSpots[spotPos * 16 + 1];
@@ -1288,6 +1279,8 @@ int main(int argc, char *argv[]) {
     }
     h_nSpotsPerGrain[g] = nFound;
     if (nFound > 0) nValidGrains++;
+    else printf("  grain %d (vox=%d, SpId=%d): nObs=%d but nFound=0 (idData=%p, idOffset=%d)\n",
+                g, voxNr, SpId, nObs, (void*)idData, idBaseOffset);
   }
   free(stiEntries);
   printf("Valid grains: %d / %d\n", nValidGrains, nSptIDs);
@@ -1541,7 +1534,7 @@ int main(int argc, char *argv[]) {
   free(h_nSpotsPerGrain);
   free(h_SpotIDs);
   free(hklsFlat);
-  free(SptIDs);
+
   cudaFree(d_initData);
   cudaFree(d_spotData);
   cudaFree(d_nSpotsPerGrain);
