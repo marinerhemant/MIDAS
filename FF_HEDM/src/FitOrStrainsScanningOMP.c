@@ -1442,6 +1442,32 @@ int main(int argc, char *argv[]) {
     for (i = 0; i < 3; i++)
       fdata.FixedPos[i] = Pos0[i];
 
+    // --- Direct sensitivity test (first grain only) ---
+    static int dbgSens = 0;
+    if (dbgSens < 1) {
+      printf("  hkls[0] = %.1f %.1f %.1f ds=%.6f theta=%.4f rad=%.2f ring=%.0f\n",
+             hkls[0][0], hkls[0][1], hkls[0][2], hkls[0][3], hkls[0][4],
+             hkls[0][5], hkls[0][6]);
+      printf("  hkls[1] = %.1f %.1f %.1f ds=%.6f theta=%.4f rad=%.2f ring=%.0f\n",
+             hkls[1][0], hkls[1][1], hkls[1][2], hkls[1][3], hkls[1][4],
+             hkls[1][5], hkls[1][6]);
+      double xA[12], xB[12];
+      for (i = 0; i < 3; i++) xA[i] = xB[i] = Pos0[i];
+      for (i = 0; i < 3; i++) xA[i+3] = xB[i+3] = Euler0[i];
+      for (i = 0; i < 6; i++) xA[i+6] = LatCin[i];
+      for (i = 0; i < 6; i++) xB[i+6] = LatCin[i];
+      xB[6] += 0.002; // a + 0.002
+      double eA = FitErrors12D(xA, nSpotsComp, spotsYZONew, nhkls, hkls, Lsd,
+                               Wavelength, nOmeRanges, OmegaRanges, BoxSizes,
+                               MinEta, wedge, chi, &scratch);
+      double eB = FitErrors12D(xB, nSpotsComp, spotsYZONew, nhkls, hkls, Lsd,
+                               Wavelength, nOmeRanges, OmegaRanges, BoxSizes,
+                               MinEta, wedge, chi, &scratch);
+      printf("  SENSITIVITY TEST: a=%.4f err=%.4f, a=%.4f err=%.4f, diff=%.6f\n",
+             xA[6], eA, xB[6], eB, eB - eA);
+      dbgSens++;
+    }
+
     // --- Stage 1: 9D fit (orient + strain, pos fixed) ---
     double x9[9], r9[9];
     double lb9[9], ub9[9];
