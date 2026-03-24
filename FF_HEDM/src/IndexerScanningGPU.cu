@@ -1139,6 +1139,63 @@ __global__ void indexer_fused_kernel(
 
       RealType fracMatches = (RealType)nMatched / (RealType)nTspots;
       if (fracMatches < MinMatchesToAcceptFrac) return;  // match CPU filter
+
+      // Debug: dump matched spots for vox=0 when frac >= 0.9
+      if (voxelIdx == 0 && fracMatches >= 0.9 && spotLocalIdx < 3) {
+        printf("GPU_HIT: vox=0 spot=%d orient=%d frac=%.4f nT=%d nM=%d\n",
+               spotLocalIdx, orientIdx, fracMatches, nTspots, nMatched);
+        printf("GPU_HIT: OrMat: %.6f %.6f %.6f / %.6f %.6f %.6f / %.6f %.6f %.6f\n",
+               OrMat[0][0], OrMat[0][1], OrMat[0][2],
+               OrMat[1][0], OrMat[1][1], OrMat[1][2],
+               OrMat[2][0], OrMat[2][1], OrMat[2][2]);
+        // Re-scan to print matched spots (expensive, debug only)
+        for (int ih2 = 0; ih2 < n_hkls_d && nMatched > 0; ih2++) {
+          int rn2 = (int)d_hkls_flat[ih2 * 7 + 3];
+          if (rn2 <= 0 || rn2 >= MAX_N_RINGS) continue;
+          RealType RR2 = c_RingRadii[rn2];
+          if (RR2 < EPS) continue;
+          RealType Ghkl2[3] = {d_hkls_flat[ih2*7+0], d_hkls_flat[ih2*7+1], d_hkls_flat[ih2*7+2]};
+          RealType theta2 = d_hkls_flat[ih2*7+5];
+          RealType Gc2[3];
+          for (int r2=0;r2<3;r2++) Gc2[r2]=OrMat[r2][0]*Ghkl2[0]+OrMat[r2][1]*Ghkl2[1]+OrMat[r2][2]*Ghkl2[2];
+          RealType om2[4], et2[4]; int ns2;
+          midas_CalcOmega(Gc2[0],Gc2[1],Gc2[2],theta2,om2,et2,&ns2);
+          for (int is2=0; is2<ns2; is2++) {
+            RealType Ome2=om2[is2], Eta2=et2[is2];
+            if (fabs(Eta2)<c_params.ExcludePoleAngle||(180-fabs(Eta2))<c_params.ExcludePoleAngle) continue;
+            RealType yl2,zl2;
+            midas_CalcSpotPosition(RR2,Eta2,&yl2,&zl2);
+            // displacement
+            RealType Dy2,Dz2;
+            midas_displacement_spot_COM(xThis,yThis,0,c_params.Distance,yl2,zl2,Ome2,&Dy2,&Dz2);
+            RealType tY2=yl2+Dy2, tZ2=zl2+Dz2;
+            RealType tEta2; midas_CalcEtaAngle(tY2,tZ2,&tEta2);
+            RealType tRad2=sqrt(tY2*tY2+tZ2*tZ2)-RR2;
+            int iR2=rn2-1, iE2=(int)floor((180+tEta2)/c_params.EtaBinSize), iO2=(int)floor((180+Ome2)/c_params.OmeBinSize);
+            iE2=max(0,min(c_params.n_eta_bins-1,iE2)); iO2=max(0,min(c_params.n_ome_bins-1,iO2));
+            size_t P2=(size_t)iR2*c_params.n_eta_bins; P2+=iE2; P2*=c_params.n_ome_bins; P2+=iO2;
+            size_t nB2=d_ndata[P2*2+0], DP2=d_ndata[P2*2+1];
+            if (nB2==0) continue;
+            RealType dBest2=MarginOme+0.00001; size_t bestSR2=0; int mf2=0;
+            for (size_t k=0;k<nB2;k++) {
+              size_t sr2=d_data[(DP2+k)*2+0], sc2=d_data[(DP2+k)*2+1];
+              if (sr2>=(size_t)nSpots) continue;
+              RealType yR2=xThis*sin(Ome2*deg2rad)+yThis*cos(Ome2*deg2rad);
+              if (fabs(yR2-d_ypos[sc2])>=BeamSize/2.0) continue;
+              if (fabs(tRad2-d_ObsSpotsLab[sr2*N_COL_OBSSPOTS+8])>=c_params.MarginRadial) continue;
+              if (fabs(tEta2-d_ObsSpotsLab[sr2*N_COL_OBSSPOTS+6])>=c_etamargins[rn2]) continue;
+              RealType dO2=fabs(Ome2-d_ObsSpotsLab[sr2*N_COL_OBSSPOTS+2]);
+              if (dO2<dBest2) { dBest2=dO2; bestSR2=sr2; mf2=1; }
+            }
+            if (mf2) {
+              size_t sc2= d_data[(DP2)*2+1]; // approx scan
+              printf("  MATCH ih=%d rn=%d theorOme=%.2f theorEta=%.2f obsRow=%zu obsOme=%.2f obsScan=%zu\n",
+                     ih2,rn2,Ome2,tEta2,bestSR2,d_ObsSpotsLab[bestSR2*N_COL_OBSSPOTS+2],
+                     (size_t)d_ObsSpotsLab[bestSR2*N_COL_OBSSPOTS+9]);
+            }
+          }
+        }
+      }
       RealType avgIA = (iaCount > 0) ? (iaSum / (RealType)iaCount) : 999.0;
 
       // Atomic best-match update — double-precision comparison
