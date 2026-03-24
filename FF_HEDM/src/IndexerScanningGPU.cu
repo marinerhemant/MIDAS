@@ -934,7 +934,6 @@ __global__ void indexer_fused_kernel(
   double zs = d_ObsSpotsLab[idnr * N_COL_OBSSPOTS + 1];
   double omega = d_ObsSpotsLab[idnr * N_COL_OBSSPOTS + 2];
   double eta = d_ObsSpotsLab[idnr * N_COL_OBSSPOTS + 6];
-  double RefRad = d_ObsSpotsLab[idnr * N_COL_OBSSPOTS + 3];
   int ringnr = (int)d_ObsSpotsLab[idnr * N_COL_OBSSPOTS + 5];
 
   // Generate ideal spots — use same limit as CPU (MAX_N_STEPS)
