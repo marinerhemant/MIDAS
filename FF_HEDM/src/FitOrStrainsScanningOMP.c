@@ -1444,6 +1444,24 @@ int main(int argc, char *argv[]) {
     }
     RunFit(9, x9, lb9, ub9, obj_9D, &fdata, r9);
 
+    // Debug: post-Stage1 (first grain only)
+    static int dbgStage = 0;
+    if (dbgStage < 1) {
+      double x12_s1[12];
+      for (i = 0; i < 3; i++) x12_s1[i] = Pos0[i];
+      for (i = 0; i < 9; i++) x12_s1[i+3] = r9[i];
+      double s1Err = FitErrors12D(x12_s1, nSpotsComp, spotsYZONew, nhkls, hkls,
+                                   Lsd, Wavelength, nOmeRanges, OmegaRanges,
+                                   BoxSizes, MinEta, wedge, chi, &scratch);
+      printf("CPU[0] Init: %d spots, err=%.2f (%.2f/sp), Orient: %.4f %.4f %.4f\n",
+             nSpotsComp, initError, initError/nSpotsComp,
+             Euler0[0], Euler0[1], Euler0[2]);
+      printf("CPU[0] Stage1(9D): err=%.2f (%.2f/sp), Orient: %.4f %.4f %.4f, "
+             "LatC: %.4f %.4f %.4f %.3f %.3f %.3f\n",
+             s1Err, s1Err/nSpotsComp, r9[0], r9[1], r9[2],
+             r9[3], r9[4], r9[5], r9[6], r9[7], r9[8]);
+    }
+
     // --- Stage 2: 6D fit (strain only, pos+orient fixed) ---
     double x6[6], r6[6];
     for (i = 0; i < 3; i++)
@@ -1451,6 +1469,22 @@ int main(int argc, char *argv[]) {
     for (i = 0; i < 6; i++)
       x6[i] = r9[i + 3];
     RunFit(6, x6, lbABC, ubABC, obj_6D, &fdata, r6);
+
+    // Debug: post-Stage2 (first grain only)
+    if (dbgStage < 1) {
+      double x12_s2[12];
+      for (i = 0; i < 3; i++) x12_s2[i] = Pos0[i];
+      for (i = 0; i < 3; i++) x12_s2[i+3] = r9[i];
+      for (i = 0; i < 6; i++) x12_s2[i+6] = r6[i];
+      double s2Err = FitErrors12D(x12_s2, nSpotsComp, spotsYZONew, nhkls, hkls,
+                                   Lsd, Wavelength, nOmeRanges, OmegaRanges,
+                                   BoxSizes, MinEta, wedge, chi, &scratch);
+      printf("CPU[0] Stage2(6D): err=%.2f (%.2f/sp), "
+             "LatC: %.4f %.4f %.4f %.3f %.3f %.3f\n",
+             s2Err, s2Err/nSpotsComp,
+             r6[0], r6[1], r6[2], r6[3], r6[4], r6[5]);
+      dbgStage++;
+    }
 
     // Build final result: [pos3(fixed), orient3, latc6]
     double FinalResult[12];

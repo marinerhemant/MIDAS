@@ -845,6 +845,15 @@ fitGrainsKernel(int nGrains,
     ub9[3 + i] = ubABC[i];
   }
 
+  // Debug: initial error (first grain only)
+  if (gIdx == 0) {
+    RealType xInit[12] = {Pos0[0], Pos0[1], Pos0[2], Euler0[0], Euler0[1], Euler0[2],
+                          LatCin[0], LatCin[1], LatCin[2], LatCin[3], LatCin[4], LatCin[5]};
+    RealType initErr = gpu_FitErrorsPosT(xInit, spots, nSpots, d_hklsRaw, scratch, nMaxTheor);
+    printf("GPU[%d] Init: %d spots, err=%.2f (%.2f/sp), Orient: %.4f %.4f %.4f\n",
+           gIdx, nSpots, initErr, initErr/nSpots, Euler0[0], Euler0[1], Euler0[2]);
+  }
+
   FunctorOrientStrain f2;
   f2.spotsYZO = spots;
   f2.nSpots = nSpots;
@@ -855,6 +864,17 @@ fitGrainsKernel(int nGrains,
     f2.Pos[i] = Pos0[i];
   nm_optimize<9>(x0_9, lb9, ub9, res9, f2, 1e-5, 5000, 0.05);
   nm_optimize<9>(res9, lb9, ub9, res9, f2, 1e-5, 5000, 0.05);
+
+  // Debug: post-Stage1 (first grain only)
+  if (gIdx == 0) {
+    RealType x12_s1[12] = {Pos0[0], Pos0[1], Pos0[2], res9[0], res9[1], res9[2],
+                           res9[3], res9[4], res9[5], res9[6], res9[7], res9[8]};
+    RealType s1Err = gpu_FitErrorsPosT(x12_s1, spots, nSpots, d_hklsRaw, scratch, nMaxTheor);
+    printf("GPU[%d] Stage1(9D): err=%.2f (%.2f/sp), Orient: %.4f %.4f %.4f, "
+           "LatC: %.4f %.4f %.4f %.3f %.3f %.3f\n",
+           gIdx, s1Err, s1Err/nSpots, res9[0], res9[1], res9[2],
+           res9[3], res9[4], res9[5], res9[6], res9[7], res9[8]);
+  }
 
   // Dynamic reassignment after Stage 1
   if (doDynReassign && d_BinData != nullptr) {
@@ -874,7 +894,7 @@ fitGrainsKernel(int nGrains,
   // ─── Stage 2: Fit Strain (6D), pos+orient fixed ───
   RealType x0_6[6], lb6[6], ub6[6], res6[6];
   for (int i = 0; i < 6; i++)
-    x0_6[i] = LatCin[i];
+    x0_6[i] = res9[i + 3]; // Initialize from Stage 1 output (was: LatCin)
   for (int i = 0; i < 6; i++) {
     lb6[i] = lbABC[i];
     ub6[i] = ubABC[i];
@@ -892,6 +912,17 @@ fitGrainsKernel(int nGrains,
     f3.Orient[i] = res9[i];
   nm_optimize<6>(x0_6, lb6, ub6, res6, f3, 1e-5, 5000, 0.05);
   nm_optimize<6>(res6, lb6, ub6, res6, f3, 1e-5, 5000, 0.05);
+
+  // Debug: post-Stage2 (first grain only)
+  if (gIdx == 0) {
+    RealType x12_s2[12] = {Pos0[0], Pos0[1], Pos0[2], res9[0], res9[1], res9[2],
+                           res6[0], res6[1], res6[2], res6[3], res6[4], res6[5]};
+    RealType s2Err = gpu_FitErrorsPosT(x12_s2, spots, nSpots, d_hklsRaw, scratch, nMaxTheor);
+    printf("GPU[%d] Stage2(6D): err=%.2f (%.2f/sp), "
+           "LatC: %.4f %.4f %.4f %.3f %.3f %.3f\n",
+           gIdx, s2Err, s2Err/nSpots,
+           res6[0], res6[1], res6[2], res6[3], res6[4], res6[5]);
+  }
 
   // ─── Write results ───
   // Final: pos=Pos0 (fixed), orient=res9[0..2], strain=res6[0..5]
