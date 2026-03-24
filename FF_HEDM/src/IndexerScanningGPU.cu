@@ -920,6 +920,19 @@ __global__ void debug_eval_kernel(
     printf("GPU_PROBE Pos=%lld nInBin=%lld (CPU had 4,4,4,4,3)\n", pos, n);
   }
 
+  // Print ring radii and count HKLs per ring
+  printf("GPU_RADII r1=%.2f r2=%.2f r3=%.2f r4=%.2f r5=%.2f\n",
+         (double)c_RingRadii[1], (double)c_RingRadii[2], (double)c_RingRadii[3],
+         (double)c_RingRadii[4], (double)c_RingRadii[5]);
+  int hkl_ring_count[6] = {0,0,0,0,0,0};
+  for (int ih = 0; ih < n_hkls_d; ih++) {
+    int rn = (int)d_hkls_flat[ih * 7 + 3];
+    if (rn >= 0 && rn < 6) hkl_ring_count[rn]++;
+  }
+  printf("GPU_HKL_RINGS r0=%d r1=%d r2=%d r3=%d r4=%d r5=%d\n",
+         hkl_ring_count[0], hkl_ring_count[1], hkl_ring_count[2],
+         hkl_ring_count[3], hkl_ring_count[4], hkl_ring_count[5]);
+
   for (int ih = 0; ih < n_hkls_d; ih++) {
     RealType Ghkl[3] = {d_hkls_flat[ih * 7 + 0], d_hkls_flat[ih * 7 + 1],
                         d_hkls_flat[ih * 7 + 2]};
