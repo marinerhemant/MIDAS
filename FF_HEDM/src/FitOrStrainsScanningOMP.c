@@ -4,7 +4,7 @@
 //
 
 //
-//  FitPosOrStrains.c
+//  FitOrStrainsScanningOMP.c
 //
 //
 //  Created by Hemant Sharma on 2014/06/20.
@@ -1500,11 +1500,13 @@ int main(int argc, char *argv[]) {
     FreeMemMatrix(scratch.hkls, nhkls);
     FreeMemMatrix(scratch.hklsIn2, nhkls);
     FreeMemMatrix(scratch.TheorSpots, MaxNSpotsBest);
-    printf("Fitvals: Pos: %7.2f %7.2f %7.2f, Orient: %7.2f %7.2f %7.2f, LatC: "
+    printf("Fitvals: Error: %7.2f, Pos: %7.2f %7.2f %7.2f, Orient: %7.2f %7.2f "
+           "%7.2f, LatC: "
            "%6.4f %6.4f %6.4f %7.3f %7.3f %7.3f\n",
-           FinalResult[0], FinalResult[1], FinalResult[2], FinalResult[3],
-           FinalResult[4], FinalResult[5], FinalResult[6], FinalResult[7],
-           FinalResult[8], FinalResult[9], FinalResult[10], FinalResult[11]);
+           ErrorFin[0], FinalResult[0], FinalResult[1], FinalResult[2],
+           FinalResult[3], FinalResult[4], FinalResult[5], FinalResult[6],
+           FinalResult[7], FinalResult[8], FinalResult[9], FinalResult[10],
+           FinalResult[11]);
     double OF[3][3], OrientFit[9], EulerFit[3], PositionFit[3],
         LatticeParameterFit[6];
     for (i = 0; i < 3; i++)
