@@ -615,6 +615,7 @@ static double FitErrors12D(double x[12], int nSpots, double **spotsYZO,
   CalcDiffractionSpots(Lsd, MinEta, OmegaRanges, nOmeRanges, hkls, nhkls,
                        BoxSizes, &nTspots, OrientMatrix, TheorSpots);
   double Error = 0;
+  int nMatched = 0;
   for (int sp = 0; sp < nSpots; sp++) {
     double DisplY, DisplZ, ys, zs, Omega;
     DisplacementInTheSpot(x[0], x[1], x[2], Lsd, spotsYZO[sp][5],
@@ -630,9 +631,19 @@ static double FitErrors12D(double x[12], int nSpots, double **spotsYZO,
         double dy = ys - TheorSpots[k][0];
         double dz = zs - TheorSpots[k][1];
         Error += sqrt(dy * dy + dz * dz);
+        nMatched++;
         break;
       }
     }
+  }
+  static int dbgCount = 0;
+  if (dbgCount < 3) {
+    printf("  [FitErrors12D] nSpots=%d nTspots=%d nMatched=%d Error=%.4f\n",
+           nSpots, nTspots, nMatched, Error);
+    if (nSpots > 0)
+      printf("    first spnr=%d, LatC=%.4f %.4f %.4f %.3f %.3f %.3f\n",
+             (int)spotsYZO[0][8], x[6], x[7], x[8], x[9], x[10], x[11]);
+    dbgCount++;
   }
   return Error;
 }
