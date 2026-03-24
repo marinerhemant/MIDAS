@@ -636,15 +636,6 @@ static double FitErrors12D(double x[12], int nSpots, double **spotsYZO,
       }
     }
   }
-  static int dbgCount = 0;
-  if (dbgCount < 3) {
-    printf("  [FitErrors12D] nSpots=%d nTspots=%d nMatched=%d Error=%.4f\n",
-           nSpots, nTspots, nMatched, Error);
-    if (nSpots > 0)
-      printf("    first spnr=%d, LatC=%.4f %.4f %.4f %.3f %.3f %.3f\n",
-             (int)spotsYZO[0][8], x[6], x[7], x[8], x[9], x[10], x[11]);
-    dbgCount++;
-  }
   return Error;
 }
 
@@ -716,9 +707,11 @@ static void RunFit(int dim, double *x0, double *lb, double *ub,
                    double (*objfn)(unsigned, const double *, double *, void *),
                    void *data, double *xOut) {
   int i;
-  double x[24];
-  for (i = 0; i < dim; i++)
+  double x[24], steps[24];
+  for (i = 0; i < dim; i++) {
     x[i] = x0[i];
+    steps[i] = 0.05; // Match GPU's nm_optimize init_step
+  }
   NLoptConfig config = {0};
   config.dimension = dim;
   config.lower_bounds = lb;
@@ -726,6 +719,7 @@ static void RunFit(int dim, double *x0, double *lb, double *ub,
   config.objective_function = objfn;
   config.obj_data = data;
   config.initial_guess = x;
+  config.step_sizes = steps;
   config.max_evaluations = 5000;
   config.max_time_seconds = 30;
   config.ftol_rel = 1e-5;
