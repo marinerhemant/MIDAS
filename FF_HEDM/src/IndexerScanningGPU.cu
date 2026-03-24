@@ -1890,23 +1890,26 @@ int main(int argc, char *argv[]) {
   check(!hklf, "Cannot open %s", hklfn);
   (void)fgets(aline, 4096, hklf);
   while (fgets(aline, 4096, hklf)) {
-    double h, k, l, rn, ds, th, rr;
-    sscanf(aline, "%lf %lf %lf %lf %lf %lf %lf", &h, &k, &l, &rn, &ds, &th, &rr);
-    hkls[n_hkls][0] = (RealType)h;
-    hkls[n_hkls][1] = (RealType)k;
-    hkls[n_hkls][2] = (RealType)l;
-    hkls[n_hkls][3] = (RealType)rn;
-    hkls[n_hkls][4] = (RealType)ds;
-    hkls[n_hkls][5] = (RealType)th;
-    hkls[n_hkls][6] = (RealType)rr;
-    RingTtheta[(int)rn] = 2 * (RealType)th;
-    RingHKL[(int)rn][0] = (RealType)h;
-    RingHKL[(int)rn][1] = (RealType)k;
-    RingHKL[(int)rn][2] = (RealType)l;
-    HKLints[n_hkls][0] = (int)h;
-    HKLints[n_hkls][1] = (int)k;
-    HKLints[n_hkls][2] = (int)l;
-    HKLints[n_hkls][3] = (int)rn;
+    int hi, ki, li, Rnr;
+    double Ds, hc, kc, lc, tht, RRd;
+    char dummy[4096];
+    sscanf(aline, "%d %d %d %lf %d %lf %lf %lf %lf %s %lf",
+           &hi, &ki, &li, &Ds, &Rnr, &hc, &kc, &lc, &tht, dummy, &RRd);
+    hkls[n_hkls][0] = (RealType)hc;   // Cartesian Ghkl (NOT integer Miller indices!)
+    hkls[n_hkls][1] = (RealType)kc;
+    hkls[n_hkls][2] = (RealType)lc;
+    hkls[n_hkls][3] = (RealType)Rnr;
+    hkls[n_hkls][4] = (RealType)Ds;
+    hkls[n_hkls][5] = (RealType)tht;
+    hkls[n_hkls][6] = (RealType)RRd;
+    RingTtheta[Rnr] = 2 * (RealType)tht;
+    RingHKL[Rnr][0] = (RealType)hc;
+    RingHKL[Rnr][1] = (RealType)kc;
+    RingHKL[Rnr][2] = (RealType)lc;
+    HKLints[n_hkls][0] = hi;
+    HKLints[n_hkls][1] = ki;
+    HKLints[n_hkls][2] = li;
+    HKLints[n_hkls][3] = Rnr;
     n_hkls++;
   }
   fclose(hklf);
