@@ -297,7 +297,7 @@ __device__ int
 gpu_CompareSpots(RealType *spots, // flat: [nTspots × N_COL_THEORSPOTS]
                  int nTspots,
                  const RealType *d_ObsSpotsLab, // [n_spots × N_COL_OBSSPOTS]
-                 RealType RefRad, const size_t *d_data, const size_t *d_ndata,
+                 const size_t *d_data, const size_t *d_ndata,
                  const int *d_ringsToReject, int nRingsToRejectCalc,
                  int *nMatchesFracCalc, RealType ga, RealType gb,
                  RealType gc,     // grain position for IA
@@ -349,13 +349,13 @@ gpu_CompareSpots(RealType *spots, // flat: [nTspots × N_COL_THEORSPOTS]
     }
 
     int matchFound = 0;
-    int bestSpotRow = -1;
+    size_t bestSpotRow = 0;
     RealType diffOmeBest = 100000.0; // match CPU: find closest, no threshold
 
-    for (int is = 0; is < nInBin; is++) {
-      int spotRow = (int)d_data[(DataPos + is) * 2 + 0];
-      int scannrobs = (int)d_data[(DataPos + is) * 2 + 1];
-      int base = spotRow * N_COL_OBSSPOTS;
+    for (size_t is = 0; is < nInBin; is++) {
+      size_t spotRow = d_data[(DataPos + is) * 2 + 0];
+      size_t scannrobs = d_data[(DataPos + is) * 2 + 1];
+      size_t base = spotRow * N_COL_OBSSPOTS;
 
       // Filter 0: beam proximity check (matching OMP)
       if (d_ypos != nullptr && BeamSize > 0) {
@@ -370,12 +370,7 @@ gpu_CompareSpots(RealType *spots, // flat: [nTspots × N_COL_THEORSPOTS]
       if (fabs(theorRadDiff - obsRadDiff) >= c_params.MarginRadial)
         continue;
 
-      // Filter 2: RefRad check (MarginRad) — skip if ring is excluded
-      if (!skipRadialFilter) {
-        RealType obsRefRad = d_ObsSpotsLab[base + 3];
-        if (fabs(RefRad - obsRefRad) >= c_params.MarginRad)
-          continue;
-      }
+      // (RefRad filter removed — CPU CompareSpots does not have this)
 
       // Filter 3: eta margin
       RealType obsEta = d_ObsSpotsLab[base + 6];
@@ -405,7 +400,7 @@ gpu_CompareSpots(RealType *spots, // flat: [nTspots × N_COL_THEORSPOTS]
         nMatchedFrac++;
 
       // Compute internal angle for this matched spot — ALL in RealType
-      int base = bestSpotRow * N_COL_OBSSPOTS;
+      size_t base = bestSpotRow * N_COL_OBSSPOTS;
       RealType obsY_d = (RealType)d_ObsSpotsLab[base + 0];
       RealType obsZ_d = (RealType)d_ObsSpotsLab[base + 1];
       RealType obsOme_d = (RealType)d_ObsSpotsLab[base + 2];
@@ -856,7 +851,8 @@ __global__ void indexer_spotdriven_kernel(
       // CompareSpots
       int nMatchesFracCalc;
       RealType avgIA;
-      int nMatches = gpu_CompareSpots(TheorSpots, nTspots, d_ObsSpotsLab, RefRad,
+      // RefRad parameter removed from gpu_CompareSpots
+      int nMatches = gpu_CompareSpots(TheorSpots, nTspots, d_ObsSpotsLab,
                                       d_data, d_ndata, d_ringsToReject, nRingsToRejectCalc,
                                       &nMatchesFracCalc, xThis, yThis, 0, &avgIA,
                                       d_ypos, BeamSize);
@@ -864,18 +860,23 @@ __global__ void indexer_spotdriven_kernel(
       RealType fracMatches = (RealType)nMatchesFracCalc / (RealType)nTspotsFracCalc;
 
       // Atomic best update per (voxel, spot)
+      // Use unsigned long long for atomic operations to ensure atomicity across 64-bit values
       unsigned int fracBits = (unsigned int)__float_as_int((float)fracMatches);
-      unsigned int iaBits = ~(unsigned int)__float_as_int((float)avgIA);
+      unsigned int iaBits = ~(unsigned int)__float_as_int((float)avgIA); // Invert IA bits for max-comparison
       unsigned long long newKey = ((unsigned long long)fracBits << 32) | (unsigned long long)iaBits;
 
       SpotResult *res = &d_results[voxelIdx * nSpotsRange + seedIdx];
       unsigned long long *keyAddr = &res->atomicKey;
 
+      // Loop until atomicCAS succeeds or a better value is already present
       while (true) {
         unsigned long long oldKey = *keyAddr;
-        if (newKey <= oldKey) break;
+        if (newKey <= oldKey) { // If newKey is not better or equal, break
+          break;
+        }
+        // Attempt to update the key
         unsigned long long prev = atomicCAS(keyAddr, oldKey, newKey);
-        if (prev == oldKey) {
+        if (prev == oldKey) { // If we successfully updated
           res->bestFrac = fracMatches;
           res->bestIA = avgIA;
           for (int i = 0; i < 9; i++) res->bestOrMat[i] = OrMat[i / 3][i % 3];
@@ -886,56 +887,13 @@ __global__ void indexer_spotdriven_kernel(
           res->nMatches = nMatches;
           break;
         }
+        // If prev != oldKey, another thread updated it. Loop and try again with the new oldKey.
       }
     } // end orientation loop
   } // end ideal spot loop
 }
 
 // ─────────────────────────────────────────────────────────────
-// ─────────────────────────────────────────────────────────────
-// DEBUG: Single-OrMat evaluation kernel for side-by-side CPU comparison
-// ─────────────────────────────────────────────────────────────
-__global__ void debug_eval_kernel(
-    const double *testOM, double ga, double gb,
-    const RealType *d_hkls_flat, int n_hkls_d,
-    const size_t *d_ndata,
-    const RealType *d_ObsSpotsLab, int nSpots,
-    const size_t *d_data,
-    const double *d_ypos, double BeamSize)
-{
-  // Build OrMat from flat array
-  RealType OrMat[3][3];
-  for (int i = 0; i < 9; i++)
-    OrMat[i / 3][i % 3] = (RealType)testOM[i];
-
-  int spotCount = 0;
-  int nTspots = 0;
-  int nMatched = 0;
-
-  // Direct probe: check exact CPU bin positions
-  long long cpuPositions[] = {251200, 12708575, 6730775, 6229000, 4062771};
-  for (int p = 0; p < 5; p++) {
-    long long pos = cpuPositions[p];
-    long long n = (long long)d_ndata[pos * 2 + 0];
-    printf("GPU_PROBE Pos=%lld nInBin=%lld (CPU had 4,4,4,4,3)\n", pos, n);
-  }
-
-  // Print ring radii and count HKLs per ring
-  printf("GPU_RADII r1=%.2f r2=%.2f r3=%.2f r4=%.2f r5=%.2f\n",
-         (double)c_RingRadii[1], (double)c_RingRadii[2], (double)c_RingRadii[3],
-         (double)c_RingRadii[4], (double)c_RingRadii[5]);
-  int hkl_ring_count[6] = {0,0,0,0,0,0};
-  for (int ih = 0; ih < n_hkls_d; ih++) {
-    int rn = (int)d_hkls_flat[ih * 7 + 3];
-    if (rn >= 0 && rn < 6) hkl_ring_count[rn]++;
-  }
-  printf("GPU_HKL_RINGS r0=%d r1=%d r2=%d r3=%d r4=%d r5=%d\n",
-         hkl_ring_count[0], hkl_ring_count[1], hkl_ring_count[2],
-         hkl_ring_count[3], hkl_ring_count[4], hkl_ring_count[5]);
-
-  int r1_skip_pole = 0, r1_skip_ome = 0, r1_spots = 0;
-
-  for (int ih = 0; ih < n_hkls_d; ih++) {
     RealType Ghkl[3] = {d_hkls_flat[ih * 7 + 0], d_hkls_flat[ih * 7 + 1],
                         d_hkls_flat[ih * 7 + 2]};
     int rn = (int)d_hkls_flat[ih * 7 + 3];
@@ -1081,8 +1039,6 @@ __global__ void indexer_fused_kernel(
 
   SpotResult *res = &d_results[voxelIdx * nSpotsRange + seedIdx];
 
-  // DEBUG counters
-  int dbg_totalOrients = 0, dbg_maxMatched = 0, dbg_nonEmptyBins = 0;
 
   for (int isp = 0; isp < nPN; isp++) {
     double xi, yi, zi;
@@ -1167,11 +1123,7 @@ __global__ void indexer_fused_kernel(
           }
           if (!keep) continue;
 
-          // DEBUG: dump theor spot positions for vox0/spot0/isp0/o=0
-          if (voxelIdx == 0 && spotLocalIdx == 0 && isp == 0 && o == 0) {
-            printf("GPU_THEOR ih=%d rn=%d eta=%.4f ome=%.4f yl=%.2f zl=%.2f rad=%.2f\n",
-                   ih, rn, (double)Eta, (double)Omega, (double)yl, (double)zl, (double)RingRadius);
-          }
+
 
           nTspots++;
 
@@ -1212,75 +1164,34 @@ __global__ void indexer_fused_kernel(
 
           size_t nInBin = d_ndata[Pos * 2 + 0];
           size_t DataPos = d_ndata[Pos * 2 + 1];
-          if (nInBin > 0) {
-            dbg_nonEmptyThis++;
-            // Print first non-empty bin found for vox0/spot0
-            if (voxelIdx == 0 && spotLocalIdx == 0 && dbg_nonEmptyBins == 0) {
-              long long dbgPos = (long long)Pos;
-              long long dbgN = (long long)nInBin;
-              printf("GPU_BIN_HIT ih=%d rn=%d iR=%d iE=%d iO=%d Pos=%lld nInBin=%lld neta=%d nome=%d\n",
-                     ih, rn, iRing, iEta, iOme, dbgPos, dbgN, c_params.n_eta_bins, c_params.n_ome_bins);
-            }
-          }
           if (nInBin == 0) continue;
 
           RealType etamargin = c_etamargins[rn];
 
-          int skipRadialFilter = isRejected;
-
           int matchFound = 0;
-          int bestSpotRow = -1;
+          size_t bestSpotRow = 0;
           RealType diffOmeBest = 100000.0;
 
-          // DEBUG: track filter stats for first non-empty bin of vox0/spot0
-          int dbg_filterPrint = (voxelIdx == 0 && spotLocalIdx == 0 && dbg_nonEmptyBins <= 1 && nInBin > 0);
-
-          for (int is = 0; is < (int)nInBin; is++) {
-            int spotRow = (int)d_data[(DataPos + is) * 2 + 0];
-            int scannrobs = (int)d_data[(DataPos + is) * 2 + 1];
-            if (spotRow < 0 || spotRow >= nSpots) continue;
-            int base = spotRow * N_COL_OBSSPOTS;
+          for (size_t is = 0; is < nInBin; is++) {
+            size_t spotRow = d_data[(DataPos + is) * 2 + 0];
+            size_t scannrobs = d_data[(DataPos + is) * 2 + 1];
+            if (spotRow >= (size_t)nSpots) continue;
+            size_t base = spotRow * N_COL_OBSSPOTS;
 
             // Filter 0: beam proximity
             if (d_ypos != nullptr && BeamSize > 0) {
               RealType yRot = xThis * sin(theorOmeRad) + yThis * cos(theorOmeRad);
               RealType ySpot = d_ypos[scannrobs];
-              if (fabs(yRot - ySpot) >= BeamSize / 2.0) {
-                if (dbg_filterPrint && is < 3)
-                  printf("  REJECT_BEAM is=%d yRot=%.2f ySpot=%.2f diff=%.2f beam=%.2f\n",
-                         is, (double)yRot, (double)ySpot, (double)fabs(yRot - ySpot), (double)(BeamSize/2.0));
-                continue;
-              }
+              if (fabs(yRot - ySpot) >= BeamSize / 2.0) continue;
             }
 
             // Filter 1: radial difference
             RealType obsRadDiff = d_ObsSpotsLab[base + 8];
-            if (fabs(theorRadDiff - obsRadDiff) >= c_params.MarginRadial) {
-              if (dbg_filterPrint && is < 3)
-                printf("  REJECT_RAD is=%d theorRad=%.2f obsRad=%.2f diff=%.2f margin=%.2f\n",
-                       is, (double)theorRadDiff, (double)obsRadDiff, (double)fabs(theorRadDiff-obsRadDiff), (double)c_params.MarginRadial);
-              continue;
-            }
+            if (fabs(theorRadDiff - obsRadDiff) >= c_params.MarginRadial) continue;
 
-            // Filter 2: RefRad
-            if (!skipRadialFilter) {
-              RealType obsRefRad = d_ObsSpotsLab[base + 3];
-              if (fabs(RefRad - obsRefRad) >= c_params.MarginRad) {
-                if (dbg_filterPrint && is < 3)
-                  printf("  REJECT_REFRAD is=%d RefRad=%.2f obsRefRad=%.2f diff=%.2f margin=%.2f\n",
-                         is, (double)RefRad, (double)obsRefRad, (double)fabs(RefRad-obsRefRad), (double)c_params.MarginRad);
-                continue;
-              }
-            }
-
-            // Filter 3: eta margin
+            // Filter 2: eta margin
             RealType obsEta = d_ObsSpotsLab[base + 6];
-            if (fabs(theorEta - obsEta) >= etamargin) {
-              if (dbg_filterPrint && is < 3)
-                printf("  REJECT_ETA is=%d theorEta=%.4f obsEta=%.4f diff=%.4f margin=%.4f\n",
-                       is, (double)theorEta, (double)obsEta, (double)fabs(theorEta-obsEta), (double)etamargin);
-              continue;
-            }
+            if (fabs(theorEta - obsEta) >= etamargin) continue;
 
             // Find closest omega match
             RealType obsOme = d_ObsSpotsLab[base + 2];
@@ -1297,7 +1208,7 @@ __global__ void indexer_fused_kernel(
             if (!isRejected) nMatchedFrac++;
 
             // Compute internal angle
-            int base = bestSpotRow * N_COL_OBSSPOTS;
+            size_t base = bestSpotRow * N_COL_OBSSPOTS;
             RealType obsY_d = d_ObsSpotsLab[base + 0];
             RealType obsZ_d = d_ObsSpotsLab[base + 1];
             RealType obsOme_d = d_ObsSpotsLab[base + 2];
@@ -1335,24 +1246,18 @@ __global__ void indexer_fused_kernel(
 
       // ═══ End of fused CalcDiffrSpots + CompareSpots ═══
 
-      if (voxelIdx == 0 && spotLocalIdx == 0) {
-        dbg_totalOrients++;
-        if (dbg_nonEmptyThis > dbg_nonEmptyBins)
-          dbg_nonEmptyBins = dbg_nonEmptyThis;
-        if (nMatched > dbg_maxMatched) {
-          dbg_maxMatched = nMatched;
-        }
-      }
-
       if (nTspots == 0 || nTspotsFracCalc == 0) continue;
 
       RealType fracMatches = (RealType)nMatchedFrac / (RealType)nTspotsFracCalc;
       RealType avgIA = (iaCount > 0) ? (iaSum / (RealType)iaCount) : 999.0;
 
-      // Atomic best-match update
-      unsigned int fracBits = (unsigned int)__float_as_int((float)fracMatches);
-      unsigned int iaBits = ~(unsigned int)__float_as_int((float)avgIA);
-      unsigned long long newKey = ((unsigned long long)fracBits << 32) | (unsigned long long)iaBits;
+      // Atomic best-match update — double-precision comparison
+      // Pack fracMatches (high 32 bits) and ~avgIA (low 32 bits) into 64-bit key
+      // using __double_as_longlong for full double precision on fracMatches.
+      // For the IA tiebreaker, use float (sufficient for angle precision).
+      unsigned long long fracBits = __double_as_longlong(fracMatches);
+      unsigned int iaBits = ~__float_as_int((float)avgIA);
+      unsigned long long newKey = (fracBits & 0xFFFFFFFF00000000ULL) | (unsigned long long)iaBits;
 
       unsigned long long *keyAddr = &res->atomicKey;
       while (true) {
@@ -1374,10 +1279,7 @@ __global__ void indexer_fused_kernel(
     } // orientation loop
   } // ideal spot loop
 
-  if (voxelIdx == 0 && spotLocalIdx == 0) {
-    printf("DEBUG vox0 spot0: nPN=%d totalOrients=%d maxMatched=%d maxNonEmptyBins=%d bestFrac=%.4f bestIA=%.4f\n",
-           nPN, dbg_totalOrients, dbg_maxMatched, dbg_nonEmptyBins, (double)res->bestFrac, (double)res->bestIA);
-  }
+
 }
 
 
@@ -2278,41 +2180,8 @@ int main(int argc, char *argv[]) {
 
     dim3 block(256, 1);
     dim3 grid2((nSpotsRange + block.x - 1) / block.x, nVoxels);
-    printf("  Launching fused kernel: grid=(%d,%d), block=%d\n",
+    printf("  Launching fused kernel: grid=(%d,%d), block=%d\\n",
            grid2.x, grid2.y, block.x);
-    // ═══ DEBUG: single-OrMat evaluation kernel ═══
-    {
-      printf("  === DEBUG: Evaluating CPU best OrMat on GPU ===\n");
-      // CPU best: vox=25 ga=0.000000 gb=8.333333
-      double h_testOM[9] = {
-        0.6287306926, 0.7143927190, -0.3071494086,
-       -0.5816900491, 0.1699358833, -0.7954611759,
-       -0.5160759663, 0.6787966106,  0.5223990414
-      };
-      double h_ga = 0.000000, h_gb = 8.333333;
-      // Upload OrMat to GPU
-      double *d_testOM;
-      CUDA_CHECK(cudaMalloc(&d_testOM, 9 * sizeof(double)));
-      CUDA_CHECK(cudaMemcpy(d_testOM, h_testOM, 9 * sizeof(double), cudaMemcpyHostToDevice));
-      // Run a simple 1-thread kernel
-      extern __global__ void debug_eval_kernel(
-          const double *testOM, double ga, double gb,
-          const RealType *d_hkls_flat, int n_hkls_d,
-          const size_t *d_ndata,
-          const RealType *d_ObsSpotsLab, int nSpots,
-          const size_t *d_data,
-          const double *d_ypos, double BeamSize);
-      debug_eval_kernel<<<1,1>>>(
-          d_testOM, h_ga, h_gb,
-          d_hkls_flat, n_hkls,
-          d_ndata,
-          d_ObsSpotsLab, (int)n_spots,
-          d_data,
-          d_ypos, BeamSize);
-      CUDA_CHECK(cudaDeviceSynchronize());
-      cudaFree(d_testOM);
-      printf("  === DEBUG done ===\n");
-    }
 
     double tKernelStart = omp_get_wtime();
     indexer_fused_kernel<<<grid2, block>>>(

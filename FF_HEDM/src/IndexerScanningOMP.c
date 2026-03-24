@@ -1311,50 +1311,6 @@ int DoIndexing(int SpotID, int voxNr, double xThis, double yThis, double zThis,
     or += orDelta;
   }
 
-  // ═══ DEBUG: dump COMPLETE best match info ═══
-  {
-    if (bestMatchFound) {
-      // Re-evaluate CalcDiffrSpots with best OrMat (from search, NOT refinement)
-      RealType bestOM[3][3];
-      for (int i = 0; i < 9; i++)
-        bestOM[i / 3][i % 3] = GrainMatchesT[0][i];
-      printf("CPU_BEST vox=%d spot=%d nMatches=%d/%d ga=%.6f gb=%.6f gc=%.6f\n",
-             voxNr, SpotRowNo, bestnMatchesIsp, bestnTspotsIsp, ga, gb, gc);
-      printf("CPU_ORMAT %.10f %.10f %.10f %.10f %.10f %.10f %.10f %.10f %.10f\n",
-             bestOM[0][0], bestOM[0][1], bestOM[0][2],
-             bestOM[1][0], bestOM[1][1], bestOM[1][2],
-             bestOM[2][0], bestOM[2][1], bestOM[2][2]);
-      // Re-evaluate to print per-spot details
-      CalcDiffrSpots_Furnace(bestOM, Params.LatticeConstant, Params.Wavelength,
-                             Params.Distance, Params.RingRadii, Params.OmegaRanges,
-                             Params.BoxSizes, Params.NoOfOmegaRanges,
-                             Params.ExcludePoleAngle, TheorSpots, &nTspots);
-      for (sp = 0; sp < nTspots; sp++) {
-        displacement_spot_needed_COM(
-            ga, gb, gc, TheorSpots[sp][3], TheorSpots[sp][4], TheorSpots[sp][5],
-            TheorSpots[sp][14], TheorSpots[sp][15], &Displ_y, &Displ_z);
-        TheorSpots[sp][10] = TheorSpots[sp][4] + Displ_y;
-        TheorSpots[sp][11] = TheorSpots[sp][5] + Displ_z;
-        CalcEtaAngle(TheorSpots[sp][10], TheorSpots[sp][11], &TheorSpots[sp][12]);
-        TheorSpots[sp][13] = sqrt(TheorSpots[sp][10] * TheorSpots[sp][10] +
-                                  TheorSpots[sp][11] * TheorSpots[sp][11]) -
-                             Params.RingRadii[(int)TheorSpots[sp][9]];
-      }
-      // Print first 10 theor spots with bin info
-      for (sp = 0; sp < nTspots; sp++) {
-        int rn = (int)TheorSpots[sp][9];
-        int iR = rn - 1;
-        int iE = (int)floor((180 + TheorSpots[sp][12]) * Params.InvEtaBinSize);
-        int iO = (int)floor((180 + TheorSpots[sp][6]) * Params.InvOmeBinSize);
-        size_t P = (size_t)iR * n_eta_bins * n_ome_bins + (size_t)iE * n_ome_bins + (size_t)iO;
-        size_t nB = ndata[P * 2];
-        printf("CPU_SP sp=%d rn=%d tEta=%.6f tOme=%.6f yl=%.2f zl=%.2f radDiff=%.4f iR=%d iE=%d iO=%d Pos=%zu nInBin=%zu\n",
-               sp, rn, TheorSpots[sp][12], TheorSpots[sp][6],
-               TheorSpots[sp][10], TheorSpots[sp][11], TheorSpots[sp][13],
-               iR, iE, iO, P, nB);
-      }
-    }
-  }
   fracMatches = (RealType)bestnMatchesIsp / bestnTspotsIsp;
   // printf("%lf %d %d\n",fracMatches,bestnMatchesIsp,bestnTspotsIsp);
   if (bestnMatchesIsp < 0 ||
