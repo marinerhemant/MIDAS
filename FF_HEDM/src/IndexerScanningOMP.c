@@ -1313,9 +1313,7 @@ int DoIndexing(int SpotID, int voxNr, double xThis, double yThis, double zThis,
 
   // ═══ DEBUG: dump COMPLETE best match info ═══
   {
-    static int bestDump = 0;
-    if (bestMatchFound && bestDump < 1) {
-      bestDump++;
+    if (bestMatchFound) {
       // Re-evaluate CalcDiffrSpots with best OrMat
       RealType bestOM[3][3];
       for (int i = 0; i < 9; i++)
