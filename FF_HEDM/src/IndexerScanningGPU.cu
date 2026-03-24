@@ -1188,10 +1188,9 @@ __global__ void indexer_fused_kernel(
               if (dO2<dBest2) { dBest2=dO2; bestSR2=sr2; mf2=1; }
             }
             if (mf2) {
-              size_t sc2= d_data[(DP2)*2+1]; // approx scan
-              printf("  MATCH ih=%d rn=%d theorOme=%.2f theorEta=%.2f obsRow=%zu obsOme=%.2f obsScan=%zu\n",
-                     ih2,rn2,Ome2,tEta2,bestSR2,d_ObsSpotsLab[bestSR2*N_COL_OBSSPOTS+2],
-                     (size_t)d_ObsSpotsLab[bestSR2*N_COL_OBSSPOTS+9]);
+              printf("  MATCH ih=%d rn=%d theorOme=%.2f theorEta=%.2f obsRow=%lld obsOme=%.2f obsScan=%lld\n",
+                     ih2,rn2,Ome2,tEta2,(long long)bestSR2,d_ObsSpotsLab[bestSR2*N_COL_OBSSPOTS+2],
+                     (long long)d_ObsSpotsLab[bestSR2*N_COL_OBSSPOTS+9]);
             }
           }
         }
