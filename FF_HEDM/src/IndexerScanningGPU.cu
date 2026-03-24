@@ -2041,6 +2041,31 @@ int main(int argc, char *argv[]) {
         VoxelAccum_addSolution(acc, outArr, keyArr, NULL, 0);
       }
     }
+    // Dump raw spot results for voxel 0
+    {
+      int vi = 0;
+      printf("  === GPU vox=0 raw spot results ===\n");
+      int nGood = 0;
+      int bestSi = -1;
+      double bestFrac = 0;
+      for (int si = 0; si < nSpotsRange; si++) {
+        SpotResult *r = &h_allResults[vi * nSpotsRange + si];
+        if (r->bestFrac > 0) {
+          nGood++;
+          if (r->bestFrac > bestFrac) { bestFrac = r->bestFrac; bestSi = si; }
+        }
+      }
+      printf("  nGood=%d (out of %d)\n", nGood, nSpotsRange);
+      if (bestSi >= 0) {
+        SpotResult *r = &h_allResults[vi * nSpotsRange + bestSi];
+        printf("  bestSi=%d frac=%.6f IA=%.6f nT=%d nM=%d\n",
+               bestSi, r->bestFrac, r->bestIA, r->nTspots, r->nMatches);
+        printf("  OrMat: %.6f %.6f %.6f / %.6f %.6f %.6f / %.6f %.6f %.6f\n",
+               r->bestOrMat[0], r->bestOrMat[1], r->bestOrMat[2],
+               r->bestOrMat[3], r->bestOrMat[4], r->bestOrMat[5],
+               r->bestOrMat[6], r->bestOrMat[7], r->bestOrMat[8]);
+      }
+    }
     printf("  Accumulation: %.3f s\n", omp_get_wtime() - tAccumStart);
 
     printf("  Total spot-driven time: %.3f s\n", omp_get_wtime() - tSpotDrivenStart);

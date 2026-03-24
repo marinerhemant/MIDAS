@@ -1290,6 +1290,15 @@ int DoIndexing(int SpotID, int voxNr, double xThis, double yThis, double zThis,
   free(outArr2);
   printf("ID: %d, voxNr: %d, Confidence: %lf, IA: %lf\n", SpotID, voxNr,
          fracMatches, GrainMatches[0][15]);
+  if (voxNr == 0) {
+    printf("CPU vox=0 spotID=%d frac=%.6f IA=%.6f nT=%.0f nM=%.0f\n",
+           SpotID, fracMatches, GrainMatches[0][15],
+           GrainMatches[0][12], GrainMatches[0][13]);
+    printf("CPU OrMat: %.6f %.6f %.6f / %.6f %.6f %.6f / %.6f %.6f %.6f\n",
+           GrainMatches[0][0], GrainMatches[0][1], GrainMatches[0][2],
+           GrainMatches[0][3], GrainMatches[0][4], GrainMatches[0][5],
+           GrainMatches[0][6], GrainMatches[0][7], GrainMatches[0][8]);
+  }
 }
 
 int ReadBins(char *cwd) {
