@@ -339,15 +339,6 @@ gpu_CompareSpots(RealType *spots, // flat: [nTspots × N_COL_THEORSPOTS]
 
     RealType etamargin = c_etamargins[RingNr];
 
-    // Check if this ring is excluded from radial filter
-    int skipRadialFilter = 0;
-    for (int rr = 0; rr < nRingsToRejectCalc; rr++) {
-      if (RingNr == d_ringsToReject[rr]) {
-        skipRadialFilter = 1;
-        break;
-      }
-    }
-
     int matchFound = 0;
     size_t bestSpotRow = 0;
     RealType diffOmeBest = 100000.0; // match CPU: find closest, no threshold
@@ -781,7 +772,7 @@ __global__ void indexer_spotdriven_kernel(
   double zs = d_ObsSpotsLab[idnr * N_COL_OBSSPOTS + 1];
   double omega = d_ObsSpotsLab[idnr * N_COL_OBSSPOTS + 2];
   double eta = d_ObsSpotsLab[idnr * N_COL_OBSSPOTS + 6];
-  double RefRad = d_ObsSpotsLab[idnr * N_COL_OBSSPOTS + 3];
+
   int ringnr = (int)d_ObsSpotsLab[idnr * N_COL_OBSSPOTS + 5];
 
   // Generate ideal spots — use small GPU-friendly limit (nPN is typically 1-3)
@@ -998,7 +989,7 @@ __global__ void indexer_fused_kernel(
       int nMatchedFrac = 0;
       RealType iaSum = 0.0;
       int iaCount = 0;
-      int dbg_nonEmptyThis = 0;
+
 
       for (int ih = 0; ih < n_hkls_d; ih++) {
         RealType Ghkl[3] = {d_hkls_flat[ih * 7 + 0], d_hkls_flat[ih * 7 + 1],
@@ -1213,112 +1204,9 @@ __global__ void indexer_fused_kernel(
 
 // h_MatrixMultF removed — unused on host side
 
-static inline void h_MatrixMultF33(double m[3][3], double n[3][3],
-                                   double res[3][3]) {
-  for (int r = 0; r < 3; r++)
-    for (int c = 0; c < 3; c++)
-      res[r][c] = m[r][0] * n[0][c] + m[r][1] * n[1][c] + m[r][2] * n[2][c];
-}
 
-static inline void h_AxisAngle2RotMatrix(double axis[3], double angle,
-                                         double R[3][3]) {
-  double n2 = axis[0] * axis[0] + axis[1] * axis[1] + axis[2] * axis[2];
-  if (n2 < EPS) {
-    R[0][0] = 1;
-    R[0][1] = 0;
-    R[0][2] = 0;
-    R[1][0] = 0;
-    R[1][1] = 1;
-    R[1][2] = 0;
-    R[2][0] = 0;
-    R[2][1] = 0;
-    R[2][2] = 1;
-    return;
-  }
-  double inv = 1.0 / sqrt(n2);
-  double u = axis[0] * inv, v = axis[1] * inv, w = axis[2] * inv;
-  double rad = deg2rad * angle, co = cos(rad), si = sin(rad), omc = 1 - co;
-  R[0][0] = co + u * u * omc;
-  R[0][1] = -w * si + u * v * omc;
-  R[0][2] = v * si + u * w * omc;
-  R[1][0] = w * si + v * u * omc;
-  R[1][1] = co + v * v * omc;
-  R[1][2] = -u * si + v * w * omc;
-  R[2][0] = -v * si + w * u * omc;
-  R[2][1] = u * si + w * v * omc;
-  R[2][2] = co + w * w * omc;
-}
+// Host-side math helpers removed — orientation generation is done on GPU
 
-// h_CalcOmega removed — unused on host side
-
-static double h_CalcRotationAngle(int RingNr) {
-  int habs = 0, kabs = 0, labs = 0, i;
-  for (i = 0; i < n_hkls; i++)
-    if (HKLints[i][3] == RingNr) {
-      habs = abs(HKLints[i][0]);
-      kabs = abs(HKLints[i][1]);
-      labs = abs(HKLints[i][2]);
-      break;
-    }
-  int nz = 0;
-  if (!habs)
-    nz++;
-  if (!kabs)
-    nz++;
-  if (!labs)
-    nz++;
-  if (nz == 3)
-    return 0;
-  if (SGNum <= 2)
-    return 360;
-  if (SGNum <= 15) {
-    if (nz != 2)
-      return 360;
-    if (ABCABG[3] == 90 && ABCABG[4] == 90 && labs)
-      return 180;
-    if (ABCABG[3] == 90 && ABCABG[5] == 90 && habs)
-      return 180;
-    if (ABCABG[3] == 90 && ABCABG[5] == 90 && kabs)
-      return 180;
-    return 360;
-  }
-  if (SGNum <= 74) {
-    if (nz != 2)
-      return 360;
-    return 180;
-  }
-  if (SGNum <= 142) {
-    if (!nz)
-      return 360;
-    if (nz == 1 && !labs && habs == kabs)
-      return 180;
-    if (nz == 2)
-      return labs ? 90 : 180;
-    return 360;
-  }
-  if (SGNum <= 167) {
-    if (!nz)
-      return 360;
-    if (nz == 2 && labs)
-      return 120;
-    return 360;
-  }
-  if (SGNum <= 194) {
-    if (nz == 2 && labs)
-      return 60;
-    return 360;
-  }
-  if (SGNum <= 230) {
-    if (nz == 2)
-      return 90;
-    if (nz == 1 && (habs == kabs || kabs == labs || habs == labs))
-      return 180;
-    if (!nz && habs == kabs && kabs == labs)
-      return 120;
-    return 360;
-  }
-  return 0;
-}
 
 
 // ─── Data I/O (same as IndexerOMP) ─────────────────────────
