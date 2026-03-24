@@ -1415,10 +1415,21 @@ int main(int argc, char *argv[]) {
 
     // Print per-grain result
     if (nSpotsComp > 0) {
-      printf("SpotID %6d, %3d spots, Err: %7.2f, "
+      // Compute Euler angles from orient matrix for display
+      // out[1..9] = orient matrix (row-major: out[1+i*3+j] = OF[i][j])
+      double Phi = acos(out[9]) * rad2deg; // OF[2][2] = cos(Phi)
+      double sinP = sin(acos(out[9]));
+      double phi1 = 0, phi2 = 0;
+      if (fabs(sinP) > 1e-8) {
+        phi1 = atan2(out[7], -out[8]) * rad2deg;  // OF[2][0]/sinP, -OF[2][1]/sinP
+        phi2 = atan2(out[3], out[6]) * rad2deg;    // OF[0][2]/sinP, OF[1][2]/sinP
+      }
+      if (phi1 < 0) phi1 += 360.0;
+      if (phi2 < 0) phi2 += 360.0;
+      printf("SpotID %6d, %3d spots, Err: %7.2f, Orient: %7.2f %7.2f %7.2f, "
              "LatC: %6.4f %6.4f %6.4f %7.3f %7.3f %7.3f\n",
-             SpId, nSpotsComp, out[22], out[15],
-             out[16], out[17], out[18], out[19], out[20]);
+             SpId, nSpotsComp, out[22], phi1, Phi, phi2,
+             out[15], out[16], out[17], out[18], out[19], out[20]);
     }
   }
   if (keyFD > 0)
