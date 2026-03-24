@@ -1514,6 +1514,7 @@ static void ReadScanParams(char *fn) {
   while (fgets(line, 4096, fp)) {
     if (!strncmp(line, "BeamSize ", 9)) {
       sscanf(line, "%s %lf", dummy, &BeamSize);
+      BeamSize += 0.1; // Match CPU: IndexerScanningOMP.c line 831
       continue;
     }
     if (!strncmp(line, "NumScans ", 9)) {
@@ -1827,7 +1828,7 @@ int main(int argc, char *argv[]) {
   double *d_ypos;
   CUDA_CHECK(cudaMalloc(&d_ypos, nYpos * sizeof(double)));
   CUDA_CHECK(cudaMemcpy(d_ypos, ypos, nYpos * sizeof(double), cudaMemcpyHostToDevice));
-  double BeamSize = Params.Hbeam;
+  // BeamSize is the global parsed from param file (with +0.1), NOT Params.Hbeam (which is 300)
 
   size_t nObsElems = (size_t)n_spots * N_COL_OBSSPOTS;
   RealType *d_ObsSpotsLab;
