@@ -1311,26 +1311,43 @@ int DoIndexing(int SpotID, int voxNr, double xThis, double yThis, double zThis,
     // DEBUG: print when good match found (limit output)
     {
       static int dbg_count = 0;
-      if (nMatches > 2 && dbg_count < 5) {
+      if (nMatches > 2 && dbg_count < 3) {
         dbg_count++;
-        printf("CPU_MATCH vox=%d spot=%d or=%d nMatches=%d/%d frac=%.4f "
-               "OrMat=[%.6f,%.6f,%.6f, %.6f,%.6f,%.6f, %.6f,%.6f,%.6f]\n",
-               voxNr, SpotRowNo, or - orDelta, nMatches, nTspots, FracThis,
-               OrMat[or - orDelta][0][0], OrMat[or - orDelta][0][1], OrMat[or - orDelta][0][2],
-               OrMat[or - orDelta][1][0], OrMat[or - orDelta][1][1], OrMat[or - orDelta][1][2],
-               OrMat[or - orDelta][2][0], OrMat[or - orDelta][2][1], OrMat[or - orDelta][2][2]);
-        for (int dbgsp = 0; dbgsp < 3 && dbgsp < nTspots; dbgsp++) {
+        // Count how many theor spots have non-empty bins
+        int dbg_nonEmpty = 0;
+        for (int dbgsp = 0; dbgsp < nTspots; dbgsp++) {
           int dbgRn = (int)TheorSpots[dbgsp][9];
           int dbgIRing = dbgRn - 1;
           int dbgIEta = (int)floor((180 + TheorSpots[dbgsp][12]) * Params.InvEtaBinSize);
           int dbgIOme = (int)floor((180 + TheorSpots[dbgsp][6]) * Params.InvOmeBinSize);
+          if (dbgIEta < 0) dbgIEta += n_eta_bins;
+          if (dbgIOme < 0) dbgIOme += n_ome_bins;
+          if (dbgIEta >= n_eta_bins) dbgIEta = n_eta_bins - 1;
+          if (dbgIOme >= n_ome_bins) dbgIOme = n_ome_bins - 1;
           size_t dbgPos = (size_t)dbgIRing * n_eta_bins * n_ome_bins + (size_t)dbgIEta * n_ome_bins + (size_t)dbgIOme;
-          size_t dbgNInBin = ndata[dbgPos * 2];
-          printf("  CPU sp%d: rn=%d iR=%d iE=%d iO=%d Pos=%zu nInBin=%zu "
-                 "theorEta=%.4f Omega=%.4f radDiff=%.4f yl=%.2f zl=%.2f\n",
-                 dbgsp, dbgRn, dbgIRing, dbgIEta, dbgIOme, dbgPos, dbgNInBin,
-                 TheorSpots[dbgsp][12], TheorSpots[dbgsp][6], TheorSpots[dbgsp][13],
-                 TheorSpots[dbgsp][10], TheorSpots[dbgsp][11]);
+          if (ndata[dbgPos * 2] > 0) dbg_nonEmpty++;
+        }
+        printf("CPU_MATCH vox=%d spot=%d or=%d nMatches=%d/%d nonEmptyBins=%d/%d\n",
+               voxNr, SpotRowNo, or, nMatches, nTspots, dbg_nonEmpty, nTspots);
+        // Print first non-empty bin
+        for (int dbgsp = 0; dbgsp < nTspots; dbgsp++) {
+          int dbgRn = (int)TheorSpots[dbgsp][9];
+          int dbgIRing = dbgRn - 1;
+          int dbgIEta = (int)floor((180 + TheorSpots[dbgsp][12]) * Params.InvEtaBinSize);
+          int dbgIOme = (int)floor((180 + TheorSpots[dbgsp][6]) * Params.InvOmeBinSize);
+          if (dbgIEta < 0) dbgIEta += n_eta_bins;
+          if (dbgIOme < 0) dbgIOme += n_ome_bins;
+          if (dbgIEta >= n_eta_bins) dbgIEta = n_eta_bins - 1;
+          if (dbgIOme >= n_ome_bins) dbgIOme = n_ome_bins - 1;
+          size_t dbgPos = (size_t)dbgIRing * n_eta_bins * n_ome_bins + (size_t)dbgIEta * n_ome_bins + (size_t)dbgIOme;
+          size_t dbgN = ndata[dbgPos * 2];
+          if (dbgN > 0) {
+            printf("  CPU sp%d: rn=%d iR=%d iE=%d iO=%d Pos=%zu nInBin=%zu "
+                   "eta=%.4f ome=%.4f\n",
+                   dbgsp, dbgRn, dbgIRing, dbgIEta, dbgIOme, dbgPos, dbgN,
+                   TheorSpots[dbgsp][12], TheorSpots[dbgsp][6]);
+            break; // just first one
+          }
         }
       }
     }
