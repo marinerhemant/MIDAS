@@ -730,7 +730,8 @@ fitGrainsKernel(int nGrains,
                 const RealType *d_ObsSpotsLab, int d_nSpotsBin,
                 const size_t *d_BinData, const size_t *d_nBinData,
                 int doDynReassign,
-                const double *d_ypos, int nYpos) {
+                const double *d_ypos, int nYpos,
+                double d_BeamSize) {
   int gIdx = blockIdx.x * blockDim.x + threadIdx.x;
   if (gIdx >= nGrains)
     return;
@@ -867,7 +868,7 @@ fitGrainsKernel(int nGrains,
     int nNew = gpu_ReassignSpotsFromBins(
         x12_cur, d_hklsRaw, scratch, spots, MaxNHKLS, d_AllSpots, d_totalNSpots,
         d_ObsSpotsLab, d_nSpotsBin, d_BinData, d_nBinData, nMaxTheor,
-        d_ypos, nYpos, (double)d_Hbeam);
+        d_ypos, nYpos, d_BeamSize);
     if (nNew > 0) {
       nSpots = nNew;
       d_nSpotsPerGrain[gIdx] = nNew;
@@ -915,7 +916,7 @@ fitGrainsKernel(int nGrains,
     int nNew = gpu_ReassignSpotsFromBins(
         x12_cur, d_hklsRaw, scratch, spots, MaxNHKLS, d_AllSpots, d_totalNSpots,
         d_ObsSpotsLab, d_nSpotsBin, d_BinData, d_nBinData, nMaxTheor,
-        d_ypos, nYpos, (double)d_Hbeam);
+        d_ypos, nYpos, d_BeamSize);
     if (nNew > 0) {
       nSpots = nNew;
       d_nSpotsPerGrain[gIdx] = nNew;
@@ -952,7 +953,7 @@ fitGrainsKernel(int nGrains,
     int nNew = gpu_ReassignSpotsFromBins(
         x12_cur, d_hklsRaw, scratch, spots, MaxNHKLS, d_AllSpots, d_totalNSpots,
         d_ObsSpotsLab, d_nSpotsBin, d_BinData, d_nBinData, nMaxTheor,
-        d_ypos, nYpos, (double)d_Hbeam);
+        d_ypos, nYpos, d_BeamSize);
     if (nNew > 0) {
       nSpots = nNew;
       d_nSpotsPerGrain[gIdx] = nNew;
@@ -1116,6 +1117,8 @@ int main(int argc, char *argv[]) {
   for (int i = 0; i < nRingRadii; i++)
     RingRadii[i] = cfg.RingRadii[i];
   double Rsample = cfg.Rsample, Hbeam = cfg.Hbeam;
+  double BeamSize = cfg.BeamSize;
+  int doDynReassign = cfg.DoDynamicReassignment;
   double MargABC = cfg.MargABC, MargABG = cfg.MargABG;
   double MaxRingRad = cfg.RhoD;
   char OutputFolder[1024], ResultFolder[1024];
@@ -1372,10 +1375,9 @@ int main(int argc, char *argv[]) {
                         cudaMemcpyHostToDevice));
   free(f_AllSpots);
 
-  // Bin data for dynamic reassignment — disabled for initial validation
+  // Bin data for dynamic reassignment
   RealType *d_ObsSpotsLabGPU = nullptr;
   size_t *d_BinDataGPU = nullptr, *d_nBinDataGPU = nullptr;
-  int doDynReassign = 0;
 
   // Load positions.csv for beam proximity in dynamic reassignment
   double *d_yposGPU = nullptr;
@@ -1413,8 +1415,9 @@ int main(int argc, char *argv[]) {
            sizeof(RealType) +
        nhkls * 7 * sizeof(RealType) + (size_t)nSpots * 16 * sizeof(RealType)) /
       (1024 * 1024);
-  printf("GPU memory: ~%zu MB for %d grains (float precision)\n", totalGPUMB,
+  printf("GPU memory: ~%zu MB for %d grains (double precision)\n", totalGPUMB,
          nSptIDs);
+  printf("DoDynamicReassignment: %d, BeamSize: %.4f\n", doDynReassign, BeamSize);
 
   // ─── Launch kernel with CUDA event timers ───
   int threadsPerBlock = 64;
@@ -1436,7 +1439,7 @@ int main(int argc, char *argv[]) {
       (RealType)0.01, (RealType)MargABC, (RealType)MargABG, d_results,
       scratchPerGrain, nMaxTheor, d_AllSpotsGPU, nSpots, d_ObsSpotsLabGPU, 0,
       d_BinDataGPU, d_nBinDataGPU, doDynReassign,
-      d_yposGPU, nYposGPU);
+      d_yposGPU, nYposGPU, BeamSize);
   cudaEventRecord(evKernelEnd);
   CUDA_CHECK(cudaDeviceSynchronize());
 
