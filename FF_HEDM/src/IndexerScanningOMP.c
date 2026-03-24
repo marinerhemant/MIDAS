@@ -1341,7 +1341,7 @@ int DoIndexing(int SpotID, int voxNr, double xThis, double yThis, double zThis,
                              Params.RingRadii[(int)TheorSpots[sp][9]];
       }
       // Print first 10 theor spots with bin info
-      for (sp = 0; sp < nTspots && sp < 10; sp++) {
+      for (sp = 0; sp < nTspots; sp++) {
         int rn = (int)TheorSpots[sp][9];
         int iR = rn - 1;
         int iE = (int)floor((180 + TheorSpots[sp][12]) * Params.InvEtaBinSize);

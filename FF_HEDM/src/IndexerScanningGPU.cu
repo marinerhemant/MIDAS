@@ -933,6 +933,8 @@ __global__ void debug_eval_kernel(
          hkl_ring_count[0], hkl_ring_count[1], hkl_ring_count[2],
          hkl_ring_count[3], hkl_ring_count[4], hkl_ring_count[5]);
 
+  int r1_skip_pole = 0, r1_skip_ome = 0, r1_spots = 0;
+
   for (int ih = 0; ih < n_hkls_d; ih++) {
     RealType Ghkl[3] = {d_hkls_flat[ih * 7 + 0], d_hkls_flat[ih * 7 + 1],
                         d_hkls_flat[ih * 7 + 2]};
@@ -955,8 +957,10 @@ __global__ void debug_eval_kernel(
       RealType Eta = etas_t[isol];
       RealType EtaAbs = fabs(Eta);
       if (EtaAbs < c_params.ExcludePoleAngle ||
-          (180.0 - EtaAbs) < c_params.ExcludePoleAngle)
+          (180.0 - EtaAbs) < c_params.ExcludePoleAngle) {
+        if (rn == 1) r1_skip_pole++;
         continue;
+      }
 
       RealType yl, zl;
       midas_CalcSpotPosition(RingRadius, Eta, &yl, &zl);
@@ -969,8 +973,12 @@ __global__ void debug_eval_kernel(
           keep = 1; break;
         }
       }
-      if (!keep) continue;
+      if (!keep) {
+        if (rn == 1) r1_skip_ome++;
+        continue;
+      }
       nTspots++;
+      if (rn == 1) r1_spots++;
 
       // Apply displacement
       RealType theorOmeRad = Omega * deg2rad;
@@ -995,64 +1003,20 @@ __global__ void debug_eval_kernel(
                     + (long long)iEta * c_params.n_ome_bins + iOme;
       long long nInBin = (long long)d_ndata[Pos * 2 + 0];
 
-      // Print non-empty bin hits (first 5) with filter details
-      // Also print first 5 spots unconditionally
-      if (spotCount < 5) {
-        printf("GPU_SP sp=%d rn=%d tEta=%.6f tOme=%.6f yl=%.2f zl=%.2f radDiff=%.4f "
-               "iR=%d iE=%d iO=%d Pos=%lld nInBin=%lld\n",
-               spotCount, rn, (double)theorEta, (double)Omega,
-               (double)theorY, (double)theorZ, (double)theorRadDiff,
-               iRing, iEta, iOme, Pos, nInBin);
-      }
-      if (nInBin > 0 && spotCount >= 5) {
-        printf("GPU_HIT sp=%d rn=%d tEta=%.6f tOme=%.6f yl=%.2f zl=%.2f radDiff=%.4f "
-               "iR=%d iE=%d iO=%d Pos=%lld nInBin=%lld\n",
-               spotCount, rn, (double)theorEta, (double)Omega,
-               (double)theorY, (double)theorZ, (double)theorRadDiff,
-               iRing, iEta, iOme, Pos, nInBin);
-      }
+      // Print ALL spots
+      printf("GPU_SP sp=%d rn=%d tEta=%.6f tOme=%.6f yl=%.2f zl=%.2f "
+             "iE=%d iO=%d Pos=%lld nInBin=%lld\n",
+             spotCount, rn, (double)theorEta, (double)Omega,
+             (double)theorY, (double)theorZ,
+             iEta, iOme, Pos, nInBin);
       spotCount++;
 
-      int nonEmptyBins = 0;
-      if (nInBin > 0) nonEmptyBins = 1;
-      // Track non-empty across all spots
-      {
-        static int totalNonEmpty = 0;
-        if (nInBin > 0) totalNonEmpty++;
-        // Print at end
-      }
-
       if (nInBin == 0) continue;
-
-      // Run filter chain and count matches — with per-filter debug
-      size_t DataPos = d_ndata[Pos * 2 + 1];
-      RealType etamargin = c_etamargins[rn];
-      int matchFound = 0;
-      int filt_beam = 0, filt_rad = 0, filt_eta = 0;
-      for (int is = 0; is < (int)nInBin; is++) {
-        int spotRow = (int)d_data[(DataPos + is) * 2 + 0];
-        int scannrobs = (int)d_data[(DataPos + is) * 2 + 1];
-        if (spotRow < 0 || spotRow >= nSpots) continue;
-        int base = spotRow * N_COL_OBSSPOTS;
-        if (d_ypos != nullptr && BeamSize > 0) {
-          RealType yRot = (RealType)ga * sin(theorOmeRad) + (RealType)gb * cos(theorOmeRad);
-          if (fabs(yRot - d_ypos[scannrobs]) >= BeamSize / 2.0) { filt_beam++; continue; }
-        }
-        RealType obsRadDiff = d_ObsSpotsLab[base + 8];
-        if (fabs(theorRadDiff - obsRadDiff) >= c_params.MarginRadial) { filt_rad++; continue; }
-        RealType obsEta = d_ObsSpotsLab[base + 6];
-        if (fabs(theorEta - obsEta) >= etamargin) { filt_eta++; continue; }
-        matchFound = 1;
-        break;
-      }
-      if (nMatched < 5) {
-        printf("  FILTERS nInBin=%lld beam=%d rad=%d eta=%d matched=%d\n",
-               nInBin, filt_beam, filt_rad, filt_eta, matchFound);
-      }
-      if (matchFound) nMatched++;
+      nMatched++;  // simplified: just count non-empty bins for now
     }
   }
-  printf("GPU_DEBUG_EVAL: nTspots=%d nMatched=%d totalSpots=%d\n", nTspots, nMatched, spotCount);
+  printf("GPU_DEBUG_EVAL: nTspots=%d nMatched=%d r1_spots=%d r1_skip_pole=%d r1_skip_ome=%d\n",
+         nTspots, nMatched, r1_spots, r1_skip_pole, r1_skip_ome);
 }
 
 // ─────────────────────────────────────────────────────────────
