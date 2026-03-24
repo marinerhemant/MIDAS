@@ -1719,8 +1719,10 @@ int main(int argc, char *argv[]) {
         int thisID;
         double newY;
         int nrRows = endRowNrSp - startRowNrSp + 1;
-        if (thisRowNr % ((endRowNr - startRowNr) / numProcs + 1) == 0)
-          printf("  voxel %d/%d ...\n", thisRowNr - startRowNr, endRowNr - startRowNr);
+        int stride = (endRowNr - startRowNr + numProcs - 1) / numProcs;
+        if (stride < 1) stride = 1;
+        if ((thisRowNr - startRowNr) % stride == 0)
+          printf("  Processing voxel %d/%d ...\n", thisRowNr - startRowNr, endRowNr - startRowNr);
         for (idnr = startRowNrSp; idnr <= endRowNrSp; idnr++) {
           thisID = (int)ObsSpotsLab[idnr * 10 + 4];
           newY = xThis * spotSinOme[idnr] + yThis * spotCosOme[idnr];

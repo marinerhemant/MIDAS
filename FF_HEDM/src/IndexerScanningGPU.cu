@@ -30,7 +30,7 @@
 #include <sys/stat.h>
 #include <sys/types.h>
 #include <unistd.h>
-#define RealType double
+#define RealType float
 #include "midas_gpu_math.cuh"
 #include "IndexerConsolidatedIO.h"
 #include "midas_version.h"
