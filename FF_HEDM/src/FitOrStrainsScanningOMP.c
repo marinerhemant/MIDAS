@@ -616,6 +616,9 @@ static double FitErrors12D(double x[12], int nSpots, double **spotsYZO,
                        BoxSizes, &nTspots, OrientMatrix, TheorSpots);
   double Error = 0;
   int nMatched = 0;
+  static int dbgPerSpot = 0;
+  int doPrint = (dbgPerSpot < 1);
+  if (doPrint) printf("  Per-spot errors (first FitErrors12D eval, nSpots=%d nTspots=%d):\n", nSpots, nTspots);
   for (int sp = 0; sp < nSpots; sp++) {
     double DisplY, DisplZ, ys, zs, Omega;
     DisplacementInTheSpot(x[0], x[1], x[2], Lsd, spotsYZO[sp][5],
@@ -626,15 +629,29 @@ static double FitErrors12D(double x[12], int nSpots, double **spotsYZO,
     CorrectForOme(yt, zt, Lsd, spotsYZO[sp][4], Wavelength, wedge, &ys, &zs,
                   &Omega);
     int spnr = (int)spotsYZO[sp][8];
+    int found = 0;
     for (int k = 0; k < nTspots; k++) {
       if ((int)TheorSpots[k][8] == spnr) {
         double dy = ys - TheorSpots[k][0];
         double dz = zs - TheorSpots[k][1];
-        Error += sqrt(dy * dy + dz * dz);
+        double dist = sqrt(dy * dy + dz * dz);
+        Error += dist;
         nMatched++;
+        found = 1;
+        if (doPrint && sp < 10) {
+          printf("    sp[%d] nrhkls=%d: obs(%.2f,%.2f) theor(%.2f,%.2f) dy=%.2f dz=%.2f dist=%.2f\n",
+                 sp, spnr, ys, zs, TheorSpots[k][0], TheorSpots[k][1], dy, dz, dist);
+        }
         break;
       }
     }
+    if (!found && doPrint && sp < 10) {
+      printf("    sp[%d] nrhkls=%d: NO MATCH in %d theor spots\n", sp, spnr, nTspots);
+    }
+  }
+  if (doPrint) {
+    printf("  Total: nMatched=%d/%d Error=%.4f\n", nMatched, nSpots, Error);
+    dbgPerSpot++;
   }
   return Error;
 }
