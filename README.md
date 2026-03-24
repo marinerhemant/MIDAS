@@ -5,6 +5,7 @@
 # MIDAS — Microstructural Imaging using Diffraction Analysis Software
 
 [![License](https://img.shields.io/badge/License-UChicago_Argonne-blue.svg)](LICENSE)
+[![Hypercommit](https://img.shields.io/badge/Hypercommit-DB2475)](https://hypercommit.com/midas)
 
 **MIDAS** is an open-source suite for reconstructing three-dimensional microstructures from High-Energy Diffraction Microscopy (HEDM) data. Developed at the [Advanced Photon Source](https://www.aps.anl.gov/) at Argonne National Laboratory, it supports the complete data-reduction pipeline — from raw detector frames to grain maps, strain tensors, spatially resolved orientation fields, and tomographic reconstructions.
 
