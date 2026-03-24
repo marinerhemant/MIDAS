@@ -724,8 +724,23 @@ static void RunFit(int dim, double *x0, double *lb, double *ub,
   config.max_time_seconds = 30;
   config.ftol_rel = 1e-5;
   config.xtol_rel = 1e-5;
-  run_nlopt_optimization(NLOPT_LN_NELDERMEAD, &config);
-  run_nlopt_optimization(NLOPT_LN_NELDERMEAD, &config);
+  int rc1 = run_nlopt_optimization(NLOPT_LN_NELDERMEAD, &config);
+  double minf1 = config.min_function_val;
+  int rc2 = run_nlopt_optimization(NLOPT_LN_NELDERMEAD, &config);
+  double minf2 = config.min_function_val;
+  static int dbgRunFit = 0;
+  if (dbgRunFit < 4) {
+    printf("  RunFit dim=%d: rc1=%d minf1=%.4f, rc2=%d minf2=%.4f, "
+           "ftol=%.1e xtol=%.1e step=%.3f\n",
+           dim, rc1, minf1, rc2, minf2,
+           config.ftol_rel, config.xtol_rel, steps[0]);
+    printf("    x0: ");
+    for (i = 0; i < dim; i++) printf("%.4f ", x0[i]);
+    printf("\n    xf: ");
+    for (i = 0; i < dim; i++) printf("%.4f ", x[i]);
+    printf("\n");
+    dbgRunFit++;
+  }
   for (i = 0; i < dim; i++)
     xOut[i] = x[i];
 }
