@@ -712,37 +712,33 @@ static void RunFit(int dim, double *x0, double *lb, double *ub,
     x[i] = x0[i];
     steps[i] = 0.05; // default for euler angles
   }
-  // For 9D: [euler3, latc6] — smaller steps for lattice params
-  // For 6D: [latc6] — all lattice params
   if (dim == 9) {
-    for (i = 3; i < 6; i++) steps[i] = 0.001;  // a, b, c
-    for (i = 6; i < 9; i++) steps[i] = 0.01;   // alpha, beta, gamma
+    for (i = 3; i < 6; i++) steps[i] = 0.001;
+    for (i = 6; i < 9; i++) steps[i] = 0.01;
   } else if (dim == 6) {
-    for (i = 0; i < 3; i++) steps[i] = 0.001;  // a, b, c
-    for (i = 3; i < 6; i++) steps[i] = 0.01;   // alpha, beta, gamma
+    for (i = 0; i < 3; i++) steps[i] = 0.001;
+    for (i = 3; i < 6; i++) steps[i] = 0.01;
   }
-  NLoptConfig config = {0};
-  config.dimension = dim;
-  config.lower_bounds = lb;
-  config.upper_bounds = ub;
-  config.objective_function = objfn;
-  config.obj_data = data;
-  config.initial_guess = x;
-  config.step_sizes = steps;
-  config.max_evaluations = 5000;
-  config.max_time_seconds = 30;
-  config.ftol_rel = 1e-10;
-  config.xtol_rel = 1e-10;
-  int rc1 = run_nlopt_optimization(NLOPT_LN_NELDERMEAD, &config);
-  double minf1 = config.min_function_val;
-  int rc2 = run_nlopt_optimization(NLOPT_LN_NELDERMEAD, &config);
-  double minf2 = config.min_function_val;
+
+  // Call NLopt directly (bypass run_nlopt_optimization wrapper)
+  nlopt_opt opt = nlopt_create(NLOPT_LN_NELDERMEAD, dim);
+  nlopt_set_lower_bounds(opt, lb);
+  nlopt_set_upper_bounds(opt, ub);
+  nlopt_set_min_objective(opt, objfn, data);
+  nlopt_set_initial_step(opt, steps);
+  nlopt_set_maxeval(opt, 5000);
+  nlopt_set_ftol_rel(opt, 1e-10);
+  nlopt_set_xtol_rel(opt, 1e-10);
+  double minf1 = 0;
+  int rc1 = nlopt_optimize(opt, x, &minf1);
+  double minf2 = 0;
+  int rc2 = nlopt_optimize(opt, x, &minf2);
+  nlopt_destroy(opt);
+
   static int dbgRunFit = 0;
   if (dbgRunFit < 4) {
-    printf("  RunFit dim=%d: rc1=%d minf1=%.4f, rc2=%d minf2=%.4f, "
-           "ftol=%.1e xtol=%.1e\n",
-           dim, rc1, minf1, rc2, minf2,
-           config.ftol_rel, config.xtol_rel);
+    printf("  RunFit dim=%d: rc1=%d minf1=%.4f, rc2=%d minf2=%.4f\n",
+           dim, rc1, minf1, rc2, minf2);
     printf("    x0: ");
     for (i = 0; i < dim; i++) printf("%.4f ", x0[i]);
     printf("\n    xf: ");
