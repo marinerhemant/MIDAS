@@ -1084,7 +1084,14 @@ __global__ void indexer_fused_kernel(
 
           size_t nInBin = d_ndata[Pos * 2 + 0];
           size_t DataPos = d_ndata[Pos * 2 + 1];
-          if (nInBin > 0) dbg_nonEmptyThis++;
+          if (nInBin > 0) {
+            dbg_nonEmptyThis++;
+            // Print first non-empty bin found for vox0/spot0
+            if (voxelIdx == 0 && spotLocalIdx == 0 && dbg_nonEmptyBins == 0) {
+              printf("GPU_BIN_HIT isp=%d o=%d ih=%d rn=%d iR=%d iE=%d iO=%d Pos=%zu nInBin=%zu tEta=%.4f Ome=%.4f\n",
+                     isp, o, ih, rn, iRing, iEta, iOme, Pos, nInBin, (double)theorEta, (double)Omega);
+            }
+          }
           if (nInBin == 0) continue;
 
           RealType etamargin = c_etamargins[rn];
@@ -1180,9 +1187,10 @@ __global__ void indexer_fused_kernel(
 
       if (voxelIdx == 0 && spotLocalIdx == 0) {
         dbg_totalOrients++;
+        if (dbg_nonEmptyThis > dbg_nonEmptyBins)
+          dbg_nonEmptyBins = dbg_nonEmptyThis;
         if (nMatched > dbg_maxMatched) {
           dbg_maxMatched = nMatched;
-          dbg_nonEmptyBins = dbg_nonEmptyThis;
         }
       }
 
@@ -1217,7 +1225,7 @@ __global__ void indexer_fused_kernel(
   } // ideal spot loop
 
   if (voxelIdx == 0 && spotLocalIdx == 0) {
-    printf("DEBUG vox0 spot0: nPN=%d totalOrients=%d maxMatched=%d nonEmptyBins=%d bestFrac=%.4f bestIA=%.4f\n",
+    printf("DEBUG vox0 spot0: nPN=%d totalOrients=%d maxMatched=%d maxNonEmptyBins=%d bestFrac=%.4f bestIA=%.4f\n",
            nPN, dbg_totalOrients, dbg_maxMatched, dbg_nonEmptyBins, (double)res->bestFrac, (double)res->bestIA);
   }
 }
