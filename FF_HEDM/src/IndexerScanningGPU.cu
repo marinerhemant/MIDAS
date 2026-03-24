@@ -967,14 +967,7 @@ __global__ void indexer_fused_kernel(
   RealType iaSum = 0.0;
   int iaCount = 0;
 
-  // Debug: print for one single thread
-  int DBG = (voxelIdx == 0 && spotLocalIdx == 0 && orientIdx == 0);
-  if (DBG) printf("DBG: vox=%d spot=%d orient=%d idnr=%d ringnr=%d\n",
-                  voxelIdx, spotLocalIdx, orientIdx, idnr, ringnr);
-  if (DBG) printf("DBG: ys=%.4f zs=%.4f omega=%.4f\n", ys, zs, omega);
-  if (DBG) printf("DBG: hn=%.6f %.6f %.6f\n", hn[0], hn[1], hn[2]);
-  if (DBG) printf("DBG: OrMat[0]=%.6f %.6f %.6f\n", OrMat[0][0], OrMat[0][1], OrMat[0][2]);
-  if (DBG) printf("DBG: MarginOme=%.4f MinFrac=%.4f\n", MarginOme, MinMatchesToAcceptFrac);
+
 
 
       for (int ih = 0; ih < n_hkls_d; ih++) {
@@ -1132,69 +1125,14 @@ __global__ void indexer_fused_kernel(
 
       // ═══ End of fused CalcDiffrSpots + CompareSpots ═══
 
-      if (DBG) printf("DBG: nTspots=%d nMatched=%d frac=%.4f iaCount=%d\n",
-                      nTspots, nMatched, nTspots > 0 ? (double)nMatched/nTspots : 0.0, iaCount);
+
 
       if (nTspots == 0) return;
 
       RealType fracMatches = (RealType)nMatched / (RealType)nTspots;
       if (fracMatches < MinMatchesToAcceptFrac) return;  // match CPU filter
 
-      // Debug: dump matched spots for vox=0 when frac >= 0.9
-      if (voxelIdx == 0 && fracMatches >= 0.9 && spotLocalIdx < 3) {
-        printf("GPU_HIT: vox=0 spot=%d orient=%d frac=%.4f nT=%d nM=%d\n",
-               spotLocalIdx, orientIdx, fracMatches, nTspots, nMatched);
-        printf("GPU_HIT: OrMat: %.6f %.6f %.6f / %.6f %.6f %.6f / %.6f %.6f %.6f\n",
-               OrMat[0][0], OrMat[0][1], OrMat[0][2],
-               OrMat[1][0], OrMat[1][1], OrMat[1][2],
-               OrMat[2][0], OrMat[2][1], OrMat[2][2]);
-        // Re-scan to print matched spots (expensive, debug only)
-        for (int ih2 = 0; ih2 < n_hkls_d && nMatched > 0; ih2++) {
-          int rn2 = (int)d_hkls_flat[ih2 * 7 + 3];
-          if (rn2 <= 0 || rn2 >= MAX_N_RINGS) continue;
-          RealType RR2 = c_RingRadii[rn2];
-          if (RR2 < EPS) continue;
-          RealType Ghkl2[3] = {d_hkls_flat[ih2*7+0], d_hkls_flat[ih2*7+1], d_hkls_flat[ih2*7+2]};
-          RealType theta2 = d_hkls_flat[ih2*7+5];
-          RealType Gc2[3];
-          for (int r2=0;r2<3;r2++) Gc2[r2]=OrMat[r2][0]*Ghkl2[0]+OrMat[r2][1]*Ghkl2[1]+OrMat[r2][2]*Ghkl2[2];
-          RealType om2[4], et2[4]; int ns2;
-          midas_CalcOmega(Gc2[0],Gc2[1],Gc2[2],theta2,om2,et2,&ns2);
-          for (int is2=0; is2<ns2; is2++) {
-            RealType Ome2=om2[is2], Eta2=et2[is2];
-            if (fabs(Eta2)<c_params.ExcludePoleAngle||(180-fabs(Eta2))<c_params.ExcludePoleAngle) continue;
-            RealType yl2,zl2;
-            midas_CalcSpotPosition(RR2,Eta2,&yl2,&zl2);
-            // displacement
-            RealType Dy2,Dz2;
-            midas_displacement_spot_COM(xThis,yThis,0,c_params.Distance,yl2,zl2,Ome2,&Dy2,&Dz2);
-            RealType tY2=yl2+Dy2, tZ2=zl2+Dz2;
-            RealType tEta2; midas_CalcEtaAngle(tY2,tZ2,&tEta2);
-            RealType tRad2=sqrt(tY2*tY2+tZ2*tZ2)-RR2;
-            int iR2=rn2-1, iE2=(int)floor((180+tEta2)/c_params.EtaBinSize), iO2=(int)floor((180+Ome2)/c_params.OmeBinSize);
-            iE2=max(0,min(c_params.n_eta_bins-1,iE2)); iO2=max(0,min(c_params.n_ome_bins-1,iO2));
-            size_t P2=(size_t)iR2*c_params.n_eta_bins; P2+=iE2; P2*=c_params.n_ome_bins; P2+=iO2;
-            size_t nB2=d_ndata[P2*2+0], DP2=d_ndata[P2*2+1];
-            if (nB2==0) continue;
-            RealType dBest2=MarginOme+0.00001; size_t bestSR2=0; int mf2=0;
-            for (size_t k=0;k<nB2;k++) {
-              size_t sr2=d_data[(DP2+k)*2+0], sc2=d_data[(DP2+k)*2+1];
-              if (sr2>=(size_t)nSpots) continue;
-              RealType yR2=xThis*sin(Ome2*deg2rad)+yThis*cos(Ome2*deg2rad);
-              if (fabs(yR2-d_ypos[sc2])>=BeamSize/2.0) continue;
-              if (fabs(tRad2-d_ObsSpotsLab[sr2*N_COL_OBSSPOTS+8])>=c_params.MarginRadial) continue;
-              if (fabs(tEta2-d_ObsSpotsLab[sr2*N_COL_OBSSPOTS+6])>=c_etamargins[rn2]) continue;
-              RealType dO2=fabs(Ome2-d_ObsSpotsLab[sr2*N_COL_OBSSPOTS+2]);
-              if (dO2<dBest2) { dBest2=dO2; bestSR2=sr2; mf2=1; }
-            }
-            if (mf2) {
-              printf("  MATCH ih=%d rn=%d theorOme=%.2f theorEta=%.2f obsRow=%lld obsOme=%.2f obsScan=%lld\n",
-                     ih2,rn2,Ome2,tEta2,(long long)bestSR2,d_ObsSpotsLab[bestSR2*N_COL_OBSSPOTS+2],
-                     (long long)d_ObsSpotsLab[bestSR2*N_COL_OBSSPOTS+9]);
-            }
-          }
-        }
-      }
+
       RealType avgIA = (iaCount > 0) ? (iaSum / (RealType)iaCount) : 999.0;
 
       // Atomic best-match update — double-precision comparison
@@ -2098,31 +2036,7 @@ int main(int argc, char *argv[]) {
         VoxelAccum_addSolution(acc, outArr, keyArr, NULL, 0);
       }
     }
-    // Dump raw spot results for voxel 0
-    {
-      int vi = 0;
-      printf("  === GPU vox=0 raw spot results ===\n");
-      int nGood = 0;
-      int bestSi = -1;
-      double bestFrac = 0;
-      for (int si = 0; si < nSpotsRange; si++) {
-        SpotResult *r = &h_allResults[vi * nSpotsRange + si];
-        if (r->bestFrac > 0) {
-          nGood++;
-          if (r->bestFrac > bestFrac) { bestFrac = r->bestFrac; bestSi = si; }
-        }
-      }
-      printf("  nGood=%d (out of %d)\n", nGood, nSpotsRange);
-      if (bestSi >= 0) {
-        SpotResult *r = &h_allResults[vi * nSpotsRange + bestSi];
-        printf("  bestSi=%d frac=%.6f IA=%.6f nT=%d nM=%d\n",
-               bestSi, r->bestFrac, r->bestIA, r->nTspots, r->nMatches);
-        printf("  OrMat: %.6f %.6f %.6f / %.6f %.6f %.6f / %.6f %.6f %.6f\n",
-               r->bestOrMat[0], r->bestOrMat[1], r->bestOrMat[2],
-               r->bestOrMat[3], r->bestOrMat[4], r->bestOrMat[5],
-               r->bestOrMat[6], r->bestOrMat[7], r->bestOrMat[8]);
-      }
-    }
+
     printf("  Accumulation: %.3f s\n", omp_get_wtime() - tAccumStart);
 
     printf("  Total spot-driven time: %.3f s\n", omp_get_wtime() - tSpotDrivenStart);

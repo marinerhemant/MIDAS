@@ -1226,16 +1226,6 @@ int DoIndexing(int SpotID, int voxNr, double xThis, double yThis, double zThis,
                  Params.MarginRad, Params.MarginRadial, etamargins, omemargins,
                  &nMatches, GrainSpots, xThis, yThis, &Params);
     FracThis = (double)nMatches / (double)nTspots;
-    if (voxNr == 0 && SpotRowNo == 0 && or == 341) {
-      printf("CPU_DBG341: vox=%d spotRow=%d orient=%d nT=%d nM=%d frac=%.6f\n",
-             voxNr, SpotRowNo, or, nTspots, nMatches, FracThis);
-      printf("CPU_DBG341: OrMat: %.6f %.6f %.6f / %.6f %.6f %.6f / %.6f %.6f %.6f\n",
-             OrMat[or][0][0], OrMat[or][0][1], OrMat[or][0][2],
-             OrMat[or][1][0], OrMat[or][1][1], OrMat[or][1][2],
-             OrMat[or][2][0], OrMat[or][2][1], OrMat[or][2][2]);
-      printf("CPU_DBG341: hn=%.6f %.6f %.6f hkl=%.1f %.1f %.1f\n",
-             hklnormal[0], hklnormal[1], hklnormal[2], hkl[0], hkl[1], hkl[2]);
-    }
     if (FracThis > Params.MinMatchesToAcceptFrac) {
       if (FracThis >= bestConfidence) {
         bestConfidence = FracThis;
@@ -1298,17 +1288,6 @@ int DoIndexing(int SpotID, int voxNr, double xThis, double yThis, double zThis,
   size_t keyArr[4] = {(size_t)SpotID, (size_t)matchedNrSpots, 0, 0};
   VoxelAccum_addSolution(acc, outArr, keyArr, outArr2, matchedNrSpots);
   free(outArr2);
-  printf("ID: %d, voxNr: %d, Confidence: %lf, IA: %lf\n", SpotID, voxNr,
-         fracMatches, GrainMatches[0][15]);
-  if (voxNr == 0) {
-    printf("CPU vox=0 spotID=%d frac=%.6f IA=%.6f nT=%.0f nM=%.0f\n",
-           SpotID, fracMatches, GrainMatches[0][15],
-           GrainMatches[0][12], GrainMatches[0][13]);
-    printf("CPU OrMat: %.6f %.6f %.6f / %.6f %.6f %.6f / %.6f %.6f %.6f\n",
-           GrainMatches[0][0], GrainMatches[0][1], GrainMatches[0][2],
-           GrainMatches[0][3], GrainMatches[0][4], GrainMatches[0][5],
-           GrainMatches[0][6], GrainMatches[0][7], GrainMatches[0][8]);
-  }
 }
 
 int ReadBins(char *cwd) {
@@ -1740,8 +1719,8 @@ int main(int argc, char *argv[]) {
         int thisID;
         double newY;
         int nrRows = endRowNrSp - startRowNrSp + 1;
-        printf("%d %lf %lf %d %d %d %d\n", thisRowNr, xThis, yThis, startRowNr,
-               endRowNr, endRowNr - startRowNr, nrRows);
+        if (thisRowNr % ((endRowNr - startRowNr) / numProcs + 1) == 0)
+          printf("  voxel %d/%d ...\n", thisRowNr - startRowNr, endRowNr - startRowNr);
         for (idnr = startRowNrSp; idnr <= endRowNrSp; idnr++) {
           thisID = (int)ObsSpotsLab[idnr * 10 + 4];
           newY = xThis * spotSinOme[idnr] + yThis * spotCosOme[idnr];
