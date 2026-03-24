@@ -1088,8 +1088,10 @@ __global__ void indexer_fused_kernel(
             dbg_nonEmptyThis++;
             // Print first non-empty bin found for vox0/spot0
             if (voxelIdx == 0 && spotLocalIdx == 0 && dbg_nonEmptyBins == 0) {
-              printf("GPU_BIN_HIT isp=%d o=%d ih=%d rn=%d iR=%d iE=%d iO=%d Pos=%llu nInBin=%llu tEta=%.4f Ome=%.4f\n",
-                     isp, o, ih, rn, iRing, iEta, iOme, (unsigned long long)Pos, (unsigned long long)nInBin, (double)theorEta, (double)Omega);
+              long long dbgPos = (long long)Pos;
+              long long dbgN = (long long)nInBin;
+              printf("GPU_BIN_HIT ih=%d rn=%d iR=%d iE=%d iO=%d Pos=%lld nInBin=%lld neta=%d nome=%d\n",
+                     ih, rn, iRing, iEta, iOme, dbgPos, dbgN, c_params.n_eta_bins, c_params.n_ome_bins);
             }
           }
           if (nInBin == 0) continue;
