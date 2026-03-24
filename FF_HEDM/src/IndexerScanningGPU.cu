@@ -912,6 +912,14 @@ __global__ void debug_eval_kernel(
   int nTspots = 0;
   int nMatched = 0;
 
+  // Direct probe: check exact CPU bin positions
+  long long cpuPositions[] = {251200, 12708575, 6730775, 6229000, 4062771};
+  for (int p = 0; p < 5; p++) {
+    long long pos = cpuPositions[p];
+    long long n = (long long)d_ndata[pos * 2 + 0];
+    printf("GPU_PROBE Pos=%lld nInBin=%lld (CPU had 4,4,4,4,3)\n", pos, n);
+  }
+
   for (int ih = 0; ih < n_hkls_d; ih++) {
     RealType Ghkl[3] = {d_hkls_flat[ih * 7 + 0], d_hkls_flat[ih * 7 + 1],
                         d_hkls_flat[ih * 7 + 2]};
@@ -975,7 +983,15 @@ __global__ void debug_eval_kernel(
       long long nInBin = (long long)d_ndata[Pos * 2 + 0];
 
       // Print non-empty bin hits (first 5) with filter details
-      if (nInBin > 0 && nMatched < 5) {
+      // Also print first 5 spots unconditionally
+      if (spotCount < 5) {
+        printf("GPU_SP sp=%d rn=%d tEta=%.6f tOme=%.6f yl=%.2f zl=%.2f radDiff=%.4f "
+               "iR=%d iE=%d iO=%d Pos=%lld nInBin=%lld\n",
+               spotCount, rn, (double)theorEta, (double)Omega,
+               (double)theorY, (double)theorZ, (double)theorRadDiff,
+               iRing, iEta, iOme, Pos, nInBin);
+      }
+      if (nInBin > 0 && spotCount >= 5) {
         printf("GPU_HIT sp=%d rn=%d tEta=%.6f tOme=%.6f yl=%.2f zl=%.2f radDiff=%.4f "
                "iR=%d iE=%d iO=%d Pos=%lld nInBin=%lld\n",
                spotCount, rn, (double)theorEta, (double)Omega,
