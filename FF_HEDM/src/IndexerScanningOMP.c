@@ -1226,6 +1226,16 @@ int DoIndexing(int SpotID, int voxNr, double xThis, double yThis, double zThis,
                  Params.MarginRad, Params.MarginRadial, etamargins, omemargins,
                  &nMatches, GrainSpots, xThis, yThis, &Params);
     FracThis = (double)nMatches / (double)nTspots;
+    if (voxNr == 0 && SpotRowNo == 0 && or == 341) {
+      printf("CPU_DBG341: vox=%d spotRow=%d orient=%d nT=%d nM=%d frac=%.6f\n",
+             voxNr, SpotRowNo, or, nTspots, nMatches, FracThis);
+      printf("CPU_DBG341: OrMat: %.6f %.6f %.6f / %.6f %.6f %.6f / %.6f %.6f %.6f\n",
+             OrMat[or][0][0], OrMat[or][0][1], OrMat[or][0][2],
+             OrMat[or][1][0], OrMat[or][1][1], OrMat[or][1][2],
+             OrMat[or][2][0], OrMat[or][2][1], OrMat[or][2][2]);
+      printf("CPU_DBG341: hn=%.6f %.6f %.6f hkl=%.1f %.1f %.1f\n",
+             hklnormal[0], hklnormal[1], hklnormal[2], hkl[0], hkl[1], hkl[2]);
+    }
     if (FracThis > Params.MinMatchesToAcceptFrac) {
       if (FracThis >= bestConfidence) {
         bestConfidence = FracThis;
