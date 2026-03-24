@@ -953,6 +953,9 @@ __global__ void indexer_fused_kernel(
 
   SpotResult *res = &d_results[voxelIdx * nSpotsRange + seedIdx];
 
+  // DEBUG counters
+  int dbg_totalOrients = 0, dbg_maxMatched = 0, dbg_nonEmptyBins = 0;
+
   for (int isp = 0; isp < nPN; isp++) {
     double xi, yi, zi;
     d_MakeUnitLength(Distance, y0v[isp], z0v[isp], &xi, &yi, &zi);
@@ -1167,6 +1170,11 @@ __global__ void indexer_fused_kernel(
 
       // ═══ End of fused CalcDiffrSpots + CompareSpots ═══
 
+      if (voxelIdx == 0 && spotLocalIdx == 0) {
+        dbg_totalOrients++;
+        if (nMatched > dbg_maxMatched) dbg_maxMatched = nMatched;
+      }
+
       if (nTspots == 0 || nTspotsFracCalc == 0) continue;
 
       RealType fracMatches = (RealType)nMatchedFrac / (RealType)nTspotsFracCalc;
@@ -1196,6 +1204,11 @@ __global__ void indexer_fused_kernel(
       }
     } // orientation loop
   } // ideal spot loop
+
+  if (voxelIdx == 0 && spotLocalIdx == 0) {
+    printf("DEBUG vox0 spot0: nPN=%d totalOrients=%d maxMatched=%d bestFrac=%.4f bestIA=%.4f\n",
+           nPN, dbg_totalOrients, dbg_maxMatched, (double)res->bestFrac, (double)res->bestIA);
+  }
 }
 
 
