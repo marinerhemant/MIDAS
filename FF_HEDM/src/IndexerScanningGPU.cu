@@ -967,6 +967,15 @@ __global__ void indexer_fused_kernel(
   RealType iaSum = 0.0;
   int iaCount = 0;
 
+  // Debug: print for one single thread
+  int DBG = (voxelIdx == 0 && spotLocalIdx == 0 && orientIdx == 0);
+  if (DBG) printf("DBG: vox=%d spot=%d orient=%d idnr=%d ringnr=%d\n",
+                  voxelIdx, spotLocalIdx, orientIdx, idnr, ringnr);
+  if (DBG) printf("DBG: ys=%.4f zs=%.4f omega=%.4f\n", ys, zs, omega);
+  if (DBG) printf("DBG: hn=%.6f %.6f %.6f\n", hn[0], hn[1], hn[2]);
+  if (DBG) printf("DBG: OrMat[0]=%.6f %.6f %.6f\n", OrMat[0][0], OrMat[0][1], OrMat[0][2]);
+  if (DBG) printf("DBG: MarginOme=%.4f MinFrac=%.4f\n", MarginOme, MinMatchesToAcceptFrac);
+
 
       for (int ih = 0; ih < n_hkls_d; ih++) {
         RealType Ghkl[3] = {d_hkls_flat[ih * 7 + 0], d_hkls_flat[ih * 7 + 1],
@@ -1122,6 +1131,9 @@ __global__ void indexer_fused_kernel(
       } // HKL loop
 
       // ═══ End of fused CalcDiffrSpots + CompareSpots ═══
+
+      if (DBG) printf("DBG: nTspots=%d nMatched=%d frac=%.4f iaCount=%d\n",
+                      nTspots, nMatched, nTspots > 0 ? (double)nMatched/nTspots : 0.0, iaCount);
 
       if (nTspots == 0) return;
 
