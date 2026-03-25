@@ -34,8 +34,8 @@ if(NOT fftw_POPULATED)
                       --prefix=${FFTW_INSTALL_DIR}
                       ${FFTW_SHARED_ARG}
                       ${FFTW_OPTIONS}
-    BUILD_COMMAND make -j8
-    INSTALL_COMMAND make install
+    BUILD_COMMAND make -j8 --silent
+    INSTALL_COMMAND make install --silent
     BUILD_ALWAYS OFF
   )
   

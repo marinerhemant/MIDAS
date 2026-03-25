@@ -411,13 +411,29 @@ endif()
 # Handle all dependencies
 # Order can matter: BLOSC may provide ZLIB, which HDF5, LIBTIFF, LIBZIP might need.
 # FFTW is independent. NLOPT is independent.
+#
+# Suppress all warnings from dependency builds — they produce thousands of
+# warnings (implicit conversions, unused params, etc.) that drown MIDAS output.
+# We temporarily inject -w into C/CXX flags so every add_subdirectory() inside
+# the dep files inherits it, then restore after.
+set(_SAVED_CMAKE_C_FLAGS "${CMAKE_C_FLAGS}")
+set(_SAVED_CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS}")
+set(CMAKE_C_FLAGS "${CMAKE_C_FLAGS} -w")
+set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -w")
+
 handle_dependency(BLOSC "GIT_REPO https://github.com/Blosc/c-blosc2.git" DOWNLOAD_DEPENDENCIES)
 handle_dependency(BLOSC1 "GIT_REPO https://github.com/Blosc/c-blosc.git" DOWNLOAD_DEPENDENCIES)
-handle_dependency(LIBTIFF "URL_PLACEHOLDER_LIBTIFF" DOWNLOAD_DEPENDENCIES) 
-handle_dependency(HDF5 "URL_PLACEHOLDER_HDF5" DOWNLOAD_DEPENDENCIES)    
-handle_dependency(NLOPT "URL_PLACEHOLDER_NLOPT" DOWNLOAD_DEPENDENCIES)    
-handle_dependency(LIBZIP "URL_PLACEHOLDER_LIBZIP" DOWNLOAD_DEPENDENCIES)   
-handle_dependency(FFTW "URL_PLACEHOLDER_FFTW" DOWNLOAD_DEPENDENCIES)     
+handle_dependency(LIBTIFF "URL_PLACEHOLDER_LIBTIFF" DOWNLOAD_DEPENDENCIES)
+handle_dependency(HDF5 "URL_PLACEHOLDER_HDF5" DOWNLOAD_DEPENDENCIES)
+handle_dependency(NLOPT "URL_PLACEHOLDER_NLOPT" DOWNLOAD_DEPENDENCIES)
+handle_dependency(LIBZIP "URL_PLACEHOLDER_LIBZIP" DOWNLOAD_DEPENDENCIES)
+handle_dependency(FFTW "URL_PLACEHOLDER_FFTW" DOWNLOAD_DEPENDENCIES)
+
+# Restore original flags — MIDAS code gets normal warnings
+set(CMAKE_C_FLAGS "${_SAVED_CMAKE_C_FLAGS}")
+set(CMAKE_CXX_FLAGS "${_SAVED_CMAKE_CXX_FLAGS}")
+unset(_SAVED_CMAKE_C_FLAGS)
+unset(_SAVED_CMAKE_CXX_FLAGS)     
 
 
 # Check for OpenMP
