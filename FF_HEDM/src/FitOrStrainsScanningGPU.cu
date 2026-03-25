@@ -469,6 +469,49 @@ gpu_FitErrorsOrientStrains(const RealType *x, // [9] = euler(3)+latc(6)
   return Error;
 }
 
+// 3D Orient-only error: eta+omega metric (sensitive to phi1).
+// x[3] = euler angles; pos and latc are fixed.
+__device__ static RealType
+gpu_FitErrors3DOrient(const RealType *euler, // [3] = euler angles
+                      const RealType *spotsYZO, int nSpots,
+                      const RealType *hklsRaw, RealType *scratch,
+                      int nMaxTheor, const RealType Pos[3],
+                      const RealType LatC[6]) {
+  RealType *hkls = scratch;
+  RealType *theorSpots = scratch + d_params.nhkls * 7;
+  gpu_CorrectHKLsLatC(LatC, hklsRaw, d_params.nhkls, d_params.Lsd,
+                      d_params.Wavelength, hkls);
+  RealType orient[3][3];
+  gpu_Euler2OrientMat(euler, orient);
+  int nTspots = gpu_CalcDiffrSpots(orient, d_params.Lsd, d_params.OmegaRanges,
+                                   d_params.nOmeRanges, d_params.BoxSizes, hkls,
+                                   d_params.nhkls, d_params.MinEta, theorSpots);
+  RealType Error = 0;
+  for (int sp = 0; sp < nSpots; sp++) {
+    const RealType *s = &spotsYZO[sp * 11];
+    RealType DisplY, DisplZ, ys, zs, Omega_obs;
+    gpu_DisplacementInTheSpot(Pos[0], Pos[1], Pos[2], d_params.Lsd, s[5], s[6],
+                              s[4], d_params.wedge, d_params.chi, &DisplY,
+                              &DisplZ);
+    RealType yt = s[5] - DisplY, zt = s[6] - DisplZ;
+    gpu_CorrectForOme(yt, zt, d_params.Lsd, s[4], d_params.Wavelength,
+                      d_params.wedge, &ys, &zs, &Omega_obs);
+    RealType eta_obs = atan2(-ys, zs) * rad2deg;
+    int spnr = (int)s[8];
+    for (int k = 0; k < nTspots; k++) {
+      if ((int)theorSpots[k * 9 + 8] == spnr) {
+        RealType eta_theor = atan2(-theorSpots[k * 9 + 0], theorSpots[k * 9 + 1]) * rad2deg;
+        RealType omega_theor = theorSpots[k * 9 + 2];
+        RealType deta = eta_obs - eta_theor;
+        RealType dome = Omega_obs - omega_theor;
+        Error += sqrt(deta * deta + dome * dome);
+        break;
+      }
+    }
+  }
+  return Error;
+}
+
 // Strain-only objective (pos+orient fixed)
 __device__ static RealType
 gpu_FitErrorsStrains(const RealType *x, // [6] = latc(6)
@@ -690,6 +733,19 @@ struct FunctorPos { // Stage 4: NDIM=3
   }
 };
 
+struct FunctorOrient3D { // Orient-only: NDIM=3, eta+omega error
+  const RealType *spotsYZO;
+  int nSpots;
+  const RealType *hklsRaw;
+  RealType *scratch;
+  int nMaxTheor;
+  RealType Pos[3], LatC[6];
+  __device__ RealType operator()(const RealType *x, int ndim) const {
+    return gpu_FitErrors3DOrient(x, spotsYZO, nSpots, hklsRaw, scratch,
+                                 nMaxTheor, Pos, LatC);
+  }
+};
+
 // ═══════════════════════════════════════════
 //  Main grain-fitting kernel
 // ═══════════════════════════════════════════
@@ -819,18 +875,10 @@ fitGrainsKernel(int nGrains,
     }
     nSpots = nMatched;
     d_nSpotsPerGrain[gIdx] = nMatched;
-
-    // Debug: print nrhkls assignments for first grain
-    if (gIdx == 0) {
-      printf("GPU[0] Matched %d spots. nrhkls:", nMatched);
-      for (int i = 0; i < nMatched && i < 20; i++)
-        printf(" %d", (int)spots[i * 11 + 8]);
-      printf("\n");
-    }
   }
 
   // ─── Scanning mode: positions are FIXED from the voxel grid ───
-  // Only fit Orient+Strain (9D) and Strain (6D). No position refinement.
+  // Stage 1: 3D orient (eta+omega), Stage 2: 6D strain (y,z distance).
 
   // Lattice parameter bounds
   RealType lbABC[6], ubABC[6];
@@ -843,58 +891,33 @@ fitGrainsKernel(int nGrains,
     ubABC[i] = LatCin[i] * (1 + d_MargABG / 100);
   }
 
-  // ─── Stage 1: Fit Orient+Strain (9D), pos fixed ───
-  RealType x0_9[9], lb9[9], ub9[9], res9[9];
-  for (int i = 0; i < 3; i++)
-    x0_9[i] = Euler0[i];
-  for (int i = 0; i < 6; i++)
-    x0_9[i + 3] = LatCin[i];
+  // ─── Stage 1: 3D Orient fit (eta+omega, pos+latc fixed) ───
+  RealType x0_3[3], lb3[3], ub3[3], res3[3];
   RealType MargOme2 = 2.0;
   for (int i = 0; i < 3; i++) {
-    lb9[i] = Euler0[i] - MargOme2;
-    ub9[i] = Euler0[i] + MargOme2;
-  }
-  for (int i = 0; i < 6; i++) {
-    lb9[3 + i] = lbABC[i];
-    ub9[3 + i] = ubABC[i];
+    x0_3[i] = Euler0[i];
+    lb3[i] = Euler0[i] - MargOme2;
+    ub3[i] = Euler0[i] + MargOme2;
   }
 
-  // Debug: initial error (first grain only)
-  if (gIdx == 0) {
-    RealType xInit[12] = {Pos0[0], Pos0[1], Pos0[2], Euler0[0], Euler0[1], Euler0[2],
-                          LatCin[0], LatCin[1], LatCin[2], LatCin[3], LatCin[4], LatCin[5]};
-    RealType initErr = gpu_FitErrorsPosT(xInit, spots, nSpots, d_hklsRaw, scratch, nMaxTheor);
-    printf("GPU[%d] Init: %d spots, err=%.2f (%.2f/sp), Orient: %.4f %.4f %.4f\n",
-           gIdx, nSpots, initErr, initErr/nSpots, Euler0[0], Euler0[1], Euler0[2]);
-  }
-
-  FunctorOrientStrain f2;
-  f2.spotsYZO = spots;
-  f2.nSpots = nSpots;
-  f2.hklsRaw = d_hklsRaw;
-  f2.scratch = scratch;
-  f2.nMaxTheor = nMaxTheor;
+  FunctorOrient3D fOrient;
+  fOrient.spotsYZO = spots;
+  fOrient.nSpots = nSpots;
+  fOrient.hklsRaw = d_hklsRaw;
+  fOrient.scratch = scratch;
+  fOrient.nMaxTheor = nMaxTheor;
   for (int i = 0; i < 3; i++)
-    f2.Pos[i] = Pos0[i];
-  nm_optimize<9>(x0_9, lb9, ub9, res9, f2, 1e-5, 5000, 0.05);
-  nm_optimize<9>(res9, lb9, ub9, res9, f2, 1e-5, 5000, 0.05);
-
-  // Debug: post-Stage1 (first grain only)
-  if (gIdx == 0) {
-    RealType x12_s1[12] = {Pos0[0], Pos0[1], Pos0[2], res9[0], res9[1], res9[2],
-                           res9[3], res9[4], res9[5], res9[6], res9[7], res9[8]};
-    RealType s1Err = gpu_FitErrorsPosT(x12_s1, spots, nSpots, d_hklsRaw, scratch, nMaxTheor);
-    printf("GPU[%d] Stage1(9D): err=%.2f (%.2f/sp), Orient: %.4f %.4f %.4f, "
-           "LatC: %.4f %.4f %.4f %.3f %.3f %.3f\n",
-           gIdx, s1Err, s1Err/nSpots, res9[0], res9[1], res9[2],
-           res9[3], res9[4], res9[5], res9[6], res9[7], res9[8]);
-  }
+    fOrient.Pos[i] = Pos0[i];
+  for (int i = 0; i < 6; i++)
+    fOrient.LatC[i] = LatCin[i];
+  nm_optimize<3>(x0_3, lb3, ub3, res3, fOrient, 1e-5, 5000, 0.05);
+  nm_optimize<3>(res3, lb3, ub3, res3, fOrient, 1e-5, 5000, 0.05);
 
   // Dynamic reassignment after Stage 1
   if (doDynReassign && d_BinData != nullptr) {
-    RealType x12_cur[12] = {Pos0[0], Pos0[1], Pos0[2], res9[0],
-                            res9[1], res9[2], res9[3],  res9[4],
-                            res9[5], res9[6], res9[7],  res9[8]};
+    RealType x12_cur[12] = {Pos0[0], Pos0[1], Pos0[2], res3[0],
+                            res3[1], res3[2], LatCin[0], LatCin[1],
+                            LatCin[2], LatCin[3], LatCin[4], LatCin[5]};
     int nNew = gpu_ReassignSpotsFromBins(
         x12_cur, d_hklsRaw, scratch, spots, MaxNHKLS, d_AllSpots, d_totalNSpots,
         d_ObsSpotsLab, d_nSpotsBin, d_BinData, d_nBinData, nMaxTheor,
@@ -905,10 +928,10 @@ fitGrainsKernel(int nGrains,
     }
   }
 
-  // ─── Stage 2: Fit Strain (6D), pos+orient fixed ───
+  // ─── Stage 2: 6D Strain fit (y,z distance, pos+orient fixed) ───
   RealType x0_6[6], lb6[6], ub6[6], res6[6];
   for (int i = 0; i < 6; i++)
-    x0_6[i] = res9[i + 3]; // Initialize from Stage 1 output (was: LatCin)
+    x0_6[i] = LatCin[i];
   for (int i = 0; i < 6; i++) {
     lb6[i] = lbABC[i];
     ub6[i] = ubABC[i];
@@ -923,26 +946,15 @@ fitGrainsKernel(int nGrains,
   for (int i = 0; i < 3; i++)
     f3.Pos[i] = Pos0[i];
   for (int i = 0; i < 3; i++)
-    f3.Orient[i] = res9[i];
+    f3.Orient[i] = res3[i];
   nm_optimize<6>(x0_6, lb6, ub6, res6, f3, 1e-5, 5000, 0.05);
   nm_optimize<6>(res6, lb6, ub6, res6, f3, 1e-5, 5000, 0.05);
 
-  // Debug: post-Stage2 (first grain only)
-  if (gIdx == 0) {
-    RealType x12_s2[12] = {Pos0[0], Pos0[1], Pos0[2], res9[0], res9[1], res9[2],
-                           res6[0], res6[1], res6[2], res6[3], res6[4], res6[5]};
-    RealType s2Err = gpu_FitErrorsPosT(x12_s2, spots, nSpots, d_hklsRaw, scratch, nMaxTheor);
-    printf("GPU[%d] Stage2(6D): err=%.2f (%.2f/sp), "
-           "LatC: %.4f %.4f %.4f %.3f %.3f %.3f\n",
-           gIdx, s2Err, s2Err/nSpots,
-           res6[0], res6[1], res6[2], res6[3], res6[4], res6[5]);
-  }
-
   // ─── Write results ───
-  // Final: pos=Pos0 (fixed), orient=res9[0..2], strain=res6[0..5]
+  // Final: pos=Pos0 (fixed), orient=res3[0..2], strain=res6[0..5]
   RealType *out = &d_results[gIdx * 27];
   // OrientsFit: [SpID, orient9]
-  RealType EulerFit[3] = {res9[0], res9[1], res9[2]};
+  RealType EulerFit[3] = {res3[0], res3[1], res3[2]};
   RealType OF[3][3];
   gpu_Euler2OrientMat(EulerFit, OF);
   out[0] = (RealType)(gIdx); // SpotID placeholder
@@ -960,7 +972,7 @@ fitGrainsKernel(int nGrains,
     out[15 + i] = res6[i];
   // ErrorsFin: [SpID, err3] — compute final error
   out[21] = (RealType)(gIdx);
-  RealType finalX[12] = {Pos0[0], Pos0[1], Pos0[2], res9[0], res9[1], res9[2],
+  RealType finalX[12] = {Pos0[0], Pos0[1], Pos0[2], res3[0], res3[1], res3[2],
                          res6[0], res6[1], res6[2], res6[3], res6[4], res6[5]};
   RealType finalErr =
       gpu_FitErrorsPosT(finalX, spots, nSpots, d_hklsRaw, scratch, nMaxTheor);
@@ -1473,13 +1485,6 @@ int main(int argc, char *argv[]) {
              "LatC: %6.4f %6.4f %6.4f %7.3f %7.3f %7.3f\n",
              SpId, nSpotsComp, out[22], phi1, PhiD, phi2,
              out[15], out[16], out[17], out[18], out[19], out[20]);
-
-      // Debug: print orient matrix for first grain
-      if (g == 0) {
-        printf("GPU[0] OrientMatrix: [%.6f %.6f %.6f; %.6f %.6f %.6f; %.6f %.6f %.6f]\n",
-               out[1], out[2], out[3], out[4], out[5], out[6],
-               out[7], out[8], out[9]);
-      }
     }
   }
   if (keyFD > 0)

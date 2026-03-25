@@ -639,6 +639,55 @@ static double FitErrors12D(double x[12], int nSpots, double **spotsYZO,
   return Error;
 }
 
+// 3D Orient-only error: eta+omega metric (sensitive to phi1 unlike y,z distance).
+// x[3] = euler angles; pos and latc come from the data struct.
+static double FitErrors3DOrient(double Euler[3], int nSpots, double **spotsYZO,
+                                int nhkls, double **hklsIn, double Lsd,
+                                double Wavelength, int nOmeRanges,
+                                double OmegaRanges[MAXNOMEGARANGES][2],
+                                double BoxSizes[MAXNOMEGARANGES][4], double MinEta,
+                                double wedge, double chi,
+                                double Pos[3], double LatC[6],
+                                struct FitScratch *scratch) {
+  int i, j;
+  double **hklsIn2 = scratch->hklsIn2;
+  for (i = 0; i < nhkls; i++)
+    for (j = 0; j < 7; j++)
+      hklsIn2[i][j] = hklsIn[i][j];
+  double **hkls_corr = scratch->hkls;
+  CorrectHKLsLatC(LatC, hklsIn2, nhkls, Lsd, Wavelength, hkls_corr);
+  double OrientMatrix[3][3];
+  Euler2OrientMat(Euler, OrientMatrix);
+  int nTspots = 0;
+  double **TheorSpots = scratch->TheorSpots;
+  CalcDiffractionSpots(Lsd, MinEta, OmegaRanges, nOmeRanges, hkls_corr, nhkls,
+                       BoxSizes, &nTspots, OrientMatrix, TheorSpots);
+  double Error = 0;
+  for (int sp = 0; sp < nSpots; sp++) {
+    double DisplY, DisplZ, ys, zs, Omega_obs;
+    DisplacementInTheSpot(Pos[0], Pos[1], Pos[2], Lsd, spotsYZO[sp][5],
+                          spotsYZO[sp][6], spotsYZO[sp][4], wedge, chi, &DisplY,
+                          &DisplZ);
+    double yt = spotsYZO[sp][5] - DisplY;
+    double zt = spotsYZO[sp][6] - DisplZ;
+    CorrectForOme(yt, zt, Lsd, spotsYZO[sp][4], Wavelength, wedge, &ys, &zs,
+                  &Omega_obs);
+    double eta_obs = atan2(-ys, zs) * rad2deg;
+    int spnr = (int)spotsYZO[sp][8];
+    for (int k = 0; k < nTspots; k++) {
+      if ((int)TheorSpots[k][8] == spnr) {
+        double eta_theor = atan2(-TheorSpots[k][0], TheorSpots[k][1]) * rad2deg;
+        double omega_theor = TheorSpots[k][2];
+        double deta = eta_obs - eta_theor;
+        double dome = Omega_obs - omega_theor;
+        Error += sqrt(deta * deta + dome * dome);
+        break;
+      }
+    }
+  }
+  return Error;
+}
+
 // NLopt wrapper data (shared for all 4 stages)
 struct data_Fit12D {
   int nSpots, nhkls, nOmeRanges;
@@ -672,6 +721,15 @@ static double obj_9D(unsigned n, const double *x, double *grad, void *data) {
   return FitErrors12D(x12, d->nSpots, d->spotsYZO, d->nhkls, d->hkls, d->Lsd,
                       d->Wavelength, d->nOmeRanges, d->OmegaRanges, d->BoxSizes,
                       d->MinEta, d->wedge, d->chi, d->scratch);
+}
+
+static double obj_3DOrient(unsigned n, const double *x, double *grad, void *data) {
+  struct data_Fit12D *d = (struct data_Fit12D *)data;
+  double euler[3] = {x[0], x[1], x[2]};
+  return FitErrors3DOrient(euler, d->nSpots, d->spotsYZO, d->nhkls, d->hkls,
+                           d->Lsd, d->Wavelength, d->nOmeRanges, d->OmegaRanges,
+                           d->BoxSizes, d->MinEta, d->wedge, d->chi,
+                           d->FixedPos, d->FixedLatC, d->scratch);
 }
 
 static double obj_6D(unsigned n, const double *x, double *grad, void *data) {
@@ -730,8 +788,8 @@ static void RunFit(int dim, double *x0, double *lb, double *ub,
   config.step_sizes = steps;
   config.max_evaluations = 5000;
   config.max_time_seconds = 30;
-  config.ftol_rel = 1e-10;
-  config.xtol_rel = 1e-10;
+  config.ftol_rel = 1e-5;
+  config.xtol_rel = 1e-5;
   run_nlopt_optimization(NLOPT_LN_NELDERMEAD, &config);
   run_nlopt_optimization(NLOPT_LN_NELDERMEAD, &config);
   for (i = 0; i < dim; i++)
@@ -1368,13 +1426,6 @@ int main(int argc, char *argv[]) {
       for (j = 0; j < 11; j++)
         spotsYZONew[i][j] = Splist[i][j];
 
-    // Debug: print nrhkls assignments for SpotID 78
-    if (SpId == 78) {
-      printf("CPU SpotID78 Matched %d spots (from %d). nrhkls:", nSpotsComp, nSpotsBest);
-      for (i = 0; i < nSpotsComp && i < 20; i++)
-        printf(" %d", (int)spotsYZONew[i][8]);
-      printf("\n");
-    }
 
     // ═══════════════════════════════════════════════════════════
     //  2-Stage Fitting (matching GPU architecture)
@@ -1424,9 +1475,11 @@ int main(int argc, char *argv[]) {
     ubABC[5] = gamm * (1 + (MargABG / 100));
 
     // ─── Scanning mode: positions are FIXED from the voxel grid ───
-    // Only fit Orient+Strain (9D) and Strain (6D). No position refinement.
+    // Stage 1: 3D orient (eta+omega), Stage 2: 6D strain (y,z distance).
     for (i = 0; i < 3; i++)
       fdata.FixedPos[i] = Pos0[i];
+    for (i = 0; i < 6; i++)
+      fdata.FixedLatC[i] = LatCin[i];
 
     // Compute initial error
     double xIni[12];
@@ -1437,69 +1490,30 @@ int main(int argc, char *argv[]) {
                                     Lsd, Wavelength, nOmeRanges, OmegaRanges,
                                     BoxSizes, MinEta, wedge, chi, &scratch);
 
-    // --- Stage 1: 9D fit (orient + strain, pos fixed) ---
-    double x9[9], r9[9];
-    double lb9[9], ub9[9];
+    // --- Stage 1: 3D orient fit (eta+omega metric, pos+latc fixed) ---
+    double x3[3], r3[3];
+    double lb3[3], ub3[3];
     for (i = 0; i < 3; i++) {
-      x9[i] = Euler0[i];
-      lb9[i] = Euler0[i] - MargOme2;
-      ub9[i] = Euler0[i] + MargOme2;
+      x3[i] = Euler0[i];
+      lb3[i] = Euler0[i] - MargOme2;
+      ub3[i] = Euler0[i] + MargOme2;
     }
-    for (i = 0; i < 6; i++) {
-      x9[i + 3] = LatCin[i];
-      lb9[i + 3] = lbABC[i];
-      ub9[i + 3] = ubABC[i];
-    }
-    RunFit(9, x9, lb9, ub9, obj_9D, &fdata, r9);
+    RunFit(3, x3, lb3, ub3, obj_3DOrient, &fdata, r3);
 
-    // Debug: post-Stage1 (first grain only)
-    static int dbgStage = 0;
-    if (dbgStage < 1) {
-      double x12_s1[12];
-      for (i = 0; i < 3; i++) x12_s1[i] = Pos0[i];
-      for (i = 0; i < 9; i++) x12_s1[i+3] = r9[i];
-      double s1Err = FitErrors12D(x12_s1, nSpotsComp, spotsYZONew, nhkls, hkls,
-                                   Lsd, Wavelength, nOmeRanges, OmegaRanges,
-                                   BoxSizes, MinEta, wedge, chi, &scratch);
-      printf("CPU[0] Init: %d spots, err=%.2f (%.2f/sp), Orient: %.4f %.4f %.4f\n",
-             nSpotsComp, initError, initError/nSpotsComp,
-             Euler0[0], Euler0[1], Euler0[2]);
-      printf("CPU[0] Stage1(9D): err=%.2f (%.2f/sp), Orient: %.4f %.4f %.4f, "
-             "LatC: %.4f %.4f %.4f %.3f %.3f %.3f\n",
-             s1Err, s1Err/nSpotsComp, r9[0], r9[1], r9[2],
-             r9[3], r9[4], r9[5], r9[6], r9[7], r9[8]);
-    }
-
-    // --- Stage 2: 6D fit (strain only, pos+orient fixed) ---
+    // --- Stage 2: 6D strain fit (y,z distance, pos+orient fixed) ---
     double x6[6], r6[6];
     for (i = 0; i < 3; i++)
-      fdata.FixedOrient[i] = r9[i];
+      fdata.FixedOrient[i] = r3[i];
     for (i = 0; i < 6; i++)
-      x6[i] = r9[i + 3];
+      x6[i] = LatCin[i];
     RunFit(6, x6, lbABC, ubABC, obj_6D, &fdata, r6);
-
-    // Debug: post-Stage2 (first grain only)
-    if (dbgStage < 1) {
-      double x12_s2[12];
-      for (i = 0; i < 3; i++) x12_s2[i] = Pos0[i];
-      for (i = 0; i < 3; i++) x12_s2[i+3] = r9[i];
-      for (i = 0; i < 6; i++) x12_s2[i+6] = r6[i];
-      double s2Err = FitErrors12D(x12_s2, nSpotsComp, spotsYZONew, nhkls, hkls,
-                                   Lsd, Wavelength, nOmeRanges, OmegaRanges,
-                                   BoxSizes, MinEta, wedge, chi, &scratch);
-      printf("CPU[0] Stage2(6D): err=%.2f (%.2f/sp), "
-             "LatC: %.4f %.4f %.4f %.3f %.3f %.3f\n",
-             s2Err, s2Err/nSpotsComp,
-             r6[0], r6[1], r6[2], r6[3], r6[4], r6[5]);
-      dbgStage++;
-    }
 
     // Build final result: [pos3(fixed), orient3, latc6]
     double FinalResult[12];
     for (i = 0; i < 3; i++)
       FinalResult[i] = Pos0[i];
     for (i = 0; i < 3; i++)
-      FinalResult[i + 3] = r9[i];
+      FinalResult[i + 3] = r3[i];
     for (i = 0; i < 6; i++)
       FinalResult[i + 6] = r6[i];
 
@@ -1512,89 +1526,6 @@ int main(int argc, char *argv[]) {
     ErrorFin[1] = 0;
     ErrorFin[2] = 0;
 
-    // Cross-check: per-spot position comparison at CPU vs GPU orient
-    if (SpId == 78) {
-      double cpuEuler[3] = {FinalResult[3], FinalResult[4], FinalResult[5]};
-      double gpuEuler[3] = {170.9562, 141.8357, 259.7820};
-      double cpuOM[3][3], gpuOM[3][3];
-      Euler2OrientMat(cpuEuler, cpuOM);
-      Euler2OrientMat(gpuEuler, gpuOM);
-
-      // Correct HKLs (same LatC for both)
-      double LatC[6];
-      for (i = 0; i < 6; i++) LatC[i] = FinalResult[i+6];
-      double **hkls_corr = allocMatrix(nhkls, 7);
-      CorrectHKLsLatC(LatC, hkls, nhkls, Lsd, Wavelength, hkls_corr);
-
-      // Generate theoretical spots for CPU orient
-      double **cpuTheor = allocMatrix(MaxNSpotsBest, 9);
-      int nTcpu = 0;
-      CalcDiffractionSpots(Lsd, MinEta, OmegaRanges, nOmeRanges, hkls_corr,
-                           nhkls, BoxSizes, &nTcpu, cpuOM, cpuTheor);
-
-      // Generate theoretical spots for GPU orient
-      double **gpuTheor = allocMatrix(MaxNSpotsBest, 9);
-      int nTgpu = 0;
-      CalcDiffractionSpots(Lsd, MinEta, OmegaRanges, nOmeRanges, hkls_corr,
-                           nhkls, BoxSizes, &nTgpu, gpuOM, gpuTheor);
-
-      printf("=== SpotID 78 PER-SPOT PROOF: CPU orient (%.4f,%.4f,%.4f) vs GPU orient (%.4f,%.4f,%.4f) ===\n",
-             cpuEuler[0], cpuEuler[1], cpuEuler[2], gpuEuler[0], gpuEuler[1], gpuEuler[2]);
-      printf("CPU nTheorSpots=%d, GPU nTheorSpots=%d, nObsSpots=%d\n", nTcpu, nTgpu, nSpotsComp);
-      printf(" Sp# nrhkls  ObsY       ObsZ       CPU_thY    CPU_thZ  CPU_Ome    GPU_thY    GPU_thZ  GPU_Ome    CPU_dist   GPU_dist\n");
-
-      double cpuTotal = 0, gpuTotal = 0;
-      int cpuMatched = 0, gpuMatched = 0;
-      for (int sp = 0; sp < nSpotsComp; sp++) {
-        // Compute corrected observed position
-        double DisplY, DisplZ, ys, zs, Omega;
-        DisplacementInTheSpot(Pos0[0], Pos0[1], Pos0[2], Lsd,
-                              spotsYZONew[sp][5], spotsYZONew[sp][6],
-                              spotsYZONew[sp][4], wedge, chi, &DisplY, &DisplZ);
-        double yt = spotsYZONew[sp][5] - DisplY;
-        double zt = spotsYZONew[sp][6] - DisplZ;
-        CorrectForOme(yt, zt, Lsd, spotsYZONew[sp][4], Wavelength, wedge,
-                      &ys, &zs, &Omega);
-        int spnr = (int)spotsYZONew[sp][8];
-
-        // Find CPU theoretical match
-        double cpuY = -9999, cpuZ = -9999, cpuOme = -9999, cpuDist = -1;
-        for (int k = 0; k < nTcpu; k++) {
-          if ((int)cpuTheor[k][8] == spnr) {
-            cpuY = cpuTheor[k][0]; cpuZ = cpuTheor[k][1]; cpuOme = cpuTheor[k][2];
-            double dy = ys - cpuY, dz = zs - cpuZ;
-            cpuDist = sqrt(dy*dy + dz*dz);
-            cpuTotal += cpuDist;
-            cpuMatched++;
-            break;
-          }
-        }
-
-        // Find GPU theoretical match
-        double gpuY = -9999, gpuZ = -9999, gpuOme = -9999, gpuDist = -1;
-        for (int k = 0; k < nTgpu; k++) {
-          if ((int)gpuTheor[k][8] == spnr) {
-            gpuY = gpuTheor[k][0]; gpuZ = gpuTheor[k][1]; gpuOme = gpuTheor[k][2];
-            double dy = ys - gpuY, dz = zs - gpuZ;
-            gpuDist = sqrt(dy*dy + dz*dz);
-            gpuTotal += gpuDist;
-            gpuMatched++;
-            break;
-          }
-        }
-
-        printf(" %3d %5d %10.2f %10.2f %10.2f %10.2f %8.3f %10.2f %10.2f %8.3f %10.4f %10.4f%s\n",
-               sp, spnr, ys, zs, cpuY, cpuZ, cpuOme, gpuY, gpuZ, gpuOme, cpuDist, gpuDist,
-               (cpuDist < 0 || gpuDist < 0) ? " MISS" : "");
-      }
-      printf("TOTALS: CPU matched=%d err=%.4f (%.4f/sp) | GPU matched=%d err=%.4f (%.4f/sp)\n",
-             cpuMatched, cpuTotal, cpuTotal/nSpotsComp,
-             gpuMatched, gpuTotal, gpuTotal/nSpotsComp);
-
-      FreeMemMatrix(hkls_corr, nhkls);
-      FreeMemMatrix(cpuTheor, MaxNSpotsBest);
-      FreeMemMatrix(gpuTheor, MaxNSpotsBest);
-    }
 
     // Free scratch
     FreeMemMatrix(scratch.hkls, nhkls);
@@ -1618,13 +1549,6 @@ int main(int argc, char *argv[]) {
     for (i = 0; i < 6; i++)
       LatticeParameterFit[i] = FinalResult[i + 6];
     Euler2OrientMat(EulerFit, OF);
-    // Debug: print orient matrix for SpotID 78
-    if (SpId == 78) {
-      printf("CPU SpotID78 OrientMatrix: [%.6f %.6f %.6f; %.6f %.6f %.6f; %.6f %.6f %.6f]\n",
-             OF[0][0], OF[0][1], OF[0][2], OF[1][0], OF[1][1], OF[1][2],
-             OF[2][0], OF[2][1], OF[2][2]);
-      printf("CPU SpotID78 Euler: %.4f %.4f %.4f\n", EulerFit[0], EulerFit[1], EulerFit[2]);
-    }
     Convert3x3To9(OF, OrientFit);
     double OrientsFit[10], PositionsFit[4], StrainsFit[7], ErrorsFin[4];
     OrientsFit[0] = SpId;
