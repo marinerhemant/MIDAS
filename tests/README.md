@@ -540,5 +540,20 @@ tests/
 ├── test_calibration_integration.py  # Calibration + integration benchmark
 ├── test_phase_id.py                # Phase identification benchmark
 ├── test_tomo.py                    # Tomography reconstruction benchmark
+├── test_pf_hedm.py                 # PF/scanning HEDM pipeline benchmark (consolidated I/O)
+├── test_tomo_parity.py             # GPU vs CPU tomography parity test
 └── test_live_viewer.py             # Live viewer data generator (manual)
 ```
+
+### GPU Testing Flags
+
+Several tests support GPU-specific options:
+
+| Test | GPU Flag | Description |
+|---|---|---|
+| `test_ff_hedm.py` | `-useGPU` | GPU-accelerated indexing and fitting |
+| `test_nf_hedm.py` | `--gpu-fit` | GPU-accelerated NF orientation fitting |
+| `test_pf_hedm.py` | `-useGPU` | GPU scanning indexer and fitter |
+| `test_tomo_parity.py` | `--gpu-only` | Skip preprocessing and CPU comparison |
+
+Additional flags for `test_tomo_parity.py`: `--phantom-size`, `--n-thetas`, `--plot`, `--small`.

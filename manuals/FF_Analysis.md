@@ -1,6 +1,6 @@
 # ff_MIDAS.py User Manual
 
-**Version:** 10.0  
+**Version:** 11.0  
 **Contact:** hsharma@anl.gov
 
 > [!NOTE]
@@ -577,7 +577,38 @@ with h5py.File('output_consolidated.h5', 'r') as h5:
 
 ---
 
-## 10. See Also
+## 10. GPU Acceleration
+
+FF-HEDM supports GPU-accelerated indexing and strain fitting via the `-useGPU 1` flag:
+
+```bash
+python ff_MIDAS.py -paramFN params.txt -useGPU 1
+```
+
+This routes indexing through `IndexerGPU` (two-pass funnel screening with bitfield prefilter) and strain fitting through `FitPosOrStrainsGPU` (Nelder-Mead simplex on GPU).
+
+Additional GPU environment variables:
+
+| Variable | Description |
+|---|---|
+| `MIDAS_GPU_DOUBLE=1` | Enable double-precision GPU computation |
+| `MIDAS_SCREEN_ONLY=1` | Run only Phase 1 screening, skip fitting |
+| `MIDAS_VERBOSE=1` | Enable per-voxel diagnostic output |
+
+Other new flags:
+
+| Flag | Description |
+|---|---|
+| `-nfResultDir <path>` | NF-seeded indexing per layer |
+| `-useGPU 1` | GPU-accelerated indexing and fitting |
+
+For scanning/PF-HEDM, the consolidated binary I/O format replaces per-voxel file I/O with 3 binary files per scan (`IndexBest_all.bin`, `IndexKey_all.bin`, `IndexBest_IDs_all.bin`), reducing filesystem overhead from ~30K+ small files to 3 files. See [PF_Analysis.md](PF_Analysis.md).
+
+See [GPU_Acceleration.md](GPU_Acceleration.md) for full GPU documentation.
+
+---
+
+## 11. See Also
 
 - [PF_Analysis.md](PF_Analysis.md) — Scanning/Point-Focus FF-HEDM analysis
 - [FF_Calibration.md](FF_Calibration.md) — Geometry calibration from calibrant rings

@@ -1,6 +1,6 @@
 # MIDAS FF-HEDM Desktop Image Viewer (`ff_asym_qt.py`): User Manual
 
-**Version:** 10.0  
+**Version:** 11.0  
 **Contact:** hsharma@anl.gov
 
 ---
@@ -323,7 +323,17 @@ The legacy Tkinter-based viewer (`ff_asym.py`) has been archived to `gui/archive
 
 ---
 
-## 10. See Also
+## 10. New Features Since v10
+
+- **Independent colormap dropdowns** — per-plot colormap selection
+- **All Grains.csv columns** — all columns now exposed as color options in the viewer
+- **CBF file format support** — new file format for CBF detector data (dType=10)
+- **Log scale zoom preservation** — zoom state is preserved when toggling log scale
+- **Zoom preservation** — zoom preserved when toggling between different display modes
+
+---
+
+## 11. See Also
 
 - [GUIs_and_Visualization.md](GUIs_and_Visualization.md) — Master guide to all GUIs and visualization tools
 - [FF_Interactive_Plotting.md](FF_Interactive_Plotting.md) — Dash-based interactive viewer for post-analysis visualization

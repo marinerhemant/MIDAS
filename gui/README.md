@@ -168,6 +168,28 @@ Pillow, scipy, h5py
 
 ---
 
+## v11 Updates
+
+**`ff_asym_qt.py`:**
+- Independent colormap dropdowns per plot
+- All Grains.csv columns exposed as color options
+- CBF file format support
+- Zoom preserved when toggling log scale
+
+**`nf_qt.py`:**
+- Right-click for spot selection (left-click = rectangle zoom)
+- Cyan crosshair markers during spot picking
+- Auto-compute distances on "Finished" click
+- Visual results dialog with crop patches + ray triangulation diagram
+- Box profile auto-refresh on frame/distance change, pixel coordinate display, orange-red edge lines
+- Defaults to highest-resolution map
+- Cursor tracking + colorbar on mic scatter map
+- Zoom preserved when switching plot type or toggling log scale
+
+**Analysis scripts:** `NF_HEDM/Example/analyze_mismatches.py` and `parity_maps.py` for GPU parity debugging.
+
+---
+
 ## See Also
 
 - [GUIs_and_Visualization](../manuals/GUIs_and_Visualization.md) — Master GUI guide

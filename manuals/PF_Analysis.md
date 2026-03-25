@@ -1,6 +1,6 @@
 # pf_MIDAS.py User Manual
 
-**Version:** 10.0  
+**Version:** 11.0  
 **Contact:** hsharma@anl.gov
 
 > [!NOTE]
@@ -267,7 +267,35 @@ When `-doTomo 1` is enabled:
 
 ---
 
-## 10. See Also
+## 10. GPU Acceleration & Consolidated I/O
+
+### Consolidated Binary I/O
+
+Per-voxel file I/O has been replaced with consolidated binary format:
+- 3 binary files per scan: `IndexBest_all.bin`, `IndexKey_all.bin`, `IndexBest_IDs_all.bin`
+- Reduces filesystem overhead from ~30K+ small files to 3 files
+- Uses `IndexerConsolidatedIO.h` with `VoxelAccumulator` (writer) and `ConsolidatedReader` (mmap-based reader) for O(1) voxel access
+- `pf_MIDAS.py` reads consolidated `IndexBest_all.bin` via numpy for `.mic` file generation
+
+### GPU Acceleration
+
+Enable GPU-accelerated scanning indexer and fitter:
+
+```bash
+python pf_MIDAS.py -paramFN params.txt -useGPU 1
+```
+
+`IndexerScanningGPU` supports three modes: spot-driven with beam proximity filter, MicFile-seeded, and GrainsFile-seeded. `FitOrStrainsScanningGPU` reads consolidated indexer output.
+
+### Resume/Restart
+
+`--resume` and `--restartFrom` flags are fully wired with `_should_run()` gates for proper stage-skipping.
+
+See [GPU_Acceleration.md](GPU_Acceleration.md) for full GPU documentation.
+
+---
+
+## 11. See Also
 
 - [FF_Analysis.md](FF_Analysis.md) — Standard (box-beam) FF-HEDM analysis
 - [FF_Calibration.md](FF_Calibration.md) — Geometry calibration

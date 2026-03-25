@@ -1,6 +1,6 @@
 # Tomography Reconstruction with MIDAS
 
-**Version:** 10.0  
+**Version:** 11.0  
 **Contact:** hsharma@anl.gov
 
 ---
@@ -356,6 +356,23 @@ The reconstruction is parallelized across slices using OpenMP. The number of thr
 ```
 
 Typical performance: a 2048 × 2048 × 1800 dataset reconstructs in under 2 minutes on a 40-core workstation.
+
+### 8.4. GPU Acceleration
+
+When MIDAS is built with CUDA support (`-DUSE_CUDA=ON`), tomographic reconstruction is automatically GPU-accelerated. The GPU path provides:
+
+- **Multi-pair batched reconstruction** — processes multiple sinogram pairs per GPU kernel launch
+- **Dynamic batch sizing** — automatically sizes batches (capped at 50 pairs to limit pinned memory usage)
+- **Double-buffered pipeline** — overlaps GPU compute with CPU read/write via pthread
+- **3-stream CUDA overlap** — concurrent kernel execution across CUDA streams
+- **Pinned memory** — efficient host-device transfers
+- **OMP-parallel sinogram reads** — parallel reads for GPU batch dispatch
+- **mmap-based I/O** — both CPU and GPU paths use mmap for sinogram input (zero-copy parallel reads)
+- **GPU-side kernels** — Pad, reconCentering, and getRecons execute entirely on GPU
+
+Stripe removal (Vo et al.) also runs on the GPU path.
+
+See [GPU_Acceleration.md](GPU_Acceleration.md) for build instructions and additional details.
 
 ---
 

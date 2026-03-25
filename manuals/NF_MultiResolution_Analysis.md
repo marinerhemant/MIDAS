@@ -1,7 +1,7 @@
 # NF-HEDM Multi-Resolution Analysis Manual
 
 **Script:** `nf_MIDAS_Multiple_Resolutions.py`
-**Version:** 10.0 — Contact: hsharma@anl.gov
+**Version:** 11.0 — Contact: hsharma@anl.gov
 
 ---
 
@@ -454,7 +454,40 @@ Between multi-resolution loops, `Mic2GrainsList` extracts unique grain orientati
 
 ---
 
-## 12. See Also
+## 12. New Features Since v10
+
+### GPU Acceleration
+
+Multi-resolution NF-HEDM supports GPU-accelerated fitting via `-gpuFit 1`:
+
+```bash
+python nf_MIDAS_Multiple_Resolutions.py -paramFN params.txt -gpuFit 1
+```
+
+### Multi-Layer Support
+
+The script now supports multi-layer processing with per-layer `Mic2GrainsList` runs.
+
+### Performance Optimizations
+
+- `GetHKLListNF` runs once at start (not per-pass)
+- `PrecomputedSpotsInfo=1` set after loop 0 — skips SpotsInfo.bin regeneration
+- `MakeDiffrSpots` backup/restore for unseeded passes (reuses loop 0 seeds)
+- Eliminates 8 SpotsInfo.bin regenerations and 4 MakeDiffrSpots runs in a typical 4-loop workflow
+
+### Mic2GrainsList Updates
+
+- Now runs after each layer (not just at the end)
+- Supports `-MinConfidence` CLI override for minimum confidence threshold
+- Parallelized with OpenMP
+
+### MakeHexGrid
+
+- New `OutputDirectory` parameter for separating data and output directories
+
+---
+
+## 13. See Also
 
 - [NF_Analysis.md](NF_Analysis.md) — Single-resolution NF-HEDM reconstruction
 - [NF_Calibration.md](NF_Calibration.md) — NF detector geometry calibration

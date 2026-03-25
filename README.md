@@ -8,7 +8,7 @@
 
 **MIDAS** is an open-source suite for reconstructing three-dimensional microstructures from High-Energy Diffraction Microscopy (HEDM) data. Developed at the [Advanced Photon Source](https://www.aps.anl.gov/) at Argonne National Laboratory, it supports the complete data-reduction pipeline — from raw detector frames to grain maps, strain tensors, spatially resolved orientation fields, and tomographic reconstructions.
 
-**Version:** 10.0
+**Version:** 11.0
 **Contact:** [Hemant Sharma](mailto:hsharma@anl.gov?subject=[MIDAS]%20From%20Github) (hsharma@anl.gov)
 
 ---
@@ -23,6 +23,21 @@
 | **Radial Integration (Caking)** | 1D intensity vs. 2θ profiles for Rietveld refinement (GSAS-II) | — |
 | **Grain Matching & Stitching** | Track grains across load states; combine multi-layer scans | — |
 | **Tomography (CT)** | Absorption-contrast cross-sections via gridrec algorithm | — |
+
+### Version 11 Highlights
+
+- **GPU acceleration** — CUDA-accelerated indexing (`IndexerGPU`), strain fitting (`FitPosOrStrainsGPU`), NF orientation fitting (`FitOrientationGPU`), scanning HEDM (`IndexerScanningGPU`, `FitOrStrainsScanningGPU`), radial integration (`IntegratorFitPeaksGPUStream`), and tomographic reconstruction (`tomo_gpu`). See [GPU_Acceleration](manuals/GPU_Acceleration.md)
+- **Consolidated binary I/O** — PF/scanning HEDM replaces ~30K+ per-voxel files with 3 consolidated binary files per scan via `IndexerConsolidatedIO.h`
+- **CalibrantIntegratorOMP** — new primary calibration executable (replaces archived `CalibrantPanelShiftsOMP`)
+- **Switchable peak fitting** — unified pseudo-Voigt (pV) and Thompson-Cox-Hastings (TCH) modes across calibration, integration, and auto-calibration
+- **Physical corrections** — parallax, solid-angle, and polarization corrections in DetectorMapper (matching pyFAI convention)
+- **Q-spacing integration** — radial bins equally spaced in Q (Å⁻¹) via `QBinSize`/`QMin`/`QMax` parameters
+- **CBF file format** — new `ReadCBFFrame()` reader for CBF detector data
+- **Streaming median** — histogram-based streaming median for NF image processing (~500 MB vs 11.5 GB)
+- **Stripe artifact removal** — Vo et al. (2018) algorithms for tomography ring/stripe correction
+- **Shared integration library** — extracted `IntegrationCore`, `MapperCore`, `CalibrationCore`, `CalibPeakFit` modules
+- **Centralized MIDAS_ParamParser** — unified parameter file parsing across all executables
+- **Gradient-aware pixel splitting** — sub-pixel radial resampling for improved integration accuracy
 
 ### Version 10 Highlights
 
@@ -83,6 +98,7 @@ Full manuals are in the **[manuals/](manuals/)** directory. Start with the [manu
 
 | Manual | Topic |
 |--------|-------|
+| [GPU_Acceleration](manuals/GPU_Acceleration.md) | GPU-accelerated computation (CUDA) |
 | [FF_Calibration](manuals/FF_Calibration.md) | FF-HEDM geometry calibration |
 | [FF_Analysis](manuals/FF_Analysis.md) | FF-HEDM grain indexing and fitting |
 | [FF_Match_Stack_Reconstructions](manuals/FF_Match_Stack_Reconstructions.md) | Grain matching across load states and layer stitching |
@@ -241,6 +257,12 @@ See the [manuals README](manuals/README.md) for the full step-by-step checklist.
 conda activate midas_env
 cd FF_HEDM/Example
 python ../workflows/ff_MIDAS.py -paramFN ps_ff.txt
+```
+
+### Example: Run FF-HEDM with GPU acceleration
+
+```bash
+python FF_HEDM/workflows/ff_MIDAS.py -paramFN ps_ff.txt -useGPU 1
 ```
 
 ### Example: Resume a failed pipeline from its last checkpoint

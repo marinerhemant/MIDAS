@@ -1,7 +1,10 @@
 # GUIs and Visualization — MIDAS
 
-**Version:** 10.0  
+**Version:** 11.0
 **Contact:** hsharma@anl.gov
+
+> [!NOTE]
+> **v11 updates:** FF viewer: independent colormap dropdowns per plot, all Grains.csv columns as color options, CBF file format support, zoom preservation on log scale toggle. NF viewer: right-click for spot selection (left-click = zoom), cyan crosshair markers, auto-compute distances on "Finished", visual results dialog with crop patches + ray triangulation diagram, box profile auto-refresh with pixel coordinates, orange-red edge lines, cursor tracking + colorbar on mic scatter map, defaults to highest-res map, zoom preserved on plot type switch.
 
 ---
 

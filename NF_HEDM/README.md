@@ -36,7 +36,7 @@ The output is a `.mic` file containing position, orientation, and confidence for
 | File | Description |
 |------|-------------|
 | `nf_MIDAS.py` | **Main NF-HEDM workflow.** Orchestrates image processing, grid generation, forward simulation, and reconstruction. Tracks pipeline state via HDF5 checkpoint with 6 stage markers. Supports pipeline restart via `-resume`/`-restartFrom`. See [NF_Analysis manual](../manuals/NF_Analysis.md). |
-| `nf_MIDAS_Multiple_Resolutions.py` | **Multi-resolution NF-HEDM.** Iterative reconstruction at increasing grid resolution for large volumes. Tracks pipeline state with dynamic loop-based stage markers (`loop_0_initial`, `loop_N_seeded`, etc.). Supports pipeline restart via `-resume`/`-restartFrom` with user guidance on available stages. See [NF_MultiResolution_Analysis manual](../manuals/NF_MultiResolution_Analysis.md). |
+| `nf_MIDAS_Multiple_Resolutions.py` | **Multi-resolution NF-HEDM.** Iterative reconstruction at increasing grid resolution with multi-layer support. Optimized: GetHKLListNF runs once, PrecomputedSpotsInfo after loop 0, MakeDiffrSpots backup/restore. Supports `-resume`/`-restartFrom` and `-gpuFit`. See [NF_MultiResolution_Analysis manual](../manuals/NF_MultiResolution_Analysis.md). |
 | `localConfig.py` | Parsl execution configuration for local runs. |
 | `orthrosAllConfig.py` | Parsl configuration for Orthros cluster. |
 | `polarisConfig.py` | Parsl configuration for ALCF Polaris. |
@@ -50,7 +50,8 @@ The output is a `.mic` file containing position, orientation, and confidence for
 
 | Source | Description |
 |--------|-------------|
-| `ImageProcessingLibTiffOMP.c` | **Primary image processor.** Dark subtraction, background removal, and edge detection (LoG filter with 8-connectivity) for TIFF detector images. OpenMP parallelized. |
+| `ProcessImagesCombined.c` | **Primary image processor.** Streaming histogram-based median (~500 MB vs 11.5 GB all-in-memory), dark subtraction, LoG filter with 8-connectivity. Writes SpotsInfo.bin directly via mmap/SetBit. |
+| `ImageProcessingLibTiffOMP.c` | **Deprecated.** Legacy all-in-memory image processor. Replaced by `ProcessImagesCombined.c`. |
 | `ImageProcessingLibTiff.c` | Single-threaded image processor for TIFF data. |
 | `ImageProcessingHDF.c` | Image processor for HDF5 detector data. |
 | `MedianImageLibTiff.c` / `MedianImageHDF.c` | Compute median dark frames from TIFF or HDF5 data. |
@@ -59,7 +60,9 @@ The output is a `.mic` file containing position, orientation, and confidence for
 
 | Source | Description |
 |--------|-------------|
-| `FitOrientationOMP.c` | **Primary reconstruction engine.** Voxel-by-voxel forward-model fitting with OpenMP parallelism. |
+| `FitOrientationOMP.c` | **Primary reconstruction engine.** Voxel-by-voxel forward-model fitting with OpenMP parallelism. Uses SpotsInfo.bin mmap, misorientation uniqueness filter for nSaves. |
+| `FitOrientationGPU.cu` | **GPU-accelerated reconstruction.** CUDA port with Nelder-Mead simplex on GPU. Enable with `-gpuFit 1`. See [GPU_Acceleration manual](../manuals/GPU_Acceleration.md). |
+| `nf_gpu.h` | GPU math and kernel declarations for NF-HEDM. |
 | `FitOrientation.c` | Single-threaded reconstruction engine. |
 | `FitOrientationParameters.c` | Detector geometry parameter optimization for NF-HEDM. |
 | `FitOrientationParametersMultiPoint.c` | Multi-point parameter optimization using selected high-confidence voxels. |
@@ -70,7 +73,7 @@ The output is a `.mic` file containing position, orientation, and confidence for
 
 | Source | Description |
 |--------|-------------|
-| `MakeHexGrid.c` | Generate hexagonal reconstruction grids. |
+| `MakeHexGrid.c` | Generate hexagonal reconstruction grids. Supports `OutputDirectory` parameter. |
 | `GenSeedOrientationsFF2NFHEDM.c` | Convert FF-HEDM grain orientations to NF-HEDM seed format. |
 | `MakeDiffrSpots.c` | Generate simulated diffraction spot positions for seeds. |
 | `CalcDiffractionSpots.c` | Calculate expected spot positions for a given orientation. |
@@ -81,7 +84,7 @@ The output is a `.mic` file containing position, orientation, and confidence for
 | Source | Description |
 |--------|-------------|
 | `ParseMic.c` | Parse and manipulate `.mic` reconstruction files. |
-| `Mic2GrainsList.c` | Convert `.mic` voxel data to a grain list with spatial neighbor merging. |
+| `Mic2GrainsList.c` | Convert `.mic` voxel data to a grain list with spatial neighbor merging (BFS). Now runs after each layer, parallelized, with `-MinConfidence` CLI override. |
 | `NFGrainsCalc.c` | Calculate grain-level statistics from voxel-by-voxel reconstructions. |
 | `compareNF.c` | Compare two NF reconstructions (e.g., before/after optimization). |
 | `ProcessNFMicRemote.c` | Remote processing of `.mic` files for distributed workflows. |

@@ -51,7 +51,11 @@ Raw Data → GetHKLList → PeaksFitting → MergeOverlappingPeaks → CalcRadiu
 |--------|-------------|
 | `GetHKLList.c` / `GetHKLListZarr.c` | Generate list of expected HKL reflections for the crystal system. Uses SGInfo subroutines. |
 | `GenMedianDark.c` | Compute median dark frame from a set of dark images. |
-| `FileReader.c` / `.h` | Detector file reader supporting GE, TIFF, and HDF5 formats. |
+| `FileReader.c` / `.h` | Detector file reader supporting GE, TIFF, HDF5, and CBF formats. |
+| `MIDAS_ParamParser.c` / `.h` | Centralized parameter file parser used by all executables. |
+| `IntegrationCore.c` / `.h` | Shared integration library extracted from integrators. |
+| `MapperCore.c` / `.h` | Shared detector mapping library. |
+| `ImageUtils.c` / `.h` | Image utility functions. |
 
 ### Peak Search & Fitting
 
@@ -66,7 +70,7 @@ Raw Data → GetHKLList → PeaksFitting → MergeOverlappingPeaks → CalcRadiu
 
 | Source | Description |
 |--------|-------------|
-| `MergeOverlappingPeaksAllZarr.c` | **Primary merger.** Merges peaks from overlapping rotation frames, generates `MergeMap.csv` provenance. |
+| `MergeOverlappingPeaksAllZarr.c` | **Primary merger.** Merges peaks from overlapping rotation frames, generates `MergeMap.csv` provenance. Uses spatial hash grid for O(N) peak matching. |
 | `MergeOverlappingPeaks.c` / `MergeOverlappingPeaksAll.c` | Legacy merging implementations. |
 | `CalcRadius.c` / `CalcRadiusAll.c` / `CalcRadiusAllZarr.c` | Compute grain radii and volume estimates from merged peak data. |
 
@@ -76,8 +80,10 @@ Raw Data → GetHKLList → PeaksFitting → MergeOverlappingPeaks → CalcRadiu
 |--------|-------------|
 | `IndexerOMP.c` | **Primary indexer.** OpenMP-parallelized grain indexing from merged spots. |
 | `IndexerLinuxArgsOptimizedShm.c` | Shared-memory optimized indexer for multi-node execution. |
-| `IndexerScanningOMP.c` | Indexer for scanning/point-focus HEDM geometry. |
-| `IndexerScanningCUDA.cu` | GPU-accelerated scanning indexer (CUDA). |
+| `IndexerScanningOMP.c` | Indexer for scanning/point-focus HEDM geometry. Uses consolidated binary I/O. |
+| `IndexerGPU.cu` | **GPU-accelerated FF-HEDM indexer.** Two-pass funnel screening with bitfield prefilter. |
+| `IndexerScanningGPU.cu` | **GPU scanning-mode indexer.** Supports spot-driven, MicFile-seeded, and GrainsFile-seeded modes. |
+| `IndexerConsolidatedIO.h` | Shared header: `VoxelAccumulator` (writer) and `ConsolidatedReader` (mmap reader) for consolidated binary I/O. |
 
 ### Strain Fitting
 
@@ -86,14 +92,16 @@ Raw Data → GetHKLList → PeaksFitting → MergeOverlappingPeaks → CalcRadiu
 | `FitPosOrStrainsOMP.c` | **Primary strain fitter.** Refines grain position, orientation, and full elastic strain tensor with OpenMP. |
 | `FitPosOrStrains.c` | Single-threaded strain fitter. |
 | `FitPosOrStrainsDoubleDataset.c` | Strain fitting using two combined datasets. |
-| `FitOrStrainsScanningOMP.c` | Strain fitting for scanning HEDM geometry. |
+| `FitOrStrainsScanningOMP.c` | Strain fitting for scanning HEDM geometry. Reads consolidated binary files. |
+| `FitPosOrStrainsGPU.cu` | **GPU-accelerated strain fitting.** Nelder-Mead simplex on GPU with device-side spot computation. |
+| `FitOrStrainsScanningGPU.cu` | **GPU scanning-mode strain fitter.** Reads consolidated indexer output. |
 | `FitSetupParamsAll.c` / `FitSetupParamsAllZarr.c` | Set up fitting parameters from indexed spots. |
 
 ### Grain Processing & Matching
 
 | Source | Description |
 |--------|-------------|
-| `ProcessGrains.c` / `ProcessGrainsZarr.c` | Process indexed grains: compute final orientations, positions, strains.  |
+| `ProcessGrains.c` | Process indexed grains: compute final orientations, positions, strains. Consolidated dual-mode binary (replaces separate `ProcessGrainsZarr.c`). |
 | `MatchGrains.c` | Match grains across load states or layers. Bug-fixed in v9 (was using `abs()` on doubles). |
 | `GrainTracking.c` | Track grain evolution across multiple load states. |
 | `GetMisorientation.c` | Quaternion-based crystallographic misorientation calculations. |
@@ -102,10 +110,13 @@ Raw Data → GetHKLList → PeaksFitting → MergeOverlappingPeaks → CalcRadiu
 
 | Source | Description |
 |--------|-------------|
-| `CalibrantPanelShiftsOMP.c` | **Primary calibrant.** Fit detector geometry (tilt, distance, beam center, distortion p0–p5, optional parallax and wavelength) from powder calibrant rings, with doublet detection, SNR weighting, panel shift support, and robust optimization (trimmed-mean objective, inter-iteration outlier removal). |
+| `CalibrantIntegratorOMP.c` | **Primary calibrant.** New CI-based calibration executable with unified pV/TCH peak fitting modes, physical corrections (parallax, solid-angle, polarization), and Q-spacing support. |
+| `CalibrantPanelShiftsOMP.c` | **Archived.** Legacy calibrant (moved to `src/archive/`). Replaced by `CalibrantIntegratorOMP.c`. |
+| `CalibPeakFit.c` / `.h` | Calibrant peak fitting module (shared by CI and integrators). |
+| `CalibrationCore.c` / `.h` | Shared calibration core library. |
 | `FitTiltBCLsdSampleOmegaCorrection.c` | Fit tilt, beam center, Lsd, and omega correction. |
 | `FitTiltX.c` | Fit detector tilt about X axis (requires Friedel pairs). |
-| `FitWedge.c` / `FitWedgeParallel.c` | Fit wedge angle (rotation axis tilt). |
+| `FitWedgeParallel.c` | Fit wedge angle (rotation axis tilt). `GrainTracking.c` and `FitWedge.c` are archived. |
 
 ### Simulation & Validation
 

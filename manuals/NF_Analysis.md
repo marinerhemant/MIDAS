@@ -1,6 +1,6 @@
 # nf_MIDAS.py User Manual
 
-**Version:** 10.0  
+**Version:** 11.0  
 **Contact:** hsharma@anl.gov
 
 > [!NOTE]
@@ -465,7 +465,59 @@ The final text mic file has one line per reconstructed grid point. Lines startin
 
 ---
 
-## 12. See Also
+## 12. GPU Acceleration
+
+NF-HEDM supports GPU-accelerated orientation fitting via the `-gpuFit 1` flag:
+
+```bash
+python nf_MIDAS.py -paramFN params.txt -nCPUs 8 -gpuFit 1
+```
+
+This accelerates both screening (Phase 1: discrete orientation search) and fitting (Phase 2: Nelder-Mead continuous refinement) using `FitOrientationGPU`.
+
+For double-precision GPU computation (exact CPU/GPU parity):
+
+```bash
+export MIDAS_GPU_DOUBLE=1
+python nf_MIDAS.py -paramFN params.txt -gpuFit 1
+```
+
+The `-gpuFit` flag also works with multi-resolution workflows:
+
+```bash
+python nf_MIDAS_Multiple_Resolutions.py -paramFN params.txt -gpuFit 1
+```
+
+See [GPU_Acceleration.md](GPU_Acceleration.md) for build instructions and full GPU documentation.
+
+---
+
+## 13. New Features Since v10
+
+### Streaming Histogram-Based Median
+
+`ProcessImagesCombined.c` replaces the legacy all-in-memory median computation with a streaming histogram approach:
+- Memory usage reduced from ~11.5 GB to ~500 MB
+- Streams TIFFs one at a time, builds per-pixel uint16 histogram (65536 bins)
+- Writes SpotsInfo.bin directly via mmap/SetBit
+- `ImageProcessingLibTiffOMP` is deprecated
+
+### New Parameters
+
+| Parameter | Description |
+|---|---|
+| `LocalMaximaOnly` | New peak search mode for powdery/textured samples |
+| `NrPixelsY` / `NrPixelsZ` | Dynamic detector size (replaces hardcoded 2048) |
+
+### I/O Improvements
+
+- FitOrientation executables now use SpotsInfo.bin mmap instead of per-frame `.bin` files
+- Misorientation uniqueness filter for `nSaves` — filters redundant orientations
+- Binary mmap-based I/O replaces text-based I/O for FitOrientationParameters
+
+---
+
+## 14. See Also
 
 - [NF_MultiResolution_Analysis.md](NF_MultiResolution_Analysis.md) — Multi-resolution iterative NF-HEDM reconstruction
 - [NF_Calibration.md](NF_Calibration.md) — NF detector geometry calibration

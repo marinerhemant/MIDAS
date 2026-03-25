@@ -27,6 +27,9 @@ MIDAS TOMO reconstructs absorption-contrast cross-sections from rotation-series 
 - **Multiple reconstruction filters** — Shepp-Logan, Hann (default), Hamming, and Ramp.
 - **Rotation-axis shift search** — reconstructs at multiple candidate center positions to find optimal alignment.
 - **Ring artifact removal** — sinogram-space filtering to suppress ring artifacts from detector pixel defects.
+- **Stripe artifact removal** — Vo et al. (2018) algorithms: dead pixel correction, large stripe normalization, small-medium stripe correction. Controlled by `doStripeRemoval`, `stripeSnr`, `stripeLaSize`, `stripeSmSize` parameters.
+- **GPU-accelerated reconstruction** — CUDA-accelerated gridrec via `tomo_gpu.cu` with multi-pair batched reconstruction, double-buffered pipeline, pinned memory, and 3-stream overlap.
+- **mmap-based I/O** — both CPU and GPU paths use mmap for sinogram input (zero-copy parallel reads).
 - **OpenMP parallelism** — multi-threaded slice reconstruction.
 
 ---
@@ -62,6 +65,8 @@ reconstruct(dark_frame, white_frames, projections, angles, output_dir)
 | `tomo_gridrec.c` | **Core reconstruction engine.** Implements the gridrec algorithm with PSWF interpolation and FFTW-based filtering. |
 | `tomo_utils.c` | Utility functions: ring removal, centering, image I/O, filter generation. |
 | `tomo_cleanup.c` | Memory cleanup and resource deallocation. |
+| `tomo_gpu.cu` | **GPU reconstruction engine.** CUDA-accelerated gridrec with multi-pair batching, double-buffered pipeline, pinned memory, and 3-stream overlap. Dynamic batch sizing (capped at 50 pairs). |
+| `tomo_gpu.h` | GPU interface declarations. |
 
 The output is a set of reconstructed slices stored as `float32` binary files, with dimensions rounded up to the next power of 2.
 

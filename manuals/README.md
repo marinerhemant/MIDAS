@@ -1,6 +1,6 @@
 # MIDAS Manuals — High-Energy Diffraction Microscopy
 
-**Version:** 10.0  
+**Version:** 11.0
 **Contact:** hsharma@anl.gov
 
 ---
@@ -9,6 +9,7 @@
 
 | Manual | Topic | When to Use |
 |--------|-------|-------------|
+| [GPU_Acceleration.md](GPU_Acceleration.md) | GPU-accelerated computation | Building with CUDA, GPU indexing, fitting, reconstruction, and integration |
 | [FF_Calibration.md](FF_Calibration.md) | FF-HEDM geometry calibration | Setting up a new experiment; determining detector parameters |
 | [FF_Analysis.md](FF_Analysis.md) | FF-HEDM grain indexing and fitting | Extracting grain orientations, positions, and strain tensors |
 | [FF_Match_Stack_Reconstructions.md](FF_Match_Stack_Reconstructions.md) | Grain matching and layer stitching | Tracking grains across load states; combining multi-layer scans |

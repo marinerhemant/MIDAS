@@ -1,6 +1,6 @@
 # MIDAS FF-HEDM Interactive Viewer: User Manual
 
-**Version:** 10.0  
+**Version:** 11.0  
 **Contact:** hsharma@anl.gov
 
 ---

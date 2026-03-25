@@ -14,7 +14,7 @@ Core data processing, calibration, and analysis scripts for the MIDAS pipeline.
 
 | Script | Description |
 |--------|-------------|
-| `AutoCalibrateZarr.py` | **FF-HEDM auto-calibration.** Determines detector geometry from powder calibrant rings. Auto-detects calibrant (CeO2/LaB6) from filename. |
+| `AutoCalibrateZarr.py` | **FF-HEDM auto-calibration.** Single-call C-side refinement (no Python iteration loop), modern CLI with dataclass config, real-time C output streaming. Auto-detects calibrant (CeO2/LaB6) from filename. |
 | `phase_id.py` | **Multi-phase identification.** Ring-matching, peak fitting, lattice parameter refinement. See [FF_Phase_Identification](../manuals/FF_Phase_Identification.md). |
 | `extract_lineouts.py` | **Batch lineout extraction.** Direct-mode `IntegratorZarrOMP` with SNIP background, SavGol peak detection, and multiplet pseudo-Voigt fitting. |
 | `fit_caked_peaks.py` | **Caked peak fitting.** Fits GSAS-II pseudo-Voigt profiles per η-bin on `_caked.hdf.zarr.zip` output. Produces `_caked_peaks.h5` for `plot_caked_peaks.py`. |
@@ -98,6 +98,17 @@ Tests moved to [`tests/`](../tests/): `test_ff_hedm.py`, `test_nf_hedm.py`, `tes
 | `ff_peaks_raw_images.py` | Extract peaks from raw images for diagnostics. |
 | `undistort_image.py` | Apply spatial distortion correction to detector images. |
 | `generate_mask.py` | Create uint8 TIFF mask files. Supports Dioptas `.mask` input. |
+
+## New Utilities (v11)
+
+| Script | Description |
+|--------|-------------|
+| `sumImages.py` | Lightweight utility to sum detector images. |
+| `read_cbf.py` | CBF file reader utility. |
+| `generate_pfhedm_microstructure.py` | PF-HEDM microstructure simulation generator. |
+| `benchmark_pyfai_vs_midas.py` | Benchmark comparing pyFAI and MIDAS integration performance. |
+| `validate_calibration.py` | Calibration validation utility. |
+| `compare_peak_fit_modes.py` | Comparison of pseudo-Voigt (pV) vs Thompson-Cox-Hastings (TCH) peak fitting modes. |
 
 ## Deprecated (`archive/`)
 

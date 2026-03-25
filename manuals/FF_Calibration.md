@@ -7,7 +7,10 @@
 
 ## 1. Introduction
 
-`AutoCalibrateZarr.py` is a utility script within the MIDAS framework designed to automatically determine the precise geometry of a powder X-ray diffraction experiment. It analyzes a 2D diffraction image containing Debye-Scherrer rings from a known calibrant material (e.g., CeO2, LaB6) and refines a comprehensive set of geometric parameters (including optional parallax correction) via a single call to the `CalibrantPanelShiftsOMP` C/OpenMP binary (40 iterations, doublet detection, SNR weighting).
+`AutoCalibrateZarr.py` is a utility script within the MIDAS framework designed to automatically determine the precise geometry of a powder X-ray diffraction experiment. It analyzes a 2D diffraction image containing Debye-Scherrer rings from a known calibrant material (e.g., CeO2, LaB6) and refines a comprehensive set of geometric parameters (including optional parallax correction) via a single call to the calibration C/OpenMP binary (40 iterations, doublet detection, SNR weighting).
+
+> [!NOTE]
+> **v11 update:** `CalibrantIntegratorOMP` is now the primary calibration executable, replacing `CalibrantPanelShiftsOMP` (which has been archived). The new executable supports unified switchable pseudo-Voigt (pV) and Thompson-Cox-Hastings (TCH) peak fitting modes, physical corrections (parallax, solid-angle, polarization matching pyFAI convention), Q-spacing binning mode, gradient-aware pixel splitting, and a `DeltaR` column in `corr.csv` output. `AutoCalibrateZarr.py` automatically uses the appropriate binary.
 
 The script is a crucial first step for any HEDM analysis, as an accurate geometric calibration is fundamental to correctly interpreting diffraction data. It can process several input file formats (Zarr, HDF5, TIFF, GE) and produces a refined parameter file (`refined_MIDAS_params.txt`) ready for use in subsequent MIDAS analysis scripts like `ff_MIDAS.py`.
 

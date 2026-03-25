@@ -1,6 +1,6 @@
 # Comprehensive User Manual for the Near-Field Calibration GUI
 
-**Version:** 10.0  
+**Version:** 11.0  
 **Contact:** hsharma@anl.gov
 
 ## Introduction: The Goal of Calibration
