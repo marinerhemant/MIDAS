@@ -32,20 +32,28 @@ endif()
 
 # --- Fix multilib: ensure 64-bit library path on Linux ---
 # Some systems (RHEL/CentOS/Fedora) put 32-bit libs in /usr/lib and 64-bit
-# in /usr/lib64. CMake's default search finds the 32-bit /usr/lib/libm.so
-# first, causing "file in wrong format" linker errors for dependencies like
-# libtiff. Prepend the correct path so the linker finds 64-bit libraries.
+# in /usr/lib64. The linker finds the 32-bit /usr/lib/libm.so first, causing
+# "file in wrong format" errors when building dependencies (libtiff, nlopt,
+# etc.). We fix this at three levels:
+#   1. CMAKE_LIBRARY_PATH — affects find_library() in CMake scripts
+#   2. link_directories(BEFORE) — adds -L to the linker for all targets
+#   3. CMAKE_EXE/SHARED_LINKER_FLAGS — propagates to FetchContent sub-builds
 if(CMAKE_SYSTEM_NAME STREQUAL "Linux" AND CMAKE_SIZEOF_VOID_P EQUAL 8)
-  # Check for /usr/lib64 (RHEL/CentOS/Fedora/SUSE)
-  if(IS_DIRECTORY "/usr/lib64" AND NOT "/usr/lib64" IN_LIST CMAKE_LIBRARY_PATH)
-    list(PREPEND CMAKE_LIBRARY_PATH "/usr/lib64")
-    message(STATUS "Multilib fix: prepended /usr/lib64 to CMAKE_LIBRARY_PATH")
+  set(_MIDAS_MULTILIB_DIR "")
+  if(IS_DIRECTORY "/usr/lib64")
+    set(_MIDAS_MULTILIB_DIR "/usr/lib64")
+  elseif(IS_DIRECTORY "/usr/lib/x86_64-linux-gnu")
+    set(_MIDAS_MULTILIB_DIR "/usr/lib/x86_64-linux-gnu")
   endif()
-  # Check for multiarch (Debian/Ubuntu: /usr/lib/x86_64-linux-gnu)
-  if(IS_DIRECTORY "/usr/lib/x86_64-linux-gnu" AND NOT "/usr/lib/x86_64-linux-gnu" IN_LIST CMAKE_LIBRARY_PATH)
-    list(PREPEND CMAKE_LIBRARY_PATH "/usr/lib/x86_64-linux-gnu")
-    message(STATUS "Multilib fix: prepended /usr/lib/x86_64-linux-gnu to CMAKE_LIBRARY_PATH")
+  if(_MIDAS_MULTILIB_DIR)
+    list(PREPEND CMAKE_LIBRARY_PATH "${_MIDAS_MULTILIB_DIR}")
+    link_directories(BEFORE "${_MIDAS_MULTILIB_DIR}")
+    set(CMAKE_EXE_LINKER_FLAGS "${CMAKE_EXE_LINKER_FLAGS} -L${_MIDAS_MULTILIB_DIR}")
+    set(CMAKE_SHARED_LINKER_FLAGS "${CMAKE_SHARED_LINKER_FLAGS} -L${_MIDAS_MULTILIB_DIR}")
+    set(CMAKE_MODULE_LINKER_FLAGS "${CMAKE_MODULE_LINKER_FLAGS} -L${_MIDAS_MULTILIB_DIR}")
+    message(STATUS "Multilib fix: prioritizing ${_MIDAS_MULTILIB_DIR} for 64-bit libraries")
   endif()
+  unset(_MIDAS_MULTILIB_DIR)
 endif()
 
 # --- MIDAS Version ---
