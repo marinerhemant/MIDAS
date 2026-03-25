@@ -1541,7 +1541,7 @@ int main(int argc, char *argv[]) {
       printf("=== SpotID 78 PER-SPOT PROOF: CPU orient (%.4f,%.4f,%.4f) vs GPU orient (%.4f,%.4f,%.4f) ===\n",
              cpuEuler[0], cpuEuler[1], cpuEuler[2], gpuEuler[0], gpuEuler[1], gpuEuler[2]);
       printf("CPU nTheorSpots=%d, GPU nTheorSpots=%d, nObsSpots=%d\n", nTcpu, nTgpu, nSpotsComp);
-      printf(" Sp# nrhkls  ObsY       ObsZ       CPU_thY    CPU_thZ    GPU_thY    GPU_thZ    CPU_dist   GPU_dist\n");
+      printf(" Sp# nrhkls  ObsY       ObsZ       CPU_thY    CPU_thZ  CPU_Ome    GPU_thY    GPU_thZ  GPU_Ome    CPU_dist   GPU_dist\n");
 
       double cpuTotal = 0, gpuTotal = 0;
       int cpuMatched = 0, gpuMatched = 0;
@@ -1558,10 +1558,10 @@ int main(int argc, char *argv[]) {
         int spnr = (int)spotsYZONew[sp][8];
 
         // Find CPU theoretical match
-        double cpuY = -9999, cpuZ = -9999, cpuDist = -1;
+        double cpuY = -9999, cpuZ = -9999, cpuOme = -9999, cpuDist = -1;
         for (int k = 0; k < nTcpu; k++) {
           if ((int)cpuTheor[k][8] == spnr) {
-            cpuY = cpuTheor[k][0]; cpuZ = cpuTheor[k][1];
+            cpuY = cpuTheor[k][0]; cpuZ = cpuTheor[k][1]; cpuOme = cpuTheor[k][2];
             double dy = ys - cpuY, dz = zs - cpuZ;
             cpuDist = sqrt(dy*dy + dz*dz);
             cpuTotal += cpuDist;
@@ -1571,10 +1571,10 @@ int main(int argc, char *argv[]) {
         }
 
         // Find GPU theoretical match
-        double gpuY = -9999, gpuZ = -9999, gpuDist = -1;
+        double gpuY = -9999, gpuZ = -9999, gpuOme = -9999, gpuDist = -1;
         for (int k = 0; k < nTgpu; k++) {
           if ((int)gpuTheor[k][8] == spnr) {
-            gpuY = gpuTheor[k][0]; gpuZ = gpuTheor[k][1];
+            gpuY = gpuTheor[k][0]; gpuZ = gpuTheor[k][1]; gpuOme = gpuTheor[k][2];
             double dy = ys - gpuY, dz = zs - gpuZ;
             gpuDist = sqrt(dy*dy + dz*dz);
             gpuTotal += gpuDist;
@@ -1583,8 +1583,8 @@ int main(int argc, char *argv[]) {
           }
         }
 
-        printf(" %3d %5d %10.2f %10.2f %10.2f %10.2f %10.2f %10.2f %10.4f %10.4f%s\n",
-               sp, spnr, ys, zs, cpuY, cpuZ, gpuY, gpuZ, cpuDist, gpuDist,
+        printf(" %3d %5d %10.2f %10.2f %10.2f %10.2f %8.3f %10.2f %10.2f %8.3f %10.4f %10.4f%s\n",
+               sp, spnr, ys, zs, cpuY, cpuZ, cpuOme, gpuY, gpuZ, gpuOme, cpuDist, gpuDist,
                (cpuDist < 0 || gpuDist < 0) ? " MISS" : "");
       }
       printf("TOTALS: CPU matched=%d err=%.4f (%.4f/sp) | GPU matched=%d err=%.4f (%.4f/sp)\n",
