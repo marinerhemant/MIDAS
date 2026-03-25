@@ -30,6 +30,24 @@ else()
   project(MIDAS LANGUAGES C CXX)
 endif()
 
+# --- Fix multilib: ensure 64-bit library path on Linux ---
+# Some systems (RHEL/CentOS/Fedora) put 32-bit libs in /usr/lib and 64-bit
+# in /usr/lib64. CMake's default search finds the 32-bit /usr/lib/libm.so
+# first, causing "file in wrong format" linker errors for dependencies like
+# libtiff. Prepend the correct path so the linker finds 64-bit libraries.
+if(CMAKE_SYSTEM_NAME STREQUAL "Linux" AND CMAKE_SIZEOF_VOID_P EQUAL 8)
+  # Check for /usr/lib64 (RHEL/CentOS/Fedora/SUSE)
+  if(IS_DIRECTORY "/usr/lib64" AND NOT "/usr/lib64" IN_LIST CMAKE_LIBRARY_PATH)
+    list(PREPEND CMAKE_LIBRARY_PATH "/usr/lib64")
+    message(STATUS "Multilib fix: prepended /usr/lib64 to CMAKE_LIBRARY_PATH")
+  endif()
+  # Check for multiarch (Debian/Ubuntu: /usr/lib/x86_64-linux-gnu)
+  if(IS_DIRECTORY "/usr/lib/x86_64-linux-gnu" AND NOT "/usr/lib/x86_64-linux-gnu" IN_LIST CMAKE_LIBRARY_PATH)
+    list(PREPEND CMAKE_LIBRARY_PATH "/usr/lib/x86_64-linux-gnu")
+    message(STATUS "Multilib fix: prepended /usr/lib/x86_64-linux-gnu to CMAKE_LIBRARY_PATH")
+  endif()
+endif()
+
 # --- MIDAS Version ---
 set(MIDAS_VERSION "11.0")
 find_package(Git QUIET)
