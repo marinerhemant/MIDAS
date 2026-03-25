@@ -1512,24 +1512,88 @@ int main(int argc, char *argv[]) {
     ErrorFin[1] = 0;
     ErrorFin[2] = 0;
 
-    // Cross-check: evaluate CPU error at GPU's orientation for SpotID 78
+    // Cross-check: per-spot position comparison at CPU vs GPU orient
     if (SpId == 78) {
-      struct FitScratch xchk_scratch;
-      xchk_scratch.hkls = allocMatrix(nhkls, 7);
-      xchk_scratch.hklsIn2 = allocMatrix(nhkls, 7);
-      xchk_scratch.TheorSpots = allocMatrix(MaxNSpotsBest, 9);
-      double gpuResult[12];
-      for (i = 0; i < 3; i++) gpuResult[i] = Pos0[i];
-      gpuResult[3] = 170.9562; gpuResult[4] = 141.8357; gpuResult[5] = 259.7820; // GPU Euler
-      for (i = 0; i < 6; i++) gpuResult[i+6] = FinalResult[i+6]; // same LatC
-      double gpuErr = FitErrors12D(gpuResult, nSpotsComp, spotsYZONew, nhkls, hkls,
-                                    Lsd, Wavelength, nOmeRanges, OmegaRanges,
-                                    BoxSizes, MinEta, wedge, chi, &xchk_scratch);
-      printf("CPU SpotID78 XCHECK: CPU_orient err=%.2f (%.2f/sp), GPU_orient err=%.2f (%.2f/sp)\n",
-             finalError, finalError/nSpotsComp, gpuErr, gpuErr/nSpotsComp);
-      FreeMemMatrix(xchk_scratch.hkls, nhkls);
-      FreeMemMatrix(xchk_scratch.hklsIn2, nhkls);
-      FreeMemMatrix(xchk_scratch.TheorSpots, MaxNSpotsBest);
+      double cpuEuler[3] = {FinalResult[3], FinalResult[4], FinalResult[5]};
+      double gpuEuler[3] = {170.9562, 141.8357, 259.7820};
+      double cpuOM[3][3], gpuOM[3][3];
+      Euler2OrientMat(cpuEuler, cpuOM);
+      Euler2OrientMat(gpuEuler, gpuOM);
+
+      // Correct HKLs (same LatC for both)
+      double LatC[6];
+      for (i = 0; i < 6; i++) LatC[i] = FinalResult[i+6];
+      double **hkls_corr = allocMatrix(nhkls, 7);
+      CorrectHKLsLatC(LatC, hkls, nhkls, Lsd, Wavelength, hkls_corr);
+
+      // Generate theoretical spots for CPU orient
+      double **cpuTheor = allocMatrix(MaxNSpotsBest, 9);
+      int nTcpu = 0;
+      CalcDiffractionSpots(Lsd, MinEta, OmegaRanges, nOmeRanges, hkls_corr,
+                           nhkls, BoxSizes, &nTcpu, cpuOM, cpuTheor);
+
+      // Generate theoretical spots for GPU orient
+      double **gpuTheor = allocMatrix(MaxNSpotsBest, 9);
+      int nTgpu = 0;
+      CalcDiffractionSpots(Lsd, MinEta, OmegaRanges, nOmeRanges, hkls_corr,
+                           nhkls, BoxSizes, &nTgpu, gpuOM, gpuTheor);
+
+      printf("=== SpotID 78 PER-SPOT PROOF: CPU orient (%.4f,%.4f,%.4f) vs GPU orient (%.4f,%.4f,%.4f) ===\n",
+             cpuEuler[0], cpuEuler[1], cpuEuler[2], gpuEuler[0], gpuEuler[1], gpuEuler[2]);
+      printf("CPU nTheorSpots=%d, GPU nTheorSpots=%d, nObsSpots=%d\n", nTcpu, nTgpu, nSpotsComp);
+      printf(" Sp# nrhkls  ObsY       ObsZ       CPU_thY    CPU_thZ    GPU_thY    GPU_thZ    CPU_dist   GPU_dist\n");
+
+      double cpuTotal = 0, gpuTotal = 0;
+      int cpuMatched = 0, gpuMatched = 0;
+      for (int sp = 0; sp < nSpotsComp; sp++) {
+        // Compute corrected observed position
+        double DisplY, DisplZ, ys, zs, Omega;
+        DisplacementInTheSpot(Pos0[0], Pos0[1], Pos0[2], Lsd,
+                              spotsYZONew[sp][5], spotsYZONew[sp][6],
+                              spotsYZONew[sp][4], wedge, chi, &DisplY, &DisplZ);
+        double yt = spotsYZONew[sp][5] - DisplY;
+        double zt = spotsYZONew[sp][6] - DisplZ;
+        CorrectForOme(yt, zt, Lsd, spotsYZONew[sp][4], Wavelength, wedge,
+                      &ys, &zs, &Omega);
+        int spnr = (int)spotsYZONew[sp][8];
+
+        // Find CPU theoretical match
+        double cpuY = -9999, cpuZ = -9999, cpuDist = -1;
+        for (int k = 0; k < nTcpu; k++) {
+          if ((int)cpuTheor[k][8] == spnr) {
+            cpuY = cpuTheor[k][0]; cpuZ = cpuTheor[k][1];
+            double dy = ys - cpuY, dz = zs - cpuZ;
+            cpuDist = sqrt(dy*dy + dz*dz);
+            cpuTotal += cpuDist;
+            cpuMatched++;
+            break;
+          }
+        }
+
+        // Find GPU theoretical match
+        double gpuY = -9999, gpuZ = -9999, gpuDist = -1;
+        for (int k = 0; k < nTgpu; k++) {
+          if ((int)gpuTheor[k][8] == spnr) {
+            gpuY = gpuTheor[k][0]; gpuZ = gpuTheor[k][1];
+            double dy = ys - gpuY, dz = zs - gpuZ;
+            gpuDist = sqrt(dy*dy + dz*dz);
+            gpuTotal += gpuDist;
+            gpuMatched++;
+            break;
+          }
+        }
+
+        printf(" %3d %5d %10.2f %10.2f %10.2f %10.2f %10.2f %10.2f %10.4f %10.4f%s\n",
+               sp, spnr, ys, zs, cpuY, cpuZ, gpuY, gpuZ, cpuDist, gpuDist,
+               (cpuDist < 0 || gpuDist < 0) ? " MISS" : "");
+      }
+      printf("TOTALS: CPU matched=%d err=%.4f (%.4f/sp) | GPU matched=%d err=%.4f (%.4f/sp)\n",
+             cpuMatched, cpuTotal, cpuTotal/nSpotsComp,
+             gpuMatched, gpuTotal, gpuTotal/nSpotsComp);
+
+      FreeMemMatrix(hkls_corr, nhkls);
+      FreeMemMatrix(cpuTheor, MaxNSpotsBest);
+      FreeMemMatrix(gpuTheor, MaxNSpotsBest);
     }
 
     // Free scratch

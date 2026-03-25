@@ -876,8 +876,8 @@ fitGrainsKernel(int nGrains,
   f2.nMaxTheor = nMaxTheor;
   for (int i = 0; i < 3; i++)
     f2.Pos[i] = Pos0[i];
-  nm_optimize<9>(x0_9, lb9, ub9, res9, f2, 1e-10, 5000, 0.05);
-  nm_optimize<9>(res9, lb9, ub9, res9, f2, 1e-10, 5000, 0.05);
+  nm_optimize<9>(x0_9, lb9, ub9, res9, f2, 1e-5, 5000, 0.05);
+  nm_optimize<9>(res9, lb9, ub9, res9, f2, 1e-5, 5000, 0.05);
 
   // Debug: post-Stage1 (first grain only)
   if (gIdx == 0) {
