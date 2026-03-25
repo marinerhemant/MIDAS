@@ -43,7 +43,7 @@
 
 - **Consolidated HDF5 output** — all FF-HEDM results (grains, spots, strains, peak provenance) in a single `.h5` file
 - **Pipeline restart** — `--resume` and `--restart-from` flags on all workflows (FF, PF, NF, dual-dataset, multi-resolution) allow resuming from any completed stage using the HDF5 checkpoint
-- **Version & provenance tracking** — every C binary and Python workflow embeds `MIDAS v10.0 (<git-hash>)` into output files, HDF5 attributes, and Zarr metadata for full reproducibility
+- **Version & provenance tracking** — every C binary and Python workflow embeds `MIDAS v11.0 (<git-hash>)` into output files, HDF5 attributes, and Zarr metadata for full reproducibility
 - **Pseudo-Voigt peak fitting** — two-stage decomposed fitting (Lorentzian + Gaussian) with mu-weighted effective widths
 - **Grain matching & stitching** — Python-native optimal (Hungarian) matching across load states with affine deformation support
 - **Reprocess mode** — regenerate `MergeMap.csv` and consolidated HDF5 on old datasets (`-reprocess 1`)
