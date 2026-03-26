@@ -14,7 +14,7 @@ void midas_config_defaults(MIDASConfig *cfg) {
   cfg->DataType = 1;
   cfg->RBinWidth = 4;
   cfg->tolP3 = 45;          // Historical default
-  cfg->tolP6 = 45;
+  cfg->tolP6 = 90;          // cos(2η) has period 180°, need ±90°
   cfg->tolShifts = 1.0;
   cfg->MinIndicesForFit = 1;
   cfg->nIterations = 1;
@@ -59,7 +59,7 @@ void midas_apply_tol_defaults(MIDASConfig *cfg) {
     cfg->tolP4 = cfg->tolP;
   if (!cfg->tolP5Set && cfg->tolP5 == 0)
     cfg->tolP5 = cfg->tolP;
-  if (!cfg->tolP6Set && cfg->tolP6 == 45)
+  if (!cfg->tolP6Set && cfg->tolP6 == 90)
     cfg->tolP6 = cfg->tolP;
 }
 
@@ -249,6 +249,11 @@ int midas_parse_params(const char *filename, MIDASConfig *cfg) {
 
     // ── Optimization Tolerances ──
     if (param_double(aline, "tolTilts", &cfg->tolTilts)) continue;
+    if (key_match(aline, "tolTiltX")) {
+      sscanf(aline, "%*s %lf", &cfg->tolTiltX);
+      cfg->tolTiltXSet = 1;
+      continue;
+    }
     if (param_double(aline, "tolBC", &cfg->tolBC)) continue;
     if (param_double(aline, "tolLsd", &cfg->tolLsd)) continue;
     if (param_double(aline, "tolP", &cfg->tolP)) continue;

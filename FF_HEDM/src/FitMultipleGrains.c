@@ -1026,7 +1026,16 @@ int main(int argc, char *argv[]) {
   double tolBC = cfg.tolBC;
   double tolP0 = cfg.tolP0, tolP1 = cfg.tolP1, tolP2 = cfg.tolP2;
   double tolP3 = cfg.tolP3, tolP4 = cfg.tolP4;
-  double tolTiltX = cfg.tolTilts, tolTiltY = cfg.tolTilts, tolTiltZ = cfg.tolTilts;
+  double tolTiltX, tolTiltY, tolTiltZ;
+  if (cfg.tolTiltXSet) {
+    tolTiltX = cfg.tolTiltX;
+    tolTiltY = cfg.tolTilts;  // 0 if tolTilts not provided
+    tolTiltZ = cfg.tolTilts;
+  } else {
+    tolTiltX = cfg.tolTilts;
+    tolTiltY = cfg.tolTilts;
+    tolTiltZ = cfg.tolTilts;
+  }
   int FixPanelID = cfg.FixPanelID;
   int nPanelsY = cfg.NPanelsY, nPanelsZ = cfg.NPanelsZ;
 

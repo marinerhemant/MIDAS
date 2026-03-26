@@ -130,6 +130,8 @@ typedef struct {
 
   // ── Optimization Tolerances ──
   double tolTilts, tolLsd, tolBC, tolP;
+  double tolTiltX;
+  int    tolTiltXSet;
   double tolP0, tolP1, tolP2, tolP3, tolP4, tolP5, tolP6;
   int    tolP0Set, tolP1Set, tolP2Set, tolP3Set, tolP4Set, tolP5Set, tolP6Set;
   double tolShifts, tolRotation;

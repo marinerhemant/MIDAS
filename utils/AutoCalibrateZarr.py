@@ -1908,6 +1908,7 @@ def runMIDAS(rawFN, state, n_iterations=40, mult_factor=5,
                 pf.write('tolP 0\n')  # lock distortion at current values
             else:
                 pf.write('tolP 2E-3\n')
+                pf.write('tolP6 90\n')  # phase: cos(2η) has period 180°, need ±90°
 
             # Current geometry
             pf.write(f'tx {state.tx}\n')
