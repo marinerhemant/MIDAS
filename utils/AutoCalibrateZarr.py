@@ -3109,21 +3109,6 @@ def main():
                 n_cpus=n_cpus,
             )
 
-        # ---- Cleanup intermediate files ----
-        cleanup_files = [
-            f"{rawFN}ps.txt",           # CalibrantPanelShiftsOMP param file
-            'calibrant_screen_out.csv',  # CalibrantPanelShiftsOMP stdout log
-            'hkls.csv',                  # HKL list (regenerated each run)
-            'hkls_screen_out.csv',       # GetHKLList stdout
-        ]
-        for f in cleanup_files:
-            if os.path.exists(f):
-                try:
-                    os.remove(f)
-                    logger.debug(f"Cleaned up: {f}")
-                except OSError:
-                    pass
-
     except Exception as e:
         logger.error(f"Error in main function: {traceback.format_exc()}")
         if hasattr(state, 'h5_file') and state.h5_file:
