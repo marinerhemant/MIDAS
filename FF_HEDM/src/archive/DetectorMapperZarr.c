@@ -479,7 +479,7 @@ int main(int argc, char *argv[]) {
   int count = 0;
   double tx = 0.0, ty = 0.0, tz = 0.0, pxY = 200.0, pxZ = 200.0, yCen = 1024.0,
          zCen = 1024.0, Lsd = 1000000.0, RhoD = 200000.0, p0 = 0.0, p1 = 0.0,
-         p2 = 0.0, p3 = 0.0, p4 = 0.0, EtaBinSize = 5, RBinSize = 0.25,
+         p2 = 0.0, p3 = 0.0, p4 = 0.0, p6 = 0.0, EtaBinSize = 5, RBinSize = 0.25,
          RMax = 1524.0, RMin = 10.0, EtaMax = 180.0, EtaMin = -180.0;
   int NrPixelsY = 2048, NrPixelsZ = 2048;
   char aline[4096], dummy[4096], *str;
@@ -833,7 +833,7 @@ int main(int argc, char *argv[]) {
   // Compute parameter hash header
   struct MapHeader map_hdr;
   map_header_compute(&map_hdr, Lsd, yCen, zCen, pxY, pxZ, tx, ty, tz, p0, p1,
-                     p2, p3, p4, RhoD, RBinSize, EtaBinSize, RMin, RMax, EtaMin,
+                     p2, p3, p4, p6, RhoD, RBinSize, EtaBinSize, RMin, RMax, EtaMin,
                      EtaMax, NrPixelsY, NrPixelsZ, 0, NULL, 0, 0.0);
   map_header_print("Map.bin", &map_hdr);
 

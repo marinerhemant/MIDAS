@@ -26,12 +26,15 @@ void dg_build_tilt_matrix(double tx_deg, double ty_deg, double tz_deg,
                           double TRs[3][3]);
 
 // Canonical forward transform: pixel (Y,Z) → tilt-corrected (R_px, Eta_deg).
-// Includes full distortion model (p0–p5) and per-panel Lsd/p2 corrections.
+// Includes full distortion model (p0–p6) and per-panel Lsd/p2 corrections.
 // dLsd = per-panel ΔLsd (0 for no correction), dP2 = per-panel Δp2.
 // parallax = parallax correction in µm (0 for no correction).
+// p6 = phase angle (degrees) for the 2-fold distortion term (analogous to p3
+//      for the 4-fold term).  p6=0 recovers the original fixed-axis model.
 void dg_pixel_to_REta(double Y, double Z, double Ycen, double Zcen,
                       double TRs[3][3], double Lsd, double RhoD, double p0,
                       double p1, double p2, double p3, double p4, double p5,
+                      double p6,
                       double px, double dLsd, double dP2, double parallax,
                       double *R_out, double *Eta_out,
                       double *Eta_untilted_out);
@@ -48,6 +51,7 @@ void dg_invert_REta_to_pixel(
     double Ycen, double Zcen, double TRs[3][3],
     double Lsd, double RhoD,
     double p0, double p1, double p2, double p3, double p4, double p5,
+    double p6,
     double px, double dLsd, double dP2, double parallax,
     double *Y_out, double *Z_out);
 
@@ -62,6 +66,7 @@ void dg_invert_REta_to_pixel_panel(
     double Ycen, double Zcen, double TRs[3][3],
     double Lsd, double RhoD,
     double p0, double p1, double p2, double p3, double p4, double p5,
+    double p6,
     double px, double parallax,
     const Panel *panel,
     double *Y_out, double *Z_out);

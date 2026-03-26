@@ -138,6 +138,7 @@ typedef struct {
   double p3;
   double p4;
   double p5;
+  double p6;
   double Wavelength;
   double zDiffThresh;
   double BadPxIntensity;
@@ -1824,7 +1825,7 @@ static void printAllParameters(const ImageMetadata *metadata,
          params->tz);
   printf("  p0, p1, p2, p3     : %g, %g, %g, %g\n", params->p0, params->p1,
          params->p2, params->p3);
-  printf("  p4, p5             : %g, %g\n", params->p4, params->p5);
+  printf("  p4, p5, p6         : %g, %g, %g\n", params->p4, params->p5, params->p6);
   printf("  Wavelength         : %f\n", params->Wavelength);
   printf("  zDiffThresh        : %f\n", params->zDiffThresh);
   printf("  BadPxIntensity     : %f\n", params->BadPxIntensity);
@@ -1917,6 +1918,7 @@ static ErrorCode parseZarrMetadata(const char *dataFile,
   params->p3 = 0;
   params->p4 = 0;
   params->p5 = 0;
+  params->p6 = 0;
   params->Wavelength = DEFAULT_WAVELENGTH;
   params->zDiffThresh = 0;
   params->minNrPx = 1;
@@ -2279,6 +2281,9 @@ static ErrorCode parseZarrMetadata(const char *dataFile,
     if (strstr(fileInfo->name, "analysis/process/analysis_parameters/p5/0") !=
         NULL)
       ReadZarrChunk(archive, count, &params->p5, sizeof(double));
+    if (strstr(fileInfo->name, "analysis/process/analysis_parameters/p6/0") !=
+        NULL)
+      ReadZarrChunk(archive, count, &params->p6, sizeof(double));
     if (strstr(fileInfo->name,
                "analysis/process/analysis_parameters/MinNrPx/0") != NULL)
       ReadZarrChunk(archive, count, &params->minNrPx, sizeof(int));
@@ -2696,7 +2701,7 @@ int main(int argc, char *argv[]) {
         // Item 5: pre-convert to radians for trig
         double EtaT_rad = EtaT * DEG2RAD;
         double DistortFunc =
-            (params.p0 * RNorm2 * cos(2.0 * EtaT_rad)) +
+            (params.p0 * RNorm2 * cos(2.0 * EtaT_rad + params.p6 * DEG2RAD)) +
             (params.p1 * RNorm4 * cos(4.0 * EtaT_rad + params.p3 * DEG2RAD)) +
             (panelP2 * RNorm2) + params.p4 * RNorm4 * RNorm2 +
             params.p5 * RNorm4 + 1;

@@ -79,6 +79,7 @@ def compute_param_hash(
     RBinSize: float, EtaBinSize: float,
     RMin: float, RMax: float, EtaMin: float, EtaMax: float,
     NrPixelsY: int, NrPixelsZ: int,
+    p6: float = 0.0,
     NrTransOpt: int = 0, TransOpt: list = None,
     qMode: int = 0, Wavelength: float = 0.0,
 ) -> str:
@@ -99,7 +100,7 @@ def compute_param_hash(
         f"RBinSize={RBinSize:.6f}|RMax={RMax:.6f}|RMin={RMin:.6f}|"
         f"RhoD={RhoD:.6f}|"
         f"TransOpt={trans_str}|"
-        f"p0={p0:.6f}|p1={p1:.6f}|p2={p2:.6f}|p3={p3:.6f}|p4={p4:.6f}|"
+        f"p0={p0:.6f}|p1={p1:.6f}|p2={p2:.6f}|p3={p3:.6f}|p4={p4:.6f}|p6={p6:.6f}|"
         f"pxY={pxY:.6f}|pxZ={pxZ:.6f}|"
         f"tx={tx:.6f}|ty={ty:.6f}|tz={tz:.6f}"
     )

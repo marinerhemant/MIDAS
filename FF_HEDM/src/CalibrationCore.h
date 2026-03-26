@@ -131,6 +131,7 @@ void calib_fit_tilt_bc_lsd(
     double tolLsdPanel, int PerPanelDistortion, double tolP2Panel,
     int WeightByRadius, double *snrWeights, double *p4Out,
     double p5in, double tolP5, double *p5Out,
+    double p6in, double tolP6, double *p6Out,
     int verbose, int L2Objective, double *initParams,
     Panel *initPanels, int fitWavelength, double wavelengthIn,
     double tolWavelength, double *PointDSpacing,
@@ -148,7 +149,7 @@ void calib_correct_tilt_distortion(
     double tx, double ty, double tz, double p0, double p1, double p2,
     double p3, double *Etas, double *Diffs, double *RadOuts,
     double *StdDiff, double outlierFactor, int *IsOutlier,
-    double p4, double p5, int OutlierIterations,
+    double p4, double p5, double p6, int OutlierIterations,
     int verbose, double *MeanDiffOut, double parallax,
     const int *skipBin);
 

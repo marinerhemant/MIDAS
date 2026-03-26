@@ -54,7 +54,7 @@ long long mapper_build_map(
     int NrPixelsY, int NrPixelsZ,
     double pxY, double pxZ,
     double Ycen, double Zcen, double Lsd, double RhoD,
-    double p0, double p1, double p2, double p3, double p4, double p5,
+    double p0, double p1, double p2, double p3, double p4, double p5, double p6,
     /* bins */
     double *EtaBinsLow, double *EtaBinsHigh,
     double *RBinsLow, double *RBinsHigh,

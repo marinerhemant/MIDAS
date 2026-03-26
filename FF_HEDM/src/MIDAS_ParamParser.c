@@ -14,6 +14,7 @@ void midas_config_defaults(MIDASConfig *cfg) {
   cfg->DataType = 1;
   cfg->RBinWidth = 4;
   cfg->tolP3 = 45;          // Historical default
+  cfg->tolP6 = 45;
   cfg->tolShifts = 1.0;
   cfg->MinIndicesForFit = 1;
   cfg->nIterations = 1;
@@ -58,6 +59,8 @@ void midas_apply_tol_defaults(MIDASConfig *cfg) {
     cfg->tolP4 = cfg->tolP;
   if (!cfg->tolP5Set && cfg->tolP5 == 0)
     cfg->tolP5 = cfg->tolP;
+  if (!cfg->tolP6Set && cfg->tolP6 == 45)
+    cfg->tolP6 = cfg->tolP;
 }
 
 int midas_parse_params(const char *filename, MIDASConfig *cfg) {
@@ -122,6 +125,7 @@ int midas_parse_params(const char *filename, MIDASConfig *cfg) {
     if (param_double(aline, "p3", &cfg->p3)) continue;
     if (param_double(aline, "p4", &cfg->p4)) continue;
     if (param_double(aline, "p5", &cfg->p5)) continue;
+    if (param_double(aline, "p6", &cfg->p6)) continue;
     if (param_double(aline, "Wedge", &cfg->Wedge)) continue;
     if (param_double(aline, "RhoD", &cfg->RhoD)) continue;
 
@@ -276,6 +280,11 @@ int midas_parse_params(const char *filename, MIDASConfig *cfg) {
     if (key_match(aline, "tolP5")) {
       sscanf(aline, "%*s %lf", &cfg->tolP5);
       cfg->tolP5Set = 1;
+      continue;
+    }
+    if (key_match(aline, "tolP6")) {
+      sscanf(aline, "%*s %lf", &cfg->tolP6);
+      cfg->tolP6Set = 1;
       continue;
     }
     if (param_double(aline, "tolShifts", &cfg->tolShifts)) continue;

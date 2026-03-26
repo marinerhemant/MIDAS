@@ -600,8 +600,8 @@ static inline double CorrectWedge(double eta, double theta, double wl,
 static inline void CorrectTiltSpatialDistortion(
     double px, double Lsd, double ybc, double zbc, double tx, double ty,
     double tz, double RhoD, double p0, double p1, double p2, double p3,
-    double p4, double p5, int NrPixels, double *yDispl, double *zDispl, int nPanels,
-    Panel *panels, int nCPUs) {
+    double p4, double p5, double p6, int NrPixels, double *yDispl, double *zDispl,
+    int nPanels, Panel *panels, int nCPUs) {
   double txr, tyr, tzr;
   txr = deg2rad * tx;
   tyr = deg2rad * ty;
@@ -651,7 +651,7 @@ static inline void CorrectTiltSpatialDistortion(
       double RNorm = Rad / RhoD;
       double EtaT = 90 - Eta;
       double DistortFunc =
-          (p0 * (pow(RNorm, n0)) * (cos(deg2rad * (2 * EtaT)))) +
+          (p0 * (pow(RNorm, n0)) * (cos(deg2rad * (2 * EtaT + p6)))) +
           (p1 * (pow(RNorm, n1)) * (cos(deg2rad * (4 * EtaT + p3)))) +
           (panelP2 * (pow(RNorm, n2))) + p4 * pow(RNorm, 6.0) +
           p5 * pow(RNorm, 4.0) + 1;
@@ -1093,7 +1093,7 @@ int main(int argc, char *argv[]) {
   double LatC[6], Wavelength = cfg.Wavelength, Wedge = cfg.Wedge;
   memcpy(LatC, cfg.LatticeConstant, sizeof(LatC));
   double p0 = cfg.p0, p1 = cfg.p1, p2 = cfg.p2, p3 = cfg.p3;
-  double p4 = cfg.p4, p5 = cfg.p5, RhoD = cfg.RhoD;
+  double p4 = cfg.p4, p5 = cfg.p5, p6 = cfg.p6, RhoD = cfg.RhoD;
   double GaussWidth = cfg.GaussWidth > 0 ? cfg.GaussWidth : 1;
   double PeakIntensity = cfg.PeakIntensity;
   int NPanelsY = cfg.NPanelsY, NPanelsZ = cfg.NPanelsZ;
@@ -1443,7 +1443,7 @@ int main(int argc, char *argv[]) {
         -32100.0; // Set to a special number to check if it was set or not.
   }
   CorrectTiltSpatialDistortion(px, Lsd, yBC, zBC, tx, ty, tz, RhoD, p0, p1, p2,
-                               p3, p4, p5, NrPixels, yDispl, zDispl, nPanels,
+                               p3, p4, p5, p6, NrPixels, yDispl, zDispl, nPanels,
                                panels, nCPUs);
   end_time = omp_get_wtime();
   diftotal = end_time - start0;

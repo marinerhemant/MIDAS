@@ -99,7 +99,7 @@ inline void CalcPeakProfileParallel(int *Indices, int NrEachIndexBin, int idx,
                                     double *ReturnValue,
                                     double TRs[3][3], double Lsd, double RhoD,
                                     double p0, double p1, double p2, double p3,
-                                    double p4, double p5,
+                                    double p4, double p5, double p6,
                                     int gradientCorrection, int NrPixelsZ) {
   double **EdgesIn = allocMatrix(50, 2);
   double **EdgesOut = allocMatrix(50, 2);
@@ -133,7 +133,7 @@ inline void CalcPeakProfileParallel(int *Indices, int NrEachIndexBin, int idx,
           double Z = (double)iz + dg_dz[l];
           double Rt, Eta;
           dg_pixel_to_REta(Y, Z, ybc, zbc, TRs, Lsd, RhoD, p0, p1, p2, p3,
-                           p4, p5, px, 0, 0, 0, &Rt, &Eta, NULL);
+                           p4, p5, p6, px, 0, 0, 0, &Rt, &Eta, NULL);
           dg_REta_to_YZ(Rt, Eta, &cornerYZ[k * 2 + l][0],
                         &cornerYZ[k * 2 + l][1]);
         }
@@ -171,7 +171,7 @@ inline void CalcPeakProfileRaw(int *Indices, int NrEachIndexBin, int idx,
                                double *outSumIntensity, double *outTotalArea,
                                double TRs[3][3], double Lsd, double RhoD,
                                double p0, double p1, double p2, double p3,
-                               double p4, double p5,
+                               double p4, double p5, double p6,
                                int gradientCorrection, int NrPixelsZ) {
   double **EdgesIn = allocMatrix(50, 2);
   double **EdgesOut = allocMatrix(50, 2);
@@ -201,7 +201,7 @@ inline void CalcPeakProfileRaw(int *Indices, int NrEachIndexBin, int idx,
           double Z = (double)iz + dg_dz[l];
           double Rt, Eta;
           dg_pixel_to_REta(Y, Z, ybc, zbc, TRs, Lsd, RhoD, p0, p1, p2, p3,
-                           p4, p5, px, 0, 0, 0, &Rt, &Eta, NULL);
+                           p4, p5, p6, px, 0, 0, 0, &Rt, &Eta, NULL);
           dg_REta_to_YZ(Rt, Eta, &cornerYZ[k * 2 + l][0],
                         &cornerYZ[k * 2 + l][1]);
         }

@@ -47,7 +47,7 @@ long long mapper_build_map(
     int NrPixelsY, int NrPixelsZ,
     double pxY, double pxZ,
     double Ycen, double Zcen, double Lsd, double RhoD,
-    double p0, double p1, double p2, double p3, double p4, double p5,
+    double p0, double p1, double p2, double p3, double p4, double p5, double p6,
     double *EtaBinsLow, double *EtaBinsHigh,
     double *RBinsLow, double *RBinsHigh,
     int nRBins, int nEtaBins,
@@ -106,7 +106,7 @@ long long mapper_build_map(
       if (SubPixelLevel > 1) {
         double Rt_cen, Eta_cen;
         dg_pixel_to_REta(ypr, zpr, Ycen, Zcen, TRs, Lsd, RhoD, p0, p1, p2,
-                         p3, p4, p5, pxY, dLsd, dP2, parallax, &Rt_cen, &Eta_cen,
+                         p3, p4, p5, p6, pxY, dLsd, dP2, parallax, &Rt_cen, &Eta_cen,
                          NULL);
         double absEta = fabs(Eta_cen);
         if (absEta <= SubPixelCardinalWidth ||
@@ -139,7 +139,7 @@ long long mapper_build_map(
               double Y = ypr + sp_dy[k];
               double Z = zpr + sp_dz[l];
               dg_pixel_to_REta(Y, Z, Ycen, Zcen, TRs, Lsd, RhoD, p0, p1, p2,
-                               p3, p4, p5, pxY, dLsd, dP2, parallax, &Rt, &Eta,
+                               p3, p4, p5, p6, pxY, dLsd, dP2, parallax, &Rt, &Eta,
                                NULL);
               RetVals[0] = Eta;
               RetVals[1] = Rt;
@@ -161,7 +161,7 @@ long long mapper_build_map(
           double ypr_sub = ypr + sp_cy;
           double zpr_sub = zpr + sp_cz;
           dg_pixel_to_REta(ypr_sub, zpr_sub, Ycen, Zcen, TRs, Lsd, RhoD, p0,
-                           p1, p2, p3, p4, p5, pxY, dLsd, dP2, parallax, &Rt, &Eta,
+                           p1, p2, p3, p4, p5, p6, pxY, dLsd, dP2, parallax, &Rt, &Eta,
                            NULL);
           double YZ_local[2];
           dg_REta_to_YZ(Rt, Eta, &YZ_local[0], &YZ_local[1]);
@@ -403,7 +403,7 @@ long long mapper_build_map(
     for (int si = 0; si < 4; si++) {
       double Rdbg, Etadbg;
       dg_pixel_to_REta((double)sampleY[si], (double)sampleZ[si], Ycen, Zcen,
-                       TRsDbg, Lsd, RhoD, p0, p1, p2, p3, p4, p5, pxY, 0, 0, parallax,
+                       TRsDbg, Lsd, RhoD, p0, p1, p2, p3, p4, p5, p6, pxY, 0, 0, parallax,
                        &Rdbg, &Etadbg, NULL);
       printf("  pixel(%4d,%4d): R=%10.2f  Eta=%8.2f\n", sampleY[si],
              sampleZ[si], Rdbg, Etadbg);

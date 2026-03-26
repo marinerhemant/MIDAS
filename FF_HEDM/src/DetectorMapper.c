@@ -81,7 +81,7 @@ int main(int argc, char *argv[]) {
 
   // ── Shared variables ─────────────────────────────────────────────
   double tx = 0, ty = 0, tz = 0, pxY = 200, pxZ = 200, yCen = 1024, zCen = 1024,
-         Lsd = 1e6, RhoD = 2e5, p0 = 0, p1 = 0, p2 = 0, p3 = 0, p4 = 0, p5 = 0,
+         Lsd = 1e6, RhoD = 2e5, p0 = 0, p1 = 0, p2 = 0, p3 = 0, p4 = 0, p5 = 0, p6 = 0,
          EtaBinSize = 5, RBinSize = 0.25, RMax = 1524, RMin = 10, EtaMax = 180,
          EtaMin = -180;
   int NrPixelsY = 2048, NrPixelsZ = 2048;
@@ -227,6 +227,10 @@ int main(int argc, char *argv[]) {
       str = "p5 ";
       if (StartsWith(aline, str) == 1) {
         sscanf(aline, "%s %lf", dummy, &p5);
+      }
+      str = "p6 ";
+      if (StartsWith(aline, str) == 1) {
+        sscanf(aline, "%s %lf", dummy, &p6);
       }
       str = "DistortionOrder ";
       if (StartsWith(aline, str) == 1) {
@@ -374,6 +378,9 @@ int main(int argc, char *argv[]) {
       if (strstr(finfo->name, "analysis/process/analysis_parameters/p5/0") !=
           NULL)
         ReadZarrChunk(arch, count, &p5, sizeof(double));
+      if (strstr(finfo->name, "analysis/process/analysis_parameters/p6/0") !=
+          NULL)
+        ReadZarrChunk(arch, count, &p6, sizeof(double));
       if (strstr(finfo->name,
                  "analysis/process/analysis_parameters/DistortionOrder/0") !=
           NULL)
@@ -682,7 +689,7 @@ int main(int argc, char *argv[]) {
     printf("  Parallax: %.2f µm\n", Parallax);
   long long int TotNrOfBins = mapper_build_map(
       tx, ty, tz, NrPixelsY, NrPixelsZ, pxY, pxZ, yCen, zCen, Lsd, RhoD, p0, p1,
-      p2, p3, p4, p5,
+      p2, p3, p4, p5, p6,
       EtaBinsLow, EtaBinsHigh, RBinsLow, RBinsHigh, nRBins, nEtaBins,
       pxList, nPxList, maxnPx, mask, binMaskFlag, NrTransOpt, TransOpt,
       binLocks, SubPixelLevel, SubPixelCardinalWidth,
@@ -729,7 +736,7 @@ int main(int argc, char *argv[]) {
   // MapHeader
   struct MapHeader map_hdr;
   map_header_compute(&map_hdr, Lsd, yCen, zCen, pxY, pxZ, tx, ty, tz, p0, p1,
-                     p2, p3, p4, RhoD, RBinSize, EtaBinSize, RMin, RMax, EtaMin,
+                     p2, p3, p4, p6, RhoD, RBinSize, EtaBinSize, RMin, RMax, EtaMin,
                      EtaMax, NrPixelsY, NrPixelsZ, NrTransOpt, TransOpt, qMode,
                      Wavelength);
   map_header_print("Map.bin", &map_hdr);

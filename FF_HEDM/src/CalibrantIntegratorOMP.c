@@ -70,7 +70,7 @@ static int run_estep(
     int NrPixelsY, int NrPixelsZ, int NrPixels,
     double px, double Lsd, double ybc, double zbc,
     double tx, double ty, double tz,
-    double p0, double p1, double p2, double p3, double p4, double p5,
+    double p0, double p1, double p2, double p3, double p4, double p5, double p6,
     double MaxRingRad, double EtaBinSize, int RBinWidth,
     double parallax, int n_hkls,
     double *Thetas, double *DSpacings, int *RingIDs,
@@ -167,7 +167,7 @@ static int run_estep(
   // Build the map
   long long nEntries = mapper_build_map(
       tx, ty, tz, NrPixelsY, NrPixelsZ, px, px, ybc, zbc, Lsd, MaxRingRad,
-      p0, p1, p2, p3, p4, p5,
+      p0, p1, p2, p3, p4, p5, p6,
       EtaBinsLow, EtaBinsHigh, RBinsLow, RBinsHigh,
       totalRBins, nEtaBins,
       pxList, nPxList, maxnPx,
@@ -389,7 +389,7 @@ static int run_estep(
 
       dg_invert_REta_to_pixel_panel(R_px, cEM[cnt],
                                ybc, zbc, TRs_estep, Lsd, MaxRingRad_local,
-                               p0, p1, p2, p3, p4, p5,
+                               p0, p1, p2, p3, p4, p5, p6,
                                px, parallax, binPanel,
                                &Y_inv, &Z_inv);
       cYM[cnt] = Y_inv;
@@ -456,13 +456,13 @@ int main(int argc, char *argv[]) {
   double px = cfg.px, Lsd = cfg.Lsd, ybc = cfg.ybc, zbc = cfg.zbc;
   double tx = cfg.tx, tyin = cfg.ty, tzin = cfg.tz;
   double p0in = cfg.p0, p1in = cfg.p1, p2in = cfg.p2, p3in = cfg.p3;
-  double p4in = cfg.p4, p5in = cfg.p5;
+  double p4in = cfg.p4, p5in = cfg.p5, p6in = cfg.p6;
   double MaxRingRad = cfg.RhoD, Wavelength = cfg.Wavelength;
   double EtaBinSize = cfg.EtaBinSize;
   int RBinWidth = cfg.RBinWidth;
   double tolTilts = cfg.tolTilts, tolLsd = cfg.tolLsd, tolBC = cfg.tolBC;
   double tolP0 = cfg.tolP0, tolP1 = cfg.tolP1, tolP2 = cfg.tolP2;
-  double tolP3 = cfg.tolP3, tolP4 = cfg.tolP4, tolP5 = cfg.tolP5;
+  double tolP3 = cfg.tolP3, tolP4 = cfg.tolP4, tolP5 = cfg.tolP5, tolP6 = cfg.tolP6;
   double tolShifts = cfg.tolShifts, tolRotation = cfg.tolRotation;
   double outlierFactor = cfg.outlierFactor;
   int MinIndicesForFit = cfg.MinIndicesForFit, FixPanelID = cfg.FixPanelID;
@@ -648,7 +648,7 @@ int main(int argc, char *argv[]) {
   double bestMeanDiff = 1e20;
   int bestIter = -1;
   double bestLsd, bestYbc, bestZbc, bestTy, bestTz;
-  double bestP0, bestP1, bestP2, bestP3, bestP4, bestP5, bestParallax;
+  double bestP0, bestP1, bestP2, bestP3, bestP4, bestP5, bestP6, bestParallax;
   Panel *bestPanels = (nPanels > 0) ? malloc(nPanels * sizeof(Panel)) : NULL;
 
   // Guard state
@@ -657,12 +657,13 @@ int main(int argc, char *argv[]) {
   int postPerturbGrace = 0;
 
   // Initial parameters (for bound anchoring)
-  double initParams[12];
+  double initParams[13];
   initParams[0] = Lsd;   initParams[1] = ybc;  initParams[2] = zbc;
   initParams[3] = tyin;  initParams[4] = tzin;
   initParams[5] = p0in;  initParams[6] = p1in; initParams[7] = p2in;
   initParams[8] = p3in;  initParams[9] = p4in; initParams[10] = p5in;
-  initParams[11] = parallaxIn;
+  initParams[11] = p6in;
+  initParams[12] = parallaxIn;
   Panel *initPanels = NULL;
   if (nPanels > 0) {
     initPanels = malloc(nPanels * sizeof(Panel));
@@ -680,7 +681,7 @@ int main(int argc, char *argv[]) {
   FILE *convHistFP = fopen(convHistFN, iterOffset > 0 ? "a" : "w");
   if (convHistFP && iterOffset == 0)
     fprintf(convHistFP, "Iter,MeanStrain_ppm,StdStrain_ppm,Lsd,ybc,zbc,"
-                        "ty,tz,p0,p1,p2,p3,p4,p5\n");
+                        "ty,tz,p0,p1,p2,p3,p4,p5,p6\n");
 
   // nIterations=0: evaluate-only mode — run E-step once, skip optimization
   if (nIterations == 0) {
@@ -688,7 +689,7 @@ int main(int argc, char *argv[]) {
     nIndices = run_estep(
         Average, AverageDark, NrPixelsY, NrPixelsZ, NrPixels,
         px, Lsd, ybc, zbc, tx, tyin, tzin,
-        p0in, p1in, p2in, p3in, p4in, p5in,
+        p0in, p1in, p2in, p3in, p4in, p5in, p6in,
         MaxRingRad, EtaBinSize, RBinWidth,
         parallaxIn, n_hkls, Thetas, DSpacings, RingIDs,
         NrTransOpt, TransOpt, mask, DoubletSeparation, Wavelength,
@@ -749,7 +750,7 @@ int main(int argc, char *argv[]) {
       nIndices = run_estep(
           Average, AverageDark, NrPixelsY, NrPixelsZ, NrPixels,
           px, estep_Lsd, estep_ybc, estep_zbc, tx, estep_ty, estep_tz,
-          estep_p0, estep_p1, estep_p2, estep_p3, p4in, p5in,
+          estep_p0, estep_p1, estep_p2, estep_p3, p4in, p5in, p6in,
           MaxRingRad, EtaBinSize, RBinWidth,
           parallaxIn, n_hkls, Thetas, DSpacings, RingIDs,
           NrTransOpt, TransOpt, mask, DoubletSeparation, Wavelength,
@@ -810,7 +811,7 @@ int main(int argc, char *argv[]) {
     }
 
     // M-step: optimize geometry
-    double p4 = p4in, p5 = p5in;
+    double p4 = p4in, p5 = p5in, p6 = p6in;
     double wavelengthFit = Wavelength, parallaxFit = parallaxIn;
 
     // DEBUG M-step: print input params
@@ -831,7 +832,7 @@ int main(int argc, char *argv[]) {
         tolRotation, px, outlierFactor, MinIndicesForFit, FixPanelID,
         RingWeights, p4in, tolP4, PerPanelLsd, tolLsdPanel,
         PerPanelDistortion, tolP2Panel, WeightByRadius, snrWeights,
-        &p4, p5in, tolP5, &p5,
+        &p4, p5in, tolP5, &p5, p6in, tolP6, &p6,
         iter == 0, L2Objective, initParams, initPanels,
         FitWavelength, Wavelength, tolWavelength, PointDSpacing,
         &wavelengthFit,
@@ -855,7 +856,7 @@ int main(int argc, char *argv[]) {
     calib_correct_tilt_distortion(
         nIndices, MaxRingRad, Yc, Zc, IdealTtheta, px, LsdFit, ybcFit,
         zbcFit, tx, ty, tz, p0, p1, p2, p3, EtaIns, DiffIns, RadIns,
-        &StdDiff, outlierFactor, iterOutlier, p4, p5, OutlierIterations,
+        &StdDiff, outlierFactor, iterOutlier, p4, p5, p6, OutlierIterations,
         0, &MeanDiff, parallaxIn, skipBin);
 
     printf("Iter %2d/%d  MeanStrain %8.3f  StdStrain %8.3f  nBins=%d\n",
@@ -941,9 +942,9 @@ int main(int argc, char *argv[]) {
 
     if (convHistFP) {
       fprintf(convHistFP,
-              "%d,%.6e,%.6e,%.6f,%.6f,%.6f,%.8f,%.8f,%.8e,%.8e,%.8e,%.8e,%.8e,%.8e\n",
+              "%d,%.6e,%.6e,%.6f,%.6f,%.6f,%.8f,%.8f,%.8e,%.8e,%.8e,%.8e,%.8e,%.8e,%.8e\n",
               iter + 1 + iterOffset, MeanDiff * 1e6, StdDiff * 1e6,
-              LsdFit, ybcFit, zbcFit, ty, tz, p0, p1, p2, p3, p4, p5);
+              LsdFit, ybcFit, zbcFit, ty, tz, p0, p1, p2, p3, p4, p5, p6);
       fflush(convHistFP);
     }
 
@@ -959,7 +960,7 @@ int main(int argc, char *argv[]) {
     }
 
     // Feed outputs back as inputs
-    p4in = p4; Lsd = LsdFit; ybc = ybcFit; zbc = zbcFit;
+    p4in = p4; p6in = p6; Lsd = LsdFit; ybc = ybcFit; zbc = zbcFit;
     tyin = ty; tzin = tz;
     p0in = p0; p1in = p1; p2in = p2; p3in = p3;
 
@@ -969,7 +970,7 @@ int main(int argc, char *argv[]) {
       bestLsd = LsdFit; bestYbc = ybcFit; bestZbc = zbcFit;
       bestTy = ty; bestTz = tz;
       bestP0 = p0; bestP1 = p1; bestP2 = p2; bestP3 = p3;
-      bestP4 = p4; bestP5 = p5; bestParallax = parallaxIn;
+      bestP4 = p4; bestP5 = p5; bestP6 = p6; bestParallax = parallaxIn;
       if (bestPanels && nPanels > 0)
         memcpy(bestPanels, panels, nPanels * sizeof(Panel));
     }
@@ -994,7 +995,7 @@ int main(int argc, char *argv[]) {
       LsdFit = bestLsd; ybcFit = bestYbc; zbcFit = bestZbc;
       ty = bestTy; tz = bestTz;
       p0 = bestP0; p1 = bestP1; p2 = bestP2; p3 = bestP3;
-      p4in = bestP4; p5in = bestP5; parallaxIn = bestParallax;
+      p4in = bestP4; p5in = bestP5; p6in = bestP6; parallaxIn = bestParallax;
       Lsd = bestLsd; ybc = bestYbc; zbc = bestZbc;
       tyin = bestTy; tzin = bestTz;
       p0in = bestP0; p1in = bestP1; p2in = bestP2; p3in = bestP3;
@@ -1010,7 +1011,7 @@ int main(int argc, char *argv[]) {
       Lsd = bestLsd; ybc = bestYbc; zbc = bestZbc;
       tyin = bestTy; tzin = bestTz;
       p0in = bestP0; p1in = bestP1; p2in = bestP2; p3in = bestP3;
-      p4in = bestP4; p5in = bestP5; parallaxIn = bestParallax;
+      p4in = bestP4; p5in = bestP5; p6in = bestP6; parallaxIn = bestParallax;
       if (bestPanels && nPanels > 0)
         memcpy(panels, bestPanels, nPanels * sizeof(Panel));
       unsigned long long lcg = 42ULL + iter;
@@ -1035,7 +1036,7 @@ int main(int argc, char *argv[]) {
       Lsd = bestLsd; ybc = bestYbc; zbc = bestZbc;
       tyin = bestTy; tzin = bestTz;
       p0in = bestP0; p1in = bestP1; p2in = bestP2; p3in = bestP3;
-      p4in = bestP4; p5in = bestP5; parallaxIn = bestParallax;
+      p4in = bestP4; p5in = bestP5; p6in = bestP6; parallaxIn = bestParallax;
       if (bestPanels && nPanels > 0)
         memcpy(panels, bestPanels, nPanels * sizeof(Panel));
       unsigned long long lcg = 137ULL + iter;
@@ -1063,7 +1064,7 @@ int main(int argc, char *argv[]) {
     LsdFit = bestLsd; ybcFit = bestYbc; zbcFit = bestZbc;
     ty = bestTy; tz = bestTz;
     p0 = bestP0; p1 = bestP1; p2 = bestP2; p3 = bestP3;
-    p4in = bestP4; p5in = bestP5; parallaxIn = bestParallax;
+    p4in = bestP4; p5in = bestP5; p6in = bestP6; parallaxIn = bestParallax;
     MeanDiff = bestMeanDiff;
     if (bestPanels && nPanels > 0)
       memcpy(panels, bestPanels, nPanels * sizeof(Panel));
@@ -1091,7 +1092,7 @@ int main(int argc, char *argv[]) {
     int verifyN = run_estep(
         Average, AverageDark, NrPixelsY, NrPixelsZ, NrPixels,
         px, LsdFit, ybcFit, zbcFit, tx, ty, tz,
-        p0, p1, p2, p3, p4in, p5in,
+        p0, p1, p2, p3, p4in, p5in, p6in,
         MaxRingRad, EtaBinSize, RBinWidth,
         parallaxIn, n_hkls, Thetas, DSpacings, RingIDs,
         NrTransOpt, TransOpt, mask, DoubletSeparation, Wavelength,
@@ -1116,7 +1117,7 @@ int main(int argc, char *argv[]) {
       calib_correct_tilt_distortion(
           nIndices, MaxRingRad, Yc, Zc, IdealTtheta, px, LsdFit, ybcFit,
           zbcFit, tx, ty, tz, p0, p1, p2, p3, EtaIns, DiffIns, RadIns,
-          &verifyStd, outlierFactor, verifyOutlier, p4in, p5in, OutlierIterations,
+          &verifyStd, outlierFactor, verifyOutlier, p4in, p5in, p6in, OutlierIterations,
           1, &verifyMean, parallaxIn, skipBin);
       printf("  Verification E-step: %d bins, MeanStrain=%.6f µε, StdStrain=%.6f µε\n",
              nIndices, verifyMean * 1e6, verifyStd * 1e6);
@@ -1136,7 +1137,7 @@ int main(int argc, char *argv[]) {
     calib_correct_tilt_distortion(
         nIndices, MaxRingRad, Yc, Zc, IdealTtheta, px, LsdFit, ybcFit,
         zbcFit, tx, ty, tz, p0, p1, p2, p3, EtaIns, DiffIns, RadIns,
-        &StdDiff, outlierFactor, IsOutlier, p4in, p5in, OutlierIterations,
+        &StdDiff, outlierFactor, IsOutlier, p4in, p5in, p6in, OutlierIterations,
         1, &MeanDiff, parallaxIn, skipBin);
     if (skipBin) {
       for (int i = 0; i < nIndices; i++)
@@ -1153,6 +1154,7 @@ int main(int argc, char *argv[]) {
     printf("p3 %e\n", p3);
     if (p4in != 0.0) printf("p4 %e\n", p4in);
     if (p5in != 0.0) printf("p5 %e\n", p5in);
+    if (p6in != 0.0) printf("p6 %e\n", p6in);
     printf("RhoD %f\n", MaxRingRad);
     printf("MeanStrain %f\n", MeanDiff * 1e6);
     printf("StdStrain %f\n", StdDiff * 1e6);
@@ -1166,11 +1168,11 @@ int main(int argc, char *argv[]) {
     FILE *corrFP = fopen(corrFN, "w");
     if (corrFP) {
       fprintf(corrFP, "Lsd,ybcFit,zbcFit,ty,tz,p0,p1,p2,p3,MeanStrain,StdStrain,"
-                       "tx,p4,p5,Wavelength,Parallax\n");
+                       "tx,p4,p5,p6,Wavelength,Parallax\n");
       fprintf(corrFP, "%.10f,%.10f,%.10f,%.10f,%.10f,%.12e,%.12e,%.12e,%.12e,"
-                       "%.12e,%.12e,%.10f,%.12e,%.12e,%.10f,%.10f\n",
+                       "%.12e,%.12e,%.10f,%.12e,%.12e,%.12e,%.10f,%.10f\n",
               LsdFit, ybcFit, zbcFit, ty, tz, p0, p1, p2, p3,
-              MeanDiff, StdDiff, tx, p4in, p5in, Wavelength, parallaxIn);
+              MeanDiff, StdDiff, tx, p4in, p5in, p6in, Wavelength, parallaxIn);
       // Per-bin data — 16 columns matching CalibrantPanelShiftsOMP format
       fprintf(corrFP, "\n%%Eta Strain RadFit EtaCalc DiffCalc RadCalc "
                        "Ideal2Theta Outlier YRawCorr ZRawCorr RingNr "

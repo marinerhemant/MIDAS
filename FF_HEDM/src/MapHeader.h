@@ -8,7 +8,7 @@
  * Usage in writer (DetectorMapper/DetectorMapperZarr):
  *   struct MapHeader hdr;
  *   map_header_compute(&hdr, Lsd, yCen, zCen, pxY, pxZ, tx, ty, tz,
- *                      p0, p1, p2, p3, p4, RhoD,
+ *                      p0, p1, p2, p3, p4, p6, RhoD,
  *                      RBinSize, EtaBinSize, RMin, RMax, EtaMin, EtaMax,
  *                      NrPixelsY, NrPixelsZ);
  *   map_header_write(mapfile, &hdr);
@@ -200,7 +200,7 @@ static void mh_sha256_final(MH_SHA256_CTX *ctx, uint8_t hash[32]) {
 static void map_header_compute(struct MapHeader *hdr, double Lsd, double yCen,
                                double zCen, double pxY, double pxZ, double tx,
                                double ty, double tz, double p0, double p1,
-                               double p2, double p3, double p4, double RhoD,
+                               double p2, double p3, double p4, double p6, double RhoD,
                                double RBinSize, double EtaBinSize, double RMin,
                                double RMax, double EtaMin, double EtaMax,
                                int NrPixelsY, int NrPixelsZ, int NrTransOpt,
@@ -225,9 +225,9 @@ static void map_header_compute(struct MapHeader *hdr, double Lsd, double yCen,
     n += snprintf(buf + n, sizeof(buf) - n, ",%d", TransOpt[i]);
   }
   n += snprintf(buf + n, sizeof(buf) - n,
-                "|p0=%.6f|p1=%.6f|p2=%.6f|p3=%.6f|p4=%.6f|"
+                "|p0=%.6f|p1=%.6f|p2=%.6f|p3=%.6f|p4=%.6f|p6=%.6f|"
                 "pxY=%.6f|pxZ=%.6f|tx=%.6f|ty=%.6f|tz=%.6f",
-                p0, p1, p2, p3, p4, pxY, pxZ, tx, ty, tz);
+                p0, p1, p2, p3, p4, p6, pxY, pxZ, tx, ty, tz);
   if (qMode) {
     n += snprintf(buf + n, sizeof(buf) - n,
                   "|qMode=1|Wavelength=%.8f", Wavelength);
