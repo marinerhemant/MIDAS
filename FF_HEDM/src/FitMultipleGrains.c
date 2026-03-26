@@ -486,7 +486,7 @@ static inline double CalcAngleErrors(int nspots, int nhkls, int nOmegaRanges,
           CalcNorm2((SpotsYZOGCorr[sp][0] - TheorSpotsYZWER_Th[RowBest][0]),
                     (SpotsYZOGCorr[sp][1] - TheorSpotsYZWER_Th[RowBest][1]));
       diffOmeM = fabs(SpotsYZOGCorr[sp][2] - TheorSpotsYZWER_Th[RowBest][2]);
-      if (minAngle < 1) {
+      if (minAngle < 5) {
         int idx;
 #pragma omp atomic capture
         idx = nMatched++;
