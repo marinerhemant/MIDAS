@@ -1,9 +1,7 @@
     # HDF5 configuration
     FetchContent_Declare(
     hdf5
-    URL "https://github.com/HDFGroup/hdf5/archive/refs/tags/hdf5-1_14_2.tar.gz"
-        "https://support.hdfgroup.org/ftp/HDF5/releases/hdf5-1.14/hdf5-1.14.2/src/hdf5-1.14.2.tar.gz"
-        "https://github.com/marinerhemant/MIDAS/releases/download/v9.0-data/hdf5-1.14.2.tar.gz"
+    URL "https://github.com/HDFGroup/hdf5/archive/refs/tags/hdf5_1.14.6.tar.gz"
     )
 
     FetchContent_GetProperties(hdf5)
@@ -21,6 +19,7 @@
     set(HDF5_BUILD_FORTRAN OFF CACHE BOOL "Build Fortran support" FORCE)
     set(HDF5_ENABLE_THREADSAFE OFF CACHE BOOL "Enable thread safety" FORCE)
     set(HDF5_ENABLE_PARALLEL OFF CACHE BOOL "Enable parallel HDF5" FORCE)
+    set(HDF5_ENABLE_NONSTANDARD_FEATURE_FLOAT16 OFF CACHE BOOL "Disable _Float16 support" FORCE)
 
     # Find system zlib or one installed by blosc
     find_package(ZLIB)
