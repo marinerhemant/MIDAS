@@ -13,6 +13,7 @@
 //
 
 #include "ZarrReader.h"
+#include "PeaksFittingConsolidatedIO.h"
 #include "midas_version.h"
 #include <blosc2.h>
 #include <ctype.h>
@@ -196,46 +197,31 @@ static inline int CheckDirectoryCreation(char Folder[1024],
 
 // --- Pixel-overlap merge functions ---
 
-// Read per-peak pixel lists from _PX.bin file
+// Read per-peak pixel lists from consolidated binary reader
 // Returns the number of peaks read, or -1 on error.
-static int ReadPixelFile(char OutFolderName[1024], char FileStem[1024],
-                         int FileNr, int Padding, PeakPixels *peakPixels,
+static int ReadPixelFile(const ConsolidatedPixelReader *pxReader,
+                         int frameIdx, PeakPixels *peakPixels,
                          int *nrPixelsOut) {
-  char InFile[1024];
-  sprintf(InFile, "%s/%s_%0*d_PX.bin", OutFolderName, FileStem, Padding,
-          FileNr);
-  FILE *fp = fopen(InFile, "rb");
-  if (fp == NULL) {
-    printf("Warning: Could not read pixel file %s\n", InFile);
-    return -1;
-  }
-  int32_t hdrNrPixels, hdrNPeaks;
-  if (fread(&hdrNrPixels, sizeof(int32_t), 1, fp) != 1 ||
-      fread(&hdrNPeaks, sizeof(int32_t), 1, fp) != 1) {
-    fclose(fp);
-    return -1;
-  }
-  *nrPixelsOut = (int)hdrNrPixels;
-  int nPeaks = (int)hdrNPeaks;
+  *nrPixelsOut = (int)pxReader->nrPixels;
+  int nPeaks = (int)pxReader->nPeaks[frameIdx];
+  if (nPeaks == 0) return 0;
+  const char *block = ConsolidatedPixelReader_getFrame(pxReader, frameIdx);
+  if (!block) return 0;
+  const char *p = block;
   for (int pk = 0; pk < nPeaks; pk++) {
     int32_t nPx;
-    if (fread(&nPx, sizeof(int32_t), 1, fp) != 1) {
-      fclose(fp);
-      return pk; // partial read
-    }
+    memcpy(&nPx, p, sizeof(int32_t));
+    p += sizeof(int32_t);
     peakPixels[pk].nPixels = (int)nPx;
     peakPixels[pk].y = malloc(nPx * sizeof(int16_t));
     peakPixels[pk].z = malloc(nPx * sizeof(int16_t));
-    // Read interleaved (y,z) pairs
     for (int i = 0; i < nPx; i++) {
-      if (fread(&peakPixels[pk].y[i], sizeof(int16_t), 1, fp) != 1 ||
-          fread(&peakPixels[pk].z[i], sizeof(int16_t), 1, fp) != 1) {
-        fclose(fp);
-        return pk; // partial read
-      }
+      memcpy(&peakPixels[pk].y[i], p, sizeof(int16_t));
+      p += sizeof(int16_t);
+      memcpy(&peakPixels[pk].z[i], p, sizeof(int16_t));
+      p += sizeof(int16_t);
     }
   }
-  fclose(fp);
   return nPeaks;
 }
 
@@ -322,36 +308,17 @@ static int FindBestOverlap(int *labelMap, int nrPixels, PeakPixels *pp,
   return (bestLabel > 0) ? (bestLabel - 1) : -1; // convert 1-based to 0-based
 }
 
-static inline int ReadSortFiles(char OutFolderName[1024], char FileStem[1024],
-                                int FileNr, int Padding,
+static inline int ReadSortFiles(const ConsolidatedPeakReader *psReader,
+                                int frameIdx,
                                 double **SortedMatrix,
                                 struct InputData *MyData) {
-  char aline[1000];
-  char InFile[1024];
-  sprintf(InFile, "%s/%s_%0*d_PS.csv", OutFolderName, FileStem, Padding,
-          FileNr);
-  FILE *infileread;
-  infileread = fopen(InFile, "r");
-  if (infileread == NULL) {
-    printf("Could not read the input file %s\n", InFile);
-    return 0;
-  }
+  int nPeaks = psReader->nPeaks[frameIdx];
+  if (nPeaks == 0) return 0;
+  const double *frameData = ConsolidatedPeakReader_getFrame(psReader, frameIdx);
+  if (!frameData) return 0;
   int counter = 0;
-  fgets(aline, 1000, infileread); // skip header
-  while (fgets(aline, 1000, infileread) != NULL) {
-    if (counter >= nOverlapsMaxPerImage) {
-      printf("Warning: Maximum number of peaks reached (%d). Skipping rest of "
-             "file %s\n",
-             nOverlapsMaxPerImage, InFile);
-      break;
-    }
-    // Fast parsing with strtod instead of sscanf (3-5x faster for 29 doubles)
-    char *p = aline, *end;
-    double vals[N_PS_COLS];
-    for (int c = 0; c < N_PS_COLS; c++) {
-      vals[c] = strtod(p, &end);
-      p = end;
-    }
+  for (int p = 0; p < nPeaks && counter < nOverlapsMaxPerImage; p++) {
+    const double *vals = &frameData[p * N_PEAK_COLS];
     MyData[counter].SpotID = vals[0];
     MyData[counter].IntegratedIntensity = vals[1];
     MyData[counter].Omega = vals[2];
@@ -387,7 +354,6 @@ static inline int ReadSortFiles(char OutFolderName[1024], char FileStem[1024],
     }
     counter++;
   }
-  fclose(infileread);
   qsort(MyData, counter, sizeof(struct InputData), cmpfunc);
   int i, counter2 = 0;
   for (i = 0; i < counter; i++) {
@@ -661,7 +627,28 @@ int main(int argc, char *argv[]) {
   FILE *MergeMapFile = fopen(MergeMapFileName, "w");
   fprintf(MergeMapFile, "%%MergedSpotID\tFrameNr\tPeakID\n");
 
-  nSpots = ReadSortFiles(OutFolderName, FileStem, FileNr, Padding, NewIDs,
+  // Open consolidated readers
+  char psFile[2048], pxFile[2048];
+  sprintf(psFile, "%s/AllPeaks_PS.bin", OutFolderName);
+  sprintf(pxFile, "%s/AllPeaks_PX.bin", OutFolderName);
+  ConsolidatedPeakReader psReader;
+  ConsolidatedPixelReader pxReader;
+  if (ConsolidatedPeakReader_open(&psReader, psFile) != 0) {
+    printf("Error: Could not open consolidated peak file %s\n", psFile);
+    return 1;
+  }
+  printf("Opened consolidated peak reader: %d frames\n", psReader.nFrames);
+  int hasPxReader = 0;
+  if (UsePixelOverlap) {
+    if (ConsolidatedPixelReader_open(&pxReader, pxFile) == 0) {
+      hasPxReader = 1;
+      printf("Opened consolidated pixel reader: %d frames\n", pxReader.nFrames);
+    } else {
+      printf("Warning: Could not open consolidated pixel file %s\n", pxFile);
+    }
+  }
+
+  nSpots = ReadSortFiles(&psReader, FileNr - 1, NewIDs,
                          MyData);
   for (i = 0; i < nSpots; i++) {
     CurrentIDs[i][0] = NewIDs[i][0];                // SpotID
@@ -717,10 +704,12 @@ int main(int argc, char *argv[]) {
     }
     // Read first frame's pixel data
     int pxNrPixels = 0;
-    nCurPx = ReadPixelFile(OutFolderName, FileStem, StartNr, Padding, curPixels,
-                           &pxNrPixels);
-    if (nCurPx < 0)
+    if (hasPxReader) {
+      nCurPx = ReadPixelFile(&pxReader, StartNr - 1, curPixels,
+                             &pxNrPixels);
+    } else {
       nCurPx = 0;
+    }
     printf("Pixel-overlap mode enabled. Label map size: %d x %d\n", NrPixels,
            NrPixels);
   }
@@ -748,15 +737,15 @@ int main(int argc, char *argv[]) {
   } else { // If there are multiple files:
     for (FileNr = (StartNr + 1); FileNr <= EndNr; FileNr++) {
       nSpotsNew =
-          ReadSortFiles(OutFolderName, FileStem, FileNr, Padding, NewIDs,
+          ReadSortFiles(&psReader, FileNr - 1, NewIDs,
                         MyData);
       fflush(stdout);
 
       // Read new frame pixel data if in pixel-overlap mode
-      if (UsePixelOverlap && labelMap) {
+      if (UsePixelOverlap && labelMap && hasPxReader) {
         int pxNrPixels = 0;
         FreePeakPixels(newPixels, nNewPx);
-        nNewPx = ReadPixelFile(OutFolderName, FileStem, FileNr, Padding,
+        nNewPx = ReadPixelFile(&pxReader, FileNr - 1,
                                newPixels, &pxNrPixels);
         if (nNewPx < 0)
           nNewPx = 0;
@@ -1092,6 +1081,9 @@ int main(int argc, char *argv[]) {
     free(newPixels);
   }
   free(labelMap);
+  // Free consolidated readers
+  ConsolidatedPeakReader_close(&psReader);
+  if (hasPxReader) ConsolidatedPixelReader_close(&pxReader);
   free(finfo);
   if (argc < 3)
     free(Folder);

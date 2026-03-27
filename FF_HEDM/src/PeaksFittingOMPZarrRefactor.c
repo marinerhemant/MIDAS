@@ -12,6 +12,7 @@
 
 #include "MIDAS_Math.h"
 #include "ZarrReader.h"
+#include "PeaksFittingConsolidatedIO.h"
 #include "midas_version.h"
 #include <blosc2.h>
 #include <ctype.h>
@@ -1371,8 +1372,8 @@ static ErrorCode processImageFrame(int fileNr, char *allData, size_t *sizeArr,
                                    AnalysisParams *params, double *dark,
                                    double *flood, double *mask,
                                    double *goodCoords, double omega,
-                                   const char *outFolderName,
-                                   const char *dataFN, ThreadWorkspace *ws) {
+                                   FrameAccumulator *acc,
+                                   ThreadWorkspace *ws) {
   // For timing
   double t1 = omp_get_wtime();
 
@@ -1439,32 +1440,10 @@ static ErrorCode processImageFrame(int fileNr, char *allData, size_t *sizeArr,
       ws->boolImage, metadata->NrPixels, ws->connectedComponents, ws->positions,
       ws->positionTrackers, ws->dfsStackX, ws->dfsStackY);
 
-  char outFile[MAX_FILENAME_LENGTH];
-  snprintf(outFile, MAX_FILENAME_LENGTH, "%s/%s_%06d_PS.csv", outFolderName,
-           basename((char *)dataFN), fileNr + 1);
-  FILE *outfilewrite = fopen(outFile, "w");
-
-  if (!outfilewrite) {
-    printf("Cannot open %s for writing.\n", outFile);
-    return ERROR_FILE_OPEN;
-  }
-
-  fprintf(outfilewrite,
-          "SpotID\tIntegratedIntensity\tOmega(degrees)\tYCen(px)\tZCen(px)"
-          "\tIMax\tRadius(px)\tEta(degrees)\tSigmaR\tSigmaEta\tNrPixels\t"
-          "TotalNrPixelsInPeakRegion\tnPeaks\tmaxY\tmaxZ\tdiffY\tdiffZ\trawIMax"
-          "\treturnCode\tretVal\tBG\tSigmaGR\tSigmaLR\tSigmaGEta\t"
-          "SigmaLEta\tMU\tRawSumIntensity\tmaskTouched\tFitRMSE\n");
-
-  // --- Pixel list collection for _PX.bin ---
-  // We collect per-peak pixel lists during the loop and write at the end.
-  // Each entry stores the region's pixel count and a pointer into positions.
-  // For doPeakFit==0, each region is a single peak, so this is straightforward.
-  int pxCapacity = 4096; // initial capacity for peak pixel entries
-  int pxCount = 0;       // number of peaks collected
-  int *pxNPixels = malloc(pxCapacity * sizeof(int));  // nPixels per peak
-  int *pxRegNrs = malloc(pxCapacity * sizeof(int));   // region number
-  int *pxRegSizes = malloc(pxCapacity * sizeof(int)); // nrPixelsThisRegion
+  // --- Pixel temp arrays for building per-peak coord lists ---
+  int pxTmpCap = 4096;
+  int16_t *pxTmpY = (int16_t *)malloc(pxTmpCap * sizeof(int16_t));
+  int16_t *pxTmpZ = (int16_t *)malloc(pxTmpCap * sizeof(int16_t));
 
   int spotIdStart = 1;
   int totalValidRegions = 0;
@@ -1623,81 +1602,59 @@ static ErrorCode processImageFrame(int fileNr, char *allData, size_t *sizeArr,
       }
     }
 
-    for (int i = 0; i < nPeaks; i++) {
-      fprintf(outfilewrite, "%d\t%f\t%f\t%f\t%f\t%f\t%f\t%f\t",
-              (spotIdStart + i), ws->integratedIntensity[i], omega,
-              -ws->yCenArray[i] + params->Ycen, ws->zCenArray[i] + params->Zcen,
-              ws->imax[i], ws->rads[i], ws->etas[i]);
-      fprintf(outfilewrite, "%f\t%f\t", ws->otherInfo[8 * i + 6],
-              ws->otherInfo[8 * i + 7]);
-      fprintf(outfilewrite, "%d\t%d\t%d\t%d\t%d\t%f\t%f\t%f\t%d\t%lf",
-              ws->nrPx[i], nrPixelsThisRegion, nPeaks,
-              ws->maximaPositions[i * 2 + 0], ws->maximaPositions[i * 2 + 1],
-              (double)ws->maximaPositions[i * 2 + 0] + ws->yCenArray[i] -
-                  params->Ycen,
-              (double)ws->maximaPositions[i * 2 + 1] - ws->zCenArray[i] -
-                  params->Zcen,
-              ws->maximaValues[i], rc, retVal);
-      for (int j = 0; j < 6; j++) {
-        fprintf(outfilewrite, "\t%f", ws->otherInfo[8 * i + j]);
-      }
-      fprintf(outfilewrite, "\t%f\t%.1f\t%.6f\n", ws->rawSumIntensity[i],
-              (double)maskTouchedLocal, retVal);
+    // Build pixel coordinate arrays for this region
+    if (nrPixelsThisRegion > pxTmpCap) {
+      pxTmpCap = nrPixelsThisRegion * 2;
+      pxTmpY = (int16_t *)realloc(pxTmpY, pxTmpCap * sizeof(int16_t));
+      pxTmpZ = (int16_t *)realloc(pxTmpZ, pxTmpCap * sizeof(int16_t));
+    }
+    for (int i = 0; i < nrPixelsThisRegion; i++) {
+      int pos = ws->positions[regNr * metadata->NrPixels * 4 + i];
+      pxTmpY[i] = (int16_t)(pos / metadata->NrPixels);
+      pxTmpZ[i] = (int16_t)(pos % metadata->NrPixels);
+    }
 
-      // Collect pixel data for this peak (all peaks share the region's pixels)
-      if (pxCount >= pxCapacity) {
-        pxCapacity *= 2;
-        pxNPixels = realloc(pxNPixels, pxCapacity * sizeof(int));
-        pxRegNrs = realloc(pxRegNrs, pxCapacity * sizeof(int));
-        pxRegSizes = realloc(pxRegSizes, pxCapacity * sizeof(int));
-      }
-      pxNPixels[pxCount] = nrPixelsThisRegion;
-      pxRegNrs[pxCount] = regNr;
-      pxRegSizes[pxCount] = nrPixelsThisRegion;
-      pxCount++;
+    for (int i = 0; i < nPeaks; i++) {
+      double peakRow[N_PEAK_COLS];
+      peakRow[0] = (double)(spotIdStart + i);
+      peakRow[1] = ws->integratedIntensity[i];
+      peakRow[2] = omega;
+      peakRow[3] = -ws->yCenArray[i] + params->Ycen;
+      peakRow[4] = ws->zCenArray[i] + params->Zcen;
+      peakRow[5] = ws->imax[i];
+      peakRow[6] = ws->rads[i];
+      peakRow[7] = ws->etas[i];
+      peakRow[8] = ws->otherInfo[8 * i + 6];
+      peakRow[9] = ws->otherInfo[8 * i + 7];
+      peakRow[10] = (double)ws->nrPx[i];
+      peakRow[11] = (double)nrPixelsThisRegion;
+      peakRow[12] = (double)nPeaks;
+      peakRow[13] = (double)ws->maximaPositions[i * 2 + 0];
+      peakRow[14] = (double)ws->maximaPositions[i * 2 + 1];
+      peakRow[15] = (double)ws->maximaPositions[i * 2 + 0] +
+                    ws->yCenArray[i] - params->Ycen;
+      peakRow[16] = (double)ws->maximaPositions[i * 2 + 1] -
+                    ws->zCenArray[i] - params->Zcen;
+      peakRow[17] = ws->maximaValues[i];
+      peakRow[18] = (double)rc;
+      peakRow[19] = retVal;
+      peakRow[20] = ws->otherInfo[8 * i + 0];
+      peakRow[21] = ws->otherInfo[8 * i + 1];
+      peakRow[22] = ws->otherInfo[8 * i + 2];
+      peakRow[23] = ws->otherInfo[8 * i + 3];
+      peakRow[24] = ws->otherInfo[8 * i + 4];
+      peakRow[25] = ws->otherInfo[8 * i + 5];
+      peakRow[26] = ws->rawSumIntensity[i];
+      peakRow[27] = (double)maskTouchedLocal;
+      peakRow[28] = retVal;
+
+      FrameAccum_addPeak(acc, peakRow, pxTmpY, pxTmpZ, nrPixelsThisRegion);
     }
     spotIdStart += nPeaks;
   }
 
-  fclose(outfilewrite);
-
-  // --- Write _PX.bin pixel list file ---
-  // Format: int32 NrPixels, int32 nPeaksTotal,
-  //         then for each peak: int32 nPixels, int16 y[nPixels], int16
-  //         z[nPixels]
-  {
-    char pxFile[MAX_FILENAME_LENGTH];
-    snprintf(pxFile, MAX_FILENAME_LENGTH, "%s/%s_%06d_PX.bin", outFolderName,
-             basename((char *)dataFN), fileNr + 1);
-    FILE *pxFp = fopen(pxFile, "wb");
-    if (pxFp) {
-      int32_t hdrNrPixels = (int32_t)metadata->NrPixels;
-      int32_t hdrNPeaks = (int32_t)pxCount;
-      fwrite(&hdrNrPixels, sizeof(int32_t), 1, pxFp);
-      fwrite(&hdrNPeaks, sizeof(int32_t), 1, pxFp);
-
-      for (int pk = 0; pk < pxCount; pk++) {
-        int32_t nPx = (int32_t)pxNPixels[pk];
-        fwrite(&nPx, sizeof(int32_t), 1, pxFp);
-        int regNr = pxRegNrs[pk];
-        int nrPxReg = pxRegSizes[pk];
-        for (int i = 0; i < nrPxReg; i++) {
-          int pos = ws->positions[regNr * metadata->NrPixels * 4 + i];
-          int16_t y = (int16_t)(pos / metadata->NrPixels);
-          int16_t z = (int16_t)(pos % metadata->NrPixels);
-          fwrite(&y, sizeof(int16_t), 1, pxFp);
-          fwrite(&z, sizeof(int16_t), 1, pxFp);
-        }
-      }
-      fclose(pxFp);
-    } else {
-      printf("Warning: Could not open %s for writing pixel data.\n", pxFile);
-    }
-  }
-
-  free(pxNPixels);
-  free(pxRegNrs);
-  free(pxRegSizes);
+  free(pxTmpY);
+  free(pxTmpZ);
 
   double t3 = omp_get_wtime();
   printf("FrameNr: %d, NrOfRegions: %d, Filtered regions: %d, Number of peaks: "
@@ -2788,6 +2745,13 @@ int main(int argc, char *argv[]) {
     return error;
   }
 
+  // --- Allocate per-frame accumulators (no file I/O during parallel) ---
+  int nLocal = endFileNr - startFileNr;
+  FrameAccumulator *frameAccs =
+      (FrameAccumulator *)calloc(nLocal, sizeof(FrameAccumulator));
+  for (int i = 0; i < nLocal; i++)
+    FrameAccum_init(&frameAccs[i]);
+
   // --- HIGHLY EFFICIENT PARALLEL PROCESSING LOOP ---
   int nrFilesDone = 0;
 #pragma omp parallel num_threads(numProcs) shared(nrFilesDone)
@@ -2819,7 +2783,7 @@ int main(int argc, char *argv[]) {
 
         ErrorCode threadError = processImageFrame(
             fileNr, allData, sizeArr, &metadata, &params, dark, flood, mask,
-            goodCoords, omega, outFolderName, dataFile,
+            goodCoords, omega, &frameAccs[fileNr - startFileNr],
             &ws); // Pass workspace pointer
 
         // Item 10: atomic is cheaper than critical for a simple increment
@@ -2833,6 +2797,16 @@ int main(int argc, char *argv[]) {
       freeWorkspace(&ws);
     }
   } // --- End of parallel region ---
+
+  // --- Write consolidated output files (single serial pass) ---
+  printf("Writing consolidated peak files...\n");
+  WriteConsolidatedPeakFiles(frameAccs, metadata.nFrames, startFileNr,
+                             endFileNr, metadata.NrPixels, outFolderName);
+
+  // Free accumulators
+  for (int i = 0; i < nLocal; i++)
+    FrameAccum_free(&frameAccs[i]);
+  free(frameAccs);
 
   // Final Cleanup
   free(dark);

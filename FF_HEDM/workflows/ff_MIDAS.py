@@ -1440,21 +1440,46 @@ def generate_consolidated_hdf5(result_dir: str, zarr_path: str) -> None:
             peak_id = int(merge_map_data[row_i, 2])
             merge_idx[merged_id].append((frame_nr, peak_id))
     
-    # Load ALL _PS.csv files from Temp/ directory
-    # Build cache: (frame_nr, peak_id) -> full 26-column peak row
-    # Also collect all rows for the flat /peaks/per_frame/ dataset
+    # Load peak data from consolidated binary or per-frame CSV files
     temp_dir = os.path.join(result_dir, 'Temp')
-    # _PS.csv files use the full zarr basename (incl. .zip) as their stem
-    # e.g., 'Au_FF_000001_pf.analysis.MIDAS.zip_000004_PS.csv'
     file_stem = os.path.basename(zarr_path) if zarr_path else ''
-    ps_cache = {}  # (frame_nr, peak_id) -> np.array of 26 values
+    ps_cache = {}  # (frame_nr, peak_id) -> np.array of N_PEAK_COLS values
     all_ps_rows = []  # all rows across all frames, with frame_nr prepended
-    if os.path.isdir(temp_dir):
+    
+    consolidated_ps = os.path.join(temp_dir, 'AllPeaks_PS.bin')
+    if os.path.isfile(consolidated_ps):
+        # Read consolidated binary format
+        import struct
+        logger.info(f"Loading consolidated peak data from {consolidated_ps}")
+        with open(consolidated_ps, 'rb') as bf:
+            nFrames = struct.unpack('i', bf.read(4))[0]
+            nPeaksArr = struct.unpack(f'{nFrames}i', bf.read(4 * nFrames))
+            offsets = struct.unpack(f'{nFrames}q', bf.read(8 * nFrames))
+            # Read all data at once
+            remaining = bf.read()
+        
+        N_PEAK_COLS = 29
+        header_size = 4 + 4 * nFrames + 8 * nFrames
+        for frame_idx in range(nFrames):
+            nPk = nPeaksArr[frame_idx]
+            if nPk == 0:
+                continue
+            frame_nr = frame_idx + 1  # 1-based for compatibility
+            byte_off = offsets[frame_idx] - header_size
+            frame_data = np.frombuffer(remaining, dtype=np.float64,
+                                        count=nPk * N_PEAK_COLS,
+                                        offset=byte_off).reshape(nPk, N_PEAK_COLS)
+            for row in frame_data:
+                peak_id = int(row[0])
+                ps_cache[(frame_nr, peak_id)] = row
+                all_ps_rows.append(np.concatenate([[frame_nr], row]))
+        logger.info(f"Loaded {len(ps_cache)} peak entries from consolidated binary ({nFrames} frames)")
+    elif os.path.isdir(temp_dir):
+        # Fallback: per-frame CSV files
         import re
         ps_files = sorted(f for f in os.listdir(temp_dir) if f.endswith('_PS.csv'))
         logger.info(f"Loading _PS.csv data for {len(ps_files)} frames from {temp_dir}")
         for ps_file in ps_files:
-            # Extract frame number from filename: *_NNNNNN_PS.csv
             match = re.search(r'_(\d{6})_PS\.csv$', ps_file)
             if not match:
                 continue
@@ -1472,7 +1497,6 @@ def generate_consolidated_hdf5(result_dir: str, zarr_path: str) -> None:
                 for row in ps_data:
                     peak_id = int(row[0])
                     ps_cache[(frame_nr, peak_id)] = row
-                    # Prepend frame_nr to each row for the flat table
                     all_ps_rows.append(np.concatenate([[frame_nr], row]))
             except Exception as e:
                 logger.warning(f"Error reading {ps_path}: {e}")

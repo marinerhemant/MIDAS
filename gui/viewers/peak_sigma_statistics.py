@@ -30,7 +30,36 @@ except ImportError:
 
 
 def load_ps_files(temp_dir):
-    """Load all _PS.csv files in a Temp directory, return concatenated arrays."""
+    """Load peak data from consolidated binary or per-frame CSV files."""
+    import struct as _struct
+    
+    # Try consolidated binary first
+    consolidated = os.path.join(temp_dir, 'AllPeaks_PS.bin')
+    if os.path.isfile(consolidated):
+        try:
+            with open(consolidated, 'rb') as f:
+                nFrames = _struct.unpack('i', f.read(4))[0]
+                nPeaksArr = _struct.unpack(f'{nFrames}i', f.read(4 * nFrames))
+                offsets = _struct.unpack(f'{nFrames}q', f.read(8 * nFrames))
+                remaining = f.read()
+            N_COLS = 29
+            header_size = 4 + 4 * nFrames + 8 * nFrames
+            all_rows = []
+            for i in range(nFrames):
+                nPk = nPeaksArr[i]
+                if nPk == 0:
+                    continue
+                byte_off = offsets[i] - header_size
+                data = np.frombuffer(remaining, dtype=np.float64,
+                                     count=nPk * N_COLS,
+                                     offset=byte_off).reshape(nPk, N_COLS)
+                all_rows.append(data)
+            if all_rows:
+                return np.vstack(all_rows), ''
+        except Exception:
+            pass  # Fall through to CSV path
+    
+    # Fallback: per-frame CSV files
     ps_files = sorted(glob.glob(os.path.join(temp_dir, '*_PS.csv')))
     if not ps_files:
         return None, None
@@ -52,8 +81,6 @@ def load_ps_files(temp_dir):
     if not all_rows:
         return None, None
 
-    # Extract FileStem from first _PS.csv filename
-    # Pattern: {FileStem}_{number}.MIDAS.zip_{frame}_PS.csv
     import re
     first_name = os.path.basename(ps_files[0])
     m = re.match(r'^(.+?)_\d+\.MIDAS\.zip_', first_name)
