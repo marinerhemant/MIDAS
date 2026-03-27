@@ -2387,6 +2387,10 @@ void extract_patches(const char *topdir, const char *outputFolder,
 
   if (nrPixels == 0)
     nrPixels = (nrPixelsY > nrPixelsZ) ? nrPixelsY : nrPixelsZ;
+  if (nrPixelsY == 0)
+    nrPixelsY = nrPixels;
+  if (nrPixelsZ == 0)
+    nrPixelsZ = nrPixels;
   printf("  Params: StartNr=%d NrFiles=%d ScanStep=%d(eff=%d) OmeStart=%.1f OmeStep=%.3f "
          "NrPx=%d(%dx%d) nImTrans=%d Padding=%d\n",
          startFileNr, nrFilesPerSweep, scanStep, effectiveStep,

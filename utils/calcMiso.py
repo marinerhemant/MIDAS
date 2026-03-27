@@ -81,6 +81,7 @@ def MakeSymmetries(SGNr):
 def BringDownToFundamentalRegionSym(QuatIn,NrSymmetries,Sym):
 	maxCos = -10000.0
 	q2 = [0,0,0,0]
+	QuatOut = QuatIn
 	for i in range(NrSymmetries):
 		q2[0] = Sym[i][0]
 		q2[1] = Sym[i][1]
