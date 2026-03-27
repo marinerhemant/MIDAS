@@ -108,6 +108,28 @@ def create_fwd_param_file(orig_param_file, grains_csv, out_param_file):
     with open(orig_param_file) as f:
         lines = f.readlines()
 
+    # Parse OmegaEnd from the original file if not present
+    omega_start = None
+    omega_step = None
+    start_nr = None
+    end_nr = None
+    has_omega_end = False
+    for line in lines:
+        stripped = line.strip()
+        if not stripped or stripped.startswith('#'):
+            continue
+        parts = stripped.split()
+        if parts[0] == 'OmegaStart':
+            omega_start = float(parts[1])
+        elif parts[0] == 'OmegaStep':
+            omega_step = float(parts[1])
+        elif parts[0] == 'StartNr':
+            start_nr = int(parts[1])
+        elif parts[0] == 'EndNr':
+            end_nr = int(parts[1])
+        elif parts[0] == 'OmegaEnd':
+            has_omega_end = True
+
     with open(out_param_file, 'w') as f:
         wrote_input = False
         wrote_spots = False
@@ -125,20 +147,28 @@ def create_fwd_param_file(orig_param_file, grains_csv, out_param_file):
             elif key == 'WriteImage':
                 f.write('WriteImage 0\n')
                 wrote_image = True
-            elif key == 'InputFile':
-                f.write(f'InputFile {grains_csv}\n')
+            elif key in ('InFileName', 'RefinementFileName', 'InputFile'):
+                f.write(f'InFileName {grains_csv}\n')
                 wrote_input = True
             else:
                 f.write(line)
         # Add any missing keys
         if not wrote_input:
-            f.write(f'InputFile {grains_csv}\n')
+            f.write(f'InFileName {grains_csv}\n')
         if not wrote_spots:
             f.write('WriteSpots 1\n')
         if not wrote_image:
             f.write('WriteImage 0\n')
         if not wrote_nscans:
             f.write('nScans 1\n')
+        # Add OmegaEnd if not in original file
+        if not has_omega_end and omega_start is not None and omega_step is not None:
+            if end_nr is not None and start_nr is not None:
+                omega_end = omega_start + (end_nr - start_nr + 1) * omega_step
+                f.write(f'OmegaEnd {omega_end}\n')
+                print(f'  Added OmegaEnd {omega_end} '
+                      f'(from OmegaStart={omega_start}, '
+                      f'EndNr={end_nr}, OmegaStep={omega_step})')
     print(f'  Created {out_param_file}')
 
 
