@@ -821,7 +821,7 @@ def build_config(parser, args):
     if not args.dataFN or config.get('LayerNr', 1) > 1:
         try:
             layer = int(config['LayerNr'])
-            fNr = int(config['StartFileNrFirstLayer']) + (layer - 1) * int(config['NrFilesPerSweep'])
+            fNr = int(config['StartFileNrFirstLayer']) + (layer - 1) * int(config.get('ScanStep', config['NrFilesPerSweep']))
             config['dataFN'] = str(Path(config['RawFolder']) / f"{config['FileStem']}_{str(fNr).zfill(int(config['Padding']))}{config['Ext']}")
         except KeyError as e:
             raise KeyError(f"Missing parameter for filename construction: {e}. Provide -dataFN.")
@@ -872,7 +872,7 @@ def main():
     if not args.dataFN or config.get('LayerNr', 1) > 1:
         # Use the actual file number for this layer, not StartFileNrFirstLayer
         layer = int(config.get('LayerNr', 1))
-        actual_fNr = int(config.get('StartFileNrFirstLayer', 0)) + (layer - 1) * int(config.get('NrFilesPerSweep', 1))
+        actual_fNr = int(config.get('StartFileNrFirstLayer', 0)) + (layer - 1) * int(config.get('ScanStep', config.get('NrFilesPerSweep', 1)))
         outfn_base = Path(args.resultFolder) / f"{config.get('FileStem', 'file')}_{str(actual_fNr).zfill(int(config.get('Padding',6)))}"
     else: outfn_base = Path(args.resultFolder) / f"{Path(config['dataFN']).name}.analysis"
     outfn_zip = Path(f"{outfn_base}.MIDAS.zip")

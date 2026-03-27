@@ -142,7 +142,7 @@ def check_and_exit_on_errors(error_files):
 def parallel_peaks(layerNr, positions, startNrFirstLayer, nrFilesPerSweep, topdir,
                   paramContents, baseNameParamFN, ConvertFiles, nchunks, preproc,
                   midas_path, doPeakSearch, numProcs, startNr, endNr, Lsd, NormalizeIntensities,
-                  omegaValues, minThresh, fStem, omegaFF, Ext, padding=6):
+                  omegaValues, minThresh, fStem, omegaFF, Ext, padding=6, scanStep=None):
     """
     Run peak search in parallel for a specific layer.
     
@@ -291,7 +291,8 @@ def parallel_peaks(layerNr, positions, startNrFirstLayer, nrFilesPerSweep, topdi
         # Run peaksearch using nblocks 1 and blocknr 0
         logger.info(f'Processing LayerNr: {layerNr}')
         ypos = float(positions[layerNr - 1])
-        thisStartNr = startNrFirstLayer + (layerNr - 1) * nrFilesPerSweep
+        effectiveStep = scanStep if scanStep is not None else nrFilesPerSweep
+        thisStartNr = startNrFirstLayer + (layerNr - 1) * effectiveStep
         folderName = str(thisStartNr)
         thisDir = os.path.join(topdir, folderName)
         Path(thisDir).mkdir(parents=True, exist_ok=True)
@@ -1163,6 +1164,7 @@ def main():
         omegaFN = ''
         omegaFF = -1
         padding = 6
+        scanStep = None  # Will default to nrFilesPerSweep if not set
         
         # Parse parameters
         for line in paramContents:
@@ -1176,6 +1178,8 @@ def main():
                 tol_ome = float(line.split()[1])
             elif line.startswith('NrFilesPerSweep'):
                 nrFilesPerSweep = int(line.split()[1])
+            elif line.startswith('ScanStep'):
+                scanStep = int(line.split()[1])
             elif line.startswith('MicFile'):
                 micFN = line.split()[1]
             elif line.startswith('GrainsFile'):
@@ -1270,7 +1274,7 @@ def main():
                         layerNr, positions, startNrFirstLayer, nrFilesPerSweep, topdir,
                         paramContents, baseNameParamFN, ConvertFiles, nchunks, preproc,
                         midas_path, doPeakSearch, numProcs, startNr, endNr, Lsd, NormalizeIntensities,
-                        omegaValues, minThresh, fStem, omegaFF, Ext, padding
+                        omegaValues, minThresh, fStem, omegaFF, Ext, padding, scanStep
                     ))
                 
                 # Wait for all tasks to complete
@@ -1283,7 +1287,8 @@ def main():
                         
                         # Check error files for this layer
                         layerNr = startScanNr + i
-                        thisStartNr = startNrFirstLayer + (layerNr - 1) * nrFilesPerSweep
+                        effectiveStep = scanStep if scanStep is not None else nrFilesPerSweep
+                        thisStartNr = startNrFirstLayer + (layerNr - 1) * effectiveStep
                         folderName = str(thisStartNr)
                         thisDir = os.path.join(topdir, folderName)
                         err_file = os.path.join(thisDir, 'output', 'processing_err0.csv')

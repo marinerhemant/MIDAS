@@ -960,11 +960,12 @@ def process_layer(layer_nr: int, top_res_dir: str, ps_fn: str, data_fn: str, num
                 fStem = params.get('FileStem')
                 startFN = parse_int_param(params, 'StartFileNrFirstLayer')
                 NrFilesPerLayer = parse_int_param(params, 'NrFilesPerSweep',default=1)
+                scanStep = parse_int_param(params, 'ScanStep', default=NrFilesPerLayer)
                 
                 if not all([fStem, startFN is not None, NrFilesPerLayer is not None]):
                     raise ValueError("Missing required parameters in parameter file")
                     
-                thisFileNr = startFN + (layer_nr - 1) * NrFilesPerLayer
+                thisFileNr = startFN + (layer_nr - 1) * scanStep
                 outFStem = f'{result_dir}/{fStem}_{str(thisFileNr).zfill(6)}.MIDAS.zip'
                 
                 if not os.path.exists(outFStem) and data_fn:
