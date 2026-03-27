@@ -504,23 +504,80 @@ int main(int argc, char *argv[]) {
          nIterations, RBinWidth, EtaBinSize);
 
   // Generate HKL list
-  double Thetas[100], DSpacings[100];
-  int RingIDs[100];
   int n_hkls = 0;
   double MaxTtheta = rad2deg * atan(MaxRingRad / Lsd);
 
   run_midas_binary("GetHKLList", ParamFN);
   FILE *hklf = fopen("hkls.csv", "r");
   if (!hklf) { fprintf(stderr, "Cannot open hkls.csv\n"); return 1; }
-  char aline[1000], dummy[1000];
-  fgets(aline, 1000, hklf);
+
+  // Pre-count data lines to allocate dynamic arrays
+  char aline[1024];
+  fgets(aline, sizeof(aline), hklf);  // header
+  int hklCapacity = 0;
+  while (fgets(aline, sizeof(aline), hklf) != NULL)
+    hklCapacity++;
+  if (hklCapacity == 0) {
+    fprintf(stderr, "hkls.csv has no data lines\n");
+    fclose(hklf);
+    return 1;
+  }
+  rewind(hklf);
+
+  double *Thetas   = malloc(hklCapacity * sizeof(double));
+  double *DSpacings = malloc(hklCapacity * sizeof(double));
+  int    *RingIDs   = malloc(hklCapacity * sizeof(int));
+  if (!Thetas || !DSpacings || !RingIDs) {
+    fprintf(stderr, "Failed to allocate HKL arrays (%d entries)\n", hklCapacity);
+    fclose(hklf);
+    return 1;
+  }
+
+  // Parse header to find column indices for 'RingNr' and 'Theta'
+  fgets(aline, sizeof(aline), hklf);  // re-read header
+  int colRingNr = -1, colTheta = -1;
+  {
+    char hdrCopy[1024];
+    strncpy(hdrCopy, aline, sizeof(hdrCopy));
+    hdrCopy[sizeof(hdrCopy) - 1] = '\0';
+    char *tok = strtok(hdrCopy, " \t\r\n");
+    int col = 0;
+    while (tok) {
+      if (strcmp(tok, "RingNr") == 0)    colRingNr = col;
+      else if (strcmp(tok, "Theta") == 0) colTheta = col;
+      tok = strtok(NULL, " \t\r\n");
+      col++;
+    }
+  }
+  if (colRingNr < 0 || colTheta < 0) {
+    fprintf(stderr, "hkls.csv header missing required columns: "
+            "RingNr(%s) Theta(%s)\n",
+            colRingNr < 0 ? "MISSING" : "ok",
+            colTheta < 0 ? "MISSING" : "ok");
+    fclose(hklf);
+    free(Thetas); free(DSpacings); free(RingIDs);
+    return 1;
+  }
+  int maxCol = (colRingNr > colTheta) ? colRingNr : colTheta;
+
   int LastRingDone = 0;
-  while (fgets(aline, 1000, hklf) != NULL) {
-    int tRnr;
-    double theta;
-    sscanf(aline, "%s %s %s %s %d %s %s %s %lf %s %s",
-           dummy, dummy, dummy, dummy, &tRnr, dummy, dummy, dummy,
-           &theta, dummy, dummy);
+  while (fgets(aline, sizeof(aline), hklf) != NULL) {
+    // Tokenize the line and extract columns by index
+    char lineCopy[1024];
+    strncpy(lineCopy, aline, sizeof(lineCopy));
+    lineCopy[sizeof(lineCopy) - 1] = '\0';
+    char *tokens[32];
+    int nTok = 0;
+    char *tok = strtok(lineCopy, " \t\r\n");
+    while (tok && nTok < 32) {
+      tokens[nTok++] = tok;
+      tok = strtok(NULL, " \t\r\n");
+    }
+    if (nTok <= maxCol) continue;  // malformed line
+
+    int tRnr = atoi(tokens[colRingNr]);
+    double theta = atof(tokens[colTheta]);
+
     if (theta * 2 > MaxTtheta) break;
     if (MaxRingNumber > 0 && tRnr > MaxRingNumber) break;
     int exclude = 0;
@@ -537,7 +594,7 @@ int main(int argc, char *argv[]) {
     }
   }
   fclose(hklf);
-  printf("%d rings selected.\n\n", n_hkls);
+  printf("%d rings selected (capacity %d).\n\n", n_hkls, hklCapacity);
 
   // Load dark + image in ORIGINAL dimensions (NrPixelsY × NrPixelsZ).
   // mapper_build_map works on the original pixel grid and handles transforms
@@ -715,64 +772,58 @@ int main(int argc, char *argv[]) {
   }
 
   for (int iter = 0; iter < nIterations; iter++) {
-    // Always rebuild the map with current best geometry for true E-M convergence.
-    // Previously, ReFitPeaks=0 caused the map to be built only at iter==0,
-    // so the M-step optimized geometry against stale pixel positions.
-    int needRebuild = 1;
     printf("\n──── Iteration %d/%d ────\n", iter + 1, nIterations);
 
-    if (needRebuild) {
-      // Free previous E-step arrays
-      free(RMean); free(EtaMean); free(YMean); free(ZMean);
-      free(IdealTtheta); free(PointDSpacing); free(FitSNR);
-      free(RingNumbers); free(skipBin);
-      free(EtaIns); free(DiffIns); free(RadIns);
-      free(Yc); free(Zc);
-      RMean = EtaMean = YMean = ZMean = NULL;
-      IdealTtheta = PointDSpacing = FitSNR = NULL;
-      EtaIns = DiffIns = RadIns = Yc = Zc = NULL;
-      RingNumbers = NULL; skipBin = NULL;
+    // Free previous E-step arrays
+    free(RMean); free(EtaMean); free(YMean); free(ZMean);
+    free(IdealTtheta); free(PointDSpacing); free(FitSNR);
+    free(RingNumbers); free(skipBin);
+    free(EtaIns); free(DiffIns); free(RadIns);
+    free(Yc); free(Zc);
+    RMean = EtaMean = YMean = ZMean = NULL;
+    IdealTtheta = PointDSpacing = FitSNR = NULL;
+    EtaIns = DiffIns = RadIns = Yc = Zc = NULL;
+    RingNumbers = NULL; skipBin = NULL;
 
-      // For iter > 0, use the M-step's converged geometry to build the map.
-      // For iter == 0, use the original input params.
-      double estep_Lsd = (iter > 0) ? LsdFit : Lsd;
-      double estep_ybc = (iter > 0) ? ybcFit : ybc;
-      double estep_zbc = (iter > 0) ? zbcFit : zbc;
-      double estep_ty  = (iter > 0) ? ty     : tyin;
-      double estep_tz  = (iter > 0) ? tz     : tzin;
-      double estep_p0  = (iter > 0) ? p0     : p0in;
-      double estep_p1  = (iter > 0) ? p1     : p1in;
-      double estep_p2  = (iter > 0) ? p2     : p2in;
-      double estep_p3  = (iter > 0) ? p3     : p3in;
-      // p4in, p5in, parallaxIn are updated in place by the M-step
+    // For iter > 0, use the M-step's converged geometry to build the map.
+    // For iter == 0, use the original input params.
+    double estep_Lsd = (iter > 0) ? LsdFit : Lsd;
+    double estep_ybc = (iter > 0) ? ybcFit : ybc;
+    double estep_zbc = (iter > 0) ? zbcFit : zbc;
+    double estep_ty  = (iter > 0) ? ty     : tyin;
+    double estep_tz  = (iter > 0) ? tz     : tzin;
+    double estep_p0  = (iter > 0) ? p0     : p0in;
+    double estep_p1  = (iter > 0) ? p1     : p1in;
+    double estep_p2  = (iter > 0) ? p2     : p2in;
+    double estep_p3  = (iter > 0) ? p3     : p3in;
+    // p4in, p5in, parallaxIn are updated in place by the M-step
 
-      // Run E-step with current best geometry
-      nIndices = run_estep(
-          Average, AverageDark, NrPixelsY, NrPixelsZ, NrPixels,
-          px, estep_Lsd, estep_ybc, estep_zbc, tx, estep_ty, estep_tz,
-          estep_p0, estep_p1, estep_p2, estep_p3, p4in, p5in, p6in,
-          MaxRingRad, EtaBinSize, RBinWidth,
-          parallaxIn, n_hkls, Thetas, DSpacings, RingIDs,
-          NrTransOpt, TransOpt, mask, DoubletSeparation, Wavelength,
-          cfg.Width, peakFitMode,
-          cfg.SubPixelLevel, cfg.SubPixelCardinalWidth,
-          &RMean, &EtaMean, &YMean, &ZMean,
-          &IdealTtheta, &PointDSpacing, &RingNumbers, &FitSNR, &skipBin);
+    // Run E-step with current best geometry
+    nIndices = run_estep(
+        Average, AverageDark, NrPixelsY, NrPixelsZ, NrPixels,
+        px, estep_Lsd, estep_ybc, estep_zbc, tx, estep_ty, estep_tz,
+        estep_p0, estep_p1, estep_p2, estep_p3, p4in, p5in, p6in,
+        MaxRingRad, EtaBinSize, RBinWidth,
+        parallaxIn, n_hkls, Thetas, DSpacings, RingIDs,
+        NrTransOpt, TransOpt, mask, DoubletSeparation, Wavelength,
+        cfg.Width, peakFitMode,
+        cfg.SubPixelLevel, cfg.SubPixelCardinalWidth,
+        &RMean, &EtaMean, &YMean, &ZMean,
+        &IdealTtheta, &PointDSpacing, &RingNumbers, &FitSNR, &skipBin);
 
-      if (nIndices < 3) {
-        fprintf(stderr, "E-step produced only %d bins — aborting.\n", nIndices);
-        break;
-      }
-
-      // Allocate per-bin output arrays
-      Yc = malloc(nIndices * sizeof(double));
-      Zc = malloc(nIndices * sizeof(double));
-      EtaIns = malloc(nIndices * sizeof(double));
-      DiffIns = malloc(nIndices * sizeof(double));
-      RadIns = malloc(nIndices * sizeof(double));
-      memcpy(Yc, YMean, nIndices * sizeof(double));
-      memcpy(Zc, ZMean, nIndices * sizeof(double));
+    if (nIndices < 3) {
+      fprintf(stderr, "E-step produced only %d bins — aborting.\n", nIndices);
+      break;
     }
+
+    // Allocate per-bin output arrays
+    Yc = malloc(nIndices * sizeof(double));
+    Zc = malloc(nIndices * sizeof(double));
+    EtaIns = malloc(nIndices * sizeof(double));
+    DiffIns = malloc(nIndices * sizeof(double));
+    RadIns = malloc(nIndices * sizeof(double));
+    memcpy(Yc, YMean, nIndices * sizeof(double));
+    memcpy(Zc, ZMean, nIndices * sizeof(double));
 
     // Ring normalization weights
     double *RingWeights = NULL;
@@ -1221,6 +1272,7 @@ int main(int argc, char *argv[]) {
   free(Yc); free(Zc);
   free(Average); free(AverageDark);
   free(mask);
+  free(Thetas); free(DSpacings); free(RingIDs);
   free(bestPanels); free(initPanels);
 
   double end0 = omp_get_wtime();
