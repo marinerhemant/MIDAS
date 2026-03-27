@@ -167,7 +167,8 @@ UniqueOrientationsResult find_unique_orientations(size_t *allKeyArr,
 SpotList process_spots(UniqueOrientationsResult *uniqueResult,
                        const char *folderName, double *allSpots,
                        size_t nSpotsAll, double tolOme, double tolEta,
-                       const ConsolidatedReader *idsReader);
+                       const ConsolidatedReader *idsReader,
+                       const ConsolidatedReader *keysReader);
 void generate_sinograms(SpotList *spotList,
                         UniqueOrientationsResult *uniqueResult,
                         double *allSpots, size_t nSpotsAll, int nScans,
@@ -374,7 +375,7 @@ int main(int argc, char *argv[]) {
     /* Tolerance mode: original behavior */
     printf("Processing spots for each unique orientation (sinoMode=0)...\n");
     spotList = process_spots(&uniqueResult, folderName, allSpots, nSpotsAll,
-                             tolOme, tolEta, &idsReader);
+                             tolOme, tolEta, &idsReader, &keysReader);
     printf("Generating sinograms...\n");
     generate_sinograms(&spotList, &uniqueResult, allSpots, nSpotsAll, nScans,
                        tolOme, tolEta, argv[1], numProcs, normalizeSino,
@@ -750,9 +751,10 @@ void process_voxel(int voxNr, const char *folderName, int sgNr, double maxAng,
     size_t keyIdx = voxNr * KEY_ARRAY_COLS;
     size_t orientIdx = voxNr * (ORIENT_ARRAY_COLS + 1);
 
-    /* Copy keys: [grainID, nSpots, startRowNr, spotListStartPos] */
+    /* Copy keys: [SpotID, nMatches, nIDs_this_solution, bestSolIdx] */
     memcpy(&allKeyArr[keyIdx], &keys[bestRow * KEY_ARRAY_COLS],
            KEY_ARRAY_COLS * sizeof(size_t));
+    allKeyArr[keyIdx + 3] = (size_t)bestRow; /* solution index within voxel */
 
     /* Copy orientation matrix */
     memcpy(&allOrientationsArr[orientIdx], &OMArr[bestRow * ORIENT_ARRAY_COLS],
@@ -982,19 +984,22 @@ void save_orientation_results(UniqueOrientationsResult *uniqueResult,
 SpotList process_spots(UniqueOrientationsResult *uniqueResult,
                        const char *folderName, double *allSpots,
                        size_t nSpotsAll, double tolOme, double tolEta,
-                       const ConsolidatedReader *idsReader) {
+                       const ConsolidatedReader *idsReader,
+                       const ConsolidatedReader *keysReader) {
 
   printf("Processing spots for %zu unique orientations...\n",
          uniqueResult->nUniques);
 
-  /* Pre-scan: compute exact total number of spots across all grains */
+  /* Pre-scan: compute exact total number of spots across all grains.
+   * Read only the BEST solution's IDs count (not all solutions). */
   size_t totalSpotsNeeded = 0;
   for (size_t i = 0; i < uniqueResult->nUniques; i++) {
     size_t thisVoxNr = uniqueResult->uniqueKeyArr[i * 5];
+    /* nIDs for best solution is stored in uniqueKeyArr column 3 */
+    size_t nIDsBest = uniqueResult->uniqueKeyArr[i * 5 + 3];
     const int *idsPtr = ConsolidatedReader_getIDs(idsReader, (int)thisVoxNr);
-    int nSpots = idsReader->nSolutions[(int)thisVoxNr];
-    if (idsPtr && nSpots > 0)
-      totalSpotsNeeded += (size_t)nSpots;
+    if (idsPtr && nIDsBest > 0)
+      totalSpotsNeeded += nIDsBest;
   }
 
   printf("Total spots to process across all grains: %zu\n", totalSpotsNeeded);
@@ -1027,14 +1032,23 @@ SpotList process_spots(UniqueOrientationsResult *uniqueResult,
   /* Process each grain */
   for (size_t i = 0; i < uniqueResult->nUniques; i++) {
     size_t thisVoxNr = uniqueResult->uniqueKeyArr[i * 5];
+    int bestSolIdx = (int)uniqueResult->uniqueKeyArr[i * 5 + 4]; /* solution index */
+    size_t nIDsBest = uniqueResult->uniqueKeyArr[i * 5 + 3]; /* nIDs for best */
 
-    /* Read spot IDs from consolidated IDs file */
-    const int *idsPtr = ConsolidatedReader_getIDs(idsReader, (int)thisVoxNr);
-    int nSpots = idsReader->nSolutions[(int)thisVoxNr]; /* total IDs for this voxel */
-    if (!idsPtr || nSpots <= 0)
+    /* Compute offset into concatenated IDs for the best solution */
+    const int *allIdsForVox = ConsolidatedReader_getIDs(idsReader, (int)thisVoxNr);
+    const size_t *voxKeys = ConsolidatedReader_getKeys(keysReader, (int)thisVoxNr);
+    if (!allIdsForVox || !voxKeys || nIDsBest <= 0)
       continue;
 
-    /* Copy spot IDs (consolidated data is read-only) */
+    int idsOffset = 0;
+    for (int s = 0; s < bestSolIdx; s++)
+      idsOffset += (int)voxKeys[s * CONSOLIDATED_KEY_COLS + 2];
+
+    int nSpots = (int)nIDsBest;
+    const int *idsPtr = allIdsForVox + idsOffset;
+
+    /* Copy spot IDs for this grain's best solution */
     int *IDArrThis = malloc(nSpots * sizeof(*IDArrThis));
     if (!IDArrThis) {
       log_error("Failed to allocate memory for ID array");
