@@ -664,12 +664,27 @@ def detect_data_type(data_fn):
     return 1  # default
 
 
+def _detect_mask_sentinels(arr):
+    """Detect sentinel intensity values (-1, -2) used for gap/bad pixels.
+
+    Must be called BEFORE clamping (arr[arr < 1] = 1).
+    Returns a list of sentinel values found (e.g. [-1], [-2], [-1, -2], or []).
+    """
+    sentinels = []
+    if int(np.sum(arr == -1)) > 0:
+        sentinels.append(-1)
+    if int(np.sum(arr == -2)) > 0:
+        sentinels.append(-2)
+    return sentinels
+
+
 def read_image_for_estimation(data_fn, dark_fn, data_loc, dark_loc,
                               skip_frame=0, data_type=None):
     """Read image data into numpy for beam center / ring detection.
 
     Supports HDF5, TIFF, GE binary, and Zarr.
-    Returns: raw, dark, ny, nz
+    Returns: raw, dark, ny, nz, mask_sentinels
+        mask_sentinels: list of sentinel intensity values found before clamping
     """
     ext = Path(data_fn).suffix.lower()
 
@@ -705,23 +720,26 @@ def read_image_for_estimation(data_fn, dark_fn, data_loc, dark_loc,
                 else:
                     dark = dark_data.astype(np.float64)
 
+        mask_sentinels = _detect_mask_sentinels(raw)
         raw[raw < 1] = 1
-        return raw, dark, ny, nz
+        return raw, dark, ny, nz, mask_sentinels
 
     elif ext in ('.tif', '.tiff'):
         img = np.array(Image.open(data_fn)).astype(np.float64)
         nz, ny = img.shape
+        mask_sentinels = _detect_mask_sentinels(img)
         img[img < 1] = 1
         dark = np.zeros_like(img)
         if dark_fn and os.path.exists(dark_fn):
             dark = np.array(Image.open(dark_fn)).astype(np.float64)
-        return img, dark, ny, nz
+        return img, dark, ny, nz, mask_sentinels
 
     elif ext == '.cbf':
         from read_cbf import read_cbf as _read_cbf
         _, raw = _read_cbf(data_fn, check_md5=False)
         raw = raw.astype(np.float64)
         nz, ny = raw.shape
+        mask_sentinels = _detect_mask_sentinels(raw)
         raw[raw < 1] = 1
         dark = np.zeros_like(raw)
         if dark_fn and os.path.exists(dark_fn):
@@ -731,7 +749,7 @@ def read_image_for_estimation(data_fn, dark_fn, data_loc, dark_loc,
                 dark = dark.astype(np.float64)
             else:
                 dark = np.array(Image.open(dark_fn)).astype(np.float64)
-        return raw, dark, ny, nz
+        return raw, dark, ny, nz, mask_sentinels
 
     elif ext == '.zip' or ext == '.zarr':
         # Zarr path (backward compat)
@@ -739,7 +757,7 @@ def read_image_for_estimation(data_fn, dark_fn, data_loc, dark_loc,
         f = zarr.open(data_fn, mode='r')
         raw, ny, nz = fileReader(f, '/exchange/data', skip_frame)
         dark, _, _ = fileReader(f, '/exchange/dark', skip_frame)
-        return raw, dark, ny, nz
+        return raw, dark, ny, nz, []
 
     else:
         # GE binary or other raw format
@@ -775,6 +793,7 @@ def read_image_for_estimation(data_fn, dark_fn, data_loc, dark_loc,
             raw = _read_ge(data_fn, 0)
 
         nz, ny = raw.shape
+        mask_sentinels = _detect_mask_sentinels(raw)
         raw[raw < 1] = 1
         dark = np.zeros_like(raw)
         if dark_fn and os.path.exists(dark_fn):
@@ -782,7 +801,7 @@ def read_image_for_estimation(data_fn, dark_fn, data_loc, dark_loc,
                 dark = _read_ge(dark_fn, header_size)
             except (ValueError, Exception):
                 dark = _read_ge(dark_fn, 0)
-        return raw, dark, ny, nz
+        return raw, dark, ny, nz, mask_sentinels
 
 
 def run_get_hkl_list_cli(sg, latc, wavelength, lsd, max_ring_rad):
@@ -2296,7 +2315,7 @@ def main():
                                  dloc=args.data_loc, darkloc=args.dark_loc)
 
         logger.info(f"Reading image for geometry estimation: {dataFN}")
-        raw, dark, ny, nz = read_image_for_estimation(
+        raw, dark, ny, nz, mask_sentinels = read_image_for_estimation(
             dataFN, darkFN, args.data_loc, args.dark_loc,
             skip_frame=state.skip_frame, data_type=state.midas_dtype)
         state.nr_pixels_y = ny
@@ -2577,17 +2596,11 @@ def main():
             state.mask_file = str(Path(args.mask).absolute())
             logger.info(f"MaskFile from --mask: {state.mask_file}")
         elif not state.mask_file:
-            # Auto-detect: if image has -1 or -2 intensity pixels, generate mask
-            mask_intensities = []
-            n_neg1 = int(np.sum(raw == -1))
-            n_neg2 = int(np.sum(raw == -2))
-            if n_neg1 > 0:
-                mask_intensities.append(-1)
-            if n_neg2 > 0:
-                mask_intensities.append(-2)
-            if mask_intensities:
-                logger.info(f"Auto-detected mask pixels: "
-                            f"{n_neg1} at -1, {n_neg2} at -2 — generating mask")
+            # Auto-detect: use sentinel values detected before clamping
+            if mask_sentinels:
+                logger.info(f"Auto-detected mask sentinel values: "
+                            f"{mask_sentinels} — generating mask")
+                mask_intensities = mask_sentinels
                 from generate_mask import generate_mask as _gen_mask
                 # Avoid overwriting: use unique name in current directory
                 auto_mask_fn = os.path.join(
