@@ -304,16 +304,52 @@ def extract_patch_intensity(frames_dict, center_y, center_z,
     return total
 
 
+def _process_single_scan(args):
+    """Worker function for parallel sinogram building.
+
+    Must be a top-level function so multiprocessing can pickle it.
+    Returns (scan_idx, intensities_1d) or (scan_idx, None) on failure.
+    """
+    (scan_idx, layer_nr, scan_dir, file_stem, padding,
+     spot_det_hor, spot_det_vert, spot_frame_lists,
+     all_frames_sorted, patch_half) = args
+
+    zip_name = f'{file_stem}_{layer_nr:0{padding}d}.MIDAS.zip'
+    zip_path = os.path.join(scan_dir, zip_name)
+    if not os.path.isfile(zip_path):
+        return (scan_idx, None)
+
+    frames_dict = read_frames_from_zarr(zip_path, all_frames_sorted)
+    if not frames_dict:
+        return (scan_idx, None)
+
+    n_hkls = len(spot_det_hor)
+    intensities = np.zeros(n_hkls, dtype=np.float64)
+    for hkl_idx in range(n_hkls):
+        intensities[hkl_idx] = extract_patch_intensity(
+            frames_dict,
+            center_y=spot_det_hor[hkl_idx],
+            center_z=spot_det_vert[hkl_idx],
+            frame_indices=spot_frame_lists[hkl_idx],
+            patch_half=patch_half
+        )
+    return (scan_idx, intensities)
+
+
 def build_sinogram(spots, scan_dirs, file_stem, padding,
-                   patch_half=10, ome_half=2, skip_frame=1):
+                   patch_half=10, ome_half=2, skip_frame=1,
+                   n_workers=4):
     """Build sinogram: shape (nHKLs, nScans).
 
     For each scan's zip file, read frames around each spot's omeBin
-    and extract a patch of intensity.
+    and extract a patch of intensity. Scans are processed in parallel.
 
     spots: list of spot dicts, already sorted by omega
     scan_dirs: list of (scanIdx, layerNr, dirPath)
+    n_workers: number of parallel workers
     """
+    from multiprocessing import Pool
+
     n_hkls = len(spots)
     n_scans = len(scan_dirs)
     sino = np.zeros((n_hkls, n_scans), dtype=np.float64)
@@ -323,8 +359,6 @@ def build_sinogram(spots, scan_dirs, file_stem, padding,
     spot_frames = []
     for s in spots:
         ob = s['omeBin']
-        # Account for skipFrame: zarr data includes the skip frame
-        # The actual data frame in zarr = omeBin + skipFrame
         actual_bin = ob + skip_frame
         frames_needed = list(range(actual_bin - ome_half,
                                     actual_bin + ome_half + 1))
@@ -336,40 +370,41 @@ def build_sinogram(spots, scan_dirs, file_stem, padding,
         all_frames.update(ff)
     all_frames = sorted(all_frames)
 
+    # Pre-extract spot positions into plain arrays (pickleable)
+    spot_det_hor = [s['detHor'] for s in spots]
+    spot_det_vert = [s['detVert'] for s in spots]
+
     print(f'\n  Building sinogram: {n_hkls} HKLs × {n_scans} scans')
     print(f'  Patch size: {2*patch_half+1}×{2*patch_half+1}×{2*ome_half+1}')
     print(f'  Total unique frames per scan: {len(all_frames)}')
+    print(f'  Using {n_workers} parallel workers')
+
+    # Build argument list for each scan
+    worker_args = []
+    for scan_idx, layer_nr, scan_dir in scan_dirs:
+        worker_args.append((
+            scan_idx, layer_nr, scan_dir, file_stem, padding,
+            spot_det_hor, spot_det_vert, spot_frames,
+            all_frames, patch_half
+        ))
 
     t0 = time.time()
-    for scan_idx, layer_nr, scan_dir in scan_dirs:
-        # Find the zip file
-        zip_name = f'{file_stem}_{layer_nr:0{padding}d}.MIDAS.zip'
-        zip_path = os.path.join(scan_dir, zip_name)
-        if not os.path.isfile(zip_path):
-            print(f'    WARNING: {zip_path} not found, skipping scan {scan_idx}')
-            continue
-
-        # Read all needed frames at once
-        frames_dict = read_frames_from_zarr(zip_path, all_frames)
-        if not frames_dict:
-            print(f'    WARNING: No frames read from {zip_path}')
-            continue
-
-        # Extract intensity for each spot
-        for hkl_idx, s in enumerate(spots):
-            intensity = extract_patch_intensity(
-                frames_dict,
-                center_y=s['detHor'],
-                center_z=s['detVert'],
-                frame_indices=spot_frames[hkl_idx],
-                patch_half=patch_half
-            )
-            sino[hkl_idx, scan_idx] = intensity
-
-        elapsed = time.time() - t0
-        rate = (scan_idx + 1) / elapsed if elapsed > 0 else 0
-        print(f'    Scan {scan_idx+1}/{n_scans} (layer {layer_nr}) done '
-              f'[{elapsed:.1f}s, {rate:.1f} scans/s]')
+    completed = 0
+    with Pool(processes=n_workers) as pool:
+        for scan_idx, intensities in pool.imap_unordered(
+                _process_single_scan, worker_args):
+            completed += 1
+            if intensities is not None:
+                sino[:, scan_idx] = intensities
+            else:
+                layer_nr = scan_dirs[scan_idx][1]
+                print(f'    WARNING: scan {scan_idx} (layer {layer_nr}) '
+                      f'failed or missing')
+            if completed % 10 == 0 or completed == n_scans:
+                elapsed = time.time() - t0
+                rate = completed / elapsed if elapsed > 0 else 0
+                print(f'    Progress: {completed}/{n_scans} scans '
+                      f'[{elapsed:.1f}s, {rate:.1f} scans/s]')
 
     return sino, omegas
 
@@ -605,7 +640,7 @@ def main():
     sino, omegas = build_sinogram(
         spots, scan_dirs, file_stem, padding,
         patch_half=patch_half, ome_half=ome_half,
-        skip_frame=skip_frame
+        skip_frame=skip_frame, n_workers=args.nCPUs
     )
 
     print(f'\n  Sinogram shape: {sino.shape}')
