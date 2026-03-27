@@ -326,6 +326,10 @@ int midas_parse_params(const char *filename, MIDASConfig *cfg) {
     if (param_int(aline, "PeakFitMode", &cfg->PeakFitMode)) continue;
     if (param_int(aline, "SubPixelLevel", &cfg->SubPixelLevel)) continue;
     if (param_double(aline, "SubPixelCardinalWidth", &cfg->SubPixelCardinalWidth)) continue;
+    if (param_double(aline, "ConvergenceThresholdPPM", &cfg->ConvergenceThresholdPPM)) continue;
+    if (param_int(aline, "SkipVerification", &cfg->SkipVerification)) continue;
+    if (param_str(aline, "RingDiagnosticsCSV", cfg->RingDiagnosticsCSV, sizeof(cfg->RingDiagnosticsCSV))) continue;
+    if (param_int(aline, "ResumeFromCheckpoint", &cfg->ResumeFromCheckpoint)) continue;
     if (param_int(aline, "FixPanelID", &cfg->FixPanelID)) continue;
 
     // ── FitPos/Strain control ──

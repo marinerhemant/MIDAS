@@ -441,7 +441,7 @@ double calib_problem_function(unsigned n, const double *x, double *grad,
 
 // ── Main optimizer: fit Lsd, BC, tilts, distortion, panel shifts ───
 
-void calib_fit_tilt_bc_lsd(
+int calib_fit_tilt_bc_lsd(
     CalibContext *ctx,
     int nIndices, double *YMean, double *ZMean,
     double *IdealTtheta, double Lsd, double MaxRad, double ybc,
@@ -637,10 +637,11 @@ void calib_fit_tilt_bc_lsd(
   config.ftol_rel = 1e-10;
   config.xtol_rel = 1e-10;
 
+  int nlopt_rc;
   if (n > 20)
-    run_nlopt_optimization(NLOPT_LN_SBPLX, &config);
+    nlopt_rc = run_nlopt_optimization(NLOPT_LN_SBPLX, &config);
   else
-    run_nlopt_optimization(NLOPT_LN_NELDERMEAD, &config);
+    nlopt_rc = run_nlopt_optimization(NLOPT_LN_NELDERMEAD, &config);
 
   *MeanDiff = config.min_function_val / nIndices;
 
@@ -775,6 +776,14 @@ void calib_fit_tilt_bc_lsd(
 
     free(tempDiffs);
   }
+
+  // Map NLopt return code to status
+  // Positive codes (1-4) = success/tolerance reached
+  // NLOPT_MAXEVAL_REACHED (5) or NLOPT_MAXTIME_REACHED (6) = eval limit
+  // Negative codes = error
+  if (nlopt_rc < 0) return -1;
+  if (nlopt_rc >= 5) return 1;   // hit eval/time limit
+  return 0;                      // converged
 }
 
 // ── Residual evaluator ─────────────────────────────────────────────

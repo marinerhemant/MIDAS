@@ -194,6 +194,10 @@ typedef struct {
   int    PeakFitMode;  // 0=pV (default), 1=TCH (GSAS-II)
   int    SubPixelLevel;           // Sub-pixel splitting level for cardinal angles (1=off, 4=default)
   double SubPixelCardinalWidth;   // Half-width in degrees around cardinal η for sub-pixel splitting
+  double ConvergenceThresholdPPM; // Early-stop: converged when Δstrain < this (0=disabled)
+  int    SkipVerification;        // Skip final verification E-step (0=no, 1=yes)
+  char   RingDiagnosticsCSV[MAX_LINE_LENGTH]; // Path for ring diagnostics CSV (empty=disabled)
+  int    ResumeFromCheckpoint;    // Resume from checkpoint file (0=no, 1=yes)
 
   // ── FitPos/Strain control ──
   int    TopLayer;

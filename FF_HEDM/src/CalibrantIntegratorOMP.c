@@ -487,6 +487,159 @@ static int estep_compact_and_invert(
 }
 
 // ── Top-level E-step orchestrator ─────────────────────────────────
+// ── Ring diagnostics helper ──────────────────────────────────────────────────
+// Prints per-ring statistics (mean/median signed+abs strain, SNR) and
+// optionally appends to a CSV file.
+
+static void emit_ring_diagnostics(
+    int iter, int n_hkls, const int *RingIDs,
+    int nIndices, const int *RingNumbers, const double *DiffIns,
+    const double *FitSNR, const int *skipBin,
+    double outlierFactor, int OutlierIterations,
+    const char *csvPath)
+{
+  // Compute outlier threshold (same sigma-clip as M-step)
+  double outlierThreshold = 0;
+  if (outlierFactor > 0) {
+    double rawMean = 0;
+    int rawCount = 0;
+    for (int bi = 0; bi < nIndices; bi++) {
+      if (skipBin && skipBin[bi]) continue;
+      rawMean += fabs(DiffIns[bi]);
+      rawCount++;
+    }
+    if (rawCount > 0) rawMean /= rawCount;
+    int nClipIter = (OutlierIterations > 0) ? OutlierIterations : 1;
+    double clipMean = rawMean;
+    for (int ci = 0; ci < nClipIter; ci++) {
+      double thresh = outlierFactor * clipMean;
+      double newSum = 0; int newCnt = 0;
+      for (int bi = 0; bi < nIndices; bi++) {
+        if (skipBin && skipBin[bi]) continue;
+        if (fabs(DiffIns[bi]) <= thresh) { newSum += fabs(DiffIns[bi]); newCnt++; }
+      }
+      if (newCnt > 0) clipMean = newSum / newCnt;
+    }
+    outlierThreshold = outlierFactor * clipMean;
+  }
+
+  // Open CSV for append if requested
+  FILE *csvFP = NULL;
+  if (csvPath && csvPath[0] != '\0') {
+    int isNew = 0;
+    FILE *testFP = fopen(csvPath, "r");
+    if (!testFP) isNew = 1; else fclose(testFP);
+    csvFP = fopen(csvPath, "a");
+    if (csvFP && isNew)
+      fprintf(csvFP, "Iter,Ring,NPoints,MeanDR_ppm,MedDR_ppm,MeanAbsDR_ppm,MedAbsDR_ppm,MeanSNR\n");
+  }
+
+  printf("  Ring  NPoints   Mean(ΔR) µε  Med(ΔR) µε  Mean|ΔR| µε  Med|ΔR| µε  MeanSNR\n");
+  printf("  ----  -------   -----------  ----------  -----------  ----------  -------\n");
+  for (int ri = 0; ri < n_hkls; ri++) {
+    int cnt = 0;
+    for (int bi = 0; bi < nIndices; bi++) {
+      if (RingNumbers[bi] == RingIDs[ri] && !(skipBin && skipBin[bi])) {
+        if (outlierThreshold > 0 && fabs(DiffIns[bi]) > outlierThreshold) continue;
+        cnt++;
+      }
+    }
+    if (cnt == 0) continue;
+    double *drs = malloc(cnt * sizeof(double));
+    double *adrs = malloc(cnt * sizeof(double));
+    double sumSNR = 0;
+    int k = 0;
+    for (int bi = 0; bi < nIndices; bi++) {
+      if (RingNumbers[bi] == RingIDs[ri] && !(skipBin && skipBin[bi])) {
+        if (outlierThreshold > 0 && fabs(DiffIns[bi]) > outlierThreshold) continue;
+        drs[k] = DiffIns[bi];
+        adrs[k] = fabs(DiffIns[bi]);
+        sumSNR += FitSNR[bi];
+        k++;
+      }
+    }
+    double meanDR = 0, meanADR = 0;
+    for (int j = 0; j < cnt; j++) { meanDR += drs[j]; meanADR += adrs[j]; }
+    meanDR /= cnt; meanADR /= cnt;
+    qsort(drs, cnt, sizeof(double), calib_cmp_double);
+    qsort(adrs, cnt, sizeof(double), calib_cmp_double);
+    double medDR = (cnt % 2) ? drs[cnt/2] : (drs[cnt/2-1] + drs[cnt/2]) / 2;
+    double medADR = (cnt % 2) ? adrs[cnt/2] : (adrs[cnt/2-1] + adrs[cnt/2]) / 2;
+    printf("  %4d  %7d   %11.3f  %10.3f  %11.3f  %10.3f  %7.1f\n",
+           RingIDs[ri], cnt,
+           meanDR * 1e6, medDR * 1e6, meanADR * 1e6, medADR * 1e6,
+           sumSNR / cnt);
+    if (csvFP)
+      fprintf(csvFP, "%d,%d,%d,%.6f,%.6f,%.6f,%.6f,%.1f\n",
+              iter, RingIDs[ri], cnt,
+              meanDR * 1e6, medDR * 1e6, meanADR * 1e6, medADR * 1e6,
+              sumSNR / cnt);
+    free(drs); free(adrs);
+  }
+  if (csvFP) { fflush(csvFP); fclose(csvFP); }
+}
+
+// ── Checkpoint write/load ────────────────────────────────────────────────────
+
+static void write_checkpoint(const char *rawFN, int iter,
+    double Lsd, double ybc, double zbc, double ty, double tz,
+    double p0, double p1, double p2, double p3,
+    double p4, double p5, double p6, double parallax, double MeanDiff)
+{
+  char fn[4096];
+  snprintf(fn, sizeof(fn), "%s.checkpoint.txt", rawFN);
+  FILE *fp = fopen(fn, "w");
+  if (!fp) return;
+  fprintf(fp, "Iteration %d\n", iter);
+  fprintf(fp, "Lsd %.12f\n", Lsd);
+  fprintf(fp, "ybc %.12f\n", ybc);
+  fprintf(fp, "zbc %.12f\n", zbc);
+  fprintf(fp, "ty %.12f\n", ty);
+  fprintf(fp, "tz %.12f\n", tz);
+  fprintf(fp, "p0 %.12e\n", p0);
+  fprintf(fp, "p1 %.12e\n", p1);
+  fprintf(fp, "p2 %.12e\n", p2);
+  fprintf(fp, "p3 %.12e\n", p3);
+  fprintf(fp, "p4 %.12e\n", p4);
+  fprintf(fp, "p5 %.12e\n", p5);
+  fprintf(fp, "p6 %.12e\n", p6);
+  fprintf(fp, "Parallax %.12e\n", parallax);
+  fprintf(fp, "MeanStrain %.12e\n", MeanDiff);
+  fclose(fp);
+}
+
+static int load_checkpoint(const char *rawFN, int *iter,
+    double *Lsd, double *ybc, double *zbc, double *ty, double *tz,
+    double *p0, double *p1, double *p2, double *p3,
+    double *p4, double *p5, double *p6, double *parallax, double *MeanDiff)
+{
+  char fn[4096];
+  snprintf(fn, sizeof(fn), "%s.checkpoint.txt", rawFN);
+  FILE *fp = fopen(fn, "r");
+  if (!fp) return -1;
+  char aline[256];
+  while (fgets(aline, sizeof(aline), fp)) {
+    sscanf(aline, "Iteration %d", iter);
+    sscanf(aline, "Lsd %lf", Lsd);
+    sscanf(aline, "ybc %lf", ybc);
+    sscanf(aline, "zbc %lf", zbc);
+    sscanf(aline, "ty %lf", ty);
+    sscanf(aline, "tz %lf", tz);
+    sscanf(aline, "p0 %lf", p0);
+    sscanf(aline, "p1 %lf", p1);
+    sscanf(aline, "p2 %lf", p2);
+    sscanf(aline, "p3 %lf", p3);
+    sscanf(aline, "p4 %lf", p4);
+    sscanf(aline, "p5 %lf", p5);
+    sscanf(aline, "p6 %lf", p6);
+    sscanf(aline, "Parallax %lf", parallax);
+    sscanf(aline, "MeanStrain %lf", MeanDiff);
+  }
+  fclose(fp);
+  return 0;
+}
+
+// ── E-step orchestrator ──────────────────────────────────────────────────────
 // Returns number of valid bins (nIndices).
 // Caller must free result via estep_free_result().
 
@@ -600,6 +753,10 @@ int main(int argc, char *argv[]) {
   char PanelShiftsFile[1024];
   strcpy(PanelShiftsFile, cfg.PanelShiftsFile);
   int peakFitMode = cfg.PeakFitMode;
+  double ConvergenceThresholdPPM = cfg.ConvergenceThresholdPPM;
+  int SkipVerification = cfg.SkipVerification;
+  int ResumeFromCheckpoint = cfg.ResumeFromCheckpoint;
+  int convergenceCount = 0;  // consecutive iters below threshold
 
   printf("\n=== CalibrantIntegratorOMP ===\n");
   printf("Detector: %dx%d, px=%.4f, Lsd=%.2f\n", NrPixelsY, NrPixelsZ, px, Lsd);
@@ -842,6 +999,27 @@ int main(int argc, char *argv[]) {
   snprintf(rawFN, sizeof(rawFN), "%s_%0*d.%s",
            cfg.FileStem, Padding, cfg.StartNr, cfg.Ext);
 
+  // Checkpoint resume
+  if (ResumeFromCheckpoint && nIterations > 0) {
+    int ckptIter = 0;
+    double ckptMean = 0;
+    if (load_checkpoint(rawFN, &ckptIter, &Lsd, &ybc, &zbc, &tyin, &tzin,
+                        &p0in, &p1in, &p2in, &p3in, &p4in, &p5in, &p6in,
+                        &parallaxIn, &ckptMean) == 0) {
+      iterOffset += ckptIter;
+      printf("\n*** Resuming from checkpoint (iter %d, MeanStrain=%.3f ppm) ***\n",
+             ckptIter, ckptMean * 1e6);
+      // Update initParams for bound anchoring
+      initParams[0] = Lsd; initParams[1] = ybc; initParams[2] = zbc;
+      initParams[3] = tyin; initParams[4] = tzin;
+      initParams[5] = p0in; initParams[6] = p1in; initParams[7] = p2in;
+      initParams[8] = p3in; initParams[9] = p4in; initParams[10] = p5in;
+      initParams[11] = p6in; initParams[12] = parallaxIn;
+    } else {
+      printf("  Checkpoint file not found — starting from scratch.\n");
+    }
+  }
+
   // Convergence CSV (in cwd)
   char convHistFN[4096];
   snprintf(convHistFN, sizeof(convHistFN), "%s.convergence_history.csv", rawFN);
@@ -992,17 +1170,13 @@ int main(int argc, char *argv[]) {
     double p4 = p4in, p5 = p5in, p6 = p6in;
     double wavelengthFit = Wavelength, parallaxFit = parallaxIn;
 
-    // DEBUG M-step: print input params
-    printf("  DEBUG M-step iter %d INPUT:  Lsd=%.3f BC=(%.6f,%.6f) ty=%.6f tz=%.6f p0=%.2e p1=%.2e p2=%.2e p3=%.2e\n",
-           iter+1, Lsd, ybc, zbc, tyin, tzin, p0in, p1in, p2in, p3in);
-
     // Open per-evaluation trace file for this iteration
     char traceFN[4096];
     snprintf(traceFN, sizeof(traceFN), "%s.m_step_trace_iter%d.csv",
              rawFN, iter + 1 + iterOffset);
     calib_set_trace_file(traceFN);
 
-    calib_fit_tilt_bc_lsd(
+    int mstepRC = calib_fit_tilt_bc_lsd(
         &ctx,
         nIndices, Yc, Zc, IdealTtheta, Lsd, MaxRingRad, ybc, zbc, tx,
         tyin, tzin, p0in, p1in, p2in, p3in, &ty, &tz, &LsdFit,
@@ -1021,9 +1195,11 @@ int main(int argc, char *argv[]) {
     // Close per-evaluation trace file
     calib_close_trace_file();
 
-    // DEBUG M-step: print output params
-    printf("  DEBUG M-step iter %d OUTPUT: Lsd=%.3f BC=(%.6f,%.6f) ty=%.6f tz=%.6f p0=%.2e p1=%.2e p2=%.2e p3=%.2e MeanDiff=%.6f\n",
-           iter+1, LsdFit, ybcFit, zbcFit, ty, tz, p0, p1, p2, p3, MeanDiff*1e6);
+    // Log M-step convergence status
+    if (mstepRC == 1)
+      printf("  M-step: hit eval limit (may need more iterations)\n");
+    else if (mstepRC < 0)
+      printf("  M-step: NLopt error (rc=%d)\n", mstepRC);
 
     if (FitParallax) parallaxIn = parallaxFit;
     if (FitWavelength) Wavelength = wavelengthFit;
@@ -1042,82 +1218,13 @@ int main(int argc, char *argv[]) {
     printf("Iter %2d/%d  MeanStrain %8.3f  StdStrain %8.3f  nBins=%d\n",
            iter + 1, nIterations, MeanDiff * 1e6, StdDiff * 1e6, nIndices);
 
-    // Per-ring diagnostic summary
-    if (iter == 0 || iter == nIterations - 1) {
-      // Determine outlier threshold: same sigma-clip as M-step
-      double outlierThreshold = 0;
-      if (outlierFactor > 0) {
-        // Compute raw mean|Diff| for threshold (before rejection)
-        double rawMean = 0;
-        int rawCount = 0;
-        for (int bi = 0; bi < nIndices; bi++) {
-          if (skipBin[bi]) continue;
-          rawMean += fabs(DiffIns[bi]);
-          rawCount++;
-        }
-        if (rawCount > 0) rawMean /= rawCount;
-        // Iterative sigma-clip to find stable threshold
-        int nClipIter = (OutlierIterations > 0) ? OutlierIterations : 1;
-        double clipMean = rawMean;
-        for (int ci = 0; ci < nClipIter; ci++) {
-          double thresh = outlierFactor * clipMean;
-          double newSum = 0;
-          int newCnt = 0;
-          for (int bi = 0; bi < nIndices; bi++) {
-            if (skipBin[bi]) continue;
-            if (fabs(DiffIns[bi]) <= thresh) {
-              newSum += fabs(DiffIns[bi]);
-              newCnt++;
-            }
-          }
-          if (newCnt > 0) clipMean = newSum / newCnt;
-        }
-        outlierThreshold = outlierFactor * clipMean;
-      }
-
-      printf("  Ring  NPoints   Mean(ΔR) µε  Med(ΔR) µε  Mean|ΔR| µε  Med|ΔR| µε  MeanSNR\n");
-      printf("  ----  -------   -----------  ----------  -----------  ----------  -------\n");
-      for (int ri = 0; ri < n_hkls; ri++) {
-        // Collect per-ring deltaR values, excluding outliers
-        int cnt = 0;
-        for (int bi = 0; bi < nIndices; bi++) {
-          if (RingNumbers[bi] == RingIDs[ri] && !skipBin[bi]) {
-            if (outlierThreshold > 0 && fabs(DiffIns[bi]) > outlierThreshold)
-              continue;
-            cnt++;
-          }
-        }
-        if (cnt == 0) continue;
-        double *drs = (double *)malloc(cnt * sizeof(double));
-        double *adrs = (double *)malloc(cnt * sizeof(double));
-        double sumSNR = 0;
-        int k = 0;
-        for (int bi = 0; bi < nIndices; bi++) {
-          if (RingNumbers[bi] == RingIDs[ri] && !skipBin[bi]) {
-            if (outlierThreshold > 0 && fabs(DiffIns[bi]) > outlierThreshold)
-              continue;
-            drs[k] = DiffIns[bi];
-            adrs[k] = fabs(DiffIns[bi]);
-            sumSNR += FitSNR[bi];
-            k++;
-          }
-        }
-        // Mean
-        double meanDR = 0, meanADR = 0;
-        for (int j = 0; j < cnt; j++) { meanDR += drs[j]; meanADR += adrs[j]; }
-        meanDR /= cnt; meanADR /= cnt;
-        // Median (sort copies)
-        qsort(drs, cnt, sizeof(double), calib_cmp_double);
-        qsort(adrs, cnt, sizeof(double), calib_cmp_double);
-        double medDR = (cnt % 2) ? drs[cnt/2] : (drs[cnt/2-1] + drs[cnt/2]) / 2;
-        double medADR = (cnt % 2) ? adrs[cnt/2] : (adrs[cnt/2-1] + adrs[cnt/2]) / 2;
-        printf("  %4d  %7d   %11.3f  %10.3f  %11.3f  %10.3f  %7.1f\n",
-               RingIDs[ri], cnt,
-               meanDR * 1e6, medDR * 1e6,
-               meanADR * 1e6, medADR * 1e6,
-               sumSNR / cnt);
-        free(drs); free(adrs);
-      }
+    // Per-ring diagnostic summary (first + last iter, or every iter if CSV enabled)
+    if (iter == 0 || iter == nIterations - 1 || cfg.RingDiagnosticsCSV[0] != '\0') {
+      emit_ring_diagnostics(
+          iter + 1 + iterOffset, n_hkls, RingIDs,
+          nIndices, RingNumbers, DiffIns, FitSNR, skipBin,
+          outlierFactor, OutlierIterations,
+          cfg.RingDiagnosticsCSV);
     }
 
     if (convHistFP) {
@@ -1144,6 +1251,11 @@ int main(int argc, char *argv[]) {
     tyin = ty; tzin = tz;
     p0in = p0; p1in = p1; p2in = p2; p3in = p3;
 
+    // Write checkpoint
+    write_checkpoint(rawFN, iter + 1 + iterOffset,
+                     LsdFit, ybcFit, zbcFit, ty, tz,
+                     p0, p1, p2, p3, p4, p5, p6, parallaxIn, MeanDiff);
+
     // Track best iteration
     if (MeanDiff < bestMeanDiff) {
       bestMeanDiff = MeanDiff; bestIter = iter;
@@ -1166,6 +1278,21 @@ int main(int argc, char *argv[]) {
       oscillationCount = 0;
     prevPrevIterMeanDiff = prevIterMeanDiff;
     prevIterMeanDiff = MeanDiff;
+
+    // Convergence early-stop
+    double convThresh = ConvergenceThresholdPPM * 1e-6;
+    if (convThresh > 0 && iter > 0) {
+      double relChange = fabs(MeanDiff - prevPrevIterMeanDiff) / fmax(MeanDiff, 1e-12);
+      if (relChange < convThresh)
+        convergenceCount++;
+      else
+        convergenceCount = 0;
+      if (convergenceCount >= 3) {
+        printf("  [Early stop] Converged: ΔMeanStrain < %.1f ppm for 3 consecutive iters\n",
+               ConvergenceThresholdPPM);
+        break;
+      }
+    }
 
     // Divergence guard
     if (postPerturbGrace > 0) {
@@ -1255,7 +1382,7 @@ int main(int argc, char *argv[]) {
   // and the M-step only re-projects the fixed pixel positions.
   // This final E-step rebuilds everything with the converged geometry
   // to verify the reported strain is consistent.
-  if (nIterations > 0 && Yc) {
+  if (nIterations > 0 && Yc && !SkipVerification) {
     printf("\n──── Verification E-step (fresh map with converged params) ────\n");
     // Free previous E-step result + per-iter arrays
     estep_free_result(&eResult);

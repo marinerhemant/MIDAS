@@ -119,7 +119,8 @@ double calib_problem_function(unsigned n, const double *x, double *grad,
                               void *f_data_trial);
 
 // Main optimizer: fit Lsd, BC, tilts, distortion, panel shifts.
-void calib_fit_tilt_bc_lsd(
+// Returns: 0 = converged, 1 = hit eval limit, -1 = NLopt error.
+int calib_fit_tilt_bc_lsd(
     CalibContext *ctx,
     int nIndices, double *YMean, double *ZMean,
     double *IdealTtheta, double Lsd, double MaxRad, double ybc,
