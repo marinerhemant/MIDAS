@@ -248,91 +248,61 @@ def parse_spot_matrix_gen(fn):
 # Step 2: Extract intensity from zip files to build sinogram
 # ---------------------------------------------------------------------------
 
-def read_frame_from_zarr(zarr_path, frame_idx, n_frames):
-    """Open a MIDAS zarr zip and read a single frame as numpy array."""
-    import zarr
-    store = zarr.storage.ZipStore(zarr_path, mode='r')
-    zg = zarr.open_group(store, mode='r')
-    data = zg['exchange/data']
-    # data shape: (nFrames, nPixelsZ, nPixelsY)
-    if frame_idx < 0 or frame_idx >= data.shape[0]:
-        return None
-    frame = np.array(data[frame_idx, :, :], dtype=np.float64)
-    store.close()
-    return frame
-
-
-def read_frames_from_zarr(zarr_path, frame_indices):
-    """Read multiple frames from a MIDAS zarr zip efficiently.
-
-    Returns dict: frame_idx -> 2D numpy array
-    """
-    import zarr
-    store = zarr.storage.ZipStore(zarr_path, mode='r')
-    zg = zarr.open_group(store, mode='r')
-    data = zg['exchange/data']
-    n_total = data.shape[0]
-
-    result = {}
-    for fi in frame_indices:
-        if 0 <= fi < n_total:
-            result[fi] = np.array(data[fi, :, :], dtype=np.float64)
-    store.close()
-    return result
-
-
-def extract_patch_intensity(frames_dict, center_y, center_z,
-                             frame_indices, patch_half=10):
-    """Sum intensity in a (2*patch_half+1) × (2*patch_half+1) × nFrames patch.
-
-    center_y, center_z are detector pixel coordinates (float).
-    """
-    cy = int(round(center_y))
-    cz = int(round(center_z))
-    total = 0.0
-    for fi in frame_indices:
-        if fi not in frames_dict:
-            continue
-        frame = frames_dict[fi]
-        nz, ny = frame.shape
-        y0 = max(0, cy - patch_half)
-        y1 = min(ny, cy + patch_half + 1)
-        z0 = max(0, cz - patch_half)
-        z1 = min(nz, cz + patch_half + 1)
-        if y0 < y1 and z0 < z1:
-            total += np.sum(frame[z0:z1, y0:y1])
-    return total
-
-
 def _process_single_scan(args):
     """Worker function for parallel sinogram building.
 
-    Must be a top-level function so multiprocessing can pickle it.
+    Opens the zarr zip, iterates over only the needed frames,
+    and extracts small patches directly via zarr indexing.
+    Never stores full frames in memory.
+
     Returns (scan_idx, intensities_1d) or (scan_idx, None) on failure.
     """
+    import zarr
+
     (scan_idx, layer_nr, scan_dir, file_stem, padding,
      spot_det_hor, spot_det_vert, spot_frame_lists,
-     all_frames_sorted, patch_half) = args
+     patch_half) = args
 
     zip_name = f'{file_stem}_{layer_nr:0{padding}d}.MIDAS.zip'
     zip_path = os.path.join(scan_dir, zip_name)
     if not os.path.isfile(zip_path):
         return (scan_idx, None)
 
-    frames_dict = read_frames_from_zarr(zip_path, all_frames_sorted)
-    if not frames_dict:
+    try:
+        store = zarr.storage.ZipStore(zip_path, mode='r')
+        zg = zarr.open_group(store, mode='r')
+        data = zg['exchange/data']
+        n_total, nz, ny = data.shape
+    except Exception:
         return (scan_idx, None)
 
     n_hkls = len(spot_det_hor)
     intensities = np.zeros(n_hkls, dtype=np.float64)
+
+    # Build reverse map: frame_idx -> [(hkl_idx, cy, cz), ...]
+    frame_to_spots = {}
     for hkl_idx in range(n_hkls):
-        intensities[hkl_idx] = extract_patch_intensity(
-            frames_dict,
-            center_y=spot_det_hor[hkl_idx],
-            center_z=spot_det_vert[hkl_idx],
-            frame_indices=spot_frame_lists[hkl_idx],
-            patch_half=patch_half
-        )
+        cy = int(round(spot_det_hor[hkl_idx]))
+        cz = int(round(spot_det_vert[hkl_idx]))
+        for fi in spot_frame_lists[hkl_idx]:
+            if 0 <= fi < n_total:
+                frame_to_spots.setdefault(fi, []).append(
+                    (hkl_idx, cy, cz))
+
+    # Process one frame at a time — only read the patches we need
+    for fi in sorted(frame_to_spots.keys()):
+        # Read just this frame (zarr caches the decompressed chunk)
+        frame = data[fi]
+        for hkl_idx, cy, cz in frame_to_spots[fi]:
+            y0 = max(0, cy - patch_half)
+            y1 = min(ny, cy + patch_half + 1)
+            z0 = max(0, cz - patch_half)
+            z1 = min(nz, cz + patch_half + 1)
+            if y0 < y1 and z0 < z1:
+                intensities[hkl_idx] += float(
+                    np.sum(frame[z0:z1, y0:y1]))
+
+    store.close()
     return (scan_idx, intensities)
 
 
@@ -364,19 +334,12 @@ def build_sinogram(spots, scan_dirs, file_stem, padding,
                                     actual_bin + ome_half + 1))
         spot_frames.append(frames_needed)
 
-    # All unique frames needed across all spots
-    all_frames = set()
-    for ff in spot_frames:
-        all_frames.update(ff)
-    all_frames = sorted(all_frames)
-
     # Pre-extract spot positions into plain arrays (pickleable)
     spot_det_hor = [s['detHor'] for s in spots]
     spot_det_vert = [s['detVert'] for s in spots]
 
     print(f'\n  Building sinogram: {n_hkls} HKLs × {n_scans} scans')
     print(f'  Patch size: {2*patch_half+1}×{2*patch_half+1}×{2*ome_half+1}')
-    print(f'  Total unique frames per scan: {len(all_frames)}')
     print(f'  Using {n_workers} parallel workers')
 
     # Build argument list for each scan
@@ -385,7 +348,7 @@ def build_sinogram(spots, scan_dirs, file_stem, padding,
         worker_args.append((
             scan_idx, layer_nr, scan_dir, file_stem, padding,
             spot_det_hor, spot_det_vert, spot_frames,
-            all_frames, patch_half
+            patch_half
         ))
 
     t0 = time.time()
