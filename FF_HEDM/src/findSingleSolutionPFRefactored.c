@@ -59,10 +59,7 @@
 /* Constants for array dimensions and buffer sizes */
 #define MAX_N_SOLUTIONS_PER_VOX                                                \
   1000000 /* Maximum number of solutions per voxel */
-#define MAX_N_SPOTS_PER_GRAIN                                                  \
-  5000 /* Maximum number of diffraction spots per grain */
-#define MAX_N_SPOTS_TOTAL                                                      \
-  100000000               /* Maximum total number of spots across all grains */
+
 #define MAX_PATH_LEN 2048 /* Maximum length for file paths */
 
 #define INVALID_VOX ((size_t)-1)
@@ -990,28 +987,32 @@ SpotList process_spots(UniqueOrientationsResult *uniqueResult,
   printf("Processing spots for %zu unique orientations...\n",
          uniqueResult->nUniques);
 
+  /* Pre-scan: compute exact total number of spots across all grains */
+  size_t totalSpotsNeeded = 0;
+  for (size_t i = 0; i < uniqueResult->nUniques; i++) {
+    size_t thisVoxNr = uniqueResult->uniqueKeyArr[i * 5];
+    const int *idsPtr = ConsolidatedReader_getIDs(idsReader, (int)thisVoxNr);
+    int nSpots = idsReader->nSolutions[(int)thisVoxNr];
+    if (idsPtr && nSpots > 0)
+      totalSpotsNeeded += (size_t)nSpots;
+  }
+
+  printf("Total spots to process across all grains: %zu\n", totalSpotsNeeded);
+
   SpotList result;
-  result.spotData = calloc(MAX_N_SPOTS_PER_GRAIN * uniqueResult->nUniques,
-                           sizeof(*(result.spotData)));
+  result.spotData = calloc(totalSpotsNeeded, sizeof(*(result.spotData)));
 
   if (!result.spotData) {
     fatal_error("Failed to allocate memory for spot data (%zu bytes)",
-                MAX_N_SPOTS_PER_GRAIN * uniqueResult->nUniques *
-                    sizeof(*(result.spotData)));
+                totalSpotsNeeded * sizeof(*(result.spotData)));
   }
 
   /* Array to track non-unique spots */
-  bool *isNotUniqueSpot = calloc(MAX_N_SPOTS_PER_GRAIN * uniqueResult->nUniques,
-                                 sizeof(*isNotUniqueSpot));
+  bool *isNotUniqueSpot = calloc(totalSpotsNeeded, sizeof(*isNotUniqueSpot));
   if (!isNotUniqueSpot) {
     free(result.spotData);
     fatal_error("Failed to allocate memory for spot uniqueness flags");
   }
-
-  /* Initialize with all spots being unique */
-  memset(isNotUniqueSpot, 0,
-         MAX_N_SPOTS_PER_GRAIN * uniqueResult->nUniques *
-             sizeof(*isNotUniqueSpot));
 
   /* Count spots per grain */
   int *nrHKLsFilled = calloc(uniqueResult->nUniques, sizeof(*nrHKLsFilled));
@@ -1032,18 +1033,6 @@ SpotList process_spots(UniqueOrientationsResult *uniqueResult,
     int nSpots = idsReader->nSolutions[(int)thisVoxNr]; /* total IDs for this voxel */
     if (!idsPtr || nSpots <= 0)
       continue;
-
-    /* Check for invalid values to prevent buffer overflows */
-    if ((size_t)nSpots > MAX_N_SPOTS_PER_GRAIN) {
-      log_error("Grain %zu has too many spots (%d), limiting to %d", i, nSpots,
-                (int)MAX_N_SPOTS_PER_GRAIN);
-      nSpots = MAX_N_SPOTS_PER_GRAIN;
-    }
-
-    if (nAllSpots + nSpots > MAX_N_SPOTS_TOTAL) {
-      log_error("Maximum total spots exceeded, stopping at grain %zu", i);
-      break;
-    }
 
     /* Copy spot IDs (consolidated data is read-only) */
     int *IDArrThis = malloc(nSpots * sizeof(*IDArrThis));
