@@ -2334,6 +2334,7 @@ void extract_patches(const char *topdir, const char *outputFolder,
 
   int startFileNr = 0, nrFilesPerSweep = 0;
   int startNr = 1, endNr = 0; /* StartNr/EndNr for Result CSV naming */
+  int scanStep = 0; /* ScanStep override for directory naming (0 = use nrFilesPerSweep) */
   double omegaStart = 0, omegaStep = 0;
   char fileStem[MAX_PATH_LEN] = "";
   int imTransOpt[10] = {0};
@@ -2376,14 +2377,20 @@ void extract_patches(const char *topdir, const char *outputFolder,
       sscanf(line, "%s %d", dummy, &skipFrame);
     else if (strncmp(line, "Padding ", 8) == 0)
       sscanf(line, "%s %d", dummy, &padding);
+    else if (strncmp(line, "ScanStep ", 9) == 0)
+      sscanf(line, "%s %d", dummy, &scanStep);
   }
   fclose(pf);
 
+  /* ScanStep defaults to nrFilesPerSweep when not specified */
+  int effectiveStep = (scanStep > 0) ? scanStep : nrFilesPerSweep;
+
   if (nrPixels == 0)
     nrPixels = (nrPixelsY > nrPixelsZ) ? nrPixelsY : nrPixelsZ;
-  printf("  Params: StartNr=%d NrFiles=%d OmeStart=%.1f OmeStep=%.3f "
+  printf("  Params: StartNr=%d NrFiles=%d ScanStep=%d(eff=%d) OmeStart=%.1f OmeStep=%.3f "
          "NrPx=%d(%dx%d) nImTrans=%d Padding=%d\n",
-         startFileNr, nrFilesPerSweep, omegaStart, omegaStep, nrPixels,
+         startFileNr, nrFilesPerSweep, scanStep, effectiveStep,
+         omegaStart, omegaStep, nrPixels,
          nrPixelsY, nrPixelsZ, nImTransOpt, padding);
 
   /* --- Allocate output patches array (float32) --- */
@@ -2440,7 +2447,7 @@ void extract_patches(const char *topdir, const char *outputFolder,
     reduction(+ : patchesExtracted)
   for (int scanNr = 0; scanNr < nScans; scanNr++) {
     char tline[1024]; /* Thread-private line buffer for CSV reading */
-    int thisStartNr = startFileNr + scanNr * nrFilesPerSweep;
+    int thisStartNr = startFileNr + scanNr * effectiveStep;
 
     /* Collect all sinogram cells for this scan that have a matched spot */
     typedef struct {

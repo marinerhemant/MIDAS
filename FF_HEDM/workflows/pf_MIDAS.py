@@ -1486,9 +1486,19 @@ def main():
                         os.remove(sinoF)
                 
                 # Remove existing directories
-                for dirn in ['Sinos', 'Recons', 'Thetas']:
+                for dirn in ['Sinos', 'Thetas']:
                     if os.path.isdir(dirn):
                         shutil.rmtree(dirn)
+                # Clean Recons/ contents but keep the directory and the pipeline H5
+                if os.path.isdir('Recons'):
+                    for entry in os.listdir('Recons'):
+                        if entry == 'microstructure_pf.h5':
+                            continue
+                        p = os.path.join('Recons', entry)
+                        if os.path.isdir(p):
+                            shutil.rmtree(p)
+                        else:
+                            os.remove(p)
                 
                 # Move result directories if they exist
                 for dirn in ['fullResults', 'fullOutput']:
