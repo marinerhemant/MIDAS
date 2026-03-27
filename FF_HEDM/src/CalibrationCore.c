@@ -144,7 +144,7 @@ static double calib_pv_singlet_obj(unsigned n, const double *x,
 }
 
 void calib_fit_peak_shape(int NrPtsForFit, double *Rs, double *PeakShape,
-                          double *Rfit, double *fitSNR,
+                          double *Rfit, double *fitSNR, double *fitFWHM,
                           double Rstep, double Rmean) {
   unsigned n = 7;
   double x[7], xl[7], xu[7];
@@ -193,6 +193,7 @@ void calib_fit_peak_shape(int NrPtsForFit, double *Rs, double *PeakShape,
   *Rfit = x[0];
   double rmsResid = sqrt(config.min_function_val / NrPtsForFit);
   *fitSNR = (rmsResid > 0) ? x[3] / rmsResid : 1.0;
+  if (fitFWHM) *fitFWHM = x[2]; // Gamma (FWHM)
 }
 
 // ── Peak profile fitting: pseudo-Voigt doublet ─────────────────────
@@ -264,6 +265,7 @@ void calib_fit_doublet_peak_shape(int NrPtsForFit, double *Rs,
                                   double *PeakShape,
                                   double *Rfit1, double *Rfit2,
                                   double *fitSNR1, double *fitSNR2,
+                                  double *fitFWHM1, double *fitFWHM2,
                                   double Rstep, double Rmean1,
                                   double Rmean2, double Rmid) {
   unsigned n = 10;
@@ -349,6 +351,8 @@ void calib_fit_doublet_peak_shape(int NrPtsForFit, double *Rs,
     *fitSNR1 = 1.0;
     *fitSNR2 = 1.0;
   }
+  if (fitFWHM1) *fitFWHM1 = bestX[3]; // Gamma1
+  if (fitFWHM2) *fitFWHM2 = bestX[5]; // Gamma2
 }
 
 // ── Geometry optimization objective ────────────────────────────────
@@ -452,8 +456,10 @@ double calib_problem_function(unsigned n, const double *x, double *grad,
     double Diff = 1.0 - R_px / RIdeal_px;
 
     double w = (f->Weights != NULL) ? f->Weights[i] : 1.0;
-    if (f->weightByRadius)
-      w *= (R_px * px) / MaxRad; // R in µm / MaxRad
+    if (f->weightByRadius) {
+      double rNorm = (R_px * px) / MaxRad;
+      w *= rNorm * rNorm; // quadratic: variance of ΔR/R scales as 1/R²
+    }
     if (f->snrWeights != NULL)
       w *= f->snrWeights[i];
 

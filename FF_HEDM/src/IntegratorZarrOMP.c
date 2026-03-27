@@ -1837,7 +1837,7 @@ integration_start:
             for (int rb = 0; rb < roiN; rb++)
               roiI[rb] = etaProfile[lo + rb];
             double Rfit, snrFit;
-            pf_fit_single_peak(PF_MODE_PV, roiN, roiR, roiI, &Rfit, &snrFit, RBinSize, peakR);
+            pf_fit_single_peak(PF_MODE_PV, roiN, roiR, roiI, &Rfit, &snrFit, NULL, RBinSize, peakR);
             free(roiI);
             if (snrFit > 1.0) {
               // Store at peak index pp (not nf) to preserve peak-to-ring mapping

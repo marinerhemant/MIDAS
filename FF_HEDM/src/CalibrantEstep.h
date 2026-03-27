@@ -31,6 +31,7 @@ typedef struct {
     double DoubletSeparation;
     double Wavelength;
     double Width;
+    int AdaptiveEtaBins;
 } EstepGeometry;
 
 // ── Ring info (from hkls.csv) ─────────────────────────────────────
@@ -80,6 +81,7 @@ typedef struct {
     double *PointDSpacing; // [maxBins] d-spacing
     int *RingNumbers;   // [maxBins] ring ID
     double *FitSNR;     // [maxBins] fit signal-to-noise
+    double *FitFWHM;    // [maxBins] fitted FWHM in pixels (0 = invalid)
     int *skipBin;       // [maxBins] skip flag
 } PeakData;
 
@@ -92,6 +94,7 @@ typedef struct {
     double *IdealTtheta, *PointDSpacing;
     int *RingNumbers;
     double *FitSNR;
+    double *FitFWHM;
     int *skipBin;
 } EstepResult;
 

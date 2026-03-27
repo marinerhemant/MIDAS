@@ -921,6 +921,7 @@ static double pf_pv_singlet_obj(unsigned n, const double *x,
 
 static void pf_fit_singlet_pv(int nPts, double *Rs, double *Ints,
                                double *Rfit, double *fitSNR,
+                               double *fitFWHM,
                                double Rstep, double Rmean) {
   double x[5], xl[5], xu[5];
   PF_PV_Data f_data;
@@ -971,6 +972,7 @@ static void pf_fit_singlet_pv(int nPts, double *Rs, double *Ints,
   *Rfit = x[0];
   double rmsResid = sqrt(minf / nPts);
   *fitSNR = (rmsResid > 0) ? x[3] / rmsResid : 1.0;
+  if (fitFWHM) *fitFWHM = x[2]; // Gamma (FWHM in pixel units)
 }
 
 // =========================================================================
@@ -1035,6 +1037,7 @@ static double pf_pv_doublet_obj(unsigned n, const double *x,
 static void pf_fit_doublet_pv(int nPts, double *Rs, double *Ints,
                                double *Rfit1, double *Rfit2,
                                double *fitSNR1, double *fitSNR2,
+                               double *fitFWHM1, double *fitFWHM2,
                                double Rstep, double Rmean1,
                                double Rmean2, double Rmid) {
   double x[8], xl[8], xu[8];
@@ -1093,6 +1096,8 @@ static void pf_fit_doublet_pv(int nPts, double *Rs, double *Ints,
   double rmsResid = sqrt(minf / nPts);
   *fitSNR1 = (rmsResid > 0) ? x[4] / rmsResid : 1.0;
   *fitSNR2 = (rmsResid > 0) ? x[6] / rmsResid : 1.0;
+  if (fitFWHM1) *fitFWHM1 = x[3]; // Gamma1
+  if (fitFWHM2) *fitFWHM2 = x[5]; // Gamma2
 }
 
 // =========================================================================
@@ -1101,6 +1106,7 @@ static void pf_fit_doublet_pv(int nPts, double *Rs, double *Ints,
 
 static void pf_fit_singlet_tch(int nPts, double *Rs, double *Ints,
                                 double *Rfit, double *fitSNR,
+                                double *fitFWHM,
                                 double Rstep, double Rmean) {
   double peakLoc = Rmean;
   double fitResult[PF_PARAMS_PER_PEAK];
@@ -1118,9 +1124,10 @@ static void pf_fit_singlet_tch(int nPts, double *Rs, double *Ints,
     // Convert area to approximate peak height: height ≈ area / (fwhm * ~1.06)
     double height = (fwhm > 0) ? amplitude / (fwhm * 1.064) : amplitude;
     *fitSNR = (chi_sq > 0) ? height / sqrt(chi_sq) : 1.0;
+    if (fitFWHM) *fitFWHM = fwhm;
   } else {
     // TCH failed — fall back to pV
-    pf_fit_singlet_pv(nPts, Rs, Ints, Rfit, fitSNR, Rstep, Rmean);
+    pf_fit_singlet_pv(nPts, Rs, Ints, Rfit, fitSNR, fitFWHM, Rstep, Rmean);
   }
 }
 
@@ -1131,6 +1138,7 @@ static void pf_fit_singlet_tch(int nPts, double *Rs, double *Ints,
 static void pf_fit_doublet_tch(int nPts, double *Rs, double *Ints,
                                 double *Rfit1, double *Rfit2,
                                 double *fitSNR1, double *fitSNR2,
+                                double *fitFWHM1, double *fitFWHM2,
                                 double Rstep, double Rmean1,
                                 double Rmean2, double Rmid) {
   double peakLocs[2] = {Rmean1, Rmean2};
@@ -1150,10 +1158,12 @@ static void pf_fit_doublet_tch(int nPts, double *Rs, double *Ints,
     double h2 = (f2 > 0) ? a2 / (f2 * 1.064) : a2;
     *fitSNR1 = (chi1 > 0) ? h1 / sqrt(chi1) : 1.0;
     *fitSNR2 = (chi2 > 0) ? h2 / sqrt(chi2) : 1.0;
+    if (fitFWHM1) *fitFWHM1 = f1;
+    if (fitFWHM2) *fitFWHM2 = f2;
   } else {
     // TCH failed — fall back to pV
     pf_fit_doublet_pv(nPts, Rs, Ints, Rfit1, Rfit2, fitSNR1, fitSNR2,
-                      Rstep, Rmean1, Rmean2, Rmid);
+                      fitFWHM1, fitFWHM2, Rstep, Rmean1, Rmean2, Rmid);
   }
 }
 
@@ -1162,23 +1172,24 @@ static void pf_fit_doublet_tch(int nPts, double *Rs, double *Ints,
 // =========================================================================
 
 void pf_fit_single_peak(int mode, int nPts, double *Rs, double *Ints,
-                        double *Rfit, double *fitSNR,
+                        double *Rfit, double *fitSNR, double *fitFWHM,
                         double Rstep, double Rmean) {
   if (mode == PF_MODE_TCH)
-    pf_fit_singlet_tch(nPts, Rs, Ints, Rfit, fitSNR, Rstep, Rmean);
+    pf_fit_singlet_tch(nPts, Rs, Ints, Rfit, fitSNR, fitFWHM, Rstep, Rmean);
   else
-    pf_fit_singlet_pv(nPts, Rs, Ints, Rfit, fitSNR, Rstep, Rmean);
+    pf_fit_singlet_pv(nPts, Rs, Ints, Rfit, fitSNR, fitFWHM, Rstep, Rmean);
 }
 
 void pf_fit_doublet_peak(int mode, int nPts, double *Rs, double *Ints,
                          double *Rfit1, double *Rfit2,
                          double *fitSNR1, double *fitSNR2,
+                         double *fitFWHM1, double *fitFWHM2,
                          double Rstep, double Rmean1,
                          double Rmean2, double Rmid) {
   if (mode == PF_MODE_TCH)
     pf_fit_doublet_tch(nPts, Rs, Ints, Rfit1, Rfit2, fitSNR1, fitSNR2,
-                       Rstep, Rmean1, Rmean2, Rmid);
+                       fitFWHM1, fitFWHM2, Rstep, Rmean1, Rmean2, Rmid);
   else
     pf_fit_doublet_pv(nPts, Rs, Ints, Rfit1, Rfit2, fitSNR1, fitSNR2,
-                      Rstep, Rmean1, Rmean2, Rmid);
+                      fitFWHM1, fitFWHM2, Rstep, Rmean1, Rmean2, Rmid);
 }

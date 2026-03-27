@@ -169,7 +169,8 @@ UniqueOrientationsResult find_unique_orientations(size_t *allKeyArr,
                                                   double maxAng);
 SpotList process_spots(UniqueOrientationsResult *uniqueResult,
                        const char *folderName, double *allSpots,
-                       size_t nSpotsAll, double tolOme, double tolEta);
+                       size_t nSpotsAll, double tolOme, double tolEta,
+                       const ConsolidatedReader *idsReader);
 void generate_sinograms(SpotList *spotList,
                         UniqueOrientationsResult *uniqueResult,
                         double *allSpots, size_t nSpotsAll, int nScans,
@@ -182,7 +183,10 @@ void generate_sinograms_from_indexing(UniqueOrientationsResult *uniqueResult,
                                       double maxAng, double tolOme,
                                       double tolEta, const char *outputFolder,
                                       int numProcs, int normalizeSino,
-                                      int absTransform, int *outMaxNHKLs);
+                                      int absTransform, int *outMaxNHKLs,
+                                      const ConsolidatedReader *valsReader,
+                                      const ConsolidatedReader *keysReader,
+                                      const ConsolidatedReader *idsReader);
 void extract_patches(const char *topdir, const char *outputFolder,
                      const char *paramFile, size_t nGrs, int maxNHKLs,
                      int nScans, int numProcs);
@@ -300,14 +304,17 @@ int main(int argc, char *argv[]) {
   }
 
   /* Load consolidated files */
-  char consolValsFN[MAX_PATH_LEN], consolKeysFN[MAX_PATH_LEN];
+  char consolValsFN[MAX_PATH_LEN], consolKeysFN[MAX_PATH_LEN], consolIDsFN[MAX_PATH_LEN];
   sprintf(consolValsFN, "%s/IndexBest_all.bin", folderName);
   sprintf(consolKeysFN, "%s/IndexKey_all.bin", folderName);
-  ConsolidatedReader valsReader, keysReader;
+  sprintf(consolIDsFN, "%s/IndexBest_IDs_all.bin", folderName);
+  ConsolidatedReader valsReader, keysReader, idsReader;
   if (ConsolidatedReader_open(&valsReader, consolValsFN) != 0)
     fatal_error("Failed to open %s", consolValsFN);
   if (ConsolidatedReader_open(&keysReader, consolKeysFN) != 0)
     fatal_error("Failed to open %s", consolKeysFN);
+  if (ConsolidatedReader_open(&idsReader, consolIDsFN) != 0)
+    fatal_error("Failed to open %s", consolIDsFN);
   printf("Loaded consolidated indexer files (%d voxels)\n", valsReader.nVoxels);
 
 #pragma omp parallel for num_threads(numProcs) schedule(dynamic)
@@ -364,12 +371,13 @@ int main(int argc, char *argv[]) {
     generate_sinograms_from_indexing(&uniqueResult, folderName, allSpots,
                                      nSpotsAll, nScans, sgNr, maxAng, tolOme,
                                      tolEta, argv[1], numProcs, normalizeSino,
-                                     absTransform, &maxNHKLs);
+                                     absTransform, &maxNHKLs,
+                                     &valsReader, &keysReader, &idsReader);
   } else {
     /* Tolerance mode: original behavior */
     printf("Processing spots for each unique orientation (sinoMode=0)...\n");
     spotList = process_spots(&uniqueResult, folderName, allSpots, nSpotsAll,
-                             tolOme, tolEta);
+                             tolOme, tolEta, &idsReader);
     printf("Generating sinograms...\n");
     generate_sinograms(&spotList, &uniqueResult, allSpots, nSpotsAll, nScans,
                        tolOme, tolEta, argv[1], numProcs, normalizeSino,
@@ -578,8 +586,8 @@ void process_voxel(int voxNr, const char *folderName, int sgNr, double maxAng,
   for (int i = 0; i < nIDs; i++) {
     keys[i * KEY_ARRAY_COLS + 0] = keysData[i * CONSOLIDATED_KEY_COLS + 0];
     keys[i * KEY_ARRAY_COLS + 1] = keysData[i * CONSOLIDATED_KEY_COLS + 1];
-    keys[i * KEY_ARRAY_COLS + 2] = 0; /* Offsets not meaningful in consolidated format */
-    keys[i * KEY_ARRAY_COLS + 3] = 0;
+    keys[i * KEY_ARRAY_COLS + 2] = keysData[i * CONSOLIDATED_KEY_COLS + 2]; /* nIDs for this solution */
+    keys[i * KEY_ARRAY_COLS + 3] = keysData[i * CONSOLIDATED_KEY_COLS + 3];
   }
 
   /* Allocate arrays for orientations, confidence, and internal angle */
@@ -976,7 +984,8 @@ void save_orientation_results(UniqueOrientationsResult *uniqueResult,
  */
 SpotList process_spots(UniqueOrientationsResult *uniqueResult,
                        const char *folderName, double *allSpots,
-                       size_t nSpotsAll, double tolOme, double tolEta) {
+                       size_t nSpotsAll, double tolOme, double tolEta,
+                       const ConsolidatedReader *idsReader) {
 
   printf("Processing spots for %zu unique orientations...\n",
          uniqueResult->nUniques);
@@ -1017,13 +1026,17 @@ SpotList process_spots(UniqueOrientationsResult *uniqueResult,
   /* Process each grain */
   for (size_t i = 0; i < uniqueResult->nUniques; i++) {
     size_t thisVoxNr = uniqueResult->uniqueKeyArr[i * 5];
-    size_t nSpots = uniqueResult->uniqueKeyArr[i * 5 + 2];
-    size_t startPos = uniqueResult->uniqueKeyArr[i * 5 + 4];
+
+    /* Read spot IDs from consolidated IDs file */
+    const int *idsPtr = ConsolidatedReader_getIDs(idsReader, (int)thisVoxNr);
+    int nSpots = idsReader->nSolutions[(int)thisVoxNr]; /* total IDs for this voxel */
+    if (!idsPtr || nSpots <= 0)
+      continue;
 
     /* Check for invalid values to prevent buffer overflows */
-    if (nSpots > MAX_N_SPOTS_PER_GRAIN) {
-      log_error("Grain %zu has too many spots (%zu), limiting to %d", i, nSpots,
-                MAX_N_SPOTS_PER_GRAIN);
+    if ((size_t)nSpots > MAX_N_SPOTS_PER_GRAIN) {
+      log_error("Grain %zu has too many spots (%d), limiting to %d", i, nSpots,
+                (int)MAX_N_SPOTS_PER_GRAIN);
       nSpots = MAX_N_SPOTS_PER_GRAIN;
     }
 
@@ -1032,48 +1045,13 @@ SpotList process_spots(UniqueOrientationsResult *uniqueResult,
       break;
     }
 
-    /* Read spot IDs */
-    char IDsFNThis[MAX_PATH_LEN];
-    sprintf(IDsFNThis, "%s/IndexBest_IDs_voxNr_%06zu.bin", folderName,
-            thisVoxNr);
-
-    FILE *IDF = fopen(IDsFNThis, "rb");
-    if (!IDF) {
-      log_error("Failed to open %s", IDsFNThis);
-      continue;
-    }
-
-    /* Seek to the correct position in the file */
-    if (fseek(IDF, startPos, SEEK_SET) != 0) {
-      log_error("Failed to seek to position %zu in %s", startPos, IDsFNThis);
-      fclose(IDF);
-      continue;
-    }
-
-    /* Allocate memory for spot IDs */
+    /* Copy spot IDs (consolidated data is read-only) */
     int *IDArrThis = malloc(nSpots * sizeof(*IDArrThis));
     if (!IDArrThis) {
       log_error("Failed to allocate memory for ID array");
-      fclose(IDF);
       continue;
     }
-
-    /* Read spot IDs */
-    size_t items_read = fread(IDArrThis, sizeof(int), nSpots, IDF);
-    // for (size_t i = 0; i < nSpots; i++) {
-    //   printf("%d ", IDArrThis[i]);
-    // }
-    // printf("\n");
-    fclose(IDF);
-
-    /* Check if we read the expected number of IDs */
-    if (items_read != nSpots) {
-      log_error("Failed to read expected number of spot IDs from %s. Expected "
-                "%zu, got %zu",
-                IDsFNThis, nSpots, items_read);
-      free(IDArrThis);
-      continue;
-    }
+    memcpy(IDArrThis, idsPtr, nSpots * sizeof(int));
 
     int uniqueSpotCount = 0;
 
@@ -1082,8 +1060,8 @@ SpotList process_spots(UniqueOrientationsResult *uniqueResult,
       /* Ensure spot ID is valid to prevent out-of-bounds access */
       if (IDArrThis[j] < 1 || IDArrThis[j] > (int)nSpotsAll) {
         log_error("Invalid spot ID %d (range 1-%zu) at grain %zu, spot %zu, "
-                  "total spots: %zu, file: %s",
-                  IDArrThis[j], nSpotsAll, i, j, nSpots, IDsFNThis);
+                  "total spots: %d",
+                  IDArrThis[j], nSpotsAll, i, j, nSpots);
         continue;
       }
 
@@ -1809,7 +1787,10 @@ void generate_sinograms_from_indexing(UniqueOrientationsResult *uniqueResult,
                                       double maxAng, double tolOme,
                                       double tolEta, const char *outputFolder,
                                       int numProcs, int normalizeSino,
-                                      int absTransform, int *outMaxNHKLs) {
+                                      int absTransform, int *outMaxNHKLs,
+                                      const ConsolidatedReader *valsReader,
+                                      const ConsolidatedReader *keysReader,
+                                      const ConsolidatedReader *idsReader) {
 
   size_t nGrains = uniqueResult->nUniques;
   int totalVox = nScans * nScans;
@@ -1855,130 +1836,87 @@ void generate_sinograms_from_indexing(UniqueOrientationsResult *uniqueResult,
                    &grainQuats[g * 4]);
   }
 
-  /* Iterate over all voxels */
+  /* Iterate over all voxels using consolidated readers */
   for (int voxNr = 0; voxNr < totalVox; voxNr++) {
-    /* Read this voxel's IndexKey */
-    char keyFN[MAX_PATH_LEN];
-    sprintf(keyFN, "%s/IndexKey_voxNr_%06d.txt", folderName, voxNr);
-    FILE *keyF = fopen(keyFN, "r");
-    if (!keyF)
+    /* Read this voxel's keys from consolidated file */
+    int nCandidates = keysReader->nSolutions[voxNr];
+    if (nCandidates <= 0)
+      continue;
+    const size_t *keysData = ConsolidatedReader_getKeys(keysReader, voxNr);
+    const double *valsData = ConsolidatedReader_getVals(valsReader, voxNr);
+    if (!keysData || !valsData)
       continue;
 
-    /* Read all candidates */
-    size_t candidateKeys[MAX_N_SPOTS_PER_GRAIN * KEY_ARRAY_COLS];
-    int nCandidates = 0;
-    char aline[MAX_PATH_LEN];
-    while (fgets(aline, sizeof(aline), keyF) &&
-           nCandidates < MAX_N_SPOTS_PER_GRAIN) {
-      sscanf(aline, "%zu %zu %zu %zu", &candidateKeys[nCandidates * 4 + 0],
-             &candidateKeys[nCandidates * 4 + 1],
-             &candidateKeys[nCandidates * 4 + 2],
-             &candidateKeys[nCandidates * 4 + 3]);
-      nCandidates++;
-    }
-    fclose(keyF);
-    if (nCandidates == 0)
-      continue;
+    /* Get all IDs for this voxel */
+    const int *allIdsForVox = ConsolidatedReader_getIDs(idsReader, voxNr);
+    int totalIdsForVox = idsReader->nSolutions[voxNr];
 
-    /* Read this voxel's IndexBest to get orientation matrices */
-    char valsFN[MAX_PATH_LEN];
-    sprintf(valsFN, "%s/IndexBest_voxNr_%06d.bin", folderName, voxNr);
-    FILE *valsF = fopen(valsFN, "rb");
-    if (!valsF)
-      continue;
-
-    double *tmpArr = malloc(nCandidates * TMP_ARRAY_COLS * sizeof(double));
-    if (!tmpArr) {
-      fclose(valsF);
-      continue;
-    }
-    size_t nRead =
-        fread(tmpArr, sizeof(double), nCandidates * TMP_ARRAY_COLS, valsF);
-    fclose(valsF);
-    if ((int)(nRead / TMP_ARRAY_COLS) < nCandidates)
-      nCandidates = (int)(nRead / TMP_ARRAY_COLS);
+    /* Track cumulative ID offset across solutions within this voxel */
+    int idOffset = 0;
 
     /* For each candidate, check against each grain */
     for (int ci = 0; ci < nCandidates; ci++) {
+      int nIDsThisSolution = (int)keysData[ci * CONSOLIDATED_KEY_COLS + 2];
+
       double OMCand[ORIENT_ARRAY_COLS];
       for (int j = 0; j < ORIENT_ARRAY_COLS; j++)
-        OMCand[j] = tmpArr[ci * TMP_ARRAY_COLS + 2 + j];
+        OMCand[j] = valsData[ci * CONSOLIDATED_VALS_COLS + 2 + j];
 
       double quatCand[4];
       OrientMat2Quat(OMCand, quatCand);
 
       double confidence = 0;
-      if (tmpArr[ci * TMP_ARRAY_COLS + 14] > 0)
+      if (valsData[ci * CONSOLIDATED_VALS_COLS + 14] > 0)
         confidence =
-            tmpArr[ci * TMP_ARRAY_COLS + 15] / tmpArr[ci * TMP_ARRAY_COLS + 14];
-      if (confidence < 0.01)
-        continue; /* skip very low confidence */
+            valsData[ci * CONSOLIDATED_VALS_COLS + 15] / valsData[ci * CONSOLIDATED_VALS_COLS + 14];
+      if (confidence >= 0.01) {
+        for (size_t g = 0; g < nGrains; g++) {
+          double Axis[3], ang;
+          GetMisOrientation(quatCand, &grainQuats[g * 4], Axis, &ang, sgNr);
+          if (ang < maxAng) {
+            /* This candidate matches grain g. Read its spot IDs from consolidated data. */
+            if (allIdsForVox && idOffset + nIDsThisSolution <= totalIdsForVox) {
+              for (int si = 0; si < nIDsThisSolution; si++) {
+                int sid = allIdsForVox[idOffset + si];
+                if (sid < 1 || sid > (int)nSpotsAll)
+                  continue;
+                if (seenSpotID[g][sid])
+                  continue; /* deduplicate */
+                seenSpotID[g][sid] = true;
 
-      for (size_t g = 0; g < nGrains; g++) {
-        double Axis[3], ang;
-        GetMisOrientation(quatCand, &grainQuats[g * 4], Axis, &ang, sgNr);
-        if (ang < maxAng) {
-          /* This candidate matches grain g. Read its spot IDs. */
-          size_t nSpots = candidateKeys[ci * 4 + 1];
-          size_t startPos = candidateKeys[ci * 4 + 3];
+                size_t idx = (size_t)(sid - 1);
+                if ((int)allSpots[SPOTS_ARRAY_COLS * idx + 4] != sid)
+                  continue;
 
-          char idsFN[MAX_PATH_LEN];
-          sprintf(idsFN, "%s/IndexBest_IDs_voxNr_%06d.bin", folderName, voxNr);
-          FILE *idsF = fopen(idsFN, "rb");
-          if (!idsF)
-            continue;
-          if (fseek(idsF, (long)startPos, SEEK_SET) != 0) {
-            fclose(idsF);
-            continue;
-          }
+                /* Grow array if needed */
+                if (grainSpotCounts[g] >= grainSpotCaps[g]) {
+                  grainSpotCaps[g] *= 2;
+                  grainSpots[g] = realloc(grainSpots[g],
+                                          grainSpotCaps[g] * sizeof(CollectedSpot));
+                  if (!grainSpots[g])
+                    fatal_error("Failed to realloc grain %zu spots", g);
+                }
 
-          int *idArr = malloc(nSpots * sizeof(int));
-          if (!idArr) {
-            fclose(idsF);
-            continue;
-          }
-          size_t nIDsRead = fread(idArr, sizeof(int), nSpots, idsF);
-          fclose(idsF);
-
-          for (size_t si = 0; si < nIDsRead; si++) {
-            int sid = idArr[si];
-            if (sid < 1 || sid > (int)nSpotsAll)
-              continue;
-            if (seenSpotID[g][sid])
-              continue; /* deduplicate */
-            seenSpotID[g][sid] = true;
-
-            size_t idx = (size_t)(sid - 1);
-            if ((int)allSpots[SPOTS_ARRAY_COLS * idx + 4] != sid)
-              continue;
-
-            /* Grow array if needed */
-            if (grainSpotCounts[g] >= grainSpotCaps[g]) {
-              grainSpotCaps[g] *= 2;
-              grainSpots[g] = realloc(grainSpots[g],
-                                      grainSpotCaps[g] * sizeof(CollectedSpot));
-              if (!grainSpots[g])
-                fatal_error("Failed to realloc grain %zu spots", g);
+                CollectedSpot *cs = &grainSpots[g][grainSpotCounts[g]];
+                cs->spotID = sid;
+                cs->scanNr = (int)allSpots[SPOTS_ARRAY_COLS * idx + 9];
+                cs->intensity = allSpots[SPOTS_ARRAY_COLS * idx + 3];
+                cs->omega = allSpots[SPOTS_ARRAY_COLS * idx + 2];
+                cs->eta = allSpots[SPOTS_ARRAY_COLS * idx + 6];
+                cs->ringNr = (int)allSpots[SPOTS_ARRAY_COLS * idx + 5];
+                cs->yCen = allSpots[SPOTS_ARRAY_COLS * idx + 0];
+                cs->zCen = allSpots[SPOTS_ARRAY_COLS * idx + 1];
+                cs->theta = allSpots[SPOTS_ARRAY_COLS * idx + 7];
+                grainSpotCounts[g]++;
+              }
             }
-
-            CollectedSpot *cs = &grainSpots[g][grainSpotCounts[g]];
-            cs->spotID = sid;
-            cs->scanNr = (int)allSpots[SPOTS_ARRAY_COLS * idx + 9];
-            cs->intensity = allSpots[SPOTS_ARRAY_COLS * idx + 3];
-            cs->omega = allSpots[SPOTS_ARRAY_COLS * idx + 2];
-            cs->eta = allSpots[SPOTS_ARRAY_COLS * idx + 6];
-            cs->ringNr = (int)allSpots[SPOTS_ARRAY_COLS * idx + 5];
-            cs->yCen = allSpots[SPOTS_ARRAY_COLS * idx + 0];
-            cs->zCen = allSpots[SPOTS_ARRAY_COLS * idx + 1];
-            cs->theta = allSpots[SPOTS_ARRAY_COLS * idx + 7];
-            grainSpotCounts[g]++;
+            break; /* assigned to first matching grain — move to next candidate */
           }
-          free(idArr);
-          break; /* assigned to first matching grain — move to next candidate */
         }
       }
+      /* Always advance past this solution's IDs */
+      idOffset += nIDsThisSolution;
     }
-    free(tmpArr);
 
     if (voxNr > 0 && voxNr % 5000 == 0)
       printf("  Processed %d/%d voxels...\n", voxNr, totalVox);

@@ -184,6 +184,8 @@ typedef struct {
   double TrimmedMeanFraction;
   int    WeightByRadius;
   int    WeightByFitSNR;
+  int    WeightByPositionUncertainty;
+  int    AdaptiveEtaBins;
   int    L2Objective;
   int    FitWavelength;
   int    FitParallax;

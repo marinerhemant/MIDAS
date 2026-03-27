@@ -92,6 +92,7 @@ void free_peak_data(PeakData *p) {
   free(p->RMean);     free(p->EtaMean);
   free(p->IdealTtheta); free(p->PointDSpacing);
   free(p->RingNumbers); free(p->FitSNR);
+  free(p->FitFWHM);
   free(p->skipBin);
   memset(p, 0, sizeof(*p));
 }
@@ -102,6 +103,7 @@ void estep_free_result(EstepResult *r) {
   free(r->YMean);     free(r->ZMean);
   free(r->IdealTtheta); free(r->PointDSpacing);
   free(r->RingNumbers); free(r->FitSNR);
+  free(r->FitFWHM);
   free(r->skipBin);
   memset(r, 0, sizeof(*r));
 }
@@ -307,9 +309,11 @@ static int estep_fit_peaks(
   out->PointDSpacing = malloc(maxBins * sizeof(double));
   out->RingNumbers   = malloc(maxBins * sizeof(int));
   out->FitSNR        = calloc(maxBins, sizeof(double));
+  out->FitFWHM       = calloc(maxBins, sizeof(double));
   out->skipBin       = calloc(maxBins, sizeof(int));
   if (!out->RMean || !out->EtaMean || !out->IdealTtheta ||
-      !out->PointDSpacing || !out->RingNumbers || !out->FitSNR || !out->skipBin)
+      !out->PointDSpacing || !out->RingNumbers || !out->FitSNR ||
+      !out->FitFWHM || !out->skipBin)
     return -1;
 
   // Detect doublets
@@ -329,6 +333,28 @@ static int estep_fit_peaks(
     }
   }
 
+  // Adaptive eta: compute per-ring merge factors
+  int *etaMerge = malloc(n_hkls * sizeof(int));  // bins to average per ring
+  if (g->AdaptiveEtaBins) {
+    double maxR = 0;
+    for (int r = 0; r < n_hkls; r++) {
+      double idealR = g->Lsd * tan(deg2rad * 2.0 * rings->Thetas[r]) / g->px;
+      if (idealR > maxR) maxR = idealR;
+    }
+    for (int r = 0; r < n_hkls; r++) {
+      double idealR = g->Lsd * tan(deg2rad * 2.0 * rings->Thetas[r]) / g->px;
+      int merge = (int)(maxR / idealR + 0.5);
+      if (merge < 1) merge = 1;
+      // Clamp so merged bin doesn't exceed ~10 degrees
+      int maxMerge = (int)(10.0 / g->EtaBinSize);
+      if (maxMerge < 1) maxMerge = 1;
+      if (merge > maxMerge) merge = maxMerge;
+      etaMerge[r] = merge;
+    }
+  } else {
+    for (int r = 0; r < n_hkls; r++) etaMerge[r] = 1;
+  }
+
   int nValid = 0;
 #pragma omp parallel for schedule(dynamic) reduction(+:nValid)
   for (int re = 0; re < maxBins; re++) {
@@ -336,29 +362,72 @@ static int estep_fit_peaks(
     int e = re % nEtaBins;
     int binIdx = r * nEtaBins + e;
 
-    // Check if any R bin in this ring×eta is mask-contaminated
-    int masked = 0;
-    for (int rb = 0; rb < bins->ringNRBins[r]; rb++) {
-      long long fPos = (long long)(bins->ringRBinStart[r] + rb) * nEtaBins + e;
-      if (prof->binMaskFlag[fPos]) { masked = 1; break; }
-    }
-    if (masked) {
-      out->skipBin[binIdx] = 1;
-      continue;
+    // Adaptive: only process every nMerge-th eta bin (center of merged window)
+    int nMerge = etaMerge[r];
+    if (nMerge > 1 && (e % nMerge) != nMerge / 2) continue;
+
+    // For each sub-bin in the merge window, check if it is mask-clean.
+    // A sub-bin is clean if NONE of its R bins are mask-contaminated.
+    int nCleanEta = 0;
+    int *etaClean = NULL;
+    if (nMerge > 1) {
+      etaClean = malloc(nMerge * sizeof(int));
+      for (int me = 0; me < nMerge; me++) {
+        int ee = e - nMerge / 2 + me;
+        if (ee < 0) ee += nEtaBins;
+        if (ee >= nEtaBins) ee -= nEtaBins;
+        int subMasked = 0;
+        for (int rb = 0; rb < bins->ringNRBins[r]; rb++) {
+          long long fPos = (long long)(bins->ringRBinStart[r] + rb) * nEtaBins + ee;
+          if (prof->binMaskFlag[fPos]) { subMasked = 1; break; }
+        }
+        etaClean[me] = !subMasked;
+        if (!subMasked) nCleanEta++;
+      }
+      // Need at least half the window to be clean
+      if (nCleanEta < (nMerge + 1) / 2) {
+        free(etaClean);
+        out->skipBin[binIdx] = 1;
+        continue;
+      }
+    } else {
+      // nMerge == 1: original single-bin mask check
+      int masked = 0;
+      for (int rb = 0; rb < bins->ringNRBins[r]; rb++) {
+        long long fPos = (long long)(bins->ringRBinStart[r] + rb) * nEtaBins + e;
+        if (prof->binMaskFlag[fPos]) { masked = 1; break; }
+      }
+      if (masked) {
+        out->skipBin[binIdx] = 1;
+        continue;
+      }
     }
 
-    // Extract 1D radial profile for this ring×eta
+    // Extract 1D radial profile: average across clean eta bins in the window
     int nPts = bins->ringNRBins[r];
     double *Rs = malloc(nPts * sizeof(double));
-    double *PeakShape = malloc(nPts * sizeof(double));
+    double *PeakShape = calloc(nPts, sizeof(double));
     int hasData = 0;
     for (int rb = 0; rb < nPts; rb++) {
       int globalRIdx = bins->ringRBinStart[r] + rb;
       Rs[rb] = (bins->RBinsLow[globalRIdx] + bins->RBinsHigh[globalRIdx]) * 0.5;
-      long long fPos = (long long)globalRIdx * nEtaBins + e;
-      PeakShape[rb] = prof->profiles[fPos];
-      if (PeakShape[rb] > 0) hasData = 1;
+      int nContrib = 0;
+      for (int me = 0; me < nMerge; me++) {
+        // Skip masked sub-bins
+        if (etaClean && !etaClean[me]) continue;
+        int ee = e - nMerge / 2 + me;
+        if (ee < 0) ee += nEtaBins;
+        if (ee >= nEtaBins) ee -= nEtaBins;
+        long long fPos = (long long)globalRIdx * nEtaBins + ee;
+        double val = prof->profiles[fPos];
+        if (val > 0) { PeakShape[rb] += val; nContrib++; }
+      }
+      if (nContrib > 0) {
+        PeakShape[rb] /= nContrib;
+        hasData = 1;
+      }
     }
+    free(etaClean);
 
     if (!hasData || nPts < 5) {
       free(Rs); free(PeakShape);
@@ -366,21 +435,22 @@ static int estep_fit_peaks(
     }
 
     double IdealR = g->Lsd * tan(deg2rad * 2.0 * rings->Thetas[r]) / g->px;
-    double Rfit, snr;
+    double Rfit, snr, fwhm = 0;
     double Rstep = bins->rBinSize;
 
     if (dbFlag[r] == 0) {
-      pf_fit_single_peak(g->peakFitMode, nPts, Rs, PeakShape, &Rfit, &snr, Rstep, IdealR);
+      pf_fit_single_peak(g->peakFitMode, nPts, Rs, PeakShape, &Rfit, &snr, &fwhm, Rstep, IdealR);
     } else if (dbFlag[r] == 1) {
       int pairR = dbPair[r];
       double IdealR2 = g->Lsd * tan(deg2rad * 2.0 * rings->Thetas[pairR]) / g->px;
       double Rmid = (IdealR + IdealR2) * 0.5;
-      double Rfit2, snr2;
+      double Rfit2, snr2, fwhm2;
       pf_fit_doublet_peak(g->peakFitMode, nPts, Rs, PeakShape,
                            &Rfit, &Rfit2, &snr, &snr2,
+                           &fwhm, &fwhm2,
                            Rstep, IdealR, IdealR2, Rmid);
     } else {
-      pf_fit_single_peak(g->peakFitMode, nPts, Rs, PeakShape, &Rfit, &snr, Rstep, IdealR);
+      pf_fit_single_peak(g->peakFitMode, nPts, Rs, PeakShape, &Rfit, &snr, &fwhm, Rstep, IdealR);
     }
 
     if (snr < 1.0) {
@@ -406,13 +476,14 @@ static int estep_fit_peaks(
     out->PointDSpacing[binIdx] = rings->DSpacings[r];
     out->RingNumbers[binIdx]   = rings->RingIDs[r];
     out->FitSNR[binIdx]        = snr;
+    out->FitFWHM[binIdx]       = fwhm;
     nValid++;
 
     free(Rs);
     free(PeakShape);
   }
 
-  free(dbFlag); free(dbPair);
+  free(dbFlag); free(dbPair); free(etaMerge);
   out->nValid = nValid;
   printf("E-step: %d valid bins from %d total\n", nValid, maxBins);
   return 0;
@@ -438,10 +509,11 @@ static int estep_compact_and_invert(
   out->PointDSpacing = malloc(nV * sizeof(double));
   out->RingNumbers   = malloc(nV * sizeof(int));
   out->FitSNR        = malloc(nV * sizeof(double));
+  out->FitFWHM       = malloc(nV * sizeof(double));
   out->skipBin       = calloc(nV, sizeof(int));
   if (!out->RMean || !out->EtaMean || !out->YMean || !out->ZMean ||
       !out->IdealTtheta || !out->PointDSpacing || !out->RingNumbers ||
-      !out->FitSNR || !out->skipBin)
+      !out->FitSNR || !out->FitFWHM || !out->skipBin)
     return -1;
 
   // Build tilt matrix for the current E-step geometry
@@ -458,6 +530,7 @@ static int estep_compact_and_invert(
     out->PointDSpacing[cnt] = peaks->PointDSpacing[i];
     out->RingNumbers[cnt]   = peaks->RingNumbers[i];
     out->FitSNR[cnt]        = peaks->FitSNR[i];
+    out->FitFWHM[cnt]       = peaks->FitFWHM[i];
 
     // Convert (R, Eta) → raw pixel coords via panel-aware inversion
     double R_px = out->RMean[cnt] / g->px;
@@ -731,6 +804,7 @@ int main(int argc, char *argv[]) {
   int ReFitPeaks = cfg.ReFitPeaks;
   double TrimmedMeanFraction = cfg.TrimmedMeanFraction;
   int WeightByRadius = cfg.WeightByRadius, WeightByFitSNR = cfg.WeightByFitSNR;
+  int WeightByPositionUncertainty = cfg.WeightByPositionUncertainty;
   int L2Objective = cfg.L2Objective;
   int PerPanelLsd = cfg.PerPanelLsd, PerPanelDistortion = cfg.PerPanelDistortion;
   double tolLsdPanel = cfg.tolLsdPanel, tolP2Panel = cfg.tolP2Panel;
@@ -963,7 +1037,7 @@ int main(int argc, char *argv[]) {
   EstepResult eResult = {0};
   // Aliases for downstream M-step code (point into eResult arrays)
   double *RMean = NULL, *EtaMean = NULL, *YMean = NULL, *ZMean = NULL;
-  double *IdealTtheta = NULL, *PointDSpacing = NULL, *FitSNR = NULL;
+  double *IdealTtheta = NULL, *PointDSpacing = NULL, *FitSNR = NULL, *FitFWHM = NULL;
   int *RingNumbers = NULL, *skipBin = NULL;
   double *EtaIns = NULL, *DiffIns = NULL, *RadIns = NULL;
   double *Yc = NULL, *Zc = NULL;
@@ -1041,7 +1115,8 @@ int main(int argc, char *argv[]) {
       .NrTransOpt = NrTransOpt, .SubPixelLevel = cfg.SubPixelLevel,
       .SubPixelCardinalWidth = cfg.SubPixelCardinalWidth,
       .peakFitMode = peakFitMode, .DoubletSeparation = DoubletSeparation,
-      .Wavelength = Wavelength, .Width = cfg.Width
+      .Wavelength = Wavelength, .Width = cfg.Width,
+      .AdaptiveEtaBins = cfg.AdaptiveEtaBins
     };
     memcpy(eg0.TransOpt, TransOpt, sizeof(TransOpt));
     estep_free_result(&eResult);
@@ -1051,7 +1126,7 @@ int main(int argc, char *argv[]) {
     RMean = eResult.RMean; EtaMean = eResult.EtaMean;
     YMean = eResult.YMean; ZMean = eResult.ZMean;
     IdealTtheta = eResult.IdealTtheta; PointDSpacing = eResult.PointDSpacing;
-    RingNumbers = eResult.RingNumbers; FitSNR = eResult.FitSNR;
+    RingNumbers = eResult.RingNumbers; FitSNR = eResult.FitSNR; FitFWHM = eResult.FitFWHM;
     skipBin = eResult.skipBin;
     if (nIndices >= 3) {
       Yc = malloc(nIndices * sizeof(double));
@@ -1076,7 +1151,7 @@ int main(int argc, char *argv[]) {
     // Free previous E-step result + per-iter arrays
     estep_free_result(&eResult);
     RMean = EtaMean = YMean = ZMean = NULL;
-    IdealTtheta = PointDSpacing = FitSNR = NULL;
+    IdealTtheta = PointDSpacing = FitSNR = FitFWHM = NULL;
     RingNumbers = NULL; skipBin = NULL;
     free(EtaIns); free(DiffIns); free(RadIns);
     free(Yc); free(Zc);
@@ -1101,7 +1176,8 @@ int main(int argc, char *argv[]) {
       .NrTransOpt = NrTransOpt, .SubPixelLevel = cfg.SubPixelLevel,
       .SubPixelCardinalWidth = cfg.SubPixelCardinalWidth,
       .peakFitMode = peakFitMode, .DoubletSeparation = DoubletSeparation,
-      .Wavelength = Wavelength, .Width = cfg.Width
+      .Wavelength = Wavelength, .Width = cfg.Width,
+      .AdaptiveEtaBins = cfg.AdaptiveEtaBins
     };
     memcpy(eg.TransOpt, TransOpt, sizeof(TransOpt));
 
@@ -1118,7 +1194,7 @@ int main(int argc, char *argv[]) {
     RMean = eResult.RMean; EtaMean = eResult.EtaMean;
     YMean = eResult.YMean; ZMean = eResult.ZMean;
     IdealTtheta = eResult.IdealTtheta; PointDSpacing = eResult.PointDSpacing;
-    RingNumbers = eResult.RingNumbers; FitSNR = eResult.FitSNR;
+    RingNumbers = eResult.RingNumbers; FitSNR = eResult.FitSNR; FitFWHM = eResult.FitFWHM;
     skipBin = eResult.skipBin;
 
     // Allocate per-bin output arrays
@@ -1166,6 +1242,27 @@ int main(int argc, char *argv[]) {
       }
     }
 
+    // Position-uncertainty weights: w ~ (SNR / FWHM)^2
+    // Replaces SNR weights when enabled, since it already incorporates SNR.
+    double *posWeights = NULL;
+    if (WeightByPositionUncertainty && FitFWHM != NULL && FitSNR != NULL) {
+      posWeights = malloc(nIndices * sizeof(double));
+      double maxPosW = 0;
+      for (int i = 0; i < nIndices; i++) {
+        double fw = FitFWHM[i];
+        if (fw < 1e-6) fw = 1.0;
+        double snrVal = FitSNR[i];
+        double rawW = snrVal / fw;
+        posWeights[i] = rawW * rawW;
+        if (posWeights[i] > maxPosW) maxPosW = posWeights[i];
+      }
+      if (maxPosW > 0) {
+        for (int i = 0; i < nIndices; i++)
+          posWeights[i] /= maxPosW;
+      }
+    }
+    double *effectiveSNRWeights = posWeights ? posWeights : snrWeights;
+
     // M-step: optimize geometry
     double p4 = p4in, p5 = p5in, p6 = p6in;
     double wavelengthFit = Wavelength, parallaxFit = parallaxIn;
@@ -1184,7 +1281,7 @@ int main(int argc, char *argv[]) {
         tolLsd, tolBC, 0, tolP0, tolP1, tolP2, tolP3, tolShifts,
         tolRotation, px, outlierFactor, MinIndicesForFit, FixPanelID,
         RingWeights, p4in, tolP4, PerPanelLsd, tolLsdPanel,
-        PerPanelDistortion, tolP2Panel, WeightByRadius, snrWeights,
+        PerPanelDistortion, tolP2Panel, WeightByRadius, effectiveSNRWeights,
         &p4, p5in, tolP5, &p5, p6in, tolP6, &p6,
         iter == 0, L2Objective, initParams, initPanels,
         FitWavelength, Wavelength, tolWavelength, PointDSpacing,
@@ -1362,6 +1459,7 @@ int main(int argc, char *argv[]) {
 
     free(RingWeights);
     free(snrWeights);
+    free(posWeights);
   } // end iteration loop
 
   // Restore best iteration
@@ -1387,7 +1485,7 @@ int main(int argc, char *argv[]) {
     // Free previous E-step result + per-iter arrays
     estep_free_result(&eResult);
     RMean = EtaMean = YMean = ZMean = NULL;
-    IdealTtheta = PointDSpacing = FitSNR = NULL;
+    IdealTtheta = PointDSpacing = FitSNR = FitFWHM = NULL;
     RingNumbers = NULL; skipBin = NULL;
     free(EtaIns); free(DiffIns); free(RadIns);
     free(Yc); free(Zc);
@@ -1404,7 +1502,8 @@ int main(int argc, char *argv[]) {
       .NrTransOpt = NrTransOpt, .SubPixelLevel = cfg.SubPixelLevel,
       .SubPixelCardinalWidth = cfg.SubPixelCardinalWidth,
       .peakFitMode = peakFitMode, .DoubletSeparation = DoubletSeparation,
-      .Wavelength = Wavelength, .Width = cfg.Width
+      .Wavelength = Wavelength, .Width = cfg.Width,
+      .AdaptiveEtaBins = cfg.AdaptiveEtaBins
     };
     memcpy(egv.TransOpt, TransOpt, sizeof(TransOpt));
     int verifyN = run_estep(&egv, &rings, Average, AverageDark, mask,
@@ -1413,7 +1512,7 @@ int main(int argc, char *argv[]) {
     RMean = eResult.RMean; EtaMean = eResult.EtaMean;
     YMean = eResult.YMean; ZMean = eResult.ZMean;
     IdealTtheta = eResult.IdealTtheta; PointDSpacing = eResult.PointDSpacing;
-    RingNumbers = eResult.RingNumbers; FitSNR = eResult.FitSNR;
+    RingNumbers = eResult.RingNumbers; FitSNR = eResult.FitSNR; FitFWHM = eResult.FitFWHM;
     skipBin = eResult.skipBin;
 
     if (verifyN >= 3) {

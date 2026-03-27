@@ -156,17 +156,20 @@ int fitPeaksAutoDetect(const double *x, const double *intensity, int nBins,
 
 // Fit a single peak to a 1D radial profile (mode-dispatched).
 // mode: PF_MODE_PV (height-normalized pV) or PF_MODE_TCH (GSAS-II TCH)
-// Returns fitted center in *Rfit and signal-to-noise in *fitSNR.
+// Returns fitted center in *Rfit, signal-to-noise in *fitSNR,
+// and FWHM in *fitFWHM (NULL-safe: pass NULL if not needed).
 void pf_fit_single_peak(int mode, int nPts, double *Rs, double *Ints,
-                        double *Rfit, double *fitSNR,
+                        double *Rfit, double *fitSNR, double *fitFWHM,
                         double Rstep, double Rmean);
 
 // Fit a doublet (two overlapping peaks) in a 1D radial profile.
 // mode: PF_MODE_PV or PF_MODE_TCH
 // Peak1 constrained to [Rs[0], Rmid], Peak2 to [Rmid, Rs[end]].
+// fitFWHM1/fitFWHM2 are NULL-safe.
 void pf_fit_doublet_peak(int mode, int nPts, double *Rs, double *Ints,
                          double *Rfit1, double *Rfit2,
                          double *fitSNR1, double *fitSNR2,
+                         double *fitFWHM1, double *fitFWHM2,
                          double Rstep, double Rmean1,
                          double Rmean2, double Rmid);
 

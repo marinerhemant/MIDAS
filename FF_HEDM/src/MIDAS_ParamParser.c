@@ -316,6 +316,8 @@ int midas_parse_params(const char *filename, MIDASConfig *cfg) {
     if (param_double(aline, "TrimmedMeanFraction", &cfg->TrimmedMeanFraction)) continue;
     if (param_int(aline, "WeightByRadius", &cfg->WeightByRadius)) continue;
     if (param_int(aline, "WeightByFitSNR", &cfg->WeightByFitSNR)) continue;
+    if (param_int(aline, "WeightByPositionUncertainty", &cfg->WeightByPositionUncertainty)) continue;
+    if (param_int(aline, "AdaptiveEtaBins", &cfg->AdaptiveEtaBins)) continue;
     if (param_int(aline, "L2Objective", &cfg->L2Objective)) continue;
     if (param_int(aline, "FitWavelength", &cfg->FitWavelength)) continue;
     if (param_int(aline, "FitParallax", &cfg->FitParallax)) continue;

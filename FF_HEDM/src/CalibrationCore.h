@@ -65,17 +65,20 @@ struct calib_profile_data {
 };
 
 // Fit a pseudo-Voigt singlet profile to a 1D radial intensity slice.
-// Returns fitted peak center in *Rfit and fit SNR in *fitSNR.
+// Returns fitted peak center in *Rfit, fit SNR in *fitSNR,
+// and FWHM in *fitFWHM (NULL-safe).
 void calib_fit_peak_shape(int NrPtsForFit, double *Rs, double *PeakShape,
-                          double *Rfit, double *fitSNR,
+                          double *Rfit, double *fitSNR, double *fitFWHM,
                           double Rstep, double Rmean);
 
 // Fit a pseudo-Voigt doublet profile to a 1D radial intensity slice.
 // Peak1 constrained to [Rs[0], Rmid], Peak2 to [Rmid, Rs[end]].
+// fitFWHM1/fitFWHM2 are NULL-safe.
 void calib_fit_doublet_peak_shape(int NrPtsForFit, double *Rs,
                                   double *PeakShape,
                                   double *Rfit1, double *Rfit2,
                                   double *fitSNR1, double *fitSNR2,
+                                  double *fitFWHM1, double *fitFWHM2,
                                   double Rstep, double Rmean1,
                                   double Rmean2, double Rmid);
 
