@@ -323,12 +323,14 @@ double calib_problem_function(unsigned n, const double *x, double *grad,
   double TotalDiff = 0;
   int i;
 
-#pragma omp parallel for num_threads(numProcs) reduction(+ : TotalDiff)
+  CalibContext *ctx = f->ctx;
+
+#pragma omp parallel for num_threads(ctx->numProcs) reduction(+ : TotalDiff)
   for (i = 0; i < nIndices; i++) {
     double dY = 0, dZ = 0, dTheta = 0, dLsd = 0, dP2 = 0;
     int pIdx = -1;
-    if (nPanels > 0) {
-      pIdx = GetPanelIndex((double)YMean[i], (double)ZMean[i], nPanels, panels);
+    if (ctx->nPanels > 0) {
+      pIdx = GetPanelIndex((double)YMean[i], (double)ZMean[i], ctx->nPanels, ctx->panels);
       if (pIdx == -1) {
         if (doTrim) f->trimScratch[i] = -1.0;
         continue;
@@ -358,8 +360,8 @@ double calib_problem_function(unsigned n, const double *x, double *grad,
     double rawY = YMean[i] + dY;
     double rawZ = ZMean[i] + dZ;
     if (pIdx >= 0 && fabs(dTheta) > 1e-12) {
-      double cY = panels[pIdx].centerY;
-      double cZ = panels[pIdx].centerZ;
+      double cY = ctx->panels[pIdx].centerY;
+      double cZ = ctx->panels[pIdx].centerZ;
       double cosT = cos(DG_DEG2RAD * dTheta);
       double sinT = sin(DG_DEG2RAD * dTheta);
       double dy = rawY - cY, dz = rawZ - cZ;
@@ -418,7 +420,7 @@ double calib_problem_function(unsigned n, const double *x, double *grad,
     }
   }
 
-  NrCalls++;
+  ctx->NrCalls++;
 
   // Per-evaluation trace
   if (calib_trace_fp) {
@@ -428,7 +430,7 @@ double calib_problem_function(unsigned n, const double *x, double *grad,
     fprintf(calib_trace_fp,
             "%lld,%.10e,%.6f,%.6f,%.6f,%.6f,%.8f,%.8f,"
             "%.8e,%.8e,%.8e,%.8e,%.8e,%.8e,%.8e\n",
-            NrCalls, TotalDiff, meanStrain_ue,
+            ctx->NrCalls, TotalDiff, meanStrain_ue,
             Lsd, ybc, zbc, ty, tz,
             p0, p1, p2, p3, p4, p5, p6);
     fflush(calib_trace_fp);
@@ -440,6 +442,7 @@ double calib_problem_function(unsigned n, const double *x, double *grad,
 // ── Main optimizer: fit Lsd, BC, tilts, distortion, panel shifts ───
 
 void calib_fit_tilt_bc_lsd(
+    CalibContext *ctx,
     int nIndices, double *YMean, double *ZMean,
     double *IdealTtheta, double Lsd, double MaxRad, double ybc,
     double zbc, double tx, double tyin, double tzin, double p0in,
@@ -469,11 +472,11 @@ void calib_fit_tilt_bc_lsd(
   if (fitParallax) nBase++;
   if (fitWavelength) nBase++;
   unsigned n = nBase;
-  if (tolShifts > EPS && nPanels > 1) {
+  if (tolShifts > EPS && ctx->nPanels > 1) {
     int stride = (tolRotation > EPS) ? 3 : 2;
     if (PerPanelLsd) stride++;
     if (PerPanelDistortion) stride++;
-    n += (nPanels - 1) * stride;
+    n += (ctx->nPanels - 1) * stride;
   }
 
   struct calib_opt_data f_data;
@@ -501,6 +504,7 @@ void calib_fit_tilt_bc_lsd(
   if (trimmedMeanFraction < 1.0 - 1e-9)
     f_data.trimScratch = malloc(nIndices * sizeof(double));
   f_data.skipBin = skipBin;
+  f_data.ctx = ctx;
 
   double x[n], xl[n], xu[n];
   double bLsd  = (initParams ? initParams[0]  : Lsd);
@@ -544,21 +548,21 @@ void calib_fit_tilt_bc_lsd(
   }
 
   // Panel shift bounds
-  if (tolShifts > EPS && nPanels > 1) {
-    int panelCounts[nPanels];
-    memset(panelCounts, 0, nPanels * sizeof(int));
+  if (tolShifts > EPS && ctx->nPanels > 1) {
+    int panelCounts[ctx->nPanels];
+    memset(panelCounts, 0, ctx->nPanels * sizeof(int));
     for (int i = 0; i < nIndices; i++) {
-      int pIdx = GetPanelIndex(YMean[i], ZMean[i], nPanels, panels);
-      if (pIdx >= 0 && pIdx < nPanels)
+      int pIdx = GetPanelIndex(YMean[i], ZMean[i], ctx->nPanels, ctx->panels);
+      if (pIdx >= 0 && pIdx < ctx->nPanels)
         panelCounts[pIdx]++;
     }
 
     int p_idx = nBase;
-    for (int i = 0; i < nPanels; i++) {
+    for (int i = 0; i < ctx->nPanels; i++) {
       if (i == fixPanel) continue;
 
       // dY
-      x[p_idx] = panels[i].dY;
+      x[p_idx] = ctx->panels[i].dY;
       if (panelCounts[i] < minIndices) {
         x[p_idx] = 0; xl[p_idx] = 0; xu[p_idx] = 0;
       } else {
@@ -569,7 +573,7 @@ void calib_fit_tilt_bc_lsd(
       p_idx++;
 
       // dZ
-      x[p_idx] = panels[i].dZ;
+      x[p_idx] = ctx->panels[i].dZ;
       if (panelCounts[i] < minIndices) {
         x[p_idx] = 0; xl[p_idx] = 0; xu[p_idx] = 0;
       } else {
@@ -581,7 +585,7 @@ void calib_fit_tilt_bc_lsd(
 
       // dTheta
       if (tolRotation > EPS) {
-        x[p_idx] = panels[i].dTheta;
+        x[p_idx] = ctx->panels[i].dTheta;
         if (panelCounts[i] < minIndices) {
           x[p_idx] = 0; xl[p_idx] = 0; xu[p_idx] = 0;
         } else {
@@ -594,7 +598,7 @@ void calib_fit_tilt_bc_lsd(
 
       // dLsd
       if (PerPanelLsd) {
-        x[p_idx] = panels[i].dLsd;
+        x[p_idx] = ctx->panels[i].dLsd;
         if (panelCounts[i] < minIndices) {
           x[p_idx] = 0; xl[p_idx] = 0; xu[p_idx] = 0;
         } else {
@@ -607,7 +611,7 @@ void calib_fit_tilt_bc_lsd(
 
       // dP2
       if (PerPanelDistortion) {
-        x[p_idx] = panels[i].dP2;
+        x[p_idx] = ctx->panels[i].dP2;
         if (panelCounts[i] < minIndices) {
           x[p_idx] = 0; xl[p_idx] = 0; xu[p_idx] = 0;
         } else {
@@ -662,28 +666,28 @@ void calib_fit_tilt_bc_lsd(
   if (fitWavelength && wavelengthOut) *wavelengthOut = x[nBase - 1];
 
   // Update panel shifts
-  if (nPanels > 0) {
-    if (fixPanel >= 0 && fixPanel < nPanels) {
-      panels[fixPanel].dY = 0;
-      panels[fixPanel].dZ = 0;
-      panels[fixPanel].dTheta = 0;
+  if (ctx->nPanels > 0) {
+    if (fixPanel >= 0 && fixPanel < ctx->nPanels) {
+      ctx->panels[fixPanel].dY = 0;
+      ctx->panels[fixPanel].dZ = 0;
+      ctx->panels[fixPanel].dTheta = 0;
     }
-    if (tolShifts > EPS && nPanels > 1) {
+    if (tolShifts > EPS && ctx->nPanels > 1) {
       int xIdx = nBase;
-      for (int i = 0; i < nPanels; i++) {
+      for (int i = 0; i < ctx->nPanels; i++) {
         if (i == fixPanel) continue;
-        panels[i].dY = x[xIdx++];
-        panels[i].dZ = x[xIdx++];
-        if (tolRotation > EPS) panels[i].dTheta = x[xIdx++];
-        if (PerPanelLsd) panels[i].dLsd = x[xIdx++];
-        if (PerPanelDistortion) panels[i].dP2 = x[xIdx++];
+        ctx->panels[i].dY = x[xIdx++];
+        ctx->panels[i].dZ = x[xIdx++];
+        if (tolRotation > EPS) ctx->panels[i].dTheta = x[xIdx++];
+        if (PerPanelLsd) ctx->panels[i].dLsd = x[xIdx++];
+        if (PerPanelDistortion) ctx->panels[i].dP2 = x[xIdx++];
       }
     } else {
-      for (int i = 0; i < nPanels; i++) {
+      for (int i = 0; i < ctx->nPanels; i++) {
         if (i == fixPanel) continue;
-        panels[i].dY = 0;
-        panels[i].dZ = 0;
-        panels[i].dTheta = 0;
+        ctx->panels[i].dY = 0;
+        ctx->panels[i].dZ = 0;
+        ctx->panels[i].dTheta = 0;
       }
     }
   }
@@ -702,22 +706,22 @@ void calib_fit_tilt_bc_lsd(
     for (int i = 0; i < nIndices; i++) {
       double dY = 0, dZ = 0, dTheta = 0, dLsd = 0, dP2 = 0;
       int pIdx = -1;
-      if (nPanels > 0) {
-        pIdx = GetPanelIndex(YMean[i], ZMean[i], nPanels, panels);
+      if (ctx->nPanels > 0) {
+        pIdx = GetPanelIndex(YMean[i], ZMean[i], ctx->nPanels, ctx->panels);
         if (pIdx == -1) continue;
       }
       if (pIdx >= 0) {
-        dY = panels[pIdx].dY;
-        dZ = panels[pIdx].dZ;
-        dTheta = panels[pIdx].dTheta;
-        dLsd = panels[pIdx].dLsd;
-        dP2 = panels[pIdx].dP2;
+        dY = ctx->panels[pIdx].dY;
+        dZ = ctx->panels[pIdx].dZ;
+        dTheta = ctx->panels[pIdx].dTheta;
+        dLsd = ctx->panels[pIdx].dLsd;
+        dP2 = ctx->panels[pIdx].dP2;
       }
 
       double rawY = YMean[i] + dY, rawZ = ZMean[i] + dZ;
       if (pIdx >= 0 && fabs(dTheta) > 1e-12) {
-        double cY = panels[pIdx].centerY;
-        double cZ = panels[pIdx].centerZ;
+        double cY = ctx->panels[pIdx].centerY;
+        double cZ = ctx->panels[pIdx].centerZ;
         double cosT = cos(DG_DEG2RAD * dTheta);
         double sinT = sin(DG_DEG2RAD * dTheta);
         double dy = rawY - cY, dz = rawZ - cZ;
@@ -778,6 +782,7 @@ void calib_fit_tilt_bc_lsd(
 // Computes per-bin strain residuals using dg_pixel_to_REta.
 
 void calib_correct_tilt_distortion(
+    CalibContext *ctx,
     int nIndices, double MaxRad, double *YMean, double *ZMean,
     double *IdealTtheta, double px, double Lsd, double ybc, double zbc,
     double tx, double ty, double tz, double p0, double p1, double p2,
@@ -797,8 +802,8 @@ void calib_correct_tilt_distortion(
   for (i = 0; i < nIndices; i++) {
     double dY = 0, dZ = 0, dTheta = 0, dLsd = 0, dP2 = 0;
     int pIdx = -1;
-    if (nPanels > 0) {
-      pIdx = GetPanelIndex(YMean[i], ZMean[i], nPanels, panels);
+    if (ctx->nPanels > 0) {
+      pIdx = GetPanelIndex(YMean[i], ZMean[i], ctx->nPanels, ctx->panels);
       if (pIdx == -1) {
         Diffs[i] = -1.0;
         continue;
@@ -806,17 +811,17 @@ void calib_correct_tilt_distortion(
     }
 
     if (pIdx >= 0) {
-      dY = panels[pIdx].dY;
-      dZ = panels[pIdx].dZ;
-      dTheta = panels[pIdx].dTheta;
-      dLsd = panels[pIdx].dLsd;
-      dP2 = panels[pIdx].dP2;
+      dY = ctx->panels[pIdx].dY;
+      dZ = ctx->panels[pIdx].dZ;
+      dTheta = ctx->panels[pIdx].dTheta;
+      dLsd = ctx->panels[pIdx].dLsd;
+      dP2 = ctx->panels[pIdx].dP2;
     }
 
     double rawY = YMean[i] + dY, rawZ = ZMean[i] + dZ;
     if (pIdx >= 0 && fabs(dTheta) > 1e-12) {
-      double cY = panels[pIdx].centerY;
-      double cZ = panels[pIdx].centerZ;
+      double cY = ctx->panels[pIdx].centerY;
+      double cZ = ctx->panels[pIdx].centerZ;
       double cosT = cos(DG_DEG2RAD * dTheta);
       double sinT = sin(DG_DEG2RAD * dTheta);
       double dy = rawY - cY, dz = rawZ - cZ;

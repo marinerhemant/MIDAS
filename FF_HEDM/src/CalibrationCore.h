@@ -17,12 +17,14 @@
 #include "MIDAS_Math.h"
 #include <omp.h>
 
-// ── Globals (defined in each executable, extern'd here) ────────────
+// ── Calibration context (replaces global state) ───────────────────
 
-extern Panel *panels;
-extern int nPanels;
-extern int numProcs;
-extern long long int NrCalls;
+typedef struct {
+    Panel *panels;
+    int nPanels;
+    int numProcs;
+    long long int NrCalls;
+} CalibContext;
 
 // ── Per-evaluation M-step tracing ──────────────────────────────────
 
@@ -107,6 +109,7 @@ struct calib_opt_data {
   double trimFraction;  // trimmed mean fraction (1.0 = all)
   double *trimScratch;  // pre-allocated scratch for trim sort (size nIndices)
   const int *skipBin;   // per-point skip mask (NULL = no skipping)
+  CalibContext *ctx;    // calibration context (panels, threading)
 };
 
 // NLopt geometry optimization objective.
@@ -117,6 +120,7 @@ double calib_problem_function(unsigned n, const double *x, double *grad,
 
 // Main optimizer: fit Lsd, BC, tilts, distortion, panel shifts.
 void calib_fit_tilt_bc_lsd(
+    CalibContext *ctx,
     int nIndices, double *YMean, double *ZMean,
     double *IdealTtheta, double Lsd, double MaxRad, double ybc,
     double zbc, double tx, double tyin, double tzin, double p0in,
@@ -144,6 +148,7 @@ void calib_fit_tilt_bc_lsd(
 // Compute per-bin strain residuals using fitted geometry.
 // Delegates pixel→(R,η) to dg_pixel_to_REta.
 void calib_correct_tilt_distortion(
+    CalibContext *ctx,
     int nIndices, double MaxRad, double *YMean, double *ZMean,
     double *IdealTtheta, double px, double Lsd, double ybc, double zbc,
     double tx, double ty, double tz, double p0, double p1, double p2,

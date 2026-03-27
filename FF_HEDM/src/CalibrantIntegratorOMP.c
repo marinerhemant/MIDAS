@@ -10,6 +10,7 @@
 //
 
 #include "CalibrationCore.h"
+#include "CalibrantEstep.h"
 #include "FileReader.h"
 #include "IntegrationCore.h"
 #include "MIDAS_ParamParser.h"
@@ -26,11 +27,12 @@
 #include <string.h>
 #include <time.h>
 
-// Globals required by CalibrationCore (extern'd in CalibrationCore.h)
-Panel *panels = NULL;
-int nPanels = 0;
-int numProcs = 1;
-long long int NrCalls = 0;
+// Calibration context — replaces global state
+static CalibContext ctx = { .panels = NULL, .nPanels = 0, .numProcs = 1, .NrCalls = 0 };
+// Convenience aliases (point into ctx)
+#define panels    ctx.panels
+#define nPanels   ctx.nPanels
+#define numProcs  ctx.numProcs
 
 #define deg2rad 0.0174532925199433
 #define rad2deg 57.2957795130823
@@ -60,92 +62,135 @@ static int parse_parameters(const char *filename, MIDASConfig *cfg) {
   return 0;
 }
 
-// ── E-step: mapper → integrate → peak fit ─────────────────────────
-// Returns number of valid bins (nIndices).
-// Outputs: YMean, ZMean, IdealTtheta, RingNumbers, FitSNR, skipBin
-// Caller must free all output arrays.
+// ── E-step sub-functions ──────────────────────────────────────────
+//
+// The E-step pipeline: build_ring_bins → build_and_integrate →
+// fit_peaks → compact_and_invert.  Each sub-function has clear
+// input/output, owns its local temporaries, and returns 0 on success.
 
-static int run_estep(
-    double *Average, double *AverageDark,
-    int NrPixelsY, int NrPixelsZ, int NrPixels,
-    double px, double Lsd, double ybc, double zbc,
-    double tx, double ty, double tz,
-    double p0, double p1, double p2, double p3, double p4, double p5, double p6,
-    double MaxRingRad, double EtaBinSize, int RBinWidth,
-    double parallax, int n_hkls,
-    double *Thetas, double *DSpacings, int *RingIDs,
-    int NrTransOpt, const int TransOpt[10],
-    double *mask, double DoubletSeparation,
-    double Wavelength, double Width,
-    int peakFitMode,
-    int SubPixelLevel, double SubPixelCardinalWidth,
-    // outputs:
-    double **out_RMean, double **out_EtaMean,
-    double **out_YMean, double **out_ZMean,
-    double **out_IdealTtheta, double **out_PointDSpacing,
-    int **out_RingNumbers, double **out_FitSNR,
-    int **out_skipBin)
+// ── Free functions for E-step structs ─────────────────────────────
+
+void free_bin_edges(BinEdges *b) {
+  if (!b) return;
+  free(b->RBinsLow);   free(b->RBinsHigh);
+  free(b->EtaBinsLow); free(b->EtaBinsHigh);
+  free(b->ringRBinStart); free(b->ringNRBins);
+  free(b->ringRLo);    free(b->ringRHi);
+  memset(b, 0, sizeof(*b));
+}
+
+void free_profile_data(ProfileData *p) {
+  if (!p) return;
+  free(p->profiles);
+  free(p->norm);
+  free(p->binMaskFlag);
+  memset(p, 0, sizeof(*p));
+}
+
+void free_peak_data(PeakData *p) {
+  if (!p) return;
+  free(p->RMean);     free(p->EtaMean);
+  free(p->IdealTtheta); free(p->PointDSpacing);
+  free(p->RingNumbers); free(p->FitSNR);
+  free(p->skipBin);
+  memset(p, 0, sizeof(*p));
+}
+
+void estep_free_result(EstepResult *r) {
+  if (!r) return;
+  free(r->RMean);     free(r->EtaMean);
+  free(r->YMean);     free(r->ZMean);
+  free(r->IdealTtheta); free(r->PointDSpacing);
+  free(r->RingNumbers); free(r->FitSNR);
+  free(r->skipBin);
+  memset(r, 0, sizeof(*r));
+}
+
+// ── 1. Build per-ring R bin edges ─────────────────────────────────
+
+static int estep_build_ring_bins(const EstepGeometry *g,
+                                  const RingTable *rings,
+                                  BinEdges *out)
 {
+  int n = rings->n_hkls;
+  out->n_hkls = n;
 
-  // Build R bin edges: one contiguous set covering all rings
-  // with fine RBinWidth subdivision within each ring region.
-  double globalRMin = 1e20, globalRMax = -1e20;
-  double *ringRLo = malloc(n_hkls * sizeof(double));
-  double *ringRHi = malloc(n_hkls * sizeof(double));
-  int *ringRBinStart = malloc(n_hkls * sizeof(int)); // index into global R bins
-  int *ringNRBins = malloc(n_hkls * sizeof(int));
+  out->ringRLo     = malloc(n * sizeof(double));
+  out->ringRHi     = malloc(n * sizeof(double));
+  out->ringRBinStart = malloc(n * sizeof(int));
+  out->ringNRBins  = malloc(n * sizeof(int));
+  if (!out->ringRLo || !out->ringRHi || !out->ringRBinStart || !out->ringNRBins)
+    return -1;
 
-  double halfW_px = Width / px; // ring half-width in pixels
-  for (int r = 0; r < n_hkls; r++) {
-    double IdealR = Lsd * tan(deg2rad * 2.0 * Thetas[r]) / px; // pixels
-    ringRLo[r] = IdealR - halfW_px;
-    ringRHi[r] = IdealR + halfW_px;
-    if (ringRLo[r] < 0) ringRLo[r] = 0;
-    if (ringRLo[r] < globalRMin) globalRMin = ringRLo[r];
-    if (ringRHi[r] > globalRMax) globalRMax = ringRHi[r];
+  double halfW_px = g->Width / g->px;
+  for (int r = 0; r < n; r++) {
+    double IdealR = g->Lsd * tan(deg2rad * 2.0 * rings->Thetas[r]) / g->px;
+    out->ringRLo[r] = IdealR - halfW_px;
+    out->ringRHi[r] = IdealR + halfW_px;
+    if (out->ringRLo[r] < 0) out->ringRLo[r] = 0;
   }
 
   // Fine R bins: subdivide each pixel by RBinWidth
-  double rBinSize = 1.0 / RBinWidth; // pixels per bin
-  int totalRBins = 0;
-  for (int r = 0; r < n_hkls; r++) {
-    ringRBinStart[r] = totalRBins;
-    ringNRBins[r] = (int)ceil((ringRHi[r] - ringRLo[r]) / rBinSize);
-    if (ringNRBins[r] < 3) ringNRBins[r] = 3;
-    totalRBins += ringNRBins[r];
+  out->rBinSize = 1.0 / g->RBinWidth;
+  out->totalRBins = 0;
+  for (int r = 0; r < n; r++) {
+    out->ringRBinStart[r] = out->totalRBins;
+    out->ringNRBins[r] = (int)ceil((out->ringRHi[r] - out->ringRLo[r]) / out->rBinSize);
+    if (out->ringNRBins[r] < 3) out->ringNRBins[r] = 3;
+    out->totalRBins += out->ringNRBins[r];
   }
 
   // Build global R bin edge arrays
-  double *RBinsLow = malloc(totalRBins * sizeof(double));
-  double *RBinsHigh = malloc(totalRBins * sizeof(double));
-  for (int r = 0; r < n_hkls; r++) {
-    for (int b = 0; b < ringNRBins[r]; b++) {
-      int idx = ringRBinStart[r] + b;
-      RBinsLow[idx] = ringRLo[r] + b * rBinSize;
-      RBinsHigh[idx] = ringRLo[r] + (b + 1) * rBinSize;
+  out->RBinsLow  = malloc(out->totalRBins * sizeof(double));
+  out->RBinsHigh = malloc(out->totalRBins * sizeof(double));
+  if (!out->RBinsLow || !out->RBinsHigh) return -1;
+
+  for (int r = 0; r < n; r++) {
+    for (int b = 0; b < out->ringNRBins[r]; b++) {
+      int idx = out->ringRBinStart[r] + b;
+      out->RBinsLow[idx]  = out->ringRLo[r] + b * out->rBinSize;
+      out->RBinsHigh[idx] = out->ringRLo[r] + (b + 1) * out->rBinSize;
     }
   }
 
   // Eta bins: full 360° coverage
-  int nEtaBins = (int)(360.0 / EtaBinSize);
-  if (nEtaBins < 1) nEtaBins = 1;
-  double *EtaBinsLow = malloc(nEtaBins * sizeof(double));
-  double *EtaBinsHigh = malloc(nEtaBins * sizeof(double));
-  for (int e = 0; e < nEtaBins; e++) {
-    EtaBinsLow[e] = -180.0 + e * EtaBinSize;
-    EtaBinsHigh[e] = -180.0 + (e + 1) * EtaBinSize;
+  out->nEtaBins = (int)(360.0 / g->EtaBinSize);
+  if (out->nEtaBins < 1) out->nEtaBins = 1;
+  out->EtaBinsLow  = malloc(out->nEtaBins * sizeof(double));
+  out->EtaBinsHigh = malloc(out->nEtaBins * sizeof(double));
+  if (!out->EtaBinsLow || !out->EtaBinsHigh) return -1;
+
+  for (int e = 0; e < out->nEtaBins; e++) {
+    out->EtaBinsLow[e]  = -180.0 + e * g->EtaBinSize;
+    out->EtaBinsHigh[e] = -180.0 + (e + 1) * g->EtaBinSize;
   }
 
-  // Allocate map structures
+  return 0;
+}
+
+// ── 2. Build map, integrate, normalize ────────────────────────────
+
+static int estep_build_and_integrate(
+    const EstepGeometry *g, const BinEdges *bins, const RingTable *rings,
+    const double *image, const double *dark, const double *mask,
+    const Panel *pan, int nPan,
+    ProfileData *out)
+{
+  int totalRBins = bins->totalRBins;
+  int nEtaBins = bins->nEtaBins;
   long long nTotalBins = (long long)totalRBins * nEtaBins;
+
+  // Allocate map structures
   struct MapPixelData ***pxList = malloc(totalRBins * sizeof(*pxList));
   int **nPxList = malloc(totalRBins * sizeof(*nPxList));
-  int **maxnPx = malloc(totalRBins * sizeof(*maxnPx));
+  int **maxnPx  = malloc(totalRBins * sizeof(*maxnPx));
   int *binMaskFlag = calloc(nTotalBins, sizeof(int));
+  if (!pxList || !nPxList || !maxnPx || !binMaskFlag) return -1;
+
   for (int r = 0; r < totalRBins; r++) {
-    pxList[r] = calloc(nEtaBins, sizeof(*pxList[r]));
+    pxList[r]  = calloc(nEtaBins, sizeof(*pxList[r]));
     nPxList[r] = calloc(nEtaBins, sizeof(*nPxList[r]));
-    maxnPx[r] = calloc(nEtaBins, sizeof(*maxnPx[r]));
+    maxnPx[r]  = calloc(nEtaBins, sizeof(*maxnPx[r]));
     for (int e = 0; e < nEtaBins; e++) {
       maxnPx[r][e] = 2;
       pxList[r][e] = malloc(2 * sizeof(struct MapPixelData));
@@ -158,35 +203,37 @@ static int run_estep(
     omp_init_lock(&binLocks[i]);
 
   // Zero distortion maps (not used in calibrant)
-  double *distortionMapY = calloc((size_t)NrPixelsY * NrPixelsZ, sizeof(double));
-  double *distortionMapZ = calloc((size_t)NrPixelsY * NrPixelsZ, sizeof(double));
+  size_t nPx = (size_t)g->NrPixelsY * g->NrPixelsZ;
+  double *distortionMapY = calloc(nPx, sizeof(double));
+  double *distortionMapZ = calloc(nPx, sizeof(double));
 
   printf("Building map: %d R bins x %d Eta bins = %lld total bins\n",
          totalRBins, nEtaBins, nTotalBins);
 
   // Build the map
   long long nEntries = mapper_build_map(
-      tx, ty, tz, NrPixelsY, NrPixelsZ, px, px, ybc, zbc, Lsd, MaxRingRad,
-      p0, p1, p2, p3, p4, p5, p6,
-      EtaBinsLow, EtaBinsHigh, RBinsLow, RBinsHigh,
+      g->tx, g->ty, g->tz, g->NrPixelsY, g->NrPixelsZ, g->px, g->px,
+      g->ybc, g->zbc, g->Lsd, g->MaxRingRad,
+      g->p0, g->p1, g->p2, g->p3, g->p4, g->p5, g->p6,
+      bins->EtaBinsLow, bins->EtaBinsHigh, bins->RBinsLow, bins->RBinsHigh,
       totalRBins, nEtaBins,
       pxList, nPxList, maxnPx,
-      mask, binMaskFlag,
-      NrTransOpt, TransOpt,
-      binLocks, SubPixelLevel, SubPixelCardinalWidth,
-      parallax, 0, 0, 0.0, // no solid angle/polarization correction
+      (double *)mask, binMaskFlag,
+      g->NrTransOpt, g->TransOpt,
+      binLocks, g->SubPixelLevel, g->SubPixelCardinalWidth,
+      g->parallax, 0, 0, 0.0,
       distortionMapY, distortionMapZ,
-      panels, nPanels);
+      (Panel *)pan, nPan);
 
   printf("Map built: %lld pixel-bin entries\n", nEntries);
 
   // Integrate: map × image → profiles
   double *profiles = calloc(nTotalBins, sizeof(double));
-  double *norm = calloc(nTotalBins, sizeof(double));
+  double *norm     = calloc(nTotalBins, sizeof(double));
 
   integration_apply_map(pxList, nPxList, totalRBins, nEtaBins,
-                        Average, NrPixelsY, NrPixelsZ,
-                        AverageDark, profiles, norm);
+                        (double *)image, g->NrPixelsY, g->NrPixelsZ,
+                        (double *)dark, profiles, norm);
 
   // Normalize profiles by area weight
   for (long long b = 0; b < nTotalBins; b++) {
@@ -201,46 +248,80 @@ static int run_estep(
     FILE *pf = fopen("ci_profiles.csv", "w");
     if (pf) {
       fprintf(pf, "Ring,RBin,EtaBin,RCenter,EtaCenter,Intensity,Norm\n");
-      for (int r = 0; r < n_hkls; r++) {
-        for (int rb = 0; rb < ringNRBins[r]; rb++) {
-          int globalRIdx = ringRBinStart[r] + rb;
-          double rCenter = (RBinsLow[globalRIdx] + RBinsHigh[globalRIdx]) * 0.5;
+      for (int r = 0; r < rings->n_hkls; r++) {
+        for (int rb = 0; rb < bins->ringNRBins[r]; rb++) {
+          int globalRIdx = bins->ringRBinStart[r] + rb;
+          double rCenter = (bins->RBinsLow[globalRIdx] + bins->RBinsHigh[globalRIdx]) * 0.5;
           for (int e = 0; e < nEtaBins; e++) {
             long long fPos = (long long)globalRIdx * nEtaBins + e;
-            double etaCenter = (EtaBinsLow[e] + EtaBinsHigh[e]) * 0.5;
+            double etaCenter = (bins->EtaBinsLow[e] + bins->EtaBinsHigh[e]) * 0.5;
             if (profiles[fPos] != 0 || norm[fPos] > 0)
               fprintf(pf, "%d,%d,%d,%.6f,%.4f,%.6f,%.6f\n",
-                      RingIDs[r], rb, e, rCenter, etaCenter, profiles[fPos], norm[fPos]);
+                      rings->RingIDs[r], rb, e, rCenter, etaCenter,
+                      profiles[fPos], norm[fPos]);
           }
         }
       }
       fclose(pf);
       printf("Saved ci_profiles.csv (%d rings, %d R bins, %d Eta bins)\n",
-             n_hkls, totalRBins, nEtaBins);
+             rings->n_hkls, totalRBins, nEtaBins);
     }
   }
 
+  // Cleanup map structures (profiles and binMaskFlag survive via output)
+  for (int r = 0; r < totalRBins; r++) {
+    for (int e = 0; e < nEtaBins; e++)
+      free(pxList[r][e]);
+    free(pxList[r]);
+    free(nPxList[r]);
+    free(maxnPx[r]);
+  }
+  free(pxList); free(nPxList); free(maxnPx);
+  free(distortionMapY); free(distortionMapZ);
+  for (int i = 0; i < MAPPER_N_BIN_LOCKS; i++)
+    omp_destroy_lock(&binLocks[i]);
 
-  // Peak fitting: for each ring × eta, extract 1D radial profile and fit
+  out->nTotalBins = nTotalBins;
+  out->nEntries = nEntries;
+  out->profiles = profiles;
+  out->norm = norm;
+  out->binMaskFlag = binMaskFlag;
+  return 0;
+}
+
+// ── 3. Parallel peak fitting ──────────────────────────────────────
+
+static int estep_fit_peaks(
+    const EstepGeometry *g, const RingTable *rings,
+    const BinEdges *bins, const ProfileData *prof,
+    PeakData *out)
+{
+  int n_hkls = rings->n_hkls;
+  int nEtaBins = bins->nEtaBins;
   int maxBins = n_hkls * nEtaBins;
-  double *RMean = calloc(maxBins, sizeof(double));
-  double *EtaMean = calloc(maxBins, sizeof(double));
-  double *IdealTtheta = malloc(maxBins * sizeof(double));
-  double *PointDSpacing = malloc(maxBins * sizeof(double));
-  int *RingNumbers = malloc(maxBins * sizeof(int));
-  double *FitSNR = calloc(maxBins, sizeof(double));
-  int *skipBinOut = calloc(maxBins, sizeof(int));
+
+  out->maxBins = maxBins;
+  out->RMean         = calloc(maxBins, sizeof(double));
+  out->EtaMean       = calloc(maxBins, sizeof(double));
+  out->IdealTtheta   = malloc(maxBins * sizeof(double));
+  out->PointDSpacing = malloc(maxBins * sizeof(double));
+  out->RingNumbers   = malloc(maxBins * sizeof(int));
+  out->FitSNR        = calloc(maxBins, sizeof(double));
+  out->skipBin       = calloc(maxBins, sizeof(int));
+  if (!out->RMean || !out->EtaMean || !out->IdealTtheta ||
+      !out->PointDSpacing || !out->RingNumbers || !out->FitSNR || !out->skipBin)
+    return -1;
 
   // Detect doublets
   int *dbFlag = calloc(n_hkls, sizeof(int));
   int *dbPair = malloc(n_hkls * sizeof(int));
   for (int r = 0; r < n_hkls; r++) dbPair[r] = -1;
-  if (DoubletSeparation > 0) {
-    double sepPx = DoubletSeparation;
+  if (g->DoubletSeparation > 0) {
+    double sepPx = g->DoubletSeparation;
     for (int r = 0; r < n_hkls - 1; r++) {
       if (dbFlag[r] != 0) continue;
-      double R1 = Lsd * tan(deg2rad * 2.0 * Thetas[r]) / px;
-      double R2 = Lsd * tan(deg2rad * 2.0 * Thetas[r+1]) / px;
+      double R1 = g->Lsd * tan(deg2rad * 2.0 * rings->Thetas[r]) / g->px;
+      double R2 = g->Lsd * tan(deg2rad * 2.0 * rings->Thetas[r+1]) / g->px;
       if (fabs(R2 - R1) < sepPx) {
         dbFlag[r] = 1; dbFlag[r+1] = 2;
         dbPair[r] = r+1; dbPair[r+1] = r;
@@ -250,32 +331,32 @@ static int run_estep(
 
   int nValid = 0;
 #pragma omp parallel for schedule(dynamic) reduction(+:nValid)
-  for (int re = 0; re < n_hkls * nEtaBins; re++) {
+  for (int re = 0; re < maxBins; re++) {
     int r = re / nEtaBins;
     int e = re % nEtaBins;
     int binIdx = r * nEtaBins + e;
 
     // Check if any R bin in this ring×eta is mask-contaminated
     int masked = 0;
-    for (int rb = 0; rb < ringNRBins[r]; rb++) {
-      long long fPos = (long long)(ringRBinStart[r] + rb) * nEtaBins + e;
-      if (binMaskFlag[fPos]) { masked = 1; break; }
+    for (int rb = 0; rb < bins->ringNRBins[r]; rb++) {
+      long long fPos = (long long)(bins->ringRBinStart[r] + rb) * nEtaBins + e;
+      if (prof->binMaskFlag[fPos]) { masked = 1; break; }
     }
     if (masked) {
-      skipBinOut[binIdx] = 1;
+      out->skipBin[binIdx] = 1;
       continue;
     }
 
     // Extract 1D radial profile for this ring×eta
-    int nPts = ringNRBins[r];
+    int nPts = bins->ringNRBins[r];
     double *Rs = malloc(nPts * sizeof(double));
     double *PeakShape = malloc(nPts * sizeof(double));
     int hasData = 0;
     for (int rb = 0; rb < nPts; rb++) {
-      int globalRIdx = ringRBinStart[r] + rb;
-      Rs[rb] = (RBinsLow[globalRIdx] + RBinsHigh[globalRIdx]) * 0.5;
+      int globalRIdx = bins->ringRBinStart[r] + rb;
+      Rs[rb] = (bins->RBinsLow[globalRIdx] + bins->RBinsHigh[globalRIdx]) * 0.5;
       long long fPos = (long long)globalRIdx * nEtaBins + e;
-      PeakShape[rb] = profiles[fPos];
+      PeakShape[rb] = prof->profiles[fPos];
       if (PeakShape[rb] > 0) hasData = 1;
     }
 
@@ -284,25 +365,22 @@ static int run_estep(
       continue;
     }
 
-    double IdealR = Lsd * tan(deg2rad * 2.0 * Thetas[r]) / px;
+    double IdealR = g->Lsd * tan(deg2rad * 2.0 * rings->Thetas[r]) / g->px;
     double Rfit, snr;
-    double Rstep = rBinSize;
+    double Rstep = bins->rBinSize;
 
     if (dbFlag[r] == 0) {
-      // Singlet fit
-      pf_fit_single_peak(peakFitMode, nPts, Rs, PeakShape, &Rfit, &snr, Rstep, IdealR);
+      pf_fit_single_peak(g->peakFitMode, nPts, Rs, PeakShape, &Rfit, &snr, Rstep, IdealR);
     } else if (dbFlag[r] == 1) {
-      // Doublet: this is the inner ring
       int pairR = dbPair[r];
-      double IdealR2 = Lsd * tan(deg2rad * 2.0 * Thetas[pairR]) / px;
+      double IdealR2 = g->Lsd * tan(deg2rad * 2.0 * rings->Thetas[pairR]) / g->px;
       double Rmid = (IdealR + IdealR2) * 0.5;
       double Rfit2, snr2;
-      pf_fit_doublet_peak(peakFitMode, nPts, Rs, PeakShape,
+      pf_fit_doublet_peak(g->peakFitMode, nPts, Rs, PeakShape,
                            &Rfit, &Rfit2, &snr, &snr2,
                            Rstep, IdealR, IdealR2, Rmid);
     } else {
-      // dbFlag[r] == 2: outer ring of doublet — fit independently as singlet
-      pf_fit_single_peak(peakFitMode, nPts, Rs, PeakShape, &Rfit, &snr, Rstep, IdealR);
+      pf_fit_single_peak(g->peakFitMode, nPts, Rs, PeakShape, &Rfit, &snr, Rstep, IdealR);
     }
 
     if (snr < 1.0) {
@@ -310,128 +388,153 @@ static int run_estep(
       continue;
     }
 
-    // Convert (R_fit, eta_center) → (Y, Z) in microns
-    double etaCenter = (EtaBinsLow[e] + EtaBinsHigh[e]) * 0.5;
-    double Y_um, Z_um;
-    Y_um = -Rfit * px * sin(etaCenter * deg2rad);
-    Z_um =  Rfit * px * cos(etaCenter * deg2rad);
+    double etaCenter = (bins->EtaBinsLow[e] + bins->EtaBinsHigh[e]) * 0.5;
 
     // DEBUG: print E-step peak fit details for ring 1
     if (r == 0 && (e % 30 == 0 || e == 0)) {
       double strain_dbg = fabs(1.0 - Rfit / IdealR);
-      double Y_px = ybc + Rfit * sin(etaCenter * deg2rad);
-      double Z_px = zbc + Rfit * cos(etaCenter * deg2rad);
+      double Y_px = g->ybc + Rfit * sin(etaCenter * deg2rad);
+      double Z_px = g->zbc + Rfit * cos(etaCenter * deg2rad);
       printf("  DEBUG E-step Ring1 eta=%7.1f: Rfit=%10.6f IdealR=%10.6f dR=%+.6f strain=%8.1f ue SNR=%6.1f Y_px=%9.3f Z_px=%9.3f nPts=%d\n",
              etaCenter, Rfit, IdealR, Rfit-IdealR, strain_dbg*1e6, snr, Y_px, Z_px, nPts);
     }
 
     // Store results
-    RMean[binIdx] = Rfit * px; // microns
-    EtaMean[binIdx] = etaCenter;
-    IdealTtheta[binIdx] = 2.0 * Thetas[r];
-    PointDSpacing[binIdx] = DSpacings[r];
-    RingNumbers[binIdx] = RingIDs[r];
-    FitSNR[binIdx] = snr;
+    out->RMean[binIdx]         = Rfit * g->px; // microns
+    out->EtaMean[binIdx]       = etaCenter;
+    out->IdealTtheta[binIdx]   = 2.0 * rings->Thetas[r];
+    out->PointDSpacing[binIdx] = rings->DSpacings[r];
+    out->RingNumbers[binIdx]   = rings->RingIDs[r];
+    out->FitSNR[binIdx]        = snr;
     nValid++;
 
     free(Rs);
     free(PeakShape);
   }
 
+  free(dbFlag); free(dbPair);
+  out->nValid = nValid;
   printf("E-step: %d valid bins from %d total\n", nValid, maxBins);
+  return 0;
+}
 
-  // Compact: remove empty bins
-  double *cRM = malloc(nValid * sizeof(double));
-  double *cEM = malloc(nValid * sizeof(double));
-  double *cYM = malloc(nValid * sizeof(double));
-  double *cZM = malloc(nValid * sizeof(double));
-  double *cIT = malloc(nValid * sizeof(double));
-  double *cPD = malloc(nValid * sizeof(double));
-  int *cRN = malloc(nValid * sizeof(int));
-  double *cFS = malloc(nValid * sizeof(double));
-  int *cSB = calloc(nValid, sizeof(int));
+// ── 4. Compact valid bins + invert to raw pixel coords ────────────
 
-  // Build tilt matrix for the current E-step geometry (needed for inversion)
+static int estep_compact_and_invert(
+    const EstepGeometry *g, const PeakData *peaks,
+    const BinEdges *bins,
+    const Panel *pan, int nPan,
+    EstepResult *out)
+{
+  int nV = peaks->nValid;
+  int nEtaBins = bins->nEtaBins;
+
+  out->nValid        = nV;
+  out->RMean         = malloc(nV * sizeof(double));
+  out->EtaMean       = malloc(nV * sizeof(double));
+  out->YMean         = malloc(nV * sizeof(double));
+  out->ZMean         = malloc(nV * sizeof(double));
+  out->IdealTtheta   = malloc(nV * sizeof(double));
+  out->PointDSpacing = malloc(nV * sizeof(double));
+  out->RingNumbers   = malloc(nV * sizeof(int));
+  out->FitSNR        = malloc(nV * sizeof(double));
+  out->skipBin       = calloc(nV, sizeof(int));
+  if (!out->RMean || !out->EtaMean || !out->YMean || !out->ZMean ||
+      !out->IdealTtheta || !out->PointDSpacing || !out->RingNumbers ||
+      !out->FitSNR || !out->skipBin)
+    return -1;
+
+  // Build tilt matrix for the current E-step geometry
   double TRs_estep[3][3];
-  dg_build_tilt_matrix(tx, ty, tz, TRs_estep);
-  double MaxRingRad_local = MaxRingRad; // local copy for dg_pixel_to_REta
+  dg_build_tilt_matrix(g->tx, g->ty, g->tz, TRs_estep);
 
   int cnt = 0;
-  for (int i = 0; i < maxBins; i++) {
-    if (RMean[i] != 0) {
-      cRM[cnt] = RMean[i];
-      cEM[cnt] = EtaMean[i];
-      cIT[cnt] = IdealTtheta[i];
-      cPD[cnt] = PointDSpacing[i];
-      cRN[cnt] = RingNumbers[i];
-      cFS[cnt] = FitSNR[i];
-      // Convert (R, Eta) → raw pixel coords via panel-aware inversion.
-      // The forward map applied panel dLsd/dP2/dY/dZ/dTheta, so the
-      // inversion must undo all of these to yield raw pixel coords
-      // that the M-step's GetPanelIndex will correctly assign.
-      double R_px = cRM[cnt] / px;
-      double Y_inv, Z_inv;
+  for (int i = 0; i < peaks->maxBins; i++) {
+    if (peaks->RMean[i] == 0) continue;
 
-      // Determine which panel this bin belongs to using map pixel data.
-      // Use the flat-detector approximation to find approximate pixel,
-      // then look up panel.
-      int r = i / nEtaBins;
-      int e = i % nEtaBins;
-      const Panel *binPanel = NULL;
-      if (nPanels > 0) {
-        // Approximate pixel from flat-detector formula
-        double approxY = ybc + R_px * sin(cEM[cnt] * deg2rad);
-        double approxZ = zbc + R_px * cos(cEM[cnt] * deg2rad);
-        int pIdx = GetPanelIndex(approxY, approxZ, nPanels, panels);
-        if (pIdx >= 0)
-          binPanel = &panels[pIdx];
-      }
+    out->RMean[cnt]         = peaks->RMean[i];
+    out->EtaMean[cnt]       = peaks->EtaMean[i];
+    out->IdealTtheta[cnt]   = peaks->IdealTtheta[i];
+    out->PointDSpacing[cnt] = peaks->PointDSpacing[i];
+    out->RingNumbers[cnt]   = peaks->RingNumbers[i];
+    out->FitSNR[cnt]        = peaks->FitSNR[i];
 
-      dg_invert_REta_to_pixel_panel(R_px, cEM[cnt],
-                               ybc, zbc, TRs_estep, Lsd, MaxRingRad_local,
-                               p0, p1, p2, p3, p4, p5, p6,
-                               px, parallax, binPanel,
-                               &Y_inv, &Z_inv);
-      cYM[cnt] = Y_inv;
-      cZM[cnt] = Z_inv;
-      if (skipBinOut[i]) cSB[cnt] = 1;
-      cnt++;
+    // Convert (R, Eta) → raw pixel coords via panel-aware inversion
+    double R_px = out->RMean[cnt] / g->px;
+    const Panel *binPanel = NULL;
+    if (nPan > 0) {
+      double approxY = g->ybc + R_px * sin(out->EtaMean[cnt] * deg2rad);
+      double approxZ = g->zbc + R_px * cos(out->EtaMean[cnt] * deg2rad);
+      int pIdx = GetPanelIndex(approxY, approxZ, nPan, pan);
+      if (pIdx >= 0)
+        binPanel = &pan[pIdx];
     }
+
+    double Y_inv, Z_inv;
+    dg_invert_REta_to_pixel_panel(R_px, out->EtaMean[cnt],
+                             g->ybc, g->zbc, TRs_estep, g->Lsd, g->MaxRingRad,
+                             g->p0, g->p1, g->p2, g->p3, g->p4, g->p5, g->p6,
+                             g->px, g->parallax, binPanel,
+                             &Y_inv, &Z_inv);
+    out->YMean[cnt] = Y_inv;
+    out->ZMean[cnt] = Z_inv;
+    if (peaks->skipBin[i]) out->skipBin[cnt] = 1;
+    cnt++;
   }
 
-  // Cleanup map
-  for (int r = 0; r < totalRBins; r++) {
-    for (int e = 0; e < nEtaBins; e++)
-      free(pxList[r][e]);
-    free(pxList[r]);
-    free(nPxList[r]);
-    free(maxnPx[r]);
-  }
-  free(pxList); free(nPxList); free(maxnPx);
-  free(binMaskFlag); free(profiles); free(norm);
-  free(RBinsLow); free(RBinsHigh);
-  free(EtaBinsLow); free(EtaBinsHigh);
-  free(ringRLo); free(ringRHi);
-  free(ringRBinStart); free(ringNRBins);
-  free(distortionMapY); free(distortionMapZ);
-  free(RMean); free(EtaMean);
-  free(IdealTtheta); free(PointDSpacing);
-  free(RingNumbers); free(FitSNR); free(skipBinOut);
-  free(dbFlag); free(dbPair);
-  for (int i = 0; i < MAPPER_N_BIN_LOCKS; i++)
-    omp_destroy_lock(&binLocks[i]);
-
-  *out_RMean = cRM;
-  *out_EtaMean = cEM;
-  *out_YMean = cYM;
-  *out_ZMean = cZM;
-  *out_IdealTtheta = cIT;
-  *out_PointDSpacing = cPD;
-  *out_RingNumbers = cRN;
-  *out_FitSNR = cFS;
-  *out_skipBin = cSB;
-  return cnt;
+  out->nValid = cnt;
+  return 0;
 }
+
+// ── Top-level E-step orchestrator ─────────────────────────────────
+// Returns number of valid bins (nIndices).
+// Caller must free result via estep_free_result().
+
+static int run_estep(
+    const EstepGeometry *geom, const RingTable *rings,
+    const double *image, const double *dark, const double *mask,
+    const Panel *pan, int nPan,
+    EstepResult *result)
+{
+  BinEdges     bins  = {0};
+  ProfileData  prof  = {0};
+  PeakData     peaks = {0};
+  int rc = 0;
+
+  if ((rc = estep_build_ring_bins(geom, rings, &bins)) != 0) {
+    fprintf(stderr, "estep_build_ring_bins failed\n");
+    goto cleanup;
+  }
+
+  if ((rc = estep_build_and_integrate(geom, &bins, rings, image, dark, mask,
+                                       pan, nPan, &prof)) != 0) {
+    fprintf(stderr, "estep_build_and_integrate failed\n");
+    goto cleanup;
+  }
+
+  if ((rc = estep_fit_peaks(geom, rings, &bins, &prof, &peaks)) != 0) {
+    fprintf(stderr, "estep_fit_peaks failed\n");
+    goto cleanup;
+  }
+
+  if (peaks.nValid < 3) {
+    fprintf(stderr, "E-step: only %d valid peaks (need ≥ 3)\n", peaks.nValid);
+    rc = -1;
+    goto cleanup;
+  }
+
+  if ((rc = estep_compact_and_invert(geom, &peaks, &bins, pan, nPan, result)) != 0) {
+    fprintf(stderr, "estep_compact_and_invert failed\n");
+    goto cleanup;
+  }
+
+cleanup:
+  free_bin_edges(&bins);
+  free_profile_data(&prof);
+  free_peak_data(&peaks);
+  return (rc == 0) ? result->nValid : rc;
+}
+
 
 // ── main ──────────────────────────────────────────────────────────
 
@@ -596,6 +699,10 @@ int main(int argc, char *argv[]) {
   fclose(hklf);
   printf("%d rings selected (capacity %d).\n\n", n_hkls, hklCapacity);
 
+  // Build RingTable for the factored E-step
+  RingTable rings = { .n_hkls = n_hkls, .Thetas = Thetas,
+                      .DSpacings = DSpacings, .RingIDs = RingIDs };
+
   // Load dark + image in ORIGINAL dimensions (NrPixelsY × NrPixelsZ).
   // mapper_build_map works on the original pixel grid and handles transforms
   // internally via inverse_transform_pixel, so no squaring/transforming here.
@@ -695,6 +802,9 @@ int main(int argc, char *argv[]) {
   double LsdFit, ybcFit, zbcFit, ty, tz, p0, p1, p2, p3;
   double MeanDiff = 1e20, StdDiff = 0;
   int nIndices = 0;
+  // E-step result: managed via EstepResult struct
+  EstepResult eResult = {0};
+  // Aliases for downstream M-step code (point into eResult arrays)
   double *RMean = NULL, *EtaMean = NULL, *YMean = NULL, *ZMean = NULL;
   double *IdealTtheta = NULL, *PointDSpacing = NULL, *FitSNR = NULL;
   int *RingNumbers = NULL, *skipBin = NULL;
@@ -743,17 +853,28 @@ int main(int argc, char *argv[]) {
   // nIterations=0: evaluate-only mode — run E-step once, skip optimization
   if (nIterations == 0) {
     printf("\n*** nIterations=0: evaluate-only mode ***\n");
-    nIndices = run_estep(
-        Average, AverageDark, NrPixelsY, NrPixelsZ, NrPixels,
-        px, Lsd, ybc, zbc, tx, tyin, tzin,
-        p0in, p1in, p2in, p3in, p4in, p5in, p6in,
-        MaxRingRad, EtaBinSize, RBinWidth,
-        parallaxIn, n_hkls, Thetas, DSpacings, RingIDs,
-        NrTransOpt, TransOpt, mask, DoubletSeparation, Wavelength,
-        cfg.Width, peakFitMode,
-        cfg.SubPixelLevel, cfg.SubPixelCardinalWidth,
-        &RMean, &EtaMean, &YMean, &ZMean,
-        &IdealTtheta, &PointDSpacing, &RingNumbers, &FitSNR, &skipBin);
+    EstepGeometry eg0 = {
+      .Lsd = Lsd, .ybc = ybc, .zbc = zbc, .tx = tx, .ty = tyin, .tz = tzin,
+      .p0 = p0in, .p1 = p1in, .p2 = p2in, .p3 = p3in,
+      .p4 = p4in, .p5 = p5in, .p6 = p6in,
+      .px = px, .MaxRingRad = MaxRingRad, .parallax = parallaxIn,
+      .EtaBinSize = EtaBinSize, .RBinWidth = RBinWidth,
+      .NrPixelsY = NrPixelsY, .NrPixelsZ = NrPixelsZ, .NrPixels = NrPixels,
+      .NrTransOpt = NrTransOpt, .SubPixelLevel = cfg.SubPixelLevel,
+      .SubPixelCardinalWidth = cfg.SubPixelCardinalWidth,
+      .peakFitMode = peakFitMode, .DoubletSeparation = DoubletSeparation,
+      .Wavelength = Wavelength, .Width = cfg.Width
+    };
+    memcpy(eg0.TransOpt, TransOpt, sizeof(TransOpt));
+    estep_free_result(&eResult);
+    nIndices = run_estep(&eg0, &rings, Average, AverageDark, mask,
+                         panels, nPanels, &eResult);
+    // Alias result arrays for downstream code
+    RMean = eResult.RMean; EtaMean = eResult.EtaMean;
+    YMean = eResult.YMean; ZMean = eResult.ZMean;
+    IdealTtheta = eResult.IdealTtheta; PointDSpacing = eResult.PointDSpacing;
+    RingNumbers = eResult.RingNumbers; FitSNR = eResult.FitSNR;
+    skipBin = eResult.skipBin;
     if (nIndices >= 3) {
       Yc = malloc(nIndices * sizeof(double));
       Zc = malloc(nIndices * sizeof(double));
@@ -774,47 +895,53 @@ int main(int argc, char *argv[]) {
   for (int iter = 0; iter < nIterations; iter++) {
     printf("\n──── Iteration %d/%d ────\n", iter + 1, nIterations);
 
-    // Free previous E-step arrays
-    free(RMean); free(EtaMean); free(YMean); free(ZMean);
-    free(IdealTtheta); free(PointDSpacing); free(FitSNR);
-    free(RingNumbers); free(skipBin);
-    free(EtaIns); free(DiffIns); free(RadIns);
-    free(Yc); free(Zc);
+    // Free previous E-step result + per-iter arrays
+    estep_free_result(&eResult);
     RMean = EtaMean = YMean = ZMean = NULL;
     IdealTtheta = PointDSpacing = FitSNR = NULL;
-    EtaIns = DiffIns = RadIns = Yc = Zc = NULL;
     RingNumbers = NULL; skipBin = NULL;
+    free(EtaIns); free(DiffIns); free(RadIns);
+    free(Yc); free(Zc);
+    EtaIns = DiffIns = RadIns = Yc = Zc = NULL;
 
-    // For iter > 0, use the M-step's converged geometry to build the map.
-    // For iter == 0, use the original input params.
-    double estep_Lsd = (iter > 0) ? LsdFit : Lsd;
-    double estep_ybc = (iter > 0) ? ybcFit : ybc;
-    double estep_zbc = (iter > 0) ? zbcFit : zbc;
-    double estep_ty  = (iter > 0) ? ty     : tyin;
-    double estep_tz  = (iter > 0) ? tz     : tzin;
-    double estep_p0  = (iter > 0) ? p0     : p0in;
-    double estep_p1  = (iter > 0) ? p1     : p1in;
-    double estep_p2  = (iter > 0) ? p2     : p2in;
-    double estep_p3  = (iter > 0) ? p3     : p3in;
-    // p4in, p5in, parallaxIn are updated in place by the M-step
+    // Build EstepGeometry with current best params
+    EstepGeometry eg = {
+      .Lsd = (iter > 0) ? LsdFit : Lsd,
+      .ybc = (iter > 0) ? ybcFit : ybc,
+      .zbc = (iter > 0) ? zbcFit : zbc,
+      .tx = tx,
+      .ty  = (iter > 0) ? ty     : tyin,
+      .tz  = (iter > 0) ? tz     : tzin,
+      .p0  = (iter > 0) ? p0     : p0in,
+      .p1  = (iter > 0) ? p1     : p1in,
+      .p2  = (iter > 0) ? p2     : p2in,
+      .p3  = (iter > 0) ? p3     : p3in,
+      .p4 = p4in, .p5 = p5in, .p6 = p6in,
+      .px = px, .MaxRingRad = MaxRingRad, .parallax = parallaxIn,
+      .EtaBinSize = EtaBinSize, .RBinWidth = RBinWidth,
+      .NrPixelsY = NrPixelsY, .NrPixelsZ = NrPixelsZ, .NrPixels = NrPixels,
+      .NrTransOpt = NrTransOpt, .SubPixelLevel = cfg.SubPixelLevel,
+      .SubPixelCardinalWidth = cfg.SubPixelCardinalWidth,
+      .peakFitMode = peakFitMode, .DoubletSeparation = DoubletSeparation,
+      .Wavelength = Wavelength, .Width = cfg.Width
+    };
+    memcpy(eg.TransOpt, TransOpt, sizeof(TransOpt));
 
     // Run E-step with current best geometry
-    nIndices = run_estep(
-        Average, AverageDark, NrPixelsY, NrPixelsZ, NrPixels,
-        px, estep_Lsd, estep_ybc, estep_zbc, tx, estep_ty, estep_tz,
-        estep_p0, estep_p1, estep_p2, estep_p3, p4in, p5in, p6in,
-        MaxRingRad, EtaBinSize, RBinWidth,
-        parallaxIn, n_hkls, Thetas, DSpacings, RingIDs,
-        NrTransOpt, TransOpt, mask, DoubletSeparation, Wavelength,
-        cfg.Width, peakFitMode,
-        cfg.SubPixelLevel, cfg.SubPixelCardinalWidth,
-        &RMean, &EtaMean, &YMean, &ZMean,
-        &IdealTtheta, &PointDSpacing, &RingNumbers, &FitSNR, &skipBin);
+    nIndices = run_estep(&eg, &rings, Average, AverageDark, mask,
+                         panels, nPanels, &eResult);
 
     if (nIndices < 3) {
       fprintf(stderr, "E-step produced only %d bins — aborting.\n", nIndices);
       break;
     }
+
+    // Alias result arrays for downstream M-step code
+    RMean = eResult.RMean; EtaMean = eResult.EtaMean;
+    YMean = eResult.YMean; ZMean = eResult.ZMean;
+    IdealTtheta = eResult.IdealTtheta; PointDSpacing = eResult.PointDSpacing;
+    RingNumbers = eResult.RingNumbers; FitSNR = eResult.FitSNR;
+    skipBin = eResult.skipBin;
 
     // Allocate per-bin output arrays
     Yc = malloc(nIndices * sizeof(double));
@@ -876,6 +1003,7 @@ int main(int argc, char *argv[]) {
     calib_set_trace_file(traceFN);
 
     calib_fit_tilt_bc_lsd(
+        &ctx,
         nIndices, Yc, Zc, IdealTtheta, Lsd, MaxRingRad, ybc, zbc, tx,
         tyin, tzin, p0in, p1in, p2in, p3in, &ty, &tz, &LsdFit,
         &ybcFit, &zbcFit, &p0, &p1, &p2, &p3, &MeanDiff, tolTilts,
@@ -905,6 +1033,7 @@ int main(int argc, char *argv[]) {
     if (RemoveOutliersBetweenIters && outlierFactor > 0 && iter < nIterations - 1)
       iterOutlier = calloc(nIndices, sizeof(int));
     calib_correct_tilt_distortion(
+        &ctx,
         nIndices, MaxRingRad, Yc, Zc, IdealTtheta, px, LsdFit, ybcFit,
         zbcFit, tx, ty, tz, p0, p1, p2, p3, EtaIns, DiffIns, RadIns,
         &StdDiff, outlierFactor, iterOutlier, p4, p5, p6, OutlierIterations,
@@ -1128,29 +1257,37 @@ int main(int argc, char *argv[]) {
   // to verify the reported strain is consistent.
   if (nIterations > 0 && Yc) {
     printf("\n──── Verification E-step (fresh map with converged params) ────\n");
-    // Free previous E-step arrays
-    free(RMean); free(EtaMean); free(YMean); free(ZMean);
-    free(IdealTtheta); free(PointDSpacing); free(FitSNR);
-    free(RingNumbers); free(skipBin);
-    free(EtaIns); free(DiffIns); free(RadIns);
-    free(Yc); free(Zc);
+    // Free previous E-step result + per-iter arrays
+    estep_free_result(&eResult);
     RMean = EtaMean = YMean = ZMean = NULL;
     IdealTtheta = PointDSpacing = FitSNR = NULL;
-    EtaIns = DiffIns = RadIns = Yc = Zc = NULL;
     RingNumbers = NULL; skipBin = NULL;
+    free(EtaIns); free(DiffIns); free(RadIns);
+    free(Yc); free(Zc);
+    EtaIns = DiffIns = RadIns = Yc = Zc = NULL;
 
     // Run E-step with CONVERGED geometry
-    int verifyN = run_estep(
-        Average, AverageDark, NrPixelsY, NrPixelsZ, NrPixels,
-        px, LsdFit, ybcFit, zbcFit, tx, ty, tz,
-        p0, p1, p2, p3, p4in, p5in, p6in,
-        MaxRingRad, EtaBinSize, RBinWidth,
-        parallaxIn, n_hkls, Thetas, DSpacings, RingIDs,
-        NrTransOpt, TransOpt, mask, DoubletSeparation, Wavelength,
-        cfg.Width, peakFitMode,
-        cfg.SubPixelLevel, cfg.SubPixelCardinalWidth,
-        &RMean, &EtaMean, &YMean, &ZMean,
-        &IdealTtheta, &PointDSpacing, &RingNumbers, &FitSNR, &skipBin);
+    EstepGeometry egv = {
+      .Lsd = LsdFit, .ybc = ybcFit, .zbc = zbcFit, .tx = tx, .ty = ty, .tz = tz,
+      .p0 = p0, .p1 = p1, .p2 = p2, .p3 = p3,
+      .p4 = p4in, .p5 = p5in, .p6 = p6in,
+      .px = px, .MaxRingRad = MaxRingRad, .parallax = parallaxIn,
+      .EtaBinSize = EtaBinSize, .RBinWidth = RBinWidth,
+      .NrPixelsY = NrPixelsY, .NrPixelsZ = NrPixelsZ, .NrPixels = NrPixels,
+      .NrTransOpt = NrTransOpt, .SubPixelLevel = cfg.SubPixelLevel,
+      .SubPixelCardinalWidth = cfg.SubPixelCardinalWidth,
+      .peakFitMode = peakFitMode, .DoubletSeparation = DoubletSeparation,
+      .Wavelength = Wavelength, .Width = cfg.Width
+    };
+    memcpy(egv.TransOpt, TransOpt, sizeof(TransOpt));
+    int verifyN = run_estep(&egv, &rings, Average, AverageDark, mask,
+                            panels, nPanels, &eResult);
+    // Alias result arrays
+    RMean = eResult.RMean; EtaMean = eResult.EtaMean;
+    YMean = eResult.YMean; ZMean = eResult.ZMean;
+    IdealTtheta = eResult.IdealTtheta; PointDSpacing = eResult.PointDSpacing;
+    RingNumbers = eResult.RingNumbers; FitSNR = eResult.FitSNR;
+    skipBin = eResult.skipBin;
 
     if (verifyN >= 3) {
       nIndices = verifyN;
@@ -1166,6 +1303,7 @@ int main(int argc, char *argv[]) {
       double verifyMean = 0, verifyStd = 0;
       int *verifyOutlier = calloc(nIndices, sizeof(int));
       calib_correct_tilt_distortion(
+          &ctx,
           nIndices, MaxRingRad, Yc, Zc, IdealTtheta, px, LsdFit, ybcFit,
           zbcFit, tx, ty, tz, p0, p1, p2, p3, EtaIns, DiffIns, RadIns,
           &verifyStd, outlierFactor, verifyOutlier, p4in, p5in, p6in, OutlierIterations,
@@ -1186,6 +1324,7 @@ int main(int argc, char *argv[]) {
   if (Yc && Zc && IdealTtheta) {
     int *IsOutlier = calloc(nIndices, sizeof(int));
     calib_correct_tilt_distortion(
+        &ctx,
         nIndices, MaxRingRad, Yc, Zc, IdealTtheta, px, LsdFit, ybcFit,
         zbcFit, tx, ty, tz, p0, p1, p2, p3, EtaIns, DiffIns, RadIns,
         &StdDiff, outlierFactor, IsOutlier, p4in, p5in, p6in, OutlierIterations,
@@ -1265,9 +1404,7 @@ int main(int argc, char *argv[]) {
   }
 
   // Cleanup
-  free(RMean); free(EtaMean); free(YMean); free(ZMean);
-  free(IdealTtheta); free(PointDSpacing); free(FitSNR);
-  free(RingNumbers); free(skipBin);
+  estep_free_result(&eResult);
   free(EtaIns); free(DiffIns); free(RadIns);
   free(Yc); free(Zc);
   free(Average); free(AverageDark);
