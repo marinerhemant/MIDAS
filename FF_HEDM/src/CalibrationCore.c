@@ -82,15 +82,30 @@ void calib_weighted_mean(int nIndices, int *NrEachIndexBin, int **Indices,
 
 // ── Peak profile fitting: pseudo-Voigt singlet ─────────────────────
 
-// NLopt objective for singlet pseudo-Voigt profile.
-// x[0]=Rcen, x[1]=Mu, x[2]=Gamma(FWHM), x[3]=Imax, x[4]=BG
+// Chebyshev BG helper: BG(R) = c0 + c1*T1(x) + c2*T2(x)
+// where x = 2*(R - Rmid) / (Rmax - Rmin), T1(x)=x, T2(x)=2x²-1
+static inline double cheby_bg(double R, double Rmin, double Rmax,
+                               double c0, double c1, double c2) {
+  double Rmid = 0.5 * (Rmin + Rmax);
+  double span = Rmax - Rmin;
+  if (span < 1e-12) return c0;
+  double x = 2.0 * (R - Rmid) / span;
+  return c0 + c1 * x + c2 * (2.0 * x * x - 1.0);
+}
+
+// NLopt objective for singlet pseudo-Voigt profile with Chebyshev BG.
+// x[0]=Rcen, x[1]=Mu, x[2]=Gamma(FWHM), x[3]=Imax, x[4]=c0, x[5]=c1, x[6]=c2
 static double calib_pv_singlet_obj(unsigned n, const double *x,
                                    double *grad, void *f_data_trial) {
   struct calib_profile_data *f = (struct calib_profile_data *)f_data_trial;
   int N = f->NrPtsForFit;
   double *Rs = f->Rs;
   double *PS = f->PeakShape;
-  double Rcen = x[0], Mu = x[1], Gamma = x[2], Imax = x[3], BG = x[4];
+  double Rcen = x[0], Mu = x[1], Gamma = x[2], Imax = x[3];
+  double c0 = x[4], c1 = x[5], c2 = x[6];
+  double Rmin = f->Rmin, Rmax = f->Rmax;
+  double Rmid = 0.5 * (Rmin + Rmax);
+  double span = Rmax - Rmin;
   double C0 = 4.0 * log(2.0);
   double G2 = Gamma * Gamma, G3 = G2 * Gamma;
   double invG2 = 1.0 / G2;
@@ -104,6 +119,8 @@ static double calib_pv_singlet_obj(unsigned n, const double *x,
     double denom = 1.0 + 4.0 * dr2 * invG2;
     double L = 1.0 / denom;
     double G = exp(-C0 * dr2 * invG2);
+    double xc = (span > 1e-12) ? 2.0 * (Rs[i] - Rmid) / span : 0.0;
+    double BG = c0 + c1 * xc + c2 * (2.0 * xc * xc - 1.0);
     double CalcI = BG + Imax * (Mu * L + (1.0 - Mu) * G);
     double diff = CalcI - PS[i];
     Total += diff * diff;
@@ -118,7 +135,9 @@ static double calib_pv_singlet_obj(unsigned n, const double *x,
       double dGdGam = G * 2.0 * C0 * dr2 / G3;
       grad[2] += c * Imax * (Mu * dLdGam + (1.0 - Mu) * dGdGam);
       grad[3] += c * (Mu * L + (1.0 - Mu) * G);
-      grad[4] += c;
+      grad[4] += c;                           // dc/dc0
+      grad[5] += c * xc;                      // dc/dc1
+      grad[6] += c * (2.0 * xc * xc - 1.0);  // dc/dc2
     }
   }
   return Total;
@@ -127,24 +146,30 @@ static double calib_pv_singlet_obj(unsigned n, const double *x,
 void calib_fit_peak_shape(int NrPtsForFit, double *Rs, double *PeakShape,
                           double *Rfit, double *fitSNR,
                           double Rstep, double Rmean) {
-  unsigned n = 5;
-  double x[5], xl[5], xu[5];
+  unsigned n = 7;
+  double x[7], xl[7], xu[7];
   struct calib_profile_data f_data;
   f_data.NrPtsForFit = NrPtsForFit;
   f_data.Rs = Rs;
   f_data.PeakShape = PeakShape;
+  f_data.Rmin = Rs[0];
+  f_data.Rmax = Rs[NrPtsForFit - 1];
   double BG0 = (PeakShape[0] + PeakShape[NrPtsForFit - 1]) / 2;
   if (BG0 < 0) BG0 = 0;
   double MaxI = -1e20;
   for (int i = 0; i < NrPtsForFit; i++)
     if (PeakShape[i] > MaxI) MaxI = PeakShape[i];
+  double BGhi = (BG0 > 0) ? BG0 * 3.0 : MaxI * 0.5;
 
   x[0] = Rmean;  xl[0] = Rs[0];  xu[0] = Rs[NrPtsForFit - 1];
   x[1] = 0.5;    xl[1] = 0;      xu[1] = 1;
   double GammaGuess = Rstep * 3;
   x[2] = GammaGuess;  xl[2] = Rstep / 2;  xu[2] = Rstep * NrPtsForFit / 2;
   x[3] = MaxI - BG0;  xl[3] = (MaxI - BG0) / 100;  xu[3] = MaxI * 1.5;
-  x[4] = BG0;         xl[4] = 0;  xu[4] = (BG0 > 0) ? BG0 * 1.5 : MaxI * 0.5;
+  // Chebyshev BG: c0 ≈ mean BG, c1 ≈ slope, c2 ≈ curvature
+  x[4] = BG0;         xl[4] = 0;       xu[4] = BGhi;
+  x[5] = 0;           xl[5] = -BGhi;   xu[5] = BGhi;
+  x[6] = 0;           xl[6] = -BGhi;   xu[6] = BGhi;
 
   NLoptConfig config = {0};
   config.dimension = n;
@@ -158,7 +183,7 @@ void calib_fit_peak_shape(int NrPtsForFit, double *Rs, double *PeakShape,
   config.ftol_rel = 1e-8;
   config.xtol_rel = 1e-8;
 
-  double x_init[5];
+  double x_init[7];
   memcpy(x_init, x, n * sizeof(double));
   int rc = run_nlopt_optimization(NLOPT_LD_LBFGS, &config);
   if (rc < 0) {
@@ -172,9 +197,9 @@ void calib_fit_peak_shape(int NrPtsForFit, double *Rs, double *PeakShape,
 
 // ── Peak profile fitting: pseudo-Voigt doublet ─────────────────────
 
-// NLopt objective for doublet pseudo-Voigt profile.
+// NLopt objective for doublet pseudo-Voigt profile with Chebyshev BG.
 // x[0]=Rcen1, x[1]=Rcen2, x[2]=Mu, x[3]=Gamma1, x[4]=Imax1,
-// x[5]=Gamma2, x[6]=Imax2, x[7]=BG
+// x[5]=Gamma2, x[6]=Imax2, x[7]=c0, x[8]=c1, x[9]=c2
 static double calib_pv_doublet_obj(unsigned n, const double *x,
                                    double *grad, void *f_data_trial) {
   struct calib_profile_data *f = (struct calib_profile_data *)f_data_trial;
@@ -184,7 +209,10 @@ static double calib_pv_doublet_obj(unsigned n, const double *x,
   double Rcen1 = x[0], Rcen2 = x[1], Mu = x[2];
   double Gamma1 = x[3], Imax1 = x[4];
   double Gamma2 = x[5], Imax2 = x[6];
-  double BG = x[7];
+  double c0 = x[7], c1_bg = x[8], c2_bg = x[9];
+  double Rmin = f->Rmin, Rmax = f->Rmax;
+  double Rmid_bg = 0.5 * (Rmin + Rmax);
+  double span = Rmax - Rmin;
   double C0 = 4.0 * log(2.0);
   double G1_2 = Gamma1 * Gamma1, G1_3 = G1_2 * Gamma1;
   double G2_2 = Gamma2 * Gamma2, G2_3 = G2_2 * Gamma2;
@@ -200,6 +228,8 @@ static double calib_pv_doublet_obj(unsigned n, const double *x,
     double den2 = 1.0 + 4.0 * dr2_2 * invG2_2;
     double L1 = 1.0 / den1, Gau1 = exp(-C0 * dr1_2 * invG1_2);
     double L2 = 1.0 / den2, Gau2 = exp(-C0 * dr2_2 * invG2_2);
+    double xc = (span > 1e-12) ? 2.0 * (Rs[i] - Rmid_bg) / span : 0.0;
+    double BG = c0 + c1_bg * xc + c2_bg * (2.0 * xc * xc - 1.0);
     double CalcI = BG + Imax1 * (Mu * L1 + (1 - Mu) * Gau1)
                       + Imax2 * (Mu * L2 + (1 - Mu) * Gau2);
     double diff = CalcI - PS[i];
@@ -222,7 +252,9 @@ static double calib_pv_doublet_obj(unsigned n, const double *x,
       grad[5] += c * Imax2 * (Mu * dL2dG + (1.0 - Mu) * dG2dG);
       grad[6] += c * (Mu * L2 + (1.0 - Mu) * Gau2);
       grad[2] += c * (Imax1 * (L1 - Gau1) + Imax2 * (L2 - Gau2));
-      grad[7] += c;
+      grad[7] += c;                           // dc/dc0
+      grad[8] += c * xc;                      // dc/dc1
+      grad[9] += c * (2.0 * xc * xc - 1.0);  // dc/dc2
     }
   }
   return Total;
@@ -234,12 +266,14 @@ void calib_fit_doublet_peak_shape(int NrPtsForFit, double *Rs,
                                   double *fitSNR1, double *fitSNR2,
                                   double Rstep, double Rmean1,
                                   double Rmean2, double Rmid) {
-  unsigned n = 8;
-  double x[8], xl[8], xu[8];
+  unsigned n = 10;
+  double x[10], xl[10], xu[10];
   struct calib_profile_data f_data;
   f_data.NrPtsForFit = NrPtsForFit;
   f_data.Rs = Rs;
   f_data.PeakShape = PeakShape;
+  f_data.Rmin = Rs[0];
+  f_data.Rmax = Rs[NrPtsForFit - 1];
   double BG0 = (PeakShape[0] + PeakShape[NrPtsForFit - 1]) / 2;
   if (BG0 < 0) BG0 = 0;
   double MaxI = -1e20;
@@ -248,15 +282,19 @@ void calib_fit_doublet_peak_shape(int NrPtsForFit, double *Rs,
   double GammaGuess = Rstep * 3;
   double ImaxGuess = MaxI - BG0;
   if (ImaxGuess < 1e-6) ImaxGuess = 1e-6;
+  double BGhi = (BG0 > 0) ? BG0 * 3.0 : MaxI * 0.5;
 
-  x[0] = Rmean1;  xl[0] = Rs[0];  xu[0] = Rmid;
-  x[1] = Rmean2;  xl[1] = Rmid;   xu[1] = Rs[NrPtsForFit - 1];
-  x[2] = 0.5;     xl[2] = 0;      xu[2] = 1;
-  x[3] = GammaGuess;  xl[3] = Rstep / 2;  xu[3] = Rstep * NrPtsForFit / 2;
-  x[4] = ImaxGuess * 0.6;  xl[4] = ImaxGuess / 100;  xu[4] = MaxI * 1.5;
-  x[5] = GammaGuess;  xl[5] = Rstep / 2;  xu[5] = Rstep * NrPtsForFit / 2;
-  x[6] = ImaxGuess * 0.6;  xl[6] = ImaxGuess / 100;  xu[6] = MaxI * 1.5;
-  x[7] = BG0;  xl[7] = 0;  xu[7] = (BG0 > 0) ? BG0 * 2.0 : 1.0;
+  // Set bounds (shared across all multi-start trials)
+  xl[0] = Rs[0];       xu[0] = Rmid;
+  xl[1] = Rmid;        xu[1] = Rs[NrPtsForFit - 1];
+  xl[2] = 0;           xu[2] = 1;
+  xl[3] = Rstep / 2;   xu[3] = Rstep * NrPtsForFit / 2;
+  xl[4] = ImaxGuess / 100;  xu[4] = MaxI * 1.5;
+  xl[5] = Rstep / 2;   xu[5] = Rstep * NrPtsForFit / 2;
+  xl[6] = ImaxGuess / 100;  xu[6] = MaxI * 1.5;
+  xl[7] = 0;           xu[7] = BGhi;
+  xl[8] = -BGhi;       xu[8] = BGhi;
+  xl[9] = -BGhi;       xu[9] = BGhi;
 
   NLoptConfig config = {0};
   config.dimension = n;
@@ -270,19 +308,43 @@ void calib_fit_doublet_peak_shape(int NrPtsForFit, double *Rs,
   config.ftol_rel = 1e-5;
   config.xtol_rel = 1e-5;
 
-  double x_init[8];
-  memcpy(x_init, x, n * sizeof(double));
-  int rc = run_nlopt_optimization(NLOPT_LD_LBFGS, &config);
-  if (rc < 0) {
-    memcpy(x, x_init, n * sizeof(double));
-    run_nlopt_optimization(NLOPT_LN_NELDERMEAD, &config);
+  // Multi-start: try 3 initial Mu values, keep best
+  double MuTrials[] = {0.3, 0.5, 0.7};
+  double bestObj = 1e30;
+  double bestX[10];
+  memset(bestX, 0, sizeof(bestX));
+
+  for (int trial = 0; trial < 3; trial++) {
+    x[0] = Rmean1;
+    x[1] = Rmean2;
+    x[2] = MuTrials[trial];
+    x[3] = GammaGuess;
+    x[4] = ImaxGuess * 0.6;
+    x[5] = GammaGuess;
+    x[6] = ImaxGuess * 0.6;
+    x[7] = BG0;
+    x[8] = 0;
+    x[9] = 0;
+
+    double x_init[10];
+    memcpy(x_init, x, n * sizeof(double));
+    int rc = run_nlopt_optimization(NLOPT_LD_LBFGS, &config);
+    if (rc < 0) {
+      memcpy(x, x_init, n * sizeof(double));
+      run_nlopt_optimization(NLOPT_LN_NELDERMEAD, &config);
+    }
+    if (config.min_function_val < bestObj) {
+      bestObj = config.min_function_val;
+      memcpy(bestX, x, n * sizeof(double));
+    }
   }
-  *Rfit1 = x[0];
-  *Rfit2 = x[1];
-  double rmsResid = sqrt(config.min_function_val / NrPtsForFit);
+
+  *Rfit1 = bestX[0];
+  *Rfit2 = bestX[1];
+  double rmsResid = sqrt(bestObj / NrPtsForFit);
   if (rmsResid > 0) {
-    *fitSNR1 = x[4] / rmsResid;
-    *fitSNR2 = x[6] / rmsResid;
+    *fitSNR1 = bestX[4] / rmsResid;
+    *fitSNR2 = bestX[6] / rmsResid;
   } else {
     *fitSNR1 = 1.0;
     *fitSNR2 = 1.0;

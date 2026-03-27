@@ -61,6 +61,7 @@ struct calib_profile_data {
   int NrPtsForFit;
   double *Rs;
   double *PeakShape;
+  double Rmin, Rmax;  // R range for Chebyshev BG normalization
 };
 
 // Fit a pseudo-Voigt singlet profile to a 1D radial intensity slice.
