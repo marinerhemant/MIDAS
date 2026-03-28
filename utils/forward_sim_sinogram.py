@@ -497,71 +497,121 @@ def _build_raw_filename(raw_folder, file_stem, layer_nr, padding, ext):
     return None
 
 
-def _read_raw_frames(raw_folder, file_stem, layer_nr, padding, ext,
-                     header_size, bytes_per_pixel, nr_pixels_y, nr_pixels_z,
-                     data_loc='exchange/data'):
-    """Read all frames from a raw detector file (GE, TIFF, HDF5, CBF).
+class _RawFileReader:
+    """Lazy frame-at-a-time reader for raw detector files.
 
-    Returns numpy array of shape (nFrames, nZ, nY) as float64, or None on failure.
-    Supports .bz2 transparent decompression via BZ2Context.
-
-    Parameters
-    ----------
-    data_loc : str
-        HDF5 dataset path for image data (only used for HDF5 files).
+    Opens the file once, reads individual frames on demand via __getitem__.
+    Keeps the file handle open until close() or context-manager exit.
+    Supports HDF5, TIFF, GE binary, and CBF formats with .bz2.
     """
-    fn = _build_raw_filename(raw_folder, file_stem, layer_nr, padding, ext)
-    if fn is None:
-        return None
 
-    fmt = _detect_format(ext)
+    def __init__(self, raw_folder, file_stem, layer_nr, padding, ext,
+                 header_size, bytes_per_pixel, nr_pixels_y, nr_pixels_z,
+                 data_loc='exchange/data'):
+        self.fn = _build_raw_filename(raw_folder, file_stem, layer_nr,
+                                       padding, ext)
+        self.fmt = _detect_format(ext)
+        self.header_size = header_size
+        self.bytes_per_pixel = bytes_per_pixel
+        self.nr_pixels_y = nr_pixels_y
+        self.nr_pixels_z = nr_pixels_z
+        self.data_loc = data_loc
+        self.n_frames = 0
+        self._bz2_ctx = None
+        self._hf = None       # h5py File handle
+        self._dataset = None   # h5py dataset reference
+        self._tiff_data = None # TIFF: full array (typically small)
+        self._ge_path = None   # GE: path to uncompressed file
 
-    try:
-        with BZ2Context(fn) as uncompressed:
-            if fmt == 'hdf5':
+    def open(self):
+        """Open the file and determine frame count. Returns self or None."""
+        if self.fn is None:
+            return None
+
+        self._bz2_ctx = BZ2Context(self.fn)
+        uncompressed = self._bz2_ctx.__enter__()
+
+        try:
+            if self.fmt == 'hdf5':
                 import h5py
-                with h5py.File(uncompressed, 'r') as hf:
-                    if data_loc not in hf:
-                        # Try just the dataset name as fallback
-                        ds_name = os.path.basename(data_loc)
-                        if ds_name in hf:
-                            data = hf[ds_name][:]
-                        else:
-                            return None
+                self._hf = h5py.File(uncompressed, 'r')
+                if self.data_loc in self._hf:
+                    self._dataset = self._hf[self.data_loc]
+                else:
+                    ds_name = os.path.basename(self.data_loc)
+                    if ds_name in self._hf:
+                        self._dataset = self._hf[ds_name]
                     else:
-                        data = hf[data_loc][:]
-                return data.astype(np.float64)
+                        self.close()
+                        return None
+                self.n_frames = self._dataset.shape[0]
 
-            elif fmt == 'tiff':
+            elif self.fmt == 'tiff':
                 import tifffile
-                data = tifffile.imread(uncompressed)
-                if data.ndim == 2:
-                    data = data.reshape(1, *data.shape)
-                return data.astype(np.float64)
+                self._tiff_data = tifffile.imread(uncompressed)
+                if self._tiff_data.ndim == 2:
+                    self._tiff_data = self._tiff_data.reshape(
+                        1, *self._tiff_data.shape)
+                self.n_frames = self._tiff_data.shape[0]
 
-            elif fmt == 'cbf':
-                try:
-                    from read_cbf import read_cbf as _read_cbf
-                    _, data = _read_cbf(uncompressed, check_md5=False)
-                    if data.ndim == 2:
-                        data = data.reshape(1, *data.shape)
-                    return data.astype(np.float64)
-                except ImportError:
-                    print('  WARNING: read_cbf not available, cannot read CBF files')
-                    return None
+            elif self.fmt == 'cbf':
+                from read_cbf import read_cbf as _read_cbf
+                _, cbf_data = _read_cbf(uncompressed, check_md5=False)
+                if cbf_data.ndim == 2:
+                    cbf_data = cbf_data.reshape(1, *cbf_data.shape)
+                self._tiff_data = cbf_data  # reuse same slot
+                self.n_frames = cbf_data.shape[0]
 
             else:  # GE binary
-                dtype = np.uint32 if bytes_per_pixel == 4 else np.uint16
+                self._ge_path = uncompressed
                 file_size = os.path.getsize(uncompressed)
-                n_pixels = nr_pixels_y * nr_pixels_z
-                n_frames = (file_size - header_size) // (bytes_per_pixel * n_pixels)
-                data = np.fromfile(uncompressed, dtype=dtype, offset=header_size)
-                data = data[:n_frames * n_pixels].reshape(
-                    (n_frames, nr_pixels_z, nr_pixels_y))
-                return data.astype(np.float64)
-    except Exception as e:
-        print(f'  WARNING: Failed to read {fn}: {e}')
-        return None
+                n_pixels = self.nr_pixels_y * self.nr_pixels_z
+                self.n_frames = ((file_size - self.header_size) //
+                                 (self.bytes_per_pixel * n_pixels))
+
+        except Exception as e:
+            print(f'  WARNING: Failed to open {self.fn}: {e}')
+            self.close()
+            return None
+
+        return self
+
+    def read_frame(self, fi):
+        """Read a single frame by index. Returns 2D ndarray (nZ, nY) as float64."""
+        if self.fmt == 'hdf5':
+            return self._dataset[fi].astype(np.float64)
+
+        elif self.fmt in ('tiff', 'cbf'):
+            return self._tiff_data[fi].astype(np.float64)
+
+        else:  # GE binary
+            dtype = (np.uint32 if self.bytes_per_pixel == 4
+                     else np.uint16)
+            n_pixels = self.nr_pixels_y * self.nr_pixels_z
+            offset = (self.header_size +
+                      fi * self.bytes_per_pixel * n_pixels)
+            data = np.fromfile(self._ge_path, dtype=dtype,
+                               count=n_pixels, offset=offset)
+            return data.reshape(
+                self.nr_pixels_z, self.nr_pixels_y).astype(np.float64)
+
+    def close(self):
+        """Release file handles."""
+        if self._hf is not None:
+            self._hf.close()
+            self._hf = None
+            self._dataset = None
+        self._tiff_data = None
+        self._ge_path = None
+        if self._bz2_ctx is not None:
+            self._bz2_ctx.__exit__(None, None, None)
+            self._bz2_ctx = None
+
+    def __enter__(self):
+        return self.open()
+
+    def __exit__(self, exc_type, exc_val, exc_tb):
+        self.close()
 
 
 def _load_dark_mean(dark_fn, dark_loc, ext, header_size, bytes_per_pixel,
@@ -661,8 +711,8 @@ def _load_dark_mean(dark_fn, dark_loc, ext, header_size, bytes_per_pixel,
 def _process_single_scan_raw(args):
     """Worker for sinogram building from raw detector files.
 
-    Same logic as _process_single_scan but reads raw files instead of zarr.
-    Applies dark correction if dark_mean is provided.
+    Reads only the specific frames needed (not the entire file).
+    Applies dark correction per-frame if dark_mean is provided.
     Returns (scan_idx, intensities_1d) or (scan_idx, None) on failure.
     """
     (scan_idx, layer_nr, scan_dir, file_stem, padding, ext,
@@ -671,62 +721,66 @@ def _process_single_scan_raw(args):
      patch_half, trans_opts, nr_pixels_y, nr_pixels_z,
      raw_folder, data_loc, dark_mean, pre_proc_thresh) = args
 
-    # Read all frames from the raw file
-    frames = _read_raw_frames(
+    reader = _RawFileReader(
         raw_folder, file_stem, layer_nr, padding, ext,
         header_size, bytes_per_pixel, nr_pixels_y, nr_pixels_z,
         data_loc=data_loc)
 
-    if frames is None:
+    if reader.open() is None:
         return (scan_idx, None)
 
-    # Apply dark correction if dark_mean is available
-    if dark_mean is not None:
-        if pre_proc_thresh >= 0:
-            # Use numba-JIT apply_correction: threshold + subtract
-            thresh_arr = (dark_mean + pre_proc_thresh).astype(frames.dtype)
-            dark_arr = dark_mean.astype(frames.dtype)
-            frames = apply_correction(frames, dark_arr, thresh_arr).astype(np.float64)
-        else:
-            # Simple dark subtraction
-            frames = np.maximum(0, frames - dark_mean[np.newaxis, :, :])
+    try:
+        n_total = reader.n_frames
+        n_hkls = len(spot_det_hor)
+        intensities = np.zeros(n_hkls, dtype=np.float64)
 
-    n_total, nz, ny = frames.shape
-    n_hkls = len(spot_det_hor)
-    intensities = np.zeros(n_hkls, dtype=np.float64)
+        # Build reverse map FIRST: frame_idx -> [(hkl_idx, cy, cz), ...]
+        # Apply inverse ImTransOpt to map predicted coords -> raw pixel coords
+        frame_to_spots = {}
+        for hkl_idx in range(n_hkls):
+            y_pred = spot_det_hor[hkl_idx]
+            z_pred = spot_det_vert[hkl_idx]
+            if trans_opts:
+                y_raw, z_raw = inverse_transform_coords(
+                    y_pred, z_pred, trans_opts, nr_pixels_y, nr_pixels_z)
+            else:
+                y_raw, z_raw = float(y_pred), float(z_pred)
+            cy = int(round(y_raw))
+            cz = int(round(z_raw))
+            for fi in spot_frame_lists[hkl_idx]:
+                if 0 <= fi < n_total:
+                    frame_to_spots.setdefault(fi, []).append(
+                        (hkl_idx, cy, cz))
 
-    # Build reverse map: frame_idx -> [(hkl_idx, cy, cz), ...]
-    # Apply inverse ImTransOpt to map predicted coords -> raw pixel coords
-    frame_to_spots = {}
-    for hkl_idx in range(n_hkls):
-        y_pred = spot_det_hor[hkl_idx]
-        z_pred = spot_det_vert[hkl_idx]
-        if trans_opts:
-            y_raw, z_raw = inverse_transform_coords(
-                y_pred, z_pred, trans_opts, nr_pixels_y, nr_pixels_z)
-        else:
-            y_raw, z_raw = float(y_pred), float(z_pred)
-        cy = int(round(y_raw))
-        cz = int(round(z_raw))
-        for fi in spot_frame_lists[hkl_idx]:
-            if 0 <= fi < n_total:
-                frame_to_spots.setdefault(fi, []).append(
-                    (hkl_idx, cy, cz))
+        # Read ONLY the needed frames, one at a time
+        for fi in sorted(frame_to_spots.keys()):
+            frame = reader.read_frame(fi)
 
-    # Process one frame at a time
-    for fi in sorted(frame_to_spots.keys()):
-        # Apply 180° rotation to match MIDAS convention (same as zarr path)
-        frame = frames[fi][::-1, ::-1]
-        for hkl_idx, cy, cz in frame_to_spots[fi]:
-            y0 = max(0, cy - patch_half)
-            y1 = min(ny, cy + patch_half + 1)
-            z0 = max(0, cz - patch_half)
-            z1 = min(nz, cz + patch_half + 1)
-            if y0 < y1 and z0 < z1:
-                intensities[hkl_idx] += float(
-                    np.sum(frame[z0:z1, y0:y1]))
+            # Dark correction on this single frame
+            if dark_mean is not None:
+                if pre_proc_thresh >= 0:
+                    thresh_arr = dark_mean + pre_proc_thresh
+                    frame = np.where(frame < thresh_arr, 0.0,
+                                     np.maximum(0.0, frame - dark_mean))
+                else:
+                    frame = np.maximum(0.0, frame - dark_mean)
 
-    return (scan_idx, intensities)
+            # Apply 180-degree rotation to match MIDAS convention (same as zarr path)
+            frame = frame[::-1, ::-1]
+            nz, ny = frame.shape
+
+            for hkl_idx, cy, cz in frame_to_spots[fi]:
+                y0 = max(0, cy - patch_half)
+                y1 = min(ny, cy + patch_half + 1)
+                z0 = max(0, cz - patch_half)
+                z1 = min(nz, cz + patch_half + 1)
+                if y0 < y1 and z0 < z1:
+                    intensities[hkl_idx] += float(
+                        np.sum(frame[z0:z1, y0:y1]))
+
+        return (scan_idx, intensities)
+    finally:
+        reader.close()
 
 
 def build_sinogram_raw(spots, scan_dirs, file_stem, padding, ext,
