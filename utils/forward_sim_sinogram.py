@@ -1,22 +1,31 @@
 #!/usr/bin/env python
 """
-Forward Simulation → Sinogram → Tomo Reconstruction
+Forward Simulation -> Sinogram -> Tomo Reconstruction
 
 Given an orientation matrix and a PF-HEDM dataset, this script:
   1. Runs ForwardSimulationCompressed to predict diffraction spots
-  2. Searches per-scan MIDAS zip files and extracts intensity patches
+  2. Extracts intensity patches from detector data at predicted spot locations
   3. Builds an omega-sorted sinogram
   4. Runs tomographic reconstruction via midas_tomo_python
 
-Usage:
-  cd <doIndexing0 directory>
-  python forward_sim_sinogram.py \
-      --paramFile ps_sto_pf.txt \
-      --orient "0.695618 0.661920 0.279243 -0.479059 0.717044 -0.506310 -0.535367 0.218425 0.815888" \
-      --nCPUs 4 \
-      --outDir fwd_sino_output
+Data sources (auto-detected unless --useRaw or --useInputAll is set):
+  - Zarr ZIP archives ({FileStem}_{LayerNr}.MIDAS.zip)
+  - Raw detector files: HDF5 (.h5, .hdf5, .vrx.h5), GE binary (.ge, .ge5),
+    TIFF (.tif, .tiff), CBF (.cbf) — all with optional .bz2 compression
+  - InputAll CSVs (GrainRadius matching via --useInputAll)
 
-Author: Auto-generated for hruszkewycz_mar26 analysis
+Usage:
+  # With zarr zip files (auto-detected):
+  python forward_sim_sinogram.py --paramFile ps_sto_pf.txt \
+      --orient "O11 O12 ... O33" --nCPUs 4
+
+  # With raw HDF5 files (auto-detected if no zip files exist):
+  python forward_sim_sinogram.py --paramFile ps_sto_pf.txt \
+      --orient "O11 O12 ... O33" --nCPUs 4
+
+  # Force raw file mode:
+  python forward_sim_sinogram.py --paramFile ps_sto_pf.txt \
+      --orient "O11 O12 ... O33" --useRaw --nCPUs 4
 """
 
 import argparse
@@ -29,6 +38,50 @@ import tempfile
 import time
 
 import numpy as np
+from numba import jit
+
+# ---------------------------------------------------------------------------
+# Portable copies of BZ2Context and apply_correction from ffGenerateZipRefactor.
+# Copied here to avoid pulling in zarr/numcodecs/midas_config at import time.
+# ---------------------------------------------------------------------------
+
+class BZ2Context:
+    """Context manager for transparent .bz2 decompression.
+
+    If the file ends in .bz2, decompresses it (keeping original),
+    yields the uncompressed path, and deletes the temp file on exit.
+    If the file is not .bz2, yields the original path unchanged.
+    """
+    def __init__(self, filepath):
+        self.filepath = str(filepath)
+        self.temp_path = None
+        self.is_bz2 = self.filepath.endswith('.bz2')
+
+    def __enter__(self):
+        if not self.is_bz2:
+            return self.filepath
+        self.temp_path = self.filepath[:-4]
+        subprocess.run(['bzip2', '-d', '-k', '-f', self.filepath], check=True)
+        return self.temp_path
+
+    def __exit__(self, exc_type, exc_val, exc_tb):
+        if self.is_bz2 and self.temp_path and os.path.exists(self.temp_path):
+            os.remove(self.temp_path)
+
+
+@jit(nopython=True)
+def apply_correction(img, dark_mean, pre_proc_thresh_val):
+    """Applies dark correction with threshold. Numba JIT, type-agnostic."""
+    result = np.empty(img.shape, dtype=img.dtype)
+    for i in range(img.shape[0]):
+        for j in range(img.shape[1]):
+            for k in range(img.shape[2]):
+                if img[i, j, k] < pre_proc_thresh_val[j, k]:
+                    result[i, j, k] = 0
+                else:
+                    result[i, j, k] = max(0, int(img[i, j, k]) - int(dark_mean[j, k]))
+    return result
+
 
 # ---------------------------------------------------------------------------
 # Helpers: parse the MIDAS parameter file
@@ -399,6 +452,393 @@ def inverse_transform_coords(y, z, trans_opts, nr_pixels_y, nr_pixels_z):
     return yf, zf
 
 
+def _detect_format(ext):
+    """Detect file format from extension, stripping .bz2 and leading dots.
+
+    Returns one of: 'hdf5', 'tiff', 'cbf', 'ge'.
+    """
+    clean = ext.lower()
+    if clean.endswith('.bz2'):
+        clean = clean[:-4]
+    # Strip everything up to and including the last dot to get the final suffix
+    # e.g., '.vrx.h5' -> 'h5', '.ge5' -> 'ge5', '.tif' -> 'tif'
+    last_dot = clean.rfind('.')
+    if last_dot >= 0:
+        suffix = clean[last_dot + 1:]
+    else:
+        suffix = clean
+    # Strip trailing digits for GE variants: ge2, ge3, ge5 -> ge
+    suffix_base = suffix.rstrip('0123456789')
+
+    if suffix in ('h5', 'hdf5', 'hdf', 'nxs'):
+        return 'hdf5'
+    elif suffix_base in ('tif', 'tiff'):
+        return 'tiff'
+    elif suffix == 'cbf':
+        return 'cbf'
+    else:
+        return 'ge'
+
+
+def _build_raw_filename(raw_folder, file_stem, layer_nr, padding, ext):
+    """Construct raw data filename.
+
+    Ext from the ps file already includes the leading dot (e.g., '.vrx.h5').
+    Pattern: {RawFolder}/{FileStem}_{paddedLayerNr}{Ext}
+    Also checks for .bz2 variant if the plain file doesn't exist.
+    """
+    fn = os.path.join(raw_folder,
+                      f'{file_stem}_{layer_nr:0{padding}d}{ext}')
+    if os.path.isfile(fn):
+        return fn
+    fn_bz2 = fn + '.bz2'
+    if os.path.isfile(fn_bz2):
+        return fn_bz2
+    return None
+
+
+def _read_raw_frames(raw_folder, file_stem, layer_nr, padding, ext,
+                     header_size, bytes_per_pixel, nr_pixels_y, nr_pixels_z,
+                     data_loc='exchange/data'):
+    """Read all frames from a raw detector file (GE, TIFF, HDF5, CBF).
+
+    Returns numpy array of shape (nFrames, nZ, nY) as float64, or None on failure.
+    Supports .bz2 transparent decompression via BZ2Context.
+
+    Parameters
+    ----------
+    data_loc : str
+        HDF5 dataset path for image data (only used for HDF5 files).
+    """
+    fn = _build_raw_filename(raw_folder, file_stem, layer_nr, padding, ext)
+    if fn is None:
+        return None
+
+    fmt = _detect_format(ext)
+
+    try:
+        with BZ2Context(fn) as uncompressed:
+            if fmt == 'hdf5':
+                import h5py
+                with h5py.File(uncompressed, 'r') as hf:
+                    if data_loc not in hf:
+                        # Try just the dataset name as fallback
+                        ds_name = os.path.basename(data_loc)
+                        if ds_name in hf:
+                            data = hf[ds_name][:]
+                        else:
+                            return None
+                    else:
+                        data = hf[data_loc][:]
+                return data.astype(np.float64)
+
+            elif fmt == 'tiff':
+                import tifffile
+                data = tifffile.imread(uncompressed)
+                if data.ndim == 2:
+                    data = data.reshape(1, *data.shape)
+                return data.astype(np.float64)
+
+            elif fmt == 'cbf':
+                try:
+                    from read_cbf import read_cbf as _read_cbf
+                    _, data = _read_cbf(uncompressed, check_md5=False)
+                    if data.ndim == 2:
+                        data = data.reshape(1, *data.shape)
+                    return data.astype(np.float64)
+                except ImportError:
+                    print('  WARNING: read_cbf not available, cannot read CBF files')
+                    return None
+
+            else:  # GE binary
+                dtype = np.uint32 if bytes_per_pixel == 4 else np.uint16
+                file_size = os.path.getsize(uncompressed)
+                n_pixels = nr_pixels_y * nr_pixels_z
+                n_frames = (file_size - header_size) // (bytes_per_pixel * n_pixels)
+                data = np.fromfile(uncompressed, dtype=dtype, offset=header_size)
+                data = data[:n_frames * n_pixels].reshape(
+                    (n_frames, nr_pixels_z, nr_pixels_y))
+                return data.astype(np.float64)
+    except Exception as e:
+        print(f'  WARNING: Failed to read {fn}: {e}')
+        return None
+
+
+def _load_dark_mean(dark_fn, dark_loc, ext, header_size, bytes_per_pixel,
+                    nr_pixels_y, nr_pixels_z, skip_frame):
+    """Load dark file and compute mean dark frame.
+
+    Parameters
+    ----------
+    dark_fn : str
+        Path to the dark file.
+    dark_loc : str
+        HDF5 dataset path for dark data.
+    ext : str
+        File extension (used for format detection if dark file extension differs).
+    skip_frame : int
+        Number of initial frames to skip when computing mean.
+
+    Returns
+    -------
+    dark_mean : ndarray of shape (nZ, nY) as float64, or None on failure.
+    """
+    if not dark_fn or not os.path.isfile(dark_fn):
+        return None
+
+    # Detect format from the dark file's own extension
+    dark_ext = ''
+    dark_lower = dark_fn.lower()
+    if dark_lower.endswith('.bz2'):
+        dark_ext = dark_fn[:-4]  # strip .bz2 to get real ext
+    else:
+        dark_ext = dark_fn
+    # Get suffix for format detection
+    from pathlib import Path as _Path
+    dark_path = _Path(dark_ext)
+    dark_suffix = ''.join(dark_path.suffixes)  # e.g., '.vrx.h5'
+    if not dark_suffix:
+        dark_suffix = ext  # fall back to data extension
+
+    fmt = _detect_format(dark_suffix)
+
+    try:
+        with BZ2Context(dark_fn) as uncompressed:
+            if fmt == 'hdf5':
+                import h5py
+                with h5py.File(uncompressed, 'r') as hf:
+                    dark_frames = None
+                    if dark_loc in hf:
+                        dark_frames = hf[dark_loc][:]
+                    else:
+                        # Try just the dataset name
+                        ds_name = os.path.basename(dark_loc)
+                        if ds_name in hf:
+                            dark_frames = hf[ds_name][:]
+                    if dark_frames is None:
+                        print(f'  WARNING: dark dataset {dark_loc} not found in {dark_fn}')
+                        return None
+                    if dark_frames.ndim == 2:
+                        dark_frames = dark_frames.reshape(1, *dark_frames.shape)
+
+            elif fmt == 'tiff':
+                import tifffile
+                dark_frames = tifffile.imread(uncompressed)
+                if dark_frames.ndim == 2:
+                    dark_frames = dark_frames.reshape(1, *dark_frames.shape)
+
+            elif fmt == 'cbf':
+                try:
+                    from read_cbf import read_cbf as _read_cbf
+                    _, dark_data = _read_cbf(uncompressed, check_md5=False)
+                    dark_frames = dark_data.reshape(1, *dark_data.shape)
+                except ImportError:
+                    print('  WARNING: read_cbf not available for dark file')
+                    return None
+
+            else:  # GE binary
+                dtype = np.uint32 if bytes_per_pixel == 4 else np.uint16
+                file_size = os.path.getsize(uncompressed)
+                n_pixels = nr_pixels_y * nr_pixels_z
+                n_frames = (file_size - header_size) // (bytes_per_pixel * n_pixels)
+                raw = np.fromfile(uncompressed, dtype=dtype, offset=header_size)
+                dark_frames = raw[:n_frames * n_pixels].reshape(
+                    (n_frames, nr_pixels_z, nr_pixels_y))
+
+        # Compute mean, skipping initial frames
+        dark_frames = dark_frames.astype(np.float64)
+        if dark_frames.shape[0] > skip_frame:
+            dark_mean = np.mean(dark_frames[skip_frame:], axis=0)
+        else:
+            dark_mean = dark_frames[0]
+        return dark_mean
+
+    except Exception as e:
+        print(f'  WARNING: Failed to load dark file {dark_fn}: {e}')
+        return None
+
+
+def _process_single_scan_raw(args):
+    """Worker for sinogram building from raw detector files.
+
+    Same logic as _process_single_scan but reads raw files instead of zarr.
+    Applies dark correction if dark_mean is provided.
+    Returns (scan_idx, intensities_1d) or (scan_idx, None) on failure.
+    """
+    (scan_idx, layer_nr, scan_dir, file_stem, padding, ext,
+     header_size, bytes_per_pixel,
+     spot_det_hor, spot_det_vert, spot_frame_lists,
+     patch_half, trans_opts, nr_pixels_y, nr_pixels_z,
+     raw_folder, data_loc, dark_mean, pre_proc_thresh) = args
+
+    # Read all frames from the raw file
+    frames = _read_raw_frames(
+        raw_folder, file_stem, layer_nr, padding, ext,
+        header_size, bytes_per_pixel, nr_pixels_y, nr_pixels_z,
+        data_loc=data_loc)
+
+    if frames is None:
+        return (scan_idx, None)
+
+    # Apply dark correction if dark_mean is available
+    if dark_mean is not None:
+        if pre_proc_thresh >= 0:
+            # Use numba-JIT apply_correction: threshold + subtract
+            thresh_arr = (dark_mean + pre_proc_thresh).astype(frames.dtype)
+            dark_arr = dark_mean.astype(frames.dtype)
+            frames = apply_correction(frames, dark_arr, thresh_arr).astype(np.float64)
+        else:
+            # Simple dark subtraction
+            frames = np.maximum(0, frames - dark_mean[np.newaxis, :, :])
+
+    n_total, nz, ny = frames.shape
+    n_hkls = len(spot_det_hor)
+    intensities = np.zeros(n_hkls, dtype=np.float64)
+
+    # Build reverse map: frame_idx -> [(hkl_idx, cy, cz), ...]
+    # Apply inverse ImTransOpt to map predicted coords -> raw pixel coords
+    frame_to_spots = {}
+    for hkl_idx in range(n_hkls):
+        y_pred = spot_det_hor[hkl_idx]
+        z_pred = spot_det_vert[hkl_idx]
+        if trans_opts:
+            y_raw, z_raw = inverse_transform_coords(
+                y_pred, z_pred, trans_opts, nr_pixels_y, nr_pixels_z)
+        else:
+            y_raw, z_raw = float(y_pred), float(z_pred)
+        cy = int(round(y_raw))
+        cz = int(round(z_raw))
+        for fi in spot_frame_lists[hkl_idx]:
+            if 0 <= fi < n_total:
+                frame_to_spots.setdefault(fi, []).append(
+                    (hkl_idx, cy, cz))
+
+    # Process one frame at a time
+    for fi in sorted(frame_to_spots.keys()):
+        # Apply 180° rotation to match MIDAS convention (same as zarr path)
+        frame = frames[fi][::-1, ::-1]
+        for hkl_idx, cy, cz in frame_to_spots[fi]:
+            y0 = max(0, cy - patch_half)
+            y1 = min(ny, cy + patch_half + 1)
+            z0 = max(0, cz - patch_half)
+            z1 = min(nz, cz + patch_half + 1)
+            if y0 < y1 and z0 < z1:
+                intensities[hkl_idx] += float(
+                    np.sum(frame[z0:z1, y0:y1]))
+
+    return (scan_idx, intensities)
+
+
+def build_sinogram_raw(spots, scan_dirs, file_stem, padding, ext,
+                       header_size, bytes_per_pixel, raw_folder,
+                       patch_half=10, ome_half=2, skip_frame=1,
+                       n_workers=4, trans_opts=None,
+                       nr_pixels_y=2880, nr_pixels_z=2880,
+                       data_loc='exchange/data',
+                       dark_fn=None, dark_loc='exchange/dark',
+                       pre_proc_thresh=-1):
+    """Build sinogram from raw detector files (HDF5, GE, TIFF, CBF).
+
+    Same interface as build_sinogram but reads raw files from raw_folder
+    instead of zarr zip archives. Applies dark correction if dark_fn is
+    provided.
+
+    Parameters
+    ----------
+    data_loc : str
+        HDF5 dataset path for image data.
+    dark_fn : str or None
+        Path to dark file. If None, no dark correction.
+    dark_loc : str
+        HDF5 dataset path for dark data.
+    pre_proc_thresh : int
+        Pre-processing threshold above dark mean. -1 = simple subtraction.
+    """
+    from multiprocessing import Pool
+
+    n_hkls = len(spots)
+    n_scans = len(scan_dirs)
+    sino = np.zeros((n_hkls, n_scans), dtype=np.float64)
+    omegas = np.array([s['omega'] for s in spots])
+
+    # Load dark frames once (shared across all workers)
+    dark_mean = None
+    if dark_fn:
+        print(f'  Loading dark file: {dark_fn}')
+        print(f'  Dark dataset: {dark_loc}')
+        dark_mean = _load_dark_mean(
+            dark_fn, dark_loc, ext, header_size, bytes_per_pixel,
+            nr_pixels_y, nr_pixels_z, skip_frame)
+        if dark_mean is not None:
+            print(f'  Dark mean loaded: shape={dark_mean.shape}, '
+                  f'mean={np.mean(dark_mean):.1f}')
+            if pre_proc_thresh >= 0:
+                print(f'  Pre-proc threshold: dark_mean + {pre_proc_thresh}')
+            else:
+                print(f'  Simple dark subtraction (no threshold)')
+        else:
+            print(f'  WARNING: Could not load dark file, proceeding without '
+                  f'dark correction')
+
+    # Pre-compute which frames we need per spot
+    spot_frames = []
+    for s in spots:
+        ob = s['omeBin']
+        actual_bin = ob + skip_frame
+        frames_needed = list(range(actual_bin - ome_half,
+                                    actual_bin + ome_half + 1))
+        spot_frames.append(frames_needed)
+
+    # Pre-extract spot positions into plain arrays (pickleable)
+    spot_det_hor = [s['detHor'] for s in spots]
+    spot_det_vert = [s['detVert'] for s in spots]
+
+    if trans_opts is None:
+        trans_opts = []
+
+    print(f'\n  Building sinogram from raw files: {n_hkls} HKLs × {n_scans} scans')
+    print(f'  Raw folder: {raw_folder}')
+    print(f'  File pattern: {file_stem}_XXXXXX{ext}')
+    print(f'  Format: {_detect_format(ext).upper()}')
+    if _detect_format(ext) == 'ge':
+        print(f'  Header: {header_size} bytes, {bytes_per_pixel} bytes/pixel')
+    print(f'  Patch size: {2*patch_half+1}x{2*patch_half+1}x{2*ome_half+1}')
+    if trans_opts:
+        print(f'  ImTransOpt: {trans_opts} (inverse applied to coords)')
+    print(f'  Using {n_workers} parallel workers')
+
+    # Build argument list for each scan
+    worker_args = []
+    for scan_idx, layer_nr, scan_dir in scan_dirs:
+        worker_args.append((
+            scan_idx, layer_nr, scan_dir, file_stem, padding, ext,
+            header_size, bytes_per_pixel,
+            spot_det_hor, spot_det_vert, spot_frames,
+            patch_half, trans_opts, nr_pixels_y, nr_pixels_z,
+            raw_folder, data_loc, dark_mean, pre_proc_thresh
+        ))
+
+    t0 = time.time()
+    completed = 0
+    with Pool(processes=n_workers) as pool:
+        for scan_idx, intensities in pool.imap_unordered(
+                _process_single_scan_raw, worker_args):
+            completed += 1
+            if intensities is not None:
+                sino[:, scan_idx] = intensities
+            else:
+                layer_nr = scan_dirs[scan_idx][1]
+                print(f'    WARNING: scan {scan_idx} (layer {layer_nr}) '
+                      f'raw file not found or failed')
+            if completed % 10 == 0 or completed == n_scans:
+                elapsed = time.time() - t0
+                rate = completed / elapsed if elapsed > 0 else 0
+                print(f'    Progress: {completed}/{n_scans} scans '
+                      f'[{elapsed:.1f}s, {rate:.1f} scans/s]')
+
+    return sino, omegas
+
+
 def _process_single_scan(args):
     """Worker function for parallel sinogram building.
 
@@ -654,7 +1094,7 @@ def save_outputs(sino, omegas, recon, spots, out_dir):
 
 def main():
     parser = argparse.ArgumentParser(
-        description='Forward simulation → sinogram → tomo reconstruction')
+        description='Forward simulation -> sinogram -> tomo reconstruction')
     parser.add_argument('--paramFile', required=True,
                         help='MIDAS parameter file (e.g. ps_sto_pf.txt)')
     parser.add_argument('--orient', required=False, default=None,
@@ -675,11 +1115,26 @@ def main():
                         help='Use GrainRadius from InputAllExtraInfoFittingAll.csv '
                              'in each scan dir instead of zarr patch extraction. '
                              'Matches predicted spots by (YLab, ZLab, Omega, RingNr).')
+    parser.add_argument('--useRaw', action='store_true',
+                        help='Force reading raw detector files instead of '
+                             'zarr zip archives. If not set, auto-detects: '
+                             'tries zarr first, falls back to raw if no zip '
+                             'files are found.')
     parser.add_argument('--pxTol', type=int, default=4,
                         help='Pixel tolerance for InputAll matching (default: 4)')
     parser.add_argument('--omeTol', type=int, default=2,
                         help='Omega tolerance in frames for InputAll matching '
                              '(default: 2)')
+    parser.add_argument('--dataLoc', default=None,
+                        help='HDF5 dataset path for image data '
+                             '(default: exchange/data)')
+    parser.add_argument('--darkLoc', default=None,
+                        help='HDF5 dataset path for dark data '
+                             '(default: exchange/dark)')
+    parser.add_argument('--preProcThresh', type=int, default=None,
+                        help='Pre-processing threshold above dark mean. '
+                             '-1 = simple dark subtraction (default: from ps '
+                             'file or -1)')
     args = parser.parse_args()
 
     base_dir = os.getcwd()
@@ -721,15 +1176,37 @@ def main():
     im_trans_opt_strs = params.get('ImTransOpt', [])
     trans_opts = [int(x) for x in im_trans_opt_strs]
 
+    # Raw data parameters
+    raw_folder = params.get('RawFolder', '')
+    ext = params.get('Ext', '')
+    header_size = int(params.get('HeadSize', '8192'))
+    pixel_value = int(params.get('PixelValue', '2'))
+    bytes_per_pixel = 4 if pixel_value == 4 else 2
+
+    # Dark file: ps file uses 'Dark', CLI can override with --darkLoc
+    dark_fn = params.get('Dark', '')
+    data_loc = args.dataLoc if args.dataLoc else params.get('dataLoc',
+                                                             'exchange/data')
+    dark_loc = args.darkLoc if args.darkLoc else params.get('darkLoc',
+                                                             'exchange/dark')
+    pre_proc_thresh = (args.preProcThresh if args.preProcThresh is not None
+                       else int(params.get('preProcThresh', '-1')))
+
     print(f'\nDataset parameters:')
     print(f'  FileStem: {file_stem}')
     print(f'  StartFileNr: {start_file_nr}, nScans: {n_scans}, '
           f'ScanStep: {scan_step}')
     print(f'  OmegaStart: {omega_start}, OmegaStep: {omega_step}')
     print(f'  SkipFrame: {skip_frame}, Padding: {padding}')
-    print(f'  NrPixels: {nr_pixels_y}×{nr_pixels_z}')
+    print(f'  NrPixels: {nr_pixels_y}x{nr_pixels_z}')
     if trans_opts:
         print(f'  ImTransOpt: {trans_opts}')
+    if raw_folder:
+        print(f'  RawFolder: {raw_folder}')
+        print(f'  Ext: {ext}')
+    if dark_fn:
+        print(f'  Dark: {dark_fn}')
+        print(f'  darkLoc: {dark_loc}')
 
     patch_half = args.patchSize // 2
     ome_half = args.omePatch // 2
@@ -789,26 +1266,56 @@ def main():
 
     # ── Step 2: Build sinogram ──────────────────────────────────────────
     print('\n' + '='*60)
-    if args.useInputAll:
-        print('STEP 2: Build Sinogram from InputAll (GrainRadius matching)')
-    else:
-        print('STEP 2: Build Sinogram from Zip Files')
-    print('='*60)
 
     if args.useInputAll:
+        print('STEP 2: Build Sinogram from InputAll (GrainRadius matching)')
+        print('='*60)
         sino, omegas = build_sinogram_from_inputall(
             spots, scan_dirs, px_size=px_size, omega_step=omega_step,
             n_workers=args.nCPUs, pxtol=args.pxTol,
             ome_frame_tol=args.omeTol
         )
     else:
-        sino, omegas = build_sinogram(
-            spots, scan_dirs, file_stem, padding,
-            patch_half=patch_half, ome_half=ome_half,
-            skip_frame=skip_frame, n_workers=args.nCPUs,
-            trans_opts=trans_opts,
-            nr_pixels_y=nr_pixels_y, nr_pixels_z=nr_pixels_z
-        )
+        # Determine data source: zarr vs raw
+        # Auto-detect: check if the first scan's zip file exists
+        use_raw = args.useRaw
+        if not use_raw:
+            first_layer_nr = scan_dirs[0][1]
+            first_scan_dir = scan_dirs[0][2]
+            zip_name = f'{file_stem}_{first_layer_nr:0{padding}d}.MIDAS.zip'
+            zip_path = os.path.join(first_scan_dir, zip_name)
+            if not os.path.isfile(zip_path):
+                use_raw = True
+                print(f'  Auto-detect: no zip file found ({zip_name}), '
+                      f'switching to raw file mode')
+
+        if use_raw:
+            if not raw_folder:
+                sys.exit('ERROR: RawFolder not set in parameter file and '
+                         'no zarr zip files found. Cannot read raw data.')
+            print('STEP 2: Build Sinogram from Raw Files')
+            print('='*60)
+            sino, omegas = build_sinogram_raw(
+                spots, scan_dirs, file_stem, padding, ext,
+                header_size, bytes_per_pixel, raw_folder,
+                patch_half=patch_half, ome_half=ome_half,
+                skip_frame=skip_frame, n_workers=args.nCPUs,
+                trans_opts=trans_opts,
+                nr_pixels_y=nr_pixels_y, nr_pixels_z=nr_pixels_z,
+                data_loc=data_loc,
+                dark_fn=dark_fn, dark_loc=dark_loc,
+                pre_proc_thresh=pre_proc_thresh
+            )
+        else:
+            print('STEP 2: Build Sinogram from Zip Files')
+            print('='*60)
+            sino, omegas = build_sinogram(
+                spots, scan_dirs, file_stem, padding,
+                patch_half=patch_half, ome_half=ome_half,
+                skip_frame=skip_frame, n_workers=args.nCPUs,
+                trans_opts=trans_opts,
+                nr_pixels_y=nr_pixels_y, nr_pixels_z=nr_pixels_z
+            )
 
     print(f'\n  Sinogram shape: {sino.shape}')
     print(f'  Non-zero cells: {np.count_nonzero(sino)} / {sino.size} '
