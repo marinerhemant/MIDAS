@@ -247,13 +247,14 @@ def parse_spot_matrix_gen(fn):
 def _match_spots_single_scan(args):
     """Worker: match predicted spots against InputAllExtraInfoFittingAll in one scan dir.
 
-    For each predicted spot, find the closest observed spot by (YLab, ZLab, Omega)
-    and return the matched GrainRadius as the sinogram intensity.
+    Pre-filters observed spots within ±lab_tol (microns) in YLab/ZLab and
+    ±ome_tol (degrees) in Omega, within the same ring.  Then picks the
+    closest by Euclidean distance.
 
     Returns (scan_idx, intensities_1d) or (scan_idx, None) on failure.
     """
     (scan_idx, layer_nr, scan_dir, pred_ylab, pred_zlab, pred_omega,
-     pred_ring_nr) = args
+     pred_ring_nr, lab_tol, ome_tol) = args
 
     # Find the InputAllExtraInfoFittingAll file
     input_all_fn = os.path.join(scan_dir, 'InputAllExtraInfoFittingAll.csv')
@@ -289,29 +290,34 @@ def _match_spots_single_scan(args):
     intensities = np.zeros(n_pred, dtype=np.float64)
 
     for i in range(n_pred):
-        # Filter to same ring first
-        ring_mask = obs_ring == pred_ring_nr[i]
-        if not np.any(ring_mask):
+        # Pre-filter: same ring, within ±lab_tol in Y/Z, ±ome_tol in omega
+        mask = ((obs_ring == pred_ring_nr[i]) &
+                (np.abs(obs_ylab - pred_ylab[i]) <= lab_tol) &
+                (np.abs(obs_zlab - pred_zlab[i]) <= lab_tol) &
+                (np.abs(obs_omega - pred_omega[i]) <= ome_tol))
+
+        if not np.any(mask):
             continue
 
-        # Compute distance in lab space (YLab, ZLab in microns, Omega in deg)
-        # Scale omega to comparable units: 1 degree ≈ typical spot spacing
-        dy = obs_ylab[ring_mask] - pred_ylab[i]
-        dz = obs_zlab[ring_mask] - pred_zlab[i]
-        dome = (obs_omega[ring_mask] - pred_omega[i]) * 1000.0  # weight omega
-
-        dist = dy**2 + dz**2 + dome**2
+        # Pick closest within the tolerance box
+        dy = obs_ylab[mask] - pred_ylab[i]
+        dz = obs_zlab[mask] - pred_zlab[i]
+        dist = dy**2 + dz**2
         best_idx = np.argmin(dist)
-        intensities[i] = obs_grain_radius[ring_mask][best_idx]
+        intensities[i] = obs_grain_radius[mask][best_idx]
 
     return (scan_idx, intensities)
 
 
-def build_sinogram_from_inputall(spots, scan_dirs, n_workers=4):
+def build_sinogram_from_inputall(spots, scan_dirs, px_size, omega_step,
+                                  n_workers=4, pxtol=4, ome_frame_tol=2):
     """Build sinogram using GrainRadius from InputAllExtraInfoFittingAll files.
 
     For each scan dir, matches predicted spots (by YLab/ZLab/Omega/RingNr)
     against observed spots and uses GrainRadius as intensity.
+
+    pxtol:         pixel tolerance (default 4 pixels, converted to microns)
+    ome_frame_tol: omega tolerance in frames (default 2, converted to degrees)
     """
     from multiprocessing import Pool
 
@@ -320,19 +326,26 @@ def build_sinogram_from_inputall(spots, scan_dirs, n_workers=4):
     sino = np.zeros((n_hkls, n_scans), dtype=np.float64)
     omegas = np.array([s['omega'] for s in spots])
 
+    # Convert tolerances to physical units
+    lab_tol = pxtol * px_size       # pixels → microns
+    ome_tol = ome_frame_tol * omega_step  # frames → degrees
+
     pred_ylab = [s['yLab'] for s in spots]
     pred_zlab = [s['zLab'] for s in spots]
     pred_omega = [s['omega'] for s in spots]
     pred_ring_nr = [s['ringNr'] for s in spots]
 
     print(f'\n  Building sinogram from InputAll: {n_hkls} HKLs × {n_scans} scans')
+    print(f'  Tolerances: ±{pxtol} px (±{lab_tol:.1f} µm), '
+          f'±{ome_frame_tol} frames (±{ome_tol:.3f}°)')
     print(f'  Using {n_workers} parallel workers')
 
     worker_args = []
     for scan_idx, layer_nr, scan_dir in scan_dirs:
         worker_args.append((
             scan_idx, layer_nr, scan_dir,
-            pred_ylab, pred_zlab, pred_omega, pred_ring_nr
+            pred_ylab, pred_zlab, pred_omega, pred_ring_nr,
+            lab_tol, ome_tol
         ))
 
     t0 = time.time()
@@ -696,6 +709,7 @@ def main():
                                   params.get('NrPixels', '2880')))
     nr_pixels_z = int(params.get('NrPixelsZ',
                                   params.get('NrPixels', '2880')))
+    px_size = float(params.get('px', '150'))  # pixel size in microns
     im_trans_opt_strs = params.get('ImTransOpt', [])
     trans_opts = [int(x) for x in im_trans_opt_strs]
 
@@ -775,7 +789,8 @@ def main():
 
     if args.useInputAll:
         sino, omegas = build_sinogram_from_inputall(
-            spots, scan_dirs, n_workers=args.nCPUs
+            spots, scan_dirs, px_size=px_size, omega_step=omega_step,
+            n_workers=args.nCPUs
         )
     else:
         sino, omegas = build_sinogram(
