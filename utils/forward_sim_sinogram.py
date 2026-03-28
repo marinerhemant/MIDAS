@@ -1592,20 +1592,68 @@ def main():
         print('='*60)
         if not raw_folder:
             sys.exit('ERROR: --validate requires RawFolder in parameter file')
-        first_scan = scan_dirs[0]
         # Always use the real dark (ignore --noDark for validation)
         validate_dark_fn = params.get('Dark', '')
-        validate_raw_vs_zarr(
-            scan_dir=first_scan[2], layer_nr=first_scan[1],
-            file_stem=file_stem, padding=padding, ext=ext,
-            raw_folder=raw_folder, data_loc=data_loc,
-            dark_fn=validate_dark_fn, dark_loc=dark_loc,
-            spots=spots, patch_half=patch_half, skip_frame=skip_frame,
-            trans_opts=trans_opts,
-            nr_pixels_y=nr_pixels_y, nr_pixels_z=nr_pixels_z,
-            header_size=header_size, bytes_per_pixel=bytes_per_pixel,
-            pre_proc_thresh=pre_proc_thresh,
-            n_spots=args.validateSpots)
+        # Search scans until we find one with non-zero zarr data
+        import zarr as _zarr
+        found_signal = False
+        for scan_idx, layer_nr_v, scan_dir_v in scan_dirs:
+            zip_name = f'{file_stem}_{layer_nr_v:0{padding}d}.MIDAS.zip'
+            zip_path = os.path.join(scan_dir_v, zip_name)
+            if not os.path.isfile(zip_path):
+                continue
+            # Quick check: do any spots have non-zero zarr values?
+            try:
+                store = _zarr.storage.ZipStore(zip_path, mode='r')
+                zg = _zarr.open_group(store, mode='r')
+                zdata = zg['exchange/data']
+                nz_v, ny_v = nr_pixels_z, nr_pixels_y
+                has_signal = False
+                for s in spots[:20]:  # check first 20 spots
+                    fi = s['omeBin'] + skip_frame
+                    if fi < 0 or fi >= zdata.shape[0]:
+                        continue
+                    yp, zp = s['detHor'], s['detVert']
+                    if trans_opts:
+                        yr, zr = inverse_transform_coords(
+                            yp, zp, trans_opts, ny_v, nz_v)
+                    else:
+                        yr, zr = float(yp), float(zp)
+                    cy, cz = int(round(yr)), int(round(zr))
+                    rz0 = max(0, cz - patch_half)
+                    rz1 = min(nz_v, cz + patch_half + 1)
+                    ry0 = max(0, cy - patch_half)
+                    ry1 = min(ny_v, cy + patch_half + 1)
+                    oz0, oz1 = nz_v - rz1, nz_v - rz0
+                    oy0, oy1 = ny_v - ry1, ny_v - ry0
+                    patch = zdata[fi, oz0:oz1, oy0:oy1]
+                    if np.any(patch > 0):
+                        has_signal = True
+                        break
+                store.close()
+                if has_signal:
+                    print(f'  Found signal in scan {scan_idx} '
+                          f'(layer {layer_nr_v})\n')
+                    validate_raw_vs_zarr(
+                        scan_dir=scan_dir_v, layer_nr=layer_nr_v,
+                        file_stem=file_stem, padding=padding, ext=ext,
+                        raw_folder=raw_folder, data_loc=data_loc,
+                        dark_fn=validate_dark_fn, dark_loc=dark_loc,
+                        spots=spots, patch_half=patch_half,
+                        skip_frame=skip_frame, trans_opts=trans_opts,
+                        nr_pixels_y=nr_pixels_y, nr_pixels_z=nr_pixels_z,
+                        header_size=header_size,
+                        bytes_per_pixel=bytes_per_pixel,
+                        pre_proc_thresh=pre_proc_thresh,
+                        n_spots=args.validateSpots)
+                    found_signal = True
+                    break
+            except Exception as e:
+                print(f'  WARNING: scan {scan_idx}: {e}')
+                continue
+        if not found_signal:
+            print('  No scans with signal found in first 20 spots. '
+                  'Try increasing --validateSpots.')
         print('Validation complete.')
         return
 
