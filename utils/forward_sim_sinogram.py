@@ -40,6 +40,11 @@ import time
 import numpy as np
 from numba import jit
 
+# Disable HDF5 file locking — must be set before h5py is imported.
+# Read-only access doesn't need locks, and POSIX locks over NFS cause
+# severe contention when many workers open files concurrently.
+os.environ.setdefault('HDF5_USE_FILE_LOCKING', 'FALSE')
+
 # ---------------------------------------------------------------------------
 # Portable copies of BZ2Context and apply_correction from ffGenerateZipRefactor.
 # Copied here to avoid pulling in zarr/numcodecs/midas_config at import time.
