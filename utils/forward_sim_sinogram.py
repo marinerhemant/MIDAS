@@ -672,6 +672,11 @@ def main():
                         help='Use GrainRadius from InputAllExtraInfoFittingAll.csv '
                              'in each scan dir instead of zarr patch extraction. '
                              'Matches predicted spots by (YLab, ZLab, Omega, RingNr).')
+    parser.add_argument('--pxTol', type=int, default=4,
+                        help='Pixel tolerance for InputAll matching (default: 4)')
+    parser.add_argument('--omeTol', type=int, default=2,
+                        help='Omega tolerance in frames for InputAll matching '
+                             '(default: 2)')
     args = parser.parse_args()
 
     base_dir = os.getcwd()
@@ -790,7 +795,8 @@ def main():
     if args.useInputAll:
         sino, omegas = build_sinogram_from_inputall(
             spots, scan_dirs, px_size=px_size, omega_step=omega_step,
-            n_workers=args.nCPUs
+            n_workers=args.nCPUs, pxtol=args.pxTol,
+            ome_frame_tol=args.omeTol
         )
     else:
         sino, omegas = build_sinogram(
