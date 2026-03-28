@@ -1254,6 +1254,153 @@ def save_outputs(sino, omegas, recon, spots, out_dir):
 
 
 # ---------------------------------------------------------------------------
+# Validation: compare zarr vs raw patches
+# ---------------------------------------------------------------------------
+
+def validate_raw_vs_zarr(scan_dir, layer_nr, file_stem, padding, ext,
+                          raw_folder, data_loc, dark_fn, dark_loc,
+                          spots, patch_half, skip_frame,
+                          trans_opts, nr_pixels_y, nr_pixels_z,
+                          header_size, bytes_per_pixel,
+                          pre_proc_thresh, n_spots=5):
+    """Compare patches from zarr and raw HDF5 to verify data consistency.
+
+    For each spot, reads the same patch from:
+      1. Zarr (already dark-corrected by ffGenerateZip)
+      2. Raw HDF5 (applies our dark correction)
+    And checks: zarr_patch + dark_patch ≈ raw_patch (for non-zero zarr pixels).
+    """
+    import zarr
+
+    nz, ny = nr_pixels_z, nr_pixels_y
+
+    # Open zarr
+    zip_name = f'{file_stem}_{layer_nr:0{padding}d}.MIDAS.zip'
+    zip_path = os.path.join(scan_dir, zip_name)
+    if not os.path.isfile(zip_path):
+        print(f'  ERROR: Zarr not found: {zip_path}')
+        return
+
+    store = zarr.storage.ZipStore(zip_path, mode='r')
+    zg = zarr.open_group(store, mode='r')
+    zarr_data = zg['exchange/data']
+    n_zarr = zarr_data.shape[0]
+
+    # Open raw HDF5
+    reader = _RawFileReader(raw_folder, file_stem, layer_nr, padding, ext,
+                             header_size, bytes_per_pixel,
+                             nr_pixels_y, nr_pixels_z, data_loc=data_loc)
+    if reader.open() is None:
+        print(f'  ERROR: Raw file not found for layer {layer_nr}')
+        store.close()
+        return
+    n_raw = reader.n_frames
+
+    # Load dark
+    dark_mean = None
+    if dark_fn:
+        dark_mean = _load_dark_mean(dark_fn, dark_loc, ext, header_size,
+                                     bytes_per_pixel, nr_pixels_y,
+                                     nr_pixels_z, skip_frame)
+
+    print(f'  Zarr:  {zip_path} ({n_zarr} frames, shape={zarr_data.shape})')
+    raw_fn = _build_raw_filename(raw_folder, file_stem, layer_nr, padding, ext)
+    print(f'  Raw:   {raw_fn} ({n_raw} frames)')
+    if dark_mean is not None:
+        print(f'  Dark:  mean={np.mean(dark_mean):.1f}')
+    else:
+        print(f'  Dark:  NOT LOADED')
+    print()
+
+    # Pick spots evenly spread across the list
+    indices = list(range(0, len(spots), max(1, len(spots) // n_spots)))[:n_spots]
+
+    for idx in indices:
+        s = spots[idx]
+        fi = s['omeBin'] + skip_frame
+        if fi < 0 or fi >= min(n_zarr, n_raw):
+            print(f'  Spot {idx}: frame {fi} out of range, skipping')
+            continue
+
+        y_pred, z_pred = s['detHor'], s['detVert']
+        if trans_opts:
+            y_raw, z_raw = inverse_transform_coords(
+                y_pred, z_pred, trans_opts, ny, nz)
+        else:
+            y_raw, z_raw = float(y_pred), float(z_pred)
+        cy, cz = int(round(y_raw)), int(round(z_raw))
+
+        # Patch bounds in rotated space
+        ry0, ry1 = max(0, cy - patch_half), min(ny, cy + patch_half + 1)
+        rz0, rz1 = max(0, cz - patch_half), min(nz, cz + patch_half + 1)
+
+        # Original-space bounds
+        oz0, oz1 = nz - rz1, nz - rz0
+        oy0, oy1 = ny - ry1, ny - ry0
+
+        # 1. Zarr patch: read frame, rotate, extract
+        zarr_frame = zarr_data[fi][::-1, ::-1]
+        zarr_patch = zarr_frame[rz0:rz1, ry0:ry1].astype(np.float64)
+
+        # 2. Raw patch: read directly in original space
+        raw_patch = reader.read_patch(fi, oz0, oz1, oy0, oy1)
+
+        # 3. Dark patch
+        dark_patch = (dark_mean[oz0:oz1, oy0:oy1]
+                      if dark_mean is not None
+                      else np.zeros_like(raw_patch))
+
+        # 4. Our corrected raw
+        if dark_mean is not None:
+            if pre_proc_thresh >= 0:
+                thresh = dark_patch + pre_proc_thresh
+                corrected = np.where(raw_patch < thresh, 0.0,
+                                     np.maximum(0.0, raw_patch - dark_patch))
+            else:
+                corrected = np.maximum(0.0, raw_patch - dark_patch)
+        else:
+            corrected = raw_patch.copy()
+
+        # 5. Reverse check: zarr + dark ≈ raw? (for non-zero zarr pixels)
+        nz_mask = zarr_patch > 0
+        n_nz = int(np.sum(nz_mask))
+        if n_nz > 0:
+            residual = np.abs((zarr_patch[nz_mask] + dark_patch[nz_mask])
+                              - raw_patch[nz_mask])
+            max_res = float(np.max(residual))
+            mean_res = float(np.mean(residual))
+        else:
+            max_res = mean_res = 0.0
+
+        print(f'  Spot {idx:3d} (omega={s["omega"]:7.2f}, frame={fi:4d}, '
+              f'ring={s["ringNr"]}, det=({y_pred:.0f},{z_pred:.0f})):')
+        print(f'    Patch sums:  raw={np.sum(raw_patch):.0f}  '
+              f'zarr={np.sum(zarr_patch):.0f}  '
+              f'corrected={np.sum(corrected):.0f}')
+        print(f'    Patch means: raw={np.mean(raw_patch):.1f}  '
+              f'zarr={np.mean(zarr_patch):.1f}  '
+              f'dark={np.mean(dark_patch):.1f}')
+        print(f'    zarr+dark vs raw: {n_nz} non-zero zarr px, '
+              f'max_residual={max_res:.1f}, mean_residual={mean_res:.1f}')
+
+        if n_nz > 0 and max_res > 1.0:
+            print(f'    ** zarr+dark != raw (residual > 1) -> '
+                  f'ffGenerateZip used DIFFERENT dark correction')
+        elif n_nz > 0:
+            print(f'    OK: zarr+dark == raw (same dark correction)')
+
+        if abs(np.sum(zarr_patch) - np.sum(corrected)) < 1.0:
+            print(f'    OK: zarr_sum == corrected_sum')
+        else:
+            diff = np.sum(zarr_patch) - np.sum(corrected)
+            print(f'    ** MISMATCH: zarr_sum - corrected_sum = {diff:.1f}')
+        print()
+
+    reader.close()
+    store.close()
+
+
+# ---------------------------------------------------------------------------
 # Main
 # ---------------------------------------------------------------------------
 
@@ -1303,6 +1450,12 @@ def main():
     parser.add_argument('--noDark', action='store_true',
                         help='Disable dark correction entirely (ignore Dark '
                              'file from ps). Useful for debugging.')
+    parser.add_argument('--validate', action='store_true',
+                        help='Compare zarr vs raw patches for the first scan '
+                             'to verify data consistency, then exit.')
+    parser.add_argument('--validateSpots', type=int, default=5,
+                        help='Number of spots to compare in --validate mode '
+                             '(default: 5)')
     args = parser.parse_args()
 
     base_dir = os.getcwd()
@@ -1431,6 +1584,30 @@ def main():
 
     # Parse spots
     spots = parse_spot_matrix_gen(spot_file)
+
+    # ── Validate mode: compare zarr vs raw, then exit ──────────────────
+    if args.validate:
+        print('\n' + '='*60)
+        print('VALIDATE: Comparing zarr vs raw patches')
+        print('='*60)
+        if not raw_folder:
+            sys.exit('ERROR: --validate requires RawFolder in parameter file')
+        first_scan = scan_dirs[0]
+        # Always use the real dark (ignore --noDark for validation)
+        validate_dark_fn = params.get('Dark', '')
+        validate_raw_vs_zarr(
+            scan_dir=first_scan[2], layer_nr=first_scan[1],
+            file_stem=file_stem, padding=padding, ext=ext,
+            raw_folder=raw_folder, data_loc=data_loc,
+            dark_fn=validate_dark_fn, dark_loc=dark_loc,
+            spots=spots, patch_half=patch_half, skip_frame=skip_frame,
+            trans_opts=trans_opts,
+            nr_pixels_y=nr_pixels_y, nr_pixels_z=nr_pixels_z,
+            header_size=header_size, bytes_per_pixel=bytes_per_pixel,
+            pre_proc_thresh=pre_proc_thresh,
+            n_spots=args.validateSpots)
+        print('Validation complete.')
+        return
 
     # ── Step 2: Build sinogram ──────────────────────────────────────────
     print('\n' + '='*60)
