@@ -1602,16 +1602,54 @@ def main():
             zip_path = os.path.join(scan_dir_v, zip_name)
             if not os.path.isfile(zip_path):
                 continue
-            # Quick check: do any spots have non-zero zarr values?
             try:
                 store = _zarr.storage.ZipStore(zip_path, mode='r')
                 zg = _zarr.open_group(store, mode='r')
                 zdata = zg['exchange/data']
+
+                # First: check if this zarr has ANY non-zero data
+                # Sample a few frames spread across the file
+                n_frames_z = zdata.shape[0]
+                sample_frames = [0, n_frames_z//4, n_frames_z//2,
+                                 3*n_frames_z//4, n_frames_z-1]
+                zarr_has_data = False
+                for sf in sample_frames:
+                    frame_max = float(np.max(zdata[sf]))
+                    if frame_max > 0:
+                        zarr_has_data = True
+                        break
+
+                if scan_idx == 0:
+                    print(f'  Scan 0 zarr shape: {zdata.shape}, '
+                          f'dtype: {zdata.dtype}')
+                    print(f'  Scan 0 zarr has non-zero data: {zarr_has_data}')
+                    if zarr_has_data:
+                        print(f'    (found in frame {sf}, max={frame_max})')
+                    else:
+                        # Check ALL frames for any signal
+                        for chk in range(0, n_frames_z, 100):
+                            fm = float(np.max(zdata[chk]))
+                            if fm > 0:
+                                print(f'    (found signal in frame {chk},'
+                                      f' max={fm})')
+                                zarr_has_data = True
+                                break
+                        if not zarr_has_data:
+                            print(f'    Checked every 100th frame: '
+                                  f'ALL ZERO')
+                    print()
+
+                if not zarr_has_data:
+                    store.close()
+                    continue
+
+                # Check ALL spots at predicted positions
                 nz_v, ny_v = nr_pixels_z, nr_pixels_y
                 has_signal = False
-                for s in spots[:20]:  # check first 20 spots
+                signal_spot_idx = -1
+                for si, s in enumerate(spots):
                     fi = s['omeBin'] + skip_frame
-                    if fi < 0 or fi >= zdata.shape[0]:
+                    if fi < 0 or fi >= n_frames_z:
                         continue
                     yp, zp = s['detHor'], s['detVert']
                     if trans_opts:
@@ -1629,11 +1667,13 @@ def main():
                     patch = zdata[fi, oz0:oz1, oy0:oy1]
                     if np.any(patch > 0):
                         has_signal = True
+                        signal_spot_idx = si
                         break
                 store.close()
+
                 if has_signal:
                     print(f'  Found signal in scan {scan_idx} '
-                          f'(layer {layer_nr_v})\n')
+                          f'(layer {layer_nr_v}), spot {signal_spot_idx}\n')
                     validate_raw_vs_zarr(
                         scan_dir=scan_dir_v, layer_nr=layer_nr_v,
                         file_stem=file_stem, padding=padding, ext=ext,
@@ -1648,12 +1688,16 @@ def main():
                         n_spots=args.validateSpots)
                     found_signal = True
                     break
+                elif scan_idx == 0:
+                    print(f'  Scan 0: zarr has data but NO signal at '
+                          f'any of {len(spots)} predicted spot positions')
+                    print()
             except Exception as e:
                 print(f'  WARNING: scan {scan_idx}: {e}')
                 continue
         if not found_signal:
-            print('  No scans with signal found in first 20 spots. '
-                  'Try increasing --validateSpots.')
+            print('  No signal found at predicted spot positions in '
+                  f'any of {len(scan_dirs)} scans.')
         print('Validation complete.')
         return
 
