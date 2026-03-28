@@ -1300,6 +1300,9 @@ def main():
                         help='Pre-processing threshold above dark mean. '
                              '-1 = simple dark subtraction (default: from ps '
                              'file or -1)')
+    parser.add_argument('--noDark', action='store_true',
+                        help='Disable dark correction entirely (ignore Dark '
+                             'file from ps). Useful for debugging.')
     args = parser.parse_args()
 
     base_dir = os.getcwd()
@@ -1349,7 +1352,7 @@ def main():
     bytes_per_pixel = 4 if pixel_value == 4 else 2
 
     # Dark file: ps file uses 'Dark', CLI can override with --darkLoc
-    dark_fn = params.get('Dark', '')
+    dark_fn = '' if args.noDark else params.get('Dark', '')
     data_loc = args.dataLoc if args.dataLoc else params.get('dataLoc',
                                                              'exchange/data')
     dark_loc = args.darkLoc if args.darkLoc else params.get('darkLoc',
