@@ -595,6 +595,50 @@ class _RawFileReader:
             return data.reshape(
                 self.nr_pixels_z, self.nr_pixels_y).astype(np.float64)
 
+    def read_frames_batch(self, frame_indices):
+        """Read multiple frames in one I/O call.
+
+        For HDF5 over network, this is dramatically faster than individual
+        reads because h5py translates a list index into a single HDF5
+        hyperslab selection — one network round trip instead of N.
+
+        Parameters
+        ----------
+        frame_indices : list of int
+            Must be sorted ascending.
+
+        Returns
+        -------
+        dict mapping frame_index -> 2D ndarray (nZ, nY) as float64
+        """
+        if not frame_indices:
+            return {}
+
+        if self.fmt == 'hdf5':
+            # Single HDF5 hyperslab read for all frames at once
+            batch = self._dataset[frame_indices].astype(np.float64)
+            return {fi: batch[i] for i, fi in enumerate(frame_indices)}
+
+        elif self.fmt in ('tiff', 'cbf'):
+            # Already in memory, just index
+            return {fi: self._tiff_data[fi].astype(np.float64)
+                    for fi in frame_indices}
+
+        else:  # GE binary — read contiguous slab min..max
+            dtype = (np.uint32 if self.bytes_per_pixel == 4
+                     else np.uint16)
+            n_pixels = self.nr_pixels_y * self.nr_pixels_z
+            fi_min, fi_max = frame_indices[0], frame_indices[-1]
+            slab_count = fi_max - fi_min + 1
+            offset = (self.header_size +
+                      fi_min * self.bytes_per_pixel * n_pixels)
+            slab = np.fromfile(
+                self._ge_path, dtype=dtype,
+                count=slab_count * n_pixels, offset=offset
+            ).reshape(slab_count, self.nr_pixels_z, self.nr_pixels_y
+                      ).astype(np.float64)
+            return {fi: slab[fi - fi_min] for fi in frame_indices}
+
     def close(self):
         """Release file handles."""
         if self._hf is not None:
@@ -752,9 +796,12 @@ def _process_single_scan_raw(args):
                     frame_to_spots.setdefault(fi, []).append(
                         (hkl_idx, cy, cz))
 
-        # Read ONLY the needed frames, one at a time
-        for fi in sorted(frame_to_spots.keys()):
-            frame = reader.read_frame(fi)
+        # Batch-read all needed frames in one I/O call
+        needed_frames = sorted(frame_to_spots.keys())
+        frames_dict = reader.read_frames_batch(needed_frames)
+
+        for fi in needed_frames:
+            frame = frames_dict[fi]
 
             # Dark correction on this single frame
             if dark_mean is not None:
