@@ -244,6 +244,118 @@ def parse_spot_matrix_gen(fn):
     return spots
 
 
+def _match_spots_single_scan(args):
+    """Worker: match predicted spots against InputAllExtraInfoFittingAll in one scan dir.
+
+    For each predicted spot, find the closest observed spot by (YLab, ZLab, Omega)
+    and return the matched GrainRadius as the sinogram intensity.
+
+    Returns (scan_idx, intensities_1d) or (scan_idx, None) on failure.
+    """
+    (scan_idx, layer_nr, scan_dir, pred_ylab, pred_zlab, pred_omega,
+     pred_ring_nr) = args
+
+    # Find the InputAllExtraInfoFittingAll file
+    input_all_fn = os.path.join(scan_dir, 'InputAllExtraInfoFittingAll.csv')
+    if not os.path.isfile(input_all_fn):
+        # Try numbered variants
+        for suffix in ['0', '1']:
+            alt = os.path.join(scan_dir,
+                               f'InputAllExtraInfoFittingAll{suffix}.csv')
+            if os.path.isfile(alt):
+                input_all_fn = alt
+                break
+        else:
+            return (scan_idx, None)
+
+    try:
+        obs = np.loadtxt(input_all_fn, skiprows=1)
+        if obs.ndim == 1:
+            obs = obs.reshape(1, -1)
+    except Exception:
+        return (scan_idx, None)
+
+    if len(obs) == 0:
+        return (scan_idx, None)
+
+    # Columns: 0:YLab 1:ZLab 2:Omega 3:GrainRadius 5:RingNumber
+    obs_ylab = obs[:, 0]
+    obs_zlab = obs[:, 1]
+    obs_omega = obs[:, 2]
+    obs_grain_radius = obs[:, 3]
+    obs_ring = obs[:, 5].astype(int)
+
+    n_pred = len(pred_ylab)
+    intensities = np.zeros(n_pred, dtype=np.float64)
+
+    for i in range(n_pred):
+        # Filter to same ring first
+        ring_mask = obs_ring == pred_ring_nr[i]
+        if not np.any(ring_mask):
+            continue
+
+        # Compute distance in lab space (YLab, ZLab in microns, Omega in deg)
+        # Scale omega to comparable units: 1 degree ≈ typical spot spacing
+        dy = obs_ylab[ring_mask] - pred_ylab[i]
+        dz = obs_zlab[ring_mask] - pred_zlab[i]
+        dome = (obs_omega[ring_mask] - pred_omega[i]) * 1000.0  # weight omega
+
+        dist = dy**2 + dz**2 + dome**2
+        best_idx = np.argmin(dist)
+        intensities[i] = obs_grain_radius[ring_mask][best_idx]
+
+    return (scan_idx, intensities)
+
+
+def build_sinogram_from_inputall(spots, scan_dirs, n_workers=4):
+    """Build sinogram using GrainRadius from InputAllExtraInfoFittingAll files.
+
+    For each scan dir, matches predicted spots (by YLab/ZLab/Omega/RingNr)
+    against observed spots and uses GrainRadius as intensity.
+    """
+    from multiprocessing import Pool
+
+    n_hkls = len(spots)
+    n_scans = len(scan_dirs)
+    sino = np.zeros((n_hkls, n_scans), dtype=np.float64)
+    omegas = np.array([s['omega'] for s in spots])
+
+    pred_ylab = [s['yLab'] for s in spots]
+    pred_zlab = [s['zLab'] for s in spots]
+    pred_omega = [s['omega'] for s in spots]
+    pred_ring_nr = [s['ringNr'] for s in spots]
+
+    print(f'\n  Building sinogram from InputAll: {n_hkls} HKLs × {n_scans} scans')
+    print(f'  Using {n_workers} parallel workers')
+
+    worker_args = []
+    for scan_idx, layer_nr, scan_dir in scan_dirs:
+        worker_args.append((
+            scan_idx, layer_nr, scan_dir,
+            pred_ylab, pred_zlab, pred_omega, pred_ring_nr
+        ))
+
+    t0 = time.time()
+    completed = 0
+    with Pool(processes=n_workers) as pool:
+        for scan_idx, intensities in pool.imap_unordered(
+                _match_spots_single_scan, worker_args):
+            completed += 1
+            if intensities is not None:
+                sino[:, scan_idx] = intensities
+            else:
+                layer_nr = scan_dirs[scan_idx][1]
+                print(f'    WARNING: scan {scan_idx} (layer {layer_nr}) '
+                      f'InputAll not found or empty')
+            if completed % 10 == 0 or completed == n_scans:
+                elapsed = time.time() - t0
+                rate = completed / elapsed if elapsed > 0 else 0
+                print(f'    Progress: {completed}/{n_scans} scans '
+                      f'[{elapsed:.1f}s, {rate:.1f} scans/s]')
+
+    return sino, omegas
+
+
 # ---------------------------------------------------------------------------
 # Step 2: Extract intensity from zip files to build sinogram
 # ---------------------------------------------------------------------------
@@ -529,8 +641,9 @@ def main():
         description='Forward simulation → sinogram → tomo reconstruction')
     parser.add_argument('--paramFile', required=True,
                         help='MIDAS parameter file (e.g. ps_sto_pf.txt)')
-    parser.add_argument('--orient', required=True,
-                        help='9 orientation matrix elements, space-separated')
+    parser.add_argument('--orient', required=False, default=None,
+                        help='9 orientation matrix elements, space-separated '
+                             '(required unless --useInputAll)')
     parser.add_argument('--nCPUs', type=int, default=4,
                         help='Number of CPUs for ForwardSim and tomo')
     parser.add_argument('--patchSize', type=int, default=21,
@@ -542,6 +655,10 @@ def main():
     parser.add_argument('--skipFwdSim', action='store_true',
                         help='Skip forward simulation (use existing '
                              'SpotMatrixGen.csv)')
+    parser.add_argument('--useInputAll', action='store_true',
+                        help='Use GrainRadius from InputAllExtraInfoFittingAll.csv '
+                             'in each scan dir instead of zarr patch extraction. '
+                             'Matches predicted spots by (YLab, ZLab, Omega, RingNr).')
     args = parser.parse_args()
 
     base_dir = os.getcwd()
@@ -550,13 +667,16 @@ def main():
         sys.exit(f'ERROR: parameter file not found: {param_file}')
 
     # Parse orientation matrix
-    orient_vals = [float(x) for x in args.orient.split()]
-    if len(orient_vals) != 9:
-        sys.exit(f'ERROR: expected 9 orientation values, got {len(orient_vals)}')
-    print(f'\nOrientation matrix:')
-    for i in range(3):
-        print(f'  [{orient_vals[3*i]:.6f}  {orient_vals[3*i+1]:.6f}  '
-              f'{orient_vals[3*i+2]:.6f}]')
+    if args.orient:
+        orient_vals = [float(x) for x in args.orient.split()]
+        if len(orient_vals) != 9:
+            sys.exit(f'ERROR: expected 9 orientation values, got {len(orient_vals)}')
+        print(f'\nOrientation matrix:')
+        for i in range(3):
+            print(f'  [{orient_vals[3*i]:.6f}  {orient_vals[3*i+1]:.6f}  '
+                  f'{orient_vals[3*i+2]:.6f}]')
+    elif not args.skipFwdSim and not args.useInputAll:
+        sys.exit('ERROR: --orient is required unless --skipFwdSim is set')
 
     # Parse param file
     params = parse_param_file(param_file)
@@ -647,16 +767,24 @@ def main():
 
     # ── Step 2: Build sinogram ──────────────────────────────────────────
     print('\n' + '='*60)
-    print('STEP 2: Build Sinogram from Zip Files')
+    if args.useInputAll:
+        print('STEP 2: Build Sinogram from InputAll (GrainRadius matching)')
+    else:
+        print('STEP 2: Build Sinogram from Zip Files')
     print('='*60)
 
-    sino, omegas = build_sinogram(
-        spots, scan_dirs, file_stem, padding,
-        patch_half=patch_half, ome_half=ome_half,
-        skip_frame=skip_frame, n_workers=args.nCPUs,
-        trans_opts=trans_opts,
-        nr_pixels_y=nr_pixels_y, nr_pixels_z=nr_pixels_z
-    )
+    if args.useInputAll:
+        sino, omegas = build_sinogram_from_inputall(
+            spots, scan_dirs, n_workers=args.nCPUs
+        )
+    else:
+        sino, omegas = build_sinogram(
+            spots, scan_dirs, file_stem, padding,
+            patch_half=patch_half, ome_half=ome_half,
+            skip_frame=skip_frame, n_workers=args.nCPUs,
+            trans_opts=trans_opts,
+            nr_pixels_y=nr_pixels_y, nr_pixels_z=nr_pixels_z
+        )
 
     print(f'\n  Sinogram shape: {sino.shape}')
     print(f'  Non-zero cells: {np.count_nonzero(sino)} / {sino.size} '
