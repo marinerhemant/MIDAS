@@ -450,8 +450,11 @@ def _process_single_scan(args):
 
     # Process one frame at a time — only read the patches we need
     for fi in sorted(frame_to_spots.keys()):
-        # Read just this frame (zarr caches the decompressed chunk)
-        frame = data[fi]
+        # Read frame and apply 180° rotation to match MIDAS convention.
+        # Raw zarr layout differs from MIDAS pixel coords by a 180° rotation
+        # (see ff_asym_qt.py line 133: data[::-1, ::-1]).
+        # This is a numpy view, not a copy — zero memory cost.
+        frame = data[fi][::-1, ::-1]
         for hkl_idx, cy, cz in frame_to_spots[fi]:
             y0 = max(0, cy - patch_half)
             y1 = min(ny, cy + patch_half + 1)
