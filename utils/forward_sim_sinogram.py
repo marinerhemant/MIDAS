@@ -457,6 +457,54 @@ def inverse_transform_coords(y, z, trans_opts, nr_pixels_y, nr_pixels_z):
     return yf, zf
 
 
+# ---------------------------------------------------------------------------
+# Multi-variant coordinate mapping for debugging sinogram transforms
+# ---------------------------------------------------------------------------
+
+VARIANT_NAMES = [
+    'inv_rot180',        # inverse_transform + rot180 (current default)
+    'inv_rot180_swap',   # inverse_transform + swap(y,z) + rot180
+    'inv_norot',         # inverse_transform, no rotation
+    'inv_norot_swap',    # inverse_transform + swap(y,z), no rotation
+    'noinv_rot180',      # no inverse_transform + rot180
+    'noinv_rot180_swap', # no inverse_transform + swap(y,z) + rot180
+    'noinv_norot',       # no inverse_transform, no rotation
+    'noinv_norot_swap',  # no inverse_transform + swap(y,z), no rotation
+]
+
+
+def _compute_variant_coords(y_pred, z_pred, trans_opts, ny, nz):
+    """Compute (row_center, col_center) in the raw frame for each variant.
+
+    Each variant maps the ForwardSim predicted coords (y_pred, z_pred)
+    to a different (row, col) position in the raw zarr/HDF5 frame.
+    Returns list of (row, col) tuples, one per VARIANT_NAMES entry.
+    """
+    # With inverse transform
+    if trans_opts:
+        y_inv, z_inv = inverse_transform_coords(
+            y_pred, z_pred, trans_opts, ny, nz)
+    else:
+        y_inv, z_inv = float(y_pred), float(z_pred)
+    ci_y = int(round(y_inv))
+    ci_z = int(round(z_inv))
+
+    # Without inverse transform (raw predicted coords)
+    cr_y = int(round(float(y_pred)))
+    cr_z = int(round(float(z_pred)))
+
+    return [
+        (nz - 1 - ci_z, ny - 1 - ci_y),  # inv_rot180
+        (nz - 1 - ci_y, ny - 1 - ci_z),  # inv_rot180_swap
+        (ci_z, ci_y),                      # inv_norot
+        (ci_y, ci_z),                      # inv_norot_swap
+        (nz - 1 - cr_z, ny - 1 - cr_y),  # noinv_rot180
+        (nz - 1 - cr_y, ny - 1 - cr_z),  # noinv_rot180_swap
+        (cr_z, cr_y),                      # noinv_norot
+        (cr_y, cr_z),                      # noinv_norot_swap
+    ]
+
+
 def _detect_format(ext):
     """Detect file format from extension, stripping .bz2 and leading dots.
 
@@ -770,13 +818,11 @@ def _load_dark_mean(dark_fn, dark_loc, ext, header_size, bytes_per_pixel,
 
 
 def _process_single_scan_raw(args):
-    """Worker for sinogram building from raw detector files.
+    """Worker: build sinogram for all variants from raw detector files.
 
-    For HDF5: reads only the small patch regions (~21x21 pixels) directly
-    from the dataset — ~882 bytes per read instead of ~16 MB per full frame.
-    For other formats: batch-reads needed full frames, then extracts patches.
-
-    Returns (scan_idx, intensities_1d) or (scan_idx, None) on failure.
+    HDF5: reads small patches at 8 variant positions per spot.
+    Other formats: reads full frame once, dark-corrects, extracts patches.
+    Returns (scan_idx, list_of_intensities) or (scan_idx, None).
     """
     (scan_idx, layer_nr, scan_dir, file_stem, padding, ext,
      header_size, bytes_per_pixel,
@@ -796,79 +842,57 @@ def _process_single_scan_raw(args):
         n_total = reader.n_frames
         nz, ny = nr_pixels_z, nr_pixels_y
         n_hkls = len(spot_det_hor)
-        intensities = np.zeros(n_hkls, dtype=np.float64)
+        n_variants = len(VARIANT_NAMES)
+        all_intensities = [np.zeros(n_hkls, dtype=np.float64)
+                           for _ in range(n_variants)]
 
         if reader.supports_partial_read:
-            # ── HDF5 fast path: read only tiny patches directly ──
-            # Since we only sum the patch, the 180-degree rotation
-            # doesn't change the result — we just need to map the
-            # rotated-space patch coords to original-space coords.
+            # ── HDF5 fast path: read small patches at variant coords ──
             for hkl_idx in range(n_hkls):
-                y_pred = spot_det_hor[hkl_idx]
-                z_pred = spot_det_vert[hkl_idx]
-                if trans_opts:
-                    y_raw, z_raw = inverse_transform_coords(
-                        y_pred, z_pred, trans_opts, ny, nz)
-                else:
-                    y_raw, z_raw = float(y_pred), float(z_pred)
-                cy = int(round(y_raw))
-                cz = int(round(z_raw))
-
-                # Patch bounds in rotated space
-                ry0 = max(0, cy - patch_half)
-                ry1 = min(ny, cy + patch_half + 1)
-                rz0 = max(0, cz - patch_half)
-                rz1 = min(nz, cz + patch_half + 1)
-                if ry0 >= ry1 or rz0 >= rz1:
-                    continue
-
-                # Map to original (non-rotated) space for HDF5 read.
-                # rotated[z,y] = original[nz-1-z, ny-1-y], so:
-                #   rotated rows rz0..rz1-1 = original rows nz-rz1..nz-rz0-1
-                oz0, oz1 = nz - rz1, nz - rz0
-                oy0, oy1 = ny - ry1, ny - ry0
-
-                # Pre-slice dark for this patch region (original space)
-                if dark_mean is not None:
-                    dark_patch = dark_mean[oz0:oz1, oy0:oy1]
-                    if pre_proc_thresh >= 0:
-                        thresh_patch = dark_patch + pre_proc_thresh
+                vcoords = _compute_variant_coords(
+                    spot_det_hor[hkl_idx], spot_det_vert[hkl_idx],
+                    trans_opts, ny, nz)
 
                 for fi in spot_frame_lists[hkl_idx]:
                     if 0 <= fi < n_total:
-                        patch = reader.read_patch(fi, oz0, oz1, oy0, oy1)
-                        if dark_mean is not None:
-                            if pre_proc_thresh >= 0:
-                                patch = np.where(
-                                    patch < thresh_patch, 0.0,
-                                    np.maximum(0.0, patch - dark_patch))
-                            else:
-                                patch = np.maximum(0.0, patch - dark_patch)
-                        intensities[hkl_idx] += float(np.sum(patch))
+                        for vi, (rc, cc) in enumerate(vcoords):
+                            r0 = max(0, rc - patch_half)
+                            r1 = min(nz, rc + patch_half + 1)
+                            c0 = max(0, cc - patch_half)
+                            c1 = min(ny, cc + patch_half + 1)
+                            if r0 >= r1 or c0 >= c1:
+                                continue
+                            patch = reader.read_patch(fi, r0, r1, c0, c1)
+                            if dark_mean is not None:
+                                dp = dark_mean[r0:r1, c0:c1]
+                                if pre_proc_thresh >= 0:
+                                    tp = dp + pre_proc_thresh
+                                    patch = np.where(
+                                        patch < tp, 0.0,
+                                        np.maximum(0.0, patch - dp))
+                                else:
+                                    patch = np.maximum(0.0, patch - dp)
+                            all_intensities[vi][hkl_idx] += float(
+                                np.sum(patch))
 
         else:
-            # ── Fallback: batch-read full frames (TIFF, GE, CBF) ──
+            # ── Fallback: batch-read full frames, extract patches ──
             frame_to_spots = {}
             for hkl_idx in range(n_hkls):
-                y_pred = spot_det_hor[hkl_idx]
-                z_pred = spot_det_vert[hkl_idx]
-                if trans_opts:
-                    y_raw, z_raw = inverse_transform_coords(
-                        y_pred, z_pred, trans_opts, ny, nz)
-                else:
-                    y_raw, z_raw = float(y_pred), float(z_pred)
-                cy = int(round(y_raw))
-                cz = int(round(z_raw))
+                vcoords = _compute_variant_coords(
+                    spot_det_hor[hkl_idx], spot_det_vert[hkl_idx],
+                    trans_opts, ny, nz)
                 for fi in spot_frame_lists[hkl_idx]:
                     if 0 <= fi < n_total:
                         frame_to_spots.setdefault(fi, []).append(
-                            (hkl_idx, cy, cz))
+                            (hkl_idx, vcoords))
 
             needed_frames = sorted(frame_to_spots.keys())
             frames_dict = reader.read_frames_batch(needed_frames)
 
             for fi in needed_frames:
                 frame = frames_dict[fi]
+                # Apply dark correction once (in original frame coords)
                 if dark_mean is not None:
                     if pre_proc_thresh >= 0:
                         thresh_arr = dark_mean + pre_proc_thresh
@@ -877,19 +901,18 @@ def _process_single_scan_raw(args):
                     else:
                         frame = np.maximum(0.0, frame - dark_mean)
 
-                # 180-degree rotation
-                frame = frame[::-1, ::-1]
+                # Extract patches at each variant's coords (no rotation)
+                for hkl_idx, vcoords in frame_to_spots[fi]:
+                    for vi, (rc, cc) in enumerate(vcoords):
+                        r0 = max(0, rc - patch_half)
+                        r1 = min(nz, rc + patch_half + 1)
+                        c0 = max(0, cc - patch_half)
+                        c1 = min(ny, cc + patch_half + 1)
+                        if r0 < r1 and c0 < c1:
+                            all_intensities[vi][hkl_idx] += float(
+                                np.sum(frame[r0:r1, c0:c1]))
 
-                for hkl_idx, cy, cz in frame_to_spots[fi]:
-                    y0 = max(0, cy - patch_half)
-                    y1 = min(ny, cy + patch_half + 1)
-                    z0 = max(0, cz - patch_half)
-                    z1 = min(nz, cz + patch_half + 1)
-                    if y0 < y1 and z0 < z1:
-                        intensities[hkl_idx] += float(
-                            np.sum(frame[z0:z1, y0:y1]))
-
-        return (scan_idx, intensities)
+        return (scan_idx, all_intensities)
     finally:
         reader.close()
 
@@ -923,7 +946,9 @@ def build_sinogram_raw(spots, scan_dirs, file_stem, padding, ext,
 
     n_hkls = len(spots)
     n_scans = len(scan_dirs)
-    sino = np.zeros((n_hkls, n_scans), dtype=np.float64)
+    n_v = len(VARIANT_NAMES)
+    sinograms = {v: np.zeros((n_hkls, n_scans), dtype=np.float64)
+                 for v in VARIANT_NAMES}
     omegas = np.array([s['omega'] for s in spots])
 
     # Load dark frames once (shared across all workers)
@@ -945,7 +970,6 @@ def build_sinogram_raw(spots, scan_dirs, file_stem, padding, ext,
             print(f'  WARNING: Could not load dark file, proceeding without '
                   f'dark correction')
 
-    # Pre-compute which frames we need per spot
     spot_frames = []
     for s in spots:
         ob = s['omeBin']
@@ -954,25 +978,21 @@ def build_sinogram_raw(spots, scan_dirs, file_stem, padding, ext,
                                     actual_bin + ome_half + 1))
         spot_frames.append(frames_needed)
 
-    # Pre-extract spot positions into plain arrays (pickleable)
     spot_det_hor = [s['detHor'] for s in spots]
     spot_det_vert = [s['detVert'] for s in spots]
 
     if trans_opts is None:
         trans_opts = []
 
-    print(f'\n  Building sinogram from raw files: {n_hkls} HKLs × {n_scans} scans')
+    print(f'\n  Building {n_v}-variant sinogram from raw: '
+          f'{n_hkls} HKLs × {n_scans} scans')
     print(f'  Raw folder: {raw_folder}')
-    print(f'  File pattern: {file_stem}_XXXXXX{ext}')
     print(f'  Format: {_detect_format(ext).upper()}')
-    if _detect_format(ext) == 'ge':
-        print(f'  Header: {header_size} bytes, {bytes_per_pixel} bytes/pixel')
     print(f'  Patch size: {2*patch_half+1}x{2*patch_half+1}x{2*ome_half+1}')
     if trans_opts:
-        print(f'  ImTransOpt: {trans_opts} (inverse applied to coords)')
+        print(f'  ImTransOpt: {trans_opts}')
     print(f'  Using {n_workers} parallel workers')
 
-    # Build argument list for each scan
     worker_args = []
     for scan_idx, layer_nr, scan_dir in scan_dirs:
         worker_args.append((
@@ -986,11 +1006,12 @@ def build_sinogram_raw(spots, scan_dirs, file_stem, padding, ext,
     t0 = time.time()
     completed = 0
     with Pool(processes=n_workers) as pool:
-        for scan_idx, intensities in pool.imap_unordered(
+        for scan_idx, result in pool.imap_unordered(
                 _process_single_scan_raw, worker_args):
             completed += 1
-            if intensities is not None:
-                sino[:, scan_idx] = intensities
+            if result is not None:
+                for vi, vname in enumerate(VARIANT_NAMES):
+                    sinograms[vname][:, scan_idx] = result[vi]
             else:
                 layer_nr = scan_dirs[scan_idx][1]
                 print(f'    WARNING: scan {scan_idx} (layer {layer_nr}) '
@@ -1001,17 +1022,23 @@ def build_sinogram_raw(spots, scan_dirs, file_stem, padding, ext,
                 print(f'    Progress: {completed}/{n_scans} scans '
                       f'[{elapsed:.1f}s, {rate:.1f} scans/s]')
 
-    return sino, omegas
+    # Print per-variant stats
+    print(f'\n  Per-variant non-zero counts:')
+    for vname in VARIANT_NAMES:
+        s = sinograms[vname]
+        nz = np.count_nonzero(s)
+        print(f'    {vname:25s}: {nz:6d} / {s.size} '
+              f'({100*nz/s.size:.1f}%), max={s.max():.1f}')
+
+    return sinograms, omegas
 
 
 def _process_single_scan(args):
-    """Worker function for parallel sinogram building.
+    """Worker: build sinogram for all coordinate variants from zarr zip.
 
-    Opens the zarr zip, iterates over only the needed frames,
-    and extracts small patches directly via zarr indexing.
-    Never stores full frames in memory.
-
-    Returns (scan_idx, intensities_1d) or (scan_idx, None) on failure.
+    Reads small patches at 8 different coordinate positions per spot,
+    never loading full frames.  Returns (scan_idx, list_of_intensities)
+    where each element corresponds to one variant, or (scan_idx, None).
     """
     import zarr
 
@@ -1033,64 +1060,54 @@ def _process_single_scan(args):
         return (scan_idx, None)
 
     n_hkls = len(spot_det_hor)
-    intensities = np.zeros(n_hkls, dtype=np.float64)
+    n_variants = len(VARIANT_NAMES)
+    all_intensities = [np.zeros(n_hkls, dtype=np.float64)
+                       for _ in range(n_variants)]
 
-    # Build reverse map: frame_idx -> [(hkl_idx, cy, cz), ...]
-    # Apply inverse ImTransOpt to map predicted coords -> raw zarr coords
+    # Build reverse map: frame -> [(hkl_idx, variant_coords), ...]
     frame_to_spots = {}
     for hkl_idx in range(n_hkls):
-        y_pred = spot_det_hor[hkl_idx]
-        z_pred = spot_det_vert[hkl_idx]
-        if trans_opts:
-            y_raw, z_raw = inverse_transform_coords(
-                y_pred, z_pred, trans_opts, nr_pixels_y, nr_pixels_z)
-        else:
-            y_raw, z_raw = float(y_pred), float(z_pred)
-        cy = int(round(y_raw))
-        cz = int(round(z_raw))
+        vcoords = _compute_variant_coords(
+            spot_det_hor[hkl_idx], spot_det_vert[hkl_idx],
+            trans_opts, ny, nz)
         for fi in spot_frame_lists[hkl_idx]:
             if 0 <= fi < n_total:
                 frame_to_spots.setdefault(fi, []).append(
-                    (hkl_idx, cy, cz))
+                    (hkl_idx, vcoords))
 
-    # Process one frame at a time — only read the patches we need
+    # Read only small patches — never full frames
     for fi in sorted(frame_to_spots.keys()):
-        # Read frame and apply 180° rotation to match MIDAS convention.
-        # Raw zarr layout differs from MIDAS pixel coords by a 180° rotation
-        # (see ff_asym_qt.py line 133: data[::-1, ::-1]).
-        # This is a numpy view, not a copy — zero memory cost.
-        frame = data[fi][::-1, ::-1]
-        for hkl_idx, cy, cz in frame_to_spots[fi]:
-            y0 = max(0, cy - patch_half)
-            y1 = min(ny, cy + patch_half + 1)
-            z0 = max(0, cz - patch_half)
-            z1 = min(nz, cz + patch_half + 1)
-            if y0 < y1 and z0 < z1:
-                intensities[hkl_idx] += float(
-                    np.sum(frame[z0:z1, y0:y1]))
+        for hkl_idx, vcoords in frame_to_spots[fi]:
+            for vi, (rc, cc) in enumerate(vcoords):
+                r0 = max(0, rc - patch_half)
+                r1 = min(nz, rc + patch_half + 1)
+                c0 = max(0, cc - patch_half)
+                c1 = min(ny, cc + patch_half + 1)
+                if r0 < r1 and c0 < c1:
+                    patch = data[fi, r0:r1, c0:c1]
+                    all_intensities[vi][hkl_idx] += float(
+                        np.sum(patch))
 
     store.close()
-    return (scan_idx, intensities)
+    return (scan_idx, all_intensities)
 
 
 def build_sinogram(spots, scan_dirs, file_stem, padding,
                    patch_half=10, ome_half=2, skip_frame=1,
                    n_workers=4, trans_opts=None,
                    nr_pixels_y=2880, nr_pixels_z=2880):
-    """Build sinogram: shape (nHKLs, nScans).
+    """Build sinograms for all coordinate variants from zarr zip files.
 
-    For each scan's zip file, read frames around each spot's omeBin
-    and extract a patch of intensity. Scans are processed in parallel.
-
-    spots: list of spot dicts, already sorted by omega
-    scan_dirs: list of (scanIdx, layerNr, dirPath)
-    n_workers: number of parallel workers
+    Returns (sinograms_dict, omegas) where sinograms_dict maps
+    variant_name -> sinogram array of shape (nHKLs, nScans).
     """
     from multiprocessing import Pool
 
     n_hkls = len(spots)
     n_scans = len(scan_dirs)
-    sino = np.zeros((n_hkls, n_scans), dtype=np.float64)
+    n_v = len(VARIANT_NAMES)
+    sinograms = {v: np.zeros((n_hkls, n_scans), dtype=np.float64)
+                 for v in VARIANT_NAMES}
     omegas = np.array([s['omega'] for s in spots])
 
     # Pre-compute which frames we need per spot
@@ -1102,20 +1119,18 @@ def build_sinogram(spots, scan_dirs, file_stem, padding,
                                     actual_bin + ome_half + 1))
         spot_frames.append(frames_needed)
 
-    # Pre-extract spot positions into plain arrays (pickleable)
     spot_det_hor = [s['detHor'] for s in spots]
     spot_det_vert = [s['detVert'] for s in spots]
 
     if trans_opts is None:
         trans_opts = []
 
-    print(f'\n  Building sinogram: {n_hkls} HKLs × {n_scans} scans')
+    print(f'\n  Building {n_v}-variant sinogram: {n_hkls} HKLs × {n_scans} scans')
     print(f'  Patch size: {2*patch_half+1}×{2*patch_half+1}×{2*ome_half+1}')
     if trans_opts:
-        print(f'  ImTransOpt: {trans_opts} (inverse applied to coords)')
+        print(f'  ImTransOpt: {trans_opts}')
     print(f'  Using {n_workers} parallel workers')
 
-    # Build argument list for each scan
     worker_args = []
     for scan_idx, layer_nr, scan_dir in scan_dirs:
         worker_args.append((
@@ -1127,11 +1142,12 @@ def build_sinogram(spots, scan_dirs, file_stem, padding,
     t0 = time.time()
     completed = 0
     with Pool(processes=n_workers) as pool:
-        for scan_idx, intensities in pool.imap_unordered(
+        for scan_idx, result in pool.imap_unordered(
                 _process_single_scan, worker_args):
             completed += 1
-            if intensities is not None:
-                sino[:, scan_idx] = intensities
+            if result is not None:
+                for vi, vname in enumerate(VARIANT_NAMES):
+                    sinograms[vname][:, scan_idx] = result[vi]
             else:
                 layer_nr = scan_dirs[scan_idx][1]
                 print(f'    WARNING: scan {scan_idx} (layer {layer_nr}) '
@@ -1142,7 +1158,15 @@ def build_sinogram(spots, scan_dirs, file_stem, padding,
                 print(f'    Progress: {completed}/{n_scans} scans '
                       f'[{elapsed:.1f}s, {rate:.1f} scans/s]')
 
-    return sino, omegas
+    # Print per-variant stats
+    print(f'\n  Per-variant non-zero counts:')
+    for vname in VARIANT_NAMES:
+        s = sinograms[vname]
+        nz = np.count_nonzero(s)
+        print(f'    {vname:25s}: {nz:6d} / {s.size} '
+              f'({100*nz/s.size:.1f}%), max={s.max():.1f}')
+
+    return sinograms, omegas
 
 
 # ---------------------------------------------------------------------------
@@ -1199,34 +1223,34 @@ def run_tomo_recon(sino, omegas, work_dir, n_cpus=4):
 # Output saving
 # ---------------------------------------------------------------------------
 
+def _save_sinogram_tif(sino, path):
+    """Save a 2D sinogram as a 16-bit TIF, normalized to [0, 65535]."""
+    from PIL import Image
+    vis = sino.copy()
+    if vis.max() > 0:
+        vis = vis / vis.max() * 65535
+    Image.fromarray(vis.astype(np.uint16)).save(path)
+
+
 def save_outputs(sino, omegas, recon, spots, out_dir):
     """Save sinogram, reconstruction, and metadata."""
     os.makedirs(out_dir, exist_ok=True)
 
-    # Save sinogram as npy
     sino_npy = os.path.join(out_dir, 'sinogram.npy')
     np.save(sino_npy, sino)
     print(f'  Saved sinogram: {sino_npy} shape={sino.shape}')
 
-    # Save sinogram as TIF
     try:
-        from PIL import Image
-        # Normalize for visualization
-        sino_vis = sino.copy()
-        if sino_vis.max() > 0:
-            sino_vis = sino_vis / sino_vis.max() * 65535
         sino_tif = os.path.join(out_dir, 'sinogram.tif')
-        Image.fromarray(sino_vis.astype(np.uint16)).save(sino_tif)
+        _save_sinogram_tif(sino, sino_tif)
         print(f'  Saved sinogram TIF: {sino_tif}')
     except ImportError:
         print('  (Pillow not available, TIF output skipped)')
 
-    # Save omegas
     ome_file = os.path.join(out_dir, 'omegas.txt')
     np.savetxt(ome_file, omegas, fmt='%.6f')
     print(f'  Saved omegas: {ome_file}')
 
-    # Save reconstruction
     recon_npy = os.path.join(out_dir, 'reconstruction.npy')
     np.save(recon_npy, recon)
     print(f'  Saved reconstruction: {recon_npy} shape={recon.shape}')
@@ -1240,9 +1264,8 @@ def save_outputs(sino, omegas, recon, spots, out_dir):
         Image.fromarray(recon_vis.astype(np.uint16)).save(recon_tif)
         print(f'  Saved reconstruction TIF: {recon_tif}')
     except ImportError:
-        print('  (Pillow not available, TIF output skipped)')
+        pass
 
-    # Save spot list CSV
     spot_csv = os.path.join(out_dir, 'spot_list.csv')
     with open(spot_csv, 'w') as f:
         f.write('HKL_idx,Omega,Eta,RingNr,Theta,DetHor,DetVert,OmeBin\n')
@@ -1251,153 +1274,6 @@ def save_outputs(sino, omegas, recon, spots, out_dir):
                     f'{s["theta"]:.4f},{s["detHor"]:.2f},{s["detVert"]:.2f},'
                     f'{s["omeBin"]}\n')
     print(f'  Saved spot list: {spot_csv}')
-
-
-# ---------------------------------------------------------------------------
-# Validation: compare zarr vs raw patches
-# ---------------------------------------------------------------------------
-
-def validate_raw_vs_zarr(scan_dir, layer_nr, file_stem, padding, ext,
-                          raw_folder, data_loc, dark_fn, dark_loc,
-                          spots, patch_half, skip_frame,
-                          trans_opts, nr_pixels_y, nr_pixels_z,
-                          header_size, bytes_per_pixel,
-                          pre_proc_thresh, n_spots=5):
-    """Compare patches from zarr and raw HDF5 to verify data consistency.
-
-    For each spot, reads the same patch from:
-      1. Zarr (already dark-corrected by ffGenerateZip)
-      2. Raw HDF5 (applies our dark correction)
-    And checks: zarr_patch + dark_patch ≈ raw_patch (for non-zero zarr pixels).
-    """
-    import zarr
-
-    nz, ny = nr_pixels_z, nr_pixels_y
-
-    # Open zarr
-    zip_name = f'{file_stem}_{layer_nr:0{padding}d}.MIDAS.zip'
-    zip_path = os.path.join(scan_dir, zip_name)
-    if not os.path.isfile(zip_path):
-        print(f'  ERROR: Zarr not found: {zip_path}')
-        return
-
-    store = zarr.storage.ZipStore(zip_path, mode='r')
-    zg = zarr.open_group(store, mode='r')
-    zarr_data = zg['exchange/data']
-    n_zarr = zarr_data.shape[0]
-
-    # Open raw HDF5
-    reader = _RawFileReader(raw_folder, file_stem, layer_nr, padding, ext,
-                             header_size, bytes_per_pixel,
-                             nr_pixels_y, nr_pixels_z, data_loc=data_loc)
-    if reader.open() is None:
-        print(f'  ERROR: Raw file not found for layer {layer_nr}')
-        store.close()
-        return
-    n_raw = reader.n_frames
-
-    # Load dark
-    dark_mean = None
-    if dark_fn:
-        dark_mean = _load_dark_mean(dark_fn, dark_loc, ext, header_size,
-                                     bytes_per_pixel, nr_pixels_y,
-                                     nr_pixels_z, skip_frame)
-
-    print(f'  Zarr:  {zip_path} ({n_zarr} frames, shape={zarr_data.shape})')
-    raw_fn = _build_raw_filename(raw_folder, file_stem, layer_nr, padding, ext)
-    print(f'  Raw:   {raw_fn} ({n_raw} frames)')
-    if dark_mean is not None:
-        print(f'  Dark:  mean={np.mean(dark_mean):.1f}')
-    else:
-        print(f'  Dark:  NOT LOADED')
-    print()
-
-    # Pick spots evenly spread across the list
-    indices = list(range(0, len(spots), max(1, len(spots) // n_spots)))[:n_spots]
-
-    for idx in indices:
-        s = spots[idx]
-        fi = s['omeBin'] + skip_frame
-        if fi < 0 or fi >= min(n_zarr, n_raw):
-            print(f'  Spot {idx}: frame {fi} out of range, skipping')
-            continue
-
-        y_pred, z_pred = s['detHor'], s['detVert']
-        if trans_opts:
-            y_raw, z_raw = inverse_transform_coords(
-                y_pred, z_pred, trans_opts, ny, nz)
-        else:
-            y_raw, z_raw = float(y_pred), float(z_pred)
-        cy, cz = int(round(y_raw)), int(round(z_raw))
-
-        # Patch bounds in rotated space
-        ry0, ry1 = max(0, cy - patch_half), min(ny, cy + patch_half + 1)
-        rz0, rz1 = max(0, cz - patch_half), min(nz, cz + patch_half + 1)
-
-        # Original-space bounds
-        oz0, oz1 = nz - rz1, nz - rz0
-        oy0, oy1 = ny - ry1, ny - ry0
-
-        # 1. Zarr patch: read frame, rotate, extract
-        zarr_frame = zarr_data[fi][::-1, ::-1]
-        zarr_patch = zarr_frame[rz0:rz1, ry0:ry1].astype(np.float64)
-
-        # 2. Raw patch: read directly in original space
-        raw_patch = reader.read_patch(fi, oz0, oz1, oy0, oy1)
-
-        # 3. Dark patch
-        dark_patch = (dark_mean[oz0:oz1, oy0:oy1]
-                      if dark_mean is not None
-                      else np.zeros_like(raw_patch))
-
-        # 4. Our corrected raw
-        if dark_mean is not None:
-            if pre_proc_thresh >= 0:
-                thresh = dark_patch + pre_proc_thresh
-                corrected = np.where(raw_patch < thresh, 0.0,
-                                     np.maximum(0.0, raw_patch - dark_patch))
-            else:
-                corrected = np.maximum(0.0, raw_patch - dark_patch)
-        else:
-            corrected = raw_patch.copy()
-
-        # 5. Reverse check: zarr + dark ≈ raw? (for non-zero zarr pixels)
-        nz_mask = zarr_patch > 0
-        n_nz = int(np.sum(nz_mask))
-        if n_nz > 0:
-            residual = np.abs((zarr_patch[nz_mask] + dark_patch[nz_mask])
-                              - raw_patch[nz_mask])
-            max_res = float(np.max(residual))
-            mean_res = float(np.mean(residual))
-        else:
-            max_res = mean_res = 0.0
-
-        print(f'  Spot {idx:3d} (omega={s["omega"]:7.2f}, frame={fi:4d}, '
-              f'ring={s["ringNr"]}, det=({y_pred:.0f},{z_pred:.0f})):')
-        print(f'    Patch sums:  raw={np.sum(raw_patch):.0f}  '
-              f'zarr={np.sum(zarr_patch):.0f}  '
-              f'corrected={np.sum(corrected):.0f}')
-        print(f'    Patch means: raw={np.mean(raw_patch):.1f}  '
-              f'zarr={np.mean(zarr_patch):.1f}  '
-              f'dark={np.mean(dark_patch):.1f}')
-        print(f'    zarr+dark vs raw: {n_nz} non-zero zarr px, '
-              f'max_residual={max_res:.1f}, mean_residual={mean_res:.1f}')
-
-        if n_nz > 0 and max_res > 1.0:
-            print(f'    ** zarr+dark != raw (residual > 1) -> '
-                  f'ffGenerateZip used DIFFERENT dark correction')
-        elif n_nz > 0:
-            print(f'    OK: zarr+dark == raw (same dark correction)')
-
-        if abs(np.sum(zarr_patch) - np.sum(corrected)) < 1.0:
-            print(f'    OK: zarr_sum == corrected_sum')
-        else:
-            diff = np.sum(zarr_patch) - np.sum(corrected)
-            print(f'    ** MISMATCH: zarr_sum - corrected_sum = {diff:.1f}')
-        print()
-
-    reader.close()
-    store.close()
 
 
 # ---------------------------------------------------------------------------
@@ -1429,9 +1305,7 @@ def main():
                              'Matches predicted spots by (YLab, ZLab, Omega, RingNr).')
     parser.add_argument('--useRaw', action='store_true',
                         help='Force reading raw detector files instead of '
-                             'zarr zip archives. If not set, auto-detects: '
-                             'tries zarr first, falls back to raw if no zip '
-                             'files are found.')
+                             'zarr zip archives.')
     parser.add_argument('--pxTol', type=int, default=4,
                         help='Pixel tolerance for InputAll matching (default: 4)')
     parser.add_argument('--omeTol', type=int, default=2,
@@ -1445,17 +1319,9 @@ def main():
                              '(default: exchange/dark)')
     parser.add_argument('--preProcThresh', type=int, default=None,
                         help='Pre-processing threshold above dark mean. '
-                             '-1 = simple dark subtraction (default: from ps '
-                             'file or -1)')
+                             '-1 = simple dark subtraction')
     parser.add_argument('--noDark', action='store_true',
-                        help='Disable dark correction entirely (ignore Dark '
-                             'file from ps). Useful for debugging.')
-    parser.add_argument('--validate', action='store_true',
-                        help='Compare zarr vs raw patches for the first scan '
-                             'to verify data consistency, then exit.')
-    parser.add_argument('--validateSpots', type=int, default=5,
-                        help='Number of spots to compare in --validate mode '
-                             '(default: 5)')
+                        help='Disable dark correction entirely.')
     args = parser.parse_args()
 
     base_dir = os.getcwd()
@@ -1493,18 +1359,16 @@ def main():
                                   params.get('NrPixels', '2880')))
     nr_pixels_z = int(params.get('NrPixelsZ',
                                   params.get('NrPixels', '2880')))
-    px_size = float(params.get('px', '150'))  # pixel size in microns
+    px_size = float(params.get('px', '150'))
     im_trans_opt_strs = params.get('ImTransOpt', [])
     trans_opts = [int(x) for x in im_trans_opt_strs]
 
-    # Raw data parameters
     raw_folder = params.get('RawFolder', '')
     ext = params.get('Ext', '')
     header_size = int(params.get('HeadSize', '8192'))
     pixel_value = int(params.get('PixelValue', '2'))
     bytes_per_pixel = 4 if pixel_value == 4 else 2
 
-    # Dark file: ps file uses 'Dark', CLI can override with --darkLoc
     dark_fn = '' if args.noDark else params.get('Dark', '')
     data_loc = args.dataLoc if args.dataLoc else params.get('dataLoc',
                                                              'exchange/data')
@@ -1524,15 +1388,12 @@ def main():
         print(f'  ImTransOpt: {trans_opts}')
     if raw_folder:
         print(f'  RawFolder: {raw_folder}')
-        print(f'  Ext: {ext}')
     if dark_fn:
         print(f'  Dark: {dark_fn}')
-        print(f'  darkLoc: {dark_loc}')
 
     patch_half = args.patchSize // 2
     ome_half = args.omePatch // 2
 
-    # Get scan directories
     scan_dirs = get_scan_dirs(base_dir, start_file_nr, n_scans, scan_step)
 
     # ── Step 1: Forward simulation ──────────────────────────────────────
@@ -1544,35 +1405,27 @@ def main():
     os.makedirs(out_dir, exist_ok=True)
 
     if not args.skipFwdSim:
-        # Create a working directory for the forward simulation
         fwd_dir = os.path.join(out_dir, 'fwd_sim')
         os.makedirs(fwd_dir, exist_ok=True)
 
-        # Copy hkls.csv if it exists (ForwardSim needs it)
         hkls_src = os.path.join(base_dir, 'hkls.csv')
         if not os.path.isfile(hkls_src):
-            # Try from a scan dir
             hkls_src = os.path.join(scan_dirs[0][2], 'hkls.csv')
         if os.path.isfile(hkls_src):
             shutil.copy2(hkls_src, os.path.join(fwd_dir, 'hkls.csv'))
         else:
-            print('  WARNING: hkls.csv not found, GetHKLList will generate it')
+            print('  WARNING: hkls.csv not found')
 
-        # Create positions.csv (single position at 0)
         with open(os.path.join(fwd_dir, 'positions.csv'), 'w') as f:
             f.write('0.0\n')
 
-        # Create Grains.csv
         grains_csv = os.path.join(fwd_dir, 'Grains.csv')
         create_grains_csv(orient_vals, lattice_str, grains_csv)
 
-        # Create modified parameter file
         fwd_param = os.path.join(fwd_dir, 'ps_fwd.txt')
         create_fwd_param_file(param_file, 'Grains.csv', fwd_param)
 
-        # Run forward simulation
         spot_file = run_forward_simulation('ps_fwd.txt', args.nCPUs, fwd_dir)
-        # Copy SpotMatrixGen.csv to output
         shutil.copy2(spot_file, os.path.join(out_dir, 'SpotMatrixGen.csv'))
     else:
         spot_file = os.path.join(out_dir, 'SpotMatrixGen.csv')
@@ -1582,129 +1435,13 @@ def main():
             sys.exit(f'ERROR: SpotMatrixGen.csv not found')
         print(f'  Using existing SpotMatrixGen.csv: {spot_file}')
 
-    # Parse spots
     spots = parse_spot_matrix_gen(spot_file)
-
-    # ── Validate mode: compare zarr vs raw, then exit ──────────────────
-    if args.validate:
-        print('\n' + '='*60)
-        print('VALIDATE: Comparing zarr vs raw patches')
-        print('='*60)
-        if not raw_folder:
-            sys.exit('ERROR: --validate requires RawFolder in parameter file')
-        # Always use the real dark (ignore --noDark for validation)
-        validate_dark_fn = params.get('Dark', '')
-        # Search scans until we find one with non-zero zarr data
-        import zarr as _zarr
-        found_signal = False
-        for scan_idx, layer_nr_v, scan_dir_v in scan_dirs:
-            zip_name = f'{file_stem}_{layer_nr_v:0{padding}d}.MIDAS.zip'
-            zip_path = os.path.join(scan_dir_v, zip_name)
-            if not os.path.isfile(zip_path):
-                continue
-            try:
-                store = _zarr.storage.ZipStore(zip_path, mode='r')
-                zg = _zarr.open_group(store, mode='r')
-                zdata = zg['exchange/data']
-
-                # First: check if this zarr has ANY non-zero data
-                # Sample a few frames spread across the file
-                n_frames_z = zdata.shape[0]
-                sample_frames = [0, n_frames_z//4, n_frames_z//2,
-                                 3*n_frames_z//4, n_frames_z-1]
-                zarr_has_data = False
-                for sf in sample_frames:
-                    frame_max = float(np.max(zdata[sf]))
-                    if frame_max > 0:
-                        zarr_has_data = True
-                        break
-
-                if scan_idx == 0:
-                    print(f'  Scan 0 zarr shape: {zdata.shape}, '
-                          f'dtype: {zdata.dtype}')
-                    print(f'  Scan 0 zarr has non-zero data: {zarr_has_data}')
-                    if zarr_has_data:
-                        print(f'    (found in frame {sf}, max={frame_max})')
-                    else:
-                        # Check ALL frames for any signal
-                        for chk in range(0, n_frames_z, 100):
-                            fm = float(np.max(zdata[chk]))
-                            if fm > 0:
-                                print(f'    (found signal in frame {chk},'
-                                      f' max={fm})')
-                                zarr_has_data = True
-                                break
-                        if not zarr_has_data:
-                            print(f'    Checked every 100th frame: '
-                                  f'ALL ZERO')
-                    print()
-
-                if not zarr_has_data:
-                    store.close()
-                    continue
-
-                # Check ALL spots at predicted positions
-                nz_v, ny_v = nr_pixels_z, nr_pixels_y
-                has_signal = False
-                signal_spot_idx = -1
-                for si, s in enumerate(spots):
-                    fi = s['omeBin'] + skip_frame
-                    if fi < 0 or fi >= n_frames_z:
-                        continue
-                    yp, zp = s['detHor'], s['detVert']
-                    if trans_opts:
-                        yr, zr = inverse_transform_coords(
-                            yp, zp, trans_opts, ny_v, nz_v)
-                    else:
-                        yr, zr = float(yp), float(zp)
-                    cy, cz = int(round(yr)), int(round(zr))
-                    rz0 = max(0, cz - patch_half)
-                    rz1 = min(nz_v, cz + patch_half + 1)
-                    ry0 = max(0, cy - patch_half)
-                    ry1 = min(ny_v, cy + patch_half + 1)
-                    oz0, oz1 = nz_v - rz1, nz_v - rz0
-                    oy0, oy1 = ny_v - ry1, ny_v - ry0
-                    patch = zdata[fi, oz0:oz1, oy0:oy1]
-                    if np.any(patch > 0):
-                        has_signal = True
-                        signal_spot_idx = si
-                        break
-                store.close()
-
-                if has_signal:
-                    print(f'  Found signal in scan {scan_idx} '
-                          f'(layer {layer_nr_v}), spot {signal_spot_idx}\n')
-                    validate_raw_vs_zarr(
-                        scan_dir=scan_dir_v, layer_nr=layer_nr_v,
-                        file_stem=file_stem, padding=padding, ext=ext,
-                        raw_folder=raw_folder, data_loc=data_loc,
-                        dark_fn=validate_dark_fn, dark_loc=dark_loc,
-                        spots=spots, patch_half=patch_half,
-                        skip_frame=skip_frame, trans_opts=trans_opts,
-                        nr_pixels_y=nr_pixels_y, nr_pixels_z=nr_pixels_z,
-                        header_size=header_size,
-                        bytes_per_pixel=bytes_per_pixel,
-                        pre_proc_thresh=pre_proc_thresh,
-                        n_spots=args.validateSpots)
-                    found_signal = True
-                    break
-                elif scan_idx == 0:
-                    print(f'  Scan 0: zarr has data but NO signal at '
-                          f'any of {len(spots)} predicted spot positions')
-                    print()
-            except Exception as e:
-                print(f'  WARNING: scan {scan_idx}: {e}')
-                continue
-        if not found_signal:
-            print('  No signal found at predicted spot positions in '
-                  f'any of {len(scan_dirs)} scans.')
-        print('Validation complete.')
-        return
 
     # ── Step 2: Build sinogram ──────────────────────────────────────────
     print('\n' + '='*60)
 
     if args.useInputAll:
+        # InputAll mode: single sinogram
         print('STEP 2: Build Sinogram from InputAll (GrainRadius matching)')
         print('='*60)
         sino, omegas = build_sinogram_from_inputall(
@@ -1712,9 +1449,25 @@ def main():
             n_workers=args.nCPUs, pxtol=args.pxTol,
             ome_frame_tol=args.omeTol
         )
+
+        print(f'\n  Sinogram shape: {sino.shape}')
+        print(f'  Non-zero: {np.count_nonzero(sino)} / {sino.size}')
+        print(f'  Max intensity: {sino.max():.1f}')
+
+        # Tomo reconstruction
+        print('\n' + '='*60)
+        print('STEP 3: Tomographic Reconstruction')
+        print('='*60)
+        tomo_work = os.path.join(out_dir, 'tomo_work')
+        recon = run_tomo_recon(sino, omegas, tomo_work, n_cpus=args.nCPUs)
+
+        print('\n' + '='*60)
+        print('SAVING OUTPUTS')
+        print('='*60)
+        save_outputs(sino, omegas, recon, spots, out_dir)
+
     else:
-        # Determine data source: zarr vs raw
-        # Auto-detect: check if the first scan's zip file exists
+        # Zip/Raw mode: multi-variant sinograms
         use_raw = args.useRaw
         if not use_raw:
             first_layer_nr = scan_dirs[0][1]
@@ -1723,16 +1476,14 @@ def main():
             zip_path = os.path.join(first_scan_dir, zip_name)
             if not os.path.isfile(zip_path):
                 use_raw = True
-                print(f'  Auto-detect: no zip file found ({zip_name}), '
-                      f'switching to raw file mode')
+                print(f'  Auto-detect: no zip file, switching to raw mode')
 
         if use_raw:
             if not raw_folder:
-                sys.exit('ERROR: RawFolder not set in parameter file and '
-                         'no zarr zip files found. Cannot read raw data.')
-            print('STEP 2: Build Sinogram from Raw Files')
+                sys.exit('ERROR: RawFolder not set and no zarr zip files.')
+            print('STEP 2: Build Multi-Variant Sinogram from Raw Files')
             print('='*60)
-            sino, omegas = build_sinogram_raw(
+            sinograms, omegas = build_sinogram_raw(
                 spots, scan_dirs, file_stem, padding, ext,
                 header_size, bytes_per_pixel, raw_folder,
                 patch_half=patch_half, ome_half=ome_half,
@@ -1744,9 +1495,9 @@ def main():
                 pre_proc_thresh=pre_proc_thresh
             )
         else:
-            print('STEP 2: Build Sinogram from Zip Files')
+            print('STEP 2: Build Multi-Variant Sinogram from Zip Files')
             print('='*60)
-            sino, omegas = build_sinogram(
+            sinograms, omegas = build_sinogram(
                 spots, scan_dirs, file_stem, padding,
                 patch_half=patch_half, ome_half=ome_half,
                 skip_frame=skip_frame, n_workers=args.nCPUs,
@@ -1754,25 +1505,60 @@ def main():
                 nr_pixels_y=nr_pixels_y, nr_pixels_z=nr_pixels_z
             )
 
-    print(f'\n  Sinogram shape: {sino.shape}')
-    print(f'  Non-zero cells: {np.count_nonzero(sino)} / {sino.size} '
-          f'({100*np.count_nonzero(sino)/sino.size:.1f}%)')
-    print(f'  Max intensity: {sino.max():.1f}')
+        # Save all variant sinograms as TIFs
+        print('\n' + '='*60)
+        print('SAVING VARIANT SINOGRAMS')
+        print('='*60)
+        try:
+            for vname in VARIANT_NAMES:
+                tif_path = os.path.join(out_dir, f'sinogram_{vname}.tif')
+                _save_sinogram_tif(sinograms[vname], tif_path)
+            print(f'  Saved {len(VARIANT_NAMES)} sinogram TIFs '
+                  f'(sinogram_<variant>.tif)')
+        except ImportError:
+            print('  (Pillow not available, TIF output skipped)')
 
-    # ── Step 3: Tomo reconstruction ─────────────────────────────────────
-    print('\n' + '='*60)
-    print('STEP 3: Tomographic Reconstruction')
-    print('='*60)
+        # Save npy for each variant
+        for vname in VARIANT_NAMES:
+            np.save(os.path.join(out_dir, f'sinogram_{vname}.npy'),
+                    sinograms[vname])
 
-    tomo_work = os.path.join(out_dir, 'tomo_work')
-    recon = run_tomo_recon(sino, omegas, tomo_work, n_cpus=args.nCPUs)
+        # Save omegas and spot list
+        np.savetxt(os.path.join(out_dir, 'omegas.txt'), omegas, fmt='%.6f')
+        spot_csv = os.path.join(out_dir, 'spot_list.csv')
+        with open(spot_csv, 'w') as f:
+            f.write('HKL_idx,Omega,Eta,RingNr,Theta,DetHor,DetVert,OmeBin\n')
+            for i, s in enumerate(spots):
+                f.write(f'{i},{s["omega"]:.4f},{s["eta"]:.4f},{s["ringNr"]},'
+                        f'{s["theta"]:.4f},{s["detHor"]:.2f},'
+                        f'{s["detVert"]:.2f},{s["omeBin"]}\n')
+        print(f'  Saved spot_list.csv and omegas.txt')
 
-    # ── Save outputs ────────────────────────────────────────────────────
-    print('\n' + '='*60)
-    print('SAVING OUTPUTS')
-    print('='*60)
+        # Run tomo on the variant with most signal
+        best_vname = max(VARIANT_NAMES,
+                         key=lambda v: np.count_nonzero(sinograms[v]))
+        best_sino = sinograms[best_vname]
+        print(f'\n  Best variant for tomo: {best_vname} '
+              f'({np.count_nonzero(best_sino)} non-zero)')
 
-    save_outputs(sino, omegas, recon, spots, out_dir)
+        print('\n' + '='*60)
+        print('STEP 3: Tomographic Reconstruction')
+        print('='*60)
+        tomo_work = os.path.join(out_dir, 'tomo_work')
+        recon = run_tomo_recon(best_sino, omegas, tomo_work,
+                               n_cpus=args.nCPUs)
+
+        recon_npy = os.path.join(out_dir, 'reconstruction.npy')
+        np.save(recon_npy, recon)
+        try:
+            from PIL import Image
+            recon_vis = recon.copy()
+            if recon_vis.max() > 0:
+                recon_vis = recon_vis / recon_vis.max() * 65535
+            Image.fromarray(recon_vis.astype(np.uint16)).save(
+                os.path.join(out_dir, 'reconstruction.tif'))
+        except ImportError:
+            pass
 
     print(f'\nAll done! Results in: {out_dir}')
 
