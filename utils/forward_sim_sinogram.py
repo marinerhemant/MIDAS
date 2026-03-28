@@ -248,6 +248,32 @@ def parse_spot_matrix_gen(fn):
 # Step 2: Extract intensity from zip files to build sinogram
 # ---------------------------------------------------------------------------
 
+def inverse_transform_coords(y, z, trans_opts, nr_pixels_y, nr_pixels_z):
+    """Map predicted detector coords (in transformed space) back to raw zarr coords.
+
+    The MIDAS pipeline applies ImTransOpt to the raw image before calibration
+    and forward simulation.  ForwardSim reports positions in the *transformed*
+    image.  To index into the *raw* zarr data we must invert the transform.
+
+    TransOpt meanings (applied to image):
+      0 = no-op
+      1 = FlipLR  (mirror Y axis)       inverse is the same: FlipLR
+      2 = FlipUD  (mirror Z axis)       inverse is the same: FlipUD
+      3 = Transpose (swap Y <-> Z)      inverse is the same: Transpose
+
+    Inverse is applied in **reverse** order of the forward list.
+    """
+    yf, zf = float(y), float(z)
+    for opt in reversed(trans_opts):
+        if opt == 1:    # FlipLR
+            yf = nr_pixels_y - 1.0 - yf
+        elif opt == 2:  # FlipUD
+            zf = nr_pixels_z - 1.0 - zf
+        elif opt == 3:  # Transpose
+            yf, zf = zf, yf
+    return yf, zf
+
+
 def _process_single_scan(args):
     """Worker function for parallel sinogram building.
 
@@ -261,7 +287,7 @@ def _process_single_scan(args):
 
     (scan_idx, layer_nr, scan_dir, file_stem, padding,
      spot_det_hor, spot_det_vert, spot_frame_lists,
-     patch_half) = args
+     patch_half, trans_opts, nr_pixels_y, nr_pixels_z) = args
 
     zip_name = f'{file_stem}_{layer_nr:0{padding}d}.MIDAS.zip'
     zip_path = os.path.join(scan_dir, zip_name)
@@ -280,10 +306,18 @@ def _process_single_scan(args):
     intensities = np.zeros(n_hkls, dtype=np.float64)
 
     # Build reverse map: frame_idx -> [(hkl_idx, cy, cz), ...]
+    # Apply inverse ImTransOpt to map predicted coords -> raw zarr coords
     frame_to_spots = {}
     for hkl_idx in range(n_hkls):
-        cy = int(round(spot_det_hor[hkl_idx]))
-        cz = int(round(spot_det_vert[hkl_idx]))
+        y_pred = spot_det_hor[hkl_idx]
+        z_pred = spot_det_vert[hkl_idx]
+        if trans_opts:
+            y_raw, z_raw = inverse_transform_coords(
+                y_pred, z_pred, trans_opts, nr_pixels_y, nr_pixels_z)
+        else:
+            y_raw, z_raw = float(y_pred), float(z_pred)
+        cy = int(round(y_raw))
+        cz = int(round(z_raw))
         for fi in spot_frame_lists[hkl_idx]:
             if 0 <= fi < n_total:
                 frame_to_spots.setdefault(fi, []).append(
@@ -308,7 +342,8 @@ def _process_single_scan(args):
 
 def build_sinogram(spots, scan_dirs, file_stem, padding,
                    patch_half=10, ome_half=2, skip_frame=1,
-                   n_workers=4):
+                   n_workers=4, trans_opts=None,
+                   nr_pixels_y=2880, nr_pixels_z=2880):
     """Build sinogram: shape (nHKLs, nScans).
 
     For each scan's zip file, read frames around each spot's omeBin
@@ -338,8 +373,13 @@ def build_sinogram(spots, scan_dirs, file_stem, padding,
     spot_det_hor = [s['detHor'] for s in spots]
     spot_det_vert = [s['detVert'] for s in spots]
 
+    if trans_opts is None:
+        trans_opts = []
+
     print(f'\n  Building sinogram: {n_hkls} HKLs × {n_scans} scans')
     print(f'  Patch size: {2*patch_half+1}×{2*patch_half+1}×{2*ome_half+1}')
+    if trans_opts:
+        print(f'  ImTransOpt: {trans_opts} (inverse applied to coords)')
     print(f'  Using {n_workers} parallel workers')
 
     # Build argument list for each scan
@@ -348,7 +388,7 @@ def build_sinogram(spots, scan_dirs, file_stem, padding,
         worker_args.append((
             scan_idx, layer_nr, scan_dir, file_stem, padding,
             spot_det_hor, spot_det_vert, spot_frames,
-            patch_half
+            patch_half, trans_opts, nr_pixels_y, nr_pixels_z
         ))
 
     t0 = time.time()
@@ -532,12 +572,22 @@ def main():
     lattice_str = params.get('LatticeConstant',
                               '3.9091 3.9091 3.9091 90 90 90')
 
+    nr_pixels_y = int(params.get('NrPixelsY',
+                                  params.get('NrPixels', '2880')))
+    nr_pixels_z = int(params.get('NrPixelsZ',
+                                  params.get('NrPixels', '2880')))
+    im_trans_opt_strs = params.get('ImTransOpt', [])
+    trans_opts = [int(x) for x in im_trans_opt_strs]
+
     print(f'\nDataset parameters:')
     print(f'  FileStem: {file_stem}')
     print(f'  StartFileNr: {start_file_nr}, nScans: {n_scans}, '
           f'ScanStep: {scan_step}')
     print(f'  OmegaStart: {omega_start}, OmegaStep: {omega_step}')
     print(f'  SkipFrame: {skip_frame}, Padding: {padding}')
+    print(f'  NrPixels: {nr_pixels_y}×{nr_pixels_z}')
+    if trans_opts:
+        print(f'  ImTransOpt: {trans_opts}')
 
     patch_half = args.patchSize // 2
     ome_half = args.omePatch // 2
@@ -603,7 +653,9 @@ def main():
     sino, omegas = build_sinogram(
         spots, scan_dirs, file_stem, padding,
         patch_half=patch_half, ome_half=ome_half,
-        skip_frame=skip_frame, n_workers=args.nCPUs
+        skip_frame=skip_frame, n_workers=args.nCPUs,
+        trans_opts=trans_opts,
+        nr_pixels_y=nr_pixels_y, nr_pixels_z=nr_pixels_z
     )
 
     print(f'\n  Sinogram shape: {sino.shape}')
