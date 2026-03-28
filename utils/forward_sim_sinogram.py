@@ -600,12 +600,24 @@ class _RawFileReader:
             return data.reshape(
                 self.nr_pixels_z, self.nr_pixels_y).astype(np.float64)
 
-    def read_frames_batch(self, frame_indices):
-        """Read multiple frames in one I/O call.
+    @property
+    def supports_partial_read(self):
+        """True if the format supports reading subregions without loading
+        the full frame (HDF5 only — the dataset supports hyperslab selection)."""
+        return self.fmt == 'hdf5'
 
-        For HDF5 over network, this is dramatically faster than individual
-        reads because h5py translates a list index into a single HDF5
-        hyperslab selection — one network round trip instead of N.
+    def read_patch(self, fi, z0, z1, y0, y1):
+        """Read a subregion of one frame directly from the dataset.
+
+        Only supported for HDF5 (supports_partial_read == True).
+        Returns 2D ndarray of shape (z1-z0, y1-y0) as float64.
+        """
+        return self._dataset[fi, z0:z1, y0:y1].astype(np.float64)
+
+    def read_frames_batch(self, frame_indices):
+        """Read multiple full frames in one I/O call.
+
+        Fallback for non-HDF5 formats where partial reads aren't possible.
 
         Parameters
         ----------
@@ -760,8 +772,10 @@ def _load_dark_mean(dark_fn, dark_loc, ext, header_size, bytes_per_pixel,
 def _process_single_scan_raw(args):
     """Worker for sinogram building from raw detector files.
 
-    Reads only the specific frames needed (not the entire file).
-    Applies dark correction per-frame if dark_mean is provided.
+    For HDF5: reads only the small patch regions (~21x21 pixels) directly
+    from the dataset — ~882 bytes per read instead of ~16 MB per full frame.
+    For other formats: batch-reads needed full frames, then extracts patches.
+
     Returns (scan_idx, intensities_1d) or (scan_idx, None) on failure.
     """
     (scan_idx, layer_nr, scan_dir, file_stem, padding, ext,
@@ -780,55 +794,100 @@ def _process_single_scan_raw(args):
 
     try:
         n_total = reader.n_frames
+        nz, ny = nr_pixels_z, nr_pixels_y
         n_hkls = len(spot_det_hor)
         intensities = np.zeros(n_hkls, dtype=np.float64)
 
-        # Build reverse map FIRST: frame_idx -> [(hkl_idx, cy, cz), ...]
-        # Apply inverse ImTransOpt to map predicted coords -> raw pixel coords
-        frame_to_spots = {}
-        for hkl_idx in range(n_hkls):
-            y_pred = spot_det_hor[hkl_idx]
-            z_pred = spot_det_vert[hkl_idx]
-            if trans_opts:
-                y_raw, z_raw = inverse_transform_coords(
-                    y_pred, z_pred, trans_opts, nr_pixels_y, nr_pixels_z)
-            else:
-                y_raw, z_raw = float(y_pred), float(z_pred)
-            cy = int(round(y_raw))
-            cz = int(round(z_raw))
-            for fi in spot_frame_lists[hkl_idx]:
-                if 0 <= fi < n_total:
-                    frame_to_spots.setdefault(fi, []).append(
-                        (hkl_idx, cy, cz))
-
-        # Batch-read all needed frames in one I/O call
-        needed_frames = sorted(frame_to_spots.keys())
-        frames_dict = reader.read_frames_batch(needed_frames)
-
-        for fi in needed_frames:
-            frame = frames_dict[fi]
-
-            # Dark correction on this single frame
-            if dark_mean is not None:
-                if pre_proc_thresh >= 0:
-                    thresh_arr = dark_mean + pre_proc_thresh
-                    frame = np.where(frame < thresh_arr, 0.0,
-                                     np.maximum(0.0, frame - dark_mean))
+        if reader.supports_partial_read:
+            # ── HDF5 fast path: read only tiny patches directly ──
+            # Since we only sum the patch, the 180-degree rotation
+            # doesn't change the result — we just need to map the
+            # rotated-space patch coords to original-space coords.
+            for hkl_idx in range(n_hkls):
+                y_pred = spot_det_hor[hkl_idx]
+                z_pred = spot_det_vert[hkl_idx]
+                if trans_opts:
+                    y_raw, z_raw = inverse_transform_coords(
+                        y_pred, z_pred, trans_opts, ny, nz)
                 else:
-                    frame = np.maximum(0.0, frame - dark_mean)
+                    y_raw, z_raw = float(y_pred), float(z_pred)
+                cy = int(round(y_raw))
+                cz = int(round(z_raw))
 
-            # Apply 180-degree rotation to match MIDAS convention (same as zarr path)
-            frame = frame[::-1, ::-1]
-            nz, ny = frame.shape
+                # Patch bounds in rotated space
+                ry0 = max(0, cy - patch_half)
+                ry1 = min(ny, cy + patch_half + 1)
+                rz0 = max(0, cz - patch_half)
+                rz1 = min(nz, cz + patch_half + 1)
+                if ry0 >= ry1 or rz0 >= rz1:
+                    continue
 
-            for hkl_idx, cy, cz in frame_to_spots[fi]:
-                y0 = max(0, cy - patch_half)
-                y1 = min(ny, cy + patch_half + 1)
-                z0 = max(0, cz - patch_half)
-                z1 = min(nz, cz + patch_half + 1)
-                if y0 < y1 and z0 < z1:
-                    intensities[hkl_idx] += float(
-                        np.sum(frame[z0:z1, y0:y1]))
+                # Map to original (non-rotated) space for HDF5 read.
+                # rotated[z,y] = original[nz-1-z, ny-1-y], so:
+                #   rotated rows rz0..rz1-1 = original rows nz-rz1..nz-rz0-1
+                oz0, oz1 = nz - rz1, nz - rz0
+                oy0, oy1 = ny - ry1, ny - ry0
+
+                # Pre-slice dark for this patch region (original space)
+                if dark_mean is not None:
+                    dark_patch = dark_mean[oz0:oz1, oy0:oy1]
+                    if pre_proc_thresh >= 0:
+                        thresh_patch = dark_patch + pre_proc_thresh
+
+                for fi in spot_frame_lists[hkl_idx]:
+                    if 0 <= fi < n_total:
+                        patch = reader.read_patch(fi, oz0, oz1, oy0, oy1)
+                        if dark_mean is not None:
+                            if pre_proc_thresh >= 0:
+                                patch = np.where(
+                                    patch < thresh_patch, 0.0,
+                                    np.maximum(0.0, patch - dark_patch))
+                            else:
+                                patch = np.maximum(0.0, patch - dark_patch)
+                        intensities[hkl_idx] += float(np.sum(patch))
+
+        else:
+            # ── Fallback: batch-read full frames (TIFF, GE, CBF) ──
+            frame_to_spots = {}
+            for hkl_idx in range(n_hkls):
+                y_pred = spot_det_hor[hkl_idx]
+                z_pred = spot_det_vert[hkl_idx]
+                if trans_opts:
+                    y_raw, z_raw = inverse_transform_coords(
+                        y_pred, z_pred, trans_opts, ny, nz)
+                else:
+                    y_raw, z_raw = float(y_pred), float(z_pred)
+                cy = int(round(y_raw))
+                cz = int(round(z_raw))
+                for fi in spot_frame_lists[hkl_idx]:
+                    if 0 <= fi < n_total:
+                        frame_to_spots.setdefault(fi, []).append(
+                            (hkl_idx, cy, cz))
+
+            needed_frames = sorted(frame_to_spots.keys())
+            frames_dict = reader.read_frames_batch(needed_frames)
+
+            for fi in needed_frames:
+                frame = frames_dict[fi]
+                if dark_mean is not None:
+                    if pre_proc_thresh >= 0:
+                        thresh_arr = dark_mean + pre_proc_thresh
+                        frame = np.where(frame < thresh_arr, 0.0,
+                                         np.maximum(0.0, frame - dark_mean))
+                    else:
+                        frame = np.maximum(0.0, frame - dark_mean)
+
+                # 180-degree rotation
+                frame = frame[::-1, ::-1]
+
+                for hkl_idx, cy, cz in frame_to_spots[fi]:
+                    y0 = max(0, cy - patch_half)
+                    y1 = min(ny, cy + patch_half + 1)
+                    z0 = max(0, cz - patch_half)
+                    z1 = min(nz, cz + patch_half + 1)
+                    if y0 < y1 and z0 < z1:
+                        intensities[hkl_idx] += float(
+                            np.sum(frame[z0:z1, y0:y1]))
 
         return (scan_idx, intensities)
     finally:
