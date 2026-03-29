@@ -1950,9 +1950,9 @@ def runMIDAS(rawFN, state, n_iterations=40, mult_factor=5,
                 pf.write('tolP 2E-3\n')
                 pf.write('tolP6 90\n')  # phase: cos(2η) has period 180°, need ±90°
                 pf.write('tolP7 1E-3\n')
-                pf.write('tolP8 90\n')
+                pf.write('tolP8 180\n')
                 pf.write('tolP9 1E-3\n')
-                pf.write('tolP10 90\n')
+                pf.write('tolP10 180\n')
 
             # Current geometry
             pf.write(f'tx {state.tx}\n')
@@ -1969,14 +1969,16 @@ def runMIDAS(rawFN, state, n_iterations=40, mult_factor=5,
                 pf.write(f'p5 {state.p5}\n')
             if state.p6 != 0.0:
                 pf.write(f'p6 {state.p6}\n')
-            if state.p7 != 0.0:
-                pf.write(f'p7 {state.p7}\n')
-            if state.p8 != 0.0:
-                pf.write(f'p8 {state.p8}\n')
-            if state.p9 != 0.0:
-                pf.write(f'p9 {state.p9}\n')
-            if state.p10 != 0.0:
-                pf.write(f'p10 {state.p10}\n')
+            # Break polar coordinate gradient singularities before passing to NLopt
+            _p7_seed = state.p7 if state.p7 != 0.0 else (1e-4 if stage != 1 else 0.0)
+            _p8_seed = state.p8 if state.p8 != 0.0 else (45.0 if stage != 1 else 0.0)
+            _p9_seed = state.p9 if state.p9 != 0.0 else (1e-4 if stage != 1 else 0.0)
+            _p10_seed = state.p10 if state.p10 != 0.0 else (45.0 if stage != 1 else 0.0)
+
+            if _p7_seed != 0.0: pf.write(f'p7 {_p7_seed}\n')
+            if _p8_seed != 0.0: pf.write(f'p8 {_p8_seed}\n')
+            if _p9_seed != 0.0: pf.write(f'p9 {_p9_seed}\n')
+            if _p10_seed != 0.0: pf.write(f'p10 {_p10_seed}\n')
             pf.write(f'EtaBinSize {eta_bin_size}\n')
             pf.write(f'HeadSize {8192 if state.midas_dtype == 1 else 0}\n')
 
