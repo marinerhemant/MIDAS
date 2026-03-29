@@ -61,6 +61,14 @@ void midas_apply_tol_defaults(MIDASConfig *cfg) {
     cfg->tolP5 = cfg->tolP;
   if (!cfg->tolP6Set && cfg->tolP6 == 90)
     cfg->tolP6 = cfg->tolP;
+  if (!cfg->tolP7Set && cfg->tolP7 == 0)
+    cfg->tolP7 = cfg->tolP;
+  if (!cfg->tolP8Set && cfg->tolP8 == 180)
+    cfg->tolP8 = cfg->tolP;
+  if (!cfg->tolP9Set && cfg->tolP9 == 0)
+    cfg->tolP9 = cfg->tolP;
+  if (!cfg->tolP10Set && cfg->tolP10 == 180)
+    cfg->tolP10 = cfg->tolP;
 }
 
 int midas_parse_params(const char *filename, MIDASConfig *cfg) {
@@ -126,6 +134,10 @@ int midas_parse_params(const char *filename, MIDASConfig *cfg) {
     if (param_double(aline, "p4", &cfg->p4)) continue;
     if (param_double(aline, "p5", &cfg->p5)) continue;
     if (param_double(aline, "p6", &cfg->p6)) continue;
+    if (param_double(aline, "p7", &cfg->p7)) continue;
+    if (param_double(aline, "p8", &cfg->p8)) continue;
+    if (param_double(aline, "p9", &cfg->p9)) continue;
+    if (param_double(aline, "p10", &cfg->p10)) continue;
     if (param_double(aline, "Wedge", &cfg->Wedge)) continue;
     if (param_double(aline, "RhoD", &cfg->RhoD)) continue;
 
@@ -290,6 +302,26 @@ int midas_parse_params(const char *filename, MIDASConfig *cfg) {
     if (key_match(aline, "tolP6")) {
       sscanf(aline, "%*s %lf", &cfg->tolP6);
       cfg->tolP6Set = 1;
+      continue;
+    }
+    if (key_match(aline, "tolP7")) {
+      sscanf(aline, "%*s %lf", &cfg->tolP7);
+      cfg->tolP7Set = 1;
+      continue;
+    }
+    if (key_match(aline, "tolP8")) {
+      sscanf(aline, "%*s %lf", &cfg->tolP8);
+      cfg->tolP8Set = 1;
+      continue;
+    }
+    if (key_match(aline, "tolP9")) {
+      sscanf(aline, "%*s %lf", &cfg->tolP9);
+      cfg->tolP9Set = 1;
+      continue;
+    }
+    if (key_match(aline, "tolP10")) {
+      sscanf(aline, "%*s %lf", &cfg->tolP10);
+      cfg->tolP10Set = 1;
       continue;
     }
     if (param_double(aline, "tolShifts", &cfg->tolShifts)) continue;

@@ -178,6 +178,7 @@ static inline void Car2Pol(int n_hkls, int nEtaBins, int y, int z, double ybc,
       double zpr = (double)i + pdZ;
       double EtaS_tilted;
       dg_pixel_to_REta(ypr, zpr, ybc, zbc, TRs, Lsd, RhoD, p0, p1, p2, p3, p4, p5,
+                       0.0, 0.0, 0.0, 0.0, 0.0,
                        px, dLsd, dP2, 0, &Rt_px, &EtaS_tilted, &EtaS);
       double Rt = Rt_px * px; // convert from pixels to microns
       R[counter] = Rt;
@@ -4247,8 +4248,9 @@ int main(int argc, char *argv[]) {
           double zc = (double)iz + pdZ + cornerDZ[c];
           double Rc, Ec, Ec_untilted;
           dg_pixel_to_REta(yc, zc, lo_ybc, lo_zbc, lo_TRs, lo_Lsd, MaxRingRad,
-                           lo_p0, lo_p1, lo_p2, lo_p3, lo_p4, lo_p5, px, dLsd, dP2,
-                           lo_parallax, &Rc, &Ec, &Ec_untilted);
+                           lo_p0, lo_p1, lo_p2, lo_p3, lo_p4, lo_p5,
+                           0.0, 0.0, 0.0, 0.0, 0.0,
+                           px, dLsd, dP2, lo_parallax, &Rc, &Ec, &Ec_untilted);
           Ec = Ec_untilted; // use untilted Eta for boundary checks
           if (Rc < Rmin_corner)
             Rmin_corner = Rc;
@@ -4337,8 +4339,9 @@ int main(int argc, char *argv[]) {
       double zpr = (double)diagZ + pdZ;
       double Rt_d, Eta_d, Eta_d_untilted;
       dg_pixel_to_REta(ypr, zpr, lo_ybc, lo_zbc, lo_TRs, lo_Lsd, MaxRingRad,
-                       lo_p0, lo_p1, lo_p2, lo_p3, lo_p4, lo_p5, px, dLsd, dP2,
-                       lo_parallax, &Rt_d, &Eta_d, &Eta_d_untilted);
+                       lo_p0, lo_p1, lo_p2, lo_p3, lo_p4, lo_p5,
+                       0.0, 0.0, 0.0, 0.0, 0.0,
+                       px, dLsd, dP2, lo_parallax, &Rt_d, &Eta_d, &Eta_d_untilted);
       Eta_d = Eta_d_untilted; // use untilted for dg_REta_to_YZ
       double pixY_d, pixZ_d;
       dg_REta_to_YZ(Rt_d, Eta_d, &pixY_d, &pixZ_d);
@@ -4447,8 +4450,9 @@ int main(int argc, char *argv[]) {
           double zpr = (double)iz + pdZ;
           double Rt_center, Eta_center, Eta_center_untilted;
           dg_pixel_to_REta(ypr, zpr, lo_ybc, lo_zbc, lo_TRs, lo_Lsd, MaxRingRad,
-                           lo_p0, lo_p1, lo_p2, lo_p3, lo_p4, lo_p5, px, dLsd, dP2,
-                           lo_parallax, &Rt_center, &Eta_center, &Eta_center_untilted);
+                           lo_p0, lo_p1, lo_p2, lo_p3, lo_p4, lo_p5,
+                           0.0, 0.0, 0.0, 0.0, 0.0,
+                           px, dLsd, dP2, lo_parallax, &Rt_center, &Eta_center, &Eta_center_untilted);
           Eta_center = Eta_center_untilted; // use untilted for dg_REta_to_YZ
           double pixY, pixZ;
           dg_REta_to_YZ(Rt_center, Eta_center, &pixY, &pixZ);

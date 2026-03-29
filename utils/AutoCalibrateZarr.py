@@ -149,6 +149,10 @@ class CalibState:
     p4: float = 0.0
     p5: float = 0.0
     p6: float = 0.0
+    p7: float = 0.0
+    p8: float = 0.0
+    p9: float = 0.0
+    p10: float = 0.0
     mean_strain: float = 1.0
     std_strain: float = 0.0
     rhod: float = 0.0
@@ -946,6 +950,14 @@ def process_calibrant_output(output_file, state):
                     state.p5 = float(parts[1])
                 if 'p6 ' in line:
                     state.p6 = float(parts[1])
+                if 'p7 ' in line:
+                    state.p7 = float(parts[1])
+                if 'p8 ' in line:
+                    state.p8 = float(parts[1])
+                if 'p9 ' in line:
+                    state.p9 = float(parts[1])
+                if 'p10 ' in line:
+                    state.p10 = float(parts[1])
                 if 'parallax ' in line:
                     state.parallax_in = float(parts[1])
                 if 'RhoD ' in line:
@@ -1667,7 +1679,8 @@ def run_integrator_validation(refined_params_file, data_file, dark_file,
         logger.info(f"Integrator params: Lsd={state.lsd:.3f} BC=({state.ybc:.4f},{state.zbc:.4f}) "
                     f"ty={state.ty:.8f} tz={state.tz:.8f} "
                     f"p0={state.p0:.6e} p1={state.p1:.6e} p2={state.p2:.6e} p3={state.p3:.6e} "
-                    f"p4={state.p4:.6e} p5={state.p5:.6e} p6={state.p6:.6e}")
+                    f"p4={state.p4:.6e} p5={state.p5:.6e} p6={state.p6:.6e} p7={state.p7:.6e} "
+                    f"p8={state.p8:.6e} p9={state.p9:.6e} p10={state.p10:.6e}")
         with open(integ_params, 'w') as f:
             f.write(f"Lsd {state.lsd}\n")
             f.write(f"BC {state.ybc} {state.zbc}\n")
@@ -1684,6 +1697,14 @@ def run_integrator_validation(refined_params_file, data_file, dark_file,
                 f.write(f"p5 {state.p5}\n")
             if state.p6 != 0.0:
                 f.write(f"p6 {state.p6}\n")
+            if state.p7 != 0.0:
+                f.write(f"p7 {state.p7}\n")
+            if state.p8 != 0.0:
+                f.write(f"p8 {state.p8}\n")
+            if state.p9 != 0.0:
+                f.write(f"p9 {state.p9}\n")
+            if state.p10 != 0.0:
+                f.write(f"p10 {state.p10}\n")
             f.write(f"RhoD {state.rhod}\n")
             f.write(f"Wavelength {state.wavelength}\n")
             f.write(f"px {state.px}\n")
@@ -1928,6 +1949,10 @@ def runMIDAS(rawFN, state, n_iterations=40, mult_factor=5,
             else:
                 pf.write('tolP 2E-3\n')
                 pf.write('tolP6 90\n')  # phase: cos(2η) has period 180°, need ±90°
+                pf.write('tolP7 1E-3\n')
+                pf.write('tolP8 90\n')
+                pf.write('tolP9 1E-3\n')
+                pf.write('tolP10 90\n')
 
             # Current geometry
             pf.write(f'tx {state.tx}\n')
@@ -1944,6 +1969,14 @@ def runMIDAS(rawFN, state, n_iterations=40, mult_factor=5,
                 pf.write(f'p5 {state.p5}\n')
             if state.p6 != 0.0:
                 pf.write(f'p6 {state.p6}\n')
+            if state.p7 != 0.0:
+                pf.write(f'p7 {state.p7}\n')
+            if state.p8 != 0.0:
+                pf.write(f'p8 {state.p8}\n')
+            if state.p9 != 0.0:
+                pf.write(f'p9 {state.p9}\n')
+            if state.p10 != 0.0:
+                pf.write(f'p10 {state.p10}\n')
             pf.write(f'EtaBinSize {eta_bin_size}\n')
             pf.write(f'HeadSize {8192 if state.midas_dtype == 1 else 0}\n')
 
@@ -3000,6 +3033,7 @@ def main():
                 'ty': state.ty, 'tz': state.tz,
                 'p0': state.p0, 'p1': state.p1, 'p2': state.p2, 'p3': state.p3,
                 'p4': state.p4, 'p5': state.p5, 'p6': state.p6,
+                'p7': state.p7, 'p8': state.p8, 'p9': state.p9, 'p10': state.p10,
                 'mean_strain': state.mean_strain, 'std_strain': state.std_strain,
                 'wavelength': state.wavelength, 'pixel_size': state.px,
                 'space_group': state.space_group,
@@ -3028,6 +3062,14 @@ def main():
             print(f"  p5             {state.p5}")
         if state.p6 != 0.0:
             print(f"  p6             {state.p6}")
+        if state.p7 != 0.0:
+            print(f"  p7             {state.p7}")
+        if state.p8 != 0.0:
+            print(f"  p8             {state.p8}")
+        if state.p9 != 0.0:
+            print(f"  p9             {state.p9}")
+        if state.p10 != 0.0:
+            print(f"  p10            {state.p10}")
         print(f"  RhoD           {state.rhod}")
         print(f"  Mean Strain    {state.mean_strain}")
         print(f"  Std Strain     {state.std_strain}")
@@ -3077,6 +3119,14 @@ def main():
             final_params['p5'] = state.p5
         if state.p6 != 0.0:
             final_params['p6'] = state.p6
+        if state.p7 != 0.0:
+            final_params['p7'] = state.p7
+        if state.p8 != 0.0:
+            final_params['p8'] = state.p8
+        if state.p9 != 0.0:
+            final_params['p9'] = state.p9
+        if state.p10 != 0.0:
+            final_params['p10'] = state.p10
         if state.parallax_in != 0.0:
             final_params['Parallax'] = state.parallax_in
 

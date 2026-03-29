@@ -80,7 +80,7 @@ void dg_build_tilt_matrix(double tx_deg, double ty_deg, double tz_deg,
 void dg_pixel_to_REta(double Y, double Z, double Ycen, double Zcen,
                       double TRs[3][3], double Lsd, double RhoD, double p0,
                       double p1, double p2, double p3, double p4, double p5,
-                      double p6,
+                      double p6, double p7, double p8, double p9, double p10,
                       double px, double dLsd, double dP2, double parallax,
                       double *R_out, double *Eta_out,
                       double *Eta_untilted_out) {
@@ -109,6 +109,8 @@ void dg_pixel_to_REta(double Y, double Z, double Ycen, double Zcen,
       (panelP2 * pow(RNorm, n2));
   DistortFunc += p4 * pow(RNorm, 6.0);
   DistortFunc += p5 * pow(RNorm, 4.0);
+  DistortFunc += p7 * pow(RNorm, 4.0) * cos(DG_DEG2RAD * (EtaT + p8));
+  DistortFunc += p9 * pow(RNorm, 3.0) * cos(DG_DEG2RAD * (3 * EtaT + p10));
   DistortFunc += 1;
   double Rt = Rad * DistortFunc / px; // in pixels
   Rt = Rt * (Lsd / panelLsd);         // re-project to global Lsd plane
@@ -138,7 +140,7 @@ void dg_invert_REta_to_pixel(
     double Ycen, double Zcen, double TRs[3][3],
     double Lsd, double RhoD,
     double p0, double p1, double p2, double p3, double p4, double p5,
-    double p6,
+    double p6, double p7, double p8, double p9, double p10,
     double px, double dLsd, double dP2, double parallax,
     double *Y_out, double *Z_out) {
 
@@ -155,7 +157,7 @@ void dg_invert_REta_to_pixel(
     // Evaluate forward function at current (Y, Z)
     double R_eval, Eta_eval;
     dg_pixel_to_REta(Y, Z, Ycen, Zcen, TRs, Lsd, RhoD,
-                     p0, p1, p2, p3, p4, p5, p6, px, dLsd, dP2, parallax,
+                     p0, p1, p2, p3, p4, p5, p6, p7, p8, p9, p10, px, dLsd, dP2, parallax,
                      &R_eval, &Eta_eval, NULL);
 
     double dR = R_target - R_eval;
@@ -170,10 +172,10 @@ void dg_invert_REta_to_pixel(
     // Numerical Jacobian: ∂(R,η)/∂(Y,Z)
     double R_dY, Eta_dY, R_dZ, Eta_dZ;
     dg_pixel_to_REta(Y + h, Z, Ycen, Zcen, TRs, Lsd, RhoD,
-                     p0, p1, p2, p3, p4, p5, p6, px, dLsd, dP2, parallax,
+                     p0, p1, p2, p3, p4, p5, p6, p7, p8, p9, p10, px, dLsd, dP2, parallax,
                      &R_dY, &Eta_dY, NULL);
     dg_pixel_to_REta(Y, Z + h, Ycen, Zcen, TRs, Lsd, RhoD,
-                     p0, p1, p2, p3, p4, p5, p6, px, dLsd, dP2, parallax,
+                     p0, p1, p2, p3, p4, p5, p6, p7, p8, p9, p10, px, dLsd, dP2, parallax,
                      &R_dZ, &Eta_dZ, NULL);
 
     double dRdY = (R_dY - R_eval) / h;
@@ -216,14 +218,14 @@ void dg_invert_REta_to_pixel_panel(
     double Ycen, double Zcen, double TRs[3][3],
     double Lsd, double RhoD,
     double p0, double p1, double p2, double p3, double p4, double p5,
-    double p6,
+    double p6, double p7, double p8, double p9, double p10,
     double px, double parallax,
     const Panel *panel,
     double *Y_out, double *Z_out) {
 
   if (panel == NULL) {
     dg_invert_REta_to_pixel(R_target, Eta_target, Ycen, Zcen, TRs,
-                            Lsd, RhoD, p0, p1, p2, p3, p4, p5, p6,
+                            Lsd, RhoD, p0, p1, p2, p3, p4, p5, p6, p7, p8, p9, p10,
                             px, 0, 0, parallax, Y_out, Z_out);
     return;
   }
@@ -244,7 +246,7 @@ void dg_invert_REta_to_pixel_panel(
     // Forward: panel-corrected pixel → (R, Eta) with panel dLsd/dP2
     double R_eval, Eta_eval;
     dg_pixel_to_REta(Y, Z, Ycen, Zcen, TRs, Lsd, RhoD,
-                     p0, p1, p2, p3, p4, p5, p6, px, dLsd, dP2, parallax,
+                     p0, p1, p2, p3, p4, p5, p6, p7, p8, p9, p10, px, dLsd, dP2, parallax,
                      &R_eval, &Eta_eval, NULL);
 
     double dR = R_target - R_eval;
@@ -258,10 +260,10 @@ void dg_invert_REta_to_pixel_panel(
     // Numerical Jacobian
     double R_dY, Eta_dY, R_dZ, Eta_dZ;
     dg_pixel_to_REta(Y + h, Z, Ycen, Zcen, TRs, Lsd, RhoD,
-                     p0, p1, p2, p3, p4, p5, p6, px, dLsd, dP2, parallax,
+                     p0, p1, p2, p3, p4, p5, p6, p7, p8, p9, p10, px, dLsd, dP2, parallax,
                      &R_dY, &Eta_dY, NULL);
     dg_pixel_to_REta(Y, Z + h, Ycen, Zcen, TRs, Lsd, RhoD,
-                     p0, p1, p2, p3, p4, p5, p6, px, dLsd, dP2, parallax,
+                     p0, p1, p2, p3, p4, p5, p6, p7, p8, p9, p10, px, dLsd, dP2, parallax,
                      &R_dZ, &Eta_dZ, NULL);
 
     double dRdY = (R_dY - R_eval) / h;

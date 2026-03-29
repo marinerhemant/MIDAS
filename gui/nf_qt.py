@@ -595,6 +595,7 @@ class NFViewer(QtWidgets.QMainWindow):
             lambda d: self.frame_spin.setValue(self.frame_spin.value() + d))
         self.image_view.cursorMoved.connect(self._on_cursor_moved)
         self.image_view.dataStatsUpdated.connect(self._on_stats_updated)
+        self.mic_image_view.cursorMoved.connect(self._on_mic_image_cursor_moved)
         self.col_combo.currentIndexChanged.connect(self._on_col_mode_changed)
         # Movie mode: advance frame by 1 (wraps at max)
         self.image_view.movieFrameAdvance.connect(self._movie_advance_frame)
@@ -1065,6 +1066,25 @@ class NFViewer(QtWidgets.QMainWindow):
 
     def _on_cursor_moved(self, x, y, val):
         self.status_label.setText(f"x={x:.1f}  y={y:.1f}  I={val:.0f}")
+
+    def _on_mic_image_cursor_moved(self, x, y, val):
+        """Show physical coords and current color value when hovering over binary map."""
+        if self.mic_data is None or self.mic_type != 2:
+            return
+        sx, sy = self.mic_size_x, self.mic_size_y
+        ix, iy = int(x + 0.5), int(y + 0.5)
+        if 0 <= ix < sx and 0 <= iy < sy:
+            # Convert pixel indices to physical coordinates using ref_x, ref_y
+            phys_x = ix + self.mic_ref_x
+            phys_y = iy + self.mic_ref_y
+            col_labels = {10: 'Confidence', 0: 'GrainID', 11: 'PhaseNr',
+                          7: 'Euler0', 8: 'Euler1', 9: 'Euler2',
+                          12: 'KAM', 13: 'GROD', 14: 'GrainMap'}
+            label = col_labels.get(self.col_mode, 'Val')
+            self.status_label.setText(
+                f"x={phys_x}  y={phys_y}  {label}={val:.4f}")
+        else:
+            self.status_label.setText(f"x={x:.1f}  y={y:.1f}")
 
     def _on_mic_cursor_moved(self, args):
         """Show nearest grain position and color value when hovering over mic scatter."""

@@ -82,6 +82,7 @@ int main(int argc, char *argv[]) {
   // ── Shared variables ─────────────────────────────────────────────
   double tx = 0, ty = 0, tz = 0, pxY = 200, pxZ = 200, yCen = 1024, zCen = 1024,
          Lsd = 1e6, RhoD = 2e5, p0 = 0, p1 = 0, p2 = 0, p3 = 0, p4 = 0, p5 = 0, p6 = 0,
+         p7 = 0, p8 = 0, p9 = 0, p10 = 0,
          EtaBinSize = 5, RBinSize = 0.25, RMax = 1524, RMin = 10, EtaMax = 180,
          EtaMin = -180;
   int NrPixelsY = 2048, NrPixelsZ = 2048;
@@ -232,6 +233,22 @@ int main(int argc, char *argv[]) {
       if (StartsWith(aline, str) == 1) {
         sscanf(aline, "%s %lf", dummy, &p6);
       }
+      str = "p7 ";
+      if (StartsWith(aline, str) == 1) {
+        sscanf(aline, "%s %lf", dummy, &p7);
+      }
+      str = "p8 ";
+      if (StartsWith(aline, str) == 1) {
+        sscanf(aline, "%s %lf", dummy, &p8);
+      }
+      str = "p9 ";
+      if (StartsWith(aline, str) == 1) {
+        sscanf(aline, "%s %lf", dummy, &p9);
+      }
+      str = "p10 ";
+      if (StartsWith(aline, str) == 1) {
+        sscanf(aline, "%s %lf", dummy, &p10);
+      }
       str = "DistortionOrder ";
       if (StartsWith(aline, str) == 1) {
         continue;
@@ -381,6 +398,18 @@ int main(int argc, char *argv[]) {
       if (strstr(finfo->name, "analysis/process/analysis_parameters/p6/0") !=
           NULL)
         ReadZarrChunk(arch, count, &p6, sizeof(double));
+      if (strstr(finfo->name, "analysis/process/analysis_parameters/p7/0") !=
+          NULL)
+        ReadZarrChunk(arch, count, &p7, sizeof(double));
+      if (strstr(finfo->name, "analysis/process/analysis_parameters/p8/0") !=
+          NULL)
+        ReadZarrChunk(arch, count, &p8, sizeof(double));
+      if (strstr(finfo->name, "analysis/process/analysis_parameters/p9/0") !=
+          NULL)
+        ReadZarrChunk(arch, count, &p9, sizeof(double));
+      if (strstr(finfo->name, "analysis/process/analysis_parameters/p10/0") !=
+          NULL)
+        ReadZarrChunk(arch, count, &p10, sizeof(double));
       if (strstr(finfo->name,
                  "analysis/process/analysis_parameters/DistortionOrder/0") !=
           NULL)
@@ -689,7 +718,7 @@ int main(int argc, char *argv[]) {
     printf("  Parallax: %.2f µm\n", Parallax);
   long long int TotNrOfBins = mapper_build_map(
       tx, ty, tz, NrPixelsY, NrPixelsZ, pxY, pxZ, yCen, zCen, Lsd, RhoD, p0, p1,
-      p2, p3, p4, p5, p6,
+      p2, p3, p4, p5, p6, p7, p8, p9, p10,
       EtaBinsLow, EtaBinsHigh, RBinsLow, RBinsHigh, nRBins, nEtaBins,
       pxList, nPxList, maxnPx, mask, binMaskFlag, NrTransOpt, TransOpt,
       binLocks, SubPixelLevel, SubPixelCardinalWidth,

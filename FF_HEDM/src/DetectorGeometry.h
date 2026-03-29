@@ -34,7 +34,7 @@ void dg_build_tilt_matrix(double tx_deg, double ty_deg, double tz_deg,
 void dg_pixel_to_REta(double Y, double Z, double Ycen, double Zcen,
                       double TRs[3][3], double Lsd, double RhoD, double p0,
                       double p1, double p2, double p3, double p4, double p5,
-                      double p6,
+                      double p6, double p7, double p8, double p9, double p10,
                       double px, double dLsd, double dP2, double parallax,
                       double *R_out, double *Eta_out,
                       double *Eta_untilted_out);
@@ -51,7 +51,7 @@ void dg_invert_REta_to_pixel(
     double Ycen, double Zcen, double TRs[3][3],
     double Lsd, double RhoD,
     double p0, double p1, double p2, double p3, double p4, double p5,
-    double p6,
+    double p6, double p7, double p8, double p9, double p10,
     double px, double dLsd, double dP2, double parallax,
     double *Y_out, double *Z_out);
 
@@ -66,7 +66,7 @@ void dg_invert_REta_to_pixel_panel(
     double Ycen, double Zcen, double TRs[3][3],
     double Lsd, double RhoD,
     double p0, double p1, double p2, double p3, double p4, double p5,
-    double p6,
+    double p6, double p7, double p8, double p9, double p10,
     double px, double parallax,
     const Panel *panel,
     double *Y_out, double *Z_out);

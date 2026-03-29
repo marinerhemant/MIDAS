@@ -127,22 +127,22 @@ PYFAI_RESULTS = {
 
 MIDAS_RESULTS = {
     'pilatus': {
-        'lsd_um': 657562.5, 'bc_y': 685.54, 'bc_z': 756.95,
-        'ty': -0.184, 'tz': 0.389,
-        'strain_1d_median': 12.8,
-        'mean_strain': 12.8,
+        'lsd_um': 657558.8, 'bc_y': 685.40, 'bc_z': 921.04,
+        'ty': 0.221, 'tz': 0.527,
+        'strain_1d_median': 21.6,
+        'mean_strain': 21.6,
     },
     'varex': {
-        'lsd_um': 895855.6, 'bc_y': 1446.93, 'bc_z': 1410.12,
-        'ty': 0.283, 'tz': 0.433,
-        'strain_1d_median': 6.5,
-        'mean_strain': 6.5,
+        'lsd_um': 895903.5, 'bc_y': 1446.97, 'bc_z': 1468.91,
+        'ty': -0.302, 'tz': 0.393,
+        'strain_1d_median': 5.4,
+        'mean_strain': 5.4,
     },
     'ge_offset': {
-        'lsd_um': 1863130.8, 'bc_y': 2275.42, 'bc_z': 2213.82,
-        'ty': 0.261, 'tz': 0.302,
-        'mean_strain': 5.2,
-        'strain_1d_median': 5.2,
+        'lsd_um': 1862584.2, 'bc_y': 2275.26, 'bc_z': 2211.85,
+        'ty': 0.017, 'tz': 0.282,
+        'mean_strain': 5.6,
+        'strain_1d_median': 5.6,
     },
 }
 
@@ -699,9 +699,102 @@ def fig_fita_yz(outdir):
     plt.close()
 
 
+
+def _plot_strain_panel(ax, fig, df, ds, label_prefix):
+    """Plot a single pseudo-strain scatter panel in Y-Z detector space.
+    Strain = (FitA - IdealA) / IdealA × 1e6  (µε).
+    Uses a symmetric diverging colormap centred on zero."""
+    import pandas as pd
+    if df is None:
+        ax.text(0.5, 0.5, f"{ds['label']}\n(data not found)",
+                transform=ax.transAxes, ha='center', va='center',
+                fontsize=12, color='gray')
+        ax.set_title(f"{label_prefix} {ds['label']}")
+        return
+
+    need_cols = {'YRawCorr', 'ZRawCorr', 'FitA', 'IdealA'}
+    if not need_cols.issubset(df.columns):
+        # Fall back to Strain column if present
+        if 'Strain' in df.columns and 'YRawCorr' in df.columns:
+            valid = df[df['FitA'] > 0].copy() if 'FitA' in df.columns else df.copy()
+            strain = valid['Strain'].values * 1e6  # ppm → µε
+        else:
+            ax.text(0.5, 0.5, f"{ds['label']}\n(missing columns)",
+                    transform=ax.transAxes, ha='center', va='center',
+                    fontsize=12, color='gray')
+            ax.set_title(f"{label_prefix} {ds['label']}")
+            return
+    else:
+        valid = df[df['FitA'] > 0].copy()
+        if len(valid) == 0:
+            ax.text(0.5, 0.5, "No valid data", transform=ax.transAxes,
+                    ha='center', va='center', fontsize=12, color='gray')
+            ax.set_title(f"{label_prefix} {ds['label']}")
+            return
+        strain = (valid['FitA'].values - valid['IdealA'].values) / valid['IdealA'].values * 1e6
+
+    # Separate inliers / outliers
+    outlier_col = 'Outlier' if 'Outlier' in valid.columns else None
+    if outlier_col:
+        mask_in = valid[outlier_col].values == 0
+    else:
+        mask_in = np.ones(len(valid), dtype=bool)
+
+    # Symmetric color range: ±3σ clipped to ±max(150, 3σ)
+    abs_lim = max(150, np.nanstd(strain[mask_in]) * 3)
+    vmin, vmax = -abs_lim, abs_lim
+
+    # Outliers behind (×-marker)
+    if (~mask_in).any():
+        ax.scatter(valid['YRawCorr'].values[~mask_in],
+                   valid['ZRawCorr'].values[~mask_in],
+                   c=strain[~mask_in], cmap='RdBu_r', s=4, alpha=0.3,
+                   vmin=vmin, vmax=vmax, rasterized=True,
+                   marker='x', linewidths=0.3)
+    # Inliers on top
+    sc = ax.scatter(valid['YRawCorr'].values[mask_in],
+                    valid['ZRawCorr'].values[mask_in],
+                    c=strain[mask_in], cmap='RdBu_r', s=4, alpha=0.8,
+                    vmin=vmin, vmax=vmax, rasterized=True)
+
+    n_inlier = int(mask_in.sum())
+    n_total = len(valid)
+    med = np.nanmedian(strain[mask_in])
+    ax.set_title(f"{label_prefix} {ds['label']}  "
+                 f"({n_inlier}/{n_total} pts, med={med:.1f} µε)",
+                 fontsize=10)
+    ax.set_xlabel('Y (px)')
+    ax.set_ylabel('Z (px)')
+    ax.set_aspect('equal', adjustable='datalim')
+
+    cb = fig.colorbar(sc, ax=ax, shrink=0.85, pad=0.02)
+    cb.set_label('Pseudo-Strain (µε)', fontsize=9)
+
+
+def fig_strain_yz(outdir):
+    """Pseudo-strain in detector Y-Z space for all 4 detectors."""
+    order = ['varex', 'pilatus', 'pilatus_no_panels', 'ge_offset']
+    fig, axes = plt.subplots(2, 2, figsize=(12, 10))
+    axes = axes.flatten()
+
+    for idx, name in enumerate(order):
+        ds = DATASETS[name]
+        df = load_corr_csv(ds.get('corr_csv', ''))
+        _plot_strain_panel(axes[idx], fig, df, ds, f"({chr(97+idx)})")
+
+    fig.suptitle('Pseudo-Strain — Detector Y-Z Space',
+                 fontsize=13, fontweight='bold', y=0.98)
+    plt.tight_layout(rect=[0, 0, 1, 0.96])
+    path = os.path.join(outdir, 'fig_strain_yz.pdf')
+    plt.savefig(path)
+    plt.savefig(path.replace('.pdf', '.png'))
+    print(f"  Saved {path}")
+    plt.close()
+
+
 def main():
     parser = argparse.ArgumentParser(description='Generate Paper 3 figures')
-    parser.add_argument('--outdir', default=os.path.join(MIDAS_HOME, 'utils', 'paper3_figures'),
+    parser.add_argument('--outdir', default=os.path.expanduser('~/Documents/3Papers/paper3_calibration'),
                         help='Output directory for figures')
     args = parser.parse_args()
 
@@ -711,25 +804,28 @@ def main():
     print("  Paper 3: Generating Figures")
     print("=" * 60)
 
-    print("\n[1/7] Convergence plots...")
+    print("\n[1/8] Convergence plots...")
     fig_convergence(args.outdir)
 
-    print("\n[2/7] Per-eval trajectory...")
+    print("\n[2/8] Per-eval trajectory...")
     fig_pereval_trajectory(args.outdir)
 
-    print("\n[3/7] pyFAI vs MIDAS comparison...")
+    print("\n[3/8] pyFAI vs MIDAS comparison...")
     fig_pyfai_comparison(args.outdir)
 
-    print("\n[4/7] Geometry comparison...")
+    print("\n[4/8] Geometry comparison...")
     fig_geometry_table(args.outdir)
 
-    print("\n[5/7] FitA R-\u03b7 (tile boundaries)...")
+    print("\n[5/8] FitA R-η (tile boundaries)...")
     fig_fita_reta(args.outdir)
 
-    print("\n[6/7] FitA Y-Z (detector space)...")
+    print("\n[6/8] FitA Y-Z (detector space)...")
     fig_fita_yz(args.outdir)
 
-    print("\n[7/7] Multi-detector summary...")
+    print("\n[7/8] Strain Y-Z (detector space)...")
+    fig_strain_yz(args.outdir)
+
+    print("\n[8/8] Multi-detector summary...")
     fig_multi_detector(args.outdir)
 
     print(f"\n  All figures saved to {args.outdir}")
@@ -737,4 +833,5 @@ def main():
 
 if __name__ == '__main__':
     main()
+
 

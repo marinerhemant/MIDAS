@@ -7,7 +7,7 @@ Usage:
     python3 view_peaks_binary.py AllPeaks_PX.bin [--frame FRAME_IDX]
     python3 view_peaks_binary.py AllPeaks_PS.bin --summary
 
-Author: Hemant Sharma / AI Assistant
+Author: Hemant Sharma
 """
 
 import argparse

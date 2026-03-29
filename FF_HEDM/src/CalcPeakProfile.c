@@ -133,7 +133,8 @@ inline void CalcPeakProfileParallel(int *Indices, int NrEachIndexBin, int idx,
           double Z = (double)iz + dg_dz[l];
           double Rt, Eta;
           dg_pixel_to_REta(Y, Z, ybc, zbc, TRs, Lsd, RhoD, p0, p1, p2, p3,
-                           p4, p5, p6, px, 0, 0, 0, &Rt, &Eta, NULL);
+                           p4, p5, p6, 0.0, 0.0, 0.0, 0.0,
+                           px, 0, 0, 0, &Rt, &Eta, NULL);
           dg_REta_to_YZ(Rt, Eta, &cornerYZ[k * 2 + l][0],
                         &cornerYZ[k * 2 + l][1]);
         }
@@ -201,7 +202,8 @@ inline void CalcPeakProfileRaw(int *Indices, int NrEachIndexBin, int idx,
           double Z = (double)iz + dg_dz[l];
           double Rt, Eta;
           dg_pixel_to_REta(Y, Z, ybc, zbc, TRs, Lsd, RhoD, p0, p1, p2, p3,
-                           p4, p5, p6, px, 0, 0, 0, &Rt, &Eta, NULL);
+                           p4, p5, p6, 0.0, 0.0, 0.0, 0.0,
+                           px, 0, 0, 0, &Rt, &Eta, NULL);
           dg_REta_to_YZ(Rt, Eta, &cornerYZ[k * 2 + l][0],
                         &cornerYZ[k * 2 + l][1]);
         }

@@ -14,7 +14,7 @@
 
 #include "Panel.h"
 #include "DetectorGeometry.h"
-#include "MIDAS_Math.h"
+
 #include <omp.h>
 
 // ── Calibration context (replaces global state) ───────────────────
@@ -141,6 +141,10 @@ int calib_fit_tilt_bc_lsd(
     int WeightByRadius, double *snrWeights, double *p4Out,
     double p5in, double tolP5, double *p5Out,
     double p6in, double tolP6, double *p6Out,
+    double p7in, double tolP7, double *p7Out,
+    double p8in, double tolP8, double *p8Out,
+    double p9in, double tolP9, double *p9Out,
+    double p10in, double tolP10, double *p10Out,
     int verbose, int L2Objective, double *initParams,
     Panel *initPanels, int fitWavelength, double wavelengthIn,
     double tolWavelength, double *PointDSpacing,
@@ -159,7 +163,8 @@ void calib_correct_tilt_distortion(
     double tx, double ty, double tz, double p0, double p1, double p2,
     double p3, double *Etas, double *Diffs, double *RadOuts,
     double *StdDiff, double outlierFactor, int *IsOutlier,
-    double p4, double p5, double p6, int OutlierIterations,
+    double p4, double p5, double p6, double p7, double p8, double p9, double p10,
+    int OutlierIterations,
     int verbose, double *MeanDiffOut, double parallax,
     const int *skipBin);
 

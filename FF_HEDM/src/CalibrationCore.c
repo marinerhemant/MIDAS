@@ -374,9 +374,10 @@ double calib_problem_function(unsigned n, const double *x, double *grad,
   double ty = x[3], tz = x[4];
   double p0 = x[5], p1 = x[6], p2 = x[7], p3 = x[8];
   double p4 = x[9], p5 = x[10], p6 = x[11];
+  double p7 = x[12], p8 = x[13], p9 = x[14], p10 = x[15];
   double parallax = 0;
   if (f->fitParallax)
-    parallax = x[12];
+    parallax = x[16];
   double wavelength = 0;
   if (f->fitWavelength)
     wavelength = x[f->nBase - 1];
@@ -440,7 +441,7 @@ double calib_problem_function(unsigned n, const double *x, double *grad,
     // and it internally computes Y_phys = (-rawY + ybc) * px
     double R_px, Eta;
     dg_pixel_to_REta(rawY, rawZ, ybc, zbc, TRs, Lsd, MaxRad,
-                     p0, p1, p2, p3, p4, p5, p6, px, dLsd, dP2, parallax,
+                     p0, p1, p2, p3, p4, p5, p6, p7, p8, p9, p10, px, dLsd, dP2, parallax,
                      &R_px, &Eta, NULL);
 
     // Ideal R in pixels: Lsd * tan(2θ) / px
@@ -497,10 +498,10 @@ double calib_problem_function(unsigned n, const double *x, double *grad,
         : 0.0;
     fprintf(calib_trace_fp,
             "%lld,%.10e,%.6f,%.6f,%.6f,%.6f,%.8f,%.8f,"
-            "%.8e,%.8e,%.8e,%.8e,%.8e,%.8e,%.8e\n",
+            "%.8e,%.8e,%.8e,%.8e,%.8e,%.8e,%.8e,%.8e,%.8e,%.8e,%.8e\n",
             ctx->NrCalls, TotalDiff, meanStrain_ue,
             Lsd, ybc, zbc, ty, tz,
-            p0, p1, p2, p3, p4, p5, p6);
+            p0, p1, p2, p3, p4, p5, p6, p7, p8, p9, p10);
     fflush(calib_trace_fp);
   }
 
@@ -526,6 +527,10 @@ int calib_fit_tilt_bc_lsd(
     int WeightByRadius, double *snrWeights, double *p4Out,
     double p5in, double tolP5, double *p5Out,
     double p6in, double tolP6, double *p6Out,
+    double p7in, double tolP7, double *p7Out,
+    double p8in, double tolP8, double *p8Out,
+    double p9in, double tolP9, double *p9Out,
+    double p10in, double tolP10, double *p10Out,
     int verbose, int L2Objective, double *initParams,
     Panel *initPanels, int fitWavelength, double wavelengthIn,
     double tolWavelength, double *PointDSpacing,
@@ -536,7 +541,7 @@ int calib_fit_tilt_bc_lsd(
     const int *skipBin) {
 
   int fitParallax = (tolParallax > EPS) ? 1 : 0;
-  int nBase = 12; // Lsd, ybc, zbc, ty, tz, p0-p3, p4, p5, p6
+  int nBase = 16; // Lsd, ybc, zbc, ty, tz, p0-p3, p4, p5, p6, p7, p8, p9, p10
   if (fitParallax) nBase++;
   if (fitWavelength) nBase++;
   unsigned n = nBase;
@@ -587,6 +592,10 @@ int calib_fit_tilt_bc_lsd(
   double bp4   = (initParams ? initParams[9]  : p4in);
   double bp5   = (initParams ? initParams[10] : p5in);
   double bp6   = (initParams ? initParams[11] : p6in);
+  double bp7   = (initParams ? initParams[12] : p7in);
+  double bp8   = (initParams ? initParams[13] : p8in);
+  double bp9   = (initParams ? initParams[14] : p9in);
+  double bp10  = (initParams ? initParams[15] : p10in);
 
   x[0]  = Lsd;   xl[0]  = bLsd  - tolLsd;   xu[0]  = bLsd  + tolLsd;
   x[1]  = ybc;   xl[1]  = bybc  - tolBC;    xu[1]  = bybc  + tolBC;
@@ -600,12 +609,16 @@ int calib_fit_tilt_bc_lsd(
   x[9]  = p4in;  xl[9]  = bp4   - tolP4;   xu[9]  = bp4   + tolP4;
   x[10] = p5in;  xl[10] = bp5   - tolP5;   xu[10] = bp5   + tolP5;
   x[11] = p6in;  xl[11] = bp6   - tolP6;   xu[11] = bp6   + tolP6;
+  x[12] = p7in;  xl[12] = bp7   - tolP7;   xu[12] = bp7   + tolP7;
+  x[13] = p8in;  xl[13] = bp8   - tolP8;   xu[13] = bp8   + tolP8;
+  x[14] = p9in;  xl[14] = bp9   - tolP9;   xu[14] = bp9   + tolP9;
+  x[15] = p10in; xl[15] = bp10  - tolP10;  xu[15] = bp10  + tolP10;
 
   if (fitParallax) {
-    double bpar = (initParams ? initParams[12] : parallaxIn);
-    x[12]  = parallaxIn;
-    xl[12] = bpar - tolParallax;
-    xu[12] = bpar + tolParallax;
+    double bpar = (initParams ? initParams[16] : parallaxIn);
+    x[16]  = parallaxIn;
+    xl[16] = bpar - tolParallax;
+    xu[16] = bpar + tolParallax;
   }
   if (fitWavelength) {
     int wlIdx = nBase - 1;
@@ -731,7 +744,11 @@ int calib_fit_tilt_bc_lsd(
   if (nBase > 9 && p4Out) *p4Out = x[9];
   if (p5Out) *p5Out = x[10];
   if (p6Out) *p6Out = x[11];
-  if (fitParallax && parallaxOut) *parallaxOut = x[12];
+  if (p7Out) *p7Out = x[12];
+  if (p8Out) *p8Out = x[13];
+  if (p9Out) *p9Out = x[14];
+  if (p10Out) *p10Out = x[15];
+  if (fitParallax && parallaxOut) *parallaxOut = x[16];
   if (fitWavelength && wavelengthOut) *wavelengthOut = x[nBase - 1];
 
   // Update panel shifts
@@ -803,6 +820,8 @@ int calib_fit_tilt_bc_lsd(
                        *p0, *p1, *p2, *p3,
                        (p4Out ? *p4Out : p4in), (p5Out ? *p5Out : p5in),
                        (p6Out ? *p6Out : p6in),
+                       (p7Out ? *p7Out : p7in), (p8Out ? *p8Out : p8in),
+                       (p9Out ? *p9Out : p9in), (p10Out ? *p10Out : p10in),
                        px, dLsd, dP2,
                        (fitParallax && parallaxOut) ? *parallaxOut : 0,
                        &R_px, &Eta, NULL);
@@ -865,7 +884,8 @@ void calib_correct_tilt_distortion(
     double tx, double ty, double tz, double p0, double p1, double p2,
     double p3, double *Etas, double *Diffs, double *RadOuts,
     double *StdDiff, double outlierFactor, int *IsOutlier,
-    double p4, double p5, double p6, int OutlierIterations,
+    double p4, double p5, double p6, double p7, double p8, double p9, double p10,
+    int OutlierIterations,
     int verbose, double *MeanDiffOut, double parallax,
     const int *skipBin) {
 
@@ -909,7 +929,7 @@ void calib_correct_tilt_distortion(
     // Canonical geometry via dg_pixel_to_REta
     double R_px, Eta;
     dg_pixel_to_REta(rawY, rawZ, ybc, zbc, TRs, Lsd, MaxRad,
-                     p0, p1, p2, p3, p4, p5, p6, px, dLsd, dP2, parallax,
+                     p0, p1, p2, p3, p4, p5, p6, p7, p8, p9, p10, px, dLsd, dP2, parallax,
                      &R_px, &Eta, NULL);
 
     double RIdeal_px = (Lsd + dLsd) * tan(DG_DEG2RAD * IdealTtheta[i]) / px;
