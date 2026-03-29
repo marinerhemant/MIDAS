@@ -2679,7 +2679,7 @@ int main(int argc, char *argv[]) {
         // Item 5: pre-convert to radians for trig
         double EtaT_rad = EtaT * DEG2RAD;
         double RNorm3 = RNorm2 * RNorm;
-        double dipole = params.p7 * RNorm * cos(EtaT_rad + params.p8 * DEG2RAD);
+        double dipole = params.p7 * RNorm4 * cos(EtaT_rad + params.p8 * DEG2RAD);
         double trefoil = params.p9 * RNorm3 * cos(3.0 * EtaT_rad + params.p10 * DEG2RAD);
         double DistortFunc =
             (params.p0 * RNorm2 * cos(2.0 * EtaT_rad + params.p6 * DEG2RAD)) +

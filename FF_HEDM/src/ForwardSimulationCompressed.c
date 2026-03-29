@@ -651,7 +651,7 @@ static inline void CorrectTiltSpatialDistortion(
       double RNorm = Rad / RhoD;
       double EtaT = 90 - Eta;
       double RNorm3 = RNorm * RNorm * RNorm;
-      double dipole = p7 * RNorm * cos(deg2rad * (EtaT + p8));
+      double dipole = p7 * pow(RNorm, 4.0) * cos(deg2rad * (EtaT + p8));
       double trefoil = p9 * RNorm3 * cos(deg2rad * (3.0 * EtaT + p10));
       double DistortFunc =
           (p0 * (pow(RNorm, n0)) * (cos(deg2rad * (2 * EtaT + p6)))) +

@@ -156,6 +156,7 @@ class CalibState:
     mean_strain: float = 1.0
     std_strain: float = 0.0
     rhod: float = 0.0
+    fit_p_models: str = 'tilt,spherical,dipole,trefoil,octupole'
 
     # Ring info
     n_planes: int = 0
@@ -1947,12 +1948,23 @@ def runMIDAS(rawFN, state, n_iterations=40, mult_factor=5,
             if stage == 1:
                 pf.write('tolP 0\n')  # lock distortion at current values
             else:
-                pf.write('tolP 2E-3\n')
-                pf.write('tolP6 90\n')  # phase: cos(2η) has period 180°, need ±90°
-                pf.write('tolP7 1E-3\n')
-                pf.write('tolP8 180\n')
-                pf.write('tolP9 1E-3\n')
-                pf.write('tolP10 180\n')
+                modes = state.fit_p_models.split(',')
+                if 'tilt' in modes or 'all' in modes:
+                    pf.write('tolP 2E-3\n')
+                    pf.write('tolP6 90\n')  # phase: cos(2η) has period 180°, need ±90°
+                if 'spherical' in modes or 'all' in modes:
+                    pf.write('tolP2 2E-3\n')
+                    pf.write('tolP4 2E-3\n')
+                    pf.write('tolP5 2E-3\n')
+                if 'dipole' in modes or 'all' in modes:
+                    pf.write('tolP7 1E-3\n')
+                    pf.write('tolP8 180\n')
+                if 'trefoil' in modes or 'all' in modes:
+                    pf.write('tolP9 1E-3\n')
+                    pf.write('tolP10 180\n')
+                if 'octupole' in modes or 'all' in modes:
+                    pf.write('tolP1 2E-3\n')
+                    pf.write('tolP3 45\n')
 
             # Current geometry
             pf.write(f'tx {state.tx}\n')
@@ -1970,10 +1982,13 @@ def runMIDAS(rawFN, state, n_iterations=40, mult_factor=5,
             if state.p6 != 0.0:
                 pf.write(f'p6 {state.p6}\n')
             # Break polar coordinate gradient singularities before passing to NLopt
-            _p7_seed = state.p7 if state.p7 != 0.0 else (1e-4 if stage != 1 else 0.0)
-            _p8_seed = state.p8 if state.p8 != 0.0 else (45.0 if stage != 1 else 0.0)
-            _p9_seed = state.p9 if state.p9 != 0.0 else (1e-4 if stage != 1 else 0.0)
-            _p10_seed = state.p10 if state.p10 != 0.0 else (45.0 if stage != 1 else 0.0)
+            _fit_dipole = stage != 1 and ('dipole' in state.fit_p_models or 'all' in state.fit_p_models)
+            _fit_trefoil = stage != 1 and ('trefoil' in state.fit_p_models or 'all' in state.fit_p_models)
+
+            _p7_seed = state.p7 if state.p7 != 0.0 else (1e-4 if _fit_dipole else 0.0)
+            _p8_seed = state.p8 if state.p8 != 0.0 else (45.0 if _fit_dipole else 0.0)
+            _p9_seed = state.p9 if state.p9 != 0.0 else (1e-4 if _fit_trefoil else 0.0)
+            _p10_seed = state.p10 if state.p10 != 0.0 else (45.0 if _fit_trefoil else 0.0)
 
             if _p7_seed != 0.0: pf.write(f'p7 {_p7_seed}\n')
             if _p8_seed != 0.0: pf.write(f'p8 {_p8_seed}\n')
@@ -2159,6 +2174,8 @@ def main():
         parser.add_argument('--convert', '-ConvertFile', type=int, default=-1,
                             help='Force format conversion: 0=Zarr, 1=HDF5, 2=GE, 3=TIFF, 4=CBF. '
                                  'Default: auto-detect from extension.')
+        parser.add_argument('--fit-p-models', type=str, default='tilt,spherical,dipole,trefoil,octupole',
+                            help="Comma-separated models to fit: tilt,spherical,dipole,trefoil,octupole. E.g. 'none' or 'tilt,spherical'.")
 
         # Calibration control
         parser.add_argument('--n-iterations', type=int, default=40,
@@ -2269,6 +2286,9 @@ def main():
         state.tol_rotation = args.tol_rotation
         state.per_panel_lsd = args.per_panel_lsd
         state.fix_panel_id = args.fix_panel
+        state.skip_panels = args.skip_panels
+        state.fit_parallax = args.fit_parallax if args.fit_parallax is not None else 0
+        state.fit_p_models = args.fit_p_models
 
         dataFN = args.data
         darkFN = args.dark
