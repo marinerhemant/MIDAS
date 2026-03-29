@@ -140,6 +140,10 @@ typedef struct {
   double p4;
   double p5;
   double p6;
+  double p7;
+  double p8;
+  double p9;
+  double p10;
   double Wavelength;
   double zDiffThresh;
   double BadPxIntensity;
@@ -1783,6 +1787,7 @@ static void printAllParameters(const ImageMetadata *metadata,
   printf("  p0, p1, p2, p3     : %g, %g, %g, %g\n", params->p0, params->p1,
          params->p2, params->p3);
   printf("  p4, p5, p6         : %g, %g, %g\n", params->p4, params->p5, params->p6);
+  printf("  p7, p8, p9, p10    : %g, %g, %g, %g\n", params->p7, params->p8, params->p9, params->p10);
   printf("  Wavelength         : %f\n", params->Wavelength);
   printf("  zDiffThresh        : %f\n", params->zDiffThresh);
   printf("  BadPxIntensity     : %f\n", params->BadPxIntensity);
@@ -1876,6 +1881,10 @@ static ErrorCode parseZarrMetadata(const char *dataFile,
   params->p4 = 0;
   params->p5 = 0;
   params->p6 = 0;
+  params->p7 = 0;
+  params->p8 = 0;
+  params->p9 = 0;
+  params->p10 = 0;
   params->Wavelength = DEFAULT_WAVELENGTH;
   params->zDiffThresh = 0;
   params->minNrPx = 1;
@@ -2241,6 +2250,18 @@ static ErrorCode parseZarrMetadata(const char *dataFile,
     if (strstr(fileInfo->name, "analysis/process/analysis_parameters/p6/0") !=
         NULL)
       ReadZarrChunk(archive, count, &params->p6, sizeof(double));
+    if (strstr(fileInfo->name, "analysis/process/analysis_parameters/p7/0") !=
+        NULL)
+      ReadZarrChunk(archive, count, &params->p7, sizeof(double));
+    if (strstr(fileInfo->name, "analysis/process/analysis_parameters/p8/0") !=
+        NULL)
+      ReadZarrChunk(archive, count, &params->p8, sizeof(double));
+    if (strstr(fileInfo->name, "analysis/process/analysis_parameters/p9/0") !=
+        NULL)
+      ReadZarrChunk(archive, count, &params->p9, sizeof(double));
+    if (strstr(fileInfo->name, "analysis/process/analysis_parameters/p10/0") !=
+        NULL)
+      ReadZarrChunk(archive, count, &params->p10, sizeof(double));
     if (strstr(fileInfo->name,
                "analysis/process/analysis_parameters/MinNrPx/0") != NULL)
       ReadZarrChunk(archive, count, &params->minNrPx, sizeof(int));
@@ -2657,11 +2678,14 @@ int main(int argc, char *argv[]) {
         double RNorm4 = RNorm2 * RNorm2;
         // Item 5: pre-convert to radians for trig
         double EtaT_rad = EtaT * DEG2RAD;
+        double RNorm3 = RNorm2 * RNorm;
+        double dipole = params.p7 * RNorm * cos(EtaT_rad + params.p8 * DEG2RAD);
+        double trefoil = params.p9 * RNorm3 * cos(3.0 * EtaT_rad + params.p10 * DEG2RAD);
         double DistortFunc =
             (params.p0 * RNorm2 * cos(2.0 * EtaT_rad + params.p6 * DEG2RAD)) +
             (params.p1 * RNorm4 * cos(4.0 * EtaT_rad + params.p3 * DEG2RAD)) +
             (panelP2 * RNorm2) + params.p4 * RNorm4 * RNorm2 +
-            params.p5 * RNorm4 + 1;
+            params.p5 * RNorm4 + dipole + trefoil + 1.0;
         double Rt = Rad * DistortFunc / params.px;
         Rt = Rt * (params.Lsd / panelLsd); // re-project to global Lsd plane
         for (int r = 0; r < params.nRingsThresh; r++) {

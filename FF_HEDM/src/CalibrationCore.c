@@ -9,6 +9,8 @@
 //
 
 #include "CalibrationCore.h"
+#include "MIDAS_Math.h"
+#include <nlopt.h>
 #include <math.h>
 #include <stdio.h>
 #include <stdlib.h>

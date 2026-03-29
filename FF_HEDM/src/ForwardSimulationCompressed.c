@@ -600,7 +600,7 @@ static inline double CorrectWedge(double eta, double theta, double wl,
 static inline void CorrectTiltSpatialDistortion(
     double px, double Lsd, double ybc, double zbc, double tx, double ty,
     double tz, double RhoD, double p0, double p1, double p2, double p3,
-    double p4, double p5, double p6, int NrPixels, double *yDispl, double *zDispl,
+    double p4, double p5, double p6, double p7, double p8, double p9, double p10, int NrPixels, double *yDispl, double *zDispl,
     int nPanels, Panel *panels, int nCPUs) {
   double txr, tyr, tzr;
   txr = deg2rad * tx;
@@ -650,11 +650,14 @@ static inline void CorrectTiltSpatialDistortion(
       CalcEtaAngle(XYZ[1], XYZ[2], &Eta);
       double RNorm = Rad / RhoD;
       double EtaT = 90 - Eta;
+      double RNorm3 = RNorm * RNorm * RNorm;
+      double dipole = p7 * RNorm * cos(deg2rad * (EtaT + p8));
+      double trefoil = p9 * RNorm3 * cos(deg2rad * (3.0 * EtaT + p10));
       double DistortFunc =
           (p0 * (pow(RNorm, n0)) * (cos(deg2rad * (2 * EtaT + p6)))) +
           (p1 * (pow(RNorm, n1)) * (cos(deg2rad * (4 * EtaT + p3)))) +
           (panelP2 * (pow(RNorm, n2))) + p4 * pow(RNorm, 6.0) +
-          p5 * pow(RNorm, 4.0) + 1;
+          p5 * pow(RNorm, 4.0) + dipole + trefoil + 1;
       double Rcorr = Rad * DistortFunc;
       double YCorr = -Rcorr * sin(Eta * deg2rad);
       double ZCorr = Rcorr * cos(Eta * deg2rad);
@@ -1094,6 +1097,7 @@ int main(int argc, char *argv[]) {
   memcpy(LatC, cfg.LatticeConstant, sizeof(LatC));
   double p0 = cfg.p0, p1 = cfg.p1, p2 = cfg.p2, p3 = cfg.p3;
   double p4 = cfg.p4, p5 = cfg.p5, p6 = cfg.p6, RhoD = cfg.RhoD;
+  double p7 = cfg.p7, p8 = cfg.p8, p9 = cfg.p9, p10 = cfg.p10;
   double GaussWidth = cfg.GaussWidth > 0 ? cfg.GaussWidth : 1;
   double PeakIntensity = cfg.PeakIntensity;
   int NPanelsY = cfg.NPanelsY, NPanelsZ = cfg.NPanelsZ;
@@ -1443,7 +1447,7 @@ int main(int argc, char *argv[]) {
         -32100.0; // Set to a special number to check if it was set or not.
   }
   CorrectTiltSpatialDistortion(px, Lsd, yBC, zBC, tx, ty, tz, RhoD, p0, p1, p2,
-                               p3, p4, p5, p6, NrPixels, yDispl, zDispl, nPanels,
+                               p3, p4, p5, p6, p7, p8, p9, p10, NrPixels, yDispl, zDispl, nPanels,
                                panels, nCPUs);
   end_time = omp_get_wtime();
   diftotal = end_time - start0;

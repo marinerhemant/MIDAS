@@ -527,6 +527,7 @@ static inline void CorrectTiltSpatialDistortion(
     int nIndices, double MaxRad, double **SpotInfoAll, double px, double Lsd,
     double ybc, double zbc, double tx, double ty, double tz, double p0,
     double p1, double p2, double p3, double p4, double p5, double p6,
+    double p7, double p8, double p9, double p10,
     double **SpotInfoCorr, int nPanels, Panel *panels) {
   double txr, tyr, tzr;
   txr = deg2rad * tx;
@@ -567,10 +568,13 @@ static inline void CorrectTiltSpatialDistortion(
     Eta = CalcEtaAngleLocal(XYZ[1], XYZ[2]);
     RNorm = Rad / MaxRad;
     EtaT = 90 - Eta;
+    double RNorm3 = RNorm * RNorm * RNorm;
+    double dipole = p7 * RNorm * cos(deg2rad * (EtaT + p8));
+    double trefoil = p9 * RNorm3 * cos(deg2rad * (3.0 * EtaT + p10));
     DistortFunc = (p0 * (pow(RNorm, n0)) * (cos(deg2rad * (2 * EtaT + p6)))) +
                   (p1 * (pow(RNorm, n1)) * (cos(deg2rad * (4 * EtaT + p3)))) +
                   (panelP2 * (pow(RNorm, n2))) + p4 * pow(RNorm, 6.0) +
-                  p5 * pow(RNorm, 4.0) + 1;
+                  p5 * pow(RNorm, 4.0) + dipole + trefoil + 1;
     Rcorr = Rad * DistortFunc;
     Rcorr = Rcorr * (Lsd / panelLsd); // re-project to global Lsd plane
     SpotInfoCorr[i][0] = SpotInfoAll[i][0];
@@ -631,6 +635,10 @@ static void calc_grain_errors(int nGrains, int nPanels, Panel *panels,
   double p4 = x[global_offset + 10];
   double p5 = x[global_offset + 11];
   double p6 = x[global_offset + 12];
+  double p7 = x[global_offset + 13];
+  double p8 = x[global_offset + 14];
+  double p9 = x[global_offset + 15];
+  double p10 = x[global_offset + 16];
 
   for (int g = 0; g < nGrains; g++) {
     struct GrainData *g_data = &grains[g];
@@ -665,7 +673,7 @@ static void calc_grain_errors(int nGrains, int nPanels, Panel *panels,
 
     CorrectTiltSpatialDistortion(g_data->nSpots, g_data->RhoD, SpotInfoShifted,
                                  g_data->px, g_data->Lsd, ybc, zbc, tx, ty, tz,
-                                 p0, p1, p2, p3, p4, p5, p6, SpotInfoCorr,
+                                 p0, p1, p2, p3, p4, p5, p6, p7, p8, p9, p10, SpotInfoCorr,
                                  nPanels, panels);
     FreeMemMatrix(SpotInfoShifted, g_data->nSpots);
 
@@ -708,10 +716,14 @@ static double problem_function(unsigned n, const double *x, double *grad,
   double p4 = x[global_offset + 10];
   double p5 = x[global_offset + 11];
   double p6 = x[global_offset + 12];
+  double p7 = x[global_offset + 13];
+  double p8 = x[global_offset + 14];
+  double p9 = x[global_offset + 15];
+  double p10 = x[global_offset + 16];
 
   // Panels are at the end of x
   if (nPanels > 1) {
-    int p_idx = global_offset + 13;
+    int p_idx = global_offset + 17;
     for (int i = 0; i < nPanels; i++) {
       if (i == f_data->fixPanel) {
         panels[i].dY = 0;
@@ -765,7 +777,7 @@ static double problem_function(unsigned n, const double *x, double *grad,
 
     CorrectTiltSpatialDistortion(g_data->nSpots, g_data->RhoD, SpotInfoShifted,
                                  g_data->px, g_data->Lsd, ybc, zbc, tx, ty, tz,
-                                 p0, p1, p2, p3, p4, p5, p6, SpotInfoCorr,
+                                 p0, p1, p2, p3, p4, p5, p6, p7, p8, p9, p10, SpotInfoCorr,
                                  f_data->nPanels, f_data->panels);
     FreeMemMatrix(SpotInfoShifted, g_data->nSpots);
 
@@ -794,11 +806,11 @@ static double problem_function(unsigned n, const double *x, double *grad,
   return totalError;
 }
 
-void FitMultipleGrains(struct GrainData *grains, int nGrains, double OptP[13],
-                       double NonOptP[5], double tols[26], double *Out,
+void FitMultipleGrains(struct GrainData *grains, int nGrains, double OptP[17],
+                       double NonOptP[5], double tols[30], double *Out,
                        Panel *panels, int nPanels, double tolShifts,
                        int *spotsPerPanel, int fixPanel) {
-  unsigned n = nGrains * 12 + 13; // Grains(12 each) + Global(13)
+  unsigned n = nGrains * 12 + 17; // Grains(12 each) + Global(17)
   if (nPanels > 1) {
     n += (nPanels - 1) * 2;
   }
@@ -845,16 +857,16 @@ void FitMultipleGrains(struct GrainData *grains, int nGrains, double OptP[13],
 
   // 2. Set Global Parameters
   int global_offset = nGrains * 12;
-  for (int i = 0; i < 13; i++) {
+  for (int i = 0; i < 17; i++) {
     x[global_offset + i] = OptP[i];
-    // Tols for global params are at indices 12-24 in 'tols' array
+    // Tols for global params are at indices 12-28 in 'tols' array
     xl[global_offset + i] = x[global_offset + i] - tols[12 + i];
     xu[global_offset + i] = x[global_offset + i] + tols[12 + i];
   }
 
   // 3. Set Panel Parameters
   if (nPanels > 1) {
-    int p_idx = global_offset + 13; // Start of panel parameters
+    int p_idx = global_offset + 17; // Start of panel parameters
     for (int i = 0; i < nPanels; i++) {
       if (i == fixPanel) { // Skip the fixed panel
         continue;
@@ -924,6 +936,10 @@ void FitMultipleGrains(struct GrainData *grains, int nGrains, double OptP[13],
   printf("p4 %.12f\n", gOpt[10]);
   printf("p5 %.12f\n", gOpt[11]);
   printf("p6 %.12f\n", gOpt[12]);
+  printf("p7 %.12f\n", gOpt[13]);
+  printf("p8 %.12f\n", gOpt[14]);
+  printf("p9 %.12f\n", gOpt[15]);
+  printf("p10 %.12f\n", gOpt[16]);
 
   printf("\n-------------------------------------------------------------------"
          "----------------------------------------------\n");
@@ -951,7 +967,7 @@ void FitMultipleGrains(struct GrainData *grains, int nGrains, double OptP[13],
     Out[i] = x[i];
 
   if (nPanels > 1) {
-    int p_idx = global_offset + 13;
+    int p_idx = global_offset + 17;
     for (int i = 0; i < nPanels; i++) {
       if (i == fixPanel) {
         panels[i].dY = 0;
@@ -1016,6 +1032,7 @@ int main(int argc, char *argv[]) {
   double Lsd = cfg.Lsd, px = cfg.px, Wavelength = cfg.Wavelength;
   double p0 = cfg.p0, p1 = cfg.p1, p2 = cfg.p2, p3 = cfg.p3;
   double p4 = cfg.p4, p5 = cfg.p5, p6 = cfg.p6;
+  double p7 = cfg.p7, p8 = cfg.p8, p9 = cfg.p9, p10 = cfg.p10;
   double RhoD = cfg.RhoD, yBC = cfg.ybc, zBC = cfg.zbc, wedge = cfg.Wedge;
   double MinEta = cfg.MinEta;
   int NrPixels = cfg.NrPixels;
@@ -1310,8 +1327,8 @@ int main(int argc, char *argv[]) {
   double NonOptP[5] = {RhoD, Lsd, px, Wavelength, MinEta};
   // int NonOptPInt[5] = {NrPixels, nOmeRanges, nRings, nSpots, nhkls}; //
   // Removed, unused and caused errors
-  double OptP[13] = {tx, ty, tz, yBC, zBC, wedge, p0, p1, p2, p3, p4, p5, p6};
-  double tols[25] = {
+  double OptP[17] = {tx, ty, tz, yBC, zBC, wedge, p0, p1, p2, p3, p4, p5, p6, p7, p8, p9, p10};
+  double tols[29] = {
       250,
       250,
       250,
@@ -1337,6 +1354,10 @@ int main(int argc, char *argv[]) {
       tolP4,
       tolP4, // tolP5 (reuse tolP4)
       0,     // tolP6
+      0,     // tolP7
+      0,     // tolP8
+      0,     // tolP9
+      0,     // tolP10
   }; // 250 microns for position, 0.0005 degrees for orient, 1 % for
      // latticeParameter, 1 degree for tilts, 1 pixel for yBC,
      // 1 pixel for zBC, 0.00001 degree for wedge, 1E-3 for p0,p1,p2, 45 for
