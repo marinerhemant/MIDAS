@@ -1387,8 +1387,9 @@ int main(int argc, char *argv[]) {
   // Perform Optimization
   // Prepare Output
   double *Out; // Declared Out
-  Out = malloc(((nGrains * 12 + 13) + nPanels * 2) *
-               sizeof(double)); // Fixed size calc too just in case
+  int nOut = nGrains * 12 + 17; // Must match 'n' inside FitMultipleGrains
+  if (nPanels > 1) nOut += (nPanels - 1) * 2;
+  Out = malloc(nOut * sizeof(double));
   FitMultipleGrains(grainDataArray, nGrains, OptP, NonOptP, tols, Out, panels,
                     nPanels, tolShifts, spotsPerPanel, FixPanelID);
 
