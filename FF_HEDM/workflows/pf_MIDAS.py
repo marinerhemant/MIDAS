@@ -994,9 +994,22 @@ def main():
     sinoType = args.sinoType
     sinoSource = args.sinoSource
     sinoMode = 1 if sinoSource == 'indexing' else 0
+    # Ensure command line file arguments are absolute paths before a potential directory change
+    param_path = os.path.abspath(args.paramFile)
+    param_dir = os.path.dirname(param_path)
+    if micFN and not os.path.isabs(micFN):
+        micFN = os.path.abspath(micFN)
+    if grainsFN and not os.path.isabs(grainsFN):
+        grainsFN = os.path.abspath(grainsFN)
+    if omegaFile and not os.path.isabs(omegaFile):
+        omegaFile = os.path.abspath(omegaFile)
+    if args.resume and not os.path.isabs(args.resume):
+        args.resume = os.path.abspath(args.resume)
+
     # Use current directory if no result directory specified
     if not topdir:
         topdir = os.getcwd()
+    topdir = os.path.abspath(topdir)
     
     logger.info(f'Working directory: {topdir}')
     logDir = os.path.join(topdir, 'output')
@@ -1004,6 +1017,29 @@ def main():
     # Create directories
     os.makedirs(topdir, exist_ok=True)
     os.makedirs(logDir, exist_ok=True)
+    
+    # Copy parameter file and positions.csv to result directory if it's different
+    if topdir != param_dir:
+        logger.info(f"Copying parameter file and positions.csv from {param_dir} to {topdir}")
+        if os.path.exists(param_path):
+            shutil.copy2(param_path, os.path.join(topdir, os.path.basename(param_path)))
+            baseNameParamFN = os.path.basename(param_path)
+        else:
+            logger.error(f"Parameter file {param_path} not found.")
+            sys.exit(1)
+            
+        positions_source = os.path.join(param_dir, 'positions.csv')
+        if os.path.exists(positions_source):
+            shutil.copy2(positions_source, os.path.join(topdir, 'positions.csv'))
+        else:
+            logger.warning(f"positions.csv not found in {param_dir}. Downstream steps may fail.")
+    else:
+        # If they are in the same directory, baseNameParamFN should just be the base name
+        baseNameParamFN = os.path.basename(param_path)
+            
+    # Change into topdir early so outputs like hkls.csv and logs fall in resultDir
+    if os.getcwd() != topdir:
+        os.chdir(topdir)
     
     # Get MIDAS installation directory dynamically
     midas_path = get_installation_dir()
