@@ -22,12 +22,10 @@
 #include <ctype.h>
 #include <errno.h>
 #include <fcntl.h>
-#include <limits.h>
 #include <math.h>
 #include <nlopt.h>
 #include <omp.h>
 #include <stdarg.h>
-#include <stdint.h>
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
@@ -505,19 +503,22 @@ static inline double CalcAngleErrors(int nspots, int nhkls, int nOmegaRanges,
   Error[1] = 0;
   Error[2] = 0;
   if (nMatched == 0) {
-    fprintf(stderr, "[DEBUG CalcAngleErrors] WARNING: nMatched=0 out of %d spots, nTspots=%d. No spots matched theoretical predictions!\n", nspots, nTspots);
+    fprintf(stderr,
+            "[DEBUG CalcAngleErrors] WARNING: nMatched=0 out of %d spots, "
+            "nTspots=%d. No spots matched theoretical predictions!\n",
+            nspots, nTspots);
     // Print first few observed spots for diagnostics
     int nShow = (nspots < 3) ? nspots : 3;
     for (i = 0; i < nShow; i++) {
-      fprintf(stderr, "  Obs spot %d: Y=%.4f Z=%.4f Ome=%.4f RingNr=%d\n",
-              i, SpotsYZOGCorr[i][0], SpotsYZOGCorr[i][1],
-              SpotsYZOGCorr[i][2], (int)SpotsYZOGCorr[i][6]);
+      fprintf(stderr, "  Obs spot %d: Y=%.4f Z=%.4f Ome=%.4f RingNr=%d\n", i,
+              SpotsYZOGCorr[i][0], SpotsYZOGCorr[i][1], SpotsYZOGCorr[i][2],
+              (int)SpotsYZOGCorr[i][6]);
     }
     nShow = (nTspots < 3) ? nTspots : 3;
     for (i = 0; i < nShow; i++) {
-      fprintf(stderr, "  Theor spot %d: Y=%.4f Z=%.4f Ome=%.4f RingNr=%d\n",
-              i, TheorSpotsYZWE[i][0], TheorSpotsYZWE[i][1],
-              TheorSpotsYZWE[i][2], (int)TheorSpotsYZWE[i][7]);
+      fprintf(stderr, "  Theor spot %d: Y=%.4f Z=%.4f Ome=%.4f RingNr=%d\n", i,
+              TheorSpotsYZWE[i][0], TheorSpotsYZWE[i][1], TheorSpotsYZWE[i][2],
+              (int)TheorSpotsYZWE[i][7]);
     }
   }
   for (i = 0; i < nMatched; i++) {
@@ -542,9 +543,9 @@ static inline double CalcAngleErrors(int nspots, int nhkls, int nOmegaRanges,
 static inline void CorrectTiltSpatialDistortion(
     int nIndices, double MaxRad, double **SpotInfoAll, double px, double Lsd,
     double ybc, double zbc, double tx, double ty, double tz, double p0,
-    double p1, double p2, double p3, double p4, double p5, double p6,
-    double p7, double p8, double p9, double p10,
-    double **SpotInfoCorr, int nPanels, Panel *panels) {
+    double p1, double p2, double p3, double p4, double p5, double p6, double p7,
+    double p8, double p9, double p10, double **SpotInfoCorr, int nPanels,
+    Panel *panels) {
   double txr, tyr, tzr;
   txr = deg2rad * tx;
   tyr = deg2rad * ty;
@@ -688,8 +689,8 @@ static void calc_grain_errors(int nGrains, int nPanels, Panel *panels,
 
     CorrectTiltSpatialDistortion(g_data->nSpots, g_data->RhoD, SpotInfoShifted,
                                  g_data->px, g_data->Lsd, ybc, zbc, tx, ty, tz,
-                                 p0, p1, p2, p3, p4, p5, p6, p7, p8, p9, p10, SpotInfoCorr,
-                                 nPanels, panels);
+                                 p0, p1, p2, p3, p4, p5, p6, p7, p8, p9, p10,
+                                 SpotInfoCorr, nPanels, panels);
     FreeMemMatrix(SpotInfoShifted, g_data->nSpots);
 
     double gError[3];
@@ -792,8 +793,8 @@ static double problem_function(unsigned n, const double *x, double *grad,
 
     CorrectTiltSpatialDistortion(g_data->nSpots, g_data->RhoD, SpotInfoShifted,
                                  g_data->px, g_data->Lsd, ybc, zbc, tx, ty, tz,
-                                 p0, p1, p2, p3, p4, p5, p6, p7, p8, p9, p10, SpotInfoCorr,
-                                 f_data->nPanels, f_data->panels);
+                                 p0, p1, p2, p3, p4, p5, p6, p7, p8, p9, p10,
+                                 SpotInfoCorr, f_data->nPanels, f_data->panels);
     FreeMemMatrix(SpotInfoShifted, g_data->nSpots);
 
     double gError[3];
@@ -1016,7 +1017,7 @@ int compareGrains(const void *a, const void *b) {
 }
 
 int main(int argc, char *argv[]) {
-	printf("Version: %s\n", MIDAS_VERSION_STRING);
+  printf("Version: %s\n", MIDAS_VERSION_STRING);
   if (argc < 4 || argc > 5) {
     printf("Usage: FitMultipleGrains Folder Parameters.txt nGrains [nCPUs]\n");
     return 0;
@@ -1061,7 +1062,7 @@ int main(int argc, char *argv[]) {
   double tolTiltX, tolTiltY, tolTiltZ;
   if (cfg.tolTiltXSet) {
     tolTiltX = cfg.tolTiltX;
-    tolTiltY = cfg.tolTilts;  // 0 if tolTilts not provided
+    tolTiltY = cfg.tolTilts; // 0 if tolTilts not provided
     tolTiltZ = cfg.tolTilts;
   } else {
     tolTiltX = cfg.tolTilts;
@@ -1342,7 +1343,8 @@ int main(int argc, char *argv[]) {
   double NonOptP[5] = {RhoD, Lsd, px, Wavelength, MinEta};
   // int NonOptPInt[5] = {NrPixels, nOmeRanges, nRings, nSpots, nhkls}; //
   // Removed, unused and caused errors
-  double OptP[17] = {tx, ty, tz, yBC, zBC, wedge, p0, p1, p2, p3, p4, p5, p6, p7, p8, p9, p10};
+  double OptP[17] = {tx, ty, tz, yBC, zBC, wedge, p0, p1, p2,
+                     p3, p4, p5, p6,  p7,  p8,    p9, p10};
   double tols[29] = {
       250,
       250,
@@ -1386,9 +1388,10 @@ int main(int argc, char *argv[]) {
   // Everything till CorrectTiltSpatialDistortion function in FitTiltBCLsd
   // Perform Optimization
   // Prepare Output
-  double *Out; // Declared Out
+  double *Out;                  // Declared Out
   int nOut = nGrains * 12 + 17; // Must match 'n' inside FitMultipleGrains
-  if (nPanels > 1) nOut += (nPanels - 1) * 2;
+  if (nPanels > 1)
+    nOut += (nPanels - 1) * 2;
   Out = malloc(nOut * sizeof(double));
   FitMultipleGrains(grainDataArray, nGrains, OptP, NonOptP, tols, Out, panels,
                     nPanels, tolShifts, spotsPerPanel, FixPanelID);

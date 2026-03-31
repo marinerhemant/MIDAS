@@ -1,23 +1,34 @@
+#include "midas_version.h"
 #include <ctype.h>
 #include <fcntl.h>
 #include <libgen.h>
-#include <limits.h>
 #include <math.h>
 #include <omp.h>
 #include <stdbool.h>
-#include <stdint.h>
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
 #include <sys/stat.h>
 #include <sys/types.h>
 #include <time.h>
-#include "midas_version.h"
 
 #define MAX_N_SPOTS 100000000
 
+/* Comparator for argsort of positions (ascending).
+ * sort_perm[i] will hold the file index of the i-th spatially ordered scan. */
+static const double *_merge_positions = NULL;
+static int cmp_merge_argsort(const void *a, const void *b) {
+  double da = _merge_positions[*(const int *)a];
+  double db = _merge_positions[*(const int *)b];
+  if (da < db)
+    return -1;
+  if (da > db)
+    return 1;
+  return 0;
+}
+
 int main(int argc, char *argv[]) {
-	printf("Version: %s\n", MIDAS_VERSION_STRING);
+  printf("Version: %s\n", MIDAS_VERSION_STRING);
   double start_time = omp_get_wtime();
   printf("\n\n\tMerging Scans in scanning in PF-HEDM.\n\n");
   int returncode;
@@ -44,18 +55,36 @@ int main(int argc, char *argv[]) {
   }
   fclose(posF);
 
+  /* Compute spatial sort permutation: sort_perm[spatialIdx] = fileIdx.
+   * This ensures we merge spatially adjacent scans regardless of file order. */
+  int *sort_perm = malloc(nScans * sizeof(*sort_perm));
+  for (iter = 0; iter < nScans; iter++)
+    sort_perm[iter] = iter;
+  _merge_positions = positions;
+  qsort(sort_perm, nScans, sizeof(int), cmp_merge_argsort);
+  _merge_positions = NULL;
+
+  printf("Spatial sort permutation (first 10):\n");
+  for (iter = 0; iter < nScans && iter < 10; iter++)
+    printf("  spatial %d -> file %d (pos %.4f)\n", iter, sort_perm[iter],
+           positions[sort_perm[iter]]);
+  if (nScans > 10)
+    printf("  ...\n");
+
   int finScanNr;
 #pragma omp parallel for num_threads(numProcs) private(finScanNr)              \
     schedule(dynamic)
   for (finScanNr = 0; finScanNr < nFinScans; finScanNr++) {
-    int startScanNr = finScanNr * nMerges;
-    double thisPosition = positions[startScanNr];
+    /* The first file in this merge group is the spatially-ordered scan. */
+    int spatialStart = finScanNr * nMerges;
+    int firstFileIdx = sort_perm[spatialStart];
+    double thisPosition = positions[firstFileIdx];
     double *thisSpots, *allSpots;
     thisSpots = calloc(MAX_N_SPOTS * 16, sizeof(*thisSpots));
     allSpots = calloc(MAX_N_SPOTS * 16, sizeof(*allSpots));
     // Read the first fileNr
     char thisFN[2048], thisLine[2048], headThis[2048];
-    sprintf(thisFN, "original_InputAllExtraInfoFittingAll%d.csv", startScanNr);
+    sprintf(thisFN, "original_InputAllExtraInfoFittingAll%d.csv", firstFileIdx);
     FILE *thisF;
     thisF = fopen(thisFN, "r");
     fgets(thisLine, 2048, thisF);
@@ -90,7 +119,7 @@ int main(int argc, char *argv[]) {
     double origWeight, newWeight;
     for (scanNr = 1; scanNr < nMerges; scanNr++) {
       printf("ScanNr: %d, nAll: %zu\n", scanNr, nAll);
-      thisScanNr = startScanNr + scanNr;
+      thisScanNr = sort_perm[spatialStart + scanNr];
       thisPosition += positions[thisScanNr];
       int nThis = 0;
       sprintf(thisFN, "original_InputAllExtraInfoFittingAll%d.csv", thisScanNr);
@@ -165,9 +194,11 @@ int main(int argc, char *argv[]) {
     thisPosition /= nMerges;
     positionsNew[finScanNr] = thisPosition;
   }
+  /* Write merged positions in spatial order (ascending). */
   posF = fopen("positions.csv", "w");
   for (iter = 0; iter < nFinScans; iter++) {
     fprintf(posF, "%lf\n", positionsNew[iter]);
   }
   fclose(posF);
+  free(sort_perm);
 }

@@ -121,6 +121,21 @@ typedef struct {
   size_t nSpots;      /* Number of spots in the list */
 } SpotList;
 
+/* Global scan-to-spatial index mapping for arbitrary positions.csv ordering.
+ * scan_to_spatial[fileIdx] = spatialIdx (column in the spatially-ordered sinogram).
+ * Computed once in main() from positions.csv via argsort. */
+static int *scan_to_spatial = NULL;
+
+/* Comparator for argsort of positions (ascending). */
+static const double *_positions_for_sort = NULL;
+static int cmp_argsort_asc(const void *a, const void *b) {
+  double da = _positions_for_sort[*(const int *)a];
+  double db = _positions_for_sort[*(const int *)b];
+  if (da < db) return -1;
+  if (da > db) return  1;
+  return 0;
+}
+
 /**
  * Log an error message to stderr without exiting
  *
@@ -276,6 +291,40 @@ int main(int argc, char *argv[]) {
       tolOme <= 0.0 || tolEta <= 0.0) {
     fatal_error(
         "Invalid input parameters. All numeric values must be positive.");
+  }
+
+  /* Compute scan_to_spatial mapping from positions.csv.
+   * This maps file-order scan indices to spatially monotonic indices
+   * so that sinogram columns are spatially ordered for tomography. */
+  {
+    char posFN[MAX_PATH_LEN];
+    sprintf(posFN, "%s/positions.csv", argv[1]);
+    FILE *posF = fopen(posFN, "r");
+    if (!posF)
+      fatal_error("Cannot open %s for scan-to-spatial mapping", posFN);
+    double *positions = malloc(nScans * sizeof(double));
+    int *sortIdx = malloc(nScans * sizeof(int));
+    scan_to_spatial = malloc(nScans * sizeof(int));
+    char posLine[256];
+    for (int pi = 0; pi < nScans; pi++) {
+      if (!fgets(posLine, 256, posF))
+        fatal_error("positions.csv has fewer than %d lines", nScans);
+      sscanf(posLine, "%lf", &positions[pi]);
+      sortIdx[pi] = pi;
+    }
+    fclose(posF);
+    _positions_for_sort = positions;
+    qsort(sortIdx, nScans, sizeof(int), cmp_argsort_asc);
+    /* Invert: scan_to_spatial[fileIdx] = spatialIdx */
+    for (int pi = 0; pi < nScans; pi++)
+      scan_to_spatial[sortIdx[pi]] = pi;
+    printf("Scan-to-spatial mapping computed from %s (%d scans)\n", posFN, nScans);
+    for (int pi = 0; pi < nScans && pi < 6; pi++)
+      printf("  scan %d (pos %.4f) -> spatial col %d\n", pi, positions[pi], scan_to_spatial[pi]);
+    if (nScans > 6) printf("  ...\n");
+    free(positions);
+    free(sortIdx);
+    _positions_for_sort = NULL;
   }
 
   /* Initialize arrays for storing data from all voxels */
@@ -1333,8 +1382,9 @@ void generate_sinograms(SpotList *spotList,
             continue;
           }
 
+          int spatialCol = scan_to_spatial ? scan_to_spatial[scanNr] : scanNr;
           size_t locThis = (size_t)spot->grainNr * maxNHKLs * nScans +
-                           (size_t)spot->spotNr * nScans + scanNr;
+                           (size_t)spot->spotNr * nScans + spatialCol;
           size_t maxIntIdx =
               (size_t)spot->grainNr * maxNHKLs + (size_t)spot->spotNr;
           double currentIntensity = allSpots[SPOTS_ARRAY_COLS * spotIdx + 3];
@@ -2002,8 +2052,9 @@ void generate_sinograms_from_indexing(UniqueOrientationsResult *uniqueResult,
       if (cs->scanNr < 0 || cs->scanNr >= nScans)
         continue;
 
+      int spatialCol = scan_to_spatial ? scan_to_spatial[cs->scanNr] : cs->scanNr;
       size_t locSino =
-          g * maxNHKLs * nScans + (size_t)slot * nScans + cs->scanNr;
+          g * maxNHKLs * nScans + (size_t)slot * nScans + spatialCol;
       size_t locOme = g * maxNHKLs + (size_t)slot;
 
       if (cs->intensity > sinoArr[locSino]) {

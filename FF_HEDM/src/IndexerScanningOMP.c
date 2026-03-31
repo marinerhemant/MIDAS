@@ -132,6 +132,16 @@ int n_ring_bins;
 int n_eta_bins;
 int n_ome_bins;
 
+// Comparator for qsort of doubles (ascending order).
+// Used to sort positions for spatially monotonic grid construction.
+static int cmp_double_asc(const void *a, const void *b) {
+  double da = *(const double *)a;
+  double db = *(const double *)b;
+  if (da < db) return -1;
+  if (da > db) return  1;
+  return 0;
+}
+
 // the binsizes used for the binning
 RealType EtaBinSize = 0;
 RealType OmeBinSize = 0;
@@ -1617,13 +1627,19 @@ int main(int argc, char *argv[]) {
     fgets(aline, 1000, positionsF);
     sscanf(aline, "%lf", &ypos[i]);
   }
+  // Sort positions for grid construction so voxels are spatially monotonic.
+  // ypos[] is kept in original file order for beam filtering in CompareSpots.
+  double *ypos_sorted = malloc(numScans * sizeof(*ypos_sorted));
+  memcpy(ypos_sorted, ypos, numScans * sizeof(*ypos_sorted));
+  qsort(ypos_sorted, numScans, sizeof(double), cmp_double_asc);
   int j;
   for (i = 0; i < numScans; i++) {
     for (j = 0; j < numScans; j++) {
-      grid[(i * numScans + j) * 2 + 0] = ypos[i];
-      grid[(i * numScans + j) * 2 + 1] = ypos[j];
+      grid[(i * numScans + j) * 2 + 0] = ypos_sorted[i];
+      grid[(i * numScans + j) * 2 + 1] = ypos_sorted[j];
     }
   }
+  free(ypos_sorted);
 
   int RingToIndex = Params.RingToIndex;
   size_t startRowNrSp = MAX_N_SPOTS, endRowNrSp = 0;
