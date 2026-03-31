@@ -221,7 +221,7 @@ static double problem_function(unsigned n, const double *x, double *grad,
     RNorm = Rad / MaxRad;
     EtaT = 90 - Eta;
     double RNorm3 = RNorm * RNorm * RNorm;
-    double dipole = p7 * RNorm * cos(deg2rad * (EtaT + p8));
+    double dipole = p7 * pow(RNorm, 4.0) * cos(deg2rad * (EtaT + p8));
     double trefoil = p9 * RNorm3 * cos(deg2rad * (3.0 * EtaT + p10));
     DistortFunc = (p0 * (pow(RNorm, n0)) * (cos(deg2rad * (2 * EtaT + p6)))) +
                   (p1 * (pow(RNorm, n1)) * (cos(deg2rad * (4 * EtaT + p3)))) +
@@ -365,10 +365,12 @@ static inline void CorrectTiltSpatialDistortion(
     Eta = CalcEtaAngleLocal(XYZ[1], XYZ[2]);
     RNorm = Rad / MaxRad;
     EtaT = 90 - Eta;
+    double dipole = p7 * pow(RNorm, 4.0) * cos(deg2rad * (EtaT + p8));
+    double trefoil = p9 * pow(RNorm, 3.0) * cos(deg2rad * (3.0 * EtaT + p10));
     DistortFunc = (p0 * (pow(RNorm, n0)) * (cos(deg2rad * (2 * EtaT + p6)))) +
                   (p1 * (pow(RNorm, n1)) * (cos(deg2rad * (4 * EtaT + p3)))) +
                   (panelP2 * (pow(RNorm, n2))) + p4 * pow(RNorm, 6.0) +
-                  p5 * pow(RNorm, 4.0) + 1;
+                  p5 * pow(RNorm, 4.0) + dipole + trefoil + 1;
     Rcorr = Rad * DistortFunc;
     Rcorr = Rcorr * (Lsd / panelLsd); // re-project to global Lsd plane
     YCorrected[i] = -Rcorr * sin(deg2rad * Eta);
