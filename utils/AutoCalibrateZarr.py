@@ -201,6 +201,9 @@ class CalibState:
     per_panel_distortion: int = 1
     fix_panel_id: int = -1             # -1 = auto (closest to BC)
 
+    # Panel fitting override
+    skip_panels: bool = False
+
     # Bad pixel / gap (B2 fix: declared fields instead of ad-hoc attrs)
     bad_px_intensity: float = field(default_factory=lambda: float('nan'))
     gap_intensity: float = field(default_factory=lambda: float('nan'))
@@ -2414,8 +2417,26 @@ def main():
             # Keys we explicitly parse and apply to state/initialLsd
             _KNOWN_PARAM_KEYS = {
                 'Wavelength', 'SpaceGroup', 'LatticeConstant', 'LatticeParameter',
-                'px', 'lsd', 'Lsd', 'BC', 'bc', 'tx', 'NrPixels', 'NrPixelsY',
-                'NrPixelsZ', 'RhoD', 'rhod',
+                'px', 'lsd', 'Lsd', 'BC', 'bc', 'tx', 'ty', 'tz',
+                'NrPixels', 'NrPixelsY', 'NrPixelsZ', 'RhoD', 'rhod',
+                # Distortion parameters (managed by --fit-p-models)
+                'p0', 'p1', 'p2', 'p3', 'p4', 'p5', 'p6',
+                'p7', 'p8', 'p9', 'p10',
+                # Tolerance keys (managed internally, never pass-through)
+                'tolP', 'tolP1', 'tolP2', 'tolP3', 'tolP4', 'tolP5',
+                'tolP6', 'tolP7', 'tolP8', 'tolP9', 'tolP10',
+                'tolTilts', 'tolBC', 'tolLsd',
+                # Panel-related keys (managed by --skip-panels / panel auto-detect)
+                'NPanelsY', 'NPanelsZ', 'PanelSizeY', 'PanelSizeZ',
+                'PanelGapsY', 'PanelGapsZ', 'FixPanelID',
+                'PanelShiftsFile', 'PerPanelDistortion', 'PerPanelLsd',
+                'tolShifts', 'tolRotation',
+                # Internally-managed CalibrantIntegratorOMP keys
+                'nIterations', 'OutlierIterations',
+                'NormalizeRingWeights', 'L2Objective',
+                'WeightByRadius', 'WeightByFitSNR',
+                'GradientCorrection', 'Wedge', 'Width',
+                'OmegaStart', 'OmegaStep',
                 # Second-pass keys also parsed here now:
                 'RingsToExclude', 'MaxRingNumber', 'FitParallax', 'Parallax',
                 'tolParallax', 'MaskFile', 'MaskFN',
@@ -2463,6 +2484,24 @@ def main():
                                 if args.tx is None:
                                     state.tx = float(parts[1])
                                 param_file_keys.add('tx')
+                            elif key == 'ty':
+                                state.ty = float(parts[1])
+                                param_file_keys.add('ty')
+                            elif key == 'tz':
+                                state.tz = float(parts[1])
+                                param_file_keys.add('tz')
+                            elif key in ('p0', 'p1', 'p2', 'p3', 'p4', 'p5',
+                                         'p6', 'p7', 'p8', 'p9', 'p10'):
+                                setattr(state, key, float(parts[1]))
+                                param_file_keys.add(key)
+                            elif key.startswith('tol') and key in _KNOWN_PARAM_KEYS:
+                                # Absorb tolerance keys — AutoCalibrateZarr
+                                # manages these internally via --fit-p-models.
+                                # Do NOT pass through as extra_params.
+                                param_file_keys.add(key)
+                                logger.debug(f"Absorbed tolerance key '{key}' "
+                                             f"(managed by --fit-p-models)")
+
                             elif key in ('NrPixels', 'NrPixelsY'):
                                 state.nr_pixels_y = int(parts[1])
                                 param_file_keys.add('NrPixelsY')
@@ -2529,6 +2568,13 @@ def main():
                                 if args.data_type < 0:  # CLI not provided
                                     state.midas_dtype = int(parts[1])
                                 param_file_keys.add('DataType')
+                            elif key in _KNOWN_PARAM_KEYS:
+                                # Catch-all for remaining known keys that are
+                                # managed internally (panel geometry, iteration
+                                # controls, weighting, etc.) — absorb them so
+                                # they don't leak through as extra_params.
+                                param_file_keys.add(key)
+                                logger.debug(f"Absorbed managed key '{key}'")
                             else:
                                 # Unrecognized key → store for pass-through
                                 # to CalibrantPanelShiftsOMP
@@ -2543,6 +2589,45 @@ def main():
                                     f"{sorted(state.extra_params.keys())}")
                 except Exception as e:
                     logger.warning(f"Could not fully parse param file: {e}")
+
+            # --- Zero p-parameters not belonging to selected --fit-p-models ---
+            # For systematic distortion isolation, only retain p-params that
+            # belong to the enabled model group.  All others are zeroed so
+            # the C code starts from a distortion-free state for that term.
+            #
+            # Model → p-parameter mapping:
+            #   tilt       → p0, p1 (+ p6 phase angle)
+            #   spherical  → p2, p4, p5
+            #   dipole     → p3 (angle), p7 (amplitude), p8 (phase)
+            #   trefoil    → p9 (amplitude), p10 (phase)
+            #   octupole   → (no dedicated params; amplitude goes via p1,
+            #                   fitted only when 'all' or 'octupole' selected)
+            _models = state.fit_p_models.strip().lower()
+            if _models != 'all':
+                # Build set of p-params to KEEP
+                _keep = set()
+                if 'tilt' in _models:
+                    _keep.update({'p0', 'p1', 'p6'})
+                if 'spherical' in _models:
+                    _keep.update({'p2', 'p4', 'p5'})
+                if 'dipole' in _models:
+                    _keep.update({'p3', 'p7', 'p8'})
+                if 'trefoil' in _models:
+                    _keep.update({'p9', 'p10'})
+                # Zero everything NOT in _keep
+                _all_p = {'p0', 'p1', 'p2', 'p3', 'p4', 'p5',
+                          'p6', 'p7', 'p8', 'p9', 'p10'}
+                _zeroed = []
+                for pname in sorted(_all_p - _keep):
+                    if getattr(state, pname) != 0.0:
+                        _zeroed.append(pname)
+                    setattr(state, pname, 0.0)
+                if _zeroed:
+                    logger.info(f"--fit-p-models={state.fit_p_models}: zeroed "
+                                f"non-selected p-params: {', '.join(_zeroed)}")
+                if not _keep:
+                    logger.info("--fit-p-models=none: all p-parameters zeroed "
+                                "(baseline distortion-free calibration)")
 
             # --- px: CLI > param file > auto-detect ---
             if args.px is not None:

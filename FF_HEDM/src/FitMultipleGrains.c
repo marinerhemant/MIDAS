@@ -504,6 +504,22 @@ static inline double CalcAngleErrors(int nspots, int nhkls, int nOmegaRanges,
   Error[0] = 0;
   Error[1] = 0;
   Error[2] = 0;
+  if (nMatched == 0) {
+    fprintf(stderr, "[DEBUG CalcAngleErrors] WARNING: nMatched=0 out of %d spots, nTspots=%d. No spots matched theoretical predictions!\n", nspots, nTspots);
+    // Print first few observed spots for diagnostics
+    int nShow = (nspots < 3) ? nspots : 3;
+    for (i = 0; i < nShow; i++) {
+      fprintf(stderr, "  Obs spot %d: Y=%.4f Z=%.4f Ome=%.4f RingNr=%d\n",
+              i, SpotsYZOGCorr[i][0], SpotsYZOGCorr[i][1],
+              SpotsYZOGCorr[i][2], (int)SpotsYZOGCorr[i][6]);
+    }
+    nShow = (nTspots < 3) ? nTspots : 3;
+    for (i = 0; i < nShow; i++) {
+      fprintf(stderr, "  Theor spot %d: Y=%.4f Z=%.4f Ome=%.4f RingNr=%d\n",
+              i, TheorSpotsYZWE[i][0], TheorSpotsYZWE[i][1],
+              TheorSpotsYZWE[i][2], (int)TheorSpotsYZWE[i][7]);
+    }
+  }
   for (i = 0; i < nMatched; i++) {
     Error[0] += fabs(MatchDiff[i][1] / nMatched); // Len
     Error[1] += fabs(MatchDiff[i][2] / nMatched); // Ome
@@ -565,6 +581,7 @@ static inline void CorrectTiltSpatialDistortion(
     MatrixMultF(TRs, ABC, ABCPr);
     double XYZ[3] = {panelLsd + ABCPr[0], ABCPr[1], ABCPr[2]};
     Rad = (panelLsd / (XYZ[0])) * (sqrt(XYZ[1] * XYZ[1] + XYZ[2] * XYZ[2]));
+    Eta = CalcEtaAngleLocal(XYZ[1], XYZ[2]);
     RNorm = Rad / MaxRad;
     EtaT = 90 - Eta;
     double dipole = p7 * pow(RNorm, 4.0) * cos(deg2rad * (EtaT + p8));
