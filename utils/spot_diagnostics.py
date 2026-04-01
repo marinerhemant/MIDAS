@@ -285,8 +285,92 @@ def extract_spot_intensity(data_dir, scan_nr, y_um, z_um, omega_deg,
         'center_frame': center_frame,
         'row': row, 'col': col,
         'omega_deg': omega_deg,
+        'omega_step': abs(omega_step),
         'scan_nr': scan_nr,
     }
+
+
+def _spot_to_gv(y, z, omega_deg, Lsd):
+    """Convert detector position + omega to G-vector (lab frame)."""
+    L = np.sqrt(Lsd**2 + y**2 + z**2)
+    xi, yi, zi = Lsd / L, y / L, z / L
+    ome_rad = -np.radians(omega_deg)
+    g1 = (-1 + xi) * np.cos(ome_rad) - yi * np.sin(ome_rad)
+    g2 = (-1 + xi) * np.sin(ome_rad) + yi * np.cos(ome_rad)
+    g3 = zi
+    return np.array([g1, g2, g3])
+
+
+def find_closest_observed_spots(data_dir, scan_nr, theor_y, theor_z, theor_omega,
+                                theor_eta, ring_nr, param_file=None):
+    """Find 3 closest observed spots in InputAllExtraInfoFittingAll{scanNr}.csv.
+
+    Returns dict with keys 'pos', 'omega', 'ia', each containing:
+      {'y', 'z', 'omega', 'eta', 'ring', 'spotID', 'distance_metric'}
+    or None if file not found.
+    """
+    p = _parse_params(data_dir, param_file=param_file)
+    Lsd = float(p.get('LsdFit', p.get('Distance', '1000000')))
+
+    # Try to find InputAll file
+    fn = os.path.join(data_dir, f'InputAllExtraInfoFittingAll{scan_nr}.csv')
+    if not os.path.exists(fn):
+        return None
+
+    obs = np.genfromtxt(fn, skip_header=1)
+    if obs.ndim == 1:
+        obs = obs.reshape(1, -1)
+    # Cols: 0=YLab 1=ZLab 2=Omega 3=GrainRadius 4=SpotID 5=RingNr 6=Eta
+
+    # Filter to same ring
+    ring_mask = obs[:, 5].astype(int) == int(ring_nr)
+    if not ring_mask.any():
+        return None
+    obs_ring = obs[ring_mask]
+
+    result = {}
+
+    # 1. Closest in position (Y, Z)
+    pos_dist = np.sqrt((obs_ring[:, 0] - theor_y)**2 + (obs_ring[:, 1] - theor_z)**2)
+    bi = np.argmin(pos_dist)
+    result['pos'] = {
+        'y': obs_ring[bi, 0], 'z': obs_ring[bi, 1], 'omega': obs_ring[bi, 2],
+        'eta': obs_ring[bi, 6], 'ring': int(obs_ring[bi, 5]),
+        'spotID': int(obs_ring[bi, 4]), 'metric': pos_dist[bi],
+        'label': f'pos d={pos_dist[bi]:.0f}um',
+    }
+
+    # 2. Closest in omega (same ring, similar eta ±10 deg)
+    eta_mask = np.abs(obs_ring[:, 6] - theor_eta) < 10.0
+    if eta_mask.any():
+        obs_eta = obs_ring[eta_mask]
+        ome_dist = np.abs(obs_eta[:, 2] - theor_omega)
+        bi = np.argmin(ome_dist)
+        result['omega'] = {
+            'y': obs_eta[bi, 0], 'z': obs_eta[bi, 1], 'omega': obs_eta[bi, 2],
+            'eta': obs_eta[bi, 6], 'ring': int(obs_eta[bi, 5]),
+            'spotID': int(obs_eta[bi, 4]), 'metric': ome_dist[bi],
+            'label': f'ome d={ome_dist[bi]:.3f}deg',
+        }
+
+    # 3. Closest in internal angle (G-vector angular distance)
+    g_theor = _spot_to_gv(theor_y, theor_z, theor_omega, Lsd)
+    g_theor_n = g_theor / np.linalg.norm(g_theor)
+    ia_vals = np.full(len(obs_ring), 999.0)
+    for i in range(len(obs_ring)):
+        g_obs = _spot_to_gv(obs_ring[i, 0], obs_ring[i, 1], obs_ring[i, 2], Lsd)
+        g_obs_n = g_obs / np.linalg.norm(g_obs)
+        dot = np.clip(np.dot(g_theor_n, g_obs_n), -1, 1)
+        ia_vals[i] = np.degrees(np.arccos(dot))
+    bi = np.argmin(ia_vals)
+    result['ia'] = {
+        'y': obs_ring[bi, 0], 'z': obs_ring[bi, 1], 'omega': obs_ring[bi, 2],
+        'eta': obs_ring[bi, 6], 'ring': int(obs_ring[bi, 5]),
+        'spotID': int(obs_ring[bi, 4]), 'metric': ia_vals[bi],
+        'label': f'IA={ia_vals[bi]:.4f}deg',
+    }
+
+    return result
 
 
 class SpotDiagPlotter:
@@ -698,38 +782,88 @@ class SpotDiagPlotter:
                                          linewidths=3, zorder=10)
                 h4._is_highlight = True
 
-            # Extract intensity from zip
+            # Extract intensity from zip + find closest observed spots
             status = 'MATCHED' if is_matched else 'UNMATCHED'
+            eta = spot[3]
             info = (f'R{ring}, ome={omega:.1f}, scan={exp_scan}, {status}')
 
+            result = None
+            closest = None
             if exp_scan >= 0:
                 result = extract_spot_intensity(
                     self.data_dir, exp_scan, y_um, z_um, omega,
                     patch_half=10, ome_half=2, param_file=self.param_file)
-            else:
-                result = None
+                closest = find_closest_observed_spots(
+                    self.data_dir, exp_scan, y_um, z_um, omega, eta, ring,
+                    param_file=self.param_file)
 
-            # Plot intensity profile
+            # Build info text for display
+            info_lines = [
+                f'Simulated: Y={y_um:.0f}  Z={z_um:.0f}  ome={omega:.2f}  '
+                f'eta={eta:.1f}  R{ring}  scan={exp_scan}  {status}',
+            ]
+            if is_matched:
+                info_lines.append(
+                    f'Observed:  Y={spot[11]:.0f}  Z={spot[12]:.0f}  '
+                    f'ome={spot[13]:.2f}  spotID={int(spot[14])}')
+            if closest:
+                for key, style in match_markers.items():
+                    if key not in closest:
+                        continue
+                    c = closest[key]
+                    info_lines.append(
+                        f'{style["label"]:>12}: Y={c["y"]:.0f}  Z={c["z"]:.0f}  '
+                        f'ome={c["omega"]:.2f}  ID={c["spotID"]}  [{c["label"]}]')
+            info_text = '\n'.join(info_lines)
+            print('\n  ' + info_text.replace('\n', '\n  '))
+
+            # Marker styles for the 3 closest-match types
+            match_markers = {
+                'pos':   {'color': 'cyan',    'marker': 's', 'label': 'closest pos'},
+                'omega': {'color': 'magenta', 'marker': '^', 'label': 'closest ome'},
+                'ia':    {'color': 'yellow',  'marker': 'D', 'label': 'closest IA'},
+            }
+
+            # --- Intensity profile ---
             axes[2, 1].clear()
             if result:
                 frames = result['frames']
                 intensities = result['intensities']
-                best_idx = int(np.argmax(intensities))
-                colors = ['tab:red' if i == best_idx else 'tab:blue'
-                          for i in range(len(frames))]
-                axes[2, 1].bar(range(len(frames)), intensities, color=colors)
+                ome_step = abs(result.get('omega_step', 0.25))
+                frame_omegas = [180.0 - f * ome_step for f in frames]
+
+                axes[2, 1].bar(range(len(frames)), intensities, color='tab:blue',
+                               edgecolor='gray')
+                labels = [f'{f}\n({om:.2f})' for f, om in zip(frames, frame_omegas)]
                 axes[2, 1].set_xticks(range(len(frames)))
-                axes[2, 1].set_xticklabels([str(f) for f in frames], fontsize=8)
-                axes[2, 1].set_xlabel('Frame')
+                axes[2, 1].set_xticklabels(labels, fontsize=7)
+                axes[2, 1].set_xlabel('Frame (omega deg)')
                 axes[2, 1].set_ylabel('Sum Intensity (21x21)')
-                axes[2, 1].set_title(f'Intensity: {info}')
+
+                # Vertical line for simulated omega
+                sim_x = (omega - frame_omegas[0]) / (frame_omegas[-1] - frame_omegas[0]) * (len(frames) - 1) if frame_omegas[-1] != frame_omegas[0] else len(frames) // 2
+                axes[2, 1].axvline(sim_x, color='lime', linewidth=2, linestyle='--',
+                                    label=f'sim ome={omega:.2f}')
+
+                # Vertical lines for closest spots
+                if closest:
+                    for key, style in match_markers.items():
+                        if key not in closest:
+                            continue
+                        c_ome = closest[key]['omega']
+                        c_x = (c_ome - frame_omegas[0]) / (frame_omegas[-1] - frame_omegas[0]) * (len(frames) - 1) if frame_omegas[-1] != frame_omegas[0] else len(frames) // 2
+                        axes[2, 1].axvline(c_x, color=style['color'], linewidth=1.5,
+                                            linestyle=':', label=f'{style["label"]} ome={c_ome:.2f}')
+
+                axes[2, 1].legend(fontsize=6, loc='upper right')
+                axes[2, 1].set_title(info, fontsize=9)
             else:
                 axes[2, 1].text(0.5, 0.5, f'No zip data\n{info}',
                                 ha='center', va='center',
                                 transform=axes[2, 1].transAxes)
                 axes[2, 1].set_title('Intensity Profile')
 
-            # Plot patch: sum over all frames (omega-integrated)
+            # --- Sum patch with markers ---
             axes[2, 2].clear()
             if result and result['patches']:
                 sum_patch = np.zeros_like(result['patches'][0], dtype=float)
@@ -737,16 +871,53 @@ class SpotDiagPlotter:
                     sum_patch += p
                 axes[2, 2].imshow(sum_patch, origin='lower', cmap='viridis',
                                   aspect='equal')
+
+                # Parse params for pixel conversion
+                pp = _parse_params(self.data_dir, param_file=self.param_file)
+                px = float(pp['px'])
+                ybc = float(pp['ybc'])
+                zbc = float(pp['zbc'])
+                patch_half = 10
+
+                # Simulated position marker (center of patch = the predicted spot)
+                axes[2, 2].plot(patch_half, patch_half, 'o', color='lime',
+                                markersize=10, markerfacecolor='none',
+                                markeredgewidth=2, label='simulated')
+
+                # Closest spot markers
+                if closest:
+                    sim_col = ybc - y_um / px
+                    sim_row = z_um / px + zbc
+                    for key, style in match_markers.items():
+                        if key not in closest:
+                            continue
+                        c = closest[key]
+                        c_col = ybc - c['y'] / px
+                        c_row = c['z'] / px + zbc
+                        # Offset from simulated position (in pixels, relative to patch center)
+                        dx = c_col - sim_col
+                        dy = c_row - sim_row
+                        axes[2, 2].plot(patch_half + dx, patch_half + dy,
+                                        style['marker'], color=style['color'],
+                                        markersize=8, markeredgewidth=2,
+                                        markerfacecolor='none',
+                                        label=style['label'])
+
+                axes[2, 2].legend(fontsize=6, loc='upper right')
                 axes[2, 2].set_title(
                     f'Sum patch (frames {result["frames"][0]}-'
                     f'{result["frames"][-1]}), '
-                    f'row={result["row"]}, col={result["col"]}')
+                    f'row={result["row"]}, col={result["col"]}', fontsize=9)
             else:
                 axes[2, 2].text(0.5, 0.5, 'No patch data',
                                 ha='center', va='center',
                                 transform=axes[2, 2].transAxes)
                 axes[2, 2].set_title('Detector Patch')
 
+            # Show spot info in suptitle
+            fig.suptitle(info_text,
+                         fontsize=9, fontfamily='monospace', fontweight='normal',
+                         ha='left', x=0.02, y=0.99, va='top')
             fig.canvas.draw_idle()
 
         fig.canvas.mpl_connect('button_press_event', on_click)
