@@ -285,7 +285,7 @@ class SpotDiagPlotter:
         self.diag = diag
         self.data_dir = data_dir
 
-    def plot_yz_scatter(self, voxel_nr, ax=None, picker=False):
+    def plot_yz_scatter(self, voxel_nr, ax=None):
         """Y vs Z scatter, colored by matched/unmatched, marker by ring."""
         import matplotlib.pyplot as plt
         v = self.diag.get_voxel_by_nr(voxel_nr)
@@ -325,7 +325,7 @@ class SpotDiagPlotter:
         ax.legend(handles=handles, loc='upper right')
         return ax
 
-    def plot_eta_omega(self, voxel_nr, ax=None, picker=False):
+    def plot_eta_omega(self, voxel_nr, ax=None):
         """Eta vs Omega scatter, colored by match status."""
         import matplotlib.pyplot as plt
         v = self.diag.get_voxel_by_nr(voxel_nr)
@@ -417,7 +417,7 @@ class SpotDiagPlotter:
             plt.colorbar(im, ax=ax, label='Match frac')
         return ax
 
-    def plot_missing_by_scan(self, voxel_nr, ax=None, picker=False):
+    def plot_missing_by_scan(self, voxel_nr, ax=None):
         """Scatter: missing spots with scan on x-axis, omega on y-axis, colored by ring."""
         import matplotlib.pyplot as plt
         v = self.diag.get_voxel_by_nr(voxel_nr)
@@ -548,8 +548,8 @@ class SpotDiagPlotter:
             cax_mq.clear()
 
             # Row 0: scatter plots (with picker for click-on-spot)
-            self.plot_yz_scatter(vn, axes[0, 1], picker=True)
-            self.plot_eta_omega(vn, axes[0, 2], picker=True)
+            self.plot_yz_scatter(vn, axes[0, 1])
+            self.plot_eta_omega(vn, axes[0, 2])
 
             # Row 1: ring, scan heatmap, match quality
             self.plot_ring_completeness(vn, axes[1, 0])
@@ -561,7 +561,7 @@ class SpotDiagPlotter:
             if len(matched) > 0:
                 sc = axes[1, 2].scatter(matched[:, 17], matched[:, 16],
                                         c=matched[:, 18], cmap='jet', s=20,
-                                        picker=True, pickradius=8)
+                                        )
                 axes[1, 2].set_xlabel('diffLen (um)')
                 axes[1, 2].set_ylabel('IA (deg)')
                 plt.colorbar(sc, cax=cax_mq, label='diffOme')
@@ -571,7 +571,7 @@ class SpotDiagPlotter:
             axes[1, 2].set_title(f'Voxel {vn}: Match Quality')
 
             # Row 2: missing by scan (with picker) + placeholders for intensity
-            self.plot_missing_by_scan(vn, axes[2, 0], picker=True)
+            self.plot_missing_by_scan(vn, axes[2, 0])
             axes[2, 1].text(0.5, 0.5, 'Click a spot in Y-Z or Eta-Omega\n'
                             'to see intensity profile',
                             ha='center', va='center', transform=axes[2, 1].transAxes,
@@ -589,6 +589,9 @@ class SpotDiagPlotter:
             fig.canvas.draw_idle()
 
         def on_click(event):
+            if event.xdata is None or event.ydata is None:
+                return
+
             if event.inaxes == axes[0, 0] and grid is not None:
                 # Click on map → select voxel
                 cx, cy = event.xdata, event.ydata
@@ -596,38 +599,47 @@ class SpotDiagPlotter:
                 idx = np.argmin(dists)
                 vn = int(d.voxel_nrs[idx])
                 update_voxel(vn)
-
-        def on_pick(event):
-            """Handle click on a spot in Y-Z or Eta-Omega panels."""
-            if state['spots'] is None or self.data_dir is None:
                 return
-            ax = event.mouseevent.inaxes
+
+            # Click on spot panels → select spot
+            ax = event.inaxes
             if ax not in (axes[0, 1], axes[0, 2], axes[2, 0], axes[1, 2]):
+                return
+            if state['spots'] is None:
                 return
 
             spots = state['spots']
-            cx = event.mouseevent.xdata
-            cy = event.mouseevent.ydata
-            if cx is None or cy is None:
-                return
+            cx, cy = event.xdata, event.ydata
 
-            # Find nearest spot
+            # Find nearest spot using normalized distance (so axes scale doesn't matter)
             if ax == axes[0, 1]:  # Y-Z plot
-                dists = (spots[:, 0] - cx)**2 + (spots[:, 1] - cy)**2
+                xr = ax.get_xlim(); yr = ax.get_ylim()
+                sx = (xr[1]-xr[0]) if xr[1]!=xr[0] else 1
+                sy = (yr[1]-yr[0]) if yr[1]!=yr[0] else 1
+                dists = ((spots[:, 0] - cx)/sx)**2 + ((spots[:, 1] - cy)/sy)**2
             elif ax == axes[0, 2]:  # Eta-Omega plot
-                dists = (spots[:, 2] - cx)**2 + (spots[:, 3] - cy)**2
+                xr = ax.get_xlim(); yr = ax.get_ylim()
+                sx = (xr[1]-xr[0]) if xr[1]!=xr[0] else 1
+                sy = (yr[1]-yr[0]) if yr[1]!=yr[0] else 1
+                dists = ((spots[:, 2] - cx)/sx)**2 + ((spots[:, 3] - cy)/sy)**2
             elif ax == axes[1, 2]:  # Match quality: x=diffLen(17), y=IA(16)
                 mask = spots[:, 10] > 0.5
                 if not mask.any():
                     return
+                xr = ax.get_xlim(); yr = ax.get_ylim()
+                sx = (xr[1]-xr[0]) if xr[1]!=xr[0] else 1
+                sy = (yr[1]-yr[0]) if yr[1]!=yr[0] else 1
                 dists = np.full(len(spots), 1e30)
-                dists[mask] = (spots[mask, 17] - cx)**2 + (spots[mask, 16] - cy)**2
-            else:  # Missing-by-scan plot: x=scan(col9), y=omega(col2)
+                dists[mask] = ((spots[mask, 17] - cx)/sx)**2 + ((spots[mask, 16] - cy)/sy)**2
+            else:  # Missing-by-scan: x=scan(col9), y=omega(col2)
                 mask = (spots[:, 10] < 0.5) & (spots[:, 9] > -900)
                 if not mask.any():
                     return
+                xr = ax.get_xlim(); yr = ax.get_ylim()
+                sx = (xr[1]-xr[0]) if xr[1]!=xr[0] else 1
+                sy = (yr[1]-yr[0]) if yr[1]!=yr[0] else 1
                 dists = np.full(len(spots), 1e30)
-                dists[mask] = (spots[mask, 9] - cx)**2 + (spots[mask, 2] - cy)**2
+                dists[mask] = ((spots[mask, 9] - cx)/sx)**2 + ((spots[mask, 2] - cy)/sy)**2
             si = np.argmin(dists)
             spot = spots[si]
 
@@ -716,7 +728,6 @@ class SpotDiagPlotter:
             fig.canvas.draw_idle()
 
         fig.canvas.mpl_connect('button_press_event', on_click)
-        fig.canvas.mpl_connect('pick_event', on_pick)
         update_voxel(initial_voxel)
         plt.show()
 
