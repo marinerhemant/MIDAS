@@ -607,6 +607,10 @@ class SpotDiagPlotter:
                 return
             if state['spots'] is None:
                 return
+            if self.data_dir is None:
+                print("Warning: data_dir not set — cannot extract intensity. "
+                      "Use --data-dir or pass data_dir to SpotDiagPlotter()")
+                return
 
             spots = state['spots']
             cx, cy = event.xdata, event.ydata
@@ -751,13 +755,23 @@ if __name__ == '__main__':
             idx = sys.argv.index('--data-dir')
             data_dir = sys.argv[idx + 1]
         else:
-            # Auto-detect: go up from Results/ to the data dir
+            # Auto-detect: search up from the .bin file for a parameter file
             bin_dir = os.path.dirname(os.path.abspath(sys.argv[1]))
-            parent = os.path.dirname(bin_dir)
-            if os.path.exists(os.path.join(parent, 'Parameters_pfhedm.txt')):
-                data_dir = parent
-            elif os.path.exists(os.path.join(bin_dir, 'Parameters_pfhedm.txt')):
-                data_dir = bin_dir
+            for candidate in [bin_dir, os.path.dirname(bin_dir),
+                              os.path.dirname(os.path.dirname(bin_dir))]:
+                for pf in ['Parameters_pfhedm.txt', 'paramstest.txt',
+                           'Parameters.txt']:
+                    if os.path.exists(os.path.join(candidate, pf)):
+                        data_dir = candidate
+                        break
+                if data_dir:
+                    break
+
+        if data_dir:
+            print(f'Data directory: {data_dir}')
+        else:
+            print('Warning: could not auto-detect data directory for zip extraction.')
+            print('  Use --data-dir to specify it manually.')
 
         plotter = SpotDiagPlotter(diag, data_dir=data_dir)
         plotter.show()
