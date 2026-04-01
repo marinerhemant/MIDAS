@@ -2,6 +2,7 @@ NF_HEDM/bin/*
 FF_HEDM/bin/*
 NF_HEDM/Cluster/*.kml
 NF_HEDM/Cluster/*.swiftx
+FF_HEDM/Example/pfhedm_test
 FF_HEDM/Example/Au_FF*
 FF_HEDM/Example/FolderNames.txt
 FF_HEDM/Example/PFNames.txt

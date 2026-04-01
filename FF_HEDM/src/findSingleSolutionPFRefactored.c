@@ -636,7 +636,6 @@ void process_voxel(int voxNr, const char *folderName, int sgNr, double maxAng,
     keys[i * KEY_ARRAY_COLS + 2] = keysData[i * CONSOLIDATED_KEY_COLS + 2]; /* nIDs for this solution */
     keys[i * KEY_ARRAY_COLS + 3] = keysData[i * CONSOLIDATED_KEY_COLS + 3];
   }
-
   /* Allocate arrays for orientations, confidence, and internal angle */
   double *OMArr = calloc(nIDs * ORIENT_ARRAY_COLS, sizeof(double));
   double *confIAArr = calloc(nIDs * CONF_IA_ARRAY_COLS, sizeof(double));
@@ -788,10 +787,11 @@ void process_voxel(int voxNr, const char *folderName, int sgNr, double maxAng,
     }
 
     /* Save the overall best orientation for this voxel */
+    /* outarr: [voxNr, SpotID, nMatches, nIDs, bestSolIdx] */
     size_t outarr[5] = {voxNr, keys[bestRow * KEY_ARRAY_COLS + 0],
                         keys[bestRow * KEY_ARRAY_COLS + 1],
                         keys[bestRow * KEY_ARRAY_COLS + 2],
-                        keys[bestRow * KEY_ARRAY_COLS + 3]};
+                        (size_t)bestRow};
 
     /* Write to the output file at the correct position */
     pwrite(ib, outarr, 5 * sizeof(size_t), 5 * sizeof(size_t) * voxNr);

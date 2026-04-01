@@ -332,6 +332,9 @@ def main():
                         help='Number of scan positions')
     parser.add_argument('--beamsize', type=float, default=15.0,
                         help='Beam size in µm')
+    parser.add_argument('--scan_size', type=float, default=None,
+                        help='Total scan range in µm (default: same as --size). '
+                             'Set larger than --size to add empty padding at the edges.')
     parser.add_argument('--seed', type=int, default=42,
                         help='Random seed for reproducibility')
     args = parser.parse_args()
@@ -344,8 +347,10 @@ def main():
 
     os.makedirs(args.outdir, exist_ok=True)
     print(f"Output directory: {args.outdir}")
-    print(f"Configuration: {args.ngrains} grains, {args.size}×{args.size} µm, "
-          f"{args.step} µm step, {args.nscans} scans, {args.beamsize} µm beam")
+    scan_size = args.scan_size if args.scan_size is not None else args.size
+    print(f"Configuration: {args.ngrains} grains, {args.size}×{args.size} µm domain, "
+          f"{args.step} µm step, {args.nscans} scans over {scan_size} µm, "
+          f"{args.beamsize} µm beam")
     print()
 
     # 1. Generate microstructure
@@ -357,8 +362,9 @@ def main():
     write_ebsd_file(voxels, ebsd_path)
 
     # 3. Write positions.csv
+    scan_size = args.scan_size if args.scan_size is not None else args.size
     positions_path = os.path.join(args.outdir, 'positions.csv')
-    write_positions_csv(args.nscans, args.size, positions_path)
+    write_positions_csv(args.nscans, scan_size, positions_path)
 
     # 4. Write parameter file
     param_path = os.path.join(args.outdir, 'Parameters_pfhedm.txt')
@@ -378,7 +384,7 @@ def main():
     print(f"  Grains:        {unique_grains}")
     print(f"  Domain:        {args.size} × {args.size} µm")
     print(f"  Step:          {args.step} µm")
-    print(f"  Scans:         {args.nscans}")
+    print(f"  Scans:         {args.nscans} over {scan_size} µm")
     print(f"  Beam size:     {args.beamsize} µm")
     print(f"{'='*60}")
     print(f"\nTo run the simulation:")

@@ -119,7 +119,7 @@ void processVoxel(int voxNr, const char *folderName, int sgNr, double maxAng,
   }
 
   bool *markArr = calloc(nIDs, sizeof(*markArr));
-  size_t *uniqueArr = calloc(nIDs * 4, sizeof(*uniqueArr));
+  size_t *uniqueArr = calloc(nIDs * 5, sizeof(*uniqueArr));
   if (!markArr || !uniqueArr) {
     free(keys);
     free(OMArr);
@@ -175,7 +175,8 @@ void processVoxel(int voxNr, const char *folderName, int sgNr, double maxAng,
       }
     }
     for (int j = 0; j < 4; j++)
-      uniqueArr[nUniques * 4 + j] = keys[bRN * 4 + j];
+      uniqueArr[nUniques * 5 + j] = keys[bRN * 4 + j];
+    uniqueArr[nUniques * 5 + 4] = (size_t)bRN; /* solution index into consolidated data */
     nUniques++;
   }
 
@@ -184,8 +185,9 @@ void processVoxel(int voxNr, const char *folderName, int sgNr, double maxAng,
   FILE *outKeyF = fopen(outKeyFN, "w");
   if (outKeyF) {
     for (int i = 0; i < nUniques; i++) {
-      fprintf(outKeyF, "%zu %zu %zu %zu\n", uniqueArr[i * 4 + 0],
-              uniqueArr[i * 4 + 1], uniqueArr[i * 4 + 2], uniqueArr[i * 4 + 3]);
+      fprintf(outKeyF, "%zu %zu %zu %zu %zu\n", uniqueArr[i * 5 + 0],
+              uniqueArr[i * 5 + 1], uniqueArr[i * 5 + 2],
+              uniqueArr[i * 5 + 3], uniqueArr[i * 5 + 4]);
     }
     fclose(outKeyF);
   }

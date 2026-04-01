@@ -1109,7 +1109,7 @@ int main(int argc, char *argv[]) {
   printf("AllSpots: %d spots from ExtraInfo.bin\n", nSpots);
 
   // ─── Read SpotsToIndex.csv ───
-  // Format: voxNr SpId nObs solIndex idStartIdx (5 columns, matches OMP)
+  // Format: voxNr SpId nObs nIDs solIndex (5 columns, matches OMP)
   int startRowNr = (int)(ceil((double)nSpotsToIndex / nBlocks)) * blockNr;
   int endRowNr = (int)(ceil((double)nSpotsToIndex / nBlocks)) * (blockNr + 1);
   if (endRowNr > nSpotsToIndex - 1)
@@ -1117,7 +1117,7 @@ int main(int argc, char *argv[]) {
   int nSptIDs = endRowNr - startRowNr + 1;
 
   struct SpotsToIndexEntry {
-    int voxNr, spId, nObs, solIdx, idStartIdx;
+    int voxNr, spId, nObs, nIDs, solIdx;
   };
   struct SpotsToIndexEntry *stiEntries =
       (struct SpotsToIndexEntry *)calloc(nSptIDs, sizeof(struct SpotsToIndexEntry));
@@ -1135,8 +1135,8 @@ int main(int argc, char *argv[]) {
       (void)fgets(line, sizeof(line), sf);
       sscanf(line, "%d %d %d %d %d",
              &stiEntries[it].voxNr, &stiEntries[it].spId,
-             &stiEntries[it].nObs, &stiEntries[it].solIdx,
-             &stiEntries[it].idStartIdx);
+             &stiEntries[it].nObs, &stiEntries[it].nIDs,
+             &stiEntries[it].solIdx);
     }
     fclose(sf);
   }
@@ -1207,9 +1207,11 @@ int main(int argc, char *argv[]) {
     int nObs = (int)locArr[14];
     if (nObs > MaxNSpotsBest || nObs <= 0) continue;
 
-    // Read spot IDs from consolidated IDs file using idStartIdx from SpotsToIndex
+    // Compute offset into IDs array: sum nMatched from solutions 0..solIdx-1
     const int *voxIDs = ConsolidatedReader_getIDs(&idsReader, voxNr);
-    int idBaseOffset = stiEntries[g].idStartIdx;
+    int idBaseOffset = 0;
+    for (int s = 0; s < solIdx; s++)
+      idBaseOffset += (int)voxVals[s * CONSOLIDATED_VALS_COLS + 15];
     const int *idData = (voxIDs) ? &voxIDs[idBaseOffset] : NULL;
 
     int nFound = 0;

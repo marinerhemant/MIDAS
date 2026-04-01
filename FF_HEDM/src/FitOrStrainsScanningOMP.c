@@ -439,6 +439,14 @@ CalcAngleErrors(int nspots, int nhkls, int nOmegaRanges, double x[12],
   // TheorSpots are calculated according to LsdMean in case of Hydra
   CalcDiffractionSpots(Lsd, MinEta, OmegaRange, nOmegaRanges, hkls, nhkls,
                        BoxSize, &nTspots, OrientMatrix, TheorSpots);
+  if (getenv("MIDAS_DEBUG_REFINE")) {
+    static int dbg_count = 0;
+    if (dbg_count < 10) {
+      printf("    CalcAngleErrors: nInputSpots=%d nTheorSpots=%d notIniRun=%d\n",
+             nrMatchedIndexer, nTspots, notIniRun);
+      dbg_count++;
+    }
+  }
   double **SpotsYZOGCorr;
   SpotsYZOGCorr = allocMatrix(nrMatchedIndexer, 7);
   double DisplY, DisplZ, ys, zs, Omega, Radius, Theta, lenK, yt, zt;
@@ -1331,7 +1339,7 @@ int main(int argc, char *argv[]) {
     int voxNr = (int)infoArr[thisRowNr * 5 + 0];
     int nSpotsBest = (int)infoArr[thisRowNr * 5 + 2];
     int *spotIDS = malloc(nSpotsBest * sizeof(*spotIDS));
-    size_t solIndex = infoArr[thisRowNr * 5 + 3];
+    size_t solIndex = infoArr[thisRowNr * 5 + 4]; /* bestSolIdx from findSingleSolutionPFRefactored */
 
     /* Read from consolidated files */
     const double *voxVals = ConsolidatedReader_getVals(&consolVals, voxNr);
@@ -1347,22 +1355,19 @@ int main(int argc, char *argv[]) {
     memcpy(tmpArr, &voxVals[solIndex * CONSOLIDATED_VALS_COLS],
            CONSOLIDATED_VALS_COLS * sizeof(double));
 
-    /* Compute offset into IDs array: sum nIDs from keys for solutions before
-     * solIndex */
-    const size_t *voxKeys = ConsolidatedReader_getKeys(
-        (const ConsolidatedReader *)&consolVals, voxNr);
-    /* For IDs, we need to find the right offset. The IDs for each solution are
-       concatenated, with the count stored in keys[sol*4+2] (nIDs per solution).
-       But in our consolidated format, we stored total IDs per voxel.
-       Since SpotsToIndex only references ONE specific solution per voxel,
-       and that solution has nSpotsBest IDs, we read them from the IDs pool. */
-    /* For the simple case: use infoArr[4] as the ID offset index within the
-     * voxel */
-    size_t idStartIdx = infoArr[thisRowNr * 5 + 4];
+    /* Compute offset into IDs array: IDs for each solution are concatenated.
+     * Sum nMatched (voxVals[s*16+15]) for solutions 0..solIndex-1 to find
+     * the start of this solution's IDs. */
+    size_t idStartIdx = 0;
+    for (size_t s = 0; s < solIndex; s++)
+      idStartIdx += (size_t)voxVals[s * CONSOLIDATED_VALS_COLS + 15];
     if (idStartIdx + nSpotsBest <= (size_t)consolIDs.nSolutions[voxNr]) {
       memcpy(spotIDS, &voxIDs[idStartIdx], nSpotsBest * sizeof(int));
     } else {
       /* Fallback: read from start of IDs for this voxel */
+      printf("Warning: vox %d idStartIdx=%zu + nSpots=%d > totalIDs=%d, "
+             "falling back\n", voxNr, idStartIdx, nSpotsBest,
+             consolIDs.nSolutions[voxNr]);
       memcpy(spotIDS, voxIDs, nSpotsBest * sizeof(int));
     }
 
@@ -1409,9 +1414,32 @@ int main(int argc, char *argv[]) {
     double **Splist = allocMatrix(MaxNSpotsBest, 11);
     double Error[3];
     int nSpotsComp;
+
+    if (getenv("MIDAS_DEBUG_REFINE")) {
+      printf("REFINE_DBG vox=%d SpotID=%d nSpotsBest=%d solIdx=%zu "
+             "Pos=(%.2f,%.2f,%.2f) Euler=(%.2f,%.2f,%.2f)deg "
+             "IdxConf=%.4f(%.0f/%.0f)\n",
+             voxNr, SpId, nSpotsBest, solIndex,
+             Pos0[0], Pos0[1], Pos0[2],
+             Euler0[0], Euler0[1], Euler0[2],
+             completeness, NrObserved, NrExpected);
+      printf("  spotIDs[0..4]: ");
+      for (i = 0; i < (nSpotsBest < 5 ? nSpotsBest : 5); i++)
+        printf("%d ", spotIDS[i]);
+      printf("\n");
+      printf("  spotsYZO[0]: Y=%.1f Z=%.1f Ome=%.2f YOrig=%.1f ZOrig=%.1f Ring=%d\n",
+             spotsYZO[0][0], spotsYZO[0][1], spotsYZO[0][2],
+             spotsYZO[0][5], spotsYZO[0][6], (int)spotsYZO[0][7]);
+    }
+
     CalcAngleErrors(nSpotsBest, nhkls, nOmeRanges, Ini, spotsYZO, hkls, Lsd,
                     Wavelength, OmegaRanges, BoxSizes, MinEta, wedge, chi,
                     SpotsComp, Splist, Error, &nSpotsComp, 0);
+
+    if (getenv("MIDAS_DEBUG_REFINE")) {
+      printf("  CalcAngleErrors pass1: nSpotsComp=%d (of %d input)\n",
+             nSpotsComp, nSpotsBest);
+    }
 
     double **spotsYZONew = allocMatrix(MaxNSpotsBest, 11);
     for (i = 0; i < nSpotsComp; i++)
@@ -1422,6 +1450,11 @@ int main(int argc, char *argv[]) {
     CalcAngleErrors(nSpotsComp, nhkls, nOmeRanges, Ini, spotsYZONew, hkls, Lsd,
                     Wavelength, OmegaRanges, BoxSizes, MinEta, wedge, chi,
                     SpotsComp, Splist, Error, &nSpotsComp, 1);
+
+    if (getenv("MIDAS_DEBUG_REFINE")) {
+      printf("  CalcAngleErrors pass2: nSpotsComp=%d\n", nSpotsComp);
+    }
+
     for (i = 0; i < nSpotsComp; i++)
       for (j = 0; j < 11; j++)
         spotsYZONew[i][j] = Splist[i][j];

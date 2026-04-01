@@ -104,6 +104,7 @@ struct TParams {
 };
 
 size_t n_spots = 0;
+int debug_indexer = 0;  // set via MIDAS_DEBUG_INDEXER env var
 
 // hkls to use
 double hkls[MAX_N_HKLS][10];
@@ -1094,8 +1095,8 @@ void MakeFullFileName(char *fullFileName, char *aPath, char *aFileName) {
   }
 }
 
-int DoIndexingSingle(int voxNr, double OM[3][3], double xThis, double yThis,
-                     struct TParams Params, VoxelAccumulator *acc,
+int DoIndexingSingle(int voxNr, int grainIdx, double OM[3][3], double xThis,
+                     double yThis, struct TParams Params, VoxelAccumulator *acc,
                      struct IndexerScratch *scratch) {
   RealType ga = xThis, gb = yThis, gc = 0;
   RealType **TheorSpots = scratch->TheorSpots;
@@ -1130,6 +1131,9 @@ int DoIndexingSingle(int voxNr, double OM[3][3], double xThis, double yThis,
                Params.MarginRadial, etamargins, omemargins, &nMatches,
                GrainSpots, xThis, yThis, &Params);
   FracThis = (double)nMatches / (double)nTspots;
+  if (debug_indexer)
+    printf("CONF_DEBUG grainIdx=%d voxNr=%d nMatched=%d nTspots=%d conf=%.6f\n",
+           grainIdx, voxNr, nMatches, nTspots, FracThis);
   if (FracThis <= Params.MinMatchesToAcceptFrac) {
     return 0;
   }
@@ -1164,7 +1168,8 @@ int DoIndexingSingle(int voxNr, double OM[3][3], double xThis, double yThis,
   size_t keyArr[4] = {(size_t)SpotID, (size_t)nMatches, 0, 0};
   VoxelAccum_addSolution(acc, outArr, keyArr, outArr2, nMatches);
   free(outArr2);
-  printf("ID: %d, voxNr: %d, Confidence: %lf\n", SpotID, voxNr, FracThis);
+  if (debug_indexer)
+    printf("ID: %d, grainIdx: %d, voxNr: %d, Confidence: %lf\n", SpotID, grainIdx, voxNr, FracThis);
   return 0;
 }
 
@@ -1370,10 +1375,13 @@ int ReadSpots(char *cwd) {
 }
 
 int main(int argc, char *argv[]) {
+  debug_indexer = (getenv("MIDAS_DEBUG_INDEXER") != NULL);
   printf("Version: %s\n", MIDAS_VERSION_STRING);
   double start_time = omp_get_wtime();
   printf("\n\n\t\tIndexerScanningOMP v6.0\nContact hsharma@anl.gov in case of "
          "questions about the MIDAS project.\n\n");
+  if (debug_indexer)
+    printf("*** MIDAS_DEBUG_INDEXER enabled — CONF_DEBUG output active ***\n");
   int returncode;
   struct TParams Params;
   char *ParamFN;
@@ -1708,7 +1716,7 @@ int main(int argc, char *argv[]) {
           eulerThis[2] = mic[bestRow * 5 + 4] * rad2deg;
           Euler2OrientMat(eulerThis, OMThis);
         }
-        DoIndexingSingle(thisRowNr, OMThis, xThis, yThis, Params, acc,
+        DoIndexingSingle(thisRowNr, 0, OMThis, xThis, yThis, Params, acc,
                          &scratch);
       } else if (hasGrains == 1) {
         if (omp_get_thread_num() == 0 && thisRowNr == startRowNr)
@@ -1727,7 +1735,7 @@ int main(int argc, char *argv[]) {
           OMThis[2][0] = grainsOM[iter * 9 + 6];
           OMThis[2][1] = grainsOM[iter * 9 + 7];
           OMThis[2][2] = grainsOM[iter * 9 + 8];
-          DoIndexingSingle(thisRowNr, OMThis, xThis, yThis, Params, acc,
+          DoIndexingSingle(thisRowNr, iter, OMThis, xThis, yThis, Params, acc,
                            &scratch);
         }
       } else {
