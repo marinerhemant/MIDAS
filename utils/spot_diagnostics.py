@@ -304,11 +304,11 @@ class SpotDiagPlotter:
             if um.any():
                 ax.scatter(spots[um, 0], spots[um, 1], marker=mk, s=60,
                            facecolors='none', edgecolors='red', linewidths=1.5,
-                           picker=picker, pickradius=8)
+                           )
             mm = rm & matched
             if mm.any():
                 ax.scatter(spots[mm, 0], spots[mm, 1], marker=mk, s=30,
-                           c='tab:blue', alpha=0.7, picker=picker, pickradius=8)
+                           c='tab:blue', alpha=0.7, )
 
         comp = v['nMatched'] / v['nTheor'] if v['nTheor'] > 0 else 0
         ax.set_title(f'Voxel {voxel_nr}: Y-Z ({v["nMatched"]}/{v["nTheor"]} = {comp:.0%})')
@@ -336,10 +336,10 @@ class SpotDiagPlotter:
         matched = spots[:, 10] > 0.5
         ax.scatter(spots[~matched, 2], spots[~matched, 3], c='red', s=50,
                    marker='x', label='Unmatched', zorder=3,
-                   picker=picker, pickradius=8)
+                   )
         ax.scatter(spots[matched, 2], spots[matched, 3], c='tab:blue', s=20,
                    alpha=0.7, label='Matched', zorder=2,
-                   picker=picker, pickradius=8)
+                   )
         ax.set_xlabel('Omega (deg)')
         ax.set_ylabel('Eta (deg)')
         ax.set_title(f'Voxel {voxel_nr}: Eta vs Omega')
@@ -449,7 +449,7 @@ class SpotDiagPlotter:
             mk = markers[r % len(markers)]
             ax.scatter(um_valid[rm, 9], um_valid[rm, 2], marker=mk, s=60,
                        c=ring_colors.get(r, 'gray'), label=f'R{r}', zorder=3,
-                       picker=picker, pickradius=8)
+                       )
         ax.set_xlabel('Expected Scan Nr')
         ax.set_ylabel('Omega (deg)')
         ax.set_title(f'Voxel {voxel_nr}: Missing Spots ({len(unmatched)} total)')
