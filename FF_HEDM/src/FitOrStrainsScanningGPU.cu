@@ -36,7 +36,6 @@ int CalcDiffractionSpots(double Distance, double ExcludePoleAngle,
 #include "midas_version.h"
 #define MAXNOMEGARANGES MAX_N_OMEGA_RANGES
 #define MaxNHKLS 5000
-#define MaxNSpotsBest 5000
 
 /* Spot diagnostics output (env MIDAS_SPOT_DIAGNOSTICS) */
 #define SPOT_DIAG_MAGIC   0x47414944
