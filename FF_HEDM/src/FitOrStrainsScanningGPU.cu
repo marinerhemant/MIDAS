@@ -52,6 +52,12 @@ typedef struct {
 #define deg2rad 0.0174532925199433
 #define rad2deg 57.2957795130823
 
+/* Globals required by CalcDiffractionSpots.c (extern references) */
+int BigDetSize = 0;
+int *BigDetector = NULL;
+long long int totNrPixelsBigDetector = 0;
+double pixelsize = 0;
+
 static inline double tand(double x) { return tan(deg2rad * x); }
 static inline double asind(double x) { return rad2deg * asin(x); }
 static inline double acosd(double x) { return rad2deg * acos(x); }
