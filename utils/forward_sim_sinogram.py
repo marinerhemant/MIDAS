@@ -137,26 +137,18 @@ def get_scan_dirs(base_dir, start_file_nr, n_scans, scan_step):
 
 
 # ---------------------------------------------------------------------------
-# Quaternion / orientation helpers
+# Orientation helpers — import from calcMiso (MIDAS utils)
 # ---------------------------------------------------------------------------
 
-def quat2orient_mat(q):
-    """Convert quaternion (w, x, y, z) to a flat 9-element orientation matrix.
-
-    Returns row-major: [O11 O12 O13 O21 O22 O23 O31 O32 O33].
-    """
-    w, x, y, z = q[0], q[1], q[2], q[3]
-    om = np.empty(9, dtype=np.float64)
-    om[0] = 1 - 2*(y*y + z*z)
-    om[1] = 2*(x*y - w*z)
-    om[2] = 2*(x*z + w*y)
-    om[3] = 2*(x*y + w*z)
-    om[4] = 1 - 2*(x*x + z*z)
-    om[5] = 2*(y*z - w*x)
-    om[6] = 2*(x*z - w*y)
-    om[7] = 2*(y*z + w*x)
-    om[8] = 1 - 2*(x*x + y*y)
-    return om
+def _import_calcMiso():
+    """Lazily import calcMiso from the MIDAS utils directory."""
+    midas_root = os.environ.get('MIDAS_ROOT',
+                                 os.path.expanduser('~/opt/MIDAS'))
+    utils_dir = os.path.join(midas_root, 'utils')
+    if utils_dir not in sys.path:
+        sys.path.insert(0, utils_dir)
+    import calcMiso
+    return calcMiso
 
 
 # ---------------------------------------------------------------------------
@@ -184,8 +176,9 @@ def read_h5_orientations(h5_path):
             om_all = np.array(hf['voxels/orientation_matrix'])  # (N,3,3)
             om_flat = om_all.reshape(-1, 9)
         elif 'voxels/quaternion' in hf:
+            calcMiso = _import_calcMiso()
             quats = np.array(hf['voxels/quaternion'])  # (N,4)
-            om_flat = np.array([quat2orient_mat(q) for q in quats])
+            om_flat = np.array([calcMiso.Quat2OrientMat(q) for q in quats])
         else:
             raise ValueError(f'{h5_path} has neither '
                              f'voxels/orientation_matrix nor voxels/quaternion')
@@ -246,6 +239,75 @@ def parse_grains_csv_file(csv_path):
             grains.append(g)
     print(f'  Parsed {len(grains)} grains from {csv_path}')
     return grains
+
+
+def deduplicate_grains(grains_list, sg_num, miso_tol_deg=1.0):
+    """Remove duplicate orientations that are within *miso_tol_deg* of each other.
+
+    Uses a greedy approach: iterate through grains and keep the first
+    representative of each unique orientation cluster.  Two orientations
+    are considered duplicates if their symmetry-reduced misorientation is
+    below *miso_tol_deg*.
+
+    Requires ``calcMiso`` from the MIDAS utils directory.
+
+    Parameters
+    ----------
+    grains_list : list of dict
+        Each dict has at least 'grainID' and 'orient' (flat 9-element array).
+    sg_num : int
+        Space group number (used for symmetry operations).
+    miso_tol_deg : float
+        Misorientation tolerance in degrees.  Default 1.0°.
+
+    Returns
+    -------
+    unique_grains : list of dict
+        Subset of *grains_list* with duplicate orientations removed.
+        GrainIDs are renumbered 1..N.
+    """
+    calcMiso = _import_calcMiso()
+    from math import acos, fabs
+
+    rad2deg = 57.2957795130823
+    NrSym, Sym = calcMiso.MakeSymmetries(sg_num)
+
+    # Pre-compute quaternions in the fundamental region
+    quats_fr = []
+    for g in grains_list:
+        q = calcMiso.OrientMat2Quat(g['orient'])
+        q_fr = calcMiso.BringDownToFundamentalRegionSym(q, NrSym, Sym)
+        quats_fr.append(q_fr)
+
+    unique_indices = []  # indices into grains_list
+    unique_quats = []    # corresponding FR quaternions
+
+    for i, q_i in enumerate(quats_fr):
+        is_dup = False
+        for q_u in unique_quats:
+            q_inv = [q_u[0], -q_u[1], -q_u[2], -q_u[3]]
+            qp = calcMiso.QuaternionProduct(q_inv, q_i)
+            mis_q = calcMiso.BringDownToFundamentalRegionSym(qp, NrSym, Sym)
+            cos_half = min(1.0, fabs(mis_q[0]))
+            angle_deg = 2.0 * acos(cos_half) * rad2deg
+            if angle_deg < miso_tol_deg:
+                is_dup = True
+                break
+        if not is_dup:
+            unique_indices.append(i)
+            unique_quats.append(q_i)
+
+    # Build output list with renumbered IDs
+    unique_grains = []
+    for new_id, idx in enumerate(unique_indices, start=1):
+        g = dict(grains_list[idx])  # shallow copy
+        g['grainID'] = new_id
+        unique_grains.append(g)
+
+    print(f'  Deduplicated: {len(grains_list)} voxels → '
+          f'{len(unique_grains)} unique grains '
+          f'(miso tol = {miso_tol_deg:.1f}°, SG {sg_num})')
+    return unique_grains
 
 
 # ---------------------------------------------------------------------------
@@ -1512,6 +1574,10 @@ def main():
                              '-1 = simple dark subtraction')
     parser.add_argument('--noDark', action='store_true',
                         help='Disable dark correction entirely.')
+    parser.add_argument('--misoTol', type=float, default=1.0,
+                        help='Misorientation tolerance (degrees) for '
+                             'deduplicating grains from --h5File. '
+                             'Default: 1.0')
     args = parser.parse_args()
 
     # ── Validate orientation source ─────────────────────────────────────
@@ -1583,6 +1649,12 @@ def main():
     omega_step = float(params.get('OmegaStep', '0.25'))
     lattice_str = params.get('LatticeConstant',
                               '3.9091 3.9091 3.9091 90 90 90')
+    sg_num = int(params.get('SpaceGroup', '225'))
+
+    # ── Deduplicate h5 orientations (many voxels share the same grain) ──
+    if args.h5File and grains_list:
+        grains_list = deduplicate_grains(
+            grains_list, sg_num, miso_tol_deg=args.misoTol)
 
     nr_pixels_y = int(params.get('NrPixelsY',
                                   params.get('NrPixels', '2880')))

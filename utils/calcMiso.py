@@ -128,6 +128,21 @@ def OrientMat2Quat(OrientMat):
 		Quat[3] = -Quat[3]
 	return normalize(Quat)
 
+def Quat2OrientMat(q):
+	"""Convert quaternion (w, x, y, z) to a flat 9-element orientation matrix."""
+	w, x, y, z = q[0], q[1], q[2], q[3]
+	om = [0]*9
+	om[0] = 1 - 2*(y*y + z*z)
+	om[1] = 2*(x*y - w*z)
+	om[2] = 2*(x*z + w*y)
+	om[3] = 2*(x*y + w*z)
+	om[4] = 1 - 2*(x*x + z*z)
+	om[5] = 2*(y*z - w*x)
+	om[6] = 2*(x*z - w*y)
+	om[7] = 2*(y*z + w*x)
+	om[8] = 1 - 2*(x*x + y*y)
+	return om
+
 def Euler2OrientMat(Euler):
 	m_out = [0]*9
 	psi = Euler[0]
