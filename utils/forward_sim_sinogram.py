@@ -1,12 +1,21 @@
 #!/usr/bin/env python
-"""
-Forward Simulation -> Sinogram -> Tomo Reconstruction
+"""Forward Simulation -> Sinogram -> Tomo Reconstruction
 
-Given an orientation matrix and a PF-HEDM dataset, this script:
+Given an orientation matrix (or multiple orientations) and a PF-HEDM dataset,
+this script:
   1. Runs ForwardSimulationCompressed to predict diffraction spots
   2. Extracts intensity patches from detector data at predicted spot locations
   3. Builds an omega-sorted sinogram
   4. Runs tomographic reconstruction via midas_tomo_python
+
+Orientation sources (mutually exclusive):
+  --orient "O11 O12 ... O33"   : single orientation (9 values)
+  --grainsFile Grains.csv       : multi-grain file from ProcessGrains
+  --h5File microstructure_pf.h5 : PF-HEDM consolidated HDF5
+
+For multi-grain inputs (--grainsFile / --h5File), the forward simulation runs
+once with all grains.  Sinograms and reconstructions are produced per grain,
+saved under  <outDir>/grain_NNNN/ .
 
 Data sources (auto-detected unless --useRaw or --useInputAll is set):
   - Zarr ZIP archives ({FileStem}_{LayerNr}.MIDAS.zip)
@@ -15,13 +24,17 @@ Data sources (auto-detected unless --useRaw or --useInputAll is set):
   - InputAll CSVs (GrainRadius matching via --useInputAll)
 
 Usage:
-  # With zarr zip files (auto-detected):
+  # Single orientation:
   python forward_sim_sinogram.py --paramFile ps_sto_pf.txt \
       --orient "O11 O12 ... O33" --nCPUs 4
 
-  # With raw HDF5 files (auto-detected if no zip files exist):
+  # Multi-grain from Grains.csv:
   python forward_sim_sinogram.py --paramFile ps_sto_pf.txt \
-      --orient "O11 O12 ... O33" --nCPUs 4
+      --grainsFile Grains.csv --nCPUs 4
+
+  # Multi-grain from PF-HEDM h5 file:
+  python forward_sim_sinogram.py --paramFile ps_sto_pf.txt \
+      --h5File microstructure_pf.h5 --nCPUs 4
 
   # Force raw file mode:
   python forward_sim_sinogram.py --paramFile ps_sto_pf.txt \
@@ -124,6 +137,118 @@ def get_scan_dirs(base_dir, start_file_nr, n_scans, scan_step):
 
 
 # ---------------------------------------------------------------------------
+# Quaternion / orientation helpers
+# ---------------------------------------------------------------------------
+
+def quat2orient_mat(q):
+    """Convert quaternion (w, x, y, z) to a flat 9-element orientation matrix.
+
+    Returns row-major: [O11 O12 O13 O21 O22 O23 O31 O32 O33].
+    """
+    w, x, y, z = q[0], q[1], q[2], q[3]
+    om = np.empty(9, dtype=np.float64)
+    om[0] = 1 - 2*(y*y + z*z)
+    om[1] = 2*(x*y - w*z)
+    om[2] = 2*(x*z + w*y)
+    om[3] = 2*(x*y + w*z)
+    om[4] = 1 - 2*(x*x + z*z)
+    om[5] = 2*(y*z - w*x)
+    om[6] = 2*(x*z - w*y)
+    om[7] = 2*(y*z + w*x)
+    om[8] = 1 - 2*(x*x + y*y)
+    return om
+
+
+# ---------------------------------------------------------------------------
+# Read multi-grain orientations from H5 or Grains.csv
+# ---------------------------------------------------------------------------
+
+def read_h5_orientations(h5_path):
+    """Read grain orientations from a PF-HEDM microstructure_pf.h5 file.
+
+    Returns a list of dicts, one per voxel/grain:
+      {'grainID': int, 'orient': 9-elem array, 'pos': (x,y,z),
+       'lattice': (a,b,c,alpha,beta,gamma)}
+
+    The H5 file is expected to contain (written by pf_MIDAS.py):
+      voxels/orientation_matrix  (N, 3, 3)
+      voxels/quaternion          (N, 4)  – used if orient_matrix absent
+      voxels/position            (N, 3)  – optional, defaults to (0,0,0)
+      voxels/lattice_params      (N, 6)  – optional
+    """
+    import h5py
+    grains = []
+    with h5py.File(h5_path, 'r') as hf:
+        # Orientation matrices
+        if 'voxels/orientation_matrix' in hf:
+            om_all = np.array(hf['voxels/orientation_matrix'])  # (N,3,3)
+            om_flat = om_all.reshape(-1, 9)
+        elif 'voxels/quaternion' in hf:
+            quats = np.array(hf['voxels/quaternion'])  # (N,4)
+            om_flat = np.array([quat2orient_mat(q) for q in quats])
+        else:
+            raise ValueError(f'{h5_path} has neither '
+                             f'voxels/orientation_matrix nor voxels/quaternion')
+
+        n_grains = om_flat.shape[0]
+
+        # Positions (optional)
+        if 'voxels/position' in hf:
+            pos_all = np.array(hf['voxels/position'])  # (N,3)
+        else:
+            pos_all = np.zeros((n_grains, 3))
+
+        # Lattice parameters (optional)
+        if 'voxels/lattice_params' in hf:
+            lp_all = np.array(hf['voxels/lattice_params'])  # (N,6)
+        else:
+            lp_all = None
+
+        for i in range(n_grains):
+            g = {
+                'grainID': i + 1,
+                'orient': om_flat[i],
+                'pos': tuple(pos_all[i]),
+            }
+            if lp_all is not None:
+                g['lattice'] = tuple(lp_all[i])
+            else:
+                g['lattice'] = None  # will use param-file default
+            grains.append(g)
+
+    print(f'  Read {len(grains)} orientations from {h5_path}')
+    return grains
+
+
+def parse_grains_csv_file(csv_path):
+    """Parse a MIDAS Grains.csv file (written by ProcessGrains).
+
+    Returns a list of dicts with the same structure as read_h5_orientations.
+    """
+    grains = []
+    with open(csv_path) as f:
+        for line in f:
+            line = line.strip()
+            if not line or line.startswith('%'):
+                continue
+            vals = line.split('\t')
+            if len(vals) < 19:
+                vals = line.split()  # try space-separated
+            if len(vals) < 19:
+                continue
+            fvals = [float(v) for v in vals]
+            g = {
+                'grainID': int(fvals[0]),
+                'orient': np.array(fvals[1:10]),
+                'pos': (fvals[10], fvals[11], fvals[12]),
+                'lattice': tuple(fvals[13:19]),
+            }
+            grains.append(g)
+    print(f'  Parsed {len(grains)} grains from {csv_path}')
+    return grains
+
+
+# ---------------------------------------------------------------------------
 # Step 1: Create temporary Grains.csv and run ForwardSimulationCompressed
 # ---------------------------------------------------------------------------
 
@@ -154,6 +279,54 @@ def create_grains_csv(orient_mat, lattice_str, out_path):
                 f'{a:.6f}\t{b:.6f}\t{c:.6f}\t'
                 f'{alpha:.6f}\t{beta:.6f}\t{gamma:.6f}\n')
     print(f'  Created {out_path}')
+
+
+def create_multi_grains_csv(grains_list, lattice_str, out_path):
+    """Write a multi-grain Grains.csv for ForwardSimulationCompressed.
+
+    Parameters
+    ----------
+    grains_list : list of dict
+        Each dict has 'grainID', 'orient' (9-elem), 'pos' (3-tuple),
+        and optionally 'lattice' (6-tuple).  If lattice is None, the
+        default *lattice_str* from the param file is used.
+    lattice_str : str
+        Default lattice constants from the parameter file.
+    out_path : str
+        Output Grains.csv path.
+    """
+    lat_parts = lattice_str.split()
+    a0, b0, c0 = float(lat_parts[0]), float(lat_parts[1]), float(lat_parts[2])
+    al0, be0, ga0 = float(lat_parts[3]), float(lat_parts[4]), float(lat_parts[5])
+
+    n = len(grains_list)
+    with open(out_path, 'w') as f:
+        f.write(f'%NumGrains {n}\n')
+        f.write('%BeamCenter 0.000000\n')
+        f.write('%BeamThickness 1000.000000\n')
+        f.write('%GlobalPosition 0.000000\n')
+        f.write('%NumPhases 1\n')
+        f.write('%PhaseInfo\n')
+        f.write(f'%\tSpaceGroup:221\n')
+        f.write(f'%\tLattice Parameter: {a0:.6f} {b0:.6f} {c0:.6f} '
+                f'{al0:.6f} {be0:.6f} {ga0:.6f}\n')
+        f.write('%GrainID\tO11\tO12\tO13\tO21\tO22\tO23\tO31\tO32\tO33\t'
+                'X\tY\tZ\ta\tb\tc\talpha\tbeta\tgamma\n')
+        for g in grains_list:
+            om = g['orient']
+            x, y, z = g['pos']
+            if g.get('lattice') is not None:
+                a, b, c, al, be, ga = g['lattice']
+            else:
+                a, b, c, al, be, ga = a0, b0, c0, al0, be0, ga0
+            f.write(f'{g["grainID"]}\t'
+                    f'{om[0]:.6f}\t{om[1]:.6f}\t{om[2]:.6f}\t'
+                    f'{om[3]:.6f}\t{om[4]:.6f}\t{om[5]:.6f}\t'
+                    f'{om[6]:.6f}\t{om[7]:.6f}\t{om[8]:.6f}\t'
+                    f'{x:.6f}\t{y:.6f}\t{z:.6f}\t'
+                    f'{a:.6f}\t{b:.6f}\t{c:.6f}\t'
+                    f'{al:.6f}\t{be:.6f}\t{ga:.6f}\n')
+    print(f'  Created {out_path} with {n} grains')
 
 
 def create_fwd_param_file(orig_param_file, grains_csv, out_param_file):
@@ -1211,6 +1384,86 @@ def save_outputs(sino, omegas, recon, spots, out_dir):
 # Main
 # ---------------------------------------------------------------------------
 
+def _build_sinogram_for_spots(spots, scan_dirs, args, params_dict):
+    """Build a sinogram for the given list of spots.
+
+    Encapsulates the data-source detection and sinogram construction logic
+    so it can be reused for single-grain or per-grain multi-grain runs.
+
+    Parameters
+    ----------
+    spots : list of dict
+        Parsed spots (from parse_spot_matrix_gen).
+    scan_dirs : list of tuple
+        From get_scan_dirs.
+    args : argparse.Namespace
+        CLI arguments.
+    params_dict : dict
+        Derived parameters (file_stem, padding, ext, etc.).
+
+    Returns
+    -------
+    (sino, omegas) : tuple of ndarray
+    """
+    p = params_dict  # shorthand
+
+    if args.useInputAll:
+        sino, omegas = build_sinogram_from_inputall(
+            spots, scan_dirs,
+            px_size=p['px_size'], omega_step=p['omega_step'],
+            n_workers=args.nCPUs, pxtol=args.pxTol,
+            ome_frame_tol=args.omeTol,
+        )
+    else:
+        use_raw = p.get('use_raw', args.useRaw)
+        if use_raw:
+            sino, omegas = build_sinogram_raw(
+                spots, scan_dirs, p['file_stem'], p['padding'], p['ext'],
+                p['header_size'], p['bytes_per_pixel'], p['raw_folder'],
+                patch_half=p['patch_half'], ome_half=p['ome_half'],
+                skip_frame=p['skip_frame'], n_workers=args.nCPUs,
+                trans_opts=p['trans_opts'],
+                nr_pixels_y=p['nr_pixels_y'], nr_pixels_z=p['nr_pixels_z'],
+                data_loc=p['data_loc'],
+                dark_fn=p['dark_fn'], dark_loc=p['dark_loc'],
+                pre_proc_thresh=p['pre_proc_thresh'],
+            )
+        else:
+            sino, omegas = build_sinogram(
+                spots, scan_dirs, p['file_stem'], p['padding'],
+                patch_half=p['patch_half'], ome_half=p['ome_half'],
+                skip_frame=p['skip_frame'], n_workers=args.nCPUs,
+                trans_opts=p['trans_opts'],
+                nr_pixels_y=p['nr_pixels_y'], nr_pixels_z=p['nr_pixels_z'],
+            )
+    return sino, omegas
+
+
+def _process_single_grain(grain_spots, grain_id, out_dir, scan_dirs,
+                          args, params_dict):
+    """Build sinogram + tomo reconstruction for one grain.
+
+    Saves results to  out_dir/grain_{grainID:04d}/  and returns the
+    sub-directory path.
+    """
+    grain_dir = os.path.join(out_dir, f'grain_{grain_id:04d}')
+    os.makedirs(grain_dir, exist_ok=True)
+
+    print(f'\n  ── Grain {grain_id}: {len(grain_spots)} spots ──')
+    sino, omegas = _build_sinogram_for_spots(
+        grain_spots, scan_dirs, args, params_dict)
+
+    print(f'    Sinogram shape: {sino.shape}, '
+          f'non-zero: {np.count_nonzero(sino)}/{sino.size}, '
+          f'max: {sino.max():.1f}')
+
+    tomo_work = os.path.join(grain_dir, 'tomo_work')
+    recon = run_tomo_recon(sino, omegas, tomo_work, n_cpus=args.nCPUs)
+
+    save_outputs(sino, omegas, recon, grain_spots, grain_dir)
+    return grain_dir
+
+
 def main():
     parser = argparse.ArgumentParser(
         description='Forward simulation -> sinogram -> tomo reconstruction')
@@ -1218,7 +1471,13 @@ def main():
                         help='MIDAS parameter file (e.g. ps_sto_pf.txt)')
     parser.add_argument('--orient', required=False, default=None,
                         help='9 orientation matrix elements, space-separated '
-                             '(required unless --useInputAll)')
+                             '(single-grain mode)')
+    parser.add_argument('--grainsFile', required=False, default=None,
+                        help='Path to a Grains.csv file (multi-grain mode). '
+                             'Written by ProcessGrains.')
+    parser.add_argument('--h5File', required=False, default=None,
+                        help='Path to a microstructure_pf.h5 file '
+                             '(multi-grain mode). Written by pf_MIDAS.')
     parser.add_argument('--nCPUs', type=int, default=4,
                         help='Number of CPUs for ForwardSim and tomo')
     parser.add_argument('--patchSize', type=int, default=21,
@@ -1255,22 +1514,61 @@ def main():
                         help='Disable dark correction entirely.')
     args = parser.parse_args()
 
+    # ── Validate orientation source ─────────────────────────────────────
+    n_orient_src = sum([
+        args.orient is not None,
+        args.grainsFile is not None,
+        args.h5File is not None,
+    ])
+    multi_grain = args.grainsFile is not None or args.h5File is not None
+
+    if n_orient_src > 1:
+        sys.exit('ERROR: --orient, --grainsFile, and --h5File are mutually '
+                 'exclusive.  Provide exactly one.')
+    if n_orient_src == 0 and not args.skipFwdSim:
+        sys.exit('ERROR: provide one of --orient, --grainsFile, or --h5File '
+                 '(or use --skipFwdSim).')
+
     base_dir = os.getcwd()
     param_file = os.path.join(base_dir, args.paramFile)
     if not os.path.isfile(param_file):
         sys.exit(f'ERROR: parameter file not found: {param_file}')
 
-    # Parse orientation matrix
+    # ── Load orientation(s) ─────────────────────────────────────────────
+    grains_list = None  # populated for multi-grain modes
+    orient_vals = None  # populated for single-orient mode
+
     if args.orient:
         orient_vals = [float(x) for x in args.orient.split()]
         if len(orient_vals) != 9:
-            sys.exit(f'ERROR: expected 9 orientation values, got {len(orient_vals)}')
+            sys.exit(f'ERROR: expected 9 orientation values, '
+                     f'got {len(orient_vals)}')
         print(f'\nOrientation matrix:')
         for i in range(3):
             print(f'  [{orient_vals[3*i]:.6f}  {orient_vals[3*i+1]:.6f}  '
                   f'{orient_vals[3*i+2]:.6f}]')
-    elif not args.skipFwdSim and not args.useInputAll:
-        sys.exit('ERROR: --orient is required unless --skipFwdSim is set')
+
+    elif args.h5File:
+        h5_path = args.h5File
+        if not os.path.isabs(h5_path):
+            h5_path = os.path.join(base_dir, h5_path)
+        if not os.path.isfile(h5_path):
+            sys.exit(f'ERROR: H5 file not found: {h5_path}')
+        print(f'\nReading orientations from H5: {h5_path}')
+        grains_list = read_h5_orientations(h5_path)
+        if not grains_list:
+            sys.exit('ERROR: no orientations found in H5 file')
+
+    elif args.grainsFile:
+        grains_path = args.grainsFile
+        if not os.path.isabs(grains_path):
+            grains_path = os.path.join(base_dir, grains_path)
+        if not os.path.isfile(grains_path):
+            sys.exit(f'ERROR: Grains.csv not found: {grains_path}')
+        print(f'\nReading orientations from Grains.csv: {grains_path}')
+        grains_list = parse_grains_csv_file(grains_path)
+        if not grains_list:
+            sys.exit('ERROR: no grains found in Grains.csv')
 
     # Parse param file
     params = parse_param_file(param_file)
@@ -1308,6 +1606,9 @@ def main():
     pre_proc_thresh = (args.preProcThresh if args.preProcThresh is not None
                        else int(params.get('preProcThresh', '-1')))
 
+    patch_half = args.patchSize // 2
+    ome_half = args.omePatch // 2
+
     print(f'\nDataset parameters:')
     print(f'  FileStem: {file_stem}')
     print(f'  StartFileNr: {start_file_nr}, nScans: {n_scans}, '
@@ -1322,23 +1623,46 @@ def main():
     if dark_fn:
         print(f'  Dark: {dark_fn}')
 
-    patch_half = args.patchSize // 2
-    ome_half = args.omePatch // 2
-
     scan_dirs = get_scan_dirs(base_dir, start_file_nr, n_scans, scan_step)
+
+    # ── Detect data source (zip vs raw) once ────────────────────────────
+    use_raw = args.useRaw
+    if not use_raw and not args.useInputAll:
+        first_layer_nr = scan_dirs[0][1]
+        first_scan_dir = scan_dirs[0][2]
+        zip_name = f'{file_stem}_{first_layer_nr:0{padding}d}.MIDAS.zip'
+        zip_path = os.path.join(first_scan_dir, zip_name)
+        if not os.path.isfile(zip_path):
+            use_raw = True
+            print(f'  Auto-detect: no zip file, switching to raw mode')
+    if use_raw and not raw_folder and not args.useInputAll:
+        sys.exit('ERROR: RawFolder not set and no zarr zip files.')
+
+    # Collect derived params into a dict for helper functions
+    params_dict = dict(
+        file_stem=file_stem, padding=padding, ext=ext,
+        header_size=header_size, bytes_per_pixel=bytes_per_pixel,
+        raw_folder=raw_folder, patch_half=patch_half, ome_half=ome_half,
+        skip_frame=skip_frame, trans_opts=trans_opts,
+        nr_pixels_y=nr_pixels_y, nr_pixels_z=nr_pixels_z,
+        data_loc=data_loc, dark_fn=dark_fn, dark_loc=dark_loc,
+        pre_proc_thresh=pre_proc_thresh, px_size=px_size,
+        omega_step=omega_step, use_raw=use_raw,
+    )
+
+    out_dir = os.path.join(base_dir, args.outDir)
+    os.makedirs(out_dir, exist_ok=True)
 
     # ── Step 1: Forward simulation ──────────────────────────────────────
     print('\n' + '='*60)
     print('STEP 1: Forward Simulation')
     print('='*60)
 
-    out_dir = os.path.join(base_dir, args.outDir)
-    os.makedirs(out_dir, exist_ok=True)
-
     if not args.skipFwdSim:
         fwd_dir = os.path.join(out_dir, 'fwd_sim')
         os.makedirs(fwd_dir, exist_ok=True)
 
+        # Copy hkls.csv
         hkls_src = os.path.join(base_dir, 'hkls.csv')
         if not os.path.isfile(hkls_src):
             hkls_src = os.path.join(scan_dirs[0][2], 'hkls.csv')
@@ -1351,7 +1675,13 @@ def main():
             f.write('0.0\n')
 
         grains_csv = os.path.join(fwd_dir, 'Grains.csv')
-        create_grains_csv(orient_vals, lattice_str, grains_csv)
+
+        if multi_grain:
+            # Multi-grain: write all grains into one Grains.csv
+            create_multi_grains_csv(grains_list, lattice_str, grains_csv)
+        else:
+            # Single grain
+            create_grains_csv(orient_vals, lattice_str, grains_csv)
 
         fwd_param = os.path.join(fwd_dir, 'ps_fwd.txt')
         create_fwd_param_file(param_file, 'Grains.csv', fwd_param)
@@ -1366,26 +1696,28 @@ def main():
             sys.exit(f'ERROR: SpotMatrixGen.csv not found')
         print(f'  Using existing SpotMatrixGen.csv: {spot_file}')
 
-    spots = parse_spot_matrix_gen(spot_file)
+    all_spots = parse_spot_matrix_gen(spot_file)
 
-    # ── Step 2: Build sinogram ──────────────────────────────────────────
-    print('\n' + '='*60)
+    # ── Determine grain IDs present ─────────────────────────────────────
+    grain_ids = sorted(set(s['grainID'] for s in all_spots))
+    n_grain_ids = len(grain_ids)
+    print(f'  Found spots for {n_grain_ids} grain(s): {grain_ids}')
 
-    if args.useInputAll:
-        # InputAll mode: single sinogram
-        print('STEP 2: Build Sinogram from InputAll (GrainRadius matching)')
+    # ── Step 2 + 3: Build sinograms + Tomo (per grain) ──────────────────
+    if n_grain_ids == 1 and not multi_grain:
+        # ── Single-grain path (original behaviour) ──────────────────────
+        print('\n' + '='*60)
+        print('STEP 2: Build Sinogram')
         print('='*60)
-        sino, omegas = build_sinogram_from_inputall(
-            spots, scan_dirs, px_size=px_size, omega_step=omega_step,
-            n_workers=args.nCPUs, pxtol=args.pxTol,
-            ome_frame_tol=args.omeTol
-        )
+
+        sino, omegas = _build_sinogram_for_spots(
+            all_spots, scan_dirs, args, params_dict)
 
         print(f'\n  Sinogram shape: {sino.shape}')
-        print(f'  Non-zero: {np.count_nonzero(sino)} / {sino.size}')
+        print(f'  Non-zero cells: {np.count_nonzero(sino)} / {sino.size} '
+              f'({100*np.count_nonzero(sino)/sino.size:.1f}%)')
         print(f'  Max intensity: {sino.max():.1f}')
 
-        # Tomo reconstruction
         print('\n' + '='*60)
         print('STEP 3: Tomographic Reconstruction')
         print('='*60)
@@ -1395,69 +1727,35 @@ def main():
         print('\n' + '='*60)
         print('SAVING OUTPUTS')
         print('='*60)
-        save_outputs(sino, omegas, recon, spots, out_dir)
+        save_outputs(sino, omegas, recon, all_spots, out_dir)
+        print(f'\nAll done! Results in: {out_dir}')
 
     else:
-        # Zip/Raw mode: multi-variant sinograms
-        use_raw = args.useRaw
-        if not use_raw:
-            first_layer_nr = scan_dirs[0][1]
-            first_scan_dir = scan_dirs[0][2]
-            zip_name = f'{file_stem}_{first_layer_nr:0{padding}d}.MIDAS.zip'
-            zip_path = os.path.join(first_scan_dir, zip_name)
-            if not os.path.isfile(zip_path):
-                use_raw = True
-                print(f'  Auto-detect: no zip file, switching to raw mode')
+        # ── Multi-grain path ────────────────────────────────────────────
+        print('\n' + '='*60)
+        print(f'MULTI-GRAIN MODE: processing {n_grain_ids} grain(s)')
+        print('='*60)
 
-        if use_raw:
-            if not raw_folder:
-                sys.exit('ERROR: RawFolder not set and no zarr zip files.')
-            print('STEP 2: Build Sinogram from Raw Files')
-            print('='*60)
-            sino, omegas = build_sinogram_raw(
-                spots, scan_dirs, file_stem, padding, ext,
-                header_size, bytes_per_pixel, raw_folder,
-                patch_half=patch_half, ome_half=ome_half,
-                skip_frame=skip_frame, n_workers=args.nCPUs,
-                trans_opts=trans_opts,
-                nr_pixels_y=nr_pixels_y, nr_pixels_z=nr_pixels_z,
-                data_loc=data_loc,
-                dark_fn=dark_fn, dark_loc=dark_loc,
-                pre_proc_thresh=pre_proc_thresh
-            )
-        else:
-            print('STEP 2: Build Sinogram from Zip Files')
-            print('='*60)
-            sino, omegas = build_sinogram(
-                spots, scan_dirs, file_stem, padding,
-                patch_half=patch_half, ome_half=ome_half,
-                skip_frame=skip_frame, n_workers=args.nCPUs,
-                trans_opts=trans_opts,
-                nr_pixels_y=nr_pixels_y, nr_pixels_z=nr_pixels_z
-            )
+        grain_dirs = []
+        for gid in grain_ids:
+            grain_spots = [s for s in all_spots if s['grainID'] == gid]
+            if not grain_spots:
+                print(f'  WARNING: grain {gid} has 0 spots, skipping')
+                continue
+            gdir = _process_single_grain(
+                grain_spots, gid, out_dir, scan_dirs, args, params_dict)
+            grain_dirs.append((gid, gdir))
 
-    print(f'\n  Sinogram shape: {sino.shape}')
-    print(f'  Non-zero cells: {np.count_nonzero(sino)} / {sino.size} '
-          f'({100*np.count_nonzero(sino)/sino.size:.1f}%)')
-    print(f'  Max intensity: {sino.max():.1f}')
-
-    # ── Step 3: Tomo reconstruction ─────────────────────────────────────
-    print('\n' + '='*60)
-    print('STEP 3: Tomographic Reconstruction')
-    print('='*60)
-
-    tomo_work = os.path.join(out_dir, 'tomo_work')
-    recon = run_tomo_recon(sino, omegas, tomo_work, n_cpus=args.nCPUs)
-
-    # ── Save outputs ────────────────────────────────────────────────────
-    print('\n' + '='*60)
-    print('SAVING OUTPUTS')
-    print('='*60)
-
-    save_outputs(sino, omegas, recon, spots, out_dir)
-
-    print(f'\nAll done! Results in: {out_dir}')
+        # ── Summary ────────────────────────────────────────────────────
+        print('\n' + '='*60)
+        print('MULTI-GRAIN SUMMARY')
+        print('='*60)
+        for gid, gdir in grain_dirs:
+            print(f'  grain_{gid:04d}/  →  {gdir}')
+        print(f'\nAll done! {len(grain_dirs)} grain(s) processed.')
+        print(f'Results root: {out_dir}')
 
 
 if __name__ == '__main__':
     main()
+
