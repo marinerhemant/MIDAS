@@ -149,18 +149,30 @@ class SpotDiagnostics:
 # ---------------------------------------------------------------------------
 # Zip file intensity extraction
 # ---------------------------------------------------------------------------
-def _parse_params(data_dir):
-    """Parse Parameters_pfhedm.txt for zip extraction parameters."""
+def _parse_params(data_dir, param_file=None):
+    """Parse MIDAS parameter files for zip extraction parameters.
+
+    Args:
+        data_dir: working directory containing scan subdirs and paramstest.txt
+        param_file: optional path to the user parameter file (read first,
+                    then paramstest.txt overrides fitted values like YBCFit)
+    """
     params = {}
-    # Read both files so paramstest.txt values (which have beam center fits) override
-    for fn in ['Parameters_pfhedm.txt', 'paramstest.txt']:
-        fp = os.path.join(data_dir, fn)
+    files_to_read = []
+    if param_file:
+        fp = param_file if os.path.isabs(param_file) else os.path.join(data_dir, param_file)
         if os.path.exists(fp):
-            with open(fp) as f:
-                for line in f:
-                    parts = line.strip().split()
-                    if len(parts) >= 2:
-                        params[parts[0]] = parts[1].rstrip(';')
+            files_to_read.append(fp)
+    # paramstest.txt last so fitted values override
+    pt = os.path.join(data_dir, 'paramstest.txt')
+    if os.path.exists(pt):
+        files_to_read.append(pt)
+    for fp in files_to_read:
+        with open(fp) as f:
+            for line in f:
+                parts = line.strip().split()
+                if len(parts) >= 2:
+                    params[parts[0]] = parts[1].rstrip(';')
     scan_step = int(params.get('ScanStep',
                     params.get('NrFilesPerSweep', '1')))
     return {
@@ -191,7 +203,7 @@ def _inverse_transform_coords(y, z, trans_opts, ny, nz):
 
 
 def extract_spot_intensity(data_dir, scan_nr, y_um, z_um, omega_deg,
-                           patch_half=10, ome_half=2):
+                           patch_half=10, ome_half=2, param_file=None):
     """Extract intensity from a zip file at a predicted spot position.
 
     Follows the same coordinate transformation as forward_sim_sinogram.py:
@@ -203,7 +215,7 @@ def extract_spot_intensity(data_dir, scan_nr, y_um, z_um, omega_deg,
     """
     import zarr
 
-    p = _parse_params(data_dir)
+    p = _parse_params(data_dir, param_file=param_file)
     omega_step = p['omega_step']
     px = p['px']
 
@@ -286,9 +298,10 @@ class SpotDiagPlotter:
                   zip files). Required for intensity extraction on click.
     """
 
-    def __init__(self, diag, data_dir=None):
+    def __init__(self, diag, data_dir=None, param_file=None):
         self.diag = diag
         self.data_dir = data_dir
+        self.param_file = param_file
 
     def plot_yz_scatter(self, voxel_nr, ax=None):
         """Y vs Z scatter, colored by matched/unmatched, marker by ring."""
@@ -692,7 +705,7 @@ class SpotDiagPlotter:
             if exp_scan >= 0:
                 result = extract_spot_intensity(
                     self.data_dir, exp_scan, y_um, z_um, omega,
-                    patch_half=10, ome_half=2)
+                    patch_half=10, ome_half=2, param_file=self.param_file)
             else:
                 result = None
 
@@ -742,26 +755,30 @@ class SpotDiagPlotter:
 
 
 if __name__ == '__main__':
-    import sys
-    if len(sys.argv) < 2:
-        print('Usage: python spot_diagnostics.py <SpotDiagnostics.bin> [--show] [--data-dir DIR]')
-        sys.exit(1)
+    import argparse
+    parser = argparse.ArgumentParser(
+        description='Read and visualize SpotDiagnostics.bin from MIDAS PF-HEDM refinement.')
+    parser.add_argument('binfile', help='Path to SpotDiagnostics.bin')
+    parser.add_argument('--show', action='store_true',
+                        help='Open interactive plot viewer')
+    parser.add_argument('--data-dir', default=None,
+                        help='Working directory containing scan subdirs with zip files')
+    parser.add_argument('--param-file', default=None,
+                        help='Path to MIDAS parameter file (for StartFileNrFirstLayer, etc.)')
+    args = parser.parse_args()
 
-    diag = SpotDiagnostics(sys.argv[1])
+    diag = SpotDiagnostics(args.binfile)
     print(diag.summary())
     print()
     print('Ring completeness (all voxels):')
     for ring, info in diag.completeness_by_ring().items():
         print(f'  Ring {ring}: {info["matched"]}/{info["total"]} ({info["frac"]:.1%})')
 
-    if '--show' in sys.argv:
-        data_dir = None
-        if '--data-dir' in sys.argv:
-            idx = sys.argv.index('--data-dir')
-            data_dir = sys.argv[idx + 1]
-        else:
+    if args.show:
+        data_dir = args.data_dir
+        if data_dir is None:
             # Auto-detect: search up from the .bin file for a parameter file
-            bin_dir = os.path.dirname(os.path.abspath(sys.argv[1]))
+            bin_dir = os.path.dirname(os.path.abspath(args.binfile))
             for candidate in [bin_dir, os.path.dirname(bin_dir),
                               os.path.dirname(os.path.dirname(bin_dir))]:
                 for pf in ['Parameters_pfhedm.txt', 'paramstest.txt',
@@ -777,6 +794,8 @@ if __name__ == '__main__':
         else:
             print('Warning: could not auto-detect data directory for zip extraction.')
             print('  Use --data-dir to specify it manually.')
+        if args.param_file:
+            print(f'Parameter file: {args.param_file}')
 
-        plotter = SpotDiagPlotter(diag, data_dir=data_dir)
+        plotter = SpotDiagPlotter(diag, data_dir=data_dir, param_file=args.param_file)
         plotter.show()
