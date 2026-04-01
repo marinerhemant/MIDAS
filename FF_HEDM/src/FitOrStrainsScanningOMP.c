@@ -66,7 +66,7 @@ double WeightFitRMSE = 0.0;
 #define SPOT_DIAG_VERSION 1
 #define SPOT_DIAG_NCOLS   19
 #define SPOT_DIAG_SENTINEL (-999.0)
-static int DoSpotDiag = 0;
+static int DoSpotDiag = 1;
 
 typedef struct {
   int voxNr, nTheor, nMatched;
@@ -1359,12 +1359,7 @@ int main(int argc, char *argv[]) {
   double MargOme2 = 2, chi = 0;
   int thisRowNr;
 
-  DoSpotDiag = (getenv("MIDAS_SPOT_DIAGNOSTICS") != NULL);
-  SpotDiagVoxel *diagVoxels = NULL;
-  if (DoSpotDiag) {
-    diagVoxels = calloc(nSptIDs, sizeof(SpotDiagVoxel));
-    printf("Spot diagnostics enabled (MIDAS_SPOT_DIAGNOSTICS)\n");
-  }
+  SpotDiagVoxel *diagVoxels = calloc(nSptIDs, sizeof(SpotDiagVoxel));
 
 #pragma omp parallel for num_threads(numProcs) private(thisRowNr)              \
     schedule(dynamic)

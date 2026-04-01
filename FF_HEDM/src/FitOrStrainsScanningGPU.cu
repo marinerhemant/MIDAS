@@ -21,6 +21,14 @@
 
 extern "C" {
 #include "MIDAS_ParamParser.h"
+#include "MIDAS_Math.h"
+
+/* CPU functions linked from CalcDiffractionSpots.c / MIDAS_Math.c */
+int CalcDiffractionSpots(double Distance, double ExcludePoleAngle,
+                         double OmegaRanges[][2],
+                         int NoOfOmegaRanges, double **hkls, int n_hkls,
+                         double BoxSizes[][4], int *nTspots,
+                         double OrientMatr[3][3], double **TheorSpots);
 }
 
 #include "MIDAS_Limits.h"
@@ -28,8 +36,78 @@ extern "C" {
 #include "midas_version.h"
 #define MAXNOMEGARANGES MAX_N_OMEGA_RANGES
 #define MaxNHKLS 5000
+#define MaxNSpotsBest 5000
+
+/* Spot diagnostics output (env MIDAS_SPOT_DIAGNOSTICS) */
+#define SPOT_DIAG_MAGIC   0x47414944
+#define SPOT_DIAG_VERSION 1
+#define SPOT_DIAG_NCOLS   19
+#define SPOT_DIAG_SENTINEL (-999.0)
+static int DoSpotDiag = 1;
+
+typedef struct {
+  int voxNr, nTheor, nMatched;
+  double meta[13];
+  double *spotData;
+} SpotDiagVoxel;
 #define deg2rad 0.0174532925199433
 #define rad2deg 57.2957795130823
+
+static inline double tand(double x) { return tan(deg2rad * x); }
+static inline double asind(double x) { return rad2deg * asin(x); }
+static inline double acosd(double x) { return rad2deg * acos(x); }
+
+/* Host-side helpers for spot diagnostics */
+static double **host_allocMatrix(int nrows, int ncols) {
+  double **arr = (double **)malloc(nrows * sizeof(*arr));
+  if (!arr) return NULL;
+  for (int i = 0; i < nrows; i++) {
+    arr[i] = (double *)calloc(ncols, sizeof(double));
+    if (!arr[i]) { for (int k = 0; k < i; k++) free(arr[k]); free(arr); return NULL; }
+  }
+  return arr;
+}
+
+static void host_freeMatrix(double **mat, int nrows) {
+  for (int r = 0; r < nrows; r++) free(mat[r]);
+  free(mat);
+}
+
+static void host_CorrectHKLsLatC(double LatC[6], double **hklsIn, int nhkls,
+                                  double Lsd, double Wavelength, double **hkls) {
+  double a = LatC[0], b = LatC[1], c = LatC[2];
+  double alpha = LatC[3], beta = LatC[4], gamma = LatC[5];
+  double SinA = sind(alpha), SinB = sind(beta), SinG = sind(gamma);
+  double CosA = cosd(alpha), CosB = cosd(beta), CosG = cosd(gamma);
+  double GammaPr = acosd((CosA*CosB - CosG) / (SinA*SinB));
+  double BetaPr  = acosd((CosG*CosA - CosB) / (SinG*SinA));
+  double SinBetaPr = sind(BetaPr);
+  double Vol = a * b * c * SinA * SinBetaPr * SinG;
+  double APr = b*c*SinA/Vol, BPr = c*a*SinB/Vol, CPr = a*b*SinG/Vol;
+  double B[3][3] = {
+    {APr, BPr*cosd(GammaPr), CPr*cosd(BetaPr)},
+    {0,   BPr*sind(GammaPr), -CPr*SinBetaPr*CosA},
+    {0,   0,                  CPr*SinBetaPr*SinA}
+  };
+  for (int h = 0; h < nhkls; h++) {
+    double ginit[3] = {hklsIn[h][0], hklsIn[h][1], hklsIn[h][2]};
+    double GCart[3];
+    MatrixMultF(B, ginit, GCart);
+    double Ds = 1.0 / sqrt(GCart[0]*GCart[0] + GCart[1]*GCart[1] + GCart[2]*GCart[2]);
+    hkls[h][0] = GCart[0]; hkls[h][1] = GCart[1]; hkls[h][2] = GCart[2];
+    hkls[h][3] = Ds;
+    double Theta = asind(Wavelength / (2*Ds));
+    hkls[h][4] = Theta;
+    double Rad = Lsd * tand(2*Theta);
+    hkls[h][5] = Rad;
+    hkls[h][6] = Theta;
+  }
+}
+
+static double host_CalcEtaAngle(double y, double z) {
+  double alpha = rad2deg * acos(z / sqrt(y*y + z*z));
+  return (y > 0) ? alpha : -alpha;
+}
 
 #define CUDA_CHECK(call)                                                       \
   do {                                                                         \
@@ -1377,21 +1455,21 @@ int main(int argc, char *argv[]) {
 
   // Load positions.csv for beam proximity in dynamic reassignment
   double *d_yposGPU = nullptr;
+  double *h_ypos = nullptr;
   int nYposGPU = 0;
   {
     char posFN[2048];
-    char cwd[2048];
-    getcwd(cwd, sizeof(cwd));
-    sprintf(posFN, "%s/positions.csv", cwd);
+    char cwdBuf[2048];
+    getcwd(cwdBuf, sizeof(cwdBuf));
+    sprintf(posFN, "%s/positions.csv", cwdBuf);
     FILE *pf = fopen(posFN, "r");
     if (pf) {
-      // Count lines
       char aline[1024];
       int nLines = 0;
       while (fgets(aline, sizeof(aline), pf)) nLines++;
       rewind(pf);
       nYposGPU = nLines;
-      double *h_ypos = (double *)malloc(nYposGPU * sizeof(double));
+      h_ypos = (double *)malloc(nYposGPU * sizeof(double));
       for (int pi = 0; pi < nYposGPU; pi++) {
         fgets(aline, sizeof(aline), pf);
         sscanf(aline, "%lf", &h_ypos[pi]);
@@ -1399,12 +1477,13 @@ int main(int argc, char *argv[]) {
       fclose(pf);
       CUDA_CHECK(cudaMalloc(&d_yposGPU, nYposGPU * sizeof(double)));
       CUDA_CHECK(cudaMemcpy(d_yposGPU, h_ypos, nYposGPU * sizeof(double), cudaMemcpyHostToDevice));
-      free(h_ypos);
       printf("positions.csv loaded for GPU: %d scan positions\n", nYposGPU);
     } else {
       printf("Warning: positions.csv not found, beam proximity disabled in reassignment.\n");
     }
   }
+
+  /* Spot diagnostics always enabled */
 
   size_t totalGPUMB =
       ((size_t)nSptIDs * (15 + MaxNSpotsBest * 11 + scratchPerGrain + 27) *
@@ -1537,6 +1616,254 @@ int main(int argc, char *argv[]) {
   if (keyFD > 0)
     close(keyFD);
 
+  /* ── Spot diagnostics (host-side, using CPU CalcDiffractionSpots) ── */
+  if (DoSpotDiag) {
+    printf("Computing spot diagnostics (host-side)...\n");
+
+    /* Mmap Spots.bin for observed scan numbers */
+    char spotsBinFN[2048];
+    {
+      char cwdBuf2[2048];
+      getcwd(cwdBuf2, sizeof(cwdBuf2));
+      sprintf(spotsBinFN, "%s/Spots.bin", cwdBuf2);
+    }
+    double *ObsSpotsLab = NULL;
+    int nSpotsBin = 0;
+    {
+      int fdSp = open(spotsBinFN, O_RDONLY);
+      if (fdSp >= 0) {
+        struct stat ss;
+        fstat(fdSp, &ss);
+        ObsSpotsLab = (double *)mmap(0, ss.st_size, PROT_READ, MAP_SHARED, fdSp, 0);
+        nSpotsBin = (int)(ss.st_size / (10 * sizeof(double)));
+        close(fdSp);
+      }
+    }
+
+    /* Build double** hkls from hklsFlat for CalcDiffractionSpots */
+    double **hklsCPU = host_allocMatrix(nhkls, 7);
+    for (int h = 0; h < nhkls; h++)
+      for (int c = 0; c < 7; c++)
+        hklsCPU[h][c] = hklsFlat[h * 7 + c];
+
+    SpotDiagVoxel *diagVoxels = (SpotDiagVoxel *)calloc(nSptIDs, sizeof(SpotDiagVoxel));
+
+    for (int g = 0; g < nSptIDs; g++) {
+      int nSpotsComp = h_nSpotsPerGrain[g];
+      double *out = &h_results[g * 27];
+      if (nSpotsComp <= 0) continue;
+
+      /* Extract refined orientation matrix from results */
+      double OF[3][3];
+      for (int i = 0; i < 3; i++)
+        for (int j = 0; j < 3; j++)
+          OF[i][j] = out[1 + i * 3 + j];
+
+      /* Extract refined lattice params */
+      double LatCFit[6];
+      for (int i = 0; i < 6; i++)
+        LatCFit[i] = out[15 + i];
+
+      /* Position */
+      double PosFit[3] = {out[11], out[12], out[13]};
+
+      /* Correct HKLs for refined lattice and generate theoretical spots */
+      double **hklsCorr = host_allocMatrix(nhkls, 7);
+      host_CorrectHKLsLatC(LatCFit, hklsCPU, nhkls, Lsd, Wavelength, hklsCorr);
+
+      double **TheorDiag = host_allocMatrix(MaxNSpotsBest, 9);
+      int nTdiag;
+      CalcDiffractionSpots(Lsd, MinEta, OmegaRanges, nOmeRanges, hklsCorr,
+                           nhkls, BoxSizes, &nTdiag, OF, TheorDiag);
+
+      /* Input observed spots for this grain */
+      double *spotBase = &h_spotData[(size_t)g * MaxNSpotsBest * 11];
+
+      /* Match theoretical spots against observed (same logic as CalcAngleErrors) */
+      int *theorUsed = (int *)calloc(nTdiag, sizeof(int));
+      /* For each observed spot, find its best matching theoretical spot */
+      for (int sp = 0; sp < nSpotsComp; sp++) {
+        double obsOme = spotBase[sp * 11 + 2];
+        int obsRing = (int)spotBase[sp * 11 + 7];
+        double bestDist = 1e30;
+        int bestT = -1;
+        for (int t = 0; t < nTdiag; t++) {
+          if (theorUsed[t]) continue;
+          if ((int)TheorDiag[t][7] != obsRing) continue;
+          double dd = fabs(TheorDiag[t][2] - obsOme);
+          if (dd < bestDist) { bestDist = dd; bestT = t; }
+        }
+        if (bestT >= 0 && bestDist < 5.0)
+          theorUsed[bestT] = 1;
+      }
+
+      int nUnmatched = 0;
+      for (int t = 0; t < nTdiag; t++)
+        if (!theorUsed[t]) nUnmatched++;
+      int nTotal = nSpotsComp + nUnmatched;
+
+      double *sd = (double *)malloc(nTotal * SPOT_DIAG_NCOLS * sizeof(double));
+      int idx = 0;
+
+      /* Write matched spots from observed data */
+      for (int sp = 0; sp < nSpotsComp; sp++) {
+        int b = idx * SPOT_DIAG_NCOLS;
+        double *obs = &spotBase[sp * 11];
+        /* Find the matched theoretical spot for this observed spot */
+        int obsRing = (int)obs[7];
+        double obsOme = obs[2];
+        int matchedT = -1;
+        double bestDD = 1e30;
+        for (int t = 0; t < nTdiag; t++) {
+          if ((int)TheorDiag[t][7] != obsRing) continue;
+          double dd = fabs(TheorDiag[t][2] - obsOme);
+          if (dd < bestDD) { bestDD = dd; matchedT = t; }
+        }
+        if (matchedT >= 0 && bestDD < 5.0) {
+          sd[b + 0] = TheorDiag[matchedT][0]; /* theorY */
+          sd[b + 1] = TheorDiag[matchedT][1]; /* theorZ */
+          sd[b + 2] = TheorDiag[matchedT][2]; /* theorOmega */
+          sd[b + 3] = host_CalcEtaAngle(TheorDiag[matchedT][0], TheorDiag[matchedT][1]);
+          sd[b + 4] = TheorDiag[matchedT][7]; /* ringNr */
+          sd[b + 5] = TheorDiag[matchedT][8]; /* hklIndex */
+          sd[b + 6] = TheorDiag[matchedT][3]; /* Gx */
+          sd[b + 7] = TheorDiag[matchedT][4]; /* Gy */
+          sd[b + 8] = TheorDiag[matchedT][5]; /* Gz */
+        } else {
+          sd[b+0] = obs[0]; sd[b+1] = obs[1]; sd[b+2] = obs[2];
+          sd[b+3] = host_CalcEtaAngle(obs[0], obs[1]);
+          sd[b+4] = obs[7]; sd[b+5] = 0;
+          sd[b+6] = 0; sd[b+7] = 0; sd[b+8] = 0;
+        }
+        /* Expected scan */
+        double omeRad = sd[b + 2] * deg2rad;
+        double yRot = PosFit[0] * sin(omeRad) + PosFit[1] * cos(omeRad);
+        int bestScan = -1; double bestDist = 1e30;
+        for (int sc = 0; sc < nYposGPU; sc++) {
+          double d = fabs(yRot - h_ypos[sc]);
+          if (d < bestDist) { bestDist = d; bestScan = sc; }
+        }
+        sd[b + 9] = (bestDist <= BeamSize / 2.0) ? (double)bestScan : SPOT_DIAG_SENTINEL;
+        /* Matched observed data */
+        sd[b + 10] = 1.0;
+        sd[b + 11] = obs[0]; /* obsY */
+        sd[b + 12] = obs[1]; /* obsZ */
+        sd[b + 13] = obs[2]; /* obsOmega */
+        sd[b + 14] = obs[3]; /* spotID */
+        /* Observed scan from Spots.bin */
+        int obsSpotID = (int)obs[3];
+        double obsScanNr = SPOT_DIAG_SENTINEL;
+        if (ObsSpotsLab && obsSpotID >= 0 && obsSpotID < nSpotsBin)
+          obsScanNr = ObsSpotsLab[obsSpotID * 10 + 9];
+        sd[b + 15] = obsScanNr;
+        sd[b + 16] = 0; /* IA not available per-spot from GPU */
+        sd[b + 17] = 0; /* diffLen */
+        sd[b + 18] = 0; /* diffOme */
+        idx++;
+      }
+
+      /* Write unmatched theoretical spots */
+      for (int t = 0; t < nTdiag; t++) {
+        if (theorUsed[t]) continue;
+        int b = idx * SPOT_DIAG_NCOLS;
+        sd[b + 0] = TheorDiag[t][0];
+        sd[b + 1] = TheorDiag[t][1];
+        sd[b + 2] = TheorDiag[t][2];
+        sd[b + 3] = host_CalcEtaAngle(TheorDiag[t][0], TheorDiag[t][1]);
+        sd[b + 4] = TheorDiag[t][7];
+        sd[b + 5] = TheorDiag[t][8];
+        sd[b + 6] = TheorDiag[t][3];
+        sd[b + 7] = TheorDiag[t][4];
+        sd[b + 8] = TheorDiag[t][5];
+        double omeRad = TheorDiag[t][2] * deg2rad;
+        double yRot = PosFit[0] * sin(omeRad) + PosFit[1] * cos(omeRad);
+        int bestScan = -1; double bestDist = 1e30;
+        for (int sc = 0; sc < nYposGPU; sc++) {
+          double d = fabs(yRot - h_ypos[sc]);
+          if (d < bestDist) { bestDist = d; bestScan = sc; }
+        }
+        sd[b + 9] = (bestDist <= BeamSize / 2.0) ? (double)bestScan : SPOT_DIAG_SENTINEL;
+        sd[b + 10] = 0.0;
+        for (int c = 11; c < SPOT_DIAG_NCOLS; c++)
+          sd[b + c] = SPOT_DIAG_SENTINEL;
+        idx++;
+      }
+
+      /* Compute Euler angles for metadata */
+      double EulerFit[3];
+      double m22 = OF[2][2];
+      double Phi = (fabs(m22 - 1.0) < 1e-12) ? 0.0 : acos(m22);
+      double sph = sin(Phi);
+      if (fabs(sph) < 1e-12) {
+        EulerFit[0] = 0;
+        EulerFit[2] = (fabs(m22 - 1.0) < 1e-12)
+            ? ((OF[1][0] >= 0) ? acos(OF[0][0]) : 2*M_PI - acos(OF[0][0]))
+            : ((-OF[1][0] >= 0) ? acos(OF[0][0]) : 2*M_PI - acos(OF[0][0]));
+      } else {
+        double r1 = fabs(-OF[1][2]/sph) <= 1.0 ? -OF[1][2]/sph : 1.0;
+        EulerFit[0] = (OF[0][2]/sph >= 0) ? acos(r1) : 2*M_PI - acos(r1);
+        double r2 = fabs(OF[2][1]/sph) <= 1.0 ? OF[2][1]/sph : 1.0;
+        EulerFit[2] = (OF[2][0]/sph >= 0) ? acos(r2) : 2*M_PI - acos(r2);
+      }
+      EulerFit[1] = Phi;
+      for (int i = 0; i < 3; i++) EulerFit[i] *= rad2deg;
+
+      diagVoxels[g].voxNr = (int)out[0]; /* SpotID used as voxNr proxy */
+      diagVoxels[g].nTheor = nTotal;
+      diagVoxels[g].nMatched = nSpotsComp;
+      diagVoxels[g].meta[0] = out[0];
+      for (int k = 0; k < 3; k++) diagVoxels[g].meta[1 + k] = PosFit[k];
+      for (int k = 0; k < 3; k++) diagVoxels[g].meta[4 + k] = EulerFit[k];
+      for (int k = 0; k < 6; k++) diagVoxels[g].meta[7 + k] = LatCFit[k];
+      diagVoxels[g].spotData = sd;
+
+      free(theorUsed);
+      host_freeMatrix(hklsCorr, nhkls);
+      host_freeMatrix(TheorDiag, MaxNSpotsBest);
+    }
+
+    /* Write SpotDiagnostics.bin */
+    int nValid = 0;
+    for (int vi = 0; vi < nSptIDs; vi++)
+      if (diagVoxels[vi].spotData) nValid++;
+
+    char diagFN[2048];
+    sprintf(diagFN, "%s/SpotDiagnostics.bin", ResultFolder);
+    FILE *df = fopen(diagFN, "wb");
+    if (df) {
+      uint32_t magic = SPOT_DIAG_MAGIC, ver = SPOT_DIAG_VERSION;
+      int32_t nv = nValid, nc = SPOT_DIAG_NCOLS;
+      double sent = SPOT_DIAG_SENTINEL;
+      uint8_t reserved[40] = {0};
+      fwrite(&magic, 4, 1, df); fwrite(&ver, 4, 1, df);
+      fwrite(&nv, 4, 1, df); fwrite(&nc, 4, 1, df);
+      fwrite(&sent, 8, 1, df); fwrite(reserved, 1, 40, df);
+      for (int vi = 0; vi < nSptIDs; vi++) {
+        if (!diagVoxels[vi].spotData) continue;
+        int32_t arr[3] = {diagVoxels[vi].voxNr, diagVoxels[vi].nTheor,
+                          diagVoxels[vi].nMatched};
+        fwrite(arr, 4, 3, df);
+      }
+      for (int vi = 0; vi < nSptIDs; vi++) {
+        if (!diagVoxels[vi].spotData) continue;
+        fwrite(diagVoxels[vi].meta, sizeof(double), 13, df);
+      }
+      for (int vi = 0; vi < nSptIDs; vi++) {
+        if (!diagVoxels[vi].spotData) continue;
+        fwrite(diagVoxels[vi].spotData, sizeof(double),
+               diagVoxels[vi].nTheor * SPOT_DIAG_NCOLS, df);
+      }
+      fclose(df);
+      printf("SpotDiagnostics.bin: %d voxels written to %s\n", nValid, diagFN);
+    }
+    for (int vi = 0; vi < nSptIDs; vi++)
+      free(diagVoxels[vi].spotData);
+    free(diagVoxels);
+    host_freeMatrix(hklsCPU, nhkls);
+    if (ObsSpotsLab)
+      munmap(ObsSpotsLab, nSpotsBin * 10 * sizeof(double));
+  }
+
   // Cleanup
   free(h_results);
   free(h_initData);
@@ -1544,6 +1871,7 @@ int main(int argc, char *argv[]) {
   free(h_nSpotsPerGrain);
   free(h_SpotIDs);
   free(hklsFlat);
+  free(h_ypos);
 
   cudaFree(d_initData);
   cudaFree(d_spotData);
