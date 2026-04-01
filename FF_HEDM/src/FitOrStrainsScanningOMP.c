@@ -61,6 +61,19 @@ double DetParams[4][10];
 double WeightMask = 1.0;
 double WeightFitRMSE = 0.0;
 
+/* Spot diagnostics output (env MIDAS_SPOT_DIAGNOSTICS) */
+#define SPOT_DIAG_MAGIC   0x47414944  /* "DIAG" */
+#define SPOT_DIAG_VERSION 1
+#define SPOT_DIAG_NCOLS   19
+#define SPOT_DIAG_SENTINEL (-999.0)
+static int DoSpotDiag = 0;
+
+typedef struct {
+  int voxNr, nTheor, nMatched;
+  double meta[13]; /* voxNr(dbl), pos[3], euler[3], latc[6] */
+  double *spotData; /* nTheor * SPOT_DIAG_NCOLS */
+} SpotDiagVoxel;
+
 // Dynamic spot reassignment: bin data structures (same layout as
 // IndexerScanningOMP)
 static double
@@ -416,7 +429,9 @@ CalcAngleErrors(int nspots, int nhkls, int nOmegaRanges, double x[12],
                 double Wavelength, double OmegaRange[MAXNOMEGARANGES][2],
                 double BoxSize[MAXNOMEGARANGES][4], double MinEta, double wedge,
                 double chi, double **SpotsComp, double **SpList, double *Error,
-                int *nSpotsComp, int notIniRun) {
+                int *nSpotsComp, int notIniRun,
+                double **TheorSpotsOut, int *nTheorOut,
+                int *theorMatchedOut) {
   int i, j;
   //~ for (i=0;i<12;i++) printf("%lf ",x[i]); printf("\n");
   int nrMatchedIndexer = nspots;
@@ -480,6 +495,11 @@ CalcAngleErrors(int nspots, int nhkls, int nOmegaRanges, double x[12],
       TheorSpotsYZWE[i][j] = TheorSpots[i][j];
     }
   }
+  /* Track which original TheorSpots indices were consumed by matches */
+  int *theorUsedLocal = calloc(nTspots, sizeof(int));
+  /* Map from filtered TheorSpotsYZWER index back to TheorSpots index */
+  int *filteredToOrig = malloc(MaxNSpotsBest * sizeof(int));
+
   int sp, nTheorSpotsYZWER, nMatched = 0, RowBest = 0;
   double GObs[3], GTheors[3], NormGObs, NormGTheors, DotGs, **TheorSpotsYZWER,
       Numers, Denoms, *Angles, minAngle;
@@ -498,6 +518,7 @@ CalcAngleErrors(int nspots, int nhkls, int nOmegaRanges, double x[12],
         for (j = 0; j < 9; j++) {
           TheorSpotsYZWER[nTheorSpotsYZWER][j] = TheorSpotsYZWE[i][j];
         }
+        filteredToOrig[nTheorSpotsYZWER] = i;
         GTheors[0] = TheorSpotsYZWE[i][3];
         GTheors[1] = TheorSpotsYZWE[i][4];
         GTheors[2] = TheorSpotsYZWE[i][5];
@@ -556,6 +577,7 @@ CalcAngleErrors(int nspots, int nhkls, int nOmegaRanges, double x[12],
       SpList[nMatched][8] = TheorSpotsYZWER[RowBest][8];
       SpList[nMatched][9] = spotsYZO[sp][8];
       SpList[nMatched][10] = spotsYZO[sp][9];
+      theorUsedLocal[filteredToOrig[RowBest]] = 1;
       nMatched++;
     }
   }
@@ -568,6 +590,18 @@ CalcAngleErrors(int nspots, int nhkls, int nOmegaRanges, double x[12],
     Error[1] += fabs(MatchDiff[i][2] / nMatched);
     Error[2] += fabs(MatchDiff[i][0] / nMatched);
   }
+  /* Export diagnostic data if requested (non-NULL pointers) */
+  if (TheorSpotsOut && nTheorOut) {
+    *nTheorOut = nTspots;
+    for (i = 0; i < nTspots; i++)
+      for (j = 0; j < 9; j++)
+        TheorSpotsOut[i][j] = TheorSpots[i][j];
+  }
+  if (theorMatchedOut) {
+    for (i = 0; i < nTspots; i++)
+      theorMatchedOut[i] = theorUsedLocal[i];
+  }
+
   FreeMemMatrix(MatchDiff, nrMatchedIndexer);
   FreeMemMatrix(hkls, nhkls);
   FreeMemMatrix(TheorSpots, MaxNSpotsBest);
@@ -575,6 +609,8 @@ CalcAngleErrors(int nspots, int nhkls, int nOmegaRanges, double x[12],
   FreeMemMatrix(TheorSpotsYZWE, nTspots);
   FreeMemMatrix(TheorSpotsYZWER, MaxNSpotsBest);
   free(Angles);
+  free(theorUsedLocal);
+  free(filteredToOrig);
 }
 
 static inline void ConcatPosEulLatc(double *Ini, double Pos0[3],
@@ -1322,6 +1358,14 @@ int main(int argc, char *argv[]) {
 
   double MargOme2 = 2, chi = 0;
   int thisRowNr;
+
+  DoSpotDiag = (getenv("MIDAS_SPOT_DIAGNOSTICS") != NULL);
+  SpotDiagVoxel *diagVoxels = NULL;
+  if (DoSpotDiag) {
+    diagVoxels = calloc(nSptIDs, sizeof(SpotDiagVoxel));
+    printf("Spot diagnostics enabled (MIDAS_SPOT_DIAGNOSTICS)\n");
+  }
+
 #pragma omp parallel for num_threads(numProcs) private(thisRowNr)              \
     schedule(dynamic)
   for (thisRowNr = 0; thisRowNr < nSptIDs; thisRowNr++) {
@@ -1434,7 +1478,8 @@ int main(int argc, char *argv[]) {
 
     CalcAngleErrors(nSpotsBest, nhkls, nOmeRanges, Ini, spotsYZO, hkls, Lsd,
                     Wavelength, OmegaRanges, BoxSizes, MinEta, wedge, chi,
-                    SpotsComp, Splist, Error, &nSpotsComp, 0);
+                    SpotsComp, Splist, Error, &nSpotsComp, 0,
+                    NULL, NULL, NULL);
 
     if (getenv("MIDAS_DEBUG_REFINE")) {
       printf("  CalcAngleErrors pass1: nSpotsComp=%d (of %d input)\n",
@@ -1447,9 +1492,18 @@ int main(int argc, char *argv[]) {
         spotsYZONew[i][j] = Splist[i][j];
 
     // Re-evaluate matched spots with notIniRun=1
+    // Capture theoretical spots + match flags for diagnostics
+    double **TheorDiag = NULL;
+    int nTdiag = 0;
+    int *theorMatchFlags = NULL;
+    if (DoSpotDiag) {
+      TheorDiag = allocMatrix(MaxNSpotsBest, 9);
+      theorMatchFlags = calloc(MaxNSpotsBest, sizeof(int));
+    }
     CalcAngleErrors(nSpotsComp, nhkls, nOmeRanges, Ini, spotsYZONew, hkls, Lsd,
                     Wavelength, OmegaRanges, BoxSizes, MinEta, wedge, chi,
-                    SpotsComp, Splist, Error, &nSpotsComp, 1);
+                    SpotsComp, Splist, Error, &nSpotsComp, 1,
+                    TheorDiag, &nTdiag, theorMatchFlags);
 
     if (getenv("MIDAS_DEBUG_REFINE")) {
       printf("  CalcAngleErrors pass2: nSpotsComp=%d\n", nSpotsComp);
@@ -1605,6 +1659,95 @@ int main(int argc, char *argv[]) {
     StrainTensorKenesei(nSpotsComp, SpotsComp, Lsd, Wavelength, nhkls, hkls,
                         StrainTensorSample, SpotsOut, &RetVal);
 
+    /* ── Spot diagnostics: export CalcAngleErrors data ── */
+    if (DoSpotDiag && diagVoxels && TheorDiag) {
+      /* nSpotsComp matched spots from SpotsComp (pass 2 of CalcAngleErrors)
+       * nTdiag theoretical spots from TheorDiag (also from pass 2)
+       * theorMatchFlags[i] = 1 if theoretical spot i was matched */
+
+      int nUnmatched = 0;
+      for (int t = 0; t < nTdiag; t++)
+        if (!theorMatchFlags[t]) nUnmatched++;
+      int nTotal = nSpotsComp + nUnmatched;
+
+      double *sd = malloc(nTotal * SPOT_DIAG_NCOLS * sizeof(double));
+      int idx = 0;
+
+      /* Helper: compute expected scan for a given omega */
+      #define CALC_EXPECTED_SCAN(ome_deg) do { \
+        double _omeRad = (ome_deg) * deg2rad; \
+        double _yRot = PositionFit[0]*sin(_omeRad) + PositionFit[1]*cos(_omeRad); \
+        int _bestScan = -1; double _bestDist = 1e30; \
+        for (int _s = 0; _s < gNumScans; _s++) { \
+          double _d = fabs(_yRot - gYpos[_s]); \
+          if (_d < _bestDist) { _bestDist = _d; _bestScan = _s; } \
+        } \
+        sd[b + 9] = (_bestDist <= gBeamSize/2.0) ? (double)_bestScan : SPOT_DIAG_SENTINEL; \
+      } while(0)
+
+      /* Write matched spots (from SpotsComp, which came from CalcAngleErrors) */
+      for (int m = 0; m < nSpotsComp; m++) {
+        int b = idx * SPOT_DIAG_NCOLS;
+        sd[b + 0] = SpotsComp[m][7];   /* theorY */
+        sd[b + 1] = SpotsComp[m][8];   /* theorZ */
+        sd[b + 2] = SpotsComp[m][9];   /* theorOmega */
+        sd[b + 3] = CalcEtaAngleLocal(SpotsComp[m][7], SpotsComp[m][8]);
+        sd[b + 4] = SpotsComp[m][22];  /* ringNr */
+        sd[b + 5] = SpotsComp[m][10];  /* theorGx (repurpose as hklIdx proxy) */
+        sd[b + 6] = SpotsComp[m][10];  /* theorGx */
+        sd[b + 7] = SpotsComp[m][11];  /* theorGy */
+        sd[b + 8] = SpotsComp[m][12];  /* theorGz */
+        CALC_EXPECTED_SCAN(SpotsComp[m][9]);
+        sd[b + 10] = 1.0;              /* matched */
+        sd[b + 11] = SpotsComp[m][13]; /* obsY */
+        sd[b + 12] = SpotsComp[m][14]; /* obsZ */
+        sd[b + 13] = SpotsComp[m][15]; /* obsOmega */
+        sd[b + 14] = SpotsComp[m][0];  /* spotID */
+        /* Observed scan from Spots.bin */
+        int obsSpotID = (int)SpotsComp[m][0];
+        double obsScanNr = SPOT_DIAG_SENTINEL;
+        if (ObsSpotsLab && obsSpotID >= 0 && obsSpotID < gNSpotsBin)
+          obsScanNr = ObsSpotsLab[obsSpotID * 10 + 9];
+        sd[b + 15] = obsScanNr;
+        sd[b + 16] = SpotsComp[m][19]; /* IA */
+        sd[b + 17] = SpotsComp[m][20]; /* diffLen */
+        sd[b + 18] = SpotsComp[m][21]; /* diffOme */
+        idx++;
+      }
+
+      /* Write unmatched theoretical spots (from CalcAngleErrors' TheorSpots) */
+      for (int t = 0; t < nTdiag; t++) {
+        if (theorMatchFlags[t]) continue;
+        int b = idx * SPOT_DIAG_NCOLS;
+        sd[b + 0] = TheorDiag[t][0];   /* Y */
+        sd[b + 1] = TheorDiag[t][1];   /* Z */
+        sd[b + 2] = TheorDiag[t][2];   /* Omega */
+        sd[b + 3] = CalcEtaAngleLocal(TheorDiag[t][0], TheorDiag[t][1]);
+        sd[b + 4] = TheorDiag[t][7];   /* ringNr */
+        sd[b + 5] = TheorDiag[t][8];   /* hklIndex */
+        sd[b + 6] = TheorDiag[t][3];   /* Gx */
+        sd[b + 7] = TheorDiag[t][4];   /* Gy */
+        sd[b + 8] = TheorDiag[t][5];   /* Gz */
+        CALC_EXPECTED_SCAN(TheorDiag[t][2]);
+        sd[b + 10] = 0.0;              /* not matched */
+        for (int c = 11; c < SPOT_DIAG_NCOLS; c++)
+          sd[b + c] = SPOT_DIAG_SENTINEL;
+        idx++;
+      }
+      #undef CALC_EXPECTED_SCAN
+
+      diagVoxels[thisRowNr].voxNr = voxNr;
+      diagVoxels[thisRowNr].nTheor = nTotal;
+      diagVoxels[thisRowNr].nMatched = nSpotsComp;
+      diagVoxels[thisRowNr].meta[0] = (double)voxNr;
+      for (int k = 0; k < 3; k++) diagVoxels[thisRowNr].meta[1 + k] = PositionFit[k];
+      for (int k = 0; k < 3; k++) diagVoxels[thisRowNr].meta[4 + k] = EulerFit[k];
+      for (int k = 0; k < 6; k++) diagVoxels[thisRowNr].meta[7 + k] = LatticeParameterFit[k];
+      diagVoxels[thisRowNr].spotData = sd;
+    }
+    if (TheorDiag) FreeMemMatrix(TheorDiag, MaxNSpotsBest);
+    free(theorMatchFlags);
+
     // Start Writing FitBest+FNs[thisRowNr]
     // What to write: Orientation, Position, LatticeParameter, Errors
     char outFN[2048];
@@ -1659,6 +1802,58 @@ int main(int argc, char *argv[]) {
     FreeMemMatrix(SpotsComp, MaxNSpotsBest);
     FreeMemMatrix(Splist, MaxNSpotsBest);
     FreeMemMatrix(spotsYZONew, nSpotsComp);
+  }
+
+  /* ── Write SpotDiagnostics.bin ── */
+  if (DoSpotDiag && diagVoxels) {
+    int nValid = 0;
+    for (int vi = 0; vi < nSptIDs; vi++)
+      if (diagVoxels[vi].spotData) nValid++;
+
+    char diagFN[2048];
+    sprintf(diagFN, "%s/SpotDiagnostics.bin", ResultFolder);
+    FILE *df = fopen(diagFN, "wb");
+    if (df) {
+      /* Header (64 bytes) */
+      uint32_t magic = SPOT_DIAG_MAGIC;
+      uint32_t ver   = SPOT_DIAG_VERSION;
+      int32_t  nv    = nValid;
+      int32_t  nc    = SPOT_DIAG_NCOLS;
+      double   sent  = SPOT_DIAG_SENTINEL;
+      uint8_t  reserved[40] = {0};
+      fwrite(&magic, 4, 1, df);
+      fwrite(&ver,   4, 1, df);
+      fwrite(&nv,    4, 1, df);
+      fwrite(&nc,    4, 1, df);
+      fwrite(&sent,  8, 1, df);
+      fwrite(reserved, 1, 40, df);
+
+      /* Directory (12 bytes per voxel) */
+      for (int vi = 0; vi < nSptIDs; vi++) {
+        if (!diagVoxels[vi].spotData) continue;
+        int32_t arr[3] = {diagVoxels[vi].voxNr, diagVoxels[vi].nTheor,
+                          diagVoxels[vi].nMatched};
+        fwrite(arr, 4, 3, df);
+      }
+      /* Metadata (13 doubles per voxel) */
+      for (int vi = 0; vi < nSptIDs; vi++) {
+        if (!diagVoxels[vi].spotData) continue;
+        fwrite(diagVoxels[vi].meta, sizeof(double), 13, df);
+      }
+      /* Spot data */
+      for (int vi = 0; vi < nSptIDs; vi++) {
+        if (!diagVoxels[vi].spotData) continue;
+        fwrite(diagVoxels[vi].spotData, sizeof(double),
+               diagVoxels[vi].nTheor * SPOT_DIAG_NCOLS, df);
+      }
+      fclose(df);
+      printf("SpotDiagnostics.bin: %d voxels written to %s\n", nValid, diagFN);
+    } else {
+      printf("WARNING: could not open %s for writing\n", diagFN);
+    }
+    for (int vi = 0; vi < nSptIDs; vi++)
+      free(diagVoxels[vi].spotData);
+    free(diagVoxels);
   }
 
   FreeMemMatrix(hkls, MaxNHKLS);
