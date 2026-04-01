@@ -161,13 +161,16 @@ def _parse_params(data_dir):
                     parts = line.strip().split()
                     if len(parts) >= 2:
                         params[parts[0]] = parts[1].rstrip(';')
+    scan_step = int(params.get('ScanStep',
+                    params.get('NrFilesPerSweep', '1')))
     return {
         'omega_step': float(params.get('OmegaStep', '-0.25')),
         'px': float(params.get('px', '200')),
         'n_scans': int(params.get('nScans', '15')),
         'file_stem': params.get('FileStem', 'pfhedm'),
         'padding': int(params.get('Padding', '6')),
-        'start_nr': int(params.get('StartFileNrFirstLayer', '1')),
+        'start_nr_first_layer': int(params.get('StartFileNrFirstLayer', '1')),
+        'scan_step': scan_step,
         'im_trans': int(params.get('ImTransOpt', '0')),
         'ybc': float(params.get('YBCFit', params.get('YBC', '1024'))),
         'zbc': float(params.get('ZBCFit', params.get('ZBC', '1024'))),
@@ -204,10 +207,12 @@ def extract_spot_intensity(data_dir, scan_nr, y_um, z_um, omega_deg,
     omega_step = p['omega_step']
     px = p['px']
 
-    # Zip path: data_dir/{scanNr+1}/{FileStem}_{dirNr:0Padding}.MIDAS.zip
-    dir_nr = scan_nr + 1
-    scan_dir = os.path.join(data_dir, str(dir_nr))
-    zip_name = f'{p["file_stem"]}_{dir_nr:0{p["padding"]}d}.MIDAS.zip'
+    # Zip path: data_dir/{startNr + scanNr*scanStep}/{FileStem}_{startNr + scanNr*scanStep:0Padding}.MIDAS.zip
+    # Matches pf_MIDAS.py: thisStartNr = startNrFirstLayer + (layerNr - 1) * effectiveStep
+    # where layerNr is 1-based (scanNr=0 → layerNr=1)
+    this_start_nr = p['start_nr_first_layer'] + scan_nr * p['scan_step']
+    scan_dir = os.path.join(data_dir, str(this_start_nr))
+    zip_name = f'{p["file_stem"]}_{this_start_nr:0{p["padding"]}d}.MIDAS.zip'
     zip_path = os.path.join(scan_dir, zip_name)
 
     if not os.path.exists(zip_path):
