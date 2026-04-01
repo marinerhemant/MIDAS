@@ -978,8 +978,53 @@ fitGrainsKernel(int nGrains,
       gpu_FitErrorsPosT(finalX, spots, nSpots, d_hklsRaw, scratch, nMaxTheor);
   // Average error per spot (matches CPU normalization)
   out[22] = (nSpots > 0) ? finalErr / nSpots : finalErr;
-  out[23] = 0;
-  out[24] = 0;
+  // Compute OmeErr and InternalAngle (matching CPU CalcAngleErrors)
+  {
+    RealType *errHkls = scratch;
+    RealType *errTheor = scratch + d_params.nhkls * 7;
+    gpu_CorrectHKLsLatC(res6, d_hklsRaw, d_params.nhkls, d_params.Lsd,
+                        d_params.Wavelength, errHkls);
+    int nT = gpu_CalcDiffrSpots(OF, d_params.Lsd, d_params.OmegaRanges,
+                                d_params.nOmeRanges, d_params.BoxSizes, errHkls,
+                                d_params.nhkls, d_params.MinEta, errTheor);
+    RealType sumOmeErr = 0, sumIA = 0;
+    int nErr = 0;
+    for (int sp = 0; sp < nSpots; sp++) {
+      const RealType *s = &spots[sp * 11];
+      RealType DisplY, DisplZ, ys, zs, Omega;
+      gpu_DisplacementInTheSpot(Pos0[0], Pos0[1], Pos0[2], d_params.Lsd,
+                                s[5], s[6], s[4], d_params.wedge, d_params.chi,
+                                &DisplY, &DisplZ);
+      RealType yt = s[5] - DisplY, zt = s[6] - DisplZ;
+      gpu_CorrectForOme(yt, zt, d_params.Lsd, s[4], d_params.Wavelength,
+                        d_params.wedge, &ys, &zs, &Omega);
+      int spnr = (int)s[8];
+      for (int k = 0; k < nT; k++) {
+        if ((int)errTheor[k * 9 + 8] == spnr) {
+          sumOmeErr += fabs(Omega - errTheor[k * 9 + 2]);
+          RealType lenK = sqrt(d_params.Lsd * d_params.Lsd + ys * ys + zs * zs);
+          RealType Radius = sqrt(ys * ys + zs * zs);
+          RealType Theta = 0.5 * atan(Radius / d_params.Lsd) * rad2deg;
+          RealType g1, g2, g3;
+          gpu_SpotToGv(d_params.Lsd / lenK, ys / lenK, zs / lenK, Omega, Theta,
+                       &g1, &g2, &g3);
+          RealType NormG = sqrt(g1 * g1 + g2 * g2 + g3 * g3);
+          RealType gt0 = errTheor[k * 9 + 3], gt1 = errTheor[k * 9 + 4],
+                   gt2 = errTheor[k * 9 + 5];
+          RealType NGt = sqrt(gt0 * gt0 + gt1 * gt1 + gt2 * gt2);
+          RealType dot = g1 * gt0 + g2 * gt1 + g3 * gt2;
+          RealType ratio = dot / (NormG * NGt);
+          if (ratio > 1) ratio = 1;
+          if (ratio < -1) ratio = -1;
+          sumIA += fabs(acos(ratio) * rad2deg);
+          nErr++;
+          break;
+        }
+      }
+    }
+    out[23] = (nErr > 0) ? sumOmeErr / nErr : 0;
+    out[24] = (nErr > 0) ? sumIA / nErr : 0;
+  }
   out[25] = 0;             // meanRadius placeholder
   out[26] = NrObs / NrExp; // completeness
 }

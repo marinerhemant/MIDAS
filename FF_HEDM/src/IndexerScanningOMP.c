@@ -105,6 +105,7 @@ struct TParams {
 
 size_t n_spots = 0;
 int debug_indexer = 0;  // set via MIDAS_DEBUG_INDEXER env var
+int debug_voxel = -1;   // set via MIDAS_DEBUG_VOXEL env var (single-voxel deep trace)
 
 // hkls to use
 double hkls[MAX_N_HKLS][10];
@@ -1196,6 +1197,17 @@ int DoIndexing(int SpotID, int voxNr, double xThis, double yThis, double zThis,
   hkl[2] = RingHKL[ringnr][2];
   GenerateCandidateOrientationsF(hkl, hklnormal, Params.StepsizeOrient, OrMat,
                                  &nOrient, ringnr);
+  int dbgVox = (voxNr == debug_voxel);
+  if (dbgVox) {
+    RealType eulerDbg[3];
+    OrientMat2Euler(OrMat[0], eulerDbg);
+    printf("VOXDBG vox=%d spotID=%d ring=%d omega=%.2f y0=%.1f z0=%.1f "
+           "hkl=(%.0f,%.0f,%.0f) nOrient=%d stepsize=%.3f "
+           "firstEuler=(%.2f,%.2f,%.2f)\n",
+           voxNr, SpotID, ringnr, omega, y0, z0,
+           hkl[0], hkl[1], hkl[2], nOrient, Params.StepsizeOrient,
+           eulerDbg[0], eulerDbg[1], eulerDbg[2]);
+  }
   RealType **TheorSpots = scratch->TheorSpots;
   RealType **GrainSpots = scratch->GrainSpots;
   RealType **GrainMatches = scratch->GrainMatches;
@@ -1241,8 +1253,28 @@ int DoIndexing(int SpotID, int voxNr, double xThis, double yThis, double zThis,
                  Params.MarginRad, Params.MarginRadial, etamargins, omemargins,
                  &nMatches, GrainSpots, xThis, yThis, &Params);
     FracThis = (double)nMatches / (double)nTspots;
+    if (dbgVox) {
+      /* Always print if conf > 5% or many matches; also print ±2 around
+         special orientation indices (passed via MIDAS_DEBUG_ORIENT env) */
+      static int dbgOrIdx = -1;
+      if (dbgOrIdx == -1) {
+        char *e = getenv("MIDAS_DEBUG_ORIENT");
+        dbgOrIdx = e ? atoi(e) : -2;
+      }
+      int isTarget = (dbgOrIdx >= 0 && abs(or - dbgOrIdx) <= 1);
+      if (FracThis > 0.05 || nMatches >= 50 || isTarget) {
+        RealType eulerDbg[3];
+        OrientMat2Euler(OrMat[or], eulerDbg);
+        printf("  ORIENT or=%d/%d nM=%d nT=%d conf=%.4f euler=(%.2f,%.2f,%.2f)%s%s\n",
+               or, nOrient, nMatches, nTspots, FracThis,
+               eulerDbg[0], eulerDbg[1], eulerDbg[2],
+               FracThis >= bestConfidence ? " ← NEW_BEST" : "",
+               isTarget ? " *** TARGET ***" : "");
+      }
+    }
     if (FracThis > Params.MinMatchesToAcceptFrac) {
       if (FracThis >= bestConfidence) {
+        RealType prevBestConfidence = bestConfidence;
         bestConfidence = FracThis;
         bestMatchFound = 1;
         for (i = 0; i < 9; i++)
@@ -1258,9 +1290,12 @@ int DoIndexing(int SpotID, int voxNr, double xThis, double yThis, double zThis,
           AllGrainSpotsT[r][15] = 1;
         }
         CalcIA(GrainMatchesT, 1, AllGrainSpotsT, Params.Distance, scratch);
-        if (FracThis == bestConfidence &&
+        /* IA tiebreak: only skip if confidence is truly EQUAL to previous
+         * best (not strictly better) AND the new IA is worse. */
+        if (FracThis == prevBestConfidence &&
             GrainMatchesT[0][15] > MinInternalAngle) {
-
+          /* Same confidence but worse IA — revert bestConfidence */
+          bestConfidence = prevBestConfidence;
         } else {
           MinInternalAngle = GrainMatchesT[0][15];
           bestnMatchesIsp = nMatches;
@@ -1281,7 +1316,23 @@ int DoIndexing(int SpotID, int voxNr, double xThis, double yThis, double zThis,
   }
 
   fracMatches = (RealType)bestnMatchesIsp / bestnTspotsIsp;
-  // printf("%lf %d %d\n",fracMatches,bestnMatchesIsp,bestnTspotsIsp);
+  if (dbgVox) {
+    if (bestnMatchesIsp >= 0 && bestMatchFound) {
+      RealType eulerDbg[3];
+      RealType bestOM[3][3] = {
+        {GrainMatches[0][0], GrainMatches[0][1], GrainMatches[0][2]},
+        {GrainMatches[0][3], GrainMatches[0][4], GrainMatches[0][5]},
+        {GrainMatches[0][6], GrainMatches[0][7], GrainMatches[0][8]}
+      };
+      OrientMat2Euler(bestOM, eulerDbg);
+      printf("  WINNER spotID=%d conf=%.4f (%d/%d) IA=%.4f euler=(%.2f,%.2f,%.2f)\n",
+             SpotID, fracMatches, bestnMatchesIsp, bestnTspotsIsp,
+             MinInternalAngle, eulerDbg[0], eulerDbg[1], eulerDbg[2]);
+    } else {
+      printf("  NO_MATCH spotID=%d (bestNM=%d bestNT=%d)\n",
+             SpotID, bestnMatchesIsp, bestnTspotsIsp);
+    }
+  }
   if (bestnMatchesIsp < 0 ||
       (fracMatches > 1 || fracMatches < 0 || (int)bestnTspotsIsp == 0 ||
        (int)bestnMatchesIsp == -1 || bestMatchFound == 0) ||
@@ -1376,6 +1427,8 @@ int ReadSpots(char *cwd) {
 
 int main(int argc, char *argv[]) {
   debug_indexer = (getenv("MIDAS_DEBUG_INDEXER") != NULL);
+  if (getenv("MIDAS_DEBUG_VOXEL"))
+    debug_voxel = atoi(getenv("MIDAS_DEBUG_VOXEL"));
   printf("Version: %s\n", MIDAS_VERSION_STRING);
   double start_time = omp_get_wtime();
   printf("\n\n\t\tIndexerScanningOMP v6.0\nContact hsharma@anl.gov in case of "

@@ -1556,8 +1556,8 @@ int main(int argc, char *argv[]) {
         nOmeRanges, OmegaRanges, BoxSizes, MinEta, wedge, chi, &scratch);
     double ErrorFin[3];
     ErrorFin[0] = (nSpotsComp > 0) ? finalError / nSpotsComp : finalError;
-    ErrorFin[1] = 0;
-    ErrorFin[2] = 0;
+    ErrorFin[1] = Error[1];  /* OmeErr from CalcAngleErrors pass 2 */
+    ErrorFin[2] = Error[2];  /* InternalAngle from CalcAngleErrors pass 2 */
 
 
     // Free scratch

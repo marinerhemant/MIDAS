@@ -1135,10 +1135,10 @@ __global__ void indexer_fused_kernel(
 
       RealType avgIA = (iaCount > 0) ? (iaSum / (RealType)iaCount) : 999.0;
 
-      // Atomic best-match update — double-precision comparison
-      unsigned long long fracBits = __double_as_longlong(fracMatches);
-      unsigned int iaBits = ~__float_as_int((float)avgIA);
-      unsigned long long newKey = (fracBits & 0xFFFFFFFF00000000ULL) | (unsigned long long)iaBits;
+      // Atomic best-match update (matching other kernels' float-based key packing)
+      unsigned int fracBits = (unsigned int)__float_as_int((float)fracMatches);
+      unsigned int iaBits = ~(unsigned int)__float_as_int((float)avgIA);
+      unsigned long long newKey = ((unsigned long long)fracBits << 32) | (unsigned long long)iaBits;
 
       unsigned long long *keyAddr = &res->atomicKey;
       while (true) {

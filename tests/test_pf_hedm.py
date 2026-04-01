@@ -67,6 +67,9 @@ def parse_args():
                         help='Skip generation, forward sim, and peak search. '
                              'Start from indexing using existing data '
                              '(requires --no-cleanup from a prior run)')
+    parser.add_argument('--compare-seeded', action='store_true',
+                        help='After the normal pipeline, re-run indexer+refiner '
+                             'seeded with GT orientations and compare results')
     return parser.parse_args()
 
 
@@ -1778,6 +1781,9 @@ def cross_compare_gt_indexer_debug(work_dir, nCPUs=1):
     refined_grid      = np.full((num_scans, num_scans), -1, dtype=int)
     refined_comp_grid = np.full((num_scans, num_scans), np.nan)
     refined_miso_grid = np.full((num_scans, num_scans), np.nan)
+    refined_poserr_grid = np.full((num_scans, num_scans), np.nan)
+    refined_omeerr_grid = np.full((num_scans, num_scans), np.nan)
+    refined_ia_grid     = np.full((num_scans, num_scans), np.nan)
     refined_mismatch  = []
     has_refinement = False
 
@@ -1795,6 +1801,9 @@ def cross_compare_gt_indexer_debug(work_dir, nCPUs=1):
                 om = row[1:10]
                 rx, ry = row[11], row[12]
                 completeness = row[26]
+                pos_err = row[22]   # PosErr
+                ome_err = row[23]   # OmeErr
+                ia_err  = row[24]   # InternalAngle
                 # Map (rx, ry) to nearest grid cell
                 ri = np.argmin(np.abs(pos_sorted - rx))
                 ci = np.argmin(np.abs(pos_sorted - ry))
@@ -1808,6 +1817,9 @@ def cross_compare_gt_indexer_debug(work_dir, nCPUs=1):
                 refined_grid[ri, ci] = best_gi
                 refined_comp_grid[ri, ci] = completeness
                 refined_miso_grid[ri, ci] = best_miso
+                refined_poserr_grid[ri, ci] = pos_err
+                refined_omeerr_grid[ri, ci] = ome_err
+                refined_ia_grid[ri, ci] = ia_err
                 if best_gi != expected_grid[ri, ci]:
                     refined_mismatch.append((ri, ci))
 
@@ -1836,20 +1848,34 @@ def cross_compare_gt_indexer_debug(work_dir, nCPUs=1):
     scan_half = BEAMSIZE / 2
     ext = [pos_sorted[0] - scan_half, pos_sorted[-1] + scan_half,
            pos_sorted[0] - scan_half, pos_sorted[-1] + scan_half]
+    # EBSD plotted on the same extent as reconstruction; white outside domain
+    ebsd_ext = [xs_ebsd.min() - ebsd_half, xs_ebsd.max() + ebsd_half,
+                ys_ebsd.min() - ebsd_half, ys_ebsd.max() + ebsd_half]
     domain_half = SIZE_UM / 2
 
-    n_cols = 3 if has_refinement else 2
-    fig, axes = plt.subplots(2, n_cols, figsize=(8 * n_cols, 14))
+    def _add_domain_rect(ax):
+        """Add EBSD domain boundary to any panel."""
+        rect = plt.Rectangle((-domain_half, -domain_half), SIZE_UM, SIZE_UM,
+                              linewidth=2, edgecolor='red', facecolor='none',
+                              linestyle='--')
+        ax.add_patch(rect)
 
-    # Panel (0,0): EBSD GT
+    n_cols = 3 if has_refinement else 2
+    n_rows = 3 if has_refinement else 2
+    fig, axes = plt.subplots(n_rows, n_cols, figsize=(8 * n_cols, 7 * n_rows))
+
+    # ─── Row 0: Grain maps ─────────────────────────────────────
+    # Panel (0,0): EBSD GT — same extent as reconstruction, white outside
     ax = axes[0, 0]
     im = ax.imshow(ebsd_grid.T, origin='lower', cmap=grain_cmap, norm=grain_norm,
-                   extent=[xs_ebsd.min() - ebsd_half, xs_ebsd.max() + ebsd_half,
-                           ys_ebsd.min() - ebsd_half, ys_ebsd.max() + ebsd_half])
+                   extent=ebsd_ext)
+    ax.set_xlim(ext[0], ext[1])
+    ax.set_ylim(ext[2], ext[3])
     ax.set_title(f'EBSD Ground Truth ({len(xs_ebsd)}x{len(ys_ebsd)}, '
                  f'{STEP_UM}um)', fontsize=13)
     ax.set_xlabel('X (um)')
     ax.set_ylabel('Y (um)')
+    _add_domain_rect(ax)
     cbar = plt.colorbar(im, ax=ax, ticks=range(n_grains))
     cbar.set_ticklabels([f'GT{i}' for i in range(n_grains)])
 
@@ -1865,6 +1891,7 @@ def cross_compare_gt_indexer_debug(work_dir, nCPUs=1):
         r, c = vox // num_scans, vox % num_scans
         ax.plot(pos_sorted[r], pos_sorted[c], 'kx', markersize=8,
                 markeredgewidth=2)
+    _add_domain_rect(ax)
     cbar = plt.colorbar(im, ax=ax, ticks=range(n_grains))
     cbar.set_ticklabels([f'GT{i}' for i in range(n_grains)])
     if mismatch_voxels:
@@ -1872,6 +1899,7 @@ def cross_compare_gt_indexer_debug(work_dir, nCPUs=1):
                 label='GT mismatch')
         ax.legend(loc='upper right', fontsize=9)
 
+    # ─── Row 1: Confidence / nMatched ──────────────────────────
     # Panel (1,0): Indexer Confidence map
     ax = axes[1, 0]
     im = ax.imshow(conf_grid.T, origin='lower', cmap='RdYlGn',
@@ -1880,6 +1908,7 @@ def cross_compare_gt_indexer_debug(work_dir, nCPUs=1):
     ax.set_xlabel('X (um)')
     ax.set_ylabel('Y (um)')
     plt.colorbar(im, ax=ax, label='Confidence')
+    _add_domain_rect(ax)
     for r in range(num_scans):
         for c in range(num_scans):
             if 0 < conf_grid[r, c] < 0.5:
@@ -1887,7 +1916,7 @@ def cross_compare_gt_indexer_debug(work_dir, nCPUs=1):
                         f'{conf_grid[r, c]:.2f}', ha='center', va='center',
                         fontsize=6, color='black')
 
-    # Panel (1,1): nMatched map with domain boundary
+    # Panel (1,1): nMatched map
     ax = axes[1, 1]
     n_total_max = nmatched_grid.max() if nmatched_grid.max() > 0 else 116
     im = ax.imshow(nmatched_grid.T, origin='lower', cmap='viridis',
@@ -1896,11 +1925,7 @@ def cross_compare_gt_indexer_debug(work_dir, nCPUs=1):
     ax.set_xlabel('X (um)')
     ax.set_ylabel('Y (um)')
     plt.colorbar(im, ax=ax, label='nMatched')
-    rect = plt.Rectangle((-domain_half, -domain_half), SIZE_UM, SIZE_UM,
-                          linewidth=2, edgecolor='red', facecolor='none',
-                          linestyle='--', label='EBSD domain')
-    ax.add_patch(rect)
-    ax.legend(loc='upper right', fontsize=9)
+    _add_domain_rect(ax)
 
     if has_refinement:
         # Panel (0,2): Refined grain map
@@ -1913,6 +1938,7 @@ def cross_compare_gt_indexer_debug(work_dir, nCPUs=1):
         for ri, ci in refined_mismatch:
             ax.plot(pos_sorted[ri], pos_sorted[ci], 'kx', markersize=8,
                     markeredgewidth=2)
+        _add_domain_rect(ax)
         cbar = plt.colorbar(im, ax=ax, ticks=range(n_grains))
         cbar.set_ticklabels([f'GT{i}' for i in range(n_grains)])
         if refined_mismatch:
@@ -1929,6 +1955,7 @@ def cross_compare_gt_indexer_debug(work_dir, nCPUs=1):
         ax.set_xlabel('X (um)')
         ax.set_ylabel('Y (um)')
         plt.colorbar(im, ax=ax, label='Completeness')
+        _add_domain_rect(ax)
         for r in range(num_scans):
             for c in range(num_scans):
                 v = refined_comp_grid[r, c]
@@ -1936,11 +1963,37 @@ def cross_compare_gt_indexer_debug(work_dir, nCPUs=1):
                     ax.text(pos_sorted[r], pos_sorted[c],
                             f'{v:.2f}', ha='center', va='center',
                             fontsize=6, color='black')
-        rect = plt.Rectangle((-domain_half, -domain_half), SIZE_UM, SIZE_UM,
-                              linewidth=2, edgecolor='red', facecolor='none',
-                              linestyle='--', label='EBSD domain')
-        ax.add_patch(rect)
-        ax.legend(loc='upper right', fontsize=9)
+
+        # ─── Row 2: Error maps ─────────────────────────────────
+        # Panel (2,0): Position Error
+        ax = axes[2, 0]
+        pe = np.where(np.isnan(refined_poserr_grid), 0, refined_poserr_grid)
+        im = ax.imshow(pe.T, origin='lower', cmap='hot_r', extent=ext)
+        ax.set_title('Position Error', fontsize=13)
+        ax.set_xlabel('X (um)')
+        ax.set_ylabel('Y (um)')
+        plt.colorbar(im, ax=ax, label='PosErr')
+        _add_domain_rect(ax)
+
+        # Panel (2,1): Omega Error
+        ax = axes[2, 1]
+        oe = np.where(np.isnan(refined_omeerr_grid), 0, refined_omeerr_grid)
+        im = ax.imshow(oe.T, origin='lower', cmap='hot_r', extent=ext)
+        ax.set_title('Omega Error', fontsize=13)
+        ax.set_xlabel('X (um)')
+        ax.set_ylabel('Y (um)')
+        plt.colorbar(im, ax=ax, label='OmeErr')
+        _add_domain_rect(ax)
+
+        # Panel (2,2): Internal Angle
+        ax = axes[2, 2]
+        ia = np.where(np.isnan(refined_ia_grid), 0, refined_ia_grid)
+        im = ax.imshow(ia.T, origin='lower', cmap='hot_r', extent=ext)
+        ax.set_title('Internal Angle', fontsize=13)
+        ax.set_xlabel('X (um)')
+        ax.set_ylabel('Y (um)')
+        plt.colorbar(im, ax=ax, label='IA')
+        _add_domain_rect(ax)
 
     plt.suptitle(f'pf-HEDM Reconstruction ({num_scans}x{num_scans}, '
                  f'{BEAMSIZE:.1f}um beam) vs GT '
@@ -2534,6 +2587,507 @@ def compare_consolidated_bins(omp_dir, gpu_dir, label='IndexBest_all.bin'):
         return False  # Not identical, but report the diff
 
 
+# ---------------------------------------------------------------------------
+# Seeded vs Unseeded Comparison
+# ---------------------------------------------------------------------------
+def run_seeded_comparison(work_dir, nCPUs):
+    """Re-run indexer+findSingleSolution+refiner seeded with GT orientations.
+
+    Saves the unseeded pipeline results, reruns the pipeline with a
+    Grains.csv built from GT, then compares per-voxel grain assignments
+    and confidences side by side.
+    """
+    import glob as glob_module
+
+    print('\n' + '#'*70)
+    print('  SEEDED vs UNSEEDED COMPARISON')
+    print('#'*70)
+
+    for f in [work_dir / 'Spots.bin', work_dir / 'hkls.csv',
+              work_dir / 'paramstest.txt', work_dir / 'positions.csv']:
+        if not f.exists():
+            print(f'  ERROR: required file missing: {f}')
+            return
+
+    gt = load_ground_truth(work_dir)
+    n_grains = gt['nGrains']
+    sgnum = gt['sgnum']
+    eulers = gt['eulers_unique']
+    ebsd_data = gt['voxel_data']
+
+    positions = np.loadtxt(str(work_dir / 'positions.csv'))
+    num_scans = len(positions)
+    n_voxels = num_scans * num_scans
+    pos_sorted = np.sort(positions)
+
+    # --- Expected GT map ---
+    def euler_to_gt(euler):
+        for gi, gu in enumerate(eulers):
+            if np.allclose(euler, gu):
+                return gi
+        return -1
+
+    expected_gt = {}
+    for vox in range(n_voxels):
+        row, col = vox // num_scans, vox % num_scans
+        x_pos, y_pos = pos_sorted[row], pos_sorted[col]
+        dists = (ebsd_data[:, 0] - x_pos)**2 + (ebsd_data[:, 1] - y_pos)**2
+        expected_gt[vox] = euler_to_gt(ebsd_data[np.argmin(dists), 3:6])
+
+    # === 1. Save unseeded results ===
+    print('\n  Saving unseeded results...')
+    unseeded_dir = work_dir / '_unseeded_results'
+    unseeded_dir.mkdir(exist_ok=True)
+    copy_outputs(work_dir, unseeded_dir)
+    for fname in ['SpotsToIndex.csv', 'UniqueOrientations.csv',
+                  'singleSolution.mic']:
+        src = work_dir / fname
+        if src.exists():
+            shutil.copy2(str(src), str(unseeded_dir / fname))
+    # Save microstrFull.csv
+    mf_src = work_dir / 'Recons' / 'microstrFull.csv'
+    if mf_src.exists():
+        shutil.copy2(str(mf_src), str(unseeded_dir / 'microstrFull.csv'))
+
+    # === 2. Create GT Grains.csv ===
+    param_path = work_dir / 'Parameters_pfhedm.txt'
+    lattice_str = '4.080000 4.080000 4.080000 90.000000 90.000000 90.000000'
+    with open(str(param_path)) as fh:
+        for line in fh:
+            if line.startswith('LatticeConstant'):
+                lattice_str = line.split(None, 1)[1].strip()
+    lat_parts = lattice_str.split()
+    a, b, c = float(lat_parts[0]), float(lat_parts[1]), float(lat_parts[2])
+    al, be, ga = float(lat_parts[3]), float(lat_parts[4]), float(lat_parts[5])
+
+    grains_csv = work_dir / 'Grains_GT.csv'
+    with open(str(grains_csv), 'w') as fh:
+        fh.write(f'%NumGrains {n_grains}\n')
+        fh.write('%BeamCenter 0.000000\n')
+        fh.write('%BeamThickness 1000.000000\n')
+        fh.write('%GlobalPosition 0.000000\n')
+        fh.write('%NumPhases 1\n')
+        fh.write('%PhaseInfo\n')
+        fh.write(f'%\tSpaceGroup:{sgnum}\n')
+        fh.write(f'%\tLattice Parameter: {a:.6f} {b:.6f} {c:.6f} '
+                 f'{al:.6f} {be:.6f} {ga:.6f}\n')
+        fh.write('%GrainID\tO11\tO12\tO13\tO21\tO22\tO23\tO31\tO32\tO33\t'
+                 'X\tY\tZ\ta\tb\tc\talpha\tbeta\tgamma\n')
+        for i, om in enumerate(gt['orient_mats']):
+            fh.write(f'{i+1}\t{chr(9).join(f"{v:.6f}" for v in om)}\t'
+                     f'0.0\t0.0\t0.0\t'
+                     f'{a:.6f}\t{b:.6f}\t{c:.6f}\t'
+                     f'{al:.6f}\t{be:.6f}\t{ga:.6f}\n')
+    print(f'  Created {grains_csv} with {n_grains} GT orientations')
+
+    # === 3. Modify paramstest.txt to add GrainsFile ===
+    params_path = work_dir / 'paramstest.txt'
+    with open(str(params_path)) as fh:
+        lines = fh.readlines()
+    lines = [l for l in lines if not l.startswith('GrainsFile')
+             and not l.startswith('MicFile')]
+    lines.append(f'GrainsFile {grains_csv}\n')
+    with open(str(params_path), 'w') as fh:
+        fh.writelines(lines)
+    print(f'  Added GrainsFile to paramstest.txt')
+
+    # === 4. Clear indexer/refiner outputs ===
+    for pattern in ['Output/IndexBest*', 'Output/IndexBestFull*',
+                    'SpotsToIndex.csv', 'UniqueOrientations.csv',
+                    'singleSolution.mic', 'sinos_*.bin', 'omegas_*.bin',
+                    'nrHKLs_*.bin', 'spotMapping_*.bin', 'spotMeta_*.bin',
+                    'spotPositions_*.bin', 'patches_*.bin']:
+        for f in glob_module.glob(str(work_dir / pattern)):
+            os.remove(f)
+    results_d = work_dir / 'Results'
+    if results_d.exists():
+        shutil.rmtree(str(results_d))
+    results_d.mkdir(parents=True, exist_ok=True)
+
+    # === 5. Run seeded pipeline ===
+    bin_dir = MIDAS_HOME / 'FF_HEDM' / 'bin'
+
+    # 5a. IndexerScanningOMP (seeded with GT)
+    print(f'\n  Running seeded IndexerScanningOMP...')
+    cmd = [str(bin_dir / 'IndexerScanningOMP'), 'paramstest.txt',
+           '0', '1', str(num_scans), str(nCPUs)]
+    print(f'  Command: {" ".join(cmd)}')
+    result = subprocess.run(cmd, cwd=str(work_dir), capture_output=True,
+                            text=True, timeout=120)
+    if result.returncode != 0:
+        print(f'  ERROR: seeded indexer failed (rc={result.returncode})')
+        print(result.stderr[-500:] if result.stderr else '')
+        return
+
+    idx_bin = work_dir / 'Output' / 'IndexBest_all.bin'
+    if not idx_bin.exists():
+        print('  ERROR: IndexBest_all.bin not produced')
+        return
+    print(f'  IndexBest_all.bin: {idx_bin.stat().st_size / 1024:.0f} KB')
+
+    # 5b. findSingleSolutionPFRefactored
+    print(f'\n  Running findSingleSolutionPFRefactored...')
+    params = parse_parameter_file(str(params_path))
+    # Strip trailing semicolons from MIDAS parameter values
+    def _clean_param(val, default):
+        if isinstance(val, list):
+            val = val[0]
+        if isinstance(val, str):
+            val = val.rstrip(';')
+            try:
+                return float(val)
+            except ValueError:
+                return default
+        return val
+    tol_ome = _clean_param(params.get('MarginOme', 1.0), 1.0)
+    tol_eta = _clean_param(params.get('MarginEta', 1.0), 1.0)
+    cmd = [str(bin_dir / 'findSingleSolutionPFRefactored'),
+           str(work_dir), str(sgnum), '1.0', str(num_scans), str(nCPUs),
+           str(tol_ome), str(tol_eta), 'Parameters_pfhedm.txt', '2', '1', '0']
+    print(f'  Command: {" ".join(cmd)}')
+    result = subprocess.run(cmd, cwd=str(work_dir), capture_output=True,
+                            text=True, timeout=120)
+    if result.returncode != 0:
+        print(f'  WARNING: findSingleSolution returned {result.returncode}')
+
+    # Print key lines from findSingleSolution output
+    for line in result.stdout.splitlines():
+        if any(k in line for k in ['unique orientations', 'Grain ', 'Voxel',
+                                    'Total spots', 'Number of']):
+            print(f'    {line}')
+
+    # 5b2. Generate SpotsToIndex.csv from UniqueIndexSingleKey.bin
+    #      (pf_MIDAS.py does this between findSingleSolution and refinement)
+    key_bin = work_dir / 'Output' / 'UniqueIndexSingleKey.bin'
+    spots_file = work_dir / 'SpotsToIndex.csv'
+    if key_bin.exists():
+        id_data = np.fromfile(str(key_bin), dtype=np.uintp,
+                              count=n_voxels * 5).reshape((-1, 5))
+        with open(str(spots_file), 'w') as fh:
+            for vox in range(n_voxels):
+                if id_data[vox, 1] != 0:
+                    fh.write(f'{id_data[vox, 0]} {id_data[vox, 1]} '
+                             f'{id_data[vox, 2]} {id_data[vox, 3]} '
+                             f'{id_data[vox, 4]}\n')
+        print(f'  Generated SpotsToIndex.csv from UniqueIndexSingleKey.bin')
+    else:
+        print(f'  ERROR: UniqueIndexSingleKey.bin not found')
+        return
+
+    # 5c. FitOrStrainsScanningOMP
+    if not spots_file.exists():
+        print('  ERROR: SpotsToIndex.csv not produced')
+        return
+    with open(str(spots_file)) as fh:
+        n_spots_to_refine = len(fh.readlines())
+    print(f'\n  Running FitOrStrainsScanningOMP ({n_spots_to_refine} spots)...')
+    cmd = [str(bin_dir / 'FitOrStrainsScanningOMP'), 'paramstest.txt',
+           '0', '1', str(n_spots_to_refine), str(nCPUs)]
+    result = subprocess.run(cmd, cwd=str(work_dir), capture_output=True,
+                            text=True, timeout=120)
+    if result.returncode != 0:
+        print(f'  WARNING: refiner returned {result.returncode}')
+
+    # === 6. Read both IndexBest_all.bin and compare ===
+    def _read_index_best(path):
+        """Read IndexBest_all.bin, return per-voxel best grain + confidence."""
+        with open(str(path), 'rb') as f:
+            nV = struct.unpack('i', f.read(4))[0]
+            nSolArr = np.frombuffer(f.read(4 * nV), dtype=np.int32)
+            offArr = np.frombuffer(f.read(8 * nV), dtype=np.int64)
+            header_size = 4 + 4 * nV + 8 * nV
+            all_data = np.frombuffer(f.read(), dtype=np.float64)
+        results = {}
+        for v in range(nV):
+            n_sol = nSolArr[v]
+            if n_sol == 0:
+                results[v] = {'gt_grain': -1, 'conf': 0, 'n_sol': 0,
+                              'nMatched': 0, 'nTotal': 0, 'miso': 999}
+                continue
+            off = int((offArr[v] - header_size) // 8)
+            sol = all_data[off:off + n_sol * 16].reshape(n_sol, 16)
+            confs = np.where(sol[:, 14] > 0, sol[:, 15] / sol[:, 14], 0.0)
+            best = np.argmax(confs)
+            om = sol[best, 2:11]
+            best_gi, best_miso = -1, 999.0
+            for gi, gt_om in enumerate(gt['orient_mats']):
+                angle, _ = GetMisOrientationAngleOM(gt_om, om, sgnum)
+                m = np.degrees(angle)
+                if m < best_miso:
+                    best_miso, best_gi = m, gi
+            results[v] = {'gt_grain': best_gi, 'conf': confs[best],
+                          'n_sol': n_sol, 'miso': best_miso,
+                          'nMatched': int(sol[best, 15]),
+                          'nTotal': int(sol[best, 14])}
+        return results
+
+    unseeded_idx = _read_index_best(unseeded_dir / 'Output' / 'IndexBest_all.bin')
+    seeded_idx = _read_index_best(work_dir / 'Output' / 'IndexBest_all.bin')
+
+    # === 7. Read both microstrFull.csv (refinement results) ===
+    def _read_refined(csv_path):
+        """Read microstrFull.csv, return per-grid-cell grain + completeness."""
+        grid_grain = np.full((num_scans, num_scans), -1, dtype=int)
+        grid_comp = np.full((num_scans, num_scans), np.nan)
+        if not csv_path.exists():
+            return grid_grain, grid_comp
+        data = np.genfromtxt(str(csv_path), delimiter=',', skip_header=1)
+        if data.ndim == 1:
+            data = data.reshape(1, -1)
+        valid = ~np.isnan(data[:, 26]) & (data[:, 26] >= 0)
+        data = data[valid]
+        for row in data:
+            om = row[1:10]
+            ri = np.argmin(np.abs(pos_sorted - row[11]))
+            ci = np.argmin(np.abs(pos_sorted - row[12]))
+            best_gi, best_miso = -1, 999.0
+            for gi, gt_om in enumerate(gt['orient_mats']):
+                angle, _ = GetMisOrientationAngleOM(gt_om, om, sgnum)
+                m = np.degrees(angle)
+                if m < best_miso:
+                    best_miso, best_gi = m, gi
+            grid_grain[ri, ci] = best_gi
+            grid_comp[ri, ci] = row[26]
+        return grid_grain, grid_comp
+
+    # Regenerate microstrFull.csv for seeded run
+    # (pf_MIDAS.py consolidation step — do it manually here)
+    seeded_results = list((work_dir / 'Results').glob('*.csv'))
+    if seeded_results:
+        # Simple consolidation: read line 2 from each FitBest csv
+        rows = []
+        for csv_f in sorted(seeded_results):
+            with open(str(csv_f)) as fh:
+                lines_csv = fh.readlines()
+            if len(lines_csv) >= 2:
+                vals = lines_csv[1].strip().split('\t')
+                rows.append(','.join(vals))
+        seeded_mf = work_dir / 'Recons' / 'microstrFull_seeded.csv'
+        (work_dir / 'Recons').mkdir(exist_ok=True)
+        with open(str(seeded_mf), 'w') as fh:
+            # Write header from any FitBest file
+            with open(str(seeded_results[0])) as fh2:
+                header = fh2.readline().strip().replace('\t', ',')
+            fh.write(header + '\n')
+            fh.write('\n'.join(rows) + '\n')
+        seeded_ref_grain, seeded_ref_comp = _read_refined(seeded_mf)
+    else:
+        seeded_ref_grain = np.full((num_scans, num_scans), -1, dtype=int)
+        seeded_ref_comp = np.full((num_scans, num_scans), np.nan)
+
+    unseeded_mf = unseeded_dir / 'microstrFull.csv'
+    unseeded_ref_grain, unseeded_ref_comp = _read_refined(unseeded_mf)
+
+    # === 8. Print comparison table ===
+    print(f'\n  {"="*100}')
+    print(f'  SEEDED vs UNSEEDED — Per-voxel Comparison')
+    print(f'  {"="*100}')
+    print(f'  {"Vox":>4} {"r":>2} {"c":>2} {"Pos":>12} {"ExpGT":>5}  '
+          f'{"UNS_idx":>7} {"UNS_cf":>6} {"UNS_M/T":>8}  '
+          f'{"SEED_idx":>8} {"SEED_cf":>7} {"SEED_M/T":>8}  '
+          f'{"UNS_ref":>7} {"SEED_ref":>8}  {"":>10}')
+    print(f'  {"-"*120}')
+
+    n_idx_agree = 0
+    n_idx_seed_correct = 0
+    n_idx_uns_correct = 0
+    n_ref_seed_correct = 0
+    n_ref_uns_correct = 0
+    diff_voxels = []
+
+    for vox in range(n_voxels):
+        row, col = vox // num_scans, vox % num_scans
+        x_pos, y_pos = pos_sorted[row], pos_sorted[col]
+        exp = expected_gt[vox]
+
+        u = unseeded_idx.get(vox, {'gt_grain': -1, 'conf': 0, 'nMatched': 0,
+                                    'nTotal': 0})
+        s = seeded_idx.get(vox, {'gt_grain': -1, 'conf': 0, 'nMatched': 0,
+                                  'nTotal': 0})
+
+        u_ref = unseeded_ref_grain[row, col]
+        s_ref = seeded_ref_grain[row, col]
+
+        idx_agree = (u['gt_grain'] == s['gt_grain'])
+        if idx_agree:
+            n_idx_agree += 1
+        if u['gt_grain'] == exp:
+            n_idx_uns_correct += 1
+        if s['gt_grain'] == exp:
+            n_idx_seed_correct += 1
+        if u_ref == exp:
+            n_ref_uns_correct += 1
+        if s_ref == exp:
+            n_ref_seed_correct += 1
+
+        # Determine status
+        if idx_agree and u['gt_grain'] == exp:
+            status = ''
+        elif not idx_agree and s['gt_grain'] == exp and u['gt_grain'] != exp:
+            status = 'SEED_FIXES'
+            diff_voxels.append(vox)
+        elif not idx_agree and s['gt_grain'] != exp and u['gt_grain'] == exp:
+            status = 'SEED_BREAKS'
+            diff_voxels.append(vox)
+        elif not idx_agree:
+            status = 'BOTH_WRONG' if s['gt_grain'] != exp else 'SEED_FIXES'
+            diff_voxels.append(vox)
+        else:
+            status = 'BOTH_WRONG'
+            diff_voxels.append(vox)
+
+        # Only print rows where indexer disagrees or either is wrong
+        if not idx_agree or u['gt_grain'] != exp or s['gt_grain'] != exp:
+            u_mt = f'{u["nMatched"]}/{u["nTotal"]}' if u['nTotal'] > 0 else '—'
+            s_mt = f'{s["nMatched"]}/{s["nTotal"]}' if s['nTotal'] > 0 else '—'
+            u_ref_s = f'GT{u_ref}' if u_ref >= 0 else '—'
+            s_ref_s = f'GT{s_ref}' if s_ref >= 0 else '—'
+            print(f'  {vox:4d} {row:2d} {col:2d} '
+                  f'({x_pos:5.0f},{y_pos:5.0f})  '
+                  f'GT{exp}  '
+                  f'  GT{u["gt_grain"]:1d}  {u["conf"]:.4f} {u_mt:>8}  '
+                  f'   GT{s["gt_grain"]:1d}  {s["conf"]:7.4f} {s_mt:>8}  '
+                  f'  {u_ref_s:>5}   {s_ref_s:>6}  '
+                  f'{status:>12}')
+
+    # === 9. Summary ===
+    print(f'\n  {"="*70}')
+    print(f'  SUMMARY')
+    print(f'  {"="*70}')
+    print(f'  Total voxels             : {n_voxels}')
+    print(f'  Indexer agree (same pick): {n_idx_agree}/{n_voxels}')
+    print(f'  Indexer correct:')
+    print(f'    Unseeded               : {n_idx_uns_correct}/{n_voxels} '
+          f'({100*n_idx_uns_correct/n_voxels:.1f}%)')
+    print(f'    Seeded                 : {n_idx_seed_correct}/{n_voxels} '
+          f'({100*n_idx_seed_correct/n_voxels:.1f}%)')
+    print(f'  Refined correct:')
+    print(f'    Unseeded               : {n_ref_uns_correct}/{n_voxels} '
+          f'({100*n_ref_uns_correct/n_voxels:.1f}%)')
+    print(f'    Seeded                 : {n_ref_seed_correct}/{n_voxels} '
+          f'({100*n_ref_seed_correct/n_voxels:.1f}%)')
+    n_seed_fixes = sum(1 for v in diff_voxels
+                       if seeded_idx.get(v, {}).get('gt_grain', -1) == expected_gt[v]
+                       and unseeded_idx.get(v, {}).get('gt_grain', -1) != expected_gt[v])
+    n_seed_breaks = sum(1 for v in diff_voxels
+                        if seeded_idx.get(v, {}).get('gt_grain', -1) != expected_gt[v]
+                        and unseeded_idx.get(v, {}).get('gt_grain', -1) == expected_gt[v])
+    print(f'  Seeding fixes            : {n_seed_fixes} voxels')
+    print(f'  Seeding breaks           : {n_seed_breaks} voxels')
+
+    # === 10. Generate comparison plot ===
+    import matplotlib
+    matplotlib.use('Agg')
+    import matplotlib.pyplot as plt
+    from matplotlib.colors import ListedColormap, BoundaryNorm
+
+    grain_colors = ['#e41a1c', '#377eb8', '#4daf4a', '#984ea3', '#ff7f00']
+    grain_cmap = ListedColormap(grain_colors[:n_grains])
+    grain_norm = BoundaryNorm(np.arange(-0.5, n_grains, 1), grain_cmap.N)
+
+    scan_half = BEAMSIZE / 2
+    ext = [pos_sorted[0] - scan_half, pos_sorted[-1] + scan_half,
+           pos_sorted[0] - scan_half, pos_sorted[-1] + scan_half]
+    domain_half = SIZE_UM / 2
+
+    def _add_domain_rect(ax):
+        rect = plt.Rectangle((-domain_half, -domain_half), SIZE_UM, SIZE_UM,
+                              linewidth=2, edgecolor='red', facecolor='none',
+                              linestyle='--')
+        ax.add_patch(rect)
+
+    # Build grids
+    uns_idx_grid = np.full((num_scans, num_scans), -1, dtype=int)
+    seed_idx_grid = np.full((num_scans, num_scans), -1, dtype=int)
+    uns_conf_grid = np.zeros((num_scans, num_scans))
+    seed_conf_grid = np.zeros((num_scans, num_scans))
+    exp_grid = np.full((num_scans, num_scans), -1, dtype=int)
+
+    for vox in range(n_voxels):
+        r, c = vox // num_scans, vox % num_scans
+        exp_grid[r, c] = expected_gt[vox]
+        u = unseeded_idx.get(vox, {'gt_grain': -1, 'conf': 0})
+        s = seeded_idx.get(vox, {'gt_grain': -1, 'conf': 0})
+        uns_idx_grid[r, c] = u['gt_grain']
+        seed_idx_grid[r, c] = s['gt_grain']
+        uns_conf_grid[r, c] = u['conf']
+        seed_conf_grid[r, c] = s['conf']
+
+    fig, axes = plt.subplots(2, 3, figsize=(24, 14))
+
+    # Row 0: grain maps
+    for ax, grid, title, mismatch_grid in [
+        (axes[0, 0], exp_grid, 'Expected GT', None),
+        (axes[0, 1], uns_idx_grid,
+         f'Unseeded Indexer ({n_idx_uns_correct}/{n_voxels})', exp_grid),
+        (axes[0, 2], seed_idx_grid,
+         f'Seeded Indexer ({n_idx_seed_correct}/{n_voxels})', exp_grid),
+    ]:
+        im = ax.imshow(grid.T, origin='lower', cmap=grain_cmap,
+                       norm=grain_norm, extent=ext)
+        ax.set_title(title, fontsize=13)
+        ax.set_xlabel('X (um)')
+        ax.set_ylabel('Y (um)')
+        _add_domain_rect(ax)
+        cbar = plt.colorbar(im, ax=ax, ticks=range(n_grains))
+        cbar.set_ticklabels([f'GT{i}' for i in range(n_grains)])
+        if mismatch_grid is not None:
+            for r in range(num_scans):
+                for c in range(num_scans):
+                    if grid[r, c] != mismatch_grid[r, c]:
+                        ax.plot(pos_sorted[r], pos_sorted[c], 'kx',
+                                markersize=7, markeredgewidth=2)
+
+    # Row 1: refined grain maps + confidence difference
+    for ax, grid, title, mismatch_grid in [
+        (axes[1, 0], unseeded_ref_grain,
+         f'Unseeded Refined ({n_ref_uns_correct}/{n_voxels})', exp_grid),
+        (axes[1, 1], seeded_ref_grain,
+         f'Seeded Refined ({n_ref_seed_correct}/{n_voxels})', exp_grid),
+    ]:
+        im = ax.imshow(grid.T, origin='lower', cmap=grain_cmap,
+                       norm=grain_norm, extent=ext)
+        ax.set_title(title, fontsize=13)
+        ax.set_xlabel('X (um)')
+        ax.set_ylabel('Y (um)')
+        _add_domain_rect(ax)
+        cbar = plt.colorbar(im, ax=ax, ticks=range(n_grains))
+        cbar.set_ticklabels([f'GT{i}' for i in range(n_grains)])
+        if mismatch_grid is not None:
+            for r in range(num_scans):
+                for c in range(num_scans):
+                    if grid[r, c] != mismatch_grid[r, c]:
+                        ax.plot(pos_sorted[r], pos_sorted[c], 'kx',
+                                markersize=7, markeredgewidth=2)
+
+    # Confidence difference: seeded - unseeded
+    ax = axes[1, 2]
+    diff = seed_conf_grid - uns_conf_grid
+    vmax = max(abs(diff.min()), abs(diff.max()), 0.1)
+    im = ax.imshow(diff.T, origin='lower', cmap='RdBu', vmin=-vmax, vmax=vmax,
+                   extent=ext)
+    ax.set_title('Confidence: Seeded - Unseeded', fontsize=13)
+    ax.set_xlabel('X (um)')
+    ax.set_ylabel('Y (um)')
+    _add_domain_rect(ax)
+    plt.colorbar(im, ax=ax, label='Conf difference')
+
+    plt.suptitle(f'Seeded vs Unseeded Comparison ({num_scans}x{num_scans}, '
+                 f'{BEAMSIZE:.1f}um beam)', fontsize=15, fontweight='bold')
+    plt.tight_layout(rect=[0, 0, 1, 0.96])
+    plot_path = work_dir / 'seeded_comparison.png'
+    plt.savefig(str(plot_path), dpi=150, bbox_inches='tight')
+    plt.close()
+    print(f'\n  Saved comparison plot: {plot_path}')
+
+    # === 11. Restore paramstest.txt (remove GrainsFile) ===
+    with open(str(params_path)) as fh:
+        lines = fh.readlines()
+    lines = [l for l in lines if not l.startswith('GrainsFile')]
+    with open(str(params_path), 'w') as fh:
+        fh.writelines(lines)
+
+
 def main():
     args = parse_args()
 
@@ -2633,6 +3187,8 @@ def main():
             cross_compare_gt_indexer_debug(work_dir, nCPUs=args.nCPUs)
             validate_sinograms(work_dir, gt, args.nCPUs)
             passed = validate_results(work_dir, doTomo=args.doTomo)
+            if args.compare_seeded:
+                run_seeded_comparison(work_dir, args.nCPUs)
 
     except Exception as e:
         print(f'\nERROR: Test failed with exception: {e}')
