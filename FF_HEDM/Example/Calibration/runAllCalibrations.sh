@@ -7,8 +7,7 @@ python ~/opt/MIDAS/utils/AutoCalibrateZarr.py --data Ceria_63keV_900mm_100x100_0
 # Pilatus with panel shifts and auto masking
 # Delete older panel shifts file and mask file to initialize from scratch
 rm *panel* *autocal_mask*
-python ~/opt/MIDAS/utils/AutoCalibrateZarr.py --data CeO2_Pil_100x100_att000_650mm_71p676keV_001956.tif --dark dark_CeO2_Pil_100x100_att000_650mm_71p676keV_001975.tif --px 172.0 --wavelength 0.1
-72979 --material ceo2 --im-trans 2 --n-iterations 5 --cpus 8
+python ~/opt/MIDAS/utils/AutoCalibrateZarr.py --data CeO2_Pil_100x100_att000_650mm_71p676keV_001956.tif --dark dark_CeO2_Pil_100x100_att000_650mm_71p676keV_001975.tif --px 172.0 --wavelength 0.172979 --material ceo2 --im-trans 2 --n-iterations 5 --cpus 8
 
 # offset GE
 python ~/opt/MIDAS/utils/AutoCalibrateZarr.py --data CeO2_1s_65pt351keV_1860mm_000007.edf.ge1 --dark dark_6s_000010.ge1 --px 200.0 --wavelength 0.189714 --material ceo2 --n-iterations 5 --cpus 8

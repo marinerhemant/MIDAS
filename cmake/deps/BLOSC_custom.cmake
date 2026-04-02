@@ -1,7 +1,7 @@
 FetchContent_Declare(
   blosc
   GIT_REPOSITORY https://github.com/Blosc/c-blosc2.git
-  GIT_TAG main
+  GIT_TAG v2.23.1
 )
 
 FetchContent_GetProperties(blosc)
@@ -29,6 +29,16 @@ if(NOT blosc_POPULATED)
   
   add_subdirectory(${blosc_SOURCE_DIR} ${blosc_BINARY_DIR})
   
+  # Ensure blosc2 targets wait for the zlib target to be built.
+  if(TARGET zlib)
+    if(TARGET blosc2_shared)
+      add_dependencies(blosc2_shared zlib)
+    endif()
+    if(TARGET blosc2_static)
+      add_dependencies(blosc2_static zlib)
+    endif()
+  endif()
+
   # Export BLOSC as a target
   add_library(BLOSC::BLOSC INTERFACE IMPORTED)
   if(BUILD_SHARED_LIBS)

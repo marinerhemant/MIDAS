@@ -36,6 +36,16 @@
 
     add_subdirectory(${hdf5_SOURCE_DIR} ${hdf5_BINARY_DIR} EXCLUDE_FROM_ALL)
 
+    # Ensure HDF5 targets wait for the FetchContent zlib target to be built.
+    if(TARGET zlib)
+      if(TARGET hdf5-shared)
+        add_dependencies(hdf5-shared zlib)
+      endif()
+      if(TARGET hdf5-static)
+        add_dependencies(hdf5-static zlib)
+      endif()
+    endif()
+
     # Export HDF5 as targets
     add_library(HDF5::HDF5 INTERFACE IMPORTED)
     add_library(HDF5::HL INTERFACE IMPORTED)

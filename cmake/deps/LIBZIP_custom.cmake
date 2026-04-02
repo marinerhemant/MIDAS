@@ -17,7 +17,12 @@
     set(LIBZIP_DO_INSTALL OFF CACHE BOOL "" FORCE)
 
     add_subdirectory(${libzip_SOURCE_DIR} ${libzip_BINARY_DIR} EXCLUDE_FROM_ALL)
-    
+
+    # Ensure libzip waits for the FetchContent zlib target to be built.
+    if(TARGET zip AND TARGET zlib)
+      add_dependencies(zip zlib)
+    endif()
+
     # Export LIBZIP as a target
     add_library(LIBZIP::LIBZIP INTERFACE IMPORTED)
     set_target_properties(LIBZIP::LIBZIP PROPERTIES

@@ -374,25 +374,24 @@ if(NOT ZLIB_FOUND AND DOWNLOAD_DEPENDENCIES AND NOT TARGET ZLIB::ZLIB)
   endif()
 
   # Populate the variables that find_package(ZLIB) would normally set.
-  # CRITICAL: Set ZLIB_LIBRARY to the TARGET NAME (not a file path).
-  # Downstream deps like blosc1 use ${ZLIB_LIBRARY} in target_link_libraries().
-  # If this is a file path, gmake creates a file-level dependency with no
-  # corresponding make rule, causing "No rule to make target libz.so" errors.
-  # Using the target name lets CMake resolve it as a proper target dependency.
-  if(TARGET zlib)
-    set(ZLIB_LIBRARY zlib CACHE STRING "Zlib library target" FORCE)
-    set(ZLIB_LIBRARIES zlib)
-  elseif(TARGET zlibstatic)
-    set(ZLIB_LIBRARY zlibstatic CACHE STRING "Zlib library target" FORCE)
-    set(ZLIB_LIBRARIES zlibstatic)
-  endif()
+  # Use the ZLIB::ZLIB target name (not a bare "zlib" or a file path) so that
+  # downstream deps that do target_link_libraries(... ${ZLIB_LIBRARY}) get a
+  # proper CMake target reference.  Our custom FindZLIB.cmake (in FindModules/)
+  # ensures that subsequent find_package(ZLIB) calls inside deps short-circuit
+  # when ZLIB::ZLIB already exists, avoiding re-search failures.
+  set(ZLIB_LIBRARY ZLIB::ZLIB CACHE STRING "Zlib library target" FORCE)
+  set(ZLIB_LIBRARIES ZLIB::ZLIB)
+  # Also cache ZLIB_LIBRARY_RELEASE so that any FindZLIB.cmake that uses
+  # find_library(ZLIB_LIBRARY_RELEASE ...) won't re-search the system.
+  set(ZLIB_LIBRARY_RELEASE ZLIB::ZLIB CACHE STRING "Zlib library (release)" FORCE)
+
   # zlib.h is in the source dir, zconf.h is generated in the binary dir
   set(ZLIB_INCLUDE_DIR "${zlib_fetch_SOURCE_DIR}" CACHE PATH "Zlib include directory" FORCE)
   set(ZLIB_INCLUDE_DIRS "${zlib_fetch_SOURCE_DIR};${zlib_fetch_BINARY_DIR}")
   include_directories(SYSTEM "${zlib_fetch_SOURCE_DIR}" "${zlib_fetch_BINARY_DIR}")
-  set(ZLIB_FOUND TRUE)
+  set(ZLIB_FOUND TRUE CACHE BOOL "ZLIB found" FORCE)
   set(ZLIB_VERSION_STRING "1.3.1")
-  message(STATUS "ZLIB configured: ZLIB_LIBRARY=${ZLIB_LIBRARY}, ZLIB_INCLUDE_DIR=${ZLIB_INCLUDE_DIR}")
+  message(STATUS "ZLIB configured via FetchContent: ZLIB_LIBRARY=${ZLIB_LIBRARY}, ZLIB_INCLUDE_DIR=${ZLIB_INCLUDE_DIR}")
 elseif(TARGET ZLIB::ZLIB)
     set(ZLIB_FOUND TRUE)
     message(STATUS "ZLIB found and ZLIB::ZLIB target exists.")

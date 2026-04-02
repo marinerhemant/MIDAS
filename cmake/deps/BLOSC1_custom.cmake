@@ -1,7 +1,7 @@
 FetchContent_Declare(
   blosc1
   GIT_REPOSITORY https://github.com/Blosc/c-blosc.git
-  GIT_TAG main
+  GIT_TAG v1.21.6
 )
 
 FetchContent_GetProperties(blosc1)
@@ -37,6 +37,9 @@ if(NOT blosc1_POPULATED)
   # and ZLIB_INCLUDE_DIR, it finds the fetched zlib properly.
   set(PREFER_EXTERNAL_ZLIB ON CACHE BOOL "Use external ZLIB for Blosc1" FORCE)
 
+  # blosc1 v1.21.x has cmake_minimum_required(VERSION 2.8.12) which newer
+  # CMake rejects.  Allow the old policy version without editing the source.
+  set(CMAKE_POLICY_VERSION_MINIMUM 3.5)
   add_subdirectory(${blosc1_SOURCE_DIR} ${blosc1_BINARY_DIR})
 
   # blosc1 links to ZLIB_LIBRARY by file path, not target.
