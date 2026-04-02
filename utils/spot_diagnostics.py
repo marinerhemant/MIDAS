@@ -317,9 +317,16 @@ def find_closest_observed_spots(data_dir, scan_nr, theor_y, theor_z, theor_omega
     if not os.path.exists(fn):
         return None
 
-    obs = np.genfromtxt(fn, skip_header=1)
+    obs = np.genfromtxt(fn, skip_header=1, invalid_raise=False)
+    if obs is None or len(obs) == 0:
+        return None
     if obs.ndim == 1:
         obs = obs.reshape(1, -1)
+    # Drop rows with NaN in critical columns (from ragged lines)
+    valid_rows = ~np.isnan(obs[:, 0]) & ~np.isnan(obs[:, 1]) & ~np.isnan(obs[:, 2])
+    obs = obs[valid_rows]
+    if len(obs) == 0:
+        return None
     # Cols: 0=YLab 1=ZLab 2=Omega 3=GrainRadius 4=SpotID 5=RingNr 6=Eta
 
     # Filter to same ring
@@ -414,8 +421,23 @@ class SpotDiagPlotter:
 
         comp = v['nMatched'] / v['nTheor'] if v['nTheor'] > 0 else 0
         ax.set_title(f'Voxel {voxel_nr}: Y-Z ({v["nMatched"]}/{v["nTheor"]} = {comp:.0%})')
-        ax.set_xlabel('Y (um)')
-        ax.set_ylabel('Z (um)')
+        # Show ticks in pixels if data_dir is available
+        px = None
+        if self.data_dir:
+            try:
+                pp = _parse_params(self.data_dir, param_file=self.param_file)
+                px = float(pp['px'])
+            except Exception:
+                pass
+        if px:
+            from matplotlib.ticker import FuncFormatter
+            ax.xaxis.set_major_formatter(FuncFormatter(lambda v, _: f'{v/px:.0f}'))
+            ax.yaxis.set_major_formatter(FuncFormatter(lambda v, _: f'{v/px:.0f}'))
+            ax.set_xlabel('Y (px)')
+            ax.set_ylabel('Z (px)')
+        else:
+            ax.set_xlabel('Y (um)')
+            ax.set_ylabel('Z (um)')
         ax.set_aspect('equal')
         from matplotlib.lines import Line2D
         handles = [
