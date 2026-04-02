@@ -337,54 +337,70 @@ def find_closest_observed_spots(data_dir, scan_nr, theor_y, theor_z, theor_omega
         return None
     # Cols: 0=YLab 1=ZLab 2=Omega 3=GrainRadius 4=SpotID 5=RingNr 6=Eta
 
-    # Filter to same ring
-    ring_mask = obs[:, 5].astype(int) == int(ring_nr)
-    if not ring_mask.any():
+    # Data is sorted by RingNr then Omega — use searchsorted for fast filtering
+    ring_col = obs[:, 5].astype(int)
+    r_lo = np.searchsorted(ring_col, int(ring_nr), side='left')
+    r_hi = np.searchsorted(ring_col, int(ring_nr), side='right')
+    if r_lo >= r_hi:
         return None
-    obs_ring = obs[ring_mask]
+    obs_ring = obs[r_lo:r_hi]
+
+    # Within the ring, omega is sorted — narrow to ±ome_tol window
+    ome_col = obs_ring[:, 2]
+    o_lo = np.searchsorted(ome_col, theor_omega - ome_tol, side='left')
+    o_hi = np.searchsorted(ome_col, theor_omega + ome_tol, side='right')
+    if o_lo >= o_hi:
+        return {}
+    obs_ome = obs_ring[o_lo:o_hi]
+
+    # Position filter on the omega-narrowed subset
+    pos_dist_all = np.sqrt((obs_ome[:, 0] - theor_y)**2 + (obs_ome[:, 1] - theor_z)**2)
+    pos_mask = pos_dist_all < pos_tol
+    candidates = obs_ome[pos_mask]
 
     result = {}
 
-    # 1. Closest in position (Y, Z) — within 10 pixels
-    pos_dist = np.sqrt((obs_ring[:, 0] - theor_y)**2 + (obs_ring[:, 1] - theor_z)**2)
-    bi = np.argmin(pos_dist)
-    if pos_dist[bi] < pos_tol:
-        result['pos'] = {
-            'y': obs_ring[bi, 0], 'z': obs_ring[bi, 1], 'omega': obs_ring[bi, 2],
-            'eta': obs_ring[bi, 6], 'ring': int(obs_ring[bi, 5]),
-            'spotID': int(obs_ring[bi, 4]), 'metric': pos_dist[bi],
-            'label': f'pos d={pos_dist[bi]:.0f}um',
-        }
+    if len(candidates) == 0:
+        return result
 
-    # 2. Closest in omega (same ring, similar eta ±10 deg) — within 10 omega steps
-    eta_mask = np.abs(obs_ring[:, 6] - theor_eta) < 10.0
+    # 1. Closest in position (Y, Z)
+    pos_dist = np.sqrt((candidates[:, 0] - theor_y)**2 + (candidates[:, 1] - theor_z)**2)
+    bi = np.argmin(pos_dist)
+    result['pos'] = {
+        'y': candidates[bi, 0], 'z': candidates[bi, 1], 'omega': candidates[bi, 2],
+        'eta': candidates[bi, 6], 'ring': int(candidates[bi, 5]),
+        'spotID': int(candidates[bi, 4]), 'metric': pos_dist[bi],
+        'label': f'pos d={pos_dist[bi]:.0f}um',
+    }
+
+    # 2. Closest in omega (similar eta ±10 deg)
+    eta_mask = np.abs(candidates[:, 6] - theor_eta) < 10.0
     if eta_mask.any():
-        obs_eta = obs_ring[eta_mask]
+        obs_eta = candidates[eta_mask]
         ome_dist = np.abs(obs_eta[:, 2] - theor_omega)
         bi = np.argmin(ome_dist)
-        if ome_dist[bi] < ome_tol:
-            result['omega'] = {
-                'y': obs_eta[bi, 0], 'z': obs_eta[bi, 1], 'omega': obs_eta[bi, 2],
-                'eta': obs_eta[bi, 6], 'ring': int(obs_eta[bi, 5]),
-                'spotID': int(obs_eta[bi, 4]), 'metric': ome_dist[bi],
-                'label': f'ome d={ome_dist[bi]:.3f}deg',
-            }
+        result['omega'] = {
+            'y': obs_eta[bi, 0], 'z': obs_eta[bi, 1], 'omega': obs_eta[bi, 2],
+            'eta': obs_eta[bi, 6], 'ring': int(obs_eta[bi, 5]),
+            'spotID': int(obs_eta[bi, 4]), 'metric': ome_dist[bi],
+            'label': f'ome d={ome_dist[bi]:.3f}deg',
+        }
 
     # 3. Closest in internal angle (G-vector angular distance) — within 1 degree
     g_theor = _spot_to_gv(theor_y, theor_z, theor_omega, Lsd)
     g_theor_n = g_theor / np.linalg.norm(g_theor)
-    ia_vals = np.full(len(obs_ring), 999.0)
-    for i in range(len(obs_ring)):
-        g_obs = _spot_to_gv(obs_ring[i, 0], obs_ring[i, 1], obs_ring[i, 2], Lsd)
+    ia_vals = np.full(len(candidates), 999.0)
+    for i in range(len(candidates)):
+        g_obs = _spot_to_gv(candidates[i, 0], candidates[i, 1], candidates[i, 2], Lsd)
         g_obs_n = g_obs / np.linalg.norm(g_obs)
         dot = np.clip(np.dot(g_theor_n, g_obs_n), -1, 1)
         ia_vals[i] = np.degrees(np.arccos(dot))
     bi = np.argmin(ia_vals)
     if ia_vals[bi] < 1.0:
         result['ia'] = {
-            'y': obs_ring[bi, 0], 'z': obs_ring[bi, 1], 'omega': obs_ring[bi, 2],
-            'eta': obs_ring[bi, 6], 'ring': int(obs_ring[bi, 5]),
-            'spotID': int(obs_ring[bi, 4]), 'metric': ia_vals[bi],
+            'y': candidates[bi, 0], 'z': candidates[bi, 1], 'omega': candidates[bi, 2],
+            'eta': candidates[bi, 6], 'ring': int(candidates[bi, 5]),
+            'spotID': int(candidates[bi, 4]), 'metric': ia_vals[bi],
             'label': f'IA={ia_vals[bi]:.4f}deg',
         }
 
