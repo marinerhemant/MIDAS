@@ -311,6 +311,10 @@ def find_closest_observed_spots(data_dir, scan_nr, theor_y, theor_z, theor_omega
     """
     p = _parse_params(data_dir, param_file=param_file)
     Lsd = float(p.get('LsdFit', p.get('Distance', '1000000')))
+    px = float(p.get('px', '200'))
+    ome_step = abs(float(p.get('OmegaStep', '0.25')))
+    pos_tol = 10 * px       # 10 pixels
+    ome_tol = 10 * ome_step  # 10 omega steps
 
     # Try to find InputAll file
     fn = os.path.join(data_dir, f'InputAllExtraInfoFittingAll{scan_nr}.csv')
@@ -341,30 +345,32 @@ def find_closest_observed_spots(data_dir, scan_nr, theor_y, theor_z, theor_omega
 
     result = {}
 
-    # 1. Closest in position (Y, Z)
+    # 1. Closest in position (Y, Z) — within 10 pixels
     pos_dist = np.sqrt((obs_ring[:, 0] - theor_y)**2 + (obs_ring[:, 1] - theor_z)**2)
     bi = np.argmin(pos_dist)
-    result['pos'] = {
-        'y': obs_ring[bi, 0], 'z': obs_ring[bi, 1], 'omega': obs_ring[bi, 2],
-        'eta': obs_ring[bi, 6], 'ring': int(obs_ring[bi, 5]),
-        'spotID': int(obs_ring[bi, 4]), 'metric': pos_dist[bi],
-        'label': f'pos d={pos_dist[bi]:.0f}um',
-    }
+    if pos_dist[bi] < pos_tol:
+        result['pos'] = {
+            'y': obs_ring[bi, 0], 'z': obs_ring[bi, 1], 'omega': obs_ring[bi, 2],
+            'eta': obs_ring[bi, 6], 'ring': int(obs_ring[bi, 5]),
+            'spotID': int(obs_ring[bi, 4]), 'metric': pos_dist[bi],
+            'label': f'pos d={pos_dist[bi]:.0f}um',
+        }
 
-    # 2. Closest in omega (same ring, similar eta ±10 deg)
+    # 2. Closest in omega (same ring, similar eta ±10 deg) — within 10 omega steps
     eta_mask = np.abs(obs_ring[:, 6] - theor_eta) < 10.0
     if eta_mask.any():
         obs_eta = obs_ring[eta_mask]
         ome_dist = np.abs(obs_eta[:, 2] - theor_omega)
         bi = np.argmin(ome_dist)
-        result['omega'] = {
-            'y': obs_eta[bi, 0], 'z': obs_eta[bi, 1], 'omega': obs_eta[bi, 2],
-            'eta': obs_eta[bi, 6], 'ring': int(obs_eta[bi, 5]),
-            'spotID': int(obs_eta[bi, 4]), 'metric': ome_dist[bi],
-            'label': f'ome d={ome_dist[bi]:.3f}deg',
-        }
+        if ome_dist[bi] < ome_tol:
+            result['omega'] = {
+                'y': obs_eta[bi, 0], 'z': obs_eta[bi, 1], 'omega': obs_eta[bi, 2],
+                'eta': obs_eta[bi, 6], 'ring': int(obs_eta[bi, 5]),
+                'spotID': int(obs_eta[bi, 4]), 'metric': ome_dist[bi],
+                'label': f'ome d={ome_dist[bi]:.3f}deg',
+            }
 
-    # 3. Closest in internal angle (G-vector angular distance)
+    # 3. Closest in internal angle (G-vector angular distance) — within 1 degree
     g_theor = _spot_to_gv(theor_y, theor_z, theor_omega, Lsd)
     g_theor_n = g_theor / np.linalg.norm(g_theor)
     ia_vals = np.full(len(obs_ring), 999.0)
@@ -374,12 +380,13 @@ def find_closest_observed_spots(data_dir, scan_nr, theor_y, theor_z, theor_omega
         dot = np.clip(np.dot(g_theor_n, g_obs_n), -1, 1)
         ia_vals[i] = np.degrees(np.arccos(dot))
     bi = np.argmin(ia_vals)
-    result['ia'] = {
-        'y': obs_ring[bi, 0], 'z': obs_ring[bi, 1], 'omega': obs_ring[bi, 2],
-        'eta': obs_ring[bi, 6], 'ring': int(obs_ring[bi, 5]),
-        'spotID': int(obs_ring[bi, 4]), 'metric': ia_vals[bi],
-        'label': f'IA={ia_vals[bi]:.4f}deg',
-    }
+    if ia_vals[bi] < 1.0:
+        result['ia'] = {
+            'y': obs_ring[bi, 0], 'z': obs_ring[bi, 1], 'omega': obs_ring[bi, 2],
+            'eta': obs_ring[bi, 6], 'ring': int(obs_ring[bi, 5]),
+            'spotID': int(obs_ring[bi, 4]), 'metric': ia_vals[bi],
+            'label': f'IA={ia_vals[bi]:.4f}deg',
+        }
 
     return result
 
