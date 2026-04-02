@@ -13,6 +13,7 @@
 //  Important: row major, starting with y's and going up. Bottom right is 0,0.
 
 #include "MIDAS_Math.h"
+#include "DetectorGeometry.h"
 #include "Panel.h"
 #include "ZarrReader.h"
 #include "midas_version.h"
@@ -36,6 +37,8 @@ typedef uint16_t pixelvalue;
 int NrCalls;
 #define MultFactor 1
 #define MaxNSpots 2000000
+
+static DGResidualCorr g_residualCorr = {NULL, 0, 0};
 
 static inline int **allocMatrixInt(int nrows, int ncols) {
   int **arr;
@@ -227,6 +230,7 @@ static double problem_function(unsigned n, const double *x, double *grad,
                   (p2 * (pow(RNorm, n2))) + p4 * pow(RNorm, 6.0) +
                   p5 * pow(RNorm, 4.0) + dipole + trefoil + 1;
     Rcorr = Rad * DistortFunc;
+    Rcorr += dg_residual_corr_lookup(&g_residualCorr, YMean[i], ZMean[i]) * px;
     RIdeal = Lsd * tan(deg2rad * IdealTtheta[i]);
     Diff = fabs(1 - (Rcorr / RIdeal));
     //~ #ifdef PRINTOPT
@@ -373,6 +377,7 @@ static inline void CorrectTiltSpatialDistortion(
                   (panelP2 * (pow(RNorm, n2))) + p4 * pow(RNorm, 6.0) +
                   p5 * pow(RNorm, 4.0) + dipole + trefoil + 1;
     Rcorr = Rad * DistortFunc;
+    Rcorr += dg_residual_corr_lookup(&g_residualCorr, YMean[i], ZMean[i]) * px;
     Rcorr = Rcorr * (Lsd / panelLsd); // re-project to global Lsd plane
     YCorrected[i] = -Rcorr * sin(deg2rad * Eta);
     ZCorrected[i] = Rcorr * cos(deg2rad * Eta);
@@ -621,6 +626,7 @@ int main(int argc, char *argv[]) {
   int NPanelsY = 0, NPanelsZ = 0, PanelSizeY = 0, PanelSizeZ = 0;
   int locPanelGapsY = -1, locPanelGapsZ = -1, nGapsY = 0, nGapsZ = 0;
   char *PanelShiftsFile = NULL;
+  char *ResidualCorrMapFN = NULL;
   Panel *panels = NULL;
   int nPanels = 0;
   int cs = 0, DoFit = 0, RingToIndex;
@@ -1038,6 +1044,11 @@ int main(int argc, char *argv[]) {
         NULL) {
       ReadZarrString(arch, count, &PanelShiftsFile, 4096);
     }
+    if (strstr(finfo->name,
+               "analysis/process/analysis_parameters/ResidualCorrectionMap/0") !=
+        NULL) {
+      ReadZarrString(arch, count, &ResidualCorrMapFN, 4096);
+    }
     count++;
   }
   if (Width == -1)
@@ -1082,6 +1093,25 @@ int main(int argc, char *argv[]) {
       free(PanelGapsZ);
     printf("Generated %d panels.\n", nPanels);
   }
+
+  // Load residual correction map if specified
+  if (ResidualCorrMapFN != NULL && ResidualCorrMapFN[0] != '\0') {
+    FILE *rcf = fopen(ResidualCorrMapFN, "rb");
+    if (rcf) {
+      int nPx = NrPixelsY * NrPixelsZ;
+      double *map = malloc(nPx * sizeof(double));
+      if (map && fread(map, sizeof(double), nPx, rcf) == (size_t)nPx) {
+        g_residualCorr.map = map;
+        g_residualCorr.NrPixelsY = NrPixelsY;
+        g_residualCorr.NrPixelsZ = NrPixelsZ;
+        printf("Loaded residual correction map: %s (%dx%d)\n",
+               ResidualCorrMapFN, NrPixelsY, NrPixelsZ);
+      } else { free(map); }
+      fclose(rcf);
+    }
+    free(ResidualCorrMapFN);
+  }
+
   if (argc == 3)
     Folder = argv[2];
   if (argc == 3)

@@ -18,6 +18,41 @@
 #define DG_RAD2DEG 57.2957795130823
 #define DG_EPS 1E-6
 
+// ── Residual correction map ────────────────────────────────────────
+// Smooth empirical radial correction ΔR(Y,Z) in pixels, stored at
+// detector resolution. Generated from calibrant ring residuals after
+// the analytical p0-p10 model converges.  Applied after analytical
+// distortion + parallax as: Rt += bilinear_interp(map, Y, Z).
+// Pass NULL to any function to disable the correction.
+
+typedef struct {
+    const double *map;   // ΔR[z * NrPixelsY + y] in pixels, NULL = disabled
+    int NrPixelsY;
+    int NrPixelsZ;
+} DGResidualCorr;
+
+// Bilinear interpolation of the residual correction map at pixel (Y, Z).
+// Returns 0 if corr is NULL or (Y,Z) is out of bounds.
+static inline double dg_residual_corr_lookup(const DGResidualCorr *corr,
+                                              double Y, double Z) {
+    if (corr == NULL || corr->map == NULL) return 0.0;
+    // Clamp to half-pixel inside boundary for smooth edge behavior
+    double y = Y, z = Z;
+    if (y < 0.0) y = 0.0;
+    if (z < 0.0) z = 0.0;
+    if (y >= corr->NrPixelsY - 1.0) y = corr->NrPixelsY - 1.001;
+    if (z >= corr->NrPixelsZ - 1.0) z = corr->NrPixelsZ - 1.001;
+    int y0 = (int)y, z0 = (int)z;
+    double fy = y - y0, fz = z - z0;
+    int Ny = corr->NrPixelsY;
+    double v00 = corr->map[z0 * Ny + y0];
+    double v10 = corr->map[z0 * Ny + y0 + 1];
+    double v01 = corr->map[(z0 + 1) * Ny + y0];
+    double v11 = corr->map[(z0 + 1) * Ny + y0 + 1];
+    return v00 * (1-fy) * (1-fz) + v10 * fy * (1-fz)
+         + v01 * (1-fy) * fz     + v11 * fy * fz;
+}
+
 // ── Coordinate transforms ───────────────────────────────────────────
 
 // Build tilt rotation matrix TRs = Rx(tx) · Ry(ty) · Rz(tz)
@@ -39,6 +74,16 @@ void dg_pixel_to_REta(double Y, double Z, double Ycen, double Zcen,
                       double *R_out, double *Eta_out,
                       double *Eta_untilted_out);
 
+// Extended version with residual correction map.  corr=NULL disables it.
+void dg_pixel_to_REta_corr(double Y, double Z, double Ycen, double Zcen,
+                      double TRs[3][3], double Lsd, double RhoD, double p0,
+                      double p1, double p2, double p3, double p4, double p5,
+                      double p6, double p7, double p8, double p9, double p10,
+                      double px, double dLsd, double dP2, double parallax,
+                      const DGResidualCorr *corr,
+                      double *R_out, double *Eta_out,
+                      double *Eta_untilted_out);
+
 // Inverse: (R_px, Eta_deg) → centered (Y, Z) in pixel units.
 // Coordinates are centered at beam center (0,0).
 void dg_REta_to_YZ(double R, double Eta_deg, double *Y_out, double *Z_out);
@@ -55,6 +100,16 @@ void dg_invert_REta_to_pixel(
     double px, double dLsd, double dP2, double parallax,
     double *Y_out, double *Z_out);
 
+void dg_invert_REta_to_pixel_corr(
+    double R_target, double Eta_target,
+    double Ycen, double Zcen, double TRs[3][3],
+    double Lsd, double RhoD,
+    double p0, double p1, double p2, double p3, double p4, double p5,
+    double p6, double p7, double p8, double p9, double p10,
+    double px, double dLsd, double dP2, double parallax,
+    const DGResidualCorr *corr,
+    double *Y_out, double *Z_out);
+
 // Panel-aware numerical inversion: like dg_invert_REta_to_pixel but
 // accounts for per-panel corrections (dY, dZ, dTheta, dLsd, dP2).
 // The forward model used in Newton iteration includes panel dLsd/dP2;
@@ -68,6 +123,17 @@ void dg_invert_REta_to_pixel_panel(
     double p0, double p1, double p2, double p3, double p4, double p5,
     double p6, double p7, double p8, double p9, double p10,
     double px, double parallax,
+    const Panel *panel,
+    double *Y_out, double *Z_out);
+
+void dg_invert_REta_to_pixel_panel_corr(
+    double R_target, double Eta_target,
+    double Ycen, double Zcen, double TRs[3][3],
+    double Lsd, double RhoD,
+    double p0, double p1, double p2, double p3, double p4, double p5,
+    double p6, double p7, double p8, double p9, double p10,
+    double px, double parallax,
+    const DGResidualCorr *corr,
     const Panel *panel,
     double *Y_out, double *Z_out);
 

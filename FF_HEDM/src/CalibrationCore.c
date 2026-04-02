@@ -2,7 +2,7 @@
 // CalibrationCore.c — Shared calibration optimization functions
 //
 // See CalibrationCore.h for API documentation.
-// Geometry computations delegate to dg_pixel_to_REta() from DetectorGeometry.h.
+// Geometry computations delegate to dg_pixel_to_REta_corr() from DetectorGeometry.h.
 //
 // Copyright (c) 2014, UChicago Argonne, LLC
 // See LICENSE file.
@@ -359,7 +359,7 @@ void calib_fit_doublet_peak_shape(int NrPtsForFit, double *Rs,
 
 // ── Geometry optimization objective ────────────────────────────────
 //
-// Delegates pixel→(R,η) to dg_pixel_to_REta from DetectorGeometry.h.
+// Delegates pixel→(R,η) to dg_pixel_to_REta_corr from DetectorGeometry.h.
 // This is the single source of truth for the tilt+distortion model.
 
 double calib_problem_function(unsigned n, const double *x, double *grad,
@@ -438,13 +438,13 @@ double calib_problem_function(unsigned n, const double *x, double *grad,
       rawZ = cZ + dy * sinT + dz * cosT;
     }
 
-    // Delegate geometry to dg_pixel_to_REta (single source of truth)
-    // Note: dg_pixel_to_REta expects pixel coords with ybc/zbc,
+    // Delegate geometry to dg_pixel_to_REta_corr (single source of truth)
+    // Note: expects pixel coords with ybc/zbc,
     // and it internally computes Y_phys = (-rawY + ybc) * px
     double R_px, Eta;
-    dg_pixel_to_REta(rawY, rawZ, ybc, zbc, TRs, Lsd, MaxRad,
+    dg_pixel_to_REta_corr(rawY, rawZ, ybc, zbc, TRs, Lsd, MaxRad,
                      p0, p1, p2, p3, p4, p5, p6, p7, p8, p9, p10, px, dLsd, dP2, parallax,
-                     &R_px, &Eta, NULL);
+                     f->residualCorr, &R_px, &Eta, NULL);
 
     // Ideal R in pixels: Lsd * tan(2θ) / px
     double thisTtheta;
@@ -540,7 +540,8 @@ int calib_fit_tilt_bc_lsd(
     double parallaxIn, double tolParallax,
     double *parallaxOut,
     double trimmedMeanFraction,
-    const int *skipBin) {
+    const int *skipBin,
+    const DGResidualCorr *residualCorr) {
 
   int fitParallax = (tolParallax > EPS) ? 1 : 0;
   int nBase = 16; // Lsd, ybc, zbc, ty, tz, p0-p3, p4, p5, p6, p7, p8, p9, p10
@@ -579,6 +580,7 @@ int calib_fit_tilt_bc_lsd(
   if (trimmedMeanFraction < 1.0 - 1e-9)
     f_data.trimScratch = malloc(nIndices * sizeof(double));
   f_data.skipBin = skipBin;
+  f_data.residualCorr = residualCorr;
   f_data.ctx = ctx;
 
   double x[n], xl[n], xu[n];
@@ -780,7 +782,7 @@ int calib_fit_tilt_bc_lsd(
     }
   }
 
-  // Post-optimization outlier rejection (using dg_pixel_to_REta)
+  // Post-optimization outlier rejection (using dg_pixel_to_REta_corr)
   {
     double TRs[3][3];
     dg_build_tilt_matrix(tx, *ty, *tz, TRs);
@@ -818,7 +820,7 @@ int calib_fit_tilt_bc_lsd(
       }
 
       double R_px, Eta;
-      dg_pixel_to_REta(rawY, rawZ, *ybcFit, *zbcFit, TRs, *LsdFit, MaxRad,
+      dg_pixel_to_REta_corr(rawY, rawZ, *ybcFit, *zbcFit, TRs, *LsdFit, MaxRad,
                        *p0, *p1, *p2, *p3,
                        (p4Out ? *p4Out : p4in), (p5Out ? *p5Out : p5in),
                        (p6Out ? *p6Out : p6in),
@@ -826,10 +828,10 @@ int calib_fit_tilt_bc_lsd(
                        (p9Out ? *p9Out : p9in), (p10Out ? *p10Out : p10in),
                        px, dLsd, dP2,
                        (fitParallax && parallaxOut) ? *parallaxOut : 0,
-                       &R_px, &Eta, NULL);
+                       residualCorr, &R_px, &Eta, NULL);
 
       double RIdeal_px = (*LsdFit + dLsd) * tan(DG_DEG2RAD * IdealTtheta[i]) / px;
-      // Re-project to global Lsd plane (dg_pixel_to_REta already does this)
+      // Re-project to global Lsd plane (dg_pixel_to_REta_corr already does this)
       double Diff = fabs(1.0 - R_px / RIdeal_px);
       tempDiffs[i] = Diff;
       totalSum += Diff;
@@ -877,7 +879,7 @@ int calib_fit_tilt_bc_lsd(
 
 // ── Residual evaluator ─────────────────────────────────────────────
 //
-// Computes per-bin strain residuals using dg_pixel_to_REta.
+// Computes per-bin strain residuals using dg_pixel_to_REta_corr.
 
 void calib_correct_tilt_distortion(
     CalibContext *ctx,
@@ -889,7 +891,8 @@ void calib_correct_tilt_distortion(
     double p4, double p5, double p6, double p7, double p8, double p9, double p10,
     int OutlierIterations,
     int verbose, double *MeanDiffOut, double parallax,
-    const int *skipBin) {
+    const int *skipBin,
+    const DGResidualCorr *residualCorr) {
 
   double TRs[3][3];
   dg_build_tilt_matrix(tx, ty, tz, TRs);
@@ -928,14 +931,14 @@ void calib_correct_tilt_distortion(
       rawZ = cZ + dy * sinT + dz * cosT;
     }
 
-    // Canonical geometry via dg_pixel_to_REta
+    // Canonical geometry via dg_pixel_to_REta_corr
     double R_px, Eta;
-    dg_pixel_to_REta(rawY, rawZ, ybc, zbc, TRs, Lsd, MaxRad,
+    dg_pixel_to_REta_corr(rawY, rawZ, ybc, zbc, TRs, Lsd, MaxRad,
                      p0, p1, p2, p3, p4, p5, p6, p7, p8, p9, p10, px, dLsd, dP2, parallax,
-                     &R_px, &Eta, NULL);
+                     residualCorr, &R_px, &Eta, NULL);
 
     double RIdeal_px = (Lsd + dLsd) * tan(DG_DEG2RAD * IdealTtheta[i]) / px;
-    // dg_pixel_to_REta already re-projects R to global Lsd plane,
+    // dg_pixel_to_REta_corr already re-projects R to global Lsd plane,
     // so RIdeal should also be in global plane
     RIdeal_px = Lsd * tan(DG_DEG2RAD * IdealTtheta[i]) / px;
 

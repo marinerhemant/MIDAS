@@ -18,6 +18,7 @@
 // provide cs), 				RingRadii,
 
 #include "MIDAS_Math.h"
+#include "DetectorGeometry.h"
 #include "MIDAS_ParamParser.h"
 #include <ctype.h>
 #include <errno.h>
@@ -43,6 +44,8 @@
 #define CalcNorm2(x, y) sqrt((x) * (x) + (y) * (y))
 // #define MAX_LINE_LENGTH 4096 (now in MIDAS_Limits.h)
 #define MaxNSpotsBest 1000
+
+static DGResidualCorr g_residualCorr = {NULL, 0, 0};
 
 // key_match() is now provided by MIDAS_ParamParser.h
 
@@ -592,6 +595,7 @@ static inline void CorrectTiltSpatialDistortion(
                   (panelP2 * (pow(RNorm, n2))) + p4 * pow(RNorm, 6.0) +
                   p5 * pow(RNorm, 4.0) + dipole + trefoil + 1;
     Rcorr = Rad * DistortFunc;
+    Rcorr += dg_residual_corr_lookup(&g_residualCorr, SpotInfoAll[i][2], SpotInfoAll[i][3]) * px;
     Rcorr = Rcorr * (Lsd / panelLsd); // re-project to global Lsd plane
     SpotInfoCorr[i][0] = SpotInfoAll[i][0];
     SpotInfoCorr[i][1] = SpotInfoAll[i][1];
@@ -1093,6 +1097,23 @@ int main(int argc, char *argv[]) {
       } else {
         printf("Loaded panel shifts from %s\n", fullPath);
       }
+    }
+  }
+
+  // Load residual correction map if specified
+  if (cfg.ResidualCorrMapFN[0] != '\0') {
+    FILE *rcf = fopen(cfg.ResidualCorrMapFN, "rb");
+    if (rcf) {
+      int nPx = cfg.NrPixelsY * cfg.NrPixelsZ;
+      double *map = malloc(nPx * sizeof(double));
+      if (map && fread(map, sizeof(double), nPx, rcf) == (size_t)nPx) {
+        g_residualCorr.map = map;
+        g_residualCorr.NrPixelsY = cfg.NrPixelsY;
+        g_residualCorr.NrPixelsZ = cfg.NrPixelsZ;
+        printf("Loaded residual correction map: %s (%dx%d)\n",
+               cfg.ResidualCorrMapFN, cfg.NrPixelsY, cfg.NrPixelsZ);
+      } else { free(map); }
+      fclose(rcf);
     }
   }
 

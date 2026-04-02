@@ -61,7 +61,8 @@ long long mapper_build_map(
     double parallax,
     int solidAngleCorr, int polarizationCorr, double polFraction,
     const double *distortionMapY, const double *distortionMapZ,
-    const Panel *mapPanels, int mapNPanels)
+    const Panel *mapPanels, int mapNPanels,
+    const DGResidualCorr *residualCorr)
 {
   double TRs[3][3];
   dg_build_tilt_matrix(tx, ty, tz, TRs);
@@ -106,8 +107,9 @@ long long mapper_build_map(
       int spLevel = 1; // default: no splitting
       if (SubPixelLevel > 1) {
         double Rt_cen, Eta_cen;
-        dg_pixel_to_REta(ypr, zpr, Ycen, Zcen, TRs, Lsd, RhoD, p0, p1, p2,
-                         p3, p4, p5, p6, p7, p8, p9, p10, pxY, dLsd, dP2, parallax, &Rt_cen, &Eta_cen,
+        dg_pixel_to_REta_corr(ypr, zpr, Ycen, Zcen, TRs, Lsd, RhoD, p0, p1, p2,
+                         p3, p4, p5, p6, p7, p8, p9, p10, pxY, dLsd, dP2, parallax,
+                         residualCorr, &Rt_cen, &Eta_cen,
                          NULL);
         double absEta = fabs(Eta_cen);
         if (absEta <= SubPixelCardinalWidth ||
@@ -139,8 +141,9 @@ long long mapper_build_map(
             for (l = 0; l < 2; l++) {
               double Y = ypr + sp_dy[k];
               double Z = zpr + sp_dz[l];
-              dg_pixel_to_REta(Y, Z, Ycen, Zcen, TRs, Lsd, RhoD, p0, p1, p2,
-                               p3, p4, p5, p6, p7, p8, p9, p10, pxY, dLsd, dP2, parallax, &Rt, &Eta,
+              dg_pixel_to_REta_corr(Y, Z, Ycen, Zcen, TRs, Lsd, RhoD, p0, p1, p2,
+                               p3, p4, p5, p6, p7, p8, p9, p10, pxY, dLsd, dP2, parallax,
+                               residualCorr, &Rt, &Eta,
                                NULL);
               RetVals[0] = Eta;
               RetVals[1] = Rt;
@@ -161,8 +164,9 @@ long long mapper_build_map(
           // Sub-pixel center in R-Eta space
           double ypr_sub = ypr + sp_cy;
           double zpr_sub = zpr + sp_cz;
-          dg_pixel_to_REta(ypr_sub, zpr_sub, Ycen, Zcen, TRs, Lsd, RhoD, p0,
-                           p1, p2, p3, p4, p5, p6, p7, p8, p9, p10, pxY, dLsd, dP2, parallax, &Rt, &Eta,
+          dg_pixel_to_REta_corr(ypr_sub, zpr_sub, Ycen, Zcen, TRs, Lsd, RhoD, p0,
+                           p1, p2, p3, p4, p5, p6, p7, p8, p9, p10, pxY, dLsd, dP2, parallax,
+                           residualCorr, &Rt, &Eta,
                            NULL);
           double YZ_local[2];
           dg_REta_to_YZ(Rt, Eta, &YZ_local[0], &YZ_local[1]);
@@ -403,9 +407,9 @@ long long mapper_build_map(
            RBinsHigh[nRBins - 1]);
     for (int si = 0; si < 4; si++) {
       double Rdbg, Etadbg;
-      dg_pixel_to_REta((double)sampleY[si], (double)sampleZ[si], Ycen, Zcen,
+      dg_pixel_to_REta_corr((double)sampleY[si], (double)sampleZ[si], Ycen, Zcen,
                        TRsDbg, Lsd, RhoD, p0, p1, p2, p3, p4, p5, p6, p7, p8, p9, p10, pxY, 0, 0, parallax,
-                       &Rdbg, &Etadbg, NULL);
+                       residualCorr, &Rdbg, &Etadbg, NULL);
       printf("  pixel(%4d,%4d): R=%10.2f  Eta=%8.2f\n", sampleY[si],
              sampleZ[si], Rdbg, Etadbg);
     }

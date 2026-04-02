@@ -13,6 +13,7 @@
 
 #include <omp.h>
 #include "Panel.h"
+#include "DetectorGeometry.h"
 
 // Per-pixel bin entry. Binary layout must match Map.bin format.
 struct MapPixelData {
@@ -76,7 +77,9 @@ long long mapper_build_map(
     /* distortion maps (were globals) */
     const double *distortionMapY, const double *distortionMapZ,
     /* panels (were globals) */
-    const Panel *mapPanels, int mapNPanels
+    const Panel *mapPanels, int mapNPanels,
+    /* residual correction map (NULL = disabled) */
+    const DGResidualCorr *residualCorr
 );
 
 // Free all mapping data allocated by mapper_build_map.

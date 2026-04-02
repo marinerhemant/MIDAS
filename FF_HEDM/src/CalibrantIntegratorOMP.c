@@ -225,7 +225,8 @@ static int estep_build_and_integrate(
       binLocks, g->SubPixelLevel, g->SubPixelCardinalWidth,
       g->parallax, 0, 0, 0.0,
       distortionMapY, distortionMapZ,
-      (Panel *)pan, nPan);
+      (Panel *)pan, nPan,
+      g->residualCorr.map ? &g->residualCorr : NULL);
 
   printf("Map built: %lld pixel-bin entries\n", nEntries);
 
@@ -544,11 +545,13 @@ static int estep_compact_and_invert(
     }
 
     double Y_inv, Z_inv;
-    dg_invert_REta_to_pixel_panel(R_px, out->EtaMean[cnt],
+    dg_invert_REta_to_pixel_panel_corr(R_px, out->EtaMean[cnt],
                              g->ybc, g->zbc, TRs_estep, g->Lsd, g->MaxRingRad,
                              g->p0, g->p1, g->p2, g->p3, g->p4, g->p5, g->p6,
                              g->p7, g->p8, g->p9, g->p10,
-                             g->px, g->parallax, binPanel,
+                             g->px, g->parallax,
+                             g->residualCorr.map ? &g->residualCorr : NULL,
+                             binPanel,
                              &Y_inv, &Z_inv);
     out->YMean[cnt] = Y_inv;
     out->ZMean[cnt] = Z_inv;
@@ -1042,6 +1045,41 @@ int main(int argc, char *argv[]) {
 
   free(DarkRaw); free(ImageRaw);
 
+  // Load residual correction map (binary file: NrPixelsY*NrPixelsZ doubles)
+  DGResidualCorr residualCorr = {NULL, 0, 0};
+  if (cfg.ResidualCorrMapFN[0] != '\0') {
+    FILE *rcf = fopen(cfg.ResidualCorrMapFN, "rb");
+    if (rcf == NULL) {
+      fprintf(stderr, "Error: cannot open residual correction map %s\n",
+              cfg.ResidualCorrMapFN);
+      return 1;
+    }
+    fseek(rcf, 0L, SEEK_END);
+    long rcSize = ftell(rcf);
+    rewind(rcf);
+    size_t expectedSize = (size_t)NrPixelsY * NrPixelsZ * sizeof(double);
+    if ((size_t)rcSize != expectedSize) {
+      fprintf(stderr, "Error: residual correction map size mismatch: "
+              "got %ld, expected %zu (%dx%d doubles)\n",
+              rcSize, expectedSize, NrPixelsY, NrPixelsZ);
+      fclose(rcf);
+      return 1;
+    }
+    double *corrMap = malloc(expectedSize);
+    if (corrMap == NULL) {
+      fprintf(stderr, "Error: failed to allocate residual correction map\n");
+      fclose(rcf);
+      return 1;
+    }
+    fread(corrMap, expectedSize, 1, rcf);
+    fclose(rcf);
+    residualCorr.map = corrMap;
+    residualCorr.NrPixelsY = NrPixelsY;
+    residualCorr.NrPixelsZ = NrPixelsZ;
+    printf("Loaded residual correction map: %s (%dx%d)\n",
+           cfg.ResidualCorrMapFN, NrPixelsY, NrPixelsZ);
+  }
+
   // ── Iteration loop ────────────────────────────────────────────────
   double LsdFit, ybcFit, zbcFit, ty, tz, p0, p1, p2, p3;
   double MeanDiff = 1e20, StdDiff = 0;
@@ -1140,7 +1178,8 @@ int main(int argc, char *argv[]) {
       .SubPixelCardinalWidth = cfg.SubPixelCardinalWidth,
       .peakFitMode = peakFitMode, .DoubletSeparation = DoubletSeparation,
       .Wavelength = Wavelength, .Width = cfg.Width,
-      .AdaptiveEtaBins = cfg.AdaptiveEtaBins
+      .AdaptiveEtaBins = cfg.AdaptiveEtaBins,
+      .residualCorr = residualCorr
     };
     memcpy(eg0.TransOpt, TransOpt, sizeof(TransOpt));
     estep_free_result(&eResult);
@@ -1202,7 +1241,8 @@ int main(int argc, char *argv[]) {
       .SubPixelCardinalWidth = cfg.SubPixelCardinalWidth,
       .peakFitMode = peakFitMode, .DoubletSeparation = DoubletSeparation,
       .Wavelength = Wavelength, .Width = cfg.Width,
-      .AdaptiveEtaBins = cfg.AdaptiveEtaBins
+      .AdaptiveEtaBins = cfg.AdaptiveEtaBins,
+      .residualCorr = residualCorr
     };
     memcpy(eg.TransOpt, TransOpt, sizeof(TransOpt));
 
@@ -1313,7 +1353,7 @@ int main(int argc, char *argv[]) {
         FitWavelength, Wavelength, tolWavelength, PointDSpacing,
         &wavelengthFit,
         parallaxIn, tolParallax, &parallaxFit,
-        TrimmedMeanFraction, skipBin);
+        TrimmedMeanFraction, skipBin, &residualCorr);
 
     // Close per-evaluation trace file
     calib_close_trace_file();
@@ -1336,7 +1376,7 @@ int main(int argc, char *argv[]) {
         nIndices, MaxRingRad, Yc, Zc, IdealTtheta, px, LsdFit, ybcFit,
         zbcFit, tx, ty, tz, p0, p1, p2, p3, EtaIns, DiffIns, RadIns,
         &StdDiff, outlierFactor, iterOutlier, p4, p5, p6, p7, p8, p9, p10, OutlierIterations,
-        0, &MeanDiff, parallaxIn, skipBin);
+        0, &MeanDiff, parallaxIn, skipBin, &residualCorr);
 
     printf("Iter %2d/%d  MeanStrain %8.3f  StdStrain %8.3f  nBins=%d\n",
            iter + 1, nIterations, MeanDiff * 1e6, StdDiff * 1e6, nIndices);
@@ -1541,7 +1581,8 @@ int main(int argc, char *argv[]) {
       .SubPixelCardinalWidth = cfg.SubPixelCardinalWidth,
       .peakFitMode = peakFitMode, .DoubletSeparation = DoubletSeparation,
       .Wavelength = Wavelength, .Width = cfg.Width,
-      .AdaptiveEtaBins = cfg.AdaptiveEtaBins
+      .AdaptiveEtaBins = cfg.AdaptiveEtaBins,
+      .residualCorr = residualCorr
     };
     memcpy(egv.TransOpt, TransOpt, sizeof(TransOpt));
     int verifyN = run_estep(&egv, &rings, Average, AverageDark, mask,
@@ -1571,7 +1612,7 @@ int main(int argc, char *argv[]) {
           nIndices, MaxRingRad, Yc, Zc, IdealTtheta, px, LsdFit, ybcFit,
           zbcFit, tx, ty, tz, p0, p1, p2, p3, EtaIns, DiffIns, RadIns,
           &verifyStd, outlierFactor, verifyOutlier, p4in, p5in, p6in, p7in, p8in, p9in, p10in, OutlierIterations,
-          1, &verifyMean, parallaxIn, skipBin);
+          1, &verifyMean, parallaxIn, skipBin, &residualCorr);
       printf("  Verification E-step: %d bins, MeanStrain=%.6f µε, StdStrain=%.6f µε\n",
              nIndices, verifyMean * 1e6, verifyStd * 1e6);
       printf("  (Compare to M-step reported: MeanStrain=%.6f µε)\n",
@@ -1592,7 +1633,7 @@ int main(int argc, char *argv[]) {
         nIndices, MaxRingRad, Yc, Zc, IdealTtheta, px, LsdFit, ybcFit,
         zbcFit, tx, ty, tz, p0, p1, p2, p3, EtaIns, DiffIns, RadIns,
         &StdDiff, outlierFactor, IsOutlier, p4in, p5in, p6in, p7in, p8in, p9in, p10in, OutlierIterations,
-        1, &MeanDiff, parallaxIn, skipBin);
+        1, &MeanDiff, parallaxIn, skipBin, &residualCorr);
     if (skipBin) {
       for (int i = 0; i < nIndices; i++)
         if (skipBin[i]) IsOutlier[i] = 1;

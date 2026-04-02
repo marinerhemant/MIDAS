@@ -32,6 +32,7 @@ double *distortionMapY;
 double *distortionMapZ;
 int distortionFile;
 int numProcs;
+DGResidualCorr residualCorr = {NULL, 0, 0};
 
 #include "Panel.h"
 #include "midas_version.h"
@@ -97,6 +98,8 @@ int main(int argc, char *argv[]) {
   PanelShiftsFile[0] = '\0';
   char MaskFN[4096];
   MaskFN[0] = '\0';
+  char ResidualCorrMapFN[4096];
+  ResidualCorrMapFN[0] = '\0';
   int useMask = 0;
   double *mask = NULL;
   // Q-spacing mode parameters
@@ -345,6 +348,10 @@ int main(int argc, char *argv[]) {
       str = "PolarizationFraction ";
       if (StartsWith(aline, str) == 1) {
         sscanf(aline, "%s %lf", dummy, &PolarizationFraction);
+      }
+      str = "ResidualCorrectionMap ";
+      if (StartsWith(aline, str) == 1) {
+        sscanf(aline, "%s %s", dummy, ResidualCorrMapFN);
       }
     }
     fclose(paramFile);
@@ -639,6 +646,40 @@ int main(int argc, char *argv[]) {
     fclose(distortionFileHandle);
   }
 
+  // Load residual correction map (binary file: NrPixelsY*NrPixelsZ doubles)
+  if (ResidualCorrMapFN[0] != '\0') {
+    FILE *rcf = fopen(ResidualCorrMapFN, "rb");
+    if (rcf == NULL) {
+      fprintf(stderr, "Error: cannot open residual correction map %s\n",
+              ResidualCorrMapFN);
+      return 1;
+    }
+    fseek(rcf, 0L, SEEK_END);
+    long rcSize = ftell(rcf);
+    rewind(rcf);
+    size_t expectedSize = (size_t)NrPixelsY * NrPixelsZ * sizeof(double);
+    if ((size_t)rcSize != expectedSize) {
+      fprintf(stderr, "Error: residual correction map size mismatch: "
+              "got %ld, expected %zu (%dx%d doubles)\n",
+              rcSize, expectedSize, NrPixelsY, NrPixelsZ);
+      fclose(rcf);
+      return 1;
+    }
+    double *corrMap = malloc(expectedSize);
+    if (corrMap == NULL) {
+      fprintf(stderr, "Error: failed to allocate residual correction map\n");
+      fclose(rcf);
+      return 1;
+    }
+    fread(corrMap, expectedSize, 1, rcf);
+    fclose(rcf);
+    residualCorr.map = corrMap;
+    residualCorr.NrPixelsY = NrPixelsY;
+    residualCorr.NrPixelsZ = NrPixelsZ;
+    printf("Loaded residual correction map: %s (%dx%d)\n",
+           ResidualCorrMapFN, NrPixelsY, NrPixelsZ);
+  }
+
   // Bin edges
   int nEtaBins = (int)ceil((EtaMax - EtaMin) / EtaBinSize);
   int qMode = (QBinSize > 0 && Wavelength > 0);
@@ -723,7 +764,8 @@ int main(int argc, char *argv[]) {
       pxList, nPxList, maxnPx, mask, binMaskFlag, NrTransOpt, TransOpt,
       binLocks, SubPixelLevel, SubPixelCardinalWidth,
       Parallax, SolidAngleCorrection, PolarizationCorrection, PolarizationFraction,
-      distortionMapY, distortionMapZ, panels, nPanels);
+      distortionMapY, distortionMapZ, panels, nPanels,
+      residualCorr.map ? &residualCorr : NULL);
   printf("Total Number of bins %lld\n", TotNrOfBins);
   fflush(stdout);
 

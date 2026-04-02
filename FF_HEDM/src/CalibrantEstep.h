@@ -13,6 +13,7 @@
 
 #include <stdlib.h>
 #include <string.h>
+#include "DetectorGeometry.h"
 
 // ── Input geometry for E-step map building ────────────────────────
 
@@ -32,6 +33,7 @@ typedef struct {
     double Wavelength;
     double Width;
     int AdaptiveEtaBins;
+    DGResidualCorr residualCorr;
 } EstepGeometry;
 
 // ── Ring info (from hkls.csv) ─────────────────────────────────────

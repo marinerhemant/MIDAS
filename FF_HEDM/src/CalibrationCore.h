@@ -2,7 +2,7 @@
 // CalibrationCore.h — Shared calibration optimization functions
 //
 // Extracted from CalibrantPanelShiftsOMP.c to share across calibrant
-// executables.  Geometry computations delegate to dg_pixel_to_REta()
+// executables.  Geometry computations delegate to dg_pixel_to_REta_corr()
 // from DetectorGeometry.h (single source of truth).
 //
 // Copyright (c) 2014, UChicago Argonne, LLC
@@ -113,12 +113,13 @@ struct calib_opt_data {
   double trimFraction;  // trimmed mean fraction (1.0 = all)
   double *trimScratch;  // pre-allocated scratch for trim sort (size nIndices)
   const int *skipBin;   // per-point skip mask (NULL = no skipping)
+  const DGResidualCorr *residualCorr; // smooth residual distortion map (NULL=disabled)
   CalibContext *ctx;    // calibration context (panels, threading)
 };
 
 // NLopt geometry optimization objective.
 // Computes sum of |1 - R_fitted/R_ideal| (or squared) over all points.
-// Delegates pixel→(R,η) to dg_pixel_to_REta.
+// Delegates pixel→(R,η) to dg_pixel_to_REta_corr.
 double calib_problem_function(unsigned n, const double *x, double *grad,
                               void *f_data_trial);
 
@@ -152,10 +153,11 @@ int calib_fit_tilt_bc_lsd(
     double parallaxIn, double tolParallax,
     double *parallaxOut,
     double trimmedMeanFraction,
-    const int *skipBin);
+    const int *skipBin,
+    const DGResidualCorr *residualCorr);
 
 // Compute per-bin strain residuals using fitted geometry.
-// Delegates pixel→(R,η) to dg_pixel_to_REta.
+// Delegates pixel→(R,η) to dg_pixel_to_REta_corr.
 void calib_correct_tilt_distortion(
     CalibContext *ctx,
     int nIndices, double MaxRad, double *YMean, double *ZMean,
@@ -166,7 +168,8 @@ void calib_correct_tilt_distortion(
     double p4, double p5, double p6, double p7, double p8, double p9, double p10,
     int OutlierIterations,
     int verbose, double *MeanDiffOut, double parallax,
-    const int *skipBin);
+    const int *skipBin,
+    const DGResidualCorr *residualCorr);
 
 // qsort comparator for doubles.
 int calib_cmp_double(const void *a, const void *b);

@@ -11,6 +11,7 @@
 //
 
 #include "MIDAS_Math.h"
+#include "DetectorGeometry.h"
 #include "ZarrReader.h"
 #include "PeaksFittingConsolidatedIO.h"
 #include "midas_version.h"
@@ -42,6 +43,8 @@
 #include "MIDAS_Limits.h"
 #define MAXNHKLS MAX_N_HKLS
 #define MAX_OVERLAPS_PER_IMAGE 10000
+
+static DGResidualCorr g_residualCorr = {NULL, 0, 0};
 #define DEFAULT_WIDTH 1000
 #define DEFAULT_LSD 1000000
 #define DEFAULT_PIXEL_SIZE 200
@@ -1913,6 +1916,7 @@ static ErrorCode parseZarrMetadata(const char *dataFile,
   int locPanelGapsY = -1;
   int locPanelGapsZ = -1;
   char *PanelShiftsFile = NULL;
+  char *ResidualCorrMapFN = NULL;
   int dataLoc = -1;
   int floodLoc = -1;
   int maskLoc = -1;
@@ -2159,6 +2163,10 @@ static ErrorCode parseZarrMetadata(const char *dataFile,
                "analysis/process/analysis_parameters/PanelShiftsFile/0") !=
         NULL)
       ReadZarrString(archive, count, &PanelShiftsFile, 4096);
+    if (strstr(fileInfo->name,
+               "analysis/process/analysis_parameters/ResidualCorrectionMap/0") !=
+        NULL)
+      ReadZarrString(archive, count, &ResidualCorrMapFN, 4096);
     if (strstr(fileInfo->name,
                "analysis/process/analysis_parameters/PanelGapsY/0") != NULL)
       locPanelGapsY = count;
@@ -2460,6 +2468,24 @@ static ErrorCode parseZarrMetadata(const char *dataFile,
   darkLoc += metadata->skipFrame;
   params->Width /= params->px;
 
+  // Load residual correction map if specified
+  if (ResidualCorrMapFN != NULL && ResidualCorrMapFN[0] != '\0') {
+    FILE *rcf = fopen(ResidualCorrMapFN, "rb");
+    if (rcf) {
+      int nPx = metadata->NrPixelsY * metadata->NrPixelsZ;
+      double *map = malloc(nPx * sizeof(double));
+      if (map && fread(map, sizeof(double), nPx, rcf) == (size_t)nPx) {
+        g_residualCorr.map = map;
+        g_residualCorr.NrPixelsY = metadata->NrPixelsY;
+        g_residualCorr.NrPixelsZ = metadata->NrPixelsZ;
+        printf("Loaded residual correction map: %s (%dx%d)\n",
+               ResidualCorrMapFN, metadata->NrPixelsY, metadata->NrPixelsZ);
+      } else { free(map); }
+      fclose(rcf);
+    }
+    free(ResidualCorrMapFN);
+  }
+
   free(fileInfo);
   zip_close(archive);
 
@@ -2687,6 +2713,7 @@ int main(int argc, char *argv[]) {
             (panelP2 * RNorm2) + params.p4 * RNorm4 * RNorm2 +
             params.p5 * RNorm4 + dipole + trefoil + 1.0;
         double Rt = Rad * DistortFunc / params.px;
+        Rt += dg_residual_corr_lookup(&g_residualCorr, (double)a, (double)b);
         Rt = Rt * (params.Lsd / panelLsd); // re-project to global Lsd plane
         for (int r = 0; r < params.nRingsThresh; r++) {
           if (Rt > ringRads[r] - params.Width &&

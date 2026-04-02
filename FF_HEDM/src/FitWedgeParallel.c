@@ -12,6 +12,7 @@
 //
 
 #include "MIDAS_Math.h"
+#include "DetectorGeometry.h"
 #include "Panel.h"
 #include <ctype.h>
 #include <limits.h>
@@ -29,6 +30,8 @@
 
 static Panel *panels = NULL;
 static int nPanels = 0;
+
+static DGResidualCorr g_residualCorr = {NULL, 0, 0};
 
 #define deg2rad 0.0174532925199433
 #define rad2deg 57.2957795130823
@@ -138,6 +141,7 @@ void YsZsCalc(double Lsd, double Ycen, double Zcen, double p0, double p1,
                 (panelP2 * (pow(RNorm, n2))) + p4 * pow(RNorm, 6.0) +
                 p5 * pow(RNorm, 4.0) + dipole + trefoil + 1;
   Rcorr = Rad * DistortFunc;
+  Rcorr += dg_residual_corr_lookup(&g_residualCorr, Ys, Zs) * px;
   Rcorr = Rcorr * (Lsd / panelLsd); // re-project to global Lsd plane
   *YOut = -Rcorr * sin(deg2rad * Eta);
   *ZOut = Rcorr * cos(deg2rad * Eta);
@@ -422,6 +426,23 @@ int main(int argc, char *argv[]) {
         fprintf(stderr, "Failed to load panel shifts from %s\n",
                 PanelShiftsFile);
       }
+    }
+  }
+
+  // Load residual correction map if specified
+  if (cfg.ResidualCorrMapFN[0] != '\0') {
+    FILE *rcf = fopen(cfg.ResidualCorrMapFN, "rb");
+    if (rcf) {
+      int nPx = cfg.NrPixelsY * cfg.NrPixelsZ;
+      double *map = malloc(nPx * sizeof(double));
+      if (map && fread(map, sizeof(double), nPx, rcf) == (size_t)nPx) {
+        g_residualCorr.map = map;
+        g_residualCorr.NrPixelsY = cfg.NrPixelsY;
+        g_residualCorr.NrPixelsZ = cfg.NrPixelsZ;
+        printf("Loaded residual correction map: %s (%dx%d)\n",
+               cfg.ResidualCorrMapFN, cfg.NrPixelsY, cfg.NrPixelsZ);
+      } else { free(map); }
+      fclose(rcf);
     }
   }
 

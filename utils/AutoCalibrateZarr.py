@@ -171,6 +171,9 @@ class CalibState:
     # Peak fitting mode (0=pV default, 1=TCH GSAS-II)
     peak_fit_mode: int = 0
 
+    # Residual correction map
+    residual_corr_map_fn: str = ''
+
     # Image / file
     nr_pixels_y: int = 0
     nr_pixels_z: int = 0
@@ -1728,6 +1731,8 @@ def run_integrator_validation(refined_params_file, data_file, dark_file,
                 f.write(f"MaskFile {state.mask_file}\n")
             if state.parallax_in != 0.0:
                 f.write(f"Parallax {state.parallax_in}\n")
+            if state.residual_corr_map_fn:
+                f.write(f"ResidualCorrectionMap {state.residual_corr_map_fn}\n")
 
         # --- 3. Run DetectorMapper ---
         logger.info("Running DetectorMapper...")
@@ -2080,6 +2085,10 @@ def runMIDAS(rawFN, state, n_iterations=40, mult_factor=5,
             if state.mask_file:
                 pf.write(f'MaskFile {state.mask_file}\n')
 
+            # Residual correction map
+            if state.residual_corr_map_fn:
+                pf.write(f'ResidualCorrectionMap {state.residual_corr_map_fn}\n')
+
             # Pass-through extra params from user's param file (last-wins
             # semantics: appending at the end overrides any earlier defaults)
             if state.extra_params:
@@ -2155,6 +2164,145 @@ def _make_temp_param_file(args, calibrant, filename_hints):
     return temp_fn
 
 
+def generate_residual_correction_map(corr_csv, state, nr_pixels_y, nr_pixels_z):
+    """Generate smooth residual distortion correction map from calibrant residuals.
+
+    Reads the .corr.csv produced by CalibrantIntegratorOMP, fits a smooth
+    thin-plate spline RBF to the radial residuals (DeltaR), evaluates it
+    on the full detector grid, and saves as a binary file.
+
+    Returns the output file path, or '' if generation failed.
+    """
+    try:
+        pass
+
+        with open(corr_csv) as f:
+            lines = f.readlines()
+        if len(lines) < 5:
+            logger.warning("Correction map: .corr.csv too short, skipping")
+            return ''
+
+        # Parse header for beam center
+        param_names = lines[0].strip().split(',')
+        param_vals = [float(v) for v in lines[1].strip().split(',')]
+        params = dict(zip(param_names, param_vals))
+        ybc = params.get('ybcFit', state.ybc)
+        zbc = params.get('zbcFit', state.zbc)
+        px = state.px
+
+        # Parse per-bin data
+        data_lines = [l.strip() for l in lines[4:] if l.strip() and not l.startswith('%')]
+        if len(data_lines) < 50:
+            logger.warning(f"Correction map: only {len(data_lines)} data points, skipping")
+            return ''
+        cols = np.array([[float(x) for x in l.split()] for l in data_lines])
+
+        outlier = cols[:, 7]
+        y_raw_um = cols[:, 8]  # YRawCorr in microns (centered)
+        z_raw_um = cols[:, 9]  # ZRawCorr in microns (centered)
+        delta_r = cols[:, 16]  # RadFit - IdealR in microns
+
+        mask = outlier == 0
+        y_raw_um = y_raw_um[mask]
+        z_raw_um = z_raw_um[mask]
+        delta_r = delta_r[mask]
+
+        if len(delta_r) < 50:
+            logger.warning(f"Correction map: only {np.sum(mask)} non-outlier points, skipping")
+            return ''
+
+        # YRawCorr/ZRawCorr are raw pixel coordinates (from dg_invert_REta_to_pixel)
+        y_px = y_raw_um
+        z_px = z_raw_um
+        # DeltaR is in microns; correction map stores ΔR in pixels
+        delta_r_px = delta_r / px
+
+        # Normalize coordinates for RBF stability
+        y_mean, y_std = np.mean(y_px), max(np.std(y_px), 1.0)
+        z_mean, z_std = np.mean(z_px), max(np.std(z_px), 1.0)
+        coords = np.column_stack([(y_px - y_mean) / y_std, (z_px - z_mean) / z_std])
+
+        # Run the RBF fitting + grid evaluation in a subprocess to avoid
+        # OpenMP runtime conflicts (scipy's MKL vs system libOMP from MIDAS).
+        import subprocess, tempfile, json
+        script = f"""
+import numpy as np, sys, json
+from scipy.interpolate import RBFInterpolator
+from scipy.ndimage import zoom
+
+data = np.load(sys.argv[1], allow_pickle=True)
+coords, delta_r_px = data['coords'], data['delta_r_px']
+y_px, z_px = data['y_px'], data['z_px']
+nr_pixels_y, nr_pixels_z = int(data['dims'][0]), int(data['dims'][1])
+
+smoothing = max(1.0, len(delta_r_px) * 0.001)
+rbf = RBFInterpolator(coords, delta_r_px, kernel='thin_plate_spline', smoothing=smoothing)
+
+y_lo = max(0.0, float(np.min(y_px)) - 10)
+y_hi = min(float(nr_pixels_y), float(np.max(y_px)) + 10)
+z_lo = max(0.0, float(np.min(z_px)) - 10)
+z_hi = min(float(nr_pixels_z), float(np.max(z_px)) + 10)
+n_grid = 200
+yg = np.linspace(y_lo, y_hi, n_grid)
+zg = np.linspace(z_lo, z_hi, n_grid)
+YG, ZG = np.meshgrid(yg, zg)
+y_mean, y_std = float(data['y_mean']), float(data['y_std'])
+z_mean, z_std = float(data['z_mean']), float(data['z_std'])
+gc = np.column_stack([(YG.ravel()-y_mean)/y_std, (ZG.ravel()-z_mean)/z_std])
+data_corr = rbf(gc).reshape(n_grid, n_grid)
+
+correction = np.zeros((nr_pixels_z, nr_pixels_y), dtype=np.float64)
+iy0, iy1 = max(0, int(y_lo)), min(nr_pixels_y, int(y_hi)+1)
+iz0, iz1 = max(0, int(z_lo)), min(nr_pixels_z, int(z_hi)+1)
+ny, nz = iy1-iy0, iz1-iz0
+up = zoom(data_corr, (nz/n_grid, ny/n_grid), order=1)[:nz,:ny]
+correction[iz0:iz0+up.shape[0], iy0:iy0+up.shape[1]] = up
+correction.tofile(sys.argv[2])
+rms = float(np.sqrt(np.mean(correction[correction!=0]**2))) if np.any(correction!=0) else 0
+print(json.dumps({{'rms': rms, 'max_abs': float(np.max(np.abs(correction)))}}))
+"""
+        with tempfile.NamedTemporaryFile(suffix='.npz', delete=False) as tf:
+            npz_path = tf.name
+            np.savez(tf, coords=coords, delta_r_px=delta_r_px,
+                     y_px=y_px, z_px=z_px,
+                     dims=np.array([nr_pixels_y, nr_pixels_z]),
+                     y_mean=y_mean, y_std=y_std, z_mean=z_mean, z_std=z_std)
+
+        out_fn = corr_csv.replace('.corr.csv', '.residual_corr.bin')
+        sub_env = os.environ.copy()
+        sub_env['OMP_NUM_THREADS'] = '1'
+        sub_env.pop('KMP_DUPLICATE_LIB_OK', None)
+        result = subprocess.run(
+            [sys.executable, '-c', script, npz_path, out_fn],
+            capture_output=True, text=True, env=sub_env, timeout=60)
+        os.unlink(npz_path)
+
+        if result.returncode != 0:
+            logger.warning(f"Correction map subprocess failed: {result.stderr[-500:]}")
+            return ''
+
+        info = json.loads(result.stdout.strip())
+        rms = info['rms']
+
+        # File already saved by subprocess
+        logger.info(f"Generated residual correction map: {out_fn} "
+                    f"({nr_pixels_y}x{nr_pixels_z}, RMS={rms:.4f} px)")
+        print(f"\n  Residual correction map: {out_fn}")
+        print(f"  Map size: {nr_pixels_y}x{nr_pixels_z}, "
+              f"RMS correction: {rms*px:.1f} µm ({rms:.4f} px)")
+
+        return out_fn
+
+    except ImportError as e:
+        logger.warning(f"Correction map generation requires scipy: {e}")
+        return ''
+    except Exception as e:
+        logger.warning(f"Correction map generation failed: {e}")
+        import traceback
+        traceback.print_exc()
+        return ''
+
+
 def main():
     """Main function to run the automated calibration."""
     try:
@@ -2203,6 +2351,8 @@ def main():
                             help='Initial guess for parallax (µm)')
         parser.add_argument('--tol-parallax', type=float, default=None,
                             help='Tolerance for parallax bounds (µm)')
+        parser.add_argument('--fit-residual-map', type=int, default=1,
+                            help='Generate and apply residual correction map (0=no, 1=yes)')
         parser.add_argument('--peak-fit-mode', type=int, default=None,
                             help='Peak fitting mode: 0=pV (default), 1=TCH (GSAS-II)')
         parser.add_argument('--trimmed-mean-fraction', type=float, default=0.75,
@@ -3115,6 +3265,31 @@ def main():
                  remove_outliers_between_iters=args.remove_outliers_between_iters,
                  iter_offset=stage1_iters)
 
+        # ---- Stage 3: Residual correction map ----
+        # Find the .corr.csv from Stage 2 (C code may add extra dots in name)
+        corr_file_s2 = f"{rawFN}.corr.csv"
+        if not os.path.exists(corr_file_s2):
+            import glob
+            candidates = sorted(glob.glob(
+                os.path.join(os.path.dirname(rawFN),
+                             os.path.basename(rawFN).replace('.', '*') + '.corr.csv')))
+            # Exclude integrator_* files
+            candidates = [c for c in candidates if 'integrator_' not in os.path.basename(c)]
+            if candidates:
+                corr_file_s2 = candidates[0]
+        if args.fit_residual_map and os.path.exists(corr_file_s2):
+            print(f"\n{'='*60}")
+            print(f"  Stage 3: Residual correction map generation + re-optimize")
+            print(f"{'='*60}")
+
+            corr_map_fn = generate_residual_correction_map(
+                corr_file_s2, state, NrPixelsY, NrPixelsZ)
+
+            if corr_map_fn:
+                state.residual_corr_map_fn = os.path.abspath(corr_map_fn)
+                logger.info(f"Correction map will be included in output parameters "
+                           f"and integrator validation.")
+
         # ---- Generate final results ----
         logger.info("Generating final results data")
         corr_file = f"{rawFN}.corr.csv"
@@ -3240,6 +3415,8 @@ def main():
             final_params['p10'] = state.p10
         if state.parallax_in != 0.0:
             final_params['Parallax'] = state.parallax_in
+        if state.residual_corr_map_fn:
+            final_params['ResidualCorrectionMap'] = state.residual_corr_map_fn
 
         if state.mask_file:
             final_params['MaskFile'] = state.mask_file

@@ -44,6 +44,7 @@ void midas_config_defaults(MIDASConfig *cfg) {
   cfg->SubPixelLevel = 1;
   cfg->SubPixelCardinalWidth = 5.0;
   cfg->Width = 1500;  // ring half-width in µm (Width/px = pixels)
+  cfg->ResidualCorrMapFN[0] = '\0';
 }
 
 void midas_apply_tol_defaults(MIDASConfig *cfg) {
@@ -170,6 +171,7 @@ int midas_parse_params(const char *filename, MIDASConfig *cfg) {
     }
 
     // ── Masking ──
+    if (param_str(aline, "ResidualCorrectionMap", cfg->ResidualCorrMapFN, sizeof(cfg->ResidualCorrMapFN))) continue;
     if (key_match(aline, "MaskFile")) {
       sscanf(aline, "%*s %s", cfg->MaskFN);
       cfg->makeMap = 3;

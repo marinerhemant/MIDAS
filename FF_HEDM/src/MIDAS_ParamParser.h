@@ -149,6 +149,7 @@ typedef struct {
   char   MaskFN[MAX_LINE_LENGTH];
   char   GapFN[MAX_LINE_LENGTH];
   char   BadPxFN[MAX_LINE_LENGTH];
+  char   ResidualCorrMapFN[4096];
 
   // ── Omega / Box ranges ──
   int    nOmeRanges;

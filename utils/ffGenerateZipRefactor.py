@@ -192,8 +192,8 @@ def write_analysis_parameters(z_groups, config):
         "PanelGapsY", "PanelGapsZ", "doPeakFit", "nIterations", "NormalizeRingWeights", "OutlierIterations", 
         "WeightByRadius", "WeightByFitSNR", "L2Objective", "PerPanelLsd", "PerPanelDistortion", "FixPanelID", 
         "MinIndicesForFit", "LocalMaximaOnly", "FitParallax" }
-    FORCE_STRING_PARAMS = { "GapFile", "BadPxFile", "ResultFolder", "PanelShiftsFile", "MaskFile", 
-        "GrainsFile" }
+    FORCE_STRING_PARAMS = { "GapFile", "BadPxFile", "ResultFolder", "PanelShiftsFile", "MaskFile",
+        "GrainsFile", "ResidualCorrectionMap" }
     RENAME_MAP = { "OmegaStep": "step", "Completeness": "MinMatchesToAcceptFrac", "px": "PixelSize", 
         "LatticeConstant": "LatticeParameter", "OverAllRingToIndex": "OverallRingToIndex", 
         "resultFolder": "ResultFolder", "OmegaRange": "OmegaRanges", "BoxSize": "BoxSizes" }
