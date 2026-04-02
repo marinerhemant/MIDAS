@@ -962,7 +962,7 @@ def process_calibrant_output(output_file, state):
                     state.p9 = float(parts[1])
                 if 'p10 ' in line:
                     state.p10 = float(parts[1])
-                if 'parallax ' in line:
+                if 'Parallax ' in line:
                     state.parallax_in = float(parts[1])
                 if 'RhoD ' in line:
                     state.rhod = float(parts[1])
@@ -1929,10 +1929,14 @@ def runMIDAS(rawFN, state, n_iterations=40, mult_factor=5,
                 pf.write(f'RingsToExclude {ringNr}\n')
             if state.max_ring_number > 0:
                 pf.write(f'MaxRingNumber {state.max_ring_number}\n')
-            if state.fit_parallax > 0:
+            if state.fit_parallax > 0 and stage != 1:
                 pf.write(f'FitParallax {state.fit_parallax}\n')
                 pf.write(f'Parallax {state.parallax_in}\n')
                 pf.write(f'tolParallax {state.tol_parallax}\n')
+            elif state.fit_parallax > 0 and stage == 1:
+                # Stage 1: pass initial parallax value but don't fit it
+                # (parallax is nearly degenerate with Lsd at small angles)
+                pf.write(f'Parallax {state.parallax_in}\n')
             if state.peak_fit_mode > 0:
                 pf.write(f'PeakFitMode {state.peak_fit_mode}\n')
 

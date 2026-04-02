@@ -1068,13 +1068,21 @@ int main(int argc, char *argv[]) {
   int postPerturbGrace = 0;
 
   // Initial parameters (for bound anchoring)
-  double initParams[13];
+  // Layout must match CalibrationCore.c expectations:
+  //   0-4: Lsd, ybc, zbc, ty, tz
+  //   5-8: p0, p1, p2, p3
+  //   9-11: p4, p5, p6
+  //   12-15: p7, p8, p9, p10
+  //   16: parallax
+  double initParams[17];
   initParams[0] = Lsd;   initParams[1] = ybc;  initParams[2] = zbc;
   initParams[3] = tyin;  initParams[4] = tzin;
   initParams[5] = p0in;  initParams[6] = p1in; initParams[7] = p2in;
   initParams[8] = p3in;  initParams[9] = p4in; initParams[10] = p5in;
   initParams[11] = p6in;
-  initParams[12] = parallaxIn;
+  initParams[12] = p7in; initParams[13] = p8in;
+  initParams[14] = p9in; initParams[15] = p10in;
+  initParams[16] = parallaxIn;
   Panel *initPanels = NULL;
   if (nPanels > 0) {
     initPanels = malloc(nPanels * sizeof(Panel));
@@ -1102,7 +1110,9 @@ int main(int argc, char *argv[]) {
       initParams[3] = tyin; initParams[4] = tzin;
       initParams[5] = p0in; initParams[6] = p1in; initParams[7] = p2in;
       initParams[8] = p3in; initParams[9] = p4in; initParams[10] = p5in;
-      initParams[11] = p6in; initParams[12] = parallaxIn;
+      initParams[11] = p6in; initParams[12] = p7in; initParams[13] = p8in;
+      initParams[14] = p9in; initParams[15] = p10in;
+      initParams[16] = parallaxIn;
     } else {
       printf("  Checkpoint file not found — starting from scratch.\n");
     }
@@ -1603,6 +1613,7 @@ int main(int argc, char *argv[]) {
     if (p8in != 0.0) printf("p8 %e\n", p8in);
     if (p9in != 0.0) printf("p9 %e\n", p9in);
     if (p10in != 0.0) printf("p10 %e\n", p10in);
+    if (FitParallax || parallaxIn != 0.0) printf("Parallax %e\n", parallaxIn);
     printf("RhoD %f\n", MaxRingRad);
     printf("MeanStrain %f\n", MeanDiff * 1e6);
     printf("StdStrain %f\n", StdDiff * 1e6);
