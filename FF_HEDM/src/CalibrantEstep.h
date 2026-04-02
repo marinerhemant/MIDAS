@@ -28,6 +28,7 @@ typedef struct {
     int TransOpt[10];
     int SubPixelLevel;
     double SubPixelCardinalWidth;
+    int GradientCorrection;
     int peakFitMode;
     double DoubletSeparation;
     double Wavelength;

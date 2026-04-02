@@ -236,7 +236,8 @@ static int estep_build_and_integrate(
 
   integration_apply_map(pxList, nPxList, totalRBins, nEtaBins,
                         (double *)image, g->NrPixelsY, g->NrPixelsZ,
-                        (double *)dark, profiles, norm);
+                        (double *)dark, g->ybc, g->zbc, g->GradientCorrection,
+                        profiles, norm);
 
   // Normalize profiles by area weight
   for (long long b = 0; b < nTotalBins; b++) {
@@ -846,6 +847,7 @@ int main(int argc, char *argv[]) {
   double ConvergenceThresholdPPM = cfg.ConvergenceThresholdPPM;
   int SkipVerification = cfg.SkipVerification;
   int ResumeFromCheckpoint = cfg.ResumeFromCheckpoint;
+  int GradientCorrection = cfg.GradientCorrection;
   int convergenceCount = 0;  // consecutive iters below threshold
 
   printf("\n=== CalibrantIntegratorOMP ===\n");
@@ -1176,6 +1178,7 @@ int main(int argc, char *argv[]) {
       .NrPixelsY = NrPixelsY, .NrPixelsZ = NrPixelsZ, .NrPixels = NrPixels,
       .NrTransOpt = NrTransOpt, .SubPixelLevel = cfg.SubPixelLevel,
       .SubPixelCardinalWidth = cfg.SubPixelCardinalWidth,
+      .GradientCorrection = GradientCorrection,
       .peakFitMode = peakFitMode, .DoubletSeparation = DoubletSeparation,
       .Wavelength = Wavelength, .Width = cfg.Width,
       .AdaptiveEtaBins = cfg.AdaptiveEtaBins,
@@ -1239,6 +1242,7 @@ int main(int argc, char *argv[]) {
       .NrPixelsY = NrPixelsY, .NrPixelsZ = NrPixelsZ, .NrPixels = NrPixels,
       .NrTransOpt = NrTransOpt, .SubPixelLevel = cfg.SubPixelLevel,
       .SubPixelCardinalWidth = cfg.SubPixelCardinalWidth,
+      .GradientCorrection = GradientCorrection,
       .peakFitMode = peakFitMode, .DoubletSeparation = DoubletSeparation,
       .Wavelength = Wavelength, .Width = cfg.Width,
       .AdaptiveEtaBins = cfg.AdaptiveEtaBins,
@@ -1579,6 +1583,7 @@ int main(int argc, char *argv[]) {
       .NrPixelsY = NrPixelsY, .NrPixelsZ = NrPixelsZ, .NrPixels = NrPixels,
       .NrTransOpt = NrTransOpt, .SubPixelLevel = cfg.SubPixelLevel,
       .SubPixelCardinalWidth = cfg.SubPixelCardinalWidth,
+      .GradientCorrection = GradientCorrection,
       .peakFitMode = peakFitMode, .DoubletSeparation = DoubletSeparation,
       .Wavelength = Wavelength, .Width = cfg.Width,
       .AdaptiveEtaBins = cfg.AdaptiveEtaBins,

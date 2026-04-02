@@ -1724,6 +1724,7 @@ def run_integrator_validation(refined_params_file, data_file, dark_file,
             f.write(f"EtaMax 180\n")
             f.write(f"EtaBinSize 1\n")
             f.write(f"Normalize 1\n")
+            f.write(f"GradientCorrection 1\n")
             f.write(f"Folder {work_dir}\n")
             for transOpt in state.im_trans_opt:
                 f.write(f"ImTransOpt {transOpt}\n")
@@ -1733,6 +1734,20 @@ def run_integrator_validation(refined_params_file, data_file, dark_file,
                 f.write(f"Parallax {state.parallax_in}\n")
             if state.residual_corr_map_fn:
                 f.write(f"ResidualCorrectionMap {state.residual_corr_map_fn}\n")
+
+            # Panel parameters — needed for DetectorMapper to apply per-panel corrections
+            if state.panel_grid is not None:
+                pg = state.panel_grid
+                f.write(f"NPanelsY {pg.n_panels_y}\n")
+                f.write(f"NPanelsZ {pg.n_panels_z}\n")
+                f.write(f"PanelSizeY {pg.panel_size_y}\n")
+                f.write(f"PanelSizeZ {pg.panel_size_z}\n")
+                f.write(f"PanelGapsY {' '.join(str(g) for g in pg.gaps_y)}\n")
+                f.write(f"PanelGapsZ {' '.join(str(g) for g in pg.gaps_z)}\n")
+                if state.panel_shifts_file:
+                    shifts_path = os.path.abspath(state.panel_shifts_file)
+                    if os.path.exists(shifts_path):
+                        f.write(f"PanelShiftsFile {shifts_path}\n")
 
         # --- 3. Run DetectorMapper ---
         logger.info("Running DetectorMapper...")
@@ -2055,6 +2070,7 @@ def runMIDAS(rawFN, state, n_iterations=40, mult_factor=5,
 
             # CalibrantIntegratorOMP parameters
             pf.write('RBinWidth 4\n')
+            pf.write('GradientCorrection 1\n')
 
             # Panel parameters — only in stage 2 or stage 0
             if stage != 1:
@@ -3289,6 +3305,31 @@ def main():
                 state.residual_corr_map_fn = os.path.abspath(corr_map_fn)
                 logger.info(f"Correction map will be included in output parameters "
                            f"and integrator validation.")
+
+                # Re-optimize with the residual correction map applied
+                stage3_iters = max(args.n_iterations, 5)
+                print(f"\n{'='*60}")
+                print(f"  Stage 3b: Re-optimize with residual correction map — "
+                      f"{stage3_iters} iterations")
+                print(f"{'='*60}")
+
+                runMIDAS(rawFN, state,
+                         n_iterations=stage3_iters,
+                         mult_factor=multFactor,
+                         doublet_separation=args.doublet_separation,
+                         outlier_iterations=args.outlier_iterations,
+                         eta_bin_size=args.eta_bin_size,
+                         max_width=maxW,
+                         n_cpus=n_cpus,
+                         stage=2,
+                         stage_label='[Stage 3] ',
+                         trimmed_mean_fraction=args.trimmed_mean_fraction,
+                         remove_outliers_between_iters=args.remove_outliers_between_iters,
+                         iter_offset=stage1_iters + args.n_iterations)
+
+                logger.info(f"Stage 3 result: Lsd={state.lsd:.1f}, "
+                             f"MeanStrain={state.mean_strain}, "
+                             f"StdStrain={state.std_strain}")
 
         # ---- Generate final results ----
         logger.info("Generating final results data")

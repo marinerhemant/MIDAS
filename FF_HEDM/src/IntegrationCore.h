@@ -13,7 +13,12 @@
 // Apply pixel-bin mapping to image data, producing 1D intensity profiles.
 //
 // For each (rBin, etaBin), sums (image[pixel] - dark[pixel]) * weight
-// over all pixels mapped to that bin.
+// over all pixels mapped to that bin.  Pixel intensities are read via
+// bilinear interpolation at the sub-pixel (y, z) stored in MapPixelData.
+//
+// When GradientCorrection=1 and deltaR != 0, the read position is shifted
+// along the radial direction from (BC_y, BC_z) by -deltaR to sample at
+// the R-bin center, suppressing cardinal-angle aliasing.
 //
 // profiles_out[rBin * nEtaBins + etaBin] = sum of (pixel_value * frac)
 // norm_out[rBin * nEtaBins + etaBin]     = sum of areaWeight (for normalization)
@@ -26,6 +31,7 @@ void integration_apply_map(
     int nRBins, int nEtaBins,
     const double *image, int NrPixelsY, int NrPixelsZ,
     const double *dark,
+    double BC_y, double BC_z, int GradientCorrection,
     double *profiles_out,
     double *norm_out);
 
