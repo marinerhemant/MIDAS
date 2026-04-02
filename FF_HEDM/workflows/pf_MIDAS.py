@@ -478,6 +478,8 @@ def parallel_peaks(layerNr, positions, startNrFirstLayer, nrFilesPerSweep, topdi
             outFN2 = os.path.join(topdir, f'InputAllExtraInfoFittingAll{layerNr-1}.csv')
             t_st = time.time()
             
+            # Fill NaN (from ragged C output lines) with 0 before writing
+            dfAllF = dfAllF.fillna(0)
             # Handle different normalization modes
             if NormalizeIntensities == 0:
                 dfAllF.to_csv(outFN2, sep=' ', header=True, float_format='%.6f', index=False)
