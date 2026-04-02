@@ -317,12 +317,16 @@ def find_closest_observed_spots(data_dir, scan_nr, theor_y, theor_z, theor_omega
     if not os.path.exists(fn):
         return None
 
-    obs = np.genfromtxt(fn, skip_header=1, invalid_raise=False)
+    # Read only the columns we need (0-6) — handles ragged rows gracefully
+    import warnings
+    with warnings.catch_warnings():
+        warnings.simplefilter('ignore')
+        obs = np.genfromtxt(fn, skip_header=1, usecols=range(7),
+                            invalid_raise=False)
     if obs is None or len(obs) == 0:
         return None
     if obs.ndim == 1:
         obs = obs.reshape(1, -1)
-    # Drop rows with NaN in critical columns (from ragged lines)
     valid_rows = ~np.isnan(obs[:, 0]) & ~np.isnan(obs[:, 1]) & ~np.isnan(obs[:, 2])
     obs = obs[valid_rows]
     if len(obs) == 0:
@@ -819,6 +823,13 @@ class SpotDiagPlotter:
                     self.data_dir, exp_scan, y_um, z_um, omega, eta, ring,
                     param_file=self.param_file)
 
+            # Marker styles for the 3 closest-match types
+            match_markers = {
+                'pos':   {'color': 'cyan',    'marker': 's', 'label': 'closest pos'},
+                'omega': {'color': 'magenta', 'marker': '^', 'label': 'closest ome'},
+                'ia':    {'color': 'yellow',  'marker': 'D', 'label': 'closest IA'},
+            }
+
             # Build info text for display
             info_lines = [
                 f'Simulated: Y={y_um:.0f}  Z={z_um:.0f}  ome={omega:.2f}  '
@@ -838,13 +849,6 @@ class SpotDiagPlotter:
                         f'ome={c["omega"]:.2f}  ID={c["spotID"]}  [{c["label"]}]')
             info_text = '\n'.join(info_lines)
             print('\n  ' + info_text.replace('\n', '\n  '))
-
-            # Marker styles for the 3 closest-match types
-            match_markers = {
-                'pos':   {'color': 'cyan',    'marker': 's', 'label': 'closest pos'},
-                'omega': {'color': 'magenta', 'marker': '^', 'label': 'closest ome'},
-                'ia':    {'color': 'yellow',  'marker': 'D', 'label': 'closest IA'},
-            }
 
             # --- Intensity profile ---
             axes[2, 1].clear()
