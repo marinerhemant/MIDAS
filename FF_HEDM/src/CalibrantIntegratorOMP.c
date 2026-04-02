@@ -1124,7 +1124,7 @@ int main(int argc, char *argv[]) {
   FILE *convHistFP = fopen(convHistFN, iterOffset > 0 ? "a" : "w");
   if (convHistFP && iterOffset == 0)
     fprintf(convHistFP, "Iter,MeanStrain_ppm,StdStrain_ppm,Lsd,ybc,zbc,"
-                        "ty,tz,p0,p1,p2,p3,p4,p5,p6\n");
+                        "ty,tz,p0,p1,p2,p3,p4,p5,p6,p7,p8,p9,p10\n");
 
   // nIterations=0: evaluate-only mode — run E-step once, skip optimization
   if (nIterations == 0) {

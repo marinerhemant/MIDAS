@@ -146,7 +146,7 @@ def run_calibration(param_file: Path, nCPUs: int, work_dir: Path) -> dict:
                 except ValueError:
                     pass
 
-    required = ['Lsd', 'ty', 'tz', 'p0', 'p1', 'p2', 'p3', 'p4', 'BCy', 'BCz']
+    required = ['Lsd', 'ty', 'tz', 'p0', 'p1', 'p2', 'p3', 'p4', 'p5', 'p6', 'BCy', 'BCz']
     missing = [k for k in required if k not in params]
     if missing:
         print(f"  WARNING: Could not parse parameters: {missing}")
@@ -295,7 +295,8 @@ def build_integrator_param_file(calib_param_file: Path, optimized: dict,
         overrides['Lsd'] = f"{optimized['Lsd']:.12f}"
     if 'BCy' in optimized and 'BCz' in optimized:
         overrides['BC'] = f"{optimized['BCy']:.12f} {optimized['BCz']:.12f}"
-    for key in ['ty', 'tz', 'p0', 'p1', 'p2', 'p3', 'p4']:
+    for key in ['ty', 'tz', 'p0', 'p1', 'p2', 'p3', 'p4', 'p5', 'p6',
+                 'p7', 'p8', 'p9', 'p10']:
         if key in optimized:
             overrides[key] = f"{optimized[key]:.12f}"
 
@@ -852,7 +853,8 @@ def main():
             optimized = run_calibration(calib_param, args.nCPUs, calib_dir)
 
             print("\n  Optimized geometry:")
-            for k in ['Lsd', 'BCy', 'BCz', 'ty', 'tz', 'p0', 'p1', 'p2', 'p3', 'p4']:
+            for k in ['Lsd', 'BCy', 'BCz', 'ty', 'tz', 'p0', 'p1', 'p2', 'p3', 'p4',
+                      'p5', 'p6', 'p7', 'p8', 'p9', 'p10']:
                 if k in optimized:
                     print(f"    {k:6s} {optimized[k]:.12f}")
 

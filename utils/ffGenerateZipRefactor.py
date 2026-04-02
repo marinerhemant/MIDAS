@@ -182,14 +182,16 @@ def write_analysis_parameters(z_groups, config):
         "EtaMin", "MinEta", "EtaMax", "X", "Y", "Z", "U", "V", "W", "SHpL", "Polariz", "MaxOmeSpotIDsToIndex", 
         "MinOmeSpotIDsToIndex", "BeamThickness", "Wedge", "Rsample", "Hbeam", "Vsample", "RhoD", "MaxRingRad", 
         "Lsd", "Wavelength", "Width", "WidthTthPx", "UpperBoundThreshold", "p4", "p5", "Parallax", "p3", "p2", 
-        "p1", "p0", "tz", "ty", "tx", "WeightMask", "WeightFitRMSE", "QBinSize", "QMin", "QMax" }
+        "p1", "p0", "p6", "p7", "p8", "p9", "p10", "tz", "ty", "tx",
+        "tolP5", "tolP6", "tolP7", "tolP8", "tolP9", "tolP10", "tolParallax",
+        "WeightMask", "WeightFitRMSE", "QBinSize", "QMin", "QMax" }
     FORCE_INT_PARAMS = { "Twins", "MaxNFrames", "DoFit", "DiscModel", "UseMaximaPositions", "UsePixelOverlap", 
         "MaxNrPx", "MinNrPx", "MaxNPeaks", "PhaseNr", "NumPhases", "MinNrSpots", "UseFriedelPairs", "OverallRingToIndex", 
         "SpaceGroup", "LayerNr", "DoFullImage", "SkipFrame", "SumImages", "Normalize", "SaveIndividualFrames", 
         "OmegaSumFrames", "NrFilesPerSweep", "NPanelsY", "NPanelsZ", "Padding", "PanelSizeY", "PanelSizeZ", 
         "PanelGapsY", "PanelGapsZ", "doPeakFit", "nIterations", "NormalizeRingWeights", "OutlierIterations", 
         "WeightByRadius", "WeightByFitSNR", "L2Objective", "PerPanelLsd", "PerPanelDistortion", "FixPanelID", 
-        "MinIndicesForFit", "LocalMaximaOnly" }
+        "MinIndicesForFit", "LocalMaximaOnly", "FitParallax" }
     FORCE_STRING_PARAMS = { "GapFile", "BadPxFile", "ResultFolder", "PanelShiftsFile", "MaskFile", 
         "GrainsFile" }
     RENAME_MAP = { "OmegaStep": "step", "Completeness": "MinMatchesToAcceptFrac", "px": "PixelSize", 
