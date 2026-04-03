@@ -398,8 +398,8 @@ class HEDMForwardModel(nn.Module):
         ], dim=-2)
 
         # G_cart = B @ hkls_int^T  =>  (..., M, 3)
-        # hkls_int is (M, 3), B is (..., 3, 3)
-        hkls_cart = torch.einsum("...ij,mj->...mi", B, self.hkls_int)
+        # hkls_int is (M, 3), B is (..., 3, 3) -- match dtype
+        hkls_cart = torch.einsum("...ij,mj->...mi", B, self.hkls_int.to(B.dtype))
 
         # d-spacing = 1 / |G_cart|
         g_norm = torch.norm(hkls_cart, dim=-1).clamp(min=self.epsilon)
