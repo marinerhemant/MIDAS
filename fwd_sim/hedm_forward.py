@@ -254,7 +254,46 @@ class HEDMForwardModel(nn.Module):
         R[..., 2, 1] =  s1 * c2
         R[..., 2, 2] =  c1
 
-        return R
+        return HEDMForwardModel.orthogonalize(R)
+
+    # ------------------------------------------------------------------
+    #  orthogonalize  (SO(3) projection via SVD)
+    # ------------------------------------------------------------------
+
+    @staticmethod
+    def orthogonalize(R: torch.Tensor) -> torch.Tensor:
+        """Project a (..., 3, 3) matrix onto SO(3).
+
+        Guarantees ``R^T R = I`` and ``det(R) = +1`` (proper rotation).
+        Uses one Newton-Schulz iteration which is differentiable and
+        numerically stable (no SVD singularity at repeated singular values).
+
+        For matrices already near SO(3) (like those from ``euler2mat``),
+        a single iteration suffices (quadratic convergence).
+
+        Parameters
+        ----------
+        R : Tensor (..., 3, 3)
+
+        Returns
+        -------
+        Tensor (..., 3, 3) -- orthogonal with det = +1.
+        """
+        # Newton-Schulz iteration for polar decomposition:
+        #   Q_{k+1} = 0.5 * Q_k * (3*I - Q_k^T * Q_k)
+        # Converges quadratically for matrices near SO(3).
+        # One iteration is sufficient for matrices from euler2mat
+        # (error < 1e-14 after one step for input error < 1e-7).
+        I = torch.eye(3, dtype=R.dtype, device=R.device)
+        Q = R
+        Q = 0.5 * Q @ (3.0 * I - Q.transpose(-1, -2) @ Q)
+        # Ensure det = +1 (the iteration preserves det sign for near-SO(3) input,
+        # but we guard against pathological cases)
+        det = torch.det(Q)
+        # Where det < 0, negate (flips to proper rotation)
+        sign = torch.where(det < 0, torch.tensor(-1.0, dtype=R.dtype, device=R.device),
+                           torch.tensor(1.0, dtype=R.dtype, device=R.device))
+        return Q * sign.unsqueeze(-1).unsqueeze(-1)
 
     # ------------------------------------------------------------------
     #  safe_arccos

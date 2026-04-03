@@ -30,6 +30,11 @@ inline double sin_cos_to_angle(double s, double c) {
   return (s >= 0.0) ? acos(c) : 2.0 * M_PI - acos(c);
 }
 
+// Forward declarations for cross-referencing functions
+inline void OrientMat2Quat(double OrientMat[9], double Quat[4]);
+inline void QuatToOrientMat33(double Quat[4], double R[3][3]);
+inline void OrthogonalizeOrientMat(double R[3][3]);
+
 inline void normalizeQuat(double quat[4]) {
   double norm = sqrt(quat[0] * quat[0] + quat[1] * quat[1] + quat[2] * quat[2] +
                      quat[3] * quat[3]);
@@ -428,4 +433,35 @@ inline void Euler2OrientMat(double Euler[3], double m_out[3][3]) {
   m_out[2][0] = sth * sph;
   m_out[2][1] = cth * sph;
   m_out[2][2] = cph;
+  OrthogonalizeOrientMat(m_out);
+}
+
+// Convert unit quaternion (w,x,y,z) to 3x3 rotation matrix.
+// Assumes the quaternion is normalized; if not, normalize first.
+inline void QuatToOrientMat33(double Quat[4], double R[3][3]) {
+  double q0 = Quat[0], q1 = Quat[1], q2 = Quat[2], q3 = Quat[3];
+  double q11 = q1 * q1, q22 = q2 * q2, q33 = q3 * q3;
+  double q01 = q0 * q1, q02 = q0 * q2, q03 = q0 * q3;
+  double q12 = q1 * q2, q13 = q1 * q3, q23 = q2 * q3;
+  R[0][0] = 1 - 2 * (q22 + q33);
+  R[0][1] = 2 * (q12 - q03);
+  R[0][2] = 2 * (q13 + q02);
+  R[1][0] = 2 * (q12 + q03);
+  R[1][1] = 1 - 2 * (q11 + q33);
+  R[1][2] = 2 * (q23 - q01);
+  R[2][0] = 2 * (q13 - q02);
+  R[2][1] = 2 * (q23 + q01);
+  R[2][2] = 1 - 2 * (q11 + q22);
+}
+
+// Project a 3x3 matrix onto SO(3) via quaternion normalization roundtrip.
+// This guarantees R^T R = I and det(R) = +1.
+inline void OrthogonalizeOrientMat(double R[3][3]) {
+  double flat[9];
+  for (int i = 0; i < 3; i++)
+    for (int j = 0; j < 3; j++)
+      flat[i * 3 + j] = R[i][j];
+  double q[4];
+  OrientMat2Quat(flat, q);  // converts + normalizes quaternion
+  QuatToOrientMat33(q, R);  // back to guaranteed-orthogonal matrix
 }

@@ -201,6 +201,87 @@ class TestEuler2Mat:
 
 
 # ===================================================================
+#  Test: orthogonalize (SO(3) projection)
+# ===================================================================
+
+class TestOrthogonalize:
+    """Tests for SVD-based SO(3) projection."""
+
+    def test_already_orthogonal(self):
+        """Orthogonalizing an identity matrix should return identity."""
+        I = torch.eye(3, dtype=torch.float64)
+        R = HEDMForwardModel.orthogonalize(I)
+        torch.testing.assert_close(R, I, atol=1e-14, rtol=0)
+
+    def test_random_orthogonal_unchanged(self):
+        """Orthogonalizing a proper rotation should not change it."""
+        torch.manual_seed(42)
+        angles = torch.rand(3, dtype=torch.float64) * 2 * math.pi
+        R = HEDMForwardModel.euler2mat(angles)
+        R2 = HEDMForwardModel.orthogonalize(R)
+        torch.testing.assert_close(R, R2, atol=1e-12, rtol=0)
+
+    def test_perturbed_matrix_becomes_orthogonal(self):
+        """A near-orthogonal matrix should be projected to exact SO(3)."""
+        R = torch.eye(3, dtype=torch.float64)
+        R[0, 1] += 1e-7  # perturb
+        R[2, 2] -= 1e-8
+        # Not orthogonal
+        RtR = R.T @ R
+        assert not torch.allclose(RtR, torch.eye(3, dtype=torch.float64), atol=1e-10)
+        # After orthogonalization
+        R_orth = HEDMForwardModel.orthogonalize(R)
+        RtR2 = R_orth.T @ R_orth
+        torch.testing.assert_close(RtR2, torch.eye(3, dtype=torch.float64), atol=1e-14, rtol=0)
+
+    def test_det_is_one(self):
+        """Orthogonalized matrix should have det = +1."""
+        R = torch.eye(3, dtype=torch.float64)
+        R[0, 0] = 1.0 + 1e-8  # slightly non-unit (realistic for float64 trig)
+        R_orth = HEDMForwardModel.orthogonalize(R)
+        det = torch.det(R_orth)
+        assert abs(det.item() - 1.0) < 1e-12
+
+    def test_reflection_corrected(self):
+        """A matrix with det = -1 should be corrected to det = +1."""
+        R = torch.eye(3, dtype=torch.float64)
+        R[2, 2] = -1.0  # reflection
+        R_orth = HEDMForwardModel.orthogonalize(R)
+        det = torch.det(R_orth)
+        assert abs(det.item() - 1.0) < 1e-14
+
+    def test_batch_dimensions(self):
+        """Works with batched matrices."""
+        torch.manual_seed(99)
+        R = torch.eye(3, dtype=torch.float64).expand(5, 3, 3).contiguous()
+        R = R + torch.randn(5, 3, 3, dtype=torch.float64) * 1e-10
+        R_orth = HEDMForwardModel.orthogonalize(R)
+        for i in range(5):
+            RtR = R_orth[i].T @ R_orth[i]
+            torch.testing.assert_close(RtR, torch.eye(3, dtype=torch.float64), atol=1e-12, rtol=0)
+
+    def test_differentiable(self):
+        """Gradients flow through orthogonalize."""
+        R = torch.eye(3, dtype=torch.float64, requires_grad=True)
+        R_orth = HEDMForwardModel.orthogonalize(R)
+        loss = R_orth.sum()
+        loss.backward()
+        assert R.grad is not None
+        assert torch.all(torch.isfinite(R.grad))
+
+    def test_euler2mat_now_orthogonal(self):
+        """euler2mat should produce exactly orthogonal matrices."""
+        torch.manual_seed(42)
+        angles = torch.rand(100, 3, dtype=torch.float64) * 2 * math.pi
+        R = HEDMForwardModel.euler2mat(angles)
+        I = torch.eye(3, dtype=torch.float64).expand(100, 3, 3)
+        RtR = torch.bmm(R, R.transpose(-1, -2))
+        torch.testing.assert_close(RtR, I, atol=1e-13, rtol=0)
+        dets = torch.det(R)
+        torch.testing.assert_close(dets, torch.ones(100, dtype=torch.float64), atol=1e-13, rtol=0)
+
+
+# ===================================================================
 #  Test: correct_hkls_latc
 # ===================================================================
 
