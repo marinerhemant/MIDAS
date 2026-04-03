@@ -6,8 +6,8 @@
 #include<stdlib.h>
 #include "nf_headers.h"
 
-#define deg2rad 0.0174532925199433
-#define rad2deg 57.2957795130823
+#define deg2rad (M_PI / 180.0)
+#define rad2deg (180.0 / M_PI)
 #define maxNGrains 1000000
 
 int Dims[3];

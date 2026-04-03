@@ -160,13 +160,10 @@ class HEDMForwardModel(nn.Module):
         Target device.
     """
 
-    # Use the EXACT same hardcoded constants as the C code (SharedFuncsFit.c,
-    # GetMisorientation.c, etc.) rather than M_PI/180.  The C code's constant
-    # has 13 significant digits and is ~3.5e-18 larger than M_PI/180.
-    # This difference causes ~2.2e-16 error in cos/sin at 60°/30°, which
-    # can flip pixel assignments at integer boundaries.
-    DEG2RAD = 0.0174532925199433
-    RAD2DEG = 57.2957795130823
+    # Match the C code: both now use M_PI/180.0 (previously the C code
+    # used hardcoded 13-digit constants that caused precision loss).
+    DEG2RAD = math.pi / 180.0
+    RAD2DEG = 180.0 / math.pi
 
     def __init__(
         self,
@@ -1081,13 +1078,11 @@ class HEDMForwardModel(nn.Module):
             centers, tri_config.edge_lengths, tri_config.ud
         )  # (N, 3, 3)
 
-        # 1. Compute orientation matrices using C's exact chain.
-        # simulateNF reads radians from .mic, multiplies by hardcoded rad2deg
-        # (57.2957795130823), then Euler2OrientMat uses cosd()=cos(deg2rad*x)
-        # where deg2rad=0.0174532925199433. Since deg2rad*rad2deg != 1.0
-        # (product = 0.999999999999999889), the roundtrip causes the matrix
-        # to be slightly non-orthogonal (det ≈ 0.99999999999999978).
-        # We must replicate this to get bit-identical Gc values.
+        # 1. Compute orientation matrices.
+        # C: reads radians from .mic, multiplies by rad2deg, then
+        # Euler2OrientMat uses cosd()=cos(deg2rad*x). With both C and Python
+        # now using M_PI/180, the roundtrip is lossless and we can use
+        # radians directly.
         euler_deg_c = euler_angles * self.RAD2DEG
         euler_rad_c = euler_deg_c * self.DEG2RAD
         orientation_matrices = self.euler2mat(euler_rad_c)

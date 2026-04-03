@@ -21,8 +21,8 @@
 
 #include "MIDAS_Math.h"
 
-#define deg2rad 0.0174532925199433
-#define rad2deg 57.2957795130823
+#define deg2rad (M_PI / 180.0)
+#define rad2deg (180.0 / M_PI)
 #define RealType double
 #include "MIDAS_Limits.h"
 #define EPS 0.000000001
@@ -70,7 +70,7 @@ static inline void CalcOmega(RealType x, RealType y, RealType z, RealType theta,
   RealType len = sqrt(x * x + y * y + z * z);
   RealType v = sin(theta * deg2rad) * len;
 
-  RealType almostzero = 1e-4;
+  RealType almostzero = 1e-12;
   if (fabs(y) < almostzero) {
     if (x != 0) {
       RealType cosome1 = -v / x;

@@ -50,8 +50,8 @@ static inline void MatrixMult(double m[3][3], double v[3], double r[3]) {
     r[i] = m[i][0] * v[0] + m[i][1] * v[1] + m[i][2] * v[2];
   }
 }
-#define deg2rad 0.0174532925199433
-#define rad2deg 57.2957795130823
+#define deg2rad (M_PI / 180.0)
+#define rad2deg (180.0 / M_PI)
 static inline double sind(double x) { return sin(deg2rad * x); }
 static inline double cosd(double x) { return cos(deg2rad * x); }
 static inline double tand(double x) { return tan(deg2rad * x); }
@@ -389,9 +389,10 @@ int main(int argc, char *argv[]) {
   fp = fopen(fn, "w");
   fprintf(fp, "h k l D-spacing RingNr g1 g2 g3 Theta 2Theta Radius\n");
   for (i = 0; i < nrPlanes; i++) {
-    fprintf(fp, "%.0f %.0f %.0f %f %.0f %f %f %f %f %f %f\n", hkls[i][0],
-            hkls[i][1], hkls[i][2], hkls[i][3], hkls[i][4], hkls[i][5],
-            hkls[i][6], hkls[i][7], hkls[i][8], hkls[i][9], hkls[i][10]);
+    fprintf(fp, "%.0f %.0f %.0f %.17g %.0f %.17g %.17g %.17g %.17g %.17g %.17g\n",
+            hkls[i][0], hkls[i][1], hkls[i][2], hkls[i][3], hkls[i][4],
+            hkls[i][5], hkls[i][6], hkls[i][7], hkls[i][8], hkls[i][9],
+            hkls[i][10]);
   }
   exit(0);
 }

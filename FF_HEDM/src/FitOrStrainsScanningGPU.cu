@@ -49,8 +49,8 @@ typedef struct {
   double meta[13];
   double *spotData;
 } SpotDiagVoxel;
-#define deg2rad 0.0174532925199433
-#define rad2deg 57.2957795130823
+#define deg2rad (M_PI / 180.0)
+#define rad2deg (180.0 / M_PI)
 
 /* Globals required by CalcDiffractionSpots.c (extern references) */
 int BigDetSize = 0;

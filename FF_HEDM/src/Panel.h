@@ -48,7 +48,7 @@ static inline void ApplyPanelCorrection(double y, double z, const Panel *p,
   double dy = y - p->centerY;
   double dz = z - p->centerZ;
   if (p->dTheta != 0.0) {
-    double rad = 0.0174532925199433 * p->dTheta;
+    double rad = (M_PI / 180.0) * p->dTheta;
     double cosT = cos(rad);
     double sinT = sin(rad);
     *yOut = p->centerY + dy * cosT - dz * sinT + p->dY;
@@ -66,7 +66,7 @@ static inline void UnApplyPanelCorrection(double y, double z, const Panel *p,
   double ys = y - p->dY;
   double zs = z - p->dZ;
   if (p->dTheta != 0.0) {
-    double rad = -0.0174532925199433 * p->dTheta; // negate for inverse
+    double rad = -(M_PI / 180.0) * p->dTheta; // negate for inverse
     double cosT = cos(rad);
     double sinT = sin(rad);
     double dy = ys - p->centerY;

@@ -22,8 +22,8 @@
 #include <time.h>
 #include <unistd.h>
 
-#define deg2rad 0.0174532925199433
-#define rad2deg 57.2957795130823
+#define deg2rad (M_PI / 180.0)
+#define rad2deg (180.0 / M_PI)
 
 #define N_COL_OBSSPOTS 10             // This is one less number of columns
 #define INITIAL_SPOT_CAPACITY 1000000 // start with 1M spots, grow dynamically

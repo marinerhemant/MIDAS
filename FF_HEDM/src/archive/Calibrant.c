@@ -28,8 +28,8 @@
 #include <time.h>
 
 // #define PRINTOPT
-#define deg2rad 0.0174532925199433
-#define rad2deg 57.2957795130823
+#define deg2rad (M_PI / 180.0)
+#define rad2deg (180.0 / M_PI)
 typedef double pixelvalue;
 long long int NrCalls;
 long long int NrCallsProfiler;

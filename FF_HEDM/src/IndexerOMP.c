@@ -48,8 +48,8 @@ static inline void check(int test, const char *message, ...) {
 #define RealType double
 
 // conversions constants
-#define deg2rad 0.0174532925199433
-#define rad2deg 57.2957795130823
+#define deg2rad (M_PI / 180.0)
+#define rad2deg (180.0 / M_PI)
 
 // max array sizes
 #define MAX_N_SPOTS 6000000
@@ -285,7 +285,7 @@ void CalcOmega(RealType x, RealType y, RealType z, RealType theta,
   RealType ome;
   RealType len = sqrt(x * x + y * y + z * z);
   RealType v = sin(theta * deg2rad) * len;
-  RealType almostzero = 1e-4;
+  RealType almostzero = 1e-12;
   if (fabs(y) < almostzero) {
     if (x != 0) {
       RealType cosome1 = -v / x;

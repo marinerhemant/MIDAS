@@ -8,10 +8,10 @@
 
 /* ---- Shared constants ---- */
 #ifndef MIDAS_DEG2RAD
-#define MIDAS_DEG2RAD 0.0174532925199433
+#define MIDAS_DEG2RAD (M_PI / 180.0)
 #endif
 #ifndef MIDAS_RAD2DEG
-#define MIDAS_RAD2DEG 57.2957795130823
+#define MIDAS_RAD2DEG (180.0 / M_PI)
 #endif
 
 typedef struct {

@@ -395,7 +395,7 @@ void *accept_connections(void *server_fd_ptr) {
 // --- Bit Manipulation Macros ---
 #define SetBit(A, k) (A[((k) / 32)] |= (1U << ((k) % 32)))
 #define TestBit(A, k) (A[((k) / 32)] & (1U << ((k) % 32)))
-#define rad2deg 57.2957795130823
+#define rad2deg (180.0 / M_PI)
 
 // --- CSR Map File I/O ---
 int ReadCSRMaps(int expected_rows, size_t expected_cols) {

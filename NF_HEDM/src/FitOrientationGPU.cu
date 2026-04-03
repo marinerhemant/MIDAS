@@ -35,8 +35,8 @@
 // (e.g., double Lsd[nLayers]) which are illegal in C++ / CUDA.
 extern "C" {
 
-#define deg2rad 0.0174532925199433
-#define rad2deg 57.2957795130823
+#define deg2rad (M_PI / 180.0)
+#define rad2deg (180.0 / M_PI)
 
 // NF-HEDM uses MAX_N_SPOTS=5000 and MAX_N_OMEGA_RANGES=20 for
 // CalcDiffractionSpots (these are array-size hints only, decay to pointers).
@@ -545,7 +545,7 @@ __device__ static inline int gpu_calc_omega(
     float gx, float gy, float gz, float v,
     float omegas[4], float etas[4]) {
   int nsol = 0;
-  float almostzero = 1e-4f;
+  float almostzero = 1e-7f;
 
   if (fabsf(gy) < almostzero) {
     if (gx != 0.0f) {

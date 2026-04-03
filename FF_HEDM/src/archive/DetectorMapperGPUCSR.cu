@@ -32,8 +32,8 @@
 #include <cuda_runtime.h>
 #include <device_launch_parameters.h>
 
-#define deg2radf 0.0174532925199433f
-#define rad2degf 57.2957795130823f
+#define deg2radf ((float)(M_PI / 180.0))
+#define rad2degf ((float)(180.0 / M_PI))
 #define EPS_F 1e-5f      // Epsilon for float comparisons
 #define M_PI_F 3.14159265358979323846f // PI for float
 

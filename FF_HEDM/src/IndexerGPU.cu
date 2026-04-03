@@ -53,8 +53,8 @@
 // ─────────────────────────────────────────────────────────────
 // Constants and types
 // ─────────────────────────────────────────────────────────────
-#define deg2rad 0.0174532925199433
-#define rad2deg 57.2957795130823
+#define deg2rad (M_PI / 180.0)
+#define rad2deg (180.0 / M_PI)
 
 #define MAX_N_SPOTS 100000000
 #define MAX_N_OR 7200
@@ -978,7 +978,7 @@ static void h_CalcOmega(double x, double y, double z, double theta,
   *nsol = 0;
   double len = sqrt(x * x + y * y + z * z);
   double v = sin(theta * deg2rad) * len;
-  double almostzero = 1e-4f;
+  double almostzero = 1e-12;
   if (fabs(y) < almostzero) {
     if (x != 0) {
       double cosome1 = -v / x;

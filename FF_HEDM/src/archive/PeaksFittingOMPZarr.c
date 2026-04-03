@@ -32,8 +32,8 @@
 #include <time.h>
 #include <zip.h>
 
-#define deg2rad 0.0174532925199433
-#define rad2deg 57.2957795130823
+#define deg2rad (M_PI / 180.0)
+#define rad2deg (180.0 / M_PI)
 #define MAXNHKLS 5000
 #define MAX_N_RINGS 500
 #define nOverlapsMaxPerImage 50000

@@ -25,7 +25,7 @@
 #define MAX_N_RINGS 500
 #define N_COL_OBSSPOTS 9
 #define N_COL_EXTRAINFO 16
-#define DEG_TO_RAD 0.0174532925199433
+#define DEG_TO_RAD (M_PI / 180.0)
 
 // --- Data Structures ---
 typedef struct {

@@ -38,7 +38,7 @@ typedef double pixelvalue;
 
 #define SetBit(A, k) (A[(k / 32)] |= (1 << (k % 32)))
 #define TestBit(A, k) (A[(k / 32)] & (1 << (k % 32)))
-#define rad2deg 57.2957795130823
+#define rad2deg (180.0 / M_PI)
 
 static inline double atand(double x) { return rad2deg * (atan(x)); }
 

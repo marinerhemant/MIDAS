@@ -10,8 +10,8 @@
 #include <stdlib.h>
 #endif
 #include "DetectorGeometry.h"
-#define deg2rad 0.0174532925199433
-#define rad2deg 57.2957795130823
+#define deg2rad (M_PI / 180.0)
+#define rad2deg (180.0 / M_PI)
 
 #define TestBit(A, k) (A[(k / 32)] & (1 << (k % 32)))
 extern size_t mapMaskSize;

@@ -21,8 +21,8 @@
 #include <sys/stat.h>
 #include <time.h>
 
-#define deg2rad 0.0174532925199433
-#define rad2deg 57.2957795130823
+#define deg2rad (M_PI / 180.0)
+#define rad2deg (180.0 / M_PI)
 
 static inline void MatrixMultF33(double m[3][3], double n[3][3],
                                  double res[3][3]) {

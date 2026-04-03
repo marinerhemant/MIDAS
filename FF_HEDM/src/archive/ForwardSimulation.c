@@ -21,8 +21,8 @@
 #include <string.h>
 #include <time.h>
 
-#define deg2rad 0.0174532925199433
-#define rad2deg 57.2957795130823
+#define deg2rad (M_PI / 180.0)
+#define rad2deg (180.0 / M_PI)
 #define RealType double
 #define MAX_N_HKLS 5000
 #define EPS 0.00001
@@ -135,7 +135,7 @@ static inline void CalcOmega(double x, double y, double z, double theta,
   double len = sqrt(x * x + y * y + z * z);
   double v = sin(theta * deg2rad) * len;
 
-  double almostzero = 1e-4;
+  double almostzero = 1e-12;
   if (fabs(y) < almostzero) {
     if (x != 0) {
       double cosome1 = -v / x;

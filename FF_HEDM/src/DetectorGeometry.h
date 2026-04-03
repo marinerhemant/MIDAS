@@ -14,8 +14,8 @@
 #include <math.h>
 #include "Panel.h"
 
-#define DG_DEG2RAD 0.0174532925199433
-#define DG_RAD2DEG 57.2957795130823
+#define DG_DEG2RAD (M_PI / 180.0)
+#define DG_RAD2DEG (180.0 / M_PI)
 #define DG_EPS 1E-6
 
 // ── Residual correction map ────────────────────────────────────────

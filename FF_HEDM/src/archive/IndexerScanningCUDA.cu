@@ -68,8 +68,8 @@ checkHost (int test, const char * message, ...)
 #define RealType float
 
 // conversions constants
-#define deg2rad 0.0174532925199433f
-#define rad2deg 57.2957795130823f
+#define deg2rad (M_PI / 180.0)f
+#define rad2deg (180.0 / M_PI)f
 
 // max array sizes (remain the same, used for allocation)
 #define MAX_N_SPOTS 100000000
@@ -297,7 +297,7 @@ void CalcOmega_d(float x,float y,float z,float theta,float omegas[4],float etas[
     if (len < EPS) return; // Avoid division by zero / undefined angle
 
 	float v=sinf(theta*deg2rad)*len;
-	float almostzero = 1e-4f; // Float version
+	float almostzero = 1e-7f; // Float version
 
 	if ( fabsf(y) < almostzero ) {
 		if (fabsf(x) > almostzero) { // Avoid division by zero

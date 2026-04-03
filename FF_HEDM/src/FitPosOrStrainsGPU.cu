@@ -27,8 +27,8 @@ extern "C" {
 #include "midas_version.h"
 #define MAXNOMEGARANGES MAX_N_OMEGA_RANGES
 #define MaxNHKLS 5000
-#define deg2rad 0.0174532925199433
-#define rad2deg 57.2957795130823
+#define deg2rad (M_PI / 180.0)
+#define rad2deg (180.0 / M_PI)
 
 #define CUDA_CHECK(call)                                                       \
   do {                                                                         \

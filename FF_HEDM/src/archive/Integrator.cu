@@ -47,7 +47,7 @@ typedef double pixelvalue;
 
 #define SetBit(A,k)   (A[(k/32)] |=  (1 << (k%32)))
 #define TestBit(A,k)  (A[(k/32)] &   (1 << (k%32)))
-#define rad2deg 57.2957795130823
+#define rad2deg (180.0 / M_PI)
 
 #define gpuErrchk(ans) { gpuAssert((ans), __FILE__, __LINE__); }
 inline void gpuAssert(cudaError_t code, const char *file, int line, bool abort=true)
@@ -155,7 +155,7 @@ void integrate_noMapMask (double px, double Lsd, int bigArrSize, int Normalize, 
 			double RMean = (RBinsLow[j]+RBinsHigh[j])/2;
 			double EtaMean = (EtaBinsLow[k]+EtaBinsHigh[k])/2;
 			PerFrameArr[0*bigArrSize+(j*nEtaBins+k)] = RMean;
-			PerFrameArr[1*bigArrSize+(j*nEtaBins+k)] = 57.2957795130823*atan(RMean*px/Lsd);
+			PerFrameArr[1*bigArrSize+(j*nEtaBins+k)] = (180.0/M_PI)*atan(RMean*px/Lsd);
 			PerFrameArr[2*bigArrSize+(j*nEtaBins+k)] = EtaMean;
 			PerFrameArr[3*bigArrSize+(j*nEtaBins+k)] = totArea;
 		}
@@ -202,7 +202,7 @@ void integrate_MapMask (double px, double Lsd, int bigArrSize, int Normalize, in
 			double RMean = (RBinsLow[j]+RBinsHigh[j])/2;
 			double EtaMean = (EtaBinsLow[k]+EtaBinsHigh[k])/2;
 			PerFrameArr[0*bigArrSize+(j*nEtaBins+k)] = RMean;
-			PerFrameArr[1*bigArrSize+(j*nEtaBins+k)] = 57.2957795130823*atan(RMean*px/Lsd);
+			PerFrameArr[1*bigArrSize+(j*nEtaBins+k)] = (180.0/M_PI)*atan(RMean*px/Lsd);
 			PerFrameArr[2*bigArrSize+(j*nEtaBins+k)] = EtaMean;
 			PerFrameArr[3*bigArrSize+(j*nEtaBins+k)] = totArea;
 		}

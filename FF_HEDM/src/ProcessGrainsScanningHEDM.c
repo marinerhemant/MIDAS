@@ -111,8 +111,8 @@ static inline void FreeMemMatrix(double **mat, int nrows) {
   free(mat);
 }
 
-#define deg2rad 0.0174532925199433
-#define rad2deg 57.2957795130823
+#define deg2rad (M_PI / 180.0)
+#define rad2deg (180.0 / M_PI)
 static inline double sin_cos_to_angle(double s, double c) {
   return (s >= 0.0) ? acos(c) : 2.0 * M_PI - acos(c);
 }
