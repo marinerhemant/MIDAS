@@ -21,7 +21,7 @@
 // ── Residual correction map ────────────────────────────────────────
 // Smooth empirical radial correction ΔR(Y,Z) in pixels, stored at
 // detector resolution. Generated from calibrant ring residuals after
-// the analytical p0-p10 model converges.  Applied after analytical
+// the analytical p0-p14 model converges.  Applied after analytical
 // distortion + parallax as: Rt += bilinear_interp(map, Y, Z).
 // Pass NULL to any function to disable the correction.
 
@@ -61,7 +61,7 @@ void dg_build_tilt_matrix(double tx_deg, double ty_deg, double tz_deg,
                           double TRs[3][3]);
 
 // Canonical forward transform: pixel (Y,Z) → tilt-corrected (R_px, Eta_deg).
-// Includes full distortion model (p0–p6) and per-panel Lsd/p2 corrections.
+// Includes full distortion model (p0–p14) and per-panel Lsd/p2 corrections.
 // dLsd = per-panel ΔLsd (0 for no correction), dP2 = per-panel Δp2.
 // parallax = parallax correction in µm (0 for no correction).
 // p6 = phase angle (degrees) for the 2-fold distortion term (analogous to p3
@@ -70,6 +70,7 @@ void dg_pixel_to_REta(double Y, double Z, double Ycen, double Zcen,
                       double TRs[3][3], double Lsd, double RhoD, double p0,
                       double p1, double p2, double p3, double p4, double p5,
                       double p6, double p7, double p8, double p9, double p10,
+                      double p11, double p12, double p13, double p14,
                       double px, double dLsd, double dP2, double parallax,
                       double *R_out, double *Eta_out,
                       double *Eta_untilted_out);
@@ -79,6 +80,7 @@ void dg_pixel_to_REta_corr(double Y, double Z, double Ycen, double Zcen,
                       double TRs[3][3], double Lsd, double RhoD, double p0,
                       double p1, double p2, double p3, double p4, double p5,
                       double p6, double p7, double p8, double p9, double p10,
+                      double p11, double p12, double p13, double p14,
                       double px, double dLsd, double dP2, double parallax,
                       const DGResidualCorr *corr,
                       double *R_out, double *Eta_out,
@@ -97,6 +99,7 @@ void dg_invert_REta_to_pixel(
     double Lsd, double RhoD,
     double p0, double p1, double p2, double p3, double p4, double p5,
     double p6, double p7, double p8, double p9, double p10,
+                      double p11, double p12, double p13, double p14,
     double px, double dLsd, double dP2, double parallax,
     double *Y_out, double *Z_out);
 
@@ -106,6 +109,7 @@ void dg_invert_REta_to_pixel_corr(
     double Lsd, double RhoD,
     double p0, double p1, double p2, double p3, double p4, double p5,
     double p6, double p7, double p8, double p9, double p10,
+                      double p11, double p12, double p13, double p14,
     double px, double dLsd, double dP2, double parallax,
     const DGResidualCorr *corr,
     double *Y_out, double *Z_out);
@@ -122,6 +126,7 @@ void dg_invert_REta_to_pixel_panel(
     double Lsd, double RhoD,
     double p0, double p1, double p2, double p3, double p4, double p5,
     double p6, double p7, double p8, double p9, double p10,
+                      double p11, double p12, double p13, double p14,
     double px, double parallax,
     const Panel *panel,
     double *Y_out, double *Z_out);
@@ -132,6 +137,7 @@ void dg_invert_REta_to_pixel_panel_corr(
     double Lsd, double RhoD,
     double p0, double p1, double p2, double p3, double p4, double p5,
     double p6, double p7, double p8, double p9, double p10,
+                      double p11, double p12, double p13, double p14,
     double px, double parallax,
     const DGResidualCorr *corr,
     const Panel *panel,

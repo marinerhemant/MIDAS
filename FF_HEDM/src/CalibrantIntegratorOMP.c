@@ -217,6 +217,7 @@ static int estep_build_and_integrate(
       g->tx, g->ty, g->tz, g->NrPixelsY, g->NrPixelsZ, g->px, g->px,
       g->ybc, g->zbc, g->Lsd, g->MaxRingRad,
       g->p0, g->p1, g->p2, g->p3, g->p4, g->p5, g->p6, g->p7, g->p8, g->p9, g->p10,
+      g->p11, g->p12, g->p13, g->p14,
       bins->EtaBinsLow, bins->EtaBinsHigh, bins->RBinsLow, bins->RBinsHigh,
       totalRBins, nEtaBins,
       pxList, nPxList, maxnPx,
@@ -550,6 +551,7 @@ static int estep_compact_and_invert(
                              g->ybc, g->zbc, TRs_estep, g->Lsd, g->MaxRingRad,
                              g->p0, g->p1, g->p2, g->p3, g->p4, g->p5, g->p6,
                              g->p7, g->p8, g->p9, g->p10,
+                             g->p11, g->p12, g->p13, g->p14,
                              g->px, g->parallax,
                              g->residualCorr.map ? &g->residualCorr : NULL,
                              binPanel,
@@ -663,6 +665,7 @@ static void write_checkpoint(const char *rawFN, int iter,
     double Lsd, double ybc, double zbc, double ty, double tz,
     double p0, double p1, double p2, double p3,
     double p4, double p5, double p6, double p7, double p8, double p9, double p10,
+    double p11, double p12, double p13, double p14,
     double parallax, double MeanDiff)
 {
   char fn[4096];
@@ -686,6 +689,10 @@ static void write_checkpoint(const char *rawFN, int iter,
   fprintf(fp, "p8 %.12e\n", p8);
   fprintf(fp, "p9 %.12e\n", p9);
   fprintf(fp, "p10 %.12e\n", p10);
+  fprintf(fp, "p11 %.12e\n", p11);
+  fprintf(fp, "p12 %.12e\n", p12);
+  fprintf(fp, "p13 %.12e\n", p13);
+  fprintf(fp, "p14 %.12e\n", p14);
   fprintf(fp, "Parallax %.12e\n", parallax);
   fprintf(fp, "MeanStrain %.12e\n", MeanDiff);
   fclose(fp);
@@ -695,6 +702,7 @@ static int load_checkpoint(const char *rawFN, int *iter,
     double *Lsd, double *ybc, double *zbc, double *ty, double *tz,
     double *p0, double *p1, double *p2, double *p3,
     double *p4, double *p5, double *p6, double *p7, double *p8, double *p9, double *p10,
+    double *p11, double *p12, double *p13, double *p14,
     double *parallax, double *MeanDiff)
 {
   char fn[4096];
@@ -720,6 +728,10 @@ static int load_checkpoint(const char *rawFN, int *iter,
     sscanf(aline, "p8 %lf", p8);
     sscanf(aline, "p9 %lf", p9);
     sscanf(aline, "p10 %lf", p10);
+    sscanf(aline, "p11 %lf", p11);
+    sscanf(aline, "p12 %lf", p12);
+    sscanf(aline, "p13 %lf", p13);
+    sscanf(aline, "p14 %lf", p14);
     sscanf(aline, "Parallax %lf", parallax);
     sscanf(aline, "MeanStrain %lf", MeanDiff);
   }
@@ -802,6 +814,7 @@ int main(int argc, char *argv[]) {
   double p0in = cfg.p0, p1in = cfg.p1, p2in = cfg.p2, p3in = cfg.p3;
   double p4in = cfg.p4, p5in = cfg.p5, p6in = cfg.p6;
   double p7in = cfg.p7, p8in = cfg.p8, p9in = cfg.p9, p10in = cfg.p10;
+  double p11in = cfg.p11, p12in = cfg.p12, p13in = cfg.p13, p14in = cfg.p14;
   double MaxRingRad = cfg.RhoD, Wavelength = cfg.Wavelength;
   double EtaBinSize = cfg.EtaBinSize;
   int RBinWidth = cfg.RBinWidth;
@@ -809,6 +822,7 @@ int main(int argc, char *argv[]) {
   double tolP0 = cfg.tolP0, tolP1 = cfg.tolP1, tolP2 = cfg.tolP2;
   double tolP3 = cfg.tolP3, tolP4 = cfg.tolP4, tolP5 = cfg.tolP5, tolP6 = cfg.tolP6;
   double tolP7 = cfg.tolP7, tolP8 = cfg.tolP8, tolP9 = cfg.tolP9, tolP10 = cfg.tolP10;
+  double tolP11 = cfg.tolP11, tolP12 = cfg.tolP12, tolP13 = cfg.tolP13, tolP14 = cfg.tolP14;
   double tolShifts = cfg.tolShifts, tolRotation = cfg.tolRotation;
   double outlierFactor = cfg.outlierFactor;
   int MinIndicesForFit = cfg.MinIndicesForFit, FixPanelID = cfg.FixPanelID;
@@ -1099,7 +1113,8 @@ int main(int argc, char *argv[]) {
   double bestMeanDiff = 1e20;
   int bestIter = -1;
   double bestLsd, bestYbc, bestZbc, bestTy, bestTz;
-  double bestP0, bestP1, bestP2, bestP3, bestP4, bestP5, bestP6, bestP7, bestP8, bestP9, bestP10, bestParallax;
+  double bestP0, bestP1, bestP2, bestP3, bestP4, bestP5, bestP6, bestP7, bestP8, bestP9, bestP10;
+  double bestP11, bestP12, bestP13, bestP14, bestParallax;
   Panel *bestPanels = (nPanels > 0) ? malloc(nPanels * sizeof(Panel)) : NULL;
 
   // Guard state
@@ -1113,8 +1128,9 @@ int main(int argc, char *argv[]) {
   //   5-8: p0, p1, p2, p3
   //   9-11: p4, p5, p6
   //   12-15: p7, p8, p9, p10
-  //   16: parallax
-  double initParams[17];
+  //   16-19: p11, p12, p13, p14
+  //   20: parallax
+  double initParams[21];
   initParams[0] = Lsd;   initParams[1] = ybc;  initParams[2] = zbc;
   initParams[3] = tyin;  initParams[4] = tzin;
   initParams[5] = p0in;  initParams[6] = p1in; initParams[7] = p2in;
@@ -1122,7 +1138,9 @@ int main(int argc, char *argv[]) {
   initParams[11] = p6in;
   initParams[12] = p7in; initParams[13] = p8in;
   initParams[14] = p9in; initParams[15] = p10in;
-  initParams[16] = parallaxIn;
+  initParams[16] = p11in; initParams[17] = p12in;
+  initParams[18] = p13in; initParams[19] = p14in;
+  initParams[20] = parallaxIn;
   Panel *initPanels = NULL;
   if (nPanels > 0) {
     initPanels = malloc(nPanels * sizeof(Panel));
@@ -1141,6 +1159,7 @@ int main(int argc, char *argv[]) {
     if (load_checkpoint(rawFN, &ckptIter, &Lsd, &ybc, &zbc, &tyin, &tzin,
                         &p0in, &p1in, &p2in, &p3in, &p4in, &p5in, &p6in,
                         &p7in, &p8in, &p9in, &p10in,
+                        &p11in, &p12in, &p13in, &p14in,
                         &parallaxIn, &ckptMean) == 0) {
       iterOffset += ckptIter;
       printf("\n*** Resuming from checkpoint (iter %d, MeanStrain=%.3f ppm) ***\n",
@@ -1152,7 +1171,9 @@ int main(int argc, char *argv[]) {
       initParams[8] = p3in; initParams[9] = p4in; initParams[10] = p5in;
       initParams[11] = p6in; initParams[12] = p7in; initParams[13] = p8in;
       initParams[14] = p9in; initParams[15] = p10in;
-      initParams[16] = parallaxIn;
+      initParams[16] = p11in; initParams[17] = p12in;
+      initParams[18] = p13in; initParams[19] = p14in;
+      initParams[20] = parallaxIn;
     } else {
       printf("  Checkpoint file not found — starting from scratch.\n");
     }
@@ -1164,7 +1185,7 @@ int main(int argc, char *argv[]) {
   FILE *convHistFP = fopen(convHistFN, iterOffset > 0 ? "a" : "w");
   if (convHistFP && iterOffset == 0)
     fprintf(convHistFP, "Iter,MeanStrain_ppm,StdStrain_ppm,Lsd,ybc,zbc,"
-                        "ty,tz,p0,p1,p2,p3,p4,p5,p6,p7,p8,p9,p10\n");
+                        "ty,tz,p0,p1,p2,p3,p4,p5,p6,p7,p8,p9,p10,p11,p12,p13,p14\n");
 
   // nIterations=0: evaluate-only mode — run E-step once, skip optimization
   if (nIterations == 0) {
@@ -1173,6 +1194,8 @@ int main(int argc, char *argv[]) {
       .Lsd = Lsd, .ybc = ybc, .zbc = zbc, .tx = tx, .ty = tyin, .tz = tzin,
       .p0 = p0in, .p1 = p1in, .p2 = p2in, .p3 = p3in,
       .p4 = p4in, .p5 = p5in, .p6 = p6in,
+      .p7 = p7in, .p8 = p8in, .p9 = p9in, .p10 = p10in,
+      .p11 = p11in, .p12 = p12in, .p13 = p13in, .p14 = p14in,
       .px = px, .MaxRingRad = MaxRingRad, .parallax = parallaxIn,
       .EtaBinSize = EtaBinSize, .RBinWidth = RBinWidth,
       .NrPixelsY = NrPixelsY, .NrPixelsZ = NrPixelsZ, .NrPixels = NrPixels,
@@ -1237,6 +1260,7 @@ int main(int argc, char *argv[]) {
       .p3  = (iter > 0) ? p3     : p3in,
       .p4 = p4in, .p5 = p5in, .p6 = p6in,
       .p7 = p7in, .p8 = p8in, .p9 = p9in, .p10 = p10in,
+      .p11 = p11in, .p12 = p12in, .p13 = p13in, .p14 = p14in,
       .px = px, .MaxRingRad = MaxRingRad, .parallax = parallaxIn,
       .EtaBinSize = EtaBinSize, .RBinWidth = RBinWidth,
       .NrPixelsY = NrPixelsY, .NrPixelsZ = NrPixelsZ, .NrPixels = NrPixels,
@@ -1334,6 +1358,7 @@ int main(int argc, char *argv[]) {
 
     // M-step: optimize geometry
     double p4 = p4in, p5 = p5in, p6 = p6in, p7 = p7in, p8 = p8in, p9 = p9in, p10 = p10in;
+    double p11 = p11in, p12 = p12in, p13 = p13in, p14 = p14in;
     double wavelengthFit = Wavelength, parallaxFit = parallaxIn;
 
     // Open per-evaluation trace file for this iteration
@@ -1353,6 +1378,7 @@ int main(int argc, char *argv[]) {
         PerPanelDistortion, tolP2Panel, WeightByRadius, effectiveSNRWeights,
         &p4, p5in, tolP5, &p5, p6in, tolP6, &p6,
         p7in, tolP7, &p7, p8in, tolP8, &p8, p9in, tolP9, &p9, p10in, tolP10, &p10,
+        p11in, tolP11, &p11, p12in, tolP12, &p12, p13in, tolP13, &p13, p14in, tolP14, &p14,
         iter == 0, L2Objective, initParams, initPanels,
         FitWavelength, Wavelength, tolWavelength, PointDSpacing,
         &wavelengthFit,
@@ -1379,7 +1405,8 @@ int main(int argc, char *argv[]) {
         &ctx,
         nIndices, MaxRingRad, Yc, Zc, IdealTtheta, px, LsdFit, ybcFit,
         zbcFit, tx, ty, tz, p0, p1, p2, p3, EtaIns, DiffIns, RadIns,
-        &StdDiff, outlierFactor, iterOutlier, p4, p5, p6, p7, p8, p9, p10, OutlierIterations,
+        &StdDiff, outlierFactor, iterOutlier, p4, p5, p6, p7, p8, p9, p10,
+        p11, p12, p13, p14, OutlierIterations,
         0, &MeanDiff, parallaxIn, skipBin, &residualCorr);
 
     printf("Iter %2d/%d  MeanStrain %8.3f  StdStrain %8.3f  nBins=%d\n",
@@ -1396,9 +1423,10 @@ int main(int argc, char *argv[]) {
 
     if (convHistFP) {
       fprintf(convHistFP,
-              "%d,%.6e,%.6e,%.6f,%.6f,%.6f,%.8f,%.8f,%.8e,%.8e,%.8e,%.8e,%.8e,%.8e,%.8e,%.8e,%.8e,%.8e,%.8e\n",
+              "%d,%.6e,%.6e,%.6f,%.6f,%.6f,%.8f,%.8f,%.8e,%.8e,%.8e,%.8e,%.8e,%.8e,%.8e,%.8e,%.8e,%.8e,%.8e,%.8e,%.8e,%.8e,%.8e\n",
               iter + 1 + iterOffset, MeanDiff * 1e6, StdDiff * 1e6,
-              LsdFit, ybcFit, zbcFit, ty, tz, p0, p1, p2, p3, p4, p5, p6, p7, p8, p9, p10);
+              LsdFit, ybcFit, zbcFit, ty, tz, p0, p1, p2, p3, p4, p5, p6, p7, p8, p9, p10,
+              p11, p12, p13, p14);
       fflush(convHistFP);
     }
 
@@ -1416,6 +1444,7 @@ int main(int argc, char *argv[]) {
     // Feed outputs back as inputs
     p4in = p4; p5in = p5; p6in = p6;
     p7in = p7; p8in = p8; p9in = p9; p10in = p10;
+    p11in = p11; p12in = p12; p13in = p13; p14in = p14;
     Lsd = LsdFit; ybc = ybcFit; zbc = zbcFit;
     tyin = ty; tzin = tz;
     p0in = p0; p1in = p1; p2in = p2; p3in = p3;
@@ -1423,7 +1452,8 @@ int main(int argc, char *argv[]) {
     // Write checkpoint
     write_checkpoint(rawFN, iter + 1 + iterOffset,
                      LsdFit, ybcFit, zbcFit, ty, tz,
-                     p0, p1, p2, p3, p4, p5, p6, p7, p8, p9, p10, parallaxIn, MeanDiff);
+                     p0, p1, p2, p3, p4, p5, p6, p7, p8, p9, p10,
+                     p11, p12, p13, p14, parallaxIn, MeanDiff);
 
     // Track best iteration
     if (MeanDiff < bestMeanDiff) {
@@ -1433,6 +1463,7 @@ int main(int argc, char *argv[]) {
       bestP0 = p0; bestP1 = p1; bestP2 = p2; bestP3 = p3;
       bestP4 = p4; bestP5 = p5; bestP6 = p6;
       bestP7 = p7; bestP8 = p8; bestP9 = p9; bestP10 = p10;
+      bestP11 = p11; bestP12 = p12; bestP13 = p13; bestP14 = p14;
       bestParallax = parallaxIn;
       if (bestPanels && nPanels > 0)
         memcpy(bestPanels, panels, nPanels * sizeof(Panel));
@@ -1475,6 +1506,7 @@ int main(int argc, char *argv[]) {
       p0in = bestP0; p1in = bestP1; p2in = bestP2; p3in = bestP3;
       p4in = bestP4; p5in = bestP5; p6in = bestP6; 
       p7in = bestP7; p8in = bestP8; p9in = bestP9; p10in = bestP10;
+      p11in = bestP11; p12in = bestP12; p13in = bestP13; p14in = bestP14;
       parallaxIn = bestParallax;
       Lsd = bestLsd; ybc = bestYbc; zbc = bestZbc;
       tyin = bestTy; tzin = bestTz;
@@ -1492,6 +1524,7 @@ int main(int argc, char *argv[]) {
       p0in = bestP0; p1in = bestP1; p2in = bestP2; p3in = bestP3;
       p4in = bestP4; p5in = bestP5; p6in = bestP6;
       p7in = bestP7; p8in = bestP8; p9in = bestP9; p10in = bestP10;
+      p11in = bestP11; p12in = bestP12; p13in = bestP13; p14in = bestP14;
       parallaxIn = bestParallax;
       if (bestPanels && nPanels > 0)
         memcpy(panels, bestPanels, nPanels * sizeof(Panel));
@@ -1519,6 +1552,7 @@ int main(int argc, char *argv[]) {
       p0in = bestP0; p1in = bestP1; p2in = bestP2; p3in = bestP3;
       p4in = bestP4; p5in = bestP5; p6in = bestP6;
       p7in = bestP7; p8in = bestP8; p9in = bestP9; p10in = bestP10;
+      p11in = bestP11; p12in = bestP12; p13in = bestP13; p14in = bestP14;
       parallaxIn = bestParallax;
       if (bestPanels && nPanels > 0)
         memcpy(panels, bestPanels, nPanels * sizeof(Panel));
@@ -1550,6 +1584,7 @@ int main(int argc, char *argv[]) {
     p0 = bestP0; p1 = bestP1; p2 = bestP2; p3 = bestP3;
     p4in = bestP4; p5in = bestP5; p6in = bestP6; 
     p7in = bestP7; p8in = bestP8; p9in = bestP9; p10in = bestP10;
+    p11in = bestP11; p12in = bestP12; p13in = bestP13; p14in = bestP14;
     parallaxIn = bestParallax;
     MeanDiff = bestMeanDiff;
     if (bestPanels && nPanels > 0)
@@ -1578,6 +1613,7 @@ int main(int argc, char *argv[]) {
       .p0 = p0, .p1 = p1, .p2 = p2, .p3 = p3,
       .p4 = p4in, .p5 = p5in, .p6 = p6in,
       .p7 = p7in, .p8 = p8in, .p9 = p9in, .p10 = p10in,
+      .p11 = p11in, .p12 = p12in, .p13 = p13in, .p14 = p14in,
       .px = px, .MaxRingRad = MaxRingRad, .parallax = parallaxIn,
       .EtaBinSize = EtaBinSize, .RBinWidth = RBinWidth,
       .NrPixelsY = NrPixelsY, .NrPixelsZ = NrPixelsZ, .NrPixels = NrPixels,
@@ -1616,7 +1652,8 @@ int main(int argc, char *argv[]) {
           &ctx,
           nIndices, MaxRingRad, Yc, Zc, IdealTtheta, px, LsdFit, ybcFit,
           zbcFit, tx, ty, tz, p0, p1, p2, p3, EtaIns, DiffIns, RadIns,
-          &verifyStd, outlierFactor, verifyOutlier, p4in, p5in, p6in, p7in, p8in, p9in, p10in, OutlierIterations,
+          &verifyStd, outlierFactor, verifyOutlier, p4in, p5in, p6in, p7in, p8in, p9in, p10in,
+          p11in, p12in, p13in, p14in, OutlierIterations,
           1, &verifyMean, parallaxIn, skipBin, &residualCorr);
       printf("  Verification E-step: %d bins, MeanStrain=%.6f µε, StdStrain=%.6f µε\n",
              nIndices, verifyMean * 1e6, verifyStd * 1e6);
@@ -1637,7 +1674,8 @@ int main(int argc, char *argv[]) {
         &ctx,
         nIndices, MaxRingRad, Yc, Zc, IdealTtheta, px, LsdFit, ybcFit,
         zbcFit, tx, ty, tz, p0, p1, p2, p3, EtaIns, DiffIns, RadIns,
-        &StdDiff, outlierFactor, IsOutlier, p4in, p5in, p6in, p7in, p8in, p9in, p10in, OutlierIterations,
+        &StdDiff, outlierFactor, IsOutlier, p4in, p5in, p6in, p7in, p8in, p9in, p10in,
+        p11in, p12in, p13in, p14in, OutlierIterations,
         1, &MeanDiff, parallaxIn, skipBin, &residualCorr);
     if (skipBin) {
       for (int i = 0; i < nIndices; i++)
@@ -1659,6 +1697,10 @@ int main(int argc, char *argv[]) {
     if (p8in != 0.0) printf("p8 %e\n", p8in);
     if (p9in != 0.0) printf("p9 %e\n", p9in);
     if (p10in != 0.0) printf("p10 %e\n", p10in);
+    if (p11in != 0.0) printf("p11 %e\n", p11in);
+    if (p12in != 0.0) printf("p12 %e\n", p12in);
+    if (p13in != 0.0) printf("p13 %e\n", p13in);
+    if (p14in != 0.0) printf("p14 %e\n", p14in);
     if (FitParallax || parallaxIn != 0.0) printf("Parallax %e\n", parallaxIn);
     printf("RhoD %f\n", MaxRingRad);
     printf("MeanStrain %f\n", MeanDiff * 1e6);
@@ -1673,15 +1715,17 @@ int main(int argc, char *argv[]) {
     FILE *corrFP = fopen(corrFN, "w");
     if (corrFP) {
       fprintf(corrFP, "Lsd,ybcFit,zbcFit,ty,tz,p0,p1,p2,p3,MeanStrain,StdStrain,"
-                       "tx,p4,p5,p6,p7,p8,p9,p10,Wavelength,Parallax\n");
+                       "tx,p4,p5,p6,p7,p8,p9,p10,p11,p12,p13,p14,Wavelength,Parallax\n");
       fprintf(corrFP, "%.10f,%.10f,%.10f,%.10f,%.10f,%.12e,%.12e,%.12e,%.12e,"
-                       "%.12e,%.12e,%.10f,%.12e,%.12e,%.12e,%.12e,%.12e,%.12e,%.12e,%.10f,%.10f\n",
+                       "%.12e,%.12e,%.10f,%.12e,%.12e,%.12e,%.12e,%.12e,%.12e,%.12e,"
+                       "%.12e,%.12e,%.12e,%.12e,%.10f,%.10f\n",
               LsdFit, ybcFit, zbcFit, ty, tz, p0, p1, p2, p3,
-              MeanDiff, StdDiff, tx, p4in, p5in, p6in, p7in, p8in, p9in, p10in, Wavelength, parallaxIn);
+              MeanDiff, StdDiff, tx, p4in, p5in, p6in, p7in, p8in, p9in, p10in,
+              p11in, p12in, p13in, p14in, Wavelength, parallaxIn);
       // Per-bin data — 16 columns matching CalibrantPanelShiftsOMP format
       fprintf(corrFP, "\n%%Eta Strain RadFit EtaCalc DiffCalc RadCalc "
                        "Ideal2Theta Outlier YRawCorr ZRawCorr RingNr "
-                       "RadGlobal IdealR Fit2Theta IdealA FitA DeltaR\n");
+                       "RadGlobal IdealR Fit2Theta IdealA FitA DeltaR DeltaA\n");
       for (int i = 0; i < nIndices; i++) {
         double eta = EtaIns[i];
         double strain = DiffIns[i];  // signed: (1 - R_fitted/R_ideal)
@@ -1694,12 +1738,13 @@ int main(int argc, char *argv[]) {
         double sinFit = sin(deg2rad * fit2theta / 2.0);
         double fitA = (sinFit > 1e-15) ? IdealA * sinIdeal / sinFit : IdealA;
         double deltaR = radFit - idealR;  // microns
+        double deltaA = fitA - IdealA;    // angstroms
         fprintf(corrFP, "%.6f %.10e %.6f %.6f %.10e %.6f "
                          "%.6f %d %.6f %.6f %d "
-                         "%.6f %.6f %.6f %.10f %.10f %.6f\n",
+                         "%.6f %.6f %.6f %.10f %.10f %.6f %.10f\n",
                 eta, strain, radFit, eta, fabs(strain), radCalc,
                 ideal2theta, IsOutlier[i], Yc[i], Zc[i], RingNumbers[i],
-                radFit, idealR, fit2theta, IdealA, fitA, deltaR);
+                radFit, idealR, fit2theta, IdealA, fitA, deltaR, deltaA);
       }
       fclose(corrFP);
       printf("Results written to: %s\n", corrFN);

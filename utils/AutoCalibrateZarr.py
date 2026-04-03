@@ -153,6 +153,10 @@ class CalibState:
     p8: float = 0.0
     p9: float = 0.0
     p10: float = 0.0
+    p11: float = 0.0
+    p12: float = 0.0
+    p13: float = 0.0
+    p14: float = 0.0
     mean_strain: float = 1.0
     std_strain: float = 0.0
     rhod: float = 0.0
@@ -203,6 +207,7 @@ class CalibState:
     per_panel_lsd: int = 1
     per_panel_distortion: int = 1
     fix_panel_id: int = -1             # -1 = auto (closest to BC)
+    gradient_correction: int = 1       # radial resampling for cardinal-angle aliasing
 
     # Panel fitting override
     skip_panels: bool = False
@@ -965,6 +970,14 @@ def process_calibrant_output(output_file, state):
                     state.p9 = float(parts[1])
                 if 'p10 ' in line:
                     state.p10 = float(parts[1])
+                if 'p11 ' in line:
+                    state.p11 = float(parts[1])
+                if 'p12 ' in line:
+                    state.p12 = float(parts[1])
+                if 'p13 ' in line:
+                    state.p13 = float(parts[1])
+                if 'p14 ' in line:
+                    state.p14 = float(parts[1])
                 if 'Parallax ' in line:
                     state.parallax_in = float(parts[1])
                 if 'RhoD ' in line:
@@ -1687,7 +1700,8 @@ def run_integrator_validation(refined_params_file, data_file, dark_file,
                     f"ty={state.ty:.8f} tz={state.tz:.8f} "
                     f"p0={state.p0:.6e} p1={state.p1:.6e} p2={state.p2:.6e} p3={state.p3:.6e} "
                     f"p4={state.p4:.6e} p5={state.p5:.6e} p6={state.p6:.6e} p7={state.p7:.6e} "
-                    f"p8={state.p8:.6e} p9={state.p9:.6e} p10={state.p10:.6e}")
+                    f"p8={state.p8:.6e} p9={state.p9:.6e} p10={state.p10:.6e} "
+                    f"p11={state.p11:.6e} p12={state.p12:.6e} p13={state.p13:.6e} p14={state.p14:.6e}")
         with open(integ_params, 'w') as f:
             f.write(f"Lsd {state.lsd}\n")
             f.write(f"BC {state.ybc} {state.zbc}\n")
@@ -1712,6 +1726,14 @@ def run_integrator_validation(refined_params_file, data_file, dark_file,
                 f.write(f"p9 {state.p9}\n")
             if state.p10 != 0.0:
                 f.write(f"p10 {state.p10}\n")
+            if state.p11 != 0.0:
+                f.write(f"p11 {state.p11}\n")
+            if state.p12 != 0.0:
+                f.write(f"p12 {state.p12}\n")
+            if state.p13 != 0.0:
+                f.write(f"p13 {state.p13}\n")
+            if state.p14 != 0.0:
+                f.write(f"p14 {state.p14}\n")
             f.write(f"RhoD {state.rhod}\n")
             f.write(f"Wavelength {state.wavelength}\n")
             f.write(f"px {state.px}\n")
@@ -1724,7 +1746,7 @@ def run_integrator_validation(refined_params_file, data_file, dark_file,
             f.write(f"EtaMax 180\n")
             f.write(f"EtaBinSize 1\n")
             f.write(f"Normalize 1\n")
-            f.write(f"GradientCorrection 1\n")
+            f.write(f"GradientCorrection {state.gradient_correction}\n")
             f.write(f"Folder {work_dir}\n")
             for transOpt in state.im_trans_opt:
                 f.write(f"ImTransOpt {transOpt}\n")
@@ -1842,7 +1864,7 @@ def run_integrator_validation(refined_params_file, data_file, dark_file,
         with open(corr_csv_path, 'w') as out:
             out.write("%Eta Strain RadFit EtaCalc DiffCalc RadCalc "
                       "Ideal2Theta Outlier YRawCorr ZRawCorr RingNr "
-                      "RadGlobal IdealR Fit2Theta IdealA FitA\n")
+                      "RadGlobal IdealR Fit2Theta IdealA FitA DeltaR DeltaA\n")
 
             for row in per_eta_rows:
                 fitted_r_px = row['center_px']
@@ -1901,11 +1923,14 @@ def run_integrator_validation(refined_params_file, data_file, dark_file,
                 ideal_a = state.latc[0] if state.latc[0] > 0 else d_ideal
                 fit_a = ideal_a * (d_fit / d_ideal) if d_ideal > 0 else ideal_a
 
+                delta_r_um = (fitted_r_px - ideal_r_px) * state.px  # microns
+                delta_a = fit_a - ideal_a  # angstroms
                 out.write(f"{eta_deg:.6f} {strain:.10e} {fitted_r_px:.6f} "
                           f"{eta_deg:.6f} {diff_calc:.10e} {fitted_r_px:.6f} "
                           f"{ideal_2theta:.6f} 0 {y_raw:.4f} {z_raw:.4f} "
                           f"{ring_nr} {fitted_r_px:.6f} {ideal_r_px:.6f} "
-                          f"{fitted_2theta:.6f} {ideal_a:.6f} {fit_a:.6f}\n")
+                          f"{fitted_2theta:.6f} {ideal_a:.6f} {fit_a:.6f} "
+                          f"{delta_r_um:.6f} {delta_a:.10f}\n")
                 n_written += 1
 
         logger.info(f"Wrote {n_written} entries to {corr_csv_path}")
@@ -1989,6 +2014,12 @@ def runMIDAS(rawFN, state, n_iterations=40, mult_factor=5,
                 if 'trefoil' in modes or 'all' in modes:
                     pf.write('tolP9 1E-3\n')
                     pf.write('tolP10 180\n')
+                if 'pentafoil5' in modes or 'all' in modes:
+                    pf.write('tolP11 1E-3\n')
+                    pf.write('tolP12 180\n')
+                if 'hexafoil6' in modes or 'all' in modes:
+                    pf.write('tolP13 1E-3\n')
+                    pf.write('tolP14 180\n')
                 if 'octupole' in modes or 'all' in modes:
                     pf.write('tolP1 2E-3\n')
                     pf.write('tolP3 45\n')
@@ -2011,16 +2042,26 @@ def runMIDAS(rawFN, state, n_iterations=40, mult_factor=5,
             # Break polar coordinate gradient singularities before passing to NLopt
             _fit_dipole = stage != 1 and ('dipole' in state.fit_p_models or 'all' in state.fit_p_models)
             _fit_trefoil = stage != 1 and ('trefoil' in state.fit_p_models or 'all' in state.fit_p_models)
+            _fit_pentafoil = stage != 1 and ('pentafoil5' in state.fit_p_models or 'all' in state.fit_p_models)
+            _fit_hexafoil = stage != 1 and ('hexafoil6' in state.fit_p_models or 'all' in state.fit_p_models)
 
             _p7_seed = state.p7 if state.p7 != 0.0 else (1e-4 if _fit_dipole else 0.0)
             _p8_seed = state.p8 if state.p8 != 0.0 else (45.0 if _fit_dipole else 0.0)
             _p9_seed = state.p9 if state.p9 != 0.0 else (1e-4 if _fit_trefoil else 0.0)
             _p10_seed = state.p10 if state.p10 != 0.0 else (45.0 if _fit_trefoil else 0.0)
+            _p11_seed = state.p11 if state.p11 != 0.0 else (1e-4 if _fit_pentafoil else 0.0)
+            _p12_seed = state.p12 if state.p12 != 0.0 else (45.0 if _fit_pentafoil else 0.0)
+            _p13_seed = state.p13 if state.p13 != 0.0 else (1e-4 if _fit_hexafoil else 0.0)
+            _p14_seed = state.p14 if state.p14 != 0.0 else (45.0 if _fit_hexafoil else 0.0)
 
             if _p7_seed != 0.0: pf.write(f'p7 {_p7_seed}\n')
             if _p8_seed != 0.0: pf.write(f'p8 {_p8_seed}\n')
             if _p9_seed != 0.0: pf.write(f'p9 {_p9_seed}\n')
             if _p10_seed != 0.0: pf.write(f'p10 {_p10_seed}\n')
+            if _p11_seed != 0.0: pf.write(f'p11 {_p11_seed}\n')
+            if _p12_seed != 0.0: pf.write(f'p12 {_p12_seed}\n')
+            if _p13_seed != 0.0: pf.write(f'p13 {_p13_seed}\n')
+            if _p14_seed != 0.0: pf.write(f'p14 {_p14_seed}\n')
             pf.write(f'EtaBinSize {eta_bin_size}\n')
             pf.write(f'HeadSize {8192 if state.midas_dtype == 1 else 0}\n')
 
@@ -2070,7 +2111,7 @@ def runMIDAS(rawFN, state, n_iterations=40, mult_factor=5,
 
             # CalibrantIntegratorOMP parameters
             pf.write('RBinWidth 4\n')
-            pf.write('GradientCorrection 1\n')
+            pf.write(f'GradientCorrection {state.gradient_correction}\n')
 
             # Panel parameters — only in stage 2 or stage 0
             if stage != 1:
@@ -2180,6 +2221,283 @@ def _make_temp_param_file(args, calibrant, filename_hints):
     return temp_fn
 
 
+def _save_stage_corr_and_map(rawFN, stage_label, state, output_dir=None):
+    """Save corr.csv with stage suffix and generate a full-detector ΔR map PNG.
+
+    Copies the current <rawFN>.corr.csv to <stem>_<stage_label>.corr.csv.
+    Generates a 400×400 binned map of the analytical distortion model (+ spline
+    if present) evaluated at every pixel, showing ΔR = R_distorted - R_flat.
+    """
+    import shutil
+    import glob as _glob
+
+    # Find corr.csv
+    corr_file = f"{rawFN}.corr.csv"
+    if not os.path.exists(corr_file):
+        candidates = sorted(_glob.glob(
+            os.path.join(os.path.dirname(rawFN),
+                         os.path.basename(rawFN).replace('.', '*') + '.corr.csv')))
+        candidates = [c for c in candidates if 'integrator_' not in os.path.basename(c)]
+        if candidates:
+            corr_file = candidates[0]
+    if not os.path.exists(corr_file):
+        return
+
+    # Copy with stage suffix
+    stem = os.path.splitext(os.path.basename(rawFN))[0].rstrip('.')
+    if output_dir is None:
+        output_dir = os.path.dirname(corr_file) or '.'
+    stage_corr = os.path.join(output_dir, f"{stem}_{stage_label}.corr.csv")
+    shutil.copy2(corr_file, stage_corr)
+    logger.info(f"Saved {stage_label} corr.csv: {stage_corr}")
+
+    # Generate full-detector distortion map
+    try:
+        import matplotlib
+        matplotlib.use('Agg')
+        import matplotlib.pyplot as plt
+
+        NrPixelsY = state.nr_pixels_y
+        NrPixelsZ = state.nr_pixels_z
+        px = state.px
+        ybc, zbc = state.ybc, state.zbc
+        # Build tilt rotation matrix
+        tx, ty, tz = state.tx, state.ty, state.tz
+        cr = np.cos(np.radians(tx)); sr = np.sin(np.radians(tx))
+        cp = np.cos(np.radians(ty)); sp = np.sin(np.radians(ty))
+        cy = np.cos(np.radians(tz)); sy = np.sin(np.radians(tz))
+        Rx = np.array([[1,0,0],[0,cr,-sr],[0,sr,cr]])
+        Ry = np.array([[cp,0,sp],[0,1,0],[-sp,0,cp]])
+        Rz = np.array([[cy,-sy,0],[sy,cy,0],[0,0,1]])
+        TRs = Rx @ Ry @ Rz
+
+        Lsd = state.lsd
+        RhoD = state.rhod
+        p = [state.p0, state.p1, state.p2, state.p3, state.p4, state.p5,
+             state.p6, state.p7, state.p8, state.p9, state.p10,
+             state.p11, state.p12, state.p13, state.p14]
+
+        # Load spline correction if present
+        spline_map = None
+        if state.residual_corr_map_fn and os.path.exists(state.residual_corr_map_fn):
+            spline_map = np.fromfile(state.residual_corr_map_fn,
+                                     dtype=np.float64).reshape(NrPixelsZ, NrPixelsY)
+
+        # Build per-panel lookup arrays (dY, dZ, dTheta, dLsd, dP2 per pixel)
+        panel_dLsd = np.zeros(0)
+        panel_dP2 = np.zeros(0)
+        panel_dY = np.zeros(0)
+        panel_dZ = np.zeros(0)
+        panel_dTheta = np.zeros(0)
+        panel_cY = np.zeros(0)
+        panel_cZ = np.zeros(0)
+        panels = []  # list of (yMin, yMax, zMin, zMax, dY, dZ, dTheta, dLsd, dP2, cY, cZ)
+        if state.panel_grid is not None and state.panel_shifts_file:
+            pg = state.panel_grid
+            shifts_path = os.path.abspath(state.panel_shifts_file)
+            if os.path.exists(shifts_path):
+                # Generate panel boundaries (same as C GeneratePanels)
+                currentY = 0
+                for iy in range(pg.n_panels_y):
+                    yStart = currentY
+                    yEnd = yStart + pg.panel_size_y - 1
+                    if iy < pg.n_panels_y - 1:
+                        currentY = yEnd + 1 + pg.gaps_y[iy]
+                    else:
+                        currentY = yEnd + 1
+                    currentZ = 0
+                    for iz in range(pg.n_panels_z):
+                        zStart = currentZ
+                        zEnd = zStart + pg.panel_size_z - 1
+                        if iz < pg.n_panels_z - 1:
+                            currentZ = zEnd + 1 + pg.gaps_z[iz]
+                        else:
+                            currentZ = zEnd + 1
+                        panels.append({
+                            'yMin': yStart, 'yMax': yEnd,
+                            'zMin': zStart, 'zMax': zEnd,
+                            'dY': 0.0, 'dZ': 0.0, 'dTheta': 0.0,
+                            'dLsd': 0.0, 'dP2': 0.0,
+                            'cY': (yStart + yEnd) / 2.0,
+                            'cZ': (zStart + zEnd) / 2.0})
+                # Load shifts
+                with open(shifts_path) as pf:
+                    for line in pf:
+                        if line.startswith('#') or line.strip() == '':
+                            continue
+                        parts = line.split()
+                        pid = int(parts[0])
+                        if pid < len(panels):
+                            panels[pid]['dY'] = float(parts[1])
+                            panels[pid]['dZ'] = float(parts[2])
+                            if len(parts) > 3: panels[pid]['dTheta'] = float(parts[3])
+                            if len(parts) > 4: panels[pid]['dLsd'] = float(parts[4])
+                            if len(parts) > 5: panels[pid]['dP2'] = float(parts[5])
+
+        # Evaluate on 200×200 grid (vectorized numpy — ~20ms)
+        n_grid = 200
+        ys = np.linspace(0, NrPixelsY, n_grid)
+        zs = np.linspace(0, NrPixelsZ, n_grid)
+        YG, ZG = np.meshgrid(ys, zs)
+        Y_flat, Z_flat = YG.ravel(), ZG.ravel()
+
+        # Per-pixel panel corrections (vectorized lookup)
+        pix_dLsd = np.zeros_like(Y_flat)
+        pix_dP2 = np.zeros_like(Y_flat)
+        pix_dY = np.zeros_like(Y_flat)
+        pix_dZ = np.zeros_like(Y_flat)
+        for pan in panels:
+            m = ((Y_flat >= pan['yMin']) & (Y_flat <= pan['yMax']) &
+                 (Z_flat >= pan['zMin']) & (Z_flat <= pan['zMax']))
+            pix_dLsd[m] = pan['dLsd']
+            pix_dP2[m] = pan['dP2']
+            pix_dY[m] = pan['dY']
+            pix_dZ[m] = pan['dZ']
+            # dTheta rotation around panel center
+            if abs(pan['dTheta']) > 1e-12:
+                rad = np.radians(pan['dTheta'])
+                cosT, sinT = np.cos(rad), np.sin(rad)
+                dy = Y_flat[m] + pan['dY'] - pan['cY']
+                dz = Z_flat[m] + pan['dZ'] - pan['cZ']
+                pix_dY[m] = pan['cY'] + dy*cosT - dz*sinT - Y_flat[m]
+                pix_dZ[m] = pan['cZ'] + dy*sinT + dz*cosT - Z_flat[m]
+
+        # Apply panel shifts to pixel positions
+        Y_corr = Y_flat + pix_dY
+        Z_corr = Z_flat + pix_dZ
+
+        panelLsd = Lsd + pix_dLsd
+        panelP2 = p[2] + pix_dP2
+
+        Yc = (-Y_corr + ybc) * px
+        Zc = (Z_corr - zbc) * px
+        # ABC[3, N] — vectorized tilt rotation
+        ABC = np.vstack([np.zeros_like(Yc), Yc, Zc])  # (3, N)
+        XYZ = TRs @ ABC  # (3, N)
+        XYZ[0] += panelLsd
+        Rad = (panelLsd / XYZ[0]) * np.sqrt(XYZ[1]**2 + XYZ[2]**2)
+        R_flat_px = Rad / px
+        # Re-project to global Lsd plane (same as C code)
+        R_flat_global = R_flat_px * (Lsd / panelLsd)
+
+        EtaTilted = np.degrees(np.arctan2(-XYZ[1], XYZ[2]))
+        RNorm = Rad / RhoD
+        EtaT = 90 - EtaTilted
+
+        DF = (p[0] * RNorm**2 * np.cos(np.radians(2*EtaT + p[6]))
+            + p[1] * RNorm**4 * np.cos(np.radians(4*EtaT + p[3]))
+            + panelP2 * RNorm**2
+            + p[4] * RNorm**6
+            + p[5] * RNorm**4
+            + p[7] * RNorm**4 * np.cos(np.radians(EtaT + p[8]))
+            + p[9] * RNorm**3 * np.cos(np.radians(3*EtaT + p[10]))
+            + p[11] * RNorm**5 * np.cos(np.radians(5*EtaT + p[12]))
+            + p[13] * RNorm**6 * np.cos(np.radians(6*EtaT + p[14])))
+        R_distorted_px = Rad * (DF + 1) / px
+        R_distorted_global = R_distorted_px * (Lsd / panelLsd)
+
+        # Undistorted R for comparison (no distortion, no panels)
+        Yc_raw = (-Y_flat + ybc) * px
+        Zc_raw = (Z_flat - zbc) * px
+        ABC_raw = np.vstack([np.zeros_like(Yc_raw), Yc_raw, Zc_raw])
+        XYZ_raw = TRs @ ABC_raw
+        XYZ_raw[0] += Lsd
+        Rad_raw = (Lsd / XYZ_raw[0]) * np.sqrt(XYZ_raw[1]**2 + XYZ_raw[2]**2)
+        R_undistorted = Rad_raw / px
+
+        # Spline correction (vectorized bilinear)
+        spline_corr = np.zeros_like(Y_flat)
+        if spline_map is not None:
+            iy_s = np.clip(Y_flat.astype(int), 0, NrPixelsY - 2)
+            iz_s = np.clip(Z_flat.astype(int), 0, NrPixelsZ - 2)
+            fy = Y_flat - iy_s
+            fz = Z_flat - iz_s
+            spline_corr = (spline_map[iz_s, iy_s] * (1-fy)*(1-fz)
+                         + spline_map[iz_s, iy_s+1] * fy*(1-fz)
+                         + spline_map[iz_s+1, iy_s] * (1-fy)*fz
+                         + spline_map[iz_s+1, iy_s+1] * fy*fz)
+
+        delta_r_map = ((R_distorted_global + spline_corr - R_undistorted) * px).reshape(n_grid, n_grid)
+
+        # Mask out gap/bad pixels using the detector mask
+        if state.mask_file and os.path.exists(state.mask_file):
+            from scipy.ndimage import zoom as _zoom_mask
+            mask_full = np.array(Image.open(state.mask_file))
+            # Downsample mask to grid size; any masked pixel in the block → masked
+            mask_ds = _zoom_mask(mask_full.astype(float),
+                                 (n_grid / NrPixelsZ, n_grid / NrPixelsY), order=0)
+            delta_r_map = np.ma.masked_where(mask_ds > 0.5, delta_r_map)
+
+        valid = delta_r_map.compressed() if hasattr(delta_r_map, 'compressed') else delta_r_map.ravel()
+        vmax = max(abs(np.percentile(valid, 2)),
+                   abs(np.percentile(valid, 98)), 1.0) if len(valid) > 10 else 1.0
+        fig, ax = plt.subplots(1, 1, figsize=(10, 10))
+        ax.set_facecolor('white')
+        im = ax.pcolormesh(ys, zs, delta_r_map, cmap='RdBu_r',
+                           vmin=-vmax, vmax=vmax, shading='gouraud')
+        ax.set_xlim(0, NrPixelsY)
+        ax.set_ylim(0, NrPixelsZ)
+        ax.set_aspect('equal')
+        plt.colorbar(im, ax=ax, label='ΔR (µm)')
+        ax.set_xlabel('Y (pixels)')
+        ax.set_ylabel('Z (pixels)')
+        ax.set_title(f'Total distortion map — {stage_label}')
+        map_png = os.path.join(output_dir, f"{stem}_{stage_label}_map.png")
+        plt.savefig(map_png, dpi=150, bbox_inches='tight')
+        plt.close(fig)
+        logger.info(f"Saved {stage_label} map: {map_png}")
+    except Exception as e:
+        logger.warning(f"Could not generate {stage_label} map: {e}")
+
+
+def _save_spline_map_png(corr_bin_path, nr_pixels_y, nr_pixels_z, px, output_path, title,
+                         mask_file=''):
+    """Generate a PNG visualization of the binary spline correction map.
+
+    Displays the spline ΔR in µm on a 400×400 grid with pixel coordinate axes.
+    """
+    try:
+        import matplotlib
+        matplotlib.use('Agg')
+        import matplotlib.pyplot as plt
+
+        corr = np.fromfile(corr_bin_path, dtype=np.float64).reshape(nr_pixels_z, nr_pixels_y)
+        # Downsample to 200×200 for display
+        from scipy.ndimage import zoom as _zoom
+        n_grid = 200
+        corr_ds = _zoom(corr, (n_grid / nr_pixels_z, n_grid / nr_pixels_y), order=1) * px
+
+        # Mask gap/bad pixels if mask file available
+        if mask_file and os.path.exists(mask_file):
+            mask_full = np.array(Image.open(mask_file))
+            mask_ds = _zoom(mask_full.astype(float),
+                            (n_grid / nr_pixels_z, n_grid / nr_pixels_y), order=0)
+            corr_ds = np.ma.masked_where(mask_ds > 0.5, corr_ds)
+
+        valid = corr_ds.compressed() if hasattr(corr_ds, 'compressed') else corr_ds.ravel()
+        vmax = max(abs(np.percentile(valid, 2)),
+                   abs(np.percentile(valid, 98)), 0.1) if len(valid) > 10 else 1.0
+
+        ys = np.linspace(0, nr_pixels_y, n_grid)
+        zs = np.linspace(0, nr_pixels_z, n_grid)
+        fig, ax = plt.subplots(1, 1, figsize=(10, 10))
+        ax.set_facecolor('white')
+        im = ax.pcolormesh(ys, zs, corr_ds, cmap='RdBu_r',
+                           vmin=-vmax, vmax=vmax, shading='gouraud')
+        ax.set_xlim(0, nr_pixels_y)
+        ax.set_ylim(0, nr_pixels_z)
+        ax.set_aspect('equal')
+        plt.colorbar(im, ax=ax, label='ΔR correction (µm)')
+        ax.set_xlabel('Y (pixels)')
+        ax.set_ylabel('Z (pixels)')
+        ax.set_title(title)
+        plt.savefig(output_path, dpi=150, bbox_inches='tight')
+        plt.close(fig)
+        logger.info(f"Saved spline map: {output_path}")
+    except Exception as e:
+        logger.warning(f"Could not generate spline map PNG: {e}")
+
+
 def generate_residual_correction_map(corr_csv, state, nr_pixels_y, nr_pixels_z):
     """Generate smooth residual distortion correction map from calibrant residuals.
 
@@ -2230,8 +2548,10 @@ def generate_residual_correction_map(corr_csv, state, nr_pixels_y, nr_pixels_z):
         # YRawCorr/ZRawCorr are raw pixel coordinates (from dg_invert_REta_to_pixel)
         y_px = y_raw_um
         z_px = z_raw_um
-        # DeltaR is in microns; correction map stores ΔR in pixels
-        delta_r_px = delta_r / px
+        # DeltaR = RadFit - IdealR (microns).  The correction must be
+        # subtracted from Rt to bring R closer to ideal, but
+        # dg_pixel_to_REta_corr applies Rt += correction, so we negate.
+        delta_r_px = -delta_r / px
 
         # Normalize coordinates for RBF stability
         y_mean, y_std = np.mean(y_px), max(np.std(y_px), 1.0)
@@ -2254,10 +2574,9 @@ nr_pixels_y, nr_pixels_z = int(data['dims'][0]), int(data['dims'][1])
 smoothing = max(1.0, len(delta_r_px) * 0.001)
 rbf = RBFInterpolator(coords, delta_r_px, kernel='thin_plate_spline', smoothing=smoothing)
 
-y_lo = max(0.0, float(np.min(y_px)) - 10)
-y_hi = min(float(nr_pixels_y), float(np.max(y_px)) + 10)
-z_lo = max(0.0, float(np.min(z_px)) - 10)
-z_hi = min(float(nr_pixels_z), float(np.max(z_px)) + 10)
+# Evaluate RBF over the full detector (extrapolate beyond calibrant data range)
+y_lo, y_hi = 0.0, float(nr_pixels_y)
+z_lo, z_hi = 0.0, float(nr_pixels_z)
 n_grid = 200
 yg = np.linspace(y_lo, y_hi, n_grid)
 zg = np.linspace(z_lo, z_hi, n_grid)
@@ -2267,12 +2586,9 @@ z_mean, z_std = float(data['z_mean']), float(data['z_std'])
 gc = np.column_stack([(YG.ravel()-y_mean)/y_std, (ZG.ravel()-z_mean)/z_std])
 data_corr = rbf(gc).reshape(n_grid, n_grid)
 
-correction = np.zeros((nr_pixels_z, nr_pixels_y), dtype=np.float64)
-iy0, iy1 = max(0, int(y_lo)), min(nr_pixels_y, int(y_hi)+1)
-iz0, iz1 = max(0, int(z_lo)), min(nr_pixels_z, int(z_hi)+1)
-ny, nz = iy1-iy0, iz1-iz0
-up = zoom(data_corr, (nz/n_grid, ny/n_grid), order=1)[:nz,:ny]
-correction[iz0:iz0+up.shape[0], iy0:iy0+up.shape[1]] = up
+# Upsample to full detector resolution
+correction = zoom(data_corr, (nr_pixels_z/n_grid, nr_pixels_y/n_grid), order=1)
+correction = correction[:nr_pixels_z, :nr_pixels_y]
 correction.tofile(sys.argv[2])
 rms = float(np.sqrt(np.mean(correction[correction!=0]**2))) if np.any(correction!=0) else 0
 print(json.dumps({{'rms': rms, 'max_abs': float(np.max(np.abs(correction)))}}))
@@ -2346,7 +2662,7 @@ def main():
                             help='Force format conversion: 0=Zarr, 1=HDF5, 2=GE, 3=TIFF, 4=CBF. '
                                  'Default: auto-detect from extension.')
         parser.add_argument('--fit-p-models', type=str, default='tilt,spherical,dipole,trefoil,octupole',
-                            help="Comma-separated models to fit: tilt,spherical,dipole,trefoil,octupole. E.g. 'none' or 'tilt,spherical'.")
+                            help="Comma-separated models to fit: tilt,spherical,dipole,trefoil,octupole,pentafoil5,hexafoil6. E.g. 'none' or 'tilt,spherical'.")
 
         # Calibration control
         parser.add_argument('--n-iterations', type=int, default=40,
@@ -2369,6 +2685,9 @@ def main():
                             help='Tolerance for parallax bounds (µm)')
         parser.add_argument('--fit-residual-map', type=int, default=1,
                             help='Generate and apply residual correction map (0=no, 1=yes)')
+        parser.add_argument('--gradient-correction', type=int, default=1,
+                            help='Radial resampling to suppress cardinal-angle aliasing '
+                                 '(0=off, 1=on). See cardinal_angle_aliasing paper.')
         parser.add_argument('--peak-fit-mode', type=int, default=None,
                             help='Peak fitting mode: 0=pV (default), 1=TCH (GSAS-II)')
         parser.add_argument('--trimmed-mean-fraction', type=float, default=0.75,
@@ -2458,6 +2777,7 @@ def main():
         state.tol_shifts = args.tol_shifts
         state.tol_rotation = args.tol_rotation
         state.per_panel_lsd = args.per_panel_lsd
+        state.gradient_correction = args.gradient_correction
         state.fix_panel_id = args.fix_panel
         state.skip_panels = args.skip_panels
         state.fit_parallax = args.fit_parallax if args.fit_parallax is not None else 0
@@ -2591,10 +2911,11 @@ def main():
                 'NrPixels', 'NrPixelsY', 'NrPixelsZ', 'RhoD', 'rhod',
                 # Distortion parameters (managed by --fit-p-models)
                 'p0', 'p1', 'p2', 'p3', 'p4', 'p5', 'p6',
-                'p7', 'p8', 'p9', 'p10',
+                'p7', 'p8', 'p9', 'p10', 'p11', 'p12', 'p13', 'p14',
                 # Tolerance keys (managed internally, never pass-through)
                 'tolP', 'tolP1', 'tolP2', 'tolP3', 'tolP4', 'tolP5',
                 'tolP6', 'tolP7', 'tolP8', 'tolP9', 'tolP10',
+                'tolP11', 'tolP12', 'tolP13', 'tolP14',
                 'tolTilts', 'tolBC', 'tolLsd',
                 # Panel-related keys (managed by --skip-panels / panel auto-detect)
                 'NPanelsY', 'NPanelsZ', 'PanelSizeY', 'PanelSizeZ',
@@ -2661,7 +2982,8 @@ def main():
                                 state.tz = float(parts[1])
                                 param_file_keys.add('tz')
                             elif key in ('p0', 'p1', 'p2', 'p3', 'p4', 'p5',
-                                         'p6', 'p7', 'p8', 'p9', 'p10'):
+                                         'p6', 'p7', 'p8', 'p9', 'p10',
+                                         'p11', 'p12', 'p13', 'p14'):
                                 setattr(state, key, float(parts[1]))
                                 param_file_keys.add(key)
                             elif key.startswith('tol') and key in _KNOWN_PARAM_KEYS:
@@ -2770,6 +3092,8 @@ def main():
             #   spherical  → p2, p4, p5
             #   dipole     → p3 (angle), p7 (amplitude), p8 (phase)
             #   trefoil    → p9 (amplitude), p10 (phase)
+            #   pentafoil5 → p11 (amplitude), p12 (phase)
+            #   hexafoil6  → p13 (amplitude), p14 (phase)
             #   octupole   → (no dedicated params; amplitude goes via p1,
             #                   fitted only when 'all' or 'octupole' selected)
             _models = state.fit_p_models.strip().lower()
@@ -2784,9 +3108,14 @@ def main():
                     _keep.update({'p3', 'p7', 'p8'})
                 if 'trefoil' in _models:
                     _keep.update({'p9', 'p10'})
+                if 'pentafoil5' in _models:
+                    _keep.update({'p11', 'p12'})
+                if 'hexafoil6' in _models:
+                    _keep.update({'p13', 'p14'})
                 # Zero everything NOT in _keep
                 _all_p = {'p0', 'p1', 'p2', 'p3', 'p4', 'p5',
-                          'p6', 'p7', 'p8', 'p9', 'p10'}
+                          'p6', 'p7', 'p8', 'p9', 'p10',
+                          'p11', 'p12', 'p13', 'p14'}
                 _zeroed = []
                 for pname in sorted(_all_p - _keep):
                     if getattr(state, pname) != 0.0:
@@ -3261,6 +3590,7 @@ def main():
         logger.info(f"Stage 1 result: Lsd={state.lsd:.1f}, "
                      f"BC=({state.ybc:.2f}, {state.zbc:.2f}), "
                      f"ty={state.ty:.6f}, tz={state.tz:.6f}")
+        _save_stage_corr_and_map(rawFN, 'stage1_geometry', state)
 
         print(f"\n{'='*60}")
         print(f"  Stage 2: Full (distortion + panels) — "
@@ -3280,6 +3610,7 @@ def main():
                  trimmed_mean_fraction=args.trimmed_mean_fraction,
                  remove_outliers_between_iters=args.remove_outliers_between_iters,
                  iter_offset=stage1_iters)
+        _save_stage_corr_and_map(rawFN, 'stage2_distortion', state)
 
         # ---- Stage 3: Residual correction map ----
         # Find the .corr.csv from Stage 2 (C code may add extra dots in name)
@@ -3306,30 +3637,43 @@ def main():
                 logger.info(f"Correction map will be included in output parameters "
                            f"and integrator validation.")
 
-                # Re-optimize with the residual correction map applied
-                stage3_iters = max(args.n_iterations, 5)
-                print(f"\n{'='*60}")
-                print(f"  Stage 3b: Re-optimize with residual correction map — "
-                      f"{stage3_iters} iterations")
-                print(f"{'='*60}")
+                _save_stage_corr_and_map(rawFN, 'stage3_spline', state)
 
-                runMIDAS(rawFN, state,
-                         n_iterations=stage3_iters,
-                         mult_factor=multFactor,
-                         doublet_separation=args.doublet_separation,
-                         outlier_iterations=args.outlier_iterations,
-                         eta_bin_size=args.eta_bin_size,
-                         max_width=maxW,
-                         n_cpus=n_cpus,
-                         stage=2,
-                         stage_label='[Stage 3] ',
-                         trimmed_mean_fraction=args.trimmed_mean_fraction,
-                         remove_outliers_between_iters=args.remove_outliers_between_iters,
-                         iter_offset=stage1_iters + args.n_iterations)
+                # Save spline-only map PNG
+                stem = os.path.splitext(os.path.basename(rawFN))[0].rstrip('.')
+                _save_spline_map_png(
+                    state.residual_corr_map_fn, NrPixelsY, NrPixelsZ, state.px,
+                    os.path.join(os.path.dirname(rawFN) or '.', f"{stem}_spline_only_map.png"),
+                    'Spline correction map (residual only)',
+                    mask_file=state.mask_file)
 
-                logger.info(f"Stage 3 result: Lsd={state.lsd:.1f}, "
-                             f"MeanStrain={state.mean_strain}, "
-                             f"StdStrain={state.std_strain}")
+        # ---- Stage 4: Evaluate-only (no refit) ----
+        # Uses whatever state we have — if Stage 3 ran, spline is included;
+        # if --fit-residual-map 0, no spline. Always nIterations=0.
+        has_spline = bool(state.residual_corr_map_fn)
+        spline_label = "with spline" if has_spline else "no spline"
+
+        print(f"\n{'='*60}")
+        print(f"  Stage 4: Evaluate-only ({spline_label}, no refit)")
+        print(f"{'='*60}")
+
+        runMIDAS(rawFN, state,
+                 n_iterations=0,
+                 mult_factor=multFactor,
+                 doublet_separation=args.doublet_separation,
+                 outlier_iterations=args.outlier_iterations,
+                 eta_bin_size=args.eta_bin_size,
+                 max_width=maxW,
+                 n_cpus=n_cpus,
+                 stage=2,
+                 stage_label='[Stage 4] ',
+                 trimmed_mean_fraction=args.trimmed_mean_fraction,
+                 remove_outliers_between_iters=args.remove_outliers_between_iters,
+                 iter_offset=stage1_iters + args.n_iterations)
+
+        logger.info(f"Stage 4 result ({spline_label}, evaluate-only): "
+                     f"MeanStrain={state.mean_strain}, StdStrain={state.std_strain}")
+        _save_stage_corr_and_map(rawFN, 'stage4_evaluate', state)
 
         # ---- Generate final results ----
         logger.info("Generating final results data")
@@ -3361,6 +3705,7 @@ def main():
                 'p0': state.p0, 'p1': state.p1, 'p2': state.p2, 'p3': state.p3,
                 'p4': state.p4, 'p5': state.p5, 'p6': state.p6,
                 'p7': state.p7, 'p8': state.p8, 'p9': state.p9, 'p10': state.p10,
+                'p11': state.p11, 'p12': state.p12, 'p13': state.p13, 'p14': state.p14,
                 'mean_strain': state.mean_strain, 'std_strain': state.std_strain,
                 'wavelength': state.wavelength, 'pixel_size': state.px,
                 'space_group': state.space_group,
@@ -3397,6 +3742,14 @@ def main():
             print(f"  p9             {state.p9}")
         if state.p10 != 0.0:
             print(f"  p10            {state.p10}")
+        if state.p11 != 0.0:
+            print(f"  p11            {state.p11}")
+        if state.p12 != 0.0:
+            print(f"  p12            {state.p12}")
+        if state.p13 != 0.0:
+            print(f"  p13            {state.p13}")
+        if state.p14 != 0.0:
+            print(f"  p14            {state.p14}")
         print(f"  RhoD           {state.rhod}")
         print(f"  Mean Strain    {state.mean_strain}")
         print(f"  Std Strain     {state.std_strain}")
@@ -3454,6 +3807,14 @@ def main():
             final_params['p9'] = state.p9
         if state.p10 != 0.0:
             final_params['p10'] = state.p10
+        if state.p11 != 0.0:
+            final_params['p11'] = state.p11
+        if state.p12 != 0.0:
+            final_params['p12'] = state.p12
+        if state.p13 != 0.0:
+            final_params['p13'] = state.p13
+        if state.p14 != 0.0:
+            final_params['p14'] = state.p14
         if state.parallax_in != 0.0:
             final_params['Parallax'] = state.parallax_in
         if state.residual_corr_map_fn:

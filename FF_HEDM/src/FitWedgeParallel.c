@@ -94,7 +94,9 @@ struct my_func_data {
 
 void YsZsCalc(double Lsd, double Ycen, double Zcen, double p0, double p1,
               double p2, double p3, double p4, double p5, double p6,
-              double p7, double p8, double p9, double p10, double MaxRad, double tx,
+              double p7, double p8, double p9, double p10,
+              double p11, double p12, double p13, double p14,
+              double MaxRad, double tx,
               double ty, double tz, double px, double Ys, double Zs,
               double *YOut, double *ZOut, int nPanels, Panel *panels) {
   double txr = deg2rad * tx;
@@ -136,10 +138,12 @@ void YsZsCalc(double Lsd, double Ycen, double Zcen, double p0, double p1,
   EtaT = 90 - Eta;
   double dipole = p7 * pow(RNorm, 4.0) * cos(deg2rad * (EtaT + p8));
   double trefoil = p9 * pow(RNorm, 3.0) * cos(deg2rad * (3.0 * EtaT + p10));
+  double pentafoil = p11 * pow(RNorm, 5.0) * cos(deg2rad * (5.0 * EtaT + p12));
+  double hexafoil = p13 * pow(RNorm, 6.0) * cos(deg2rad * (6.0 * EtaT + p14));
   DistortFunc = (p0 * (pow(RNorm, n0)) * (cos(deg2rad * (2 * EtaT + p6)))) +
                 (p1 * (pow(RNorm, n1)) * (cos(deg2rad * (4 * EtaT + p3)))) +
                 (panelP2 * (pow(RNorm, n2))) + p4 * pow(RNorm, 6.0) +
-                p5 * pow(RNorm, 4.0) + dipole + trefoil + 1;
+                p5 * pow(RNorm, 4.0) + dipole + trefoil + pentafoil + hexafoil + 1;
   Rcorr = Rad * DistortFunc;
   Rcorr += dg_residual_corr_lookup(&g_residualCorr, Ys, Zs) * px;
   Rcorr = Rcorr * (Lsd / panelLsd); // re-project to global Lsd plane
@@ -275,7 +279,9 @@ static double problem_function(unsigned n, const double *x, double *grad,
 // Returns 0 if success, 1 if hit bounds
 int FitWedgeThreadSafe(double Lsd, double Ycen, double Zcen, double p0,
                        double p1, double p2, double p3, double p4, double p5,
-                       double p6, double p7, double p8, double p9, double p10, double MaxRad, double tx, double ty, double tz,
+                       double p6, double p7, double p8, double p9, double p10,
+                       double p11, double p12, double p13, double p14,
+                       double MaxRad, double tx, double ty, double tz,
                        double px, double Ys, double Zs, double MinOme,
                        double MaxOme, double WedgeIn, double *WedgeFit,
                        double *MinFOut, double *NumUncertainty,
@@ -286,7 +292,8 @@ int FitWedgeThreadSafe(double Lsd, double Ycen, double Zcen, double p0,
   f_data.Ome2 = MaxOme;
   f_data.Wavelength = Wavelength;
   double Y, Z;
-  YsZsCalc(Lsd, Ycen, Zcen, p0, p1, p2, p3, p4, p5, p6, p7, p8, p9, p10, MaxRad, tx, ty, tz, px, Ys, Zs,
+  YsZsCalc(Lsd, Ycen, Zcen, p0, p1, p2, p3, p4, p5, p6, p7, p8, p9, p10,
+           p11, p12, p13, p14, MaxRad, tx, ty, tz, px, Ys, Zs,
            &Y, &Z, nPanels, panels);
   f_data.Ys = Y;
   f_data.Zs = Z;
@@ -390,6 +397,7 @@ int main(int argc, char *argv[]) {
   double p0 = cfg.p0, p1 = cfg.p1, p2 = cfg.p2, p3 = cfg.p3;
   double p4 = cfg.p4, p5 = cfg.p5, p6 = cfg.p6;
   double p7 = cfg.p7, p8 = cfg.p8, p9 = cfg.p9, p10 = cfg.p10;
+  double p11 = cfg.p11, p12 = cfg.p12, p13 = cfg.p13, p14 = cfg.p14;
   double MaxRad = cfg.RhoD;
   double Wavelength = cfg.Wavelength;
   double OmegaStart = cfg.OmegaStart;
@@ -603,7 +611,8 @@ int main(int argc, char *argv[]) {
     double resMinF = 0;
     double resNumUncertainty = 0;
     int status = FitWedgeThreadSafe(
-        Lsd, Ycen, Zcen, p0, p1, p2, p3, p4, p5, p6, p7, p8, p9, p10, MaxRad, tx, ty, tz, px, YsUse,
+        Lsd, Ycen, Zcen, p0, p1, p2, p3, p4, p5, p6, p7, p8, p9, p10,
+        p11, p12, p13, p14, MaxRad, tx, ty, tz, px, YsUse,
         ZsUse, MinOme, MaxOme, Wedge, &resWedge, &resMinF, &resNumUncertainty,
         Wavelength, nPanels, panels);
 

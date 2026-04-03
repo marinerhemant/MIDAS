@@ -81,11 +81,13 @@ void dg_pixel_to_REta(double Y, double Z, double Ycen, double Zcen,
                       double TRs[3][3], double Lsd, double RhoD, double p0,
                       double p1, double p2, double p3, double p4, double p5,
                       double p6, double p7, double p8, double p9, double p10,
+                      double p11, double p12, double p13, double p14,
                       double px, double dLsd, double dP2, double parallax,
                       double *R_out, double *Eta_out,
                       double *Eta_untilted_out) {
   dg_pixel_to_REta_corr(Y, Z, Ycen, Zcen, TRs, Lsd, RhoD,
                          p0, p1, p2, p3, p4, p5, p6, p7, p8, p9, p10,
+                         p11, p12, p13, p14,
                          px, dLsd, dP2, parallax, NULL,
                          R_out, Eta_out, Eta_untilted_out);
 }
@@ -94,6 +96,7 @@ void dg_pixel_to_REta_corr(double Y, double Z, double Ycen, double Zcen,
                       double TRs[3][3], double Lsd, double RhoD, double p0,
                       double p1, double p2, double p3, double p4, double p5,
                       double p6, double p7, double p8, double p9, double p10,
+                      double p11, double p12, double p13, double p14,
                       double px, double dLsd, double dP2, double parallax,
                       const DGResidualCorr *corr,
                       double *R_out, double *Eta_out,
@@ -125,6 +128,8 @@ void dg_pixel_to_REta_corr(double Y, double Z, double Ycen, double Zcen,
   DistortFunc += p5 * pow(RNorm, 4.0);
   DistortFunc += p7 * pow(RNorm, 4.0) * cos(DG_DEG2RAD * (EtaT + p8));
   DistortFunc += p9 * pow(RNorm, 3.0) * cos(DG_DEG2RAD * (3 * EtaT + p10));
+  DistortFunc += p11 * pow(RNorm, 5.0) * cos(DG_DEG2RAD * (5 * EtaT + p12));
+  DistortFunc += p13 * pow(RNorm, 6.0) * cos(DG_DEG2RAD * (6 * EtaT + p14));
   DistortFunc += 1;
   double Rt = Rad * DistortFunc / px; // in pixels
   Rt = Rt * (Lsd / panelLsd);         // re-project to global Lsd plane
@@ -157,10 +162,12 @@ void dg_invert_REta_to_pixel(
     double Lsd, double RhoD,
     double p0, double p1, double p2, double p3, double p4, double p5,
     double p6, double p7, double p8, double p9, double p10,
+                      double p11, double p12, double p13, double p14,
     double px, double dLsd, double dP2, double parallax,
     double *Y_out, double *Z_out) {
   dg_invert_REta_to_pixel_corr(R_target, Eta_target, Ycen, Zcen, TRs,
       Lsd, RhoD, p0, p1, p2, p3, p4, p5, p6, p7, p8, p9, p10,
+      p11, p12, p13, p14,
       px, dLsd, dP2, parallax, NULL, Y_out, Z_out);
 }
 
@@ -170,6 +177,7 @@ void dg_invert_REta_to_pixel_corr(
     double Lsd, double RhoD,
     double p0, double p1, double p2, double p3, double p4, double p5,
     double p6, double p7, double p8, double p9, double p10,
+                      double p11, double p12, double p13, double p14,
     double px, double dLsd, double dP2, double parallax,
     const DGResidualCorr *corr,
     double *Y_out, double *Z_out) {
@@ -187,7 +195,7 @@ void dg_invert_REta_to_pixel_corr(
     // Evaluate forward function at current (Y, Z)
     double R_eval, Eta_eval;
     dg_pixel_to_REta_corr(Y, Z, Ycen, Zcen, TRs, Lsd, RhoD,
-                     p0, p1, p2, p3, p4, p5, p6, p7, p8, p9, p10, px, dLsd, dP2, parallax,
+                     p0, p1, p2, p3, p4, p5, p6, p7, p8, p9, p10, p11, p12, p13, p14, px, dLsd, dP2, parallax,
                      corr, &R_eval, &Eta_eval, NULL);
 
     double dR = R_target - R_eval;
@@ -202,10 +210,10 @@ void dg_invert_REta_to_pixel_corr(
     // Numerical Jacobian: ∂(R,η)/∂(Y,Z)
     double R_dY, Eta_dY, R_dZ, Eta_dZ;
     dg_pixel_to_REta_corr(Y + h, Z, Ycen, Zcen, TRs, Lsd, RhoD,
-                     p0, p1, p2, p3, p4, p5, p6, p7, p8, p9, p10, px, dLsd, dP2, parallax,
+                     p0, p1, p2, p3, p4, p5, p6, p7, p8, p9, p10, p11, p12, p13, p14, px, dLsd, dP2, parallax,
                      corr, &R_dY, &Eta_dY, NULL);
     dg_pixel_to_REta_corr(Y, Z + h, Ycen, Zcen, TRs, Lsd, RhoD,
-                     p0, p1, p2, p3, p4, p5, p6, p7, p8, p9, p10, px, dLsd, dP2, parallax,
+                     p0, p1, p2, p3, p4, p5, p6, p7, p8, p9, p10, p11, p12, p13, p14, px, dLsd, dP2, parallax,
                      corr, &R_dZ, &Eta_dZ, NULL);
 
     double dRdY = (R_dY - R_eval) / h;
@@ -249,11 +257,13 @@ void dg_invert_REta_to_pixel_panel(
     double Lsd, double RhoD,
     double p0, double p1, double p2, double p3, double p4, double p5,
     double p6, double p7, double p8, double p9, double p10,
+                      double p11, double p12, double p13, double p14,
     double px, double parallax,
     const Panel *panel,
     double *Y_out, double *Z_out) {
   dg_invert_REta_to_pixel_panel_corr(R_target, Eta_target, Ycen, Zcen, TRs,
       Lsd, RhoD, p0, p1, p2, p3, p4, p5, p6, p7, p8, p9, p10,
+      p11, p12, p13, p14,
       px, parallax, NULL, panel, Y_out, Z_out);
 }
 
@@ -263,6 +273,7 @@ void dg_invert_REta_to_pixel_panel_corr(
     double Lsd, double RhoD,
     double p0, double p1, double p2, double p3, double p4, double p5,
     double p6, double p7, double p8, double p9, double p10,
+                      double p11, double p12, double p13, double p14,
     double px, double parallax,
     const DGResidualCorr *corr,
     const Panel *panel,
@@ -271,6 +282,7 @@ void dg_invert_REta_to_pixel_panel_corr(
   if (panel == NULL) {
     dg_invert_REta_to_pixel_corr(R_target, Eta_target, Ycen, Zcen, TRs,
                             Lsd, RhoD, p0, p1, p2, p3, p4, p5, p6, p7, p8, p9, p10,
+                            p11, p12, p13, p14,
                             px, 0, 0, parallax, corr, Y_out, Z_out);
     return;
   }
@@ -291,7 +303,7 @@ void dg_invert_REta_to_pixel_panel_corr(
     // Forward: panel-corrected pixel → (R, Eta) with panel dLsd/dP2
     double R_eval, Eta_eval;
     dg_pixel_to_REta_corr(Y, Z, Ycen, Zcen, TRs, Lsd, RhoD,
-                     p0, p1, p2, p3, p4, p5, p6, p7, p8, p9, p10, px, dLsd, dP2, parallax,
+                     p0, p1, p2, p3, p4, p5, p6, p7, p8, p9, p10, p11, p12, p13, p14, px, dLsd, dP2, parallax,
                      corr, &R_eval, &Eta_eval, NULL);
 
     double dR = R_target - R_eval;
@@ -305,10 +317,10 @@ void dg_invert_REta_to_pixel_panel_corr(
     // Numerical Jacobian
     double R_dY, Eta_dY, R_dZ, Eta_dZ;
     dg_pixel_to_REta_corr(Y + h, Z, Ycen, Zcen, TRs, Lsd, RhoD,
-                     p0, p1, p2, p3, p4, p5, p6, p7, p8, p9, p10, px, dLsd, dP2, parallax,
+                     p0, p1, p2, p3, p4, p5, p6, p7, p8, p9, p10, p11, p12, p13, p14, px, dLsd, dP2, parallax,
                      corr, &R_dY, &Eta_dY, NULL);
     dg_pixel_to_REta_corr(Y, Z + h, Ycen, Zcen, TRs, Lsd, RhoD,
-                     p0, p1, p2, p3, p4, p5, p6, p7, p8, p9, p10, px, dLsd, dP2, parallax,
+                     p0, p1, p2, p3, p4, p5, p6, p7, p8, p9, p10, p11, p12, p13, p14, px, dLsd, dP2, parallax,
                      corr, &R_dZ, &Eta_dZ, NULL);
 
     double dRdY = (R_dY - R_eval) / h;

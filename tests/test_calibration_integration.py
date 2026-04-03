@@ -296,7 +296,7 @@ def build_integrator_param_file(calib_param_file: Path, optimized: dict,
     if 'BCy' in optimized and 'BCz' in optimized:
         overrides['BC'] = f"{optimized['BCy']:.12f} {optimized['BCz']:.12f}"
     for key in ['ty', 'tz', 'p0', 'p1', 'p2', 'p3', 'p4', 'p5', 'p6',
-                 'p7', 'p8', 'p9', 'p10']:
+                 'p7', 'p8', 'p9', 'p10', 'p11', 'p12', 'p13', 'p14']:
         if key in optimized:
             overrides[key] = f"{optimized[key]:.12f}"
 
@@ -854,7 +854,7 @@ def main():
 
             print("\n  Optimized geometry:")
             for k in ['Lsd', 'BCy', 'BCz', 'ty', 'tz', 'p0', 'p1', 'p2', 'p3', 'p4',
-                      'p5', 'p6', 'p7', 'p8', 'p9', 'p10']:
+                      'p5', 'p6', 'p7', 'p8', 'p9', 'p10', 'p11', 'p12', 'p13', 'p14']:
                 if k in optimized:
                     print(f"    {k:6s} {optimized[k]:.12f}")
 

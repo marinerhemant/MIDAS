@@ -603,7 +603,9 @@ static inline double CorrectWedge(double eta, double theta, double wl,
 static inline void CorrectTiltSpatialDistortion(
     double px, double Lsd, double ybc, double zbc, double tx, double ty,
     double tz, double RhoD, double p0, double p1, double p2, double p3,
-    double p4, double p5, double p6, double p7, double p8, double p9, double p10, int NrPixels, double *yDispl, double *zDispl,
+    double p4, double p5, double p6, double p7, double p8, double p9, double p10,
+    double p11, double p12, double p13, double p14,
+    int NrPixels, double *yDispl, double *zDispl,
     int nPanels, Panel *panels, int nCPUs) {
   double txr, tyr, tzr;
   txr = deg2rad * tx;
@@ -656,11 +658,13 @@ static inline void CorrectTiltSpatialDistortion(
       double RNorm3 = RNorm * RNorm * RNorm;
       double dipole = p7 * pow(RNorm, 4.0) * cos(deg2rad * (EtaT + p8));
       double trefoil = p9 * RNorm3 * cos(deg2rad * (3.0 * EtaT + p10));
+      double pentafoil = p11 * pow(RNorm, 5.0) * cos(deg2rad * (5.0 * EtaT + p12));
+      double hexafoil = p13 * pow(RNorm, 6.0) * cos(deg2rad * (6.0 * EtaT + p14));
       double DistortFunc =
           (p0 * (pow(RNorm, n0)) * (cos(deg2rad * (2 * EtaT + p6)))) +
           (p1 * (pow(RNorm, n1)) * (cos(deg2rad * (4 * EtaT + p3)))) +
           (panelP2 * (pow(RNorm, n2))) + p4 * pow(RNorm, 6.0) +
-          p5 * pow(RNorm, 4.0) + dipole + trefoil + 1;
+          p5 * pow(RNorm, 4.0) + dipole + trefoil + pentafoil + hexafoil + 1;
       double Rcorr = Rad * DistortFunc;
       Rcorr += dg_residual_corr_lookup(&g_residualCorr, (double)i, (double)j) * px;
       double YCorr = -Rcorr * sin(Eta * deg2rad);
@@ -1102,6 +1106,7 @@ int main(int argc, char *argv[]) {
   double p0 = cfg.p0, p1 = cfg.p1, p2 = cfg.p2, p3 = cfg.p3;
   double p4 = cfg.p4, p5 = cfg.p5, p6 = cfg.p6, RhoD = cfg.RhoD;
   double p7 = cfg.p7, p8 = cfg.p8, p9 = cfg.p9, p10 = cfg.p10;
+  double p11 = cfg.p11, p12 = cfg.p12, p13 = cfg.p13, p14 = cfg.p14;
   double GaussWidth = cfg.GaussWidth > 0 ? cfg.GaussWidth : 1;
   double PeakIntensity = cfg.PeakIntensity;
   int NPanelsY = cfg.NPanelsY, NPanelsZ = cfg.NPanelsZ;
@@ -1468,8 +1473,9 @@ int main(int argc, char *argv[]) {
         -32100.0; // Set to a special number to check if it was set or not.
   }
   CorrectTiltSpatialDistortion(px, Lsd, yBC, zBC, tx, ty, tz, RhoD, p0, p1, p2,
-                               p3, p4, p5, p6, p7, p8, p9, p10, NrPixels, yDispl, zDispl, nPanels,
-                               panels, nCPUs);
+                               p3, p4, p5, p6, p7, p8, p9, p10,
+                               p11, p12, p13, p14, NrPixels, yDispl, zDispl,
+                               nPanels, panels, nCPUs);
   end_time = omp_get_wtime();
   diftotal = end_time - start0;
   printf("Distortion map done in %lf sec.\n", diftotal);

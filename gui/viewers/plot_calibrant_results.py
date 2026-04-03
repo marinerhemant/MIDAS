@@ -34,6 +34,7 @@ COLUMNS_LEGACY = [
     'Eta', 'Strain', 'RadFit', 'EtaCalc', 'DiffCalc', 'RadCalc',
     'Ideal2Theta', 'Outlier', 'YRawCorr', 'ZRawCorr', 'RingNr',
     'RadGlobal', 'IdealR', 'Fit2Theta', 'IdealA', 'FitA',
+    'DeltaR', 'DeltaA',
 ]
 
 # CalibrantIntegratorOMP per-bin CSV columns
@@ -66,13 +67,17 @@ def _load_corr_csv(filename):
             break
 
     if data_start is not None:
-        # Standard 16-column space-separated format (both executables)
         data = np.genfromtxt(filename, skip_header=data_start + 1)
-        return data, COLUMNS_LEGACY
+        # Match column names to actual data width (backward compatible)
+        ncols = data.shape[1] if data.ndim == 2 else 1
+        cols = COLUMNS_LEGACY[:ncols]
+        return data, cols
 
     # Fallback: try legacy format (first line is the header)
     data = np.genfromtxt(filename, skip_header=1)
-    return data, COLUMNS_LEGACY
+    ncols = data.shape[1] if data.ndim == 2 else 1
+    cols = COLUMNS_LEGACY[:ncols]
+    return data, cols
 
 
 COLORMAPS = [
@@ -114,9 +119,12 @@ class CalibrantViewer(QMainWindow):
         super().__init__()
         self.filename = filename or ''
         if filename and os.path.isfile(filename):
-            self.raw, _ = _load_corr_csv(filename)
+            self.raw, self._col_names = _load_corr_csv(filename)
+            self._rebuild_col_map()
         else:
-            self.raw = np.empty((0, 16))
+            self.raw = np.empty((0, len(COLUMNS_LEGACY)))
+            self._col_names = COLUMNS_LEGACY
+            self._rebuild_col_map()
         self.setWindowTitle(f'Calibrant Viewer — {self.filename}' if self.filename
                             else 'Calibrant Viewer')
         self.resize(1200, 750)
@@ -335,10 +343,32 @@ class CalibrantViewer(QMainWindow):
         if path:
             self._load_file(path)
 
+    def _rebuild_col_map(self):
+        """Rebuild COL dict and refresh combo boxes from current column names."""
+        global COL, PLOTTABLE
+        COL = {name: idx for idx, name in enumerate(self._col_names)}
+        PLOTTABLE = [c for c in self._col_names if c != 'Outlier']
+        # Refresh combo boxes if they exist
+        for combo, current_attr in [
+            (getattr(self, 'combo_x', None), 'x_col'),
+            (getattr(self, 'combo_y', None), 'y_col'),
+            (getattr(self, 'combo_c', None), 'c_col'),
+        ]:
+            if combo is not None:
+                combo.blockSignals(True)
+                current = getattr(self, current_attr)
+                combo.clear()
+                combo.addItems(PLOTTABLE)
+                if current in PLOTTABLE:
+                    combo.setCurrentText(current)
+                combo.blockSignals(False)
+
     def _load_file(self, path):
         try:
-            data, _ = _load_corr_csv(path)
+            data, cols = _load_corr_csv(path)
             self.raw = data
+            self._col_names = cols
+            self._rebuild_col_map()
             self.filename = os.path.basename(path)
             self.setWindowTitle(f'Calibrant Viewer — {self.filename}')
             # Add to combo if not present

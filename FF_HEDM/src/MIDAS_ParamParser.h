@@ -114,7 +114,7 @@ typedef struct {
   double px;
   double Lsd, ybc, zbc;
   double tx, ty, tz;
-  double p0, p1, p2, p3, p4, p5, p6, p7, p8, p9, p10;
+  double p0, p1, p2, p3, p4, p5, p6, p7, p8, p9, p10, p11, p12, p13, p14;
   double Wedge;
   double RhoD;
 
@@ -132,8 +132,8 @@ typedef struct {
   double tolTilts, tolLsd, tolBC, tolP;
   double tolTiltX;
   int    tolTiltXSet;
-  double tolP0, tolP1, tolP2, tolP3, tolP4, tolP5, tolP6, tolP7, tolP8, tolP9, tolP10;
-  int    tolP0Set, tolP1Set, tolP2Set, tolP3Set, tolP4Set, tolP5Set, tolP6Set, tolP7Set, tolP8Set, tolP9Set, tolP10Set;
+  double tolP0, tolP1, tolP2, tolP3, tolP4, tolP5, tolP6, tolP7, tolP8, tolP9, tolP10, tolP11, tolP12, tolP13, tolP14;
+  int    tolP0Set, tolP1Set, tolP2Set, tolP3Set, tolP4Set, tolP5Set, tolP6Set, tolP7Set, tolP8Set, tolP9Set, tolP10Set, tolP11Set, tolP12Set, tolP13Set, tolP14Set;
   double tolShifts, tolRotation;
   double tolLsdPanel, tolP2Panel;
   double tolWavelength;

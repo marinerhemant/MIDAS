@@ -49,6 +49,7 @@ long long mapper_build_map(
     double Ycen, double Zcen, double Lsd, double RhoD,
     double p0, double p1, double p2, double p3, double p4, double p5, double p6,
     double p7, double p8, double p9, double p10,
+    double p11, double p12, double p13, double p14,
     double *EtaBinsLow, double *EtaBinsHigh,
     double *RBinsLow, double *RBinsHigh,
     int nRBins, int nEtaBins,
@@ -108,7 +109,8 @@ long long mapper_build_map(
       if (SubPixelLevel > 1) {
         double Rt_cen, Eta_cen;
         dg_pixel_to_REta_corr(ypr, zpr, Ycen, Zcen, TRs, Lsd, RhoD, p0, p1, p2,
-                         p3, p4, p5, p6, p7, p8, p9, p10, pxY, dLsd, dP2, parallax,
+                         p3, p4, p5, p6, p7, p8, p9, p10, p11, p12, p13, p14,
+                         pxY, dLsd, dP2, parallax,
                          residualCorr, &Rt_cen, &Eta_cen,
                          NULL);
         double absEta = fabs(Eta_cen);
@@ -142,7 +144,8 @@ long long mapper_build_map(
               double Y = ypr + sp_dy[k];
               double Z = zpr + sp_dz[l];
               dg_pixel_to_REta_corr(Y, Z, Ycen, Zcen, TRs, Lsd, RhoD, p0, p1, p2,
-                               p3, p4, p5, p6, p7, p8, p9, p10, pxY, dLsd, dP2, parallax,
+                               p3, p4, p5, p6, p7, p8, p9, p10, p11, p12, p13, p14,
+                               pxY, dLsd, dP2, parallax,
                                residualCorr, &Rt, &Eta,
                                NULL);
               RetVals[0] = Eta;
@@ -165,7 +168,8 @@ long long mapper_build_map(
           double ypr_sub = ypr + sp_cy;
           double zpr_sub = zpr + sp_cz;
           dg_pixel_to_REta_corr(ypr_sub, zpr_sub, Ycen, Zcen, TRs, Lsd, RhoD, p0,
-                           p1, p2, p3, p4, p5, p6, p7, p8, p9, p10, pxY, dLsd, dP2, parallax,
+                           p1, p2, p3, p4, p5, p6, p7, p8, p9, p10, p11, p12, p13, p14,
+                           pxY, dLsd, dP2, parallax,
                            residualCorr, &Rt, &Eta,
                            NULL);
           double YZ_local[2];
@@ -408,7 +412,8 @@ long long mapper_build_map(
     for (int si = 0; si < 4; si++) {
       double Rdbg, Etadbg;
       dg_pixel_to_REta_corr((double)sampleY[si], (double)sampleZ[si], Ycen, Zcen,
-                       TRsDbg, Lsd, RhoD, p0, p1, p2, p3, p4, p5, p6, p7, p8, p9, p10, pxY, 0, 0, parallax,
+                       TRsDbg, Lsd, RhoD, p0, p1, p2, p3, p4, p5, p6, p7, p8, p9, p10,
+                       p11, p12, p13, p14, pxY, 0, 0, parallax,
                        residualCorr, &Rdbg, &Etadbg, NULL);
       printf("  pixel(%4d,%4d): R=%10.2f  Eta=%8.2f\n", sampleY[si],
              sampleZ[si], Rdbg, Etadbg);
