@@ -285,5 +285,108 @@ class TestSpotAssigner:
             torch.testing.assert_close(obs_m[0], obs[1])
 
 
+# ===================================================================
+#  Test: Differentiable stress/strain (PyTorch)
+# ===================================================================
+
+from hedm_losses import (
+    tensor_to_voigt as tv, voigt_to_tensor as vt,
+    cubic_stiffness_tensor, rotation_voigt_mandel as rvm_torch,
+    hooke_stress as hooke_torch, volume_average_stress_constraint as vasc_torch,
+)
+
+
+class TestDifferentiableStress:
+    """Tests for PyTorch differentiable stress/strain utilities."""
+
+    def test_voigt_roundtrip(self):
+        T = torch.tensor([[1., 4., 5.], [4., 2., 6.], [5., 6., 3.]])
+        v = tv(T)
+        T2 = vt(v)
+        torch.testing.assert_close(T, T2)
+
+    def test_voigt_frobenius(self):
+        T = torch.tensor([[1., .3, .1], [.3, 2., .2], [.1, .2, 3.]])
+        v = tv(T)
+        torch.testing.assert_close(
+            torch.norm(T, p='fro'), torch.norm(v), atol=1e-14, rtol=0
+        )
+
+    def test_hooke_zero(self):
+        C = cubic_stiffness_tensor(192.9, 163.8, 41.5)
+        eps = torch.zeros(3, 3, dtype=torch.float64)
+        sig = hooke_torch(eps, C, frame="grain")
+        torch.testing.assert_close(sig, torch.zeros(3, 3, dtype=torch.float64))
+
+    def test_hooke_hydrostatic_cubic(self):
+        C11, C12, C44 = 192.9, 163.8, 41.5
+        C = cubic_stiffness_tensor(C11, C12, C44)
+        eps = 0.001 * torch.eye(3, dtype=torch.float64)
+        sig = hooke_torch(eps, C, frame="grain")
+        expected = (C11 + 2 * C12) * 0.001
+        torch.testing.assert_close(
+            torch.diag(sig),
+            torch.full((3,), expected, dtype=torch.float64),
+            atol=1e-10, rtol=0,
+        )
+
+    def test_hooke_differentiable(self):
+        """Gradients flow through Hooke's law."""
+        C = cubic_stiffness_tensor(200.0, 130.0, 80.0)
+        eps = torch.diag(torch.tensor([0.001, -0.0005, -0.0005],
+                                       dtype=torch.float64))
+        eps.requires_grad_(True)
+        orient = torch.eye(3, dtype=torch.float64)
+        sig = hooke_torch(eps, C, orient=orient, frame="lab")
+        loss = sig.sum()
+        loss.backward()
+        assert eps.grad is not None
+        assert torch.all(torch.isfinite(eps.grad))
+
+    def test_hooke_lab_frame_differentiable(self):
+        """Gradients flow through the full lab-frame path (with rotation)."""
+        C = cubic_stiffness_tensor(200.0, 130.0, 80.0)
+        eps = torch.zeros(3, 3, dtype=torch.float64, requires_grad=True)
+        # Random orientation
+        from hedm_forward import HEDMForwardModel
+        orient = HEDMForwardModel.euler2mat(
+            torch.tensor([0.3, 0.5, 0.7], dtype=torch.float64)
+        )
+        sig = hooke_torch(eps, C, orient=orient, frame="lab")
+        loss = sig.sum()
+        loss.backward()
+        assert eps.grad is not None
+
+    def test_rotation_voigt_identity(self):
+        M = rvm_torch(torch.eye(3, dtype=torch.float64))
+        torch.testing.assert_close(M, torch.eye(6, dtype=torch.float64), atol=1e-14, rtol=0)
+
+    def test_rotation_voigt_differentiable(self):
+        orient = torch.eye(3, dtype=torch.float64, requires_grad=True)
+        M = rvm_torch(orient)
+        loss = M.sum()
+        loss.backward()
+        assert orient.grad is not None
+
+    def test_volume_avg_constraint(self):
+        stresses = torch.randn(5, 3, 3, dtype=torch.float64)
+        stresses = 0.5 * (stresses + stresses.transpose(-1, -2))
+        volumes = torch.rand(5, dtype=torch.float64) + 0.1
+        corrected = vasc_torch(stresses, volumes)
+        w = volumes / volumes.sum()
+        avg = (w[:, None, None] * corrected).sum(dim=0)
+        torch.testing.assert_close(
+            avg, torch.zeros(3, 3, dtype=torch.float64), atol=1e-12, rtol=0
+        )
+
+    def test_volume_avg_differentiable(self):
+        stresses = torch.randn(3, 3, 3, dtype=torch.float64, requires_grad=True)
+        volumes = torch.tensor([1.0, 2.0, 1.0], dtype=torch.float64)
+        corrected = vasc_torch(stresses, volumes)
+        loss = corrected.sum()
+        loss.backward()
+        assert stresses.grad is not None
+
+
 if __name__ == "__main__":
     pytest.main([__file__, "-v"])

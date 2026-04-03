@@ -303,3 +303,192 @@ class SpotAssigner:
         pred_indices = valid_idx[keep]
 
         return pred_matched, obs_matched, pred_indices
+
+
+# ---------------------------------------------------------------------------
+#  Differentiable stress/strain (PyTorch)
+# ---------------------------------------------------------------------------
+
+def tensor_to_voigt(T: torch.Tensor) -> torch.Tensor:
+    """3x3 symmetric tensor to 6-vector Voigt-Mandel (sqrt(2) shear).
+
+    Fully differentiable.
+
+    Parameters
+    ----------
+    T : Tensor (..., 3, 3)
+
+    Returns
+    -------
+    Tensor (..., 6) -- [xx, yy, zz, sqrt2*yz, sqrt2*xz, sqrt2*xy]
+    """
+    s2 = math.sqrt(2.0)
+    return torch.stack([
+        T[..., 0, 0], T[..., 1, 1], T[..., 2, 2],
+        s2 * T[..., 1, 2], s2 * T[..., 0, 2], s2 * T[..., 0, 1],
+    ], dim=-1)
+
+
+def voigt_to_tensor(v: torch.Tensor) -> torch.Tensor:
+    """6-vector Voigt-Mandel to 3x3 symmetric tensor.
+
+    Fully differentiable.
+
+    Parameters
+    ----------
+    v : Tensor (..., 6)
+
+    Returns
+    -------
+    Tensor (..., 3, 3)
+    """
+    s2i = 1.0 / math.sqrt(2.0)
+    xx, yy, zz = v[..., 0], v[..., 1], v[..., 2]
+    yz = v[..., 3] * s2i
+    xz = v[..., 4] * s2i
+    xy = v[..., 5] * s2i
+    row0 = torch.stack([xx, xy, xz], dim=-1)
+    row1 = torch.stack([xy, yy, yz], dim=-1)
+    row2 = torch.stack([xz, yz, zz], dim=-1)
+    return torch.stack([row0, row1, row2], dim=-2)
+
+
+def cubic_stiffness_tensor(
+    C11: float, C12: float, C44: float,
+    dtype: torch.dtype = torch.float64,
+    device: torch.device = torch.device("cpu"),
+) -> torch.Tensor:
+    """6x6 stiffness matrix for cubic crystal (Voigt-Mandel notation).
+
+    Parameters
+    ----------
+    C11, C12, C44 : float
+        Independent elastic constants in GPa.
+
+    Returns
+    -------
+    Tensor (6, 6)
+    """
+    C = torch.zeros(6, 6, dtype=dtype, device=device)
+    C[0, 0] = C[1, 1] = C[2, 2] = C11
+    C[0, 1] = C[0, 2] = C[1, 0] = C[1, 2] = C[2, 0] = C[2, 1] = C12
+    C[3, 3] = C[4, 4] = C[5, 5] = 2.0 * C44  # Mandel convention
+    return C
+
+
+def rotation_voigt_mandel(U: torch.Tensor) -> torch.Tensor:
+    """6x6 rotation matrix in Voigt-Mandel space. Fully differentiable.
+
+    Transforms vectorized symmetric tensors between frames:
+        {eps_rotated} = M @ {eps_original}
+
+    Parameters
+    ----------
+    U : Tensor (..., 3, 3) rotation matrix
+
+    Returns
+    -------
+    Tensor (..., 6, 6)
+    """
+    s2 = math.sqrt(2.0)
+    pairs = [(1, 2), (0, 2), (0, 1)]
+
+    M = torch.zeros(*U.shape[:-2], 6, 6, dtype=U.dtype, device=U.device)
+
+    # Normal-normal block
+    for i in range(3):
+        for j in range(3):
+            M[..., i, j] = U[..., i, j] ** 2
+
+    # Normal-shear coupling
+    for ci, (p, q) in enumerate(pairs):
+        for r in range(3):
+            M[..., r, 3 + ci] = s2 * U[..., r, p] * U[..., r, q]
+
+    # Shear-normal coupling
+    for ri, (p, q) in enumerate(pairs):
+        for c in range(3):
+            M[..., 3 + ri, c] = s2 * U[..., p, c] * U[..., q, c]
+
+    # Shear-shear block
+    for ri, (r1, r2) in enumerate(pairs):
+        for ci, (c1, c2) in enumerate(pairs):
+            M[..., 3 + ri, 3 + ci] = (
+                U[..., r1, c1] * U[..., r2, c2]
+                + U[..., r1, c2] * U[..., r2, c1]
+            )
+
+    return M
+
+
+def hooke_stress(
+    strain: torch.Tensor,
+    stiffness: torch.Tensor,
+    orient: Optional[torch.Tensor] = None,
+    frame: str = "lab",
+) -> torch.Tensor:
+    """Differentiable Hooke's law: strain -> stress.
+
+    Parameters
+    ----------
+    strain : Tensor (..., 3, 3) or (..., 6)
+        Strain tensor (Voigt-Mandel or full 3x3).
+    stiffness : Tensor (6, 6)
+        Single-crystal stiffness in Voigt-Mandel notation, crystal frame.
+    orient : Tensor (..., 3, 3), optional
+        Orientation matrix. Required for ``frame="lab"``.
+    frame : str
+        ``"grain"``: strain and output in grain frame.
+        ``"lab"``: strain in lab frame; transform, apply C, transform back.
+
+    Returns
+    -------
+    Tensor (..., 3, 3) stress tensor.
+    """
+    if strain.shape[-1] == 3 and strain.shape[-2] == 3:
+        eps_v = tensor_to_voigt(strain)
+    else:
+        eps_v = strain
+
+    if frame == "grain":
+        sig_v = eps_v @ stiffness.T
+        return voigt_to_tensor(sig_v)
+
+    if orient is None:
+        raise ValueError("orient required for lab-frame computation")
+
+    M = rotation_voigt_mandel(orient)  # (..., 6, 6)
+    Mt = M.transpose(-1, -2)
+    C_lab = Mt @ stiffness @ M  # (..., 6, 6)
+    sig_v = (C_lab @ eps_v.unsqueeze(-1)).squeeze(-1)
+    return voigt_to_tensor(sig_v)
+
+
+def volume_average_stress_constraint(
+    stresses: torch.Tensor,
+    volumes: torch.Tensor,
+    applied_stress: Optional[torch.Tensor] = None,
+) -> torch.Tensor:
+    """Differentiable volume-average stress constraint (FF-1).
+
+    Enforces: sum(V_g * sigma_g) / V_total = sigma_applied
+
+    Parameters
+    ----------
+    stresses : Tensor (N, 3, 3)
+    volumes : Tensor (N,)
+    applied_stress : Tensor (3, 3), optional. Default: zero.
+
+    Returns
+    -------
+    Tensor (N, 3, 3) corrected stresses.
+    """
+    if applied_stress is None:
+        applied_stress = torch.zeros(3, 3, dtype=stresses.dtype,
+                                     device=stresses.device)
+
+    V_total = volumes.sum()
+    w = volumes / V_total
+    sig_avg = (w[:, None, None] * stresses).sum(dim=0)
+    delta = applied_stress - sig_avg
+    return stresses + delta.unsqueeze(0)
