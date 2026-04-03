@@ -99,14 +99,14 @@ DATASETS = {
         'short': 'GE',
         'color': '#4CAF50',
         'px_um': 200,
-        'convergence_csv': os.path.expanduser(
-            '~/Desktop/analysis/calibration/hydra/'
+        'convergence_csv': os.path.join(
+            MIDAS_HOME, 'FF_HEDM', 'Example', 'Calibration',
             'CeO2_1s_65pt351keV_1860mm_000007..edf.ge1.convergence_history.csv'),
-        'corr_csv': os.path.expanduser(
-            '~/Desktop/analysis/calibration/hydra/'
+        'corr_csv': os.path.join(
+            MIDAS_HOME, 'FF_HEDM', 'Example', 'Calibration',
             'integrator_CeO2_1s_65pt351keV_1860mm_000007.edf.corr.csv'),
-        'trace_stem': os.path.expanduser(
-            '~/Desktop/analysis/calibration/hydra/'
+        'trace_stem': os.path.join(
+            MIDAS_HOME, 'FF_HEDM', 'Example', 'Calibration',
             'CeO2_1s_65pt351keV_1860mm_000007..edf.ge1.m_step_trace_iter{}.csv'),
     },
 }

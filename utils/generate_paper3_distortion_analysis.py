@@ -14,34 +14,41 @@ import matplotlib.pyplot as plt
 
 # The 6 distortion model levels (cumulative)
 DISTORTION_LEVELS = [
-    {"name": "1_Baseline",  "models": "none"},
-    {"name": "2_Tilt",      "models": "tilt"},
-    {"name": "3_Spherical", "models": "tilt,spherical"},
-    {"name": "4_Dipole",    "models": "tilt,spherical,dipole"},
-    {"name": "5_Trefoil",   "models": "tilt,spherical,dipole,trefoil"},
-    {"name": "6_Octupole",  "models": "all"},
+    {"name": "1_Baseline",   "models": "none"},
+    {"name": "2_Tilt",       "models": "tilt"},
+    {"name": "3_Spherical",  "models": "tilt,spherical"},
+    {"name": "4_Dipole",     "models": "tilt,spherical,dipole"},
+    {"name": "5_Trefoil",    "models": "tilt,spherical,dipole,trefoil"},
+    {"name": "6_Octupole",   "models": "tilt,spherical,dipole,trefoil,octupole"},
+    {"name": "7_Pentafoil",  "models": "tilt,spherical,dipole,trefoil,octupole,pentafoil5"},
+    {"name": "8_Hexafoil",   "models": "all"},
 ]
 
-# Available datasets
+# Available datasets — CLI args match runAllCalibrations.sh
 DATASETS = {
     "ceria_63keV": {
         "data":   "Ceria_63keV_900mm_100x100_0p5s_aero_0_001137.tif",
-        "params": "params_starting.txt",
+        "cli_args": ["--px", "150.0", "--wavelength", "0.196793",
+                      "--material", "ceo2", "--im-trans", "2", "--cpus", "8"],
         "corr":   "Ceria_63keV_900mm_100x100_0p5s_aero_0_001137..tif.corr.csv",
-        "label":  "Ceria 63 keV / 900 mm",
+        "label":  "Varex 4343CT (63 keV, 900 mm)",
     },
     "ceo2_pil": {
         "data":   "CeO2_Pil_100x100_att000_650mm_71p676keV_001956.tif",
-        "params": "parameters.txt",
+        "dark":   "dark_CeO2_Pil_100x100_att000_650mm_71p676keV_001975.tif",
+        "cli_args": ["--px", "172.0", "--wavelength", "0.172979",
+                      "--material", "ceo2", "--im-trans", "2", "--cpus", "8",
+                      "--mult-factor", "2"],
         "corr":   "CeO2_Pil_100x100_att000_650mm_71p676keV_001956..tif.corr.csv",
-        "label":  "CeO2 Pilatus 71.7 keV / 650 mm",
+        "label":  "Pilatus 6M (72 keV, 650 mm)",
     },
     "ge_offset": {
-        "data":   "/Users/hsharma/opt/MIDAS/FF_HEDM/Example/Calibration/CeO2_1s_65pt351keV_1860mm_000007.edf.ge1",
-        "dark":   "/Users/hsharma/opt/MIDAS/FF_HEDM/Example/Calibration/dark_6s_000010.ge1",
-        "params": "/Users/hsharma/opt/MIDAS/FF_HEDM/Example/Calibration/refined_MIDAS_params_CeO2_1s_65pt351keV_1860mm.txt",
+        "data":   "CeO2_1s_65pt351keV_1860mm_000007.edf.ge1",
+        "dark":   "dark_6s_000010.ge1",
+        "cli_args": ["--px", "200.0", "--wavelength", "0.189714",
+                      "--material", "ceo2", "--cpus", "8"],
         "corr":   "CeO2_1s_65pt351keV_1860mm_000007..edf.ge1.corr.csv",
-        "label":  "GE Offset 65 keV / 1860 mm",
+        "label":  "GE Offset (65 keV, 1860 mm)",
     },
 }
 
@@ -66,7 +73,7 @@ def build_phases(panel_mode):
         })
     if panel_mode == 'extra':
         phases.append({
-            "name": "7_PanelFit",
+            "name": "9_PanelFit",
             "models": "all",
             "skip_panels": False,
         })
@@ -94,7 +101,6 @@ def run_phases(dataset_key, panel_mode='off'):
     """
     ds = DATASETS[dataset_key]
     data_tif   = ds["data"]
-    base_params = ds["params"]
     corr_csv   = ds["corr"]
 
     phases = build_phases(panel_mode)
@@ -115,15 +121,15 @@ def run_phases(dataset_key, panel_mode='off'):
         cmd = [
             sys.executable, acz_script,
             "--data", data_tif,
-            "--params", base_params,
             "--trimmed-mean-fraction", "0.95",
-            "--no-median", "1",
             "--n-iterations", "10",
             "--fit-p-models", phase['models'],
             "--output", output_params,
-            "--no-validate"  # we just want the .corr.csv, not the interactive pop-ups
-        ]
-        
+            "--no-validate",
+            "--fit-residual-map", "0",
+            "--plots", "0",
+        ] + ds.get("cli_args", [])
+
         if "dark" in ds:
             cmd.extend(["--dark", ds["dark"]])
 
@@ -299,7 +305,12 @@ def render_publication_plot(dataset_key, panel_mode='off'):
         plot_name = f"paper3_distortion_evolution_grid_{dataset_key}.png"
         plt.savefig(plot_name, dpi=300, bbox_inches='tight')
         plt.close(fig)
-        print(f"🎉 Saved {plot_name}")
+        print(f"Saved {plot_name}")
+        # Copy to paper directory
+        paper_dir = '/Users/hsharma/Documents/3Papers/paper3_calibration'
+        if os.path.isdir(paper_dir):
+            shutil.copy(plot_name, os.path.join(paper_dir, plot_name))
+            print(f"Copied to {paper_dir}/{plot_name}")
 
 
 if __name__ == "__main__":
