@@ -1005,8 +1005,15 @@ static void SimulateDiffractionImageBuffered(
         }
         if (spF != NULL) {
 #pragma omp critical(spF_write)
+        {
           fprintf(spF, "%d\t%d\t%d\t%d\t%d\t%lf\t%lf\t%lf\n", voxNr, Layer,
                   OmeBin, MultY, MultZ, OmegaThis, ythis, zthis);
+          if (OmeBin == 668 && k == 0) {
+            double z_rt = ((((double)(YZSpotsTemp[1] - zbc)) * px) * (Lsds[Layer] / Lsd)) / px + zbcs[Layer];
+            fprintf(stderr, "DEBUG fr668: ZTemp=%.20f z_rt=%.20f flr_rt=%d flr_direct=%d InPz=%d MultZ=%d\n",
+                    YZSpotsTemp[1], z_rt, (int)floor(z_rt), (int)floor(YZSpotsTemp[1]), InPixels[k][1], MultZ);
+          }
+        }
         }
         /* Append hit to buffer instead of incrementing ObsSpotsInfo */
         if (hitBuf->count >= hitBuf->capacity) {

@@ -235,8 +235,6 @@ void CalcDiffrSpots_Furnace(RealType OrientMatrix[3][3], RealType distance,
         }
       }
       if (KeepSpot == 1) {
-        // printf("%d %lf %lf %lf %lf %lf %lf
-        // %lf\n",spotnr,omegas[i],yl,zl,etas[i],Ghkl[0],Ghkl[1],Ghkl[2]);
         spots[spotnr * 3 + 0] = yl;
         spots[spotnr * 3 + 1] = zl;
         spots[spotnr * 3 + 2] = omegas[i];
