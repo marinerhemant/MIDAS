@@ -18,6 +18,11 @@ _tomo_dir = os.path.join(os.path.dirname(os.path.dirname(os.path.dirname(os.path
 if _tomo_dir not in sys.path:
     sys.path.insert(0, _tomo_dir)
 from midas_tomo_python import run_tomo_from_sinos
+# MLEM/OSEM reconstruction (alternative to FBP)
+_utils_dir = os.path.join(os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__)))), 'utils')
+if _utils_dir not in sys.path:
+    sys.path.insert(0, _utils_dir)
+from mlem_recon import mlem as mlem_reconstruct, osem as osem_reconstruct
 from PIL import Image
 import h5py
 import zarr
@@ -965,6 +970,9 @@ def main():
     parser.add_argument('-minThresh', type=int, required=False, default=-1, help='If you want to filter out peaks with intensity less than this number. -1 disables this. This is only used for filtering out peaksearch results for small peaks, peaks with maxInt smaller than this will be filtered out.')
     parser.add_argument('-sinoType', type=str, required=False, default='raw', choices=['raw', 'norm', 'abs', 'normabs'], help='Sinogram type to use for reconstruction (raw, norm, abs, normabs). Default: raw')
     parser.add_argument('-sinoSource', type=str, required=False, default='tolerance', choices=['indexing', 'tolerance'], help='Sinogram spot source: tolerance=match all spots by angular tolerance (default), indexing=use only spots from per-voxel indexing results (cleaner).')
+    parser.add_argument('-reconMethod', type=str, required=False, default='fbp', choices=['fbp', 'mlem', 'osem'], help='Sinogram reconstruction method: fbp=filtered back-projection via gridrec (default), mlem=Maximum Likelihood EM (handles sparse/missing angles natively), osem=Ordered Subsets EM (accelerated MLEM).')
+    parser.add_argument('-mlemIter', type=int, required=False, default=50, help='Number of MLEM/OSEM iterations (only used when -reconMethod is mlem or osem). Default: 50.')
+    parser.add_argument('-osemSubsets', type=int, required=False, default=4, help='Number of ordered subsets for OSEM (only used when -reconMethod is osem). Default: 4.')
     parser.add_argument('-resume', type=str, required=False, default='',
                         help='Path to a pipeline H5 file to resume from. Auto-detects the first incomplete stage.')
     parser.add_argument('-restartFrom', type=str, required=False, default='',
@@ -1620,12 +1628,23 @@ def main():
                     
                     # Reconstruct: sino shape is (nScans, nSp), transpose to (nThetas, detXdim)
                     sino_for_tomo = sino.T  # (nSp, nScans) = (nThetas, detXdim)
-                    recon_arr = run_tomo_from_sinos(
-                        sino_for_tomo, 'Tomo', thetas,
-                        shifts=0.0, filterNr=2, doLog=0,
-                        extraPad=0, autoCentering=1, numCPUs=1, doCleanup=1)
-                    recon_full = recon_arr[0, 0, :, :]  # (reconDim, reconDim)
-                    recon = recon_full[cropStart:cropEnd, cropStart:cropEnd]  # (nScans, nScans)
+                    reconMethod = getattr(args, 'reconMethod', 'fbp')
+                    if reconMethod == 'mlem':
+                        mlemIter = getattr(args, 'mlemIter', 50)
+                        recon = mlem_reconstruct(sino_for_tomo, thetas, n_iter=mlemIter)
+                        recon = recon[:nScans, :nScans]
+                    elif reconMethod == 'osem':
+                        mlemIter = getattr(args, 'mlemIter', 50)
+                        osemSubsets = getattr(args, 'osemSubsets', 4)
+                        recon = osem_reconstruct(sino_for_tomo, thetas, n_iter=mlemIter, n_subsets=osemSubsets)
+                        recon = recon[:nScans, :nScans]
+                    else:  # fbp (default)
+                        recon_arr = run_tomo_from_sinos(
+                            sino_for_tomo, 'Tomo', thetas,
+                            shifts=0.0, filterNr=2, doLog=0,
+                            extraPad=0, autoCentering=1, numCPUs=1, doCleanup=1)
+                        recon_full = recon_arr[0, 0, :, :]  # (reconDim, reconDim)
+                        recon = recon_full[cropStart:cropEnd, cropStart:cropEnd]  # (nScans, nScans)
                     all_recons[grNr, :, :] = recon
                     im_list.append(Image.fromarray(recon))
                     Image.fromarray(recon).save(f'Recons/recon_grNr_{str.zfill(str(grNr), 4)}.tif')
