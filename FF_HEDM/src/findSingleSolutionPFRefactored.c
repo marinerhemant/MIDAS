@@ -1390,6 +1390,11 @@ void generate_sinograms(SpotList *spotList,
           double currentIntensity = allSpots[SPOTS_ARRAY_COLS * spotIdx + 3];
           double currentOmega = allSpots[SPOTS_ARRAY_COLS * spotIdx + 2];
 
+          /* Per-bin lock to prevent race conditions (lock-striping).
+           * Protects ALL per-bin arrays: sinoArr, spotIDArr, spotMetaArr,
+           * maxIntArr, sumOmeArr, countOmeArr. */
+          omp_set_lock(&binLocks[maxIntIdx]);
+
           /* Store intensity and spotID mapping — keep best match */
           if (currentIntensity > sinoArr[locThis]) {
             sinoArr[locThis] = currentIntensity;
@@ -1406,8 +1411,6 @@ void generate_sinograms(SpotList *spotList,
                 allSpots[SPOTS_ARRAY_COLS * spotIdx + 1]; /* zCen_det */
           }
 
-          /* Per-bin lock to prevent race conditions (lock-striping) */
-          omp_set_lock(&binLocks[maxIntIdx]);
           if (maxIntArr[maxIntIdx] < currentIntensity) {
             maxIntArr[maxIntIdx] = currentIntensity;
           }

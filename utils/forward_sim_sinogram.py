@@ -1519,6 +1519,16 @@ def _process_single_grain(grain_spots, grain_id, out_dir, scan_dirs,
           f'non-zero: {np.count_nonzero(sino)}/{sino.size}, '
           f'max: {sino.max():.1f}')
 
+    # Apply norm + absTransform (matching findSingleSolutionPFRefactored):
+    #   1. Normalize each HKL slot by its max intensity across scans
+    #   2. Apply exp(-I/Imax) absorption transform
+    # sino shape: (nSpots, nScans)
+    for s in range(sino.shape[0]):
+        max_I = sino[s, :].max()
+        if max_I > 0:
+            mask = sino[s, :] > 0
+            sino[s, mask] = np.exp(-sino[s, mask] / max_I)
+
     tomo_work = os.path.join(grain_dir, 'tomo_work')
     recon = run_tomo_recon(sino, omegas, tomo_work, n_cpus=args.nCPUs)
 

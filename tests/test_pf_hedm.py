@@ -261,10 +261,14 @@ def organize_for_pf_pipeline(work_dir, nCPUs):
     print('  File organization and metadata enrichment complete.')
 
 
-def run_pf_pipeline(work_dir, nCPUs, doTomo=0, useGPU=0, skip_peaksearch=False):
+def run_pf_pipeline(work_dir, nCPUs, doTomo=0, useGPU=0, skip_peaksearch=False,
+                    reconMethod='fbp', restartFrom=''):
     """Run pf_MIDAS.py reconstruction pipeline."""
     print('\n' + '='*70)
-    print(f'  Step 4: Running pf_MIDAS.py (doTomo={doTomo}, useGPU={useGPU}, skip_peaksearch={skip_peaksearch})')
+    label = f'doTomo={doTomo}, reconMethod={reconMethod}'
+    if restartFrom:
+        label += f', restartFrom={restartFrom}'
+    print(f'  Running pf_MIDAS.py ({label})')
     print('='*70)
 
     pf_script = MIDAS_HOME / 'FF_HEDM' / 'workflows' / 'pf_MIDAS.py'
@@ -284,7 +288,10 @@ def run_pf_pipeline(work_dir, nCPUs, doTomo=0, useGPU=0, skip_peaksearch=False):
         '-useGPU', str(useGPU),
         '-machineName', 'local',
         '-resultDir', str(work_dir),
+        '-reconMethod', reconMethod,
     ]
+    if restartFrom:
+        cmd += ['-restartFrom', restartFrom]
     print(f'  Command: {" ".join(cmd)}')
     result = subprocess.run(cmd, cwd=str(work_dir))
 
@@ -1449,7 +1456,7 @@ def debug_indexer_all_voxels(work_dir, nCPUs=1):
 # ---------------------------------------------------------------------------
 # Diagnostic 6: Cross-compare GT vs IndexBest_all.bin vs CONF_DEBUG
 # ---------------------------------------------------------------------------
-def cross_compare_gt_indexer_debug(work_dir, nCPUs=1):
+def cross_compare_gt_indexer_debug(work_dir, nCPUs=1, suffix=''):
     """Side-by-side comparison of three grain-assignment sources per voxel.
 
     For every voxel prints:
@@ -1513,10 +1520,55 @@ def cross_compare_gt_indexer_debug(work_dir, nCPUs=1):
 
     print(f'  IndexBest_all.bin: {nVoxBin} voxels, {nSolArr.sum()} total solutions')
 
-    # Per-voxel: best solution from the binary
+    # Per-voxel: read the orientation that findSingleSolutionPFRefactored
+    # actually picked (UniqueIndexSingleKey.bin), then look up its orient
+    # matrix from the per-voxel UniqueIndexKeyOrientAll files.
+    singlekey_path = work_dir / 'Output' / 'UniqueIndexSingleKey.bin'
+    if singlekey_path.exists():
+        idData = np.fromfile(str(singlekey_path), dtype=np.uintp,
+                             count=num_scans * num_scans * 5).reshape((-1, 5))
+    else:
+        idData = None
+        print('  WARNING: UniqueIndexSingleKey.bin not found, '
+              'falling back to IndexBest_all.bin best-by-confidence')
+
     bin_results = {}   # vox → {gt_grain, conf, nMatched, nTotal, miso}
     for v in range(nVoxBin):
         n_sol = nSolArr[v]
+        best_om = None
+
+        # Try to use findSingleSolution's pick
+        if idData is not None and v < len(idData) and idData[v, 1] != 0:
+            rowNr = int(idData[v, 1])
+            nMatched_sk = int(idData[v, 2])
+            nTotal_sk = int(idData[v, 3])
+            # Read orient matrix from UniqueIndexKeyOrientAll file
+            orient_path = work_dir / 'Output' / f'UniqueIndexKeyOrientAll_voxNr_{str(v).zfill(6)}.txt'
+            if orient_path.exists():
+                with open(str(orient_path)) as f_orient:
+                    for line in f_orient:
+                        parts = line.strip().split()
+                        if int(parts[0]) == rowNr:
+                            best_om = np.array([float(x) for x in parts[4:13]])
+                            break
+            if best_om is not None:
+                conf_sk = nMatched_sk / nTotal_sk if nTotal_sk > 0 else 0.0
+                best_miso = 999.0
+                best_gi = -1
+                for gi, gt_om in enumerate(gt['orient_mats']):
+                    angle, _ = GetMisOrientationAngleOM(gt_om, list(best_om), sgnum)
+                    miso_deg = np.degrees(angle)
+                    if miso_deg < best_miso:
+                        best_miso = miso_deg
+                        best_gi = gi
+                bin_results[v] = {
+                    'gt_grain': best_gi, 'conf': conf_sk,
+                    'nMatched': nMatched_sk, 'nTotal': nTotal_sk,
+                    'miso': best_miso, 'n_sol': n_sol,
+                }
+                continue
+
+        # Fallback: best-by-confidence from IndexBest_all.bin
         if n_sol == 0:
             bin_results[v] = {'gt_grain': -1, 'conf': 0.0,
                               'nMatched': 0, 'nTotal': 0, 'miso': 999.0, 'n_sol': 0}
@@ -1529,11 +1581,10 @@ def cross_compare_gt_indexer_debug(work_dir, nCPUs=1):
         best_idx = np.argmax(confs)
         best_om  = sol_data[best_idx, 2:11]
 
-        # Find nearest GT grain by misorientation
         best_miso = 999.0
         best_gi = -1
         for gi, gt_om in enumerate(gt['orient_mats']):
-            angle, _ = GetMisOrientationAngleOM(gt_om, best_om, sgnum)
+            angle, _ = GetMisOrientationAngleOM(gt_om, list(best_om), sgnum)
             miso_deg = np.degrees(angle)
             if miso_deg < best_miso:
                 best_miso = miso_deg
@@ -1860,8 +1911,29 @@ def cross_compare_gt_indexer_debug(work_dir, nCPUs=1):
                               linestyle='--')
         ax.add_patch(rect)
 
+    # Build misorientation-with-GT grid: for each voxel, compute the
+    # misorientation between the indexer's best OM and the spatially-expected
+    # GT orientation at that voxel position.
+    miso_gt_grid = np.full((num_scans, num_scans), np.nan)
+    for vox in range(n_voxels):
+        r, c = vox // num_scans, vox % num_scans
+        exp_gi = expected_gt.get(vox, -1)
+        if exp_gi < 0:
+            continue
+        br = bin_results.get(vox)
+        if br is None or br.get('n_sol', 0) == 0:
+            continue
+        # Get indexer OM for this voxel (re-read from bin)
+        offset_d = int((offArr[vox] - header_size) // 8)
+        sol_data_v = all_data[offset_d:offset_d + nSolArr[vox] * 16].reshape(nSolArr[vox], 16)
+        confs_v = np.where(sol_data_v[:, 14] > 0, sol_data_v[:, 15] / sol_data_v[:, 14], 0.0)
+        best_om_v = list(sol_data_v[np.argmax(confs_v), 2:11])
+        # Miso against the spatially-expected GT grain
+        angle_v, _ = GetMisOrientationAngleOM(gt['orient_mats'][exp_gi], best_om_v, sgnum)
+        miso_gt_grid[r, c] = np.degrees(angle_v)
+
     n_cols = 3 if has_refinement else 2
-    n_rows = 3 if has_refinement else 2
+    n_rows = 4 if has_refinement else 2
     fig, axes = plt.subplots(n_rows, n_cols, figsize=(8 * n_cols, 7 * n_rows))
 
     # ─── Row 0: Grain maps ─────────────────────────────────────
@@ -1995,12 +2067,53 @@ def cross_compare_gt_indexer_debug(work_dir, nCPUs=1):
         plt.colorbar(im, ax=ax, label='IA')
         _add_domain_rect(ax)
 
+        # ─── Row 3: Misorientation with spatially-expected GT ─────
+        # Panel (3,0): Miso(IndexerBest, ExpectedGT) — spatial quality
+        ax = axes[3, 0]
+        mg = np.where(np.isnan(miso_gt_grid), -1, miso_gt_grid)
+        im = ax.imshow(mg.T, origin='lower', cmap='RdYlGn_r',
+                       vmin=0, vmax=5, extent=ext)
+        n_low = np.sum(~np.isnan(miso_gt_grid) & (miso_gt_grid < 1))
+        n_tot = np.sum(~np.isnan(miso_gt_grid))
+        ax.set_title(f'Miso: Indexer vs Spatial GT\n'
+                     f'<1°: {n_low}/{n_tot}', fontsize=13)
+        ax.set_xlabel('X (um)')
+        ax.set_ylabel('Y (um)')
+        plt.colorbar(im, ax=ax, label='Miso (°)')
+        _add_domain_rect(ax)
+        for r in range(num_scans):
+            for c in range(num_scans):
+                v = miso_gt_grid[r, c]
+                if not np.isnan(v):
+                    color = 'white' if v > 2 else 'black'
+                    ax.text(pos_sorted[r], pos_sorted[c],
+                            f'{v:.1f}', ha='center', va='center',
+                            fontsize=5, color=color)
+
+        # Panel (3,1): Miso(Refined, ExpectedGT) — refined spatial quality
+        ax = axes[3, 1]
+        rm = np.where(np.isnan(refined_miso_grid), -1, refined_miso_grid)
+        im = ax.imshow(rm.T, origin='lower', cmap='RdYlGn_r',
+                       vmin=0, vmax=5, extent=ext)
+        n_low_r = np.sum(~np.isnan(refined_miso_grid) & (refined_miso_grid < 1))
+        n_tot_r = np.sum(~np.isnan(refined_miso_grid))
+        ax.set_title(f'Miso: Refined vs Best-match GT\n'
+                     f'<1°: {n_low_r}/{n_tot_r}', fontsize=13)
+        ax.set_xlabel('X (um)')
+        ax.set_ylabel('Y (um)')
+        plt.colorbar(im, ax=ax, label='Miso (°)')
+        _add_domain_rect(ax)
+
+        # Panel (3,2): empty or summary
+        axes[3, 2].axis('off')
+
     plt.suptitle(f'pf-HEDM Reconstruction ({num_scans}x{num_scans}, '
                  f'{BEAMSIZE:.1f}um beam) vs GT '
                  f'({len(xs_ebsd)}x{len(ys_ebsd)}, {STEP_UM}um EBSD)',
                  fontsize=15, fontweight='bold')
     plt.tight_layout(rect=[0, 0, 1, 0.96])
-    plot_path = work_dir / 'diagnostic_maps.png'
+    plot_name = f'diagnostic_maps_{suffix}.png' if suffix else 'diagnostic_maps.png'
+    plot_path = work_dir / plot_name
     plt.savefig(str(plot_path), dpi=150, bbox_inches='tight')
     plt.close()
     print(f'\n  Saved diagnostic plot: {plot_path}')
@@ -2359,6 +2472,160 @@ def validate_results(work_dir, doTomo=0):
     else:
         print('  *** pf-HEDM RECONSTRUCTION TEST FAILED ***')
         print('  (Some output files are missing — check pipeline logs above)')
+
+    return passed
+
+
+def validate_tomo_recon(work_dir, reconMethod, gt=None, miso_threshold=2.0):
+    """Validate grain map from tomo reconstruction against ground truth.
+
+    Loads per-grain recon TIFFs, builds an argmax grain map, and compares
+    against the EBSD ground truth using crystallographic misorientation
+    to map GT grain IDs to pipeline grain IDs.
+
+    GT spatial mapping: the EBSD file is (n_gt x n_gt) at 1 µm step,
+    axis 0 = x, axis 1 = y.  The recon grid is 15x15 at 5 µm step.
+    The GT grid must be transposed (.T) to align with the recon image
+    convention, then rebinned from 1 µm to 5 µm via majority-vote
+    within each beam footprint.
+
+    Returns
+    -------
+    bool : True if >=60% of valid pixels agree with GT.
+    """
+    from PIL import Image
+
+    print(f'\n  --- Tomo Reconstruction Validation ({reconMethod.upper()}) ---')
+
+    if gt is None:
+        gt = load_ground_truth(work_dir)
+
+    sgnum = gt['sgnum']
+    nScans = NSCANS
+
+    # --- Load per-grain recons ---
+    recon_dir = work_dir / 'Recons'
+    recon_files = sorted(recon_dir.glob('recon_grNr_*.tif'))
+    if not recon_files:
+        print(f'    ERROR: No recon_grNr_*.tif found in {recon_dir}')
+        return False
+    nGrains_pipe = len(recon_files)
+    print(f'    Found {nGrains_pipe} per-grain reconstructions')
+
+    all_recons = np.zeros((nGrains_pipe, nScans, nScans))
+    for g in range(nGrains_pipe):
+        tif = recon_dir / f'recon_grNr_{str(g).zfill(4)}.tif'
+        if tif.exists():
+            all_recons[g] = np.array(Image.open(str(tif)))
+
+    # Build grain map via argmax.
+    # The per-grain recon TIFs already have .T applied (pf_MIDAS.py),
+    # so pipe_map axes: row=col_in_voxgrid, col=row_in_voxgrid.
+    # Transpose to get back to (row_voxgrid, col_voxgrid) for GT comparison.
+    pipe_map = np.argmax(all_recons, axis=0).astype(int).T
+    max_val = np.max(all_recons, axis=0).T
+    pipe_map[max_val <= 0] = -1
+
+    n_assigned = np.sum(pipe_map >= 0)
+    print(f'    Grain map: {n_assigned}/{pipe_map.size} pixels assigned')
+
+    # --- Build GT grain map rebinned to the 15x15 recon grid ---
+    positions = np.loadtxt(str(work_dir / 'positions.csv'))
+    ebsd_data = gt['voxel_data']  # (nVox, 6): x, y, z, e1, e2, e3
+    eulers_unique = gt['eulers_unique']
+
+    # Assign each EBSD voxel a GT grain index (tolerance-aware)
+    n_gt = int(np.sqrt(ebsd_data.shape[0]))
+    gt_ids_flat = np.array([
+        np.argmin(np.max(np.abs(ebsd_data[i, 3:6] - eulers_unique), axis=1))
+        for i in range(len(ebsd_data))
+    ])
+    # GT layout: axis 0 = x (slow), axis 1 = y (fast). Transpose to (y, x).
+    gt_ids_2d = gt_ids_flat.reshape(n_gt, n_gt).T
+
+    # After .T: axis 0 = y, axis 1 = x
+    gt_ax0_phys = ebsd_data[:n_gt, 1]               # y values (axis 0 after .T)
+    gt_ax1_phys = ebsd_data[:n_gt * n_gt:n_gt, 0]   # x values (axis 1 after .T)
+
+    # Rebin: for each recon pixel, find GT pixels within beam footprint.
+    # Voxel grid: row maps to positions[row], col maps to positions[col].
+    beam_half = BEAMSIZE / 2.0
+    gt_recon_raw = np.full((nScans, nScans), -1, dtype=int)
+    for row in range(nScans):
+        for col in range(nScans):
+            r_phys = positions[row]
+            c_phys = positions[col]
+            r_mask = (gt_ax0_phys >= r_phys - beam_half) & (gt_ax0_phys <= r_phys + beam_half)
+            c_mask = (gt_ax1_phys >= c_phys - beam_half) & (gt_ax1_phys <= c_phys + beam_half)
+            if not np.any(r_mask) or not np.any(c_mask):
+                continue
+            sub = gt_ids_2d[np.ix_(r_mask, c_mask)]
+            counts = np.bincount(sub.ravel(), minlength=gt['nGrains'])
+            gt_recon_raw[row, col] = np.argmax(counts)
+
+    n_valid_gt = np.sum(gt_recon_raw >= 0)
+    print(f'    GT rebinned: {n_valid_gt}/{nScans*nScans} pixels in domain')
+
+    # --- Match GT grains to pipeline grains by misorientation ---
+    uq_path = work_dir / 'UniqueOrientations.csv'
+    if not uq_path.exists():
+        print(f'    ERROR: UniqueOrientations.csv not found')
+        return False
+
+    uq = np.loadtxt(str(uq_path))
+    if uq.ndim == 1:
+        uq = uq.reshape(1, -1)
+
+    gt_to_pipe = {}
+    print(f'    GT → Pipeline grain matching (SG={sgnum}):')
+    for gi, gt_om in enumerate(gt['orient_mats']):
+        best_miso = 999.0
+        best_pipe = -1
+        for pi in range(uq.shape[0]):
+            pipe_om = uq[pi, 5:14]
+            angle_rad, _ = GetMisOrientationAngleOM(gt_om, pipe_om, sgnum)
+            angle_deg = np.degrees(angle_rad)
+            if angle_deg < best_miso:
+                best_miso = angle_deg
+                best_pipe = pi
+        if best_miso < miso_threshold:
+            gt_to_pipe[gi] = best_pipe
+            print(f'      GT {gi} → Pipe {best_pipe} (miso={best_miso:.2f}°)')
+        else:
+            print(f'      GT {gi} → NO MATCH (best miso={best_miso:.1f}°)')
+
+    if len(gt_to_pipe) < gt['nGrains']:
+        print(f'    WARNING: Only {len(gt_to_pipe)}/{gt["nGrains"]} GT grains matched')
+
+    # Remap GT to pipeline grain IDs
+    gt_recon = np.full_like(gt_recon_raw, -1)
+    for gt_g, pipe_g in gt_to_pipe.items():
+        gt_recon[gt_recon_raw == gt_g] = pipe_g
+
+    # --- Compare ---
+    valid = (pipe_map >= 0) & (gt_recon >= 0)
+    total = valid.sum()
+    if total == 0:
+        print(f'    ERROR: No overlapping valid pixels')
+        return False
+
+    agree = np.sum((pipe_map == gt_recon) & valid)
+    pct = 100.0 * agree / total
+    print(f'    {reconMethod.upper()} vs GT: {agree}/{total} pixels agree ({pct:.1f}%)')
+
+    # Per-grain breakdown
+    for g in range(nGrains_pipe):
+        g_mask = (gt_recon == g) & valid
+        g_total = g_mask.sum()
+        if g_total > 0:
+            g_agree = np.sum((pipe_map == g) & g_mask)
+            print(f'      Grain {g}: {g_agree}/{g_total} ({100*g_agree/g_total:.0f}%)')
+
+    passed = pct >= 60.0
+    if passed:
+        print(f'    PASS: {reconMethod.upper()} reconstruction ≥60% agreement with GT')
+    else:
+        print(f'    FAIL: {reconMethod.upper()} reconstruction <60% agreement with GT')
 
     return passed
 
@@ -3178,15 +3445,56 @@ def main():
             gt = None
             if not skip_sim:
                 gt = validate_forward_simulation(work_dir, args.nCPUs)
-            run_pf_pipeline(work_dir, args.nCPUs, doTomo=args.doTomo,
+
+            # --- Run 1: doTomo=0 (full pipeline: peaksearch + indexing + refinement) ---
+            print('\n' + '#'*70)
+            print('  Run 1: doTomo=0 (full pipeline)')
+            print('#'*70)
+            run_pf_pipeline(work_dir, args.nCPUs, doTomo=0,
                             skip_peaksearch=skip_peaksearch)
             if not skip_sim and not skip_peaksearch:
                 validate_peak_search(work_dir, gt, args.nCPUs)
             validate_indexer_output(work_dir, gt)
             debug_indexer_all_voxels(work_dir, nCPUs=args.nCPUs)
-            cross_compare_gt_indexer_debug(work_dir, nCPUs=args.nCPUs)
+            cross_compare_gt_indexer_debug(work_dir, nCPUs=args.nCPUs,
+                                           suffix='doTomo0')
             validate_sinograms(work_dir, gt, args.nCPUs)
-            passed = validate_results(work_dir, doTomo=args.doTomo)
+            passed = validate_results(work_dir, doTomo=0)
+
+            if args.doTomo == 1:
+                if gt is None:
+                    gt = load_ground_truth(work_dir)
+
+                # --- Run 2: doTomo=1, FBP (restart from indexing) ---
+                print('\n' + '#'*70)
+                print('  Run 2: doTomo=1, FBP')
+                print('#'*70)
+                run_pf_pipeline(work_dir, args.nCPUs, doTomo=1,
+                                reconMethod='fbp', restartFrom='indexing')
+                fbp_passed = validate_tomo_recon(work_dir, 'fbp', gt)
+                cross_compare_gt_indexer_debug(work_dir, nCPUs=args.nCPUs,
+                                               suffix='doTomo1_fbp')
+                passed = passed and fbp_passed
+
+                # --- Run 3: doTomo=1, MLEM (restart from indexing) ---
+                print('\n' + '#'*70)
+                print('  Run 3: doTomo=1, MLEM')
+                print('#'*70)
+                run_pf_pipeline(work_dir, args.nCPUs, doTomo=1,
+                                reconMethod='mlem', restartFrom='indexing')
+                mlem_passed = validate_tomo_recon(work_dir, 'mlem', gt)
+                cross_compare_gt_indexer_debug(work_dir, nCPUs=args.nCPUs,
+                                               suffix='doTomo1_mlem')
+                passed = passed and mlem_passed
+
+                # Summary
+                print('\n' + '='*70)
+                print('  3-WAY TOMO TEST SUMMARY')
+                print('='*70)
+                print(f'    doTomo=0 (no recon):  {"PASS" if passed else "FAIL"}')
+                print(f'    doTomo=1, FBP:        {"PASS" if fbp_passed else "FAIL"}')
+                print(f'    doTomo=1, MLEM:       {"PASS" if mlem_passed else "FAIL"}')
+
             if args.compare_seeded:
                 run_seeded_comparison(work_dir, args.nCPUs)
 

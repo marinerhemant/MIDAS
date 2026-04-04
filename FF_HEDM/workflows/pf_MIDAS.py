@@ -68,8 +68,12 @@ def save_sinogram_variants(topdir, nGrs, maxNHKLs, nScans, grainSpots, omegas):
         grStr = str(grNr).zfill(4)
         for label in combo_labels:
             sino = np.transpose(combo_data[label][grNr, :nSp, :])  # (nScans, nSp)
-            Image.fromarray(sino).save(
-                os.path.join(topdir, f'Sinos/sino_{label}_grNr_{grStr}.tif'))
+            out_fn = os.path.join(topdir, f'Sinos/sino_{label}_grNr_{grStr}.tif')
+            Image.fromarray(sino).save(out_fn)
+            if label == 'raw' and grNr < 3:
+                logging.getLogger('pf_midas').info(
+                    f"DEBUG save_sinogram_variants: grNr={grNr} label={label} "
+                    f"shape={sino.shape} max={sino.max():.1f} fn={out_fn}")
 
     logging.getLogger('pf_midas').info(
         f"Saved 4 sinogram variants for {nGrs} grains to Sinos/")
@@ -1564,6 +1568,13 @@ def main():
                 
             os.makedirs('Recons', exist_ok=True)
             
+            # Create spots to index file from UniqueIndexSingleKey.bin
+            with open(f'{topdir}/SpotsToIndex.csv', 'w') as f:
+                idData = np.fromfile(f'{topdir}/Output/UniqueIndexSingleKey.bin', dtype=np.uintp, count=nScans*nScans*5).reshape((-1, 5))
+                for voxNr in range(nScans * nScans):
+                    if idData[voxNr, 1] != 0:
+                        f.write(f"{idData[voxNr, 0]} {idData[voxNr, 1]} {idData[voxNr, 2]} {idData[voxNr, 3]} {idData[voxNr, 4]}\n")
+
             # Run tomography if requested
             if doTomo == 1:
                 # Find sino file
@@ -1607,37 +1618,47 @@ def main():
                 cropStart = reconDim // 2 - nScans // 2
                 cropEnd = cropStart + nScans
                 
+                # Load the requested sinogram variant from its binary file
+                sinoVariantFNs = glob.glob(f"sinos_{sinoType}_*.bin")
+                sinoVariantFNs = [f for f in sinoVariantFNs
+                                  if f.count('_') == 4 and f.split('_')[2].isdigit()]
+                if sinoVariantFNs:
+                    SinosVariant = np.fromfile(sinoVariantFNs[0], dtype=np.double,
+                                               count=nGrs*maxNHKLs*nScans
+                                               ).reshape((nGrs, maxNHKLs, nScans))
+                    logger.info(f"Loaded sinogram variant '{sinoType}' from {sinoVariantFNs[0]}")
+                else:
+                    logger.warning(f"Sinogram variant sinos_{sinoType}_*.bin not found. "
+                                   f"Using main sinogram.")
+                    SinosVariant = Sinos
+
                 all_recons = np.zeros((nGrs, nScans, nScans))
                 im_list = []
-                
+
                 for grNr in range(nGrs):
                     nSp = grainSpots[grNr]
                     thetas = omegas[grNr, :nSp]
-                    
-                    # Load the requested sinogram variant directly from the TIFF
-                    sino_tif_fn = f'Sinos/sino_{sinoType}_grNr_{str(grNr).zfill(4)}.tif'
-                    if os.path.exists(sino_tif_fn):
-                        sino = np.array(Image.open(sino_tif_fn))
-                    else:
-                        logger.warning(f"Sinogram {sino_tif_fn} not found. Falling back to Sinos array.")
-                        sino = np.transpose(Sinos[grNr, :nSp, :])
-                    
-                    # Save bare sino (for legacy compatibility) and thetas
+
+                    # Read sinogram from binary array (consistent grain ordering)
+                    sino = np.transpose(SinosVariant[grNr, :nSp, :])  # (nScans, nSp)
+
+                    # Save TIFs for visualization and thetas
+                    Image.fromarray(sino).save(f'Sinos/sino_{sinoType}_grNr_{str(grNr).zfill(4)}.tif')
                     Image.fromarray(np.transpose(Sinos[grNr, :nSp, :])).save(f'Sinos/sino_grNr_{str(grNr).zfill(4)}.tif')
                     np.savetxt(f'Thetas/thetas_grNr_{str(grNr).zfill(4)}.txt', thetas, fmt='%.6f')
-                    
+
                     # Reconstruct: sino shape is (nScans, nSp), transpose to (nThetas, detXdim)
                     sino_for_tomo = sino.T  # (nSp, nScans) = (nThetas, detXdim)
                     reconMethod = getattr(args, 'reconMethod', 'fbp')
                     if reconMethod == 'mlem':
                         mlemIter = getattr(args, 'mlemIter', 50)
                         recon = mlem_reconstruct(sino_for_tomo, thetas, n_iter=mlemIter)
-                        recon = recon[:nScans, :nScans]
+                        recon = recon[:nScans, :nScans].T  # transpose to match FBP spatial convention
                     elif reconMethod == 'osem':
                         mlemIter = getattr(args, 'mlemIter', 50)
                         osemSubsets = getattr(args, 'osemSubsets', 4)
                         recon = osem_reconstruct(sino_for_tomo, thetas, n_iter=mlemIter, n_subsets=osemSubsets)
-                        recon = recon[:nScans, :nScans]
+                        recon = recon[:nScans, :nScans].T  # transpose to match FBP spatial convention
                     else:  # fbp (default)
                         recon_arr = run_tomo_from_sinos(
                             sino_for_tomo, 'Tomo', thetas,
@@ -1645,6 +1666,7 @@ def main():
                             extraPad=0, autoCentering=1, numCPUs=1, doCleanup=1)
                         recon_full = recon_arr[0, 0, :, :]  # (reconDim, reconDim)
                         recon = recon_full[cropStart:cropEnd, cropStart:cropEnd]  # (nScans, nScans)
+                    recon = recon.T  # transpose to match voxel grid convention
                     all_recons[grNr, :, :] = recon
                     im_list.append(Image.fromarray(recon))
                     Image.fromarray(recon).save(f'Recons/recon_grNr_{str.zfill(str(grNr), 4)}.tif')
@@ -1663,132 +1685,90 @@ def main():
                 
                 # Process unique orientations
                 uniqueOrientations = np.genfromtxt(f'{topdir}/UniqueOrientations.csv', delimiter=' ')
-                
-                # Create spots to index file
-                with open(f'{topdir}/SpotsToIndex.csv', 'w') as fSp:
+
+                # Generate mic file from tomo grain map for re-indexing.
+                # The mic file seeds IndexerScanningOMP with the tomo-assigned
+                # orientation at each voxel, so it finds the matched spots for
+                # that specific grain at each position.
+                pos_vals = np.loadtxt(f'{topdir}/positions.csv')
+                pos_sorted = np.sort(pos_vals)
+
+                micFNTomo = f'{topdir}/singleSolution.mic'
+                with open(micFNTomo, 'w') as micF:
+                    micF.write("header\nheader\nheader\nheader\n")
                     for voxNr in range(nScans * nScans):
-                        locX = voxNr % nScans - 1
-                        locY = nScans - (voxNr // nScans + 1)
-                        
-                        if max_id[locY, locX] == -1:
+                        row = voxNr // nScans
+                        col = voxNr % nScans
+                        if max_id[row, col] == -1:
                             continue
-                            
-                        orientThis = uniqueOrientations[max_id[locY, locX], 5:]
-                        
-                        unique_index_path = f'{topdir}/Output/UniqueIndexKeyOrientAll_voxNr_{str(voxNr).zfill(6)}.txt'
-                        if os.path.isfile(unique_index_path):
-                            with open(unique_index_path, 'r') as f:
-                                lines = f.readlines()
-                                
-                            for line in lines:
-                                orientInside = [float(val) for val in line.split()[4:]]
-                                ang = rad2deg * GetMisOrientationAngleOM(orientThis, orientInside, sgnum)[0]
-                                
-                                if ang < maxang:
-                                    lineSplit = line.split()
-                                    outStr = f'{voxNr} {lineSplit[0]} {lineSplit[1]} {lineSplit[2]} {lineSplit[3]}\n'
-                                    fSp.write(outStr)
-                                    break
-                
-                # Create mic file if needed
-                if not micFN:
-                    logger.info("Creating dummy mic file for second indexing pass")
-                    
-                    fnSp = f'{topdir}/SpotsToIndex.csv'
-                    if not os.path.exists(fnSp):
-                        logger.error(f"SpotsToIndex.csv not found at {fnSp}")
+                        xThis = pos_sorted[row]
+                        yThis = pos_sorted[col]
+                        omThis = uniqueOrientations[max_id[row, col], 5:]
+                        Euler = OrientMat2Euler(np.array(omThis))
+                        micF.write(f"0.0 0.0 0.0 {xThis:.6f} {yThis:.6f} 0.0 0.0 "
+                                   f"{Euler[0]:.6f} {Euler[1]:.6f} {Euler[2]:.6f} 0.0 0.0\n")
+
+                # Add MicFile to paramstest.txt
+                with open(f'{topdir}/paramstest.txt', 'a') as paramsf:
+                    paramsf.write(f'MicFile {micFNTomo}\n')
+
+                # Save first-pass Output and Results, create fresh directories
+                for dirn in ['Output', 'Results']:
+                    fullDirn = f'full{dirn}'
+                    if os.path.isdir(fullDirn):
+                        shutil.rmtree(fullDirn)
+                    shutil.move(dirn, fullDirn)
+                    os.makedirs(dirn, exist_ok=True)
+
+                # Re-run indexing with mic-seeded orientations
+                logger.info("Re-running indexing with tomo-seeded mic file")
+                resIndex = []
+                for nodeNr in range(nNodes):
+                    resIndex.append(indexscanning(topdir, numProcs, nScans, midas_path,
+                                                  blockNr=nodeNr, numBlocks=nNodes, useGPU=useGPU))
+                outputIndex = [i.result() for i in resIndex]
+                for i, output in enumerate(outputIndex):
+                    if output and "Failed" in output:
+                        logger.error(f"Error in tomo-seeded indexing for node {i}: {output}")
                         sys.exit(1)
-                        
-                    spotsToIndex = np.genfromtxt(fnSp, delimiter=' ')
-                    micFN = 'singleSolution.mic'
-                    
-                    with open(micFN, 'w') as micF:
-                        micF.write("header\nheader\nheader\nheader\n")
-                        
-                        # Load consolidated IndexBest_all.bin
-                        consol_file = f'{topdir}/Output/IndexBest_all.bin'
-                        if not os.path.exists(consol_file):
-                            logger.error(f"Consolidated file not found: {consol_file}")
-                            sys.exit(1)
-                        with open(consol_file, 'rb') as cf:
-                            nVoxels = np.frombuffer(cf.read(4), dtype=np.int32)[0]
-                            nSolArr = np.frombuffer(cf.read(4 * nVoxels), dtype=np.int32)
-                            offArr = np.frombuffer(cf.read(8 * nVoxels), dtype=np.int64)
-                            headerSize = 4 + 4 * nVoxels + 8 * nVoxels
-                            allData = np.frombuffer(cf.read(), dtype=np.double)
-                        
-                        for spot in spotsToIndex:
-                            voxNr = int(spot[0])
-                            solIdx = int(spot[3])
-                            
-                            if voxNr >= nVoxels or nSolArr[voxNr] == 0:
-                                logger.warning(f"No data for voxNr={voxNr}")
-                                continue
-                            
-                            # Offset from start of data section
-                            dataOffset = (offArr[voxNr] - headerSize) // 8  # convert byte offset to double index
-                            data = allData[dataOffset + solIdx * 16 : dataOffset + solIdx * 16 + 16]
-                            
-                            if data.size < 16:
-                                logger.warning(f"IndexBest for voxNr={voxNr} too small at sol {solIdx}")
-                                continue
-                            xThis = data[11]
-                            yThis = data[12]
-                            omThis = data[2:11]
-                            Euler = OrientMat2Euler(omThis)
-                            
-                            micF.write(f"0.0 0.0 0.0 {xThis:.6f} {yThis:.6f} 0.0 0.0 {Euler[0]:.6f} {Euler[1]:.6f} {Euler[2]:.6f} {omThis[0]:.6f} {omThis[1]:.6f} {omThis[2]:.6f} {omThis[3]:.6f} {omThis[4]:.6f} {omThis[5]:.6f} {omThis[6]:.6f} {omThis[7]:.6f} {omThis[8]:.6f}\n")
-                    
-                    # Update params file
-                    with open(f'{topdir}/paramstest.txt', 'a') as paramsf:
-                        paramsf.write(f'MicFile {topdir}/singleSolution.mic\n')
-                    
-                    # Move output directories
-                    shutil.move(f'{topdir}/Output', f'{topdir}/fullOutput')
-                    shutil.move(f'{topdir}/Results', f'{topdir}/fullResults')
-                    
-                    # Create new directories
-                    Path(f'{topdir}/Output').mkdir(parents=True, exist_ok=True)
-                    Path(f'{topdir}/Results').mkdir(parents=True, exist_ok=True)
-                    
-                    # Run indexing again
-                    logger.info("Running indexing again with mic file")
-                    
-                    resIndex = []
-                    for nodeNr in range(nNodes):
-                        resIndex.append(indexscanning(topdir, numProcs, nScans, midas_path, blockNr=nodeNr, numBlocks=nNodes, useGPU=useGPU))
-                        
-                    outputIndex = [i.result() for i in resIndex]
-                    
-                    # Check for errors
-                    for i, output in enumerate(outputIndex):
-                        if output and "Failed" in output:
-                            logger.error(f"Error in second indexing for node {i}: {output}")
-                            sys.exit(1)
-                    
-                    # Run find single solution again
-                    cmd = f"{os.path.join(midas_path, 'FF_HEDM/bin/findSingleSolutionPFRefactored')} {topdir} {sgnum} {maxang} {nScans} {numProcsLocal} {tol_ome} {tol_eta} {baseNameParamFN} {NormalizeIntensities} 1 {sinoMode}"
-                    logger.info(f"Running findSingleSolutionPFRefactored again: {cmd}")
-                    subprocess.call(cmd, cwd=topdir, shell=True)
-                    
-                    # Create spots to index file
-                    with open(f'{topdir}/SpotsToIndex.csv', 'w') as f:
-                        idData = np.fromfile(f'{topdir}/Output/UniqueIndexSingleKey.bin', dtype=np.uintp, count=nScans*nScans*5).reshape((-1, 5))
-                        
-                        for voxNr in range(nScans * nScans):
-                            if idData[voxNr, 1] != 0:
-                                f.write(f"{idData[voxNr, 0]} {idData[voxNr, 1]} {idData[voxNr, 2]} {idData[voxNr, 3]} {idData[voxNr, 4]}\n")
-            else:
-                # Create spots to index file for non-tomo case
-                with open(f'{topdir}/SpotsToIndex.csv', 'w') as f:
-                    idData = np.fromfile(f'{topdir}/Output/UniqueIndexSingleKey.bin', dtype=np.uintp, count=nScans*nScans*5).reshape((-1, 5))
-                    
-                    for voxNr in range(nScans * nScans):
-                        if idData[voxNr, 1] != 0:
-                            f.write(f"{idData[voxNr, 0]} {idData[voxNr, 1]} {idData[voxNr, 2]} {idData[voxNr, 3]} {idData[voxNr, 4]}\n")
-            
-            # Run refinement
+
+                # Build SpotsToIndex.csv directly from new IndexBest_all.bin
+                # (mic-seeded indexing produces 1 solution per voxel, solIndex=0)
+                consol_file = f'{topdir}/Output/IndexBest_all.bin'
+                with open(consol_file, 'rb') as cf:
+                    nVoxels = np.frombuffer(cf.read(4), dtype=np.int32)[0]
+                    nSolArr = np.frombuffer(cf.read(4 * nVoxels), dtype=np.int32)
+                    offArr = np.frombuffer(cf.read(8 * nVoxels), dtype=np.int64)
+                    headerSize = 4 + 4 * nVoxels + 8 * nVoxels
+                    allData = np.frombuffer(cf.read(), dtype=np.double)
+
+                with open(f'{topdir}/SpotsToIndex.csv', 'w') as fSp:
+                    nWritten = 0
+                    for voxNr in range(nVoxels):
+                        if nSolArr[voxNr] == 0:
+                            continue
+                        dataOffset = int((offArr[voxNr] - headerSize) // 8)
+                        row = allData[dataOffset:dataOffset + 16]
+                        spotID = int(row[0])
+                        nExpected = int(row[14])
+                        nMatched = int(row[15])
+                        fSp.write(f"{voxNr} {spotID} {nMatched} {nExpected} 0\n")
+                        nWritten += 1
+                logger.info(f"Built SpotsToIndex.csv from tomo-seeded indexing: "
+                            f"{nWritten}/{nVoxels} voxels")
+
+                # Remove MicFile line from paramstest.txt (so refinement doesn't re-seed)
+                with open(f'{topdir}/paramstest.txt', 'r') as f:
+                    paramLines = f.readlines()
+                with open(f'{topdir}/paramstest.txt', 'w') as f:
+                    for line in paramLines:
+                        if not line.startswith('MicFile'):
+                            f.write(line)
+                
+            # Run refinement (clear stale results so consolidation only sees this run)
             logger.info("Running refinement")
+            if os.path.isdir('Results'):
+                shutil.rmtree('Results')
             os.makedirs('Results', exist_ok=True)
             
             resRefine = []

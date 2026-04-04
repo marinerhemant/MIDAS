@@ -15,6 +15,7 @@ Usage:
 
 import argparse
 import os
+from pathlib import Path
 import numpy as np
 from scipy.spatial import KDTree
 import matplotlib
@@ -68,10 +69,27 @@ def generate_voronoi_microstructure(size_um, step_um, n_grains, seed=42):
     tree = KDTree(grain_seeds)
     _, grain_ids = tree.query(grid_points)
 
-    # Random orientation per grain
+    # Random orientations with guaranteed minimum misorientation separation.
+    # Reject candidates closer than min_miso_deg under cubic symmetry (SG 225).
+    import sys as _sys
+    _sys.path.insert(0, str(Path(__file__).resolve().parent))
+    from calcMiso import Euler2OrientMat, GetMisOrientationAngleOM
+    min_miso_deg = 15.0
     grain_orientations = {}
     for gid in range(n_grains):
-        grain_orientations[gid] = random_euler_angles(rng)
+        for _attempt in range(10000):
+            candidate = random_euler_angles(rng)
+            cand_om = Euler2OrientMat(np.radians(candidate))
+            too_close = False
+            for prev_gid, prev_euler in grain_orientations.items():
+                prev_om = Euler2OrientMat(np.radians(prev_euler))
+                angle, _ = GetMisOrientationAngleOM(cand_om, prev_om, 225)
+                if np.degrees(angle) < min_miso_deg:
+                    too_close = True
+                    break
+            if not too_close:
+                break
+        grain_orientations[gid] = candidate
 
     # Build voxel array: x, y, z, euler1, euler2, euler3
     n_voxels = len(grid_points)
