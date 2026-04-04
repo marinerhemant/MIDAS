@@ -4,17 +4,49 @@
 
 Replaces hard (binary) spot-to-grain assignment with soft probabilistic ownership using Expectation-Maximization, analogous to RELION's approach in cryo-EM.
 
-**Current MIDAS behavior:** Each spot is assigned to at most one grain (max-intensity rule in `findSingleSolutionPFRefactored.c`). At grain boundaries, this creates jagged, noisy boundaries.
+**Current MIDAS behavior:** Each spot is assigned to at most one grain (max-intensity rule in `findSingleSolutionPFRefactored.c`). At grain boundaries, this creates jagged, noisy boundaries. Shared spots (e.g., twin-related reflections) are removed from BOTH sinograms, losing signal.
 
-**EM approach:** Each spot gets an ownership probability for every nearby grain. Grain orientations are updated using these weighted probabilities, naturally handling overlapping spots and producing smoother boundaries.
+**EM approach:** Each spot gets an ownership probability for every nearby grain. Shared spots are SPLIT proportionally between grains (preserving total intensity). Noise spots are heavily downweighted by distance-based ownership. Grain orientations are optionally refined via gradient descent in the M-step.
+
+## Pipeline Integration
+
+When `-useEM 1` is passed to `pf_MIDAS.py` (requires `-doTomo 1`):
+
+1. Indexing runs as normal
+2. `findSingleSolutionPFRefactored` finds unique grain orientations
+3. **Pre-tomo refinement** (FitOrStrainsScanningOMP) sharpens per-voxel orientations
+4. Refined orientations are propagated to unique grain set
+5. **EM spot-ownership** runs: E-step (soft assignment) + M-step (orientation refinement)
+6. **Weighted sinograms** are generated from EM ownership probabilities
+7. Tomo reconstruction runs on the improved sinograms
+8. Standard mic-seeded re-indexing and final refinement follow
 
 ## Files
 
 | File | Purpose |
 |------|---------|
-| `fwd_sim/em_spot_ownership.py` | `EMSpotOwnership` class |
-| `fwd_sim/hedm_forward.py` | Forward model (used internally) |
-| `fwd_sim/hedm_losses.py` | Spot matching loss (used in M-step) |
+| `fwd_sim/em_spot_ownership.py` | `EMSpotOwnership` class (E-step, M-step, angular wrapping, ring filtering) |
+| `FF_HEDM/workflows/em_pf_integration.py` | Pipeline integration: data loading, weighted sinogram generation |
+| `FF_HEDM/workflows/pf_MIDAS.py` | Main driver (modified: `-useEM` flag and EM insertion point) |
+| `fwd_sim/hedm_forward.py` | Forward model (used internally by EM) |
+| `fwd_sim/tests/test_em_spot_ownership.py` | Unit tests for EM model |
+
+## Quick Start (CLI)
+
+```bash
+# Standard pf-HEDM with EM-weighted sinograms and MLEM tomo:
+pf_MIDAS.py -paramFile params.txt -nCPUs 32 \
+  -doTomo 1 -useEM 1 -reconMethod mlem -mlemIter 50
+
+# EM parameters (all optional, showing defaults):
+#   -emIter 10           # EM iterations
+#   -emSigmaInit 0.02    # Initial Gaussian width (radians)
+#   -emSigmaMin 0.005    # Annealing floor
+#   -emSigmaDecay 0.9    # Sigma decay per iteration
+#   -emRefineOrientations 1  # 1=full EM with M-step, 0=E-step only
+#   -emOptSteps 5        # Gradient steps per M-step
+#   -emLR 0.005          # Adam learning rate for M-step
+```
 
 ## Prerequisites
 

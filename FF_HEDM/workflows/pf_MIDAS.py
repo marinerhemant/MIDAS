@@ -977,6 +977,22 @@ def main():
     parser.add_argument('-reconMethod', type=str, required=False, default='fbp', choices=['fbp', 'mlem', 'osem'], help='Sinogram reconstruction method: fbp=filtered back-projection via gridrec (default), mlem=Maximum Likelihood EM (handles sparse/missing angles natively), osem=Ordered Subsets EM (accelerated MLEM).')
     parser.add_argument('-mlemIter', type=int, required=False, default=50, help='Number of MLEM/OSEM iterations (only used when -reconMethod is mlem or osem). Default: 50.')
     parser.add_argument('-osemSubsets', type=int, required=False, default=4, help='Number of ordered subsets for OSEM (only used when -reconMethod is osem). Default: 4.')
+    parser.add_argument('-useEM', type=int, required=False, default=0,
+                        help='Use EM spot-ownership for soft sinogram generation (requires doTomo=1). Default: 0 (off).')
+    parser.add_argument('-emIter', type=int, required=False, default=10,
+                        help='Number of EM iterations. Default: 10.')
+    parser.add_argument('-emSigmaInit', type=float, required=False, default=0.02,
+                        help='Initial sigma for EM Gaussian kernel (radians, ~1 degree). Default: 0.02.')
+    parser.add_argument('-emSigmaMin', type=float, required=False, default=0.005,
+                        help='Minimum sigma for EM annealing floor (radians). Default: 0.005.')
+    parser.add_argument('-emSigmaDecay', type=float, required=False, default=0.9,
+                        help='Sigma decay factor per EM iteration. Default: 0.9.')
+    parser.add_argument('-emRefineOrientations', type=int, required=False, default=1,
+                        help='Whether EM M-step refines grain orientations. 0=E-step only, 1=full EM (default).')
+    parser.add_argument('-emOptSteps', type=int, required=False, default=5,
+                        help='Gradient steps per EM M-step per grain. Default: 5.')
+    parser.add_argument('-emLR', type=float, required=False, default=0.005,
+                        help='Learning rate for EM M-step Adam optimizer. Default: 0.005.')
     parser.add_argument('-resume', type=str, required=False, default='',
                         help='Path to a pipeline H5 file to resume from. Auto-detects the first incomplete stage.')
     parser.add_argument('-restartFrom', type=str, required=False, default='',
@@ -1008,6 +1024,7 @@ def main():
     sinoType = args.sinoType
     sinoSource = args.sinoSource
     sinoMode = 1 if sinoSource == 'indexing' else 0
+    useEM = args.useEM
     # Ensure command line file arguments are absolute paths before a potential directory change
     param_path = os.path.abspath(args.paramFile)
     param_dir = os.path.dirname(param_path)
@@ -1574,6 +1591,59 @@ def main():
                 for voxNr in range(nScans * nScans):
                     if idData[voxNr, 1] != 0:
                         f.write(f"{idData[voxNr, 0]} {idData[voxNr, 1]} {idData[voxNr, 2]} {idData[voxNr, 3]} {idData[voxNr, 4]}\n")
+
+            # EM spot-ownership: pre-tomo refinement + soft sinograms
+            if useEM == 1 and doTomo == 1:
+                logger.info("=== EM Spot-Ownership Pipeline ===")
+
+                # Step 1: Pre-tomo refinement to get better initial orientations
+                logger.info("Running pre-tomo refinement for EM initialization")
+
+                # Save first-pass Output/Results before refinement overwrites
+                for dirn in ['Results']:
+                    if os.path.isdir(dirn):
+                        shutil.rmtree(dirn)
+                    os.makedirs(dirn, exist_ok=True)
+
+                resRefine0 = []
+                for nodeNr in range(nNodes):
+                    resRefine0.append(refinescanning(topdir, numProcs, midas_path,
+                                                      blockNr=nodeNr, numBlocks=nNodes,
+                                                      useGPU=useGPU))
+                outputRefine0 = [i.result() for i in resRefine0]
+                for i, output in enumerate(outputRefine0):
+                    if output and "Failed" in output:
+                        logger.warning(f"Pre-tomo refinement warning for node {i}: {output}")
+
+                logger.info("Pre-tomo refinement complete. Updating grain orientations.")
+
+                # Step 2: Re-derive unique grain orientations from refined results
+                from em_pf_integration import update_unique_orientations_from_refinement
+                update_unique_orientations_from_refinement(topdir, nScans)
+
+                # Step 3: Run EM spot-ownership
+                logger.info("Running EM spot-ownership for weighted sinograms")
+                from em_pf_integration import run_em_spot_ownership
+
+                # Remove old sinogram files before EM writes new ones
+                for pattern in ["sinos_*.bin", "omegas_*.bin", "nrHKLs_*.bin"]:
+                    for old_f in glob.glob(pattern):
+                        os.remove(old_f)
+
+                run_em_spot_ownership(
+                    topdir=topdir,
+                    n_scans=nScans,
+                    n_iter=getattr(args, 'emIter', 10),
+                    sigma_init=getattr(args, 'emSigmaInit', 0.02),
+                    sigma_min=getattr(args, 'emSigmaMin', 0.005),
+                    sigma_decay=getattr(args, 'emSigmaDecay', 0.9),
+                    n_opt_steps=getattr(args, 'emOptSteps', 5),
+                    lr=getattr(args, 'emLR', 0.005),
+                    refine_orientations=bool(getattr(args, 'emRefineOrientations', 1)),
+                    use_refined_orientations=True,
+                )
+
+                logger.info("EM complete. Proceeding with tomo reconstruction on EM sinograms.")
 
             # Run tomography if requested
             if doTomo == 1:

@@ -262,10 +262,12 @@ def organize_for_pf_pipeline(work_dir, nCPUs):
 
 
 def run_pf_pipeline(work_dir, nCPUs, doTomo=0, useGPU=0, skip_peaksearch=False,
-                    reconMethod='fbp', restartFrom=''):
+                    reconMethod='fbp', restartFrom='', useEM=0):
     """Run pf_MIDAS.py reconstruction pipeline."""
     print('\n' + '='*70)
     label = f'doTomo={doTomo}, reconMethod={reconMethod}'
+    if useEM:
+        label += ', useEM=1'
     if restartFrom:
         label += f', restartFrom={restartFrom}'
     print(f'  Running pf_MIDAS.py ({label})')
@@ -286,6 +288,7 @@ def run_pf_pipeline(work_dir, nCPUs, doTomo=0, useGPU=0, skip_peaksearch=False,
         '-doPeakSearch', do_peak,
         '-doTomo', str(doTomo),
         '-useGPU', str(useGPU),
+        '-useEM', str(useEM),
         '-machineName', 'local',
         '-resultDir', str(work_dir),
         '-reconMethod', reconMethod,
@@ -3487,13 +3490,26 @@ def main():
                                                suffix='doTomo1_mlem')
                 passed = passed and mlem_passed
 
+                # --- Run 4: doTomo=1, MLEM + EM spot-ownership (restart from indexing) ---
+                print('\n' + '#'*70)
+                print('  Run 4: doTomo=1, MLEM + EM spot-ownership')
+                print('#'*70)
+                run_pf_pipeline(work_dir, args.nCPUs, doTomo=1,
+                                reconMethod='mlem', restartFrom='indexing',
+                                useEM=1)
+                em_passed = validate_tomo_recon(work_dir, 'em+mlem', gt)
+                cross_compare_gt_indexer_debug(work_dir, nCPUs=args.nCPUs,
+                                               suffix='doTomo1_em_mlem')
+                passed = passed and em_passed
+
                 # Summary
                 print('\n' + '='*70)
-                print('  3-WAY TOMO TEST SUMMARY')
+                print('  4-WAY TOMO TEST SUMMARY')
                 print('='*70)
                 print(f'    doTomo=0 (no recon):  {"PASS" if passed else "FAIL"}')
                 print(f'    doTomo=1, FBP:        {"PASS" if fbp_passed else "FAIL"}')
                 print(f'    doTomo=1, MLEM:       {"PASS" if mlem_passed else "FAIL"}')
+                print(f'    doTomo=1, EM+MLEM:    {"PASS" if em_passed else "FAIL"}')
 
             if args.compare_seeded:
                 run_seeded_comparison(work_dir, args.nCPUs)
