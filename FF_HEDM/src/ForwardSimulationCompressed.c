@@ -835,9 +835,14 @@ static long ReadNpyInputData(const char *InFileName, double **InputInfo,
         InputInfo[nrPoints][10] = (iy - halfN[1]) * gridSize;
         InputInfo[nrPoints][11] = (iz - halfN[2]) * gridSize;
 
-        // Elastic strain tensor (6 components)
-        for (int c = 0; c < 6; c++)
-          InputInfo[nrPoints][c + 12] = vd[3 + c];
+        // Elastic strain tensor: remap from .npy order (E11,E22,E33,E23,E13,E12)
+        // to MIDAS order (E11,E12,E13,E22,E23,E33)
+        InputInfo[nrPoints][12] = vd[3]; // E11
+        InputInfo[nrPoints][13] = vd[8]; // E12
+        InputInfo[nrPoints][14] = vd[7]; // E13
+        InputInfo[nrPoints][15] = vd[4]; // E22
+        InputInfo[nrPoints][16] = vd[6]; // E23
+        InputInfo[nrPoints][17] = vd[5]; // E33
 
         nrPoints++;
       }
