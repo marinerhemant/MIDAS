@@ -49,27 +49,21 @@ show_help() {
 
 check_and_download_seeds() {
     local SEED_DIR="NF_HEDM/seedOrientations"
-    local REQUIRED_SEEDS=("cubicSeed.txt" "hexagonalSeed.txt" "monoclinicSeed.txt" "orthorhombicSeed.txt" "tetragonalSeed.txt" "triclinicSeed.txt" "trigonalSeed.txt")
-    local MISSING_SEEDS=0
 
-    # Check if directory exists
-    if [ ! -d "$SEED_DIR" ]; then
-        MISSING_SEEDS=1
-    else
-        # Check for each file
-        for seed in "${REQUIRED_SEEDS[@]}"; do
-            if [ ! -f "$SEED_DIR/$seed" ]; then
-                MISSING_SEEDS=1
-                break
-            fi
-        done
+    # We only need triclinicSeed.txt (master quaternion set covering full SO(3)/Z2).
+    # Lookup tables for all 12 symmetry types are generated post-build by
+    # GenerateSeedLookupTables. Per-SG CSV files are extracted on demand by
+    # utils/extract_seed_orientations.py when nf_MIDAS.py runs.
+
+    if [ -f "$SEED_DIR/orientations_master.bin" ]; then
+        echo "Seed orientation master + lookup tables already exist."
+        return
     fi
 
-    # Download and extract if missing
-    if [ "$MISSING_SEEDS" -eq 1 ]; then
-        echo "Missing seed files in $SEED_DIR. Downloading..."
+    if [ ! -f "$SEED_DIR/triclinicSeed.txt" ]; then
+        echo "Master seed file missing. Downloading..."
         mkdir -p "$SEED_DIR"
-        
+
         # Download
         if command -v curl >/dev/null 2>&1; then
             curl -L -o "$SEED_DIR/seed.zip" "https://github.com/marinerhemant/MIDAS/releases/download/v9.1-data/seed.zip"
@@ -88,15 +82,19 @@ check_and_download_seeds() {
              exit 1
         fi
 
-        # Cleanup
-        rm "$SEED_DIR/seed.zip"
-        if [ -d "$SEED_DIR/__MACOSX" ]; then
-            rm -rf "$SEED_DIR/__MACOSX"
-        fi
-        echo "Seed files downloaded and extracted successfully."
+        # Cleanup: keep only the master file (triclinicSeed.txt)
+        rm -f "$SEED_DIR/seed.zip"
+        rm -rf "$SEED_DIR/__MACOSX"
+        for f in "$SEED_DIR"/*Seed.txt; do
+            [ "$(basename "$f")" = "triclinicSeed.txt" ] && continue
+            rm -f "$f"
+        done
+        echo "Master seed file (triclinicSeed.txt) downloaded."
     else
-        echo "Seed files already exist."
+        echo "Master seed file (triclinicSeed.txt) already exists."
     fi
+    # Lookup tables will be generated post-build.
+    GENERATE_SEED_LOOKUPS=1
 }
 
 # Parse arguments
@@ -262,6 +260,19 @@ if [ $BUILD_SUCCESS -eq 0 ]; then
             echo "  Copied $n_copied binaries to $bin_dir/"
         fi
     done
+
+    # Generate seed orientation lookup tables if needed
+    if [ "${GENERATE_SEED_LOOKUPS:-0}" -eq 1 ]; then
+        echo ""
+        echo "Generating seed orientation lookup tables..."
+        ../NF_HEDM/bin/GenerateSeedLookupTables \
+            ../NF_HEDM/seedOrientations/triclinicSeed.txt \
+            ../NF_HEDM/seedOrientations/ \
+            "$JOBS"
+        if [ $? -ne 0 ]; then
+            echo "Warning: Seed lookup table generation failed."
+        fi
+    fi
 
     # Touch the update-check timestamp so the 14-day reminder resets
     touch ".last_update_check"

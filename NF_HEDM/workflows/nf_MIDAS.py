@@ -262,7 +262,16 @@ def run_preprocessing(args: argparse.Namespace, params: Dict, t0: float):
             out_file=f'{logDir}/seed_out.csv',
             err_file=f'{logDir}/seed_err.csv'
         )
-        
+    elif not os.path.exists(params.get('SeedOrientations', '')):
+        # Auto-extract seed orientations from master + lookup tables
+        sg = int(params.get('SpaceGroup', params.get('SGNr', '225')))
+        seed_dir = os.path.join(install_dir, 'NF_HEDM', 'seedOrientations')
+        sys.path.insert(0, os.path.join(install_dir, 'utils'))
+        from extract_seed_orientations import ensure_seed_orientations
+        seed_csv = ensure_seed_orientations(sg, seed_dir)
+        params['SeedOrientations'] = seed_csv
+        logger.info(f"Auto-extracted seed orientations for SG {sg}: {seed_csv}")
+
     logger.info("Updating parameter file with orientation count.")
     try:
         nrOrientations = len(open(params['SeedOrientations']).readlines())
