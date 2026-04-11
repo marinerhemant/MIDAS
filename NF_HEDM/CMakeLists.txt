@@ -145,7 +145,7 @@ if(USE_CUDA AND CUDA_FOUND)
   )
 
   add_executable(FitOrientationGPU ${NF_GPU_SOURCES})
-  target_link_libraries(FitOrientationGPU PRIVATE NLOPT::NLOPT ${COMMON_LINK_LIBRARIES})
+  target_link_libraries(FitOrientationGPU PRIVATE NLOPT::NLOPT ${COMMON_LINK_LIBRARIES} midas_orientation)
   target_link_libraries(FitOrientationGPU PRIVATE cudart)
   target_compile_definitions(FitOrientationGPU PRIVATE ENABLE_CUDA)
   target_include_directories(FitOrientationGPU PRIVATE ${CMAKE_SOURCE_DIR}/utils)
