@@ -655,6 +655,200 @@ static inline int writeStrZip(char outstr[8192], char zarrfn[8192],
   return 0;
 }
 
+// --- .npy file support ---
+
+static int ParseNpyHeader(FILE *f, int shape_out[4], int *ndim_out,
+                          size_t *data_offset_out) {
+  unsigned char magic[6];
+  if (fread(magic, 1, 6, f) != 6) {
+    fprintf(stderr, "NPY: Failed to read magic bytes.\n");
+    return -1;
+  }
+  if (magic[0] != 0x93 || magic[1] != 'N' || magic[2] != 'U' ||
+      magic[3] != 'M' || magic[4] != 'P' || magic[5] != 'Y') {
+    fprintf(stderr, "NPY: Not a valid .npy file (bad magic).\n");
+    return -1;
+  }
+  unsigned char ver[2];
+  if (fread(ver, 1, 2, f) != 2) {
+    fprintf(stderr, "NPY: Failed to read version.\n");
+    return -1;
+  }
+  unsigned int header_len = 0;
+  if (ver[0] == 1) {
+    unsigned char hl[2];
+    if (fread(hl, 1, 2, f) != 2) return -1;
+    header_len = (unsigned int)hl[0] | ((unsigned int)hl[1] << 8);
+  } else if (ver[0] == 2) {
+    unsigned char hl[4];
+    if (fread(hl, 1, 4, f) != 4) return -1;
+    header_len = (unsigned int)hl[0] | ((unsigned int)hl[1] << 8) |
+                 ((unsigned int)hl[2] << 16) | ((unsigned int)hl[3] << 24);
+  } else {
+    fprintf(stderr, "NPY: Unsupported .npy version %d.%d\n", ver[0], ver[1]);
+    return -1;
+  }
+  size_t preamble = 6 + 2 + (ver[0] == 1 ? 2 : 4);
+
+  char *header = malloc(header_len + 1);
+  if (header == NULL) {
+    fprintf(stderr, "NPY: malloc failed for header.\n");
+    return -1;
+  }
+  if (fread(header, 1, header_len, f) != header_len) {
+    fprintf(stderr, "NPY: Failed to read header.\n");
+    free(header);
+    return -1;
+  }
+  header[header_len] = '\0';
+
+  // Parse descr
+  char *p = strstr(header, "'descr'");
+  if (p == NULL) p = strstr(header, "\"descr\"");
+  if (p == NULL) {
+    fprintf(stderr, "NPY: No 'descr' field in header.\n");
+    free(header);
+    return -1;
+  }
+  if (strstr(p, "'<f8'") == NULL && strstr(p, "\"<f8\"") == NULL) {
+    fprintf(stderr, "NPY: Only little-endian float64 ('<f8') is supported. "
+                    "Header: %s\n", header);
+    free(header);
+    return -1;
+  }
+
+  // Parse fortran_order
+  p = strstr(header, "'fortran_order'");
+  if (p == NULL) p = strstr(header, "\"fortran_order\"");
+  if (p != NULL && strstr(p, "True") != NULL) {
+    fprintf(stderr, "NPY: Fortran-order arrays are not supported.\n");
+    free(header);
+    return -1;
+  }
+
+  // Parse shape
+  p = strstr(header, "'shape'");
+  if (p == NULL) p = strstr(header, "\"shape\"");
+  if (p == NULL) {
+    fprintf(stderr, "NPY: No 'shape' field in header.\n");
+    free(header);
+    return -1;
+  }
+  p = strchr(p, '(');
+  if (p == NULL) {
+    fprintf(stderr, "NPY: Malformed shape in header.\n");
+    free(header);
+    return -1;
+  }
+  p++; // skip '('
+  int ndim = 0;
+  while (*p != ')' && *p != '\0' && ndim < 4) {
+    while (*p == ' ') p++;
+    if (*p == ')') break;
+    shape_out[ndim] = (int)strtol(p, &p, 10);
+    ndim++;
+    while (*p == ' ' || *p == ',') p++;
+  }
+  free(header);
+
+  if (ndim != 4) {
+    fprintf(stderr, "NPY: Expected 4D array, got %dD.\n", ndim);
+    return -1;
+  }
+  if (shape_out[3] != 9) {
+    fprintf(stderr, "NPY: Expected 9 components in last dimension, got %d.\n",
+            shape_out[3]);
+    return -1;
+  }
+
+  *ndim_out = ndim;
+  *data_offset_out = preamble + header_len;
+  printf("NPY: version %d.%d, shape=(%d, %d, %d, %d), dtype=float64\n",
+         ver[0], ver[1], shape_out[0], shape_out[1], shape_out[2], shape_out[3]);
+  return 0;
+}
+
+static long ReadNpyInputData(const char *InFileName, double **InputInfo,
+                             const double *LatC, double gridSize) {
+  FILE *f = fopen(InFileName, "rb");
+  if (f == NULL) {
+    fprintf(stderr, "NPY: Cannot open file: %s\n", InFileName);
+    return 0;
+  }
+  int shape[4], ndim;
+  size_t data_offset;
+  if (ParseNpyHeader(f, shape, &ndim, &data_offset) != 0) {
+    fclose(f);
+    return 0;
+  }
+  long nVoxels = (long)shape[0] * shape[1] * shape[2];
+  if (nVoxels > MAX_NR_POINTS) {
+    fprintf(stderr, "NPY: Too many voxels (%ld > %d).\n", nVoxels,
+            MAX_NR_POINTS);
+    fclose(f);
+    return 0;
+  }
+  if (gridSize <= 0) {
+    fprintf(stderr, "NPY WARNING: GridSize=%.6f <= 0, all voxel positions "
+                    "will collapse to origin.\n", gridSize);
+  }
+  size_t nDoubles = (size_t)nVoxels * 9;
+  double *rawData = malloc(nDoubles * sizeof(double));
+  if (rawData == NULL) {
+    fprintf(stderr, "NPY: malloc failed for %zu doubles.\n", nDoubles);
+    fclose(f);
+    return 0;
+  }
+  fseek(f, (long)data_offset, SEEK_SET);
+  if (fread(rawData, sizeof(double), nDoubles, f) != nDoubles) {
+    fprintf(stderr, "NPY: Failed to read data (%zu doubles expected).\n",
+            nDoubles);
+    free(rawData);
+    fclose(f);
+    return 0;
+  }
+  fclose(f);
+
+  double halfN[3] = {shape[0] / 2.0, shape[1] / 2.0, shape[2] / 2.0};
+  double EulerThis[3], OrientThis[9];
+  long nrPoints = 0;
+
+  for (int ix = 0; ix < shape[0]; ix++) {
+    for (int iy = 0; iy < shape[1]; iy++) {
+      for (int iz = 0; iz < shape[2]; iz++) {
+        size_t voxIdx =
+            ((size_t)ix * shape[1] * shape[2] + (size_t)iy * shape[2] +
+             (size_t)iz) * 9;
+        const double *vd = &rawData[voxIdx];
+
+        // Bunge Euler angles: degrees -> radians
+        EulerThis[0] = vd[0] * deg2rad;
+        EulerThis[1] = vd[1] * deg2rad;
+        EulerThis[2] = vd[2] * deg2rad;
+        Euler2OrientMat9(EulerThis, OrientThis);
+
+        for (int c = 0; c < 9; c++)
+          InputInfo[nrPoints][c] = OrientThis[c];
+
+        // Centered grid positions (microns)
+        InputInfo[nrPoints][9] = (ix - halfN[0]) * gridSize;
+        InputInfo[nrPoints][10] = (iy - halfN[1]) * gridSize;
+        InputInfo[nrPoints][11] = (iz - halfN[2]) * gridSize;
+
+        // Elastic strain tensor (6 components)
+        for (int c = 0; c < 6; c++)
+          InputInfo[nrPoints][c + 12] = vd[3 + c];
+
+        nrPoints++;
+      }
+    }
+  }
+  free(rawData);
+  printf("NPY: Read %ld voxels from %dx%dx%d grid (GridSize=%.4f)\n",
+         nrPoints, shape[0], shape[1], shape[2], gridSize);
+  return nrPoints;
+}
+
 static inline void usage(void) {
   printf("Make diffraction spots: usage: ./ForwardSimulationCompressed "
          "<ParameterFile> nCPUs\n"
@@ -666,7 +860,8 @@ static inline void usage(void) {
 static long ReadInputData(char *InFileName, int isBin, double **InputInfo,
                           double *LatC, double minConfidence,
                           int UpdatedOrientations, int LoadNr,
-                          int *dataType_out, double *maxVol_out) {
+                          int *dataType_out, double *maxVol_out,
+                          double gridSize) {
   long nrPoints = 0;
   int dataType = 0;
   double maxVol = 0;
@@ -676,6 +871,14 @@ static long ReadInputData(char *InFileName, int isBin, double **InputInfo,
   char strLine[4096];
   int i, j, nrSkip;
   double EulerThis[3], OrientThis[9], OrientTemp[3][3];
+
+  // Check for .npy file
+  const char *ext = strrchr(InFileName, '.');
+  if (ext != NULL && strcmp(ext, ".npy") == 0) {
+    *dataType_out = 3;
+    *maxVol_out = 0;
+    return ReadNpyInputData(InFileName, InputInfo, LatC, gridSize);
+  }
 
   if (isBin) {
     dataType = 3;
@@ -1273,7 +1476,8 @@ int main(int argc, char *argv[]) {
   FILE *inpF;
   InputInfo = allocMatrix(MAX_NR_POINTS, 21);
   nrPoints = ReadInputData(inpFN, isBin, InputInfo, LatC, minConfidence,
-                           UpdatedOrientations, LoadNr, &dataType, &maxVol);
+                           UpdatedOrientations, LoadNr, &dataType, &maxVol,
+                           cfg.GridSize);
   if (nrPoints == 0)
     return 1;
   printf("Read file., total number of orientations: %ld\n", nrPoints);
