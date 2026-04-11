@@ -3502,14 +3502,27 @@ def main():
                                                suffix='doTomo1_em_mlem')
                 passed = passed and em_passed
 
+                # --- Run 5: doTomo=1, FBP + EM spot-ownership (restart from indexing) ---
+                print('\n' + '#'*70)
+                print('  Run 5: doTomo=1, FBP + EM spot-ownership')
+                print('#'*70)
+                run_pf_pipeline(work_dir, args.nCPUs, doTomo=1,
+                                reconMethod='fbp', restartFrom='indexing',
+                                useEM=1)
+                em_fbp_passed = validate_tomo_recon(work_dir, 'em+fbp', gt)
+                cross_compare_gt_indexer_debug(work_dir, nCPUs=args.nCPUs,
+                                               suffix='doTomo1_em_fbp')
+                passed = passed and em_fbp_passed
+
                 # Summary
                 print('\n' + '='*70)
-                print('  4-WAY TOMO TEST SUMMARY')
+                print('  5-WAY TOMO TEST SUMMARY')
                 print('='*70)
                 print(f'    doTomo=0 (no recon):  {"PASS" if passed else "FAIL"}')
                 print(f'    doTomo=1, FBP:        {"PASS" if fbp_passed else "FAIL"}')
                 print(f'    doTomo=1, MLEM:       {"PASS" if mlem_passed else "FAIL"}')
                 print(f'    doTomo=1, EM+MLEM:    {"PASS" if em_passed else "FAIL"}')
+                print(f'    doTomo=1, EM+FBP:     {"PASS" if em_fbp_passed else "FAIL"}')
 
             if args.compare_seeded:
                 run_seeded_comparison(work_dir, args.nCPUs)

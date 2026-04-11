@@ -34,6 +34,24 @@
     set(HDF5_EXTERNALLY_CONFIGURED ON CACHE BOOL "" FORCE)
     set(HDF5_EXPORTED_TARGETS "" CACHE STRING "" FORCE)
 
+    # Workaround: CMake prohibits set_target_properties on ALIAS targets.
+    # When MIDAS builds zlib via FetchContent, ZLIB::ZLIB is created as an
+    # ALIAS (see top-level CMakeLists.txt).  HDF5's CMakeFilters.cmake tries
+    # set_target_properties(ZLIB::ZLIB PROPERTIES OUTPUT_NAME ...) which
+    # fails on the ALIAS.  Pre-setting H5_ZLIB_HEADER tells HDF5 that zlib
+    # is already externally configured, skipping its internal find+property
+    # code path.  We also pre-populate LINK_COMP_LIBS so HDF5 still links
+    # against zlib for compression support.
+    if(TARGET ZLIB::ZLIB)
+      get_target_property(_zlib_aliased ZLIB::ZLIB ALIASED_TARGET)
+      if(_zlib_aliased)
+        set(H5_ZLIB_HEADER "zlib.h")
+        set(H5_ZLIB_INCLUDE_DIR_GEN "${ZLIB_INCLUDE_DIR}")
+        set(H5_ZLIB_INCLUDE_DIRS "${ZLIB_INCLUDE_DIRS}")
+        set(LINK_COMP_LIBS "ZLIB::ZLIB")
+      endif()
+    endif()
+
     add_subdirectory(${hdf5_SOURCE_DIR} ${hdf5_BINARY_DIR} EXCLUDE_FROM_ALL)
 
     # Ensure HDF5 targets wait for the FetchContent zlib target to be built.

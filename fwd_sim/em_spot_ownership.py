@@ -206,6 +206,8 @@ class EMSpotOwnership:
         pred_valid: torch.Tensor,
         obs_rings: Optional[torch.Tensor] = None,
         pred_rings: Optional[torch.Tensor] = None,
+        obs_scan_nrs: Optional[torch.Tensor] = None,
+        grain_scan_mask: Optional[torch.Tensor] = None,
     ) -> Tuple[torch.Tensor, torch.Tensor]:
         """E-step: compute soft ownership probabilities.
 
@@ -213,6 +215,10 @@ class EMSpotOwnership:
         1. Ring number must match exactly (handles 2theta)
         2. |omega_obs - omega_pred| < tol_omega
         3. |eta_obs - eta_pred| < tol_eta
+
+        In pf-HEDM mode, additionally filters by scan position: grain g
+        can only own spot s if grain g is present at the scan position
+        where spot s was observed (grain_scan_mask[g, scanNr_of_s] == True).
 
         Within the box, the closest match (smallest omega+eta distance)
         is used for the Gaussian ownership kernel.
@@ -224,6 +230,9 @@ class EMSpotOwnership:
         pred_valid : (N, K) validity mask
         obs_rings : (S,) int ring indices for observed spots
         pred_rings : (N, K) int ring indices for predicted spots
+        obs_scan_nrs : (S,) int scan number for each observed spot (pf-HEDM)
+        grain_scan_mask : (N, n_scans) bool, grain_scan_mask[g, s] = True if
+            grain g is present at scan s. Derived from the C code's sinograms.
 
         Returns
         -------
@@ -239,12 +248,25 @@ class EMSpotOwnership:
         sigma2 = self.sigma ** 2
         TWO_PI = 2.0 * math.pi
         use_rings = obs_rings is not None and pred_rings is not None
+        use_scan_filter = (obs_scan_nrs is not None and
+                           grain_scan_mask is not None)
 
         ownership = torch.zeros(S, N, dtype=obs_spots.dtype, device=obs_spots.device)
         hkl_assignments = torch.zeros(S, N, dtype=torch.long, device=obs_spots.device)
 
         obs_eta = obs_spots[:, 1]    # (S,)
         obs_omega = obs_spots[:, 2]  # (S,)
+
+        # Pre-compute per-spot scan eligibility for each grain
+        # scan_ok[v] is (S,) bool: True if grain v is present at that spot's scan
+        scan_ok_per_grain = []
+        if use_scan_filter:
+            for v in range(N):
+                # grain_scan_mask[v] is (n_scans,) bool
+                # obs_scan_nrs is (S,) int
+                # Index into grain_scan_mask for each spot's scan number
+                scan_ok = grain_scan_mask[v][obs_scan_nrs]  # (S,) bool
+                scan_ok_per_grain.append(scan_ok)
 
         for v in range(N):
             valid_mask = pred_valid[v] > 0.5
@@ -277,6 +299,10 @@ class EMSpotOwnership:
                 d_eta = (obs_eta - pred_eta_v[k] + math.pi) % TWO_PI - math.pi
 
                 in_box = ring_match & (d_omega.abs() < self.tol_omega) & (d_eta.abs() < self.tol_eta)
+
+                # Scan position filter: grain v must be present at this spot's scan
+                if use_scan_filter:
+                    in_box = in_box & scan_ok_per_grain[v]
 
                 # Distance for Gaussian kernel (only eta + omega, 2theta is handled by ring)
                 dist = torch.sqrt(d_omega ** 2 + d_eta ** 2)
@@ -460,6 +486,8 @@ class EMSpotOwnership:
         orient_matrices: torch.Tensor,
         positions: torch.Tensor,
         obs_rings: Optional[torch.Tensor] = None,
+        obs_scan_nrs: Optional[torch.Tensor] = None,
+        grain_scan_mask: Optional[torch.Tensor] = None,
         n_iter: int = 10,
         verbose: bool = True,
     ) -> EMResult:
@@ -475,6 +503,12 @@ class EMSpotOwnership:
         orient_matrices : (N, 3, 3) orientation matrices
         positions : (N, 3) grain positions (micrometers)
         obs_rings : (S,) int ring indices for observed spots
+        obs_scan_nrs : (S,) int scan number per observed spot (pf-HEDM).
+            If provided along with grain_scan_mask, the E-step filters
+            ownership by scan position.
+        grain_scan_mask : (N, n_scans) bool tensor. True if grain g is
+            present at scan s. Derived from the C code's sinograms:
+            grain_scan_mask[g, s] = any(sinos[g, :, s] > 0).
         n_iter : int
             Number of EM iterations (E-step + sigma annealing).
         verbose : bool
@@ -494,6 +528,8 @@ class EMSpotOwnership:
             ownership, hkl_assignments = self.e_step(
                 obs_spots, pred_coords, pred_valid,
                 obs_rings=obs_rings, pred_rings=pred_rings,
+                obs_scan_nrs=obs_scan_nrs,
+                grain_scan_mask=grain_scan_mask,
             )
 
             with torch.no_grad():
@@ -512,6 +548,8 @@ class EMSpotOwnership:
         ownership, hkl_assignments = self.e_step(
             obs_spots, pred_coords, pred_valid,
             obs_rings=obs_rings, pred_rings=pred_rings,
+            obs_scan_nrs=obs_scan_nrs,
+            grain_scan_mask=grain_scan_mask,
         )
 
         # Return orient_matrices reshaped as (N, 9) to fit EMResult euler_angles slot
