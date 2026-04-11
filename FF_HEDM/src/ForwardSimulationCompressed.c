@@ -381,6 +381,32 @@ inline void MatInv(double A[3][3], double AInv[3][3]) {
   AInv[2][2] = (a * e - b * d) / DetA;
 }
 
+// Rotate Voigt strain (E11,E12,E13,E22,E23,E33) from sample to crystal frame:
+//   eps_crystal = R^T . eps_sample . R
+static inline void RotateStrainSampleToCrystal(
+    double OM[3][3], const double epsS[6], double epsC[6]) {
+  // Build symmetric 3x3 from Voigt
+  double S[3][3];
+  S[0][0] = epsS[0]; S[0][1] = epsS[1]; S[0][2] = epsS[2];
+  S[1][0] = epsS[1]; S[1][1] = epsS[3]; S[1][2] = epsS[4];
+  S[2][0] = epsS[2]; S[2][1] = epsS[4]; S[2][2] = epsS[5];
+  // T = S . OM
+  double T[3][3];
+  for (int i = 0; i < 3; i++)
+    for (int j = 0; j < 3; j++)
+      T[i][j] = S[i][0]*OM[0][j] + S[i][1]*OM[1][j] + S[i][2]*OM[2][j];
+  // C = OM^T . T = OM^T . S . OM
+  double C[3][3];
+  for (int i = 0; i < 3; i++)
+    for (int j = 0; j < 3; j++)
+      C[i][j] = OM[0][i]*T[0][j] + OM[1][i]*T[1][j] + OM[2][i]*T[2][j];
+  // Extract Voigt: E11, E12, E13, E22, E23, E33
+  epsC[0] = C[0][0]; epsC[1] = C[0][1]; epsC[2] = C[0][2];
+  epsC[3] = C[1][1]; epsC[4] = C[1][2]; epsC[5] = C[2][2];
+}
+
+// Compute strained reciprocal lattice vectors from crystal-frame strain.
+// B_strained = (I + eps_crystal)^{-1} . B0
 static inline void CorrectHKLsLatCEpsilon(double LatC[6], double eps[6],
                                           double Wavelength, double **hklsOut) {
   double a = LatC[0], b = LatC[1], c = LatC[2], alpha = LatC[3], beta = LatC[4],
@@ -394,28 +420,30 @@ static inline void CorrectHKLsLatCEpsilon(double LatC[6], double eps[6],
   double Vol = (a * (b * (c * (SinA * (SinBetaPr * (SinG)))))),
          APr = b * c * SinA / Vol, BPr = c * a * SinB / Vol,
          CPr = a * b * SinG / Vol;
-  //~ printf("%lf\n",Vol);
   double B0[3][3];
   B0[0][0] = APr;
-  B0[0][1] = (BPr * cosd(GammaPr)), B0[0][2] = (CPr * cosd(BetaPr)),
-  B0[1][0] = 0, B0[1][1] = (BPr * sind(GammaPr)),
-  B0[1][2] = (-CPr * SinBetaPr * CosA), B0[2][0] = 0, B0[2][1] = 0,
+  B0[0][1] = (BPr * cosd(GammaPr)); B0[0][2] = (CPr * cosd(BetaPr));
+  B0[1][0] = 0; B0[1][1] = (BPr * sind(GammaPr));
+  B0[1][2] = (-CPr * SinBetaPr * CosA);
+  B0[2][0] = 0; B0[2][1] = 0;
   B0[2][2] = (CPr * SinBetaPr * SinA);
-  double B[3][3], Binv[3][3];
-  Binv[0][0] = (eps[0] + 1) / B0[0][0];
-  Binv[1][1] = (eps[3] + 1) / B0[1][1];
-  Binv[2][2] = (eps[5] + 1) / B0[2][2];
-  Binv[0][1] = (2 * eps[1] - B0[0][1] * Binv[1][1]) / B0[0][0];
-  Binv[1][2] = (2 * eps[4] - B0[1][2] * Binv[2][2]) / B0[1][1];
-  Binv[0][2] =
-      (2 * eps[2] - B0[0][1] * Binv[1][2] - B0[0][2] * Binv[2][2]) / B0[0][0];
-  Binv[1][0] = Binv[0][1];
-  Binv[2][1] = Binv[1][2];
-  Binv[2][0] = Binv[0][2];
-  int i, j;
-  MatInv(Binv, B);
-  //~ for (i=0;i<3;i++) {for (j=0;j<3;j++) {printf("%lf %lf %lf
-  //",B0[i][j],Binv[i][j],B[i][j]); }}printf("\n");
+
+  // F = I + eps_crystal (symmetric)
+  double F[3][3];
+  F[0][0] = 1 + eps[0]; F[0][1] = eps[1];     F[0][2] = eps[2];
+  F[1][0] = eps[1];      F[1][1] = 1 + eps[3]; F[1][2] = eps[4];
+  F[2][0] = eps[2];      F[2][1] = eps[4];      F[2][2] = 1 + eps[5];
+
+  // Finv = F^{-1}
+  double Finv[3][3];
+  MatInv(F, Finv);
+
+  // B = Finv . B0
+  double B[3][3];
+  for (int i = 0; i < 3; i++)
+    for (int j = 0; j < 3; j++)
+      B[i][j] = Finv[i][0]*B0[0][j] + Finv[i][1]*B0[1][j] + Finv[i][2]*B0[2][j];
+
   for (hklnr = 0; hklnr < n_hkls; hklnr++) {
     double ginit[3];
     ginit[0] = hkls[hklnr][0];
@@ -430,8 +458,6 @@ static inline void CorrectHKLsLatCEpsilon(double LatC[6], double eps[6],
     hklsOut[hklnr][2] = GCart[2];
     hklsOut[hklnr][3] = (asind((Wavelength) / (2 * Ds))); // Theta
     hklsOut[hklnr][4] = hkls[hklnr][3];
-    //~ printf("%lf %lf %lf %lf %lf %lf %lf %lf %lf %lf
-    //%lf\n",Wavelength,Ds,hkls[hklnr][0],hkls[hklnr][1],hkls[hklnr][2],hkls[hklnr][3],hklsOut[hklnr][0],hklsOut[hklnr][1],hklsOut[hklnr][2],hklsOut[hklnr][3],hklsOut[hklnr][4]);
   }
 }
 
@@ -1656,7 +1682,7 @@ int main(int argc, char *argv[]) {
   int nTspots, voxNr, spotNr;
   int nRowsPerGrain = 2 * n_hkls;
   // TheorSpots = allocMatrix(nRowsPerGrain, 7); // Moved to Thread Local
-  double OM[3][3], LatCThis[6], **hklsOut, EpsThis[6];
+  double OM[3][3], LatCThis[6], **hklsOut, EpsThis[6], EpsCrystal[6];
   double RotMatTilts[3][3];
   RotationTilts(tx, ty, tz, RotMatTilts);
   double MatIn[3], P0[3], P0T[3];
@@ -1734,7 +1760,7 @@ int main(int argc, char *argv[]) {
                 Info, OmeDiff, omeThis, newY, yTemp, zTemp, yThis, zThis,      \
                 DisplY2, DisplZ2, yTrans, zTrans, idx, DisplY, DisplZ, yDet,   \
                 zDet, etaThis, spotMatr, omeBin, yBin, zBin, imageBin,         \
-                centIdx, idxNrY, idxNrZ, displ, currentPos)
+                centIdx, idxNrY, idxNrZ, displ, currentPos, EpsCrystal)
     {
       double **TheorSpots_Thread = allocMatrix(nRowsPerGrain, 7);
       double **hklsOut_Thread = allocMatrix(n_hkls, 5);
@@ -1744,23 +1770,7 @@ int main(int argc, char *argv[]) {
 
 #pragma omp for
       for (voxNr = 0; voxNr < nrPoints; voxNr++) {
-        // First calculate new hkls
-        if (dataType < 2) {
-          for (i = 0; i < 6; i++)
-            LatCThis[i] = InputInfo[voxNr][i + 12];
-          CorrectHKLsLatC(LatCThis, Wavelength, hklsOut_Thread);
-        } else if (dataType == 2) {
-          if (InputInfo[voxNr][19] == 0)
-            continue;
-          for (i = 0; i < 6; i++)
-            EpsThis[i] = InputInfo[voxNr][i + 12];
-          CorrectHKLsLatCEpsilon(LatC, EpsThis, Wavelength, hklsOut_Thread);
-        } else if (dataType == 3) { // binary file
-          for (i = 0; i < 6; i++)
-            EpsThis[i] = InputInfo[voxNr][i + 12];
-          CorrectHKLsLatCEpsilon(LatC, EpsThis, Wavelength, hklsOut_Thread);
-        }
-        // Get the Orientation Matrix
+        // Get the Orientation Matrix first (needed for strain rotation)
         for (i = 0; i < 3; i++) {
           for (j = 0; j < 3; j++) {
             OM[i][j] = InputInfo[voxNr][i * 3 + j];
@@ -1773,6 +1783,24 @@ int main(int argc, char *argv[]) {
           for (j = 0; j < 3; j++) {
             OM[i][j] = OMT[i * 3 + j];
           }
+        }
+        // Calculate strained/unstrained hkls
+        if (dataType < 2) {
+          for (i = 0; i < 6; i++)
+            LatCThis[i] = InputInfo[voxNr][i + 12];
+          CorrectHKLsLatC(LatCThis, Wavelength, hklsOut_Thread);
+        } else if (dataType == 2) {
+          if (InputInfo[voxNr][19] == 0)
+            continue;
+          for (i = 0; i < 6; i++)
+            EpsThis[i] = InputInfo[voxNr][i + 12];
+          RotateStrainSampleToCrystal(OM, EpsThis, EpsCrystal);
+          CorrectHKLsLatCEpsilon(LatC, EpsCrystal, Wavelength, hklsOut_Thread);
+        } else if (dataType == 3) {
+          for (i = 0; i < 6; i++)
+            EpsThis[i] = InputInfo[voxNr][i + 12];
+          RotateStrainSampleToCrystal(OM, EpsThis, EpsCrystal);
+          CorrectHKLsLatCEpsilon(LatC, EpsCrystal, Wavelength, hklsOut_Thread);
         }
         // Calculate the spots now.
         CalcDiffrSpots_Furnace(hklsOut_Thread, OM, Lsd, Wavelength,
