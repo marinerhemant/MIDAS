@@ -131,9 +131,9 @@ static double problem_function(unsigned n, const double *x, double *grad,
   double *Gs = f_data->Gs;
 
   double OrientMatIn[3][3], FracOverlap, x2[3];
-  x2[0] = x[0] * rad2deg;
-  x2[1] = x[1] * rad2deg;
-  x2[2] = x[2] * rad2deg;
+  x2[0] = x[0];
+  x2[1] = x[1];
+  x2[2] = x[2];
   Euler2OrientMat(x2, OrientMatIn);
   CalcOverlapAccOrient(
       NrOfFiles, nLayers, ExcludePoleAngle, Lsd, SizeObsSpots, XGrain, YGrain,
@@ -1260,8 +1260,7 @@ gpu_fit_fallback:
           }
           if (nSaves > 1) {
             // Uniqueness check + sorted insertion (same as CPU path)
-            double candEul[3] = {EulerOutA * rad2deg, EulerOutB * rad2deg,
-                                 EulerOutC * rad2deg};
+            double candEul[3] = {EulerOutA, EulerOutB, EulerOutC};
             double candOM[3][3], candOM9[9], candQuat[4];
             Euler2OrientMat(candEul, candOM);
             for (int q = 0; q < 3; q++)
@@ -1271,9 +1270,9 @@ gpu_fit_fallback:
 
             int isUnique = 1;
             for (int s = 0; s < nFilled; s++) {
-              double existEul[3] = {ResultMatr_v[7 + s * 4 + 0] * rad2deg,
-                                    ResultMatr_v[7 + s * 4 + 1] * rad2deg,
-                                    ResultMatr_v[7 + s * 4 + 2] * rad2deg};
+              double existEul[3] = {ResultMatr_v[7 + s * 4 + 0],
+                                    ResultMatr_v[7 + s * 4 + 1],
+                                    ResultMatr_v[7 + s * 4 + 2]};
               double existOM[3][3], existOM9[9], existQuat[4];
               Euler2OrientMat(existEul, existOM);
               for (int q = 0; q < 3; q++)
@@ -1283,7 +1282,7 @@ gpu_fit_fallback:
               double misoAngle;
               GetMisOrientationAngle(candQuat, existQuat, &misoAngle,
                                      NrSymmetries, Sym);
-              if (misoAngle < MinMisoNSaves) {
+              if (misoAngle < MinMisoNSaves * deg2rad) {
                 isUnique = 0;
                 break;
               }
@@ -1580,8 +1579,7 @@ cpu_fallback:
         }
         if (nSaves > 1) {
           // Convert candidate Euler angles to quaternion for miso check
-          double candEul[3] = {EulerOutA * rad2deg, EulerOutB * rad2deg,
-                               EulerOutC * rad2deg};
+          double candEul[3] = {EulerOutA, EulerOutB, EulerOutC};
           double candOM[3][3], candOM9[9], candQuat[4];
           Euler2OrientMat(candEul, candOM);
           for (int q = 0; q < 3; q++)
@@ -1592,9 +1590,9 @@ cpu_fallback:
           // Check uniqueness against existing saved solutions
           int isUnique = 1;
           for (int s = 0; s < nFilled; s++) {
-            double existEul[3] = {ResultMatr[7 + s * 4 + 0] * rad2deg,
-                                  ResultMatr[7 + s * 4 + 1] * rad2deg,
-                                  ResultMatr[7 + s * 4 + 2] * rad2deg};
+            double existEul[3] = {ResultMatr[7 + s * 4 + 0],
+                                  ResultMatr[7 + s * 4 + 1],
+                                  ResultMatr[7 + s * 4 + 2]};
             double existOM[3][3], existOM9[9], existQuat[4];
             Euler2OrientMat(existEul, existOM);
             for (int q = 0; q < 3; q++)
@@ -1604,7 +1602,7 @@ cpu_fallback:
             double misoAngle;
             GetMisOrientationAngle(candQuat, existQuat, &misoAngle,
                                    NrSymmetries, Sym);
-            if (misoAngle < MinMisoNSaves) {
+            if (misoAngle < MinMisoNSaves * deg2rad) {
               isUnique = 0;
               break;
             }

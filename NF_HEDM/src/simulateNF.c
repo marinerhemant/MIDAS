@@ -550,9 +550,9 @@ int main(int argc, char *argv[]) {
       edgeLen = allEdgeLen[voxNr];
       ud = allUD[voxNr];
       double eulThis_local[3];
-      eulThis_local[0] = allEul[voxNr * 3 + 0] * rad2deg;
-      eulThis_local[1] = allEul[voxNr * 3 + 1] * rad2deg;
-      eulThis_local[2] = allEul[voxNr * 3 + 2] * rad2deg;
+      eulThis_local[0] = allEul[voxNr * 3 + 0];
+      eulThis_local[1] = allEul[voxNr * 3 + 1];
+      eulThis_local[2] = allEul[voxNr * 3 + 2];
       gs = edgeLen / 2;
       dy1 = edgeLen / sqrt(3);
       dy2 = -edgeLen / (2 * sqrt(3));
@@ -610,9 +610,9 @@ int main(int argc, char *argv[]) {
       edgeLen = allEdgeLen[voxNr];
       ud = allUD[voxNr];
       double eulThis_local[3];
-      eulThis_local[0] = allEul[voxNr * 3 + 0] * rad2deg;
-      eulThis_local[1] = allEul[voxNr * 3 + 1] * rad2deg;
-      eulThis_local[2] = allEul[voxNr * 3 + 2] * rad2deg;
+      eulThis_local[0] = allEul[voxNr * 3 + 0];
+      eulThis_local[1] = allEul[voxNr * 3 + 1];
+      eulThis_local[2] = allEul[voxNr * 3 + 2];
       gs = edgeLen / 2;
       dy1 = edgeLen / sqrt(3);
       dy2 = -edgeLen / (2 * sqrt(3));

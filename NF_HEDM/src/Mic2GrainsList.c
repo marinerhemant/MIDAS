@@ -22,11 +22,7 @@
 #define rad2deg (180.0 / M_PI)
 #define EPS 1e-9
 
-// External Functions from GetMisorientation.c
-extern double GetMisOrientation(double quat1[4], double quat2[4],
-                                double axis[3], double *Angle, int SGNr);
-extern void OrientMat2Quat(double OrientMat[9], double Quat[4]);
-extern void Euler2OrientMat(double Euler[3], double m_out[3][3]);
+#include "GetMisorientation.h"
 
 // Data Structures
 typedef struct {
@@ -250,9 +246,9 @@ int main(int argc, char *argv[]) {
 
     grains[count].x = vals[3];
     grains[count].y = vals[4];
-    grains[count].eul[0] = vals[7] * rad2deg;
-    grains[count].eul[1] = vals[8] * rad2deg;
-    grains[count].eul[2] = vals[9] * rad2deg;
+    grains[count].eul[0] = vals[7];
+    grains[count].eul[1] = vals[8];
+    grains[count].eul[2] = vals[9];
     grains[count].confidence = vals[10];
     grains[count].used = false;
     grains[count].originalIndex = count;
@@ -308,7 +304,7 @@ int main(int argc, char *argv[]) {
         OrientMat2Quat(grains[j].orientMat, q2);
         GetMisOrientation(quat1, q2, ax, &a, sgNr);
 
-        if (a < maxAng) {
+        if (a < maxAng * deg2rad) {
           grains[j].used = true;
           nDups++;
         }
@@ -403,7 +399,7 @@ int main(int argc, char *argv[]) {
                   OrientMat2Quat(grains[neighborIdx].orientMat, quat2);
                   GetMisOrientation(quat1, quat2, axis, &ang, sgNr);
 
-                  if (ang < maxAng) {
+                  if (ang < maxAng * deg2rad) {
                     grains[neighborIdx].used = true;
                     enqueue(q, neighborIdx);
                     nVox++;

@@ -22,17 +22,10 @@
 #include <sys/stat.h>
 #include <sys/types.h>
 #include <time.h>
+#include "GetMisorientation.h"
 #include "midas_version.h"
 
 #define MAX_N_GRAINS 100000
-
-inline double GetMisOrientationAngle(double quat1[4], double quat2[4],
-                                     double *Angle, int NrSymmetries,
-                                     double Sym[24][4]);
-
-inline void OrientMat2Quat(double OrientMat[9], double Quat[4]);
-
-inline int MakeSymmetries(int SGNr, double Sym[24][4]);
 
 static inline double Len3d(double x, double y, double z) {
   return sqrt(x * x + y * y + z * z);
@@ -182,9 +175,9 @@ int main(int argc, char *argv[]) {
     weights[1] = atof(argv[14]);
   }
   if (matchMode != 2 && argc == 14) {
-    referenceMisorientation = atof(argv[13]);
+    referenceMisorientation = atof(argv[13]) * MIDAS_DEG2RAD;
   } else if (matchMode == 2 && argc == 16) {
-    referenceMisorientation = atof(argv[15]);
+    referenceMisorientation = atof(argv[15]) * MIDAS_DEG2RAD;
   }
   char aline[4096], bline[4096];
   FILE *grainsF;

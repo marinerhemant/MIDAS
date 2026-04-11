@@ -86,10 +86,14 @@ target_link_libraries(CalibrantIntegratorOMP PRIVATE midas_integration)
 # add_ff_hedm_executable(FitTiltBCLsdSample SOURCES src/FitTiltBCLsdSampleOmegaCorrection.c)
 # add_ff_hedm_executable(ForwardSimulation SOURCES src/ForwardSimulation.c)
 add_ff_hedm_executable(ForwardSimulationCompressed SOURCES src/ForwardSimulationCompressed.c src/Panel.c src/FileReader.c src/MIDAS_Math.c src/MIDAS_ParamParser.c LINK_LIBRARIES TIFF::TIFF OMP)
+target_link_libraries(ForwardSimulationCompressed PRIVATE midas_orientation)
 
 add_ff_hedm_executable(FitPosOrStrainsOMP SOURCES src/FitPosOrStrainsOMP.c src/CalcDiffractionSpots.c src/MIDAS_Math.c src/MIDAS_ParamParser.c OMP)
+target_link_libraries(FitPosOrStrainsOMP PRIVATE midas_orientation)
 add_ff_hedm_executable(FitPosOrStrainsDoubleDataset SOURCES src/FitPosOrStrainsDoubleDataset.c src/CalcDiffractionSpots.c src/MIDAS_Math.c src/MIDAS_ParamParser.c OMP)
+target_link_libraries(FitPosOrStrainsDoubleDataset PRIVATE midas_orientation)
 add_ff_hedm_executable(FitOrStrainsScanningOMP SOURCES src/FitOrStrainsScanningOMP.c src/CalcDiffractionSpots.c src/Panel.c src/MIDAS_Math.c src/MIDAS_ParamParser.c OMP)
+target_link_libraries(FitOrStrainsScanningOMP PRIVATE midas_orientation)
 
 # add_ff_hedm_executable(PeaksFittingPerFile SOURCES src/archive/PeaksFittingPerFile.c)
 # add_ff_hedm_executable(PeaksFittingOMP SOURCES src/archive/PeaksFittingOMP.c OMP)
@@ -104,6 +108,7 @@ add_ff_hedm_executable(FitOrStrainsScanningOMP SOURCES src/FitOrStrainsScanningO
 add_ff_hedm_executable(GenMedianDark SOURCES src/GenMedianDark.c src/FileReader.c LINK_LIBRARIES TIFF::TIFF OMP)
 
 add_ff_hedm_executable(FitMultipleGrains SOURCES src/FitMultipleGrains.c src/CalcDiffractionSpots.c src/Panel.c src/MIDAS_Math.c src/MIDAS_ParamParser.c OMP)
+target_link_libraries(FitMultipleGrains PRIVATE midas_orientation)
 # add_ff_hedm_executable(FitScanningGrain SOURCES src/FitScanningGrain.c)
 # add_ff_hedm_executable(FitTiltX SOURCES src/FitTiltX.c)
 # add_ff_hedm_executable(FitWedge ...)  # deprecated → src/archive/FitWedge.c
@@ -117,10 +122,28 @@ add_ff_hedm_executable(GetHKLListZarr SOURCES src/GetHKLListZarr.c src/ZarrReade
 add_ff_hedm_executable(MergeOverlappingPeaksAllZarr SOURCES src/MergeOverlappingPeaksAllZarr.c src/ZarrReader.c)
 add_ff_hedm_executable(CalcRadiusAllZarr SOURCES src/CalcRadiusAllZarr.c src/ZarrReader.c)
 add_ff_hedm_executable(FitSetupZarr SOURCES src/FitSetupParamsAllZarr.c src/ZarrReader.c src/Panel.c src/MIDAS_Math.c)
-add_ff_hedm_executable(ProcessGrains SOURCES src/ProcessGrains.c src/ZarrReader.c src/GetMisorientation.c src/CalcStrains.c src/MIDAS_Math.c src/MIDAS_ParamParser.c OMP)
+# --- Shared orientation library ---
+# Consolidates all misorientation, Euler/quaternion conversion, and symmetry
+# reduction code.  Used by both FF_HEDM and NF_HEDM executables, and loaded
+# from Python via ctypes for calcMiso.py.
+add_library(midas_orientation SHARED src/GetMisorientation.c)
+target_include_directories(midas_orientation PUBLIC ${CMAKE_CURRENT_SOURCE_DIR}/src)
+set_target_properties(midas_orientation PROPERTIES POSITION_INDEPENDENT_CODE ON)
+if(BUILD_OMP AND OpenMP_C_FOUND)
+    target_link_libraries(midas_orientation PUBLIC OpenMP::OpenMP_C)
+endif()
+target_link_libraries(midas_orientation PUBLIC m)
+install(TARGETS midas_orientation
+    LIBRARY DESTINATION ${MIDAS_INSTALL_LIBDIR}
+    ARCHIVE DESTINATION ${MIDAS_INSTALL_LIBDIR}
+)
+
+add_ff_hedm_executable(ProcessGrains SOURCES src/ProcessGrains.c src/ZarrReader.c src/CalcStrains.c src/MIDAS_Math.c src/MIDAS_ParamParser.c OMP)
+target_link_libraries(ProcessGrains PRIVATE midas_orientation)
 
 add_ff_hedm_executable(IndexerOMP SOURCES src/IndexerOMP.c src/MIDAS_Math.c OMP)
 add_ff_hedm_executable(IndexerScanningOMP SOURCES src/IndexerScanningOMP.c src/MIDAS_Math.c OMP)
+target_link_libraries(IndexerScanningOMP PRIVATE midas_orientation)
 
 add_ff_hedm_executable(SaveBinData SOURCES src/SaveBinData.c src/MIDAS_ParamParser.c)
 add_ff_hedm_executable(SaveBinDataScanning SOURCES src/SaveBinDataScanning.c src/MIDAS_ParamParser.c)
@@ -128,8 +151,10 @@ add_ff_hedm_executable(MergeMultipleScans SOURCES src/MergeMultipleScans.c)
 
 # add_ff_hedm_executable(ProcessGrains_paramFN_only ...)  # archived → src/archive/ProcessGrains.c
 # add_ff_hedm_executable(ProcessGrainsZarr ...)  # archived → src/archive/ProcessGrainsZarr.c; consolidated into ProcessGrains
-add_ff_hedm_executable(ProcessGrainsScanningHEDM SOURCES src/ProcessGrainsScanningHEDM.c src/GetMisorientation.c src/CalcStrains.c src/MIDAS_Math.c src/MIDAS_ParamParser.c)
-add_ff_hedm_executable(MatchGrains SOURCES src/MatchGrains.c src/GetMisorientation.c)
+add_ff_hedm_executable(ProcessGrainsScanningHEDM SOURCES src/ProcessGrainsScanningHEDM.c src/CalcStrains.c src/MIDAS_Math.c src/MIDAS_ParamParser.c)
+target_link_libraries(ProcessGrainsScanningHEDM PRIVATE midas_orientation)
+add_ff_hedm_executable(MatchGrains SOURCES src/MatchGrains.c)
+target_link_libraries(MatchGrains PRIVATE midas_orientation)
 
 
 # --- Shared integration library ---
@@ -181,8 +206,10 @@ target_link_libraries(IntegratorZarrOMP_f32 PRIVATE midas_integration)
 # )
 
 # add_ff_hedm_executable(findSingleSolutionPF SOURCES src/findSingleSolutionPF.c src/GetMisorientation.c OMP)
-add_ff_hedm_executable(findSingleSolutionPFRefactored SOURCES src/findSingleSolutionPFRefactored.c src/GetMisorientation.c OMP)
-add_ff_hedm_executable(findMultipleSolutionsPF SOURCES src/findMultipleSolutionsPF.c src/GetMisorientation.c OMP)
+add_ff_hedm_executable(findSingleSolutionPFRefactored SOURCES src/findSingleSolutionPFRefactored.c OMP)
+target_link_libraries(findSingleSolutionPFRefactored PRIVATE midas_orientation)
+add_ff_hedm_executable(findMultipleSolutionsPF SOURCES src/findMultipleSolutionsPF.c OMP)
+target_link_libraries(findMultipleSolutionsPF PRIVATE midas_orientation)
 add_ff_hedm_executable(mergeScansScanning SOURCES src/mergeScansScanning.c OMP)
 
 # CUDA specific targets

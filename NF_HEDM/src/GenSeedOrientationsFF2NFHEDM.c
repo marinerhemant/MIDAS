@@ -21,8 +21,7 @@
 #include <time.h>
 #include "midas_version.h"
 
-// External Functions from GetMisorientation.c with inline keyword
-extern void OrientMat2Quat(double OrientMat[9], double Quat[4]);
+#include "GetMisorientation.h"
 
 static inline void usage(void) {
   printf("GenSeedOrientations usage: ./GenSeedOrientations <OringinalFile>"

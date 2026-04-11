@@ -36,6 +36,7 @@
 #include <omp.h>
 #endif
 
+#include "GetMisorientation.h"
 #include "MIDAS_Limits.h"
 #include "MIDAS_ParamParser.h"
 #define NR_MAX_IDS_PER_GRAIN 5000 // Nr spots per grain max.
@@ -44,37 +45,6 @@
 #define EPS 1E-12
 #define deg2rad (M_PI / 180.0)
 #define rad2deg (180.0 / M_PI)
-static inline double sin_cos_to_angle(double s, double c) {
-  return (s >= 0.0) ? acos(c) : 2.0 * M_PI - acos(c);
-}
-
-inline double GetMisOrientation(double quat1[4], double quat2[4],
-                                double axis[3], double *Angle, int SGNr);
-
-static inline void OrientMat2Euler(double m[3][3], double Euler[3]) {
-  double psi, phi, theta, sph;
-  if (fabs(m[2][2] - 1.0) < EPS) {
-    phi = 0;
-  } else {
-    phi = acos(m[2][2]);
-  }
-  sph = sin(phi);
-  if (fabs(sph) < EPS) {
-    psi = 0.0;
-    theta = (fabs(m[2][2] - 1.0) < EPS) ? sin_cos_to_angle(m[1][0], m[0][0])
-                                        : sin_cos_to_angle(-m[1][0], m[0][0]);
-  } else {
-    psi = (fabs(-m[1][2] / sph) <= 1.0)
-              ? sin_cos_to_angle(m[0][2] / sph, -m[1][2] / sph)
-              : sin_cos_to_angle(m[0][2] / sph, 1);
-    theta = (fabs(m[2][1] / sph) <= 1.0)
-                ? sin_cos_to_angle(m[2][0] / sph, m[2][1] / sph)
-                : sin_cos_to_angle(m[2][0] / sph, 1);
-  }
-  Euler[0] = psi;
-  Euler[1] = phi;
-  Euler[2] = theta;
-}
 
 static inline int **allocMatrixInt(int nrows, int ncols) {
   int **arr;
@@ -124,8 +94,6 @@ static inline void FreeMemMatrix(double **mat, int nrows) {
   free(mat);
 }
 
-inline void OrientMat2Quat(double OrientMat[9], double Quat[4]);
-
 static inline int FindInternalAnglesTwins(int nrIDs, int *IDs, int *IDsPerGrain,
                                           int *NrIDsPerID, bool *IDsChecked,
                                           double **OPs, double *ID_IA_Mat,
@@ -155,10 +123,10 @@ static inline int FindInternalAnglesTwins(int nrIDs, int *IDs, int *IDsPerGrain,
         }
         OrientMat2Quat(OR2, q2);
         Angle = GetMisOrientation(q1, q2, Axis, &ang, SGNr);
-        AreTwins = (fabs(ang - 60) < 0.4) &&
+        AreTwins = (fabs(ang - 60.0 * deg2rad) < 0.4 * deg2rad) &&
                    fabs(fabs(Axis[0]) - fabs(Axis[1])) < 0.01 &&
                    fabs(fabs(Axis[2]) - fabs(Axis[1])) < 0.01;
-        if (fabs(ang) < 0.4 || AreTwins) {
+        if (fabs(ang) < 0.4 * deg2rad || AreTwins) {
           counter = FindInternalAnglesTwins(nrIDs, IDs, IDsPerGrain, NrIDsPerID,
                                             IDsChecked, OPs, ID_IA_Mat, counter,
                                             j, ThisID, Radiuses, SGNr);
@@ -201,7 +169,7 @@ static inline int FindInternalAngles(int nrIDs, int *IDs, int *IDsPerGrain,
         }
         OrientMat2Quat(OR2, q2);
         Angle = GetMisOrientation(q1, q2, Axis, &ang, SGNr);
-        if (fabs(ang) < 0.4) {
+        if (fabs(ang) < 0.4 * deg2rad) {
           counter = FindInternalAngles(nrIDs, IDs, IDsPerGrain, NrIDsPerID,
                                        IDsChecked, OPs, ID_IA_Mat, counter, j,
                                        ThisID, Radiuses, SGNr);
@@ -877,7 +845,7 @@ int main(int argc, char *argv[]) {
                            (OPs[rown][10] - OPs[rown2][10]) +
                        (OPs[rown][11] - OPs[rown2][11]) *
                            (OPs[rown][11] - OPs[rown2][11]));
-        if (ang < 0.1 && DiffPos < 5) {
+        if (ang < 0.1 * deg2rad && DiffPos < 5) {
           hashset_insert(idsDoneSet, IDs[rown2]);
         }
       }

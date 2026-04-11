@@ -38,12 +38,13 @@ inline void DFS (int *Pos, int grainNr){
 	GrainNrs[Pos1] = grainNr;
 	grainSize++;
 	int i;
-	double *Eul1,*Eul2, miso, ang;
-	Eul1 = calloc(3,sizeof(*Eul1));
-	Eul2 = calloc(3,sizeof(*Eul2));
-	Eul1[0] = Euler1[Pos1];
-	Eul1[1] = Euler2[Pos1];
-	Eul1[2] = Euler3[Pos1];
+	double eul1[3], eul2[3], miso, ang;
+	double mat1[3][3], mat2[3][3], quat1[4], quat2[4];
+	eul1[0] = Euler1[Pos1];
+	eul1[1] = Euler2[Pos1];
+	eul1[2] = Euler3[Pos1];
+	Euler2OrientMat(eul1, mat1);
+	OrientMat2Quat(&mat1[0][0], quat1);
 	int a2,b2,c2;
 	long long int Pos2;
 	int *PosNext;
@@ -57,10 +58,12 @@ inline void DFS (int *Pos, int grainNr){
 		if (c2 < 0 || c2 == Dims[2]) continue;
 		Pos2 = getIDX(a2,b2,c2,Dims[1],Dims[2]);
 		if (Euler1[Pos2] == fV) continue;
-		Eul2[0] = Euler1[Pos2];
-		Eul2[1] = Euler2[Pos2];
-		Eul2[2] = Euler3[Pos2];
-		miso = GetMisOrientationAngle(Eul1,Eul2,&ang,NSym,Sym);
+		eul2[0] = Euler1[Pos2];
+		eul2[1] = Euler2[Pos2];
+		eul2[2] = Euler3[Pos2];
+		Euler2OrientMat(eul2, mat2);
+		OrientMat2Quat(&mat2[0][0], quat2);
+		miso = GetMisOrientationAngle(quat1,quat2,&ang,NSym,Sym);
 		if (miso < oT){
 			//~ printf("%d %d %d %d %d %d %d Found!\n",Pos[0],Pos[1],Pos[2],a2,b2,c2,grainNr);
 			PosNext[0] = a2;
@@ -69,8 +72,6 @@ inline void DFS (int *Pos, int grainNr){
 			DFS(PosNext,grainNr);
 		}
 	}
-	free(Eul1);
-	free(Eul2);
 	free(PosNext);
 }
 
@@ -82,7 +83,7 @@ void calcGrainNrs (double orientTol, int nrLayers, int xMax, int yMax, double fi
 	Dims[1] = xMax;
 	Dims[2] = yMax;
 	fV = fillVal;
-	oT = orientTol;
+	oT = orientTol * deg2rad;  // orientTol is in degrees, convert for radians-native API
 	GrainNrs = calloc(nrLayers*xMax*yMax,sizeof(*GrainNrs));
 	FILE *f1 = fopen("EulerAngles1.bin","rb");
 	FILE *f2 = fopen("EulerAngles2.bin","rb");
@@ -98,9 +99,7 @@ void calcGrainNrs (double orientTol, int nrLayers, int xMax, int yMax, double fi
 	int i,j, *Pos;
 	Pos = calloc(3,sizeof(int));
 	long long int Pos1, Pos2;
-	double *Eul1,*Eul2, miso, ang;
-	Eul1 = calloc(3,sizeof(*Eul1));
-	Eul2 = calloc(3,sizeof(*Eul2));
+	double miso, ang;
 	int *grainSizes;
 	grainSizes = calloc(maxNGrains,sizeof(*grainSizes));
 	for (layernr = 0; layernr < nrLayers; layernr++){
@@ -139,9 +138,10 @@ void calcGrainNrs (double orientTol, int nrLayers, int xMax, int yMax, double fi
 					GSArr[Pos1] = grainSizes[thisGrainNr];
 					// Calculate kam
 					nrKAM = 0;
-					Eul1[0] = Euler1[Pos1];
-					Eul1[1] = Euler2[Pos1];
-					Eul1[2] = Euler3[Pos1];
+					double kamEul1[3] = {Euler1[Pos1], Euler2[Pos1], Euler3[Pos1]};
+					double kamMat1[3][3], kamQ1[4];
+					Euler2OrientMat(kamEul1, kamMat1);
+					OrientMat2Quat(&kamMat1[0][0], kamQ1);
 					for (i=0;i<26;i++){
 						a2 = layernr + diffArr[0][i];
 						b2 = xpos + diffArr[1][i];
@@ -151,10 +151,11 @@ void calcGrainNrs (double orientTol, int nrLayers, int xMax, int yMax, double fi
 						if (c2 < 0 || c2 == Dims[2]) continue;
 						Pos2 = getIDX(a2,b2,c2,Dims[1],Dims[2]);
 						if (GrainNrs[Pos2] !=fV){
-							Eul2[0] = Euler1[Pos2];
-							Eul2[1] = Euler2[Pos2];
-							Eul2[2] = Euler3[Pos2];
-							miso = GetMisOrientationAngle(Eul1,Eul2,&ang,NSym,Sym);
+							double kamEul2[3] = {Euler1[Pos2], Euler2[Pos2], Euler3[Pos2]};
+							double kamMat2[3][3], kamQ2[4];
+							Euler2OrientMat(kamEul2, kamMat2);
+							OrientMat2Quat(&kamMat2[0][0], kamQ2);
+							miso = GetMisOrientationAngle(kamQ1,kamQ2,&ang,NSym,Sym);
 							nrKAM ++;
 							kamArr[Pos1] += miso;
 						}

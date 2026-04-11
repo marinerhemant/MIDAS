@@ -224,28 +224,8 @@ void free_resources(SpotList *spotList, UniqueOrientationsResult *uniqueResult);
 int safe_realloc(void **ptr, size_t new_size);
 void cleanup_shared_memory(const char *filename);
 
-/* External function declarations - these are supplied from external files */
-
-/**
- * Converts an orientation matrix to quaternion representation
- *
- * @param OM Input orientation matrix (3x3 array stored as 9-element array)
- * @param Quat Output quaternion (4-element array)
- */
-extern void OrientMat2Quat(const double *OM, double *Quat);
-
-/**
- * Calculates misorientation between two orientations
- *
- * @param Quat1 First orientation as quaternion
- * @param Quat2 Second orientation as quaternion
- * @param Axis Output rotation axis (3-element array)
- * @param ang Output rotation angle (pointer to double)
- * @param sgNr Space group number for crystallographic symmetry
- * @return Misorientation angle in degrees
- */
-extern double GetMisOrientation(const double *Quat1, const double *Quat2,
-                                double *Axis, double *ang, int sgNr);
+/* Orientation math: OrientMat2Quat, GetMisOrientation (returns RADIANS) */
+#include "GetMisorientation.h"
 
 /**
  * Main program entry point
@@ -757,8 +737,8 @@ void process_voxel(int voxNr, const char *folderName, int sgNr, double maxAng,
         /* Calculate misorientation angle */
         GetMisOrientation(Quat1, Quat2, Axis, &ang, sgNr);
 
-        /* Group similar orientations */
-        if (ang < maxAng) {
+        /* Group similar orientations (ang is radians, maxAng is degrees) */
+        if (ang < maxAng * MIDAS_DEG2RAD) {
           /* Keep track of the best orientation in this group */
           if (bCon < conIn) {
             bCon = conIn;
@@ -926,8 +906,8 @@ UniqueOrientationsResult find_unique_orientations(size_t *allKeyArr,
       /* Calculate misorientation angle */
       GetMisOrientation(Quat1, Quat2, Axis, &ang, sgNr);
 
-      /* Group similar orientations */
-      if (ang < maxAng) {
+      /* Group similar orientations (ang is radians, maxAng is degrees) */
+      if (ang < maxAng * MIDAS_DEG2RAD) {
         /* Keep track of the best orientation in this group */
         if (bestFrac < fracInside) {
           bestFrac = fracInside;
@@ -1929,7 +1909,7 @@ void generate_sinograms_from_indexing(UniqueOrientationsResult *uniqueResult,
         for (size_t g = 0; g < nGrains; g++) {
           double Axis[3], ang;
           GetMisOrientation(quatCand, &grainQuats[g * 4], Axis, &ang, sgNr);
-          if (ang < maxAng) {
+          if (ang < maxAng * MIDAS_DEG2RAD) {
             /* This candidate matches grain g. Read its spot IDs from consolidated data. */
             if (allIdsForVox && idOffset + nIDsThisSolution <= totalIdsForVox) {
               for (int si = 0; si < nIDsThisSolution; si++) {

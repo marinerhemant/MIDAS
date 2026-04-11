@@ -21,6 +21,7 @@
 
 #include "MIDAS_Math.h"
 #include "MIDAS_ParamParser.h"
+#include "GetMisorientation.h"
 #include <ctype.h>
 #include <errno.h>
 #include <fcntl.h>
@@ -159,62 +160,7 @@ static inline double tand(double x) { return tan(deg2rad * x); }
 static inline double asind(double x) { return rad2deg * (asin(x)); }
 static inline double acosd(double x) { return rad2deg * (acos(x)); }
 static inline double atand(double x) { return rad2deg * (atan(x)); }
-static inline double sin_cos_to_angle(double s, double c) {
-  return (s >= 0.0) ? acos(c) : 2.0 * M_PI - acos(c);
-}
-
-static inline void OrientMat2Euler(double m[3][3], double Euler[3]) {
-  double psi, phi, theta, sph;
-  double determinant;
-  determinant = m[0][0] * ((m[1][1] * m[2][2]) - (m[2][1] * m[1][2])) -
-                m[0][1] * (m[1][0] * m[2][2] - m[2][0] * m[1][2]) +
-                m[0][2] * (m[1][0] * m[2][1] - m[2][0] * m[1][1]);
-  //~ printf("Determinant: %lf\n",determinant);
-
-  if (fabs(m[2][2] - 1.0) < EPS) {
-    phi = 0;
-  } else {
-    phi = acos(m[2][2]);
-  }
-  sph = sin(phi);
-  if (fabs(sph) < EPS) {
-    psi = 0.0;
-    theta = (fabs(m[2][2] - 1.0) < EPS) ? sin_cos_to_angle(m[1][0], m[0][0])
-                                        : sin_cos_to_angle(-m[1][0], m[0][0]);
-  } else {
-    psi = (fabs(-m[1][2] / sph) <= 1.0)
-              ? sin_cos_to_angle(m[0][2] / sph, -m[1][2] / sph)
-              : sin_cos_to_angle(m[0][2] / sph, 1);
-    theta = (fabs(m[2][1] / sph) <= 1.0)
-                ? sin_cos_to_angle(m[2][0] / sph, m[2][1] / sph)
-                : sin_cos_to_angle(m[2][0] / sph, 1);
-  }
-  Euler[0] = rad2deg * psi;
-  Euler[1] = rad2deg * phi;
-  Euler[2] = rad2deg * theta;
-}
-
-static inline void Euler2OrientMat(double Euler[3], double m_out[3][3]) {
-  double psi, phi, theta, cps, cph, cth, sps, sph, sth;
-  psi = Euler[0];
-  phi = Euler[1];
-  theta = Euler[2];
-  cps = cosd(psi);
-  cph = cosd(phi);
-  cth = cosd(theta);
-  sps = sind(psi);
-  sph = sind(phi);
-  sth = sind(theta);
-  m_out[0][0] = cth * cps - sth * cph * sps;
-  m_out[0][1] = -cth * cph * sps - sth * cps;
-  m_out[0][2] = sph * sps;
-  m_out[1][0] = cth * sps + sth * cph * cps;
-  m_out[1][1] = cth * cph * cps - sth * sps;
-  m_out[1][2] = -sph * cps;
-  m_out[2][0] = sth * sph;
-  m_out[2][1] = cth * sph;
-  m_out[2][2] = cph;
-}
+// OrientMat2Euler, Euler2OrientMat, sin_cos_to_angle now in GetMisorientation.h
 
 static inline void CorrectHKLsLatC(double LatC[6], double **hklsIn, int nhkls,
                                    double Lsd, double Wavelength,
@@ -2101,8 +2047,8 @@ int main(int argc, char *argv[]) {
            "Exiting!\n");
     return 1;
   }
-  double MargOme = 0.01, MargPos = Rsample, MargPos2 = Rsample / 2,
-         MargOme2 = 2, chi = 0;
+  double MargOme = 0.01 * deg2rad, MargPos = Rsample, MargPos2 = Rsample / 2,
+         MargOme2 = 2.0 * deg2rad, chi = 0;
   char *h1 = "SpotID,YObsCorrPos,ZObsCorrPos,OmegaObsCorrPos,G1Obs,G2Obs,G3Obs,"
              "YExp,ZExp,OmegaExp,G1Exp,G2Exp,G3Exp,";
   char *h2 = "YObsCorrWedge,ZObsCorrWedge,OmegaObsCorrWedge,OmegaObs,YObs,ZObs,"

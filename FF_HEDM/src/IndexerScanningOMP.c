@@ -26,6 +26,7 @@
 
 #include "MIDAS_Math.h"
 #include "IndexerConsolidatedIO.h"
+#include "GetMisorientation.h"
 #include "midas_version.h"
 
 // check() - using MIDAS_CHECK_DEFINED guard (cannot include MIDAS_Limits.h due
@@ -175,56 +176,7 @@ static inline double tand(double x) { return tan(deg2rad * x); }
 static inline double asind(double x) { return rad2deg * (asin(x)); }
 static inline double acosd(double x) { return rad2deg * (acos(x)); }
 static inline double atand(double x) { return rad2deg * (atan(x)); }
-static inline double sin_cos_to_angle(double s, double c) {
-  return (s >= 0.0) ? acos(c) : 2.0 * M_PI - acos(c);
-}
-
-static inline void OrientMat2Euler(double m[3][3], double Euler[3]) {
-  double psi, phi, theta, sph;
-  if (fabs(m[2][2] - 1.0) < EPS) {
-    phi = 0;
-  } else {
-    phi = acos(m[2][2]);
-  }
-  sph = sin(phi);
-  if (fabs(sph) < EPS) {
-    psi = 0.0;
-    theta = (fabs(m[2][2] - 1.0) < EPS) ? sin_cos_to_angle(m[1][0], m[0][0])
-                                        : sin_cos_to_angle(-m[1][0], m[0][0]);
-  } else {
-    psi = (fabs(-m[1][2] / sph) <= 1.0)
-              ? sin_cos_to_angle(m[0][2] / sph, -m[1][2] / sph)
-              : sin_cos_to_angle(m[0][2] / sph, 1);
-    theta = (fabs(m[2][1] / sph) <= 1.0)
-                ? sin_cos_to_angle(m[2][0] / sph, m[2][1] / sph)
-                : sin_cos_to_angle(m[2][0] / sph, 1);
-  }
-  Euler[0] = psi;
-  Euler[1] = phi;
-  Euler[2] = theta;
-}
-
-static inline void Euler2OrientMat(double Euler[3], double m_out[3][3]) {
-  double psi, phi, theta, cps, cph, cth, sps, sph, sth;
-  psi = Euler[0];
-  phi = Euler[1];
-  theta = Euler[2];
-  cps = cosd(psi);
-  cph = cosd(phi);
-  cth = cosd(theta);
-  sps = sind(psi);
-  sph = sind(phi);
-  sth = sind(theta);
-  m_out[0][0] = cth * cps - sth * cph * sps;
-  m_out[0][1] = -cth * cph * sps - sth * cps;
-  m_out[0][2] = sph * sps;
-  m_out[1][0] = cth * sps + sth * cph * cps;
-  m_out[1][1] = cth * cph * cps - sth * sps;
-  m_out[1][2] = -sph * cps;
-  m_out[2][0] = sth * sph;
-  m_out[2][1] = cth * sph;
-  m_out[2][2] = cph;
-}
+// OrientMat2Euler, Euler2OrientMat, sin_cos_to_angle now in GetMisorientation.h
 
 RealType **allocMatrix(int nrows, int ncols) {
   RealType **arr;
@@ -1764,9 +1716,9 @@ int main(int argc, char *argv[]) {
         }
         double eulerThis[3], OMThis[3][3];
         if (bestRow != -1) {
-          eulerThis[0] = mic[bestRow * 5 + 2] * rad2deg;
-          eulerThis[1] = mic[bestRow * 5 + 3] * rad2deg;
-          eulerThis[2] = mic[bestRow * 5 + 4] * rad2deg;
+          eulerThis[0] = mic[bestRow * 5 + 2];
+          eulerThis[1] = mic[bestRow * 5 + 3];
+          eulerThis[2] = mic[bestRow * 5 + 4];
           Euler2OrientMat(eulerThis, OMThis);
         }
         DoIndexingSingle(thisRowNr, 0, OMThis, xThis, yThis, Params, acc,

@@ -23,6 +23,7 @@
 #include "Panel.h"
 #include "midas_paths.h"
 #include "midas_version.h"
+#include "GetMisorientation.h"
 #include "MIDAS_ParamParser.h"
 #include <blosc.h>
 #include <ctype.h>
@@ -321,56 +322,6 @@ static inline void CalcDiffrSpots_Furnace(double **hklIns,
   *nspots = spotnr;
 }
 
-void Euler2OrientMat(double Euler[3], double m_out[9]) {
-  double psi, phi, theta, cps, cph, cth, sps, sph, sth;
-  psi = Euler[0];
-  phi = Euler[1];
-  theta = Euler[2];
-  cps = cos(psi);
-  cph = cos(phi);
-  cth = cos(theta);
-  sps = sin(psi);
-  sph = sin(phi);
-  sth = sin(theta);
-  m_out[0] = cth * cps - sth * cph * sps;
-  m_out[1] = -cth * cph * sps - sth * cps;
-  m_out[2] = sph * sps;
-  m_out[3] = cth * sps + sth * cph * cps;
-  m_out[4] = cth * cph * cps - sth * sps;
-  m_out[5] = -sph * cps;
-  m_out[6] = sth * sph;
-  m_out[7] = cth * sph;
-  m_out[8] = cph;
-}
-
-static inline double sin_cos_to_angle(double s, double c) {
-  return (s >= 0.0) ? acos(c) : 2.0 * M_PI - acos(c);
-}
-
-static inline void OrientMat2Euler(double m[3][3], double Euler[3]) {
-  double psi, phi, theta, sph;
-  if (fabs(m[2][2] - 1.0) < EPS) {
-    phi = 0;
-  } else {
-    phi = acos(m[2][2]);
-  }
-  sph = sin(phi);
-  if (fabs(sph) < EPS) {
-    psi = 0.0;
-    theta = (fabs(m[2][2] - 1.0) < EPS) ? sin_cos_to_angle(m[1][0], m[0][0])
-                                        : sin_cos_to_angle(-m[1][0], m[0][0]);
-  } else {
-    psi = (fabs(-m[1][2] / sph) <= 1.0)
-              ? sin_cos_to_angle(m[0][2] / sph, -m[1][2] / sph)
-              : sin_cos_to_angle(m[0][2] / sph, 1);
-    theta = (fabs(m[2][1] / sph) <= 1.0)
-                ? sin_cos_to_angle(m[2][0] / sph, m[2][1] / sph)
-                : sin_cos_to_angle(m[2][0] / sph, 1);
-  }
-  Euler[0] = psi;
-  Euler[1] = phi;
-  Euler[2] = theta;
-}
 
 static inline void CorrectHKLsLatC(double LatC[6], double Wavelength,
                                    double **hklsOut) {
@@ -756,7 +707,7 @@ static long ReadInputData(char *InFileName, int isBin, double **InputInfo,
       OrientTemp[2][1] = holdArr[i * 18 + 10];
       OrientTemp[2][2] = holdArr[i * 18 + 11];
       OrientMat2Euler(OrientTemp, EulerThis);
-      Euler2OrientMat(EulerThis, OrientThis);
+      Euler2OrientMat9(EulerThis, OrientThis);
       InputInfo[i][0] = OrientThis[0];
       InputInfo[i][1] = OrientThis[1];
       InputInfo[i][2] = OrientThis[2];
@@ -872,7 +823,7 @@ static long ReadInputData(char *InFileName, int isBin, double **InputInfo,
         EulerThis[0] *= deg2rad;
         EulerThis[1] *= deg2rad;
         EulerThis[2] *= deg2rad;
-        Euler2OrientMat(EulerThis, OrientThis);
+        Euler2OrientMat9(EulerThis, OrientThis);
         for (i = 0; i < 9; i++) {
           InputInfo[nrPoints][i] = OrientThis[i];
         }
@@ -900,7 +851,7 @@ static long ReadInputData(char *InFileName, int isBin, double **InputInfo,
         if (thisConfidence <= minConfidence)
           continue;
         InputInfo[nrPoints][11] = zThis;
-        Euler2OrientMat(EulerThis, OrientThis);
+        Euler2OrientMat9(EulerThis, OrientThis);
         for (i = 0; i < 9; i++) {
           InputInfo[nrPoints][i] = OrientThis[i];
         }
@@ -956,7 +907,7 @@ static long ReadInputData(char *InFileName, int isBin, double **InputInfo,
         if (UpdatedOrientations == 0) {
           sscanf(aline, "%lf %lf %lf", &EulerThis[0], &EulerThis[1],
                  &EulerThis[2]);
-          Euler2OrientMat(EulerThis, OrientThis);
+          Euler2OrientMat9(EulerThis, OrientThis);
           for (j = 0; j < 9; j++) {
             InputInfo[i][j] = OrientThis[j];
           }
@@ -1020,7 +971,7 @@ static long ReadInputData(char *InFileName, int isBin, double **InputInfo,
                    &OrientTemp[0][1], &OrientTemp[1][1], &OrientTemp[2][1],
                    &OrientTemp[0][2], &OrientTemp[1][2], &OrientTemp[2][2]);
             OrientMat2Euler(OrientTemp, EulerThis);
-            Euler2OrientMat(EulerThis, OrientThis);
+            Euler2OrientMat9(EulerThis, OrientThis);
             for (j = 0; j < 9; j++) {
               InputInfo[i][j] = OrientThis[j];
             }
@@ -1036,7 +987,7 @@ static long ReadInputData(char *InFileName, int isBin, double **InputInfo,
                    &OrientTemp[0][1], &OrientTemp[1][1], &OrientTemp[2][1],
                    &OrientTemp[0][2], &OrientTemp[1][2], &OrientTemp[2][2]);
             OrientMat2Euler(OrientTemp, EulerThis);
-            Euler2OrientMat(EulerThis, OrientThis);
+            Euler2OrientMat9(EulerThis, OrientThis);
             for (j = 0; j < 9; j++) {
               InputInfo[i][j] = OrientThis[j];
             }
@@ -1608,7 +1559,7 @@ int main(int argc, char *argv[]) {
         }
         OrientMat2Euler(OM, EulerThis);
         double OMT[9];
-        Euler2OrientMat(EulerThis, OMT);
+        Euler2OrientMat9(EulerThis, OMT);
         for (i = 0; i < 3; i++) {
           for (j = 0; j < 3; j++) {
             OM[i][j] = OMT[i * 3 + j];

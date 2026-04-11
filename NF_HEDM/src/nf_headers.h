@@ -7,6 +7,7 @@
 #define deg2rad (M_PI / 180.0)
 #define rad2deg (180.0 / M_PI)
 #include "../../FF_HEDM/src/MIDAS_Limits.h"
+#include "GetMisorientation.h"
 #define EPS 1E-5
 #define MAX_N_SPOTS 5000
 #define MAX_N_OMEGA_RANGES 20
@@ -40,7 +41,7 @@ int CalcDiffractionSpots(double Distance, double ExcludePoleAngle,
 
 void RotationTilts(double tx, double ty, double tz, double RotMatOut[3][3]);
 
-void Euler2OrientMat(double Euler[3], double m_out[3][3]);
+// Euler2OrientMat — now declared in GetMisorientation.h
 
 void SimulateAccOrient(
     const int NrOfFiles, const int nLayers, const double ExcludePoleAngle,
@@ -99,7 +100,7 @@ void CalcFracOverlap(const int NrOfFiles, const int nLayers, const int nTspots,
                      double *FracOver, int **InPixels, int NrPixelsY,
                      int NrPixelsZ);
 
-void OrientMat2Euler(double m[3][3], double Euler[3]);
+// OrientMat2Euler — now declared in GetMisorientation.h
 
 int ReadBinFiles(char FileStem[1000], char *ext, int StartNr, int EndNr,
                  int *ObsSpotsMat, int nLayers, long long int ObsSpotsSize,
@@ -109,17 +110,5 @@ void FreeMemMatrix(RealType **mat, int nrows);
 
 void FreeMemMatrixInt(int **mat, int nrows);
 
-inline void OrientMat2Quat(double OrientMat[9], double Quat[4]);
-
-inline void BringDownToFundamentalRegionSym(double QuatIn[4], double QuatOut[4],
-                                            int NrSymmetries,
-                                            double Sym[24][4]);
-
-inline void BringDownToFundamentalRegion(double QuatIn[4], double QuatOut[4],
-                                         int SGNr);
-
-inline double GetMisOrientationAngle(double quat1[4], double quat2[4],
-                                     double *Angle, int NrSymmetries,
-                                     double Sym[24][4]);
-
-inline int MakeSymmetries(int SGNr, double Sym[24][4]);
+// OrientMat2Quat, BringDownToFundamentalRegionSym, BringDownToFundamentalRegion,
+// GetMisOrientationAngle, MakeSymmetries — now declared in GetMisorientation.h

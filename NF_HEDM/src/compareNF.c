@@ -451,9 +451,6 @@ int main(int argc, char *argv[]) {
     YG[2] = ys + dy2;
     // We need to make diffraction spots now. Use eulThis to calc OM, then
     // calcDiffrSpots
-    eulThis[0] = eulThis[0] * rad2deg;
-    eulThis[1] = eulThis[1] * rad2deg;
-    eulThis[2] = eulThis[2] * rad2deg;
     Euler2OrientMat(eulThis, OMIn);
     int **InPixels;
     InPixels = allocMatrixIntF(NrPixelsGrid, 2);

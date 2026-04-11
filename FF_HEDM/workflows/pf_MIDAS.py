@@ -979,14 +979,14 @@ def main():
     parser.add_argument('-osemSubsets', type=int, required=False, default=4, help='Number of ordered subsets for OSEM (only used when -reconMethod is osem). Default: 4.')
     parser.add_argument('-useEM', type=int, required=False, default=0,
                         help='Use EM spot-ownership for soft sinogram generation (requires doTomo=1). Default: 0 (off).')
-    parser.add_argument('-emIter', type=int, required=False, default=10,
-                        help='Number of EM iterations. Default: 10.')
-    parser.add_argument('-emSigmaInit', type=float, required=False, default=0.02,
-                        help='Initial sigma for EM Gaussian kernel (radians, ~1 degree). Default: 0.02.')
+    parser.add_argument('-emIter', type=int, required=False, default=20,
+                        help='Number of EM iterations. Default: 20.')
+    parser.add_argument('-emSigmaInit', type=float, required=False, default=0.1,
+                        help='Initial sigma for EM Gaussian kernel (radians, ~6 degrees). Default: 0.1.')
     parser.add_argument('-emSigmaMin', type=float, required=False, default=0.005,
                         help='Minimum sigma for EM annealing floor (radians). Default: 0.005.')
-    parser.add_argument('-emSigmaDecay', type=float, required=False, default=0.9,
-                        help='Sigma decay factor per EM iteration. Default: 0.9.')
+    parser.add_argument('-emSigmaDecay', type=float, required=False, default=0.85,
+                        help='Sigma decay factor per EM iteration. Default: 0.85.')
     parser.add_argument('-emRefineOrientations', type=int, required=False, default=1,
                         help='Whether EM M-step refines grain orientations. 0=E-step only, 1=full EM (default).')
     parser.add_argument('-emOptSteps', type=int, required=False, default=5,
@@ -1625,18 +1625,17 @@ def main():
                 logger.info("Running EM spot-ownership for weighted sinograms")
                 from em_pf_integration import run_em_spot_ownership
 
-                # Remove old sinogram files before EM writes new ones
-                for pattern in ["sinos_*.bin", "omegas_*.bin", "nrHKLs_*.bin"]:
-                    for old_f in glob.glob(pattern):
-                        os.remove(old_f)
-
+                # EM re-weights the existing sinograms in-place
+                # (preserves C code's sinogram structure, just adjusts intensities)
                 run_em_spot_ownership(
                     topdir=topdir,
                     n_scans=nScans,
-                    n_iter=getattr(args, 'emIter', 10),
-                    sigma_init=getattr(args, 'emSigmaInit', 0.02),
+                    n_iter=getattr(args, 'emIter', 20),
+                    sigma_init=getattr(args, 'emSigmaInit', 0.1),
                     sigma_min=getattr(args, 'emSigmaMin', 0.005),
-                    sigma_decay=getattr(args, 'emSigmaDecay', 0.9),
+                    sigma_decay=getattr(args, 'emSigmaDecay', 0.85),
+                    tol_ome_override=tol_ome,
+                    tol_eta_override=tol_eta,
                     n_opt_steps=getattr(args, 'emOptSteps', 5),
                     lr=getattr(args, 'emLR', 0.005),
                     refine_orientations=bool(getattr(args, 'emRefineOrientations', 1)),

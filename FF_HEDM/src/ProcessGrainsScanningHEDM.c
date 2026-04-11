@@ -35,6 +35,7 @@
 #include <time.h>
 #include <unistd.h>
 
+#include "GetMisorientation.h"
 #include "MIDAS_Limits.h"
 #include "MIDAS_ParamParser.h"
 #include "midas_version.h"
@@ -42,9 +43,6 @@
 #define IAColNr 20 // 20 for Internal Angle, 18 for position, 19 for omega
 #define EPS 1E-12
 
-inline void OrientMat2Quat(double OrientMat[9], double Quat[4]);
-inline double GetMisOrientation(double quat1[4], double quat2[4],
-                                double axis[3], double *Angle, int SGNr);
 inline void CalcStrainTensorFableBeaudoin(double LatCin[6],
                                           double LatticeParameterFit[6],
                                           double Orient[3][3],
@@ -55,11 +53,6 @@ inline int StrainTensorKenesei(int nspots, double **SpotsInfo, double Distance,
                                double *dspacings, int nRings,
                                int startSpotMatrix, double **SpotMatrix,
                                double *RetVal, double StrainTensorInput[3][3]);
-inline void BringDownToFundamentalRegionSym(double QuatIn[4], double QuatOut[4],
-                                            int NrSymmetries,
-                                            double Sym[24][4]);
-inline void BringDownToFundamentalRegion(double QuatIn[4], double QuatOut[4],
-                                         int SGNr);
 
 // check() is now provided by MIDAS_Limits.h
 
@@ -113,35 +106,6 @@ static inline void FreeMemMatrix(double **mat, int nrows) {
 
 #define deg2rad (M_PI / 180.0)
 #define rad2deg (180.0 / M_PI)
-static inline double sin_cos_to_angle(double s, double c) {
-  return (s >= 0.0) ? acos(c) : 2.0 * M_PI - acos(c);
-}
-
-static inline void OrientMat2Euler(double m[3][3], double Euler[3]) {
-  double psi, phi, theta, sph;
-  if (fabs(m[2][2] - 1.0) < EPS) {
-    phi = 0;
-  } else {
-    phi = acos(m[2][2]);
-  }
-  sph = sin(phi);
-  if (fabs(sph) < EPS) {
-    psi = 0.0;
-    theta = (fabs(m[2][2] - 1.0) < EPS) ? sin_cos_to_angle(m[1][0], m[0][0])
-                                        : sin_cos_to_angle(-m[1][0], m[0][0]);
-  } else {
-    psi = (fabs(-m[1][2] / sph) <= 1.0)
-              ? sin_cos_to_angle(m[0][2] / sph, -m[1][2] / sph)
-              : sin_cos_to_angle(m[0][2] / sph, 1);
-    theta = (fabs(m[2][1] / sph) <= 1.0)
-                ? sin_cos_to_angle(m[2][0] / sph, m[2][1] / sph)
-                : sin_cos_to_angle(m[2][0] / sph, 1);
-  }
-  Euler[0] = rad2deg * psi;
-  Euler[1] = rad2deg * phi;
-  Euler[2] = rad2deg * theta;
-}
-
 static inline void QuatToOrientMat(double Quat[4], double OrientMat[9]) {
   double Q1_2, Q2_2, Q3_2, Q12, Q03, Q13, Q02, Q23, Q01;
   Q1_2 = Quat[1] * Quat[1];

@@ -34,11 +34,7 @@ typedef struct {
   double GBAngle;
 } MicParams;
 
-void Euler2OrientMat(double Euler[3], double m_out[3][3]);
-void OrientMat2Quat(double OrientMat[9], double Quat[4]);
-int MakeSymmetries(int SGNr, double Sym[24][4]);
-double GetMisOrientationAngle(double quat1[4], double quat2[4], double *Angle,
-                              int NrSymmetries, double Sym[24][4]);
+#include "GetMisorientation.h"
 
 static void usage(void) {
   printf("Usage: ./ParseMic <ParametersFile>\n");
@@ -354,9 +350,9 @@ static void GenerateMap(const char *outputfile, double *MicContents, int NrRows,
     int cy = i / xSizeMap;
 
     int thisRowNr = RowNrMat[i];
-    double euler1[3] = {MicContents[thisRowNr * 11 + 7] * (180.0 / M_PI),
-                        MicContents[thisRowNr * 11 + 8] * (180.0 / M_PI),
-                        MicContents[thisRowNr * 11 + 9] * (180.0 / M_PI)};
+    double euler1[3] = {MicContents[thisRowNr * 11 + 7],
+                        MicContents[thisRowNr * 11 + 8],
+                        MicContents[thisRowNr * 11 + 9]};
     double mat1[3][3], quat1[4];
     Euler2OrientMat(euler1, mat1);
     OrientMat2Quat(&mat1[0][0], quat1);
@@ -371,9 +367,9 @@ static void GenerateMap(const char *outputfile, double *MicContents, int NrRows,
         size_t nIdx = ny * xSizeMap + nx;
         if (RowNrMat[nIdx] != -1) {
           int nRowNr = RowNrMat[nIdx];
-          double euler2[3] = {MicContents[nRowNr * 11 + 7] * (180.0 / M_PI),
-                              MicContents[nRowNr * 11 + 8] * (180.0 / M_PI),
-                              MicContents[nRowNr * 11 + 9] * (180.0 / M_PI)};
+          double euler2[3] = {MicContents[nRowNr * 11 + 7],
+                              MicContents[nRowNr * 11 + 8],
+                              MicContents[nRowNr * 11 + 9]};
           double mat2[3][3], quat2[4];
           Euler2OrientMat(euler2, mat2);
           OrientMat2Quat(&mat2[0][0], quat2);
@@ -432,9 +428,9 @@ static void GenerateMap(const char *outputfile, double *MicContents, int NrRows,
       int cy = currIdx / xSizeMap;
 
       int thisRowNr = RowNrMat[currIdx];
-      double euler1[3] = {MicContents[thisRowNr * 11 + 7] * (180.0 / M_PI),
-                          MicContents[thisRowNr * 11 + 8] * (180.0 / M_PI),
-                          MicContents[thisRowNr * 11 + 9] * (180.0 / M_PI)};
+      double euler1[3] = {MicContents[thisRowNr * 11 + 7],
+                          MicContents[thisRowNr * 11 + 8],
+                          MicContents[thisRowNr * 11 + 9]};
       double mat1[3][3], quat1[4];
       Euler2OrientMat(euler1, mat1);
       OrientMat2Quat(&mat1[0][0], quat1);
@@ -446,9 +442,9 @@ static void GenerateMap(const char *outputfile, double *MicContents, int NrRows,
           size_t nIdx = ny * xSizeMap + nx;
           if (RowNrMat[nIdx] != -1 && grainIdMap[4 + nIdx] == 0) {
             int nRowNr = RowNrMat[nIdx];
-            double euler2[3] = {MicContents[nRowNr * 11 + 7] * (180.0 / M_PI),
-                                MicContents[nRowNr * 11 + 8] * (180.0 / M_PI),
-                                MicContents[nRowNr * 11 + 9] * (180.0 / M_PI)};
+            double euler2[3] = {MicContents[nRowNr * 11 + 7],
+                                MicContents[nRowNr * 11 + 8],
+                                MicContents[nRowNr * 11 + 9]};
             double mat2[3][3], quat2[4];
             Euler2OrientMat(euler2, mat2);
             OrientMat2Quat(&mat2[0][0], quat2);
@@ -456,7 +452,7 @@ static void GenerateMap(const char *outputfile, double *MicContents, int NrRows,
             double angle;
             GetMisOrientationAngle(quat1, quat2, &angle, NrSymmetries, Sym);
 
-            if (angle <= params->GBAngle) {
+            if (angle <= params->GBAngle * MIDAS_DEG2RAD) {
               grainIdMap[4 + nIdx] = currentGrainId;
               enqueue(&q, nIdx);
             }
@@ -499,9 +495,9 @@ static void GenerateMap(const char *outputfile, double *MicContents, int NrRows,
 
       if (conf > bestConfForGrain[gID]) {
         bestConfForGrain[gID] = conf;
-        double euler1[3] = {MicContents[thisRowNr * 11 + 7] * (180.0 / M_PI),
-                            MicContents[thisRowNr * 11 + 8] * (180.0 / M_PI),
-                            MicContents[thisRowNr * 11 + 9] * (180.0 / M_PI)};
+        double euler1[3] = {MicContents[thisRowNr * 11 + 7],
+                            MicContents[thisRowNr * 11 + 8],
+                            MicContents[thisRowNr * 11 + 9]};
         double mat1[3][3];
         Euler2OrientMat(euler1, mat1);
         OrientMat2Quat(&mat1[0][0], &refQuatForGrain[gID * 4]);
@@ -525,9 +521,9 @@ static void GenerateMap(const char *outputfile, double *MicContents, int NrRows,
       int gID = (int)grainIdMap[4 + i] - 1;
       int thisRowNr = RowNrMat[i];
 
-      double euler1[3] = {MicContents[thisRowNr * 11 + 7] * (180.0 / M_PI),
-                          MicContents[thisRowNr * 11 + 8] * (180.0 / M_PI),
-                          MicContents[thisRowNr * 11 + 9] * (180.0 / M_PI)};
+      double euler1[3] = {MicContents[thisRowNr * 11 + 7],
+                          MicContents[thisRowNr * 11 + 8],
+                          MicContents[thisRowNr * 11 + 9]};
       double mat1[3][3], quat1[4];
       Euler2OrientMat(euler1, mat1);
       OrientMat2Quat(&mat1[0][0], quat1);

@@ -22,9 +22,8 @@ void processVoxel(int voxNr, const char *folderName, int sgNr, double maxAng,
                   const ConsolidatedReader *keysReader);
 void writeSpotsToIndex(const char *folderName, const char *originalFolder,
                        int nScans);
-inline void OrientMat2Quat(double OrientMat[9], double Quat[4]);
-inline double GetMisOrientation(double quat1[4], double quat2[4],
-                                double axis[3], double *Angle, int SGNr);
+/* Orientation math: OrientMat2Quat, GetMisOrientation (returns RADIANS) */
+#include "GetMisorientation.h"
 
 int main(int argc, char *argv[]) {
 	printf("Version: %s\n", MIDAS_VERSION_STRING);
@@ -159,7 +158,7 @@ void processVoxel(int voxNr, const char *folderName, int sgNr, double maxAng,
         continue;
       }
       iaIn = confIAArr[j * 2 + 1];
-      if (ang < maxAng) {
+      if (ang < maxAng * MIDAS_DEG2RAD) {
         if (bCon < conIn) {
           bCon = conIn;
           bIA = iaIn;

@@ -137,9 +137,9 @@ static double problem_function(unsigned n, const double *x, double *grad,
     }
   }
   double OrientMatIn[3][3], FracOverlap, EulIn[3];
-  EulIn[0] = x[0] * rad2deg;
-  EulIn[1] = x[1] * rad2deg;
-  EulIn[2] = x[2] * rad2deg;
+  EulIn[0] = x[0];
+  EulIn[1] = x[1];
+  EulIn[2] = x[2];
   Euler2OrientMat(EulIn, OrientMatIn);
   double Lsd[nLayers], ybc[nLayers], zbc[nLayers], tx, ty, tz,
       RotMatTilts[3][3];
@@ -910,9 +910,9 @@ int main(int argc, char *argv[]) {
       printf("Tilts: %f %f %f\n", BestTiltsFit[0], BestTiltsFit[1],
              BestTiltsFit[2]);
       printf("Orientation Matrix:\n");
-      EulBest[0] = BestEuler[0] * rad2deg;
-      EulBest[1] = BestEuler[1] * rad2deg;
-      EulBest[2] = BestEuler[2] * rad2deg;
+      EulBest[0] = BestEuler[0];
+      EulBest[1] = BestEuler[1];
+      EulBest[2] = BestEuler[2];
       Euler2OrientMat(EulBest, OMBest);
       for (j = 0; j < 3; j++) {
         for (m = 0; m < 3; m++) {
