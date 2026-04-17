@@ -175,3 +175,8 @@ The sqrt(2) scaling preserves the Frobenius norm: `||T||_F == ||v||_2`.
 ## License
 
 BSD-3-Clause. See [LICENSE](../../LICENSE).
+
+## For maintainers
+
+See [RELEASING.md](RELEASING.md) for the release workflow
+(`./release.sh <version> --publish` handles everything end-to-end).
