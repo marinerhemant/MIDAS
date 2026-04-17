@@ -997,6 +997,10 @@ def main():
                         help='Path to a pipeline H5 file to resume from. Auto-detects the first incomplete stage.')
     parser.add_argument('-restartFrom', type=str, required=False, default='',
                         help='Stage name to restart from (re-runs all stages from that point). Valid: hkl, peak_search, merge, params_rewrite, indexing, refinement, find_multiple_solutions, consolidation')
+    parser.add_argument('-skipValidation', action='store_true',
+                        help='Skip midas-params preflight validation.')
+    parser.add_argument('-strictValidation', action='store_true',
+                        help='Exit on parameter-file validation errors (default: warn and continue).')
     # Parse arguments
     args, unparsed = parser.parse_known_args()
     
@@ -1028,6 +1032,18 @@ def main():
     # Ensure command line file arguments are absolute paths before a potential directory change
     param_path = os.path.abspath(args.paramFile)
     param_dir = os.path.dirname(param_path)
+
+    # --- midas-params preflight validation (soft dependency) ---
+    try:
+        from midas_params.hook import preflight_validate as _preflight
+    except ImportError:
+        _preflight = None
+    if _preflight is not None:
+        if not _preflight(
+            param_file=param_path, pipeline="pf",
+            skip=args.skipValidation, strict=args.strictValidation,
+        ):
+            sys.exit(1)
     if micFN and not os.path.isabs(micFN):
         micFN = os.path.abspath(micFN)
     if grainsFN and not os.path.isabs(grainsFN):

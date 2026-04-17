@@ -587,12 +587,29 @@ def main():
                         help='Path to pipeline H5 to resume from.')
     parser.add_argument('-restartFrom', type=str, default='',
                         help=f'Stage to restart from. Valid: {", ".join(NF_STAGE_ORDER)}')
+    parser.add_argument('-skipValidation', action='store_true',
+                        help='Skip midas-params preflight validation.')
+    parser.add_argument('-strictValidation', action='store_true',
+                        help='Exit on validation errors (default: warn and continue).')
     args = parser.parse_args()
 
     # Enable GPU fitting if requested
     if args.gpuFit == 1:
         os.environ['MIDAS_GPU_FIT'] = '1'
         logger.info("GPU Phase 2 fitting enabled (MIDAS_GPU_FIT=1)")
+
+    # --- midas-params preflight validation (soft dependency) ---
+    try:
+        from midas_params.hook import preflight_validate as _preflight
+    except ImportError:
+        _preflight = None
+    if _preflight is not None:
+        if not _preflight(
+            param_file=args.paramFN, pipeline="nf",
+            skip=args.skipValidation, strict=args.strictValidation,
+            logger=logger,
+        ):
+            sys.exit(1)
 
     # --- 2. Configuration from Parsed Arguments and Files ---
     params = parse_parameters(args.paramFN)

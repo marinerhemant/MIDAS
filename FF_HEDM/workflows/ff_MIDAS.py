@@ -1944,7 +1944,11 @@ def main():
                         help='Use GPU binaries (IndexerGPU, FitPosOrStrainsGPU) instead of OMP versions. Default: 0')
     parser.add_argument('-generateH5', type=int, required=False, default=0,
                         help='Set to 1 to generate consolidated HDF5 at the end of each layer. Disabled by default.')
-    
+    parser.add_argument('-skipValidation', action='store_true',
+                        help='Skip midas-params preflight validation of the parameter file.')
+    parser.add_argument('-strictValidation', action='store_true',
+                        help='Exit on parameter-file validation errors (default: warn and continue).')
+
     # Parse arguments
     if len(sys.argv) == 1:
         parser.print_help(sys.stderr)
@@ -2009,7 +2013,23 @@ def main():
     if not ps_fn and not data_fn and args.reprocess != 1:
         logger.error("Either paramFN or dataFN must be provided")
         sys.exit(1)
-    
+
+    # --- midas-params preflight validation (soft dependency) ---
+    if ps_fn and args.reprocess != 1:
+        try:
+            from midas_params.hook import preflight_validate
+        except ImportError:
+            preflight_validate = None
+        if preflight_validate is not None:
+            ok = preflight_validate(
+                param_file=ps_fn, pipeline="ff",
+                skip=args.skipValidation,
+                strict=args.strictValidation,
+                logger=logger,
+            )
+            if not ok:
+                sys.exit(1)
+
     # Handle reprocess mode
     if args.reprocess == 1:
         reprocess_dir = result_dir if result_dir else os.getcwd()

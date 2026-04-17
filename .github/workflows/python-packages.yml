@@ -14,12 +14,15 @@ on:
     types: [published]
 
 jobs:
+  # ─── Tests run on every push / PR / release for BOTH packages ─────────────
   test:
     runs-on: ${{ matrix.os }}
     strategy:
+      fail-fast: false
       matrix:
         os: [ubuntu-latest, macos-latest]
         python-version: ['3.9', '3.11', '3.12']
+        package: [midas_stress, midas_params]
 
     steps:
       - uses: actions/checkout@v4
@@ -29,45 +32,74 @@ jobs:
         with:
           python-version: ${{ matrix.python-version }}
 
-      - name: Install midas-stress
-        run: pip install -e "packages/midas_stress[dev]"
+      - name: Install ${{ matrix.package }} (editable, with dev extras)
+        run: pip install -e "packages/${{ matrix.package }}[dev]"
 
-      - name: Run tests
+      - name: Run tests for ${{ matrix.package }}
         run: |
-          cd packages/midas_stress
+          cd packages/${{ matrix.package }}
           python -m pytest tests/ -v --tb=short
 
+  # ─── Build + publish: triggered by GitHub release only ────────────────────
+  # The tag name selects which package to publish:
+  #   midas-stress-v*  → midas_stress
+  #   midas-params-v*  → midas_params
+  #
+  # Release tags without one of these prefixes are ignored (no-op build).
   build:
     needs: test
     runs-on: ubuntu-latest
     if: github.event_name == 'release'
-
+    outputs:
+      package: ${{ steps.which.outputs.package }}
+      pypi_name: ${{ steps.which.outputs.pypi_name }}
     steps:
       - uses: actions/checkout@v4
 
+      - id: which
+        name: Identify package from tag
+        run: |
+          TAG="${GITHUB_REF##*/}"
+          echo "Tag: $TAG"
+          if [[ "$TAG" == midas-stress-v* ]]; then
+            echo "package=midas_stress" >> "$GITHUB_OUTPUT"
+            echo "pypi_name=midas-stress" >> "$GITHUB_OUTPUT"
+          elif [[ "$TAG" == midas-params-v* ]]; then
+            echo "package=midas_params" >> "$GITHUB_OUTPUT"
+            echo "pypi_name=midas-params" >> "$GITHUB_OUTPUT"
+          else
+            echo "Tag $TAG does not match any known package prefix; skipping."
+            echo "package=" >> "$GITHUB_OUTPUT"
+            echo "pypi_name=" >> "$GITHUB_OUTPUT"
+          fi
+
       - name: Set up Python
+        if: steps.which.outputs.package != ''
         uses: actions/setup-python@v5
         with:
           python-version: '3.12'
 
       - name: Install build tools
+        if: steps.which.outputs.package != ''
         run: pip install build
 
       - name: Build sdist and wheel
+        if: steps.which.outputs.package != ''
         run: |
-          cd packages/midas_stress
+          cd packages/${{ steps.which.outputs.package }}
           python -m build
 
       - name: Upload artifacts
+        if: steps.which.outputs.package != ''
         uses: actions/upload-artifact@v4
         with:
-          name: midas-stress-dist
-          path: packages/midas_stress/dist/
+          name: ${{ steps.which.outputs.pypi_name }}-dist
+          path: packages/${{ steps.which.outputs.package }}/dist/
 
   publish:
     needs: build
     runs-on: ubuntu-latest
-    if: github.event_name == 'release'
+    if: github.event_name == 'release' && needs.build.outputs.package != ''
     environment: pypi
     permissions:
       id-token: write  # for trusted publishing (OIDC)
@@ -76,12 +108,17 @@ jobs:
       - name: Download artifacts
         uses: actions/download-artifact@v4
         with:
-          name: midas-stress-dist
+          name: ${{ needs.build.outputs.pypi_name }}-dist
           path: dist/
 
       - name: Publish to PyPI
         uses: pypa/gh-action-pypi-publish@release/v1
-        # Uses trusted publishing (OIDC) — configure at pypi.org:
+        # Uses trusted publishing (OIDC). One-time setup per package at pypi.org:
         # Settings > Publishing > Add a new pending publisher
-        # Owner: marinerhemant, Repo: MIDAS, Workflow: python-packages.yml
-        # Environment: pypi
+        #   Owner: marinerhemant
+        #   Repo: MIDAS
+        #   Workflow: python-packages.yml
+        #   Environment: pypi
+        # The same GitHub environment (pypi) is shared across packages;
+        # the PyPI side identifies which project to publish to by the
+        # PyPI project name baked into the uploaded dist/*.
