@@ -120,32 +120,37 @@ git commit -m "midas-stress: bump version to ${NEW_VERSION}"
 echo "[5/7] Tagging as ${TAG}..."
 git tag -a "$TAG" -m "midas-stress v${NEW_VERSION}"
 
-# --- 7. If --publish, push + GitHub release + PyPI ---
+# --- 7. If --publish, push + GitHub release (CI auto-uploads to PyPI) ---
 if [ "$MODE" = "--publish" ]; then
     # Check prerequisites
     if ! command -v gh >/dev/null 2>&1; then
         echo "ERROR: 'gh' (GitHub CLI) not installed. Install: brew install gh"
         exit 1
     fi
-    if ! command -v twine >/dev/null 2>&1; then
-        pip install --quiet twine
-    fi
 
-    echo "[6/7] Pushing to GitHub..."
+    echo "[6/6] Pushing to GitHub..."
     git push origin master --follow-tags
 
-    echo "[6b/7] Creating GitHub release..."
+    echo "[6b/6] Creating GitHub release..."
     gh release create "$TAG" dist/* \
         --title "midas-stress v${NEW_VERSION}" \
         --generate-notes
 
-    echo "[7/7] Uploading to PyPI..."
-    twine upload dist/*
-
     echo
-    echo "=== Release complete ==="
-    echo "PyPI: https://pypi.org/project/midas-stress/${NEW_VERSION}/"
+    echo "=== Release prepared ==="
     echo "GitHub: https://github.com/marinerhemant/MIDAS/releases/tag/${TAG}"
+    echo
+    echo "The python-packages.yml workflow will now:"
+    echo "  1. Run tests on Linux and macOS (Python 3.9/3.11/3.12)"
+    echo "  2. Build the sdist + wheel"
+    echo "  3. Publish to PyPI via trusted publishing (OIDC)"
+    echo
+    echo "Watch progress: https://github.com/marinerhemant/MIDAS/actions"
+    echo
+    echo "When workflow completes:"
+    echo "  PyPI: https://pypi.org/project/midas-stress/${NEW_VERSION}/"
+    echo "  Verify: pip install -U midas-stress && \\"
+    echo "          python -c 'import midas_stress; print(midas_stress.__version__)'"
     echo
     echo "Verify:"
     echo "  pip install -U midas-stress"
@@ -160,13 +165,15 @@ echo
 echo "Artifacts in dist/:"
 ls -1 dist/
 echo
-echo "To publish everything now, run:"
+echo "To publish, run:"
 echo
 echo "  git push origin master --follow-tags"
 echo "  gh release create ${TAG} dist/* \\"
 echo "    --title 'midas-stress v${NEW_VERSION}' \\"
 echo "    --generate-notes"
-echo "  twine upload dist/*"
+echo
+echo "The GitHub Actions workflow will build and upload to PyPI"
+echo "automatically when the release is created."
 echo
 echo "Or re-run with --publish next time to do all of this automatically:"
 echo "  ./release.sh ${NEW_VERSION} --publish"

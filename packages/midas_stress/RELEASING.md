@@ -15,7 +15,7 @@ cd packages/midas_stress
 | Command | What it does |
 |---------|--------------|
 | `./release.sh 0.1.3` | **Prepare locally only** (default, safest). Version bump + tests + build + commit + tag. You push/publish manually. |
-| `./release.sh 0.1.3 --publish` | **Fully automated**: prepare + push + GitHub release + PyPI upload. One command. |
+| `./release.sh 0.1.3 --publish` | **Fully automated**: prepare + push + GitHub release. The CI workflow (`python-packages.yml`) then runs tests and auto-publishes to PyPI via trusted publishing (OIDC). One command. |
 | `./release.sh 0.1.3 --dry-run` | **Prepare but don't commit or tag**. For testing the build. Easy to undo with `git checkout -- pyproject.toml midas_stress/__init__.py`. |
 
 ## Step-by-step (prepare-only mode)
@@ -60,11 +60,20 @@ cd packages/midas_stress
 ./release.sh 0.1.3 --publish
 ```
 
-This does everything end-to-end:
-prepare → commit → tag → push → GitHub release → PyPI upload.
+This does the local + GitHub part end-to-end:
+prepare → commit → tag → push → GitHub release.
 
-It prints the PyPI and GitHub release URLs when done, plus a
-verification command to confirm the new version is installable.
+The GitHub Actions workflow (`.github/workflows/python-packages.yml`)
+takes over from there:
+1. Runs tests on Linux and macOS across Python 3.9/3.11/3.12.
+2. Builds the sdist + wheel.
+3. Uploads to PyPI via trusted publishing (OIDC) — no API token
+   needed.
+
+The script prints the GitHub release URL when the local phase is
+done, plus a link to the Actions page so you can watch progress.
+Once the workflow finishes (typically 3-5 minutes), the package is
+live on PyPI.
 
 ## Dry-run mode (`--dry-run`)
 
@@ -112,14 +121,19 @@ The script refuses to release in unsafe situations:
 
 ### For `--publish` mode additionally
 - `gh` (GitHub CLI) installed and authenticated (`gh auth login`).
-- `twine` installed (auto-installed by the script if missing).
-- PyPI credentials configured. Two options:
-  - **API token**: create at https://pypi.org/manage/account/token/
-    and put in `~/.pypirc`.
-  - **Trusted publisher (OIDC)**: configure at
-    https://pypi.org/manage/account/publishing/ — then the upload
-    step is not needed because GitHub Actions publishes automatically
-    when the release is created.
+- GitHub Actions workflow `python-packages.yml` configured (already
+  present in this repo).
+- PyPI Trusted Publisher configured at
+  https://pypi.org/manage/account/publishing/ with:
+  - Owner: `marinerhemant`
+  - Repository: `MIDAS`
+  - Workflow: `python-packages.yml`
+  - Environment: `pypi`
+- GitHub environment named `pypi` exists in the repo settings
+  (Settings -> Environments).
+
+The CI workflow handles the PyPI upload automatically when a release
+is created, using OIDC trusted publishing. No API token needed.
 
 ## Version numbering
 
@@ -150,10 +164,21 @@ The version bump was rolled back. Fix the tests, commit, and retry.
 The version bump was rolled back. Check `python -m build` output
 for the error (usually a missing dependency in `pyproject.toml`).
 
-### GitHub release created but PyPI upload failed
-Run just the PyPI step manually:
+### GitHub release created but PyPI upload failed (CI workflow error)
+Check the workflow logs: https://github.com/marinerhemant/MIDAS/actions
+
+Common causes:
+- **"Trusted publishing exchange failure"**: the pending publisher
+  at PyPI isn't configured, or the `pypi` GitHub environment
+  doesn't exist.
+- **Tests failed in CI**: something works locally but not in the
+  matrix (e.g., Python 3.9 incompatibility). Fix the test, bump
+  the version, and retry.
+
+If you need to publish manually as a fallback (e.g., CI is broken
+and you need to ship urgently):
 ```bash
 cd packages/midas_stress
 twine upload dist/*
 ```
-The PyPI upload is idempotent per-file, so this is safe to retry.
+Requires a PyPI API token in `~/.pypirc`.
