@@ -4,7 +4,7 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "midas-stress"
-version = "0.2.1"
+version = "0.2.2"
 description = "Crystallographic stress-strain analysis with Voigt-Mandel notation and mechanical equilibrium constraints"
 readme = "README.md"
 license = "BSD-3-Clause"
