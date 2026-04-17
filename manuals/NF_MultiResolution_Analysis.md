@@ -18,11 +18,11 @@ Multi-resolution mode is activated by the presence of the `GridRefactor` key in 
 
 - End-to-end workflow: image processing → simulation → fitting → mic output
 - Parallel execution via Parsl (cluster) or multiprocessing (local)
-- Shared-memory I/O (`/dev/shm`) for high-throughput fitting
+- Memory-mapped I/O directly from `DataDirectory` for high-throughput fitting
 - Automatic retry with exponential backoff for Parsl tasks
 - Far-field seeding from `Grains.csv`
 - Multi-resolution iterative refinement with automatic seed generation
-- Robust cleanup of shared memory and Parsl resources on exit
+- Robust cleanup of Parsl resources on exit
 
 ---
 
@@ -32,7 +32,6 @@ Multi-resolution mode is activated by the presence of the `GridRefactor` key in 
 |---|---|
 | **MIDAS Installation** | Script auto-detects install dir from its own location |
 | **Python Packages** | `parsl`, `numpy`, `tqdm` |
-| **Shared Memory** | `/dev/shm` must be writable and large enough for `SpotsInfo.bin`, `DiffractionSpots.bin`, `Key.bin`, `OrientMat.bin` |
 | **Input Data** | Raw TIFF diffraction images in `DataDirectory` |
 | **Parameter File** | Text file defining the experiment (see [Section 4](#4-parameter-file-reference)) |
 | **Seed Orientations** | A `SeedOrientations` file listing candidate crystal orientations |
@@ -46,7 +45,9 @@ Multi-resolution mode is activated by the presence of the `GridRefactor` key in 
 python nf_MIDAS_Multiple_Resolutions.py \
     -paramFN <param_file> \
     [-nCPUs <int>] [-machineName <str>] [-nNodes <int>] \
-    [-ffSeedOrientations <0|1>] [-doImageProcessing <0|1>]
+    [-ffSeedOrientations <0|1>] [-doImageProcessing <0|1>] \
+    [-gpuFit <0|1>] [-startLayerNr <int>] [-endLayerNr <int>] \
+    [-resultFolder <str>] [-minConfidence <float>] [-restartFrom <str>]
 ```
 
 | Argument | Type | Default | Description |
@@ -57,6 +58,11 @@ python nf_MIDAS_Multiple_Resolutions.py \
 | `-nNodes` | int | `1` | Number of compute nodes (Parsl workers) |
 | `-ffSeedOrientations` | int | `0` | `1` = generate seeds from FF `Grains.csv`; `0` = use existing `SeedOrientations` file |
 | `-doImageProcessing` | int | `1` | `1` = run median and image processing; `0` = skip (reuse existing processed images) |
+| `-gpuFit` | int | `0` | `1` = enable GPU-accelerated screening and fitting via `FitOrientationGPU`; `0` = use CPU fitting |
+| `-startLayerNr` | int | `1` | First layer to process (1-indexed) |
+| `-endLayerNr` | int | `1` | Last layer to process (1-indexed) |
+| `-resultFolder` | string | `''` | Output directory override. When set, all output files are written here instead of the default location |
+| `-minConfidence` | float | `0.6` | Confidence threshold for multi-resolution filtering. Overrides the `MinConfidence` value in the parameter file |
 | `-resume` | string | `''` | Path to a pipeline H5 to resume from. Auto-detects the last completed stage and prints available restart points. |
 | `-restartFrom` | string | `''` | Explicit stage to restart from. Valid stages: `loop_0_initial`, `loop_N_seeded`, `loop_N_unseeded`, `loop_N_merge` (where N is the loop number). |
 
@@ -147,10 +153,9 @@ graph LR
 2. `ImageProcessingLibTiffOMP` — background subtraction on raw TIFFs → `SpotsInfo.bin`
 
 **Fitting & Postprocessing:**
-1. `MMapImageInfo` — prepare memory-mapped data
-2. Copy `.bin` files to `/dev/shm`
-3. `FitOrientationOMP` — parallel orientation fitting across all grid points
-4. `ParseMic` — consolidate results → `{MicFileText}`
+1. `MMapImageInfo` — prepare memory-mapped data (auto-skipped if direct binaries already exist)
+2. `FitOrientationOMP` — parallel orientation fitting across all grid points (reads `.bin` files via mmap from `DataDirectory`)
+3. `ParseMic` — consolidate results → `{MicFileText}`
 
 ### 5.2 Multi-Resolution Mode
 
@@ -195,7 +200,7 @@ Each refinement loop has two passes:
 - If no bad points exist, Pass 2 is skipped entirely
 
 **Pass 2 — Unseeded Run (bad regions only):**
-1. Writes a reduced `grid.txt` containing only the bad points  
+1. Writes a reduced `grid.txt` containing only the bad points
 2. Uses the full `SeedOrientationsAll_Backup` (not clustered seeds)
 3. Skips `MakeHexGrid` (reuses the filtered grid)
 4. Runs fitting unseeded on just the bad points
@@ -379,14 +384,6 @@ Between multi-resolution loops, `Mic2GrainsList` extracts unique grain orientati
 ---
 
 ## 9. Troubleshooting
-
-### Shared Memory Errors
-
-| Error | Cause | Fix |
-|---|---|---|
-| *Permission Denied on `/dev/shm`* | Insufficient permissions | Check node permissions |
-| *No space left on device* | `.bin` files too large | Reduce orientation count or check `/dev/shm` size |
-| *User Conflict detected* | Another user's `.bin` files present | Wait for their job or ask admin to clear |
 
 ### Fitting Issues
 

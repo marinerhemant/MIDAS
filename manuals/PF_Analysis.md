@@ -1,10 +1,10 @@
 # pf_MIDAS.py User Manual
 
-**Version:** 11.0  
+**Version:** 11.0
 **Contact:** hsharma@anl.gov
 
 > [!NOTE]
-> For **standard (box-beam)** FF-HEDM analysis, see [FF_Analysis.md](FF_Analysis.md).  
+> For **standard (box-beam)** FF-HEDM analysis, see [FF_Analysis.md](FF_Analysis.md).
 > PF-HEDM (Point-Focus / Pencil-beam / Scanning FF-HEDM) processes data from **multiple sample positions** to reconstruct a spatially-resolved microstructure map.
 
 ---
@@ -57,11 +57,16 @@ python pf_MIDAS.py -paramFile <param.txt> [options]
 | `-preProcThresh` | `int` | `-1` | Pre-processing threshold above dark. `-1` disables. |
 | `-startScanNr` | `int` | `1` | First scan number to process (for partial peak search). |
 | `-minThresh` | `int` | `-1` | Filter peaks with maxIntensity below this value. `-1` disables. |
-| `--micFN` | `str` | `''` | Path to a `.mic` file for guided indexing. |
-| `--grainsFN` | `str` | `''` | Path to a grains file for seed-based indexing. |
+| `-micFN` | `str` | `''` | Path to a `.mic` file for guided indexing. |
+| `-grainsFN` | `str` | `''` | Path to a grains file for seed-based indexing. |
 | `-omegaFile` | `str` | `''` | Override omega values (one per scan, text file). |
+| `-sinoType` | `str` | `raw` | Sinogram variant to use for reconstruction. Valid: `raw`, `norm`, `abs`, `normabs`. See [Section 7](#sinogram-variants). |
+| `-sinoSource` | `str` | `tolerance` | Sinogram spot source: `tolerance` = match all spots by angular tolerance (default); `indexing` = use only spots from per-voxel indexing results (cleaner). |
+| `-reconMethod` | `str` | `fbp` | Reconstruction algorithm: `fbp` (Filtered Back-Projection via gridrec), `mlem` (Maximum Likelihood EM), `osem` (Ordered Subsets EM). See [Section 8.3](#83-reconstruction-methods-fbp-mlem-osem). |
+| `-mlemIter` | `int` | `50` | Number of MLEM/OSEM iterations (only used when `-reconMethod` is `mlem` or `osem`). |
+| `-osemSubsets` | `int` | `4` | Number of ordered subsets for OSEM (only used when `-reconMethod` is `osem`). |
 | `-resume` | `str` | `''` | Path to a pipeline H5 to resume from. Auto-detects the last completed stage. |
-| `-restartFrom` | `str` | `''` | Explicit stage to restart from. Valid stages: `conversion`, `hkl`, `peaksearch`, `merging`, `binning`, `indexing`, `solution`, `tomo`, `refinement`, `consolidation`. |
+| `-restartFrom` | `str` | `''` | Explicit stage to restart from. Valid stages: `hkl`, `peak_search`, `merge`, `params_rewrite`, `indexing`, `refinement`, `find_multiple_solutions`, `consolidation`. |
 
 ### Example
 
@@ -80,6 +85,12 @@ python pf_MIDAS.py -paramFile ps_pf.txt -resume /path/to/pipeline.h5
 
 # Restart from indexing:
 python pf_MIDAS.py -paramFile ps_pf.txt -restartFrom indexing
+
+# Use MLEM reconstruction instead of FBP:
+python pf_MIDAS.py -paramFile ps_pf.txt -doTomo 1 -reconMethod mlem -mlemIter 80
+
+# Use OSEM (faster convergence) with normalized sinograms:
+python pf_MIDAS.py -paramFile ps_pf.txt -doTomo 1 -reconMethod osem -osemSubsets 4 -sinoType norm
 ```
 
 ---
@@ -139,11 +150,19 @@ flowchart TD
     H -->|Yes| I[findSingleSolutionPF<br/>Select best orientation]
     H -->|No| J[findMultipleSolutionsPF<br/>Allow multiple orientations]
     I --> K{Do tomography?}
-    K -->|Yes| L[Sinogram construction<br/>+ Inverse Radon Transform]
+    K -->|Yes| L[Sinogram variants<br/>raw / norm / abs / normabs]
     K -->|No| M[FitOrStrainsScanningOMP<br/>Refine positions & strains]
-    L --> N[microstructure.hdf + microstrFull.csv]
+    L --> L2{Recon method?}
+    L2 -->|FBP| L3[gridrec via MIDAS_TOMO]
+    L2 -->|MLEM| L4[mlem_recon.mlem]
+    L2 -->|OSEM| L5[mlem_recon.osem]
+    L3 --> N[microstructure.hdf + microstrFull.csv]
+    L4 --> N
+    L5 --> N
     J --> M
-    L --> M
+    L3 --> M
+    L4 --> M
+    L5 --> M
     M --> N
 
     style A fill:#1a1a2e,stroke:#e94560,color:#fff
@@ -160,8 +179,23 @@ flowchart TD
 | **Indexing** | `IndexerScanningOMP` | Scanning-mode indexing with position awareness |
 | **Single Solution** | `findSingleSolutionPF` | Selects best unique orientation per voxel |
 | **Multi Solution** | `findMultipleSolutionsPF` | Allows overlapping grains in a single voxel |
-| **Tomography** | `iradon` (scikit-image) | Reconstructs tomographic images per grain from sinograms |
+| **Tomography** | FBP / MLEM / OSEM | Reconstructs tomographic images per grain from sinograms (see [Section 8.3](#83-reconstruction-methods-fbp-mlem-osem)) |
 | **Refinement** | `FitOrStrainsScanningOMP` | Refines orientations, positions, and strains |
+
+### Pipeline Stage Order (for `-restartFrom`)
+
+The internal stage order used by `-restartFrom` and `-resume` is:
+
+1. `hkl`
+2. `peak_search`
+3. `merge`
+4. `params_rewrite`
+5. `indexing`
+6. `refinement`
+7. `find_multiple_solutions`
+8. `consolidation`
+
+Restarting from a given stage re-runs that stage and all subsequent stages.
 
 ---
 
@@ -189,7 +223,10 @@ flowchart TD
 ├── Results/
 │   └── *.csv                      # Per-voxel refinement results
 ├── Sinos/                         # Tomographic sinograms (if -doTomo 1)
-│   └── sino_grNr_*.tif
+│   ├── sino_raw_grNr_NNNN.tif    # Raw intensity sinogram
+│   ├── sino_norm_grNr_NNNN.tif   # Normalized (I/Imax) sinogram
+│   ├── sino_abs_grNr_NNNN.tif    # Absorption (exp(-I)) sinogram
+│   └── sino_normabs_grNr_NNNN.tif # Normalized absorption (exp(-I/Imax)) sinogram
 ├── Thetas/                        # Per-grain theta arrays
 │   └── thetas_grNr_*.txt
 ├── Recons/                        # Reconstructed images
@@ -205,6 +242,19 @@ flowchart TD
 │   └── refining_out*.csv / refining_err*.csv
 └── processing.log
 ```
+
+### Sinogram Variants
+
+When `-doTomo 1` is enabled, the workflow saves **four sinogram variants** per grain as TIF files in the `Sinos/` subdirectory. These are produced by `findSingleSolutionPFRefactored` and written out by `save_sinogram_variants()`:
+
+| Variant | Filename Pattern | Description |
+|---|---|---|
+| `raw` | `sino_raw_grNr_NNNN.tif` | Raw intensity values from matched spots |
+| `norm` | `sino_norm_grNr_NNNN.tif` | Normalized intensity (I / I_max per grain) |
+| `abs` | `sino_abs_grNr_NNNN.tif` | Absorption-like transform: exp(-I) |
+| `normabs` | `sino_normabs_grNr_NNNN.tif` | Normalized absorption: exp(-I / I_max) |
+
+Each sinogram TIF has shape `(nScans, nSpots)` and stores double-precision values. The `-sinoType` argument controls which variant is fed into the reconstruction step.
 
 ### microstrFull.csv Column Format (43 columns)
 
@@ -231,7 +281,7 @@ The output CSV contains one row per indexed voxel with the following columns:
 ### microstructure.hdf
 
 HDF5 file with two datasets:
--   **`microstr`**: Full results array (same as `microstrFull.csv`)  
+-   **`microstr`**: Full results array (same as `microstrFull.csv`)
 -   **`images`**: 3D array `(23, nScans, nScans)` with spatially-resolved data suitable for imaging — includes ID, quaternion, position, lattice parameters, strain, completeness.
 
 ---
@@ -247,10 +297,55 @@ $$Y_{det} = Y_{theor} + \frac{x \cdot \sin \omega + y \cdot \cos \omega}{px_{siz
 
 *   **Voxel Grid:** The software discretizes the sample space into a grid defined by the `BeamSize`. It systematically tests orientations at each grid point, effectively performing a "diffraction-based raster scan."
 
-### 8.2. Tomographic Reconstruction
-When `-doTomo 1` is enabled:
-1.  **Sinogram Generation:** For each identified grain, the script aggregates the "completeness" or intensity metric across all scan positions and rotation angles ($\omega$). This forms a sinogram where the vertical axis is the scan position and the horizontal axis is the projection angle.
-2.  **Inverse Radon Transform:** The `iradon` function from `scikit-image` is used to invert these sinograms, reconstructing the 2D cross-sectional shape of the grain. This allows for sub-beam spatial resolution of the microstructure.
+### 8.2. Sinogram Generation
+When `-doTomo 1` is enabled, sinograms are constructed before reconstruction:
+1.  **Per-grain aggregation:** For each identified grain, the script aggregates intensity metrics across all scan positions and rotation angles ($\omega$). This forms a sinogram where the vertical axis is the scan position and the horizontal axis is the projection angle.
+2.  **Four variants:** The sinogram is saved in four processing combinations (raw, normalized, absorption, normalized-absorption) to allow flexibility in the downstream reconstruction. See [Sinogram Variants](#sinogram-variants) in Section 7.
+3.  **Variant selection:** The `-sinoType` argument controls which variant is used for reconstruction. For samples with strong absorption contrast, `abs` or `normabs` may produce better grain shape reconstructions. For most diffraction-intensity cases, `raw` (default) or `norm` work well.
+
+### 8.3. Reconstruction Methods (FBP, MLEM, OSEM)
+
+The workflow supports three tomographic reconstruction algorithms, selected via `-reconMethod`:
+
+#### FBP (Filtered Back-Projection) — default
+
+The standard analytical reconstruction method. Uses the `gridrec` algorithm via `MIDAS_TOMO` (`midas_tomo_python.run_tomo_from_sinos`). FBP is fast and produces good results when the sinogram has dense, uniform angular coverage.
+
+```bash
+python pf_MIDAS.py -paramFile ps_pf.txt -doTomo 1 -reconMethod fbp
+```
+
+#### MLEM (Maximum Likelihood Expectation Maximization)
+
+An iterative statistical reconstruction method (`utils/mlem_recon.mlem`) that is better suited for sparse or irregularly sampled sinograms. MLEM naturally handles:
+
+-   **Missing projections:** Only sinogram rows with non-zero data are used; missing angles do not introduce artifacts.
+-   **Non-uniform angular sampling:** No assumption of evenly spaced projection angles.
+-   **Positivity constraint:** The multiplicative update inherently produces non-negative reconstructions.
+-   **Poisson noise model:** More appropriate than FBP's implicit Gaussian assumption for photon-counting data.
+
+Each iteration forward-projects the current estimate, computes the ratio of measured to projected data, back-projects the ratio, and applies a multiplicative correction. Convergence is controlled by `-mlemIter` (default: 50).
+
+```bash
+python pf_MIDAS.py -paramFile ps_pf.txt -doTomo 1 -reconMethod mlem -mlemIter 80
+```
+
+#### OSEM (Ordered Subsets Expectation Maximization)
+
+An accelerated variant of MLEM (`utils/mlem_recon.osem`) that divides the projection angles into interleaved subsets and updates the estimate after each subset rather than after a full pass. This converges approximately `n_subsets` times faster than standard MLEM, making it practical for large datasets. Controlled by `-mlemIter` (iterations over all subsets) and `-osemSubsets` (number of subsets, default: 4).
+
+```bash
+python pf_MIDAS.py -paramFile ps_pf.txt -doTomo 1 -reconMethod osem -mlemIter 50 -osemSubsets 4
+```
+
+#### When to use each method
+
+| Scenario | Recommended Method |
+|---|---|
+| Dense angular coverage, fast results needed | `fbp` |
+| Sparse/irregular omega angles, missing projections | `mlem` or `osem` |
+| Large number of grains, need speed | `osem` (faster convergence than `mlem`) |
+| Best quality from limited data, time not critical | `mlem` with high iteration count |
 
 ---
 
@@ -264,6 +359,7 @@ When `-doTomo 1` is enabled:
 | No sino files found | `findSingleSolutionPF` found no orientations | Lower `MinNrSpots`, check `MaxAng` |
 | Out of memory | Large number of scans × rings | Use `-numFrameChunks` and fewer `-nCPUs` |
 | `Error reading sino data` | Mismatched `nScans` vs. `positions.csv` | Verify `nScans` matches number of positions |
+| `Invalid restart stage` | Wrong stage name in `-restartFrom` | Use one of: `hkl`, `peak_search`, `merge`, `params_rewrite`, `indexing`, `refinement`, `find_multiple_solutions`, `consolidation` |
 
 ---
 

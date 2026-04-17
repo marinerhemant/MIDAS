@@ -45,7 +45,7 @@ The build system compiles the following CUDA targets when `USE_CUDA=ON`:
 | `FitOrStrainsScanningGPU` | PF-HEDM | GPU scanning-mode strain fitter |
 | `FitOrientationGPU` | NF-HEDM | GPU orientation fitting |
 | `IntegratorFitPeaksGPUStream` | Integration | GPU-accelerated radial integration with peak fitting |
-| `tomo_gpu` (linked into MIDAS_TOMO) | Tomography | GPU-accelerated gridrec reconstruction |
+| `MIDAS_TOMO_GPU` | Tomography | Separate GPU executable for gridrec reconstruction (not linked into MIDAS_TOMO) |
 
 All CUDA targets are compiled with `-Xcompiler=-fopenmp` for hybrid GPU+OpenMP parallelism.
 
@@ -155,9 +155,29 @@ See [FF_Radial_Integration.md](FF_Radial_Integration.md) for full documentation.
 
 ## 6. Tomographic Reconstruction GPU
 
-GPU-accelerated gridrec tomographic reconstruction is automatically used when built with CUDA support.
+GPU-accelerated gridrec tomographic reconstruction is available as a separate executable, `MIDAS_TOMO_GPU`.
 
-Features:
+### Usage
+
+From the command line:
+
+```bash
+MIDAS_TOMO_GPU configFN numCPUs --gpu [--fftw-bridge]
+```
+
+- `--gpu` — enables GPU reconstruction.
+- `--fftw-bridge` — forces CPU FFTW for FFTs (with GPU-CPU data transfers around each call), producing byte-identical output to the CPU-only path at the cost of slower execution.
+
+From Python:
+
+```python
+from TOMO.midas_tomo_python import reconstruct
+reconstruct(..., useGPU=True, fftwBridge=False)
+```
+
+If `MIDAS_TOMO_GPU` is not found, the workflow falls back to `MIDAS_TOMO` (CPU) automatically.
+
+### Features
 
 - Multi-pair batched reconstruction with dynamic batch sizing (capped at 50 pairs to limit pinned memory)
 - Double-buffered pipeline with pthread overlap for compute/transfer
@@ -202,6 +222,8 @@ Double precision has been verified to achieve exact parity with CPU results acro
 |---|---|---|
 | `-useGPU 1` | FF-HEDM, PF-HEDM | Route indexing and fitting through GPU executables |
 | `-gpuFit 1` | NF-HEDM | Enable GPU orientation fitting (screening + refinement) |
+| `--gpu` | Tomography | Enable GPU reconstruction in `MIDAS_TOMO_GPU` |
+| `--fftw-bridge` | Tomography | Use CPU FFTW for byte-identical output to CPU path (requires `--gpu`) |
 
 ---
 

@@ -1,10 +1,10 @@
 # ff_MIDAS.py User Manual
 
-**Version:** 11.0  
+**Version:** 11.0
 **Contact:** hsharma@anl.gov
 
 > [!NOTE]
-> For **scanning/Point-Focus** FF-HEDM, see [PF_Analysis.md](PF_Analysis.md).  
+> For **scanning/Point-Focus** FF-HEDM, see [PF_Analysis.md](PF_Analysis.md).
 > For **dual-dataset** FF-HEDM, see [FF_Dual_Datasets.md](FF_Dual_Datasets.md).
 
 ---
@@ -54,9 +54,13 @@ python ff_MIDAS.py [arguments]
 | `-provideInputAll` | `int` | `0` | `1` = supply `InputAllExtraInfoFittingAll.csv` directly. Result folder must contain this file. |
 | `-rawDir` | `str` | `''` | Override `RawFolder` in the parameter file. |
 | `-grainsFile` | `str` | `''` | Seed grains file for grain finding (sets `MinNrSpots` to 1). |
+| `-nfResultDir` | `str` | `''` | NF result directory containing per-layer seed grains. Each layer looks for its own NF-derived `Grains.csv` to use as seed orientations. |
+| `-batchMode` | `int` | `0` | `1` = auto-detect files with varying stems across layers. Files in `RawFolder` are matched by the pattern `{stem}_{zero-padded-number}{ext}`; dark files (stem starting with `dark_`) are automatically skipped. |
+| `-useGPU` | `int` | `0` | `1` = use GPU-accelerated binaries (`IndexerGPU` for indexing, `FitPosOrStrainsGPU` for refinement) instead of CPU versions. |
+| `-generateH5` | `int` | `0` | `1` = generate a consolidated HDF5 file (`<filestem>_consolidated.h5`) containing all analysis results (grains, spots, peaks, parameters) after processing completes. |
 | `-reprocess` | `int` | `0` | `1` = re-run peak merging (`MergeMap.csv`) and consolidated HDF5 generation on existing results. Only needs `-resultFolder`. |
 | `-resume` | `str` | `''` | Path to a pipeline H5 file to resume from. Auto-detects the last completed stage and re-runs from there. |
-| `-restartFrom` | `str` | `''` | Explicit stage to restart from. All stages from this point forward are re-run. Valid stages: `conversion`, `hkl`, `peaksearch`, `merging`, `radius`, `setup`, `binning`, `indexing`, `refinement`, `consolidation`. |
+| `-restartFrom` | `str` | `''` | Explicit stage to restart from. All stages from this point forward are re-run. Valid stages: `hkl`, `peak_search`, `merge_overlaps`, `calc_radius`, `data_transform`, `binning`, `indexing`, `refinement`, `consolidation`. |
 
 ### Minimal Examples
 
@@ -79,8 +83,20 @@ python ff_MIDAS.py -reprocess 1 -resultFolder ~/results/
 # Resume from the last completed stage (auto-detect):
 python ff_MIDAS.py -paramFN ps_ff.txt -resume ~/results/LayerNr_1/output_consolidated.h5
 
-# Restart from indexing (re-runs indexing → refinement → consolidation):
+# Restart from indexing (re-runs indexing -> refinement -> consolidation):
 python ff_MIDAS.py -paramFN ps_ff.txt -restartFrom indexing
+
+# Batch mode with varying file stems across layers:
+python ff_MIDAS.py -paramFN ps_ff.txt -batchMode 1 -startLayerNr 1 -endLayerNr 10
+
+# GPU-accelerated indexing and refinement:
+python ff_MIDAS.py -paramFN ps_ff.txt -useGPU 1
+
+# Generate consolidated HDF5 output:
+python ff_MIDAS.py -paramFN ps_ff.txt -generateH5 1
+
+# NF-seeded indexing (per-layer seed grains from NF results):
+python ff_MIDAS.py -paramFN ps_ff.txt -nfResultDir ~/nf_results/
 ```
 
 ---
@@ -203,11 +219,11 @@ This section provides an in-depth look at the algorithms used in the core binari
 ### 6.1. Peak Search (`PeaksFittingOMPZarrRefactor.c`)
 The peak search identifies diffraction spots in the raw detector images.
 *   **Preprocessing:** The code applies a dark field subtraction (implicit in the image correlation step).
-*   **Connected Components Analysis (CCA):** 
+*   **Connected Components Analysis (CCA):**
     *   It uses an **iterative Depth-First Search (DFS)** algorithm to label connected regions of pixels that exceed a user-defined intensity threshold.
     *   Stack-based iteration is used instead of recursion to prevent stack overflow on large spots.
 *   **Peak Finding:** Within each connected component, the algorithm searches for **regional maxima**. A pixel is identified as a peak if its intensity is strictly greater than all its 8 neighbors.
-*   **Fitting:** 
+*   **Fitting:**
     *   A **height-normalized Pseudo-Voigt profile** is fitted to each identified peak. The Gaussian and Lorentzian components share a single FWHM (Gamma), with a mixing parameter Mu interpolating between the two profiles.
     *   When `doPeakFit 0` is set, fitting is skipped and each connected component is treated as a single peak using its centroid.
 
@@ -262,7 +278,7 @@ Two merge strategies are available:
     1. A 2D label map of the current frame's pixel assignments is built.
     2. For each new-frame peak, its pixels are scanned against the label map to find the best-matching current peak.
     3. A mutual best-match check ensures robust pairing.
-    
+
     This mode is more accurate for closely-spaced or overlapping peaks, especially when used with `doPeakFit 0`.
 
 ### 6.2. Indexing (`IndexerOMP.c`)
@@ -297,7 +313,7 @@ $$
     1.  **Pass 1:** The standard fit is performed using the initially-assigned spots from the indexing step.
     2.  **Reassignment:** Using the refined grain parameters, theoretical diffraction spot positions are recomputed. The 3D-binned spot pool (`Spots.bin`, `Data.bin`, `nData.bin` — the same data used by the indexer) is searched to find the best-matching observed spots for the current grain state.
     3.  **Pass 2:** The fit is re-run with the newly assigned spots, which may provide better constraints and improved accuracy.
-    
+
     This feature is controlled by the `EtaBinSize` and `OmeBinSize` parameters (which define the bin dimensions for the spot search) and is automatically enabled when the bin data files are present.
 
 > [!NOTE]
@@ -414,7 +430,7 @@ Tab-separated, one row per diffraction spot per grain:
 
 ### Consolidated HDF5 File
 
-The pipeline automatically generates a `<filestem>_consolidated.h5` file that combines all analysis results (grains, spots, peaks, parameters) into a single, self-contained HDF5 file. This is the recommended way to access FF-HEDM results programmatically.
+The pipeline generates a `<filestem>_consolidated.h5` file when `-generateH5 1` is passed. This file combines all analysis results (grains, spots, peaks, parameters) into a single, self-contained HDF5 file. This is the recommended way to access FF-HEDM results programmatically.
 
 #### File Structure
 
@@ -432,7 +448,7 @@ The pipeline automatically generates a `<filestem>_consolidated.h5` file that co
 │       attrs: column_names          # [YLab, ZLab, Omega, GrainRadius, SpotID,
 │                                    #  RingNumber, Eta, Ttheta, OmegaIni, YOrig,
 │                                    #  ZOrig, YOrigDetCor, ZOrigDetCor,
-│                                    #  OmegaOrigDetCor, IntegratedIntensity, 
+│                                    #  OmegaOrigDetCor, IntegratedIntensity,
 │                                    #  ... (others), MaskTouched, FitRMSE]
 │
 ├── /radius_data/                    # Per-spot radius/volume estimates
@@ -511,11 +527,11 @@ import numpy as np
 with h5py.File('output_consolidated.h5', 'r') as h5:
     # Access parameters
     lsd = h5['parameters/Lsd'][()]
-    
+
     # Read all grains at once (N×47 array)
     grains_summary = h5['grains/summary'][:]
     col_names = list(h5['grains/summary'].attrs['column_names'])
-    
+
     # Iterate over individual grains
     for name in h5['grains']:
         if not name.startswith('grain_'):
@@ -525,11 +541,11 @@ with h5py.File('output_consolidated.h5', 'r') as h5:
         orientation = g['orientation'][:]  # 3×3 matrix
         position = g['position'][:]       # [X, Y, Z]
         n_spots = g['spots/n_spots'][()]
-        
+
         # Access spots for this grain
         if n_spots > 0:
             omegas = g['spots/omega'][:]
-            
+
             # Access constituent peaks for a specific spot
             for sname in g['spots']:
                 if not sname.startswith('spot_'):

@@ -1,6 +1,6 @@
 # nf_MIDAS.py User Manual
 
-**Version:** 11.0  
+**Version:** 11.0
 **Contact:** hsharma@anl.gov
 
 > [!NOTE]
@@ -21,11 +21,13 @@ The script supports two modes:
 
 - End-to-end workflow: preprocessing → image processing → fitting → mic output
 - Parallel execution via Parsl (cluster) or multiprocessing (local)
-- Shared-memory I/O (`/dev/shm`) for high-throughput fitting
+- Memory-mapped binary I/O (`mmap`) for high-throughput fitting directly from `DataDirectory`
 - Automatic retry with exponential backoff for Parsl tasks
 - Far-field seeding from `Grains.csv`
+- Auto-extracted seed orientations from master lookup tables when no explicit seeds are provided
 - Interactive or file-based parameter refinement
-- Robust cleanup of shared memory and Parsl resources on exit
+- Consolidated HDF5 output via `nf_consolidate.py`
+- Robust cleanup of Parsl resources on exit
 
 ---
 
@@ -35,10 +37,9 @@ The script supports two modes:
 |---|---|
 | **MIDAS Installation** | Script auto-detects install dir from its own location |
 | **Python Packages** | `parsl`, `numpy`, `tqdm` |
-| **Shared Memory** | `/dev/shm` must be writable and large enough for `SpotsInfo.bin`, `DiffractionSpots.bin`, `Key.bin`, `OrientMat.bin` |
 | **Input Data** | Raw TIFF diffraction images in `DataDirectory` |
 | **Parameter File** | Text file defining the experiment (see [Section 4](#4-parameter-file-reference)) |
-| **Seed Orientations** | A `SeedOrientations` file listing candidate crystal orientations |
+| **Seed Orientations** | A `SeedOrientations` file listing candidate crystal orientations, **or** `-ffSeedOrientations 1` with a `GrainsFile`, **or** omit both to auto-extract seeds from master lookup tables based on the space group number |
 | **Far-Field Results** *(optional)* | `Grains.csv` from FF-HEDM if using `-ffSeedOrientations 1` |
 
 ---
@@ -53,29 +54,30 @@ graph LR
     B --> C[Memory Mapping]
     C --> D[FitOrientationOMP]
     D --> E[ParseMic]
-    E --> F["MicFileText output"]
+    E --> F["nf_consolidate.py"]
+    F --> G["MicFileText + HDF5 output"]
 ```
 
 **Preprocessing:**
 1. `GetHKLListNF` — compute theoretical Bragg reflections → `hkls.csv`
 2. `GenSeedOrientationsFF2NFHEDM` — *(if `-ffSeedOrientations 1`)* convert FF orientations to NF seeds
-3. Auto-update `NrOrientations` in parameter file from seed file line count
-4. `MakeHexGrid` — create hexagonal reconstruction grid → `grid.txt`
-5. Grid filtering — *(optional)* apply `TomoImage` or `GridMask` to reduce computation
-6. `MakeDiffrSpots` — simulate diffraction spots for all seed orientations → `DiffractionSpots.bin`, `Key.txt`, `OrientMat.bin`
+3. Auto-extract seed orientations from master lookup tables — *(if no `SeedOrientations` file is specified and `-ffSeedOrientations` is not set)* generates seeds based on the space group number
+4. Auto-update `NrOrientations` in parameter file from seed file line count
+5. `MakeHexGrid` — create hexagonal reconstruction grid → `grid.txt`
+6. Grid filtering — *(optional)* apply `TomoImage` or `GridMask` to reduce computation
+7. `MakeDiffrSpots` — simulate diffraction spots for all seed orientations → `DiffractionSpots.bin`, `Key.bin`, `OrientMat.bin`
 
 **Image Processing** *(skipped if `-doImageProcessing 0`)*:
-1. `MedianImageLibTiff` — per-distance median background image (parallelized via `multiprocessing.Pool` locally or Parsl on clusters)
-2. `ImageProcessingLibTiffOMP` — background subtraction on raw TIFFs → `SpotsInfo.bin`
+1. `ProcessImagesCombined` — single-pass median background computation and peak extraction per detector layer → `SpotsInfo.bin` (written directly via mmap)
 
 > [!NOTE]
-> A combined single-pass executable `ProcessImagesCombined` is also available. It computes the median and processes images in one step, which can be faster for moderate dataset sizes. The workflow selects it automatically when applicable.
+> `ProcessImagesCombined` is the primary image processing path. It computes the median and processes images in one step, writing `SpotsInfo.bin` directly via mmap/SetBit. The legacy two-step approach (`MedianImageLibTiff` + `ImageProcessingLibTiffOMP`) is still available but deprecated.
 
 **Fitting & Postprocessing:**
-1. `MMapImageInfo` — prepare memory-mapped binary data
-2. Copy `.bin` files to `/dev/shm`
-3. `FitOrientationOMP` — parallel orientation fitting across all grid points (with progress bar for single-node runs)
-4. `ParseMic` — consolidate results → `{MicFileText}`
+1. `MMapImageInfo` — prepare memory-mapped binary data *(auto-skipped when direct binary files from `ProcessImagesCombined` and `MakeDiffrSpots` already exist)*
+2. `FitOrientationOMP` — parallel orientation fitting across all grid points (with progress bar for single-node runs)
+3. `ParseMic` — consolidate results → `{MicFileText}`
+4. `nf_consolidate.py` — generate consolidated HDF5 output containing voxel positions, Euler angles, confidences, and metadata
 
 ### Parameter Refinement (`-refineParameters 1`)
 
@@ -156,6 +158,8 @@ The parameter file is a whitespace-delimited text file. Lines starting with `#` 
 | `GridFileName` | string | Custom grid filename (default: `grid.txt`) |
 | `GridPoints` | 12 floats | Custom grid point specification (for multi-point refinement) |
 | `BCTol` | 2 floats | Beam center tolerance for refinement |
+| `PrecomputedSpotsInfo` | int | `1` = read existing `SpotsInfo.bin` instead of generating from images (default: `0`) |
+| `WriteLegacyBin` | int | `1` = re-enable legacy per-frame `.bin` and `.txtOld` output in `ProcessImagesCombined` (default: `0`) |
 
 > [!TIP]
 > **Separating raw data from results:** Set `DataDirectory` to the location of your raw images and `OutputDirectory` to a local working directory. The workflow reads input data from `DataDirectory` and writes all generated files (mic, grid, logs, binaries) to `OutputDirectory`. This is especially useful when raw data lives on a remote filesystem or read-only mount — you avoid copying the data locally.
@@ -169,7 +173,8 @@ python nf_MIDAS.py \
     -paramFN <param_file> \
     [-nCPUs <int>] [-machineName <str>] [-nNodes <int>] \
     [-ffSeedOrientations <0|1>] [-doImageProcessing <0|1>] \
-    [-refineParameters <0|1>] [-multiGridPoints <0|1>]
+    [-refineParameters <0|1>] [-multiGridPoints <0|1>] \
+    [-gpuFit <0|1>]
 ```
 
 | Argument | Type | Default | Description |
@@ -178,10 +183,11 @@ python nf_MIDAS.py \
 | `-nCPUs` | int | `10` | CPU cores per node for OpenMP tasks |
 | `-machineName` | string | `local` | Execution target: `local`, `orthrosnew`, `orthrosall`, `umich`, `marquette`, `purdue` |
 | `-nNodes` | int | `1` | Number of compute nodes (Parsl workers) |
-| `-ffSeedOrientations` | int | `0` | `1` = generate seeds from FF `Grains.csv`; `0` = use existing `SeedOrientations` file |
+| `-ffSeedOrientations` | int | `0` | `1` = generate seeds from FF `Grains.csv`; `0` = use existing `SeedOrientations` file (or auto-extract from master lookup tables if no seed file is specified) |
 | `-doImageProcessing` | int | `1` | `1` = run median and image processing; `0` = skip (reuse existing processed images) |
 | `-refineParameters` | int | `0` | `1` = run parameter refinement mode; `0` = run reconstruction mode |
 | `-multiGridPoints` | int | `0` | *(only if `-refineParameters 1`)* `1` = use multiple grid points from param file; `0` = prompt for single (x,y) |
+| `-gpuFit` | int | `0` | `1` = use GPU-accelerated screening and fitting via `FitOrientationGPU`; `0` = use CPU-only `FitOrientationOMP` |
 | `-resume` | string | `''` | Path to a pipeline H5 to resume from. Auto-detects the last completed stage. |
 | `-restartFrom` | string | `''` | Explicit stage to restart from. Valid stages: `preprocessing`, `image_processing`, `mmap`, `fitting`, `parse_mic`, `consolidation`. |
 
@@ -246,6 +252,15 @@ python nf_MIDAS.py -paramFN nf_params.txt -nCPUs 8 \
 # Restart from fitting (re-runs fitting → parse_mic → consolidation):
 python nf_MIDAS.py -paramFN nf_params.txt -nCPUs 8 \
     -restartFrom fitting
+```
+
+### Example 6: GPU-Accelerated Reconstruction
+
+```bash
+python nf_MIDAS.py \
+    -paramFN nf_params.txt \
+    -nCPUs 8 \
+    -gpuFit 1
 ```
 
 ---
@@ -357,6 +372,7 @@ All output is generated within `OutputDirectory` if specified, otherwise within 
 │   └── fit_multipoint_out.csv  # Multi-point refinement output
 ├── {MicFileText}               # FINAL TEXT MIC OUTPUT (reconstruction mode)
 ├── {MicFileBinary}             # Binary mic output
+├── nf_consolidated.h5          # Consolidated HDF5 output (auto-generated after ParseMic)
 ├── grid.txt                    # Reconstruction grid (filtered if applicable)
 ├── grid_unfilt.txt             # Pre-tomo-filter backup of grid
 ├── grid_old.txt                # Pre-mask-filter backup of grid
@@ -385,6 +401,10 @@ The final text mic file has one line per reconstructed grid point. Lines startin
 | Euler3 | 9 | Euler angle φ₂ (radians) |
 | Confidence | 10 | Fractional overlap (0–1), higher = better fit |
 
+### Consolidated HDF5 Output
+
+After `ParseMic` completes, the workflow automatically runs `nf_consolidate.py` to produce a consolidated HDF5 file (`nf_consolidated.h5`). This file packages the voxel positions, Euler angles, confidences, and experiment metadata into a single portable container, suitable for downstream analysis and archival.
+
 ---
 
 ## 9. Binary Executables Reference
@@ -396,11 +416,12 @@ The final text mic file has one line per reconstructed grid point. Lines startin
 | `MakeHexGrid` | Create hexagonal reconstruction grid | `<paramFN>` |
 | `filterGridfromTomo` | Filter grid using tomography image | `<TomoImage> <TomoPixelSize>` |
 | `MakeDiffrSpots` | Simulate diffraction spots for all seeds | `<paramFN>` |
-| `MedianImageLibTiff` | Compute median background image | `<paramFN> <distanceNr>` |
-| `ImageProcessingLibTiffOMP` | Process raw images (background subtraction) | `<paramFN> <nodeNr> <nNodes> <nCPUs>` |
-| `ProcessImagesCombined` | Single-pass median + image processing | `<paramFN> <distanceNr> <nCPUs>` |
-| `MMapImageInfo` | Prepare memory-mapped binary data | `<paramFN>` |
+| `ProcessImagesCombined` | Single-pass median + image processing (primary path) | `<paramFN> <distanceNr> <nCPUs>` |
+| `MedianImageLibTiff` | Compute median background image *(legacy)* | `<paramFN> <distanceNr>` |
+| `ImageProcessingLibTiffOMP` | Process raw images — background subtraction *(legacy)* | `<paramFN> <nodeNr> <nNodes> <nCPUs>` |
+| `MMapImageInfo` | Prepare memory-mapped binary data *(auto-skipped when direct binaries exist)* | `<paramFN>` |
 | `FitOrientationOMP` | Fit crystal orientations at each grid point | `<paramFN> <blockNr> <nBlocks> <nCPUs>` |
+| `FitOrientationGPU` | GPU-accelerated orientation fitting (selected via `-gpuFit 1`) | `<paramFN> <blockNr> <nBlocks>` |
 | `ParseMic` | Consolidate fitting results into mic file | `<paramFN>` |
 | `FitOrientationParameters` | Single-point geometry refinement | `<paramFN> <gridPointNr>` |
 | `FitOrientationParametersMultiPoint` | Multi-point geometry refinement | `<paramFN> <nCPUs>` |
@@ -412,7 +433,7 @@ The final text mic file has one line per reconstructed grid point. Lines startin
 ### 10.1. High-Performance Data Structures (`MMapImageInfo`)
 *   **Bitmasking:** To enable ultra-fast collision detection during fitting, the experimental diffraction images are pre-processed into a monolithic bitmask (`ObsSpotsInfo.bin`).
 *   **Index Calculation:** A 4D coordinate (Layer, Rotation, Y, Z) is mapped to a linear index in the bitmask using `NrPixelsY` and `NrPixelsZ`. If a pixel contains a diffraction peak, the corresponding bit is set to 1.
-*   **Memory Mapping:** The binary files are memory-mapped (`mmap`) into the process address space. This allows the OS to efficiently manage memory paging and enables multiple processes (or threads) to access the massive dataset (often 10s of GBs) with near-RAM speeds, especially when placed in `/dev/shm` (RAM disk).
+*   **Memory Mapping:** The binary files are memory-mapped (`mmap`) into the process address space directly from `DataDirectory`. This allows the OS to efficiently manage memory paging and enables multiple processes (or threads) to access the massive dataset (often 10s of GBs) with near-RAM speeds via the OS page cache.
 
 ### 10.2. Orientation Fitting Algorithm (`FitOrientationOMP`)
 *   **Grid Parallelization:** The reconstruction volume is discretized into a hexagonal grid. The fitting process for each grid point is independent, allowing trivial parallelization using **OpenMP**. Each CPU thread processes a subset of grid points.
@@ -430,14 +451,6 @@ The final text mic file has one line per reconstructed grid point. Lines startin
 ---
 
 ## 11. Troubleshooting
-
-### Shared Memory Errors
-
-| Error | Cause | Fix |
-|---|---|---|
-| *Permission Denied on `/dev/shm`* | Insufficient permissions | Check node permissions |
-| *No space left on device* | `.bin` files too large | Reduce orientation count or check `/dev/shm` size |
-| *User Conflict detected* | Another user's `.bin` files present | Wait for their job or ask admin to clear |
 
 ### Fitting Issues
 
@@ -500,7 +513,7 @@ See [GPU_Acceleration.md](GPU_Acceleration.md) for build instructions and full G
 - Memory usage reduced from ~11.5 GB to ~500 MB
 - Streams TIFFs one at a time, builds per-pixel uint16 histogram (65536 bins)
 - Writes SpotsInfo.bin directly via mmap/SetBit
-- `ImageProcessingLibTiffOMP` is deprecated
+- `MedianImageLibTiff` + `ImageProcessingLibTiffOMP` are deprecated in favor of this single-pass approach
 
 ### New Parameters
 
@@ -508,12 +521,24 @@ See [GPU_Acceleration.md](GPU_Acceleration.md) for build instructions and full G
 |---|---|
 | `LocalMaximaOnly` | New peak search mode for powdery/textured samples |
 | `NrPixelsY` / `NrPixelsZ` | Dynamic detector size (replaces hardcoded 2048) |
+| `PrecomputedSpotsInfo` | Use existing `SpotsInfo.bin` instead of regenerating |
+| `WriteLegacyBin` | Re-enable legacy per-frame `.bin` output |
 
 ### I/O Improvements
 
-- FitOrientation executables now use SpotsInfo.bin mmap instead of per-frame `.bin` files
+- FitOrientation executables now use SpotsInfo.bin mmap directly from `DataDirectory` instead of per-frame `.bin` files
 - Misorientation uniqueness filter for `nSaves` — filters redundant orientations
 - Binary mmap-based I/O replaces text-based I/O for FitOrientationParameters
+
+### Consolidated HDF5 Output
+
+- After reconstruction, `nf_consolidate.py` automatically generates a consolidated HDF5 file containing all voxel data and metadata
+- Each resolution level in multi-resolution workflows is saved to the HDF5 via `add_resolution_to_h5()`
+
+### Auto-Extracted Seed Orientations
+
+- When no `SeedOrientations` file is specified and `-ffSeedOrientations` is not set, the workflow automatically extracts seed orientations from master lookup tables based on the space group number
+- This eliminates the need to manually prepare seed files for common crystal structures
 
 ---
 
