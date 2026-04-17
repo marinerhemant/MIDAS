@@ -19,6 +19,30 @@ from midas_stress.plasticity import (
 )
 
 
+def _random_rotations(n, seed):
+    """Uniform random rotation matrices from a seed (no scipy dependency).
+
+    Scipy's ``Rotation.random`` accepts ``rng=`` in recent releases and
+    ``random_state=`` in older ones; this helper sidesteps the
+    compatibility question entirely.
+    """
+    rng = np.random.default_rng(seed)
+    q = rng.normal(size=(n, 4))
+    q /= np.linalg.norm(q, axis=1, keepdims=True)
+    w, x, y, z = q[:, 0], q[:, 1], q[:, 2], q[:, 3]
+    R = np.empty((n, 3, 3))
+    R[:, 0, 0] = 1 - 2 * (y * y + z * z)
+    R[:, 0, 1] = 2 * (x * y - w * z)
+    R[:, 0, 2] = 2 * (x * z + w * y)
+    R[:, 1, 0] = 2 * (x * y + w * z)
+    R[:, 1, 1] = 1 - 2 * (x * x + z * z)
+    R[:, 1, 2] = 2 * (y * z - w * x)
+    R[:, 2, 0] = 2 * (x * z - w * y)
+    R[:, 2, 1] = 2 * (y * z + w * x)
+    R[:, 2, 2] = 1 - 2 * (x * x + y * y)
+    return R
+
+
 # ===================================================================
 #  Slip-system databases
 # ===================================================================
@@ -131,8 +155,7 @@ class TestSchmidFactor:
         assert (m > 1e-6).any()
 
     def test_schmid_batched(self):
-        from scipy.spatial.transform import Rotation
-        U = Rotation.random(20, rng=0).as_matrix()
+        U = _random_rotations(20, seed=0)
         n, b = get_slip_systems("fcc")
         m = schmid_factor(U, [0, 0, 1], n, b)
         assert m.shape == (20, 12)
@@ -149,8 +172,7 @@ class TestSchmidFactor:
 
     def test_resolved_shear_uniaxial_matches_schmid(self):
         """For a pure uniaxial stress sigma*ell*ell^T, tau = sigma * m."""
-        from scipy.spatial.transform import Rotation
-        U = Rotation.random(5, rng=42).as_matrix()
+        U = _random_rotations(5, seed=42)
         n, b = get_slip_systems("fcc")
         load = np.array([0.0, 0.0, 1.0])
         sigma_val = 100.0  # MPa
@@ -197,8 +219,7 @@ class TestDominantSystem:
         np.testing.assert_allclose(res['best_score'][0], m[0].max())
 
     def test_dominant_from_stress(self):
-        from scipy.spatial.transform import Rotation
-        U = Rotation.random(10, rng=1).as_matrix()
+        U = _random_rotations(10, seed=1)
         stress = np.zeros((10, 3, 3))
         stress[:, 2, 2] = 200.0  # uniaxial along z
         n, b = get_slip_systems("fcc")
@@ -242,8 +263,7 @@ class TestCRSS:
         assert res['active'][0].sum() <= 1
 
     def test_yield_proximity(self):
-        from scipy.spatial.transform import Rotation
-        U = Rotation.random(50, rng=7).as_matrix()
+        U = _random_rotations(50, seed=7)
         stress = np.zeros((50, 3, 3))
         stress[:, 2, 2] = 100.0
         n, b = get_slip_systems("fcc")
@@ -255,8 +275,7 @@ class TestCRSS:
 
     def test_taylor_factor_fcc(self):
         """Taylor factor for FCC polycrystal under uniaxial load is ~3.06."""
-        from scipy.spatial.transform import Rotation
-        U = Rotation.random(2000, rng=123).as_matrix()
+        U = _random_rotations(2000, seed=123)
         n, b = get_slip_systems("fcc")
         res = taylor_factor(U, [0, 0, 1], n, b)
         # Single-slip approx gives the classical FCC value ~2.24 (not 3.06,
@@ -273,9 +292,8 @@ class TestCRSS:
 class TestEndToEnd:
     def test_compute_stress_then_resolved_shear(self):
         """Full flow: strain -> stress via compute_stress -> resolved shear."""
-        from scipy.spatial.transform import Rotation
+        U = _random_rotations(30, seed=0)
         rng = np.random.default_rng(0)
-        U = Rotation.random(30, rng=0).as_matrix()
         strains = 1e-3 * rng.normal(size=(30, 3, 3))
         strains = 0.5 * (strains + strains.swapaxes(-1, -2))
         volumes = np.ones(30)
