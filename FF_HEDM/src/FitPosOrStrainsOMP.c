@@ -991,6 +991,132 @@ FitErrorsPosT(double x[12], int nSpotsComp, double spotsYZOIn[nSpotsComp][11],
   return Error;
 }
 
+// 12-parameter G-vector angular objective for all-at-once fitting.
+// x[0:2] = position (variable), x[3:5] = Euler, x[6:11] = lattice.
+// Identical to FitErrorsOrientStrains but position comes from x instead of
+// a fixed external parameter.
+static inline double FitErrorsOrientStrainsPos(
+    double x[12], int nSpotsComp, double spotsYZOIn[nSpotsComp][11], int nhkls,
+    double hklsIn[nhkls][7], double Lsd, double Wavelength, int nOmeRanges,
+    double OmegaRanges[nOmeRanges][2], double BoxSizes[nOmeRanges][4],
+    double MinEta, double wedge, double chi,
+    struct OptimizeScratch *scratch) {
+  int i, j;
+  int nrMatchedIndexer = nSpotsComp;
+  double Pos[3];
+  for (i = 0; i < 3; i++)
+    Pos[i] = x[i];
+  double LatC[6];
+  for (i = 0; i < 6; i++)
+    LatC[i] = x[6 + i];
+  double **hklsIn2 = scratch->hklsIn2;
+  for (i = 0; i < nhkls; i++)
+    for (j = 0; j < 7; j++)
+      hklsIn2[i][j] = hklsIn[i][j];
+  double **hkls = scratch->hkls;
+  CorrectHKLsLatC(LatC, hklsIn2, nhkls, Lsd, Wavelength, hkls);
+  double **spotsYZO = scratch->spotsYZO;
+  for (i = 0; i < nSpotsComp; i++)
+    for (j = 0; j < 11; j++)
+      spotsYZO[i][j] = spotsYZOIn[i][j];
+  double OrientMatrix[3][3], EulerIn[3];
+  EulerIn[0] = x[3];
+  EulerIn[1] = x[4];
+  EulerIn[2] = x[5];
+  Euler2OrientMat(EulerIn, OrientMatrix);
+  int nTspots, nrSp;
+  double **TheorSpots = scratch->TheorSpots;
+  CalcDiffractionSpots(Lsd, MinEta, OmegaRanges, nOmeRanges, hkls, nhkls,
+                       BoxSizes, &nTspots, OrientMatrix, TheorSpots);
+  double **SpotsYZOGCorr = scratch->SpotsYZOGCorr;
+  double DisplY, DisplZ, ys, zs, Omega, Radius, Theta, lenK, yt, zt;
+  for (nrSp = 0; nrSp < nrMatchedIndexer; nrSp++) {
+    DisplacementInTheSpot(Pos[0], Pos[1], Pos[2], Lsd, spotsYZO[nrSp][5],
+                          spotsYZO[nrSp][6], spotsYZO[nrSp][4], wedge, chi,
+                          &DisplY, &DisplZ);
+    yt = spotsYZO[nrSp][5] - DisplY;
+    zt = spotsYZO[nrSp][6] - DisplZ;
+    CorrectForOme(yt, zt, Lsd, spotsYZO[nrSp][4], Wavelength, wedge, &ys, &zs,
+                  &Omega);
+    lenK = sqrt((Lsd * Lsd) + (ys * ys) + (zs * zs));
+    Radius = sqrt((ys * ys) + (zs * zs));
+    Theta = 0.5 * atand(Radius / Lsd);
+    double g1, g2, g3;
+    SpotToGv(Lsd / lenK, ys / lenK, zs / lenK, Omega, Theta, &g1, &g2, &g3);
+    SpotsYZOGCorr[nrSp][0] = g1;
+    SpotsYZOGCorr[nrSp][1] = g2;
+    SpotsYZOGCorr[nrSp][2] = g3;
+    SpotsYZOGCorr[nrSp][3] = spotsYZO[nrSp][8];
+    SpotsYZOGCorr[nrSp][4] = CalcNorm3(g1, g2, g3);
+  }
+  int *SpotLookup = scratch->SpotLookup;
+  int MaxSpnr = scratch->MaxSpnr;
+  for (i = 0; i <= MaxSpnr; i++)
+    SpotLookup[i] = -1;
+  double **TheorSpotsYZWE = scratch->TheorSpotsYZWE;
+  for (i = 0; i < nTspots; i++) {
+    for (j = 0; j < 3; j++)
+      TheorSpotsYZWE[i][j] = TheorSpots[i][j + 3];
+    TheorSpotsYZWE[i][3] = TheorSpots[i][8];
+    TheorSpotsYZWE[i][4] = CalcNorm3(TheorSpotsYZWE[i][0],
+                                      TheorSpotsYZWE[i][1],
+                                      TheorSpotsYZWE[i][2]);
+    int spnr = (int)TheorSpots[i][8];
+    if (spnr >= 0 && spnr <= MaxSpnr && SpotLookup[spnr] == -1)
+      SpotLookup[spnr] = i;
+  }
+  int sp, nTheorSpotsYZWER, Spnr;
+  double GObs[3], GTheors[3], NormGObs, NormGTheors, DotGs, Numers, Denoms;
+  double *Angles = scratch->Angles;
+  double minAngle, Error = 0;
+  for (sp = 0; sp < nrMatchedIndexer; sp++) {
+    nTheorSpotsYZWER = 0;
+    GObs[0] = SpotsYZOGCorr[sp][0];
+    GObs[1] = SpotsYZOGCorr[sp][1];
+    GObs[2] = SpotsYZOGCorr[sp][2];
+    NormGObs = SpotsYZOGCorr[sp][4];
+    Spnr = SpotsYZOGCorr[sp][3];
+    int spnr_int = (int)Spnr;
+    if (spnr_int >= 0 && spnr_int <= MaxSpnr) {
+      int t_idx_start = SpotLookup[spnr_int];
+      if (t_idx_start != -1) {
+        for (i = t_idx_start; i < nTspots; i++) {
+          if ((int)TheorSpotsYZWE[i][3] != spnr_int)
+            break;
+          GTheors[0] = TheorSpotsYZWE[i][0];
+          GTheors[1] = TheorSpotsYZWE[i][1];
+          GTheors[2] = TheorSpotsYZWE[i][2];
+          DotGs = ((GTheors[0] * GObs[0]) + (GTheors[1] * GObs[1]) +
+                   (GTheors[2] * GObs[2]));
+          NormGTheors = TheorSpotsYZWE[i][4];
+          Numers = DotGs;
+          Denoms = NormGObs * NormGTheors;
+          double ratio = Numers / Denoms;
+          if (ratio > 1.0)
+            ratio = 1.0;
+          if (ratio < -1.0)
+            ratio = -1.0;
+          if (ratio >= 0.9975640502598242) {
+            Angles[nTheorSpotsYZWER] = fabs(acosd(ratio));
+            nTheorSpotsYZWER++;
+          }
+        }
+      }
+    }
+    if (nTheorSpotsYZWER == 0)
+      continue;
+    minAngle = 1000000;
+    for (i = 0; i < nTheorSpotsYZWER; i++) {
+      if (Angles[i] < minAngle)
+        minAngle = Angles[i];
+    }
+    if (minAngle > 4)
+      continue;
+    Error += minAngle;
+  }
+  return Error;
+}
+
 static inline double FitErrorsOrientStrains(
     double x[9], int nSpotsComp, double spotsYZOIn[nSpotsComp][11], int nhkls,
     double hklsIn[nhkls][7], double Lsd, double Wavelength, int nOmeRanges,
@@ -1266,6 +1392,47 @@ static double problem_function_PosIni(unsigned n, const double *x, double *grad,
                        f_data->scratch);
 }
 
+// NLopt callback for all-at-once 12-param G-vector angular minimization.
+// Uses struct data_FitPosIni (same fields needed).
+static double problem_function_AllAtOnce(unsigned n, const double *x,
+                                         double *grad, void *f_data_trial) {
+  int i, j;
+  struct data_FitPosIni *f_data = (struct data_FitPosIni *)f_data_trial;
+  int nSpotsComp = f_data->nSpotsComp;
+  double spotsYZO[nSpotsComp][11];
+  for (i = 0; i < nSpotsComp; i++)
+    for (j = 0; j < 11; j++)
+      spotsYZO[i][j] = f_data->spotsYZO[i][j];
+  int nhkls = f_data->nhkls;
+  double hkls[nhkls][7];
+  for (i = 0; i < nhkls; i++)
+    for (j = 0; j < 7; j++)
+      hkls[i][j] = f_data->hkls[i][j];
+  double Lsd = f_data->Lsd;
+  double Wavelength = f_data->Wavelength;
+  int nOmeRanges = f_data->nOmeRanges;
+  double OmegaRanges[MAXNOMEGARANGES][2];
+  double BoxSizes[MAXNOMEGARANGES][4];
+  for (i = 0; i < nOmeRanges; i++) {
+    for (j = 0; j < 2; j++)
+      OmegaRanges[i][j] = f_data->OmegaRanges[i][j];
+    for (j = 0; j < 4; j++)
+      BoxSizes[i][j] = f_data->BoxSizes[i][j];
+  }
+  double MinEta = f_data->MinEta;
+  double wedge = f_data->wedge;
+  double chi = f_data->chi;
+  if (n > 24)
+    return 1e30;
+  double XIn[24];
+  for (i = 0; i < n; i++)
+    XIn[i] = x[i];
+  return FitErrorsOrientStrainsPos(XIn, nSpotsComp, spotsYZO, nhkls, hkls, Lsd,
+                                   Wavelength, nOmeRanges, OmegaRanges,
+                                   BoxSizes, MinEta, wedge, chi,
+                                   f_data->scratch);
+}
+
 static double problem_function_OrientIni(unsigned n, const double *x,
                                          double *grad, void *f_data_trial) {
   int i, j;
@@ -1490,6 +1657,99 @@ void FitPositionIni(double X0[12], int nSpotsComp, double **spotsYZO, int nhkls,
   FreeMemMatrix(f_data.scratch->hklsIn2, nhkls);
   FreeMemMatrix(f_data.scratch->spotsYZO, nSpotsComp);
   free(f_data.scratch->Angles);
+  free(f_data.scratch);
+}
+
+// All-at-once 12-parameter fit using G-vector angular minimization.
+// Same structure as FitPositionIni but uses problem_function_AllAtOnce.
+void FitAllAtOnceFunc(double X0[12], int nSpotsComp, double **spotsYZO,
+                      int nhkls, double **hkls, double Lsd, double Wavelength,
+                      int nOmeRanges,
+                      double OmegaRanges[MAXNOMEGARANGES][2],
+                      double BoxSizes[MAXNOMEGARANGES][4], double MinEta,
+                      double wedge, double chi, double *XFit, double lb[12],
+                      double ub[12]) {
+  unsigned n = 12;
+  double x[n], xl[n], xu[n];
+  int i, j;
+  struct data_FitPosIni f_data;
+  f_data.nSpotsComp = nSpotsComp;
+  f_data.spotsYZO = allocMatrix(nSpotsComp, 11);
+  for (i = 0; i < nSpotsComp; i++)
+    for (j = 0; j < 11; j++)
+      f_data.spotsYZO[i][j] = spotsYZO[i][j];
+  f_data.nhkls = nhkls;
+  f_data.hkls = allocMatrix(nhkls, 7);
+  for (i = 0; i < nhkls; i++)
+    for (j = 0; j < 7; j++)
+      f_data.hkls[i][j] = hkls[i][j];
+  f_data.Lsd = Lsd;
+  f_data.Wavelength = Wavelength;
+  f_data.nOmeRanges = nOmeRanges;
+  for (i = 0; i < nOmeRanges; i++) {
+    for (j = 0; j < 2; j++)
+      f_data.OmegaRanges[i][j] = OmegaRanges[i][j];
+    for (j = 0; j < 4; j++)
+      f_data.BoxSizes[i][j] = BoxSizes[i][j];
+  }
+  f_data.MinEta = MinEta;
+  f_data.wedge = wedge;
+  f_data.chi = chi;
+  f_data.scratch = malloc(sizeof(struct OptimizeScratch));
+  int maxSpnr = 0;
+  for (int sp = 0; sp < nSpotsComp; sp++) {
+    if ((int)spotsYZO[sp][8] > maxSpnr)
+      maxSpnr = (int)spotsYZO[sp][8];
+  }
+  f_data.scratch->MaxSpnr = maxSpnr;
+  f_data.scratch->SpotLookup = malloc((maxSpnr + 1) * sizeof(int));
+  f_data.scratch->hkls = allocMatrix(nhkls, 7);
+  f_data.scratch->TheorSpots = allocMatrix(MaxNSpotsBest, 9);
+  f_data.scratch->SpotsYZOGCorr = allocMatrix(nSpotsComp, 5);
+  f_data.scratch->TheorSpotsYZWE = allocMatrix(MaxNSpotsBest, 5);
+  f_data.scratch->hklsIn2 = allocMatrix(nhkls, 7);
+  f_data.scratch->spotsYZO = allocMatrix(nSpotsComp, 11);
+  f_data.scratch->Angles = malloc(MaxNSpotsBest * sizeof(double));
+
+  for (i = 0; i < n; i++) {
+    x[i] = X0[i];
+    xl[i] = lb[i];
+    xu[i] = ub[i];
+  }
+  struct data_FitPosIni *f_datat;
+  f_datat = &f_data;
+  void *trp = (struct data_FitPosIni *)f_datat;
+  NLoptConfig config = {0};
+  config.dimension = n;
+  config.lower_bounds = xl;
+  config.upper_bounds = xu;
+  config.objective_function = problem_function_AllAtOnce;
+  config.obj_data = trp;
+  config.initial_guess = x;
+  config.max_evaluations = 5000;
+  config.max_time_seconds = 30;
+  config.ftol_rel = 1e-5;
+  config.xtol_rel = 1e-5;
+
+  double minf;
+  run_nlopt_optimization(NLOPT_LN_NELDERMEAD, &config);
+  minf = config.min_function_val;
+  run_nlopt_optimization(NLOPT_LN_NELDERMEAD, &config);
+  minf = config.min_function_val;
+  if (GlobalDebugFlag)
+    printf("DEBUG OMP FitAllAtOnceFunc: %10.30f \n", minf);
+  for (i = 0; i < n; i++)
+    XFit[i] = x[i];
+  FreeMemMatrix(f_data.spotsYZO, nSpotsComp);
+  FreeMemMatrix(f_data.hkls, nhkls);
+  FreeMemMatrix(f_data.scratch->hkls, nhkls);
+  FreeMemMatrix(f_data.scratch->TheorSpots, MaxNSpotsBest);
+  FreeMemMatrix(f_data.scratch->SpotsYZOGCorr, nSpotsComp);
+  FreeMemMatrix(f_data.scratch->TheorSpotsYZWE, MaxNSpotsBest);
+  FreeMemMatrix(f_data.scratch->hklsIn2, nhkls);
+  FreeMemMatrix(f_data.scratch->spotsYZO, nSpotsComp);
+  free(f_data.scratch->Angles);
+  free(f_data.scratch->SpotLookup);
   free(f_data.scratch);
 }
 
@@ -1887,6 +2147,7 @@ int main(int argc, char *argv[]) {
   WeightMask = cfg.WeightMask;
   WeightFitRMSE = cfg.WeightFitRMSE;
   DoDynamicReassignment = cfg.DoDynamicReassignment;
+  int FitAllAtOnce = cfg.FitAllAtOnce;
   int cntrdet = cfg.nDetParams;
   for (int i = 0; i < cntrdet; i++)
     for (int j = 0; j < 10; j++)
@@ -2389,6 +2650,39 @@ int main(int argc, char *argv[]) {
       XFit = malloc(12 * sizeof(*XFit));
       double *ErrorInt1;
       ErrorInt1 = malloc(3 * sizeof(*ErrorInt1));
+      double FinalResult[12];
+      double *ErrorFin;
+      ErrorFin = malloc(3 * sizeof(*ErrorFin));
+      double *XFit2 = NULL, *ErrorInt2 = NULL;
+      double *XFit3 = NULL, *ErrorInt3 = NULL;
+      double *XFit4 = NULL;
+      if (FitAllAtOnce) {
+        // All-at-once: 12-param G-vector angular minimization
+        // Use wider orientation bounds (MargOme2 = 2 degrees)
+        for (i = 3; i < 6; i++) {
+          lb[i] = Euler0[i - 3] - MargOme2;
+          ub[i] = Euler0[i - 3] + MargOme2;
+        }
+        // Run FitAllAtOnceFunc 4 times with warm-starting
+        // (= 8 NLopt calls, same total budget as iterative 4 stages)
+        for (int iter = 0; iter < 4; iter++) {
+          FitAllAtOnceFunc(X0, nSpotsComp, spotsYZONew, nhkls, hkls, Lsd,
+                           Wavelength, nOmeRanges, OmegaRanges, BoxSizes,
+                           MinEta, wedge, chi, XFit, lb, ub);
+          CalcAngleErrors(nSpotsComp, nhkls, nOmeRanges, XFit, spotsYZONew,
+                          hkls, Lsd, Wavelength, OmegaRanges, BoxSizes, MinEta,
+                          wedge, chi, SpotsComp, Splist, ErrorInt1, &nSpotsComp,
+                          GlobalDebugFlag);
+          for (i = 0; i < nSpotsComp; i++)
+            for (j = 0; j < 11; j++)
+              spotsYZONew[i][j] = Splist[i][j];
+          for (i = 0; i < 12; i++)
+            X0[i] = XFit[i];
+        }
+        for (i = 0; i < 12; i++)
+          FinalResult[i] = XFit[i];
+      } else {
+      // Iterative refinement: 4 stages with specialized objectives
       FitPositionIni(X0, nSpotsComp, spotsYZONew, nhkls, hkls, Lsd, Wavelength,
                      nOmeRanges, OmegaRanges, BoxSizes, MinEta, wedge, chi,
                      XFit, lb, ub);
@@ -2404,6 +2698,8 @@ int main(int argc, char *argv[]) {
                       Lsd, Wavelength, OmegaRanges, BoxSizes, MinEta, wedge,
                       chi, SpotsComp, Splist, ErrorInt1, &nSpotsComp,
                       GlobalDebugFlag);
+      printf("STAGE SpotID %6d Stage1_Pos:  PosErr=%7.2f OmeErr=%6.4f IA=%6.4f LatC=%6.4f %6.4f %6.4f\n",
+             SpId, ErrorInt1[0], ErrorInt1[1], ErrorInt1[2], XFit[6], XFit[7], XFit[8]);
       for (i = 0; i < nSpotsComp; i++)
         for (j = 0; j < 11; j++)
           spotsYZONew[i][j] = Splist[i][j];
@@ -2473,7 +2769,6 @@ int main(int argc, char *argv[]) {
       ub2[6] = alph * (1 + (MargABG / 100));
       ub2[7] = bet * (1 + (MargABG / 100));
       ub2[8] = gamm * (1 + (MargABG / 100));
-      double *XFit2;
       XFit2 = malloc(9 * sizeof(*XFit2));
       double PosFitOrientIn[3];
       for (i = 0; i < 3; i++)
@@ -2488,12 +2783,13 @@ int main(int argc, char *argv[]) {
         UseXFit[i + 3] = XFit2[i];
       for (i = 0; i < 6; i++)
         UseXFit[i + 6] = LatCin[i];
-      double *ErrorInt2;
       ErrorInt2 = malloc(3 * sizeof(*ErrorInt2));
       CalcAngleErrors(nSpotsComp, nhkls, nOmeRanges, UseXFit, spotsYZONew, hkls,
                       Lsd, Wavelength, OmegaRanges, BoxSizes, MinEta, wedge,
                       chi, SpotsComp, Splist, ErrorInt2, &nSpotsComp,
                       GlobalDebugFlag);
+      printf("STAGE SpotID %6d Stage2_Ori:  PosErr=%7.2f OmeErr=%6.4f IA=%6.4f LatC=%6.4f %6.4f %6.4f\n",
+             SpId, ErrorInt2[0], ErrorInt2[1], ErrorInt2[2], UseXFit[6], UseXFit[7], UseXFit[8]);
       for (i = 0; i < nSpotsComp; i++)
         for (j = 0; j < 11; j++)
           spotsYZONew[i][j] = Splist[i][j];
@@ -2558,7 +2854,6 @@ int main(int argc, char *argv[]) {
       double OrientFitIn[3];
       for (i = 0; i < 3; i++)
         OrientFitIn[i] = XFit2[i];
-      double *XFit3;
       XFit3 = malloc(6 * sizeof(*XFit3));
       FitStrainIni(X0_3, nSpotsComp, spotsYZONew, nhkls, hkls, Lsd, Wavelength,
                    nOmeRanges, OmegaRanges, BoxSizes, MinEta, wedge, chi, XFit3,
@@ -2570,12 +2865,13 @@ int main(int argc, char *argv[]) {
         UseXFit2[i + 3] = XFit2[i];
       for (i = 0; i < 6; i++)
         UseXFit2[i + 6] = XFit3[i];
-      double *ErrorInt3;
       ErrorInt3 = malloc(3 * sizeof(*ErrorInt3));
       CalcAngleErrors(nSpotsComp, nhkls, nOmeRanges, UseXFit2, spotsYZONew,
                       hkls, Lsd, Wavelength, OmegaRanges, BoxSizes, MinEta,
                       wedge, chi, SpotsComp, Splist, ErrorInt3, &nSpotsComp,
                       GlobalDebugFlag);
+      printf("STAGE SpotID %6d Stage3_Str:  PosErr=%7.2f OmeErr=%6.4f IA=%6.4f LatC=%6.4f %6.4f %6.4f\n",
+             SpId, ErrorInt3[0], ErrorInt3[1], ErrorInt3[2], UseXFit2[6], UseXFit2[7], UseXFit2[8]);
       for (i = 0; i < nSpotsComp; i++)
         for (j = 0; j < 11; j++)
           spotsYZONew[i][j] = Splist[i][j];
@@ -2642,20 +2938,17 @@ int main(int argc, char *argv[]) {
       double StrainsFitIn[6];
       for (i = 0; i < 6; i++)
         StrainsFitIn[i] = XFit3[i];
-      double *XFit4;
       XFit4 = malloc(3 * sizeof(*XFit4));
       FitPosSec(X0_4, nSpotsComp, spotsYZONew, nhkls, hkls, Lsd, Wavelength,
                 nOmeRanges, OmegaRanges, BoxSizes, MinEta, wedge, chi, XFit4,
                 lb4, ub4, OrientFitIn, StrainsFitIn);
-      double FinalResult[12];
       for (i = 0; i < 3; i++)
         FinalResult[i] = XFit4[i];
       for (i = 0; i < 3; i++)
         FinalResult[i + 3] = XFit2[i];
       for (i = 0; i < 6; i++)
         FinalResult[i + 6] = XFit3[i];
-      double *ErrorFin;
-      ErrorFin = malloc(3 * sizeof(*ErrorFin));
+      } // end else (iterative refinement)
       CalcAngleErrors(nSpotsComp, nhkls, nOmeRanges, FinalResult, spotsYZONew,
                       hkls, Lsd, Wavelength, OmegaRanges, BoxSizes, MinEta,
                       wedge, chi, SpotsComp, Splist, ErrorFin, &nSpotsComp,

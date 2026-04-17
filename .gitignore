@@ -1,3 +1,4 @@
+packages/midas_stress/paper
 NF_HEDM/bin/*
 FF_HEDM/bin/*
 NF_HEDM/Cluster/*.kml
@@ -54,3 +55,4 @@ fftwf_wisdom_*.txt
 .cache/
 .clangd
 .agent/
+.claude/

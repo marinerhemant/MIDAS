@@ -51,9 +51,22 @@ static DGResidualCorr g_residualCorr = {NULL, 0, 0};
 #define MAX_NR_POINTS 20000000
 #define DEFAULT_MAX_OUTPUT_INTENSITY 15000
 
+// --- Gaussian noise via xorshift64* + Box-Muller ---
+static inline double gaussNoise(double sigma, unsigned long long *state) {
+  unsigned long long s = *state;
+  s ^= s >> 12; s ^= s << 25; s ^= s >> 27;
+  *state = s;
+  double u1 = (double)(s * 0x2545F4914F6CDD1DULL) / (double)UINT64_MAX;
+  s ^= s >> 12; s ^= s << 25; s ^= s >> 27;
+  *state = s;
+  double u2 = (double)(s * 0x2545F4914F6CDD1DULL) / (double)UINT64_MAX;
+  if (u1 < 1e-15) u1 = 1e-15;
+  return sigma * sqrt(-2.0 * log(u1)) * cos(2.0 * M_PI * u2);
+}
+
 // --- Frame-batching support ---
 typedef struct {
-  size_t omeBin;
+  float omeDet;  // continuous omega in degrees (for multi-frame rendering)
   float yDet, zDet;
   float intensity; // sub_peak_intensity * relativeIntensity
 } ImageSpot;
@@ -1293,6 +1306,7 @@ int main(int argc, char *argv[]) {
   double p7 = cfg.p7, p8 = cfg.p8, p9 = cfg.p9, p10 = cfg.p10;
   double p11 = cfg.p11, p12 = cfg.p12, p13 = cfg.p13, p14 = cfg.p14;
   double GaussWidth = cfg.GaussWidth > 0 ? cfg.GaussWidth : 1;
+  double OmegaSigma = cfg.OmegaSigma;  // degrees; 0 = single-frame (legacy)
   double PeakIntensity = cfg.PeakIntensity;
   int NPanelsY = cfg.NPanelsY, NPanelsZ = cfg.NPanelsZ;
   int PanelSizeY = cfg.PanelSizeY, PanelSizeZ = cfg.PanelSizeZ;
@@ -1317,6 +1331,7 @@ int main(int argc, char *argv[]) {
   char IntensitiesFile[4096];
   strcpy(IntensitiesFile, cfg.IntensitiesFile);
   double maxOutputIntensity = cfg.MaxOutputIntensity;
+  double simNoiseSigma = cfg.SimNoiseSigma;
   char MaskFN[4096];
   strcpy(MaskFN, cfg.MaskFile);
   int useMask = cfg.useMask;
@@ -1413,6 +1428,8 @@ int main(int argc, char *argv[]) {
   printf("Wavelength:          %.5f A\n", Wavelength);
   printf("Wedge Angle:         %.4f (deg)\n", Wedge);
   printf("Gauss Width:         %.4f (pixels)\n", GaussWidth);
+  if (OmegaSigma > 0)
+    printf("OmegaSigma:          %.4f (degrees)\n", OmegaSigma);
   printf("Peak Intensity:      %.2f\n", PeakIntensity);
   printf("Energy Res:          %.4f (Samples: %d)\n", eResolution,
          num_lambda_samples);
@@ -1422,6 +1439,8 @@ int main(int argc, char *argv[]) {
   if (beamSize > 0)
     printf("Beam Size:           %.4f (microns)\n", beamSize);
   printf("MaxOutputIntensity:  %.2f\n", maxOutputIntensity);
+  if (simNoiseSigma > 0)
+    printf("SimNoiseSigma:       %.4f (pixels, spot position noise)\n", simNoiseSigma);
   if (useMask)
     printf("MaskFile:            %s\n", MaskFN);
   printf("Misc Options:        WriteSpots=%d, WriteImage=%d, IsBinary=%d, "
@@ -1755,6 +1774,10 @@ int main(int argc, char *argv[]) {
       for (i = 0; i < nCPUs; i++)
         imgSpotBufs[i].count = 0;
     }
+    // Per-thread noise RNG states (seeded uniquely per thread)
+    unsigned long long *noiseStates = calloc(nCPUs, sizeof(unsigned long long));
+    for (i = 0; i < nCPUs; i++)
+      noiseStates[i] = 0x12345ULL ^ (unsigned long long)(i + 1) ^ ((unsigned long long)time(NULL) << 8);
 #pragma omp parallel num_threads(nCPUs)                                        \
     private(voxNr, i, j, LatCThis, EpsThis, OM, EulerThis, nTspots, spotNr,    \
                 Info, OmeDiff, omeThis, newY, yTemp, zTemp, yThis, zThis,      \
@@ -1889,6 +1912,10 @@ int main(int argc, char *argv[]) {
             zTemp = zThis + DisplZ;
             yDet = yBC - yTemp / px;
             zDet = zBC + zTemp / px;
+            if (simNoiseSigma > 0) {
+              yDet += gaussNoise(simNoiseSigma, &noiseStates[omp_get_thread_num()]);
+              zDet += gaussNoise(simNoiseSigma, &noiseStates[omp_get_thread_num()]);
+            }
             if (yDet < 0 || yDet >= NrPixels || zDet < 0 || zDet >= NrPixels)
               continue;
             // ========================================================================
@@ -1935,7 +1962,13 @@ int main(int argc, char *argv[]) {
 
                 int y_base = (int)round(yDet);
                 int z_base = (int)round(zDet);
-                size_t frameOffset = omeBin * NrPixels * NrPixels;
+
+                // Omega Gaussian: spread across multiple frames
+                double omeSigFr = (OmegaSigma > 0) ? OmegaSigma / fabs(OmegaStep) : 0;
+                int omeExt = (OmegaSigma > 0) ? (int)ceil(4.0 * omeSigFr) : 0;
+                double twoOmeSigSq = (OmegaSigma > 0) ? 2.0 * omeSigFr * omeSigFr : 1.0;
+                int centerBin = (int)omeBin;
+                double fracOme = (omeThis - (OmegaStart + centerBin * OmegaStep)) / OmegaStep;
 
                 double WeightsY[100];
                 double WeightsZ[100];
@@ -1960,25 +1993,36 @@ int main(int argc, char *argv[]) {
                   WeightsZ[dz + extent] = exp(-(distZ * distZ) / twoSigmaSq);
                 }
 
-                for (int dy = -extent; dy <= extent; dy++) {
-                  double wy = WeightsY[dy + extent];
-                  if (wy == 0.0)
-                    continue;
-                  int y_curr = y_base + dy;
-                  for (int dz = -extent; dz <= extent; dz++) {
-                    double wz = WeightsZ[dz + extent];
-                    if (wz == 0.0)
+                for (int dOme = -omeExt; dOme <= omeExt; dOme++) {
+                  int fb = centerBin + dOme;
+                  if (fb < 0 || fb >= nFrames_total) continue;
+                  // Distance in frame units from this frame's start to the
+                  // true omega.  PeaksFitting assigns the frame-start omega
+                  // to each frame, so centering the Gaussian on the frame
+                  // start makes the intensity-weighted centroid match omeThis.
+                  double dOmeFrac = (double)dOme - fracOme;
+                  double wOme = (OmegaSigma > 0) ? exp(-(dOmeFrac * dOmeFrac) / twoOmeSigSq) : 1.0;
+                  size_t frameOffset = (size_t)fb * NrPixels * NrPixels;
+
+                  for (int dy = -extent; dy <= extent; dy++) {
+                    double wy = WeightsY[dy + extent];
+                    if (wy == 0.0)
                       continue;
-                    int z_curr = z_base + dz;
-                    double weight = wy * wz;
-                    float intensity_to_add = (float)(weight * spotIntensity);
-                    long long int currentPos =
-                        (long long int)(frameOffset + z_curr * NrPixels +
-                                        y_curr);
-                    if (currentPos >= 0 &&
-                        currentPos < (long long int)ImageArrSize) {
+                    int y_curr = y_base + dy;
+                    for (int dz = -extent; dz <= extent; dz++) {
+                      double wz = WeightsZ[dz + extent];
+                      if (wz == 0.0)
+                        continue;
+                      int z_curr = z_base + dz;
+                      float intensity_to_add = (float)(wOme * wy * wz * spotIntensity);
+                      long long int currentPos =
+                          (long long int)(frameOffset + z_curr * NrPixels +
+                                          y_curr);
+                      if (currentPos >= 0 &&
+                          currentPos < (long long int)ImageArrSize) {
 #pragma omp atomic
-                      ImageArr[currentPos] += intensity_to_add;
+                        ImageArr[currentPos] += intensity_to_add;
+                      }
                     }
                   }
                 }
@@ -1991,7 +2035,7 @@ int main(int argc, char *argv[]) {
                               _myImgBuf->capacity * sizeof(ImageSpot));
                 }
                 ImageSpot *isp = &_myImgBuf->spots[_myImgBuf->count++];
-                isp->omeBin = omeBin;
+                isp->omeDet = (float)omeThis;
                 isp->yDet = (float)yDet;
                 isp->zDet = (float)zDet;
                 isp->intensity = spotIntensity;
@@ -2027,6 +2071,7 @@ int main(int argc, char *argv[]) {
       FreeMemMatrix(TheorSpots_Thread, nRowsPerGrain);
       FreeMemMatrix(hklsOut_Thread, n_hkls);
     } // End of omp parallel block
+    free(noiseStates);
     // Flush all thread spot buffers to file (serial, after parallel region)
     if (writeSpots == 1) {
       int totalSpots = 0;
@@ -2203,6 +2248,10 @@ int main(int argc, char *argv[]) {
         int extent = (int)ceil(4.0 * sigma);
         if (extent > 49)
           extent = 49;
+        // Omega Gaussian parameters (shared across batches)
+        double omeSigFr = (OmegaSigma > 0) ? OmegaSigma / fabs(OmegaStep) : 0;
+        int omeExt = (OmegaSigma > 0) ? (int)ceil(4.0 * omeSigFr) : 0;
+        double twoOmeSigSq = (OmegaSigma > 0) ? 2.0 * omeSigFr * omeSigFr : 1.0;
 
         // Pass 1: render all batches to find global maxInt
         double batch_start = omp_get_wtime();
@@ -2217,26 +2266,35 @@ int main(int argc, char *argv[]) {
 
           for (int s = 0; s < totalImageSpots; s++) {
             ImageSpot *sp = &allSpots[s];
-            if ((int)sp->omeBin < startFrame || (int)sp->omeBin >= endFrame)
+            int centerBin = (int)floor(-(OmegaStart - sp->omeDet) / OmegaStep);
+            // Skip spot if entirely outside this batch
+            if (centerBin + omeExt < startFrame || centerBin - omeExt >= endFrame)
               continue;
+            double fracOme = (sp->omeDet - (OmegaStart + centerBin * OmegaStep)) / OmegaStep;
             int y_base = (int)roundf(sp->yDet);
             int z_base = (int)roundf(sp->zDet);
-            size_t frameOff = (sp->omeBin - startFrame) * NrPixels * NrPixels;
-            for (int dy = -extent; dy <= extent; dy++) {
-              int y_curr = y_base + dy;
-              if (y_curr < 0 || y_curr >= NrPixels)
-                continue;
-              double distY = (double)y_curr - sp->yDet;
-              double wy = exp(-(distY * distY) / twoSigmaSq);
-              for (int dz = -extent; dz <= extent; dz++) {
-                int z_curr = z_base + dz;
-                if (z_curr < 0 || z_curr >= NrPixels)
+            for (int dOme = -omeExt; dOme <= omeExt; dOme++) {
+              int fb = centerBin + dOme;
+              if (fb < startFrame || fb >= endFrame) continue;
+              double dOmeFrac = (double)dOme - fracOme;
+              double wOme = (OmegaSigma > 0) ? exp(-(dOmeFrac * dOmeFrac) / twoOmeSigSq) : 1.0;
+              size_t frameOff = (size_t)(fb - startFrame) * NrPixels * NrPixels;
+              for (int dy = -extent; dy <= extent; dy++) {
+                int y_curr = y_base + dy;
+                if (y_curr < 0 || y_curr >= NrPixels)
                   continue;
-                double distZ = (double)z_curr - sp->zDet;
-                double wz = exp(-(distZ * distZ) / twoSigmaSq);
-                size_t pos = frameOff + z_curr * NrPixels + y_curr;
-                if (pos < batchSize)
-                  batchArr[pos] += (float)(wy * wz * sp->intensity);
+                double distY = (double)y_curr - sp->yDet;
+                double wy = exp(-(distY * distY) / twoSigmaSq);
+                for (int dz = -extent; dz <= extent; dz++) {
+                  int z_curr = z_base + dz;
+                  if (z_curr < 0 || z_curr >= NrPixels)
+                    continue;
+                  double distZ = (double)z_curr - sp->zDet;
+                  double wz = exp(-(distZ * distZ) / twoSigmaSq);
+                  size_t pos = frameOff + z_curr * NrPixels + y_curr;
+                  if (pos < batchSize)
+                    batchArr[pos] += (float)(wOme * wy * wz * sp->intensity);
+                }
               }
             }
           }
@@ -2263,26 +2321,34 @@ int main(int argc, char *argv[]) {
 
           for (int s = 0; s < totalImageSpots; s++) {
             ImageSpot *sp = &allSpots[s];
-            if ((int)sp->omeBin < startFrame || (int)sp->omeBin >= endFrame)
+            int centerBin = (int)floor(-(OmegaStart - sp->omeDet) / OmegaStep);
+            if (centerBin + omeExt < startFrame || centerBin - omeExt >= endFrame)
               continue;
+            double fracOme = (sp->omeDet - (OmegaStart + centerBin * OmegaStep)) / OmegaStep;
             int y_base = (int)roundf(sp->yDet);
             int z_base = (int)roundf(sp->zDet);
-            size_t frameOff = (sp->omeBin - startFrame) * NrPixels * NrPixels;
-            for (int dy = -extent; dy <= extent; dy++) {
-              int y_curr = y_base + dy;
-              if (y_curr < 0 || y_curr >= NrPixels)
-                continue;
-              double distY = (double)y_curr - sp->yDet;
-              double wy = exp(-(distY * distY) / twoSigmaSq);
-              for (int dz = -extent; dz <= extent; dz++) {
-                int z_curr = z_base + dz;
-                if (z_curr < 0 || z_curr >= NrPixels)
+            for (int dOme = -omeExt; dOme <= omeExt; dOme++) {
+              int fb = centerBin + dOme;
+              if (fb < startFrame || fb >= endFrame) continue;
+              double dOmeFrac = (double)dOme - fracOme;
+              double wOme = (OmegaSigma > 0) ? exp(-(dOmeFrac * dOmeFrac) / twoOmeSigSq) : 1.0;
+              size_t frameOff = (size_t)(fb - startFrame) * NrPixels * NrPixels;
+              for (int dy = -extent; dy <= extent; dy++) {
+                int y_curr = y_base + dy;
+                if (y_curr < 0 || y_curr >= NrPixels)
                   continue;
-                double distZ = (double)z_curr - sp->zDet;
-                double wz = exp(-(distZ * distZ) / twoSigmaSq);
-                size_t pos = frameOff + z_curr * NrPixels + y_curr;
-                if (pos < batchSize)
-                  batchArr[pos] += (float)(wy * wz * sp->intensity);
+                double distY = (double)y_curr - sp->yDet;
+                double wy = exp(-(distY * distY) / twoSigmaSq);
+                for (int dz = -extent; dz <= extent; dz++) {
+                  int z_curr = z_base + dz;
+                  if (z_curr < 0 || z_curr >= NrPixels)
+                    continue;
+                  double distZ = (double)z_curr - sp->zDet;
+                  double wz = exp(-(distZ * distZ) / twoSigmaSq);
+                  size_t pos = frameOff + z_curr * NrPixels + y_curr;
+                  if (pos < batchSize)
+                    batchArr[pos] += (float)(wOme * wy * wz * sp->intensity);
+                }
               }
             }
           }

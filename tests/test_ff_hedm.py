@@ -26,12 +26,15 @@ def parse_args():
     parser.add_argument("--cleanup-only", action="store_true", help="Only cleanup generated files, don't run any tests")
     parser.add_argument("--px-overlap", action="store_true", help="Also run pixel-overlap peaksearch test")
     parser.add_argument("--dual-dataset", action="store_true", help="Also run dual-dataset refinement sanity test")
+    parser.add_argument("--nGrains", type=int, default=0,
+                        help="Generate N random grains instead of using existing GrainsSim.csv (0 = use existing)")
+    parser.add_argument("--seed", type=int, default=42, help="Random seed for grain generation")
     add_common_args(parser)
-    
+
     # Optional paramFN defaulting to the Example Parameters.txt relative to the script location
     default_param_fn = Path(__file__).resolve().parent.parent / "FF_HEDM" / "Example" / "Parameters.txt"
     parser.add_argument("-paramFN", type=str, default=str(default_param_fn), help="Path to the parameter file")
-    
+
     return parser.parse_args()
 
 
@@ -470,7 +473,34 @@ def main():
     # 2. Modify Params & Resolve Paths
     test_param_file, params, out_file_base = create_testing_env(param_path, work_dir)
     print(f"Created temporary parameter environment: {test_param_file}")
-    
+
+    # 2b. Generate random grains if requested
+    if args.nGrains > 0:
+        from generate_grains import generate_grains_csv
+        grains_path = work_dir / "GrainsSim.csv"
+        backup = work_dir / "GrainsSim_original.csv"
+        if not backup.exists() and grains_path.exists():
+            shutil.copy2(str(grains_path), str(backup))
+        rsample = params.get("Rsample", 2000)
+        hbeam = params.get("Hbeam", 2000)
+        beam_thickness = params.get("BeamThickness", 200)
+        sg = params.get("SpaceGroup", 225)
+        if isinstance(rsample, list): rsample = rsample[0]
+        if isinstance(hbeam, list): hbeam = hbeam[0]
+        if isinstance(beam_thickness, list): beam_thickness = beam_thickness[0]
+        if isinstance(sg, list): sg = sg[0]
+        lat_str = params.get("LatticeConstant", [4.08, 4.08, 4.08, 90, 90, 90])
+        if not isinstance(lat_str, list):
+            lat_str = [lat_str]
+        lat = [float(v) for v in lat_str]
+        if len(lat) < 6:
+            lat = [4.08, 4.08, 4.08, 90.0, 90.0, 90.0]
+        generate_grains_csv(
+            grains_path, args.nGrains, lat,
+            float(rsample), float(hbeam), float(beam_thickness),
+            space_group=int(sg), seed=args.seed,
+        )
+
     # 3. Execute Simulation
     # Note ForwardSimulationCompressed runs in cwd usually and might dump things locally too.
     # To be safe, we change to work_dir or give absolute path outputs.

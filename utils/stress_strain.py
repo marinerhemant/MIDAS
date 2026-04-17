@@ -39,16 +39,16 @@ def tensor_to_voigt(T: np.ndarray) -> np.ndarray:
 
     Returns
     -------
-    ndarray (..., 6) -- [T_xx, T_yy, T_zz, sqrt(2)*T_yz, sqrt(2)*T_xz, sqrt(2)*T_xy]
+    ndarray (..., 6) -- [T_xx, T_yy, T_zz, sqrt(2)*T_xy, sqrt(2)*T_xz, sqrt(2)*T_yz]
     """
     s2 = math.sqrt(2.0)
     return np.stack([
         T[..., 0, 0],
         T[..., 1, 1],
         T[..., 2, 2],
-        s2 * T[..., 1, 2],
-        s2 * T[..., 0, 2],
-        s2 * T[..., 0, 1],
+        s2 * T[..., 0, 1],   # xy  (Paper I ordering: xy, xz, yz)
+        s2 * T[..., 0, 2],   # xz
+        s2 * T[..., 1, 2],   # yz
     ], axis=-1)
 
 
@@ -68,9 +68,9 @@ def voigt_to_tensor(v: np.ndarray) -> np.ndarray:
     T[..., 0, 0] = v[..., 0]
     T[..., 1, 1] = v[..., 1]
     T[..., 2, 2] = v[..., 2]
-    T[..., 1, 2] = T[..., 2, 1] = v[..., 3] * s2_inv
-    T[..., 0, 2] = T[..., 2, 0] = v[..., 4] * s2_inv
-    T[..., 0, 1] = T[..., 1, 0] = v[..., 5] * s2_inv
+    T[..., 0, 1] = T[..., 1, 0] = v[..., 3] * s2_inv   # xy
+    T[..., 0, 2] = T[..., 2, 0] = v[..., 4] * s2_inv   # xz
+    T[..., 1, 2] = T[..., 2, 1] = v[..., 5] * s2_inv   # yz
     return T
 
 
@@ -82,7 +82,7 @@ def tensor_to_voigt_engineering(T: np.ndarray) -> np.ndarray:
     """
     return np.stack([
         T[..., 0, 0], T[..., 1, 1], T[..., 2, 2],
-        2.0 * T[..., 1, 2], 2.0 * T[..., 0, 2], 2.0 * T[..., 0, 1],
+        2.0 * T[..., 0, 1], 2.0 * T[..., 0, 2], 2.0 * T[..., 1, 2],
     ], axis=-1)
 
 
@@ -197,14 +197,18 @@ def strain_lab_to_grain(
 # ===================================================================
 
 def rotation_voigt_mandel(U: np.ndarray) -> np.ndarray:
-    """Build the 6x6 rotation matrix for Voigt-Mandel notation.
+    """Build the 6x6 Mandel rotation matrix 𝔘 (lab -> grain).
 
-    Transforms vectorized symmetric tensors between coordinate frames:
+    Transforms vectorized symmetric tensors from the lab (or sample)
+    frame into the crystal (grain) frame:
         {epsilon_grain} = M @ {epsilon_lab}
-        {sigma_grain} = M @ {sigma_lab}
+        {sigma_grain}   = M @ {sigma_lab}
 
-    Uses Mandel convention (sqrt(2) factors on shear).
-    Paper I Eq. 14.
+    The lab-frame stiffness follows from Paper I Eq. stress_calc2:
+        {sigma_lab} = M^T @ C_grain @ M @ {epsilon_lab}
+
+    Mandel ordering: [xx, yy, zz, sqrt(2)*xy, sqrt(2)*xz, sqrt(2)*yz].
+    Paper I Eq. 14 / Appendix A.
 
     Parameters
     ----------
@@ -223,8 +227,8 @@ def rotation_voigt_mandel(U: np.ndarray) -> np.ndarray:
             M[..., i, j] = U[..., i, j] ** 2
 
     # Off-diagonal: normal-to-shear coupling
-    # Column 3 (yz), 4 (xz), 5 (xy)
-    pairs = [(1, 2), (0, 2), (0, 1)]
+    # Index 3 = xy, 4 = xz, 5 = yz  (Paper I ordering)
+    pairs = [(0, 1), (0, 2), (1, 2)]
     for col_idx, (p, q) in enumerate(pairs):
         for row in range(3):
             M[..., row, 3 + col_idx] = s2 * U[..., row, p] * U[..., row, q]
@@ -242,7 +246,9 @@ def rotation_voigt_mandel(U: np.ndarray) -> np.ndarray:
                 + U[..., r1, c2] * U[..., r2, c1]
             )
 
-    return M
+    # M as built above maps grain->lab ({eps_lab} = M @ {eps_grain}).
+    # The paper defines 𝔘 as lab->grain, which is M^T.
+    return np.swapaxes(M, -1, -2)
 
 
 # ===================================================================
@@ -288,10 +294,11 @@ def hooke_stress(
     if orient is None:
         raise ValueError("orient required for lab-frame computation")
 
-    # Paper I Eq. 16: σ_lab = M^T @ C @ M @ ε_lab
-    M = rotation_voigt_mandel(orient)
-    Mt = np.swapaxes(M, -1, -2)
-    C_lab = Mt @ stiffness @ M  # rotated stiffness in lab frame
+    # Paper I Eq. stress_calc2: {σ_lab} = 𝔘^T @ C @ 𝔘 @ {ε_lab}
+    # rotation_voigt_mandel returns 𝔘 (lab->grain), so Mt = 𝔘^T (grain->lab).
+    M = rotation_voigt_mandel(orient)   # 𝔘 : lab -> grain
+    Mt = np.swapaxes(M, -1, -2)         # 𝔘^T: grain -> lab
+    C_lab = Mt @ stiffness @ M          # 𝔘^T @ C_grain @ 𝔘
     sig_voigt = (C_lab @ eps_voigt[..., None]).squeeze(-1)
     return voigt_to_tensor(sig_voigt)
 

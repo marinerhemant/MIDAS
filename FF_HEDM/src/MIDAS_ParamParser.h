@@ -211,6 +211,7 @@ typedef struct {
   double OmeBinSize;
   double WeightMask, WeightFitRMSE;
   int    DoDynamicReassignment;
+  int    FitAllAtOnce;
 
   // ── NF/Sample parameters ──
   double MinEta;
@@ -222,6 +223,7 @@ typedef struct {
   int    DoLoGFilter;
   int    GaussFiltRadius;
   double GaussWidth;
+  double OmegaSigma;
   int    LoGMaskRadius;
   int    MedFiltRadius;
   int    BlanketSubtraction;
@@ -280,6 +282,7 @@ typedef struct {
   int    NFOutput;
   double PeakIntensity;
   double MaxOutputIntensity;
+  double SimNoiseSigma;
   int    RingsToUse[500];
   int    nRingsToUse;
   int    num_lambda_samples;

@@ -40,6 +40,7 @@ void midas_config_defaults(MIDASConfig *cfg) {
   cfg->UpdatedOrientations = 1;
   cfg->PeakIntensity = 2000.0;
   cfg->MaxOutputIntensity = 65000.0;
+  cfg->SimNoiseSigma = 0.0;
   cfg->num_lambda_samples = 1;
   cfg->SubPixelLevel = 1;
   cfg->SubPixelCardinalWidth = 5.0;
@@ -411,6 +412,7 @@ int midas_parse_params(const char *filename, MIDASConfig *cfg) {
     if (param_double(aline, "WeightMask", &cfg->WeightMask)) continue;
     if (param_double(aline, "WeightFitRMSE", &cfg->WeightFitRMSE)) continue;
     if (param_int(aline, "DoDynamicReassignment", &cfg->DoDynamicReassignment)) continue;
+    if (param_int(aline, "FitAllAtOnce", &cfg->FitAllAtOnce)) continue;
 
     // ── NF/Sample parameters ──
     if (param_double(aline, "ExcludePoleAngle", &cfg->MinEta)) continue;
@@ -425,6 +427,7 @@ int midas_parse_params(const char *filename, MIDASConfig *cfg) {
     if (param_int(aline, "DoLoGFilter", &cfg->DoLoGFilter)) continue;
     if (param_int(aline, "GaussFiltRadius", &cfg->GaussFiltRadius)) continue;
     if (param_double(aline, "GaussWidth", &cfg->GaussWidth)) continue;
+    if (param_double(aline, "OmegaSigma", &cfg->OmegaSigma)) continue;
     if (param_int(aline, "LoGMaskRadius", &cfg->LoGMaskRadius)) continue;
     if (param_int(aline, "MedFiltRadius", &cfg->MedFiltRadius)) continue;
     if (param_int(aline, "BlanketSubtraction", &cfg->BlanketSubtraction)) continue;
@@ -473,6 +476,7 @@ int midas_parse_params(const char *filename, MIDASConfig *cfg) {
     if (param_int(aline, "NFOutput", &cfg->NFOutput)) continue;
     if (param_double(aline, "PeakIntensity", &cfg->PeakIntensity)) continue;
     if (param_double(aline, "MaxOutputIntensity", &cfg->MaxOutputIntensity)) continue;
+    if (param_double(aline, "SimNoiseSigma", &cfg->SimNoiseSigma)) continue;
     if (key_match(aline, "RingsToUse")) {
       if (cfg->nRingsToUse < 500) {
         char tmpd[256]; int tmpv;

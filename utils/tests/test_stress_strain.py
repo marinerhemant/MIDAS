@@ -154,18 +154,18 @@ class TestVoigtRotation:
         assert abs(np.linalg.det(M) - 1.0) < 1e-12
 
     def test_consistent_with_tensor_transform(self):
-        """M @ eps_voigt should equal voigt(U @ eps @ U^T)."""
+        """M^T @ eps_voigt should equal voigt(U @ eps @ U^T) (grain->lab)."""
         from scipy.spatial.transform import Rotation
         orient = Rotation.random(random_state=7).as_matrix()
         eps = np.array([[0.001, 0.0003, -0.0001],
                         [0.0003, -0.0005, 0.0002],
                         [-0.0001, 0.0002, -0.0005]])
-        # Tensor transform
+        # U @ eps @ U^T is grain->lab transform
         eps_rotated = orient @ eps @ orient.T
         v_expected = tensor_to_voigt(eps_rotated)
-        # Voigt transform
+        # rotation_voigt_mandel returns lab->grain; transpose gives grain->lab
         M = rotation_voigt_mandel(orient)
-        v_actual = M @ tensor_to_voigt(eps)
+        v_actual = M.T @ tensor_to_voigt(eps)
         np.testing.assert_allclose(v_actual, v_expected, atol=1e-14)
 
     def test_batch(self):

@@ -1,0 +1,87 @@
+name: Python Packages (test + publish)
+
+on:
+  push:
+    branches: [master]
+    paths:
+      - 'packages/**'
+      - '.github/workflows/python-packages.yml'
+  pull_request:
+    branches: [master]
+    paths:
+      - 'packages/**'
+  release:
+    types: [published]
+
+jobs:
+  test:
+    runs-on: ${{ matrix.os }}
+    strategy:
+      matrix:
+        os: [ubuntu-latest, macos-latest]
+        python-version: ['3.9', '3.11', '3.12']
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Set up Python ${{ matrix.python-version }}
+        uses: actions/setup-python@v5
+        with:
+          python-version: ${{ matrix.python-version }}
+
+      - name: Install midas-stress
+        run: pip install -e "packages/midas_stress[dev]"
+
+      - name: Run tests
+        run: |
+          cd packages/midas_stress
+          python -m pytest tests/ -v --tb=short
+
+  build:
+    needs: test
+    runs-on: ubuntu-latest
+    if: github.event_name == 'release'
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+
+      - name: Install build tools
+        run: pip install build
+
+      - name: Build sdist and wheel
+        run: |
+          cd packages/midas_stress
+          python -m build
+
+      - name: Upload artifacts
+        uses: actions/upload-artifact@v4
+        with:
+          name: midas-stress-dist
+          path: packages/midas_stress/dist/
+
+  publish:
+    needs: build
+    runs-on: ubuntu-latest
+    if: github.event_name == 'release'
+    environment: pypi
+    permissions:
+      id-token: write  # for trusted publishing (OIDC)
+
+    steps:
+      - name: Download artifacts
+        uses: actions/download-artifact@v4
+        with:
+          name: midas-stress-dist
+          path: dist/
+
+      - name: Publish to PyPI
+        uses: pypa/gh-action-pypi-publish@release/v1
+        # Uses trusted publishing (OIDC) — configure at pypi.org:
+        # Settings > Publishing > Add a new pending publisher
+        # Owner: marinerhemant, Repo: MIDAS, Workflow: python-packages.yml
+        # Environment: pypi

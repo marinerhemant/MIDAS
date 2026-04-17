@@ -293,6 +293,21 @@ fi
 
 cd ..
 
+# Install Python packages in editable mode
+echo ""
+echo "Installing Python packages..."
+if [ -n "$PYTHON_EXEC" ]; then
+    PIP_CMD="$PYTHON_EXEC -m pip"
+else
+    PIP_CMD="pip"
+fi
+
+if [ -d "packages/midas_stress" ]; then
+    $PIP_CMD install -e "packages/midas_stress" --quiet 2>/dev/null && \
+        echo "  midas-stress installed." || \
+        echo "  Warning: midas-stress install failed (non-fatal)."
+fi
+
 # Run benchmarks if requested
 if [ -n "$RUN_TESTS" ]; then
     echo ""

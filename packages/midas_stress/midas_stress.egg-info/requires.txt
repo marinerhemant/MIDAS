@@ -1,0 +1,9 @@
+numpy>=1.22
+scipy>=1.8
+
+[dev]
+pytest>=7.0
+pytest-cov
+
+[torch]
+torch>=2.0
