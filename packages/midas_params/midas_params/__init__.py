@@ -8,7 +8,7 @@ Public surface (stable):
   - VALIDATORS, resolve                                            (validator lookup)
 """
 
-__version__ = "0.1.1"
+__version__ = "0.1.2"
 
 from .schema import (
     CrossFieldRule,
