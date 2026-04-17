@@ -1,3 +1,22 @@
+# Python build artifacts
+**/__pycache__/
+*.pyc
+*.pyo
+*.egg-info/
+*.egg
+dist/
+build/
+.pytest_cache/
+
+# LaTeX aux files (paper/ directory)
+packages/midas_stress/paper/*.aux
+packages/midas_stress/paper/*.log
+packages/midas_stress/paper/*.out
+packages/midas_stress/paper/*.bbl
+packages/midas_stress/paper/*.blg
+packages/midas_stress/paper/*.toc
+packages/midas_stress/paper/*.synctex.gz
+
 packages/midas_stress/paper
 NF_HEDM/bin/*
 FF_HEDM/bin/*
