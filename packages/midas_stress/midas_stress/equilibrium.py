@@ -400,6 +400,10 @@ def recover_d0(
     """
     from .tensor import lattice_params_to_strain
 
+    # Accept list/tuple input for convenience
+    assumed_reference = np.asarray(assumed_reference, dtype=np.float64)
+    lattice_params = np.asarray(lattice_params, dtype=np.float64)
+
     # Compute strains with the assumed (wrong) reference
     strains = lattice_params_to_strain(lattice_params, assumed_reference)
 
