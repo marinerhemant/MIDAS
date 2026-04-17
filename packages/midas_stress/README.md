@@ -164,10 +164,10 @@ The sqrt(2) scaling preserves the Frobenius norm: `||T||_F == ||v||_2`.
 
 ```bibtex
 @article{midas_stress,
-  title   = {midas-stress: A Python Library for Crystallographic
-             Stress-Strain Analysis with Mechanical Equilibrium Constraints},
+  title   = {Determination of the strain-free lattice parameter from
+        mechanical equilibrium in grain-resolved diffraction stress analysis},
   author  = {Sharma, Hemant and Park, Jun-Sang and Kenesei, Peter},
-  journal = {Journal of Applied Crystallography},
+  journal = {submitted},
   year    = {2026},
 }
 ```

@@ -60,7 +60,25 @@ python -m pytest tests/ -q --tb=short || {
 # --- 4. Clean build and build fresh ---
 echo "[3/6] Building package..."
 rm -rf dist/ build/ *.egg-info/
-python -m build 2>&1 | tail -3
+
+# Make sure 'build' is installed
+if ! python -c "import build" 2>/dev/null; then
+    echo "  Installing 'build' and 'twine' (required for release)..."
+    pip install --quiet build twine
+fi
+
+# Use pipefail so the exit status of 'python -m build' is preserved
+# when piping through tail
+set -o pipefail
+python -m build 2>&1 | tail -5
+set +o pipefail
+
+if [ ! -d dist ] || [ -z "$(ls -A dist 2>/dev/null)" ]; then
+    echo "ERROR: build did not produce artifacts in dist/. Aborting."
+    # Undo the version bump commit would be ideal but already committed;
+    # leave it to the user to fix.
+    exit 1
+fi
 
 # --- 5. Commit + tag ---
 echo "[4/6] Committing version bump..."
