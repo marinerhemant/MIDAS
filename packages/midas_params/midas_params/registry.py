@@ -90,12 +90,14 @@ PARAMS: list[ParamSpec] = [
     ),
     ParamSpec(
         name="StartNr", type=ParamType.INT, category="Data source",
-        description="First file number in sequence.",
+        description="First frame number in sequence.",
         applies_to=ALL, required_for=ALL, stages=S_FILE,
+        notes="Frame index (one-indexed for GE/TIF where frame=file, or "
+              "HDF5/Zarr slab start for multi-frame containers).",
     ),
     ParamSpec(
         name="EndNr", type=ParamType.INT, category="Data source",
-        description="Last file number in sequence.",
+        description="Last frame number in sequence.",
         applies_to=ALL, required_for=ALL, stages=S_FILE,
     ),
     ParamSpec(
@@ -359,8 +361,11 @@ PARAMS: list[ParamSpec] = [
     ),
     ParamSpec(
         name="OmegaEnd", type=ParamType.FLOAT, category="Omega scan",
-        description="Last frame omega angle.",
-        applies_to=FF_PF, required_for=FF_PF, units="deg", stages=S_INDEX,
+        description="Last frame omega angle (optional — derivable).",
+        applies_to=FF_PF, units="deg", stages=S_INDEX,
+        notes="Optional. If omitted, derived as OmegaStart + OmegaStep × "
+              "(EndNr − StartNr + 1). Specify only if your scan stops "
+              "before reaching the computed end.",
     ),
     ParamSpec(
         name="OmegaStep", type=ParamType.FLOAT, category="Omega scan",
@@ -381,11 +386,14 @@ PARAMS: list[ParamSpec] = [
     ParamSpec(
         name="BoxSize", type=ParamType.FLOAT_LIST, category="Omega scan",
         description="Virtual detector box `Ymin Ymax Zmin Zmax`.",
-        applies_to=FF_NF_PF, required_for=FF_NF_PF,
+        applies_to=FF_NF_PF,
+        default=[[-1e6, 1e6, -1e6, 1e6]],
         units="um", stages=S_INDEX,
         multi_entry=True, zarr_rename="BoxSizes",
         validators=("box_size_arity", "box_size_ordered"),
-        notes="Use huge values (±1e6) to disable clipping in FF.",
+        notes="Optional. Default `-1e6 1e6 -1e6 1e6` disables clipping. "
+              "Override only if you want to constrain which detector "
+              "region is used for indexing.",
     ),
     ParamSpec(
         name="MinOmeSpotIDsToIndex", type=ParamType.FLOAT, category="Indexing",
@@ -648,14 +656,16 @@ PARAMS: list[ParamSpec] = [
     ParamSpec(
         name="MinConfidence", type=ParamType.FLOAT, category="Indexing",
         description="Minimum confidence threshold for accepting a voxel orientation.",
-        applies_to=FNP, default=0.5, units="fraction", stages=S_INDEX,
+        applies_to=frozenset({NF}), default=0.5, units="fraction", stages=S_INDEX,
+        notes="NF-only. FF/PF use Completeness for the same role.",
     ),
     ParamSpec(
         name="MinFracAccept", type=ParamType.FLOAT, category="Indexing",
-        description="Minimum overlap fraction in candidate search.",
-        applies_to=FNP, default=0.5, typical=0.04, units="fraction",
+        description="Minimum overlap fraction in NF candidate search.",
+        applies_to=frozenset({NF}), default=0.5, typical=0.04, units="fraction",
         stages=S_INDEX,
-        notes="NF typical: 0.1 seeded, 0.04 unseeded, 0.01 deformed.",
+        notes="NF-only. Typical: 0.1 seeded, 0.04 unseeded, 0.01 deformed. "
+              "FF/PF use Completeness instead.",
     ),
 
     # NF-specific indexing
@@ -910,13 +920,13 @@ PARAMS: list[ParamSpec] = [
         name="MargABC", type=ParamType.FLOAT, category="Refinement",
         description="Lattice `a,b,c` refinement tolerance.",
         applies_to=FF_PF, default=0.3, units="%", stages=S_REFINE,
-        typical=4.8,
+        typical=4,
     ),
     ParamSpec(
         name="MargABG", type=ParamType.FLOAT, category="Refinement",
         description="Lattice `α,β,γ` refinement tolerance.",
         applies_to=FF_PF, default=0.3, units="%", stages=S_REFINE,
-        typical=4.8,
+        typical=4,
     ),
     ParamSpec(
         name="FitAllAtOnce", type=ParamType.BOOL, category="Refinement",

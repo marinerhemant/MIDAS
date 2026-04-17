@@ -312,11 +312,21 @@ def pf_nscans_implies_scanstep(ctx: Ctx) -> list[ValidationIssue]:
 
 
 def frames_exist_on_disk(ctx: Ctx) -> list[ValidationIssue]:
-    """Verify that the frames implied by FileStem/Padding/Ext/StartNr/EndNr
-    actually exist in RawFolder (FF/PF) or DataDirectory (NF).
+    """Verify that the raw frame files implied by the param set actually
+    exist on disk.
 
-    Checks a sample (first, last, up to 3 in between) rather than iterating
-    thousands of files — missing boundary frames is the common failure mode.
+    File-numbering convention:
+      FF/PF: the on-disk file numbers are
+             `StartFileNrFirstLayer` .. `StartFileNrFirstLayer + NrFilesPerSweep − 1`.
+             Internal frame indices (StartNr..EndNr, often 1..1440) live
+             INSIDE a multi-frame GE/HDF5 file — they are NOT the on-disk
+             filenames. A GE container with 1440 frames is a single file.
+             If `StartFileNrFirstLayer` is absent, fall back to `StartNr`.
+      NF:    per-distance file numbering — `RawStartNr .. RawStartNr +
+             NrFilesPerDistance + WFImages − 1`.
+
+    Checks a small sample (first, last, up to 3 interior) rather than
+    stat'ing every file.
     """
     from pathlib import Path as FsPath
 
@@ -326,9 +336,6 @@ def frames_exist_on_disk(ctx: Ctx) -> list[ValidationIssue]:
         ext = ctx.all_values.get("extOrig") or "tif"
         pad = ctx.all_values.get("Padding") or 6
         start = ctx.all_values.get("RawStartNr")
-        # NF: file numbers are per-distance (same StartNr..StartNr+nfd-1 span
-        # is reused at each detector distance; MIDAS offsets internally in
-        # the binary layout). Don't multiply by nDistances.
         nfd = ctx.all_values.get("NrFilesPerDistance")
         wf = ctx.all_values.get("WFImages") or 0
         if None in (folder, stem, start, nfd):
@@ -341,10 +348,14 @@ def frames_exist_on_disk(ctx: Ctx) -> list[ValidationIssue]:
         stem = ctx.all_values.get("FileStem")
         ext = ctx.all_values.get("Ext")
         pad = ctx.all_values.get("Padding") or 6
-        start = ctx.all_values.get("StartNr")
-        end = ctx.all_values.get("EndNr")
-        if None in (folder, stem, ext, start, end):
+        # On-disk file numbers: prefer StartFileNrFirstLayer; fall back to StartNr.
+        start = ctx.all_values.get("StartFileNrFirstLayer")
+        if start is None:
+            start = ctx.all_values.get("StartNr")
+        nfilessweep = ctx.all_values.get("NrFilesPerSweep") or 1
+        if None in (folder, stem, ext, start):
             return []
+        end = start + nfilessweep - 1
         ext_with_dot = ext if ext.startswith(".") else f".{ext}"
         key_for_error = "FileStem"
 

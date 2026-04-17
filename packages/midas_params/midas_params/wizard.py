@@ -95,16 +95,25 @@ def _parse_one_entry(text: str, spec: ParamSpec) -> tuple[Any, str | None]:
     return tokens, None
 
 
+def _fmt_value(v: Any) -> str:
+    """Render a value for bracketed display in prompts."""
+    if isinstance(v, list):
+        # For multi-entry values (list of per-occurrence values), show each
+        # occurrence space-joined internally and comma-separated across occurrences.
+        if v and isinstance(v[0], list):
+            return "; ".join(" ".join(str(x) for x in entry) for entry in v)
+        return " ".join(str(x) for x in v)
+    return str(v)
+
+
 def _default_display(spec: ParamSpec, seed_value: Any) -> str:
     """What to show in brackets as the current/default value."""
     if seed_value is not None:
-        if isinstance(seed_value, list):
-            return " ".join(str(v) for v in seed_value)
-        return str(seed_value)
+        return _fmt_value(seed_value)
     if spec.typical is not None:
-        return f"typical: {spec.typical}"
+        return f"typical: {_fmt_value(spec.typical)}"
     if spec.default is not None:
-        return f"default: {spec.default}"
+        return f"default: {_fmt_value(spec.default)}"
     return ""
 
 
@@ -121,80 +130,180 @@ class WizardState:
     path: Path                       # FF / NF / PF / RI
 
 
-def _prompt_for(spec: ParamSpec, state: WizardState) -> None:
-    """Prompt the user for a single parameter; update state.values."""
+def _prompt_for(spec: ParamSpec, state: WizardState) -> str | None:
+    """Prompt the user for a single parameter; update state.values.
+
+    Returns 'back' if the user requested to go to the previous prompt.
+    Returns None otherwise (prompt completed normally).
+    """
+    # Show any previously-entered value as the default (so "back" revisits
+    # with the old input, not just the seed).
+    previously_entered = state.values.get(spec.name)
     seed = state.seed.get(spec.name)
+    shown_value = previously_entered if previously_entered is not None else seed
+
     is_required = state.path in spec.required_for
     prefix = "*" if is_required else " "
-    display_default = _default_display(spec, seed)
+    display_default = _default_display(spec, shown_value)
     src = state.source.get(spec.name, "")
-    src_str = f" (from {src})" if src and seed is not None else ""
+    # Mark previously-entered values distinctly from seeds
+    if previously_entered is not None:
+        src_str = " (you entered)"
+    elif src and seed is not None:
+        src_str = f" (from {src})"
+    else:
+        src_str = ""
 
-    # Build the prompt
+    # Layout:
+    #   * <name> [<default>] (from <src>)
+    #         <description>  [units]
+    #         (notes, if any)
+    #         > _
     hint = spec.description
     if spec.units:
         hint += f"  [{spec.units}]"
     bracket = f" [{display_default}]" if display_default else ""
-    prompt_line = f"  {prefix} {spec.name}{bracket}{src_str}: "
+    header_line = f"  {prefix} {spec.name}{bracket}{src_str}"
+    input_prompt = "        > "
 
-    print(f"    {hint}")
+    print()                                   # blank separator between keys
+    print(header_line)
+    print(f"        {hint}")
     if spec.notes:
-        print(f"    ({spec.notes})")
+        print(f"        ({spec.notes})")
 
     if spec.multi_entry:
-        _prompt_multi_entry(spec, state, seed, prompt_line)
-        return
+        return _prompt_multi_entry(spec, state, shown_value, input_prompt, is_required)
 
     while True:
-        resp = input(prompt_line).strip()
+        resp = input(input_prompt).strip()
+        # Navigation commands
+        if resp.lower() in ("back", "b", "!back"):
+            return "back"
+        if resp.lower() in ("skip", "!skip") and not is_required:
+            state.values.pop(spec.name, None)
+            return None
+        if resp.lower() in ("?", "help", "!help"):
+            _print_nav_help()
+            continue
+
         if not resp:
-            # Accept seed / default
+            # Accept shown value (previously-entered, seed, typical, or default)
+            if previously_entered is not None:
+                return None  # already in state.values
             if seed is not None:
                 state.values[spec.name] = seed
-                return
-            if spec.default is not None:
-                state.values[spec.name] = spec.default
-                return
+                return None
             if spec.typical is not None:
                 state.values[spec.name] = spec.typical
-                return
+                return None
+            if spec.default is not None:
+                state.values[spec.name] = spec.default
+                return None
             if is_required:
-                print(f"    '{spec.name}' is required. Please enter a value.")
+                print(f"        !! '{spec.name}' is required. Please enter a value "
+                      f"(or 'back' to revisit a prior prompt).")
                 continue
-            return  # optional + no default → skip
+            return None  # optional + no default → skip
         value, err = _parse_one_entry(resp, spec)
         if err:
-            print(f"    !! {err}")
+            print(f"        !! {err}")
             continue
         state.values[spec.name] = value
-        return
+        return None
 
 
-def _prompt_multi_entry(spec: ParamSpec, state: WizardState, seed, prompt_line: str) -> None:
-    """Loop until user enters blank. Accept seed as starting list."""
+def _print_nav_help() -> None:
+    print("        Navigation:")
+    print("          <Enter>  accept the bracketed value")
+    print("          back / b go back to the previous prompt")
+    print("          skip     skip this (optional keys only)")
+    print("          ?        this help")
+
+
+def _derive_seeds(state: WizardState) -> None:
+    """Compute values that are derivable from other keys, and add them to
+    state.seed so the user sees them as pre-filled.
+
+    Current derivations:
+      - OmegaEnd = OmegaStart + OmegaStep × (EndNr − StartNr + 1)
+
+    Only fills in seeds that are NOT already present (user input or an
+    explicit seed always wins).
+    """
+    # Merge current values with seeds for the computation (user input takes priority)
+    v = {**state.seed, **{k: val for k, val in state.values.items() if val is not None}}
+
+    # Derive OmegaEnd if possible and not already set
+    if "OmegaEnd" not in v:
+        needed = ("OmegaStart", "OmegaStep", "StartNr", "EndNr")
+        if all(k in v for k in needed):
+            try:
+                ostart = float(v["OmegaStart"])
+                ostep = float(v["OmegaStep"])
+                snr = int(v["StartNr"])
+                enr = int(v["EndNr"])
+                nframes = enr - snr + 1
+                omega_end = ostart + ostep * nframes
+                state.seed["OmegaEnd"] = omega_end
+                state.source["OmegaEnd"] = "derived from OmegaStart+OmegaStep×nFrames"
+            except (TypeError, ValueError):
+                pass
+
+
+def _prompt_multi_entry(spec: ParamSpec, state: WizardState, seed,
+                         input_prompt: str, is_required: bool) -> str | None:
+    """Loop until user enters blank. Accept seed as starting list.
+
+    Returns 'back' if user typed back before adding any entries.
+
+    If there is no explicit seed but the spec has a default, treat the
+    default as an implicit seed — so pressing Enter accepts it without
+    the user having to type the default manually.
+    """
     entries: list[Any] = []
-    if seed is not None:
+    # Fall back to spec.default (or typical) if no explicit seed.
+    effective_seed = seed
+    if effective_seed is None and spec.default is not None:
+        effective_seed = spec.default
+        seed_source_note = "(default)"
+    elif effective_seed is None and spec.typical is not None:
+        effective_seed = spec.typical
+        seed_source_note = "(typical)"
+    else:
+        seed_source_note = ""
+
+    if effective_seed is not None:
         # Pre-populate from seed; show as a confirmation prompt
-        seed_list = seed if isinstance(seed, list) and (
-            not seed or not isinstance(seed[0], list)
-        ) else seed
-        # seed for multi-entry is itself a list of occurrences
-        if isinstance(seed, list):
-            entries = list(seed)
-            print(f"    (existing entries: {len(entries)})")
+        if isinstance(effective_seed, list):
+            entries = list(effective_seed)
+            print(f"        (pre-filled: {len(entries)} entry{'ies' if len(entries) != 1 else ''}{' ' + seed_source_note if seed_source_note else ''})")
             for i, e in enumerate(entries):
-                print(f"      {i+1}: {e}")
-            resp = input(f"    Keep these? [Y/n]: ").strip().lower()
+                print(f"          {i+1}: {e}")
+            resp = input("        Keep these? [Y/n/back]: ").strip().lower()
+            if resp in ("back", "b"):
+                return "back"
             if resp in ("n", "no"):
                 entries = []
             else:
                 state.values[spec.name] = entries
-                print(f"    Add more? (blank line to stop)")
+                print(f"        Add more? (blank line to stop)")
                 # fall through to entry loop
 
-    print(f"    Enter {spec.name} values one per line (blank to finish).")
+    print(f"        Enter {spec.name} values one per line "
+          f"(blank to finish, 'back' to revisit previous prompt).")
     while True:
-        resp = input(f"      {spec.name}: ").strip()
+        resp = input(input_prompt).strip()
+        if resp.lower() in ("back", "b"):
+            if not entries:
+                # Never added an entry yet — let the user go back to fix
+                # a prior prompt (common case: they typed 'back' because
+                # they realized they need to change something upstream).
+                return "back"
+            # Mid-list: break out and keep the entries typed so far
+            print("        (keeping entries so far; use 'back' before typing any "
+                  "entry to revisit prior prompts)")
+            break
         if not resp:
             break
         value, err = _parse_one_entry(resp, spec)
@@ -241,6 +350,7 @@ def run_wizard(
 
     if non_interactive:
         # Use seeds + defaults; no prompting. Fail if any required key still missing.
+        _derive_seeds(state)
         for spec in required_for(path):
             if spec.name in state.seed:
                 state.values[spec.name] = state.seed[spec.name]
@@ -261,6 +371,9 @@ def run_wizard(
         _write_param_file(state, output)
         return _validate_and_report(output, path)
 
+    # Derive values that we can compute from others before prompting.
+    _derive_seeds(state)
+
     # ── Interactive flow ─────────────────────────────────────────────────────
     print()
     print(f"MIDAS parameter wizard — {path.value.upper()} pipeline")
@@ -273,27 +386,50 @@ def run_wizard(
         for w in merged.warnings:
             print(f"  - {w}")
     print()
-    print("For each prompt: press Enter to accept the bracketed value, or type a new one.")
-    print("Required keys are marked with *. Optional prompts may be skipped with Enter.")
+    print("Per prompt:  <Enter> accept bracketed value")
+    print("             back / b  go back to previous prompt")
+    print("             skip      skip this (optional only)")
+    print("             ?         help")
+    print("Required keys are marked with *.")
     print()
 
-    # Group specs by category
+    # Build a flat list of (category_index, category_name, spec) so we can
+    # step forward or backward by one.
     visible = wizard_visible_for(path)
     by_category: dict[str, list[ParamSpec]] = {}
     for spec in visible:
         by_category.setdefault(spec.category, []).append(spec)
+    cat_names = list(by_category)
+    flat: list[tuple[int, str, ParamSpec]] = []
+    for ci, cat in enumerate(cat_names, start=1):
+        for spec in by_category[cat]:
+            flat.append((ci, cat, spec))
 
-    for i, (cat, specs) in enumerate(by_category.items(), start=1):
-        print()
-        print(f"[{i}/{len(by_category)}] {cat}")
-        print("-" * (len(cat) + 8))
-        for spec in specs:
-            try:
-                _prompt_for(spec, state)
-            except (KeyboardInterrupt, EOFError):
-                print()
-                print("Wizard aborted. No file written.")
-                return 130
+    shown_categories: set[int] = set()
+    i = 0
+    while i < len(flat):
+        ci, cat, spec = flat[i]
+        # Print category banner once per new category
+        if ci not in shown_categories:
+            print()
+            print(f"[{ci}/{len(cat_names)}] {cat}")
+            print("-" * (len(cat) + 8))
+            shown_categories.add(ci)
+        try:
+            action = _prompt_for(spec, state)
+        except (KeyboardInterrupt, EOFError):
+            print()
+            print("Wizard aborted. No file written.")
+            return 130
+        if action == "back":
+            if i == 0:
+                print("        (already at the first prompt)")
+                continue
+            # Re-derive seeds in case a derived value would change
+            _derive_seeds(state)
+            i -= 1
+            continue
+        i += 1
 
     # Preview
     print()

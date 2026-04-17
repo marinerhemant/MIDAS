@@ -187,12 +187,13 @@ def test_omega_range_missing_required(tmp_path):
                for i in r.errors)
 
 
-def test_box_size_missing_required(tmp_path):
+def test_box_size_is_optional_with_default(tmp_path):
+    """BoxSize has a default of ±1e6 so it's no longer required; absence is fine."""
     fn = tmp_path / "p.txt"
     fn.write_text("OmegaStart 180\nOmegaEnd -180\nOmegaStep -0.25\n")
     r = validate(str(fn), Path.FF)
-    assert any(i.key == "BoxSize" and i.rule == "required_key_missing"
-               for i in r.errors)
+    assert not any(i.key == "BoxSize" and i.rule == "required_key_missing"
+                   for i in r.errors)
 
 
 # ─── Per-key validators ──────────────────────────────────────────────────────
@@ -358,23 +359,53 @@ def test_ff_extension_without_dot_still_finds_files(tmp_path):
 
 
 def test_boundary_frames_checked(tmp_path):
-    """Last frame missing should be caught even if first is present."""
+    """Last file missing should be caught even if first is present.
+
+    FF file numbering on disk uses StartFileNrFirstLayer + NrFilesPerSweep,
+    NOT StartNr/EndNr (those are frame indices within multi-frame containers).
+    """
     fn = tmp_path / "p.txt"
     rawdir = tmp_path / "raw"
     rawdir.mkdir()
     for i in [1, 2, 3]:
         (rawdir / f"sample_{i:06d}.ge3").touch()
-    # User claims 1..10 but only 1..3 exist
+    # User claims a 10-file sweep starting at 1, but only files 1..3 exist
     fn.write_text(textwrap.dedent(f"""
         RawFolder {rawdir}
         FileStem sample
         Ext .ge3
         Padding 6
-        StartNr 1
-        EndNr 10
+        StartFileNrFirstLayer 1
+        NrFilesPerSweep 10
     """).strip())
     r = validate(str(fn), Path.FF)
     assert any(i.rule == "frames_exist_on_disk" for i in r.errors)
+
+
+def test_single_multiframe_ge_file_passes(tmp_path):
+    """A real FF scenario: one GE container file at StartFileNrFirstLayer=410,
+    containing 1440 internal frames (StartNr=1 through EndNr=1440). The
+    file-existence check should find the ONE on-disk file, not look for
+    1440 imaginary files."""
+    fn = tmp_path / "p.txt"
+    rawdir = tmp_path / "raw"
+    rawdir.mkdir()
+    # Single multi-frame GE file at 410
+    (rawdir / f"sample_{410:06d}.ge3").touch()
+    fn.write_text(textwrap.dedent(f"""
+        RawFolder {rawdir}
+        FileStem sample
+        Ext .ge3
+        Padding 6
+        StartFileNrFirstLayer 410
+        NrFilesPerSweep 1
+        StartNr 1
+        EndNr 1440
+    """).strip())
+    r = validate(str(fn), Path.FF)
+    frame_errors = [i for i in r.errors if i.rule == "frames_exist_on_disk"]
+    assert not frame_errors, \
+        f"Should find the single GE file, got: {[i.message for i in frame_errors]}"
 
 
 def test_omega_range_multiple_entries_each_checked(tmp_path):
