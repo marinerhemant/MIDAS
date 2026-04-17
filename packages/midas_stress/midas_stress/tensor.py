@@ -119,7 +119,7 @@ def lattice_params_to_A_matrix(latc: np.ndarray) -> np.ndarray:
 
 
 # -------------------------------------------------------------------
-#  Strain tensor from lattice parameters (Fable-Beaudoin method)
+#  Strain tensor from lattice parameters (lattice-parameter / deformation-gradient method)
 # -------------------------------------------------------------------
 
 def lattice_params_to_strain(
@@ -128,7 +128,8 @@ def lattice_params_to_strain(
 ) -> np.ndarray:
     """Compute Green-Lagrange strain tensor in grain frame.
 
-    Matches CalcStrainTensorFableBeaudoin in CalcStrains.c.
+    Matches CalcStrainTensorFableBeaudoin in CalcStrains.c, which
+    implements the lattice-parameter (deformation-gradient) form.
 
     Parameters
     ----------

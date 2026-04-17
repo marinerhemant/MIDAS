@@ -440,3 +440,185 @@ class TestRecoverD0:
         # Angles should be unchanged
         np.testing.assert_allclose(result['reference_recovered'][3:],
                                    ref_true[3:], atol=1e-10)
+
+
+class TestStiffnessRobustness:
+    """Verify the scale-invariance of d0 recovery to the stiffness tensor.
+
+    Core claim of the paper's "Robustness to stiffness uncertainty"
+    paragraph: for free-standing polycrystals, the recovered eps_iso
+    is invariant under scalar rescaling of the stiffness, and for
+    cubic materials it is independent of the stiffness entirely.
+    """
+
+    def test_cubic_free_standing_scale_invariance(self):
+        """Scaling the cubic stiffness by any factor leaves eps_iso unchanged."""
+        from midas_stress.equilibrium import recover_d0
+        N = 150
+        rng = np.random.default_rng(0)
+        orients = np.empty((N, 3, 3))
+        q = rng.normal(size=(N, 4))
+        q /= np.linalg.norm(q, axis=1, keepdims=True)
+        w, x, y, z = q.T
+        orients[:, 0, 0] = 1 - 2 * (y*y + z*z)
+        orients[:, 0, 1] = 2 * (x*y - w*z)
+        orients[:, 0, 2] = 2 * (x*z + w*y)
+        orients[:, 1, 0] = 2 * (x*y + w*z)
+        orients[:, 1, 1] = 1 - 2 * (x*x + z*z)
+        orients[:, 1, 2] = 2 * (y*z - w*x)
+        orients[:, 2, 0] = 2 * (x*z - w*y)
+        orients[:, 2, 1] = 2 * (y*z + w*x)
+        orients[:, 2, 2] = 1 - 2 * (x*x + y*y)
+
+        a0_true = 4.080
+        a0_assumed = 4.080 * (1 + 500e-6)
+        lat = np.tile([a0_true]*3 + [90.0]*3, (N, 1))
+        ref = np.array([a0_assumed]*3 + [90.0]*3)
+        volumes = np.ones(N)
+
+        C_true = get_stiffness("Au")
+        eps_iso_ref = recover_d0(lat, ref, C_true, orients, volumes)['eps_iso']
+
+        # Scale the stiffness by factors covering orders of magnitude
+        for factor in [0.01, 0.1, 1.0, 10.0, 100.0]:
+            eps = recover_d0(lat, ref, factor * C_true, orients, volumes)['eps_iso']
+            np.testing.assert_allclose(eps, eps_iso_ref, rtol=1e-9)
+
+    def test_cubic_free_standing_different_material_stiffness(self):
+        """Even using a completely wrong cubic material's stiffness
+        should give the correct eps_iso, since cubic response is
+        purely hydrostatic and the magnitude cancels.
+        """
+        from midas_stress.equilibrium import recover_d0
+        N = 100
+        rng = np.random.default_rng(1)
+        q = rng.normal(size=(N, 4))
+        q /= np.linalg.norm(q, axis=1, keepdims=True)
+        w, x, y, z = q.T
+        orients = np.empty((N, 3, 3))
+        orients[:, 0, 0] = 1 - 2 * (y*y + z*z)
+        orients[:, 0, 1] = 2 * (x*y - w*z)
+        orients[:, 0, 2] = 2 * (x*z + w*y)
+        orients[:, 1, 0] = 2 * (x*y + w*z)
+        orients[:, 1, 1] = 1 - 2 * (x*x + z*z)
+        orients[:, 1, 2] = 2 * (y*z - w*x)
+        orients[:, 2, 0] = 2 * (x*z - w*y)
+        orients[:, 2, 1] = 2 * (y*z + w*x)
+        orients[:, 2, 2] = 1 - 2 * (x*x + y*y)
+
+        a0_true = 4.080
+        a0_assumed = 4.084
+        lat = np.tile([a0_true]*3 + [90.0]*3, (N, 1))
+        ref = np.array([a0_assumed]*3 + [90.0]*3)
+        volumes = np.ones(N)
+
+        # Cross-test across all cubic entries of the library
+        eps_by_mat = {}
+        for mat in ["Au", "Cu", "Al", "Fe", "Ni", "W", "Si", "CeO2"]:
+            res = recover_d0(lat, ref, get_stiffness(mat),
+                             orients, volumes)
+            eps_by_mat[mat] = res['eps_iso']
+        # All should match within numerical noise
+        values = list(eps_by_mat.values())
+        np.testing.assert_allclose(values, values[0], rtol=1e-9)
+
+    def test_cubic_free_standing_helper_matches_full(self):
+        """recover_d0_cubic_free_standing should match recover_d0 on cubic data."""
+        from midas_stress.equilibrium import (
+            recover_d0, recover_d0_cubic_free_standing,
+        )
+        N = 250
+        rng = np.random.default_rng(2)
+        q = rng.normal(size=(N, 4))
+        q /= np.linalg.norm(q, axis=1, keepdims=True)
+        w, x, y, z = q.T
+        orients = np.empty((N, 3, 3))
+        orients[:, 0, 0] = 1 - 2 * (y*y + z*z)
+        orients[:, 0, 1] = 2 * (x*y - w*z)
+        orients[:, 0, 2] = 2 * (x*z + w*y)
+        orients[:, 1, 0] = 2 * (x*y + w*z)
+        orients[:, 1, 1] = 1 - 2 * (x*x + z*z)
+        orients[:, 1, 2] = 2 * (y*z - w*x)
+        orients[:, 2, 0] = 2 * (x*z - w*y)
+        orients[:, 2, 1] = 2 * (y*z + w*x)
+        orients[:, 2, 2] = 1 - 2 * (x*x + y*y)
+
+        a0_true = 4.080
+        # Inject realistic per-grain scatter
+        a_g = a0_true * (1 + 500e-6 * rng.normal(size=N))
+        lat = np.column_stack([a_g, a_g, a_g,
+                                np.full(N, 90.0),
+                                np.full(N, 90.0),
+                                np.full(N, 90.0)])
+        a0_assumed = a0_true * (1 + 300e-6)
+        ref = np.array([a0_assumed]*3 + [90.0]*3)
+        volumes = np.ones(N)
+
+        full = recover_d0(lat, ref, get_stiffness("Au"), orients, volumes)
+        simple = recover_d0_cubic_free_standing(lat, ref, volumes)
+        # Match to machine precision (both fits are identical for cubic
+        # free-standing)
+        np.testing.assert_allclose(simple['eps_iso'], full['eps_iso'],
+                                   rtol=1e-10)
+        np.testing.assert_allclose(simple['reference_recovered'],
+                                   full['reference_recovered'],
+                                   rtol=1e-10)
+
+    def test_cubic_free_standing_helper_no_stiffness_needed(self):
+        """Verify the helper actually works without any stiffness argument."""
+        from midas_stress.equilibrium import recover_d0_cubic_free_standing
+        N = 50
+        a0_true = 4.080
+        lat = np.tile([a0_true]*3 + [90.0]*3, (N, 1))
+        ref = np.array([4.082, 4.082, 4.082, 90.0, 90.0, 90.0])
+        result = recover_d0_cubic_free_standing(lat, ref)
+        err_ppm = abs(result['reference_recovered'][0] - a0_true) / a0_true * 1e6
+        assert err_ppm < 1.0
+
+    def test_cubic_free_standing_helper_rejects_non_cubic(self):
+        """Helper should error on hexagonal reference."""
+        from midas_stress.equilibrium import recover_d0_cubic_free_standing
+        lat = np.tile([2.951, 2.951, 4.684, 90.0, 90.0, 120.0], (10, 1))
+        ref = np.array([2.951, 2.951, 4.684, 90.0, 90.0, 120.0])
+        import pytest
+        with pytest.raises(ValueError, match="cubic"):
+            recover_d0_cubic_free_standing(lat, ref)
+
+    def test_hexagonal_scale_invariance(self):
+        """Non-cubic free-standing: eps_iso is invariant to stiffness scaling.
+
+        The magnitude of the stiffness tensor still cancels; only the
+        direction (anisotropy ratio) matters. Scaling C by alpha
+        scales both the response vector and the residual by alpha,
+        so the ratio is unchanged.
+        """
+        from midas_stress.equilibrium import recover_d0
+        N = 100
+        rng = np.random.default_rng(3)
+        q = rng.normal(size=(N, 4))
+        q /= np.linalg.norm(q, axis=1, keepdims=True)
+        w, x, y, z = q.T
+        orients = np.empty((N, 3, 3))
+        orients[:, 0, 0] = 1 - 2 * (y*y + z*z)
+        orients[:, 0, 1] = 2 * (x*y - w*z)
+        orients[:, 0, 2] = 2 * (x*z + w*y)
+        orients[:, 1, 0] = 2 * (x*y + w*z)
+        orients[:, 1, 1] = 1 - 2 * (x*x + z*z)
+        orients[:, 1, 2] = 2 * (y*z - w*x)
+        orients[:, 2, 0] = 2 * (x*z - w*y)
+        orients[:, 2, 1] = 2 * (y*z + w*x)
+        orients[:, 2, 2] = 1 - 2 * (x*x + y*y)
+
+        ref_true = np.array([2.951, 2.951, 4.684, 90.0, 90.0, 120.0])
+        lat = np.tile(ref_true, (N, 1))
+        ref = ref_true.copy()
+        ref[:3] *= 1.0005
+        volumes = np.ones(N)
+
+        C_true = get_stiffness("Ti")
+        eps_ref = recover_d0(lat, ref, C_true, orients, volumes)['eps_iso']
+
+        for factor in [0.1, 1.0, 10.0]:
+            eps = recover_d0(lat, ref, factor * C_true,
+                             orients, volumes)['eps_iso']
+            np.testing.assert_allclose(eps, eps_ref, rtol=1e-9)

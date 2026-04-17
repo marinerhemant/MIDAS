@@ -341,6 +341,120 @@ def correct_d0(
     return result
 
 
+def recover_d0_cubic_free_standing(
+    lattice_params: np.ndarray,
+    assumed_reference: np.ndarray,
+    volumes: Optional[np.ndarray] = None,
+    confidences: Optional[np.ndarray] = None,
+    min_confidence: float = 0.0,
+) -> dict:
+    """Stiffness-free d0 recovery for cubic, free-standing polycrystals.
+
+    For a cubic material under zero applied macroscopic stress, the
+    equilibrium correction simplifies exactly to the volume-averaged
+    hydrostatic strain:
+
+    .. math::
+
+       \\varepsilon_{\\mathrm{iso}}
+       = \\tfrac{1}{3}\\,\\mathrm{tr}\\langle
+         \\boldsymbol{\\varepsilon}\\rangle_V.
+
+    The proof is short: the stiffness response vector ``C{I} = 3K{I}``
+    for any cubic crystal is purely hydrostatic and rotation-invariant,
+    so ``<C_lab>{I} = 3K{I}`` regardless of texture. Substituting into
+    Eq.~5 of the paper, the bulk modulus ``K`` cancels from
+    numerator and denominator, and the fit collapses to the
+    hydrostatic mean of the per-grain strain tensors. Neither ``K``
+    nor the per-grain orientations enter.
+
+    Use this helper when the single-crystal elastic constants are
+    unknown or poorly characterised (battery electrolytes like LLZO,
+    obscure cubic intermetallics, newly synthesised phases). The
+    full :func:`recover_d0` returns the same number for the same
+    data — this function just removes the ``stiffness`` and
+    ``orientations`` arguments from the API so the user does not
+    have to invent placeholder values.
+
+    Parameters
+    ----------
+    lattice_params : ndarray (N, 6)
+        Per-grain ``[a, b, c, alpha, beta, gamma]``. Must be cubic
+        per grain (a=b=c, angles=90°) within reasonable tolerance.
+    assumed_reference : ndarray (6,)
+        Assumed strain-free lattice parameters (possibly wrong).
+        Must describe a cubic cell.
+    volumes : ndarray (N,), optional
+        Per-grain volumes. Default: uniform weights.
+    confidences : ndarray (N,), optional
+    min_confidence : float
+
+    Returns
+    -------
+    dict with keys:
+        'reference_recovered' : ndarray (6,) — corrected lattice params
+        'reference_assumed'   : ndarray (6,) — input assumed
+        'eps_iso'             : float — fitted hydrostatic strain error
+        'scale_factor'        : float — a0_true = a0_assumed / (1 - eps_iso)
+        'n_grains_used'       : int
+        'n_grains_total'      : int
+
+    See Also
+    --------
+    recover_d0 : Full version, works for all symmetries and any applied
+        stress. Requires stiffness and per-grain orientations.
+    """
+    from .tensor import lattice_params_to_strain
+
+    assumed_reference = np.asarray(assumed_reference, dtype=np.float64)
+    lattice_params = np.asarray(lattice_params, dtype=np.float64)
+    N = lattice_params.shape[0]
+
+    # Sanity-check cubic symmetry of the assumed reference
+    a_ref, b_ref, c_ref = assumed_reference[:3]
+    if not (np.isclose(a_ref, b_ref, rtol=1e-6)
+            and np.isclose(a_ref, c_ref, rtol=1e-6)
+            and np.allclose(assumed_reference[3:], 90.0, atol=1e-3)):
+        raise ValueError(
+            "assumed_reference must be cubic (a=b=c, angles=90°); "
+            f"got {assumed_reference}. For non-cubic materials use "
+            "recover_d0() with a stiffness tensor."
+        )
+
+    if volumes is None:
+        volumes = np.ones(N, dtype=np.float64)
+    else:
+        volumes = np.asarray(volumes, dtype=np.float64)
+
+    if confidences is not None and min_confidence > 0:
+        mask = confidences >= min_confidence
+    else:
+        mask = np.ones(N, dtype=bool)
+
+    w = effective_weights(
+        volumes[mask],
+        confidences[mask] if confidences is not None else None,
+    )
+
+    strains = lattice_params_to_strain(lattice_params, assumed_reference)
+    # Per-grain hydrostatic strain = trace / 3
+    hydro_per_grain = np.trace(strains, axis1=-2, axis2=-1) / 3.0  # (N,)
+    eps_iso = float(np.sum(w * hydro_per_grain[mask]))
+
+    scale = 1.0 / (1.0 - eps_iso)
+    ref_recovered = assumed_reference.copy()
+    ref_recovered[:3] = assumed_reference[:3] * scale
+
+    return {
+        'reference_recovered': ref_recovered,
+        'reference_assumed':   assumed_reference.copy(),
+        'eps_iso':             eps_iso,
+        'scale_factor':        float(scale),
+        'n_grains_used':       int(mask.sum()),
+        'n_grains_total':      N,
+    }
+
+
 def recover_d0(
     lattice_params: np.ndarray,
     assumed_reference: np.ndarray,

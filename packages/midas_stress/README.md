@@ -61,7 +61,7 @@ grains = ms.read_grains("Grains.csv")
 # Optional: convert MIDAS -> APS frame
 sam = ms.grains_midas_to_sample(
     grains['orientations'], grains['positions'],
-    grains['strain_fable'], target_frame="aps",
+    grains['strain'], target_frame="aps",
 )
 
 result = ms.compute_stress(

@@ -20,8 +20,8 @@ def test_read_grainssim_keys():
     assert "orientations" in g
     assert "positions" in g
     assert "lattice_params" in g
-    assert "strain" in g          # Kenesei (d-spacing form)
-    assert "strain_fable" in g    # Fable-Beaudoin alternate
+    assert "strain" in g          # d-spacing (strain-gauge) form
+    assert "strain_lattice" in g  # lattice-parameter alternate
     assert "radii" in g
     assert "confidences" in g
     assert "euler_angles" in g
@@ -35,7 +35,7 @@ def test_read_grainssim_shapes():
     assert g["positions"].shape == (N, 3)
     assert g["lattice_params"].shape == (N, 6)
     assert g["strain"].shape == (N, 3, 3)
-    assert g["strain_fable"].shape == (N, 3, 3)
+    assert g["strain_lattice"].shape == (N, 3, 3)
     assert g["radii"].shape == (N,)
     assert g["confidences"].shape == (N,)
 
@@ -53,17 +53,20 @@ def test_read_grainssim_radius_positive():
     assert (g["radii"] > 0).all()
 
 
-def test_strain_default_is_kenesei():
-    """The 'strain' key should map to eKen columns in the file.
+def test_strain_default_is_d_spacing():
+    """The 'strain' key should map to the eKen (d-spacing) columns.
 
     In GrainsSim.csv all strains are zero, so instead verify that
-    strain and strain_fable are BOTH zero (consistency) and that
-    reading them yields arrays of the expected shape.
+    both strain forms are zero (consistency) and that reading them
+    yields arrays of the expected shape. The primary 'strain' key
+    is the d-spacing / strain-gauge form (historically eKen);
+    'strain_lattice' is the lattice-parameter form (historically
+    eFab).
     """
     g = read_grains_csv(example_data_path())
     # GrainsSim has zero strain by construction
     np.testing.assert_allclose(g["strain"], 0.0, atol=1e-12)
-    np.testing.assert_allclose(g["strain_fable"], 0.0, atol=1e-12)
+    np.testing.assert_allclose(g["strain_lattice"], 0.0, atol=1e-12)
 
 
 def test_header_parsing_missing_file():

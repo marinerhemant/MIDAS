@@ -45,6 +45,7 @@ from .equilibrium import (
     d0_correction_strain_level,
     correct_d0,
     recover_d0,
+    recover_d0_cubic_free_standing,
 )
 
 # --- Orientation / Misorientation ---

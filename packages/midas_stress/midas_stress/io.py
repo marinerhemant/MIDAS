@@ -6,13 +6,21 @@ the historical ``Grains.csv`` layout, the newer ``GrainsSim.csv`` /
 between positions and strains), and any other file as long as the
 column header line begins with ``%GrainID``.
 
-The returned dict exposes a single ``strain`` key (the Kenesei
-strain-gauge form — computed directly from the d-spacing change of
-each reflection, so it is tied to the raw diffraction observables and
-is the more accurate of the two MIDAS strain outputs). The alternative
-Fable-Beaudoin strain, which is derived from the *fitted* lattice
-parameters via the deformation gradient ``F = A @ A0^-1``, is also
-returned under ``strain_fable`` when present.
+The returned dict exposes a single ``strain`` key (the *d-spacing
+strain*, historically called the Kenesei form in MIDAS). It is
+fit from the per-reflection strain-gauge equation
+``eps_ij g_i g_j = (d_obs - d_0) / d_0`` using a least-squares
+solve over the six symmetric components, so it is tied directly
+to the raw diffraction observables.
+
+The alternative *lattice-parameter strain* (historically called
+the Fable-Beaudoin form) is derived from the fitted lattice
+parameters via the deformation gradient ``F = A @ A0^-1`` and
+``eps = 0.5 (F + F^T) - I``. It is returned under
+``strain_lattice`` when present. At typical HEDM strain magnitudes
+the two forms are numerically equivalent to second order in
+strain; the d-spacing form has better noise properties and is
+the recommended default.
 """
 
 import os
@@ -25,17 +33,18 @@ _TENSOR_BLOCKS = {
     "orientations": ["O11", "O12", "O13",
                      "O21", "O22", "O23",
                      "O31", "O32", "O33"],
-    # Primary strain: Kenesei form (d-spacing strain-gauge equation).
-    # This is tied directly to the raw diffraction observable and is
-    # the recommended default for stress analysis.
-    "strain":       ["eKen11", "eKen12", "eKen13",
-                     "eKen21", "eKen22", "eKen23",
-                     "eKen31", "eKen32", "eKen33"],
-    # Alternate: Fable-Beaudoin strain from the fitted lattice
-    # parameters (F = A @ A0^-1). Retained for comparison / legacy use.
-    "strain_fable": ["eFab11", "eFab12", "eFab13",
-                     "eFab21", "eFab22", "eFab23",
-                     "eFab31", "eFab32", "eFab33"],
+    # Primary strain: d-spacing (strain-gauge) form, fit directly
+    # from per-reflection (d_obs - d_0)/d_0. Historically named
+    # "Kenesei" in the MIDAS CSV columns (eKen*).
+    "strain":         ["eKen11", "eKen12", "eKen13",
+                       "eKen21", "eKen22", "eKen23",
+                       "eKen31", "eKen32", "eKen33"],
+    # Alternate: lattice-parameter strain, eps = 0.5(F + F^T) - I
+    # with F = A @ A0^-1 built from fitted lattice parameters.
+    # Historically named "Fable-Beaudoin" in the MIDAS columns (eFab*).
+    "strain_lattice": ["eFab11", "eFab12", "eFab13",
+                       "eFab21", "eFab22", "eFab23",
+                       "eFab31", "eFab32", "eFab33"],
 }
 
 _VECTOR_BLOCKS = {
@@ -105,10 +114,13 @@ def read_grains_csv(filepath: str) -> dict:
         'orientations'  : ndarray (N, 3, 3)
         'positions'     : ndarray (N, 3)  [X, Y, Z] (micrometers)
         'lattice_params': ndarray (N, 6)  [a, b, c, alpha, beta, gamma]
-        'strain'        : ndarray (N, 3, 3) — Kenesei (d-spacing
-                          strain-gauge form, recommended default)
-        'strain_fable'  : ndarray (N, 3, 3) — alternate Fable-Beaudoin
-                          strain from fitted lattice parameters
+        'strain'         : ndarray (N, 3, 3) — d-spacing
+                           (strain-gauge) form, recommended default.
+                           Historically the Kenesei form in MIDAS.
+        'strain_lattice' : ndarray (N, 3, 3) — lattice-parameter
+                           form, eps = 0.5(F+F^T) - I with
+                           F = A @ A0^-1. Historically the
+                           Fable-Beaudoin form in MIDAS.
         'confidences'   : ndarray (N,)
         'radii'         : ndarray (N,)
         'phase'         : ndarray (N,)
@@ -168,8 +180,10 @@ def read_grains_h5(filepath: str) -> dict:
         'euler_angles'  : ndarray (N, 3)
         'positions'     : ndarray (N, 3)
         'lattice_params': ndarray (N, 6)
-        'strain'      : ndarray (N, 3, 3) — Kenesei (d-spacing form)
-        'strain_fable': ndarray (N, 3, 3) — Fable-Beaudoin alternate
+        'strain'         : ndarray (N, 3, 3) — d-spacing (strain-gauge)
+                           form, recommended default
+        'strain_lattice' : ndarray (N, 3, 3) — lattice-parameter
+                           alternate
         'radii'         : ndarray (N,)
         'confidences'   : ndarray (N,)
         'grain_ids'     : list of str
@@ -178,7 +192,7 @@ def read_grains_h5(filepath: str) -> dict:
 
     grains = {
         'orientations': [], 'euler_angles': [], 'positions': [],
-        'lattice_params': [], 'strain': [], 'strain_fable': [],
+        'lattice_params': [], 'strain': [], 'strain_lattice': [],
         'radii': [], 'confidences': [], 'grain_ids': [],
     }
 
@@ -191,10 +205,12 @@ def read_grains_h5(filepath: str) -> dict:
             grains['euler_angles'].append(g['euler_angles'][()])
             grains['positions'].append(g['position'][()])
             grains['lattice_params'].append(g['lattice_params_fit'][()])
-            # Primary: Kenesei (strain-gauge / d-spacing based).
+            # Primary: d-spacing (strain-gauge) form, stored on
+            # disk under the legacy "strain_kenesei" dataset name.
             grains['strain'].append(g['strain_kenesei'][()])
-            # Alternate: Fable-Beaudoin (fitted lattice parameter).
-            grains['strain_fable'].append(g['strain_fable'][()])
+            # Alternate: lattice-parameter form, stored on disk
+            # under the legacy "strain_fable" dataset name.
+            grains['strain_lattice'].append(g['strain_fable'][()])
             grains['radii'].append(float(g['radius'][()]))
             grains['confidences'].append(float(g['confidence'][()]))
 
