@@ -555,10 +555,16 @@ def main():
     # Copy PanelShiftsFile to the absolute analysis output dir if it exists, so DetectorMapper can find it
     if panel_shifts_file:
         panel_shifts_path = Path(param_file).parent / panel_shifts_file
+        destination_path = output_dir / panel_shifts_file
         if panel_shifts_path.exists():
-            print(f"Copying PanelShiftsFile {panel_shifts_file} to {output_dir}/")
-            shutil.copy2(panel_shifts_path, output_dir / panel_shifts_file)
-    
+            # Only copy if source and destination are not the same file
+            if not destination_path.exists() or \
+               not os.path.samefile(panel_shifts_path, destination_path):
+                print(f"Copying PanelShiftsFile {panel_shifts_file} to {output_dir}/")
+                shutil.copy2(panel_shifts_path, destination_path)
+            else:
+                print(f"Skipping copy: PanelShiftsFile already exists at destination: {destination_path}")
+
     # Check if mapping files exist and create them if needed
     if not check_and_create_mapping_files(param_file, midas_env, output_dir):
         print("Error: Failed to create required mapping files.")
