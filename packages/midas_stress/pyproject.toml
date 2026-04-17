@@ -40,5 +40,8 @@ Issues = "https://github.com/marinerhemant/MIDAS/issues"
 where = ["."]
 include = ["midas_stress*"]
 
+[tool.setuptools.package-data]
+midas_stress = ["_data/*.csv", "_data/*.h5"]
+
 [tool.pytest.ini_options]
 testpaths = ["tests"]

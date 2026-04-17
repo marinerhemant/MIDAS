@@ -1,69 +1,154 @@
-"""I/O for MIDAS grain data: Grains.csv and consolidated HDF5 files."""
+"""I/O for MIDAS grain data: Grains.csv and consolidated HDF5 files.
+
+The CSV parser is header-driven so it works with all MIDAS flavours:
+the historical ``Grains.csv`` layout, the newer ``GrainsSim.csv`` /
+``Grains_allatonce.csv`` layout (with ``DiffPos``, ``DiffOme``, ...
+between positions and strains), and any other file as long as the
+column header line begins with ``%GrainID``.
+
+The returned dict exposes a single ``strain`` key (the Kenesei
+strain-gauge form — computed directly from the d-spacing change of
+each reflection, so it is tied to the raw diffraction observables and
+is the more accurate of the two MIDAS strain outputs). The alternative
+Fable-Beaudoin strain, which is derived from the *fitted* lattice
+parameters via the deformation gradient ``F = A @ A0^-1``, is also
+returned under ``strain_fable`` when present.
+"""
 
 import os
 
 import numpy as np
 
-GRAINS_HEADER_LINES = 9
 
-GRAINS_COLS = [
-    'GrainID',
-    'O11', 'O12', 'O13', 'O21', 'O22', 'O23', 'O31', 'O32', 'O33',
-    'X', 'Y', 'Z',
-    'a', 'b', 'c', 'alpha', 'beta', 'gamma',
-    'eFab11', 'eFab12', 'eFab13', 'eFab21', 'eFab22', 'eFab23',
-    'eFab31', 'eFab32', 'eFab33',
-    'eKen11', 'eKen12', 'eKen13', 'eKen21', 'eKen22', 'eKen23',
-    'eKen31', 'eKen32', 'eKen33',
-    'RMSErrorStrain', 'Confidence', 'Reserved1', 'Reserved2',
-    'PhaseNr', 'Radius', 'Eul0', 'Eul1', 'Eul2', 'Reserved3', 'Reserved4',
-]
+# Standard column name -> output key mapping for the 3x3 tensor blocks.
+_TENSOR_BLOCKS = {
+    "orientations": ["O11", "O12", "O13",
+                     "O21", "O22", "O23",
+                     "O31", "O32", "O33"],
+    # Primary strain: Kenesei form (d-spacing strain-gauge equation).
+    # This is tied directly to the raw diffraction observable and is
+    # the recommended default for stress analysis.
+    "strain":       ["eKen11", "eKen12", "eKen13",
+                     "eKen21", "eKen22", "eKen23",
+                     "eKen31", "eKen32", "eKen33"],
+    # Alternate: Fable-Beaudoin strain from the fitted lattice
+    # parameters (F = A @ A0^-1). Retained for comparison / legacy use.
+    "strain_fable": ["eFab11", "eFab12", "eFab13",
+                     "eFab21", "eFab22", "eFab23",
+                     "eFab31", "eFab32", "eFab33"],
+}
+
+_VECTOR_BLOCKS = {
+    "positions":      ["X", "Y", "Z"],
+    "lattice_params": ["a", "b", "c", "alpha", "beta", "gamma"],
+    "euler_angles":   ["Eul0", "Eul1", "Eul2"],
+}
+
+# Scalar columns: output_key -> list of accepted header names (first match wins).
+_SCALAR_COLUMNS = {
+    "grain_ids":   ["GrainID"],
+    "radii":       ["GrainRadius", "Radius"],
+    "confidences": ["Confidence"],
+    "phase":       ["PhaseNr"],
+    "rms_error":   ["RMSErrorStrain"],
+}
+
+
+def _find_header_line(filepath: str) -> tuple:
+    """Locate the ``%GrainID ...`` header line and the number of lines to skip.
+
+    Returns
+    -------
+    columns : list of str
+    skip_header : int
+    """
+    skip = 0
+    with open(filepath, 'r') as f:
+        for line in f:
+            stripped = line.lstrip()
+            if stripped.startswith("%GrainID") or stripped.startswith("% GrainID"):
+                header = stripped.lstrip("%").strip()
+                columns = header.split()
+                return columns, skip + 1
+            skip += 1
+    raise ValueError(
+        f"Could not locate '%GrainID ...' column header line in {filepath}"
+    )
+
+
+def _col_index(columns, name):
+    """Find column index by exact name, return None if absent."""
+    try:
+        return columns.index(name)
+    except ValueError:
+        return None
 
 
 def read_grains_csv(filepath: str) -> dict:
-    """Read grain data from MIDAS Grains.csv.
+    """Read grain data from a MIDAS ``Grains.csv``-style file.
+
+    The parser is header-driven: it locates the line starting with
+    ``%GrainID`` and maps columns by name, so it works with all MIDAS
+    output flavours (``Grains.csv``, ``GrainsSim.csv``,
+    ``Grains_allatonce.csv``, etc.).
 
     Parameters
     ----------
     filepath : str
-        Path to Grains.csv.
 
     Returns
     -------
-    dict with keys:
-        'raw': ndarray (N, ncols) — full data array
-        'grain_ids': ndarray (N,)
-        'orientations': ndarray (N, 3, 3)
-        'positions': ndarray (N, 3) — [X, Y, Z] in micrometers
-        'lattice_params': ndarray (N, 6) — [a, b, c, alpha, beta, gamma]
-        'strain_fable': ndarray (N, 3, 3)
-        'strain_kenesei': ndarray (N, 3, 3)
-        'confidences': ndarray (N,)
-        'radii': ndarray (N,)
-        'euler_angles': ndarray (N, 3) — in radians
+    dict with keys (present only if the file contains them):
+        'raw'           : ndarray (N, ncols) — full numeric data
+        'columns'       : list of column names parsed from the header
+        'grain_ids'     : ndarray (N,)
+        'orientations'  : ndarray (N, 3, 3)
+        'positions'     : ndarray (N, 3)  [X, Y, Z] (micrometers)
+        'lattice_params': ndarray (N, 6)  [a, b, c, alpha, beta, gamma]
+        'strain'        : ndarray (N, 3, 3) — Kenesei (d-spacing
+                          strain-gauge form, recommended default)
+        'strain_fable'  : ndarray (N, 3, 3) — alternate Fable-Beaudoin
+                          strain from fitted lattice parameters
+        'confidences'   : ndarray (N,)
+        'radii'         : ndarray (N,)
+        'phase'         : ndarray (N,)
+        'rms_error'     : ndarray (N,)
+        'euler_angles'  : ndarray (N, 3) — radians
     """
     if not os.path.exists(filepath):
         raise FileNotFoundError(f"Grains file not found: {filepath}")
 
-    data = np.genfromtxt(filepath, skip_header=GRAINS_HEADER_LINES)
+    columns, skip = _find_header_line(filepath)
+    data = np.genfromtxt(filepath, skip_header=skip)
     if data.ndim == 1:
         data = data.reshape(1, -1)
 
     N = data.shape[0]
-    result = {'raw': data}
-    result['grain_ids'] = data[:, 0].astype(int)
-    result['orientations'] = data[:, 1:10].reshape(N, 3, 3)
-    result['positions'] = data[:, 10:13]
-    result['lattice_params'] = data[:, 13:19]
-    result['strain_fable'] = data[:, 19:28].reshape(N, 3, 3)
-    result['strain_kenesei'] = data[:, 28:37].reshape(N, 3, 3)
+    result = {'raw': data, 'columns': columns}
 
-    if data.shape[1] > 38:
-        result['confidences'] = data[:, 38]
-    if data.shape[1] > 42:
-        result['radii'] = data[:, 42]
-    if data.shape[1] > 45:
-        result['euler_angles'] = data[:, 43:46]
+    # 3x3 tensor blocks
+    for out_key, col_names in _TENSOR_BLOCKS.items():
+        idxs = [_col_index(columns, c) for c in col_names]
+        if all(i is not None for i in idxs):
+            result[out_key] = data[:, idxs].reshape(N, 3, 3)
+
+    # Vector blocks
+    for out_key, col_names in _VECTOR_BLOCKS.items():
+        idxs = [_col_index(columns, c) for c in col_names]
+        if all(i is not None for i in idxs):
+            result[out_key] = data[:, idxs]
+
+    # Scalar columns
+    for out_key, aliases in _SCALAR_COLUMNS.items():
+        for name in aliases:
+            idx = _col_index(columns, name)
+            if idx is not None:
+                col = data[:, idx]
+                if out_key == "grain_ids" or out_key == "phase":
+                    result[out_key] = col.astype(int)
+                else:
+                    result[out_key] = col
+                break
 
     return result
 
@@ -79,21 +164,21 @@ def read_grains_h5(filepath: str) -> dict:
     Returns
     -------
     dict with keys:
-        'orientations': ndarray (N, 3, 3)
-        'euler_angles': ndarray (N, 3)
-        'positions': ndarray (N, 3)
+        'orientations'  : ndarray (N, 3, 3)
+        'euler_angles'  : ndarray (N, 3)
+        'positions'     : ndarray (N, 3)
         'lattice_params': ndarray (N, 6)
-        'strain_fable': ndarray (N, 3, 3)
-        'strain_kenesei': ndarray (N, 3, 3)
-        'radii': ndarray (N,)
-        'confidences': ndarray (N,)
-        'grain_ids': list of str
+        'strain'      : ndarray (N, 3, 3) — Kenesei (d-spacing form)
+        'strain_fable': ndarray (N, 3, 3) — Fable-Beaudoin alternate
+        'radii'         : ndarray (N,)
+        'confidences'   : ndarray (N,)
+        'grain_ids'     : list of str
     """
     import h5py
 
     grains = {
         'orientations': [], 'euler_angles': [], 'positions': [],
-        'lattice_params': [], 'strain_fable': [], 'strain_kenesei': [],
+        'lattice_params': [], 'strain': [], 'strain_fable': [],
         'radii': [], 'confidences': [], 'grain_ids': [],
     }
 
@@ -106,8 +191,10 @@ def read_grains_h5(filepath: str) -> dict:
             grains['euler_angles'].append(g['euler_angles'][()])
             grains['positions'].append(g['position'][()])
             grains['lattice_params'].append(g['lattice_params_fit'][()])
+            # Primary: Kenesei (strain-gauge / d-spacing based).
+            grains['strain'].append(g['strain_kenesei'][()])
+            # Alternate: Fable-Beaudoin (fitted lattice parameter).
             grains['strain_fable'].append(g['strain_fable'][()])
-            grains['strain_kenesei'].append(g['strain_kenesei'][()])
             grains['radii'].append(float(g['radius'][()]))
             grains['confidences'].append(float(g['confidence'][()]))
 
@@ -132,3 +219,44 @@ def read_grains(filepath: str) -> dict:
     if filepath.endswith('.h5') or filepath.endswith('.hdf5'):
         return read_grains_h5(filepath)
     return read_grains_csv(filepath)
+
+
+def example_data_path(filename: str = "GrainsSim.csv") -> str:
+    """Return the absolute path to a file shipped under ``examples/data/``.
+
+    Useful inside notebooks / tests so the default example works on any
+    install (editable or wheel):
+
+        >>> import midas_stress as ms
+        >>> g = ms.read_grains(ms.example_data_path())
+
+    Parameters
+    ----------
+    filename : str
+        Name of the bundled example file. Default: ``"GrainsSim.csv"``.
+
+    Returns
+    -------
+    str — absolute filesystem path.
+
+    Raises
+    ------
+    FileNotFoundError if the file is not shipped with the package.
+    """
+    here = os.path.dirname(os.path.abspath(__file__))
+    # Package layout: packages/midas_stress/midas_stress/io.py
+    #                 packages/midas_stress/examples/data/<file>
+    candidates = [
+        os.path.join(here, "..", "examples", "data", filename),
+        # Fallback for wheel installs that bundle data inside the package
+        os.path.join(here, "examples", "data", filename),
+        os.path.join(here, "_data", filename),
+    ]
+    for p in candidates:
+        p = os.path.abspath(p)
+        if os.path.exists(p):
+            return p
+    raise FileNotFoundError(
+        f"Example data file '{filename}' not found; searched "
+        f"{[os.path.abspath(c) for c in candidates]}"
+    )

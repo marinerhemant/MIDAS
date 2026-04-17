@@ -88,4 +88,20 @@ from .io import (
     read_grains,
     read_grains_csv,
     read_grains_h5,
+    example_data_path,
+)
+
+# --- Plasticity / slip-system analysis ---
+from .plasticity import (
+    get_slip_systems,
+    get_slip_systems_for_material,
+    list_slip_families,
+    slip_systems_to_lab,
+    schmid_factor,
+    resolved_shear_stress,
+    dominant_slip_system,
+    active_systems_from_crss,
+    yield_proximity,
+    taylor_factor,
+    HCP_RATIOS,
 )
