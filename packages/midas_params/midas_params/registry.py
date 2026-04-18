@@ -53,10 +53,13 @@ PARAMS: list[ParamSpec] = [
     ParamSpec(
         name="RawFolder", type=ParamType.PATH, category="Data source",
         description="Directory holding raw detector frames.",
-        applies_to=FF_PF, required_for=frozenset({FF}), stages=S_FILE,
+        applies_to=FF_PF, required_for=FF_PF, stages=S_FILE,
         validators=("directory_exists",),
-        notes="Required for FF (reads raw frames). Not required for PF, which "
-              "reads pre-generated .zip datasets (via ffGenerateZipRefactor).",
+        notes="Both FF and PF call ffGenerateZipRefactor on raw data by default "
+              "(convertFiles=1). The zip-only mode (-convertFiles 0 with a "
+              "pre-built .MIDAS.zip, or -dataFN with an HDF5 container) is a "
+              "re-run / simulation optimization and doesn't need this — but the "
+              "primary workflow always does.",
     ),
     ParamSpec(
         name="DataDirectory", type=ParamType.PATH, category="Data source",
@@ -636,12 +639,15 @@ PARAMS: list[ParamSpec] = [
     ParamSpec(
         name="MarginOme", type=ParamType.FLOAT, category="Indexing",
         description="ω tolerance for spot matching.",
-        applies_to=FNP, default=0, units="deg", typical=0.5, stages=S_INDEX,
+        applies_to=FF_PF, default=0, units="deg", typical=0.5, stages=S_INDEX,
+        notes="FF/PF only — NF uses ExcludePoleAngle for its own eta "
+              "exclusion scheme.",
     ),
     ParamSpec(
         name="MarginEta", type=ParamType.FLOAT, category="Indexing",
         description="η tolerance for spot matching.",
-        applies_to=FNP, default=0, units="deg", typical=500, stages=S_INDEX,
+        applies_to=FF_PF, default=0, units="deg", typical=500, stages=S_INDEX,
+        notes="FF/PF only.",
     ),
     ParamSpec(
         name="MarginRadial", type=ParamType.FLOAT, category="Indexing",

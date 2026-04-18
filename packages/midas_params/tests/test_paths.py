@@ -130,3 +130,58 @@ def test_ff_no_longer_includes_grain_keys_in_ri():
     assert "MinNrSpots" not in ri_names
     assert "Completeness" not in ri_names
     assert "GrainsFile" not in ri_names
+
+
+# ─── Regression: don't asymmetrically split FF/PF by accident ────────────────
+
+
+def test_raw_folder_required_for_both_ff_and_pf():
+    """Both FF and PF read raw data by default (ffGenerateZipRefactor
+    runs on raw frames, not zip). Previous registry mistakenly marked
+    RawFolder required for FF only."""
+    from midas_params.registry import by_name
+    spec = by_name()["RawFolder"]
+    assert Path.FF in spec.required_for
+    assert Path.PF in spec.required_for
+
+
+def test_pf_uses_completeness_stepsize_keys():
+    """PF flows through FitSetupParamsAllZarr which reads Completeness,
+    StepSizeOrient, StepSizePos from Zarr. They apply to BOTH FF and PF
+    (not FF-only)."""
+    from midas_params.registry import by_name
+    b = by_name()
+    for key in ("Completeness", "StepSizeOrient", "StepSizePos"):
+        spec = b[key]
+        assert Path.PF in spec.applies_to, \
+            f"{key} should apply to PF (flows through Zarr → FitSetupParamsAllZarr)"
+
+
+def test_margin_eta_ome_ff_pf_only_not_nf():
+    """NF uses ExcludePoleAngle for eta exclusion, not MarginEta/MarginOme."""
+    from midas_params.registry import by_name
+    b = by_name()
+    for key in ("MarginEta", "MarginOme"):
+        spec = b[key]
+        assert Path.FF in spec.applies_to
+        assert Path.PF in spec.applies_to
+        assert Path.NF not in spec.applies_to, \
+            f"{key} should NOT apply to NF (NF uses ExcludePoleAngle)"
+
+
+def test_nf_data_source_keys_separate_from_ff_pf():
+    """NF uses a completely separate raw-data vocabulary."""
+    from midas_params.registry import by_name
+    b = by_name()
+    # NF-only data keys
+    for key in ("DataDirectory", "OrigFileName", "ReducedFileName",
+                "extOrig", "extReduced", "RawStartNr", "NrFilesPerDistance"):
+        spec = b[key]
+        assert spec.applies_to == frozenset({Path.NF}), \
+            f"{key} should be NF-only, got {spec.applies_to}"
+    # FF/PF-only data keys should not leak into NF
+    for key in ("RawFolder", "FileStem", "NrFilesPerSweep",
+                "StartFileNrFirstLayer"):
+        spec = b[key]
+        assert Path.NF not in spec.applies_to, \
+            f"{key} should NOT apply to NF, got {spec.applies_to}"
