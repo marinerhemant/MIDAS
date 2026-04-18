@@ -253,6 +253,8 @@ def _derive_seeds(state: WizardState) -> None:
 
     Current derivations:
       - OmegaEnd = OmegaStart + OmegaStep × (EndNr − StartNr + 1)
+      - NrPixels ← max(NrPixelsY, NrPixelsZ)  when Y/Z set but NrPixels isn't
+      - NrPixelsY / NrPixelsZ ← NrPixels  when NrPixels set but Y/Z aren't
 
     Only fills in seeds that are NOT already present (user input or an
     explicit seed always wins).
@@ -275,6 +277,31 @@ def _derive_seeds(state: WizardState) -> None:
                 state.source["OmegaEnd"] = "derived from OmegaStart+OmegaStep×nFrames"
             except (TypeError, ValueError):
                 pass
+
+    # NrPixels ↔ NrPixelsY/Z: propagate whichever form is set
+    np_v = v.get("NrPixels")
+    ny_v = v.get("NrPixelsY")
+    nz_v = v.get("NrPixelsZ")
+    if np_v is not None and (ny_v is None or nz_v is None):
+        # NrPixels is set; derive missing Y/Z to match
+        try:
+            np_i = int(np_v)
+            if "NrPixelsY" not in v:
+                state.seed["NrPixelsY"] = np_i
+                state.source["NrPixelsY"] = "derived from NrPixels"
+            if "NrPixelsZ" not in v:
+                state.seed["NrPixelsZ"] = np_i
+                state.source["NrPixelsZ"] = "derived from NrPixels"
+        except (TypeError, ValueError):
+            pass
+    elif ny_v is not None and nz_v is not None and np_v is None:
+        # Both Y and Z set; derive NrPixels = max(Y, Z) to satisfy the shortcut
+        try:
+            derived = max(int(ny_v), int(nz_v))
+            state.seed["NrPixels"] = derived
+            state.source["NrPixels"] = "derived from max(NrPixelsY, NrPixelsZ)"
+        except (TypeError, ValueError):
+            pass
 
 
 def _prompt_multi_entry(spec: ParamSpec, state: WizardState, seed,

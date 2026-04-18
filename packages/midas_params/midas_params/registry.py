@@ -219,21 +219,29 @@ PARAMS: list[ParamSpec] = [
 
     ParamSpec(
         name="NrPixels", type=ParamType.INT, category="Detector geometry",
-        description="Square detector size (sets both NrPixelsY and NrPixelsZ).",
-        applies_to=ALL, required_for=ALL, units="pixels", stages=S_INDEX,
+        description="Square detector size (shortcut: sets both NrPixelsY and NrPixelsZ).",
+        applies_to=ALL, units="pixels", stages=S_INDEX,
         validators=("positive",),
+        notes="One of NrPixels OR (NrPixelsY AND NrPixelsZ) is required. "
+              "The MIDAS_ParamParser.c NrPixels handler copies its value "
+              "into both NrPixelsY and NrPixelsZ, so setting NrPixels is "
+              "equivalent to setting them both to the same value. The wizard "
+              "auto-derives NrPixels from max(Y, Z) when Y and Z are set.",
     ),
     ParamSpec(
         name="NrPixelsY", type=ParamType.INT, category="Detector geometry",
         description="Horizontal detector pixel count.",
         applies_to=ALL, units="pixels", stages=S_INDEX,
         validators=("positive",),
+        notes="Satisfies the NrPixels requirement together with NrPixelsZ. "
+              "Set these two if your detector is not square.",
     ),
     ParamSpec(
         name="NrPixelsZ", type=ParamType.INT, category="Detector geometry",
         description="Vertical detector pixel count.",
         applies_to=ALL, units="pixels", stages=S_INDEX,
         validators=("positive",),
+        notes="Satisfies the NrPixels requirement together with NrPixelsY.",
     ),
     ParamSpec(
         name="px", type=ParamType.FLOAT, category="Detector geometry",

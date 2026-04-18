@@ -315,3 +315,98 @@ def test_confirmation_multi_entry(monkeypatch, capsys):
     out = capsys.readouterr().out
     assert "RingThresh: 2 entries" in out
     assert "you entered" in out
+
+
+# ─── NrPixels ↔ NrPixelsY/Z derivation ───────────────────────────────────────
+
+
+def test_derive_nrpixels_from_y_and_z():
+    state = WizardState(
+        values={}, seed={"NrPixelsY": 2048, "NrPixelsZ": 2048},
+        source={}, path=Path.FF,
+    )
+    _derive_seeds(state)
+    assert state.seed["NrPixels"] == 2048
+    assert "derived" in state.source["NrPixels"]
+
+
+def test_derive_nrpixels_from_asymmetric_y_z():
+    """Non-square detector: NrPixels = max(Y, Z)."""
+    state = WizardState(
+        values={}, seed={"NrPixelsY": 1024, "NrPixelsZ": 512},
+        source={}, path=Path.FF,
+    )
+    _derive_seeds(state)
+    assert state.seed["NrPixels"] == 1024
+
+
+def test_derive_y_z_from_nrpixels():
+    state = WizardState(
+        values={}, seed={"NrPixels": 2048}, source={}, path=Path.FF,
+    )
+    _derive_seeds(state)
+    assert state.seed["NrPixelsY"] == 2048
+    assert state.seed["NrPixelsZ"] == 2048
+    assert "derived from NrPixels" in state.source["NrPixelsY"]
+
+
+def test_derive_nrpixels_respects_existing():
+    """If user supplied all three, don't overwrite."""
+    state = WizardState(
+        values={},
+        seed={"NrPixels": 999, "NrPixelsY": 1000, "NrPixelsZ": 1001},
+        source={"NrPixels": "user"},
+        path=Path.FF,
+    )
+    _derive_seeds(state)
+    assert state.seed["NrPixels"] == 999
+    assert "user" in state.source["NrPixels"]
+
+
+# ─── Validator: nrpixels_either_or cross-field rule ──────────────────────────
+
+
+def test_validator_accepts_nrpixels_alone(tmp_path):
+    from midas_params.validator import validate
+    fn = tmp_path / "p.txt"
+    fn.write_text("NrPixels 2048\n")
+    r = validate(str(fn), Path.FF)
+    np_errors = [i for i in r.errors if i.rule == "nrpixels_either_or"]
+    assert not np_errors
+
+
+def test_validator_accepts_y_and_z_without_nrpixels(tmp_path):
+    from midas_params.validator import validate
+    fn = tmp_path / "p.txt"
+    fn.write_text("NrPixelsY 2048\nNrPixelsZ 1024\n")
+    r = validate(str(fn), Path.FF)
+    np_errors = [i for i in r.errors if i.rule == "nrpixels_either_or"]
+    assert not np_errors
+
+
+def test_validator_flags_missing_both(tmp_path):
+    from midas_params.validator import validate
+    fn = tmp_path / "p.txt"
+    fn.write_text("# no detector size\n")
+    r = validate(str(fn), Path.FF)
+    assert any(i.rule == "nrpixels_either_or" for i in r.errors)
+
+
+def test_validator_flags_only_y_set(tmp_path):
+    """Having only one of Y/Z isn't enough — need both or NrPixels."""
+    from midas_params.validator import validate
+    fn = tmp_path / "p.txt"
+    fn.write_text("NrPixelsY 2048\n")  # no Z, no NrPixels
+    r = validate(str(fn), Path.FF)
+    assert any(i.rule == "nrpixels_either_or" for i in r.errors)
+
+
+def test_validator_warns_on_conflict(tmp_path):
+    """If user sets all three and they disagree, warn."""
+    from midas_params.validator import validate
+    fn = tmp_path / "p.txt"
+    fn.write_text("NrPixels 1000\nNrPixelsY 2048\nNrPixelsZ 2048\n")
+    r = validate(str(fn), Path.FF)
+    warns = [i for i in r.warnings if i.rule == "nrpixels_either_or"]
+    assert warns
+    assert "disagrees" in warns[0].message

@@ -292,6 +292,50 @@ def ri_etamax_gt_etamin(ctx: Ctx) -> list[ValidationIssue]:
     return out
 
 
+def nrpixels_either_or(ctx: Ctx) -> list[ValidationIssue]:
+    """At least one of {NrPixels, (NrPixelsY AND NrPixelsZ)} must be set.
+
+    The MIDAS text parser treats NrPixels as a shortcut that copies its
+    value into both NrPixelsY and NrPixelsZ, so either form satisfies the
+    detector-dimension requirement.
+    """
+    has_np = "NrPixels" in ctx.all_values
+    has_y = "NrPixelsY" in ctx.all_values
+    has_z = "NrPixelsZ" in ctx.all_values
+    if has_np or (has_y and has_z):
+        # Also warn if Y and Z disagree with NrPixels
+        if has_np and has_y and has_z:
+            np_v = ctx.all_values["NrPixels"]
+            y_v = ctx.all_values["NrPixelsY"]
+            z_v = ctx.all_values["NrPixelsZ"]
+            if not (np_v == y_v == z_v):
+                return [ValidationIssue(
+                    severity=Severity.WARNING,
+                    key="NrPixels",
+                    line=ctx.line_of.get("NrPixels"),
+                    message=(
+                        f"NrPixels={np_v} disagrees with NrPixelsY={y_v} / "
+                        f"NrPixelsZ={z_v}. The text parser will use NrPixels "
+                        f"and overwrite Y/Z to match it."
+                    ),
+                    suggestion=f"Set only NrPixels (for square detectors) OR "
+                               f"only NrPixelsY/NrPixelsZ (for non-square).",
+                    rule="nrpixels_either_or",
+                )]
+        return []
+    return [ValidationIssue(
+        severity=Severity.ERROR,
+        message=(
+            "Detector size is not set. Provide either NrPixels (for a square "
+            "detector) or both NrPixelsY and NrPixelsZ."
+        ),
+        key="NrPixels",
+        suggestion="Add e.g. `NrPixels 2048` for a 2048×2048 detector, or "
+                   "`NrPixelsY 2048` + `NrPixelsZ 512` for non-square.",
+        rule="nrpixels_either_or",
+    )]
+
+
 def pf_nscans_implies_scanstep(ctx: Ctx) -> list[ValidationIssue]:
     """When nScans > 1 (PF mode), ScanStep is effectively required so
     positions.csv can be generated; warn if missing."""
@@ -437,6 +481,7 @@ RULES: dict[str, RuleFn] = {
     "ri_rmax_gt_rmin": ri_rmax_gt_rmin,
     "ri_etamax_gt_etamin": ri_etamax_gt_etamin,
     "pf_nscans_implies_scanstep": pf_nscans_implies_scanstep,
+    "nrpixels_either_or": nrpixels_either_or,
 }
 
 
@@ -524,5 +569,14 @@ RULE_SPECS: list[CrossFieldRule] = [
         applies_to=frozenset({Path.PF}),
         severity=Severity.WARNING,
         check="pf_nscans_implies_scanstep",
+    ),
+    CrossFieldRule(
+        name="nrpixels_either_or",
+        description="Detector size: one of NrPixels or (NrPixelsY and "
+                    "NrPixelsZ) is required; warns if all three are set "
+                    "with conflicting values.",
+        applies_to=frozenset({Path.FF, Path.NF, Path.PF, Path.RI}),
+        severity=Severity.ERROR,
+        check="nrpixels_either_or",
     ),
 ]
