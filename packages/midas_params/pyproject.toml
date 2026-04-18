@@ -4,7 +4,7 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "midas-params"
-version = "0.1.3"
+version = "0.1.4"
 description = "MIDAS parameter-file registry, validator, and wizard for FF/NF/PF/RI pipelines"
 readme = "README.md"
 license = "BSD-3-Clause"
