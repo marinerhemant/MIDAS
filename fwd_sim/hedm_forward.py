@@ -62,6 +62,15 @@ class HEDMGeometry:
     n_pixels_z: int                # Detector pixels in z
     min_eta: float                 # Minimum eta angle (degrees)
     wavelength: float = 0.0        # X-ray wavelength (Angstroms)
+    # Detector tilts (degrees). Applied only in NF mode (flip_y=False), which
+    # compares predictions to raw detector images at pixel level. FF and
+    # pf-HEDM workflows apply a DetCor correction at peak-finding time, so
+    # their centroids are already tilt- and distortion-corrected; the
+    # forward model therefore ignores these fields when flip_y=True to avoid
+    # double-correcting.
+    tx: float = 0.0
+    ty: float = 0.0
+    tz: float = 0.0
     flip_y: bool = True            # FF/PF: True (DetHor = yBC - ydet/px).
                                    # NF:    False (pixel = yBC + ydet/px).
                                    # Validated against C code conventions.
@@ -205,6 +214,24 @@ class HEDMForwardModel(nn.Module):
         self.min_eta = geometry.min_eta * self.DEG2RAD  # store in radians
         self.wavelength = geometry.wavelength
         self.flip_y = geometry.flip_y
+
+        # Detector tilts (degrees). Stored as an nn.Parameter so they can be
+        # optimised via gradient descent (auto-calibration).  NF mode
+        # (flip_y=False) applies them via _apply_nf_tilt; FF/pf mode
+        # (flip_y=True) ignores them because the experimental pipeline pre-
+        # corrects for detector tilts at peak-finding time.
+        #
+        # Composition: RotMatTilts = Rz(tz) @ Ry(ty) @ Rx(tx)
+        # Matches RotationTilts() in NF_HEDM/src/SharedFuncsFit.c:230-266.
+        self.tilts = nn.Parameter(
+            torch.tensor([geometry.tx, geometry.ty, geometry.tz],
+                          dtype=torch.float64, device=device),
+            requires_grad=False,
+        )
+        self.tx = float(geometry.tx)
+        self.ty = float(geometry.ty)
+        self.tz = float(geometry.tz)
+        self._has_tilts = abs(self.tx) + abs(self.ty) + abs(self.tz) > 0.0
 
         # Scan config
         self.scan_config = scan_config
@@ -582,6 +609,114 @@ class HEDMForwardModel(nn.Module):
         return all_omega, eta, two_theta, valid
 
     # ------------------------------------------------------------------
+    #  Tilt rotation matrix (RotationTilts in SharedFuncsFit.c:230-266)
+    # ------------------------------------------------------------------
+
+    @staticmethod
+    def _build_rot_tilts(tx_deg: float, ty_deg: float, tz_deg: float,
+                         device: torch.device) -> torch.Tensor:
+        """Build the 3x3 NF-style tilt rotation matrix Rz(tz) @ Ry(ty) @ Rx(tx).
+
+        Matches RotationTilts() in NF_HEDM/src/SharedFuncsFit.c:230-266.
+        """
+        d2r = math.pi / 180.0
+        tx, ty, tz = tx_deg * d2r, ty_deg * d2r, tz_deg * d2r
+        cx, sx = math.cos(tx), math.sin(tx)
+        cy, sy = math.cos(ty), math.sin(ty)
+        cz, sz = math.cos(tz), math.sin(tz)
+        Rx = torch.tensor([[1,  0,  0], [0, cx, -sx], [0, sx,  cx]], dtype=torch.float64)
+        Ry = torch.tensor([[cy, 0, sy], [0,  1,  0], [-sy, 0, cy]], dtype=torch.float64)
+        Rz = torch.tensor([[cz, -sz, 0], [sz, cz, 0], [0,  0,  1]], dtype=torch.float64)
+        # Composition matches NF C: Rz @ Ry @ Rx
+        return (Rz @ Ry @ Rx).to(device)
+
+    def _build_rot_tilts_from_param(self, dtype) -> torch.Tensor:
+        """Build Rz(tz) @ Ry(ty) @ Rx(tx) from self.tilts (differentiable)."""
+        d2r = math.pi / 180.0
+        t = self.tilts.to(dtype) * d2r
+        tx_, ty_, tz_ = t[0], t[1], t[2]
+        cx, sx = torch.cos(tx_), torch.sin(tx_)
+        cy, sy = torch.cos(ty_), torch.sin(ty_)
+        cz, sz = torch.cos(tz_), torch.sin(tz_)
+        zero = torch.zeros((), dtype=dtype, device=t.device)
+        one  = torch.ones((),  dtype=dtype, device=t.device)
+        Rx = torch.stack([
+            torch.stack([one,  zero, zero]),
+            torch.stack([zero, cx,  -sx ]),
+            torch.stack([zero, sx,   cx ]),
+        ])
+        Ry = torch.stack([
+            torch.stack([cy,   zero, sy ]),
+            torch.stack([zero, one,  zero]),
+            torch.stack([-sy,  zero, cy ]),
+        ])
+        Rz = torch.stack([
+            torch.stack([cz, -sz, zero]),
+            torch.stack([sz,  cz, zero]),
+            torch.stack([zero, zero, one]),
+        ])
+        return Rz @ Ry @ Rx
+
+    def _apply_nf_tilt(self, ydet: torch.Tensor, zdet: torch.Tensor,
+                        Lsd_val) -> "tuple[torch.Tensor, torch.Tensor]":
+        """Apply the NF detector-tilt correction to lab-frame (ydet, zdet).
+
+        Ports the ray-plane intersection in
+        ``NF_HEDM/src/SharedFuncsFit.c:947-958``: builds
+        P0 = RotMatTilts @ [-Lsd, 0, 0], P1 = RotMatTilts @ [0, ydet, zdet],
+        and returns the (y, z) coordinates where the line from P0 through P1
+        crosses the plane x = 0. Reduces to the identity when tilts are zero.
+
+        The rotation matrix is rebuilt from ``self.tilts`` on every call, so
+        if ``self.tilts.requires_grad`` is True the tilt parameters enter the
+        autograd graph and can be optimised via gradient descent
+        (auto-calibration). ``Lsd_val`` can be a Python scalar or a scalar tensor.
+        """
+        if not self._has_tilts and not self.tilts.requires_grad:
+            return ydet, zdet
+        dtype = ydet.dtype
+        R = self._build_rot_tilts_from_param(dtype)
+        # P0 = -Lsd * R[:, 0]  (3 scalars)
+        p0x = -Lsd_val * R[0, 0]
+        p0y = -Lsd_val * R[1, 0]
+        p0z = -Lsd_val * R[2, 0]
+        # P1 = ydet * R[:, 1] + zdet * R[:, 2]  (pointwise on tensors)
+        P1x = ydet * R[0, 1] + zdet * R[0, 2]
+        P1y = ydet * R[1, 1] + zdet * R[1, 2]
+        P1z = ydet * R[2, 1] + zdet * R[2, 2]
+        ABCx = P1x - p0x
+        ABCy = P1y - p0y
+        ABCz = P1z - p0z
+        safe_denom = torch.where(
+            torch.abs(ABCx) < self.epsilon,
+            torch.full_like(ABCx, self.epsilon),
+            ABCx,
+        )
+        out_y = p0y - ABCy * p0x / safe_denom
+        out_z = p0z - ABCz * p0x / safe_denom
+        return out_y, out_z
+
+    @staticmethod
+    def _build_ff_tilt_rot(tx_deg: float, ty_deg: float, tz_deg: float,
+                           device: torch.device) -> torch.Tensor:
+        """Build the 3x3 FF-style tilt rotation matrix Rx(tx) @ Ry(ty) @ Rz(tz).
+
+        Matches CorrectTiltSpatialDistortion() in
+        FF_HEDM/src/ForwardSimulationCompressed.c:593-612.
+        Note the composition differs from the NF convention.
+        """
+        d2r = math.pi / 180.0
+        tx, ty, tz = tx_deg * d2r, ty_deg * d2r, tz_deg * d2r
+        cx, sx = math.cos(tx), math.sin(tx)
+        cy, sy = math.cos(ty), math.sin(ty)
+        cz, sz = math.cos(tz), math.sin(tz)
+        Rx = torch.tensor([[1,  0,  0], [0, cx, -sx], [0, sx,  cx]], dtype=torch.float64)
+        Ry = torch.tensor([[cy, 0, sy], [0,  1,  0], [-sy, 0, cy]], dtype=torch.float64)
+        Rz = torch.tensor([[cz, -sz, 0], [sz, cz, 0], [0,  0,  1]], dtype=torch.float64)
+        # Composition matches FF C: Rx @ Ry @ Rz
+        return (Rx @ Ry @ Rz).to(device)
+
+    # ------------------------------------------------------------------
     #  project_to_detector
     # ------------------------------------------------------------------
 
@@ -651,6 +786,35 @@ class HEDMForwardModel(nn.Module):
         dist_d = Lsd_d - x_grain.unsqueeze(0)  # (D, ..., 2N, M)
         ydet_d = y_grain.unsqueeze(0) - dist_d * tan_2th.unsqueeze(0) * sin_eta.unsqueeze(0)
         zdet_d = z_grain.unsqueeze(0) + dist_d * tan_2th.unsqueeze(0) * cos_eta.unsqueeze(0)
+
+        # Apply detector tilt -- NF mode only.
+        #
+        # Design note: FF and pf-HEDM experimental workflows apply a DetCor
+        # correction at peak-finding time, so the per-spot centroids in
+        # SpotMatrix.csv are already tilt- and distortion-corrected.  A
+        # differentiable forward model targeting FF/pf experimental data
+        # therefore must NOT apply tilts -- doing so would double-correct.
+        # NF-HEDM works at pixel level against raw detector images, with no
+        # DetCor step, so the forward model MUST include tilts to produce
+        # pixel predictions that match real NF measurements.
+        #
+        # The NF branch below ports the ray-plane intersection from
+        # NF_HEDM/src/SharedFuncsFit.c:947-958 (composition Rz @ Ry @ Rx,
+        # P0 = R @ [-Lsd, 0, 0]). The FF/pf path ignores tilts entirely.
+        if (not self.flip_y) and self._has_tilts:
+            # Per-distance tilt application. Use a loop to keep per-Lsd
+            # handling explicit (typical NF has 1-4 distances).
+            Lsd_list = self._Lsd.to(dtype)
+            out_y = []
+            out_z = []
+            for d in range(self.n_distances):
+                yd, zd = self._apply_nf_tilt(
+                    ydet_d[d], zdet_d[d], Lsd_list[d]
+                )
+                out_y.append(yd)
+                out_z.append(zd)
+            ydet_d = torch.stack(out_y, dim=0)
+            zdet_d = torch.stack(out_z, dim=0)
 
         # FF/PF: y-axis on detector flipped (yBC - ydet/px), validated against C
         # NF:    not flipped (yBC + ydet/px), validated against C
@@ -1195,13 +1359,15 @@ class HEDMForwardModel(nn.Module):
         ythis = -sin_eta_c * ring_radius
         zthis = cos_eta_c * ring_radius
 
-        # Project center reference (with tx=ty=tz=0, no RotMatTilts):
-        # outxyz[1] = ythis, outxyz[2] = zthis (identity tilt)
+        # Project center reference. For non-zero tilts, apply the NF
+        # ray-plane intersection (SharedFuncsFit.c:947-958).
         # YZSpotsTemp = outxyz/px + bc
         ybc_0 = self._y_BC[0].to(dtype)
         zbc_0 = self._z_BC[0].to(dtype)
-        y_center = ythis / self.px + ybc_0  # (2N, M)
-        z_center = zthis / self.px + zbc_0
+        Lsd_0_scalar = self._Lsd[0].to(dtype)
+        y_center_lab, z_center_lab = self._apply_nf_tilt(ythis, zthis, Lsd_0_scalar)
+        y_center = y_center_lab / self.px + ybc_0  # (2N, M)
+        z_center = z_center_lab / self.px + zbc_0
 
         # Project each vertex: DisplacementSpots for each of 3 vertices
         # vertices: (N, 3, 3) -> double to (2N, 3, 3)
@@ -1223,9 +1389,12 @@ class HEDMForwardModel(nn.Module):
             displ_y = ya + ythis * t
             displ_z = t * zthis
 
-            # To pixel (with tx=ty=tz=0, no tilt): pixel = displ/px + bc
-            yp = displ_y / self.px + ybc_0
-            zp = displ_z / self.px + zbc_0
+            # Apply NF tilt (no-op when tilts are zero)
+            displ_y_tilt, displ_z_tilt = self._apply_nf_tilt(
+                displ_y, displ_z, Lsd_0_scalar
+            )
+            yp = displ_y_tilt / self.px + ybc_0
+            zp = displ_z_tilt / self.px + zbc_0
             vert_y_pixel.append(yp)
             vert_z_pixel.append(zp)
 

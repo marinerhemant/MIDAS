@@ -21,6 +21,14 @@ parameters via the deformation gradient ``F = A @ A0^-1`` and
 the two forms are numerically equivalent to second order in
 strain; the d-spacing form has better noise properties and is
 the recommended default.
+
+**Units note.** MIDAS stores strain tensors in the CSV in
+microstrain (fractional strain * 1e6, applied via ``MultR = 1e6``
+in ``ProcessGrains.c``).  This parser rescales both ``strain`` and
+``strain_lattice`` by 1e-6 on read so they are returned as
+dimensionless strain, ready to feed directly to
+``hooke_stress`` / ``compute_stress`` / ``correct_d0`` without
+any user-side scaling.
 """
 
 import os
@@ -142,7 +150,14 @@ def read_grains_csv(filepath: str) -> dict:
     for out_key, col_names in _TENSOR_BLOCKS.items():
         idxs = [_col_index(columns, c) for c in col_names]
         if all(i is not None for i in idxs):
-            result[out_key] = data[:, idxs].reshape(N, 3, 3)
+            block = data[:, idxs].reshape(N, 3, 3)
+            # MIDAS stores eFab / eKen in microstrain (fractional
+            # strain * 1e6, via MultR = 1e6 in ProcessGrains.c).
+            # Rescale to dimensionless so downstream hooke_stress /
+            # compute_stress / correct_d0 consume physical strain.
+            if out_key in ("strain", "strain_lattice"):
+                block = block * 1e-6
+            result[out_key] = block
 
     # Vector blocks
     for out_key, col_names in _VECTOR_BLOCKS.items():
