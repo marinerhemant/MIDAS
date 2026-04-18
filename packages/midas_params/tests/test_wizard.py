@@ -209,3 +209,70 @@ def test_multi_entry_back_before_first_entry(monkeypatch):
     state = WizardState(values={}, seed={}, source={}, path=Path.FF)
     result = _prompt_for(spec, state)
     assert result == "back"
+
+
+# ─── Feedback / confirmation line after each prompt ──────────────────────────
+
+
+def test_confirmation_line_typed_value(monkeypatch, capsys):
+    monkeypatch.setattr(builtins, "input", _with_inputs(["229"]))
+    spec = by_name()["SpaceGroup"]
+    state = WizardState(values={}, seed={}, source={}, path=Path.FF)
+    _prompt_for(spec, state)
+    out = capsys.readouterr().out
+    assert "SpaceGroup: 229" in out
+    assert "(you entered)" in out
+
+
+def test_confirmation_line_seed_accepted(monkeypatch, capsys):
+    monkeypatch.setattr(builtins, "input", _with_inputs([""]))
+    spec = by_name()["Wavelength"]
+    state = WizardState(
+        values={}, seed={"Wavelength": 0.22291},
+        source={"Wavelength": "param-file:ps.txt"}, path=Path.FF,
+    )
+    _prompt_for(spec, state)
+    out = capsys.readouterr().out
+    assert "Wavelength: 0.22291" in out
+    assert "(seed)" in out
+
+
+def test_confirmation_line_default_accepted(monkeypatch, capsys):
+    monkeypatch.setattr(builtins, "input", _with_inputs([""]))
+    spec = by_name()["Padding"]
+    state = WizardState(values={}, seed={}, source={}, path=Path.FF)
+    _prompt_for(spec, state)
+    out = capsys.readouterr().out
+    assert "Padding: 6" in out
+    assert "(default)" in out
+
+
+def test_confirmation_line_typical_accepted(monkeypatch, capsys):
+    monkeypatch.setattr(builtins, "input", _with_inputs([""]))
+    spec = by_name()["MargABC"]
+    state = WizardState(values={}, seed={}, source={}, path=Path.FF)
+    _prompt_for(spec, state)
+    out = capsys.readouterr().out
+    assert "MargABC: 4" in out
+    assert "(typical)" in out
+
+
+def test_confirmation_line_skip(monkeypatch, capsys):
+    monkeypatch.setattr(builtins, "input", _with_inputs(["skip"]))
+    spec = by_name()["HeadSize"]  # optional
+    state = WizardState(values={"HeadSize": 8192}, seed={}, source={}, path=Path.FF)
+    _prompt_for(spec, state)
+    out = capsys.readouterr().out
+    assert "skipped" in out
+    assert "HeadSize" not in state.values
+
+
+def test_confirmation_multi_entry(monkeypatch, capsys):
+    monkeypatch.setattr(builtins, "input",
+                         _with_inputs(["1 100", "2 150", ""]))
+    spec = by_name()["RingThresh"]
+    state = WizardState(values={}, seed={}, source={}, path=Path.FF)
+    _prompt_for(spec, state)
+    out = capsys.readouterr().out
+    assert "RingThresh: 2 entries" in out
+    assert "you entered" in out

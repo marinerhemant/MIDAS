@@ -182,6 +182,7 @@ def _prompt_for(spec: ParamSpec, state: WizardState) -> str | None:
             return "back"
         if resp.lower() in ("skip", "!skip") and not is_required:
             state.values.pop(spec.name, None)
+            _confirm(spec, None, "skipped")
             return None
         if resp.lower() in ("?", "help", "!help"):
             _print_nav_help()
@@ -190,15 +191,19 @@ def _prompt_for(spec: ParamSpec, state: WizardState) -> str | None:
         if not resp:
             # Accept shown value (previously-entered, seed, typical, or default)
             if previously_entered is not None:
+                _confirm(spec, previously_entered, "you entered")
                 return None  # already in state.values
             if seed is not None:
                 state.values[spec.name] = seed
+                _confirm(spec, seed, "seed")
                 return None
             if spec.typical is not None:
                 state.values[spec.name] = spec.typical
+                _confirm(spec, spec.typical, "typical")
                 return None
             if spec.default is not None:
                 state.values[spec.name] = spec.default
+                _confirm(spec, spec.default, "default")
                 return None
             if is_required:
                 print(f"        !! '{spec.name}' is required. Please enter a value "
@@ -210,7 +215,20 @@ def _prompt_for(spec: ParamSpec, state: WizardState) -> str | None:
             print(f"        !! {err}")
             continue
         state.values[spec.name] = value
+        _confirm(spec, value, "you entered")
         return None
+
+
+def _confirm(spec: ParamSpec, value: Any, origin: str) -> None:
+    """Echo the accepted value so the user can verify what was recorded."""
+    if value is None:
+        print(f"        = (skipped — no value recorded for {spec.name})")
+        return
+    formatted = _fmt_value(value)
+    # Guard against very long list renders
+    if len(formatted) > 120:
+        formatted = formatted[:117] + "..."
+    print(f"        = {spec.name}: {formatted}  ({origin})")
 
 
 def _print_nav_help() -> None:
@@ -273,6 +291,7 @@ def _prompt_multi_entry(spec: ParamSpec, state: WizardState, seed,
     else:
         seed_source_note = ""
 
+    kept_from_seed = False
     if effective_seed is not None:
         # Pre-populate from seed; show as a confirmation prompt
         if isinstance(effective_seed, list):
@@ -287,6 +306,7 @@ def _prompt_multi_entry(spec: ParamSpec, state: WizardState, seed,
                 entries = []
             else:
                 state.values[spec.name] = entries
+                kept_from_seed = True
                 print(f"        Add more? (blank line to stop)")
                 # fall through to entry loop
 
@@ -296,9 +316,6 @@ def _prompt_multi_entry(spec: ParamSpec, state: WizardState, seed,
         resp = input(input_prompt).strip()
         if resp.lower() in ("back", "b"):
             if not entries:
-                # Never added an entry yet — let the user go back to fix
-                # a prior prompt (common case: they typed 'back' because
-                # they realized they need to change something upstream).
                 return "back"
             # Mid-list: break out and keep the entries typed so far
             print("        (keeping entries so far; use 'back' before typing any "
@@ -308,14 +325,34 @@ def _prompt_multi_entry(spec: ParamSpec, state: WizardState, seed,
             break
         value, err = _parse_one_entry(resp, spec)
         if err:
-            print(f"    !! {err}")
+            print(f"        !! {err}")
             continue
         entries.append(value)
 
     if entries:
         state.values[spec.name] = entries
+        origin = "kept seed" if kept_from_seed and len(entries) == len(effective_seed or []) \
+                 else ("seed + added" if kept_from_seed else "you entered")
+        _confirm_multi(spec, entries, origin)
     elif state.path in spec.required_for:
-        print(f"    !! {spec.name} requires at least one entry.")
+        print(f"        !! {spec.name} requires at least one entry.")
+    else:
+        _confirm(spec, None, "skipped")
+    return None
+
+
+def _confirm_multi(spec: ParamSpec, entries: list[Any], origin: str) -> None:
+    """Echo a multi-entry value. Lists with one entry render compactly;
+    longer lists get a count and one-per-line summary."""
+    if len(entries) == 1:
+        print(f"        = {spec.name}: {_fmt_value(entries[0])}  ({origin})")
+        return
+    print(f"        = {spec.name}: {len(entries)} entries  ({origin})")
+    for i, e in enumerate(entries, start=1):
+        fmt = _fmt_value(e)
+        if len(fmt) > 100:
+            fmt = fmt[:97] + "..."
+        print(f"            {i}: {fmt}")
 
 
 # ─── Top-level entry point ───────────────────────────────────────────────────
