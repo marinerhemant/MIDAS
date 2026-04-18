@@ -294,12 +294,17 @@ int main(int argc, char *argv[]) {
       }
     }
   }
+  // Header must match the 24-column data layout written below (16 from
+  // SpotsMat[0..15] + 8 from PowderIntensity, SigmaR, SigmaEta, NrPx,
+  // NrPxTot, RawSumIntensity, maskTouched, FitRMSE). Previously the header
+  // named only 22 columns; downstream readers that infer column count from
+  // the header saw a mismatch on every data row.
   char header[2048] =
       "SpotID IntegratedIntensity Omega(degrees) YCen(px) ZCen(px)"
       " IMax MinOme(degrees) MaxOme(degress) Radius(px) Theta(degrees) "
       "Eta(degrees)"
       " DeltaOmega NImgs RingNr GrainVolume GrainRadius PowderIntensity SigmaR "
-      "SigmaEta NrPx NrPxTot RawSumIntensity\n";
+      "SigmaEta NrPx NrPxTot RawSumIntensity maskTouched FitRMSE\n";
   char OutFile[2048];
   sprintf(OutFile, "%s/Radius_StartNr_%d_EndNr_%d.csv", Folder, StartNr, EndNr);
   FILE *outfile;

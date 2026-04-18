@@ -1035,15 +1035,21 @@ int main(int argc, char *argv[]) {
       }
     }
   }
+  // Final flush of peaks that were never merged with a later frame (the
+  // last frame's residual peaks). Must match the 17-column format used by
+  // the single-file and mid-loop writers at lines 725 and 923 — otherwise
+  // the CSV has ragged rows and genfromtxt fails on the tail.
   for (i = 0; i < nSpots; i++) {
     fprintf(OutFile,
-            "%d %lf %lf %lf %lf %lf %lf %lf %lf %lf %lf %lf %lf %lf %lf\n",
+            "%d %lf %lf %lf %lf %lf %lf %lf %lf %lf %lf %lf %lf %lf %lf %lf "
+            "%lf\n",
             SpotIDNr, CurrentIDs[i][1], (CurrentIDs[i][2] / CurrentIDs[i][1]),
             (CurrentIDs[i][3] / CurrentIDs[i][1]),
             (CurrentIDs[i][4] / CurrentIDs[i][1]), CurrentIDs[i][5],
             CurrentIDs[i][10], CurrentIDs[i][11], CurrentIDs[i][12],
             CurrentIDs[i][13], CurrentIDs[i][14], CurrentIDs[i][15],
-            CurrentIDs[i][6], CurrentIDs[i][7], CurrentIDs[i][16]);
+            CurrentIDs[i][6], CurrentIDs[i][7], CurrentIDs[i][16],
+            CurrentIDs[i][17], CurrentIDs[i][18]);
     // Write final MergeMap entries
     {
       ConstituentNode *cn = constituents[i];
