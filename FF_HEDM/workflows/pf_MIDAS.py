@@ -1044,6 +1044,19 @@ def main():
             skip=args.skipValidation, strict=args.strictValidation,
         ):
             sys.exit(1)
+
+    # --- Auto-compute smarter runtime defaults for -numFrameChunks and
+    #     -preProcThresh when left at the -1 sentinel. ---
+    try:
+        from midas_params.hook import resolve_runtime_defaults
+        nchunks, preproc = resolve_runtime_defaults(
+            param_file=param_path,
+            num_frame_chunks=nchunks,
+            pre_proc_thresh=preproc,
+            n_cpus=numProcs,
+        )
+    except ImportError:
+        pass
     if micFN and not os.path.isabs(micFN):
         micFN = os.path.abspath(micFN)
     if grainsFN and not os.path.isabs(grainsFN):

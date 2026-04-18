@@ -2030,6 +2030,21 @@ def main():
             if not ok:
                 sys.exit(1)
 
+    # --- Auto-compute smarter runtime defaults for -numFrameChunks and
+    #     -preProcThresh when left at the -1 sentinel. ---
+    if ps_fn and args.reprocess != 1:
+        try:
+            from midas_params.hook import resolve_runtime_defaults
+            n_chunks, preproc = resolve_runtime_defaults(
+                param_file=ps_fn,
+                num_frame_chunks=n_chunks,
+                pre_proc_thresh=preproc,
+                n_cpus=num_procs,
+                logger=logger,
+            )
+        except ImportError:
+            pass
+
     # Handle reprocess mode
     if args.reprocess == 1:
         reprocess_dir = result_dir if result_dir else os.getcwd()

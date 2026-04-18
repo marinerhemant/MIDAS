@@ -106,3 +106,74 @@ def _log(logger: Any, level: str, msg: str) -> None:
             level, "[LOG]"
         )
         print(f"{prefix} {msg}", file=sys.stderr)
+
+
+# ─── Runtime-default resolution (FF / PF) ────────────────────────────────────
+
+
+def resolve_runtime_defaults(
+    param_file: str,
+    num_frame_chunks: int,
+    pre_proc_thresh: int,
+    n_cpus: int,
+    logger: Any = None,
+) -> tuple[int, int]:
+    """Fill in smarter defaults for `-numFrameChunks` and `-preProcThresh`
+    when the caller left them at the sentinel `-1`.
+
+    Rules:
+      - `numFrameChunks`: if -1, set to `n_cpus * 4` (clamped to ≥ 1).
+      - `preProcThresh`:  if -1, set to min of the intensity column in
+                          all `RingThresh` entries in the param file.
+                          If no `RingThresh` entries exist, leave at -1
+                          (pre-processing threshold not applied) and warn.
+
+    Both workflows (ff_MIDAS.py, pf_MIDAS.py) call this after argparse
+    and after preflight validation.
+
+    Returns the (possibly adjusted) pair. Values the caller explicitly
+    passed (non-`-1`) are returned unchanged.
+    """
+    if num_frame_chunks == -1:
+        num_frame_chunks = max(1, int(n_cpus) * 4)
+        _log(logger, "info",
+             f"numFrameChunks auto-set to {num_frame_chunks} (nCPUs × 4)")
+
+    if pre_proc_thresh == -1:
+        min_thresh = _min_ringthresh(param_file)
+        if min_thresh is not None:
+            pre_proc_thresh = int(min_thresh)
+            _log(logger, "info",
+                 f"preProcThresh auto-set to {pre_proc_thresh} "
+                 f"(min RingThresh intensity)")
+        else:
+            _log(logger, "warning",
+                 "preProcThresh left at -1: no RingThresh entries found in "
+                 "param file (pre-processing threshold not applied)")
+    return num_frame_chunks, pre_proc_thresh
+
+
+def _min_ringthresh(param_file: str) -> float | None:
+    """Parse the param file and return the minimum of the second token on
+    each `RingThresh` line. Returns None if no `RingThresh` entries exist
+    or parsing fails."""
+    try:
+        from .parser import parse_raw
+    except ImportError:
+        return None
+    try:
+        raw, _ = parse_raw(param_file)
+    except Exception:
+        return None
+    rings = raw.get("RingThresh", [])
+    thresholds: list[float] = []
+    for tokens in rings:
+        if len(tokens) >= 2:
+            try:
+                thresholds.append(float(tokens[1]))
+            except ValueError:
+                # Malformed entry — skip; the validator will flag it
+                pass
+    if not thresholds:
+        return None
+    return min(thresholds)
