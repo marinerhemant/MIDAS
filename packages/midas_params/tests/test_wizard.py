@@ -146,6 +146,45 @@ def test_skip_returns_none_and_drops_key(monkeypatch):
     assert "Padding" not in state.values
 
 
+def test_skip_aliases_delete_drop(monkeypatch):
+    """'del', 'delete', 'drop' are aliases for 'skip'."""
+    spec = by_name()["Padding"]
+    for cmd in ("del", "delete", "drop", "!del"):
+        monkeypatch.setattr(builtins, "input", _with_inputs([cmd]))
+        state = WizardState(values={"Padding": 6}, seed={}, source={}, path=Path.FF)
+        result = _prompt_for(spec, state)
+        assert result is None
+        assert "Padding" not in state.values
+
+
+def test_skip_works_on_required_with_warning(monkeypatch, capsys):
+    """Typing 'skip' on a required key removes it and emits a warning."""
+    monkeypatch.setattr(builtins, "input", _with_inputs(["skip"]))
+    spec = by_name()["Wavelength"]  # required for FF
+    assert Path.FF in spec.required_for
+    state = WizardState(values={"Wavelength": 0.22}, seed={}, source={},
+                         path=Path.FF)
+    result = _prompt_for(spec, state)
+    assert result is None
+    assert "Wavelength" not in state.values
+    out = capsys.readouterr().out
+    assert "deleted" in out.lower()
+    assert "required" in out.lower()
+    assert "validator will flag" in out.lower()
+
+
+def test_skip_multi_entry(monkeypatch):
+    """'skip' in the multi-entry loop also drops the whole key."""
+    monkeypatch.setattr(builtins, "input", _with_inputs(["skip"]))
+    spec = by_name()["RingThresh"]
+    assert spec.multi_entry
+    state = WizardState(values={"RingThresh": [[1, 100]]}, seed={}, source={},
+                         path=Path.FF)
+    result = _prompt_for(spec, state)
+    assert result is None
+    assert "RingThresh" not in state.values
+
+
 def test_plain_enter_accepts_seed(monkeypatch):
     monkeypatch.setattr(builtins, "input", _with_inputs([""]))
     spec = by_name()["SpaceGroup"]
@@ -263,7 +302,7 @@ def test_confirmation_line_skip(monkeypatch, capsys):
     state = WizardState(values={"HeadSize": 8192}, seed={}, source={}, path=Path.FF)
     _prompt_for(spec, state)
     out = capsys.readouterr().out
-    assert "skipped" in out
+    assert "deleted" in out.lower()
     assert "HeadSize" not in state.values
 
 

@@ -180,9 +180,14 @@ def _prompt_for(spec: ParamSpec, state: WizardState) -> str | None:
         # Navigation commands
         if resp.lower() in ("back", "b", "!back"):
             return "back"
-        if resp.lower() in ("skip", "!skip") and not is_required:
+        if resp.lower() in ("skip", "!skip", "del", "delete", "!del", "drop"):
             state.values.pop(spec.name, None)
-            _confirm(spec, None, "skipped")
+            if is_required:
+                print(f"        = (deleted — {spec.name} will NOT be written. "
+                      f"It's required; validator will flag it after the file is saved.)")
+            else:
+                print(f"        = (deleted — {spec.name} will NOT be written; "
+                      f"MIDAS will use its internal default.)")
             return None
         if resp.lower() in ("?", "help", "!help"):
             _print_nav_help()
@@ -233,10 +238,13 @@ def _confirm(spec: ParamSpec, value: Any, origin: str) -> None:
 
 def _print_nav_help() -> None:
     print("        Navigation:")
-    print("          <Enter>  accept the bracketed value")
-    print("          back / b go back to the previous prompt")
-    print("          skip     skip this (optional keys only)")
-    print("          ?        this help")
+    print("          <Enter>            accept the bracketed value")
+    print("          back / b           go back to the previous prompt")
+    print("          skip / del / drop  delete this parameter (don't write it)")
+    print("          ?                  this help")
+    print("        Deleting a required parameter is allowed but the validator")
+    print("        will flag it after save — useful for letting MIDAS fall back")
+    print("        to its internal defaults.")
 
 
 def _derive_seeds(state: WizardState) -> None:
@@ -296,12 +304,23 @@ def _prompt_multi_entry(spec: ParamSpec, state: WizardState, seed,
         # Pre-populate from seed; show as a confirmation prompt
         if isinstance(effective_seed, list):
             entries = list(effective_seed)
-            print(f"        (pre-filled: {len(entries)} entry{'ies' if len(entries) != 1 else ''}{' ' + seed_source_note if seed_source_note else ''})")
+            plural = "entries" if len(entries) != 1 else "entry"
+            src_tag = f" {seed_source_note}" if seed_source_note else ""
+            print(f"        (pre-filled: {len(entries)} {plural}{src_tag})")
             for i, e in enumerate(entries):
                 print(f"          {i+1}: {e}")
-            resp = input("        Keep these? [Y/n/back]: ").strip().lower()
+            resp = input("        Keep these? [Y/n/skip/back]: ").strip().lower()
             if resp in ("back", "b"):
                 return "back"
+            if resp in ("skip", "del", "delete", "drop", "!skip", "!del"):
+                state.values.pop(spec.name, None)
+                if is_required:
+                    print(f"        = (deleted — {spec.name} will NOT be written. "
+                          f"It's required; validator will flag it.)")
+                else:
+                    print(f"        = (deleted — {spec.name} will NOT be written; "
+                          f"MIDAS will use its internal default.)")
+                return None
             if resp in ("n", "no"):
                 entries = []
             else:
@@ -311,7 +330,7 @@ def _prompt_multi_entry(spec: ParamSpec, state: WizardState, seed,
                 # fall through to entry loop
 
     print(f"        Enter {spec.name} values one per line "
-          f"(blank to finish, 'back' to revisit previous prompt).")
+          f"(blank to finish; 'back' to revisit; 'skip' to delete the key).")
     while True:
         resp = input(input_prompt).strip()
         if resp.lower() in ("back", "b"):
@@ -321,6 +340,16 @@ def _prompt_multi_entry(spec: ParamSpec, state: WizardState, seed,
             print("        (keeping entries so far; use 'back' before typing any "
                   "entry to revisit prior prompts)")
             break
+        if resp.lower() in ("skip", "del", "delete", "drop", "!skip", "!del"):
+            # Drop the key entirely from the output
+            state.values.pop(spec.name, None)
+            if is_required:
+                print(f"        = (deleted — {spec.name} will NOT be written. "
+                      f"It's required; validator will flag it.)")
+            else:
+                print(f"        = (deleted — {spec.name} will NOT be written; "
+                      f"MIDAS will use its internal default.)")
+            return None
         if not resp:
             break
         value, err = _parse_one_entry(resp, spec)
@@ -423,11 +452,12 @@ def run_wizard(
         for w in merged.warnings:
             print(f"  - {w}")
     print()
-    print("Per prompt:  <Enter> accept bracketed value")
-    print("             back / b  go back to previous prompt")
-    print("             skip      skip this (optional only)")
-    print("             ?         help")
-    print("Required keys are marked with *.")
+    print("Per prompt:  <Enter>            accept bracketed value")
+    print("             back / b           go back to previous prompt")
+    print("             skip / del / drop  delete this parameter (don't write it)")
+    print("             ?                  show this help")
+    print("Required keys are marked with *. Deleting a required key is allowed")
+    print("but the validator will flag it after save.")
     print()
 
     # Build a flat list of (category_index, category_name, spec) so we can
