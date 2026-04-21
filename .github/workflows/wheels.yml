@@ -88,7 +88,11 @@ jobs:
           package-dir: packages/${{ needs.which.outputs.package }}
         env:
           CIBW_BUILD: cp${{ matrix.python }}-*
-          CIBW_SKIP: "*-musllinux_* pp* *-win*"
+          # Skip i686 (32-bit Linux — no modern SciPy stack ships for it,
+          # and manylinux2014_i686 uses yum not dnf so our before-all would
+          # error anyway), musllinux (alpine — no scientific Python demand),
+          # PyPy, and Windows (never supported).
+          CIBW_SKIP: "*-musllinux_* pp* *-win* *-i686"
           # macOS env hints (brew installs are in pyproject.toml's
           # [tool.cibuildwheel.macos].before-all so they're per-package):
           #   - MACOSX_DEPLOYMENT_TARGET matches the runner. Homebrew

@@ -68,7 +68,7 @@ cmake.define.PACKAGE_VERSION = "0.1.0"
 
 [tool.cibuildwheel]
 build = "cp39-* cp310-* cp311-* cp312-*"
-skip = "*-musllinux_* pp* *-win*"
+skip = "*-musllinux_* pp* *-win* *-i686"
 build-verbosity = 1
 test-command = "python -c 'import midas_integrate; print(midas_integrate.__version__)'"
 
