@@ -25,8 +25,6 @@ jobs:
         package:
           - midas_stress
           - midas_params
-          - midas_auto_calibrate
-          - midas_integrate
 
     steps:
       - uses: actions/checkout@v4
@@ -35,57 +33,6 @@ jobs:
         uses: actions/setup-python@v5
         with:
           python-version: ${{ matrix.python-version }}
-
-      # C-compiled packages need system libs (HDF5, libTIFF, OpenMP, and —
-      # for midas-integrate — BLOSC2 + libzip). NLopt is FetchContent'd by
-      # our CMake files so no system install needed for that.
-      - name: Install C build deps (Linux, C-compiled packages only)
-        if: >-
-          (matrix.package == 'midas_auto_calibrate' ||
-           matrix.package == 'midas_integrate')
-          && runner.os == 'Linux'
-        run: |
-          sudo apt-get update
-          sudo apt-get install -y cmake libhdf5-dev libtiff-dev libomp-dev
-          # midas_integrate additionally needs BLOSC2 + libzip for ZarrReader.
-          if [[ "${{ matrix.package }}" == "midas_integrate" ]]; then
-            sudo apt-get install -y libblosc2-dev libzip-dev
-          fi
-
-      - name: Install C build deps (macOS, C-compiled packages only)
-        if: >-
-          (matrix.package == 'midas_auto_calibrate' ||
-           matrix.package == 'midas_integrate')
-          && runner.os == 'macOS'
-        run: |
-          brew update
-          brew install cmake hdf5 libtiff libomp
-          if [[ "${{ matrix.package }}" == "midas_integrate" ]]; then
-            brew install c-blosc2 libzip
-          fi
-
-      # macOS libomp is keg-only and AppleClang's CMake FindOpenMP can't
-      # locate it without hints. Export OpenMP_ROOT + include/lib paths so
-      # scikit-build-core's CMake configure finds it during `pip install -e`.
-      - name: Configure OpenMP hints for CMake (macOS, C-compiled packages)
-        if: >-
-          (matrix.package == 'midas_auto_calibrate' ||
-           matrix.package == 'midas_integrate')
-          && runner.os == 'macOS'
-        run: |
-          LIBOMP_PREFIX="$(brew --prefix libomp)"
-          {
-            echo "OpenMP_ROOT=$LIBOMP_PREFIX"
-            echo "LDFLAGS=-L$LIBOMP_PREFIX/lib"
-            echo "CPPFLAGS=-I$LIBOMP_PREFIX/include"
-          } >> "$GITHUB_ENV"
-
-      # midas_integrate has a hard dep on midas_auto_calibrate for the
-      # shared DetectorGeometry dataclass + midas_bin() discovery chain.
-      # Install it first so pytest doesn't choke on the import.
-      - name: Install midas_auto_calibrate first (required by midas_integrate)
-        if: matrix.package == 'midas_integrate'
-        run: pip install -e "packages/midas_auto_calibrate"
 
       - name: Install ${{ matrix.package }} (editable, with dev extras)
         run: pip install -e "packages/${{ matrix.package }}[dev]"
@@ -97,14 +44,10 @@ jobs:
 
   # ─── Build + publish: triggered by GitHub release only ────────────────────
   # The tag name selects which package to publish:
-  #   midas-stress-v*          → midas_stress   (pure Python, handled here)
-  #   midas-params-v*          → midas_params   (pure Python, handled here)
+  #   midas-stress-v*  → midas_stress
+  #   midas-params-v*  → midas_params
   #
-  # C-compiled packages (midas-auto-calibrate, midas-integrate,
-  # midas-integrate-gpu) are handled by wheels.yml via cibuildwheel, not
-  # this workflow — we skip them here.
-  #
-  # Release tags without a recognised prefix are ignored (no-op build).
+  # Release tags without one of these prefixes are ignored (no-op build).
   build:
     needs: test
     runs-on: ubuntu-latest
@@ -126,12 +69,6 @@ jobs:
           elif [[ "$TAG" == midas-params-v* ]]; then
             echo "package=midas_params" >> "$GITHUB_OUTPUT"
             echo "pypi_name=midas-params" >> "$GITHUB_OUTPUT"
-          elif [[ "$TAG" == midas-auto-calibrate-v* ]] || \
-               [[ "$TAG" == midas-integrate-v* ]] || \
-               [[ "$TAG" == midas-integrate-gpu-v* ]]; then
-            echo "Tag $TAG belongs to a C-compiled package; delegated to wheels.yml."
-            echo "package=" >> "$GITHUB_OUTPUT"
-            echo "pypi_name=" >> "$GITHUB_OUTPUT"
           else
             echo "Tag $TAG does not match any known package prefix; skipping."
             echo "package=" >> "$GITHUB_OUTPUT"
