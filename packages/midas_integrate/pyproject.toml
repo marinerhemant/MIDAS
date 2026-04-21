@@ -74,10 +74,10 @@ test-command = "python -c 'import midas_integrate; print(midas_integrate.__versi
 
 [tool.cibuildwheel.linux]
 manylinux-x86_64-image = "quay.io/pypa/manylinux_2_28_x86_64"
-before-all = "bash {project}/scripts/install_deps_linux.sh"
+before-all = "dnf install -y epel-release || true && dnf install -y hdf5-devel libtiff-devel blosc2-devel libzip-devel && ldconfig"
 
 [tool.cibuildwheel.macos]
-before-all = "bash {project}/scripts/install_deps_macos.sh"
+before-all = "brew install hdf5 libtiff libomp c-blosc2 libzip"
 environment = { MACOSX_DEPLOYMENT_TARGET = "11.0" }
 
 [tool.pytest.ini_options]

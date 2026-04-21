@@ -78,12 +78,16 @@ build-verbosity = 1
 test-command = "python -c 'import midas_auto_calibrate; print(midas_auto_calibrate.__version__)'"
 
 [tool.cibuildwheel.linux]
-# manylinux_2_28 gets nlopt + libomp via before-all.
+# manylinux_2_28 is based on AlmaLinux 8 and ships gcc's libgomp, so no
+# OpenMP install needed. HDF5 + libTIFF via dnf. NLopt is FetchContent'd
+# by CMakeLists.txt.
 manylinux-x86_64-image = "quay.io/pypa/manylinux_2_28_x86_64"
-before-all = "bash {project}/scripts/install_deps_linux.sh"
+before-all = "dnf install -y epel-release || true && dnf install -y hdf5-devel libtiff-devel && ldconfig"
 
 [tool.cibuildwheel.macos]
-before-all = "bash {project}/scripts/install_deps_macos.sh"
+# libomp is keg-only; OpenMP env hints come from CIBW_ENVIRONMENT_MACOS
+# in wheels.yml so workflow_dispatch and release paths share them.
+before-all = "brew install hdf5 libtiff libomp"
 environment = { MACOSX_DEPLOYMENT_TARGET = "11.0" }
 
 [tool.pytest.ini_options]

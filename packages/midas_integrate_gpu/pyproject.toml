@@ -56,8 +56,10 @@ build-verbosity = 1
 test-command = "python -c 'import midas_integrate_gpu; print(midas_integrate_gpu.__version__)'"
 
 [tool.cibuildwheel.linux]
+# nvidia/cuda:12.4.1-devel-ubuntu22.04 is Ubuntu-based (apt, not dnf) and
+# bundles nvcc + CUDA runtime. Add host-side build tools + OpenMP runtime.
 manylinux-x86_64-image = "nvidia/cuda:12.4.1-devel-ubuntu22.04"
-before-all = "bash {project}/scripts/install_deps_linux.sh"
+before-all = "apt-get update && apt-get install -y --no-install-recommends build-essential cmake git libgomp1 libpthread-stubs0-dev pkg-config python3-dev && ldconfig"
 environment = { CUDA_HOME = "/usr/local/cuda" }
 
 [tool.pytest.ini_options]
