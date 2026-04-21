@@ -346,118 +346,144 @@ def run_image_processing(args: argparse.Namespace, params: Dict, t0: float):
         
     logger.info(f"Image processing finished. Time taken: {time.time() - t0:.2f} seconds.")
 
-def run_fitting_and_postprocessing(args: argparse.Namespace, params: Dict, t0: float, ph5=None):
-    """Handles memory mapping, fitting, and final parsing."""
+def run_fitting_and_postprocessing(args: argparse.Namespace, params: Dict, t0: float, ph5=None, should_run=None):
+    """Handles memory mapping, fitting, and final parsing.
+
+    should_run: optional callable(stage_name) -> bool. When provided, gates
+    mmap / fitting / parse_mic / consolidation individually so -restartFrom
+    correctly targets sub-stages. When None, all stages run (fresh execution).
+    """
     logDir, resultFolder = params['logDir'], params['resultFolder']
+    _run = should_run if should_run is not None else (lambda _s: True)
 
-    # Skip MMapImageInfo if all binary files already exist
-    # (MakeDiffrSpots now writes .bin directly, ImageProcessing writes SpotsInfo.bin)
-    required_bins = ['SpotsInfo.bin', 'DiffractionSpots.bin', 'Key.bin', 'OrientMat.bin']
-    all_bins_exist = all(os.path.exists(os.path.join(resultFolder, f)) for f in required_bins)
-    if all_bins_exist:
-        logger.info("All binary files exist — skipping MMapImageInfo.")
+    if _run('mmap'):
+        # Skip MMapImageInfo if all binary files already exist
+        # (MakeDiffrSpots now writes .bin directly, ImageProcessing writes SpotsInfo.bin)
+        required_bins = ['SpotsInfo.bin', 'DiffractionSpots.bin', 'Key.bin', 'OrientMat.bin']
+        all_bins_exist = all(os.path.exists(os.path.join(resultFolder, f)) for f in required_bins)
+        if all_bins_exist:
+            logger.info("All binary files exist — skipping MMapImageInfo.")
+        else:
+            missing = [f for f in required_bins if not os.path.exists(os.path.join(resultFolder, f))]
+            logger.info(f"Missing binary files {missing} — running MMapImageInfo.")
+            run_command(
+                cmd=os.path.join(bin_dir, "MMapImageInfo") + f" {args.paramFN} {args.nCPUs}",
+                working_dir=resultFolder,
+                out_file=f'{logDir}/map_out.csv',
+                err_file=f'{logDir}/map_err.csv'
+            )
+        if ph5 is not None:
+            ph5.mark('mmap')
     else:
-        missing = [f for f in required_bins if not os.path.exists(os.path.join(resultFolder, f))]
-        logger.info(f"Missing binary files {missing} — running MMapImageInfo.")
-        run_command(
-            cmd=os.path.join(bin_dir, "MMapImageInfo") + f" {args.paramFN} {args.nCPUs}",
-            working_dir=resultFolder,
-            out_file=f'{logDir}/map_out.csv',
-            err_file=f'{logDir}/map_err.csv'
-        )
-    if ph5 is not None:
-        ph5.mark('mmap')
-    
-    if args.refineParameters == 0:
-        logger.info("Fitting orientations.")
-        try:
-            if args.nNodes == 1:
-                # --- Single Node: Monitor progress using fit0_out.csv line count ---
-                grid_file = os.path.join(resultFolder, 'grid.txt')
-                total_points = 0
-                try:
-                    with open(grid_file, 'r') as f:
-                        line = f.readline()
-                        if line:
-                            total_points = int(line.strip().split()[0])
-                except Exception as e:
-                    logger.warning(f"Could not read total grid points from {grid_file}: {e}")
-                    total_points = None
+        logger.info("Skipping mmap (resumed past this stage).")
 
-                # Start the single fitting task (nodeNr=0)
-                fit_future = fit(args.paramFN, 0, args.nNodes, args.nCPUs, logDir, resultFolder, bin_dir, gpuFit=args.gpuFit)
-                
-                outfile = os.path.join(logDir, 'fit0_out.csv')
-                pbar = tqdm(total=total_points, desc="Fitting Orientations", unit="pts")
-                last_count = 0
-                
-                while not fit_future.done():
+    if args.refineParameters == 0:
+        if _run('fitting'):
+            # Delete stale MicFileBinary so fitting starts clean
+            mic_bin = params.get('MicFileBinary')
+            if mic_bin:
+                mic_bin_path = os.path.join(resultFolder, mic_bin)
+                if os.path.exists(mic_bin_path):
+                    os.remove(mic_bin_path)
+                    logger.info(f"Removed stale MicFileBinary: {mic_bin_path}")
+
+            logger.info("Fitting orientations.")
+            try:
+                if args.nNodes == 1:
+                    # --- Single Node: Monitor progress using fit0_out.csv line count ---
+                    grid_file = os.path.join(resultFolder, 'grid.txt')
+                    total_points = 0
+                    try:
+                        with open(grid_file, 'r') as f:
+                            line = f.readline()
+                            if line:
+                                total_points = int(line.strip().split()[0])
+                    except Exception as e:
+                        logger.warning(f"Could not read total grid points from {grid_file}: {e}")
+                        total_points = None
+
+                    # Start the single fitting task (nodeNr=0)
+                    fit_future = fit(args.paramFN, 0, args.nNodes, args.nCPUs, logDir, resultFolder, bin_dir, gpuFit=args.gpuFit)
+
+                    outfile = os.path.join(logDir, 'fit0_out.csv')
+                    pbar = tqdm(total=total_points, desc="Fitting Orientations", unit="pts")
+                    last_count = 0
+
+                    while not fit_future.done():
+                        if os.path.exists(outfile):
+                            try:
+                                # Count lines (subtract 2 for header)
+                                with open(outfile, 'rb') as f:
+                                    count = sum(1 for _ in f)
+                                current_processed = max(0, count - 2)
+                                if current_processed > last_count:
+                                    pbar.update(current_processed - last_count)
+                                    last_count = current_processed
+                            except Exception:
+                                pass
+                        time.sleep(1.0)
+
+                    # Final update ensures 100% if completed
                     if os.path.exists(outfile):
                         try:
-                            # Count lines (subtract 2 for header)
                             with open(outfile, 'rb') as f:
                                 count = sum(1 for _ in f)
                             current_processed = max(0, count - 2)
                             if current_processed > last_count:
                                 pbar.update(current_processed - last_count)
-                                last_count = current_processed
-                        except Exception:
-                            pass
-                    time.sleep(1.0)
-                
-                # Final update ensures 100% if completed
-                if os.path.exists(outfile):
-                    try:
-                        with open(outfile, 'rb') as f:
-                            count = sum(1 for _ in f)
-                        current_processed = max(0, count - 2)
-                        if current_processed > last_count:
-                            pbar.update(current_processed - last_count)
-                    except Exception: pass
-                
-                pbar.close()
-                fit_future.result() # Raise exception if task failed
-            else:
-                # --- Multi-Node: Standard Future completion tracking ---
-                fit_futures = [fit(args.paramFN, i, args.nNodes, args.nCPUs, logDir, resultFolder, bin_dir, gpuFit=args.gpuFit) for i in range(args.nNodes)]
-                [f.result() for f in tqdm(fit_futures, desc="Fitting Orientations")]
-        except Exception as e:
-            logger.error("A failure occurred during the orientation fitting stage. Aborting workflow.")
-            logger.error(f"Details: {e}", exc_info=True)
-            sys.exit(1)
-        if ph5 is not None:
-            ph5.mark('fitting')
-        
-        logger.info("Parsing mic file.")
-        run_command(
-            cmd=os.path.join(bin_dir, "ParseMic") + f" {args.paramFN}",
-            working_dir=resultFolder,
-            out_file=f'{logDir}/parse_out.csv',
-            err_file=f'{logDir}/parse_err.csv'
-        )
-        if ph5 is not None:
-            ph5.mark('parse_mic')
+                        except Exception: pass
 
-        # Generate consolidated HDF5
-        mic_text_name = params.get('MicFileText', '')
-        if mic_text_name:
-            mic_text_path = os.path.join(resultFolder, mic_text_name + '.mic')
-            if os.path.exists(mic_text_path):
-                try:
-                    with open(args.paramFN, 'r') as pf:
-                        param_text = pf.read()
-                    nf_consolidate_h5(
-                        mic_text_path=mic_text_path,
-                        param_text=param_text,
-                        args_namespace=args,
-                    )
-                    logger.info("Consolidated HDF5 generated successfully.")
-                    if ph5 is not None:
-                        ph5.mark('consolidation')
-                except Exception as e:
-                    logger.warning(f"Failed to generate consolidated HDF5: {e}")
-            else:
-                logger.warning(f"MicFileText output not found: {mic_text_path}")
+                    pbar.close()
+                    fit_future.result() # Raise exception if task failed
+                else:
+                    # --- Multi-Node: Standard Future completion tracking ---
+                    fit_futures = [fit(args.paramFN, i, args.nNodes, args.nCPUs, logDir, resultFolder, bin_dir, gpuFit=args.gpuFit) for i in range(args.nNodes)]
+                    [f.result() for f in tqdm(fit_futures, desc="Fitting Orientations")]
+            except Exception as e:
+                logger.error("A failure occurred during the orientation fitting stage. Aborting workflow.")
+                logger.error(f"Details: {e}", exc_info=True)
+                sys.exit(1)
+            if ph5 is not None:
+                ph5.mark('fitting')
+        else:
+            logger.info("Skipping fitting (resumed past this stage).")
+
+        if _run('parse_mic'):
+            logger.info("Parsing mic file.")
+            run_command(
+                cmd=os.path.join(bin_dir, "ParseMic") + f" {args.paramFN}",
+                working_dir=resultFolder,
+                out_file=f'{logDir}/parse_out.csv',
+                err_file=f'{logDir}/parse_err.csv'
+            )
+            if ph5 is not None:
+                ph5.mark('parse_mic')
+        else:
+            logger.info("Skipping parse_mic (resumed past this stage).")
+
+        if _run('consolidation'):
+            # Generate consolidated HDF5
+            mic_text_name = params.get('MicFileText', '')
+            if mic_text_name:
+                mic_text_path = os.path.join(resultFolder, mic_text_name + '.mic')
+                if os.path.exists(mic_text_path):
+                    try:
+                        with open(args.paramFN, 'r') as pf:
+                            param_text = pf.read()
+                        nf_consolidate_h5(
+                            mic_text_path=mic_text_path,
+                            param_text=param_text,
+                            args_namespace=args,
+                        )
+                        logger.info("Consolidated HDF5 generated successfully.")
+                        if ph5 is not None:
+                            ph5.mark('consolidation')
+                    except Exception as e:
+                        logger.warning(f"Failed to generate consolidated HDF5: {e}")
+                else:
+                    logger.warning(f"MicFileText output not found: {mic_text_path}")
+        else:
+            logger.info("Skipping consolidation (resumed past this stage).")
     elif args.refineParameters == 1:
         logger.info("Refining parameters...")
         if args.multiGridPoints == 0:
@@ -690,14 +716,6 @@ def main():
     
     # --- 3. Workflow Execution with Guaranteed Cleanup ---
     with change_directory(resultFolder):
-        # Delete stale MicFileBinary if it exists from a previous run
-        mic_bin = params.get('MicFileBinary')
-        if mic_bin:
-            mic_bin_path = os.path.join(resultFolder, mic_bin)
-            if os.path.exists(mic_bin_path):
-                os.remove(mic_bin_path)
-                logger.info(f"Removed stale MicFileBinary: {mic_bin_path}")
-
         # Ensure the reduced data subdirectory exists
         reduced_fn = params.get('ReducedFileName', '')
         reduced_subdir = os.path.dirname(reduced_fn)
@@ -734,10 +752,7 @@ def main():
                             f.write('\nSkipImageBinning 1\n')
                         logger.warning("doImageProcessing=0 and no SpotsInfo.bin found — added SkipImageBinning")
                 
-            if _should_run('mmap'):
-                run_fitting_and_postprocessing(args, params, t0, ph5=ph5)
-            else:
-                logger.info("Skipping fitting/postprocessing (resumed past this stage).")
+            run_fitting_and_postprocessing(args, params, t0, ph5=ph5, should_run=_should_run)
 
         finally:
             logger.info("Initiating Parsl cleanup.")
