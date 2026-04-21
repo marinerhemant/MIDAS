@@ -31,12 +31,19 @@ dependencies = [
     "scikit-image",
     "tifffile",
     "pandas>=1.5",
+    # numba JITs the ring-detection inner loops in the vendored
+    # AutoCalibrateZarr driver; pure-Python fallback is ~10x slower.
+    "numba>=0.57",
 ]
 
 [project.optional-dependencies]
 viz = ["matplotlib"]
 viz-gui = ["matplotlib", "PyQt5>=5.15"]
 paper = ["matplotlib", "pyFAI", "fabio"]
+# diplib's MedianFilter is the fast background-subtract used in the paper;
+# without it, scipy.ndimage.median_filter runs instead (~10x slower, same
+# numerical result).
+fast = ["diplib>=3.4"]
 dev = ["pytest>=7.0", "pytest-cov", "build", "twine"]
 
 [project.urls]

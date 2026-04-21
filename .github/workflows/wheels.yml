@@ -89,16 +89,16 @@ jobs:
         env:
           CIBW_BUILD: cp${{ matrix.python }}-*
           CIBW_SKIP: "*-musllinux_* pp* *-win*"
-          # macOS: libomp is not preinstalled on runner images and is
-          # keg-only, so CMake's FindOpenMP can't locate it without hints.
-          # midas-integrate additionally needs blosc2 + libzip for the
-          # ZarrReader. HDF5 + libTIFF are preinstalled on GH macOS images.
-          CIBW_BEFORE_ALL_MACOS: >-
-            brew install libomp &&
-            if [[ "${{ needs.which.outputs.package }}" == "midas_integrate" ]]; then
-              brew install c-blosc2 libzip;
-            fi
+          # macOS env hints (brew installs are in pyproject.toml's
+          # [tool.cibuildwheel.macos].before-all so they're per-package):
+          #   - CMAKE_PREFIX_PATH: /opt/homebrew (arm64) or /usr/local (x86_64).
+          #     Apple Silicon CMake doesn't search /opt/homebrew by default,
+          #     so find_package(HDF5/TIFF/...) fails without this hint.
+          #   - OpenMP_ROOT + LDFLAGS/CPPFLAGS: libomp is keg-only (not
+          #     symlinked into /opt/homebrew), so FindOpenMP needs explicit
+          #     paths on top of CMAKE_PREFIX_PATH.
           CIBW_ENVIRONMENT_MACOS: >-
+            CMAKE_PREFIX_PATH="$(brew --prefix)"
             OpenMP_ROOT=$(brew --prefix libomp)
             LDFLAGS="-L$(brew --prefix libomp)/lib"
             CPPFLAGS="-I$(brew --prefix libomp)/include"

@@ -14,6 +14,7 @@ from .benchmark import BenchmarkResult, benchmark
 from .calibrate import CalibrationResult, run_calibration
 from .geometry import DetectorGeometry
 from .progressive import ProgressiveResult, calibrate_progressive
+from .zarr_driver import AutoCalResult, calibrate_zarr
 
 # Alias for ergonomic top-level use: `mac.auto_calibrate(...)` reads better
 # than `mac.run_calibration(...)` as the package's headline verb.
@@ -21,6 +22,7 @@ auto_calibrate = run_calibration
 
 __all__ = [
     "__version__",
+    "AutoCalResult",
     "BenchmarkResult",
     "CalibrationConfig",
     "CalibrationResult",
@@ -30,6 +32,7 @@ __all__ = [
     "auto_calibrate",
     "benchmark",
     "calibrate_progressive",
+    "calibrate_zarr",
     "data",
     "midas_bin",
     "run_calibration",

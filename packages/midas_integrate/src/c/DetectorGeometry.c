@@ -9,6 +9,12 @@
 // for DetectorMapper and CalibrantPanelShiftsOMP.
 //
 
+// qsort_r is a GNU extension on glibc and requires _GNU_SOURCE before
+// <stdlib.h>; on BSD/macOS it's visible unconditionally.
+#ifndef _GNU_SOURCE
+#define _GNU_SOURCE
+#endif
+
 #include "DetectorGeometry.h"
 #include <math.h>
 #include <stdlib.h>
