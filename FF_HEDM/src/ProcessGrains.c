@@ -138,10 +138,13 @@ static inline int FindInternalAnglesTwins(int nrIDs, int *IDs, int *IDsPerGrain,
                fabs(fabs(Axis[0]) - fabs(Axis[1])) < 0.01 &&
                fabs(fabs(Axis[2]) - fabs(Axis[1])) < 0.01;
     if (fabs(ang) < 0.4 * deg2rad || AreTwins) {
-      counter = FindInternalAnglesTwins(nrIDs, IDs, IDsPerGrain, NrIDsPerID,
-                                        IDsChecked, OPs, ID_IA_Mat, counter, j,
-                                        ThisID, Radiuses, SGNr, pos_by_id,
-                                        maxID);
+      // Atomically claim j before recursing; another thread may have
+      // grabbed it between our racy read above and now.
+      if (!__atomic_test_and_set(&IDsChecked[j], __ATOMIC_ACQ_REL)) {
+        counter = FindInternalAnglesTwins(
+            nrIDs, IDs, IDsPerGrain, NrIDsPerID, IDsChecked, OPs, ID_IA_Mat,
+            counter, j, ThisID, Radiuses, SGNr, pos_by_id, maxID);
+      }
     }
   }
   int counte = counter;
@@ -190,9 +193,13 @@ static inline int FindInternalAngles(int nrIDs, int *IDs, int *IDsPerGrain,
     OrientMat2Quat(OR2, q2);
     Angle = GetMisOrientation(q1, q2, Axis, &ang, SGNr);
     if (fabs(ang) < 0.4 * deg2rad) {
-      counter = FindInternalAngles(nrIDs, IDs, IDsPerGrain, NrIDsPerID,
-                                   IDsChecked, OPs, ID_IA_Mat, counter, j,
-                                   ThisID, Radiuses, SGNr, pos_by_id, maxID);
+      // Atomically claim j before recursing; another thread may have
+      // grabbed it between our racy read above and now.
+      if (!__atomic_test_and_set(&IDsChecked[j], __ATOMIC_ACQ_REL)) {
+        counter = FindInternalAngles(nrIDs, IDs, IDsPerGrain, NrIDsPerID,
+                                     IDsChecked, OPs, ID_IA_Mat, counter, j,
+                                     ThisID, Radiuses, SGNr, pos_by_id, maxID);
+      }
     }
   }
   int counte = counter;
@@ -595,65 +602,117 @@ int main(int argc, char *argv[]) {
       IDsChecked[i] = true;
     }
   }
-  double *ID_IA_MAT;
+  // Kept for compatibility with legacy local decls in subsequent passes.
   double ang, Angle, Axis[3], DiffPos, OR1[9], q1[4], OR2[9], q2[4], q3[4];
   int counte, counten, totcount = 0;
-  ID_IA_MAT = calloc(MAX_ID_IA_MAT * 4, sizeof(*ID_IA_MAT));
+  (void)counte;
+  (void)counten;
+  (void)StartingID;
+  (void)BestGrainPos;
+  (void)bestGrainID;
+  (void)minIA;
+  (void)maxRadThis;
   FILE *fIDs = fopen("GrainIDsKey.csv", "w");
-  setvbuf(fIDs, NULL, _IOFBF, 1 << 20); // Buffered output
-  for (i = 0; i < nrIDs; i++) {
-    if (i % 1000 == 0)
-      printf("Processed %d of %d IDs.\n", i, nrIDs);
-    if (IDsChecked[i] == false) {
-      counte = 0;
-      StartingID = IDs[i];
-      maxRadThis = Radiuses[i];
-      minIA = OPs[i][IAColNr];
-      BestGrainPos = i;
+  if (fIDs == NULL) {
+    printf("Could not open GrainIDsKey.csv for writing.\n");
+    return 1;
+  }
+  setvbuf(fIDs, NULL, _IOFBF, 1 << 20);
+
+  // Per-thread cluster buffer — an upper bound on cluster size is nrIDs,
+  // so size accordingly. 4 doubles per entry (StartingID, Pos, IA, Radius).
+  size_t perThreadMatEntries = (size_t)nrIDs;
+  if (perThreadMatEntries < 1024)
+    perThreadMatEntries = 1024;
+  size_t perThreadMatBytes = perThreadMatEntries * 4 * sizeof(double);
+
+  int progressCounter = 0;
+
+  // Stage 1: cluster IDs into grains (parallelized). Each outer i is a
+  // potential cluster root; atomic test-and-set on IDsChecked[i] picks
+  // exactly one thread per cluster. Children are also claimed atomically
+  // inside FindInternalAngles before recursion.
+#pragma omp parallel reduction(+ : totcount)
+  {
+    double *local_ID_IA_MAT = malloc(perThreadMatBytes);
+    if (local_ID_IA_MAT == NULL) {
+      fprintf(stderr, "Stage 1 per-thread ID_IA_MAT alloc failed.\n");
+      exit(1);
+    }
+
+#pragma omp for schedule(dynamic, 32)
+    for (int ii = 0; ii < nrIDs; ii++) {
+      // Atomically claim ii. test_and_set returns previous value; false
+      // → we claimed, true → someone else (or the IDsToKeep-false init).
+      if (__atomic_test_and_set(&IDsChecked[ii], __ATOMIC_ACQ_REL))
+        continue;
+
+      int done;
+#pragma omp atomic capture
+      done = ++progressCounter;
+      if (done % 1000 == 0 || done == 1) {
+        printf("Processed %d of %d IDs.\n", done, nrIDs);
+      }
+
+      int StartingID_l = IDs[ii];
+      double maxRadThis_l = Radiuses[ii];
+      double minIA_l = OPs[ii][IAColNr];
+      int BestGrainPos_l = ii;
+      int bestGrainID_l = StartingID_l;
+      int counten_l;
+
       if (trackGrains == 0) {
         if (Twin == 0) {
-          counten = FindInternalAngles(nrIDs, IDs, IDsPerGrain, NrIDsPerID,
-                                       IDsChecked, OPs, ID_IA_MAT, counte, i,
-                                       StartingID, Radiuses, SGNr, pos_by_id,
-                                       pos_maxID);
+          counten_l = FindInternalAngles(
+              nrIDs, IDs, IDsPerGrain, NrIDsPerID, IDsChecked, OPs,
+              local_ID_IA_MAT, 0, ii, StartingID_l, Radiuses, SGNr, pos_by_id,
+              pos_maxID);
         } else {
-          counten = FindInternalAnglesTwins(
-              nrIDs, IDs, IDsPerGrain, NrIDsPerID, IDsChecked, OPs, ID_IA_MAT,
-              counte, i, StartingID, Radiuses, SGNr, pos_by_id, pos_maxID);
+          counten_l = FindInternalAnglesTwins(
+              nrIDs, IDs, IDsPerGrain, NrIDsPerID, IDsChecked, OPs,
+              local_ID_IA_MAT, 0, ii, StartingID_l, Radiuses, SGNr, pos_by_id,
+              pos_maxID);
         }
       } else {
-        counten = 0;
-        ID_IA_MAT[(counten * 4)] = (double)StartingID;
-        ID_IA_MAT[(counten * 4) + 1] = (double)i;
-        ID_IA_MAT[(counten * 4) + 2] = OPs[i][IAColNr];
-        ID_IA_MAT[(counten * 4) + 3] = Radiuses[i];
-        counten = 1;
+        local_ID_IA_MAT[0] = (double)StartingID_l;
+        local_ID_IA_MAT[1] = (double)ii;
+        local_ID_IA_MAT[2] = OPs[ii][IAColNr];
+        local_ID_IA_MAT[3] = Radiuses[ii];
+        counten_l = 1;
       }
-      totcount += counten;
-      nGrainsMatched[i] = counten;
-      if (counten < MinNrSpots) {
+
+      totcount += counten_l;
+      nGrainsMatched[ii] = counten_l;
+      if (counten_l < MinNrSpots)
         continue;
-      }
-      for (j = 0; j < counten; j++) {
-        if (ID_IA_MAT[(j * 4) + 2] < minIA) {
-          minIA = ID_IA_MAT[(j * 4) + 2];
-          BestGrainPos = (int)ID_IA_MAT[(j * 4) + 1];
-          bestGrainID = (int)ID_IA_MAT[(j * 4)];
-          maxRadThis = ID_IA_MAT[(j * 4) + 3];
+
+      for (int jj = 0; jj < counten_l; jj++) {
+        if (local_ID_IA_MAT[(jj * 4) + 2] < minIA_l) {
+          minIA_l = local_ID_IA_MAT[(jj * 4) + 2];
+          BestGrainPos_l = (int)local_ID_IA_MAT[(jj * 4) + 1];
+          bestGrainID_l = (int)local_ID_IA_MAT[(jj * 4)];
+          maxRadThis_l = local_ID_IA_MAT[(jj * 4) + 3];
         }
       }
-      fprintf(fIDs, "%d %d ", bestGrainID, BestGrainPos);
-      for (j = 0; j < counten; j++) {
-        if ((int)ID_IA_MAT[(j * 4) + 1] == BestGrainPos)
-          continue;
-        fprintf(fIDs, "%d %d ", (int)ID_IA_MAT[(j * 4)],
-                (int)ID_IA_MAT[(j * 4) + 1]);
+
+      // Serialized emit of cluster record + GrainPositions push.
+#pragma omp critical(stage1_emit)
+      {
+        fprintf(fIDs, "%d %d ", bestGrainID_l, BestGrainPos_l);
+        for (int jj = 0; jj < counten_l; jj++) {
+          if ((int)local_ID_IA_MAT[(jj * 4) + 1] == BestGrainPos_l)
+            continue;
+          fprintf(fIDs, "%d %d ", (int)local_ID_IA_MAT[(jj * 4)],
+                  (int)local_ID_IA_MAT[(jj * 4) + 1]);
+        }
+        fprintf(fIDs, "\n");
+        GrainPositions[nGrainPositions] = BestGrainPos_l;
+        Radiuses[BestGrainPos_l] = maxRadThis_l;
+        nGrainPositions++;
       }
-      fprintf(fIDs, "\n");
-      GrainPositions[nGrainPositions] = BestGrainPos;
-      Radiuses[BestGrainPos] = maxRadThis;
-      nGrainPositions++;
     }
+
+    free(local_ID_IA_MAT);
   }
   fclose(fIDs);
 
