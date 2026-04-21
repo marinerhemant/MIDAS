@@ -938,77 +938,109 @@ def process_layer(layer_nr: int, top_res_dir: str, ps_fn: str, data_fn: str, num
     # Process based on input type
     outFStem = None
     if provide_input_all == 0:
-        if convert_files == 1:
-            params = read_parameter_file(ps_fn)
-            NrFilesPerLayer = parse_int_param(params, 'NrFilesPerSweep',default=1)
-            # print("NrFilesPerLayer:", NrFilesPerLayer)
-            if len(data_fn) > 0:
-                logger.info("Generating combined MIDAS file from HDF and ps files.")
+        if _should_run('hkl'):
+            if convert_files == 1:
+                params = read_parameter_file(ps_fn)
+                NrFilesPerLayer = parse_int_param(params, 'NrFilesPerSweep',default=1)
+                # print("NrFilesPerLayer:", NrFilesPerLayer)
+                if len(data_fn) > 0:
+                    logger.info("Generating combined MIDAS file from HDF and ps files.")
+                else:
+                    logger.info("Generating combined MIDAS file from GE and ps files.")
+                outFStem = generateZip(result_dir, ps_fn, layer_nr, dfn=data_fn, nchunks=n_chunks, preproc=preproc,numFilesPerScan=NrFilesPerLayer)
+                if not outFStem:
+                    raise RuntimeError("Failed to generate ZIP file")
             else:
-                logger.info("Generating combined MIDAS file from GE and ps files.")
-            outFStem = generateZip(result_dir, ps_fn, layer_nr, dfn=data_fn, nchunks=n_chunks, preproc=preproc,numFilesPerScan=NrFilesPerLayer)
-            if not outFStem:
-                raise RuntimeError("Failed to generate ZIP file")
+                if len(data_fn) > 0:
+                    outFStem = f'{result_dir}/{data_fn}'
+                    if not os.path.exists(outFStem):
+                        shutil.copy2(data_fn, result_dir)
+                else:
+                    # Extract file information from parameter file
+                    params = read_parameter_file(ps_fn)
+                    fStem = params.get('FileStem')
+                    startFN = parse_int_param(params, 'StartFileNrFirstLayer')
+                    NrFilesPerLayer = parse_int_param(params, 'NrFilesPerSweep',default=1)
+                    scanStep = parse_int_param(params, 'ScanStep', default=NrFilesPerLayer)
+
+                    if not all([fStem, startFN is not None, NrFilesPerLayer is not None]):
+                        raise ValueError("Missing required parameters in parameter file")
+
+                    thisFileNr = startFN + (layer_nr - 1) * scanStep
+                    outFStem = f'{result_dir}/{fStem}_{str(thisFileNr).zfill(6)}.MIDAS.zip'
+
+                    if not os.path.exists(outFStem) and data_fn:
+                        shutil.copy2(data_fn, result_dir)
+
+                # Update zarr dataset
+                cmdUpd = f'{pytpath} {os.path.join(utils_dir, "updateZarrDset.py")} -fn {os.path.basename(outFStem)} -folder {result_dir} -keyToUpdate analysis/process/analysis_parameters/ResultFolder -updatedValue {result_dir}/'
+                logger.info(cmdUpd)
+
+                try:
+                    subprocess.check_call(cmdUpd, shell=True)
+                except subprocess.CalledProcessError as e:
+                    raise RuntimeError(f"Failed to update zarr dataset: {e}")
+
+            logger.info(f"Generating HKLs. Time till now: {time.time() - t0} seconds.")
+
+            try:
+                f_hkls_out = f'{result_dir}/midas_log/hkls_out.csv'
+                f_hkls_err = f'{result_dir}/midas_log/hkls_err.csv'
+                cmd = f"{os.path.join(bin_directory, 'GetHKLListZarr')} {outFStem}"
+                safely_run_command(cmd, result_dir, f_hkls_out, f_hkls_err, task_name="HKL generation")
+            except Exception as e:
+                raise RuntimeError(f"Failed to generate HKLs: {e}")
+
+            # Initialize pipeline state in consolidated H5
+            param_text = ''
+            if os.path.exists(ps_fn):
+                with open(ps_fn, 'r') as pf:
+                    param_text = pf.read()
+            # Use the same H5 that generate_consolidated_hdf5 will create
+            if outFStem:
+                stem = os.path.splitext(os.path.basename(outFStem))[0]
+                stem = stem.replace('.MIDAS', '')
+            else:
+                stem = f'layer_{layer_nr}'
+            ph5_path = os.path.join(result_dir, f'{stem}_consolidated.h5')
+            layer_args = {'layer_nr': layer_nr, 'result_dir': result_dir, 'ps_fn': ps_fn}
+            ph5 = PipelineH5(ph5_path, 'ff_midas', layer_args, param_text)
+            ph5.__enter__()
+            ph5.mark('hkl')
+            # Save data for restart
+            ph5.write_dataset('parameters/zarr_path', outFStem if outFStem else '')
+            ph5.write_dataset('parameters/result_dir', result_dir)
         else:
-            if len(data_fn) > 0:
+            # Resumed past hkl: skip zip/HKL generation, reconstruct outFStem, reopen pipeline H5
+            logger.info("Skipping hkl (resumed past this stage). Reconstructing outFStem from parameter file.")
+            if convert_files == 0 and len(data_fn) > 0:
                 outFStem = f'{result_dir}/{data_fn}'
-                if not os.path.exists(outFStem):
-                    shutil.copy2(data_fn, result_dir)
             else:
-                # Extract file information from parameter file
                 params = read_parameter_file(ps_fn)
                 fStem = params.get('FileStem')
                 startFN = parse_int_param(params, 'StartFileNrFirstLayer')
-                NrFilesPerLayer = parse_int_param(params, 'NrFilesPerSweep',default=1)
+                NrFilesPerLayer = parse_int_param(params, 'NrFilesPerSweep', default=1)
                 scanStep = parse_int_param(params, 'ScanStep', default=NrFilesPerLayer)
-                
                 if not all([fStem, startFN is not None, NrFilesPerLayer is not None]):
-                    raise ValueError("Missing required parameters in parameter file")
-                    
+                    raise ValueError("Missing required parameters in parameter file — cannot reconstruct outFStem on resume")
                 thisFileNr = startFN + (layer_nr - 1) * scanStep
                 outFStem = f'{result_dir}/{fStem}_{str(thisFileNr).zfill(6)}.MIDAS.zip'
-                
-                if not os.path.exists(outFStem) and data_fn:
-                    shutil.copy2(data_fn, result_dir)
-                    
-            # Update zarr dataset
-            cmdUpd = f'{pytpath} {os.path.join(utils_dir, "updateZarrDset.py")} -fn {os.path.basename(outFStem)} -folder {result_dir} -keyToUpdate analysis/process/analysis_parameters/ResultFolder -updatedValue {result_dir}/'
-            logger.info(cmdUpd)
-            
-            try:
-                subprocess.check_call(cmdUpd, shell=True)
-            except subprocess.CalledProcessError as e:
-                raise RuntimeError(f"Failed to update zarr dataset: {e}")
-                
-        logger.info(f"Generating HKLs. Time till now: {time.time() - t0} seconds.")
-        
-        try:
-            f_hkls_out = f'{result_dir}/midas_log/hkls_out.csv'
-            f_hkls_err = f'{result_dir}/midas_log/hkls_err.csv'
-            cmd = f"{os.path.join(bin_directory, 'GetHKLListZarr')} {outFStem}"
-            safely_run_command(cmd, result_dir, f_hkls_out, f_hkls_err, task_name="HKL generation")
-        except Exception as e:
-            raise RuntimeError(f"Failed to generate HKLs: {e}")
 
-        # Initialize pipeline state in consolidated H5
-        param_text = ''
-        if os.path.exists(ps_fn):
-            with open(ps_fn, 'r') as pf:
-                param_text = pf.read()
-        # Use the same H5 that generate_consolidated_hdf5 will create
-        if outFStem:
-            stem = os.path.splitext(os.path.basename(outFStem))[0]
-            stem = stem.replace('.MIDAS', '')
-        else:
-            stem = f'layer_{layer_nr}'
-        ph5_path = os.path.join(result_dir, f'{stem}_consolidated.h5')
-        layer_args = {'layer_nr': layer_nr, 'result_dir': result_dir, 'ps_fn': ps_fn}
-        ph5 = PipelineH5(ph5_path, 'ff_midas', layer_args, param_text)
-        ph5.__enter__()
-        ph5.mark('hkl')
-        # Save data for restart
-        ph5.write_dataset('parameters/zarr_path', outFStem if outFStem else '')
-        ph5.write_dataset('parameters/result_dir', result_dir)
+            if not os.path.exists(outFStem):
+                raise RuntimeError(
+                    f"Expected zip not found at {outFStem}. Cannot resume past the hkl stage without it — "
+                    "rerun without -restartFrom (or with an earlier stage) to regenerate."
+                )
+
+            param_text = ''
+            if os.path.exists(ps_fn):
+                with open(ps_fn, 'r') as pf:
+                    param_text = pf.read()
+            stem = os.path.splitext(os.path.basename(outFStem))[0].replace('.MIDAS', '')
+            ph5_path = os.path.join(result_dir, f'{stem}_consolidated.h5')
+            layer_args = {'layer_nr': layer_nr, 'result_dir': result_dir, 'ps_fn': ps_fn}
+            ph5 = PipelineH5(ph5_path, 'ff_midas', layer_args, param_text)
+            ph5.__enter__()
     else:
         # Handle InputAll case
         with change_directory(result_dir):
