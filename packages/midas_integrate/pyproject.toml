@@ -25,7 +25,7 @@ classifiers = [
 dependencies = [
     "numpy>=1.22",
     "h5py>=3.7",
-    "zarr>=2.13",
+    "zarr>=2.13,<3",
     "tifffile",
     "tqdm",
     "pandas>=1.5",
