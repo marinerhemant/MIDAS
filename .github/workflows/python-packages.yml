@@ -64,6 +64,22 @@ jobs:
             brew install c-blosc2 libzip
           fi
 
+      # macOS libomp is keg-only and AppleClang's CMake FindOpenMP can't
+      # locate it without hints. Export OpenMP_ROOT + include/lib paths so
+      # scikit-build-core's CMake configure finds it during `pip install -e`.
+      - name: Configure OpenMP hints for CMake (macOS, C-compiled packages)
+        if: >-
+          (matrix.package == 'midas_auto_calibrate' ||
+           matrix.package == 'midas_integrate')
+          && runner.os == 'macOS'
+        run: |
+          LIBOMP_PREFIX="$(brew --prefix libomp)"
+          {
+            echo "OpenMP_ROOT=$LIBOMP_PREFIX"
+            echo "LDFLAGS=-L$LIBOMP_PREFIX/lib"
+            echo "CPPFLAGS=-I$LIBOMP_PREFIX/include"
+          } >> "$GITHUB_ENV"
+
       # midas_integrate has a hard dep on midas_auto_calibrate for the
       # shared DetectorGeometry dataclass + midas_bin() discovery chain.
       # Install it first so pytest doesn't choke on the import.

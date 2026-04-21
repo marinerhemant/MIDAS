@@ -89,6 +89,21 @@ jobs:
         env:
           CIBW_BUILD: cp${{ matrix.python }}-*
           CIBW_SKIP: "*-musllinux_* pp* *-win*"
+          # macOS: libomp is not preinstalled on runner images and is
+          # keg-only, so CMake's FindOpenMP can't locate it without hints.
+          # midas-integrate additionally needs blosc2 + libzip for the
+          # ZarrReader. HDF5 + libTIFF are preinstalled on GH macOS images.
+          CIBW_BEFORE_ALL_MACOS: >-
+            brew install libomp &&
+            if [[ "${{ needs.which.outputs.package }}" == "midas_integrate" ]]; then
+              brew install c-blosc2 libzip;
+            fi
+          CIBW_ENVIRONMENT_MACOS: >-
+            OpenMP_ROOT=$(brew --prefix libomp)
+            LDFLAGS="-L$(brew --prefix libomp)/lib"
+            CPPFLAGS="-I$(brew --prefix libomp)/include"
+          # manylinux_2_28 has gcc + libgomp in the baseline, so Linux
+          # doesn't need a before-all step for OpenMP.
 
       - name: Upload wheel artifact
         uses: actions/upload-artifact@v4

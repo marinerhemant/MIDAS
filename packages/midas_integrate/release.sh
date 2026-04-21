@@ -63,25 +63,10 @@ if [ "$MODE" = "--publish" ] && git ls-remote --tags origin "$TAG" | grep -q "$T
     exit 1
 fi
 
-# --- 2. Pre-flight: C toolchain + NLopt + OpenMP headers present locally ---
-echo "[1/8] Checking C toolchain..."
-if ! command -v cmake >/dev/null 2>&1; then
-    echo "ERROR: cmake not found. Install: brew install cmake  (macOS) or apt-get install cmake (Linux)"
-    exit 1
-fi
-
-if ! cat <<'EOF' | cc -x c -c -o /dev/null - >/dev/null 2>&1; then
-#include <hdf5.h>
-#include <tiffio.h>
-#include <blosc2.h>
-#include <zip.h>
-int main(void) { return 0; }
-EOF
-    echo "ERROR: C headers not found (HDF5 / libTIFF / BLOSC2 / libzip)."
-    echo "  macOS: brew install hdf5 libtiff libomp c-blosc2 libzip"
-    echo "  Linux: apt-get install -y libhdf5-dev libtiff-dev libomp-dev libblosc2-dev libzip-dev"
-    exit 1
-fi
+# --- 2. Pre-flight: nothing to probe. Local build is sdist-only (no
+# compile); HDF5 / libTIFF / BLOSC2 / libzip / CMake are only needed by
+# cibuildwheel on CI. ---
+echo "[1/8] Pre-flight (sdist-only, no local compile)."
 
 # Sanity: midas-auto-calibrate must be installed at a compatible version so
 # the ABI pin in pyproject.toml doesn't silently break for users.

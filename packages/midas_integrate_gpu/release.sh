@@ -63,19 +63,10 @@ if [ "$MODE" = "--publish" ] && git ls-remote --tags origin "$TAG" | grep -q "$T
     exit 1
 fi
 
-# --- 2. Pre-flight: C toolchain + NLopt + OpenMP headers present locally ---
-echo "[1/8] Checking C toolchain..."
-if ! command -v cmake >/dev/null 2>&1; then
-    echo "ERROR: cmake not found. Install: brew install cmake  (macOS) or apt-get install cmake (Linux)"
-    exit 1
-fi
-
-if ! command -v nvcc >/dev/null 2>&1; then
-    echo "ERROR: nvcc not on PATH. The GPU wheel needs CUDA ≥ 12.0 to build."
-    echo "  Install CUDA Toolkit: https://developer.nvidia.com/cuda-downloads"
-    echo "  Or run release.sh inside an nvidia/cuda:12.4.1-devel-ubuntu22.04 container."
-    exit 1
-fi
+# --- 2. Pre-flight: nothing to probe. Local build is sdist-only (no
+# compile); CMake + CUDA toolkit are only needed by cibuildwheel on CI,
+# which runs inside the nvidia/cuda:12.4.1-devel-ubuntu22.04 container. ---
+echo "[1/8] Pre-flight (sdist-only, no local compile)."
 
 # Sanity: midas-integrate must be installed at the SAME version — both
 # packages share C ABI and version mismatch = runtime crash for users.

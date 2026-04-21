@@ -63,22 +63,9 @@ if [ "$MODE" = "--publish" ] && git ls-remote --tags origin "$TAG" | grep -q "$T
     exit 1
 fi
 
-# --- 2. Pre-flight: C toolchain + NLopt + OpenMP headers present locally ---
-echo "[1/8] Checking C toolchain..."
-if ! command -v cmake >/dev/null 2>&1; then
-    echo "ERROR: cmake not found. Install: brew install cmake  (macOS) or apt-get install cmake (Linux)"
-    exit 1
-fi
-
-if ! cat <<'EOF' | cc -x c -c -o /dev/null - >/dev/null 2>&1; then
-#include <nlopt.h>
-int main(void) { return 0; }
-EOF
-    echo "ERROR: NLopt headers not found."
-    echo "  macOS: brew install nlopt libomp"
-    echo "  Linux: apt-get install -y libnlopt-dev libomp-dev"
-    exit 1
-fi
+# --- 2. Pre-flight: nothing to probe. Local build is sdist-only (no
+# compile); NLopt / libomp / CMake are only needed by cibuildwheel on CI. ---
+echo "[1/8] Pre-flight (sdist-only, no local compile)."
 
 # --- 3. Bump version (pyproject.toml + __init__.py + cmake.define) ---
 echo "[2/8] Bumping version to ${NEW_VERSION}..."
