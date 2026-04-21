@@ -36,7 +36,6 @@
 typedef uint16_t pixelvalue;
 int NrCalls;
 #define MultFactor 1
-#define MaxNSpots 2000000
 
 static DGResidualCorr g_residualCorr = {NULL, 0, 0};
 
@@ -1226,8 +1225,8 @@ int main(int argc, char *argv[]) {
     return 1;
   }
   MaxTtheta = rad2deg * atan(MaxRingRad / Lsd);
-  double **SpotsInfo;
-  SpotsInfo = allocMatrix(MaxNSpots, 10);
+  double **SpotsInfo = NULL;
+  int nLinesSpotsInfo = 0;
   char FileName[1024];
   if (TopLayer == 1) {
     for (i = 0; i < nBoxSizes; i++) {
@@ -1283,8 +1282,25 @@ int main(int argc, char *argv[]) {
   for (i = 0; i < n_hkls; i++)
     nSpotsEachRing[i] = 0;
   fp = fopen(FileName, "r");
+  if (fp == NULL) {
+    printf("Could not open %s. Exiting.\n", FileName);
+    return 1;
+  }
   printf("Reading file: %s.\n", FileName);
+  /* Pre-count data rows so SpotsInfo can be sized exactly. Avoids the
+     previous fixed-cap overflow when Radius_*.csv exceeds the old 2M cap. */
   fgets(line, 5000, fp);
+  while (fgets(line, 5000, fp) != NULL)
+    nLinesSpotsInfo++;
+  rewind(fp);
+  fgets(line, 5000, fp);
+  SpotsInfo = allocMatrix(nLinesSpotsInfo, 10);
+  if (SpotsInfo == NULL) {
+    printf("Could not allocate SpotsInfo for %d rows. Exiting.\n",
+           nLinesSpotsInfo);
+    fclose(fp);
+    return 1;
+  }
   while (fgets(line, 5000, fp) != NULL) {
     sscanf(
         line,
@@ -1617,7 +1633,7 @@ int main(int argc, char *argv[]) {
   fprintf(PF, "WeightMask %f\n", WeightMask);
   fprintf(PF, "WeightFitRMSE %f\n", WeightFitRMSE);
   fclose(PF);
-  FreeMemMatrix(SpotsInfo, MaxNSpots);
+  FreeMemMatrix(SpotsInfo, nLinesSpotsInfo);
   free(Ys);
   free(Zs);
   free(IdealTtheta);

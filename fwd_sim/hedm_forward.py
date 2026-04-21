@@ -331,11 +331,51 @@ class HEDMForwardModel(nn.Module):
         return torch.acos(torch.clamp(x, -1.0 + self.epsilon, 1.0 - self.epsilon))
 
     # ------------------------------------------------------------------
+    #  rotate_strain_sample_to_crystal  (port of C RotateStrainSampleToCrystal)
+    # ------------------------------------------------------------------
+
+    @staticmethod
+    def rotate_strain_sample_to_crystal(
+        orientation_matrices: torch.Tensor,
+        strain_sample: torch.Tensor,
+    ) -> torch.Tensor:
+        """Rotate a symmetric infinitesimal strain from sample to crystal frame.
+
+        Port of ``RotateStrainSampleToCrystal`` from
+        ``FF_HEDM/src/ForwardSimulationCompressed.c:399-419``:
+        eps_crystal = OM^T . eps_sample . OM, in Voigt notation
+        [eps_11, eps_12, eps_13, eps_22, eps_23, eps_33].
+
+        Parameters
+        ----------
+        orientation_matrices : Tensor (..., 3, 3)
+        strain_sample : Tensor (..., 6)
+
+        Returns
+        -------
+        strain_crystal : Tensor (..., 6)
+        """
+        e = strain_sample
+        S = torch.stack([
+            torch.stack([e[..., 0], e[..., 1], e[..., 2]], dim=-1),
+            torch.stack([e[..., 1], e[..., 3], e[..., 4]], dim=-1),
+            torch.stack([e[..., 2], e[..., 4], e[..., 5]], dim=-1),
+        ], dim=-2)
+        OM = orientation_matrices
+        C = torch.matmul(torch.matmul(OM.transpose(-1, -2), S), OM)
+        return torch.stack([
+            C[..., 0, 0], C[..., 0, 1], C[..., 0, 2],
+            C[..., 1, 1], C[..., 1, 2], C[..., 2, 2],
+        ], dim=-1)
+
+    # ------------------------------------------------------------------
     #  correct_hkls_latc  (port of C CorrectHKLsLatC)
     # ------------------------------------------------------------------
 
     def correct_hkls_latc(
-        self, lattice_params: torch.Tensor
+        self,
+        lattice_params: torch.Tensor,
+        strain: Optional[torch.Tensor] = None,
     ) -> Tuple[torch.Tensor, torch.Tensor]:
         """Compute strained reciprocal-space G-vectors and Bragg angles.
 
@@ -343,13 +383,21 @@ class HEDMForwardModel(nn.Module):
         and transforms integer Miller indices to Cartesian G-vectors.
 
         Faithfully ports ``CorrectHKLsLatC`` from
-        ``FF_HEDM/src/FitPosOrStrainsDoubleDataset.c:214-252``.
+        ``FF_HEDM/src/FitPosOrStrainsDoubleDataset.c:214-252``, with the
+        optional crystal-frame strain path from ``CorrectHKLsLatCEpsilon``
+        in ``FF_HEDM/src/ForwardSimulationCompressed.c:423-475``.
 
         Parameters
         ----------
         lattice_params : Tensor (..., 6)
             [a, b, c, alpha, beta, gamma] in Angstroms and degrees.
             The ``...`` dimensions allow per-voxel or per-grain parameters.
+        strain : Tensor (..., 6), optional
+            Crystal-frame symmetric infinitesimal strain in Voigt form
+            [eps_11, eps_12, eps_13, eps_22, eps_23, eps_33]. When supplied,
+            the reciprocal lattice is post-multiplied by (I + eps)^{-1}:
+            B = (I + eps)^{-1} @ B0. Use :meth:`rotate_strain_sample_to_crystal`
+            to convert a sample-frame strain into the crystal frame.
 
         Returns
         -------
@@ -424,6 +472,25 @@ class HEDMForwardModel(nn.Module):
             torch.stack([B20, B21, B22], dim=-1),
         ], dim=-2)
 
+        # Optional crystal-frame strain: B = (I + eps)^{-1} @ B0
+        # Voigt layout matches C CorrectHKLsLatCEpsilon:
+        #   eps = [eps_11, eps_12, eps_13, eps_22, eps_23, eps_33]
+        if strain is not None:
+            e11 = strain[..., 0]
+            e12 = strain[..., 1]
+            e13 = strain[..., 2]
+            e22 = strain[..., 3]
+            e23 = strain[..., 4]
+            e33 = strain[..., 5]
+            one = torch.ones_like(e11)
+            F_mat = torch.stack([
+                torch.stack([one + e11, e12,        e13       ], dim=-1),
+                torch.stack([e12,       one + e22, e23       ], dim=-1),
+                torch.stack([e13,       e23,        one + e33], dim=-1),
+            ], dim=-2)
+            F_inv = torch.linalg.inv(F_mat)
+            B = torch.matmul(F_inv, B)
+
         # G_cart = B @ hkls_int^T  =>  (..., M, 3)
         # hkls_int is (M, 3), B is (..., 3, 3) -- match dtype
         hkls_cart = torch.einsum("...ij,mj->...mi", B, self.hkls_int.to(B.dtype))
@@ -486,7 +553,11 @@ class HEDMForwardModel(nn.Module):
             thetas = thetas.to(dtype)
 
         # G_C = R @ hkls^T  =>  (..., N, M, 3)
-        G_C = torch.einsum("...nij,mj->...nmi", orientation_matrices, hkls_cart)
+        # Two cases supported: (a) hkls_cart shape (M, 3) shared across the
+        # batch, (b) per-voxel hkls_cart shape (..., M, 3) for strained
+        # rendering. Both flow through the same einsum via leading-dim
+        # broadcasting on the second arg.
+        G_C = torch.einsum("...nij,...mj->...nmi", orientation_matrices, hkls_cart)
 
         # v = sin(theta)*|G| -- C precomputes Gs from the UNROTATED G-vector norm
         # (rotation preserves norm in exact arithmetic but not in float64).
@@ -503,8 +574,10 @@ class HEDMForwardModel(nn.Module):
         # Quadratic solver for omega
         # -Gx*cos(w) + Gy*sin(w) = v
         # Rearranged: a*cos^2(w) + b*cos(w) + c = 0
-        # C uses almostzero=1e-4 for the Gy≈0 branch. Must match exactly.
-        almostzero = 1e-4
+        # C uses almostzero=1e-12 for the Gy≈0 branch (see
+        # NF_HEDM/src/CalcDiffractionSpots.c:96 and
+        # FF_HEDM/src/ForwardSimulationCompressed.c:168). Match exactly.
+        almostzero = 1e-12
         x2 = Gx * Gx
         y2 = Gy * Gy
         a = 1.0 + x2 / (y2 + self.epsilon)
@@ -536,7 +609,7 @@ class HEDMForwardModel(nn.Module):
         all_wp = torch.where(Dap < Dbp, wap, wbp)
         all_wn = torch.where(Dan < Dbn, wan, wbn)
 
-        # Special case: Gy ~ 0 (C uses almostzero=1e-4)
+        # Special case: Gy ~ 0 (C uses almostzero=1e-12)
         # C code (CalcDiffractionSpots.c:97-106):
         #   cosome1 = -v / x;
         #   if (|cosome1| <= 1) { ome = acos(cosome1); solutions: +ome, -ome }
@@ -864,6 +937,7 @@ class HEDMForwardModel(nn.Module):
         euler_angles: torch.Tensor,
         positions: torch.Tensor,
         lattice_params: Optional[torch.Tensor] = None,
+        strain: Optional[torch.Tensor] = None,
     ) -> SpotDescriptors:
         """Full forward simulation pipeline.
 
@@ -876,6 +950,12 @@ class HEDMForwardModel(nn.Module):
         lattice_params : Tensor (..., 6) or (..., N, 6), optional
             Strained lattice parameters [a,b,c,alpha,beta,gamma] in
             Angstroms/degrees. None = use nominal hkls/thetas (no strain).
+        strain : Tensor (..., 6) or (..., N, 6), optional
+            Crystal-frame symmetric infinitesimal strain in Voigt form
+            [eps_11, eps_12, eps_13, eps_22, eps_23, eps_33]. Applied as
+            B = (I + eps)^{-1} @ B0 in addition to any lattice-parameter
+            strain expressed through ``lattice_params``. Requires
+            ``lattice_params`` to be supplied.
 
         Returns
         -------
@@ -892,7 +972,12 @@ class HEDMForwardModel(nn.Module):
         hkls_cart = None
         thetas = None
         if lattice_params is not None:
-            hkls_cart, thetas = self.correct_hkls_latc(lattice_params)
+            hkls_cart, thetas = self.correct_hkls_latc(lattice_params, strain=strain)
+        elif strain is not None:
+            raise ValueError(
+                "strain was supplied but lattice_params is None; strain "
+                "requires a reference lattice to apply (I + eps)^{-1} @ B0."
+            )
 
         # 3. Bragg geometry
         omega, eta, two_theta, valid = self.calc_bragg_geometry(
@@ -1253,6 +1338,7 @@ class HEDMForwardModel(nn.Module):
         centers: torch.Tensor,
         tri_config: TriVoxelConfig,
         lattice_params: Optional[torch.Tensor] = None,
+        strain: Optional[torch.Tensor] = None,
     ) -> SpotDescriptors:
         """NF-HEDM forward simulation with triangular voxel rasterization.
 
@@ -1293,7 +1379,12 @@ class HEDMForwardModel(nn.Module):
         # 2. Optionally strained HKLs
         hkls_cart = thetas = None
         if lattice_params is not None:
-            hkls_cart, thetas = self.correct_hkls_latc(lattice_params)
+            hkls_cart, thetas = self.correct_hkls_latc(lattice_params, strain=strain)
+        elif strain is not None:
+            raise ValueError(
+                "strain was supplied but lattice_params is None; strain "
+                "requires a reference lattice to apply (I + eps)^{-1} @ B0."
+            )
 
         # 3. Bragg geometry (once per voxel, from center orientation)
         omega, eta, two_theta, valid = self.calc_bragg_geometry(

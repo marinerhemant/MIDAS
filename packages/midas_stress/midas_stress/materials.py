@@ -31,6 +31,13 @@ def hexagonal_stiffness(
 ) -> np.ndarray:
     """Build 6x6 stiffness matrix for hexagonal crystal in Mandel notation.
 
+    Assumes the hexagonal c-axis is aligned with the crystal-frame
+    ``z`` direction, so the basal plane is ``xy``.  Mandel ordering
+    from ``tensor.py`` is ``[xx, yy, zz, xy, xz, yz]``, so the
+    in-basal shear coupling (``C66 = (C11-C12)/2``) lives at Mandel
+    index (3,3) and the out-of-basal couplings (``C44``) live at
+    (4,4) and (5,5).
+
     Parameters
     ----------
     C11, C12, C13, C33, C44 : float
@@ -45,9 +52,11 @@ def hexagonal_stiffness(
     C[2, 2] = C33
     C[0, 1] = C[1, 0] = C12
     C[0, 2] = C[2, 0] = C[1, 2] = C[2, 1] = C13
-    # Mandel shear: 2 * engineering
-    C[3, 3] = C[4, 4] = 2.0 * C44
-    C[5, 5] = C11 - C12  # 2 * C66_eng = 2 * (C11 - C12)/2
+    # Mandel shear: 2 * engineering shear coupling.
+    # (3,3) is xy-xy → C66 coupling = (C11-C12)/2 engineering → (C11-C12) Mandel.
+    C[3, 3] = C11 - C12
+    # (4,4) is xz-xz and (5,5) is yz-yz, both governed by C44.
+    C[4, 4] = C[5, 5] = 2.0 * C44
     return C
 
 

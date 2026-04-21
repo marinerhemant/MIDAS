@@ -12,8 +12,6 @@
 #include <sys/types.h>
 #include <time.h>
 
-#define MAX_N_SPOTS 100000000
-
 /* Comparator for argsort of positions (ascending).
  * sort_perm[i] will hold the file index of the i-th spatially ordered scan. */
 static const double *_merge_positions = NULL;
@@ -79,19 +77,48 @@ int main(int argc, char *argv[]) {
     int spatialStart = finScanNr * nMerges;
     int firstFileIdx = sort_perm[spatialStart];
     double thisPosition = positions[firstFileIdx];
-    double *thisSpots, *allSpots;
-    thisSpots = calloc(MAX_N_SPOTS * 16, sizeof(*thisSpots));
-    allSpots = calloc(MAX_N_SPOTS * 16, sizeof(*allSpots));
-    // Read the first fileNr
     char thisFN[2048], thisLine[2048], headThis[2048];
-    sprintf(thisFN, "original_InputAllExtraInfoFittingAll%d.csv", firstFileIdx);
     FILE *thisF;
+    /* Pre-scan every input file in this merge group to size buffers exactly.
+       Old code allocated 100M*16 doubles (~12.8 GB) per thread as a safety
+       cap; that wastes VM and still overflows on extreme inputs. */
+    size_t totalLines = 0;
+    size_t maxLines = 0;
+    int ms;
+    for (ms = 0; ms < nMerges; ms++) {
+      int fileIdx = sort_perm[spatialStart + ms];
+      sprintf(thisFN, "original_InputAllExtraInfoFittingAll%d.csv", fileIdx);
+      FILE *cf = fopen(thisFN, "r");
+      if (cf == NULL) {
+        printf("Could not open %s. Exiting.\n", thisFN);
+        exit(EXIT_FAILURE);
+      }
+      fgets(thisLine, 2048, cf); /* skip header */
+      size_t nRows = 0;
+      while (fgets(thisLine, 2048, cf) != NULL)
+        nRows++;
+      fclose(cf);
+      totalLines += nRows;
+      if (nRows > maxLines)
+        maxLines = nRows;
+    }
+    double *thisSpots, *allSpots;
+    thisSpots = calloc(maxLines * 16, sizeof(*thisSpots));
+    allSpots = calloc(totalLines * 16, sizeof(*allSpots));
+    int *lastScansSpots, *thisScansSpots;
+    lastScansSpots = calloc(maxLines, sizeof(*lastScansSpots));
+    thisScansSpots = calloc(maxLines, sizeof(*thisScansSpots));
+    if (thisSpots == NULL || allSpots == NULL || lastScansSpots == NULL ||
+        thisScansSpots == NULL) {
+      printf("Allocation failed in mergeScansScanning (finScanNr=%d). Exiting.\n",
+             finScanNr);
+      exit(EXIT_FAILURE);
+    }
+    // Read the first fileNr
+    sprintf(thisFN, "original_InputAllExtraInfoFittingAll%d.csv", firstFileIdx);
     thisF = fopen(thisFN, "r");
     fgets(thisLine, 2048, thisF);
     sprintf(headThis, "%s", thisLine);
-    int *lastScansSpots, *thisScansSpots;
-    lastScansSpots = calloc(MAX_N_SPOTS, sizeof(*lastScansSpots));
-    thisScansSpots = calloc(MAX_N_SPOTS, sizeof(*thisScansSpots));
     int nSpotsLastScan;
     size_t nAll = 0;
     while (fgets(thisLine, 2048, thisF) != NULL) {
@@ -191,8 +218,13 @@ int main(int argc, char *argv[]) {
       }
       fprintf(thisF, "\n");
     }
+    fclose(thisF);
     thisPosition /= nMerges;
     positionsNew[finScanNr] = thisPosition;
+    free(thisSpots);
+    free(allSpots);
+    free(lastScansSpots);
+    free(thisScansSpots);
   }
   /* Write merged positions in spatial order (ascending). */
   posF = fopen("positions.csv", "w");

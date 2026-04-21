@@ -265,10 +265,24 @@ int main(int argc, char *argv[]) {
     printf("Could not read file %s\n", InputFile);
     return 1;
   }
+  /* Pre-count data rows so SpotsMat/Sigmas/NrPx can be sized exactly.
+     Previously capped at MAX_N_SPOTS (6M), overflows with larger inputs. */
+  size_t nLinesSpotsMat = 0;
+  fgets(aline, 1000, Infile); /* skip header */
+  while (fgets(aline, 1000, Infile) != NULL)
+    nLinesSpotsMat++;
+  rewind(Infile);
   fgets(aline, 1000, Infile);
   int counter = 0, RingNr;
   double **SpotsMat;
-  SpotsMat = allocMatrix(MAX_N_SPOTS, 19);
+  size_t nAllocSpotsMat = nLinesSpotsMat > 0 ? nLinesSpotsMat : 1;
+  SpotsMat = allocMatrix(nAllocSpotsMat, 19);
+  if (SpotsMat == NULL) {
+    printf("Could not allocate SpotsMat for %zu rows. Exiting.\n",
+           nAllocSpotsMat);
+    fclose(Infile);
+    return 1;
+  }
   double PowderInt[nRings];
   int i;
   char hklfn[2048];
@@ -311,9 +325,15 @@ int main(int argc, char *argv[]) {
   outfile = fopen(OutFile, "w");
   fprintf(outfile, "%s", header);
   double **Sigmas;
-  Sigmas = allocMatrix(MAX_N_SPOTS, 2);
+  Sigmas = allocMatrix(nAllocSpotsMat, 2);
   double **NrPx;
-  NrPx = allocMatrix(MAX_N_SPOTS, 2);
+  NrPx = allocMatrix(nAllocSpotsMat, 2);
+  if (Sigmas == NULL || NrPx == NULL) {
+    printf("Could not allocate Sigmas/NrPx for %zu rows. Exiting.\n",
+           nAllocSpotsMat);
+    fclose(Infile);
+    return 1;
+  }
   double MinOme = 100000, MaxOme = -100000;
   int thisRings[nRings][2];
   double tempArr[16], dummyDouble;
@@ -406,7 +426,9 @@ int main(int argc, char *argv[]) {
             Sigmas[i][1], NrPx[i][0], NrPx[i][1], SpotsMat[i][16],
             SpotsMat[i][17], SpotsMat[i][18]);
   }
-  FreeMemMatrix(SpotsMat, MAX_N_SPOTS);
+  FreeMemMatrix(SpotsMat, nAllocSpotsMat);
+  FreeMemMatrix(Sigmas, nAllocSpotsMat);
+  FreeMemMatrix(NrPx, nAllocSpotsMat);
   end = clock();
   diftotal = ((double)(end - start)) / CLOCKS_PER_SEC;
   printf("Time elapsed: %f s.\n", diftotal);

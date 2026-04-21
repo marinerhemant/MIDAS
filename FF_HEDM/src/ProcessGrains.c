@@ -470,11 +470,6 @@ int main(int argc, char *argv[]) {
 
   int i, j, k, ThisID, counter;
   int *IDs;
-  IDs = calloc(MAX_N_IDS, sizeof(*IDs)); // calloc instead of malloc+loop
-  if (IDs == NULL) {
-    printf("Memory error: could not allocate IDs.\n");
-    return 1;
-  }
   int nrIDs = 0;
   char IDsFileName[1024];
   FILE *IDsFile;
@@ -483,6 +478,18 @@ int main(int argc, char *argv[]) {
   IDsFile = fopen(IDsFileName, "r");
   if (IDsFile == NULL) {
     printf("Could not open spots file.\n");
+    return 1;
+  }
+  /* Pre-count lines so IDs can be sized exactly (prevents overflow past
+     the old MAX_N_IDS cap when SpotsToIndex.csv is large). */
+  size_t nLinesIDs = 0;
+  while (fgets(line, 5024, IDsFile) != NULL)
+    nLinesIDs++;
+  rewind(IDsFile);
+  IDs = calloc(nLinesIDs > 0 ? nLinesIDs : 1, sizeof(*IDs));
+  if (IDs == NULL) {
+    printf("Memory error: could not allocate IDs (%zu entries).\n", nLinesIDs);
+    fclose(IDsFile);
     return 1;
   }
   while (fgets(line, 5024, IDsFile) != NULL) {

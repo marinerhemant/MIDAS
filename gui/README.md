@@ -1,198 +1,155 @@
-# gui/ — Interactive Visualization & Viewers
+# gui/ — MIDAS Visualization & Analysis GUI
 
-Desktop applications and standalone viewers for MIDAS data visualization and analysis.
+A unified PyQt5 desktop launcher (`midas_gui.py`) that hosts every existing
+MIDAS viewer as a separate nav entry. Qt-native viewers are embedded in the
+launcher window; Tkinter / Dash / Plotly viewers run as managed subprocesses.
+No functionality is removed and every standalone script still runs directly.
+
+**22 of 23 standalone viewers reachable from one launcher.**
 
 ---
 
-## Directory Structure
+## Quick start
+
+```bash
+source ~/miniconda3/bin/activate midas_env
+python ~/opt/MIDAS/gui/midas_gui.py [data_directory]
+
+# Theme override
+python ~/opt/MIDAS/gui/midas_gui.py --theme dark
+```
+
+**File → Open Directory…** (Ctrl+O) forwards the path to every module that
+supports it — FF/NF set their `folder`, Calibration finds the first
+`*.corr.csv`, PF-HEDM Diagnostics pre-fills `SpotDiagnostics.bin`, 3D Grain
+Explorer pre-fills every tab's Result folder, Digital Twin picks up
+`Grains.csv`, etc.
+
+---
+
+## Module map
+
+| Nav entry | Tabs | Backed by (legacy scripts) | How |
+|---|---|---|---|
+| **FF Viewer** | — | [gui/ff_asym_qt.py](gui/ff_asym_qt.py) `FFViewer` | embedded |
+| **NF Viewer** | — | [gui/nf_qt.py](gui/nf_qt.py) `NFViewer` | embedded |
+| **Live Integrator Monitor** | — | [gui/viewers/live_viewer.py](gui/viewers/live_viewer.py) `LiveViewer` | embedded, deferred construction |
+| **Peak / Lineout Inspector** | Caked Peaks | [gui/viewers/plot_caked_peaks.py](gui/viewers/plot_caked_peaks.py) `CakedPeakViewer` | embedded, lazy |
+| | Lineouts | [gui/viewers/plot_lineout_results.py](gui/viewers/plot_lineout_results.py) `LineoutViewer` | embedded, lazy |
+| | Phase ID | [gui/viewers/plot_phase_id_results.py](gui/viewers/plot_phase_id_results.py) `PhaseIdViewer` | embedded, lazy |
+| | Integrator Peaks | [gui/viewers/plot_integrator_peaks.py](gui/viewers/plot_integrator_peaks.py) | subprocess |
+| | σ Statistics | [gui/viewers/peak_sigma_statistics.py](gui/viewers/peak_sigma_statistics.py) | subprocess |
+| | Lineout Compare | [gui/viewers/plot_lineout_comparison.py](gui/viewers/plot_lineout_comparison.py) | subprocess |
+| | Caking (Dash) | [gui/viewers/viz_caking.py](gui/viewers/viz_caking.py) | subprocess + browser |
+| **Calibration** | — | [gui/viewers/plot_calibrant_results.py](gui/viewers/plot_calibrant_results.py) `CalibrantViewer` | embedded, lazy |
+| **Image Tools** | — | [gui/imageManipulation.py](gui/imageManipulation.py) | subprocess (Tkinter) |
+| **PF-HEDM Diagnostics** | Sinogram (Dash) | [gui/viewers/pfIntensityViewer.py](gui/viewers/pfIntensityViewer.py) | subprocess + browser |
+| | Spot Diagnostics | [utils/spot_diagnostics.py](utils/spot_diagnostics.py) `SpotDiagPlotter` | embedded matplotlib (QtAgg) |
+| **3D Grain Explorer** | Interactive FF (Dash) | [gui/viewers/interactiveFFplotting.py](gui/viewers/interactiveFFplotting.py) | subprocess + browser |
+| | 3D Spots | [gui/viewers/plotFFSpots3d.py](gui/viewers/plotFFSpots3d.py) | subprocess |
+| | 3D Spots / Grain | [gui/viewers/plotFFSpots3dGrains.py](gui/viewers/plotFFSpots3dGrains.py) | subprocess |
+| | 3D Grains | [gui/viewers/plotGrains3d.py](gui/viewers/plotGrains3d.py) | subprocess |
+| | FF↔NF | [gui/viewers/PlotFFNF.py](gui/viewers/PlotFFNF.py) | subprocess |
+| **Digital Twin** | Microstructure simulator | [gui/dig_tw.py](gui/dig_tw.py) | subprocess + browser |
+| | Reconstruction compare | [gui/dt.py](gui/dt.py) | subprocess (Tkinter) |
+
+**Not yet absorbed:** [utils/AutoCalibrateZarr.py](utils/AutoCalibrateZarr.py)'s
+embedded `CalibImageViewer` (tightly coupled to the calibration loop).
+
+---
+
+## Embed strategy
+
+Three categories, chosen per viewer:
+
+1. **Direct embed** — PyQt5 `QMainWindow` classes (FF, NF, Live, Spot
+   Diagnostics' Qt port) are inserted into the launcher's `QStackedWidget`
+   after `setWindowFlags(Qt.Widget)`. All menus, toolbars, status bars, and
+   worker threads still work.
+2. **Lazy embed** — PyQt6 viewers (Caked Peaks, Lineouts, Phase ID,
+   Calibration) are imported only when the user opens that tab, so PyQt6
+   does not collide with PyQt5 at launcher boot. The tab shows a folder
+   picker until the user clicks Load.
+3. **External process** — Tkinter (Image Tools, DT recon) and Dash
+   (Interactive FF, PF Sinogram, Digital Twin, Caking viz) viewers run as
+   managed subprocesses via the `ExternalLauncher` widget. The widget tracks
+   PIDs, lets you launch multiple instances, and offers a single "Stop all"
+   button plus optional "Open in browser" for Dash targets.
+
+---
+
+## Layout
 
 ```
 gui/
-├── viewers/                 # Standalone analysis viewers (moved from utils/)
-│   ├── plot_lineout_results.py
-│   ├── plot_integrator_peaks.py
-│   ├── plot_calibrant_results.py
-│   ├── plot_phase_id_results.py
-│   ├── plot_lineout_comparison.py
-│   ├── plot_caked_peaks.py
-│   ├── live_viewer.py
-│   ├── interactiveFFplotting.py
-│   ├── pfIntensityViewer.py
-│   ├── peak_sigma_statistics.py
-│   ├── plotFFSpots3d.py
-│   ├── plotFFSpots3dGrains.py
-│   ├── plotGrains3d.py
-│   ├── PlotFFNF.py
-│   └── viz_caking.py
-├── dig_tw.py                # Digital twin (FF + NF HEDM)
-├── ff_asym_qt.py            # FF-HEDM PyQtGraph viewer (recommended)
-├── nf_qt.py                 # NF-HEDM PyQtGraph viewer (recommended)
-├── gui_common.py            # Shared PyQtGraph components
-├── dt.py                    # Diffraction tomography GUI
-├── imageManipulation.py     # Image viewer and processing tools
-├── archive/                 # Archived legacy viewers
-│   ├── ff_asym.py           # FF-HEDM Tkinter viewer (legacy)
-│   └── nf.py                # NF-HEDM Tkinter viewer (legacy)
-└── GEBad/                   # GE detector bad-pixel masks
+├── midas_gui.py                # entry-point shim
+├── midas_app/                  # launcher package (PyQt5)
+│   ├── core/
+│   │   ├── theme.py            # light/dark palette + colormaps
+│   │   ├── async_worker.py     # QThread wrapper
+│   │   ├── log_panel.py        # collapsible stdout dock
+│   │   ├── io.py               # unified TIFF/HDF5/zarr/bz2/GE loader
+│   │   ├── params.py           # ps.txt parser
+│   │   └── results.py          # typed CSV/H5 loaders
+│   ├── widgets/
+│   │   ├── image_view.py       # PyQt5 MIDASImageView
+│   │   ├── peak_table.py
+│   │   ├── file_browser.py
+│   │   ├── ring_overlay.py
+│   │   └── external_launcher.py  # subprocess + PID tracker
+│   ├── modules/
+│   │   ├── ff_viewer.py        # FF Viewer
+│   │   ├── nf_viewer.py        # NF Viewer
+│   │   ├── live_monitor.py     # Live Integrator Monitor
+│   │   ├── peak_inspector.py   # Peak / Lineout Inspector (7 sub-tabs)
+│   │   ├── calibration.py      # Calibration
+│   │   ├── image_tools.py      # Image Tools
+│   │   ├── pf_diagnostics.py   # PF-HEDM Diagnostics (2 sub-tabs)
+│   │   ├── grain_explorer.py   # 3D Grain Explorer (5 sub-tabs)
+│   │   └── digital_twin.py     # Digital Twin (2 sub-tabs)
+│   └── main.py                 # QMainWindow + nav rail + module registry
+│
+├── ff_asym_qt.py  nf_qt.py  gui_common.py        # standalone PyQt5 viewers
+├── imageManipulation.py  dt.py                    # Tkinter
+├── dig_tw.py                                      # Dash digital twin
+├── viewers/                                       # standalone analysis viewers
+└── archive/ GEBad/
 ```
 
 ---
 
-## Digital Twin (`dig_tw.py`)
-
-Interactive browser-based (Dash + Plotly) simulation of diffraction patterns from microstructure data. Supports both FF-HEDM (`ForwardSimulationCompressed`) and NF-HEDM (`simulateNF`) modes with configurable pixel size and detector dimensions. See [Digital_Twin manual](../manuals/Digital_Twin.md).
+## Standalone invocation still works
 
 ```bash
-python ~/opt/MIDAS/gui/dig_tw.py -mic Grains.csv
+python gui/ff_asym_qt.py
+python gui/nf_qt.py --dark
+python gui/viewers/live_viewer.py --lineout lineout.bin --nRBins 500
+python gui/viewers/plot_caked_peaks.py /path/to/work_dir
+python gui/imageManipulation.py
+python gui/dig_tw.py -mic Grains.csv
 ```
 
----
-
-## Detector Image Viewers
-
-### Modern PyQtGraph Viewers (Recommended)
-
-#### FF-HEDM Viewer (`ff_asym_qt.py`)
-
-```bash
-cd <data_directory> && python ~/opt/MIDAS/gui/ff_asym_qt.py &
-```
-
-Fast PyQtGraph-based FF-HEDM viewer with navigation toolbar, P2–P98 auto-scaling, live ring overlays, dark subtraction, HDF5 browsing, log scale, Max/Frames and Sum/Frames, and export PNG. Loading a MIDAS ZIP auto-initializes all parameters (Lsd, BC, Wavelength, SpaceGroup, LatticeConstant, ImTransOpt). When rings are displayed, status bar shows nearest ring info. See [GUIs_and_Visualization](../manuals/GUIs_and_Visualization.md) §1.
-
-#### NF-HEDM Viewer (`nf_qt.py`)
-
-```bash
-cd <data_directory> && python ~/opt/MIDAS/gui/nf_qt.py &
-```
-
-NF-HEDM viewer with all FF features plus microstructure overlay (`.mic`/`.map`), spot simulation, Box H / Box V ROI tools (auto-refresh on frame/distance change, orange-red edge lines in pixel coordinates), Beam Center calibration, **Select Spots** interactive calibration (right-click to select, cyan crosshairs, partial distance support), **Compute Distances** auto-computed on Finished with visual results dialog (crop patches + ray triangulation diagram), **Calc Median** with auto-reload, **Select Point** (click mic → auto-populate grain), **Sum/Frames**, and Q-to-quit shortcut. See [NF_GUI manual](../manuals/NF_GUI.md).
-
-### Legacy Tkinter Viewers (Archived)
-
-Legacy viewers have been moved to `gui/archive/` and are preserved for reference only:
-
-| Script | Description |
-|--------|-------------|
-| `archive/ff_asym.py` | Tkinter + Matplotlib FF viewer. |
-| `archive/nf.py` | Tkinter + Matplotlib NF viewer with calibration workflow. |
-
-### Other Tools
-
-| Script | Description |
-|--------|-------------|
-| `dt.py` | 2D detector image viewer with ring overlays and 1D intensity profiles. |
-| `imageManipulation.py` | General-purpose image viewer: dark subtraction, flat-field, ROI, transforms, histograms. |
-
----
-
-## Analysis Viewers (`viewers/`)
-
-Standalone plotting and diagnostic viewers, moved from `utils/` as of 2026-03.
-
-### Lineout & Peak Viewers
-
-| Script | Description |
-|--------|-------------|
-| `plot_lineout_results.py` | **Lineout viewer.** PyQt6 viewer for `extract_lineouts.py` output. Shows corrected lineout, SNIP background, fitted profile, difference, and peak table with interactive row selection → peak highlighting. |
-| `plot_lineout_comparison.py` | Overlay calibrant and integrator lineouts with ideal ring markers. |
-| `plot_integrator_peaks.py` | Post-hoc peak analysis from `.caked.hdf.zarr.zip`. Ring-assigned scatter plots. |
-| `plot_caked_peaks.py` | **Caked peak viewer.** PyQt6 viewer for `_caked_peaks.h5` with heatmap, 1D profile, peak table, lattice parameter & strain plots, ring filtering. See [GUIs_and_Visualization](../manuals/GUIs_and_Visualization.md) §1b. |
-| `peak_sigma_statistics.py` | Peak width (σ) statistics from FF-HEDM fitting results. |
-
-### Calibration & Phase ID Viewers
-
-| Script | Description |
-|--------|-------------|
-| `plot_calibrant_results.py` | **Calibrant QC.** PyQt6 viewer for `CalibrantPanelShiftsOMP` `_corr.csv` output. |
-| `plot_phase_id_results.py` | Phase identification results viewer. |
-
-### Real-Time & Interactive Viewers
-
-| Script | Description |
-|--------|-------------|
-| `live_viewer.py` | **Real-time dashboard.** PyQtGraph live viewer for `lineout.bin` / `fit.bin` streams. See [FF_Radial_Integration](../manuals/FF_Radial_Integration.md) §6.3. |
-| `interactiveFFplotting.py` | Dash-based interactive FF-HEDM browser. See [FF_Interactive_Plotting](../manuals/FF_Interactive_Plotting.md). |
-| `pfIntensityViewer.py` | Point-focus / scanning HEDM intensity viewer. |
-
-### 3D Visualization
-
-| Script | Description |
-|--------|-------------|
-| `plotFFSpots3d.py` | 3D scatter plot of FF-HEDM diffraction spots. |
-| `plotFFSpots3dGrains.py` | 3D scatter of FF spots, color-coded by grain. |
-| `plotGrains3d.py` | 3D scatter of grain centroids with orientation coloring. |
-| `PlotFFNF.py` | Overlay FF-HEDM grain centroids on NF-HEDM orientation maps. |
-| `viz_caking.py` | Visualize radial integration (caking) results. |
-
----
-
-## Shared Components
-
-#### `gui_common.py`
-
-| Component | Description |
-|-----------|-------------|
-| `MIDASImageView` | Image viewer with crosshair, navigation toolbar, double-click zoom reset, axis origin control |
-| `apply_theme()` | Dark/light palette for Qt + PyQtGraph |
-| `AsyncWorker` | Background thread wrapper |
-| `LogPanel` | Redirects `print()` to collapsible dock |
-| `get_colormap()` | Colormap lookup with matplotlib fallback |
+The launcher wrappers don't modify any of these scripts — they just import
+or subprocess-invoke them.
 
 ---
 
 ## Requirements
 
-### PyQtGraph Viewers
 ```
-PyQt5 / PyQt6
-pyqtgraph
-numpy
-```
-
-### Matplotlib-based Viewers (`viewers/`)
-```
-PyQt6 (for Qt viewers)
-matplotlib
-numpy
-scipy
-```
-
-### Tkinter Viewers (legacy)
-```
-tkinter (built-in)
-matplotlib
-numpy
-Pillow, scipy, h5py
+PyQt5 + pyqtgraph              # launcher + FF/NF/Live/Spot-diag viewers
+matplotlib                     # spot diagnostics embedded canvas
+numpy, pandas, h5py, tifffile, zarr
+# Optional — loaded only when those tabs open:
+PyQt6                          # caked/lineout/phase_id/calibrant viewers
+dash, plotly, dash-bootstrap    # Dash-based viewers (subprocess)
 ```
 
 ---
 
-## v11 Updates
+## See also
 
-**`ff_asym_qt.py`:**
-- Independent colormap dropdowns per plot
-- All Grains.csv columns exposed as color options
-- CBF file format support
-- Zoom preserved when toggling log scale
-
-**`nf_qt.py`:**
-- Right-click for spot selection (left-click = rectangle zoom)
-- Cyan crosshair markers during spot picking
-- Auto-compute distances on "Finished" click
-- Visual results dialog with crop patches + ray triangulation diagram
-- Box profile auto-refresh on frame/distance change, pixel coordinate display, orange-red edge lines
-- Defaults to highest-resolution map
-- Cursor tracking + colorbar on mic scatter map
-- Zoom preserved when switching plot type or toggling log scale
-
-**Analysis scripts:** `NF_HEDM/Example/analyze_mismatches.py` and `parity_maps.py` for GPU parity debugging.
-
----
-
-## See Also
-
-- [GUIs_and_Visualization](../manuals/GUIs_and_Visualization.md) — Master GUI guide
-- [NF_GUI](../manuals/NF_GUI.md) — NF-HEDM GUI user guide
-- [FF_Visualization](../manuals/FF_Visualization.md) — FF-HEDM visualization
-- [FF_Interactive_Plotting](../manuals/FF_Interactive_Plotting.md) — Browser-based FF exploration
+- [`manuals/GUIs_and_Visualization.md`](../manuals/GUIs_and_Visualization.md) — master GUI guide
+- [`manuals/NF_GUI.md`](../manuals/NF_GUI.md) — NF-HEDM viewer reference
+- [`manuals/FF_Visualization.md`](../manuals/FF_Visualization.md) — FF-HEDM visualization
+- [Plan file](.claude/plans/do-a-thorough-audit-fluffy-jellyfish.md) — full audit + consolidation plan

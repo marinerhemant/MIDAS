@@ -92,6 +92,14 @@ from .io import (
     example_data_path,
 )
 
+# --- Elastic-constant inverse (Paper III) ---
+from .elastic_inverse import (
+    fit_single_crystal_stiffness,
+    symmetry_parameterisation,
+    stiffness_from_cij,
+    build_stage_matrix,
+)
+
 # --- Plasticity / slip-system analysis ---
 from .plasticity import (
     get_slip_systems,

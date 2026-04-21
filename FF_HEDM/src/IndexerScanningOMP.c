@@ -770,6 +770,14 @@ int ReadParams(char FileName[], struct TParams *Params) {
     str = "RingNumbers ";
     cmpres = strncmp(line, str, strlen(str));
     if (cmpres == 0) {
+      if (NoRingNumbers >= MAX_N_RINGS) {
+        fprintf(stderr,
+                "Error: more than %d RingNumbers entries in %s. Increase "
+                "MAX_N_RINGS in MIDAS_Limits.h and rebuild.\n",
+                MAX_N_RINGS, FileName);
+        fclose(fp);
+        return 1;
+      }
       sscanf(line, "%s %d", dummy, &(Params->RingNumbers[NoRingNumbers]));
       NoRingNumbers++;
       continue;
