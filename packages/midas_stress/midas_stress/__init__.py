@@ -5,7 +5,7 @@ stiffness, orientation/misorientation math, and mechanical equilibrium
 constraints for polycrystalline stress analysis.
 """
 
-__version__ = "0.2.3"
+__version__ = "0.3.0"
 
 # --- Tensor / Voigt ---
 from .tensor import (
