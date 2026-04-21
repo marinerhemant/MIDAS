@@ -216,76 +216,6 @@ inline int StrainTensorKenesei(int nspots, double **SpotsInfo, double Distance,
                                int startSpotMatrix, double **SpotMatrix,
                                double *RetVal, double StrainTensorInput[3][3]);
 
-// Simple hash set for IDsDone duplicate checking (O(1) lookup vs O(n) linear
-// scan)
-#define HASH_TABLE_SIZE 65536 // power of 2
-typedef struct HashNode {
-  int key;
-  struct HashNode *next;
-} HashNode;
-
-typedef struct {
-  HashNode **buckets;
-  int count;
-} HashSet;
-
-static HashSet *hashset_create(void) {
-  HashSet *hs = malloc(sizeof(HashSet));
-  if (hs == NULL)
-    return NULL;
-  hs->buckets = calloc(HASH_TABLE_SIZE, sizeof(HashNode *));
-  if (hs->buckets == NULL) {
-    free(hs);
-    return NULL;
-  }
-  hs->count = 0;
-  return hs;
-}
-
-static int hashset_contains(HashSet *hs, int key) {
-  unsigned int idx = ((unsigned int)key * 2654435761U) & (HASH_TABLE_SIZE - 1);
-  HashNode *node = hs->buckets[idx];
-  while (node) {
-    if (node->key == key)
-      return 1;
-    node = node->next;
-  }
-  return 0;
-}
-
-static int hashset_insert(HashSet *hs, int key) {
-  unsigned int idx = ((unsigned int)key * 2654435761U) & (HASH_TABLE_SIZE - 1);
-  HashNode *node = hs->buckets[idx];
-  while (node) {
-    if (node->key == key)
-      return 0;
-    node = node->next;
-  }
-  HashNode *newNode = malloc(sizeof(HashNode));
-  if (newNode == NULL)
-    return -1;
-  newNode->key = key;
-  newNode->next = hs->buckets[idx];
-  hs->buckets[idx] = newNode;
-  hs->count++;
-  return 1;
-}
-
-static void hashset_destroy(HashSet *hs) {
-  if (hs == NULL)
-    return;
-  for (int i = 0; i < HASH_TABLE_SIZE; i++) {
-    HashNode *node = hs->buckets[i];
-    while (node) {
-      HashNode *next = node->next;
-      free(node);
-      node = next;
-    }
-  }
-  free(hs->buckets);
-  free(hs);
-}
-
 // Count lines in a CSV file (excluding header)
 static int countCSVLines(const char *filename) {
   FILE *f = fopen(filename, "r");
@@ -674,23 +604,14 @@ int main(int argc, char *argv[]) {
   }
   fclose(fIDs);
 
-  // Write out - use hash set for O(1) duplicate check
+  // ── Dedup + strain computation (two passes, parallelized). ───────
   int nGrains = 0;
-  HashSet *idsDoneSet = hashset_create();
-  if (idsDoneSet == NULL) {
-    printf("Memory error: could not create hash set.\n");
+  bool *isDup =
+      calloc(nGrainPositions > 0 ? nGrainPositions : 1, sizeof(*isDup));
+  if (isDup == NULL) {
+    printf("Memory error: could not allocate isDup.\n");
     return 1;
   }
-  int DoneAlready = 0;
-  double StrainTensorSampleKen[3][3];
-  double StrainTensorSampleFab[3][3];
-  double *dummySampleInfo;
-  dummySampleInfo =
-      malloc(22 * NR_MAX_IDS_PER_GRAIN * sizeof(*dummySampleInfo));
-  double LatticeParameterFit[6], Orient[3][3];
-  double **SpotsInfo;
-  SpotsInfo = allocMatrix(NR_MAX_IDS_PER_GRAIN, 8);
-  int nspots, rown;
 
   // mmap FitBest.bin for better OS caching
   int fullInfoFile = open("Output/FitBest.bin", O_RDONLY);
@@ -709,11 +630,8 @@ int main(int argc, char *argv[]) {
     }
   }
 
-  size_t OffSt;
-  size_t ReadSize;
   double MultR = 1000000.0;
-  double BeamCenter = 0, FullVol = 0, VNorm;
-  int rown2;
+  double BeamCenter = 0, FullVol = 0;
   int **IDHash;
   IDHash = allocMatrixInt(NR_MAX_IDS_PER_GRAIN, 3);
   double *dspacings;
@@ -740,20 +658,18 @@ int main(int argc, char *argv[]) {
     return 1;
   }
 
-  double **SpotMatrix, **InputMatrix;
-  SpotMatrix = allocMatrix(NR_MAX_IDS_PER_GRAIN, 12);
-  InputMatrix = allocMatrix(nInputLines, 10); // Sized to actual count
-  int counterSpotMatrix = 0;
+  double **InputMatrix;
+  InputMatrix = allocMatrix(nInputLines, 10);
   char *inputallfn = "InputAllExtraInfoFittingAll.csv";
   FILE *inpfile = fopen(inputallfn, "r");
   if (inpfile == NULL) {
     printf("Could not open %s. Exiting.\n", inputallfn);
     return 1;
   }
-  setvbuf(inpfile, NULL, _IOFBF, 1 << 20); // Buffered read
+  setvbuf(inpfile, NULL, _IOFBF, 1 << 20);
   int counterIF = 0;
   fgets(aline, 2000, inpfile);
-  int currentRing;
+  int currentRing = 0;
   while (fgets(aline, 2000, inpfile) != NULL) {
     sscanf(aline, "%lf %lf %lf %s %lf %lf %lf %lf %s %s %s %lf %lf %lf",
            &InputMatrix[counterIF][6], &InputMatrix[counterIF][7],
@@ -802,177 +718,268 @@ int main(int argc, char *argv[]) {
     }
     fclose(hklf);
   }
-  for (j = 0; j < NR_MAX_IDS_PER_GRAIN; j++)
-    for (k = 0; k < 12; k++)
-      SpotMatrix[j][k] = 0;
-  int rowSpotID, startSpotMatrix;
-  double RetVal, Eul[3];
-  FILE *spotsfile = fopen("SpotMatrix.csv", "w");
-  setvbuf(spotsfile, NULL, _IOFBF, 1 << 20); // Buffered output
-  fprintf(spotsfile, "%%"
-                     "GrainID\tSpotID\tOmega\tDetectorHor\tDetectorVert\tOmeRaw"
-                     "\tEta\tRingNr\tYLab\tZLab\tTheta\tStrainError\n");
-  double **FinalMatrix;
-  FinalMatrix = allocMatrix(nGrainPositions, 47);
-  for (i = 0; i < nGrainPositions; i++) {
-    rown = GrainPositions[i];
-    if (rown >= nrIDs) {
+
+  // ── Pass A ── Dedup: serial outer i, parallel inner j. isDup[j]=true
+  // writes are idempotent, so races between threads are benign. Preserves
+  // the original greedy-merge order (outer serial).
+  if (trackGrains == 0) {
+    for (int ii = 0; ii < nGrainPositions; ii++) {
+      if (isDup[ii])
+        continue;
+      int rown_i = GrainPositions[ii];
+      if (rown_i >= nrIDs) {
+        printf("Something is wrong. Please check.\n");
+        return 1;
+      }
+      double OR1_s[9], q1_s[4];
+      for (int kk = 0; kk < 9; kk++)
+        OR1_s[kk] = OPs[rown_i][kk];
+      OrientMat2Quat(OR1_s, q1_s);
+      double x_i = OPs[rown_i][9], y_i = OPs[rown_i][10], z_i = OPs[rown_i][11];
+#pragma omp parallel for schedule(static)
+      for (int jj = ii + 1; jj < nGrainPositions; jj++) {
+        if (isDup[jj])
+          continue;
+        int rown_j = GrainPositions[jj];
+        if (rown_j >= nrIDs)
+          continue; // error path; keptList check below will still catch it
+        double OR2_l[9], q2_l[4], Axis_l[3], ang_l;
+        for (int kk = 0; kk < 9; kk++)
+          OR2_l[kk] = OPs[rown_j][kk];
+        OrientMat2Quat(OR2_l, q2_l);
+        (void)GetMisOrientation(q1_s, q2_l, Axis_l, &ang_l, SGNr);
+        double dx = x_i - OPs[rown_j][9];
+        double dy = y_i - OPs[rown_j][10];
+        double dz = z_i - OPs[rown_j][11];
+        double DiffPos_l = sqrt(dx * dx + dy * dy + dz * dz);
+        if (ang_l < 0.1 * deg2rad && DiffPos_l < 5) {
+#pragma omp atomic write
+          isDup[jj] = true;
+        }
+      }
+    }
+  }
+
+  // Build kept list (dedup + confidence filter).
+  int *keptList = malloc((nGrainPositions > 0 ? nGrainPositions : 1) *
+                         sizeof(*keptList));
+  if (keptList == NULL) {
+    printf("Memory error: could not allocate keptList.\n");
+    return 1;
+  }
+  int nKept = 0;
+  for (int ii = 0; ii < nGrainPositions; ii++) {
+    int ri = GrainPositions[ii];
+    if (ri >= nrIDs) {
       printf("Something is wrong. Please check.\n");
       return 1;
     }
-    if (trackGrains == 0) {
-      // O(1) hash set check instead of O(n) linear scan
-      if (hashset_contains(idsDoneSet, IDs[rown])) {
-        continue;
-      }
-      hashset_insert(idsDoneSet, IDs[rown]);
-
-      for (k = 0; k < 9; k++) {
-        OR1[k] = OPs[rown][k];
-      }
-      OrientMat2Quat(OR1, q1);
-      for (j = i + 1; j < nGrainPositions; j++) {
-        rown2 = GrainPositions[j];
-        if (rown2 >= nrIDs) {
-          printf("Something is wrong. Please check.\n");
-          return 1;
-        }
-        // O(1) hash set check
-        if (hashset_contains(idsDoneSet, IDs[rown2])) {
-          continue;
-        }
-        for (k = 0; k < 9; k++) {
-          OR2[k] = OPs[rown2][k];
-        }
-        OrientMat2Quat(OR2, q2);
-        Angle = GetMisOrientation(q1, q2, Axis, &ang, SGNr);
-        DiffPos = sqrt((OPs[rown][9] - OPs[rown2][9]) *
-                           (OPs[rown][9] - OPs[rown2][9]) +
-                       (OPs[rown][10] - OPs[rown2][10]) *
-                           (OPs[rown][10] - OPs[rown2][10]) +
-                       (OPs[rown][11] - OPs[rown2][11]) *
-                           (OPs[rown][11] - OPs[rown2][11]));
-        if (ang < 0.1 * deg2rad && DiffPos < 5) {
-          hashset_insert(idsDoneSet, IDs[rown2]);
-        }
-      }
-    }
-    if (OPs[rown][22] < 0.05) {
+    if (trackGrains == 0 && isDup[ii])
       continue;
-    }
-
-    nspots = NrIDsPerID[rown];
-    OffSt = rown;
-    OffSt *= 22;
-    OffSt *= NR_MAX_IDS_PER_GRAIN;
-
-    // Use mmap if available, otherwise fall back to pread
-    if (fitBestMap != NULL) {
-      size_t offsetDoubles = (size_t)rown * 22 * NR_MAX_IDS_PER_GRAIN;
-      memcpy(dummySampleInfo, &fitBestMap[offsetDoubles],
-             22 * nspots * sizeof(double));
-    } else {
-      OffSt *= sizeof(double);
-      ReadSize = 22 * nspots * sizeof(double);
-      int rc = pread(fullInfoFile, dummySampleInfo, ReadSize, OffSt);
-    }
-
-    counterSpotMatrix = 0;
-    startSpotMatrix = counterSpotMatrix;
-    double GrainIDThis = (double)IDs[rown];
-    for (j = 0; j < nspots; j++) {
-      SpotsInfo[j][0] = dummySampleInfo[j * 22 + 4];
-      SpotsInfo[j][1] = dummySampleInfo[j * 22 + 5];
-      SpotsInfo[j][2] = dummySampleInfo[j * 22 + 6];
-      SpotsInfo[j][3] = dummySampleInfo[j * 22 + 1];
-      SpotsInfo[j][4] = dummySampleInfo[j * 22 + 2];
-      SpotsInfo[j][5] = dummySampleInfo[j * 22 + 7];
-      SpotsInfo[j][6] = dummySampleInfo[j * 22 + 8];
-      SpotsInfo[j][7] = dummySampleInfo[j * 22 + 0]; // SpotID
-      rowSpotID = (int)dummySampleInfo[j * 22 + 0] - 1;
-      if (rowSpotID >= counterIF) {
-        printf("Looking at the wrong info. Please check.\n");
-        return 1;
-      }
-      SpotMatrix[counterSpotMatrix][0] = GrainIDThis;                 // GrainID
-      SpotMatrix[counterSpotMatrix][1] = dummySampleInfo[j * 22 + 0]; // SpotID
-      SpotMatrix[counterSpotMatrix][2] = InputMatrix[rowSpotID][0];   // Omega
-      SpotMatrix[counterSpotMatrix][3] = InputMatrix[rowSpotID][2];   // YRaw
-      SpotMatrix[counterSpotMatrix][4] = InputMatrix[rowSpotID][3];   // ZRaw
-      SpotMatrix[counterSpotMatrix][5] = InputMatrix[rowSpotID][9];   // OmeRaw
-      SpotMatrix[counterSpotMatrix][6] = InputMatrix[rowSpotID][4];   // Eta
-      SpotMatrix[counterSpotMatrix][7] = InputMatrix[rowSpotID][5];   // RingNr
-      SpotMatrix[counterSpotMatrix][8] = InputMatrix[rowSpotID][6];   // YLab
-      SpotMatrix[counterSpotMatrix][9] = InputMatrix[rowSpotID][7];   // ZLab
-      SpotMatrix[counterSpotMatrix][10] =
-          InputMatrix[rowSpotID][8] / 2.0; // Theta
-      counterSpotMatrix++;
-    }
-    LatticeParameterFit[0] = OPs[rown][12];
-    LatticeParameterFit[1] = OPs[rown][13];
-    LatticeParameterFit[2] = OPs[rown][14];
-    LatticeParameterFit[3] = OPs[rown][15];
-    LatticeParameterFit[4] = OPs[rown][16];
-    LatticeParameterFit[5] = OPs[rown][17];
-    Orient[0][0] = OPs[rown][0];
-    Orient[0][1] = OPs[rown][1];
-    Orient[0][2] = OPs[rown][2];
-    Orient[1][0] = OPs[rown][3];
-    Orient[1][1] = OPs[rown][4];
-    Orient[1][2] = OPs[rown][5];
-    Orient[2][0] = OPs[rown][6];
-    Orient[2][1] = OPs[rown][7];
-    Orient[2][2] = OPs[rown][8];
-    CalcStrainTensorFableBeaudoin(LatCin, LatticeParameterFit, Orient,
-                                  StrainTensorSampleFab);
-    int retval = StrainTensorKenesei(nspots, SpotsInfo, Distance, wavelength,
-                                     StrainTensorSampleKen, IDHash, dspacings,
-                                     nRings, startSpotMatrix, SpotMatrix,
-                                     &RetVal, StrainTensorSampleFab);
-    for (j = 0; j < counterSpotMatrix; j++) {
-      for (k = 0; k < 2; k++)
-        fprintf(spotsfile, "%d\t", (int)SpotMatrix[j][k]);
-      for (k = 2; k < 7; k++)
-        fprintf(spotsfile, "%lf\t", SpotMatrix[j][k]);
-      fprintf(spotsfile, "%d\t", (int)SpotMatrix[j][7]);
-      for (k = 8; k < 12; k++)
-        fprintf(spotsfile, "%lf\t", SpotMatrix[j][k]);
-      fprintf(spotsfile, "\n");
-    }
-    if (retval == 0) {
-      printf("Did not read correct hash table for IDs. Exiting\n");
-      return 1;
-    }
-    FinalMatrix[nGrains][0] = GrainIDThis;
-    for (j = 0; j < 21; j++) {
-      FinalMatrix[nGrains][j + 1] = OPs[rown][j];
-    }
-    FinalMatrix[nGrains][22] = Radiuses[rown];
-    FinalMatrix[nGrains][23] = OPs[rown][22];
-    for (j = 0; j < 3; j++) {
-      for (k = 0; k < 3; k++) {
-        FinalMatrix[nGrains][24 + 3 * j + k] =
-            MultR * StrainTensorSampleFab[j][k];
-        FinalMatrix[nGrains][33 + 3 * j + k] =
-            MultR * StrainTensorSampleKen[j][k];
-      }
-    }
-    FinalMatrix[nGrains][42] = MultR * RetVal;
-    FinalMatrix[nGrains][43] = (double)PhaseNr;
-    OrientMat2Euler(Orient, Eul);
-    FinalMatrix[nGrains][44] = Eul[0];
-    FinalMatrix[nGrains][45] = Eul[1];
-    FinalMatrix[nGrains][46] = Eul[2];
-    VNorm = FinalMatrix[nGrains][22] * FinalMatrix[nGrains][22] *
-            FinalMatrix[nGrains][22];
-    BeamCenter += (FinalMatrix[nGrains][12]) * (VNorm);
-    FullVol += VNorm;
-    nGrains++;
+    if (OPs[ri][22] < 0.05)
+      continue;
+    keptList[nKept++] = ii;
   }
-  printf("Number of grains: %d.\n", nGrains);
-  BeamCenter /= FullVol;
-  // Write file
+
+  double **FinalMatrix;
+  FinalMatrix = allocMatrix(nKept > 0 ? nKept : 1, 47);
+
+  // Per-iteration buffers for SpotMatrix.csv — keeps output byte-identical
+  // to the serial version (rows emitted in keptList order).
+  char **perIterBuf = calloc(nKept > 0 ? nKept : 1, sizeof(*perIterBuf));
+  size_t *perIterLen = calloc(nKept > 0 ? nKept : 1, sizeof(*perIterLen));
+  if (perIterBuf == NULL || perIterLen == NULL) {
+    printf("Memory error: could not allocate per-iteration SpotMatrix "
+           "buffers.\n");
+    return 1;
+  }
+
+  double beamCenterAcc = 0, fullVolAcc = 0;
+
+  // ── Pass B ── Strain per kept grain, parallel over kk.
+#pragma omp parallel reduction(+ : beamCenterAcc, fullVolAcc)
+  {
+    double *dummySampleInfo_l =
+        malloc(22UL * NR_MAX_IDS_PER_GRAIN * sizeof(*dummySampleInfo_l));
+    double **SpotsInfo_l = allocMatrix(NR_MAX_IDS_PER_GRAIN, 8);
+    double **SpotMatrix_l = allocMatrix(NR_MAX_IDS_PER_GRAIN, 12);
+    if (dummySampleInfo_l == NULL || SpotsInfo_l == NULL ||
+        SpotMatrix_l == NULL) {
+      fprintf(stderr, "Per-thread allocation failed in strain loop.\n");
+      exit(1);
+    }
+    for (int jj = 0; jj < NR_MAX_IDS_PER_GRAIN; jj++)
+      for (int kk = 0; kk < 12; kk++)
+        SpotMatrix_l[jj][kk] = 0;
+
+#pragma omp for schedule(dynamic, 8)
+    for (int kk = 0; kk < nKept; kk++) {
+      int ii = keptList[kk];
+      int rown_l = GrainPositions[ii];
+      int nspots_l = NrIDsPerID[rown_l];
+
+      if (fitBestMap != NULL) {
+        size_t offsetDoubles = (size_t)rown_l * 22 * NR_MAX_IDS_PER_GRAIN;
+        memcpy(dummySampleInfo_l, &fitBestMap[offsetDoubles],
+               22 * nspots_l * sizeof(double));
+      } else {
+        size_t offst_l =
+            (size_t)rown_l * 22 * NR_MAX_IDS_PER_GRAIN * sizeof(double);
+        size_t rs_l = 22 * nspots_l * sizeof(double);
+        ssize_t rc = pread(fullInfoFile, dummySampleInfo_l, rs_l, offst_l);
+        (void)rc;
+      }
+
+      int counterSpotMatrix_l = 0;
+      int startSpotMatrix_l = 0;
+      double GrainIDThis = (double)IDs[rown_l];
+      for (int jj = 0; jj < nspots_l; jj++) {
+        SpotsInfo_l[jj][0] = dummySampleInfo_l[jj * 22 + 4];
+        SpotsInfo_l[jj][1] = dummySampleInfo_l[jj * 22 + 5];
+        SpotsInfo_l[jj][2] = dummySampleInfo_l[jj * 22 + 6];
+        SpotsInfo_l[jj][3] = dummySampleInfo_l[jj * 22 + 1];
+        SpotsInfo_l[jj][4] = dummySampleInfo_l[jj * 22 + 2];
+        SpotsInfo_l[jj][5] = dummySampleInfo_l[jj * 22 + 7];
+        SpotsInfo_l[jj][6] = dummySampleInfo_l[jj * 22 + 8];
+        SpotsInfo_l[jj][7] = dummySampleInfo_l[jj * 22 + 0];
+        int rowSpotID = (int)dummySampleInfo_l[jj * 22 + 0] - 1;
+        if (rowSpotID >= counterIF) {
+          fprintf(stderr, "Looking at the wrong info. Please check.\n");
+          exit(1);
+        }
+        SpotMatrix_l[counterSpotMatrix_l][0] = GrainIDThis;
+        SpotMatrix_l[counterSpotMatrix_l][1] = dummySampleInfo_l[jj * 22 + 0];
+        SpotMatrix_l[counterSpotMatrix_l][2] = InputMatrix[rowSpotID][0];
+        SpotMatrix_l[counterSpotMatrix_l][3] = InputMatrix[rowSpotID][2];
+        SpotMatrix_l[counterSpotMatrix_l][4] = InputMatrix[rowSpotID][3];
+        SpotMatrix_l[counterSpotMatrix_l][5] = InputMatrix[rowSpotID][9];
+        SpotMatrix_l[counterSpotMatrix_l][6] = InputMatrix[rowSpotID][4];
+        SpotMatrix_l[counterSpotMatrix_l][7] = InputMatrix[rowSpotID][5];
+        SpotMatrix_l[counterSpotMatrix_l][8] = InputMatrix[rowSpotID][6];
+        SpotMatrix_l[counterSpotMatrix_l][9] = InputMatrix[rowSpotID][7];
+        SpotMatrix_l[counterSpotMatrix_l][10] =
+            InputMatrix[rowSpotID][8] / 2.0;
+        counterSpotMatrix_l++;
+      }
+
+      double LatticeParameterFit_l[6];
+      double Orient_l[3][3];
+      double StrainTensorSampleFab_l[3][3];
+      double StrainTensorSampleKen_l[3][3];
+      double RetVal_l = 0;
+      double Eul_l[3];
+      LatticeParameterFit_l[0] = OPs[rown_l][12];
+      LatticeParameterFit_l[1] = OPs[rown_l][13];
+      LatticeParameterFit_l[2] = OPs[rown_l][14];
+      LatticeParameterFit_l[3] = OPs[rown_l][15];
+      LatticeParameterFit_l[4] = OPs[rown_l][16];
+      LatticeParameterFit_l[5] = OPs[rown_l][17];
+      Orient_l[0][0] = OPs[rown_l][0];
+      Orient_l[0][1] = OPs[rown_l][1];
+      Orient_l[0][2] = OPs[rown_l][2];
+      Orient_l[1][0] = OPs[rown_l][3];
+      Orient_l[1][1] = OPs[rown_l][4];
+      Orient_l[1][2] = OPs[rown_l][5];
+      Orient_l[2][0] = OPs[rown_l][6];
+      Orient_l[2][1] = OPs[rown_l][7];
+      Orient_l[2][2] = OPs[rown_l][8];
+      CalcStrainTensorFableBeaudoin(LatCin, LatticeParameterFit_l, Orient_l,
+                                    StrainTensorSampleFab_l);
+      int retval = StrainTensorKenesei(
+          nspots_l, SpotsInfo_l, Distance, wavelength, StrainTensorSampleKen_l,
+          IDHash, dspacings, nRings, startSpotMatrix_l, SpotMatrix_l, &RetVal_l,
+          StrainTensorSampleFab_l);
+      if (retval == 0) {
+        fprintf(stderr, "Did not read correct hash table for IDs. Exiting.\n");
+        exit(1);
+      }
+
+      // Render SpotMatrix rows into a per-iteration buffer. ~256 B/row is
+      // a safe upper bound given the format string.
+      size_t need = (size_t)counterSpotMatrix_l * 256 + 16;
+      char *buf = malloc(need);
+      if (buf == NULL) {
+        fprintf(stderr, "Per-iteration SpotMatrix buffer alloc failed.\n");
+        exit(1);
+      }
+      size_t off = 0;
+      for (int jj = 0; jj < counterSpotMatrix_l; jj++) {
+        int n = snprintf(buf + off, need - off,
+                         "%d\t%d\t%lf\t%lf\t%lf\t%lf\t%lf\t%d\t%lf\t%lf\t%lf\t"
+                         "%lf\t\n",
+                         (int)SpotMatrix_l[jj][0], (int)SpotMatrix_l[jj][1],
+                         SpotMatrix_l[jj][2], SpotMatrix_l[jj][3],
+                         SpotMatrix_l[jj][4], SpotMatrix_l[jj][5],
+                         SpotMatrix_l[jj][6], (int)SpotMatrix_l[jj][7],
+                         SpotMatrix_l[jj][8], SpotMatrix_l[jj][9],
+                         SpotMatrix_l[jj][10], SpotMatrix_l[jj][11]);
+        if (n < 0 || (size_t)n >= need - off) {
+          fprintf(stderr, "snprintf overflow in SpotMatrix render.\n");
+          exit(1);
+        }
+        off += (size_t)n;
+      }
+      perIterBuf[kk] = buf;
+      perIterLen[kk] = off;
+
+      FinalMatrix[kk][0] = GrainIDThis;
+      for (int jj = 0; jj < 21; jj++) {
+        FinalMatrix[kk][jj + 1] = OPs[rown_l][jj];
+      }
+      FinalMatrix[kk][22] = Radiuses[rown_l];
+      FinalMatrix[kk][23] = OPs[rown_l][22];
+      for (int jj = 0; jj < 3; jj++) {
+        for (int kka = 0; kka < 3; kka++) {
+          FinalMatrix[kk][24 + 3 * jj + kka] =
+              MultR * StrainTensorSampleFab_l[jj][kka];
+          FinalMatrix[kk][33 + 3 * jj + kka] =
+              MultR * StrainTensorSampleKen_l[jj][kka];
+        }
+      }
+      FinalMatrix[kk][42] = MultR * RetVal_l;
+      FinalMatrix[kk][43] = (double)PhaseNr;
+      OrientMat2Euler(Orient_l, Eul_l);
+      FinalMatrix[kk][44] = Eul_l[0];
+      FinalMatrix[kk][45] = Eul_l[1];
+      FinalMatrix[kk][46] = Eul_l[2];
+      double VNorm_l =
+          FinalMatrix[kk][22] * FinalMatrix[kk][22] * FinalMatrix[kk][22];
+      beamCenterAcc += FinalMatrix[kk][12] * VNorm_l;
+      fullVolAcc += VNorm_l;
+    }
+
+    free(dummySampleInfo_l);
+    FreeMemMatrix(SpotsInfo_l, NR_MAX_IDS_PER_GRAIN);
+    FreeMemMatrix(SpotMatrix_l, NR_MAX_IDS_PER_GRAIN);
+  }
+
+  nGrains = nKept;
+  BeamCenter = (fullVolAcc > 0) ? (beamCenterAcc / fullVolAcc) : 0;
+  FullVol = fullVolAcc;
+
+  // Emit SpotMatrix.csv (ordered by kk, matches serial baseline).
+  FILE *spotsfile = fopen("SpotMatrix.csv", "w");
+  if (spotsfile == NULL) {
+    printf("Could not write to SpotMatrix.csv. Please check.\n");
+    return 1;
+  }
+  setvbuf(spotsfile, NULL, _IOFBF, 1 << 20);
+  fprintf(spotsfile, "%%"
+                     "GrainID\tSpotID\tOmega\tDetectorHor\tDetectorVert\tOmeRaw"
+                     "\tEta\tRingNr\tYLab\tZLab\tTheta\tStrainError\n");
+  for (int kk = 0; kk < nKept; kk++) {
+    if (perIterBuf[kk] != NULL && perIterLen[kk] > 0) {
+      fwrite(perIterBuf[kk], 1, perIterLen[kk], spotsfile);
+    }
+    free(perIterBuf[kk]);
+  }
+  free(perIterBuf);
+  free(perIterLen);
   fclose(spotsfile);
+
+  printf("Number of grains: %d.\n", nGrains);
+
+  // Write Grains.csv
   char GrainsFileName[1024];
   sprintf(GrainsFileName, "Grains.csv");
   FILE *GrainsFile;
@@ -981,7 +988,7 @@ int main(int argc, char *argv[]) {
     printf("Could not write to Grains.csv. Please check.\n");
     return 1;
   }
-  setvbuf(GrainsFile, NULL, _IOFBF, 1 << 20); // Buffered output
+  setvbuf(GrainsFile, NULL, _IOFBF, 1 << 20);
   fprintf(GrainsFile, "%%NumGrains %d\n", nGrains);
   fprintf(GrainsFile, "%%BeamCenter %f\n", BeamCenter);
   fprintf(GrainsFile, "%%BeamThickness %f\n", BeamThickness);
@@ -1000,10 +1007,10 @@ int main(int argc, char *argv[]) {
   fprintf(GrainsFile,
           "eKen11\teKen12\teKen13\teKen21\teKen22\teKen23\teKen31\teKen32\teKen"
           "33\tRMSErrorStrain\tPhaseNr\tEul0\tEul1\tEul2\n");
-  for (i = 0; i < nGrains; i++) {
-    fprintf(GrainsFile, "%d\t", (int)FinalMatrix[i][0]);
-    for (j = 1; j < 47; j++) {
-      fprintf(GrainsFile, "%lf\t", FinalMatrix[i][j]);
+  for (int ii = 0; ii < nGrains; ii++) {
+    fprintf(GrainsFile, "%d\t", (int)FinalMatrix[ii][0]);
+    for (int jj = 1; jj < 47; jj++) {
+      fprintf(GrainsFile, "%lf\t", FinalMatrix[ii][jj]);
     }
     fprintf(GrainsFile, "\n");
   }
@@ -1016,7 +1023,8 @@ int main(int argc, char *argv[]) {
   if (fullInfoFile >= 0) {
     close(fullInfoFile);
   }
-  hashset_destroy(idsDoneSet);
+  free(isDup);
+  free(keptList);
 
   end = clock();
   diftotal = ((double)(end - start)) / CLOCKS_PER_SEC;
