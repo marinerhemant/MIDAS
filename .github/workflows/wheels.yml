@@ -91,6 +91,11 @@ jobs:
           CIBW_SKIP: "*-musllinux_* pp* *-win*"
           # macOS env hints (brew installs are in pyproject.toml's
           # [tool.cibuildwheel.macos].before-all so they're per-package):
+          #   - MACOSX_DEPLOYMENT_TARGET matches the runner. Homebrew
+          #     bottles on macos-14 are built for 14.0+; a lower target
+          #     makes delocate refuse the dylib bundle with "minimum target
+          #     of 14.0". macos-13 runner bottles are 13.0+. macOS users
+          #     on older versions install from sdist.
           #   - CMAKE_PREFIX_PATH: /opt/homebrew (arm64) or /usr/local (x86_64).
           #     Apple Silicon CMake doesn't search /opt/homebrew by default,
           #     so find_package(HDF5/TIFF/...) fails without this hint.
@@ -98,6 +103,7 @@ jobs:
           #     symlinked into /opt/homebrew), so FindOpenMP needs explicit
           #     paths on top of CMAKE_PREFIX_PATH.
           CIBW_ENVIRONMENT_MACOS: >-
+            MACOSX_DEPLOYMENT_TARGET=${{ matrix.os == 'macos-13' && '13.0' || '14.0' }}
             CMAKE_PREFIX_PATH="$(brew --prefix)"
             OpenMP_ROOT=$(brew --prefix libomp)
             LDFLAGS="-L$(brew --prefix libomp)/lib"
