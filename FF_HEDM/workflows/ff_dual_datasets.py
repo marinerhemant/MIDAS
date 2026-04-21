@@ -57,7 +57,7 @@ from pipeline_state import PipelineH5, find_resume_stage, load_resume_info
 
 DUAL_STAGE_ORDER = [
     'ds1_binning', 'ds2_binning', 'mapping',
-    'indexing_refinement', 'consolidation'
+    'indexing_refinement', 'process_grains', 'consolidation'
 ]
 
 # Import FF consolidation function for final output
@@ -440,12 +440,9 @@ def process_dataset_until_binning(
 def process_mapped_dataset_from_indexing(
     result_dir: str, num_procs: int, n_nodes: int, bin_directory: str
 ):
-    """
-    Runs the final analysis steps (indexing, refinement, grain processing)
-    on a mapped dataset.
-    """
+    """Run indexing + refinement on a mapped dataset (no grain processing)."""
     t0 = time.time()
-    logger.info(f"Starting final analysis in {result_dir}")
+    logger.info(f"Starting indexing+refinement in {result_dir}")
 
     with change_directory(result_dir):
         logger.info(f"Indexing. Time till now: {time.time() - t0:.2f} seconds.")
@@ -455,13 +452,19 @@ def process_mapped_dataset_from_indexing(
         logger.info(f"Refining. Time till now: {time.time() - t0:.2f} seconds.")
         res_refine = [refine(result_dir, num_procs, bin_directory, blockNr=nodeNr, numBlocks=n_nodes) for nodeNr in range(n_nodes)]
         [i.result() for i in res_refine]
-        
+
+    logger.info(f"Done index+refine. Total time: {time.time() - t0:.2f} seconds.")
+
+
+def run_process_grains(result_dir: str, num_procs: int, bin_directory: str):
+    """Run ProcessGrains on a mapped dataset."""
+    t0 = time.time()
+    with change_directory(result_dir):
         logger.info(f"Making grains list. Time till now: {time.time() - t0:.2f} seconds.")
         # NOTE: Using the non-Zarr version as the mapped data is not a single Zarr file
         cmd_grains = f"{os.path.join(bin_directory, 'ProcessGrains')} -paramFN {result_dir}/paramstest.txt -nCPUs {num_procs}"
         safely_run_command(cmd_grains, result_dir, f'{result_dir}/output/grains_out.csv', f'{result_dir}/output/grains_err.csv', "Grain processing")
-
-    logger.info(f"Done with mapped dataset. Total time for final steps: {time.time() - t0:.2f} seconds.")
+    logger.info(f"Done process_grains. Time: {time.time() - t0:.2f} seconds.")
 
 def main():
     """Main function to process two datasets."""        
@@ -606,7 +609,7 @@ def main():
             else:
                 logger.info("RESUME: skipping mapping stage")
 
-            # Step 5: Run indexing and subsequent steps on the mapped data in the first folder
+            # Step 5: Run indexing and refinement on the mapped data in the first folder
             if _should_run('indexing_refinement'):
                 process_mapped_dataset_from_indexing(
                     result_dir=result_dir1, num_procs=num_procs, n_nodes=n_nodes, bin_directory=bin_dir
@@ -614,6 +617,15 @@ def main():
                 ph5.mark('indexing_refinement')
             else:
                 logger.info("RESUME: skipping indexing_refinement stage")
+
+            # Step 6: Run ProcessGrains to build Grains.csv
+            if _should_run('process_grains'):
+                run_process_grains(
+                    result_dir=result_dir1, num_procs=num_procs, bin_directory=bin_dir
+                )
+                ph5.mark('process_grains')
+            else:
+                logger.info("RESUME: skipping process_grains stage")
 
             # Generate consolidated H5 from grains data
             if _should_run('consolidation'):

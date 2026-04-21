@@ -66,7 +66,8 @@ pytpath = sys.executable
 
 FF_STAGE_ORDER = [
     'hkl', 'peak_search', 'merge_overlaps', 'calc_radius',
-    'data_transform', 'binning', 'indexing', 'refinement', 'consolidation'
+    'data_transform', 'binning', 'indexing', 'refinement',
+    'process_grains', 'consolidation'
 ]
 
 @contextmanager
@@ -1210,24 +1211,28 @@ def process_layer(layer_nr: int, top_res_dir: str, ps_fn: str, data_fn: str, num
             logger.info("Skipping refinement (resumed past this stage).")
                         
         # Process grains
-        logger.info(f"Making grains list. Time till now: {time.time() - t0}")
-        
-        try:
-            f_grains_out = f'{result_dir}/midas_log/process_grains_out.csv'
-            f_grains_err = f'{result_dir}/midas_log/process_grains_err.csv'
-            
-            if provide_input_all == 0:
-                if grains_file:
-                    cmd = f"{os.path.join(bin_directory, 'ProcessGrains')} {outFStem} 1 {num_procs}"
+        if _should_run('process_grains'):
+            logger.info(f"Making grains list. Time till now: {time.time() - t0}")
+
+            try:
+                f_grains_out = f'{result_dir}/midas_log/process_grains_out.csv'
+                f_grains_err = f'{result_dir}/midas_log/process_grains_err.csv'
+
+                if provide_input_all == 0:
+                    if grains_file:
+                        cmd = f"{os.path.join(bin_directory, 'ProcessGrains')} {outFStem} 1 {num_procs}"
+                    else:
+                        cmd = f"{os.path.join(bin_directory, 'ProcessGrains')} {outFStem} 0 {num_procs}"
                 else:
-                    cmd = f"{os.path.join(bin_directory, 'ProcessGrains')} {outFStem} 0 {num_procs}"
-            else:
-                cmd = f"{os.path.join(bin_directory, 'ProcessGrains')} -paramFN {result_dir}/paramstest.txt -nCPUs {num_procs}"
-                
-            safely_run_command(cmd, result_dir, f_grains_out, f_grains_err, task_name="Grain processing")
-        except Exception as e:
-            raise RuntimeError(f"Failed to process grains: {e}")
-        get_grains_info(result_dir)
+                    cmd = f"{os.path.join(bin_directory, 'ProcessGrains')} -paramFN {result_dir}/paramstest.txt -nCPUs {num_procs}"
+
+                safely_run_command(cmd, result_dir, f_grains_out, f_grains_err, task_name="Grain processing")
+                ph5.mark('process_grains')
+            except Exception as e:
+                raise RuntimeError(f"Failed to process grains: {e}")
+            get_grains_info(result_dir)
+        else:
+            logger.info("Skipping process_grains (resumed past this stage).")
         
         # Generate consolidated HDF5 output with full provenance (optional)
         if generate_h5:
