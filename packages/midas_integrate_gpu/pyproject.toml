@@ -1,0 +1,65 @@
+[build-system]
+requires = ["scikit-build-core>=0.8"]
+build-backend = "scikit_build_core.build"
+
+[project]
+name = "midas-integrate-gpu"
+version = "0.1.0"
+description = "GPU (CUDA 12) streaming backend for midas-integrate"
+readme = "README.md"
+license = "BSD-3-Clause"
+requires-python = ">=3.9"
+authors = [
+    {name = "Hemant Sharma", email = "hsharma@anl.gov"},
+]
+keywords = [
+    "MIDAS", "HEDM", "integration", "GPU", "CUDA",
+    "streaming", "synchrotron", "radial",
+]
+classifiers = [
+    "Development Status :: 3 - Alpha",
+    "Intended Audience :: Science/Research",
+    "Programming Language :: Python :: 3",
+    "Topic :: Scientific/Engineering :: Physics",
+    "Environment :: GPU :: NVIDIA CUDA :: 12",
+    "Operating System :: POSIX :: Linux",
+]
+dependencies = [
+    # Exact-pin to the sibling CPU wheel: shared C ABI must match.
+    "midas-integrate==0.1.0",
+]
+
+[project.optional-dependencies]
+dev = ["pytest>=7.0", "pytest-cov", "build", "twine"]
+
+[project.urls]
+Homepage = "https://github.com/marinerhemant/MIDAS"
+Documentation = "https://github.com/marinerhemant/MIDAS"
+Issues = "https://github.com/marinerhemant/MIDAS/issues"
+
+[tool.scikit-build]
+minimum-version = "0.8"
+build-dir = "build/{wheel_tag}"
+wheel.packages = ["midas_integrate_gpu"]
+cmake.version = ">=3.20"
+cmake.build-type = "Release"
+cmake.define.PACKAGE_VERSION = "0.1.0"
+
+# --- cibuildwheel — Linux x86_64 + CUDA container ONLY. ---
+# No macOS (Apple dropped CUDA), no Windows (out of scope for v0.1.0),
+# no musllinux (CUDA doesn't support alpine).
+
+[tool.cibuildwheel]
+build = "cp39-* cp310-* cp311-* cp312-*"
+skip = "*-musllinux_* pp* *-win* *-macosx_* *-i686 *-aarch64"
+build-verbosity = 1
+test-command = "python -c 'import midas_integrate_gpu; print(midas_integrate_gpu.__version__)'"
+
+[tool.cibuildwheel.linux]
+manylinux-x86_64-image = "nvidia/cuda:12.4.1-devel-ubuntu22.04"
+before-all = "bash {project}/scripts/install_deps_linux.sh"
+environment = { CUDA_HOME = "/usr/local/cuda" }
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+addopts = "--import-mode=importlib"
