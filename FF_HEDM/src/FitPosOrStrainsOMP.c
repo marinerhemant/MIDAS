@@ -2698,8 +2698,8 @@ int main(int argc, char *argv[]) {
                       Lsd, Wavelength, OmegaRanges, BoxSizes, MinEta, wedge,
                       chi, SpotsComp, Splist, ErrorInt1, &nSpotsComp,
                       GlobalDebugFlag);
-      printf("STAGE SpotID %6d Stage1_Pos:  PosErr=%7.2f OmeErr=%6.4f IA=%6.4f LatC=%6.4f %6.4f %6.4f\n",
-             SpId, ErrorInt1[0], ErrorInt1[1], ErrorInt1[2], XFit[6], XFit[7], XFit[8]);
+      // printf("STAGE SpotID %6d Stage1_Pos:  PosErr=%7.2f OmeErr=%6.4f IA=%6.4f LatC=%6.4f %6.4f %6.4f\n",
+      //        SpId, ErrorInt1[0], ErrorInt1[1], ErrorInt1[2], XFit[6], XFit[7], XFit[8]);
       for (i = 0; i < nSpotsComp; i++)
         for (j = 0; j < 11; j++)
           spotsYZONew[i][j] = Splist[i][j];
@@ -2788,8 +2788,8 @@ int main(int argc, char *argv[]) {
                       Lsd, Wavelength, OmegaRanges, BoxSizes, MinEta, wedge,
                       chi, SpotsComp, Splist, ErrorInt2, &nSpotsComp,
                       GlobalDebugFlag);
-      printf("STAGE SpotID %6d Stage2_Ori:  PosErr=%7.2f OmeErr=%6.4f IA=%6.4f LatC=%6.4f %6.4f %6.4f\n",
-             SpId, ErrorInt2[0], ErrorInt2[1], ErrorInt2[2], UseXFit[6], UseXFit[7], UseXFit[8]);
+      // printf("STAGE SpotID %6d Stage2_Ori:  PosErr=%7.2f OmeErr=%6.4f IA=%6.4f LatC=%6.4f %6.4f %6.4f\n",
+      //        SpId, ErrorInt2[0], ErrorInt2[1], ErrorInt2[2], UseXFit[6], UseXFit[7], UseXFit[8]);
       for (i = 0; i < nSpotsComp; i++)
         for (j = 0; j < 11; j++)
           spotsYZONew[i][j] = Splist[i][j];
@@ -2870,8 +2870,8 @@ int main(int argc, char *argv[]) {
                       hkls, Lsd, Wavelength, OmegaRanges, BoxSizes, MinEta,
                       wedge, chi, SpotsComp, Splist, ErrorInt3, &nSpotsComp,
                       GlobalDebugFlag);
-      printf("STAGE SpotID %6d Stage3_Str:  PosErr=%7.2f OmeErr=%6.4f IA=%6.4f LatC=%6.4f %6.4f %6.4f\n",
-             SpId, ErrorInt3[0], ErrorInt3[1], ErrorInt3[2], UseXFit2[6], UseXFit2[7], UseXFit2[8]);
+      // printf("STAGE SpotID %6d Stage3_Str:  PosErr=%7.2f OmeErr=%6.4f IA=%6.4f LatC=%6.4f %6.4f %6.4f\n",
+      //        SpId, ErrorInt3[0], ErrorInt3[1], ErrorInt3[2], UseXFit2[6], UseXFit2[7], UseXFit2[8]);
       for (i = 0; i < nSpotsComp; i++)
         for (j = 0; j < 11; j++)
           spotsYZONew[i][j] = Splist[i][j];
