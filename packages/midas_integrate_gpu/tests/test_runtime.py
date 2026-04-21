@@ -7,6 +7,7 @@ from __future__ import annotations
 
 import platform
 import subprocess
+from importlib.metadata import version
 from unittest import mock
 
 import pytest
@@ -20,7 +21,7 @@ from midas_integrate_gpu._runtime import (
 
 
 def test_version_exported():
-    assert midas_integrate_gpu.__version__ == "0.1.0"
+    assert midas_integrate_gpu.__version__ == version("midas-integrate-gpu")
 
 
 def test_environment_check_returns_dataclass():

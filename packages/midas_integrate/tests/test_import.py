@@ -1,10 +1,12 @@
 """Smoke test: package imports and advertises the right version."""
 
+from importlib.metadata import version
+
 
 def test_import_version():
     import midas_integrate
 
-    assert midas_integrate.__version__ == "0.1.0"
+    assert midas_integrate.__version__ == version("midas-integrate")
 
 
 def test_paths_api_surface():
