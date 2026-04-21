@@ -275,7 +275,13 @@ int main(int argc, char *argv[]) {
   fgets(aline, 1000, Infile);
   int counter = 0, RingNr;
   double **SpotsMat;
-  size_t nAllocSpotsMat = nLinesSpotsMat > 0 ? nLinesSpotsMat : 1;
+  /* +nRings+1: the read loop does SpotsMat[counter][13] = -1 at entry, then
+     counter++ for each matching ring inside the loop, then a sentinel read
+     of SpotsMat[counter][13] AFTER the ring loop. On the last CSV row,
+     counter can advance by up to nRings past the pre-counted row count, so
+     allocate guard slots to keep the sentinel read in-bounds. */
+  size_t nAllocSpotsMat =
+      (nLinesSpotsMat > 0 ? nLinesSpotsMat : 1) + (size_t)nRings + 1;
   SpotsMat = allocMatrix(nAllocSpotsMat, 19);
   if (SpotsMat == NULL) {
     printf("Could not allocate SpotsMat for %zu rows. Exiting.\n",
