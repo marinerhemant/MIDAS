@@ -1,0 +1,201 @@
+name: Wheels (cibuildwheel)
+
+# Builds binary wheels for the C-compiled MIDAS packages:
+#   - midas-auto-calibrate   (Linux + macOS)
+#   - midas-integrate        (Linux + macOS)
+#   - midas-integrate-gpu    (Linux x86_64 + CUDA 12 ONLY)
+#
+# Triggered on GitHub release publish events; uploads to PyPI via OIDC
+# trusted publishing. Pure-Python packages (midas-stress, midas-params,
+# midas-diffract) continue using python-packages.yml.
+
+on:
+  release:
+    types: [published]
+  workflow_dispatch:
+    inputs:
+      package:
+        description: "Which C-compiled package to build"
+        type: choice
+        required: true
+        default: midas_auto_calibrate
+        options:
+          - midas_auto_calibrate
+          - midas_integrate
+          - midas_integrate_gpu
+
+jobs:
+  # -------------------------------------------------------------------------
+  # Resolve which package the tag / manual dispatch refers to, and whether
+  # it's a GPU build (which needs the CUDA container + Linux-only matrix).
+  # -------------------------------------------------------------------------
+  which:
+    runs-on: ubuntu-latest
+    outputs:
+      package: ${{ steps.dispatch.outputs.package }}
+      pypi_name: ${{ steps.dispatch.outputs.pypi_name }}
+      is_gpu: ${{ steps.dispatch.outputs.is_gpu }}
+    steps:
+      - id: dispatch
+        name: Identify package from tag or workflow input
+        run: |
+          if [[ "${{ github.event_name }}" == "workflow_dispatch" ]]; then
+            PKG="${{ github.event.inputs.package }}"
+          else
+            TAG="${GITHUB_REF##*/}"
+            if [[ "$TAG" == midas-auto-calibrate-v* ]]; then
+              PKG=midas_auto_calibrate
+            elif [[ "$TAG" == midas-integrate-v* ]]; then
+              PKG=midas_integrate
+            elif [[ "$TAG" == midas-integrate-gpu-v* ]]; then
+              PKG=midas_integrate_gpu
+            else
+              echo "Tag $TAG doesn't match any cibuildwheel-eligible package; skipping."
+              PKG=""
+            fi
+          fi
+          IS_GPU="false"
+          if [[ "$PKG" == "midas_integrate_gpu" ]]; then
+            IS_GPU="true"
+          fi
+          echo "package=$PKG" >> "$GITHUB_OUTPUT"
+          echo "pypi_name=${PKG//_/-}" >> "$GITHUB_OUTPUT"
+          echo "is_gpu=$IS_GPU" >> "$GITHUB_OUTPUT"
+
+  # -------------------------------------------------------------------------
+  # CPU wheels — Linux (manylinux_2_28) + macOS-13 (x86_64) + macOS-14
+  # (arm64). Runs for auto-calibrate + integrate, skipped for GPU package.
+  # -------------------------------------------------------------------------
+  wheels_cpu:
+    needs: which
+    if: needs.which.outputs.package != '' && needs.which.outputs.is_gpu == 'false'
+    name: ${{ matrix.os }} cp${{ matrix.python }} / ${{ needs.which.outputs.package }}
+    runs-on: ${{ matrix.os }}
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-latest, macos-13, macos-14]
+        python: ["39", "310", "311", "312"]
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - name: Build wheel
+        uses: pypa/cibuildwheel@v2.21
+        with:
+          package-dir: packages/${{ needs.which.outputs.package }}
+        env:
+          CIBW_BUILD: cp${{ matrix.python }}-*
+          CIBW_SKIP: "*-musllinux_* pp* *-win*"
+
+      - name: Upload wheel artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: wheels-${{ needs.which.outputs.pypi_name }}-${{ matrix.os }}-cp${{ matrix.python }}
+          path: wheelhouse/*.whl
+
+  # -------------------------------------------------------------------------
+  # GPU wheels — Linux x86_64 ONLY, built inside the CUDA 12.4 dev container.
+  # cibuildwheel's manylinux-x86_64-image is overridden via the package's
+  # pyproject.toml. We just supply the runner and CIBW_BUILD env.
+  # -------------------------------------------------------------------------
+  wheels_gpu:
+    needs: which
+    if: needs.which.outputs.package != '' && needs.which.outputs.is_gpu == 'true'
+    name: ubuntu-latest cp${{ matrix.python }} / midas_integrate_gpu
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        python: ["39", "310", "311", "312"]
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - name: Build GPU wheel (inside nvidia/cuda:12.4.1-devel)
+        uses: pypa/cibuildwheel@v2.21
+        with:
+          package-dir: packages/midas_integrate_gpu
+        env:
+          CIBW_BUILD: cp${{ matrix.python }}-manylinux_x86_64
+          CIBW_SKIP: "*-musllinux_* pp* *-win* *-macosx_*"
+          # Exclude libcuda* (kernel driver libs live on host, not repairable).
+          CIBW_REPAIR_WHEEL_COMMAND_LINUX: >-
+            auditwheel repair --exclude 'libcuda*' --exclude 'libcudart*'
+            -w {dest_dir} {wheel}
+
+      - name: Upload wheel artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: wheels-midas-integrate-gpu-ubuntu-latest-cp${{ matrix.python }}
+          path: wheelhouse/*.whl
+
+  # -------------------------------------------------------------------------
+  # sdist — always produced; ``pip install`` from source is the escape hatch
+  # for unsupported platforms (and the only way to install midas-integrate-gpu
+  # on a non-standard CUDA version).
+  # -------------------------------------------------------------------------
+  sdist:
+    needs: which
+    if: needs.which.outputs.package != ''
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - run: pip install build
+      - name: Build sdist
+        run: |
+          cd packages/${{ needs.which.outputs.package }}
+          python -m build --sdist
+      - uses: actions/upload-artifact@v4
+        with:
+          name: sdist-${{ needs.which.outputs.pypi_name }}
+          path: packages/${{ needs.which.outputs.package }}/dist/*.tar.gz
+
+  # -------------------------------------------------------------------------
+  # Publish to PyPI via OIDC. Only runs on release events.
+  # -------------------------------------------------------------------------
+  publish:
+    needs: [which, wheels_cpu, wheels_gpu, sdist]
+    # Run when the release event triggers and at least one wheels job succeeded.
+    # GPU-package releases skip wheels_cpu (vice versa); always() keeps the
+    # job from cancelling when an irrelevant dependency was skipped.
+    if: >-
+      always() &&
+      github.event_name == 'release' &&
+      needs.which.outputs.package != '' &&
+      (needs.wheels_cpu.result == 'success' || needs.wheels_gpu.result == 'success') &&
+      needs.sdist.result == 'success'
+    runs-on: ubuntu-latest
+    environment: pypi
+    permissions:
+      id-token: write  # trusted publishing
+
+    steps:
+      - name: Download all artifacts
+        uses: actions/download-artifact@v4
+        with:
+          path: dist-all
+          pattern: "{wheels,sdist}-${{ needs.which.outputs.pypi_name }}-*"
+          merge-multiple: true
+
+      - name: Collect into single dist/
+        run: |
+          mkdir -p dist
+          find dist-all -type f \( -name "*.whl" -o -name "*.tar.gz" \) -exec cp {} dist/ \;
+          ls -la dist/
+
+      - name: Publish to PyPI
+        uses: pypa/gh-action-pypi-publish@release/v1
+        # Trusted publishing via the shared `pypi` environment.
+        # One-time setup at https://pypi.org/manage/account/publishing/ per
+        # project name:
+        #   midas-auto-calibrate
+        #   midas-integrate
+        #   midas-integrate-gpu
