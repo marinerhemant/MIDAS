@@ -136,7 +136,11 @@ fi
 # --- 7. Commit + tag ---
 echo "[5/8] Committing version bump..."
 git add pyproject.toml midas_integrate_gpu/__init__.py
-git commit -m "midas-integrate-gpu: bump version to ${NEW_VERSION}"
+if git diff --cached --quiet; then
+    echo "  No version change (already at ${NEW_VERSION}); skipping commit."
+else
+    git commit -m "midas-integrate-gpu: bump version to ${NEW_VERSION}"
+fi
 
 echo "[6/8] Tagging as ${TAG}..."
 git tag -a "$TAG" -m "midas-integrate-gpu v${NEW_VERSION}"
