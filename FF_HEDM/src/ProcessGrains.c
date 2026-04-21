@@ -98,8 +98,9 @@ static inline int FindInternalAnglesTwins(int nrIDs, int *IDs, int *IDsPerGrain,
                                           int *NrIDsPerID, bool *IDsChecked,
                                           double **OPs, double *ID_IA_Mat,
                                           int counter, int Pos, int StartingID,
-                                          double *Radiuses, int SGNr) {
-  int i, j, k, ThisID, ThisID2;
+                                          double *Radiuses, int SGNr,
+                                          const int *pos_by_id, int maxID) {
+  int i, k, ThisID;
   bool AreTwins = false;
   ID_IA_Mat[(counter * 4)] = (double)StartingID;
   ID_IA_Mat[(counter * 4) + 1] = (double)Pos;
@@ -115,24 +116,32 @@ static inline int FindInternalAnglesTwins(int nrIDs, int *IDs, int *IDsPerGrain,
   OrientMat2Quat(OR1, q1);
   for (i = 0; i < NrIDsPerID[Pos]; i++) {
     ThisID = IDsPerGrain[(Pos * NR_MAX_IDS_PER_GRAIN) + i];
-    for (j = 0; j < nrIDs; j++) {
-      ThisID2 = IDs[j];
-      if (ThisID == ThisID2 && IDsChecked[j] == false) {
-        for (k = 0; k < 9; k++) {
-          OR2[k] = OPs[j][k];
-        }
-        OrientMat2Quat(OR2, q2);
-        Angle = GetMisOrientation(q1, q2, Axis, &ang, SGNr);
-        AreTwins = (fabs(ang - 60.0 * deg2rad) < 0.4 * deg2rad) &&
-                   fabs(fabs(Axis[0]) - fabs(Axis[1])) < 0.01 &&
-                   fabs(fabs(Axis[2]) - fabs(Axis[1])) < 0.01;
-        if (fabs(ang) < 0.4 * deg2rad || AreTwins) {
-          counter = FindInternalAnglesTwins(nrIDs, IDs, IDsPerGrain, NrIDsPerID,
-                                            IDsChecked, OPs, ID_IA_Mat, counter,
-                                            j, ThisID, Radiuses, SGNr);
+    int j;
+    if (pos_by_id != NULL && ThisID >= 0 && ThisID <= maxID) {
+      j = pos_by_id[ThisID];
+      if (j < 0 || IDsChecked[j])
+        continue;
+    } else {
+      for (j = 0; j < nrIDs; j++) {
+        if (IDs[j] == ThisID && !IDsChecked[j])
           break;
-        }
       }
+      if (j == nrIDs)
+        continue;
+    }
+    for (k = 0; k < 9; k++) {
+      OR2[k] = OPs[j][k];
+    }
+    OrientMat2Quat(OR2, q2);
+    Angle = GetMisOrientation(q1, q2, Axis, &ang, SGNr);
+    AreTwins = (fabs(ang - 60.0 * deg2rad) < 0.4 * deg2rad) &&
+               fabs(fabs(Axis[0]) - fabs(Axis[1])) < 0.01 &&
+               fabs(fabs(Axis[2]) - fabs(Axis[1])) < 0.01;
+    if (fabs(ang) < 0.4 * deg2rad || AreTwins) {
+      counter = FindInternalAnglesTwins(nrIDs, IDs, IDsPerGrain, NrIDsPerID,
+                                        IDsChecked, OPs, ID_IA_Mat, counter, j,
+                                        ThisID, Radiuses, SGNr, pos_by_id,
+                                        maxID);
     }
   }
   int counte = counter;
@@ -143,8 +152,9 @@ static inline int FindInternalAngles(int nrIDs, int *IDs, int *IDsPerGrain,
                                      int *NrIDsPerID, bool *IDsChecked,
                                      double **OPs, double *ID_IA_Mat,
                                      int counter, int Pos, int StartingID,
-                                     double *Radiuses, int SGNr) {
-  int i, j, k, ThisID, ThisID2;
+                                     double *Radiuses, int SGNr,
+                                     const int *pos_by_id, int maxID) {
+  int i, k, ThisID;
   ID_IA_Mat[(counter * 4)] = (double)StartingID;
   ID_IA_Mat[(counter * 4) + 1] = (double)Pos;
   ID_IA_Mat[(counter * 4) + 2] = OPs[Pos][IAColNr];
@@ -161,21 +171,28 @@ static inline int FindInternalAngles(int nrIDs, int *IDs, int *IDsPerGrain,
   posSize *= NR_MAX_IDS_PER_GRAIN;
   for (i = 0; i < NrIDsPerID[Pos]; i++) {
     ThisID = IDsPerGrain[(posSize) + i];
-    for (j = 0; j < nrIDs; j++) {
-      ThisID2 = IDs[j];
-      if (ThisID == ThisID2 && IDsChecked[j] == false) {
-        for (k = 0; k < 9; k++) {
-          OR2[k] = OPs[j][k];
-        }
-        OrientMat2Quat(OR2, q2);
-        Angle = GetMisOrientation(q1, q2, Axis, &ang, SGNr);
-        if (fabs(ang) < 0.4 * deg2rad) {
-          counter = FindInternalAngles(nrIDs, IDs, IDsPerGrain, NrIDsPerID,
-                                       IDsChecked, OPs, ID_IA_Mat, counter, j,
-                                       ThisID, Radiuses, SGNr);
+    int j;
+    if (pos_by_id != NULL && ThisID >= 0 && ThisID <= maxID) {
+      j = pos_by_id[ThisID];
+      if (j < 0 || IDsChecked[j])
+        continue;
+    } else {
+      for (j = 0; j < nrIDs; j++) {
+        if (IDs[j] == ThisID && !IDsChecked[j])
           break;
-        }
       }
+      if (j == nrIDs)
+        continue;
+    }
+    for (k = 0; k < 9; k++) {
+      OR2[k] = OPs[j][k];
+    }
+    OrientMat2Quat(OR2, q2);
+    Angle = GetMisOrientation(q1, q2, Axis, &ang, SGNr);
+    if (fabs(ang) < 0.4 * deg2rad) {
+      counter = FindInternalAngles(nrIDs, IDs, IDsPerGrain, NrIDsPerID,
+                                   IDsChecked, OPs, ID_IA_Mat, counter, j,
+                                   ThisID, Radiuses, SGNr, pos_by_id, maxID);
     }
   }
   int counte = counter;
@@ -236,6 +253,9 @@ static int countCSVLines(const char *filename) {
 }
 
 int main(int argc, char *argv[]) {
+  // Line-buffer stdout so progress messages appear immediately when piped
+  // or captured (default is fully-buffered when stdout is not a TTY).
+  setvbuf(stdout, NULL, _IOLBF, 0);
   printf("Version: %s\n", MIDAS_VERSION_STRING);
   if (argc < 2) {
     printf("Usage: ProcessGrains ZarrZip [TrackGrains(0|1)] [nCPUs]\n");
@@ -435,6 +455,38 @@ int main(int argc, char *argv[]) {
   }
   fclose(IDsFile);
   printf("Total of %d IDs will be sorted into grains now.\n", nrIDs);
+
+  // Build id→position lookup so FindInternalAngles avoids an O(nrIDs)
+  // linear scan per child-ID match (dominant cost for 250k+ ID datasets).
+  // Keep "first-wins" semantics to match the original linear scan when
+  // SpotsToIndex.csv contains duplicate IDs.
+  int pos_maxID = 0;
+  for (int ii = 0; ii < nrIDs; ii++) {
+    if (IDs[ii] > pos_maxID)
+      pos_maxID = IDs[ii];
+  }
+  int *pos_by_id = NULL;
+  if (pos_maxID >= 0) {
+    size_t mapBytes = ((size_t)pos_maxID + 1) * sizeof(int);
+    if (mapBytes <= (size_t)500 * 1024 * 1024) {
+      pos_by_id = malloc(mapBytes);
+    }
+    if (pos_by_id != NULL) {
+      for (size_t k = 0; k <= (size_t)pos_maxID; k++)
+        pos_by_id[k] = -1;
+      for (int ii = 0; ii < nrIDs; ii++) {
+        int id = IDs[ii];
+        if (id >= 0 && id <= pos_maxID && pos_by_id[id] == -1)
+          pos_by_id[id] = ii;
+      }
+      printf("Built id→position lookup (maxID=%d, %.1f MB).\n", pos_maxID,
+             (double)mapBytes / (1024.0 * 1024.0));
+    } else {
+      printf("pos_by_id map too large (maxID=%d); using linear scan "
+             "fallback.\n",
+             pos_maxID);
+    }
+  }
   bool *IDsToKeep;
   IDsToKeep = malloc(nrIDs * sizeof(*IDsToKeep));
   double *Radiuses;
@@ -562,11 +614,12 @@ int main(int argc, char *argv[]) {
         if (Twin == 0) {
           counten = FindInternalAngles(nrIDs, IDs, IDsPerGrain, NrIDsPerID,
                                        IDsChecked, OPs, ID_IA_MAT, counte, i,
-                                       StartingID, Radiuses, SGNr);
+                                       StartingID, Radiuses, SGNr, pos_by_id,
+                                       pos_maxID);
         } else {
-          counten = FindInternalAnglesTwins(nrIDs, IDs, IDsPerGrain, NrIDsPerID,
-                                            IDsChecked, OPs, ID_IA_MAT, counte,
-                                            i, StartingID, Radiuses, SGNr);
+          counten = FindInternalAnglesTwins(
+              nrIDs, IDs, IDsPerGrain, NrIDsPerID, IDsChecked, OPs, ID_IA_MAT,
+              counte, i, StartingID, Radiuses, SGNr, pos_by_id, pos_maxID);
         }
       } else {
         counten = 0;
