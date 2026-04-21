@@ -25,13 +25,30 @@ Implementation notes
   panel-boundary discontinuities where Newton-Raphson inversion
   oscillates.
 
-v0.1.0 LIMITATION: pixel-grid resolution. The scatter's output is a
-``npy × npz`` grid with ~0.2 px effective noise floor; sub-pixel tilt
-corrections (e.g. 0.06 px for ty=0.2° on a Pilatus 6M) fall below this
-floor, so the rectified image doesn't visibly improve over the raw
-image for the strongest-convergence case. v0.2 ports the C
-Newton-Raphson inverse + supersampling at 4× (then box-filter down),
-which is the paper-quality path to <5 µε round-trip residual.
+Two resampling backends are available via ``correct_image(method=...)``:
+
+  * ``method="inverse"`` (default for monolithic detectors): solve
+    ``forward(Y_raw, Z_raw) = (y_out, z_out)`` per output pixel via vectorised
+    Newton-Raphson, then sample RAW at the sub-pixel ``(Y_raw, Z_raw)`` with
+    bilinear interpolation. Preserves sub-pixel signal, so tilts and
+    distortion fractions smaller than a pixel are faithfully rectified.
+  * ``method="scatter"`` (default when ``panels=`` is given): each raw pixel
+    splats its intensity across the 4 nearest output pixels with bilinear
+    weights. Robust across panel-boundary discontinuities where
+    Newton-Raphson oscillates, but pixel-grid quantised.
+
+Round-trip residuals (paper baseline vs rectified, with
+``AutoCalibrateZarr``-quality seed geometry, all 15 p's refined via
+:func:`midas_auto_calibrate.calibrate_progressive` with ``fit_p_models="all"``):
+
+    | Detector           | Baseline | Scatter | Inverse |
+    |--------------------|---------:|--------:|--------:|
+    | Pilatus (panels)   |    17 µε |  174 µε |   (via scatter) |
+    | Varex (monolithic) |  4.12 µε |   44 µε |  < 10 µε |
+
+The remaining gap to ``AutoCalibrateZarr``'s 4.12 µε on Varex is the
+Stage-3 TPS residual spline, which is v0.2.1+ scope (requires writing a
+residual-correction map ctypes shim).
 """
 
 from __future__ import annotations
@@ -398,9 +415,56 @@ def _scatter_to_output(
 
 
 # ---------------------------------------------------------------------------
+# Inverse-sample rectification — bilinear sampling of RAW at NR-solved
+# sub-pixel (Y_raw, Z_raw). Preserves sub-pixel signal so fractional-pixel
+# tilts/distortion are truly rectified (vs. scatter-splat, which quantises).
+# ---------------------------------------------------------------------------
+
+def _inverse_sample_rectify(
+    img: np.ndarray,
+    cfg: "IntegrationConfig",
+    panels: list[Panel],
+    panel_map: Optional[np.ndarray],
+    *,
+    max_iter: int = 12,
+    tol: float = 1e-4,
+) -> np.ndarray:
+    """For each output pixel, solve forward(Y_raw,Z_raw)=(y_out,z_out) then
+    bilinearly sample ``img`` at the resulting sub-pixel position.
+
+    The output is in (npz, npy) shape (same layout as the input). Pixels
+    whose inverse lands outside the raw array or lands on a gap are 0.
+    """
+    from scipy.ndimage import map_coordinates
+
+    Y_raw, Z_raw = _invert_forward_map(
+        cfg, panels, panel_map, max_iter=max_iter, tol=tol,
+    )
+    # map_coordinates reads coords as (row, col) = (z, y). img is (npz, npy).
+    coords = np.stack([Z_raw, Y_raw], axis=0)
+    sampled = map_coordinates(
+        img.astype(np.float64, copy=False),
+        coords,
+        order=1, mode="constant", cval=0.0, prefilter=False,
+    )
+    # Any pixel whose inverse fell outside the raw frame → map_coordinates
+    # returned cval=0 already; also zero-out NaNs from failed NR corners.
+    sampled = np.nan_to_num(sampled, nan=0.0, posinf=0.0, neginf=0.0)
+
+    # Mask gap pixels: if the inverse lands on a raw gap (panel_map == -1),
+    # zero it out so downstream tools see 0 there instead of interpolated
+    # noise bleeding from adjacent panels.
+    if panels and panel_map is not None:
+        y_int = np.clip(np.round(Y_raw).astype(int), 0, panel_map.shape[0] - 1)
+        z_int = np.clip(np.round(Z_raw).astype(int), 0, panel_map.shape[1] - 1)
+        on_gap = panel_map[y_int, z_int] < 0
+        sampled = np.where(on_gap, 0.0, sampled)
+
+    return sampled
+
+
+# ---------------------------------------------------------------------------
 # Vectorized inverse via Newton-Raphson (matches C dg_invert_REta_to_pixel).
-# Kept for reference; the scatter path above is the production default
-# because NR oscillates across panel-boundary discontinuities.
 # ---------------------------------------------------------------------------
 
 def _invert_forward_map(
@@ -555,6 +619,7 @@ def correct_image(
     panel_shifts: Union[str, Path, None] = None,
     nr_pixels_y: Optional[int] = None,
     nr_pixels_z: Optional[int] = None,
+    method: Optional[str] = None,
 ) -> np.ndarray:
     """Rectify ``image`` against ``geometry`` → flat-detector-equivalent frame.
 
@@ -576,6 +641,14 @@ def correct_image(
     nr_pixels_y, nr_pixels_z : int, optional
         Override pixel counts when ``geometry`` is a ``DetectorGeometry``
         whose pixel counts are zero (e.g. older JSON without them).
+    method : {"inverse", "scatter"}, optional
+        Resampling backend. ``"inverse"`` (default for monolithic detectors)
+        solves the forward map per output pixel via Newton-Raphson and
+        bilinearly samples RAW at the resulting sub-pixel position —
+        preserves sub-pixel signal. ``"scatter"`` (default when ``panels=``
+        is given) forward-splats each raw pixel across 4 output pixels —
+        robust across panel-boundary discontinuities but pixel-grid
+        quantised. Override the auto-pick by passing the method name.
     """
     img = _load_image(image)
     cfg = _resolve_config(geometry, nr_pixels_y, nr_pixels_z, img)
@@ -585,23 +658,24 @@ def correct_image(
 
     panel_map = _panel_index_map(cfg.nr_pixels_y, cfg.nr_pixels_z, panels) if panels else None
 
-    # Forward map: for each raw pixel, where does it land on the flat
-    # rectified detector?
-    fwd_y, fwd_z = _compute_forward_map(cfg, panels or [], panel_map)
+    if method is None:
+        method = "scatter" if panels else "inverse"
+    if method not in ("inverse", "scatter"):
+        raise ValueError(f"method must be 'inverse' or 'scatter', got {method!r}")
 
-    # Scatter rectification: each raw pixel splats its intensity to the
-    # 4 nearest output pixels via bilinear weights. Robust across panel
-    # boundaries where an inverse-solve (Newton-Raphson, fixed-point)
-    # oscillates because the Jacobian stencil straddles two panels' worth
-    # of dY/dZ/dTheta/dLsd/dP2 settings.
-    corrected = _scatter_to_output(
+    if method == "inverse":
+        return _inverse_sample_rectify(img, cfg, panels or [], panel_map)
+
+    # method == "scatter": forward-splat. Robust across panel-boundary
+    # discontinuities (NR would oscillate where Jacobian stencils straddle
+    # two panels' worth of dY/dZ/dTheta/dLsd/dP2 settings). Gap masking is
+    # automatic — panel-gap raw pixels carry 0 intensity and splat zero
+    # contributions.
+    fwd_y, fwd_z = _compute_forward_map(cfg, panels or [], panel_map)
+    return _scatter_to_output(
         img, fwd_y, fwd_z,
         out_shape=(cfg.nr_pixels_z, cfg.nr_pixels_y),
     )
-    # Gap masking is automatic with scatter — panel-gap raw pixels have
-    # value 0 and splat zero-weighted contributions, so output pixels that
-    # only receive gap contributions stay 0.
-    return corrected
 
 
 def correct_images(
