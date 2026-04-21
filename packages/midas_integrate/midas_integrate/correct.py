@@ -37,18 +37,21 @@ Two resampling backends are available via ``correct_image(method=...)``:
     weights. Robust across panel-boundary discontinuities where
     Newton-Raphson oscillates, but pixel-grid quantised.
 
-Round-trip residuals (paper baseline vs rectified, with
-``AutoCalibrateZarr``-quality seed geometry, all 15 p's refined via
-:func:`midas_auto_calibrate.calibrate_progressive` with ``fit_p_models="all"``):
+Measured round-trip residuals with progressive-calibrated seed geometry
+(all 15 p's refined via :func:`midas_auto_calibrate.calibrate_progressive`
+with ``fit_p_models="all"``):
 
     | Detector           | Baseline | Scatter | Inverse |
     |--------------------|---------:|--------:|--------:|
-    | Pilatus (panels)   |    17 µε |  174 µε |   (via scatter) |
-    | Varex (monolithic) |  4.12 µε |   44 µε |  < 10 µε |
+    | Varex (monolithic) | ~20 µε   |  ~225 µε |  ~200 µε |
+    | Pilatus (panels)   | ~70 µε   |  ~250 µε |  (scatter only) |
 
-The remaining gap to ``AutoCalibrateZarr``'s 4.12 µε on Varex is the
-Stage-3 TPS residual spline, which is v0.2.1+ scope (requires writing a
-residual-correction map ctypes shim).
+Inverse is marginally better than scatter on monolithic detectors (sub-pixel
+signal preserved, CeO₂ ring ridges not requantised). The remaining ~100-200 µε
+gap to ``AutoCalibrateZarr``'s 4-17 µε is the Stage-3 TPS residual spline,
+which is v0.2.1+ scope (requires writing a residual-correction map ctypes
+shim). For paper-quality rectification today, run ``AutoCalibrateZarr``
+end-to-end on the MIDAS tree and use its rectified output.
 """
 
 from __future__ import annotations

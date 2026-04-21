@@ -42,7 +42,14 @@ def test_explicit_bin_dir_beats_env(monkeypatch, tmp_path):
     assert resolved == explicit_exe.resolve()
 
 
+def _disable_package_bins(monkeypatch):
+    """Hide wheel-shipped _bin dirs so env-var fallbacks are reachable."""
+    from midas_integrate import _binaries as b
+    monkeypatch.setattr(b, "_package_bin_dir", lambda _name: None)
+
+
 def test_midas_bin_env_resolves(monkeypatch, tmp_path):
+    _disable_package_bins(monkeypatch)
     monkeypatch.setenv("MIDAS_BIN", str(tmp_path))
     monkeypatch.delenv("MIDAS_INSTALL_DIR", raising=False)
     exe = _make_fake_exe(tmp_path, "MIDASIntegrator")
@@ -52,6 +59,7 @@ def test_midas_bin_env_resolves(monkeypatch, tmp_path):
 
 
 def test_midas_install_dir_fallback(monkeypatch, tmp_path):
+    _disable_package_bins(monkeypatch)
     monkeypatch.delenv("MIDAS_BIN", raising=False)
     bindir = tmp_path / "bin"
     bindir.mkdir()

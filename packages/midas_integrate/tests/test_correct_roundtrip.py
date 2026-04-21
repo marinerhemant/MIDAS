@@ -191,14 +191,17 @@ def test_round_trip_pipeline_smoke(tmp_path):
 @pytest.mark.xfail(
     reason=(
         "v1.0 paper goal: round-trip <5 µε on any detector. v0.1.0 measurement\n"
-        "with AutoCalibrateZarr-converged seed geometry (all 15 p's refined):\n"
-        "  Pilatus (panels):   baseline 17 µε   →  rectified 174 µε\n"
-        "  Varex (monolithic): baseline 4.12 µε →  rectified 44 µε\n"
+        "with progressive-calibrated seed (all 15 p's refined via\n"
+        "calibrate_progressive, fit_p_models='all'):\n"
+        "  Pilatus (panels, scatter):  baseline 70 µε  → rectified 250 µε\n"
+        "  Varex (monolithic, inverse): baseline 20 µε → rectified 200 µε\n"
+        "  Varex (monolithic, scatter): baseline 20 µε → rectified 225 µε\n"
         "Forward math is paper-correct (matches MIDAS C dg_pixel_to_REta_corr\n"
-        "to 0.01 µm per-point). Ceiling is bilinear-splat noise (~0.1-0.2 px\n"
-        "→ 40-170 µε at R=300-1000 px). v0.2 path: panel-aware Newton-Raphson\n"
-        "inverse (C dg_invert_REta_to_pixel_panel_corr) + sub-pixel-preserving\n"
-        "inverse-direction bilinear sampling (not scatter splatting)."
+        "to 0.01 µm per-point). The inverse/bilinear path (correct_image with\n"
+        "method='inverse') preserves sub-pixel signal but the remaining\n"
+        "~100-200 µε floor is the Stage-3 TPS residual spline that\n"
+        "AutoCalibrateZarr applies post-refinement; porting it requires a\n"
+        "ctypes shim over dg_correct_image and is v0.2.1+ scope."
     ),
     strict=False,
 )
@@ -231,9 +234,57 @@ def test_round_trip_sub_five_ustrain(tmp_path):
 
 
 # ---------------------------------------------------------------------------
-# Monolithic Varex — no panels, lower-distortion calibrant. Measured baseline
-# ~590 µε, rectified ~780 µε. Scatter-splat floor dominates here too but the
-# pipeline runs end-to-end with a different detector geometry + wavelength.
+# correct_image(method=...) unit test: both backends produce sensible output
+# and differ from each other (NR sampling ≠ scatter splat on the same raw).
+# Doesn't need MIDAS binaries — pure-Python math only.
+# ---------------------------------------------------------------------------
+
+
+def test_correct_image_method_parameter():
+    """``method='inverse'`` and ``method='scatter'`` both run and produce
+    geometrically-sensible (non-trivial, non-identical, finite) outputs."""
+    from midas_auto_calibrate import DetectorGeometry
+    from midas_integrate import correct_image
+
+    rng = np.random.default_rng(0)
+    img = rng.random((200, 200)) * 1000.0
+    geom = DetectorGeometry(
+        lsd=900_000, ybc=100, zbc=100,
+        tx=0.0, ty=0.2, tz=0.3,
+        p0=2e-4, p1=1e-4, p2=-5e-5, p4=1e-4,
+        px=150.0, nr_pixels_y=200, nr_pixels_z=200,
+    )
+    r_scatter = correct_image(img, geom, method="scatter")
+    r_inverse = correct_image(img, geom, method="inverse")
+
+    assert r_scatter.shape == r_inverse.shape == img.shape
+    assert np.isfinite(r_scatter).all()
+    assert np.isfinite(r_inverse).all()
+    # Non-trivial rectification (not just a passthrough of raw).
+    assert np.abs(r_scatter - img).max() > 100
+    assert np.abs(r_inverse - img).max() > 100
+    # The two backends produce distinct output — scatter quantises, inverse
+    # samples sub-pixel.
+    assert not np.allclose(r_scatter, r_inverse)
+
+
+def test_correct_image_method_invalid_raises():
+    from midas_auto_calibrate import DetectorGeometry
+    from midas_integrate import correct_image
+
+    with pytest.raises(ValueError, match="method must be"):
+        correct_image(
+            np.zeros((50, 50)),
+            DetectorGeometry(nr_pixels_y=50, nr_pixels_z=50, lsd=1e6, px=100.0),
+            method="bogus",
+        )
+
+
+# ---------------------------------------------------------------------------
+# Monolithic Varex — no panels, lower-distortion calibrant. Scatter-splat and
+# inverse-bilinear both converge to ~200-800 µε residual depending on seed
+# quality; the pipeline plumbing is the gate, not a numerical threshold
+# (see module docstring for the v0.2.1+ TPS-spline path to <5 µε).
 # ---------------------------------------------------------------------------
 
 _VAREX_TIF = (
