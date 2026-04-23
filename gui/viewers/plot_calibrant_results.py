@@ -25,7 +25,7 @@ from matplotlib.figure import Figure
 from PyQt6.QtCore import Qt
 from PyQt6.QtWidgets import (
     QApplication, QCheckBox, QComboBox, QFileDialog, QHBoxLayout, QLabel,
-    QLineEdit, QMainWindow, QPushButton, QVBoxLayout, QWidget,
+    QLineEdit, QMainWindow, QPushButton, QSpinBox, QVBoxLayout, QWidget,
 )
 
 # ── CSV column map (from CalibrantPanelShiftsOMP header) ────────────────
@@ -50,8 +50,13 @@ def _load_corr_csv(filename):
     """Auto-detect CalibrantIntegratorOMP vs CalibrantPanelShiftsOMP format.
 
     CalibrantIntegratorOMP: geometry header (comma-delimited, 2 lines),
-      blank line, then '%Eta Strain ...' header + 16-col space-separated data.
-    CalibrantPanelShiftsOMP: '%Eta Strain ...' header + 16-col data directly.
+      blank line, then '%Eta Strain ...' header + data.
+    CalibrantPanelShiftsOMP: '%Eta Strain ...' header + data directly.
+    compare_*.corr.csv: same 18-col base + extra strain-comparison columns.
+
+    When the '%Eta ...' header carries more tokens than the 18-column legacy
+    layout (e.g. the compare CSV), the extra tokens are used as column names
+    so the viewer can expose them in the axis/color dropdowns.
 
     Returns (data_array, column_names).
     """
@@ -60,17 +65,26 @@ def _load_corr_csv(filename):
 
     # Find the per-bin data header line (starts with '%Eta' or '%' followed by column names)
     data_start = None
+    header_tokens = None
     for i, line in enumerate(lines):
         stripped = line.strip()
         if stripped.startswith('%Eta') or stripped.startswith('% Eta'):
             data_start = i
+            # Parse header tokens: strip leading '%' (with optional space) then split
+            hdr = stripped.lstrip('%').strip()
+            header_tokens = hdr.split()
             break
 
     if data_start is not None:
         data = np.genfromtxt(filename, skip_header=data_start + 1)
-        # Match column names to actual data width (backward compatible)
         ncols = data.shape[1] if data.ndim == 2 else 1
-        cols = COLUMNS_LEGACY[:ncols]
+        # Prefer header-declared names when they cover every data column;
+        # otherwise fall back to legacy to stay backward compatible with files
+        # whose header abbreviates column names unexpectedly.
+        if header_tokens and len(header_tokens) >= ncols:
+            cols = header_tokens[:ncols]
+        else:
+            cols = COLUMNS_LEGACY[:ncols]
         return data, cols
 
     # Fallback: try legacy format (first line is the header)
@@ -92,6 +106,96 @@ COLORMAPS = [
 # ── File discovery ──────────────────────────────────────────────────────
 def find_corr_files():
     return sorted(glob.glob('*corr.csv'))
+
+
+def _find_caked_file_for_corr(corr_path):
+    """Locate a '*.caked.hdf' sibling of the given corr.csv.
+
+    Tries (in order) exact stem matches for the three common corr.csv flavors
+    ('<rawFN>.corr.csv', 'integrator_<stem>.corr.csv', 'compare_<stem>.corr.csv'),
+    then falls back to the first '*.caked.hdf' in the same directory.
+    """
+    d = os.path.dirname(os.path.abspath(corr_path)) or '.'
+    base = os.path.basename(corr_path)
+
+    # Strip a leading 'integrator_' or 'compare_' prefix
+    for prefix in ('integrator_', 'compare_'):
+        if base.startswith(prefix):
+            base = base[len(prefix):]
+            break
+
+    # Strip trailing '.corr.csv'
+    if base.endswith('.corr.csv'):
+        base = base[:-len('.corr.csv')]
+
+    # Try common patterns first
+    for cand in (f'{base}.caked.hdf', f'{base}.h5.caked.hdf',
+                 f'{base}.hdf.caked.hdf'):
+        p = os.path.join(d, cand)
+        if os.path.exists(p):
+            return p
+
+    # Fallback: first .caked.hdf in the same directory
+    matches = sorted(glob.glob(os.path.join(d, '*.caked.hdf')))
+    return matches[0] if matches else None
+
+
+def _load_caked_image(caked_path):
+    """Load the OmegaSumFrame image and axis extents from a caked HDF file.
+
+    Returns (image_2d, (eta_min, eta_max, r_min, r_max), dataset_path) or
+    (None, None, None) on failure.
+    """
+    try:
+        import h5py
+    except ImportError:
+        print('h5py not available — cannot load caked HDF', file=sys.stderr)
+        return None, None, None
+
+    try:
+        with h5py.File(caked_path, 'r') as f:
+            grp = f.get('OmegaSumFrame')
+            if grp is None:
+                # Fall back to IntegrationResult/FrameNr_0 if OmegaSumFrame absent
+                grp = f.get('IntegrationResult')
+                if grp is None:
+                    return None, None, None
+            ds_name = None
+            for n in grp:
+                if 'LastFrameNumber' in n or 'FrameNr' in n:
+                    ds_name = n
+                    break
+            if ds_name is None:
+                # Try any 2D dataset
+                for n in grp:
+                    if grp[n].ndim == 2:
+                        ds_name = n
+                        break
+            if ds_name is None:
+                return None, None, None
+            img = grp[ds_name][()]  # (nR, nEta)
+
+            reta = f.get('REtaMap')
+            if reta is not None and reta.ndim == 3 and reta.shape[0] >= 3:
+                r_plane = reta[0, :, :]
+                eta_plane = reta[2, :, :]
+                r_centers = np.nanmean(r_plane, axis=1)
+                eta_centers = np.nanmean(eta_plane, axis=0)
+            else:
+                nR, nEta = img.shape
+                r_centers = np.arange(nR, dtype=float)
+                eta_centers = np.linspace(-180.0, 180.0, nEta,
+                                          endpoint=False) + (360.0 / nEta) / 2.0
+    except Exception as e:
+        print(f'Failed to load caked HDF {caked_path}: {e}', file=sys.stderr)
+        return None, None, None
+
+    # Extent: imshow with origin='lower' → (xmin, xmax, ymin, ymax)
+    eta_min = float(np.nanmin(eta_centers))
+    eta_max = float(np.nanmax(eta_centers))
+    r_min = float(np.nanmin(r_centers))
+    r_max = float(np.nanmax(r_centers))
+    return img, (eta_min, eta_max, r_min, r_max), f'{os.path.basename(caked_path)}:{ds_name}'
 
 
 def choose_file(files):
@@ -137,6 +241,7 @@ class CalibrantViewer(QMainWindow):
         self.log_color = False
         self.cmap = 'tab10'
         self.c_min = None  # None = auto
+        self.marker_size = 30
         self.c_max = None
 
         # Build UI
@@ -144,8 +249,11 @@ class CalibrantViewer(QMainWindow):
         self.setCentralWidget(central)
         main_layout = QVBoxLayout(central)
 
-        # ── Control bar ─────────────────────────────────────────────
+        # ── Control bar (two rows) ──────────────────────────────────
+        # Row 1: file + axis selectors (X, Y, Color, Cmap)
+        # Row 2: display options (min/max, log, img-range, size, mode toggles)
         controls = QHBoxLayout()
+        controls2 = QHBoxLayout()
 
         # File selector
         controls.addWidget(QLabel('File:'))
@@ -196,47 +304,101 @@ class CalibrantViewer(QMainWindow):
         self.combo_cmap.currentTextChanged.connect(self._on_cmap)
         controls.addWidget(self.combo_cmap)
 
+        controls.addStretch()
+
+        # ── Row 2: display options ──────────────────────────────────
         # Color range
-        controls.addWidget(QLabel('Min:'))
+        controls2.addWidget(QLabel('Min:'))
         self.edit_cmin = QLineEdit()
         self.edit_cmin.setPlaceholderText('auto')
         self.edit_cmin.setFixedWidth(70)
         self.edit_cmin.editingFinished.connect(self._on_crange)
-        controls.addWidget(self.edit_cmin)
+        controls2.addWidget(self.edit_cmin)
 
-        controls.addWidget(QLabel('Max:'))
+        controls2.addWidget(QLabel('Max:'))
         self.edit_cmax = QLineEdit()
         self.edit_cmax.setPlaceholderText('auto')
         self.edit_cmax.setFixedWidth(70)
         self.edit_cmax.editingFinished.connect(self._on_crange)
-        controls.addWidget(self.edit_cmax)
+        controls2.addWidget(self.edit_cmax)
 
-        # Log scale
+        # Log scale — applies to scatter color in normal mode, imshow intensity in caked mode
         self.chk_log = QCheckBox('Log')
+        self.chk_log.setToolTip('Log-scale the scatter color range, or the caked imshow intensity')
         self.chk_log.toggled.connect(self._on_log)
-        controls.addWidget(self.chk_log)
+        controls2.addWidget(self.chk_log)
 
-        # Separator
-        controls.addWidget(self._vsep())
+        controls2.addWidget(self._vsep())
+
+        # Caked-mode imshow intensity range (hidden unless Caked is active)
+        self._lbl_imin = QLabel('Img Min:')
+        controls2.addWidget(self._lbl_imin)
+        self.edit_imin = QLineEdit()
+        self.edit_imin.setPlaceholderText('auto')
+        self.edit_imin.setFixedWidth(70)
+        self.edit_imin.setToolTip('Caked imshow vmin (blank = 1% percentile)')
+        self.edit_imin.editingFinished.connect(self._on_irange)
+        controls2.addWidget(self.edit_imin)
+
+        self._lbl_imax = QLabel('Img Max:')
+        controls2.addWidget(self._lbl_imax)
+        self.edit_imax = QLineEdit()
+        self.edit_imax.setPlaceholderText('auto')
+        self.edit_imax.setFixedWidth(70)
+        self.edit_imax.setToolTip('Caked imshow vmax (blank = 99.5% percentile)')
+        self.edit_imax.editingFinished.connect(self._on_irange)
+        controls2.addWidget(self.edit_imax)
+
+        self.chk_transpose = QCheckBox('Transpose')
+        self.chk_transpose.setToolTip('Swap caked axes: R on X, η on Y')
+        self.chk_transpose.toggled.connect(self._on_transpose)
+        controls2.addWidget(self.chk_transpose)
+
+        self._caked_widgets = (self._lbl_imin, self.edit_imin,
+                               self._lbl_imax, self.edit_imax,
+                               self.chk_transpose)
+        for w in self._caked_widgets:
+            w.setVisible(False)
+
+        controls2.addWidget(self._vsep())
 
         # Outlier toggle
         self.chk_outlier = QCheckBox('Show outliers')
         self.chk_outlier.setChecked(not self.exclude_outliers)
         self.chk_outlier.toggled.connect(self._on_outlier)
-        controls.addWidget(self.chk_outlier)
+        controls2.addWidget(self.chk_outlier)
+
+        # Marker size (applies to scatter overlay in all modes)
+        controls2.addWidget(QLabel('Size:'))
+        self.spin_size = QSpinBox()
+        self.spin_size.setRange(1, 300)
+        self.spin_size.setSingleStep(2)
+        self.spin_size.setValue(self.marker_size)
+        self.spin_size.setToolTip('Scatter marker size (applies to all plot modes)')
+        self.spin_size.valueChanged.connect(self._on_size)
+        controls2.addWidget(self.spin_size)
 
         # Polar plot toggle
         self.chk_polar = QCheckBox('Polar')
         self.chk_polar.toggled.connect(self._on_polar)
-        controls.addWidget(self.chk_polar)
+        controls2.addWidget(self.chk_polar)
+
+        # Caked-image overlay mode toggle
+        self.chk_caked = QCheckBox('Caked')
+        self.chk_caked.setToolTip(
+            'imshow OmegaSumFrame from <rawFN>.caked.hdf and overlay '
+            'fitted (Eta, RadFit) from the current corr.csv')
+        self.chk_caked.toggled.connect(self._on_caked)
+        controls2.addWidget(self.chk_caked)
 
         # Auto-range button
         self.btn_autorng = QPushButton('Auto range')
         self.btn_autorng.clicked.connect(self._on_autorange)
-        controls.addWidget(self.btn_autorng)
+        controls2.addWidget(self.btn_autorng)
 
-        controls.addStretch()
+        controls2.addStretch()
         main_layout.addLayout(controls)
+        main_layout.addLayout(controls2)
 
         # ── Matplotlib canvas ───────────────────────────────────────
         self.fig = Figure(figsize=(10, 6), dpi=100)
@@ -244,6 +406,11 @@ class CalibrantViewer(QMainWindow):
         self.ax = self.fig.add_axes([0.08, 0.12, 0.78, 0.82])
         self.cax = self.fig.add_axes([0.88, 0.12, 0.02, 0.82])
         self.polar_mode = False
+        self.caked_mode = False
+        self.caked_transpose = False
+        self.img_vmin = None  # caked imshow vmin (None = auto percentile)
+        self.img_vmax = None
+        self._caked_cache = {}  # corr_path -> (image, (xmin,xmax,ymin,ymax), caked_path)
         self.canvas = FigureCanvasQTAgg(self.fig)
         toolbar = NavigationToolbar2QT(self.canvas, self)
         main_layout.addWidget(toolbar)
@@ -280,7 +447,7 @@ class CalibrantViewer(QMainWindow):
         # Auto-select sensible colormap
         if text == 'RingNr':
             self.combo_cmap.setCurrentText('tab10')
-        elif text == 'Strain':
+        elif text.startswith('Strain'):
             self.combo_cmap.setCurrentText('coolwarm')
         else:
             if self.cmap in ('tab10', 'tab20', 'Set1', 'Set2', 'Set3'):
@@ -313,7 +480,39 @@ class CalibrantViewer(QMainWindow):
 
     def _on_polar(self, checked):
         self.polar_mode = checked
+        if checked and self.caked_mode:
+            self.chk_caked.setChecked(False)  # triggers _on_caked(False)
         self._rebuild_axes()
+        self._update()
+
+    def _on_caked(self, checked):
+        self.caked_mode = checked
+        if checked and self.polar_mode:
+            self.chk_polar.setChecked(False)
+        for w in self._caked_widgets:
+            w.setVisible(checked)
+        self._rebuild_axes()
+        self._update()
+
+    def _on_size(self, value):
+        self.marker_size = int(value)
+        self._update()
+
+    def _on_transpose(self, checked):
+        self.caked_transpose = checked
+        self._update()
+
+    def _on_irange(self):
+        try:
+            self.img_vmin = (float(self.edit_imin.text())
+                             if self.edit_imin.text().strip() else None)
+        except ValueError:
+            self.img_vmin = None
+        try:
+            self.img_vmax = (float(self.edit_imax.text())
+                             if self.edit_imax.text().strip() else None)
+        except ValueError:
+            self.img_vmax = None
         self._update()
 
     def _on_autorange(self):
@@ -412,9 +611,12 @@ class CalibrantViewer(QMainWindow):
         xi, yi, ci = COL[self.x_col], COL[self.y_col], COL[self.c_col]
         c_data = d[:, ci].copy()
         c_label = self.c_col
-        if self.c_col == 'Strain':
+        # Scale any fractional-strain column to µε for colorbar readability.
+        # 'StrainDiffMicroStrain' is pre-scaled — leave it alone.
+        if (self.c_col.startswith('Strain') and
+                self.c_col != 'StrainDiffMicroStrain'):
             c_data = c_data * 1e6
-            c_label = 'Strain (µε)'
+            c_label = f'{self.c_col} (µε)'
 
         # Color normalization
         vmin = self.c_min if self.c_min is not None else np.nanmin(c_data)
@@ -436,16 +638,97 @@ class CalibrantViewer(QMainWindow):
             strain_ue = d[:, COL['Strain']] * 1e6  # always use Strain as radial
             sc = self.ax.scatter(eta_rad, strain_ue, c=c_data,
                                  cmap=self.cmap, norm=norm,
-                                 s=20, alpha=0.7, edgecolors='none')
+                                 s=self.marker_size, alpha=0.7, edgecolors='none')
             self.ax.set_theta_zero_location('N')  # 0° at top
             self.ax.set_theta_direction(-1)        # clockwise
             self.ax.set_title(f'{self.filename}  ({n_shown}/{n_total} pts)\n'
                               f'Radial: Strain (µε), Angular: η',
                               fontsize=10, pad=20)
+        elif self.caked_mode:
+            # Caked imshow + (Eta, RadFit) overlay
+            cache_key = self.filename
+            cached = self._caked_cache.get(cache_key)
+            if cached is None:
+                caked_path = _find_caked_file_for_corr(self.filename)
+                if caked_path is None:
+                    self.ax.text(0.5, 0.5,
+                                 'No *.caked.hdf found next to corr.csv',
+                                 transform=self.ax.transAxes, ha='center', va='center')
+                    self.canvas.draw_idle()
+                    return
+                img, extent, ds_label = _load_caked_image(caked_path)
+                if img is None:
+                    self.ax.text(0.5, 0.5,
+                                 f'Could not load caked data from\n{os.path.basename(caked_path)}',
+                                 transform=self.ax.transAxes, ha='center', va='center')
+                    self.canvas.draw_idle()
+                    return
+                cached = (img, extent, ds_label)
+                self._caked_cache[cache_key] = cached
+
+            img, extent, ds_label = cached
+            # Intensity scaling — log if the Log checkbox is on, else percentile
+            finite = img[np.isfinite(img)]
+            if finite.size == 0:
+                self.ax.text(0.5, 0.5, 'Caked image is all NaN',
+                             transform=self.ax.transAxes, ha='center', va='center')
+                self.canvas.draw_idle()
+                return
+            if self.log_color:
+                pos = finite[finite > 0]
+                auto_lo = float(np.percentile(pos, 1)) if pos.size else 1e-3
+                auto_hi = float(np.percentile(pos, 99.5)) if pos.size else 1.0
+                lo = self.img_vmin if self.img_vmin is not None else auto_lo
+                hi = self.img_vmax if self.img_vmax is not None else auto_hi
+                # LogNorm requires strictly positive bounds
+                lo = max(lo, 1e-6)
+                if hi <= lo:
+                    hi = lo * 1.1
+                img_norm = LogNorm(vmin=lo, vmax=hi)
+            else:
+                auto_lo = float(np.percentile(finite, 1))
+                auto_hi = float(np.percentile(finite, 99.5))
+                lo = self.img_vmin if self.img_vmin is not None else auto_lo
+                hi = self.img_vmax if self.img_vmax is not None else auto_hi
+                if hi <= lo:
+                    hi = lo + 1.0
+                img_norm = Normalize(vmin=lo, vmax=hi)
+
+            if self.caked_transpose:
+                # Swap axes: R on X, η on Y
+                img_display = img.T
+                disp_extent = (extent[2], extent[3], extent[0], extent[1])
+                sc_x = d[:, COL['RadFit']]
+                sc_y = d[:, COL['Eta']]
+                x_label = 'R (pixels)'
+                y_label = 'η (degrees)'
+            else:
+                img_display = img
+                disp_extent = extent
+                sc_x = d[:, COL['Eta']]
+                sc_y = d[:, COL['RadFit']]
+                x_label = 'η (degrees)'
+                y_label = 'R (pixels)'
+
+            self.ax.imshow(img_display, extent=disp_extent, origin='lower',
+                           aspect='auto', cmap='gray', norm=img_norm,
+                           interpolation='nearest')
+
+            sc = self.ax.scatter(sc_x, sc_y,
+                                 c=c_data, cmap=self.cmap, norm=norm,
+                                 s=self.marker_size, alpha=0.85,
+                                 edgecolors='white', linewidths=0.3)
+            self.ax.set_xlabel(x_label)
+            self.ax.set_ylabel(y_label)
+            self.ax.set_xlim(disp_extent[0], disp_extent[1])
+            self.ax.set_ylim(disp_extent[2], disp_extent[3])
+            self.ax.set_title(
+                f'{self.filename}  ({n_shown}/{n_total} fits)\n'
+                f'{ds_label}', fontsize=9)
         else:
             sc = self.ax.scatter(d[:, xi], d[:, yi], c=c_data,
                                  cmap=self.cmap, norm=norm,
-                                 s=30, alpha=0.7, edgecolors='none')
+                                 s=self.marker_size, alpha=0.7, edgecolors='none')
 
             # Reference line for lattice parameter plot
             if self.y_col == 'FitA':

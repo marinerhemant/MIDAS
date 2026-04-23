@@ -452,6 +452,22 @@ The parameter file is a text file containing key-value pairs used by both the `i
 | `EtaMax` | `float` | Maximum azimuth angle | degrees |
 | `EtaBinSize` | `float` | Azimuthal bin size | degrees |
 
+### A.2b. Omega Metadata (Optional, RI Frame Stamps)
+
+The RI engine does not index spots, but it does stamp each output lineout
+with the corresponding ω angle so downstream tools (`live_viewer`,
+`plot_caked_peaks`) can plot intensity vs ω. These keys are optional — omit
+them if your scan has no rotation.
+
+| Parameter | Type | Description | Units / Notes |
+| :--- | :--- | :--- | :--- |
+| `OmegaStart` | `float` | ω of the first frame | degrees. Alias: `OmegaFirstFile` |
+| `OmegaStep` | `float` | Δω between successive frames (sign = direction) | degrees |
+| `OmegaSumFrames` | `int` | Frames to chunk into one output lineout (default 1) | count. Maps to `chunkFiles` in `IntegratorZarrOMP` |
+
+When `OmegaSumFrames > 1`, consecutive frames are summed before integration
+and the output lineout carries the average ω of the chunk.
+
 ### A.2a. Q-Spacing Mode (Optional)
 
 By default, radial bins are equally spaced in **R** (pixels). To use equally spaced **Q** (Å⁻¹) bins instead, add the following parameters:
@@ -488,9 +504,17 @@ Wavelength 0.1839
 | `BadPxFile` | `str` | Path to a file defining bad pixels (mask) |
 | `DistortionFile` | `str` | Path to binary file (double precision) containing Y then Z distortion maps |
 | `ImTransOpt` | `int` | Image transformation (0=None, 1=FlipH, 2=FlipV, 3=Transpose). Applied by `DetectorMapper` at map-generation time — integrators read raw pixel data directly |
-| `Polariz` | `float` | Polarization factor (default 0.99) |
+| `SolidAngleCorrection` | `int` | `1` enables cos³(2θ) solid-angle correction in `DetectorMapper` (default `0`) |
+| `PolarizationCorrection` | `int` | `1` enables pixel-weight polarization correction in `DetectorMapper` (default `0`) |
+| `PolarizationFraction` | `float` | σ/π polarization fraction used by `PolarizationCorrection` (default `0.99`). **Distinct from `Polariz`** — this one drives DetectorMapper's pixel weights; `Polariz` is written to the GSAS-II `InstrumentParameters` |
+| `Polariz` | `float` | GSAS-II polarization profile parameter (default 0.99) |
+| `GradientCorrection` | `int` | `1` enables radial gradient flattening in `IntegratorZarrOMP` (default `0`) |
+| `Normalize` | `int` | `1` enables per-frame intensity normalization (default `1`) |
+| `SumImages` | `int` | Number of frames to sum per output lineout (0 = per-frame output) |
+| `SaveIndividualFrames` | `int` | `1` saves per-frame lineouts alongside summed output (default `1`) |
 | `GapIntensity` | `float` | In-fill value for gap pixels (default 0) |
-| `p0`, `p1`, `p2`, `p3` | `float` | Geometric distortion coefficients |
+| `YPixelSize` | `float` | Y-direction pixel size override for non-square detectors (defaults to `px`) |
+| `p0` … `p14` | `float` | Detector distortion polynomial coefficients (see [FF_Parameters_Reference §3a](FF_Parameters_Reference.md#3a-distortion-model)). Not applicable to NF-HEDM |
 | `NPanelsY`, `NPanelsZ` | `int` | Number of detector panels in Y and Z directions |
 | `PanelSizeY`, `PanelSizeZ` | `int` | Size of each panel in pixels |
 | `PanelGapsY`, `PanelGapsZ` | `int` | Gap size between panels in pixels |

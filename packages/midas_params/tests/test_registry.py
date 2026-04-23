@@ -5,7 +5,7 @@ from __future__ import annotations
 import pytest
 
 from midas_params.registry import PARAMS, by_name, for_path, required_for, wizard_visible_for
-from midas_params.schema import ParamSpec, ParamType, Path
+from midas_params.schema import ParamSpec, ParamType, Path, Stage
 from midas_params.validators import VALIDATORS
 from midas_params.crossfield import RULES, RULE_SPECS
 
@@ -87,6 +87,93 @@ def test_zarr_renames_unique():
                 f"{prior.name!r} and {p.name!r}"
             )
         renames[p.zarr_rename] = p
+
+
+def test_distortion_coefficients_not_applied_to_nf():
+    """p0..p14 and tolP0..tolP14 are an FF/PF/RI distortion model. NF uses a
+    direct pinhole+tilts inversion with no distortion polynomial — NF users
+    should get an 'unknown key' warning if they copy a FF file's p-coefficients
+    into an NF config."""
+    by = by_name()
+    for i in range(15):
+        p = by[f"p{i}"]
+        assert Path.NF not in p.applies_to, \
+            f"p{i} should not apply to NF (NF has no distortion polynomial)"
+        tol = by[f"tolP{i}"]
+        assert Path.NF not in tol.applies_to, \
+            f"tolP{i} should not apply to NF"
+
+
+def test_distortion_file_not_applied_to_nf():
+    by = by_name()
+    assert Path.NF not in by["DistortionFile"].applies_to
+
+
+def test_ri_has_integration_keys():
+    """RI should have all the integration-specific keys IntegratorZarrOMP reads."""
+    ri_names = {p.name for p in for_path(Path.RI)}
+    required_ri = [
+        "RMin", "RMax", "RBinSize", "EtaMin", "EtaMax", "EtaBinSize",
+        "OmegaStart", "OmegaStep", "OmegaSumFrames",
+        "PeakLocation", "FitROIPadding", "SNIPIterations", "AutoDetectPeaks",
+        "MultiplePeaks", "DoSmoothing", "FitROIAuto",
+        "SolidAngleCorrection", "PolarizationCorrection", "PolarizationFraction",
+        "SumImages", "SaveIndividualFrames", "Normalize",
+        "DistortionFile", "GradientCorrection",
+        "QBinSize", "QMin", "QMax",
+    ]
+    missing = [k for k in required_ri if k not in ri_names]
+    assert not missing, f"RI path missing expected keys: {missing}"
+    # Also require the path to be reasonably populated (regression against shrink).
+    assert len(ri_names) >= 50, \
+        f"RI path has only {len(ri_names)} keys; expected >= 50"
+
+
+def test_eta_bin_size_is_dual_stage():
+    """EtaBinSize is consumed by both indexing (LUT) and integration (caked η)."""
+    spec = by_name()["EtaBinSize"]
+    assert Stage.INDEXING in spec.stages
+    assert Stage.INTEGRATION in spec.stages
+
+
+def test_doublet_separation_is_calibration_only():
+    """DoubletSeparation is used by the calibration executables, not peak fit."""
+    spec = by_name()["DoubletSeparation"]
+    assert spec.category == "Calibration"
+    assert Stage.CALIBRATION in spec.stages
+    assert Stage.PEAK_SEARCH not in spec.stages
+
+
+def test_px_and_lsd_aliases():
+    by = by_name()
+    assert by["PixelSize"].name == "px"
+    assert by["DetDist"].name == "Lsd"
+    assert by["Distance"].name == "Lsd"  # pre-existing alias still works
+
+
+def test_omega_first_file_applies_to_pf_and_ri():
+    """OmegaFirstFile: PF canonical (per-scan start) + RI (IntegratorZarrOMP alias)."""
+    spec = by_name()["OmegaFirstFile"]
+    assert Path.PF in spec.applies_to
+    assert Path.RI in spec.applies_to
+
+
+def test_pf_equals_ff_plus_beamsize():
+    """PF uses the same MIDAS_ParamParser as FF, so its applicable set must
+    be a superset of FF's. In practice the only PF-exclusive key is BeamSize
+    (nScans is shared with FF, defaulting to 1).
+
+    Failing this test means someone accidentally narrowed a key's scope to
+    a PF-or-FF subset — which hides keys that the shared parser accepts
+    from whichever path was excluded."""
+    ff = {p.name for p in for_path(Path.FF)}
+    pf = {p.name for p in for_path(Path.PF)}
+    ff_only = ff - pf
+    pf_only = pf - ff
+    assert not ff_only, \
+        f"FF has keys PF doesn't (shared parser should accept them): {sorted(ff_only)}"
+    assert pf_only == {"BeamSize"}, \
+        f"PF's only FF-exclusive key should be BeamSize; got: {sorted(pf_only)}"
 
 
 def test_defaults_have_correct_type():

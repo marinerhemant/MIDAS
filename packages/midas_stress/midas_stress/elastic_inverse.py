@@ -4,32 +4,53 @@ Inverts the macroscopic equilibrium constraint across one or more load
 stages to fit the independent components of the single-crystal
 stiffness tensor :math:`\\mathbf{C}_{\\mathrm{crystal}}`.
 
-For each load stage :math:`i` with applied macroscopic stress
-:math:`\\boldsymbol{\\sigma}_{\\mathrm{app}}^{(i)}` and per-grain
-lab-frame strains :math:`\\{\\boldsymbol{\\varepsilon}_g^{(i)}\\}`,
-mechanical equilibrium requires
+Three homogenisation assumptions are supported (``method`` keyword):
 
-.. math::
+``"hill"`` (default, the Paper III method)
+    No intra-aggregate homogenisation.  Uses each grain's *measured*
+    lab-frame strain and enforces only the volume-average stress
+    identity (Hill's lemma):
 
-   \\{\\boldsymbol{\\sigma}_{\\mathrm{app}}^{(i)}\\}
-   = \\sum_g w_g\\,\\mathfrak{U}_g^{\\top}\\,
-        \\mathbf{C}_{\\mathrm{crystal}}\\,\\mathfrak{U}_g\\,
-        \\{\\boldsymbol{\\varepsilon}_g^{(i)}\\},
+    .. math::
 
-where :math:`\\mathfrak{U}_g` is the 6x6 Mandel rotation matrix
-(Paper I Eq. 14) and :math:`w_g` the volume weights.
+       \\{\\boldsymbol{\\sigma}_{\\mathrm{app}}^{(i)}\\}
+       = \\sum_g w_g\\,\\mathfrak{U}_g^{\\top}\\,
+           \\mathbf{C}_{\\mathrm{crystal}}\\,\\mathfrak{U}_g\\,
+           \\{\\boldsymbol{\\varepsilon}_g^{(i)}\\}.
+
+``"voigt"`` (iso-strain)
+    Replaces every grain's strain by the common value
+    :math:`\\bar{\\boldsymbol{\\varepsilon}}^{(i)}` (volume-weighted
+    average of measured strains, unless a macroscopic strain is
+    supplied via the stage dict):
+
+    .. math::
+
+       \\{\\boldsymbol{\\sigma}_{\\mathrm{app}}^{(i)}\\}
+       = \\Bigl(\\sum_g w_g\\,\\mathfrak{U}_g^{\\top}\\,
+              \\mathbf{C}_{\\mathrm{crystal}}\\,\\mathfrak{U}_g\\Bigr)\\,
+           \\{\\bar{\\boldsymbol{\\varepsilon}}^{(i)}\\}.
+
+``"reuss"`` (iso-stress)
+    Replaces every grain's stress by :math:`\\boldsymbol{\\sigma}_{
+    \\mathrm{app}}^{(i)}` and works with the single-crystal compliance
+    :math:`\\mathbf{S}_{\\mathrm{crystal}}` (same symmetry basis in
+    Mandel form), then inverts at the end:
+
+    .. math::
+
+       \\{\\bar{\\boldsymbol{\\varepsilon}}^{(i)}\\}
+       = \\Bigl(\\sum_g w_g\\,\\mathfrak{U}_g^{\\top}\\,
+              \\mathbf{S}_{\\mathrm{crystal}}\\,\\mathfrak{U}_g\\Bigr)\\,
+           \\{\\boldsymbol{\\sigma}_{\\mathrm{app}}^{(i)}\\},\\qquad
+       \\mathbf{C}_{\\mathrm{crystal}} = \\mathbf{S}_{\\mathrm{crystal}}^{-1}.
 
 Parameterising :math:`\\mathbf{C}_{\\mathrm{crystal}} = \\sum_k c_k P_k`
-by symmetry-specific basis matrices :math:`P_k` gives a linear system
-
-.. math::
-
-   \\mathbf{A}^{(i)}\\,\\mathbf{c}
-   = \\{\\boldsymbol{\\sigma}_{\\mathrm{app}}^{(i)}\\},
-
-with :math:`\\mathbf{A}^{(i)} \\in \\mathbb{R}^{6\\times N_c}`.
-Stacking stages yields a weighted least-squares problem for
-:math:`\\mathbf{c}`.
+(and likewise :math:`\\mathbf{S}_{\\mathrm{crystal}} = \\sum_k s_k P_k`,
+valid in Mandel form since the zero/equality pattern is shared) gives
+a linear system :math:`\\mathbf{A}^{(i)}\\,\\mathbf{c} =
+\\mathbf{b}^{(i)}` for each method.  Stacking stages yields a weighted
+least-squares problem.
 """
 
 from __future__ import annotations
@@ -327,7 +348,7 @@ def build_stage_matrix(
     weights: np.ndarray,
     P_stack: np.ndarray,
 ) -> np.ndarray:
-    """Build the stage design matrix :math:`\\mathbf{A}^{(i)}`.
+    """Build the Hill-method stage design matrix :math:`\\mathbf{A}^{(i)}`.
 
     Column ``k`` of the returned matrix is
 
@@ -368,9 +389,103 @@ def build_stage_matrix(
     return A
 
 
+def _aggregate_basis_rotated(
+    orientations: np.ndarray,
+    weights: np.ndarray,
+    P_stack: np.ndarray,
+) -> np.ndarray:
+    """Volume-weighted lab-frame basis tensors
+    :math:`\\bar{P}_k = \\sum_g w_g\\,\\mathfrak{U}_g^{\\top} P_k \\mathfrak{U}_g`.
+
+    Returns
+    -------
+    Pbar : ndarray (N_c, 6, 6)
+        One matrix per basis element, in Mandel form.
+    """
+    M = rotation_voigt_mandel(orientations)      # (N, 6, 6) lab->grain
+    Mt = np.swapaxes(M, -1, -2)                  # (N, 6, 6) grain->lab
+    # Compute Mt @ P_k @ M per grain and average: P_lab_g,k = Mt_g P_k M_g.
+    PM = np.einsum("kij,njm->nkim", P_stack, M)          # (N, Nc, 6, 6)
+    P_lab = np.einsum("nij,nkjm->nkim", Mt, PM)          # (N, Nc, 6, 6)
+    return np.einsum("n,nkij->kij", weights, P_lab)      # (Nc, 6, 6)
+
+
+def build_stage_matrix_voigt(
+    orientations: np.ndarray,
+    mean_strain_lab: np.ndarray,
+    weights: np.ndarray,
+    P_stack: np.ndarray,
+) -> np.ndarray:
+    """Build the Voigt (iso-strain) stage design matrix.
+
+    Assumes every grain carries the same lab-frame strain
+    :math:`\\bar{\\boldsymbol{\\varepsilon}}`.  Column ``k`` is
+
+    .. math::
+
+       \\mathbf{A}^{(i)}_{\\mathrm{Voigt}}[:, k]
+       = \\Bigl(\\sum_g w_g\\,\\mathfrak{U}_g^{\\top}\\,P_k\\,
+                \\mathfrak{U}_g\\Bigr)\\,\\{\\bar{\\boldsymbol{\\varepsilon}}\\}.
+
+    Parameters
+    ----------
+    orientations : ndarray (N, 3, 3)
+    mean_strain_lab : ndarray (3, 3)
+        Macroscopic strain assumed uniform across all grains.
+    weights : ndarray (N,)
+    P_stack : ndarray (N_c, 6, 6)
+
+    Returns
+    -------
+    A : ndarray (6, N_c)
+    """
+    Pbar = _aggregate_basis_rotated(orientations, weights, P_stack)   # (Nc,6,6)
+    eps_v = tensor_to_voigt(mean_strain_lab)                          # (6,)
+    return np.einsum("kij,j->ik", Pbar, eps_v)                        # (6, Nc)
+
+
+def build_stage_matrix_reuss(
+    orientations: np.ndarray,
+    applied_stress: np.ndarray,
+    weights: np.ndarray,
+    P_stack: np.ndarray,
+) -> np.ndarray:
+    """Build the Reuss (iso-stress) stage design matrix in compliance space.
+
+    Assumes every grain carries :math:`\\boldsymbol{\\sigma}_{\\mathrm{app}}`.
+    Unknown is the compliance :math:`\\mathbf{S}_{\\mathrm{crystal}}
+    = \\sum_k s_k P_k` (same Mandel basis as stiffness).  Column ``k``:
+
+    .. math::
+
+       \\mathbf{A}^{(i)}_{\\mathrm{Reuss}}[:, k]
+       = \\Bigl(\\sum_g w_g\\,\\mathfrak{U}_g^{\\top}\\,P_k\\,
+                \\mathfrak{U}_g\\Bigr)\\,\\{\\boldsymbol{\\sigma}_{\\mathrm{app}}\\}.
+
+    Parameters
+    ----------
+    orientations : ndarray (N, 3, 3)
+    applied_stress : ndarray (3, 3)
+    weights : ndarray (N,)
+    P_stack : ndarray (N_c, 6, 6)
+
+    Returns
+    -------
+    A : ndarray (6, N_c)
+        Column k gives the contribution of compliance component
+        :math:`s_k` to the volume-averaged lab-frame strain.
+    """
+    Pbar = _aggregate_basis_rotated(orientations, weights, P_stack)   # (Nc,6,6)
+    sig_v = tensor_to_voigt(applied_stress)                           # (6,)
+    return np.einsum("kij,j->ik", Pbar, sig_v)                        # (6, Nc)
+
+
 # -------------------------------------------------------------------
 #  Public API
 # -------------------------------------------------------------------
+
+_VALID_METHODS = ("hill", "voigt", "reuss")
+
 
 def fit_single_crystal_stiffness(
     stages: list[dict],
@@ -382,6 +497,7 @@ def fit_single_crystal_stiffness(
     cond_threshold: float = 1e3,
     max_iter: int = 20,
     tol: float = 1e-8,
+    method: str = "hill",
 ) -> dict:
     """Fit single-crystal elastic constants from HEDM load stages.
 
@@ -397,6 +513,9 @@ def fit_single_crystal_stiffness(
     - ``is_unloaded``   : bool, optional; if True, the stage pins
       :math:`\\varepsilon_{\\mathrm{iso}}` during the coupled
       :math:`d_0`/:math:`\\mathbf{C}` iteration
+    - ``macro_strain``  : ndarray (3, 3), optional; macroscopic strain
+      used by the Voigt variant in place of the volume-weighted mean
+      of the measured strains.  Ignored unless ``method="voigt"``.
 
     Parameters
     ----------
@@ -407,7 +526,10 @@ def fit_single_crystal_stiffness(
         If True and at least one stage is marked ``is_unloaded``,
         alternate between fitting :math:`\\varepsilon_{\\mathrm{iso}}`
         from the unloaded stage and refitting :math:`\\mathbf{C}`
-        from the corrected strains until convergence.
+        from the corrected strains until convergence.  Only supported
+        when ``method="hill"``; for Voigt/Reuss ``eps_iso`` is
+        estimated in closed form from the unloaded-stage mean strain
+        (one-shot, no iteration).
     initial_stiffness : ndarray (6, 6), optional
         Initial guess for the coupled iteration.  Defaults to a
         literature value from ``material_hint`` if given, or to a
@@ -425,6 +547,11 @@ def fit_single_crystal_stiffness(
     tol : float
         Relative change in :math:`\\mathbf{c}` below which the coupled
         iteration is considered converged.
+    method : str
+        Homogenisation assumption: ``"hill"`` (default, measured
+        per-grain strains + Hill's lemma), ``"voigt"`` (iso-strain),
+        or ``"reuss"`` (iso-stress, solved in compliance space then
+        inverted).  See the module docstring for the equations.
 
     Returns
     -------
@@ -432,16 +559,29 @@ def fit_single_crystal_stiffness(
 
     - ``stiffness`` : (6, 6) fitted stiffness in Mandel notation
     - ``cij``       : dict of independent constants by name
-    - ``cij_se``    : dict of per-constant standard errors
-    - ``covariance``: (N_c, N_c) covariance of the fitted vector
+    - ``cij_se``    : dict of per-constant standard errors.  For
+      ``method="reuss"`` propagated from the compliance covariance via
+      the first-order delta method.
+    - ``covariance``: (N_c, N_c) covariance of the fitted *stiffness*
+      vector (delta-method-propagated for Reuss).
+    - ``compliance``: (6, 6) fitted compliance (only for Reuss; else
+      ``None``).
+    - ``sij``       : dict of compliance constants (Reuss only).
     - ``cij_names`` : list[str]
     - ``condition_number`` : condition number of the stacked A
     - ``well_conditioned`` : bool
     - ``eps_iso``   : float (0.0 if ``fit_eps_iso=False`` or no unloaded stage)
-    - ``residual_norm`` : ``||A c - sigma_app||`` (stacked)
+    - ``residual_norm`` : stacked fit residual norm
     - ``n_iter``    : int, iterations used in the coupled fit
     - ``symmetry``  : str
+    - ``method``    : str, one of ``"hill" | "voigt" | "reuss"``
     """
+    method_key = method.lower()
+    if method_key not in _VALID_METHODS:
+        raise ValueError(
+            f"Unknown method '{method}'. Valid: {_VALID_METHODS}"
+        )
+
     names, P_stack = symmetry_parameterisation(symmetry)
     N_c = len(names)
 
@@ -456,20 +596,41 @@ def fit_single_crystal_stiffness(
     if fit_eps_iso and not unloaded_idx:
         fit_eps_iso = False  # nothing to pin against
 
-    # Initial stiffness for the coupled iteration
-    C_current = _initial_stiffness(
-        initial_stiffness, material_hint, symmetry, names, P_stack,
-    )
+    # The coupled d0/C iteration is only defined for the Hill method
+    # because it uses per-grain strains (Paper II §3.3).  For Voigt
+    # and Reuss we take the one-shot closed form below.
+    coupled = fit_eps_iso and method_key == "hill"
 
     eps_iso = 0.0
     n_iter = 1
+    compliance = None
+    sij = None
 
-    if not fit_eps_iso:
-        c_vec, cov, cond_num, residual = _solve_stacked(
-            prepped, P_stack, symmetry_names=names
+    if not coupled:
+        # For Voigt/Reuss with an unloaded stage, estimate eps_iso
+        # directly from the volume-averaged trace of the unloaded-stage
+        # strain (Paper II §3.2 collapsed to one shot).
+        if fit_eps_iso and method_key in ("voigt", "reuss"):
+            s0 = prepped[unloaded_idx[0]]
+            eps_iso = _eps_iso_from_mean_strain(s0)
+            # Apply the isotropic correction to every stage's strain.
+            I3 = np.eye(3)
+            prepped_use = []
+            for s in prepped:
+                s2 = dict(s)
+                s2["strain"] = s["strain"] - eps_iso * I3[None, :, :]
+                prepped_use.append(s2)
+        else:
+            prepped_use = prepped
+
+        c_vec, cov, cond_num, residual, compliance, sij = _solve_stacked(
+            prepped_use, P_stack, symmetry_names=names, method=method_key,
         )
     else:
-        # Coupled d0 + C fit.  Start from strains_corrected = strains.
+        # Coupled d0 + C fit (Hill only).  Start from strains_corrected = strains.
+        C_current = _initial_stiffness(
+            initial_stiffness, material_hint, symmetry, names, P_stack,
+        )
         c_prev = None
         for n_iter in range(1, max_iter + 1):
             # (a) Fit eps_iso using the current C on the unloaded stage
@@ -491,9 +652,10 @@ def fit_single_crystal_stiffness(
                 s2["strain"] = s["strain"] - eps_iso * I3[None, :, :]
                 prepped_corrected.append(s2)
 
-            # (c) Refit C from corrected strains
-            c_vec, cov, cond_num, residual = _solve_stacked(
+            # (c) Refit C from corrected strains (Hill)
+            c_vec, cov, cond_num, residual, _, _ = _solve_stacked(
                 prepped_corrected, P_stack, symmetry_names=names,
+                method="hill",
             )
             C_current = np.einsum("k,kij->ij", c_vec, P_stack)
 
@@ -516,12 +678,15 @@ def fit_single_crystal_stiffness(
         "cij_se":           cij_se,
         "cij_names":        names,
         "covariance":       cov,
+        "compliance":       compliance,
+        "sij":              sij,
         "condition_number": float(cond_num),
         "well_conditioned": bool(cond_num < cond_threshold),
         "eps_iso":          float(eps_iso),
         "residual_norm":    float(residual),
         "n_iter":           int(n_iter),
         "symmetry":         symmetry.lower(),
+        "method":           method_key,
     }
 
 
@@ -570,6 +735,15 @@ def _prep_stages(stages: list[dict], min_confidence: float) -> list[dict]:
             confidences[mask] if confidences is not None else None,
         )
 
+        macro_strain = s.get("macro_strain")
+        if macro_strain is not None:
+            macro_strain = np.asarray(macro_strain, dtype=np.float64)
+            if macro_strain.shape != (3, 3):
+                raise ValueError(
+                    f"stage {i}: macro_strain must be (3, 3); "
+                    f"got {macro_strain.shape}"
+                )
+
         out.append({
             "orient":         orient[mask],
             "strain":         strain[mask],
@@ -578,6 +752,7 @@ def _prep_stages(stages: list[dict], min_confidence: float) -> list[dict]:
             "confidences":    confidences[mask] if confidences is not None else None,
             "weights":        w,
             "is_unloaded":    bool(s.get("is_unloaded", False)),
+            "macro_strain":   macro_strain,
         })
     return out
 
@@ -586,15 +761,56 @@ def _solve_stacked(
     prepped: list[dict],
     P_stack: np.ndarray,
     symmetry_names: list[str],
-) -> tuple[np.ndarray, np.ndarray, float, float]:
-    """Stack per-stage equations and solve in the least-squares sense."""
+    method: str = "hill",
+) -> tuple[np.ndarray, np.ndarray, float, float, Optional[np.ndarray], Optional[dict]]:
+    """Stack per-stage equations and solve in the least-squares sense.
+
+    Parameters
+    ----------
+    prepped : list[dict]
+        Output of :func:`_prep_stages`.
+    P_stack : ndarray (N_c, 6, 6)
+    symmetry_names : list[str]
+    method : str
+        ``"hill"``, ``"voigt"``, or ``"reuss"``.
+
+    Returns
+    -------
+    c_vec : ndarray (N_c,)
+        Stiffness coefficients (already inverted from compliance for
+        Reuss).
+    cov : ndarray (N_c, N_c)
+        Covariance of ``c_vec`` (delta-method-propagated for Reuss).
+    cond_num : float
+    residual_norm : float
+    compliance : ndarray (6, 6) or None
+        Fitted compliance matrix (Reuss only).
+    sij : dict or None
+        Compliance coefficients by name (Reuss only).
+    """
     rows_A = []
     rows_b = []
     for s in prepped:
-        A = build_stage_matrix(
-            s["orient"], s["strain"], s["weights"], P_stack,
-        )
-        b = tensor_to_voigt(s["applied_stress"])  # (6,) Mandel
+        if method == "hill":
+            A = build_stage_matrix(
+                s["orient"], s["strain"], s["weights"], P_stack,
+            )
+            b = tensor_to_voigt(s["applied_stress"])
+        elif method == "voigt":
+            mean_eps = _voigt_mean_strain(s)
+            A = build_stage_matrix_voigt(
+                s["orient"], mean_eps, s["weights"], P_stack,
+            )
+            b = tensor_to_voigt(s["applied_stress"])
+        elif method == "reuss":
+            # Volume-weighted mean measured strain is the observable.
+            mean_eps = _volume_weighted_strain(s["strain"], s["weights"])
+            A = build_stage_matrix_reuss(
+                s["orient"], s["applied_stress"], s["weights"], P_stack,
+            )
+            b = tensor_to_voigt(mean_eps)
+        else:
+            raise ValueError(f"Unknown method '{method}'")
         rows_A.append(A)
         rows_b.append(b)
 
@@ -609,29 +825,114 @@ def _solve_stacked(
             f"Add more load stages."
         )
 
-    # Least-squares fit
-    c_vec, residuals, rank, _ = np.linalg.lstsq(A_stacked, b_stacked, rcond=None)
+    # Least-squares fit (in compliance space for Reuss, stiffness otherwise)
+    x_vec, _, _, _ = np.linalg.lstsq(A_stacked, b_stacked, rcond=None)
 
-    # Condition number of the design matrix
     cond_num = np.linalg.cond(A_stacked)
 
-    # Covariance: (A^T A)^{-1} * sigma^2 where sigma^2 estimated
-    # from the residual.  When the system is well-determined, the
-    # residual is the projection of noise onto the null-space of A.
     try:
         ATA_inv = np.linalg.inv(A_stacked.T @ A_stacked)
     except np.linalg.LinAlgError:
         ATA_inv = np.linalg.pinv(A_stacked.T @ A_stacked)
 
-    # Residual norm & dof
-    pred = A_stacked @ c_vec
+    pred = A_stacked @ x_vec
     r = b_stacked - pred
     dof = max(A_stacked.shape[0] - A_stacked.shape[1], 1)
     sigma_sq = float(r @ r) / dof
-    cov = ATA_inv * sigma_sq
-
+    cov_x = ATA_inv * sigma_sq
     residual_norm = float(np.linalg.norm(r))
-    return c_vec, cov, float(cond_num), residual_norm
+
+    if method != "reuss":
+        return x_vec, cov_x, float(cond_num), residual_norm, None, None
+
+    # Reuss: x_vec holds the compliance coefficients s_k.  Convert to
+    # stiffness coefficients c_k by building S, inverting, and reading
+    # off the components along the P_k basis.  Propagate covariance
+    # via the first-order delta method:
+    #
+    #     c = f(s),   df/ds_k = -S^{-1} P_k S^{-1}   (at fixed s)
+    #
+    # Reading the k-th entry of ``c`` uses the inverse basis projector
+    # ``proj_k`` with tr(proj_k P_l) = delta_kl (Mandel inner product).
+    S = np.einsum("k,kij->ij", x_vec, P_stack)
+    try:
+        C_from_S = np.linalg.inv(S)
+    except np.linalg.LinAlgError as err:
+        raise RuntimeError(
+            "Reuss fit produced a singular compliance matrix; "
+            "check stage conditioning and applied-stress diversity."
+        ) from err
+
+    # Project C_from_S onto the P_k basis: c_k = <proj_k, C>
+    proj = _basis_dual(P_stack)                                # (N_c, 6, 6)
+    c_vec = np.einsum("kij,ij->k", proj, C_from_S)             # (N_c,)
+
+    # Jacobian J[k, l] = dc_k / ds_l.
+    #   dC/ds_l = -C P_l C          (matrix Mandel form, both in Mandel)
+    #   dc_k/ds_l = <proj_k, dC/ds_l> = -<proj_k, C P_l C>
+    CP = np.einsum("ij,ljk->lik", C_from_S, P_stack)           # (N_c, 6, 6)
+    CPC = np.einsum("lij,jk->lik", CP, C_from_S)               # (N_c, 6, 6)
+    J = -np.einsum("kij,lij->kl", proj, CPC)                   # (N_c, N_c)
+
+    cov_c = J @ cov_x @ J.T
+
+    sij = {n: float(x_vec[i]) for i, n in enumerate(symmetry_names)}
+    return c_vec, cov_c, float(cond_num), residual_norm, S, sij
+
+
+def _volume_weighted_strain(
+    strain_lab: np.ndarray, weights: np.ndarray,
+) -> np.ndarray:
+    """Volume-weighted mean of per-grain lab-frame strain tensors."""
+    return np.einsum("n,nij->ij", weights, strain_lab)
+
+
+def _voigt_mean_strain(stage: dict) -> np.ndarray:
+    """Mean strain used by the Voigt variant.
+
+    Priority: stage-provided ``macro_strain`` override (e.g. a
+    load-frame extensometer value) if present, else the volume-weighted
+    mean of measured per-grain strains.
+    """
+    macro = stage.get("macro_strain")
+    if macro is not None:
+        arr = np.asarray(macro, dtype=np.float64)
+        if arr.shape != (3, 3):
+            raise ValueError(
+                f"macro_strain must be (3, 3); got {arr.shape}"
+            )
+        return arr
+    return _volume_weighted_strain(stage["strain"], stage["weights"])
+
+
+def _eps_iso_from_mean_strain(stage: dict) -> float:
+    """Closed-form eps_iso for Voigt/Reuss from an unloaded stage.
+
+    Under zero applied stress the Voigt and Reuss aggregates both
+    predict zero mean strain.  Any measured mean trace is therefore
+    attributed to a spherical :math:`d_0` bias.  Returns
+    :math:`\\varepsilon_{\\mathrm{iso}} = \\tfrac{1}{3}\\,\\mathrm{tr}\\,
+    \\bar{\\boldsymbol{\\varepsilon}}`.
+    """
+    mean_eps = _volume_weighted_strain(stage["strain"], stage["weights"])
+    return float(np.trace(mean_eps) / 3.0)
+
+
+def _basis_dual(P_stack: np.ndarray) -> np.ndarray:
+    """Dual projectors onto the symmetry basis using the Mandel inner product.
+
+    Returns ``proj`` such that ``sum_ij proj_k[i,j] * P_l[i,j]`` equals
+    the Kronecker delta.  Built by taking the Gram matrix
+    ``G[k,l] = <P_k, P_l>_F`` (Frobenius / Mandel trace inner product)
+    and forming ``proj_k = sum_l G^{-1}[k,l] P_l``.
+
+    Used to read off the independent-constant coefficients of a given
+    6x6 Mandel tensor when it is known to lie in the span of
+    ``P_stack``.
+    """
+    G = np.einsum("kij,lij->kl", P_stack, P_stack)
+    G_inv = np.linalg.inv(G)
+    return np.einsum("kl,lij->kij", G_inv, P_stack)
 
 
 def _initial_stiffness(

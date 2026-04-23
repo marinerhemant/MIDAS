@@ -98,6 +98,8 @@ from .elastic_inverse import (
     symmetry_parameterisation,
     stiffness_from_cij,
     build_stage_matrix,
+    build_stage_matrix_voigt,
+    build_stage_matrix_reuss,
 )
 
 # --- Plasticity / slip-system analysis ---

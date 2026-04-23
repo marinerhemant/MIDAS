@@ -62,6 +62,16 @@ python ff_MIDAS.py [arguments]
 | `-resume` | `str` | `''` | Path to a pipeline H5 file to resume from. Auto-detects the last completed stage and re-runs from there. |
 | `-restartFrom` | `str` | `''` | Explicit stage to restart from. All stages from this point forward are re-run. Valid stages: `hkl`, `peak_search`, `merge_overlaps`, `calc_radius`, `data_transform`, `binning`, `indexing`, `refinement`, `consolidation`. |
 
+The following flags appear **only when the optional `sr-midas` pip package is installed** (see [Section 3a](#3a-super-resolution-peak-search-optional-sr-midas)):
+
+| Argument | Type | Default | Description |
+|---|---|---|---|
+| `-runSR` | `int` | `0` | `1` = replace MIDAS peak search with the sr-midas super-resolution pipeline. Requires `-doPeakSearch 0`. |
+| `-srfac` | `int` | `8` | Super-resolution upscale factor. Choices: `2`, `4`, `8`. |
+| `-SRconfig_path` | `str` | `auto` | Path to a custom sr-midas config JSON. `auto` uses the config bundled with sr-midas. |
+| `-saveSRpatches` | `int` | `0` | `1` = save the predicted super-resolved patches to disk (`SR_out/SR_patches/`). |
+| `-saveFrameGoodCoords` | `int` | `0` | `1` = save per-frame `goodCoords` maps (pixels that belong to rings). |
+
 ### Minimal Examples
 
 ```bash
@@ -98,6 +108,49 @@ python ff_MIDAS.py -paramFN ps_ff.txt -generateH5 1
 # NF-seeded indexing (per-layer seed grains from NF results):
 python ff_MIDAS.py -paramFN ps_ff.txt -nfResultDir ~/nf_results/
 ```
+
+---
+
+## 3a. Super-Resolution Peak Search (optional, `sr-midas`)
+
+`ff_MIDAS.py` can delegate peak search to **[sr-midas](https://pypi.org/project/sr-midas/)**, an optional PyPI package that upscales each detector patch with a cascaded CNN (x1 → x2 → x4 → x8) before fitting peaks. Downstream stages (merging, radius calculation, indexing, refinement) are unchanged — sr-midas emits the same `Temp/*_PS.csv` format MIDAS already consumes.
+
+**Install** (one-time, in a Python **3.12.4** environment, with PyTorch that matches your GPU):
+
+```bash
+pip install sr-midas
+```
+
+When the package is importable, the five `-runSR*` flags above are automatically registered and a banner prints at startup:
+
+```
+SR-MIDAS: available (version 0.1.1).
+```
+
+If sr-midas isn't installed the flags don't appear in `--help` and `ff_MIDAS.py` behaves exactly as before.
+
+**GPU strongly recommended.** sr-midas auto-detects CUDA; on a CPU-only host the driver logs a prominent warning and inference runs 10–100× slower.
+
+**Usage**:
+
+```bash
+# Replace MIDAS peak fitting with sr-midas (srfac=8 default):
+python ff_MIDAS.py -paramFN ps_ff.txt -doPeakSearch 0 -runSR 1
+
+# Lower upscale factor (faster, less resolved):
+python ff_MIDAS.py -paramFN ps_ff.txt -doPeakSearch 0 -runSR 1 -srfac 4
+
+# Custom sr-midas config + save diagnostic outputs:
+python ff_MIDAS.py -paramFN ps_ff.txt -doPeakSearch 0 -runSR 1 \
+    -SRconfig_path /path/to/cnnsr_sr_config.json \
+    -saveSRpatches 1 -saveFrameGoodCoords 1
+```
+
+**Guardrails**:
+
+- `-runSR 1` with `-doPeakSearch 1` exits with an error — sr-midas *replaces* MIDAS peak search, it does not run alongside it.
+- `-runSR 1` without sr-midas installed exits with a `pip install sr-midas` hint.
+- The integration hook is in [`process_layer()`](../FF_HEDM/workflows/ff_MIDAS.py) inside the `peak_search` stage. `-resume` / `-restartFrom peak_search` work identically to the standard path.
 
 ---
 

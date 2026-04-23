@@ -465,3 +465,64 @@ def test_nf_example_passes_multi_entry_rule():
     r = validate(str(NF_EXAMPLE), Path.NF)
     assert not any(i.rule == "nf_multi_entry_count_matches" for i in r.errors), \
         [i for i in r.errors if i.rule == "nf_multi_entry_count_matches"]
+
+
+# ─── RI path coverage ────────────────────────────────────────────────────────
+
+
+def test_ri_param_file_exercises_new_keys_cleanly(tmp_path):
+    """A realistic RI parameter file with the keys IntegratorZarrOMP and
+    DetectorMapper read should produce zero 'unknown key' warnings."""
+    fn = tmp_path / "ri.txt"
+    fn.write_text(textwrap.dedent("""
+        NrPixels 2048
+        px 200
+        Lsd 1000000
+        BC 1024 1024
+        Wavelength 0.22291
+        LatticeConstant 4.08 4.08 4.08 90 90 90
+        SpaceGroup 225
+        StartNr 1
+        EndNr 100
+        RMin 10
+        RMax 1500
+        RBinSize 0.25
+        EtaMin -180
+        EtaMax 180
+        EtaBinSize 5
+        OmegaStart 0
+        OmegaStep 0.25
+        OmegaSumFrames 10
+        DoPeakFit 1
+        MultiplePeaks 1
+        PeakLocation 245.3
+        PeakLocation 347.1
+        FitROIPadding 25
+        SNIPIterations 50
+        AutoDetectPeaks 0
+        SolidAngleCorrection 1
+        PolarizationCorrection 1
+        PolarizationFraction 0.99
+        p0 0
+        p1 0
+        p2 0
+        SumImages 0
+        SaveIndividualFrames 1
+        Normalize 1
+    """).strip())
+    r = validate(str(fn), Path.RI)
+    unknowns = [i.key for i in r.warnings if i.rule == "unknown_key"]
+    assert not unknowns, f"Unexpected unknown keys on RI path: {unknowns}"
+
+
+def test_p_coefficients_scoped_away_from_nf():
+    """A defense-in-depth registry assertion: p0..p14 and tolP0..tolP14 are
+    FF/PF/RI-only. The validator doesn't currently emit a 'wrong path' warning
+    for known-but-non-applicable keys, but the scoping here ensures the
+    wizard, diagnose, and any future per-path warning don't suggest them to
+    NF users."""
+    from midas_params.registry import by_name
+    by = by_name()
+    for i in range(15):
+        assert Path.NF not in by[f"p{i}"].applies_to
+        assert Path.NF not in by[f"tolP{i}"].applies_to

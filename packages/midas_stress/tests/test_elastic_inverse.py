@@ -500,3 +500,205 @@ class TestInputValidation:
         )]
         with pytest.raises(ValueError, match="3, 3"):
             fit_single_crystal_stiffness(stages, symmetry="cubic")
+
+
+# -------------------------------------------------------------------
+#  Voigt and Reuss variants (Paper III §2.3)
+# -------------------------------------------------------------------
+
+def _reuss_strains(C, orients, applied):
+    """Per-grain strains under the Reuss (iso-stress) hypothesis.
+
+    Each grain sees the macroscopic applied stress, so
+    :math:`\\varepsilon_g = \\mathbf{S}_{\\mathrm{lab},g}\\,\\boldsymbol{\\sigma}
+    _{\\mathrm{app}}`.
+    """
+    S = np.linalg.inv(C)
+    M = rotation_voigt_mandel(orients)
+    Mt = np.swapaxes(M, -1, -2)
+    S_lab = Mt @ S @ M
+    sig = tensor_to_voigt(applied)
+    eps_v = np.einsum("nij,j->ni", S_lab, sig)
+    return voigt_to_tensor(eps_v)
+
+
+class TestVoigtReussVariants:
+    """Both variants should be exact when the data match their hypothesis
+    and systematically biased otherwise.  See Paper III §2.3."""
+
+    N_GRAINS = 400
+    TOL = 1e-7
+
+    def _stages_from_model(self, model, C, orients, applied_list):
+        stages = []
+        for a in applied_list:
+            if model == "voigt":
+                eps = _taylor_strains(C, orients, a)
+            elif model == "reuss":
+                eps = _reuss_strains(C, orients, a)
+            else:
+                raise ValueError(model)
+            stages.append(dict(
+                orient=orients, strain=eps,
+                volumes=np.ones(len(orients)),
+                applied_stress=a, is_unloaded=False,
+            ))
+        return stages
+
+    # ---- Exactness ----
+
+    @pytest.mark.parametrize("method", ["hill", "voigt"])
+    def test_voigt_data_exact_under_hill_and_voigt(self, method):
+        sym = "cubic"
+        cij = {"C11": 192.9, "C12": 163.8, "C44": 41.5}
+        C = stiffness_from_cij(cij, sym)
+        orients = Rotation.random(self.N_GRAINS, random_state=0).as_matrix()
+        stages = self._stages_from_model(
+            "voigt", C, orients, _applied_stress_library()[:2])
+        res = fit_single_crystal_stiffness(
+            stages, symmetry=sym, fit_eps_iso=False, method=method)
+        for k, v in cij.items():
+            assert abs(res["cij"][k] - v) / v < self.TOL
+
+    @pytest.mark.parametrize("method", ["hill", "reuss"])
+    def test_reuss_data_exact_under_hill_and_reuss(self, method):
+        sym = "cubic"
+        cij = {"C11": 192.9, "C12": 163.8, "C44": 41.5}
+        C = stiffness_from_cij(cij, sym)
+        orients = Rotation.random(self.N_GRAINS, random_state=1).as_matrix()
+        stages = self._stages_from_model(
+            "reuss", C, orients, _applied_stress_library()[:2])
+        res = fit_single_crystal_stiffness(
+            stages, symmetry=sym, fit_eps_iso=False, method=method)
+        for k, v in cij.items():
+            assert abs(res["cij"][k] - v) / v < self.TOL
+
+    def test_voigt_data_biases_reuss(self):
+        """Under iso-strain data, Reuss is biased (not exact)."""
+        sym = "cubic"
+        cij = {"C11": 192.9, "C12": 163.8, "C44": 41.5}
+        C = stiffness_from_cij(cij, sym)
+        orients = Rotation.random(self.N_GRAINS, random_state=2).as_matrix()
+        stages = self._stages_from_model(
+            "voigt", C, orients, _applied_stress_library()[:2])
+        res = fit_single_crystal_stiffness(
+            stages, symmetry=sym, fit_eps_iso=False, method="reuss")
+        # Expect measurable bias: at least one constant > 1% off.
+        errors = [abs(res["cij"][k] - v) / v for k, v in cij.items()]
+        assert max(errors) > 1e-2
+
+    # ---- Reuss returns compliance ----
+
+    def test_reuss_returns_compliance(self):
+        sym = "cubic"
+        cij = {"C11": 192.9, "C12": 163.8, "C44": 41.5}
+        C = stiffness_from_cij(cij, sym)
+        orients = Rotation.random(self.N_GRAINS, random_state=3).as_matrix()
+        stages = self._stages_from_model(
+            "reuss", C, orients, _applied_stress_library()[:2])
+        res = fit_single_crystal_stiffness(
+            stages, symmetry=sym, fit_eps_iso=False, method="reuss")
+        assert res["compliance"] is not None
+        assert res["compliance"].shape == (6, 6)
+        assert res["sij"] is not None
+        assert set(res["sij"].keys()) == set(cij.keys())
+        # Consistency: C @ S = I
+        np.testing.assert_allclose(
+            res["stiffness"] @ res["compliance"], np.eye(6), atol=1e-8)
+
+    def test_non_reuss_returns_none_compliance(self):
+        sym = "cubic"
+        cij = {"C11": 192.9, "C12": 163.8, "C44": 41.5}
+        C = stiffness_from_cij(cij, sym)
+        orients = Rotation.random(self.N_GRAINS, random_state=4).as_matrix()
+        stages = self._stages_from_model(
+            "voigt", C, orients, _applied_stress_library()[:2])
+        for m in ("hill", "voigt"):
+            res = fit_single_crystal_stiffness(
+                stages, symmetry=sym, fit_eps_iso=False, method=m)
+            assert res["compliance"] is None
+            assert res["sij"] is None
+
+    # ---- macro_strain override for Voigt ----
+
+    def test_voigt_macro_strain_override(self):
+        """Supplying macro_strain overrides the volume-weighted mean."""
+        sym = "cubic"
+        cij = {"C11": 192.9, "C12": 163.8, "C44": 41.5}
+        C = stiffness_from_cij(cij, sym)
+        orients = Rotation.random(self.N_GRAINS, random_state=5).as_matrix()
+        applied = np.diag([0.05, 0.10, 0.15])
+        eps = _taylor_strains(C, orients, applied)
+        # The correct mean strain for exact Voigt recovery:
+        from midas_stress.tensor import rotation_voigt_mandel
+        from midas_stress.tensor import tensor_to_voigt, voigt_to_tensor
+        M = rotation_voigt_mandel(orients)
+        C_lab = np.swapaxes(M, -1, -2) @ C @ M
+        eps_true_mean = voigt_to_tensor(
+            np.linalg.solve(C_lab.mean(axis=0), tensor_to_voigt(applied)))
+        # Perturb the per-grain strains so the volume-weighted mean is
+        # no longer the correct macroscopic strain; pass the true mean
+        # as override.
+        noise = np.zeros((self.N_GRAINS, 3, 3))
+        noise[:, 0, 0] = 1e-3
+        eps_perturbed = eps + noise  # mean shifted by 1e-3 in xx
+        stage_no_override = dict(
+            orient=orients, strain=eps_perturbed,
+            volumes=np.ones(self.N_GRAINS),
+            applied_stress=applied, is_unloaded=False,
+        )
+        stage_with_override = dict(stage_no_override, macro_strain=eps_true_mean)
+        # Need 2+ stages for a cubic fit
+        applied2 = np.diag([0.15, 0.05, 0.10])
+        eps2 = _taylor_strains(C, orients, applied2)
+        # For the second stage, use the true Voigt mean also:
+        eps2_true_mean = voigt_to_tensor(
+            np.linalg.solve(C_lab.mean(axis=0), tensor_to_voigt(applied2)))
+        stage2 = dict(
+            orient=orients, strain=eps2,
+            volumes=np.ones(self.N_GRAINS),
+            applied_stress=applied2, is_unloaded=False,
+            macro_strain=eps2_true_mean,
+        )
+        res_override = fit_single_crystal_stiffness(
+            [stage_with_override, stage2], symmetry=sym,
+            fit_eps_iso=False, method="voigt")
+        for k, v in cij.items():
+            assert abs(res_override["cij"][k] - v) / v < self.TOL
+
+    # ---- Invalid method ----
+
+    def test_unknown_method_raises(self):
+        sym = "cubic"
+        cij = {"C11": 192.9, "C12": 163.8, "C44": 41.5}
+        C = stiffness_from_cij(cij, sym)
+        orients = Rotation.random(10, random_state=6).as_matrix()
+        stages = self._stages_from_model(
+            "voigt", C, orients, _applied_stress_library()[:2])
+        with pytest.raises(ValueError, match="Unknown method"):
+            fit_single_crystal_stiffness(
+                stages, symmetry=sym, fit_eps_iso=False, method="hashin")
+
+    # ---- Delta-method SEs for Reuss ----
+
+    def test_reuss_standard_errors_positive(self):
+        sym = "cubic"
+        cij = {"C11": 192.9, "C12": 163.8, "C44": 41.5}
+        C = stiffness_from_cij(cij, sym)
+        orients = Rotation.random(100, random_state=7).as_matrix()
+        rng = np.random.default_rng(7)
+        stages = []
+        for a in _applied_stress_library()[:2]:
+            eps = _reuss_strains(C, orients, a)
+            eps = eps + rng.normal(0, 1e-4, eps.shape)
+            eps = 0.5 * (eps + np.swapaxes(eps, -1, -2))
+            stages.append(dict(
+                orient=orients, strain=eps,
+                volumes=np.ones(100),
+                applied_stress=a, is_unloaded=False,
+            ))
+        res = fit_single_crystal_stiffness(
+            stages, symmetry=sym, fit_eps_iso=False, method="reuss")
+        for k in cij:
+            assert res["cij_se"][k] > 0.0
+            assert np.isfinite(res["cij_se"][k])

@@ -192,6 +192,8 @@ def write_parameter_file(params: SimulationParams, mic_fn: str, param_fn: str = 
         for i in range(1, 31):
             pf.write(f"RingThresh {i} 50\n")
         pf.write(f"WriteSpots 1\n")
+        pf.write(f"WriteImage 1\n")
+        pf.write(f"nScans 1\n")
         pf.write(f"InFileName {mic_fn}\n")
         pf.write(f"OutFileName {mic_fn}.sim\n")
         pf.write(f"BeamSize {float(params.beam_size)}\n")
@@ -234,6 +236,38 @@ def update_parameter_file_for_sequence(param_fn: str, mic_fn: str, seq: int) -> 
 # -----------------------------------------------------------------------------
 # Data Loading Functions
 # -----------------------------------------------------------------------------
+
+def read_phase_from_grains_header(mic_fn: str) -> Dict[str, Any]:
+    """Parse SpaceGroup and Lattice Parameter from a %NumGrains-style file header.
+    Returns an empty dict if the file isn't a Grains.csv or the fields aren't found."""
+    overrides: Dict[str, Any] = {}
+    try:
+        with open(mic_fn, 'r') as f:
+            head = [f.readline() for _ in range(20)]
+    except OSError:
+        return overrides
+    if not head or not head[0].startswith('%NumGrains'):
+        return overrides
+    for line in head:
+        stripped = line.lstrip('%').strip()
+        if stripped.startswith('SpaceGroup'):
+            _, _, val = stripped.partition(':')
+            try:
+                overrides['sg'] = int(val.strip())
+            except ValueError:
+                pass
+        elif stripped.startswith('Lattice Parameter'):
+            _, _, val = stripped.partition(':')
+            parts = val.split()
+            if len(parts) == 6:
+                try:
+                    vals = [float(x) for x in parts]
+                    overrides.update(a=vals[0], b=vals[1], c=vals[2],
+                                     alpha=vals[3], beta=vals[4], gamma=vals[5])
+                except ValueError:
+                    pass
+    return overrides
+
 
 @lru_cache(maxsize=8)
 def load_microstructure_data(mic_fn: str, filter_beam_size: Optional[float] = None) -> MicrostructureData:
@@ -950,22 +984,30 @@ def update_setup(n_clicks, lsd, xbc, ybc, energy, sg, a, b, c, alpha, beta, gamm
             ]
             result = subprocess.run(cmd, capture_output=True, text=True, env=env)
             if result.returncode == 0:
-                lines = result.stdout.strip().split('\n')
-                if len(lines) >= 2:
-                    # Parse HKL data from stdout
-                    hkl_rows = []
-                    for line in lines[1:]:
+                lines = result.stdout.splitlines()
+                header_idx = next(
+                    (i for i, ln in enumerate(lines)
+                     if ln.lstrip().startswith('h k l D-spacing')),
+                    None,
+                )
+                hkl_rows = []
+                if header_idx is not None:
+                    for line in lines[header_idx + 1:]:
                         parts = line.split()
-                        if len(parts) >= 11:
+                        if len(parts) < 11:
+                            continue
+                        try:
                             hkl_rows.append([float(x) for x in parts])
+                        except ValueError:
+                            continue
+                if hkl_rows:
                     hkls = np.array(hkl_rows)
-                    # Save for ring overlay use
                     np.savetxt('hkls.csv', hkls, header='h k l D-spacing RingNr g1 g2 g3 Theta 2Theta Radius',
                               fmt='%.0f %.0f %.0f %f %.0f %f %f %f %f %f %f', comments='')
                     fig = create_setup_figure(hkls, params)
                     status = html.Span("Setup successfully generated", className="text-success")
                 else:
-                    status = html.Span("GetHKLList produced no output", className="text-danger")
+                    status = html.Span("GetHKLList produced no parsable HKL rows", className="text-danger")
             else:
                 status = html.Span("Error running GetHKLList", className="text-danger")
         except Exception as e:
@@ -1054,6 +1096,20 @@ def update_detector(n_clicks, frame_nr, n_frames_sum, show_rings, xbc, ybc,
         # ── NF-HEDM mode ──────────────────────────────────────────
         if sim_type == 'NF-HEDM':
             if ctx.triggered_id == 'button_run_2d':
+                # simulateNF only accepts %TriEdgeSize space-filling mic files.
+                # Guard against FF inputs (Grains.csv, pf-Mic, EBSD) which would segfault.
+                try:
+                    with open(mic_fn_loc, 'r') as _f:
+                        _first_line = _f.readline()
+                except OSError as _e:
+                    return fig, html.Span(f"Cannot open {mic_fn_loc}: {_e}", className="text-danger")
+                if not _first_line.startswith('%TriEdgeSize'):
+                    return fig, html.Span(
+                        "NF-HEDM simulation requires a space-filling .mic file "
+                        "(%TriEdgeSize header). The provided file is a point-cloud "
+                        "input (Grains.csv / pf-Mic / EBSD) and is only supported "
+                        "in FF-HEDM mode.",
+                        className="text-danger")
                 write_nf_parameter_file(params, mic_fn_loc, param_fn)
                 if hasattr(midas_config, 'MIDAS_NF_BIN_DIR') and midas_config.MIDAS_NF_BIN_DIR:
                     sim_bin = os.path.join(midas_config.MIDAS_NF_BIN_DIR, 'simulateNF')
@@ -1085,7 +1141,10 @@ def update_detector(n_clicks, frame_nr, n_frames_sum, show_rings, xbc, ybc,
         # ── FF-HEDM mode ──────────────────────────────────────────
         else:
             if ctx.triggered_id == 'button_run_2d':
-                cmd = [os.path.join(install_path, 'FF_HEDM/bin/ForwardSimulationCompressed'), param_fn]
+                write_parameter_file(params, mic_fn_loc, param_fn)
+                n_cpus = os.cpu_count() or 4
+                cmd = [os.path.join(install_path, 'FF_HEDM/bin/ForwardSimulationCompressed'),
+                       param_fn, str(n_cpus)]
                 if run_subprocess(cmd) != 0:
                     return fig, html.Span("Error running simulation", className="text-danger")
                 status = html.Span("FF simulation completed", className="text-success")
@@ -1334,8 +1393,11 @@ def main():
         print(f"Error: Microstructure file {mic_fn} does not exist")
         sys.exit(1)
     
-    # Create default parameters
-    params = SimulationParams()
+    # Create default parameters, overriding from Grains.csv header if available
+    overrides = read_phase_from_grains_header(mic_fn)
+    if overrides:
+        print(f"Auto-loaded phase info from {mic_fn} header: {overrides}")
+    params = SimulationParams(**overrides)
     
     # Check if omega range is valid
     if params.n_frames <= 0:

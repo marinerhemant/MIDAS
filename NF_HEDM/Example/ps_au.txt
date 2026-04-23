@@ -176,3 +176,27 @@ LsdRelativeTol 3                # Relative Lsd accuracy between distances (micro
 BCTol 2 0.2                     # Beam center tolerance: horizontal, vertical (pixels)
 TiltsTol 1                      # Tilt angle tolerance (degrees)
 NumIterations 3                 # Number of calibration iterations
+
+
+# =============================================================================
+#  STEP 0 — IMAGE DENOISING (optional, requires MIDAS-NF-preProc)
+# =============================================================================
+#
+# Opt-in self-supervised denoising of raw TIFF stacks via the standalone
+# `MIDAS-NF-preProc` pip package (install: `pip install MIDAS-NF-preProc`).
+# When enabled, denoised TIFFs are written to `{DataDirectory}/denoised/` and
+# DataDirectory is automatically re-pointed there for all downstream stages.
+# Raw data is never modified. See manuals/NF_Denoising.md for details.
+
+# Denoise 1                       # 0 (default) = skip; 1 = enable step 0
+# DenoiseMethod nlm               # 'nlm' (CPU, instant) or 'n2v' (GPU required)
+# DenoisedDirectory /path/to/out  # Optional override; default is {DataDirectory}/denoised
+# DenoiseConfigFile config.yaml   # Optional YAML config for tuning N2V/NLM parameters
+# DenoisePattern *.tif            # Glob for input frames (default *.tif)
+
+# --- N2V-only options (DenoiseMethod n2v) ---
+# DenoiseTrainJointly 1           # Train one shared U-Net across the stack (faster prediction)
+# DenoiseCheckpoint model.ckpt    # Predict from a saved .ckpt (skips training)
+# DenoiseFinetune 1               # With DenoiseCheckpoint: adapt the model per image
+# DenoiseMaskThreshold 2.0        # Use denoised image as a binary signal mask on the original
+# DenoiseNoMedian 1               # Disable temporal median subtraction

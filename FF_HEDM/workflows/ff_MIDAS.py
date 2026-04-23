@@ -64,6 +64,10 @@ midas_config.run_startup_checks()
 from parsl.app.app import python_app
 pytpath = sys.executable
 
+# Optional sr-midas (super-resolution peak search) integration
+sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
+import _sr_midas_shim as sr_midas_shim
+
 FF_STAGE_ORDER = [
     'hkl', 'peak_search', 'merge_overlaps', 'calc_radius',
     'data_transform', 'binning', 'indexing', 'refinement',
@@ -857,11 +861,13 @@ def setup_output_directories(result_dir: str) -> None:
     os.makedirs(f"{result_dir}/Output", exist_ok=True)
     os.makedirs(f"{result_dir}/Temp", exist_ok=True)
 
-def process_layer(layer_nr: int, top_res_dir: str, ps_fn: str, data_fn: str, num_procs: int, 
-                 n_nodes: int, n_chunks: int, preproc: int, inp_file_name: str, 
-                 provide_input_all: int, convert_files: int, do_peak_search: int, 
+def process_layer(layer_nr: int, top_res_dir: str, ps_fn: str, data_fn: str, num_procs: int,
+                 n_nodes: int, n_chunks: int, preproc: int, inp_file_name: str,
+                 provide_input_all: int, convert_files: int, do_peak_search: int,
                  peak_search_only: int, bin_directory: str, grains_file: str = '',
-                 resume_from_stage: str = '', generate_h5: bool = False, useGPU: int = 0) -> None:
+                 resume_from_stage: str = '', generate_h5: bool = False, useGPU: int = 0,
+                 run_sr: int = 0, srfac: int = 8, sr_config_path: str = 'auto',
+                 save_sr_patches: int = 0, save_frame_good_coords: int = 0) -> None:
     """Process a single layer.
     
     Args:
@@ -1063,7 +1069,7 @@ def process_layer(layer_nr: int, top_res_dir: str, ps_fn: str, data_fn: str, num
         if _should_run('peak_search'):
             if do_peak_search == 1:
                 logger.info(f"Doing PeakSearch. Time till now: {time.time() - t0} seconds.")
-                
+
                 try:
                     res = []
                     for nodeNr in range(n_nodes):
@@ -1073,6 +1079,21 @@ def process_layer(layer_nr: int, top_res_dir: str, ps_fn: str, data_fn: str, num
                     ph5.mark('peak_search')
                 except Exception as e:
                     raise RuntimeError(f"Failed during peak search: {e}")
+            elif do_peak_search == 0 and run_sr == 1:
+                logger.info(f"Running SR-MIDAS super-resolution peak search. Time till now: {time.time() - t0} seconds.")
+                try:
+                    sr_midas_shim.run_sr_peak_search(
+                        result_dir=result_dir,
+                        srfac=srfac,
+                        sr_config_path=sr_config_path,
+                        save_sr_patches=save_sr_patches,
+                        save_frame_good_coords=save_frame_good_coords,
+                        use_gpu=1,
+                        logger=logger,
+                    )
+                    ph5.mark('peak_search')
+                except Exception as e:
+                    raise RuntimeError(f"Failed during SR-MIDAS peak search: {e}")
             else:
                 logger.info("Peaksearch results were supplied. Skipping peak search.")
                 ph5.mark('peak_search')
@@ -1986,6 +2007,9 @@ def main():
     parser.add_argument('-strictValidation', action='store_true',
                         help='Exit on parameter-file validation errors (default: warn and continue).')
 
+    # Optional sr-midas CLI flags (only registered when `sr-midas` is installed)
+    sr_midas_shim.add_sr_midas_cli_args(parser)
+
     # Parse arguments
     if len(sys.argv) == 1:
         parser.print_help(sys.stderr)
@@ -2033,7 +2057,16 @@ def main():
     inp_file_name = args.fileName
     provide_input_all = args.provideInputAll
     grains_file = args.grainsFile
-    
+
+    # sr-midas detection banner + flag validation (no-ops when package absent)
+    run_sr = int(getattr(args, 'runSR', 0) or 0)
+    srfac = int(getattr(args, 'srfac', 8) or 8)
+    sr_config_path = getattr(args, 'SRconfig_path', 'auto') or 'auto'
+    save_sr_patches = int(getattr(args, 'saveSRpatches', 0) or 0)
+    save_frame_good_coords = int(getattr(args, 'saveFrameGoodCoords', 0) or 0)
+    sr_midas_shim.log_sr_midas_status(logger, run_sr=(run_sr == 1))
+    sr_midas_shim.validate_sr_midas_flags(args, do_peak_search, logger)
+
     # Basic validation
     if not validate_layer_range(start_layer_nr, end_layer_nr):
         sys.exit(1)
@@ -2221,7 +2254,12 @@ def main():
                         grains_file=layer_grains,
                         resume_from_stage=resume_from_stage,
                         generate_h5=bool(args.generateH5),
-                        useGPU=args.useGPU
+                        useGPU=args.useGPU,
+                        run_sr=run_sr,
+                        srfac=srfac,
+                        sr_config_path=sr_config_path,
+                        save_sr_patches=save_sr_patches,
+                        save_frame_good_coords=save_frame_good_coords,
                     )
 
                     progress.update(message=f"Layer {layer_nr} (file {file_nr}, {filestem}) completed")
@@ -2266,7 +2304,12 @@ def main():
                         grains_file=layer_grains,
                         resume_from_stage=resume_from_stage,
                         generate_h5=bool(args.generateH5),
-                        useGPU=args.useGPU
+                        useGPU=args.useGPU,
+                        run_sr=run_sr,
+                        srfac=srfac,
+                        sr_config_path=sr_config_path,
+                        save_sr_patches=save_sr_patches,
+                        save_frame_good_coords=save_frame_good_coords,
                     )
                     
                     progress.update(message=f"Layer {layer_nr} completed successfully")

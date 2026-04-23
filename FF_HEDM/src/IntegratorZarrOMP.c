@@ -359,6 +359,7 @@ struct IntegratorParams {
   int doPeakFit, nPeakLocations, fitROIPadding;
   int autoDetectPeaks; // 0 = disabled, >0 = max peaks to auto-detect
   int snipIterations;  // SNIP background iterations (default 50)
+  double doubletSeparation; // px: adjacent peaks within this are fit jointly (0=off)
   double peakLocations[MAX_PEAK_LOCATIONS_PF];
   char resultFolder[4096];
   char GapFN[4096];
@@ -384,6 +385,7 @@ static void initIntegratorParams(struct IntegratorParams *p) {
   p->fitROIPadding = 20;
   p->autoDetectPeaks = 0;
   p->snipIterations = 50;
+  p->doubletSeparation = 0.0;
 }
 
 static int readParamFile(const char *filename, struct IntegratorParams *p) {
@@ -503,6 +505,8 @@ static int readParamFile(const char *filename, struct IntegratorParams *p) {
       p->doPeakFit = 1;
     } else if (strcmp(key, "SNIPIterations") == 0) {
       p->snipIterations = atoi(rest);
+    } else if (strcmp(key, "DoubletSeparation") == 0) {
+      p->doubletSeparation = atof(rest);
     } else if (strcmp(key, "PeakLocation") == 0) {
       if (p->nPeakLocations < MAX_PEAK_LOCATIONS_PF) {
         p->peakLocations[p->nPeakLocations++] = atof(rest);
@@ -525,7 +529,7 @@ static int readParamFile(const char *filename, struct IntegratorParams *p) {
 // readDataFile: read a single frame via FileReader.h
 // ─────────────────────────────────────────────────────────────────
 static int readDataFile(const char *filename, size_t NrPixels,
-                        double *returnArr) {
+                        double *returnArr, const char *h5Loc) {
   const char *ext = strrchr(filename, '.');
   if (!ext) {
     fprintf(stderr, "ERROR: No extension in '%s'\n", filename);
@@ -535,7 +539,8 @@ static int readDataFile(const char *filename, size_t NrPixels,
     return ReadTiffFrame(filename, 0, NrPixels, returnArr, 0);
   } else if (strcasecmp(ext, ".h5") == 0 || strcasecmp(ext, ".hdf5") == 0 ||
              strcasecmp(ext, ".hdf") == 0) {
-    return ReadHDF5Frame(filename, "exchange/data", NrPixels, returnArr, 0);
+    const char *loc = (h5Loc && h5Loc[0]) ? h5Loc : "exchange/data";
+    return ReadHDF5Frame(filename, loc, NrPixels, returnArr, 0);
   } else if (strcasecmp(ext, ".cbf") == 0) {
     return ReadCBFFrame(filename, NrPixels, returnArr, NULL, NULL);
   } else {
@@ -563,6 +568,7 @@ int main(int argc, char **argv) {
   // ── Mode detection ────────────────────────────────────────────
   int useParamFile = 0;
   char *paramFN = NULL, *dataFN_arg = NULL, *darkFN_arg = NULL;
+  char *dataLoc_arg = NULL, *darkLoc_arg = NULL;
 
   if (argc >= 2 && strcmp(argv[1], "-paramFN") == 0) {
     useParamFile = 1;
@@ -574,6 +580,10 @@ int main(int argc, char **argv) {
         dataFN_arg = argv[++i];
       else if (strcmp(argv[i], "-darkFN") == 0 && i + 1 < argc)
         darkFN_arg = argv[++i];
+      else if (strcmp(argv[i], "-dataLoc") == 0 && i + 1 < argc)
+        dataLoc_arg = argv[++i];
+      else if (strcmp(argv[i], "-darkLoc") == 0 && i + 1 < argc)
+        darkLoc_arg = argv[++i];
       else if (strcmp(argv[i], "-nCPUs") == 0 && i + 1 < argc)
         nCPUs = atoi(argv[++i]);
       else if (strcmp(argv[i], "-PeakParamsFN") == 0 && i + 1 < argc)
@@ -584,7 +594,8 @@ int main(int argc, char **argv) {
     if (!paramFN || !dataFN_arg) {
       fprintf(stderr,
               "Usage: %s -paramFN params.txt -dataFN image.tif "
-              "[-darkFN dark.tif] [-nCPUs N] [-PeakParamsFN peaks.txt]\n",
+              "[-darkFN dark.tif] [-dataLoc path/in/h5] [-darkLoc path/in/h5] "
+              "[-nCPUs N] [-PeakParamsFN peaks.txt]\n",
               argv[0]);
       return 1;
     }
@@ -608,7 +619,8 @@ int main(int argc, char **argv) {
   } else {
     printf("Usage: %s ZarrName.zip [nCPUs] [PeakParamsFN]\n", argv[0]);
     printf("       %s -paramFN params.txt -dataFN image.tif "
-           "[-darkFN dark.tif] [-nCPUs N] [-PeakParamsFN peaks.txt]\n",
+           "[-darkFN dark.tif] [-dataLoc path/in/h5] [-darkLoc path/in/h5] "
+           "[-nCPUs N] [-PeakParamsFN peaks.txt]\n",
            argv[0]);
     return 1;
   }
@@ -642,11 +654,13 @@ int main(int argc, char **argv) {
   // Peak fitting parameters
   int doPeakFit = 0, nPeakLocations = 0, fitROIPadding = 20;
   int autoDetectPeaks = 0, snipIterations = 50;
+  double doubletSeparation = 0.0;
   double peakLocations[MAX_PEAK_LOCATIONS_PF];
 
   char *DataFN = dataFN_arg;
   char *resultFolder = NULL;
   int nFrames = 0, nDarks = 0, nFloods = 0, bytesPerPx = 2;
+  int paramFN_frames_summed = 1;  // actual count of frames summed in paramFN mode
   double *AverageDark = NULL;
   pixelvalue *ImageInT = NULL;
   double *Image = NULL;
@@ -679,6 +693,8 @@ int main(int argc, char **argv) {
               ip.doPeakFit = 1;
             } else if (strcmp(pfkey, "SNIPIterations") == 0)
               ip.snipIterations = atoi(pfval);
+            else if (strcmp(pfkey, "DoubletSeparation") == 0)
+              ip.doubletSeparation = atof(pfval);
             else if (strcmp(pfkey, "PeakLocation") == 0) {
               if (ip.nPeakLocations < MAX_PEAK_LOCATIONS_PF) {
                 ip.peakLocations[ip.nPeakLocations++] = atof(pfval);
@@ -740,6 +756,7 @@ int main(int argc, char **argv) {
     fitROIPadding = ip.fitROIPadding;
     autoDetectPeaks = ip.autoDetectPeaks;
     snipIterations = ip.snipIterations;
+    doubletSeparation = ip.doubletSeparation;
     for (int i = 0; i < nPeakLocations; i++)
       peakLocations[i] = ip.peakLocations[i];
     GapFN = ip.hasGapFN ? ip.GapFN : NULL;
@@ -756,35 +773,122 @@ int main(int argc, char **argv) {
     }
 
     nPixels = NrPixelsY * NrPixelsZ;
-    nFrames = 1; // Single frame mode
+    nFrames = 1; // Loop runs once; if chunkFiles > 1 we pre-sum into ImageInT
     nDarks = 0;
+
+    // OmegaSumFrames (params key) > 1 means "sum the first N frames of the
+    // HDF5 dataset into one image before integration/peak-fitting". The
+    // peak-fit step then operates on the summed frame. Dark is scaled
+    // accordingly so background subtraction stays correct.
+    int framesToSum = (chunkFiles > 1) ? chunkFiles : 1;
 
     // Read Map.bin / nMap.bin
     int rc = ReadBins(resultFolder);
 
-    // Read data frame
+    // Read data frame(s)
     ImageInT = malloc(nPixels * sizeof(*ImageInT));
     AverageDark = calloc(nPixels, sizeof(*AverageDark));
 
+    const char *dataExt = strrchr(DataFN, '.');
+    int dataIsH5 = dataExt && (strcasecmp(dataExt, ".h5") == 0 ||
+                               strcasecmp(dataExt, ".hdf5") == 0 ||
+                               strcasecmp(dataExt, ".hdf") == 0);
+    const char *dataLocUsed =
+        (dataLoc_arg && dataLoc_arg[0]) ? dataLoc_arg : "exchange/data";
+
+    // Probe how many frames the data dataset actually has so we can cap
+    // framesToSum (if the user asks for more than exist) and so we know
+    // whether a single-frame read is needed.
+    int dataFramesAvail = 1;
+    if (dataIsH5) {
+      hid_t _fid = H5Fopen(DataFN, H5F_ACC_RDONLY, H5P_DEFAULT);
+      if (_fid >= 0) {
+        hid_t _did = H5Dopen2(_fid, dataLocUsed, H5P_DEFAULT);
+        if (_did >= 0) {
+          hid_t _sid = H5Dget_space(_did);
+          hsize_t _dims[3] = {0, 0, 0};
+          int _nd = H5Sget_simple_extent_dims(_sid, _dims, NULL);
+          if (_nd == 3) dataFramesAvail = (int)_dims[0];
+          H5Sclose(_sid);
+          H5Dclose(_did);
+        }
+        H5Fclose(_fid);
+      }
+    }
+    if (framesToSum > dataFramesAvail) framesToSum = dataFramesAvail;
+    if (framesToSum < 1) framesToSum = 1;
+    paramFN_frames_summed = framesToSum;
+
     double *rawFrame = calloc(nPixels, sizeof(double));
-    printf("Reading data file: %s\n", DataFN);
-    if (readDataFile(DataFN, nPixels, rawFrame) != FR_SUCCESS) {
-      fprintf(stderr, "ERROR: Failed to read data file: %s\n", DataFN);
-      free(rawFrame);
+    if (!rawFrame) {
+      fprintf(stderr, "ERROR: calloc(rawFrame) failed\n");
       return 1;
     }
-    // Copy to ImageInT
+
+    if (dataIsH5 && framesToSum > 1) {
+      printf("Summing %d frames from HDF5 data file: %s (loc: %s)\n",
+             framesToSum, DataFN, dataLocUsed);
+      double *frameBuf = calloc(nPixels, sizeof(double));
+      if (!frameBuf) {
+        fprintf(stderr, "ERROR: calloc(frameBuf) failed\n");
+        free(rawFrame);
+        return 1;
+      }
+      for (int fi = 0; fi < framesToSum; fi++) {
+        if (ReadHDF5Frame(DataFN, dataLocUsed, nPixels, frameBuf, fi) != FR_SUCCESS) {
+          fprintf(stderr, "ERROR: Failed to read frame %d of %s\n", fi, DataFN);
+          free(frameBuf);
+          free(rawFrame);
+          return 1;
+        }
+        for (size_t p = 0; p < nPixels; p++)
+          rawFrame[p] += frameBuf[p];
+      }
+      free(frameBuf);
+    } else {
+      printf("Reading data file: %s (HDF5 loc: %s)\n", DataFN, dataLocUsed);
+      if (readDataFile(DataFN, nPixels, rawFrame, dataLoc_arg) != FR_SUCCESS) {
+        fprintf(stderr, "ERROR: Failed to read data file: %s\n", DataFN);
+        free(rawFrame);
+        return 1;
+      }
+    }
+
+    // Copy summed (or single) frame to ImageInT
     for (int i = 0; i < nPixels; i++)
       ImageInT[i] = rawFrame[i];
 
-    // Dark subtraction — read dark and apply same transforms as data
+    // Dark subtraction — scale to framesToSum so sum(data) - N*mean(dark)
     if (darkFN_arg) {
       double *darkFrame = calloc(nPixels, sizeof(double));
-      printf("Reading dark file: %s\n", darkFN_arg);
-      if (readDataFile(darkFN_arg, nPixels, darkFrame) == FR_SUCCESS) {
-        // Map.bin now stores raw pixel coordinates, so no transformation needed
+      const char *darkLocUsed =
+          (darkLoc_arg && darkLoc_arg[0])
+              ? darkLoc_arg
+              : ((dataLoc_arg && dataLoc_arg[0]) ? dataLoc_arg : "exchange/data");
+      const char *darkExt = strrchr(darkFN_arg, '.');
+      int darkIsH5 = darkExt && (strcasecmp(darkExt, ".h5") == 0 ||
+                                 strcasecmp(darkExt, ".hdf5") == 0 ||
+                                 strcasecmp(darkExt, ".hdf") == 0);
+      printf("Reading dark file: %s (HDF5 loc: %s)\n", darkFN_arg, darkLocUsed);
+
+      int darkOK = 0;
+      if (darkIsH5) {
+        // Use SumHDF5Frames which returns the mean across all dark frames.
+        if (SumHDF5Frames(darkFN_arg, darkLocUsed, nPixels, darkFrame, 0) ==
+            FR_SUCCESS) {
+          darkOK = 1;
+        }
+      } else {
+        if (readDataFile(darkFN_arg, nPixels, darkFrame, darkLocUsed) ==
+            FR_SUCCESS) {
+          darkOK = 1;
+        }
+      }
+      if (darkOK) {
+        // sum(data) = N × mean(data); subtract N × mean(dark) so each pixel
+        // is "sum of background-corrected frames".
         for (int i = 0; i < nPixels; i++)
-          AverageDark[i] = darkFrame[i];
+          AverageDark[i] = darkFrame[i] * (double)framesToSum;
       } else {
         printf("Warning: Failed to read dark file, proceeding without dark.\n");
       }
@@ -1183,6 +1287,8 @@ int main(int argc, char **argv) {
             doPeakFit = 1;
           } else if (strcmp(pfkey, "SNIPIterations") == 0) {
             sscanf(pfval, "%d", &snipIterations);
+          } else if (strcmp(pfkey, "DoubletSeparation") == 0) {
+            sscanf(pfval, "%lf", &doubletSeparation);
           } else if (strcmp(pfkey, "PeakLocation") == 0) {
             if (nPeakLocations < MAX_PEAK_LOCATIONS_PF) {
               sscanf(pfval, "%lf", &peakLocations[nPeakLocations]);
@@ -1798,6 +1904,32 @@ integration_start:
     if (peakFitActive && fFitPerEta) {
       int nPeaksThisFit =
           (autoDetectPeaks > 0) ? autoDetectPeaks : nPeakLocations;
+
+      // Precompute doublet pairs for manual peak locations: adjacent peaks
+      // whose |ΔR| < doubletSeparation are fit jointly via pf_fit_doublet_peak
+      // to avoid each peak's ROI being contaminated by its neighbor.
+      int *dbFlag = NULL, *dbPair = NULL;
+      if (doubletSeparation > 0.0 && autoDetectPeaks == 0 && nPeakLocations > 1) {
+        dbFlag = (int *)calloc(nPeakLocations, sizeof(int));
+        dbPair = (int *)malloc(nPeakLocations * sizeof(int));
+        for (int pp = 0; pp < nPeakLocations; pp++) dbPair[pp] = -1;
+        for (int pp = 0; pp < nPeakLocations - 1; pp++) {
+          if (dbFlag[pp] != 0) continue;
+          if (fabs(peakLocations[pp + 1] - peakLocations[pp]) <
+              doubletSeparation) {
+            dbFlag[pp] = 1; dbFlag[pp + 1] = 2;
+            dbPair[pp] = pp + 1; dbPair[pp + 1] = pp;
+          }
+        }
+        int nDoublets = 0;
+        for (int pp = 0; pp < nPeakLocations; pp++)
+          if (dbFlag[pp] == 1) nDoublets++;
+        if (i == 0 && nDoublets > 0) {
+          printf("  Per-eta doublet detection: %d doublet pair(s) "
+                 "at sep<%.3f px\n", nDoublets, doubletSeparation);
+        }
+      }
+
       double *etaProfile = (double *)malloc(nRBins * sizeof(double));
       double *etaFitResults =
           (double *)calloc(nPeaksThisFit * PF_PARAMS_PER_PEAK, sizeof(double));
@@ -1821,14 +1953,31 @@ integration_start:
                                   autoDetectPeaks, RBinSize, fitROIPadding,
                                   etaFitResults, snipIterations);
         } else {
-          // Use CI's peak fitting for each peak individually
+          // Use CI's peak fitting for each peak (joint if part of a doublet)
           for (int pp = 0; pp < nPeakLocations; pp++) {
-            // Extract ROI around this peak
+            // Skip the trailing member of a doublet — handled via its partner
+            if (dbFlag && dbFlag[pp] == 2) continue;
+
             double peakR = peakLocations[pp];
+            int pairIdx = (dbFlag && dbFlag[pp] == 1) ? dbPair[pp] : -1;
+            double peakR2 = (pairIdx >= 0) ? peakLocations[pairIdx] : 0.0;
+
+            // ROI bounds: expand to cover both peaks if a doublet
+            double roiLoR, roiHiR;
+            if (pairIdx >= 0) {
+              double plo = (peakR < peakR2) ? peakR : peakR2;
+              double phi = (peakR < peakR2) ? peakR2 : peakR;
+              roiLoR = plo - fitROIPadding * RBinSize;
+              roiHiR = phi + fitROIPadding * RBinSize;
+            } else {
+              roiLoR = peakR - fitROIPadding * RBinSize;
+              roiHiR = peakR + fitROIPadding * RBinSize;
+            }
+
             int lo = -1, hi = -1;
             for (int rb = 0; rb < nRBins; rb++) {
-              if (RBinCenters[rb] >= peakR - fitROIPadding * RBinSize && lo < 0) lo = rb;
-              if (RBinCenters[rb] <= peakR + fitROIPadding * RBinSize) hi = rb;
+              if (RBinCenters[rb] >= roiLoR && lo < 0) lo = rb;
+              if (RBinCenters[rb] <= roiHiR) hi = rb;
             }
             if (lo < 0 || hi < 0 || hi - lo < 5) continue;
             int roiN = hi - lo + 1;
@@ -1836,19 +1985,45 @@ integration_start:
             double *roiI = (double *)malloc(roiN * sizeof(double));
             for (int rb = 0; rb < roiN; rb++)
               roiI[rb] = etaProfile[lo + rb];
-            double Rfit, snrFit;
-            pf_fit_single_peak(PF_MODE_PV, roiN, roiR, roiI, &Rfit, &snrFit, NULL, RBinSize, peakR);
-            free(roiI);
-            if (snrFit > 1.0) {
-              // Store at peak index pp (not nf) to preserve peak-to-ring mapping
-              int base = pp * PF_PARAMS_PER_PEAK;
-              etaFitResults[base + 0] = 0; // area
-              etaFitResults[base + 1] = Rfit; // center
-              etaFitResults[base + 2] = 0; // sig
-              etaFitResults[base + 3] = 0; // gam
-              etaFitResults[base + 4] = 0; // FWHM
-              etaFitResults[base + 5] = 0; // eta
-              etaFitResults[base + 6] = snrFit; // SNR
+
+            if (pairIdx >= 0) {
+              // Joint doublet fit
+              double Rfit1, Rfit2, snr1, snr2, fwhm1, fwhm2;
+              double lowR = (peakR < peakR2) ? peakR : peakR2;
+              double highR = (peakR < peakR2) ? peakR2 : peakR;
+              int lowIdx = (peakR < peakR2) ? pp : pairIdx;
+              int highIdx = (peakR < peakR2) ? pairIdx : pp;
+              double Rmid = (lowR + highR) * 0.5;
+              pf_fit_doublet_peak(PF_MODE_PV, roiN, roiR, roiI,
+                                   &Rfit1, &Rfit2, &snr1, &snr2,
+                                   &fwhm1, &fwhm2,
+                                   RBinSize, lowR, highR, Rmid);
+              free(roiI);
+              if (snr1 > 1.0) {
+                int base = lowIdx * PF_PARAMS_PER_PEAK;
+                etaFitResults[base + 1] = Rfit1;
+                etaFitResults[base + 6] = snr1;
+              }
+              if (snr2 > 1.0) {
+                int base = highIdx * PF_PARAMS_PER_PEAK;
+                etaFitResults[base + 1] = Rfit2;
+                etaFitResults[base + 6] = snr2;
+              }
+            } else {
+              // Singleton fit
+              double Rfit, snrFit;
+              pf_fit_single_peak(PF_MODE_PV, roiN, roiR, roiI, &Rfit, &snrFit, NULL, RBinSize, peakR);
+              free(roiI);
+              if (snrFit > 1.0) {
+                int base = pp * PF_PARAMS_PER_PEAK;
+                etaFitResults[base + 0] = 0; // area
+                etaFitResults[base + 1] = Rfit; // center
+                etaFitResults[base + 2] = 0; // sig
+                etaFitResults[base + 3] = 0; // gam
+                etaFitResults[base + 4] = 0; // FWHM
+                etaFitResults[base + 5] = 0; // eta
+                etaFitResults[base + 6] = snrFit; // SNR
+              }
             }
           }
           nf = nPeakLocations; // report all slots (unfitted ones remain 0)
@@ -1890,6 +2065,8 @@ integration_start:
       }
       free(etaProfile);
       free(etaFitResults);
+      if (dbFlag) free(dbFlag);
+      if (dbPair) free(dbPair);
     }
     free(lineout1D);
 
@@ -1923,7 +2100,17 @@ integration_start:
         sprintf(chunkSetName, "/OmegaSumFrame/LastFrameNumber_%d", i);
         H5LTmake_dataset_double(file_id, chunkSetName, 2, dim_chunk, chunkArr);
         H5LTset_attribute_int(file_id, chunkSetName, "LastFrameNumber", &i, 1);
-        int nSum = (int)((omeArr[i] - firstOme) / omeStep) + 1;
+        int nSum;
+        if (useParamFile) {
+          // paramFN mode: nFrames is forced to 1 (one loop iteration over a
+          // pre-summed ImageInT), so the omega-based formula is wrong.
+          nSum = paramFN_frames_summed;
+        } else {
+          nSum = (omeStep != 0.0)
+                     ? (int)((omeArr[i] - firstOme) / omeStep) + 1
+                     : 1;
+        }
+        if (nSum <= 0) nSum = 1;
         presThis /= nSum;
         tempThis /= nSum;
         iThis /= nSum;

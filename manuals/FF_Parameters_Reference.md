@@ -100,11 +100,55 @@ For HDF5/Zarr data sources (non-raw-frame inputs).
 | `tx`        | double | deg    | 0       | no       | Detector rotation about X-ray axis. |
 | `ty`        | double | deg    | 0       | no       | Detector rotation about horizontal axis. |
 | `tz`        | double | deg    | 0       | no       | Detector rotation about vertical axis. |
-| `p0`–`p14`  | double | varies | 0 (see below) | no | Distortion coefficients. `p3` default=45, `p6`=90, `p8/p10/p12/p14`=180 (these are periodicity constants, not user-tuned — see `midas_apply_tol_defaults`). |
+| `p0`–`p14`  | double | varies | 0 (see [§3a](#3a-distortion-model)) | no | Distortion polynomial coefficients. **Not applicable to NF-HEDM** (NF uses direct pinhole+tilts geometry, no polynomial). |
 | `Wedge`     | double | deg    | 0       | no       | Deviation from 90° between rotation axis and beam. |
 | `RhoD`      | double | µm     | 0       | no       | Max ring radius for distortion model. Alias: `MaxRingRad`. |
 | `Parallax`  | double | —      | 0       | no       | Parallax correction term. |
 | `ResidualCorrectionMap` | str | path | `""` | no     | Residual distortion correction map file. |
+| `YPixelSize` | double | µm    | `px`    | no       | Y-direction pixel size override for non-square detectors. |
+| `DistortionFile` | str | path  | `""`    | no       | Binary (double-precision) distortion map: Y then Z shifts. Alternative to the analytical `p0..p14` polynomial. |
+
+### 3a. Distortion model
+
+`DetectorMapper` and `FitSetupParamsAllZarr` apply:
+
+```
+Rcorrected = Rmeasured × (1 + DistortFunc(Rnorm, η))
+
+DistortFunc = p0·Rnorm^n0·cos(2·(90−η) + p6)      [2-fold amplitude × phase]
+            + p1·Rnorm^n1·cos(4·(90−η) + p3)      [4-fold amplitude × phase]
+            + p2·Rnorm² + p5·Rnorm⁴ + p4·Rnorm⁶   [isotropic radial]
+            + p7·Rnorm⁴·cos((90−η) + p8)          [dipole 2-fold]
+            + p9·Rnorm³·cos(3·(90−η) + p10)       [trefoil]
+            + p11·Rnorm⁵·cos(5·(90−η) + p12)      [pentafoil]
+            + p13·Rnorm⁶·cos(6·(90−η) + p14)      [hexafoil]
+```
+
+| Coeff | Role | Default | Pairs with |
+|---|---|---|---|
+| `p0` | 2-fold azimuthal amplitude | 0 | phase `p6` |
+| `p1` | 4-fold azimuthal amplitude | 0 | phase `p3` |
+| `p2` | Isotropic radial R² | 0 | — |
+| `p3` | 4-fold azimuthal phase (deg) | 0 | amplitude `p1`. Periodicity default for `tolP3` = 45° |
+| `p4` | Isotropic radial R⁶ | 0 | — |
+| `p5` | Isotropic radial R⁴ | 0 | — |
+| `p6` | 2-fold azimuthal phase (deg) | 0 | amplitude `p0`. Periodicity default for `tolP6` = 90° |
+| `p7` | Dipole R⁴ amplitude | 0 | phase `p8` |
+| `p8` | Dipole phase (deg) | 0 | amplitude `p7`. `tolP8` default = 180° |
+| `p9` | Trefoil R³ amplitude | 0 | phase `p10` |
+| `p10` | Trefoil phase (deg) | 0 | amplitude `p9`. `tolP10` default = 180° |
+| `p11` | Pentafoil R⁵ amplitude | 0 | phase `p12` |
+| `p12` | Pentafoil phase (deg) | 0 | amplitude `p11`. `tolP12` default = 180° |
+| `p13` | Hexafoil R⁶ amplitude | 0 | phase `p14` |
+| `p14` | Hexafoil phase (deg) | 0 | amplitude `p13`. `tolP14` default = 180° |
+
+The phase defaults (`tolP3/6/8/10/12/14`) are periodicity constants — the
+calibration M-step does not refine them; it uses them as fixed bounds. Only
+the amplitudes `p0,p1,p2,p4,p5,p7,p9,p11,p13` are genuinely fitted.
+
+Scope note: NF-HEDM has its own direct pinhole+tilts geometry and does not
+consume `p*` / `tolP*` / `DistortionFile`. Copying an FF parameter file into
+an NF run will silently pass these keys through unused.
 
 ## 4. Crystallography / material
 
@@ -361,22 +405,40 @@ analyzing real experimental data.
 | `TopLayer`            | int  | 0       | Top layer index. |
 | `GridFileName`        | str  | `""`    | Grid definition file. |
 
-## 20. Lineout / calibration-only (unused in FF analysis)
+## 20. Lineout / radial-integration (unused in FF indexing)
 
-These are consumed by `CalibrantIntegratorOMP` and `IntegratorZarrOMP` for
-1D radial integration of calibrant data. **Not used by FF indexing/fitting.**
+These are consumed by `CalibrantIntegratorOMP`, `DetectorMapper`, and
+`IntegratorZarrOMP` for 1D radial integration of calibrant or production
+data. **Not used by FF indexing/fitting.** See
+[FF_Radial_Integration.md](FF_Radial_Integration.md) for the full RI workflow.
 
 | Key              | Type   | Units | Default | Notes |
 |------------------|--------|-------|---------|-------|
 | `RMin`           | double | µm    | 10      | Min radius for integration. Stored as `lineoutRMin`. |
 | `RMax`           | double | µm    | 0       | Max radius for integration. |
 | `RBinSize`       | double | µm    | 0.25    | Radial bin size. Stored as `lineoutRBinSize`. |
-| `EtaMin`         | double | deg   | —       | Min η for integration. Read by integrators only, not central parser. |
-| `EtaMax`         | double | deg   | —       | Max η for integration. |
-| `DoSmoothing`    | int    | bool  | —       | Smooth 1D lineout. Integrator-only. |
-| `DoPeakFit`      | int    | bool  | —       | Fit peaks in 1D lineout. Integrator-only. |
-| `MultiplePeaks`  | int    | bool  | —       | Allow multiple peaks per ring. |
-| `PeakLocation`   | double | —     | —       | Expected peak location. Integrator-only. |
+| `EtaMin`         | double | deg   | -180    | Min η for integration. Alias: `MinEta` (RI context only). |
+| `EtaMax`         | double | deg   | 180     | Max η for integration. |
+| `EtaBinSize`     | double | deg   | 0       | Azimuthal bin size. Dual-use: also the indexing LUT bin size. |
+| `QBinSize`, `QMin`, `QMax` | double | Å⁻¹ | 0 | Enable Q-uniform binning when all positive (+ `Wavelength`). |
+| `OmegaStart`     | double | deg   | —       | ω stamp of first frame (optional RI metadata). Alias: `OmegaFirstFile`. |
+| `OmegaStep`      | double | deg   | —       | Δω per frame (optional RI metadata). |
+| `OmegaSumFrames` | int    | count | 1       | Frames per integration chunk. |
+| `SumImages`      | int    | count | 0       | Frames to sum per output lineout. |
+| `SaveIndividualFrames` | int | bool | 1    | Save per-frame lineouts. |
+| `Normalize`      | int    | bool  | 1       | Per-frame intensity normalization. |
+| `GradientCorrection`   | int | bool | 0    | Radial gradient flattening. |
+| `SolidAngleCorrection` | int | bool | 0    | cos³(2θ) solid-angle correction (DetectorMapper). |
+| `PolarizationCorrection` | int | bool | 0  | Pixel-weight polarization correction (DetectorMapper). |
+| `PolarizationFraction` | double | fraction | 0.99 | σ/π ratio for `PolarizationCorrection`. Distinct from `Polariz`. |
+| `DoSmoothing`    | int    | bool  | 0       | Savitzky-Golay smoothing before auto peak detection. |
+| `DoPeakFit`      | int    | bool  | 1       | Fit peaks in 1D lineout. Alias: `doPeakFit`. |
+| `MultiplePeaks`  | int    | bool  | 0       | Allow multi-peak fitting per ROI. |
+| `PeakLocation`   | double | px    | —       | Expected peak radius. Repeatable; implicitly enables `DoPeakFit`. |
+| `AutoDetectPeaks` | int   | count | 0       | Auto-detect N peaks via SNIP baseline + local maxima. |
+| `SNIPIterations` | int    | count | 50      | SNIP baseline iterations for auto detection. |
+| `FitROIPadding`  | int    | bins  | 20      | Half-width of peak fit ROI. |
+| `FitROIAuto`     | int    | bool  | 0       | Auto-size ROI from FWHM (overrides `FitROIPadding`). |
 
 ## 21. CLI arguments (ff_MIDAS.py)
 

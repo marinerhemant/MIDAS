@@ -292,6 +292,76 @@ def _restore_diffr_spots(result_folder: str, suffix: str = '_unseeded_backup'):
     logger.info(f"Restored diffraction spot files from {suffix}")
 
 
+def run_denoise(args: argparse.Namespace, params: Dict, t0: float):
+    """Step 0: denoise raw TIFF stack via MIDAS-NF-preProc and re-point DataDirectory.
+
+    Mirrors the function in nf_MIDAS.py. In multi-resolution runs this is called
+    once before any loop iteration — N2V training is too expensive to repeat per
+    resolution. Opt-in via `Denoise 1`. `DenoiseMethod n2v` requires a CUDA GPU.
+    """
+    if int(params.get('Denoise', 0)) != 1:
+        logger.info("Denoise stage disabled (Denoise=0). Skipping.")
+        return
+
+    method = str(params.get('DenoiseMethod', 'nlm')).lower()
+    if method not in ('nlm', 'n2v'):
+        raise ValueError(f"DenoiseMethod must be 'nlm' or 'n2v', got '{method}'")
+
+    if method == 'n2v':
+        try:
+            import torch
+        except ImportError as e:
+            raise RuntimeError(
+                "DenoiseMethod=n2v requires torch. "
+                "Install with: pip install MIDAS-NF-preProc"
+            ) from e
+        if not torch.cuda.is_available():
+            raise RuntimeError(
+                "DenoiseMethod=n2v requires a CUDA GPU; none detected. "
+                "Set DenoiseMethod=nlm for a CPU-only run, or run on a GPU host."
+            )
+
+    try:
+        from MIDAS_NF_preProc import denoise_directory
+    except ImportError as e:
+        raise RuntimeError(
+            "Denoise=1 requires the MIDAS-NF-preProc package. "
+            "Install with: pip install MIDAS-NF-preProc"
+        ) from e
+
+    raw_dir = params.get('DataDirectory')
+    if not raw_dir:
+        raise RuntimeError("Denoise=1 requires DataDirectory to be set.")
+    denoised_dir = params.get('DenoisedDirectory') or os.path.join(raw_dir, 'denoised')
+    os.makedirs(denoised_dir, exist_ok=True)
+
+    work_dir = os.path.join(params['resultFolder'], '_denoise_work')
+    logger.info(f"Starting denoise (method={method}): {raw_dir} -> {denoised_dir}")
+
+    mask_threshold = (float(params['DenoiseMaskThreshold'])
+                      if 'DenoiseMaskThreshold' in params else None)
+
+    denoise_directory(
+        input_dir=raw_dir,
+        output_dir=denoised_dir,
+        method=method,
+        config_path=params.get('DenoiseConfigFile') or None,
+        checkpoint_path=params.get('DenoiseCheckpoint') or None,
+        pattern=str(params.get('DenoisePattern', '*.tif')),
+        work_dir=work_dir,
+        train_jointly=bool(int(params.get('DenoiseTrainJointly', 0))),
+        finetune=bool(int(params.get('DenoiseFinetune', 0))),
+        mask_threshold=mask_threshold,
+        median=(int(params.get('DenoiseNoMedian', 0)) == 0),
+    )
+
+    params['DataDirectory'] = denoised_dir
+    with open(args.paramFN, 'a') as f:
+        f.write(f'\nDataDirectory {denoised_dir}\n')
+    logger.info(f"Denoise finished. DataDirectory re-pointed to {denoised_dir}. "
+                f"Total time: {time.time() - t0:.2f}s")
+
+
 def run_preprocessing(args: argparse.Namespace, params: Dict, t0: float,
                      skip_hex_grid: bool = False, skip_diffr_spots: bool = False):
     """Handles seed orientations, grid creation, and spot simulation.
@@ -562,6 +632,23 @@ def run_multi_resolution_workflow(args, params, t0, ph5=None, resume_from_stage=
         return all_stages.index(target) >= all_stages.index(resume_from_stage)
 
     # --- ONE-TIME SETUP ---
+
+    # Step 0: denoise raw TIFFs once (re-points DataDirectory). Skipped when
+    # Denoise=0. Re-runs of completed denoise are detected by the prior-output
+    # check inside run_denoise's caller — here we just always run it; the
+    # underlying package overwrites identical outputs cheaply for NLM, and N2V
+    # users typically gate this with a checkpoint.
+    if int(params.get('Denoise', 0)) == 1:
+        # If a denoised dir from a prior run exists and DataDirectory has not
+        # yet been re-pointed (fresh process), reroute and skip re-denoising.
+        _candidate = (params.get('DenoisedDirectory')
+                      or os.path.join(params.get('DataDirectory', ''), 'denoised'))
+        if os.path.isdir(_candidate) and any(f.endswith('.tif') for f in os.listdir(_candidate)):
+            logger.info(f"Denoise: prior output found at {_candidate}; re-pointing DataDirectory.")
+            params['DataDirectory'] = _candidate
+        else:
+            run_denoise(args, params, t0)
+
     logger.info("Running GetHKLListNF (once).")
     run_command(
         cmd=os.path.join(install_dir, "NF_HEDM/bin/GetHKLListNF") + f" {args.paramFN}",

@@ -13,6 +13,11 @@ from math import floor, isnan, fabs
 import pandas as pd
 from parsl.app.app import python_app
 import parsl
+
+# Optional sr-midas (super-resolution peak search) integration
+sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
+import _sr_midas_shim as sr_midas_shim
+
 # Add TOMO directory for midas_tomo_python import
 _tomo_dir = os.path.join(os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__)))), 'TOMO')
 if _tomo_dir not in sys.path:
@@ -151,7 +156,8 @@ def check_and_exit_on_errors(error_files):
 def parallel_peaks(layerNr, positions, startNrFirstLayer, nrFilesPerSweep, topdir,
                   paramContents, baseNameParamFN, ConvertFiles, nchunks, preproc,
                   midas_path, doPeakSearch, numProcs, startNr, endNr, Lsd, NormalizeIntensities,
-                  omegaValues, minThresh, fStem, omegaFF, Ext, padding=6, scanStep=None):
+                  omegaValues, minThresh, fStem, omegaFF, Ext, padding=6, scanStep=None,
+                  runSR=0, srfac=8, SRconfig_path='auto', saveSRpatches=0, saveFrameGoodCoords=0):
     """
     Run peak search in parallel for a specific layer.
     
@@ -361,18 +367,43 @@ def parallel_peaks(layerNr, positions, startNrFirstLayer, nrFilesPerSweep, topdi
                 return f"Failed at GetHKLListZarr for layer {layerNr}"
             
             # Do peak search if required
-            if doPeakSearch == 1:
+            if doPeakSearch == 1 and runSR != 1:
                 t_st = time.time()
                 logger.info(f'Starting PeakSearch for layer {layerNr}')
                 cmd = f"{os.path.join(midas_path, 'FF_HEDM/bin/PeaksFittingOMPZarrRefactor')} {outFStem} 0 1 {numProcs} {thisDir}"
                 subprocess.call(cmd, shell=True, stdout=f, stderr=f_err)
-                
+
                 if check_error_file(f_err_path):
                     with open(f_err_path, 'r') as ef:
                         logger.error(f"Error in PeaksFittingOMPZarrRefactor: {ef.read()}")
                     return f"Failed at PeakSearch for layer {layerNr}"
-                    
+
                 logger.info(f'PeakSearch Done for layer {layerNr}. Time taken: {time.time() - t_st} seconds.')
+            elif runSR == 1:
+                t_st = time.time()
+                logger.warning(
+                    f'Layer {layerNr}: SR-MIDAS pf integration is EXPERIMENTAL and not documented by '
+                    'sr-midas upstream. Verify outputs against a standard peak-search run before relying on them.'
+                )
+                logger.info(f'Starting SR-MIDAS super-resolution peak search for layer {layerNr}')
+                try:
+                    _shim_dir = os.path.join(midas_path, 'FF_HEDM', 'workflows')
+                    if _shim_dir not in sys.path:
+                        sys.path.insert(0, _shim_dir)
+                    import _sr_midas_shim as _shim
+                    _shim.run_sr_peak_search(
+                        result_dir=thisDir,
+                        srfac=srfac,
+                        sr_config_path=SRconfig_path,
+                        save_sr_patches=saveSRpatches,
+                        save_frame_good_coords=saveFrameGoodCoords,
+                        use_gpu=1,
+                        logger=logger,
+                    )
+                except Exception as sr_exc:
+                    logger.error(f"SR-MIDAS failed for layer {layerNr}: {sr_exc}")
+                    return f"Failed at SR-MIDAS peak search for layer {layerNr}: {sr_exc}"
+                logger.info(f'SR-MIDAS Done for layer {layerNr}. Time taken: {time.time() - t_st} seconds.')
             
             # Merge overlapping peaks
             cmd = f"{os.path.join(midas_path, 'FF_HEDM/bin/MergeOverlappingPeaksAllZarr')} {outFStem} {thisDir}"
@@ -1001,6 +1032,10 @@ def main():
                         help='Skip midas-params preflight validation.')
     parser.add_argument('-strictValidation', action='store_true',
                         help='Exit on parameter-file validation errors (default: warn and continue).')
+
+    # Optional sr-midas CLI flags (only registered when `sr-midas` is installed)
+    sr_midas_shim.add_sr_midas_cli_args(parser)
+
     # Parse arguments
     args, unparsed = parser.parse_known_args()
     
@@ -1029,6 +1064,16 @@ def main():
     sinoSource = args.sinoSource
     sinoMode = 1 if sinoSource == 'indexing' else 0
     useEM = args.useEM
+
+    # sr-midas detection banner + flag validation (no-ops when package absent)
+    runSR = int(getattr(args, 'runSR', 0) or 0)
+    srfac = int(getattr(args, 'srfac', 8) or 8)
+    SRconfig_path = getattr(args, 'SRconfig_path', 'auto') or 'auto'
+    saveSRpatches = int(getattr(args, 'saveSRpatches', 0) or 0)
+    saveFrameGoodCoords = int(getattr(args, 'saveFrameGoodCoords', 0) or 0)
+    sr_midas_shim.log_sr_midas_status(logger, run_sr=(runSR == 1))
+    sr_midas_shim.validate_sr_midas_flags(args, doPeakSearch, logger)
+
     # Ensure command line file arguments are absolute paths before a potential directory change
     param_path = os.path.abspath(args.paramFile)
     param_dir = os.path.dirname(param_path)
@@ -1360,9 +1405,9 @@ def main():
         
         # Run peak search if requested
         if _should_run('peak_search'):
-            if doPeakSearch == 1 or doPeakSearch == -1:
+            if doPeakSearch == 1 or doPeakSearch == -1 or (doPeakSearch == 0 and runSR == 1):
                 logger.info(f"Starting peak search for {nScans} scans starting from {startScanNr}")
-                
+
                 # Use parsl to run in parallel
                 res = []
                 for layerNr in range(startScanNr, nScans + 1):
@@ -1370,7 +1415,9 @@ def main():
                         layerNr, positions, startNrFirstLayer, nrFilesPerSweep, topdir,
                         paramContents, baseNameParamFN, ConvertFiles, nchunks, preproc,
                         midas_path, doPeakSearch, numProcs, startNr, endNr, Lsd, NormalizeIntensities,
-                        omegaValues, minThresh, fStem, omegaFF, Ext, padding, scanStep
+                        omegaValues, minThresh, fStem, omegaFF, Ext, padding, scanStep,
+                        runSR=runSR, srfac=srfac, SRconfig_path=SRconfig_path,
+                        saveSRpatches=saveSRpatches, saveFrameGoodCoords=saveFrameGoodCoords,
                     ))
                 
                 # Wait for all tasks to complete

@@ -262,6 +262,14 @@ python ~/opt/MIDAS/gui/viewers/plot_integrator_peaks.py \
 
 Quick lattice-parameter-vs-η scatter plot from `CalibrantPanelShiftsOMP` `_corr.csv` output, with ideal lattice overlay.
 
+Auto-discovers every `*corr.csv` in the current directory, so running `AutoCalibrateZarr` produces three selectable flavors in the file dropdown:
+
+- `<rawFN>.corr.csv` — calibrant per-(ring, η) residuals from the final M-step.
+- `integrator_<stem>.corr.csv` — the same format, but produced by the independent `IntegratorZarrOMP` validation pass (post-calibration).
+- `compare_<stem>.corr.csv` — bin-by-bin join of the two files keyed on `(RingNr, η)`, carrying the original 18 calibrant columns plus `StrainCalib`, `StrainInteg`, `StrainDiff`, and `StrainDiffMicroStrain` (already in µε). Pick any `Strain*` column as the Y or Color axis to inspect calibrant-vs-integrator agreement.
+
+The viewer also has a **Caked** checkbox (mutually exclusive with **Polar**). When enabled, it loads the matching `<rawFN>.caked.hdf` (copied back from the integrator work dir during validation) and renders `OmegaSumFrame/LastFrameNumber_0` as a grayscale imshow with η on X and R (pixels) on Y, then overlays the currently-loaded corr.csv's `(Eta, RadFit)` points colored by the active **Color** column. The **Log** checkbox switches the imshow intensity to log-scale.
+
 ### Sinogram Cleanup and Tomo Reconstruction (`utils/sino_cleanup_tomo.py`)
 
 Processes PF-HEDM sinograms: column normalization, hole filling, despeckling, gap interpolation, 2D Gaussian smoothing, and MIDAS_TOMO reconstruction.

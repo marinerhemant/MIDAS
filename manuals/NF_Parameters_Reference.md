@@ -124,6 +124,34 @@ detector distance. Mismatched counts cause silent corruption.
 | `TomoImage`               | str    | path  | `""`    | no       | Tomography reconstruction used to mask the grid. |
 | `TomoPixelSize`           | double | µm    | —       | if `TomoImage` set | Pixel size of tomo image for scaling. |
 
+## 5b. Step 0 — Image denoising (MIDAS-NF-preProc)
+
+Optional self-supervised denoising of raw TIFF stacks performed **before**
+`ProcessImagesCombined`. Provided by the standalone pip package
+`MIDAS-NF-preProc` (`pip install MIDAS-NF-preProc`). When `Denoise=1`, the new
+"step 0" stage writes denoised TIFFs to `{DataDirectory}/denoised/` and
+re-points `DataDirectory` (in-memory and on-disk) for every downstream stage.
+Raw data is never modified. See [NF_Denoising.md](NF_Denoising.md) for a
+walkthrough.
+
+| Key                  | Type   | Default                       | Notes |
+|----------------------|--------|-------------------------------|-------|
+| `Denoise`            | int    | `0`                           | Master switch. `0` = skip step 0 entirely; `1` = enable. |
+| `DenoiseMethod`      | str    | `nlm`                         | `nlm` (scikit-image Non-Local Means, CPU, instant) or `n2v` (Noise2Void via CAREamics, **CUDA GPU required**). The workflow aborts at step 0 if `n2v` is selected and no GPU is detected. |
+| `DenoisedDirectory`  | str    | `{DataDirectory}/denoised`    | Override output directory. |
+| `DenoiseConfigFile`  | str    | —                             | Optional YAML config tuning N2V/NLM hyperparameters (see preProc README). |
+| `DenoisePattern`     | str    | `*.tif`                       | Glob pattern for input frames. |
+| `DenoiseTrainJointly`| int    | `0`                           | N2V-only: train one shared U-Net across the stack instead of one per image (faster prediction). |
+| `DenoiseCheckpoint`  | str    | —                             | N2V-only: path to a `.ckpt`. When set, training is skipped and the checkpoint is used for prediction. |
+| `DenoiseFinetune`    | int    | `0`                           | N2V-only: with `DenoiseCheckpoint`, fine-tune the model per image. |
+| `DenoiseMaskThreshold` | double | —                           | If set, use the denoised image as a binary mask: pixels below the threshold are zeroed in the original. |
+| `DenoiseNoMedian`    | int    | `0`                           | Disable the package's temporal pixel-wise median subtraction (default: enabled). |
+
+**Resume / restart semantics**: `-restartFrom denoise` re-runs the denoise
+step. Resuming from any later stage automatically re-points `DataDirectory` to
+the existing `{DataDirectory}/denoised/` directory if a prior denoise output is
+present.
+
 ## 6. Image processing (ProcessImagesCombined, MedianImageLibTiff)
 
 | Key                | Type   | Units  | Default | Notes |
@@ -333,3 +361,22 @@ Defaults are inline, per executable. The table below is the union.
 Recommended working values from [Example/ps_au.txt](../NF_HEDM/Example/ps_au.txt)
 for typical experiments: `MinFracAccept 0.04` (unseeded), `OrientTol 2`,
 `MinConfidence 0.7`, `ExcludePoleAngle 6`, `NrOrientations ~243000`.
+
+## FF/PF keys that do NOT apply to NF
+
+NF-HEDM uses a direct pinhole + tilts geometry inversion. Several keys
+common in FF parameter files are silently ignored by NF executables — do
+not copy them into an NF configuration expecting them to take effect:
+
+| Key family | Why it doesn't apply to NF |
+|---|---|
+| `p0`–`p14`, `tolP0`–`tolP14`, `tolP`, `tolP2Panel` | NF has no analytical distortion polynomial — the `(Lsd, BC, tx, ty, tz)` forward model is applied directly. |
+| `DistortionFile` | Same: NF does not read a per-pixel distortion map. |
+| `RingThresh`, `OverAllRingToIndex`, `MarginRadial`, `MarginEta`, `MarginOme`, `MarginRadius` | These are FF/PF indexer tolerances. NF uses `OrientTol`, `MinFracAccept`, `MinConfidence`, `ExcludePoleAngle` instead. |
+| `StepSizeOrient`, `StepSizePos`, `Completeness`, `UseFriedelPairs` | FF/PF indexer parameters; NF's `NrOrientations` + `OrientTol` cover the equivalent search. |
+| Forward-sim keys `PeakIntensity`, `MaxOutputIntensity`, `SimNoiseSigma`, `WriteSpots`, `PositionsFile`, `IntensitiesFile`, `EResolution` | FF/PF forward-simulation only (`ForwardSimulationCompressed`). NF's `simulateNF` reads a different subset. |
+| Multi-panel keys `NPanelsY`, `NPanelsZ`, `PanelGapsY`, `PanelGapsZ`, `PanelShiftsFile` | Multi-panel detector support is FF/PF-only. |
+
+If you see any of these in an NF parameter file, it is almost certainly a
+copy-paste from a FF setup. Remove them to avoid confusion. Running
+`midas-params validate <file> --path nf` surfaces them as warnings.

@@ -28,9 +28,14 @@ ALL = frozenset({FF, NF, PF, RI})
 FF_PF = frozenset({FF, PF})
 FF_NF_PF = frozenset({FF, NF, PF})
 
+# FF/PF/RI — "everything except NF": pipelines that share DetectorMapper's
+# distortion model (p0..p14, tolP*, DistortionFile). NF uses a direct
+# pinhole+tilts inversion with no distortion polynomial.
+FF_PF_RI = frozenset({FF, PF, RI})
+
 # FNP is an alias for the "indexing / grain-analysis pipelines" — everything
-# except radial integration. Used for omega-scan, indexing, sample-geometry
-# keys that don't apply to RI.
+# except radial integration. Used for indexing/sample-geometry keys that
+# don't apply to RI.
 FNP = FF_NF_PF
 
 # Stage sets (readability)
@@ -146,8 +151,9 @@ PARAMS: list[ParamSpec] = [
     ),
     ParamSpec(
         name="ScanStep", type=ParamType.FLOAT, category="Data source",
-        description="Translation step between scan points.",
-        applies_to=frozenset({PF}), units="um", stages=S_FILE,
+        description="Translation step between scan points (multi-scan).",
+        applies_to=FF_PF, units="um", stages=S_FILE,
+        notes="Primarily PF (where nScans > 1). FF with nScans > 1 also reads it.",
     ),
     ParamSpec(
         name="RawStartNr", type=ParamType.INT, category="Data source",
@@ -247,19 +253,31 @@ PARAMS: list[ParamSpec] = [
         name="px", type=ParamType.FLOAT, category="Detector geometry",
         description="Pixel size (square).",
         applies_to=ALL, required_for=ALL, units="um", stages=S_INDEX | S_INT,
+        aliases=("PixelSize",),
         zarr_rename="PixelSize",
         validators=("positive",),
         typical=200,
         notes="FF typical ~200 µm, NF typical 1–2 µm. Accidentally copying an FF "
-              "value into an NF config silently breaks ring radii.",
+              "value into an NF config silently breaks ring radii. "
+              "IntegratorZarrOMP accepts `PixelSize` as an alias.",
+    ),
+    ParamSpec(
+        name="YPixelSize", type=ParamType.FLOAT, category="Detector geometry",
+        description="Y-direction pixel size override (non-square detectors).",
+        applies_to=FF_PF_RI, units="um", stages=S_INDEX | S_INT, hidden_in_wizard=True,
+        validators=("positive",),
+        notes="When set, overrides `px` for the Y axis. DetectorMapper and "
+              "IntegratorZarrOMP read this for detectors with different "
+              "horizontal and vertical pixel dimensions.",
     ),
     ParamSpec(
         name="Lsd", type=ParamType.FLOAT, category="Detector geometry",
         description="Sample-to-detector distance.",
         applies_to=ALL, required_for=ALL, units="um", stages=S_INDEX | S_CALIB,
-        aliases=("Distance",), multi_entry=True,
+        aliases=("Distance", "DetDist"), multi_entry=True,
         validators=("positive", "lsd_plausible"),
-        notes="NF has multiple Lsd lines (one per detector distance); FF has a single Lsd line.",
+        notes="NF has multiple Lsd lines (one per detector distance); FF has a "
+              "single Lsd line. IntegratorZarrOMP accepts `DetDist` as an alias.",
     ),
     ParamSpec(
         name="BC", type=ParamType.FLOAT_LIST, category="Detector geometry",
@@ -317,12 +335,112 @@ PARAMS: list[ParamSpec] = [
               "exactly nDistances times.",
     ),
 
-    # Distortion coefficients (mostly advanced/calibration use)
-    *[ParamSpec(
-        name=f"p{i}", type=ParamType.FLOAT, category="Detector geometry",
-        description=f"Detector distortion coefficient p{i}.",
-        applies_to=ALL, default=0, stages=S_CALIB, hidden_in_wizard=True,
-    ) for i in range(15)],
+    # ─── Detector distortion coefficients ──────────────────────────────────
+    # Physical model (DetectorMapper.c / FitSetupParamsAllZarr.c):
+    #
+    #   Rcorrected = Rmeasured × (1 + DistortFunc(Rnorm, η))
+    #
+    #   DistortFunc = p0·Rnorm^n0·cos(2(90-η) + p6)           [2-fold amplitude]
+    #               + p1·Rnorm^n1·cos(4(90-η) + p3)           [4-fold amplitude]
+    #               + p2·Rnorm² + p5·Rnorm⁴ + p4·Rnorm⁶       [isotropic radial]
+    #               + p7·Rnorm⁴·cos((90-η) + p8)              [dipole 2-fold]
+    #               + p9·Rnorm³·cos(3(90-η) + p10)            [trefoil 3-fold]
+    #               + p11·Rnorm⁵·cos(5(90-η) + p12)           [pentafoil 5-fold]
+    #               + p13·Rnorm⁶·cos(6(90-η) + p14)           [hexafoil 6-fold]
+    #
+    # NF does NOT use this distortion model — NF's geometry is a direct
+    # pinhole+tilts inversion. Keep scope to FF_PF_RI.
+    ParamSpec(
+        name="p0", type=ParamType.FLOAT, category="Detector distortion",
+        description="2-fold azimuthal amplitude (paired with phase p6).",
+        applies_to=FF_PF_RI, default=0, stages=S_CALIB, hidden_in_wizard=True,
+    ),
+    ParamSpec(
+        name="p1", type=ParamType.FLOAT, category="Detector distortion",
+        description="4-fold azimuthal amplitude (paired with phase p3).",
+        applies_to=FF_PF_RI, default=0, stages=S_CALIB, hidden_in_wizard=True,
+    ),
+    ParamSpec(
+        name="p2", type=ParamType.FLOAT, category="Detector distortion",
+        description="Isotropic radial distortion, R² term.",
+        applies_to=FF_PF_RI, default=0, stages=S_CALIB, hidden_in_wizard=True,
+    ),
+    ParamSpec(
+        name="p3", type=ParamType.FLOAT, category="Detector distortion",
+        description="4-fold azimuthal phase angle (pairs with p1).",
+        applies_to=FF_PF_RI, default=0, units="deg", stages=S_CALIB, hidden_in_wizard=True,
+        notes="Periodicity constant; tolerance tolP3 defaults to 45° and "
+              "this value is typically not user-refined.",
+    ),
+    ParamSpec(
+        name="p4", type=ParamType.FLOAT, category="Detector distortion",
+        description="Isotropic radial distortion, R⁶ term.",
+        applies_to=FF_PF_RI, default=0, stages=S_CALIB, hidden_in_wizard=True,
+    ),
+    ParamSpec(
+        name="p5", type=ParamType.FLOAT, category="Detector distortion",
+        description="Isotropic radial distortion, R⁴ term.",
+        applies_to=FF_PF_RI, default=0, stages=S_CALIB, hidden_in_wizard=True,
+    ),
+    ParamSpec(
+        name="p6", type=ParamType.FLOAT, category="Detector distortion",
+        description="2-fold azimuthal phase angle (pairs with p0).",
+        applies_to=FF_PF_RI, default=0, units="deg", stages=S_CALIB, hidden_in_wizard=True,
+        notes="Periodicity constant; tolerance tolP6 defaults to 90° and "
+              "this value is typically not user-refined.",
+    ),
+    ParamSpec(
+        name="p7", type=ParamType.FLOAT, category="Detector distortion",
+        description="Dipole amplitude, R⁴ azimuthal (pairs with phase p8).",
+        applies_to=FF_PF_RI, default=0, stages=S_CALIB, hidden_in_wizard=True,
+    ),
+    ParamSpec(
+        name="p8", type=ParamType.FLOAT, category="Detector distortion",
+        description="Dipole phase angle (pairs with p7).",
+        applies_to=FF_PF_RI, default=0, units="deg", stages=S_CALIB, hidden_in_wizard=True,
+        notes="Periodicity constant; tolerance tolP8 defaults to 180°.",
+    ),
+    ParamSpec(
+        name="p9", type=ParamType.FLOAT, category="Detector distortion",
+        description="Trefoil (3-fold) amplitude, R³ azimuthal (pairs with phase p10).",
+        applies_to=FF_PF_RI, default=0, stages=S_CALIB, hidden_in_wizard=True,
+    ),
+    ParamSpec(
+        name="p10", type=ParamType.FLOAT, category="Detector distortion",
+        description="Trefoil phase angle (pairs with p9).",
+        applies_to=FF_PF_RI, default=0, units="deg", stages=S_CALIB, hidden_in_wizard=True,
+        notes="Periodicity constant; tolerance tolP10 defaults to 180°.",
+    ),
+    ParamSpec(
+        name="p11", type=ParamType.FLOAT, category="Detector distortion",
+        description="Pentafoil (5-fold) amplitude, R⁵ azimuthal (pairs with phase p12).",
+        applies_to=FF_PF_RI, default=0, stages=S_CALIB, hidden_in_wizard=True,
+    ),
+    ParamSpec(
+        name="p12", type=ParamType.FLOAT, category="Detector distortion",
+        description="Pentafoil phase angle (pairs with p11).",
+        applies_to=FF_PF_RI, default=0, units="deg", stages=S_CALIB, hidden_in_wizard=True,
+        notes="Periodicity constant; tolerance tolP12 defaults to 180°.",
+    ),
+    ParamSpec(
+        name="p13", type=ParamType.FLOAT, category="Detector distortion",
+        description="Hexafoil (6-fold) amplitude, R⁶ azimuthal (pairs with phase p14).",
+        applies_to=FF_PF_RI, default=0, stages=S_CALIB, hidden_in_wizard=True,
+    ),
+    ParamSpec(
+        name="p14", type=ParamType.FLOAT, category="Detector distortion",
+        description="Hexafoil phase angle (pairs with p13).",
+        applies_to=FF_PF_RI, default=0, units="deg", stages=S_CALIB, hidden_in_wizard=True,
+        notes="Periodicity constant; tolerance tolP14 defaults to 180°.",
+    ),
+    ParamSpec(
+        name="DistortionFile", type=ParamType.PATH, category="Detector distortion",
+        description="Binary distortion map (double-precision Y then Z shifts).",
+        applies_to=FF_PF_RI, stages=S_CALIB, hidden_in_wizard=True,
+        validators=("file_exists",),
+        notes="Alternative to analytical p0..p14 polynomial: pixel-by-pixel "
+              "shift table read by DetectorMapper.",
+    ),
 
     # ═══════════════════════════════════════════════════════════════════════
     # 4. CRYSTALLOGRAPHY
@@ -368,7 +486,13 @@ PARAMS: list[ParamSpec] = [
     ParamSpec(
         name="OmegaStart", type=ParamType.FLOAT, category="Omega scan",
         description="First frame omega angle.",
-        applies_to=FF_NF_PF, required_for=FF_NF_PF, units="deg", stages=S_INDEX,
+        applies_to=ALL, required_for=FF_NF_PF, units="deg",
+        stages=S_INDEX | S_INT,
+        notes="FF/NF/PF use this as the scan-start angle (required). RI "
+              "consumes it as frame metadata for per-lineout ω stamps — "
+              "optional on the RI path. In RI, IntegratorZarrOMP.c also "
+              "accepts `OmegaFirstFile` (see its own registry entry) as an "
+              "alias, sharing semantics with PF's per-scan first-frame ω.",
     ),
     ParamSpec(
         name="OmegaEnd", type=ParamType.FLOAT, category="Omega scan",
@@ -381,8 +505,19 @@ PARAMS: list[ParamSpec] = [
     ParamSpec(
         name="OmegaStep", type=ParamType.FLOAT, category="Omega scan",
         description="Rotation step per frame (sign = direction).",
-        applies_to=FF_NF_PF, required_for=FF_NF_PF, units="deg", stages=S_INDEX,
+        applies_to=ALL, required_for=FF_NF_PF, units="deg",
+        stages=S_INDEX | S_INT,
         zarr_rename="step",
+        notes="FF/NF/PF: required scan step. RI: optional frame metadata for "
+              "per-lineout ω stamps.",
+    ),
+    ParamSpec(
+        name="OmegaSumFrames", type=ParamType.INT, category="Integration",
+        description="Number of frames to chunk per integration output (RI).",
+        applies_to=frozenset({RI}), default=1, units="count", stages=S_INT,
+        validators=("positive",),
+        notes="Maps to `chunkFiles` in IntegratorZarrOMP. Set >1 to sum "
+              "consecutive frames into a single output lineout.",
     ),
     ParamSpec(
         name="OmegaRange", type=ParamType.FLOAT_LIST, category="Omega scan",
@@ -424,7 +559,7 @@ PARAMS: list[ParamSpec] = [
     ParamSpec(
         name="OmegaSigma", type=ParamType.FLOAT, category="Forward simulation",
         description="Simulated peak broadening in ω.",
-        applies_to=frozenset({FF, NF}), default=0, units="deg", stages=S_SIM,
+        applies_to=FNP, default=0, units="deg", stages=S_SIM,
         hidden_in_wizard=True,
     ),
     ParamSpec(
@@ -569,10 +704,119 @@ PARAMS: list[ParamSpec] = [
         applies_to=frozenset({RI}), default=180, units="deg", stages=S_INT,
     ),
     ParamSpec(
-        name="EtaBinSize", type=ParamType.FLOAT, category="Indexing",
-        description="η look-up-table bin size.",
-        applies_to=ALL, default=0, units="deg", stages=S_INDEX, typical=0.1,
+        name="EtaBinSize", type=ParamType.FLOAT, category="Integration",
+        description="η bin size (shared: indexing LUT + radial integration).",
+        applies_to=ALL, default=0, units="deg", stages=S_INDEX | S_INT, typical=0.1,
+        notes="Dual-use: the FF/NF/PF indexing executables consume it as the "
+              "η look-up-table bin size; DetectorMapper and IntegratorZarrOMP "
+              "consume it as the azimuthal bin size for the 2D caked output.",
     ),
+
+    # ─── Q-spacing mode (DetectorMapper + IntegratorZarrOMP) ───────────────
+    ParamSpec(
+        name="QBinSize", type=ParamType.FLOAT, category="Integration",
+        description="Q-spacing bin width (enables non-uniform R bins).",
+        applies_to=frozenset({RI}), default=0, units="Å⁻¹", stages=S_INT,
+        notes="When QBinSize, QMin, QMax, and Wavelength are all positive, "
+              "DetectorMapper switches to Q-uniform binning. See "
+              "FF_Radial_Integration §A.2a.",
+    ),
+    ParamSpec(
+        name="QMin", type=ParamType.FLOAT, category="Integration",
+        description="Minimum Q for Q-spacing mode.",
+        applies_to=frozenset({RI}), default=0, units="Å⁻¹", stages=S_INT,
+    ),
+    ParamSpec(
+        name="QMax", type=ParamType.FLOAT, category="Integration",
+        description="Maximum Q for Q-spacing mode.",
+        applies_to=frozenset({RI}), default=0, units="Å⁻¹", stages=S_INT,
+    ),
+
+    # ─── RI frame-aggregation and corrections ──────────────────────────────
+    ParamSpec(
+        name="SumImages", type=ParamType.INT, category="Integration",
+        description="Number of frames to sum per output lineout (0 = per-frame).",
+        applies_to=frozenset({RI}), default=0, units="count", stages=S_INT,
+    ),
+    ParamSpec(
+        name="SaveIndividualFrames", type=ParamType.BOOL, category="Integration",
+        description="Save per-frame lineouts in addition to summed output.",
+        applies_to=frozenset({RI}), default=1, stages=S_INT,
+    ),
+    ParamSpec(
+        name="Normalize", type=ParamType.BOOL, category="Integration",
+        description="Per-frame lineout normalization (intensity/monitor scaling).",
+        applies_to=frozenset({RI}), default=1, stages=S_INT,
+    ),
+    ParamSpec(
+        name="GradientCorrection", type=ParamType.BOOL, category="Integration",
+        description="Apply radial gradient correction.",
+        applies_to=frozenset({FF, PF, RI}), default=0, stages=S_INT | S_CALIB,
+        hidden_in_wizard=True,
+        notes="Read by IntegratorZarrOMP (radial gradient flattening) and by "
+              "CalibrantIntegratorOMP (beam-gradient correction during "
+              "calibration).",
+    ),
+    ParamSpec(
+        name="SolidAngleCorrection", type=ParamType.BOOL, category="Integration",
+        description="Apply cos³(2θ) solid-angle correction (DetectorMapper).",
+        applies_to=frozenset({RI}), default=0, stages=S_INT,
+    ),
+    ParamSpec(
+        name="PolarizationCorrection", type=ParamType.BOOL, category="Integration",
+        description="Apply polarization correction (DetectorMapper).",
+        applies_to=frozenset({RI}), default=0, stages=S_INT,
+    ),
+    ParamSpec(
+        name="PolarizationFraction", type=ParamType.FLOAT, category="Integration",
+        description="Polarization σ/π fraction for the correction.",
+        applies_to=frozenset({RI}), default=0.99, units="fraction", stages=S_INT,
+        notes="Distinct from `Polariz` (GSAS-II instrument profile mixing): "
+              "`PolarizationFraction` drives DetectorMapper's pixel-weight "
+              "correction; `Polariz` is written into the output zarr's "
+              "InstrumentParameters for downstream Rietveld fits.",
+    ),
+
+    # ─── RI 1D peak fitting (IntegratorZarrOMP / IntegratorFitPeaksGPUStream) ─
+    ParamSpec(
+        name="DoSmoothing", type=ParamType.BOOL, category="Integration",
+        description="Savitzky-Golay smoothing before automatic peak detection.",
+        applies_to=frozenset({RI}), default=0, stages=S_INT,
+    ),
+    ParamSpec(
+        name="MultiplePeaks", type=ParamType.BOOL, category="Integration",
+        description="Allow multi-peak fitting on the 1D lineout.",
+        applies_to=frozenset({RI}), default=0, stages=S_INT,
+    ),
+    ParamSpec(
+        name="PeakLocation", type=ParamType.FLOAT, category="Integration",
+        description="Expected peak radius (pixels); repeatable, one per ring.",
+        applies_to=frozenset({RI}), multi_entry=True, units="pixels", stages=S_INT,
+        notes="Setting one or more PeakLocation implicitly enables DoPeakFit "
+              "and MultiplePeaks, and disables DoSmoothing.",
+    ),
+    ParamSpec(
+        name="AutoDetectPeaks", type=ParamType.INT, category="Integration",
+        description="Number of peaks to auto-detect (0 = disabled).",
+        applies_to=frozenset({RI}), default=0, units="count", stages=S_INT,
+    ),
+    ParamSpec(
+        name="SNIPIterations", type=ParamType.INT, category="Integration",
+        description="SNIP baseline iterations for auto peak detection.",
+        applies_to=frozenset({RI}), default=50, units="count", stages=S_INT,
+        validators=("positive",),
+    ),
+    ParamSpec(
+        name="FitROIPadding", type=ParamType.INT, category="Integration",
+        description="Half-width of peak-fit ROI (radial bins).",
+        applies_to=frozenset({RI}), default=20, units="count", stages=S_INT,
+    ),
+    ParamSpec(
+        name="FitROIAuto", type=ParamType.BOOL, category="Integration",
+        description="Auto-size ROI from estimated FWHM (overrides FitROIPadding).",
+        applies_to=frozenset({RI}), default=0, stages=S_INT,
+    ),
+
     ParamSpec(
         name="UpperBoundThreshold", type=ParamType.INT, category="Peak search",
         description="Saturation cap; pixels above this are ignored in peak search.",
@@ -590,9 +834,13 @@ PARAMS: list[ParamSpec] = [
         applies_to=ALL, default=1, stages=S_PEAK, hidden_in_wizard=True,
     ),
     ParamSpec(
-        name="DoubletSeparation", type=ParamType.FLOAT, category="Peak search",
-        description="Minimum separation for resolving doublet peaks.",
-        applies_to=ALL, default=0, units="um", stages=S_PEAK, hidden_in_wizard=True,
+        name="DoubletSeparation", type=ParamType.FLOAT, category="Calibration",
+        description="Minimum separation for resolving doublet rings (calibration).",
+        applies_to=FF_PF, default=0, units="um", stages=S_CALIB, hidden_in_wizard=True,
+        notes="Read by the calibration executables (CalibrantPanelShiftsOMP, "
+              "CalibrantIntegratorOMP) to decide when two closely-spaced "
+              "Debye–Scherrer rings are resolved in the lineout. Not used by "
+              "the FF peak-fitting pipeline.",
     ),
 
     # ═══════════════════════════════════════════════════════════════════════
@@ -762,6 +1010,8 @@ PARAMS: list[ParamSpec] = [
         name="BeamSize", type=ParamType.FLOAT, category="Sample geometry",
         description="Horizontal beam size (PF-HEDM).",
         applies_to=frozenset({PF}), default=0, units="um", stages=S_INDEX,
+        notes="PF-only: used to compute per-scan positions when no "
+              "PositionsFile is provided. Only PF-unique key besides nScans.",
     ),
     ParamSpec(
         name="GlobalPosition", type=ParamType.FLOAT, category="Sample geometry",
@@ -840,64 +1090,72 @@ PARAMS: list[ParamSpec] = [
     ),
 
     # ═══════════════════════════════════════════════════════════════════════
-    # PF-specific indexing parameters (PF uses its own vocabulary)
+    # Shared FF/PF multi-scan + indexing vocabulary
+    # Most of these are read by the shared MIDAS_ParamParser and are visible
+    # on the FF path even when only PF actually uses them at runtime.
+    # (PF = FF + {nScans, BeamSize} in practice — no separate parser.)
     # ═══════════════════════════════════════════════════════════════════════
     ParamSpec(
         name="MaxAng", type=ParamType.FLOAT, category="Indexing",
-        description="PF post-indexing: misorientation tolerance for grouping "
-                    "voxels into grains / refining orientations.",
-        applies_to=frozenset({PF}), required_for=frozenset({PF}),
+        description="Post-indexing misorientation tolerance for grouping "
+                    "voxels into grains / refining orientations (PF workflow).",
+        applies_to=FF_PF, required_for=frozenset({PF}),
         units="deg", typical=1.0, stages=S_INDEX,
         validators=("positive",),
         notes="Passed directly by pf_MIDAS.py to findMultipleSolutionsPF and "
               "refinement binaries. Additional to StepSizeOrient/Completeness; "
-              "not a replacement.",
+              "not a replacement. FF accepts the key (shared parser) but does "
+              "not consume it.",
     ),
     ParamSpec(
         name="TolEta", type=ParamType.FLOAT, category="Indexing",
-        description="PF post-indexing: η tolerance for sinogram spot matching.",
-        applies_to=frozenset({PF}), required_for=frozenset({PF}),
+        description="Post-indexing η tolerance for sinogram spot matching (PF workflow).",
+        applies_to=FF_PF, required_for=frozenset({PF}),
         units="deg", typical=1.0, stages=S_INDEX,
         validators=("positive",),
     ),
     ParamSpec(
         name="TolOme", type=ParamType.FLOAT, category="Indexing",
-        description="PF post-indexing: ω tolerance for sinogram spot matching.",
-        applies_to=frozenset({PF}), required_for=frozenset({PF}),
+        description="Post-indexing ω tolerance for sinogram spot matching (PF workflow).",
+        applies_to=FF_PF, required_for=frozenset({PF}),
         units="deg", typical=1.0, stages=S_INDEX,
         validators=("positive",),
     ),
     ParamSpec(
         name="OmegaFirstFile", type=ParamType.FLOAT, category="Omega scan",
-        description="PF: starting omega of the first frame of each scan file.",
-        applies_to=frozenset({PF}), required_for=frozenset({PF}),
-        units="deg", stages=S_INDEX,
-        notes="Distinct from OmegaStart (which is the global start). "
-              "Per-scan first-frame omega.",
+        description="Starting ω of the first frame of each scan file.",
+        applies_to=frozenset({FF, PF, RI}), required_for=frozenset({PF}),
+        units="deg", stages=S_INDEX | S_INT,
+        notes="PF: distinct from OmegaStart (global start) — per-scan "
+              "first-frame omega. RI: IntegratorZarrOMP accepts this as an "
+              "alias for OmegaStart (frame metadata only). FF accepts it "
+              "via the shared parser but does not consume it.",
     ),
     ParamSpec(
         name="RingToIndex", type=ParamType.INT, category="Ring selection",
-        description="PF: individual ring numbers to use in indexing (multi-entry).",
-        applies_to=frozenset({PF}), multi_entry=True, stages=S_INDEX,
+        description="Individual ring numbers to use in indexing (PF convention; multi-entry).",
+        applies_to=FF_PF, multi_entry=True, stages=S_INDEX,
         notes="Distinct from RingThresh — RingToIndex picks WHICH rings to "
-              "consider in indexing (PF convention).",
+              "consider in indexing. PF workflow only; FF pipelines use "
+              "OverAllRingToIndex + RingThresh.",
     ),
     ParamSpec(
         name="PositionsFile", type=ParamType.PATH, category="Data source",
-        description="PF: path to positions.csv (per-scan sample positions).",
-        applies_to=frozenset({PF}), stages=S_INDEX,
+        description="Path to positions.csv (per-scan sample positions).",
+        applies_to=FF_PF, stages=S_INDEX,
         validators=("file_exists",),
-        notes="Read when nScans > 1. Can be auto-generated from BeamSize + ScanStep.",
+        notes="Read when nScans > 1. PF can auto-generate this from "
+              "BeamSize + ScanStep; FF rarely uses it.",
     ),
     ParamSpec(
         name="MicFile", type=ParamType.PATH, category="Output",
-        description="PF: output .mic file with reconstructed voxel orientations.",
-        applies_to=frozenset({PF}), stages=frozenset({Stage.POST_ANALYSIS}),
+        description="Output .mic file with reconstructed voxel orientations (PF).",
+        applies_to=FF_PF, stages=frozenset({Stage.POST_ANALYSIS}),
     ),
     ParamSpec(
         name="nStepsToMerge", type=ParamType.INT, category="Indexing",
-        description="PF: number of scan steps to merge during reconstruction.",
-        applies_to=frozenset({PF}), default=1, units="count", stages=S_INDEX,
+        description="Number of scan steps to merge during reconstruction (PF).",
+        applies_to=FF_PF, default=1, units="count", stages=S_INDEX,
         validators=("positive",),
     ),
 
@@ -916,8 +1174,12 @@ PARAMS: list[ParamSpec] = [
     ParamSpec(
         name="doPeakFit", type=ParamType.BOOL, category="Peak search",
         description="Fit peaks (0 disables — e.g. for LocalMaximaOnly mode).",
-        applies_to=frozenset({FF, PF, RI}), default=1, stages=S_PEAK,
+        applies_to=frozenset({FF, PF, RI}), default=1, stages=S_PEAK | S_INT,
+        aliases=("DoPeakFit",),
         hidden_in_wizard=True,
+        notes="Central MIDAS_ParamParser accepts `doPeakFit` (lowercase). "
+              "IntegratorZarrOMP accepts `DoPeakFit` (capital D) for the RI "
+              "1D lineout fitter; treated as an alias here.",
     ),
     ParamSpec(
         name="UseMaximaPositions", type=ParamType.BOOL, category="Peak search",
@@ -971,6 +1233,140 @@ PARAMS: list[ParamSpec] = [
         name="DebugMode", type=ParamType.BOOL, category="Refinement",
         description="Verbose diagnostic output.",
         applies_to=ALL, default=0, stages=frozenset(), hidden_in_wizard=True,
+    ),
+    ParamSpec(
+        name="DoDynamicReassignment", type=ParamType.BOOL, category="Refinement",
+        description="Dynamically reassign spots to grains between refinement passes.",
+        applies_to=FF_PF, default=0, stages=S_REFINE, hidden_in_wizard=True,
+    ),
+    ParamSpec(
+        name="WeightMask", type=ParamType.FLOAT, category="Refinement",
+        description="Weight applied to masked regions in the refinement objective.",
+        applies_to=FF_PF, default=0, units="fraction", stages=S_REFINE, hidden_in_wizard=True,
+    ),
+    ParamSpec(
+        name="WeightFitRMSE", type=ParamType.FLOAT, category="Refinement",
+        description="Weight applied to the fit RMSE term in the refinement objective.",
+        applies_to=FF_PF, default=0, units="fraction", stages=S_REFINE, hidden_in_wizard=True,
+    ),
+    ParamSpec(
+        name="TopLayer", type=ParamType.INT, category="Refinement",
+        description="Top layer index used by the calibration/refinement driver.",
+        applies_to=FF_PF, default=0, stages=S_REFINE, hidden_in_wizard=True,
+    ),
+
+    # ═══════════════════════════════════════════════════════════════════════
+    # 11b. CALIBRATION INNER LOOP (peak-fit sweep, iteration control)
+    # Read by MIDAS_ParamParser.c and consumed by CalibrantIntegratorOMP /
+    # CalibrationCore during iterative detector refinement. All FF/PF.
+    # ═══════════════════════════════════════════════════════════════════════
+
+    ParamSpec(
+        name="RBinDivisions", type=ParamType.INT, category="Calibration inner loop",
+        description="Radial bin sub-divisions during calibrant fitting.",
+        applies_to=FF_PF, default=4, stages=S_CALIB, hidden_in_wizard=True,
+        validators=("positive",),
+    ),
+    ParamSpec(
+        name="MultFactor", type=ParamType.FLOAT, category="Calibration inner loop",
+        description="Outlier detection multiplier.",
+        applies_to=FF_PF, default=0, stages=S_CALIB, hidden_in_wizard=True,
+    ),
+    ParamSpec(
+        name="MinIndicesForFit", type=ParamType.INT, category="Calibration inner loop",
+        description="Minimum matched indices required to accept a ring fit.",
+        applies_to=FF_PF, default=1, units="count", stages=S_CALIB, hidden_in_wizard=True,
+    ),
+    ParamSpec(
+        name="FitOrWeightedMean", type=ParamType.INT, category="Calibration inner loop",
+        description="0 = nonlinear fit, 1 = weighted mean centroid.",
+        applies_to=FF_PF, default=0, stages=S_CALIB, hidden_in_wizard=True,
+    ),
+    ParamSpec(
+        name="nIterations", type=ParamType.INT, category="Calibration inner loop",
+        description="Calibration refinement iterations.",
+        applies_to=FF_PF, default=1, units="count", stages=S_CALIB, hidden_in_wizard=True,
+        validators=("positive",),
+    ),
+    ParamSpec(
+        name="IterOffset", type=ParamType.INT, category="Calibration inner loop",
+        description="Iteration numbering offset (for resumed calibration runs).",
+        applies_to=FF_PF, default=0, stages=S_CALIB, hidden_in_wizard=True,
+    ),
+    ParamSpec(
+        name="NormalizeRingWeights", type=ParamType.BOOL, category="Calibration inner loop",
+        description="Normalize fit weights across rings.",
+        applies_to=FF_PF, default=0, stages=S_CALIB, hidden_in_wizard=True,
+    ),
+    ParamSpec(
+        name="OutlierIterations", type=ParamType.INT, category="Calibration inner loop",
+        description="Outlier-removal iteration count.",
+        applies_to=FF_PF, default=1, units="count", stages=S_CALIB, hidden_in_wizard=True,
+    ),
+    ParamSpec(
+        name="RemoveOutliersBetweenIters", type=ParamType.BOOL, category="Calibration inner loop",
+        description="Remove outliers between iterations rather than only at the end.",
+        applies_to=FF_PF, default=0, stages=S_CALIB, hidden_in_wizard=True,
+    ),
+    ParamSpec(
+        name="ReFitPeaks", type=ParamType.BOOL, category="Calibration inner loop",
+        description="Re-fit peaks after initial pass using refined geometry.",
+        applies_to=FF_PF, default=0, stages=S_CALIB, hidden_in_wizard=True,
+    ),
+    ParamSpec(
+        name="TrimmedMeanFraction", type=ParamType.FLOAT, category="Calibration inner loop",
+        description="Fraction retained in trimmed-mean centroid (1.0 = full mean).",
+        applies_to=FF_PF, default=1.0, units="fraction", stages=S_CALIB, hidden_in_wizard=True,
+    ),
+    ParamSpec(
+        name="WeightByRadius", type=ParamType.BOOL, category="Calibration inner loop",
+        description="Weight fit residuals by ring radius.",
+        applies_to=FF_PF, default=0, stages=S_CALIB, hidden_in_wizard=True,
+    ),
+    ParamSpec(
+        name="WeightByFitSNR", type=ParamType.BOOL, category="Calibration inner loop",
+        description="Weight fit residuals by per-peak fit SNR.",
+        applies_to=FF_PF, default=0, stages=S_CALIB, hidden_in_wizard=True,
+    ),
+    ParamSpec(
+        name="WeightByPositionUncertainty", type=ParamType.BOOL, category="Calibration inner loop",
+        description="Weight fit residuals by fitted position uncertainty.",
+        applies_to=FF_PF, default=0, stages=S_CALIB, hidden_in_wizard=True,
+    ),
+    ParamSpec(
+        name="AdaptiveEtaBins", type=ParamType.BOOL, category="Calibration inner loop",
+        description="Adapt η bin widths to spot density.",
+        applies_to=FF_PF, default=0, stages=S_CALIB, hidden_in_wizard=True,
+    ),
+    ParamSpec(
+        name="L2Objective", type=ParamType.BOOL, category="Calibration inner loop",
+        description="Use L2 norm in the optimization objective (default is L1).",
+        applies_to=FF_PF, default=0, stages=S_CALIB, hidden_in_wizard=True,
+    ),
+    ParamSpec(
+        name="ConvergenceThresholdPPM", type=ParamType.FLOAT, category="Calibration inner loop",
+        description="Early-stop Δstrain threshold; 0 disables.",
+        applies_to=FF_PF, default=0, units="ppm", stages=S_CALIB, hidden_in_wizard=True,
+    ),
+    ParamSpec(
+        name="SkipVerification", type=ParamType.BOOL, category="Calibration inner loop",
+        description="Skip the final verification E-step.",
+        applies_to=FF_PF, default=0, stages=S_CALIB, hidden_in_wizard=True,
+    ),
+    ParamSpec(
+        name="RingDiagnosticsCSV", type=ParamType.PATH, category="Calibration inner loop",
+        description="Output path for per-ring calibration diagnostics CSV.",
+        applies_to=FF_PF, stages=S_CALIB, hidden_in_wizard=True,
+    ),
+    ParamSpec(
+        name="ResumeFromCheckpoint", type=ParamType.BOOL, category="Calibration inner loop",
+        description="Resume calibration from the last checkpoint file.",
+        applies_to=FF_PF, default=0, stages=S_CALIB, hidden_in_wizard=True,
+    ),
+    ParamSpec(
+        name="SubPixelCardinalWidth", type=ParamType.FLOAT, category="Peak search",
+        description="Half-width for cardinal-η sub-pixel splitting.",
+        applies_to=ALL, default=5.0, units="deg", stages=S_PEAK, hidden_in_wizard=True,
     ),
 
     # ═══════════════════════════════════════════════════════════════════════
@@ -1121,6 +1517,18 @@ PARAMS: list[ParamSpec] = [
         description="Size of assembled detector (multi-detector mode).",
         applies_to=FF_PF, default=0, units="pixels", stages=S_INDEX, hidden_in_wizard=True,
     ),
+    ParamSpec(
+        name="LsdMean", type=ParamType.FLOAT, category="Multi-panel",
+        description="Mean Lsd for multi-distance NF grids / multi-detector mode.",
+        applies_to=FF_PF, default=0, units="um", stages=S_INDEX, hidden_in_wizard=True,
+    ),
+    ParamSpec(
+        name="DetParams", type=ParamType.FLOAT_LIST, category="Multi-panel",
+        description="Per-detector geometry row (10 values, repeatable up to 10 panels).",
+        applies_to=FF_PF, multi_entry=True, stages=S_INDEX, hidden_in_wizard=True,
+        notes="Each line encodes one detector's `Lsd, tx, ty, tz, yBC, zBC, "
+              "p0, p1, p2, RhoD`. Only used when BigDetSize > 0.",
+    ),
 
     # ═══════════════════════════════════════════════════════════════════════
     # 16. NF CALIBRATION-ONLY (hidden in wizard)
@@ -1169,7 +1577,7 @@ PARAMS: list[ParamSpec] = [
     ParamSpec(
         name="InFileName", type=ParamType.PATH, category="Forward simulation",
         description="Input grain orientations file.",
-        applies_to=frozenset({FF, NF}), stages=S_SIM, hidden_in_wizard=True,
+        applies_to=FNP, stages=S_SIM, hidden_in_wizard=True,
     ),
     ParamSpec(
         name="OutFileName", type=ParamType.STR, category="Forward simulation",
@@ -1216,6 +1624,55 @@ PARAMS: list[ParamSpec] = [
         description="NF simulate: memory-partition count for very large simulations.",
         applies_to=frozenset({NF}), default=0, stages=S_SIM, hidden_in_wizard=True,
     ),
+    ParamSpec(
+        name="IntensitiesFile", type=ParamType.PATH, category="Forward simulation",
+        description="Per-grain intensities input file.",
+        applies_to=FF_PF, stages=S_SIM, hidden_in_wizard=True,
+        validators=("file_exists",),
+    ),
+    ParamSpec(
+        name="IsBinary", type=ParamType.BOOL, category="Forward simulation",
+        description="Input grain orientations file is binary (not text).",
+        applies_to=FF_PF, default=0, stages=S_SIM, hidden_in_wizard=True,
+    ),
+    ParamSpec(
+        name="LoadNr", type=ParamType.INT, category="Forward simulation",
+        description="Grain index to load from a binary input file.",
+        applies_to=FF_PF, default=0, stages=S_SIM, hidden_in_wizard=True,
+    ),
+    ParamSpec(
+        name="UpdatedOrientations", type=ParamType.BOOL, category="Forward simulation",
+        description="Use refined orientations from a prior analysis pass.",
+        applies_to=FF_PF, default=1, stages=S_SIM, hidden_in_wizard=True,
+    ),
+    ParamSpec(
+        name="NFOutput", type=ParamType.BOOL, category="Forward simulation",
+        description="Emit output in NF-style stacked format instead of FF.",
+        applies_to=FF_PF, default=0, stages=S_SIM, hidden_in_wizard=True,
+    ),
+    ParamSpec(
+        name="NoSaveAll", type=ParamType.BOOL, category="Forward simulation",
+        description="Skip writing the all-spots aggregate file.",
+        applies_to=FF_PF, default=0, stages=S_SIM, hidden_in_wizard=True,
+    ),
+    ParamSpec(
+        name="EResolution", type=ParamType.FLOAT_LIST, category="Forward simulation",
+        description="Energy resolution and λ-sample count `resolution num_lambda_samples`.",
+        applies_to=FF_PF, default=[0.0, 1.0], stages=S_SIM, hidden_in_wizard=True,
+        notes="Single line with two values; parsed as (dE/E fraction, "
+              "integer sample count).",
+    ),
+    ParamSpec(
+        name="OutDirPath", type=ParamType.PATH, category="Forward simulation",
+        description="Output directory for forward-simulation products.",
+        applies_to=FF_PF, stages=S_SIM, hidden_in_wizard=True,
+    ),
+    ParamSpec(
+        name="InputAllExtraInfoFittingAll", type=ParamType.PATH, category="Seeding",
+        description="Pre-computed spots input (used with -provideInputAll 1).",
+        applies_to=FF_PF, stages=S_REFINE, hidden_in_wizard=True,
+        validators=("file_exists",),
+    ),
 
     # ═══════════════════════════════════════════════════════════════════════
     # 18. POST-PROCESSING
@@ -1250,7 +1707,123 @@ PARAMS: list[ParamSpec] = [
     ParamSpec(
         name="tolP", type=ParamType.FLOAT, category="Calibration",
         description="General distortion-coefficient fallback.",
-        applies_to=ALL, default=0, stages=S_CALIB, hidden_in_wizard=True,
+        applies_to=FF_PF, default=0, stages=S_CALIB, hidden_in_wizard=True,
+        notes="Fallback used when a per-coefficient tolP0..tolP14 is not set "
+              "and the coefficient has no periodicity default.",
+    ),
+    # Per-coefficient distortion tolerances. Phase-angle coefficients
+    # (p3, p6, p8, p10, p12, p14) have periodicity-constant defaults and
+    # are typically NOT user-refined; the amplitudes default to 0 (fall back
+    # to `tolP` via midas_apply_tol_defaults in MIDAS_ParamParser.c).
+    ParamSpec(
+        name="tolP0", type=ParamType.FLOAT, category="Calibration",
+        description="Tolerance for p0 (2-fold amplitude).",
+        applies_to=FF_PF, default=0, stages=S_CALIB, hidden_in_wizard=True,
+    ),
+    ParamSpec(
+        name="tolP1", type=ParamType.FLOAT, category="Calibration",
+        description="Tolerance for p1 (4-fold amplitude).",
+        applies_to=FF_PF, default=0, stages=S_CALIB, hidden_in_wizard=True,
+    ),
+    ParamSpec(
+        name="tolP2", type=ParamType.FLOAT, category="Calibration",
+        description="Tolerance for p2 (isotropic R²).",
+        applies_to=FF_PF, default=0, stages=S_CALIB, hidden_in_wizard=True,
+    ),
+    ParamSpec(
+        name="tolP3", type=ParamType.FLOAT, category="Calibration",
+        description="Tolerance for p3 (4-fold phase; periodicity default 45°).",
+        applies_to=FF_PF, default=45, units="deg", stages=S_CALIB, hidden_in_wizard=True,
+    ),
+    ParamSpec(
+        name="tolP4", type=ParamType.FLOAT, category="Calibration",
+        description="Tolerance for p4 (isotropic R⁶).",
+        applies_to=FF_PF, default=0, stages=S_CALIB, hidden_in_wizard=True,
+    ),
+    ParamSpec(
+        name="tolP5", type=ParamType.FLOAT, category="Calibration",
+        description="Tolerance for p5 (isotropic R⁴).",
+        applies_to=FF_PF, default=0, stages=S_CALIB, hidden_in_wizard=True,
+    ),
+    ParamSpec(
+        name="tolP6", type=ParamType.FLOAT, category="Calibration",
+        description="Tolerance for p6 (2-fold phase; periodicity default 90°).",
+        applies_to=FF_PF, default=90, units="deg", stages=S_CALIB, hidden_in_wizard=True,
+    ),
+    ParamSpec(
+        name="tolP7", type=ParamType.FLOAT, category="Calibration",
+        description="Tolerance for p7 (dipole amplitude).",
+        applies_to=FF_PF, default=0, stages=S_CALIB, hidden_in_wizard=True,
+    ),
+    ParamSpec(
+        name="tolP8", type=ParamType.FLOAT, category="Calibration",
+        description="Tolerance for p8 (dipole phase; periodicity default 180°).",
+        applies_to=FF_PF, default=180, units="deg", stages=S_CALIB, hidden_in_wizard=True,
+    ),
+    ParamSpec(
+        name="tolP9", type=ParamType.FLOAT, category="Calibration",
+        description="Tolerance for p9 (trefoil amplitude).",
+        applies_to=FF_PF, default=0, stages=S_CALIB, hidden_in_wizard=True,
+    ),
+    ParamSpec(
+        name="tolP10", type=ParamType.FLOAT, category="Calibration",
+        description="Tolerance for p10 (trefoil phase; periodicity default 180°).",
+        applies_to=FF_PF, default=180, units="deg", stages=S_CALIB, hidden_in_wizard=True,
+    ),
+    ParamSpec(
+        name="tolP11", type=ParamType.FLOAT, category="Calibration",
+        description="Tolerance for p11 (pentafoil amplitude).",
+        applies_to=FF_PF, default=0, stages=S_CALIB, hidden_in_wizard=True,
+    ),
+    ParamSpec(
+        name="tolP12", type=ParamType.FLOAT, category="Calibration",
+        description="Tolerance for p12 (pentafoil phase; periodicity default 180°).",
+        applies_to=FF_PF, default=180, units="deg", stages=S_CALIB, hidden_in_wizard=True,
+    ),
+    ParamSpec(
+        name="tolP13", type=ParamType.FLOAT, category="Calibration",
+        description="Tolerance for p13 (hexafoil amplitude).",
+        applies_to=FF_PF, default=0, stages=S_CALIB, hidden_in_wizard=True,
+    ),
+    ParamSpec(
+        name="tolP14", type=ParamType.FLOAT, category="Calibration",
+        description="Tolerance for p14 (hexafoil phase; periodicity default 180°).",
+        applies_to=FF_PF, default=180, units="deg", stages=S_CALIB, hidden_in_wizard=True,
+    ),
+    ParamSpec(
+        name="tolP2Panel", type=ParamType.FLOAT, category="Calibration",
+        description="Per-panel p2 (radial distortion) tolerance.",
+        applies_to=FF_PF, default=0.0001, stages=S_CALIB, hidden_in_wizard=True,
+    ),
+    ParamSpec(
+        name="tolTiltX", type=ParamType.FLOAT, category="Calibration",
+        description="Individual tx tolerance (overrides tolTilts fallback).",
+        applies_to=FF_PF, default=0, units="deg", stages=S_CALIB, hidden_in_wizard=True,
+    ),
+    ParamSpec(
+        name="tolLsdPanel", type=ParamType.FLOAT, category="Calibration",
+        description="Per-panel Lsd tolerance.",
+        applies_to=FF_PF, default=100, units="um", stages=S_CALIB, hidden_in_wizard=True,
+    ),
+    ParamSpec(
+        name="tolParallax", type=ParamType.FLOAT, category="Calibration",
+        description="Parallax correction tolerance.",
+        applies_to=FF_PF, default=0, stages=S_CALIB, hidden_in_wizard=True,
+    ),
+    ParamSpec(
+        name="FitParallax", type=ParamType.BOOL, category="Calibration",
+        description="Refine parallax.",
+        applies_to=FF_PF, default=0, stages=S_CALIB, hidden_in_wizard=True,
+    ),
+    ParamSpec(
+        name="PerPanelLsd", type=ParamType.BOOL, category="Calibration",
+        description="Independent Lsd per panel.",
+        applies_to=FF_PF, default=0, stages=S_CALIB, hidden_in_wizard=True,
+    ),
+    ParamSpec(
+        name="PerPanelDistortion", type=ParamType.BOOL, category="Calibration",
+        description="Independent distortion per panel.",
+        applies_to=FF_PF, default=0, stages=S_CALIB, hidden_in_wizard=True,
     ),
     ParamSpec(
         name="tolShifts", type=ParamType.FLOAT, category="Calibration",

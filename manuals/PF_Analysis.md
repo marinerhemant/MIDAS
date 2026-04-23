@@ -68,6 +68,16 @@ python pf_MIDAS.py -paramFile <param.txt> [options]
 | `-resume` | `str` | `''` | Path to a pipeline H5 to resume from. Auto-detects the last completed stage. |
 | `-restartFrom` | `str` | `''` | Explicit stage to restart from. Valid stages: `hkl`, `peak_search`, `merge`, `params_rewrite`, `indexing`, `refinement`, `find_multiple_solutions`, `consolidation`. |
 
+The following flags appear **only when the optional `sr-midas` pip package is installed** (see [Section 3a](#3a-super-resolution-peak-search-optional-sr-midas-experimental-for-pf)):
+
+| Argument | Type | Default | Description |
+|---|---|---|---|
+| `-runSR` | `int` | `0` | `1` = replace per-scan MIDAS peak search with the sr-midas super-resolution pipeline. Requires `-doPeakSearch 0`. |
+| `-srfac` | `int` | `8` | Super-resolution upscale factor. Choices: `2`, `4`, `8`. |
+| `-SRconfig_path` | `str` | `auto` | Path to a custom sr-midas config JSON. `auto` uses the config bundled with sr-midas. |
+| `-saveSRpatches` | `int` | `0` | `1` = save the predicted super-resolved patches to disk (`SR_out/SR_patches/` per scan). |
+| `-saveFrameGoodCoords` | `int` | `0` | `1` = save per-frame `goodCoords` maps per scan. |
+
 ### Example
 
 ```bash
@@ -92,6 +102,51 @@ python pf_MIDAS.py -paramFile ps_pf.txt -doTomo 1 -reconMethod mlem -mlemIter 80
 # Use OSEM (faster convergence) with normalized sinograms:
 python pf_MIDAS.py -paramFile ps_pf.txt -doTomo 1 -reconMethod osem -osemSubsets 4 -sinoType norm
 ```
+
+---
+
+## 3a. Super-Resolution Peak Search (optional, `sr-midas`, experimental for PF)
+
+`pf_MIDAS.py` can delegate the **peak-fitting** step inside each scan's `parallel_peaks` Parsl task to **[sr-midas](https://pypi.org/project/sr-midas/)**, an optional PyPI package that upscales detector patches with a cascaded CNN before fitting peaks. The surrounding per-scan stages (zip generation, `GetHKLListZarr`, `MergeOverlappingPeaksAllZarr`, omega handling, `CalcRadiusAllZarr`, `FitSetupZarr`, intensity normalization, consolidated-CSV write) still run unchanged, so downstream indexing / refinement / tomography are unaffected.
+
+> [!WARNING]
+> **PF-HEDM integration is EXPERIMENTAL.** The sr-midas README only documents FF-HEDM; the PF per-scan integration was inferred from the on-disk layout and has not been validated by the sr-midas authors. Verify outputs against a standard peak-search reference run before relying on them scientifically. A loud per-layer warning is printed to the log each time SR runs.
+
+**Install** (one-time, in a Python **3.12.4** environment, with PyTorch that matches your GPU):
+
+```bash
+pip install sr-midas
+```
+
+When the package is importable, the five `-runSR*` flags above are automatically registered and a banner prints at startup:
+
+```
+SR-MIDAS: available (version 0.1.1).
+```
+
+If sr-midas isn't installed the flags don't appear in `--help` and `pf_MIDAS.py` behaves exactly as before.
+
+**GPU strongly recommended.** sr-midas auto-detects CUDA; on a CPU-only host the driver logs a prominent warning and inference is 10–100× slower. Because PF runs one SR pass per scan (potentially dozens to hundreds), the CPU penalty compounds quickly.
+
+**Usage**:
+
+```bash
+# Replace per-scan peak fitting with sr-midas (srfac=8 default):
+python pf_MIDAS.py -paramFile ps_pf.txt -doPeakSearch 0 -runSR 1
+
+# Lower upscale factor for faster per-scan inference:
+python pf_MIDAS.py -paramFile ps_pf.txt -doPeakSearch 0 -runSR 1 -srfac 4
+
+# Save diagnostic SR patches and goodCoords maps:
+python pf_MIDAS.py -paramFile ps_pf.txt -doPeakSearch 0 -runSR 1 \
+    -saveSRpatches 1 -saveFrameGoodCoords 1
+```
+
+**Guardrails**:
+
+- `-runSR 1` with `-doPeakSearch 1` exits with an error — sr-midas *replaces* the per-scan peak-fit step.
+- `-runSR 1` without sr-midas installed exits with a `pip install sr-midas` hint.
+- Each scan's `.MIDAS.zip` must already exist (either from a prior run or from this invocation's zip generation). If the zarr is missing for a scan, that layer's SR task fails fast with a clear error.
 
 ---
 

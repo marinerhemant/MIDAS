@@ -218,6 +218,16 @@ class CalibState:
     bad_gap_arr: list = field(default_factory=list)
     mask_file: str = ''
 
+    # Integration binning (used in the calibrant fit and the post-calibration
+    # integrator validation). r_max<=0 means "auto from the largest ring radius".
+    eta_bin_size: float = 1.0
+    eta_min: float = -180.0
+    eta_max: float = 180.0
+    r_bin_size: float = 0.25
+    r_min: float = 10.0
+    r_max: float = 0.0
+    doublet_separation: float = 25.0  # px; joint-fit adjacent peaks within this
+
     # HDF5 output
     h5_file: object = None
 
@@ -1621,6 +1631,152 @@ def run_get_hkl_list(param_file):
         raise
 
 
+_CORR_HEADER_TOKENS = (
+    'Eta', 'Strain', 'RadFit', 'EtaCalc', 'DiffCalc', 'RadCalc',
+    'Ideal2Theta', 'Outlier', 'YRawCorr', 'ZRawCorr', 'RingNr',
+    'RadGlobal', 'IdealR', 'Fit2Theta', 'IdealA', 'FitA',
+    'DeltaR', 'DeltaA',
+)
+
+
+def _load_corr_csv_rows(path):
+    """Read a CalibrantPanelShiftsOMP-style corr.csv and return a list of row-dicts.
+
+    Handles both flavors:
+      * direct (integrator-style): '%Eta ...' header on line 1 then data rows
+      * with geometry preamble: two comma-separated lines, blank, then '%Eta ...'
+
+    Only the 18-column '%Eta Strain ...' section is parsed. Returns [] if the
+    file can't be opened or has no data rows.
+    """
+    try:
+        with open(path) as f:
+            lines = f.readlines()
+    except OSError:
+        return []
+
+    # Locate '%Eta' header
+    header_idx = None
+    for i, line in enumerate(lines):
+        stripped = line.strip()
+        if stripped.startswith('%Eta') or stripped.startswith('% Eta'):
+            header_idx = i
+            break
+    if header_idx is None:
+        return []
+
+    rows = []
+    for line in lines[header_idx + 1:]:
+        parts = line.split()
+        if len(parts) < len(_CORR_HEADER_TOKENS):
+            continue
+        try:
+            d = {name: float(parts[i]) for i, name in enumerate(_CORR_HEADER_TOKENS)}
+        except ValueError:
+            continue
+        d['RingNr'] = int(d['RingNr'])
+        d['Outlier'] = int(d['Outlier'])
+        rows.append(d)
+    return rows
+
+
+def _find_calibrant_corr_csv(data_file):
+    """Locate the final calibrant corr.csv written by CalibrantIntegratorOMP.
+
+    Written next to the raw data file as '<rawFN>.corr.csv'. If that exact
+    path is missing, fall back to any '<basename>*.corr.csv' in the same dir
+    excluding 'integrator_' and 'compare_' files. Returns None if nothing is
+    found.
+    """
+    import glob as _glob
+
+    candidate = f"{data_file}.corr.csv"
+    if os.path.exists(candidate):
+        return candidate
+
+    data_dir = os.path.dirname(os.path.abspath(data_file)) or '.'
+    stem = os.path.splitext(os.path.basename(data_file))[0]
+    matches = sorted(_glob.glob(os.path.join(data_dir, f"{stem}*.corr.csv")))
+    matches = [m for m in matches
+               if not os.path.basename(m).startswith(('integrator_', 'compare_'))]
+    return matches[-1] if matches else None
+
+
+def _write_strain_comparison_csv(integrator_corr, data_file, data_stem):
+    """Emit compare_<stem>.corr.csv matching integrator rows against calibrant rows.
+
+    Match key: (RingNr, round(Eta, 4)) — both files use the same 1° eta grid.
+    Output carries the full 18-column calibrant row (so plot_calibrant_results
+    can render it normally) plus StrainCalib, StrainInteg, StrainDiff, and
+    StrainDiffMicroStrain (= StrainDiff * 1e6). Also logs per-ring and overall
+    summary stats.
+    """
+    calib_path = _find_calibrant_corr_csv(data_file)
+    if calib_path is None:
+        logger.info("Strain comparison skipped: no calibrant corr.csv next to data file")
+        return
+
+    calib_rows = _load_corr_csv_rows(calib_path)
+    integ_rows = _load_corr_csv_rows(integrator_corr)
+    if not calib_rows or not integ_rows:
+        logger.info("Strain comparison skipped: one of the corr.csv files is empty")
+        return
+
+    calib_by_key = {(r['RingNr'], round(r['Eta'], 4)): r for r in calib_rows}
+
+    out_path = os.path.join(os.getcwd(), f"compare_{data_stem}.corr.csv")
+    extra_cols = ('StrainCalib', 'StrainInteg', 'StrainDiff', 'StrainDiffMicroStrain')
+
+    per_ring_diffs = {}
+    all_diffs = []
+    n_written = 0
+    with open(out_path, 'w') as out:
+        out.write('%' + ' '.join(_CORR_HEADER_TOKENS) + ' '
+                  + ' '.join(extra_cols) + '\n')
+        for ir in integ_rows:
+            key = (ir['RingNr'], round(ir['Eta'], 4))
+            cr = calib_by_key.get(key)
+            if cr is None:
+                continue
+            s_c = cr['Strain']
+            s_i = ir['Strain']
+            diff = s_i - s_c
+
+            base = [f"{cr[name]:.10g}" for name in _CORR_HEADER_TOKENS]
+            # Preserve integer formatting for Outlier/RingNr
+            base[_CORR_HEADER_TOKENS.index('Outlier')] = str(cr['Outlier'])
+            base[_CORR_HEADER_TOKENS.index('RingNr')] = str(cr['RingNr'])
+            extra = [f"{s_c:.10e}", f"{s_i:.10e}", f"{diff:.10e}",
+                     f"{diff * 1e6:.6f}"]
+            out.write(' '.join(base + extra) + '\n')
+            n_written += 1
+            per_ring_diffs.setdefault(cr['RingNr'], []).append(diff)
+            all_diffs.append(diff)
+
+    if n_written == 0:
+        logger.warning(f"Strain comparison wrote 0 rows to {out_path} "
+                       f"(no matching (RingNr, Eta) pairs between "
+                       f"{os.path.basename(calib_path)} and "
+                       f"{os.path.basename(integrator_corr)})")
+        return
+
+    logger.info(f"Wrote {n_written} comparison rows to {out_path}")
+    print(f"\n  Strain comparison: {out_path}")
+    print(f"  Calibrant source: {calib_path}")
+    arr = np.array(all_diffs)
+    rms = float(np.sqrt(np.mean(arr * arr)))
+    print(f"  Overall: n={len(arr)}  mean Δstrain={arr.mean()*1e6:+.2f} µε  "
+          f"std={arr.std()*1e6:.2f} µε  RMS={rms*1e6:.2f} µε")
+    print(f"  Per-ring Δstrain (integrator − calibrant) in µε:")
+    print(f"    {'Ring':>4}  {'N':>5}  {'mean':>9}  {'std':>9}  {'RMS':>9}")
+    for ring_nr in sorted(per_ring_diffs):
+        diffs = np.array(per_ring_diffs[ring_nr])
+        r_rms = float(np.sqrt(np.mean(diffs * diffs)))
+        print(f"    {ring_nr:>4}  {len(diffs):>5}  "
+              f"{diffs.mean()*1e6:>+9.2f}  {diffs.std()*1e6:>9.2f}  "
+              f"{r_rms*1e6:>9.2f}")
+
+
 def run_integrator_validation(refined_params_file, data_file, dark_file,
                               state, n_cpus=4):
     """Run DetectorMapper + IntegratorZarrOMP to independently validate calibration.
@@ -1739,12 +1895,13 @@ def run_integrator_validation(refined_params_file, data_file, dark_file,
             f.write(f"px {state.px}\n")
             f.write(f"NrPixelsY {state.nr_pixels_y}\n")
             f.write(f"NrPixelsZ {state.nr_pixels_z}\n")
-            f.write(f"RMin 10\n")
-            f.write(f"RMax {max_r_px + 50:.0f}\n")
-            f.write(f"RBinSize 0.25\n")
-            f.write(f"EtaMin -180\n")
-            f.write(f"EtaMax 180\n")
-            f.write(f"EtaBinSize 1\n")
+            r_max_px = state.r_max if state.r_max > 0 else (max_r_px + 50)
+            f.write(f"RMin {state.r_min:g}\n")
+            f.write(f"RMax {r_max_px:g}\n")
+            f.write(f"RBinSize {state.r_bin_size:g}\n")
+            f.write(f"EtaMin {state.eta_min:g}\n")
+            f.write(f"EtaMax {state.eta_max:g}\n")
+            f.write(f"EtaBinSize {state.eta_bin_size:g}\n")
             f.write(f"Normalize 1\n")
             f.write(f"GradientCorrection {state.gradient_correction}\n")
             f.write(f"Folder {work_dir}\n")
@@ -1791,14 +1948,33 @@ def run_integrator_validation(refined_params_file, data_file, dark_file,
         with open(peak_params_fn, 'w') as f:
             f.write("DoPeakFit 1\n")
             f.write("FitROIPadding 30\n")
+            if state.doublet_separation > 0:
+                f.write(f"DoubletSeparation {state.doublet_separation}\n")
             for i, (ring_nr, (r_um, _, _)) in enumerate(sorted_rings):
                 if i >= max_peaks:
                     break
                 r_px = r_um / state.px
                 f.write(f"PeakLocation {r_px:.6f}\n")
 
+        # --- 4b. Probe frame count and set OmegaSumFrames so the integrator
+        # sums all frames in the file (see IntegratorZarrOMP paramFN mode).
+        n_frames_summed = 1
+        ext = os.path.splitext(data_file)[1].lower()
+        if ext in ('.h5', '.hdf5', '.hdf', '.nxs'):
+            try:
+                dl = state.data_loc or 'exchange/data'
+                with h5py.File(data_file, 'r') as _df:
+                    dset = _df.get(dl)
+                    if dset is not None and dset.ndim == 3:
+                        n_frames_summed = int(dset.shape[0])
+            except Exception as _e:
+                logger.warning(f"Frame-count probe failed: {_e}")
+        with open(integ_params, 'a') as _pf:
+            _pf.write(f"OmegaSumFrames {n_frames_summed}\n")
+        logger.info(f"OmegaSumFrames={n_frames_summed} written to integrator params")
+
         # --- 5. Run IntegratorZarrOMP ---
-        logger.info("Running IntegratorZarrOMP...")
+        logger.info(f"Running IntegratorZarrOMP (OmegaSumFrames={n_frames_summed})...")
         integ_cmd = [
             integrator_bin,
             '-paramFN', integ_params,
@@ -1806,14 +1982,33 @@ def run_integrator_validation(refined_params_file, data_file, dark_file,
             '-nCPUs', str(n_cpus),
             '-PeakParamsFN', peak_params_fn,
         ]
+        if state.data_loc:
+            integ_cmd.extend(['-dataLoc', state.data_loc])
         if dark_file and os.path.exists(dark_file):
             integ_cmd.extend(['-darkFN', os.path.abspath(dark_file)])
+            if state.dark_loc:
+                integ_cmd.extend(['-darkLoc', state.dark_loc])
 
         integ_result = subprocess.run(
             integ_cmd, capture_output=True, text=True, cwd=work_dir, env=env)
         if integ_result.returncode != 0:
             logger.error(f"IntegratorZarrOMP failed: {integ_result.stderr[-500:]}")
             return
+
+        # --- 5b. Copy caked HDF back to cwd for plot_calibrant_results QC ---
+        import shutil as _shutil
+        caked_src = None
+        for cand in os.listdir(work_dir):
+            if cand.endswith('.caked.hdf'):
+                caked_src = os.path.join(work_dir, cand)
+                break
+        if caked_src:
+            caked_dst = os.path.join(os.getcwd(), os.path.basename(caked_src))
+            try:
+                _shutil.copy2(caked_src, caked_dst)
+                logger.info(f"Copied caked HDF to {caked_dst}")
+            except OSError as _e:
+                logger.warning(f"Failed to copy caked HDF: {_e}")
 
         # --- 6. Parse _fit_per_eta.csv ---
         # Find the output file
@@ -1936,6 +2131,16 @@ def run_integrator_validation(refined_params_file, data_file, dark_file,
         logger.info(f"Wrote {n_written} entries to {corr_csv_path}")
         print(f"\n  Integrator validation: {corr_csv_path}")
         print(f"  ({n_written} peak-fit entries across {len(sorted_rings)} rings)")
+
+        # --- 8. Bin-by-bin strain comparison against calibrant corr.csv ---
+        try:
+            _write_strain_comparison_csv(
+                integrator_corr=corr_csv_path,
+                data_file=data_file,
+                data_stem=data_stem,
+            )
+        except Exception:
+            logger.warning(f"Strain comparison failed: {traceback.format_exc()}")
 
     except Exception as e:
         logger.error(f"Integrator validation failed: {traceback.format_exc()}")
@@ -2063,6 +2268,11 @@ def runMIDAS(rawFN, state, n_iterations=40, mult_factor=5,
             if _p13_seed != 0.0: pf.write(f'p13 {_p13_seed}\n')
             if _p14_seed != 0.0: pf.write(f'p14 {_p14_seed}\n')
             pf.write(f'EtaBinSize {eta_bin_size}\n')
+            # Sync calibrant's RBinDivisions (subdivisions per pixel) with
+            # state.r_bin_size (pixels per bin) — they're reciprocals.
+            if state.r_bin_size > 0:
+                _rdiv = max(1, int(round(1.0 / state.r_bin_size)))
+                pf.write(f'RBinDivisions {_rdiv}\n')
             pf.write(f'HeadSize {8192 if state.midas_dtype == 1 else 0}\n')
 
             # Bad pixel / gap
@@ -2698,6 +2908,16 @@ def main():
                                  '(0=off, 1=on). Default: 1')
         parser.add_argument('--eta-bin-size', '-EtaBinSize', type=float, default=1.0,
                             help='Azimuthal bin size (degrees)')
+        parser.add_argument('--eta-min', '-EtaMin', type=float, default=-180.0,
+                            help='Minimum eta for integration (degrees, default: -180)')
+        parser.add_argument('--eta-max', '-EtaMax', type=float, default=180.0,
+                            help='Maximum eta for integration (degrees, default: 180)')
+        parser.add_argument('--r-bin-size', '-RBinSize', type=float, default=0.25,
+                            help='Radial bin size (pixels, default: 0.25)')
+        parser.add_argument('--r-min', '-RMin', type=float, default=10.0,
+                            help='Minimum radius for integration (pixels, default: 10)')
+        parser.add_argument('--r-max', '-RMax', type=float, default=0.0,
+                            help='Maximum radius for integration (pixels, 0=auto from largest ring)')
 
         # Geometry guesses
         parser.add_argument('--lsd-guess', '-LsdGuess', type=float, default=None,
@@ -2774,6 +2994,13 @@ def main():
         state.im_trans_opt = args.im_trans
         state.data_loc = args.data_loc
         state.dark_loc = args.dark_loc
+        state.eta_bin_size = args.eta_bin_size
+        state.eta_min = args.eta_min
+        state.eta_max = args.eta_max
+        state.r_bin_size = args.r_bin_size
+        state.r_min = args.r_min
+        state.r_max = args.r_max
+        state.doublet_separation = args.doublet_separation
         state.tol_shifts = args.tol_shifts
         state.tol_rotation = args.tol_rotation
         state.per_panel_lsd = args.per_panel_lsd

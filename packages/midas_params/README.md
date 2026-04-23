@@ -5,7 +5,10 @@ FF-HEDM, NF-HEDM, PF-HEDM, and radial-integration pipelines.
 
 ## Status
 
-- **Registry**: FF + NF + PF + RI (~195 keys).
+- **Registry**: FF + NF + PF + RI (~280 keys). Per-path scoping:
+  FF ≈ 205, NF ≈ 115, PF = FF ∪ {BeamSize}, RI ≈ 90.
+  (FF and PF share `MIDAS_ParamParser.c`, so a key recognized by one is
+  recognized by the other; `BeamSize` is the one PF-exclusive key.)
 - **Parser**: MIDAS text format (single-entry, multi-entry, aliases, inline comments).
 - **Validator**: 14 per-key validators, 11 cross-field rules, typo detection.
 - **Discovery**: filename parsing, directory scan, HDF5/Zarr probing.
@@ -13,6 +16,13 @@ FF-HEDM, NF-HEDM, PF-HEDM, and radial-integration pipelines.
 - **Rings**: Bragg-ring geometry helper (λ + Lsd + lattice → visible ring list).
 - **Diagnose**: LLM-ready payload (`format=json|prompt`) with source + registry + pipeline context.
 - **CLI**: `validate`, `inspect`, `rings`, `wizard`, `diagnose`.
+
+### Not in the registry yet
+
+- **TOMO** (`TOMO/src/tomo_init.c`): reconstruction-specific keys
+  (rotation-center search, stripe removal, sinogram filters) are not modelled.
+  Adding a `Path.TOMO` is a future expansion.
+- **DT** uses FF's parser byte-identically; no standalone keys to register.
 
 ## Why
 
