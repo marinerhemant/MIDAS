@@ -270,9 +270,11 @@ int main(int argc, char *argv[]) {
            "[-nCPUs N]\n");
     return 1;
   }
-  clock_t start, end;
+  // Wall-clock timing (clock() reports summed CPU time across OpenMP
+  // threads, which overstates elapsed time by ~nThreads on parallel runs).
+  struct timespec ts_start, ts_end;
+  clock_gettime(CLOCK_MONOTONIC, &ts_start);
   double diftotal;
-  start = clock();
   char line[5024];
 
   char aline[1000];
@@ -1138,8 +1140,9 @@ int main(int argc, char *argv[]) {
   free(isDup);
   free(keptList);
 
-  end = clock();
-  diftotal = ((double)(end - start)) / CLOCKS_PER_SEC;
+  clock_gettime(CLOCK_MONOTONIC, &ts_end);
+  diftotal = (double)(ts_end.tv_sec - ts_start.tv_sec) +
+             (double)(ts_end.tv_nsec - ts_start.tv_nsec) / 1e9;
   printf("Time elapsed: %f s.\n", diftotal);
   return 0;
 }

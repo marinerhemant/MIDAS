@@ -154,7 +154,7 @@ static double problem_function(unsigned n, const double *x, double *grad,
       // Check euler angles positions!
       for (j = 0; j < 3; j++) {
         ps = i * 3 + j + 3 + (nLayers * 3);
-        EulIn[j] = x[ps] * rad2deg;
+        EulIn[j] = x[ps];
       }
       for (j = 0; j < 3; j++) {
         XGrain[j] = XGr[i][j];
