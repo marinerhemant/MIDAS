@@ -65,6 +65,25 @@ rad2deg = 57.2957795130823
 _color_cycle_colors = ['#e6194b', '#3cb44b', '#4363d8', '#f58231',
                        '#911eb4', '#42d4f4', '#f032e6', '#bfef45']
 
+# 4× Hydra: GE detector labels and sibling-path derivation
+_GE_LABELS = ("ge1", "ge2", "ge3", "ge4")
+
+
+def _derive_ge_path(path, src_label, tgt_label):
+    """Replace src_label with tgt_label in every component of path.
+
+    Returns the derived path string, or None if no substitution occurred
+    (i.e. the source label was not found in the path).
+    """
+    from pathlib import Path as _Path
+    p = _Path(path)
+    new_parts = [
+        re.sub(re.escape(src_label), tgt_label, part, flags=re.IGNORECASE)
+        for part in p.parts
+    ]
+    candidate = str(_Path(*new_parts))
+    return None if candidate == str(p) else candidate
+
 
 # ═══════════════════════════════════════════════════════════════════════
 #  Crystallography helpers (unchanged from ff_asym.py)
@@ -430,6 +449,14 @@ class FFViewer(QtWidgets.QMainWindow):
         self.hdf5_dark_path = '/exchange/dark'
         self.hdf5_datasets = []
 
+        # 4× Hydra mode
+        self._hydra_mode = False
+        self._last_loaded_path = ""       # full path of the most recently loaded file
+        self._hydra_paths = [""] * 4      # first-file path per GE slot (ge1..ge4)
+        self._last_param_path = ""        # full path of the most recently loaded param file
+        self._hydra_param_paths = [""] * 4  # param file path per GE slot
+        self._hydra_params = [None] * 4     # parsed params dict per GE slot
+
     # ── UI Construction ────────────────────────────────────────────
 
     def _build_ui(self):
@@ -456,10 +483,14 @@ class FFViewer(QtWidgets.QMainWindow):
         tb = self._build_toolbar()
         main_layout.addLayout(tb)
 
-        # ── Image View ──
+        # ── Image View (single) + 4× Hydra grid in a stacked widget ──
         self.image_view = MIDASImageView(self)
         self.image_view.set_colormap(self.colormap_name)
-        main_layout.addWidget(self.image_view, stretch=1)
+        self._hydra_widget = self._build_hydra_view()
+        self._view_stack = QtWidgets.QStackedWidget()
+        self._view_stack.addWidget(self.image_view)    # page 0 — single
+        self._view_stack.addWidget(self._hydra_widget)  # page 1 — 4× grid
+        main_layout.addWidget(self._view_stack, stretch=1)
 
         # ── Control Panels ──
         ctrl = QtWidgets.QHBoxLayout()
@@ -530,6 +561,10 @@ class FFViewer(QtWidgets.QMainWindow):
         view_menu.addAction(self.log_panel.toggleViewAction())
         view_menu.addAction(self._ivf_dock.toggleViewAction())
 
+        # Apply initial font so the viewer opens at a readable size.
+        # blockSignals prevents a premature call before all widgets are ready.
+        self._on_font_changed(self.font_spin.value())
+
     def _build_toolbar(self):
         tb = QtWidgets.QHBoxLayout()
 
@@ -549,8 +584,8 @@ class FFViewer(QtWidgets.QMainWindow):
 
         tb.addWidget(QtWidgets.QLabel("Font:"))
         self.font_spin = QtWidgets.QSpinBox()
-        self.font_spin.setRange(8, 24)
-        self.font_spin.setValue(10)
+        self.font_spin.setRange(8, 36)
+        self.font_spin.setValue(14)
         self.font_spin.valueChanged.connect(self._on_font_changed)
         tb.addWidget(self.font_spin)
 
@@ -615,6 +650,14 @@ class FFViewer(QtWidgets.QMainWindow):
         help_btn = QtWidgets.QPushButton("Help")
         help_btn.clicked.connect(self._show_help)
         tb.addWidget(help_btn)
+
+        self._hydra_chk = QtWidgets.QCheckBox("4× Hydra")
+        self._hydra_chk.setToolTip(
+            "Show all 4 GE detectors in a 2×2 grid.\n"
+            "Sibling paths are auto-derived by replacing the ge1/ge2/ge3/ge4\n"
+            "tag in the loaded file path.  Single-panel view is unchanged.")
+        self._hydra_chk.toggled.connect(self._on_hydra_toggled)
+        tb.addWidget(self._hydra_chk)
 
         tb.addStretch()
         return tb
@@ -1068,6 +1111,9 @@ class FFViewer(QtWidgets.QMainWindow):
             self, "Select MIDAS Parameter File", os.getcwd(),
             "Param Files (*.txt);;All (*)")
         if fn:
+            self._last_param_path = fn
+            if self._hydra_mode:
+                self._hydra_auto_populate_params(fn)
             self._apply_param_file(fn)
 
     def _apply_param_file(self, fn):
@@ -1280,6 +1326,10 @@ class FFViewer(QtWidgets.QMainWindow):
     def _on_cmap_changed(self, name):
         self.colormap_name = name
         self.image_view.set_colormap(name)
+        cmap = get_colormap(name)
+        lut = cmap.getLookupTable(nPts=256)
+        for img_item in getattr(self, '_hydra_img_items', []):
+            img_item.setLookupTable(lut)
 
     def _on_theme_changed(self, theme):
         self._theme = theme
@@ -1287,9 +1337,42 @@ class FFViewer(QtWidgets.QMainWindow):
 
     def _on_font_changed(self, size):
         QtWidgets.QApplication.instance().setStyleSheet(f'* {{ font-size: {size}pt; }}')
-        # pyqtgraph TextItems don't pick up Qt stylesheet font changes — redraw.
+        # pyqtgraph axes ignore Qt stylesheets — update tick fonts explicitly.
+        font = QtGui.QFont('', size)
+        if hasattr(self, 'image_view'):
+            self._apply_pg_axis_font(self.image_view, font)
+        for p in getattr(self, '_hydra_plots', []):
+            self._apply_pg_plot_font(p, font, size)
         if self.show_axes:
             self._draw_axes()
+
+    def _apply_pg_axis_font(self, midas_view, font):
+        """Set tick font on all axes of a MIDASImageView's pyqtgraph PlotItem."""
+        pg_iv = getattr(midas_view, '_iv', None)
+        if pg_iv is None:
+            return
+        view = getattr(pg_iv, 'view', None)
+        if view is None or not hasattr(view, 'getAxis'):
+            return
+        for ax_name in ('left', 'bottom', 'right', 'top'):
+            try:
+                view.getAxis(ax_name).setTickFont(font)
+            except Exception:
+                pass
+
+    @staticmethod
+    def _apply_pg_plot_font(plot_item, font, pt_size):
+        """Set tick and title fonts on a bare pyqtgraph PlotItem (hydra panels)."""
+        for ax_name in ('left', 'bottom', 'right', 'top'):
+            try:
+                plot_item.getAxis(ax_name).setTickFont(font)
+            except Exception:
+                pass
+        try:
+            plot_item.setTitle(plot_item.titleLabel.text,
+                               size=f'{pt_size}pt')
+        except Exception:
+            pass
 
     def _on_frame_scroll(self, delta):
         self.frame_spin.setValue(self.frame_spin.value() + delta)
@@ -1653,6 +1736,9 @@ class FFViewer(QtWidgets.QMainWindow):
         if ext_lower in ['.h5', '.hdf', '.hdf5', '.nxs'] and h5py:
             self._detect_hdf5_dims(fn)
         print(f"Loaded: stem={self.file_stem}, folder={self.folder}, ext={self.ext}")
+        self._last_loaded_path = fn
+        if self._hydra_mode:
+            self._hydra_auto_populate(fn)
         self._load_and_display()
 
     def _on_dark_file(self):
@@ -1783,6 +1869,9 @@ class FFViewer(QtWidgets.QMainWindow):
                     print(f"  ImTransOpt: {opts}")
 
         print(f"Loaded ZIP: {zip_path}")
+        self._last_loaded_path = zip_path
+        if self._hydra_mode:
+            self._hydra_auto_populate(zip_path)
         self._load_and_display()
 
     # ── Load & Display ─────────────────────────────────────────────
@@ -1814,26 +1903,51 @@ class FFViewer(QtWidgets.QMainWindow):
         except ValueError:
             pass
 
-    def _apply_tx_rotation(self, data):
-        """Rotate `data` around (bcy, bcz) by -tx degrees to correct detector tilt
-        about the beam axis. Returns `data` unchanged when |tx| is ~0."""
-        if data is None or abs(self.tx_local) < 1e-9:
+    @staticmethod
+    def _rotate_image(data, tx_deg, bc):
+        """Rotate *data* around *bc* by −tx_deg degrees with an expanded canvas.
+
+        bc = [col, row]  (MIDAS Y, Z convention).
+        The output shape is the tight bounding box of the rotated image so that
+        no pixels are clipped.  Returns *data* unchanged when |tx_deg| < 1e-9
+        or when scipy is unavailable.
+        """
+        if data is None or abs(float(tx_deg)) < 1e-9:
             return data
         try:
             from scipy.ndimage import affine_transform
         except ImportError:
             print("scipy not installed — cannot apply Tx rotation")
             return data
-        # Display: X = bcy = column index (nz axis), Y = bcz = row index (ny axis)
-        theta = -self.tx_local * deg2rad
+        H, W = data.shape[:2]
+        theta = -float(tx_deg) * deg2rad
         c, s = math.cos(theta), math.sin(theta)
-        bc_i = self.bc_local[1]  # row (Y)
-        bc_j = self.bc_local[0]  # col (X)
+        bc_i = float(bc[1])   # row
+        bc_j = float(bc[0])   # col
         M = np.array([[c, -s], [s, c]])
         center = np.array([bc_i, bc_j])
-        offset = center - M @ center
-        return affine_transform(data, M, offset=offset, order=1,
-                                mode='constant', cval=0.0)
+
+        # Forward-map the 4 input corners → rotated bounding box.
+        # Forward: output = M.T @ (input − center) + center
+        corners = np.array([[0, 0], [0, W - 1], [H - 1, 0], [H - 1, W - 1]], dtype=float)
+        corners_out = (M.T @ (corners - center).T).T + center
+        r_min = int(math.floor(corners_out[:, 0].min()))
+        c_min = int(math.floor(corners_out[:, 1].min()))
+        r_max = int(math.ceil(corners_out[:, 0].max()))
+        c_max = int(math.ceil(corners_out[:, 1].max()))
+        new_H = r_max - r_min + 1
+        new_W = c_max - c_min + 1
+
+        # Shift the affine offset so the expanded canvas aligns with (r_min, c_min).
+        shift = np.array([r_min, c_min], dtype=float)
+        offset = center - M @ (center - shift)
+        return affine_transform(data, M, offset=offset,
+                                output_shape=(new_H, new_W),
+                                order=1, mode='constant', cval=0.0)
+
+    def _apply_tx_rotation(self, data):
+        """Rotate data using the main viewer's tx_local and bc_local."""
+        return self._rotate_image(data, self.tx_local, self.bc_local)
 
     def _load_and_display_multi(self):
         """Composite the 4 detector frames into one BigDet array and display."""
@@ -2159,6 +2273,232 @@ class FFViewer(QtWidgets.QMainWindow):
             self._draw_rings()
         if self.show_axes:
             self._draw_axes()
+        if self._hydra_mode:
+            self._hydra_load_all_views()
+
+    # ── 4× Hydra ───────────────────────────────────────────────────
+
+    def _build_hydra_view(self):
+        """Return a single pg.GraphicsLayoutWidget with 4 PlotItem+ImageItem panels.
+
+        All four GE detectors share one canvas so pan/zoom is coherent and the
+        layout matches the MIDAS 2×2 convention (ge1 top-left … ge4 bot-right).
+        """
+        glw = pg.GraphicsLayoutWidget()
+        cmap = get_colormap(self.colormap_name)
+        lut = cmap.getLookupTable(nPts=256)
+        self._hydra_img_items = []
+        self._hydra_plots = []
+        for i, label in enumerate(_GE_LABELS):
+            r, c = divmod(i, 2)
+            p = glw.addPlot(row=r, col=c, title=f'<b>{label.upper()}</b>')
+            p.setAspectLocked(True)
+            p.invertY(False)
+            p.hideButtons()
+            img_item = pg.ImageItem()
+            img_item.setLookupTable(lut)
+            p.addItem(img_item)
+            self._hydra_plots.append(p)
+            self._hydra_img_items.append(img_item)
+        return glw
+
+    def _on_hydra_toggled(self, checked):
+        self._hydra_mode = checked
+        self._view_stack.setCurrentIndex(1 if checked else 0)
+        if checked:
+            if self._last_loaded_path and os.path.exists(self._last_loaded_path):
+                self._hydra_auto_populate(self._last_loaded_path)
+            if self._last_param_path and os.path.exists(self._last_param_path):
+                self._hydra_auto_populate_params(self._last_param_path)
+            self._hydra_load_all_views()
+
+    def _hydra_auto_populate(self, source_path):
+        """Derive the 4 GE sibling data-file paths from source_path."""
+        src_label = None
+        for lbl in _GE_LABELS:
+            if re.search(re.escape(lbl), source_path, flags=re.IGNORECASE):
+                src_label = lbl
+                break
+        src_idx = _GE_LABELS.index(src_label) if src_label else 0
+        for tgt_idx, tgt_label in enumerate(_GE_LABELS):
+            if src_label is None or tgt_idx == src_idx:
+                derived = source_path
+            else:
+                derived = _derive_ge_path(source_path, src_label, tgt_label)
+            self._hydra_paths[tgt_idx] = derived if (derived and os.path.exists(derived)) else ""
+        if src_label:
+            print(f"Hydra data: auto-populated from {os.path.basename(source_path)} (src={src_label})")
+        for i, p in enumerate(self._hydra_paths):
+            print(f"  {_GE_LABELS[i]}: {os.path.basename(p) if p else '(not found)'}")
+
+    def _hydra_auto_populate_params(self, source_param_path):
+        """Derive and parse param files for all 4 GE slots from source_param_path."""
+        src_label = None
+        for lbl in _GE_LABELS:
+            if re.search(re.escape(lbl), source_param_path, flags=re.IGNORECASE):
+                src_label = lbl
+                break
+        src_idx = _GE_LABELS.index(src_label) if src_label else 0
+        for tgt_idx, tgt_label in enumerate(_GE_LABELS):
+            if src_label is None or tgt_idx == src_idx:
+                derived = source_param_path
+            else:
+                derived = _derive_ge_path(source_param_path, src_label, tgt_label)
+            if derived and os.path.exists(derived):
+                self._hydra_param_paths[tgt_idx] = derived
+                self._hydra_params[tgt_idx] = self._parse_hydra_slot_params(derived)
+            else:
+                self._hydra_param_paths[tgt_idx] = ""
+                self._hydra_params[tgt_idx] = None
+        print(f"Hydra params: auto-populated from {os.path.basename(source_param_path)}")
+        for i, p in enumerate(self._hydra_param_paths):
+            print(f"  {_GE_LABELS[i]}: {os.path.basename(p) if p else '(not found)'}")
+
+    def _parse_hydra_slot_params(self, param_path):
+        """Extract geometric params from a MIDAS param file for one hydra slot.
+
+        Returns a dict with keys: bc ([Y,Z] or None), tx, hflip, vflip,
+        do_transpose.  Returns None on parse failure.
+        """
+        try:
+            raw = self._parse_param_file(param_path)
+        except Exception:
+            return None
+
+        def _get_float(*keys):
+            for k in keys:
+                if k in raw:
+                    try:
+                        return float(raw[k][0][0])
+                    except (IndexError, ValueError):
+                        pass
+            return None
+
+        # Beam centre: try YCen/ZCen first, then a two-value BC line
+        bc_y = _get_float('YCen')
+        bc_z = _get_float('ZCen')
+        if (bc_y is None or bc_z is None) and 'BC' in raw:
+            try:
+                bc_y = float(raw['BC'][0][0])
+                bc_z = float(raw['BC'][0][1])
+            except (IndexError, ValueError):
+                pass
+        bc = [bc_y, bc_z] if (bc_y is not None and bc_z is not None) else None
+
+        tx = _get_float('Tx', 'tx')
+        if tx is None:
+            tx = 0.0
+
+        # ImTransOpt flags
+        hflip = vflip = do_transpose = False
+        if 'ImTransOpt' in raw:
+            opts = []
+            for line_vals in raw['ImTransOpt']:
+                for tok in line_vals:
+                    try:
+                        opts.append(int(tok))
+                    except ValueError:
+                        pass
+            hflip = 1 in opts
+            vflip = 2 in opts
+            do_transpose = 3 in opts
+
+        return {'bc': bc, 'tx': tx,
+                'hflip': hflip, 'vflip': vflip, 'do_transpose': do_transpose}
+
+    def _hydra_load_all_views(self):
+        """Load the current frame into all 4 hydra panels using per-slot params."""
+        if not self._hydra_mode:
+            return
+        self._sync_params()
+        frame = self.frame_spin.value()
+
+        for slot_idx, (img_item, path) in enumerate(
+                zip(self._hydra_img_items, self._hydra_paths)):
+            sp = self._hydra_params[slot_idx]
+            bc          = sp['bc'] if sp and sp['bc'] else self.bc_local
+            tx          = sp['tx'] if sp else self.tx_local
+            hflip       = sp['hflip'] if sp else self.hflip
+            vflip       = sp['vflip'] if sp else self.vflip
+            do_transpose = sp['do_transpose'] if sp else self.do_transpose
+
+            if not path:
+                img_item.clear()
+                continue
+            try:
+                data = self._hydra_read_frame(path, frame,
+                                              hflip=hflip, vflip=vflip,
+                                              do_transpose=do_transpose)
+                if data is not None:
+                    data = self._rotate_image(data, tx, bc)
+                    # Always compute per-slot percentile levels from the raw
+                    # (non-dark-subtracted) data.  The main panel's Min I/Max I
+                    # are calibrated on dark-subtracted values and would clip
+                    # all real pixels to white here.
+                    finite = data[np.isfinite(data)]
+                    if finite.size > 0:
+                        slot_lo = float(np.percentile(finite, 2))
+                        slot_hi = float(np.percentile(finite, 98))
+                    else:
+                        slot_lo, slot_hi = 0.0, 1.0
+                    img_item.setImage(data.T, autoLevels=False,
+                                      levels=(slot_lo, slot_hi))
+            except Exception as e:
+                print(f"Hydra slot {_GE_LABELS[slot_idx]} error: {e}")
+
+    def _hydra_read_frame(self, path, frame,
+                          hflip=None, vflip=None, do_transpose=None):
+        """Read one frame from *path*, applying the given transforms.
+
+        Falls back to the main-viewer transform flags when a parameter is None.
+        Does not apply dark subtraction (hydra is for quick comparison).
+        """
+        _hflip       = self.hflip       if hflip       is None else hflip
+        _vflip       = self.vflip       if vflip       is None else vflip
+        _do_transpose = self.do_transpose if do_transpose is None else do_transpose
+
+        if path.lower().endswith('.zip'):
+            if zarr is None:
+                return None
+            try:
+                store = zarr.open(path, 'r')
+            except Exception:
+                return None
+            if 'exchange/data' not in store:
+                return None
+            dset = store['exchange/data']
+            if dset.ndim != 3 or frame >= dset.shape[0]:
+                return None
+            data = dset[frame].astype(np.float32)
+            data = data[::-1, ::-1].copy()
+            if _do_transpose:
+                data = np.transpose(data)
+            if _hflip and _vflip:
+                data = data[::-1, ::-1].copy()
+            elif _hflip:
+                data = data[::-1, :].copy()
+            elif _vflip:
+                data = data[:, ::-1].copy()
+            return data
+
+        check_fn = path[:-4] if path.endswith('.bz2') else path
+        parsed = _parse_numbered_filename(os.path.basename(check_fn))
+        if parsed is None:
+            return None
+        stem, first_nr, padding, ext = parsed
+        folder = os.path.dirname(path) + '/'
+        n_per_file = max(1, self.n_frames_per_file)
+        file_nr  = first_nr + frame // n_per_file
+        frame_in = frame % n_per_file
+        det_nr = int(ext[-1]) if (ext.startswith('ge') and len(ext) == 3
+                                   and ext[-1].isdigit()) else -1
+        fn = build_filename(folder, stem, file_nr, padding, det_nr, ext, self.sep_folder)
+        return read_image(fn, self.header_size, self.bytes_per_pixel,
+                          self.ny, self.nz, frame_in,
+                          _do_transpose, _hflip, _vflip,
+                          None, None, None,
+                          hdf5_data_path=self.hdf5_data_path,
+                          hdf5_dark_path=self.hdf5_dark_path)
 
     # ── Rings ──────────────────────────────────────────────────────
 
