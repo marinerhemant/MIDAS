@@ -490,6 +490,25 @@ class MIDASImageView(QtWidgets.QWidget):
     def imageItem(self):
         return self._iv.imageItem
 
+    def set_image_rect(self, x, y, w, h):
+        """Position the displayed image item at scene rectangle (x, y, w, h).
+
+        Used by the Tx-rotation path to display an expanded-canvas rotated
+        image at its original-scene-coord location, so ring overlays, lab-axes
+        overlay, and cursor R/η stay aligned with where the data actually is.
+
+        Auto-fits the viewport only when the rect *changes* — frame navigation
+        with a constant rect preserves the user's zoom; a Tx-toggle that moves
+        the image to a new region triggers a one-shot ``autoRange`` so the
+        new image is visible.
+        """
+        new_rect = (float(x), float(y), float(w), float(h))
+        rect_changed = new_rect != getattr(self, '_last_image_rect', None)
+        self._iv.imageItem.setRect(QtCore.QRectF(*new_rect))
+        self._last_image_rect = new_rect
+        if rect_changed:
+            self._get_viewbox().autoRange()
+
     @property
     def scene(self):
         return self._iv.scene

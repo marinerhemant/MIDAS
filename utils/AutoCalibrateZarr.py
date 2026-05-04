@@ -209,6 +209,32 @@ class CalibState:
     fix_panel_id: int = -1             # -1 = auto (closest to BC)
     gradient_correction: int = 1       # radial resampling for cardinal-angle aliasing
 
+    # Geometry tolerances (defaults match historical hardcoded literals;
+    # tighten for small detectors like the Eiger 500k via param file or CLI).
+    tol_tilts: float = 3.0       # degrees
+    tol_bc: float = 20.0         # pixels
+    tol_lsd: float = 25000.0     # microns
+
+    # Distortion tolerances. Amplitudes ~1e-3, phases ~45/90/180 deg.
+    # tol_p_scale multiplies amplitudes only at write time (phases are
+    # bounded by trig periodicity and shouldn't be globally shrunk).
+    tol_p: float = 2e-3
+    tol_p1: float = 2e-3
+    tol_p2: float = 2e-3
+    tol_p3: float = 45.0
+    tol_p4: float = 2e-3
+    tol_p5: float = 2e-3
+    tol_p6: float = 90.0
+    tol_p7: float = 1e-3
+    tol_p8: float = 180.0
+    tol_p9: float = 1e-3
+    tol_p10: float = 180.0
+    tol_p11: float = 1e-3
+    tol_p12: float = 180.0
+    tol_p13: float = 1e-3
+    tol_p14: float = 180.0
+    tol_p_scale: float = 1.0     # multiplier on distortion amplitudes only
+
     # Panel fitting override
     skip_panels: bool = False
 
@@ -2198,36 +2224,38 @@ def runMIDAS(rawFN, state, n_iterations=40, mult_factor=5,
                 pf.write(f'ImTransOpt {transOpt}\n')
             pf.write(f'Width {max_width}\n')
 
-            # Tolerances — stage 1: lock distortion, stage 2: full
-            pf.write('tolTilts 3\n')
-            pf.write('tolBC 20\n')
-            pf.write('tolLsd 25000\n')
+            # Tolerances — stage 1: lock distortion (stage gate, not a knob),
+            # stage 2: write user-overridable values from state.
+            pf.write(f'tolTilts {state.tol_tilts}\n')
+            pf.write(f'tolBC {state.tol_bc}\n')
+            pf.write(f'tolLsd {state.tol_lsd}\n')
             if stage == 1:
                 pf.write('tolP 0\n')  # lock distortion at current values
             else:
+                s = state.tol_p_scale  # amplitude-only multiplier
                 modes = state.fit_p_models.split(',')
                 if 'tilt' in modes or 'all' in modes:
-                    pf.write('tolP 2E-3\n')
-                    pf.write('tolP6 90\n')  # phase: cos(2η) has period 180°, need ±90°
+                    pf.write(f'tolP {state.tol_p * s}\n')
+                    pf.write(f'tolP6 {state.tol_p6}\n')  # phase: cos(2η) has period 180°, need ±90°
                 if 'spherical' in modes or 'all' in modes:
-                    pf.write('tolP2 2E-3\n')
-                    pf.write('tolP4 2E-3\n')
-                    pf.write('tolP5 2E-3\n')
+                    pf.write(f'tolP2 {state.tol_p2 * s}\n')
+                    pf.write(f'tolP4 {state.tol_p4 * s}\n')
+                    pf.write(f'tolP5 {state.tol_p5 * s}\n')
                 if 'dipole' in modes or 'all' in modes:
-                    pf.write('tolP7 1E-3\n')
-                    pf.write('tolP8 180\n')
+                    pf.write(f'tolP7 {state.tol_p7 * s}\n')
+                    pf.write(f'tolP8 {state.tol_p8}\n')
                 if 'trefoil' in modes or 'all' in modes:
-                    pf.write('tolP9 1E-3\n')
-                    pf.write('tolP10 180\n')
+                    pf.write(f'tolP9 {state.tol_p9 * s}\n')
+                    pf.write(f'tolP10 {state.tol_p10}\n')
                 if 'pentafoil5' in modes or 'all' in modes:
-                    pf.write('tolP11 1E-3\n')
-                    pf.write('tolP12 180\n')
+                    pf.write(f'tolP11 {state.tol_p11 * s}\n')
+                    pf.write(f'tolP12 {state.tol_p12}\n')
                 if 'hexafoil6' in modes or 'all' in modes:
-                    pf.write('tolP13 1E-3\n')
-                    pf.write('tolP14 180\n')
+                    pf.write(f'tolP13 {state.tol_p13 * s}\n')
+                    pf.write(f'tolP14 {state.tol_p14}\n')
                 if 'octupole' in modes or 'all' in modes:
-                    pf.write('tolP1 2E-3\n')
-                    pf.write('tolP3 45\n')
+                    pf.write(f'tolP1 {state.tol_p1 * s}\n')
+                    pf.write(f'tolP3 {state.tol_p3}\n')
 
             # Current geometry
             pf.write(f'tx {state.tx}\n')
@@ -2944,6 +2972,21 @@ def main():
                             help='Panel shift tolerance in pixels (default: 3.0)')
         parser.add_argument('--tol-rotation', type=float, default=1.0,
                             help='Panel rotation tolerance in degrees (default: 1.0)')
+        parser.add_argument('--tol-tilts', type=float, default=None,
+                            help='Tilt tolerance in degrees (default: 3.0). '
+                                 'Tighten for small detectors (e.g. Eiger 500k). '
+                                 'Param-file key: tolTilts.')
+        parser.add_argument('--tol-bc', type=float, default=None,
+                            help='Beam-center tolerance in pixels (default: 20). '
+                                 'Tighten for small detectors. Param-file key: tolBC.')
+        parser.add_argument('--tol-lsd', type=float, default=None,
+                            help='Lsd tolerance in microns (default: 25000). '
+                                 'Tighten for small/short-Lsd setups. Param-file key: tolLsd.')
+        parser.add_argument('--tol-p-scale', type=float, default=1.0,
+                            help='Multiplier on distortion amplitude tolerances '
+                                 '(tolP, tolP1, tolP2, tolP4, tolP5, tolP7, tolP9, '
+                                 'tolP11, tolP13). Phase tolerances are unaffected. '
+                                 'Default: 1.0. Use param-file tolP* keys for per-key control.')
         parser.add_argument('--per-panel-lsd', type=int, default=1,
                             help='Enable per-panel Lsd optimization (0=off, 1=on)')
         parser.add_argument('--fix-panel', type=int, default=-1,
@@ -3053,6 +3096,15 @@ def main():
             state.parallax_in = args.parallax_guess
         if args.tol_parallax is not None:
             state.tol_parallax = args.tol_parallax
+        # Geometry tol CLI overrides (None = let param-file value or default win).
+        # Distortion amplitude scale always applies (defaults to 1.0).
+        state.tol_p_scale = args.tol_p_scale
+        if args.tol_tilts is not None:
+            state.tol_tilts = args.tol_tilts
+        if args.tol_bc is not None:
+            state.tol_bc = args.tol_bc
+        if args.tol_lsd is not None:
+            state.tol_lsd = args.tol_lsd
         if args.peak_fit_mode is not None:
             state.peak_fit_mode = args.peak_fit_mode
 
@@ -3165,7 +3217,8 @@ def main():
                 # Distortion parameters (managed by --fit-p-models)
                 'p0', 'p1', 'p2', 'p3', 'p4', 'p5', 'p6',
                 'p7', 'p8', 'p9', 'p10', 'p11', 'p12', 'p13', 'p14',
-                # Tolerance keys (managed internally, never pass-through)
+                # Tolerance keys — explicitly parsed into state.tol_*; listed
+                # here to keep them out of the extra_params pass-through.
                 'tolP', 'tolP1', 'tolP2', 'tolP3', 'tolP4', 'tolP5',
                 'tolP6', 'tolP7', 'tolP8', 'tolP9', 'tolP10',
                 'tolP11', 'tolP12', 'tolP13', 'tolP14',
@@ -3239,13 +3292,25 @@ def main():
                                          'p11', 'p12', 'p13', 'p14'):
                                 setattr(state, key, float(parts[1]))
                                 param_file_keys.add(key)
-                            elif key.startswith('tol') and key in _KNOWN_PARAM_KEYS:
-                                # Absorb tolerance keys — AutoCalibrateZarr
-                                # manages these internally via --fit-p-models.
-                                # Do NOT pass through as extra_params.
+                            elif key == 'tolTilts':
+                                if args.tol_tilts is None:
+                                    state.tol_tilts = float(parts[1])
                                 param_file_keys.add(key)
-                                logger.debug(f"Absorbed tolerance key '{key}' "
-                                             f"(managed by --fit-p-models)")
+                            elif key == 'tolBC':
+                                if args.tol_bc is None:
+                                    state.tol_bc = float(parts[1])
+                                param_file_keys.add(key)
+                            elif key == 'tolLsd':
+                                if args.tol_lsd is None:
+                                    state.tol_lsd = float(parts[1])
+                                param_file_keys.add(key)
+                            elif key in ('tolP', 'tolP1', 'tolP2', 'tolP3', 'tolP4',
+                                         'tolP5', 'tolP6', 'tolP7', 'tolP8', 'tolP9',
+                                         'tolP10', 'tolP11', 'tolP12', 'tolP13', 'tolP14'):
+                                # tolP -> tol_p; tolP7 -> tol_p7; tolP14 -> tol_p14
+                                field_name = 'tol_p' if key == 'tolP' else 'tol_p' + key[4:]
+                                setattr(state, field_name, float(parts[1]))
+                                param_file_keys.add(key)
 
                             elif key in ('NrPixels', 'NrPixelsY'):
                                 state.nr_pixels_y = int(parts[1])
