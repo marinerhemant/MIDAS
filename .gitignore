@@ -66,3 +66,7 @@ fftwf_wisdom_*.txt
 .clangd
 .agent/
 .claude/
+
+# Local environment and login logs
+environment.yml
+loglogin*

@@ -460,6 +460,8 @@ class FFViewer(QtWidgets.QMainWindow):
         # ── Image View ──
         self.image_view = MIDASImageView(self)
         self.image_view.set_colormap(self.colormap_name)
+        self.font_spin = self.image_view._font_spin
+        self.image_view.fontSizeChanged.connect(self._on_font_changed)
         main_layout.addWidget(self.image_view, stretch=1)
 
         # ── Control Panels ──
@@ -551,13 +553,6 @@ class FFViewer(QtWidgets.QMainWindow):
         self.theme_combo.setCurrentText(self._theme)
         tb.addWidget(self.theme_combo)
 
-        tb.addWidget(QtWidgets.QLabel("Font:"))
-        self.font_spin = QtWidgets.QSpinBox()
-        self.font_spin.setRange(8, 36)
-        self.font_spin.setValue(14)
-        self.font_spin.valueChanged.connect(self._on_font_changed)
-        tb.addWidget(self.font_spin)
-
         # Log
         self.log_check = QtWidgets.QCheckBox("Log")
         tb.addWidget(self.log_check)
@@ -629,10 +624,12 @@ class FFViewer(QtWidgets.QMainWindow):
 
         btn_first = QtWidgets.QPushButton("First File")
         btn_first.clicked.connect(self._on_first_file)
+        btn_first.setFixedWidth(90)
         lay.addWidget(btn_first, 0, 0)
 
         btn_dark = QtWidgets.QPushButton("Dark File")
         btn_dark.clicked.connect(self._on_dark_file)
+        btn_dark.setFixedWidth(90)
         lay.addWidget(btn_dark, 0, 1)
 
         self.dark_check = QtWidgets.QCheckBox("Dark")
@@ -682,9 +679,15 @@ class FFViewer(QtWidgets.QMainWindow):
             "and file layout fields, then redraws.")
         btn_param.clicked.connect(self._on_load_param_file)
         lay.addWidget(btn_param, 5, 0)
+        self.instr_only_check = QtWidgets.QCheckBox("Instr. only")
+        self.instr_only_check.setToolTip(
+            "When checked, loading a param file applies only instrument/geometry\n"
+            "parameters (LSD, BC, pixel size, wavelength, space group, etc.).\n"
+            "File layout fields (Folder, FileStem, StartNr, Ext) are ignored.")
+        lay.addWidget(self.instr_only_check, 5, 1)
         self.param_label = QtWidgets.QLabel("")
         self.param_label.setStyleSheet("color: gray;")
-        lay.addWidget(self.param_label, 5, 1, 1, 3)
+        lay.addWidget(self.param_label, 5, 2, 1, 2)
 
         return grp
 
@@ -808,6 +811,12 @@ class FFViewer(QtWidgets.QMainWindow):
             "to an existing file. Slots whose files don't exist stay empty.")
         autoload_btn.clicked.connect(self._on_autoload_multi)
         autoload_row.addWidget(autoload_btn)
+        self._autofill_check = QtWidgets.QCheckBox("Auto-fill siblings")
+        self._autofill_check.setToolTip(
+            "When picking a data, dark, or param file for one GE detector,\n"
+            "automatically derive and load the equivalent files for the other\n"
+            "GE detectors by substituting the detector tag (e.g. ge1→ge2).")
+        autoload_row.addWidget(self._autofill_check)
         autoload_row.addStretch()
         self._autoload_status = QtWidgets.QLabel("")
         self._autoload_status.setStyleSheet("color: #888888;")
@@ -1134,31 +1143,33 @@ class FFViewer(QtWidgets.QMainWindow):
                 return None
 
         applied = []  # for log
+        instr_only = getattr(self, 'instr_only_check', None) and self.instr_only_check.isChecked()
 
         # ── Files / layout ──
-        folder = get_str('RawFolder', 'Folder')
-        if folder:
-            self.folder = folder.rstrip('/').rstrip('\\') + '/'
-            applied.append(f"folder={folder}")
-        fs = get_str('FileStem')
-        if fs:
-            self.file_stem = fs
-            applied.append(f"FileStem={fs}")
-        sn = get_int('StartNr', 'StartFileNrFirstLayer')
-        if sn is not None:
-            self.first_file_nr = sn
-            self.file_nr_edit.setText(str(sn))
-            applied.append(f"StartNr={sn}")
-        pad = get_int('Padding')
-        if pad is not None:
-            self.padding = pad
-        ext = get_str('Ext')
-        if ext:
-            self.ext = ext.lstrip('.')
-            applied.append(f"Ext={self.ext}")
-            # Detect ge<digit> as multi-detector marker
-            if self.ext.startswith('ge') and len(self.ext) == 3 and self.ext[-1].isdigit():
-                self.det_nr = int(self.ext[-1])
+        if not instr_only:
+            folder = get_str('RawFolder', 'Folder')
+            if folder:
+                self.folder = folder.rstrip('/').rstrip('\\') + '/'
+                applied.append(f"folder={folder}")
+            fs = get_str('FileStem')
+            if fs:
+                self.file_stem = fs
+                applied.append(f"FileStem={fs}")
+            sn = get_int('StartNr', 'StartFileNrFirstLayer')
+            if sn is not None:
+                self.first_file_nr = sn
+                self.file_nr_edit.setText(str(sn))
+                applied.append(f"StartNr={sn}")
+            pad = get_int('Padding')
+            if pad is not None:
+                self.padding = pad
+            ext = get_str('Ext')
+            if ext:
+                self.ext = ext.lstrip('.')
+                applied.append(f"Ext={self.ext}")
+                # Detect ge<digit> as multi-detector marker
+                if self.ext.startswith('ge') and len(self.ext) == 3 and self.ext[-1].isdigit():
+                    self.det_nr = int(self.ext[-1])
 
         # ── Detector pixels ──
         npx = get_int('NrPixels')
@@ -1562,6 +1573,30 @@ class FFViewer(QtWidgets.QMainWindow):
         if self.multi_mode:
             self._load_and_display()
 
+    def _autofill_siblings(self, idx, seed_path, setter):
+        """If the auto-fill checkbox is on, derive sibling paths from *seed_path*
+        and call *setter(tgt_idx, sibling_path)* for each found sibling."""
+        if not getattr(self, '_autofill_check', None) or not self._autofill_check.isChecked():
+            return
+        tag = self._find_detector_tag(seed_path)
+        if tag is None:
+            return
+        prefix, src_digit = tag
+        src_label = prefix + src_digit
+        filled = []
+        for d in '1234':
+            tgt_idx = int(d) - 1
+            if tgt_idx == idx:
+                continue
+            tgt_label = prefix + d
+            sib = self._derive_ge_path(seed_path, src_label, tgt_label)
+            if sib and os.path.exists(sib):
+                setter(tgt_idx, sib)
+                self._refresh_det_widget(tgt_idx)
+                filled.append(f"GE{tgt_idx+1}")
+        if filled and hasattr(self, '_autoload_status'):
+            self._autoload_status.setText(f"Auto-filled: {', '.join(filled)}")
+
     def _on_pick_det_data(self, idx):
         fn, _ = QtWidgets.QFileDialog.getOpenFileName(
             self, f"Select GE{idx+1} data HDF5",
@@ -1572,6 +1607,10 @@ class FFViewer(QtWidgets.QMainWindow):
         self._det_states[idx].data_file = fn
         self._det_states[idx]._dark_image = None
         self._refresh_det_widget(idx)
+        def _set_data(i, path):
+            self._det_states[i].data_file = path
+            self._det_states[i]._dark_image = None
+        self._autofill_siblings(idx, fn, _set_data)
         if self.multi_mode:
             self._load_and_display()
 
@@ -1586,6 +1625,10 @@ class FFViewer(QtWidgets.QMainWindow):
         self._det_states[idx].dark_file = fn
         self._det_states[idx]._dark_image = None
         self._refresh_det_widget(idx)
+        def _set_dark(i, path):
+            self._det_states[i].dark_file = path
+            self._det_states[i]._dark_image = None
+        self._autofill_siblings(idx, fn, _set_dark)
         if self.multi_mode:
             self._load_and_display()
 
@@ -1611,6 +1654,12 @@ class FFViewer(QtWidgets.QMainWindow):
             return
         # First detector loaded → import shared crystallography params.
         self._absorb_shared_params(params)
+        def _set_param(i, path):
+            try:
+                self._det_states[i].load_param_file(path)
+            except Exception:
+                pass
+        self._autofill_siblings(idx, fn, _set_param)
         # Auto-pick BigDetSize on first param file load.
         if self._big_det_auto:
             new_size = _md.autopick_big_det_size(self._det_states)

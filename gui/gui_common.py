@@ -78,6 +78,8 @@ class MIDASImageView(QtWidgets.QWidget):
     movieFrameAdvance = QtCore.pyqtSignal()
     # Emitted when a file is dropped onto the viewer
     fileDropped = QtCore.pyqtSignal(str)
+    # Emitted when the font size spinbox changes
+    fontSizeChanged = QtCore.pyqtSignal(int)
 
     def __init__(self, parent=None, name='MIDASImageView', origin='bl', **kwargs):
         super().__init__(parent)
@@ -227,6 +229,18 @@ class MIDASImageView(QtWidgets.QWidget):
         # Mode label
         self._mode_label = QtWidgets.QLabel("  Mode: Pointer")
         bar.addWidget(self._mode_label)
+
+        bar.addSeparator()
+
+        # Font size
+        bar.addWidget(QtWidgets.QLabel("Font:"))
+        self._font_spin = QtWidgets.QSpinBox()
+        self._font_spin.setRange(8, 36)
+        self._font_spin.setValue(14)
+        self._font_spin.setFixedWidth(50)
+        self._font_spin.setToolTip("Viewer font size (pt)")
+        self._font_spin.valueChanged.connect(self.fontSizeChanged)
+        bar.addWidget(self._font_spin)
 
         # ── Movie timer ──
         self._movie_timer = QtCore.QTimer(self)
