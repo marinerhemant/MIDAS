@@ -1438,9 +1438,18 @@ class FFViewer(QtWidgets.QMainWindow):
         try:
             lo = float(self.min_intensity_edit.text())
             hi = float(self.max_intensity_edit.text())
-            self.image_view.setLevels(lo, hi)
         except ValueError:
-            pass
+            return
+        if hi <= lo:
+            return
+        self._levels_initialized = True
+        self.image_view.setLevels(lo, hi)
+        if self._hydra_mode:
+            # Force a hydra redraw so all 4 panels use current Min/Max limits.
+            self._hydra_load_all_views()
+        else:
+            for img_item in self._hydra_img_items:
+                img_item.setLevels((lo, hi))
 
     # ── Intensity vs Frame ─────────────────────────────────────────
 
