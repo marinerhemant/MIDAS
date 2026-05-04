@@ -66,3 +66,6 @@ fftwf_wisdom_*.txt
 .clangd
 .agent/
 .claude/
+
+# Local machine/session artifacts
+.loglogin

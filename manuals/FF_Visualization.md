@@ -274,6 +274,28 @@ Save the current viewer state (file paths, frame, settings) to a `.session.json`
 
 Drop a data file or folder onto the viewer to load it directly.
 
+### 5.7. Four-GE Multi-Detector Setup
+
+The MIDAS FF viewer supports simultaneous display of up to four GE detectors arranged in a windmill/cross pattern around the beam. The figure below shows the four-panel Debye–Scherrer ring pattern as rendered in the viewer, alongside a photograph of the physical detector assembly at the beamline.
+
+| MIDAS viewer (composite) | Physical setup |
+|:---:|:---:|
+| ![Four-GE assembly in MIDAS viewer](assets/ff_multidet_viewer.png) | ![Four-GE physical setup](assets/ff_multidet_setup.jpg) |
+
+#### Nominal detector `Tx` values
+
+The four GE detectors are arranged at nominally equal 90° azimuthal intervals. The nominal `Tx` (in-plane rotation, degrees) for each detector is:
+
+| Detector | Nominal Tx (°) |
+| :---: | :---: |
+| GE1 | 297 |
+| GE2 | 27 |
+| GE3 | 117 |
+| GE4 | 207 |
+
+> [!NOTE]
+> These are nominal reference values. Each detector should be independently refined via `AutoCalibrateZarr.py` before analysis.
+
 ---
 
 ## 6. Keyboard Shortcuts
