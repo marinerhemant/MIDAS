@@ -178,6 +178,7 @@ If auto-detection populated the fields, the image loads automatically. Otherwise
 | **Mask** | Path to a bad pixel mask file (uint8 TIFF, `0`=good, `1`=masked). |
 | **Browse** (Mask) | Opens a file dialog to select a mask file. |
 | **Apply** | Checkbox to enable/disable bad pixel masking. |
+| **Instr. only** | When loading a parameter file, apply only instrument/geometry values and keep current file-layout fields unchanged. |
 
 ### 4.2. Image & Display Panel
 
@@ -213,7 +214,8 @@ If auto-detection populated the fields, the image loads automatically. Otherwise
 | :--- | :--- |
 | **Cmap** | Colormap selection (viridis, inferno, plasma, magma, turbo, gray, hot, cool, bone). |
 | **Theme** | Light or dark theme. |
-| **Font** | Adjustable font size (8–24pt). |
+| **Font** | Adjustable font size (8–36pt). |
+| **Mode** | Detector mode selector: **Single Panel** or **1-ID-E HYDRA (GE1-GE4)**. |
 | **Log** | Toggle logarithmic display. |
 | **Rings** | Toggle ring overlay on the image. |
 | **Min I / Max I** | Manual intensity range override. |
@@ -295,6 +297,23 @@ The four GE detectors are arranged at nominally equal 90° azimuthal intervals. 
 
 > [!NOTE]
 > These are nominal reference values. Each detector should be independently refined via `AutoCalibrateZarr.py` before analysis.
+
+#### Multi-detector workflow in the GUI
+
+Use the toolbar **Mode** selector to switch between:
+
+- **Single Panel**: classic single-detector workflow using the File I/O panel.
+- **1-ID-E HYDRA (GE1-GE4)**: four-detector composite workflow.
+
+In HYDRA mode, the multi-detector panel provides:
+
+- **Autoload from one param file**: choose one detector parameter file and auto-derive sibling GE parameter/data files when available.
+- **Auto-fill siblings**: when enabled, picking Data/Dark/Param for one GE slot attempts `ge1↔ge2↔ge3↔ge4` sibling substitution for the other slots.
+- **Shared HDF5 paths**: one **Data path** and one **Dark path** field applied across all GE detector slots.
+- **Aligned GE rows**: compact per-detector rows for enable toggle, Data, Dark, Param, and per-slot status.
+
+> [!TIP]
+> If a parameter file has valid instrument geometry but stale file paths, check **Instr. only** before loading it to keep your current file layout while still importing BC/Lsd/Tx and ring-related parameters.
 
 ---
 
