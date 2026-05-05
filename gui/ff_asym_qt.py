@@ -570,13 +570,17 @@ class FFViewer(QtWidgets.QMainWindow):
             "physically expected lab-frame quadrant.")
         tb.addWidget(self.axes_check)
 
-        # Multi-detector mode + composite operator
-        self.multi_check = QtWidgets.QCheckBox("Multi-Det")
-        self.multi_check.setToolTip(
-            "Composite up to 4 GE detector images by tx-rotation about a\n"
-            "common center. Each detector reads its own ps.txt for BC, tx,\n"
-            "ImTransOpt, dataLoc, BadPxIntensity, GapIntensity.")
-        tb.addWidget(self.multi_check)
+        # Detector mode selector (single vs multi-panel configurations)
+        tb.addWidget(QtWidgets.QLabel("Mode:"))
+        self.detector_mode_combo = QtWidgets.QComboBox()
+        self.detector_mode_combo.addItem("Single Panel")
+        self.detector_mode_combo.addItem("1-ID-E HYDRA (GE1-GE4)")
+        self.detector_mode_combo.setToolTip(
+            "Select detector configuration.\n"
+            "Single Panel: one detector, uses the Data Source panel.\n"
+            "1-ID-E HYDRA: composite of up to 4 GE detectors; each reads\n"
+            "its own ps.txt for BC, tx, ImTransOpt, dataLoc, GapIntensity.")
+        tb.addWidget(self.detector_mode_combo)
 
         tb.addWidget(QtWidgets.QLabel("Composite:"))
         self.composite_combo = QtWidgets.QComboBox()
@@ -621,6 +625,7 @@ class FFViewer(QtWidgets.QMainWindow):
     def _build_file_panel(self):
         grp = QtWidgets.QGroupBox("Data Source")
         lay = QtWidgets.QGridLayout(grp)
+        lay.setColumnStretch(4, 1)
 
         btn_first = QtWidgets.QPushButton("First File")
         btn_first.clicked.connect(self._on_first_file)
@@ -788,19 +793,16 @@ class FFViewer(QtWidgets.QMainWindow):
     # ── Multi-detector data-source panel ───────────────────────────
 
     def _build_multi_panel(self):
-        """4 detector cards with Data / Dark / Param pickers + Enable.
-
-        Each card mirrors the structure in gui_view_raw_ge.py — but the
-        composite is rendered into the existing image_view so all overlays
-        (rings, lab axes, intensity controls, frame nav) keep working.
+        """4 detector rows in a single shared QGridLayout so all ... buttons
+        align. Above the rows: autoload controls and shared HDF5 path fields.
         """
         grp = QtWidgets.QGroupBox(
             "Multi-Detector Data Source — load one ps.txt per detector")
         outer = QtWidgets.QVBoxLayout(grp)
         outer.setContentsMargins(4, 4, 4, 4)
-        outer.setSpacing(2)
+        outer.setSpacing(3)
 
-        # Autoload row: one param file → fills all 4 slots by ge1..ge4 substitution.
+        # ── Autoload / auto-fill row ──────────────────────────────────
         autoload_row = QtWidgets.QHBoxLayout()
         autoload_btn = QtWidgets.QPushButton("Autoload from one param file…")
         autoload_btn.setToolTip(
@@ -812,6 +814,7 @@ class FFViewer(QtWidgets.QMainWindow):
         autoload_btn.clicked.connect(self._on_autoload_multi)
         autoload_row.addWidget(autoload_btn)
         self._autofill_check = QtWidgets.QCheckBox("Auto-fill siblings")
+        self._autofill_check.setChecked(True)
         self._autofill_check.setToolTip(
             "When picking a data, dark, or param file for one GE detector,\n"
             "automatically derive and load the equivalent files for the other\n"
@@ -823,63 +826,125 @@ class FFViewer(QtWidgets.QMainWindow):
         autoload_row.addWidget(self._autoload_status)
         outer.addLayout(autoload_row)
 
+        # ── Shared HDF5 dataset paths ─────────────────────────────────
+        path_row = QtWidgets.QHBoxLayout()
+        path_row.addWidget(QtWidgets.QLabel("Data path:"))
+        self._multi_data_path_edit = QtWidgets.QLineEdit(self.hdf5_data_path)
+        self._multi_data_path_edit.setToolTip(
+            "HDF5 dataset path for frame data in each detector file\n"
+            "(e.g. /exchange/data). Applied to all detectors.")
+        self._multi_data_path_edit.setFixedWidth(150)
+        self._multi_data_path_edit.editingFinished.connect(self._on_multi_paths_changed)
+        path_row.addWidget(self._multi_data_path_edit)
+        path_row.addSpacing(12)
+        path_row.addWidget(QtWidgets.QLabel("Dark path:"))
+        self._multi_dark_path_edit = QtWidgets.QLineEdit('/exchange/data_dark')
+        self._multi_dark_path_edit.setToolTip(
+            "HDF5 dataset path for the dark frame in each detector file\n"
+            "(e.g. /exchange/data_dark). Applied to all detectors.")
+        self._multi_dark_path_edit.setFixedWidth(150)
+        self._multi_dark_path_edit.editingFinished.connect(self._on_multi_paths_changed)
+        path_row.addWidget(self._multi_dark_path_edit)
+        path_row.addStretch()
+        outer.addLayout(path_row)
+
+        # ── Single shared grid for all 4 GE detector rows ─────────────
+        # Columns:  0=enable  1=lbl  2=file_lbl  3=btn  4=lbl  5=file_lbl  6=btn  7=clr
+        #           (GE chk)  Data   <filename>   ...    Dark   <filename>   ...    ✕
+        # Row 2*i+1 (param row):
+        #           (span)    Param  <filename>   ...    <status, span 4>
+        card_grid = QtWidgets.QGridLayout()
+        card_grid.setSpacing(2)
+        card_grid.setColumnStretch(2, 2)   # data/param filename column
+        card_grid.setColumnStretch(5, 1)   # dark filename column
+
         self._det_widgets = []
         for i in range(4):
-            frame = QtWidgets.QFrame()
-            frame.setFrameShape(QtWidgets.QFrame.StyledPanel)
-            lay = QtWidgets.QGridLayout(frame)
-            lay.setContentsMargins(4, 2, 4, 2)
-            lay.setSpacing(2)
+            r0 = i * 2      # data+dark row
+            r1 = i * 2 + 1  # param+status row
+
+            # Add a thin separator line above GE2-GE4
+            if i > 0:
+                sep = QtWidgets.QFrame()
+                sep.setFrameShape(QtWidgets.QFrame.HLine)
+                sep.setStyleSheet("color: #cccccc;")
+                card_grid.addWidget(sep, r0, 0, 1, 8)
+                r0 += 1
+                r1 += 1
+                # Shift subsequent rows down by 1 for the separator
+                # (recalculate based on actual inserted rows)
+
+        # Rebuild without the separator complexity — use a cleaner row scheme
+        card_grid = QtWidgets.QGridLayout()
+        card_grid.setSpacing(2)
+        card_grid.setColumnStretch(2, 2)   # data/param filename column
+        card_grid.setColumnStretch(5, 1)   # dark filename column
+
+        self._det_widgets = []
+        grid_row = 0
+        for i in range(4):
+            if i > 0:
+                sep = QtWidgets.QFrame()
+                sep.setFrameShape(QtWidgets.QFrame.HLine)
+                sep.setFrameShadow(QtWidgets.QFrame.Sunken)
+                card_grid.addWidget(sep, grid_row, 0, 1, 8)
+                grid_row += 1
+
+            r0 = grid_row      # data + dark row
+            r1 = grid_row + 1  # param + status row
 
             en = QtWidgets.QCheckBox(f"GE{i+1}")
             en.setChecked(True)
             en.setToolTip(f"Include detector GE{i+1} in the composite")
             en.toggled.connect(lambda c, idx=i: self._on_det_enabled(idx, c))
-            lay.addWidget(en, 0, 0, 2, 1)
+            card_grid.addWidget(en, r0, 0, 2, 1)
 
-            # Row 0: Data + Dark
-            lay.addWidget(QtWidgets.QLabel("Data"), 0, 1)
+            # Data row
+            card_grid.addWidget(QtWidgets.QLabel("Data"), r0, 1)
             data_lbl = QtWidgets.QLabel("(none)")
             data_lbl.setStyleSheet("color: gray;")
-            data_lbl.setMinimumWidth(120)
-            lay.addWidget(data_lbl, 0, 2)
-            data_btn = QtWidgets.QPushButton("…"); data_btn.setFixedWidth(28)
+            card_grid.addWidget(data_lbl, r0, 2)
+            data_btn = QtWidgets.QPushButton("…")
+            data_btn.setFixedWidth(28)
             data_btn.clicked.connect(lambda _, idx=i: self._on_pick_det_data(idx))
-            lay.addWidget(data_btn, 0, 3)
+            card_grid.addWidget(data_btn, r0, 3)
 
-            lay.addWidget(QtWidgets.QLabel("Dark"), 0, 4)
+            card_grid.addWidget(QtWidgets.QLabel("Dark"), r0, 4)
             dark_lbl = QtWidgets.QLabel("(same)")
             dark_lbl.setStyleSheet("color: gray;")
-            dark_lbl.setMinimumWidth(100)
-            lay.addWidget(dark_lbl, 0, 5)
-            dark_btn = QtWidgets.QPushButton("…"); dark_btn.setFixedWidth(28)
+            card_grid.addWidget(dark_lbl, r0, 5)
+            dark_btn = QtWidgets.QPushButton("…")
+            dark_btn.setFixedWidth(28)
             dark_btn.clicked.connect(lambda _, idx=i: self._on_pick_det_dark(idx))
-            lay.addWidget(dark_btn, 0, 6)
-            dark_clr = QtWidgets.QPushButton("✕"); dark_clr.setFixedWidth(24)
-            dark_clr.setToolTip("Clear external dark (use darkLoc inside data file)")
+            card_grid.addWidget(dark_btn, r0, 6)
+            dark_clr = QtWidgets.QPushButton("✕")
+            dark_clr.setFixedWidth(24)
+            dark_clr.setToolTip("Clear external dark (use path in data file)")
             dark_clr.clicked.connect(lambda _, idx=i: self._on_clear_det_dark(idx))
-            lay.addWidget(dark_clr, 0, 7)
+            card_grid.addWidget(dark_clr, r0, 7)
 
-            # Row 1: Param + status
-            lay.addWidget(QtWidgets.QLabel("Param"), 1, 1)
+            # Param row
+            card_grid.addWidget(QtWidgets.QLabel("Param"), r1, 1)
             param_lbl = QtWidgets.QLabel("(none)")
             param_lbl.setStyleSheet("color: gray;")
-            param_lbl.setMinimumWidth(120)
-            lay.addWidget(param_lbl, 1, 2)
-            param_btn = QtWidgets.QPushButton("…"); param_btn.setFixedWidth(28)
+            card_grid.addWidget(param_lbl, r1, 2)
+            param_btn = QtWidgets.QPushButton("…")
+            param_btn.setFixedWidth(28)
             param_btn.clicked.connect(lambda _, idx=i: self._on_pick_det_param(idx))
-            lay.addWidget(param_btn, 1, 3)
+            card_grid.addWidget(param_btn, r1, 3)
 
             status_lbl = QtWidgets.QLabel("")
             status_lbl.setStyleSheet("color: #888888; font-size: 9pt;")
-            lay.addWidget(status_lbl, 1, 4, 1, 4)
+            card_grid.addWidget(status_lbl, r1, 4, 1, 4)
 
-            outer.addWidget(frame)
+            grid_row += 2
             self._det_widgets.append(dict(
                 enable=en, data_lbl=data_lbl, dark_lbl=dark_lbl,
                 param_lbl=param_lbl, status_lbl=status_lbl))
 
-        # BigDetSize control + Save composite
+        outer.addLayout(card_grid)
+
+        # ── BigDetSize control + Save composite ───────────────────────
         bottom = QtWidgets.QHBoxLayout()
         bottom.addWidget(QtWidgets.QLabel("BigDetSize:"))
         self.bigdet_spin = QtWidgets.QSpinBox()
@@ -910,7 +975,7 @@ class FFViewer(QtWidgets.QMainWindow):
         self.dark_check.toggled.connect(self._load_and_display)
         self.rings_check.toggled.connect(self._on_rings_toggled)
         self.axes_check.toggled.connect(self._on_axes_toggled)
-        self.multi_check.toggled.connect(self._on_multi_toggled)
+        self.detector_mode_combo.currentIndexChanged.connect(self._on_detector_mode_changed)
         self.composite_combo.currentTextChanged.connect(self._on_composite_op_changed)
         self.mask_check.toggled.connect(self._load_and_display)
         self.hflip_check.toggled.connect(self._load_and_display)
@@ -1509,8 +1574,9 @@ class FFViewer(QtWidgets.QMainWindow):
 
     # ── Multi-detector callbacks ───────────────────────────────────
 
-    def _on_multi_toggled(self, checked):
+    def _on_detector_mode_changed(self, index):
         """Switch between single-detector and multi-detector data sources."""
+        checked = index > 0
         if checked and not self.multi_mode:
             # Save single-mode state so we can restore on toggle-off.
             self._single_mode_state = dict(
@@ -1540,6 +1606,17 @@ class FFViewer(QtWidgets.QMainWindow):
             self._update_bc_for_multi()
         # Either direction: trigger a fresh display.
         self._load_and_display()
+
+    def _on_multi_paths_changed(self):
+        """Propagate the shared data/dark path fields to all DetectorStates."""
+        data_path = self._multi_data_path_edit.text().strip() or '/exchange/data'
+        dark_path = self._multi_dark_path_edit.text().strip() or '/exchange/data_dark'
+        for s in self._det_states:
+            s.data_loc = data_path
+            s.dark_loc = dark_path
+            s._dark_image = None
+        if self.multi_mode:
+            self._load_and_display()
 
     def _on_composite_op_changed(self, text):
         self.composite_op = text
@@ -1573,20 +1650,36 @@ class FFViewer(QtWidgets.QMainWindow):
         if self.multi_mode:
             self._load_and_display()
 
-    def _autofill_siblings(self, idx, seed_path, setter):
-        """If the auto-fill checkbox is on, derive sibling paths from *seed_path*
-        and call *setter(tgt_idx, sibling_path)* for each found sibling."""
+    def _autofill_siblings(self, src_idx, seed_path, setter):
+        """If Auto-fill siblings is on, derive sibling GE paths from seed_path
+        and call setter(tgt_idx, path) for each sibling that exists on disk.
+
+        Uses smart tag detection first; falls back to direct ge<N> substitution
+        if the smart detection can't find >=2 siblings.
+        """
         if not getattr(self, '_autofill_check', None) or not self._autofill_check.isChecked():
             return
+
         tag = self._find_detector_tag(seed_path)
-        if tag is None:
-            return
-        prefix, src_digit = tag
+        if tag is not None:
+            prefix, src_digit = tag
+        else:
+            # Fallback: try common GE prefixes with the source detector number.
+            src_digit = str(src_idx + 1)
+            prefix = None
+            for pfx in ('ge', 'GE', 'det', 'Det', 'panel'):
+                if (pfx + src_digit) in seed_path or (pfx + src_digit).upper() in seed_path.upper():
+                    prefix = pfx
+                    break
+            if prefix is None:
+                self._autoload_status.setText("Auto-fill: no detector tag found in path")
+                return
+
         src_label = prefix + src_digit
-        filled = []
+        filled, missing = [], []
         for d in '1234':
             tgt_idx = int(d) - 1
-            if tgt_idx == idx:
+            if tgt_idx == src_idx:
                 continue
             tgt_label = prefix + d
             sib = self._derive_ge_path(seed_path, src_label, tgt_label)
@@ -1594,8 +1687,15 @@ class FFViewer(QtWidgets.QMainWindow):
                 setter(tgt_idx, sib)
                 self._refresh_det_widget(tgt_idx)
                 filled.append(f"GE{tgt_idx+1}")
-        if filled and hasattr(self, '_autoload_status'):
-            self._autoload_status.setText(f"Auto-filled: {', '.join(filled)}")
+            else:
+                missing.append(f"GE{tgt_idx+1}")
+
+        parts = []
+        if filled:
+            parts.append(f"filled: {', '.join(filled)}")
+        if missing:
+            parts.append(f"not found: {', '.join(missing)}")
+        self._autoload_status.setText("Auto-fill — " + "; ".join(parts) if parts else "Auto-fill: no siblings found")
 
     def _on_pick_det_data(self, idx):
         fn, _ = QtWidgets.QFileDialog.getOpenFileName(
@@ -1862,13 +1962,18 @@ class FFViewer(QtWidgets.QMainWindow):
 
         # Auto-engage Multi-Det mode and trigger a composite.
         if not self.multi_mode:
-            self.multi_check.setChecked(True)
+            self.detector_mode_combo.setCurrentIndex(1)
         else:
             self._load_and_display()
 
     def _absorb_shared_params(self, params):
         """Pull crystallography + pixel params from a per-detector file
         into the global GUI state (used for ring computation)."""
+        # Sync shared HDF5 path fields from the first param file loaded.
+        if hasattr(self, '_multi_data_path_edit') and params.get('data_loc'):
+            self._multi_data_path_edit.setText(params['data_loc'])
+        if hasattr(self, '_multi_dark_path_edit') and params.get('dark_loc'):
+            self._multi_dark_path_edit.setText(params['dark_loc'])
         if params.get('px') is not None:
             self.pixel_size = params['px']
             self.px_edit.setText(str(params['px']))

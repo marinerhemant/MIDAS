@@ -232,7 +232,7 @@ class MIDASImageView(QtWidgets.QWidget):
 
         bar.addSeparator()
 
-        # Font size
+        # Font size control
         bar.addWidget(QtWidgets.QLabel("Font:"))
         self._font_spin = QtWidgets.QSpinBox()
         self._font_spin.setRange(8, 36)
