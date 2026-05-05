@@ -429,7 +429,6 @@ class FFViewer(QtWidgets.QMainWindow):
         # HDF5
         self.hdf5_data_path = '/exchange/data'
         self.hdf5_dark_path = '/exchange/dark'
-        self.hdf5_datasets = []
 
     # ── UI Construction ────────────────────────────────────────────
 
@@ -656,10 +655,7 @@ class FFViewer(QtWidgets.QMainWindow):
 
         lay.addWidget(QtWidgets.QLabel("H5 Data"), 2, 0)
         self.h5data_edit = QtWidgets.QLineEdit(self.hdf5_data_path)
-        lay.addWidget(self.h5data_edit, 2, 1, 1, 2)
-        btn_h5 = QtWidgets.QPushButton("Browse")
-        btn_h5.clicked.connect(lambda: self._browse_h5(False))
-        lay.addWidget(btn_h5, 2, 3)
+        lay.addWidget(self.h5data_edit, 2, 1, 1, 3)
 
         lay.addWidget(QtWidgets.QLabel("Mask"), 3, 0)
         self.mask_edit = QtWidgets.QLineEdit("")
@@ -672,10 +668,7 @@ class FFViewer(QtWidgets.QMainWindow):
 
         lay.addWidget(QtWidgets.QLabel("H5 Dark"), 4, 0)
         self.h5dark_edit = QtWidgets.QLineEdit(self.hdf5_dark_path)
-        lay.addWidget(self.h5dark_edit, 4, 1, 1, 2)
-        btn_h5d = QtWidgets.QPushButton("Browse")
-        btn_h5d.clicked.connect(lambda: self._browse_h5(True))
-        lay.addWidget(btn_h5d, 4, 3)
+        lay.addWidget(self.h5dark_edit, 4, 1, 1, 3)
 
         btn_param = QtWidgets.QPushButton("Load Params")
         btn_param.setToolTip(
@@ -2074,11 +2067,6 @@ class FFViewer(QtWidgets.QMainWindow):
     def _detect_hdf5_dims(self, fn):
         try:
             with h5py.File(fn, 'r') as f:
-                self.hdf5_datasets = []
-                def visit(name, node):
-                    if isinstance(node, h5py.Dataset):
-                        self.hdf5_datasets.append('/' + name)
-                f.visititems(visit)
                 dpath = self.hdf5_data_path
                 if dpath in f:
                     shape = f[dpath].shape
@@ -2093,21 +2081,6 @@ class FFViewer(QtWidgets.QMainWindow):
                     self.frame_spin.setMaximum(self.n_frames_per_file - 1)
         except Exception as e:
             print(f"HDF5 detect error: {e}")
-
-    def _browse_h5(self, is_dark):
-        if not self.hdf5_datasets:
-            print("No HDF5 datasets cached.")
-            return
-        item, ok = QtWidgets.QInputDialog.getItem(
-            self, "Select HDF5 Path", "Dataset:", self.hdf5_datasets, 0, False)
-        if ok:
-            if is_dark:
-                self.hdf5_dark_path = item
-                self.h5dark_edit.setText(item)
-            else:
-                self.hdf5_data_path = item
-                self.h5data_edit.setText(item)
-            self._load_and_display()
 
     def _on_browse_mask(self):
         fn, _ = QtWidgets.QFileDialog.getOpenFileName(

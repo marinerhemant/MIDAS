@@ -152,7 +152,7 @@ The viewer can open `.MIDAS.zip` archives produced by `ffGenerateZip.py`. These 
 If auto-detection populated the fields, the image loads automatically. Otherwise:
 
 1. Click **First File** → select a data file (binary, HDF5, TIFF, or bz2).
-2. For HDF5 files, set the **H5 Data** path (default: `/exchange/data`). Click **Browse** to select from available datasets.
+2. For HDF5 files, set the **H5 Data** path (default: `/exchange/data`) by typing directly into the field.
 3. Set **NrPixH** and **NrPixV** to match your detector dimensions.
 4. For binary files, set **Header** (e.g., `8192` for GE) and **Byt/Px** (`2` for uint16, `4` for int32).
 5. The image will display automatically.
@@ -171,10 +171,8 @@ If auto-detection populated the fields, the image loads automatically. Otherwise
 | **Load ZIP** | Opens a file dialog to load a `.MIDAS.zip` Zarr archive, auto-populating all parameters. |
 | **FileNr** | First file number in a numbered file series. |
 | **nFr/File** | Number of frames per file (used for frame navigation). |
-| **H5 Data** | HDF5 dataset path for the data images (e.g., `/exchange/data`). |
-| **Browse** (Data) | Browse HDF5 file to select a dataset path interactively. |
-| **H5 Dark** | HDF5 dataset path for the dark images (e.g., `/exchange/dark`). |
-| **Browse** (Dark) | Browse HDF5 file to select a dark dataset path interactively. |
+| **H5 Data** | HDF5 dataset path for the data images (e.g., `/exchange/data`). Type directly to override. |
+| **H5 Dark** | HDF5 dataset path for the dark images (e.g., `/exchange/dark`). Type directly to override. |
 | **Mask** | Path to a bad pixel mask file (uint8 TIFF, `0`=good, `1`=masked). |
 | **Browse** (Mask) | Opens a file dialog to select a mask file. |
 | **Apply** | Checkbox to enable/disable bad pixel masking. |
@@ -349,7 +347,7 @@ The histogram on the right side of the image can be used to adjust intensity lev
 | Problem | Solution |
 | :--- | :--- |
 | **Blank/white image** | Check `NrPixH`/`NrPixV` match your detector. For binary files, verify `Header` and `Byt/Px`. |
-| **HDF5 dataset not found** | Use the **Browse** button next to H5 Data to browse the internal structure. |
+| **HDF5 dataset not found** | Type the correct dataset path directly into the **H5 Data** field (e.g., `/exchange/data`). |
 | **Image appears rotated** | Toggle **HFlip**, **VFlip**, or **Transp** to match your detector orientation. |
 | **Mask not applying** | Ensure **Apply** checkbox is checked and the mask TIFF dimensions match `NrPixV × NrPixH`. |
 | **Frame navigation not working** | Check that `nFr/File` is set correctly. |
