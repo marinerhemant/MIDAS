@@ -134,6 +134,16 @@ def _build_parser() -> argparse.ArgumentParser:
     run.add_argument("--refine-mode", choices=["", "iterative", "all_at_once"],
                      default="all_at_once",
                      help="refinement strategy; default 'all_at_once' (single joint fit)")
+    run.add_argument("--use-bounds", action="store_true",
+                     help="bound refinement via sigmoid reparam (torch-native, "
+                          "autograd-preserving); recommended for PF to prevent "
+                          "boundary-voxel drift")
+    run.add_argument("--bound-euler-deg", type=float, default=5.0,
+                     help="±half-width on each Euler component (default 5°)")
+    run.add_argument("--bound-lat-abc-pct", type=float, default=0.01,
+                     help="±fractional half-width on a, b, c (default 0.01 = 1%%)")
+    run.add_argument("--bound-lat-angle-deg", type=float, default=2.0,
+                     help="±half-width on α, β, γ (default 2°)")
 
     # Indexer
     run.add_argument("--group-size", type=int, default=4,
@@ -340,6 +350,10 @@ def build_config(args: argparse.Namespace) -> PipelineConfig:
         solver=args.refine_solver,
         loss=args.refine_loss,
         mode=args.refine_mode,
+        use_bounds=bool(args.use_bounds),
+        bound_euler_deg=float(args.bound_euler_deg),
+        bound_lat_abc_pct=float(args.bound_lat_abc_pct),
+        bound_lat_angle_deg=float(args.bound_lat_angle_deg),
     )
     recon = ReconConfig(
         do_tomo=bool(args.do_tomo),

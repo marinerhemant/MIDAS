@@ -193,6 +193,13 @@ class RefinementConfig:
     solver: RefineSolver = "lbfgs"
     loss: RefineLoss = "pixel"
     mode: RefineMode = "all_at_once"
+    # Sigmoid box-bound reparameterization (torch-native, autograd).
+    # Bounds the optimizer around the seed so it cannot drift to
+    # alternative minima; preserves device portability (no scipy).
+    use_bounds: bool = False
+    bound_euler_deg: float = 5.0
+    bound_lat_abc_pct: float = 0.01
+    bound_lat_angle_deg: float = 2.0
 
 
 @dataclass

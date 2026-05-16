@@ -138,6 +138,18 @@ class FitConfig:
     beam_size_um: float = 0.0               # bound for voxel_bounded mode
     position_mode: str = "fixed"            # "fixed" | "voxel_bounded"
 
+    # --- Bounded refinement (sigmoid reparameterization, torch-native) ---
+    # When ``use_bounds`` is True, ``refine_grain`` reparameterizes euler
+    # and lattice as ``x = lb + (ub-lb) * sigmoid(theta)`` and optimizes
+    # the unbounded ``theta`` with the chosen solver. The optimizer can
+    # never escape ``[lb, ub]`` and the chain rule preserves full
+    # autograd portability across CPU/CUDA/MPS — no scipy / NLopt round-trip.
+    # Bounds are constructed around the seed: euler_lb = seed - half, etc.
+    use_bounds: bool = False
+    bound_euler_deg: float = 5.0            # ±half-width on each Euler component
+    bound_lat_abc_pct: float = 0.01         # ±fraction on a, b, c
+    bound_lat_angle_deg: float = 2.0        # ±half-width on α, β, γ
+
     # --- Convenience ---
     @property
     def n_rings(self) -> int:

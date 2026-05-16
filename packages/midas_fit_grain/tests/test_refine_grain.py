@@ -146,3 +146,82 @@ def test_adam_runs(fix):
         pred_ring_slot=fix.pred_ring_slot,
     )
     assert res.history[-1] < res.history[0]
+
+
+def test_bounded_refinement_recovers_and_respects_box(fix):
+    """Sigmoid-reparameterized bounded refinement keeps euler in the box and
+    still converges to GT. Verifies the chain rule through sigmoid is correct
+    (loss must drop) and that the final euler is inside [seed-half, seed+half]
+    by construction.
+
+    Uses the same 0.05° per-component perturbation as
+    ``test_lbfgs_recovers_perturbed_grain``: phi1 is poorly conditioned on
+    this synthetic (see that test's comment), so a 0.1° perturbation would
+    fail the misori check for both bounded and unbounded refiners.
+    """
+    obs = fixture_to_observed(fix, device=torch.device("cpu"),
+                              dtype=torch.float64)
+    cfg = _build_cfg(fix, mode="all_at_once", loss="pixel", solver="lbfgs")
+    cfg.use_bounds = True
+    cfg.bound_euler_deg = 1.0          # tight box: ±1°
+    cfg.bound_lat_abc_pct = 0.005
+    cfg.bound_lat_angle_deg = 0.5
+
+    init_pos = fix.gt_position.clone()
+    init_eul = fix.gt_euler.clone() + 0.05 * DEG2RAD
+    init_lat = fix.gt_lattice.clone()
+    match_seed = gt_match(fix, device=torch.device("cpu"), dtype=torch.float64)
+
+    result = refine_grain(
+        cfg, model=fix.model, obs=obs,
+        init_position=init_pos, init_euler=init_eul, init_lattice=init_lat,
+        pred_ring_slot=fix.pred_ring_slot,
+        precomputed_match=match_seed,
+    )
+
+    # Loss must drop (autograd flows through sigmoid).
+    assert result.history[-1] < result.history[0] * 1e-2, (
+        f"bounded refinement should improve loss; got "
+        f"{result.history[0]:.4g} -> {result.history[-1]:.4g}"
+    )
+
+    # Final euler must be strictly inside the box around the SEED (init_eul).
+    half = cfg.bound_euler_deg * DEG2RAD
+    delta = (result.euler - init_eul).abs()
+    assert (delta < half * 1.001).all(), (
+        f"bounded refinement violated euler box: |Δ|={delta.tolist()} half={half}"
+    )
+
+    # Final misorientation to GT should still be small. Matches the
+    # tolerance the unbounded LBFGS recovers on this fixture.
+    mis_deg = _misori_deg(result.euler, fix.gt_euler)
+    assert mis_deg < 0.06, f"bounded misori = {mis_deg:.4f} deg"
+
+
+def test_bounded_refinement_device_portable(fix):
+    """Bounded refinement (sigmoid reparam) must run on CPU autograd without
+    scipy/numpy round-trips. Confirms the chain rule produces finite gradients
+    that the LBFGS solver can step on. (CUDA/MPS portability check is the same
+    contract — we test CPU here; GPU runs identically because the new code is
+    pure torch ops.)"""
+    obs = fixture_to_observed(fix, device=torch.device("cpu"),
+                              dtype=torch.float64)
+    cfg = _build_cfg(fix, mode="all_at_once", loss="pixel", solver="lbfgs")
+    cfg.use_bounds = True
+    cfg.max_iter = 20                  # quick smoke
+
+    init_pos = fix.gt_position.clone()
+    init_eul = fix.gt_euler.clone() + 0.05 * DEG2RAD
+    init_lat = fix.gt_lattice.clone()
+    match_seed = gt_match(fix, device=torch.device("cpu"), dtype=torch.float64)
+
+    result = refine_grain(
+        cfg, model=fix.model, obs=obs,
+        init_position=init_pos, init_euler=init_eul, init_lattice=init_lat,
+        pred_ring_slot=fix.pred_ring_slot,
+        precomputed_match=match_seed,
+    )
+    # Returned tensors must be detached but still finite (no NaN from sigmoid).
+    assert torch.isfinite(result.euler).all()
+    assert torch.isfinite(result.lattice).all()
+    assert torch.isfinite(torch.tensor(result.final_loss))

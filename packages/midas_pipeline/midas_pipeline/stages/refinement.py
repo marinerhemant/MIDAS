@@ -144,6 +144,10 @@ def run(ctx: StageContext) -> StageResult:
     cfg.mode = ctx.config.refinement.mode or "all_at_once"
     cfg.solver = ctx.config.refinement.solver
     cfg.loss = ctx.config.refinement.loss
+    cfg.use_bounds = ctx.config.refinement.use_bounds
+    cfg.bound_euler_deg = ctx.config.refinement.bound_euler_deg
+    cfg.bound_lat_abc_pct = ctx.config.refinement.bound_lat_abc_pct
+    cfg.bound_lat_angle_deg = ctx.config.refinement.bound_lat_angle_deg
 
     # Build the forward model + observations once for the whole voxel loop.
     device = torch.device(ctx.config.device)

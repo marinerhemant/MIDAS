@@ -95,8 +95,7 @@ def _make_closures(
     model: HEDMForwardModel,
     obs: ObservedSpots,
     match: MatchResult,
-    pos_scaled: torch.Tensor, pos_scale: float,
-    euler: torch.Tensor, lattice: torch.Tensor,
+    state_fn,                                    # () -> (pos, euler, lattice)
     px: float, y_BC: float, z_BC: float,
     loss_kind: LossKind,
     active_params: list[torch.Tensor],
@@ -107,10 +106,15 @@ def _make_closures(
     ``"scalar_no_backward"``, and ``"residual_no_backward"``. Each variant
     differs only in whether ``backward()`` is called and whether the loss
     or the un-summed residual is returned.
+
+    ``state_fn`` is a callable returning ``(pos, euler, lattice)`` tensors;
+    inside it may apply reparameterizations (e.g. sigmoid box bounds) so
+    the autograd graph flows back to the *active* parameters even when
+    those are not the raw state variables.
     """
 
     def _residual() -> torch.Tensor:
-        pos = pos_scaled * pos_scale
+        pos, euler, lattice = state_fn()
         res = grain_residuals(
             model,
             grain_euler=euler,
@@ -193,6 +197,60 @@ def refine_grain(
     euler.requires_grad_(False)
     lattice.requires_grad_(False)
 
+    # --- Sigmoid box-bound reparameterization (torch-native, autograd) ---
+    # When cfg.use_bounds is True we reparameterize each bounded variable as
+    #
+    #     x = lb + (ub - lb) * sigmoid(4 * theta / (ub - lb))
+    #
+    # The 4/(ub-lb) scaling cancels sigmoid's 1/4 Jacobian at theta=0, so
+    # dx/dtheta = 1 at the seed. Without it, gradients w.r.t. theta are
+    # (ub-lb)/4 × gradients w.r.t. x (typically 20-30× smaller); LBFGS line
+    # search still works but the Hessian approximation and ftol/xtol
+    # criteria operate on a poorly-scaled variable and converge to a
+    # different (sometimes worse) point. With the scaling, theta has the
+    # same gradient magnitude as x near the seed, so the optimizer
+    # behaves like the unbounded one until you approach the bound.
+    #
+    # Chain rule still flows back through sigmoid to theta — no scipy /
+    # numpy round-trip, runs on CPU/CUDA/MPS identically.
+    _use_bounds = bool(getattr(cfg, "use_bounds", False))
+    if _use_bounds:
+        _euler_half = float(cfg.bound_euler_deg) * DEG2RAD
+        _abc_pct = float(cfg.bound_lat_abc_pct)
+        _ang_half = float(cfg.bound_lat_angle_deg)
+        euler_lb = init_euler.clone().to(device=device, dtype=dtype) - _euler_half
+        euler_ub = init_euler.clone().to(device=device, dtype=dtype) + _euler_half
+        init_abc = init_lattice[:3].to(device=device, dtype=dtype)
+        init_ang = init_lattice[3:].to(device=device, dtype=dtype)
+        lat_lb = torch.cat([init_abc * (1.0 - _abc_pct), init_ang - _ang_half])
+        lat_ub = torch.cat([init_abc * (1.0 + _abc_pct), init_ang + _ang_half])
+        euler_scale = 4.0 / (euler_ub - euler_lb)        # (3,)
+        lat_scale = 4.0 / (lat_ub - lat_lb)              # (6,)
+        # theta=0 → sigmoid=0.5 → x = (lb+ub)/2 = seed.
+        theta_euler = torch.zeros_like(euler)
+        theta_lattice = torch.zeros_like(lattice)
+        theta_euler.requires_grad_(False)
+        theta_lattice.requires_grad_(False)
+    else:
+        euler_lb = euler_ub = lat_lb = lat_ub = None
+        euler_scale = lat_scale = None
+        theta_euler = theta_lattice = None
+
+    def _euler_view() -> torch.Tensor:
+        """Current euler tensor (bounded if use_bounds, else raw)."""
+        if _use_bounds:
+            return euler_lb + (euler_ub - euler_lb) * torch.sigmoid(theta_euler * euler_scale)
+        return euler
+
+    def _lattice_view() -> torch.Tensor:
+        if _use_bounds:
+            return lat_lb + (lat_ub - lat_lb) * torch.sigmoid(theta_lattice * lat_scale)
+        return lattice
+
+    def _state_fn():
+        """Returns (pos, euler, lattice) with reparameterization applied."""
+        return pos_scaled * pos_scale, _euler_view(), _lattice_view()
+
     # Pre-compute the ring slot per observed spot (does not depend on state).
     obs_ring_slot = ring_slot_lookup(cfg.RingNumbers, obs.ring_nr)
 
@@ -226,11 +284,13 @@ def refine_grain(
     if precomputed_match is not None:
         match = precomputed_match
     else:
-        match = _match_with_state(
-            model, pos=pos_scaled * pos_scale, euler=euler, lattice=lattice,
-            obs=obs, obs_ring_slot=obs_ring_slot, pred_ring_slot=pred_ring_slot,
-            omega_tolerance=omega_tol, eta_tolerance=eta_tol,
-        )
+        with torch.no_grad():
+            match = _match_with_state(
+                model, pos=pos_scaled * pos_scale,
+                euler=_euler_view(), lattice=_lattice_view(),
+                obs=obs, obs_ring_slot=obs_ring_slot, pred_ring_slot=pred_ring_slot,
+                omega_tolerance=omega_tol, eta_tolerance=eta_tol,
+            )
 
     solver_fn = get_solver(cfg.solver)
 
@@ -240,21 +300,33 @@ def refine_grain(
 
     kind = closure_kind(cfg.solver)
 
+    # Translate "user-facing variable" → underlying optimizer variable.
+    # When bounds are active, euler/lattice are NOT the optimizer's leaf
+    # tensors (theta_euler / theta_lattice are). Position is always the
+    # raw pos_scaled regardless of bounds.
+    def _opt_var(v: torch.Tensor) -> torch.Tensor:
+        if _use_bounds:
+            if v is euler:
+                return theta_euler
+            if v is lattice:
+                return theta_lattice
+        return v
+
     def _run_phase(active: list[torch.Tensor], **solver_opts):
-        for p in active:
+        opt_active = [_opt_var(p) for p in active]
+        for p in opt_active:
             p.requires_grad_(True)
         closures = _make_closures(
             model=model, obs=obs, match=match,
-            pos_scaled=pos_scaled, pos_scale=pos_scale,
-            euler=euler, lattice=lattice,
+            state_fn=_state_fn,
             px=cfg.px, y_BC=model.y_BC, z_BC=model.z_BC,
             loss_kind=cfg.loss,
-            active_params=active,
+            active_params=opt_active,
         )
         opts = {"max_iter": cfg.max_iter, "ftol": cfg.ftol, "xtol": cfg.xtol}
         opts.update(solver_opts)        # caller wins
-        result = solver_fn(closures[kind], active, **opts)
-        for p in active:
+        result = solver_fn(closures[kind], opt_active, **opts)
+        for p in opt_active:
             p.requires_grad_(False)
         histories.extend(result["history"])
         converged_phases.append(result["converged"])
@@ -262,11 +334,13 @@ def refine_grain(
 
     def _rematch():
         nonlocal match
-        match = _match_with_state(
-            model, pos=pos_scaled * pos_scale, euler=euler, lattice=lattice,
-            obs=obs, obs_ring_slot=obs_ring_slot, pred_ring_slot=pred_ring_slot,
-            omega_tolerance=omega_tol, eta_tolerance=eta_tol,
-        )
+        with torch.no_grad():
+            match = _match_with_state(
+                model, pos=pos_scaled * pos_scale,
+                euler=_euler_view(), lattice=_lattice_view(),
+                obs=obs, obs_ring_slot=obs_ring_slot, pred_ring_slot=pred_ring_slot,
+                omega_tolerance=omega_tol, eta_tolerance=eta_tol,
+            )
 
     # --- Scan-aware position-mode handling (pf-HEDM) -----------------
     # When scan mode is active (cfg.scan_pos_tol_um > 0) the position
@@ -324,12 +398,15 @@ def refine_grain(
         raise ValueError(f"unknown mode {cfg.mode!r}")
 
     pos_final = (pos_scaled * pos_scale).detach()
+    with torch.no_grad():
+        euler_final = _euler_view().detach() if _use_bounds else euler.detach()
+        lattice_final = _lattice_view().detach() if _use_bounds else lattice.detach()
 
     # Final residuals at converged state.
     with torch.no_grad():
         res = grain_residuals(
             model,
-            grain_euler=euler, grain_position=pos_final, grain_lattice=lattice,
+            grain_euler=euler_final, grain_position=pos_final, grain_lattice=lattice_final,
             obs=obs, match=match, kind=cfg.loss,
             px=cfg.px, y_BC=model.y_BC, z_BC=model.z_BC,
         )
@@ -337,8 +414,8 @@ def refine_grain(
 
     return GrainFitResult(
         position=pos_final,
-        euler=euler.detach(),
-        lattice=lattice.detach(),
+        euler=euler_final,
+        lattice=lattice_final,
         final_loss=loss_final,
         n_matched=int(match.mask.sum().item()),
         history=histories,
