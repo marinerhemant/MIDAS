@@ -391,13 +391,20 @@ def refine_scanning_block(
         )
 
         csv_path = results_dir / f"Result_OrientPos_voxel_{v}.csv"
-        # Extract completeness denominator + per-spot residual stats from
-        # the final match. ``n_t_frac`` is the n_expected denominator
-        # the C refiner uses for Completeness.
-        try:
-            n_expected = int(result.match.n_t_frac[0].item())
-        except (AttributeError, IndexError, TypeError):
-            n_expected = max(int(result.n_matched), 1)
+        # Completeness denominator: total theoretical spots predicted at
+        # the POST-refinement state — matches C FitOrStrainsScanningOMP
+        # which calls CalcDiffractionSpots after the fit and uses
+        # nTspots as nExpected. We run one extra forward pass per voxel
+        # (~ms) and count valid predicted slots. Without this, completeness
+        # collapses to n_matched/n_matched = 1.0 always (the pre-fix
+        # behavior used a non-existent ``match.n_t_frac`` field).
+        with torch.no_grad():
+            spots_final = model(
+                result.euler.view(1, 1, 3),
+                result.position.view(1, 1, 3),
+                lattice_params=result.lattice.view(1, 6),
+            )
+            n_expected = max(int(spots_final.valid.sum().item()), 1)
         try:
             res = result.per_spot_residuals.detach().cpu().numpy()
             pos_err_um = float(np.sqrt(np.mean(res[:, :3] ** 2))) if res.size else 0.0
