@@ -80,6 +80,84 @@ def _top_candidate(block: np.ndarray) -> Optional[np.ndarray]:
     return block[int(np.argmax(completeness))]
 
 
+def _top_candidate_index(block: np.ndarray) -> Optional[int]:
+    """Index of the top candidate within ``block`` (or None if empty)."""
+    if block.shape[0] == 0:
+        return None
+    n_expected = np.maximum(block[:, 14], 1.0)
+    completeness = block[:, 15] / n_expected
+    return int(np.argmax(completeness))
+
+
+def _subset_obs_by_spot_ids(obs, keep_spot_ids: np.ndarray):
+    """Return a new ObservedSpots containing only rows whose spot_id is in ``keep_spot_ids``.
+
+    Preserves device/dtype of every field. Empty subset produces an
+    ObservedSpots with 0 spots (refine_grain handles that path).
+    """
+    from .observations import ObservedSpots
+    all_ids = obs.spot_id.detach().cpu().numpy().astype(np.int64)
+    keep_set = set(int(s) for s in np.asarray(keep_spot_ids, dtype=np.int64).ravel())
+    mask = np.fromiter((int(s) in keep_set for s in all_ids), dtype=bool, count=all_ids.size)
+    idx = torch.as_tensor(np.nonzero(mask)[0], dtype=torch.int64, device=obs.spot_id.device)
+    return ObservedSpots(
+        spot_id=obs.spot_id.index_select(0, idx),
+        ring_nr=obs.ring_nr.index_select(0, idx),
+        y_lab=obs.y_lab.index_select(0, idx),
+        z_lab=obs.z_lab.index_select(0, idx),
+        omega=obs.omega.index_select(0, idx),
+        eta=obs.eta.index_select(0, idx),
+        two_theta=obs.two_theta.index_select(0, idx),
+        grain_radius=obs.grain_radius.index_select(0, idx),
+        fit_rmse=obs.fit_rmse.index_select(0, idx),
+        y_orig=obs.y_orig.index_select(0, idx),
+        z_orig=obs.z_orig.index_select(0, idx),
+        omega_ini=obs.omega_ini.index_select(0, idx),
+        mask_touched=obs.mask_touched.index_select(0, idx),
+    )
+
+
+def _open_keys_and_ids(output_dir: Path):
+    """Open the consolidated keys + IDs readers for per-voxel matched-ID lookup.
+
+    Returns (keys_reader, ids_reader) or (None, None) if either file is absent.
+    """
+    try:
+        from midas_pipeline.find_grains._consolidation_io import (
+            open_keys, open_ids,
+        )
+    except ImportError:
+        return None, None
+    keys_path = output_dir / "IndexKey_all.bin"
+    ids_path = output_dir / "IndexBest_IDs_all.bin"
+    if not keys_path.exists() or not ids_path.exists():
+        return None, None
+    return open_keys(keys_path), open_ids(ids_path)
+
+
+def _matched_ids_for_top(keys_reader, ids_reader,
+                          vox: int, top_idx: int) -> Optional[np.ndarray]:
+    """Slice the matched-ID list for ``vox``'s ``top_idx``-th solution.
+
+    The IDs file concatenates IDs across all solutions; the keys file
+    holds [SpotID, nMatches, nIDs, reserved] per solution. We sum
+    nIDs over solutions [0, top_idx) to get the offset, then take
+    nIDs[top_idx] IDs.
+
+    Returns ``None`` if the readers are not provided.
+    """
+    if keys_reader is None or ids_reader is None:
+        return None
+    keys = keys_reader.get_keys(vox)
+    ids = ids_reader.get_ids(vox)
+    if keys is None or ids is None:
+        return None
+    n_ids_per_sol = keys[:, 2].astype(np.int64)
+    offset = int(n_ids_per_sol[:top_idx].sum())
+    n_take = int(n_ids_per_sol[top_idx])
+    return ids[offset:offset + n_take].astype(np.int64)
+
+
 def _euler_zxz_to_om_np(eulers_rad: np.ndarray) -> np.ndarray:
     """Active ZXZ rotation, matches midas_stress.orientation convention."""
     p1, p, p2 = eulers_rad
@@ -261,12 +339,25 @@ def refine_scanning_block(
     if cfg.scan_pos_tol_um <= 0:
         cfg.scan_pos_tol_um = 1.5    # production default, plan §1b
 
+    # Per-voxel matched-ID subsetting (C-parity fix).
+    # Without this, refine_grain re-associates against the FULL ExtraInfo
+    # observation set, which yields promiscuous matches against other
+    # grains and lets the optimizer drift to alternative local minima
+    # (observed: voxels diverging ~15° from C while keeping comp=1.00
+    # because the rotated orientation also picks up enough cross-grain
+    # spots within tolerance). C subsets to indexer-matched IDs per voxel
+    # (FitOrStrainsScanningOMP via spotsYZO loaded from indexer's matched
+    # list); we mirror that here using the consolidated keys + IDs files
+    # written alongside IndexBest_all.bin.
+    keys_reader, ids_reader = _open_keys_and_ids(index_best_all.parent)
+
     out: List[ScanVoxelResult] = []
     for v in range(v_start, v_end):
         block = blocks[v]
-        cand = _top_candidate(block)
-        if cand is None:
+        top_idx = _top_candidate_index(block)
+        if top_idx is None:
             continue                                                    # no indexer hit
+        cand = block[top_idx]
         om = cand[2:11].reshape(3, 3)
         # Convert OM → Euler (use a torch-native path so the refiner
         # accepts the seed cleanly).
@@ -281,8 +372,18 @@ def refine_scanning_block(
         init_eul = torch.tensor(euler, dtype=torch.float64)
         init_lat = torch.tensor(cfg.LatticeConstant, dtype=torch.float64)
 
+        # C-parity: refine against ONLY the spots the indexer matched
+        # for this voxel's top candidate. Falls back to full obs if the
+        # consolidated keys/IDs files aren't present (defensive — every
+        # production run writes them, but legacy fixtures may not).
+        matched_ids = _matched_ids_for_top(keys_reader, ids_reader, v, top_idx)
+        if matched_ids is not None and matched_ids.size > 0:
+            obs_voxel = _subset_obs_by_spot_ids(obs, matched_ids)
+        else:
+            obs_voxel = obs
+
         result = refine_grain(
-            cfg, model=model, obs=obs,
+            cfg, model=model, obs=obs_voxel,
             init_position=init_pos,
             init_euler=init_eul,
             init_lattice=init_lat,
