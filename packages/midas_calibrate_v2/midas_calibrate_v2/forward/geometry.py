@@ -183,12 +183,12 @@ def pixel_to_REta(
         # Caller should supply rho_d if they want a fixed reference.
         rho_d_t = torch.ones_like(rad_um)
     else:
-        # apply_distortion expects rho_d in the same units as rad_um (µm),
-        # but callers (run_estep_v1) pass it in pixels (RhoD / MaxRingRad
-        # are stored in px). Convert to µm via the mean pixel pitch so the
-        # normalised radius ρ = rad_um / rho_d_um is dimensionless and
-        # matches v1 C's RhoD-in-µm convention.
-        rho_d_t = rho_d * px_mean
+        # apply_distortion expects rho_d in the same units as rad_um (µm) so
+        # ρ = rad_um / rho_d is dimensionless. This matches v1 C's
+        # RhoD-in-µm convention and v1 numpy ``pixel_to_REta``. Callers
+        # that have RhoD in pixels (e.g. ``MaxRingRad``) must convert to
+        # µm via ``rho_d_um = rho_d_px * px_mean`` before invoking.
+        rho_d_t = rho_d
 
     p_eff = p_coeffs
     if delta_p2_panel is not None and panel_idx is not None:
