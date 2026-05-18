@@ -4,7 +4,7 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "midas-ff-pipeline"
-version = "0.1.0"
+version = "0.2.0"
 description = "End-to-end pure-Python FF-HEDM workflow orchestrator (1-N detectors)"
 readme = "README.md"
 license = "BSD-3-Clause"

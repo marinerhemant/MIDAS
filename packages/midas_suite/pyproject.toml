@@ -4,7 +4,7 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "midas-suite"
-version = "0.2.0"
+version = "0.3.0"
 description = "Meta-package: installs the MIDAS Python pipeline (FF/NF/PF HEDM, calibration, peakfit, integration, transforms, ODF, stress)."
 readme = "README.md"
 license = { text = "BSD-3-Clause" }
@@ -23,27 +23,30 @@ classifiers = [
 ]
 
 # Floors pinned to the current PyPI version of each sub-package as of
-# 2026-05-06. Bump only when a meta-package change actually requires it.
-# midas-grain-odf and midas-pf-odf are intentionally absent until they
-# land on PyPI; they will be added in midas-suite v0.2.0.
+# 2026-05-18. Bump only when a meta-package change actually requires it.
+# The hidden in-tree packages (midas-grain-odf, midas-joint-ff-calibrate,
+# midas-pf-odf, midas-pink, midas-propagate, midas-uq) are intentionally
+# absent — they're listed in the workflow HIDDEN set and never ship to PyPI.
 dependencies = [
     # leaves
-    "midas-stress>=0.6.0",
-    "midas-params>=0.3.0",
-    "midas-hkls>=0.3.0",
-    "midas-diffract>=0.1.0",
-    "midas-peakfit>=0.3.0",
-    "midas-integrate>=0.3.2",
-    "midas-calibrate>=0.2.1",
-    "midas-index>=0.3.0",
-    "midas-transforms>=0.2.0",
+    "midas-stress>=0.7.0",
+    "midas-params>=0.3.1",
+    "midas-hkls>=0.4.0",
+    "midas-diffract>=0.1.1",
+    "midas-peakfit>=0.4.0",
+    "midas-integrate>=0.4.0",
+    "midas-integrate-v2>=0.1.0",
+    "midas-calibrate>=0.2.2",
+    "midas-calibrate-v2>=0.1.0",
+    "midas-index>=0.4.0",
+    "midas-transforms>=0.3.0",
     "midas-process-grains>=0.1.0",
-    "midas-fit-grain>=0.1.0",
-    "midas-nf-preprocess>=0.1.0",
+    "midas-fit-grain>=0.2.0",
+    "midas-nf-preprocess>=0.1.1",
     "midas-nf-fitorientation>=0.3.0",
     # parsl + pipeline orchestrators
     "midas-parsl-configs>=0.1.0",
-    "midas-ff-pipeline>=0.1.0",
+    "midas-ff-pipeline>=0.2.0",
     "midas-nf-pipeline>=0.1.0",
     "midas-pipeline>=0.1.0a0",     # unified FF + PF orchestrator (alpha; PF mode end-to-end verified, P5c parity gate runs on chiltepin)
 ]
@@ -55,32 +58,41 @@ dependencies = [
 # the corresponding pipeline orchestrator at the top — that package's
 # own dep list pulls everything it needs underneath.
 ff = [
-    "midas-stress>=0.6.0",
-    "midas-params>=0.3.0",
-    "midas-ff-pipeline>=0.1.0",
-    "midas-calibrate>=0.2.1",
-    "midas-integrate>=0.3.2",
+    "midas-stress>=0.7.0",
+    "midas-params>=0.3.1",
+    "midas-ff-pipeline>=0.2.0",
+    "midas-calibrate>=0.2.2",
+    "midas-integrate>=0.4.0",
 ]
 nf = [
-    "midas-stress>=0.6.0",
-    "midas-params>=0.3.0",
+    "midas-stress>=0.7.0",
+    "midas-params>=0.3.1",
     "midas-nf-pipeline>=0.1.0",
 ]
 pf = [
     # Point-focus / scanning HEDM (pf-HEDM). midas-pipeline runs in
     # --scan-mode pf and pulls index + fit-grain + transforms +
     # stress transitively; we list the orchestrator at the top.
-    "midas-stress>=0.6.0",
-    "midas-params>=0.3.0",
+    "midas-stress>=0.7.0",
+    "midas-params>=0.3.1",
     "midas-pipeline[fast]>=0.1.0a0",       # fast = numba (merge_scans / Potts ICM)
-    "midas-calibrate>=0.2.1",
-    "midas-integrate>=0.3.2",
+    "midas-calibrate>=0.2.2",
+    "midas-integrate>=0.4.0",
 ]
 calib = [
-    "midas-hkls>=0.3.0",
-    "midas-integrate>=0.3.2",
-    "midas-peakfit>=0.3.0",
-    "midas-calibrate>=0.2.1",
+    "midas-hkls>=0.4.0",
+    "midas-integrate>=0.4.0",
+    "midas-peakfit>=0.4.0",
+    "midas-calibrate>=0.2.2",
+]
+calib-v2 = [
+    # Torch-native differentiable calibration / integration stack.
+    # Companion to ``calib`` (v1, C-backed) — both can be installed
+    # side-by-side, the v2 spec ↔ v1 paramstest adapter handles handoff.
+    "midas-hkls>=0.4.0",
+    "midas-calibrate-v2>=0.1.0",
+    "midas-integrate-v2>=0.1.0",
+    "midas-peakfit>=0.4.0",
 ]
 plots = ["matplotlib>=3.5"]
 dev = ["pytest>=7"]

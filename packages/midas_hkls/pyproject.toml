@@ -4,7 +4,7 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "midas-hkls"
-version = "0.3.0"
+version = "0.4.0"
 description = "Pure-Python crystallography, CIF I/O, and differentiable structure factors for X-ray diffraction."
 readme = "README.md"
 license = { text = "BSD-3-Clause" }
