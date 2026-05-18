@@ -80,6 +80,14 @@ class PipelineConfig:
     # GPU. Refinement and downstream stages still run single-GPU.
     shard_gpus: Optional[str] = None
 
+    # Multi-process CPU sharding for the indexer stage. midas-index uses
+    # torch intra-op threading; scaling collapses past ~16 threads on the
+    # small per-seed ops the indexer runs. With cpu_shards > 1 the pipeline
+    # spawns N concurrent midas-index processes, each with
+    # ``torch.set_num_threads(n_cpus // N)`` over a disjoint seed slice.
+    # Ignored on GPU. 0 / 1 disables sharding (single process gets all cpus).
+    cpu_shards: int = 1
+
     # --- Layer-aware seeding (gap #3, #4) ---
     grains_file: Optional[str] = None              # explicit GrainsFile to seed indexer/refiner
     nf_result_dir: Optional[str] = None            # dir of NF GrainsLayer{N}.csv files; per-layer override

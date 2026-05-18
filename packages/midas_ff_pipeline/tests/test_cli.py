@@ -114,3 +114,135 @@ def test_resolve_group_size_explicit():
     assert _resolve_group_size("cuda", "0,1", "16") == 16
     # CPU device → falls back to 4 regardless
     assert _resolve_group_size("cpu", None, "auto") == 4
+
+
+def test_count_dataset_density(tmp_path: Path):
+    from midas_ff_pipeline.cli import _count_dataset_density
+    # Ti-7Al-shaped paramstest: 12 RingNumbers, 1440 omega steps.
+    p = tmp_path / "ti7al.txt"
+    p.write_text(
+        "# header\n"
+        "OmegaStart -180.0\n"
+        "OmegaEnd 180.0\n"
+        "OmegaStep 0.25\n"
+        + "".join(f"RingNumbers {r}\n" for r in range(4, 16))
+    )
+    n_rings, n_omega = _count_dataset_density(str(p))
+    assert n_rings == 12
+    assert n_omega == 1440
+
+    # Missing omega keys → n_omega=0, but rings still counted.
+    p2 = tmp_path / "no_omega.txt"
+    p2.write_text("RingNumbers 1\nRingNumbers 2\n")
+    assert _count_dataset_density(str(p2)) == (2, 0)
+
+    # Pipeline-style params.txt uses `RingThresh <ring> <thresh>` instead.
+    p3 = tmp_path / "ringthresh.txt"
+    p3.write_text(
+        "OmegaStart -180.0\nOmegaEnd 180.0\nOmegaStep 0.25\n"
+        + "".join(f"RingThresh {r} 100\n" for r in range(4, 16))
+    )
+    assert _count_dataset_density(str(p3)) == (12, 1440)
+
+    # No params_file → (0, 0).
+    assert _count_dataset_density(None) == (0, 0)
+    assert _count_dataset_density(str(tmp_path / "missing.txt")) == (0, 0)
+
+
+def test_resolve_group_size_density_scales_down(tmp_path: Path, monkeypatch):
+    """Dense datasets (Ti-7Al-class) get smaller groups than the baseline."""
+    from midas_ff_pipeline import cli
+
+    # Stub torch to report an A6000-class 48 GB GPU (would normally pick gs=4).
+    class _StubProps:
+        total_memory = 48 * 1_000_000_000
+    class _StubCuda:
+        @staticmethod
+        def is_available(): return True
+        @staticmethod
+        def device_count(): return 1
+        @staticmethod
+        def get_device_properties(i): return _StubProps()
+    class _StubTorch:
+        cuda = _StubCuda
+    monkeypatch.setitem(__import__("sys").modules, "torch", _StubTorch)
+
+    # Park22-shaped paramstest: 8 rings, 720 omega steps → density 1 → unchanged.
+    p_baseline = tmp_path / "park22.txt"
+    p_baseline.write_text(
+        "OmegaStart -180.0\nOmegaEnd 180.0\nOmegaStep 0.5\n"
+        + "".join(f"RingNumbers {r}\n" for r in range(1, 9))
+    )
+    assert cli._resolve_group_size("cuda", None, "auto",
+                                   params_file=str(p_baseline)) == 4
+
+    # Ti-7Al-shaped: 12 rings, 1440 steps → density 3.0 → 4 / 3 → 1.
+    p_dense = tmp_path / "ti7al.txt"
+    p_dense.write_text(
+        "OmegaStart -180.0\nOmegaEnd 180.0\nOmegaStep 0.25\n"
+        + "".join(f"RingNumbers {r}\n" for r in range(4, 16))
+    )
+    assert cli._resolve_group_size("cuda", None, "auto",
+                                   params_file=str(p_dense)) == 1
+
+    # No params_file → falls back to baseline tier (gs=4 for 48 GB).
+    assert cli._resolve_group_size("cuda", None, "auto") == 4
+
+    # Explicit override wins even when density would scale down.
+    assert cli._resolve_group_size("cuda", None, "8",
+                                   params_file=str(p_dense)) == 8
+
+
+def test_resolve_group_size_density_never_scales_up(tmp_path: Path, monkeypatch):
+    """Sparse datasets must not push the group size above the memory tier."""
+    from midas_ff_pipeline import cli
+
+    class _StubProps:
+        total_memory = 48 * 1_000_000_000
+    class _StubCuda:
+        @staticmethod
+        def is_available(): return True
+        @staticmethod
+        def device_count(): return 1
+        @staticmethod
+        def get_device_properties(i): return _StubProps()
+    class _StubTorch:
+        cuda = _StubCuda
+    monkeypatch.setitem(__import__("sys").modules, "torch", _StubTorch)
+
+    # 4 rings, 360 steps → density would be 0.25 but is clamped to 1.0.
+    p_sparse = tmp_path / "sparse.txt"
+    p_sparse.write_text(
+        "OmegaStart -180.0\nOmegaEnd 180.0\nOmegaStep 1.0\n"
+        + "".join(f"RingNumbers {r}\n" for r in range(1, 5))
+    )
+    assert cli._resolve_group_size("cuda", None, "auto",
+                                   params_file=str(p_sparse)) == 4
+
+
+def test_resolve_group_size_rings_only_when_omega_missing(tmp_path: Path, monkeypatch):
+    """Indexer-style paramstest (OmegaRange line, no OmegaStep) still gets a
+    rings-only down-scale — should not silently revert to the unscaled tier."""
+    from midas_ff_pipeline import cli
+
+    class _StubProps:
+        total_memory = 48 * 1_000_000_000
+    class _StubCuda:
+        @staticmethod
+        def is_available(): return True
+        @staticmethod
+        def device_count(): return 1
+        @staticmethod
+        def get_device_properties(i): return _StubProps()
+    class _StubTorch:
+        cuda = _StubCuda
+    monkeypatch.setitem(__import__("sys").modules, "torch", _StubTorch)
+
+    # 12 rings, omega not parseable → rings-only density = 12/8 = 1.5 → gs=2.
+    p = tmp_path / "indexer_style.txt"
+    p.write_text(
+        "OmegaRange -180.0 180.0;\nOmeBinSize 0.1;\n"
+        + "".join(f"RingNumbers {r}\n" for r in range(4, 16))
+    )
+    assert cli._resolve_group_size("cuda", None, "auto",
+                                   params_file=str(p)) == 2

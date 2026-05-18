@@ -76,6 +76,13 @@ def _build_parser() -> argparse.ArgumentParser:
                             "and downstream stages stay single-GPU. "
                             "'auto' uses every visible CUDA device when "
                             "--device=cuda; 'none' or '' disables sharding.")
+    p_run.add_argument("--cpu-shards", default="auto",
+                       help="number of midas-index processes to run in "
+                            "parallel on CPU. 'auto' picks max(1, n_cpus // "
+                            "16) — intra-op threading stops scaling past ~16 "
+                            "threads on small per-seed ops, so multi-process "
+                            "sharding is faster than a single 96-thread "
+                            "process. Ignored on GPU. '1' or '0' disables.")
     p_run.add_argument("--pg-mode", default="spot_aware",
                        choices=["spot_aware", "legacy", "paper_claim"],
                        help="midas_process_grains mode")
@@ -238,15 +245,102 @@ def _resolve_shard_gpus(device: str, shard_arg: str) -> str | None:
     return ",".join(str(i) for i in range(n))
 
 
+def _resolve_cpu_shards(device: str, n_cpus: int, cpu_shards_arg: str) -> int:
+    """``auto`` → ``max(1, n_cpus // 16)`` on CPU, else 1.
+
+    Intra-op threading scales poorly past ~16 threads on small per-seed
+    ops; multi-process sharding (each shard ``set_num_threads(n_cpus // N)``)
+    keeps each shard in the well-scaled regime while still using every core.
+    """
+    if device != "cpu":
+        return 1
+    if cpu_shards_arg in ("auto", ""):
+        return max(1, n_cpus // 16)
+    try:
+        return max(1, int(cpu_shards_arg))
+    except ValueError:
+        raise SystemExit(
+            f"--cpu-shards must be 'auto' or an integer, got {cpu_shards_arg!r}"
+        )
+
+
+_BASELINE_N_RINGS = 8       # park22 FCC reference
+_BASELINE_N_OMEGA = 720     # park22 reference scan length
+
+
+def _count_dataset_density(params_file: str | None) -> tuple[int, int]:
+    """Parse paramstest to return ``(n_rings, n_omega_steps)``.
+
+    The indexer's per-seed matching tensor (and therefore peak-group memory)
+    scales roughly with ``n_rings × n_omega_steps`` — more rings means a
+    bigger theoretical-spot pool per candidate orientation, and longer scans
+    mean more observed spots per ring. Returns ``(0, 0)`` on any failure;
+    callers treat that as ``no density information available``.
+    """
+    if params_file is None:
+        return 0, 0
+    try:
+        with open(params_file) as f:
+            text = f.read()
+    except OSError:
+        return 0, 0
+    # Ring-list keys differ across paramstest variants:
+    #   midas-ff-pipeline params.txt → ``RingThresh <ring> <thresh>``
+    #   indexer-style paramstest.txt → ``RingNumbers <ring>``
+    ring_keys = {"RingNumbers", "RingThresh", "RingsToIndex", "RingsToUse"}
+    rings_per_key: dict[str, int] = {}
+    ostart = ostop = ostep = None
+    for raw in text.splitlines():
+        line = raw.strip().rstrip(";")
+        if not line or line.startswith("#"):
+            continue
+        parts = line.split()
+        key = parts[0]
+        if key in ring_keys:
+            rings_per_key[key] = rings_per_key.get(key, 0) + 1
+        elif key == "OmegaStart" and len(parts) >= 2:
+            try: ostart = float(parts[1])
+            except ValueError: pass
+        elif key == "OmegaEnd" and len(parts) >= 2:
+            try: ostop = float(parts[1])
+            except ValueError: pass
+        elif key == "OmegaStep" and len(parts) >= 2:
+            try: ostep = float(parts[1])
+            except ValueError: pass
+    # Pick the largest count across ring-list keys (one file may use only one;
+    # if multiple appear, the largest is the canonical refinement set).
+    n_rings = max(rings_per_key.values()) if rings_per_key else 0
+    if ostart is None or ostop is None or ostep is None or ostep == 0:
+        n_omega = 0
+    else:
+        n_omega = int(abs(ostop - ostart) / abs(ostep))
+    return n_rings, n_omega
+
+
 def _resolve_group_size(device: str, shard_gpus: str | None,
-                        group_size_arg: str) -> int:
+                        group_size_arg: str,
+                        *,
+                        params_file: str | None = None) -> int:
     """``auto`` → pick from the smallest visible-GPU memory across the shard
-    set. Heuristic from park22 measurements (fp32 + gs=4 → ~47 GB peak):
+    set, then *down*-scale for datasets denser than the calibration baseline.
+
+    Memory-tier baseline (park22 FCC, fp32, gs=4 → ~47 GB peak):
 
       ≥ 70 GB (H100, A100-80) → 8
       ≥ 32 GB (A6000, A100-40) → 4
       ≥ 16 GB (V100, A5000)    → 2
       < 16 GB                  → 1
+
+    Density factor (only down-scales, never up):
+
+      density = max(1, (n_rings / 8) × (n_omega_steps / 720))
+      group_size = max(1, baseline // density)
+
+    Where ``n_rings`` is the count of ``RingNumbers`` lines in the
+    paramstest and ``n_omega_steps`` is ``|OmegaEnd − OmegaStart| /
+    OmegaStep``. Datasets at the park22 baseline (8 rings, 720 frames) are
+    unchanged; Ti-7Al-class datasets (12 rings, 1440 frames → density 3)
+    get one fp64 group at gs=4-tier GPUs instead of OOM'ing.
 
     Falls back to 4 (the FF pipeline's previous default) if memory probing
     fails or device is non-cuda. Explicit integer passes through.
@@ -277,12 +371,21 @@ def _resolve_group_size(device: str, shard_gpus: str | None,
     except Exception:
         return 4
     if min_mem_gb >= 70:
-        return 8
-    if min_mem_gb >= 32:
-        return 4
-    if min_mem_gb >= 16:
-        return 2
-    return 1
+        baseline_gs = 8
+    elif min_mem_gb >= 32:
+        baseline_gs = 4
+    elif min_mem_gb >= 16:
+        baseline_gs = 2
+    else:
+        baseline_gs = 1
+
+    n_rings, n_omega = _count_dataset_density(params_file)
+    rings_factor = (n_rings / _BASELINE_N_RINGS) if n_rings > 0 else 1.0
+    omega_factor = (n_omega / _BASELINE_N_OMEGA) if n_omega > 0 else 1.0
+    if n_rings == 0 and n_omega == 0:
+        return baseline_gs
+    density = max(1.0, rings_factor * omega_factor)
+    return max(1, int(baseline_gs / density))
 
 
 def _cmd_run(args: argparse.Namespace) -> int:
@@ -323,13 +426,19 @@ def _cmd_run(args: argparse.Namespace) -> int:
     # Resolve auto-detect knobs.
     resolved_dtype = _resolve_dtype(args.device, args.dtype)
     resolved_shard = _resolve_shard_gpus(args.device, args.shard_gpus)
-    resolved_gs = _resolve_group_size(args.device, resolved_shard, args.group_size)
+    resolved_gs = _resolve_group_size(args.device, resolved_shard, args.group_size,
+                                      params_file=args.params)
+    resolved_cpu_shards = _resolve_cpu_shards(args.device, args.n_cpus, args.cpu_shards)
     if args.dtype == "auto":
         _logger.info("auto: dtype=%s (device=%s)", resolved_dtype, args.device)
     if args.shard_gpus == "auto" and resolved_shard:
         _logger.info("auto: shard-gpus=%s", resolved_shard)
     if args.group_size == "auto":
         _logger.info("auto: group-size=%d", resolved_gs)
+    if args.cpu_shards == "auto" and resolved_cpu_shards > 1:
+        _logger.info("auto: cpu-shards=%d (n_cpus=%d, %d threads/shard)",
+                     resolved_cpu_shards, args.n_cpus,
+                     args.n_cpus // resolved_cpu_shards)
 
     config = PipelineConfig(
         result_dir=args.result,
@@ -350,6 +459,7 @@ def _cmd_run(args: argparse.Namespace) -> int:
         refine_mode=args.mode,
         indexer_group_size=resolved_gs,
         shard_gpus=resolved_shard,
+        cpu_shards=resolved_cpu_shards,
         process_grains_mode=args.pg_mode,
         log_level=args.log_level,
         # gap #5

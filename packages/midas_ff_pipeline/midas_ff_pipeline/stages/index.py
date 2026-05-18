@@ -90,6 +90,77 @@ def _preallocate_index_outputs(out_dir: Path, n_total_seeds: int) -> None:
             os.close(fd)
 
 
+def _run_cpu_shards(ctx: StageContext, paramstest: Path, n_seeds: int,
+                    n_shards: int) -> None:
+    """Spawn N concurrent ``midas-index`` processes over disjoint seed slices.
+
+    Each shard gets ``n_cpus // n_shards`` threads via ``num_procs`` (which
+    midas-index passes to ``torch.set_num_threads``). Intra-op threading
+    scales poorly past ~16 threads on the small per-seed ops, so 6 × 16
+    beats 1 × 96 by 3-5× on real hexagonal data.
+
+    Uses the same pwrite-safety pattern as ``_run_shards`` (the GPU path):
+    preallocate IndexBest.bin + IndexBestFull.bin, then have every shard
+    run with ``MIDAS_INDEX_PREALLOCATED=1`` so none of them truncate.
+    """
+    out_dir = _resolve_output_dir(paramstest)
+    _preallocate_index_outputs(out_dir, n_seeds)
+    LOG.info("  pre-allocated %s/IndexBest.bin + IndexBestFull.bin "
+             "(%d slots, %d cpu shards × %d threads)", out_dir, n_seeds,
+             n_shards, max(1, ctx.config.n_cpus // n_shards))
+
+    threads_per_shard = max(1, ctx.config.n_cpus // n_shards)
+    procs: list[tuple[int, subprocess.Popen]] = []
+    for block_nr in range(n_shards):
+        env = {
+            **os.environ,
+            **env_for_index_refine(ctx.config),
+            "MIDAS_INDEX_PREALLOCATED": "1",
+            # Pin BLAS / OpenMP thread pools to match torch's intra-op pool;
+            # without this, MKL and OpenMP each spawn their own pool inside
+            # every shard process, leading to massive oversubscription on the
+            # box (e.g. 6 procs × 126 threads on a 96-core machine).
+            "OMP_NUM_THREADS": str(threads_per_shard),
+            "MKL_NUM_THREADS": str(threads_per_shard),
+            "OPENBLAS_NUM_THREADS": str(threads_per_shard),
+            "NUMEXPR_NUM_THREADS": str(threads_per_shard),
+        }
+        cmd = [
+            sys.executable, "-m", "midas_index",
+            str(paramstest),
+            str(block_nr),
+            str(n_shards),
+            str(n_seeds),
+            str(threads_per_shard),
+            "--device", "cpu",
+            "--dtype", ctx.config.dtype,
+            "--group-size", str(ctx.config.indexer_group_size),
+        ]
+        out_path = ctx.log_dir / f"indexing_shard{block_nr}_out.csv"
+        err_path = ctx.log_dir / f"indexing_shard{block_nr}_err.csv"
+        out_path.parent.mkdir(parents=True, exist_ok=True)
+        proc = subprocess.Popen(
+            [str(c) for c in cmd],
+            cwd=str(ctx.layer_dir),
+            env=env,
+            stdout=open(out_path, "w"),
+            stderr=open(err_path, "w"),
+        )
+        LOG.info("  cpu shard %d/%d (pid=%d)", block_nr, n_shards, proc.pid)
+        procs.append((block_nr, proc))
+
+    failures: list[str] = []
+    for block_nr, proc in procs:
+        rc = proc.wait()
+        if rc != 0:
+            failures.append(f"cpu shard {block_nr} rc={rc}")
+    if failures:
+        raise RuntimeError(
+            "indexing cpu shards failed: " + "; ".join(failures)
+            + f" — see {ctx.log_dir}/indexing_shard*_err.csv"
+        )
+
+
 def _run_shards(ctx: StageContext, paramstest: Path, n_seeds: int,
                 shard_gpus: list[int]) -> None:
     """Spawn one ``midas-index`` per GPU and wait for all to finish.
@@ -167,11 +238,18 @@ def run(ctx: StageContext) -> IndexResult:
     n_seeds = sum(1 for _ in spots_to_index.open() if _.strip())
     shard_gpus = _parse_shard_gpus(ctx.config.shard_gpus)
 
+    cpu_shards = int(getattr(ctx.config, "cpu_shards", 1) or 1)
+
     with stage_timer("indexing"):
         if shard_gpus:
             LOG.info("  multi-GPU shard: %d shards across GPUs %s",
                      len(shard_gpus), shard_gpus)
             _run_shards(ctx, paramstest, n_seeds, shard_gpus)
+        elif ctx.config.device == "cpu" and cpu_shards > 1:
+            LOG.info("  multi-CPU shard: %d concurrent midas-index procs "
+                     "(%d threads each)", cpu_shards,
+                     max(1, ctx.config.n_cpus // cpu_shards))
+            _run_cpu_shards(ctx, paramstest, n_seeds, cpu_shards)
         else:
             cmd = [
                 sys.executable, "-m", "midas_index",
