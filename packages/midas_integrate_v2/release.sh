@@ -11,6 +11,12 @@
 
 set -e
 
+# macOS: diplib (loaded transitively via midas_calibrate_v2.seed) conflicts
+# with numpy/scipy's OpenMP runtime; the duplicate-init check aborts pytest
+# during collection. Allowing duplicates is the documented workaround in
+# CLAUDE.md and matches how the test suites are run interactively.
+export KMP_DUPLICATE_LIB_OK=TRUE
+
 # --- Arg parsing ---
 if [ -z "$1" ]; then
     echo "Usage: $0 <new_version> [--publish | --dry-run]"
