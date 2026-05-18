@@ -4,7 +4,7 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "midas-nf-fitorientation"
-version = "0.3.0"
+version = "0.3.1"
 description = "Differentiable NF-HEDM orientation and calibration fitter (drop-in replacement for FitOrientationOMP, FitOrientationParameters, FitOrientationParametersMultiPoint)"
 readme = "README.md"
 license = "BSD-3-Clause"

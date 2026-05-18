@@ -75,7 +75,7 @@ MIDAS distribution. See the companion paper and the MIDAS repository
 
 ## Scope
 
-`midas-diffract` v0.1.0 is deliberately focused on the forward model and its
+`midas-diffract` v0.1.x is deliberately focused on the forward model and its
 gradient chain. The following capabilities build on this substrate and are
 released separately as they mature:
 

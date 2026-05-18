@@ -3,8 +3,13 @@
 Pure-Python/PyTorch FF-HEDM indexer. Drop-in replacement for `IndexerOMP` /
 `IndexerGPU` from MIDAS, with seamless CPU / CUDA / MPS device switching.
 
-**Status:** v0.1.0 in development. Detailed design doc lives in
-`dev/implementation_plan.md` (gitignored).
+**Status:** v0.4.x — production. Bit-identical to C `IndexerOMP` on the
+500/500 seed FF parity gate, plus the new scanning indexer that matches
+C `IndexerScanningOMP` on the 1-voxel PF parity gate. Auto dense ↔
+jagged `compare_spots` strategy picker (see
+`midas_index.compute.matching.pick_compare_strategy`) keeps GPU runs
+inside the available memory budget without OOM. Detailed design doc
+lives in `dev/implementation_plan.md` (gitignored).
 
 ## Install
 

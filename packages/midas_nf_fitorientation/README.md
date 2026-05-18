@@ -132,7 +132,7 @@ true multi-start.
 
 ## Status
 
-v0.1 is alpha. The forward path is validated against `midas-diffract`
+v0.3.x. The forward path is validated against `midas-diffract`
 (pixel-exact vs. the C simulators); the fit drivers have unit-test
 coverage at the module level. End-to-end agreement against the C
 `MicFileBinary` on a real reconstruction dataset is the next milestone.

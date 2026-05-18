@@ -3,7 +3,11 @@
 PyTorch single- and multi-grain refiner. Drop-in replacement for the C executables
 `FitPosOrStrainsOMP` / `FitPosOrStrainsGPU` in MIDAS FF-HEDM.
 
-Status: pre-alpha (under development). The C path remains the ff_MIDAS default;
+Status: 0.2.x — sparse-output pre-allocation fix (trailing-skipped seeds
+no longer truncate `OrientPosFit` / `FitBest` / `ProcessKey`) and
+vectorized pixel-residual fast path (~N_g× fewer kernel launches per LM
+iteration vs the per-grain Python loop). Park22 + Wenxi CP-Ti real-data
+validated. The C path remains the ff_MIDAS default;
 this package is opt-in via `--refine-backend python`.
 
 ## What it does

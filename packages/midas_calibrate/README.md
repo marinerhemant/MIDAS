@@ -74,8 +74,8 @@ infrastructure (`midas_peakfit.lm_solve_arrowhead`) is in place and tested.
 
 ## Status
 
-v0.1.0 — alternating engine production-ready, joint engine scaffolded.
+v0.2.x — alternating engine production-ready, joint engine scaffolded.
+For the torch-native, fully differentiable next-generation calibration
+stack see [`midas-calibrate-v2`](../midas_calibrate_v2/).
 
-See [`AutoCalibrate.md`](../../manuals/AutoCalibrate.md) for the manual and
-[`calibrate_torch_implementation_plan.md`](../../calibrate_torch_implementation_plan.md)
-for the full design and roadmap.
+See [`AutoCalibrate.md`](../../manuals/AutoCalibrate.md) for the manual.

@@ -15,7 +15,7 @@ To inspect what was installed:
 
 """
 
-__version__ = "0.3.0"
+__version__ = "0.3.1"
 
 # The sub-packages this meta-package pulls in (in publish-order).
 # Kept in sync with pyproject.toml's ``dependencies`` list.
@@ -27,7 +27,9 @@ SUBPACKAGES = (
     "midas_diffract",
     "midas_peakfit",
     "midas_integrate",
+    "midas_integrate_v2",
     "midas_calibrate",
+    "midas_calibrate_v2",
     "midas_index",
     "midas_transforms",
     "midas_process_grains",
@@ -38,6 +40,7 @@ SUBPACKAGES = (
     "midas_parsl_configs",
     "midas_ff_pipeline",
     "midas_nf_pipeline",
+    "midas_pipeline",
 )
 
 

@@ -4,7 +4,7 @@ End-to-end MIDAS HEDM orchestrator. **FF is the single-scan degeneracy of PF.** 
 
 ## Status
 
-**Alpha (0.1.0a0) — end-to-end PF and FF paths live.** The scanning indexer matches the C `IndexerScanningOMP` reference on its 1-voxel C-parity gate (seed identity, solution counts, voxel-center positions exact; orientation matrices within mrad-scale, the refiner closes the gap downstream). Cross-implementation perf optimization (~130s/voxel single-threaded today) is open work — see [project_midas_index_scanning_perf](https://github.com/marinerhemant/MIDAS/blob/master/packages/midas_pipeline/dev/perf-notes.md) tracking.
+**0.1.0 — end-to-end PF and FF paths live.** The scanning indexer matches the C `IndexerScanningOMP` reference on its 1-voxel C-parity gate (seed identity, solution counts, voxel-center positions exact; orientation matrices within mrad-scale, the refiner closes the gap downstream). Real-data validation: Wenxi CP-Ti consolidation_pf reproduces the legacy `pf_MIDAS.py` grain count (770 == 770, all common). Park22 P5c parity gate now runs in ~6.7s vs the original 790s after the scanning-indexer position-grid fix.
 
 Stages call in-process Python kernels via `midas-index` / `midas-fit-grain` / `midas-transforms` / `midas-stress`. FF mode shells out to `python -m midas_index` and `python -m midas_fit_grain` (same kernels, subprocess for the FF parity-preserving pattern). No CUDA C; GPU is torch-only.
 
@@ -33,8 +33,6 @@ When `--scan-mode` is omitted (default `auto`), the CLI sniffs the parameter fil
 The legacy `midas-ff-pipeline` console-script is preserved as an independent FF orchestrator (its own kernels, its own CLI). It is **not** deprecated by `midas-pipeline run --scan-mode ff` — both paths invoke the same `midas-index` / `midas-fit-grain` kernels under the hood, and both stay green on the FF parity gate. Pick whichever is more convenient for your workflow.
 
 ## Architecture
-
-See [`../../.claude/plans/for-pf-we-don-t-lovely-locket.md`](../../.claude/plans/for-pf-we-don-t-lovely-locket.md) for the long-form plan. Quick summary:
 
 - **One orchestrator** with a mode-dependent `STAGE_ORDER`.
 - **Shared kernel packages** (`midas-index`, `midas-fit-grain`, `midas-transforms`, etc.) extended in place; FF behavior preserved by parity gates.

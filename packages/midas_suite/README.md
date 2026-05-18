@@ -18,13 +18,14 @@ don't have to install them one at a time.
 
 ## What you get
 
-`pip install midas-suite` installs **16 sub-packages** (as of v0.1.0):
+`pip install midas-suite` installs **19 sub-packages** (as of v0.3.1):
 
 **Top-level orchestrators (the entry points most users want):**
 
 | Sub-package | Role |
 |---|---|
-| `midas-ff-pipeline` | End-to-end pure-Python FF-HEDM workflow orchestrator (1-N detectors). Drives the full FF pipeline from raw data to grains. |
+| `midas-pipeline` | Unified FF + PF orchestrator (`--scan-mode {ff,pf,auto}`). End-to-end from raw data through grain reconstruction; single source for both scan modes. |
+| `midas-ff-pipeline` | Independent FF-HEDM workflow orchestrator (1-N detectors). Co-exists with `midas-pipeline`; same kernels under the hood. |
 | `midas-nf-pipeline` | Pure-Python NF-HEDM pipeline orchestrator (single + multi-resolution, multi-layer). Drop-in for `nf_MIDAS.py` / `nf_MIDAS_Multiple_Resolutions.py`. |
 | `midas-parsl-configs` | Bundled + user-extensible Parsl configs for running MIDAS pipelines on laptops, workstations, clusters. |
 
@@ -54,7 +55,9 @@ don't have to install them one at a time.
 | `midas-hkls` | Pure-Python crystallography & HKL list generator (sginfo-equivalent) |
 | `midas-diffract` | End-to-end differentiable HEDM forward model (FF + NF + pf-HEDM) |
 | `midas-integrate` | Pure-Python radial integration (`DetectorMapper` + CSR + streaming server) |
+| `midas-integrate-v2` | Differentiable, autograd-clean integration kernels (torch); companion to v1 |
 | `midas-calibrate` | Native Python/Torch detector geometry calibration (LM-based) |
+| `midas-calibrate-v2` | Torch-native Bayesian/Laplace calibration (LM + L-BFGS); companion to v1 |
 
 You then `import midas_stress`, `import midas_diffract`, etc. directly —
 each sub-package retains its own API. `midas-suite` does not re-export
@@ -72,17 +75,21 @@ print(midas_suite.installed())
 If you don't want everything, the optional extras let you pick a workflow:
 
 ```bash
-pip install "midas-suite[ff]"      # FF-HEDM stack
-pip install "midas-suite[nf]"      # NF-HEDM stack
-pip install "midas-suite[calib]"   # calibration + integration only
+pip install "midas-suite[ff]"        # FF-HEDM stack
+pip install "midas-suite[pf]"        # PF-HEDM stack (scanning / point-focus)
+pip install "midas-suite[nf]"        # NF-HEDM stack
+pip install "midas-suite[calib]"     # v1 calibration + integration
+pip install "midas-suite[calib-v2]"  # v2 (torch differentiable) calibration + integration
 pip install "midas-suite[ff,plots]"
 ```
 
 | Extra | What it pulls |
 |---|---|
-| `ff` | `midas-ff-pipeline` (which transitively pulls hkls, peakfit, transforms, index, fit-grain, process-grains, diffract, parsl-configs) + stress, params, calibrate, integrate |
-| `nf` | `midas-nf-pipeline` (which transitively pulls hkls, stress, nf-preprocess, nf-fitorientation) + params |
-| `calib` | hkls, integrate, peakfit, calibrate |
+| `ff` | `midas-ff-pipeline` (transitively pulls hkls, peakfit, transforms, index, fit-grain, process-grains, diffract, parsl-configs) + stress, params, calibrate, integrate |
+| `pf` | `midas-pipeline[fast]` (numba) + stress, params, calibrate, integrate (scan-mode pf pulls index + fit-grain + transforms + stress transitively) |
+| `nf` | `midas-nf-pipeline` (transitively pulls hkls, stress, nf-preprocess, nf-fitorientation) + params |
+| `calib` | hkls, integrate, peakfit, calibrate (v1 C-backed stack) |
+| `calib-v2` | hkls, calibrate-v2, integrate-v2, peakfit (torch differentiable stack) |
 | `plots` | matplotlib (for sub-package plotting helpers) |
 
 ## What `pip install midas-suite` does NOT include
@@ -102,10 +109,10 @@ Be aware:
 - **GPU acceleration** is a runtime backend selected by PyTorch device
   string. CUDA/MPS just work if your `torch` install supports them; no
   separate `*-gpu` package needed.
-- **Coming in v0.2.0** — `midas-grain-odf` (per-grain ODF inversion) and
-  `midas-pf-odf` (joint pf-HEDM peak-shape inversion) are not yet on
-  PyPI. They fold in when `midas-suite` v0.2.0 ships, bringing the
-  bundled count to 18 sub-packages.
+- **In-tree-only packages** (`midas-grain-odf`, `midas-joint-ff-calibrate`,
+  `midas-pf-odf`, `midas-pink`, `midas-propagate`, `midas-uq`) are
+  intentionally not published to PyPI — they live in the monorepo for
+  ongoing research and only build / install from a local checkout.
 
 ## Cross-platform
 
@@ -134,7 +141,7 @@ See [`RELEASING.md`](RELEASING.md) for the full release flow. TL;DR:
 
 ```bash
 cd packages/midas_suite
-./release.sh 0.2.0 --publish
+./release.sh 0.3.2 --publish
 ```
 
 ## License

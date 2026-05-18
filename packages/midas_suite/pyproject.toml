@@ -4,7 +4,7 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "midas-suite"
-version = "0.3.0"
+version = "0.3.1"
 description = "Meta-package: installs the MIDAS Python pipeline (FF/NF/PF HEDM, calibration, peakfit, integration, transforms, ODF, stress)."
 readme = "README.md"
 license = { text = "BSD-3-Clause" }
@@ -31,24 +31,24 @@ dependencies = [
     # leaves
     "midas-stress>=0.7.0",
     "midas-params>=0.3.1",
-    "midas-hkls>=0.4.0",
-    "midas-diffract>=0.1.1",
+    "midas-hkls>=0.4.1",
+    "midas-diffract>=0.1.2",
     "midas-peakfit>=0.4.0",
     "midas-integrate>=0.4.0",
     "midas-integrate-v2>=0.1.0",
-    "midas-calibrate>=0.2.2",
+    "midas-calibrate>=0.2.3",
     "midas-calibrate-v2>=0.1.0",
-    "midas-index>=0.4.0",
+    "midas-index>=0.4.1",
     "midas-transforms>=0.3.0",
     "midas-process-grains>=0.1.0",
-    "midas-fit-grain>=0.2.0",
+    "midas-fit-grain>=0.2.1",
     "midas-nf-preprocess>=0.1.1",
-    "midas-nf-fitorientation>=0.3.0",
+    "midas-nf-fitorientation>=0.3.1",
     # parsl + pipeline orchestrators
     "midas-parsl-configs>=0.1.0",
-    "midas-ff-pipeline>=0.2.0",
+    "midas-ff-pipeline>=0.2.1",
     "midas-nf-pipeline>=0.1.0",
-    "midas-pipeline>=0.1.0a0",     # unified FF + PF orchestrator (alpha; PF mode end-to-end verified, P5c parity gate runs on chiltepin)
+    "midas-pipeline>=0.1.1",       # unified FF + PF orchestrator (Wenxi CP-Ti consolidation_pf and Park22 P5c parity validated)
 ]
 
 [project.optional-dependencies]
@@ -60,8 +60,8 @@ dependencies = [
 ff = [
     "midas-stress>=0.7.0",
     "midas-params>=0.3.1",
-    "midas-ff-pipeline>=0.2.0",
-    "midas-calibrate>=0.2.2",
+    "midas-ff-pipeline>=0.2.1",
+    "midas-calibrate>=0.2.3",
     "midas-integrate>=0.4.0",
 ]
 nf = [
@@ -75,21 +75,21 @@ pf = [
     # stress transitively; we list the orchestrator at the top.
     "midas-stress>=0.7.0",
     "midas-params>=0.3.1",
-    "midas-pipeline[fast]>=0.1.0a0",       # fast = numba (merge_scans / Potts ICM)
-    "midas-calibrate>=0.2.2",
+    "midas-pipeline[fast]>=0.1.1",         # fast = numba (merge_scans / Potts ICM)
+    "midas-calibrate>=0.2.3",
     "midas-integrate>=0.4.0",
 ]
 calib = [
-    "midas-hkls>=0.4.0",
+    "midas-hkls>=0.4.1",
     "midas-integrate>=0.4.0",
     "midas-peakfit>=0.4.0",
-    "midas-calibrate>=0.2.2",
+    "midas-calibrate>=0.2.3",
 ]
 calib-v2 = [
     # Torch-native differentiable calibration / integration stack.
     # Companion to ``calib`` (v1, C-backed) — both can be installed
     # side-by-side, the v2 spec ↔ v1 paramstest adapter handles handoff.
-    "midas-hkls>=0.4.0",
+    "midas-hkls>=0.4.1",
     "midas-calibrate-v2>=0.1.0",
     "midas-integrate-v2>=0.1.0",
     "midas-peakfit>=0.4.0",

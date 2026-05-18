@@ -127,7 +127,7 @@ pip install "midas-hkls[all]"                # all of the above
 - Equivalent HKLs include Friedel pairs (centric structure factor under X-ray
   Laue symmetry).
 
-## Roadmap (post v0.2.0)
+## Roadmap (post v0.4.0)
 
 - Wyckoff special-position constraints during refinement.
 - Aspherical / multipole atomic form factors.

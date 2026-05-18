@@ -5,10 +5,14 @@ End-to-end pure-Python FF-HEDM workflow. Drives all the
 notebook — takes raw detector zarr inputs through to ``Grains.csv``
 with no C binaries on the path.
 
-Status: **0.1.0** (initial public). Single-detector path is fully
+Status: **0.2.x** — dataset-density-aware GPU `group_size` resolver
+and multi-process CPU sharding (`--cpu-shards`) for the indexer stage;
+real-data shakedown on Park22 + Ti-7Al. Single-detector path is fully
 exercised; 1-N multi-detector pinwheel layout is supported via the
 existing ``midas_diffract.HEDMForwardModel(multi_mode="panel")``
-backend.
+backend. For the unified PF + FF orchestrator see
+[`midas-pipeline`](../midas_pipeline/) — `midas-ff-pipeline` and
+`midas-pipeline run --scan-mode ff` invoke the same kernels.
 
 ## What it does
 
