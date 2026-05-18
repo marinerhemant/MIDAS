@@ -131,12 +131,53 @@ def package_for_file(path: str, packages: dict[str, Path]) -> str | None:
     return None
 
 
+# Tag format from release.sh: ``<kebab-package-name>-v<X.Y.Z>`` (e.g.
+# ``midas-stress-v0.7.0``). v2 packages produce ``midas-integrate-v2-v0.1.0`` —
+# the longest matching kebab prefix wins, so the greedy ``.+`` capture in this
+# regex correctly extracts ``midas-integrate-v2`` (not ``midas-integrate``).
+_TAG_RE = re.compile(r"^(.+)-v[0-9]+(?:\.[0-9]+)*(?:[a-z][0-9]*)?$")
+
+
+def package_for_tag(tag: str, packages: dict[str, Path]) -> str | None:
+    """Parse a release tag and return the owning package directory name."""
+    m = _TAG_RE.match(tag)
+    if not m:
+        return None
+    name = m.group(1).replace("-", "_")
+    return name if name in packages else None
+
+
 def main(argv: list[str]) -> int:
     packages = discover_packages()
     all_pkgs = sorted(packages.keys())
 
     if "--all" in argv or os.environ.get("CI_TEST_ALL") == "1":
         print(json.dumps(all_pkgs))
+        return 0
+
+    if "--from-tag" in argv:
+        # Release-event mode. Identify the package from the tag name and
+        # return the transitive-dependent closure starting from it. Same
+        # affected-set semantics as the diff path, just seeded from the tag
+        # instead of from a git diff. Unknown tag → empty list (the test job
+        # is gated on a non-empty matrix so it'll be skipped).
+        idx = argv.index("--from-tag")
+        if idx + 1 >= len(argv):
+            print("--from-tag requires a tag argument", file=sys.stderr)
+            return 2
+        tag = argv[idx + 1]
+        pkg = package_for_tag(tag, packages)
+        if pkg is None:
+            print(json.dumps([]))
+            print(f"[changed_packages] tag {tag!r} does not match any package",
+                  file=sys.stderr)
+            return 0
+        rev = reverse_dep_graph(packages)
+        affected = transitive_closure({pkg}, rev)
+        print(json.dumps(sorted(affected)))
+        print(f"[changed_packages] tag {tag!r} → seed {pkg!r} → "
+              f"{len(affected)} affected (transitive closure)",
+              file=sys.stderr)
         return 0
 
     base = os.environ.get("BASE_REF") or "HEAD~1"

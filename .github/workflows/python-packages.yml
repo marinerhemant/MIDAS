@@ -41,23 +41,31 @@ jobs:
           GHA_EVENT: ${{ github.event_name }}
           PR_BASE: ${{ github.base_ref }}
           PUSH_BEFORE: ${{ github.event.before }}
+          RELEASE_TAG: ${{ github.event.release.tag_name }}
         run: |
           set -euo pipefail
-          # Pick BASE_REF based on event type. Empty / null SHA => --all.
-          if [ "$GHA_EVENT" = "pull_request" ]; then
-            BASE_REF="origin/${PR_BASE}"
-          elif [ "$GHA_EVENT" = "push" ]; then
-            BASE_REF="${PUSH_BEFORE}"
+          if [ "$GHA_EVENT" = "release" ]; then
+            # The tag identifies exactly one package. Test that package +
+            # its transitive dependents — not the full 30+ matrix, which
+            # is wasted work since nothing else in the tree changed for
+            # this release event.
+            pkgs=$(python3 .github/scripts/changed_packages.py \
+                     --from-tag "$RELEASE_TAG")
           else
-            BASE_REF=""
-          fi
-          if [ "$GHA_EVENT" = "release" ] \
-             || [ -z "${BASE_REF}" ] \
-             || [ "${BASE_REF}" = "0000000000000000000000000000000000000000" ]; then
-            pkgs=$(python3 .github/scripts/changed_packages.py --all)
-          else
-            export BASE_REF
-            pkgs=$(python3 .github/scripts/changed_packages.py)
+            if [ "$GHA_EVENT" = "pull_request" ]; then
+              BASE_REF="origin/${PR_BASE}"
+            elif [ "$GHA_EVENT" = "push" ]; then
+              BASE_REF="${PUSH_BEFORE}"
+            else
+              BASE_REF=""
+            fi
+            if [ -z "${BASE_REF}" ] \
+               || [ "${BASE_REF}" = "0000000000000000000000000000000000000000" ]; then
+              pkgs=$(python3 .github/scripts/changed_packages.py --all)
+            else
+              export BASE_REF
+              pkgs=$(python3 .github/scripts/changed_packages.py)
+            fi
           fi
           echo "Affected packages: $pkgs"
           echo "packages=$pkgs" >> "$GITHUB_OUTPUT"
