@@ -221,10 +221,112 @@ def compute_param_sigma(
     return sigma_x, dof
 
 
+def peak_param_sigma_to_lab_sigma(
+    R: np.ndarray,
+    Eta_deg: np.ndarray,
+    sigma_R_px: np.ndarray,
+    sigma_Eta_deg: np.ndarray,
+) -> tuple[np.ndarray, np.ndarray]:
+    """Convert per-peak ``(σ_R, σ_Eta)`` to per-peak ``(σ_y_pix, σ_z_pix)``.
+
+    ``compute_param_sigma`` returns Laplace σ on the peak parameters
+    (radial position ``R`` in pixel units, azimuthal angle ``Eta`` in
+    degrees, plus shape parameters). Downstream consumers (grain
+    refinement, calibration-uncertainty propagation) need σ on the
+    *detector-frame* spot position ``(y_pixel, z_pixel)``. The map is
+
+        y_pixel − y_BC = −R · cos(Eta · π/180)
+        z_pixel − z_BC = −R · sin(Eta · π/180)
+
+    so the per-coord Jacobian is
+
+        ∂y/∂R    = −cos(Eta)             ∂y/∂Eta = +R · sin(Eta) · π/180
+        ∂z/∂R    = −sin(Eta)             ∂z/∂Eta = −R · cos(Eta) · π/180
+
+    Treating ``σ_R`` and ``σ_Eta`` as independent (diagonal Laplace cov,
+    the default Cramér–Rao output of :func:`compute_param_sigma`), the
+    detector-frame standard deviations are
+
+        σ_y² = cos²(Eta) · σ_R² + (R sin(Eta) · π/180)² · σ_Eta²
+        σ_z² = sin²(Eta) · σ_R² + (R cos(Eta) · π/180)² · σ_Eta²
+
+    Parameters
+    ----------
+    R : array_like (N,)            Peak radial position in pixels.
+    Eta_deg : array_like (N,)      Peak azimuthal angle in degrees.
+    sigma_R_px : array_like (N,)   1-σ on R in pixels.
+    sigma_Eta_deg : array_like (N,)  1-σ on Eta in degrees.
+
+    Returns
+    -------
+    (sigma_y_pix, sigma_z_pix) : tuple of arrays (N,)
+        Per-peak Laplace standard deviation on the lab-frame pixel
+        coordinates.
+    """
+    R = np.asarray(R, dtype=np.float64)
+    Eta = np.asarray(Eta_deg, dtype=np.float64)
+    sR = np.asarray(sigma_R_px, dtype=np.float64)
+    sE = np.asarray(sigma_Eta_deg, dtype=np.float64)
+    if not (R.shape == Eta.shape == sR.shape == sE.shape):
+        raise ValueError(
+            f"Inputs must be 1-D arrays of the same length; got "
+            f"R={R.shape}, Eta={Eta.shape}, sR={sR.shape}, sE={sE.shape}"
+        )
+    deg2rad = np.pi / 180.0
+    c = np.cos(Eta * deg2rad)
+    s = np.sin(Eta * deg2rad)
+    var_y = (c * sR) ** 2 + (R * s * deg2rad * sE) ** 2
+    var_z = (s * sR) ** 2 + (R * c * deg2rad * sE) ** 2
+    return np.sqrt(var_y), np.sqrt(var_z)
+
+
+def export_lab_frame_sigma_file(
+    allpeaks_ps_path: "str | Path",
+    allpeaks_ps_unc_path: "str | Path",
+    out_path: "str | Path",
+    *,
+    R_col: int = 8,
+    Eta_col: int = 9,
+    sigma_R_col_in_unc: int = 2,    # BG(0) + Imax(1) + R(2)
+    sigma_Eta_col_in_unc: int = 3,  # BG(0) + Imax(1) + R(2) + Eta(3)
+) -> int:
+    """Read ``AllPeaks_PS.bin`` + ``AllPeaks_PS_unc.bin`` and write a
+    per-peak ``(σ_y_pix, σ_z_pix)`` sidecar ready for downstream consumers.
+
+    Output layout (numpy ``.npz``)::
+
+        np.load(out_path) → {
+            "spot_id":    (N,) int64,        # one-based, matches Spots.bin
+            "frame_nr":   (N,) int32,
+            "y_pixel":    (N,) float64,      # raw centroid (R, Eta) → lab pix
+            "z_pixel":    (N,) float64,
+            "sigma_y":    (N,) float64,      # Laplace centroid σ (pixels)
+            "sigma_z":    (N,) float64,
+        }
+
+    The frame omega σ is *not* produced by peak fitting (omega comes from
+    the frame index, not a fit parameter). Downstream consumers should use
+    ``ω_step / 2`` as the omega uncertainty floor or an empirical estimate
+    from per-grain refinement residuals.
+
+    Column numbers default to the layout in
+    :mod:`midas_peakfit.postfit` (29-col ``rows`` for ``AllPeaks_PS.bin``
+    and 9-col ``rows_unc`` for ``AllPeaks_PS_unc.bin``).
+    """
+    raise NotImplementedError(
+        "export_lab_frame_sigma_file: scaffold — fill in the binary readers "
+        "for AllPeaks_PS.bin / AllPeaks_PS_unc.bin per the layout in "
+        "midas_peakfit/output.py, then call peak_param_sigma_to_lab_sigma "
+        "on the (R, Eta, σ_R, σ_Eta) per-peak arrays and write the .npz."
+    )
+
+
 __all__ = [
     "compute_param_sigma",
     "compute_moment_sigma",
     "classify_peak_quality",
+    "peak_param_sigma_to_lab_sigma",
+    "export_lab_frame_sigma_file",
     "QUALITY_OK",
     "QUALITY_MARGINAL",
     "QUALITY_DEEP_POISSON",
