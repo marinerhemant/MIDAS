@@ -1,0 +1,73 @@
+[build-system]
+requires = ["setuptools>=68.0"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "midas-integrate-v2"
+version = "0.1.0"
+description = "Differentiable, autodiff-aware radial integration for area X-ray detectors. Joint refinement counterpart to midas-integrate."
+readme = "README.md"
+license = "BSD-3-Clause"
+requires-python = ">=3.9"
+authors = [
+    {name = "Hemant Sharma", email = "hsharma@anl.gov"},
+]
+keywords = [
+    "MIDAS",
+    "X-ray",
+    "diffraction",
+    "radial integration",
+    "azimuthal integration",
+    "differentiable",
+    "PyTorch",
+    "HEDM",
+    "calibration",
+]
+classifiers = [
+    "Development Status :: 3 - Alpha",
+    "Intended Audience :: Science/Research",
+    "Operating System :: OS Independent",
+    "Programming Language :: Python :: 3",
+    "Programming Language :: Python :: 3.9",
+    "Programming Language :: Python :: 3.10",
+    "Programming Language :: Python :: 3.11",
+    "Programming Language :: Python :: 3.12",
+    "Topic :: Scientific/Engineering :: Physics",
+]
+dependencies = [
+    "numpy>=1.22",
+    "torch>=2.1",
+    "midas-integrate>=0.4.0",
+    "midas-calibrate-v2>=0.1.0",
+]
+
+[project.optional-dependencies]
+dev = [
+    "pytest>=7.0",
+    "pytest-cov>=4.0",
+]
+edf = ["fabio>=0.14"]
+gui = ["streamlit>=1.32"]
+aps-dm = ["requests"]
+milk = []
+
+[project.urls]
+Homepage = "https://github.com/marinerhemant/MIDAS"
+Issues = "https://github.com/marinerhemant/MIDAS/issues"
+
+[project.scripts]
+midas-integrate-v2 = "midas_integrate_v2.cli:integrate_main"
+midas-integrate-v2-write-map = "midas_integrate_v2.cli:write_map_main"
+midas-integrate-v2-batch = "midas_integrate_v2.cli:batch_main"
+midas-integrate-v2-pdf = "midas_integrate_v2.cli:pdf_main"
+midas-bootstrap = "midas_integrate_v2.cli:bootstrap_main"
+
+[tool.setuptools.packages.find]
+where = ["."]
+include = ["midas_integrate_v2*"]
+
+[tool.pytest.ini_options]
+markers = [
+    "slow: full-pipeline tests (>5s)",
+    "gpu: tests that require CUDA",
+]
