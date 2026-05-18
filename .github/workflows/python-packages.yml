@@ -148,23 +148,26 @@ jobs:
 
   # ─── Build + publish: triggered by GitHub release only ────────────────────
   # The tag name selects which package to publish:
-  #   midas-stress-v*           → midas_stress
-  #   midas-params-v*           → midas_params
-  #   midas-peakfit-v*          → midas_peakfit
-  #   midas-integrate-v*        → midas_integrate
-  #   midas-hkls-v*             → midas_hkls
-  #   midas-calibrate-v*        → midas_calibrate
-  #   midas-diffract-v*         → midas_diffract
-  #   midas-index-v*            → midas_index
-  #   midas-transforms-v*       → midas_transforms
-  #   midas-nf-preprocess-v*    → midas_nf_preprocess
-  #   midas-process-grains-v*   → midas_process_grains
-  #   midas-fit-grain-v*        → midas_fit_grain
+  #   midas-stress-v*            → midas_stress
+  #   midas-params-v*            → midas_params
+  #   midas-peakfit-v*           → midas_peakfit
+  #   midas-integrate-v2-v*      → midas_integrate_v2    (matched BEFORE v1 — prefix collision)
+  #   midas-integrate-v*         → midas_integrate
+  #   midas-hkls-v*              → midas_hkls
+  #   midas-calibrate-v2-v*      → midas_calibrate_v2    (matched BEFORE v1 — prefix collision)
+  #   midas-calibrate-v*         → midas_calibrate
+  #   midas-diffract-v*          → midas_diffract
+  #   midas-index-v*             → midas_index
+  #   midas-transforms-v*        → midas_transforms
+  #   midas-nf-preprocess-v*     → midas_nf_preprocess
+  #   midas-process-grains-v*    → midas_process_grains
+  #   midas-fit-grain-v*         → midas_fit_grain
   #   midas-nf-fitorientation-v* → midas_nf_fitorientation
-  #   midas-nf-pipeline-v*      → midas_nf_pipeline
-  #   midas-parsl-configs-v*    → midas_parsl_configs
-  #   midas-ff-pipeline-v*      → midas_ff_pipeline
-  #   midas-suite-v*            → midas_suite (meta-package)
+  #   midas-nf-pipeline-v*       → midas_nf_pipeline
+  #   midas-parsl-configs-v*     → midas_parsl_configs
+  #   midas-ff-pipeline-v*       → midas_ff_pipeline
+  #   midas-pipeline-v*          → midas_pipeline
+  #   midas-suite-v*             → midas_suite (meta-package)
   #
   # Release tags without one of these prefixes are ignored (no-op build).
   build:
@@ -191,12 +194,22 @@ jobs:
           elif [[ "$TAG" == midas-peakfit-v* ]]; then
             echo "package=midas_peakfit" >> "$GITHUB_OUTPUT"
             echo "pypi_name=midas-peakfit" >> "$GITHUB_OUTPUT"
+          elif [[ "$TAG" == midas-integrate-v2-v* ]]; then
+            # NOTE: this branch MUST come before `midas-integrate-v*` —
+            # the v1 glob also matches `midas-integrate-v2-v0.0.0` etc.
+            echo "package=midas_integrate_v2" >> "$GITHUB_OUTPUT"
+            echo "pypi_name=midas-integrate-v2" >> "$GITHUB_OUTPUT"
           elif [[ "$TAG" == midas-integrate-v* ]]; then
             echo "package=midas_integrate" >> "$GITHUB_OUTPUT"
             echo "pypi_name=midas-integrate" >> "$GITHUB_OUTPUT"
           elif [[ "$TAG" == midas-hkls-v* ]]; then
             echo "package=midas_hkls" >> "$GITHUB_OUTPUT"
             echo "pypi_name=midas-hkls" >> "$GITHUB_OUTPUT"
+          elif [[ "$TAG" == midas-calibrate-v2-v* ]]; then
+            # NOTE: this branch MUST come before `midas-calibrate-v*` —
+            # the v1 glob also matches `midas-calibrate-v2-v0.0.0` etc.
+            echo "package=midas_calibrate_v2" >> "$GITHUB_OUTPUT"
+            echo "pypi_name=midas-calibrate-v2" >> "$GITHUB_OUTPUT"
           elif [[ "$TAG" == midas-calibrate-v* ]]; then
             echo "package=midas_calibrate" >> "$GITHUB_OUTPUT"
             echo "pypi_name=midas-calibrate" >> "$GITHUB_OUTPUT"
@@ -230,6 +243,9 @@ jobs:
           elif [[ "$TAG" == midas-ff-pipeline-v* ]]; then
             echo "package=midas_ff_pipeline" >> "$GITHUB_OUTPUT"
             echo "pypi_name=midas-ff-pipeline" >> "$GITHUB_OUTPUT"
+          elif [[ "$TAG" == midas-pipeline-v* ]]; then
+            echo "package=midas_pipeline" >> "$GITHUB_OUTPUT"
+            echo "pypi_name=midas-pipeline" >> "$GITHUB_OUTPUT"
           elif [[ "$TAG" == midas-suite-v* ]]; then
             echo "package=midas_suite" >> "$GITHUB_OUTPUT"
             echo "pypi_name=midas-suite" >> "$GITHUB_OUTPUT"

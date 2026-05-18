@@ -33,7 +33,14 @@ ROOT = Path(__file__).resolve().parents[2]
 PKG_DIR = ROOT / "packages"
 
 # Packages that are hidden from CI / PyPI per the user's directive.
-HIDDEN: set[str] = {"midas_grain_odf", "midas_pf_odf"}
+HIDDEN: set[str] = {
+    "midas_grain_odf",
+    "midas_joint_ff_calibrate",
+    "midas_pf_odf",
+    "midas_pink",
+    "midas_propagate",
+    "midas_uq",
+}
 
 # Files whose mutation invalidates the entire matrix (since they affect
 # how every package's CI runs).
