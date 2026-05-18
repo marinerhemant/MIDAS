@@ -36,7 +36,7 @@ from midas_diffract.hkls import _cartesian_B_matrix  # type: ignore
 from . import c_port
 from .config import FitConfig
 from .io_binary import (
-    EXTRA_INFO_NCOLS, MAX_NHKLS_DEFAULT,
+    EXTRA_INFO_NCOLS, FIT_BEST_NCOLS, MAX_NHKLS_DEFAULT, ORIENT_POS_FIT_NCOLS,
     GrainResult, read_extra_info,
     write_fit_best_row, write_key_row, write_orient_pos_fit_row,
     write_process_key_row,
@@ -242,6 +242,24 @@ def _write_empty_key_rows(path: str | Path, rows: list[int]) -> None:
         os.close(fd)
 
 
+def _preallocate(path: str | Path, size_bytes: int) -> None:
+    """Idempotent pre-allocation. Ensures the file is at least ``size_bytes``
+    long, extending sparsely with zeros if needed. Safe to call concurrently
+    from multiple block workers.
+
+    Without this, sparse-pwrite outputs (OrientPosFit / FitBest / ProcessKey)
+    end at the *last written row*, so any seeds skipped at the tail produce a
+    file shorter than ``n_seeds`` rows and break downstream readers that
+    derive row count from file size (e.g. midas_process_grains.read_all).
+    """
+    fd = os.open(str(path), os.O_CREAT | os.O_WRONLY, 0o600)
+    try:
+        if os.fstat(fd).st_size < size_bytes:
+            os.ftruncate(fd, size_bytes)
+    finally:
+        os.close(fd)
+
+
 def refine_block_from_disk(
     *,
     cfg: FitConfig,
@@ -263,6 +281,17 @@ def refine_block_from_disk(
     # 1. SpotsToIndex.csv → all seed IDs.
     spots_to_index = _read_spots_to_index(cwd / cfg.IDsFileName)
     n_total = len(spots_to_index)
+
+    # Pre-allocate sparse-pwrite output files so trailing skipped seeds
+    # don't truncate the file shorter than n_total rows. Idempotent across
+    # block workers. ProcessKey strides MAX_NHKLS int32s per grain (same
+    # stride midas_process_grains.io.binary.PROCESS_KEY_INTS expects).
+    _preallocate(res_dir / cfg.OrientPosFitFileName,
+                 n_total * ORIENT_POS_FIT_NCOLS * 8)
+    _preallocate(out_dir / cfg.FitBestFileName,
+                 n_total * MAX_NHKLS_DEFAULT * FIT_BEST_NCOLS * 8)
+    _preallocate(res_dir / cfg.ProcessKeyFileName,
+                 n_total * MAX_NHKLS_DEFAULT * 4)
     if num_lines is not None and num_lines != n_total:
         LOG.warning("num_lines=%d differs from SpotsToIndex (%d); using disk count",
                     num_lines, n_total)

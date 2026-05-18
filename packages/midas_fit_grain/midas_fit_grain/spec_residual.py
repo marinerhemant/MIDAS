@@ -109,6 +109,92 @@ def _build_param_overrides(
     return overrides
 
 
+def _vectorized_pixel_residual(
+    unpacked: Dict[str, torch.Tensor],
+    bundle: HEDMResidualBundle,
+) -> torch.Tensor:
+    """Fast path for ``kind == 'pixel'``: one batched forward over all grains.
+
+    Replaces the per-grain Python loop in :func:`hedm_spot_residual` with a
+    single ``functional_call`` that batches across grains, then a flat gather
+    into the (N_g, K, M) prediction tensor. ~N_g× fewer kernel launches per LM
+    iteration; eliminates the dispatch overhead that pinned the GPU at 0% util
+    on real-data 20-grain joint refinement.
+    """
+    model = bundle.model
+    overrides = _build_param_overrides(unpacked, model)
+
+    grain_eulers = unpacked[bundle.grain_euler_key]
+    grain_positions = unpacked[bundle.grain_pos_key]
+    grain_lattices = unpacked[bundle.grain_lattice_key]
+    n_grains = grain_eulers.shape[0]
+    if n_grains != len(bundle.observations):
+        raise ValueError(
+            f"grain count mismatch: unpacked has {n_grains} but bundle has "
+            f"{len(bundle.observations)} observation sets")
+
+    px = float(model.px)
+    y_BC0 = float(overrides.get("_y_BC", model._y_BC).detach()[0])
+    z_BC0 = float(overrides.get("_z_BC", model._z_BC).detach()[0])
+
+    # Concatenate per-grain index + observation arrays into (S_total,) views.
+    g_list, k_list, m_list, mask_list, y_list, z_list = [], [], [], [], [], []
+    w_list: Optional[List[torch.Tensor]] = [] if bundle.weights is not None else None
+    for g in range(n_grains):
+        obs_g = bundle.observations[g]
+        match_g = bundle.matches[g]
+        S = match_g.k_idx.shape[0]
+        if S == 0:
+            continue
+        dev = match_g.k_idx.device
+        g_list.append(torch.full((S,), g, dtype=torch.int64, device=dev))
+        k_list.append(match_g.k_idx)
+        m_list.append(match_g.m_idx)
+        mask_list.append(match_g.mask)
+        y_list.append(obs_g.y_lab)
+        z_list.append(obs_g.z_lab)
+        if w_list is not None:
+            w_list.append(bundle.weights[g])
+
+    if not g_list:
+        return torch.zeros(0, dtype=grain_eulers.dtype, device=grain_eulers.device)
+
+    g_idx = torch.cat(g_list)
+    k_idx = torch.cat(k_list)
+    m_idx = torch.cat(m_list)
+    mask = torch.cat(mask_list)
+    obs_y = torch.cat(y_list).to(dtype=grain_eulers.dtype)
+    obs_z = torch.cat(z_list).to(dtype=grain_eulers.dtype)
+    w_all = torch.cat(w_list).to(dtype=grain_eulers.dtype) if w_list else None
+
+    # Single batched forward over all grains (B=N_g, N=1).
+    eulers = grain_eulers.view(n_grains, 1, 3)
+    positions = grain_positions.view(n_grains, 1, 3)
+    lattices = grain_lattices.view(n_grains, 6)
+    spots = functional_call(
+        model, overrides,
+        args=(eulers, positions),
+        kwargs={"lattice_params": lattices},
+    )
+    yp = spots.y_pixel.squeeze(1)  # (N_g, K, M)
+    zp = spots.z_pixel.squeeze(1)
+    Ng, K, M = yp.shape
+
+    flat_idx = g_idx * (K * M) + k_idx * M + m_idx
+    pick_y = yp.reshape(-1).gather(0, flat_idx)
+    pick_z = zp.reshape(-1).gather(0, flat_idx)
+
+    obs_y_pix = y_BC0 - obs_y / px
+    obs_z_pix = z_BC0 + obs_z / px
+
+    r = torch.stack([pick_y - obs_y_pix, pick_z - obs_z_pix], dim=-1)
+    mask_f = mask.to(r.dtype).unsqueeze(-1)
+    r = r * mask_f
+    if w_all is not None:
+        r = r * w_all.view(-1, 1)
+    return r.flatten()
+
+
 def hedm_spot_residual(
     unpacked: Dict[str, torch.Tensor],
     bundle: HEDMResidualBundle,
@@ -127,6 +213,9 @@ def hedm_spot_residual(
     The model itself is *not* mutated; ``functional_call`` substitutes
     overrides at the forward call site.
     """
+    if bundle.kind == "pixel":
+        return _vectorized_pixel_residual(unpacked, bundle)
+
     model = bundle.model
     overrides = _build_param_overrides(unpacked, model)
 
