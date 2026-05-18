@@ -1,0 +1,6 @@
+# Executed-notebook artefacts produced by `jupyter nbconvert --execute`.
+# The clean source notebooks live in notebooks/*.ipynb; executed copies
+# can be 1+ MB with embedded plot data and are not source-of-truth.
+notebooks/*_executed.ipynb
+notebooks/**/.ipynb_checkpoints/
+notebooks/calib_out
