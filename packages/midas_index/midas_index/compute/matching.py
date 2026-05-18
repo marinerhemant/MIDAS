@@ -85,6 +85,87 @@ def build_ome_margins(
     return arr
 
 
+# ---------------------------------------------------------------------------
+# Auto-strategy picker — decide dense vs jagged based on predicted peak vs
+# available device memory. Lets the GPU launch sites avoid OOM on dense
+# datasets (e.g. Ti-7Al: 12 rings + crowded bins ⇒ huge (N, T, M) tensors)
+# without forcing the caller to know the dataset shape ahead of time.
+# ---------------------------------------------------------------------------
+
+# Conservative per-cell bookkeeping in the dense path. Inside compare_spots,
+# the (N, T, M) candidate gather builds roughly:
+#   - 5 int64 tensors (cand_arange_b, rows, rows_clamped, spot_rows, cand_id)
+#   - 7 bool   tensors (in_bin, rad_ok, eta_ok, radial_pass, radial_ok, ok,
+#                       scan_ok in PF mode)
+#   - 7 float  tensors (cand_ome, cand_eta, cand_rad, cand_ringrad,
+#                       ref_rad_b, diff_ome, diff_ome_masked)
+# Per-cell cost: 5*8 + 7*1 + 7*bytes_per_float
+#   fp64 → 103 bytes/cell    fp32 →  75 bytes/cell
+# Round up to leave headroom for short-lived intermediates the allocator
+# may not free in time.
+_PEAK_BYTES_PER_CELL_FP64 = 128
+_PEAK_BYTES_PER_CELL_FP32 = 96
+_JAGGED_CHUNK_MAX = 65536        # match _compare_spots_jagged default
+_JAGGED_CHUNK_MIN = 64
+
+
+def _per_cell_bytes(dtype: torch.dtype) -> int:
+    return (_PEAK_BYTES_PER_CELL_FP64 if dtype == torch.float64
+            else _PEAK_BYTES_PER_CELL_FP32)
+
+
+def pick_compare_strategy(
+    theor: torch.Tensor,
+    max_n_cap: int | None,
+    *,
+    safety: float = 0.5,
+    free_bytes: int | None = None,
+) -> tuple[str, int]:
+    """Pick ``compare_spots`` strategy + chunk_size from peak-memory prediction.
+
+    Returns ``("dense", chunk_size)`` when the predicted peak of the (N, T, M)
+    candidate-gather stack fits in ``free_bytes × safety``, else
+    ``("jagged", chunk_size)`` with a chunk_size sized so each chunk stays
+    inside the same budget.
+
+    `chunk_size` is always returned (used only in the jagged path) so the
+    caller can pass it through unconditionally.
+
+    On non-CUDA devices, or when ``free_bytes`` cannot be probed, defaults
+    to ``("dense", _JAGGED_CHUNK_MAX)`` — i.e. let the caller use the dense
+    path it would have used before this picker existed.
+    """
+    if max_n_cap is None or max_n_cap <= 0:
+        return "dense", _JAGGED_CHUNK_MAX
+    if theor.ndim < 2:
+        return "dense", _JAGGED_CHUNK_MAX
+    N = theor.shape[0]
+    T = theor.shape[1] if theor.ndim >= 2 else 1
+    if N == 0 or T == 0:
+        return "dense", _JAGGED_CHUNK_MAX
+
+    if free_bytes is None:
+        if theor.device.type != "cuda":
+            return "dense", _JAGGED_CHUNK_MAX
+        try:
+            free_bytes, _total = torch.cuda.mem_get_info(theor.device)
+        except Exception:
+            return "dense", _JAGGED_CHUNK_MAX
+
+    bytes_per_cell = _per_cell_bytes(theor.dtype)
+    budget = max(1, int(free_bytes * safety))
+    predicted_dense = N * T * max_n_cap * bytes_per_cell
+
+    if predicted_dense <= budget:
+        return "dense", _JAGGED_CHUNK_MAX
+
+    # Size the chunk so chunk_size × T × M × bytes_per_cell ≤ budget.
+    per_n_bytes = max(1, T * max_n_cap * bytes_per_cell)
+    chunk = max(_JAGGED_CHUNK_MIN, min(_JAGGED_CHUNK_MAX, budget // per_n_bytes))
+    chunk = min(chunk, N)
+    return "jagged", int(chunk)
+
+
 def compare_spots(
     theor: torch.Tensor,             # (N, T, 14) float
     valid: torch.Tensor,             # (N, T) bool

@@ -373,3 +373,78 @@ def test_compare_spots_avg_ia_zero_when_no_matches():
     )
     assert int(res.n_matches.item()) == 0
     assert res.avg_ia[0].item() == 0.0
+
+
+# ---------------------------------------------------------------------------
+# Auto-strategy picker — predicts dense-path peak vs free memory.
+# ---------------------------------------------------------------------------
+
+def test_pick_compare_strategy_small_stays_dense():
+    """A modest (N=100, T=20, M=10) shape fits in 1 GB → stay dense."""
+    from midas_index.compute.matching import pick_compare_strategy
+    theor = torch.zeros((100, 20, 14), dtype=torch.float64)
+    strategy, chunk_size = pick_compare_strategy(
+        theor, max_n_cap=10, free_bytes=1024**3,  # 1 GB
+    )
+    assert strategy == "dense"
+
+
+def test_pick_compare_strategy_dense_overflow_chunks():
+    """A huge (N, T, M) explicitly oversizes the budget → jagged with a
+    chunk_size that bounds chunk_peak inside the budget."""
+    from midas_index.compute.matching import (
+        pick_compare_strategy, _per_cell_bytes, _JAGGED_CHUNK_MAX,
+    )
+    N, T, M = 200_000, 200, 50
+    theor = torch.zeros((N, T, 14), dtype=torch.float64)
+    free = 8 * 1024**3   # 8 GB
+    strategy, chunk_size = pick_compare_strategy(
+        theor, max_n_cap=M, free_bytes=free, safety=0.5,
+    )
+    assert strategy == "jagged"
+    budget = int(free * 0.5)
+    per_n_bytes = T * M * _per_cell_bytes(torch.float64)
+    # chunk_size × per_n_bytes must fit the budget.
+    assert chunk_size * per_n_bytes <= budget
+    # And must not exceed the hard cap or actual N.
+    assert chunk_size <= _JAGGED_CHUNK_MAX
+    assert chunk_size <= N
+    assert chunk_size >= 64  # the floor
+
+
+def test_pick_compare_strategy_no_max_n_cap_defaults_dense():
+    """Without max_n_cap (or 0) the picker can't predict — stay dense."""
+    from midas_index.compute.matching import pick_compare_strategy
+    theor = torch.zeros((10, 10, 14), dtype=torch.float64)
+    assert pick_compare_strategy(theor, max_n_cap=None, free_bytes=1)[0] == "dense"
+    assert pick_compare_strategy(theor, max_n_cap=0, free_bytes=1)[0] == "dense"
+
+
+def test_pick_compare_strategy_cpu_device_defaults_dense():
+    """No mem_get_info on CPU → return dense (caller had to be OK with that
+    before the picker existed)."""
+    from midas_index.compute.matching import pick_compare_strategy
+    theor = torch.zeros((10, 10, 14), dtype=torch.float64,
+                        device=torch.device("cpu"))
+    # free_bytes=None and CPU device → dense path.
+    assert pick_compare_strategy(theor, max_n_cap=10)[0] == "dense"
+
+
+def test_pick_compare_strategy_fp32_uses_smaller_per_cell():
+    """fp32 packs more cells into the same memory than fp64."""
+    from midas_index.compute.matching import (
+        pick_compare_strategy, _PEAK_BYTES_PER_CELL_FP32,
+        _PEAK_BYTES_PER_CELL_FP64,
+    )
+    assert _PEAK_BYTES_PER_CELL_FP32 < _PEAK_BYTES_PER_CELL_FP64
+    # A shape that just barely overflows fp32 will overflow fp64 even more.
+    N, T, M = 5_000, 200, 50
+    free = 1 * 1024**3
+    theor64 = torch.zeros((N, T, M), dtype=torch.float64)
+    theor32 = torch.zeros((N, T, M), dtype=torch.float32)
+    s32, cs32 = pick_compare_strategy(theor32, max_n_cap=M,
+                                       free_bytes=free, safety=0.5)
+    s64, cs64 = pick_compare_strategy(theor64, max_n_cap=M,
+                                       free_bytes=free, safety=0.5)
+    if s32 == "jagged" and s64 == "jagged":
+        assert cs32 >= cs64   # fp32 gets a larger chunk for the same memory

@@ -17,6 +17,7 @@ Mirrors `FF_HEDM/src/IndexerOMP.c::main` flow:
 
 from __future__ import annotations
 
+import logging
 import math
 from pathlib import Path
 from typing import TYPE_CHECKING
@@ -41,6 +42,28 @@ if TYPE_CHECKING:
 
 DEG2RAD = math.pi / 180.0
 RAD2DEG = 180.0 / math.pi
+
+_LOG = logging.getLogger(__name__)
+
+# Warn at most once per (chunk_size bucket) per process so a chunked dataset
+# doesn't spam the log on every group call.
+_jagged_warned: set[int] = set()
+
+
+def _log_jagged_fallback(theor: torch.Tensor, max_n_cap: int,
+                          chunk_size: int) -> None:
+    """One-time INFO when the auto picker switches to the chunked path."""
+    if chunk_size in _jagged_warned:
+        return
+    _jagged_warned.add(chunk_size)
+    N = int(theor.shape[0]) if theor.ndim >= 1 else 0
+    T = int(theor.shape[1]) if theor.ndim >= 2 else 0
+    _LOG.info(
+        "compare_spots: auto strategy=jagged chunk_size=%d "
+        "(N=%d, T=%d, max_n_cap=%d, dtype=%s) — dense path would exceed "
+        "memory budget",
+        chunk_size, N, T, max_n_cap, str(theor.dtype),
+    )
 
 
 # ---------------------------------------------------------------------------
@@ -845,6 +868,11 @@ def _compute_group_gpu(
     # Forward simulation across all tuples.
     theor, valid = ctx.adapter.simulate(R_all, pos_all, lattice=None)
 
+    # Predict dense-path peak vs free device memory and chunk if needed.
+    strategy, chunk_size = matching.pick_compare_strategy(theor, ctx.bin_max_count)
+    if strategy == "jagged":
+        _log_jagged_fallback(theor, ctx.bin_max_count, chunk_size)
+
     # Match. With `max_n_cap`, this returns async — no internal `.item()` sync.
     result = matching.compare_spots(
         theor=theor, valid=valid, obs=ctx.obs,
@@ -857,6 +885,7 @@ def _compute_group_gpu(
         rings_to_reject=ctx.rings_to_reject,
         distance=p.Distance, pos=pos_all,
         max_n_cap=ctx.bin_max_count,
+        strategy=strategy, chunk_size=chunk_size,
         **ctx.scan_kwargs(theor.shape[0]),
     )
 
@@ -986,6 +1015,12 @@ def _compute_group_gpu_launch(ctx: IndexerContext, setup: dict):
     ref_rad_all = setup["ref_rad_cpu"].to(device=ctx.device, non_blocking=True)
 
     theor, valid = ctx.adapter.simulate(R_all, pos_all, lattice=None)
+
+    # Predict dense-path peak vs free device memory and chunk if needed.
+    strategy, chunk_size = matching.pick_compare_strategy(theor, ctx.bin_max_count)
+    if strategy == "jagged":
+        _log_jagged_fallback(theor, ctx.bin_max_count, chunk_size)
+
     result = matching.compare_spots(
         theor=theor, valid=valid, obs=ctx.obs,
         bin_data=ctx.bin_data, bin_ndata=ctx.bin_ndata,
@@ -997,6 +1032,7 @@ def _compute_group_gpu_launch(ctx: IndexerContext, setup: dict):
         rings_to_reject=ctx.rings_to_reject,
         distance=p.Distance, pos=pos_all,
         max_n_cap=ctx.bin_max_count,
+        strategy=strategy, chunk_size=chunk_size,
         **ctx.scan_kwargs(theor.shape[0]),
     )
     keys = reduce_.pack_score(result.frac_matches, result.avg_ia)
