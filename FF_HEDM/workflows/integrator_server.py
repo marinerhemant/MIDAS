@@ -307,11 +307,21 @@ def file_reader_worker(file_list, data_queue):
     data_queue.put(None)
 
 
-def process_tif_files_pipelined(sock, folder, frame_mapping, mapping_file, save_interval, compress=False, extension='tif'):
+def process_tif_files_pipelined(sock, folder, frame_mapping, mapping_file, save_interval, compress=False, extension='tif', files=None):
     """
     Main processing logic using the producer-consumer pipeline.
+    If ``files`` is provided, use that list directly; otherwise glob from ``folder``.
     """
-    files = sorted(glob.glob(os.path.join(folder, '*.' + extension)))
+    if files is None:
+        if extension.lower() in ('tif', 'tiff'):
+            # Case-insensitive: some detectors save .TIF (uppercase) and
+            # the user may pass --extension tif while files end in .tiff
+            # (4-char). Filter the directory scan rather than assuming
+            # the glob pattern matches every casing.
+            files = sorted(f for f in glob.glob(os.path.join(folder, '*.*'))
+                             if f.lower().endswith(('.tif', '.tiff')))
+        else:
+            files = sorted(glob.glob(os.path.join(folder, '*.' + extension)))
     if not files:
         print("No " + extension + " files found.")
         return
@@ -563,6 +573,12 @@ def save_mapping_at_exit(frame_mapping, mapping_file):
         save_frame_mapping(frame_mapping, mapping_file)
 
 
+def load_file_list(path):
+    """Load file paths from a text file (one per line). Blank lines skipped."""
+    with open(path, 'r') as f:
+        return [line.strip() for line in f if line.strip()]
+
+
 def main():
     # Set up argument parser
     parser = argparse.ArgumentParser(description='Image data processor and streamer')
@@ -594,12 +610,16 @@ def main():
                         help='Save mapping file every N frames (default: 500)')
     parser.add_argument('--compress', action='store_true',
                         help='Enable hybrid compression (send as uint16 + overflows)')
-    
+    parser.add_argument('--file-list', type=str,
+                        help='File containing list of files to process, one per line '
+                             '(alternative to --folder; enables reprocessing subsets, '
+                             'cross-folder sources, and scripted pipeline glue)')
+
     args = parser.parse_args()
-    
+
     # Validate arguments
-    if args.stream == 0 and not args.folder:
-        parser.error("--folder is required when stream=0")
+    if args.stream == 0 and not args.folder and not args.file_list:
+        parser.error("--folder or --file-list is required when stream=0")
     
     # For .geX files, frame size is required
     if args.stream == 0 and args.extension.startswith('ge') and not args.frame_size:
@@ -666,39 +686,47 @@ def main():
                 
         else:
             # Stream mode: Files
-            print(f"Processing files with extension .{args.extension} from {args.folder}")
-            
+            explicit_files = load_file_list(args.file_list) if args.file_list else None
+            source_desc = args.file_list if args.file_list else args.folder
+            print(f"Processing files with extension .{args.extension} from {source_desc}")
+
             # Handle different file types
             if args.extension.lower() == 'tif' or args.extension.lower() == 'tiff':
                 # Process TIFF files
-                process_tif_files_pipelined(sock, args.folder, frame_mapping, args.mapping_file, args.save_interval, compress=args.compress, extension=args.extension)
-                    
+                process_tif_files_pipelined(sock, args.folder, frame_mapping, args.mapping_file, args.save_interval, compress=args.compress, extension=args.extension, files=explicit_files)
+
             elif args.extension.lower().startswith('ge') and args.extension[2:].isdigit():
                 # Process .geX binary files
-                files = glob.glob(os.path.join(args.folder, f'*.{args.extension}'))
+                if explicit_files:
+                    files = explicit_files
+                else:
+                    files = glob.glob(os.path.join(args.folder, f'*.{args.extension}'))
                 print(f"Found {len(files)} .{args.extension} files")
-                
+
                 for file in files:
                     dataset_num, frame_index = process_binary_ge(file, sock, dataset_num, frame_mapping, frame_index, frame_size, compress=args.compress)
                     total_frames = frame_index
-                    
+
                     # Save mapping at regular intervals
                     if total_frames % args.save_interval == 0:
                         save_frame_mapping(frame_mapping, args.mapping_file)
-                    
+
             elif args.extension.lower() == 'h5':
                 # Process H5 files
-                files = glob.glob(os.path.join(args.folder, f'*.{args.extension}'))
+                if explicit_files:
+                    files = explicit_files
+                else:
+                    files = glob.glob(os.path.join(args.folder, f'*.{args.extension}'))
                 print(f"Found {len(files)} .{args.extension} files")
-                
+
                 for file in files:
                     dataset_num, frame_index = process_h5(file, sock, dataset_num, frame_mapping, frame_index, args.h5_location, compress=args.compress)
                     total_frames = frame_index
-                    
+
                     # Save mapping at regular intervals
                     if total_frames % args.save_interval == 0:
                         save_frame_mapping(frame_mapping, args.mapping_file)
-                    
+
             else:
                 print(f"Unsupported file extension: {args.extension}")
             
