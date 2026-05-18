@@ -113,6 +113,10 @@ from .elastic_inverse import (
     build_stage_matrix_voigt,
     build_stage_matrix_reuss,
 )
+from .elastic_inverse_torch import (
+    fit_joint_d0_stiffness,
+    loo_influence_stages,
+)
 
 # --- Plasticity / slip-system analysis ---
 from .plasticity import (
