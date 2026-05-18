@@ -1,10 +1,17 @@
-name: CI Build & Test
+name: CI Build & Test (legacy C, manual only)
 
+# Disabled from auto-triggering. The C-binary benchmarks under tests/
+# (test_ff_hedm.py, test_nf_hedm.py, test_calibration_integration.py,
+# test_phase_id.py, test_tomo.py) have been superseded by the per-package
+# Python test suites in packages/midas_*/tests/ — those run on every push
+# via python-packages.yml and exercise the same workflows on the
+# differentiable / pure-Python rewrite.
+#
+# Kept available via "Run workflow" in the GitHub Actions UI for one-off
+# verification that the C build still compiles + the legacy benchmarks
+# still pass on a fresh Ubuntu image.
 on:
-  push:
-    branches: [ master ]
-  pull_request:
-    branches: [ master ]
+  workflow_dispatch:
 
 jobs:
   build-and-test-linux:
