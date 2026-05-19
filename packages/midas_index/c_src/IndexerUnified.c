@@ -88,6 +88,8 @@ static inline void check(int test, const char *message, ...) {
 #define MAX_N_HKLS 5000
 #define MAX_N_OMEGARANGES 2000
 #define MAX_MIC_ROWS 50000000
+#define MAX_N_DETS 32            /* Phase 9: pinwheel/hydra panel cap */
+#define MAX_ETA_ARCS_PER_DET 256 /* up to N arcs per panel (eta-coverage list) */
 #define N_COL_THEORSPOTS 16   /* PF width: includes sinOme/cosOme cols 14,15 */
 #define N_COL_OBSSPOTS 10     /* PF width: includes ScanNr col 9 */
 #define N_COL_GRAINSPOTS 17
@@ -157,6 +159,34 @@ struct TParams {
   RealType SoftAttrFwhm;
   RealType SoftAttrFalloff;
   RealType SoftAttrTruncate;
+  /* Multi-detector / pinwheel scaffolding (Phase 9). For single-detector
+   * runs nDetParams stays 0 and the indexer falls back to global geometry
+   * (RingRadii[], Distance) — preserves PF / FF parity bit-identically.
+   *
+   * Algorithmic per-panel forward simulation + per-panel η-coverage
+   * gating in CalcDiffrSpots / CompareSpots is NOT YET implemented:
+   * see "Phase 9 TODO" markers in those functions for the plug-in
+   * points. Parsing + Spots_det.bin loading are wired so a multi-det
+   * paramstest no longer warn-skips, and the data structure is ready
+   * for the algorithm port when a multi-det fixture lands. */
+  int nDetParams;                                /* # active panels */
+  int DetIDs[MAX_N_DETS];                        /* per-slot det_id */
+  RealType DetLsd[MAX_N_DETS];
+  RealType DetYbc[MAX_N_DETS];
+  RealType DetZbc[MAX_N_DETS];
+  RealType DetTx[MAX_N_DETS];
+  RealType DetTy[MAX_N_DETS];
+  RealType DetTz[MAX_N_DETS];
+  RealType DetDistortion[MAX_N_DETS][11];
+  /* Per-(panel, ring) radius. 0 ⇒ unmapped (use global RingRadii). */
+  RealType RingRadiiPerDet[MAX_N_DETS][MAX_N_RINGS];
+  int hasRingRadiiPerDet;
+  /* η-coverage arcs per panel: list of (ring_nr, eta_lo_deg, eta_hi_deg). */
+  int EtaArcRing[MAX_N_DETS][MAX_ETA_ARCS_PER_DET];
+  RealType EtaArcLo[MAX_N_DETS][MAX_ETA_ARCS_PER_DET];
+  RealType EtaArcHi[MAX_N_DETS][MAX_ETA_ARCS_PER_DET];
+  int nEtaArcs[MAX_N_DETS];
+  int hasEtaCoverage;
 };
 
 /* ----------------------------------------------------------------------------
@@ -164,6 +194,11 @@ struct TParams {
  * --------------------------------------------------------------------------*/
 RealType *ObsSpotsLab;
 size_t n_spots = 0;             /* PF type (size_t) — superset */
+/* Phase 9: per-spot DetID side-car (Spots_det.bin). NULL ⇒ single-det run
+ * or file absent (treated as all det_id=1, matching midas-transforms's
+ * default emit). When non-NULL, length == n_spots, dtype int32. */
+int32_t *SpotsDetID = NULL;
+size_t SpotsDetID_size = 0;
 
 /* hkls in PF format (10 cols: H K L Rnr Ds tht RRd sin(tht) v vSq). */
 double hkls[MAX_N_HKLS][10];
@@ -679,8 +714,25 @@ static void CalcIA(RealType **GrainMatches, int ngrains,
  * Uses PF body (sin/cosOme written into cols 14, 15) plus FF's RingsToReject
  * fraction-tally semantics (plan ruling #3, ruling #4).
  *
- * TODO (Phase 9 — multi-detector): iterate panels and gate per-panel
- * OmegaRange × BoxSize. Currently single-panel only.
+ * TODO (Phase 9b — multi-detector algorithm port): when
+ * `Params.nDetParams > 0`, loop over panels [0, nDetParams):
+ *   1. Use `Params.DetLsd[k]` instead of `distance`.
+ *   2. Use `Params.RingRadiiPerDet[k]` instead of `RingRadii` (with
+ *      fallback to the global table for unmapped rings — see
+ *      ParamsTest.panel_ring_radius() in the Python ref).
+ *   3. For each `KeepSpot`, also gate by the panel's η-coverage arcs
+ *      (Params.EtaArcRing[k] / EtaArcLo[k] / EtaArcHi[k]).
+ *   4. Tag the emitted spot with its panel id (e.g. spots[*][16] —
+ *      requires N_COL_THEORSPOTS = 17 and the matching reads in
+ *      CompareSpots / DoIndexing_*).
+ * Single-panel path stays the default (this function as-is) when
+ * nDetParams == 0 — preserves current parity bit-for-bit.
+ *
+ * Scaffolding (Phase 9a, this commit): params are PARSED and stored in
+ * Params.DetIDs[] / DetLsd[] / RingRadiiPerDet[] / EtaArc*[] but NOT
+ * consumed by the algorithm. A multi-det paramstest runs as single-det
+ * (uses global geometry); the warning suppression is the only
+ * observable change.
  * --------------------------------------------------------------------------*/
 static void CalcDiffrSpots(RealType OrientMatrix[3][3], RealType LatticeConstant,
                            RealType Wavelength, RealType distance,
@@ -773,6 +825,15 @@ static void CalcDiffrSpots(RealType OrientMatrix[3][3], RealType LatticeConstant
 
 /* ----------------------------------------------------------------------------
  * CompareSpots — UNIFIED.
+ *
+ * TODO (Phase 9b — multi-detector algorithm port): when
+ * `Params->nDetParams > 0` and the global `SpotsDetID` array is loaded,
+ * gate each obs candidate row by panel: skip iff
+ * `SpotsDetID[spotRow] != TheorSpots[sp][16]` (the theor spot's emitting
+ * panel, tagged in CalcDiffrSpots). Per-panel MarginRad also lookup
+ * Params->RingRadiiPerDet[k][RingNr] instead of the global RefRad.
+ * Single-panel path stays the default — current behavior preserved
+ * when nDetParams == 0.
  *
  * Plan §2.3 verbatim body. doRefRadFilter gated on nScans==1 (ruling #14).
  * doScanFilter gated on nScans>1. omemargin computed inline per ruling #15
@@ -1919,6 +1980,17 @@ static int ReadParams(char FileName[], struct TParams *Params) {
   Params->SoftAttrFwhm = 0.0;
   Params->SoftAttrFalloff = 0.0;
   Params->SoftAttrTruncate = 0.0;
+  /* Phase 9: multi-detector scaffolding init. */
+  Params->nDetParams = 0;
+  Params->hasRingRadiiPerDet = 0;
+  Params->hasEtaCoverage = 0;
+  for (int k = 0; k < MAX_N_DETS; k++) {
+    Params->DetIDs[k] = -1;
+    Params->nEtaArcs[k] = 0;
+    for (int r = 0; r < MAX_N_RINGS; r++) {
+      Params->RingRadiiPerDet[k][r] = 0.0;
+    }
+  }
   Params->MarginEta = 0;
   Params->MarginRad = 0;
   sprintf(Params->MicFN, "0");
@@ -2229,6 +2301,84 @@ static int ReadParams(char FileName[], struct TParams *Params) {
       sscanf(line, "%s %s", dummy, Params->OutputFolder);
       continue;
     }
+    /* ---- Phase 9: multi-detector params ---- */
+    str = "DetParams ";
+    if (strncmp(line, str, strlen(str)) == 0) {
+      int det_id = -1;
+      double lsd = 0, y_bc = 0, z_bc = 0, tx = 0, ty = 0, tz = 0;
+      double pdist[11] = {0};
+      int got = sscanf(
+          line,
+          "%s %d %lf %lf %lf %lf %lf %lf %lf %lf %lf %lf %lf %lf %lf %lf %lf %lf",
+          dummy, &det_id, &lsd, &y_bc, &z_bc, &tx, &ty, &tz,
+          &pdist[0], &pdist[1], &pdist[2], &pdist[3], &pdist[4],
+          &pdist[5], &pdist[6], &pdist[7], &pdist[8], &pdist[9], &pdist[10]);
+      if (got >= 8 && Params->nDetParams < MAX_N_DETS) {
+        int slot = Params->nDetParams;
+        Params->DetIDs[slot] = det_id;
+        Params->DetLsd[slot] = lsd;
+        Params->DetYbc[slot] = y_bc;
+        Params->DetZbc[slot] = z_bc;
+        Params->DetTx[slot] = tx;
+        Params->DetTy[slot] = ty;
+        Params->DetTz[slot] = tz;
+        for (int k = 0; k < 11; k++) Params->DetDistortion[slot][k] = pdist[k];
+        Params->nDetParams++;
+      } else if (Params->nDetParams >= MAX_N_DETS) {
+        fprintf(stderr,
+                "Warning: DetParams row dropped — MAX_N_DETS=%d exceeded.\n",
+                MAX_N_DETS);
+      }
+      continue;
+    }
+    if (strncmp(line, "RingRadii_Det", strlen("RingRadii_Det")) == 0) {
+      int det_id = -1, ring_nr = -1;
+      double radius = 0;
+      if (sscanf(line, "RingRadii_Det%d %d %lf", &det_id, &ring_nr, &radius) == 3
+          && ring_nr >= 0 && ring_nr < MAX_N_RINGS) {
+        int slot = -1;
+        for (int k = 0; k < Params->nDetParams; k++) {
+          if (Params->DetIDs[k] == det_id) { slot = k; break; }
+        }
+        /* Allow RingRadii_Det without a preceding DetParams row by
+         * auto-registering an empty panel slot. */
+        if (slot == -1 && Params->nDetParams < MAX_N_DETS) {
+          slot = Params->nDetParams;
+          Params->DetIDs[slot] = det_id;
+          Params->nDetParams++;
+        }
+        if (slot >= 0) {
+          Params->RingRadiiPerDet[slot][ring_nr] = radius;
+          Params->hasRingRadiiPerDet = 1;
+        }
+      }
+      continue;
+    }
+    if (strncmp(line, "EtaCoverage_Det", strlen("EtaCoverage_Det")) == 0) {
+      int det_id = -1, ring_nr = -1;
+      double eta_lo = 0, eta_hi = 0;
+      if (sscanf(line, "EtaCoverage_Det%d %d %lf %lf",
+                 &det_id, &ring_nr, &eta_lo, &eta_hi) == 4) {
+        int slot = -1;
+        for (int k = 0; k < Params->nDetParams; k++) {
+          if (Params->DetIDs[k] == det_id) { slot = k; break; }
+        }
+        if (slot == -1 && Params->nDetParams < MAX_N_DETS) {
+          slot = Params->nDetParams;
+          Params->DetIDs[slot] = det_id;
+          Params->nDetParams++;
+        }
+        if (slot >= 0 && Params->nEtaArcs[slot] < MAX_ETA_ARCS_PER_DET) {
+          int i = Params->nEtaArcs[slot];
+          Params->EtaArcRing[slot][i] = ring_nr;
+          Params->EtaArcLo[slot][i] = eta_lo;
+          Params->EtaArcHi[slot][i] = eta_hi;
+          Params->nEtaArcs[slot]++;
+          Params->hasEtaCoverage = 1;
+        }
+      }
+      continue;
+    }
     /* Empty / unknown line — skip (BigDetSize dropped per plan ruling #5). */
     str = "";
     cmpres = strncmp(line, str, strlen(str));
@@ -2300,6 +2450,41 @@ static int ReadSpots(char *cwd) {
         strerror(errno));
   size_t nrsps = size / sizeof(double) / 10;
   return (int)nrsps;
+}
+
+/* ----------------------------------------------------------------------------
+ * Phase 9 scaffolding: load Spots_det.bin if present. Sets the global
+ * SpotsDetID array to a malloc'd int32 buffer; caller is responsible
+ * for free() at shutdown (or just let the process exit reclaim it).
+ * Returns 1 if loaded, 0 if file absent. Length must match n_spots.
+ * --------------------------------------------------------------------------*/
+static int ReadSpotsDet(char *cwd, size_t expected_n_spots) {
+  char filename[2048];
+  snprintf(filename, sizeof(filename), "%s/Spots_det.bin", cwd);
+  if (access(filename, F_OK) != 0) {
+    return 0;  /* single-detector fallback */
+  }
+  struct stat s;
+  int fd = open(filename, O_RDONLY);
+  if (fd < 0) return 0;
+  if (fstat(fd, &s) < 0) { close(fd); return 0; }
+  size_t n_entries = (size_t)s.st_size / sizeof(int32_t);
+  if (n_entries != expected_n_spots) {
+    fprintf(stderr,
+            "Warning: Spots_det.bin has %zu entries but n_spots=%zu; "
+            "ignoring multi-detector side-car.\n",
+            n_entries, expected_n_spots);
+    close(fd);
+    return 0;
+  }
+  SpotsDetID = (int32_t *)malloc(s.st_size);
+  if (!SpotsDetID) { close(fd); return 0; }
+  ssize_t r = read(fd, SpotsDetID, s.st_size);
+  close(fd);
+  if (r != s.st_size) { free(SpotsDetID); SpotsDetID = NULL; return 0; }
+  SpotsDetID_size = n_entries;
+  printf("Spots_det.bin loaded: %zu entries.\n", n_entries);
+  return 1;
 }
 
 /* ----------------------------------------------------------------------------
@@ -2460,6 +2645,14 @@ int main(int argc, char *argv[]) {
   n_spots = (size_t)ReadSpots(cwdstr);
   printf("nSpots = %d\n", (int)n_spots);
   ReadBins(cwdstr);
+  /* Phase 9: load per-spot DetID side-car if multi-detector. Single-det
+   * runs (Params.nDetParams == 0) skip the load — SpotsDetID stays NULL
+   * and code paths treat every spot as belonging to a single global
+   * panel (current behavior). */
+  if (Params.nDetParams > 0) {
+    ReadSpotsDet(cwdstr, n_spots);
+    printf("Multi-detector mode: %d panels parsed.\n", Params.nDetParams);
+  }
 
   int HighestRingNo = 0;
   for (int i = 0; i < MAX_N_RINGS; i++)
