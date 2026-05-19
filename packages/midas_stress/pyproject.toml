@@ -4,7 +4,7 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "midas-stress"
-version = "0.7.0"
+version = "0.8.0"
 description = "Crystallographic stress-strain analysis with Voigt-Mandel notation and mechanical equilibrium constraints; torch-native API across orientation/frames/tensor/equilibrium/materials/plasticity/elastic_inverse"
 readme = "README.md"
 license = "BSD-3-Clause"

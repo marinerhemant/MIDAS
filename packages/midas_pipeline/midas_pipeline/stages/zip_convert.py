@@ -1,10 +1,10 @@
 """Stage: zip_convert.
 
 Build (or verify) one MIDAS-format ``.MIDAS.zip`` per scan position
-(PF) or for the single layer (FF). Wraps ``utils/ffGenerateZipRefactor.py``,
-which is already pure Python — we shell out to it to keep its
-self-contained CLI surface and rich raw-frame handling (TIFF / CBF /
-GE / HDF5) rather than re-engineering a new entry.
+(PF) or for the single layer (FF). Delegates to the pip-installed
+``midas_zipper.ff_zip`` module (``python -m midas_zipper.ff_zip``) — no
+MIDAS source tree required. We shell out to keep its self-contained CLI
+surface and rich raw-frame handling (TIFF / CBF / GE / HDF5).
 
 Resume-friendly: if every required ``.MIDAS.zip`` already exists, the
 stage is a no-op. PF datasets like Wenxi that ship pre-built zips
@@ -13,7 +13,6 @@ fall through this stage in ~50 ms (just stat + log).
 
 from __future__ import annotations
 
-import os
 import subprocess
 import sys
 import time
@@ -24,8 +23,6 @@ from .._logging import LOG
 from ..results import StageResult
 from ._base import StageContext
 from ._stub import stub_run
-
-_FF_GEN_ZIP_REL = "utils/ffGenerateZipRefactor.py"
 
 
 def run(ctx: StageContext) -> StageResult:
@@ -56,7 +53,6 @@ def _run_pf(ctx: StageContext, started: float) -> StageResult:
     n_present = 0
     n_built = 0
     n_failed = 0
-    midas_root = _midas_root()
 
     for s in scans:
         if s.zip_path.exists():
@@ -70,7 +66,6 @@ def _run_pf(ctx: StageContext, started: float) -> StageResult:
             continue
         s.scan_dir.mkdir(parents=True, exist_ok=True)
         if not _generate_zip(
-            midas_root=midas_root,
             param_file=cfg.params_file,
             scan_dir=s.scan_dir,
             scan_within_layer=s.scan_nr,
@@ -114,9 +109,7 @@ def _run_ff(ctx: StageContext, started: float) -> StageResult:
         LOG.info("zip_convert(FF): no zip in %s and --convert-files off; skip.",
                  layer_dir)
         return stub_run("zip_convert", ctx)
-    midas_root = _midas_root()
     if not _generate_zip(
-        midas_root=midas_root,
         param_file=cfg.params_file,
         scan_dir=layer_dir,
         scan_within_layer=ctx.layer_nr,
@@ -135,19 +128,8 @@ def _run_ff(ctx: StageContext, started: float) -> StageResult:
 # ---------------------------------------------------------------------------
 
 
-def _midas_root() -> Path:
-    """Best-effort MIDAS install root (env var > package parent chain)."""
-    if env := os.environ.get("MIDAS_INSTALL_DIR"):
-        return Path(env)
-    # midas_pipeline lives at <root>/packages/midas_pipeline/midas_pipeline/
-    # so root = parents[3].
-    import midas_pipeline
-    return Path(midas_pipeline.__file__).resolve().parents[3]
-
-
 def _generate_zip(
     *,
-    midas_root: Path,
     param_file: str,
     scan_dir: Path,
     scan_within_layer: int,
@@ -155,18 +137,15 @@ def _generate_zip(
     preproc_thresh: Optional[int] = None,
     num_files_per_scan: int = 1,
 ) -> bool:
-    """Invoke ``utils/ffGenerateZipRefactor.py`` for one scan/layer.
+    """Generate one scan/layer ``*.MIDAS.zip`` via the ``midas_zipper`` package.
 
-    The script's CLI takes ``-LayerNr``, which inside pf_MIDAS.py is
-    overloaded as the scan-within-layer index (1..n_scans). We mirror
-    that mapping here.
+    The ``-LayerNr`` CLI arg, which inside pf_MIDAS.py is overloaded as the
+    scan-within-layer index (1..n_scans), is mirrored here. Runs the
+    pip-installed ``midas_zipper.ff_zip`` module — no MIDAS source tree
+    needed (formerly shelled out to ``utils/ffGenerateZipRefactor.py``).
     """
-    script = midas_root / _FF_GEN_ZIP_REL
-    if not script.exists():
-        LOG.warning("zip_convert: missing %s — cannot generate zip.", script)
-        return False
     cmd = [
-        sys.executable, str(script),
+        sys.executable, "-m", "midas_zipper.ff_zip",
         "-resultFolder", str(scan_dir),
         "-paramFN", str(param_file),
         "-LayerNr", str(scan_within_layer),

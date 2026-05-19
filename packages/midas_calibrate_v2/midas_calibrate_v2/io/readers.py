@@ -111,30 +111,21 @@ def _read_ge(path: Path, *, data_type: int = 1, skip_frame: int = 0) -> np.ndarr
 
 
 def _read_cbf(path: Path) -> np.ndarray:
-    """CBF reader; uses the ``read_cbf`` utility if available, else falls
-    back to fabio.
+    """CBF reader via the ``fabio`` package.
 
     CBF is the Crystallographic Binary File format used by Pilatus / Eiger.
+    ``fabio`` is a declared dependency of this package, so the import should
+    always succeed; the guard only produces a clear message if it was
+    removed from the environment.
     """
     try:
-        # Local utility shipped with MIDAS' utils.
-        import sys
-        utils_dir = "/Users/hsharma/opt/MIDAS/utils"
-        if utils_dir not in sys.path:
-            sys.path.insert(0, utils_dir)
-        from read_cbf import read_cbf
-        _, raw = read_cbf(str(path), check_md5=False)
-        return np.asarray(raw, dtype=np.float64)
-    except Exception:
-        pass
-    try:
         import fabio
-        return fabio.open(str(path)).data.astype(np.float64)
-    except ImportError:
+    except ImportError as exc:  # pragma: no cover - dependency guaranteed by pyproject
         raise RuntimeError(
-            "CBF reading requires either the MIDAS read_cbf utility or "
-            "the `fabio` Python package.  Install with `pip install fabio`."
-        )
+            "CBF reading requires the `fabio` package (a declared "
+            "midas-calibrate-v2 dependency). Install with `pip install fabio`."
+        ) from exc
+    return fabio.open(str(path)).data.astype(np.float64)
 
 
 __all__ = ["read_image", "read_dark"]

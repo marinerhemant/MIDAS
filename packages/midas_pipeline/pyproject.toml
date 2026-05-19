@@ -31,7 +31,9 @@ dependencies = [
     "h5py>=3.7",
     "tifffile",
     "pandas>=1.5",
+    "fabio>=0.14",                        # CBF (Pilatus/Eiger) raw-frame reader
     # Sibling MIDAS packages (shared with midas-ff-pipeline).
+    "midas-zipper>=0.1.0",                # raw → .MIDAS.zip ingest (pip-portable)
     "midas-hkls>=0.2.0",
     "midas-peakfit>=0.2.0",
     "midas-transforms>=0.1.1",

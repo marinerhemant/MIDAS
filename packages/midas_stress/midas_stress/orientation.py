@@ -3,8 +3,8 @@
 Supports Euler angles, quaternions, orientation matrices, and Rodrigues vectors.
 
 Two backends:
-  - **NumPy** (default): uses the MIDAS C library (libmidas_orientation) when
-    available, with pure-Python fallbacks.
+  - **NumPy** (default): pure-Python/NumPy implementations. No compiled
+    dependency — works from a plain ``pip install`` with no MIDAS C build.
   - **PyTorch**: dispatched automatically when any input is a `torch.Tensor`.
     Returns torch tensors on the input's device and dtype. No autograd
     breakage — operations are differentiable end-to-end.
@@ -12,10 +12,7 @@ Two backends:
 All Euler angles in RADIANS.  All misorientation angles returned in RADIANS.
 """
 
-import ctypes
 import math
-import os
-import platform
 
 import numpy as np
 import torch
@@ -54,103 +51,13 @@ def _to_torch(x, *, dtype: torch.dtype, device: torch.device) -> torch.Tensor:
 #  C library loading
 # ===================================================================
 
-_c_double_p = ctypes.POINTER(ctypes.c_double)
-_sym_t = ctypes.c_double * 4 * 24
-_d3 = ctypes.c_double * 3
 
 
-def _find_lib():
-    """Search for libmidas_orientation in standard locations."""
-    ext = '.dylib' if platform.system() == 'Darwin' else '.so'
-    here = os.path.dirname(os.path.abspath(__file__))
-    search_dirs = [
-        os.path.join(here, '..', '..', '..', '..', 'build', 'lib'),
-        os.path.join(here, '..', '..', '..', '..', 'lib'),
-        os.path.join(here, '..', '..', '..', 'build', 'lib'),
-        os.path.join(here, '..', '..', '..', 'lib'),
-    ]
-    # Also check MIDAS_LIB_DIR environment variable
-    env_dir = os.environ.get('MIDAS_LIB_DIR')
-    if env_dir:
-        search_dirs.insert(0, env_dir)
-    for d in search_dirs:
-        p = os.path.join(d, f'libmidas_orientation{ext}')
-        if os.path.exists(p):
-            return p
-    return None
-
-
-def _setup_lib(lib):
-    """Set argtypes/restype for C functions."""
-    lib.MakeSymmetries.argtypes = [ctypes.c_int, _sym_t]
-    lib.MakeSymmetries.restype = ctypes.c_int
-
-    lib.Euler2OrientMat9.argtypes = [_c_double_p, _c_double_p]
-    lib.Euler2OrientMat9.restype = None
-
-    lib.OrientMat2Quat.argtypes = [_c_double_p, _c_double_p]
-    lib.OrientMat2Quat.restype = None
-
-    lib.OrientMat2Euler.argtypes = [ctypes.POINTER(_d3), _c_double_p]
-    lib.OrientMat2Euler.restype = None
-
-    lib.QuaternionProduct.argtypes = [_c_double_p, _c_double_p, _c_double_p]
-    lib.QuaternionProduct.restype = None
-
-    lib.GetMisOrientationAngle.argtypes = [
-        _c_double_p, _c_double_p, ctypes.POINTER(ctypes.c_double),
-        ctypes.c_int, _sym_t]
-    lib.GetMisOrientationAngle.restype = ctypes.c_double
-
-    lib.BringDownToFundamentalRegionSym.argtypes = [
-        _c_double_p, _c_double_p, ctypes.c_int, _sym_t]
-    lib.BringDownToFundamentalRegionSym.restype = None
-
-    lib.normalizeQuat.argtypes = [_c_double_p]
-    lib.normalizeQuat.restype = None
-
-    lib.GetMisOrientationAngleBatch.argtypes = [
-        ctypes.c_int, _c_double_p, _c_double_p, _c_double_p, ctypes.c_int, _sym_t]
-    lib.GetMisOrientationAngleBatch.restype = None
-
-    lib.GetMisOrientationAngleOMBatch.argtypes = [
-        ctypes.c_int, _c_double_p, _c_double_p, _c_double_p, ctypes.c_int]
-    lib.GetMisOrientationAngleOMBatch.restype = None
-
-    lib.Euler2OrientMatBatch.argtypes = [ctypes.c_int, _c_double_p, _c_double_p]
-    lib.Euler2OrientMatBatch.restype = None
-
-    lib.OrientMat2QuatBatch.argtypes = [ctypes.c_int, _c_double_p, _c_double_p]
-    lib.OrientMat2QuatBatch.restype = None
-
-
-_lib = None
-_lib_path = _find_lib()
-if _lib_path is not None:
-    try:
-        _lib = ctypes.CDLL(_lib_path)
-        _setup_lib(_lib)
-    except OSError:
-        _lib = None
-
-_USE_C = _lib is not None
 
 
 # ===================================================================
 #  Internal helpers
 # ===================================================================
-
-def _sym_to_c(NrSym, Sym):
-    s = _sym_t()
-    for i in range(NrSym):
-        for j in range(4):
-            s[i][j] = Sym[i][j]
-    return s
-
-
-def _sym_from_c(NrSym, c_sym):
-    return [[c_sym[i][j] for j in range(4)] for i in range(NrSym)]
-
 
 def _normalize_quat(q):
     return q / np.linalg.norm(q)
@@ -224,10 +131,6 @@ def make_symmetries(space_group: int):
     sym : list of list
         Symmetry quaternions, each [w, x, y, z].
     """
-    if _USE_C:
-        c_sym = _sym_t()
-        n = _lib.MakeSymmetries(space_group, c_sym)
-        return n, _sym_from_c(n, c_sym)
     return _make_symmetries_py(space_group)
 
 
@@ -245,11 +148,6 @@ def euler_to_orient_mat(euler) -> list:
     """
     if _is_torch(euler):
         return _euler_to_orient_mat_torch(euler)
-    if _USE_C:
-        e = (ctypes.c_double * 3)(*euler)
-        m = (ctypes.c_double * 9)()
-        _lib.Euler2OrientMat9(e, m)
-        return list(m)
     return _euler_to_orient_mat_py(euler)
 
 
@@ -268,11 +166,6 @@ def orient_mat_to_quat(orient_mat) -> np.ndarray:
     """
     if _is_torch(orient_mat):
         return _orient_mat_to_quat_torch(orient_mat)
-    if _USE_C:
-        om = (ctypes.c_double * 9)(*orient_mat)
-        q = (ctypes.c_double * 4)()
-        _lib.OrientMat2Quat(om, q)
-        return np.array([q[0], q[1], q[2], q[3]])
     return _orient_mat_to_quat_py(orient_mat)
 
 
@@ -292,14 +185,6 @@ def orient_mat_to_euler(m) -> np.ndarray:
     m = np.asarray(m, dtype=np.float64)
     if m.ndim == 1:
         m = m.reshape((3, 3))
-    if _USE_C:
-        m33 = (_d3 * 3)()
-        for i in range(3):
-            for j in range(3):
-                m33[i][j] = m[i][j]
-        e = (ctypes.c_double * 3)()
-        _lib.OrientMat2Euler(m33, e)
-        return np.array([e[0], e[1], e[2]])
     return _orient_mat_to_euler_py(m)
 
 
@@ -318,12 +203,6 @@ def quaternion_product(q, r) -> np.ndarray:
     """
     if _is_torch(q, r):
         return _quaternion_product_torch(q, r)
-    if _USE_C:
-        cq = (ctypes.c_double * 4)(*q)
-        cr = (ctypes.c_double * 4)(*r)
-        cQ = (ctypes.c_double * 4)()
-        _lib.QuaternionProduct(cq, cr, cQ)
-        return np.array([cQ[0], cQ[1], cQ[2], cQ[3]])
     return _quaternion_product_py(q, r)
 
 
@@ -380,12 +259,6 @@ def fundamental_zone(quat, space_group: int | None = None, *, sym=None) -> np.nd
             raise ValueError(f"sym must have shape (n_sym, 4); got {sym_use.shape}")
         n_sym = sym_use.shape[0]
         sym_use = [list(row) for row in sym_use]
-    if _USE_C:
-        qin = (ctypes.c_double * 4)(*quat)
-        qout = (ctypes.c_double * 4)()
-        c_sym = _sym_to_c(n_sym, sym_use)
-        _lib.BringDownToFundamentalRegionSym(qin, qout, n_sym, c_sym)
-        return np.array([qout[0], qout[1], qout[2], qout[3]])
     return _fundamental_zone_py(quat, n_sym, sym_use)
 
 
@@ -451,21 +324,13 @@ def misorientation_om(om1, om2, space_group: int):
     q2 = orient_mat_to_quat(om2)
     n_sym, sym = make_symmetries(space_group)
 
-    if _USE_C:
-        c_sym = _sym_to_c(n_sym, sym)
-        cq1 = (ctypes.c_double * 4)(*q1)
-        cq2 = (ctypes.c_double * 4)(*q2)
-        angle = ctypes.c_double()
-        _lib.GetMisOrientationAngle(cq1, cq2, ctypes.byref(angle), n_sym, c_sym)
-        ang = angle.value
-    else:
-        q1FR = _fundamental_zone_py(list(q1), n_sym, sym)
-        q2FR = _fundamental_zone_py(list(q2), n_sym, sym)
-        q1FR[0] = -q1FR[0]
-        QP = _quaternion_product_py(q1FR, q2FR)
-        MisV = _fundamental_zone_py(QP, n_sym, sym)
-        w = min(1.0, float(MisV[0]))
-        ang = 2.0 * math.acos(w)
+    q1FR = _fundamental_zone_py(list(q1), n_sym, sym)
+    q2FR = _fundamental_zone_py(list(q2), n_sym, sym)
+    q1FR[0] = -q1FR[0]
+    QP = _quaternion_product_py(q1FR, q2FR)
+    MisV = _fundamental_zone_py(QP, n_sym, sym)
+    w = min(1.0, float(MisV[0]))
+    ang = 2.0 * math.acos(w)
 
     # Compute axis
     half = ang / 2.0
@@ -474,31 +339,13 @@ def misorientation_om(om1, om2, space_group: int):
         return ang, np.array([0.0, 0.0, 0.0])
 
     # Derive axis from misorientation quaternion
-    if _USE_C:
-        c_sym_obj = _sym_to_c(n_sym, sym)
-        qin1 = (ctypes.c_double * 4)(*q1)
-        qout1 = (ctypes.c_double * 4)()
-        _lib.BringDownToFundamentalRegionSym(qin1, qout1, n_sym, c_sym_obj)
-        q1FR = np.array([qout1[0], qout1[1], qout1[2], qout1[3]])
-        qin2 = (ctypes.c_double * 4)(*q2)
-        qout2 = (ctypes.c_double * 4)()
-        _lib.BringDownToFundamentalRegionSym(qin2, qout2, n_sym, c_sym_obj)
-        q2FR = np.array([qout2[0], qout2[1], qout2[2], qout2[3]])
-    else:
-        q1FR = _fundamental_zone_py(list(q1), n_sym, sym)
-        q2FR = _fundamental_zone_py(list(q2), n_sym, sym)
+    q1FR = _fundamental_zone_py(list(q1), n_sym, sym)
+    q2FR = _fundamental_zone_py(list(q2), n_sym, sym)
 
     q1FR_inv = np.array([-q1FR[0], q1FR[1], q1FR[2], q1FR[3]])
     QP = quaternion_product(q1FR_inv, q2FR)
 
-    if _USE_C:
-        c_sym_obj2 = _sym_to_c(n_sym, sym)
-        qpIn = (ctypes.c_double * 4)(*QP)
-        qpOut = (ctypes.c_double * 4)()
-        _lib.BringDownToFundamentalRegionSym(qpIn, qpOut, n_sym, c_sym_obj2)
-        MisV = np.array([qpOut[0], qpOut[1], qpOut[2], qpOut[3]])
-    else:
-        MisV = _fundamental_zone_py(QP, n_sym, sym)
+    MisV = _fundamental_zone_py(QP, n_sym, sym)
 
     return ang, np.array(MisV[1:4]) / s
 
@@ -525,12 +372,6 @@ def misorientation_om_batch(oms1, oms2, space_group: int) -> np.ndarray:
     oms2 = np.ascontiguousarray(oms2, dtype=np.float64)
     n = oms1.shape[0]
     angles = np.empty(n, dtype=np.float64)
-    if _USE_C:
-        _lib.GetMisOrientationAngleOMBatch(
-            n, oms1.ctypes.data_as(_c_double_p),
-            oms2.ctypes.data_as(_c_double_p),
-            angles.ctypes.data_as(_c_double_p), space_group)
-        return angles
     for i in range(n):
         angles[i], _ = misorientation_om(list(oms1[i]), list(oms2[i]), space_group)
     return angles
@@ -554,14 +395,6 @@ def misorientation_quat_batch(quats1, quats2, space_group: int) -> np.ndarray:
     quats2 = np.ascontiguousarray(quats2, dtype=np.float64)
     n = quats1.shape[0]
     angles = np.empty(n, dtype=np.float64)
-    if _USE_C:
-        n_sym, sym = make_symmetries(space_group)
-        c_sym = _sym_to_c(n_sym, sym)
-        _lib.GetMisOrientationAngleBatch(
-            n, quats1.ctypes.data_as(_c_double_p),
-            quats2.ctypes.data_as(_c_double_p),
-            angles.ctypes.data_as(_c_double_p), n_sym, c_sym)
-        return angles
     for i in range(n):
         om1 = quat_to_orient_mat(list(quats1[i]))
         om2 = quat_to_orient_mat(list(quats2[i]))

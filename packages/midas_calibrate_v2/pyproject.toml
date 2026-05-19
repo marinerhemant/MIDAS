@@ -27,6 +27,7 @@ dependencies = [
     "midas-calibrate>=0.2.0",
     "h5py>=3.0",
     "tifffile>=2022.0",
+    "fabio>=0.14",                        # CBF (Pilatus/Eiger) reader
 ]
 
 [project.optional-dependencies]

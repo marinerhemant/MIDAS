@@ -36,6 +36,7 @@ SUBPACKAGES = (
     "midas_fit_grain",
     "midas_nf_preprocess",
     "midas_nf_fitorientation",
+    "midas_zipper",
     # parsl + pipeline orchestrators
     "midas_parsl_configs",
     "midas_ff_pipeline",

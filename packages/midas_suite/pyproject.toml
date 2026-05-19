@@ -44,6 +44,7 @@ dependencies = [
     "midas-fit-grain>=0.2.1",
     "midas-nf-preprocess>=0.1.1",
     "midas-nf-fitorientation>=0.3.1",
+    "midas-zipper>=0.1.0",         # raw → .MIDAS.zip ingest (pip-portable, no C/source-tree dep)
     # parsl + pipeline orchestrators
     "midas-parsl-configs>=0.1.0",
     "midas-ff-pipeline>=0.2.1",
