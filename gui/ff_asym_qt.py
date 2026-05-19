@@ -791,7 +791,8 @@ class FFViewer(QtWidgets.QMainWindow):
         self.instr_only_check.setToolTip(
             "When checked, loading a param file applies only instrument/geometry\n"
             "parameters (LSD, BC, pixel size, wavelength, space group, etc.).\n"
-            "File layout fields (Folder, FileStem, StartNr, Ext) are ignored.")
+            "All file/path fields are ignored: Folder, FileStem, StartNr, Ext,\n"
+            "dataLoc/darkLoc (HDF5 paths), and DarkStem/Dark.")
         lay.addWidget(self.instr_only_check, 5, 1)
         self.param_label = QtWidgets.QLabel("")
         self.param_label.setStyleSheet("color: gray;")
@@ -1801,14 +1802,14 @@ class FFViewer(QtWidgets.QMainWindow):
         # Skipped when the user has manually edited the corresponding field
         # (self._h5data_locked / self._h5dark_locked), so their choice takes
         # priority. APS GE files commonly store dark at /exchange/data_dark.
-        if not self._h5data_locked:
+        if not instr_only and not self._h5data_locked:
             dl = get_str('dataLoc')
             if dl:
                 self.hdf5_data_path = dl.rstrip('/') or '/'
                 if hasattr(self, 'h5data_edit'):
                     self.h5data_edit.setText(self.hdf5_data_path)
                 applied.append(f"dataLoc={self.hdf5_data_path}")
-        if not self._h5dark_locked:
+        if not instr_only and not self._h5dark_locked:
             dl = get_str('darkLoc')
             if dl:
                 self.hdf5_dark_path = dl.rstrip('/') or '/'
@@ -1818,7 +1819,7 @@ class FFViewer(QtWidgets.QMainWindow):
 
         # ── Dark file ──
         # Skip if the user already chose a dark file via "Dark File" button.
-        if not self._dark_locked:
+        if not instr_only and not self._dark_locked:
             ds = get_str('DarkStem', 'Dark')
             if ds:
                 if os.sep in ds or '/' in ds:
