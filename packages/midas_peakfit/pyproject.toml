@@ -32,7 +32,9 @@ dependencies = [
 ]
 
 [project.optional-dependencies]
-dev = ["pytest>=7.0", "h5py>=3.0"]
+# midas-zipper is used only by scripts/bench_2000_grains.py (zarr-zip
+# writing for the benchmark) — kept out of the runtime deps.
+dev = ["pytest>=7.0", "h5py>=3.0", "midas-zipper>=0.1.0"]
 cuda = []  # placeholder; users install matching torch+cuda wheels themselves
 
 [project.urls]

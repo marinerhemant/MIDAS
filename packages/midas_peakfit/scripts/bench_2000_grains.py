@@ -134,14 +134,14 @@ def enrich_zarr(zip_path: Path, params_dict: dict) -> None:
             "datatype", data=np.bytes_(data_dtype.encode("UTF-8")), overwrite=True
         )
 
-        from ffGenerateZipRefactor import write_analysis_parameters
+        from midas_zipper.ff_zip import write_analysis_parameters
 
         z_groups = {"sp_pro_analysis": sp_ana, "sp_pro_meas": sp_pro}
         write_analysis_parameters(z_groups, params_dict)
 
 
 def parse_param_file(filepath: Path) -> dict:
-    from ffGenerateZipRefactor import parse_parameter_file
+    from midas_zipper.ff_zip import parse_parameter_file
 
     return parse_parameter_file(str(filepath))
 

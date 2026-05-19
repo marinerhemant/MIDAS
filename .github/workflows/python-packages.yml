@@ -167,6 +167,7 @@ jobs:
   #   midas-diffract-v*          → midas_diffract
   #   midas-index-v*             → midas_index
   #   midas-transforms-v*        → midas_transforms
+  #   midas-zipper-v*            → midas_zipper
   #   midas-nf-preprocess-v*     → midas_nf_preprocess
   #   midas-process-grains-v*    → midas_process_grains
   #   midas-fit-grain-v*         → midas_fit_grain
@@ -230,6 +231,9 @@ jobs:
           elif [[ "$TAG" == midas-transforms-v* ]]; then
             echo "package=midas_transforms" >> "$GITHUB_OUTPUT"
             echo "pypi_name=midas-transforms" >> "$GITHUB_OUTPUT"
+          elif [[ "$TAG" == midas-zipper-v* ]]; then
+            echo "package=midas_zipper" >> "$GITHUB_OUTPUT"
+            echo "pypi_name=midas-zipper" >> "$GITHUB_OUTPUT"
           elif [[ "$TAG" == midas-nf-preprocess-v* ]]; then
             echo "package=midas_nf_preprocess" >> "$GITHUB_OUTPUT"
             echo "pypi_name=midas-nf-preprocess" >> "$GITHUB_OUTPUT"
