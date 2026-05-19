@@ -1067,9 +1067,15 @@ def _compare_spots_m_iter(
 #
 # Per-call ascontiguousarray on obs columns used to cost ~10-15 ms/call on
 # Wenxi-class data. The obs tensor doesn't change for a given Indexer run
-# — cache the numpy column views keyed by (data_ptr, shape). Same for the
-# int32 bin tables. Cache is bounded (we only keep the last 4 tensors)
-# so we don't leak across long-running pipelines.
+# — cache the numpy column views.
+#
+# Subtle correctness issue: ``data_ptr()`` is the address of the tensor's
+# storage and gets REUSED by torch's allocator after a tensor is GC'd.
+# Keying purely on data_ptr causes false-positive cache hits across
+# unrelated calls (pytest exposed this — successive test cases got the
+# stale obs's numpy views). The fix: also hold a strong reference to the
+# tensor so the storage can't be reused while the cache entry is live.
+# Cache is bounded (max 4 entries) to avoid leak.
 
 _OBS_NP_CACHE: dict = {}
 _BIN_NP_CACHE: dict = {}
@@ -1077,15 +1083,15 @@ _CACHE_MAX = 4
 
 
 def _cached_obs_numpy(obs: "torch.Tensor") -> dict:
-    """Cache obs-column numpy views keyed by (data_ptr, shape). One call's
-    worth of marshaling savings on repeat calls with the same obs tensor.
-    """
-    key = (obs.data_ptr(), tuple(obs.shape))
+    """Cache obs-column numpy views; held strong-ref to obs prevents
+    address reuse + false-positive cache hits."""
+    key = (id(obs), obs.data_ptr(), tuple(obs.shape))
     cached = _OBS_NP_CACHE.get(key)
     if cached is not None:
-        return cached
+        # _ref is held to keep obs alive while the cache entry is in use.
+        return cached["views"]
     obs_np = obs.detach().cpu().numpy()
-    cached = {
+    views = {
         "y":       np.ascontiguousarray(obs_np[..., 0].astype(np.float64, copy=False)),
         "z":       np.ascontiguousarray(obs_np[..., 1].astype(np.float64, copy=False)),
         "ome":     np.ascontiguousarray(obs_np[..., 2].astype(np.float64, copy=False)),
@@ -1096,20 +1102,20 @@ def _cached_obs_numpy(obs: "torch.Tensor") -> dict:
     }
     if len(_OBS_NP_CACHE) >= _CACHE_MAX:
         _OBS_NP_CACHE.pop(next(iter(_OBS_NP_CACHE)))
-    _OBS_NP_CACHE[key] = cached
-    return cached
+    _OBS_NP_CACHE[key] = {"views": views, "_ref": obs}  # strong ref keeps storage alive
+    return views
 
 
 def _cached_int32_view(t: "torch.Tensor") -> "np.ndarray":
-    """Cache a contiguous int32 numpy view of a torch int32/int64 tensor."""
-    key = (t.data_ptr(), tuple(t.shape), t.dtype)
+    """Cache a contiguous int32 numpy view; holds strong ref to t."""
+    key = (id(t), t.data_ptr(), tuple(t.shape), t.dtype)
     cached = _BIN_NP_CACHE.get(key)
     if cached is not None:
-        return cached
+        return cached["arr"]
     arr = np.ascontiguousarray(t.detach().cpu().numpy().astype(np.int32, copy=False))
     if len(_BIN_NP_CACHE) >= _CACHE_MAX:
         _BIN_NP_CACHE.pop(next(iter(_BIN_NP_CACHE)))
-    _BIN_NP_CACHE[key] = arr
+    _BIN_NP_CACHE[key] = {"arr": arr, "_ref": t}
     return arr
 
 
