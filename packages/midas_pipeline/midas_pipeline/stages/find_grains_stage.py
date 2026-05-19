@@ -59,10 +59,12 @@ def run(ctx: StageContext) -> StageResult:
     from ..find_grains import find_grains_single, find_grains_multiple
 
     # P7 hook: build a sino-soft weight fn from the SoftAttributionConfig.
-    soft_cfg = ctx.config.soft_attribution
+    # ``soft_attribution`` is an optional field on PipelineConfig; tolerate
+    # absence gracefully so legacy / partial config builds still run.
+    soft_cfg = getattr(ctx.config, "soft_attribution", None)
     soft_weight_fn = None
     emit_softsum = False
-    if soft_cfg.enable:
+    if soft_cfg is not None and getattr(soft_cfg, "enable", False):
         import numpy as np
         sigma_w = soft_cfg.omega_sigma_deg
         if sigma_w > 0:
