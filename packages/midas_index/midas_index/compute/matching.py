@@ -19,9 +19,22 @@ import math
 from dataclasses import dataclass
 from typing import Callable, Optional
 
+import numpy as np
 import torch
 
 from .binning import get_bin_indices, lookup_bin_counts
+
+# Numba is optional — if absent the CPU dispatch falls back to the torch
+# m-iter path (still correct, just slower at PF scale). On chiltepin /
+# alleppey / copland and the dev environments it's a stable transitive
+# dep (used by find_grains, merge_scans, potts).
+try:
+    from numba import njit, prange  # type: ignore
+    _NUMBA_AVAILABLE = True
+except ImportError:
+    njit = None
+    prange = None
+    _NUMBA_AVAILABLE = False
 
 DEG2RAD = math.pi / 180.0
 RAD2DEG = 180.0 / math.pi
@@ -284,12 +297,30 @@ def compare_spots(
             soft_beam_weight_fn=soft_beam_weight_fn,
         )
 
-    # CPU dispatch: M-iterating path avoids the dense (N, T, M) materialization
-    # entirely. Same numerics as the dense path; ~10-30× faster on PF data
-    # (Wenxi-class) where M_global is bottlenecked by a few outlier bins
-    # while the median bin has <=1 spot. See docstring of
-    # ``_compare_spots_m_iter`` for the algorithm.
+    # CPU dispatch: per-cell numba loop with early-exit when bin is empty.
+    # The dense (N, T, M) torch path scales O(N·T·M_global) regardless of
+    # actual bin occupancy. On PF data (Wenxi) 99% of (N, T) cells point
+    # to empty bins — numba's per-cell loop skips them entirely, matching
+    # C IndexerScanningOMP's algorithm. Soft-attribution falls back to the
+    # torch m-iter path because @njit can't call arbitrary Python callbacks.
     if theor.device.type != "cuda":
+        if soft_beam_weight_fn is None:
+            return _compare_spots_numba(
+                theor=theor, valid=valid, obs=obs,
+                bin_data=bin_data, bin_ndata=bin_ndata,
+                ref_rad=ref_rad,
+                margin_rad=margin_rad, margin_radial=margin_radial,
+                eta_margins=eta_margins, ome_margins=ome_margins,
+                eta_bin_size=eta_bin_size, ome_bin_size=ome_bin_size,
+                n_eta_bins=n_eta_bins, n_ome_bins=n_ome_bins,
+                rings_to_reject=rings_to_reject,
+                distance=distance, pos=pos,
+                scan_positions=scan_positions,
+                voxel_xy=voxel_xy,
+                scan_pos_tol_um=scan_pos_tol_um,
+                friedel_symmetric_scan_filter=friedel_symmetric_scan_filter,
+                obs_scan_nr_int64=obs_scan_nr_int64,
+            )
         return _compare_spots_m_iter(
             theor=theor, valid=valid, obs=obs,
             bin_data=bin_data, bin_ndata=bin_ndata,
@@ -989,5 +1020,342 @@ def _compare_spots_m_iter(
         weighted_n_matches=weighted_n_matches,
         weighted_n_matches_frac=weighted_n_matches_frac,
         weighted_frac_matches=weighted_frac_matches,
+    )
+
+
+# ---------------------------------------------------------------------------
+# Numba CPU-fast path
+# ---------------------------------------------------------------------------
+#
+# Why a separate path: the dense torch implementation allocates an
+# ``(N, T, M)`` bool stack and does bulk ops over it. At PF scale (Wenxi:
+# N≈54000 per seed, T≈500, M_global=177) this is 4.8 billion cells per
+# compare call, even though ~99% of (N, T) cells point to empty bins
+# (median bin occupancy = 0.2). torch can't naturally skip empty cells —
+# it has to allocate and mask. Numba CAN: a per-cell loop tests
+# ``n_per[n, t]`` and continues if it's 0. That's the same algorithm C
+# IndexerScanningOMP uses to achieve ~0.7s/voxel single-thread.
+#
+# GPU path stays torch (already fast on GPU — brute-force parallelism
+# absorbs the 99% empty cells trivially). Dispatch is by
+# ``theor.device.type == 'cuda'`` in ``compare_spots``.
+
+
+if _NUMBA_AVAILABLE:
+
+    @njit(parallel=True, cache=True, fastmath=False)
+    def _compare_spots_numba_inner(
+        # Theor (N, T) views
+        ring_nr,                  # (N, T) int64
+        eta_post,                 # (N, T) float64
+        omega,                    # (N, T) float64
+        rad_diff,                 # (N, T) float64
+        valid,                    # (N, T) bool
+        # Bin lookups
+        n_per,                    # (N, T) int64
+        data_offset,              # (N, T) int64
+        bin_data,                 # (n_bin_data,) int32
+        # Obs columns
+        obs_ome,                  # (n_obs,) float64
+        obs_eta,                  # (n_obs,) float64
+        obs_ringrad,              # (n_obs,) float64
+        obs_rad,                  # (n_obs,) float64
+        obs_id,                   # (n_obs,) int64
+        # Margins
+        eta_margin_per,           # (N, T) float64 — per-ring eta margin
+        margin_radial,            # scalar
+        margin_rad,               # scalar
+        skip_radial,              # (N, T) bool
+        ref_rad,                  # (N,) float64
+        # Scan-aware (PF). When scan_active=False the rest of these are unused.
+        scan_active,              # bool
+        s_proj,                   # (N, T) float64; ignored if not scan_active
+        obs_scan_idx,             # (n_obs,) int64; ignored if not scan_active
+        scan_pos_arr,             # (n_scans,) float64; ignored if not scan_active
+        scan_pos_tol,             # scalar
+        friedel_sym,              # bool
+    ):
+        """Per-(n, t) cell loop with bin early-exit. Returns
+        ``(best_delta_ome, best_matched_id, best_matched_row, has_match)``.
+
+        Mirrors ``CalcCompareSpots`` from IndexerOMP.c:1700-1830 with the
+        Friedel-symmetric scan filter from IndexerScanningOMP.c.
+        """
+        N, T = omega.shape
+        best_delta_ome = np.full((N, T), np.inf, dtype=np.float64)
+        best_matched_id = np.full((N, T), -1, dtype=np.int64)
+        best_matched_row = np.full((N, T), -1, dtype=np.int64)
+        has_match = np.zeros((N, T), dtype=np.bool_)
+
+        n_bin = bin_data.shape[0]
+        n_obs = obs_ome.shape[0]
+        n_scans_pos = scan_pos_arr.shape[0]
+
+        for n in prange(N):
+            ref_rad_n = ref_rad[n]
+            for t in range(T):
+                if not valid[n, t]:
+                    continue
+                n_p = n_per[n, t]
+                if n_p == 0:
+                    # 99% of cells on PF data — primary early-exit.
+                    continue
+                offset = data_offset[n, t]
+                rad_diff_nt = rad_diff[n, t]
+                eta_post_nt = eta_post[n, t]
+                omega_nt = omega[n, t]
+                eta_marg_nt = eta_margin_per[n, t]
+                skip_rad_nt = skip_radial[n, t]
+                s_proj_nt = s_proj[n, t] if scan_active else 0.0
+
+                local_best_dome = np.inf
+                local_best_id = np.int64(-1)
+                local_best_row = np.int64(-1)
+                local_has_match = False
+
+                for m in range(n_p):
+                    row_idx = offset + m
+                    if row_idx < 0 or row_idx >= n_bin:
+                        continue
+                    row = np.int64(bin_data[row_idx])
+                    if row < 0 or row >= n_obs:
+                        continue
+
+                    # Tolerance gates (C IndexerOMP.c order).
+                    if abs(rad_diff_nt - obs_rad[row]) >= margin_radial:
+                        continue
+                    if abs(eta_post_nt - obs_eta[row]) >= eta_marg_nt:
+                        continue
+                    if not skip_rad_nt:
+                        if abs(ref_rad_n - obs_ringrad[row]) >= margin_rad:
+                            continue
+
+                    # Scan-position filter (PF mode only).
+                    if scan_active:
+                        scan_idx = obs_scan_idx[row]
+                        if scan_idx < 0:
+                            scan_idx = 0
+                        elif scan_idx >= n_scans_pos:
+                            scan_idx = n_scans_pos - 1
+                        scan_pos = scan_pos_arr[scan_idx]
+                        diff = abs(s_proj_nt - scan_pos)
+                        if diff >= scan_pos_tol:
+                            if friedel_sym:
+                                diff_f = abs(s_proj_nt + scan_pos)
+                                if diff_f >= scan_pos_tol:
+                                    continue
+                            else:
+                                continue
+
+                    # Matched. Tie-break by min |Δω|.
+                    d_ome = abs(omega_nt - obs_ome[row])
+                    if d_ome < local_best_dome:
+                        local_best_dome = d_ome
+                        local_best_id = obs_id[row]
+                        local_best_row = row
+                    local_has_match = True
+
+                if local_has_match:
+                    best_delta_ome[n, t] = local_best_dome
+                    best_matched_id[n, t] = local_best_id
+                    best_matched_row[n, t] = local_best_row
+                    has_match[n, t] = True
+
+        return best_delta_ome, best_matched_id, best_matched_row, has_match
+
+else:  # pragma: no cover — numba absent
+    def _compare_spots_numba_inner(*args, **kwargs):  # type: ignore
+        raise ImportError(
+            "numba is required for the CPU fast path. Install with "
+            "`pip install numba` or use compare_spots() with strategy='dense'."
+        )
+
+
+def _compare_spots_numba(
+    theor: torch.Tensor,
+    valid: torch.Tensor,
+    obs: torch.Tensor,
+    bin_data: torch.Tensor,
+    bin_ndata: torch.Tensor,
+    *,
+    ref_rad: torch.Tensor,
+    margin_rad: float,
+    margin_radial: float,
+    eta_margins: torch.Tensor,
+    ome_margins: torch.Tensor,
+    eta_bin_size: float,
+    ome_bin_size: float,
+    n_eta_bins: int,
+    n_ome_bins: int,
+    rings_to_reject: torch.Tensor,
+    distance: float | None,
+    pos: torch.Tensor | None,
+    scan_positions: torch.Tensor | None = None,
+    voxel_xy: torch.Tensor | None = None,
+    scan_pos_tol_um: float = 0.0,
+    friedel_symmetric_scan_filter: bool = False,
+    obs_scan_nr_int64: torch.Tensor | None = None,
+) -> MatchResult:
+    """CPU-fast compare_spots via a numba per-cell loop.
+
+    Falls back to the torch m-iter path if numba is not installed.
+    """
+    if not _NUMBA_AVAILABLE:
+        return _compare_spots_m_iter(
+            theor=theor, valid=valid, obs=obs,
+            bin_data=bin_data, bin_ndata=bin_ndata,
+            ref_rad=ref_rad,
+            margin_rad=margin_rad, margin_radial=margin_radial,
+            eta_margins=eta_margins, ome_margins=ome_margins,
+            eta_bin_size=eta_bin_size, ome_bin_size=ome_bin_size,
+            n_eta_bins=n_eta_bins, n_ome_bins=n_ome_bins,
+            rings_to_reject=rings_to_reject,
+            distance=distance, pos=pos,
+            scan_positions=scan_positions, voxel_xy=voxel_xy,
+            scan_pos_tol_um=scan_pos_tol_um,
+            friedel_symmetric_scan_filter=friedel_symmetric_scan_filter,
+            obs_scan_nr_int64=obs_scan_nr_int64,
+            soft_beam_weight_fn=None,
+        )
+
+    device = theor.device
+    dtype = theor.dtype
+    N, T, _ = theor.shape
+
+    # ── 0. Per-theor-spot features (same as dense path)
+    ring_nr_t = theor[..., 9].to(torch.int64).clamp(min=0)
+    eta_post_t = theor[..., 12]
+    omega_t = theor[..., 6]
+    rad_diff_t = theor[..., 13]
+
+    # ── 1. Bin lookup (torch — vectorised; no per-cell math needed)
+    bin_pos = get_bin_indices(
+        ring_nr_t, eta_post_t, omega_t,
+        eta_bin_size, ome_bin_size, n_eta_bins, n_ome_bins,
+    )
+    bin_pos = bin_pos.clamp(0, max(0, (bin_ndata.numel() // 2) - 1))
+    n_per_t, data_offset_t = lookup_bin_counts(bin_pos, bin_ndata)
+
+    # ── 2. Pre-compute per-cell static tensors
+    eta_margin_per_t = eta_margins[ring_nr_t.clamp(0, eta_margins.numel() - 1)]
+    if rings_to_reject.numel() > 0:
+        skip_radial_t = (
+            ring_nr_t.unsqueeze(-1) == rings_to_reject.view(1, 1, -1)
+        ).any(dim=-1)
+    else:
+        skip_radial_t = torch.zeros((N, T), dtype=torch.bool, device=device)
+
+    # ── 3. Scan-aware prep (PF mode)
+    scan_active = (
+        scan_pos_tol_um > 0
+        and scan_positions is not None
+        and voxel_xy is not None
+    )
+    if scan_active:
+        if obs.shape[-1] < 10:
+            raise ValueError(
+                "scan-aware mode requires obs with 10 columns (Spots.bin PF)."
+            )
+        v_x = voxel_xy[..., 0].view(N, 1).to(dtype=dtype, device=device)
+        v_y = voxel_xy[..., 1].view(N, 1).to(dtype=dtype, device=device)
+        omega_rad_t = omega_t * DEG2RAD
+        s_proj_t = v_x * torch.sin(omega_rad_t) + v_y * torch.cos(omega_rad_t)
+        obs_scan_idx_t = (
+            obs_scan_nr_int64
+            if obs_scan_nr_int64 is not None
+            else obs[..., 9].to(torch.int64)
+        )
+        scan_pos_arr_t = scan_positions.to(dtype=dtype, device=device)
+    else:
+        s_proj_t = torch.zeros((N, T), dtype=dtype, device=device)
+        obs_scan_idx_t = torch.zeros(1, dtype=torch.int64, device=device)
+        scan_pos_arr_t = torch.zeros(1, dtype=dtype, device=device)
+
+    # ── 4. Marshal to contiguous numpy (np.ascontiguousarray copies if needed)
+    def _np_f64(t):
+        return np.ascontiguousarray(t.detach().cpu().numpy().astype(np.float64, copy=False))
+
+    def _np_i64(t):
+        return np.ascontiguousarray(t.detach().cpu().numpy().astype(np.int64, copy=False))
+
+    def _np_bool(t):
+        return np.ascontiguousarray(t.detach().cpu().numpy().astype(np.bool_, copy=False))
+
+    ring_nr_np = _np_i64(ring_nr_t)
+    eta_post_np = _np_f64(eta_post_t)
+    omega_np = _np_f64(omega_t)
+    rad_diff_np = _np_f64(rad_diff_t)
+    valid_np = _np_bool(valid)
+    n_per_np = _np_i64(n_per_t)
+    data_offset_np = _np_i64(data_offset_t)
+    bin_data_np = np.ascontiguousarray(bin_data.detach().cpu().numpy().astype(np.int32, copy=False))
+    obs_np = obs.detach().cpu().numpy()
+    obs_ome_np = np.ascontiguousarray(obs_np[..., 2].astype(np.float64, copy=False))
+    obs_eta_np = np.ascontiguousarray(obs_np[..., 6].astype(np.float64, copy=False))
+    obs_ringrad_np = np.ascontiguousarray(obs_np[..., 3].astype(np.float64, copy=False))
+    obs_rad_np = np.ascontiguousarray(obs_np[..., 8].astype(np.float64, copy=False))
+    obs_id_np = np.ascontiguousarray(obs_np[..., 4].astype(np.int64, copy=False))
+    eta_margin_per_np = _np_f64(eta_margin_per_t)
+    skip_radial_np = _np_bool(skip_radial_t)
+    ref_rad_np = _np_f64(ref_rad)
+    s_proj_np = _np_f64(s_proj_t)
+    obs_scan_idx_np = _np_i64(obs_scan_idx_t)
+    scan_pos_arr_np = _np_f64(scan_pos_arr_t)
+
+    # ── 5. Numba kernel
+    best_delta_ome_np, best_matched_id_np, best_matched_row_np, has_match_np = (
+        _compare_spots_numba_inner(
+            ring_nr_np, eta_post_np, omega_np, rad_diff_np, valid_np,
+            n_per_np, data_offset_np, bin_data_np,
+            obs_ome_np, obs_eta_np, obs_ringrad_np, obs_rad_np, obs_id_np,
+            eta_margin_per_np,
+            float(margin_radial), float(margin_rad),
+            skip_radial_np,
+            ref_rad_np,
+            bool(scan_active),
+            s_proj_np,
+            obs_scan_idx_np,
+            scan_pos_arr_np,
+            float(scan_pos_tol_um),
+            bool(friedel_symmetric_scan_filter),
+        )
+    )
+
+    # ── 6. Back to torch + compute reductions (same as dense path)
+    best_delta_ome = torch.from_numpy(best_delta_ome_np).to(device=device, dtype=dtype)
+    best_matched_id = torch.from_numpy(best_matched_id_np).to(device=device)
+    best_matched_row = torch.from_numpy(best_matched_row_np).to(device=device)
+    has_match = torch.from_numpy(has_match_np).to(device=device)
+
+    matched_for_frac = has_match & ~skip_radial_t
+    n_matches = has_match.sum(dim=-1).to(torch.int64)
+    n_matches_frac = matched_for_frac.sum(dim=-1).to(torch.int64)
+    valid_for_frac = valid & ~skip_radial_t
+    n_t_frac = valid_for_frac.sum(dim=-1).to(torch.int64).clamp_min(1)
+    frac = n_matches_frac.to(dtype) / n_t_frac.to(dtype)
+
+    if distance is not None and pos is not None:
+        avg_ia = _compute_avg_ia(
+            theor=theor, obs=obs,
+            matched_obs_row=best_matched_row,
+            has_match=has_match,
+            distance=distance, pos=pos,
+        )
+    else:
+        avg_ia = torch.zeros(N, dtype=dtype, device=device)
+
+    return MatchResult(
+        n_matches=n_matches,
+        n_matches_frac=n_matches_frac,
+        n_t_frac=n_t_frac,
+        frac_matches=frac,
+        avg_ia=avg_ia,
+        matched_obs_id=best_matched_id,
+        matched_obs_row=best_matched_row,
+        delta_omega=best_delta_ome,
+        matched=has_match,
+        weighted_n_matches=None,
+        weighted_n_matches_frac=None,
+        weighted_frac_matches=None,
     )
 
