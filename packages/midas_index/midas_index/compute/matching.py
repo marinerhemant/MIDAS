@@ -283,6 +283,32 @@ def compare_spots(
             obs_scan_nr_int64=obs_scan_nr_int64,
             soft_beam_weight_fn=soft_beam_weight_fn,
         )
+
+    # CPU dispatch: M-iterating path avoids the dense (N, T, M) materialization
+    # entirely. Same numerics as the dense path; ~10-30× faster on PF data
+    # (Wenxi-class) where M_global is bottlenecked by a few outlier bins
+    # while the median bin has <=1 spot. See docstring of
+    # ``_compare_spots_m_iter`` for the algorithm.
+    if theor.device.type != "cuda":
+        return _compare_spots_m_iter(
+            theor=theor, valid=valid, obs=obs,
+            bin_data=bin_data, bin_ndata=bin_ndata,
+            ref_rad=ref_rad,
+            margin_rad=margin_rad, margin_radial=margin_radial,
+            eta_margins=eta_margins, ome_margins=ome_margins,
+            eta_bin_size=eta_bin_size, ome_bin_size=ome_bin_size,
+            n_eta_bins=n_eta_bins, n_ome_bins=n_ome_bins,
+            rings_to_reject=rings_to_reject,
+            distance=distance, pos=pos,
+            max_n_cap=max_n_cap,
+            scan_positions=scan_positions,
+            voxel_xy=voxel_xy,
+            scan_pos_tol_um=scan_pos_tol_um,
+            friedel_symmetric_scan_filter=friedel_symmetric_scan_filter,
+            obs_scan_nr_int64=obs_scan_nr_int64,
+            soft_beam_weight_fn=soft_beam_weight_fn,
+        )
+
     device = theor.device
     dtype = theor.dtype
     N, T, _ = theor.shape
@@ -693,4 +719,275 @@ def _compute_avg_ia(
     masked = torch.where(has_match, ia_abs, torch.zeros_like(ia_abs))
     n_match = has_match.sum(dim=-1).to(dtype).clamp_min(1.0)
     return masked.sum(dim=-1) / n_match
+
+
+# ---------------------------------------------------------------------------
+# M-iterating compare path (CPU-fast)
+# ---------------------------------------------------------------------------
+
+
+def _compare_spots_m_iter(
+    theor: torch.Tensor,
+    valid: torch.Tensor,
+    obs: torch.Tensor,
+    bin_data: torch.Tensor,
+    bin_ndata: torch.Tensor,
+    *,
+    ref_rad: torch.Tensor,
+    margin_rad: float,
+    margin_radial: float,
+    eta_margins: torch.Tensor,
+    ome_margins: torch.Tensor,
+    eta_bin_size: float,
+    ome_bin_size: float,
+    n_eta_bins: int,
+    n_ome_bins: int,
+    rings_to_reject: torch.Tensor,
+    distance: float | None,
+    pos: torch.Tensor | None,
+    max_n_cap: int | None = None,
+    scan_positions: torch.Tensor | None = None,
+    voxel_xy: torch.Tensor | None = None,
+    scan_pos_tol_um: float = 0.0,
+    friedel_symmetric_scan_filter: bool = False,
+    obs_scan_nr_int64: torch.Tensor | None = None,
+    soft_beam_weight_fn: Optional[Callable[[torch.Tensor], torch.Tensor]] = None,
+) -> MatchResult:
+    """M-iterating compare path: same numerics as ``compare_spots`` dense path,
+    but loops over the bin-occupancy axis ``m`` one slice at a time.
+
+    Why this matters on CPU at PF scale:
+
+    The dense path allocates a ``(N, T, M)`` bool stack where ``M`` is the
+    global max bin occupancy. On Wenxi-class data, ``M = 177`` but the
+    median bin holds 0.2 spots and the 99th-percentile holds 1 — so the
+    dense gather wastes ~99% of its budget processing empty cells.
+
+    This path:
+      1. Computes ``n_per`` and ``data_offset`` once on the (N, T) grid.
+      2. Computes a per-call ``actual_max_n = n_per.max()`` (opt C — uses
+         the per-voxel maximum, not the global cap).
+      3. Iterates ``m`` from 0 to ``actual_max_n``: each iteration builds
+         only (N, T) tensors, runs the margin checks, and updates a
+         running ``best_delta_ome``/``best_matched_id`` per (N, T) cell.
+
+    Memory per iter: ``O(N·T)`` instead of ``O(N·T·M)`` — for Wenxi that's
+    ~14 MB vs ~4.8 GB. Total ops are the same as dense, but each iter
+    fits in cache and the allocator never sees a (N, T, M) blob.
+
+    See ``compare_spots`` for the full inputs/outputs contract; this
+    function returns an equivalent ``MatchResult``.
+    """
+    device = theor.device
+    dtype = theor.dtype
+    N, T, _ = theor.shape
+
+    # ── 0. Per-theor-spot ring + post-displacement eta + omega (same as dense)
+    ring_nr = theor[..., 9].to(torch.int64).clamp(min=0)         # (N, T)
+    eta_post = theor[..., 12]                                     # (N, T)
+    omega = theor[..., 6]                                         # (N, T)
+    rad_diff = theor[..., 13]                                     # (N, T)
+
+    # ── 1. Bin lookup (single pass, same for every m)
+    bin_pos = get_bin_indices(
+        ring_nr, eta_post, omega, eta_bin_size, ome_bin_size, n_eta_bins, n_ome_bins,
+    )                                                             # (N, T) int64
+    bin_pos = bin_pos.clamp(0, max(0, (bin_ndata.numel() // 2) - 1))
+    n_per, data_offset = lookup_bin_counts(bin_pos, bin_ndata)    # (N, T) each
+
+    # ── 2. Per-voxel max_n (opt C). One small sync, amortised across the
+    # whole compare call.
+    actual_max_n_t = n_per.max() if n_per.numel() else torch.zeros((), dtype=n_per.dtype, device=device)
+    actual_max_n = int(actual_max_n_t.item())
+    if max_n_cap is not None:
+        actual_max_n = min(actual_max_n, int(max_n_cap))
+
+    soft_zeros = (
+        torch.zeros(N, dtype=dtype, device=device)
+        if soft_beam_weight_fn is not None else None
+    )
+
+    if actual_max_n == 0:
+        return MatchResult(
+            n_matches=torch.zeros(N, dtype=torch.int64, device=device),
+            n_matches_frac=torch.zeros(N, dtype=torch.int64, device=device),
+            n_t_frac=valid.sum(dim=-1).to(torch.int64).clamp_min(1),
+            frac_matches=torch.zeros(N, dtype=dtype, device=device),
+            avg_ia=torch.zeros(N, dtype=dtype, device=device),
+            matched_obs_id=torch.full((N, T), -1, dtype=torch.int64, device=device),
+            matched_obs_row=torch.full((N, T), -1, dtype=torch.int64, device=device),
+            delta_omega=torch.full((N, T), float("inf"), dtype=dtype, device=device),
+            matched=torch.zeros((N, T), dtype=torch.bool, device=device),
+            weighted_n_matches=soft_zeros,
+            weighted_n_matches_frac=soft_zeros.clone() if soft_zeros is not None else None,
+            weighted_frac_matches=soft_zeros.clone() if soft_zeros is not None else None,
+        )
+
+    # ── 3. Pre-compute (N, T) constants used in every m iteration
+    eta_margin_per = eta_margins[ring_nr.clamp(0, eta_margins.numel() - 1)]      # (N, T)
+    if rings_to_reject.numel() > 0:
+        skip_radial = (
+            ring_nr.unsqueeze(-1) == rings_to_reject.view(1, 1, -1)
+        ).any(dim=-1)                                                            # (N, T)
+    else:
+        skip_radial = torch.zeros((N, T), dtype=torch.bool, device=device)
+
+    # Scan-pos filter prep (PF mode). Computed once if active.
+    scan_active = (
+        scan_pos_tol_um > 0
+        and scan_positions is not None
+        and voxel_xy is not None
+    )
+    if scan_active:
+        if obs.shape[-1] < 10:
+            raise ValueError(
+                "scan-aware mode requires obs with 10 columns (Spots.bin PF layout)."
+            )
+        v_x = voxel_xy[..., 0].view(N, 1).to(dtype=dtype, device=device)
+        v_y = voxel_xy[..., 1].view(N, 1).to(dtype=dtype, device=device)
+        omega_rad = omega * DEG2RAD
+        s_proj = v_x * torch.sin(omega_rad) + v_y * torch.cos(omega_rad)         # (N, T)
+        if obs_scan_nr_int64 is not None:
+            obs_scan_idx_full = obs_scan_nr_int64
+        else:
+            obs_scan_idx_full = obs[..., 9].to(torch.int64)
+        scan_pos_arr = scan_positions.to(dtype=dtype, device=device)
+    else:
+        s_proj = None
+        obs_scan_idx_full = None
+        scan_pos_arr = None
+
+    # Obs columns (1-D over n_obs). Match dense-path semantics exactly:
+    #   col 2 = omega
+    #   col 3 = ringrad (used by radial_pass vs ref_rad)
+    #   col 4 = spot_id
+    #   col 6 = eta
+    #   col 8 = rad_diff (used by rad_ok vs theor.col13 — note: confusingly
+    #           also called "obs_rad" in the dense path; semantically it's
+    #           the radial-displacement, NOT the ring radius).
+    obs_ome_col = obs[..., 2]
+    obs_ringrad_col = obs[..., 3]
+    obs_id_col = obs[..., 4].to(torch.int64)
+    obs_eta_col = obs[..., 6]
+    obs_rad_col = obs[..., 8]
+
+    # ── 4. Running state per (N, T) cell
+    best_delta_ome = torch.full((N, T), float("inf"), dtype=dtype, device=device)
+    best_matched_id = torch.full((N, T), -1, dtype=torch.int64, device=device)
+    best_matched_row = torch.full((N, T), -1, dtype=torch.int64, device=device)
+    has_match = torch.zeros((N, T), dtype=torch.bool, device=device)
+    best_weight: torch.Tensor | None = None
+    if soft_beam_weight_fn is not None:
+        best_weight = torch.zeros((N, T), dtype=dtype, device=device)
+
+    # ── 5. M-iter loop
+    valid_b = valid                                                              # alias for clarity
+    n_obs = obs.shape[0]
+    bin_data_max = bin_data.numel() - 1
+    scan_pos_max_idx = (scan_pos_arr.numel() - 1) if scan_pos_arr is not None else 0
+
+    for m in range(actual_max_n):
+        in_bin = (m < n_per) & valid_b                                           # (N, T)
+        if not bool(in_bin.any()):
+            continue
+
+        rows_m = (data_offset + m).clamp(0, bin_data_max)
+        spot_rows_m = bin_data[rows_m].to(torch.int64)                           # (N, T)
+        # Safe clamp (n_obs - 1) — masked off by in_bin anyway.
+        spot_rows_safe = spot_rows_m.clamp(0, max(0, n_obs - 1))
+
+        cand_ome = obs_ome_col[spot_rows_safe]
+        cand_eta = obs_eta_col[spot_rows_safe]
+        cand_ringrad = obs_ringrad_col[spot_rows_safe]
+        cand_rad = obs_rad_col[spot_rows_safe]
+        cand_id = obs_id_col[spot_rows_safe]
+
+        # rad_ok compares theor's rad_diff (col 13) to obs's rad_diff (col 8).
+        # radial_pass compares per-tuple ref_rad to obs's ringrad (col 3).
+        # Distinct quantities — must NOT collapse to one cand_* tensor.
+        rad_ok = (rad_diff - cand_rad).abs() < margin_radial
+        eta_ok = (eta_post - cand_eta).abs() < eta_margin_per
+        radial_pass = (ref_rad.view(N, 1) - cand_ringrad).abs() < margin_rad
+        radial_ok = skip_radial | radial_pass
+
+        ok = in_bin & rad_ok & radial_ok & eta_ok                                # (N, T)
+
+        weight_m = None
+        if scan_active:
+            cand_scan_idx = obs_scan_idx_full[spot_rows_safe]
+            cand_scan_pos = scan_pos_arr[cand_scan_idx.clamp(0, scan_pos_max_idx)]
+            diff = (s_proj - cand_scan_pos).abs()
+            if soft_beam_weight_fn is not None:
+                weight_m = soft_beam_weight_fn(diff).to(dtype=dtype)
+                if friedel_symmetric_scan_filter:
+                    diff_f = (s_proj + cand_scan_pos).abs()
+                    weight_m = torch.maximum(weight_m, soft_beam_weight_fn(diff_f).to(dtype=dtype))
+                scan_ok = weight_m > 0
+            else:
+                scan_ok = diff < scan_pos_tol_um
+                if friedel_symmetric_scan_filter:
+                    diff_f = (s_proj + cand_scan_pos).abs()
+                    scan_ok = scan_ok | (diff_f < scan_pos_tol_um)
+            ok = ok & scan_ok
+
+        if not bool(ok.any()):
+            continue
+
+        # |Δω| for tie-break — only meaningful where ok.
+        diff_ome = (omega - cand_ome).abs()
+        better = ok & (diff_ome < best_delta_ome)
+        if better.any():
+            best_delta_ome = torch.where(better, diff_ome, best_delta_ome)
+            best_matched_id = torch.where(better, cand_id, best_matched_id)
+            best_matched_row = torch.where(better, spot_rows_safe, best_matched_row)
+            if best_weight is not None and weight_m is not None:
+                best_weight = torch.where(better, weight_m, best_weight)
+        has_match = has_match | ok
+
+    # ── 6. Reductions (same as dense path)
+    matched_for_frac = has_match & ~skip_radial
+    n_matches = has_match.sum(dim=-1).to(torch.int64)
+    n_matches_frac = matched_for_frac.sum(dim=-1).to(torch.int64)
+    valid_for_frac = valid & ~skip_radial
+    n_t_frac = valid_for_frac.sum(dim=-1).to(torch.int64).clamp_min(1)
+    frac = n_matches_frac.to(dtype) / n_t_frac.to(dtype)
+
+    if best_weight is not None:
+        weighted_n_matches = (best_weight * has_match.to(dtype)).sum(dim=-1)
+        weighted_n_matches_frac = (best_weight * matched_for_frac.to(dtype)).sum(dim=-1)
+        weighted_frac_matches = weighted_n_matches_frac / n_t_frac.to(dtype)
+    else:
+        weighted_n_matches = None
+        weighted_n_matches_frac = None
+        weighted_frac_matches = None
+
+    if distance is not None and pos is not None:
+        avg_ia = _compute_avg_ia(
+            theor=theor, obs=obs,
+            matched_obs_row=best_matched_row,
+            has_match=has_match,
+            distance=distance, pos=pos,
+        )
+    else:
+        avg_ia = torch.zeros(N, dtype=dtype, device=device)
+
+    # Sentinel for unmatched (matches dense path final cleanup).
+    best_matched_id = torch.where(has_match, best_matched_id, torch.full_like(best_matched_id, -1))
+    best_matched_row = torch.where(has_match, best_matched_row, torch.full_like(best_matched_row, -1))
+    best_delta_ome = torch.where(has_match, best_delta_ome, torch.full_like(best_delta_ome, float("inf")))
+
+    return MatchResult(
+        n_matches=n_matches,
+        n_matches_frac=n_matches_frac,
+        n_t_frac=n_t_frac,
+        frac_matches=frac,
+        avg_ia=avg_ia,
+        matched_obs_id=best_matched_id,
+        matched_obs_row=best_matched_row,
+        delta_omega=best_delta_ome,
+        matched=has_match,
+        weighted_n_matches=weighted_n_matches,
+        weighted_n_matches_frac=weighted_n_matches_frac,
+        weighted_frac_matches=weighted_frac_matches,
+    )
 
