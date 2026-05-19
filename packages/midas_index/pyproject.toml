@@ -4,7 +4,7 @@ build-backend = "scikit_build_core.build"
 
 [project]
 name = "midas-index"
-version = "0.5.0"
+version = "0.5.1"
 description = "Pure-Python/PyTorch FF-HEDM indexer (drop-in replacement for IndexerOMP/IndexerGPU)"
 readme = "README.md"
 license = "BSD-3-Clause"
