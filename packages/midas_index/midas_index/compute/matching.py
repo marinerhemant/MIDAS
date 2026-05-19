@@ -276,6 +276,29 @@ def compare_spots(
         raise ValueError(
             f"strategy must be 'dense' or 'jagged'; got {strategy!r}"
         )
+    # Dispatch order matters: numba path FIRST when on CPU (it's per-cell,
+    # doesn't need jagged chunking, and chunking would fragment the work
+    # into many small numba calls each paying full marshaling overhead).
+    # Jagged path is only used for the torch dense path on GPU, where
+    # (N, T, M) memory limits matter.
+    if theor.device.type != "cuda" and soft_beam_weight_fn is None:
+        return _compare_spots_numba(
+            theor=theor, valid=valid, obs=obs,
+            bin_data=bin_data, bin_ndata=bin_ndata,
+            ref_rad=ref_rad,
+            margin_rad=margin_rad, margin_radial=margin_radial,
+            eta_margins=eta_margins, ome_margins=ome_margins,
+            eta_bin_size=eta_bin_size, ome_bin_size=ome_bin_size,
+            n_eta_bins=n_eta_bins, n_ome_bins=n_ome_bins,
+            rings_to_reject=rings_to_reject,
+            distance=distance, pos=pos,
+            scan_positions=scan_positions,
+            voxel_xy=voxel_xy,
+            scan_pos_tol_um=scan_pos_tol_um,
+            friedel_symmetric_scan_filter=friedel_symmetric_scan_filter,
+            obs_scan_nr_int64=obs_scan_nr_int64,
+        )
+
     if strategy == "jagged" and theor.shape[0] > chunk_size:
         return _compare_spots_jagged(
             theor=theor, valid=valid, obs=obs,
@@ -297,12 +320,9 @@ def compare_spots(
             soft_beam_weight_fn=soft_beam_weight_fn,
         )
 
-    # CPU dispatch: per-cell numba loop with early-exit when bin is empty.
-    # The dense (N, T, M) torch path scales O(N·T·M_global) regardless of
-    # actual bin occupancy. On PF data (Wenxi) 99% of (N, T) cells point
-    # to empty bins — numba's per-cell loop skips them entirely, matching
-    # C IndexerScanningOMP's algorithm. Soft-attribution falls back to the
-    # torch m-iter path because @njit can't call arbitrary Python callbacks.
+    # CPU dispatch (legacy soft-attribution path, torch m-iter): per-cell
+    # numba can't call arbitrary Python callbacks, so when soft_beam_weight_fn
+    # is set we use the torch m-iter path which still beats the dense path.
     if theor.device.type != "cuda":
         if soft_beam_weight_fn is None:
             return _compare_spots_numba(
