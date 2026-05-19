@@ -72,6 +72,17 @@ Optional dependencies:
 | **19** | [Conv-NN Residual Augmenter](19_nn_residual_augmenter.ipynb) | ~3 min | `autocalibrate_nn` two-stage training, the per-harmonic drift report (anti-cheating diagnostic), when **not** to use this on top of NB 15 |
 | **20** | [Joint Forward-Cake Engine](20_joint_cake_engine.ipynb) | ~5 min | `autocalibrate_joint` — geometry + per-(ring, η) pseudo-Voigt shape DOFs refined jointly on raw radial windows. No centroid extraction; no centroid bias. The escalation path when alternating + residual map still leaves >100 µε |
 
+### Tier 5 — gap notebooks (fully self-contained, no `$V2_TEST_BASE`)
+
+These two render a synthetic CeO₂ ring image internally (no data files,
+no network) and run the actual production entry points.  They are the
+only notebooks here that need **no** mounted test data.
+
+| # | Notebook | Wall time | What you'll learn |
+|---|---|---|---|
+| **21** | [Four-Stage Refinement](21_four_stage_refinement.ipynb) | ~15 s | `autocalibrate_four_stage` — paper-3's staged workflow (geom-only → full distortion → TPS-spline residual map → honest held-out eval) in one call; per-ring `δr_k` context |
+| **22** | [Multi-Distance Bayesian](22_multi_distance_bayesian.ipynb) | ~35 s | `autocalibrate_multi_bayesian` — two CeO₂ images at distinct L_sd → joint MAP + Laplace covariance → per-image L_sd and per-parameter σ; the runnable counterpart to the analytical NB 07 |
+
 ## Running them
 
 Open in Jupyter or VS Code:
