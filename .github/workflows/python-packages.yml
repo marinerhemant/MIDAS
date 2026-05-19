@@ -277,7 +277,19 @@ jobs:
         if: steps.which.outputs.package != ''
         run: |
           cd packages/${{ steps.which.outputs.package }}
-          python -m build
+          # scikit-build-core packages (e.g. midas-index) compile a native
+          # binary, so `python -m build` emits a platform-tagged wheel
+          # (linux_x86_64) that PyPI rejects — it only accepts manylinux*.
+          # Per project_no_c_pypi_packages.md the C binary is build-from-source,
+          # so we publish the sdist only; pip compiles it at install time
+          # (or falls back to the Python-only path). Pure-Python packages
+          # keep the sdist + universal wheel.
+          if grep -q 'scikit_build_core.build' pyproject.toml; then
+            echo "scikit-build-core backend detected — building sdist only."
+            python -m build --sdist
+          else
+            python -m build
+          fi
 
       - name: Upload artifacts
         if: steps.which.outputs.package != ''

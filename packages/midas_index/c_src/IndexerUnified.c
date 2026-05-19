@@ -1471,7 +1471,7 @@ static void GenerateIdealSpotsFriedelMixed(
  * (IndexerScanningOMP.c lines 1152-1332).
  * --------------------------------------------------------------------------*/
 static int DoIndexing_PF(int SpotID, int voxNr, double xThis, double yThis,
-                         double zThis, struct TParams Params, int SpotRowNo,
+                         double zThis, const struct TParams *Params, int SpotRowNo,
                          VoxelAccumulator *acc,
                          struct IndexerScratch *scratch) {
   (void)voxNr;
@@ -1482,7 +1482,7 @@ static int DoIndexing_PF(int SpotID, int voxNr, double xThis, double yThis,
   RealType omega = ObsSpotsLab[SpotRowNo * 10 + 2];
   int ringnr = (int)ObsSpotsLab[SpotRowNo * 10 + 5];
   RealType xi, yi, zi, g1, g2, g3, hklnormal[3], hkl[3];
-  MakeUnitLength(Params.Distance, y0, z0, &xi, &yi, &zi);
+  MakeUnitLength(Params->Distance, y0, z0, &xi, &yi, &zi);
   spot_to_gv(xi, yi, zi, omega, &g1, &g2, &g3);
   hklnormal[0] = g1;
   hklnormal[1] = g2;
@@ -1492,7 +1492,7 @@ static int DoIndexing_PF(int SpotID, int voxNr, double xThis, double yThis,
   hkl[0] = RingHKL[ringnr][0];
   hkl[1] = RingHKL[ringnr][1];
   hkl[2] = RingHKL[ringnr][2];
-  GenerateCandidateOrientationsF(hkl, hklnormal, Params.StepsizeOrient,
+  GenerateCandidateOrientationsF(hkl, hklnormal, Params->StepsizeOrient,
                                  scratch->OrMat, &nOrient, ringnr);
   RealType **TheorSpots = scratch->TheorSpots;
   RealType **GrainSpots = scratch->GrainSpots;
@@ -1514,11 +1514,11 @@ static int DoIndexing_PF(int SpotID, int voxNr, double xThis, double yThis,
   RealType FracThis;
 
   while (or_ < nOrient) {
-    CalcDiffrSpots(scratch->OrMat[or_], Params.LatticeConstant,
-                   Params.Wavelength, Params.Distance, Params.RingRadii,
-                   Params.OmegaRanges, Params.BoxSizes, Params.NoOfOmegaRanges,
-                   Params.ExcludePoleAngle, TheorSpots, &nTspots,
-                   Params.RingsToReject, Params.nRingsToRejectCalc,
+    CalcDiffrSpots(scratch->OrMat[or_], Params->LatticeConstant,
+                   Params->Wavelength, Params->Distance, Params->RingRadii,
+                   Params->OmegaRanges, Params->BoxSizes, Params->NoOfOmegaRanges,
+                   Params->ExcludePoleAngle, TheorSpots, &nTspots,
+                   Params->RingsToReject, Params->nRingsToRejectCalc,
                    &nTspotsFracCalc);
     /* Use raw nTspots for accept threshold (matches legacy PF line 1213). */
     for (sp = 0; sp < nTspots; sp++) {
@@ -1531,21 +1531,21 @@ static int DoIndexing_PF(int SpotID, int voxNr, double xThis, double yThis,
       CalcEtaAngle(TheorSpots[sp][10], TheorSpots[sp][11], &TheorSpots[sp][12]);
       TheorSpots[sp][13] = sqrt(TheorSpots[sp][10] * TheorSpots[sp][10] +
                                 TheorSpots[sp][11] * TheorSpots[sp][11]) -
-                           Params.RingRadii[(int)TheorSpots[sp][9]];
+                           Params->RingRadii[(int)TheorSpots[sp][9]];
     }
-    CompareSpots(TheorSpots, nTspots, RefRad, Params.MarginRad,
-                 Params.MarginRadial, etamargins, Params.MarginOme,
-                 Params.StepsizeOrient, numScans, xThis, yThis, &Params,
+    CompareSpots(TheorSpots, nTspots, RefRad, Params->MarginRad,
+                 Params->MarginRadial, etamargins, Params->MarginOme,
+                 Params->StepsizeOrient, numScans, xThis, yThis, Params,
                  &nMatches, GrainSpots, &nMatchesFracCalc,
-                 Params.RingsToReject, Params.nRingsToRejectCalc);
+                 Params->RingsToReject, Params->nRingsToRejectCalc);
     /* Use FracCalc denominators when RingsToReject is active (ruling #4 +
      * N5 resolution). When nRingsToReject==0, FracCalc denominators equal
      * raw counts → PF bit-identity vs legacy IndexerScanningOMP preserved. */
-    int nMatchesAccept = (Params.nRingsToRejectCalc > 0) ? nMatchesFracCalc : nMatches;
-    int nTspotsAccept  = (Params.nRingsToRejectCalc > 0) ? nTspotsFracCalc  : nTspots;
+    int nMatchesAccept = (Params->nRingsToRejectCalc > 0) ? nMatchesFracCalc : nMatches;
+    int nTspotsAccept  = (Params->nRingsToRejectCalc > 0) ? nTspotsFracCalc  : nTspots;
     FracThis = (nTspotsAccept > 0)
                ? (double)nMatchesAccept / (double)nTspotsAccept : 0.0;
-    if (FracThis > Params.MinMatchesToAcceptFrac) {
+    if (FracThis > Params->MinMatchesToAcceptFrac) {
       if (FracThis >= bestConfidence) {
         RealType prevBestConfidence = bestConfidence;
         bestConfidence = FracThis;
@@ -1564,7 +1564,7 @@ static int DoIndexing_PF(int SpotID, int voxNr, double xThis, double yThis,
            * is the IA scratch slot, written by CalcIA below. */
           memcpy(AllGrainSpotsT[r], GrainSpots[r], 16 * sizeof(RealType));
         }
-        CalcIA(GrainMatchesT, 1, AllGrainSpotsT, Params.Distance, scratch);
+        CalcIA(GrainMatchesT, 1, AllGrainSpotsT, Params->Distance, scratch);
         if (FracThis == prevBestConfidence &&
             GrainMatchesT[0][15] > MinInternalAngle) {
           /* same conf, worse IA → revert */
@@ -1594,7 +1594,7 @@ static int DoIndexing_PF(int SpotID, int voxNr, double xThis, double yThis,
   fracMatches = (RealType)bestnMatchesIsp / (RealType)bestnTspotsIsp;
   if ((fracMatches > 1 || fracMatches < 0 || (int)bestnTspotsIsp == 0 ||
        (int)bestnMatchesIsp == -1 || bestMatchFound == 0) ||
-      fracMatches < Params.MinMatchesToAcceptFrac) {
+      fracMatches < Params->MinMatchesToAcceptFrac) {
     return 0;
   }
   double outArr[16] = {
@@ -1626,7 +1626,7 @@ static int DoIndexing_PF(int SpotID, int voxNr, double xThis, double yThis,
  * --------------------------------------------------------------------------*/
 static int DoIndexing_Seeded(int voxNr, int grainIdx, double OM[3][3],
                              double xThis, double yThis,
-                             struct TParams Params, VoxelAccumulator *acc,
+                             const struct TParams *Params, VoxelAccumulator *acc,
                              struct IndexerScratch *scratch) {
   (void)voxNr; (void)grainIdx;
   RealType ga = xThis, gb = yThis, gc = 0;
@@ -1643,11 +1643,11 @@ static int DoIndexing_Seeded(int voxNr, int grainIdx, double OM[3][3],
   RealType Displ_y, Displ_z;
   RealType FracThis;
   RealType RefRad = -1;  /* legacy PF DoIndexingSingle convention */
-  CalcDiffrSpots(OM, Params.LatticeConstant, Params.Wavelength,
-                 Params.Distance, Params.RingRadii, Params.OmegaRanges,
-                 Params.BoxSizes, Params.NoOfOmegaRanges,
-                 Params.ExcludePoleAngle, TheorSpots, &nTspots,
-                 Params.RingsToReject, Params.nRingsToRejectCalc,
+  CalcDiffrSpots(OM, Params->LatticeConstant, Params->Wavelength,
+                 Params->Distance, Params->RingRadii, Params->OmegaRanges,
+                 Params->BoxSizes, Params->NoOfOmegaRanges,
+                 Params->ExcludePoleAngle, TheorSpots, &nTspots,
+                 Params->RingsToReject, Params->nRingsToRejectCalc,
                  &nTspotsFracCalc);
   for (sp = 0; sp < nTspots; sp++) {
     displacement_spot_needed_COM(ga, gb, gc, TheorSpots[sp][3],
@@ -1659,19 +1659,19 @@ static int DoIndexing_Seeded(int voxNr, int grainIdx, double OM[3][3],
     CalcEtaAngle(TheorSpots[sp][10], TheorSpots[sp][11], &TheorSpots[sp][12]);
     TheorSpots[sp][13] = sqrt(TheorSpots[sp][10] * TheorSpots[sp][10] +
                               TheorSpots[sp][11] * TheorSpots[sp][11]) -
-                         Params.RingRadii[(int)TheorSpots[sp][9]];
+                         Params->RingRadii[(int)TheorSpots[sp][9]];
   }
-  CompareSpots(TheorSpots, nTspots, RefRad, Params.MarginRad,
-               Params.MarginRadial, etamargins, Params.MarginOme,
-               Params.StepsizeOrient, numScans, xThis, yThis, &Params,
+  CompareSpots(TheorSpots, nTspots, RefRad, Params->MarginRad,
+               Params->MarginRadial, etamargins, Params->MarginOme,
+               Params->StepsizeOrient, numScans, xThis, yThis, Params,
                &nMatches, GrainSpots, &nMatchesFracCalc,
-               Params.RingsToReject, Params.nRingsToRejectCalc);
+               Params->RingsToReject, Params->nRingsToRejectCalc);
   /* N5: use FracCalc denominators when RingsToReject is active. */
-  int nMatchesAccept = (Params.nRingsToRejectCalc > 0) ? nMatchesFracCalc : nMatches;
-  int nTspotsAccept  = (Params.nRingsToRejectCalc > 0) ? nTspotsFracCalc  : nTspots;
+  int nMatchesAccept = (Params->nRingsToRejectCalc > 0) ? nMatchesFracCalc : nMatches;
+  int nTspotsAccept  = (Params->nRingsToRejectCalc > 0) ? nTspotsFracCalc  : nTspots;
   FracThis = (nTspotsAccept > 0)
              ? (double)nMatchesAccept / (double)nTspotsAccept : 0.0;
-  if (FracThis <= Params.MinMatchesToAcceptFrac) return 0;
+  if (FracThis <= Params->MinMatchesToAcceptFrac) return 0;
   for (i = 0; i < 9; i++)
     GrainMatches[0][i] = OM[i / 3][i % 3];
   GrainMatches[0][9] = ga;
@@ -1686,7 +1686,7 @@ static int DoIndexing_Seeded(int voxNr, int grainIdx, double OM[3][3],
   }
   for (r = nTspots; r < nRowsOutput; r++)
     memset(AllGrainSpots[r], 0, N_COL_GRAINSPOTS * sizeof(RealType));
-  CalcIA(GrainMatches, 1, AllGrainSpots, Params.Distance, scratch);
+  CalcIA(GrainMatches, 1, AllGrainSpots, Params->Distance, scratch);
   SpotID = (int)AllGrainSpots[0][14];
   double outArr[16] = {
       (double)SpotID,      GrainMatches[0][15], GrainMatches[0][0],
@@ -1716,10 +1716,10 @@ static int DoIndexing_Seeded(int voxNr, int grainIdx, double OM[3][3],
  * Writes 0 or 1 solution per "voxel" (which represents one spot-to-index)
  * through the consolidated accumulator path (plan ruling #8).
  * --------------------------------------------------------------------------*/
-static int DoIndexing_FF(int SpotID, int SpotRowNo, struct TParams Params,
+static int DoIndexing_FF(int SpotID, int SpotRowNo, const struct TParams *Params,
                          VoxelAccumulator *acc,
                          struct IndexerScratch *scratch) {
-  RealType HalfBeam = Params.Hbeam / 2;
+  RealType HalfBeam = Params->Hbeam / 2;
   RealType MinMatchesToAccept;
   RealType ga, gb, gc;
   int nTspots, nTspotsFracCalc, nMatchesFracCalc;
@@ -1766,19 +1766,19 @@ static int DoIndexing_FF(int SpotID, int SpotRowNo, struct TParams Params,
 
   nPlaneNormals = 0;
   usingFriedelPair = 0;
-  if (Params.UseFriedelPairs == 1) {
+  if (Params->UseFriedelPairs == 1) {
     usingFriedelPair = 1;
     GenerateIdealSpotsFriedel(ys, zs, RingTtheta[ringnr], eta, omega, ringnr,
-                              Params.RingRadii[ringnr], Params.Rsample,
-                              Params.Hbeam, Params.MarginOme,
-                              Params.MarginRadial, y0_vector, z0_vector,
+                              Params->RingRadii[ringnr], Params->Rsample,
+                              Params->Hbeam, Params->MarginOme,
+                              Params->MarginRadial, y0_vector, z0_vector,
                               &nPlaneNormals);
     if (nPlaneNormals == 0) {
       GenerateIdealSpotsFriedelMixed(
           ys, zs, RingTtheta[ringnr], eta, omega, ringnr,
-          Params.RingRadii[ringnr], Params.Distance, Params.Rsample,
-          Params.Hbeam, Params.StepsizePos, Params.MarginOme,
-          Params.MarginRadial, Params.MarginEta, y0_vector, z0_vector,
+          Params->RingRadii[ringnr], Params->Distance, Params->Rsample,
+          Params->Hbeam, Params->StepsizePos, Params->MarginOme,
+          Params->MarginRadial, Params->MarginEta, y0_vector, z0_vector,
           &nPlaneNormals);
     }
   }
@@ -1789,8 +1789,8 @@ static int DoIndexing_FF(int SpotID, int SpotRowNo, struct TParams Params,
     }
     usingFriedelPair = 0;
     GenerateIdealSpots(ys, zs, RingTtheta[ringnr], eta,
-                       Params.RingRadii[ringnr], Params.Rsample, Params.Hbeam,
-                       Params.StepsizePos, y0_vector, z0_vector,
+                       Params->RingRadii[ringnr], Params->Rsample, Params->Hbeam,
+                       Params->StepsizePos, y0_vector, z0_vector,
                        &nPlaneNormals);
   }
   bestnMatchesIsp = -1;
@@ -1803,33 +1803,33 @@ static int DoIndexing_FF(int SpotID, int SpotRowNo, struct TParams Params,
   while (isp < nPlaneNormals) {
     y0 = y0_vector[isp];
     z0 = z0_vector[isp];
-    MakeUnitLength(Params.Distance, y0, z0, &xi, &yi, &zi);
+    MakeUnitLength(Params->Distance, y0, z0, &xi, &yi, &zi);
     spot_to_gv(xi, yi, zi, omega, &g1, &g2, &g3);
     hklnormal[0] = g1;
     hklnormal[1] = g2;
     hklnormal[2] = g3;
-    GenerateCandidateOrientationsF(hkl, hklnormal, Params.StepsizeOrient,
+    GenerateCandidateOrientationsF(hkl, hklnormal, Params->StepsizeOrient,
                                    scratch->OrMat, &nOrient, ringnr);
     bestnMatchesRot = -1;
     bestnTspotsRot = 0;
     or_ = 0;
     orDelta = 1;
     while (or_ < nOrient) {
-      CalcDiffrSpots(scratch->OrMat[or_], Params.LatticeConstant,
-                     Params.Wavelength, Params.Distance, Params.RingRadii,
-                     Params.OmegaRanges, Params.BoxSizes,
-                     Params.NoOfOmegaRanges, Params.ExcludePoleAngle,
-                     TheorSpots, &nTspots, Params.RingsToReject,
-                     Params.nRingsToRejectCalc, &nTspotsFracCalc);
-      MinMatchesToAccept = nTspotsFracCalc * Params.MinMatchesToAcceptFrac;
+      CalcDiffrSpots(scratch->OrMat[or_], Params->LatticeConstant,
+                     Params->Wavelength, Params->Distance, Params->RingRadii,
+                     Params->OmegaRanges, Params->BoxSizes,
+                     Params->NoOfOmegaRanges, Params->ExcludePoleAngle,
+                     TheorSpots, &nTspots, Params->RingsToReject,
+                     Params->nRingsToRejectCalc, &nTspotsFracCalc);
+      MinMatchesToAccept = nTspotsFracCalc * Params->MinMatchesToAcceptFrac;
       bestnMatchesPos = -1;
       bestnTspotsPos = 0;
-      calc_n_max_min(xi, yi, ys, y0, Params.Rsample, Params.StepsizePos, &n_max,
+      calc_n_max_min(xi, yi, ys, y0, Params->Rsample, Params->StepsizePos, &n_max,
                      &n_min);
       n = n_min;
       while (n <= n_max) {
         spot_to_unrotated_coordinates(xi, yi, zi, ys, zs, y0, z0,
-                                      Params.StepsizePos, n, omega, &ga, &gb,
+                                      Params->StepsizePos, n, omega, &ga, &gb,
                                       &gc);
         if (fabs(gc) > HalfBeam) {
           n++;
@@ -1850,13 +1850,13 @@ static int DoIndexing_FF(int SpotID, int SpotRowNo, struct TParams Params,
                        &TheorSpots[sp][12]);
           TheorSpots[sp][13] = sqrt(TheorSpots[sp][10] * TheorSpots[sp][10] +
                                     TheorSpots[sp][11] * TheorSpots[sp][11]) -
-                               Params.RingRadii[(int)TheorSpots[sp][9]];
+                               Params->RingRadii[(int)TheorSpots[sp][9]];
         }
-        CompareSpots(TheorSpots, nTspots, RefRad, Params.MarginRad,
-                     Params.MarginRadial, etamargins, Params.MarginOme,
-                     Params.StepsizeOrient, /*nScans=*/1, 0.0, 0.0, &Params,
+        CompareSpots(TheorSpots, nTspots, RefRad, Params->MarginRad,
+                     Params->MarginRadial, etamargins, Params->MarginOme,
+                     Params->StepsizeOrient, /*nScans=*/1, 0.0, 0.0, Params,
                      &nMatches, GrainSpots, &nMatchesFracCalc,
-                     Params.RingsToReject, Params.nRingsToRejectCalc);
+                     Params->RingsToReject, Params->nRingsToRejectCalc);
         if (nMatchesFracCalc > bestnMatchesPos) {
           bestnMatchesPos = nMatchesFracCalc;
           bestnTspotsPos = nTspotsFracCalc;
@@ -1881,7 +1881,7 @@ static int DoIndexing_FF(int SpotID, int SpotRowNo, struct TParams Params,
             /* Phase 8: copy 16 cols so the per-match weight propagates. */
             for (c = 0; c < 16; c++) AllGrainSpotsT[r][c] = GrainSpots[r][c];
           }
-          CalcIA(GrainMatchesT, 1, AllGrainSpotsT, Params.Distance, scratch);
+          CalcIA(GrainMatchesT, 1, AllGrainSpotsT, Params->Distance, scratch);
           if (fracMatchesThis > bestFracTillNow ||
               (fracMatchesThis == bestFracTillNow &&
                GrainMatchesT[0][15] < MinInternalAngle)) {
@@ -2942,7 +2942,7 @@ int main(int argc, char *argv[]) {
                                      mic[bestRow * 5 + 4]};
             double OMThis[3][3];
             Euler2OrientMat(eulerThis, OMThis);
-            DoIndexing_Seeded(thisRowNr, 0, OMThis, xThis, yThis, Params, acc,
+            DoIndexing_Seeded(thisRowNr, 0, OMThis, xThis, yThis, &Params, acc,
                               &scratch);
           }
         } else if (hasGrainsPF) {
@@ -2957,7 +2957,7 @@ int main(int argc, char *argv[]) {
             OMThis[2][0] = grainsOM_PF[iter * 9 + 6];
             OMThis[2][1] = grainsOM_PF[iter * 9 + 7];
             OMThis[2][2] = grainsOM_PF[iter * 9 + 8];
-            DoIndexing_Seeded(thisRowNr, iter, OMThis, xThis, yThis, Params,
+            DoIndexing_Seeded(thisRowNr, iter, OMThis, xThis, yThis, &Params,
                               acc, &scratch);
           }
         } else {
@@ -2969,7 +2969,7 @@ int main(int argc, char *argv[]) {
             double newY = xThis * spotSinOme[idnr] + yThis * spotCosOme[idnr];
             if (fabs(newY - ypos[(int)ObsSpotsLab[idnr * 10 + 9]]) <=
                 seedTol) {
-              DoIndexing_PF(thisID, thisRowNr, xThis, yThis, 0, Params,
+              DoIndexing_PF(thisID, thisRowNr, xThis, yThis, 0, &Params,
                             (int)idnr, acc, &scratch);
             }
           }
@@ -2984,12 +2984,12 @@ int main(int argc, char *argv[]) {
             for (int jj = 0; jj < 3; jj++)
               OMThis[ii][jj] = FF_orients[g][ii * 3 + jj];
           DoIndexing_Seeded(g, g, OMThis, FF_positions[g][0],
-                            FF_positions[g][1], Params, acc, &scratch);
+                            FF_positions[g][1], &Params, acc, &scratch);
         } else {
           int spotID = FF_SpotIDs[thisRowNr];
           int spotRowNo = FF_SpotRowNos[thisRowNr];
           if (spotID == -1 || spotRowNo < 0) continue;
-          DoIndexing_FF(spotID, spotRowNo, Params, acc, &scratch);
+          DoIndexing_FF(spotID, spotRowNo, &Params, acc, &scratch);
         }
       }
     }
