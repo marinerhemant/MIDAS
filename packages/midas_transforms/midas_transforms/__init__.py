@@ -28,7 +28,7 @@ Two equally-supported usage modes:
 See ``dev/implementation_plan.md`` for design and roadmap.
 """
 
-__version__ = "0.4.0"
+__version__ = "0.4.1"
 
 from .merge import merge_overlapping_peaks
 from .radius import calc_radius
