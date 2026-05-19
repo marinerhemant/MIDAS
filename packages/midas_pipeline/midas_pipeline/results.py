@@ -158,6 +158,40 @@ class EMRefineResult(StageResult):
 
 
 @dataclass
+class CalcRadiusVResult(StageResult):
+    """PF-mode calc_radius (V-map foundation, P8).
+
+    Writes a per-spot V_rel CSV and a per-ring theoretical-intensity CSV
+    used by :class:`RefineVmapResult`.  ``n_spots`` is the number of
+    spots that received a finite V_rel.
+    """
+
+    radius_csv: str = ""               # per-spot Radius_V.csv
+    theory_csv: str = ""               # per-ring I_theory.csv
+    n_spots: int = 0
+    n_rings: int = 0
+
+
+@dataclass
+class RefineVmapResult(StageResult):
+    """PF-mode V-map joint refinement (P8).
+
+    Writes per-voxel V (.h5 dataset) plus per-ring K and a loss history.
+    Loss is log-space residual ``log I_obs - log I_pred`` per
+    :func:`midas_transforms.radius.refine_vmap_joint`.
+    """
+
+    v_map_h5: str = ""
+    k_ring_csv: str = ""
+    loss_history_csv: str = ""
+    n_voxels: int = 0
+    n_rings: int = 0
+    n_iterations: int = 0
+    final_loss: float = 0.0
+    converged: bool = False
+
+
+@dataclass
 class ConsolidationResult(StageResult):
     """PF mode: pure-Python port of pf_MIDAS.py:2429–2519.
 
@@ -205,6 +239,9 @@ class LayerResult:
     fuse: Optional[FuseResult] = None
     potts: Optional[PottsResult] = None
     em_refine: Optional[EMRefineResult] = None
+    # PF V-map (P8 of the V-map plan)
+    calc_radius_v: Optional["CalcRadiusVResult"] = None
+    refine_vmap: Optional["RefineVmapResult"] = None
 
     # Shared end
     consolidation: Optional[ConsolidationResult] = None
@@ -227,6 +264,7 @@ class LayerResult:
             self.indexing, self.refinement,
             self.find_grains, self.sinogen, self.reconstruct,
             self.fuse, self.potts, self.em_refine,
+            self.calc_radius_v, self.refine_vmap,
             self.process_grains, self.consolidation,
         ):
             if f is not None:

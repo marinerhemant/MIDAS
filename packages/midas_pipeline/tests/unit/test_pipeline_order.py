@@ -17,6 +17,8 @@ _EXPECTED_FF = [
     "transforms", "cross_det_merge", "global_powder",
     "binning", "indexing", "refinement",
     "process_grains", "consolidation",
+    # P8 V-map orchestration (clean no-op when vmap.run=False)
+    "calc_radius_v", "refine_vmap",
 ]
 
 _EXPECTED_PF = [
@@ -27,6 +29,8 @@ _EXPECTED_PF = [
     "find_grains", "sinogen", "reconstruct",
     "fuse", "potts", "em_refine",
     "consolidation",
+    # P8 V-map orchestration (clean no-op when vmap.run=False)
+    "calc_radius_v", "refine_vmap",
 ]
 
 

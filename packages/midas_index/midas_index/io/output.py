@@ -41,12 +41,22 @@ INDEX_BEST_RECORD_BYTES = INDEX_BEST_RECORD_DOUBLES * 8
 INDEX_BEST_FULL_RECORD_DOUBLES = MAX_N_HKLS * 2
 INDEX_BEST_FULL_RECORD_BYTES = INDEX_BEST_FULL_RECORD_DOUBLES * 8
 
+# Soft attribution (P8 of the V-map plan): a parallel file carrying the
+# weighted analogues of IndexBest.bin's count/score fields.  Written only
+# when ``soft_beam_weight_fn`` is active.  Layout per seed (2 doubles):
+#     [0] weighted_n_matches
+#     [1] weighted_frac_matches
+INDEX_BEST_WEIGHTED_DOUBLES = 2
+INDEX_BEST_WEIGHTED_BYTES = INDEX_BEST_WEIGHTED_DOUBLES * 8
+
 
 def open_output_files(
     output_folder: str | Path,
     n_total_seeds: int,
     block_nr: int,
-) -> tuple[int, int]:
+    *,
+    open_weighted: bool = False,
+) -> tuple:
     """Open + pre-allocate `IndexBest.bin` and `IndexBestFull.bin`.
 
     Mirrors IndexerOMP.c:2256-2284. On block_nr == 0 the files are
@@ -59,7 +69,9 @@ def open_output_files(
     runs where one shard's late-finishing ``O_TRUNC`` would otherwise
     wipe another shard's already-written data).
 
-    Returns raw file descriptors (int) suitable for `os.pwrite`.
+    Returns ``(fd_best, fd_full)`` by default.  When ``open_weighted=True``
+    (soft attribution active), also opens / preallocates the parallel
+    ``IndexBestWeighted.bin`` and returns ``(fd_best, fd_full, fd_weighted)``.
     """
     folder = Path(output_folder)
     folder.mkdir(parents=True, exist_ok=True)
@@ -72,17 +84,49 @@ def open_output_files(
 
     fd_best = os.open(folder / "IndexBest.bin", flags, 0o600)
     fd_full = os.open(folder / "IndexBestFull.bin", flags, 0o600)
+    fd_weighted = -1
+    if open_weighted:
+        fd_weighted = os.open(folder / "IndexBestWeighted.bin", flags, 0o600)
 
     if block_nr == 0 and not preallocated:
         os.ftruncate(fd_best, n_total_seeds * INDEX_BEST_RECORD_BYTES)
         os.ftruncate(fd_full, n_total_seeds * INDEX_BEST_FULL_RECORD_BYTES)
+        if open_weighted:
+            os.ftruncate(fd_weighted, n_total_seeds * INDEX_BEST_WEIGHTED_BYTES)
 
+    if open_weighted:
+        return fd_best, fd_full, fd_weighted
     return fd_best, fd_full
 
 
-def close_output_files(fd_best: int, fd_full: int) -> None:
+def close_output_files(fd_best: int, fd_full: int, fd_weighted: int = -1) -> None:
     os.close(fd_best)
     os.close(fd_full)
+    if fd_weighted >= 0:
+        os.close(fd_weighted)
+
+
+def write_weighted_record(
+    fd_weighted: int,
+    seed: "SeedResult",
+    offset_loc: int,
+) -> None:
+    """pwrite the 2-double weighted-score record for one seed.
+
+    No-op when ``seed.weighted_n_matches`` is ``None`` (legacy binary mode).
+    """
+    if fd_weighted < 0 or seed.weighted_n_matches is None:
+        return
+    rec = np.array([
+        float(seed.weighted_n_matches),
+        float(seed.weighted_frac_matches or 0.0),
+    ], dtype=np.float64)
+    byte_offset = offset_loc * INDEX_BEST_WEIGHTED_BYTES
+    n = os.pwrite(fd_weighted, rec.tobytes(), byte_offset)
+    if n != INDEX_BEST_WEIGHTED_BYTES:
+        raise IOError(
+            f"pwrite to IndexBestWeighted.bin wrote {n}/{INDEX_BEST_WEIGHTED_BYTES} bytes"
+        )
 
 
 def _seed_record(seed: "SeedResult") -> np.ndarray:
@@ -165,8 +209,23 @@ def write_block(
     `seed_to_offset_loc` maps `SeedResult.spot_id` to its row in SpotsToIndex.csv.
     If omitted, seeds are written in iteration order starting at the block's
     `startRowNr` (caller is responsible for ordering).
+
+    Auto-detects whether any seed in the block has weighted-attribution
+    data populated (P8 of the V-map plan) — if so, also opens / writes
+    ``IndexBestWeighted.bin`` alongside.  The binary ``IndexBest.bin``
+    schema is byte-for-byte unchanged (15-double records).
     """
-    fd_best, fd_full = open_output_files(output_folder, n_total_seeds, block_nr)
+    open_weighted = any(
+        s.weighted_n_matches is not None for s in result.seeds
+    )
+    fds = open_output_files(
+        output_folder, n_total_seeds, block_nr, open_weighted=open_weighted,
+    )
+    if open_weighted:
+        fd_best, fd_full, fd_weighted = fds
+    else:
+        fd_best, fd_full = fds
+        fd_weighted = -1
     try:
         for i, seed in enumerate(result.seeds):
             offset = (
@@ -178,8 +237,10 @@ def write_block(
             if seed.matched_pairs is not None:
                 pairs_np = seed.matched_pairs.numpy().astype(np.float64)
                 write_full_record(fd_full, pairs_np, offset)
+            if open_weighted:
+                write_weighted_record(fd_weighted, seed, offset)
     finally:
-        close_output_files(fd_best, fd_full)
+        close_output_files(fd_best, fd_full, fd_weighted)
 
 
 # Back-compat alias kept for the original plan section reference.

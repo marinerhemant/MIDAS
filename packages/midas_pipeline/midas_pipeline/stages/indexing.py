@@ -146,6 +146,30 @@ def run(ctx: StageContext) -> StageResult:
             ind.params.scan_pos_tol_um = ctx.config.scan.beam_size_um / 2.0
         ind.params.OutputFolder = str(layer_dir)
 
+        # P6/P8: soft beam attribution.  Build the weight fn from config and
+        # attach to the Indexer; the IndexerContext picks it up in
+        # run_scanning() and forwards via scan_kwargs() to compare_spots.
+        soft_cfg = ctx.config.soft_attribution
+        if soft_cfg.enable:
+            from midas_index.compute.soft_attribution import (
+                soft_gaussian_fn, soft_top_hat_fn,
+            )
+            fwhm = soft_cfg.fwhm_um or ctx.config.scan.beam_size_um
+            if soft_cfg.profile == "gaussian":
+                fn = soft_gaussian_fn(
+                    fwhm_um=fwhm, truncate_at=soft_cfg.truncate_at_um,
+                )
+            elif soft_cfg.profile in ("tophat", "tophat-ramp"):
+                fn = soft_top_hat_fn(
+                    beam_width_um=fwhm,
+                    fall_off_um=soft_cfg.tophat_fall_off_um,
+                )
+            else:
+                raise ValueError(
+                    f"unknown soft_attribution.profile={soft_cfg.profile!r}"
+                )
+            ind.soft_beam_weight_fn = fn
+
         ind.load_observations(cwd=layer_dir)
         n_processed = ind.run_scanning(
             scan_positions=scan_positions,

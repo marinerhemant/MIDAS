@@ -244,6 +244,58 @@ class EMConfig:
 
 
 @dataclass
+class SoftAttributionConfig:
+    """Soft beam attribution (P6/P7 of the V-map plan).
+
+    When ``enable=True``, the indexer's binary scan-position filter is
+    replaced by a continuous weight function and the sinogen stage also
+    emits a sum-pooled ``sinos_softsum_*.bin`` variant.  Both default to
+    off to preserve bit-exact C parity.
+    """
+
+    enable: bool = False
+    profile: str = "gaussian"          # "tophat" | "gaussian" | "tophat-ramp"
+    fwhm_um: float = 0.0               # 0 ⇒ default to scan.beam_size_um
+    tophat_fall_off_um: float = 0.0    # smooth ramp added past beam half-width
+    truncate_at_um: float = 0.0        # 0 ⇒ no truncation (Gaussian tails kept)
+    omega_sigma_deg: float = 0.0       # 0 ⇒ sinogen uses uniform weights
+
+
+@dataclass
+class VMapConfig:
+    """V-map foundation knobs (P8 of the V-map plan).
+
+    Drives the ``calc_radius`` and ``refine_vmap`` stages.  Defaults are
+    chosen so existing pipelines that don't enable ``run`` skip the new
+    work entirely.
+    """
+
+    run: bool = False
+    crystal_cif: Optional[str] = None              # path to a CIF for I_theory
+    wavelength_A: float = 0.0                       # 0 ⇒ read from scan
+    polarization: float = 0.5
+    two_theta_max_deg: float = 0.0                  # 0 ⇒ infer from rings
+    two_theta_tol_deg: float = 0.05
+    # Refinement
+    refine_K: bool = True                           # default: closed-form init + LBFGS K
+    refine_V: bool = True
+    refine_mu: bool = False
+    refine_beam: bool = False
+    use_absorption: bool = False
+    element: str = ""                               # for absorption (μ via NIST)
+    max_iter: int = 80
+    loss_kind: str = "log_l2"                       # "log_l2" | "huber_log"
+    tolerance: float = 1e-8
+    # Diagnostics (P9) — figures + tables under ``<layer_dir>/diag/``.
+    emit_diagnostics: bool = True
+    diag_axes: tuple = (0, 1)                       # which lab axes for V-map 2-D image
+    # Beam-voxel projection mode (P5): ``"pf"`` xy rotation, ``"z"`` FF height
+    # scan, ``"none"`` FF compact (every grain voxel fully in beam).
+    # ``"auto"`` (default) picks "pf" for ``scan_mode=='pf'`` and "none" for FF.
+    scan_axis: str = "auto"
+
+
+@dataclass
 class SeedingConfig:
     """Indexer seeding mode.
 
@@ -323,6 +375,8 @@ class PipelineConfig:
     fusion: FusionConfig = field(default_factory=FusionConfig)
     em: EMConfig = field(default_factory=EMConfig)
     seeding: SeedingConfig = field(default_factory=SeedingConfig)
+    soft_attribution: SoftAttributionConfig = field(default_factory=SoftAttributionConfig)
+    vmap: VMapConfig = field(default_factory=VMapConfig)
     layer_selection: LayerSelection = field(default_factory=LayerSelection)
     machine: MachineConfig = field(default_factory=MachineConfig)
 

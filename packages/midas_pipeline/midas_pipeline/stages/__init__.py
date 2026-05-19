@@ -14,6 +14,7 @@ The thin shells exist so:
 from . import (
     binning,
     calc_radius,
+    calc_radius_v,
     consolidation,
     cross_det_merge,
     find_grains_stage,
@@ -24,6 +25,7 @@ from . import (
     merge_scans,
     peakfit,
     process_grains,
+    refine_vmap,
     refinement,
     seeding,
     sinogen,
@@ -54,6 +56,7 @@ except ImportError:
 __all__ = [
     "binning",
     "calc_radius",
+    "calc_radius_v",
     "consolidation",
     "cross_det_merge",
     "em_refine",
@@ -69,6 +72,7 @@ __all__ = [
     "process_grains",
     "reconstruct",
     "refinement",
+    "refine_vmap",
     "seeding",
     "sinogen",
     "transforms",

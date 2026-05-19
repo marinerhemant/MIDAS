@@ -72,6 +72,32 @@ def test_find_grains_single_e2e_writes_outputs(tmp_path):
     assert Path(art.sinogen.omegas_path).exists()
 
 
+def test_find_grains_single_emits_voxel_grid_csv(tmp_path):
+    """P9 TODO(a): find_grains_single writes Output/voxel_grid.csv with
+    columns (voxel_idx, x_um, y_um, z_um, grain_id).  Used by refine_vmap."""
+    work, out_dir = _build_min_workdir(tmp_path, n_scans=2, axis_z_om=None)
+    art = find_grains_single(
+        work_dir=work, space_group=225,
+        sino_mode="tolerance",
+        cluster_misorientation_deg=1.0,
+        tol_ome_deg=1.0, tol_eta_deg=1.0,
+    )
+    vg = out_dir / "voxel_grid.csv"
+    assert vg.exists()
+    arr = np.loadtxt(vg, comments="#", skiprows=1)
+    assert arr.shape == (4, 5)
+    # All 4 voxels collapse to a single grain (id 0) -- they share the same OM.
+    assert (arr[:, 0] == [0, 1, 2, 3]).all()
+    # positions.csv has Y values [-1, 0]; lab xy follows (positions[i], positions[j])
+    # with i = v // n_scans, j = v % n_scans
+    expected_xy = np.array([[-1, -1], [-1, 0], [0, -1], [0, 0]], dtype=np.float64)
+    np.testing.assert_allclose(arr[:, 1:3], expected_xy)
+    assert (arr[:, 3] == 0).all()
+    assert (arr[:, 4] == 0).all()
+    # Sanity: also matches the artifact's reported grain count.
+    assert art.n_unique_grains == 1
+
+
 def test_find_grains_multiple_e2e_writes_spotsToIndex(tmp_path):
     work, out_dir = _build_min_workdir(tmp_path, n_scans=2, axis_z_om=None)
     art = find_grains_multiple(

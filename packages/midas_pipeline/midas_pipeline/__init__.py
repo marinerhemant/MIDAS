@@ -33,6 +33,8 @@ from .config import (
     SeedingMode,
     SinoSource,
     SinoType,
+    SoftAttributionConfig,
+    VMapConfig,
     sniff_scan_mode_from_paramfile,
 )
 from .pipeline import Pipeline, all_stage_names, stage_order_for
@@ -41,6 +43,7 @@ from .results import (
     StageResult,
     BinningResult,
     CalcRadiusResult,
+    CalcRadiusVResult,
     ConsolidationResult,
     CrossDetMergeResult,
     EMRefineResult,
@@ -55,6 +58,7 @@ from .results import (
     ProcessGrainsResult,
     ReconResult,
     RefineResult,
+    RefineVmapResult,
     SinogenResult,
     TransformsResult,
 )
@@ -68,15 +72,17 @@ __all__ = [
     "RefineLoss", "RefineMode", "RefinePositionMode", "RefineSolver",
     "RefinementConfig", "ResumeMode", "ScanGeometry", "ScanMode",
     "SeedingConfig", "SeedingMode", "SinoSource", "SinoType",
+    "SoftAttributionConfig", "VMapConfig",
     "sniff_scan_mode_from_paramfile",
     # pipeline
     "Pipeline", "all_stage_names", "stage_order_for",
     # results
     "LayerResult", "StageResult",
-    "BinningResult", "CalcRadiusResult", "ConsolidationResult",
+    "BinningResult", "CalcRadiusResult", "CalcRadiusVResult",
+    "ConsolidationResult",
     "CrossDetMergeResult", "EMRefineResult", "FindGrainsResult",
     "FuseResult", "HKLResult", "IndexResult", "MergeOverlapsResult",
     "MergeScansResult", "PeakFitResult", "PottsResult",
-    "ProcessGrainsResult", "ReconResult", "RefineResult",
+    "ProcessGrainsResult", "ReconResult", "RefineResult", "RefineVmapResult",
     "SinogenResult", "TransformsResult",
 ]

@@ -117,6 +117,56 @@ def test_full_record_roundtrip(tmp_path):
     np.testing.assert_array_equal(slot1[8:], np.zeros(slot1.size - 8))
 
 
+# --- P8 TODO(b): IndexBestWeighted.bin (soft attribution) ---
+
+
+def test_open_output_files_opens_weighted_when_requested(tmp_path):
+    from midas_index.io.output import INDEX_BEST_WEIGHTED_BYTES
+    fd_best, fd_full, fd_w = open_output_files(
+        tmp_path, n_total_seeds=4, block_nr=0, open_weighted=True,
+    )
+    try:
+        st = os.fstat(fd_w)
+        assert st.st_size == 4 * INDEX_BEST_WEIGHTED_BYTES
+    finally:
+        close_output_files(fd_best, fd_full, fd_w)
+    assert (tmp_path / "IndexBestWeighted.bin").exists()
+
+
+def test_write_block_emits_weighted_only_when_soft_seeds_present(tmp_path):
+    from midas_index.io.output import write_block
+    from midas_index.result import IndexerResult, SeedResult
+
+    # Two seeds: one without weighted data, one with.
+    s1 = _make_seed(spot_id=1)
+    s2 = _make_seed(spot_id=2)
+    s2.weighted_n_matches = 2.7
+    s2.weighted_frac_matches = 0.42
+    block = IndexerResult(block_nr=0, n_blocks=1, seeds=[s1, s2])
+
+    write_block(block, tmp_path, n_total_seeds=2, block_nr=0)
+    # IndexBestWeighted.bin should now exist; offset 0 (s1) = zeros,
+    # offset 1 (s2) = (2.7, 0.42).
+    raw = np.fromfile(tmp_path / "IndexBestWeighted.bin", dtype=np.float64)
+    assert raw.shape == (4,)   # 2 seeds × 2 doubles
+    assert raw[0] == 0.0 and raw[1] == 0.0
+    assert raw[2] == pytest.approx(2.7)
+    assert raw[3] == pytest.approx(0.42)
+
+
+def test_write_block_skips_weighted_when_no_soft_seeds(tmp_path):
+    from midas_index.io.output import write_block
+    from midas_index.result import IndexerResult
+
+    block = IndexerResult(
+        block_nr=0, n_blocks=1,
+        seeds=[_make_seed(spot_id=1), _make_seed(spot_id=2)],
+    )
+    write_block(block, tmp_path, n_total_seeds=2, block_nr=0)
+    # No weighted_n_matches on any seed → no IndexBestWeighted.bin.
+    assert not (tmp_path / "IndexBestWeighted.bin").exists()
+
+
 def test_write_seed_record_dtype_promotes_to_float64(tmp_path):
     """Float32 seeds (GPU path) still write 15 doubles per slot."""
     fd_best, fd_full = open_output_files(tmp_path, n_total_seeds=1, block_nr=0)

@@ -30,7 +30,7 @@ def run(ctx: StageContext) -> StageResult:
 
     sinos_paths = {
         variant: sorted(output_dir.glob(f"sinos_{variant}_*.bin"))
-        for variant in ("raw", "norm", "abs", "normabs")
+        for variant in ("raw", "norm", "abs", "normabs", "softsum")
     }
     omegas = sorted(output_dir.glob("omegas_*.bin"))
     nrhkls = sorted(output_dir.glob("nrHKLs_*.bin"))

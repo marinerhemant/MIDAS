@@ -86,6 +86,11 @@ _STAGES: List[StageEntry] = [
 
     # Shared finalizer
     ("consolidation",      stages.consolidation.run,      _BOTH),
+
+    # P8: V-map joint refinement (PF + FF compact-grain).  Both stages
+    # are clean no-ops when ``PipelineConfig.vmap.run`` is False.
+    ("calc_radius_v",      stages.calc_radius_v.run,      _BOTH),
+    ("refine_vmap",        stages.refine_vmap.run,        _BOTH),
 ]
 
 
@@ -132,7 +137,8 @@ class Pipeline:
     # --- internals ---
 
     def _make_context(self, layer_nr: int) -> StageContext:
-        layer_dir = self.config.layer_dir(layer_nr)
+        from .stages._base import resolve_layer_dir
+        layer_dir = resolve_layer_dir(self.config.result_path, layer_nr)
         layer_dir.mkdir(parents=True, exist_ok=True)
         log_dir = layer_dir / "midas_log"
         log_dir.mkdir(parents=True, exist_ok=True)
@@ -244,6 +250,8 @@ _LAYER_RESULT_FIELD_BY_STAGE = {
     "potts":           "potts",
     "em_refine":       "em_refine",
     "consolidation":   "consolidation",
+    "calc_radius_v":   "calc_radius_v",
+    "refine_vmap":     "refine_vmap",
 }
 
 

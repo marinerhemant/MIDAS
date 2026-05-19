@@ -36,6 +36,11 @@ class SeedResult:
     # `io.output.write_full_record` to populate IndexBestFull.bin per
     # IndexerOMP.c::WriteBestMatchBin (line 1635-1640).
     matched_pairs: "torch.Tensor | None" = None
+    # Optional soft-attribution analogues (populated when compare_spots is
+    # called with ``soft_beam_weight_fn`` — see P6/P8 of the V-map plan).
+    # ``None`` ⇒ legacy binary scoring (back-compat).
+    weighted_n_matches: float | None = None
+    weighted_frac_matches: float | None = None
 
 
 @dataclass
