@@ -50,12 +50,19 @@ class BinDataResult:
 
     Used by ``Pipeline`` to pass to a downstream consumer (e.g. ``midas-index``)
     without going through disk.
+
+    After the Phase 5 format unification (2026-05), ``spots`` always has 10
+    columns (col 9 = ScanNr, 0 for FF runs); ``data``/``ndata`` are still
+    int32 in-memory but get expanded to int64-pair (data, scan_nr) /
+    (count, offset) layout on disk via ``write_data_ndata_bin_scanning`` so
+    the unified ``midas_indexer`` C binary and the Python indexer share one
+    byte layout regardless of FF vs PF mode.
     """
 
-    spots: torch.Tensor                        # (N, 9) float64
+    spots: torch.Tensor                        # (N, 10) float64 — col 9 = ScanNr
     extra_info: torch.Tensor                   # (N, 16) float64
-    data: Optional[torch.Tensor] = None        # (T,) int32, or None when NoSaveAll==1
-    ndata: Optional[torch.Tensor] = None       # (M, 2) int32, M = n_ring * n_eta * n_ome
+    data: Optional[torch.Tensor] = None        # (T,) int32 spot rows (in-mem)
+    ndata: Optional[torch.Tensor] = None       # (M, 2) int32 (count, offset) (in-mem)
     n_ring_bins: int = 0
     n_eta_bins: int = 0
     n_ome_bins: int = 0
@@ -423,6 +430,12 @@ def bin_data(
     else:
         rad_dist = _compute_radius_dist_ideal(spots_t, ring_radii)
     spots_out = torch.cat([spots_t, rad_dist.unsqueeze(1)], dim=1)  # (N, 9)
+    # Phase 5: append ScanNr=0 column → (N, 10). The unified midas_indexer
+    # always expects 10-col Spots.bin even in FF mode; the extra column is
+    # zero for non-scanning runs.
+    scan_nr_col = torch.zeros(spots_out.shape[0], 1,
+                              dtype=spots_out.dtype, device=spots_out.device)
+    spots_out = torch.cat([spots_out, scan_nr_col], dim=1)  # (N, 10)
     # ExtraInfo.bin is 16 cols; drop CSV cols 14 and 15 (the C version's dummy0/dummy1).
     # See SaveBinData.c — sscanf maps CSV[16, 17] to AllSpots[14, 15].
     if extra_t.shape[1] == 18:
@@ -468,11 +481,22 @@ def bin_data(
     )
 
     if write:
-        bio.write_data_ndata_bin(
+        # Phase 5: always write the int64-pair format that the unified
+        # midas_indexer C binary and read_bins_scanning() consume.
+        # FF inputs get scan_nr=0 on every Data.bin entry.
+        data_np = data.detach().cpu().numpy().astype(np.int64)
+        data_pairs = np.zeros((data_np.size, 2), dtype=np.uint64)
+        data_pairs[:, 0] = data_np.astype(np.uint64)
+        ndata_np = ndata.detach().cpu().numpy().reshape(-1, 2).astype(np.uint64)
+        bio.write_data_ndata_bin_scanning(
             out_dir / "Data.bin", out_dir / "nData.bin",
-            data.detach().cpu().numpy().astype(np.int32),
-            ndata.detach().cpu().numpy().astype(np.int32),
+            data_pairs, ndata_np,
         )
+        # Always emit positions.csv (single line "0.0" for FF). The unified
+        # midas_indexer auto-detects mode from this file's row count.
+        positions_path = out_dir / "positions.csv"
+        if not positions_path.exists():
+            positions_path.write_text("0.000000\n")
 
     return BinDataResult(
         spots=spots_out, extra_info=extra_out,
