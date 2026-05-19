@@ -178,7 +178,17 @@ def load_spots_from_input_extra_info_csvs(
 
     for f in files:
         scan = _scan_key(f)
-        arr = np.loadtxt(str(f), comments="%")
+        # The C writer prefixes the header with '%' (a comment); the unified
+        # midas_transforms writer emits a bare 'YLab ZLab …' header with no
+        # '%'. Skip a leading non-numeric header line in either case so the
+        # loader works against both producers.
+        skiprows = 0
+        with open(f) as fh:
+            first = fh.readline().strip()
+        if first and not first.lstrip("%").lstrip()[:1].isdigit() \
+                and not first.lstrip("%").lstrip()[:1] in ("-", "+", "."):
+            skiprows = 1 if not first.startswith("%") else 0
+        arr = np.loadtxt(str(f), comments="%", skiprows=skiprows)
         if arr.size == 0:
             continue
         if arr.ndim == 1:

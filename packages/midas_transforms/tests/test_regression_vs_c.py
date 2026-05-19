@@ -183,6 +183,45 @@ def test_fit_setup_close_to_c(tmp_path: Path, goldens_dir: Path):
         err_msg="Eta, Ttheta within 1e-3 deg of C output.")
 
 
+def test_fit_setup_inmemory_paramstest_carries_ring_radii(
+    tmp_path: Path, goldens_dir: Path
+):
+    """The in-memory ``FitSetupResult.paramstest`` (consumed by the unified
+    ``Pipeline`` / midas-pipeline) MUST carry RingRadii and the filtered
+    RingNumbers — identical to the on-disk paramstest.txt.
+
+    Regression for the FF pipeline bug where ``Pipeline.run()`` used the
+    RingRadii-less ``zarr_params.to_paramstest()`` view: the binner then
+    dropped every spot (no ring had radius > 0), wrote a zero-byte Data.bin,
+    and indexing failed to mmap it.
+    """
+    from midas_transforms.fit_setup import fit_setup
+    from midas_transforms.params import read_zarr_params, read_paramstest
+
+    zarr_path = goldens_dir / "Au_FF_000001_pf.analysis.MIDAS.zip"
+    if not zarr_path.exists():
+        pytest.skip("Zarr archive not found among goldens")
+    zp = read_zarr_params(zarr_path)
+    shutil.copy2(goldens_dir / "Radius_StartNr_1_EndNr_1440.csv",
+                 tmp_path / "Radius_StartNr_1_EndNr_1440.csv")
+    shutil.copy2(goldens_dir / "hkls.csv", tmp_path / "hkls.csv")
+
+    res = fit_setup(result_folder=tmp_path, zarr_params=zp,
+                    start_nr=1, end_nr=1440, do_fit=False, write=True,
+                    device="cpu", dtype="float64")
+
+    pt_disk = read_paramstest(tmp_path / "paramstest.txt")
+    pt_mem = res.paramstest
+    assert pt_mem is not None
+    # In-memory and on-disk paramstest must agree on the binning-critical keys.
+    assert list(pt_mem.RingNumbers) == list(pt_disk.RingNumbers)
+    # paramstest.txt rounds RingRadii to %.6f on write; compare to that precision.
+    np.testing.assert_allclose(pt_mem.RingRadii, pt_disk.RingRadii, atol=1e-6)
+    # And RingRadii must be non-empty + positive so the binner keeps spots.
+    assert len(pt_mem.RingRadii) == len(pt_mem.RingNumbers) > 0
+    assert all(r > 0 for r in pt_mem.RingRadii)
+
+
 # ---------------------------------------------------------------------------
 # Stage 1: merge_overlapping_peaks — Result_*.csv
 # ---------------------------------------------------------------------------

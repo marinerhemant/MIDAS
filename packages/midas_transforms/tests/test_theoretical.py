@@ -396,3 +396,30 @@ def test_load_spots_from_input_extra_info(tmp_path):
     assert sp.intensity.tolist()   == [100.0, 50.0, 25.0]
     assert sp.omega_deg.tolist()   == [12.5, 45.0, 78.0]
     assert sp.eta_deg.tolist()     == [30.0, -90.0, 60.0]
+
+
+def test_load_spots_from_input_extra_info_bare_header(tmp_path):
+    """The unified midas_transforms writer emits a bare 'YLab ZLab …' header
+    with no '%' prefix; the loader must skip it (regression for the V-map
+    calc_radius_v stage failing with 'could not convert string YLab to float'
+    on pipeline-written CSVs)."""
+    def _row(spot_id, ring_nr, omega, eta, integ_I):
+        r = np.zeros(15)
+        r[4] = spot_id; r[5] = ring_nr
+        r[2] = omega; r[6] = eta
+        r[14] = integ_I
+        return r
+
+    s1 = np.array([_row(1, 1, 12.5, 30.0, 100.0)])
+    (tmp_path / "InputAllExtraInfoFittingAll0.csv").write_text(
+        "YLab ZLab Omega GrainRadius SpotID RingNumber Eta Ttheta\n"
+        + "\n".join(" ".join(f"{v}" for v in row) for row in s1)
+    )
+    rt = RingTable(
+        ring_numbers=torch.tensor([1, 2, 3], dtype=torch.int64),
+        two_theta_deg=torch.tensor([3.8, 4.2, 4.4], dtype=torch.float64),
+    )
+    sp = load_spots_from_input_extra_info_csvs(tmp_path, ring_table=rt)
+    assert sp.spot_id.tolist() == [1]
+    assert sp.intensity.tolist() == [100.0]
+    assert sp.omega_deg.tolist() == [12.5]
