@@ -28,6 +28,18 @@ from .binning import get_bin_indices, lookup_bin_counts
 # m-iter path (still correct, just slower at PF scale). On chiltepin /
 # alleppey / copland and the dev environments it's a stable transitive
 # dep (used by find_grains, merge_scans, potts).
+# macOS: torch and numba both link libomp. numba's default "omp" threading
+# layer then races against torch's already-loaded copy and segfaults under
+# parallel=True (KMP_DUPLICATE_LIB_OK only silences the OMP Error #15 warning;
+# it does not stop the crash). Force the OpenMP-free "workqueue" layer on
+# Darwin before numba imports. Linux/CI keep the faster default. Honors a
+# user-set NUMBA_THREADING_LAYER.
+import os as _os
+import sys as _sys
+
+if _sys.platform == "darwin":
+    _os.environ.setdefault("NUMBA_THREADING_LAYER", "workqueue")
+
 try:
     from numba import njit, prange  # type: ignore
     _NUMBA_AVAILABLE = True
