@@ -191,6 +191,11 @@ class IndexerContext:
         self.friedel_symmetric_scan_filter: bool = bool(
             params.friedel_symmetric_scan_filter
         )
+        # Soft beam attribution (P6/P8 of the V-map plan).  When set, the
+        # scan_kwargs() dict passes it to compare_spots, which populates
+        # the optional weighted_* fields on MatchResult.  None ⇒ legacy
+        # binary scan_pos_tol_um filter (back-compat default).
+        self.soft_beam_weight_fn = None  # type: ignore[var-annotated]
 
     def scan_kwargs(self, n_tuples: int) -> dict:
         """Return scan-aware kwargs for :func:`matching.compare_spots`.
@@ -202,7 +207,7 @@ class IndexerContext:
         """
         if self.scan_positions is None or self.current_voxel_xy is None:
             return {}
-        return {
+        out = {
             "scan_positions": self.scan_positions,
             "voxel_xy": self.current_voxel_xy.view(1, 2).expand(n_tuples, 2),
             "scan_pos_tol_um": self.scan_pos_tol_um,
@@ -211,6 +216,9 @@ class IndexerContext:
             # ``obs[..., 9].to(int64)`` cast becomes a noop.
             "obs_scan_nr_int64": self.obs_scan_nr_int64,
         }
+        if self.soft_beam_weight_fn is not None:
+            out["soft_beam_weight_fn"] = self.soft_beam_weight_fn
+        return out
 
     def find_obs_row_by_id(self, spot_id: int) -> int:
         """Return the row index of the observed spot whose column 4 equals `spot_id`."""
@@ -445,6 +453,14 @@ def process_seed(
         dim=-1,
     )
 
+    weighted_n = (
+        float(result.weighted_n_matches[idx].item())
+        if result.weighted_n_matches is not None else None
+    )
+    weighted_frac = (
+        float(result.weighted_frac_matches[idx].item())
+        if result.weighted_frac_matches is not None else None
+    )
     return SeedResult(
         spot_id=spot_id,
         best_or_mat=R_all[idx].detach().clone(),
@@ -456,6 +472,8 @@ def process_seed(
         avg_ia=float(result.avg_ia[idx].item()),
         matched_ids=result.matched_obs_id[idx][result.matched[idx]].clone(),
         matched_pairs=pairs.detach().cpu(),
+        weighted_n_matches=weighted_n,
+        weighted_frac_matches=weighted_frac,
     )
 
 
@@ -1148,10 +1166,35 @@ def _process_seed_group(
     ctx: IndexerContext,
     seeds_block: torch.Tensor,        # (n_seeds,) CPU int64
 ) -> list[SeedResult]:
-    """Sequential compatibility wrapper: run setup_cpu then compute_gpu."""
+    """Sequential compatibility wrapper: run setup_cpu then compute_gpu.
+
+    Explicitly releases the (potentially multi-GB) intermediate tensors
+    and asks the allocator to trim. Necessary on PF data scale where the
+    per-voxel seed count is in the thousands — without this, torch's CPU
+    caching allocator + glibc malloc retention pile up >100 GB across
+    sequential seed groups even though each group's tensors are eligible
+    for GC after this function returns. See dev/pf_memory_notes.md (TBD).
+    """
     setup = _setup_group_cpu(ctx, seeds_block)
     if setup is None:
         return []
-    return _compute_group_gpu(ctx, setup)
+    out = _compute_group_gpu(ctx, setup)
+    # Drop large CPU tensors held by the setup dict before returning. The
+    # caller holds only the small SeedResult list; everything else is
+    # cleaned up here.
+    setup.clear()
+    del setup
+    if ctx.device.type == "cpu":
+        # Force GC and ask glibc malloc to release retained arenas back
+        # to the OS. Without this, sequential seeds on PF (Wenxi-class)
+        # accumulate 100s of GB of "freed but retained" memory.
+        import gc as _gc
+        _gc.collect()
+        try:
+            import ctypes
+            ctypes.CDLL("libc.so.6").malloc_trim(0)
+        except Exception:
+            pass
+    return out
 
 
