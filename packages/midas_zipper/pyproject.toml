@@ -43,3 +43,9 @@ Issues = "https://github.com/marinerhemant/MIDAS/issues"
 
 [tool.setuptools]
 packages = ["midas_zipper"]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+markers = [
+    "slow: tests that need built MIDAS C binaries (skipped in CI)",
+]

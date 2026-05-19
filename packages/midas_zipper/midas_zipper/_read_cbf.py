@@ -12,8 +12,11 @@ Parses:
 
 Based on the fabio cbfimage.py reader (silx-kit/fabio, MIT license).
 
+Vendored into midas_zipper so the package stays self-contained (no MIDAS
+source-tree dependency for CBF inputs).
+
 Usage:
-    from read_cbf import read_cbf
+    from midas_zipper._read_cbf import read_cbf
     header, data = read_cbf("image.cbf")
 """
 
