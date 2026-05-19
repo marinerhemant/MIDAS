@@ -74,6 +74,12 @@ def run(ctx: StageContext) -> StageResult:
         emit_softsum = True
 
     if ctx.config.one_sol_per_vox:
+        # soft-attribution kwargs only when the optional plumbing is wired —
+        # keep parity with versions of find_grains_single that predate it.
+        soft_kwargs = (
+            {"emit_softsum": emit_softsum, "soft_weight_fn": soft_weight_fn}
+            if emit_softsum else {}
+        )
         artifacts = find_grains_single(
             layer_dir,
             space_group=space_group,
@@ -82,8 +88,7 @@ def run(ctx: StageContext) -> StageResult:
             scan_tolerance_um=ctx.config.recon.sino_scan_tol_um,
             cluster_misorientation_deg=ctx.config.fusion.max_ang_deg,
             n_scans=ctx.config.scan.n_scans,
-            emit_softsum=emit_softsum,
-            soft_weight_fn=soft_weight_fn,
+            **soft_kwargs,
         )
     else:
         artifacts = find_grains_multiple(
