@@ -24,6 +24,43 @@ def test_read_spots_missing(tmp_path):
         read_spots(tmp_path)
 
 
+def test_read_spots_ambiguous_size_prefers_10col_with_positions(tmp_path):
+    """When the double-count is divisible by BOTH 9 and 10 (e.g. 855 spots →
+    8550 doubles = 855·10 = 950·9), the unified 10-col layout must win when a
+    positions.csv sidecar is present. Regression for the FF Data.bin /
+    indexing bug where a 10-col unified Spots.bin was mis-read as 9-col,
+    routing to the int32 bin reader and yielding zero matches.
+    """
+    spots = np.arange(855 * 10, dtype=np.float64).reshape(855, 10)
+    spots[:, 9] = 0.0  # ScanNr column = 0 for FF
+    (tmp_path / "Spots.bin").write_bytes(spots.tobytes())
+    (tmp_path / "positions.csv").write_text("0.000000\n")
+
+    n, obs = read_spots(tmp_path)
+    assert obs.shape == (855, 10)
+    assert n == 855
+
+
+def test_read_spots_ambiguous_size_sniffs_scannr_column(tmp_path):
+    """Without positions.csv, an ambiguous size resolves to 10-col only when
+    the candidate ScanNr column (col 9) is integer-valued & non-negative — the
+    invariant the unified binner guarantees. A genuine 9-col file reinterpreted
+    as 10-col would expose float RadiusDistIdeal values in that slot, so it
+    correctly falls back to 9 cols.
+    """
+    # 10-col unified, no positions.csv → integer ScanNr column → 10.
+    spots10 = np.arange(855 * 10, dtype=np.float64).reshape(855, 10)
+    spots10[:, 9] = 0.0
+    (tmp_path / "Spots.bin").write_bytes(spots10.tobytes())
+    assert read_spots(tmp_path)[1].shape == (855, 10)
+
+    # Genuine 9-col legacy FF (950 spots → 8550 doubles, also ambiguous) with a
+    # non-integer "ScanNr" slot under the 10-col view → falls back to 9.
+    spots9 = np.arange(950 * 9, dtype=np.float64).reshape(950, 9) + 0.25
+    (tmp_path / "Spots.bin").write_bytes(spots9.tobytes())
+    assert read_spots(tmp_path)[1].shape == (950, 9)
+
+
 def test_read_spots_bad_size(tmp_path):
     # 8 doubles is not a multiple of 9
     (tmp_path / "Spots.bin").write_bytes(np.zeros(8, dtype=np.float64).tobytes())
