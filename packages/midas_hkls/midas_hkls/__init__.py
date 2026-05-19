@@ -78,6 +78,15 @@ def __getattr__(name: str):  # pragma: no cover - lazy attribute access
     if name in {"wavelength_to_energy_eV", "energy_eV_to_wavelength"}:
         from . import anomalous
         return getattr(anomalous, name)
+    if name in {
+        "linear_absorption_coefficient",
+        "mass_attenuation_coefficient",
+        "element_density",
+        "atomic_mass",
+        "available_elements_absorption",
+    }:
+        from . import absorption
+        return getattr(absorption, name)
     if name == "read_cif":
         from .io.cif import read_cif
         return read_cif
