@@ -145,6 +145,20 @@ add_ff_hedm_executable(IndexerOMP SOURCES src/IndexerOMP.c src/MIDAS_Math.c OMP)
 add_ff_hedm_executable(IndexerScanningOMP SOURCES src/IndexerScanningOMP.c src/MIDAS_Math.c OMP)
 target_link_libraries(IndexerScanningOMP PRIVATE midas_orientation)
 
+# Unified C indexer (FF + PF in one binary) — see
+# packages/midas_index/dev/implementation_plan_unified_c_indexer.md
+# Source lives in the midas-index Python package (packages/midas_index/c_src/)
+# so the same file can be built by scikit-build-core when the package is
+# `pip install`-ed. The legacy MIDAS build references it via relative path.
+add_ff_hedm_executable(midas_indexer
+  SOURCES ${CMAKE_SOURCE_DIR}/packages/midas_index/c_src/IndexerUnified.c
+          src/MIDAS_Math.c
+  OMP)
+target_link_libraries(midas_indexer PRIVATE midas_orientation)
+target_include_directories(midas_indexer PRIVATE
+  ${CMAKE_CURRENT_SOURCE_DIR}/src
+  ${CMAKE_BINARY_DIR}/generated)
+
 add_ff_hedm_executable(SaveBinData SOURCES src/SaveBinData.c src/MIDAS_ParamParser.c)
 add_ff_hedm_executable(SaveBinDataScanning SOURCES src/SaveBinDataScanning.c src/MIDAS_ParamParser.c)
 add_ff_hedm_executable(MergeMultipleScans SOURCES src/MergeMultipleScans.c)
