@@ -29,9 +29,28 @@ import pytest
 
 
 # Shared test fixtures: a CIF that ships with midas_hkls (CeO2, cubic Fm-3m).
-CEO2_CIF = Path(
-    "/Users/hsharma/opt/MIDAS/packages/midas_hkls/tests/data/ceo2.cif",
-)
+# Resolve via the installed midas_hkls package so CI / non-/Users/hsharma
+# checkouts find it too.
+def _locate_ceo2_cif() -> Path:
+    import midas_hkls
+    pkg_root = Path(midas_hkls.__file__).resolve().parent
+    candidates = [
+        pkg_root.parent / "tests" / "data" / "ceo2.cif",  # editable / source layout
+        pkg_root / "tests" / "data" / "ceo2.cif",         # tests packaged inside the wheel
+    ]
+    repo_root = Path(__file__).resolve().parents[4]
+    candidates.append(
+        repo_root / "packages" / "midas_hkls" / "tests" / "data" / "ceo2.cif",
+    )
+    for c in candidates:
+        if c.exists():
+            return c
+    raise FileNotFoundError(
+        f"ceo2.cif not found; searched: {[str(c) for c in candidates]}"
+    )
+
+
+CEO2_CIF = _locate_ceo2_cif()
 
 
 # -------------------------------------------------------------- helpers
