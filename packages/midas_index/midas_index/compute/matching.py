@@ -1044,6 +1044,106 @@ def _compare_spots_m_iter(
 if _NUMBA_AVAILABLE:
 
     @njit(parallel=True, cache=True, fastmath=False)
+    def _compute_avg_ia_numba_inner(
+        theor_y,                  # (N, T) float64
+        theor_z,                  # (N, T) float64
+        theor_ome,                # (N, T) float64
+        matched_obs_row,          # (N, T) int64
+        has_match,                # (N, T) bool
+        obs_y,                    # (n_obs,) float64
+        obs_z,                    # (n_obs,) float64
+        obs_ome,                  # (n_obs,) float64
+        pos,                      # (N, 3) float64
+        distance,                 # scalar
+    ):
+        """Per-(n, t) cell loop computing mean internal-angle (degrees).
+
+        Mirrors the torch ``_compute_avg_ia`` exactly: for each matched
+        (n, t) cell, builds the theor and obs g-vectors (each is a 3-vector
+        derived from yl/zl/omega + grain position), takes the cosine of
+        their angle, accumulates into a per-row sum + count, returns mean
+        per row. Unmatched cells contribute 0/0 (becomes 0 after the
+        clamp_min(1) on the denominator).
+        """
+        DEG2RAD_ = math.pi / 180.0
+        RAD2DEG_ = 180.0 / math.pi
+        N, T = theor_y.shape
+        out = np.zeros(N, dtype=np.float64)
+
+        for n in prange(N):
+            cx = pos[n, 0]
+            cy = pos[n, 1]
+            cz = pos[n, 2]
+            sum_ia = 0.0
+            n_match = 0
+            for t in range(T):
+                if not has_match[n, t]:
+                    continue
+                row = matched_obs_row[n, t]
+                if row < 0:
+                    continue
+
+                # ── gv1 from theor (xi=distance, yi=theor_y, zi=theor_z, ω=theor_ome[n, t])
+                om = theor_ome[n, t] * DEG2RAD_
+                co = math.cos(om)
+                so = math.sin(om)
+                # RotateAroundZ(c, omega): vr = (co*cx - so*cy, so*cx + co*cy, cz)
+                vr_x = co * cx - so * cy
+                vr_y = so * cx + co * cy
+                # Subtract from spot coords
+                xi = distance - vr_x
+                yi = theor_y[n, t] - vr_y
+                zi = theor_z[n, t] - cz
+                Linv = 1.0 / math.sqrt(xi * xi + yi * yi + zi * zi + 1e-60)
+                xn = xi * Linv
+                yn = yi * Linv
+                zn = zi * Linv
+                # Pre-rotation g-vec from (xn, yn, zn)
+                g1r = -1.0 + xn
+                g2r = yn
+                # Rotate by -omega (co, -so)
+                g1_theor = g1r * co + g2r * so
+                g2_theor = -g1r * so + g2r * co
+                g3_theor = zn
+
+                # ── gv2 from obs (same formula, with obs values)
+                om_o = obs_ome[row] * DEG2RAD_
+                co_o = math.cos(om_o)
+                so_o = math.sin(om_o)
+                vr_xo = co_o * cx - so_o * cy
+                vr_yo = so_o * cx + co_o * cy
+                xi2 = distance - vr_xo
+                yi2 = obs_y[row] - vr_yo
+                zi2 = obs_z[row] - cz
+                Linv2 = 1.0 / math.sqrt(xi2 * xi2 + yi2 * yi2 + zi2 * zi2 + 1e-60)
+                xn2 = xi2 * Linv2
+                yn2 = yi2 * Linv2
+                zn2 = zi2 * Linv2
+                g1r2 = -1.0 + xn2
+                g2r2 = yn2
+                g1_obs = g1r2 * co_o + g2r2 * so_o
+                g2_obs = -g1r2 * so_o + g2r2 * co_o
+                g3_obs = zn2
+
+                # cos(IA) = dot(g_theor, g_obs) / (|g_theor| * |g_obs|)
+                n1 = math.sqrt(g1_theor * g1_theor + g2_theor * g2_theor + g3_theor * g3_theor)
+                n2 = math.sqrt(g1_obs * g1_obs + g2_obs * g2_obs + g3_obs * g3_obs)
+                if n1 < 1e-30 or n2 < 1e-30:
+                    continue
+                cos_ia = (g1_theor * g1_obs + g2_theor * g2_obs + g3_theor * g3_obs) / (n1 * n2)
+                if cos_ia > 1.0:
+                    cos_ia = 1.0
+                elif cos_ia < -1.0:
+                    cos_ia = -1.0
+                ia = math.acos(cos_ia) * RAD2DEG_
+                sum_ia += abs(ia)
+                n_match += 1
+
+            if n_match > 0:
+                out[n] = sum_ia / n_match
+        return out
+
+    @njit(parallel=True, cache=True, fastmath=False)
     def _compare_spots_numba_inner(
         # Theor (N, T) views
         ring_nr,                  # (N, T) int64
@@ -1335,12 +1435,21 @@ def _compare_spots_numba(
     frac = n_matches_frac.to(dtype) / n_t_frac.to(dtype)
 
     if distance is not None and pos is not None:
-        avg_ia = _compute_avg_ia(
-            theor=theor, obs=obs,
-            matched_obs_row=best_matched_row,
-            has_match=has_match,
-            distance=distance, pos=pos,
+        # Numba avg_ia: per-(n, t) scalar work. Was the largest remaining
+        # torch hot spot (~90 ms/call from _spot_to_gv_pos + torch.stack).
+        theor_y_np = np.ascontiguousarray(theor[..., 10].detach().cpu().numpy().astype(np.float64, copy=False))
+        theor_z_np = np.ascontiguousarray(theor[..., 11].detach().cpu().numpy().astype(np.float64, copy=False))
+        theor_ome_np = np.ascontiguousarray(theor[..., 6].detach().cpu().numpy().astype(np.float64, copy=False))
+        obs_y_np = np.ascontiguousarray(obs_np[..., 0].astype(np.float64, copy=False))
+        obs_z_np = np.ascontiguousarray(obs_np[..., 1].astype(np.float64, copy=False))
+        pos_np = np.ascontiguousarray(pos.detach().cpu().numpy().astype(np.float64, copy=False))
+        avg_ia_np = _compute_avg_ia_numba_inner(
+            theor_y_np, theor_z_np, theor_ome_np,
+            best_matched_row_np, has_match_np,
+            obs_y_np, obs_z_np, obs_ome_np,
+            pos_np, float(distance),
         )
+        avg_ia = torch.from_numpy(avg_ia_np).to(device=device, dtype=dtype)
     else:
         avg_ia = torch.zeros(N, dtype=dtype, device=device)
 
