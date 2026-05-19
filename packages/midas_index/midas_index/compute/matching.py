@@ -165,13 +165,9 @@ def pick_compare_strategy(
     if N == 0 or T == 0:
         return "dense", _JAGGED_CHUNK_MAX
 
+    on_cpu = theor.device.type != "cuda"
     if free_bytes is None:
-        if theor.device.type == "cuda":
-            try:
-                free_bytes, _total = torch.cuda.mem_get_info(theor.device)
-            except Exception:
-                return "dense", _JAGGED_CHUNK_MAX
-        else:
+        if on_cpu:
             # CPU / MPS: probe host RAM. Without this the dense path runs
             # unbounded and crashes the box on real-scale PF data (e.g.
             # Wenxi-class 91x91 voxels × 217k seeds where N×T×M can hit
@@ -191,9 +187,25 @@ def pick_compare_strategy(
                     pass
                 if free_bytes is None:
                     free_bytes = 8 * (1 << 30)  # 8 GiB conservative
+        else:
+            try:
+                free_bytes, _total = torch.cuda.mem_get_info(theor.device)
+            except Exception:
+                return "dense", _JAGGED_CHUNK_MAX
 
     bytes_per_cell = _per_cell_bytes(theor.dtype)
-    budget = max(1, int(free_bytes * safety))
+    # CPU torch's allocator doesn't release back to the OS as eagerly as
+    # CUDA's caching allocator, and the compare_spots call sites stack
+    # several (N, T, M) intermediates. Use a much tighter safety factor on
+    # CPU so chunking actually bounds per-call memory; on big-memory hosts
+    # (chiltepin, 1.5 TB) a 0.5 safety still picks chunk = N which doesn't
+    # chunk. Also hard-cap CPU chunk size to keep per-call peaks well under
+    # 8 GiB regardless of host size.
+    effective_safety = safety if not on_cpu else min(safety, 0.02)
+    max_call_bytes_cpu = 8 * (1 << 30)
+    budget = max(1, int(free_bytes * effective_safety))
+    if on_cpu:
+        budget = min(budget, max_call_bytes_cpu)
     predicted_dense = N * T * max_n_cap * bytes_per_cell
 
     if predicted_dense <= budget:
