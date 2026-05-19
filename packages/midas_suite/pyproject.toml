@@ -4,7 +4,7 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "midas-suite"
-version = "0.3.1"
+version = "0.3.2"
 description = "Meta-package: installs the MIDAS Python pipeline (FF/NF/PF HEDM, calibration, peakfit, integration, transforms, ODF, stress)."
 readme = "README.md"
 license = { text = "BSD-3-Clause" }
@@ -49,7 +49,7 @@ dependencies = [
     "midas-parsl-configs>=0.1.0",
     "midas-ff-pipeline>=0.2.1",
     "midas-nf-pipeline>=0.1.0",
-    "midas-pipeline>=0.1.1",       # unified FF + PF orchestrator (Wenxi CP-Ti consolidation_pf and Park22 P5c parity validated)
+    "midas-pipeline>=0.2.1",       # unified FF + PF orchestrator; >=0.2.1 pulls midas-hkls[cif] (gemmi) for the V-map calc_radius_v stage
 ]
 
 [project.optional-dependencies]
@@ -76,7 +76,7 @@ pf = [
     # stress transitively; we list the orchestrator at the top.
     "midas-stress>=0.7.0",
     "midas-params>=0.3.1",
-    "midas-pipeline[fast]>=0.1.1",         # fast = numba (merge_scans / Potts ICM)
+    "midas-pipeline[fast]>=0.2.1",         # fast = numba>=0.65 (merge_scans / Potts ICM); >=0.2.1 also pulls midas-hkls[cif]
     "midas-calibrate>=0.2.3",
     "midas-integrate>=0.4.0",
 ]

@@ -4,7 +4,7 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "midas-pipeline"
-version = "0.2.0"
+version = "0.2.1"
 description = "Unified MIDAS HEDM orchestrator. FF is the single-scan degeneracy of PF; one orchestrator, --scan-mode {ff,pf}."
 readme = "README.md"
 license = "BSD-3-Clause"
@@ -34,7 +34,11 @@ dependencies = [
     "fabio>=0.14",                        # CBF (Pilatus/Eiger) raw-frame reader
     # Sibling MIDAS packages (shared with midas-ff-pipeline).
     "midas-zipper>=0.1.0",                # raw → .MIDAS.zip ingest (pip-portable)
-    "midas-hkls>=0.2.0",
+    # [cif] (gemmi) is a RUNTIME requirement, not just test-time: the
+    # calc_radius_v stage calls midas_hkls.read_cif() to compute theoretical
+    # per-ring intensities for the V-map. Without it a clean production
+    # install raises CifBackendError at that stage.
+    "midas-hkls[cif]>=0.2.0",
     "midas-peakfit>=0.2.0",
     "midas-transforms>=0.1.1",
     "midas-index>=0.3.0",
@@ -46,10 +50,6 @@ dependencies = [
 ]
 
 [project.optional-dependencies]
-# ``midas-hkls[cif]`` brings the gemmi backend that calc_radius_v needs to
-# read CIFs at test time. midas_hkls's own [dev] extras already pull it in,
-# but our [dev] doesn't, so CI hit CifBackendError on
-# test_calc_radius_v_end_to_end_writes_outputs.
 dev = [
     "pytest>=7.0", "pytest-cov", "matplotlib", "ipykernel",
     "midas-hkls[cif]>=0.2.0",
@@ -59,7 +59,11 @@ notebook = ["matplotlib", "ipykernel", "jupyter"]
 # inner loop) and potts (ICM sweep) detect numba at import time and fall
 # back to pure-Python implementations when it's absent. Install for
 # production runs on CPU; the JIT speedup is ~20-50× on those loops.
-fast = ["numba>=0.56"]
+#
+# Pin numba>=0.65 (llvmlite>=0.47): older llvmlite (<=0.44) fails to load
+# its shared object when torch is imported before numba (observed on
+# Linux + torch 2.12). 0.65/0.47 loads cleanly regardless of import order.
+fast = ["numba>=0.65"]
 
 [project.scripts]
 midas-pipeline = "midas_pipeline.cli:main"
