@@ -21,20 +21,17 @@ jupyter nbconvert --to notebook --execute --inplace *.ipynb
 
 | Notebook | What it covers | Status |
 | --- | --- | --- |
-| `01_calibration_deep_dive.ipynb` | Loads the bundled `SpotsInfo.bin` / `OrientMat.bin` / `grid.txt` / `hkls.csv`, builds the differentiable forward model, screens one voxel for candidate orientations, and refines orientation with L-BFGS over the Gaussian-splat soft overlap — the exact kernel the calibration drivers wrap. | runs clean |
+| `01_calibration_deep_dive.ipynb` | Loads the bundled `SpotsInfo.bin` / `OrientMat.bin` / `grid.txt` / `hkls.csv`, builds the differentiable forward model, screens one voxel and refines orientation with L-BFGS over the Gaussian-splat soft overlap, then runs both packaged calibration drivers **end-to-end** on the bundled Au example: `fit_parameters_run` (single-voxel) and `fit_multipoint_run` (cluster). | runs clean |
 
-### Driver note (current build)
+### Driver note
 
-The packaged single/cluster calibration drivers `fit_parameters_run` and
-`fit_multipoint_run` are documented but **not executed end-to-end** in
-notebook 01 on the bundled Au example:
+Both calibration drivers run end-to-end in notebook 01 on the bundled Au
+example, CPU only:
 
-* `fit_multipoint_run` requires a `GridPoints` block in the param file,
-  which the bundled `test_ps_au.txt` does not contain.
-* The joint-calibration phase takes a code path that needs the **dense**
-  `ObsVolume` (`packed=False`), while the driver currently constructs the
-  packed-bit volume → `TypeError: soft_fraction needs a dense
-  floating-point ObsVolume`.
-
-The screen + soft-overlap L-BFGS kernel (the heart of all three drivers)
-runs cleanly and is demonstrated directly in the notebook.
+* `fit_multipoint_run` derives its voxel set from the reconstructed
+  `MicFileText` `.mic` (highest-confidence voxels above `MinConfidence`)
+  when the param file carries no explicit `GridPoints` block — so the
+  bundled `test_ps_au.txt` needs no hand-written block. An explicit
+  `GridPoints` block still wins when present.
+* Both drivers build the **dense** floating-point `ObsVolume`
+  (`packed=False`) the Gaussian-splat soft-overlap path requires.

@@ -189,7 +189,8 @@ def _write_layer_extra(*, src_extra: Path, dst_extra: Path,
     """
     import pandas as pd
 
-    df = pd.read_csv(src_extra, delim_whitespace=True, skipinitialspace=True)
+    # ``sep=r"\s+"`` (not the removed-in-pandas-3.0 ``delim_whitespace=True``).
+    df = pd.read_csv(src_extra, sep=r"\s+", skipinitialspace=True)
     if df.empty:
         df.to_csv(dst_extra, sep=" ", header=True, float_format="%.6f", index=False)
         return

@@ -34,7 +34,7 @@ import numpy as np
 import torch
 
 from .fit_kernel import LBFGSConfig, run_lbfgs
-from .io import read_grid, read_hkls, read_orientations
+from .io import read_grid, read_hkls, read_mic_gridpoints, read_orientations
 from .obs_volume import ObsVolume
 from .params import FitParams, parse_paramfile
 from .reparam import LsdEncoding, TanhBox
@@ -95,8 +95,38 @@ def fit_multipoint_run(
     torch_device = torch.device(device)
 
     out_dir = Path(p.out_dir)
-    if not p.grid_points:
-        raise ValueError("paramfile has no GridPoints entries")
+    grid_points = list(p.grid_points)
+    if not grid_points:
+        # No explicit GridPoints block: derive them from the
+        # reconstructed text .mic (the C GridPoints columns are exactly
+        # a .mic row), keeping the highest-confidence voxels up to the
+        # C cap of 200. Mirrors the convention in
+        # FitOrientationParametersMultiPoint.c.
+        if not p.mic_file_text:
+            raise ValueError(
+                "paramfile has no GridPoints entries and no MicFileText "
+                "to derive them from. Add a GridPoints block or set "
+                "MicFileText to a reconstructed .mic."
+            )
+        mic_path = out_dir / p.mic_file_text
+        if not mic_path.exists():
+            raise FileNotFoundError(
+                f"paramfile has no GridPoints entries and MicFileText "
+                f"{mic_path} does not exist. Run the reconstruction first "
+                f"or add an explicit GridPoints block."
+            )
+        grid_points = read_mic_gridpoints(
+            mic_path, min_confidence=p.min_confidence, max_points=200,
+        )
+        if not grid_points:
+            raise ValueError(
+                f"no voxels in {mic_path} passed MinConfidence="
+                f"{p.min_confidence}; lower MinConfidence or add an "
+                f"explicit GridPoints block."
+            )
+        if verbose:
+            print(f"No GridPoints block; derived {len(grid_points)} voxels "
+                  f"from {mic_path.name} (MinConfidence={p.min_confidence}).")
 
     hkl_table = read_hkls(out_dir)
     if p.rings_to_use:
@@ -110,6 +140,7 @@ def fit_multipoint_run(
         n_frames=p.n_frames_per_distance,
         n_y=p.n_pixels_y, n_z=p.n_pixels_z,
         device=torch_device, dtype=torch.float32,
+        packed=False,                       # dense float for the soft path
     )
     model = build_forward_model(
         p, hkl_table.hkls_int.astype(np.float64),
@@ -117,7 +148,7 @@ def fit_multipoint_run(
         hkls_cart=hkl_table.hkls_cart.astype(np.float64),
     )
 
-    n_spots = len(p.grid_points)
+    n_spots = len(grid_points)
     if verbose:
         print(f"Multipoint calibration: {n_spots} voxels, "
               f"{p.n_distances} distances, "
@@ -126,7 +157,7 @@ def fit_multipoint_run(
     # Per-voxel positions (centroids) and Euler seeds from GridPoints.
     positions_np = np.zeros((n_spots, 3), dtype=np.float64)
     seed_eulers_np = np.zeros((n_spots, 3), dtype=np.float64)
-    for i, (xc, yc, _ud, e1, e2, e3) in enumerate(p.grid_points):
+    for i, (xc, yc, _ud, e1, e2, e3) in enumerate(grid_points):
         positions_np[i] = (xc, yc, 0.0)
         seed_eulers_np[i] = (e1, e2, e3)
     positions_um = torch.tensor(positions_np, device=torch_device, dtype=dtype)

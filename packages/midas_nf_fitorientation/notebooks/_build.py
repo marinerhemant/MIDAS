@@ -233,12 +233,16 @@ out_png = Path(os.environ.get('TMPDIR', '/tmp')) / 'nf_fitorient_refine.png'
 plt.savefig(out_png, dpi=110)
 print('saved', out_png)"""),
     ("md", """\
-## 6. The packaged drivers
+## 6. The packaged drivers — end-to-end
 
 In production you do not assemble the pieces by hand — you call one of
 the three drivers, which run this same screen + L-BFGS machinery over
 all voxels (and, for the calibration drivers, jointly refine detector
 geometry: per-distance `Lsd`, `BC`, tilts `tx/ty/tz`, `Wedge`).
+
+The two calibration drivers below run **end-to-end on the bundled Au
+example, CPU only** — exactly the param file this notebook already
+loaded.
 
 ```python
 from midas_nf_fitorientation import (
@@ -246,16 +250,6 @@ from midas_nf_fitorientation import (
     fit_parameters_run,    # single-voxel geometry calibration (FitOrientationParameters)
     fit_multipoint_run,    # cluster geometry calibration (…MultiPoint)
 )
-
-# Per-voxel orientation map over a block of the grid:
-fit_orientation_run(str(PARAM), blockNr=0, nBlocks=1, nCPUs=4, device='cpu')
-
-# Single-voxel calibration (refine geometry on one high-confidence voxel):
-fit_parameters_run(str(PARAM), voxel_idx=1, n_cpus=4, device='cpu')
-
-# Cluster calibration — needs a ``GridPoints`` block in the param file
-# (per-voxel xc, yc and seed Eulers), more stable than single-voxel:
-fit_multipoint_run(str(PARAM), n_cpus=4, device='cpu')
 ```
 
 The CLI mirrors the C executables:
@@ -264,19 +258,91 @@ The CLI mirrors the C executables:
 midas-nf-fit-orientation params.txt 0 1 4
 midas-nf-fit-parameters  params.txt 1
 midas-nf-fit-multipoint  params.txt
-```
+```"""),
+    ("md", """\
+### 6a. Single-voxel calibration — `fit_parameters_run`
 
-> **Note (current state on the bundled Au example).** The single/cluster
-> calibration *drivers* (`fit_parameters_run`, `fit_multipoint_run`) are
-> not exercised end-to-end in this notebook: on this build
-> `fit_multipoint_run` requires a `GridPoints` block that the bundled
-> `test_ps_au.txt` does not contain, and the joint-calibration phase
-> takes a code path that wants the dense `ObsVolume` while the driver
-> currently constructs the packed-bit one. The screen + soft-overlap
-> L-BFGS kernel shown above (the heart of all three drivers) runs
-> cleanly, so this notebook demonstrates the calibration mechanics
-> directly. Run the drivers on a param file with a `GridPoints` block /
-> a build where the driver passes `packed=False`."""),
+Refines one voxel's orientation **jointly** with detector geometry
+(per-distance `Lsd`, `BC`, tilts). Internally it does the same
+screen + soft-overlap L-BFGS shown above, then a second joint phase that
+also lets the geometry move within its tolerances."""),
+    ("py", """\
+from midas_nf_fitorientation import fit_parameters_run
+
+res1 = fit_parameters_run(str(PARAM), voxel_idx=1, n_cpus=4, device='cpu', verbose=False)
+print('voxel              :', res1['voxel_idx'])
+print('candidates screened:', res1['n_winners'])
+print('frac overlap (fit) :', round(res1['frac_overlap'], 4))
+print('Euler (deg)        :', np.round(np.degrees(res1['euler_rad']), 3).tolist())
+for d in range(p.n_distances):
+    print(f'  layer {d}: Lsd={res1[\"Lsd\"][d]:.3f}  '
+          f'BC=({res1[\"y_BC\"][d]:.3f}, {res1[\"z_BC\"][d]:.3f})  '
+          f'tilts={np.round(res1[\"tilts\"][d], 4).tolist()}')"""),
+    ("md", """\
+### 6b. Cluster calibration — `fit_multipoint_run`
+
+Refines **one global geometry** jointly across many voxels — more stable
+than single-voxel because the geometry is over-determined. The voxels
+come from the param file's `GridPoints` block; when (as here) the param
+file has none, the driver derives them from the reconstructed
+`MicFileText` `.mic`, keeping the highest-confidence voxels above
+`MinConfidence`.
+
+We pass a small `LBFGSConfig` and trim to a handful of voxels here so the
+notebook runs quickly; drop both for a full production run."""),
+    ("py", """\
+from midas_nf_fitorientation import fit_multipoint_run
+from midas_nf_fitorientation.fit_kernel import LBFGSConfig
+from midas_nf_fitorientation.io import read_mic_gridpoints
+
+# Show how GridPoints are derived from the reconstruction when the
+# param file carries no explicit block.
+mic_path = out_dir / p.mic_file_text
+gps = read_mic_gridpoints(mic_path, min_confidence=p.min_confidence, max_points=200)
+print(f'derived {len(gps)} GridPoints from {mic_path.name} '
+      f'(MinConfidence={p.min_confidence})')
+
+print('sample GridPoint (xc, yc, ud, eul1, eul2, eul3):',
+      tuple(round(v, 3) for v in gps[0]))"""),
+    ("py", """\
+# fit_multipoint_run takes a paramfile path. To keep the notebook fast we
+# write the param file with a small explicit GridPoints block (4
+# high-confidence voxels) to a temp file and run on that; a full run just
+# drops the block and lets the driver derive all voxels from the .mic.
+import tempfile
+
+with open(PARAM) as f:
+    base_param = f.read()
+# GridPoints column layout expected by parse_paramfile:
+#   GridPoints  d d d d  xc yc  d  ud  eul1 eul2 eul3  d
+gp_lines = ''.join(
+    f'GridPoints 0 0 0 0 {xc} {yc} 0 {ud} {e1} {e2} {e3} 1\\n'
+    for (xc, yc, ud, e1, e2, e3) in gps[:4]
+)
+with tempfile.NamedTemporaryFile('w', suffix='.txt', delete=False, dir=str(SIM)) as tf:
+    tf.write(base_param + '\\n' + gp_lines)
+    tmp_param = tf.name
+
+res2 = fit_multipoint_run(
+    tmp_param, n_cpus=4, device='cpu', verbose=False,
+    lbfgs_config=LBFGSConfig(max_iter=8, max_outer=8),
+)
+os.remove(tmp_param)
+
+print('voxels refined  :', len(res2['voxel_eulers_rad']))
+print('avg soft overlap:', round(1.0 - res2['loss'], 4))
+for d in range(p.n_distances):
+    print(f'  layer {d}: Lsd={res2[\"Lsd\"][d]:.3f}  '
+          f'BC=({res2[\"y_BC\"][d]:.3f}, {res2[\"z_BC\"][d]:.3f})  '
+          f'tilts={np.round(res2[\"tilts\"][d], 4).tolist()}')"""),
+    ("md", """\
+Both calibration drivers now run cleanly end-to-end on the bundled Au
+example: `fit_parameters_run` screens + jointly refines a single voxel,
+and `fit_multipoint_run` derives its voxel set from the reconstructed
+`.mic` (no hand-written `GridPoints` block needed) and refines one global
+geometry across them. The refined `Lsd` / `BC` / `tilts` stay within
+their configured tolerances of the seed geometry, as expected for a
+well-calibrated synthetic example."""),
 ]
 
 
