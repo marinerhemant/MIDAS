@@ -17,6 +17,7 @@ from __future__ import annotations
 
 import math
 from dataclasses import dataclass
+from typing import Callable, Optional
 
 import torch
 
@@ -28,7 +29,23 @@ RAD2DEG = 180.0 / math.pi
 
 @dataclass
 class MatchResult:
-    """Per-evaluation-tuple match outcome."""
+    """Per-evaluation-tuple match outcome.
+
+    The integer fields ``n_matches``, ``n_matches_frac``, ``n_t_frac`` and
+    the binary ``matched`` field always reflect the **hard** match decision
+    (back-compat with the bit-exact C-parity gate).  When
+    :func:`compare_spots` is called with a ``soft_beam_weight_fn``, the
+    optional ``weighted_*`` fields are populated with the soft-attribution
+    analogues:
+
+    * ``weighted_n_matches``      = Σ_t  has_match(t) · w(best_cand(t))
+    * ``weighted_n_matches_frac`` = same, restricted to non-rejected rings
+    * ``weighted_frac_matches``   = weighted_n_matches_frac / n_t_frac
+
+    Soft-mode consumers (e.g. ``midas_pipeline.stages.indexing`` with
+    ``soft_beam_attribution=True``) score seeds by ``weighted_frac_matches``;
+    the hard scoring path remains identical to today.
+    """
 
     n_matches: torch.Tensor          # (N,) int64 — total matched theor spots
     n_matches_frac: torch.Tensor     # (N,) int64 — matches excluding rings_to_reject (denom of frac)
@@ -39,6 +56,10 @@ class MatchResult:
     matched_obs_row: torch.Tensor    # (N, T) int64 — row index in `obs` for each match, -1 if none
     delta_omega: torch.Tensor        # (N, T) float — |Δomega| for the best match, +inf if none
     matched: torch.Tensor            # (N, T) bool — match found per theor spot
+    # Optional soft-attribution outputs (populated only when soft_beam_weight_fn is provided)
+    weighted_n_matches:      torch.Tensor | None = None  # (N,) float
+    weighted_n_matches_frac: torch.Tensor | None = None  # (N,) float
+    weighted_frac_matches:   torch.Tensor | None = None  # (N,) float
 
 
 def build_eta_margins(
@@ -145,12 +166,31 @@ def pick_compare_strategy(
         return "dense", _JAGGED_CHUNK_MAX
 
     if free_bytes is None:
-        if theor.device.type != "cuda":
-            return "dense", _JAGGED_CHUNK_MAX
-        try:
-            free_bytes, _total = torch.cuda.mem_get_info(theor.device)
-        except Exception:
-            return "dense", _JAGGED_CHUNK_MAX
+        if theor.device.type == "cuda":
+            try:
+                free_bytes, _total = torch.cuda.mem_get_info(theor.device)
+            except Exception:
+                return "dense", _JAGGED_CHUNK_MAX
+        else:
+            # CPU / MPS: probe host RAM. Without this the dense path runs
+            # unbounded and crashes the box on real-scale PF data (e.g.
+            # Wenxi-class 91x91 voxels × 217k seeds where N×T×M can hit
+            # 100s of GB per compare_spots call).
+            try:
+                import psutil
+                free_bytes = int(psutil.virtual_memory().available)
+            except Exception:
+                # Last resort: /proc/meminfo on Linux, or assume 8 GiB.
+                try:
+                    with open("/proc/meminfo") as f:
+                        for line in f:
+                            if line.startswith("MemAvailable:"):
+                                free_bytes = int(line.split()[1]) * 1024
+                                break
+                except Exception:
+                    pass
+                if free_bytes is None:
+                    free_bytes = 8 * (1 << 30)  # 8 GiB conservative
 
     bytes_per_cell = _per_cell_bytes(theor.dtype)
     budget = max(1, int(free_bytes * safety))
@@ -194,6 +234,8 @@ def compare_spots(
     scan_pos_tol_um: float = 0.0,                 # 0 ⇒ filter disabled (FF default)
     friedel_symmetric_scan_filter: bool = False,  # single-sided default = matches C + correct physics
     obs_scan_nr_int64: torch.Tensor | None = None,  # cached obs[..., 9].long() from IndexerContext
+    # --- Soft attribution (P6 of the V-map plan) ---
+    soft_beam_weight_fn: Optional[Callable[[torch.Tensor], torch.Tensor]] = None,
 ) -> MatchResult:
     """Vectorized binned matching. See module docstring for tie-break semantics.
 
@@ -227,6 +269,7 @@ def compare_spots(
             scan_pos_tol_um=scan_pos_tol_um,
             friedel_symmetric_scan_filter=friedel_symmetric_scan_filter,
             obs_scan_nr_int64=obs_scan_nr_int64,
+            soft_beam_weight_fn=soft_beam_weight_fn,
         )
     device = theor.device
     dtype = theor.dtype
@@ -256,6 +299,10 @@ def compare_spots(
         max_n = int(n_per.max().item()) if n_per.numel() else 0
     if max_n == 0:
         zeros = torch.zeros((N, T), dtype=torch.bool, device=device)
+        soft_zeros = (
+            torch.zeros(N, dtype=dtype, device=device)
+            if soft_beam_weight_fn is not None else None
+        )
         return MatchResult(
             n_matches=torch.zeros(N, dtype=torch.int64, device=device),
             n_matches_frac=torch.zeros(N, dtype=torch.int64, device=device),
@@ -266,6 +313,9 @@ def compare_spots(
             matched_obs_row=torch.full((N, T), -1, dtype=torch.int64, device=device),
             delta_omega=torch.full((N, T), float("inf"), dtype=dtype, device=device),
             matched=zeros,
+            weighted_n_matches=soft_zeros,
+            weighted_n_matches_frac=soft_zeros.clone() if soft_zeros is not None else None,
+            weighted_frac_matches=soft_zeros.clone() if soft_zeros is not None else None,
         )
 
     # arange over candidate axis, masked by per-cell n_per.
@@ -356,12 +406,25 @@ def compare_spots(
         cand_scan_pos = scan_pos_arr[cand_scan_idx.clamp(0, scan_pos_arr.numel() - 1)]
 
         diff = (s_proj.unsqueeze(-1) - cand_scan_pos).abs()
-        scan_ok = diff < scan_pos_tol_um
-        if friedel_symmetric_scan_filter:
-            # Friedel pair: matching spot may appear at +scan or -scan offset.
-            diff_friedel = (s_proj.unsqueeze(-1) + cand_scan_pos).abs()
-            scan_ok = scan_ok | (diff_friedel < scan_pos_tol_um)
+        scan_weights: torch.Tensor | None = None
+        if soft_beam_weight_fn is not None:
+            scan_weights = soft_beam_weight_fn(diff).to(dtype=dtype)
+            if friedel_symmetric_scan_filter:
+                diff_f = (s_proj.unsqueeze(-1) + cand_scan_pos).abs()
+                scan_weights = torch.maximum(
+                    scan_weights,
+                    soft_beam_weight_fn(diff_f).to(dtype=dtype),
+                )
+            scan_ok = scan_weights > 0
+        else:
+            scan_ok = diff < scan_pos_tol_um
+            if friedel_symmetric_scan_filter:
+                # Friedel pair: matching spot may appear at +scan or -scan offset.
+                diff_friedel = (s_proj.unsqueeze(-1) + cand_scan_pos).abs()
+                scan_ok = scan_ok | (diff_friedel < scan_pos_tol_um)
         ok = ok & scan_ok                                                       # (N, T, M)
+    else:
+        scan_weights = None
 
     # 5. Tie-break on smallest |Δomega|
     diff_ome = (omega.unsqueeze(-1) - cand_ome).abs()
@@ -396,6 +459,23 @@ def compare_spots(
     n_t_frac = valid_for_frac.sum(dim=-1).to(torch.int64).clamp_min(1)
     frac = n_matches_frac.to(dtype) / n_t_frac.to(dtype)
 
+    # Soft-attribution weighted counts (only when soft_beam_weight_fn given AND
+    # we're in scan-aware mode that populated scan_weights). For every theor
+    # spot with a match, gather the weight at the best (Δω-minimizing)
+    # candidate and sum across the T axis.
+    if scan_weights is not None:
+        best_weight = scan_weights.gather(-1, best_idx.unsqueeze(-1)).squeeze(-1)  # (N, T)
+        best_weight = torch.where(has_match, best_weight, torch.zeros_like(best_weight))
+        weighted_n_matches = (best_weight * has_match.to(dtype)).sum(dim=-1)
+        weighted_n_matches_frac = (
+            best_weight * matched_for_frac.to(dtype)
+        ).sum(dim=-1)
+        weighted_frac_matches = weighted_n_matches_frac / n_t_frac.to(dtype)
+    else:
+        weighted_n_matches = None
+        weighted_n_matches_frac = None
+        weighted_frac_matches = None
+
     # avg_ia: per-tuple internal-angle average between matched theor/obs g-vectors.
     # Mirrors `CalcIA` from FF_HEDM/src/IndexerOMP.c:1654.
     if distance is not None and pos is not None:
@@ -420,6 +500,9 @@ def compare_spots(
         matched_obs_row=matched_row,
         delta_omega=delta_ome,
         matched=has_match,
+        weighted_n_matches=weighted_n_matches,
+        weighted_n_matches_frac=weighted_n_matches_frac,
+        weighted_frac_matches=weighted_frac_matches,
     )
 
 
@@ -449,6 +532,7 @@ def _compare_spots_jagged(
     scan_pos_tol_um: float = 0.0,
     friedel_symmetric_scan_filter: bool = False,
     obs_scan_nr_int64: torch.Tensor | None = None,
+    soft_beam_weight_fn: Optional[Callable[[torch.Tensor], torch.Tensor]] = None,
 ) -> MatchResult:
     """Memory-bounded variant of `compare_spots`: chunks N axis into
     `chunk_size` slabs and concatenates per-slab MatchResults.
@@ -481,8 +565,16 @@ def _compare_spots_jagged(
                 scan_pos_tol_um=scan_pos_tol_um,
                 friedel_symmetric_scan_filter=friedel_symmetric_scan_filter,
                 obs_scan_nr_int64=obs_scan_nr_int64,
+                soft_beam_weight_fn=soft_beam_weight_fn,
             )
         )
+
+    def _cat_opt(field: str):
+        vals = [getattr(c, field) for c in chunks]
+        if any(v is None for v in vals):
+            return None
+        return torch.cat(vals, dim=0)
+
     return MatchResult(
         n_matches=torch.cat([c.n_matches for c in chunks], dim=0),
         n_matches_frac=torch.cat([c.n_matches_frac for c in chunks], dim=0),
@@ -493,6 +585,9 @@ def _compare_spots_jagged(
         matched_obs_row=torch.cat([c.matched_obs_row for c in chunks], dim=0),
         delta_omega=torch.cat([c.delta_omega for c in chunks], dim=0),
         matched=torch.cat([c.matched for c in chunks], dim=0),
+        weighted_n_matches=_cat_opt("weighted_n_matches"),
+        weighted_n_matches_frac=_cat_opt("weighted_n_matches_frac"),
+        weighted_frac_matches=_cat_opt("weighted_frac_matches"),
     )
 
 
