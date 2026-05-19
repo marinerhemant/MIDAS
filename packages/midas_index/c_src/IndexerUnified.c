@@ -144,6 +144,19 @@ struct TParams {
   int nRingsToRejectCalc;
   int RingToIndex;               /* PF seed-ring restriction */
   RealType ScanPosTol;           /* PF override for BeamSize/2 */
+  /* Soft beam attribution (Phase 8). SoftAttrMode:
+   *   0 = none / hard window (legacy scan_pos_tol_um filter, default)
+   *   1 = top_hat   (trapezoidal: 1 inside SoftAttrFwhm/2, linear ramp
+   *                  over SoftAttrFalloff past edge)
+   *   2 = gaussian  (peak-1 Gaussian, σ = FWHM/(2√(2 ln 2)),
+   *                  zero past SoftAttrTruncate when >0)
+   * Per-match weight is written to the IndexBest_weights_all.bin
+   * sidecar, 1:1 with IndexBest_IDs_all.bin entries. Mode 0 emits
+   * all-1.0 weights — file is always produced. */
+  int SoftAttrMode;
+  RealType SoftAttrFwhm;
+  RealType SoftAttrFalloff;
+  RealType SoftAttrTruncate;
 };
 
 /* ----------------------------------------------------------------------------
@@ -797,6 +810,26 @@ static void CompareSpots(RealType **TheorSpots, int nTspots, RealType RefRad,
   RealType diffOmeInit =
       doRefRadFilter ? 100000.0 : (MarginOme + 1e-5);
 
+  /* Soft beam attribution (Phase 8). Mode 0 (default) keeps the legacy
+   * binary scanTol filter and emits weight=1.0 per match — PF parity vs
+   * legacy IndexerScanningOMP preserved bit-exact. Modes 1/2 replace the
+   * binary window with a wider mode-specific candidate window AND
+   * compute a per-match weight from |dy| of the winning spot. */
+  int softMode = Params->SoftAttrMode;
+  RealType softFwhm = Params->SoftAttrFwhm;
+  RealType softFalloff = Params->SoftAttrFalloff;
+  RealType softTrunc = Params->SoftAttrTruncate;
+  RealType softTopHatInner = (softMode == 1) ? 0.5 * softFwhm : 0.0;
+  RealType softTopHatOuter = (softMode == 1) ? softTopHatInner + softFalloff
+                                             : 0.0;
+  RealType softSigma = (softMode == 2 && softFwhm > 0)
+                       ? softFwhm / (2.0 * sqrt(2.0 * log(2.0))) : 0.0;
+  RealType softTwoSigmaSq = (softSigma > 0) ? 2.0 * softSigma * softSigma : 0.0;
+  RealType softWindow;
+  if (softMode == 1) softWindow = softTopHatOuter;
+  else if (softMode == 2) softWindow = (softTrunc > 0) ? softTrunc : 1e30;
+  else softWindow = scanTol;
+
   for (int sp = 0; sp < nTspots; sp++) {
     int RingNr = (int)TheorSpots[sp][9];
     int skipRadialFilter = 0;
@@ -827,6 +860,8 @@ static void CompareSpots(RealType **TheorSpots, int nTspots, RealType RefRad,
     int MatchFound = 0;
     RealType diffOmeBest = diffOmeInit;
     size_t spotRowBest = 0;
+    RealType dyBest = 0.0;  /* |yRot − ypos[scannrobs]| of the winning match;
+                             * meaningful only when MatchFound && doScanFilter */
 
     size_t iRing = (size_t)(RingNr - 1);
     size_t Pos = iRing;
@@ -841,9 +876,15 @@ static void CompareSpots(RealType **TheorSpots, int nTspots, RealType RefRad,
       size_t spotRow = data[(DataPos + iSpot) * 2 + 0];
       size_t scannrobs = data[(DataPos + iSpot) * 2 + 1];
 
+      RealType dy = 0.0;
       if (doScanFilter) {
         RealType ySpot = ypos[scannrobs];
-        if (!(fabs(yRot - ySpot) < scanTol)) continue;
+        dy = fabs(yRot - ySpot);
+        if (softMode == 0) {
+          if (!(dy < scanTol)) continue;
+        } else {
+          if (!(dy < softWindow)) continue;
+        }
       }
 
       if (doRefRadFilter && !skipRadialFilter) {
@@ -867,11 +908,29 @@ static void CompareSpots(RealType **TheorSpots, int nTspots, RealType RefRad,
       if (diffOme < diffOmeBest) {
         diffOmeBest = diffOme;
         spotRowBest = spotRow;
+        dyBest = dy;
         MatchFound = 1;
       }
     }
 
     if (MatchFound == 1) {
+      /* Soft-attribution weight from |dy| of the winning match. */
+      RealType weight = 1.0;
+      if (doScanFilter && softMode == 1) {
+        if (dyBest <= softTopHatInner) {
+          weight = 1.0;
+        } else if (dyBest >= softTopHatOuter || softFalloff <= 0) {
+          weight = (dyBest < softTopHatOuter) ? 1.0 : 0.0;
+        } else {
+          weight = (softTopHatOuter - dyBest)
+                   / (softTopHatOuter - softTopHatInner);
+        }
+      } else if (doScanFilter && softMode == 2) {
+        if (softTwoSigmaSq > 0) {
+          weight = exp(-(dyBest * dyBest) / softTwoSigmaSq);
+        }
+        if (softTrunc > 0 && dyBest > softTrunc) weight = 0.0;
+      }
       GrainSpots[nMatched][0] = nMatched;
       GrainSpots[nMatched][1] = 999.0;
       GrainSpots[nMatched][2] = TheorSpots[sp][10];
@@ -890,6 +949,7 @@ static void CompareSpots(RealType **TheorSpots, int nTspots, RealType RefRad,
       GrainSpots[nMatched][12] = ObsSpotsLab[spotRowBest * 10 + 3];
       GrainSpots[nMatched][13] = ObsSpotsLab[spotRowBest * 10 + 3] - RefRad;
       GrainSpots[nMatched][14] = ObsSpotsLab[spotRowBest * 10 + 4];
+      GrainSpots[nMatched][15] = weight;  /* Phase 8: soft-attribution weight */
       nMatched++;
       (*nMatchesFracCalc)++;
       for (int i = 0; i < nRingsToReject; i++) {
@@ -1438,8 +1498,10 @@ static int DoIndexing_PF(int SpotID, int voxNr, double xThis, double yThis,
         GrainMatchesT[0][13] = nMatches;
         GrainMatchesT[0][14] = 1;
         for (r = 0; r < nTspots; r++) {
-          memcpy(AllGrainSpotsT[r], GrainSpots[r], 15 * sizeof(RealType));
-          AllGrainSpotsT[r][15] = 1;
+          /* Phase 8: copy 16 cols so the per-match weight written by
+           * CompareSpots at col 15 carries through. AllGrainSpots[*][16]
+           * is the IA scratch slot, written by CalcIA below. */
+          memcpy(AllGrainSpotsT[r], GrainSpots[r], 16 * sizeof(RealType));
         }
         CalcIA(GrainMatchesT, 1, AllGrainSpotsT, Params.Distance, scratch);
         if (FracThis == prevBestConfidence &&
@@ -1483,11 +1545,15 @@ static int DoIndexing_PF(int SpotID, int voxNr, double xThis, double yThis,
       GrainMatches[0][13]};
   int matchedNrSpots = (int)GrainMatches[0][13];
   int *outArr2 = (int *)malloc(matchedNrSpots * sizeof(int));
-  for (i = 0; i < matchedNrSpots; i++)
+  double *outWeights = (double *)malloc(matchedNrSpots * sizeof(double));
+  for (i = 0; i < matchedNrSpots; i++) {
     outArr2[i] = (int)AllGrainSpots[i][14];
+    outWeights[i] = AllGrainSpots[i][15];  /* Phase 8: soft-attr weight */
+  }
   size_t keyArr[4] = {(size_t)SpotID, (size_t)matchedNrSpots, 0, 0};
-  VoxelAccum_addSolution(acc, outArr, keyArr, outArr2, matchedNrSpots);
+  VoxelAccum_addSolution(acc, outArr, keyArr, outArr2, outWeights, matchedNrSpots);
   free(outArr2);
+  free(outWeights);
   (void)rownr;
   return 0;
 }
@@ -1554,8 +1620,8 @@ static int DoIndexing_Seeded(int voxNr, int grainIdx, double OM[3][3],
   GrainMatches[0][13] = nMatches;
   GrainMatches[0][14] = 1;
   for (r = 0; r < nTspots; r++) {
-    memcpy(AllGrainSpots[r], GrainSpots[r], 15 * sizeof(RealType));
-    AllGrainSpots[r][15] = 1;
+    /* Phase 8: 16-col copy preserves the per-match weight from CompareSpots. */
+    memcpy(AllGrainSpots[r], GrainSpots[r], 16 * sizeof(RealType));
   }
   for (r = nTspots; r < nRowsOutput; r++)
     memset(AllGrainSpots[r], 0, N_COL_GRAINSPOTS * sizeof(RealType));
@@ -1569,10 +1635,15 @@ static int DoIndexing_Seeded(int voxNr, int grainIdx, double OM[3][3],
       GrainMatches[0][10], GrainMatches[0][11], GrainMatches[0][12],
       GrainMatches[0][13]};
   int *outArr2 = (int *)malloc(nMatches * sizeof(int));
-  for (i = 0; i < nMatches; i++) outArr2[i] = (int)AllGrainSpots[i][14];
+  double *outWeights = (double *)malloc(nMatches * sizeof(double));
+  for (i = 0; i < nMatches; i++) {
+    outArr2[i] = (int)AllGrainSpots[i][14];
+    outWeights[i] = AllGrainSpots[i][15];  /* Phase 8 */
+  }
   size_t keyArr[4] = {(size_t)SpotID, (size_t)nMatches, 0, 0};
-  VoxelAccum_addSolution(acc, outArr, keyArr, outArr2, nMatches);
+  VoxelAccum_addSolution(acc, outArr, keyArr, outArr2, outWeights, nMatches);
   free(outArr2);
+  free(outWeights);
   return 0;
 }
 
@@ -1746,8 +1817,8 @@ static int DoIndexing_FF(int SpotID, int SpotRowNo, struct TParams Params,
           GrainMatchesT[0][13] = (double)nMatches;
           GrainMatchesT[0][14] = 1;
           for (r = 0; r < nTspots; r++) {
-            for (c = 0; c < 15; c++) AllGrainSpotsT[r][c] = GrainSpots[r][c];
-            AllGrainSpotsT[r][15] = 1;
+            /* Phase 8: copy 16 cols so the per-match weight propagates. */
+            for (c = 0; c < 16; c++) AllGrainSpotsT[r][c] = GrainSpots[r][c];
           }
           CalcIA(GrainMatchesT, 1, AllGrainSpotsT, Params.Distance, scratch);
           if (fracMatchesThis > bestFracTillNow ||
@@ -1808,12 +1879,17 @@ static int DoIndexing_FF(int SpotID, int SpotRowNo, struct TParams Params,
       GrainMatches[0][13]};
   int matchedNrSpots = (int)GrainMatches[0][13];
   int *outArr2 = (int *)malloc(matchedNrSpots * sizeof(int));
+  double *outWeights = (double *)malloc(matchedNrSpots * sizeof(double));
   /* Matched spot IDs are stored in AllGrainSpots[i][14] for the matched rows
-   * [0, nMatches), per the GrainSpots layout written by CompareSpots. */
-  for (i = 0; i < matchedNrSpots; i++) outArr2[i] = (int)AllGrainSpots[i][14];
+   * [0, nMatches); soft-attribution weights at AllGrainSpots[i][15]. */
+  for (i = 0; i < matchedNrSpots; i++) {
+    outArr2[i] = (int)AllGrainSpots[i][14];
+    outWeights[i] = AllGrainSpots[i][15];  /* Phase 8 */
+  }
   size_t keyArr[4] = {(size_t)SpotID, (size_t)matchedNrSpots, 0, 0};
-  VoxelAccum_addSolution(acc, outArr, keyArr, outArr2, matchedNrSpots);
+  VoxelAccum_addSolution(acc, outArr, keyArr, outArr2, outWeights, matchedNrSpots);
   free(outArr2);
+  free(outWeights);
   (void)j;
   return 0;
 }
@@ -1839,6 +1915,10 @@ static int ReadParams(char FileName[], struct TParams *Params) {
   Params->ScanPosTol = 0.0;
   Params->RingToIndex = 0;
   Params->UseFriedelPairs = 0;
+  Params->SoftAttrMode = 0;        /* legacy hard window by default */
+  Params->SoftAttrFwhm = 0.0;
+  Params->SoftAttrFalloff = 0.0;
+  Params->SoftAttrTruncate = 0.0;
   Params->MarginEta = 0;
   Params->MarginRad = 0;
   sprintf(Params->MicFN, "0");
@@ -2099,6 +2179,48 @@ static int ReadParams(char FileName[], struct TParams *Params) {
     cmpres = strncmp(line, str, strlen(str));
     if (cmpres == 0) {
       sscanf(line, "%s %lf", dummy, &(Params->ScanPosTol));
+      continue;
+    }
+    str = "SoftAttrMode ";
+    cmpres = strncmp(line, str, strlen(str));
+    if (cmpres == 0) {
+      char modeStr[64] = {0};
+      sscanf(line, "%s %s", dummy, modeStr);
+      if (strncmp(modeStr, "none", 4) == 0 ||
+          strncmp(modeStr, "hard", 4) == 0 ||
+          strncmp(modeStr, "0", 1) == 0) {
+        Params->SoftAttrMode = 0;
+      } else if (strncmp(modeStr, "top_hat", 7) == 0 ||
+                 strncmp(modeStr, "tophat", 6) == 0 ||
+                 strncmp(modeStr, "1", 1) == 0) {
+        Params->SoftAttrMode = 1;
+      } else if (strncmp(modeStr, "gaussian", 8) == 0 ||
+                 strncmp(modeStr, "2", 1) == 0) {
+        Params->SoftAttrMode = 2;
+      } else {
+        fprintf(stderr,
+                "Warning: unknown SoftAttrMode %s; defaulting to none.\n",
+                modeStr);
+        Params->SoftAttrMode = 0;
+      }
+      continue;
+    }
+    str = "SoftAttrFwhm ";
+    cmpres = strncmp(line, str, strlen(str));
+    if (cmpres == 0) {
+      sscanf(line, "%s %lf", dummy, &(Params->SoftAttrFwhm));
+      continue;
+    }
+    str = "SoftAttrFalloff ";
+    cmpres = strncmp(line, str, strlen(str));
+    if (cmpres == 0) {
+      sscanf(line, "%s %lf", dummy, &(Params->SoftAttrFalloff));
+      continue;
+    }
+    str = "SoftAttrTruncate ";
+    cmpres = strncmp(line, str, strlen(str));
+    if (cmpres == 0) {
+      sscanf(line, "%s %lf", dummy, &(Params->SoftAttrTruncate));
       continue;
     }
     str = "OutputFolder ";

@@ -41,10 +41,12 @@ typedef struct {
   double *vals;    /* 16 doubles per solution (flat array) */
   size_t *keys;    /* 4 size_t per solution (flat array) */
   int *matchIDs;   /* matched spot IDs (variable per solution, concatenated) */
+  double *weights; /* per-match soft-attribution weights, 1:1 with matchIDs.
+                    * 1.0 when SoftAttrMode=0 (legacy hard window). */
   int nSolutions;  /* number of solutions found for this voxel */
   int nIDsTotal;   /* total spot IDs stored (sum across all solutions) */
   int capSolutions;/* current capacity for vals/keys arrays */
-  int capIDs;      /* current capacity for matchIDs array */
+  int capIDs;      /* current capacity for matchIDs / weights arrays */
 } VoxelAccumulator;
 
 /**
@@ -58,29 +60,35 @@ static inline void VoxelAccum_init(VoxelAccumulator *acc) {
   acc->vals = (double *)malloc(acc->capSolutions * CONSOLIDATED_VALS_COLS * sizeof(double));
   acc->keys = (size_t *)malloc(acc->capSolutions * CONSOLIDATED_KEY_COLS * sizeof(size_t));
   acc->matchIDs = (int *)malloc(acc->capIDs * sizeof(int));
+  acc->weights = (double *)malloc(acc->capIDs * sizeof(double));
 }
 
 /**
  * Add a solution to the accumulator.
- * @param outArr  16-double record
- * @param keyArr  4-size_t record [SpotID, nMatches, locVals_placeholder, locIDs_placeholder]
- * @param spotIDs array of matched spot IDs
- * @param nIDs    number of matched spot IDs
+ * @param outArr     16-double record
+ * @param keyArr     4-size_t record [SpotID, nMatches, locVals_placeholder, locIDs_placeholder]
+ * @param spotIDs    array of matched spot IDs
+ * @param spotWeights per-match soft-attribution weights (length nIDs). When NULL,
+ *                   weights are filled with 1.0 (legacy hard-window behaviour).
+ * @param nIDs       number of matched spot IDs
  */
 static inline void VoxelAccum_addSolution(VoxelAccumulator *acc,
                                            const double *outArr,
                                            const size_t *keyArr,
-                                           const int *spotIDs, int nIDs) {
+                                           const int *spotIDs,
+                                           const double *spotWeights,
+                                           int nIDs) {
   /* Grow vals/keys if needed */
   if (acc->nSolutions >= acc->capSolutions) {
     acc->capSolutions *= 2;
     acc->vals = (double *)realloc(acc->vals, acc->capSolutions * CONSOLIDATED_VALS_COLS * sizeof(double));
     acc->keys = (size_t *)realloc(acc->keys, acc->capSolutions * CONSOLIDATED_KEY_COLS * sizeof(size_t));
   }
-  /* Grow IDs if needed */
+  /* Grow IDs / weights if needed */
   while (acc->nIDsTotal + nIDs > acc->capIDs) {
     acc->capIDs *= 2;
     acc->matchIDs = (int *)realloc(acc->matchIDs, acc->capIDs * sizeof(int));
+    acc->weights = (double *)realloc(acc->weights, acc->capIDs * sizeof(double));
   }
   memcpy(&acc->vals[acc->nSolutions * CONSOLIDATED_VALS_COLS], outArr, CONSOLIDATED_VALS_COLS * sizeof(double));
   /* Store key with solution-local nIDs count in positions [2] and [3] */
@@ -89,6 +97,11 @@ static inline void VoxelAccum_addSolution(VoxelAccumulator *acc,
   acc->keys[acc->nSolutions * CONSOLIDATED_KEY_COLS + 2] = (size_t)nIDs; /* nIDs for this solution */
   acc->keys[acc->nSolutions * CONSOLIDATED_KEY_COLS + 3] = keyArr[3]; /* reserved */
   memcpy(&acc->matchIDs[acc->nIDsTotal], spotIDs, nIDs * sizeof(int));
+  if (spotWeights != NULL) {
+    memcpy(&acc->weights[acc->nIDsTotal], spotWeights, nIDs * sizeof(double));
+  } else {
+    for (int i = 0; i < nIDs; i++) acc->weights[acc->nIDsTotal + i] = 1.0;
+  }
   acc->nSolutions++;
   acc->nIDsTotal += nIDs;
 }
@@ -100,9 +113,11 @@ static inline void VoxelAccum_free(VoxelAccumulator *acc) {
   free(acc->vals);
   free(acc->keys);
   free(acc->matchIDs);
+  free(acc->weights);
   acc->vals = NULL;
   acc->keys = NULL;
   acc->matchIDs = NULL;
+  acc->weights = NULL;
 }
 
 /**
@@ -204,6 +219,42 @@ static inline void WriteConsolidatedFiles(const VoxelAccumulator *accs,
     }
     fclose(f);
     printf("Wrote %s\n", fn);
+  }
+
+  /* === IndexBest_weights_all.bin (soft-attribution sidecar) ===
+   * Same consolidated header layout as IndexBest_IDs_all.bin, but with
+   * float64 weights instead of int IDs. Each weight is 1:1 with the
+   * corresponding matchID (so nIDsArr[v] applies to BOTH files). When
+   * SoftAttrMode=0 every weight is 1.0 — the file is still emitted so
+   * downstream code can rely on its presence.
+   *
+   * Offsets are recomputed inline because weight stride (8 B) differs
+   * from id stride (4 B). */
+  {
+    int64_t *wOff = (int64_t *)calloc(nVoxels, sizeof(int64_t));
+    int64_t headerW = (int64_t)4 + (int64_t)nVoxels * 4 + (int64_t)nVoxels * 8;
+    int64_t wDataOff = headerW;
+    for (int v = 0; v < nVoxels; v++) {
+      wOff[v] = wDataOff;
+      wDataOff += (int64_t)nIDsArr[v] * sizeof(double);
+    }
+    sprintf(fn, "%s/IndexBest_weights_all.bin", outputFolder);
+    f = fopen(fn, "wb");
+    if (f) {
+      fwrite(&nv, sizeof(int32_t), 1, f);
+      fwrite(nIDsArr, sizeof(int32_t), nVoxels, f);
+      fwrite(wOff, sizeof(int64_t), nVoxels, f);
+      for (int v = 0; v < nVoxels; v++) {
+        if (v >= startVoxel && v < endVoxel) {
+          int li = v - startVoxel;
+          if (accs[li].nIDsTotal > 0)
+            fwrite(accs[li].weights, sizeof(double), accs[li].nIDsTotal, f);
+        }
+      }
+      fclose(f);
+      printf("Wrote %s\n", fn);
+    }
+    free(wOff);
   }
 
   free(nSolArr);
