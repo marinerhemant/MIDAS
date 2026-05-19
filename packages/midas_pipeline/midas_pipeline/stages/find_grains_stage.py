@@ -21,17 +21,20 @@ from ._stub import stub_run
 
 
 def _read_space_group(layer_dir: Path) -> int:
-    """Best-effort space-group resolver (mirrors consolidation.py)."""
+    """Best-effort space-group resolver (mirrors consolidation.py).
+
+    Tolerates trailing punctuation like ``SpaceGroup 194;`` that legacy
+    paramstest files carry over from the C param-file format.
+    """
     p = layer_dir / "paramstest.txt"
     if not p.exists():
         return 225
     for line in p.read_text().splitlines():
         toks = line.split()
         if len(toks) >= 2 and toks[0] == "SpaceGroup":
-            try:
-                return int(toks[1])
-            except ValueError:
-                continue
+            digits = "".join(c for c in toks[1] if c.isdigit())
+            if digits:
+                return int(digits)
     return 225
 
 
@@ -55,6 +58,19 @@ def run(ctx: StageContext) -> StageResult:
 
     from ..find_grains import find_grains_single, find_grains_multiple
 
+    # P7 hook: build a sino-soft weight fn from the SoftAttributionConfig.
+    soft_cfg = ctx.config.soft_attribution
+    soft_weight_fn = None
+    emit_softsum = False
+    if soft_cfg.enable:
+        import numpy as np
+        sigma_w = soft_cfg.omega_sigma_deg
+        if sigma_w > 0:
+            def soft_weight_fn(ome_d, eta_d):
+                # 1-D Gaussian in ω (η is unweighted — eta-binning handles it).
+                return np.exp(-(ome_d * ome_d) / (2.0 * sigma_w * sigma_w))
+        emit_softsum = True
+
     if ctx.config.one_sol_per_vox:
         artifacts = find_grains_single(
             layer_dir,
@@ -64,6 +80,8 @@ def run(ctx: StageContext) -> StageResult:
             scan_tolerance_um=ctx.config.recon.sino_scan_tol_um,
             cluster_misorientation_deg=ctx.config.fusion.max_ang_deg,
             n_scans=ctx.config.scan.n_scans,
+            emit_softsum=emit_softsum,
+            soft_weight_fn=soft_weight_fn,
         )
     else:
         artifacts = find_grains_multiple(
