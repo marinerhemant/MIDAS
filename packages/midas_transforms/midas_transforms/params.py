@@ -306,8 +306,11 @@ REQUIRED_FITSETUP_KEYS = (
     "YCen", "ZCen",
     "RingThresh",
     "LatticeParameter",
-    "tx", "ty", "tz",
+    "ty", "tz",
 )
+# ``tx`` defaults to 0 when absent — older datasets (Wenxi pre-2025)
+# only wrote ty/tz to the zarr because tx wasn't a refined tilt at the
+# time. Modern datasets write all three; if tx is absent we treat it as 0.0.
 
 OPTIONAL_FITSETUP_KEYS_FLOAT = (
     "Width", "WidthTthPx", "Hbeam", "Rsample", "BeamThickness", "BeamSize",
