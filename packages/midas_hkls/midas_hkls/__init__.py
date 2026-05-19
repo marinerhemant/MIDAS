@@ -29,7 +29,7 @@ from .nf_hkls import emit_nf_hkls_csv, write_nf_hkls_csv
 from .space_group import SpaceGroup, list_space_groups
 from .symops import SymOp
 
-__version__ = "0.4.1"
+__version__ = "0.5.0"
 
 __all__ = [
     "Atom",
