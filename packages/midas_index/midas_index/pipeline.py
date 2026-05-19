@@ -1162,39 +1162,39 @@ def _compute_group_gpu_launch(ctx: IndexerContext, setup: dict):
     return finalize
 
 
+_GC_CALL_COUNTER = [0]
+_GC_EVERY_N_SEEDS = 32
+
+
 def _process_seed_group(
     ctx: IndexerContext,
     seeds_block: torch.Tensor,        # (n_seeds,) CPU int64
 ) -> list[SeedResult]:
     """Sequential compatibility wrapper: run setup_cpu then compute_gpu.
 
-    Explicitly releases the (potentially multi-GB) intermediate tensors
-    and asks the allocator to trim. Necessary on PF data scale where the
-    per-voxel seed count is in the thousands — without this, torch's CPU
-    caching allocator + glibc malloc retention pile up >100 GB across
-    sequential seed groups even though each group's tensors are eligible
-    for GC after this function returns. See dev/pf_memory_notes.md (TBD).
+    Releases setup-dict tensors before returning. Periodically (every
+    ``_GC_EVERY_N_SEEDS``) forces a gc + malloc_trim so the CPU torch
+    allocator doesn't retain >100 GB on PF-scale data. Per-call gc was
+    ~50 ms — far too expensive when seeds are now <100 ms total. Batching
+    the gc reduces overhead by ~30× without losing the memory bound (we
+    just run a slightly bigger working set between trims).
     """
     setup = _setup_group_cpu(ctx, seeds_block)
     if setup is None:
         return []
     out = _compute_group_gpu(ctx, setup)
-    # Drop large CPU tensors held by the setup dict before returning. The
-    # caller holds only the small SeedResult list; everything else is
-    # cleaned up here.
     setup.clear()
     del setup
     if ctx.device.type == "cpu":
-        # Force GC and ask glibc malloc to release retained arenas back
-        # to the OS. Without this, sequential seeds on PF (Wenxi-class)
-        # accumulate 100s of GB of "freed but retained" memory.
-        import gc as _gc
-        _gc.collect()
-        try:
-            import ctypes
-            ctypes.CDLL("libc.so.6").malloc_trim(0)
-        except Exception:
-            pass
+        _GC_CALL_COUNTER[0] += 1
+        if _GC_CALL_COUNTER[0] % _GC_EVERY_N_SEEDS == 0:
+            import gc as _gc
+            _gc.collect()
+            try:
+                import ctypes
+                ctypes.CDLL("libc.so.6").malloc_trim(0)
+            except Exception:
+                pass
     return out
 
 
