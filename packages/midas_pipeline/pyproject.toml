@@ -44,7 +44,14 @@ dependencies = [
 ]
 
 [project.optional-dependencies]
-dev = ["pytest>=7.0", "pytest-cov", "matplotlib", "ipykernel"]
+# ``midas-hkls[cif]`` brings the gemmi backend that calc_radius_v needs to
+# read CIFs at test time. midas_hkls's own [dev] extras already pull it in,
+# but our [dev] doesn't, so CI hit CifBackendError on
+# test_calc_radius_v_end_to_end_writes_outputs.
+dev = [
+    "pytest>=7.0", "pytest-cov", "matplotlib", "ipykernel",
+    "midas-hkls[cif]>=0.2.0",
+]
 notebook = ["matplotlib", "ipykernel", "jupyter"]
 # Optional CPU accelerators (Numba JIT). Both merge_scans (per-scan merge
 # inner loop) and potts (ICM sweep) detect numba at import time and fall

@@ -28,6 +28,16 @@ midas-pipeline seed --params ... --output UniqueOrientations.csv
 
 When `--scan-mode` is omitted (default `auto`), the CLI sniffs the parameter file: `nScans > 1` or presence of `BeamSize` / scanning keys → `pf`, otherwise `ff`. For PF mode, `--n-scans`, `--scan-step`, `--beam-size`, and `--scan-pos-tol` default to values in the params file (CLI flags override).
 
+### Indexer backend
+
+```bash
+midas-pipeline run --indexer-backend {python,c-omp} ...
+```
+
+`python` (default) — in-process numba/torch indexer. Portable (CPU/CUDA/MPS), differentiable, slower on large PF datasets.
+
+`c-omp` — bundled unified C binary (`midas_indexer`) from `midas-index`. Requires midas-index installed with a working OpenMP toolchain (macOS: `brew install libomp`). ~290× faster than the Python path on real PF datasets (per the Wenxi CP-Ti benchmark in `packages/midas_index/dev/`). Output is bit-identical to the Python path on the PF parity gate.
+
 ## Coexistence with `midas-ff-pipeline`
 
 The legacy `midas-ff-pipeline` console-script is preserved as an independent FF orchestrator (its own kernels, its own CLI). It is **not** deprecated by `midas-pipeline run --scan-mode ff` — both paths invoke the same `midas-index` / `midas-fit-grain` kernels under the hood, and both stay green on the FF parity gate. Pick whichever is more convenient for your workflow.

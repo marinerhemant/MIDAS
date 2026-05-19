@@ -155,7 +155,12 @@ add_ff_hedm_executable(midas_indexer
           src/MIDAS_Math.c
   OMP)
 target_link_libraries(midas_indexer PRIVATE midas_orientation)
+# Include c_src/ FIRST so the vendored IndexerConsolidatedIO.h /
+# GetMisorientation.h / MIDAS_Math.h shadow the canonical FF_HEDM/src/
+# copies. The legacy FF_HEDM build of midas_indexer must agree with the
+# pip-shipped binary built from c_src/ alone.
 target_include_directories(midas_indexer PRIVATE
+  ${CMAKE_SOURCE_DIR}/packages/midas_index/c_src
   ${CMAKE_CURRENT_SOURCE_DIR}/src
   ${CMAKE_BINARY_DIR}/generated)
 
