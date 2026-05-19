@@ -47,18 +47,36 @@ def _run_ff(ctx: StageContext) -> StageResult:
     out_dir = layer_dir / "Output"
     out_dir.mkdir(parents=True, exist_ok=True)
 
-    cmd = [
-        sys.executable, "-m", "midas_index",
-        str(paramstest),
-        "0",                                   # block_nr
-        "1",                                   # n_blocks
-        str(n_seeds),
-        str(ctx.config.n_cpus),
-        "--device", ctx.config.device,
-        "--dtype", ctx.config.dtype,
-        "--group-size", str(ctx.config.indexer_group_size),
-    ]
-    LOG.info("indexing(FF): %s", " ".join(cmd))
+    if ctx.config.indexer_backend == "c-omp":
+        from midas_index import backend_c
+        if not backend_c.available():
+            raise RuntimeError(
+                f"indexer_backend='c-omp' but the C binary is not built. "
+                f"Re-install midas-index with OpenMP, or set "
+                f"indexer_backend='python'. (looked for "
+                f"{backend_c.binary_path()})"
+            )
+        cmd = [
+            str(backend_c.binary_path()),
+            str(paramstest),
+            "0",                               # block_nr
+            "1",                               # n_blocks
+            str(n_seeds),
+            str(ctx.config.n_cpus),
+        ]
+    else:
+        cmd = [
+            sys.executable, "-m", "midas_index",
+            str(paramstest),
+            "0",                               # block_nr
+            "1",                               # n_blocks
+            str(n_seeds),
+            str(ctx.config.n_cpus),
+            "--device", ctx.config.device,
+            "--dtype", ctx.config.dtype,
+            "--group-size", str(ctx.config.indexer_group_size),
+        ]
+    LOG.info("indexing(FF, %s): %s", ctx.config.indexer_backend, " ".join(cmd))
     log_dir = Path(ctx.log_dir)
     log_dir.mkdir(parents=True, exist_ok=True)
     with (log_dir / "indexing_out.csv").open("w") as out_fp, \
@@ -170,12 +188,18 @@ def run(ctx: StageContext) -> StageResult:
                 )
             ind.soft_beam_weight_fn = fn
 
-        ind.load_observations(cwd=layer_dir)
+        # c-omp backend skips Python-side observation loading (the C binary
+        # mmaps the files itself), but for the python path we need them in
+        # memory.
+        if ctx.config.indexer_backend == "python":
+            ind.load_observations(cwd=layer_dir)
         n_processed = ind.run_scanning(
             scan_positions=scan_positions,
             out_path=out_path,
             num_procs=ctx.config.n_cpus,
             seed_group_size=ctx.config.indexer_group_size,
+            backend=ctx.config.indexer_backend,
+            paramstest_path=paramstest,
         )
     finally:
         os.chdir(cwd0)

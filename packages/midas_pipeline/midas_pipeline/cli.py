@@ -152,6 +152,11 @@ def _build_parser() -> argparse.ArgumentParser:
                      help="indexer seed group size (default 4 for fp64 safety)")
     run.add_argument("--shard-gpus", default=None,
                      help="comma-separated CUDA indices for multi-GPU indexing")
+    run.add_argument("--indexer-backend", choices=["python", "c-omp"],
+                     default="python",
+                     help="indexing backend: 'python' (default, in-process "
+                          "numba/torch) or 'c-omp' (bundled unified C binary, "
+                          "requires OpenMP-built midas-index install).")
 
     # Recon (PF)
     run.add_argument("--do-tomo", type=int, default=1, choices=[0, 1])
@@ -486,6 +491,7 @@ def build_config(args: argparse.Namespace) -> PipelineConfig:
         only_stages=list(args.only),
         skip_stages=list(args.skip),
         indexer_group_size=args.group_size,
+        indexer_backend=args.indexer_backend,
         shard_gpus=args.shard_gpus,
         process_grains_mode=args.pg_mode,
         raw_dir=args.raw_dir,

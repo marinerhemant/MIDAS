@@ -34,6 +34,9 @@ class Indexer:
         self.device = resolve_device(device)
         self.dtype = resolve_dtype(self.device, dtype)
         self._observations: dict | None = None
+        # Source paramstest path — set by from_param_file(), used as the
+        # default for backend="c-omp" so the user doesn't have to repeat it.
+        self._param_path: Path | None = None
 
     @classmethod
     def from_param_file(
@@ -44,7 +47,9 @@ class Indexer:
     ) -> "Indexer":
         from .io.params import read_params
 
-        return cls(read_params(path), device=device, dtype=dtype)
+        inst = cls(read_params(path), device=device, dtype=dtype)
+        inst._param_path = Path(path).resolve()
+        return inst
 
     # ------------------------------------------------------------------
     # Loading observations (file-driven or programmatic)
@@ -129,8 +134,37 @@ class Indexer:
         n_spots_to_index: int | None = None,
         num_procs: int = 1,
         seed_group_size: int | None = None,
+        backend: str = "python",
+        paramstest_path: str | os.PathLike | None = None,
     ) -> "IndexerResult":
-        """Run the indexer on `[block_nr/n_blocks]` of the seed list."""
+        """Run the indexer on `[block_nr/n_blocks]` of the seed list.
+
+        Parameters
+        ----------
+        backend
+            ``"python"`` (default) — the in-process numba/torch indexer.
+            ``"c-omp"`` — shell out to the bundled unified C binary
+            (``midas_indexer``, built by scikit-build-core at pip-install
+            time). The C path writes consolidated output files
+            (``IndexBest_all.bin``, etc.) under ``Params.OutputFolder`` and
+            returns a minimal :class:`IndexerResult` with ``seeds=[]`` —
+            downstream stages (find_grains, refinement) read those files
+            directly from disk per the same contract as the legacy C path.
+        paramstest_path
+            Required when ``backend="c-omp"`` unless this indexer was
+            built via :meth:`from_param_file` (in which case the source
+            path is reused). The C binary reads this file.
+        """
+        if backend == "c-omp":
+            return self._run_c_omp(
+                block_nr=block_nr, n_blocks=n_blocks,
+                n_spots_to_index=n_spots_to_index, num_procs=num_procs,
+                paramstest_path=paramstest_path,
+            )
+        if backend != "python":
+            raise ValueError(
+                f"unknown backend {backend!r}; expected 'python' or 'c-omp'"
+            )
         from .pipeline import IndexerContext, run_block
 
         if self._observations is None:
@@ -171,6 +205,8 @@ class Indexer:
         seed_group_size: int | None = None,
         voxel_block_nr: int = 0,
         voxel_n_blocks: int = 1,
+        backend: str = "python",
+        paramstest_path: str | os.PathLike | None = None,
     ) -> int:
         """Run the per-voxel scanning indexer (pf-HEDM mode).
 
@@ -202,6 +238,16 @@ class Indexer:
             Number of voxels processed (== ``end - start`` over the
             sharded range).
         """
+        if backend == "c-omp":
+            return self._run_scanning_c_omp(
+                scan_positions=scan_positions, num_procs=num_procs,
+                voxel_block_nr=voxel_block_nr, voxel_n_blocks=voxel_n_blocks,
+                paramstest_path=paramstest_path,
+            )
+        if backend != "python":
+            raise ValueError(
+                f"unknown backend {backend!r}; expected 'python' or 'c-omp'"
+            )
         from .pipeline import IndexerContext, run_block
         from .io.consolidated import write_index_best_all
 
@@ -482,6 +528,114 @@ class Indexer:
         ids_path = out_path_p.with_name("IndexBest_IDs_all.bin")
         write_index_key_all(keys_path, per_voxel_keys)
         write_index_best_ids_all(ids_path, per_voxel_ids)
+        return v_end - v_start
+
+    # ------------------------------------------------------------------
+    # C backend dispatchers (Phase 7).
+    # ------------------------------------------------------------------
+
+    def _resolve_paramstest_path(
+        self, paramstest_path: str | os.PathLike | None,
+    ) -> Path:
+        if paramstest_path is not None:
+            return Path(paramstest_path).resolve()
+        if self._param_path is not None:
+            return self._param_path
+        raise ValueError(
+            "backend='c-omp' requires paramstest_path (or construct the "
+            "Indexer via Indexer.from_param_file(...) which captures it "
+            "automatically)."
+        )
+
+    def _run_c_omp(
+        self,
+        *,
+        block_nr: int,
+        n_blocks: int,
+        n_spots_to_index: int | None,
+        num_procs: int,
+        paramstest_path: str | os.PathLike | None,
+    ) -> "IndexerResult":
+        """C-backend FF dispatch. Returns a minimal IndexerResult — downstream
+        stages read IndexBest_all.bin from OutputFolder directly."""
+        from . import backend_c
+        from .result import IndexerResult
+
+        pp = self._resolve_paramstest_path(paramstest_path)
+        # nWork (FF) = nSpotsToIndex. Default to the loaded spot count when
+        # not supplied; SpotsToIndex.csv on disk is the source of truth for
+        # the binary in any case.
+        if n_spots_to_index is None:
+            if self._observations is not None and "spot_ids" in self._observations:
+                n_work = int(len(self._observations["spot_ids"]))
+            else:
+                # Best-effort fallback: count lines of SpotsToIndex.csv.
+                ids_csv = pp.parent / "SpotsToIndex.csv"
+                n_work = sum(1 for _ in ids_csv.open()) if ids_csv.exists() else 1
+        else:
+            n_work = int(n_spots_to_index)
+
+        proc = backend_c.run_indexer(
+            pp, block_nr=block_nr, n_blocks=n_blocks,
+            n_work=n_work, num_procs=num_procs,
+        )
+        if proc.returncode != 0:
+            raise RuntimeError(
+                f"midas_indexer (c-omp) exited {proc.returncode}.\n"
+                f"stderr:\n{proc.stderr.decode('utf-8', errors='replace')[-2000:]}"
+            )
+        # Caller reads IndexBest_all.bin from OutputFolder/. We return an
+        # empty in-memory result so the API shape stays uniform.
+        return IndexerResult(block_nr=block_nr, n_blocks=n_blocks, seeds=[])
+
+    def _run_scanning_c_omp(
+        self,
+        *,
+        scan_positions: np.ndarray | torch.Tensor,
+        num_procs: int,
+        voxel_block_nr: int,
+        voxel_n_blocks: int,
+        paramstest_path: str | os.PathLike | None,
+    ) -> int:
+        """C-backend PF dispatch. Verifies positions.csv matches the supplied
+        scan_positions (sanity), then shells out to the binary."""
+        from . import backend_c
+
+        pp = self._resolve_paramstest_path(paramstest_path)
+
+        # Sanity: positions.csv should match the supplied scan_positions
+        # length. We don't enforce value equality (sort order, formatting),
+        # only count.
+        scan_positions_np = np.asarray(scan_positions).reshape(-1)
+        n_scans = int(scan_positions_np.size)
+        positions_csv = pp.parent / "positions.csv"
+        if positions_csv.exists():
+            n_lines = sum(
+                1 for line in positions_csv.read_text().splitlines()
+                if line.strip()
+            )
+            if n_lines != n_scans:
+                raise ValueError(
+                    f"positions.csv at {positions_csv} has {n_lines} rows "
+                    f"but run_scanning was called with {n_scans} scan_positions. "
+                    "Re-emit positions.csv (or pass matching positions)."
+                )
+
+        proc = backend_c.run_indexer(
+            pp, block_nr=voxel_block_nr, n_blocks=voxel_n_blocks,
+            n_work=n_scans, num_procs=num_procs,
+        )
+        if proc.returncode != 0:
+            raise RuntimeError(
+                f"midas_indexer (c-omp) exited {proc.returncode}.\n"
+                f"stderr:\n{proc.stderr.decode('utf-8', errors='replace')[-2000:]}"
+            )
+        # Return processed voxel count for sharded runs (consistent with the
+        # python path's return value).
+        n_vox_total = n_scans * n_scans
+        block_size = (n_vox_total + voxel_n_blocks - 1) // voxel_n_blocks
+        v_start = voxel_block_nr * block_size
+        v_end = min(v_start + block_size, n_vox_total)
         return v_end - v_start
 
 
