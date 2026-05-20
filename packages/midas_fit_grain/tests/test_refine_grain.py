@@ -48,7 +48,7 @@ def _misori_deg(eul_a, eul_b):
 
 
 @pytest.mark.parametrize("mode", ["all_at_once", "iterative"])
-@pytest.mark.parametrize("loss", ["pixel", "angular"])
+@pytest.mark.parametrize("loss", ["full3d", "angular"])
 def test_lbfgs_recovers_perturbed_grain(fix, mode, loss):
     """Recovery from a 0.5° / 3 µm seed using GT spot matching.
 
@@ -92,7 +92,7 @@ def test_lbfgs_recovers_perturbed_grain(fix, mode, loss):
         f"loss should drop ~1000x, got {result.history[0]:.4g} -> "
         f"{result.history[-1]:.4g} (mode={mode}, loss={loss})"
     )
-    if loss == "pixel":
+    if loss == "full3d":
         # Position is only refinable under pixel loss.
         assert pos_err < 0.1, f"|Δpos| = {pos_err:.3f} um (mode={mode}, loss={loss})"
         # phi1 is poorly conditioned on this synthetic — Phase 3 (L-M)
@@ -161,7 +161,7 @@ def test_bounded_refinement_recovers_and_respects_box(fix):
     """
     obs = fixture_to_observed(fix, device=torch.device("cpu"),
                               dtype=torch.float64)
-    cfg = _build_cfg(fix, mode="all_at_once", loss="pixel", solver="lbfgs")
+    cfg = _build_cfg(fix, mode="all_at_once", loss="full3d", solver="lbfgs")
     cfg.use_bounds = True
     cfg.bound_euler_deg = 1.0          # tight box: ±1°
     cfg.bound_lat_abc_pct = 0.005
@@ -206,7 +206,7 @@ def test_bounded_refinement_device_portable(fix):
     pure torch ops.)"""
     obs = fixture_to_observed(fix, device=torch.device("cpu"),
                               dtype=torch.float64)
-    cfg = _build_cfg(fix, mode="all_at_once", loss="pixel", solver="lbfgs")
+    cfg = _build_cfg(fix, mode="all_at_once", loss="full3d", solver="lbfgs")
     cfg.use_bounds = True
     cfg.max_iter = 20                  # quick smoke
 

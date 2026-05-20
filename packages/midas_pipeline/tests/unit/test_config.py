@@ -87,7 +87,7 @@ class TestRefinementConfig:
         rc = RefinementConfig()
         assert rc.position_mode == "fixed"
         assert rc.solver == "lbfgs"
-        assert rc.loss == "pixel"
+        assert rc.loss == "full3d"
         assert rc.mode == "all_at_once"
 
     def test_voxel_bounded_mode(self):

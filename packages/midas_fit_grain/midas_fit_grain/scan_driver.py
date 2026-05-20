@@ -270,8 +270,17 @@ def refine_scanning_block(
     voxel_block_nr: int = 0,
     voxel_n_blocks: int = 1,
     on_voxel: Optional[callable] = None,   # callback(voxel_idx, ScanVoxelResult)
+    seed_om_table: Optional[np.ndarray] = None,   # (nVox, 9) target OMs or None
 ) -> List[ScanVoxelResult]:
     """Per-voxel scan-aware refinement orchestrator.
+
+    ``seed_om_table``: optional per-voxel target orientation matrix (row-major
+    9-vector). When given (and finite for a voxel), the seed candidate is the
+    block candidate CLOSEST to that target instead of the highest-completeness
+    one. This is the neighbour-aware / grain-aware seed selection that fixes
+    boundary voxels where the top-completeness candidate belongs to the wrong
+    orientation family (see dev/REFINEMENT_DRIFT_FIX.md §outliers). The chosen
+    candidate's matched-spot IDs are used, so the fit stays self-consistent.
 
     Returns the per-voxel results for the requested shard. Voxels with
     no indexer candidates are skipped (no CSV written).
@@ -354,7 +363,21 @@ def refine_scanning_block(
     out: List[ScanVoxelResult] = []
     for v in range(v_start, v_end):
         block = blocks[v]
-        top_idx = _top_candidate_index(block)
+        if (seed_om_table is not None and v < seed_om_table.shape[0]
+                and np.isfinite(seed_om_table[v]).all() and block.shape[0] > 0):
+            # Neighbour/grain-aware seed: pick the candidate whose orientation
+            # is closest to the target OM. Use SYMMETRY-AWARE misorientation
+            # (not plain Frobenius) — the target (a neighbour OM) and the
+            # grain-consistent candidate can sit in different symmetry sectors,
+            # so plain distance can wrongly favour a spurious candidate.
+            from midas_stress.orientation import misorientation_om
+            tgt = seed_om_table[v].reshape(9)
+            sg = int(getattr(cfg, "SpaceGroup", 0)) or 225
+            d = [misorientation_om(block[k, 2:11], tgt, sg)[0]
+                 for k in range(block.shape[0])]
+            top_idx = int(np.argmin(d))
+        else:
+            top_idx = _top_candidate_index(block)
         if top_idx is None:
             continue                                                    # no indexer hit
         cand = block[top_idx]

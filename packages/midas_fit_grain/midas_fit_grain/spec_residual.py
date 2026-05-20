@@ -214,7 +214,10 @@ def hedm_spot_residual(
     overrides at the forward call site.
     """
     if bundle.kind == "pixel":
-        return _vectorized_pixel_residual(unpacked, bundle)
+        raise ValueError(
+            "The 'pixel' loss is disabled (2D, omits omega -> orientation "
+            "drift). Use the full 3D loss 'angular'. See dev/REFINEMENT_DRIFT_FIX.md."
+        )
 
     model = bundle.model
     overrides = _build_param_overrides(unpacked, model)

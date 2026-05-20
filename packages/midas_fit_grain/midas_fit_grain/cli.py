@@ -56,8 +56,8 @@ def build_parser() -> argparse.ArgumentParser:
                    default=None,
                    help="Iterative re-match phases vs single joint fit. "
                         "Default: iterative if FitAllAtOnce=0, else all_at_once.")
-    p.add_argument("--loss", choices=["pixel", "angular", "internal_angle"],
-                   default="pixel",
+    p.add_argument("--loss", choices=["full3d", "angular", "internal_angle"],
+                   default="full3d",
                    help="Residual definition (default: pixel — C parity)")
     p.add_argument("--device", default=None,
                    help="Override MIDAS_FIT_GRAIN_DEVICE (cuda|mps|cpu)")

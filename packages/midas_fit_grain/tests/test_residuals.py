@@ -56,7 +56,7 @@ def test_residuals_zero_at_gt_pixel(fix):
     )
     assert match.mask.all(), "every synthetic obs spot must associate"
 
-    for kind in ("pixel", "angular", "internal_angle"):
+    for kind in ("angular", "internal_angle"):
         res = grain_residuals(
             fix.model,
             grain_euler=fix.gt_euler,
@@ -70,11 +70,38 @@ def test_residuals_zero_at_gt_pixel(fix):
         amax = res.abs().max().item()
         # FF mode is float32 inside the model regardless of input dtype, so
         # the zero-tolerance is dominated by float32 round-off in the bragg
-        # geometry pipeline. 1e-3 (px), 1e-5 (rad), 1e-5 (rad) is plenty.
-        if kind == "pixel":
-            assert amax < 1e-2, f"pixel residual at GT = {amax}"
-        else:
-            assert amax < 1e-4, f"{kind} residual at GT = {amax}"
+        # geometry pipeline. 1e-5 (rad) is plenty.
+        assert amax < 1e-4, f"{kind} residual at GT = {amax}"
+
+
+def test_pixel_loss_is_disabled(fix):
+    """The 2D 'pixel' loss (omits omega) is disabled — it must raise."""
+    import pytest
+
+    def _sq(t):
+        while t.dim() > 2 and t.shape[0] == 1:
+            t = t.squeeze(0)
+            if t.dim() == 0:
+                break
+        return t
+
+    obs = fixture_to_observed(fix, device=torch.device("cpu"), dtype=torch.float64)
+    pred_ring = fix.pred_ring_slot
+    obs_ring_slot = ring_slot_lookup(fix.ring_numbers, obs.ring_nr)
+    spots = fix.model(fix.gt_euler.view(1, 1, 3), fix.gt_position.view(1, 1, 3),
+                      lattice_params=fix.gt_lattice.view(1, 6))
+    match = associate(
+        obs_ring_nr=obs.ring_nr, obs_omega=obs.omega, obs_eta=obs.eta,
+        pred_ring_slot=pred_ring, pred_omega=_sq(spots.omega),
+        pred_eta=_sq(spots.eta), pred_valid=_sq(spots.valid),
+        obs_ring_slot=obs_ring_slot, omega_tolerance=math.pi, eta_tolerance=math.pi,
+    )
+    with pytest.raises(ValueError, match="pixel"):
+        grain_residuals(
+            fix.model, grain_euler=fix.gt_euler, grain_position=fix.gt_position,
+            grain_lattice=fix.gt_lattice, obs=obs, match=match, kind="pixel",
+            px=fix.px, y_BC=fix.y_BC, z_BC=fix.z_BC,
+        )
 
 
 def test_gradients_flow(fix):
@@ -118,7 +145,7 @@ def test_gradients_flow(fix):
     res = grain_residuals(
         fix.model,
         grain_euler=eul, grain_position=pos, grain_lattice=lat,
-        obs=obs, match=match, kind="pixel",
+        obs=obs, match=match, kind="full3d",
         px=fix.px, y_BC=fix.y_BC, z_BC=fix.z_BC,
     )
     loss = (res * res).sum()

@@ -26,7 +26,7 @@ _EXPECTED_PF = [
     "transforms", "cross_det_merge", "global_powder",
     "merge_scans", "seeding",
     "binning", "indexing", "refinement",
-    "find_grains", "sinogen", "reconstruct",
+    "find_grains", "voxel_cleanup", "sinogen", "reconstruct",
     "fuse", "potts", "em_refine",
     "consolidation",
     # P8 V-map orchestration (clean no-op when vmap.run=False)
@@ -47,8 +47,8 @@ def test_pf_stage_order():
 def test_ff_excludes_pf_only_stages():
     """No PF-only stage should appear in FF mode."""
     ff_names = {n for n, _ in stage_order_for("ff")}
-    pf_only = {"merge_scans", "seeding", "find_grains", "sinogen", "reconstruct",
-               "fuse", "potts", "em_refine"}
+    pf_only = {"merge_scans", "seeding", "find_grains", "voxel_cleanup",
+               "sinogen", "reconstruct", "fuse", "potts", "em_refine"}
     assert ff_names.isdisjoint(pf_only)
 
 

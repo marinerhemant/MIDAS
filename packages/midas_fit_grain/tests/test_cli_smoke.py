@@ -144,7 +144,7 @@ def test_cli_runs_end_to_end(tmp_path):
         "1",        # num_procs
         "--solver", "lbfgs",
         "--mode", "all_at_once",
-        "--loss", "pixel",
+        "--loss", "angular",
         "--max-iter", "50",
         "--device", "cpu",      # CI may have MPS but float64 is required
         "--dtype", "float64",

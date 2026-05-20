@@ -30,7 +30,7 @@ def _ff_ctx(tmp_path: Path, *, has_files: bool, n_seeds: int = 3) -> StageContex
         scan=ScanGeometry.ff(),
         device="cpu", dtype="float64",
         n_cpus=4,
-        refinement=RefinementConfig(solver="lbfgs", loss="pixel", mode="all_at_once"),
+        refinement=RefinementConfig(solver="lbfgs", loss="angular", mode="all_at_once"),
     )
     layer_dir = tmp_path / "Layer1"
     layer_dir.mkdir(exist_ok=True)
@@ -101,7 +101,7 @@ def test_refinement_ff_invokes_midas_fit_grain_subprocess(
     assert "--solver" in seen["cmd"]
     assert "lbfgs" in seen["cmd"]
     assert "--loss" in seen["cmd"]
-    assert "pixel" in seen["cmd"]
+    assert "angular" in seen["cmd"]
     assert seen["cwd"] == str(ctx.layer_dir)
 
 

@@ -228,6 +228,56 @@ def _setup_refine_inputs(tmp_path: Path, n_voxels: int = 4):
     return V_true, K_true
 
 
+def test_spot_grain_from_indexing_orientation_based(tmp_path):
+    """Spots are attributed to the grain whose orientation matched them
+    (via IndexBest_IDs + Spots.bin), not by spatial proximity. Unmatched
+    spots stay -1."""
+    import numpy as np
+    from midas_pipeline.find_grains._consolidation_io import write_ids_bin
+    from midas_pipeline.stages.refine_vmap import _spot_grain_from_indexing
+
+    out_dir = tmp_path / "Output"
+    out_dir.mkdir()
+    # 3 voxels: voxel 0 → grain 0, voxels 1,2 → grain 1.
+    grain_map = np.array([0, 1, 1], dtype=np.int64)
+    # Per-voxel matched GLOBAL spot ids: voxel0 matched gid 1; voxel1 → 2,3;
+    # voxel2 → 4. gid 5 is unindexed (no voxel matched it).
+    write_ids_bin(out_dir / "IndexBest_IDs_all.bin",
+                  [np.array([1]), np.array([2, 3]), np.array([4])])
+    # Spots.bin: cols [x y ome int spotID ring eta theta ds scan].
+    sb = np.zeros((5, 10), dtype=np.float64)
+    sb[:, 4] = [1, 2, 3, 4, 5]              # global spotID
+    sb[:, 5] = [1, 1, 2, 2, 3]              # ring
+    sb[:, 9] = [0, 1, 1, 2, 0]              # scan
+    sb[:, 2] = [10.0, 20.0, 30.0, 40.0, 50.0]   # omega
+    sb[:, 6] = [1.0, 2.0, 3.0, 4.0, 5.0]        # eta
+    sb.tofile(out_dir / "Spots.bin")
+    # Radius_V spots keyed per-scan; (scan,ring,ome,eta) joins to Spots.bin.
+    scan_nr     = np.array([0, 1, 1, 2, 0], dtype=np.int64)
+    ring_number = np.array([1, 1, 2, 2, 3], dtype=np.int64)
+    omega_deg   = np.array([10.0, 20.0, 30.0, 40.0, 50.0])
+    eta_deg     = np.array([1.0, 2.0, 3.0, 4.0, 5.0])
+
+    sgi = _spot_grain_from_indexing(
+        tmp_path, out_dir, grain_map, scan_nr, ring_number, omega_deg, eta_deg,
+    )
+    assert sgi is not None
+    # gid 1→grain0, 2→grain1, 3→grain1, 4→grain1, 5→unmatched(-1)
+    assert sgi.tolist() == [0, 1, 1, 1, -1]
+
+
+def test_spot_grain_from_indexing_returns_none_without_artifacts(tmp_path):
+    """No IndexBest_IDs/Spots.bin → None so the caller uses the fallback."""
+    import numpy as np
+    from midas_pipeline.stages.refine_vmap import _spot_grain_from_indexing
+    out_dir = tmp_path / "Output"
+    out_dir.mkdir()
+    z = np.zeros(2, dtype=np.int64)
+    assert _spot_grain_from_indexing(
+        tmp_path, out_dir, np.array([0, 1]), z, z, z.astype(float), z.astype(float),
+    ) is None
+
+
 def test_refine_vmap_noop_when_vmap_run_false(tmp_path):
     from midas_pipeline.stages import refine_vmap
     cfg = _make_pipeline_config(tmp_path)

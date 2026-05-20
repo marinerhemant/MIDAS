@@ -42,7 +42,7 @@ SeedingMode = Literal["unseeded", "ff", "merged-ff"]
 AlignMethod = Literal["ring-center", "cross-correlation", "none"]
 RefinePositionMode = Literal["fixed", "voxel_bounded"]
 RefineSolver = Literal["lbfgs", "lm", "nelder_mead", "adam", "lm_batched"]
-RefineLoss = Literal["pixel", "angular", "internal_angle"]
+RefineLoss = Literal["full3d", "angular", "internal_angle"]   # 2D 'pixel' disabled
 RefineMode = Literal["", "iterative", "all_at_once"]
 ProcessGrainsMode = Literal["spot_aware", "legacy", "paper_claim"]
 
@@ -191,7 +191,7 @@ class RefinementConfig:
 
     position_mode: RefinePositionMode = "fixed"
     solver: RefineSolver = "lbfgs"
-    loss: RefineLoss = "pixel"
+    loss: RefineLoss = "full3d"      # full 3D loss (y,z,ω); 2D 'pixel' disabled
     mode: RefineMode = "all_at_once"
     # Sigmoid box-bound reparameterization (torch-native, autograd).
     # Bounds the optimizer around the seed so it cannot drift to
@@ -262,6 +262,23 @@ class SoftAttributionConfig:
 
 
 @dataclass
+class VoxelCleanupConfig:
+    """Missing-spot directionality voxel-grid cleanup (PF only). OFF by default.
+
+    Removes/reassigns mis-indexed voxels (lone juts, orphans, small fragments)
+    after find_grains. Validated for small/compact/tightly-supported grains; a
+    safe near no-op on large spread grains. See
+    ``midas_pipeline.voxel_cleanup`` + dev/paper/MISSING_SPOT_DIRECTIONALITY_CLEANUP.md.
+    """
+    run: bool = False
+    score_threshold: float = 0.30      # min geometry-miss fraction to act
+    max_same_neighbours: int = 1       # connectivity gate (isolated/jutting only)
+    max_iters: int = 8                 # iterate-to-fixed-point cap
+    occ_min_count: int = 2             # sinogram-cell occupancy threshold (built-in LOO)
+    action: str = "reassign"           # "reassign" (to majority neighbour) | "remove"
+
+
+@dataclass
 class VMapConfig:
     """V-map foundation knobs (P8 of the V-map plan).
 
@@ -286,6 +303,20 @@ class VMapConfig:
     max_iter: int = 80
     loss_kind: str = "log_l2"                       # "log_l2" | "huber_log"
     tolerance: float = 1e-8
+    # Gauge/Tikhonov penalty on log(V). The forward model is exactly
+    # invariant under V→cV, K→K/c, so joint V+K refinement has a flat loss
+    # direction the optimizer drifts along (V→∞, K→0). This pins mean V→1 and
+    # well-conditions under-constrained voxels. 0 disables (e.g. when refine_K
+    # is False, K already fixes the scale so no gauge term is needed).
+    v_gauge_reg: float = 1e-2
+    # Beam–voxel weight geometry: "center" (voxel-centre projection + fixed
+    # box footprint, the original model) or "siddon" (exact overlap with the
+    # rotated-square trapezoidal footprint; reduces ω-dependent streaking).
+    beam_geometry: str = "center"
+    # Soft multi-grain attribution: most PF spots are matched by voxels of >1
+    # grain. When True, a spot's intensity is blended across its candidate
+    # grains (weight ∝ matched-voxel count) instead of forced onto one grain.
+    soft_grain_attribution: bool = False
     # Diagnostics (P9) — figures + tables under ``<layer_dir>/diag/``.
     emit_diagnostics: bool = True
     diag_axes: tuple = (0, 1)                       # which lab axes for V-map 2-D image
@@ -377,6 +408,7 @@ class PipelineConfig:
     seeding: SeedingConfig = field(default_factory=SeedingConfig)
     soft_attribution: SoftAttributionConfig = field(default_factory=SoftAttributionConfig)
     vmap: VMapConfig = field(default_factory=VMapConfig)
+    voxel_cleanup: VoxelCleanupConfig = field(default_factory=VoxelCleanupConfig)
     layer_selection: LayerSelection = field(default_factory=LayerSelection)
     machine: MachineConfig = field(default_factory=MachineConfig)
 

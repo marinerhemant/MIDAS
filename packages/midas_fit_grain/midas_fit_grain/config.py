@@ -21,7 +21,7 @@ import torch
 
 SolverName = Literal["lbfgs", "adam", "lm", "nelder_mead", "lm_batched"]
 ModeName = Literal["iterative", "all_at_once"]
-LossKind = Literal["pixel", "angular", "internal_angle"]
+LossKind = Literal["pixel", "full3d", "angular", "internal_angle"]
 
 
 @dataclass
@@ -105,7 +105,7 @@ class FitConfig:
     # --- Refinement-package specific (NOT in the C param parser) ---
     solver: SolverName = "lbfgs"
     mode: ModeName = "iterative"
-    loss: LossKind = "pixel"
+    loss: LossKind = "full3d"      # full 3D loss (y,z,omega); 2D 'pixel' disabled
     max_iter: int = 5000
     ftol: float = 1e-5
     xtol: float = 1e-5
@@ -168,7 +168,7 @@ class FitConfig:
         *,
         solver: SolverName = "lbfgs",
         mode: Optional[ModeName] = None,
-        loss: LossKind = "pixel",
+        loss: LossKind = "full3d",
         device: Optional[str | torch.device] = None,
         dtype: Optional[str | torch.dtype] = None,
         **overrides,

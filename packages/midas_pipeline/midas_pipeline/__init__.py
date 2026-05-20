@@ -35,6 +35,7 @@ from .config import (
     SinoType,
     SoftAttributionConfig,
     VMapConfig,
+    VoxelCleanupConfig,
     sniff_scan_mode_from_paramfile,
 )
 from .pipeline import Pipeline, all_stage_names, stage_order_for
@@ -72,7 +73,7 @@ __all__ = [
     "RefineLoss", "RefineMode", "RefinePositionMode", "RefineSolver",
     "RefinementConfig", "ResumeMode", "ScanGeometry", "ScanMode",
     "SeedingConfig", "SeedingMode", "SinoSource", "SinoType",
-    "SoftAttributionConfig", "VMapConfig",
+    "SoftAttributionConfig", "VMapConfig", "VoxelCleanupConfig",
     "sniff_scan_mode_from_paramfile",
     # pipeline
     "Pipeline", "all_stage_names", "stage_order_for",

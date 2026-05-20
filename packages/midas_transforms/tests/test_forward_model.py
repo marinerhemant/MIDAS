@@ -164,6 +164,129 @@ def test_omega_zero_uses_y_axis():
     assert math.isclose(float(I_pred[0]), 1.0)
 
 
+# --------------------------------------------------------------- soft attribution
+
+
+def test_soft_attribution_blends_grains():
+    """An expanded (spot,grain) membership list with weights reproduces the
+    weighted blend of each grain's contribution, scatter-summed to the
+    observed spot. Hard path (no weight/out_index) is the special case."""
+    sg = SampleGrid.from_arrays(
+        voxel_positions=[[0.0, 0.0, 0.0], [0.0, 0.0, 0.0]],
+        voxel_size_um=20.0, grain_map=[0, 1],   # one voxel per grain, co-located
+    )
+    V = _t([2.0, 5.0])      # grain 0 V=2, grain 1 V=5
+    K = _t([1.0]); I_th = _t([1.0])
+    # One observed spot, attributed 0.25 to grain 0 and 0.75 to grain 1.
+    # Wide beam → fraction 1, so each grain contributes K·I_th·V[g].
+    I_pred = predicted_spot_intensities(
+        V, K, I_th,
+        spot_ring_idx=torch.tensor([0, 0]),
+        spot_grain_idx=torch.tensor([0, 1]),
+        spot_scan_pos_um=_t([0.0, 0.0]),
+        spot_omega_rad=_t([math.pi / 2, math.pi / 2]),
+        sample_grid=sg, beam_profile=TopHat(100.0),
+        spot_weight=_t([0.25, 0.75]),
+        spot_out_index=torch.tensor([0, 0]),
+        n_out_spots=1,
+    )
+    assert I_pred.shape == (1,)
+    assert math.isclose(float(I_pred[0]), 0.25 * 2.0 + 0.75 * 5.0)
+
+
+def test_soft_attribution_grad_flows_to_V():
+    sg = SampleGrid.from_arrays(
+        voxel_positions=[[0.0, 0.0, 0.0], [0.0, 0.0, 0.0]],
+        voxel_size_um=20.0, grain_map=[0, 1],
+    )
+    V = torch.tensor([2.0, 5.0], dtype=torch.float64, requires_grad=True)
+    I_pred = predicted_spot_intensities(
+        V, _t([1.0]), _t([1.0]),
+        torch.tensor([0, 0]), torch.tensor([0, 1]),
+        _t([0.0, 0.0]), _t([math.pi / 2, math.pi / 2]),
+        sg, TopHat(100.0),
+        spot_weight=_t([0.25, 0.75]), spot_out_index=torch.tensor([0, 0]),
+        n_out_spots=1,
+    )
+    I_pred.sum().backward()
+    # ∂I/∂V0 = 0.25, ∂I/∂V1 = 0.75
+    assert torch.allclose(V.grad, _t([0.25, 0.75]), atol=1e-9)
+
+
+# --------------------------------------------------------------- siddon geometry
+
+
+def test_siddon_matches_center_at_axis_aligned_omega():
+    """beam_geometry='siddon' reduces exactly to the center-box model at
+    ω∈{0,90°} (the rotated square's projection is then a box of width Δ)."""
+    sg = SampleGrid.from_arrays(
+        voxel_positions=[[3.0, 0.0, 0.0]], voxel_size_um=5.0, grain_map=[0],
+    )
+    V = _t([1.0]); K = _t([2.0]); I_th = _t([3.0])
+    for omega in (0.0, math.pi / 2):
+        kw = dict(
+            V_voxel=V, K_ring=K, theoretical_intensity_per_ring=I_th,
+            spot_ring_idx=torch.tensor([0]), spot_grain_idx=torch.tensor([0]),
+            spot_scan_pos_um=_t([1.5]), spot_omega_rad=_t([omega]),
+            sample_grid=sg, beam_profile=TopHat(5.0),
+        )
+        center = predicted_spot_intensities(beam_geometry="center", **kw)
+        siddon = predicted_spot_intensities(beam_geometry="siddon", **kw)
+        assert torch.allclose(center, siddon, atol=1e-10)
+
+
+def test_siddon_wider_footprint_at_oblique_omega():
+    """At ω=45° the trapezoidal projection (width Δ√2) reaches voxels the
+    width-Δ box misses, so siddon gives a nonzero weight where center gives 0."""
+    sg = SampleGrid.from_arrays(
+        voxel_positions=[[0.0, 0.0, 0.0]], voxel_size_um=5.0, grain_map=[0],
+    )
+    V = _t([1.0]); K = _t([1.0]); I_th = _t([1.0])
+    # δ = 6 µm > (Δ+w)/2 = 5 (box reach) but < (Δ(|sin|+|cos|)+w)/2 ≈ 6.04.
+    kw = dict(
+        V_voxel=V, K_ring=K, theoretical_intensity_per_ring=I_th,
+        spot_ring_idx=torch.tensor([0]), spot_grain_idx=torch.tensor([0]),
+        spot_scan_pos_um=_t([6.0]), spot_omega_rad=_t([math.pi / 4]),
+        sample_grid=sg, beam_profile=TopHat(5.0),
+    )
+    center = float(predicted_spot_intensities(beam_geometry="center", **kw)[0])
+    siddon = float(predicted_spot_intensities(beam_geometry="siddon", **kw)[0])
+    assert center == 0.0
+    assert siddon > 0.0
+
+
+def test_siddon_conserves_total_illumination():
+    """A beam far wider than the voxel collects the whole voxel (weight→1) at
+    every ω — the trapezoid integrates to Δ²."""
+    sg = SampleGrid.from_arrays(
+        voxel_positions=[[0.0, 0.0, 0.0]], voxel_size_um=5.0, grain_map=[0],
+    )
+    V = _t([1.0]); K = _t([1.0]); I_th = _t([1.0])
+    for omega in (0.0, math.pi / 6, math.pi / 4, math.pi / 3):
+        I_pred = predicted_spot_intensities(
+            V, K, I_th, torch.tensor([0]), torch.tensor([0]),
+            _t([0.0]), _t([omega]), sg, TopHat(1000.0),
+            beam_geometry="siddon",
+        )
+        assert math.isclose(float(I_pred[0]), 1.0, rel_tol=1e-6)
+
+
+def test_siddon_grad_flows_to_omega_and_scan_pos():
+    sg = SampleGrid.from_arrays(
+        voxel_positions=[[2.0, 1.0, 0.0]], voxel_size_um=5.0, grain_map=[0],
+    )
+    V = _t([1.0]); K = _t([1.0]); I_th = _t([1.0])
+    scan = torch.tensor([2.0], dtype=torch.float64, requires_grad=True)
+    omega = torch.tensor([0.6], dtype=torch.float64, requires_grad=True)
+    I_pred = predicted_spot_intensities(
+        V, K, I_th, torch.tensor([0]), torch.tensor([0]),
+        scan, omega, sg, TopHat(5.0), beam_geometry="siddon",
+    )
+    I_pred.sum().backward()
+    assert torch.isfinite(scan.grad).all() and float(scan.grad.abs().sum()) > 0
+    assert torch.isfinite(omega.grad).all()
+
+
 # --------------------------------------------------------------- differentiability
 
 

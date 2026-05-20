@@ -113,6 +113,57 @@ def test_refine_V_only_recovers_V_when_K_fixed():
 # --------------------------------------------------------- refine K only
 
 
+def test_joint_refine_gauge_pins_scale():
+    """The V·K scale degeneracy is removed by the log-V gauge penalty.
+
+    Starting from a *drifted* point on the degenerate manifold (V scaled 50×,
+    K scaled 1/50×), the gauge slides the global scale back so the geometric
+    mean of V returns to ≈1, while the data fit is preserved (the gauge acts
+    only along the otherwise-free V·K scale direction)."""
+    sg, beam, V_true, K_true, I_th, ring, grain, scan, omega, I_obs = _scenario_8vox()
+    V_init = torch.full_like(V_true, 50.0)   # drifted scale
+    K_init = K_true / 50.0
+    res = refine_vmap_joint(
+        V_init=V_init, K_init=K_init,
+        spot_observed_intensity=I_obs,
+        spot_ring_idx=ring, spot_grain_idx=grain,
+        spot_scan_pos_um=scan, spot_omega_rad=omega,
+        sample_grid=sg, beam_profile=beam,
+        theoretical_intensity_per_ring=I_th,
+        refine_V=True, refine_K=True,
+        gauge_reg=1e-2, max_iter=150, tolerance=1e-12,
+    )
+    # Gauge drives mean(log V) → 0 (geometric mean V ≈ 1) despite the 50× init.
+    assert abs(float(torch.log(res.V_voxel).mean())) < 0.2
+    # ...and the data fit is preserved on the constrained voxels.
+    I_pred = predicted_spot_intensities(
+        res.V_voxel, res.K_ring, I_th, ring, grain, scan, omega, sg, beam,
+    )
+    rel = (I_pred - I_obs).abs() / I_obs.clamp_min(1e-9)
+    assert float(rel.median()) < 0.1
+
+
+def test_joint_refine_gauge_off_leaves_drifted_scale():
+    """With gauge_reg=0 the same drifted init stays drifted: the data loss is
+    already ~0 on the degenerate manifold so there is no gradient to pull the
+    global scale back (this is the pathology the gauge fixes)."""
+    sg, beam, V_true, K_true, I_th, ring, grain, scan, omega, I_obs = _scenario_8vox()
+    # Drifted *and* data-consistent init: V_true scaled 50×, K_true/50 → the
+    # forward model already reproduces I_obs, so loss≈0 and gradients vanish.
+    res = refine_vmap_joint(
+        V_init=V_true * 50.0, K_init=K_true / 50.0,
+        spot_observed_intensity=I_obs,
+        spot_ring_idx=ring, spot_grain_idx=grain,
+        spot_scan_pos_um=scan, spot_omega_rad=omega,
+        sample_grid=sg, beam_profile=beam,
+        theoretical_intensity_per_ring=I_th,
+        refine_V=True, refine_K=True,
+        gauge_reg=0.0, max_iter=80, tolerance=1e-12,
+    )
+    # No gauge → the inflated scale is not corrected.
+    assert float(res.V_voxel.mean()) > 10.0
+
+
 def test_refine_K_only_recovers_K_when_V_fixed():
     sg, beam, V_true, K_true, I_th, ring, grain, scan, omega, I_obs = _scenario_8vox()
 

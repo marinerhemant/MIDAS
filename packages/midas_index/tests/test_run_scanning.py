@@ -206,6 +206,72 @@ def test_run_scanning_writes_readable_indexbest_all(tmp_path: Path):
     np.testing.assert_array_equal(result.n_sol_arr, np.zeros(9, dtype=np.int32))
 
 
+def test_run_scanning_preserves_acquisition_order_for_scan_filter(
+    tmp_path: Path, monkeypatch
+):
+    """Non-monotonic (alternating) acquisition order must NOT be sorted into
+    the scan filter.
+
+    Regression for the scan_nr<->position mis-association: positions.csv is
+    indexed by acquisition/file order (== Spots.bin col-9 scan_nr). The
+    per-voxel scan filter looks up ``scan_positions[scan_nr]``, so the
+    context MUST receive the acquisition-order array, while ONLY the voxel
+    spatial grid is sorted. If the indexer sorted both, an alternating scan
+    (0,-1,1,-2,2) would gate every acquisition against the wrong physical
+    position.
+    """
+    import midas_index.pipeline as pl
+
+    captured: list = []
+    orig_init = pl.IndexerContext.__init__
+
+    def spy_init(self, *args, **kwargs):
+        orig_init(self, *args, **kwargs)
+        captured.append(self)
+
+    monkeypatch.setattr(pl.IndexerContext, "__init__", spy_init)
+
+    p = IndexerParams(
+        px=200.0, Distance=1e6, Wavelength=0.18,
+        SpaceGroup=225,
+        EtaBinSize=0.1, OmeBinSize=0.1,
+        StepsizeOrient=0.5,
+        MarginEta=2.0, MarginOme=0.5, MarginRad=10.0, MarginRadial=10.0,
+        RingNumbers=[1],
+        RingRadii={1: 30000.0},
+        scan_pos_tol_um=2.0,
+        multi_solution_output=True,
+    )
+    ind = Indexer(p, device="cpu")
+    ind._observations = {
+        "spots": np.zeros((1, 10), dtype=np.float64),
+        "bin_data": np.zeros(0, dtype=np.int32),
+        "bin_ndata": np.zeros(0, dtype=np.int32),
+        "hkls_real": np.zeros((1, 6), dtype=np.float64),
+        "hkls_int": np.zeros((1, 4), dtype=np.int64),
+        "spot_ids": np.zeros(0, dtype=np.int64),
+    }
+
+    # Alternating acquisition order — NOT sorted.
+    acq_positions = np.array([0.0, -5.0, 5.0, -10.0, 10.0])
+    n_vox = ind.run_scanning(
+        scan_positions=acq_positions,
+        out_path=tmp_path / "IndexBest_all.bin",
+        num_procs=1,
+    )
+
+    assert n_vox == 25                       # 5 × 5 grid
+    assert captured, "IndexerContext was never constructed"
+    ctx = captured[0]
+    # The scan filter must see the ACQUISITION-ORDER positions verbatim.
+    np.testing.assert_array_equal(
+        ctx.scan_positions.cpu().numpy(), acq_positions,
+    )
+    # Sanity: the input really was non-monotonic, so a sort would have
+    # changed it — proving the assertion above is non-trivial.
+    assert np.any(np.diff(acq_positions) < 0)
+
+
 def test_run_scanning_rejects_single_scan():
     """FF (single-scan) callers should use run(), not run_scanning."""
     p = IndexerParams(SpaceGroup=225, RingRadii={1: 30000.0})
