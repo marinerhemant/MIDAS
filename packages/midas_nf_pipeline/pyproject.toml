@@ -26,6 +26,7 @@ classifiers = [
 dependencies = [
     "numpy>=1.22",
     "h5py>=3.0",
+    "hdf5plugin>=4.0",
     "tqdm>=4.0",
     "midas-hkls>=0.3.0",
     "midas-stress>=0.6.0",

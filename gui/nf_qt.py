@@ -19,6 +19,14 @@ import json
 import numpy as np
 from math import sin, cos
 
+# Register bundled HDF5 compression filters (Blosc, LZ4, Bitshuffle, Zstd)
+# before h5py is used; detector files often need these and libhdf5's
+# default plugin path is rarely populated.
+try:
+    import hdf5plugin  # noqa: F401
+except ImportError:
+    pass
+
 try:
     import h5py
     HAS_H5PY = True

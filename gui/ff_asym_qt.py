@@ -23,6 +23,16 @@ import numpy as np
 from numpy import linalg as LA
 from math import sin, cos, sqrt
 
+# Register bundled HDF5 compression filters (Blosc, LZ4, Bitshuffle, Zstd)
+# with libhdf5 before any h5py.File() call. Without this, opening detector
+# files written with these filters fails with "can't open directory
+# (/usr/local/lib/plugin)" because libhdf5 falls back to its built-in
+# plugin search path.
+try:
+    import hdf5plugin  # noqa: F401
+except ImportError:
+    pass
+
 
 from PyQt5 import QtWidgets, QtCore, QtGui
 import pyqtgraph as pg
@@ -540,12 +550,20 @@ class FFViewer(QtWidgets.QMainWindow):
         ctrl_scroll.setFrameShape(QtWidgets.QFrame.NoFrame)
         ctrl_scroll.setHorizontalScrollBarPolicy(QtCore.Qt.ScrollBarAlwaysOff)
         ctrl_scroll.setVerticalScrollBarPolicy(QtCore.Qt.ScrollBarAsNeeded)
+        # Let the user drag the splitter down to a small slice; the scroll
+        # area's vertical scrollbar takes over once the inner widget can't
+        # fit. Without this the splitter clamps to the controls' natural
+        # minimumSizeHint and the divider feels stuck.
+        ctrl_scroll.setMinimumHeight(80)
 
         # Vertical splitter so the image dominates at startup but the user
         # can drag the divider for more controls space. Stretch factors
         # 1:0 send any extra vertical space to the image, never the
-        # bottom; setSizes seeds the bottom with the natural sizeHint of
-        # the controls so the cake row fits without scrolling on startup.
+        # bottom. Initial bottom size is the controls' sizeHint capped at
+        # BOTTOM_INIT_CAP so the image gets a generous starting share even
+        # when the controls' natural height is large (multi-det panel,
+        # tall fonts); the user can drag the divider either way.
+        BOTTOM_INIT_CAP = 320
         splitter = QtWidgets.QSplitter(QtCore.Qt.Vertical)
         splitter.addWidget(self.image_view)
         splitter.addWidget(ctrl_scroll)
@@ -553,7 +571,8 @@ class FFViewer(QtWidgets.QMainWindow):
         splitter.setStretchFactor(1, 0)
         ctrl_widget.adjustSize()
         sb_w = self.style().pixelMetric(QtWidgets.QStyle.PM_ScrollBarExtent)
-        bottom_h = ctrl_widget.sizeHint().height() + sb_w + 4
+        bottom_h = min(ctrl_widget.sizeHint().height() + sb_w + 4,
+                       BOTTOM_INIT_CAP)
         splitter.setSizes([900, bottom_h])
         splitter.setChildrenCollapsible(False)
         main_layout.addWidget(splitter, stretch=1)
@@ -2962,7 +2981,7 @@ class FFViewer(QtWidgets.QMainWindow):
                     if p['mask'] is not None and p['mask'].shape == result.shape:
                         result[p['mask'] == 1] = 0
                     if p['dark_data'] is not None:
-                        result = np.maximum(result - p['dark_data'], 0)
+                        result = result - p['dark_data']
                     result = apply_image_transforms(result,
                         p['do_transpose'], p['hflip'], p['vflip'])
                     elapsed = _time.monotonic() - t0
@@ -2992,7 +3011,7 @@ class FFViewer(QtWidgets.QMainWindow):
                                 if p['mask'] is not None and p['mask'].shape == result.shape:
                                     result[p['mask'] == 1] = 0
                                 if p['dark_data'] is not None:
-                                    result = np.maximum(result - p['dark_data'], 0)
+                                    result = result - p['dark_data']
                                 result = apply_image_transforms(result,
                                     p['do_transpose'], p['hflip'], p['vflip'])
                                 elapsed = _time.monotonic() - t0
@@ -3032,7 +3051,7 @@ class FFViewer(QtWidgets.QMainWindow):
                         # Dark in raw orientation; subtract per-frame so
                         # max/sum behaves correctly per pixel.
                         if p['dark_data'] is not None:
-                            frame = np.maximum(frame - p['dark_data'], 0)
+                            frame = frame - p['dark_data']
                         if data_accum is None:
                             data_accum = frame.astype(np.float64)
                         else:
@@ -3112,7 +3131,7 @@ class FFViewer(QtWidgets.QMainWindow):
             # makes HFlip/VFlip purely a display flip and rules out the
             # axis-swap class of bugs (data flipped on cols, dark on rows).
             if dark_data is not None:
-                data = np.maximum(data - dark_data, 0)
+                data = data - dark_data
             data = apply_image_transforms(data,
                 self.do_transpose, self.hflip, self.vflip)
 
@@ -3602,19 +3621,46 @@ class RingSelectionDialog(QtWidgets.QDialog):
         else:
             self._build_material_page()
 
+    # Material presets. Each entry is (name, sg, lattice, dspacings).
+    #   Crystalline:  sg + 6-element lattice; dspacings=None → uses GetHKLList.
+    #   d-spacing:    dspacings list (Å); sg=lattice=None → bypasses GetHKLList,
+    #                 computes ring radii directly via Bragg's law.
+    # First entry is a no-op placeholder so opening the combo doesn't clobber
+    # current values.
+    _MATERIAL_PRESETS = [
+        ("(custom)",  None,  None,                                              None),
+        ("CeO2",      225,  [5.4116,  5.4116,  5.4116,  90.0, 90.0, 90.0],      None),
+        ("LaB6",      221,  [4.1569,  4.1569,  4.1569,  90.0, 90.0, 90.0],      None),
+        ("Si",        227,  [5.43102, 5.43102, 5.43102, 90.0, 90.0, 90.0],      None),
+        ("Al",        225,  [4.0495,  4.0495,  4.0495,  90.0, 90.0, 90.0],      None),
+        ("Au",        225,  [4.0786,  4.0786,  4.0786,  90.0, 90.0, 90.0],      None),
+        ("Cu",        225,  [3.6149,  3.6149,  3.6149,  90.0, 90.0, 90.0],      None),
+        ("Ni",        225,  [3.5238,  3.5238,  3.5238,  90.0, 90.0, 90.0],      None),
+        ("Fe (bcc)",  229,  [2.8665,  2.8665,  2.8665,  90.0, 90.0, 90.0],      None),
+        ("Fe (fcc)",  225,  [3.6467,  3.6467,  3.6467,  90.0, 90.0, 90.0],      None),
+        ("W",         229,  [3.1652,  3.1652,  3.1652,  90.0, 90.0, 90.0],      None),
+        ("Ti (hcp)",  194,  [2.9508,  2.9508,  4.6855,  90.0, 90.0, 120.0],     None),
+        ("Mg (hcp)",  194,  [3.2094,  3.2094,  5.2107,  90.0, 90.0, 120.0],     None),
+        # SAXS calibrant: silver behenate lamellar d001 = 58.380 Å, higher
+        # orders are d001/n. Listing the first ~12 orders covers typical
+        # SAXS-to-low-WAXS detector ranges.
+        ("AgBe (SAXS)", None, None,
+            [58.380/n for n in range(1, 13)]),
+    ]
+
     def _build_material_page(self):
         lay = QtWidgets.QFormLayout(self)
 
-        # ── Material preset buttons ──
-        preset_row = QtWidgets.QHBoxLayout()
-        btn_ceo2 = QtWidgets.QPushButton("CeO2")
-        btn_lab6 = QtWidgets.QPushButton("LaB6")
-        btn_ceo2.clicked.connect(lambda: self._apply_preset(225, [5.4116, 5.4116, 5.4116, 90.0, 90.0, 90.0]))
-        btn_lab6.clicked.connect(lambda: self._apply_preset(221, [4.1569, 4.1569, 4.1569, 90.0, 90.0, 90.0]))
-        preset_row.addWidget(btn_ceo2)
-        preset_row.addWidget(btn_lab6)
-        preset_row.addStretch()
-        lay.addRow("Material:", preset_row)
+        # ── Material preset dropdown ──
+        self.material_combo = QtWidgets.QComboBox()
+        for name, _sg, _lat, _ds in self._MATERIAL_PRESETS:
+            self.material_combo.addItem(name)
+        self.material_combo.setToolTip(
+            "Pick a calibrant/common material to auto-fill SpaceGroup and\n"
+            "Lattice Constants (or d-spacings for SAXS calibrants like AgBe).\n"
+            "Select '(custom)' to edit by hand.")
+        self.material_combo.currentIndexChanged.connect(self._on_material_changed)
+        lay.addRow("Material:", self.material_combo)
 
         self.sg_edit = QtWidgets.QLineEdit(str(self.viewer.sg))
         self.wl_edit = QtWidgets.QLineEdit(str(self.viewer.wl))
@@ -3625,6 +3671,16 @@ class RingSelectionDialog(QtWidgets.QDialog):
         for i in range(6):
             e = QtWidgets.QLineEdit(str(self.viewer.lattice_const[i]))
             self.lc_edits.append(e)
+        # d-spacings field: when non-empty, ring radii are computed directly
+        # from these via Bragg's law and SpaceGroup/Lattice are ignored.
+        self.dspacings_edit = QtWidgets.QLineEdit("")
+        self.dspacings_edit.setPlaceholderText(
+            "e.g. 58.380, 29.190, 19.460  (overrides SpaceGroup/Lattice)")
+        self.dspacings_edit.setToolTip(
+            "Optional: comma- or space-separated d-spacings in Å. When set,\n"
+            "ring radii are computed directly from Bragg's law and the\n"
+            "SpaceGroup/Lattice fields above are ignored. Useful for SAXS\n"
+            "calibrants like silver behenate (AgBe).")
 
         lay.addRow("SpaceGroup:", self.sg_edit)
         lay.addRow("Wavelength (Å) or Energy (keV):", self.wl_edit)
@@ -3633,6 +3689,7 @@ class RingSelectionDialog(QtWidgets.QDialog):
             e.setMinimumWidth(70)
             lc_row.addWidget(e)
         lay.addRow("Lattice Const (Å):", lc_row)
+        lay.addRow("d-spacings (Å):", self.dspacings_edit)
         lay.addRow("Lsd (μm):", self.lsd_edit)
         lay.addRow("MaxRingRad (μm):", self.maxrad_edit)
         lay.addRow("Pixel Size (μm):", self.px_edit)
@@ -3641,23 +3698,62 @@ class RingSelectionDialog(QtWidgets.QDialog):
         btn.clicked.connect(self._generate_and_select)
         lay.addRow(btn)
 
+    def _on_material_changed(self, idx):
+        """Fill SpaceGroup/Lattice or d-spacings field from the preset."""
+        if idx <= 0:  # '(custom)' — leave fields alone
+            return
+        _name, sg, lattice, dspacings = self._MATERIAL_PRESETS[idx]
+        if dspacings is not None:
+            # d-spacing-only preset (e.g. AgBe): fill d-spacings, clear the
+            # SpaceGroup/Lattice fields so it's visually clear they're unused.
+            self.dspacings_edit.setText(", ".join(f"{d:.4f}" for d in dspacings))
+        else:
+            self.dspacings_edit.setText("")
+            self._apply_preset(sg, lattice)
+
     def _apply_preset(self, sg, lattice):
         """Auto-populate SpaceGroup and LatticeParameters from a material preset."""
         self.sg_edit.setText(str(sg))
         for i, val in enumerate(lattice):
             self.lc_edits[i].setText(str(val))
 
+    @staticmethod
+    def _parse_dspacings(text):
+        """Parse a comma/space-separated d-spacings list. Returns [] on empty."""
+        text = (text or '').strip()
+        if not text:
+            return []
+        tokens = re.split(r'[,\s]+', text)
+        out = []
+        for t in tokens:
+            if not t:
+                continue
+            try:
+                v = float(t)
+            except ValueError:
+                continue
+            if v > 0:
+                out.append(v)
+        return out
+
     def _generate_and_select(self):
         # Write temp param file and run GetHKLList
         wl = float(self.wl_edit.text())
         if wl > 1:
             wl = 12.398 / wl
-        self.viewer.sg = int(self.sg_edit.text())
         self.viewer.wl = wl
         self.viewer.pixel_size = float(self.px_edit.text())
         self.viewer.lsd_local = float(self.lsd_edit.text())
         self.viewer.lsd_orig = self.viewer.lsd_local
         self.viewer.temp_max_ring_rad = float(self.maxrad_edit.text())
+
+        # d-spacings branch: bypass GetHKLList, compute ring radii from Bragg.
+        dspacings = self._parse_dspacings(self.dspacings_edit.text())
+        if dspacings:
+            self._generate_from_dspacings(dspacings, wl)
+            return
+
+        self.viewer.sg = int(self.sg_edit.text())
         for i in range(6):
             self.viewer.lattice_const[i] = float(self.lc_edits[i].text())
 
@@ -3709,6 +3805,44 @@ class RingSelectionDialog(QtWidgets.QDialog):
             return
 
         # Show list for selection
+        self._show_ring_list(all_rings)
+
+    def _generate_from_dspacings(self, dspacings, wl):
+        """Compute ring radii directly from d-spacings (Bragg) and pick rings.
+
+        2θ = 2·arcsin(λ/(2d)); r_um = lsd_um · tan(2θ). Used for materials
+        like silver behenate where the SAXS rings are characterised by their
+        lamellar d-spacing rather than a crystallographic (sg, lattice).
+        Synthesises HKL labels as (0,0,n) for the nth listed d-spacing — the
+        viewer overlay only uses these for display.
+        """
+        lsd = self.viewer.lsd_local
+        max_r = self.viewer.temp_max_ring_rad
+        all_rings = []
+        skipped = []
+        for n, d in enumerate(dspacings, start=1):
+            ratio = wl / (2.0 * d)
+            if abs(ratio) >= 1.0:
+                skipped.append((n, d, "wavelength too large for this d"))
+                continue
+            two_theta = 2.0 * math.asin(ratio)
+            r = lsd * math.tan(two_theta)
+            if r <= 0:
+                continue
+            if r > max_r:
+                skipped.append((n, d, f"r={r:.1f}μm > MaxRingRad"))
+                continue
+            all_rings.append({
+                'nr': n,
+                'hkl': [0, 0, n],
+                'rad': r,
+                'display': f"d={d:.4f}Å  2θ={math.degrees(two_theta):.4f}°  r={r:.2f}μm",
+            })
+        for n, d, why in skipped:
+            print(f"  d-spacing #{n} (d={d:.4f}Å) skipped: {why}")
+        if not all_rings:
+            print("No rings found from d-spacings (all out of range)")
+            return
         self._show_ring_list(all_rings)
 
     def _show_ring_list(self, all_rings):
