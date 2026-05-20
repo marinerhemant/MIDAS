@@ -43,6 +43,7 @@ dependencies = [
     "torch>=2.1",
     "tifffile>=2022.0",
     "h5py>=3.0",
+    "hdf5plugin>=4.0",
     "numba>=0.59",   # JIT'd DetectorMapper kernel (parallel via prange)
     "joblib>=1.2",   # used by ancillary tooling; not on the hot path
     "zarr>=2.16,<3", # CSV exporter (zarr.hierarchy.Group is v2 API)
