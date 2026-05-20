@@ -17,7 +17,7 @@ Quick start
     )
 """
 
-__version__ = "0.5.23"
+__version__ = "0.6.0"
 
 from .params import IndexerParams
 from .result import IndexerResult, SeedResult
