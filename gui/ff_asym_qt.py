@@ -23,6 +23,16 @@ import numpy as np
 from numpy import linalg as LA
 from math import sin, cos, sqrt
 
+# Register bundled HDF5 compression filters (Blosc, LZ4, Bitshuffle, Zstd)
+# with libhdf5 before any h5py.File() call. Without this, opening detector
+# files written with these filters fails with "can't open directory
+# (/usr/local/lib/plugin)" because libhdf5 falls back to its built-in
+# plugin search path.
+try:
+    import hdf5plugin  # noqa: F401
+except ImportError:
+    pass
+
 
 from PyQt5 import QtWidgets, QtCore, QtGui
 import pyqtgraph as pg
@@ -540,12 +550,20 @@ class FFViewer(QtWidgets.QMainWindow):
         ctrl_scroll.setFrameShape(QtWidgets.QFrame.NoFrame)
         ctrl_scroll.setHorizontalScrollBarPolicy(QtCore.Qt.ScrollBarAlwaysOff)
         ctrl_scroll.setVerticalScrollBarPolicy(QtCore.Qt.ScrollBarAsNeeded)
+        # Let the user drag the splitter down to a small slice; the scroll
+        # area's vertical scrollbar takes over once the inner widget can't
+        # fit. Without this the splitter clamps to the controls' natural
+        # minimumSizeHint and the divider feels stuck.
+        ctrl_scroll.setMinimumHeight(80)
 
         # Vertical splitter so the image dominates at startup but the user
         # can drag the divider for more controls space. Stretch factors
         # 1:0 send any extra vertical space to the image, never the
-        # bottom; setSizes seeds the bottom with the natural sizeHint of
-        # the controls so the cake row fits without scrolling on startup.
+        # bottom. Initial bottom size is the controls' sizeHint capped at
+        # BOTTOM_INIT_CAP so the image gets a generous starting share even
+        # when the controls' natural height is large (multi-det panel,
+        # tall fonts); the user can drag the divider either way.
+        BOTTOM_INIT_CAP = 320
         splitter = QtWidgets.QSplitter(QtCore.Qt.Vertical)
         splitter.addWidget(self.image_view)
         splitter.addWidget(ctrl_scroll)
@@ -553,7 +571,8 @@ class FFViewer(QtWidgets.QMainWindow):
         splitter.setStretchFactor(1, 0)
         ctrl_widget.adjustSize()
         sb_w = self.style().pixelMetric(QtWidgets.QStyle.PM_ScrollBarExtent)
-        bottom_h = ctrl_widget.sizeHint().height() + sb_w + 4
+        bottom_h = min(ctrl_widget.sizeHint().height() + sb_w + 4,
+                       BOTTOM_INIT_CAP)
         splitter.setSizes([900, bottom_h])
         splitter.setChildrenCollapsible(False)
         main_layout.addWidget(splitter, stretch=1)
