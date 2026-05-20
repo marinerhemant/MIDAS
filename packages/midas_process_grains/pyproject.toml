@@ -28,6 +28,7 @@ dependencies = [
     "scipy>=1.9",
     "torch>=2.0",
     "h5py>=3.7",
+    "hdf5plugin>=4.0",
     "midas-stress>=0.5.0,<1.0",      # orientation, lattice→strain, Hooke's law, stiffness
     "midas-hkls>=0.1.0",             # hkl enumeration + space-group symmetry
     "midas-diffract>=0.1.0",         # HEDMForwardModel for Phase-3 arbitration

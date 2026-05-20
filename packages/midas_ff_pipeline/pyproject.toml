@@ -28,6 +28,7 @@ dependencies = [
     "torch>=2.0",
     "zarr>=2.14,<3",
     "h5py>=3.7",
+    "hdf5plugin>=4.0",
     "tifffile",
     "pandas>=1.5",
     # Sibling MIDAS packages.

@@ -26,6 +26,7 @@ dependencies = [
     "midas-peakfit>=0.2.0",
     "midas-calibrate>=0.2.0",
     "h5py>=3.0",
+    "hdf5plugin>=4.0",
     "tifffile>=2022.0",
 ]
 
