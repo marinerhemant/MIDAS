@@ -547,6 +547,53 @@ class Indexer:
             "automatically)."
         )
 
+    def _emit_c_omp_paramstest(self, pp: Path) -> Path:
+        """Write a paramstest the C scanning indexer can consume directly.
+
+        The binary derives its input dir from ``dirname(OutputFolder)``,
+        writes output *into* ``OutputFolder``, and reads the seed ring from
+        ``RingToIndex`` / the scan tolerance from ``ScanPosTol`` — all from
+        the file, never from the in-memory params. We patch those three keys
+        to match ``self.params`` and the on-disk layout:
+
+        * ``OutputFolder`` → ``<input_dir>/Output`` (so inputs resolve from
+          ``input_dir`` and outputs land in ``input_dir/Output``), unless the
+          caller already set an OutputFolder whose parent is the input dir.
+        * ``RingToIndex`` → ``self.params.RingToIndex`` (when > 0).
+        * ``ScanPosTol`` → ``self.params.scan_pos_tol_um`` (when > 0).
+
+        The patched file is written beside ``pp`` so the cwd-relative
+        ``hkls.csv`` / ``positions.csv`` opens in the C code still resolve.
+        """
+        input_dir = pp.parent
+        out_folder = (self.params.OutputFolder or "").strip()
+        if not out_folder or Path(out_folder).resolve().parent != input_dir.resolve():
+            out_folder = str(input_dir / "Output")
+        Path(out_folder).mkdir(parents=True, exist_ok=True)
+
+        ring_to_index = int(getattr(self.params, "RingToIndex", 0) or 0)
+        scan_pos_tol = float(getattr(self.params, "scan_pos_tol_um", 0.0) or 0.0)
+
+        # Drop any existing copies of the keys we override, keep the rest.
+        _OVERRIDDEN = ("OutputFolder", "RingToIndex", "OverAllRingToIndex",
+                       "ScanPosTol")
+        kept: list[str] = []
+        for raw in pp.read_text().splitlines():
+            first = raw.strip().split()[:1]
+            if first and first[0].rstrip(";") in _OVERRIDDEN:
+                continue
+            kept.append(raw)
+
+        kept.append(f"OutputFolder {out_folder}")
+        if ring_to_index > 0:
+            kept.append(f"RingToIndex {ring_to_index};")
+        if scan_pos_tol > 0:
+            kept.append(f"ScanPosTol {scan_pos_tol:f};")
+
+        run_pp = input_dir / "paramstest_comp.txt"
+        run_pp.write_text("\n".join(kept) + "\n")
+        return run_pp
+
     def _run_c_omp(
         self,
         *,
@@ -621,8 +668,15 @@ class Indexer:
                     "Re-emit positions.csv (or pass matching positions)."
                 )
 
+        # The C binary reads OutputFolder / RingToIndex / ScanPosTol from the
+        # *file* — the in-memory overrides callers apply to self.params are
+        # invisible to it. Emit a patched paramstest (next to the original so
+        # the cwd-relative hkls.csv / positions.csv still resolve) reflecting
+        # those overrides before shelling out.
+        run_pp = self._emit_c_omp_paramstest(pp)
+
         proc = backend_c.run_indexer(
-            pp, block_nr=voxel_block_nr, n_blocks=voxel_n_blocks,
+            run_pp, block_nr=voxel_block_nr, n_blocks=voxel_n_blocks,
             n_work=n_scans, num_procs=num_procs,
         )
         if proc.returncode != 0:

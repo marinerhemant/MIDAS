@@ -18,6 +18,7 @@ Per the implementation plan (§8 risk #6), missing required keys raise
 
 from __future__ import annotations
 
+import warnings
 from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Any, Dict, List, Optional, Tuple, Union
@@ -97,6 +98,11 @@ class ParamsTest:
 
     SpaceGroup: int = 225
     UseFriedelPairs: int = 1
+    # Seed ring for candidate-orientation generation. The scanning C indexer
+    # (IndexerScanningOMP.c:1689) only uses observed spots whose ring number
+    # equals RingToIndex as seeds; if this is absent/0 it finds zero seeds and
+    # silently returns zero grains. Sourced from ZarrParams.OverallRingToIndex.
+    RingToIndex: int = 0
 
     SpotsFileName: str = "InputAll.csv"
     RefinementFileName: str = "InputAllExtraInfoFittingAll.csv"
@@ -131,7 +137,7 @@ _FLOAT_KEYS = {
     "p0", "p1", "p2", "p3",
     "WeightMask", "WeightFitRMSE",
 }
-_INT_KEYS = {"NoSaveAll", "SpaceGroup", "UseFriedelPairs"}
+_INT_KEYS = {"NoSaveAll", "SpaceGroup", "UseFriedelPairs", "RingToIndex"}
 _STR_KEYS = {
     "SpotsFileName", "RefinementFileName", "IDsFileName",
     "OutputFolder", "ResultFolder", "GrainsFile",
@@ -195,6 +201,10 @@ def read_paramstest(path: Union[str, Path]) -> ParamsTest:
                     p.LatticeConstant = (a, a, a, 90.0, 90.0, 90.0)
             elif key == "GrainsFile":
                 p.GrainsFileName = args[0]
+            elif key == "OverAllRingToIndex":
+                # Master-param spelling of the seed ring; the C indexer reads
+                # "RingToIndex" so collapse the alias onto that field.
+                p.RingToIndex = int(args[0])
             elif key in _FLOAT_KEYS:
                 if key in ("Lsd", "Distance"):
                     attr = "Lsd"
@@ -228,6 +238,33 @@ def write_paramstest(p: ParamsTest, path: Union[str, Path]) -> None:
     def f6(v: float) -> str:
         return f"{v:f}"
 
+    # Guard the three silent-zero-grain traps the scanning C indexer falls into
+    # (it crashes loudly on missing files but degrades silently on these):
+    #   * RingToIndex == 0      → no seed spots → zero grains.
+    #   * RingRadii all zero     → theoretical spots collapse to radius 0.
+    #   * no scan tolerance      → every spot attributed to every voxel.
+    if p.RingToIndex <= 0:
+        warnings.warn(
+            "write_paramstest: RingToIndex is unset (0); the scanning C indexer "
+            "will find zero seed spots and return zero grains. Set "
+            "ZarrParams.OverallRingToIndex before to_paramstest().",
+            stacklevel=2,
+        )
+    if p.RingNumbers and not any(r > 0 for r in p.RingRadii):
+        warnings.warn(
+            "write_paramstest: RingRadii are all zero/empty while RingNumbers "
+            "are set; the C indexer places theoretical spots at radius 0 and "
+            "matches nothing. Populate ParamsTest.RingRadii from hkls.csv.",
+            stacklevel=2,
+        )
+    if p.BeamSize <= 0.0:
+        warnings.warn(
+            "write_paramstest: BeamSize is 0; the scanning indexer's scan-position "
+            "filter (ScanPosTol = BeamSize/2) is disabled, so every spot is "
+            "attributed to every voxel. Set BeamSize (um) for PF runs.",
+            stacklevel=2,
+        )
+
     with open(path, "w") as fp:
         # 1. Lattice + crystal block
         fp.write(
@@ -253,6 +290,10 @@ def write_paramstest(p: ParamsTest, path: Union[str, Path]) -> None:
         for r in p.RingRadii:
             fp.write(f"RingRadii {f6(r)};\n")
         fp.write(f"UseFriedelPairs {p.UseFriedelPairs};\n")
+        # Seed ring for the scanning indexer (only emitted when set; a 0 value
+        # means no seed ring → zero grains, so warn rather than silently write).
+        if p.RingToIndex > 0:
+            fp.write(f"RingToIndex {p.RingToIndex};\n")
         fp.write(f"Wedge {f6(p.Wedge)};\n")
         for omr in p.OmegaRanges:
             fp.write(f"OmegaRange {f6(omr[0])} {f6(omr[1])};\n")
@@ -516,6 +557,8 @@ class ZarrParams:
         pt.EtaBinSize = self.EtaBinSize
         pt.OmeBinSize = self.OmeBinSize
         pt.UseFriedelPairs = self.UseFriedelPairs
+        # Seed ring — without this the scanning C indexer finds zero seeds.
+        pt.RingToIndex = self.OverallRingToIndex
         # Distortion polynomial (FitSetupZarr writes p0..p3 only)
         pt.p0 = self.p0
         pt.p1 = self.p1
