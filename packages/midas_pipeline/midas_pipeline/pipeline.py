@@ -75,6 +75,9 @@ _STAGES: List[StageEntry] = [
 
     # PF-only tail
     ("find_grains",        stages.find_grains_stage.run,  _PF_ONLY),
+    # Optional missing-spot directionality voxel cleanup (OFF by default).
+    # Runs after find_grains so the cleaned voxel_grid.csv feeds the V-map path.
+    ("voxel_cleanup",      stages.voxel_cleanup.run,      _PF_ONLY),
     ("sinogen",            stages.sinogen.run,            _PF_ONLY),
     ("reconstruct",        stages.reconstruct.run,        _PF_ONLY),
     ("fuse",               stages.fuse.run,               _PF_ONLY),
@@ -244,6 +247,7 @@ _LAYER_RESULT_FIELD_BY_STAGE = {
     "process_grains":  "process_grains",
     "merge_scans":     "merge_scans",
     "find_grains":     "find_grains",
+    "voxel_cleanup":   "voxel_cleanup",
     "sinogen":         "sinogen",
     "reconstruct":     "reconstruct",
     "fuse":            "fuse",

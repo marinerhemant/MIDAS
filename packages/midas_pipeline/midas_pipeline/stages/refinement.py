@@ -148,6 +148,10 @@ def run(ctx: StageContext) -> StageResult:
     cfg.bound_euler_deg = ctx.config.refinement.bound_euler_deg
     cfg.bound_lat_abc_pct = ctx.config.refinement.bound_lat_abc_pct
     cfg.bound_lat_angle_deg = ctx.config.refinement.bound_lat_angle_deg
+    # NB the real cure for the per-voxel ~20° orientation drift was the loss,
+    # not bounds: the old 'pixel' loss was 2D (y,z) and omitted omega, leaving
+    # the crystal free to rotate in ω. The default is now the full 3D 'angular'
+    # loss (2θ,η,ω) and 'pixel' is disabled. See dev/REFINEMENT_DRIFT_FIX.md.
 
     # Build the forward model + observations once for the whole voxel loop.
     device = torch.device(ctx.config.device)

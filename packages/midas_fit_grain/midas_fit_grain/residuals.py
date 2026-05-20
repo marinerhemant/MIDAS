@@ -24,7 +24,7 @@ from midas_diffract import HEDMForwardModel, SpotDescriptors  # type: ignore
 from .matching import MatchResult
 from .observations import ObservedSpots
 
-LossKind = Literal["pixel", "angular", "internal_angle"]
+LossKind = Literal["pixel", "full3d", "angular", "internal_angle"]
 
 
 def _gather_pred(spots: SpotDescriptors,
@@ -123,14 +123,36 @@ def grain_residuals(
     pick = _gather_pred(spots_sg, match)
 
     if kind == "pixel":
-        # Convert observed (y_lab, z_lab) [um] → pixel coords using the same
-        # convention as the forward model (FF flip_y=True).
+        # DISABLED 2026-05-20. The 'pixel' loss fit only the 2 detector
+        # coordinates (y_pixel, z_pixel) and OMITTED omega, leaving the
+        # crystal free to rotate about the omega direction. On real PF data
+        # this let per-voxel orientations drift up to ~20° from the (correct)
+        # indexer seed while the loss kept dropping — see
+        # dev/REFINEMENT_DRIFT_FIX.md. A HEDM spot is 3D (y, z, omega); always
+        # use a full 3D loss. Use 'angular' (2theta, eta, omega).
+        raise ValueError(
+            "The 'pixel' loss is disabled: it is a 2D (y,z) loss that omits "
+            "omega and lets orientation drift freely (≈20° on real PF data). "
+            "Use the full 3D loss 'full3d' (y, z, omega) or 'angular'."
+        )
+
+    elif kind == "full3d":
+        # Full 3D spot loss: detector position (y_pixel, z_pixel) AND omega.
+        # The 2-D 'pixel' loss omitted omega → orientation drifted freely; the
+        # 'angular' loss includes omega but (in this forward model) drops
+        # sensitivity to grain POSITION. 'full3d' keeps both: y,z constrain
+        # position, omega constrains the rotation. Omega (rad) is scaled by the
+        # spot's pixel radius from the beam centre so its residual is an
+        # azimuthal-arc displacement in pixels, comparable to Δy/Δz.
         obs_y_pixel = y_BC - obs.y_lab / px
         obs_z_pixel = z_BC + obs.z_lab / px
+        r_px = torch.sqrt((pick["y_pixel"] - y_BC) ** 2
+                          + (pick["z_pixel"] - z_BC) ** 2)
         res = torch.stack([
             pick["y_pixel"] - obs_y_pixel,
             pick["z_pixel"] - obs_z_pixel,
-        ], dim=-1)  # (S, 2)
+            _angular_diff(pick["omega"], obs.omega) * r_px,
+        ], dim=-1)  # (S, 3)
 
     elif kind == "angular":
         res = torch.stack([
@@ -186,4 +208,4 @@ def _g_unit_from_pred(pick: dict[str, torch.Tensor]) -> torch.Tensor:
 
 
 def _residual_dim(kind: LossKind) -> int:
-    return {"pixel": 2, "angular": 3, "internal_angle": 1}[kind]
+    return {"pixel": 2, "full3d": 3, "angular": 3, "internal_angle": 1}[kind]

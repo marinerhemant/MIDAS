@@ -239,6 +239,12 @@ class Indexer:
             sharded range).
         """
         if backend == "c-omp":
+            # The C IndexerScanningOMP already decouples the two views
+            # (IndexerScanningOMP.c:1673-1684): ``ypos[]`` is kept in file
+            # order for the beam filter (``ypos[scannrobs]`` at :458, :1789)
+            # while a separate ``ypos_sorted`` builds the voxel grid. So the
+            # C backend handles arbitrary acquisition order correctly and
+            # needs no special-casing here.
             return self._run_scanning_c_omp(
                 scan_positions=scan_positions, num_procs=num_procs,
                 voxel_block_nr=voxel_block_nr, voxel_n_blocks=voxel_n_blocks,
@@ -255,16 +261,40 @@ class Indexer:
         # rather fail with a clear ValueError than dive into the
         # pipeline's IndexerContext constructor which may need
         # configured params (EtaBinSize etc.).
-        scan_positions_t = torch.as_tensor(
+        #
+        # positions.csv is indexed by *acquisition / file order*: entry k
+        # (== Spots.bin col-9 ``scan_nr``) is the physical scan-Y of the
+        # k-th acquired scan. This is the documented convention honoured
+        # by ``find_grains._geom.read_positions_csv`` and the V-map
+        # refiner. We keep TWO views of it:
+        #
+        #   * ``scan_positions_acq``    — file order, indexed by scan_nr.
+        #     The per-voxel scan filter in ``compare_spots`` looks up
+        #     ``scan_positions[scan_nr]``, so it MUST see this view; else
+        #     spots get gated against the wrong physical position whenever
+        #     acquisition order != ascending-Y (e.g. an alternating
+        #     0,-1,1,-2,2,... or a descending scan), corrupting every
+        #     per-voxel spot set.
+        #   * ``scan_positions_sorted`` — ascending, used ONLY to build
+        #     the (nScans x nScans) voxel spatial grid. Matches the sorted
+        #     grid of C IndexerScanningOMP.c:1676 and the spatial axis the
+        #     refiner / consolidation assume.
+        #
+        # This mirrors what the C indexer already does
+        # (IndexerScanningOMP.c:1673-1684): it keeps ``ypos[]`` in file
+        # order for the beam filter (``ypos[scannrobs]`` at :458, :1789)
+        # and builds the grid from a separate sorted ``ypos_sorted``. The
+        # previous Python code sorted BOTH, which silently mis-associated
+        # spots for any non-ascending acquisition order (e.g. alternating
+        # or descending scans) and diverged from C there. For an
+        # already-ascending positions.csv the two views are identical, so
+        # the change is a strict no-op (the C-parity gate uses monotonic
+        # positions and still holds bit-for-bit).
+        scan_positions_acq = torch.as_tensor(
             np.asarray(scan_positions), dtype=self.dtype, device=self.device,
         ).view(-1)
-        # MUST sort ascending — C IndexerScanningOMP.c:1676 does
-        # ``qsort(ypos_sorted, numScans, sizeof(double), cmp_double_asc)``
-        # before building the voxel grid. Some PF runs (e.g. Wenxi
-        # CP-Ti) ship positions.csv in DESCENDING order; without the
-        # sort, voxel positions get sign-flipped vs C.
-        scan_positions_t, _ = torch.sort(scan_positions_t)
-        n_scans = int(scan_positions_t.numel())
+        scan_positions_sorted, _ = torch.sort(scan_positions_acq)
+        n_scans = int(scan_positions_acq.numel())
         if n_scans < 2:
             raise ValueError(
                 f"run_scanning requires n_scans >= 2; got {n_scans}. "
@@ -288,7 +318,9 @@ class Indexer:
             device=self.device,
             dtype=self.dtype,
         )
-        ctx.scan_positions = scan_positions_t
+        # Acquisition-order positions: the scan filter indexes this by the
+        # per-spot scan_nr (Spots.bin col 9). Do NOT pass the sorted view.
+        ctx.scan_positions = scan_positions_acq
         # P6/P8: forward the optional soft-attribution weight fn if the caller
         # set it on this Indexer instance.  None ⇒ legacy binary scan filter.
         ctx.soft_beam_weight_fn = getattr(self, "soft_beam_weight_fn", None)
@@ -302,12 +334,16 @@ class Indexer:
         # The C code's ga/gb (sample-frame x/y the forward sim sees) are
         # (xThis, yThis), and the scan filter uses
         #     yRot = xThis*sin(ω) + yThis*cos(ω)
-        # so this ordering pins both the position and the filter.
+        # The grid uses the SORTED positions (clean ascending spatial axis,
+        # so voxel index → physical (x, y) is monotonic for the refiner /
+        # consolidation reshape). The filter then compares yRot against the
+        # acquisition-order ``ctx.scan_positions[scan_nr]`` set above — the
+        # two need not share an ordering.
         idx = torch.arange(n_scans * n_scans, device=self.device)
         i_idx = idx // n_scans
         j_idx = idx % n_scans
         voxel_xy_table = torch.stack(
-            [scan_positions_t[i_idx], scan_positions_t[j_idx]], dim=-1,
+            [scan_positions_sorted[i_idx], scan_positions_sorted[j_idx]], dim=-1,
         )                                     # (nVox, 2)
         n_vox = int(voxel_xy_table.shape[0])
 
@@ -376,7 +412,10 @@ class Indexer:
         seed_omega_rad_np = np.deg2rad(seed_omega_deg)
         seed_sin_ome = np.sin(seed_omega_rad_np)
         seed_cos_ome = np.cos(seed_omega_rad_np)
-        scan_positions_np = scan_positions_t.cpu().numpy().astype(np.float64)
+        # Acquisition order: this pre-filter mirrors the main scan filter,
+        # indexing by the seed's file-order scan_nr (above), so it uses the
+        # same acquisition-order positions — NOT the sorted grid view.
+        scan_positions_np = scan_positions_acq.cpu().numpy().astype(np.float64)
         n_scans_pos = scan_positions_np.size
         seed_scan_nr_clamped = np.clip(seed_scan_nr, 0, n_scans_pos - 1)
         seed_scan_y_obs = scan_positions_np[seed_scan_nr_clamped]

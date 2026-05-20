@@ -47,6 +47,157 @@ def _try_load_voxel_grid(out_dir: Path):
     return xyz, g
 
 
+def _spot_grain_from_indexing(
+    layer_dir: Path,
+    out_dir: Path,
+    grain_map_np: np.ndarray,
+    scan_nr: np.ndarray,
+    ring_number: np.ndarray,
+    omega_deg: np.ndarray,
+    eta_deg: np.ndarray,
+):
+    """Orientation-based spot→grain attribution.
+
+    Builds ``global_spot_id → grain`` from the indexer's per-voxel matched
+    IDs (``IndexBest_IDs_all.bin``) and the voxel→grain map, then joins to
+    the per-scan Radius_V spots via the physical ``(scan, ring, ω, η)``
+    tuple (validated 1:1 against ``Spots.bin``). Returns an ``(n_spots,)``
+    int64 array (``-1`` where a spot was not matched by any indexed voxel),
+    or ``None`` when the required indexer artifacts are absent.
+    """
+    ids_path = out_dir / "IndexBest_IDs_all.bin"
+    spots_path = layer_dir / "Spots.bin"
+    if not spots_path.exists():
+        spots_path = out_dir / "Spots.bin"
+    if not ids_path.exists() or not spots_path.exists():
+        return None
+    try:
+        from ..find_grains._consolidation_io import open_ids
+    except ImportError:
+        return None
+
+    # global spot id → grain (orientation match). One solution per voxel in
+    # the production PF path, so every matched id of voxel v belongs to its
+    # grain. Voxels of the same clustered grain agree; on the rare cross-grain
+    # conflict, last-writer-wins (negligible: ~0.04% of keys collide).
+    idr = open_ids(ids_path)
+    n_vox = int(grain_map_np.shape[0])
+    gid_to_grain: dict[int, int] = {}
+    for v in range(min(n_vox, idr.n_voxels)):
+        g = int(grain_map_np[v])
+        if g < 0:
+            continue
+        ids_v = idr.get_ids(v)
+        if ids_v is None:
+            continue
+        for sid in ids_v:
+            gid_to_grain[int(sid)] = g
+    if not gid_to_grain:
+        return None
+
+    # global spot id → (scan, ring, ω, η) from Spots.bin; fold into a tuple
+    # key → grain map. Spots.bin cols: [x y ome int spotID ring eta theta ds scan].
+    sb = np.fromfile(spots_path, dtype=np.float64).reshape(-1, 10)
+    key_to_grain: dict[tuple, int] = {}
+    for r in sb:
+        g = gid_to_grain.get(int(r[4]))
+        if g is None:
+            continue
+        key_to_grain[(int(r[9]), int(r[5]), round(float(r[2]), 3),
+                      round(float(r[6]), 3))] = g
+
+    out = np.full(scan_nr.shape[0], -1, dtype=np.int64)
+    for i in range(scan_nr.shape[0]):
+        g = key_to_grain.get((int(scan_nr[i]), int(ring_number[i]),
+                              round(float(omega_deg[i]), 3),
+                              round(float(eta_deg[i]), 3)))
+        if g is not None:
+            out[i] = g
+    return out
+
+
+def _spot_grain_soft_from_indexing(
+    layer_dir: Path,
+    out_dir: Path,
+    grain_map_np: np.ndarray,
+    scan_nr: np.ndarray,
+    ring_number: np.ndarray,
+    omega_deg: np.ndarray,
+    eta_deg: np.ndarray,
+):
+    """Soft multi-grain attribution.
+
+    Most PF spots are matched by voxels of more than one grain (peak overlap +
+    tolerance matching). Instead of forcing each spot onto a single grain (and
+    dumping its whole intensity there), this returns an *expanded* membership
+    list: for every (observed spot, grain) pair, a weight equal to the fraction
+    of that spot's matching voxels belonging to the grain (Σ weights = 1 per
+    spot). The forward model blends each grain's beam-weighted V-sum by these
+    weights.
+
+    Returns ``(out_index, grain, weight)`` numpy arrays (row = one membership;
+    ``out_index`` points into the Radius_V row order) or ``None`` when the
+    indexer artifacts are absent.
+    """
+    ids_path = out_dir / "IndexBest_IDs_all.bin"
+    spots_path = layer_dir / "Spots.bin"
+    if not spots_path.exists():
+        spots_path = out_dir / "Spots.bin"
+    if not ids_path.exists() or not spots_path.exists():
+        return None
+    try:
+        from ..find_grains._consolidation_io import open_ids
+    except ImportError:
+        return None
+
+    # global spot id → {grain: matched-voxel count}
+    idr = open_ids(ids_path)
+    n_vox = int(grain_map_np.shape[0])
+    gid_counts: dict[int, dict[int, int]] = {}
+    for v in range(min(n_vox, idr.n_voxels)):
+        g = int(grain_map_np[v])
+        if g < 0:
+            continue
+        ids_v = idr.get_ids(v)
+        if ids_v is None:
+            continue
+        for sid in ids_v:
+            d = gid_counts.setdefault(int(sid), {})
+            d[g] = d.get(g, 0) + 1
+    if not gid_counts:
+        return None
+
+    # (scan, ring, ω, η) tuple key → {grain: count}, via Spots.bin global ids.
+    sb = np.fromfile(spots_path, dtype=np.float64).reshape(-1, 10)
+    key_counts: dict[tuple, dict[int, int]] = {}
+    for r in sb:
+        c = gid_counts.get(int(r[4]))
+        if c is None:
+            continue
+        key_counts[(int(r[9]), int(r[5]), round(float(r[2]), 3),
+                    round(float(r[6]), 3))] = c
+
+    out_index: list[int] = []
+    grain: list[int] = []
+    weight: list[float] = []
+    for i in range(scan_nr.shape[0]):
+        c = key_counts.get((int(scan_nr[i]), int(ring_number[i]),
+                            round(float(omega_deg[i]), 3),
+                            round(float(eta_deg[i]), 3)))
+        if not c:
+            continue
+        total = float(sum(c.values()))
+        for g, n in c.items():
+            out_index.append(i)
+            grain.append(g)
+            weight.append(n / total)
+    if not out_index:
+        return None
+    return (np.asarray(out_index, dtype=np.int64),
+            np.asarray(grain, dtype=np.int64),
+            np.asarray(weight, dtype=np.float64))
+
+
 def _try_load_scan_positions(layer_dir: Path):
     """Return (scan_pos_um (n_scans,) float, scan_to_spatial (n_scans,) int) or
     (None, None).  Reads MIDAS ``positions.csv`` (one Y per line)."""
@@ -142,11 +293,13 @@ def run(ctx: StageContext) -> StageResult:
     arr = np.loadtxt(radius_csv, comments="#", skiprows=1)
     if arr.ndim == 1:
         arr = arr.reshape(1, -1)
-    spot_id   = arr[:, 0].astype(np.int64)
-    scan_nr   = arr[:, 1].astype(np.int64)
-    ring_idx  = arr[:, 3].astype(np.int64)
-    intensity = arr[:, 4].astype(np.float64)
-    omega_deg = arr[:, 6].astype(np.float64)
+    spot_id     = arr[:, 0].astype(np.int64)
+    scan_nr     = arr[:, 1].astype(np.int64)
+    ring_number = arr[:, 2].astype(np.int64)
+    ring_idx    = arr[:, 3].astype(np.int64)
+    intensity   = arr[:, 4].astype(np.float64)
+    omega_deg   = arr[:, 6].astype(np.float64)
+    eta_deg     = arr[:, 7].astype(np.float64)
 
     theo = np.loadtxt(theory_csv, comments="#", skiprows=1)
     if theo.ndim == 1:
@@ -154,28 +307,58 @@ def run(ctx: StageContext) -> StageResult:
     n_rings = int(theo.shape[0])
     I_theory = torch.as_tensor(theo[:, 2], dtype=dtype)
 
-    spot_grain_idx = np.full_like(spot_id, -1)
-    # Spot → grain via scan_nr -> nearest voxel in scan column
-    # (PF assumption: each spot's scan column directly attributes to the
-    # grain occupying that voxel; refine_vmap_joint already handles the
-    # beam-fraction weighting, so this is a per-spot grain assignment, not
-    # a per-(spot, voxel) attribution.)
-    if scan_pos_np is not None:
-        # Map scan_nr -> spatial column → grain at that column via the
-        # supplied voxel_grid.  Pick the voxel whose y is closest to
-        # scan_pos[scan_nr].
-        scan_pos_t = torch.as_tensor(scan_pos_np, dtype=dtype)
-        vp_y = torch.as_tensor(voxel_pos_np[:, 1], dtype=dtype)
-        for k, s in enumerate(scan_nr):
-            if 0 <= s < scan_pos_t.numel():
-                # closest voxel by |y - scan_pos|
-                d = (vp_y - scan_pos_t[s]).abs()
-                spot_grain_idx[k] = int(grain_map_np[int(d.argmin())])
-    else:
-        # No positions.csv → assume scan_nr directly indexes the voxel.
-        for k, s in enumerate(scan_nr):
-            if 0 <= s < voxel_pos_np.shape[0]:
-                spot_grain_idx[k] = int(grain_map_np[s])
+    # Spot → grain attribution. The physically correct source is the
+    # *orientation* match recorded during indexing: a spot belongs to the
+    # grain whose candidate orientation produced it, not to whatever grain
+    # happens to sit nearest the spot's scan column. We recover that from
+    # IndexBest_IDs_all.bin (per-voxel matched global spot IDs) + the
+    # voxel→grain map, joined to Radius_V's per-scan spots via the physical
+    # (scan, ring, omega, eta) tuple. Falls back to the scan-column spatial
+    # heuristic when those indexer artifacts are absent (e.g. synthetic
+    # fixtures that ship only voxel_grid.csv).
+    spot_grain_idx = _spot_grain_from_indexing(
+        layer_dir, out_dir, grain_map_np,
+        scan_nr, ring_number, omega_deg, eta_deg,
+    )
+    if spot_grain_idx is None or not np.any(spot_grain_idx >= 0):
+        if spot_grain_idx is None:
+            LOG.info("refine_vmap: orientation-based spot→grain unavailable "
+                     "(no IndexBest_IDs/Spots.bin); using scan-column fallback.")
+        else:
+            LOG.warning("refine_vmap: orientation-based spot→grain matched no "
+                        "spots; using scan-column fallback.")
+        spot_grain_idx = np.full_like(spot_id, -1)
+        if scan_pos_np is not None:
+            scan_pos_t = torch.as_tensor(scan_pos_np, dtype=dtype)
+            vp_y = torch.as_tensor(voxel_pos_np[:, 1], dtype=dtype)
+            for k, s in enumerate(scan_nr):
+                if 0 <= s < scan_pos_t.numel():
+                    d = (vp_y - scan_pos_t[s]).abs()
+                    spot_grain_idx[k] = int(grain_map_np[int(d.argmin())])
+        else:
+            for k, s in enumerate(scan_nr):
+                if 0 <= s < voxel_pos_np.shape[0]:
+                    spot_grain_idx[k] = int(grain_map_np[s])
+    LOG.info("refine_vmap: spot→grain attributed %d/%d spots across %d grains",
+             int(np.count_nonzero(spot_grain_idx >= 0)), spot_grain_idx.size,
+             len(set(spot_grain_idx[spot_grain_idx >= 0].tolist())))
+
+    # Optional soft multi-grain attribution (expanded membership list).
+    soft_expand = None
+    if getattr(cfg, "soft_grain_attribution", False):
+        soft_expand = _spot_grain_soft_from_indexing(
+            layer_dir, out_dir, grain_map_np,
+            scan_nr, ring_number, omega_deg, eta_deg,
+        )
+        if soft_expand is not None:
+            oi, _gg, _ww = soft_expand
+            n_spots_soft = len(set(oi.tolist()))
+            LOG.info("refine_vmap: SOFT attribution — %d memberships over %d "
+                     "spots (mean %.2f grains/spot)", oi.size, n_spots_soft,
+                     oi.size / max(n_spots_soft, 1))
+        else:
+            LOG.warning("refine_vmap: soft attribution requested but "
+                        "unavailable; using hard attribution.")
 
     sg = SampleGrid.from_arrays(
         voxel_positions=voxel_pos_np,
@@ -192,6 +375,25 @@ def run(ctx: StageContext) -> StageResult:
     spot_grain_t = torch.as_tensor(spot_grain_idx, dtype=torch.int64)
     spot_obs_t = torch.as_tensor(intensity, dtype=dtype)
     spot_ome_rad = torch.as_tensor(np.deg2rad(omega_deg), dtype=dtype)
+
+    # Soft attribution forwards an *expanded* (spot, grain) membership list to
+    # the forward model; observed intensity stays per observed spot. K_init is
+    # still computed from the hard (argmax) attribution above — it only needs
+    # to be in the right ballpark; LBFGS refines K under the soft model.
+    fwd_ring, fwd_grain = spot_ring_t, spot_grain_t
+    fwd_scan, fwd_ome = spot_scan_pos_um, spot_ome_rad
+    fwd_weight = fwd_out_index = None
+    fwd_n_out = None
+    if soft_expand is not None:
+        oi, gg, ww = soft_expand
+        oi_t = torch.as_tensor(oi, dtype=torch.int64)
+        fwd_ring = spot_ring_t[oi_t]
+        fwd_scan = spot_scan_pos_um[oi_t]
+        fwd_ome = spot_ome_rad[oi_t]
+        fwd_grain = torch.as_tensor(gg, dtype=torch.int64)
+        fwd_weight = torch.as_tensor(ww, dtype=dtype)
+        fwd_out_index = oi_t
+        fwd_n_out = int(spot_obs_t.numel())
 
     beam = TopHat(beam_size_um, refine=cfg.refine_beam)
 
@@ -228,15 +430,17 @@ def run(ctx: StageContext) -> StageResult:
     result = refine_vmap_joint(
         V_init=V_init, K_init=K_init,
         spot_observed_intensity=spot_obs_t,
-        spot_ring_idx=spot_ring_t, spot_grain_idx=spot_grain_t,
-        spot_scan_pos_um=spot_scan_pos_um, spot_omega_rad=spot_ome_rad,
+        spot_ring_idx=fwd_ring, spot_grain_idx=fwd_grain,
+        spot_scan_pos_um=fwd_scan, spot_omega_rad=fwd_ome,
         sample_grid=sg, beam_profile=beam,
         theoretical_intensity_per_ring=I_theory,
-        scan_axis=scan_axis,
+        scan_axis=scan_axis, beam_geometry=cfg.beam_geometry,
+        spot_weight=fwd_weight, spot_out_index=fwd_out_index,
+        n_out_spots=fwd_n_out,
         refine_V=cfg.refine_V, refine_K=cfg.refine_K,
         refine_mu=cfg.refine_mu, refine_beam=cfg.refine_beam,
         max_iter=cfg.max_iter, loss_kind=cfg.loss_kind,
-        tolerance=cfg.tolerance,
+        tolerance=cfg.tolerance, gauge_reg=cfg.v_gauge_reg,
         use_absorption=cfg.use_absorption and (mu_init is not None),
         mu_init=mu_init,
     )
@@ -352,9 +556,11 @@ def run(ctx: StageContext) -> StageResult:
             with torch.no_grad():
                 I_pred_final = predicted_spot_intensities(
                     result.V_voxel, result.K_ring, I_theory,
-                    spot_ring_t, spot_grain_t,
-                    spot_scan_pos_um, spot_ome_rad,
-                    sg, beam,
+                    fwd_ring, fwd_grain, fwd_scan, fwd_ome,
+                    sg, beam, scan_axis=scan_axis,
+                    beam_geometry=cfg.beam_geometry,
+                    spot_weight=fwd_weight, spot_out_index=fwd_out_index,
+                    n_out_spots=fwd_n_out,
                 )
             plot_spot_residuals(
                 spot_obs_t.numpy(), I_pred_final.numpy(),

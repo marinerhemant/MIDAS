@@ -193,9 +193,22 @@ def batch_residuals(
     pred_z       = _pick(z_pixel)
 
     if kind == "pixel":
+        raise ValueError(
+            "The 'pixel' loss is disabled (2D, omits omega -> orientation "
+            "drift). Use the full 3D loss 'full3d'. See dev/REFINEMENT_DRIFT_FIX.md."
+        )
+
+    elif kind == "full3d":
+        # Detector position (y,z) + omega (scaled by spot pixel-radius to an
+        # azimuthal arc, comparable to Δy/Δz). See residuals.grain_residuals.
         obs_y_pixel = y_BC - obs.y_lab / px
         obs_z_pixel = z_BC + obs.z_lab / px
-        res = torch.stack([pred_y - obs_y_pixel, pred_z - obs_z_pixel], dim=-1)
+        r_px = torch.sqrt((pred_y - y_BC) ** 2 + (pred_z - z_BC) ** 2)
+        res = torch.stack([
+            pred_y - obs_y_pixel,
+            pred_z - obs_z_pixel,
+            _angular_diff(pred_omega, obs.omega) * r_px,
+        ], dim=-1)
 
     elif kind == "angular":
         res = torch.stack([

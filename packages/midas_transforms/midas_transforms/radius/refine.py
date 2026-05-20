@@ -167,6 +167,14 @@ def refine_vmap_joint(
     *,
     # Geometry mode (forwarded to predicted_spot_intensities)
     scan_axis: str = "pf",
+    beam_geometry: str = "center",
+    # Soft multi-grain attribution: when given, the spot_* arrays are an
+    # expanded (observed-spot, grain) list; these map rows back to observed
+    # spots with attribution weights. spot_observed_intensity stays per
+    # observed spot (length n_out_spots).
+    spot_weight: Optional["torch.Tensor"] = None,
+    spot_out_index: Optional["torch.Tensor"] = None,
+    n_out_spots: Optional[int] = None,
     # Absorption (optional)
     use_absorption: bool = False,
     incident_dirs_per_spot: Optional["torch.Tensor"] = None,
@@ -183,6 +191,7 @@ def refine_vmap_joint(
     lr: float = 0.5,
     loss_kind: str = "log_l2",                # "log_l2" | "huber_log"
     huber_delta: float = 1.0,
+    gauge_reg: float = 0.0,
     tolerance: float = 1e-7,
     lbfgs_inner_iter: int = 20,
 ) -> "RefineResult":
@@ -237,7 +246,9 @@ def refine_vmap_joint(
             spot_ring_idx=spot_ring_idx, spot_grain_idx=spot_grain_idx,
             spot_scan_pos_um=spot_scan_pos_um, spot_omega_rad=spot_omega_rad,
             sample_grid=sample_grid, beam_profile=module.beam,
-            scan_axis=scan_axis,
+            scan_axis=scan_axis, beam_geometry=beam_geometry,
+            spot_weight=spot_weight, spot_out_index=spot_out_index,
+            n_out_spots=n_out_spots,
         )
         if use_absorption:
             kw.update(
@@ -260,7 +271,19 @@ def refine_vmap_joint(
         w = valid.to(kernel.dtype)
         # Mean over valid spots; constant 1 added inside max to guard /0
         n_valid = w.sum().clamp(min=1.0)
-        return (kernel * w).sum() / n_valid
+        loss = (kernel * w).sum() / n_valid
+        # Gauge / Tikhonov term on log(V): the forward model is exactly
+        # invariant under V→cV, K→K/c (a global scale split between V and K),
+        # so joint V+K refinement has a flat loss direction along which the
+        # optimizer drifts (V→∞, K→0) and individual voxels collapse to the
+        # softplus floor. Penalizing (log V)² pins the global scale
+        # (mean log V → 0, i.e. mean V → 1) AND well-conditions
+        # under-constrained voxels toward V=1, while leaving well-constrained
+        # voxels essentially untouched (the penalty gradient is 0 at V=1).
+        if gauge_reg > 0.0 and refine_V and refine_K:
+            logV = torch.log(module.V.clamp_min(1e-12))
+            loss = loss + gauge_reg * (logV * logV).mean()
+        return loss
 
     # ---------------------------------------------------------- optimization
     loss_history: List[float] = []

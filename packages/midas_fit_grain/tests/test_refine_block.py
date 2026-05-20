@@ -31,7 +31,7 @@ def _misori_deg(eul_a, eul_b):
     return float(torch.acos(cos_ang)) * RAD2DEG
 
 
-def _build_cfg(fix, *, solver, mode="all_at_once", loss="pixel",
+def _build_cfg(fix, *, solver, mode="all_at_once", loss="full3d",
                max_iter=200, ftol=1e-12, xtol=1e-12):
     return FitConfig(
         Lsd=fix.model.Lsd, px=fix.px, Wavelength=0.1729,

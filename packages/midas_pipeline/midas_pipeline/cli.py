@@ -54,6 +54,7 @@ from .config import (
     SinoType,
     SoftAttributionConfig,
     VMapConfig,
+    VoxelCleanupConfig,
     read_scan_geometry_from_paramfile,
     sniff_scan_mode_from_paramfile,
 )
@@ -221,6 +222,36 @@ def _build_parser() -> argparse.ArgumentParser:
     run.add_argument("--vmap-loss-kind", choices=["log_l2", "huber_log"],
                      default="log_l2")
     run.add_argument("--vmap-tolerance", type=float, default=1e-8)
+    run.add_argument("--vmap-gauge-reg", type=float, default=1e-2,
+                     help="Tikhonov penalty weight on log(V) to fix the V·K "
+                          "scale degeneracy (mean V→1). 0 disables; ignored "
+                          "when refine-K=0 since K then fixes the scale.")
+    run.add_argument("--vmap-beam-geometry", choices=["center", "siddon"],
+                     default="center",
+                     help="Beam-voxel weight geometry: 'center' (original "
+                          "voxel-centre box) or 'siddon' (exact rotated-square "
+                          "trapezoidal footprint; reduces diagonal streaks).")
+    run.add_argument("--vmap-soft-grain-attribution", action="store_true",
+                     help="Blend each spot across the grains whose voxels "
+                          "matched it (weight ∝ matched-voxel count) instead "
+                          "of forcing it onto a single grain.")
+    # --- missing-spot directionality voxel cleanup (PF; OFF by default) ----
+    run.add_argument("--voxel-cleanup", action="store_true",
+                     help="Enable missing-spot directionality voxel cleanup "
+                          "after find_grains (compact-grain regime). Removes/"
+                          "reassigns voxels whose predicted spots are unmatched "
+                          "in directions where the grain's sinogram is empty.")
+    run.add_argument("--voxel-cleanup-threshold", type=float, default=0.30,
+                     help="Min geometry-miss fraction to act on a voxel.")
+    run.add_argument("--voxel-cleanup-max-neighbours", type=int, default=1,
+                     help="Connectivity gate: only act on voxels with at most "
+                          "this many same-grain neighbours. 1=isolated/jutting "
+                          "(speckle mode); 4=disable gate (extent-clip mode).")
+    run.add_argument("--voxel-cleanup-max-iters", type=int, default=8)
+    run.add_argument("--voxel-cleanup-action", choices=["reassign", "remove"],
+                     default="reassign",
+                     help="reassign flagged voxels to majority neighbour grain, "
+                          "or remove (set grain_id=-1).")
     run.add_argument("--vmap-emit-diagnostics", type=int, default=1, choices=[0, 1])
     run.add_argument("--vmap-diag-axes", default="0,1",
                      help="comma-pair (a,b) selecting lab axes for the 2-D "
@@ -455,6 +486,9 @@ def build_config(args: argparse.Namespace) -> PipelineConfig:
         max_iter=int(args.vmap_max_iter),
         loss_kind=args.vmap_loss_kind,
         tolerance=float(args.vmap_tolerance),
+        v_gauge_reg=float(args.vmap_gauge_reg),
+        beam_geometry=args.vmap_beam_geometry,
+        soft_grain_attribution=bool(args.vmap_soft_grain_attribution),
         emit_diagnostics=bool(args.vmap_emit_diagnostics),
         diag_axes=tuple(diag_axes_parts),
     )
@@ -480,6 +514,13 @@ def build_config(args: argparse.Namespace) -> PipelineConfig:
         seeding=seeding,
         vmap=vmap,
         soft_attribution=soft_attribution,
+        voxel_cleanup=VoxelCleanupConfig(
+            run=bool(args.voxel_cleanup),
+            score_threshold=float(args.voxel_cleanup_threshold),
+            max_same_neighbours=int(args.voxel_cleanup_max_neighbours),
+            max_iters=int(args.voxel_cleanup_max_iters),
+            action=args.voxel_cleanup_action,
+        ),
         layer_selection=_parse_layers(args.layers),
         machine=MachineConfig(name=args.machine, n_nodes=args.n_nodes),
         n_cpus=args.n_cpus,

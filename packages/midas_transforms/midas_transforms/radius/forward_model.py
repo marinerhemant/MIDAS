@@ -49,6 +49,67 @@ if TYPE_CHECKING:  # pragma: no cover
 __all__ = ["predicted_spot_intensities"]
 
 
+def _trapezoid_cdf(x, A, B, H):
+    """CDF (integral from -inf) of the symmetric trapezoid c(u):
+
+        c(u) = 0                       |u| >= A
+             = H*(A-|u|)/(A-B)         B <= |u| < A   (ramp)
+             = H                       |u| < B        (plateau)
+
+    Analytic, differentiable, vectorized. ``A >= B >= 0`` (A==B => box).
+    Returns ``∫_{-A}^{x} c(u) du`` clamped to [0, total].
+    """
+    import torch
+
+    # Guard the ramp denominator when A==B (box: ω∈{0,90°}); the ramp branch
+    # is masked out there so the value substituted is irrelevant but must be
+    # finite for autograd.
+    AmB = (A - B).clamp_min(1e-12)
+    left_ramp_area = 0.5 * H * (A - B)            # area of one ramp
+
+    xc = x.clamp(min=-A, max=A)
+    # Region masks on the clamped coordinate.
+    in_left = xc < -B                              # -A..-B  (left ramp)
+    in_plat = (xc >= -B) & (xc <= B)               # -B..B   (plateau)
+    # right ramp: xc > B
+
+    left_val = 0.5 * H * (xc + A) ** 2 / AmB
+    plat_val = left_ramp_area + H * (xc + B)
+    right_val = (
+        left_ramp_area + 2.0 * H * B
+        + H * (A * (xc - B) - 0.5 * (xc * xc - B * B)) / AmB
+    )
+    out = torch.where(in_left, left_val,
+                      torch.where(in_plat, plat_val, right_val))
+    # Below -A => 0; above A => total (handled by the clamp on xc giving the
+    # right-ramp value at A == total).
+    return out
+
+
+def _tophat_trapezoid_overlap(scan_pos, proj, voxel_size, omega, width):
+    """Exact overlap of a TopHat beam window with the trapezoidal projection
+    of a square voxel rotated by ``omega`` (Siddon-style, finite beam).
+
+    Reduces to ``TopHat.fraction_over_voxel`` at ω∈{0,90°}. Differentiable in
+    all tensor args. Shapes broadcast: ``scan_pos``/``omega`` (ng_s,1),
+    ``proj`` (ng_s,ng_v), ``voxel_size``/``width`` 0-d.
+    """
+    import torch
+
+    cw = (voxel_size * torch.cos(omega).abs())     # (ng_s,1)
+    sw = (voxel_size * torch.sin(omega).abs())
+    A = 0.5 * (cw + sw)                            # outer half-width
+    B = 0.5 * (cw - sw).abs()                      # plateau half-width
+    mx = torch.maximum(torch.cos(omega).abs(), torch.sin(omega).abs())
+    H = voxel_size / mx.clamp_min(1e-12)           # plateau height (∫c = Δ²)
+
+    delta = scan_pos - proj                        # (ng_s,ng_v) beam-centre offset
+    hi = delta + 0.5 * width
+    lo = delta - 0.5 * width
+    area = _trapezoid_cdf(hi, A, B, H) - _trapezoid_cdf(lo, A, B, H)
+    return area / (voxel_size * voxel_size)
+
+
 def predicted_spot_intensities(
     V_voxel: "torch.Tensor",                       # (Nv,) — per-voxel V (µm³ in arbitrary K-units)
     K_ring: "torch.Tensor",                         # (R,)  — per-ring scale
@@ -61,6 +122,10 @@ def predicted_spot_intensities(
     beam_profile: "BeamProfile",
     *,
     scan_axis: str = "pf",                                      # "pf" | "z" | "none"
+    beam_geometry: str = "center",                              # "center" | "siddon"
+    spot_weight: Optional["torch.Tensor"] = None,               # (Ns,) soft-attr weight
+    spot_out_index: Optional["torch.Tensor"] = None,            # (Ns,) int -> output spot
+    n_out_spots: Optional[int] = None,
     use_absorption: bool = False,
     incident_dirs_per_spot: Optional["torch.Tensor"] = None,    # (Ns, 3) unit vec, lab frame
     diffracted_dirs_per_spot: Optional["torch.Tensor"] = None,  # (Ns, 3) unit vec, lab frame
@@ -117,7 +182,14 @@ def predicted_spot_intensities(
     dev = device or V_voxel.device
 
     n_spots = spot_ring_idx.shape[0]
-    I_pred = torch.zeros(n_spots, dtype=dt, device=dev)
+    # Soft attribution: the per-spot arrays may be an *expanded* list with one
+    # row per (observed-spot, grain) membership. ``spot_out_index`` maps each
+    # row back to its observed spot and ``spot_weight`` is the attribution
+    # weight; the per-row contributions are scatter-summed into the observed
+    # spots. When both are None this is the hard 1-spot→1-grain path and the
+    # output is identical to the previous index_copy behaviour.
+    n_out = int(n_out_spots) if n_out_spots is not None else n_spots
+    I_pred = torch.zeros(n_out, dtype=dt, device=dev)
 
     grain_map = sample_grid.grain_map        # (Nv,) int
     sample_mask = sample_grid.sample_mask    # (Nv,) bool
@@ -152,9 +224,17 @@ def predicted_spot_intensities(
             v_x = v_pos[:, 0].unsqueeze(0)              # (1, ng_v)
             v_y = v_pos[:, 1].unsqueeze(0)              # (1, ng_v)
             proj = v_x * sin_w + v_y * cos_w            # (ng_s, ng_v)
-            weights = beam_profile.fraction_over_voxel(
-                scan_p.unsqueeze(1), proj, voxel_size,
-            )                                           # (ng_s, ng_v)
+            if beam_geometry == "siddon" and hasattr(beam_profile, "width_um"):
+                # Exact overlap with the rotated-square (trapezoidal) voxel
+                # footprint instead of the fixed-width box. ω-aware.
+                weights = _tophat_trapezoid_overlap(
+                    scan_p.unsqueeze(1), proj, voxel_size,
+                    omega.unsqueeze(1), beam_profile.width_um,
+                )                                       # (ng_s, ng_v)
+            else:
+                weights = beam_profile.fraction_over_voxel(
+                    scan_p.unsqueeze(1), proj, voxel_size,
+                )                                       # (ng_s, ng_v)
         elif scan_axis == "z":
             v_z = v_pos[:, 2].unsqueeze(0).expand(ng_s, -1)   # (ng_s, ng_v)
             weights = beam_profile.fraction_over_voxel(
@@ -191,6 +271,11 @@ def predicted_spot_intensities(
             * theoretical_intensity_per_ring[ring]
             * contrib
         )                                                # (ng_s,)
-        I_pred = I_pred.index_copy(0, spot_idx, I_pred_g)
+        if spot_weight is not None:
+            I_pred_g = I_pred_g * spot_weight[spot_idx]
+        out_idx = spot_out_index[spot_idx] if spot_out_index is not None else spot_idx
+        # index_add (not copy): a single observed spot may receive
+        # contributions from several grains (soft attribution).
+        I_pred = I_pred.index_add(0, out_idx, I_pred_g)
 
     return I_pred

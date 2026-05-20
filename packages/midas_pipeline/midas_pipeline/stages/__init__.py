@@ -30,6 +30,7 @@ from . import (
     seeding,
     sinogen,
     transforms,
+    voxel_cleanup,
     zip_convert,
 )
 
@@ -76,5 +77,6 @@ __all__ = [
     "seeding",
     "sinogen",
     "transforms",
+    "voxel_cleanup",
     "zip_convert",
 ]

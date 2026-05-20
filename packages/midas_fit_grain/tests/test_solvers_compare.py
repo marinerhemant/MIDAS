@@ -60,7 +60,7 @@ def _misori_deg(eul_a, eul_b):
 
 # Solver × loss matrix (all_at_once, GT match precomputed).
 @pytest.mark.parametrize("solver", ["lbfgs", "lm", "nelder_mead"])
-@pytest.mark.parametrize("loss", ["pixel", "angular", "internal_angle"])
+@pytest.mark.parametrize("loss", ["full3d", "angular", "internal_angle"])
 def test_solver_makes_progress(fix, solver, loss):
     """Every (solver, loss) pair must drop the loss by ≥1000× from a tight
     seed, and the resulting orientation must be within 0.05° on a tight
@@ -114,7 +114,7 @@ def test_lm_handles_phi1_conditioning(fix, solver):
     """
     obs = fixture_to_observed(fix, device=torch.device("cpu"),
                               dtype=torch.float64)
-    cfg = _build_cfg(fix, solver=solver, loss="pixel", mode="all_at_once",
+    cfg = _build_cfg(fix, solver=solver, loss="full3d", mode="all_at_once",
                      max_iter=300, ftol=1e-14, xtol=1e-14)
 
     init_pos = fix.gt_position.clone() + torch.tensor([1.0, -0.5, 0.3],

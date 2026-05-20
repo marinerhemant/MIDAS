@@ -732,12 +732,346 @@ print('cleaned', WORK)"""),
 ]
 
 
+# ===========================================================================
+# 05 — Real-data PF-HEDM end-to-end recon (bring your own dataset)
+# ===========================================================================
+
+NB05: List[Cell] = [
+    ("md", """\
+# 05 · Real-data PF-HEDM end-to-end recon
+
+A full point-focus (scanning) HEDM reconstruction on **your own data**:
+grain map → intra-granular V-map → per-voxel orientation + strain. Unlike
+notebooks 01–04 (synthetic, run-in-CI), this one is a **bring-your-own-data
+walkthrough** — point the config cell at a run directory and execute.
+
+Pipeline:
+
+1. **Grain map** — peaksearch → transforms → binning → c-omp indexing →
+   find_grains. Produces the voxel→grain map.
+2. **V-map** — per-voxel relative volume (`calc_radius_v` → joint
+   `refine_vmap`) with the V/K gauge and spatial soft-attribution.
+3. **Per-voxel refinement** — orientation + lattice per voxel using the
+   **full 3D loss** `(y, z, ω)` (the old 2D `pixel` loss omitted ω and let
+   orientation drift ~20°), seeded by a **neighbour-corrected** orientation
+   table (symmetry-aware) so boundary voxels don't latch the wrong family.
+4. **Strain** — lab-frame strain from the refined lattice via
+   `midas_stress`, plus orientation/misorientation maps.
+
+Everything here uses **released packages only** (midas-transforms ≥0.6.0,
+midas-index ≥0.7.0, midas-pipeline ≥0.3.0, midas-fit-grain ≥0.3.0,
+midas-stress); no private scripts. Install with `pip install -U midas-suite`.
+
+> This notebook will not execute without a dataset — the config cell below
+> raises if the run directory is missing."""),
+    ("md", """\
+## Inputs you provide
+
+- A **master parameter file** (e.g. `params.txt`) with at least
+  `OverAllRingToIndex`, `SpaceGroup`, `LatticeParameter`, detector geometry,
+  and the zarr/data source the peaksearch reads.
+- A **CIF** for the V-map structure factors (your phase's cell).
+- The acquisition geometry: number of scans, scan step (µm), beam size (µm).
+
+Set them in the config cell (or via the `MIDAS_*` environment variables).
+All outputs land under `RUN_DIR/` (`LayerNr_1/` artifacts, `figures/`)."""),
+    ("py", """\
+import os
+os.environ.setdefault('KMP_DUPLICATE_LIB_OK', 'TRUE')   # torch + numba OpenMP
+from pathlib import Path
+
+# ---- EDIT FOR YOUR DATASET (or export the MIDAS_* env vars) ---------------
+RUN_DIR     = Path(os.environ.get('MIDAS_RUN', '/path/to/your/run'))
+PARAMS      = os.environ.get('MIDAS_PARAMS', str(RUN_DIR / 'params.txt'))
+CIF         = os.environ.get('MIDAS_CIF',    str(RUN_DIR / 'structure.cif'))
+N_SCANS     = int(os.environ.get('MIDAS_NSCANS', '91'))
+SCAN_STEP   = float(os.environ.get('MIDAS_SCANSTEP', '1.0'))   # micrometers
+BEAM_SIZE   = float(os.environ.get('MIDAS_BEAM', '1.0'))       # micrometers
+SPACE_GROUP = int(os.environ.get('MIDAS_SG', '194'))
+N_CPUS      = int(os.environ.get('MIDAS_NCPUS', '8'))
+# ---------------------------------------------------------------------------
+
+LAYER = RUN_DIR / 'LayerNr_1'
+FIG = RUN_DIR / 'figures'; FIG.mkdir(parents=True, exist_ok=True)
+if not Path(PARAMS).exists():
+    raise FileNotFoundError(
+        f'param file {PARAMS!r} not found. Edit the config cell to point '
+        'RUN_DIR / MIDAS_PARAMS at your dataset before running.')
+print('run dir   :', RUN_DIR)
+print('params    :', PARAMS)
+print('geometry  :', N_SCANS, 'scans x', SCAN_STEP, 'um, beam', BEAM_SIZE, 'um')
+print('space grp :', SPACE_GROUP)"""),
+    ("md", """\
+## 1 · Grain map  (peaksearch → indexing → find_grains)
+
+The **c-omp indexer is mandatory** for PF — the pure-Python backend is
+~100× slower. The released midas-transforms/midas-index write the
+`RingToIndex` seed ring and patch the c-omp `paramstest.txt`
+(`OutputFolder`, `ScanPosTol`) automatically, so the binary finds its
+inputs and seeds."""),
+    ("py", """\
+import subprocess
+
+def pipeline(*extra):
+    cmd = ['midas-pipeline', 'run',
+           '--params', PARAMS, '--result', str(RUN_DIR),
+           '--scan-mode', 'pf', '--n-scans', str(N_SCANS),
+           '--scan-step', str(SCAN_STEP),
+           '--device', 'cpu', '--n-cpus', str(N_CPUS), '--layers', '1-1',
+           *extra]
+    print(' '.join(cmd))
+    subprocess.run(cmd, check=True,
+                   env={**os.environ, 'KMP_DUPLICATE_LIB_OK': 'TRUE'})
+
+pipeline('--indexer-backend', 'c-omp',
+         '--only', 'hkl', '--only', 'peakfit', '--only', 'transforms',
+         '--only', 'binning', '--only', 'indexing', '--only', 'find_grains')"""),
+    ("py", """\
+import numpy as np
+vg = np.loadtxt(LAYER / 'Output' / 'voxel_grid.csv', skiprows=1)
+grain = vg[:, 4].astype(int)
+nv = grain.size
+N = int(round(np.sqrt(nv)))
+n_idx = int((grain >= 0).sum())
+print(f'voxels indexed: {n_idx}/{nv} ({100*n_idx/nv:.1f}%) | grains: '
+      f'{len(set(grain[grain >= 0]))} | grid {N}x{N}')"""),
+    ("md", """\
+## 2 · V-map  (intra-granular relative volume)
+
+`--vmap-gauge-reg` pins the geometric-mean V→1 (the V·K product is
+scale-degenerate). `--vmap-soft-grain-attribution` blends each spot over
+its candidate grains (most spots are multi-grain), and the spatial
+`--soft-attribution` profile spreads each spot over the beam footprint.
+`--vmap-beam-geometry siddon` (exact ω-aware footprint) is available but on
+spread grains makes no difference; `center` is the default."""),
+    ("py", """\
+pipeline('--resume', 'none', '--only', 'calc_radius_v', '--only', 'refine_vmap',
+         '--vmap-run', '--vmap-crystal-cif', CIF, '--vmap-wavelength', '0',
+         '--vmap-refine-V', '1', '--vmap-refine-K', '1',
+         '--vmap-gauge-reg', '1e-2', '--vmap-soft-grain-attribution',
+         '--vmap-max-iter', '80', '--vmap-loss-kind', 'log_l2',
+         '--vmap-tolerance', '1e-8', '--vmap-emit-diagnostics', '1',
+         '--vmap-diag-axes', '0,1',
+         '--soft-attribution', '--soft-profile', 'gaussian',
+         '--soft-fwhm-um', str(BEAM_SIZE), '--soft-omega-sigma-deg', '0.5')
+print('V-map ->', LAYER / 'Output' / 'v_map.h5')"""),
+    ("md", """\
+## 3 · Per-voxel refinement
+
+### 3a · Neighbour-corrected seed orientations
+
+Each voxel's seed is the indexer's top-completeness candidate. At grain
+boundaries two orientation families can tie on completeness, and the
+top-completeness one is occasionally the *wrong* family. We replace any
+voxel whose orientation disagrees with its same-grain neighbourhood (≥3
+neighbours) by the spatially-consensus orientation, using a **symmetry-aware
+misorientation** (not Frobenius — symmetry sectors differ). Iterated to a
+fixed point so clusters of adjacent outliers also resolve."""),
+    ("py", """\
+from midas_index.io.consolidated import read_index_best_all, split_records_by_voxel
+from midas_stress.orientation import misorientation_om
+
+per = split_records_by_voxel(read_index_best_all(LAYER / 'Output' / 'IndexBest_all.bin'))
+seed = np.full((nv, 9), np.nan)
+for v in range(nv):
+    rec = per[v]
+    if rec.shape[0]:
+        comp_v = rec[:, 15] / np.clip(rec[:, 14], 1, None)   # matched / expected
+        seed[v] = rec[int(comp_v.argmax()), 2:11]
+
+def _miso(a, b):
+    return np.degrees(misorientation_om(a, b, SPACE_GROUP)[0])
+
+_NB = ((1, 0), (-1, 0), (0, 1), (0, -1), (1, 1), (1, -1), (-1, 1), (-1, -1))
+THRESH = 3.0
+seed_table = seed.copy()
+for _it in range(8):
+    n_fixed = 0
+    nxt = seed_table.copy()
+    for v in range(nv):
+        if grain[v] < 0 or not np.isfinite(seed_table[v]).all():
+            continue
+        i, j = divmod(v, N)
+        nbrs = [ii * N + jj for di, dj in _NB
+                for ii, jj in [(i + di, j + dj)]
+                if 0 <= ii < N and 0 <= jj < N
+                and grain[ii * N + jj] == grain[v]
+                and np.isfinite(seed_table[ii * N + jj]).all()]
+        if len(nbrs) < 3:
+            continue
+        if np.median([_miso(seed_table[v], seed_table[u]) for u in nbrs]) > THRESH:
+            best = min(nbrs, key=lambda u: sum(
+                _miso(seed_table[u], seed_table[w]) for w in nbrs if w != u))
+            nxt[v] = seed_table[best]
+            n_fixed += 1
+    seed_table = nxt
+    print(f'  pass {_it}: corrected {n_fixed} seeds')
+    if n_fixed == 0:
+        break
+np.save(RUN_DIR / 'seed_om_table.npy', seed_table)"""),
+    ("md", """\
+### 3b · Refine each voxel (full 3D loss)
+
+`loss='full3d'` fits `(Δy_pixel, Δz_pixel, Δω·r_px)` — detector position
+**and** omega — so orientation is constrained (no ω drift) and position is
+constrained (the angular-only loss is blind to grain position). The seed
+candidate per voxel is the block candidate closest (symmetry-aware) to the
+corrected seed table from 3a.
+
+This call refines **serially** (one block). For a large map, split the work
+across processes: run the same `refine_scanning_block(...)` with
+`voxel_block_nr=k, voxel_n_blocks=K` for `k in range(K)` in K separate
+processes — each writes a disjoint set of `Result_OrientPos_voxel_<v>.csv`,
+so the shards never collide."""),
+    ("py", """\
+import math
+import torch
+from midas_fit_grain.config import FitConfig
+from midas_fit_grain.driver import _build_model, _read_hkls_csv
+from midas_fit_grain.observations import ObservedSpots
+from midas_fit_grain.io_binary import read_extra_info
+from midas_fit_grain.scan_driver import refine_scanning_block
+
+results_dir = LAYER / 'Results'
+results_dir.mkdir(parents=True, exist_ok=True)
+device, dtype = torch.device('cpu'), torch.float64
+
+cfg = FitConfig.from_param_file(LAYER / 'paramstest.txt')
+cfg.scan_pos_tol_um = BEAM_SIZE / 2          # match the indexing run
+cfg.beam_size_um = BEAM_SIZE
+cfg.friedel_symmetric_scan_filter = False
+cfg.position_mode = 'fixed'
+cfg.mode = 'all_at_once'
+cfg.solver = 'lbfgs'
+cfg.loss = 'full3d'                          # 3D (y, z, omega); 'pixel' is disabled
+cfg.use_bounds = False
+
+extra = read_extra_info(LAYER / 'ExtraInfo.bin', mmap=True)
+obs = ObservedSpots.from_extra_info(
+    extra, spot_ids=extra[:, 4].astype(np.int64), device=device, dtype=dtype)
+max_tt = (2.0 * math.degrees(math.atan(cfg.RhoD / cfg.Lsd))
+          if cfg.RhoD > 0 and cfg.Lsd > 0 else 180.0)
+hkls_int, thetas_deg, ring_nr = _read_hkls_csv(
+    LAYER / 'hkls.csv', cfg.RingNumbers, max_two_theta_deg=max_tt)
+model, pred_ring_slot = _build_model(
+    cfg, device=device, dtype=dtype,
+    hkls_int=hkls_int, thetas_deg=thetas_deg, ring_nr=ring_nr)
+
+refine_scanning_block(
+    cfg, index_best_all=LAYER / 'Output' / 'IndexBest_all.bin',
+    positions_csv=LAYER / 'positions.csv', results_dir=results_dir,
+    model=model, obs=obs, pred_ring_slot=pred_ring_slot,
+    voxel_block_nr=0, voxel_n_blocks=1, seed_om_table=seed_table)
+print('refinement done ->', results_dir)"""),
+    ("md", """\
+## 4 · Strain + orientation maps
+
+The refiner writes the strain columns as zeros — it refines the per-voxel
+**lattice**. Strain is the lattice deviation from the reference cell
+(crystal frame) rotated grain→lab by the per-voxel orientation, via the
+canonical `midas_stress` primitives.
+
+> **Caveat — d0:** the normal components carry a hydrostatic offset if the
+> reference lattice is a literature d0 rather than this sample's strain-free
+> cell. The deviatoric/shear components and the spatial *variation* are
+> trustworthy; absolute normal strain needs a d0 calibration."""),
+    ("py", """\
+from midas_stress.tensor import lattice_params_to_strain, strain_grain_to_lab
+
+latc0 = None
+for ln in (LAYER / 'paramstest.txt').read_text().splitlines():
+    t = ln.replace(';', '').split()
+    if t and t[0] in ('LatticeParameter', 'LatticeConstant') and len(t) >= 7:
+        latc0 = np.array([float(x) for x in t[1:7]])
+print('reference lattice:', latc0)
+
+OM = np.full((nv, 3, 3), np.nan)
+eul1 = np.full(nv, np.nan)
+comp = np.full(nv, np.nan)
+eps_lab = np.full((nv, 3, 3), np.nan)
+for v in range(nv):
+    p = results_dir / f'Result_OrientPos_voxel_{v}.csv'
+    if not p.exists():
+        continue
+    row = np.loadtxt(p, skiprows=1)
+    if row.ndim != 1 or row.size < 37:
+        continue
+    OM[v] = row[1:10].reshape(3, 3)
+    comp[v] = row[26]
+    eul1[v] = row[36]
+    eps_lab[v] = strain_grain_to_lab(
+        lattice_params_to_strain(row[15:21], latc0), OM[v].reshape(3, 3))
+ok = ~np.isnan(OM[:, 0, 0])
+
+miso = np.full(nv, np.nan)
+for g in sorted(set(grain[grain >= 0])):
+    m = (grain == g) & ok
+    if m.sum() == 0:
+        continue
+    ref = OM[np.where(m)[0][np.argmax(comp[m])]].ravel()
+    for v in np.where(m)[0]:
+        miso[v] = np.degrees(float(misorientation_om(OM[v].ravel(), ref, SPACE_GROUP)[0]))
+print('intra-grain misorientation (deg): median=%.3f  90th=%.3f'
+      % (np.nanmedian(miso[ok]), np.nanpercentile(miso[ok], 90)))"""),
+    ("py", """\
+import matplotlib
+matplotlib.use('Agg')
+import matplotlib.pyplot as plt
+
+def _grid(arr):
+    g = arr.reshape(N, N).astype(float).copy()
+    g[(grain < 0).reshape(N, N)] = np.nan
+    return g
+
+# orientation maps
+fig, ax = plt.subplots(1, 3, figsize=(17, 5))
+ax[0].imshow(grain.reshape(N, N), origin='lower', cmap='tab10', vmin=-1, vmax=8)
+ax[0].set_title('grain map')
+im = ax[1].imshow(np.degrees(_grid(eul1)), origin='lower', cmap='twilight')
+ax[1].set_title('Euler-1 (deg)'); fig.colorbar(im, ax=ax[1], fraction=0.046)
+im = ax[2].imshow(_grid(miso), origin='lower', cmap='inferno',
+                  vmin=0, vmax=np.nanpercentile(miso[ok], 95))
+ax[2].set_title('misorientation from grain mean (deg)')
+fig.colorbar(im, ax=ax[2], fraction=0.046)
+fig.tight_layout(); fig.savefig(FIG / 'orientation_maps.png', dpi=120)
+
+# strain maps (microstrain)
+comp_eps = {'exx': eps_lab[:, 0, 0], 'eyy': eps_lab[:, 1, 1], 'ezz': eps_lab[:, 2, 2],
+            'exy': eps_lab[:, 0, 1], 'exz': eps_lab[:, 0, 2]}
+dev = eps_lab - (np.trace(eps_lab, axis1=1, axis2=2)[:, None, None] / 3.0) * np.eye(3)[None]
+vm = np.sqrt(2.0 / 3.0 * (dev * dev).sum(axis=(1, 2))) * 1e6
+fig, ax = plt.subplots(2, 3, figsize=(16, 9))
+for a, (nm, arr) in zip(ax.ravel(), comp_eps.items()):
+    v95 = np.nanpercentile(np.abs(arr[ok]) * 1e6, 95)
+    im = a.imshow(_grid(arr) * 1e6, origin='lower', cmap='RdBu_r', vmin=-v95, vmax=v95)
+    a.set_title(f'{nm} (ue)'); fig.colorbar(im, ax=a, fraction=0.046)
+im = ax[1, 2].imshow(_grid(vm), origin='lower', cmap='viridis',
+                     vmin=0, vmax=np.nanpercentile(vm[ok], 95))
+ax[1, 2].set_title('von Mises eq. strain (ue)'); fig.colorbar(im, ax=ax[1, 2], fraction=0.046)
+fig.tight_layout(); fig.savefig(FIG / 'strain_maps.png', dpi=120)
+np.savez(FIG / 'recon.npz', OM=OM, eul1=eul1, miso=miso, eps_lab=eps_lab,
+         grain=grain, comp=comp)
+print('saved', FIG / 'orientation_maps.png', 'and', FIG / 'strain_maps.png')"""),
+    ("md", """\
+## What you get
+
+- **Grain map** — voxel→grain assignment (`Output/voxel_grid.csv`).
+- **V-map** — per-voxel relative volume (`Output/v_map.h5`), gauge-fixed.
+- **Orientation** — per-voxel orientation + intra-grain misorientation map.
+- **Strain** — lab-frame per-voxel strain (deviatoric/shear + spatial
+  variation trustworthy; absolute normal strain pending d0 calibration).
+
+All figures + a `recon.npz` are written under `RUN_DIR/figures/`."""),
+]
+
+
 if __name__ == '__main__':
     for name, cells in [
         ('01_synthetic_ff_walkthrough', NB01),
         ('02_indexer_backends', NB02),
         ('03_vmap_soft_attribution', NB03),
         ('04_ff_is_pf_degeneracy', NB04),
+        ('05_pf_real_data_recon', NB05),
     ]:
         p = write_notebook(name, cells)
         print('wrote', p)
