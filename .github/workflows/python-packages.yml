@@ -167,6 +167,7 @@ jobs:
   #   midas-diffract-v*          → midas_diffract
   #   midas-index-v*             → midas_index
   #   midas-transforms-v*        → midas_transforms
+  #   midas-zipper-v*            → midas_zipper
   #   midas-nf-preprocess-v*     → midas_nf_preprocess
   #   midas-process-grains-v*    → midas_process_grains
   #   midas-fit-grain-v*         → midas_fit_grain
@@ -230,6 +231,9 @@ jobs:
           elif [[ "$TAG" == midas-transforms-v* ]]; then
             echo "package=midas_transforms" >> "$GITHUB_OUTPUT"
             echo "pypi_name=midas-transforms" >> "$GITHUB_OUTPUT"
+          elif [[ "$TAG" == midas-zipper-v* ]]; then
+            echo "package=midas_zipper" >> "$GITHUB_OUTPUT"
+            echo "pypi_name=midas-zipper" >> "$GITHUB_OUTPUT"
           elif [[ "$TAG" == midas-nf-preprocess-v* ]]; then
             echo "package=midas_nf_preprocess" >> "$GITHUB_OUTPUT"
             echo "pypi_name=midas-nf-preprocess" >> "$GITHUB_OUTPUT"
@@ -277,7 +281,19 @@ jobs:
         if: steps.which.outputs.package != ''
         run: |
           cd packages/${{ steps.which.outputs.package }}
-          python -m build
+          # scikit-build-core packages (e.g. midas-index) compile a native
+          # binary, so `python -m build` emits a platform-tagged wheel
+          # (linux_x86_64) that PyPI rejects — it only accepts manylinux*.
+          # Per project_no_c_pypi_packages.md the C binary is build-from-source,
+          # so we publish the sdist only; pip compiles it at install time
+          # (or falls back to the Python-only path). Pure-Python packages
+          # keep the sdist + universal wheel.
+          if grep -q 'scikit_build_core.build' pyproject.toml; then
+            echo "scikit-build-core backend detected — building sdist only."
+            python -m build --sdist
+          else
+            python -m build
+          fi
 
       - name: Upload artifacts
         if: steps.which.outputs.package != ''

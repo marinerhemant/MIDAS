@@ -17,10 +17,36 @@ from __future__ import annotations
 
 import math
 from dataclasses import dataclass
+from typing import Callable, Optional
 
+import numpy as np
 import torch
 
 from .binning import get_bin_indices, lookup_bin_counts
+
+# Numba is optional — if absent the CPU dispatch falls back to the torch
+# m-iter path (still correct, just slower at PF scale). On chiltepin /
+# alleppey / copland and the dev environments it's a stable transitive
+# dep (used by find_grains, merge_scans, potts).
+# macOS: torch and numba both link libomp. numba's default "omp" threading
+# layer then races against torch's already-loaded copy and segfaults under
+# parallel=True (KMP_DUPLICATE_LIB_OK only silences the OMP Error #15 warning;
+# it does not stop the crash). Force the OpenMP-free "workqueue" layer on
+# Darwin before numba imports. Linux/CI keep the faster default. Honors a
+# user-set NUMBA_THREADING_LAYER.
+import os as _os
+import sys as _sys
+
+if _sys.platform == "darwin":
+    _os.environ.setdefault("NUMBA_THREADING_LAYER", "workqueue")
+
+try:
+    from numba import njit, prange  # type: ignore
+    _NUMBA_AVAILABLE = True
+except ImportError:
+    njit = None
+    prange = None
+    _NUMBA_AVAILABLE = False
 
 DEG2RAD = math.pi / 180.0
 RAD2DEG = 180.0 / math.pi
@@ -28,7 +54,23 @@ RAD2DEG = 180.0 / math.pi
 
 @dataclass
 class MatchResult:
-    """Per-evaluation-tuple match outcome."""
+    """Per-evaluation-tuple match outcome.
+
+    The integer fields ``n_matches``, ``n_matches_frac``, ``n_t_frac`` and
+    the binary ``matched`` field always reflect the **hard** match decision
+    (back-compat with the bit-exact C-parity gate).  When
+    :func:`compare_spots` is called with a ``soft_beam_weight_fn``, the
+    optional ``weighted_*`` fields are populated with the soft-attribution
+    analogues:
+
+    * ``weighted_n_matches``      = Σ_t  has_match(t) · w(best_cand(t))
+    * ``weighted_n_matches_frac`` = same, restricted to non-rejected rings
+    * ``weighted_frac_matches``   = weighted_n_matches_frac / n_t_frac
+
+    Soft-mode consumers (e.g. ``midas_pipeline.stages.indexing`` with
+    ``soft_beam_attribution=True``) score seeds by ``weighted_frac_matches``;
+    the hard scoring path remains identical to today.
+    """
 
     n_matches: torch.Tensor          # (N,) int64 — total matched theor spots
     n_matches_frac: torch.Tensor     # (N,) int64 — matches excluding rings_to_reject (denom of frac)
@@ -39,6 +81,10 @@ class MatchResult:
     matched_obs_row: torch.Tensor    # (N, T) int64 — row index in `obs` for each match, -1 if none
     delta_omega: torch.Tensor        # (N, T) float — |Δomega| for the best match, +inf if none
     matched: torch.Tensor            # (N, T) bool — match found per theor spot
+    # Optional soft-attribution outputs (populated only when soft_beam_weight_fn is provided)
+    weighted_n_matches:      torch.Tensor | None = None  # (N,) float
+    weighted_n_matches_frac: torch.Tensor | None = None  # (N,) float
+    weighted_frac_matches:   torch.Tensor | None = None  # (N,) float
 
 
 def build_eta_margins(
@@ -144,16 +190,47 @@ def pick_compare_strategy(
     if N == 0 or T == 0:
         return "dense", _JAGGED_CHUNK_MAX
 
+    on_cpu = theor.device.type != "cuda"
     if free_bytes is None:
-        if theor.device.type != "cuda":
-            return "dense", _JAGGED_CHUNK_MAX
-        try:
-            free_bytes, _total = torch.cuda.mem_get_info(theor.device)
-        except Exception:
-            return "dense", _JAGGED_CHUNK_MAX
+        if on_cpu:
+            # CPU / MPS: probe host RAM. Without this the dense path runs
+            # unbounded and crashes the box on real-scale PF data (e.g.
+            # Wenxi-class 91x91 voxels × 217k seeds where N×T×M can hit
+            # 100s of GB per compare_spots call).
+            try:
+                import psutil
+                free_bytes = int(psutil.virtual_memory().available)
+            except Exception:
+                # Last resort: /proc/meminfo on Linux, or assume 8 GiB.
+                try:
+                    with open("/proc/meminfo") as f:
+                        for line in f:
+                            if line.startswith("MemAvailable:"):
+                                free_bytes = int(line.split()[1]) * 1024
+                                break
+                except Exception:
+                    pass
+                if free_bytes is None:
+                    free_bytes = 8 * (1 << 30)  # 8 GiB conservative
+        else:
+            try:
+                free_bytes, _total = torch.cuda.mem_get_info(theor.device)
+            except Exception:
+                return "dense", _JAGGED_CHUNK_MAX
 
     bytes_per_cell = _per_cell_bytes(theor.dtype)
-    budget = max(1, int(free_bytes * safety))
+    # CPU torch's allocator doesn't release back to the OS as eagerly as
+    # CUDA's caching allocator, and the compare_spots call sites stack
+    # several (N, T, M) intermediates. Use a much tighter safety factor on
+    # CPU so chunking actually bounds per-call memory; on big-memory hosts
+    # (chiltepin, 1.5 TB) a 0.5 safety still picks chunk = N which doesn't
+    # chunk. Also hard-cap CPU chunk size to keep per-call peaks well under
+    # 8 GiB regardless of host size.
+    effective_safety = safety if not on_cpu else min(safety, 0.02)
+    max_call_bytes_cpu = 8 * (1 << 30)
+    budget = max(1, int(free_bytes * effective_safety))
+    if on_cpu:
+        budget = min(budget, max_call_bytes_cpu)
     predicted_dense = N * T * max_n_cap * bytes_per_cell
 
     if predicted_dense <= budget:
@@ -194,6 +271,8 @@ def compare_spots(
     scan_pos_tol_um: float = 0.0,                 # 0 ⇒ filter disabled (FF default)
     friedel_symmetric_scan_filter: bool = False,  # single-sided default = matches C + correct physics
     obs_scan_nr_int64: torch.Tensor | None = None,  # cached obs[..., 9].long() from IndexerContext
+    # --- Soft attribution (P6 of the V-map plan) ---
+    soft_beam_weight_fn: Optional[Callable[[torch.Tensor], torch.Tensor]] = None,
 ) -> MatchResult:
     """Vectorized binned matching. See module docstring for tie-break semantics.
 
@@ -209,6 +288,29 @@ def compare_spots(
         raise ValueError(
             f"strategy must be 'dense' or 'jagged'; got {strategy!r}"
         )
+    # Dispatch order matters: numba path FIRST when on CPU (it's per-cell,
+    # doesn't need jagged chunking, and chunking would fragment the work
+    # into many small numba calls each paying full marshaling overhead).
+    # Jagged path is only used for the torch dense path on GPU, where
+    # (N, T, M) memory limits matter.
+    if theor.device.type != "cuda" and soft_beam_weight_fn is None:
+        return _compare_spots_numba(
+            theor=theor, valid=valid, obs=obs,
+            bin_data=bin_data, bin_ndata=bin_ndata,
+            ref_rad=ref_rad,
+            margin_rad=margin_rad, margin_radial=margin_radial,
+            eta_margins=eta_margins, ome_margins=ome_margins,
+            eta_bin_size=eta_bin_size, ome_bin_size=ome_bin_size,
+            n_eta_bins=n_eta_bins, n_ome_bins=n_ome_bins,
+            rings_to_reject=rings_to_reject,
+            distance=distance, pos=pos,
+            scan_positions=scan_positions,
+            voxel_xy=voxel_xy,
+            scan_pos_tol_um=scan_pos_tol_um,
+            friedel_symmetric_scan_filter=friedel_symmetric_scan_filter,
+            obs_scan_nr_int64=obs_scan_nr_int64,
+        )
+
     if strategy == "jagged" and theor.shape[0] > chunk_size:
         return _compare_spots_jagged(
             theor=theor, valid=valid, obs=obs,
@@ -227,7 +329,49 @@ def compare_spots(
             scan_pos_tol_um=scan_pos_tol_um,
             friedel_symmetric_scan_filter=friedel_symmetric_scan_filter,
             obs_scan_nr_int64=obs_scan_nr_int64,
+            soft_beam_weight_fn=soft_beam_weight_fn,
         )
+
+    # CPU dispatch (legacy soft-attribution path, torch m-iter): per-cell
+    # numba can't call arbitrary Python callbacks, so when soft_beam_weight_fn
+    # is set we use the torch m-iter path which still beats the dense path.
+    if theor.device.type != "cuda":
+        if soft_beam_weight_fn is None:
+            return _compare_spots_numba(
+                theor=theor, valid=valid, obs=obs,
+                bin_data=bin_data, bin_ndata=bin_ndata,
+                ref_rad=ref_rad,
+                margin_rad=margin_rad, margin_radial=margin_radial,
+                eta_margins=eta_margins, ome_margins=ome_margins,
+                eta_bin_size=eta_bin_size, ome_bin_size=ome_bin_size,
+                n_eta_bins=n_eta_bins, n_ome_bins=n_ome_bins,
+                rings_to_reject=rings_to_reject,
+                distance=distance, pos=pos,
+                scan_positions=scan_positions,
+                voxel_xy=voxel_xy,
+                scan_pos_tol_um=scan_pos_tol_um,
+                friedel_symmetric_scan_filter=friedel_symmetric_scan_filter,
+                obs_scan_nr_int64=obs_scan_nr_int64,
+            )
+        return _compare_spots_m_iter(
+            theor=theor, valid=valid, obs=obs,
+            bin_data=bin_data, bin_ndata=bin_ndata,
+            ref_rad=ref_rad,
+            margin_rad=margin_rad, margin_radial=margin_radial,
+            eta_margins=eta_margins, ome_margins=ome_margins,
+            eta_bin_size=eta_bin_size, ome_bin_size=ome_bin_size,
+            n_eta_bins=n_eta_bins, n_ome_bins=n_ome_bins,
+            rings_to_reject=rings_to_reject,
+            distance=distance, pos=pos,
+            max_n_cap=max_n_cap,
+            scan_positions=scan_positions,
+            voxel_xy=voxel_xy,
+            scan_pos_tol_um=scan_pos_tol_um,
+            friedel_symmetric_scan_filter=friedel_symmetric_scan_filter,
+            obs_scan_nr_int64=obs_scan_nr_int64,
+            soft_beam_weight_fn=soft_beam_weight_fn,
+        )
+
     device = theor.device
     dtype = theor.dtype
     N, T, _ = theor.shape
@@ -256,6 +400,10 @@ def compare_spots(
         max_n = int(n_per.max().item()) if n_per.numel() else 0
     if max_n == 0:
         zeros = torch.zeros((N, T), dtype=torch.bool, device=device)
+        soft_zeros = (
+            torch.zeros(N, dtype=dtype, device=device)
+            if soft_beam_weight_fn is not None else None
+        )
         return MatchResult(
             n_matches=torch.zeros(N, dtype=torch.int64, device=device),
             n_matches_frac=torch.zeros(N, dtype=torch.int64, device=device),
@@ -266,6 +414,9 @@ def compare_spots(
             matched_obs_row=torch.full((N, T), -1, dtype=torch.int64, device=device),
             delta_omega=torch.full((N, T), float("inf"), dtype=dtype, device=device),
             matched=zeros,
+            weighted_n_matches=soft_zeros,
+            weighted_n_matches_frac=soft_zeros.clone() if soft_zeros is not None else None,
+            weighted_frac_matches=soft_zeros.clone() if soft_zeros is not None else None,
         )
 
     # arange over candidate axis, masked by per-cell n_per.
@@ -356,12 +507,25 @@ def compare_spots(
         cand_scan_pos = scan_pos_arr[cand_scan_idx.clamp(0, scan_pos_arr.numel() - 1)]
 
         diff = (s_proj.unsqueeze(-1) - cand_scan_pos).abs()
-        scan_ok = diff < scan_pos_tol_um
-        if friedel_symmetric_scan_filter:
-            # Friedel pair: matching spot may appear at +scan or -scan offset.
-            diff_friedel = (s_proj.unsqueeze(-1) + cand_scan_pos).abs()
-            scan_ok = scan_ok | (diff_friedel < scan_pos_tol_um)
+        scan_weights: torch.Tensor | None = None
+        if soft_beam_weight_fn is not None:
+            scan_weights = soft_beam_weight_fn(diff).to(dtype=dtype)
+            if friedel_symmetric_scan_filter:
+                diff_f = (s_proj.unsqueeze(-1) + cand_scan_pos).abs()
+                scan_weights = torch.maximum(
+                    scan_weights,
+                    soft_beam_weight_fn(diff_f).to(dtype=dtype),
+                )
+            scan_ok = scan_weights > 0
+        else:
+            scan_ok = diff < scan_pos_tol_um
+            if friedel_symmetric_scan_filter:
+                # Friedel pair: matching spot may appear at +scan or -scan offset.
+                diff_friedel = (s_proj.unsqueeze(-1) + cand_scan_pos).abs()
+                scan_ok = scan_ok | (diff_friedel < scan_pos_tol_um)
         ok = ok & scan_ok                                                       # (N, T, M)
+    else:
+        scan_weights = None
 
     # 5. Tie-break on smallest |Δomega|
     diff_ome = (omega.unsqueeze(-1) - cand_ome).abs()
@@ -396,6 +560,23 @@ def compare_spots(
     n_t_frac = valid_for_frac.sum(dim=-1).to(torch.int64).clamp_min(1)
     frac = n_matches_frac.to(dtype) / n_t_frac.to(dtype)
 
+    # Soft-attribution weighted counts (only when soft_beam_weight_fn given AND
+    # we're in scan-aware mode that populated scan_weights). For every theor
+    # spot with a match, gather the weight at the best (Δω-minimizing)
+    # candidate and sum across the T axis.
+    if scan_weights is not None:
+        best_weight = scan_weights.gather(-1, best_idx.unsqueeze(-1)).squeeze(-1)  # (N, T)
+        best_weight = torch.where(has_match, best_weight, torch.zeros_like(best_weight))
+        weighted_n_matches = (best_weight * has_match.to(dtype)).sum(dim=-1)
+        weighted_n_matches_frac = (
+            best_weight * matched_for_frac.to(dtype)
+        ).sum(dim=-1)
+        weighted_frac_matches = weighted_n_matches_frac / n_t_frac.to(dtype)
+    else:
+        weighted_n_matches = None
+        weighted_n_matches_frac = None
+        weighted_frac_matches = None
+
     # avg_ia: per-tuple internal-angle average between matched theor/obs g-vectors.
     # Mirrors `CalcIA` from FF_HEDM/src/IndexerOMP.c:1654.
     if distance is not None and pos is not None:
@@ -420,6 +601,9 @@ def compare_spots(
         matched_obs_row=matched_row,
         delta_omega=delta_ome,
         matched=has_match,
+        weighted_n_matches=weighted_n_matches,
+        weighted_n_matches_frac=weighted_n_matches_frac,
+        weighted_frac_matches=weighted_frac_matches,
     )
 
 
@@ -449,6 +633,7 @@ def _compare_spots_jagged(
     scan_pos_tol_um: float = 0.0,
     friedel_symmetric_scan_filter: bool = False,
     obs_scan_nr_int64: torch.Tensor | None = None,
+    soft_beam_weight_fn: Optional[Callable[[torch.Tensor], torch.Tensor]] = None,
 ) -> MatchResult:
     """Memory-bounded variant of `compare_spots`: chunks N axis into
     `chunk_size` slabs and concatenates per-slab MatchResults.
@@ -481,8 +666,16 @@ def _compare_spots_jagged(
                 scan_pos_tol_um=scan_pos_tol_um,
                 friedel_symmetric_scan_filter=friedel_symmetric_scan_filter,
                 obs_scan_nr_int64=obs_scan_nr_int64,
+                soft_beam_weight_fn=soft_beam_weight_fn,
             )
         )
+
+    def _cat_opt(field: str):
+        vals = [getattr(c, field) for c in chunks]
+        if any(v is None for v in vals):
+            return None
+        return torch.cat(vals, dim=0)
+
     return MatchResult(
         n_matches=torch.cat([c.n_matches for c in chunks], dim=0),
         n_matches_frac=torch.cat([c.n_matches_frac for c in chunks], dim=0),
@@ -493,6 +686,9 @@ def _compare_spots_jagged(
         matched_obs_row=torch.cat([c.matched_obs_row for c in chunks], dim=0),
         delta_omega=torch.cat([c.delta_omega for c in chunks], dim=0),
         matched=torch.cat([c.matched for c in chunks], dim=0),
+        weighted_n_matches=_cat_opt("weighted_n_matches"),
+        weighted_n_matches_frac=_cat_opt("weighted_n_matches_frac"),
+        weighted_frac_matches=_cat_opt("weighted_frac_matches"),
     )
 
 
@@ -586,4 +782,819 @@ def _compute_avg_ia(
     masked = torch.where(has_match, ia_abs, torch.zeros_like(ia_abs))
     n_match = has_match.sum(dim=-1).to(dtype).clamp_min(1.0)
     return masked.sum(dim=-1) / n_match
+
+
+# ---------------------------------------------------------------------------
+# M-iterating compare path (CPU-fast)
+# ---------------------------------------------------------------------------
+
+
+def _compare_spots_m_iter(
+    theor: torch.Tensor,
+    valid: torch.Tensor,
+    obs: torch.Tensor,
+    bin_data: torch.Tensor,
+    bin_ndata: torch.Tensor,
+    *,
+    ref_rad: torch.Tensor,
+    margin_rad: float,
+    margin_radial: float,
+    eta_margins: torch.Tensor,
+    ome_margins: torch.Tensor,
+    eta_bin_size: float,
+    ome_bin_size: float,
+    n_eta_bins: int,
+    n_ome_bins: int,
+    rings_to_reject: torch.Tensor,
+    distance: float | None,
+    pos: torch.Tensor | None,
+    max_n_cap: int | None = None,
+    scan_positions: torch.Tensor | None = None,
+    voxel_xy: torch.Tensor | None = None,
+    scan_pos_tol_um: float = 0.0,
+    friedel_symmetric_scan_filter: bool = False,
+    obs_scan_nr_int64: torch.Tensor | None = None,
+    soft_beam_weight_fn: Optional[Callable[[torch.Tensor], torch.Tensor]] = None,
+) -> MatchResult:
+    """M-iterating compare path: same numerics as ``compare_spots`` dense path,
+    but loops over the bin-occupancy axis ``m`` one slice at a time.
+
+    Why this matters on CPU at PF scale:
+
+    The dense path allocates a ``(N, T, M)`` bool stack where ``M`` is the
+    global max bin occupancy. On Wenxi-class data, ``M = 177`` but the
+    median bin holds 0.2 spots and the 99th-percentile holds 1 — so the
+    dense gather wastes ~99% of its budget processing empty cells.
+
+    This path:
+      1. Computes ``n_per`` and ``data_offset`` once on the (N, T) grid.
+      2. Computes a per-call ``actual_max_n = n_per.max()`` (opt C — uses
+         the per-voxel maximum, not the global cap).
+      3. Iterates ``m`` from 0 to ``actual_max_n``: each iteration builds
+         only (N, T) tensors, runs the margin checks, and updates a
+         running ``best_delta_ome``/``best_matched_id`` per (N, T) cell.
+
+    Memory per iter: ``O(N·T)`` instead of ``O(N·T·M)`` — for Wenxi that's
+    ~14 MB vs ~4.8 GB. Total ops are the same as dense, but each iter
+    fits in cache and the allocator never sees a (N, T, M) blob.
+
+    See ``compare_spots`` for the full inputs/outputs contract; this
+    function returns an equivalent ``MatchResult``.
+    """
+    device = theor.device
+    dtype = theor.dtype
+    N, T, _ = theor.shape
+
+    # ── 0. Per-theor-spot ring + post-displacement eta + omega (same as dense)
+    ring_nr = theor[..., 9].to(torch.int64).clamp(min=0)         # (N, T)
+    eta_post = theor[..., 12]                                     # (N, T)
+    omega = theor[..., 6]                                         # (N, T)
+    rad_diff = theor[..., 13]                                     # (N, T)
+
+    # ── 1. Bin lookup (single pass, same for every m)
+    bin_pos = get_bin_indices(
+        ring_nr, eta_post, omega, eta_bin_size, ome_bin_size, n_eta_bins, n_ome_bins,
+    )                                                             # (N, T) int64
+    bin_pos = bin_pos.clamp(0, max(0, (bin_ndata.numel() // 2) - 1))
+    n_per, data_offset = lookup_bin_counts(bin_pos, bin_ndata)    # (N, T) each
+
+    # ── 2. Per-voxel max_n (opt C). One small sync, amortised across the
+    # whole compare call.
+    actual_max_n_t = n_per.max() if n_per.numel() else torch.zeros((), dtype=n_per.dtype, device=device)
+    actual_max_n = int(actual_max_n_t.item())
+    if max_n_cap is not None:
+        actual_max_n = min(actual_max_n, int(max_n_cap))
+
+    soft_zeros = (
+        torch.zeros(N, dtype=dtype, device=device)
+        if soft_beam_weight_fn is not None else None
+    )
+
+    if actual_max_n == 0:
+        return MatchResult(
+            n_matches=torch.zeros(N, dtype=torch.int64, device=device),
+            n_matches_frac=torch.zeros(N, dtype=torch.int64, device=device),
+            n_t_frac=valid.sum(dim=-1).to(torch.int64).clamp_min(1),
+            frac_matches=torch.zeros(N, dtype=dtype, device=device),
+            avg_ia=torch.zeros(N, dtype=dtype, device=device),
+            matched_obs_id=torch.full((N, T), -1, dtype=torch.int64, device=device),
+            matched_obs_row=torch.full((N, T), -1, dtype=torch.int64, device=device),
+            delta_omega=torch.full((N, T), float("inf"), dtype=dtype, device=device),
+            matched=torch.zeros((N, T), dtype=torch.bool, device=device),
+            weighted_n_matches=soft_zeros,
+            weighted_n_matches_frac=soft_zeros.clone() if soft_zeros is not None else None,
+            weighted_frac_matches=soft_zeros.clone() if soft_zeros is not None else None,
+        )
+
+    # ── 3. Pre-compute (N, T) constants used in every m iteration
+    eta_margin_per = eta_margins[ring_nr.clamp(0, eta_margins.numel() - 1)]      # (N, T)
+    if rings_to_reject.numel() > 0:
+        skip_radial = (
+            ring_nr.unsqueeze(-1) == rings_to_reject.view(1, 1, -1)
+        ).any(dim=-1)                                                            # (N, T)
+    else:
+        skip_radial = torch.zeros((N, T), dtype=torch.bool, device=device)
+
+    # Scan-pos filter prep (PF mode). Computed once if active.
+    scan_active = (
+        scan_pos_tol_um > 0
+        and scan_positions is not None
+        and voxel_xy is not None
+    )
+    if scan_active:
+        if obs.shape[-1] < 10:
+            raise ValueError(
+                "scan-aware mode requires obs with 10 columns (Spots.bin PF layout)."
+            )
+        v_x = voxel_xy[..., 0].view(N, 1).to(dtype=dtype, device=device)
+        v_y = voxel_xy[..., 1].view(N, 1).to(dtype=dtype, device=device)
+        omega_rad = omega * DEG2RAD
+        s_proj = v_x * torch.sin(omega_rad) + v_y * torch.cos(omega_rad)         # (N, T)
+        if obs_scan_nr_int64 is not None:
+            obs_scan_idx_full = obs_scan_nr_int64
+        else:
+            obs_scan_idx_full = obs[..., 9].to(torch.int64)
+        scan_pos_arr = scan_positions.to(dtype=dtype, device=device)
+    else:
+        s_proj = None
+        obs_scan_idx_full = None
+        scan_pos_arr = None
+
+    # Obs columns (1-D over n_obs). Match dense-path semantics exactly:
+    #   col 2 = omega
+    #   col 3 = ringrad (used by radial_pass vs ref_rad)
+    #   col 4 = spot_id
+    #   col 6 = eta
+    #   col 8 = rad_diff (used by rad_ok vs theor.col13 — note: confusingly
+    #           also called "obs_rad" in the dense path; semantically it's
+    #           the radial-displacement, NOT the ring radius).
+    obs_ome_col = obs[..., 2]
+    obs_ringrad_col = obs[..., 3]
+    obs_id_col = obs[..., 4].to(torch.int64)
+    obs_eta_col = obs[..., 6]
+    obs_rad_col = obs[..., 8]
+
+    # ── 4. Running state per (N, T) cell
+    best_delta_ome = torch.full((N, T), float("inf"), dtype=dtype, device=device)
+    best_matched_id = torch.full((N, T), -1, dtype=torch.int64, device=device)
+    best_matched_row = torch.full((N, T), -1, dtype=torch.int64, device=device)
+    has_match = torch.zeros((N, T), dtype=torch.bool, device=device)
+    best_weight: torch.Tensor | None = None
+    if soft_beam_weight_fn is not None:
+        best_weight = torch.zeros((N, T), dtype=dtype, device=device)
+
+    # ── 5. M-iter loop
+    valid_b = valid                                                              # alias for clarity
+    n_obs = obs.shape[0]
+    bin_data_max = bin_data.numel() - 1
+    scan_pos_max_idx = (scan_pos_arr.numel() - 1) if scan_pos_arr is not None else 0
+
+    for m in range(actual_max_n):
+        in_bin = (m < n_per) & valid_b                                           # (N, T)
+        if not bool(in_bin.any()):
+            continue
+
+        rows_m = (data_offset + m).clamp(0, bin_data_max)
+        spot_rows_m = bin_data[rows_m].to(torch.int64)                           # (N, T)
+        # Safe clamp (n_obs - 1) — masked off by in_bin anyway.
+        spot_rows_safe = spot_rows_m.clamp(0, max(0, n_obs - 1))
+
+        cand_ome = obs_ome_col[spot_rows_safe]
+        cand_eta = obs_eta_col[spot_rows_safe]
+        cand_ringrad = obs_ringrad_col[spot_rows_safe]
+        cand_rad = obs_rad_col[spot_rows_safe]
+        cand_id = obs_id_col[spot_rows_safe]
+
+        # rad_ok compares theor's rad_diff (col 13) to obs's rad_diff (col 8).
+        # radial_pass compares per-tuple ref_rad to obs's ringrad (col 3).
+        # Distinct quantities — must NOT collapse to one cand_* tensor.
+        rad_ok = (rad_diff - cand_rad).abs() < margin_radial
+        eta_ok = (eta_post - cand_eta).abs() < eta_margin_per
+        radial_pass = (ref_rad.view(N, 1) - cand_ringrad).abs() < margin_rad
+        radial_ok = skip_radial | radial_pass
+
+        ok = in_bin & rad_ok & radial_ok & eta_ok                                # (N, T)
+
+        weight_m = None
+        if scan_active:
+            cand_scan_idx = obs_scan_idx_full[spot_rows_safe]
+            cand_scan_pos = scan_pos_arr[cand_scan_idx.clamp(0, scan_pos_max_idx)]
+            diff = (s_proj - cand_scan_pos).abs()
+            if soft_beam_weight_fn is not None:
+                weight_m = soft_beam_weight_fn(diff).to(dtype=dtype)
+                if friedel_symmetric_scan_filter:
+                    diff_f = (s_proj + cand_scan_pos).abs()
+                    weight_m = torch.maximum(weight_m, soft_beam_weight_fn(diff_f).to(dtype=dtype))
+                scan_ok = weight_m > 0
+            else:
+                scan_ok = diff < scan_pos_tol_um
+                if friedel_symmetric_scan_filter:
+                    diff_f = (s_proj + cand_scan_pos).abs()
+                    scan_ok = scan_ok | (diff_f < scan_pos_tol_um)
+            ok = ok & scan_ok
+
+        if not bool(ok.any()):
+            continue
+
+        # |Δω| for tie-break — only meaningful where ok.
+        diff_ome = (omega - cand_ome).abs()
+        better = ok & (diff_ome < best_delta_ome)
+        if better.any():
+            best_delta_ome = torch.where(better, diff_ome, best_delta_ome)
+            best_matched_id = torch.where(better, cand_id, best_matched_id)
+            best_matched_row = torch.where(better, spot_rows_safe, best_matched_row)
+            if best_weight is not None and weight_m is not None:
+                best_weight = torch.where(better, weight_m, best_weight)
+        has_match = has_match | ok
+
+    # ── 6. Reductions (same as dense path)
+    matched_for_frac = has_match & ~skip_radial
+    n_matches = has_match.sum(dim=-1).to(torch.int64)
+    n_matches_frac = matched_for_frac.sum(dim=-1).to(torch.int64)
+    valid_for_frac = valid & ~skip_radial
+    n_t_frac = valid_for_frac.sum(dim=-1).to(torch.int64).clamp_min(1)
+    frac = n_matches_frac.to(dtype) / n_t_frac.to(dtype)
+
+    if best_weight is not None:
+        weighted_n_matches = (best_weight * has_match.to(dtype)).sum(dim=-1)
+        weighted_n_matches_frac = (best_weight * matched_for_frac.to(dtype)).sum(dim=-1)
+        weighted_frac_matches = weighted_n_matches_frac / n_t_frac.to(dtype)
+    else:
+        weighted_n_matches = None
+        weighted_n_matches_frac = None
+        weighted_frac_matches = None
+
+    if distance is not None and pos is not None:
+        avg_ia = _compute_avg_ia(
+            theor=theor, obs=obs,
+            matched_obs_row=best_matched_row,
+            has_match=has_match,
+            distance=distance, pos=pos,
+        )
+    else:
+        avg_ia = torch.zeros(N, dtype=dtype, device=device)
+
+    # Sentinel for unmatched (matches dense path final cleanup).
+    best_matched_id = torch.where(has_match, best_matched_id, torch.full_like(best_matched_id, -1))
+    best_matched_row = torch.where(has_match, best_matched_row, torch.full_like(best_matched_row, -1))
+    best_delta_ome = torch.where(has_match, best_delta_ome, torch.full_like(best_delta_ome, float("inf")))
+
+    return MatchResult(
+        n_matches=n_matches,
+        n_matches_frac=n_matches_frac,
+        n_t_frac=n_t_frac,
+        frac_matches=frac,
+        avg_ia=avg_ia,
+        matched_obs_id=best_matched_id,
+        matched_obs_row=best_matched_row,
+        delta_omega=best_delta_ome,
+        matched=has_match,
+        weighted_n_matches=weighted_n_matches,
+        weighted_n_matches_frac=weighted_n_matches_frac,
+        weighted_frac_matches=weighted_frac_matches,
+    )
+
+
+# ---------------------------------------------------------------------------
+# Numba CPU-fast path
+# ---------------------------------------------------------------------------
+#
+# Why a separate path: the dense torch implementation allocates an
+# ``(N, T, M)`` bool stack and does bulk ops over it. At PF scale (Wenxi:
+# N≈54000 per seed, T≈500, M_global=177) this is 4.8 billion cells per
+# compare call, even though ~99% of (N, T) cells point to empty bins
+# (median bin occupancy = 0.2). torch can't naturally skip empty cells —
+# it has to allocate and mask. Numba CAN: a per-cell loop tests
+# ``n_per[n, t]`` and continues if it's 0. That's the same algorithm C
+# IndexerScanningOMP uses to achieve ~0.7s/voxel single-thread.
+#
+# GPU path stays torch (already fast on GPU — brute-force parallelism
+# absorbs the 99% empty cells trivially). Dispatch is by
+# ``theor.device.type == 'cuda'`` in ``compare_spots``.
+
+
+# ---------------------------------------------------------------------------
+# Per-IndexerContext numpy caches
+# ---------------------------------------------------------------------------
+#
+# Per-call ascontiguousarray on obs columns used to cost ~10-15 ms/call on
+# Wenxi-class data. The obs tensor doesn't change for a given Indexer run
+# — cache the numpy column views.
+#
+# Subtle correctness issue: ``data_ptr()`` is the address of the tensor's
+# storage and gets REUSED by torch's allocator after a tensor is GC'd.
+# Keying purely on data_ptr causes false-positive cache hits across
+# unrelated calls (pytest exposed this — successive test cases got the
+# stale obs's numpy views). The fix: also hold a strong reference to the
+# tensor so the storage can't be reused while the cache entry is live.
+# Cache is bounded (max 4 entries) to avoid leak.
+
+_OBS_NP_CACHE: dict = {}
+_BIN_NP_CACHE: dict = {}
+_CACHE_MAX = 4
+
+
+def _cached_obs_numpy(obs: "torch.Tensor") -> dict:
+    """Cache obs-column numpy views; held strong-ref to obs prevents
+    address reuse + false-positive cache hits."""
+    key = (id(obs), obs.data_ptr(), tuple(obs.shape))
+    cached = _OBS_NP_CACHE.get(key)
+    if cached is not None:
+        # _ref is held to keep obs alive while the cache entry is in use.
+        return cached["views"]
+    obs_np = obs.detach().cpu().numpy()
+    views = {
+        "y":       np.ascontiguousarray(obs_np[..., 0].astype(np.float64, copy=False)),
+        "z":       np.ascontiguousarray(obs_np[..., 1].astype(np.float64, copy=False)),
+        "ome":     np.ascontiguousarray(obs_np[..., 2].astype(np.float64, copy=False)),
+        "ringrad": np.ascontiguousarray(obs_np[..., 3].astype(np.float64, copy=False)),
+        "eta":     np.ascontiguousarray(obs_np[..., 6].astype(np.float64, copy=False)),
+        "rad":     np.ascontiguousarray(obs_np[..., 8].astype(np.float64, copy=False)),
+        "id":      np.ascontiguousarray(obs_np[..., 4].astype(np.int64, copy=False)),
+    }
+    if len(_OBS_NP_CACHE) >= _CACHE_MAX:
+        _OBS_NP_CACHE.pop(next(iter(_OBS_NP_CACHE)))
+    _OBS_NP_CACHE[key] = {"views": views, "_ref": obs}  # strong ref keeps storage alive
+    return views
+
+
+def _cached_int32_view(t: "torch.Tensor") -> "np.ndarray":
+    """Cache a contiguous int32 numpy view; holds strong ref to t."""
+    key = (id(t), t.data_ptr(), tuple(t.shape), t.dtype)
+    cached = _BIN_NP_CACHE.get(key)
+    if cached is not None:
+        return cached["arr"]
+    arr = np.ascontiguousarray(t.detach().cpu().numpy().astype(np.int32, copy=False))
+    if len(_BIN_NP_CACHE) >= _CACHE_MAX:
+        _BIN_NP_CACHE.pop(next(iter(_BIN_NP_CACHE)))
+    _BIN_NP_CACHE[key] = {"arr": arr, "_ref": t}
+    return arr
+
+
+if _NUMBA_AVAILABLE:
+
+    @njit(parallel=True, cache=True, fastmath=False)
+    def _compute_avg_ia_numba_inner(
+        theor_y,                  # (N, T) float64
+        theor_z,                  # (N, T) float64
+        theor_ome,                # (N, T) float64
+        matched_obs_row,          # (N, T) int64
+        has_match,                # (N, T) bool
+        obs_y,                    # (n_obs,) float64
+        obs_z,                    # (n_obs,) float64
+        obs_ome,                  # (n_obs,) float64
+        pos,                      # (N, 3) float64
+        distance,                 # scalar
+    ):
+        """Per-(n, t) cell loop computing mean internal-angle (degrees).
+
+        Mirrors the torch ``_compute_avg_ia`` exactly: for each matched
+        (n, t) cell, builds the theor and obs g-vectors (each is a 3-vector
+        derived from yl/zl/omega + grain position), takes the cosine of
+        their angle, accumulates into a per-row sum + count, returns mean
+        per row. Unmatched cells contribute 0/0 (becomes 0 after the
+        clamp_min(1) on the denominator).
+        """
+        DEG2RAD_ = math.pi / 180.0
+        RAD2DEG_ = 180.0 / math.pi
+        N, T = theor_y.shape
+        out = np.zeros(N, dtype=np.float64)
+
+        for n in prange(N):
+            cx = pos[n, 0]
+            cy = pos[n, 1]
+            cz = pos[n, 2]
+            sum_ia = 0.0
+            n_match = 0
+            for t in range(T):
+                if not has_match[n, t]:
+                    continue
+                row = matched_obs_row[n, t]
+                if row < 0:
+                    continue
+
+                # ── gv1 from theor (xi=distance, yi=theor_y, zi=theor_z, ω=theor_ome[n, t])
+                om = theor_ome[n, t] * DEG2RAD_
+                co = math.cos(om)
+                so = math.sin(om)
+                # RotateAroundZ(c, omega): vr = (co*cx - so*cy, so*cx + co*cy, cz)
+                vr_x = co * cx - so * cy
+                vr_y = so * cx + co * cy
+                # Subtract from spot coords
+                xi = distance - vr_x
+                yi = theor_y[n, t] - vr_y
+                zi = theor_z[n, t] - cz
+                Linv = 1.0 / math.sqrt(xi * xi + yi * yi + zi * zi + 1e-60)
+                xn = xi * Linv
+                yn = yi * Linv
+                zn = zi * Linv
+                # Pre-rotation g-vec from (xn, yn, zn)
+                g1r = -1.0 + xn
+                g2r = yn
+                # Rotate by -omega (co, -so)
+                g1_theor = g1r * co + g2r * so
+                g2_theor = -g1r * so + g2r * co
+                g3_theor = zn
+
+                # ── gv2 from obs (same formula, with obs values)
+                om_o = obs_ome[row] * DEG2RAD_
+                co_o = math.cos(om_o)
+                so_o = math.sin(om_o)
+                vr_xo = co_o * cx - so_o * cy
+                vr_yo = so_o * cx + co_o * cy
+                xi2 = distance - vr_xo
+                yi2 = obs_y[row] - vr_yo
+                zi2 = obs_z[row] - cz
+                Linv2 = 1.0 / math.sqrt(xi2 * xi2 + yi2 * yi2 + zi2 * zi2 + 1e-60)
+                xn2 = xi2 * Linv2
+                yn2 = yi2 * Linv2
+                zn2 = zi2 * Linv2
+                g1r2 = -1.0 + xn2
+                g2r2 = yn2
+                g1_obs = g1r2 * co_o + g2r2 * so_o
+                g2_obs = -g1r2 * so_o + g2r2 * co_o
+                g3_obs = zn2
+
+                # cos(IA) = dot(g_theor, g_obs) / (|g_theor| * |g_obs|)
+                n1 = math.sqrt(g1_theor * g1_theor + g2_theor * g2_theor + g3_theor * g3_theor)
+                n2 = math.sqrt(g1_obs * g1_obs + g2_obs * g2_obs + g3_obs * g3_obs)
+                if n1 < 1e-30 or n2 < 1e-30:
+                    continue
+                cos_ia = (g1_theor * g1_obs + g2_theor * g2_obs + g3_theor * g3_obs) / (n1 * n2)
+                if cos_ia > 1.0:
+                    cos_ia = 1.0
+                elif cos_ia < -1.0:
+                    cos_ia = -1.0
+                ia = math.acos(cos_ia) * RAD2DEG_
+                sum_ia += abs(ia)
+                n_match += 1
+
+            if n_match > 0:
+                out[n] = sum_ia / n_match
+        return out
+
+    @njit(parallel=True, cache=True, fastmath=False)
+    def _compare_spots_numba_inner(
+        # Theor (N, T) views
+        ring_nr,                  # (N, T) int64
+        eta_post,                 # (N, T) float64
+        omega,                    # (N, T) float64
+        rad_diff,                 # (N, T) float64
+        valid,                    # (N, T) bool
+        # Bin layout (computed INSIDE this kernel — no torch setup needed)
+        bin_ndata,                # (2*n_bins,) int32 — interleaved (count, offset)
+        bin_data,                 # (n_bin_data,) int32
+        eta_bin_size,             # scalar float64
+        ome_bin_size,             # scalar float64
+        n_eta_bins,               # scalar int64
+        n_ome_bins,               # scalar int64
+        # Obs columns (cached at IndexerContext level — no per-call marshaling)
+        obs_ome,                  # (n_obs,) float64
+        obs_eta,                  # (n_obs,) float64
+        obs_ringrad,              # (n_obs,) float64
+        obs_rad,                  # (n_obs,) float64
+        obs_id,                   # (n_obs,) int64
+        # Margins (per-cell eta margin pre-resolved by ring_nr LUT, scalar otherwise)
+        eta_margins_lut,          # (max_n_rings,) float64
+        eta_margins_max_idx,      # scalar int64 — for clamping
+        margin_radial,            # scalar
+        margin_rad,               # scalar
+        rings_to_reject,          # (n_reject,) int64 — empty when none
+        ref_rad,                  # (N,) float64
+        # Scan-aware (PF). When scan_active=False the rest of these are unused.
+        scan_active,              # bool
+        voxel_x,                  # (N,) float64; ignored if not scan_active
+        voxel_y,                  # (N,) float64; ignored if not scan_active
+        obs_scan_idx,             # (n_obs,) int64; ignored if not scan_active
+        scan_pos_arr,             # (n_scans,) float64; ignored if not scan_active
+        scan_pos_tol,             # scalar
+        friedel_sym,              # bool
+    ):
+        """Fused per-(n, t) cell loop: bin lookup + tolerance gates + tie-break.
+
+        Computes bin_pos, n_per, data_offset INSIDE the kernel (no per-call
+        torch setup). Mirrors ``CalcCompareSpots`` from IndexerOMP.c:1700-1830.
+        """
+        DEG2RAD_ = math.pi / 180.0
+        N, T = omega.shape
+        best_delta_ome = np.full((N, T), np.inf, dtype=np.float64)
+        best_matched_id = np.full((N, T), -1, dtype=np.int64)
+        best_matched_row = np.full((N, T), -1, dtype=np.int64)
+        has_match = np.zeros((N, T), dtype=np.bool_)
+
+        n_bin = bin_data.shape[0]
+        n_obs = obs_ome.shape[0]
+        n_scans_pos = scan_pos_arr.shape[0]
+        n_bins_total = bin_ndata.shape[0] // 2
+        bin_max_idx = n_bins_total - 1
+        n_reject = rings_to_reject.shape[0]
+        ome_bin_per_eta = n_ome_bins
+        bins_per_ring = n_eta_bins * n_ome_bins
+
+        for n in prange(N):
+            ref_rad_n = ref_rad[n]
+            if scan_active:
+                v_x = voxel_x[n]
+                v_y = voxel_y[n]
+            else:
+                v_x = 0.0
+                v_y = 0.0
+            for t in range(T):
+                if not valid[n, t]:
+                    continue
+                # Compute bin index inline (was: get_bin_indices in torch).
+                ring_nt = ring_nr[n, t]
+                if ring_nt < 0:
+                    continue
+                eta_val = eta_post[n, t]
+                omega_val = omega[n, t]
+                i_eta = int((180.0 + eta_val) / eta_bin_size)
+                i_ome = int((180.0 + omega_val) / ome_bin_size)
+                bin_pos = (ring_nt - 1) * bins_per_ring + i_eta * ome_bin_per_eta + i_ome
+                if bin_pos < 0:
+                    bin_pos = 0
+                elif bin_pos > bin_max_idx:
+                    bin_pos = bin_max_idx
+                # Bin lookup (was: lookup_bin_counts in torch).
+                n_p = np.int64(bin_ndata[bin_pos * 2])
+                if n_p == 0:
+                    # 99% of cells on PF data — primary early-exit.
+                    continue
+                offset = np.int64(bin_ndata[bin_pos * 2 + 1])
+
+                rad_diff_nt = rad_diff[n, t]
+                eta_post_nt = eta_val
+                omega_nt = omega_val
+                # Per-ring eta margin via direct LUT lookup.
+                ring_idx_clamped = ring_nt
+                if ring_idx_clamped < 0:
+                    ring_idx_clamped = 0
+                elif ring_idx_clamped > eta_margins_max_idx:
+                    ring_idx_clamped = eta_margins_max_idx
+                eta_marg_nt = eta_margins_lut[ring_idx_clamped]
+                # skip_radial (was: ring_nr == rings_to_reject any-equal).
+                skip_rad_nt = False
+                for kk in range(n_reject):
+                    if ring_nt == rings_to_reject[kk]:
+                        skip_rad_nt = True
+                        break
+                if scan_active:
+                    s_proj_nt = v_x * math.sin(omega_val * DEG2RAD_) + v_y * math.cos(omega_val * DEG2RAD_)
+                else:
+                    s_proj_nt = 0.0
+
+                local_best_dome = np.inf
+                local_best_id = np.int64(-1)
+                local_best_row = np.int64(-1)
+                local_has_match = False
+
+                for m in range(n_p):
+                    row_idx = offset + m
+                    if row_idx < 0 or row_idx >= n_bin:
+                        continue
+                    row = np.int64(bin_data[row_idx])
+                    if row < 0 or row >= n_obs:
+                        continue
+
+                    # Tolerance gates (C IndexerOMP.c order).
+                    if abs(rad_diff_nt - obs_rad[row]) >= margin_radial:
+                        continue
+                    if abs(eta_post_nt - obs_eta[row]) >= eta_marg_nt:
+                        continue
+                    if not skip_rad_nt:
+                        if abs(ref_rad_n - obs_ringrad[row]) >= margin_rad:
+                            continue
+
+                    # Scan-position filter (PF mode only).
+                    if scan_active:
+                        scan_idx = obs_scan_idx[row]
+                        if scan_idx < 0:
+                            scan_idx = 0
+                        elif scan_idx >= n_scans_pos:
+                            scan_idx = n_scans_pos - 1
+                        scan_pos = scan_pos_arr[scan_idx]
+                        diff = abs(s_proj_nt - scan_pos)
+                        if diff >= scan_pos_tol:
+                            if friedel_sym:
+                                diff_f = abs(s_proj_nt + scan_pos)
+                                if diff_f >= scan_pos_tol:
+                                    continue
+                            else:
+                                continue
+
+                    # Matched. Tie-break by min |Δω|.
+                    d_ome = abs(omega_nt - obs_ome[row])
+                    if d_ome < local_best_dome:
+                        local_best_dome = d_ome
+                        local_best_id = obs_id[row]
+                        local_best_row = row
+                    local_has_match = True
+
+                if local_has_match:
+                    best_delta_ome[n, t] = local_best_dome
+                    best_matched_id[n, t] = local_best_id
+                    best_matched_row[n, t] = local_best_row
+                    has_match[n, t] = True
+
+        return best_delta_ome, best_matched_id, best_matched_row, has_match
+
+else:  # pragma: no cover — numba absent
+    def _compare_spots_numba_inner(*args, **kwargs):  # type: ignore
+        raise ImportError(
+            "numba is required for the CPU fast path. Install with "
+            "`pip install numba` or use compare_spots() with strategy='dense'."
+        )
+
+
+def _compare_spots_numba(
+    theor: torch.Tensor,
+    valid: torch.Tensor,
+    obs: torch.Tensor,
+    bin_data: torch.Tensor,
+    bin_ndata: torch.Tensor,
+    *,
+    ref_rad: torch.Tensor,
+    margin_rad: float,
+    margin_radial: float,
+    eta_margins: torch.Tensor,
+    ome_margins: torch.Tensor,
+    eta_bin_size: float,
+    ome_bin_size: float,
+    n_eta_bins: int,
+    n_ome_bins: int,
+    rings_to_reject: torch.Tensor,
+    distance: float | None,
+    pos: torch.Tensor | None,
+    scan_positions: torch.Tensor | None = None,
+    voxel_xy: torch.Tensor | None = None,
+    scan_pos_tol_um: float = 0.0,
+    friedel_symmetric_scan_filter: bool = False,
+    obs_scan_nr_int64: torch.Tensor | None = None,
+) -> MatchResult:
+    """CPU-fast compare_spots via a numba per-cell loop.
+
+    Falls back to the torch m-iter path if numba is not installed.
+    """
+    if not _NUMBA_AVAILABLE:
+        return _compare_spots_m_iter(
+            theor=theor, valid=valid, obs=obs,
+            bin_data=bin_data, bin_ndata=bin_ndata,
+            ref_rad=ref_rad,
+            margin_rad=margin_rad, margin_radial=margin_radial,
+            eta_margins=eta_margins, ome_margins=ome_margins,
+            eta_bin_size=eta_bin_size, ome_bin_size=ome_bin_size,
+            n_eta_bins=n_eta_bins, n_ome_bins=n_ome_bins,
+            rings_to_reject=rings_to_reject,
+            distance=distance, pos=pos,
+            scan_positions=scan_positions, voxel_xy=voxel_xy,
+            scan_pos_tol_um=scan_pos_tol_um,
+            friedel_symmetric_scan_filter=friedel_symmetric_scan_filter,
+            obs_scan_nr_int64=obs_scan_nr_int64,
+            soft_beam_weight_fn=None,
+        )
+
+    device = theor.device
+    dtype = theor.dtype
+    N, T, _ = theor.shape
+
+    # ── 0. Marshal theor columns + obs columns to numpy ONCE.
+    # Bin lookup (formerly torch get_bin_indices + lookup_bin_counts) is
+    # now computed inline inside the numba kernel — no per-call torch ops.
+    # obs columns are cached at the IndexerContext level via the global
+    # _OBS_NP_CACHE (keyed by torch tensor data_ptr) so subsequent calls
+    # on the same Indexer skip the ascontiguousarray copies entirely.
+    ring_nr_np = np.ascontiguousarray(theor[..., 9].detach().cpu().numpy().astype(np.int64, copy=False))
+    eta_post_np = np.ascontiguousarray(theor[..., 12].detach().cpu().numpy().astype(np.float64, copy=False))
+    omega_np = np.ascontiguousarray(theor[..., 6].detach().cpu().numpy().astype(np.float64, copy=False))
+    rad_diff_np = np.ascontiguousarray(theor[..., 13].detach().cpu().numpy().astype(np.float64, copy=False))
+    valid_np = np.ascontiguousarray(valid.detach().cpu().numpy().astype(np.bool_, copy=False))
+    ref_rad_np = np.ascontiguousarray(ref_rad.detach().cpu().numpy().astype(np.float64, copy=False))
+
+    obs_views = _cached_obs_numpy(obs)
+    obs_ome_np = obs_views["ome"]
+    obs_eta_np = obs_views["eta"]
+    obs_ringrad_np = obs_views["ringrad"]
+    obs_rad_np = obs_views["rad"]
+    obs_id_np = obs_views["id"]
+
+    bin_data_np = _cached_int32_view(bin_data)
+    bin_ndata_np = _cached_int32_view(bin_ndata)
+    eta_margins_np = np.ascontiguousarray(
+        eta_margins.detach().cpu().numpy().astype(np.float64, copy=False)
+    )
+    rings_to_reject_np = np.ascontiguousarray(
+        rings_to_reject.detach().cpu().numpy().astype(np.int64, copy=False)
+    ) if rings_to_reject.numel() > 0 else np.zeros(0, dtype=np.int64)
+
+    # ── 1. Scan-aware prep — pass per-voxel (x, y) only (1-D); kernel
+    # computes s_proj_nt = v_x*sin(ω) + v_y*cos(ω) per cell inline.
+    scan_active = (
+        scan_pos_tol_um > 0
+        and scan_positions is not None
+        and voxel_xy is not None
+    )
+    if scan_active:
+        if obs.shape[-1] < 10:
+            raise ValueError(
+                "scan-aware mode requires obs with 10 columns (Spots.bin PF)."
+            )
+        # voxel_xy is (N, 2). Extract two 1-D arrays.
+        voxel_x_np = np.ascontiguousarray(voxel_xy[..., 0].detach().cpu().numpy().astype(np.float64, copy=False))
+        voxel_y_np = np.ascontiguousarray(voxel_xy[..., 1].detach().cpu().numpy().astype(np.float64, copy=False))
+        # Broadcast (1,) → (N,) if all voxels share the same xy.
+        if voxel_x_np.shape != (N,):
+            voxel_x_np = np.broadcast_to(voxel_x_np.reshape(-1), (N,)).copy()
+            voxel_y_np = np.broadcast_to(voxel_y_np.reshape(-1), (N,)).copy()
+        scan_obs_idx_t = (
+            obs_scan_nr_int64
+            if obs_scan_nr_int64 is not None
+            else obs[..., 9].to(torch.int64)
+        )
+        obs_scan_idx_np = np.ascontiguousarray(
+            scan_obs_idx_t.detach().cpu().numpy().astype(np.int64, copy=False)
+        )
+        scan_pos_arr_np = np.ascontiguousarray(
+            scan_positions.detach().cpu().numpy().astype(np.float64, copy=False)
+        )
+    else:
+        voxel_x_np = np.zeros(N, dtype=np.float64)
+        voxel_y_np = np.zeros(N, dtype=np.float64)
+        obs_scan_idx_np = np.zeros(1, dtype=np.int64)
+        scan_pos_arr_np = np.zeros(1, dtype=np.float64)
+
+    # ── 2. Numba kernel (bin lookup + tolerance gates + tie-break, all inline)
+    best_delta_ome_np, best_matched_id_np, best_matched_row_np, has_match_np = (
+        _compare_spots_numba_inner(
+            ring_nr_np, eta_post_np, omega_np, rad_diff_np, valid_np,
+            bin_ndata_np, bin_data_np,
+            float(eta_bin_size), float(ome_bin_size),
+            int(n_eta_bins), int(n_ome_bins),
+            obs_ome_np, obs_eta_np, obs_ringrad_np, obs_rad_np, obs_id_np,
+            eta_margins_np, int(eta_margins_np.shape[0] - 1),
+            float(margin_radial), float(margin_rad),
+            rings_to_reject_np,
+            ref_rad_np,
+            bool(scan_active),
+            voxel_x_np, voxel_y_np,
+            obs_scan_idx_np, scan_pos_arr_np,
+            float(scan_pos_tol_um),
+            bool(friedel_symmetric_scan_filter),
+        )
+    )
+
+    # ── 3. Back to torch + compute reductions (same as dense path)
+    best_delta_ome = torch.from_numpy(best_delta_ome_np).to(device=device, dtype=dtype)
+    best_matched_id = torch.from_numpy(best_matched_id_np).to(device=device)
+    best_matched_row = torch.from_numpy(best_matched_row_np).to(device=device)
+    has_match = torch.from_numpy(has_match_np).to(device=device)
+
+    # skip_radial reconstructed for downstream reductions (cheap).
+    if rings_to_reject.numel() > 0:
+        ring_nr_t = theor[..., 9].to(torch.int64).clamp(min=0)
+        skip_radial_t = (
+            ring_nr_t.unsqueeze(-1) == rings_to_reject.view(1, 1, -1)
+        ).any(dim=-1)
+    else:
+        skip_radial_t = torch.zeros((N, T), dtype=torch.bool, device=device)
+    matched_for_frac = has_match & ~skip_radial_t
+    n_matches = has_match.sum(dim=-1).to(torch.int64)
+    n_matches_frac = matched_for_frac.sum(dim=-1).to(torch.int64)
+    valid_for_frac = valid & ~skip_radial_t
+    n_t_frac = valid_for_frac.sum(dim=-1).to(torch.int64).clamp_min(1)
+    frac = n_matches_frac.to(dtype) / n_t_frac.to(dtype)
+
+    if distance is not None and pos is not None:
+        # Numba avg_ia: per-(n, t) scalar work. obs_y/obs_z from the cached
+        # views — no per-call ascontiguousarray. theor_* are per-call but
+        # already in numpy via the marshal step above (re-extract here).
+        theor_y_np = np.ascontiguousarray(theor[..., 10].detach().cpu().numpy().astype(np.float64, copy=False))
+        theor_z_np = np.ascontiguousarray(theor[..., 11].detach().cpu().numpy().astype(np.float64, copy=False))
+        theor_ome_np = omega_np  # already extracted above
+        obs_y_np = obs_views["y"]
+        obs_z_np = obs_views["z"]
+        pos_np = np.ascontiguousarray(pos.detach().cpu().numpy().astype(np.float64, copy=False))
+        avg_ia_np = _compute_avg_ia_numba_inner(
+            theor_y_np, theor_z_np, theor_ome_np,
+            best_matched_row_np, has_match_np,
+            obs_y_np, obs_z_np, obs_ome_np,
+            pos_np, float(distance),
+        )
+        avg_ia = torch.from_numpy(avg_ia_np).to(device=device, dtype=dtype)
+    else:
+        avg_ia = torch.zeros(N, dtype=dtype, device=device)
+
+    return MatchResult(
+        n_matches=n_matches,
+        n_matches_frac=n_matches_frac,
+        n_t_frac=n_t_frac,
+        frac_matches=frac,
+        avg_ia=avg_ia,
+        matched_obs_id=best_matched_id,
+        matched_obs_row=best_matched_row,
+        delta_omega=best_delta_ome,
+        matched=has_match,
+        weighted_n_matches=None,
+        weighted_n_matches_frac=None,
+        weighted_frac_matches=None,
+    )
 

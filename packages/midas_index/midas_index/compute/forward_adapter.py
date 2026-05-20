@@ -145,6 +145,16 @@ class IndexerForwardAdapter:
                               Columns documented in dev/implementation_plan.md §1.5.1.
         valid : (N, K*M) torch.bool — True for spots that passed all gating.
         """
+        # CPU fast path: numba kernel implements the full simulate per-cell.
+        # The torch path stays for GPU + multi-detector panel-coverage cases.
+        if R.device.type != "cuda" and not self._has_panel_coverage:
+            try:
+                from .forward_numba import simulate_numba, _NUMBA_AVAILABLE
+                if _NUMBA_AVAILABLE:
+                    return simulate_numba(self, R, pos, lattice=lattice)
+            except ImportError:
+                pass
+
         device = self.device
         dtype = self.dtype
         N = R.shape[0]

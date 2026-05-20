@@ -353,6 +353,29 @@ def generate_ideal_spots_friedel_mixed(
     if candidates.shape[0] == 0:
         return candidates
 
+    # CPU fast path: per-(sp_on_ring, n_pos) scalar inner loop. Was the
+    # dominant remaining torch hot spot after Phase 2 (~3.8 s/call on
+    # Wenxi). The torch fallback below stays for GPU and for compatibility
+    # if numba isn't importable.
+    if device.type != "cuda":
+        try:
+            from .seeds_numba import (
+                generate_ideal_spots_friedel_mixed_numba,
+                _NUMBA_AVAILABLE as _NUMBA_SEEDS_AVAILABLE,
+            )
+            if _NUMBA_SEEDS_AVAILABLE:
+                result = generate_ideal_spots_friedel_mixed_numba(
+                    ys, zs, ttheta_deg, eta_deg, omega_deg, ring_nr,
+                    ring_rad, lsd, rsample, hbeam, step_size_pos,
+                    ome_tol, radial_tol, eta_tol_um,
+                    obs_spots, candidates,
+                    device=device, dtype=dtype,
+                )
+                if result is not None:
+                    return result
+        except ImportError:
+            pass
+
     # FPCandidates table: dict key = obs_spot_id, value = (sp_on_ring, diffPos2)
     fp_unique: list[int] = []
     fp_seen: dict[int, tuple[int, float]] = {}

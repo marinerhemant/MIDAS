@@ -200,8 +200,17 @@ class Pipeline:
             bio.write_spots_bin(out_dir / "Spots.bin", pr.bins.spots.detach().cpu().numpy())
             bio.write_extrainfo_bin(out_dir / "ExtraInfo.bin", pr.bins.extra_info.detach().cpu().numpy())
             if pr.bins.data is not None and pr.bins.ndata is not None:
-                bio.write_data_ndata_bin(
+                # Phase 5: always write int64-pair Data.bin / nData.bin (FF
+                # uses scan_nr=0).
+                import numpy as np
+                data_np = pr.bins.data.detach().cpu().numpy().astype(np.int64)
+                data_pairs = np.zeros((data_np.size, 2), dtype=np.uint64)
+                data_pairs[:, 0] = data_np.astype(np.uint64)
+                ndata_np = pr.bins.ndata.detach().cpu().numpy().reshape(-1, 2).astype(np.uint64)
+                bio.write_data_ndata_bin_scanning(
                     out_dir / "Data.bin", out_dir / "nData.bin",
-                    pr.bins.data.detach().cpu().numpy(),
-                    pr.bins.ndata.detach().cpu().numpy(),
+                    data_pairs, ndata_np,
                 )
+                positions_path = out_dir / "positions.csv"
+                if not positions_path.exists():
+                    positions_path.write_text("0.000000\n")

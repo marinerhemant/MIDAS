@@ -11,7 +11,7 @@ input's device/dtype. Existing NumPy callers see no API change. See
 the `*_torch.py` test files for per-module parity contracts.
 """
 
-__version__ = "0.7.0"
+__version__ = "0.8.0"
 
 # --- Tensor / Voigt ---
 from .tensor import (

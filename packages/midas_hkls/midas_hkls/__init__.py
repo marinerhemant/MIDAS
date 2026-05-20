@@ -29,7 +29,7 @@ from .nf_hkls import emit_nf_hkls_csv, write_nf_hkls_csv
 from .space_group import SpaceGroup, list_space_groups
 from .symops import SymOp
 
-__version__ = "0.4.1"
+__version__ = "0.5.0"
 
 __all__ = [
     "Atom",
@@ -78,6 +78,15 @@ def __getattr__(name: str):  # pragma: no cover - lazy attribute access
     if name in {"wavelength_to_energy_eV", "energy_eV_to_wavelength"}:
         from . import anomalous
         return getattr(anomalous, name)
+    if name in {
+        "linear_absorption_coefficient",
+        "mass_attenuation_coefficient",
+        "element_density",
+        "atomic_mass",
+        "available_elements_absorption",
+    }:
+        from . import absorption
+        return getattr(absorption, name)
     if name == "read_cif":
         from .io.cif import read_cif
         return read_cif

@@ -33,7 +33,7 @@ from __future__ import annotations
 
 from dataclasses import dataclass
 from pathlib import Path
-from typing import Optional
+from typing import Callable, Optional
 
 import numpy as np
 
@@ -95,6 +95,9 @@ def generate_sinograms_tolerance(
     scan_to_spatial: Optional[np.ndarray] = None,
     normalize_sino: bool = False,
     abs_transform: bool = False,
+    # --- P7: soft sino assembly ---
+    soft_weight_fn: Optional[Callable[[np.ndarray, np.ndarray], np.ndarray]] = None,
+    emit_softsum: bool = False,
 ) -> SinogenOutputs:
     """Build sinograms in tolerance mode and write all output files.
 
@@ -114,6 +117,32 @@ def generate_sinograms_tolerance(
     normalize_sino, abs_transform : bool — applied to the *main*
         ``sinos_<nG>_<maxH>_<nS>.bin`` file. The 4 sinos_{raw,norm,abs,
         normabs}_*.bin files are always written regardless.
+
+    soft_weight_fn : callable(ome_diff_deg, eta_diff_deg) -> weight, optional
+        When provided OR ``emit_softsum=True``, build a parallel
+        weighted-sum sino (``sinos_softsum_<nG>_<maxH>_<nS>.bin``) whose
+        cells are ``Σ_s w(s) · IntegratedIntensity(s)`` rather than the
+        ``max(IntegratedIntensity)`` of the standard variants.  This
+        preserves contributions from multiple overlapping spots and is
+        the input to the per-voxel V-map refinement (P4 / P8).
+
+        If ``soft_weight_fn is None`` and ``emit_softsum=True``, weights
+        default to 1.0 (pure sum-pool).  Signature expects vectorised
+        numpy inputs and returns a same-shape array of weights in
+        ``[0, 1]``.
+
+        For typical use, pair this with
+        ``midas_index.compute.soft_attribution.soft_gaussian_fn`` (etc.)
+        — wrap it to convert (omega_diff, eta_diff) to a 1-D distance
+        first, e.g.::
+
+            from midas_index.compute.soft_attribution import soft_gaussian_fn
+            sgn = soft_gaussian_fn(fwhm_um=1.0)        # 1° gaussian
+            fn = lambda od, ed: sgn(np.sqrt(od**2 + ed**2))
+
+    emit_softsum : bool
+        Force-write the softsum file even when no ``soft_weight_fn`` is
+        provided (uniform weights = pure sum-pool).  Default off.
     """
     out_dir = Path(output_dir)
     out_dir.mkdir(parents=True, exist_ok=True)
@@ -151,6 +180,13 @@ def generate_sinograms_tolerance(
     count_ome = np.zeros((n_unique, max_n_hkls), dtype=np.int64)
     ome_arr = np.full((n_unique, max_n_hkls), -10000.0, dtype=np.float64)
 
+    # P7: soft-sum sino accumulator (parallel to the max-pool ``sino`` above).
+    # Cells are Σ_s w(s) · I(s) — preserves multi-spot evidence the max-pool drops.
+    soft_active = (soft_weight_fn is not None) or emit_softsum
+    softsum_sino: Optional[np.ndarray] = (
+        np.zeros(sz_shape, dtype=np.float64) if soft_active else None
+    )
+
     # Pre-extract scanNr / ringNr / intensity / omega / eta for fast loop.
     s_scanNr = all_spots[:, 9].astype(np.int64)
     s_ring = all_spots[:, 5].astype(np.int64)
@@ -183,13 +219,24 @@ def generate_sinograms_tolerance(
         if not mask.any():
             continue
         idxs = np.flatnonzero(mask)
-        for sidx in idxs:
+        # Pre-compute soft weights vectorised over the matching subset.
+        if soft_active:
+            ome_diffs = np.abs(s_omega[idxs] - sd.omega)
+            eta_diffs = np.abs(s_eta[idxs] - sd.eta)
+            if soft_weight_fn is not None:
+                weights_arr = np.asarray(
+                    soft_weight_fn(ome_diffs, eta_diffs), dtype=np.float64
+                )
+            else:
+                weights_arr = np.ones_like(ome_diffs)
+        for j, sidx in enumerate(idxs):
             scan_n = int(s_scanNr[sidx])
             if scan_n < 0 or scan_n >= n_scans:
                 continue
             spatial_col = int(scan_to_spatial[scan_n])
             cur_int = float(s_intensity[sidx])
             cur_ome = float(s_omega[sidx])
+            # Existing max-pool sino (back-compat — unchanged).
             if cur_int > sino[g, h, spatial_col]:
                 sino[g, h, spatial_col] = cur_int
                 spot_id_arr[g, h, spatial_col] = int(s_id[sidx])
@@ -197,6 +244,8 @@ def generate_sinograms_tolerance(
                 spot_meta[g, h, spatial_col, 1] = float(s_theta[sidx] * 2.0)
                 spot_meta[g, h, spatial_col, 2] = float(s_y[sidx])
                 spot_meta[g, h, spatial_col, 3] = float(s_z[sidx])
+            if soft_active:
+                softsum_sino[g, h, spatial_col] += cur_int * float(weights_arr[j])
             if max_int[g, h] < cur_int:
                 max_int[g, h] = cur_int
             if cur_int > 0:
@@ -220,11 +269,17 @@ def generate_sinograms_tolerance(
         new_sino = np.zeros((max_n_hkls, n_scans), dtype=np.float64)
         new_sid = np.full((max_n_hkls, n_scans), -1, dtype=np.int32)
         new_meta = np.full((max_n_hkls, n_scans, 4), np.nan, dtype=np.float64)
+        new_softsum = (
+            np.zeros((max_n_hkls, n_scans), dtype=np.float64)
+            if soft_active else None
+        )
         for k_new, k_old in enumerate(order):
             new_ome[k_new] = ome_arr[g, k_old]
             new_sino[k_new] = sino[g, k_old]
             new_sid[k_new] = spot_id_arr[g, k_old]
             new_meta[k_new] = spot_meta[g, k_old]
+            if soft_active:
+                new_softsum[k_new] = softsum_sino[g, k_old]
         # max_int needs to be re-sorted in lockstep so the normalize pass
         # uses the right per-spot maximum.
         new_maxI = np.zeros(max_n_hkls, dtype=np.float64)
@@ -235,6 +290,8 @@ def generate_sinograms_tolerance(
         sino[g] = new_sino
         spot_id_arr[g] = new_sid
         spot_meta[g] = new_meta
+        if soft_active:
+            softsum_sino[g] = new_softsum
 
     # raw sino BEFORE transforms.
     raw_sino = sino.copy()
@@ -270,6 +327,13 @@ def generate_sinograms_tolerance(
         fn = f"sinos_{label}_{nG}_{nH}_{nS}.bin"
         (out_dir / fn).write_bytes(arr.astype(np.float64, copy=False).tobytes())
         sino_paths[label] = str(out_dir / fn)
+
+    # P7: soft-sum variant — Σ w·I per cell instead of max(I).  Always raw
+    # (no normalize/abs); downstream V-map refinement consumes this directly.
+    if soft_active:
+        fn = f"sinos_softsum_{nG}_{nH}_{nS}.bin"
+        (out_dir / fn).write_bytes(softsum_sino.astype(np.float64, copy=False).tobytes())
+        sino_paths["softsum"] = str(out_dir / fn)
 
     return SinogenOutputs(
         n_grains=nG,

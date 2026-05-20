@@ -88,6 +88,7 @@ def fit_parameters_run(
         n_frames=p.n_frames_per_distance,
         n_y=p.n_pixels_y, n_z=p.n_pixels_z,
         device=torch_device, dtype=torch.float32,
+        packed=False,                       # dense float for the soft path
     )
     model = build_forward_model(
         p, hkl_table.hkls_int.astype(np.float64),

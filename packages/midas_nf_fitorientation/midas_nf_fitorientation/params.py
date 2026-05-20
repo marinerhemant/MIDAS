@@ -114,6 +114,7 @@ class FitParams:
     output_dir: str = ""
     reduced_file_name: str = ""
     mic_file_binary: str = ""
+    mic_file_text: str = ""
     grid_file_name: Optional[str] = None
 
     # tolerances
@@ -127,6 +128,7 @@ class FitParams:
 
     # screen
     min_frac_accept: float = 0.6
+    min_confidence: float = 0.0
 
     # fit
     save_n_solutions: int = 1
@@ -210,6 +212,8 @@ def parse_paramfile(path: str | Path) -> FitParams:
                     p.reduced_file_name = args[0]
                 elif key == "MicFileBinary":
                     p.mic_file_binary = args[0]
+                elif key == "MicFileText":
+                    p.mic_file_text = args[0]
                 elif key == "GridFileName":
                     p.grid_file_name = args[0]
 
@@ -287,6 +291,8 @@ def parse_paramfile(path: str | Path) -> FitParams:
                 # ---------- screen / fit ----------
                 elif key == "MinFracAccept":
                     p.min_frac_accept = float(args[0])
+                elif key == "MinConfidence":
+                    p.min_confidence = float(args[0])
                 elif key == "SaveNSolutions":
                     p.save_n_solutions = int(args[0])
                 elif key == "MinMisoNSaves":

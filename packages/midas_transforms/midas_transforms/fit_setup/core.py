@@ -378,6 +378,21 @@ def fit_setup(
         inputall_extra[keep, 16] = spotsinfo_sorted[keep, 8]   # maskTouched
         inputall_extra[keep, 17] = spotsinfo_sorted[keep, 9]   # FitRMSE
 
+    # Build the canonical paramstest view ONCE so the in-memory result
+    # (returned to ``Pipeline``) and the on-disk paramstest.txt are identical.
+    # ``zarr_params.to_paramstest()`` carries the unfiltered RingThresh ring
+    # numbers and no RingRadii; the binner requires per-ring RingRadii > 0 to
+    # assign spots to bins (else Data.bin is empty). Mirror the disk-write
+    # path: restrict RingNumbers to the rings actually present after filtering
+    # and populate RingRadii (px) from hkls.csv.
+    pt = zarr_params.to_paramstest()
+    if refine_out is not None:
+        pt.Lsd = refine_out.Lsd
+    unique_rings = sorted(set(int(r) for r in spotsinfo_sorted[keep, 4]))
+    pt.RingNumbers = list(unique_rings)
+    radii_lookup = {rn: rr for rn, rr in zip(ring_numbers, radii_per_ring)}
+    pt.RingRadii = [radii_lookup.get(rn, 0.0) for rn in unique_rings]
+
     # Write outputs.
     if write:
         csv_io.write_inputall_csv(out_dir / "InputAll.csv", inputall)
@@ -396,16 +411,8 @@ def fit_setup(
                 start_row += count
         # SpotsToIndex.csv
         csv_io.write_spots_to_index(out_dir / "SpotsToIndex.csv", spots_to_index_ids.tolist())
-        # paramstest.txt — propagate refined geometry where available.
-        pt = zarr_params.to_paramstest()
-        if refine_out is not None:
-            pt.Lsd = refine_out.Lsd
-        # Use the 'unique ring numbers' actually present after filtering.
-        unique_rings = sorted(set(int(r) for r in spotsinfo_sorted[keep, 4]))
-        pt.RingNumbers = list(unique_rings)
-        # Map RingNumbers back to RingRadii via ring_numbers/radii_per_ring.
-        radii_lookup = {rn: rr for rn, rr in zip(ring_numbers, radii_per_ring)}
-        pt.RingRadii = [radii_lookup.get(rn, 0.0) for rn in unique_rings]
+        # paramstest.txt — written from the canonical ``pt`` built above
+        # (RingNumbers restricted to filtered rings, RingRadii populated).
         write_paramstest(pt, out_dir / "paramstest.txt")
 
     # Tensor outputs (for Pipeline).
@@ -417,6 +424,6 @@ def fit_setup(
         spots_inputall=inputall_t,
         extra=inputall_extra_t,
         spot_ids_to_index=spots_to_index_t,
-        paramstest=zarr_params.to_paramstest(),
+        paramstest=pt,
         refine_result=refine_out,
     )

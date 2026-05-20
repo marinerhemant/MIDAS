@@ -34,6 +34,9 @@ class Indexer:
         self.device = resolve_device(device)
         self.dtype = resolve_dtype(self.device, dtype)
         self._observations: dict | None = None
+        # Source paramstest path — set by from_param_file(), used as the
+        # default for backend="c-omp" so the user doesn't have to repeat it.
+        self._param_path: Path | None = None
 
     @classmethod
     def from_param_file(
@@ -44,7 +47,9 @@ class Indexer:
     ) -> "Indexer":
         from .io.params import read_params
 
-        return cls(read_params(path), device=device, dtype=dtype)
+        inst = cls(read_params(path), device=device, dtype=dtype)
+        inst._param_path = Path(path).resolve()
+        return inst
 
     # ------------------------------------------------------------------
     # Loading observations (file-driven or programmatic)
@@ -129,8 +134,37 @@ class Indexer:
         n_spots_to_index: int | None = None,
         num_procs: int = 1,
         seed_group_size: int | None = None,
+        backend: str = "python",
+        paramstest_path: str | os.PathLike | None = None,
     ) -> "IndexerResult":
-        """Run the indexer on `[block_nr/n_blocks]` of the seed list."""
+        """Run the indexer on `[block_nr/n_blocks]` of the seed list.
+
+        Parameters
+        ----------
+        backend
+            ``"python"`` (default) — the in-process numba/torch indexer.
+            ``"c-omp"`` — shell out to the bundled unified C binary
+            (``midas_indexer``, built by scikit-build-core at pip-install
+            time). The C path writes consolidated output files
+            (``IndexBest_all.bin``, etc.) under ``Params.OutputFolder`` and
+            returns a minimal :class:`IndexerResult` with ``seeds=[]`` —
+            downstream stages (find_grains, refinement) read those files
+            directly from disk per the same contract as the legacy C path.
+        paramstest_path
+            Required when ``backend="c-omp"`` unless this indexer was
+            built via :meth:`from_param_file` (in which case the source
+            path is reused). The C binary reads this file.
+        """
+        if backend == "c-omp":
+            return self._run_c_omp(
+                block_nr=block_nr, n_blocks=n_blocks,
+                n_spots_to_index=n_spots_to_index, num_procs=num_procs,
+                paramstest_path=paramstest_path,
+            )
+        if backend != "python":
+            raise ValueError(
+                f"unknown backend {backend!r}; expected 'python' or 'c-omp'"
+            )
         from .pipeline import IndexerContext, run_block
 
         if self._observations is None:
@@ -171,6 +205,8 @@ class Indexer:
         seed_group_size: int | None = None,
         voxel_block_nr: int = 0,
         voxel_n_blocks: int = 1,
+        backend: str = "python",
+        paramstest_path: str | os.PathLike | None = None,
     ) -> int:
         """Run the per-voxel scanning indexer (pf-HEDM mode).
 
@@ -202,6 +238,16 @@ class Indexer:
             Number of voxels processed (== ``end - start`` over the
             sharded range).
         """
+        if backend == "c-omp":
+            return self._run_scanning_c_omp(
+                scan_positions=scan_positions, num_procs=num_procs,
+                voxel_block_nr=voxel_block_nr, voxel_n_blocks=voxel_n_blocks,
+                paramstest_path=paramstest_path,
+            )
+        if backend != "python":
+            raise ValueError(
+                f"unknown backend {backend!r}; expected 'python' or 'c-omp'"
+            )
         from .pipeline import IndexerContext, run_block
         from .io.consolidated import write_index_best_all
 
@@ -243,6 +289,9 @@ class Indexer:
             dtype=self.dtype,
         )
         ctx.scan_positions = scan_positions_t
+        # P6/P8: forward the optional soft-attribution weight fn if the caller
+        # set it on this Indexer instance.  None ⇒ legacy binary scan filter.
+        ctx.soft_beam_weight_fn = getattr(self, "soft_beam_weight_fn", None)
 
         # 3. Build voxel grid: nVox = nScans * nScans, with the per-voxel
         # (x, y) sample-frame coordinates matching
@@ -263,6 +312,15 @@ class Indexer:
         n_vox = int(voxel_xy_table.shape[0])
 
         # 4. Voxel sharding (used for cluster runs).
+        # Env-var overrides for ad-hoc subsetting without changing the call site:
+        #   MIDAS_INDEX_VOXEL_BLOCK_NR / MIDAS_INDEX_VOXEL_N_BLOCKS — pick a block.
+        #   MIDAS_INDEX_MAX_VOXELS — cap voxel count from v_start (overrides block).
+        env_block = os.environ.get("MIDAS_INDEX_VOXEL_BLOCK_NR")
+        env_n = os.environ.get("MIDAS_INDEX_VOXEL_N_BLOCKS")
+        if env_block is not None:
+            voxel_block_nr = int(env_block)
+        if env_n is not None:
+            voxel_n_blocks = int(env_n)
         if voxel_n_blocks < 1 or voxel_block_nr < 0 or voxel_block_nr >= voxel_n_blocks:
             raise ValueError(
                 f"invalid voxel sharding: block={voxel_block_nr}, n={voxel_n_blocks}"
@@ -270,6 +328,9 @@ class Indexer:
         block_size = (n_vox + voxel_n_blocks - 1) // voxel_n_blocks
         v_start = voxel_block_nr * block_size
         v_end = min(v_start + block_size, n_vox)
+        env_max = os.environ.get("MIDAS_INDEX_MAX_VOXELS")
+        if env_max is not None:
+            v_end = min(v_start + int(env_max), v_end)
 
         # 5. Build the per-voxel seed pool. Scanning mode mirrors
         # IndexerScanningOMP.c:1687-1693 + 1786-1793: the seed pool is ALL
@@ -339,10 +400,21 @@ class Indexer:
         per_voxel_ids: list[np.ndarray] = [
             np.zeros((0,), dtype=np.int32) for _ in range(n_vox)
         ]
-        for v in range(v_start, v_end):
-            ctx.current_voxel_xy = voxel_xy_table[v]
+        import time as _time
+        progress_env = os.environ.get("MIDAS_INDEX_PROGRESS", "1")
+        progress_on = progress_env not in ("0", "false", "False", "")
+        report_every = max(1, int(os.environ.get("MIDAS_INDEX_PROGRESS_EVERY", "20")))
+        # Inter-voxel parallelism: when MIDAS_INDEX_INTER_VOXEL_WORKERS > 1,
+        # voxels are dispatched to a fork-based mp.Pool. Each worker inherits
+        # the parent's `ctx` (via fork's COW) and mutates only its own copy of
+        # `current_voxel_xy`. Numba @njit kernels load from the on-disk cache
+        # (cache=True) so worker JIT cost is small. NUMBA_NUM_THREADS in each
+        # worker should be tuned so workers don't oversubscribe the CPU.
+        n_workers = max(1, int(os.environ.get("MIDAS_INDEX_INTER_VOXEL_WORKERS", "1")))
+        # Build (v, vx, vy, seeds_np) task list up-front so we don't pickle ctx.
+        tasks: list[tuple[int, int, float, float, np.ndarray]] = []
+        for vi, v in enumerate(range(v_start, v_end)):
             vx, vy = voxel_xy_np[v]
-            voxel_seeds_ids = seed_ids_np
             if pre_filter_enabled:
                 s_proj = vx * seed_sin_ome + vy * seed_cos_ome
                 diff = np.abs(s_proj - seed_scan_y_obs)
@@ -352,20 +424,97 @@ class Indexer:
                     ok = ok | (diff_friedel <= scan_pos_tol)
                 ok = ok & seed_has_obs
                 if not ok.any():
-                    continue  # voxel has no seeds; record block stays empty
+                    continue
                 voxel_seeds_ids = seed_ids_np[ok]
-            voxel_seeds = torch.as_tensor(voxel_seeds_ids, dtype=torch.int64)
-            voxel_result = run_block(
-                ctx, voxel_seeds,
-                block_nr=0, n_blocks=1,
-                seed_group_size=seed_group_size,
+            else:
+                voxel_seeds_ids = seed_ids_np
+            tasks.append((vi, v, float(vx), float(vy), voxel_seeds_ids))
+        n_target_active = len(tasks)
+        n_target = v_end - v_start
+        t_start = _time.monotonic()
+        if n_workers <= 1:
+            # Serial path (original behavior).
+            for ti, (vi, v, vx, vy, voxel_seeds_ids) in enumerate(tasks):
+                ctx.current_voxel_xy = voxel_xy_table[v]
+                t_v0 = _time.monotonic()
+                voxel_seeds = torch.as_tensor(voxel_seeds_ids, dtype=torch.int64)
+                voxel_result = run_block(
+                    ctx, voxel_seeds,
+                    block_nr=0, n_blocks=1,
+                    seed_group_size=seed_group_size,
+                )
+                vox_rec, vox_keys, vox_ids = _seeds_to_record_block(
+                    voxel_result, voxel_xyz=(vx, vy, 0.0),
+                )
+                per_voxel_records[v] = vox_rec
+                per_voxel_keys[v] = vox_keys
+                per_voxel_ids[v] = vox_ids
+                if progress_on and ((ti + 1) % report_every == 0 or ti + 1 == n_target_active):
+                    now = _time.monotonic()
+                    rate = (ti + 1) / max(now - t_start, 1e-9)
+                    eta_s = (n_target_active - (ti + 1)) / max(rate, 1e-9)
+                    print(
+                        f"[indexer] voxel {ti+1}/{n_target_active} active "
+                        f"({(ti+1)/n_target_active*100:.1f}%) "
+                        f"rate={rate:.2f}/s "
+                        f"elapsed={now-t_start:.0f}s eta={eta_s:.0f}s "
+                        f"[v={v} seeds={voxel_seeds_ids.size} "
+                        f"sols={vox_rec.shape[0]} dt={now-t_v0:.2f}s]",
+                        flush=True,
+                    )
+        else:
+            # Inter-voxel parallel path via spawn-based mp.Pool.
+            # Why spawn (not fork): the parent already initialized numba's TBB
+            # thread pool (creating 100+ helper threads). Fork inherits those
+            # zombie threads and numba kernels in children deadlock on the
+            # broken TBB state. Spawn boots each worker from a clean
+            # interpreter — ctx is serialized via initargs once per worker.
+            import multiprocessing as _mp
+            intra_threads = max(1, int(
+                os.environ.get(
+                    "MIDAS_INDEX_INTRA_VOXEL_THREADS",
+                    str(max(1, int(num_procs) // n_workers)),
+                )
+            ))
+            print(
+                f"[indexer] inter-voxel parallel: workers={n_workers} "
+                f"intra_threads={intra_threads} tasks={n_target_active} "
+                f"(spawn ctx)",
+                flush=True,
             )
-            vox_rec, vox_keys, vox_ids = _seeds_to_record_block(
-                voxel_result, voxel_xyz=(float(vx), float(vy), 0.0),
+            mp_ctx = _mp.get_context("spawn")
+            # Pickle ctx + voxel_xy_table into initargs. ctx contains the
+            # observation tensor (~tens of MB) so this is a one-time cost
+            # per worker boot, not per task.
+            init_args = (
+                seed_group_size, intra_threads, ctx, voxel_xy_table,
             )
-            per_voxel_records[v] = vox_rec
-            per_voxel_keys[v] = vox_keys
-            per_voxel_ids[v] = vox_ids
+            done = 0
+            with mp_ctx.Pool(
+                processes=n_workers,
+                initializer=_voxel_worker_init_spawn,
+                initargs=init_args,
+            ) as pool:
+                for v, vx_done, vy_done, vox_rec, vox_keys, vox_ids, n_seeds_done, dt_done in pool.imap_unordered(
+                    _voxel_worker_task, tasks, chunksize=1,
+                ):
+                    per_voxel_records[v] = vox_rec
+                    per_voxel_keys[v] = vox_keys
+                    per_voxel_ids[v] = vox_ids
+                    done += 1
+                    if progress_on and (done % report_every == 0 or done == n_target_active):
+                        now = _time.monotonic()
+                        rate = done / max(now - t_start, 1e-9)
+                        eta_s = (n_target_active - done) / max(rate, 1e-9)
+                        print(
+                            f"[indexer] voxel {done}/{n_target_active} active "
+                            f"({done/n_target_active*100:.1f}%) "
+                            f"rate={rate:.2f}/s "
+                            f"elapsed={now-t_start:.0f}s eta={eta_s:.0f}s "
+                            f"[v={v} seeds={n_seeds_done} "
+                            f"sols={vox_rec.shape[0]} dt={dt_done:.2f}s]",
+                            flush=True,
+                        )
 
         # 7. Write all three consolidated files: IndexBest_all.bin (vals)
         # + IndexKey_all.bin (keys) + IndexBest_IDs_all.bin (IDs).
@@ -380,6 +529,251 @@ class Indexer:
         write_index_key_all(keys_path, per_voxel_keys)
         write_index_best_ids_all(ids_path, per_voxel_ids)
         return v_end - v_start
+
+    # ------------------------------------------------------------------
+    # C backend dispatchers (Phase 7).
+    # ------------------------------------------------------------------
+
+    def _resolve_paramstest_path(
+        self, paramstest_path: str | os.PathLike | None,
+    ) -> Path:
+        if paramstest_path is not None:
+            return Path(paramstest_path).resolve()
+        if self._param_path is not None:
+            return self._param_path
+        raise ValueError(
+            "backend='c-omp' requires paramstest_path (or construct the "
+            "Indexer via Indexer.from_param_file(...) which captures it "
+            "automatically)."
+        )
+
+    def _emit_c_omp_paramstest(self, pp: Path) -> Path:
+        """Write a paramstest the C scanning indexer can consume directly.
+
+        The binary derives its input dir from ``dirname(OutputFolder)``,
+        writes output *into* ``OutputFolder``, and reads the seed ring from
+        ``RingToIndex`` / the scan tolerance from ``ScanPosTol`` — all from
+        the file, never from the in-memory params. We patch those three keys
+        to match ``self.params`` and the on-disk layout:
+
+        * ``OutputFolder`` → ``<input_dir>/Output`` (so inputs resolve from
+          ``input_dir`` and outputs land in ``input_dir/Output``), unless the
+          caller already set an OutputFolder whose parent is the input dir.
+        * ``RingToIndex`` → ``self.params.RingToIndex`` (when > 0).
+        * ``ScanPosTol`` → ``self.params.scan_pos_tol_um`` (when > 0).
+
+        The patched file is written beside ``pp`` so the cwd-relative
+        ``hkls.csv`` / ``positions.csv`` opens in the C code still resolve.
+        """
+        input_dir = pp.parent
+        out_folder = (self.params.OutputFolder or "").strip()
+        if not out_folder or Path(out_folder).resolve().parent != input_dir.resolve():
+            out_folder = str(input_dir / "Output")
+        Path(out_folder).mkdir(parents=True, exist_ok=True)
+
+        ring_to_index = int(getattr(self.params, "RingToIndex", 0) or 0)
+        scan_pos_tol = float(getattr(self.params, "scan_pos_tol_um", 0.0) or 0.0)
+
+        # Drop any existing copies of the keys we override, keep the rest.
+        _OVERRIDDEN = ("OutputFolder", "RingToIndex", "OverAllRingToIndex",
+                       "ScanPosTol")
+        kept: list[str] = []
+        for raw in pp.read_text().splitlines():
+            first = raw.strip().split()[:1]
+            if first and first[0].rstrip(";") in _OVERRIDDEN:
+                continue
+            kept.append(raw)
+
+        kept.append(f"OutputFolder {out_folder}")
+        if ring_to_index > 0:
+            kept.append(f"RingToIndex {ring_to_index};")
+        if scan_pos_tol > 0:
+            kept.append(f"ScanPosTol {scan_pos_tol:f};")
+
+        run_pp = input_dir / "paramstest_comp.txt"
+        run_pp.write_text("\n".join(kept) + "\n")
+        return run_pp
+
+    def _run_c_omp(
+        self,
+        *,
+        block_nr: int,
+        n_blocks: int,
+        n_spots_to_index: int | None,
+        num_procs: int,
+        paramstest_path: str | os.PathLike | None,
+    ) -> "IndexerResult":
+        """C-backend FF dispatch. Returns a minimal IndexerResult — downstream
+        stages read IndexBest_all.bin from OutputFolder directly."""
+        from . import backend_c
+        from .result import IndexerResult
+
+        pp = self._resolve_paramstest_path(paramstest_path)
+        # nWork (FF) = nSpotsToIndex. Default to the loaded spot count when
+        # not supplied; SpotsToIndex.csv on disk is the source of truth for
+        # the binary in any case.
+        if n_spots_to_index is None:
+            if self._observations is not None and "spot_ids" in self._observations:
+                n_work = int(len(self._observations["spot_ids"]))
+            else:
+                # Best-effort fallback: count lines of SpotsToIndex.csv.
+                ids_csv = pp.parent / "SpotsToIndex.csv"
+                n_work = sum(1 for _ in ids_csv.open()) if ids_csv.exists() else 1
+        else:
+            n_work = int(n_spots_to_index)
+
+        proc = backend_c.run_indexer(
+            pp, block_nr=block_nr, n_blocks=n_blocks,
+            n_work=n_work, num_procs=num_procs,
+        )
+        if proc.returncode != 0:
+            raise RuntimeError(
+                f"midas_indexer (c-omp) exited {proc.returncode}.\n"
+                f"stderr:\n{proc.stderr.decode('utf-8', errors='replace')[-2000:]}"
+            )
+        # Caller reads IndexBest_all.bin from OutputFolder/. We return an
+        # empty in-memory result so the API shape stays uniform.
+        return IndexerResult(block_nr=block_nr, n_blocks=n_blocks, seeds=[])
+
+    def _run_scanning_c_omp(
+        self,
+        *,
+        scan_positions: np.ndarray | torch.Tensor,
+        num_procs: int,
+        voxel_block_nr: int,
+        voxel_n_blocks: int,
+        paramstest_path: str | os.PathLike | None,
+    ) -> int:
+        """C-backend PF dispatch. Verifies positions.csv matches the supplied
+        scan_positions (sanity), then shells out to the binary."""
+        from . import backend_c
+
+        pp = self._resolve_paramstest_path(paramstest_path)
+
+        # Sanity: positions.csv should match the supplied scan_positions
+        # length. We don't enforce value equality (sort order, formatting),
+        # only count.
+        scan_positions_np = np.asarray(scan_positions).reshape(-1)
+        n_scans = int(scan_positions_np.size)
+        positions_csv = pp.parent / "positions.csv"
+        if positions_csv.exists():
+            n_lines = sum(
+                1 for line in positions_csv.read_text().splitlines()
+                if line.strip()
+            )
+            if n_lines != n_scans:
+                raise ValueError(
+                    f"positions.csv at {positions_csv} has {n_lines} rows "
+                    f"but run_scanning was called with {n_scans} scan_positions. "
+                    "Re-emit positions.csv (or pass matching positions)."
+                )
+
+        # The C binary reads OutputFolder / RingToIndex / ScanPosTol from the
+        # *file* — the in-memory overrides callers apply to self.params are
+        # invisible to it. Emit a patched paramstest (next to the original so
+        # the cwd-relative hkls.csv / positions.csv still resolve) reflecting
+        # those overrides before shelling out.
+        run_pp = self._emit_c_omp_paramstest(pp)
+
+        proc = backend_c.run_indexer(
+            run_pp, block_nr=voxel_block_nr, n_blocks=voxel_n_blocks,
+            n_work=n_scans, num_procs=num_procs,
+        )
+        if proc.returncode != 0:
+            raise RuntimeError(
+                f"midas_indexer (c-omp) exited {proc.returncode}.\n"
+                f"stderr:\n{proc.stderr.decode('utf-8', errors='replace')[-2000:]}"
+            )
+        # Return processed voxel count for sharded runs (consistent with the
+        # python path's return value).
+        n_vox_total = n_scans * n_scans
+        block_size = (n_vox_total + voxel_n_blocks - 1) // voxel_n_blocks
+        v_start = voxel_block_nr * block_size
+        v_end = min(v_start + block_size, n_vox_total)
+        return v_end - v_start
+
+
+# ---------------------------------------------------------------------------
+# Inter-voxel parallel worker.
+# Module-level state set by the parent before forking the mp.Pool; children
+# inherit via fork's COW. Pickled across the boundary is only the per-voxel
+# task tuple, never `ctx` itself (huge tensors stay shared on Linux).
+# ---------------------------------------------------------------------------
+_WORKER_CTX = None
+_WORKER_VOXEL_XY_TABLE = None
+_WORKER_SEED_GROUP_SIZE: int | None = None
+
+
+def _voxel_worker_init(seed_group_size: int | None) -> None:
+    """Pool initializer for fork-based pools (legacy / unused).
+
+    Children inherit _WORKER_CTX + _WORKER_VOXEL_XY_TABLE via fork. Numba's
+    TBB pool inherited from a multi-threaded parent often deadlocks though,
+    so we recommend ``_voxel_worker_init_spawn`` with spawn context instead.
+    """
+    global _WORKER_SEED_GROUP_SIZE
+    _WORKER_SEED_GROUP_SIZE = seed_group_size
+    try:
+        import numba as _nb
+        n = int(os.environ.get("NUMBA_NUM_THREADS", "1"))
+        _nb.set_num_threads(max(1, n))
+    except Exception:
+        pass
+
+
+def _voxel_worker_init_spawn(
+    seed_group_size: int | None,
+    intra_threads: int,
+    ctx,
+    voxel_xy_table,
+) -> None:
+    """Pool initializer for spawn-based pools.
+
+    Sets numba thread count BEFORE the first kernel call so the child's
+    fresh interpreter doesn't oversubscribe. ctx is pickled across the
+    boundary once per worker boot — significant but amortized over the
+    worker's lifetime (many voxels).
+    """
+    global _WORKER_CTX, _WORKER_VOXEL_XY_TABLE, _WORKER_SEED_GROUP_SIZE
+    _WORKER_SEED_GROUP_SIZE = seed_group_size
+    _WORKER_CTX = ctx
+    _WORKER_VOXEL_XY_TABLE = voxel_xy_table
+    os.environ["NUMBA_NUM_THREADS"] = str(max(1, intra_threads))
+    try:
+        import numba as _nb
+        _nb.set_num_threads(max(1, intra_threads))
+    except Exception:
+        pass
+    # Cap torch's internal thread pool similarly so its ops don't fight
+    # numba inside one worker.
+    try:
+        torch.set_num_threads(max(1, intra_threads))
+    except Exception:
+        pass
+
+
+def _voxel_worker_task(
+    task: tuple[int, int, float, float, np.ndarray],
+) -> tuple[int, float, float, np.ndarray, np.ndarray, np.ndarray, int, float]:
+    import time as _time
+    vi, v, vx, vy, voxel_seeds_ids = task
+    ctx = _WORKER_CTX
+    assert ctx is not None, "_WORKER_CTX not set; forking before parent ctx ready?"
+    assert _WORKER_VOXEL_XY_TABLE is not None
+    ctx.current_voxel_xy = _WORKER_VOXEL_XY_TABLE[v]
+    from .pipeline import run_block as _rb
+    t0 = _time.monotonic()
+    voxel_seeds = torch.as_tensor(voxel_seeds_ids, dtype=torch.int64)
+    voxel_result = _rb(
+        ctx, voxel_seeds,
+        block_nr=0, n_blocks=1,
+        seed_group_size=_WORKER_SEED_GROUP_SIZE,
+    )
+    vox_rec, vox_keys, vox_ids = _seeds_to_record_block(
+        voxel_result, voxel_xyz=(vx, vy, 0.0),
+    )
+    dt = _time.monotonic() - t0
+    return v, vx, vy, vox_rec, vox_keys, vox_ids, int(voxel_seeds_ids.size), dt
 
 
 def _seeds_to_record_block(

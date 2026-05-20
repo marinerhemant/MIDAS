@@ -52,6 +52,8 @@ from .config import (
     SeedingMode,
     SinoSource,
     SinoType,
+    SoftAttributionConfig,
+    VMapConfig,
     read_scan_geometry_from_paramfile,
     sniff_scan_mode_from_paramfile,
 )
@@ -150,6 +152,11 @@ def _build_parser() -> argparse.ArgumentParser:
                      help="indexer seed group size (default 4 for fp64 safety)")
     run.add_argument("--shard-gpus", default=None,
                      help="comma-separated CUDA indices for multi-GPU indexing")
+    run.add_argument("--indexer-backend", choices=["python", "c-omp"],
+                     default="python",
+                     help="indexing backend: 'python' (default, in-process "
+                          "numba/torch) or 'c-omp' (bundled unified C binary, "
+                          "requires OpenMP-built midas-index install).")
 
     # Recon (PF)
     run.add_argument("--do-tomo", type=int, default=1, choices=[0, 1])
@@ -195,6 +202,42 @@ def _build_parser() -> argparse.ArgumentParser:
     run.add_argument("--merged-min-nhkls", type=int, default=-1)
     run.add_argument("--merged-tol-px", type=float, default=-1.0)
     run.add_argument("--merged-tol-ome", type=float, default=-1.0)
+
+    # V-map joint refinement (P8/P9 of the V-map plan)
+    run.add_argument("--vmap-run", action="store_true",
+                     help="enable calc_radius_v + refine_vmap V-map stages")
+    run.add_argument("--vmap-crystal-cif", default=None,
+                     help="path to CIF for theoretical I_ring computation")
+    run.add_argument("--vmap-wavelength", type=float, default=0.0,
+                     help="λ in Å for I_theory; 0 ⇒ read from paramstest.txt")
+    run.add_argument("--vmap-refine-V", type=int, default=1, choices=[0, 1])
+    run.add_argument("--vmap-refine-K", type=int, default=1, choices=[0, 1])
+    run.add_argument("--vmap-refine-mu", type=int, default=0, choices=[0, 1])
+    run.add_argument("--vmap-refine-beam", type=int, default=0, choices=[0, 1])
+    run.add_argument("--vmap-use-absorption", action="store_true")
+    run.add_argument("--vmap-element", default="",
+                     help="single element for absorption μ via NIST table")
+    run.add_argument("--vmap-max-iter", type=int, default=80)
+    run.add_argument("--vmap-loss-kind", choices=["log_l2", "huber_log"],
+                     default="log_l2")
+    run.add_argument("--vmap-tolerance", type=float, default=1e-8)
+    run.add_argument("--vmap-emit-diagnostics", type=int, default=1, choices=[0, 1])
+    run.add_argument("--vmap-diag-axes", default="0,1",
+                     help="comma-pair (a,b) selecting lab axes for the 2-D "
+                          "V-map image (default '0,1' = x–y)")
+
+    # Soft beam attribution (P6/P7)
+    run.add_argument("--soft-attribution", action="store_true",
+                     help="enable continuous beam-weight in indexer + sinogen")
+    run.add_argument("--soft-profile",
+                     choices=["gaussian", "tophat", "tophat-ramp"],
+                     default="gaussian")
+    run.add_argument("--soft-fwhm-um", type=float, default=0.0,
+                     help="beam FWHM in µm; 0 ⇒ defaults to scan.beam_size_um")
+    run.add_argument("--soft-tophat-fall-off-um", type=float, default=0.0)
+    run.add_argument("--soft-truncate-at-um", type=float, default=0.0)
+    run.add_argument("--soft-omega-sigma-deg", type=float, default=0.0,
+                     help="sino-soft ω-Gaussian σ; 0 ⇒ uniform sum-pool")
 
     # Process-grains (FF only)
     run.add_argument("--pg-mode", choices=["spot_aware", "legacy", "paper_claim"],
@@ -393,6 +436,37 @@ def build_config(args: argparse.Namespace) -> PipelineConfig:
         merged_tol_ome=args.merged_tol_ome,
     )
 
+    diag_axes_parts = [int(x) for x in str(args.vmap_diag_axes).split(",")]
+    if len(diag_axes_parts) != 2:
+        raise ValueError(
+            f"--vmap-diag-axes must be 'a,b' with two ints; got "
+            f"{args.vmap_diag_axes!r}"
+        )
+    vmap = VMapConfig(
+        run=bool(args.vmap_run),
+        crystal_cif=args.vmap_crystal_cif,
+        wavelength_A=float(args.vmap_wavelength),
+        refine_V=bool(args.vmap_refine_V),
+        refine_K=bool(args.vmap_refine_K),
+        refine_mu=bool(args.vmap_refine_mu),
+        refine_beam=bool(args.vmap_refine_beam),
+        use_absorption=bool(args.vmap_use_absorption),
+        element=args.vmap_element,
+        max_iter=int(args.vmap_max_iter),
+        loss_kind=args.vmap_loss_kind,
+        tolerance=float(args.vmap_tolerance),
+        emit_diagnostics=bool(args.vmap_emit_diagnostics),
+        diag_axes=tuple(diag_axes_parts),
+    )
+    soft_attribution = SoftAttributionConfig(
+        enable=bool(args.soft_attribution),
+        profile=args.soft_profile,
+        fwhm_um=float(args.soft_fwhm_um),
+        tophat_fall_off_um=float(args.soft_tophat_fall_off_um),
+        truncate_at_um=float(args.soft_truncate_at_um),
+        omega_sigma_deg=float(args.soft_omega_sigma_deg),
+    )
+
     cfg = PipelineConfig(
         result_dir=args.result,
         params_file=args.params,
@@ -404,6 +478,8 @@ def build_config(args: argparse.Namespace) -> PipelineConfig:
         fusion=fusion,
         em=em,
         seeding=seeding,
+        vmap=vmap,
+        soft_attribution=soft_attribution,
         layer_selection=_parse_layers(args.layers),
         machine=MachineConfig(name=args.machine, n_nodes=args.n_nodes),
         n_cpus=args.n_cpus,
@@ -415,6 +491,7 @@ def build_config(args: argparse.Namespace) -> PipelineConfig:
         only_stages=list(args.only),
         skip_stages=list(args.skip),
         indexer_group_size=args.group_size,
+        indexer_backend=args.indexer_backend,
         shard_gpus=args.shard_gpus,
         process_grains_mode=args.pg_mode,
         raw_dir=args.raw_dir,

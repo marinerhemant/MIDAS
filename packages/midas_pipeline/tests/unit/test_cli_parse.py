@@ -198,6 +198,93 @@ def test_layers_range(tmp_path):
 
 
 # ---------------------------------------------------------------------------
+# P9 TODO(c): vmap + soft-attribution CLI flags
+# ---------------------------------------------------------------------------
+
+
+def test_vmap_flags_default_off(tmp_path):
+    params = tmp_path / "P.txt"; params.write_text("")
+    parser = _build_parser()
+    args = parser.parse_args([
+        "run", "--scan-mode", "ff",
+        "--params", str(params), "--result", str(tmp_path / "out"),
+    ])
+    cfg = build_config(args)
+    assert cfg.vmap.run is False
+    assert cfg.soft_attribution.enable is False
+    # default diag_axes preserved
+    assert cfg.vmap.diag_axes == (0, 1)
+
+
+def test_vmap_flags_round_trip(tmp_path):
+    params = tmp_path / "P.txt"; params.write_text("")
+    parser = _build_parser()
+    args = parser.parse_args([
+        "run", "--scan-mode", "ff",
+        "--params", str(params), "--result", str(tmp_path / "out"),
+        "--vmap-run",
+        "--vmap-crystal-cif", "/tmp/x.cif",
+        "--vmap-wavelength", "0.173",
+        "--vmap-refine-V", "1",
+        "--vmap-refine-K", "0",
+        "--vmap-use-absorption",
+        "--vmap-element", "Ti",
+        "--vmap-max-iter", "40",
+        "--vmap-loss-kind", "huber_log",
+        "--vmap-tolerance", "1e-6",
+        "--vmap-emit-diagnostics", "0",
+        "--vmap-diag-axes", "1,2",
+    ])
+    cfg = build_config(args)
+    assert cfg.vmap.run is True
+    assert cfg.vmap.crystal_cif == "/tmp/x.cif"
+    assert cfg.vmap.wavelength_A == 0.173
+    assert cfg.vmap.refine_V is True
+    assert cfg.vmap.refine_K is False
+    assert cfg.vmap.use_absorption is True
+    assert cfg.vmap.element == "Ti"
+    assert cfg.vmap.max_iter == 40
+    assert cfg.vmap.loss_kind == "huber_log"
+    assert cfg.vmap.tolerance == 1e-6
+    assert cfg.vmap.emit_diagnostics is False
+    assert cfg.vmap.diag_axes == (1, 2)
+
+
+def test_vmap_diag_axes_malformed_raises(tmp_path):
+    params = tmp_path / "P.txt"; params.write_text("")
+    parser = _build_parser()
+    args = parser.parse_args([
+        "run", "--scan-mode", "ff",
+        "--params", str(params), "--result", str(tmp_path / "out"),
+        "--vmap-diag-axes", "0",          # only one int
+    ])
+    with pytest.raises(ValueError, match="vmap-diag-axes"):
+        build_config(args)
+
+
+def test_soft_attribution_flags_round_trip(tmp_path):
+    params = tmp_path / "P.txt"; params.write_text("")
+    parser = _build_parser()
+    args = parser.parse_args([
+        "run", "--scan-mode", "ff",
+        "--params", str(params), "--result", str(tmp_path / "out"),
+        "--soft-attribution",
+        "--soft-profile", "tophat-ramp",
+        "--soft-fwhm-um", "2.5",
+        "--soft-tophat-fall-off-um", "1.0",
+        "--soft-truncate-at-um", "8.0",
+        "--soft-omega-sigma-deg", "0.3",
+    ])
+    cfg = build_config(args)
+    assert cfg.soft_attribution.enable is True
+    assert cfg.soft_attribution.profile == "tophat-ramp"
+    assert cfg.soft_attribution.fwhm_um == 2.5
+    assert cfg.soft_attribution.tophat_fall_off_um == 1.0
+    assert cfg.soft_attribution.truncate_at_um == 8.0
+    assert cfg.soft_attribution.omega_sigma_deg == 0.3
+
+
+# ---------------------------------------------------------------------------
 # ff_shim back-compat
 # ---------------------------------------------------------------------------
 

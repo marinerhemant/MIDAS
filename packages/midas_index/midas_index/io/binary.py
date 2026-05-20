@@ -46,23 +46,49 @@ def read_spots(cwd: str | Path) -> tuple[int, np.ndarray]:
         raise FileNotFoundError(f"Spots.bin not found at {path}")
     arr = np.memmap(path, dtype=np.float64, mode="r")
     _assert_native(arr, "Spots.bin")
-    # Prefer 10-col PF layout when the size matches both; treat divides-by-10
-    # as PF and divides-by-9-only as FF. Sizes that are multiples of both
-    # 90 doubles are ambiguous in principle, but real fixtures resolve via
-    # the file's expected col count — caller dispatches on shape downstream.
-    if arr.size % 10 == 0 and arr.size % 9 != 0:
-        n_cols = 10
-    elif arr.size % 9 == 0:
-        n_cols = 9
-    elif arr.size % 10 == 0:
-        n_cols = 10
-    else:
+    n_cols = _resolve_spots_ncols(cwd, arr)
+    n_spots = arr.size // n_cols
+    return n_spots, arr.reshape(n_spots, n_cols)
+
+
+def _resolve_spots_ncols(cwd: Path, arr: np.ndarray) -> int:
+    """Decide whether Spots.bin is 9-col (legacy FF) or 10-col (unified).
+
+    The byte count alone is ambiguous whenever ``n_spots`` makes the total
+    double-count divisible by *both* 9 and 10 (e.g. 855 spots → 8550 doubles
+    = 855·10 = 950·9). The unified binner (``midas_transforms.bin_data``)
+    always writes the 10-col layout (col 9 = ScanNr, 0 for FF) together with
+    int64 Data/nData and a ``positions.csv`` sidecar; the legacy C ``SaveBinData``
+    wrote 9 cols with int32 bins and no positions.csv. Resolve the ambiguity
+    in favour of the unified 10-col layout when its evidence is present —
+    otherwise the FF read path mis-routes to the int32 bin reader and
+    misinterprets every int64 Data.bin entry (→ zero matches).
+
+    Resolution order:
+      1. Unambiguous by divisibility → use it.
+      2. Ambiguous → 10-col iff (positions.csv exists) OR (the candidate
+         ScanNr column is integer-valued and non-negative, as the unified
+         binner guarantees). Else fall back to 9-col.
+    """
+    div9 = arr.size % 9 == 0
+    div10 = arr.size % 10 == 0
+    if div10 and not div9:
+        return 10
+    if div9 and not div10:
+        return 9
+    if not div9 and not div10:
         raise ValueError(
             f"Spots.bin size {arr.size * 8} bytes is not a multiple of "
             "9 (FF) or 10 (PF/scanning) doubles."
         )
-    n_spots = arr.size // n_cols
-    return n_spots, arr.reshape(n_spots, n_cols)
+    # Ambiguous: divisible by both 9 and 10.
+    if (Path(cwd) / "positions.csv").exists():
+        return 10
+    # Sniff the candidate ScanNr column (col 9 of the 10-col view).
+    scan_col = np.asarray(arr.reshape(-1, 10)[:, 9])
+    if np.all(scan_col >= 0) and np.all(scan_col == np.floor(scan_col)):
+        return 10
+    return 9
 
 
 def read_bins(cwd: str | Path) -> tuple[np.ndarray, np.ndarray]:

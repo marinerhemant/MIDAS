@@ -4,8 +4,14 @@ Mirrors `ReadParams` from `FF_HEDM/src/IndexerOMP.c:1281-1547`.
 
 Format: one key per line, "Key value [value...]". Repeated keys
 (RingNumbers, RingsToExcludeFraction, RingRadii, OmegaRange, BoxSize)
-accumulate. Aliases collapse to the canonical field. Unknown keys
-emit a warning then are skipped (matches C printf at line 1527).
+accumulate. Aliases collapse to the canonical field.
+
+Keys the indexer doesn't consume but are valid MIDAS paramstest entries
+(detector distortion, refinement-fit echoes, calc-radius / process-grains
+knobs, etc.) are listed in ``_IGNORED_KEYS`` and skipped silently. Any
+other unrecognized key warns ONCE per key process-wide (the scanning
+indexer re-parses paramstest per voxel, so a per-call warning would spam
+the log thousands of times).
 """
 
 from __future__ import annotations
@@ -57,6 +63,41 @@ _STR_KEYS: dict[str, str] = {
     "IDsFileName": "IDsFileName",
     "OutputFolder": "OutputFolder",
 }
+
+# Keys that are valid MIDAS paramstest entries consumed by *other* stages
+# (calibration, peak fitting, fit-setup, refinement, reconstruction) but
+# which the indexer legitimately does not read. These are NOT typos, so we
+# skip them silently rather than warning. Anything outside both the
+# recognized sets above AND this set is a genuine unknown and warns once.
+_IGNORED_KEYS: frozenset[str] = frozenset({
+    # Detector geometry / distortion (used by transforms + calibration)
+    "BC", "tx", "ty", "tz", "p0", "p1", "p2", "p3", "RhoD", "MaxRingRad",
+    "DetParams", "Width", "WidthTthPx",
+    # Refinement-fit echoes written by midas-fit-setup
+    "LsdFit", "YBCFit", "ZBCFit", "txFit", "tyFit", "tzFit",
+    "p0Fit", "p1Fit", "p2Fit", "p3Fit",
+    # Lattice / strain refinement margins (used by midas-fit-grain)
+    "MargABC", "MargABG", "MargD", "MargAng", "MargPos", "MargPos2",
+    # Weighting (refinement)
+    "WeightMask", "WeightFitRMSE",
+    # Geometry / acquisition (used by peakfit / transforms / forward sim)
+    "Wedge", "OmegaStep", "OmegaFirstFile", "GapIntensity", "BadPxIntensity",
+    "UpperBoundThreshold", "DoFullImage", "numPxY", "numPxZ", "NrPixels",
+    "ImTransOpt", "Padding", "Ext", "FileStem", "StartFileNr",
+    "StartFileNrFirstLayer", "NrFilesPerSweep", "numFilesPerScan", "StartNr",
+    "EndNr", "Lsd2", "BeamCurrent",
+    # I/O paths used by sibling stages
+    "RefinementFileName", "ResultFolder", "OutputFolderRecon", "DataFolder",
+    # Grain-size / volume (calc-radius, process-grains)
+    "Vsample", "BeamThickness", "DiscModel", "DiscArea",
+    # Phase bookkeeping
+    "NumPhases", "PhaseNr", "MinNrSpots", "Twins", "TakeGrainMax",
+    "OverAllRingToIndex",
+})
+
+# Process-wide dedup so a genuinely-unknown key warns once, not once per
+# read_params() call (the scanning indexer parses paramstest repeatedly).
+_WARNED_UNKNOWN_KEYS: set[str] = set()
 
 
 def read_params(path: str | Path) -> IndexerParams:
@@ -181,10 +222,16 @@ def read_params(path: str | Path) -> IndexerParams:
                 setattr(p, _STR_KEYS[key], args[0])
                 continue
 
-            warnings.warn(
-                f"Unknown key '{key}' in paramstest at line: {line!r}",
-                stacklevel=2,
-            )
+            # Valid sibling-stage keys: skip silently (not typos).
+            if key in _IGNORED_KEYS:
+                continue
+            # Genuine unknown: warn once per key, process-wide.
+            if key not in _WARNED_UNKNOWN_KEYS:
+                _WARNED_UNKNOWN_KEYS.add(key)
+                warnings.warn(
+                    f"Unknown key '{key}' in paramstest at line: {line!r}",
+                    stacklevel=2,
+                )
 
     # IndexerOMP.c:1535-1538 — fold parallel (RingNumbers, RingRadiiUser) into sparse map
     for ring_nr, radius in zip(p.RingNumbers, ring_radii_user):

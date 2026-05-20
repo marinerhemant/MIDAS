@@ -97,8 +97,12 @@ content lives in version-controlled Python:
 
 ```bash
 cd notebooks
-for n in 01 02 03 04 05 06 07 08 09 10 11; do python _build_${n}.py; done
+for n in 00_tour 01 02 03 04 05 06 07 08 09 10 11 12 13 14 16 17; do
+    python _build_${n}.py
+done
 ```
+
+(Notebooks 18 and 19 are currently hand-authored and have no `_build` script.)
 
 Then re-execute via `jupyter nbconvert --to notebook --execute
 --inplace <notebook>.ipynb` to refresh the embedded outputs.

@@ -1,0 +1,51 @@
+[build-system]
+requires = ["setuptools>=61", "wheel"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "midas-zipper"
+version = "0.1.1"
+description = "Standalone zarr-zip generation for MIDAS FF/PF workflows (no C-binary or source-tree dependency)."
+readme = "README.md"
+license = { text = "BSD-3-Clause" }
+authors = [
+    {name = "Hemant Sharma", email = "hsharma@anl.gov"},
+]
+requires-python = ">=3.9"
+classifiers = [
+    "Development Status :: 4 - Beta",
+    "Intended Audience :: Science/Research",
+    "Programming Language :: Python :: 3",
+    "Operating System :: OS Independent",
+    "Topic :: Scientific/Engineering :: Physics",
+]
+dependencies = [
+    "numpy>=1.22",
+    "h5py>=3.0",
+    "zarr>=2.13,<3",
+    "numcodecs>=0.11",
+    "numba>=0.57",
+    "pillow>=9.0",
+]
+
+[project.optional-dependencies]
+dev = [
+    "pytest>=7",
+]
+
+[project.scripts]
+midas-ff-zip = "midas_zipper.ff_zip:main"
+midas-update-zarr = "midas_zipper.update_zarr:main"
+
+[project.urls]
+Homepage = "https://github.com/marinerhemant/MIDAS"
+Issues = "https://github.com/marinerhemant/MIDAS/issues"
+
+[tool.setuptools]
+packages = ["midas_zipper"]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+markers = [
+    "slow: tests that need built MIDAS C binaries (skipped in CI)",
+]

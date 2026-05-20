@@ -87,6 +87,26 @@ F_anomalous = structure_factors(xt_t, hkls,
 fp, fpp = anomalous_correction(["Fe", "O"], wavelength_A=1.5418)
 ```
 
+## Examples
+
+Runnable notebooks live in [`examples/`](examples/). They use synthetic /
+self-generated data only and run on CPU.
+
+| Notebook | Topic | Extras |
+|----------|-------|--------|
+| [01_absorption.ipynb](examples/01_absorption.ipynb) | NIST mass / linear attenuation coefficients μ(element, λ); energy sweep, density override, differentiable in λ. | none (numpy) |
+| [02_anomalous.ipynb](examples/02_anomalous.ipynb) | Cromer-Liberman resonant f', f''; effect on the complex structure factor; differentiable in wavelength. | `[torch]` |
+| [03_cif_io.ipynb](examples/03_cif_io.ipynb) | CIF read / write round-trip and straight into HKL generation. | `[cif]` or `[cif-pure]` |
+
+The notebooks are generated from `_build_*.py` scripts (content lives in
+version-controlled Python):
+
+```bash
+cd examples
+python _build_01_absorption.py && python _build_02_anomalous.py && python _build_03_cif_io.py
+jupyter nbconvert --to notebook --execute --inplace 01_absorption.ipynb
+```
+
 ## CLI
 
 ```

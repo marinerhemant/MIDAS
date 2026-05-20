@@ -43,10 +43,12 @@ def _read_space_group(layer_dir: Path) -> int:
     for line in p.read_text().splitlines():
         toks = line.split()
         if len(toks) >= 2 and toks[0] == "SpaceGroup":
-            try:
-                return int(toks[1])
-            except ValueError:
-                continue
+            # Strip trailing punctuation: legacy paramstest.txt uses C
+            # param-file syntax ``SpaceGroup 194;`` which would raise
+            # ValueError and silently fall back to FCC = 225.
+            digits = "".join(c for c in toks[1] if c.isdigit())
+            if digits:
+                return int(digits)
     return _DEFAULT_SPACE_GROUP
 
 

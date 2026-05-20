@@ -1,19 +1,18 @@
 """Raw → ``.MIDAS.zip`` conversion (gap #1).
 
-Wraps ``utils/ffGenerateZipRefactor.py`` so the new pipeline can ingest
-GE / HDF5 / TIFF / CBF directly without a separate manual step. Runs
-once per detector before ``hkl``. No-op when the detector already has
-a valid zarr (``--zarr <path>`` or detectors.json explicit zarr_path
-or ``--no-convert``).
+Delegates to the pip-installed ``midas_zipper.ff_zip`` module
+(``python -m midas_zipper.ff_zip``) so the new pipeline can ingest
+GE / HDF5 / TIFF / CBF directly without a separate manual step and
+without requiring a MIDAS source tree. Runs once per detector before
+``hkl``. No-op when the detector already has a valid zarr (``--zarr
+<path>`` or detectors.json explicit zarr_path or ``--no-convert``).
 
-The produced zarr path follows the convention used by
-``ffGenerateZipRefactor.py``::
+The produced zarr path follows the convention used by ``midas_zipper``::
 
     {result_dir}/LayerNr_<N>/{FileStem}_{fNr:0{Padding}d}.MIDAS.zip
 """
 from __future__ import annotations
 
-import os
 import sys
 import time
 from pathlib import Path
@@ -49,28 +48,6 @@ def _zarr_path_for_layer(ctx: StageContext, params_file: Path) -> Path:
     return ctx.layer_dir / f"{file_stem}_{f_nr:0{padding}d}.MIDAS.zip"
 
 
-def _utils_dir() -> Path:
-    """Return the FF_HEDM utils dir holding ``ffGenerateZipRefactor.py``.
-
-    First tries ``$MIDAS_INSTALL_DIR/utils``; otherwise walks up from this
-    file looking for ``utils/ffGenerateZipRefactor.py``.
-    """
-    env = os.environ.get("MIDAS_INSTALL_DIR")
-    if env:
-        cand = Path(env) / "utils"
-        if (cand / "ffGenerateZipRefactor.py").exists():
-            return cand
-    here = Path(__file__).resolve()
-    for up in [here] + list(here.parents):
-        cand = up / "utils" / "ffGenerateZipRefactor.py"
-        if cand.exists():
-            return cand.parent
-    raise FileNotFoundError(
-        "Cannot locate utils/ffGenerateZipRefactor.py. "
-        "Set MIDAS_INSTALL_DIR or run from a MIDAS checkout."
-    )
-
-
 def run(ctx: StageContext) -> StageResult:
     started = time.time()
     outputs: dict[str, str] = {}
@@ -95,11 +72,10 @@ def run(ctx: StageContext) -> StageResult:
     params_file = Path(ctx.config.params_file)
 
     with stage_timer("zip_convert"):
-        zip_script = _utils_dir() / "ffGenerateZipRefactor.py"
         for det in ctx.detectors:
             target = _zarr_path_for_layer(ctx, params_file)
             cmd = [
-                sys.executable, str(zip_script),
+                sys.executable, "-m", "midas_zipper.ff_zip",
                 "-resultFolder", str(ctx.layer_dir),
                 "-paramFN", str(params_file),
                 "-LayerNr", str(ctx.layer_nr),

@@ -174,11 +174,23 @@ def _run_pf(ctx: StageContext, started: float, out_dir: Path) -> BinningResult:
         strict_files=False,
     )
 
+    # First-pass indexer needs SpotsToIndex.csv (the C IndexerScanningOMP
+    # iterates all spots; our Python indexer's load_observations requires
+    # the file to exist). Build it from IDsMergedScanning.csv as the unique
+    # set of NewIDs — i.e. "index all merged spots". The second pass
+    # (driven by find_grains' UniqueIndexSingleKey.bin) overwrites this
+    # file with a per-voxel filtered subset, matching pf_MIDAS.py:2029.
+    _write_first_pass_spots_to_index(
+        ids_merged_csv=out_dir / "IDsMergedScanning.csv",
+        out_csv=out_dir / "SpotsToIndex.csv",
+    )
+
     outputs = {
         "spots_bin": str(out_dir / "Spots.bin"),
         "extra_info_bin": str(out_dir / "ExtraInfo.bin"),
         "voxel_scan_pos_bin": str(out_dir / "voxel_scan_pos.bin"),
         "ids_merged_scanning_csv": str(out_dir / "IDsMergedScanning.csv"),
+        "spots_to_index_csv": str(out_dir / "SpotsToIndex.csv"),
         "positions_csv": str(out_dir / "positions.csv"),
     }
     if (out_dir / "Data.bin").exists():
@@ -208,3 +220,37 @@ def _run_pf(ctx: StageContext, started: float, out_dir: Path) -> BinningResult:
         },
         n_bins=n_bins,
     )
+
+
+def _write_first_pass_spots_to_index(*, ids_merged_csv: Path, out_csv: Path) -> None:
+    """Build first-pass SpotsToIndex.csv = every unique merged spot.
+
+    The C IndexerScanningOMP doesn't read this file (it iterates all
+    spots); our Python indexer requires it. Format is one int per line —
+    the indexer's reader (midas_index.io.csv:read_spots_to_index_csv)
+    takes the first int per line, so single-column is sufficient.
+    """
+    if out_csv.exists():
+        return
+    if not ids_merged_csv.exists():
+        LOG.warning("binning(pf): %s missing — cannot build SpotsToIndex.csv",
+                    ids_merged_csv)
+        return
+    seen: set[int] = set()
+    with open(ids_merged_csv) as f:
+        header = f.readline()  # NewID,OrigID,ScanNr
+        for line in f:
+            parts = line.strip().split(",")
+            if not parts or not parts[0]:
+                continue
+            try:
+                seen.add(int(parts[0]))
+            except ValueError:
+                continue
+    ids_sorted = sorted(seen)
+    out_csv.parent.mkdir(parents=True, exist_ok=True)
+    with open(out_csv, "w") as f:
+        for sid in ids_sorted:
+            f.write(f"{sid}\n")
+    LOG.info("binning(pf): wrote %s (%d unique spot IDs)",
+             out_csv, len(ids_sorted))

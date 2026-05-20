@@ -191,6 +191,11 @@ class IndexerContext:
         self.friedel_symmetric_scan_filter: bool = bool(
             params.friedel_symmetric_scan_filter
         )
+        # Soft beam attribution (P6/P8 of the V-map plan).  When set, the
+        # scan_kwargs() dict passes it to compare_spots, which populates
+        # the optional weighted_* fields on MatchResult.  None ⇒ legacy
+        # binary scan_pos_tol_um filter (back-compat default).
+        self.soft_beam_weight_fn = None  # type: ignore[var-annotated]
 
     def scan_kwargs(self, n_tuples: int) -> dict:
         """Return scan-aware kwargs for :func:`matching.compare_spots`.
@@ -202,7 +207,7 @@ class IndexerContext:
         """
         if self.scan_positions is None or self.current_voxel_xy is None:
             return {}
-        return {
+        out = {
             "scan_positions": self.scan_positions,
             "voxel_xy": self.current_voxel_xy.view(1, 2).expand(n_tuples, 2),
             "scan_pos_tol_um": self.scan_pos_tol_um,
@@ -211,6 +216,9 @@ class IndexerContext:
             # ``obs[..., 9].to(int64)`` cast becomes a noop.
             "obs_scan_nr_int64": self.obs_scan_nr_int64,
         }
+        if self.soft_beam_weight_fn is not None:
+            out["soft_beam_weight_fn"] = self.soft_beam_weight_fn
+        return out
 
     def find_obs_row_by_id(self, spot_id: int) -> int:
         """Return the row index of the observed spot whose column 4 equals `spot_id`."""
@@ -445,6 +453,14 @@ def process_seed(
         dim=-1,
     )
 
+    weighted_n = (
+        float(result.weighted_n_matches[idx].item())
+        if result.weighted_n_matches is not None else None
+    )
+    weighted_frac = (
+        float(result.weighted_frac_matches[idx].item())
+        if result.weighted_frac_matches is not None else None
+    )
     return SeedResult(
         spot_id=spot_id,
         best_or_mat=R_all[idx].detach().clone(),
@@ -456,6 +472,8 @@ def process_seed(
         avg_ia=float(result.avg_ia[idx].item()),
         matched_ids=result.matched_obs_id[idx][result.matched[idx]].clone(),
         matched_pairs=pairs.detach().cpu(),
+        weighted_n_matches=weighted_n,
+        weighted_frac_matches=weighted_frac,
     )
 
 
@@ -860,6 +878,18 @@ def _compute_group_gpu(
     seed_meta = setup["seed_meta"]
     use_c_compat = _default_use_c_compat()
 
+    # CPU fast path: single fused numba kernel does simulate + compare + avg_ia.
+    # Skips all torch round-trips between phases (was ~50% of wall time in
+    # Phase 3 from numpy.ascontiguousarray on theor columns).
+    if ctx.device.type != "cuda" and (
+        ctx.soft_beam_weight_fn is None
+        and not ctx.adapter._has_panel_coverage
+    ):
+        try:
+            return _compute_group_cpu_fused(ctx, setup, use_c_compat)
+        except _FusedFallback:
+            pass  # fall through to legacy torch path
+
     # Async transfer to GPU.
     R_all = setup["R_cpu"].to(device=ctx.device, non_blocking=True)
     pos_all = setup["pos_cpu"].to(device=ctx.device, non_blocking=True)
@@ -1144,14 +1174,271 @@ def _compute_group_gpu_launch(ctx: IndexerContext, setup: dict):
     return finalize
 
 
+_GC_CALL_COUNTER = [0]
+_GC_EVERY_N_SEEDS = 32
+
+
+class _FusedFallback(Exception):
+    """Internal: raised when the CPU fused path can't handle a config and
+    we should fall through to the legacy torch pipeline."""
+    pass
+
+
+def _compute_group_cpu_fused(ctx: "IndexerContext", setup: dict, use_c_compat: bool) -> "list[SeedResult]":
+    """CPU fast path: one fused numba kernel does simulate + compare_spots +
+    avg_ia. Returns SeedResults directly. Falls back via _FusedFallback if
+    numba isn't available or the config has soft-attribution / panel coverage.
+    """
+    try:
+        from .compute.fused_numba import (
+            _simulate_and_compare_fused_numba, _NUMBA_AVAILABLE,
+        )
+    except ImportError:
+        raise _FusedFallback()
+    if not _NUMBA_AVAILABLE:
+        raise _FusedFallback()
+
+    import math
+    import numpy as np
+    from .compute import reduce as reduce_
+    from .compute import matching as _matching
+
+    p = ctx.params
+    seed_meta = setup["seed_meta"]
+
+    R_all = setup["R_cpu"]
+    pos_all = setup["pos_cpu"]
+    ref_rad_all = setup["ref_rad_cpu"]
+    N = int(R_all.shape[0])
+    if N == 0:
+        return []
+
+    R_np = np.ascontiguousarray(R_all.detach().cpu().numpy().astype(np.float64, copy=False))
+    pos_np = np.ascontiguousarray(pos_all.detach().cpu().numpy().astype(np.float64, copy=False))
+    ref_rad_np = np.ascontiguousarray(ref_rad_all.detach().cpu().numpy().astype(np.float64, copy=False))
+
+    # HKL list + cached LUTs from forward adapter
+    adapter = ctx.adapter
+    hkls_cart_t = adapter.hkls_real[:, :3]
+    thetas_t = adapter.hkls_real[:, 5]
+    hkls_cart_np = np.ascontiguousarray(hkls_cart_t.detach().cpu().numpy().astype(np.float64, copy=False))
+    thetas_np = np.ascontiguousarray(thetas_t.detach().cpu().numpy().astype(np.float64, copy=False))
+    len_hkl = np.linalg.norm(hkls_cart_np, axis=-1)
+    ring_nr_per_hkl_np = np.ascontiguousarray(
+        adapter.ring_nr_per_hkl.detach().cpu().numpy().astype(np.int64, copy=False)
+    )
+    ring_radius_lut_np = np.ascontiguousarray(
+        adapter.ring_radius_lut.detach().cpu().numpy().astype(np.float64, copy=False)
+    )
+    wedge_rad = float(p.Wedge) * math.pi / 180.0 if hasattr(p, "Wedge") else 0.0
+    Lsd = float(p.Distance)
+    min_eta_rad = float(p.ExcludePoleAngle) * math.pi / 180.0
+
+    if adapter.omega_ranges is not None and adapter.omega_ranges.numel() > 0:
+        omega_ranges_np = np.ascontiguousarray(
+            adapter.omega_ranges.detach().cpu().numpy().astype(np.float64, copy=False)
+        )
+        box_sizes_np = np.ascontiguousarray(
+            adapter.box_sizes.detach().cpu().numpy().astype(np.float64, copy=False)
+        )
+        has_omega_box = True
+    else:
+        omega_ranges_np = np.zeros((0, 2), dtype=np.float64)
+        box_sizes_np = np.zeros((0, 4), dtype=np.float64)
+        has_omega_box = False
+
+    # Obs columns (cached via matching helpers)
+    obs_views = _matching._cached_obs_numpy(ctx.obs)
+    bin_data_np = _matching._cached_int32_view(ctx.bin_data)
+    bin_ndata_np = _matching._cached_int32_view(ctx.bin_ndata)
+    eta_margins_np = np.ascontiguousarray(
+        ctx.eta_margins.detach().cpu().numpy().astype(np.float64, copy=False)
+    )
+    rings_to_reject_np = (
+        np.ascontiguousarray(ctx.rings_to_reject.detach().cpu().numpy().astype(np.int64, copy=False))
+        if ctx.rings_to_reject.numel() > 0 else np.zeros(0, dtype=np.int64)
+    )
+
+    # Scan-aware
+    scan_active = (
+        ctx.scan_pos_tol_um > 0
+        and ctx.scan_positions is not None
+        and ctx.current_voxel_xy is not None
+    )
+    if scan_active:
+        if ctx.obs.shape[-1] < 10:
+            raise _FusedFallback()
+        v_xy = ctx.current_voxel_xy.detach().cpu().numpy().astype(np.float64)
+        voxel_x_np = np.full(N, float(v_xy[0]), dtype=np.float64)
+        voxel_y_np = np.full(N, float(v_xy[1]), dtype=np.float64)
+        if ctx.obs_scan_nr_int64 is not None:
+            obs_scan_idx_np = np.ascontiguousarray(
+                ctx.obs_scan_nr_int64.detach().cpu().numpy().astype(np.int64, copy=False)
+            )
+        else:
+            obs_scan_idx_np = np.ascontiguousarray(
+                ctx.obs[..., 9].detach().cpu().numpy().astype(np.int64, copy=False)
+            )
+        scan_pos_arr_np = np.ascontiguousarray(
+            ctx.scan_positions.detach().cpu().numpy().astype(np.float64, copy=False)
+        )
+    else:
+        voxel_x_np = np.zeros(N, dtype=np.float64)
+        voxel_y_np = np.zeros(N, dtype=np.float64)
+        obs_scan_idx_np = np.zeros(1, dtype=np.int64)
+        scan_pos_arr_np = np.zeros(1, dtype=np.float64)
+
+    (best_delta_ome, best_matched_id, best_matched_row, has_match,
+     theor_omega, theor_eta, theor_yl_disp, theor_zl_disp,
+     theor_ring_nr, valid_mask,
+     n_matches_out, n_matches_frac_out, n_t_frac_out, avg_ia_out) = (
+        _simulate_and_compare_fused_numba(
+            R_np, pos_np,
+            hkls_cart_np, thetas_np, len_hkl,
+            ring_nr_per_hkl_np, ring_radius_lut_np, int(ring_radius_lut_np.shape[0] - 1),
+            wedge_rad, Lsd, min_eta_rad, 1e-12,
+            omega_ranges_np, box_sizes_np, has_omega_box,
+            bin_ndata_np, bin_data_np,
+            float(p.EtaBinSize), float(p.OmeBinSize),
+            int(ctx.n_eta_bins), int(ctx.n_ome_bins),
+            obs_views["y"], obs_views["z"], obs_views["ome"], obs_views["eta"],
+            obs_views["ringrad"], obs_views["rad"], obs_views["id"],
+            eta_margins_np, int(eta_margins_np.shape[0] - 1),
+            float(p.MarginRadial), float(p.MarginRad),
+            rings_to_reject_np,
+            ref_rad_np,
+            bool(scan_active), voxel_x_np, voxel_y_np,
+            obs_scan_idx_np, scan_pos_arr_np,
+            float(ctx.scan_pos_tol_um),
+            bool(ctx.friedel_symmetric_scan_filter),
+        )
+    )
+
+    # ── Per-seed argmax over the (N, K) match score, then build SeedResults
+    seed_meta_valid = [m for m in seed_meta if m["valid"]]
+    n_per_valid = [m["n_local"] for m in seed_meta_valid]
+    seg_starts: list[int] = []
+    cur = 0
+    for nl in n_per_valid:
+        seg_starts.append(cur)
+        cur += nl
+    if not seed_meta_valid:
+        return []
+
+    # pack_score = (n_matches_frac << ...) | (avg_ia low bits) — same as torch.
+    frac_matches = n_matches_frac_out.astype(np.float64) / np.maximum(n_t_frac_out, 1).astype(np.float64)
+    # Use torch for pack_score to keep numerics identical.
+    import torch as _torch
+    frac_t = _torch.from_numpy(frac_matches)
+    ia_t = _torch.from_numpy(avg_ia_out)
+    keys = reduce_.pack_score(frac_t, ia_t)
+    keys_cpu = keys.numpy()
+
+    if use_c_compat:
+        mask_cpu = _c_compat_visited_mask(
+            frac_matches, n_matches_frac_out, n_t_frac_out,
+            seed_meta_valid, seg_starts, p.MinMatchesToAcceptFrac,
+        )
+        # Mark non-eligible tuples with INT64_MIN so argmax skips them.
+        keys_cpu = keys_cpu.copy()
+        keys_cpu[~mask_cpu] = np.iinfo(np.int64).min
+        best_global_idx_list: list[int] = []
+        seed_has_match: list[bool] = []
+        for s_start, s_len in zip(seg_starts, n_per_valid):
+            seg = keys_cpu[s_start:s_start + s_len]
+            seg_mask = mask_cpu[s_start:s_start + s_len]
+            if not seg_mask.any():
+                seed_has_match.append(False)
+                best_global_idx_list.append(s_start)  # placeholder
+            else:
+                seed_has_match.append(True)
+                best_global_idx_list.append(s_start + int(np.argmax(seg)))
+    else:
+        seed_has_match = [True] * len(seed_meta_valid)
+        best_global_idx_list = []
+        for s_start, s_len in zip(seg_starts, n_per_valid):
+            seg = keys_cpu[s_start:s_start + s_len]
+            best_global_idx_list.append(s_start + int(np.argmax(seg)))
+
+    # Gather best per-seed
+    best_global_idx = np.asarray(best_global_idx_list, dtype=np.int64)
+    best_R = R_np[best_global_idx]
+    best_pos = pos_np[best_global_idx]
+    best_n_match = n_matches_out[best_global_idx]
+    best_frac = frac_matches[best_global_idx]
+    best_ia = avg_ia_out[best_global_idx]
+    best_valid_mask = valid_mask[best_global_idx]
+    best_n_t = best_valid_mask.sum(axis=-1)
+    best_obs_id = best_matched_id[best_global_idx]
+    best_delta = best_delta_ome[best_global_idx]
+    best_match_mask = has_match[best_global_idx]
+    if ctx.rings_to_reject.numel() > 0:
+        best_theor_rings = theor_ring_nr[best_global_idx].astype(np.int64)
+        in_reject = np.isin(best_theor_rings, rings_to_reject_np)
+        best_n_t_frac = (best_valid_mask & ~in_reject).sum(axis=-1)
+    else:
+        best_n_t_frac = best_n_t
+
+    seeds_out: list[SeedResult] = []
+    valid_idx = 0
+    for m in seed_meta:
+        if not m["valid"]:
+            continue
+        if not seed_has_match[valid_idx]:
+            valid_idx += 1
+            continue
+        mm = best_match_mask[valid_idx]
+        ids_at = best_obs_id[valid_idx][mm]
+        deltas_at = best_delta[valid_idx][mm]
+        pairs = _torch.stack([
+            _torch.from_numpy(ids_at.astype(np.float64, copy=False)),
+            _torch.from_numpy(deltas_at.astype(np.float64, copy=False)),
+        ], dim=-1).to(ctx.dtype)
+        seeds_out.append(SeedResult(
+            spot_id=m["sid"],
+            best_or_mat=_torch.from_numpy(best_R[valid_idx].copy()),
+            best_pos=_torch.from_numpy(best_pos[valid_idx].copy()),
+            n_matches=int(best_n_match[valid_idx]),
+            n_t_spots=int(best_n_t[valid_idx]),
+            n_t_frac_calc=int(best_n_t_frac[valid_idx]),
+            frac_matches=float(best_frac[valid_idx]),
+            avg_ia=float(best_ia[valid_idx]),
+            matched_ids=_torch.from_numpy(ids_at.copy()),
+            matched_pairs=pairs,
+        ))
+        valid_idx += 1
+    return seeds_out
+
+
 def _process_seed_group(
     ctx: IndexerContext,
     seeds_block: torch.Tensor,        # (n_seeds,) CPU int64
 ) -> list[SeedResult]:
-    """Sequential compatibility wrapper: run setup_cpu then compute_gpu."""
+    """Sequential compatibility wrapper: run setup_cpu then compute_gpu.
+
+    Releases setup-dict tensors before returning. Periodically (every
+    ``_GC_EVERY_N_SEEDS``) forces a gc + malloc_trim so the CPU torch
+    allocator doesn't retain >100 GB on PF-scale data. Per-call gc was
+    ~50 ms — far too expensive when seeds are now <100 ms total. Batching
+    the gc reduces overhead by ~30× without losing the memory bound (we
+    just run a slightly bigger working set between trims).
+    """
     setup = _setup_group_cpu(ctx, seeds_block)
     if setup is None:
         return []
-    return _compute_group_gpu(ctx, setup)
+    out = _compute_group_gpu(ctx, setup)
+    setup.clear()
+    del setup
+    if ctx.device.type == "cpu":
+        _GC_CALL_COUNTER[0] += 1
+        if _GC_CALL_COUNTER[0] % _GC_EVERY_N_SEEDS == 0:
+            import gc as _gc
+            _gc.collect()
+            try:
+                import ctypes
+                ctypes.CDLL("libc.so.6").malloc_trim(0)
+            except Exception:
+                pass
+    return out
 
 

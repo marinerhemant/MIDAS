@@ -1,10 +1,10 @@
 [build-system]
-requires = ["setuptools>=68.0"]
-build-backend = "setuptools.build_meta"
+requires = ["scikit-build-core>=0.10"]
+build-backend = "scikit_build_core.build"
 
 [project]
 name = "midas-index"
-version = "0.4.1"
+version = "0.6.0"
 description = "Pure-Python/PyTorch FF-HEDM indexer (drop-in replacement for IndexerOMP/IndexerGPU)"
 readme = "README.md"
 license = "BSD-3-Clause"
@@ -41,9 +41,19 @@ Issues = "https://github.com/marinerhemant/MIDAS/issues"
 [project.scripts]
 midas-index = "midas_index.cli:main"
 
-[tool.setuptools.packages.find]
-where = ["."]
-include = ["midas_index*"]
+[tool.scikit-build]
+cmake.minimum-version = "3.20"
+cmake.source-dir = "."
+wheel.packages = ["midas_index"]
+# If the C target fails to build (no OpenMP, no compiler, missing FF_HEDM/
+# source tree), the install still succeeds with Python-only — the CMakeLists
+# returns early instead of erroring. backend_c.available() then returns False
+# at runtime.
+build-dir = "build/{wheel_tag}"
+
+[tool.scikit-build.cmake.define]
+# Lets cmake stamp the package version into midas_indexer's banner output.
+SKBUILD_PROJECT_VERSION = "{project.version}"
 
 [tool.pytest.ini_options]
 markers = [

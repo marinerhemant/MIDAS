@@ -302,3 +302,65 @@ def read_grid(out_dir: str | Path, grid_file_name: str | None = None) -> GridTab
         gs=arr[:, 4].copy(),
         ud=ud,
     )
+
+
+# ---------------------------------------------------------------------------
+#  Reconstructed microstructure (.mic text file)
+# ---------------------------------------------------------------------------
+
+def read_mic_gridpoints(
+    path: str | Path,
+    *,
+    min_confidence: float = 0.0,
+    max_points: int | None = None,
+) -> List[Tuple[float, float, float, float, float, float]]:
+    """Derive multipoint ``GridPoints`` from a reconstructed text ``.mic``.
+
+    The C ``FitOrientationParametersMultiPoint`` consumes ``GridPoints``
+    lines whose columns are exactly the columns of a reconstructed
+    ``.mic`` row (see ``FitOrientationParametersMultiPoint.c:697``)::
+
+        OrientationRowNr  OrientationID  RunTime  X  Y  TriEdgeSize
+        UpDown  Eul1  Eul2  Eul3  Confidence  PhaseNr
+
+    so each grid point is ``(X, Y, UpDown, Eul1, Eul2, Eul3)`` and the C
+    code drops everything else. When the param file carries no explicit
+    ``GridPoints`` block, the multipoint driver derives them from the
+    reconstruction this way instead of failing.
+
+    Rows whose ``Confidence`` is below ``min_confidence`` are skipped.
+    If ``max_points`` is given, the highest-confidence rows are kept
+    (the C code caps the multipoint set at 200 voxels).
+
+    Returns a list of ``(xc, yc, ud, eul1, eul2, eul3)`` tuples in the
+    same shape :attr:`FitParams.grid_points` holds.
+    """
+    path = Path(path)
+    rows: List[Tuple[float, float, float, float, float, float, float]] = []
+    with open(path, "r") as f:
+        for line in f:
+            line = line.strip()
+            if not line or line.startswith("%"):
+                continue
+            tok = line.split()
+            if len(tok) < 11:
+                continue
+            try:
+                x = float(tok[3])
+                y = float(tok[4])
+                ud = float(tok[6])
+                e1 = float(tok[7])
+                e2 = float(tok[8])
+                e3 = float(tok[9])
+                conf = float(tok[10])
+            except ValueError:
+                continue
+            if conf < min_confidence:
+                continue
+            rows.append((x, y, ud, e1, e2, e3, conf))
+
+    # Highest-confidence first when capping the count.
+    rows.sort(key=lambda r: r[6], reverse=True)
+    if max_points is not None:
+        rows = rows[:max_points]
+    return [(r[0], r[1], r[2], r[3], r[4], r[5]) for r in rows]

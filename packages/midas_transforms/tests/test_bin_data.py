@@ -48,14 +48,16 @@ def test_bin_data_writes_expected_files(tmp_inputall_dir: Path):
 
 def test_spots_bin_layout(tmp_inputall_dir: Path):
     res = bin_data(result_folder=tmp_inputall_dir)
-    spots = bio.read_spots_bin(tmp_inputall_dir / "Spots.bin")
-    # 9 cols, N rows
-    assert spots.shape[1] == 9
+    # Post Phase 5: Spots.bin is always 10 cols (col 9 = ScanNr, 0 for FF).
+    spots = bio.read_spots_bin(tmp_inputall_dir / "Spots.bin", ncols=10)
+    assert spots.shape[1] == 10
     assert spots.shape[0] == res.spots.shape[0]
-    # First 8 cols match InputAll.csv input rows
+    # First 8 cols match InputAll.csv input rows.
     np.testing.assert_allclose(
         spots[:, :8], res.spots.detach().cpu().numpy()[:, :8], rtol=0, atol=0,
     )
+    # ScanNr (col 9) is 0 for non-scanning FF runs.
+    assert np.all(spots[:, 9] == 0.0)
 
 
 def test_extrainfo_bin_layout(tmp_inputall_dir: Path):
@@ -66,17 +68,28 @@ def test_extrainfo_bin_layout(tmp_inputall_dir: Path):
 
 def test_ndata_offsets_consistent(tmp_inputall_dir: Path):
     res = bin_data(result_folder=tmp_inputall_dir)
-    data = bio.read_data_bin(tmp_inputall_dir / "Data.bin")
-    ndata = bio.read_ndata_bin(tmp_inputall_dir / "nData.bin")
-    # offsets should be cumulative sum of counts
+    # Post Phase 5: Data/nData are int64 (uint64) pairs.
+    data_pairs = bio.read_data_bin_scanning(tmp_inputall_dir / "Data.bin")
+    ndata = bio.read_ndata_bin_scanning(tmp_inputall_dir / "nData.bin")
     counts = ndata[:, 0]
     offsets = ndata[:, 1]
     assert offsets[0] == 0
     expected_offsets = np.zeros_like(counts)
     expected_offsets[1:] = np.cumsum(counts[:-1])
     np.testing.assert_array_equal(offsets, expected_offsets)
-    # total count == size of Data
-    assert counts.sum() == data.size
+    # total count == number of (rowno, scanno) pairs in Data.bin.
+    assert int(counts.sum()) == data_pairs.shape[0]
+    # FF mode: scan_nr column is all zeros.
+    assert np.all(data_pairs[:, 1] == 0)
+
+
+def test_positions_csv_written_for_ff(tmp_inputall_dir: Path):
+    # Phase 5: bin_data() emits positions.csv (single "0.0" line for FF) so
+    # the unified midas_indexer can auto-detect mode.
+    bin_data(result_folder=tmp_inputall_dir)
+    pos = (tmp_inputall_dir / "positions.csv").read_text().strip().splitlines()
+    assert len(pos) == 1
+    assert float(pos[0]) == 0.0
 
 
 def test_no_save_all_skips_data_files(tmp_inputall_dir: Path, tiny_paramstest):

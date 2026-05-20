@@ -2584,6 +2584,343 @@ isn't the limit.
 
 
 # =====================================================================
+# Synthetic-data preamble for the self-contained gap notebooks (21, 22)
+# =====================================================================
+#
+# Notebooks 01–20 read a real calibrant dataset from $V2_TEST_BASE.  The
+# two gap notebooks below are instead FULLY SELF-CONTAINED: they render a
+# synthetic CeO2 ring image with the same forward model that
+# midas_calibrate's own end-to-end test uses (no data files, no network),
+# then push it through the v2 production entry points.  Keeps them fast
+# and runnable on any CPU.
+
+_V2_SYNTH_PREAMBLE = """\
+import os, time
+os.environ.setdefault('KMP_DUPLICATE_LIB_OK', 'TRUE')   # macOS OpenMP guard
+import numpy as np
+import torch
+
+from midas_integrate.geometry import build_tilt_matrix, pixel_to_REta
+from midas_calibrate import CalibrationParams, build_ring_table
+
+
+def make_truth(Lsd_um=1_000_000.0) -> CalibrationParams:
+    \"\"\"Known-truth CeO2 geometry on a small 1024x1024 detector.\"\"\"
+    p = CalibrationParams()
+    p.NrPixelsY = 1024; p.NrPixelsZ = 1024
+    p.pxY = 200.0; p.pxZ = 200.0
+    p.Lsd = Lsd_um
+    p.BC_y = 512.0; p.BC_z = 512.0
+    p.tx = 0.0; p.ty = 0.4; p.tz = 0.25
+    p.Wavelength = 0.173
+    p.SpaceGroup = 225
+    p.LatticeConstant = (5.411, 5.411, 5.411, 90.0, 90.0, 90.0)
+    p.MaxRingRad = 480.0
+    p.MinRingRad = 0.0
+    p.RhoD = 512.0
+    p.Width = 1500.0
+    p.EtaBinSize = 10.0
+    p.RBinSize = 1.0
+    p.nIterations = 4
+    p.RemoveOutliersBetweenIters = False
+    p.SNRMin = 1.5
+    p.tolLsd = 5000.0; p.tolBC = 8.0; p.tolTilts = 1.0
+    p.tolDistortion = 0.0
+    p.Refine = {
+        'Lsd': True, 'BC': True, 'ty': True, 'tz': True,
+        'Wavelength': False, 'Parallax': False,
+        **{f'p{i}': False for i in range(15)},
+    }
+    return p
+
+
+def simulate_image(params, ring_thickness_px: float = 1.5) -> np.ndarray:
+    \"\"\"Render a 2D image: bright Gaussian rings on a noisy background.\"\"\"
+    rt = build_ring_table(params)
+    NY, NZ = params.NrPixelsY, params.NrPixelsZ
+    px = 0.5 * (params.pxY + params.pxZ)
+    TRs = build_tilt_matrix(params.tx, params.ty, params.tz)
+    Y_grid, Z_grid = np.meshgrid(np.arange(NY, dtype=np.float64),
+                                 np.arange(NZ, dtype=np.float64))
+    R_pix, _ = pixel_to_REta(
+        Y_grid, Z_grid, Ycen=params.BC_y, Zcen=params.BC_z, TRs=TRs,
+        Lsd=params.Lsd, RhoD=params.RhoD, px=px, parallax=params.Parallax)
+    img = np.full(R_pix.shape, 50.0, dtype=np.float64)
+    rng = np.random.default_rng(0)
+    img += rng.normal(0, 5.0, size=img.shape)
+    for r_ideal in rt.r_ideal_px:
+        I_amp = 1000.0 / (1.0 + r_ideal / 100.0)
+        img += I_amp * np.exp(-0.5 * ((R_pix - r_ideal) / ring_thickness_px) ** 2)
+    return img
+"""
+
+
+# =====================================================================
+# NB 21 — Four-stage refinement (per-ring delta_r_k + TPS spline)
+# =====================================================================
+
+NB_21: List[Cell] = [
+    ("md", """\
+# 21 — Four-Stage Refinement (`autocalibrate_four_stage`)
+
+The v1 paper (paper3) defines calibration as **four stages**, and
+`midas_calibrate_v2` reproduces that workflow with
+`autocalibrate_four_stage`:
+
+| stage | what it refines | why |
+|---|---|---|
+| **1 — geom only** | Lsd, BC, tilts; distortion + panels frozen | stable warm-start |
+| **2 — full** | + distortion harmonics (+ panels) | analytical distortion |
+| **3 — spline** | thin-plate spline on the residual ΔR map | localised distortion the basis can't represent |
+| **4 — eval** | re-evaluate strain with stages 2+3 applied | honest final floor |
+
+Stage 3 fits a TPS (`scipy.RBFInterpolator`) to the per-fit ΔR
+residuals on the cake, with a held-out **test** set so the reported
+floor isn't an over-fit.
+
+This notebook is **self-contained synthetic** — it renders a CeO2 ring
+image and runs all four stages.  Runtime ~15 s on a CPU.
+"""),
+    ("py", _V2_SYNTH_PREAMBLE),
+    ("md", """\
+## Render a synthetic CeO2 image and build a perturbed seed
+"""),
+    ("py", """\
+truth = make_truth()
+image = simulate_image(truth)
+
+seed = make_truth()
+seed.Lsd += 300.0; seed.BC_y += 1.5; seed.BC_z -= 1.0
+seed.ty -= 0.05; seed.tz += 0.06
+print(f'image {image.shape}; truth Lsd={truth.Lsd:.0f} '
+      f'BC=({truth.BC_y},{truth.BC_z}) ty={truth.ty} tz={truth.tz}')
+"""),
+    ("md", """\
+## Run all four stages
+
+`autocalibrate_four_stage(v1_params, image)` returns a
+`FourStageResult` carrying each stage's geometry + strain, the trained
+spline callable, and the stage-4 strains (full-set and held-out test).
+"""),
+    ("py", """\
+from midas_calibrate_v2.pipelines.four_stage import autocalibrate_four_stage
+
+t0 = time.time()
+res = autocalibrate_four_stage(
+    seed, image,
+    n_iter_stage1=2, n_iter_stage2=2,
+    enable_stage3_spline=True,
+    spline_holdout_frac=0.2,
+    verbose=False,
+)
+print(f'four-stage done in {time.time()-t0:.1f}s')
+"""),
+    ("md", """\
+## Stage-by-stage strain progression
+
+Stage 1 (geometry only) gives a coarse floor; stage 2 (full distortion)
+lowers it; stage 3's spline mops up the residual ΔR structure; stage 4
+reports the honest test-set floor.
+"""),
+    ("py", """\
+print(f'stage 1 (geom only)   : {res.stage1.final_strain_uE:8.2f} ue   '
+      f'Lsd={float(res.stage1.unpacked["Lsd"]):.1f}')
+print(f'stage 2 (full)        : {res.stage2.final_strain_uE:8.2f} ue   '
+      f'Lsd={float(res.stage2.unpacked["Lsd"]):.1f}')
+print(f'stage 3 spline train RMS (um): {res.stage3_train_rms_um:8.4f}')
+print(f'stage 3 spline test  RMS (um): {res.stage3_test_rms_um:8.4f}  (honest)')
+print(f'stage 4 strain (full mean)   : {res.stage4_strain_uE:8.2f} ue')
+print(f'stage 4 strain (full median) : {res.stage4_strain_uE_med:8.2f} ue')
+print(f'stage 4 strain (test mean)   : {res.stage4_strain_uE_test:8.2f} ue  (honest)')
+print(f'stage 4 strain (test median) : {res.stage4_strain_uE_test_med:8.2f} ue  (honest)')
+"""),
+    ("py", """\
+import matplotlib
+matplotlib.use('Agg')
+import matplotlib.pyplot as plt
+
+labels = ['stage1\\n(geom)', 'stage2\\n(full)', 'stage4\\n(median)']
+vals = [res.stage1.final_strain_uE, res.stage2.final_strain_uE,
+        res.stage4_strain_uE_med]
+fig, ax = plt.subplots(figsize=(5.5, 4))
+ax.bar(labels, vals, color=['C0', 'C1', 'C2'])
+ax.set_ylabel('mean pseudo-strain (ue)')
+ax.set_title('Four-stage strain reduction (synthetic CeO2)')
+for i, v in enumerate(vals):
+    ax.text(i, v, f'{v:.0f}', ha='center', va='bottom')
+ax.grid(axis='y', alpha=0.3)
+fig.tight_layout()
+fig.savefig('four_stage_strain.png', dpi=120)
+plt.close(fig)
+print('wrote four_stage_strain.png')
+"""),
+    ("md", """\
+## The stage-3 spline as a callable ΔR map
+
+`res.stage3_spline_fn` is a callable `(Y_pix, Z_pix) -> ΔR (µm)`.  It is
+the empirical residual-correction surface — the same object that gets
+persisted as a v1-compatible binary for downstream integration.
+"""),
+    ("py", """\
+fn = res.stage3_spline_fn
+if fn is not None:
+    Yq = np.array([200.0, 400.0, 600.0, 800.0])
+    Zq = np.array([512.0, 512.0, 512.0, 512.0])
+    dR = fn(Yq, Zq)
+    print('spline ΔR (um) sampled along a vertical line through BC:')
+    for y, d in zip(Yq, np.atleast_1d(dR)):
+        print(f'  Y={y:6.0f}  Z=512  ΔR={float(d):+.3f} um')
+else:
+    print('stage-3 spline disabled')
+"""),
+    ("md", """\
+## On the per-ring δr_k
+
+The four-stage workflow also supports **per-ring radial offsets**
+`δr_k` (the F2 fix for per-ring DC structure; see notebook 05).  On a
+*single* image δr_k is degenerate with a per-(hkl) lattice shift; the
+spline of stage 3 captures the spatial (Y, Z) part of the residual
+that the per-ring scalar cannot.  To break the δr_k ↔ Δa degeneracy
+you need multiple distances — which is exactly **notebook 22**.
+
+## Takeaway
+
+`autocalibrate_four_stage` reproduces paper-3's published staged
+workflow in one call, reporting an **honest held-out** strain floor
+and a reusable TPS residual-correction map.
+"""),
+]
+
+
+# =====================================================================
+# NB 22 — Multi-distance Bayesian (autocalibrate_multi + Laplace)
+# =====================================================================
+
+NB_22: List[Cell] = [
+    ("md", """\
+# 22 — Multi-Distance Bayesian Calibration (`autocalibrate_multi_bayesian`)
+
+Notebook **07** showed analytically that a *single* calibrant distance
+cannot break the `(L_sd, a)` degeneracy, and that **two distances** do.
+This notebook runs the production multi-image entry point on **two
+synthetic CeO2 images at different L_sd**, then computes the **Laplace
+(Cramér-Rao) covariance at the MAP** — combining
+`autocalibrate_multi` with the Fisher-at-MAP machinery in one call:
+`autocalibrate_multi_bayesian`.
+
+Self-contained synthetic data; runtime ~35 s on a CPU.
+"""),
+    ("py", _V2_SYNTH_PREAMBLE),
+    ("md", """\
+## Render two CeO2 images at distinct L_sd
+
+Same beam centre, tilts, and calibrant — only the sample-detector
+distance differs (1000 mm vs 1300 mm).
+"""),
+    ("py", """\
+truth1 = make_truth(Lsd_um=1_000_000.0)
+truth2 = make_truth(Lsd_um=1_300_000.0)
+img1 = simulate_image(truth1)
+img2 = simulate_image(truth2)
+
+seed1 = make_truth(Lsd_um=1_000_000.0); seed1.Lsd += 300.0
+seed2 = make_truth(Lsd_um=1_300_000.0); seed2.Lsd += 300.0
+print(f'image 1: Lsd={truth1.Lsd:.0f} um   image 2: Lsd={truth2.Lsd:.0f} um')
+"""),
+    ("md", """\
+## Build the multi-image spec
+
+`build_multi_spec` creates a spec where the detector + calibrant are
+shared and the geometry that genuinely differs between images (here
+`Lsd`) is per-image.  The flat refined-name layout is shared-block
+first, then per-image with `_imgK` suffixes — the order
+`LaplaceResult.sigma_per_dim` inherits.
+"""),
+    ("py", """\
+import torch
+from midas_calibrate_v2.pipelines.multi import build_multi_spec
+from midas_calibrate_v2.pipelines.bayesian_multi import (
+    autocalibrate_multi_bayesian, _flat_refined_names,
+)
+from midas_calibrate_v2.parameters.pack import pack_multi
+
+multi_spec = build_multi_spec([seed1, seed2])
+_, info = pack_multi(multi_spec, dtype=torch.float64, device='cpu')
+names = _flat_refined_names(multi_spec, info)
+print('refined names:', names)
+"""),
+    ("md", """\
+## Run MAP + Laplace in one call
+
+`autocalibrate_multi_bayesian` first runs the alternating LM across
+both images (the MAP), then evaluates the Fisher at MAP for the
+per-parameter σ.
+"""),
+    ("py", """\
+t0 = time.time()
+res = autocalibrate_multi_bayesian(
+    [seed1, seed2], [img1, img2],
+    multi_spec=multi_spec,
+    n_iter_map=2, lm_max_iter=80,
+    method='fisher',
+    verbose=False,
+)
+print(f'multi-distance MAP + Laplace done in {time.time()-t0:.1f}s')
+print(f'joint cost = {res.multi_result.cost:.4e}  rc={res.multi_result.rc}')
+"""),
+    ("md", """\
+## Per-image L_sd recovery vs truth
+"""),
+    ("py", """\
+per = res.multi_result.per_image_unpacked
+for k, (truth, p) in enumerate(zip([truth1, truth2], per)):
+    Lsd_map = float(p['Lsd'])
+    print(f'image {k}: truth Lsd={truth.Lsd:.1f}  MAP={Lsd_map:.1f}  '
+          f'err={Lsd_map-truth.Lsd:+.1f} um')
+"""),
+    ("md", """\
+## Per-parameter Bayesian σ (Laplace at MAP)
+
+The headline Bayesian output: a calibrated σ on every refined
+parameter, aligned to `refined_names`.
+"""),
+    ("py", """\
+lap = res.laplace
+print(f'{"parameter":<14s}  {"sigma":>12s}')
+for n, s in zip(lap.refined_names, lap.sigma_per_dim):
+    unit = 'um' if n.startswith('Lsd') else ('px' if n.startswith('BC') else 'deg')
+    print(f'{n:<14s}  {float(s):>12.4e}  {unit}')
+"""),
+    ("md", """\
+## Why two distances
+
+* A **single** distance leaves `(L_sd, a)` degenerate at small 2θ (see
+  notebook 07's analytical Fisher).  Adding a tight L_sd *prior* does
+  **not** help — the degeneracy is only broken by an *independent*
+  constraint at a *different* L_sd.
+* The two-distance protocol adds an independent `Lsd_img1` direction to
+  the Fisher, so the shared calibrant lattice constant — and each
+  image's L_sd — become identifiable, with the σ values quoted above.
+
+## Practical recipe
+
+Take two CeO₂ images at distinct L_sd at the start of an experimental
+session and run them through `autocalibrate_multi_bayesian`.  The σ it
+returns is the appropriate uncertainty to quote when reporting absolute
+lattice constants or strain downstream.
+
+## See also
+
+- **07_multi_distance** — the analytical `(L_sd, a)` Fisher and why a
+  prior alone won't break the gauge.
+- **02_bayesian_uncertainty** — single-image Laplace σ.
+- `midas_joint_ff_calibrate` notebook 04 — the analogous `(L_sd, λ)`
+  gauge broken by adding a powder modality.
+"""),
+]
+
+
+# =====================================================================
 # Notebook registry
 # =====================================================================
 
@@ -2605,6 +2942,9 @@ NOTEBOOKS = {
     "12_cone_aware_seed_for_tilts":     NB_12,
     "13_henke_disentangling":           NB_13,
     "14_sigma_q_for_pdf":               NB_14,
+    # Gap notebooks — self-contained synthetic (no $V2_TEST_BASE needed)
+    "21_four_stage_refinement":         NB_21,
+    "22_multi_distance_bayesian":       NB_22,
 }
 
 

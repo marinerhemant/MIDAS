@@ -21,7 +21,7 @@ gradients into any subsequent computation that depends on them.
 
 from __future__ import annotations
 
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from typing import Optional
 
 import numpy as np
@@ -216,11 +216,16 @@ class GlobalClusterResult:
         ``[voxNr, SpotID, nMatches, nIDs, bestSolIdx]`` — directly maps
         to a row of ``UniqueOrientations.csv`` (sans the OM columns).
     unique_OM_arr : ndarray (n_uniques, 9) float64
+    voxel_to_unique : ndarray (n_vox,) int64
+        Per-voxel grain id (index into ``unique_key_arr`` / ``unique_OM_arr``).
+        ``-1`` for voxels with no valid solution.  Consumed by
+        :func:`midas_pipeline.stages.refine_vmap` to build the voxel grid.
     """
 
     n_uniques: int
     unique_key_arr: np.ndarray
     unique_OM_arr: np.ndarray
+    voxel_to_unique: np.ndarray = field(default_factory=lambda: np.empty(0, dtype=np.int64))
 
 
 def global_cluster(
@@ -282,12 +287,16 @@ def global_cluster(
 
     out_keys: list[np.ndarray] = []
     out_OMs: list[np.ndarray] = []
+    # voxel_to_unique[v] = grain id (index into out_keys), or -1 if no valid solution.
+    voxel_to_unique = np.full(n_vox, -1, dtype=np.int64)
 
     for i in range(n_vox):
         if marked[i]:
             continue
         best_frac = float(per_vox_confs[i])
         best_row = i
+        # Voxels in this cluster — start with the seed voxel.
+        cluster_members: list[int] = [i]
 
         rem = np.flatnonzero(~marked[i + 1 :]) + (i + 1)
         if rem.size > 0:
@@ -304,25 +313,31 @@ def global_cluster(
                     best_frac = cj
                     best_row = j
                 marked[j] = True
+                cluster_members.append(j)
 
         # uniqueKeyArr cols: [bestVoxNr, SpotID, nMatches, nIDs, bestSolIdx]
         # (from findSingleSolutionPFRefactored.c:937-941)
         row5 = np.empty(5, dtype=np.uint64)
         row5[0] = np.uint64(best_row)
         row5[1:5] = per_vox_keys[best_row]
+        grain_idx = len(out_keys)
         out_keys.append(row5)
         out_OMs.append(per_vox_OMs[best_row].copy())
+        for v in cluster_members:
+            voxel_to_unique[v] = grain_idx
 
     if not out_keys:
         return GlobalClusterResult(
             n_uniques=0,
             unique_key_arr=np.empty((0, 5), dtype=np.uint64),
             unique_OM_arr=np.empty((0, 9), dtype=np.float64),
+            voxel_to_unique=voxel_to_unique,
         )
     return GlobalClusterResult(
         n_uniques=len(out_keys),
         unique_key_arr=np.stack(out_keys, axis=0),
         unique_OM_arr=np.stack(out_OMs, axis=0),
+        voxel_to_unique=voxel_to_unique,
     )
 
 

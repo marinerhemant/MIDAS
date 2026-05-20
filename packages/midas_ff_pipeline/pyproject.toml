@@ -32,6 +32,7 @@ dependencies = [
     "tifffile",
     "pandas>=1.5",
     # Sibling MIDAS packages.
+    "midas-zipper>=0.1.0",                # raw → .MIDAS.zip ingest (pip-portable)
     "midas-hkls>=0.2.0",
     "midas-peakfit>=0.2.0",
     "midas-transforms>=0.1.1",

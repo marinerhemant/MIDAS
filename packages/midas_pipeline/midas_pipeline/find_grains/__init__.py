@@ -76,6 +76,7 @@ from ._sinogen import (
 )
 from ._sinogen_indexing import generate_sinograms_indexing
 from ._spot_association import SpotData, SpotList, process_spots
+from .._logging import LOG
 from ._voxel_keys import (
     read_unique_index_single_key,
     write_spots_to_index_csv,
@@ -153,6 +154,9 @@ def find_grains_single(
     output_subdir: str = "Output",
     normalize_sino: bool = False,
     abs_transform: bool = False,
+    # P7: soft sino assembly (tolerance mode only — indexing mode unchanged)
+    emit_softsum: bool = False,
+    soft_weight_fn=None,
     frame_loader=None,
 ) -> FindGrainsArtifacts:
     """Replace ``findSingleSolutionPFRefactored.c``.
@@ -292,6 +296,59 @@ def find_grains_single(
         glob.unique_OM_arr,
     )
 
+    # --- Emit voxel_grid.csv for downstream V-map refinement (P9 TODO(a)).
+    # Layout: voxel_idx x_um y_um z_um grain_id
+    # Voxel lab positions come from the (xThis, yThis) convention in
+    # IndexerScanningOMP.c:1731-1732:
+    #     for v = i*n_scans + j: (x, y) = (positions[i], positions[j])
+    # Falls back to placeholder zeros if positions.csv is absent.
+    voxel_grid_csv = out_dir / "voxel_grid.csv"
+    try:
+        positions_path = work / "positions.csv"
+        if positions_path.exists():
+            sg = read_positions_csv(positions_path)
+            # spatial_positions are sorted-by-y; the IndexerScanningOMP
+            # convention uses sorted positions for the (xThis, yThis) grid.
+            pos = sg.spatial_positions
+            n_scans_int = int(np.sqrt(n_voxels))
+            if n_scans_int * n_scans_int != n_voxels:
+                LOG.warning(
+                    "find_grains_single: n_voxels=%d not a square — using "
+                    "scan_nr-indexed (x, y) = (positions[v], 0).",
+                    n_voxels,
+                )
+                xs = np.array([pos[v] if v < pos.size else 0.0
+                               for v in range(n_voxels)])
+                ys = np.zeros(n_voxels)
+            else:
+                i_idx = np.arange(n_voxels) // n_scans_int
+                j_idx = np.arange(n_voxels) % n_scans_int
+                xs = pos[i_idx]
+                ys = pos[j_idx]
+        else:
+            xs = np.zeros(n_voxels)
+            ys = np.zeros(n_voxels)
+            LOG.info(
+                "find_grains_single: positions.csv absent — voxel positions "
+                "in %s are zero placeholders.", voxel_grid_csv.name,
+            )
+        gid = glob.voxel_to_unique  # int64 (n_voxels,), -1 for invalid
+        rows = np.column_stack([
+            np.arange(n_voxels, dtype=np.int64),
+            xs.astype(np.float64), ys.astype(np.float64),
+            np.zeros(n_voxels, dtype=np.float64),    # z = 0 for PF
+            gid.astype(np.int64),
+        ])
+        np.savetxt(
+            voxel_grid_csv, rows,
+            header="voxel_idx x_um y_um z_um grain_id",
+            fmt=["%d", "%.4f", "%.4f", "%.4f", "%d"],
+            comments="",
+        )
+    except Exception as e:  # pragma: no cover
+        LOG.warning("find_grains_single: voxel_grid.csv emit failed (%s).", e)
+        voxel_grid_csv = None
+
     artifacts = FindGrainsArtifacts(
         unique_orientations_csv=str(unique_orientations_csv),
         unique_index_single_key_bin=str(single_key_path),
@@ -341,6 +398,8 @@ def find_grains_single(
             scan_to_spatial=(scan_grid.scan_to_spatial if scan_grid is not None else None),
             normalize_sino=normalize_sino,
             abs_transform=abs_transform,
+            emit_softsum=emit_softsum,
+            soft_weight_fn=soft_weight_fn,
         )
     elif sino_mode == "indexing":
         sg = generate_sinograms_indexing(
