@@ -8,6 +8,9 @@ dist/
 build/
 .pytest_cache/
 
+gui/cache/
+future/
+fwd_sim/
 packages/*/dev
 NF_HEDM/bin/*
 FF_HEDM/bin/*
