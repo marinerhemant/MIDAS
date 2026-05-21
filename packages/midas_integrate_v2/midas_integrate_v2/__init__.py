@@ -14,7 +14,7 @@ that supplies the implicit gradient on the backward pass.
 """
 from __future__ import annotations
 
-__version__ = "0.1.0"
+__version__ = "0.2.0"
 
 from .spec import IntegrationSpec, DISTORTION_NAMES
 from .compat import (
