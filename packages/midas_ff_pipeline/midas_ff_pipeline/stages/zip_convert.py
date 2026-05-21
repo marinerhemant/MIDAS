@@ -52,24 +52,36 @@ def run(ctx: StageContext) -> StageResult:
     started = time.time()
     outputs: dict[str, str] = {}
 
+    params_file = Path(ctx.config.params_file)
+
+    # This layer's expected zarr (file number = start_fn + (layer-1)*scan_step).
+    # The skip check MUST be against THIS layer's path, not the persisted
+    # ``det.zarr_path`` — that points at the PREVIOUS layer's zarr after the
+    # first layer in a multi-layer run, which caused every subsequent layer to
+    # reuse the first layer's data. Always (re)point det.zarr_path at the
+    # per-layer target so the skip branch is safe for downstream stages too.
+    layer_target = _zarr_path_for_layer(ctx, params_file)
+
     # Skip when conversion isn't wanted.
     if not ctx.config.convert_files:
         LOG.info("zip_convert: --no-convert set, skipping")
+        for det in ctx.detectors:
+            det.zarr_path = str(layer_target)
         return StageResult(stage_name="zip_convert",
                            started_at=started, finished_at=started,
                            duration_s=0.0,
                            metrics={"skipped": True})
 
-    # Skip when every detector already points at an existing zarr.
-    have_all = all(d.zarr_path and Path(d.zarr_path).exists() for d in ctx.detectors)
-    if have_all:
-        LOG.info("zip_convert: all detectors already have zarrs, skipping")
+    # Skip only if THIS layer's zarr already exists.
+    if layer_target.exists():
+        LOG.info("zip_convert: layer %d zarr already exists, skipping (%s)",
+                 ctx.layer_nr, layer_target)
+        for det in ctx.detectors:
+            det.zarr_path = str(layer_target)
         return StageResult(stage_name="zip_convert",
                            started_at=started, finished_at=started,
                            duration_s=0.0,
                            metrics={"skipped": True})
-
-    params_file = Path(ctx.config.params_file)
 
     with stage_timer("zip_convert"):
         for det in ctx.detectors:
