@@ -70,10 +70,15 @@ file(WRITE "${CMAKE_CURRENT_BINARY_DIR}/midas_version.h"
 "#define MIDAS_VERSION_STRING \"midas-index v\" MIDAS_VERSION\n"
 "#endif\n")
 
+# forward.c is the SHARED diffraction forward model. Canonical source:
+# packages/midas_ckernel/c_src/forward.{c,h} (with the parity harness that
+# proves it is bit-identical to the legacy in-file CalcDiffrSpots). The copy
+# here is a build-time vendoring, same convention as MIDAS_Math.c above.
 set(INDEXER_SOURCES
   ${MIDAS_INDEX_C_SRC}/IndexerUnified.c
   ${MIDAS_INDEX_C_SRC}/MIDAS_Math.c
   ${MIDAS_INDEX_C_SRC}/GetMisorientation.c
+  ${MIDAS_INDEX_C_SRC}/forward.c
 )
 
 add_executable(midas_indexer ${INDEXER_SOURCES})

@@ -79,6 +79,12 @@ static inline void check(int test, const char *message, ...) {
 #define deg2rad (M_PI / 180.0)
 #define rad2deg (180.0 / M_PI)
 
+/* Shared diffraction forward model (single source of truth for index+refine).
+ * Provides midas_ck_calc_diffraction_spots / _calc_omega / _calc_spot_position
+ * and MIDAS_CK_NCOLS. The in-file CalcOmega/CalcSpotPosition/CalcDiffrSpots are
+ * now thin shims over these — see below. */
+#include "forward.h"
+
 /* Plan ruling #1: take the upper bound of each constant. */
 #define MAX_N_SPOTS 100000000
 #define MAX_N_STEPS 1000
@@ -90,7 +96,7 @@ static inline void check(int test, const char *message, ...) {
 #define MAX_MIC_ROWS 50000000
 #define MAX_N_DETS 32            /* Phase 9: pinwheel/hydra panel cap */
 #define MAX_ETA_ARCS_PER_DET 256 /* up to N arcs per panel (eta-coverage list) */
-#define N_COL_THEORSPOTS 16   /* PF width: includes sinOme/cosOme cols 14,15 */
+#define N_COL_THEORSPOTS MIDAS_CK_NCOLS /* shared forward row: 0-9,14,15 read here; GCr 16-18 unused by indexer */
 #define N_COL_OBSSPOTS 10     /* PF width: includes ScanNr col 9 */
 #define N_COL_GRAINSPOTS 17
 #define N_COL_GRAINMATCHES 16
@@ -203,6 +209,13 @@ size_t SpotsDetID_size = 0;
 /* hkls in PF format (10 cols: H K L Rnr Ds tht RRd sin(tht) v vSq). */
 double hkls[MAX_N_HKLS][10];
 int n_hkls = 0;
+/* Row-pointer view of the contiguous hkls[][10] table, so the shared forward
+ * model (midas_ck_calc_diffraction_spots, double**) can index it. Populated
+ * once, single-threaded, in BuildHklRowView() after the hkls table is read. */
+double *hkls_rows[MAX_N_HKLS];
+static void BuildHklRowView(void) {
+  for (int i = 0; i < n_hkls; i++) hkls_rows[i] = hkls[i];
+}
 int HKLints[MAX_N_HKLS][4];
 double ABCABG[6];
 double RingHKL[MAX_N_RINGS][3];
@@ -317,14 +330,13 @@ static void CalcInternalAngle(RealType x1, RealType y1, RealType z1, RealType x2
   *ia = rad2deg * acos(tmp);
 }
 
-/* CalcSpotPosition — identical FF (275) / PF (240). */
-static void CalcSpotPosition(RealType RingRadius, RealType eta, RealType *yl,
-                             RealType *zl) {
-  RealType etaRad = deg2rad * eta;
-  *yl = -(sin(etaRad) * RingRadius);
-  *zl = cos(etaRad) * RingRadius;
-}
+/* CalcSpotPosition / CalcOmega now live in the shared forward model
+ * (forward.c, midas_ck_*). These macros keep the in-file call sites unchanged
+ * while routing them to the single shared implementation. */
+#define CalcSpotPosition midas_ck_calc_spot_position
+#define CalcOmega midas_ck_calc_omega
 
+#if 0 /* MOVED to shared forward.c (midas_ck_calc_omega); kept for reference. */
 /* CalcOmega — PF signature (line 247): takes precomputed v, vSq AND outputs
  * cosOmes[]/sinOmes[]. FF callers (Friedel-pair helpers) wrap with their own
  * theta input via CalcOmegaFF (below). */
@@ -419,6 +431,7 @@ static void CalcOmega(RealType x, RealType y, RealType z, RealType v,
     etas[indexOme] = eta;
   }
 }
+#endif /* moved CalcOmega to shared forward.c */
 
 /* CalcOmegaFF — FF-style entry point used inside FF-only Friedel-pair helpers
  * (GenerateIdealSpotsFriedelMixed). Computes (v, vSq) from theta-degrees and
@@ -744,6 +757,19 @@ static void CalcDiffrSpots(RealType OrientMatrix[3][3], RealType LatticeConstant
                            int *nSpotsFracCalc) {
   (void)LatticeConstant;
   (void)Wavelength;
+  /* Forward to the shared model (single source of truth). Indexer passes its
+   * param-file RingRadii[]; no BigDetector mask; orient_id = 0 (legacy). The
+   * shared row width (MIDAS_CK_NCOLS) means GCr lands in cols 16-18, unused
+   * here. */
+  midas_ck_calc_diffraction_spots(OrientMatrix, distance, RingRadii, hkls_rows,
+      n_hkls, OmegaRange, BoxSizes, NOmegaRanges, ExcludePoleAngle,
+      ringsToReject, nRingsToReject, NULL, 0, spots, nspots, nSpotsFracCalc);
+  return;
+}
+#if 0 /* legacy CalcDiffrSpots body — superseded by shared forward.c */
+{
+  (void)LatticeConstant;
+  (void)Wavelength;
   int i, OmegaRangeNo;
   RealType theta;
   int KeepSpot;
@@ -822,6 +848,7 @@ static void CalcDiffrSpots(RealType OrientMatrix[3][3], RealType LatticeConstant
   *nspots = spotnr;
   *nSpotsFracCalc = nSpotsForFracCalc;
 }
+#endif /* legacy CalcDiffrSpots body */
 
 /* ----------------------------------------------------------------------------
  * CompareSpots — UNIFIED.
@@ -2641,6 +2668,7 @@ int main(int argc, char *argv[]) {
   }
   fclose(hklf);
   printf("No of hkls: %d\n", n_hkls);
+  BuildHklRowView(); /* row-pointer view for the shared forward model */
 
   n_spots = (size_t)ReadSpots(cwdstr);
   printf("nSpots = %d\n", (int)n_spots);
