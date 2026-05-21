@@ -4,7 +4,7 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "midas-nf-pipeline"
-version = "0.1.0"
+version = "0.1.1"
 description = "Pure-Python NF-HEDM pipeline orchestrator (single + multi-resolution, multi-layer) — drop-in replacement for nf_MIDAS.py / nf_MIDAS_Multiple_Resolutions.py"
 readme = "README.md"
 license = "BSD-3-Clause"
