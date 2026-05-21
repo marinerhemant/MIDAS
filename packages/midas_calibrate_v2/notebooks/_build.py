@@ -517,6 +517,28 @@ ridge floor and report no useful uncertainty.
 This notebook walks through the Wright-2022 Σ=0 symmetric gauge
 that the framework adopts, and shows the 10-orders-of-magnitude σ
 collapse it produces.
+
+> **Just want a calibration?** The one-shot `calibrate()` entry point
+> (NB 00) now handles tiled detectors directly — build a layout and pass
+> it:
+> ```python
+> from midas_calibrate_v2.forward.panels import PanelLayout
+> layout = PanelLayout.regular(n_y=6, n_z=8, sy=243, sz=195,
+>                              gap_y=(1, 7, 1, 7, 1), gap_z=17)
+> result = calibrate(img, wavelength=0.172979, pxY=172.0, dark=dark,
+>                    im_trans=(2,), panel_layout=layout,
+>                    panel_mode='radius')   # or 'shift'
+> ```
+> `calibrate()` then runs two phases: monolithic geometry first, then a
+> per-panel refinement with the global geometry frozen. `panel_mode='radius'`
+> (default) refines a per-(panel,ring) δR — because the calibrant cost is
+> purely radial, this nulls the per-module radial systematic directly and
+> reaches the sub-100 µε (median/trimmed) regime. `panel_mode='shift'`
+> refines the rigid (δy, δz, δθ) transform instead.
+>
+> **This notebook keeps the low-level spec path** because it also computes
+> per-panel Bayesian σ (the Σ=0 gauge below), which the one-shot path does
+> not expose.
 """),
     ("py", """\
 import os, sys, time

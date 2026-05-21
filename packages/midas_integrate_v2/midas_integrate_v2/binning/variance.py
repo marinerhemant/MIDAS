@@ -365,8 +365,59 @@ def integrate_polygon_with_variance(
     return mean.reshape(geom.n_eta, geom.n_r), sigma.reshape(geom.n_eta, geom.n_r)
 
 
+def integrate_polygon_sums(
+    image: torch.Tensor,
+    geom: PolygonBinGeometry,
+    *,
+    variance_image: Optional[torch.Tensor] = None,
+    correction: Optional[torch.Tensor] = None,
+    apply_trans_opt: bool = True,
+) -> Tuple[torch.Tensor, torch.Tensor, torch.Tensor]:
+    """Un-normalized polygon accumulators for pixel-level multi-panel merge.
+
+    Returns ``(num, var_num, area)`` each shape ``(n_eta, n_r)``::
+
+        num     = Σ_i area_i · I_i
+        var_num = Σ_i area_i² · σ²_i      (Poisson: σ²_i = I_i)
+        area    = Σ_i area_i
+
+    A single panel's area-weighted profile is ``num / area`` with
+    ``σ = sqrt(var_num) / area`` (identical to
+    :func:`integrate_polygon_with_variance`, Poisson model). Several
+    panels are merged by *summing the three accumulators bin-wise BEFORE
+    dividing* — robust to partial coverage, because a panel's
+    coverage-edge sliver contributes proportionally small ``area`` rather
+    than the runaway ``1/σ²`` weight that inverse-variance stitching of
+    pre-normalised 1D profiles assigns to it.
+    """
+    img_flat, var_flat = _prepare_pixel_arrays(
+        image, geom,
+        variance_image=variance_image,
+        correction=correction,
+        apply_trans_opt=apply_trans_opt,
+    )
+    n_bins = geom.n_eta * geom.n_r
+    pix_I = img_flat[geom.pix_idx]
+    pix_var = var_flat[geom.pix_idx]
+    w = geom.area
+    w2 = w * w
+
+    num = torch.zeros(n_bins, dtype=img_flat.dtype, device=img_flat.device)
+    var_num = torch.zeros_like(num)
+    area = torch.zeros_like(num)
+    num = num.index_add(0, geom.bin_idx, pix_I * w)
+    var_num = var_num.index_add(0, geom.bin_idx, pix_var * w2)
+    area = area.index_add(0, geom.bin_idx, w)
+    return (
+        num.reshape(geom.n_eta, geom.n_r),
+        var_num.reshape(geom.n_eta, geom.n_r),
+        area.reshape(geom.n_eta, geom.n_r),
+    )
+
+
 __all__ = [
     "integrate_hard_with_variance",
     "integrate_subpixel_with_variance",
     "integrate_polygon_with_variance",
+    "integrate_polygon_sums",
 ]

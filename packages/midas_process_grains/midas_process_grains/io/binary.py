@@ -143,23 +143,48 @@ def read_index_best(run_dir: Union[str, Path]) -> np.memmap:
     return arr.reshape(-1, INDEX_BEST_DOUBLES)
 
 
-def read_index_best_full(run_dir: Union[str, Path]) -> np.memmap:
-    """Read ``Output/IndexBestFull.bin`` into a (N, 5000, 2) float64 memmap.
+def read_index_best_full(run_dir: Union[str, Path]) -> np.ndarray:
+    """Read the per-seed (matched SpotID, delta-omega) table, (N, 5000, 2).
 
-    Column 0 of the last axis is the matched SpotID (cast from float64;
+    Column 0 of the last axis is the matched SpotID (hkl-slot indexed,
     zero-padded). Column 1 is the delta-omega of the match.
+
+    The python indexer writes ``Output/IndexBestFull.bin`` directly. The
+    c-omp (unified C) backend emits the consolidated family instead, which
+    has no hkl-slot-indexed equivalent — but the *refiner* writes
+    ``Output/FitBest.bin`` whose column 0 is the same hkl-slot-indexed
+    matched SpotID. When IndexBestFull.bin is absent we synthesize this
+    table from FitBest col0 (col1/delta-omega is set to 0; it only feeds
+    the residual tiebreak in spot-conflict resolution, not grain count).
     """
     p = Path(run_dir) / "Output" / "IndexBestFull.bin"
-    if not p.exists():
-        raise FileNotFoundError(p)
-    arr = np.memmap(p, dtype=np.float64, mode="r")
-    _assert_native(arr, str(p))
-    if arr.size % INDEX_BEST_FULL_DOUBLES != 0:
-        raise ValueError(
-            f"{p} size {arr.size} doubles is not a multiple of "
-            f"{INDEX_BEST_FULL_DOUBLES}"
+    if p.exists():
+        arr = np.memmap(p, dtype=np.float64, mode="r")
+        _assert_native(arr, str(p))
+        if arr.size % INDEX_BEST_FULL_DOUBLES != 0:
+            raise ValueError(
+                f"{p} size {arr.size} doubles is not a multiple of "
+                f"{INDEX_BEST_FULL_DOUBLES}"
+            )
+        return arr.reshape(-1, MAX_N_HKLS, 2)
+
+    fb_path = Path(run_dir) / "Output" / "FitBest.bin"
+    if not fb_path.exists():
+        raise FileNotFoundError(
+            f"{p} (python backend) and {fb_path} (c-omp backend fallback) "
+            "both absent — cannot build the matched-spot table"
         )
-    return arr.reshape(-1, MAX_N_HKLS, 2)
+    fb = read_fit_best(run_dir)                 # (N, 5000, 22) memmap
+    n_seeds = fb.shape[0]
+    ibf = np.zeros((n_seeds, MAX_N_HKLS, 2), dtype=np.float64)
+    # Contiguous seed-chunked copy (avoids a strided whole-file col-0 gather
+    # over NFS); col 0 ← FitBest col 0 (matched SpotID per hkl slot).
+    chunk = 512
+    for i0 in range(0, n_seeds, chunk):
+        i1 = min(i0 + chunk, n_seeds)
+        block = np.array(fb[i0:i1])             # (c, 5000, 22) in RAM
+        ibf[i0:i1, :, 0] = block[:, :, 0]
+    return ibf
 
 
 def read_fit_best(run_dir: Union[str, Path]) -> np.memmap:

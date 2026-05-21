@@ -124,27 +124,36 @@ class MILKMultiGeometryAdapter:
         from ..binning import (
             HardBinGeometry, PolygonBinGeometry, SubpixelBinGeometry,
             integrate_hard, integrate_polygon, integrate_subpixel,
-            integrate_polygon_with_variance,
+            integrate_polygon_sums,
         )
         per_radial = []
-        per_intensity = []
-        per_sigma = []
+        # polygon path carries un-normalised accumulators for a pixel-level
+        # multi-panel merge; hard/subpixel carry pre-normalised I and sigma.
+        per_num, per_varnum, per_area = [], [], []
+        per_intensity, per_sigma = [], []
         for k, (img, spec) in enumerate(zip(lst_data, self._specs)):
             img_t = torch.as_tensor(img, dtype=torch.float64)
             if method == "polygon":
                 geom = PolygonBinGeometry.from_spec(spec)
-                mean2d, sig2d = integrate_polygon_with_variance(img_t, geom)
-                valid = torch.isfinite(mean2d)
-                n_valid = valid.sum(dim=0).clamp(min=1)
-                I = (torch.where(valid, mean2d, torch.zeros_like(mean2d))
-                     .sum(dim=0) / n_valid).numpy()
-                sig2_safe = torch.where(valid, sig2d * sig2d,
-                                        torch.zeros_like(sig2d))
-                sig_I = (torch.sqrt(sig2_safe.sum(dim=0)) / n_valid).numpy()
+                num2d, varnum2d, area2d = integrate_polygon_sums(img_t, geom)
+                num1d = num2d.sum(dim=0).numpy()
+                varnum1d = varnum2d.sum(dim=0).numpy()
+                area1d = area2d.sum(dim=0).numpy()
                 R_axis = (
                     spec.RMin
-                    + (np.arange(I.shape[0]) + 0.5) * spec.RBinSize
+                    + (np.arange(num1d.shape[0]) + 0.5) * spec.RBinSize
                 )
+                if normalization_factor is not None:
+                    nf = float(normalization_factor[k])
+                    num1d = num1d / nf
+                    varnum1d = varnum1d / (nf * nf)
+                per_radial.append(
+                    _spec_to_pyfai_unit(spec, R_axis, unit=self.unit)
+                )
+                per_num.append(num1d)
+                per_varnum.append(varnum1d)
+                per_area.append(area1d)
+                continue
             elif method in ("hard",):
                 geom = HardBinGeometry.from_spec(spec)
                 int2d = integrate_hard(img_t, geom, normalize=True)
@@ -175,7 +184,52 @@ class MILKMultiGeometryAdapter:
             per_intensity.append(I)
             per_sigma.append(sig_I)
 
-        # Combine onto common radial grid (npt points)
+        if method == "polygon":
+            # --- Pixel-level area-weighted accumulation across panels ---
+            # Sum the per-panel numerator (Σ area·I), variance numerator
+            # (Σ area²·σ²) and area (Σ area) onto a shared radial grid, THEN
+            # divide once:  I = Σnum/Σarea,  σ = sqrt(Σvarnum)/Σarea.  A
+            # panel's coverage-edge sliver contributes only its small area,
+            # so it cannot dominate the merge — unlike inverse-variance
+            # stitching of pre-normalised 1D profiles, where an edge bin's
+            # artificially small σ produced a runaway 1/σ² weight and a
+            # spurious dropout at every panel-coverage transition.
+            radial_min = min(float(r.min()) for r in per_radial)
+            radial_max = max(float(r.max()) for r in per_radial)
+            if self.radial_range is not None:
+                radial_min = max(radial_min, self.radial_range[0])
+                radial_max = min(radial_max, self.radial_range[1])
+            common_radial = np.linspace(radial_min, radial_max, int(npt))
+            num_tot = np.zeros(int(npt), dtype=np.float64)
+            varnum_tot = np.zeros_like(num_tot)
+            area_tot = np.zeros_like(num_tot)
+            for radial, num1d, varnum1d, area1d in zip(
+                per_radial, per_num, per_varnum, per_area
+            ):
+                order = np.argsort(radial)
+                rs = radial[order]
+                # Interpolate each extensive accumulator onto the shared
+                # grid; a panel contributes zero outside its own coverage
+                # (left/right=0), so panels are spliced without gaps and
+                # without the runaway weight of inverse-variance stitching.
+                num_tot += np.interp(
+                    common_radial, rs, num1d[order], left=0.0, right=0.0)
+                varnum_tot += np.interp(
+                    common_radial, rs, varnum1d[order], left=0.0, right=0.0)
+                area_tot += np.interp(
+                    common_radial, rs, area1d[order], left=0.0, right=0.0)
+            valid = area_tot > 0
+            safe_area = np.where(valid, area_tot, 1.0)
+            I_combined = np.where(valid, num_tot / safe_area, self.empty)
+            sigma_combined = np.where(
+                valid, np.sqrt(np.maximum(varnum_tot, 0.0)) / safe_area, np.nan
+            )
+            return _MILKResult(
+                radial=common_radial, intensity=I_combined,
+                sigma=sigma_combined,
+            )
+
+        # Combine onto common radial grid (npt points) — hard / subpixel
         radial_min = max(r[0] for r in per_radial)
         radial_max = min(r[-1] for r in per_radial)
         if self.radial_range is not None:

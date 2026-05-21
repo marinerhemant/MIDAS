@@ -25,6 +25,7 @@ from .variance import (
     integrate_hard_with_variance,
     integrate_subpixel_with_variance,
     integrate_polygon_with_variance,
+    integrate_polygon_sums,
 )
 
 __all__ = [
@@ -56,4 +57,5 @@ __all__ = [
     "integrate_hard_with_variance",
     "integrate_subpixel_with_variance",
     "integrate_polygon_with_variance",
+    "integrate_polygon_sums",
 ]

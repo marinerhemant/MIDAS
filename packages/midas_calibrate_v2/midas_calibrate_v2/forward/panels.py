@@ -96,6 +96,34 @@ class PanelLayout:
         )
 
 
+def panel_idx_for_points(
+    layout: PanelLayout,
+    Y_pix: torch.Tensor,
+    Z_pix: torch.Tensor,
+) -> torch.Tensor:
+    """Look up the integer panel index for each fitted (Y, Z) point.
+
+    Uses ``layout.panel_index_mask`` (shape ``[NY, NZ]``, ``-1`` in gaps),
+    which :meth:`PanelLayout.regular` builds in pixel space.  Points landing
+    in a module gap, or outside the mask bounds, are returned as ``-1`` so the
+    forward model leaves them untouched (see :func:`apply_panel_shifts`).
+
+    Returns a long tensor of panel indices, same shape as ``Y_pix``.
+    """
+    if layout.panel_index_mask is None:
+        raise ValueError("layout has no panel_index_mask; build via PanelLayout.regular")
+    mask = layout.panel_index_mask
+    H, W = mask.shape
+    yi = torch.round(Y_pix).long()
+    zi = torch.round(Z_pix).long()
+    in_bounds = (yi >= 0) & (yi < H) & (zi >= 0) & (zi < W)
+    yi_c = yi.clamp(0, H - 1)
+    zi_c = zi.clamp(0, W - 1)
+    idx = mask.to(Y_pix.device)[yi_c, zi_c]
+    idx = torch.where(in_bounds, idx, torch.full_like(idx, -1))
+    return idx
+
+
 def apply_panel_shifts(
     Y_pix: torch.Tensor,
     Z_pix: torch.Tensor,
@@ -251,5 +279,5 @@ def per_panel_p2_offset(
     return per_panel_lsd_offset(panel_idx, delta_p2, fix_panel_id)
 
 
-__all__ = ["PanelLayout", "apply_panel_shifts", "invert_panel_shifts",
-           "per_panel_lsd_offset", "per_panel_p2_offset"]
+__all__ = ["PanelLayout", "panel_idx_for_points", "apply_panel_shifts",
+           "invert_panel_shifts", "per_panel_lsd_offset", "per_panel_p2_offset"]

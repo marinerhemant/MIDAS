@@ -122,7 +122,13 @@ def _build_v1(
         MaxRingRad=float(max_ring_rad_px),
         Width=800.0, EtaBinSize=5.0, RBinSize=0.25,
     )
-    v1.RhoD = float(max_ring_rad_px) * float(pixel_size_um)
+    # RhoD = BC-to-farthest-edge distance (µm): the natural distortion
+    # normalisation radius for the automated / from-scratch path.
+    from ..forward.sanity import detector_max_corner_dist_um
+    v1.RhoD = detector_max_corner_dist_um(
+        int(n_pixels_y), int(n_pixels_z), float(bc_y), float(bc_z),
+        float(pixel_size_um), float(pixel_size_um),
+    )
     v1.PerPanelLsd = bool(refine_per_panel)
     v1.PerPanelDistortion = bool(refine_per_panel)
     v1.validate()

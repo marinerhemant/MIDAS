@@ -121,15 +121,26 @@ def calibrate(
     pxY: float,
     pxZ: Optional[float] = None,
     dark: Optional[np.ndarray] = None,
+    im_trans: tuple = (),
     calibrant: Union[str, Dict] = "CeO2",
     output_dir: Optional[Union[str, Path]] = None,
     initial_Lsd: float = 1_000_000.0,
+    lsd_window: Optional[float] = None,
     max_2theta_deg: float = 28.0,
     min_ring_radius_px: float = 120.0,
     max_ring_radius_px: Optional[float] = None,
     n_iter: int = 4,
     lm_max_iter: int = 200,
     build_residual_corr: bool = True,
+    refine_tilts: bool = True,
+    refine_distortion: bool = True,
+    panel_layout=None,
+    panel_mode: str = "radius",
+    panel_tol_shift_px: float = 3.0,
+    panel_tol_rot_deg: float = 1.0,
+    panel_tol_radius_px: float = 2.0,
+    refine_panel_lsd: bool = False,
+    refine_panel_p2: bool = False,
     device: str = "cpu",
     dtype: torch.dtype = torch.float64,
     verbose: bool = True,
@@ -147,6 +158,14 @@ def calibrate(
     * ``dark`` — optional dark-frame array; subtracted from ``image``.
     * ``calibrant`` — name (``"CeO2"``, ``"LaB6"``, ``"Si"``, ``"Al2O3"``)
       or a dict with ``a``, optionally ``c``, ``alpha``, ``gamma``, ``sg``.
+    * ``panel_layout`` — optional :class:`PanelLayout` for tiled-module
+      detectors (Pilatus, Eiger).  Build it once with
+      ``PanelLayout.regular(n_y, n_z, sy, sz, gap_y, gap_z)`` and pass it in;
+      per-panel rigid-body shifts (δy, δz, δθ, and optionally δLsd / δp₂) are
+      then refined in the M-step.  ``panel_tol_shift_px`` /
+      ``panel_tol_rot_deg`` bound the shift and rotation; this is what brings
+      a multi-module Pilatus from a few-hundred µε monolithic fit down to the
+      sub-20 µε regime.  Leave ``None`` for monolithic detectors (GE, Varex).
 
     Pipeline:
 
@@ -177,6 +196,23 @@ def calibrate(
 
     if image.ndim != 2:
         raise ValueError(f"image must be 2-D; got shape {image.shape}")
+    # MIDAS image transforms (1=flip Y, 2=flip Z, 3=transpose): bring the raw
+    # detector image into the geometry-model orientation. Applied to image AND
+    # dark so they stay registered; done before BC/shape so everything
+    # downstream works in the true frame.
+    def _imtrans(arr):
+        for opt in im_trans:
+            if opt == 1:
+                arr = arr[:, ::-1]
+            elif opt == 2:
+                arr = arr[::-1, :]
+            elif opt == 3:
+                arr = arr.T
+        return np.ascontiguousarray(arr)
+    if im_trans:
+        image = _imtrans(image)
+        if dark is not None:
+            dark = _imtrans(dark)
     NZ, NY = image.shape
     if pxZ is None:
         pxZ = pxY
@@ -197,7 +233,11 @@ def calibrate(
     sg = int(cal["sg"])
     cal_name = calibrant if isinstance(calibrant, str) else "<custom>"
 
-    # 1. Background.
+    # 1. Background.  Detect bad-pixel / detector-gap sentinels (-1, -2) from
+    # the RAW image *before* clipping, so they can be masked out of seeding
+    # (otherwise module gaps fragment the ring arcs and bias the beam centre).
+    sentinel_mask = (image == -1) | (image == -2)
+    sentinel_mask = sentinel_mask if bool(sentinel_mask.any()) else None
     if dark is not None:
         if dark.shape != image.shape:
             raise ValueError(
@@ -221,11 +261,35 @@ def calibrate(
             f"{max_2theta_deg}° — check wavelength/lattice"
         )
     t0 = time.time()
-    seed = seed_from_image(
-        image=img, sim_radii_px=sim_radii,
-        initial_lsd=initial_Lsd, npy=NY, npz=NZ,
-        skip_median=False, min_ring_radius_px=min_ring_radius_px,
-    )
+    # Robust seed first: connected-component arc detection → chord-bisector
+    # beam centre (recovers OFF-PANEL BC) → multi-hypothesis Lsd. This is the
+    # battle-tested recipe (formerly AutoCalibrateZarr); it handles off-centre
+    # BC, masked detectors, and weak data where the chord-only arc seed
+    # (seed_from_image) gets stuck. Fall back to seed_from_image otherwise.
+    from types import SimpleNamespace
+    seed = None
+    try:
+        from ..seed.from_calibrant_image import auto_seed_calibrant
+        asr = auto_seed_calibrant(img, sim_radii_px=sim_radii,
+                                  initial_lsd_um=initial_Lsd, mask=sentinel_mask,
+                                  lsd_window=lsd_window)
+        if asr.Lsd_um and asr.Lsd_um > 0 and asr.n_rings_matched >= 1:
+            seed = SimpleNamespace(bc_y=asr.BC_y, bc_z=asr.BC_z, Lsd=asr.Lsd_um,
+                                   n_arcs=asr.n_arcs, n_rings=asr.n_rings_matched)
+            if verbose:
+                print(f"[calibrate]   connected-component seed "
+                      f"({asr.n_arcs} arcs, {asr.n_rings_matched} rings matched, "
+                      f"thr={asr.threshold_used:.0f})", flush=True)
+    except Exception as e:  # pragma: no cover - fall back on any seed failure
+        if verbose:
+            print(f"[calibrate]   auto_seed_calibrant failed ({e}); using arc seed",
+                  flush=True)
+    if seed is None:
+        seed = seed_from_image(
+            image=img, sim_radii_px=sim_radii,
+            initial_lsd=initial_Lsd, npy=NY, npz=NZ,
+            skip_median=False, min_ring_radius_px=min_ring_radius_px,
+        )
     seed_time = time.time() - t0
     if verbose:
         print(f"[calibrate]   BC=({seed.bc_y:.3f}, {seed.bc_z:.3f})  "
@@ -258,9 +322,10 @@ def calibrate(
         MinRingRad=float(min_ring_radius_px),
         RhoD=RhoD_px,
         nIterations=n_iter,
-        Refine={"Lsd": True, "BC": True, "ty": True, "tz": True,
+        Refine={"Lsd": True, "BC": True,
+                "ty": bool(refine_tilts), "tz": bool(refine_tilts),
                 "Wavelength": False, "Parallax": False,
-                **{f"p{i}": True for i in range(15)}},
+                **{f"p{i}": refine_distortion for i in range(15)}},
         Device=device, Dtype="fp64" if dtype == torch.float64 else "fp32",
     )
 
@@ -272,13 +337,76 @@ def calibrate(
     if verbose:
         print(f"[calibrate] STAGE 2: autocalibrate + residual map...", flush=True)
     t1 = time.time()
+    # Phase 1: monolithic geometry + distortion (no panels). On a tiled
+    # detector this stalls in the few-hundred-µε range, but it locks the
+    # global geometry and distortion that the panel phase builds on.  Defer
+    # the residual map to the panel phase when one follows.
     cr = autocalibrate(
         v1, image, dark=dark,
         n_iter=n_iter, lm_max_iter=lm_max_iter,
         dtype=dtype, device=device, verbose=verbose,
-        build_residual_corr=build_residual_corr,
-        residual_corr_path=bin_path,
+        build_residual_corr=build_residual_corr and panel_layout is None,
+        residual_corr_path=bin_path if panel_layout is None else None,
     )
+
+    # Phase 2 (tiled detectors): freeze the global geometry + distortion and
+    # refine ONLY per-panel rigid-body shifts.  Doing this jointly with the
+    # alternating E↔M loop diverges — the E-step (peak extraction) has no
+    # panel awareness, so the 5N panel DOF fight the global tilts every
+    # iteration.  The C AutoCalibrateZarr refines panels as a separate locked
+    # stage; we mirror that here, which is what reaches the sub-20 µε regime.
+    if panel_layout is not None:
+        from ..compat.from_v1 import (
+            spec_from_v1_params, add_panel_parameters, add_panel_ring_radius,
+        )
+        # v1 has been mutated in-place to the phase-1 geometry; seed the
+        # frozen spec from cr.unpacked so distortion (v2-named) carries over,
+        # then freeze every global parameter.
+        spec2 = spec_from_v1_params(v1)
+        for name, prm in spec2.parameters.items():
+            if name in cr.unpacked and cr.unpacked[name].numel() == 1:
+                prm.init = float(cr.unpacked[name].detach().reshape(-1)[0])
+            prm.refined = False
+        if panel_mode == "radius":
+            # Per-(panel, ring) radial offset — nulls the radial calibrant
+            # residual cell-by-cell.  The full ring table runs to high Q (200+
+            # families); only the inner rings land on the detector, so probe
+            # one E-step at the frozen geometry and size the parameter to just
+            # the rings that carry fits (ring_idx indexes the ring table in
+            # ascending-radius order, so max_idx+1 covers every populated ring
+            # while keeping the LM Jacobian small).
+            from ._common import run_estep_v1
+            probe = run_estep_v1(v1, image, dark=dark, dtype=dtype, device=device)
+            n_rings = int(probe.ring_idx.max().item()) + 1
+            add_panel_ring_radius(spec2, panel_layout.n_panels(), n_rings,
+                                  tol_px=panel_tol_radius_px)
+            if verbose:
+                print(f"[calibrate] STAGE 3: per-(panel, ring) radius refinement "
+                      f"({panel_layout.n_panels()} panels × {n_rings} rings "
+                      f"with fits, ±{panel_tol_radius_px}px)...", flush=True)
+        elif panel_mode == "shift":
+            add_panel_parameters(
+                spec2, panel_layout.n_panels(),
+                tol_shift_px=panel_tol_shift_px,
+                tol_rot_deg=panel_tol_rot_deg,
+                enable_lsd=refine_panel_lsd,
+                enable_p2=refine_panel_p2,
+            )
+            if verbose:
+                print(f"[calibrate] STAGE 3: per-panel shift refinement "
+                      f"({panel_layout.n_panels()} panels, "
+                      f"{panel_layout.n_panels_y}×{panel_layout.n_panels_z}, "
+                      f"±{panel_tol_shift_px}px / ±{panel_tol_rot_deg}°)...", flush=True)
+        else:
+            raise ValueError(f"panel_mode must be 'radius' or 'shift'; got {panel_mode!r}")
+        cr = autocalibrate(
+            v1, image, dark=dark,
+            spec=spec2, panel_layout=panel_layout,
+            n_iter=n_iter, lm_max_iter=lm_max_iter,
+            dtype=dtype, device=device, verbose=verbose,
+            build_residual_corr=build_residual_corr,
+            residual_corr_path=bin_path,
+        )
     refine_time = time.time() - t1
     u = cr.unpacked
 

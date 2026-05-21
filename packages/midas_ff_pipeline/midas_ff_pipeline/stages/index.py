@@ -3,10 +3,15 @@
 Reads the merged ``paramstest.txt`` + ``Spots.bin`` and writes
 ``Output/IndexBest.bin`` + ``Output/IndexBestFull.bin``.
 
-The pipeline default is fp64 + group_size=4 for parity with C
-IndexerOMP. Override via PipelineConfig.
+The default backend is ``c-omp`` — the bundled unified C binary
+(OpenMP). It mmaps its own inputs and runs a single parallel region
+over ``n_cpus`` threads, so the GPU / cpu-shard fan-out below does not
+apply to it. Pass ``--indexer-backend python`` for the in-process
+torch/numba indexer; that path defaults to fp64 + group_size=4 for
+parity with C IndexerOMP and is required for GPU / multi-GPU / cpu-shard
+runs. Override via PipelineConfig.
 
-Multi-GPU sharding is supported via ``PipelineConfig.shard_gpus``
+Multi-GPU sharding (python backend only) is supported via ``PipelineConfig.shard_gpus``
 (``--shard-gpus 0,1`` on the CLI). When set, the indexer is fanned
 out across the named devices, each handling a disjoint slice of
 seeds via midas-index's existing ``--block-nr/--n-blocks`` shard
@@ -161,6 +166,40 @@ def _run_cpu_shards(ctx: StageContext, paramstest: Path, n_seeds: int,
         )
 
 
+def _run_c_omp(ctx: StageContext, paramstest: Path, n_seeds: int) -> None:
+    """Index via the bundled unified C binary (OpenMP).
+
+    The binary mmaps Spots.bin/Data.bin/nData.bin/hkls.csv itself and writes
+    ``Output/IndexBest.bin`` + ``IndexBestFull.bin`` — the same output
+    contract as the python backend. It runs its own OpenMP parallel region
+    over ``n_cpus`` threads, so the GPU / cpu-shard fan-out does not apply.
+    """
+    from midas_index import backend_c
+
+    if not backend_c.available():
+        raise RuntimeError(
+            "indexer_backend='c-omp' but the C binary is not built. "
+            "Re-install midas-index with an OpenMP toolchain, or pass "
+            f"--indexer-backend python. (looked for {backend_c.binary_path()})"
+        )
+    LOG.info("  c-omp backend: %s", backend_c.binary_path())
+    cmd = [
+        str(backend_c.binary_path()),
+        str(paramstest),
+        "0",                                       # block_nr
+        "1",                                       # n_blocks
+        str(n_seeds),
+        str(ctx.config.n_cpus),
+    ]
+    run_subprocess(
+        cmd,
+        cwd=ctx.layer_dir,
+        stdout_path=ctx.log_dir / "indexing_out.csv",
+        stderr_path=ctx.log_dir / "indexing_err.csv",
+        env=env_for_index_refine(ctx.config),
+    )
+
+
 def _run_shards(ctx: StageContext, paramstest: Path, n_seeds: int,
                 shard_gpus: list[int]) -> None:
     """Spawn one ``midas-index`` per GPU and wait for all to finish.
@@ -240,8 +279,16 @@ def run(ctx: StageContext) -> IndexResult:
 
     cpu_shards = int(getattr(ctx.config, "cpu_shards", 1) or 1)
 
+    backend = getattr(ctx.config, "indexer_backend", "c-omp")
+
     with stage_timer("indexing"):
-        if shard_gpus:
+        if backend == "c-omp":
+            if shard_gpus or cpu_shards > 1:
+                LOG.info("  indexer_backend=c-omp: ignoring shard_gpus/"
+                         "cpu_shards (the C binary runs its own OpenMP region "
+                         "over %d threads)", ctx.config.n_cpus)
+            _run_c_omp(ctx, paramstest, n_seeds)
+        elif shard_gpus:
             LOG.info("  multi-GPU shard: %d shards across GPUs %s",
                      len(shard_gpus), shard_gpus)
             _run_shards(ctx, paramstest, n_seeds, shard_gpus)
@@ -271,20 +318,34 @@ def run(ctx: StageContext) -> IndexResult:
             )
 
     finished = time.time()
-    # midas-index writes IndexBest.bin / IndexBestFull.bin to OutputFolder
-    # (set by transforms stage to layer_dir/Output, otherwise cwd=layer_dir).
+    # The python backend writes IndexBest.bin / IndexBestFull.bin; the c-omp
+    # (unified C) backend writes the consolidated IndexBest_all.bin family.
+    # Resolve whichever exists for the output paths + the indexed-seed metric.
     output_dir = ctx.layer_dir / "Output"
     index_best = output_dir / "IndexBest.bin"
     if not index_best.exists():
         index_best = ctx.layer_dir / "IndexBest.bin"
     index_best_full = index_best.with_name("IndexBestFull.bin")
+    consolidated = output_dir / "IndexBest_all.bin"
+    if not consolidated.exists():
+        consolidated = ctx.layer_dir / "IndexBest_all.bin"
+
     n_indexed = 0
-    if index_best.exists():
+    if index_best.exists() and index_best.stat().st_size > 0:
         arr = np.fromfile(index_best, dtype=np.float64)
         if arr.size % 15 == 0:
             arr = arr.reshape(-1, 15)
             n_indexed = int((arr[:, 14] > 0).sum())
-    LOG.info("  midas-index: %d / %d seeds with non-zero data", n_indexed, n_seeds)
+    elif consolidated.exists() and consolidated.stat().st_size > 0:
+        # Consolidated header: int32 n_voxels, then n_voxels int32 n_sol_arr.
+        # A seed is "indexed" iff it produced >= 1 solution.
+        with open(consolidated, "rb") as fh:
+            n_vox = int(np.fromfile(fh, dtype=np.int32, count=1)[0])
+            n_sol_arr = np.fromfile(fh, dtype=np.int32, count=n_vox)
+        n_indexed = int((n_sol_arr > 0).sum())
+        index_best = consolidated   # report the file that actually exists
+    LOG.info("  midas-index (%s): %d / %d seeds with non-zero data",
+             backend, n_indexed, n_seeds)
 
     return IndexResult(
         stage_name="indexing",

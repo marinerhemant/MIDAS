@@ -101,6 +101,15 @@ def pseudo_strain_residual(
     R_pred = R_ideal_px(ring_two_theta_deg, p["Lsd"], px_mean)
     if "delta_r_k" in p and ring_idx is not None:
         R_pred = R_pred + p["delta_r_k"][ring_idx]
+    # Per-(panel, ring) radial offset: shift R_pred by δR[panel, ring].  Gap
+    # pixels (panel_idx < 0) get no shift.  Requires both indices.
+    if "panel_ring_delta_r" in p and panel_idx is not None and ring_idx is not None:
+        prd = p["panel_ring_delta_r"]
+        safe_pid = torch.where(panel_idx >= 0, panel_idx,
+                                torch.zeros_like(panel_idx)).long()
+        add = prd[safe_pid, ring_idx.long()]
+        add = torch.where(panel_idx >= 0, add, torch.zeros_like(add))
+        R_pred = R_pred + add
     r = 1.0 - out.R_px / R_pred
     if weights is not None:
         r = r * weights

@@ -86,6 +86,74 @@ def _read_index_best_full(path: str | Path, n_seeds: int,
     return arr.reshape(n_seeds, max_nhkls, INDEX_BEST_FULL_PER_HKL)
 
 
+def _read_consolidated_as_ff(out_dir: Path, n_total: int):
+    """Adapt the c-omp consolidated ``IndexBest_all.bin`` family to the legacy
+    FF ``(index_best, index_best_full)`` shapes the seed loop expects.
+
+    The unified C indexer (and PF) always emit the consolidated family:
+      IndexBest_all.bin    — per-voxel candidate records (16 cols/sol)
+      IndexKey_all.bin     — per-solution [SpotID, nMatches, nIDs, _]
+      IndexBest_IDs_all.bin — concatenated matched observed-spot IDs
+    In FF mode each "voxel" is one seed, so we take the top candidate
+    (highest completeness) per voxel and map its columns:
+      consolidated[2:11]  → FF orient (rec[1:10])
+      consolidated[11:14] → FF position (rec[10:13])
+      n_observed (rec[14]) = number of matched IDs for that candidate
+    The matched IDs become column 0 of ``index_best_full`` so the existing
+    per-seed loop (which reads ``index_best_full[row, :n_observed, 0]``)
+    works unchanged.
+    """
+    from .scan_driver import (
+        _read_index_best_all, _open_keys_and_ids,
+        _matched_ids_for_top, _top_candidate_index,
+    )
+    n_sol_arr, blocks = _read_index_best_all(out_dir / "IndexBest_all.bin")
+    keys_reader, ids_reader = _open_keys_and_ids(out_dir)
+
+    index_best = np.zeros((n_total, INDEX_BEST_RECORD_DOUBLES), dtype=np.float64)
+    n_vox = min(len(blocks), n_total)
+    matched_ids_per_row: list[np.ndarray] = [
+        np.empty(0, dtype=np.int64) for _ in range(n_total)
+    ]
+    max_n_obs = 1
+    n_no_ids = 0
+    for v in range(n_vox):
+        block = blocks[v]
+        top = _top_candidate_index(block)
+        if top is None:
+            continue
+        ids = _matched_ids_for_top(keys_reader, ids_reader, v, top)
+        if ids is None or ids.size == 0:
+            # No matched-ID record → cannot refine against specific spots;
+            # leave the row empty so the seed loop skips it (n_observed==0).
+            n_no_ids += 1
+            continue
+        rec = block[top]
+        index_best[v, 1:10] = rec[2:11]      # orientation matrix
+        index_best[v, 10:13] = rec[11:14]    # grain position (µm)
+        index_best[v, 14] = ids.size         # n_observed
+        matched_ids_per_row[v] = ids.astype(np.float64)
+        if ids.size > max_n_obs:
+            max_n_obs = int(ids.size)
+
+    if keys_reader is None or ids_reader is None:
+        LOG.warning(
+            "consolidated IndexBest_all.bin found but IndexKey_all.bin / "
+            "IndexBest_IDs_all.bin missing — no matched spot IDs available, "
+            "all seeds will be skipped. (looked in %s)", out_dir)
+    elif n_no_ids:
+        LOG.info("consolidated adapter: %d/%d voxels had no matched-ID record",
+                 n_no_ids, n_vox)
+
+    index_best_full = np.zeros(
+        (n_total, max_n_obs, INDEX_BEST_FULL_PER_HKL), dtype=np.float64)
+    for v in range(n_total):
+        ids = matched_ids_per_row[v]
+        if ids.size:
+            index_best_full[v, :ids.size, 0] = ids
+    return index_best, index_best_full
+
+
 def _read_hkls_csv(path: str | Path,
                    ring_numbers: list[int],
                    max_two_theta_deg: float
@@ -307,10 +375,27 @@ def refine_block_from_disk(
 
     # 3. Load shared on-disk artifacts.
     extra = read_extra_info(cwd / "ExtraInfo.bin", mmap=True)
-    index_best = _read_index_best(out_dir / "IndexBest.bin", n_total)
-    index_best_full = _read_index_best_full(
-        out_dir / "IndexBestFull.bin", n_total,
-    )
+    # Backend-agnostic seed read. The python indexer writes the legacy
+    # IndexBest.bin / IndexBestFull.bin; the c-omp (unified C) backend — and
+    # every PF run — write the consolidated IndexBest_all.bin family instead.
+    # Prefer the legacy files when present; otherwise adapt the consolidated
+    # output to the same (index_best, index_best_full) shapes.
+    legacy_best = out_dir / "IndexBest.bin"
+    consolidated_best = out_dir / "IndexBest_all.bin"
+    if legacy_best.exists() and legacy_best.stat().st_size > 0:
+        index_best = _read_index_best(legacy_best, n_total)
+        index_best_full = _read_index_best_full(
+            out_dir / "IndexBestFull.bin", n_total,
+        )
+    elif consolidated_best.exists() and consolidated_best.stat().st_size > 0:
+        LOG.info("indexing output: consolidated IndexBest_all.bin "
+                 "(c-omp/unified backend) → adapting to FF seed format")
+        index_best, index_best_full = _read_consolidated_as_ff(out_dir, n_total)
+    else:
+        raise FileNotFoundError(
+            f"no indexing output found in {out_dir}: expected IndexBest.bin "
+            f"(python backend) or IndexBest_all.bin (c-omp backend)"
+        )
     if cfg.RhoD > 0.0 and cfg.Lsd > 0.0:
         max_two_theta_deg = 2.0 * math.degrees(math.atan(cfg.RhoD / cfg.Lsd))
     else:

@@ -166,7 +166,19 @@ def _make_block_closures(
         if res.numel() == 0:
             loss = torch.tensor(1e10, dtype=pos_scaled.dtype, device=pos_scaled.device)
         else:
-            loss = (res * res).sum()
+            # Reduce per grain, then zero out any grain whose forward produced
+            # a non-finite residual. The whole batch shares one scalar loss +
+            # one LBFGS line search/history, so without this a single
+            # degenerate grain's NaN would poison the step for EVERY grain in
+            # the block. A neutralised grain contributes 0 (and 0 gradient via
+            # nan_to_num's backward), so it stays frozen at its seed and is
+            # filtered downstream by completeness — the other grains refine
+            # normally.
+            sq = res * res
+            per_grain = sq.reshape(sq.shape[0], -1).sum(dim=1)   # (B,)
+            per_grain = torch.nan_to_num(per_grain, nan=0.0,
+                                         posinf=0.0, neginf=0.0)
+            loss = per_grain.sum()
         nop = torch.zeros((), dtype=loss.dtype, device=loss.device)
         for p in active_params:
             nop = nop + 0.0 * p.sum()
@@ -178,6 +190,13 @@ def _make_block_closures(
                 p.grad.zero_()
         loss = _scalar_loss(_residual())
         loss.backward()
+        # Hard backstop: a degenerate grain can still emit NaN/inf gradients
+        # through the forward graph even after its loss term is masked
+        # (0 * inf = NaN). Sanitise so the batched LBFGS step direction stays
+        # finite for every grain; the bad grain just gets a zero update.
+        for p in active_params:
+            if p.grad is not None:
+                torch.nan_to_num_(p.grad, nan=0.0, posinf=0.0, neginf=0.0)
         return loss
 
     def closure_no_backward() -> torch.Tensor:

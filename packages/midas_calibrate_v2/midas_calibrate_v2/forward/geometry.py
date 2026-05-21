@@ -130,11 +130,14 @@ def pixel_to_REta(
         raise ValueError(f"Unknown lattice {lattice!r}; supported: {LATTICES}")
     px_mean = 0.5 * (pxY_eff + pxZ_eff)
 
-    # ---- Optional per-panel rigid body
-    if panel_layout is not None:
+    # ---- Optional per-panel rigid body.  Only applied when the rigid-shift
+    # parameters are actually supplied; the per-(panel, ring) radius mode
+    # corrects R_pred downstream and passes panel_idx without delta_yz/theta,
+    # so the pixel projection stays panel-unaware in that case.
+    if panel_layout is not None and (delta_yz is not None or delta_theta is not None):
         if panel_idx is None or delta_yz is None or delta_theta is None:
             raise ValueError(
-                "panel_layout supplied without panel_idx / delta_yz / delta_theta"
+                "rigid panel shift needs panel_idx AND delta_yz AND delta_theta"
             )
         Y_pix, Z_pix = apply_panel_shifts(
             Y_pix, Z_pix, panel_idx, panel_layout,

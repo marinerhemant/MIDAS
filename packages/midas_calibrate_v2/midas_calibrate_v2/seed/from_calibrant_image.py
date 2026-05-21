@@ -173,7 +173,8 @@ def _estimate_lsd(rads: np.ndarray, sim_rads: np.ndarray,
                   *, first_ring: int = 1,
                   initial_lsd: float = 1_000_000.0,
                   max_ring: int = 0,
-                  rel_tol: float = 0.05) -> Tuple[float, int]:
+                  rel_tol: float = 0.05,
+                  lsd_window: Optional[float] = None) -> Tuple[float, int]:
     """Multi-hypothesis ring-matching distance estimator.
 
     Try assigning detected ring k → simulated ring j for k in {0,1,2}.
@@ -181,11 +182,25 @@ def _estimate_lsd(rads: np.ndarray, sim_rads: np.ndarray,
     rings match a simulated ring within ``rel_tol``.  Pick (k, j) with
     most matches (ties → lowest std of per-match Lsd estimates).
     Returns (best_lsd, n_matches).
+
+    ``lsd_window`` : when set, ``initial_lsd`` is treated as a trustworthy
+    prior — only hypotheses whose recovered Lsd falls in
+    ``[initial_lsd / lsd_window, initial_lsd * lsd_window]`` are considered,
+    and ties are broken toward the hypothesis closest to ``initial_lsd``.
+    This rescues weak data where only 2 rings are detected and the
+    blind ratio matcher would otherwise lock onto a spurious assignment
+    (e.g. the HYDRA off-panel GE panels: true 2455 mm vs spurious 770 mm).
+    Leave ``None`` for the blind from-scratch case.
     """
     if len(rads) == 0:
         return initial_lsd, 0
     n_sim = len(sim_rads) if max_ring <= 0 else min(max_ring, len(sim_rads))
+    use_prior = lsd_window is not None and lsd_window > 1.0
+    lo_lsd = initial_lsd / lsd_window if use_prior else 0.0
+    hi_lsd = initial_lsd * lsd_window if use_prior else np.inf
     best_lsd = initial_lsd
+    # score tuple: (n_matches, tie_breaker) where tie_breaker is minimised.
+    # Blind: tie_breaker = lsd_std.  Prior: tie_breaker = |lsd-initial|/initial.
     best_score = (0, 1e9)
     max_det_start = min(3, len(rads))
     for det_start in range(max_det_start):
@@ -200,11 +215,17 @@ def _estimate_lsd(rads: np.ndarray, sim_rads: np.ndarray,
                 if diffs[best_j] / max(det_rad, 1.0) < rel_tol:
                     matches += 1
                     lsds_this.append(initial_lsd * det_rad / sim_rads[best_j])
-            lsd_std = float(np.std(lsds_this)) if len(lsds_this) >= 2 else 1e9
             lsd_median = float(np.median(lsds_this)) if lsds_this else trial_lsd
+            # Reject hypotheses outside the trusted window entirely.
+            if use_prior and not (lo_lsd <= lsd_median <= hi_lsd):
+                continue
+            if use_prior:
+                tie = abs(lsd_median - initial_lsd) / initial_lsd
+            else:
+                tie = float(np.std(lsds_this)) if len(lsds_this) >= 2 else 1e9
             if matches > best_score[0] or (
-                matches == best_score[0] and lsd_std < best_score[1]):
-                best_score = (matches, lsd_std)
+                matches == best_score[0] and tie < best_score[1]):
+                best_score = (matches, tie)
                 best_lsd = lsd_median
     return best_lsd, best_score[0]
 
@@ -225,6 +246,8 @@ def auto_seed_calibrant(
     first_ring: int = 1,
     max_ring: int = 0,
     skip_median: bool = False,
+    mask: Optional[np.ndarray] = None,
+    lsd_window: Optional[float] = None,
 ) -> AutoSeedResult:
     """Fully-automated $\\BC$ + Lsd seed from a calibrant image.
 
@@ -262,6 +285,11 @@ def auto_seed_calibrant(
         thr = (float(threshold) if threshold is not None
                else 100.0 * (1.0 + np.std(corr) // 100.0))
     corr_thr = np.where(corr < thr, 0.0, corr)
+    if mask is not None:
+        # Exclude bad/gap pixels (e.g. detector module gaps flagged by
+        # sentinel values) so they cannot fragment ring arcs and bias the
+        # chord-bisector beam centre.
+        corr_thr = np.where(np.asarray(mask, dtype=bool), 0.0, corr_thr)
     binary = (corr_thr > 0).astype(np.uint8) * 255
 
     # Step 3: label
@@ -297,7 +325,8 @@ def auto_seed_calibrant(
     lsd, n_matched = _estimate_lsd(rads, sim_radii_px,
                                      first_ring=first_ring,
                                      initial_lsd=initial_lsd_um,
-                                     max_ring=max_ring)
+                                     max_ring=max_ring,
+                                     lsd_window=lsd_window)
 
     # MIDAS convention: BC = (BC_y, BC_z) = (col, row)
     return AutoSeedResult(

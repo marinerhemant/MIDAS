@@ -105,4 +105,46 @@ def check_rho_d_um(
     return None
 
 
-__all__ = ["detector_max_corner_dist_um", "check_rho_d_um"]
+def resolve_rho_d_um(
+    rho_d,
+    NrPixelsY: int, NrPixelsZ: int,
+    BC_y: float, BC_z: float,
+    pxY: float, pxZ: Optional[float] = None,
+    *,
+    low_factor: float = 0.5,
+    high_factor: float = 5.0,
+) -> tuple[float, str]:
+    """Resolve a ``RhoD`` of ambiguous units to micrometres.
+
+    ``RhoD`` only appears in the distortion normalisation ``ρ = R_um / RhoD``,
+    so it must be in µm. Different MIDAS workflows have stored it in µm or in
+    pixels, which silently breaks the distortion stage. This helper removes
+    the ambiguity: given a value of unknown units, it tries
+    ``{rho_d, rho_d·px, rho_d/px}`` and returns the first that falls in the
+    physically sane window ``[low_factor·dmax, high_factor·dmax]`` (preferring
+    the as-is interpretation), where ``dmax`` is the beam-centre-to-farthest-
+    corner distance in µm.
+
+    When no candidate is sane (or ``rho_d`` is missing / non-positive) it falls
+    back to ``dmax`` itself — the natural default RhoD (BC to farthest detector
+    edge), which is what the automated / from-scratch path should use.
+
+    Returns ``(rho_d_um, how)`` where ``how`` documents the chosen branch.
+    """
+    dmax = detector_max_corner_dist_um(NrPixelsY, NrPixelsZ, BC_y, BC_z, pxY, pxZ)
+    lo, hi = low_factor * dmax, high_factor * dmax
+    px = float(pxY) if (pxZ is None or pxZ <= 0) else 0.5 * (float(pxY) + float(pxZ))
+    try:
+        val = float(rho_d)
+    except (TypeError, ValueError):
+        val = 0.0
+    if val > 0 and px > 0:
+        for how, cand in (("as-is (µm)", val),
+                          ("×px (was pixels)", val * px),
+                          ("÷px", val / px)):
+            if lo <= cand <= hi:
+                return cand, how
+    return dmax, "default = BC-to-farthest-edge"
+
+
+__all__ = ["detector_max_corner_dist_um", "check_rho_d_um", "resolve_rho_d_um"]

@@ -429,13 +429,14 @@ class PipelineConfig:
     shard_gpus: Optional[str] = None
     # Backend selector for the indexing stage (Phase 7 of the unified
     # midas_indexer rollout).
-    #   "python"  — default. In-process Python+numba+torch indexer.
-    #   "c-omp"   — shell out to the bundled unified C binary
+    #   "c-omp"   — default. Shell out to the bundled unified C binary
     #               (midas_indexer, built by scikit-build-core at pip-install
     #               time). Required: midas-index installed with a working
     #               OpenMP toolchain; otherwise backend_c.available()
     #               returns False and the stage raises.
-    indexer_backend: str = "python"
+    #   "python"  — In-process Python+numba+torch indexer. Needed for GPU
+    #               runs and the fp64 parity gate.
+    indexer_backend: str = "c-omp"
 
     # Process-grains (FF mode only — see plan §3d)
     process_grains_mode: ProcessGrainsMode = "spot_aware"

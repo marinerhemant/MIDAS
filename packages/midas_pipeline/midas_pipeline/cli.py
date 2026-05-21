@@ -154,10 +154,11 @@ def _build_parser() -> argparse.ArgumentParser:
     run.add_argument("--shard-gpus", default=None,
                      help="comma-separated CUDA indices for multi-GPU indexing")
     run.add_argument("--indexer-backend", choices=["python", "c-omp"],
-                     default="python",
-                     help="indexing backend: 'python' (default, in-process "
-                          "numba/torch) or 'c-omp' (bundled unified C binary, "
-                          "requires OpenMP-built midas-index install).")
+                     default="c-omp",
+                     help="indexing backend: 'c-omp' (default, bundled unified "
+                          "C binary, requires OpenMP-built midas-index install) "
+                          "or 'python' (in-process numba/torch; needed for GPU "
+                          "runs and the fp64 parity gate).")
 
     # Recon (PF)
     run.add_argument("--do-tomo", type=int, default=1, choices=[0, 1])

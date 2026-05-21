@@ -244,6 +244,34 @@ def add_panel_parameters(spec: CalibrationSpec, n_panels: int,
     ))
 
 
+def add_panel_ring_radius(spec: CalibrationSpec, n_panels: int, n_rings: int,
+                          *, tol_px: float = 2.0) -> None:
+    """Inject a per-(panel, ring) radial offset ``panel_ring_delta_r``.
+
+    Shape ``[n_panels, n_rings]``, initially zero, bounded ``±tol_px``.  The
+    predicted ring radius for a fit on panel ``k`` / ring ``j`` is shifted by
+    ``panel_ring_delta_r[k, j]`` in :func:`pseudo_strain_residual` (requires
+    ``panel_idx`` and ``ring_idx``).
+
+    This is the radial alternative to the rigid per-panel (δy, δz, δθ)
+    transform: because the calibrant cost is purely radial
+    (``1 − R_obs/R_pred``), letting each ring's radius float independently on
+    each module nulls the per-module radial systematic directly — the
+    generalisation of the C ``AutoCalibrateZarr`` per-panel δLsd/δP2 stage,
+    and what reaches the sub-20 µε regime on a tiled Pilatus.
+
+    No explicit gauge is needed when the global geometry (``Lsd``, distortion)
+    is frozen: each cell is determined solely by its own fits, so there is no
+    uniform-shift nullspace.  Cells with no fits keep their zero init.
+    """
+    spec.add(Parameter(
+        name="panel_ring_delta_r",
+        init=torch.zeros(n_panels, n_rings, dtype=torch.float64),
+        refined=True,
+        bounds=(-tol_px, tol_px),
+    ))
+
+
 def add_panel_zero_sum_constraint(
     spec: CalibrationSpec,
     *,

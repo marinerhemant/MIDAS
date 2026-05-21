@@ -67,9 +67,10 @@ def _load_hkls_for_rings(hkls_path: Path, ring_numbers: List[int]):
             if len(tokens) < 11:
                 continue
             try:
+                # hkls.csv schema: h k l D-spacing RingNr g1 g2 g3 Theta 2Theta Radius
+                #   tokens[3]=D-spacing, [4]=RingNr, [8]=Theta(deg), [9]=2Theta, [10]=Radius.
                 rn = int(tokens[4])
-                # hkls.csv schema: tokens[5] is 2θ in deg
-                two_theta = float(tokens[5])
+                two_theta = float(tokens[9])
                 rrad = float(tokens[10])
             except (ValueError, IndexError):
                 continue
@@ -402,11 +403,19 @@ def fit_setup(
             f.write("RingNumber OriginalID NewID(RingsMerge)\n")
             for (rn, oid, nid) in id_rings_rows:
                 f.write(f"{rn} {oid} {nid}\n")
-        # IDsHash.csv: per-ring (ring_nr, start_row, end_row, ds)
+        # IDsHash.csv: per-ring (ring_nr, start_row, end_row, ds).
+        # The d-spacing column is read by midas-process-grains for the Kenesei
+        # per-spot strain gauge (ds_0). It must be the real ring d-spacing
+        # d = λ/(2·sinθ) — not a 0 placeholder, or every spot is dropped and
+        # the strain comes out exactly 0.
+        lam = float(zarr_params.Wavelength)
+        ds_per_ring = [
+            (lam / (2.0 * math.sin(t * _DEG2RAD))) if (lam > 0 and t > 0) else 0.0
+            for t in thetas_per_ring
+        ]
         with open(out_dir / "IDsHash.csv", "w") as f:
             start_row = 1
-            for rn, count, dval in zip(ring_numbers, per_ring_count, [t * 0 for t in thetas_per_ring]):
-                # ds (d-spacing) per ring — placeholder (the C code reads from hkls.csv col)
+            for rn, count, dval in zip(ring_numbers, per_ring_count, ds_per_ring):
                 f.write(f"{rn} {start_row} {start_row + count + 1} {dval}\n")
                 start_row += count
         # SpotsToIndex.csv

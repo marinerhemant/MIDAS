@@ -121,20 +121,18 @@ def autocalibrate_multi(
     v1-compatible binary readable by :mod:`midas_integrate` and
     ``CalibrantIntegratorOMP``.
     """
-    # ---- Sanity-check RhoD against detector geometry on every input image.
-    # RhoD is stored in pixels in CalibrationParams; we validate the µm
-    # equivalent (× pxY) so wrong-unit mistakes raise here instead of
-    # producing silent garbage in the distortion stage.
-    from ..forward.sanity import check_rho_d_um
+    # ---- Resolve RhoD to µm on every input image (RhoD enters only as
+    # ρ = R_um / RhoD). Auto-detect units of the supplied value and default
+    # to the BC-to-farthest-edge distance for the automated case.
+    from ..forward.sanity import resolve_rho_d_um
     for i, v1 in enumerate(v1_per_image):
-        rho_d_px = v1.RhoD if v1.RhoD > 0 else v1.MaxRingRad
-        check_rho_d_um(
-            RhoD_um=float(rho_d_px) * float(v1.pxY),
+        rho_d_um, _ = resolve_rho_d_um(
+            v1.RhoD if v1.RhoD > 0 else v1.MaxRingRad,
             NrPixelsY=int(v1.NrPixelsY), NrPixelsZ=int(v1.NrPixelsZ),
             BC_y=float(v1.BC_y), BC_z=float(v1.BC_z),
             pxY=float(v1.pxY), pxZ=float(v1.pxZ if v1.pxZ > 0 else v1.pxY),
-            strict=True,
         )
+        v1.RhoD = rho_d_um   # canonical µm for E-step + forward distortion
     n_imgs = len(v1_per_image)
     if len(images) != n_imgs:
         raise ValueError("len(images) must match len(v1_per_image)")

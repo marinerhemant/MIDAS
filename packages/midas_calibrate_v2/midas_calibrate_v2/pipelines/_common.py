@@ -91,7 +91,9 @@ def run_estep_v1(
     rtt_per_pt = rt_tt[rid]
 
     px = 0.5 * (v1_params.pxY + v1_params.pxZ) if v1_params.pxZ > 0 else v1_params.pxY
-    rho_d = v1_params.RhoD if v1_params.RhoD > 0 else v1_params.MaxRingRad
+    # RhoD is µm (forward distortion uses ρ = R_um / RhoD); MaxRingRad
+    # fallback is px and must be scaled to µm.
+    rho_d = v1_params.RhoD if v1_params.RhoD > 0 else v1_params.MaxRingRad * px
 
     # Default ring + SNR weights, matching v1.
     w = torch.ones_like(snr)

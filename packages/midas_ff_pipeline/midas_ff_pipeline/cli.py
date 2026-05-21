@@ -83,6 +83,13 @@ def _build_parser() -> argparse.ArgumentParser:
                             "threads on small per-seed ops, so multi-process "
                             "sharding is faster than a single 96-thread "
                             "process. Ignored on GPU. '1' or '0' disables.")
+    p_run.add_argument("--indexer-backend", default="c-omp",
+                       choices=["python", "c-omp"],
+                       help="indexing backend: 'c-omp' (default) shells out to "
+                            "the bundled unified C binary (OpenMP, fast); "
+                            "'python' uses the in-process torch/numba indexer "
+                            "(needed for GPU / multi-GPU / cpu-shard runs and "
+                            "the fp64 parity gate).")
     p_run.add_argument("--pg-mode", default="spot_aware",
                        choices=["spot_aware", "legacy", "paper_claim"],
                        help="midas_process_grains mode")
@@ -458,6 +465,7 @@ def _cmd_run(args: argparse.Namespace) -> int:
         refine_loss=args.loss,
         refine_mode=args.mode,
         indexer_group_size=resolved_gs,
+        indexer_backend=args.indexer_backend,
         shard_gpus=resolved_shard,
         cpu_shards=resolved_cpu_shards,
         process_grains_mode=args.pg_mode,

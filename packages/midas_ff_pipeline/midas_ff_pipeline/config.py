@@ -71,6 +71,10 @@ class PipelineConfig:
     refine_loss: Literal["pixel", "angular", "internal_angle"] = "pixel"
     refine_mode: Literal["", "iterative", "all_at_once"] = ""
     indexer_group_size: int = 4                    # default to small group for fp64 safety
+    # Indexing backend: "c-omp" (default) shells out to the bundled unified
+    # C binary (OpenMP, fast); "python" uses the in-process torch/numba
+    # indexer (device/dtype/group-size/shard knobs only apply here).
+    indexer_backend: Literal["python", "c-omp"] = "c-omp"
     process_grains_mode: Literal["spot_aware", "legacy", "paper_claim"] = "spot_aware"
 
     # Multi-GPU sharding for the indexer stage. Comma-separated list of
