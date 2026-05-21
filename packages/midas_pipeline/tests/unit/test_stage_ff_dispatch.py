@@ -21,7 +21,8 @@ from midas_pipeline.stages._base import StageContext
 from midas_pipeline.stages import indexing, refinement
 
 
-def _ff_ctx(tmp_path: Path, *, has_files: bool, n_seeds: int = 3) -> StageContext:
+def _ff_ctx(tmp_path: Path, *, has_files: bool, n_seeds: int = 3,
+            indexer_backend: str = "python") -> StageContext:
     params = tmp_path / "P.txt"
     params.write_text("SpaceGroup 225\n")
     cfg = PipelineConfig(
@@ -30,6 +31,11 @@ def _ff_ctx(tmp_path: Path, *, has_files: bool, n_seeds: int = 3) -> StageContex
         scan=ScanGeometry.ff(),
         device="cpu", dtype="float64",
         n_cpus=4,
+        # Pin the python backend explicitly: the default is "c-omp", which
+        # dispatches the installed C binary instead of `python -m midas_index`.
+        # Without this pin the assertion below depends on whether the C
+        # binary happens to be built on the test machine.
+        indexer_backend=indexer_backend,
         refinement=RefinementConfig(solver="lbfgs", loss="angular", mode="all_at_once"),
     )
     layer_dir = tmp_path / "Layer1"
@@ -71,6 +77,34 @@ def test_indexing_ff_invokes_midas_index_subprocess(
     assert seen["cmd"][3].endswith("paramstest.txt")
     assert seen["cmd"][4:7] == ["0", "1", "5"]
     assert seen["cmd"][7] == "4"  # n_cpus
+    assert seen["cwd"] == str(ctx.layer_dir)
+
+
+def test_indexing_ff_comp_invokes_c_binary(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch,
+):
+    """Default backend (c-omp): dispatch shells to the C ``midas_indexer``."""
+    seen = {}
+
+    def fake_run(cmd, **kwargs):
+        seen["cmd"] = cmd
+        seen["cwd"] = kwargs.get("cwd")
+        return SimpleNamespace(returncode=0)
+
+    # Pretend the C binary is built and points at a known path.
+    fake_bin = tmp_path / "midas_indexer"
+    monkeypatch.setattr("midas_index.backend_c.available", lambda: True)
+    monkeypatch.setattr("midas_index.backend_c.binary_path", lambda: fake_bin)
+    monkeypatch.setattr("subprocess.run", fake_run)
+
+    ctx = _ff_ctx(tmp_path, has_files=True, n_seeds=5, indexer_backend="c-omp")
+    indexing.run(ctx)
+
+    assert seen["cmd"][0] == str(fake_bin)
+    assert seen["cmd"][1].endswith("paramstest.txt")
+    # Positional args: paramstest, block_nr, n_blocks, n_seeds, n_cpus
+    assert seen["cmd"][2:5] == ["0", "1", "5"]
+    assert seen["cmd"][5] == "4"  # n_cpus
     assert seen["cwd"] == str(ctx.layer_dir)
 
 
