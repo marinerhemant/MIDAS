@@ -203,21 +203,34 @@ def _build_bilinear_csr(
 
     base = iz * n_pixels_y + iy
     ny = n_pixels_y
+    shape = (n_bins, n_pixels_y * n_pixels_z)
 
-    # Build 4 triples per entry. We concatenate the (row, col, val) arrays
-    # for each of the 4 corners then let scipy coalesce.
-    rows = np.tile(bin_index, 4)
-    cols = np.concatenate([base, base + 1, base + ny, base + ny + 1])
-    w00 = (1.0 - fy) * (1.0 - fz) * frac
-    w10 = fy        * (1.0 - fz) * frac
-    w01 = (1.0 - fy) * fz        * frac
-    w11 = fy        * fz        * frac
-    vals = np.concatenate([w00, w10, w01, w11])
+    # Memory-bounded assembly for large detectors. The earlier version built one
+    # COO of 4·n_e triples (concatenating rows, cols, vals) — for a 2880² panel
+    # that is three ~130 M-element arrays plus scipy's COO→CSR copies, several GB
+    # of transient peak with a *single ~1 GB contiguous* allocation for `vals`
+    # that OOMs on modest machines (this is the exact line that failed in the
+    # field). Instead we build the four bilinear corners as separate CSRs and
+    # sum them: the largest single allocation drops to ~n_e (one corner's
+    # weights, ~4× smaller), scipy coalesces each corner on construction, and the
+    # additions coalesce across corners. Indices are int32 (every flat pixel/bin
+    # index < 2³¹ here), halving the index footprint. Values stay float64; the
+    # only difference vs the single concatenation is summation order (≲1e-12, far
+    # inside the 1e-9 bilinear tolerance and below the float32 cast downstream).
+    rows32 = bin_index.astype(np.int32)
+    del over_y, under_y, over_z, under_z, iy, iz   # free clamp temporaries
 
-    sp = scipy.sparse.csr_matrix(
-        (vals, (rows, cols)),
-        shape=(n_bins, n_pixels_y * n_pixels_z),
-    )
+    def _corner(col_idx: np.ndarray, w: np.ndarray) -> "scipy.sparse.csr_matrix":
+        return scipy.sparse.csr_matrix(
+            (w, (rows32, col_idx.astype(np.int32))), shape=shape,
+        )
+
+    one_fy = 1.0 - fy
+    one_fz = 1.0 - fz
+    sp = _corner(base,            one_fy * one_fz * frac)
+    sp = sp + _corner(base + 1,     fy * one_fz * frac)
+    sp = sp + _corner(base + ny,    one_fy * fz * frac)
+    sp = sp + _corner(base + ny + 1, fy * fz * frac)
     sp.sum_duplicates()
     sp.eliminate_zeros()
     return _scipy_csr_to_torch(sp, device=device, dtype=dtype)
