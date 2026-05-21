@@ -4,7 +4,7 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "midas-calibrate"
-version = "0.2.4"
+version = "0.2.5"
 description = "Native Python/Torch detector calibration for MIDAS — replaces AutoCalibrateZarr → CalibrantIntegratorOMP. CPU & GPU; LM-based refinement."
 readme = "README.md"
 license = { text = "BSD-3-Clause" }
@@ -27,6 +27,7 @@ dependencies = [
     "h5py>=3.0",
     "hdf5plugin>=4.0",
     "tifffile>=2022.0",
+    "psutil>=5.8",
 ]
 
 [project.optional-dependencies]

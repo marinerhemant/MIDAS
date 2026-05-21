@@ -13,6 +13,7 @@ Strategy:
 """
 from __future__ import annotations
 
+import warnings
 from dataclasses import dataclass
 from typing import List, Optional, Tuple
 
@@ -31,6 +32,89 @@ from midas_integrate.params import IntegrationParams
 from .params import CalibrationParams
 from .refine import FittedPoint
 from .rings import RingTable
+
+
+# ── adaptive, memory-aware cake binning mode ─────────────────────────────────
+# The bilinear (sub-pixel) cake gives the most accurate ring centroids, but its
+# CSR build expands every pixel→bin entry into 4 corner weights, so for a large
+# detector (e.g. 2880²) it transiently needs several GB and OOMs on a
+# memory-limited machine. When ``cake_mode="auto"`` (the default) we estimate
+# the bilinear build's peak from the entry count and fall back to floor binning
+# (≈4× lighter, only marginally less sub-pixel-accurate — negligible for the
+# centroid-based calibration here) when available RAM can't safely cover it.
+# Calibrated on a 2880² CeO2 frame (≈33 M pixel-bin entries): the FULL bilinear
+# calibrate() pipeline peaks ~12.5 GB → ~400 B/entry. We size the estimate to
+# the full-pipeline peak (not just the CSR build) and keep a generous headroom,
+# so bilinear is only chosen with real margin. Floor binning gave a bit-for-bit
+# identical calibration on this data (same Lsd, same strain) at a lower peak, so
+# biasing toward floor on large detectors / modest machines costs no accuracy.
+_BILINEAR_BYTES_PER_ENTRY = 400       # full-pipeline bytes per pixel-bin entry
+_RAM_HEADROOM_BYTES = 3 * 1024 ** 3   # room for the image, torch/LM state, OS
+
+
+def _available_ram_bytes() -> Optional[int]:
+    """Best-effort available physical RAM in bytes; None if undetectable.
+
+    Tries psutil (cross-platform, a declared dependency), then POSIX
+    ``os.sysconf`` (Linux/macOS), then the Win32 ``GlobalMemoryStatusEx`` via
+    ctypes (so detection still works on Windows even if psutil is absent).
+    """
+    try:
+        import psutil
+        return int(psutil.virtual_memory().available)
+    except Exception:
+        pass
+    try:
+        import os
+        return int(os.sysconf("SC_AVPHYS_PAGES") * os.sysconf("SC_PAGE_SIZE"))
+    except (ValueError, AttributeError, OSError):
+        pass
+    try:  # Windows native fallback
+        import ctypes
+
+        class _MEMSTAT(ctypes.Structure):
+            _fields_ = [("dwLength", ctypes.c_ulong),
+                        ("dwMemoryLoad", ctypes.c_ulong),
+                        ("ullTotalPhys", ctypes.c_ulonglong),
+                        ("ullAvailPhys", ctypes.c_ulonglong),
+                        ("ullTotalPageFile", ctypes.c_ulonglong),
+                        ("ullAvailPageFile", ctypes.c_ulonglong),
+                        ("ullTotalVirtual", ctypes.c_ulonglong),
+                        ("ullAvailVirtual", ctypes.c_ulonglong),
+                        ("ullAvailExtendedVirtual", ctypes.c_ulonglong)]
+
+        st = _MEMSTAT()
+        st.dwLength = ctypes.sizeof(_MEMSTAT)
+        if ctypes.windll.kernel32.GlobalMemoryStatusEx(ctypes.byref(st)):
+            return int(st.ullAvailPhys)
+    except Exception:
+        pass
+    return None
+
+
+def _choose_cake_mode(n_entries: int, requested: str = "auto") -> str:
+    """Resolve the cake integration mode.
+
+    ``requested`` is ``"auto"`` (RAM-checked bilinear→floor fallback),
+    ``"bilinear"`` (force, maximum accuracy), or ``"floor"`` (force, lightest).
+    """
+    if requested != "auto":
+        return requested
+    avail = _available_ram_bytes()
+    if avail is None:
+        return "bilinear"          # can't tell — keep the accurate default
+    needed = n_entries * _BILINEAR_BYTES_PER_ENTRY + _RAM_HEADROOM_BYTES
+    if avail < needed:
+        warnings.warn(
+            f"midas_calibrate: insufficient memory for bilinear caking "
+            f"(~{needed / 1024**3:.1f} GB estimated for {n_entries:,} pixel-bin "
+            f"entries, ~{avail / 1024**3:.1f} GB available) — falling back to "
+            f"floor binning. Pass cake_mode='bilinear' to force it, or run on a "
+            f"higher-RAM machine for maximum sub-pixel accuracy.",
+            RuntimeWarning, stacklevel=3,
+        )
+        return "floor"
+    return "bilinear"
 
 
 def _calibration_to_integration_params(
@@ -75,8 +159,15 @@ def integrate_cake(
     image: np.ndarray,
     rt: RingTable,
     *, dark: Optional[np.ndarray] = None,
+    cake_mode: str = "auto",
 ) -> CakeProfile:
-    """Build CSR + integrate the image into a uniform (R, η) cake."""
+    """Build CSR + integrate the image into a uniform (R, η) cake.
+
+    ``cake_mode`` selects the binning kernel: ``"auto"`` (default) uses
+    bilinear sub-pixel binning but falls back to floor binning when available
+    RAM can't safely cover the bilinear CSR build (large detectors on
+    memory-limited machines); ``"bilinear"`` / ``"floor"`` force the choice.
+    """
     if dark is not None:
         image = image - dark
 
@@ -98,17 +189,20 @@ def integrate_cake(
         offsets=pmap_result.offsets,
         map_header=None, nmap_header=None,
     )
+    # Choose bilinear vs floor from available RAM (large detectors can OOM the
+    # bilinear CSR build); the entry count drives the estimate.
+    mode = _choose_cake_mode(int(pmap.counts.sum()), cake_mode)
     geom = build_csr(
         pmap,
         n_r=ip.n_r_bins, n_eta=ip.n_eta_bins,
         n_pixels_y=ip.NrPixelsY, n_pixels_z=ip.NrPixelsZ,
         bc_y=ip.BC_y, bc_z=ip.BC_z,
         device="cpu", dtype=torch.float64,
-        build_modes=("bilinear",),
+        build_modes=(mode,),
     )
 
     img_t = torch.as_tensor(image, dtype=torch.float64).contiguous()
-    cake = integrate(img_t, geom, mode="bilinear", normalize=True).numpy()
+    cake = integrate(img_t, geom, mode=mode, normalize=True).numpy()
 
     R_edges = np.linspace(ip.RMin, ip.RMin + ip.RBinSize * ip.n_r_bins, ip.n_r_bins + 1)
     eta_edges = np.linspace(ip.EtaMin, ip.EtaMax, ip.n_eta_bins + 1)
@@ -196,7 +290,8 @@ def run_estep(
     image: np.ndarray,
     rt: RingTable,
     *, dark: Optional[np.ndarray] = None,
+    cake_mode: str = "auto",
 ) -> Tuple[CakeProfile, List[FittedPoint]]:
-    cake = integrate_cake(params, image, rt, dark=dark)
+    cake = integrate_cake(params, image, rt, dark=dark, cake_mode=cake_mode)
     fits = extract_fitted_points(cake, rt, params, snr_min=params.SNRMin)
     return cake, fits
