@@ -5,7 +5,7 @@ Public API surface (re-exports from submodules so users can do
 """
 from __future__ import annotations
 
-__version__ = "0.4.0"
+__version__ = "0.4.1"
 
 from midas_integrate.bin_io import (
     PXLIST_DTYPE,
