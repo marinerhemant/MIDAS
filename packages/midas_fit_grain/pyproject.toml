@@ -1,11 +1,11 @@
 [build-system]
-requires = ["setuptools>=68.0"]
-build-backend = "setuptools.build_meta"
+requires = ["scikit-build-core>=0.10"]
+build-backend = "scikit_build_core.build"
 
 [project]
 name = "midas-fit-grain"
-version = "0.4.1"
-description = "PyTorch single/multi-grain refiner (drop-in replacement for FitPosOrStrainsOMP / FitPosOrStrainsGPU)"
+version = "0.5.0"
+description = "PyTorch single/multi-grain refiner (drop-in replacement for FitPosOrStrainsOMP / FitPosOrStrainsGPU) + bundled c-omp C refiner"
 readme = "README.md"
 license = "BSD-3-Clause"
 requires-python = ">=3.9"
@@ -42,9 +42,17 @@ Issues = "https://github.com/marinerhemant/MIDAS/issues"
 [project.scripts]
 midas-fit-grain = "midas_fit_grain.cli:main"
 
-[tool.setuptools.packages.find]
-where = ["."]
-include = ["midas_fit_grain*"]
+[tool.scikit-build]
+cmake.minimum-version = "3.20"
+cmake.source-dir = "."
+wheel.packages = ["midas_fit_grain"]
+# If the C target fails to build (no OpenMP / no compiler), the install still
+# succeeds Python-only — CMakeLists returns early instead of erroring, and
+# backend_c.available() then returns False at runtime.
+build-dir = "build/{wheel_tag}"
+
+[tool.scikit-build.cmake.define]
+SKBUILD_PROJECT_VERSION = "{project.version}"
 
 [tool.pytest.ini_options]
 markers = [
