@@ -111,21 +111,28 @@ def _read_ge(path: Path, *, data_type: int = 1, skip_frame: int = 0) -> np.ndarr
 
 
 def _read_cbf(path: Path) -> np.ndarray:
-    """CBF reader via the ``fabio`` package.
+    """CBF reader via MIDAS's own ``midas_zipper`` reader.
 
-    CBF is the Crystallographic Binary File format used by Pilatus / Eiger.
-    ``fabio`` is a declared dependency of this package, so the import should
-    always succeed; the guard only produces a clear message if it was
-    removed from the environment.
+    CBF is the Crystallographic Binary File format used by Pilatus / Eiger /
+    Varex.  We deliberately do **not** use ``fabio`` here: fabio returns the
+    raw frame, whereas the entire MIDAS pipeline (``midas_zipper`` →
+    ``midas_peakfit`` → indexer) works in the transposed/double-flipped MIDAS
+    convention (``pixels.reshape(nrows, ncols).T[::-1, ::-1]``).  Reading with
+    fabio yields a Y↔Z-transposed, both-axes-flipped beam centre and MIRRORED
+    tilts/distortion that are invalid for the pipeline.  Using the same reader
+    the pipeline uses guarantees the calibration geometry is consistent with
+    downstream indexing.
     """
     try:
-        import fabio
-    except ImportError as exc:  # pragma: no cover - dependency guaranteed by pyproject
+        from midas_zipper._read_cbf import read_cbf
+    except ImportError as exc:  # pragma: no cover - dependency declared in pyproject
         raise RuntimeError(
-            "CBF reading requires the `fabio` package (a declared "
-            "midas-calibrate-v2 dependency). Install with `pip install fabio`."
+            "CBF reading requires the `midas-zipper` package (a declared "
+            "midas-calibrate-v2 dependency). Install with "
+            "`pip install midas-zipper`."
         ) from exc
-    return fabio.open(str(path)).data.astype(np.float64)
+    _header, data = read_cbf(str(path), check_md5=False)
+    return data.astype(np.float64)
 
 
 __all__ = ["read_image", "read_dark"]

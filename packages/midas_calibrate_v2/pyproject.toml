@@ -4,7 +4,7 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "midas-calibrate-v2"
-version = "0.2.1"
+version = "0.3.0"
 description = "Fully differentiable detector calibration for MIDAS — multi-image, Bayesian, NN-residual, joint forward cake. Coexists with midas-calibrate v1."
 readme = "README.md"
 license = { text = "BSD-3-Clause" }
@@ -28,7 +28,7 @@ dependencies = [
     "h5py>=3.0",
     "hdf5plugin>=4.0",
     "tifffile>=2022.0",
-    "fabio>=0.14",                        # CBF (Pilatus/Eiger) reader
+    "midas-zipper>=0.1.1",                # CBF reader in MIDAS orientation (not fabio)
 ]
 
 [project.optional-dependencies]

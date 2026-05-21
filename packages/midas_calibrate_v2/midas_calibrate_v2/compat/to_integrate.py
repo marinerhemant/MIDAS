@@ -19,6 +19,7 @@ carry through:
 from __future__ import annotations
 
 import json
+import math
 from pathlib import Path
 from typing import Callable, Dict, Optional
 
@@ -233,8 +234,98 @@ def to_integrate_params(
     return ip
 
 
+def spec_from_calibration_result(
+    result,
+    *,
+    RBinSize: float,
+    EtaBinSize: float = 5.0,
+    RMin: float = 10.0,
+    RMax: Optional[float] = None,
+    EtaMin: float = -180.0,
+    EtaMax: float = 180.0,
+    residual_corr_map: Optional[str] = None,
+):
+    """Build a ``midas_integrate_v2`` ``IntegrationSpec`` from a
+    :class:`~midas_calibrate_v2.pipelines.auto.AutoCalibrationResult`
+    (the object returned by :func:`midas_calibrate_v2.calibrate`).
+
+    The calibration result carries the full refined geometry + distortion +
+    residual-map path, but NOT the integration binning
+    (``RMin``/``RMax``/``RBinSize``/``EtaBinSize``) — those are an integration
+    choice, supplied here. ``RBinSize`` is required; ``RMax=None`` defaults to
+    the beam-centre-to-farthest-corner distance (the full detector).
+
+    The returned spec is the single source for **both** integrators:
+
+    * **v2** — feed straight to ``midas_integrate_v2.build_geometry`` /
+      ``integrate``.
+    * **v1** — convert with
+      ``midas_integrate_v2.compat.to_v1.v1_params_from_spec(spec)`` for the
+      legacy ``midas_integrate`` path.
+
+    Notes
+    -----
+    ``RhoD`` is set in **pixels** (the v2 spec convention; the forward model
+    converts internally). Distortion harmonic names are shared between
+    ``midas_calibrate_v2`` and ``midas_integrate_v2``, so they copy across with
+    no translation.
+    """
+    try:
+        import torch
+        from midas_integrate_v2.spec import IntegrationSpec, DISTORTION_NAMES
+    except ImportError as e:  # pragma: no cover
+        raise ImportError(
+            "spec_from_calibration_result requires midas-integrate-v2 "
+            "(pip install midas-integrate-v2)"
+        ) from e
+
+    def _t(x):
+        return torch.as_tensor(x, dtype=torch.float64)
+
+    s = IntegrationSpec()
+    s.NrPixelsY = int(result.NrPixelsY)
+    s.NrPixelsZ = int(result.NrPixelsZ)
+    s.pxY = float(result.pxY)
+    s.pxZ = float(result.pxZ)
+    s.Lsd = _t(result.Lsd)
+    s.BC_y = _t(result.BC_y)
+    s.BC_z = _t(result.BC_z)
+    s.tx = _t(result.tx)
+    s.ty = _t(result.ty)
+    s.tz = _t(result.tz)
+    s.Wavelength = _t(result.wavelength_A)
+    s.Parallax = _t(0.0)
+
+    NY, NZ = s.NrPixelsY, s.NrPixelsZ
+    s.RhoD = math.sqrt(
+        max(result.BC_y, NY - 1 - result.BC_y) ** 2
+        + max(result.BC_z, NZ - 1 - result.BC_z) ** 2
+    )
+
+    for name in DISTORTION_NAMES:
+        if name in result.distortion and hasattr(s, name):
+            setattr(s, name, _t(result.distortion[name]))
+
+    rcm = residual_corr_map
+    if rcm is None:
+        rcm = getattr(result, "residual_corr_bin_path", None)
+    if rcm:
+        s.ResidualCorrectionMap = rcm
+
+    s.RMin = float(RMin)
+    s.RMax = float(RMax) if RMax is not None else float(s.RhoD)
+    s.RBinSize = float(RBinSize)
+    s.EtaMin = float(EtaMin)
+    s.EtaMax = float(EtaMax)
+    s.EtaBinSize = float(EtaBinSize)
+
+    s.validate()
+    return s
+
+
 __all__ = [
     "write_residual_correction_from_spline",
     "write_per_ring_offsets_json",
     "to_integrate_params",
+    "spec_from_calibration_result",
 ]
