@@ -438,6 +438,14 @@ class PipelineConfig:
     #               runs and the fp64 parity gate.
     indexer_backend: str = "c-omp"
 
+    # Refinement backend (FF + PF):
+    #   "python"  — In-process PyTorch refiner (default; differentiable, GPU/MPS,
+    #               UQ). Shells `python -m midas_fit_grain` (FF) / scan_driver (PF).
+    #   "c-omp"   — Bundled unified C binary `midas_fitgrain` (FitUnified):
+    #               vendored Nelder-Mead, shared forward; FF refines position,
+    #               PF fixes it. Requires midas-fit-grain installed with OpenMP.
+    refine_backend: str = "python"
+
     # Process-grains (FF mode only — see plan §3d)
     process_grains_mode: ProcessGrainsMode = "spot_aware"
 

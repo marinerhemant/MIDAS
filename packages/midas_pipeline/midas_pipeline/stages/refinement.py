@@ -50,34 +50,63 @@ def _run_ff(ctx: StageContext) -> StageResult:
     output_dir.mkdir(parents=True, exist_ok=True)
     results_dir.mkdir(parents=True, exist_ok=True)
 
-    # Multi-detector: pixel loss is panel-local, switch to angular for the
-    # merged paramstest path. Same logic as midas-ff-pipeline.
-    is_multi_det = "\nDetParams " in ("\n" + paramstest.read_text())
+    # The 2D 'pixel' loss is removed (it omitted omega and gave poor,
+    # under-determined fits); refinement always uses a full 3D / angular loss.
     loss = ctx.config.refinement.loss
-    if is_multi_det and loss == "pixel":
-        loss = "angular"
-        LOG.info("refinement(FF): multi-detector → switching loss to 'angular'")
 
-    cmd = [
-        sys.executable, "-m", "midas_fit_grain",
-        str(paramstest),
-        "0", "1",                              # block_nr, n_blocks
-        str(n_seeds),
-        str(ctx.config.n_cpus),
-        "--solver", ctx.config.refinement.solver,
-        "--loss", loss,
-    ]
-    if ctx.config.refinement.mode:
-        cmd += ["--mode", ctx.config.refinement.mode]
-    LOG.info("refinement(FF): %s", " ".join(cmd))
+    # c-omp backend writes its IndexBest*_all.bin into <layer_dir>/Output; hand
+    # fit-grain the matching paramstest so it reads them from there.
+    fit_paramstest = paramstest
+    if ctx.config.indexer_backend == "c-omp":
+        from ._comp_params import comp_backend_paramstest
+        fit_paramstest = comp_backend_paramstest(paramstest, layer_dir)
+
     log_dir = Path(ctx.log_dir)
     log_dir.mkdir(parents=True, exist_ok=True)
-    with (log_dir / "refinement_out.csv").open("w") as out_fp, \
-         (log_dir / "refinement_err.csv").open("w") as err_fp:
-        subprocess.run(
-            cmd, cwd=str(layer_dir), check=True,
-            stdout=out_fp, stderr=err_fp,
+
+    if ctx.config.refine_backend == "c-omp":
+        # Bundled unified C refiner (midas_fitgrain / FitUnified): FF mode
+        # auto-detected (no/1-row positions.csv), refines position via the
+        # spatial objective. Reads the same comp paramstest + seeds.
+        from midas_fit_grain import backend_c
+        if not backend_c.available():
+            raise RuntimeError(
+                "refine_backend='c-omp' but the midas_fitgrain binary is not "
+                "available. Re-install midas-fit-grain with an OpenMP toolchain "
+                "(macOS: `brew install libomp`), or use --refine-backend python."
+            )
+        LOG.info("refinement(FF, c-omp): %s  [%d seeds]",
+                 backend_c.binary_path(), n_seeds)
+        proc = backend_c.run_refiner(
+            fit_paramstest, block_nr=0, n_blocks=1, n_work=n_seeds,
+            num_procs=ctx.config.n_cpus, cwd=layer_dir,
         )
+        (log_dir / "refinement_out.csv").write_bytes(proc.stdout or b"")
+        (log_dir / "refinement_err.csv").write_bytes(proc.stderr or b"")
+        if proc.returncode != 0:
+            raise RuntimeError(
+                f"midas_fitgrain (c-omp) exited {proc.returncode}; see "
+                f"{log_dir / 'refinement_err.csv'}"
+            )
+    else:
+        cmd = [
+            sys.executable, "-m", "midas_fit_grain",
+            str(fit_paramstest),
+            "0", "1",                              # block_nr, n_blocks
+            str(n_seeds),
+            str(ctx.config.n_cpus),
+            "--solver", ctx.config.refinement.solver,
+            "--loss", loss,
+        ]
+        if ctx.config.refinement.mode:
+            cmd += ["--mode", ctx.config.refinement.mode]
+        LOG.info("refinement(FF): %s", " ".join(cmd))
+        with (log_dir / "refinement_out.csv").open("w") as out_fp, \
+             (log_dir / "refinement_err.csv").open("w") as err_fp:
+            subprocess.run(
+                cmd, cwd=str(layer_dir), check=True,
+                stdout=out_fp, stderr=err_fp,
+            )
 
     finished = time.time()
     orient_pos_fit = results_dir / "OrientPosFit.bin"
@@ -96,6 +125,7 @@ def _run_ff(ctx: StageContext) -> StageResult:
             str(output_dir / "FitBest.bin"): "",
         },
         metrics={"scan_mode": "ff",
+                 "refine_backend": ctx.config.refine_backend,
                  "loss": loss,
                  "solver": ctx.config.refinement.solver,
                  "mode": ctx.config.refinement.mode or "all_at_once"},
@@ -121,6 +151,46 @@ def run(ctx: StageContext) -> StageResult:
 
     LOG.info("refinement(PF): index_best_all=%s, results_dir=%s",
              index_best_all, results_dir)
+
+    if ctx.config.refine_backend == "c-omp":
+        # Bundled unified C refiner (midas_fitgrain / FitUnified): PF mode
+        # auto-detected (positions.csv > 1 row), position FIXED to the voxel
+        # grid. Reads consolidated IndexBest_all.bin. NB: downstream
+        # consolidation_pf must read midas_fitgrain's per-voxel output format.
+        from midas_fit_grain import backend_c
+        if not backend_c.available():
+            raise RuntimeError(
+                "refine_backend='c-omp' but the midas_fitgrain binary is not "
+                "available. Re-install midas-fit-grain with an OpenMP toolchain, "
+                "or use --refine-backend python."
+            )
+        spots_to_index = layer_dir / "SpotsToIndex.csv"
+        n_vox = sum(1 for ln in spots_to_index.open() if ln.strip()) \
+            if spots_to_index.exists() else 0
+        log_dir = Path(ctx.log_dir); log_dir.mkdir(parents=True, exist_ok=True)
+        LOG.info("refinement(PF, c-omp): %s  [%d voxels]",
+                 backend_c.binary_path(), n_vox)
+        proc = backend_c.run_refiner(
+            paramstest, block_nr=0, n_blocks=1, n_work=n_vox,
+            num_procs=ctx.config.n_cpus, cwd=layer_dir,
+        )
+        (log_dir / "refinement_out.csv").write_bytes(proc.stdout or b"")
+        (log_dir / "refinement_err.csv").write_bytes(proc.stderr or b"")
+        if proc.returncode != 0:
+            raise RuntimeError(
+                f"midas_fitgrain (c-omp PF) exited {proc.returncode}; see "
+                f"{log_dir / 'refinement_err.csv'}"
+            )
+        finished = time.time()
+        return RefineResult(
+            stage_name="refinement",
+            started_at=started, finished_at=finished, duration_s=finished - started,
+            orient_pos_fit_bin="", results_dir=str(results_dir),
+            n_grains_refined=0, n_voxels_refined=int(n_vox),
+            outputs={str(results_dir): ""},
+            metrics={"scan_mode": "pf", "refine_backend": "c-omp",
+                     "n_voxels_processed": n_vox},
+        )
 
     # Lazy imports to keep FF runs lean.
     from midas_fit_grain.config import FitConfig

@@ -49,6 +49,7 @@ def _run_ff(ctx: StageContext) -> StageResult:
 
     if ctx.config.indexer_backend == "c-omp":
         from midas_index import backend_c
+        from ._comp_params import comp_backend_paramstest
         if not backend_c.available():
             raise RuntimeError(
                 f"indexer_backend='c-omp' but the C binary is not built. "
@@ -56,9 +57,12 @@ def _run_ff(ctx: StageContext) -> StageResult:
                 f"indexer_backend='python'. (looked for "
                 f"{backend_c.binary_path()})"
             )
+        # The C binary locates binned inputs via dirname(OutputFolder) and
+        # emits into OutputFolder; hand it OutputFolder=<layer_dir>/Output.
+        comp_paramstest = comp_backend_paramstest(paramstest, layer_dir)
         cmd = [
             str(backend_c.binary_path()),
-            str(paramstest),
+            str(comp_paramstest),
             "0",                               # block_nr
             "1",                               # n_blocks
             str(n_seeds),

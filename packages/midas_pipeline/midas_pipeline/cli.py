@@ -132,8 +132,9 @@ def _build_parser() -> argparse.ArgumentParser:
                      help="(pf) position-refinement mode")
     run.add_argument("--refine-solver", choices=["lbfgs", "lm", "nelder_mead", "adam", "lm_batched"],
                      default="lbfgs")
-    run.add_argument("--refine-loss", choices=["pixel", "angular", "internal_angle"],
-                     default="pixel")
+    run.add_argument("--refine-loss",
+                     choices=["full3d", "angular", "internal_angle"],
+                     default="full3d")  # 2D 'pixel' loss disabled in fit-grain
     run.add_argument("--refine-mode", choices=["", "iterative", "all_at_once"],
                      default="all_at_once",
                      help="refinement strategy; default 'all_at_once' (single joint fit)")
@@ -159,6 +160,13 @@ def _build_parser() -> argparse.ArgumentParser:
                           "C binary, requires OpenMP-built midas-index install) "
                           "or 'python' (in-process numba/torch; needed for GPU "
                           "runs and the fp64 parity gate).")
+    run.add_argument("--refine-backend", choices=["python", "c-omp"],
+                     default="python",
+                     help="refinement backend: 'python' (default, in-process "
+                          "PyTorch refiner; differentiable, GPU/MPS, UQ) or "
+                          "'c-omp' (bundled unified C binary midas_fitgrain; "
+                          "FF refines position, PF fixes it; requires "
+                          "OpenMP-built midas-fit-grain install).")
 
     # Recon (PF)
     run.add_argument("--do-tomo", type=int, default=1, choices=[0, 1])
@@ -534,6 +542,7 @@ def build_config(args: argparse.Namespace) -> PipelineConfig:
         skip_stages=list(args.skip),
         indexer_group_size=args.group_size,
         indexer_backend=args.indexer_backend,
+        refine_backend=args.refine_backend,
         shard_gpus=args.shard_gpus,
         process_grains_mode=args.pg_mode,
         raw_dir=args.raw_dir,
