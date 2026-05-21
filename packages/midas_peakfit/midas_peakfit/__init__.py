@@ -10,7 +10,7 @@ Entry points:
     midas_peakfit.run(...)    — programmatic; see ``midas_peakfit.pipeline_main``
 """
 
-__version__ = "0.4.0"
+__version__ = "0.4.1"
 
 from midas_peakfit.lm import LMConfig, lm_solve  # noqa: E402,F401
 from midas_peakfit.lm_generic import (  # noqa: E402,F401

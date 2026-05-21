@@ -4,7 +4,7 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "midas-peakfit"
-version = "0.4.0"
+version = "0.4.1"
 description = "Differentiable PyTorch peak-fitting for FF-HEDM Zarr archives (drop-in replacement for PeaksFittingOMPZarrRefactor)"
 readme = "README.md"
 license = "BSD-3-Clause"
