@@ -19,7 +19,7 @@ Primary entry points (subject to v0 churn):
 """
 from __future__ import annotations
 
-__version__ = "0.1.0"
+__version__ = "0.2.0"
 
 # One-shot fully-automated entry point: image + wavelength -> calibration.
 from .pipelines.auto import calibrate, AutoCalibrationResult, CALIBRANTS
