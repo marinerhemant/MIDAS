@@ -75,6 +75,9 @@ end-to-end demo (synthetic 50-grain Au, single detector).
 ``03_multi_detector_demo.ipynb`` runs the four-detector pinwheel
 layout against a synthetic ground truth.
 
+These notebooks are **not shipped with** ``pip install`` — get them by
+cloning the `MIDAS repository <https://github.com/marinerhemant/MIDAS/tree/master/packages/midas_ff_pipeline/notebooks>`_.
+
 ## Multi-detector
 
 ```python

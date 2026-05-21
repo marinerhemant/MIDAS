@@ -2942,6 +2942,188 @@ lattice constants or strain downstream.
 ]
 
 
+NB_23: List[Cell] = [
+    ("md", """\
+# 23 — Joint Multi-Detector Refinement (HYDRA, shared $L_{sd}$)
+
+High-energy beamlines such as APS 1-ID tile several flat-panel
+detectors *azimuthally* around the beam (the "HYDRA" arrangement) to
+cover a full powder ring at one large sample-to-detector distance.
+Every panel sits at the **same** $L_{sd}$, but each has its own
+beam-centre, tilts, distortion, and an azimuthal mounting angle
+$t_x$. The beam-centre is typically *off-panel* (the direct beam does
+not hit any module), and each panel sees only a short arc of each
+ring — so a single panel's data constrains $L_{sd}$ only weakly and a
+per-panel fit scatters (we saw 2407–2541 mm across four panels).
+
+The fix is a **joint refinement with $L_{sd}$ shared** across all
+panels: one distance, constrained simultaneously by every panel's
+rings, with per-panel beam-centres. This notebook runs the validated
+two-step recipe:
+
+1. **`robust_multipanel_seed`** — a shared-$L_{sd}$ two-pass seed.
+   Pass 1 estimates $L_{sd}$ per panel from ring-radius *ratios*
+   (reflection identification that is $L_{sd}$-independent), and the
+   clean panels' median sets the shared distance. Pass 2 grid-searches
+   each panel's beam-centre at that shared $L_{sd}$ (robust where a
+   gradient optimiser stalls on a weak off-panel arc).
+2. **`autocalibrate_multi`** — the joint LM/EM, with $L_{sd}$, pixel
+   pitch, and wavelength in the *shared* block and the beam-centre
+   per-panel.
+
+The result is a single $L_{sd}$ good to ~1 mm across panels, ready to
+hand to `midas_integrate_v2`'s multi-detector merge.
+"""),
+    ("py", """\
+import os
+os.environ.setdefault('KMP_DUPLICATE_LIB_OK', 'TRUE')
+from pathlib import Path
+import numpy as np, h5py
+
+# Point this at a HYDRA-style dataset: one HDF5 frame + dark per panel.
+# The reference dataset is the APS 1-ID 4-panel CeO2 scan.
+BASE = Path(os.environ.get('V2_HYDRA_BASE',
+                           os.path.expanduser('~/Desktop/analysis/hydra')))
+PANELS = (1, 2, 3, 4)
+PX, WL = 200.0, 0.172973                  # µm, Å (~71.7 keV)
+# Approximate (off-panel) beam centres — from a prior coarse calibration
+# or the beamline's nominal mount. The seed only needs them to ±~60 px.
+APPROX_BC = {1: (2300.6, 2172.1), 2: (2270.0, 2167.4),
+             3: (2293.9, 2097.2), 4: (2404.6, 2141.3)}
+# Known azimuthal mounting offsets (deg) — hardware geometry, fixed.
+TX = {1: 296.885, 2: 27.300, 3: 117.800, 4: 207.500}
+
+def _panel_dir(n):
+    return BASE / f'data/ge{n}/CeO2_7s_2700mm_20x20um_slitted'
+
+HAVE_DATA = BASE.exists() and all(_panel_dir(n).exists() for n in PANELS)
+if not HAVE_DATA:
+    print(f'HYDRA dataset not found under {BASE}. Set $V2_HYDRA_BASE to a '
+          f'directory with data/ge{{1..4}}/.../CeO2_*.geN.h5 + dark to run '
+          f'this notebook end-to-end.')
+else:
+    def load_panel(n):
+        D = _panel_dir(n)
+        frames = sorted(D.glob(f'CeO2_7s_2700mm_20x20um_slitted_0020*.ge{n}.h5'))
+        acc = None
+        for fp in frames:                       # sum repeats for SNR
+            with h5py.File(fp, 'r') as f:
+                a = np.asarray(f['exchange/data'][0], dtype=np.float64)
+            acc = a if acc is None else acc + a
+        with h5py.File(D / f'dark_before_002019.ge{n}.h5', 'r') as f:
+            dark = np.asarray(f['exchange/data'][0], dtype=np.float64)
+        return acc / len(frames), dark
+    imgs, darks = {}, {}
+    for n in PANELS:
+        imgs[n], darks[n] = load_panel(n)
+    subs = {n: np.clip(imgs[n] - darks[n], 0, None) for n in PANELS}
+    print(f'loaded {len(PANELS)} panels; '
+          + ', '.join(f'ge{n} max={imgs[n].max():.0f}' for n in PANELS))
+"""),
+    ("md", """\
+## Step 1 — shared-$L_{sd}$ robust seed
+
+`robust_multipanel_seed` returns one shared $L_{sd}$ and a recovered
+beam-centre per panel (with the fraction of bright pixels that land on
+a predicted ring — a quick quality flag).
+"""),
+    ("py", """\
+if HAVE_DATA:
+    from midas_calibrate_v2.seed.robust import robust_multipanel_seed
+    from midas_hkls import SpaceGroup, Lattice, generate_hkls
+
+    refs = generate_hkls(SpaceGroup.from_number(225),
+                         Lattice(a=5.4116, b=5.4116, c=5.4116,
+                                 alpha=90, beta=90, gamma=90),
+                         wavelength_A=WL, two_theta_max_deg=10.0)
+    ring_tt = sorted(set(round(r.two_theta_deg, 4) for r in refs))
+
+    shared_lsd, bcs = robust_multipanel_seed(
+        [subs[n] for n in PANELS],
+        [APPROX_BC[n] for n in PANELS],
+        ring_tt, PX, r_min=400.0, r_max=1300.0,
+    )
+    SEED_BC = {n: (bcs[i][0], bcs[i][1]) for i, n in enumerate(PANELS)}
+    print(f'shared Lsd seed = {shared_lsd/1000:.2f} mm')
+    for i, n in enumerate(PANELS):
+        print(f'  ge{n}: BC=({bcs[i][0]:.1f}, {bcs[i][1]:.1f})  '
+              f'on-ring={bcs[i][2]:.2f}')
+"""),
+    ("md", """\
+## Step 2 — joint refinement with $L_{sd}$ shared
+
+Build one `CalibrationParams` per panel seeded with the shared $L_{sd}$
+and its own beam-centre + azimuthal $t_x$. `build_multi_spec` with
+`shared_names=['Lsd', 'pxY', 'pxZ']` puts the **distance** (and pixel
+pitch) in the shared block; the beam-centre stays per-panel. We refine
+$L_{sd}$ + beam-centre only — a single off-panel arc cannot constrain
+tilts/distortion, so those stay fixed (turn them on only with denser
+coverage).
+"""),
+    ("py", """\
+if HAVE_DATA:
+    from midas_calibrate.params import CalibrationParams as V1Params
+    from midas_calibrate_v2.pipelines.multi import (
+        build_multi_spec, autocalibrate_multi,
+    )
+
+    v1s = []
+    for n in PANELS:
+        by, bz = SEED_BC[n]
+        v1s.append(V1Params(
+            NrPixelsY=2048, NrPixelsZ=2048, pxY=PX, pxZ=PX,
+            Lsd=shared_lsd, BC_y=by, BC_z=bz,
+            tx=TX[n], ty=0.0, tz=0.0,            # tx fixed (azimuthal mount)
+            Wavelength=WL, SpaceGroup=225,
+            LatticeConstant=(5.4116, 5.4116, 5.4116, 90, 90, 90),
+            MaxRingRad=1300.0, MinRingRad=400.0, RhoD=2_000_000.0,
+            Refine={'Lsd': True, 'BC': True, 'ty': False, 'tz': False,
+                    'Wavelength': False, 'Parallax': False,
+                    **{f'p{i}': False for i in range(15)}},
+        ))
+
+    multi_spec = build_multi_spec(v1s, shared_names=['Lsd', 'pxY', 'pxZ'])
+    res = autocalibrate_multi(
+        v1s, [imgs[n] for n in PANELS], [darks[n] for n in PANELS],
+        multi_spec=multi_spec, n_iter=6,
+        build_residual_corr=False, verbose=False,
+    )
+    print('joint refinement done.')
+"""),
+    ("py", """\
+if HAVE_DATA:
+    shared_lsd_ref = float(res.shared_unpacked['Lsd']) / 1000
+    print(f'shared Lsd (refined) = {shared_lsd_ref:.2f} mm\\n')
+    print(f"{'panel':6s}{'BC_y':>10s}{'BC_z':>10s}{'tx_deg':>9s}")
+    for n, up in zip(PANELS, res.per_image_unpacked):
+        print(f'ge{n:<4d}{float(up[\"BC_y\"]):>10.1f}{float(up[\"BC_z\"]):>10.1f}'
+              f'{TX[n]:>9.1f}')
+    print('\\nAll panels now share ONE distance, constrained jointly — '
+          'compare to the 2407-2541 mm scatter of independent per-panel fits.')
+"""),
+    ("md", """\
+## Hand-off to multi-detector integration
+
+Write a paramstest file per panel (shared refined $L_{sd}$, per-panel
+beam-centre, and the preserved azimuthal $t_x$) and feed all four to
+`midas_integrate_v2`'s `MILKMultiGeometryAdapter`, which accumulates
+every panel's per-pixel contributions onto one shared $2\\theta$ axis.
+On this dataset the corrected geometry merges the four azimuthal panels
+into a single CeO₂ powder pattern with the (111)–(400) reflections each
+within $0.005^\\circ$ of their nominal $2\\theta$ — see the
+`run_hydra_recalib.py` runner and the multi-detector figure in the
+`midas_integrate` paper.
+
+```python
+from midas_calibrate_v2.compat.to_v1 import write_v1_paramstest
+for n, up in zip(PANELS, res.per_image_unpacked):
+    merged = {**res.shared_unpacked, **up}
+    write_v1_paramstest(merged, v1s[PANELS.index(n)], f'paramstest_ge{n}.txt')
+```
+"""),
+]
+
+
 # =====================================================================
 # Notebook registry
 # =====================================================================
@@ -2967,6 +3149,7 @@ NOTEBOOKS = {
     # Gap notebooks — self-contained synthetic (no $V2_TEST_BASE needed)
     "21_four_stage_refinement":         NB_21,
     "22_multi_distance_bayesian":       NB_22,
+    "23_joint_multidetector_hydra":     NB_23,
 }
 
 

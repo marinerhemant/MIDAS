@@ -108,7 +108,8 @@ stages.run_consolidate(p, param_text)
 
 ## Notebooks
 
-The `notebooks/` directory ships hands-on walkthroughs:
+The `notebooks/` directory holds hands-on walkthroughs. They are **not shipped
+with `pip install`** — get them by cloning the [MIDAS repository](https://github.com/marinerhemant/MIDAS/tree/master/packages/midas_nf_pipeline/notebooks):
 
 | Notebook | Topic |
 | --- | --- |

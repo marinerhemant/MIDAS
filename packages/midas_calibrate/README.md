@@ -4,6 +4,10 @@ Native Python/Torch detector geometry calibration for MIDAS. Replaces
 `AutoCalibrateZarr → CalibrantIntegratorOMP → CalibrationCore`. Same input
 parameter file format, byte-compatible output, runs on CPU or GPU.
 
+## Notebooks
+
+Worked-example Jupyter notebooks live in `notebooks/`. They are **not shipped with `pip install`** — get them by cloning the [MIDAS repository](https://github.com/marinerhemant/MIDAS/tree/master/packages/midas_calibrate/notebooks).
+
 ## Quick start
 
 ```python

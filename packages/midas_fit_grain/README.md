@@ -10,6 +10,10 @@ iteration vs the per-grain Python loop). Park22 + Wenxi CP-Ti real-data
 validated. The C path remains the ff_MIDAS default;
 this package is opt-in via `--refine-backend python`.
 
+## Notebooks
+
+Worked-example Jupyter notebooks live in `notebooks/`. They are **not shipped with `pip install`** — get them by cloning the [MIDAS repository](https://github.com/marinerhemant/MIDAS/tree/master/packages/midas_fit_grain/notebooks).
+
 ## What it does
 
 For each grain in `SpotsToIndex.csv`:

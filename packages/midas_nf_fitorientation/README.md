@@ -67,6 +67,10 @@ pip install ./packages/midas_nf_fitorientation
 
 PyTorch ≥ 2.0 is required; CUDA / MPS is auto-detected.
 
+## Notebooks
+
+Worked-example Jupyter notebooks live in `notebooks/`. They are **not shipped with `pip install`** — get them by cloning the [MIDAS repository](https://github.com/marinerhemant/MIDAS/tree/master/packages/midas_nf_fitorientation/notebooks).
+
 ## CLI usage
 
 The argument signatures mirror the C executables, so existing wrapper

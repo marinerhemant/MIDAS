@@ -11,6 +11,10 @@ detector data (HDF5/GE/TIFF) into the `*.MIDAS.zip` files the rest of MIDAS
 consumes — previously the source-tree script `utils/ffGenerateZipRefactor.py`,
 which broke `pip`-only installs because it lived outside any package.
 
+## Notebooks
+
+Worked-example Jupyter notebooks live in `notebooks/`. They are **not shipped with `pip install`** — get them by cloning the [MIDAS repository](https://github.com/marinerhemant/MIDAS/tree/master/packages/midas_zipper/notebooks).
+
 ## CLI
 
 ```bash

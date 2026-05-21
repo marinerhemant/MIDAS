@@ -117,7 +117,11 @@ def test_v2_integrated_profile_bit_identical_to_v1():
 
     int2d_v1 = v1_integrate(img, g1, mode="floor", normalize=True)
     int2d_v2 = v2_integrate(img, g2, mode="floor", normalize=True)
-    torch.testing.assert_close(int2d_v1, int2d_v2, rtol=0, atol=0)
+    # v2 standardizes on (n_eta, n_r); v1 returns (n_r, n_eta). The values are
+    # byte-identical — only the orientation differs — so compare against the
+    # transpose.
+    torch.testing.assert_close(int2d_v1, int2d_v2.transpose(0, 1),
+                               rtol=0, atol=0)
 
     prof_v1 = v1_profile_1d(int2d_v1, g1, mode="area_weighted")
     prof_v2 = v2_profile_1d(int2d_v2, g2, mode="area_weighted")

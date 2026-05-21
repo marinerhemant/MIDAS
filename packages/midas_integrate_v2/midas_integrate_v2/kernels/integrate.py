@@ -114,12 +114,18 @@ def integrate(
 ) -> torch.Tensor:
     """Integrate ``image`` against ``geom``.
 
-    Returns the 2D ``(n_eta, n_r)`` integrated array, same as v1.
-    Forward is bit-identical to :func:`midas_integrate.kernels.integrate`.
+    Returns the 2D integrated array of shape ``(n_eta, n_r)`` — azimuthal (η)
+    bins along axis 0, radial bins along axis 1 (the package-wide convention;
+    index a row, ``cake[j, :]``, for the radial profile at η-bin ``j``, and
+    reduce ``cake.sum(dim=0)`` to collapse azimuth). The *values* are
+    bit-identical to :func:`midas_integrate.kernels.integrate`, which returns
+    the transpose ``(n_r, n_eta)``; the v1→v2 difference is orientation only.
     """
     if normalize is None:
         normalize = bool(geom.spec.Normalize)
-    return _v1_integrate(image, geom.csr, mode=mode, normalize=normalize)
+    # v1 returns (n_r, n_eta); transpose to the v2-wide (n_eta, n_r) convention.
+    return _v1_integrate(image, geom.csr, mode=mode,
+                         normalize=normalize).transpose(0, 1).contiguous()
 
 
 def profile_1d(
@@ -128,8 +134,13 @@ def profile_1d(
     *,
     mode: str = "area_weighted",
 ) -> torch.Tensor:
-    """Reduce a 2D integrated array to a 1D profile over R."""
-    return _v1_profile_1d(int2d, geom.csr, mode=mode)
+    """Reduce a 2D ``(n_eta, n_r)`` integrated array to a 1D profile over R.
+
+    Accepts the v2-convention ``(n_eta, n_r)`` cake (the output of
+    :func:`integrate`) and transposes back to ``(n_r, n_eta)`` for the v1
+    reducer; the 1-D result is unchanged.
+    """
+    return _v1_profile_1d(int2d.transpose(0, 1).contiguous(), geom.csr, mode=mode)
 
 
 __all__ = [

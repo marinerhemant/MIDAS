@@ -24,6 +24,10 @@ pip install "midas-calibrate-v2[bayesian]"
 pip install "midas-calibrate-v2[all]"
 ```
 
+## Notebooks
+
+Worked-example Jupyter notebooks live in `notebooks/`. They are **not shipped with `pip install`** — get them by cloning the [MIDAS repository](https://github.com/marinerhemant/MIDAS/tree/master/packages/midas_calibrate_v2/notebooks).
+
 ## Quickstart
 
 ### Drop-in replacement for v1

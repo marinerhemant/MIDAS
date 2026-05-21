@@ -30,6 +30,10 @@ PyTorch with CUDA support must be installed separately if GPU acceleration is
 desired. Follow the [PyTorch install guide](https://pytorch.org/get-started/locally/)
 for the right wheel for your CUDA version.
 
+## Notebooks
+
+Worked-example Jupyter notebooks live in `notebooks/`. They are **not shipped with `pip install`** — get them by cloning the [MIDAS repository](https://github.com/marinerhemant/MIDAS/tree/master/packages/midas_peakfit/notebooks).
+
 ## Usage
 
 ```bash

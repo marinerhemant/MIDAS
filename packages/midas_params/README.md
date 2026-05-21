@@ -3,6 +3,10 @@
 Parameter-file registry, validator, and (coming soon) wizard for MIDAS
 FF-HEDM, NF-HEDM, PF-HEDM, and radial-integration pipelines.
 
+## Notebooks
+
+Worked-example Jupyter notebooks live in `notebooks/`. They are **not shipped with `pip install`** — get them by cloning the [MIDAS repository](https://github.com/marinerhemant/MIDAS/tree/master/packages/midas_params/notebooks).
+
 ## Status
 
 - **Registry**: FF + NF + PF + RI (~280 keys). Per-path scoping:

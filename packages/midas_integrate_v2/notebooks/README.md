@@ -54,6 +54,8 @@ previous.
 | # | Notebook | Coverage |
 |---|---|---|
 | 33 | [Migrating from v1 to v2](33_v1_to_v2_migration.ipynb) | `compat.spec_from_v1_paramstest` / `spec_from_v1_params` / `v1_params_from_spec`; reusing `Map.bin` + `residual_corr.bin`; drop-in production recipe; when to stay on v1 |
+| 34 | [HYDRA Multi-Detector (real data)](34_hydra_multi_detector_real_data.ipynb) | `io.MILKMultiGeometryAdapter` — four azimuthal GE panels (shared L_sd, per-panel BC + `tx`) merged onto one 2θ axis; per-panel overlay; needs `$V2_HYDRA_BASE` + calibrate-v2 NB 23 |
+| 35 | [Azimuthal Peak Fitting (per-η)](35_azimuthal_peak_fitting_per_eta.ipynb) | `build_geometry` + `integrate` → 2-D cake `(n_r, n_eta)`; auto-fit the ring in every η-bin (Gaussian+bg); peak 2θ/intensity/FWHM vs η → strain & texture |
 
 ## Prerequisites
 

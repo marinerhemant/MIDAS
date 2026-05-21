@@ -24,6 +24,10 @@ cd packages/midas_index
 pip install -e .[dev]
 ```
 
+## Notebooks
+
+Worked-example Jupyter notebooks live in `notebooks/`. They are **not shipped with `pip install`** — get them by cloning the [MIDAS repository](https://github.com/marinerhemant/MIDAS/tree/master/packages/midas_index/notebooks).
+
 ## Quick start
 
 ```bash

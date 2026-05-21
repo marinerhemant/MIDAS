@@ -14,6 +14,10 @@ Stages call in-process Python kernels via `midas-index` / `midas-fit-grain` / `m
 pip install -e packages/midas_pipeline
 ```
 
+## Notebooks
+
+Worked-example Jupyter notebooks live in `notebooks/`. They are **not shipped with `pip install`** — get them by cloning the [MIDAS repository](https://github.com/marinerhemant/MIDAS/tree/master/packages/midas_pipeline/notebooks).
+
 ## CLI
 
 ```bash

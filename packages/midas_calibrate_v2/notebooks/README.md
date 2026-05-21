@@ -82,6 +82,7 @@ only notebooks here that need **no** mounted test data.
 |---|---|---|---|
 | **21** | [Four-Stage Refinement](21_four_stage_refinement.ipynb) | ~15 s | `autocalibrate_four_stage` — paper-3's staged workflow (geom-only → full distortion → TPS-spline residual map → honest held-out eval) in one call; per-ring `δr_k` context |
 | **22** | [Multi-Distance Bayesian](22_multi_distance_bayesian.ipynb) | ~35 s | `autocalibrate_multi_bayesian` — two CeO₂ images at distinct L_sd → joint MAP + Laplace covariance → per-image L_sd and per-parameter σ; the runnable counterpart to the analytical NB 07 |
+| **23** | [Joint Multi-Detector (HYDRA)](23_joint_multidetector_hydra.ipynb) | ~1–2 min | `robust_multipanel_seed` + `autocalibrate_multi` — four azimuthally-mounted GE panels (off-panel BC, weak arcs) refined with **one shared L_sd** + per-panel beam-centre; needs `$V2_HYDRA_BASE` real data |
 
 ## Running them
 

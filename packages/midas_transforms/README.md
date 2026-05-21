@@ -40,6 +40,10 @@ pip install -e packages/midas_transforms
 
 (Until uploaded to PyPI; once released, `pip install midas-transforms`.)
 
+## Notebooks
+
+Worked-example Jupyter notebooks live in `notebooks/`. They are **not shipped with `pip install`** — get them by cloning the [MIDAS repository](https://github.com/marinerhemant/MIDAS/tree/master/packages/midas_transforms/notebooks).
+
 ## Quick start
 
 ### Per-stage CLI (drop-in for the C binaries)

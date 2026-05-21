@@ -212,7 +212,8 @@ Analysis → 09 Production Workflow → 10 Differentiable Mask → 11
 Sweep-mode Batch Processing.
 
 Each notebook is self-contained, executes end-to-end, and includes
-"try it yourself" exercises.
+"try it yourself" exercises. They live in `notebooks/` and are **not shipped
+with `pip install`** — get them by cloning the [MIDAS repository](https://github.com/marinerhemant/MIDAS/tree/master/packages/midas_integrate_v2/notebooks).
 
 ### Ecosystem
 

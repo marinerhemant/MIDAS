@@ -2,6 +2,10 @@
 
 Differentiable PyTorch port of `NF_HEDM/src/ProcessImagesCombined.c` for CPU, CUDA, and MPS.
 
+## Notebooks
+
+Worked-example Jupyter notebooks live in `notebooks/`. They are **not shipped with `pip install`** — get them by cloning the [MIDAS repository](https://github.com/marinerhemant/MIDAS/tree/master/packages/midas_nf_preprocess/notebooks).
+
 ## Pipeline
 
 For one layer of a near-field HEDM scan:

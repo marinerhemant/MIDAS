@@ -5,6 +5,10 @@ binary outputs of the upstream MIDAS pipeline (`OrientPosFit.bin`, `Key.bin`,
 `ProcessKey.bin`, `IndexBestFull.bin`, `FitBest.bin`) and emits the canonical
 `Grains.csv` / `SpotMatrix.csv` / `GrainIDsKey.csv` files.
 
+## Notebooks
+
+Worked-example Jupyter notebooks live in `notebooks/`. They are **not shipped with `pip install`** — get them by cloning the [MIDAS repository](https://github.com/marinerhemant/MIDAS/tree/master/packages/midas_process_grains/notebooks).
+
 ## Scope: bit-level parity with the C reference
 
 The package has one shippable mode: **`c_parity`**, which mirrors
