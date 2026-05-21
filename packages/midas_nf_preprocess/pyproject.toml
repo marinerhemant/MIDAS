@@ -4,7 +4,7 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "midas-nf-preprocess"
-version = "0.1.1"
+version = "0.1.2"
 description = "Differentiable PyTorch port of NF-HEDM preprocessing (CPU/CUDA/MPS): hex grid, tomo filter, diffraction-spot prediction, image processing"
 readme = "README.md"
 license = "BSD-3-Clause"
