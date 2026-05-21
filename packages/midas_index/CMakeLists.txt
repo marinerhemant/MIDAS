@@ -17,7 +17,25 @@
 # binary is build-from-source from the MIDAS git tree only.
 
 cmake_minimum_required(VERSION 3.20)
-project(midas_index_c LANGUAGES C)
+# Declare no languages up front: `LANGUAGES C` would make CMake probe for a C
+# compiler at this line and hard-error if none exists (e.g. Windows without
+# MSVC Build Tools, where the NMake generator can't find `nmake`). That would
+# fail the whole wheel build before we reach the graceful fallbacks below.
+project(midas_index_c NONE)
+
+# Probe for a C compiler without aborting if one is missing. check_language()
+# sets CMAKE_C_COMPILER to a NOTFOUND value instead of raising, so we can bail
+# out cleanly and let `pip install` succeed with the Python-only path.
+include(CheckLanguage)
+check_language(C)
+if(NOT CMAKE_C_COMPILER)
+  message(WARNING
+    "No C compiler found — the C indexer will not be built. On Windows install "
+    "the Visual Studio Build Tools (\"Desktop development with C++\"). The "
+    "Python-only path remains available without this binary.")
+  return()
+endif()
+enable_language(C)
 
 set(MIDAS_INDEX_C_SRC ${CMAKE_CURRENT_SOURCE_DIR}/c_src)
 # All required C sources are vendored under c_src/ — no reach into
