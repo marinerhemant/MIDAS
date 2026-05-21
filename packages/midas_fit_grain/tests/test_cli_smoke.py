@@ -103,7 +103,6 @@ def _build_fake_dataset(tmp_path: Path) -> dict:
 
     # hkls.csv — h k l ds RingNr <s> <s> <s> tht <s> <s>
     lines = ["% h k l ds RingNr c1 c2 c3 tht c4 c5"]
-    h2 = (fix.gt_euler.new_tensor(fix.model.hkls_int).long() ** 2).sum(-1).numpy() if fix.model.hkls_int is not None else None
     # Use the synthetic's hkls_int directly.
     hkls_int = fix.model.hkls_int.cpu().numpy().astype(int)
     thetas = fix.model.thetas.cpu().numpy()
