@@ -4,7 +4,7 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "midas-process-grains"
-version = "0.2.0"
+version = "0.2.1"
 description = "Pure-Python/PyTorch FF-HEDM grain-determination + strain pipeline (drop-in replacement for ProcessGrains)"
 readme = "README.md"
 license = "BSD-3-Clause"
