@@ -231,6 +231,23 @@ class IntegrationSpec:
             raise ValueError(
                 f"Invalid bins: nR={self.n_r_bins}, nEta={self.n_eta_bins}"
             )
+        # RhoD units self-consistency: RhoD is the distortion normalisation
+        # radius and MUST be in micrometres (ρ = R_µm / RhoD). A pixel-valued
+        # RhoD silently corrupts the distortion (rings wash out). Auto-correct
+        # to µm with a loud warning when it looks like a unit mistake. Only
+        # acts on cartesian specs with a positive RhoD (RhoD<=0 = distortion
+        # off, a valid choice).
+        if (self.lattice == "cartesian" and float(self.RhoD) > 0
+                and self.pxY > 0 and self.NrPixelsY > 0 and self.NrPixelsZ > 0):
+            from midas_distortion.rhod import resolve_rho_d_um_warn
+            self.RhoD = float(resolve_rho_d_um_warn(
+                float(self.RhoD),
+                int(self.NrPixelsY), int(self.NrPixelsZ),
+                float(self.BC_y), float(self.BC_z),
+                float(self.pxY),
+                float(self.pxZ) if self.pxZ > 0 else None,
+                where="IntegrationSpec",
+            ))
 
 
 __all__ = ["IntegrationSpec", "DISTORTION_NAMES"]
