@@ -4,7 +4,7 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "midas-integrate"
-version = "0.4.1"
+version = "0.4.2"
 description = "Pure-Python radial integration for area X-ray detectors (MIDAS) — DetectorMapper + CSR integration + streaming server, CPU/GPU selectable"
 readme = "README.md"
 license = "BSD-3-Clause"
