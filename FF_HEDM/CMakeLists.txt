@@ -152,6 +152,7 @@ target_link_libraries(IndexerScanningOMP PRIVATE midas_orientation)
 # `pip install`-ed. The legacy MIDAS build references it via relative path.
 add_ff_hedm_executable(midas_indexer
   SOURCES ${CMAKE_SOURCE_DIR}/packages/midas_index/c_src/IndexerUnified.c
+          ${CMAKE_SOURCE_DIR}/packages/midas_index/c_src/forward.c
           src/MIDAS_Math.c
   OMP)
 target_link_libraries(midas_indexer PRIVATE midas_orientation)
