@@ -459,6 +459,10 @@ class ZarrParams:
     p12: float = 0.0
     p13: float = 0.0
     p14: float = 0.0
+    # Canonical distortion in the v2 harmonic basis (midas_distortion.
+    # P_COEF_NAMES order). Built by read_zarr_params from the v2 names
+    # (iso_R2/4/6, a1..a6, phi1..phi6) when present, else from p0..p14.
+    dist_coeffs_v2: Optional[Any] = None
 
     # other
     Wedge: float = 0.0
@@ -657,6 +661,21 @@ def read_zarr_params(zarr_path: Union[str, Path]) -> ZarrParams:
         v = _read(key, int)
         if v is not None and len(v) > 0:
             setattr(p, key, int(v[0]))
+
+    # Canonical distortion in the v2 harmonic basis. Prefer the v2 names
+    # written by calibrate-v2 (iso_R2/4/6, a1..a6, phi1..phi6); fall back to
+    # the legacy p0..p14 for old archives.
+    from midas_distortion import P_COEF_NAMES, v2_coeffs_from_named
+    named: dict = {}
+    for nm in P_COEF_NAMES:
+        v = _read(nm, float)
+        if v is not None and len(v) > 0:
+            named[nm] = float(v[0])
+    for i in range(15):
+        v = _read(f"p{i}", float)
+        if v is not None and len(v) > 0:
+            named[f"p{i}"] = float(v[0])
+    p.dist_coeffs_v2 = v2_coeffs_from_named(named)
 
     # Optional strings
     for key in OPTIONAL_FITSETUP_KEYS_STR:

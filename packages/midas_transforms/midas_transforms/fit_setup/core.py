@@ -244,10 +244,16 @@ def fit_setup(
     tx_t = torch.tensor(zarr_params.tx, dtype=dt, device=dev)
     ty_t = torch.tensor(zarr_params.ty, dtype=dt, device=dev)
     tz_t = torch.tensor(zarr_params.tz, dtype=dt, device=dev)
-    p_t = torch.tensor(
-        [getattr(zarr_params, f"p{i}") for i in range(15)],
-        dtype=dt, device=dev,
-    )
+    # Canonical v2 distortion (built by read_zarr_params from v2 names, else
+    # p0..p14). apply_tilt_distortion expects the legacy 15-slot order and shims
+    # to v2 internally via the shared midas_distortion kernel, so map back here.
+    from midas_distortion import v2_to_v1_coeffs, v1_to_v2_coeffs
+    _coeffs_v2 = zarr_params.dist_coeffs_v2
+    if _coeffs_v2 is None:
+        _coeffs_v2 = v1_to_v2_coeffs(
+            np.array([getattr(zarr_params, f"p{i}") for i in range(15)], dtype=np.float64))
+    _p_v1 = np.asarray(v2_to_v1_coeffs(np.asarray(_coeffs_v2, dtype=np.float64)))
+    p_t = torch.tensor(_p_v1, dtype=dt, device=dev)
     px_t = torch.tensor(zarr_params.PixelSize, dtype=dt, device=dev)
     rho_d_t = torch.tensor(
         zarr_params.RhoD if zarr_params.RhoD > 0 else zarr_params.MaxRingRad,
@@ -277,7 +283,7 @@ def fit_setup(
             ring_two_theta_deg=ring_2t_t,
             Lsd=zarr_params.Lsd, BC_y=zarr_params.YCen, BC_z=zarr_params.ZCen,
             tx=zarr_params.tx, ty=zarr_params.ty, tz=zarr_params.tz,
-            p_coeffs=tuple(getattr(zarr_params, f"p{i}") for i in range(15)),
+            p_coeffs=tuple(float(x) for x in _p_v1),
             px=zarr_params.PixelSize, rho_d=float(rho_d_t.item()),
             tol_lsd=zarr_params.tolLsd, tol_bc=zarr_params.tolBC,
             tol_tilts=zarr_params.tolTilts,
@@ -290,13 +296,37 @@ def fit_setup(
         ty_t = torch.tensor(refine_out.ty, dtype=dt, device=dev)
         tz_t = torch.tensor(refine_out.tz, dtype=dt, device=dev)
 
+    # Stage-4 spline residual-correction map. Load + apply so transforms matches
+    # peakfit (midas_peakfit.zarr_io / geometry) — without this the two stages
+    # correct spots differently when a residual map is present. The file is a
+    # (NrPixelsZ, NrPixelsY) row-major float64 array — the layout written by
+    # midas_calibrate_v2.compat.to_integrate.write_residual_correction_from_spline
+    # and expected by _bilinear_residual_corr (Hp=Z rows, Wp=Y cols).
+    residual_corr_map = None
+    rcm_path = getattr(zarr_params, "ResidualCorrectionMap", "") or ""
+    if rcm_path:
+        ny, nz = zarr_params.NrPixelsY, zarr_params.NrPixelsZ
+        try:
+            md = np.fromfile(rcm_path, dtype=np.float64)
+            if ny > 0 and nz > 0 and md.size == ny * nz:
+                residual_corr_map = torch.from_numpy(
+                    md.reshape(nz, ny)
+                ).to(device=dev, dtype=dt)
+            else:
+                print(
+                    f"Warning: residual map {rcm_path} has {md.size} elements, "
+                    f"expected {ny * nz} (NrPixelsZ*NrPixelsY); ignoring."
+                )
+        except (OSError, ValueError) as e:
+            print(f"Warning: could not load residual map {rcm_path}: {e}")
+
     # Tilt + distortion.
     Y_lab, Z_lab = apply_tilt_distortion(
         Y_pix, Z_pix,
         Lsd=Lsd_t, BC_y=BCy_t, BC_z=BCz_t,
         tx=tx_t, ty=ty_t, tz=tz_t,
         p_coeffs=p_t, px=px_t, rho_d=rho_d_t,
-        residual_corr_map=None,  # TODO: load from zarr_params.ResidualCorrectionMap
+        residual_corr_map=residual_corr_map,
     )
 
     # Wedge correction (per-spot, branchless).

@@ -28,6 +28,7 @@ dependencies = [
     "torch>=2.0",
     "zarr>=2.18,<3.0",
     "numcodecs>=0.12",
+    "midas-distortion>=0.2.0",            # shared distortion model (single source)
     "midas-calibrate>=0.2.1",
 ]
 
