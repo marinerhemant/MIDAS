@@ -216,6 +216,15 @@ def parse_zarr_params(path: str | Path) -> ZarrParams:
                 if v is not None:
                     setattr(p, attr, cast(v))
 
+            # Canonical distortion in the v2 harmonic basis. Prefer the v2
+            # names written by calibrate-v2 (iso_R2/4/6, a1..a6, phi1..phi6);
+            # fall back to the legacy p0..p14 for old archives.
+            from midas_distortion import P_COEF_NAMES, v2_coeffs_from_named
+            named = {nm: _scalar(ap, nm, cast=float) for nm in P_COEF_NAMES}
+            named.update({f"p{i}": getattr(p, f"p{i}") for i in range(15)
+                          if _scalar(ap, f"p{i}", cast=float) is not None})
+            p.dist_coeffs_v2 = v2_coeffs_from_named(named)
+
             # RhoD or MaxRingRad (either form accepted)
             v = _scalar(ap, "RhoD", cast=float)
             if v is None:
@@ -312,7 +321,14 @@ def load_corrections(path: str | Path, p: ZarrParams) -> None:
         try:
             map_data = np.fromfile(p.ResidualCorrectionMap, dtype=np.float64)
             if map_data.size == Y * Z:
-                p.residualMap = map_data.reshape(Y, Z)
+                # On disk the map is (NrPixelsZ, NrPixelsY) z-major — element
+                # (z, y) holds ΔR(Y=y, Z=z), the convention written by
+                # midas_calibrate_v2.compat.to_integrate and read by transforms.
+                # geometry.compute_rt_eta adds it as Rt[A=Y, B=Z] += map[A, B],
+                # so we need map indexed [Y, Z]: reshape to disk layout then
+                # transpose. (A plain reshape(Y, Z) silently transposes the
+                # correction — invisible on square detectors, wrong otherwise.)
+                p.residualMap = map_data.reshape(Z, Y).T.copy()
                 print(
                     f"Loaded residual correction map: "
                     f"{p.ResidualCorrectionMap} ({Y}x{Z})"

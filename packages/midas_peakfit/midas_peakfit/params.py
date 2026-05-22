@@ -75,6 +75,11 @@ class ZarrParams:
     p12: float = 0.0
     p13: float = 0.0
     p14: float = 0.0
+    # Canonical distortion coefficients in the v2 harmonic basis
+    # (midas_distortion.P_COEF_NAMES order). Populated by the zarr loader from
+    # the v2 names (iso_R2/4/6, a1..a6, phi1..phi6) when present, else derived
+    # from the legacy p0..p14. This is the source of truth the geometry uses.
+    dist_coeffs_v2: Optional["np.ndarray"] = None
 
     # ── Ring / threshold configuration ───────────────────────────────
     RingNrs: List[int] = field(default_factory=list)

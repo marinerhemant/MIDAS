@@ -29,6 +29,7 @@ dependencies = [
     "zarr>=2.18,<3.0",
     "numcodecs>=0.12",
     "torch>=2.1",
+    "midas-distortion>=0.1.0",            # shared distortion model (single source)
 ]
 
 [project.optional-dependencies]

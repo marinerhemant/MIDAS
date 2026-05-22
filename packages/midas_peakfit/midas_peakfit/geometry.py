@@ -126,33 +126,21 @@ def compute_rt_eta(p: ZarrParams, panels: List[Panel]) -> Tuple[np.ndarray, np.n
     Rad = (panelLsd / X_safe) * np.sqrt(Y * Y + Z * Z)
     Eta = calc_eta_angle_np(Y, Z)
 
-    # Distortion polynomial
+    # Radial distortion via the shared midas_distortion kernel (single source
+    # of truth, identical to transforms + calibrate-v2). Coefficients are the
+    # canonical v2 harmonics (p.dist_coeffs_v2; built by the loader from the v2
+    # names, or the legacy p0..p14). The per-panel p2 offset (dP2_arr) is added
+    # on top as an isotropic ρ² term — iso_R2 is linear, so a per-panel
+    # `iso_R2 + dP2` is equivalent to base-D + dP2·ρ².
+    from midas_distortion import distortion_factor, v1_to_v2_coeffs, P_COEF_NAMES
+
     RNorm = Rad / p.RhoD
-    EtaT = 90.0 - Eta
-    EtaT_rad = EtaT * DEG2RAD
-    RNorm2 = RNorm * RNorm
-    RNorm3 = RNorm2 * RNorm
-    RNorm4 = RNorm2 * RNorm2
-    RNorm5 = RNorm4 * RNorm
-    RNorm6 = RNorm4 * RNorm2
-
-    dipole = p.p7 * RNorm4 * np.cos(EtaT_rad + p.p8 * DEG2RAD)
-    trefoil = p.p9 * RNorm3 * np.cos(3.0 * EtaT_rad + p.p10 * DEG2RAD)
-    pentafoil = p.p11 * RNorm5 * np.cos(5.0 * EtaT_rad + p.p12 * DEG2RAD)
-    hexafoil = p.p13 * RNorm6 * np.cos(6.0 * EtaT_rad + p.p14 * DEG2RAD)
-
-    DistortFunc = (
-        (p.p0 * RNorm2 * np.cos(2.0 * EtaT_rad + p.p6 * DEG2RAD))
-        + (p.p1 * RNorm4 * np.cos(4.0 * EtaT_rad + p.p3 * DEG2RAD))
-        + (panelP2 * RNorm2)
-        + p.p4 * RNorm6
-        + p.p5 * RNorm4
-        + dipole
-        + trefoil
-        + pentafoil
-        + hexafoil
-        + 1.0
-    )
+    coeffs = p.dist_coeffs_v2
+    if coeffs is None:  # defensive: params built without the loader
+        coeffs = v1_to_v2_coeffs(np.array([getattr(p, f"p{i}") for i in range(15)],
+                                          dtype=np.float64))
+    DistortFunc = distortion_factor(RNorm, Eta, np.asarray(coeffs, dtype=np.float64))
+    DistortFunc = DistortFunc + dP2_arr * (RNorm * RNorm)  # per-panel p2 offset
     Rt = Rad * DistortFunc / p.px
 
     if p.residualMap is not None:
