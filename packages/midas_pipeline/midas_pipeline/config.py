@@ -327,6 +327,31 @@ class VMapConfig:
 
 
 @dataclass
+class GrainGeometryConfig:
+    """Grain-based geometry refinement (FF only). OFF by default.
+
+    Powder/calibrant calibration is structurally blind to ``tx`` (in-plane
+    detector rotation about the beam) — symmetric rings are invariant under it.
+    After a first FF reconstruction (run with ``tx=0``), this stage refines
+    ``tx`` (and optionally ``Wedge``) from the recovered single-crystal grain
+    spots via ``midas_joint_ff_calibrate.grain_refine`` and writes a corrected
+    paramstest. The user (or a second pipeline pass) then re-runs from the
+    ``transforms`` stage with the corrected geometry. See
+    ``project_ff_tx_grain_calibration``.
+    """
+    run: bool = False
+    refine_params: tuple = ("tx",)          # ("tx",) or ("tx", "Wedge")
+    kind: str = "angular"                   # eta-sensitive: "angular" | "internal_angle"
+    max_grains: int = 50                    # highest-confidence grains to use
+    max_iter: int = 50
+    two_theta_max_deg: float = 20.0
+    refine_strain: bool = True              # free per-grain lattice (absorbs strain)
+    # Output paramstest for the re-run. Relative names resolve under layer_dir;
+    # default keeps the original paramstest.txt intact.
+    out_name: str = "paramstest_graintx.txt"
+
+
+@dataclass
 class SeedingConfig:
     """Indexer seeding mode.
 
@@ -408,6 +433,7 @@ class PipelineConfig:
     seeding: SeedingConfig = field(default_factory=SeedingConfig)
     soft_attribution: SoftAttributionConfig = field(default_factory=SoftAttributionConfig)
     vmap: VMapConfig = field(default_factory=VMapConfig)
+    grain_geometry: GrainGeometryConfig = field(default_factory=GrainGeometryConfig)
     voxel_cleanup: VoxelCleanupConfig = field(default_factory=VoxelCleanupConfig)
     layer_selection: LayerSelection = field(default_factory=LayerSelection)
     machine: MachineConfig = field(default_factory=MachineConfig)

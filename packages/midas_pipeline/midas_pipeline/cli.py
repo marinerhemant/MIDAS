@@ -47,6 +47,7 @@ from .config import (
     RefinementConfig,
     ResumeMode,
     ScanGeometry,
+    GrainGeometryConfig,
     ScanMode,
     SeedingConfig,
     SeedingMode,
@@ -244,6 +245,22 @@ def _build_parser() -> argparse.ArgumentParser:
                      help="Blend each spot across the grains whose voxels "
                           "matched it (weight ∝ matched-voxel count) instead "
                           "of forcing it onto a single grain.")
+    # --- grain-based tx/Wedge geometry refine (FF; OFF by default) ---------
+    run.add_argument("--grain-geometry-run", action="store_true",
+                     help="FF only: after process_grains, refine tx (powder is "
+                          "blind to it) — and optionally Wedge — from the "
+                          "recovered grain spots; writes a corrected paramstest "
+                          "for a re-run from the transforms stage.")
+    run.add_argument("--grain-geometry-refine", default="tx",
+                     help="comma-separated geometry blocks to refine "
+                          "(default 'tx'; e.g. 'tx,Wedge').")
+    run.add_argument("--grain-geometry-kind", default="angular",
+                     choices=["angular", "internal_angle"],
+                     help="η-sensitive loss; 'pixel' is disabled (blind to tx).")
+    run.add_argument("--grain-geometry-max-grains", type=int, default=50)
+    run.add_argument("--grain-geometry-out", default="paramstest_graintx.txt",
+                     help="corrected paramstest filename (under the layer dir).")
+
     # --- missing-spot directionality voxel cleanup (PF; OFF by default) ----
     run.add_argument("--voxel-cleanup", action="store_true",
                      help="Enable missing-spot directionality voxel cleanup "
@@ -501,6 +518,14 @@ def build_config(args: argparse.Namespace) -> PipelineConfig:
         emit_diagnostics=bool(args.vmap_emit_diagnostics),
         diag_axes=tuple(diag_axes_parts),
     )
+    grain_geometry = GrainGeometryConfig(
+        run=bool(args.grain_geometry_run),
+        refine_params=tuple(s.strip() for s in args.grain_geometry_refine.split(",")
+                            if s.strip()),
+        kind=args.grain_geometry_kind,
+        max_grains=int(args.grain_geometry_max_grains),
+        out_name=args.grain_geometry_out,
+    )
     soft_attribution = SoftAttributionConfig(
         enable=bool(args.soft_attribution),
         profile=args.soft_profile,
@@ -522,6 +547,7 @@ def build_config(args: argparse.Namespace) -> PipelineConfig:
         em=em,
         seeding=seeding,
         vmap=vmap,
+        grain_geometry=grain_geometry,
         soft_attribution=soft_attribution,
         voxel_cleanup=VoxelCleanupConfig(
             run=bool(args.voxel_cleanup),

@@ -16,7 +16,7 @@ _EXPECTED_FF = [
     "zip_convert", "hkl", "peakfit", "merge_overlaps", "calc_radius",
     "transforms", "cross_det_merge", "global_powder",
     "binning", "indexing", "refinement",
-    "process_grains", "consolidation",
+    "process_grains", "grain_geometry", "consolidation",
     # P8 V-map orchestration (clean no-op when vmap.run=False)
     "calc_radius_v", "refine_vmap",
 ]

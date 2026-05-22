@@ -87,6 +87,11 @@ _STAGES: List[StageEntry] = [
     # FF-only grain consolidation; PF uses `consolidation` directly.
     ("process_grains",     stages.process_grains.run,     _FF_ONLY),
 
+    # FF-only optional: grain-based tx/Wedge geometry refinement (powder is
+    # blind to tx). No-op unless grain_geometry.run. Runs after process_grains
+    # (needs Grains.csv); writes a corrected paramstest for a re-run.
+    ("grain_geometry",     stages.grain_geometry.run,     _FF_ONLY),
+
     # Shared finalizer
     ("consolidation",      stages.consolidation.run,      _BOTH),
 

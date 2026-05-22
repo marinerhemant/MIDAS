@@ -101,7 +101,10 @@ def test_indexing_ff_comp_invokes_c_binary(
     indexing.run(ctx)
 
     assert seen["cmd"][0] == str(fake_bin)
-    assert seen["cmd"][1].endswith("paramstest.txt")
+    # c-omp is handed the backend-aware comp paramstest (OutputFolder/ResultFolder
+    # rewritten to <layer_dir>/Output|Results so the C binary finds its binned
+    # inputs); see stages/_comp_params.comp_backend_paramstest.
+    assert seen["cmd"][1].endswith("paramstest_comp.txt")
     # Positional args: paramstest, block_nr, n_blocks, n_seeds, n_cpus
     assert seen["cmd"][2:5] == ["0", "1", "5"]
     assert seen["cmd"][5] == "4"  # n_cpus
