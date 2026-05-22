@@ -97,6 +97,11 @@ def _run_ff(ctx: StageContext) -> StageResult:
             str(ctx.config.n_cpus),
             "--solver", ctx.config.refinement.solver,
             "--loss", loss,
+            # Forward the run's device/dtype so the refiner doesn't auto-select
+            # MPS (which can't do float64 → crash on Apple Silicon). Honors
+            # --device cpu/cuda from the pipeline invocation.
+            "--device", str(ctx.config.device),
+            "--dtype", str(ctx.config.dtype),
         ]
         if ctx.config.refinement.mode:
             cmd += ["--mode", ctx.config.refinement.mode]
