@@ -185,10 +185,18 @@ def ff_paramstest_from_auto_result(
     if raw_folder:
         rf = str(raw_folder)
         inj.append(f"RawFolder {rf if rf.endswith('/') else rf + '/'}")
+    # Only apply the residual-correction map if calibration KEPT it. It sets
+    # ``residual_corr_map=None`` when the empirical map worsened strain and was
+    # discarded — the .bin is still on disk and ``residual_corr_bin_path`` stays
+    # set, but applying it would degrade the reconstruction.
     rcm = getattr(result, "residual_corr_bin_path", None)
-    if rcm:
+    rcm_kept = getattr(result, "residual_corr_map", None) is not None
+    if rcm and rcm_kept:
         inj += ["# Stage-4 spline residual-correction map (px), applied by "
                 "peakfit + transforms", f"ResidualCorrectionMap {rcm}"]
+    elif rcm and not rcm_kept:
+        inj += ["# residual-correction map was discarded by calibration "
+                "(did not reduce strain) — intentionally NOT applied"]
 
     out_path = Path(out_path)
     out_path.write_text("\n".join(kept + inj) + "\n")
