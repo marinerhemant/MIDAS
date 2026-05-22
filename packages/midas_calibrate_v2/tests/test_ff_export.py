@@ -35,7 +35,8 @@ def test_ff_paramstest_from_auto_result_is_v2_native(tmp_path):
     res = SimpleNamespace(
         Lsd=958874.0, BC_y=1390.0, BC_z=1422.0, tx=0.0, ty=-0.173, tz=0.048,
         distortion=dist, NrPixelsY=2880, NrPixelsZ=2880,
-        residual_corr_bin_path="/calib/residual_corr.bin")
+        residual_corr_bin_path="/calib/residual_corr.bin",
+        residual_corr_map=object())  # not None ⇒ calibration KEPT the map
 
     out = ff_paramstest_from_auto_result(res, tmpl, tmp_path / "v2.txt",
                                          raw_folder="/ni/raw")
@@ -52,6 +53,24 @@ def test_ff_paramstest_from_auto_result_is_v2_native(tmp_path):
     assert "NrPixelsY 2880" in txt and "RawFolder /ni/raw/" in txt
     assert "ResidualCorrectionMap /calib/residual_corr.bin" in txt
     assert "MinNrSpots 4" in txt and "RingThresh 1 80" in txt
+
+
+def test_ff_export_drops_discarded_residual_map(tmp_path):
+    """When calibration discarded the residual map (residual_corr_map is None),
+    the exporter must NOT emit a ResidualCorrectionMap line — applying a map
+    calibration rejected would degrade the reconstruction."""
+    tmpl = tmp_path / "ps.txt"
+    tmpl.write_text("RingThresh 1 80\nLsd 1\n")
+    res = SimpleNamespace(
+        Lsd=1e6, BC_y=1024.0, BC_z=1024.0, tx=0.0, ty=0.0, tz=0.0,
+        distortion={"iso_R2": 1e-3}, NrPixelsY=2048, NrPixelsZ=2048,
+        residual_corr_bin_path="/calib/residual_corr.bin",
+        residual_corr_map=None)            # discarded
+    out = ff_paramstest_from_auto_result(res, tmpl, tmp_path / "v2.txt",
+                                         raw_folder="/ni/raw")
+    txt = out.read_text()
+    assert "ResidualCorrectionMap" not in txt
+    assert "discarded by calibration" in txt
 
 
 class _FakeResult:
