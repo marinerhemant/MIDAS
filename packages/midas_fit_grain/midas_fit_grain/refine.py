@@ -372,17 +372,42 @@ def refine_grain(
         with torch.no_grad():
             pos_scaled[1].clamp_(lb, ub)
 
+    # FF: bound grain position to the illuminated sample volume. The grain
+    # centre must lie inside the sample cylinder — radius Rsample in the X-Y
+    # plane, half-height Hbeam/2 along Z. Without this the weakly-constrained
+    # X-along-beam coordinate drifts to unphysical values. NOTE: this is the
+    # correct position bound — ``BoxSize`` defines the detector active area,
+    # NOT a grain-position bound.
+    _Rsample = float(getattr(cfg, "Rsample", 0.0))
+    _Hbeam = float(getattr(cfg, "Hbeam", 0.0))
+
+    def _clamp_pos_to_sample():
+        """FF: project grain position into the sample cylinder
+        (|X|,|Y| ≤ Rsample, |Z| ≤ Hbeam/2). No-op in scan/voxel modes."""
+        if _pos_mode != "refine":
+            return
+        with torch.no_grad():
+            if _Rsample > 0.0:
+                r = _Rsample / pos_scale
+                pos_scaled[0].clamp_(-r, r)
+                pos_scaled[1].clamp_(-r, r)
+            if _Hbeam > 0.0:
+                h = (_Hbeam / 2.0) / pos_scale
+                pos_scaled[2].clamp_(-h, h)
+
     if cfg.mode == "all_at_once":
         if _pos_mode == "fixed":
             _run_phase([euler, lattice])
         else:
             _run_phase([pos_scaled, euler, lattice])
             _maybe_clamp_pos_to_voxel_bound()
+            _clamp_pos_to_sample()
     elif cfg.mode == "iterative":
         ph_pos, ph_or, ph_lat, ph_joint = cfg.phase_steps
         if _pos_mode != "fixed":
             _run_phase([pos_scaled], max_iter=ph_pos * 5 + 5)
             _maybe_clamp_pos_to_voxel_bound()
+            _clamp_pos_to_sample()
             _rematch()
         _run_phase([euler], max_iter=ph_or * 5 + 5)
         _rematch()
@@ -394,6 +419,7 @@ def refine_grain(
         else:
             _run_phase([pos_scaled, euler, lattice], max_iter=ph_joint * 5 + 5)
             _maybe_clamp_pos_to_voxel_bound()
+            _clamp_pos_to_sample()
     else:
         raise ValueError(f"unknown mode {cfg.mode!r}")
 

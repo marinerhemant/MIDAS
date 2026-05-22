@@ -85,7 +85,22 @@ int CalcDiffractionSpots(double Distance, double ExcludePoleAngle,
                                   out, &nsp, /*nSpotsFracCalc=*/NULL);
 
   // Remap shared 19-col rows -> legacy refiner 9-col contract.
+  // col 8 = legacy `nrhkls`: a STABLE per-reflection id = indexhkl*2 + 1 + k,
+  // where k is the kept-spot index within that hkl (the two ±ω solutions).
+  // This MUST be anchored to the HKL index (out[s][2]=indexhkl), NOT to
+  // midas_ck's running spot counter (out[s][1]) — the running counter
+  // renumbers whenever the set of kept spots changes (different orient/strain),
+  // which breaks the obs↔theor spot-id matching the position objective relies
+  // on across forward evaluations. midas_ck emits spots grouped by indexhkl.
+  int prev_hkl = -1, within = 0;
   for (int s = 0; s < nsp; s++) {
+    int ih = (int)out[s][2];        // indexhkl
+    if (ih == prev_hkl) {
+      within++;
+    } else {
+      within = 0;
+      prev_hkl = ih;
+    }
     TheorSpots[s][0] = out[s][4];   // yl
     TheorSpots[s][1] = out[s][5];   // zl
     TheorSpots[s][2] = out[s][6];   // omega
@@ -94,7 +109,7 @@ int CalcDiffractionSpots(double Distance, double ExcludePoleAngle,
     TheorSpots[s][5] = out[s][18];  // GCr2
     TheorSpots[s][6] = out[s][3];   // distance
     TheorSpots[s][7] = out[s][9];   // RingNr
-    TheorSpots[s][8] = out[s][1];   // spotid (informational; legacy nrhkls)
+    TheorSpots[s][8] = ih * 2 + 1 + within; // stable nrhkls (legacy scheme)
   }
   *nTspots = nsp;
 

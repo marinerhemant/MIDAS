@@ -1875,6 +1875,50 @@ int main(int argc, char *argv[]) {
     if ((hi)[2] > Hbeam / 2) (hi)[2] = Hbeam / 2;                             \
   } while (0)
 
+    // ISOLATION EXPERIMENT (env MIDAS_FG_REMATCH): re-pair obs<->theor spots
+    // with the current params between stages (legacy FF re-matches after each
+    // stage). Keeps my stage order/objectives — tests ONLY re-matching's effect.
+#define MIDAS_FG_REMATCH(posv, eulv, latcv)                                   \
+  do {                                                                        \
+    if (getenv("MIDAS_FG_REMATCH")) {                                         \
+      double _xrm[12];                                                        \
+      for (int _k = 0; _k < 3; _k++) _xrm[_k] = (posv)[_k];                   \
+      for (int _k = 0; _k < 3; _k++) _xrm[_k + 3] = (eulv)[_k];               \
+      for (int _k = 0; _k < 6; _k++) _xrm[_k + 6] = (latcv)[_k];              \
+      CalcAngleErrors(nSpotsComp, nhkls, nOmeRanges, _xrm, spotsYZONew, hkls, \
+                      Lsd, Wavelength, OmegaRanges, BoxSizes, MinEta, wedge,  \
+                      chi, SpotsComp, Splist, Error, &nSpotsComp, 1, NULL,    \
+                      NULL, NULL);                                            \
+      for (int _r = 0; _r < nSpotsComp; _r++)                                 \
+        for (int _c = 0; _c < 11; _c++)                                       \
+          spotsYZONew[_r][_c] = Splist[_r][_c];                               \
+      fdata.nSpots = nSpotsComp;                                              \
+    }                                                                         \
+  } while (0)
+
+    // TRACE (env MIDAS_FG_TRACE): print the spatial PosErr (=FitErrors12D /
+    // nSpotsComp) at the given params after each stage, to compare the error
+    // trajectory against legacy stage-by-stage.
+#define MIDAS_FG_TRACE(tag, posv, eulv, latcv)                                \
+  do {                                                                        \
+    if (getenv("MIDAS_FG_TRACE")) {                                           \
+      double _xt[12];                                                         \
+      for (int _k = 0; _k < 3; _k++) _xt[_k] = (posv)[_k];                    \
+      for (int _k = 0; _k < 3; _k++) _xt[_k + 3] = (eulv)[_k];                \
+      for (int _k = 0; _k < 6; _k++) _xt[_k + 6] = (latcv)[_k];               \
+      double _e = FitErrors12D(_xt, nSpotsComp, spotsYZONew, nhkls, hkls, Lsd,\
+                  Wavelength, nOmeRanges, OmegaRanges, BoxSizes, MinEta,      \
+                  wedge, chi, &scratch);                                      \
+      printf("TRACE SpId=%d %-9s PosErr=%9.4f nSp=%d pos=(%.1f,%.1f,%.1f) "   \
+             "latc=(%.5f,%.5f,%.5f,%.4f,%.4f,%.4f)\n", SpId, tag,             \
+             nSpotsComp > 0 ? _e / nSpotsComp : _e, nSpotsComp, (posv)[0],    \
+             (posv)[1], (posv)[2], (latcv)[0], (latcv)[1], (latcv)[2],        \
+             (latcv)[3], (latcv)[4], (latcv)[5]);                             \
+    }                                                                         \
+  } while (0)
+
+    MIDAS_FG_TRACE("00-seed", Pos0, Euler0, LatCin);
+
     // --- Stage 1: 3D orient fit (eta+omega metric, pos+latc fixed) ---
     double x3[3], r3[3];
     double lb3[3], ub3[3];
@@ -1886,6 +1930,8 @@ int main(int argc, char *argv[]) {
     RunFit(3, x3, lb3, ub3, obj_3DOrient, &fdata, r3);
     for (i = 0; i < 3; i++)
       fdata.FixedOrient[i] = r3[i];
+    if (isFF) MIDAS_FG_REMATCH(Pos0, r3, LatCin);
+    MIDAS_FG_TRACE("01-orient", Pos0, r3, LatCin);
 
     // --- Stage 2 (FF only): position-Ini (orient=r3, seed lattice) (D1) ---
     double posCur[3];
@@ -1899,6 +1945,8 @@ int main(int argc, char *argv[]) {
                 posLb, posUb, r3, LatCin);
       for (i = 0; i < 3; i++)
         fdata.FixedPos[i] = posCur[i]; // strain refines against refined pos
+      MIDAS_FG_REMATCH(posCur, r3, LatCin);
+      MIDAS_FG_TRACE("02-posIni", posCur, r3, LatCin);
     }
 
     // --- Stage 3: 6D strain fit (y,z distance, pos+orient fixed) ---
@@ -1906,6 +1954,8 @@ int main(int argc, char *argv[]) {
     for (i = 0; i < 6; i++)
       x6[i] = LatCin[i];
     RunFit(6, x6, lbABC, ubABC, obj_6D, &fdata, r6);
+    if (isFF) MIDAS_FG_REMATCH(posCur, r3, r6);
+    MIDAS_FG_TRACE("03-strain", posCur, r3, r6);
 
     // --- Stage 4 (FF only): position-Sec (orient=r3, refined lattice=r6) ---
     double posFit[3];
@@ -1918,7 +1968,9 @@ int main(int argc, char *argv[]) {
                 nOmeRanges, OmegaRanges, BoxSizes, MinEta, wedge, chi, posFit,
                 posLb2, posUb2, r3, r6);
     }
+    MIDAS_FG_TRACE("04-posSec", posFit, r3, r6);
 #undef MIDAS_FG_POSBOUNDS
+#undef MIDAS_FG_TRACE
 
     // Build final result: [pos3 (refined in FF, fixed in PF), orient3, latc6]
     double FinalResult[12];

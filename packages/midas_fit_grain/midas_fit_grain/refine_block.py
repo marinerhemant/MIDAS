@@ -262,6 +262,31 @@ def refine_block(
     euler.requires_grad_(False)
     lattice.requires_grad_(False)
 
+    # FF grain-position bound: the grain centre must lie inside the illuminated
+    # sample cylinder — |X|,|Y| <= Rsample, |Z| <= Hbeam/2. Without this the
+    # weakly-constrained X-along-beam coordinate drifts to unphysical values
+    # (seeds from the indexer can carry placeholder positions far outside the
+    # sample). NOTE: this is the correct position bound — ``BoxSize`` is the
+    # detector active-area, NOT a grain-position bound. No-op for PF scanning
+    # (scan_pos_tol_um > 0), which bounds position to the scan grid instead.
+    _ff_pos_bound = float(getattr(cfg, "scan_pos_tol_um", 0.0)) <= 0.0
+    _Rs = float(getattr(cfg, "Rsample", 0.0))
+    _Hb = float(getattr(cfg, "Hbeam", 0.0))
+
+    def _clamp_pos_to_sample():
+        if not _ff_pos_bound:
+            return
+        with torch.no_grad():
+            if _Rs > 0.0:
+                r = _Rs / pos_scale
+                pos_scaled[:, 0].clamp_(-r, r)
+                pos_scaled[:, 1].clamp_(-r, r)
+            if _Hb > 0.0:
+                h = (_Hb / 2.0) / pos_scale
+                pos_scaled[:, 2].clamp_(-h, h)
+
+    _clamp_pos_to_sample()   # start refinement from inside the sample volume
+
     # The lm_batched solver bypasses the closure-based registry — it
     # works directly on the (B, P) packed param tensors. Skip the
     # registry lookup when it's selected.
@@ -275,7 +300,8 @@ def refine_block(
     converged_phases: list[bool] = []
     total_iter = 0
 
-    def _run_phase(active: list[torch.Tensor], **solver_opts):
+    def _run_phase(active: list[torch.Tensor], loss_kind: str = None,
+                   **solver_opts):
         nonlocal total_iter
         for p in active:
             p.requires_grad_(True)
@@ -284,7 +310,7 @@ def refine_block(
             pos_scaled=pos_scaled, pos_scale=pos_scale,
             euler=euler, lattice=lattice,
             px=cfg.px, y_BC=model.y_BC, z_BC=model.z_BC,
-            loss_kind=cfg.loss,
+            loss_kind=loss_kind or cfg.loss,
             active_params=active,
         )
         opts = {"max_iter": cfg.max_iter, "ftol": cfg.ftol, "xtol": cfg.xtol}
@@ -308,13 +334,15 @@ def refine_block(
 
     use_batched_lm = cfg.solver == "lm_batched"
 
-    def _batched_lm_phase(active_param_indices: list[int], max_iter: int):
+    def _batched_lm_phase(active_param_indices: list[int], max_iter: int,
+                          loss_kind: str = None):
         """One LM phase, batched across all grains, on the active param subset.
 
         ``active_param_indices`` is over the 12-component flat layout
         ``[px, py, pz, e1, e2, e3, a, b, c, alpha, beta, gamma]``.
         """
         nonlocal pos_scaled, euler, lattice
+        _lk = loss_kind or cfg.loss
         active_mask = torch.zeros(12, dtype=torch.bool, device=device)
         active_mask[active_param_indices] = True
 
@@ -322,7 +350,7 @@ def refine_block(
             return batch_residuals(
                 model,
                 grain_position=p, grain_euler=e, grain_lattice=l,
-                obs=obs, match=match, kind=cfg.loss,
+                obs=obs, match=match, kind=_lk,
                 px=cfg.px, y_BC=model.y_BC, z_BC=model.z_BC,
             ).reshape(B, -1)
 
@@ -342,6 +370,15 @@ def refine_block(
 
     nonlocal_total_iter = [0]   # closure-shared scalar; 'total_iter' rebound below
 
+    # NOTE: a systematic per-phase-loss + orientation-first variant
+    # (internal_angle for orientation/strain, full3d for position — matching
+    # C FitPosOrStrains and the midas_diffract paper) is designed and passes
+    # the synthetic refine tests, but regresses real FF data to zero refined
+    # grains. Kept OUT of the default path pending debugging; the original
+    # single-loss order below is the validated path. The Rsample/Hbeam sample
+    # bound (_clamp_pos_to_sample) is retained — it is correct and contains the
+    # X-along-beam drift. See project_fitgrain_ff_position_divergence memory.
+
     if use_batched_lm:
         # Active-param indices for each phase.
         IDX_POS = [0, 1, 2]
@@ -351,32 +388,58 @@ def refine_block(
 
         if cfg.mode == "all_at_once":
             _batched_lm_phase(IDX_ALL, max_iter=cfg.max_iter)
+            _clamp_pos_to_sample()
         elif cfg.mode == "iterative":
             ph_pos, ph_or, ph_lat, ph_joint = cfg.phase_steps
             _batched_lm_phase(IDX_POS, max_iter=ph_pos * 5 + 5)
+            _clamp_pos_to_sample()
             _rematch()
             _batched_lm_phase(IDX_EUL, max_iter=ph_or * 5 + 5)
             _rematch()
             _batched_lm_phase(IDX_LAT, max_iter=ph_lat * 5 + 5)
             _rematch()
             _batched_lm_phase(IDX_ALL, max_iter=ph_joint * 5 + 5)
+            _clamp_pos_to_sample()
         else:
             raise ValueError(f"unknown mode {cfg.mode!r}")
         total_iter = nonlocal_total_iter[0]
     elif cfg.mode == "all_at_once":
         _run_phase([pos_scaled, euler, lattice])
+        _clamp_pos_to_sample()
     elif cfg.mode == "iterative":
+        import os as _os
+        _decouple = _os.environ.get("MIDAS_FG_DECOUPLE", "0") == "1"
         ph_pos, ph_or, ph_lat, ph_joint = cfg.phase_steps
-        _run_phase([pos_scaled], max_iter=ph_pos * 5 + 5)
-        _rematch()
-        _run_phase([euler], max_iter=ph_or * 5 + 5)
-        _rematch()
-        _run_phase([lattice], max_iter=ph_lat * 5 + 5)
-        _rematch()
-        _run_phase([pos_scaled, euler, lattice], max_iter=ph_joint * 5 + 5)
+        if _decouple:
+            # Decoupled per-phase loss (experimental, env-gated): orientation &
+            # strain via the smooth ``angular`` loss (2θ,η,ω — position-
+            # independent; NOT internal_angle, whose acos gradient is singular
+            # near a good match), position via spatial ``full3d``. Orientation
+            # first so spots match before position is fit.
+            _run_phase([euler], max_iter=ph_or * 5 + 5, loss_kind="angular")
+            _rematch()
+            _run_phase([lattice], max_iter=ph_lat * 5 + 5, loss_kind="angular")
+            _rematch()
+            _run_phase([pos_scaled], max_iter=ph_pos * 5 + 5, loss_kind="full3d")
+            _clamp_pos_to_sample()
+            _rematch()
+            _run_phase([pos_scaled, euler, lattice],
+                       max_iter=ph_joint * 5 + 5, loss_kind="full3d")
+            _clamp_pos_to_sample()
+        else:
+            _run_phase([pos_scaled], max_iter=ph_pos * 5 + 5)
+            _clamp_pos_to_sample()
+            _rematch()
+            _run_phase([euler], max_iter=ph_or * 5 + 5)
+            _rematch()
+            _run_phase([lattice], max_iter=ph_lat * 5 + 5)
+            _rematch()
+            _run_phase([pos_scaled, euler, lattice], max_iter=ph_joint * 5 + 5)
+            _clamp_pos_to_sample()
     else:
         raise ValueError(f"unknown mode {cfg.mode!r}")
 
+    _clamp_pos_to_sample()   # final safety net
     pos_final = (pos_scaled * pos_scale).detach()
     euler_final = euler.detach()
     lattice_final = lattice.detach()
