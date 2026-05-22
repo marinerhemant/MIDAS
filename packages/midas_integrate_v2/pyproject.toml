@@ -4,7 +4,7 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "midas-integrate-v2"
-version = "0.2.1"
+version = "0.3.0"
 description = "Differentiable, autodiff-aware radial integration for area X-ray detectors. Joint refinement counterpart to midas-integrate."
 readme = "README.md"
 license = "BSD-3-Clause"
