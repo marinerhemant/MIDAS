@@ -216,8 +216,23 @@ def write_fxye(
     path = Path(path)
     path.parent.mkdir(parents=True, exist_ok=True)
     with open(path, "w") as f:
-        # Single 80-char header line, BANK statement (GSAS convention)
+        # GSAS / GSAS-II layout (order matters!):
+        #   line 0 : 80-char title comment (always consumed as the title)
+        #   then   : optional '#' metadata comment lines
+        #   then   : the BANK statement
+        #   then   : the x/f/s data rows
+        # The metadata MUST precede the BANK line. GSAS-II's FXYE reader seeks
+        # to the byte just after BANK and reads data with a loop that STOPS at
+        # the first line beginning with '#':
+        #     while S and S[:4] != 'BANK' and S[0] != '#':
+        # so any '#' comment placed between BANK and the data truncates the
+        # read to zero points (the file still "validates" — ContentsValidator
+        # only counts BANK lines — but reads empty). Comments before BANK are
+        # collected into GSAS-II's per-bank comment list, so metadata survives.
         f.write(f"{title:<80s}\n")
+        if metadata is not None:
+            for line in metadata.to_header_lines(prefix="# "):
+                f.write(line + "\n")
         nlines = len(x_centideg)
         step = (x_centideg[1] - x_centideg[0]) if nlines >= 2 else 0.0
         # BANK 1, n points, n records, CONST step, start, step, 0 0 FXYE
@@ -226,9 +241,6 @@ def write_fxye(
             f"{x_centideg[0]:.5f} {step:.5f} "
             f"0 0 FXYE\n"
         )
-        if metadata is not None:
-            for line in metadata.to_header_lines(prefix="# "):
-                f.write(line + "\n")
         for x, y, e in zip(x_centideg, intensity, sigma):
             f.write(f"{x:14.5f} {y:14.5e} {e:14.5e}\n")
     return path
