@@ -4,7 +4,7 @@ build-backend = "scikit_build_core.build"
 
 [project]
 name = "midas-fit-grain"
-version = "0.5.0"
+version = "0.5.1"
 description = "PyTorch single/multi-grain refiner (drop-in replacement for FitPosOrStrainsOMP / FitPosOrStrainsGPU) + bundled c-omp C refiner"
 readme = "README.md"
 license = "BSD-3-Clause"
