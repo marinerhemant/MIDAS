@@ -22,7 +22,7 @@ class IntegrationParams:
     Lsd: float = 0.0           # sample-to-detector distance (µm)
     BC_y: float = 0.0          # beam center Y (pixels)
     BC_z: float = 0.0          # beam center Z (pixels)
-    RhoD: float = 0.0          # max distortion radius (pixels)
+    RhoD: float = 0.0          # distortion normalisation radius (MICROMETRES; ρ = Rad_µm/RhoD)
 
     # Tilt angles (degrees)
     tx: float = 0.0
@@ -170,6 +170,23 @@ class IntegrationParams:
             )
         if self.Lsd <= 0 or self.pxY <= 0:
             raise ValueError(f"Lsd/pxY invalid ({self.Lsd}, {self.pxY})")
+        # RhoD units self-consistency: the distortion uses ρ = Rad/RhoD where
+        # Rad is in micrometres (see geometry: Yc = (Ycen-Y)*px), so RhoD MUST
+        # be µm. A pixel-valued RhoD silently corrupts the distortion. Auto-
+        # correct to µm with a loud warning when it looks like a unit mistake.
+        if self.RhoD > 0 and self.pxY > 0:
+            try:
+                from midas_distortion.rhod import resolve_rho_d_um_warn
+                self.RhoD = float(resolve_rho_d_um_warn(
+                    float(self.RhoD),
+                    int(self.NrPixelsY), int(self.NrPixelsZ),
+                    float(self.BC_y), float(self.BC_z),
+                    float(self.pxY),
+                    float(self.pxZ) if self.pxZ > 0 else None,
+                    where="IntegrationParams",
+                ))
+            except ImportError:
+                pass   # guard is best-effort if midas-distortion absent
         if self.q_mode_active and self.tth_mode_active:
             raise ValueError(
                 "Q-mode (QBinSize>0) and 2theta-mode (TthBinSize>0) are "

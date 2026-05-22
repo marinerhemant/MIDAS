@@ -44,6 +44,7 @@ dependencies = [
     "tifffile>=2022.0",
     "h5py>=3.0",
     "hdf5plugin>=4.0",
+    "midas-distortion>=0.2.0",  # shared RhoD-units guard (single source)
     "numba>=0.59",   # JIT'd DetectorMapper kernel (parallel via prange)
     "joblib>=1.2",   # used by ancillary tooling; not on the hot path
     "zarr>=2.16,<3", # CSV exporter (zarr.hierarchy.Group is v2 API)
