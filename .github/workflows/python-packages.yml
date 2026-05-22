@@ -203,6 +203,9 @@ jobs:
           elif [[ "$TAG" == midas-peakfit-v* ]]; then
             echo "package=midas_peakfit" >> "$GITHUB_OUTPUT"
             echo "pypi_name=midas-peakfit" >> "$GITHUB_OUTPUT"
+          elif [[ "$TAG" == midas-distortion-v* ]]; then
+            echo "package=midas_distortion" >> "$GITHUB_OUTPUT"
+            echo "pypi_name=midas-distortion" >> "$GITHUB_OUTPUT"
           elif [[ "$TAG" == midas-integrate-v2-v* ]]; then
             # NOTE: this branch MUST come before `midas-integrate-v*` —
             # the v1 glob also matches `midas-integrate-v2-v0.0.0` etc.

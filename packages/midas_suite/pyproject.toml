@@ -29,6 +29,7 @@ classifiers = [
 # absent — they're listed in the workflow HIDDEN set and never ship to PyPI.
 dependencies = [
     # leaves
+    "midas-distortion>=0.2.0",     # shared radial-distortion model + RhoD-units guard
     "midas-stress>=0.7.0",
     "midas-params>=0.3.1",
     "midas-hkls>=0.4.1",
