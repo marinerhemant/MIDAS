@@ -84,23 +84,14 @@ def pixel_to_REta_torch(
     rad_um = (Lsd / safe_x) * torch.sqrt(XYZ_y * XYZ_y + XYZ_z * XYZ_z)
     eta_tilted = rad2deg * torch.atan2(-XYZ_y, XYZ_z)
 
-    # Distortion polynomial uses EtaT = 90 - EtaTilted (matches numpy).
-    eta_T_rad = (90.0 - eta_tilted) * deg2rad
-    R_norm = rad_um / rho_d if rho_d > 0 else torch.zeros_like(rad_um)
+    # Radial distortion via the shared midas_distortion kernel (single source
+    # of truth, identical to peakfit + calibrate-v2). p_coeffs is the legacy
+    # v1 p0..p14 vector; shim it to v2 canonical order (a differentiable gather)
+    # and evaluate. The kernel applies EtaT = 90 - eta internally.
+    from midas_distortion import distortion_factor, v1_to_v2_coeffs
 
-    p = p_coeffs
-    dist = (
-        p[0] * R_norm.pow(2) * torch.cos(2 * eta_T_rad + deg2rad * p[6])
-        + p[1] * R_norm.pow(4) * torch.cos(4 * eta_T_rad + deg2rad * p[3])
-        + p[2] * R_norm.pow(2)
-        + p[4] * R_norm.pow(6)
-        + p[5] * R_norm.pow(4)
-        + p[7] * R_norm.pow(4) * torch.cos(eta_T_rad + deg2rad * p[8])
-        + p[9] * R_norm.pow(3) * torch.cos(3 * eta_T_rad + deg2rad * p[10])
-        + p[11] * R_norm.pow(5) * torch.cos(5 * eta_T_rad + deg2rad * p[12])
-        + p[13] * R_norm.pow(6) * torch.cos(6 * eta_T_rad + deg2rad * p[14])
-        + 1.0
-    )
+    R_norm = rad_um / rho_d if rho_d > 0 else torch.zeros_like(rad_um)
+    dist = distortion_factor(R_norm, eta_tilted, v1_to_v2_coeffs(p_coeffs))
     Rt = rad_um * dist / px
 
     if isinstance(parallax, torch.Tensor):
