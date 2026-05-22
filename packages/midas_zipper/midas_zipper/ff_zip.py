@@ -188,7 +188,11 @@ def write_analysis_parameters(z_groups, config):
         "Lsd", "Wavelength", "Width", "WidthTthPx", "UpperBoundThreshold", "p4", "p5", "Parallax", "p3", "p2", 
         "p1", "p0", "p6", "p7", "p8", "p9", "p10", "p11", "p12", "p13", "p14", "tz", "ty", "tx",
         "tolP5", "tolP6", "tolP7", "tolP8", "tolP9", "tolP10", "tolP11", "tolP12", "tolP13", "tolP14", "tolParallax",
-        "WeightMask", "WeightFitRMSE", "QBinSize", "QMin", "QMax" }
+        "WeightMask", "WeightFitRMSE", "QBinSize", "QMin", "QMax",
+        # v2 distortion harmonics (carried natively by calibrate-v2; peakfit +
+        # transforms read these instead of p0..p14 when present).
+        "iso_R2", "iso_R4", "iso_R6", "a1", "phi1", "a2", "phi2", "a3", "phi3",
+        "a4", "phi4", "a5", "phi5", "a6", "phi6" }
     FORCE_INT_PARAMS = { "Twins", "MaxNFrames", "DoFit", "DiscModel", "UseMaximaPositions", "UsePixelOverlap", 
         "MaxNrPx", "MinNrPx", "MaxNPeaks", "PhaseNr", "NumPhases", "MinNrSpots", "UseFriedelPairs", "OverallRingToIndex", 
         "SpaceGroup", "LayerNr", "DoFullImage", "SkipFrame", "SumImages", "Normalize", "SaveIndividualFrames", 
