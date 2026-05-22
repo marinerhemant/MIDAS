@@ -62,6 +62,139 @@ def write_v1_paramstest(
     out.write(path)
 
 
+def write_ff_paramstest(
+    result,
+    template: V1Params,
+    out_dir: Path | str,
+    *,
+    paramstest_name: str = "paramstest.txt",
+    spline_filename: str = "residual_corr.bin",
+) -> Path:
+    """Export a v2 calibration result as the FF paramstest consumed by
+    midas-peakfit + midas-transforms (via the zipper's analysis_parameters).
+
+    The FF analogue of :func:`to_integrate.to_integrate_params`: it writes the
+    refined geometry + ``p0..p14`` distortion (translated from v2 names) AND,
+    when the result carries a Stage-4 residual spline, evaluates it on the
+    detector grid into ``out_dir/spline_filename`` and records a
+    ``ResidualCorrectionMap`` line so both consumers apply the full v2
+    distortion (analytical harmonic + spline residual).
+
+    ``result`` may be a ``FourStageResult`` (``.stage2.unpacked`` +
+    ``.stage3_spline_fn``) or any object exposing ``.unpacked``; the spline is
+    only written if present. ``template`` supplies fixed fields (NrPixelsY/Z,
+    px, lattice, etc.). Returns the paramstest path.
+    """
+    from .to_integrate import write_residual_correction_from_spline
+
+    out_dir = Path(out_dir)
+    out_dir.mkdir(parents=True, exist_ok=True)
+
+    if hasattr(result, "stage2"):
+        unpacked = result.stage2.unpacked
+        spline_fn = getattr(result, "stage3_spline_fn", None)
+    elif hasattr(result, "unpacked"):
+        unpacked = result.unpacked
+        spline_fn = getattr(result, "stage3_spline_fn", None)
+    else:
+        raise TypeError(
+            f"result type {type(result).__name__} has neither .unpacked nor "
+            ".stage2 — pass a FourStageResult or a result exposing .unpacked"
+        )
+
+    params = unpacked_to_v1_params(unpacked, template)
+
+    if spline_fn is not None:
+        spline_path = out_dir / spline_filename
+        px_mean = (0.5 * (params.pxY + params.pxZ)
+                   if params.pxZ > 0 else params.pxY)
+        write_residual_correction_from_spline(
+            spline_fn,
+            NrPixelsY=params.NrPixelsY, NrPixelsZ=params.NrPixelsZ,
+            px_mean_um=px_mean,
+            out_path=spline_path,
+        )
+        # Carried verbatim by ff_zip.write_analysis_parameters into the zarr.
+        params.extra["ResidualCorrectionMap"] = str(spline_path)
+
+    ptest = out_dir / paramstest_name
+    params.write(ptest)
+    return ptest
+
+
+def ff_paramstest_from_auto_result(
+    result,
+    template_ps: Path | str,
+    out_path: Path | str,
+    *,
+    raw_folder: str | None = None,
+    n_pixels_y: int | None = None,
+    n_pixels_z: int | None = None,
+) -> Path:
+    """Write an FF paramstest from an :class:`AutoCalibrationResult`, carrying
+    the **full** refined geometry + distortion + residual map from the powder
+    calibration into the HEDM reconstruction — no zeroing, no manual ``p``-slots.
+
+    The v2 result is the single source of truth, written in the **v2 harmonic
+    naming** — no ``p0..p14``:
+      * geometry  — ``Lsd, BC_y, BC_z, tx, ty, tz`` (µm, deg);
+      * distortion — the v2-named harmonics in ``result.distortion``
+        (``iso_R2/4/6, a1..a6, phi1..phi6``), written verbatim. The zipper
+        carries them into the zarr; peakfit + transforms read v2 names natively
+        (legacy ``p0..p14`` still accepted for old files);
+      * spline residual — ``result.residual_corr_bin_path`` recorded as
+        ``ResidualCorrectionMap`` so peakfit + transforms apply it.
+
+    Indexing/refinement thresholds (``RingThresh``, ``MinNrSpots``, …) are
+    carried verbatim from ``template_ps``; only the geometry/distortion/detector
+    keys are replaced. Caller supplies ``raw_folder`` (sample frames) and, if the
+    detector size differs from the template, ``n_pixels_y/z``.
+
+    Returns the written paramstest path.
+    """
+    from midas_distortion import P_COEF_NAMES
+
+    dist = dict(getattr(result, "distortion", {}) or {})
+    ny = int(n_pixels_y if n_pixels_y is not None else getattr(result, "NrPixelsY", 0))
+    nz = int(n_pixels_z if n_pixels_z is not None else getattr(result, "NrPixelsZ", 0))
+
+    # Keys we replace from the v2 result; everything else in the template
+    # (thresholds, ring numbers, omega scan, …) is carried verbatim. We strip
+    # both the v2 distortion names and any legacy p0..p14 so the output is
+    # unambiguously v2-named.
+    replaced = {"Lsd", "BC", "tx", "ty", "tz", "RawFolder",
+                "NrPixelsY", "NrPixelsZ", "ResidualCorrectionMap",
+                *P_COEF_NAMES, *(f"p{i}" for i in range(15))}
+
+    kept: list[str] = []
+    for ln in Path(template_ps).read_text().splitlines():
+        s = ln.strip()
+        if not s or s.startswith("#") or s.split()[0] not in replaced:
+            kept.append(ln)
+
+    inj = [
+        "# --- geometry + FULL distortion from midas-calibrate-v2 (powder) ---",
+        f"Lsd {result.Lsd:.10g}",
+        f"BC {result.BC_y:.10g} {result.BC_z:.10g}",
+        f"tx {result.tx:.10g}", f"ty {result.ty:.10g}", f"tz {result.tz:.10g}",
+        "# v2 distortion harmonics (carried natively; no p0..p14)",
+        *[f"{nm} {float(dist.get(nm, 0.0)):.10g}" for nm in P_COEF_NAMES],
+    ]
+    if ny > 0 and nz > 0:
+        inj += [f"NrPixelsY {ny}", f"NrPixelsZ {nz}"]
+    if raw_folder:
+        rf = str(raw_folder)
+        inj.append(f"RawFolder {rf if rf.endswith('/') else rf + '/'}")
+    rcm = getattr(result, "residual_corr_bin_path", None)
+    if rcm:
+        inj += ["# Stage-4 spline residual-correction map (px), applied by "
+                "peakfit + transforms", f"ResidualCorrectionMap {rcm}"]
+
+    out_path = Path(out_path)
+    out_path.write_text("\n".join(kept + inj) + "\n")
+    return out_path
+
+
 def write_panel_shifts_file(
     unpacked: Dict[str, torch.Tensor],
     path: Path | str,
@@ -90,4 +223,5 @@ def write_panel_shifts_file(
     Path(path).write_text("\n".join(lines) + "\n")
 
 
-__all__ = ["unpacked_to_v1_params", "write_v1_paramstest", "write_panel_shifts_file"]
+__all__ = ["unpacked_to_v1_params", "write_v1_paramstest", "write_ff_paramstest",
+           "ff_paramstest_from_auto_result", "write_panel_shifts_file"]

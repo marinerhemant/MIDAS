@@ -1,0 +1,145 @@
+"""FIX-3: a v2 calibration result must export the FF paramstest that
+midas-peakfit + midas-transforms consume — geometry + p0..p14 (translated
+from v2 names) AND the Stage-4 spline written as residual_corr.bin with a
+ResidualCorrectionMap line.
+
+Synthetic end-to-end proof of the wiring chain:
+  v2 result (unpacked + spline) → write_ff_paramstest → paramstest.txt + .bin
+  → (zipper-parseable, carries ResidualCorrectionMap) → .bin reproduces ΔR.
+The bin → consumer half is pinned by the transforms (reshape (Z,Y)) and peakfit
+(reshape (Z,Y).T) round-trip tests; together they cover calibration → spots.
+"""
+import numpy as np
+import pytest
+import torch
+
+from types import SimpleNamespace
+
+from midas_calibrate.params import CalibrationParams as V1Params
+from midas_calibrate_v2.compat.to_v1 import (
+    write_ff_paramstest, ff_paramstest_from_auto_result, _V2_TO_V1_DISTORTION,
+)
+
+
+def test_ff_paramstest_from_auto_result_is_v2_native(tmp_path):
+    """The AutoCalibrationResult exporter writes the FULL v2 distortion in v2
+    naming — no zeroing, no p0..p14 — plus geometry, residual map, and the
+    template thresholds verbatim."""
+    from midas_distortion import P_COEF_NAMES
+
+    tmpl = tmp_path / "ps.txt"
+    tmpl.write_text("RingThresh 1 80\nMinNrSpots 4\np0 9\np3 9\nLsd 1\ntx 7\n")
+    dist = {nm: 0.0 for nm in P_COEF_NAMES}
+    dist.update({"iso_R2": -1.11e-3, "iso_R4": 8e-4, "a2": 4.6e-4, "phi2": 33.0,
+                 "a4": -5.2e-4, "phi4": -6.87})
+    res = SimpleNamespace(
+        Lsd=958874.0, BC_y=1390.0, BC_z=1422.0, tx=0.0, ty=-0.173, tz=0.048,
+        distortion=dist, NrPixelsY=2880, NrPixelsZ=2880,
+        residual_corr_bin_path="/calib/residual_corr.bin")
+
+    out = ff_paramstest_from_auto_result(res, tmpl, tmp_path / "v2.txt",
+                                         raw_folder="/ni/raw")
+    txt = out.read_text()
+    keys = [l.split()[0] for l in txt.splitlines() if l.strip() and not l.startswith("#")]
+
+    # NO legacy p-slots anywhere.
+    assert not ({f"p{i}" for i in range(15)} & set(keys)), "p0..p14 must be gone"
+    # v2 names present with the right values.
+    assert "iso_R2 -0.00111" in txt and "phi4 -6.87" in txt and "a2 0.00046" in txt
+    # geometry (all tilts), detector, raw folder, residual map, thresholds.
+    assert "tx 0" in txt and "ty -0.173" in txt and "tz 0.048" in txt
+    assert keys.count("tx") == 1  # template tx replaced, not duplicated
+    assert "NrPixelsY 2880" in txt and "RawFolder /ni/raw/" in txt
+    assert "ResidualCorrectionMap /calib/residual_corr.bin" in txt
+    assert "MinNrSpots 4" in txt and "RingThresh 1 80" in txt
+
+
+class _FakeResult:
+    """Duck-typed FourStageResult: an unpacked dict + a Stage-4 spline."""
+    def __init__(self, unpacked, spline_fn):
+        self.unpacked = unpacked
+        self.stage3_spline_fn = spline_fn
+
+
+def _template(NY, NZ, px):
+    p = V1Params()
+    p.NrPixelsY, p.NrPixelsZ = NY, NZ
+    p.pxY, p.pxZ = px, 0.0
+    p.Lsd = 1.0e6
+    p.Wavelength = 0.18
+    p.RhoD = NY * px
+    p.MaxRingRad = NY * px
+    return p
+
+
+def test_write_ff_paramstest_full_chain(tmp_path):
+    NY, NZ, px = 5, 7, 150.0
+
+    # Distinct nonzero distortion values, keyed by v2 name, so the v2→v1
+    # p-index mapping is verifiable per-coefficient.
+    v2_dist = {
+        "iso_R2": 1e-3, "iso_R4": 2e-3, "iso_R6": 3e-3,
+        "a1": 4e-3, "phi1": 11.0, "a2": 5e-3, "phi2": 22.0,
+        "a3": 6e-3, "phi3": 33.0, "a4": 7e-3, "phi4": 44.0,
+        "a5": 8e-3, "phi5": 55.0, "a6": 9e-3, "phi6": 66.0,
+    }
+    geom = {"Lsd": 1.0023e6, "BC_y": 1024.5, "BC_z": 980.25,
+            "ty": 0.12, "tz": -0.34, "Wavelength": 0.1729}
+    unpacked = {k: torch.tensor(float(v), dtype=torch.float64)
+                for k, v in {**v2_dist, **geom}.items()}
+
+    def spline_predict(ys, zs):  # ΔR µm, asymmetric in Y vs Z
+        return 30.0 * np.sin(2 * np.pi * zs / NZ) + 12.0 * np.cos(2 * np.pi * ys / NY)
+
+    result = _FakeResult(unpacked, spline_predict)
+    ptest = write_ff_paramstest(result, _template(NY, NZ, px), tmp_path)
+
+    # 1) paramstest + residual_corr.bin both written
+    assert ptest.exists()
+    binp = tmp_path / "residual_corr.bin"
+    assert binp.exists()
+
+    # 2) geometry + p0..p14 round-trip with the v2→v1 mapping applied
+    rp = V1Params.from_file(ptest)
+    assert abs(rp.Lsd - geom["Lsd"]) < 1e-3
+    assert abs(rp.BC_y - geom["BC_y"]) < 1e-6
+    assert abs(rp.BC_z - geom["BC_z"]) < 1e-6
+    assert abs(rp.ty - geom["ty"]) < 1e-9
+    assert abs(rp.tz - geom["tz"]) < 1e-9
+    for v2name, v1name in _V2_TO_V1_DISTORTION.items():
+        got = getattr(rp, v1name)
+        assert abs(got - v2_dist[v2name]) < 1e-9, (
+            f"{v2name}→{v1name}: paramstest has {got}, expected {v2_dist[v2name]}"
+        )
+
+    # 3) the param file is zipper-parseable and carries ResidualCorrectionMap
+    #    pointing at the bin (this is what lands in the zarr analysis_params).
+    try:
+        from midas_zipper.ff_zip import parse_parameter_file, write_analysis_parameters  # noqa: F401
+    except Exception:
+        cfg = None
+    else:
+        cfg = parse_parameter_file(str(ptest))
+        assert cfg.get("ResidualCorrectionMap") == str(binp), (
+            "ResidualCorrectionMap not carried by the param file → zipper path"
+        )
+
+    # 4) the bin reproduces the spline ΔR (z-major (NrPixelsZ, NrPixelsY)).
+    md = np.fromfile(binp, dtype=np.float64)
+    assert md.size == NY * NZ
+    grid = md.reshape(NZ, NY)  # grid[z, y] = ΔR(Y=y, Z=z)/px
+    for z in range(NZ):
+        for y in range(NY):
+            truth = spline_predict(np.array([y]), np.array([z]))[0] / px
+            assert abs(grid[z, y] - truth) < 1e-12
+
+
+def test_write_ff_paramstest_no_spline(tmp_path):
+    """No Stage-4 spline → paramstest written, no bin, no ResidualCorrectionMap."""
+    NY, NZ, px = 4, 4, 200.0
+    unpacked = {"Lsd": torch.tensor(1e6), "a2": torch.tensor(1e-3)}
+    result = _FakeResult(unpacked, None)
+    ptest = write_ff_paramstest(result, _template(NY, NZ, px), tmp_path)
+    assert ptest.exists()
+    assert not (tmp_path / "residual_corr.bin").exists()
+    assert "ResidualCorrectionMap" not in ptest.read_text()

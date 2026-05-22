@@ -21,6 +21,7 @@ dependencies = [
     "numpy>=1.22",
     "scipy>=1.9",
     "torch>=2.1",
+    "midas-distortion>=0.2.0",            # shared distortion model (single source)
     "midas-hkls>=0.1.0",
     "midas-integrate>=0.1.0",
     "midas-peakfit>=0.2.0",

@@ -297,10 +297,17 @@ def spec_from_calibration_result(
     s.Parallax = _t(0.0)
 
     NY, NZ = s.NrPixelsY, s.NrPixelsZ
-    s.RhoD = math.sqrt(
+    # RhoD is the distortion normalisation radius and MUST be in micrometres
+    # (the forward model uses ρ = R_µm / RhoD). It is the beam-centre-to-
+    # farthest-corner distance in px times the pixel pitch — the same value the
+    # calibration used. (Setting it in pixels makes ρ ~px/µm too large by the
+    # pitch, so the distortion polynomial explodes and washes out the rings.)
+    px_mean = 0.5 * (float(result.pxY) + float(result.pxZ))
+    corner_px = math.sqrt(
         max(result.BC_y, NY - 1 - result.BC_y) ** 2
         + max(result.BC_z, NZ - 1 - result.BC_z) ** 2
     )
+    s.RhoD = corner_px * px_mean
 
     for name in DISTORTION_NAMES:
         if name in result.distortion and hasattr(s, name):
@@ -313,7 +320,8 @@ def spec_from_calibration_result(
         s.ResidualCorrectionMap = rcm
 
     s.RMin = float(RMin)
-    s.RMax = float(RMax) if RMax is not None else float(s.RhoD)
+    # RMin/RMax/RBinSize are in PIXELS (RhoD above is µm — different unit).
+    s.RMax = float(RMax) if RMax is not None else float(corner_px)
     s.RBinSize = float(RBinSize)
     s.EtaMin = float(EtaMin)
     s.EtaMax = float(EtaMax)
