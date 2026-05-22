@@ -331,9 +331,53 @@ def spec_from_calibration_result(
     return s
 
 
+def spec_from_calibration_json(
+    path,
+    *,
+    RBinSize: float,
+    EtaBinSize: float = 5.0,
+    RMin: float = 10.0,
+    RMax: Optional[float] = None,
+    EtaMin: float = -180.0,
+    EtaMax: float = 180.0,
+    residual_corr_map: Optional[str] = None,
+):
+    """Build a ``midas_integrate_v2`` ``IntegrationSpec`` from a saved
+    ``calibration.json`` (the file ``calibrate(output_dir=...)`` writes).
+
+    Convenience wrapper over :func:`spec_from_calibration_result` for batch
+    workflows: calibrate once, then build the spec straight from disk for many
+    sample frames — no need to keep the live ``result`` object. The JSON keys
+    (``Lsd_um``, ``BC_y_px``, ``tx_deg`` …) are mapped to the bare result
+    field names. ``RBinSize`` is required; the bin parameters are an
+    integration choice (not stored in the calibration). If ``residual_corr_map``
+    is None, the JSON's ``residual_corr_bin`` path is used.
+    """
+    import json
+    from types import SimpleNamespace
+
+    with open(path) as fh:
+        c = json.load(fh)
+    result = SimpleNamespace(
+        NrPixelsY=c["NrPixelsY"], NrPixelsZ=c["NrPixelsZ"],
+        pxY=c["pxY_um"], pxZ=c["pxZ_um"],
+        Lsd=c["Lsd_um"], BC_y=c["BC_y_px"], BC_z=c["BC_z_px"],
+        tx=c["tx_deg"], ty=c["ty_deg"], tz=c["tz_deg"],
+        wavelength_A=c["wavelength_A"],
+        distortion=c.get("distortion", {}),
+        residual_corr_bin_path=c.get("residual_corr_bin"),
+    )
+    return spec_from_calibration_result(
+        result, RBinSize=RBinSize, EtaBinSize=EtaBinSize,
+        RMin=RMin, RMax=RMax, EtaMin=EtaMin, EtaMax=EtaMax,
+        residual_corr_map=residual_corr_map,
+    )
+
+
 __all__ = [
     "write_residual_correction_from_spline",
     "write_per_ring_offsets_json",
     "to_integrate_params",
     "spec_from_calibration_result",
+    "spec_from_calibration_json",
 ]
