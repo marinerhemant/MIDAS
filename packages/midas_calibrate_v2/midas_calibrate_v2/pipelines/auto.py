@@ -126,6 +126,8 @@ def calibrate(
     output_dir: Optional[Union[str, Path]] = None,
     initial_Lsd: float = 1_000_000.0,
     lsd_window: Optional[float] = None,
+    initial_BC_y: Optional[float] = None,
+    initial_BC_z: Optional[float] = None,
     max_2theta_deg: float = 28.0,
     min_ring_radius_px: float = 120.0,
     max_ring_radius_px: Optional[float] = None,
@@ -166,6 +168,21 @@ def calibrate(
       ``panel_tol_rot_deg`` bound the shift and rotation; this is what brings
       a multi-module Pilatus from a few-hundred µε monolithic fit down to the
       sub-20 µε regime.  Leave ``None`` for monolithic detectors (GE, Varex).
+
+    User-supplied seed (optional)
+    -----------------------------
+    Pass **both** ``initial_BC_y`` and ``initial_BC_z`` (and an
+    ``initial_Lsd`` matching the geometry) to skip the automatic seeder
+    entirely and start the LM refinement directly from those values.
+    Useful when:
+
+    * the auto-seeder fails (very sparse / spotty calibrant images,
+      off-detector beam centre where chord-bisector can't anchor),
+    * or the user already knows the BC from beamline alignment and just
+      wants the LM to polish.
+
+    When only one of ``initial_BC_y`` / ``initial_BC_z`` is set, the
+    automatic seeder runs as before (the partial hint is ignored).
 
     Pipeline:
 
@@ -248,48 +265,68 @@ def calibrate(
         img = np.clip(image.astype(np.float32), 0, None)
 
     # 2. Seed BC + Lsd.
-    if verbose:
-        print(f"[calibrate] STAGE 1: seeding from {cal_name} rings...", flush=True)
-    sim_radii = _generate_sim_radii_px(
-        lattice_a=a, lattice_c=c, alpha=alpha, gamma=gamma,
-        wavelength=wavelength, px=pxY, sg=sg,
-        Lsd_nominal_um=initial_Lsd, max_2theta_deg=max_2theta_deg,
-    )
-    if sim_radii.size < 3:
-        raise RuntimeError(
-            f"Only {sim_radii.size} simulated rings under "
-            f"{max_2theta_deg}° — check wavelength/lattice"
-        )
-    t0 = time.time()
-    # Robust seed first: connected-component arc detection → chord-bisector
-    # beam centre (recovers OFF-PANEL BC) → multi-hypothesis Lsd. This is the
-    # battle-tested recipe (formerly AutoCalibrateZarr); it handles off-centre
-    # BC, masked detectors, and weak data where the chord-only arc seed
-    # (seed_from_image) gets stuck. Fall back to seed_from_image otherwise.
     from types import SimpleNamespace
-    seed = None
-    try:
-        from ..seed.from_calibrant_image import auto_seed_calibrant
-        asr = auto_seed_calibrant(img, sim_radii_px=sim_radii,
-                                  initial_lsd_um=initial_Lsd, mask=sentinel_mask,
-                                  lsd_window=lsd_window)
-        if asr.Lsd_um and asr.Lsd_um > 0 and asr.n_rings_matched >= 1:
-            seed = SimpleNamespace(bc_y=asr.BC_y, bc_z=asr.BC_z, Lsd=asr.Lsd_um,
-                                   n_arcs=asr.n_arcs, n_rings=asr.n_rings_matched)
-            if verbose:
-                print(f"[calibrate]   connected-component seed "
-                      f"({asr.n_arcs} arcs, {asr.n_rings_matched} rings matched, "
-                      f"thr={asr.threshold_used:.0f})", flush=True)
-    except Exception as e:  # pragma: no cover - fall back on any seed failure
-        if verbose:
-            print(f"[calibrate]   auto_seed_calibrant failed ({e}); using arc seed",
-                  flush=True)
-    if seed is None:
-        seed = seed_from_image(
-            image=img, sim_radii_px=sim_radii,
-            initial_lsd=initial_Lsd, npy=NY, npz=NZ,
-            skip_median=False, min_ring_radius_px=min_ring_radius_px,
+    t0 = time.time()
+    if initial_BC_y is not None and initial_BC_z is not None:
+        # User-supplied seed — bypass the automatic seeder entirely.
+        # (initial_Lsd is required here; pass a sensible value, not the
+        # 1 000 000 µm default, or the LM will start far from truth.)
+        seed = SimpleNamespace(
+            bc_y=float(initial_BC_y), bc_z=float(initial_BC_z),
+            Lsd=float(initial_Lsd), n_arcs=0, n_rings=0,
         )
+        if verbose:
+            print(f"[calibrate] STAGE 1: user-supplied seed "
+                  f"(BC=({initial_BC_y:.3f}, {initial_BC_z:.3f}), "
+                  f"Lsd={initial_Lsd:.0f} µm) — automatic seeder skipped",
+                  flush=True)
+    else:
+        if verbose:
+            print(f"[calibrate] STAGE 1: seeding from {cal_name} rings...",
+                  flush=True)
+        sim_radii = _generate_sim_radii_px(
+            lattice_a=a, lattice_c=c, alpha=alpha, gamma=gamma,
+            wavelength=wavelength, px=pxY, sg=sg,
+            Lsd_nominal_um=initial_Lsd, max_2theta_deg=max_2theta_deg,
+        )
+        if sim_radii.size < 3:
+            raise RuntimeError(
+                f"Only {sim_radii.size} simulated rings under "
+                f"{max_2theta_deg}° — check wavelength/lattice"
+            )
+        # Robust seed first: connected-component arc detection →
+        # chord-bisector beam centre (recovers OFF-PANEL BC) →
+        # multi-hypothesis Lsd. This is the battle-tested recipe
+        # (formerly AutoCalibrateZarr); it handles off-centre BC,
+        # masked detectors, and weak data where the chord-only arc
+        # seed (seed_from_image) gets stuck. Fall back to
+        # seed_from_image otherwise.
+        seed = None
+        try:
+            from ..seed.from_calibrant_image import auto_seed_calibrant
+            asr = auto_seed_calibrant(
+                img, sim_radii_px=sim_radii,
+                initial_lsd_um=initial_Lsd, mask=sentinel_mask,
+                lsd_window=lsd_window)
+            if asr.Lsd_um and asr.Lsd_um > 0 and asr.n_rings_matched >= 1:
+                seed = SimpleNamespace(
+                    bc_y=asr.BC_y, bc_z=asr.BC_z, Lsd=asr.Lsd_um,
+                    n_arcs=asr.n_arcs, n_rings=asr.n_rings_matched)
+                if verbose:
+                    print(f"[calibrate]   connected-component seed "
+                          f"({asr.n_arcs} arcs, "
+                          f"{asr.n_rings_matched} rings matched, "
+                          f"thr={asr.threshold_used:.0f})", flush=True)
+        except Exception as e:  # pragma: no cover
+            if verbose:
+                print(f"[calibrate]   auto_seed_calibrant failed ({e}); "
+                      f"using arc seed", flush=True)
+        if seed is None:
+            seed = seed_from_image(
+                image=img, sim_radii_px=sim_radii,
+                initial_lsd=initial_Lsd, npy=NY, npz=NZ,
+                skip_median=False, min_ring_radius_px=min_ring_radius_px,
+            )
     seed_time = time.time() - t0
     if verbose:
         print(f"[calibrate]   BC=({seed.bc_y:.3f}, {seed.bc_z:.3f})  "
