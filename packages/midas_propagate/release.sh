@@ -75,7 +75,9 @@ fi
 
 # --- 3. Run tests ---
 echo "[2/7] Running tests..."
-python -m pytest tests/ -q --tb=short || {
+# macOS conda envs ship duplicate libomp.dylib (numba + torch); SIGABRTs at
+# import without this. Tests are not OpenMP-stress and run cleanly with it.
+KMP_DUPLICATE_LIB_OK=TRUE python -m pytest tests/ -q --tb=short || {
     echo "ERROR: tests failed. Aborting."
     git checkout -- pyproject.toml midas_propagate/__init__.py
     exit 1
