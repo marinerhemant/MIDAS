@@ -4,7 +4,7 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "midas-propagate"
-version = "0.1.0"
+version = "0.1.1"
 description = "End-to-end uncertainty propagation and joint re-refinement for HEDM (calibration -> indexing -> per-grain refinement -> stress)"
 readme = "README.md"
 license = "BSD-3-Clause"
