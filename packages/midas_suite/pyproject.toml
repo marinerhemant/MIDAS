@@ -4,7 +4,7 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "midas-suite"
-version = "0.3.4"
+version = "0.3.5"
 description = "Meta-package: installs the MIDAS Python pipeline (FF/NF/PF HEDM, calibration, peakfit, integration, transforms, ODF, stress)."
 readme = "README.md"
 license = { text = "BSD-3-Clause" }
@@ -23,10 +23,10 @@ classifiers = [
 ]
 
 # Floors pinned to the current PyPI version of each sub-package as of
-# 2026-05-18. Bump only when a meta-package change actually requires it.
+# 2026-05-26. Bump only when a meta-package change actually requires it.
 # The hidden in-tree packages (midas-grain-odf, midas-joint-ff-calibrate,
-# midas-pf-odf, midas-pink, midas-propagate, midas-uq) are intentionally
-# absent — they're listed in the workflow HIDDEN set and never ship to PyPI.
+# midas-pf-odf, midas-pink) are intentionally absent — they're listed
+# in the workflow HIDDEN set and never ship to PyPI.
 dependencies = [
     # leaves
     "midas-distortion>=0.2.0",     # shared radial-distortion model + RhoD-units guard
@@ -41,7 +41,9 @@ dependencies = [
     "midas-calibrate-v2>=0.1.0",
     "midas-index>=0.5.2",
     "midas-transforms>=0.4.2",
-    "midas-process-grains>=0.1.0",
+    "midas-propagate>=0.1.0",      # uncertainty propagation; load-bearing for process-grains v0.4.x Stage 7 σ
+    "midas-uq>=0.1.0",             # refiner-anchored bootstrap UQ (per-grain trust_score_anchored)
+    "midas-process-grains>=0.4.4", # v0.4.4: Stage 8.5 budget drop + 8.5b force-keep + 8.5c orphan reclaim
     "midas-fit-grain>=0.2.1",
     "midas-nf-preprocess>=0.1.1",
     "midas-nf-fitorientation>=0.3.1",

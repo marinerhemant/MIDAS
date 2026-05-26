@@ -38,8 +38,6 @@ HIDDEN: set[str] = {
     "midas_joint_ff_calibrate",
     "midas_pf_odf",
     "midas_pink",
-    "midas_propagate",
-    "midas_uq",
 }
 
 # Files whose mutation invalidates the entire matrix (since they affect

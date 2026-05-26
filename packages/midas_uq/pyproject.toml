@@ -1,0 +1,49 @@
+[build-system]
+requires = ["setuptools>=68.0"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "midas-uq"
+version = "0.1.0"
+description = "Cross-validation based uncertainty quantification for HEDM grain refinement (FF, NF, pf)"
+readme = "README.md"
+license = "BSD-3-Clause"
+requires-python = ">=3.9"
+authors = [
+    {name = "Hemant Sharma", email = "hsharma@anl.gov"},
+]
+keywords = [
+    "HEDM", "3DXRD", "uncertainty quantification",
+    "cross-validation", "bootstrap", "jackknife", "R_free",
+    "PyTorch", "crystallography", "polycrystal", "grain",
+]
+classifiers = [
+    "Development Status :: 4 - Beta",
+    "Intended Audience :: Science/Research",
+    "Programming Language :: Python :: 3",
+    "Operating System :: OS Independent",
+    "Topic :: Scientific/Engineering :: Physics",
+]
+dependencies = [
+    "numpy>=1.22",
+    "torch>=2.0",
+    "midas-diffract>=0.1.0",
+    "midas-hkls>=0.1.0",
+    "midas-invert>=0.1",        # shared Laplace core (laplace.py delegates Hessian/pinv here)
+]
+
+[project.optional-dependencies]
+dev = ["pytest>=7.0", "pytest-cov"]
+mp = ["multiprocess>=0.70"]
+
+[project.urls]
+Homepage = "https://github.com/marinerhemant/MIDAS"
+Documentation = "https://github.com/marinerhemant/MIDAS"
+Issues = "https://github.com/marinerhemant/MIDAS/issues"
+
+[project.scripts]
+midas-uq = "midas_uq.cli:main"
+
+[tool.setuptools.packages.find]
+where = ["."]
+include = ["midas_uq*"]
