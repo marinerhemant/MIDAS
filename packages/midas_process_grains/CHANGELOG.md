@@ -4,6 +4,22 @@ All notable changes to midas-process-grains. The format is based on
 [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) and this project
 adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.4.5] – 2026-05-26
+
+### Changed
+
+- **Stage 8.5c orphan reclaim now requires fractional uniqueness.** Default
+  `orphan_reclaim_min_unique_fraction=0.5` — a reclaim candidate must have
+  ≥50 % of its spots be NEW (unique to the orphan set). The earlier v0.4.4
+  default (`min_unique_spots=5` only) admitted grains that contributed 5
+  unique spots while ALSO re-claiming 30+ redundant ones, ballooning per-spot
+  multiplicity (median 3, mean 4) and ΣV (packing 328 %). The new fractional
+  guard restores intensity-conservation: on Indrajeet Ni, packing
+  328 % → 127 %, kept count 16,846 → ~5,600, orphan rate 1.4 % → 32 %,
+  median multiplicity 3 → 2. Set to 0.0 to restore v0.4.4 behaviour.
+
+- **New kwarg** `orphan_reclaim_min_unique_fraction` on `run_v4_pipeline`.
+
 ## [0.4.4] – 2026-05-26
 
 ### Added

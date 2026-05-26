@@ -270,6 +270,7 @@ def run_v4_pipeline(
     force_keep_distinct_sigma: float = 3.0,
     orphan_reclaim_enabled: bool = True,
     orphan_reclaim_min_unique_spots: int = 5,
+    orphan_reclaim_min_unique_fraction: float = 0.5,
     twin_aware_merge: bool = False,
     twin_merge_misori_deg: float = 2.0,
     twin_merge_position_um: float = 200.0,
@@ -966,11 +967,13 @@ def run_v4_pipeline(
                 spot_sets=grain_spot_sets,
                 quality_score=Q,
                 min_unique_spots=orphan_reclaim_min_unique_spots,
+                min_unique_fraction=orphan_reclaim_min_unique_fraction,
             )
             drop_by_budget = orph_res.new_drop_mask
             drop_by_budget_family = drop_by_budget_family & ~orph_res.reclaimed_mask
             log(f"[v4] Stage 8.5c (orphan-greedy reclaim, "
-                f"min_unique_spots={orphan_reclaim_min_unique_spots}): "
+                f"min_unique_spots={orphan_reclaim_min_unique_spots}, "
+                f"min_unique_fraction={orphan_reclaim_min_unique_fraction}): "
                 f"reclaimed {orph_res.n_reclaimed:,} grains  "
                 f"({orph_res.n_orphan_spots_before:,} orphan → "
                 f"{orph_res.n_orphan_spots_after:,} orphan spots)  "

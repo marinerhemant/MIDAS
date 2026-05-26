@@ -535,17 +535,27 @@ def compute_orphan_greedy_reclaim(
     spot_sets: list,                # length N, each is a set[int] of SpotIDs
     quality_score: np.ndarray,      # (N,) per-grain quality
     min_unique_spots: int = 5,
+    min_unique_fraction: float = 0.5,
 ) -> OrphanReclaimResult:
     """Greedily reclaim DROPPED grains that uniquely cover spots not in the
     current kept set.
 
-    Iterate dropped grains in **descending quality**. For each, compute how
-    many spots it claims that are NOT yet covered by any kept grain. If that
-    unique-contribution exceeds ``min_unique_spots``, reclaim the grain.
+    Iterate dropped grains in **descending quality**. A grain is reclaimed
+    iff BOTH:
 
-    This reduces the orphan rate of the kept population at the cost of
-    keeping lower-quality grains. Use ``min_unique_spots`` to tune the
-    permissiveness (higher = more conservative).
+    * ``len(unique_spots) >= min_unique_spots``  (absolute floor)
+    * ``len(unique_spots) / len(all_spots) >= min_unique_fraction``  (fractional)
+
+    The fractional check is the principal guard against over-attribution:
+    it requires the reclaim candidate to be MOSTLY new evidence (default
+    50 %), not a redundant alt-indexing dressed up as "filling some
+    orphans". Without it, reclaimed grains often re-claim 30+ spots already
+    covered by kept grains, inflating per-spot multiplicity (each spot's
+    intensity gets counted in multiple grains' V calculation) and pushing
+    ΣV well above the physically defensible V_sample budget.
+
+    Set ``min_unique_fraction=0.0`` to disable the fractional check
+    (= legacy unrestricted-reclaim behaviour, accepts only ``min_unique_spots``).
     """
     N = len(drop_mask)
     if N == 0:
@@ -588,7 +598,8 @@ def compute_orphan_greedy_reclaim(
         if not spots_g:
             continue
         unique_contrib = spots_g - covered
-        if len(unique_contrib) >= min_unique_spots:
+        frac = len(unique_contrib) / len(spots_g) if len(spots_g) > 0 else 0.0
+        if len(unique_contrib) >= min_unique_spots and frac >= min_unique_fraction:
             new_drop[g] = False
             reclaimed[g] = True
             covered.update(spots_g)
