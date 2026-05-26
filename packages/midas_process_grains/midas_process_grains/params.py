@@ -87,6 +87,24 @@ class ProcessGrainsParams:
     # IBF noise floor.
     PassAJaccardTol: float = 0.02
 
+    # ---- Joint-NNLS grain-volume correction (compute/volume_nnls.py) -----
+    # Replace the standard ``GrainRadius = mean(R_per_spot)`` formula with a
+    # sparse non-negative least squares solution that accounts for shared
+    # spots between twin partners, sub-grains, and crowded neighbours.
+    # Twins (Σ3, Σ9, Σ27) share reflections exactly; the naive formula
+    # attributes the combined intensity to BOTH partners, inflating both
+    # radii by 20–40 %. NNLS attributes shared intensity correctly.
+    # Off by default for byte-level compatibility with the C reference.
+    NnlsVolume: bool = False
+
+    # When True (and NnlsVolume is True), compute K(ring) from the physical
+    # formula |F|²·LP·DWF·multiplicity using Cromer-Mann atomic scattering
+    # factors. When False, use the empirical median observed intensity per
+    # ring. On dense datasets the two agree to ~0.3 % at the population
+    # level; physical K is preferred when the dataset is sparse (the
+    # empirical median is unreliable). Requires NnlsVolume = True.
+    PhysicalK: bool = False
+
     # raw passthrough for any key we don't model explicitly
     raw: Dict[str, Any] = field(default_factory=dict)
 

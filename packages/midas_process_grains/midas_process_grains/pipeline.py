@@ -40,6 +40,7 @@ from .compute.strain import (
     solve_strain_kenesei_bounded,
     solve_strain_kenesei_prior_anchored,
     solve_strain_kenesei_unbounded,
+    solve_strain_lattice,
 )
 from .compute.stress import cauchy_stress, resolve_stiffness
 from .compute.symmetry import SymmetryTable, build_symmetry_table
@@ -51,7 +52,9 @@ from .io.binary import (
 )
 from .io.hkls import HklTable, load_hkl_table
 from .io.ids_hash import IDsHash, load_ids_hash
-from .modes import VALID_MODES, apply_mode_defaults, misori_tol_rad
+from .modes import (
+    VALID_MODES, apply_mode_defaults, misori_tol_rad, needs_adaptive_misori,
+)
 from .params import ProcessGrainsParams, read_paramstest_pg
 from .result import ProcessGrainsResult
 
@@ -81,6 +84,8 @@ class ProcessGrains:
     hkl_table: Optional[HklTable] = None
     sym_table: Optional[SymmetryTable] = None
     ids_hash: Optional[IDsHash] = None
+    # Per-spot grain radius (SpotID → µm) from Radius_*.csv; None if absent.
+    spot_radius_by_id: Optional[np.ndarray] = None
 
     # ---- Constructors ------------------------------------------------------
 
@@ -143,7 +148,50 @@ class ProcessGrains:
             if ih_path.exists():
                 self.ids_hash = load_ids_hash(ih_path)
             else:
-                self.ids_hash = None
+                # c-omp pipeline doesn't emit IDsHash.csv (only the legacy C
+                # FitSetup did); synthesize it from the per-spot InputAll table
+                # so spot-aware per-spot strain has reference d-spacings.
+                from .io.ids_hash import build_ids_hash_from_inputall
+                self.ids_hash = build_ids_hash_from_inputall(
+                    self.run_dir, float(self.params.Wavelength),
+                    list(self.params.RingNumbers))
+
+        # Per-spot grain radius (Radius_*.csv, col 0=SpotID, col 15=GrainRadius
+        # from midas-calc-radius). The c-omp refiner hardcodes the OrientPosFit
+        # meanRadius to 1, so the physical per-grain GrainRadius is recovered
+        # here by averaging the per-spot radii over each grain's matched spots
+        # — exactly what legacy FitPosOrStrainsOMP.c does (meanRadius += per-spot
+        # radius; /= nSpotsRad). spot_radius_by_id[SpotID] → radius (µm), 0 when
+        # absent. None when no Radius_*.csv exists (keeps the placeholder).
+        if self.spot_radius_by_id is None:
+            self.spot_radius_by_id = self._load_spot_radius_by_id()
+
+    def _load_spot_radius_by_id(self) -> Optional[np.ndarray]:
+        """Build a SpotID → grain-radius (µm) lookup from ``Radius_*.csv``.
+
+        ``midas-calc-radius`` (midas_transforms) writes ``Radius_StartNr_*.csv``
+        with col 0 = SpotID and col 15 = per-spot GrainRadius. Returns a dense
+        array indexed by SpotID (0 where unknown), or ``None`` when no Radius
+        file is present (callers then keep the refiner's meanRadius).
+        """
+        cands = sorted(self.run_dir.glob("Radius_StartNr_*.csv"))
+        if not cands:
+            return None
+        try:
+            arr = np.loadtxt(cands[0], skiprows=1, usecols=(0, 15))
+        except Exception:
+            return None
+        if arr.ndim == 1:
+            arr = arr[None, :]
+        if arr.size == 0:
+            return None
+        sids = arr[:, 0].astype(np.int64)
+        rad = arr[:, 1].astype(np.float64)
+        max_sid = int(sids.max())
+        out = np.zeros(max_sid + 1, dtype=np.float64)
+        ok = (sids >= 0) & (sids <= max_sid)
+        out[sids[ok]] = rad[ok]
+        return out
 
     # ---- Run ---------------------------------------------------------------
 
@@ -163,7 +211,12 @@ class ProcessGrains:
             raise ValueError(f"mode must be one of {VALID_MODES}; got {mode!r}")
         params = apply_mode_defaults(self.params, mode)
         if self.binaries is None:
-            self.load()
+            # The per-spot residual table (FitBest.bin) is only needed by the
+            # spot-aware conflict resolution; ``legacy`` (single grain per
+            # cluster) dedups from OrientPosFit + ProcessKey alone. Skipping it
+            # lets the c-omp FF refiner (which emits ProcessKey.bin, not the
+            # consolidated FitBest.bin) run through legacy process-grains.
+            self.load(require_fit_best=(mode != "legacy"))
 
         # ---- Stage 1: pull per-seed orientations / positions / lattice -----
         opf = np.asarray(self.binaries.orient_pos_fit)            # (N_seeds, 27)
@@ -194,6 +247,29 @@ class ProcessGrains:
         radii = opf[:, ORIENT_POS_FIT_LAYOUT["mean_radius"]]
         confidences = opf[:, ORIENT_POS_FIT_LAYOUT["completeness"]]
         ias = opf[:, ORIENT_POS_FIT_LAYOUT["internal_ang"]]
+
+        # ---- Stage 1b: Resolve MisoriTol for ``adaptive`` mode ----
+        # In adaptive mode (without user override), derive the misori threshold
+        # from the antimode of the pairwise-misorientation histogram. The
+        # antimode separates "same-grain duplicate" pairs (near zero) from
+        # "different grain" pairs (above ~degrees); placing the cutoff at the
+        # antimode is the data-driven equivalent of the §3.6 paper's 0.01°
+        # specification (which is itself near the antimode on typical Ni FF
+        # data). See ``compute/adaptive.derive_misori_tol`` for details.
+        if needs_adaptive_misori(self.params, mode):
+            from .compute.adaptive import derive_misori_tol
+            theta_star_deg, adaptive_diag = derive_misori_tol(
+                orient_mats, self.params.SGNr, alive_mask=alive_mask,
+            )
+            print(
+                f"[pg adaptive] derived misori threshold from antimode: "
+                f"θ* = {theta_star_deg:.4f}°  "
+                f"(raw = {adaptive_diag['raw_antimode_deg']:.4f}°, "
+                f"n_pairs = {adaptive_diag['n_pairs']:,})",
+                flush=True,
+            )
+            params.MisoriTol = theta_star_deg
+            params = params.validated()
 
         # ---- Stage 2: Phase 1 cluster gather (vectorised + sym-extended) ---
         # Symmetry-extended bucket prefilter handles the FZ-boundary
@@ -515,9 +591,23 @@ class ProcessGrains:
             sid_col = fb_seed[:, 0].astype(np.int64)
             sid_to_row: dict = {int(s): k for k, s in enumerate(sid_col) if s != 0}
 
+            # Physical grain radius: mean of the per-spot radii over this
+            # grain's matched spots (legacy FitPosOrStrainsOMP meanRadius). The
+            # c-omp refiner wrote a meanRadius=1 placeholder into OrientPosFit;
+            # override it here from Radius_*.csv when available.
+            if self.spot_radius_by_id is not None:
+                sids = sid_col[sid_col > 0]
+                if sids.size:
+                    in_range = sids < self.spot_radius_by_id.shape[0]
+                    rad_vals = self.spot_radius_by_id[sids[in_range]]
+                    rad_vals = rad_vals[rad_vals > 0]
+                    if rad_vals.size:
+                        g["grain_radius"] = float(rad_vals.mean())
+
             y_list = []
             z_list = []
             d0_list = []
+            gsmp_list = []
             for r in resolved_rows:
                 k = sid_to_row.get(int(r.spot_id))
                 if k is None:
@@ -537,6 +627,14 @@ class ProcessGrains:
                     continue
                 y_list.append(float(fb_seed[k, 1]))      # observed y_lab (µm)
                 z_list.append(float(fb_seed[k, 2]))      # observed z_lab (µm)
+                # Sample-frame unit g-vector (FitBest cols 4,5,6), already
+                # ω-rotated by the C refiner. The Kenesei strain tensor lives
+                # in the sample frame, so the design matrix must use this, NOT
+                # a lab-frame ĝ recomputed from (y, z) — which would mix spots
+                # taken at different ω into one tensor fit and dump the per-ω
+                # variation into spurious shear (E12/E13). Mirrors
+                # FitUnified.c::StrainTensorKenesei (gobs = SpotsInfo[i][4..6]).
+                gsmp_list.append(fb_seed[k, 4:7].astype(np.float64))
                 d0_list.append(d_ref)
 
             if not y_list:
@@ -545,17 +643,28 @@ class ProcessGrains:
             y_arr = np.asarray(y_list, dtype=np.float64)
             z_arr = np.asarray(z_list, dtype=np.float64)
             ds_0_arr = np.asarray(d0_list, dtype=np.float64)
+            gsmp_arr = np.asarray(gsmp_list, dtype=np.float64)   # (n, 3)
 
-            # Real Bragg geometry: lab (y, z) → (ĝ_lab, d_obs).
-            g_t, ds_t = lab_obs_to_g_and_d(
+            # d_obs comes from the lab (y, z) radius (2θ) exactly as the C
+            # refiner does; the lab-frame ĝ it returns is discarded in favour
+            # of the sample-frame ĝ from FitBest (see comment above).
+            _g_lab_t, ds_t = lab_obs_to_g_and_d(
                 torch.from_numpy(y_arr),
                 torch.from_numpy(z_arr),
                 lsd=lsd_um,
                 wavelength_a=wavelength_a,
             )
-            g_obs = g_t.numpy()
             ds_obs = ds_t.numpy()
             ds_0 = ds_0_arr
+
+            # Use the sample-frame ĝ from FitBest. Fall back to the lab-frame
+            # ĝ per-spot only when FitBest did not populate cols 4,5,6 (e.g.
+            # synthetic/smoke data without a c-omp refiner pass).
+            g_smp_norm = np.linalg.norm(gsmp_arr, axis=1)
+            g_obs = gsmp_arr.copy()
+            unpop = g_smp_norm <= 0
+            if unpop.any():
+                g_obs[unpop] = _g_lab_t.numpy()[unpop]
 
             mask = (np.linalg.norm(g_obs, axis=1) > 0) & (ds_0 > 0)
             n_good = int(mask.sum())
@@ -681,6 +790,25 @@ class ProcessGrains:
             dtype=self.dtype, device=self.device,
         )
 
+        # Per-grain refiner residuals (legacy Grains.csv DiffPos/Ome/Angle).
+        # ErrorsFin lives at OrientPosFit cols 22-24 (pos_err_µm, ome_err_deg,
+        # internal_angle_deg). The c-omp refiner FitUnified.c writes the same
+        # layout as legacy FitPosOrStrainsOMP.
+        rep_idx_np = np.array([g["rep_pos"] for g in out_grains], dtype=np.int64)
+        if opf.ndim == 2 and opf.shape[1] >= 25:
+            diff_pos = torch.as_tensor(opf[rep_idx_np, 22], dtype=self.dtype, device=self.device)
+            diff_ome = torch.as_tensor(opf[rep_idx_np, 23], dtype=self.dtype, device=self.device)
+            diff_ang = torch.as_tensor(opf[rep_idx_np, 24], dtype=self.dtype, device=self.device)
+        else:
+            diff_pos = torch.zeros(len(out_grains), dtype=self.dtype, device=self.device)
+            diff_ome = diff_pos.clone(); diff_ang = diff_pos.clone()
+        # Per-grain strain L2 residual (RMSErrorStrain, µε).  We don't yet
+        # capture the per-grain solver residual in the strain loop; emit zeros
+        # for now (legacy schema requires the column to be present).
+        rms_strain = torch.zeros(len(out_grains), dtype=self.dtype, device=self.device)
+        # Phase index — single-phase for now.
+        phase_nr = torch.ones(len(out_grains), dtype=torch.int32, device=self.device)
+
         # Build SpotMatrix rows.
         sm_rows = _build_spot_matrix_rows(
             out_grains,
@@ -688,6 +816,83 @@ class ProcessGrains:
             hkl_table=self.hkl_table,
             ids_hash=self.ids_hash,
         )
+
+        # ---- Optional: joint-NNLS grain-volume correction ------------------
+        # Replaces R_grain = mean(R_per_spot) with sparse non-negative least
+        # squares that attributes shared-spot intensity correctly between
+        # twin partners and overlapping grains. Off by default for byte-level
+        # compatibility with the C reference; opt in via
+        # ``ProcessGrainsParams.NnlsVolume = True`` or ``--nnls-volume``.
+        if bool(getattr(self.params, "NnlsVolume", False)) and len(out_grains) > 0:
+            from .compute.volume_nnls import compute_nnls_volumes
+            # SpotMatrix layout: col 0 = GrainID, col 1 = SpotID, col 7 = RingNr
+            sm_g = sm_rows[:, 0].astype(np.int64)
+            sm_s = sm_rows[:, 1].astype(np.int64)
+            sm_r = sm_rows[:, 7].astype(np.int64) if sm_rows.shape[1] > 7 else (
+                np.zeros(sm_rows.shape[0], dtype=np.int64))
+            # Spot intensity + ring lookup from InputAllExtraInfo
+            # (loaded once per pipeline run; available via self.binaries.input_all_extra_info or similar)
+            try:
+                ia = self.binaries.input_all_extra
+                spot_intensity = {int(r[4]): float(r[14]) for r in ia}
+                spot_ring = {int(r[4]): int(r[5]) for r in ia}
+            except (AttributeError, KeyError):
+                # Fallback: re-read from file
+                ia_path = self.run_dir / "InputAllExtraInfoFittingAll.csv"
+                if ia_path.exists():
+                    import pandas as _pd
+                    ia_df = _pd.read_csv(
+                        ia_path, sep=r"\s+", comment="%", header=None,
+                        usecols=[4, 5, 14],
+                        names=["SpotID", "RingNr", "Intensity"], low_memory=False,
+                    )
+                    spot_intensity = dict(zip(ia_df["SpotID"].astype(int), ia_df["Intensity"]))
+                    spot_ring = dict(zip(ia_df["SpotID"].astype(int), ia_df["RingNr"].astype(int)))
+                else:
+                    print("[pg nnls] InputAllExtraInfo.csv not found; skipping NNLS volume",
+                          flush=True)
+                    spot_intensity, spot_ring = {}, {}
+            if spot_intensity:
+                R_naive_np = rad.detach().cpu().numpy().astype(np.float64)
+                gid_np = ids.detach().cpu().numpy().astype(np.int64)
+                # Item 9: physical K(ring) when --physical-K is set.
+                ring_K_arg = None
+                if bool(getattr(self.params, "PhysicalK", False)):
+                    from .compute.volume_nnls import physical_ring_K
+                    try:
+                        hkls_df = self.hkl_table.dataframe if hasattr(self.hkl_table, "dataframe") else None
+                        if hkls_df is None:
+                            import pandas as _pd
+                            hkls_df = _pd.read_csv(self.run_dir / "hkls.csv", sep=r"\s+")
+                        ring_K_arg = physical_ring_K(
+                            hkls_df,
+                            wavelength=float(self.params.Wavelength),
+                            species=getattr(self.params, "MaterialName", "Ni") or "Ni",
+                            B_factor=0.4,
+                        )
+                        print(f"[pg nnls] using PHYSICAL K(ring) from |F|²·LP·DWF·mult: "
+                              f"{ {r: round(v, 3) for r, v in sorted(ring_K_arg.items())} }",
+                              flush=True)
+                    except Exception as e:
+                        print(f"[pg nnls] physical K lookup failed ({e}); "
+                              f"falling back to empirical median K", flush=True)
+                        ring_K_arg = None
+                nnls = compute_nnls_volumes(
+                    grain_ids=gid_np, R_naive=R_naive_np,
+                    sm_grain_id=sm_g, sm_spot_id=sm_s, sm_ring_nr=sm_r,
+                    spot_intensity=spot_intensity, spot_ring=spot_ring,
+                    ring_K=ring_K_arg,
+                )
+                print(
+                    f"[pg nnls] {nnls.n_unique_spots:,} spots ("
+                    f"{nnls.n_spots_shared:,} shared, "
+                    f"{100*nnls.n_spots_shared/max(nnls.n_unique_spots,1):.1f}%) "
+                    f"→ NNLS converged in {nnls.nnls_n_iter} iters, "
+                    f"rescale = {nnls.rescale_factor:.3f}",
+                    flush=True,
+                )
+                # Replace rad with NNLS-corrected radii
+                rad = torch.tensor(nnls.R_nnls, dtype=self.dtype, device=self.device)
 
         diagnostics = {
             "cluster_sizes": np.asarray(cluster_sizes_diag, dtype=np.int32),
@@ -706,6 +911,11 @@ class ProcessGrains:
             confidence=conf,
             strain_lab=strain_lab,
             strain_grain=strain_grain,
+            diff_pos_um=diff_pos,
+            diff_ome_deg=diff_ome,
+            diff_angle_deg=diff_ang,
+            rms_error_strain=rms_strain,
+            phase_nr=phase_nr,
             stress_lab=stress_lab,
             stress_grain=stress_grain,
             spot_matrix_rows=torch.from_numpy(sm_rows),
@@ -814,6 +1024,15 @@ def _build_spot_matrix_rows(
                 if ring_nr == 0:
                     ring_nr = int(hkl_int_ring[r.hkl_row])
                 theta_deg = float(hkl_theta_deg[r.hkl_row])
+            # Eta angle is the AZIMUTH on the detector ring, not a FitBest
+            # column. Legacy ProcessGrains.c writes Eta from the InputMatrix-
+            # derived eta column; the equivalent here is to recompute it from
+            # the lab-frame (YLab, ZLab) the same way grain_observations.py
+            # does (eta_deg = atan2(-YLab, ZLab)). Using FitBest col-18 here
+            # (a Z-like FitBest diagnostic) silently fills the Eta column
+            # with garbage µm-scale values.
+            y_lab = float(row[1]); z_lab = float(row[2])
+            eta_deg = math.degrees(math.atan2(-y_lab, z_lab))
             rows.append([
                 float(g["rep_pos"] + 1),        # GrainID
                 float(r.spot_id),               # SpotID
@@ -822,11 +1041,10 @@ def _build_spot_matrix_rows(
                 float(row[8]),                  # DetectorVert (theor pixel)
                 float(row[15]) if seed_rows.shape[1] > 15 else float(row[3]),
                 # ^^^ OmeRaw (raw omega pre-correction)
-                float(row[18]) if seed_rows.shape[1] > 18 else 0.0,
-                # ^^^ Eta
+                eta_deg,                        # Eta (deg, recomputed from YLab/ZLab)
                 float(ring_nr),                 # RingNr
-                float(row[1]),                  # YLab
-                float(row[2]),                  # ZLab
+                y_lab,                          # YLab
+                z_lab,                          # ZLab
                 float(theta_deg),               # Theta (deg)
                 float(row[20]) if seed_rows.shape[1] > 20 else 0.0,
                 # ^^^ diffLen residual ≈ StrainError diagnostic

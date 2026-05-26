@@ -42,6 +42,30 @@ import numpy as np
 # Grains.csv
 # ---------------------------------------------------------------------------
 
+# Legacy ProcessGrains.c Grains.csv schema (47 data columns + 1 ID).
+# Every downstream MIDAS tool (and Indrajeet's notebook) consumes this format.
+# Columns 0..46:
+#   0          GrainID
+#   1..9       O11..O33        (orientation matrix, row-major)
+#   10..12     X Y Z           (position, µm)
+#   13..18     a b c α β γ     (lattice parameters; Å and degrees)
+#   19         DiffPos         (refiner residual: position error in µm)
+#   20         DiffOme         (refiner residual: ω error in degrees)
+#   21         DiffAngle       (refiner residual: internal angle in degrees)
+#   22         GrainRadius     (mean of per-spot grain radii, µm)
+#   23         Confidence      (NrObserved / NrExpected)
+#   24..32     eFab11..eFab33  (Fable-Beaudoin grain-frame strain, µε)
+#   33..41     eKen11..eKen33  (Kenesei lab/sample-frame strain,    µε)
+#   42         RMSErrorStrain  (strain-solver L2 residual, µε)
+#   43         PhaseNr         (1-based phase index)
+#   44..46     Eul0 Eul1 Eul2  (Euler angles in RADIANS, ZXZ Bunge)
+GRAINS_HEADER_COLS = (
+    "%ID\tO11\tO12\tO13\tO21\tO22\tO23\tO31\tO32\tO33\tX\tY\tZ\t"
+    "a\tb\tc\talpha\tbeta\tgamma\tDiffPos\tDiffOme\tDiffAngle\tGrainRadius\tConfidence\t"
+    "eFab11\teFab12\teFab13\teFab21\teFab22\teFab23\teFab31\teFab32\teFab33\t"
+    "eKen11\teKen12\teKen13\teKen21\teKen22\teKen23\teKen31\teKen32\teKen33\t"
+    "RMSErrorStrain\tPhaseNr\tEul0\tEul1\tEul2\n"
+)
 GRAINS_HEADER_LINES_LEGACY = [
     "%NumGrains 0\n",  # placeholder; first writer pass replaces this
     "%BeamCenter 0 0\n",
@@ -51,8 +75,7 @@ GRAINS_HEADER_LINES_LEGACY = [
     "%PhaseInfo\n",
     "%\tSpaceGroup:225\n",
     "%\tLattice Parameter:0 0 0 0 0 0\n",
-    "%ID\tO11\tO12\tO13\tO21\tO22\tO23\tO31\tO32\tO33\tX\tY\tZ\t"
-    "E11\tE22\tE33\tE12\tE13\tE23\tGrainRadius\tConfidence\n",
+    GRAINS_HEADER_COLS,
 ]
 
 
@@ -66,20 +89,38 @@ def write_grains_csv(
     beam_thickness: float = 0.0,
     global_position: float = 0.0,
 ) -> None:
-    """Write a ``Grains.csv`` (legacy 21-column form).
+    """Write the full 47-column legacy ``Grains.csv``.
 
-    ``grains`` keys (each is an array of length n):
-      ids:           int32   (n,)
-      orient_mat:    float64 (n, 9)   row-major
-      positions:     float64 (n, 3)   X, Y, Z (µm)
-      strains_lab:   float64 (n, 6)   E11, E22, E33, E12, E13, E23
-      grain_radius:  float64 (n,)
-      confidence:    float64 (n,)
+    Required ``grains`` keys (each an (n,) or (n, …) array):
+      ids                int32   (n,)
+      orient_mat         float64 (n, 9)
+      positions          float64 (n, 3)
+      lattices           float64 (n, 6)   a, b, c, α, β, γ
+      diff_pos_um        float64 (n,)
+      diff_ome_deg       float64 (n,)
+      diff_angle_deg     float64 (n,)
+      grain_radius       float64 (n,)
+      confidence         float64 (n,)
+      strain_fab_3x3     float64 (n, 9)   row-major 3x3 grain-frame, µε
+      strain_ken_3x3     float64 (n, 9)   row-major 3x3 sample/lab,   µε
+      rms_error_strain   float64 (n,)     µε
+      phase_nr           int32   (n,)
+      eul_rad            float64 (n, 3)   Euler ZXZ Bunge, radians
     """
     n = len(grains["ids"])
+    # Required keys (fail loud rather than silently zero-fill).
+    required = (
+        "ids", "orient_mat", "positions", "lattices",
+        "diff_pos_um", "diff_ome_deg", "diff_angle_deg",
+        "grain_radius", "confidence",
+        "strain_fab_3x3", "strain_ken_3x3", "rms_error_strain",
+        "phase_nr", "eul_rad",
+    )
+    missing = [k for k in required if k not in grains]
+    if missing:
+        raise KeyError(f"write_grains_csv: missing required keys: {missing}")
     p = Path(path)
     with open(p, "w") as fp:
-        # Header
         fp.write(f"%NumGrains {n}\n")
         fp.write(f"%BeamCenter {beam_center[0]} {beam_center[1]}\n")
         fp.write(f"%BeamThickness {beam_thickness}\n")
@@ -89,18 +130,22 @@ def write_grains_csv(
         fp.write(f"%\tSpaceGroup:{sg_nr}\n")
         latstr = "\t".join(f"{x:.6f}" for x in lattice)
         fp.write(f"%\tLattice Parameter:{latstr}\n")
-        fp.write(
-            "%ID\tO11\tO12\tO13\tO21\tO22\tO23\tO31\tO32\tO33\tX\tY\tZ\t"
-            "E11\tE22\tE33\tE12\tE13\tE23\tGrainRadius\tConfidence\n"
-        )
-        # Body
+        fp.write(GRAINS_HEADER_COLS)
         for i in range(n):
             row: List[str] = [str(int(grains["ids"][i]))]
             row.extend(f"{grains['orient_mat'][i, k]:.9f}" for k in range(9))
             row.extend(f"{grains['positions'][i, k]:.6f}" for k in range(3))
-            row.extend(f"{grains['strains_lab'][i, k]:.6e}" for k in range(6))
+            row.extend(f"{grains['lattices'][i, k]:.6f}" for k in range(6))
+            row.append(f"{grains['diff_pos_um'][i]:.6f}")
+            row.append(f"{grains['diff_ome_deg'][i]:.6f}")
+            row.append(f"{grains['diff_angle_deg'][i]:.6f}")
             row.append(f"{grains['grain_radius'][i]:.6f}")
             row.append(f"{grains['confidence'][i]:.6f}")
+            row.extend(f"{grains['strain_fab_3x3'][i, k]:.6e}" for k in range(9))
+            row.extend(f"{grains['strain_ken_3x3'][i, k]:.6e}" for k in range(9))
+            row.append(f"{grains['rms_error_strain'][i]:.6e}")
+            row.append(str(int(grains["phase_nr"][i])))
+            row.extend(f"{grains['eul_rad'][i, k]:.9f}" for k in range(3))
             fp.write("\t".join(row) + "\n")
 
 

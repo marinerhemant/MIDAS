@@ -60,6 +60,15 @@ class ProcessGrainsResult:
     confidence: torch.Tensor
     strain_lab: torch.Tensor
     strain_grain: torch.Tensor
+    # Per-grain refiner residuals (legacy Grains.csv DiffPos/Ome/Angle cols).
+    # Sourced from OrientPosFit[rep_pos, 22:25] (ErrorsFin from the refiner).
+    diff_pos_um: torch.Tensor = field(default_factory=lambda: torch.zeros(0))
+    diff_ome_deg: torch.Tensor = field(default_factory=lambda: torch.zeros(0))
+    diff_angle_deg: torch.Tensor = field(default_factory=lambda: torch.zeros(0))
+    # Per-grain strain-solver L2 residual (µε). Legacy RMSErrorStrain column.
+    rms_error_strain: torch.Tensor = field(default_factory=lambda: torch.zeros(0))
+    # Per-grain phase index (1-based). Currently single-phase.
+    phase_nr: torch.Tensor = field(default_factory=lambda: torch.zeros(0, dtype=torch.int32))
     stress_lab: Optional[torch.Tensor] = None
     stress_grain: Optional[torch.Tensor] = None
     spot_matrix_rows: torch.Tensor = field(default_factory=lambda: torch.zeros((0, 12)))
@@ -115,16 +124,37 @@ class ProcessGrainsResult:
 
         # Detach + cpu + numpy views for the writers.
         n = self.n_grains
+        om_flat = self.orient_mat.detach().cpu().reshape(n, 9).numpy().astype(np.float64)
+        # Per-grain Bunge ZXZ Euler in radians (cols 44-46 of legacy schema).
+        from midas_stress.orientation import orient_mat_to_euler
+        eul = np.zeros((n, 3), dtype=np.float64)
+        for i in range(n):
+            eul[i] = np.asarray(orient_mat_to_euler(om_flat[i].tolist()), dtype=np.float64)
+        # 3x3 strain tensors → flat 9-vector in µε (rows 0..8 = row-major 3x3).
+        def _to_9mu(eps):
+            arr = eps.detach().cpu().numpy().astype(np.float64).reshape(n, 9)
+            return (arr * 1e6).astype(np.float64)
+        # Fill diff_pos/ome/angle and rms with zeros if absent (older runs).
+        def _arr(t, dtype=np.float64):
+            if t is None or (hasattr(t, "numel") and t.numel() == 0):
+                return np.zeros(n, dtype=dtype)
+            return t.detach().cpu().numpy().astype(dtype)
         grains = {
             "ids": self.ids.detach().cpu().numpy().astype(np.int32),
-            "orient_mat": (
-                self.orient_mat.detach().cpu()
-                    .reshape(n, 9).numpy().astype(np.float64)
-            ),
+            "orient_mat": om_flat,
             "positions": self.positions.detach().cpu().numpy().astype(np.float64),
-            "strains_lab": _strain_tensor_to_voigt6(self.strain_lab).numpy(),
+            "lattices": self.lattice.detach().cpu().numpy().astype(np.float64),
+            "diff_pos_um": _arr(self.diff_pos_um),
+            "diff_ome_deg": _arr(self.diff_ome_deg),
+            "diff_angle_deg": _arr(self.diff_angle_deg),
             "grain_radius": self.grain_radius.detach().cpu().numpy().astype(np.float64),
             "confidence": self.confidence.detach().cpu().numpy().astype(np.float64),
+            "strain_fab_3x3": _to_9mu(self.strain_grain),
+            "strain_ken_3x3": _to_9mu(self.strain_lab),
+            "rms_error_strain": _arr(self.rms_error_strain),
+            "phase_nr": _arr(self.phase_nr, dtype=np.int32) if self.phase_nr.numel() > 0
+                          else np.ones(n, dtype=np.int32),
+            "eul_rad": eul,
         }
         write_grains_csv(
             d / "Grains.csv", grains,

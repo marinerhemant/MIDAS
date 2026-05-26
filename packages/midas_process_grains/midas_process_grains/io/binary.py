@@ -170,9 +170,20 @@ def read_index_best_full(run_dir: Union[str, Path]) -> np.ndarray:
 
     fb_path = Path(run_dir) / "Output" / "FitBest.bin"
     if not fb_path.exists():
+        # c-omp FF refiner (FitUnified) emits Results/ProcessKey.bin — the
+        # matched SpotID per hkl slot per seed — instead of the Output/
+        # consolidated FitBest.bin. It carries the col-0 information ibf needs
+        # (the matched-SpotID set per seed; col 1 / delta-omega is unused for
+        # grain count), so synthesize the table from it.
+        pk_path = Path(run_dir) / "Results" / "ProcessKey.bin"
+        if pk_path.exists():
+            pk = read_process_key(run_dir)          # (N, 5000) int32
+            ibf = np.zeros((pk.shape[0], MAX_N_HKLS, 2), dtype=np.float64)
+            ibf[:, :, 0] = pk.astype(np.float64)
+            return ibf
         raise FileNotFoundError(
-            f"{p} (python backend) and {fb_path} (c-omp backend fallback) "
-            "both absent — cannot build the matched-spot table"
+            f"{p} (python backend), {fb_path} (c-omp FitBest) and {pk_path} "
+            "(c-omp ProcessKey) all absent — cannot build the matched-spot table"
         )
     fb = read_fit_best(run_dir)                 # (N, 5000, 22) memmap
     n_seeds = fb.shape[0]
@@ -313,9 +324,17 @@ def read_all(
             f"IndexBest seed count {ib.shape[0]} != OrientPosFit {n_seeds}"
         )
 
-    ibf: Optional[np.memmap] = None
+    ibf: Optional[np.ndarray] = None
     if require_index_best_full:
         ibf = read_index_best_full(rd)
+        # The c-omp refiner skips writing ProcessKey/FitBest for a trailing seed
+        # with zero matched spots, so the matched-spot table can be one seed
+        # short of OrientPosFit (run-dependent). Pad the missing trailing seed
+        # with an empty (all-zero) row rather than failing.
+        if ibf.shape[0] == n_seeds - 1:
+            ibf = np.concatenate(
+                [np.asarray(ibf), np.zeros((1,) + ibf.shape[1:], dtype=ibf.dtype)],
+                axis=0)
         if ibf.shape[0] != n_seeds:
             raise ValueError(
                 f"IndexBestFull seed count {ibf.shape[0]} != "

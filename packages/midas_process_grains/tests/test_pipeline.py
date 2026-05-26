@@ -45,6 +45,17 @@ def test_pipeline_paper_claim_mode_runs(tiny_run_dir: Path):
     assert result.mode == "paper_claim"
 
 
+def test_pipeline_adaptive_mode_runs(tiny_run_dir: Path):
+    """Adaptive mode derives MisoriTol from the antimode of the pairwise
+    misorientation histogram at run-time. It should run end-to-end on the
+    tiny synthetic dataset and emit at least one grain."""
+    from midas_process_grains.pipeline import ProcessGrains
+    pg = ProcessGrains.from_param_file(tiny_run_dir / "paramstest.txt", device="cpu")
+    result = pg.run(mode="adaptive")
+    assert result.mode == "adaptive"
+    assert result.n_grains >= 1
+
+
 def test_consolidated_h5_has_expected_groups(tiny_run_dir: Path, tmp_path: Path):
     import h5py
     from midas_process_grains.pipeline import ProcessGrains

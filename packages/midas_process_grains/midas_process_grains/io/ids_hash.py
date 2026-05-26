@@ -109,3 +109,84 @@ def load_ids_hash(path: Union[str, Path]) -> IDsHash:
         id_ends=ends_a[order],
         d_spacings=ds_a[order],
     )
+
+
+def build_ids_hash_from_inputall(
+    run_dir: Union[str, Path],
+    wavelength_A: float,
+    ring_numbers: List[int],
+    *,
+    inputall_name: str = "InputAllExtraInfoFittingAll.csv",
+    write: bool = True,
+) -> Optional["IDsHash"]:
+    """Synthesize ``IDsHash.csv`` from the per-spot ``InputAll`` table.
+
+    The legacy C FitSetup writes ``IDsHash.csv`` (per-ring SpotID ranges +
+    d-spacing); the c-omp pipeline does not. Each diffraction ring occupies a
+    contiguous SpotID block, so we recover ``<ring> <id_min> <id_max> <d_A>``
+    from ``InputAll`` columns SpotID(4), RingNumber(5), Ttheta(7), keeping only
+    the real ``ring_numbers`` (ring 0 / 2θ=0 background is ignored). Returns the
+    table (and writes ``run_dir/IDsHash.csv`` when ``write``), or ``None`` if the
+    InputAll file is absent.
+    """
+    run_dir = Path(run_dir)
+    src = run_dir / inputall_name
+    if not src.exists():
+        return None
+    arr = np.loadtxt(src, skiprows=1, usecols=(4, 5, 7))
+    if arr.ndim == 1:
+        arr = arr[None, :]
+    sid = arr[:, 0].astype(np.int64)
+    ring = arr[:, 1].astype(np.int64)
+    tth = arr[:, 2]
+    keep = set(int(r) for r in ring_numbers)
+
+    # Reference d-spacing per ring comes from the THEORETICAL ring positions
+    # (hkls.csv, computed from the strain-free reference lattice), NOT the
+    # observed median 2θ — which carries the sample's mean isotropic strain and
+    # would zero out the diagonal of every per-spot strain tensor. This mirrors
+    # the C FitSetup, whose IDsHash.csv d-spacings derive from RingRadii (the
+    # reference-lattice ring radii). Columns: D-spacing(3), RingNr(4).
+    ref_d_by_ring: dict = {}
+    hkls_path = run_dir / "hkls.csv"
+    if hkls_path.exists():
+        try:
+            hk = np.loadtxt(hkls_path, skiprows=1, usecols=(3, 4))
+            if hk.ndim == 1:
+                hk = hk[None, :]
+            for d_ref, rn in hk:
+                ref_d_by_ring.setdefault(int(rn), float(d_ref))
+        except Exception:
+            ref_d_by_ring = {}
+
+    rings, starts, ends, ds = [], [], [], []
+    deg2rad = np.pi / 180.0
+    for r in sorted(keep):
+        m = ring == r
+        if not m.any():
+            continue
+        if r in ref_d_by_ring and ref_d_by_ring[r] > 0:
+            d = ref_d_by_ring[r]                          # reference (strain-free)
+        else:
+            # Fallback only when hkls.csv is unavailable: observed median 2θ.
+            tth_r = float(np.median(tth[m]))
+            if tth_r <= 0:
+                continue
+            d = wavelength_A / (2.0 * np.sin(0.5 * tth_r * deg2rad))
+        rings.append(r)
+        starts.append(int(sid[m].min()))
+        ends.append(int(sid[m].max()) + 1)   # exclusive upper bound
+        ds.append(float(d))
+    if not rings:
+        return None
+    order = np.argsort(starts)
+    rings_a = np.asarray(rings, np.int64)[order]
+    starts_a = np.asarray(starts, np.int64)[order]
+    ends_a = np.asarray(ends, np.int64)[order]
+    ds_a = np.asarray(ds, np.float64)[order]
+    if write:
+        with open(run_dir / "IDsHash.csv", "w") as f:
+            for rn, s, e, d in zip(rings_a, starts_a, ends_a, ds_a):
+                f.write(f"{int(rn)} {int(s)} {int(e)} {d:.6f}\n")
+    return IDsHash(ring_nrs=rings_a, id_starts=starts_a, id_ends=ends_a,
+                   d_spacings=ds_a)

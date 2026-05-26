@@ -8,6 +8,7 @@ from midas_process_grains.modes import (
     VALID_MODES,
     apply_mode_defaults,
     misori_tol_rad,
+    needs_adaptive_misori,
 )
 from midas_process_grains.params import ProcessGrainsParams
 
@@ -80,3 +81,32 @@ def test_misori_tol_rad_unresolved_raises():
     p = ProcessGrainsParams()
     with pytest.raises(ValueError, match="MisoriTol unresolved"):
         misori_tol_rad(p)
+
+
+def test_adaptive_mode_leaves_misori_unresolved():
+    """Adaptive mode is the sentinel state — pipeline.run derives MisoriTol
+    from the antimode at run-time."""
+    p = ProcessGrainsParams()
+    p = apply_mode_defaults(p, "adaptive")
+    assert p.MisoriTol is None
+    assert needs_adaptive_misori(p, "adaptive") is True
+
+
+def test_adaptive_mode_respects_user_override():
+    """If the user explicitly sets MisoriTol in adaptive mode, skip antimode
+    derivation."""
+    p = ProcessGrainsParams(MisoriTol=0.05)
+    p = apply_mode_defaults(p, "adaptive")
+    assert p.MisoriTol == 0.05
+    assert needs_adaptive_misori(p, "adaptive") is False
+
+
+def test_needs_adaptive_misori_only_in_adaptive_mode():
+    p = ProcessGrainsParams()  # MisoriTol = None
+    assert needs_adaptive_misori(p, "spot_aware") is False
+    assert needs_adaptive_misori(p, "legacy") is False
+    assert needs_adaptive_misori(p, "adaptive") is True
+
+
+def test_adaptive_mode_in_valid_modes():
+    assert "adaptive" in VALID_MODES

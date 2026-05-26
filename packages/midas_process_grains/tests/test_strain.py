@@ -72,6 +72,62 @@ def test_recover_known_strain_from_synthetic_spots():
     assert float(res.residual_norm) < 1e-12
 
 
+def test_sample_frame_g_required_lab_frame_g_fabricates_shear():
+    """Regression: the Kenesei design matrix must use the SAMPLE-frame ĝ
+    (ω-rotated), not a lab-frame ĝ recomputed from the detector (y, z).
+
+    A grain's strain tensor is fixed in the sample frame. Each reflection's
+    Δd/d depends on ``ĝ_sample^T ε ĝ_sample``. Spots are recorded at many ω, so
+    their lab-frame ĝ = Rz(ω)·ĝ_sample differ. Fitting one tensor against the
+    lab-frame ĝ (the FF c-omp strain bug) mixes ω frames and dumps the
+    variation into spurious off-diagonal shear. This test pins both: the
+    sample-frame fit recovers truth exactly; the lab-frame fit does not and
+    fabricates large shear.
+    """
+    rng = np.random.default_rng(7)
+    n = 80
+    g_sample = _random_unit_vectors(n, rng)
+    omega = rng.uniform(-180.0, 180.0, size=n)            # spread over ω
+
+    eps_true = np.array([
+        [1.5e-3, 1.0e-5, -2.0e-5],
+        [1.0e-5, 1.4e-3, 3.0e-5],
+        [-2.0e-5, 3.0e-5, 1.6e-3],
+    ])                                                     # ~isotropic, tiny shear
+    bb = np.einsum("ni,ij,nj->n", g_sample, eps_true, g_sample)
+    ds_0 = np.full(n, 2.0784)
+    ds_obs = ds_0 * (1.0 + bb)
+
+    # Lab-frame ĝ = Rz(ω) · ĝ_sample (ω about the vertical lab axis).
+    om = np.deg2rad(omega)
+    c, s = np.cos(om), np.sin(om)
+    g_lab = np.empty_like(g_sample)
+    g_lab[:, 0] = c * g_sample[:, 0] - s * g_sample[:, 1]
+    g_lab[:, 1] = s * g_sample[:, 0] + c * g_sample[:, 1]
+    g_lab[:, 2] = g_sample[:, 2]
+
+    ds_obs_t = torch.from_numpy(ds_obs)
+    ds_0_t = torch.from_numpy(ds_0)
+
+    res_sample = solve_strain_lstsq(torch.from_numpy(g_sample), ds_obs_t, ds_0_t)
+    res_lab = solve_strain_lstsq(torch.from_numpy(g_lab), ds_obs_t, ds_0_t)
+
+    # Sample-frame ĝ recovers truth to machine precision with ~zero residual.
+    np.testing.assert_allclose(
+        res_sample.epsilon_tensor.numpy(), eps_true, atol=1e-12
+    )
+    assert float(res_sample.residual_norm) < 1e-12
+
+    # Lab-frame ĝ cannot fit ONE tensor (the data live in many ω frames), so
+    # the residual is orders of magnitude larger and the recovered tensor is
+    # provably wrong — the diagnostic signature of the FF c-omp strain bug.
+    assert float(res_lab.residual_norm) > 1e3 * float(res_sample.residual_norm)
+    assert float(res_lab.residual_norm) > 1e-4
+    err_lab = np.linalg.norm(res_lab.epsilon_tensor.numpy() - eps_true)
+    err_sample = np.linalg.norm(res_sample.epsilon_tensor.numpy() - eps_true)
+    assert err_lab > 1e3 * max(err_sample, 1e-15)
+
+
 def test_recover_zero_strain_at_no_change():
     rng = np.random.default_rng(0)
     n = 12

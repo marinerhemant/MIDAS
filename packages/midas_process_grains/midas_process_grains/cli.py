@@ -34,11 +34,18 @@ def _build_parser() -> argparse.ArgumentParser:
         help="CPU thread count (used only on cpu device). Default 1.",
     )
     p.add_argument(
-        "--mode", choices=("legacy", "paper_claim", "spot_aware", "c_parity"),
+        "--mode", choices=("legacy", "paper_claim", "spot_aware", "adaptive",
+                           "physics", "c_parity"),
         default="spot_aware",
-        help="Pipeline mode. Use 'c_parity' for a bit-level replica of the "
-             "C ProcessGrains pipeline (writes Grains.csv, GrainIDsKey.csv, "
-             "SpotMatrix.csv in C's exact format).",
+        help="Pipeline mode. 'adaptive' derives the misori threshold from the "
+             "antimode of the pairwise-misorientation histogram of the alive "
+             "candidates (no hand-tuned MisoriTol). 'physics' enables the v4 "
+             "physics-bounded pipeline: per-candidate seed-(h,k,l) recovery "
+             "(FZ-canonical), orientation-aware expected-hkl prediction, "
+             "variant-constrained Hungarian split for over-merged clusters, "
+             "twin + sub-grain labeling, NNLS grain-size recompute on splits, "
+             "and a hierarchical GrainsV4.csv emitter. "
+             "Use 'c_parity' for a bit-level replica of the C ProcessGrains pipeline.",
     )
     p.add_argument(
         "--min-nr-spots", type=int, default=None,
@@ -49,6 +56,26 @@ def _build_parser() -> argparse.ArgumentParser:
     p.add_argument("--dtype", choices=("float32", "float64"), default=None)
     p.add_argument("--misori-tol", type=float, default=None,
                    help="Override the Phase 1 misorientation tolerance (degrees).")
+    p.add_argument(
+        "--merge-primitive", choices=("misori", "forward_predict"),
+        default="misori",
+        help="(mode=physics only) Pass-1 clustering primitive. 'misori' (default) "
+             "uses the smart-antimode pairwise-misorientation threshold. "
+             "'forward_predict' uses midas_diffract to predict each candidate's "
+             "ring-spots and merges only when same-variant evidence agrees on "
+             "K+ spots AND no cross-variant disagreement — symmetric by "
+             "construction, immune to refiner-asymmetric matched lists, and "
+             "robust against the chain-fusion giant-component pathology on "
+             "heavily-twinned datasets.",
+    )
+    p.add_argument(
+        "--k-agree", type=int, default=None,
+        help="(mode=physics + --merge-primitive=forward_predict) Same-variant "
+             "agreement threshold for a forward-predict merge edge. None = "
+             "auto-select (smallest K such that the largest connected component "
+             "is below max(100, n_alive/100)). Typical: K=4 for cubic-FCC, K=5 "
+             "for heavily-twinned LMO/oxide samples.",
+    )
     p.add_argument(
         "--strain-method",
         choices=(
@@ -73,6 +100,18 @@ def _build_parser() -> argparse.ArgumentParser:
                    help="Skip writing processgrains_diagnostics.h5.")
     p.add_argument("--max-seeds", type=int, default=None,
                    help="Process only the first N alive seeds (smoke / dev).")
+    p.add_argument("--nnls-volume", action="store_true",
+                   help="After grain emission, run joint non-negative least "
+                        "squares to correct GrainRadius for shared-spot "
+                        "intensity attribution between twin partners and "
+                        "overlapping grains. See compute/volume_nnls.py. "
+                        "Off by default for byte-level compatibility with C.")
+    p.add_argument("--physical-K", action="store_true",
+                   help="Use physical K(ring) = mult·|F|²·LP·DWF instead of "
+                        "the empirical median-intensity K for NNLS volume "
+                        "correction. Theoretically more rigorous; on dense "
+                        "datasets the two agree to ~0.3% at the population "
+                        "level. Implies --nnls-volume.")
     p.add_argument("--version", action="version",
                    version=f"midas-process-grains {__version__}")
     return p
@@ -84,6 +123,30 @@ def main(argv: Optional[List[str]] = None) -> int:
 
     from .device import apply_cpu_threads, resolve_device, resolve_dtype
     from .pipeline import ProcessGrains
+
+    # ── physics mode: dispatch to the v4 physics-bounded pipeline ──────────
+    if args.mode == "physics":
+        from .v4_pipeline import run_v4_pipeline
+        run_dir = args.param_file.parent
+        out_dir = args.out_dir if args.out_dir is not None else run_dir
+        # Map --min-nr-spots (legacy CLI flag, default 2 here) onto the
+        # v4 min_n_unique_hkls filter. They serve the same purpose: reject
+        # single-spot indexing artifacts.
+        min_unique = args.min_nr_spots if args.min_nr_spots is not None else 2
+        paths = run_v4_pipeline(
+            layer_dir=run_dir,
+            out_dir=out_dir,
+            trust_scheme="strict",
+            min_n_unique_hkls=min_unique,
+            merge_primitive=args.merge_primitive,
+            k_agree=args.k_agree,
+        )
+        print(
+            f"midas-process-grains {__version__} (mode=physics): "
+            f"wrote {paths['leaf']}",
+            file=sys.stderr,
+        )
+        return 0
 
     # ── c_parity mode: dispatch to the C-replica pipeline and return ────────
     if args.mode == "c_parity":
@@ -121,6 +184,10 @@ def main(argv: Optional[List[str]] = None) -> int:
         pg.params.MaterialName = args.material
     if args.stiffness_file is not None:
         pg.params.StiffnessFile = str(args.stiffness_file)
+    if args.nnls_volume or args.physical_K:
+        pg.params.NnlsVolume = True
+    if args.physical_K:
+        pg.params.PhysicalK = True
     pg.params = pg.params.validated()
 
     if args.max_seeds is not None:
