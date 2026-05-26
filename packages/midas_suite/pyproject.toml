@@ -43,7 +43,7 @@ dependencies = [
     "midas-transforms>=0.4.2",
     "midas-propagate>=0.1.0",      # uncertainty propagation; load-bearing for process-grains v0.4.x Stage 7 σ
     "midas-uq>=0.1.0",             # refiner-anchored bootstrap UQ (per-grain trust_score_anchored)
-    "midas-process-grains>=0.4.4", # v0.4.4: Stage 8.5 budget drop + 8.5b force-keep + 8.5c orphan reclaim
+    "midas-process-grains>=0.4.5", # v0.4.5: orphan reclaim default min_unique_fraction=0.5 (restores intensity-conservation; v0.4.4 packing 328% bug fixed)
     "midas-fit-grain>=0.2.1",
     "midas-nf-preprocess>=0.1.1",
     "midas-nf-fitorientation>=0.3.1",
