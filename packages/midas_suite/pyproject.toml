@@ -4,7 +4,7 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "midas-suite"
-version = "0.3.7"
+version = "0.3.8"
 description = "Meta-package: installs the MIDAS Python pipeline (FF/NF/PF HEDM, calibration, peakfit, integration, transforms, ODF, stress)."
 readme = "README.md"
 license = { text = "BSD-3-Clause" }
@@ -43,7 +43,7 @@ dependencies = [
     "midas-transforms>=0.4.2",
     "midas-propagate>=0.1.0",      # uncertainty propagation; load-bearing for process-grains v0.4.x Stage 7 σ
     "midas-uq>=0.1.0",             # refiner-anchored bootstrap UQ (per-grain trust_score_anchored)
-    "midas-process-grains>=0.4.5", # v0.4.5: orphan reclaim default min_unique_fraction=0.5 (restores intensity-conservation; v0.4.4 packing 328% bug fixed)
+    "midas-process-grains>=0.4.6", # v0.4.6: v4 Stage 6 recovers real per-grain GrainRadius on c-omp refiner outputs (was reading PF placeholder=1.0)
     "midas-fit-grain>=0.2.1",
     "midas-nf-preprocess>=0.1.1",
     "midas-nf-fitorientation>=0.3.1",

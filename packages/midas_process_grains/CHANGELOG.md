@@ -4,6 +4,30 @@ All notable changes to midas-process-grains. The format is based on
 [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) and this project
 adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.4.6] – 2026-05-26
+
+### Fixed
+
+- **v4 pipeline: Stage 6 NNLS got placeholder radii on c-omp refiner outputs.**
+  The c-omp `midas_fitgrain` (FitUnified.c) writes `meanRadius=1.0` to
+  OrientPosFit col 25 as a deliberate placeholder — PF mode needs col 25 = 1,
+  and `midas_process_grains.pipeline` already compensates when it emits
+  `Grains.csv` (averages per-spot `GrainRadius` from `Radius_StartNr_*.csv`
+  over each grain's matched spots; see pipeline.py:595-605). `v4_pipeline`
+  was reading OPF col 25 directly into `rep_radius_naive` and propagating
+  the 1.0 placeholder through Stage 6 sizing → Stage 8.5/8.5b/8.5c
+  (volume-budget drop / force-keep distinct / orphan reclaim).
+  Effect on a fresh c-omp recon (Indrajeet Ni nb_ni_recon): median R = 1.0
+  µm, ΣV = 1.03 × 10⁵ µm³, packing = 0.01 %, zero drops engaged.
+  **Fix:** mirror pipeline.py's recovery — detect when OPF col 25 is all
+  1.0, then recompute `rep_radius_naive[i]` as the mean of per-spot
+  `GrainRadius` from `InputAllExtraInfoFittingAll.csv` over each
+  candidate's matched-spot set from `Results/ProcessKey.bin`. Vsample
+  correction is then applied to the recomputed values. ~3 s overhead on
+  56 k candidates.
+  Validated on Indrajeet Ni c-omp recon — now matches legacy_fresh: median
+  R = 27.71 µm, ΣV = 4.25 × 10⁹ µm³, packing 425 %, 17,723 drops engaged.
+
 ## [0.4.5] – 2026-05-26
 
 ### Changed

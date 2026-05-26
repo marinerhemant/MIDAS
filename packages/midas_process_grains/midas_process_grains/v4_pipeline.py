@@ -379,6 +379,16 @@ def run_v4_pipeline(
     rep_radius_naive = opf[alive_idx, 25].astype(np.float64)
     confidence = opf[alive_idx, 26].astype(np.float64)
 
+    # The c-omp refiner (FitUnified.c) writes ``meanRadius=1.0`` as a
+    # placeholder to OrientPosFit col 25 — the legacy FitPosOrStrainsOMP
+    # writes the spot-averaged GrainRadius. Detect and flag; we'll
+    # recompute from per-spot GrainRadius once ``spot_sets`` are loaded.
+    _radius_naive_is_placeholder = bool(np.all(rep_radius_naive == 1.0))
+    if _radius_naive_is_placeholder:
+        log("[v4]   OrientPosFit col 25 is all 1.0 — c-omp refiner placeholder; "
+            "will recompute rep_radius_naive from per-spot GrainRadius after "
+            "ProcessKey.bin load")
+
     # ── Vsample-based correction on inherited GrainRadius ──
     # The legacy midas-transforms ``calc_radius`` writes a per-spot R based
     # on ``Vgauge = Vsample if Vsample!=0 else Hbeam·π·Rsample²``. If the
@@ -399,7 +409,7 @@ def run_v4_pipeline(
     else:
         v_truth = 0.0
         disc_model_active = False
-    if radius_correction != 1.0:
+    if radius_correction != 1.0 and not _radius_naive_is_placeholder:
         rep_radius_naive = rep_radius_naive * radius_correction
         log(f"[v4]   applied R correction = {radius_correction:.4f} "
             f"to {rep_radius_naive.size:,} candidate radii")
@@ -528,6 +538,30 @@ def run_v4_pipeline(
         else:
             spot_sets.append(set())
     log(f"[v4]   spot-set load: {len(spot_sets):,}  [{time.time()-t3:.1f}s]")
+
+    # -- Recompute rep_radius_naive from per-spot GrainRadius when the
+    # refiner wrote a placeholder (c-omp midas_fitgrain writes 1.0). The
+    # legacy FitPosOrStrainsOMP writes the spot-averaged R itself; here we
+    # match that by averaging the per-spot GrainRadius column from
+    # ``InputAllExtraInfoFittingAll.csv`` over each candidate's spot_set.
+    if _radius_naive_is_placeholder:
+        _t_rr = time.time()
+        _inp = pd.read_csv(layer_dir / "InputAllExtraInfoFittingAll.csv",
+                           sep=r"\s+", engine="c")
+        _inp.columns = [c.lstrip("%") for c in _inp.columns]
+        _per_spot_R = dict(zip(_inp["SpotID"].astype(int),
+                                _inp["GrainRadius"].astype(float)))
+        for _i, _ss in enumerate(spot_sets):
+            if _ss:
+                _vals = [_per_spot_R[_s] for _s in _ss if _s in _per_spot_R]
+                if _vals:
+                    rep_radius_naive[_i] = float(np.mean(_vals))
+        _good = rep_radius_naive[rep_radius_naive > 0]
+        if radius_correction != 1.0:
+            rep_radius_naive = rep_radius_naive * radius_correction
+        log(f"[v4]   recomputed rep_radius_naive from per-spot GrainRadius "
+            f"(median={np.median(_good):.2f} µm, "
+            f"correction={radius_correction:.4f})  [{time.time()-_t_rr:.1f}s]")
 
     # -- Stage 2: expected-hkl prediction per Pass-1 consensus --
     # (OM_fz, hkls, inputall, geom were already loaded above so that the
