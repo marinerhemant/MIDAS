@@ -22,7 +22,7 @@ Builds on the differentiable forward model of paper I:
     Differentiable Forward Model for HEDM. IUCrJ (in press).
 """
 
-__version__ = "0.1.0"
+__version__ = "0.1.1"
 
 from ._common import GrainState, misori_deg, misori_deg_sym
 from .spots import (
