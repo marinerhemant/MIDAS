@@ -19,7 +19,7 @@ Three operating modes (`mode=` kwarg):
 
 from __future__ import annotations
 
-__version__ = "0.4.0"
+__version__ = "0.4.4"
 
 from .params import ProcessGrainsParams, read_paramstest_pg
 
