@@ -26,7 +26,7 @@ from .sindy import discover_dynamics, integrate_latent_ode, library_terms
 from .surrogate import ParameterMLP, train_surrogate
 from .uq import laplace_uncertainty
 
-__version__ = "0.1.0a0"
+__version__ = "0.1.0"
 
 __all__ = [
     "fit",

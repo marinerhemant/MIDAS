@@ -4,7 +4,7 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "midas-invert"
-version = "0.1.0a0"
+version = "0.1.0"
 description = "Domain-agnostic differentiable-inversion primitives for MIDAS: gradient fitting, scale-invariant losses, Laplace uncertainty, Fisher-information experiment design, mixture deconvolution, and amortised-inference surrogates."
 readme = "README.md"
 license = "BSD-3-Clause"
