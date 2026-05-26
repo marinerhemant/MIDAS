@@ -1,0 +1,39 @@
+[build-system]
+requires = ["setuptools>=61"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "midas-invert"
+version = "0.1.0a0"
+description = "Domain-agnostic differentiable-inversion primitives for MIDAS: gradient fitting, scale-invariant losses, Laplace uncertainty, Fisher-information experiment design, mixture deconvolution, and amortised-inference surrogates."
+readme = "README.md"
+license = "BSD-3-Clause"
+requires-python = ">=3.9"
+authors = [
+    {name = "Hemant Sharma", email = "hsharma@anl.gov"},
+]
+classifiers = [
+    "Development Status :: 2 - Pre-Alpha",
+    "Intended Audience :: Science/Research",
+    "Programming Language :: Python :: 3",
+    "Operating System :: OS Independent",
+    "Topic :: Scientific/Engineering :: Physics",
+]
+dependencies = [
+    "numpy>=1.20",
+    "torch>=2.0",
+]
+
+[project.optional-dependencies]
+dev = ["pytest>=7.0"]
+
+[tool.setuptools]
+packages = ["midas_invert"]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+markers = [
+    "unit: synthetic-data correctness tests (fast, every PR)",
+    "autograd: gradient correctness tests",
+    "device: CPU/CUDA/MPS portability tests (skipped if device unavailable)",
+]
