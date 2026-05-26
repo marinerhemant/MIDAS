@@ -170,6 +170,7 @@ jobs:
   #   midas-zipper-v*            → midas_zipper
   #   midas-nf-preprocess-v*     → midas_nf_preprocess
   #   midas-process-grains-v*    → midas_process_grains
+  #   midas-propagate-v*         → midas_propagate
   #   midas-fit-grain-v*         → midas_fit_grain
   #   midas-nf-fitorientation-v* → midas_nf_fitorientation
   #   midas-nf-pipeline-v*       → midas_nf_pipeline
@@ -243,6 +244,9 @@ jobs:
           elif [[ "$TAG" == midas-process-grains-v* ]]; then
             echo "package=midas_process_grains" >> "$GITHUB_OUTPUT"
             echo "pypi_name=midas-process-grains" >> "$GITHUB_OUTPUT"
+          elif [[ "$TAG" == midas-propagate-v* ]]; then
+            echo "package=midas_propagate" >> "$GITHUB_OUTPUT"
+            echo "pypi_name=midas-propagate" >> "$GITHUB_OUTPUT"
           elif [[ "$TAG" == midas-fit-grain-v* ]]; then
             echo "package=midas_fit_grain" >> "$GITHUB_OUTPUT"
             echo "pypi_name=midas-fit-grain" >> "$GITHUB_OUTPUT"
