@@ -28,7 +28,7 @@ panel block to the entire 260-DOF Pilatus geometry plus N_g × 12 grain
 parameters.  No baked-in assumption that only panel shifts are interesting.
 """
 
-__version__ = "0.1.1"
+__version__ = "0.1.2"
 
 from midas_joint_ff_calibrate.spec import build_joint_spec
 from midas_joint_ff_calibrate.loss import joint_residual
