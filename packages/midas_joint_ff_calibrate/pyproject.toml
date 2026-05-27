@@ -4,7 +4,7 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "midas-joint-ff-calibrate"
-version = "0.1.2"
+version = "0.1.3"
 description = "Joint differentiable powder + FF-HEDM detector calibration for MIDAS. Breaks single-distance per-panel rank-1 degeneracy by combining a powder calibrant pseudo-strain residual with HEDM grain spot residuals in one Bayesian MAP + Laplace inference. Pure-Python, fully autograd-traced; consumes the shared midas_peakfit substrate (ParameterSpec, lm_minimise, laplace_at_map, TPSpline, zero_sum_residual) plus midas_calibrate_v2 (powder forward + pseudo_strain) and midas_fit_grain (HEDM spot forward)."
 readme = "README.md"
 license = { text = "BSD-3-Clause" }
