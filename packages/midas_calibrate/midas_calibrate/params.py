@@ -125,7 +125,9 @@ class CalibrationParams:
 
         # Calibration-specific keys
         for line in text.splitlines():
-            line = line.split("#")[0].strip()
+            # Strip comments and the MIDAS C ';' line terminator (e.g.
+            # ``MaxRingRad 312493.037332;``) so values parse as floats.
+            line = line.split("#")[0].strip().rstrip(";").strip()
             if not line:
                 continue
             parts = line.split(None, 1)
