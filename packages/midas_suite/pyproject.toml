@@ -37,7 +37,7 @@ dependencies = [
     "midas-peakfit>=0.4.0",
     "midas-integrate>=0.4.0",
     "midas-integrate-v2>=0.1.0",
-    "midas-calibrate>=0.2.3",
+    "midas-calibrate>=0.2.7",
     "midas-calibrate-v2>=0.1.0",
     "midas-index>=0.5.2",
     "midas-transforms>=0.4.2",
@@ -65,8 +65,9 @@ ff = [
     "midas-stress>=0.7.0",
     "midas-params>=0.3.1",
     "midas-ff-pipeline>=0.2.1",
-    "midas-calibrate>=0.2.3",
+    "midas-calibrate>=0.2.7",          # >=0.2.7: paramstest parser strips ';' terminator
     "midas-integrate>=0.4.0",
+    "midas-joint-ff-calibrate>=0.1.5", # grain-tx + full-joint refine (IUCrJ 2026)
 ]
 nf = [
     "midas-stress>=0.7.0",
@@ -80,14 +81,14 @@ pf = [
     "midas-stress>=0.7.0",
     "midas-params>=0.3.1",
     "midas-pipeline[fast]>=0.2.2",         # >=0.2.2: gemmi[cif] + pandas-3 fix; fast = numba>=0.65
-    "midas-calibrate>=0.2.3",
+    "midas-calibrate>=0.2.7",
     "midas-integrate>=0.4.0",
 ]
 calib = [
     "midas-hkls>=0.4.1",
     "midas-integrate>=0.4.0",
     "midas-peakfit>=0.4.0",
-    "midas-calibrate>=0.2.3",
+    "midas-calibrate>=0.2.7",
 ]
 calib-v2 = [
     # Torch-native differentiable calibration / integration stack.
