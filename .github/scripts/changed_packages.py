@@ -35,7 +35,6 @@ PKG_DIR = ROOT / "packages"
 # Packages that are hidden from CI / PyPI per the user's directive.
 HIDDEN: set[str] = {
     "midas_grain_odf",
-    "midas_joint_ff_calibrate",
     "midas_pf_odf",
     "midas_pink",
 }
