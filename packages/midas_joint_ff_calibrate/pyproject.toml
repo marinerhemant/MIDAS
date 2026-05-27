@@ -31,7 +31,7 @@ dependencies = [
 ]
 
 [project.optional-dependencies]
-test = ["pytest>=7"]
+dev = ["pytest>=7"]
 
 [project.scripts]
 midas-joint-ff-calibrate = "midas_joint_ff_calibrate.cli:main"
