@@ -24,7 +24,7 @@ dependencies = [
     "torch>=2.1",
     "midas-peakfit>=0.4.0",
     "midas-calibrate-v2>=0.1.0",
-    "midas-calibrate>=0.2.0",            # v1 params + pixel_to_REta_torch (DetCor)
+    "midas-calibrate>=0.2.6",            # v1 params + pixel_to_REta_torch (DetCor); >=0.2.6 handles `;` terminators in paramstest
     "midas-fit-grain>=0.1.0",
     "midas-diffract>=0.1.0",
     "midas-hkls>=0.1.0",
