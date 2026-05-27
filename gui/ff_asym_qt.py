@@ -116,14 +116,17 @@ def get_bz2_data(fn):
         return tmp.name
 
 
-def build_filename(folder, fstem, fnum, padding, det_nr, ext, sep_folder=False):
+def build_filename(folder, fstem, fnum, padding, det_nr, ext, sep_folder=False, sep='_'):
     fldr = folder
     if sep_folder and det_nr != -1:
         fldr = os.path.join(folder, 'ge' + str(det_nr))
+    # padding == 0 → single-file mode: filename has no numeric suffix
+    # (used when the user opens an image that doesn't follow stem_NNN.ext naming).
+    num_part = '' if padding == 0 else sep + str(fnum).zfill(padding)
     if det_nr != -1:
-        fn = os.path.join(fldr, fstem + '_' + str(fnum).zfill(padding) + '.ge' + str(det_nr))
+        fn = os.path.join(fldr, fstem + num_part + '.ge' + str(det_nr))
     else:
-        fn = os.path.join(fldr, fstem + '_' + str(fnum).zfill(padding) + '.' + ext)
+        fn = os.path.join(fldr, fstem + num_part + '.' + ext)
     if not os.path.exists(fn) and os.path.exists(fn + '.bz2'):
         fn = fn + '.bz2'
     return fn
@@ -273,22 +276,24 @@ def read_mask(fn, ny, nz):
 # ═══════════════════════════════════════════════════════════════════════
 
 def _parse_numbered_filename(basename):
-    """Parse a numbered filename like 'stem_00001.ext' into components.
+    """Parse a numbered filename like 'stem_00001.ext' or 'stem-00001.ext'.
 
-    Finds the last ``_DIGITS.`` pattern in *basename* and splits there.
+    Finds the last ``[_-]DIGITS.`` pattern in *basename* and splits there.
     This handles filenames with multiple dots and special characters,
-    e.g. ``frame_%I.cbf_00001_Varex_1_00001.cbf``.
+    e.g. ``frame_%I.cbf_00001_Varex_1_00001.cbf`` as well as hyphen-
+    separated names like ``CeO2_D1600_BS600-00001.tif``.
 
-    Returns (stem, file_nr, padding, ext) or None if no pattern found.
+    Returns (stem, file_nr, padding, ext, sep) or None if no pattern found.
     """
-    matches = list(re.finditer(r'_(\d+)\.', basename))
+    matches = list(re.finditer(r'([_-])(\d+)\.', basename))
     if not matches:
         return None
     last = matches[-1]
-    digits = last.group(1)
-    stem = basename[:last.start()]          # everything before _DIGITS
+    sep = last.group(1)
+    digits = last.group(2)
+    stem = basename[:last.start()]          # everything before sep+DIGITS
     ext  = basename[last.end():]            # everything after the dot  (no leading dot)
-    return stem, int(digits), len(digits), ext
+    return stem, int(digits), len(digits), ext, sep
 
 
 def auto_detect_files(cwd):
@@ -310,7 +315,8 @@ def auto_detect_files(cwd):
     data_files = []
     for f in all_files:
         parsed = _parse_numbered_filename(f)
-        if parsed and parsed[0].startswith(basename + '_'):
+        if parsed and (parsed[0].startswith(basename + '_')
+                       or parsed[0].startswith(basename + '-')):
             # a bit redundant but keeps dark_* away
             data_files.append(f)
 
@@ -322,12 +328,13 @@ def auto_detect_files(cwd):
     if parsed is None:
         return result
 
-    stem, first_nr, padding, ext = parsed
+    stem, first_nr, padding, ext, sep = parsed
     result['first_nr'] = first_nr
     result['padding'] = padding
     result['file_stem'] = stem
     result['folder'] = cwd + '/'
     result['ext'] = ext
+    result['sep'] = sep
     result['n_frames'] = 1
 
     # Dark files
@@ -338,6 +345,7 @@ def auto_detect_files(cwd):
             if prefix_lower.endswith('dark_before') or prefix_lower.endswith('dark_after'):
                 result['dark_stem'] = dp[0]
                 result['dark_num'] = dp[1]
+                result['dark_sep'] = dp[4]
                 break
 
     # MIDAS-style param file (ps*.txt, Parameters*.txt, params*.txt)
@@ -400,12 +408,14 @@ class FFViewer(QtWidgets.QMainWindow):
         self.folder = os.getcwd() + '/'
         self.padding = 6
         self.ext = 'tif'
+        self.file_sep = '_'        # separator between stem and frame number ('_' or '-')
         self.first_file_nr = 1
         self.n_frames_per_file = 1
         self.frame_nr = 0
         self.dark_stem = ''
         self.dark_folder = ''
         self.dark_num = 0
+        self.dark_sep = '_'
         self.dark_fn = ''          # full path set by "Dark File" dialog; preferred over reconstruction
         self.det_nr = -1
         self.sep_folder = False
@@ -1408,6 +1418,7 @@ class FFViewer(QtWidgets.QMainWindow):
             'first_file_nr': self.first_file_nr,
             'padding': self.padding,
             'ext': self.ext,
+            'file_sep': self.file_sep,
             'frame': self.frame_spin.value(),
             'ny': self.ny, 'nz': self.nz,
             'header_size': self.header_size,
@@ -1453,6 +1464,7 @@ class FFViewer(QtWidgets.QMainWindow):
         self.first_file_nr = state.get('first_file_nr', self.first_file_nr)
         self.padding = state.get('padding', self.padding)
         self.ext = state.get('ext', self.ext)
+        self.file_sep = state.get('file_sep', self.file_sep)
         self.ny = state.get('ny', self.ny)
         self.nz = state.get('nz', self.nz)
         self.header_size = state.get('header_size', self.header_size)
@@ -1583,7 +1595,7 @@ class FFViewer(QtWidgets.QMainWindow):
             try:
                 data_fn = build_filename(
                     self.folder, self.file_stem, self.first_file_nr,
-                    self.padding, self.det_nr, self.ext)
+                    self.padding, self.det_nr, self.ext, sep=self.file_sep)
             except Exception:
                 pass
             res = self._h5_dataset_exists(data_fn, self.h5data_edit.text().strip())
@@ -1594,7 +1606,8 @@ class FFViewer(QtWidgets.QMainWindow):
                 try:
                     cand = build_filename(
                         self.dark_folder or self.folder, self.dark_stem,
-                        self.dark_num, self.padding, self.det_nr, self.ext)
+                        self.dark_num, self.padding, self.det_nr, self.ext,
+                        sep=self.dark_sep)
                     if os.path.exists(cand):
                         dark_fn = cand
                 except Exception:
@@ -1848,6 +1861,7 @@ class FFViewer(QtWidgets.QMainWindow):
                     if parsed:
                         self.dark_stem = parsed[0]
                         self.dark_num = parsed[1]
+                        self.dark_sep = parsed[4]
                 else:
                     self.dark_stem = ds
                 self.dark_check.setChecked(True)
@@ -1937,14 +1951,9 @@ class FFViewer(QtWidgets.QMainWindow):
         elif path.endswith('.zip'):
             self._load_zarr_zip(path)
         elif os.path.isfile(path):
-            # Treat like FirstFile selection
-            self.folder = os.path.dirname(path) + '/'
-            basename = os.path.basename(path)
-            parsed = _parse_numbered_filename(basename)
-            if parsed:
-                self.file_stem, self.first_file_nr, self.padding, self.ext = parsed
-                self.file_nr_edit.setText(str(self.first_file_nr))
-            self._load_and_display()
+            # Treat like FirstFile selection (uses fallback to single-file mode
+            # when the dropped name has no _NNN / -NNN suffix).
+            self._open_single_file(path)
 
     def _on_cursor_moved(self, x, y, val):
         px = float(self.px_edit.text() or 200)
@@ -2003,7 +2012,8 @@ class FFViewer(QtWidgets.QMainWindow):
                 file_nr = self.first_file_nr + i // max(1, self.n_frames_per_file)
                 frame_in = i % max(1, self.n_frames_per_file)
                 fn = build_filename(self.folder, self.file_stem, file_nr,
-                                    self.padding, self.det_nr, self.ext, self.sep_folder)
+                                    self.padding, self.det_nr, self.ext,
+                                    self.sep_folder, sep=self.file_sep)
                 try:
                     # Mean/max are orientation-invariant, so raw data is fine.
                     data = read_image(fn, self.header_size, self.bytes_per_pixel,
@@ -2553,25 +2563,63 @@ class FFViewer(QtWidgets.QMainWindow):
         fn, _ = QtWidgets.QFileDialog.getOpenFileName(self, "Select First File")
         if not fn:
             return
+        self._open_single_file(fn)
+
+    def _open_single_file(self, fn):
+        """Configure viewer state to display *fn*.
+
+        Tries to parse a ``stem_NNN.ext`` / ``stem-NNN.ext`` pattern so the user
+        can step through a numbered series. If no numeric suffix is present,
+        falls back to single-file mode (padding=0) so the picked image still
+        loads on its own.
+        """
         check_fn = fn[:-4] if fn.endswith('.bz2') else fn
         basename = os.path.basename(check_fn)
         parsed = _parse_numbered_filename(basename)
         if parsed is None:
-            print(f"Warning: could not parse numbered filename: {basename}")
-            return
-        self.file_stem, self.first_file_nr, self.padding, self.ext = parsed
+            stem, ext = os.path.splitext(basename)
+            self.file_stem = stem
+            self.ext = ext.lstrip('.') or 'bin'
+            self.file_sep = ''
+            self.padding = 0           # signals build_filename to drop the numeric suffix
+            self.first_file_nr = 0
+            print(f"Single-file mode: {basename}")
+        else:
+            (self.file_stem, self.first_file_nr, self.padding,
+             self.ext, self.file_sep) = parsed
         self.folder = os.path.dirname(fn) + '/'
         self._folder_locked = True   # user explicitly chose data path; param file won't override
         self.file_nr_edit.setText(str(self.first_file_nr))
         self.det_nr = -1
         if self.ext.startswith('ge') and len(self.ext) == 3 and self.ext[-1].isdigit():
             self.det_nr = int(self.ext[-1])
-        # Try HDF5 dimension detection
         ext_lower = os.path.splitext(check_fn)[1].lower()
         if ext_lower in ['.h5', '.hdf', '.hdf5', '.nxs'] and h5py:
             self._detect_hdf5_dims(fn)
+        elif ext_lower in ['.tif', '.tiff'] and tifffile is not None:
+            self._detect_tiff_dims(fn)
         print(f"Loaded: stem={self.file_stem}, folder={self.folder}, ext={self.ext}")
         self._load_and_display()
+
+    def _detect_tiff_dims(self, fn):
+        """Read TIFF page shape and count; update ny/nz/n_frames edits."""
+        try:
+            with tifffile.TiffFile(fn) as tf:
+                n_pages = len(tf.pages)
+                if n_pages == 0:
+                    return
+                shape = tf.pages[0].shape
+                if len(shape) >= 2:
+                    self.ny, self.nz = int(shape[0]), int(shape[1])
+                self.n_frames_per_file = n_pages
+                if hasattr(self, 'ny_edit'):
+                    self.ny_edit.setText(str(self.ny))
+                if hasattr(self, 'nz_edit'):
+                    self.nz_edit.setText(str(self.nz))
+                if hasattr(self, 'nframes_edit'):
+                    self.nframes_edit.setText(str(n_pages))
+        except Exception as e:
+            print(f"TIFF dimension detection failed: {e}")
 
     def _on_dark_file(self):
         fn, _ = QtWidgets.QFileDialog.getOpenFileName(self, "Select Dark File")
@@ -2585,6 +2633,7 @@ class FFViewer(QtWidgets.QMainWindow):
         if parsed:
             self.dark_stem = parsed[0]
             self.dark_num = parsed[1]
+            self.dark_sep = parsed[4]
         self.dark_check.setChecked(True)
         if hasattr(self, 'dark_label'):
             self.dark_label.setText(basename)
@@ -2898,7 +2947,8 @@ class FFViewer(QtWidgets.QMainWindow):
             else:
                 dark_folder = self.dark_folder if self.dark_folder else self.folder
                 candidate = build_filename(dark_folder, self.dark_stem, self.dark_num,
-                                           self.padding, self.det_nr, self.ext)
+                                           self.padding, self.det_nr, self.ext,
+                                           sep=self.dark_sep)
                 if os.path.exists(candidate):
                     dark_fn = candidate
                 elif self.hdf5_dark_path:
@@ -2906,7 +2956,7 @@ class FFViewer(QtWidgets.QMainWindow):
                     file_nr = self.first_file_nr + self.frame_nr // max(1, self.n_frames_per_file)
                     current_fn = build_filename(self.folder, self.file_stem, file_nr,
                                                self.padding, self.det_nr, self.ext,
-                                               self.sep_folder)
+                                               self.sep_folder, sep=self.file_sep)
                     if os.path.exists(current_fn):
                         dark_fn = current_fn
             if dark_fn and os.path.exists(dark_fn):
@@ -2947,6 +2997,7 @@ class FFViewer(QtWidgets.QMainWindow):
                 folder=self.folder, file_stem=self.file_stem,
                 first_file_nr=self.first_file_nr, padding=self.padding,
                 det_nr=self.det_nr, ext=self.ext, sep_folder=self.sep_folder,
+                file_sep=self.file_sep,
                 header_size=self.header_size, bytes_per_pixel=self.bytes_per_pixel,
                 ny=self.ny, nz=self.nz,
                 do_transpose=self.do_transpose, hflip=self.hflip, vflip=self.vflip,
@@ -2992,7 +3043,8 @@ class FFViewer(QtWidgets.QMainWindow):
                 first_file = p['first_file_nr'] + p['start_frame'] // n_fpf
                 last_file = p['first_file_nr'] + (p['start_frame'] + p['n_accum'] - 1) // n_fpf
                 fn0 = build_filename(p['folder'], p['file_stem'], first_file,
-                                     p['padding'], p['det_nr'], p['ext'], p['sep_folder'])
+                                     p['padding'], p['det_nr'], p['ext'], p['sep_folder'],
+                                     sep=p['file_sep'])
                 ext_lower = os.path.splitext(fn0)[1].lower()
                 if (first_file == last_file and ext_lower in ['.h5', '.hdf', '.hdf5', '.nxs']
                         and h5py and os.path.exists(fn0)):
@@ -3028,7 +3080,7 @@ class FFViewer(QtWidgets.QMainWindow):
                     f_in = fr % n_fpf
                     fn = build_filename(p['folder'], p['file_stem'], f_nr,
                                         p['padding'], p['det_nr'], p['ext'],
-                                        p['sep_folder'])
+                                        p['sep_folder'], sep=p['file_sep'])
                     return read_image(
                         fn, p['header_size'], p['bytes_per_pixel'],
                         p['ny'], p['nz'], f_in,
@@ -3091,7 +3143,8 @@ class FFViewer(QtWidgets.QMainWindow):
                               if self.zarr_store else os.path.basename(
                                   build_filename(self.folder, self.file_stem,
                                                  self.first_file_nr, self.padding,
-                                                 self.det_nr, self.ext, self.sep_folder)))
+                                                 self.det_nr, self.ext, self.sep_folder,
+                                                 sep=self.file_sep)))
                 self.frame_label.setText(f"Frame {self.frame_nr}  |  {fn_display}")
                 self.setWindowTitle(f"FF Viewer — {fn_display} [frame {self.frame_nr}]")
                 if self.show_rings and self.ring_rads:
@@ -3116,7 +3169,8 @@ class FFViewer(QtWidgets.QMainWindow):
             file_nr = self.first_file_nr + self.frame_nr // max(1, self.n_frames_per_file)
             frame_in_file = self.frame_nr % max(1, self.n_frames_per_file)
             fn = build_filename(self.folder, self.file_stem, file_nr,
-                                self.padding, self.det_nr, self.ext, self.sep_folder)
+                                self.padding, self.det_nr, self.ext, self.sep_folder,
+                                sep=self.file_sep)
 
             data = read_image(fn, self.header_size, self.bytes_per_pixel,
                               self.ny, self.nz, frame_in_file,
@@ -3578,16 +3632,19 @@ class FFViewer(QtWidgets.QMainWindow):
             self.padding = result.get('padding', self.padding)
             self.first_file_nr = result.get('first_nr', self.first_file_nr)
             self.ext = result.get('ext', self.ext)
+            self.file_sep = result.get('sep', self.file_sep)
             self.file_nr_edit.setText(str(self.first_file_nr))
             if 'dark_stem' in result:
                 self.dark_stem = result['dark_stem']
                 self.dark_num = result['dark_num']
+                self.dark_sep = result.get('dark_sep', self.file_sep)
                 self.dark_check.setChecked(True)
             # HDF5 detection
             ext_l = (self.ext or '').lower()
             if any(ext_l.endswith(e) for e in ['h5', 'hdf', 'hdf5', 'nxs']):
                 fn = build_filename(self.folder, self.file_stem, self.first_file_nr,
-                                     self.padding, self.det_nr, self.ext)
+                                     self.padding, self.det_nr, self.ext,
+                                     sep=self.file_sep)
                 if os.path.exists(fn):
                     self._detect_hdf5_dims(fn)
             print(f"Auto-detected: {self.file_stem} in {self.folder}")
