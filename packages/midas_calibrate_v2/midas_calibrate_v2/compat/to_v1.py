@@ -161,9 +161,12 @@ def ff_paramstest_from_auto_result(
     # Keys we replace from the v2 result; everything else in the template
     # (thresholds, ring numbers, omega scan, …) is carried verbatim. We strip
     # both the v2 distortion names and any legacy p0..p14 so the output is
-    # unambiguously v2-named.
+    # unambiguously v2-named. ``px`` is replaced too — without it, downstream
+    # tools (midas-joint-ff-calibrate, peakfit) silently default to 0 for the
+    # pixel↔µm conversion and every spot prediction lands at the wrong
+    # position, dropping the match count to zero.
     replaced = {"Lsd", "BC", "tx", "ty", "tz", "RawFolder",
-                "NrPixelsY", "NrPixelsZ", "ResidualCorrectionMap",
+                "NrPixelsY", "NrPixelsZ", "px", "ResidualCorrectionMap",
                 *P_COEF_NAMES, *(f"p{i}" for i in range(15))}
 
     kept: list[str] = []
@@ -180,6 +183,14 @@ def ff_paramstest_from_auto_result(
         "# v2 distortion harmonics (carried natively; no p0..p14)",
         *[f"{nm} {float(dist.get(nm, 0.0)):.10g}" for nm in P_COEF_NAMES],
     ]
+    # Pixel size: v1's ``px`` is the (Y,Z)-mean — same convention to_integrate
+    # and the rest of the codebase use. Fall back to ``pxY`` if pxZ is absent
+    # (single-axis calibrations). Skip if the result doesn't carry pixel size.
+    pxY = float(getattr(result, "pxY", 0.0) or 0.0)
+    pxZ = float(getattr(result, "pxZ", 0.0) or 0.0)
+    if pxY > 0:
+        px_mean = 0.5 * (pxY + pxZ) if pxZ > 0 else pxY
+        inj.append(f"px {px_mean:.10g}")
     if ny > 0 and nz > 0:
         inj += [f"NrPixelsY {ny}", f"NrPixelsZ {nz}"]
     if raw_folder:
