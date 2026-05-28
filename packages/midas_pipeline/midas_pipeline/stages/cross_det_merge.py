@@ -7,4 +7,4 @@ from ..results import StageResult
 
 
 def run(ctx: StageContext) -> StageResult:
-    return stub_run("cross_det_merge", ctx)
+    return stub_run("cross_det_merge", ctx, reason="P1 stub — implementation pending")

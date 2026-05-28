@@ -7,4 +7,4 @@ from ..results import StageResult
 
 
 def run(ctx: StageContext) -> StageResult:
-    return stub_run("merge_overlaps", ctx)
+    return stub_run("merge_overlaps", ctx, reason="P1 stub — implementation pending")

@@ -14,4 +14,4 @@ from ..results import StageResult
 
 
 def run(ctx: StageContext) -> StageResult:
-    return stub_run("calc_radius", ctx)
+    return stub_run("calc_radius", ctx, reason="superseded by calc_radius_v (FF/PF V-map path)")

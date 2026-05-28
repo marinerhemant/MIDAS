@@ -7,4 +7,4 @@ from ..results import StageResult
 
 
 def run(ctx: StageContext) -> StageResult:
-    return stub_run("global_powder", ctx)
+    return stub_run("global_powder", ctx, reason="P1 stub — implementation pending")
