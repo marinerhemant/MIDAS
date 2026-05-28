@@ -4,7 +4,7 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "midas-suite"
-version = "0.3.11"
+version = "0.3.12"
 description = "Meta-package: installs the MIDAS Python pipeline (FF/NF/PF HEDM, calibration, peakfit, integration, transforms, ODF, stress)."
 readme = "README.md"
 license = { text = "BSD-3-Clause" }
@@ -38,7 +38,7 @@ dependencies = [
     "midas-integrate>=0.4.0",
     "midas-integrate-v2>=0.1.0",
     "midas-calibrate>=0.2.7",
-    "midas-calibrate-v2>=0.1.0",
+    "midas-calibrate-v2>=0.3.3",
     "midas-index>=0.5.2",
     "midas-transforms>=0.4.2",
     "midas-propagate>=0.1.0",      # uncertainty propagation; load-bearing for process-grains v0.4.x Stage 7 σ
@@ -95,7 +95,7 @@ calib-v2 = [
     # Companion to ``calib`` (v1, C-backed) — both can be installed
     # side-by-side, the v2 spec ↔ v1 paramstest adapter handles handoff.
     "midas-hkls>=0.4.1",
-    "midas-calibrate-v2>=0.1.0",
+    "midas-calibrate-v2>=0.3.3",
     "midas-integrate-v2>=0.1.0",
     "midas-peakfit>=0.4.0",
 ]
