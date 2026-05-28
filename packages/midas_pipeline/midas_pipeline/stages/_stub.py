@@ -40,7 +40,13 @@ def stub_run(stage_name: str, ctx: "StageContext", *,
         Genuine P1 stubs (no implementation) should pass
         ``reason="P1 stub — implementation pending"``.
     """
-    LOG.info(
+    # DEBUG only — the surrounding stage_timer already logs "→ X" / "✓ X —
+    # 0.00s", which clearly signals the stage was a no-op. A separate INFO
+    # message here would be alarmist for stages that are simply not part of
+    # the current scan_mode's workflow (e.g. cross_det_merge on a
+    # single-detector FF run). The reason still makes it into the stage
+    # metrics for anyone inspecting provenance.
+    LOG.debug(
         "stage '%s' skipped (%s; scan_mode=%s).",
         stage_name, reason, ctx.scan_mode,
     )
