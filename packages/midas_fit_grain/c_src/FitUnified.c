@@ -1495,17 +1495,23 @@ int main(int argc, char *argv[]) {
     fgets(aline, 1000, spotsFile); // skip first startRowNr-1 lines
   for (it = 0; it < nSptIDs; it++) {
     fgets(aline, 1000, spotsFile);
-    if (ffLegacySeeds) {
-      // FF SpotsToIndex.csv is one SpotID per line. rowNr (= global line index)
-      // is the offset into IndexBest.bin / IndexBestFull.bin.
+    if (ffLegacySeeds || gNumScans <= 1) {
+      // FF SpotsToIndex.csv is one SpotID per line. The seed's global line
+      // index is the offset into the seed solutions — both for legacy
+      // IndexBest.bin/IndexBestFull.bin AND for the consolidated c-omp
+      // IndexBest_all.bin, which is keyed by seed position (0..nVoxels-1).
+      // The SpotID *value* is NOT the voxel index (using it overruns the
+      // consolidated array → "no consolidated data" for every seed).
       size_t spid = 0;
       sscanf(aline, "%zu", &spid);
-      infoArr[it * 5 + 0] = (size_t)(linesSkipped + it); // rowNr
+      infoArr[it * 5 + 0] = (size_t)(linesSkipped + it); // rowNr / voxNr
       infoArr[it * 5 + 1] = spid;                        // SpId
       infoArr[it * 5 + 2] = 0;
       infoArr[it * 5 + 3] = 0;
       infoArr[it * 5 + 4] = 0;
     } else {
+      // PF / scanning: SpotsToIndex.csv carries 5 columns
+      // (rowNr SpId voxNr ... ...).
       sscanf(aline, "%zu %zu %zu %zu %zu", &infoArr[it * 5 + 0],
              &infoArr[it * 5 + 1], &infoArr[it * 5 + 2], &infoArr[it * 5 + 3],
              &infoArr[it * 5 + 4]);
@@ -1577,8 +1583,8 @@ int main(int argc, char *argv[]) {
    * (27 dbl/seed), Key.bin (2 int/seed), ProcessKey.bin (MaxNHKLS int/seed).
    * Hoist the FDs before the parallel region; threads pwrite at per-seed
    * offsets (rowNr). PF mode writes the consolidated SpotDiagnostics.bin only. */
-  int fdOrientPos = -1, fdKey = -1, fdProcKey = -1;
-  if (ffLegacySeeds) {
+  int fdOrientPos = -1, fdKey = -1, fdProcKey = -1, fdFitBest = -1;
+  if (ffLegacySeeds || gNumScans <= 1) {  /* any FF (legacy or consolidated) */
     char ffn[2048];
     sprintf(ffn, "%s/OrientPosFit.bin", ResultFolder);
     fdOrientPos = open(ffn, O_CREAT | O_WRONLY, S_IRUSR | S_IWUSR);
@@ -1586,6 +1592,13 @@ int main(int argc, char *argv[]) {
     fdKey = open(ffn, O_CREAT | O_WRONLY, S_IRUSR | S_IWUSR);
     sprintf(ffn, "%s/ProcessKey.bin", ResultFolder);
     fdProcKey = open(ffn, O_CREAT | O_WRONLY, S_IRUSR | S_IWUSR);
+    /* Consolidated per-spot table midas-process-grains reads for spot-aware
+     * mode + strain (read_fit_best: (nSeeds, MaxNHKLS, 22), col 0=SpotID,
+     * 1=obs y µm, 2=obs z µm). Sparse pwrite: only nSpotsComp rows per seed
+     * at the seed's MaxNHKLS stride; trailing slots stay zero. Lives in
+     * OutputFolder/ (dirname is the run dir process-grains reads from). */
+    sprintf(ffn, "%s/FitBest.bin", OutputFolder);
+    fdFitBest = open(ffn, O_CREAT | O_WRONLY, S_IRUSR | S_IWUSR);
   }
 
 #pragma omp parallel for num_threads(numProcs) private(thisRowNr)              \
@@ -1660,18 +1673,27 @@ int main(int argc, char *argv[]) {
       free(locArr2);
     } else {
       voxNr = (int)infoArr[thisRowNr * 5 + 0];
-      nSpotsBest = (int)infoArr[thisRowNr * 5 + 2];
-      spotIDS = malloc(nSpotsBest * sizeof(*spotIDS));
-      solIndex = infoArr[thisRowNr * 5 + 4]; /* bestSolIdx */
 
       /* Read from consolidated files */
       const double *voxVals = ConsolidatedReader_getVals(&consolVals, voxNr);
       const int *voxIDs = ConsolidatedReader_getIDs(&consolIDs, voxNr);
       if (!voxVals || !voxIDs) {
         printf("Warning: no consolidated data for voxel %d, skipping\n", voxNr);
-        free(spotIDS);
         continue;
       }
+      if (gNumScans <= 1) {
+        /* FF: SpotsToIndex.csv has no per-seed nSpots/solIdx columns. Use the
+         * best (first) solution; its matched-spot count lives in the
+         * consolidated record itself (col 15 = nMatched). */
+        solIndex = 0;
+        nSpotsBest = (int)voxVals[15];
+      } else {
+        nSpotsBest = (int)infoArr[thisRowNr * 5 + 2];
+        solIndex = infoArr[thisRowNr * 5 + 4]; /* bestSolIdx */
+      }
+      if (nSpotsBest <= 0 || nSpotsBest > MaxNSpotsBest)
+        continue;
+      spotIDS = malloc(nSpotsBest * sizeof(*spotIDS));
       memcpy(tmpArr, &voxVals[solIndex * CONSOLIDATED_VALS_COLS],
              CONSOLIDATED_VALS_COLS * sizeof(double));
       /* IDs for each solution are concatenated; sum nMatched (col 15) for
@@ -2032,8 +2054,10 @@ int main(int argc, char *argv[]) {
       ErrorsFin[i + 1] = ErrorFin[i];
 
     /* FF (D9): write per-grain result to the legacy OrientPosFit.bin /
-     * Key.bin / ProcessKey.bin layout (pwrite at rowNr offset; thread-safe). */
-    if (ffLegacySeeds) {
+     * Key.bin / ProcessKey.bin layout (pwrite at rowNr offset; thread-safe).
+     * Both FF seed sources (legacy IndexBest.bin and consolidated c-omp
+     * IndexBest_all.bin) produce these; PF (nScans>1) writes SpotDiagnostics. */
+    if (ffLegacySeeds || gNumScans <= 1) {
       size_t rowNrW = infoArr[thisRowNr * 5 + 0];
       double OutMatr[27];
       for (i = 0; i < 10; i++) OutMatr[i] = OrientsFit[i];
@@ -2203,6 +2227,22 @@ int main(int argc, char *argv[]) {
       }
       fclose(outF);
     }
+    /* Consolidated FitBest.bin (read_fit_best layout): pwrite this seed's
+     * nSpotsComp matched-spot rows (SpotsOut cols 0..21 = SpotID, obs y/z µm,
+     * …) at the seed's MaxNHKLS*22 stride. Enables spot-aware process-grains +
+     * per-spot strain for the c-omp FF path (no per-seed CSV scan needed). */
+    if (fdFitBest >= 0 && nSpotsComp > 0) {
+      size_t rowNrFB = infoArr[thisRowNr * 5 + 0];
+      double *fbBuf = malloc((size_t)nSpotsComp * 22 * sizeof(double));
+      if (fbBuf) {
+        for (i = 0; i < nSpotsComp; i++)
+          for (j = 0; j < 22; j++)
+            fbBuf[(size_t)i * 22 + j] = SpotsOut[i][j];
+        size_t fbOff = (size_t)MaxNHKLS * 22 * sizeof(double) * rowNrFB;
+        pwrite(fdFitBest, fbBuf, (size_t)nSpotsComp * 22 * sizeof(double), fbOff);
+        free(fbBuf);
+      }
+    }
     free(spotIDS);
     FreeMemMatrix(spotsYZO, nSpotsBest);
     FreeMemMatrix(SpotsOut, nSpotsComp);
@@ -2266,6 +2306,7 @@ int main(int argc, char *argv[]) {
   if (fdOrientPos >= 0) close(fdOrientPos);
   if (fdKey >= 0) close(fdKey);
   if (fdProcKey >= 0) close(fdProcKey);
+  if (fdFitBest >= 0) close(fdFitBest);
   FreeMemMatrix(hkls, MaxNHKLS);
   free(infoArr);
   munmap(AllSpots, size);

@@ -5,7 +5,7 @@ Drop-in replacement for the C executables ``FitPosOrStrainsOMP`` /
 under module-private submodules.
 """
 
-__version__ = "0.5.1"
+__version__ = "0.5.2"
 
 from .config import FitConfig
 from .device import resolve_device, resolve_dtype
@@ -21,6 +21,12 @@ from .io_binary import (
     write_fit_best_row,
     write_key_row,
     write_process_key_row,
+)
+from .fitbest_view import (
+    FITBEST_COLS,
+    FitBestGrainView,
+    from_array as fitbest_from_array,
+    grain_view as fitbest_grain_view,
 )
 from .batch import MatchBatch, ObservedBatch, batch_residuals
 from .matching import MatchResult, associate, ring_slot_lookup
