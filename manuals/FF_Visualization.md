@@ -23,7 +23,7 @@ The **MIDAS FF-HEDM Desktop Image Viewer** (`ff_asym_qt.py`) is a PyQt5/PyQtGrap
 - **Nearest ring display** at cursor position in status bar
 - **Image transformations**: horizontal flip, vertical flip, transpose
 - **Drag-and-drop** file and folder loading
-- **Session save/restore** for persistent viewer state
+- **Session save/restore** for persistent viewer state, including data source, display, and overlay settings
 - **9 colormaps** and dark/light theme support
 - **Export PNG** for screenshots
 
@@ -268,7 +268,17 @@ The toolbar includes Play/Pause/Stop buttons for automated frame playback with c
 
 ### 5.5. Session Save/Restore
 
-Save the current viewer state (file paths, frame, settings) to a `.session.json` file using **Ctrl+S**. Restore a saved session with **Ctrl+Shift+S**.
+Save the current viewer state to a `.session.json` file using **Ctrl+S**. Restore a saved session with **Ctrl+Shift+S**.
+
+The saved session now captures the full working context for the FF viewer, including:
+
+- data source fields such as folder, file stem, detector selection, HDF5 data and dark dataset paths, and frame index
+- dark-field and mask configuration, including whether each correction is enabled
+- image geometry and instrument fields such as detector size, header size, bytes per pixel, Lsd, BC, Tx, and pixel size
+- display state such as manual intensity limits, colormap, theme, log scale, transforms, axes, ring visibility, and max or sum-over-frames controls
+- crystallography and overlay state, including space group, wavelength, caking parameter file, and the **Instr. only** toggle
+
+The File menu also exposes **Quit** with **Ctrl+Q** in addition to the existing single-key **Q** shortcut.
 
 ### 5.6. Drag-and-Drop
 
