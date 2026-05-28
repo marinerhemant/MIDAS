@@ -8,7 +8,7 @@ Public surface (stable):
   - VALIDATORS, resolve                                            (validator lookup)
 """
 
-__version__ = "0.3.2"
+__version__ = "0.3.3"
 
 from .schema import (
     CrossFieldRule,
@@ -24,6 +24,7 @@ from .registry import PARAMS, by_name, for_path, required_for, wizard_visible_fo
 from .crossfield import RULE_SPECS, RULES
 from .validators import VALIDATORS, Ctx, resolve
 from .discovery import DiscoveryResult, discover_from_file, discover_from_calibration_file, merge
+from .notebook import build_paramstest, seeds_from_calibration_result
 
 __all__ = [
     "CrossFieldRule",
@@ -40,6 +41,7 @@ __all__ = [
     "VALIDATORS",
     "ValidationIssue",
     "ValidationReport",
+    "build_paramstest",
     "by_name",
     "discover_from_file",
     "discover_from_calibration_file",
@@ -47,5 +49,6 @@ __all__ = [
     "merge",
     "required_for",
     "resolve",
+    "seeds_from_calibration_result",
     "wizard_visible_for",
 ]
