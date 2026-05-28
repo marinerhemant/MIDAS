@@ -4,7 +4,7 @@
 **Contact:** hsharma@anl.gov
 
 > [!NOTE]
-> **v11 updates:** FF viewer: independent colormap dropdowns per plot, all Grains.csv columns as color options, CBF file format support, zoom preservation on log scale toggle. NF viewer: right-click for spot selection (left-click = zoom), cyan crosshair markers, auto-compute distances on "Finished", visual results dialog with crop patches + ray triangulation diagram, box profile auto-refresh with pixel coordinates, orange-red edge lines, cursor tracking + colorbar on mic scatter map, defaults to highest-res map, zoom preserved on plot type switch.
+> **v11 updates:** FF viewer: independent colormap dropdowns per plot, all Grains.csv columns as color options, CBF file format support, zoom preservation on log scale toggle, and broader session restore coverage for data-source, display, and overlay state. NF viewer: right-click for spot selection (left-click = zoom), cyan crosshair markers, auto-compute distances on "Finished", visual results dialog with crop patches + ray triangulation diagram, box profile auto-refresh with pixel coordinates, orange-red edge lines, cursor tracking + colorbar on mic scatter map, defaults to highest-res map, zoom preserved on plot type switch.
 
 ---
 
@@ -73,7 +73,7 @@ python ~/opt/MIDAS/gui/ff_asym_qt.py &
 - **🎬 Movie mode**: Play/Pause/Stop + FPS slider (1–30) — animates through frames automatically
 - **🖱️ Drag-and-drop**: drop a file or folder onto the viewer to open it
 - **📊 Intensity vs Frame**: dock widget showing mean/max intensity across all frames, click to jump (View → Intensity vs Frame)
-- **💾 Session save/restore**: File → Save/Load Session as `.session.json` (Ctrl+S / Ctrl+Shift+S)
+- **💾 Session save/restore**: File → Save/Load Session as `.session.json` (Ctrl+S / Ctrl+Shift+S), restoring HDF5 paths, dark and mask settings, geometry, display limits, detector mode, and overlay state
 
 ### Key Differences from Legacy (`ff_asym.py`)
 
@@ -94,6 +94,7 @@ python ~/opt/MIDAS/gui/ff_asym_qt.py &
 | L | Toggle log scale |
 | R | Toggle ring overlay |
 | Q | Quit |
+| Ctrl+Q | Quit |
 | Ctrl+S | Save session |
 | Ctrl+Shift+S | Load session |
 

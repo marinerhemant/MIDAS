@@ -516,6 +516,10 @@ class FFViewer(QtWidgets.QMainWindow):
         param_act = file_menu.addAction('Load Param File...')
         param_act.setShortcut('Ctrl+P')
         param_act.triggered.connect(self._on_load_param_file)
+        file_menu.addSeparator()
+        quit_act = file_menu.addAction('Quit')
+        quit_act.setShortcut('Ctrl+Q')
+        quit_act.triggered.connect(self.close)
 
         # ── Toolbar ──
         tb = self._build_toolbar()
@@ -1411,24 +1415,55 @@ class FFViewer(QtWidgets.QMainWindow):
             return
         if not fn.endswith('.session.json'):
             fn += '.session.json'
+
+        def _try_float(w):
+            try:
+                return float(w.text())
+            except (ValueError, AttributeError):
+                return None
+
         state = {
             'viewer': 'ff',
+            # File / data
             'folder': self.folder,
             'file_stem': self.file_stem,
             'first_file_nr': self.first_file_nr,
             'padding': self.padding,
             'ext': self.ext,
             'file_sep': self.file_sep,
+            'det_nr': self.det_nr,
+            'sep_folder': self.sep_folder,
             'frame': self.frame_spin.value(),
+            'n_frames_per_file': self.n_frames_per_file,
+            'hdf5_data_path': self.h5data_edit.text(),
+            'hdf5_dark_path': self.h5dark_edit.text(),
+            # Dark
+            'use_dark': self.dark_check.isChecked(),
+            'dark_fn': self.dark_fn,
+            'dark_folder': self.dark_folder,
+            'dark_stem': self.dark_stem,
+            'dark_num': self.dark_num,
+            # Mask
+            'mask_fn': self.mask_fn,
+            'mask_path_in_field': self.mask_edit.text(),
+            'apply_mask': self.mask_check.isChecked(),
+            # Image geometry
             'ny': self.ny, 'nz': self.nz,
             'header_size': self.header_size,
             'bytes_per_pixel': self.bytes_per_pixel,
-            'n_frames_per_file': self.n_frames_per_file,
-            'lsd': float(self.lsd_edit.text()),
-            'bcy': float(self.bcy_edit.text()),
-            'bcz': float(self.bcz_edit.text()),
-            'tx': float(self.tx_edit.text()),
-            'px': float(self.px_edit.text()),
+            'lsd': _try_float(self.lsd_edit),
+            'bcy': _try_float(self.bcy_edit),
+            'bcz': _try_float(self.bcz_edit),
+            'tx': _try_float(self.tx_edit),
+            'px': _try_float(self.px_edit),
+            # Display
+            'min_intensity': _try_float(self.min_intensity_edit),
+            'max_intensity': _try_float(self.max_intensity_edit),
+            'composite_mode': self.composite_combo.currentText(),
+            'detector_mode': self.detector_mode_combo.currentText(),
+            'max_frames_spin': self.max_frames_spin.value(),
+            'max_per_frames': self.max_check.isChecked(),
+            'sum_per_frames': self.sum_check.isChecked(),
             'colormap': self.cmap_combo.currentText(),
             'theme': self.theme_combo.currentText(),
             'log': self.log_check.isChecked(),
@@ -1437,9 +1472,13 @@ class FFViewer(QtWidgets.QMainWindow):
             'transpose': self.transpose_check.isChecked(),
             'show_rings': self.rings_check.isChecked(),
             'show_axes': self.axes_check.isChecked(),
+            # Crystallography
+            'sg': self.sg,
+            'wl': self.wl,
+            # Caking / param-file
             'show_caking': self.show_caking,
             'cake_params_file': self.cake_params_file,
-            'use_dark': self.dark_check.isChecked(),
+            'instr_only': self.instr_only_check.isChecked(),
         }
         try:
             with open(fn, 'w') as f:
@@ -1459,30 +1498,68 @@ class FFViewer(QtWidgets.QMainWindow):
         except Exception as e:
             print(f'Session load failed: {e}')
             return
+
+        # ── Model attributes ─────────────────────────────────────────
         self.folder = state.get('folder', self.folder)
         self.file_stem = state.get('file_stem', self.file_stem)
         self.first_file_nr = state.get('first_file_nr', self.first_file_nr)
         self.padding = state.get('padding', self.padding)
         self.ext = state.get('ext', self.ext)
         self.file_sep = state.get('file_sep', self.file_sep)
+        self.det_nr = state.get('det_nr', self.det_nr)
+        self.sep_folder = state.get('sep_folder', self.sep_folder)
         self.ny = state.get('ny', self.ny)
         self.nz = state.get('nz', self.nz)
         self.header_size = state.get('header_size', self.header_size)
         self.bytes_per_pixel = state.get('bytes_per_pixel', self.bytes_per_pixel)
         self.n_frames_per_file = state.get('n_frames_per_file', self.n_frames_per_file)
+        self.hdf5_data_path = state.get('hdf5_data_path', self.hdf5_data_path)
+        self.hdf5_dark_path = state.get('hdf5_dark_path', self.hdf5_dark_path)
+        self.dark_fn = state.get('dark_fn', self.dark_fn)
+        self.dark_folder = state.get('dark_folder', self.dark_folder)
+        self.dark_stem = state.get('dark_stem', self.dark_stem)
+        self.dark_num = state.get('dark_num', self.dark_num)
+        self.mask_fn = state.get('mask_fn', self.mask_fn)
+        self.sg = state.get('sg', self.sg)
+        self.wl = state.get('wl', self.wl)
 
+        # ── Widgets that mirror model attributes ─────────────────────
         self.file_nr_edit.setText(str(self.first_file_nr))
-        self.nypx_edit.setText(str(self.ny))
-        self.nzpx_edit.setText(str(self.nz))
+        self.ny_edit.setText(str(self.ny))
+        self.nz_edit.setText(str(self.nz))
         self.header_edit.setText(str(self.header_size))
         self.bpp_edit.setText(str(self.bytes_per_pixel))
         self.nframes_edit.setText(str(self.n_frames_per_file))
+        self.h5data_edit.setText(self.hdf5_data_path)
+        self.h5dark_edit.setText(self.hdf5_dark_path)
+        self.mask_edit.setText(state.get('mask_path_in_field', self.mask_fn or ''))
+
+        # Geometry edits
         self.lsd_edit.setText(str(state.get('lsd', 1000000.0)))
         self.bcy_edit.setText(str(state.get('bcy', 1024.0)))
         self.bcz_edit.setText(str(state.get('bcz', 1024.0)))
         self.tx_edit.setText(str(state.get('tx', 0.0)))
         self.px_edit.setText(str(state.get('px', 200.0)))
 
+        # Intensity range (set before Apply so it sticks). Mark levels as
+        # initialized so the next _on_stats_updated does NOT auto-populate
+        # MinI/MaxI from P2/P98 and overwrite what we just loaded.
+        min_i = state.get('min_intensity')
+        if min_i is not None:
+            self.min_intensity_edit.setText(str(min_i))
+        max_i = state.get('max_intensity')
+        if max_i is not None:
+            self.max_intensity_edit.setText(str(max_i))
+        if min_i is not None or max_i is not None:
+            self._levels_initialized = True
+
+        # Display state
+        self.composite_combo.setCurrentText(state.get('composite_mode',
+                                                      self.composite_combo.currentText()))
+        self.detector_mode_combo.setCurrentText(state.get('detector_mode',
+                                                          self.detector_mode_combo.currentText()))
+        self.max_frames_spin.setValue(int(state.get('max_frames_spin',
+                                                    self.max_frames_spin.value())))
         self.cmap_combo.setCurrentText(state.get('colormap', 'bone'))
         self.theme_combo.setCurrentText(state.get('theme', 'light'))
         self.log_check.setChecked(state.get('log', False))
@@ -1491,14 +1568,28 @@ class FFViewer(QtWidgets.QMainWindow):
         self.transpose_check.setChecked(state.get('transpose', False))
         self.rings_check.setChecked(state.get('show_rings', False))
         self.axes_check.setChecked(state.get('show_axes', False))
+        self.max_check.setChecked(state.get('max_per_frames', False))
+        self.sum_check.setChecked(state.get('sum_per_frames', False))
+        self.mask_check.setChecked(state.get('apply_mask', False))
+        self.instr_only_check.setChecked(state.get('instr_only', False))
+
+        # Caking overlay
         cake_f = state.get('cake_params_file', '')
         if cake_f and os.path.exists(cake_f):
             self._load_cake_file(cake_f)
         if state.get('show_caking', False):
             self._show_cake_overlay()
-        self.dark_check.setChecked(state.get('use_dark', False))
 
+        # Dark / frame index last (these trigger reloads)
+        self.dark_check.setChecked(state.get('use_dark', False))
         self.frame_spin.setValue(state.get('frame', 0))
+
+        # Push intensity levels into the image view to match the loaded fields
+        try:
+            self._apply_intensity_levels()
+        except Exception:
+            pass
+
         print(f'Session loaded: {fn}')
 
     # ── Parameter File ─────────────────────────────────────────────
