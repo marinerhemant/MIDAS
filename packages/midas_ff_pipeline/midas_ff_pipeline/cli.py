@@ -683,6 +683,19 @@ def _cmd_simulate(args: argparse.Namespace) -> int:
 
 
 def main(argv: Optional[list[str]] = None) -> int:
+    # Loud deprecation banner — this prints on every CLI invocation regardless
+    # of -W filters, because DeprecationWarning is silent by default and we
+    # want users to see the migration message NOW (the package import already
+    # raises DeprecationWarning at the Python layer).
+    print(
+        "\n"
+        "  ─────────────────────────────────────────────────────────────────\n"
+        "  midas-ff-pipeline is DEPRECATED as of 0.4.0 (will be removed in 1.0.0).\n"
+        "  Use `midas-pipeline run --scan-mode ff …` instead — same orchestrator,\n"
+        "  unified FF + PF surface. See MIDAS_FF_PIPELINE_DEPRECATION_PLAN.md.\n"
+        "  ─────────────────────────────────────────────────────────────────\n",
+        file=sys.stderr,
+    )
     parser = _build_parser()
     args = parser.parse_args(argv)
     return args.func(args)

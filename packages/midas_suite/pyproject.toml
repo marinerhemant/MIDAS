@@ -4,7 +4,7 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "midas-suite"
-version = "0.3.14"
+version = "0.3.15"
 description = "Meta-package: installs the MIDAS Python pipeline (FF/NF/PF HEDM, calibration, peakfit, integration, transforms, ODF, stress)."
 readme = "README.md"
 license = { text = "BSD-3-Clause" }
@@ -50,9 +50,9 @@ dependencies = [
     "midas-zipper>=0.1.0",         # raw → .MIDAS.zip ingest (pip-portable, no C/source-tree dep)
     # parsl + pipeline orchestrators
     "midas-parsl-configs>=0.1.0",
-    "midas-ff-pipeline>=0.2.1",
+    "midas-ff-pipeline>=0.4.0",    # DEPRECATED → use midas-pipeline --scan-mode ff; removed in suite 1.0
     "midas-nf-pipeline>=0.1.0",
-    "midas-pipeline>=0.4.7",       # >=0.4.7: skip-stage messages demoted to DEBUG (cleaner INFO log)
+    "midas-pipeline>=0.4.8",       # >=0.4.7: skip-stage messages demoted to DEBUG (cleaner INFO log)
 ]
 
 [project.optional-dependencies]
@@ -64,7 +64,7 @@ dependencies = [
 ff = [
     "midas-stress>=0.7.0",
     "midas-params>=0.3.4",
-    "midas-ff-pipeline>=0.2.1",
+    "midas-ff-pipeline>=0.4.0",    # DEPRECATED → use midas-pipeline --scan-mode ff; removed in suite 1.0
     "midas-calibrate>=0.2.7",          # >=0.2.7: paramstest parser strips ';' terminator
     "midas-integrate>=0.4.0",
     "midas-joint-ff-calibrate>=0.1.5", # grain-tx + full-joint refine (IUCrJ 2026)
