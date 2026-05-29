@@ -478,6 +478,14 @@ class PipelineConfig:
     # Raw-data overrides
     raw_dir: Optional[str] = None
 
+    # FF-mode seeding (NF→FF grain seed handoff and explicit GrainsFile).
+    # Resolution order per layer N:
+    #   1. ``nf_result_dir/GrainsLayer{N}.csv`` if it exists,
+    #   2. ``grains_file`` (one file for all layers),
+    #   3. no seed (full indexer search).
+    grains_file: Optional[str] = None
+    nf_result_dir: Optional[str] = None
+
     # Ingestion
     num_frame_chunks: int = -1
     preproc_thresh: int = -1
@@ -515,6 +523,10 @@ class PipelineConfig:
             self.detectors_json = str(Path(self.detectors_json).resolve())
         if self.raw_dir:
             self.raw_dir = str(Path(self.raw_dir).resolve())
+        if self.grains_file:
+            self.grains_file = str(Path(self.grains_file).resolve())
+        if self.nf_result_dir:
+            self.nf_result_dir = str(Path(self.nf_result_dir).resolve())
         if self.resume == "from" and not self.resume_from_stage:
             raise ValueError("resume='from' requires resume_from_stage")
         if self.resume_from_stage and self.resume != "from":

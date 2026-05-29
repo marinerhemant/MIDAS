@@ -29,6 +29,7 @@ from typing import Callable, List, Sequence, Tuple
 from . import stages
 from ._logging import LOG, configure_logging, stage_timer
 from .config import PipelineConfig, ScanMode
+from .detector import DetectorConfig
 from .dispatch import configure_dispatch
 from .provenance import ProvenanceStore
 from .results import LayerResult, StageResult
@@ -131,12 +132,59 @@ class Pipeline:
     """
 
     config: PipelineConfig
+    detectors: Sequence[DetectorConfig] = ()
+
+    def __post_init__(self) -> None:
+        if not self.detectors:
+            self.detectors = self._discover_detectors()
+
+    def _discover_detectors(self) -> List[DetectorConfig]:
+        """Resolve detector geometry list (tolerant — empty on failure).
+
+        Priority:
+          1. ``config.detectors_json`` (multi-det JSON spec).
+          2. ``DetParams N ...`` rows in the paramstest file (FF multi-det).
+          3. Single-detector fallback built from the global ``Lsd`` / ``BC``
+             / tilt keys in the paramstest.
+
+        If paramstest is missing/incomplete (common for PF runs whose
+        geometry comes from the merged paramstest written later by the
+        peakfit/cross_det_merge stages), returns ``[]``. Stages that
+        actually need detector geometry will fail when invoked.
+        """
+        if self.config.detectors_json:
+            return DetectorConfig.load_many(self.config.detectors_json)
+        try:
+            dets = DetectorConfig.load_from_paramstest(
+                self.config.params_file,
+                zarr_path=self.config.zarr_path,
+            )
+        except (FileNotFoundError, ValueError):
+            dets = []
+        if dets:
+            if self.config.zarr_path:
+                for d in dets:
+                    if not d.zarr_path:
+                        d.zarr_path = self.config.zarr_path
+            return dets
+        try:
+            return [DetectorConfig.single_from_paramstest(
+                self.config.params_file,
+                zarr_path=self.config.zarr_path,
+            )]
+        except (FileNotFoundError, ValueError):
+            return []
 
     def run(self) -> List[LayerResult]:
         configure_logging()
-        configure_dispatch(self.config.machine.name,
-                           self.config.machine.n_nodes,
-                           self.config.n_cpus)
+        # Resolve cluster defaults + load parsl config; push back resolved
+        # (n_cpus, n_nodes) so downstream stages see the cluster-aware
+        # values, not whatever the caller passed (often -1 / 0 for "auto").
+        n_cpus, n_nodes = configure_dispatch(self.config.machine.name,
+                                             self.config.machine.n_nodes,
+                                             self.config.n_cpus)
+        self.config.n_cpus = n_cpus
+        self.config.machine.n_nodes = n_nodes
         results: List[LayerResult] = []
         for layer_nr in self.config.layer_selection.layers():
             results.append(self._run_layer(layer_nr))
@@ -155,6 +203,7 @@ class Pipeline:
             layer_nr=layer_nr,
             layer_dir=layer_dir,
             log_dir=log_dir,
+            detectors=list(self.detectors),
         )
 
     def _run_layer(self, layer_nr: int) -> LayerResult:
@@ -162,6 +211,22 @@ class Pipeline:
         store = ProvenanceStore(ctx.layer_dir)
         layer_result = LayerResult(layer_nr=layer_nr,
                                    layer_dir=str(ctx.layer_dir))
+
+        # Per-layer FF seed-grain resolution (NF→FF handoff or fixed file).
+        # Idempotent: writes GrainsFile + MinNrSpots 1 into the params file
+        # so downstream midas-fit-setup picks up the seed.
+        if self.config.is_ff and (
+            self.config.nf_result_dir or self.config.grains_file
+        ):
+            from pathlib import Path as _P
+            from .ff_seeding import patch_params_with_grains, resolve_grains_file_for_layer
+            seed = resolve_grains_file_for_layer(
+                layer_nr=layer_nr,
+                grains_file=self.config.grains_file,
+                nf_result_dir=self.config.nf_result_dir,
+            )
+            if seed:
+                patch_params_with_grains(_P(self.config.params_file), seed)
 
         scan_mode = self.config.scan.scan_mode
         stage_list = stage_order_for(scan_mode)

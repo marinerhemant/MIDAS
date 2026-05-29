@@ -4,7 +4,7 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "midas-suite"
-version = "0.3.15"
+version = "0.3.16"
 description = "Meta-package: installs the MIDAS Python pipeline (FF/NF/PF HEDM, calibration, peakfit, integration, transforms, ODF, stress)."
 readme = "README.md"
 license = { text = "BSD-3-Clause" }
@@ -52,7 +52,7 @@ dependencies = [
     "midas-parsl-configs>=0.1.0",
     "midas-ff-pipeline>=0.4.0",    # DEPRECATED → use midas-pipeline --scan-mode ff; removed in suite 1.0
     "midas-nf-pipeline>=0.1.0",
-    "midas-pipeline>=0.4.8",       # >=0.4.7: skip-stage messages demoted to DEBUG (cleaner INFO log)
+    "midas-pipeline>=0.4.9",       # >=0.4.9: unified FF orchestrator — DetectorConfig, cross_det_merge, discovery+batch, ff_seeding, eta_coverage, sr_midas shim, reprocess, full global_powder, CLI auto-resolve, simulate + 7 ported notebooks
 ]
 
 [project.optional-dependencies]
@@ -80,7 +80,7 @@ pf = [
     # stress transitively; we list the orchestrator at the top.
     "midas-stress>=0.7.0",
     "midas-params>=0.3.4",
-    "midas-pipeline[fast]>=0.4.7",         # >=0.4.7: cleaner skip-stage log; fast = numba>=0.65
+    "midas-pipeline[fast]>=0.4.9",         # >=0.4.9: unified FF orchestrator; fast = numba>=0.65
     "midas-calibrate>=0.2.7",
     "midas-integrate>=0.4.0",
 ]

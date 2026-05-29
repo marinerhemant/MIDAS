@@ -4,9 +4,10 @@ The ``StageContext`` is a mutable execution context handed to every
 stage. It carries the immutable ``PipelineConfig`` plus the per-layer /
 per-run path bookkeeping the stage needs.
 
-P1 keeps the multi-detector machinery (``DetectorConfig`` list) out of
-this — single-detector is the common case for the scaffold; multi-det
-lands in P1.5 or P3 when the stage-internal logic actually consumes it.
+Multi-detector FF runs populate ``detectors`` with >1 panel; single-det
+runs (FF or PF) carry a one-element list. The ``is_multi_detector`` /
+``detector_dir()`` / ``stage_dir()`` helpers let downstream stages stay
+oblivious to which mode they're in.
 """
 
 from __future__ import annotations
@@ -14,12 +15,13 @@ from __future__ import annotations
 import os
 import shlex
 import subprocess
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from pathlib import Path
-from typing import Iterable, Optional, Sequence
+from typing import Iterable, List, Optional, Sequence
 
 from .._logging import LOG
 from ..config import PipelineConfig
+from ..detector import DetectorConfig
 
 
 @dataclass
@@ -30,6 +32,7 @@ class StageContext:
     layer_nr: int
     layer_dir: Path
     log_dir: Path
+    detectors: List[DetectorConfig] = field(default_factory=list)
     merged_paramstest: Optional[Path] = None
 
     @property
@@ -43,6 +46,24 @@ class StageContext:
     @property
     def is_pf(self) -> bool:
         return self.config.is_pf
+
+    @property
+    def is_multi_detector(self) -> bool:
+        return len(self.detectors) > 1
+
+    def detector_dir(self, det: DetectorConfig) -> Path:
+        """Per-detector working dir (only used for multi-det runs)."""
+        return self.layer_dir / f"Det_{det.det_id}"
+
+    def stage_dir(self, det: Optional[DetectorConfig] = None) -> Path:
+        """Where a stage writes its outputs.
+
+        Single-det runs write directly into ``layer_dir``. Multi-det
+        per-detector stages write into ``layer_dir/Det_<id>/``.
+        """
+        if det is None or not self.is_multi_detector:
+            return self.layer_dir
+        return self.detector_dir(det)
 
 
 def resolve_layer_dir(result_dir: Path, layer_nr: int) -> Path:

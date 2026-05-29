@@ -114,7 +114,10 @@ def _build_parser() -> argparse.ArgumentParser:
     run.add_argument("--machine", default="local")
     run.add_argument("--n-nodes", type=int, default=1)
     run.add_argument("--device", choices=["cpu", "cuda", "mps"], default="cuda")
-    run.add_argument("--dtype", choices=["float32", "float64"], default="float64")
+    run.add_argument("--dtype", choices=["auto", "float32", "float64"],
+                     default="auto",
+                     help="'auto' = float32 on cuda/mps (production speed), "
+                          "float64 on cpu (matches the fp64 parity gate).")
 
     # Resume / stage selection
     run.add_argument("--resume", choices=["none", "auto", "from"], default="auto")
@@ -151,10 +154,19 @@ def _build_parser() -> argparse.ArgumentParser:
                      help="±half-width on α, β, γ (default 2°)")
 
     # Indexer
-    run.add_argument("--group-size", type=int, default=4,
-                     help="indexer seed group size (default 4 for fp64 safety)")
-    run.add_argument("--shard-gpus", default=None,
-                     help="comma-separated CUDA indices for multi-GPU indexing")
+    run.add_argument("--group-size", default="auto",
+                     help="indexer seed group size. 'auto' picks based on the "
+                          "smallest visible GPU's memory tier (≥70GB→8, ≥32GB→4, "
+                          "≥16GB→2, <16GB→1), then down-scales for datasets "
+                          "denser than the park22 baseline (8 rings, 720 frames). "
+                          "An integer overrides the auto pick.")
+    run.add_argument("--shard-gpus", default="auto",
+                     help="comma-separated CUDA indices for multi-GPU indexing. "
+                          "'auto' uses every visible CUDA device when --device=cuda; "
+                          "'none' / empty disables sharding.")
+    run.add_argument("--cpu-shards", default="auto",
+                     help="how many CPU-only indexer shards to run in parallel. "
+                          "'auto' picks max(1, n_cpus // 16) on CPU, 1 elsewhere.")
     run.add_argument("--indexer-backend", choices=["python", "c-omp"],
                      default="c-omp",
                      help="indexing backend: 'c-omp' (default, bundled unified "
@@ -334,6 +346,18 @@ def _build_parser() -> argparse.ArgumentParser:
                      help="detectors.json for multi-detector run")
     run.add_argument("--raw-dir", default=None)
 
+    # Batch mode (FF; mirrors legacy ff_MIDAS.py -batchMode)
+    run.add_argument("--batch", action="store_true",
+                     help="(FF) auto-discover one raw file per layer in "
+                          "RawFolder; iterate FileStem + per-layer seed "
+                          "resolution across the layer range.")
+    run.add_argument("--nf-result-dir", default=None,
+                     help="(FF) directory containing GrainsLayer{N}.csv "
+                          "seed files (NF→FF handoff).")
+    run.add_argument("--ff-grains-file", default=None,
+                     help="(FF) one GrainsFile applied to every layer; "
+                          "alternative to --nf-result-dir.")
+
     # Validation
     run.add_argument("--skip-validation", action="store_true")
     run.add_argument("--strict-validation", action="store_true")
@@ -373,7 +397,19 @@ def _build_parser() -> argparse.ArgumentParser:
     sim.add_argument("--scan-range", type=float, default=70.0)
     sim.add_argument("--seed", type=int, default=42)
     sim.add_argument("--n-cpus", type=int, default=8)
-    sim.add_argument("--n-detectors", type=int, default=1)
+    sim.add_argument("--n-detectors", type=int, default=1,
+                     help="number of detectors. >1 → multi-det layout")
+    sim.add_argument("--mode", default="ff_compressed",
+                     choices=["ff_compressed", "diffract_pinwheel"],
+                     help="forward-sim backend: 'ff_compressed' (legacy "
+                          "ForwardSimulationCompressed, single-panel per call) "
+                          "or 'diffract_pinwheel' (midas_diffract HEDMForwardModel "
+                          "with multi_mode='panel'; required for true pinwheel).")
+    sim.add_argument("--device", default="cuda",
+                     help="GPU device for diffract_pinwheel (cuda / cuda:0 / cpu)")
+    sim.add_argument("--no-hydra-geometry", action="store_true",
+                     help="for diffract_pinwheel: use simplified pinwheel "
+                          "(shared BC, no Lsd jitter) instead of hydra-real geometry")
 
     sd = sub.add_parser("seed",
                         help="run the merged-FF seeding sub-pipeline standalone")
@@ -395,6 +431,150 @@ def _parse_layers(spec: str) -> LayerSelection:
         return LayerSelection(start=int(start), end=int(end))
     n = int(spec)
     return LayerSelection(start=n, end=n)
+
+
+# ---------------------------------------------------------------------------
+# Auto-resolution helpers (cluster + GPU + dataset density)
+# ---------------------------------------------------------------------------
+
+
+def _resolve_dtype(device: str, dtype_arg: str) -> str:
+    """``auto`` → float32 on cuda/mps (production), float64 on cpu (parity).
+    Explicit values pass through.
+    """
+    if dtype_arg != "auto":
+        return dtype_arg
+    return "float32" if device in ("cuda", "mps") else "float64"
+
+
+def _resolve_shard_gpus(device: str, shard_arg: str | None) -> str | None:
+    """``auto`` → all visible CUDA devices when device=cuda. ``none``/empty
+    disables sharding. Explicit comma list (e.g. ``'0,1'``) passes through.
+    """
+    if shard_arg in ("none", "None", "", None):
+        return None
+    if shard_arg != "auto":
+        return shard_arg
+    if device != "cuda":
+        return None
+    try:
+        import torch
+        n = torch.cuda.device_count()
+    except Exception:
+        return None
+    if n <= 1:
+        return None
+    return ",".join(str(i) for i in range(n))
+
+
+def _resolve_cpu_shards(device: str, n_cpus: int, cpu_shards_arg: str) -> int:
+    """``auto`` → ``max(1, n_cpus // 16)`` on CPU, 1 elsewhere."""
+    if device != "cpu":
+        return 1
+    if cpu_shards_arg in ("auto", ""):
+        return max(1, n_cpus // 16)
+    try:
+        return max(1, int(cpu_shards_arg))
+    except ValueError:
+        raise SystemExit(
+            f"--cpu-shards must be 'auto' or an integer, got {cpu_shards_arg!r}"
+        )
+
+
+_BASELINE_N_RINGS = 8        # park22 FCC reference
+_BASELINE_N_OMEGA = 720      # park22 reference scan length
+
+
+def _count_dataset_density(params_file: str | None) -> tuple[int, int]:
+    """Parse paramstest to return ``(n_rings, n_omega_steps)``. ``(0, 0)`` on
+    any failure (caller treats as no density info).
+    """
+    if params_file is None:
+        return 0, 0
+    try:
+        with open(params_file) as f:
+            text = f.read()
+    except OSError:
+        return 0, 0
+    ring_keys = {"RingNumbers", "RingThresh", "RingsToIndex", "RingsToUse"}
+    rings_per_key: dict[str, int] = {}
+    ostart = ostop = ostep = None
+    for raw in text.splitlines():
+        line = raw.strip().rstrip(";")
+        if not line or line.startswith("#"):
+            continue
+        parts = line.split()
+        key = parts[0]
+        if key in ring_keys:
+            rings_per_key[key] = rings_per_key.get(key, 0) + 1
+        elif key == "OmegaStart" and len(parts) >= 2:
+            try: ostart = float(parts[1])
+            except ValueError: pass
+        elif key == "OmegaEnd" and len(parts) >= 2:
+            try: ostop = float(parts[1])
+            except ValueError: pass
+        elif key == "OmegaStep" and len(parts) >= 2:
+            try: ostep = float(parts[1])
+            except ValueError: pass
+    n_rings = max(rings_per_key.values()) if rings_per_key else 0
+    if ostart is None or ostop is None or ostep is None or ostep == 0:
+        n_omega = 0
+    else:
+        n_omega = int(abs(ostop - ostart) / abs(ostep))
+    return n_rings, n_omega
+
+
+def _resolve_group_size(device: str, shard_gpus: str | None,
+                        group_size_arg: str,
+                        *,
+                        params_file: str | None = None) -> int:
+    """``auto`` → memory-tier baseline (≥70GB→8, ≥32GB→4, ≥16GB→2, <16GB→1)
+    down-scaled by dataset density (rings × ω-steps / park22 baseline).
+    Falls back to 4 (the legacy default) if memory probing fails or
+    device is non-cuda. Explicit integer passes through.
+    """
+    if group_size_arg != "auto":
+        try:
+            return int(group_size_arg)
+        except ValueError:
+            raise SystemExit(
+                f"--group-size must be 'auto' or an integer, got {group_size_arg!r}"
+            )
+    if device != "cuda":
+        return 4
+    try:
+        import torch
+        if not torch.cuda.is_available():
+            return 4
+        if shard_gpus:
+            indices = [int(x) for x in shard_gpus.split(",") if x.strip()]
+        else:
+            indices = list(range(torch.cuda.device_count()))
+        if not indices:
+            return 4
+        min_mem_gb = min(
+            torch.cuda.get_device_properties(i).total_memory / 1e9
+            for i in indices
+        )
+    except Exception:
+        return 4
+
+    if min_mem_gb >= 70:
+        baseline_gs = 8
+    elif min_mem_gb >= 32:
+        baseline_gs = 4
+    elif min_mem_gb >= 16:
+        baseline_gs = 2
+    else:
+        baseline_gs = 1
+
+    n_rings, n_omega = _count_dataset_density(params_file)
+    rings_factor = (n_rings / _BASELINE_N_RINGS) if n_rings > 0 else 1.0
+    omega_factor = (n_omega / _BASELINE_N_OMEGA) if n_omega > 0 else 1.0
+    if n_rings == 0 and n_omega == 0:
+        return baseline_gs
+    density = max(1.0, rings_factor * omega_factor)
+    return max(1, int(baseline_gs / density))
 
 
 def build_config(args: argparse.Namespace) -> PipelineConfig:
@@ -572,6 +752,8 @@ def build_config(args: argparse.Namespace) -> PipelineConfig:
         shard_gpus=args.shard_gpus,
         process_grains_mode=args.pg_mode,
         raw_dir=args.raw_dir,
+        grains_file=args.ff_grains_file,
+        nf_result_dir=args.nf_result_dir,
         num_frame_chunks=args.num_frame_chunks,
         preproc_thresh=args.preproc_thresh,
         convert_files=args.convert_files,
@@ -601,12 +783,27 @@ def build_config(args: argparse.Namespace) -> PipelineConfig:
 
 def _cmd_run(args: argparse.Namespace) -> int:
     configure_logging(level=getattr(logging, args.log_level))
+    # Resolve "auto" knobs in-place so build_config sees concrete values.
+    args.dtype = _resolve_dtype(args.device, args.dtype)
+    args.shard_gpus = _resolve_shard_gpus(args.device, args.shard_gpus)
+    args.group_size = _resolve_group_size(
+        args.device, args.shard_gpus, args.group_size, params_file=args.params,
+    )
+    args.cpu_shards = _resolve_cpu_shards(args.device, args.n_cpus, args.cpu_shards)
     cfg = build_config(args)
-    LOG.info("midas-pipeline run: scan_mode=%s, layers=%s, device=%s",
-             cfg.scan.scan_mode, args.layers, cfg.device)
+    LOG.info("midas-pipeline run: scan_mode=%s, layers=%s, device=%s, "
+             "dtype=%s, group_size=%d, shard_gpus=%s, cpu_shards=%d",
+             cfg.scan.scan_mode, args.layers, cfg.device, cfg.dtype,
+             cfg.indexer_group_size, cfg.shard_gpus, args.cpu_shards)
     pipeline = Pipeline(cfg)
-    results = pipeline.run()
-    LOG.info("done. layers processed: %d", len(results))
+    if getattr(args, "batch", False):
+        if cfg.scan.scan_mode != "ff":
+            raise ValueError("--batch is only valid for --scan-mode ff")
+        from .discovery import run_batch
+        run_batch(pipeline, args)
+    else:
+        results = pipeline.run()
+        LOG.info("done. layers processed: %d", len(results))
     return 0
 
 
@@ -639,9 +836,14 @@ def _cmd_resume(args: argparse.Namespace) -> int:
 
 
 def _cmd_reprocess(args: argparse.Namespace) -> int:
-    print("reprocess: not yet implemented in P1 scaffold "
-          "(lands when consolidation_pf goes live).", file=sys.stderr)
-    return 2
+    from .reprocess import reprocess_dir
+    reprocess_dir(
+        Path(args.result_dir),
+        n_cpus=args.n_cpus,
+        device=args.device,
+        dtype=args.dtype,
+    )
+    return 0
 
 
 def _cmd_inspect(args: argparse.Namespace) -> int:
@@ -658,10 +860,47 @@ def _cmd_inspect(args: argparse.Namespace) -> int:
 
 
 def _cmd_simulate(args: argparse.Namespace) -> int:
-    print("simulate: P1 scaffold — wraps tests/test_pf_hedm.py harness "
-          "in a later phase. Use the existing test harness for now.",
-          file=sys.stderr)
-    return 2
+    """Forward-simulate a synthetic dataset.
+
+    Single-detector: one ``.MIDAS.zip``. Multi-detector (n_detectors>1):
+    one zip per detector + a ``detectors.json`` ready for ``run --detectors``.
+    """
+    if args.n_detectors > 1:
+        if args.mode == "diffract_pinwheel":
+            from .testing import generate_pinwheel_synthetic_dataset
+            zips, dets_json = generate_pinwheel_synthetic_dataset(
+                out_dir=Path(args.out),
+                n_grains=args.n_grains,
+                seed=args.seed,
+                n_panels=args.n_detectors,
+                use_hydra_geometry=not args.no_hydra_geometry,
+                device=args.device,
+            )
+        else:
+            from .testing import generate_multidet_synthetic_dataset
+            zips, dets_json = generate_multidet_synthetic_dataset(
+                out_dir=Path(args.out),
+                params_template=Path(args.params),
+                n_grains=args.n_grains,
+                seed=args.seed,
+                n_cpus=args.n_cpus,
+                n_detectors=args.n_detectors,
+            )
+        for z in zips:
+            print(f"  zip: {z}")
+        print(f"detectors.json: {dets_json}")
+        return 0
+
+    from .testing import generate_synthetic_dataset
+    out_zip = generate_synthetic_dataset(
+        out_dir=Path(args.out),
+        params_template=Path(args.params),
+        n_grains=args.n_grains,
+        seed=args.seed,
+        n_cpus=args.n_cpus,
+    )
+    print(f"synthetic dataset: {out_zip}")
+    return 0
 
 
 def _cmd_seed(args: argparse.Namespace) -> int:

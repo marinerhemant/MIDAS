@@ -7,7 +7,7 @@ run with ``n_scans > 1``. One orchestrator, one CLI, two scan modes.
 
 from __future__ import annotations
 
-__version__ = "0.4.8"
+__version__ = "0.4.9"
 
 from .config import (
     AlignMethod,
@@ -38,6 +38,7 @@ from .config import (
     VoxelCleanupConfig,
     sniff_scan_mode_from_paramfile,
 )
+from .detector import DetectorConfig
 from .pipeline import Pipeline, all_stage_names, stage_order_for
 from .results import (
     LayerResult,
@@ -75,6 +76,8 @@ __all__ = [
     "SeedingConfig", "SeedingMode", "SinoSource", "SinoType",
     "SoftAttributionConfig", "VMapConfig", "VoxelCleanupConfig",
     "sniff_scan_mode_from_paramfile",
+    # detector
+    "DetectorConfig",
     # pipeline
     "Pipeline", "all_stage_names", "stage_order_for",
     # results
