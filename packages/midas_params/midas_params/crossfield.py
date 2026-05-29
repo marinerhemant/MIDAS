@@ -205,13 +205,21 @@ def omega_range_within_scan(ctx: Ctx) -> list[ValidationIssue]:
         # NF path: use NrFilesPerDistance
         nframes = ctx.all_values.get("NrFilesPerDistance")
         if nframes is None:
-            # FF/PF fallback: (EndNr - StartNr + 1) / NrFilesPerSweep
-            snr = ctx.all_values.get("StartNr")
-            enr = ctx.all_values.get("EndNr")
-            per_sweep = ctx.all_values.get("NrFilesPerSweep") or 1
-            if snr is None or enr is None:
-                return []  # not enough info to bound
-            nframes = (enr - snr + 1) // max(1, per_sweep)
+            # FF/PF: each ω sweep covers the same range = NrFilesPerSweep
+            # frames × OmegaStep. PF has multiple sweeps (different sample
+            # positions), but ω-range per sweep is identical, so this gives
+            # the correct ω-end either way.
+            per_sweep = ctx.all_values.get("NrFilesPerSweep")
+            if per_sweep is None:
+                # Fall back to (EndNr - StartNr + 1) if NrFilesPerSweep is
+                # missing — assumes a single sweep, FF-style numbering.
+                snr = ctx.all_values.get("StartNr")
+                enr = ctx.all_values.get("EndNr")
+                if snr is None or enr is None:
+                    return []
+                nframes = enr - snr + 1
+            else:
+                nframes = per_sweep
         end = start + step * nframes
 
     lo = min(start, end)
