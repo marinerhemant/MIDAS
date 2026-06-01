@@ -11,6 +11,8 @@
 #ifndef DETECTOR_GEOMETRY_H
 #define DETECTOR_GEOMETRY_H
 
+#define _GNU_SOURCE
+#include <stdlib.h>
 #include <math.h>
 #include "Panel.h"
 
