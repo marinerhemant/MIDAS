@@ -425,59 +425,104 @@ class FileProcessor:
             logger.error(error_msg)
             raise IntegrationError(error_msg) from e
 
-    def _copy_group_recursive(self, group_in, group_out, total_frames, omega_sum_frames, exclude_keys=None, path_prefix=''):
+    def _coerce_metadata_array(self, data_in, total_frames, omega_sum_frames, n_output, path_for_log=''):
         """
-        Recursively copy all datasets from a Zarr group to an output group.
-        1D arrays with length == total_frames are averaged per OmegaSumFrames chunk.
-        
+        Apply frame-averaging / string-tiling rules to one metadata array.
+
+        Rules (applied in order):
+          1. Scalar or size-1: return as-is.
+          2. Numeric, shape[0] == total_frames: average in OmegaSumFrames chunks
+             along axis 0 (works for 1-D and N-D).
+          3. Numeric, shape[0] != total_frames: return as-is.
+          4. Non-numeric, shape[0] == total_frames, all elements identical:
+             tile the single value to n_output entries.
+          5. Non-numeric, shape[0] == total_frames, values differ: warn and
+             return as-is.
+          6. Non-numeric, shape[0] != total_frames: return as-is.
+        """
+        import math
+
+        if not isinstance(data_in, np.ndarray) or data_in.size <= 1:
+            return data_in
+
+        frame_aligned = (total_frames > 0 and data_in.shape[0] == total_frames)
+
+        if np.issubdtype(data_in.dtype, np.number):
+            if not frame_aligned or omega_sum_frames <= 1:
+                return data_in
+            num_chunks = math.ceil(total_frames / omega_sum_frames)
+            out_shape = (num_chunks,) + data_in.shape[1:]
+            chunked = np.zeros(out_shape, dtype=data_in.dtype)
+            for i in range(num_chunks):
+                s = i * omega_sum_frames
+                e = min(s + omega_sum_frames, total_frames)
+                chunked[i] = np.mean(data_in[s:e], axis=0)
+            logger.debug(f"Averaged '{path_for_log}' {data_in.shape} → {chunked.shape}")
+            return chunked
+
+        # Non-numeric (string / bytes / object)
+        if not frame_aligned:
+            return data_in
+        unique_vals = set(data_in.flatten().tolist())
+        if len(unique_vals) == 1:
+            return np.full(n_output, data_in.flat[0], dtype=data_in.dtype)
+        logger.warning(
+            f"Non-numeric array '{path_for_log}' has {len(unique_vals)} distinct values "
+            f"across {total_frames} frames — copying verbatim."
+        )
+        return data_in
+
+    def _copy_group_recursive(
+        self, group_in, group_out, total_frames, omega_sum_frames,
+        exclude_keys=None, path_prefix='', _top_level=True
+    ):
+        """
+        Recursively copy datasets from a Zarr group to an output group.
+
+        Numeric arrays whose first dimension equals total_frames are averaged
+        in OmegaSumFrames-sized chunks (any number of trailing dimensions).
+        Non-numeric (string/bytes) arrays of that length are checked for
+        uniformity: identical elements are tiled to n_output_frames; varying
+        elements are copied verbatim with a warning.  Scalars and length-1
+        arrays are always copied as-is.
+
         Args:
-            group_in: Source Zarr group
-            group_out: Destination Zarr group
-            total_frames: Number of frames in the original data
-            omega_sum_frames: Number of frames summed per chunk
-            exclude_keys: Set of keys to skip (only at top level)
-            path_prefix: Current path for logging
+            group_in:         Source Zarr group.
+            group_out:        Destination Zarr group.
+            total_frames:     Number of frames in the original data.
+            omega_sum_frames: Frames per output chunk (from OmegaSumFrames).
+            exclude_keys:     Keys to skip at the immediate top level only.
+            path_prefix:      Running path string used for logging.
+            _top_level:       Internal flag; True only on the outermost call.
         """
         import math
         if exclude_keys is None:
             exclude_keys = set()
-        
+
+        n_output = max(1, math.ceil(total_frames / omega_sum_frames)) if total_frames > 0 else 0
+
         for key in group_in.keys():
-            if not path_prefix and key in exclude_keys:
+            if _top_level and key in exclude_keys:
                 continue
-            
+
             full_path = f"{path_prefix}/{key}" if path_prefix else key
             item = group_in[key]
-            
+
             try:
                 if isinstance(item, zarr.hierarchy.Group):
-                    # Recurse into sub-groups
                     sub_out = group_out.require_group(key)
-                    self._copy_group_recursive(item, sub_out, total_frames, omega_sum_frames, path_prefix=full_path)
+                    self._copy_group_recursive(
+                        item, sub_out, total_frames, omega_sum_frames,
+                        path_prefix=full_path, _top_level=False
+                    )
                 else:
-                    # It's a dataset — read it
                     data_in = item[()]
-                    
-                    # If 1D array matching frame count and we're summing frames, average it
-                    if (isinstance(data_in, np.ndarray) and data_in.ndim == 1 
-                            and len(data_in) == total_frames 
-                            and omega_sum_frames > 1 and total_frames > 0):
-                        num_chunks = math.ceil(total_frames / omega_sum_frames)
-                        chunked_data = np.zeros(num_chunks, dtype=data_in.dtype)
-                        for i in range(num_chunks):
-                            start_idx = i * omega_sum_frames
-                            end_idx = min(start_idx + omega_sum_frames, total_frames)
-                            chunked_data[i] = np.mean(data_in[start_idx:end_idx])
-                        data_to_write = chunked_data
-                        logger.debug(f"Averaged '{full_path}' from {data_in.shape} to {data_to_write.shape}")
-                    else:
-                        data_to_write = data_in
-                    
-                    # Write to output (overwrite if exists)
+                    data_to_write = self._coerce_metadata_array(
+                        data_in, total_frames, omega_sum_frames, n_output, full_path
+                    )
                     if key in group_out:
                         del group_out[key]
                     group_out.create_dataset(key, data=data_to_write)
-                    print(f"  Copied: {full_path} (shape={data_to_write.shape if isinstance(data_to_write, np.ndarray) else 'scalar'})")
                     logger.info(f"Copied metadata '{full_path}' to output Zarr.")
             except Exception as e:
                 logger.warning(f"Failed to copy '{full_path}': {e}")
@@ -596,10 +641,15 @@ class FileProcessor:
         """
         Copy metadata from the input Zarr to the output Zarr:
           - measurement/process/scan_parameters (excluding datatype, start, step)
-          - instrument/ (all keys recursively)
-        
-        1D arrays with length == total_frames are averaged per OmegaSumFrames chunk.
-        
+          - instrument/    (all keys recursively)
+          - misc/          (timestamps, detector temp, frame IDs)
+          - Detector/      (detector configuration scalars)
+          - StorageRing/   (beam current and ring info)
+
+        Arrays whose first dimension equals total_frames are averaged in
+        OmegaSumFrames-sized chunks (numeric) or tiled after a uniformity
+        check (string/bytes).  See _coerce_metadata_array for the full rules.
+
         Args:
             input_zip_file: Path to original input Zarr.zip
             output_zip_file: Path to output Zarr.zip
@@ -610,7 +660,7 @@ class FileProcessor:
                 total_frames = 0
                 if 'exchange/data' in z_in:
                     total_frames = z_in['exchange/data'].shape[0]
-                    
+
                 # Get OmegaSumFrames
                 omega_sum_frames = 1
                 try:
@@ -618,10 +668,12 @@ class FileProcessor:
                         omega_sum_frames = int(z_in['analysis/process/analysis_parameters/OmegaSumFrames'][0])
                 except Exception as e:
                     logger.debug(f"Could not read OmegaSumFrames, defaulting to 1: {e}")
-                
+
                 with zarr.open(str(output_zip_file), mode='a') as z_out:
                     stamp_zarr(z_out)
-                    # Copy scan_parameters
+
+                    # Copy scan_parameters (datatype/start/step are written by the
+                    # integrator itself, so exclude them from the source copy)
                     if 'measurement/process/scan_parameters' in z_in:
                         sp_in = z_in['measurement/process/scan_parameters']
                         sp_out = z_out.require_group('measurement/process/scan_parameters')
@@ -632,18 +684,24 @@ class FileProcessor:
                         )
                     else:
                         logger.info("No scan parameters found in input Zarr.")
-                    
-                    # Copy instrument/ group
-                    if 'instrument' in z_in:
-                        inst_in = z_in['instrument']
-                        inst_out = z_out.require_group('instrument')
-                        self._copy_group_recursive(
-                            inst_in, inst_out, total_frames, omega_sum_frames,
-                            path_prefix='instrument'
-                        )
-                        logger.info("Copied instrument metadata to output Zarr.")
-                    else:
-                        logger.info("No instrument group found in input Zarr.")
+
+                    # Groups copied wholesale from the input Zarr
+                    groups_to_copy = [
+                        ('instrument', 'instrument'),
+                        ('misc',       'misc'),
+                        ('Detector',   'Detector'),
+                        ('StorageRing','StorageRing'),
+                    ]
+                    for src_name, dst_name in groups_to_copy:
+                        if src_name in z_in:
+                            grp_out = z_out.require_group(dst_name)
+                            self._copy_group_recursive(
+                                z_in[src_name], grp_out, total_frames, omega_sum_frames,
+                                path_prefix=src_name
+                            )
+                            logger.info(f"Copied {src_name}/ metadata to output Zarr.")
+                        else:
+                            logger.debug(f"No {src_name}/ group found in input Zarr.")
 
         except Exception as e:
             logger.error(f"Error enriching Zarr with metadata: {e}")

@@ -1,6 +1,7 @@
 #!/usr/bin/env python
 
 import warnings
+import hdf5plugin  # registers Blosc and other HDF5 filters before h5py reads any file
 import h5py
 import numpy as np
 import os
@@ -408,6 +409,13 @@ def process_hdf5_scan(config, z_groups, zRoot):
                     hf['measurement'], z_groups['meas'], 'measurement',
                     exclude_paths={'measurement/process/scan_parameters'}
                 )
+
+            # Copy auxiliary top-level groups verbatim so downstream consumers
+            # (e.g. _enrich_zarr_with_metadata) can find timestamps and detector info
+            for grp_name in ('misc', 'Detector', 'StorageRing'):
+                if grp_name in hf:
+                    print(f"  - Copying {grp_name}/ group from HDF5...")
+                    _copy_hdf5_group_to_zarr(hf[grp_name], zRoot.require_group(grp_name), grp_name)
 
     total_frames_to_write = frames_per_file + (frames_per_file - skip_frames) * (num_files - 1)
     print(f"HDF5 scan: {num_files} file(s), {frames_per_file} frames/file. Skipping {skip_frames} from files 2+. Total frames to write: {total_frames_to_write}. Dtype: {output_dtype}")
