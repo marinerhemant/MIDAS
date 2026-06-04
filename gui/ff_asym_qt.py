@@ -535,6 +535,7 @@ class FFViewer(QtWidgets.QMainWindow):
         self.image_view.set_colormap(self.colormap_name)
         self.font_spin = self.image_view._font_spin
         self.image_view.fontSizeChanged.connect(self._on_font_changed)
+        self.image_view.levelsChanged.connect(self._on_hist_levels_dragged)
 
         # ── Control Panels (built first so they can go in the splitter) ──
         ctrl = QtWidgets.QHBoxLayout()
@@ -2086,6 +2087,22 @@ class FFViewer(QtWidgets.QMainWindow):
             self.image_view.setLevels(lo, hi)
         except ValueError:
             pass
+
+    def _on_hist_levels_dragged(self, lo: float, hi: float):
+        """Mirror histogram region drags into the MinI/MaxI text fields.
+
+        Uses blockSignals so updating the text doesn't re-trigger
+        _apply_intensity_levels (which would push back into the histogram
+        and create a feedback loop). Levels arrive in linear units —
+        MIDASImageView handles the log↔linear conversion.
+        """
+        for w, val in ((self.min_intensity_edit, lo),
+                       (self.max_intensity_edit, hi)):
+            blocked = w.blockSignals(True)
+            try:
+                w.setText(f'{val:g}')
+            finally:
+                w.blockSignals(blocked)
 
     # ── Intensity vs Frame ─────────────────────────────────────────
 
