@@ -529,7 +529,15 @@ class MIDASImageView(QtWidgets.QWidget):
         self._hline.setVisible(visible)
 
     def setLevels(self, lo, hi):
-        """Set intensity levels (proxied to internal ImageView)."""
+        """Set intensity levels (proxied to internal ImageView).
+
+        Accepts linear-space values. When log display is active, converts to
+        log10 first so the histogram region and image gradient stay aligned
+        with the log-transformed display (see ``set_image_data``).
+        """
+        if self._log_mode:
+            lo = np.log10(max(lo, 1e-10))
+            hi = np.log10(max(hi, 1e-10))
         self._iv.setLevels(lo, hi)
 
     def add_overlay(self, item, category='default'):
