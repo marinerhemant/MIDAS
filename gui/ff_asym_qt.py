@@ -2100,7 +2100,7 @@ class FFViewer(QtWidgets.QMainWindow):
                        (self.max_intensity_edit, hi)):
             blocked = w.blockSignals(True)
             try:
-                w.setText(f'{val:g}')
+                w.setText(str(int(round(val))))
             finally:
                 w.blockSignals(blocked)
 
