@@ -2024,6 +2024,13 @@ class FFViewer(QtWidgets.QMainWindow):
         self._load_and_display()
 
     def _on_median_toggled(self, checked):
+        """Handle the Median checkbox toggle.
+
+        Median aggregation requires all frames to be buffered in memory before
+        reduction (unlike Max/Sum which stream frame-by-frame), so it is
+        mutually exclusive with the other modes.  When enabled, Max and Sum are
+        unchecked automatically.  The display is refreshed immediately.
+        """
         if checked:
             self.max_check.setChecked(False)
             self.sum_check.setChecked(False)
@@ -3156,6 +3163,30 @@ class FFViewer(QtWidgets.QMainWindow):
             )
 
             def _parallel_accum():
+                """Accumulate ``n_accum`` frames starting at ``start_frame``.
+
+                Three execution paths in priority order:
+
+                1. **Zarr slab** — if a zarr store is open, reads the entire
+                   sub-slab ``[start:end]`` in one call and reduces with
+                   ``np.sum``, ``np.max``, or ``np.median`` along axis-0.
+                   Fastest for local zarr archives.
+                2. **Single HDF5 slab** — if all requested frames live in one
+                   HDF5 file, reads the slab from ``hdf5_data_path`` and
+                   reduces the same way.  Falls back to path 3 on any error.
+                3. **ThreadPoolExecutor** — general path for raw detector
+                   files, TIFF stacks, and multi-file spans.  Each worker
+                   reads one frame; results are streamed into a running
+                   max/sum accumulator, or buffered into a list for median
+                   (median requires all frames simultaneously).
+
+                Dark subtraction happens in raw orientation before transforms
+                so each path applies the same per-pixel correction regardless
+                of the aggregation mode.  User transforms (flip / transpose)
+                are applied once at the end via ``apply_image_transforms``.
+
+                Returns ``(result_array, n_frames_used, elapsed_seconds)``.
+                """
                 import concurrent.futures, time as _time
                 t0 = _time.monotonic()
                 p = params
