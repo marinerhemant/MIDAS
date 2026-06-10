@@ -432,7 +432,7 @@ class FFViewer(QtWidgets.QMainWindow):
         self.hflip = False
         self.vflip = False
         self.do_transpose = False
-        self.colormap_name = 'bone'
+        self.colormap_name = 'inferno'
 
         # Detector
         self.lsd = [0, 0, 0, 0]
@@ -658,7 +658,7 @@ class FFViewer(QtWidgets.QMainWindow):
         tb.addWidget(QtWidgets.QLabel("Cmap:"))
         self.cmap_combo = QtWidgets.QComboBox()
         self.cmap_combo.addItems(COLORMAPS)
-        self.cmap_combo.setCurrentText('bone')
+        self.cmap_combo.setCurrentText('inferno')
         tb.addWidget(self.cmap_combo)
 
         # Theme
@@ -1034,13 +1034,24 @@ class FFViewer(QtWidgets.QMainWindow):
         self.ny_edit.setFixedWidth(55)
         lay.addWidget(self.ny_edit, 0, 3)
 
-        lay.addWidget(QtWidgets.QLabel("Frame"), 0, 4)
+        lay.addWidget(QtWidgets.QLabel("Display Frame"), 0, 4)
+        # Frame spin + "/ N" max indicator side-by-side in the same grid cell.
+        frame_row = QtWidgets.QHBoxLayout()
+        frame_row.setContentsMargins(0, 0, 0, 0)
+        frame_row.setSpacing(4)
         self.frame_spin = QtWidgets.QSpinBox()
         self.frame_spin.setRange(0, 99999)
         self.frame_spin.setValue(0)
-        lay.addWidget(self.frame_spin, 0, 5)
+        frame_row.addWidget(self.frame_spin)
+        self.frame_max_label = QtWidgets.QLabel("/ —")
+        self.frame_max_label.setToolTip(
+            "Total frames in the currently-loaded file (n_frames_per_file).")
+        frame_row.addWidget(self.frame_max_label)
+        frame_w = QtWidgets.QWidget()
+        frame_w.setLayout(frame_row)
+        lay.addWidget(frame_w, 0, 5)
 
-        # Row 1: header, bytes/pixel, num frames
+        # Row 1: header, bytes/pixel   (aggregation controls moved to row 3)
         lay.addWidget(QtWidgets.QLabel("Header"), 1, 0)
         self.header_edit = QtWidgets.QLineEdit(str(self.header_size))
         self.header_edit.setFixedWidth(55)
@@ -1050,12 +1061,6 @@ class FFViewer(QtWidgets.QMainWindow):
         self.bpp_edit = QtWidgets.QLineEdit(str(self.bytes_per_pixel))
         self.bpp_edit.setFixedWidth(35)
         lay.addWidget(self.bpp_edit, 1, 3)
-
-        lay.addWidget(QtWidgets.QLabel("Num Frames"), 1, 4)
-        self.max_frames_spin = QtWidgets.QSpinBox()
-        self.max_frames_spin.setRange(1, 99999)
-        self.max_frames_spin.setValue(240)
-        lay.addWidget(self.max_frames_spin, 1, 5)
 
         # Row 2: pixel size + transforms
         lay.addWidget(QtWidgets.QLabel("Pixel Size (μm)"), 2, 0, 1, 2)
@@ -1070,11 +1075,27 @@ class FFViewer(QtWidgets.QMainWindow):
         self.transpose_check = QtWidgets.QCheckBox("Transpose")
         lay.addWidget(self.transpose_check, 2, 5)
 
-        # Row 3: Max/Sum toggles
-        self.max_check = QtWidgets.QCheckBox("Max/Frames")
-        lay.addWidget(self.max_check, 3, 0, 1, 3)
-        self.sum_check = QtWidgets.QCheckBox("Sum/Frames")
-        lay.addWidget(self.sum_check, 3, 3, 1, 3)
+        # Row 3: aggregation controls — frame count + mutually-exclusive mode
+        # all on one row so their relationship is visually obvious.
+        agg_label = QtWidgets.QLabel("# Frames:")
+        agg_label.setToolTip(
+            "Number of frames to aggregate (Max/Sum/Median), starting at "
+            "Display Frame. May span multiple sibling files.")
+        lay.addWidget(agg_label, 3, 0)
+        self.max_frames_spin = QtWidgets.QSpinBox()
+        self.max_frames_spin.setRange(1, 99999)
+        self.max_frames_spin.setValue(240)
+        self.max_frames_spin.setToolTip(agg_label.toolTip())
+        lay.addWidget(self.max_frames_spin, 3, 1)
+        self.max_check = QtWidgets.QCheckBox("Max")
+        lay.addWidget(self.max_check, 3, 2)
+        self.sum_check = QtWidgets.QCheckBox("Sum")
+        lay.addWidget(self.sum_check, 3, 3)
+        self.median_check = QtWidgets.QCheckBox("Median")
+        self.median_check.setToolTip(
+            "Per-pixel median across # Frames. Loads all frames into memory "
+            "before reducing (slower than Max/Sum on large slabs).")
+        lay.addWidget(self.median_check, 3, 4, 1, 2)
 
         # Stretch row: absorbs the extra height the QHBoxLayout gives this
         # panel (it's stretched to match the tallest sibling, Data Source),
@@ -1336,6 +1357,7 @@ class FFViewer(QtWidgets.QMainWindow):
         self.transpose_check.toggled.connect(self._load_and_display)
         self.max_check.toggled.connect(self._on_max_toggled)
         self.sum_check.toggled.connect(self._on_sum_toggled)
+        self.median_check.toggled.connect(self._on_median_toggled)
         # Colormap
         self.cmap_combo.currentTextChanged.connect(self._on_cmap_changed)
         # Theme
@@ -1464,6 +1486,7 @@ class FFViewer(QtWidgets.QMainWindow):
             'max_frames_spin': self.max_frames_spin.value(),
             'max_per_frames': self.max_check.isChecked(),
             'sum_per_frames': self.sum_check.isChecked(),
+            'median_per_frames': self.median_check.isChecked(),
             'colormap': self.cmap_combo.currentText(),
             'theme': self.theme_combo.currentText(),
             'log': self.log_check.isChecked(),
@@ -1530,6 +1553,7 @@ class FFViewer(QtWidgets.QMainWindow):
         self.header_edit.setText(str(self.header_size))
         self.bpp_edit.setText(str(self.bytes_per_pixel))
         self.nframes_edit.setText(str(self.n_frames_per_file))
+        self._update_frame_max_label()
         self.h5data_edit.setText(self.hdf5_data_path)
         self.h5dark_edit.setText(self.hdf5_dark_path)
         self.mask_edit.setText(state.get('mask_path_in_field', self.mask_fn or ''))
@@ -1560,7 +1584,7 @@ class FFViewer(QtWidgets.QMainWindow):
                                                           self.detector_mode_combo.currentText()))
         self.max_frames_spin.setValue(int(state.get('max_frames_spin',
                                                     self.max_frames_spin.value())))
-        self.cmap_combo.setCurrentText(state.get('colormap', 'bone'))
+        self.cmap_combo.setCurrentText(state.get('colormap', 'inferno'))
         self.theme_combo.setCurrentText(state.get('theme', 'light'))
         self.log_check.setChecked(state.get('log', False))
         self.hflip_check.setChecked(state.get('hflip', False))
@@ -1570,6 +1594,7 @@ class FFViewer(QtWidgets.QMainWindow):
         self.axes_check.setChecked(state.get('show_axes', False))
         self.max_check.setChecked(state.get('max_per_frames', False))
         self.sum_check.setChecked(state.get('sum_per_frames', False))
+        self.median_check.setChecked(state.get('median_per_frames', False))
         self.mask_check.setChecked(state.get('apply_mask', False))
         self.instr_only_check.setChecked(state.get('instr_only', False))
 
@@ -1920,6 +1945,7 @@ class FFViewer(QtWidgets.QMainWindow):
         if nfs is not None:
             self.n_frames_per_file = nfs
             self.nframes_edit.setText(str(nfs))
+            self._update_frame_max_label()
 
         # ── HDF5 dataset paths (dataLoc / darkLoc) ──
         # Skipped when the user has manually edited the corresponding field
@@ -1971,6 +1997,14 @@ class FFViewer(QtWidgets.QMainWindow):
 
     # ── Callbacks ──────────────────────────────────────────────────
 
+    def _update_frame_max_label(self):
+        """Sync the '/ N' indicator next to the Display Frame spin with the
+        currently-known frames-per-file count."""
+        if not hasattr(self, 'frame_max_label'):
+            return
+        n = int(getattr(self, 'n_frames_per_file', 0) or 0)
+        self.frame_max_label.setText(f"/ {n}" if n > 0 else "/ —")
+
     def _on_log_toggled(self, checked):
         self.use_log = checked
         self.image_view.set_log_mode(checked)
@@ -1978,11 +2012,21 @@ class FFViewer(QtWidgets.QMainWindow):
     def _on_max_toggled(self, checked):
         if checked:
             self.sum_check.setChecked(False)
+            if hasattr(self, 'median_check'):
+                self.median_check.setChecked(False)
         self._load_and_display()
 
     def _on_sum_toggled(self, checked):
         if checked:
             self.max_check.setChecked(False)
+            if hasattr(self, 'median_check'):
+                self.median_check.setChecked(False)
+        self._load_and_display()
+
+    def _on_median_toggled(self, checked):
+        if checked:
+            self.max_check.setChecked(False)
+            self.sum_check.setChecked(False)
         self._load_and_display()
 
     def _on_cmap_changed(self, name):
@@ -2709,6 +2753,7 @@ class FFViewer(QtWidgets.QMainWindow):
                     self.nz_edit.setText(str(self.nz))
                 if hasattr(self, 'nframes_edit'):
                     self.nframes_edit.setText(str(n_pages))
+                self._update_frame_max_label()
         except Exception as e:
             print(f"TIFF dimension detection failed: {e}")
 
@@ -2751,6 +2796,7 @@ class FFViewer(QtWidgets.QMainWindow):
                     self.nz_edit.setText(str(self.nz))
                     self.nframes_edit.setText(str(self.n_frames_per_file))
                     self.frame_spin.setMaximum(self.n_frames_per_file - 1)
+                    self._update_frame_max_label()
         except Exception as e:
             print(f"HDF5 detect error: {e}")
 
@@ -2779,6 +2825,7 @@ class FFViewer(QtWidgets.QMainWindow):
             self.nframes_edit.setText(str(self.n_frames_per_file))
             self.frame_spin.setMaximum(self.n_frames_per_file - 1)
             self.max_frames_spin.setValue(self.n_frames_per_file)
+            self._update_frame_max_label()
         if 'exchange/dark' in zr:
             dk = zr['exchange/dark'][:]
             if dk.ndim == 3 and dk.shape[0] > 0 and np.any(dk):
@@ -2846,6 +2893,7 @@ class FFViewer(QtWidgets.QMainWindow):
             self.frame_nr = self.frame_spin.value()
             self.first_file_nr = int(self.file_nr_edit.text())
             self.n_frames_per_file = int(self.nframes_edit.text())
+            self._update_frame_max_label()
             self.lsd_local = float(self.lsd_edit.text())
             self.bc_local = [float(self.bcy_edit.text()), float(self.bcz_edit.text())]
             try:
@@ -2952,6 +3000,7 @@ class FFViewer(QtWidgets.QMainWindow):
         nf = min(n for n in nf_per if n > 0) if any(n > 0 for n in nf_per) else 0
         if nf > 0 and self.frame_spin.maximum() != nf - 1:
             self.frame_spin.setMaximum(max(nf - 1, 0))
+            self._update_frame_max_label()
 
         frame_idx = self.frame_nr
         bds = int(self.big_det_size)
@@ -3070,21 +3119,28 @@ class FFViewer(QtWidgets.QMainWindow):
                     dark_data = read_image(dark_fn, self.header_size, self.bytes_per_pixel,
                                            self.ny, self.nz, 0)
 
-        # MaxOverFrames / SumOverFrames — parallel computation
-        if self.max_check.isChecked() or self.sum_check.isChecked():
+        # Max / Sum / Median aggregation — parallel computation
+        if (self.max_check.isChecked() or self.sum_check.isChecked()
+                or self.median_check.isChecked()):
             n_accum = self.max_frames_spin.value()
-            use_sum = self.sum_check.isChecked()
+            if self.sum_check.isChecked():
+                mode = 'sum'
+            elif self.median_check.isChecked():
+                mode = 'median'
+            else:
+                mode = 'max'
             start_frame = self.frame_nr
-            mode_str = "Sum" if use_sum else "Max"
+            mode_str = mode.capitalize()
 
             # Disable controls while computing
             self.max_check.setEnabled(False)
             self.sum_check.setEnabled(False)
+            self.median_check.setEnabled(False)
             self.frame_label.setText(f"Computing {mode_str} over {n_accum} frames...")
 
             # Capture all parameters for the worker thread
             params = dict(
-                n_accum=n_accum, use_sum=use_sum, start_frame=start_frame,
+                n_accum=n_accum, mode=mode, start_frame=start_frame,
                 folder=self.folder, file_stem=self.file_stem,
                 first_file_nr=self.first_file_nr, padding=self.padding,
                 det_nr=self.det_nr, ext=self.ext, sep_folder=self.sep_folder,
@@ -3114,10 +3170,13 @@ class FFViewer(QtWidgets.QMainWindow):
                     dset = p['zarr_store']['exchange/data']
                     end_frame = min(p['start_frame'] + p['n_accum'], dset.shape[0])
                     slab = dset[p['start_frame']:end_frame, :, :]  # (N, ny, nz)
-                    if p['use_sum']:
-                        result = np.sum(slab.astype(np.float64), axis=0)
+                    slab64 = slab.astype(np.float64)
+                    if p['mode'] == 'sum':
+                        result = np.sum(slab64, axis=0)
+                    elif p['mode'] == 'median':
+                        result = np.median(slab64, axis=0)
                     else:
-                        result = np.max(slab.astype(np.float64), axis=0)
+                        result = np.max(slab64, axis=0)
                     # Zarr file-format un-rotation (NOT a user transform).
                     result = result[::-1, ::-1].copy()
                     if p['mask'] is not None and p['mask'].shape == result.shape:
@@ -3147,8 +3206,10 @@ class FFViewer(QtWidgets.QMainWindow):
                                 f_start = p['start_frame'] % n_fpf
                                 f_end = min(f_start + p['n_accum'], dset.shape[0])
                                 slab = dset[f_start:f_end, :, :].astype(np.float64)
-                                if p['use_sum']:
+                                if p['mode'] == 'sum':
                                     result = np.sum(slab, axis=0)
+                                elif p['mode'] == 'median':
+                                    result = np.median(slab, axis=0)
                                 else:
                                     result = np.max(slab, axis=0)
                                 if p['mask'] is not None and p['mask'].shape == result.shape:
@@ -3183,6 +3244,9 @@ class FFViewer(QtWidgets.QMainWindow):
 
                 n_workers = min(p['n_accum'], os.cpu_count() or 4, 8)
                 data_accum = None
+                # Median needs every frame held simultaneously; max/sum stream.
+                buffered_frames: list[np.ndarray] | None = (
+                    [] if p['mode'] == 'median' else None)
                 count = 0
                 with concurrent.futures.ThreadPoolExecutor(max_workers=n_workers) as pool:
                     futures = {pool.submit(_read_one, i): i for i in range(p['n_accum'])}
@@ -3192,18 +3256,26 @@ class FFViewer(QtWidgets.QMainWindow):
                         except Exception:
                             continue
                         # Dark in raw orientation; subtract per-frame so
-                        # max/sum behaves correctly per pixel.
+                        # max/sum/median behaves correctly per pixel.
                         if p['dark_data'] is not None:
                             frame = frame - p['dark_data']
-                        if data_accum is None:
+                        if buffered_frames is not None:
+                            buffered_frames.append(frame.astype(np.float64))
+                        elif data_accum is None:
                             data_accum = frame.astype(np.float64)
                         else:
-                            if p['use_sum']:
+                            if p['mode'] == 'sum':
                                 data_accum += frame
-                            else:
+                            else:  # 'max'
                                 np.maximum(data_accum, frame, out=data_accum)
                         count += 1
 
+                if buffered_frames is not None:
+                    if buffered_frames:
+                        data_accum = np.median(np.stack(buffered_frames, axis=0),
+                                               axis=0)
+                    else:
+                        data_accum = np.zeros((p['ny'], p['nz']))
                 if data_accum is None:
                     data_accum = np.zeros((p['ny'], p['nz']))
                 # Apply user transforms once on the final accumulated raw result.
@@ -3230,6 +3302,7 @@ class FFViewer(QtWidgets.QMainWindow):
                 self._apply_tx_image_rect(data_out)
                 self.max_check.setEnabled(True)
                 self.sum_check.setEnabled(True)
+                self.median_check.setEnabled(True)
                 fn_display = (os.path.basename(self.zarr_zip_path or '')
                               if self.zarr_store else os.path.basename(
                                   build_filename(self.folder, self.file_stem,
@@ -3248,6 +3321,7 @@ class FFViewer(QtWidgets.QMainWindow):
                 print(f"Error in {mode_str}OverFrames: {msg}")
                 self.max_check.setEnabled(True)
                 self.sum_check.setEnabled(True)
+                self.median_check.setEnabled(True)
                 self.frame_label.setText(f"Frame {self.frame_nr}  |  Error")
 
             worker.finished_signal.connect(_on_accum_done)

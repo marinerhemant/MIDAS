@@ -517,10 +517,19 @@ class MIDASImageView(QtWidgets.QWidget):
                 self._iv.setLevels(lo, hi)
 
     def set_colormap(self, name):
-        """Apply a named colormap."""
+        """Apply a named colormap to both the image and the histogram LUT strip."""
         cmap = get_colormap(name)
         lut = cmap.getLookupTable(nPts=256)
         self._iv.imageItem.setLookupTable(lut)
+        # Sync the histogram gradient bar on the right side.
+        hist = getattr(getattr(self._iv, 'ui', None), 'histogram', None)
+        if hist is not None:
+            grad = getattr(hist, 'gradient', None)
+            if grad is not None and hasattr(grad, 'setColorMap'):
+                try:
+                    grad.setColorMap(cmap)
+                except Exception:
+                    pass
 
     def set_crosshair_visible(self, visible):
         """Show or hide crosshair."""
