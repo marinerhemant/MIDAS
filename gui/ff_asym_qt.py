@@ -1757,7 +1757,9 @@ class FFViewer(QtWidgets.QMainWindow):
                 except Exception:
                     pass
 
-        # Dark / frame index last (these trigger reloads)
+        # Dark / frame index last (these trigger reloads — but only when the
+        # state actually changes; setChecked(False) on an already-unchecked
+        # box is a no-op, so we force the reload explicitly below).
         self.dark_check.setChecked(state.get('use_dark', False))
         self.frame_spin.setValue(state.get('frame', 0))
 
@@ -1766,6 +1768,31 @@ class FFViewer(QtWidgets.QMainWindow):
             self._apply_intensity_levels()
         except Exception:
             pass
+
+        # ── Force a reload so the restored state actually takes effect ───
+        # setText() doesn't fire editingFinished, so the HDF5 dataset-path
+        # fields (h5dark_edit, h5data_edit, _multi_dark_path_edit, …) never
+        # ran their handlers; the DetectorState data_loc/dark_loc still hold
+        # their pre-load defaults, and the figure renders without the dark.
+        # Mirror _on_multi_paths_changed for HYDRA, then kick a redraw.
+        if (hasattr(self, '_multi_data_path_edit') and
+                hasattr(self, '_multi_dark_path_edit') and
+                hasattr(self, '_det_states')):
+            data_path = (self._multi_data_path_edit.text().strip()
+                         or '/exchange/data')
+            dark_path = (self._multi_dark_path_edit.text().strip()
+                         or '/exchange/data_dark')
+            for s in self._det_states:
+                s.data_loc = data_path
+                s.dark_loc = dark_path
+                s._dark_image = None
+                s._dark_cache_key = ()
+            self._multi_data_loc_locked = True
+            self._multi_dark_loc_locked = True
+        try:
+            self._load_and_display()
+        except Exception as e:
+            print(f'Session reload failed: {e}')
 
         print(f'Session loaded: {fn}')
 
