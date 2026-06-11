@@ -383,7 +383,7 @@ def compute_ring_points(ring_rad, lsd_local, lsd_orig, bc, px):
 class FFViewer(QtWidgets.QMainWindow):
     """FF-HEDM image viewer with reactive controls and ring overlays."""
 
-    def __init__(self, theme='light'):
+    def __init__(self, theme='light', auto_detect=True):
         super().__init__()
         self.setWindowTitle("FF Viewer (PyQtGraph) — MIDAS")
         self.resize(1500, 950)
@@ -393,7 +393,11 @@ class FFViewer(QtWidgets.QMainWindow):
         self._build_ui()
         self._wire_signals()
         self._setup_shortcuts()
-        self._start_auto_detect()
+        # auto_detect=False lets embedders (e.g. the caking launcher) suppress
+        # the CWD scan that would otherwise pull in an unrelated .MIDAS.zip
+        # or numbered data stem on a fresh launch.
+        if auto_detect:
+            self._start_auto_detect()
 
     # ── State ──────────────────────────────────────────────────────
 
@@ -432,7 +436,7 @@ class FFViewer(QtWidgets.QMainWindow):
         self.hflip = False
         self.vflip = False
         self.do_transpose = False
-        self.colormap_name = 'bone'
+        self.colormap_name = 'inferno'
 
         # Detector
         self.lsd = [0, 0, 0, 0]
@@ -494,6 +498,13 @@ class FFViewer(QtWidgets.QMainWindow):
         self._dark_locked   = False   # set by _on_dark_file
         self._h5data_locked = False   # set by editing h5data_edit
         self._h5dark_locked = False   # set by editing h5dark_edit
+        # Multi-det (HYDRA) equivalents — set when the user edits the shared
+        # data/dark path fields; prevents _absorb_shared_params from reverting
+        # the user's choice on the next param-file load. External dark files
+        # often store dark frames at /exchange/data while data files keep
+        # them at /exchange/data_dark, so the user's path needs to stick.
+        self._multi_data_loc_locked = False
+        self._multi_dark_loc_locked = False
 
     # ── UI Construction ────────────────────────────────────────────
 
@@ -535,6 +546,7 @@ class FFViewer(QtWidgets.QMainWindow):
         self.image_view.set_colormap(self.colormap_name)
         self.font_spin = self.image_view._font_spin
         self.image_view.fontSizeChanged.connect(self._on_font_changed)
+        self.image_view.levelsChanged.connect(self._on_hist_levels_dragged)
 
         # ── Control Panels (built first so they can go in the splitter) ──
         ctrl = QtWidgets.QHBoxLayout()
@@ -658,7 +670,7 @@ class FFViewer(QtWidgets.QMainWindow):
         tb.addWidget(QtWidgets.QLabel("Cmap:"))
         self.cmap_combo = QtWidgets.QComboBox()
         self.cmap_combo.addItems(COLORMAPS)
-        self.cmap_combo.setCurrentText('bone')
+        self.cmap_combo.setCurrentText('inferno')
         tb.addWidget(self.cmap_combo)
 
         # Theme
@@ -710,11 +722,11 @@ class FFViewer(QtWidgets.QMainWindow):
         # Intensity controls (moved from Display panel)
         tb.addWidget(QtWidgets.QLabel("Min I:"))
         self.min_intensity_edit = QtWidgets.QLineEdit("0")
-        self.min_intensity_edit.setFixedWidth(60)
+        self.min_intensity_edit.setMinimumWidth(110)
         tb.addWidget(self.min_intensity_edit)
         tb.addWidget(QtWidgets.QLabel("Max I:"))
         self.max_intensity_edit = QtWidgets.QLineEdit("1000")
-        self.max_intensity_edit.setFixedWidth(60)
+        self.max_intensity_edit.setMinimumWidth(110)
         tb.addWidget(self.max_intensity_edit)
         apply_btn = QtWidgets.QPushButton("Apply")
         apply_btn.clicked.connect(self._apply_intensity_levels)
@@ -1034,13 +1046,24 @@ class FFViewer(QtWidgets.QMainWindow):
         self.ny_edit.setFixedWidth(55)
         lay.addWidget(self.ny_edit, 0, 3)
 
-        lay.addWidget(QtWidgets.QLabel("Frame"), 0, 4)
+        lay.addWidget(QtWidgets.QLabel("Display Frame"), 0, 4)
+        # Frame spin + "/ N" max indicator side-by-side in the same grid cell.
+        frame_row = QtWidgets.QHBoxLayout()
+        frame_row.setContentsMargins(0, 0, 0, 0)
+        frame_row.setSpacing(4)
         self.frame_spin = QtWidgets.QSpinBox()
         self.frame_spin.setRange(0, 99999)
         self.frame_spin.setValue(0)
-        lay.addWidget(self.frame_spin, 0, 5)
+        frame_row.addWidget(self.frame_spin)
+        self.frame_max_label = QtWidgets.QLabel("/ —")
+        self.frame_max_label.setToolTip(
+            "Total frames in the currently-loaded file (n_frames_per_file).")
+        frame_row.addWidget(self.frame_max_label)
+        frame_w = QtWidgets.QWidget()
+        frame_w.setLayout(frame_row)
+        lay.addWidget(frame_w, 0, 5)
 
-        # Row 1: header, bytes/pixel, num frames
+        # Row 1: header, bytes/pixel   (aggregation controls moved to row 3)
         lay.addWidget(QtWidgets.QLabel("Header"), 1, 0)
         self.header_edit = QtWidgets.QLineEdit(str(self.header_size))
         self.header_edit.setFixedWidth(55)
@@ -1050,12 +1073,6 @@ class FFViewer(QtWidgets.QMainWindow):
         self.bpp_edit = QtWidgets.QLineEdit(str(self.bytes_per_pixel))
         self.bpp_edit.setFixedWidth(35)
         lay.addWidget(self.bpp_edit, 1, 3)
-
-        lay.addWidget(QtWidgets.QLabel("Num Frames"), 1, 4)
-        self.max_frames_spin = QtWidgets.QSpinBox()
-        self.max_frames_spin.setRange(1, 99999)
-        self.max_frames_spin.setValue(240)
-        lay.addWidget(self.max_frames_spin, 1, 5)
 
         # Row 2: pixel size + transforms
         lay.addWidget(QtWidgets.QLabel("Pixel Size (μm)"), 2, 0, 1, 2)
@@ -1070,11 +1087,27 @@ class FFViewer(QtWidgets.QMainWindow):
         self.transpose_check = QtWidgets.QCheckBox("Transpose")
         lay.addWidget(self.transpose_check, 2, 5)
 
-        # Row 3: Max/Sum toggles
-        self.max_check = QtWidgets.QCheckBox("Max/Frames")
-        lay.addWidget(self.max_check, 3, 0, 1, 3)
-        self.sum_check = QtWidgets.QCheckBox("Sum/Frames")
-        lay.addWidget(self.sum_check, 3, 3, 1, 3)
+        # Row 3: aggregation controls — frame count + mutually-exclusive mode
+        # all on one row so their relationship is visually obvious.
+        agg_label = QtWidgets.QLabel("# Frames:")
+        agg_label.setToolTip(
+            "Number of frames to aggregate (Max/Sum/Median), starting at "
+            "Display Frame. May span multiple sibling files.")
+        lay.addWidget(agg_label, 3, 0)
+        self.max_frames_spin = QtWidgets.QSpinBox()
+        self.max_frames_spin.setRange(1, 99999)
+        self.max_frames_spin.setValue(240)
+        self.max_frames_spin.setToolTip(agg_label.toolTip())
+        lay.addWidget(self.max_frames_spin, 3, 1)
+        self.max_check = QtWidgets.QCheckBox("Max")
+        lay.addWidget(self.max_check, 3, 2)
+        self.sum_check = QtWidgets.QCheckBox("Sum")
+        lay.addWidget(self.sum_check, 3, 3)
+        self.median_check = QtWidgets.QCheckBox("Median")
+        self.median_check.setToolTip(
+            "Per-pixel median across # Frames. Loads all frames into memory "
+            "before reducing (slower than Max/Sum on large slabs).")
+        lay.addWidget(self.median_check, 3, 4, 1, 2)
 
         # Stretch row: absorbs the extra height the QHBoxLayout gives this
         # panel (it's stretched to match the tallest sibling, Data Source),
@@ -1336,6 +1369,7 @@ class FFViewer(QtWidgets.QMainWindow):
         self.transpose_check.toggled.connect(self._load_and_display)
         self.max_check.toggled.connect(self._on_max_toggled)
         self.sum_check.toggled.connect(self._on_sum_toggled)
+        self.median_check.toggled.connect(self._on_median_toggled)
         # Colormap
         self.cmap_combo.currentTextChanged.connect(self._on_cmap_changed)
         # Theme
@@ -1464,6 +1498,7 @@ class FFViewer(QtWidgets.QMainWindow):
             'max_frames_spin': self.max_frames_spin.value(),
             'max_per_frames': self.max_check.isChecked(),
             'sum_per_frames': self.sum_check.isChecked(),
+            'median_per_frames': self.median_check.isChecked(),
             'colormap': self.cmap_combo.currentText(),
             'theme': self.theme_combo.currentText(),
             'log': self.log_check.isChecked(),
@@ -1480,6 +1515,31 @@ class FFViewer(QtWidgets.QMainWindow):
             'cake_params_file': self.cake_params_file,
             'instr_only': self.instr_only_check.isChecked(),
         }
+
+        # ── HYDRA / multi-detector state ─────────────────────────────
+        # Per-detector slots, shared HDF5 dataset paths, BigDetSize and the
+        # auto-fill toggle. Per-detector geometry is rebuilt by re-loading
+        # the param file at load time, so only the file paths + enabled flag
+        # need to round-trip.
+        try:
+            state['big_det_size'] = int(self.big_det_size)
+        except (TypeError, ValueError):
+            pass
+        if hasattr(self, '_multi_data_path_edit'):
+            state['multi_data_loc'] = self._multi_data_path_edit.text()
+        if hasattr(self, '_multi_dark_path_edit'):
+            state['multi_dark_loc'] = self._multi_dark_path_edit.text()
+        if hasattr(self, '_autofill_check'):
+            state['multi_autofill_siblings'] = self._autofill_check.isChecked()
+        state['det_states'] = [
+            {
+                'enabled': bool(s.enabled),
+                'data_file': s.data_file,
+                'dark_file': s.dark_file,
+                'param_file': s.param_file,
+            }
+            for s in getattr(self, '_det_states', [])
+        ]
         try:
             with open(fn, 'w') as f:
                 json.dump(state, f, indent=2)
@@ -1530,6 +1590,7 @@ class FFViewer(QtWidgets.QMainWindow):
         self.header_edit.setText(str(self.header_size))
         self.bpp_edit.setText(str(self.bytes_per_pixel))
         self.nframes_edit.setText(str(self.n_frames_per_file))
+        self._update_frame_max_label()
         self.h5data_edit.setText(self.hdf5_data_path)
         self.h5dark_edit.setText(self.hdf5_dark_path)
         self.mask_edit.setText(state.get('mask_path_in_field', self.mask_fn or ''))
@@ -1560,7 +1621,7 @@ class FFViewer(QtWidgets.QMainWindow):
                                                           self.detector_mode_combo.currentText()))
         self.max_frames_spin.setValue(int(state.get('max_frames_spin',
                                                     self.max_frames_spin.value())))
-        self.cmap_combo.setCurrentText(state.get('colormap', 'bone'))
+        self.cmap_combo.setCurrentText(state.get('colormap', 'inferno'))
         self.theme_combo.setCurrentText(state.get('theme', 'light'))
         self.log_check.setChecked(state.get('log', False))
         self.hflip_check.setChecked(state.get('hflip', False))
@@ -1570,6 +1631,7 @@ class FFViewer(QtWidgets.QMainWindow):
         self.axes_check.setChecked(state.get('show_axes', False))
         self.max_check.setChecked(state.get('max_per_frames', False))
         self.sum_check.setChecked(state.get('sum_per_frames', False))
+        self.median_check.setChecked(state.get('median_per_frames', False))
         self.mask_check.setChecked(state.get('apply_mask', False))
         self.instr_only_check.setChecked(state.get('instr_only', False))
 
@@ -1579,6 +1641,89 @@ class FFViewer(QtWidgets.QMainWindow):
             self._load_cake_file(cake_f)
         if state.get('show_caking', False):
             self._show_cake_overlay()
+
+        # ── HYDRA / multi-detector state ─────────────────────────────
+        # Restore shared HDF5 paths and BigDetSize first so any auto-pick
+        # we'd otherwise do gets pinned to the saved value.
+        if 'big_det_size' in state:
+            try:
+                self.big_det_size = int(state['big_det_size'])
+                if hasattr(self, 'bigdet_spin'):
+                    self.bigdet_spin.blockSignals(True)
+                    self.bigdet_spin.setValue(self.big_det_size)
+                    self.bigdet_spin.blockSignals(False)
+                # User pinned BigDetSize via the saved session; turn off auto
+                # so a later param-file load doesn't bump it.
+                self._big_det_auto = False
+            except (TypeError, ValueError):
+                pass
+        if hasattr(self, '_multi_data_path_edit') and 'multi_data_loc' in state:
+            self._multi_data_path_edit.setText(state['multi_data_loc'] or '')
+            self._multi_data_loc_locked = True
+        if hasattr(self, '_multi_dark_path_edit') and 'multi_dark_loc' in state:
+            self._multi_dark_path_edit.setText(state['multi_dark_loc'] or '')
+            self._multi_dark_loc_locked = True
+        if hasattr(self, '_autofill_check') and 'multi_autofill_siblings' in state:
+            self._autofill_check.setChecked(bool(state['multi_autofill_siblings']))
+
+        det_payload = state.get('det_states') or []
+        if det_payload and hasattr(self, '_det_states'):
+            first_params = None
+            for idx, ds in enumerate(det_payload[:len(self._det_states)]):
+                self._det_states[idx] = _md.DetectorState()
+                s = self._det_states[idx]
+                s.enabled = bool(ds.get('enabled', True))
+                pf = ds.get('param_file') or ''
+                df = ds.get('data_file') or ''
+                dk = ds.get('dark_file') or ''
+                if pf and os.path.isfile(pf):
+                    try:
+                        params = s.load_param_file(pf)
+                        if first_params is None:
+                            first_params = params
+                        self._extract_cake_keys_for_det(pf, idx + 1)
+                    except Exception as e:
+                        print(f'Session load: GE{idx + 1} param parse failed: {e}')
+                else:
+                    s.param_file = pf  # remember the path even if missing
+                # load_param_file may overwrite dark_file from a `Dark <path>`
+                # line; restore the user's explicit picks afterward.
+                s.data_file = df
+                s.dark_file = dk
+                # Per-detector caches depend on file paths — invalidate.
+                s._dark_image = None
+                s._dark_cache_key = ()
+                # Mirror the enabled flag into the per-card checkbox so the
+                # UI matches the model.
+                if hasattr(self, '_det_widgets'):
+                    try:
+                        en = self._det_widgets[idx].get('enable')
+                        if en is not None:
+                            en.blockSignals(True)
+                            en.setChecked(s.enabled)
+                            en.blockSignals(False)
+                    except Exception:
+                        pass
+                if hasattr(self, '_refresh_det_widget'):
+                    try:
+                        self._refresh_det_widget(idx)
+                    except Exception:
+                        pass
+            if first_params is not None:
+                try:
+                    self._absorb_shared_params(first_params)
+                except Exception:
+                    pass
+            if hasattr(self, '_populate_cake_edits'):
+                try:
+                    self._populate_cake_edits()
+                except Exception:
+                    pass
+            # Refresh path-validity tinting now that file paths are in.
+            try:
+                self._validate_h5_paths()
+            except Exception:
+                pass
 
         # Dark / frame index last (these trigger reloads)
         self.dark_check.setChecked(state.get('use_dark', False))
@@ -1920,6 +2065,7 @@ class FFViewer(QtWidgets.QMainWindow):
         if nfs is not None:
             self.n_frames_per_file = nfs
             self.nframes_edit.setText(str(nfs))
+            self._update_frame_max_label()
 
         # ── HDF5 dataset paths (dataLoc / darkLoc) ──
         # Skipped when the user has manually edited the corresponding field
@@ -1971,6 +2117,14 @@ class FFViewer(QtWidgets.QMainWindow):
 
     # ── Callbacks ──────────────────────────────────────────────────
 
+    def _update_frame_max_label(self):
+        """Sync the '/ N' indicator next to the Display Frame spin with the
+        currently-known frames-per-file count."""
+        if not hasattr(self, 'frame_max_label'):
+            return
+        n = int(getattr(self, 'n_frames_per_file', 0) or 0)
+        self.frame_max_label.setText(f"/ {n}" if n > 0 else "/ —")
+
     def _on_log_toggled(self, checked):
         self.use_log = checked
         self.image_view.set_log_mode(checked)
@@ -1978,11 +2132,21 @@ class FFViewer(QtWidgets.QMainWindow):
     def _on_max_toggled(self, checked):
         if checked:
             self.sum_check.setChecked(False)
+            if hasattr(self, 'median_check'):
+                self.median_check.setChecked(False)
         self._load_and_display()
 
     def _on_sum_toggled(self, checked):
         if checked:
             self.max_check.setChecked(False)
+            if hasattr(self, 'median_check'):
+                self.median_check.setChecked(False)
+        self._load_and_display()
+
+    def _on_median_toggled(self, checked):
+        if checked:
+            self.max_check.setChecked(False)
+            self.sum_check.setChecked(False)
         self._load_and_display()
 
     def _on_cmap_changed(self, name):
@@ -2086,6 +2250,22 @@ class FFViewer(QtWidgets.QMainWindow):
             self.image_view.setLevels(lo, hi)
         except ValueError:
             pass
+
+    def _on_hist_levels_dragged(self, lo: float, hi: float):
+        """Mirror histogram region drags into the MinI/MaxI text fields.
+
+        blockSignals avoids re-triggering _apply_intensity_levels (which
+        would push back into the histogram and create a feedback loop).
+        Levels arrive in linear units — MIDASImageView handles the
+        log↔linear conversion.
+        """
+        for w, val in ((self.min_intensity_edit, lo),
+                       (self.max_intensity_edit, hi)):
+            blocked = w.blockSignals(True)
+            try:
+                w.setText(f'{int(round(val))}')
+            finally:
+                w.blockSignals(blocked)
 
     # ── Intensity vs Frame ─────────────────────────────────────────
 
@@ -2217,9 +2397,30 @@ class FFViewer(QtWidgets.QMainWindow):
         self._load_and_display()
 
     def _on_multi_paths_changed(self):
-        """Propagate the shared data/dark path fields to all DetectorStates."""
+        """Propagate the shared data/dark path fields to all DetectorStates.
+
+        editingFinished fires on every focus-loss, not just real edits — so
+        pressing Plot or switching colormap (which transfers focus away from
+        these fields) used to silently overwrite each state's data_loc /
+        dark_loc back to whatever string the *field* held. If the field had
+        a stale default like /exchange/data_dark while s.dark_loc had been
+        corrected to /exchange/data, the overwrite resurrected the bug each
+        time the user clicked elsewhere. Guard with a change check so a
+        no-op focus-loss is truly a no-op.
+        """
         data_path = self._multi_data_path_edit.text().strip() or '/exchange/data'
         dark_path = self._multi_dark_path_edit.text().strip() or '/exchange/data_dark'
+        changed = any(
+            s.data_loc != data_path or s.dark_loc != dark_path
+            for s in self._det_states)
+        if not changed:
+            return
+        self._multi_data_loc_locked = True
+        self._multi_dark_loc_locked = True
+        try:
+            _md.reset_warn_once()
+        except AttributeError:
+            pass
         for s in self._det_states:
             s.data_loc = data_path
             s.dark_loc = dark_path
@@ -2348,6 +2549,31 @@ class FFViewer(QtWidgets.QMainWindow):
         if self.multi_mode:
             self._load_and_display()
 
+    def _extract_cake_keys_for_det(self, fn, det_key):
+        # parse_detector_param_file in multidet drops the cake-range keys, so
+        # the HYDRA per-detector path never seeds cake_params_per_det. Single
+        # mode does this inline in _apply_param_file (RMin/RMax/EtaMin/EtaMax/
+        # RBinSize/EtaBinSize → R_*/ETA_*). Mirror it here so the overlay can
+        # draw without a separate cake CSV being loaded.
+        try:
+            raw = self._parse_param_file(fn)
+        except Exception:
+            return
+        def _gf(key):
+            v = raw.get(key)
+            try:
+                return float(v[0][0]) if v and v[0] else None
+            except (ValueError, IndexError):
+                return None
+        cp = self.cake_params_per_det.setdefault(det_key, {})
+        for src_key, dst_key in [('RMin', 'R_MIN'), ('RMax', 'R_MAX'),
+                                  ('RBinSize', 'R_STEP'),
+                                  ('EtaMin', 'ETA_MIN'), ('EtaMax', 'ETA_MAX'),
+                                  ('EtaBinSize', 'ETA_STEP')]:
+            v = _gf(src_key)
+            if v is not None:
+                cp[dst_key] = v
+
     def _on_pick_det_param(self, idx):
         fn, _ = QtWidgets.QFileDialog.getOpenFileName(
             self, f"Select GE{idx+1} parameter file",
@@ -2363,12 +2589,16 @@ class FFViewer(QtWidgets.QMainWindow):
             return
         # First detector loaded → import shared crystallography params.
         self._absorb_shared_params(params)
+        self._extract_cake_keys_for_det(fn, idx + 1)
         def _set_param(i, path):
             try:
                 self._det_states[i].load_param_file(path)
+                self._extract_cake_keys_for_det(path, i + 1)
             except Exception:
                 pass
         self._autofill_siblings(idx, fn, _set_param)
+        if hasattr(self, '_populate_cake_edits'):
+            self._populate_cake_edits()
         # Auto-pick BigDetSize on first param file load.
         if self._big_det_auto:
             new_size = _md.autopick_big_det_size(self._det_states)
@@ -2502,6 +2732,7 @@ class FFViewer(QtWidgets.QMainWindow):
                 continue
             if first_params is None:
                 first_params = params
+            self._extract_cake_keys_for_det(pf, tgt_idx + 1)
 
             # Build the data file path from the param file's contents.
             raw = self._parse_param_file(pf)
@@ -2537,6 +2768,8 @@ class FFViewer(QtWidgets.QMainWindow):
         # Pull shared crystallography params from whichever param loaded first.
         if first_params is not None:
             self._absorb_shared_params(first_params)
+        if hasattr(self, '_populate_cake_edits'):
+            self._populate_cake_edits()
 
         # Auto-pick BigDetSize from the loaded detectors.
         if self._big_det_auto:
@@ -2579,9 +2812,13 @@ class FFViewer(QtWidgets.QMainWindow):
         """Pull crystallography + pixel params from a per-detector file
         into the global GUI state (used for ring computation)."""
         # Sync shared HDF5 path fields from the first param file loaded.
-        if hasattr(self, '_multi_data_path_edit') and params.get('data_loc'):
+        # Skip when the user has manually edited the field — external dark
+        # files don't follow the data file's dark_loc convention.
+        if (hasattr(self, '_multi_data_path_edit') and params.get('data_loc')
+                and not self._multi_data_loc_locked):
             self._multi_data_path_edit.setText(params['data_loc'])
-        if hasattr(self, '_multi_dark_path_edit') and params.get('dark_loc'):
+        if (hasattr(self, '_multi_dark_path_edit') and params.get('dark_loc')
+                and not self._multi_dark_loc_locked):
             self._multi_dark_path_edit.setText(params['dark_loc'])
         if params.get('px') is not None:
             self.pixel_size = params['px']
@@ -2709,6 +2946,7 @@ class FFViewer(QtWidgets.QMainWindow):
                     self.nz_edit.setText(str(self.nz))
                 if hasattr(self, 'nframes_edit'):
                     self.nframes_edit.setText(str(n_pages))
+                self._update_frame_max_label()
         except Exception as e:
             print(f"TIFF dimension detection failed: {e}")
 
@@ -2751,6 +2989,7 @@ class FFViewer(QtWidgets.QMainWindow):
                     self.nz_edit.setText(str(self.nz))
                     self.nframes_edit.setText(str(self.n_frames_per_file))
                     self.frame_spin.setMaximum(self.n_frames_per_file - 1)
+                    self._update_frame_max_label()
         except Exception as e:
             print(f"HDF5 detect error: {e}")
 
@@ -2779,6 +3018,7 @@ class FFViewer(QtWidgets.QMainWindow):
             self.nframes_edit.setText(str(self.n_frames_per_file))
             self.frame_spin.setMaximum(self.n_frames_per_file - 1)
             self.max_frames_spin.setValue(self.n_frames_per_file)
+            self._update_frame_max_label()
         if 'exchange/dark' in zr:
             dk = zr['exchange/dark'][:]
             if dk.ndim == 3 and dk.shape[0] > 0 and np.any(dk):
@@ -2846,6 +3086,7 @@ class FFViewer(QtWidgets.QMainWindow):
             self.frame_nr = self.frame_spin.value()
             self.first_file_nr = int(self.file_nr_edit.text())
             self.n_frames_per_file = int(self.nframes_edit.text())
+            self._update_frame_max_label()
             self.lsd_local = float(self.lsd_edit.text())
             self.bc_local = [float(self.bcy_edit.text()), float(self.bcz_edit.text())]
             try:
@@ -2950,8 +3191,16 @@ class FFViewer(QtWidgets.QMainWindow):
         # don't crash if the user is mid-load with mismatched datasets.
         nf_per = [s.n_frames() for s in loaded]
         nf = min(n for n in nf_per if n > 0) if any(n > 0 for n in nf_per) else 0
-        if nf > 0 and self.frame_spin.maximum() != nf - 1:
-            self.frame_spin.setMaximum(max(nf - 1, 0))
+        if nf > 0:
+            if self.frame_spin.maximum() != nf - 1:
+                self.frame_spin.setMaximum(max(nf - 1, 0))
+            # Nothing else in the HYDRA path updates the model's per-file
+            # frame count, leaving it stuck at the init default (1). Push
+            # the actual value here so downstream consumers
+            # (n_frames_per_file-aware file_nr / frame_in derivations, the
+            # "/ N" indicator that _update_frame_max_label drives) see the truth.
+            self.n_frames_per_file = nf
+            self._update_frame_max_label()
 
         frame_idx = self.frame_nr
         bds = int(self.big_det_size)
@@ -3070,21 +3319,28 @@ class FFViewer(QtWidgets.QMainWindow):
                     dark_data = read_image(dark_fn, self.header_size, self.bytes_per_pixel,
                                            self.ny, self.nz, 0)
 
-        # MaxOverFrames / SumOverFrames — parallel computation
-        if self.max_check.isChecked() or self.sum_check.isChecked():
+        # Max / Sum / Median aggregation — parallel computation
+        if (self.max_check.isChecked() or self.sum_check.isChecked()
+                or self.median_check.isChecked()):
             n_accum = self.max_frames_spin.value()
-            use_sum = self.sum_check.isChecked()
+            if self.sum_check.isChecked():
+                mode = 'sum'
+            elif self.median_check.isChecked():
+                mode = 'median'
+            else:
+                mode = 'max'
             start_frame = self.frame_nr
-            mode_str = "Sum" if use_sum else "Max"
+            mode_str = mode.capitalize()
 
             # Disable controls while computing
             self.max_check.setEnabled(False)
             self.sum_check.setEnabled(False)
+            self.median_check.setEnabled(False)
             self.frame_label.setText(f"Computing {mode_str} over {n_accum} frames...")
 
             # Capture all parameters for the worker thread
             params = dict(
-                n_accum=n_accum, use_sum=use_sum, start_frame=start_frame,
+                n_accum=n_accum, mode=mode, start_frame=start_frame,
                 folder=self.folder, file_stem=self.file_stem,
                 first_file_nr=self.first_file_nr, padding=self.padding,
                 det_nr=self.det_nr, ext=self.ext, sep_folder=self.sep_folder,
@@ -3114,10 +3370,13 @@ class FFViewer(QtWidgets.QMainWindow):
                     dset = p['zarr_store']['exchange/data']
                     end_frame = min(p['start_frame'] + p['n_accum'], dset.shape[0])
                     slab = dset[p['start_frame']:end_frame, :, :]  # (N, ny, nz)
-                    if p['use_sum']:
-                        result = np.sum(slab.astype(np.float64), axis=0)
+                    slab64 = slab.astype(np.float64)
+                    if p['mode'] == 'sum':
+                        result = np.sum(slab64, axis=0)
+                    elif p['mode'] == 'median':
+                        result = np.median(slab64, axis=0)
                     else:
-                        result = np.max(slab.astype(np.float64), axis=0)
+                        result = np.max(slab64, axis=0)
                     # Zarr file-format un-rotation (NOT a user transform).
                     result = result[::-1, ::-1].copy()
                     if p['mask'] is not None and p['mask'].shape == result.shape:
@@ -3147,8 +3406,10 @@ class FFViewer(QtWidgets.QMainWindow):
                                 f_start = p['start_frame'] % n_fpf
                                 f_end = min(f_start + p['n_accum'], dset.shape[0])
                                 slab = dset[f_start:f_end, :, :].astype(np.float64)
-                                if p['use_sum']:
+                                if p['mode'] == 'sum':
                                     result = np.sum(slab, axis=0)
+                                elif p['mode'] == 'median':
+                                    result = np.median(slab, axis=0)
                                 else:
                                     result = np.max(slab, axis=0)
                                 if p['mask'] is not None and p['mask'].shape == result.shape:
@@ -3183,6 +3444,9 @@ class FFViewer(QtWidgets.QMainWindow):
 
                 n_workers = min(p['n_accum'], os.cpu_count() or 4, 8)
                 data_accum = None
+                # Median needs every frame held simultaneously; max/sum stream.
+                buffered_frames: list[np.ndarray] | None = (
+                    [] if p['mode'] == 'median' else None)
                 count = 0
                 with concurrent.futures.ThreadPoolExecutor(max_workers=n_workers) as pool:
                     futures = {pool.submit(_read_one, i): i for i in range(p['n_accum'])}
@@ -3192,18 +3456,26 @@ class FFViewer(QtWidgets.QMainWindow):
                         except Exception:
                             continue
                         # Dark in raw orientation; subtract per-frame so
-                        # max/sum behaves correctly per pixel.
+                        # max/sum/median behaves correctly per pixel.
                         if p['dark_data'] is not None:
                             frame = frame - p['dark_data']
-                        if data_accum is None:
+                        if buffered_frames is not None:
+                            buffered_frames.append(frame.astype(np.float64))
+                        elif data_accum is None:
                             data_accum = frame.astype(np.float64)
                         else:
-                            if p['use_sum']:
+                            if p['mode'] == 'sum':
                                 data_accum += frame
-                            else:
+                            else:  # 'max'
                                 np.maximum(data_accum, frame, out=data_accum)
                         count += 1
 
+                if buffered_frames is not None:
+                    if buffered_frames:
+                        data_accum = np.median(np.stack(buffered_frames, axis=0),
+                                               axis=0)
+                    else:
+                        data_accum = np.zeros((p['ny'], p['nz']))
                 if data_accum is None:
                     data_accum = np.zeros((p['ny'], p['nz']))
                 # Apply user transforms once on the final accumulated raw result.
@@ -3230,6 +3502,7 @@ class FFViewer(QtWidgets.QMainWindow):
                 self._apply_tx_image_rect(data_out)
                 self.max_check.setEnabled(True)
                 self.sum_check.setEnabled(True)
+                self.median_check.setEnabled(True)
                 fn_display = (os.path.basename(self.zarr_zip_path or '')
                               if self.zarr_store else os.path.basename(
                                   build_filename(self.folder, self.file_stem,
@@ -3248,6 +3521,7 @@ class FFViewer(QtWidgets.QMainWindow):
                 print(f"Error in {mode_str}OverFrames: {msg}")
                 self.max_check.setEnabled(True)
                 self.sum_check.setEnabled(True)
+                self.median_check.setEnabled(True)
                 self.frame_label.setText(f"Frame {self.frame_nr}  |  Error")
 
             worker.finished_signal.connect(_on_accum_done)
