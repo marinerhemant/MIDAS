@@ -383,7 +383,7 @@ def compute_ring_points(ring_rad, lsd_local, lsd_orig, bc, px):
 class FFViewer(QtWidgets.QMainWindow):
     """FF-HEDM image viewer with reactive controls and ring overlays."""
 
-    def __init__(self, theme='light'):
+    def __init__(self, theme='light', auto_detect=True):
         super().__init__()
         self.setWindowTitle("FF Viewer (PyQtGraph) — MIDAS")
         self.resize(1500, 950)
@@ -393,7 +393,8 @@ class FFViewer(QtWidgets.QMainWindow):
         self._build_ui()
         self._wire_signals()
         self._setup_shortcuts()
-        self._start_auto_detect()
+        if auto_detect:
+            self._start_auto_detect()
 
     # ── State ──────────────────────────────────────────────────────
 
