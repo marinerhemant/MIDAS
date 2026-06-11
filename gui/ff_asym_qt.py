@@ -383,7 +383,7 @@ def compute_ring_points(ring_rad, lsd_local, lsd_orig, bc, px):
 class FFViewer(QtWidgets.QMainWindow):
     """FF-HEDM image viewer with reactive controls and ring overlays."""
 
-    def __init__(self, theme='light'):
+    def __init__(self, theme='light', auto_detect=True):
         super().__init__()
         self.setWindowTitle("FF Viewer (PyQtGraph) — MIDAS")
         self.resize(1500, 950)
@@ -393,7 +393,11 @@ class FFViewer(QtWidgets.QMainWindow):
         self._build_ui()
         self._wire_signals()
         self._setup_shortcuts()
-        self._start_auto_detect()
+        # auto_detect=False lets embedders (e.g. the caking launcher) suppress
+        # the CWD scan that would otherwise pull in an unrelated .MIDAS.zip
+        # or numbered data stem on a fresh launch.
+        if auto_detect:
+            self._start_auto_detect()
 
     # ── State ──────────────────────────────────────────────────────
 
@@ -494,6 +498,13 @@ class FFViewer(QtWidgets.QMainWindow):
         self._dark_locked   = False   # set by _on_dark_file
         self._h5data_locked = False   # set by editing h5data_edit
         self._h5dark_locked = False   # set by editing h5dark_edit
+        # Multi-det (HYDRA) equivalents — set when the user edits the shared
+        # data/dark path fields; prevents _absorb_shared_params from reverting
+        # the user's choice on the next param-file load. External dark files
+        # often store dark frames at /exchange/data while data files keep
+        # them at /exchange/data_dark, so the user's path needs to stick.
+        self._multi_data_loc_locked = False
+        self._multi_dark_loc_locked = False
 
     # ── UI Construction ────────────────────────────────────────────
 
@@ -535,6 +546,7 @@ class FFViewer(QtWidgets.QMainWindow):
         self.image_view.set_colormap(self.colormap_name)
         self.font_spin = self.image_view._font_spin
         self.image_view.fontSizeChanged.connect(self._on_font_changed)
+        self.image_view.levelsChanged.connect(self._on_hist_levels_dragged)
 
         # ── Control Panels (built first so they can go in the splitter) ──
         ctrl = QtWidgets.QHBoxLayout()
@@ -710,11 +722,11 @@ class FFViewer(QtWidgets.QMainWindow):
         # Intensity controls (moved from Display panel)
         tb.addWidget(QtWidgets.QLabel("Min I:"))
         self.min_intensity_edit = QtWidgets.QLineEdit("0")
-        self.min_intensity_edit.setFixedWidth(60)
+        self.min_intensity_edit.setMinimumWidth(110)
         tb.addWidget(self.min_intensity_edit)
         tb.addWidget(QtWidgets.QLabel("Max I:"))
         self.max_intensity_edit = QtWidgets.QLineEdit("1000")
-        self.max_intensity_edit.setFixedWidth(60)
+        self.max_intensity_edit.setMinimumWidth(110)
         tb.addWidget(self.max_intensity_edit)
         apply_btn = QtWidgets.QPushButton("Apply")
         apply_btn.clicked.connect(self._apply_intensity_levels)
@@ -1503,6 +1515,31 @@ class FFViewer(QtWidgets.QMainWindow):
             'cake_params_file': self.cake_params_file,
             'instr_only': self.instr_only_check.isChecked(),
         }
+
+        # ── HYDRA / multi-detector state ─────────────────────────────
+        # Per-detector slots, shared HDF5 dataset paths, BigDetSize and the
+        # auto-fill toggle. Per-detector geometry is rebuilt by re-loading
+        # the param file at load time, so only the file paths + enabled flag
+        # need to round-trip.
+        try:
+            state['big_det_size'] = int(self.big_det_size)
+        except (TypeError, ValueError):
+            pass
+        if hasattr(self, '_multi_data_path_edit'):
+            state['multi_data_loc'] = self._multi_data_path_edit.text()
+        if hasattr(self, '_multi_dark_path_edit'):
+            state['multi_dark_loc'] = self._multi_dark_path_edit.text()
+        if hasattr(self, '_autofill_check'):
+            state['multi_autofill_siblings'] = self._autofill_check.isChecked()
+        state['det_states'] = [
+            {
+                'enabled': bool(s.enabled),
+                'data_file': s.data_file,
+                'dark_file': s.dark_file,
+                'param_file': s.param_file,
+            }
+            for s in getattr(self, '_det_states', [])
+        ]
         try:
             with open(fn, 'w') as f:
                 json.dump(state, f, indent=2)
@@ -1604,6 +1641,89 @@ class FFViewer(QtWidgets.QMainWindow):
             self._load_cake_file(cake_f)
         if state.get('show_caking', False):
             self._show_cake_overlay()
+
+        # ── HYDRA / multi-detector state ─────────────────────────────
+        # Restore shared HDF5 paths and BigDetSize first so any auto-pick
+        # we'd otherwise do gets pinned to the saved value.
+        if 'big_det_size' in state:
+            try:
+                self.big_det_size = int(state['big_det_size'])
+                if hasattr(self, 'bigdet_spin'):
+                    self.bigdet_spin.blockSignals(True)
+                    self.bigdet_spin.setValue(self.big_det_size)
+                    self.bigdet_spin.blockSignals(False)
+                # User pinned BigDetSize via the saved session; turn off auto
+                # so a later param-file load doesn't bump it.
+                self._big_det_auto = False
+            except (TypeError, ValueError):
+                pass
+        if hasattr(self, '_multi_data_path_edit') and 'multi_data_loc' in state:
+            self._multi_data_path_edit.setText(state['multi_data_loc'] or '')
+            self._multi_data_loc_locked = True
+        if hasattr(self, '_multi_dark_path_edit') and 'multi_dark_loc' in state:
+            self._multi_dark_path_edit.setText(state['multi_dark_loc'] or '')
+            self._multi_dark_loc_locked = True
+        if hasattr(self, '_autofill_check') and 'multi_autofill_siblings' in state:
+            self._autofill_check.setChecked(bool(state['multi_autofill_siblings']))
+
+        det_payload = state.get('det_states') or []
+        if det_payload and hasattr(self, '_det_states'):
+            first_params = None
+            for idx, ds in enumerate(det_payload[:len(self._det_states)]):
+                self._det_states[idx] = _md.DetectorState()
+                s = self._det_states[idx]
+                s.enabled = bool(ds.get('enabled', True))
+                pf = ds.get('param_file') or ''
+                df = ds.get('data_file') or ''
+                dk = ds.get('dark_file') or ''
+                if pf and os.path.isfile(pf):
+                    try:
+                        params = s.load_param_file(pf)
+                        if first_params is None:
+                            first_params = params
+                        self._extract_cake_keys_for_det(pf, idx + 1)
+                    except Exception as e:
+                        print(f'Session load: GE{idx + 1} param parse failed: {e}')
+                else:
+                    s.param_file = pf  # remember the path even if missing
+                # load_param_file may overwrite dark_file from a `Dark <path>`
+                # line; restore the user's explicit picks afterward.
+                s.data_file = df
+                s.dark_file = dk
+                # Per-detector caches depend on file paths — invalidate.
+                s._dark_image = None
+                s._dark_cache_key = ()
+                # Mirror the enabled flag into the per-card checkbox so the
+                # UI matches the model.
+                if hasattr(self, '_det_widgets'):
+                    try:
+                        en = self._det_widgets[idx].get('enable')
+                        if en is not None:
+                            en.blockSignals(True)
+                            en.setChecked(s.enabled)
+                            en.blockSignals(False)
+                    except Exception:
+                        pass
+                if hasattr(self, '_refresh_det_widget'):
+                    try:
+                        self._refresh_det_widget(idx)
+                    except Exception:
+                        pass
+            if first_params is not None:
+                try:
+                    self._absorb_shared_params(first_params)
+                except Exception:
+                    pass
+            if hasattr(self, '_populate_cake_edits'):
+                try:
+                    self._populate_cake_edits()
+                except Exception:
+                    pass
+            # Refresh path-validity tinting now that file paths are in.
+            try:
+                self._validate_h5_paths()
+            except Exception:
+                pass
 
         # Dark / frame index last (these trigger reloads)
         self.dark_check.setChecked(state.get('use_dark', False))
@@ -2131,6 +2251,22 @@ class FFViewer(QtWidgets.QMainWindow):
         except ValueError:
             pass
 
+    def _on_hist_levels_dragged(self, lo: float, hi: float):
+        """Mirror histogram region drags into the MinI/MaxI text fields.
+
+        blockSignals avoids re-triggering _apply_intensity_levels (which
+        would push back into the histogram and create a feedback loop).
+        Levels arrive in linear units — MIDASImageView handles the
+        log↔linear conversion.
+        """
+        for w, val in ((self.min_intensity_edit, lo),
+                       (self.max_intensity_edit, hi)):
+            blocked = w.blockSignals(True)
+            try:
+                w.setText(f'{int(round(val))}')
+            finally:
+                w.blockSignals(blocked)
+
     # ── Intensity vs Frame ─────────────────────────────────────────
 
     def _compute_ivf(self):
@@ -2261,9 +2397,30 @@ class FFViewer(QtWidgets.QMainWindow):
         self._load_and_display()
 
     def _on_multi_paths_changed(self):
-        """Propagate the shared data/dark path fields to all DetectorStates."""
+        """Propagate the shared data/dark path fields to all DetectorStates.
+
+        editingFinished fires on every focus-loss, not just real edits — so
+        pressing Plot or switching colormap (which transfers focus away from
+        these fields) used to silently overwrite each state's data_loc /
+        dark_loc back to whatever string the *field* held. If the field had
+        a stale default like /exchange/data_dark while s.dark_loc had been
+        corrected to /exchange/data, the overwrite resurrected the bug each
+        time the user clicked elsewhere. Guard with a change check so a
+        no-op focus-loss is truly a no-op.
+        """
         data_path = self._multi_data_path_edit.text().strip() or '/exchange/data'
         dark_path = self._multi_dark_path_edit.text().strip() or '/exchange/data_dark'
+        changed = any(
+            s.data_loc != data_path or s.dark_loc != dark_path
+            for s in self._det_states)
+        if not changed:
+            return
+        self._multi_data_loc_locked = True
+        self._multi_dark_loc_locked = True
+        try:
+            _md.reset_warn_once()
+        except AttributeError:
+            pass
         for s in self._det_states:
             s.data_loc = data_path
             s.dark_loc = dark_path
@@ -2392,6 +2549,31 @@ class FFViewer(QtWidgets.QMainWindow):
         if self.multi_mode:
             self._load_and_display()
 
+    def _extract_cake_keys_for_det(self, fn, det_key):
+        # parse_detector_param_file in multidet drops the cake-range keys, so
+        # the HYDRA per-detector path never seeds cake_params_per_det. Single
+        # mode does this inline in _apply_param_file (RMin/RMax/EtaMin/EtaMax/
+        # RBinSize/EtaBinSize → R_*/ETA_*). Mirror it here so the overlay can
+        # draw without a separate cake CSV being loaded.
+        try:
+            raw = self._parse_param_file(fn)
+        except Exception:
+            return
+        def _gf(key):
+            v = raw.get(key)
+            try:
+                return float(v[0][0]) if v and v[0] else None
+            except (ValueError, IndexError):
+                return None
+        cp = self.cake_params_per_det.setdefault(det_key, {})
+        for src_key, dst_key in [('RMin', 'R_MIN'), ('RMax', 'R_MAX'),
+                                  ('RBinSize', 'R_STEP'),
+                                  ('EtaMin', 'ETA_MIN'), ('EtaMax', 'ETA_MAX'),
+                                  ('EtaBinSize', 'ETA_STEP')]:
+            v = _gf(src_key)
+            if v is not None:
+                cp[dst_key] = v
+
     def _on_pick_det_param(self, idx):
         fn, _ = QtWidgets.QFileDialog.getOpenFileName(
             self, f"Select GE{idx+1} parameter file",
@@ -2407,12 +2589,16 @@ class FFViewer(QtWidgets.QMainWindow):
             return
         # First detector loaded → import shared crystallography params.
         self._absorb_shared_params(params)
+        self._extract_cake_keys_for_det(fn, idx + 1)
         def _set_param(i, path):
             try:
                 self._det_states[i].load_param_file(path)
+                self._extract_cake_keys_for_det(path, i + 1)
             except Exception:
                 pass
         self._autofill_siblings(idx, fn, _set_param)
+        if hasattr(self, '_populate_cake_edits'):
+            self._populate_cake_edits()
         # Auto-pick BigDetSize on first param file load.
         if self._big_det_auto:
             new_size = _md.autopick_big_det_size(self._det_states)
@@ -2546,6 +2732,7 @@ class FFViewer(QtWidgets.QMainWindow):
                 continue
             if first_params is None:
                 first_params = params
+            self._extract_cake_keys_for_det(pf, tgt_idx + 1)
 
             # Build the data file path from the param file's contents.
             raw = self._parse_param_file(pf)
@@ -2581,6 +2768,8 @@ class FFViewer(QtWidgets.QMainWindow):
         # Pull shared crystallography params from whichever param loaded first.
         if first_params is not None:
             self._absorb_shared_params(first_params)
+        if hasattr(self, '_populate_cake_edits'):
+            self._populate_cake_edits()
 
         # Auto-pick BigDetSize from the loaded detectors.
         if self._big_det_auto:
@@ -2623,9 +2812,13 @@ class FFViewer(QtWidgets.QMainWindow):
         """Pull crystallography + pixel params from a per-detector file
         into the global GUI state (used for ring computation)."""
         # Sync shared HDF5 path fields from the first param file loaded.
-        if hasattr(self, '_multi_data_path_edit') and params.get('data_loc'):
+        # Skip when the user has manually edited the field — external dark
+        # files don't follow the data file's dark_loc convention.
+        if (hasattr(self, '_multi_data_path_edit') and params.get('data_loc')
+                and not self._multi_data_loc_locked):
             self._multi_data_path_edit.setText(params['data_loc'])
-        if hasattr(self, '_multi_dark_path_edit') and params.get('dark_loc'):
+        if (hasattr(self, '_multi_dark_path_edit') and params.get('dark_loc')
+                and not self._multi_dark_loc_locked):
             self._multi_dark_path_edit.setText(params['dark_loc'])
         if params.get('px') is not None:
             self.pixel_size = params['px']
@@ -2998,8 +3191,15 @@ class FFViewer(QtWidgets.QMainWindow):
         # don't crash if the user is mid-load with mismatched datasets.
         nf_per = [s.n_frames() for s in loaded]
         nf = min(n for n in nf_per if n > 0) if any(n > 0 for n in nf_per) else 0
-        if nf > 0 and self.frame_spin.maximum() != nf - 1:
-            self.frame_spin.setMaximum(max(nf - 1, 0))
+        if nf > 0:
+            if self.frame_spin.maximum() != nf - 1:
+                self.frame_spin.setMaximum(max(nf - 1, 0))
+            # Nothing else in the HYDRA path updates the model's per-file
+            # frame count, leaving it stuck at the init default (1). Push
+            # the actual value here so downstream consumers
+            # (n_frames_per_file-aware file_nr / frame_in derivations, the
+            # "/ N" indicator that _update_frame_max_label drives) see the truth.
+            self.n_frames_per_file = nf
             self._update_frame_max_label()
 
         frame_idx = self.frame_nr
