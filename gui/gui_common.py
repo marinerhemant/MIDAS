@@ -128,6 +128,10 @@ class MIDASImageView(QtWidgets.QWidget):
     fileDropped = QtCore.pyqtSignal(str)
     # Emitted when the font size spinbox changes
     fontSizeChanged = QtCore.pyqtSignal(int)
+    # Emitted when intensity levels change via the histogram region drag.
+    # Always reports linear-space (lo, hi) regardless of log display mode,
+    # so consumers can populate text fields without unit conversion.
+    levelsChanged = QtCore.pyqtSignal(float, float)
 
     def __init__(self, parent=None, name='MIDASImageView', origin='bl', **kwargs):
         super().__init__(parent)
@@ -140,6 +144,25 @@ class MIDASImageView(QtWidgets.QWidget):
         self._iv = pg.ImageView(parent=self, name=name, view=pg.PlotItem(), **kwargs)
         self._iv.ui.roiBtn.hide()
         self._iv.ui.menuBtn.hide()
+
+        # Force the histogram axis to integer tick labels. Diffraction
+        # intensities are always counts; the default '%.2g' formatter
+        # prints things like '1.2e+03' which are unreadable at narrow widths.
+        try:
+            hist_axis = self._iv.ui.histogram.axis
+            hist_axis.tickStrings = lambda values, scale, spacing: [
+                f'{int(round(v * scale))}' for v in values]
+        except Exception:
+            pass
+
+        # Bidirectional level sync: forward histogram region drags out as
+        # levelsChanged. setLevels() raises _suppress_levels_signal so
+        # programmatic region updates (from text-field edits / setImage with
+        # explicit levels) don't echo back and overwrite the source field.
+        self._suppress_levels_signal = False
+        hist = getattr(getattr(self._iv, 'ui', None), 'histogram', None)
+        if hist is not None and hasattr(hist, 'sigLevelsChanged'):
+            hist.sigLevelsChanged.connect(self._on_hist_levels_changed)
 
         # ── Navigation state ──
         self._nav_mode = 'pointer'  # 'pointer', 'pan', 'zoom'
@@ -444,11 +467,21 @@ class MIDASImageView(QtWidgets.QWidget):
                           np.log10(max(levels[1], 1e-10)))
             self._iv.setImage(display, autoLevels=False, levels=levels,
                               autoRange=False)
+            _hist_levels = levels
         elif auto_levels:
             self._iv.setImage(display, autoLevels=False, levels=(p2, p98),
                               autoRange=False)
+            _hist_levels = (p2, p98)
         else:
             self._iv.setImage(display, autoLevels=False, autoRange=False)
+            _hist_levels = None
+
+        if _hist_levels is not None:
+            try:
+                self._iv.ui.histogram.setHistogramRange(
+                    _hist_levels[0], _hist_levels[1], padding=0.05)
+            except Exception:
+                pass
 
         # Force origin position AFTER setImage (which may reset axes)
         self._apply_origin()
@@ -538,8 +571,50 @@ class MIDASImageView(QtWidgets.QWidget):
         self._hline.setVisible(visible)
 
     def setLevels(self, lo, hi):
-        """Set intensity levels (proxied to internal ImageView)."""
-        self._iv.setLevels(lo, hi)
+        """Set intensity levels (accepts linear-space values) and zoom the
+        histogram axis to match.
+
+        - Log conversion: set_image_data feeds the ImageView log10-converted
+          data when _log_mode is on, so levels also have to be log10'd or
+          the region sits at linear y-values off the log axis.
+        - _suppress_levels_signal: stops the resulting sigLevelsChanged from
+          looping back through _on_hist_levels_changed → levelsChanged →
+          MinI/MaxI text field, which would overwrite whatever the user
+          just typed.
+        - setHistogramRange: pyqtgraph's axis otherwise spans the full data
+          range; in HYDRA composite mode the level lines collapse to a
+          tiny sliver. Zoom to the levels with a small padding instead.
+        """
+        if self._log_mode:
+            lo = np.log10(max(lo, 1e-10))
+            hi = np.log10(max(hi, 1e-10))
+        self._suppress_levels_signal = True
+        try:
+            self._iv.setLevels(lo, hi)
+            try:
+                self._iv.ui.histogram.setHistogramRange(lo, hi, padding=0.05)
+            except Exception:
+                pass
+        finally:
+            self._suppress_levels_signal = False
+
+    def _on_hist_levels_changed(self, *_args):
+        """Forward histogram region drags to listeners as linear-space levels."""
+        if self._suppress_levels_signal:
+            return
+        hist = getattr(getattr(self._iv, 'ui', None), 'histogram', None)
+        if hist is None:
+            return
+        try:
+            lo, hi = hist.getLevels()
+        except Exception:
+            return
+        if lo is None or hi is None:
+            return
+        if self._log_mode:
+            lo = 10.0 ** float(lo)
+            hi = 10.0 ** float(hi)
+        self.levelsChanged.emit(float(lo), float(hi))
 
     def add_overlay(self, item, category='default'):
         """Add a PlotItem overlay (rings, markers, etc.).
