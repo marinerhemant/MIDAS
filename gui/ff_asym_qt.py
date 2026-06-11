@@ -1109,10 +1109,20 @@ class FFViewer(QtWidgets.QMainWindow):
             "before reducing (slower than Max/Sum on large slabs).")
         lay.addWidget(self.median_check, 3, 4, 1, 2)
 
+        # Row 4: aggregation progress bar — hidden unless a Max/Sum/Median
+        # job is running.
+        self.agg_progress = QtWidgets.QProgressBar()
+        self.agg_progress.setRange(0, 1)
+        self.agg_progress.setValue(0)
+        self.agg_progress.setTextVisible(True)
+        self.agg_progress.setFormat("")
+        self.agg_progress.setVisible(False)
+        lay.addWidget(self.agg_progress, 4, 0, 1, 6)
+
         # Stretch row: absorbs the extra height the QHBoxLayout gives this
         # panel (it's stretched to match the tallest sibling, Data Source),
         # so the actual rows pack tightly at the top instead of spreading out.
-        lay.setRowStretch(4, 1)
+        lay.setRowStretch(5, 1)
 
         return grp
 
@@ -1513,6 +1523,11 @@ class FFViewer(QtWidgets.QMainWindow):
             # Caking / param-file
             'show_caking': self.show_caking,
             'cake_params_file': self.cake_params_file,
+            # Full per-detector cake table — preserves GUI edits that aren't
+            # in the seed CSV or param files. Keys stringified for JSON.
+            'cake_params_per_det': {
+                str(k): dict(v) for k, v in self.cake_params_per_det.items()
+            },
             'instr_only': self.instr_only_check.isChecked(),
         }
 
@@ -1724,6 +1739,23 @@ class FFViewer(QtWidgets.QMainWindow):
                 self._validate_h5_paths()
             except Exception:
                 pass
+
+        # Restore the full cake-params table AFTER param/CSV loads above so
+        # any user-edited values in the session override the reconstructed
+        # defaults. JSON keys come back as strings — coerce to int per det.
+        cake_payload = state.get('cake_params_per_det') or {}
+        if cake_payload:
+            for k, v in cake_payload.items():
+                try:
+                    det_key = int(k)
+                except (TypeError, ValueError):
+                    det_key = k
+                self.cake_params_per_det[det_key] = dict(v)
+            if hasattr(self, '_populate_cake_edits'):
+                try:
+                    self._populate_cake_edits()
+                except Exception:
+                    pass
 
         # Dark / frame index last (these trigger reloads)
         self.dark_check.setChecked(state.get('use_dark', False))
@@ -3214,21 +3246,90 @@ class FFViewer(QtWidgets.QMainWindow):
         px = float(self.pixel_size)
         op = self.composite_op
 
-        self.frame_label.setText(
-            f"Frame {frame_idx}  |  multi-det compositing ({len(loaded)})…")
+        # Per-frame aggregation across multiple frames (Max / Sum / Median).
+        # Each iteration calls _md.composite_frame (which already parallelizes
+        # across detectors), then reduces across frames. Median buffers every
+        # frame in memory; Max/Sum stream a running accumulator.
+        agg_mode = None
+        if self.sum_check.isChecked():
+            agg_mode = 'sum'
+        elif self.median_check.isChecked():
+            agg_mode = 'median'
+        elif self.max_check.isChecked():
+            agg_mode = 'max'
+        n_accum = 1
+        if agg_mode is not None and nf > 0:
+            n_accum = min(self.max_frames_spin.value(), nf - frame_idx)
+            if n_accum < 1:
+                n_accum = 1
 
-        def _worker():
+        if agg_mode is None:
+            self.frame_label.setText(
+                f"Frame {frame_idx}  |  multi-det compositing ({len(loaded)})…")
+        else:
+            self.frame_label.setText(
+                f"Frame {frame_idx}  |  multi-det {agg_mode.capitalize()} "
+                f"over {n_accum} frames…")
+
+        # Set up the progress bar for aggregation jobs (>1 frame). Single
+        # frames are fast enough that the bar would just flicker.
+        show_progress = agg_mode is not None and n_accum > 1
+        if show_progress:
+            self.agg_progress.setRange(0, n_accum)
+            self.agg_progress.setValue(0)
+            self.agg_progress.setFormat(
+                f"{agg_mode.capitalize()} 0 / {n_accum}")
+            self.agg_progress.setVisible(True)
+        else:
+            self.agg_progress.setVisible(False)
+
+        def _worker(emit_progress):
             import time as _time
             t0 = _time.monotonic()
-            data = _md.composite_frame(states, frame_idx, bds, px,
-                                        op=op, subtract_dark=True,
-                                        parallel=True)
-            return data, _time.monotonic() - t0
+            if agg_mode is None or n_accum <= 1:
+                data = _md.composite_frame(states, frame_idx, bds, px,
+                                            op=op, subtract_dark=True,
+                                            parallel=True)
+                return data, _time.monotonic() - t0, 1
+
+            accum = None
+            frames_buf = [] if agg_mode == 'median' else None
+            for i in range(n_accum):
+                f = _md.composite_frame(states, frame_idx + i, bds, px,
+                                         op=op, subtract_dark=True,
+                                         parallel=True)
+                if agg_mode == 'median':
+                    frames_buf.append(f.astype(np.float32, copy=False))
+                elif agg_mode == 'sum':
+                    f64 = f.astype(np.float64, copy=False)
+                    accum = f64 if accum is None else accum + f64
+                else:  # max
+                    accum = (f.astype(np.float32, copy=False) if accum is None
+                             else np.maximum(accum, f))
+                emit_progress(i + 1, n_accum)
+            if agg_mode == 'median':
+                data = np.median(np.stack(frames_buf, axis=0), axis=0)
+            elif agg_mode == 'sum':
+                data = accum.astype(np.float32)
+            else:
+                data = accum
+            return data, _time.monotonic() - t0, n_accum
 
         worker = AsyncWorker(target=_worker)
+        # Bind progress emitter to the worker we just constructed. The signal
+        # crosses the worker→GUI thread boundary via Qt's queued connection.
+        worker._args = (worker.progress_signal.emit,)
+        if show_progress:
+            def _on_prog(cur, tot):
+                self.agg_progress.setValue(cur)
+                self.agg_progress.setFormat(
+                    f"{agg_mode.capitalize()} {cur} / {tot}")
+            worker.progress_signal.connect(_on_prog)
 
         def _done(result):
-            data, elapsed = result
+            if show_progress:
+                self.agg_progress.setVisible(False)
+            data, elapsed, n_used = result
             data = self._apply_tx_rotation(data)   # respects single Tx field
             self.bdata = data
             if getattr(self, '_levels_initialized', False):
@@ -3242,11 +3343,20 @@ class FFViewer(QtWidgets.QMainWindow):
             else:
                 self.image_view.set_image_data(data)
             self._apply_tx_image_rect(data)
-            self.frame_label.setText(
-                f"Frame {frame_idx}  |  composite (op={op}, "
-                f"{len(loaded)} det, {bds}², {1000*elapsed:.0f} ms)")
-            self.setWindowTitle(
-                f"FF Viewer — Multi-Det composite [frame {frame_idx}]")
+            if agg_mode is None:
+                self.frame_label.setText(
+                    f"Frame {frame_idx}  |  composite (op={op}, "
+                    f"{len(loaded)} det, {bds}², {1000*elapsed:.0f} ms)")
+                self.setWindowTitle(
+                    f"FF Viewer — Multi-Det composite [frame {frame_idx}]")
+            else:
+                self.frame_label.setText(
+                    f"Frames {frame_idx}–{frame_idx + n_used - 1}  |  "
+                    f"{agg_mode.capitalize()} composite (op={op}, "
+                    f"{len(loaded)} det, {bds}², {1000*elapsed:.0f} ms)")
+                self.setWindowTitle(
+                    f"FF Viewer — Multi-Det {agg_mode.capitalize()} "
+                    f"[frames {frame_idx}–{frame_idx + n_used - 1}]")
             if self.show_rings and self.ring_rads:
                 self._draw_rings()
             if self.show_axes:
@@ -3255,6 +3365,8 @@ class FFViewer(QtWidgets.QMainWindow):
                 self._draw_caking()
 
         def _err(msg):
+            if show_progress:
+                self.agg_progress.setVisible(False)
             self.frame_label.setText(f"Multi-Det error: {msg}")
             print(f"Multi-Det error: {msg}")
 
@@ -3825,6 +3937,33 @@ class FFViewer(QtWidgets.QMainWindow):
         if self.show_caking:
             self._draw_caking()
 
+    def _confirm_cake_overwrite(self, targets: list[tuple[int, str]]) -> bool:
+        """If any path in ``targets`` already exists, show a confirmation
+        dialog listing the existing files. Returns True if the user wants to
+        proceed (or no files would be overwritten), False if cancelled.
+
+        ``_write_cake_csv`` appends '.csv' when missing; mirror that here so
+        the existence check matches the actual write target.
+        """
+        existing = []
+        for _det, fn in targets:
+            check = fn if fn.lower().endswith('.csv') \
+                else os.path.splitext(fn)[0] + '.csv'
+            if os.path.isfile(check):
+                existing.append(check)
+        if not existing:
+            return True
+        msg = ("The following cake parameter file"
+               f"{'s' if len(existing) > 1 else ''} already exist and will "
+               "be overwritten:\n\n  "
+               + "\n  ".join(existing)
+               + "\n\nProceed?")
+        reply = QtWidgets.QMessageBox.question(
+            self, "Overwrite cake parameters?", msg,
+            QtWidgets.QMessageBox.Yes | QtWidgets.QMessageBox.No,
+            QtWidgets.QMessageBox.No)
+        return reply == QtWidgets.QMessageBox.Yes
+
     def _on_save_cake_file(self):
         """Save all loaded GE detector cake params to their CSV files."""
         if not self.cake_params_per_det:
@@ -3836,42 +3975,94 @@ class FFViewer(QtWidgets.QMainWindow):
             tag = self._find_detector_tag(self.cake_params_file)
             if tag:
                 prefix, src_d = tag
-                saved = []
+                # Collect every target path FIRST so we can check overwrites
+                # in one prompt before writing anything.
+                targets: list[tuple[int, str]] = []
                 for det in [1, 2, 3, 4]:
                     if det not in self.cake_params_per_det:
                         continue
                     if str(det) == src_d:
-                        # Seed file: _derive_ge_path returns None for an
-                        # identity substitution, so write to the original path.
                         sib = self.cake_params_file
                     else:
                         sib = self._derive_ge_path(
                             self.cake_params_file,
                             prefix + src_d, prefix + str(det))
                     if sib:
-                        self._write_cake_csv(sib, det)
-                        saved.append(os.path.basename(sib))
-                if saved:
-                    print(f"Cake params saved: {', '.join(saved)}")
-                    return
+                        targets.append((det, sib))
+                if targets:
+                    if not self._confirm_cake_overwrite(targets):
+                        return
+                    saved = []
+                    for det, sib in targets:
+                        written = self._write_cake_csv(sib, det)
+                        if written:
+                            saved.append(os.path.basename(written))
+                    if saved:
+                        print("Cake params saved:\n  " + "\n  ".join(saved))
+                        return
 
-        # No sibling path available — prompt for a save location
+        # No seed cake file (or no sibling derivation worked) — prompt for one.
+        # In multi-det mode with multiple detectors loaded, derive sibling
+        # paths from the chosen filename by substituting the geN tag (or
+        # appending _geN if no tag is present) so every detector gets a file.
+        default_dir = (os.path.dirname(self.cake_params_file)
+                       or (os.path.dirname(self._det_states[0].param_file)
+                           if getattr(self, '_det_states', None) and
+                              self._det_states[0].param_file else '')
+                       or os.getcwd())
         fn, _ = QtWidgets.QFileDialog.getSaveFileName(
-            self, "Save Cake Parameters",
-            os.path.dirname(self.cake_params_file) or os.getcwd(),
+            self, "Save Cake Parameters", default_dir,
             "CSV Files (*.csv);;All (*)")
         if not fn:
             return
-        det = next(iter(self.cake_params_per_det))
-        self._write_cake_csv(fn, det)
-        print(f"Cake params saved: {fn}")
+        det_keys = sorted(self.cake_params_per_det.keys())
+        if len(det_keys) <= 1:
+            # Single-det: QFileDialog has already confirmed overwrite of `fn`,
+            # but check derived-extension form (.csv-appended) too just in case.
+            det = det_keys[0]
+            if not self._confirm_cake_overwrite([(det, fn)]):
+                return
+            written = self._write_cake_csv(fn, det)
+            print(f"Cake params saved:\n  {written or fn}")
+            return
+
+        # Multi-det save: build the full target list first, then prompt once
+        # with all would-be-overwritten siblings.
+        base = os.path.basename(fn)
+        m = re.search(r'([A-Za-z]+)([1-4])(?![0-9])', base)
+        targets = []
+        if m:
+            prefix, src_d = m.group(1), m.group(2)
+            for det in det_keys:
+                if str(det) == src_d:
+                    sib = fn
+                else:
+                    sib = self._derive_ge_path(
+                        fn, prefix + src_d, prefix + str(det)) or fn
+                targets.append((det, sib))
+        else:
+            stem, ext = os.path.splitext(fn)
+            for det in det_keys:
+                targets.append((det, f"{stem}_ge{det}{ext}"))
+        if not self._confirm_cake_overwrite(targets):
+            return
+        saved = []
+        for det, sib in targets:
+            written = self._write_cake_csv(sib, det)
+            if written:
+                saved.append(os.path.basename(written))
+        print("Cake params saved:\n  " + "\n  ".join(saved))
 
     def _write_cake_csv(self, fn, det_nr):
         """Write cake_params_per_det[det_nr] to fn in header+data row format.
 
         Writes all known columns (R/ETA/OME) so a load → edit → save round-trip
         preserves OME values even when they're not edited in the GUI.
+        Ensures the output file ends in ``.csv``. Returns the actual path
+        written (with extension), or None on failure.
         """
+        if not fn.lower().endswith('.csv'):
+            fn = os.path.splitext(fn)[0] + '.csv'
         p = self.cake_params_per_det.get(det_nr, {})
         header = ','.join(self.CAKE_KEYS)
         values = ','.join(str(p.get(k, '')) for k in self.CAKE_KEYS)
@@ -3879,8 +4070,10 @@ class FFViewer(QtWidgets.QMainWindow):
             with open(fn, 'w') as f:
                 f.write(header + '\n')
                 f.write(values + '\n')
+            return fn
         except Exception as e:
             print(f"Cake save failed ({os.path.basename(fn)}): {e}")
+            return None
 
     def _on_pick_cake_file(self):
         """Open file dialog to select a cake_parameters CSV."""
