@@ -317,11 +317,17 @@ In HYDRA mode, the multi-detector panel provides:
 
 - **Autoload from one param file**: choose one detector parameter file and auto-derive sibling GE parameter/data files when available.
 - **Auto-fill siblings**: when enabled, picking Data/Dark/Param for one GE slot attempts `ge1↔ge2↔ge3↔ge4` sibling substitution for the other slots.
-- **Shared HDF5 paths**: one **Data path** and one **Dark path** field applied across all GE detector slots.
+- **Shared HDF5 paths**: one **Data path** and one **Dark path** field applied across all GE detector slots. Once edited, these paths are pinned so subsequent param-file loads don't overwrite the user's choice — external dark files typically store the dark frames at `/exchange/data` while data files keep them at `/exchange/data_dark`, and the pin keeps that distinction intact.
 - **Aligned GE rows**: compact per-detector rows for enable toggle, Data, Dark, Param, and per-slot status.
+- **Per-detector cake-range overlay**: when each detector's instrument param file already contains `RMin`/`RMax`/`EtaMin`/`EtaMax`/`RBinSize`/`EtaBinSize`, the overlay reads them straight from the param file — no separate `cake_parameters.csv` required. A per-GE editor row lets you adjust the values inline and re-plot.
+- **Session round-trip of HYDRA state**: `Ctrl+S` / `Ctrl+Shift+S` save and restore per-detector file paths, the enabled flag, `BigDetSize`, the shared Data/Dark paths, and the auto-fill toggle. The path pins are re-armed on restore so a restored session behaves the same as a freshly-edited one.
+- **Dark-subtract diagnostics**: the first composite of each session prints, per detector, whether dark applied (and `<dark>`/`<img>`/`<img-dark>` means) or why it skipped (missing dataset, shape mismatch). Re-arms when the shared paths change. Useful when an external dark file appears to have no effect — it usually means the dataset path needs to be `/exchange/data` rather than `/exchange/data_dark`.
 
 > [!TIP]
 > If a parameter file has valid instrument geometry but stale file paths, check **Instr. only** before loading it to keep your current file layout while still importing BC/Lsd/Tx and ring-related parameters.
+
+> [!NOTE]
+> **Min I / Max I ↔ histogram sync**: dragging the right-edge histogram region updates the Min I / Max I toolbar fields live; typing into the fields and pressing Enter pushes the region back. The histogram axis zooms to the level range with a small padding (instead of spanning the full data range) so the labelled ticks remain readable in HYDRA composite mode, where dynamic ranges are otherwise too large to see the levels clearly. Tick labels are integer-only.
 
 ---
 

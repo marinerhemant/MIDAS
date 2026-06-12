@@ -145,6 +145,17 @@ class MIDASImageView(QtWidgets.QWidget):
         self._iv.ui.roiBtn.hide()
         self._iv.ui.menuBtn.hide()
 
+        # Force the histogram axis to integer tick labels. Diffraction
+        # intensities are always counts; the default '%.2g' formatter
+        # prints things like '1.2e+03' which are unreadable at narrow widths.
+        try:
+            hist_axis = self._iv.ui.histogram.axis
+            hist_axis.tickStrings = lambda values, scale, spacing: [
+                f'{int(round(v * scale))}' for v in values]
+        except Exception:
+            pass
+
+
         # Bidirectional level sync: forward histogram region drags out as
         # levelsChanged. setLevels() raises _suppress_levels_signal so
         # programmatic region updates (from text-field edits / setImage with
@@ -457,11 +468,21 @@ class MIDASImageView(QtWidgets.QWidget):
                           np.log10(max(levels[1], 1e-10)))
             self._iv.setImage(display, autoLevels=False, levels=levels,
                               autoRange=False)
+            _hist_levels = levels
         elif auto_levels:
             self._iv.setImage(display, autoLevels=False, levels=(p2, p98),
                               autoRange=False)
+            _hist_levels = (p2, p98)
         else:
             self._iv.setImage(display, autoLevels=False, autoRange=False)
+            _hist_levels = None
+
+        if _hist_levels is not None:
+            try:
+                self._iv.ui.histogram.setHistogramRange(
+                    _hist_levels[0], _hist_levels[1], padding=0.05)
+            except Exception:
+                pass
 
         # Force origin position AFTER setImage (which may reset axes)
         self._apply_origin()
@@ -530,10 +551,19 @@ class MIDASImageView(QtWidgets.QWidget):
                 self._iv.setLevels(lo, hi)
 
     def set_colormap(self, name):
-        """Apply a named colormap."""
+        """Apply a named colormap to both the image and the histogram LUT strip."""
         cmap = get_colormap(name)
         lut = cmap.getLookupTable(nPts=256)
         self._iv.imageItem.setLookupTable(lut)
+        # Sync the histogram gradient bar on the right side.
+        hist = getattr(getattr(self._iv, 'ui', None), 'histogram', None)
+        if hist is not None:
+            grad = getattr(hist, 'gradient', None)
+            if grad is not None and hasattr(grad, 'setColorMap'):
+                try:
+                    grad.setColorMap(cmap)
+                except Exception:
+                    pass
 
     def set_crosshair_visible(self, visible):
         """Show or hide crosshair."""
@@ -542,11 +572,19 @@ class MIDASImageView(QtWidgets.QWidget):
         self._hline.setVisible(visible)
 
     def setLevels(self, lo, hi):
-        """Set intensity levels (proxied to internal ImageView).
+        """Set intensity levels (accepts linear-space values) and zoom the
+        histogram axis to match.
 
-        Accepts linear-space values. When log display is active, converts to
-        log10 first so the histogram region and image gradient stay aligned
-        with the log-transformed display (see ``set_image_data``).
+        - Log conversion: set_image_data feeds the ImageView log10-converted
+          data when _log_mode is on, so levels also have to be log10'd or
+          the region sits at linear y-values off the log axis.
+        - _suppress_levels_signal: stops the resulting sigLevelsChanged from
+          looping back through _on_hist_levels_changed → levelsChanged →
+          MinI/MaxI text field, which would overwrite whatever the user
+          just typed.
+        - setHistogramRange: pyqtgraph's axis otherwise spans the full data
+          range; in HYDRA composite mode the level lines collapse to a
+          tiny sliver. Zoom to the levels with a small padding instead.
         """
         if self._log_mode:
             lo = np.log10(max(lo, 1e-10))
@@ -554,6 +592,10 @@ class MIDASImageView(QtWidgets.QWidget):
         self._suppress_levels_signal = True
         try:
             self._iv.setLevels(lo, hi)
+            try:
+                self._iv.ui.histogram.setHistogramRange(lo, hi, padding=0.05)
+            except Exception:
+                pass
         finally:
             self._suppress_levels_signal = False
 

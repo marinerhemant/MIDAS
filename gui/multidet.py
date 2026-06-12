@@ -45,6 +45,26 @@ DEFAULT_DATA_LOC = '/exchange/data'
 DEFAULT_DARK_LOC = '/exchange/data_dark'
 
 
+_seen_warnings: set[str] = set()
+
+
+def _warn_once(msg: str) -> None:
+    """Print msg to stdout the first time it's seen this session.
+
+    Used by the dark-subtraction path to surface why a particular detector's
+    dark didn't apply (missing dataset, shape mismatch, etc.) without
+    flooding the log on every composite. Call ``reset_warn_once()`` to
+    re-arm — useful after the user changes paths.
+    """
+    if msg not in _seen_warnings:
+        _seen_warnings.add(msg)
+        print(msg)
+
+
+def reset_warn_once() -> None:
+    _seen_warnings.clear()
+
+
 # ── Param file parsing ──────────────────────────────────────────────────────
 
 def parse_detector_param_file(fn: str) -> dict:
@@ -440,13 +460,19 @@ class DetectorState:
         if not src:
             return None
         key = (src, self.dark_loc, tuple(self.im_trans_opts))
-        if self._dark_cache_key == key:
+        # Cache HIT only when both key matches AND a real image is stored.
+        # Several call sites invalidate by clearing `_dark_image = None`
+        # without touching `_dark_cache_key`; without this guard, a matching
+        # key would return the cleared None forever.
+        if self._dark_cache_key == key and self._dark_image is not None:
             return self._dark_image
         dark = read_h5_dark(src, self.dark_loc)
         if dark is not None:
             dark = apply_imtransopt(dark, self.im_trans_opts)
-        self._dark_image = dark
-        self._dark_cache_key = key
+            # Only cache successful reads — caching None freezes transient
+            # I/O failures into permanent ones.
+            self._dark_image = dark
+            self._dark_cache_key = key
         return dark
 
     def get_inv_coords(self, big_det_size: int, px: float) -> tuple:
@@ -473,7 +499,25 @@ class DetectorState:
         img = mask_sentinels(img, self.bad_px, self.gap_px)
         if subtract_dark:
             dark = self.get_dark()
-            if dark is not None and dark.shape == img.shape:
+            tag = os.path.basename(self.data_file)
+            src = self.dark_file or self.data_file
+            if dark is None:
+                _warn_once(
+                    f'dark-subtract[{tag}]: get_dark() returned None — '
+                    f'src={os.path.basename(src)}  loc={self.dark_loc!r} '
+                    f'(dataset missing or unreadable; subtraction skipped)')
+            elif dark.shape != img.shape:
+                _warn_once(
+                    f'dark-subtract[{tag}]: shape mismatch — '
+                    f'dark={dark.shape} vs img={img.shape}; subtraction skipped')
+            else:
+                d_mean = float(np.nanmean(dark))
+                i_mean = float(np.nanmean(img))
+                _warn_once(
+                    f'dark-subtract[{tag}]: applied — '
+                    f'<dark>={d_mean:.1f}  <img>={i_mean:.1f}  '
+                    f'<img-dark>={i_mean - d_mean:.1f}  '
+                    f'src={os.path.basename(src)}  loc={self.dark_loc!r}')
                 img = img - dark
                 np.maximum(img, 0.0, out=img,
                            where=~np.isnan(img))
