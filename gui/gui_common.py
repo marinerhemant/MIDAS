@@ -155,7 +155,6 @@ class MIDASImageView(QtWidgets.QWidget):
         except Exception:
             pass
 
-
         # Bidirectional level sync: forward histogram region drags out as
         # levelsChanged. setLevels() raises _suppress_levels_signal so
         # programmatic region updates (from text-field edits / setImage with
