@@ -916,7 +916,7 @@ class FFViewer(QtWidgets.QMainWindow):
         _hs = "color: gray; font-size: 9pt;"
         column_labels = ["R min", "R max", "R step",
                          "η min", "η max", "η step",
-                         "ω sum", "ω start", "ω step"]
+                         "ω ave", "ω start", "ω step"]
         cl.addWidget(QtWidgets.QLabel(""), 1, 0)
         for col, txt in enumerate(column_labels):
             lbl = QtWidgets.QLabel(txt)
@@ -996,7 +996,7 @@ class FFViewer(QtWidgets.QMainWindow):
         _hs = "color: gray; font-size: 9pt;"
         column_labels = ["R min", "R max", "R step",
                          "η min", "η max", "η step",
-                         "ω sum", "ω start", "ω step"]
+                         "ω ave", "ω start", "ω step"]
         cl.addWidget(QtWidgets.QLabel(""), 1, 0)
         for col, txt in enumerate(column_labels):
             lbl = QtWidgets.QLabel(txt)
@@ -1091,8 +1091,8 @@ class FFViewer(QtWidgets.QMainWindow):
         # all on one row so their relationship is visually obvious.
         agg_label = QtWidgets.QLabel("# Frames:")
         agg_label.setToolTip(
-            "Number of frames to aggregate (Max/Sum/Median), starting at "
-            "Display Frame. May span multiple sibling files.")
+            "Number of frames to aggregate (Max/Sum/Average/Median), "
+            "starting at Display Frame. May span multiple sibling files.")
         lay.addWidget(agg_label, 3, 0)
         self.max_frames_spin = QtWidgets.QSpinBox()
         self.max_frames_spin.setRange(1, 99999)
@@ -1103,13 +1103,17 @@ class FFViewer(QtWidgets.QMainWindow):
         lay.addWidget(self.max_check, 3, 2)
         self.sum_check = QtWidgets.QCheckBox("Sum")
         lay.addWidget(self.sum_check, 3, 3)
+        self.avg_check = QtWidgets.QCheckBox("Average")
+        self.avg_check.setToolTip(
+            "Per-pixel mean across # Frames (streams like Sum, then divides).")
+        lay.addWidget(self.avg_check, 3, 4)
         self.median_check = QtWidgets.QCheckBox("Median")
         self.median_check.setToolTip(
             "Per-pixel median across # Frames. Loads all frames into memory "
-            "before reducing (slower than Max/Sum on large slabs).")
-        lay.addWidget(self.median_check, 3, 4, 1, 2)
+            "before reducing (slower than Max/Sum/Average on large slabs).")
+        lay.addWidget(self.median_check, 3, 5)
 
-        # Row 4: aggregation progress bar — hidden unless a Max/Sum/Median
+        # Row 4: aggregation progress bar — hidden unless a Max/Sum/Average/Median
         # job is running.
         self.agg_progress = QtWidgets.QProgressBar()
         self.agg_progress.setRange(0, 1)
@@ -1379,6 +1383,7 @@ class FFViewer(QtWidgets.QMainWindow):
         self.transpose_check.toggled.connect(self._load_and_display)
         self.max_check.toggled.connect(self._on_max_toggled)
         self.sum_check.toggled.connect(self._on_sum_toggled)
+        self.avg_check.toggled.connect(self._on_avg_toggled)
         self.median_check.toggled.connect(self._on_median_toggled)
         # Colormap
         self.cmap_combo.currentTextChanged.connect(self._on_cmap_changed)
@@ -1508,6 +1513,7 @@ class FFViewer(QtWidgets.QMainWindow):
             'max_frames_spin': self.max_frames_spin.value(),
             'max_per_frames': self.max_check.isChecked(),
             'sum_per_frames': self.sum_check.isChecked(),
+            'avg_per_frames': self.avg_check.isChecked(),
             'median_per_frames': self.median_check.isChecked(),
             'colormap': self.cmap_combo.currentText(),
             'theme': self.theme_combo.currentText(),
@@ -1646,6 +1652,7 @@ class FFViewer(QtWidgets.QMainWindow):
         self.axes_check.setChecked(state.get('show_axes', False))
         self.max_check.setChecked(state.get('max_per_frames', False))
         self.sum_check.setChecked(state.get('sum_per_frames', False))
+        self.avg_check.setChecked(state.get('avg_per_frames', False))
         self.median_check.setChecked(state.get('median_per_frames', False))
         self.mask_check.setChecked(state.get('apply_mask', False))
         self.instr_only_check.setChecked(state.get('instr_only', False))
@@ -2191,6 +2198,8 @@ class FFViewer(QtWidgets.QMainWindow):
     def _on_max_toggled(self, checked):
         if checked:
             self.sum_check.setChecked(False)
+            if hasattr(self, 'avg_check'):
+                self.avg_check.setChecked(False)
             if hasattr(self, 'median_check'):
                 self.median_check.setChecked(False)
         self._load_and_display()
@@ -2198,6 +2207,16 @@ class FFViewer(QtWidgets.QMainWindow):
     def _on_sum_toggled(self, checked):
         if checked:
             self.max_check.setChecked(False)
+            if hasattr(self, 'avg_check'):
+                self.avg_check.setChecked(False)
+            if hasattr(self, 'median_check'):
+                self.median_check.setChecked(False)
+        self._load_and_display()
+
+    def _on_avg_toggled(self, checked):
+        if checked:
+            self.max_check.setChecked(False)
+            self.sum_check.setChecked(False)
             if hasattr(self, 'median_check'):
                 self.median_check.setChecked(False)
         self._load_and_display()
@@ -2206,13 +2225,15 @@ class FFViewer(QtWidgets.QMainWindow):
         """Handle the Median checkbox toggle.
 
         Median aggregation requires all frames to be buffered in memory before
-        reduction (unlike Max/Sum which stream frame-by-frame), so it is
-        mutually exclusive with the other modes.  When enabled, Max and Sum are
-        unchecked automatically.  The display is refreshed immediately.
+        reduction (unlike Max/Sum/Average which stream frame-by-frame), so it
+        is mutually exclusive with the other modes.  When enabled, Max, Sum,
+        and Average are unchecked automatically.
         """
         if checked:
             self.max_check.setChecked(False)
             self.sum_check.setChecked(False)
+            if hasattr(self, 'avg_check'):
+                self.avg_check.setChecked(False)
         self._load_and_display()
 
     def _on_cmap_changed(self, name):
@@ -3280,6 +3301,8 @@ class FFViewer(QtWidgets.QMainWindow):
         agg_mode = None
         if self.sum_check.isChecked():
             agg_mode = 'sum'
+        elif self.avg_check.isChecked():
+            agg_mode = 'avg'
         elif self.median_check.isChecked():
             agg_mode = 'median'
         elif self.max_check.isChecked():
@@ -3327,7 +3350,7 @@ class FFViewer(QtWidgets.QMainWindow):
                                          parallel=True)
                 if agg_mode == 'median':
                     frames_buf.append(f.astype(np.float32, copy=False))
-                elif agg_mode == 'sum':
+                elif agg_mode in ('sum', 'avg'):
                     f64 = f.astype(np.float64, copy=False)
                     accum = f64 if accum is None else accum + f64
                 else:  # max
@@ -3336,6 +3359,8 @@ class FFViewer(QtWidgets.QMainWindow):
                 emit_progress(i + 1, n_accum)
             if agg_mode == 'median':
                 data = np.median(np.stack(frames_buf, axis=0), axis=0)
+            elif agg_mode == 'avg':
+                data = (accum / float(n_accum)).astype(np.float32)
             elif agg_mode == 'sum':
                 data = accum.astype(np.float32)
             else:
@@ -3465,12 +3490,15 @@ class FFViewer(QtWidgets.QMainWindow):
                     dark_data = read_image(dark_fn, self.header_size, self.bytes_per_pixel,
                                            self.ny, self.nz, 0)
 
-        # Max / Sum / Median aggregation — parallel computation
+        # Max / Sum / Average / Median aggregation — parallel computation
         if (self.max_check.isChecked() or self.sum_check.isChecked()
+                or self.avg_check.isChecked()
                 or self.median_check.isChecked()):
             n_accum = self.max_frames_spin.value()
             if self.sum_check.isChecked():
                 mode = 'sum'
+            elif self.avg_check.isChecked():
+                mode = 'avg'
             elif self.median_check.isChecked():
                 mode = 'median'
             else:
@@ -3481,6 +3509,7 @@ class FFViewer(QtWidgets.QMainWindow):
             # Disable controls while computing
             self.max_check.setEnabled(False)
             self.sum_check.setEnabled(False)
+            self.avg_check.setEnabled(False)
             self.median_check.setEnabled(False)
             self.frame_label.setText(f"Computing {mode_str} over {n_accum} frames...")
 
@@ -3543,6 +3572,8 @@ class FFViewer(QtWidgets.QMainWindow):
                     slab64 = slab.astype(np.float64)
                     if p['mode'] == 'sum':
                         result = np.sum(slab64, axis=0)
+                    elif p['mode'] == 'avg':
+                        result = np.mean(slab64, axis=0)
                     elif p['mode'] == 'median':
                         result = np.median(slab64, axis=0)
                     else:
@@ -3578,6 +3609,8 @@ class FFViewer(QtWidgets.QMainWindow):
                                 slab = dset[f_start:f_end, :, :].astype(np.float64)
                                 if p['mode'] == 'sum':
                                     result = np.sum(slab, axis=0)
+                                elif p['mode'] == 'avg':
+                                    result = np.mean(slab, axis=0)
                                 elif p['mode'] == 'median':
                                     result = np.median(slab, axis=0)
                                 else:
@@ -3634,7 +3667,7 @@ class FFViewer(QtWidgets.QMainWindow):
                         elif data_accum is None:
                             data_accum = frame.astype(np.float64)
                         else:
-                            if p['mode'] == 'sum':
+                            if p['mode'] in ('sum', 'avg'):
                                 data_accum += frame
                             else:  # 'max'
                                 np.maximum(data_accum, frame, out=data_accum)
@@ -3648,6 +3681,8 @@ class FFViewer(QtWidgets.QMainWindow):
                         data_accum = np.zeros((p['ny'], p['nz']))
                 if data_accum is None:
                     data_accum = np.zeros((p['ny'], p['nz']))
+                if p['mode'] == 'avg' and count > 0:
+                    data_accum = data_accum / float(count)
                 # Apply user transforms once on the final accumulated raw result.
                 data_accum = apply_image_transforms(data_accum,
                     p['do_transpose'], p['hflip'], p['vflip'])
@@ -3672,6 +3707,7 @@ class FFViewer(QtWidgets.QMainWindow):
                 self._apply_tx_image_rect(data_out)
                 self.max_check.setEnabled(True)
                 self.sum_check.setEnabled(True)
+                self.avg_check.setEnabled(True)
                 self.median_check.setEnabled(True)
                 fn_display = (os.path.basename(self.zarr_zip_path or '')
                               if self.zarr_store else os.path.basename(
@@ -3691,6 +3727,7 @@ class FFViewer(QtWidgets.QMainWindow):
                 print(f"Error in {mode_str}OverFrames: {msg}")
                 self.max_check.setEnabled(True)
                 self.sum_check.setEnabled(True)
+                self.avg_check.setEnabled(True)
                 self.median_check.setEnabled(True)
                 self.frame_label.setText(f"Frame {self.frame_nr}  |  Error")
 
