@@ -209,27 +209,38 @@ def label_twins(
         twin_partner[g] = p
         twin_type[g] = name
 
-    # Build twin families via union-find on the deduplicated pairs.
-    # This is the transitive closure across ALL twin operators (Σ3, Σ9,
-    # Σ27a, Σ27b on cubic; the 5 HCP twin systems on hex). Two grains
-    # related by a Σ3-chain (Σ3 then Σ9 cousin) end up in the SAME
-    # twin family.
-    parent = np.arange(N, dtype=np.int64)
-    def find(x):
-        while parent[x] != x: parent[x] = parent[parent[x]]; x = parent[x]
-        return x
+    # Build twin families as parent-anchored stars rather than the
+    # transitive closure of the twin relation. The twin *pairs* are
+    # genuine, but transitive closure is non-physical on heavily-twinned
+    # cubic samples (annealed austenitic steel, twinned LMO): A↔B and B↔C
+    # are each real Σ3 pairs, yet A and C need NOT be twins, so union-find
+    # chains them — and, by percolation, the whole orientation space — into
+    # one giant "family" (observed: a single 50k-member family spanning
+    # 0–62° on a 354k-candidate peakfit run). A physical twin family is a
+    # parent grain plus its DIRECT twin variants (which need not be mutual
+    # twins). We therefore anchor each family on the highest-twin-degree
+    # unassigned grain (the best "parent" proxy) and attach its
+    # still-unassigned direct twin partners; a twin-of-a-twin that is not
+    # also a direct partner of the anchor starts its own family. This
+    # breaks the chain-fusion giant while preserving real parent+variant
+    # families, and is O(N + E) with no all-pairs step.
+    from collections import defaultdict
+    adj: Dict[int, List[int]] = defaultdict(list)
     for i, j, _, _ in dedup_pairs:
-        ri, rj = find(int(i)), find(int(j))
-        if ri != rj: parent[ri] = rj
-    roots = np.array([find(i) for i in range(N)])
-    in_family = np.zeros(N, dtype=bool)
-    for i, j, _, _ in dedup_pairs:
-        in_family[i] = in_family[j] = True
-    if in_family.any():
-        unique_roots = np.unique(roots[in_family])
-        root_to_fam = {int(r): f for f, r in enumerate(unique_roots)}
-        for g in np.flatnonzero(in_family):
-            twin_family[g] = root_to_fam[int(roots[g])]
+        adj[i].append(j)
+        adj[j].append(i)
+    # Highest-degree-first so genuine parents (most variants) anchor before
+    # their variants; deterministic tie-break on grain index.
+    anchor_order = sorted(adj.keys(), key=lambda g: (-len(adj[g]), g))
+    fam_id = 0
+    for g in anchor_order:
+        if twin_family[g] != -1:
+            continue  # already attached to an earlier family's star
+        twin_family[g] = fam_id
+        for nb in adj[g]:
+            if twin_family[nb] == -1:
+                twin_family[nb] = fam_id
+        fam_id += 1
 
     return twin_partner, twin_family, twin_type, n_pairs_unique
 
