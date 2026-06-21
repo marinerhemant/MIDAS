@@ -147,6 +147,27 @@ dash, plotly, dash-bootstrap    # Dash-based viewers (subprocess)
 
 ---
 
+## Recent Updates (2026-06-09)
+
+### `ff_asym_qt.py` — FF Viewer relabeling, median aggregation, inferno default
+
+- **Default colormap** changed from `bone` to `inferno`.
+- **Image Display panel relabeling:**
+  - `Frame` → `Display Frame` with a `/ N` indicator showing the total number of frames in the currently-loaded file (updates automatically when a file is loaded or state is restored).
+  - `Num Frames` → implicit in the consolidated aggregation row (see below).
+  - `Max/Frames`, `Sum/Frames` → `Max`, `Sum`.
+- **Aggregation row consolidated** — `# Frames:` spin box and the `Max`, `Sum`, `Median` checkboxes now appear on a single row in the Image Display panel so their visual relationship is unambiguous.
+- **Median aggregation** — new `Median` checkbox buffers all frames into memory and applies `np.median(slab, axis=0)` at the end.  Selecting Median automatically unchecks Max and Sum.  State is saved and restored via the `'median_per_frames'` key.  Three execution paths support median:
+  1. zarr slab (`np.median` on a numpy array slab)
+  2. single-HDF5 slab (`np.median` on an HDF5-read slab)
+  3. general `ThreadPoolExecutor` path (frames buffered into a list; `np.median(np.stack(frames), axis=0)` after all workers complete)
+
+### `gui_common.py` — colorbar gradient sync
+
+- `MIDASImageView.set_colormap` now also updates the pyqtgraph histogram LUT gradient strip (the coloured bar on the right side of the histogram) so the colorbar always matches the selected colormap.  The sync is done via `histogram.gradient.setColorMap(cmap)` with a safe `hasattr` guard for pyqtgraph version compatibility.
+
+---
+
 ## See also
 
 - [`manuals/GUIs_and_Visualization.md`](../manuals/GUIs_and_Visualization.md) — master GUI guide
