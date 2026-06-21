@@ -125,6 +125,7 @@ def calibrate(
     calibrant: Union[str, Dict] = "CeO2",
     output_dir: Optional[Union[str, Path]] = None,
     initial_Lsd: float = 1_000_000.0,
+    BC_guess: Optional[Tuple[float, float]] = None,
     lsd_window: Optional[float] = None,
     initial_BC_y: Optional[float] = None,
     initial_BC_z: Optional[float] = None,
@@ -168,6 +169,16 @@ def calibrate(
       ``panel_tol_rot_deg`` bound the shift and rotation; this is what brings
       a multi-module Pilatus from a few-hundred µε monolithic fit down to the
       sub-20 µε regime.  Leave ``None`` for monolithic detectors (GE, Varex).
+    * ``BC_guess`` — optional ``(BC_y, BC_z)`` in pixels.  When supplied,
+      the auto-seed step is **bypassed**; ``BC_guess`` + ``initial_Lsd``
+      become the seed and LM refinement proceeds.  Use this as an explicit
+      escape hatch for off-panel BC, very weak rings, or any image the
+      auto-seed gets wrong.  Pair with a sensible ``initial_Lsd``.
+    * ``initial_Lsd`` — nominal sample-to-detector distance (µm).  When
+      this differs from the 1 m default, ``lsd_window`` is automatically
+      set to ``1.5`` so the multi-hypothesis matcher trusts the prior
+      (treats it as a ±50 % window).  Override ``lsd_window`` if you want
+      a tighter or looser window.
 
     User-supplied seed (optional)
     -----------------------------
@@ -250,10 +261,22 @@ def calibrate(
     sg = int(cal["sg"])
     cal_name = calibrant if isinstance(calibrant, str) else "<custom>"
 
-    # 1. Background.  Detect bad-pixel / detector-gap sentinels (-1, -2) from
-    # the RAW image *before* clipping, so they can be masked out of seeding
+    # 1. Background.  Detect bad-pixel / detector-gap sentinels from the RAW
+    # image *before* clipping, so they can be masked out of seeding
     # (otherwise module gaps fragment the ring arcs and bias the beam centre).
-    sentinel_mask = (image == -1) | (image == -2)
+    #   - signed dtypes: Pilatus / GE use -1, -2 as dead-pixel / gap markers.
+    #   - uint32 dtypes:  Eiger writes 2^32-1 = 4294967295 for dead pixels.
+    # The uint32 case is critical because such pixels otherwise blow up
+    # ``np.std(corr)`` → the auto-threshold ``100·(1+std//100)`` becomes
+    # astronomical and the seed fails with "no connected components above
+    # threshold".
+    sentinel_mask = np.zeros(image.shape, dtype=bool)
+    if np.issubdtype(image.dtype, np.signedinteger) or np.issubdtype(image.dtype, np.floating):
+        sentinel_mask |= (image == -1) | (image == -2)
+    if image.dtype == np.uint32:
+        sentinel_mask |= (image == np.iinfo(np.uint32).max)
+    elif image.dtype == np.uint16:
+        sentinel_mask |= (image == np.iinfo(np.uint16).max)
     sentinel_mask = sentinel_mask if bool(sentinel_mask.any()) else None
     if dark is not None:
         if dark.shape != image.shape:
@@ -263,70 +286,79 @@ def calibrate(
         img = np.clip(image.astype(np.float32) - dark.astype(np.float32), 0, None)
     else:
         img = np.clip(image.astype(np.float32), 0, None)
+    # Zero sentinel pixels in the float image too — uint32 sentinels cast to
+    # ~4.3e9 which dwarfs any real signal and breaks both the auto-threshold
+    # AND the LM forward model (the M-step would see absurd intensities).
+    if sentinel_mask is not None:
+        img[sentinel_mask] = 0.0
 
     # 2. Seed BC + Lsd.
-    from types import SimpleNamespace
+    # Generate simulated ring radii for the nominal geometry — needed by the
+    # automatic seeder and the seed_from_image fallback.
+    if verbose:
+        print(f"[calibrate] STAGE 1: seeding from {cal_name} rings...", flush=True)
+    sim_radii = _generate_sim_radii_px(
+        lattice_a=a, lattice_c=c, alpha=alpha, gamma=gamma,
+        wavelength=wavelength, px=pxY, sg=sg,
+        Lsd_nominal_um=initial_Lsd, max_2theta_deg=max_2theta_deg,
+    )
+    if sim_radii.size < 3:
+        raise RuntimeError(
+            f"Only {sim_radii.size} simulated rings under "
+            f"{max_2theta_deg}\u00b0 — check wavelength/lattice"
+        )
+    # Accept either BC_guess=(BC_y, BC_z) tuple or the initial_BC_y/initial_BC_z
+    # float pair (merged from PR #52) — normalize to a single BC_guess tuple so
+    # there is exactly one user-seed code path downstream.
+    if BC_guess is None and initial_BC_y is not None and initial_BC_z is not None:
+        BC_guess = (float(initial_BC_y), float(initial_BC_z))
+
     t0 = time.time()
-    if initial_BC_y is not None and initial_BC_z is not None:
-        # User-supplied seed — bypass the automatic seeder entirely.
-        # (initial_Lsd is required here; pass a sensible value, not the
-        # 1 000 000 µm default, or the LM will start far from truth.)
-        seed = SimpleNamespace(
-            bc_y=float(initial_BC_y), bc_z=float(initial_BC_z),
-            Lsd=float(initial_Lsd), n_arcs=0, n_rings=0,
-        )
+    from types import SimpleNamespace
+    seed = None
+    # PATH 1: caller supplied a beam centre -> bypass arc detection entirely.
+    # Use it + initial_Lsd as the seed.  Explicit escape hatch for datasets
+    # where the automatic seeder fails (off-panel BC, very weak rings).
+    if BC_guess is not None:
+        bcy, bcz = float(BC_guess[0]), float(BC_guess[1])
+        seed = SimpleNamespace(bc_y=bcy, bc_z=bcz, Lsd=float(initial_Lsd),
+                               n_arcs=0, n_rings=0)
         if verbose:
-            print(f"[calibrate] STAGE 1: user-supplied seed "
-                  f"(BC=({initial_BC_y:.3f}, {initial_BC_z:.3f}), "
-                  f"Lsd={initial_Lsd:.0f} µm) — automatic seeder skipped",
+            print(f"[calibrate]   user-provided BC=({bcy:.3f}, {bcz:.3f})  "
+                  f"Lsd={initial_Lsd/1000:.3f} mm — auto-seed bypassed",
                   flush=True)
-    else:
-        if verbose:
-            print(f"[calibrate] STAGE 1: seeding from {cal_name} rings...",
-                  flush=True)
-        sim_radii = _generate_sim_radii_px(
-            lattice_a=a, lattice_c=c, alpha=alpha, gamma=gamma,
-            wavelength=wavelength, px=pxY, sg=sg,
-            Lsd_nominal_um=initial_Lsd, max_2theta_deg=max_2theta_deg,
-        )
-        if sim_radii.size < 3:
-            raise RuntimeError(
-                f"Only {sim_radii.size} simulated rings under "
-                f"{max_2theta_deg}° — check wavelength/lattice"
-            )
-        # Robust seed first: connected-component arc detection →
-        # chord-bisector beam centre (recovers OFF-PANEL BC) →
-        # multi-hypothesis Lsd. This is the battle-tested recipe
-        # (formerly AutoCalibrateZarr); it handles off-centre BC,
-        # masked detectors, and weak data where the chord-only arc
-        # seed (seed_from_image) gets stuck. Fall back to
-        # seed_from_image otherwise.
-        seed = None
+    # PATH 2: robust automatic seeder (auto_seed.make_seed).  Self-determines
+    # Lsd from the ring radii; handles monolithic, panel (Pilatus/Eiger) and
+    # off-panel-BC geometries via circle-fit + RANSAC.  Validated on 4 real
+    # CeO2 geometries to <=3.6 px BC / <=0.24% Lsd, ~10 s each
+    # (dev/paper/midas_v2_test/run_seeder_baseline.py).
+    # use_diplib=False: diplib's median filter segfaults on macOS and the scipy
+    # path is equally accurate.  make_seed handles only named calibrants
+    # (CeO2/LaB6/Si/Al2O3); custom-dict calibrants fall through to PATH 3.
+    if seed is None and isinstance(calibrant, str):
         try:
-            from ..seed.from_calibrant_image import auto_seed_calibrant
-            asr = auto_seed_calibrant(
-                img, sim_radii_px=sim_radii,
-                initial_lsd_um=initial_Lsd, mask=sentinel_mask,
-                lsd_window=lsd_window)
-            if asr.Lsd_um and asr.Lsd_um > 0 and asr.n_rings_matched >= 1:
-                seed = SimpleNamespace(
-                    bc_y=asr.BC_y, bc_z=asr.BC_z, Lsd=asr.Lsd_um,
-                    n_arcs=asr.n_arcs, n_rings=asr.n_rings_matched)
+            from ..seed.auto_seed import make_seed
+            ms = make_seed(img, wavelength_A=wavelength, px_um=pxY,
+                           calibrant=calibrant, use_diplib=False)
+            if ms.Lsd_um and ms.Lsd_um > 0:
+                seed = SimpleNamespace(bc_y=ms.BC_y, bc_z=ms.BC_z, Lsd=ms.Lsd_um,
+                                       n_arcs=0, n_rings=int(ms.n_measured))
                 if verbose:
-                    print(f"[calibrate]   connected-component seed "
-                          f"({asr.n_arcs} arcs, "
-                          f"{asr.n_rings_matched} rings matched, "
-                          f"thr={asr.threshold_used:.0f})", flush=True)
-        except Exception as e:  # pragma: no cover
+                    print(f"[calibrate]   make_seed ({ms.n_measured} rings, "
+                          f"first_ring={ms.first_ring}, rms={ms.rms_px:.2f}px)",
+                          flush=True)
+        except Exception as e:  # pragma: no cover - fall back on any seed failure
             if verbose:
-                print(f"[calibrate]   auto_seed_calibrant failed ({e}); "
-                      f"using arc seed", flush=True)
-        if seed is None:
-            seed = seed_from_image(
-                image=img, sim_radii_px=sim_radii,
-                initial_lsd=initial_Lsd, npy=NY, npz=NZ,
-                skip_median=False, min_ring_radius_px=min_ring_radius_px,
-            )
+                print(f"[calibrate]   make_seed failed ({e}); "
+                      f"using arc seed fallback", flush=True)
+    # PATH 3: last-resort chord-only arc seed.
+    if seed is None:
+        seed = seed_from_image(
+            image=img, sim_radii_px=sim_radii,
+            initial_lsd=initial_Lsd, npy=NY, npz=NZ,
+            bc_guess=BC_guess,
+            skip_median=False, min_ring_radius_px=min_ring_radius_px,
+        )
     seed_time = time.time() - t0
     if verbose:
         print(f"[calibrate]   BC=({seed.bc_y:.3f}, {seed.bc_z:.3f})  "

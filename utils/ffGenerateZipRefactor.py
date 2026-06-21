@@ -1,7 +1,10 @@
 #!/usr/bin/env python
 
 import warnings
-import hdf5plugin  # registers Blosc and other HDF5 filters before h5py reads any file
+try:
+    import hdf5plugin  # noqa: F401  # registers Blosc/LZ4/Zstd HDF5 filters before h5py reads
+except ImportError:
+    pass  # only needed for Blosc-compressed inputs; plain HDF5 reads fine without it
 import h5py
 import numpy as np
 import os
