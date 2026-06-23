@@ -133,6 +133,9 @@ def parse_detector_param_file(fn: str) -> dict:
         'dark_file': None,             # external dark HDF5 path, if specified
         'bad_px': None,
         'gap_px': None,
+        # Raw GE binary parameters (only used when data_file is .geX/.dat/etc.).
+        'header_size': None,
+        'bytes_per_pixel': None,
         'wavelength': None, 'space_group': None,
         'lattice_constant': None, 'max_ring_rad': None,
     }
@@ -186,6 +189,9 @@ def parse_detector_param_file(fn: str) -> dict:
     out['bad_px'] = get_float('BadPxIntensity')
     out['gap_px'] = get_float('GapIntensity')
 
+    out['header_size']     = get_int('HeadSize', 'HeaderSize')
+    out['bytes_per_pixel'] = get_int('BytesPerPixel')
+
     out['wavelength']  = get_float('Wavelength')
     out['space_group'] = get_int('SpaceGroup', 'SpaceGroupNumber')
     lc = first('LatticeConstant', 'LatticeParameter')
@@ -205,49 +211,116 @@ def _normalize_h5_path(p: Optional[str]) -> Optional[str]:
     return p if p.startswith('/') else '/' + p
 
 
-# ── HDF5 IO ─────────────────────────────────────────────────────────────────
+# ── HDF5 / raw-binary IO ────────────────────────────────────────────────────
 
-def n_frames_in_h5(fn: str, loc: str) -> int:
-    """Return frame count for the given HDF5 dataset, or 0 on error."""
-    if not fn or h5py is None:
-        return 0
+_HDF5_EXTS = ('.h5', '.hdf', '.hdf5', '.nxs')
+
+
+def _is_hdf5(fn: str) -> bool:
+    return os.path.splitext(fn)[1].lower() in _HDF5_EXTS
+
+
+def _raw_n_frames(fn: str, header: int, bpp: int, ny: int, nz: int) -> int:
+    """Frame count for a raw binary stack (file size minus header / frame
+    bytes). Returns 0 on any error so the caller treats it as empty."""
     try:
-        with h5py.File(fn, 'r') as f:
-            ds = f.get(_normalize_h5_path(loc))
-            if ds is None:
-                return 0
-            return int(ds.shape[0]) if ds.ndim >= 3 else 1
+        size = os.path.getsize(fn)
     except OSError:
         return 0
+    frame_bytes = bpp * ny * nz
+    if frame_bytes <= 0 or size <= header:
+        return 0
+    return max(1, (size - header) // frame_bytes)
 
 
-def read_h5_frame(fn: str, loc: str, frame_idx: int) -> Optional[np.ndarray]:
-    """Read a single frame from an HDF5 dataset; returns float32 2-D array."""
-    if not fn or h5py is None:
-        return None
+def _raw_read_frame(fn: str, header: int, bpp: int, ny: int, nz: int,
+                    frame_idx: int) -> Optional[np.ndarray]:
     try:
-        with h5py.File(fn, 'r') as f:
-            ds = f[_normalize_h5_path(loc)]
-            if ds.ndim >= 3:
-                return ds[frame_idx].astype(np.float32)
-            return ds[...].astype(np.float32)
-    except (OSError, KeyError, IndexError):
+        dtype = np.uint16 if bpp == 2 else np.int32
+        offset = header + frame_idx * (bpp * ny * nz)
+        with open(fn, 'rb') as f:
+            f.seek(offset, os.SEEK_SET)
+            data = np.fromfile(f, dtype=dtype, count=ny * nz)
+        if data.size != ny * nz:
+            return None
+        return data.reshape((ny, nz)).astype(np.float32)
+    except OSError:
         return None
 
 
-def read_h5_dark(fn: str, loc: str) -> Optional[np.ndarray]:
-    """Read all dark frames and average them; returns float32 2-D or None."""
-    if not fn or h5py is None:
+def n_frames_in_h5(fn: str, loc: str,
+                   header: int = 8192, bpp: int = 2,
+                   ny: int = 2048, nz: int = 2048) -> int:
+    """Return frame count for `fn`. HDF5 if extension matches, otherwise
+    raw GE binary (header + bpp×ny×nz per frame). The raw kwargs are
+    ignored for HDF5 files."""
+    if not fn:
+        return 0
+    if _is_hdf5(fn):
+        if h5py is None:
+            return 0
+        try:
+            with h5py.File(fn, 'r') as f:
+                ds = f.get(_normalize_h5_path(loc))
+                if ds is None:
+                    return 0
+                return int(ds.shape[0]) if ds.ndim >= 3 else 1
+        except OSError:
+            return 0
+    return _raw_n_frames(fn, header, bpp, ny, nz)
+
+
+def read_h5_frame(fn: str, loc: str, frame_idx: int,
+                  header: int = 8192, bpp: int = 2,
+                  ny: int = 2048, nz: int = 2048) -> Optional[np.ndarray]:
+    """Read one frame from `fn` as float32 2-D. HDF5 by extension, otherwise
+    raw GE binary."""
+    if not fn:
         return None
-    try:
-        with h5py.File(fn, 'r') as f:
-            ds = f.get(_normalize_h5_path(loc))
-            if ds is None:
-                return None
-            data = ds[...].astype(np.float32)
-            return np.mean(data, axis=0) if data.ndim >= 3 else data
-    except (OSError, KeyError):
+    if _is_hdf5(fn):
+        if h5py is None:
+            return None
+        try:
+            with h5py.File(fn, 'r') as f:
+                ds = f[_normalize_h5_path(loc)]
+                if ds.ndim >= 3:
+                    return ds[frame_idx].astype(np.float32)
+                return ds[...].astype(np.float32)
+        except (OSError, KeyError, IndexError):
+            return None
+    return _raw_read_frame(fn, header, bpp, ny, nz, frame_idx)
+
+
+def read_h5_dark(fn: str, loc: str,
+                 header: int = 8192, bpp: int = 2,
+                 ny: int = 2048, nz: int = 2048) -> Optional[np.ndarray]:
+    """Read dark frames and average them; returns float32 2-D or None.
+    Averages all frames for HDF5 stacks, or all frames in the raw binary
+    stack."""
+    if not fn:
         return None
+    if _is_hdf5(fn):
+        if h5py is None:
+            return None
+        try:
+            with h5py.File(fn, 'r') as f:
+                ds = f.get(_normalize_h5_path(loc))
+                if ds is None:
+                    return None
+                data = ds[...].astype(np.float32)
+                return np.mean(data, axis=0) if data.ndim >= 3 else data
+        except (OSError, KeyError):
+            return None
+    n = _raw_n_frames(fn, header, bpp, ny, nz)
+    if n <= 0:
+        return None
+    acc = None
+    for i in range(n):
+        f = _raw_read_frame(fn, header, bpp, ny, nz, i)
+        if f is None:
+            return None
+        acc = f if acc is None else acc + f
+    return acc / float(n)
 
 
 # ── Image preprocessing (matches ff_asym_qt convention) ─────────────────────
@@ -405,6 +478,11 @@ class DetectorState:
     dark_loc: str = DEFAULT_DARK_LOC
     bad_px: Optional[float] = None
     gap_px: Optional[float] = None
+    # Raw GE binary defaults (overridden by HeadSize / BytesPerPixel in
+    # param file). Mirrors FFViewer.header_size / bytes_per_pixel for the
+    # single-detector path.
+    header_size: int = 8192
+    bytes_per_pixel: int = 2
 
     # Caches:
     _dark_image: Optional[np.ndarray] = None
@@ -416,7 +494,9 @@ class DetectorState:
         return bool(self.data_file) and bool(self.param_file)
 
     def n_frames(self) -> int:
-        return n_frames_in_h5(self.data_file, self.data_loc)
+        return n_frames_in_h5(self.data_file, self.data_loc,
+                              self.header_size, self.bytes_per_pixel,
+                              self.ny, self.nz)
 
     def load_param_file(self, fn: str) -> None:
         """Read fn, populate per-detector geometry fields.
@@ -440,6 +520,8 @@ class DetectorState:
         self.dark_loc = params['dark_loc']
         self.bad_px = params['bad_px']
         self.gap_px = params['gap_px']
+        if params['header_size']     is not None: self.header_size     = params['header_size']
+        if params['bytes_per_pixel'] is not None: self.bytes_per_pixel = params['bytes_per_pixel']
         # External dark from param file's `Dark <path>` line — only apply if
         # the file actually exists, and don't clobber a manual-pick made via
         # the GUI dark-picker.
@@ -466,7 +548,9 @@ class DetectorState:
         # key would return the cleared None forever.
         if self._dark_cache_key == key and self._dark_image is not None:
             return self._dark_image
-        dark = read_h5_dark(src, self.dark_loc)
+        dark = read_h5_dark(src, self.dark_loc,
+                            self.header_size, self.bytes_per_pixel,
+                            self.ny, self.nz)
         if dark is not None:
             dark = apply_imtransopt(dark, self.im_trans_opts)
             # Only cache successful reads — caching None freezes transient
@@ -492,7 +576,9 @@ class DetectorState:
         """Read frame, transform/mask/dark-subtract, remap into composite."""
         if not self.enabled or not self.data_file:
             return None
-        img = read_h5_frame(self.data_file, self.data_loc, frame_idx)
+        img = read_h5_frame(self.data_file, self.data_loc, frame_idx,
+                            self.header_size, self.bytes_per_pixel,
+                            self.ny, self.nz)
         if img is None:
             return None
         img = apply_imtransopt(img, self.im_trans_opts)

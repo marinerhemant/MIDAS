@@ -2302,7 +2302,14 @@ class FFViewer(QtWidgets.QMainWindow):
         bcy = float(self.bcy_edit.text() or 0)
         bcz = float(self.bcz_edit.text() or 0)
         try:
-            eta, rr = CalcEtaAngleRad(-x + bcy, y - bcz)
+            # MIDAS lab convention: +Y → display LEFT, +Z → display UP.
+            # Single-det view uses 'bl' origin (no X-flip) so display-RIGHT
+            # corresponds to large pixel-x → Y_lab = bcy - x. Multi-det
+            # composite uses 'br' origin (X-flipped) so display-LEFT
+            # corresponds to large pixel-x → Y_lab = x - bcy. Without this
+            # branch, η in HYDRA mode comes out with the wrong sign.
+            Y_lab = (x - bcy) if self.multi_mode else (-x + bcy)
+            eta, rr = CalcEtaAngleRad(Y_lab, y - bcz)
             status = (f"x={x:.1f}  y={y:.1f}  I={val:.0f}  "
                       f"R={rr:.1f}px  η={eta:.1f}°")
             # Show nearest ring info
