@@ -2690,6 +2690,9 @@ int main(int argc, char *argv[]) {
                       Lsd, Wavelength, OmegaRanges, BoxSizes, MinEta, wedge,
                       chi, SpotsComp, Splist, ErrorInt1, &nSpotsComp,
                       GlobalDebugFlag);
+      if (GlobalDebugFlag)
+        printf("LTRACE SpId=%d 01-posIni PosErr=%.4f nSp=%d pos=(%.1f,%.1f,%.1f)\n",
+               SpId, ErrorInt1[0], nSpotsComp, XFit[0], XFit[1], XFit[2]);
       for (i = 0; i < 3; i++)
         XFit[i + 3] = Euler0[i];
       for (i = 0; i < 6; i++)
@@ -2788,6 +2791,9 @@ int main(int argc, char *argv[]) {
                       Lsd, Wavelength, OmegaRanges, BoxSizes, MinEta, wedge,
                       chi, SpotsComp, Splist, ErrorInt2, &nSpotsComp,
                       GlobalDebugFlag);
+      if (GlobalDebugFlag)
+        printf("LTRACE SpId=%d 02-orient PosErr=%.4f nSp=%d pos=(%.1f,%.1f,%.1f)\n",
+               SpId, ErrorInt2[0], nSpotsComp, UseXFit[0], UseXFit[1], UseXFit[2]);
       // printf("STAGE SpotID %6d Stage2_Ori:  PosErr=%7.2f OmeErr=%6.4f IA=%6.4f LatC=%6.4f %6.4f %6.4f\n",
       //        SpId, ErrorInt2[0], ErrorInt2[1], ErrorInt2[2], UseXFit[6], UseXFit[7], UseXFit[8]);
       for (i = 0; i < nSpotsComp; i++)
@@ -2870,6 +2876,9 @@ int main(int argc, char *argv[]) {
                       hkls, Lsd, Wavelength, OmegaRanges, BoxSizes, MinEta,
                       wedge, chi, SpotsComp, Splist, ErrorInt3, &nSpotsComp,
                       GlobalDebugFlag);
+      if (GlobalDebugFlag)
+        printf("LTRACE SpId=%d 03-strain PosErr=%.4f nSp=%d latc=(%.5f,%.5f,%.5f,%.4f,%.4f,%.4f)\n",
+               SpId, ErrorInt3[0], nSpotsComp, UseXFit2[6], UseXFit2[7], UseXFit2[8], UseXFit2[9], UseXFit2[10], UseXFit2[11]);
       // printf("STAGE SpotID %6d Stage3_Str:  PosErr=%7.2f OmeErr=%6.4f IA=%6.4f LatC=%6.4f %6.4f %6.4f\n",
       //        SpId, ErrorInt3[0], ErrorInt3[1], ErrorInt3[2], UseXFit2[6], UseXFit2[7], UseXFit2[8]);
       for (i = 0; i < nSpotsComp; i++)

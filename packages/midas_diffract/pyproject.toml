@@ -26,6 +26,7 @@ classifiers = [
 dependencies = [
     "numpy>=1.22",
     "torch>=2.0",
+    "midas-distortion>=0.2.0",
 ]
 
 [project.optional-dependencies]

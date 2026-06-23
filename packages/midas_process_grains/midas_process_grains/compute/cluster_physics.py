@@ -267,12 +267,19 @@ def split_clusters_by_physics(
     spot_sets: List[set],                # length N — matched SpotIDs per candidate
     om_fz: np.ndarray,                   # (N, 3, 3) — FZ-canonical OM per candidate
     n_expected_per_pass1: Optional[Dict[int, int]] = None,
+    disable_split: bool = False,
 ) -> PhysicsClusterResult:
     """Apply the physics-bounded split to every Pass-1 cluster.
 
     ``n_expected_per_pass1`` (optional) provides the geometric
     expected-visible-variant count per Pass-1 cluster (from Stage 2);
     if absent, hkl_coverage is computed against ring-multiplicity only.
+
+    ``disable_split=True`` maps each Pass-1 cluster to exactly one final grain
+    (no internal physics split) while still populating the diagnostic fields.
+    Used by the ``consensus_anchor`` merge primitive, whose clusters are already
+    orientation-homogeneous — the position-based split would only re-fragment
+    them (acutely so when refined positions are diverged).
     """
     N = pass1_cluster_id.shape[0]
     final_grain_id = np.full(N, -1, dtype=np.int64)
@@ -300,13 +307,16 @@ def split_clusters_by_physics(
         _, cts_pre = np.unique(keys, return_counts=True)
         dup_count_pre = int((cts_pre > 1).sum())
 
-        # Apply the split
-        spots_local = [spot_sets[c] for c in in_cluster]
-        subs = _split_one_cluster(
-            in_cluster,
-            seed_h[in_cluster], seed_k[in_cluster], seed_l[in_cluster],
-            positions[in_cluster], spots_local, om_fz[in_cluster],
-        )
+        # Apply the split (or keep the whole cluster as one grain)
+        if disable_split:
+            subs = [list(range(in_cluster.size))]
+        else:
+            spots_local = [spot_sets[c] for c in in_cluster]
+            subs = _split_one_cluster(
+                in_cluster,
+                seed_h[in_cluster], seed_k[in_cluster], seed_l[in_cluster],
+                positions[in_cluster], spots_local, om_fz[in_cluster],
+            )
 
         splits_emerged = 0 if len(subs) == 1 and dup_count_pre == 0 else 1
         n_expected = (n_expected_per_pass1.get(int(p1))

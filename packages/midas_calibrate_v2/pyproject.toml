@@ -40,6 +40,7 @@ all = ["pyro-ppl>=1.8", "matplotlib>=3.5", "pytest>=7", "pandas>=1.5"]
 
 [project.scripts]
 midas-calibrate-v2 = "midas_calibrate_v2.cli:main"
+midas-calibrate-v2-pick = "midas_calibrate_v2.gui.ringpicker:main"
 
 [tool.setuptools.packages.find]
 where = ["."]

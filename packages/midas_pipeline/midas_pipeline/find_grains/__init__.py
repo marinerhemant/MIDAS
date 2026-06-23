@@ -46,6 +46,7 @@ from ._cluster import (
     PerVoxelClusterResult,
     GlobalClusterResult,
     global_cluster,
+    global_cluster_fast,
     per_voxel_cluster,
     per_voxel_cluster_torch,
 )
@@ -139,6 +140,79 @@ def _read_spots_bin(spots_path: Path) -> np.ndarray:
     return raw.reshape(-1, SPOTS_ARRAY_COLS)
 
 
+def _pervoxel_worker(args):
+    """Per-voxel pick-best + within-voxel cluster for voxels ``[v0, v1)``.
+
+    Top-level (picklable) for multiprocessing. Each worker opens its OWN
+    consolidated readers (mmap — shared page cache, no copy). Returns a list of
+    ``(v, OM(9), conf, SpotID, nMatches, nIDs, best_row)`` for valid voxels, in
+    ascending ``v``. Byte-identical to the original serial loop body.
+    """
+    out_dir, v0, v1, space_group, max_ang_deg = args
+    vals_r, keys_r, _ = open_all_three(out_dir)
+    rows = []
+    for v in range(v0, v1):
+        vals_v = vals_r.get_vals(v)
+        keys_v = keys_r.get_keys(v)
+        if vals_v is None or keys_v is None:
+            continue
+        if int(vals_r.n_sol_arr[v]) <= 0:
+            continue
+        denom = vals_v[:, 14]
+        with np.errstate(divide="ignore", invalid="ignore"):
+            confs = np.where(denom > 0, vals_v[:, 15] / denom, 0.0)
+        result = per_voxel_cluster(
+            vals_v[:, 2:11], confs, vals_v[:, 1], keys_v,
+            space_group=space_group, max_ang_deg=max_ang_deg, min_conf=0.0,
+        )
+        if result.best_row < 0:
+            continue
+        br = result.best_row
+        rows.append((int(v), vals_v[br, 2:11].copy(), float(confs[br]),
+                     int(keys_v[br, 0]), int(keys_v[br, 1]), int(keys_v[br, 2]), int(br)))
+    return rows
+
+
+def _per_voxel_pass(out_dir, n_voxels, space_group, max_ang_deg, n_jobs=1):
+    """Per-voxel pass over all voxels, optionally parallel across CPU workers.
+
+    The loop is embarrassingly parallel; for DEFORMED maps with many candidate
+    solutions per voxel it dominates find_grains runtime. ``n_jobs > 1`` splits
+    voxels into contiguous chunks across a process pool. Result is independent of
+    ``n_jobs`` (byte-parity): per-voxel arrays are indexed by ``v`` and the
+    single-key rows are re-sorted ascending.
+    """
+    INVALID_U64 = np.uint64(2 ** 64 - 1)
+    per_vox_OMs = np.zeros((n_voxels, 9), dtype=np.float64)
+    per_vox_confs = np.zeros(n_voxels, dtype=np.float64)
+    per_vox_keys = np.zeros((n_voxels, 4), dtype=np.uint64)
+    per_vox_keys[:, 0] = INVALID_U64
+    single_key_rows: list[tuple[int, np.ndarray]] = []
+
+    if n_jobs and n_jobs > 1 and n_voxels > 0:
+        import multiprocessing as mp
+        step = (n_voxels + n_jobs - 1) // n_jobs
+        chunks = [(str(out_dir), i, min(i + step, n_voxels), space_group, max_ang_deg)
+                  for i in range(0, n_voxels, step)]
+        ctx = mp.get_context("fork")
+        with ctx.Pool(min(n_jobs, len(chunks))) as pool:
+            results = pool.map(_pervoxel_worker, chunks)
+    else:
+        results = [_pervoxel_worker((str(out_dir), 0, n_voxels, space_group, max_ang_deg))]
+
+    for rows in results:
+        for (v, om, conf, k0, k1, k2, br) in rows:
+            per_vox_OMs[v] = om
+            per_vox_confs[v] = conf
+            per_vox_keys[v, 0] = np.uint64(k0)
+            per_vox_keys[v, 1] = np.uint64(k1)
+            per_vox_keys[v, 2] = np.uint64(k2)
+            per_vox_keys[v, 3] = np.uint64(br)
+            single_key_rows.append((v, np.array([v, k0, k1, k2, br], dtype=np.uint64)))
+    single_key_rows.sort(key=lambda x: x[0])
+    return per_vox_OMs, per_vox_confs, per_vox_keys, single_key_rows
+
+
 def find_grains_single(
     work_dir: str | Path,
     space_group: int,
@@ -221,72 +295,42 @@ def find_grains_single(
         n_scans = s
 
     # --- Per-voxel pass: best-row + within-voxel cluster bookkeeping.
-    # We collect a (n_voxels, 5) uint64 array for UniqueIndexSingleKey.bin and
-    # a (n_voxels, 4) uint64 / (n_voxels, 9) f64 array for global_cluster.
-    per_vox_OMs = np.zeros((n_voxels, 9), dtype=np.float64)
-    per_vox_confs = np.zeros(n_voxels, dtype=np.float64)
-    per_vox_keys_for_global = np.zeros((n_voxels, 4), dtype=np.uint64)
-    INVALID_U64 = np.uint64(2**64 - 1)
-    per_vox_keys_for_global[:, 0] = INVALID_U64  # default: invalid
-
-    # uniqueIndexSingleKey rows: one per voxel; default (0,0,0,0,0) for invalids.
-    single_key_rows: list[tuple[int, np.ndarray]] = []
-
-    for v in range(n_voxels):
-        vals_v = vals_r.get_vals(v)
-        keys_v = keys_r.get_keys(v)
-        if vals_v is None or keys_v is None:
-            continue
-        n_sol = int(vals_r.n_sol_arr[v])
-        if n_sol <= 0:
-            continue
-        # confidence = col15 / col14
-        denom = vals_v[:, 14]
-        with np.errstate(divide="ignore", invalid="ignore"):
-            confs = np.where(denom > 0, vals_v[:, 15] / denom, 0.0)
-        ias = vals_v[:, 1]
-        OMs = vals_v[:, 2:11]
-        # min_conf=0.0 here (single picks overall best first; the conf filter
-        # applies later inside generate_sinograms_indexing). C process_voxel
-        # has no conf filter.
-        result = per_voxel_cluster(
-            OMs, confs, ias, keys_v,
-            space_group=space_group,
-            max_ang_deg=cluster_misorientation_deg,
-            min_conf=0.0,
-        )
-        if result.best_row < 0:
-            continue
-        # Best row goes into per_vox arrays for global dedup.
-        br = result.best_row
-        per_vox_OMs[v] = OMs[br]
-        per_vox_confs[v] = confs[br]
-        # Keys layout for global: [SpotID, nMatches, nIDs_best_solution, bestSolIdx]
-        per_vox_keys_for_global[v, 0] = np.uint64(int(keys_v[br, 0]))  # SpotID
-        per_vox_keys_for_global[v, 1] = np.uint64(int(keys_v[br, 1]))  # nMatches
-        per_vox_keys_for_global[v, 2] = np.uint64(int(keys_v[br, 2]))  # nIDs (for best)
-        per_vox_keys_for_global[v, 3] = np.uint64(br)                  # bestSolIdx within voxel
-        # UniqueIndexSingleKey.bin row: [voxNr, SpotID, nMatches, nIDs, bestSolIdx]
-        single_row = np.array([
-            v,
-            int(keys_v[br, 0]),
-            int(keys_v[br, 1]),
-            int(keys_v[br, 2]),
-            br,
-        ], dtype=np.uint64)
-        single_key_rows.append((v, single_row))
+    # Embarrassingly parallel across voxels; dominates runtime on DEFORMED maps
+    # with many candidate solutions per voxel. MIDAS_FINDGRAINS_NJOBS>1 fans the
+    # voxels across CPU workers (byte-identical to the serial path).
+    import os as _osj
+    _njobs = int(_osj.environ.get("MIDAS_FINDGRAINS_NJOBS", "1") or "1")
+    per_vox_OMs, per_vox_confs, per_vox_keys_for_global, single_key_rows = _per_voxel_pass(
+        out_dir, n_voxels, space_group, cluster_misorientation_deg, n_jobs=_njobs,
+    )
 
     single_key_path = out_dir / "UniqueIndexSingleKey.bin"
     write_unique_index_single_key(single_key_path, n_voxels, single_key_rows)
 
     # --- Cross-voxel global dedup.
-    glob = global_cluster(
+    # Cross-voxel dedup. The reference is O(N^2) and degrades catastrophically on
+    # DEFORMED maps (intragranular spread defeats the marking shortcut). Default to
+    # "auto" = EXACT GPU all-pairs path when a device is available (~100x constant
+    # speedup, byte-parity), else the exact reference. Override via
+    # MIDAS_FINDGRAINS_CLUSTER = auto | gpu | reference | binned (+ MIDAS_FINDGRAINS_DEVICE).
+    # ("binned" is the O(N*k) asymptotic fix but EXPERIMENTAL — see _cluster.py.)
+    import os as _os
+    _cmethod = _os.environ.get("MIDAS_FINDGRAINS_CLUSTER", "auto").strip().lower()
+    _cdev = None
+    if _cmethod in ("gpu", "binned"):
+        _d = _os.environ.get("MIDAS_FINDGRAINS_DEVICE", "").strip()
+        if _d:
+            import torch as _torch
+            _cdev = _torch.device(_d)
+    glob = global_cluster_fast(
         per_vox_OMs=per_vox_OMs,
         per_vox_confs=per_vox_confs,
         per_vox_keys=per_vox_keys_for_global,
         space_group=space_group,
         max_ang_deg=cluster_misorientation_deg,
         invalid_marker=-1,  # uint64 sentinel
+        method=_cmethod,
+        device=_cdev,
     )
 
     unique_orientations_csv = out_dir / "UniqueOrientations.csv"

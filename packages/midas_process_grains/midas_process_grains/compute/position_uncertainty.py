@@ -157,34 +157,41 @@ def compute_per_grain_position_sigma(
     resid_rms = np.full(N, np.nan, dtype=np.float64)
     ok_arr = np.zeros(N, dtype=bool)
 
-    n_ok = 0; n_fail = 0
-    for i in range(N):
+    # ── Per-grain σ is embarrassingly parallel over i. The dominant cost
+    # (per_grain_hessian_blocks: jacfwd autograd + Hessian invert) is torch
+    # C++ that releases the GIL, so a thread pool gives near-core-count
+    # scaling with NO data duplication (PK memmap / inputall_df / hkls
+    # tensors are all read-only shared). Numerics are identical to the
+    # former serial loop; only the iteration is concurrent. Worker count
+    # via MIDAS_PG_SIGMA_JOBS (default min(96, N)).
+    import os as _os
+    from concurrent.futures import ThreadPoolExecutor
+    _njobs = int(_os.environ.get("MIDAS_PG_SIGMA_JOBS", "0")) or min(96, max(1, N))
+    try:
+        torch.set_num_threads(1)   # avoid intra-op × thread-pool oversubscription
+    except Exception:
+        pass
+
+    def _one(i):
         rep = int(rep_cand_idx[i])
         if not (0 <= rep < pk_rows):
-            n_fail += 1
-            continue
+            return None
         sids = PK[rep]; sids = sids[sids != 0].astype(np.int64)
         if len(sids) < 4:
-            n_fail += 1
-            continue
+            return None
         try:
             ia_g = inputall_df.loc[sids].dropna()
         except KeyError:
-            n_fail += 1
-            continue
+            return None
         if len(ia_g) < 4:
-            n_fail += 1
-            continue
-
+            return None
         y_pix = y_BC - ia_g["YLab"].to_numpy(np.float64) / px
         z_pix = z_BC + ia_g["ZLab"].to_numpy(np.float64) / px
         frame = (ia_g["Omega"].to_numpy(np.float64) - omega_start_deg) / omega_step_deg
         obs_det = torch.from_numpy(np.column_stack([y_pix, z_pix, frame]))
-
         OM = np.asarray(grain_OM[i], dtype=np.float64).reshape(3, 3)
         euler_rad = torch.from_numpy(orient_mat_to_euler(OM).astype(np.float64))
         pos_um = torch.from_numpy(np.asarray(grain_pos_um[i], dtype=np.float64))
-
         grain_obs = GrainObs(
             spot_id=i, euler_rad=euler_rad, latc=latc_t,
             pos_um=pos_um, observed_detector=obs_det,
@@ -201,28 +208,32 @@ def compute_per_grain_position_sigma(
                 max_match_dist=max_match_dist_px,
             )
         except Exception:
-            n_fail += 1
-            continue
-
-        # Invert H_gg → frozen-cal Σ_g (12×12); pos is the last 3
+            return None
         H_gg = res.H_gg + 1e-9 * torch.eye(res.H_gg.shape[0], dtype=res.H_gg.dtype)
         try:
             Sigma_g = torch.linalg.inv(H_gg)
         except Exception:
             Sigma_g = torch.linalg.pinv(H_gg)
         pos_var = torch.diag(Sigma_g)[9:12].detach().cpu().numpy()
-        sigma_pos = np.sqrt(np.maximum(pos_var, 0.0))
-        sx[i] = float(sigma_pos[0])
-        sy[i] = float(sigma_pos[1])
-        sz[i] = float(sigma_pos[2])
-        n_match[i] = int(res.n_spots_matched)
-        resid_rms[i] = float(torch.sqrt((res.residual_at_map ** 2).mean()).item())
-        ok_arr[i] = True
-        n_ok += 1
+        sp = np.sqrt(np.maximum(pos_var, 0.0))
+        return (i, float(sp[0]), float(sp[1]), float(sp[2]),
+                int(res.n_spots_matched),
+                float(torch.sqrt((res.residual_at_map ** 2).mean()).item()))
 
-        if (n_ok + n_fail) % 1000 == 0:
-            log(f"    σ progress: {n_ok + n_fail:,}/{N:,}  "
-                f"({n_ok} ok, {n_fail} fail)")
+    log(f"  per-grain σ: {N:,} grains over {_njobs} threads")
+    n_ok = 0; n_fail = 0; _done = 0
+    with ThreadPoolExecutor(max_workers=_njobs) as _ex:
+        for r in _ex.map(_one, range(N)):
+            _done += 1
+            if r is None:
+                n_fail += 1
+            else:
+                i, a, b, c, nm, rr = r
+                sx[i] = a; sy[i] = b; sz[i] = c
+                n_match[i] = nm; resid_rms[i] = rr; ok_arr[i] = True
+                n_ok += 1
+            if _done % 1000 == 0:
+                log(f"    σ progress: {_done:,}/{N:,}  ({n_ok} ok, {n_fail} fail)")
 
     return PerGrainSigmaResult(
         sigma_X_um=sx, sigma_Y_um=sy, sigma_Z_um=sz,

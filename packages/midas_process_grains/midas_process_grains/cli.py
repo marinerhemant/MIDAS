@@ -57,7 +57,7 @@ def _build_parser() -> argparse.ArgumentParser:
     p.add_argument("--misori-tol", type=float, default=None,
                    help="Override the Phase 1 misorientation tolerance (degrees).")
     p.add_argument(
-        "--merge-primitive", choices=("misori", "forward_predict"),
+        "--merge-primitive", choices=("misori", "forward_predict", "consensus_anchor"),
         default="misori",
         help="(mode=physics only) Pass-1 clustering primitive. 'misori' (default) "
              "uses the smart-antimode pairwise-misorientation threshold. "
@@ -75,6 +75,17 @@ def _build_parser() -> argparse.ArgumentParser:
              "auto-select (smallest K such that the largest connected component "
              "is below max(100, n_alive/100)). Typical: K=4 for cubic-FCC, K=5 "
              "for heavily-twinned LMO/oxide samples.",
+    )
+    p.add_argument(
+        "--consensus-qmin", type=int, default=6,
+        help="(--merge-primitive=consensus_anchor) Minimum tight-snap quality for "
+             "a candidate to SEED a grain. Higher = stricter (fewer spurious "
+             "grains, lower recovery). Default 6.",
+    )
+    p.add_argument(
+        "--consensus-tau-deg", type=float, default=1.0,
+        help="(--merge-primitive=consensus_anchor) Misorientation radius (deg) "
+             "within which an anchor absorbs sibling candidates. Default 1.0.",
     )
     p.add_argument(
         "--strain-method",
@@ -140,6 +151,8 @@ def main(argv: Optional[List[str]] = None) -> int:
             min_n_unique_hkls=min_unique,
             merge_primitive=args.merge_primitive,
             k_agree=args.k_agree,
+            consensus_qmin=args.consensus_qmin,
+            consensus_tau_deg=args.consensus_tau_deg,
         )
         print(
             f"midas-process-grains {__version__} (mode=physics): "

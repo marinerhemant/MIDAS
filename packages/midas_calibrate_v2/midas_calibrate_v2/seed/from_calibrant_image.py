@@ -52,12 +52,30 @@ class AutoSeedResult:
 # Step 1: median filter (mirror AutoCalibrateZarr._safe_median_filter)
 # ----------------------------------------------------------------------
 
+# diplib's median filter is 10–30× faster on big images; use when available.
+try:
+    import diplib as _DIP_BG
+    _HAVE_DIPLIB_BG = True
+except ImportError:
+    _DIP_BG = None
+    _HAVE_DIPLIB_BG = False
+
+
 def _safe_median_filter(data: np.ndarray, kernel_size: int = 101,
                           n_iters: int = 5) -> np.ndarray:
-    """Iterated 1-D median filter (rows then columns), repeated n_iters
-    times.  Equivalent to ``AutoCalibrateZarr._safe_median_filter``.
+    """Iterated median-filter background estimator.
+
+    Default: legacy scipy 1-D × 2 × n_iters scheme.  Set
+    ``MIDAS_USE_DIPLIB=1`` to use diplib's faster 2-D median filter.
     """
     out = data.astype(np.float64)
+    import os as _os
+    if _HAVE_DIPLIB_BG and _os.environ.get("MIDAS_USE_DIPLIB", "") == "1":
+        try:
+            return np.asarray(_DIP_BG.MedianFilter(
+                out, _DIP_BG.Kernel(int(kernel_size), "rectangular")))
+        except Exception:
+            pass
     for _ in range(n_iters):
         out = ndimage.median_filter(out, size=(1, kernel_size), mode="reflect")
         out = ndimage.median_filter(out, size=(kernel_size, 1), mode="reflect")
@@ -199,35 +217,70 @@ def _estimate_lsd(rads: np.ndarray, sim_rads: np.ndarray,
     lo_lsd = initial_lsd / lsd_window if use_prior else 0.0
     hi_lsd = initial_lsd * lsd_window if use_prior else np.inf
     best_lsd = initial_lsd
-    # score tuple: (n_matches, tie_breaker) where tie_breaker is minimised.
-    # Blind: tie_breaker = lsd_std.  Prior: tie_breaker = |lsd-initial|/initial.
-    best_score = (0, 1e9)
+    # Scoring tuple (lex ordering, top-down):
+    #   1. ``det0_match``   — does the innermost detected ring participate
+    #      in the match set?  At a spurious half-Lsd basin the first detected
+    #      ring often has NO sim ring within rel_tol; at the correct basin it
+    #      maps to sim[0] or sim[1].  (Was the trigger for Pilatus2M_16IDB_2024
+    #      flipping from -49 % to ≤ 1 % in blind seeding.)
+    #   2. ``n_consistent`` — number of matches whose implied Lsd lies within
+    #      ``consistency_tol`` of the hypothesis' median implied Lsd.
+    #   3. ``lsd_median``   — prefer LARGER Lsd among ties.  Justification:
+    #      a smaller-Lsd hypothesis packs more simulated rings inside the
+    #      detected radial range, so it gets more "free" matches by accident.
+    #      Without this bias the seed locks onto half-Lsd shadow basins on
+    #      Pilatus Nov2025 (truth 343 mm, spurious 284 mm both n_consistent=5).
+    #   4. ``tie``          — implied-Lsd RMS / median (minimised).
+    #   5. ``matches``      — total within-rel_tol match count.
+    consistency_tol = 0.02
+    best_score = (-1, -1, -1.0, 1e9, -1)
     max_det_start = min(3, len(rads))
+    rad0 = float(rads[0])  # innermost detected ring
     for det_start in range(max_det_start):
         for hyp in range(first_ring - 1, n_sim):
             trial_lsd = initial_lsd * rads[det_start] / sim_rads[hyp]
             scale = trial_lsd / initial_lsd
             trial_sim_px = sim_rads * scale
-            matches = 0; lsds_this = []
-            for det_rad in rads:
+            matches = 0
+            lsds_this = []
+            det0_matched = False
+            for k, det_rad in enumerate(rads):
                 diffs = np.abs(trial_sim_px[:n_sim] - det_rad)
                 best_j = int(np.argmin(diffs))
                 if diffs[best_j] / max(det_rad, 1.0) < rel_tol:
                     matches += 1
                     lsds_this.append(initial_lsd * det_rad / sim_rads[best_j])
-            lsd_median = float(np.median(lsds_this)) if lsds_this else trial_lsd
+                    if k == 0:
+                        det0_matched = True
+            if not lsds_this:
+                continue
+            lsd_median = float(np.median(lsds_this))
             # Reject hypotheses outside the trusted window entirely.
             if use_prior and not (lo_lsd <= lsd_median <= hi_lsd):
                 continue
+            n_consistent = int(sum(1 for lsd_i in lsds_this
+                                    if abs(lsd_i - lsd_median) / max(lsd_median, 1.0)
+                                       < consistency_tol))
+            std_lsd = (float(np.std(lsds_this)) if len(lsds_this) >= 2 else 0.0)
             if use_prior:
                 tie = abs(lsd_median - initial_lsd) / initial_lsd
             else:
-                tie = float(np.std(lsds_this)) if len(lsds_this) >= 2 else 1e9
-            if matches > best_score[0] or (
-                matches == best_score[0] and tie < best_score[1]):
-                best_score = (matches, tie)
+                tie = std_lsd / max(lsd_median, 1.0)
+            score = (int(det0_matched), n_consistent, lsd_median, tie, matches)
+            # Lex compare: det0_matched (max) > n_consistent (max) > lsd_median
+            # (max) > tie (min) > matches (max).
+            if (score[0] > best_score[0] or
+                (score[0] == best_score[0] and score[1] > best_score[1]) or
+                (score[0] == best_score[0] and score[1] == best_score[1]
+                 and score[2] > best_score[2]) or
+                (score[0] == best_score[0] and score[1] == best_score[1]
+                 and score[2] == best_score[2] and score[3] < best_score[3]) or
+                (score[0] == best_score[0] and score[1] == best_score[1]
+                 and score[2] == best_score[2] and score[3] == best_score[3]
+                 and score[4] > best_score[4])):
+                best_score = score
                 best_lsd = lsd_median
-    return best_lsd, best_score[0]
+    return best_lsd, best_score[4] if best_score[4] >= 0 else 0
 
 
 # ----------------------------------------------------------------------
@@ -244,7 +297,7 @@ def auto_seed_calibrant(
     median_iters: int = 5,
     threshold: Optional[float] = None,
     first_ring: int = 1,
-    max_ring: int = 0,
+    max_ring: int = 15,
     skip_median: bool = False,
     mask: Optional[np.ndarray] = None,
     lsd_window: Optional[float] = None,
@@ -277,38 +330,68 @@ def auto_seed_calibrant(
     # Step 1-2: background subtraction + threshold
     if skip_median:
         corr = image.astype(np.float64)
-        thr = float(threshold) if threshold is not None else 0.0
     else:
         bg = _safe_median_filter(image, kernel_size=median_kernel,
                                   n_iters=median_iters)
         corr = image.astype(np.float64) - bg
-        thr = (float(threshold) if threshold is not None
-               else 100.0 * (1.0 + np.std(corr) // 100.0))
-    corr_thr = np.where(corr < thr, 0.0, corr)
-    if mask is not None:
-        # Exclude bad/gap pixels (e.g. detector module gaps flagged by
-        # sentinel values) so they cannot fragment ring arcs and bias the
-        # chord-bisector beam centre.
-        corr_thr = np.where(np.asarray(mask, dtype=bool), 0.0, corr_thr)
-    binary = (corr_thr > 0).astype(np.uint8) * 255
 
-    # Step 3: label
     from skimage import measure as _measure
-    labels, nlabels = _measure.label(binary, return_num=True)
+    bool_mask = np.asarray(mask, dtype=bool) if mask is not None else None
+
+    def _threshold_pass(thr_val: float):
+        """Apply one threshold, label, area-filter, and report keepers."""
+        corr_thr_ = np.where(corr < thr_val, 0.0, corr)
+        if bool_mask is not None:
+            corr_thr_ = np.where(bool_mask, 0.0, corr_thr_)
+        bin_ = (corr_thr_ > 0).astype(np.uint8) * 255
+        labels_, nlab_ = _measure.label(bin_, return_num=True)
+        if nlab_ == 0:
+            return bin_, labels_, nlab_, [], 0
+        props_ = _measure.regionprops(labels_)
+        keep_ = np.zeros(nlab_ + 1, dtype=bool)
+        for rp in props_:
+            if rp.area >= min_area:
+                keep_[rp.label] = True
+        bin_[~keep_[labels_]] = 0
+        return bin_, labels_, nlab_, props_, int(np.sum(keep_))
+
+    # Adaptive threshold: start from the user value (or the legacy AutoCalibrateZarr
+    # formula `100·(1+std//100)`); if that yields zero arcs ≥ min_area, retry at
+    # progressively lower thresholds.  This rescues weak-signal images (e.g.
+    # PerkinElmer 13BMD CeO2 where rings sit ~200 above background but the
+    # legacy formula floors at 100, demanding rings > 1000).
+    auto_thr0 = 100.0 * (1.0 + np.std(corr) // 100.0)
+    if threshold is not None:
+        thr_candidates = [float(threshold)]
+    else:
+        # Probe the legacy threshold first, then back off in halves down to a
+        # noise-floor (5× MAD) and a hard floor of 10.  This widens the
+        # acceptance from "thresholds that just happen to match the 100 grid"
+        # to "any threshold where rings survive the min_area cut".
+        mad = float(np.median(np.abs(corr - np.median(corr))) * 1.4826)
+        floor_mad = max(5.0 * mad, 10.0)
+        thr_candidates = [auto_thr0, auto_thr0 / 2.0, auto_thr0 / 4.0,
+                          auto_thr0 / 8.0, max(floor_mad, 30.0), floor_mad]
+        # Dedup while preserving order; drop trivially-low (≤0) entries
+        seen = set(); _tmp = []
+        for t in thr_candidates:
+            tr = round(float(t), 4)
+            if tr > 0 and tr not in seen:
+                seen.add(tr); _tmp.append(tr)
+        thr_candidates = _tmp
+
+    binary = None; labels = None; nlabels = 0; props = []; n_arcs = 0
+    thr = thr_candidates[0] if thr_candidates else 0.0
+    for thr_try in thr_candidates:
+        binary, labels, nlabels, props, n_arcs = _threshold_pass(thr_try)
+        if n_arcs >= 1:
+            thr = thr_try
+            break
     if nlabels == 0:
         raise RuntimeError(
-            "auto_seed_calibrant: no connected components above threshold; "
-            "image may be empty, dark not subtracted, or threshold too high"
+            f"auto_seed_calibrant: no connected components above thresholds "
+            f"{thr_candidates}; image may be empty or dark not subtracted"
         )
-    props = _measure.regionprops(labels)
-
-    # Bulk-filter small regions
-    keep = np.zeros(nlabels + 1, dtype=bool)
-    for rp in props:
-        if rp.area >= min_area:
-            keep[rp.label] = True
-    binary[~keep[labels]] = 0
-    n_arcs = int(np.sum(keep))
 
     # Step 4: BC via chord bisector (returns (row, col) = (BC_z, BC_y))
     bc_rowcol = _detect_beam_center(binary, min_area)

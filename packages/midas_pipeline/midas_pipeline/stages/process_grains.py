@@ -42,11 +42,22 @@ def run(ctx: StageContext) -> StageResult:
         from ._comp_params import comp_backend_paramstest
         pg_paramstest = comp_backend_paramstest(paramstest, layer_dir)
 
+    # Spot-aware / paper_claim modes need the per-spot residual table
+    # (Output/FitBest.bin), which the python refiner writes but the c-omp
+    # refiner does not (it emits Results/ProcessKey.bin). Fall back to legacy
+    # (single grain per cluster, dedup from OrientPosFit + ProcessKey) so the
+    # c-omp backend runs end-to-end.
+    mode = ctx.config.process_grains_mode
+    if mode != "legacy" and not (layer_dir / "Output" / "FitBest.bin").exists():
+        LOG.info("process_grains(FF): FitBest.bin absent (c-omp refiner) → "
+                 "using legacy mode (%r needs the per-spot FitBest.bin).", mode)
+        mode = "legacy"
+
     cmd = [
         sys.executable, "-m", "midas_process_grains",
         str(pg_paramstest),
         str(ctx.config.n_cpus),
-        "--mode", ctx.config.process_grains_mode,
+        "--mode", mode,
         "--device", ctx.config.device,
         "--dtype", ctx.config.dtype,
     ]

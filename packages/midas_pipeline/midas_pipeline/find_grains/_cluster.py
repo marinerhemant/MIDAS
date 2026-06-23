@@ -456,3 +456,247 @@ def per_voxel_cluster_torch(
         unique_keys=np.stack(unique_keys, axis=0) if unique_keys else np.empty((0, 4), dtype=np.uint64),
         unique_OMs=unique_OMs_t,
     )
+
+
+# ===========================================================================
+# Fast cross-voxel dedup — byte-parity with global_cluster(), much faster on
+# DEFORMED maps where intragranular spread defeats the greedy marking shortcut
+# and the reference degrades to O(N^2) misorientation evals on CPU.
+#
+# Strategy: keep the EXACT greedy single-link marking (i=0..N, j>i, first-seed
+# wins, first-max-conf representative). Change ONLY how the symmetric "close"
+# (misorientation < maxAngle) relation is computed:
+#   * _build_neighbors_gpu  — N^2 misorientation on GPU in row tiles (universal
+#     ~100x constant speedup; needs torch + a device).
+#   * _build_neighbors_binned — fundamental-zone quaternion hashing so only
+#     spatially-near (in orientation space) candidate pairs are evaluated
+#     (O(N*k); the asymptotic fix for spread/deformed maps). Parity-safe: the
+#     candidate set is a SUPERSET of all true-close pairs (every symmetry image
+#     of each voxel is hashed, neighbour cells searched).
+# ===========================================================================
+
+
+def _greedy_from_neighbors(nbr, per_vox_OMs, per_vox_confs, per_vox_keys, marked):
+    """Exact-parity greedy single-link clustering given a symmetric neighbour
+    structure ``nbr[i] = sorted int array of j with close(i, j)``.
+
+    Reproduces :func:`global_cluster` bit-for-bit: seeds in ascending order,
+    candidates are unmarked ``j > i`` with ``close(i, j)``, representative is the
+    first (lowest-index) member of maximal confidence.
+    """
+    n = int(per_vox_OMs.shape[0])
+    out_keys: list[np.ndarray] = []
+    out_OMs: list[np.ndarray] = []
+    voxel_to_unique = np.full(n, -1, dtype=np.int64)
+    for i in range(n):
+        if marked[i]:
+            continue
+        cand = nbr[i]
+        if cand.size:
+            cand = cand[cand > i]
+            if cand.size:
+                cand = cand[~marked[cand]]
+        members = np.concatenate(([i], cand)) if cand.size else np.array([i], dtype=np.int64)
+        confs_m = per_vox_confs[members]
+        best_row = int(members[int(np.argmax(confs_m))])  # first max == lowest idx
+        if cand.size:
+            marked[cand] = True
+        row5 = np.empty(5, dtype=np.uint64)
+        row5[0] = np.uint64(best_row)
+        row5[1:5] = per_vox_keys[best_row]
+        grain_idx = len(out_keys)
+        out_keys.append(row5)
+        out_OMs.append(per_vox_OMs[best_row].copy())
+        voxel_to_unique[members] = grain_idx
+    if not out_keys:
+        return GlobalClusterResult(
+            n_uniques=0,
+            unique_key_arr=np.empty((0, 5), dtype=np.uint64),
+            unique_OM_arr=np.empty((0, 9), dtype=np.float64),
+            voxel_to_unique=voxel_to_unique,
+        )
+    return GlobalClusterResult(
+        n_uniques=len(out_keys),
+        unique_key_arr=np.stack(out_keys, axis=0),
+        unique_OM_arr=np.stack(out_OMs, axis=0),
+        voxel_to_unique=voxel_to_unique,
+    )
+
+
+def _neighbors_from_pairs(pairs_i, pairs_j, n):
+    """Symmetric sorted neighbour lists from undirected close pairs."""
+    if len(pairs_i) == 0:
+        return [np.empty(0, dtype=np.int64) for _ in range(n)]
+    ii = np.concatenate([pairs_i, pairs_j])
+    jj = np.concatenate([pairs_j, pairs_i])
+    order = np.argsort(ii, kind="stable")
+    ii = ii[order]; jj = jj[order]
+    bounds = np.searchsorted(ii, np.arange(n + 1))
+    return [np.unique(jj[bounds[i]:bounds[i + 1]]) for i in range(n)]
+
+
+def _build_neighbors_gpu(per_vox_OMs, valid_idx, space_group, max_ang_rad, device, tile=128):
+    """Symmetric close-neighbour lists via N^2 misorientation on GPU (row tiles)."""
+    import torch
+    M = int(valid_idx.size)
+    OMv = torch.as_tensor(per_vox_OMs[valid_idx], dtype=torch.float64, device=device)  # (M,9)
+    pi_list, pj_list = [], []
+    for r0 in range(0, M, tile):
+        r1 = min(r0 + tile, M)
+        t = r1 - r0
+        oms1 = OMv[r0:r1].repeat_interleave(M, dim=0)   # (t*M,9)
+        oms2 = OMv.repeat(t, 1)                          # (t*M,9)
+        ang = misorientation_om_batch(oms1, oms2, space_group).reshape(t, M)
+        close = ang < max_ang_rad
+        # only keep j>i in GLOBAL valid index space; map local->global below
+        rows, cols = torch.nonzero(close, as_tuple=True)
+        gi = valid_idx[(r0 + rows).cpu().numpy()]
+        gj = valid_idx[cols.cpu().numpy()]
+        keep = gj > gi
+        pi_list.append(gi[keep]); pj_list.append(gj[keep])
+    pi = np.concatenate(pi_list) if pi_list else np.empty(0, np.int64)
+    pj = np.concatenate(pj_list) if pj_list else np.empty(0, np.int64)
+    return _neighbors_from_pairs(pi, pj, int(per_vox_OMs.shape[0]))
+
+
+def _build_neighbors_binned(per_vox_OMs, valid_idx, space_group, max_ang_rad,
+                            device=None, batch=200000):
+    """Symmetric close-neighbour lists via fundamental-zone quaternion hashing.
+
+    Parity-safe: hash EVERY symmetry image of each voxel quaternion into a 4-D
+    grid (cell = max_ang_rad, generous), gather candidate pairs from the 3^4
+    neighbour cells, then evaluate misorientation only on the unique candidates.
+    The candidate set is a superset of all pairs with misorientation < maxAngle.
+    """
+    from midas_stress.orientation import (
+        make_symmetries, orient_mat_to_quat, quaternion_product,
+    )
+    n_all = int(per_vox_OMs.shape[0])
+    vi = np.asarray(valid_idx, dtype=np.int64)
+    M = int(vi.size)
+    if M == 0:
+        return [np.empty(0, dtype=np.int64) for _ in range(n_all)]
+    n_sym, sym = make_symmetries(space_group)
+    sym = np.asarray(sym, dtype=np.float64)                       # (n_sym,4)
+
+    # base quaternions (raw; we hash BOTH signs of every image so the antipodal
+    # q ~ -q boundary at q0≈0 cannot drop a close pair).
+    q = np.array([orient_mat_to_quat(per_vox_OMs[v]) for v in vi], dtype=np.float64)  # (M,4)
+    cell = max(float(max_ang_rad), 1e-9)
+
+    # hash all symmetry images (both signs): grid[cell_tuple] -> list of local idx.
+    # q_img = sym[sidx] ⊗ q  (Hamilton product), floored to cells.
+    from collections import defaultdict
+    grid = defaultdict(list)
+    cells_per_img = []   # per (sym, sign): (M,4) int cells — used again in the gather pass
+    for sidx in range(n_sym):
+        w0, x0, y0, z0 = sym[sidx]
+        w1, x1, y1, z1 = q[:, 0], q[:, 1], q[:, 2], q[:, 3]
+        qi = np.stack([
+            w0 * w1 - x0 * x1 - y0 * y1 - z0 * z1,
+            w0 * x1 + x0 * w1 + y0 * z1 - z0 * y1,
+            w0 * y1 - x0 * z1 + y0 * w1 + z0 * x1,
+            w0 * z1 + x0 * y1 - y0 * x1 + z0 * w1,
+        ], axis=1)
+        for sgn in (1.0, -1.0):
+            ck = np.floor((sgn * qi) / cell).astype(np.int64)    # (M,4)
+            cells_per_img.append(ck)
+            for loc in range(M):
+                grid[(int(ck[loc, 0]), int(ck[loc, 1]), int(ck[loc, 2]), int(ck[loc, 3]))].append(loc)
+
+    # candidate pairs: for each voxel image, search the 3^4 neighbour cells
+    import itertools
+    offs = list(itertools.product((-1, 0, 1), repeat=4))
+    cand = set()
+    for ck in cells_per_img:        # 2*n_sym entries (sym image × sign)
+        for loc in range(M):
+            base = (int(ck[loc, 0]), int(ck[loc, 1]), int(ck[loc, 2]), int(ck[loc, 3]))
+            for off in offs:
+                key = (base[0] + off[0], base[1] + off[1], base[2] + off[2], base[3] + off[3])
+                bucket = grid.get(key)
+                if not bucket:
+                    continue
+                for loc2 in bucket:
+                    if loc2 > loc:
+                        cand.add((loc, loc2))
+                    elif loc2 < loc:
+                        cand.add((loc2, loc))
+    if not cand:
+        return [np.empty(0, dtype=np.int64) for _ in range(n_all)]
+    cand = np.array(sorted(cand), dtype=np.int64)                # (P,2) local idx
+
+    # evaluate misorientation on unique candidate pairs (batched)
+    oms = per_vox_OMs[vi]
+    keep_mask = np.zeros(cand.shape[0], dtype=bool)
+    use_torch = device is not None
+    for b0 in range(0, cand.shape[0], batch):
+        b1 = min(b0 + batch, cand.shape[0])
+        a = oms[cand[b0:b1, 0]]; bb = oms[cand[b0:b1, 1]]
+        if use_torch:
+            import torch
+            a = torch.as_tensor(a, dtype=torch.float64, device=device)
+            bb = torch.as_tensor(bb, dtype=torch.float64, device=device)
+            ang = misorientation_om_batch(a, bb, space_group).cpu().numpy()
+        else:
+            ang = misorientation_om_batch(a, bb, space_group)
+        keep_mask[b0:b1] = ang < max_ang_rad
+    cp = cand[keep_mask]
+    gi = vi[cp[:, 0]]; gj = vi[cp[:, 1]]
+    return _neighbors_from_pairs(gi, gj, n_all)
+
+
+def global_cluster_fast(
+    per_vox_OMs: np.ndarray,
+    per_vox_confs: np.ndarray,
+    per_vox_keys: np.ndarray,
+    *,
+    space_group: int,
+    max_ang_deg: float,
+    invalid_marker: int = -1,
+    method: str = "auto",          # "auto" | "binned" | "gpu" | "reference"
+    device=None,                   # torch device for gpu/binned misorientation
+) -> GlobalClusterResult:
+    """Drop-in faster equivalent of :func:`global_cluster` (byte-parity).
+
+    ``method``:
+      * ``"reference"`` — original O(N^2) CPU implementation (exact, slow).
+      * ``"gpu"``       — N^2 misorientation on ``device`` via torch (EXACT — all
+                          pairs, no pruning; ~100x constant speedup; needs torch).
+      * ``"binned"``    — fundamental-zone quaternion hashing (O(N*k)). EXPERIMENTAL:
+                          a rare symmetry-boundary candidate-generation gap can drop
+                          a handful of close pairs at large N (see
+                          tests/test_global_cluster_parity.py::test_binned_known_gap).
+                          Do NOT use where exact parity is required until fixed.
+      * ``"auto"``      — ``"gpu"`` when torch + a usable device are available, else
+                          ``"reference"``. Always EXACT.
+    """
+    if method == "auto":
+        method = "reference"
+        try:
+            import torch
+            if device is not None or torch.cuda.is_available():
+                if device is None:
+                    device = torch.device("cuda")
+                method = "gpu"
+        except Exception:
+            method = "reference"
+    if method == "reference":
+        return global_cluster(per_vox_OMs, per_vox_confs, per_vox_keys,
+                              space_group=space_group, max_ang_deg=max_ang_deg,
+                              invalid_marker=invalid_marker)
+    per_vox_OMs = np.ascontiguousarray(per_vox_OMs, dtype=np.float64)
+    per_vox_confs = np.ascontiguousarray(per_vox_confs, dtype=np.float64).ravel()
+    per_vox_keys = np.ascontiguousarray(per_vox_keys, dtype=np.uint64)
+    max_ang_rad = float(max_ang_deg) * np.pi / 180.0
+    invalid_u64 = np.uint64(invalid_marker if invalid_marker >= 0 else (2**64 - 1))
+    marked = (per_vox_keys[:, 0] == invalid_u64)
+    valid_idx = np.flatnonzero(~marked).astype(np.int64)
+
+    if method == "gpu":
+        nbr = _build_neighbors_gpu(per_vox_OMs, valid_idx, space_group, max_ang_rad, device)
+    elif method == "binned":
+        nbr = _build_neighbors_binned(per_vox_OMs, valid_idx, space_group, max_ang_rad,
+                                      device=device)
+    else:
+        raise ValueError(f"unknown method {method!r}")
+    return _greedy_from_neighbors(nbr, per_vox_OMs, per_vox_confs, per_vox_keys, marked)

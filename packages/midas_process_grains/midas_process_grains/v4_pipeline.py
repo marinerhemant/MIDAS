@@ -260,6 +260,9 @@ def run_v4_pipeline(
     fp_y_tol_um: float = 800.0,
     fp_omega_tol_deg: float = 0.5,
     fp_om_split_tol_deg: Optional[float] = 1.0,
+    consensus_qmin: int = 6,
+    consensus_tau_deg: float = 1.0,
+    consensus_snap_um: float = 150.0,
     compute_position_sigma: bool = False,
     position_sigma_max_grains: Optional[int] = None,
     compute_strain: bool = False,
@@ -476,9 +479,20 @@ def run_v4_pipeline(
         )
         n_p1 = int(p1_cluster.max() + 1) if len(p1_cluster) else 0
         log(f"[v4] Pass-1 (misori): {n_p1:,} clusters  [{time.time()-t2:.1f}s]")
+    elif merge_primitive == "consensus_anchor":
+        p1_cluster, fp_twin_edges, fp_attrib, theta_star = _pass1_consensus_anchor(
+            OM_fz=OM_fz, positions=positions, hkls=hkls,
+            indexing_rings=indexing_rings, inputall=inputall, geom=geom,
+            q_fz=q_fz.numpy() if hasattr(q_fz, "numpy") else np.asarray(q_fz),
+            space_group=SG, qmin=consensus_qmin, tau_deg=consensus_tau_deg,
+            snap_um=consensus_snap_um, omega_tol_deg=fp_omega_tol_deg, log=log,
+        )
+        n_p1 = int(p1_cluster.max() + 1) if len(p1_cluster) else 0
+        log(f"[v4] Pass-1 (consensus-anchor): {n_p1:,} clusters  [{time.time()-t2:.1f}s]")
     else:
         raise ValueError(
-            f"merge_primitive must be 'misori' or 'forward_predict', got {merge_primitive!r}"
+            "merge_primitive must be 'misori', 'forward_predict', or "
+            f"'consensus_anchor', got {merge_primitive!r}"
         )
 
     # -- Pass-1.5: twin-aware cluster merge (optional) --
@@ -588,6 +602,7 @@ def run_v4_pipeline(
         seed_h=seed_h, seed_k=seed_k, seed_l=seed_l, seed_alive=seed_ok,
         positions=positions, spot_sets=spot_sets, om_fz=OM_fz,
         n_expected_per_pass1=n_expected_per_p1,
+        disable_split=(merge_primitive == "consensus_anchor"),
     )
     n_final = phys.n_final_grains
     n_split = int((phys.grain_splits_emerged > 0).sum())
@@ -1292,6 +1307,12 @@ def _pass1_misori(
         theta_star = float(np.clip(theta_star, 0.1, 1.0))
     else:
         theta_star = 0.05
+    import os as _os
+    _theta_ov = _os.environ.get("MIDAS_PG_THETA_STAR")
+    if _theta_ov:
+        theta_star = float(_theta_ov)
+        log(f"[v4] Pass-1: θ* PINNED = {theta_star:.4f}° "
+            f"(env MIDAS_PG_THETA_STAR; antimode bypassed)")
     log(f"[v4] Pass-1: θ* = {theta_star:.4f}°  (smart antimode from {len(A):,} pairs)")
 
     parent = np.arange(n_alive, dtype=np.int64)
@@ -1306,6 +1327,119 @@ def _pass1_misori(
     _, p1_cluster = np.unique(roots, return_inverse=True)
     p1_cluster = p1_cluster.astype(np.int64)
     return p1_cluster, np.zeros((0, 2), dtype=np.int32), None, theta_star
+
+
+def _pass1_consensus_anchor(
+    *,
+    OM_fz: np.ndarray,
+    positions: np.ndarray,
+    hkls,
+    indexing_rings: list,
+    inputall,
+    geom,
+    q_fz: np.ndarray,
+    space_group: int,
+    qmin: int,
+    tau_deg: float,
+    snap_um: float,
+    omega_tol_deg: float,
+    log,
+):
+    """Pass-1 consensus-anchor clustering (overlap-robust merge).
+
+    The forward-predict primitive snaps each candidate at its OWN pose, so
+    same-grain candidates whose refined orientations differ by ~0.1-0.9 deg
+    snap to different detections and fail to merge -> over-count. This
+    primitive instead:
+      (1) scores every candidate by its TIGHT forward-snap count (a
+          ground-truth-free quality = how many ring reflections it explains
+          *exactly*), pooled over the indexing rings;
+      (2) greedily, highest quality first, seeds a grain from each candidate
+          whose quality >= ``qmin`` and absorbs every still-unassigned
+          candidate within ``tau_deg`` misorientation of that anchor.
+    Mis-indexed candidates (low quality) cannot seed grains, so they do not
+    create spurious clusters; the near-true best candidate anchors each grain.
+    Finer indexing (smaller StepsizeOrient) tightens the candidate spread and
+    drives the residual over-count toward 1x.
+
+    Returns ``(p1_cluster, twin_edges, attribution, theta_star)`` to match the
+    other Pass-1 primitives (twin_edges empty, attribution None, theta_star None).
+    """
+    from midas_diffract.forward import HEDMGeometry
+    from .compute.forward_predict_merge import compute_forward_predict_attributions
+    from scipy.spatial import cKDTree
+
+    n_alive = int(OM_fz.shape[0])
+    if not indexing_rings or n_alive == 0:
+        return (np.arange(n_alive, dtype=np.int64),
+                np.zeros((0, 2), dtype=np.int32), None, None)
+
+    span = geom.omega_max_deg - geom.omega_min_deg
+    n_frames = max(int(round(span / max(geom.omega_step_deg, 1e-6))), 1)
+    fm_geom = HEDMGeometry(
+        Lsd=geom.lsd_um, y_BC=geom.y_BC, z_BC=geom.z_BC, px=geom.pixel_um,
+        omega_start=geom.omega_min_deg, omega_step=geom.omega_step_deg,
+        n_frames=n_frames, n_pixels_y=geom.n_pixels_y, n_pixels_z=geom.n_pixels_z,
+        min_eta=geom.min_eta_deg, wavelength=geom.wavelength_a,
+        tx=geom.tx_deg, ty=geom.ty_deg, tz=geom.tz_deg,
+        wedge=geom.wedge_deg, flip_y=True, apply_tilts=True,
+    )
+
+    # (1) quality = #tight-snapped ring reflections per candidate, pooled over
+    # ALL detected rings (not just the seeding ring) so the score reflects the
+    # grain's full diffraction signature — a near-true candidate explains many
+    # exact spots, a mis-indexed one only a few coincidental ones.
+    ia = inputall
+    ia_rings = set(np.unique(ia["RingNumber"].astype(int).to_numpy()).tolist())
+    hkl_rings = set(np.unique(np.asarray(hkls.ring)).astype(int).tolist())
+    quality_rings = sorted(ia_rings & hkl_rings) or list(indexing_rings)
+    quality = np.zeros(n_alive, dtype=np.int64)
+    for ring in quality_rings:
+        keep = hkls.ring == ring
+        if not np.any(keep):
+            continue
+        ring_mask = ia["RingNumber"].astype(int).to_numpy() == int(ring)
+        if not ring_mask.any():
+            continue
+        attrib = compute_forward_predict_attributions(
+            OM_fz, positions,
+            g_crystal_ring=hkls.g_crystal[keep].astype(np.float64),
+            theta_deg_ring=hkls.theta_deg[keep].astype(np.float64),
+            geometry=fm_geom,
+            detected_y_um=ia.loc[ring_mask, "YLab"].to_numpy(np.float64),
+            detected_z_um=ia.loc[ring_mask, "ZLab"].to_numpy(np.float64),
+            detected_omega_deg=ia.loc[ring_mask, "Omega"].to_numpy(np.float64),
+            detected_spot_id=ia.index.to_numpy(np.int64)[ring_mask],
+            y_tol_um=snap_um, omega_tol_deg=omega_tol_deg,
+        )
+        np.add.at(quality, attrib.cand_idx.astype(np.int64), 1)
+    log(f"[v4]   consensus quality: median {int(np.median(quality))} "
+        f"max {int(quality.max())}  (qmin={qmin})")
+
+    # (2) greedy best-first misorientation-anchor clustering
+    qf = np.ascontiguousarray(q_fz, dtype=np.float64)
+    tree = cKDTree(qf)
+    eucl_r = 2.0 * np.sin(np.radians(tau_deg) / 2.0) * 1.6   # generous, then exact filter
+    order = np.argsort(-quality, kind="stable")
+    label = np.full(n_alive, -1, dtype=np.int64)
+    ng = 0
+    for i in order:
+        if label[i] != -1 or quality[i] < qmin:
+            continue
+        label[i] = ng
+        nbrs = np.fromiter(tree.query_ball_point(qf[i], eucl_r), dtype=np.int64)
+        nbrs = nbrs[label[nbrs] == -1]
+        if nbrs.size:
+            # misorientation_quat_batch returns RADIANS (midas_stress convention)
+            mis_deg = np.degrees(np.asarray(misorientation_quat_batch(
+                np.repeat(qf[i][None, :], nbrs.size, 0), qf[nbrs], space_group)))
+            label[nbrs[mis_deg < tau_deg]] = ng
+        ng += 1
+    rest = np.where(label == -1)[0]              # low-quality, unabsorbed = junk
+    label[rest] = np.arange(ng, ng + rest.size)  # singletons; dropped by trust/budget tiers
+    log(f"[v4]   consensus-anchor: {ng:,} seeded grains "
+        f"(+{rest.size:,} low-quality singletons)")
+    return label, np.zeros((0, 2), dtype=np.int32), None, None
 
 
 def _pass1_forward_predict(

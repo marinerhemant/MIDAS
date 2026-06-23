@@ -89,6 +89,16 @@ class HEDMGeometry:
                                    # Default False preserves the existing
                                    # behaviour: NF applies tilts, FF skips.
                                    # Set True for raw multi-panel simulation.
+    # Radial detector distortion (canonical midas_distortion v2 model). Like
+    # tilts, this maps an IDEAL prediction to the RAW detector position and is
+    # OFF by default -- the FF/pf experimental pipeline pre-corrects distortion
+    # at peak-finding time (transforms), so the forward must NOT re-apply it for
+    # the indexer/fit-grain. Raw-pixel-patch consumers (pf_odf, grain_odf) that
+    # never go through transforms set ``apply_distortion=True`` and supply the
+    # calibrated v2 coefficients to predict in the raw frame.
+    apply_distortion: bool = False
+    p_distortion: "list[float] | None" = None   # 15 v2 coeffs (midas_distortion P_COEF_NAMES order); None/zeros => no-op
+    rho_d: "float | None" = None                # distortion radius normalization (um); None => resolve from detector corner
     multi_mode: str = "layered"    # "layered" (default): NF semantics --
                                    # spot must land on the detector at
                                    # EVERY distance (AllDistsFound).
@@ -342,6 +352,25 @@ class HEDMForwardModel(nn.Module):
 
         # Multi-detector / multi-panel configuration
         self.apply_tilts = bool(geometry.apply_tilts)
+
+        # Radial detector distortion (canonical midas_distortion v2 model),
+        # applied ideal->raw in project_to_detector when apply_distortion=True.
+        # OFF by default => identity => indexer/fit-grain output unchanged.
+        self.apply_distortion = bool(getattr(geometry, "apply_distortion", False))
+        p_dist = getattr(geometry, "p_distortion", None)
+        if p_dist is not None:
+            self.p_distortion = nn.Parameter(
+                torch.as_tensor(p_dist, dtype=torch.float64, device=device),
+                requires_grad=False,
+            )
+            self._has_distortion = bool(
+                torch.any(torch.abs(self.p_distortion.detach()) > 0.0).item()
+            )
+        else:
+            self.p_distortion = None
+            self._has_distortion = False
+        self.rho_d = getattr(geometry, "rho_d", None)
+
         if geometry.multi_mode not in ("layered", "panel"):
             raise ValueError(
                 f"Unknown multi_mode {geometry.multi_mode!r}; "
@@ -1162,6 +1191,37 @@ class HEDMForwardModel(nn.Module):
                 out_z.append(zd)
             ydet_d = torch.stack(out_y, dim=0)
             zdet_d = torch.stack(out_z, dim=0)
+
+        # Ideal->raw radial distortion (canonical midas_distortion v2 model),
+        # applied on the BC-relative detector-plane coords (um) before pixel
+        # conversion -- mirrors midas_calibrate_v2.forward.geometry. Gated OFF
+        # by default so the indexer/fit-grain (ideal frame) are byte-unchanged;
+        # raw-patch consumers (pf_odf, grain_odf) opt in. R is BC-relative, so
+        # the distortion is frame-flip invariant; the eta convention (and any
+        # phase offset between the calibration frame and this frame) is the one
+        # thing to validate empirically (see implementation_plan_distortion_layer).
+        if self.apply_distortion and self._has_distortion:
+            from midas_distortion import apply_distortion as _apply_dist, \
+                v2_term_layout as _v2_terms, resolve_rho_d_um as _resolve_rho_d
+            eps = torch.tensor(1e-9, dtype=ydet_d.dtype, device=ydet_d.device)
+            R = torch.sqrt(ydet_d * ydet_d + zdet_d * zdet_d).clamp(min=eps)
+            # eta convention matches calibrate_v2 forward: atan2(-y, z), degrees.
+            eta_deg_d = self.RAD2DEG * torch.atan2(-ydet_d, zdet_d)
+            # resolve_rho_d_um passes a supplied rho_d through, or computes the
+            # max BC-relative corner distance (um) when None.
+            rho_d_val, _rho_how = _resolve_rho_d(
+                self.rho_d,
+                NrPixelsY=self.n_pixels_y, NrPixelsZ=self.n_pixels_z,
+                BC_y=float(self._y_BC.reshape(-1)[0]),
+                BC_z=float(self._z_BC.reshape(-1)[0]),
+                pxY=self.px,
+            )
+            rho_d_t = torch.as_tensor(float(rho_d_val), dtype=R.dtype, device=R.device)
+            p_v2 = self.p_distortion.to(R.dtype)
+            R_corr = _apply_dist(R, eta_deg_d, p_v2, rho_d_t, terms=_v2_terms())
+            scale = R_corr / R
+            ydet_d = ydet_d * scale
+            zdet_d = zdet_d * scale
 
         # FF/PF: y-axis on detector flipped (yBC - ydet/px), validated against C
         # NF:    not flipped (yBC + ydet/px), validated against C
