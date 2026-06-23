@@ -1201,5 +1201,89 @@ class TestStrainTensorInput:
         torch.testing.assert_close(sp_v.omega, sp_S.omega)
 
 
+# ===================================================================
+#  Test: forward_per_grain (fast path) == diagonal of forward()
+# ===================================================================
+
+class TestForwardPerGrain:
+    """The O(N*M) per-grain path must equal the diagonal of forward()'s
+    O(N^2*M) orientation x strain cross-product, bit-for-bit, so the
+    gradient and gradient-free callers agree."""
+
+    def _setup(self, nf_geometry, device, N=6, strained=True):
+        model, _, _ = make_model_with_cubic_iron(nf_geometry, device)
+        torch.manual_seed(7)
+        euler = torch.rand(N, 3, dtype=torch.float64) * 2 * math.pi
+        pos = torch.arange(N * 3, dtype=torch.float64).reshape(N, 3) * 5.0
+        latc = torch.tensor([2.87, 2.87, 2.87, 90., 90., 90.],
+                            dtype=torch.float64).expand(N, 6)
+        if strained:
+            s = torch.randn(N, 3, 3, dtype=torch.float64) * 1e-3
+            strain = (s + s.transpose(-1, -2)) / 2
+        else:
+            strain = None
+        return model, euler, pos, latc, strain, N
+
+    def test_per_grain_equals_forward_diagonal_strained(self, nf_geometry, device):
+        # Compare per-grain (no global sort, which would reorder near-degenerate
+        # spots): forward() diagonal rows [gi,gi] & [gi,gi+N] vs
+        # forward_per_grain() rows [gi] & [gi+N]. Element-wise einsum differs
+        # from the cross-product einsum only by fp64 reduction order (~1e-12).
+        model, euler, pos, latc, strain, N = self._setup(nf_geometry, device)
+        spf = model(euler, pos, lattice_params=latc, strain=strain)   # (N,2N,M)
+        spg = model.forward_per_grain(euler, pos, lattice_params=latc, strain=strain)  # (2N,M)
+
+        vf = spf.valid > 0.5
+        vg = spg.valid > 0.5
+        max_diff = 0.0
+        for fld in ("two_theta", "eta", "omega", "y_pixel", "z_pixel", "frame_nr"):
+            F = getattr(spf, fld)
+            G = getattr(spg, fld)
+            for gi in range(N):
+                for kf, kg in ((gi, gi), (gi + N, gi + N)):
+                    # validity must agree exactly on the diagonal
+                    assert torch.equal(vf[gi, kf], vg[kg])
+                    max_diff = max(max_diff, float((F[gi, kf] - G[kg]).abs().max()))
+        assert max_diff < 1e-9, f"per-grain vs forward-diagonal max diff {max_diff:.2e}"
+
+    def test_per_grain_shape_is_2N(self, nf_geometry, device):
+        model, euler, pos, latc, strain, N = self._setup(nf_geometry, device)
+        sp = model.forward_per_grain(euler, pos, lattice_params=latc, strain=strain)
+        assert sp.valid.shape[0] == 2 * N
+
+    def test_per_grain_shared_lattice_no_strain(self, nf_geometry, device):
+        # nominal (no lattice) path must also work and avoid cross-product
+        model, euler, pos, latc, _, N = self._setup(nf_geometry, device, strained=False)
+        sp = model.forward_per_grain(euler, pos)
+        assert sp.valid.shape[0] == 2 * N
+
+    def test_per_grain_differentiable(self, nf_geometry, device):
+        model, euler, pos, latc, strain, N = self._setup(nf_geometry, device)
+        euler = euler.clone().requires_grad_(True)
+        sp = model.forward_per_grain(euler, pos, lattice_params=latc, strain=strain)
+        # omega/eta/pixels depend on orientation (two_theta does not)
+        (sp.omega * sp.valid).sum().backward()
+        assert euler.grad is not None and torch.all(torch.isfinite(euler.grad))
+
+    def test_per_grain_fp32(self, nf_geometry, device):
+        model, euler, pos, latc, strain, N = self._setup(nf_geometry, device)
+        sp = model.forward_per_grain(euler.float(), pos.float(),
+                                     lattice_params=latc.float(), strain=strain.float())
+        assert sp.valid.dtype == torch.float32 or sp.valid.dtype == torch.float64
+
+    def test_forward_warns_on_cross_product(self, nf_geometry, device):
+        model, euler, pos, latc, strain, N = self._setup(nf_geometry, device)
+        with pytest.warns(UserWarning, match="cross-product"):
+            model(euler, pos, lattice_params=latc, strain=strain)
+
+    def test_forward_no_warn_shared_lattice(self, nf_geometry, device):
+        import warnings as _w
+        model, euler, pos, _, _, N = self._setup(nf_geometry, device, strained=False)
+        shared = torch.tensor([2.87, 2.87, 2.87, 90., 90., 90.], dtype=torch.float64)
+        with _w.catch_warnings():
+            _w.simplefilter("error")  # any cross-product warning becomes an error
+            model(euler, pos, lattice_params=shared)  # shared -> (2N,M), no warn
+
+
 if __name__ == "__main__":
     pytest.main([__file__, "-v"])

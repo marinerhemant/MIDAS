@@ -27,6 +27,7 @@ Reference C code:
 """
 
 import math
+import warnings
 from dataclasses import dataclass, field
 from typing import Optional, Tuple
 
@@ -738,6 +739,7 @@ class HEDMForwardModel(nn.Module):
         orientation_matrices: torch.Tensor,
         hkls_cart: Optional[torch.Tensor] = None,
         thetas: Optional[torch.Tensor] = None,
+        per_grain: bool = False,
     ) -> Tuple[torch.Tensor, torch.Tensor, torch.Tensor, torch.Tensor]:
         """Core Bragg geometry: orientations + G-vectors -> angles.
 
@@ -779,14 +781,32 @@ class HEDMForwardModel(nn.Module):
         # batch, (b) per-voxel hkls_cart shape (..., M, 3) for strained
         # rendering. Both flow through the same einsum via leading-dim
         # broadcasting on the second arg.
-        G_C = torch.einsum("...nij,...mj->...nmi", orientation_matrices, hkls_cart)
+        #
+        # per_grain=True: ELEMENT-WISE pairing of grain i's orientation with
+        # grain i's strained hkls -- NO orientation x strain cross-product.
+        # Requires orientation_matrices (N,3,3); hkls_cart (N,M,3) per-grain or
+        # (M,3) shared. Used by forward_per_grain() for the O(N*M) fast path.
+        if per_grain:
+            if hkls_cart.dim() == 2:                 # (M,3) shared lattice
+                G_C = torch.einsum("nij,mj->nmi", orientation_matrices, hkls_cart)
+            else:                                    # (N,M,3) per-grain strain
+                G_C = torch.einsum("nij,nmj->nmi", orientation_matrices, hkls_cart)
+        else:
+            G_C = torch.einsum("...nij,...mj->...nmi", orientation_matrices, hkls_cart)
 
         # v = sin(theta)*|G| -- C precomputes Gs from the UNROTATED G-vector norm
         # (rotation preserves norm in exact arithmetic but not in float64).
         # Match C: use |hkls_cart| (pre-rotation), not |R @ hkls_cart|.
         len_hkl = torch.norm(hkls_cart, dim=-1)  # (M,) or (..., M)
         v_no_wedge = torch.sin(thetas) * len_hkl  # (M,) or (..., M)
-        v_no_wedge = v_no_wedge.unsqueeze(-2).expand_as(G_C[..., 0])  # (..., N, M)
+        # Broadcast v to G_C's (..., N, M) grid. Layout-agnostic: in the
+        # cross-product layout v gains an orientation axis at -2; in the
+        # per_grain / shared layouts it already matches. Numerically identical
+        # to the former ``unsqueeze(-2).expand_as`` for those existing paths.
+        gc0 = G_C[..., 0]
+        while v_no_wedge.dim() < gc0.dim():
+            v_no_wedge = v_no_wedge.unsqueeze(-2)
+        v_no_wedge = v_no_wedge.expand_as(gc0)
 
         # ---- Wedge: rigorous geometric formulation -------------------
         # The rotation axis tilts from z to n_hat = (sin W, 0, cos W).
@@ -900,9 +920,16 @@ class HEDMForwardModel(nn.Module):
         eta = self.safe_arccos(Gz_lab / r_yz)
         eta = -torch.sign(Gy_lab) * eta
 
-        # 2*theta  (broadcast thetas to match 2N dimension)
-        two_theta_single = 2.0 * thetas.unsqueeze(-2)  # (..., 1, M) or (1, M)
-        two_theta = two_theta_single.expand_as(all_omega)
+        # 2*theta -- broadcast to the single-branch (pre-cat) grid, then double
+        # along the grain axis to match all_omega's 2N. Layout-agnostic (handles
+        # the per_grain layout where the 2N axis is grain-doubled) and
+        # numerically identical to the former expand for the cross-product path
+        # (thetas does not depend on the orientation axis).
+        tt = 2.0 * thetas
+        while tt.dim() < omega_p.dim():
+            tt = tt.unsqueeze(-2)
+        tt = tt.expand_as(omega_p)
+        two_theta = torch.cat([tt, tt], dim=-2)
 
         # Validity mask
         valid_p = disc_valid & coswp_valid
@@ -1354,6 +1381,11 @@ class HEDMForwardModel(nn.Module):
         if positions.shape[-1] == 2:
             positions = F.pad(positions, (0, 1), value=0.0)
 
+        # Footgun guard: per-grain lattice/strain + N>1 orientations forms an
+        # N x N orientation x strain cross-product (output (N, 2N, M)); callers
+        # simulating a fixed polycrystal almost always want only the diagonal.
+        self._warn_if_cross_product(euler_angles, lattice_params, strain)
+
         # 1. Orientation matrices
         orientation_matrices = self.euler2mat(euler_angles)
 
@@ -1377,6 +1409,102 @@ class HEDMForwardModel(nn.Module):
         spots = self.project_to_detector(omega, eta, two_theta, positions, valid)
 
         # 5. Scan filter (multi-scan only)
+        if self.scan_config is not None:
+            spots = self.filter_by_scan(spots, positions)
+
+        return spots
+
+    @staticmethod
+    def _warn_if_cross_product(euler_angles, lattice_params, strain):
+        """Warn when forward() would form an orientation x strain cross-product.
+
+        Fires only when there are N>1 orientations AND lattice_params/strain
+        carry a matching per-grain axis -- the case where the (N, 2N, M) output
+        is an N x N cross-product and the caller likely wanted the diagonal.
+        Shared lattice/strain (no grain axis) is the correct (2N, M) path and
+        does not warn.
+        """
+        n_orient = euler_angles.shape[-2] if euler_angles.dim() >= 2 else 1
+        if n_orient <= 1:
+            return
+
+        def _has_grain_axis(t):
+            if t is None:
+                return False
+            if t.shape[-1] == 6 and t.dim() >= 2:          # Voigt lattice or strain
+                return t.shape[-2] == n_orient
+            if tuple(t.shape[-2:]) == (3, 3) and t.dim() >= 3:  # full-tensor strain
+                return t.shape[-3] == n_orient
+            return False
+
+        if _has_grain_axis(lattice_params) or _has_grain_axis(strain):
+            warnings.warn(
+                f"forward() called with {n_orient} orientations and per-grain "
+                "lattice_params/strain forms an orientation x strain "
+                f"cross-product (output shape ({n_orient}, {2 * n_orient}, M)); "
+                "only the diagonal [i, i] and [i, i+N] is physical. For a fixed "
+                "polycrystal use forward_per_grain() (element-wise, O(N*M)), "
+                "or index the diagonal of this output.",
+                stacklevel=3,
+            )
+
+    def forward_per_grain(
+        self,
+        euler_angles: torch.Tensor,
+        positions: torch.Tensor,
+        lattice_params: Optional[torch.Tensor] = None,
+        strain: Optional[torch.Tensor] = None,
+    ) -> SpotDescriptors:
+        """Element-wise per-grain forward simulation -- the fast path.
+
+        Grain ``i`` is simulated with orientation ``i``, lattice/strain ``i``
+        and position ``i``, WITHOUT the orientation x strain cross-product that
+        :meth:`forward` forms when both are per-grain. The output has leading
+        shape ``(2N, M)`` (the two omega branches doubled along the grain axis),
+        which is exactly the diagonal of :meth:`forward`'s ``(N, 2N, M)`` output
+        -- so gradient and gradient-free callers agree bit-for-bit.
+
+        Cost is O(N*M) rather than O(N^2 * M), matching the algorithm of the C
+        reference ``ForwardSimulationCompressed.c``. Fully differentiable and
+        device-portable; for pure forward simulation wrap the call in
+        ``torch.inference_mode()``.
+
+        Parameters
+        ----------
+        euler_angles : Tensor (N, 3)
+            Bunge ZXZ Euler angles (radians), one per grain. No leading batch.
+        positions : Tensor (N, 3) or (N, 2)
+            Real-space grain positions (micrometers).
+        lattice_params : Tensor (6,) or (N, 6), optional
+            Shared or per-grain lattice [a,b,c,alpha,beta,gamma] (Ang/deg).
+        strain : Tensor (6,), (N, 6), (3, 3), or (N, 3, 3), optional
+            Shared or per-grain crystal-frame strain (plain-Voigt or full 3x3).
+
+        Returns
+        -------
+        SpotDescriptors with leading shape ``(2N, M)``: grain ``i``'s two omega
+        solutions live at axis-(-2) indices ``i`` and ``i + N``.
+        """
+        if positions.shape[-1] == 2:
+            positions = F.pad(positions, (0, 1), value=0.0)
+
+        orientation_matrices = self.euler2mat(euler_angles)        # (N, 3, 3)
+
+        hkls_cart = None
+        thetas = None
+        if lattice_params is not None:
+            hkls_cart, thetas = self.correct_hkls_latc(lattice_params, strain=strain)
+        elif strain is not None:
+            raise ValueError(
+                "strain was supplied but lattice_params is None; strain "
+                "requires a reference lattice to apply (I + eps)^{-1} @ B0."
+            )
+
+        omega, eta, two_theta, valid = self.calc_bragg_geometry(
+            orientation_matrices, hkls_cart, thetas, per_grain=True
+        )
+        spots = self.project_to_detector(omega, eta, two_theta, positions, valid)
+
         if self.scan_config is not None:
             spots = self.filter_by_scan(spots, positions)
 

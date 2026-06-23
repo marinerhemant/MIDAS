@@ -613,18 +613,13 @@ def simulate_panel_zarrs(
             f"BC=({panel.y_bc:.1f},{panel.z_bc:.1f}), "
             f"tx={panel.tx:.2f}° ty={panel.ty:.2f}° tz={panel.tz:.2f}°")
         with torch.no_grad():
-            spots = model(eulers_t, positions_t,
-                          lattice_params=latc, strain=strain_t)
+            # Per-grain fast path: O(N*M), no orientation x strain cross-product.
+            # Output is (2N, M) -- already the per-grain diagonal, no mask needed.
+            spots = model.forward_per_grain(eulers_t, positions_t,
+                                            lattice_params=latc, strain=strain_t)
 
-        valid_np = (spots.valid > 0.5).cpu().numpy()
-        # Strain × orientation diagonal mask
-        G_strain, Kdim, Mdim = valid_np.shape
-        if G_strain == n_grains and Kdim == 2 * n_grains:
-            diag_mask = np.zeros((G_strain, Kdim, Mdim), dtype=bool)
-            for gi in range(G_strain):
-                diag_mask[gi, gi, :] = True
-                diag_mask[gi, gi + n_grains, :] = True
-            valid_np = valid_np & diag_mask
+        valid_np = (spots.valid > 0.5).cpu().numpy()   # (2N, M)
+        Kdim, Mdim = valid_np.shape                     # Kdim == 2 * n_grains
 
         # First-wins: drop spots that an earlier panel already took
         # (avoids double-counting in the rare overlap).
@@ -652,10 +647,11 @@ def simulate_panel_zarrs(
         y_pix    = spots.y_pixel.cpu().numpy()
         z_pix    = spots.z_pixel.cpu().numpy()
         frame_nr = spots.frame_nr.cpu().numpy()
-        grain_ids = np.broadcast_to(np.arange(G_strain)[:, None, None],
-                                    (G_strain, Kdim, Mdim))
-        hkl_ids = np.broadcast_to(np.arange(Mdim)[None, None, :],
-                                  (G_strain, Kdim, Mdim))
+        # (2N, M): row k holds grain (k % n_grains); rows [0:N]/[N:2N] are the
+        # two omega branches.
+        grain_ids = np.broadcast_to((np.arange(Kdim) % n_grains)[:, None],
+                                    (Kdim, Mdim))
+        hkl_ids = np.broadcast_to(np.arange(Mdim)[None, :], (Kdim, Mdim))
 
         rec = {
             "grain_id":     grain_ids.reshape(-1)[flat_idx].astype(np.int32),
