@@ -4,7 +4,7 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "midas-diffract"
-version = "0.5.0"
+version = "0.6.0"
 description = "End-to-end differentiable forward model for High-Energy Diffraction Microscopy (FF, NF, pf-HEDM)"
 readme = "README.md"
 license = "BSD-3-Clause"
