@@ -1111,5 +1111,95 @@ class TestCrossValidation:
 import torch.nn.functional as F  # for test_2d_position_backward_compat
 
 
+# ===================================================================
+#  Test: midas_stress is the canonical orientation/strain-frame source
+# ===================================================================
+
+class TestMidasStressDelegation:
+    """Guards that euler2mat / rotate_strain_sample_to_crystal delegate to
+    midas_stress and never silently re-port (convention drift)."""
+
+    def test_euler2mat_matches_midas_stress(self):
+        from midas_stress.orientation import euler_to_orient_mat
+        torch.manual_seed(0)
+        eul = torch.rand(7, 3, dtype=torch.float64) * 2 * math.pi
+        R = HEDMForwardModel.euler2mat(eul)
+        R_ms = euler_to_orient_mat(eul).reshape(7, 3, 3)
+        torch.testing.assert_close(R, R_ms, atol=1e-12, rtol=0)
+
+    def test_euler2mat_vmap_safe(self):
+        from torch.func import vmap
+        eul = torch.rand(5, 3, dtype=torch.float64) * 2 * math.pi
+        R = vmap(HEDMForwardModel.euler2mat)(eul)
+        assert R.shape == (5, 3, 3)
+        torch.testing.assert_close(R, HEDMForwardModel.euler2mat(eul), atol=1e-12, rtol=0)
+
+    def test_euler2mat_differentiable(self):
+        eul = torch.rand(3, 3, dtype=torch.float64, requires_grad=True)
+        HEDMForwardModel.euler2mat(eul).pow(2).sum().backward()
+        assert eul.grad is not None and torch.all(torch.isfinite(eul.grad))
+
+    def test_rotate_strain_matches_midas_stress(self):
+        from midas_stress.tensor import strain_lab_to_grain
+        torch.manual_seed(1)
+        OM = HEDMForwardModel.euler2mat(torch.rand(4, 3, dtype=torch.float64))
+        v = torch.rand(4, 6, dtype=torch.float64) * 1e-3       # plain Voigt
+        out = HEDMForwardModel.rotate_strain_sample_to_crystal(OM, v)
+        # reference: build 3x3, rotate via midas_stress, repack plain Voigt
+        S = torch.zeros(4, 3, 3, dtype=torch.float64)
+        S[:, 0, 0], S[:, 1, 1], S[:, 2, 2] = v[:, 0], v[:, 3], v[:, 5]
+        S[:, 0, 1] = S[:, 1, 0] = v[:, 1]
+        S[:, 0, 2] = S[:, 2, 0] = v[:, 2]
+        S[:, 1, 2] = S[:, 2, 1] = v[:, 4]
+        C = strain_lab_to_grain(S, OM)
+        ref = torch.stack([C[:, 0, 0], C[:, 0, 1], C[:, 0, 2],
+                           C[:, 1, 1], C[:, 1, 2], C[:, 2, 2]], dim=-1)
+        torch.testing.assert_close(out, ref, atol=1e-14, rtol=0)
+
+
+# ===================================================================
+#  Test: full 3x3 strain tensor entry point (convention-free)
+# ===================================================================
+
+class TestStrainTensorInput:
+    """A full symmetric 3x3 strain must give the same result as the
+    equivalent plain-Voigt 6-vector (NOT Voigt-Mandel)."""
+
+    def test_strain_as_voigt_roundtrip(self):
+        v = torch.tensor([1e-3, 2e-4, 3e-4, -5e-4, 1e-4, 2e-4])
+        S = torch.tensor([[1e-3, 2e-4, 3e-4],
+                          [2e-4, -5e-4, 1e-4],
+                          [3e-4, 1e-4, 2e-4]])
+        torch.testing.assert_close(HEDMForwardModel.strain_as_voigt(S), v)
+        # plain Voigt passes through unchanged
+        torch.testing.assert_close(HEDMForwardModel.strain_as_voigt(v), v)
+
+    def test_3x3_strain_equals_voigt_in_correct_hkls_latc(self, nf_geometry, device):
+        model, _, _ = make_model_with_cubic_iron(nf_geometry, device)
+        latc = torch.tensor([2.87, 2.87, 2.87, 90., 90., 90.])
+        v = torch.tensor([1e-3, 2e-4, 3e-4, -5e-4, 1e-4, 2e-4])
+        S = torch.tensor([[1e-3, 2e-4, 3e-4],
+                          [2e-4, -5e-4, 1e-4],
+                          [3e-4, 1e-4, 2e-4]])
+        g_v, t_v = model.correct_hkls_latc(latc, strain=v)
+        g_S, t_S = model.correct_hkls_latc(latc, strain=S)
+        torch.testing.assert_close(g_v, g_S)
+        torch.testing.assert_close(t_v, t_S)
+
+    def test_3x3_strain_equals_voigt_in_forward(self, nf_geometry, device):
+        model, _, _ = make_model_with_cubic_iron(nf_geometry, device)
+        eul = torch.tensor([[0.3, 0.5, 1.1]])
+        pos = torch.zeros(1, 3)
+        latc = torch.tensor([2.87, 2.87, 2.87, 90., 90., 90.]).expand(1, 6)
+        v = torch.tensor([[1e-3, 2e-4, 3e-4, -5e-4, 1e-4, 2e-4]])
+        S = torch.tensor([[[1e-3, 2e-4, 3e-4],
+                           [2e-4, -5e-4, 1e-4],
+                           [3e-4, 1e-4, 2e-4]]])
+        sp_v = model(eul, pos, lattice_params=latc, strain=v)
+        sp_S = model(eul, pos, lattice_params=latc, strain=S)
+        torch.testing.assert_close(sp_v.two_theta, sp_S.two_theta)
+        torch.testing.assert_close(sp_v.omega, sp_S.omega)
+
+
 if __name__ == "__main__":
     pytest.main([__file__, "-v"])

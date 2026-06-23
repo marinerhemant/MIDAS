@@ -34,6 +34,16 @@ import torch
 import torch.nn as nn
 import torch.nn.functional as F
 
+# Canonical orientation + strain-frame primitives. midas_stress is the single
+# source of truth for this math (Bunge ZXZ orientation algebra, sample<->crystal
+# strain rotation); its torch backend is differentiable end-to-end and
+# device-portable, so the forward model delegates rather than re-porting.
+# NOTE: midas_stress's Voigt is Voigt-MANDEL (sqrt2 on shears); this model uses
+# PLAIN-Voigt / raw 3x3 strain, so we only delegate the *rotation*, never the
+# Voigt packing (see rotate_strain_sample_to_crystal / correct_hkls_latc).
+from midas_stress.orientation import euler_to_orient_mat as _ms_euler_to_orient_mat
+from midas_stress.tensor import strain_lab_to_grain as _ms_strain_lab_to_grain
+
 
 # ---------------------------------------------------------------------------
 #  Configuration data classes
@@ -437,7 +447,13 @@ class HEDMForwardModel(nn.Module):
 
     @staticmethod
     def euler2mat(euler_angles: torch.Tensor) -> torch.Tensor:
-        """Convert ZXZ Euler angles to rotation matrices.
+        """Convert ZXZ (Bunge) Euler angles to crystal->sample rotation matrices.
+
+        Delegates to ``midas_stress.orientation.euler_to_orient_mat`` -- the
+        canonical orientation primitive -- so the convention can never drift
+        from the rest of MIDAS. midas_stress's torch backend is differentiable
+        and vmap-safe; the result is identical to the former in-line ZXZ build
+        (R = Rz(phi1) @ Rx(Phi) @ Rz(phi2)) to ~1e-16.
 
         Parameters
         ----------
@@ -447,35 +463,14 @@ class HEDMForwardModel(nn.Module):
         Returns
         -------
         Tensor (..., 3, 3)
-            Rotation matrices.
+            Rotation matrices (crystal->sample), orthogonalized onto SO(3).
         """
-        c = torch.cos(euler_angles)
-        s = torch.sin(euler_angles)
-
-        c0, c1, c2 = c[..., 0], c[..., 1], c[..., 2]
-        s0, s1, s2 = s[..., 0], s[..., 1], s[..., 2]
-
-        # ZXZ rotation matrix: R = Rz(phi1) @ Rx(Phi) @ Rz(phi2)
-        # Verified element-by-element against nfhedm.py lines 114-120.
-        # Built via torch.stack rather than indexed assignment so the function
-        # composes with torch.func.vmap (in-place writes block vmap).
-        row0 = torch.stack([
-             c0 * c2 - s0 * c1 * s2,
-            -s0 * c1 * c2 - c0 * s2,
-             s0 * s1,
-        ], dim=-1)
-        row1 = torch.stack([
-             s0 * c2 + c0 * c1 * s2,
-             c0 * c1 * c2 - s0 * s2,
-            -c0 * s1,
-        ], dim=-1)
-        row2 = torch.stack([
-            s1 * s2,
-            s1 * c2,
-            c1,
-        ], dim=-1)
-        R = torch.stack([row0, row1, row2], dim=-2)
-
+        if not isinstance(euler_angles, torch.Tensor):
+            euler_angles = torch.as_tensor(euler_angles)
+        R = _ms_euler_to_orient_mat(euler_angles)          # (..., 9), torch
+        R = R.reshape(*R.shape[:-1], 3, 3)
+        # midas_stress already returns a proper rotation; orthogonalize keeps the
+        # historical "exactly on SO(3)" guarantee and is idempotent here.
         return HEDMForwardModel.orthogonalize(R)
 
     # ------------------------------------------------------------------
@@ -526,6 +521,28 @@ class HEDMForwardModel(nn.Module):
         return torch.acos(torch.clamp(x, -1.0 + self.epsilon, 1.0 - self.epsilon))
 
     # ------------------------------------------------------------------
+    #  strain_as_voigt  (accept full 3x3 tensor OR plain-Voigt 6-vector)
+    # ------------------------------------------------------------------
+
+    @staticmethod
+    def strain_as_voigt(strain: torch.Tensor) -> torch.Tensor:
+        """Normalize a strain input to PLAIN-Voigt [e11,e12,e13,e22,e23,e33].
+
+        Accepts either a plain-Voigt ``(..., 6)`` tensor (returned unchanged) or
+        a full symmetric ``(..., 3, 3)`` strain tensor. The 3x3 path is
+        convention-free -- the natural way to hand a strain field straight from
+        a tensor source (e.g. a midas_stress strain field) into the forward
+        model without picking a Voigt/Mandel packing. The off-diagonals are
+        taken as TRUE tensor components (no factor of 2).
+        """
+        if strain.dim() >= 2 and strain.shape[-1] == 3 and strain.shape[-2] == 3:
+            return torch.stack([
+                strain[..., 0, 0], strain[..., 0, 1], strain[..., 0, 2],
+                strain[..., 1, 1], strain[..., 1, 2], strain[..., 2, 2],
+            ], dim=-1)
+        return strain
+
+    # ------------------------------------------------------------------
     #  rotate_strain_sample_to_crystal  (port of C RotateStrainSampleToCrystal)
     # ------------------------------------------------------------------
 
@@ -536,19 +553,27 @@ class HEDMForwardModel(nn.Module):
     ) -> torch.Tensor:
         """Rotate a symmetric infinitesimal strain from sample to crystal frame.
 
-        Port of ``RotateStrainSampleToCrystal`` from
+        Matches ``RotateStrainSampleToCrystal`` from
         ``FF_HEDM/src/ForwardSimulationCompressed.c:399-419``:
-        eps_crystal = OM^T . eps_sample . OM, in Voigt notation
-        [eps_11, eps_12, eps_13, eps_22, eps_23, eps_33].
+        eps_crystal = OM^T . eps_sample . OM.
+
+        The rotation is delegated to ``midas_stress.tensor.strain_lab_to_grain``
+        (the canonical sample/lab -> crystal/grain strain transform; bit-identical
+        to the former in-line ``OM^T S OM``). PLAIN-Voigt pack/unpack is kept here
+        on purpose -- midas_stress's Voigt is Mandel (sqrt2 on shears), which must
+        not touch the forward model's strain input.
 
         Parameters
         ----------
         orientation_matrices : Tensor (..., 3, 3)
+            Crystal->sample matrices (as returned by :meth:`euler2mat`).
         strain_sample : Tensor (..., 6)
+            PLAIN-Voigt [eps_11, eps_12, eps_13, eps_22, eps_23, eps_33].
 
         Returns
         -------
         strain_crystal : Tensor (..., 6)
+            PLAIN-Voigt, same layout.
         """
         e = strain_sample
         S = torch.stack([
@@ -556,8 +581,7 @@ class HEDMForwardModel(nn.Module):
             torch.stack([e[..., 1], e[..., 3], e[..., 4]], dim=-1),
             torch.stack([e[..., 2], e[..., 4], e[..., 5]], dim=-1),
         ], dim=-2)
-        OM = orientation_matrices
-        C = torch.matmul(torch.matmul(OM.transpose(-1, -2), S), OM)
+        C = _ms_strain_lab_to_grain(S, orientation_matrices)   # OM^T S OM
         return torch.stack([
             C[..., 0, 0], C[..., 0, 1], C[..., 0, 2],
             C[..., 1, 1], C[..., 1, 2], C[..., 2, 2],
@@ -587,10 +611,12 @@ class HEDMForwardModel(nn.Module):
         lattice_params : Tensor (..., 6)
             [a, b, c, alpha, beta, gamma] in Angstroms and degrees.
             The ``...`` dimensions allow per-voxel or per-grain parameters.
-        strain : Tensor (..., 6), optional
-            Crystal-frame symmetric infinitesimal strain in Voigt form
-            [eps_11, eps_12, eps_13, eps_22, eps_23, eps_33]. When supplied,
-            the reciprocal lattice is post-multiplied by (I + eps)^{-1}:
+        strain : Tensor (..., 6) or (..., 3, 3), optional
+            Crystal-frame symmetric infinitesimal strain, either PLAIN-Voigt
+            [eps_11, eps_12, eps_13, eps_22, eps_23, eps_33] or a full symmetric
+            3x3 tensor (normalized via :meth:`strain_as_voigt`; off-diagonals are
+            true tensor components, no factor of 2). When supplied, the
+            reciprocal lattice is post-multiplied by (I + eps)^{-1}:
             B = (I + eps)^{-1} @ B0. Use :meth:`rotate_strain_sample_to_crystal`
             to convert a sample-frame strain into the crystal frame.
 
@@ -671,6 +697,7 @@ class HEDMForwardModel(nn.Module):
         # Voigt layout matches C CorrectHKLsLatCEpsilon:
         #   eps = [eps_11, eps_12, eps_13, eps_22, eps_23, eps_33]
         if strain is not None:
+            strain = self.strain_as_voigt(strain)   # accept full 3x3 too
             e11 = strain[..., 0]
             e12 = strain[..., 1]
             e13 = strain[..., 2]
@@ -1311,9 +1338,10 @@ class HEDMForwardModel(nn.Module):
         lattice_params : Tensor (..., 6) or (..., N, 6), optional
             Strained lattice parameters [a,b,c,alpha,beta,gamma] in
             Angstroms/degrees. None = use nominal hkls/thetas (no strain).
-        strain : Tensor (..., 6) or (..., N, 6), optional
-            Crystal-frame symmetric infinitesimal strain in Voigt form
-            [eps_11, eps_12, eps_13, eps_22, eps_23, eps_33]. Applied as
+        strain : Tensor (..., 6), (..., N, 6), or (..., 3, 3), optional
+            Crystal-frame symmetric infinitesimal strain, either PLAIN-Voigt
+            [eps_11, eps_12, eps_13, eps_22, eps_23, eps_33] or a full symmetric
+            3x3 tensor (see :meth:`strain_as_voigt`). Applied as
             B = (I + eps)^{-1} @ B0 in addition to any lattice-parameter
             strain expressed through ``lattice_params``. Requires
             ``lattice_params`` to be supplied.
