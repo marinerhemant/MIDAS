@@ -84,6 +84,7 @@ def test_parity_high_spread(sg):
     np.testing.assert_array_equal(fast.unique_key_arr, ref.unique_key_arr)
 
 
+@pytest.mark.slow
 @pytest.mark.parametrize("sg", [225, 194])
 def test_gpu_exact_large(sg):
     """GPU all-pairs path must be EXACT at scale (this is the production default).
@@ -99,6 +100,7 @@ def test_gpu_exact_large(sg):
     np.testing.assert_array_equal(gpu.unique_key_arr, ref.unique_key_arr)
 
 
+@pytest.mark.slow
 @pytest.mark.xfail(reason="binned FZ-hashing has a rare symmetry-boundary candidate gap "
                           "at large N (~2 missed close pairs / 3600 voxels); use gpu/auto "
                           "for exact results until fixed", strict=False)

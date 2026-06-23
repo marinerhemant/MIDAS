@@ -4,7 +4,7 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "midas-pipeline"
-version = "0.4.9"
+version = "0.5.0"
 description = "Unified MIDAS HEDM orchestrator. FF is the single-scan degeneracy of PF; one orchestrator, --scan-mode {ff,pf}."
 readme = "README.md"
 license = "BSD-3-Clause"
@@ -83,7 +83,9 @@ midas_pipeline = ["py.typed"]
 
 [tool.pytest.ini_options]
 testpaths = ["tests"]
-addopts = "-ra -q"
+# Exclude `slow` by default (the large O(N^2)-reference parity cases run for
+# minutes); run them explicitly with `-m slow` or `-m "slow or not slow"`.
+addopts = "-ra -q -m 'not slow'"
 markers = [
     "slow: full-pipeline regression tests (require golden fixtures)",
     "parity: bit-or-tolerance parity tests vs frozen C-binary output",
