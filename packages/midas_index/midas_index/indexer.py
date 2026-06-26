@@ -67,9 +67,10 @@ class Indexer:
         """Load Spots.bin, Data.bin, nData.bin, hkls.csv, SpotsToIndex.csv.
 
         File-driven: pass `cwd` (the directory containing the binaries; this
-        defaults to `dirname(OutputFolder)` per IndexerOMP.c:2230). All other
-        kwargs override the on-disk file with explicit data (useful for
-        synthetic / unit-test cases).
+        defaults to `OutputFolder` itself, which is the layer directory that
+        holds Spots.bin / Data.bin / nData.bin / hkls.csv / SpotsToIndex.csv).
+        All other kwargs override the on-disk file with explicit data (useful
+        for synthetic / unit-test cases).
         """
         from .io import (
             read_bins,
@@ -82,7 +83,11 @@ class Indexer:
         from .io.binary import read_bins_scanning
 
         if cwd is None:
-            cwd = os.path.dirname(self.params.OutputFolder.rstrip("/")) or "."
+            # OutputFolder *is* the layer directory holding the binaries (e.g.
+            # .../LayerNr_1); do NOT take dirname here. The c-omp path is the
+            # only one that uses dirname(OutputFolder), and only because it
+            # deliberately sets OutputFolder to <layer>/Output (see _run_c_omp).
+            cwd = self.params.OutputFolder.rstrip("/") or "."
         cwd = Path(cwd)
 
         if spots is None:
