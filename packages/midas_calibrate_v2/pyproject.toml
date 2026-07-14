@@ -4,7 +4,7 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "midas-calibrate-v2"
-version = "0.5.0"
+version = "0.5.1"
 description = "Fully differentiable detector calibration for MIDAS — multi-image, Bayesian, NN-residual, joint forward cake. Coexists with midas-calibrate v1."
 readme = "README.md"
 license = { text = "BSD-3-Clause" }
