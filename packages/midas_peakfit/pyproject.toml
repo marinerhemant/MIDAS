@@ -4,7 +4,7 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "midas-peakfit"
-version = "0.4.3"
+version = "0.4.4"
 description = "Differentiable PyTorch peak-fitting for FF-HEDM Zarr archives (drop-in replacement for PeaksFittingOMPZarrRefactor)"
 readme = "README.md"
 license = "BSD-3-Clause"
@@ -51,6 +51,10 @@ where = ["."]
 include = ["midas_peakfit*"]
 
 [tool.pytest.ini_options]
+# Scope collection to the real suite; keeps stray dev/ scripts that match
+# pytest's ``*_test.py`` pattern (e.g. dev/paper/grain_recovery/
+# reassign_test.py) out of collection.
+testpaths = ["tests"]
 markers = [
     "slow: full-pipeline parity tests (require example data)",
     "gpu: tests that require CUDA",
