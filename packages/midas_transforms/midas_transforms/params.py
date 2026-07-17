@@ -43,6 +43,18 @@ class ParamsTest:
     Wavelength: float = 0.0
     Lsd: float = 0.0
     px: float = 200.0
+    # Detector pixel dimensions. Previously DROPPED from paramstest → every
+    # raw-frame/forward consumer (midas_fit_grain._build_model, pf_odf) fell
+    # back to a hardcoded 2048² detector; on a 2880² Varex that clipped ~80%
+    # of theoretical spots off the (too-small) detector and collapsed the
+    # per-voxel completeness denominator (62 → 7). Emit them.
+    NrPixelsY: int = 0
+    NrPixelsZ: int = 0
+    # Acquired frame count. The forward's frame-validity bound; a
+    # raw-frame/forward consumer that derives it as 360/|OmegaStep|
+    # over-counts for a partial-arc scan (predicts spots in non-acquired
+    # frames as valid). Carried from ZarrParams.EndNr.
+    NrFrames: int = 0
     StepSizeOrient: float = 0.2
     StepsizePos: float = 100.0
     MarginOme: float = 0.5
@@ -173,7 +185,8 @@ _FLOAT_KEYS = {
     "OmegaStart", "OmegaStep", "MinIntegratedIntensity",
     "WeightMask", "WeightFitRMSE",
 }
-_INT_KEYS = {"NoSaveAll", "SpaceGroup", "UseFriedelPairs", "RingToIndex"}
+_INT_KEYS = {"NoSaveAll", "SpaceGroup", "UseFriedelPairs", "RingToIndex",
+             "NrPixelsY", "NrPixelsZ", "NrFrames"}
 _STR_KEYS = {
     "SpotsFileName", "RefinementFileName", "IDsFileName",
     "OutputFolder", "ResultFolder", "GrainsFile",
@@ -332,6 +345,16 @@ def write_paramstest(p: ParamsTest, path: Union[str, Path]) -> None:
         fp.write(f"Rsample {f6(p.Rsample)};\n")
         fp.write(f"Hbeam {f6(p.Hbeam)};\n")
         fp.write(f"px {f6(p.px)};\n")
+        # Detector pixel dims — needed by raw-frame/forward consumers so
+        # they don't fall back to a hardcoded 2048² detector (spot-clipping
+        # bug). Emit only when known (>0), so C-parity default output is
+        # unchanged for callers that never set them.
+        if p.NrPixelsY > 0:
+            fp.write(f"NrPixelsY {int(p.NrPixelsY)};\n")
+        if p.NrPixelsZ > 0:
+            fp.write(f"NrPixelsZ {int(p.NrPixelsZ)};\n")
+        if p.NrFrames > 0:
+            fp.write(f"NrFrames {int(p.NrFrames)};\n")
         fp.write(f"BeamSize {f6(p.BeamSize)};\n")
         fp.write(f"StepsizePos {f6(p.StepsizePos)};\n")
         fp.write(f"StepsizeOrient {f6(p.StepSizeOrient)};\n")
@@ -620,6 +643,9 @@ class ZarrParams:
         pt.Wavelength = self.Wavelength
         pt.Lsd = self.Lsd
         pt.px = self.PixelSize
+        pt.NrPixelsY = self.NrPixelsY
+        pt.NrPixelsZ = self.NrPixelsZ
+        pt.NrFrames = self.EndNr
         pt.LatticeConstant = self.LatticeConstant
         pt.SpaceGroup = self.SpaceGroup
         pt.MaxRingRad = self.MaxRingRad
