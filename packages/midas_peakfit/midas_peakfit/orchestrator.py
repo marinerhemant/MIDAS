@@ -12,6 +12,7 @@ initial port we flush per frame.
 from __future__ import annotations
 
 import multiprocessing
+import os
 import pickle
 import time
 from concurrent.futures import ProcessPoolExecutor, ThreadPoolExecutor
@@ -212,6 +213,18 @@ def run(
         return (frame_nr, omega_local, len(regions_all), seeded_list)
 
     n_workers = max(1, num_procs)
+
+    # N10: cap per-worker BLAS/OpenMP threads OURSELVES. Without this,
+    # n_workers × (OMP/BLAS default = all cores) oversubscribes the box —
+    # observed on the Ni Layer-3 run as load 28/64 with the frame rate
+    # collapsing 22 → 4-5 f/s until the caller exported OMP_NUM_THREADS=1.
+    # setdefault: an explicit user setting always wins. Children inherit
+    # the env (fork) or re-read it at import (spawn/thread paths).
+    if n_workers > 1:
+        for _var in ("OMP_NUM_THREADS", "OPENBLAS_NUM_THREADS",
+                     "MKL_NUM_THREADS", "NUMEXPR_NUM_THREADS",
+                     "VECLIB_MAXIMUM_THREADS"):
+            os.environ.setdefault(_var, "1")
 
     # The bulk-frames-via-fork-COW pattern only works under the 'fork' start
     # method. On macOS / Windows ('spawn' default) workers can't see the
