@@ -70,9 +70,23 @@ _STR_KEYS: dict[str, str] = {
 # skip them silently rather than warning. Anything outside both the
 # recognized sets above AND this set is a genuine unknown and warns once.
 _IGNORED_KEYS: frozenset[str] = frozenset({
-    # Detector geometry / distortion (used by transforms + calibration)
-    "BC", "tx", "ty", "tz", "p0", "p1", "p2", "p3", "RhoD", "MaxRingRad",
+    # Detector geometry / distortion (used by transforms + calibration).
+    # The distortion polynomial exists in BOTH namings: the v1 p0..p14
+    # (midas-transforms >= 0.8.0 writes the full set; C wrote p0..p3) and
+    # the v2 harmonic names (iso_R2/4/6, a1..a6, phi1..phi6) written by
+    # calibrate-v2-native archives. The indexer applies neither (it works
+    # in the DetCor ideal frame) but must recognise both so a v2-named or
+    # full-v1 paramstest doesn't spam unknown-key warnings.
+    "BC", "tx", "ty", "tz", "RhoD", "MaxRingRad",
+    "p0", "p1", "p2", "p3", "p4", "p5", "p6", "p7",
+    "p8", "p9", "p10", "p11", "p12", "p13", "p14",
+    "iso_R2", "iso_R4", "iso_R6",
+    "a1", "a2", "a3", "a4", "a5", "a6",
+    "phi1", "phi2", "phi3", "phi4", "phi5", "phi6",
     "DetParams", "Width", "WidthTthPx",
+    # Detector pixel dims + scan description (midas-transforms >= 0.8.x).
+    "NrPixelsY", "NrPixelsZ", "NrFrames", "OmegaStart",
+    "MinIntegratedIntensity",
     # Refinement-fit echoes written by midas-fit-setup
     "LsdFit", "YBCFit", "ZBCFit", "txFit", "tyFit", "tzFit",
     "p0Fit", "p1Fit", "p2Fit", "p3Fit",
