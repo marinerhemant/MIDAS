@@ -160,8 +160,9 @@ def ff_paramstest_from_auto_result(
 
     # Keys we replace from the v2 result; everything else in the template
     # (thresholds, ring numbers, omega scan, …) is carried verbatim. We strip
-    # both the v2 distortion names and any legacy p0..p14 so the output is
-    # unambiguously v2-named. ``px`` is replaced too — without it, downstream
+    # the template's distortion (both v2 names and legacy p0..p14) and
+    # re-emit the calibrated distortion in BOTH namings below (reconciled
+    # output). ``px`` is replaced too — without it, downstream
     # tools (midas-joint-ff-calibrate, peakfit) silently default to 0 for the
     # pixel↔µm conversion and every spot prediction lands at the wrong
     # position, dropping the match count to zero.
@@ -180,9 +181,18 @@ def ff_paramstest_from_auto_result(
         f"Lsd {result.Lsd:.10g}",
         f"BC {result.BC_y:.10g} {result.BC_z:.10g}",
         f"tx {result.tx:.10g}", f"ty {result.ty:.10g}", f"tz {result.tz:.10g}",
-        "# v2 distortion harmonics (carried natively; no p0..p14)",
+        # Emit the distortion in BOTH namings so the output is a fully
+        # reconciled paramstest: the v2 harmonics (native / preferred) AND
+        # the equivalent v1 p0..p14 (for C binaries and any v1-only reader
+        # that keyword-matches pN). The v1 vector is the SAME physical model
+        # mapped through midas_distortion.v2_to_v1_coeffs (V1_TO_V2_DISTORTION
+        # is the single source of truth), so the two are self-consistent.
+        "# distortion (v2 harmonics + equivalent v1 p0..p14; same model)",
         *[f"{nm} {float(dist.get(nm, 0.0)):.10g}" for nm in P_COEF_NAMES],
     ]
+    from midas_distortion import v2_coeffs_from_named, v2_to_v1_coeffs
+    _p_v1 = v2_to_v1_coeffs(v2_coeffs_from_named(dist))
+    inj += [f"p{_i} {float(_p_v1[_i]):.10g}" for _i in range(15)]
     # Pixel size: v1's ``px`` is the (Y,Z)-mean — same convention to_integrate
     # and the rest of the codebase use. Fall back to ``pxY`` if pxZ is absent
     # (single-axis calibrations). Skip if the result doesn't carry pixel size.

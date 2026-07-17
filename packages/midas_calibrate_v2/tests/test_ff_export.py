@@ -21,11 +21,13 @@ from midas_calibrate_v2.compat.to_v1 import (
 )
 
 
-def test_ff_paramstest_from_auto_result_is_v2_native(tmp_path):
-    """The AutoCalibrationResult exporter writes the FULL v2 distortion in v2
-    naming — no zeroing, no p0..p14 — plus geometry, residual map, and the
-    template thresholds verbatim."""
-    from midas_distortion import P_COEF_NAMES
+def test_ff_paramstest_from_auto_result_reconciled_v1_and_v2(tmp_path):
+    """The exporter writes the FULL distortion in BOTH namings — the v2
+    harmonics AND the equivalent v1 p0..p14 (same physical model, mapped via
+    midas_distortion) — so the output works with v1-only (C) and v2 readers
+    alike. Plus geometry, residual map, and template thresholds verbatim."""
+    import numpy as np
+    from midas_distortion import P_COEF_NAMES, v2_coeffs_from_named, v2_to_v1_coeffs
 
     tmpl = tmp_path / "ps.txt"
     tmpl.write_text("RingThresh 1 80\nMinNrSpots 4\np0 9\np3 9\nLsd 1\ntx 7\n")
@@ -41,12 +43,20 @@ def test_ff_paramstest_from_auto_result_is_v2_native(tmp_path):
     out = ff_paramstest_from_auto_result(res, tmpl, tmp_path / "v2.txt",
                                          raw_folder="/ni/raw")
     txt = out.read_text()
-    keys = [l.split()[0] for l in txt.splitlines() if l.strip() and not l.startswith("#")]
+    lines = [l for l in txt.splitlines() if l.strip() and not l.startswith("#")]
+    kv = {l.split()[0]: l.split()[1:] for l in lines}
+    keys = [l.split()[0] for l in lines]
 
-    # NO legacy p-slots anywhere.
-    assert not ({f"p{i}" for i in range(15)} & set(keys)), "p0..p14 must be gone"
     # v2 names present with the right values.
     assert "iso_R2 -0.00111" in txt and "phi4 -6.87" in txt and "a2 0.00046" in txt
+    # AND the full v1 p0..p14, mapped consistently from the v2 harmonics
+    # (template's stale p0/p3 replaced, not duplicated).
+    assert {f"p{i}" for i in range(15)} <= set(keys), "reconciled output needs p0..p14"
+    expect_v1 = v2_to_v1_coeffs(v2_coeffs_from_named(dist))
+    got_v1 = np.array([float(kv[f"p{i}"][0]) for i in range(15)])
+    np.testing.assert_allclose(got_v1, expect_v1, rtol=1e-6, atol=1e-12)
+    # e.g. phi4 (v2) == p3 (v1) == -6.87
+    assert float(kv["p3"][0]) == pytest.approx(-6.87)
     # geometry (all tilts), detector, raw folder, residual map, thresholds.
     assert "tx 0" in txt and "ty -0.173" in txt and "tz 0.048" in txt
     assert keys.count("tx") == 1  # template tx replaced, not duplicated
