@@ -38,6 +38,24 @@ class FitConfig:
     Rsample: float = 0.0                   # sample radius, um
     Hbeam: float = 0.0                     # beam height, um
 
+    # --- Forward-model geometry consumed by _build_model ---
+    # These were historically NOT parsed from paramstest, so _build_model
+    # fell back to hardcoded placeholders (BC=1024, n_pixels=2048, tilts=0,
+    # omega=-180/0.25/1440) — WRONG for any real detector. On the SOH Varex
+    # the placeholder BC (1024 vs 1436) + n_pixels (2048 vs 2880) clipped
+    # ~80% of theoretical spots off the too-small detector and collapsed the
+    # per-voxel completeness denominator (62 → 7). Parsed via from_param_file.
+    y_BC: float = 0.0                      # beam-centre Y (px); YBCFit / YCen
+    z_BC: float = 0.0                      # beam-centre Z (px); ZBCFit / ZCen
+    tx: float = 0.0                        # detector tilt x (deg); txFit / tx
+    ty: float = 0.0                        # detector tilt y (deg); tyFit / ty
+    tz: float = 0.0                        # detector tilt z (deg); tzFit / tz
+    omega_start: float = 0.0               # first-frame omega (deg); OmegaStart
+    omega_step: float = 0.0                # omega per frame (deg); OmegaStep
+    n_frames: int = 0                      # frames; derived 360/|step| if unset
+    n_pixels_y: int = 0                    # detector rows; NrPixelsY
+    n_pixels_z: int = 0                    # detector cols; NrPixelsZ
+
     # --- Crystal ---
     LatticeConstant: Tuple[float, float, float, float, float, float] = (
         0.0, 0.0, 0.0, 90.0, 90.0, 90.0,
@@ -211,7 +229,24 @@ class FitConfig:
                 raise AttributeError(f"FitConfig has no field '{k}'")
             setattr(cfg, k, v)
 
+        cfg._finalize_geometry()
         return cfg
+
+    def _finalize_geometry(self) -> None:
+        """Resolve forward-model geometry precedence + fill derivable gaps.
+
+        Refined ``*Fit`` values already went straight to y_BC/z_BC/tx/ty/tz
+        via aliases; fall back to raw YCen/ZCen/YBC/ZBC only if a beam
+        centre is still unset. Derive ``n_frames`` from the omega step when
+        the param file didn't carry it (360°/|step|)."""
+        if not self.y_BC:
+            self.y_BC = float(getattr(self, "YCen", 0.0)
+                              or getattr(self, "YBC", 0.0) or 0.0)
+        if not self.z_BC:
+            self.z_BC = float(getattr(self, "ZCen", 0.0)
+                              or getattr(self, "ZBC", 0.0) or 0.0)
+        if not self.n_frames and self.omega_step:
+            self.n_frames = int(round(360.0 / abs(self.omega_step)))
 
 
 # ---- internal helpers ----
@@ -222,16 +257,32 @@ _FLOAT_KEYS = {
     "MarginOme", "MarginRadius", "MarginRad", "MarginRadial", "MarginEta",
     "EtaBinSize", "OmeBinSize", "MinEta", "ExcludePoleAngle",
     "MargABC", "MargABG", "BigDetSize",
+    # Forward-model geometry (refined *Fit values preferred; raw fallbacks).
+    "YBCFit", "ZBCFit", "YBC", "ZBC", "YCen", "ZCen",
+    "txFit", "tyFit", "tzFit", "tx", "ty", "tz",
+    "OmegaStart", "OmegaStep",
 }
 _FLOAT_ALIASES = {
     "Distance": "Lsd",
     "MaxRingRad": "RhoD",
     "ExcludePoleAngle": "MinEta",
     "MarginRad": "MarginRadius",
+    # Beam centre: refined YBCFit/ZBCFit win; YCen/ZCen (raw) or YBC/ZBC
+    # are fallbacks. All map onto y_BC/z_BC — apply in this precedence via
+    # the _apply_param ordering (later assignment wins, so raw is applied
+    # first by key order only if present; we instead gate below).
+    "YBCFit": "y_BC", "ZBCFit": "z_BC",
+    "txFit": "tx", "tyFit": "ty", "tzFit": "tz",
+    "OmegaStart": "omega_start", "OmegaStep": "omega_step",
 }
 _INT_KEYS = {
     "SpaceGroup", "FitAllAtOnce", "DoDynamicReassignment",
     "TopLayer", "TakeGrainMax",
+    "NrPixelsY", "NrPixelsZ", "NrFrames",
+}
+_INT_ALIASES = {
+    "NrPixelsY": "n_pixels_y", "NrPixelsZ": "n_pixels_z",
+    "NrFrames": "n_frames",
 }
 _STR_KEYS = {
     "OutputFolder", "ResultFolder", "SpotsFileName", "InputFileName",
@@ -309,7 +360,7 @@ def _apply_param(cfg: FitConfig, key: str, args: list[str],
         setattr(cfg, attr, float(args[0]))
         return
     if key in _INT_KEYS:
-        setattr(cfg, key, int(args[0]))
+        setattr(cfg, _INT_ALIASES.get(key, key), int(args[0]))
         return
     if key in _STR_KEYS:
         setattr(cfg, key, args[0])

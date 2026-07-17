@@ -204,19 +204,47 @@ def _build_model(cfg: FitConfig, *,
     hkls_cart_np = (B @ hkls_int.astype(np.float64).T).T   # (M, 3) in 1/Å
     thetas_rad = thetas_deg * DEG2RAD
 
-    # Approximate beam center / detector size — these come from the
-    # paramstest.txt's calibration block (BC, NrPixels). For now we use
-    # placeholders the real driver will plumb through in Phase 5.
+    # Forward-model geometry from the paramstest calibration block, parsed
+    # by FitConfig.from_param_file (BC ← YBCFit/ZBCFit, tilts ← t{x,y,z}Fit,
+    # omega ← OmegaStart/OmegaStep, detector ← NrPixels{Y,Z}). Historically
+    # these were hardcoded placeholders (BC=1024, n_pixels=2048, tilts=0)
+    # regardless of the real detector — on a 2880² Varex the too-small
+    # detector + off-by-400px BC clipped ~80% of theoretical spots and
+    # collapsed the per-voxel completeness denominator. Warn loudly rather
+    # than silently defaulting, so a param file missing these is visible.
+    _PLACEHOLDER = {
+        "y_BC": 1024.0, "z_BC": 1024.0,
+        "omega_start": -180.0, "omega_step": 0.25, "n_frames": 1440,
+        "n_pixels_y": 2048, "n_pixels_z": 2048,
+    }
+    _missing = [k for k in _PLACEHOLDER if not getattr(cfg, k, 0)]
+    if _missing:
+        import warnings
+        warnings.warn(
+            "_build_model: paramstest is missing forward-model geometry "
+            f"{_missing}; falling back to placeholders "
+            f"{{ {', '.join(f'{k}={_PLACEHOLDER[k]}' for k in _missing)} }}. "
+            "Predicted spot positions / completeness will be WRONG unless "
+            "the real detector matches these. Ensure midas-transforms "
+            ">= 0.8.1 wrote NrPixelsY/Z, YBCFit/ZBCFit, OmegaStart/OmegaStep.",
+            stacklevel=2,
+        )
+    # NB: the refiner's observations are ExtraInfo YLab/ZLab — already
+    # detector-corrected (tilt + distortion removed) IDEAL-frame µm — so the
+    # forward predicts in the ideal frame and must NOT re-apply tilts
+    # (apply_tilts stays False; doing so would double-count). The refined
+    # tilts live in the *observed* positions already. Only BC, detector
+    # size and omega are needed here (and they were the ones defaulting).
     geom = HEDMGeometry(
         Lsd=cfg.Lsd,
-        y_BC=getattr(cfg, "y_BC", 1024.0),
-        z_BC=getattr(cfg, "z_BC", 1024.0),
+        y_BC=cfg.y_BC or _PLACEHOLDER["y_BC"],
+        z_BC=cfg.z_BC or _PLACEHOLDER["z_BC"],
         px=cfg.px,
-        omega_start=getattr(cfg, "omega_start", -180.0),
-        omega_step=getattr(cfg, "omega_step", 0.25),
-        n_frames=getattr(cfg, "n_frames", 1440),
-        n_pixels_y=getattr(cfg, "n_pixels_y", 2048),
-        n_pixels_z=getattr(cfg, "n_pixels_z", 2048),
+        omega_start=cfg.omega_start or _PLACEHOLDER["omega_start"],
+        omega_step=cfg.omega_step or _PLACEHOLDER["omega_step"],
+        n_frames=cfg.n_frames or _PLACEHOLDER["n_frames"],
+        n_pixels_y=cfg.n_pixels_y or _PLACEHOLDER["n_pixels_y"],
+        n_pixels_z=cfg.n_pixels_z or _PLACEHOLDER["n_pixels_z"],
         min_eta=cfg.MinEta,
         wavelength=cfg.Wavelength,
         flip_y=True,
