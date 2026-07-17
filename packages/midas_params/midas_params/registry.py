@@ -433,6 +433,28 @@ PARAMS: list[ParamSpec] = [
         applies_to=FF_PF_RI, default=0, units="deg", stages=S_CALIB, hidden_in_wizard=True,
         notes="Periodicity constant; tolerance tolP14 defaults to 180°.",
     ),
+    # ─── v2 distortion harmonic names (calibrate-v2 native) ─────────────────
+    # The SAME physical model as p0..p14 above, in the canonical harmonic
+    # basis midas-calibrate-v2 / midas-distortion use (P_COEF_NAMES). A
+    # v2-calibrated paramstest/zarr carries these instead of (or alongside)
+    # p0..p14; register them so both namings validate cleanly. The v1↔v2
+    # correspondence is midas_distortion.V1_TO_V2_DISTORTION (e.g. p2=iso_R2,
+    # p0=a2, p3=phi4) — that map, not a registry alias, is the single source
+    # of truth (an alias here would shadow the canonical pN name; see
+    # test_no_alias_shadows_canonical).
+    *[ParamSpec(
+        name=_v2, type=ParamType.FLOAT, category="Detector distortion",
+        description=f"v2 harmonic distortion coefficient ({_v2}); "
+                    f"same model as {_p} in the v1 p0..p14 basis.",
+        applies_to=FF_PF_RI, default=0,
+        units="deg" if _v2.startswith("phi") else None,
+        stages=S_CALIB, hidden_in_wizard=True,
+    ) for _v2, _p in (
+        ("iso_R2", "p2"), ("iso_R4", "p5"), ("iso_R6", "p4"),
+        ("a1", "p7"), ("phi1", "p8"), ("a2", "p0"), ("phi2", "p6"),
+        ("a3", "p9"), ("phi3", "p10"), ("a4", "p1"), ("phi4", "p3"),
+        ("a5", "p11"), ("phi5", "p12"), ("a6", "p13"), ("phi6", "p14"),
+    )],
     ParamSpec(
         name="DistortionFile", type=ParamType.PATH, category="Detector distortion",
         description="Binary distortion map (double-precision Y then Z shifts).",
