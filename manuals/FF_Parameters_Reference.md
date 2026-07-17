@@ -174,6 +174,25 @@ an NF run will silently pass these keys through unused.
 | `OmeBinSize`            | double   | deg   | 0        | no       | ω LUT bin size. Typical: 0.1. |
 | `OmegaSigma`            | double   | deg   | 0        | no       | Simulated peak broadening in ω (forward-sim only). |
 
+### 5a. paramstest.txt geometry keys (midas-transforms ≥ 0.8.0)
+
+The promoted `paramstest.txt` written by the Python fit_setup now carries
+the FULL raw-frame geometry — earlier versions (and the C `FitSetupZarr`)
+silently dropped keys that any raw-frame consumer (midas-pf-odf,
+midas-grain-odf) needs:
+
+| Key | Notes |
+|-----|-------|
+| `txFit` | Detector x-tilt. **Previously missing entirely** — consumers rebuilt geometry with tx=0, a ~0.27° in-plane rotation ≈ 3–4×10³ µε of fake strain on Varex data. Not refined (matches C `FitTiltBCLsd`); equals the raw `tx`. |
+| `p0`…`p14` | Full v1-ordered distortion polynomial (C wrote `p0..p3` only). ⚠️ v1 order: `p3` is `phi4`, a PHASE in degrees — never map naively into the v2 order. |
+| `iso_R2, iso_R4, iso_R6, a1..a6, phi1..phi6` | Canonical v2 harmonic distortion, written when the archive is calibrate-v2 native (p0..p14 may then legitimately be all zero). C parsers skip unknown keys. |
+| `OmegaStart`, `OmegaStep` | Authoritative scan description. Written only when the step is KNOWN (a false `OmegaStep 0.0` is worse than absence). Consumers must never infer the step from shadow-gapped multi-`OmegaRange` spans (returned 0.0514° instead of 0.25° on real data). |
+| `MinIntegratedIntensity` | Echo of the fit_setup intensity spot filter (§8), written only when set. |
+
+All *Fit keys (`LsdFit/YBCFit/ZBCFit/txFit/tyFit/tzFit`) now carry the
+refined values when `DoFit=1` (previously the refined geometry never
+reached the file).
+
 ## 6. Ring selection
 
 Ring indices refer to the `hkls.csv` output of `GetHKLList`/`GetHKLListZarr`.

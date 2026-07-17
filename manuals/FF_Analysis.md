@@ -462,6 +462,20 @@ The `Grains.csv` file has a multi-line header (lines starting with `%`) followed
 | 44 | `PhaseNr` | Phase number |
 | 45–47 | `Eul0`, `Eul1`, `Eul2` | Euler angles (Bunge convention, degrees) |
 
+> **Decomposing `DiffPos`/`DiffOme` (Python midas-process-grains ≥ 0.6.0):**
+> when grain processing runs through the Python `midas-process-grains`
+> package, it also writes `processgrains_diagnostics.h5` next to
+> `Grains.csv`. Its `/residuals` group holds the signed per-spot residual
+> decomposition behind these two scalars: a per-spot table
+> `(grain_idx, spot_id, ring_nr, eta_deg, dy_um, dz_um, drad_um, dtan_um,
+> dome_deg, internal_angle_deg, r_exp_um)` plus per-grain medians/MADs,
+> per-ring `dR/R` ppm, 30° eta profiles, and global scalars (schema =
+> `SPOT_RESIDUAL_COLS` in `compute/residual_decomposition.py`; see the
+> package README). A consistent per-ring |median dR/R| > 200 ppm indicates
+> a wrong reference `LatticeConstant` (a₀) absorbed as fake hydrostatic
+> strain — the run log warns when this trips. Legacy mode (no FitBest pass)
+> writes empty `/residuals` by design.
+
 ### SpotMatrix.csv Column Format
 
 Tab-separated, one row per diffraction spot per grain:
@@ -481,6 +495,35 @@ Tab-separated, one row per diffraction spot per grain:
 | 11 | `Theta` | Bragg angle θ (degrees) |
 | 12 | `StrainError` | Per-spot strain error |
 
+### Spot ID spaces (do NOT join on SpotID across files)
+
+Three distinct SpotID spaces exist; nothing renumbers consistently between
+them, and a naive SpotID join silently pairs random spots (it invalidated
+two analyses on the emerson campaign before being caught):
+
+1. **peaksearch/merge space** — `Result_StartNr_*_EndNr_*.csv` col 0.
+2. **calc_radius space** — `Radius_StartNr_*.csv` col 0: renumbered 1..N,
+   and a spot whose radius matches TWO rings appears once per ring.
+3. **fit_setup space** — `InputAll*/Spots.bin/SpotMatrix/FitBest`: re-sorted
+   per ring by ω and renumbered again.
+
+Bridges (midas-transforms ≥ 0.8.0): `InputAllExtraInfoFittingAll.csv`
+col 18 `OrigSpotID` carries the merge-space ID end-to-end (col 19
+`ReturnCode` carries the peakfit per-peak return code; −1 = unknown/legacy
+input), and `Radius_*.csv` cols 24/25 carry the same pair. `IDRings.csv`
+(ring, origID, newID) maps radius→fit_setup spaces.
+
+### Raw-frame conventions (verified on emerson Varex)
+
+For raw-pixel consumers (midas-grain-odf / midas-pf-odf extractors):
+zarr frame layout is `frame[row = ZCen_px, col = (nPxY−1) − YCen_px]`;
+the ideal-µm→px map is `y_px = y_BC − y_µm/px`, `z_px = z_BC + z_µm/px`;
+and raw vs DetCor positions differ by **tens of pixels** when distortion
+is large (p3 ≈ 35.5 on emerson vs −0.64 on park22) — never anchor
+forward-model matching on raw pixels without applying the calibrated
+distortion (`apply_distortion=True` in the pf-odf/grain-odf model
+builders).
+
 ### Consolidated HDF5 File
 
 The pipeline generates a `<filestem>_consolidated.h5` file when `-generateH5 1` is passed. This file combines all analysis results (grains, spots, peaks, parameters) into a single, self-contained HDF5 file. This is the recommended way to access FF-HEDM results programmatically.
@@ -497,12 +540,19 @@ The pipeline generates a `<filestem>_consolidated.h5` file when `-generateH5 1` 
 │   └── ...                          # All other key-value pairs
 │
 ├── /all_spots/                      # Full spot table (InputAllExtraInfoFittingAll.csv)
-│   └── data                         # (float[N×18]) All detected spots, 18 columns
-│       attrs: column_names          # [YLab, ZLab, Omega, GrainRadius, SpotID,
-│                                    #  RingNumber, Eta, Ttheta, OmegaIni, YOrig,
-│                                    #  ZOrig, YOrigDetCor, ZOrigDetCor,
-│                                    #  OmegaOrigDetCor, IntegratedIntensity,
-│                                    #  ... (others), MaskTouched, FitRMSE]
+│   └── data                         # (float[N×18..21]) All detected spots
+│       attrs: column_names          # CSV order (midas-transforms >= 0.8.0):
+│                                    # [YLab, ZLab, Omega, GrainRadius, SpotID,
+│                                    #  RingNumber, Eta, Ttheta, OmegaIni,
+│                                    #  YOrigDetCor, ZOrigDetCor, YRawPx, ZRawPx,
+│                                    #  OmegaDetCor, IntegratedIntensity,
+│                                    #  RawSumIntensity, maskTouched, FitRMSE
+│                                    #  (+OrigSpotID, ReturnCode; +DetID)]
+│                                    # NB: cols 11/12 are RAW DETECTOR PIXELS
+│                                    # (== peaksearch YCen/ZCen), cols 9/10 the
+│                                    # det-corrected lab um. ExtraInfo.bin (16
+│                                    # doubles) uses a DIFFERENT order — see
+│                                    # midas_fit_grain.io_binary.EXTRA_INFO_COLS.
 │
 ├── /radius_data/                    # Per-spot radius/volume estimates
 │   ├── SpotID                       # (float[N]) Spot identifiers

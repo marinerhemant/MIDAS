@@ -529,6 +529,39 @@ zip_convert → hkl → peakfit → merge_overlaps → calc_radius → transform
 | `-grainsFN` | `--seeding-mode ff --seeding-grains-file <path>` |
 | `-micFN` | `--seeding-mode ff` (with the seed converted to `UniqueOrientations.csv`) |
 
+### 12.4a PF operability guarantees + knobs (midas-pipeline > 0.5.1)
+
+- **positions.csv is materialized at layer setup** (`<result>/LayerNr_N/
+  positions.csv` + a root copy) from the scan geometry — file order =
+  acquisition order (sign per `--scan-step`); a pre-seeded file is never
+  overwritten. A missing file in PF mode is now a **hard error** (older
+  versions soft-skipped every early stage and the run exited 0 having
+  done nothing).
+- **`--only` allowlists are dependency-checked** per scan mode: selecting
+  stages whose upstream stages are neither selected nor already complete
+  is a hard error (each omitted stage used to soft-skip → broken recon
+  from a "successful" run). Prefer `--skip` on the unwanted tail.
+- **Per-scan fan-out**: `--scan-workers N` runs peakfit + transforms over
+  N scans concurrently (per-scan claim files under `midas_log/claims/`
+  make concurrent runners cooperate instead of racing; CUDA devices are
+  assigned round-robin and `--n-cpus-local` is split between workers).
+  `--zip-workers N` parallelises the I/O-bound zip_convert. Defaults are
+  1 (serial, legacy behaviour).
+- **`--binning-device cpu`** overrides `--device` for binning only — its
+  (spot × η × ω) pair expansion is the first thing to OOM on GPU at
+  dense-PF scale (the expansion is also spot-chunked now, budget via
+  `MIDAS_BIN_PAIR_CHUNK`, bit-identical output).
+- **`--scan-work-dir <root>`** separates the writable per-scan work dirs
+  from a read-only `RawFolder` (collaborator data); pre-built zips in the
+  raw dirs are still honoured.
+- **`MinIntegratedIntensity <counts>`** (parameter file): fit_setup drops
+  spots below the threshold (default 0 = off) and records the key in
+  `paramstest.txt` so reruns see it — replaces hand-filtering layer CSVs
+  on noise-dominated dense data.
+- **zip_convert fails hard when ALL scans fail** (a broken env, e.g. a
+  missing dependency, fails every scan identically; the run used to march
+  on and "succeed").
+
 ### 12.5 What's new vs the legacy driver
 
 - **Single source.** FF and PF share one orchestrator, one config dataclass tree, one provenance ledger, and identical Python kernels (`midas-index`, `midas-fit-grain`, `midas-transforms`, `midas-stress`). C scanning binaries are no longer invoked.
