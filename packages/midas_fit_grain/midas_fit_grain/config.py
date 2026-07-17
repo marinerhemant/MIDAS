@@ -320,7 +320,20 @@ def _apply_param(cfg: FitConfig, key: str, args: list[str],
         "BeamSize", "StepsizePos", "StepsizeOrient", "StepSizeOrient",
         "MinMatchesToAcceptFrac", "Completeness", "UseFriedelPairs",
         "RingThresh", "Width", "tx", "ty", "tz",
-        "p0", "p1", "p2", "p3", "p4", "p5",
+        # v1-ordered distortion polynomial (midas-transforms >= 0.8.0 writes
+        # the full p0..p14; the C FitSetupZarr wrote p0..p3 only)
+        "p0", "p1", "p2", "p3", "p4", "p5", "p6", "p7", "p8", "p9",
+        "p10", "p11", "p12", "p13", "p14",
+        # v2 harmonic distortion names (calibrate-v2 native archives)
+        "iso_R2", "iso_R4", "iso_R6",
+        "a1", "a2", "a3", "a4", "a5", "a6",
+        "phi1", "phi2", "phi3", "phi4", "phi5", "phi6",
+        # refined-geometry + scan keys emitted by write_paramstest
+        "LsdFit", "YBCFit", "ZBCFit", "txFit", "tyFit", "tzFit",
+        "OmegaStart", "OmegaStep",
+        "WeightMask", "WeightFitRMSE", "RingToIndex", "NoSaveAll",
+        # fit_setup spot filter (midas-transforms N8; peak-search-time only)
+        "MinIntegratedIntensity",
     }:
         return
     warnings.warn(

@@ -5,7 +5,7 @@ Drop-in replacement for the C executables ``FitPosOrStrainsOMP`` /
 under module-private submodules.
 """
 
-__version__ = "0.5.3"
+__version__ = "0.5.4"
 
 from .config import FitConfig
 from .device import resolve_device, resolve_dtype
