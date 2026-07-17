@@ -4,7 +4,7 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "midas-zipper"
-version = "0.1.3"
+version = "0.1.4"
 description = "Standalone zarr-zip generation for MIDAS FF/PF workflows (no C-binary or source-tree dependency)."
 readme = "README.md"
 license = { text = "BSD-3-Clause" }
@@ -26,6 +26,7 @@ dependencies = [
     "numcodecs>=0.11",
     "numba>=0.57",
     "pillow>=9.0",
+    "tqdm>=4.60",
 ]
 
 [project.optional-dependencies]

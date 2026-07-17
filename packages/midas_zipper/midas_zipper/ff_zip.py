@@ -829,6 +829,15 @@ def build_config(parser, args):
         if key not in config or value != parser.get_default(key):
             config[key] = value
 
+    # E5: '-omegaStep' with its 0.0 default used to land VERBATIM in the
+    # zarr as analysis_parameters/omegaStep — false scan metadata (the
+    # real step lives in the param file's OmegaStep). Promote an explicit
+    # CLI value onto the canonical key; drop the false 0.0 entirely so
+    # metadata readers never see a fabricated step.
+    cli_ome_step = float(config.pop('omegaStep', 0.0) or 0.0)
+    if cli_ome_step:
+        config['OmegaStep'] = cli_ome_step
+
     # Handle special dataFN construction logic
     if not args.dataFN or config.get('LayerNr', 1) > 1:
         try:
