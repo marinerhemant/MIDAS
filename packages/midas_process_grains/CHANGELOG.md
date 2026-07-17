@@ -4,6 +4,26 @@ All notable changes to midas-process-grains. The format is based on
 [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) and this project
 adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.6.0] – 2026-07-16
+
+### Added
+
+- **Signed per-spot residual decomposition** (`compute/residual_decomposition.py`).
+  Per-spot signed dY, dZ, radial, tangential, wrapped dOme + internal angle,
+  collected inside the existing FitBest pass in
+  `pipeline.py::_build_spot_matrix_rows` (now returns a tuple; single caller
+  updated). Aggregates — per-grain median/MAD, per-ring dR/R ppm, 30° eta
+  bins, global scalars — plus a gzip float32 per-spot table are written to
+  `processgrains_diagnostics.h5:/residuals` (`io/consolidated.py`). The run
+  log warns when |median dR/R| > 200 ppm on a ring — the signature of a
+  wrong reference lattice (a₀) being absorbed as fake hydrostatic strain.
+  `Grains.csv` `DiffPos`/`DiffOme` are now decomposable from this table.
+  `mode="legacy"` (no FitBest) emits empty residuals by design.
+  Validated: 7 new tests (`tests/test_residual_decomposition.py`), full suite
+  290 pass; production run on emerson recon_3580_003 (1.66 M-row spot table)
+  — diagnosed the −850 ppm reference-lattice offset that recalibration then
+  removed (mean hydrostatic +850.5 → +7.6 µε).
+
 ## [0.4.6] – 2026-05-26
 
 ### Fixed

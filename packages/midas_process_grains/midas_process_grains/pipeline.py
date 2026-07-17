@@ -540,6 +540,12 @@ class ProcessGrains:
         n_g = len(out_grains)
         strain_lab = torch.zeros((n_g, 3, 3), dtype=self.dtype, device=self.device)
         strain_grain = torch.zeros_like(strain_lab)
+        # Per-grain strain-solver RMS residual (E1): RMS of the per-spot
+        # lstsq residual (G eps - b), in µε — populates Grains.csv
+        # RMSErrorStrain (was hardwired to 0, which users read as "perfect
+        # strain fit"). 0 remains the value for grains solved by the
+        # closed-form lattice/Fable-Beaudoin path (no per-spot residual).
+        strain_resid_ue = torch.zeros(n_g, dtype=self.dtype, device=self.device)
 
         # FitBest column 0 = SpotID, columns 1..6 are observed (y, z, ome, ?, ?, ?)
         # Column layout per FitPosOrStrainsOMP.c:689-702:
@@ -709,6 +715,9 @@ class ProcessGrains:
                         g_t, ds_obs_t, ds_0_t, regularization=1e-3,
                     )
                     kenesei_lab = res.epsilon_tensor
+                    strain_resid_ue[gi] = (
+                        res.residual_norm / max(res.n_spots, 1) ** 0.5 * 1e6
+                    )
                 else:
                     # Default "kenesei" path: prior-anchored at Fable-Beaudoin
                     # in lab frame. Mirrors the C Nelder-Mead initialised at
@@ -725,6 +734,9 @@ class ProcessGrains:
                         anchor_strength=0.1,
                     )
                     kenesei_lab = res.epsilon_tensor
+                    strain_resid_ue[gi] = (
+                        res.residual_norm / max(res.n_spots, 1) ** 0.5 * 1e6
+                    )
 
             # Choose which strain populates Grains.csv (the "primary").
             # Order of preference: explicit method > Kenesei > Fable-Beaudoin.
@@ -802,15 +814,16 @@ class ProcessGrains:
         else:
             diff_pos = torch.zeros(len(out_grains), dtype=self.dtype, device=self.device)
             diff_ome = diff_pos.clone(); diff_ang = diff_pos.clone()
-        # Per-grain strain L2 residual (RMSErrorStrain, µε).  We don't yet
-        # capture the per-grain solver residual in the strain loop; emit zeros
-        # for now (legacy schema requires the column to be present).
-        rms_strain = torch.zeros(len(out_grains), dtype=self.dtype, device=self.device)
+        # Per-grain strain RMS residual (RMSErrorStrain, µε) — captured in
+        # the strain loop above (E1). Zero only for grains without a
+        # per-spot solve (lattice/Fable-only path).
+        rms_strain = strain_resid_ue
         # Phase index — single-phase for now.
         phase_nr = torch.ones(len(out_grains), dtype=torch.int32, device=self.device)
 
-        # Build SpotMatrix rows.
-        sm_rows = _build_spot_matrix_rows(
+        # Build SpotMatrix rows (+ per-spot signed residual table for the
+        # diagnostics archive; collected in the same FitBest pass).
+        sm_rows, spot_resid_tbl = _build_spot_matrix_rows(
             out_grains,
             fb=self.binaries.fit_best,
             hkl_table=self.hkl_table,
@@ -901,6 +914,72 @@ class ProcessGrains:
             "n_residual_tie_hkls": np.asarray(n_tie_diag, dtype=np.int32),
             "n_forward_sim_hkls": np.asarray(n_fs_diag, dtype=np.int32),
         }
+
+        # Signed residual decomposition (dY/dZ/radial/tangential/omega/
+        # internal-angle) — per-grain, per-ring and eta-binned diagnostics.
+        from .compute.residual_decomposition import (
+            decompose_residuals,
+            summarize_residuals,
+        )
+        resid_diag = decompose_residuals(spot_resid_tbl, len(out_grains))
+        diagnostics["residuals"] = resid_diag
+        diagnostics["residuals_spot_table"] = spot_resid_tbl
+        print(summarize_residuals(resid_diag), flush=True)
+
+        # E7: reference-lattice (d0) ADVISORY. When the per-ring dR/R
+        # flag trips (>200 ppm — the emerson signature: −850 ppm absorbed
+        # as +850 µε fake hydrostatic strain), recover the free-standing
+        # cubic a0 and print the exact LatticeConstant line to paste.
+        # Advisory ONLY, never auto-applied: the free-standing (zero
+        # applied macro-stress) assumption is the user's call — loaded
+        # samples need recover_d0 with a stiffness + applied stress.
+        _ppm = resid_diag.get("ring_drad_ppm")
+        if _ppm is not None:
+            _finite = _ppm[np.isfinite(_ppm)]
+            _is_cubic = (
+                abs(self.params.LatticeConstant[0]
+                    - self.params.LatticeConstant[1]) < 1e-9
+                and abs(self.params.LatticeConstant[0]
+                        - self.params.LatticeConstant[2]) < 1e-9
+                and all(abs(a - 90.0) < 1e-6
+                        for a in self.params.LatticeConstant[3:6])
+            )
+            if _finite.size and abs(float(np.median(_finite))) > 200.0 and _is_cubic:
+                try:
+                    from midas_stress.equilibrium import (
+                        recover_d0_cubic_free_standing,
+                    )
+                    _vols = (4.0 / 3.0) * np.pi * (
+                        rad.detach().cpu().numpy() ** 3)
+                    _rec = recover_d0_cubic_free_standing(
+                        lat.detach().cpu().numpy(),
+                        np.asarray(self.params.LatticeConstant,
+                                   dtype=np.float64),
+                        volumes=_vols,
+                        confidences=conf.detach().cpu().numpy(),
+                    )
+                    _a0 = float(np.asarray(
+                        _rec["reference_recovered"]).reshape(-1)[0])
+                    print(
+                        "[pg-residuals]   ADVISORY (free-standing cubic "
+                        "d0 recovery): eps_iso = %+.1f ue -> recovered "
+                        "a0 = %.6f A.\n"
+                        "[pg-residuals]   If this sample carries no "
+                        "applied macroscopic stress, re-run with:\n"
+                        "[pg-residuals]       LatticeConstant %.6f %.6f "
+                        "%.6f 90 90 90\n"
+                        "[pg-residuals]   (NOT auto-applied; loaded "
+                        "samples need recover_d0 + stiffness + applied "
+                        "stress instead.)" % (
+                            1e6 * float(_rec["eps_iso"]),
+                            _a0, _a0, _a0, _a0,
+                        ),
+                        flush=True,
+                    )
+                    diagnostics["d0_advisory_a0"] = np.float64(_a0)
+                except Exception as _e:   # noqa: BLE001 — advisory only
+                    print(f"[pg-residuals]   (d0 advisory unavailable: {_e})",
+                          flush=True)
         return ProcessGrainsResult(
             ids=ids,
             rep_pos=rep_pos,
@@ -958,11 +1037,17 @@ def _build_spot_matrix_rows(
     fb,
     hkl_table: HklTable,
     ids_hash: Optional["IDsHash"] = None,
-) -> np.ndarray:
+) -> Tuple[np.ndarray, np.ndarray]:
     """Build the (n_rows, 12) SpotMatrix rows from per-grain resolved claims.
 
     Columns: GrainID, SpotID, Omega, DetectorHor, DetectorVert, OmeRaw, Eta,
     RingNr, YLab, ZLab, Theta, StrainError.
+
+    Also returns the per-spot signed residual table (n_rows', 11) built by
+    :func:`compute.residual_decomposition.build_spot_residual_row` (layout
+    ``SPOT_RESIDUAL_COLS``) for the diagnostics archive — the same FitBest
+    rows are already in RAM here, so collecting the residuals costs nothing
+    extra over a second pass through the 100s-of-GB memmap.
 
     Ring number lookup falls back through (in order):
       1. ``ids_hash.ring_for_spot_id(spot_id)``  — robust, uses SpotID range mapping.
@@ -971,9 +1056,16 @@ def _build_spot_matrix_rows(
       2. ``hkl_table.integers[hkl_row, 3]``      — only valid for sym-aligned
          hkl_row (Phase 2 spot-aware path).
     """
+    from .compute.residual_decomposition import (
+        SPOT_RESIDUAL_COLS,
+        build_spot_residual_row,
+    )
+
     rows: List[List[float]] = []
+    resid_rows: List[List[float]] = []
+    n_resid_cols = len(SPOT_RESIDUAL_COLS)
     if fb is None:
-        return np.zeros((0, 12))
+        return np.zeros((0, 12)), np.zeros((0, n_resid_cols))
     fb_arr = np.asarray(fb)
     fb_n_rows = fb_arr.shape[0]
     # Pre-extract the per-hkl ring + theta arrays for fast indexing.
@@ -1049,6 +1141,14 @@ def _build_spot_matrix_rows(
                 float(row[20]) if seed_rows.shape[1] > 20 else 0.0,
                 # ^^^ diffLen residual ≈ StrainError diagnostic
             ])
-    if not rows:
-        return np.zeros((0, 12))
-    return np.asarray(rows, dtype=np.float64)
+            rr = build_spot_residual_row(gi, float(r.spot_id), float(ring_nr), row)
+            if rr is not None:
+                resid_rows.append(rr)
+    sm = (
+        np.asarray(rows, dtype=np.float64) if rows else np.zeros((0, 12))
+    )
+    resid = (
+        np.asarray(resid_rows, dtype=np.float64)
+        if resid_rows else np.zeros((0, n_resid_cols))
+    )
+    return sm, resid

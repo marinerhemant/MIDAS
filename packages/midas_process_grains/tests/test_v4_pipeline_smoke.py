@@ -52,7 +52,7 @@ def _make_tiny_layer(tmp_path: Path) -> Path:
 
     # InputAllExtraInfoFittingAll.csv — 4 spots, no header %
     (layer / "InputAllExtraInfoFittingAll.csv").write_text(textwrap.dedent("""\
-        YLab ZLab Omega GrainRadius SpotID RingNumber Eta Ttheta OmegaIni YOrigDetCor ZOrigDetCor YOrigNoWedge ZOrigNoWedge IntegratedIntensity RawSumIntensity FitRMSE maskTouched FitErrCode
+        YLab ZLab Omega GrainRadius SpotID RingNumber Eta Ttheta OmegaIni YOrigDetCor ZOrigDetCor YRawPx ZRawPx OmegaDetCor IntegratedIntensity RawSumIntensity maskTouched FitRMSE
         100.0 50.0 0.0 5.0 1 2 30.0 5.70 0.0 0 0 0 0 100.0 100.0 0.1 0 0
         50.0 100.0 0.0 5.0 2 2 60.0 5.70 0.0 0 0 0 0 100.0 100.0 0.1 0 0
         100.0 -50.0 0.0 5.0 3 2 -30.0 5.70 0.0 0 0 0 0 100.0 100.0 0.1 0 0

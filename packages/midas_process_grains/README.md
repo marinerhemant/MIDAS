@@ -120,10 +120,40 @@ The pipeline reads the standard MIDAS run-directory layout:
 
 ```
 <out_dir>/
-  Grains.csv            # 47 columns, C ProcessGrains layout
-  GrainIDsKey.csv       # one line per kept grain
-  SpotMatrix.csv        # 12 columns, C ProcessGrains layout
+  Grains.csv                      # 47 columns, C ProcessGrains layout
+  GrainIDsKey.csv                 # one line per kept grain
+  SpotMatrix.csv                  # 12 columns, C ProcessGrains layout
+  processgrains_diagnostics.h5    # aux diagnostics (skip with --no-diagnostics)
 ```
+
+### `processgrains_diagnostics.h5:/residuals` (v0.6.0+)
+
+Signed per-spot residual decomposition, collected during the FitBest pass —
+this is what `Grains.csv` `DiffPos`/`DiffOme` aggregate, now decomposable:
+
+* `residuals/spot_table` — gzip float32, one row per resolved grain-spot
+  claim; column layout = `SPOT_RESIDUAL_COLS` in
+  `compute/residual_decomposition.py`:
+  `(grain_idx, spot_id, ring_nr, eta_deg, dy_um, dz_um, drad_um, dtan_um,
+  dome_deg, internal_angle_deg, r_exp_um)`. `grain_idx` indexes the output
+  grain list (NOT GrainID); residuals are obs − exp with position-corrected
+  observations; `dome_deg` is wrapped to [−180, 180).
+* per-grain `(G,)` arrays: `grain_med_{dy,dz,drad,dtan}_um`,
+  `grain_med_dome_deg`, `grain_med_internal_angle_deg`,
+  `grain_mad_dtan_um`, `grain_n_spots` (NaN where a grain contributed no
+  rows).
+* per-ring: `ring_nr`, `ring_med_drad_um`, `ring_drad_ppm`,
+  `ring_mad_drad_um`, `ring_n_spots`. **`ring_drad_ppm` is the
+  reference-lattice diagnostic**: a consistent |median dR/R| > 200 ppm
+  across rings is the signature of a wrong `LatticeConstant` (a₀), absorbed
+  as fake hydrostatic strain — the run log warns when it trips.
+* eta profile (30° bins): `eta_bin_lo_deg`, `eta_med_{drad,dtan}_um`,
+  `eta_med_dome_deg`, `eta_n_spots`.
+* global scalars: `overall_med_{dy,dz,drad,dtan}_um`, `overall_med_dome_deg`,
+  `overall_mad_{drad,dtan}_um`, `overall_mad_dome_deg`,
+  `overall_med_internal_angle_deg`.
+
+`mode="legacy"` (no FitBest pass) emits empty `/residuals` by design.
 
 ## Implementation notes
 

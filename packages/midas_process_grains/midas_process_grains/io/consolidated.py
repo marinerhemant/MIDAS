@@ -129,6 +129,24 @@ def write_diagnostics_h5(
             arr = np.asarray(diag.get(key, np.zeros(result.n_grains)), dtype=np.int32)
             g.create_dataset(key, data=arr)
 
+        # Signed residual decomposition (see compute/residual_decomposition).
+        #   /residuals/<aggregate arrays + scalars>
+        #   /residuals/spot_table : float32 (n_spots, 11), gzip — layout in
+        #       the ``columns`` attribute (SPOT_RESIDUAL_COLS).
+        if "residuals" in diag:
+            r = f.create_group("residuals")
+            for key, arr in diag["residuals"].items():
+                r.create_dataset(key, data=np.asarray(arr))
+            tbl = diag.get("residuals_spot_table")
+            if tbl is not None and np.asarray(tbl).size:
+                from ..compute.residual_decomposition import SPOT_RESIDUAL_COLS
+                ds = r.create_dataset(
+                    "spot_table",
+                    data=np.asarray(tbl, dtype=np.float32),
+                    compression="gzip", compression_opts=4,
+                )
+                ds.attrs["columns"] = ",".join(SPOT_RESIDUAL_COLS)
+
         # Optional richer per-grain blobs (variable-length).
         if "edge_weights_per_cluster" in diag:
             ew = diag["edge_weights_per_cluster"]
