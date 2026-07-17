@@ -334,6 +334,15 @@ def run_c_indexer(work_dir: Path, n_seeds: int, num_procs: int = 4) -> Path:
 def run_torch_indexer(work_dir: Path, n_seeds: int, num_procs: int = 4) -> Path:
     out = work_dir / "midas"
     out.mkdir(exist_ok=True)
+    # midas-index resolves its input binaries from OutputFolder (the layer
+    # directory) — see midas-index 53e3d8ad. In a real pipeline the layer
+    # dir holds Spots.bin/Data.bin/nData.bin/hkls.csv/SpotsToIndex.csv AND is
+    # the OutputFolder; this synthetic harness writes them to the workdir
+    # root, so mirror them into the OutputFolder to match production layout.
+    # (The C indexer reads them from cwd instead, so its path is unaffected.)
+    for fn in ("Spots.bin", "Data.bin", "nData.bin", "hkls.csv",
+               "SpotsToIndex.csv"):
+        shutil.copy2(work_dir / fn, out / fn)
     write_paramstest(work_dir, out)
     # Honor MIDAS_INDEX_DEVICE / MIDAS_INDEX_DTYPE if set; otherwise default
     # to cpu/float64 for byte-identical comparison vs the C reference.
