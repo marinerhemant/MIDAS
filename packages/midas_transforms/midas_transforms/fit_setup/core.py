@@ -9,6 +9,7 @@ End-to-end:
 4. Apply tilt + distortion (lab µm) via ``transform.apply_tilt_distortion``.
 5. Optional wedge correction (full or no-op based on ``|wedge|<1e-10``).
 6. Spot filter: ``MinEta``, ``OmegaRanges``, ``BoxSizes``, ``RingToIndex``,
+   ``MinIntegratedIntensity`` (N8; default 0 = off),
    ``MaxOmeSpotIDsToIndex`` / ``MinOmeSpotIDsToIndex``.
 7. Optional 5-param refine via ``midas_calibrate.refine_geometry``.
 8. Write all output files: ``InputAll.csv``, ``InputAllExtraInfoFittingAll.csv``,
@@ -84,15 +85,19 @@ def _load_hkls_for_rings(hkls_path: Path, ring_numbers: List[int]):
 
 
 def _radius_csv_to_spotsinfo(radius_arr: np.ndarray) -> np.ndarray:
-    """Map the 24-col Radius_*.csv to the 10-col C ``SpotsInfo`` layout.
+    """Map the Radius_*.csv (26-col; legacy 24 tolerated) to the C
+    ``SpotsInfo`` layout plus two appended bookkeeping columns.
 
     SpotsInfo columns (per ``FitSetupParamsAllZarr.c:1305-1314``):
         [0] SpotID, [1] Omega, [2] YCen px, [3] ZCen px, [4] RingNumber,
         [5] GrainRadius, [6] IntegratedIntensity, [7] RawSumIntensity,
         [8] maskTouched, [9] FitRMSE.
+    Appended (N2 + E3; -1 = unknown/legacy input):
+        [10] OrigSpotID — merge-space SpotID (Result_StartNr col 0),
+        [11] ReturnCode — peakfit per-peak return code.
     """
     n = radius_arr.shape[0]
-    out = np.zeros((n, 10), dtype=np.float64)
+    out = np.zeros((n, 12), dtype=np.float64)
     out[:, 0] = radius_arr[:, 0]    # SpotID
     out[:, 1] = radius_arr[:, 2]    # Omega
     out[:, 2] = radius_arr[:, 3]    # YCen px
@@ -103,6 +108,12 @@ def _radius_csv_to_spotsinfo(radius_arr: np.ndarray) -> np.ndarray:
     out[:, 7] = radius_arr[:, 21]   # RawSumIntensity
     out[:, 8] = radius_arr[:, 22]   # maskTouched
     out[:, 9] = radius_arr[:, 23]   # FitRMSE
+    if radius_arr.shape[1] >= 26:
+        out[:, 10] = radius_arr[:, 24]   # OrigSpotID
+        out[:, 11] = radius_arr[:, 25]   # ReturnCode
+    else:
+        out[:, 10] = -1.0
+        out[:, 11] = -1.0
     return out
 
 
@@ -133,7 +144,8 @@ def _sort_per_ring_renumber(
     and renumber SpotID across all rings.
 
     Returns:
-        sorted_info : (n, 10) — same columns, with col[0] now the new SpotID.
+        sorted_info : (n, 12) — same columns, with col[0] now the new SpotID
+            (cols 10/11 = OrigSpotID/ReturnCode survive the renumber).
         per_ring_count : list[int] — number of spots per ring (in ``ring_numbers`` order).
         id_rings_rows : list[(ring_nr, original_id, new_id)] — for IDRings.csv.
     """
@@ -158,7 +170,7 @@ def _sort_per_ring_renumber(
         per_ring_count.append(sub.shape[0])
         parts.append(sub)
     if not parts:
-        return np.empty((0, 10), dtype=np.float64), per_ring_count, id_rings_rows
+        return np.empty((0, 12), dtype=np.float64), per_ring_count, id_rings_rows
     return np.concatenate(parts, axis=0), per_ring_count, id_rings_rows
 
 
@@ -354,6 +366,16 @@ def fit_setup(
         | ((eta_np > min_eta) & (eta_np < 180 - min_eta))
     )
     keep = in_eta_band.copy()
+    # N8: intensity spot filter (default 0 = off; NO behaviour change for
+    # FF). On noise-dominated dense-PF data (Ni Layer-3: 60% of 515k
+    # spots/scan below 200 counts) this replaces unrecorded hand-editing
+    # of layer CSVs. Recorded in paramstest (key written only when set)
+    # so reruns see it. Binning renumbers SpotIDs 1..N itself and writes
+    # its own SpotsToIndex.csv, so the filtered table stays
+    # self-consistent.
+    min_int = float(getattr(zarr_params, "MinIntegratedIntensity", 0.0) or 0.0)
+    if min_int > 0.0:
+        keep &= spotsinfo_sorted[:, 6] >= min_int
     if zarr_params.OmegaRanges and zarr_params.BoxSizes:
         in_box = np.zeros(n, dtype=bool)
         for omr, bx in zip(zarr_params.OmegaRanges, zarr_params.BoxSizes):
@@ -378,10 +400,18 @@ def fit_setup(
     # Build the InputAll 8-col layout, with rejected spots zeroed out
     # (matches C: rejected rows still appear with 0s except SpotID).
     inputall = np.zeros((n, 8), dtype=np.float64)
-    inputall_extra = np.zeros((n, 18), dtype=np.float64)
+    # 20-col InputAllExtra: 18 base + appended OrigSpotID / ReturnCode
+    # (N2 + E3). InputAll itself stays 8-col — appending there would
+    # collide with the 9-col multi-detector DetID variant; the merge-space
+    # bridge lives here (col 18) and in IDRings.csv.
+    inputall_extra = np.zeros((n, 20), dtype=np.float64)
     spot_id_col = spotsinfo_sorted[:, 0]
     inputall[:, 4] = spot_id_col
     inputall_extra[:, 4] = spot_id_col
+    # Bookkeeping cols are set for ALL rows (like SpotID) — rejected rows
+    # keep their bridge to the merge space.
+    inputall_extra[:, 18] = spotsinfo_sorted[:, 10]   # OrigSpotID
+    inputall_extra[:, 19] = spotsinfo_sorted[:, 11]   # ReturnCode
 
     if keep.any():
         # Cols 0..7 = (YLab, ZLab, Omega, GrainRadius, SpotID, RingNumber, Eta, Ttheta)
@@ -399,7 +429,7 @@ def fit_setup(
         # Col 9, 10: YOrigDetCor, ZOrigDetCor (post-tilt-distortion, pre-wedge)
         inputall_extra[keep, 9] = Y_lab.detach().cpu().numpy()[keep]
         inputall_extra[keep, 10] = Z_lab.detach().cpu().numpy()[keep]
-        # Col 11, 12: YOrigNoWedge, ZOrigNoWedge (raw px)
+        # Col 11, 12: YRawPx, ZRawPx (raw detector pixels == peaksearch YCen/ZCen)
         inputall_extra[keep, 11] = spotsinfo_sorted[keep, 2]
         inputall_extra[keep, 12] = spotsinfo_sorted[keep, 3]
         # Col 13, 14, 15, 16, 17 (per FitSetupParamsAllZarr.c:1551-1559)
@@ -418,7 +448,17 @@ def fit_setup(
     # and populate RingRadii (px) from hkls.csv.
     pt = zarr_params.to_paramstest()
     if refine_out is not None:
+        # Propagate ALL refined values into the *Fit keys (previously only
+        # pt.Lsd was set, and the writer prefers LsdFit — so the refined
+        # geometry never reached paramstest.txt). tx is not refined
+        # (refine_5param holds it fixed, matching C FitTiltBCLsd); txFit
+        # keeps the raw tx from to_paramstest().
         pt.Lsd = refine_out.Lsd
+        pt.LsdFit = refine_out.Lsd
+        pt.YBCFit = refine_out.BC_y
+        pt.ZBCFit = refine_out.BC_z
+        pt.tyFit = refine_out.ty
+        pt.tzFit = refine_out.tz
     unique_rings = sorted(set(int(r) for r in spotsinfo_sorted[keep, 4]))
     pt.RingNumbers = list(unique_rings)
     radii_lookup = {rn: rr for rn, rr in zip(ring_numbers, radii_per_ring)}

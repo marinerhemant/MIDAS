@@ -67,15 +67,49 @@ class ParamsTest:
 
     # Refined fit geometry (FitSetupZarr post-refine values; default to the
     # raw geometry when DoFit=0).
+    # NB: txFit was historically MISSING (the C FitSetupZarr never emitted
+    # tx) — any raw-frame consumer (midas_pf_odf, midas_grain_odf) that
+    # built geometry from paramstest got tx=0, a ~0.27° in-plane rotation
+    # ≈ 3-4e3 µε fake strain on real Varex data. Emit it always.
     LsdFit: float = 0.0
     YBCFit: float = 0.0
     ZBCFit: float = 0.0
+    txFit: float = 0.0
     tyFit: float = 0.0
     tzFit: float = 0.0
+    # Full v1-ordered distortion polynomial (the C FitSetupZarr truncated
+    # to p0..p3, silently dropping p4..p14 — meter-scale errors for large
+    # p3/phi4 detectors when a consumer applied the truncated set).
     p0: float = 0.0
     p1: float = 0.0
     p2: float = 0.0
     p3: float = 0.0
+    p4: float = 0.0
+    p5: float = 0.0
+    p6: float = 0.0
+    p7: float = 0.0
+    p8: float = 0.0
+    p9: float = 0.0
+    p10: float = 0.0
+    p11: float = 0.0
+    p12: float = 0.0
+    p13: float = 0.0
+    p14: float = 0.0
+    # Canonical v2 harmonic distortion (midas_distortion basis), carried
+    # through from ZarrParams when the archive is calibrate-v2 native.
+    # Written as the named keys (iso_R2.., a1.., phi1..) so raw-frame
+    # consumers get the authoritative coefficients even when p0..p14 are 0.
+    dist_coeffs_v2: Optional[Any] = None
+
+    # Scan description. OmegaStep == 0 means "unknown" and the pair is NOT
+    # written (a false 0.0 is worse than absence); consumers must not infer
+    # the step from shadow-gapped OmegaRange spans (P0-3).
+    OmegaStart: float = 0.0
+    OmegaStep: float = 0.0
+
+    # N8: fit_setup intensity spot filter; recorded so reruns see it.
+    # Written only when non-zero (no FF behaviour change).
+    MinIntegratedIntensity: float = 0.0
 
     # Refinement weights
     WeightMask: float = 1.0
@@ -133,8 +167,10 @@ _FLOAT_KEYS = {
     "MaxRingRad", "Rsample", "Hbeam", "BeamSize",
     "ExcludePoleAngle", "Wedge",
     "MargABC", "MargABG", "MinMatchesToAcceptFrac",
-    "LsdFit", "YBCFit", "ZBCFit", "tyFit", "tzFit",
-    "p0", "p1", "p2", "p3",
+    "LsdFit", "YBCFit", "ZBCFit", "txFit", "tyFit", "tzFit",
+    "p0", "p1", "p2", "p3", "p4", "p5", "p6", "p7",
+    "p8", "p9", "p10", "p11", "p12", "p13", "p14",
+    "OmegaStart", "OmegaStep", "MinIntegratedIntensity",
     "WeightMask", "WeightFitRMSE",
 }
 _INT_KEYS = {"NoSaveAll", "SpaceGroup", "UseFriedelPairs", "RingToIndex"}
@@ -225,6 +261,24 @@ def read_paramstest(path: Union[str, Path]) -> ParamsTest:
                 attr = "GrainsFileName" if key == "GrainsFile" else key
                 setattr(p, attr, args[0])
             # unknown keys are recorded in p.raw and otherwise ignored
+
+    # Rebuild the canonical v2 distortion vector from whatever the file
+    # carried: v2 names (calibrate-v2 native) win over the v1-ordered
+    # p0..p14 on any collision (v2_coeffs_from_named semantics).
+    try:
+        from midas_distortion import P_COEF_NAMES, v2_coeffs_from_named
+        named: Dict[str, float] = {}
+        for i in range(15):
+            v = getattr(p, f"p{i}")
+            if v:
+                named[f"p{i}"] = v
+        for nm in P_COEF_NAMES:
+            if nm in p.raw and p.raw[nm]:
+                named[nm] = float(p.raw[nm][0])
+        if named:
+            p.dist_coeffs_v2 = v2_coeffs_from_named(named)
+    except ImportError:
+        pass
     return p
 
 
@@ -326,12 +380,38 @@ def write_paramstest(p: ParamsTest, path: Union[str, Path]) -> None:
         fp.write(f"LsdFit {f6(p.LsdFit if p.LsdFit else p.Lsd)}\n")
         fp.write(f"YBCFit {f6(p.YBCFit)}\n")
         fp.write(f"ZBCFit {f6(p.ZBCFit)}\n")
+        # txFit: the C FitSetupZarr never emitted tx — raw-frame consumers
+        # then rebuilt geometry with tx=0 (~0.27° in-plane rotation ≈ 3-4e3
+        # µε fake strain on SOH/emerson Varex data). Always write it.
+        fp.write(f"txFit {f6(p.txFit)}\n")
         fp.write(f"tyFit {f6(p.tyFit)}\n")
         fp.write(f"tzFit {f6(p.tzFit)}\n")
-        fp.write(f"p0 {f6(p.p0)}\n")
-        fp.write(f"p1 {f6(p.p1)}\n")
-        fp.write(f"p2 {f6(p.p2)}\n")
-        fp.write(f"p3 {f6(p.p3)}\n")
+        # Full v1-ordered distortion polynomial (C truncated to p0..p3).
+        # %.12g: distortion amplitudes span 1e-9 .. 1e2 — the C %f (6
+        # fractional digits) would flush small harmonics to 0.
+        for i in range(15):
+            fp.write(f"p{i} {getattr(p, f'p{i}'):.12g}\n")
+        # Canonical v2 harmonic coefficients when the source archive was
+        # calibrate-v2 native (p0..p14 may legitimately be all-zero then).
+        # C parsers keyword-match and skip unknown keys.
+        if p.dist_coeffs_v2 is not None:
+            try:
+                from midas_distortion import P_COEF_NAMES
+                vals = np.asarray(p.dist_coeffs_v2).flatten()
+                if vals.shape[0] == len(P_COEF_NAMES) and np.any(vals != 0.0):
+                    for nm, val in zip(P_COEF_NAMES, vals):
+                        fp.write(f"{nm} {float(val):.12g}\n")
+            except ImportError:
+                pass
+        # Scan description — omitted when the step is unknown (a false
+        # "OmegaStep 0.0" is worse than absence; see P0-3: consumers must
+        # never infer the step from shadow-gapped OmegaRange spans).
+        if p.OmegaStep:
+            fp.write(f"OmegaStart {p.OmegaStart:.12g}\n")
+            fp.write(f"OmegaStep {p.OmegaStep:.12g}\n")
+        # N8: record the applied intensity filter so reruns see it.
+        if p.MinIntegratedIntensity:
+            fp.write(f"MinIntegratedIntensity {p.MinIntegratedIntensity:.12g}\n")
         fp.write(f"WeightMask {f6(p.WeightMask)}\n")
         fp.write(f"WeightFitRMSE {f6(p.WeightFitRMSE)}\n")
 
@@ -369,6 +449,8 @@ OPTIONAL_FITSETUP_KEYS_FLOAT = (
     "WeightFitRMSE", "WeightMask",
     "tInt", "tGap",
     "Vsample", "DiscArea",
+    "OmegaStart", "OmegaStep",
+    "MinIntegratedIntensity",
 )
 OPTIONAL_FITSETUP_KEYS_INT = (
     "DoFit", "UseFriedelPairs", "OverallRingToIndex",
@@ -474,6 +556,8 @@ class ZarrParams:
     WeightMask: float = 1.0
     tInt: float = 1.0
     tGap: float = 0.0
+    # N8: fit_setup intensity spot filter (0 = off — the FF default).
+    MinIntegratedIntensity: float = 0.0
 
     DoFit: int = 0
     UseFriedelPairs: int = 1
@@ -501,6 +585,7 @@ class ZarrParams:
     OmegaRanges: List[Tuple[float, float]] = field(default_factory=list)
 
     # scan
+    OmegaStart: float = 0.0
     OmegaStep: float = 0.0
 
     # merge-specific (also in some Zarr archives)
@@ -563,19 +648,27 @@ class ZarrParams:
         pt.UseFriedelPairs = self.UseFriedelPairs
         # Seed ring — without this the scanning C indexer finds zero seeds.
         pt.RingToIndex = self.OverallRingToIndex
-        # Distortion polynomial (FitSetupZarr writes p0..p3 only)
-        pt.p0 = self.p0
-        pt.p1 = self.p1
-        pt.p2 = self.p2
-        pt.p3 = self.p3
+        # Distortion polynomial — the FULL v1-ordered set (the C FitSetupZarr
+        # truncated to p0..p3, dropping p4..p14), plus the canonical v2
+        # harmonic coefficients when the archive is calibrate-v2 native.
+        for i in range(15):
+            setattr(pt, f"p{i}", getattr(self, f"p{i}"))
+        pt.dist_coeffs_v2 = self.dist_coeffs_v2
+        # Scan description (write_paramstest omits the pair when step==0).
+        pt.OmegaStart = self.OmegaStart
+        pt.OmegaStep = self.OmegaStep
+        pt.MinIntegratedIntensity = self.MinIntegratedIntensity
         # Refinement weights
         pt.WeightMask = self.WeightMask
         pt.WeightFitRMSE = self.WeightFitRMSE
         # Refined fit defaults: when DoFit=0 the C code writes the raw geometry
-        # values into the *Fit fields. Match that.
+        # values into the *Fit fields. Match that. txFit is never refined
+        # (refine_5param holds tx fixed, matching C FitTiltBCLsd) so the raw
+        # tx IS the fit value.
         pt.LsdFit = self.Lsd
         pt.YBCFit = self.YCen
         pt.ZBCFit = self.ZCen
+        pt.txFit = self.tx
         pt.tyFit = self.ty
         pt.tzFit = self.tz
         # Repeated keys
@@ -715,12 +808,23 @@ def read_zarr_params(zarr_path: Union[str, Path]) -> ZarrParams:
     except KeyError:
         pass
 
-    # OmegaStep
-    try:
-        v = root["measurement/process/scan_parameters/step"][...]
-        p.OmegaStep = float(np.asarray(v).flat[0])
-    except KeyError:
-        pass
+    # OmegaStart / OmegaStep: the analysis_parameters keys (read above via
+    # OPTIONAL_FITSETUP_KEYS_FLOAT) are authoritative when non-zero; fall
+    # back to the measurement scan_parameters. NB midas_zipper < E5-fix
+    # writes a literal 0.0 into analysis_parameters/omegaStep when the CLI
+    # flag was absent — the zero check routes around that.
+    if not p.OmegaStep:
+        try:
+            v = root["measurement/process/scan_parameters/step"][...]
+            p.OmegaStep = float(np.asarray(v).flat[0])
+        except KeyError:
+            pass
+    if not p.OmegaStart:
+        try:
+            v = root["measurement/process/scan_parameters/start"][...]
+            p.OmegaStart = float(np.asarray(v).flat[0])
+        except KeyError:
+            pass
 
     # Validate required keys.
     missing = [k for k in REQUIRED_FITSETUP_KEYS if k not in seen_required]

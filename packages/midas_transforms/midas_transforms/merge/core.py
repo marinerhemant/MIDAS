@@ -59,7 +59,7 @@ _RAD2DEG = 180.0 / math.pi
 class MergeResult:
     """In-memory result of the merge stage."""
 
-    peaks: torch.Tensor                            # (N, 17) — Result_*.csv layout
+    peaks: torch.Tensor                            # (N, 18) — Result_*.csv layout (17 legacy + ReturnCode)
     merge_map: List[Tuple[int, int, int]] = field(default_factory=list)
     # Each tuple: (merged_spot_id, frame_nr, original_peak_id)
 
@@ -80,6 +80,7 @@ COL_NRPX = 10
 COL_NRPXTOT = 11
 COL_MAXY = 13
 COL_MAXZ = 14
+COL_RETCODE = 18          # peakfit per-peak returnCode (postfit.py:85)
 COL_RAWSUM = 26
 COL_MASKTOUCHED = 27
 COL_FITRMSE = 28
@@ -141,12 +142,15 @@ def _read_sort_filter_frame_with_pixels(
 def _seed_current_from_frame(
     frame_peaks: np.ndarray, frame_nr: int,
 ) -> Tuple[np.ndarray, List[List[Tuple[int, int]]]]:
-    """Initialise ``CurrentIDs`` (19 cols) from a frame's filtered peaks.
+    """Initialise ``CurrentIDs`` (20 cols: 19 C-layout + ReturnCode) from a
+    frame's filtered peaks.
 
-    Mirrors ``MergeOverlappingPeaksAllZarr.c:644-679``.
+    Mirrors ``MergeOverlappingPeaksAllZarr.c:644-679``; col 19 additionally
+    carries the peakfit per-peak returnCode (N2 — previously dropped here,
+    making fit success/failure unrecoverable downstream).
     """
     n = frame_peaks.shape[0]
-    cur = np.zeros((n, 19), dtype=np.float64)
+    cur = np.zeros((n, 20), dtype=np.float64)
     if n == 0:
         return cur, []
     ii = frame_peaks[:, COL_II]
@@ -169,6 +173,7 @@ def _seed_current_from_frame(
     cur[:, 16] = frame_peaks[:, COL_RAWSUM]
     cur[:, 17] = frame_peaks[:, COL_MASKTOUCHED]
     cur[:, 18] = frame_peaks[:, COL_FITRMSE]
+    cur[:, 19] = frame_peaks[:, COL_RETCODE]
     cons = [[(frame_nr, int(frame_peaks[i, COL_SPOTID]))] for i in range(n)]
     return cur, cons
 
@@ -373,6 +378,10 @@ def _accumulate_match(cur_row: np.ndarray, new_row: np.ndarray) -> None:
         cur_row[17] = 1.0
     if new_row[COL_FITRMSE] > cur_row[18]:
         cur_row[18] = new_row[COL_FITRMSE]
+    # ReturnCode: sticky-first-nonzero — a merged spot records the first
+    # failing constituent fit (0 stays "all constituents fit OK").
+    if cur_row[19] == 0.0:
+        cur_row[19] = new_row[COL_RETCODE]
 
 
 def _finalise_row(
@@ -400,8 +409,10 @@ def _finalise_row(
         [14] RawSumIntensity
         [15] maskTouched
         [16] FitRMSE
+        [17] ReturnCode  (appended; N2 — sticky-first-nonzero over merged
+             constituents; legacy 17-col files simply lack it)
     """
-    out = np.zeros(17, dtype=np.float64)
+    out = np.zeros(18, dtype=np.float64)
     intInt = cur_row[1] if cur_row[1] != 0 else 1.0
     out[0] = spot_id
     out[1] = cur_row[1]
@@ -420,6 +431,7 @@ def _finalise_row(
     out[14] = cur_row[16]
     out[15] = cur_row[17]
     out[16] = cur_row[18]
+    out[17] = cur_row[19]
     return out
 
 
@@ -443,7 +455,7 @@ def _merge_frames(
     ``proc[fi][j]`` and ``pix[fi][j]`` correspond.
     """
     if not frames:
-        return np.empty((0, 17), dtype=np.float64), []
+        return np.empty((0, 18), dtype=np.float64), []
 
     # The C code does `EndNr -= skipFrame` then iterates [StartNr, EndNr];
     # we mirror by truncating the frame list.
@@ -452,7 +464,7 @@ def _merge_frames(
         if pixel_frames is not None:
             pixel_frames = pixel_frames[: max(len(pixel_frames) - skip_frame, 0)]
     if not frames:
-        return np.empty((0, 17), dtype=np.float64), []
+        return np.empty((0, 18), dtype=np.float64), []
 
     use_pixel_overlap = pixel_frames is not None and nr_pixels > 0
 
@@ -473,7 +485,7 @@ def _merge_frames(
     while first < len(proc) and proc[first].shape[0] == 0:
         first += 1
     if first >= len(proc):
-        return np.empty((0, 17), dtype=np.float64), []
+        return np.empty((0, 18), dtype=np.float64), []
 
     cur, constituents = _seed_current_from_frame(proc[first], frame_nr=first + 1)
     cur_pixels: List[np.ndarray] = list(pix[first]) if use_pixel_overlap else []
@@ -494,7 +506,7 @@ def _merge_frames(
                 for (fn, pid) in constituents[i]:
                     merge_map.append((spot_id_nr, fn, pid))
                 spot_id_nr += 1
-            cur = np.zeros((0, 19), dtype=np.float64)
+            cur = np.zeros((0, 20), dtype=np.float64)
             constituents = []
             cur_pixels = []
             continue
@@ -565,7 +577,7 @@ def _merge_frames(
         spot_id_nr += 1
 
     if not finalised:
-        return np.empty((0, 17), dtype=np.float64), []
+        return np.empty((0, 18), dtype=np.float64), []
     return np.stack(finalised, axis=0), merge_map
 
 

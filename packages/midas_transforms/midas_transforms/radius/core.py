@@ -28,7 +28,7 @@ _RAD2DEG = 180.0 / math.pi
 class RadiusResult:
     """In-memory result of the calc_radius stage."""
 
-    spots: torch.Tensor                # (N, 24) float64
+    spots: torch.Tensor                # (N, 26) float64 (24 legacy + OrigSpotID, ReturnCode)
     ring_radii: torch.Tensor           # (n_configured_rings,) float64
     ring_numbers: List[int] = field(default_factory=list)
     n_frames: int = 0
@@ -40,7 +40,7 @@ class RadiusResult:
 
 
 def _filter_and_compute_radius(
-    result_arr: torch.Tensor,             # (N_in, 17) — 17-col Result_*.csv
+    result_arr: torch.Tensor,             # (N_in, 18) — Result_*.csv (17 legacy + ReturnCode)
     ring_numbers: torch.Tensor,           # (R,) int64
     ring_radii_um: torch.Tensor,          # (R,) float64 — RADII IN µm (read straight from hkls.csv col 10)
     width_px: float,
@@ -58,7 +58,10 @@ def _filter_and_compute_radius(
     """Vectorised port of ``CalcRadiusAllZarr.c:347-434``.
 
     Returns:
-        out  : (N_out, 24) float64 — the 24-column Radius CSV layout.
+        out  : (N_out, 26) float64 — the 24-column Radius CSV layout plus
+               the appended [24] OrigSpotID (merge-space SpotID; calc_radius
+               renumbers col 0 to 1..N_out and duplicates two-ring matches,
+               so col 0 is NOT joinable upstream) and [25] ReturnCode (N2).
         powder_int : (R,) — per-ring averaged powder intensity (after /n_frames).
         m_hkl : (R,) — count of hkl entries hitting each configured ring.
 
@@ -89,9 +92,9 @@ def _filter_and_compute_radius(
     # the C code's nested loop ``for (line in input) for (i in 0..nRings)``.
     pair_idx = torch.nonzero(in_window, as_tuple=False)        # (N_pairs, 2)
     if pair_idx.shape[0] == 0:
-        empty24 = torch.empty((0, 24), dtype=dtype, device=device)
+        empty26 = torch.empty((0, 26), dtype=dtype, device=device)
         return (
-            empty24,
+            empty26,
             torch.zeros(R, dtype=dtype, device=device),
             torch.zeros(R, dtype=torch.int64, device=device),
         )
@@ -119,9 +122,9 @@ def _filter_and_compute_radius(
         Radius = Radius[mask]
         N_out = spots_in.shape[0]
         if N_out == 0:
-            empty24 = torch.empty((0, 24), dtype=dtype, device=device)
+            empty26 = torch.empty((0, 26), dtype=dtype, device=device)
             return (
-                empty24,
+                empty26,
                 torch.zeros(R, dtype=dtype, device=device),
                 torch.zeros(R, dtype=torch.int64, device=device),
             )
@@ -174,10 +177,11 @@ def _filter_and_compute_radius(
     else:
         GrainRadius = torch.sign(GrainVolume) * torch.abs(GrainVolume).pow(1.0 / 3.0) * (3.0 / (4.0 * math.pi)) ** (1.0 / 3.0)
 
-    # 24-col layout: SpotID(=counter+1), IntInt, Omega, YCen, ZCen, IMax,
-    # MinOme, MaxOme, Radius, Theta, Eta, DeltaOmega, NImgs, RingNr,
-    # GrainVolume, GrainRadius, PowderIntensity, SigmaR, SigmaEta,
-    # NrPx, NrPxTot, RawSumIntensity, maskTouched, FitRMSE
+    # 26-col layout: the legacy 24 cols — SpotID(=counter+1), IntInt,
+    # Omega, YCen, ZCen, IMax, MinOme, MaxOme, Radius, Theta, Eta,
+    # DeltaOmega, NImgs, RingNr, GrainVolume, GrainRadius,
+    # PowderIntensity, SigmaR, SigmaEta, NrPx, NrPxTot, RawSumIntensity,
+    # maskTouched, FitRMSE — plus appended OrigSpotID, ReturnCode.
     spot_ids_renumbered = torch.arange(1, N_out + 1, device=device, dtype=dtype)
     out = torch.stack([
         spot_ids_renumbered,
@@ -204,6 +208,8 @@ def _filter_and_compute_radius(
         spots_in[:, 14],  # RawSumIntensity
         spots_in[:, 15],  # maskTouched
         spots_in[:, 16],  # FitRMSE
+        spots_in[:, 0],   # OrigSpotID (merge-space; survives the renumber)
+        spots_in[:, 17],  # ReturnCode
     ], dim=1)
     return out, powder_int, m_hkl
 
@@ -301,9 +307,13 @@ def calc_radius(
     rn_t = torch.tensor(ring_numbers, dtype=torch.int64, device=dev)
     rr_t = torch.tensor(radii_um, dtype=dt, device=dev)
 
-    spots_t = torch.from_numpy(np.asarray(result_array, dtype=np.float64)).to(
-        device=dev, dtype=dt
-    )
+    result_np = np.asarray(result_array, dtype=np.float64)
+    if result_np.ndim == 2 and result_np.shape[1] == 17:
+        # Legacy 17-col in-memory input (pre-ReturnCode): pad with -1
+        # ("unknown" — NOT 0, which means "fit OK").
+        pad = np.full((result_np.shape[0], 1), -1.0, dtype=np.float64)
+        result_np = np.concatenate([result_np, pad], axis=1)
+    spots_t = torch.from_numpy(result_np).to(device=dev, dtype=dt)
 
     # Vsample / DiscModel / DiscArea: explicit args win over the Zarr archive,
     # but if the caller left them at the default (0), fall back to whatever

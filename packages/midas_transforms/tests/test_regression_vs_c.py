@@ -57,8 +57,17 @@ def test_bin_data_byte_exact_spots_bin(tmp_path: Path, goldens_dir: Path):
     bin_data(result_folder=tmp_path, device="cpu", dtype="float64")
 
     from midas_transforms.io import binary as bio
-    new_spots = bio.read_spots_bin(tmp_path / "Spots.bin")
-    ref_spots = bio.read_spots_bin(goldens_dir / "Spots.bin")
+    # Since the unified 10-col format (f962e7b2), FF bin_data always writes
+    # a trailing scanNr column (0 for FF). The C golden is the legacy 9-col
+    # layout — compare the shared 9 columns value-exactly and require the
+    # appended column to be all-zero.
+    new_spots = bio.read_spots_bin(tmp_path / "Spots.bin", ncols=10)
+    ref_spots = bio.read_spots_bin(goldens_dir / "Spots.bin", ncols=9)
+    np.testing.assert_array_equal(
+        new_spots[:, 9], np.zeros(new_spots.shape[0]),
+        err_msg="FF Spots.bin scanNr column must be all-zero.",
+    )
+    new_spots = new_spots[:, :9]
     assert new_spots.shape == ref_spots.shape
     np.testing.assert_array_equal(new_spots, ref_spots,
         err_msg="Spots.bin must be byte-exact (N x 9 float64).")
@@ -89,16 +98,28 @@ def test_bin_data_byte_exact_data_ndata(tmp_path: Path, goldens_dir: Path):
     bin_data(result_folder=tmp_path, device="cpu", dtype="float64")
 
     from midas_transforms.io import binary as bio
-    new_data = bio.read_data_bin(tmp_path / "Data.bin")
-    ref_data = bio.read_data_bin(goldens_dir / "Data.bin")
-    new_nd = bio.read_ndata_bin(tmp_path / "nData.bin")
-    ref_nd = bio.read_ndata_bin(goldens_dir / "nData.bin")
+    # Since the unified format (f962e7b2), FF bin_data always writes the
+    # scanning container: Data.bin = (K, 2) uint64 (rowno, scanno) pairs,
+    # nData.bin = (M, 2) uint64 — with scanno == 0 for FF. The C golden is
+    # the legacy int32 layout. The CONTRACT with the indexer is the values:
+    # compare rowno stream + count/offset tables exactly; require scanno=0.
+    new_data = bio.read_data_bin_scanning(tmp_path / "Data.bin")
+    ref_data = bio.read_data_bin(goldens_dir / "Data.bin").astype(np.uint64)
+    new_nd = bio.read_ndata_bin_scanning(tmp_path / "nData.bin")
+    ref_nd = bio.read_ndata_bin(goldens_dir / "nData.bin").astype(np.uint64)
     assert new_nd.shape == ref_nd.shape, f"nData shape: {new_nd.shape} vs {ref_nd.shape}"
-    assert new_data.shape == ref_data.shape, f"Data shape: {new_data.shape} vs {ref_data.shape}"
+    assert new_data.shape[0] == ref_data.shape[0], (
+        f"Data entries: {new_data.shape[0]} vs {ref_data.shape[0]}"
+    )
+    np.testing.assert_array_equal(
+        new_data[:, 1], np.zeros(new_data.shape[0], dtype=np.uint64),
+        err_msg="FF Data.bin scanno must be all-zero.",
+    )
     np.testing.assert_array_equal(new_nd, ref_nd,
-        err_msg="nData.bin must be byte-exact (M x 2 int32).")
-    np.testing.assert_array_equal(new_data, ref_data,
-        err_msg="Data.bin must be byte-exact (T int32, ring/eta/ome major order).")
+        err_msg="nData.bin (count, offset) must match the C golden exactly.")
+    np.testing.assert_array_equal(new_data[:, 0], ref_data,
+        err_msg="Data.bin rowno stream must match the C golden exactly "
+                "(ring/eta/ome major order).")
 
 
 # ---------------------------------------------------------------------------
@@ -267,12 +288,15 @@ def test_merge_byte_exact_to_c(tmp_path: Path, goldens_dir: Path):
     # Cols 0 (SpotID) and 1..16 (numeric) — full f64 tolerance.
     # SpotID must match exactly; the rest at 1e-9 absolute (CSV %lf
     # round-trip introduces ~1e-7 noise at 6 decimals on µm-scale values).
+    # Col 17 (ReturnCode) is OUR appended column (N2) — absent from the C
+    # golden (read_result_csv pads it with -1), so parity covers the
+    # legacy 17-col C layout only.
     np.testing.assert_array_equal(
         new[:, 0].astype(int), ref[:, 0].astype(int),
         err_msg="SpotID must match exactly.",
     )
     np.testing.assert_allclose(
-        new[:, 1:], ref[:, 1:], atol=1e-4, rtol=0,
+        new[:, 1:17], ref[:, 1:17], atol=1e-4, rtol=0,
         err_msg=(
             "Result.csv numeric columns must match C output within CSV "
             "round-trip precision (~1e-4 µm on positions, ~1e-6 on intensities)."
@@ -336,8 +360,9 @@ def test_merge_pixel_overlap_byte_exact_to_c(tmp_path: Path, px_goldens_dir: Pat
         new[:, 0].astype(int), ref[:, 0].astype(int),
         err_msg="SpotID must match exactly.",
     )
+    # Col 17 (ReturnCode) is our appended column — legacy-17-col parity only.
     np.testing.assert_allclose(
-        new[:, 1:], ref[:, 1:], atol=1e-4, rtol=0,
+        new[:, 1:17], ref[:, 1:17], atol=1e-4, rtol=0,
         err_msg=(
             "px-overlap Result.csv numeric cols must match C output within "
             "CSV round-trip precision (~1e-4 µm on positions, ~1e-6 on intensities)."

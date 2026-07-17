@@ -102,17 +102,15 @@ def _read_per_scan_csv(
     if arr.shape[1] == 16:
         # Already in compressed form (e.g. mergeScansScanning output).
         return arr
-    if arr.shape[1] == 18:
-        # Drop cols 14, 15 (the C dummies); keep [0..13, 16, 17].
-        keep = np.concatenate([np.arange(14), np.arange(16, 18)])
-        return arr[:, keep]
-    if arr.shape[1] == 19:
-        # Multi-detector variant with trailing DetID — drop it then drop
-        # dummies just like the 18-col case.
+    if arr.shape[1] in (18, 19, 20, 21):
+        # 18 base / +DetID / +OrigSpotID,ReturnCode (N2+E3) / +both — the
+        # base cols are positionally identical in every variant; drop the
+        # dummies (14, 15) and any appended cols. The 16-double binary
+        # stride is never widened.
         keep = np.concatenate([np.arange(14), np.arange(16, 18)])
         return arr[:, keep]
     raise ValueError(
-        f"{csv_path}: expected 16, 18, or 19 cols, got {arr.shape[1]}"
+        f"{csv_path}: expected 16, 18..21 cols, got {arr.shape[1]}"
     )
 
 
@@ -149,16 +147,20 @@ def _filter_valid(rows: np.ndarray) -> np.ndarray:
 
 
 def _bin_to_data_ndata_scanning(
-    out_spot_idx: torch.Tensor,
-    out_ring: torch.Tensor,
-    out_ieta: torch.Tensor,
-    out_iome: torch.Tensor,
-    out_scan_nr: torch.Tensor,
+    arrays: list,
+    *,
     n_ring_bins: int,
     n_eta_bins: int,
     n_ome_bins: int,
 ):
     """PF variant of ``_bin_to_data_ndata``: outputs (rowno, scanno) pairs.
+
+    ``arrays`` is a mutable list ``[out_spot_idx, out_ring, out_ieta,
+    out_iome, out_scan_nr]`` that is CLEARED on entry: at multi-1e9 pairs
+    each of these int64 tensors is tens of GB, and taking sole ownership
+    (caller keeps no references) lets the prompt ``del``s below actually
+    free them. Peak memory is ~5 pair-length tensors (the argsort) instead
+    of ~10 for the naive path. Output is unchanged.
 
     Layout (per ``SaveBinDataScanning.c:560-705``):
       - Output is grouped by ring, then eta, then ome (matches FF binner).
@@ -169,26 +171,35 @@ def _bin_to_data_ndata_scanning(
         the running total of spots (NOT pairs) preceding this bin in the
         ring/eta/ome traversal order.
     """
+    out_spot_idx, out_ring, out_ieta, out_iome, out_scan_nr = arrays
+    arrays.clear()
     device = out_spot_idx.device
 
     # Modulo wrap (negative-aware), same as FF binner.
     ieta_mod = (out_ieta % n_eta_bins + n_eta_bins) % n_eta_bins
+    del out_ieta
     iome_mod = (out_iome % n_ome_bins + n_ome_bins) % n_ome_bins
+    del out_iome
 
     # iRing in C is ``ringnr - 1``; ring-bin axis is [0, HighestRingNo).
     iring = out_ring - 1
+    del out_ring
 
-    # Drop entries whose ring index is out of range.
+    # Drop entries whose ring index is out of range. (Defensive; ring_nr is
+    # filtered upstream — fast-path the all-true case to avoid 5 full copies.)
     mask = (iring >= 0) & (iring < n_ring_bins)
-    iring = iring[mask]
-    ieta_mod = ieta_mod[mask]
-    iome_mod = iome_mod[mask]
-    out_spot_idx = out_spot_idx[mask]
-    out_scan_nr = out_scan_nr[mask]
+    if not bool(mask.all()):
+        iring = iring[mask]
+        ieta_mod = ieta_mod[mask]
+        iome_mod = iome_mod[mask]
+        out_spot_idx = out_spot_idx[mask]
+        out_scan_nr = out_scan_nr[mask]
+    del mask
 
     # Composite bin id (ring outer, eta middle, ome inner) — same order
     # as the FF binner writes.
     bin_id = (iring.long() * n_eta_bins + ieta_mod.long()) * n_ome_bins + iome_mod.long()
+    del iring, ieta_mod, iome_mod
 
     if out_spot_idx.numel() == 0:
         total_bins = n_ring_bins * n_eta_bins * n_ome_bins
@@ -199,12 +210,20 @@ def _bin_to_data_ndata_scanning(
         return data, ndata
 
     # Stable secondary sort by spot_idx for deterministic order within a bin.
+    # The composite key is built IN-PLACE on bin_id, and (bin_id, spot_idx)
+    # are recovered exactly from the sorted key by divmod — this avoids two
+    # extra pair-length tensors vs. the keep-everything formulation.
     max_spot = int(out_spot_idx.max().item()) + 2
-    composite = bin_id * max_spot + out_spot_idx
-    order = torch.argsort(composite, stable=True)
-    sorted_bin_id = bin_id[order]
-    sorted_spot_idx = out_spot_idx[order]
+    bin_id.mul_(max_spot).add_(out_spot_idx)          # bin_id := composite
+    del out_spot_idx
+    order = torch.argsort(bin_id, stable=True)
+    sorted_comp = bin_id[order]
+    del bin_id
+    sorted_bin_id = sorted_comp // max_spot
+    sorted_spot_idx = sorted_comp - sorted_bin_id * max_spot
+    del sorted_comp
     sorted_scan_nr = out_scan_nr[order]
+    del out_scan_nr, order
 
     # Counts per bin.
     total_bins = n_ring_bins * n_eta_bins * n_ome_bins
@@ -420,25 +439,56 @@ def bin_data_scanning(
     n_eta_bins = math.ceil(360.0 / paramstest.EtaBinSize)
     n_ome_bins = math.ceil(360.0 / paramstest.OmeBinSize)
 
-    out_spot_idx, out_ring, out_ieta, out_iome = _bin_assignment(
-        spots_t,
-        ring_radii_t,
-        margin_ome=paramstest.MarginOme,
-        margin_eta=paramstest.MarginEta,
-        eta_bin_size=paramstest.EtaBinSize,
-        ome_bin_size=paramstest.OmeBinSize,
-        step_size_orient=paramstest.StepSizeOrient,
-    )
-    # Look up scan_nr per output triple from spot index.
-    out_scan_nr = scan_nrs_t[out_spot_idx]
-
     # Note: C stores ``rowno = i`` (0-based) and ``scanno`` in Data.bin.
     # Our ``out_spot_idx`` is 0-based row index after the global sort, so
     # it matches ``rowno`` semantics 1:1.
-    data_pairs, ndata = _bin_to_data_ndata_scanning(
-        out_spot_idx, out_ring, out_ieta, out_iome, out_scan_nr,
-        n_ring_bins=n_ring_bins, n_eta_bins=n_eta_bins, n_ome_bins=n_ome_bins,
-    )
+    #
+    # PER-RING processing: Data.bin's layout is RING-MAJOR (ring, eta, ome),
+    # so packing one ring at a time and concatenating the per-ring data
+    # slices is BIT-IDENTICAL to the all-at-once path while dividing the
+    # peak pair-array memory by the number of active rings. Each ring is
+    # selected by zeroing every other ring's radius (reusing
+    # ``_bin_assignment``'s existing radius>0 keep filter). ``ndata``
+    # counts accumulate into the global bin table; offsets are the running
+    # cumsum over the ring-major traversal, computed once at the end.
+    # The 5 pair-length arrays are handed over in a container so the callee
+    # takes SOLE ownership (it clears the list) — required for its internal
+    # frees to work; at multi-1e9 pairs each array is tens of GB.
+    total_bins = n_ring_bins * n_eta_bins * n_ome_bins
+    counts_total = torch.zeros(total_bins, dtype=torch.int64, device=dev)
+    _data_parts = []
+    _active_rings = [r for r in range(ring_radii_t.shape[0])
+                     if float(ring_radii_t[r].item()) > 0]
+    for _r in _active_rings:
+        _rr_one = torch.zeros_like(ring_radii_t)
+        _rr_one[_r] = ring_radii_t[_r]
+        _pair_arrays = list(_bin_assignment(
+            spots_t,
+            _rr_one,
+            margin_ome=paramstest.MarginOme,
+            margin_eta=paramstest.MarginEta,
+            eta_bin_size=paramstest.EtaBinSize,
+            ome_bin_size=paramstest.OmeBinSize,
+            step_size_orient=paramstest.StepSizeOrient,
+        ))
+        # Look up scan_nr per output triple from spot index.
+        _pair_arrays.append(scan_nrs_t[_pair_arrays[0]])
+        _data_r, _ndata_r = _bin_to_data_ndata_scanning(
+            _pair_arrays,
+            n_ring_bins=n_ring_bins, n_eta_bins=n_eta_bins, n_ome_bins=n_ome_bins,
+        )
+        counts_total += _ndata_r[:, 0]
+        del _ndata_r
+        if _data_r.shape[0]:
+            _data_parts.append(_data_r)
+        del _data_r
+
+    data_pairs = (torch.cat(_data_parts) if _data_parts
+                  else torch.zeros((0, 2), dtype=torch.int64, device=dev))
+    _data_parts.clear()
+    offsets_total = torch.zeros(total_bins, dtype=torch.int64, device=dev)
+    offsets_total[1:] = torch.cumsum(counts_total[:-1], dim=0)
+    ndata = torch.stack([counts_total, offsets_total], dim=1)
 
     if write:
         bio.write_data_ndata_bin_scanning(

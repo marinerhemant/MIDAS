@@ -31,6 +31,7 @@ iteration order, which is row order in InputAll.csv == ascending
 from __future__ import annotations
 
 import math
+import os
 from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Optional, Union
@@ -225,31 +226,58 @@ def _bin_assignment(
         empty = torch.empty((0,), dtype=torch.long, device=device)
         return empty, empty, empty, empty
 
-    # Build flat arrays of (spot_idx, ring, iEta, iOme).
-    # We do this with cumsum-based offsets and segment indices.
-    cum = torch.cumsum(n_pairs_per, dim=0)
-    seg_starts = cum - n_pairs_per
+    # Build flat arrays of (spot_idx, ring, iEta, iOme) in SPOT CHUNKS.
+    # The all-at-once expansion holds ~10 pair-length int64 tensors
+    # simultaneously; at multi-1e9 pairs (dense pf-HEDM layers: 100k+ spots
+    # x ~60 bins each x 259 scans) that exceeds even 250 GB RAM — observed
+    # as CUDA OOM (60 GiB single tensor) and kernel OOM-kills. Chunking over
+    # spots bounds the transient to ~O(pair budget) while producing
+    # BIT-IDENTICAL output: the expansion is per-spot (pos is the LOCAL
+    # offset within each spot's segment), and chunks preserve spot order,
+    # so the concatenated flat arrays match the unchunked path exactly.
+    # The layout stays (iEta outer, iOme inner) matching C
+    # ``for iEta0 ... for iOme0`` (SaveBinData.c): pos = i_eta * n_ome + i_ome.
+    pair_budget = int(os.environ.get("MIDAS_BIN_PAIR_CHUNK", str(2 ** 28)))
+    if device.type == "mps":
+        # Multi-chunk int64 ops segfault on MPS (dev-Mac only; small data).
+        # A single chunk reproduces the legacy all-at-once path, which is
+        # fine there. Linux CPU/CUDA (production) chunk normally.
+        pair_budget = 2 ** 62
+    # Chunk-boundary bookkeeping runs on CPU regardless of the compute
+    # device: the tensors are spot-length (small), and int64 searchsorted
+    # segfaults on MPS.
+    cum = torch.cumsum(n_pairs_per, dim=0).to("cpu")
+    n_kept = int(n_pairs_per.shape[0])
+    outs_spot, outs_ring, outs_ieta, outs_iome = [], [], [], []
+    start = 0
+    while start < n_kept:
+        base = int(cum[start - 1].item()) if start > 0 else 0
+        end = int(torch.searchsorted(cum, base + pair_budget, right=True).item())
+        end = min(max(end, start + 1), n_kept)          # >=1 spot per chunk
+        npp = n_pairs_per[start:end]
+        c_total = int(npp.sum().item())
+        if c_total == 0:
+            start = end
+            continue
+        seg_starts = torch.cumsum(npp, dim=0) - npp
+        pos = torch.arange(c_total, device=device) - torch.repeat_interleave(seg_starts, npp)
+        c_n_ome = torch.repeat_interleave(n_ome_per[start:end], npp).clamp(min=1)
+        eta_off = pos // c_n_ome
+        ome_off = pos - eta_off * c_n_ome
+        del pos, c_n_ome
+        outs_spot.append(torch.repeat_interleave(spot_idx_all[start:end], npp))
+        outs_ring.append(torch.repeat_interleave(ring_nr[start:end], npp))
+        outs_ieta.append(torch.repeat_interleave(ieta_min[start:end], npp) + eta_off)
+        outs_iome.append(torch.repeat_interleave(iome_min[start:end], npp) + ome_off)
+        del eta_off, ome_off
+        start = end
 
-    # Per-output-row source-spot index
-    # (Equivalent to ``np.repeat(spot_idx, n_pairs_per)``, but in torch.)
-    out_spot_idx = torch.repeat_interleave(spot_idx_all, n_pairs_per)
-    out_ring = torch.repeat_interleave(ring_nr, n_pairs_per)
-    out_n_eta = torch.repeat_interleave(n_eta_per, n_pairs_per)
-    out_ieta_min = torch.repeat_interleave(ieta_min, n_pairs_per)
-    out_iome_min = torch.repeat_interleave(iome_min, n_pairs_per)
-
-    pos = torch.arange(total, device=device) - torch.repeat_interleave(seg_starts, n_pairs_per)
-    eta_off = pos // out_n_eta.clamp(min=1)
-    # NOTE: above we want the layout (iEta outer, iOme inner) matching C
-    # ``for iEta0 ... for iOme0``. So:
-    #   pos = i_eta * n_ome_per + i_ome
-    # We need the per-spot n_ome to recover the inner iteration.
-    out_n_ome = torch.repeat_interleave(n_ome_per, n_pairs_per)
-    eta_off = pos // out_n_ome.clamp(min=1)
-    ome_off = pos - eta_off * out_n_ome.clamp(min=1)
-
-    out_ieta = out_ieta_min + eta_off
-    out_iome = out_iome_min + ome_off
+    # Concatenate one output at a time, freeing chunk pieces as we go, to
+    # keep the peak at ~(4 outputs + 1 cat copy) rather than 2x everything.
+    out_spot_idx = torch.cat(outs_spot); outs_spot.clear()
+    out_ring = torch.cat(outs_ring); outs_ring.clear()
+    out_ieta = torch.cat(outs_ieta); outs_ieta.clear()
+    out_iome = torch.cat(outs_iome); outs_iome.clear()
 
     return out_spot_idx, out_ring, out_ieta, out_iome
 
@@ -270,28 +298,41 @@ def _bin_to_data_ndata(
     """
     device = out_spot_idx.device
 
+    # NB memory hygiene: at multi-1e9 pairs each pair-length int64 tensor is
+    # tens of GB; intermediates are freed (del) as soon as they are consumed
+    # so the peak stays at ~6 pair-length tensors (the argsort) instead of ~10.
+
     # Modulo wrap (negative-aware).
     ieta_mod = (out_ieta % n_eta_bins + n_eta_bins) % n_eta_bins
+    del out_ieta
     iome_mod = (out_iome % n_ome_bins + n_ome_bins) % n_ome_bins
+    del out_iome
 
     # iRing in C is `ringnr - 1`; ring-bin axis is [0, HighestRingNo).
     iring = out_ring - 1
+    del out_ring
 
     # Drop entries whose ring index is out of range. (Defensive; ring_nr is
-    # filtered upstream.)
+    # filtered upstream — fast-path the all-true case to avoid 4 full copies.)
     mask = (iring >= 0) & (iring < n_ring_bins)
-    iring = iring[mask]
-    ieta_mod = ieta_mod[mask]
-    iome_mod = iome_mod[mask]
-    out_spot_idx = out_spot_idx[mask]
+    if not bool(mask.all()):
+        iring = iring[mask]
+        ieta_mod = ieta_mod[mask]
+        iome_mod = iome_mod[mask]
+        out_spot_idx = out_spot_idx[mask]
+    del mask
 
     # Composite bin id for sorting (ring outer, eta middle, ome inner).
     bin_id = (iring.long() * n_eta_bins + ieta_mod.long()) * n_ome_bins + iome_mod.long()
+    del iring, ieta_mod, iome_mod
     # Stable sort by (bin_id, spot_idx) for deterministic insertion order.
     composite = bin_id * (out_spot_idx.max().item() + 2 if out_spot_idx.numel() else 1) + out_spot_idx
     order = torch.argsort(composite, stable=True)
+    del composite
     sorted_bin_id = bin_id[order]
+    del bin_id
     sorted_spot_idx = out_spot_idx[order]
+    del out_spot_idx, order
 
     # Counts per bin: scatter add ones.
     total_bins = n_ring_bins * n_eta_bins * n_ome_bins
@@ -438,13 +479,17 @@ def bin_data(
     spots_out = torch.cat([spots_out, scan_nr_col], dim=1)  # (N, 10)
     # ExtraInfo.bin is 16 cols; drop CSV cols 14 and 15 (the C version's dummy0/dummy1).
     # See SaveBinData.c — sscanf maps CSV[16, 17] to AllSpots[14, 15].
-    if extra_t.shape[1] == 18:
+    # The 20-col appended layout (OrigSpotID/ReturnCode, N2+E3) reduces to
+    # the same 16 binary cols — the binary stride is NEVER widened (C
+    # consumers mmap fixed 16-double rows).
+    if extra_t.shape[1] in (18, 20):
         extra_out = torch.cat([extra_t[:, :14], extra_t[:, 16:18]], dim=1)
     elif extra_t.shape[1] == 16:
         extra_out = extra_t
     else:
         raise ValueError(
-            f"InputAllExtraInfoFittingAll must have 16 or 18 cols, got {extra_t.shape[1]}"
+            "InputAllExtraInfoFittingAll must have 16, 18, or 20 cols, "
+            f"got {extra_t.shape[1]}"
         )
 
     if write:

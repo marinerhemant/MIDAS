@@ -63,7 +63,7 @@ def tmp_pf_scan_dir(tmp_path: Path) -> Path:
     # GrainRadius > 0.0001 so they all pass the filter.
     # Layout cols 0..13: YLab, ZLab, Omega, GrainRadius, SpotID,
     #                    RingNumber, Eta, Ttheta, OmegaIni,
-    #                    YOrigDetCor, ZOrigDetCor, YOrigNoWedge, ZOrigNoWedge,
+    #                    YOrigDetCor, ZOrigDetCor, YRawPx, ZRawPx,
     #                    IntegratedIntensity
     # Cols 14..15: dummies
     # Cols 16..17: RawSumIntensity, FitRMSE (or similar)
