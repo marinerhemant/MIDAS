@@ -77,58 +77,98 @@ def _run_pf(ctx: StageContext, started: float, peakfit_run) -> StageResult:
             layer_nr=ctx.layer_nr,
             raw_dir=cfg.raw_dir,
             n_scans_hint=cfg.scan.n_scans,
+            work_dir=getattr(cfg, "scan_work_dir", None),
         )
-    except (FileNotFoundError, ValueError) as e:
+    except FileNotFoundError as e:
+        # P0-2: missing positions.csv in PF mode is a HARD error. Every
+        # early PF stage used to soft-skip here, so a missing file made
+        # the whole run exit 0 having done nothing. (FF never enters this
+        # path — _run_pf is dispatched only when ctx.is_pf; the pipeline
+        # materializes positions.csv at layer setup, so this fires only
+        # for manually-driven stages or a deleted file.)
+        raise RuntimeError(
+            f"peakfit(PF): scan discovery failed: {e}. Refusing to "
+            "soft-skip in PF mode."
+        ) from e
+    except ValueError as e:
+        # Incomplete Parameters.txt (no FileStem / StartFileNrFirstLayer):
+        # tolerated for smoke/partial runs; the missing-positions case
+        # above is the silent-corruption one.
         LOG.warning("peakfit(PF): scan discovery failed (%s); skip.", e)
         return stub_run("peakfit", ctx)
 
-    written: list[Path] = []
-    skipped_cached = 0
-    failed = 0
+    from .._pf_scans import fan_out_scans
 
-    num_procs = max(1, cfg.n_cpus_local)
-    device = cfg.device if cfg.device else "cpu"
+    # N5: fan out scans across workers/GPUs. Each worker claims its scan
+    # (two independent runners can no longer double-process the same
+    # scan) and gets a round-robin CUDA device; n_cpus_local is split
+    # between concurrent scans so peakfit's internal frame pool doesn't
+    # oversubscribe.
+    n_workers = max(1, int(getattr(cfg, "scan_workers", 1)))
+    num_procs = max(1, cfg.n_cpus_local // n_workers)
+    base_device = cfg.device if cfg.device else "cpu"
     dtype = cfg.dtype if cfg.dtype else "float64"
+    n_gpus = 0
+    if base_device.startswith("cuda"):
+        try:
+            import torch
+            n_gpus = torch.cuda.device_count()
+        except Exception:
+            n_gpus = 0
 
-    for s in scans:
+    def _device_for(scan_nr: int) -> str:
+        if n_workers > 1 and n_gpus > 1 and base_device == "cuda":
+            return f"cuda:{(scan_nr - 1) % n_gpus}"
+        return base_device
+
+    def _do_scan(s):
         if s.allpeaks_ps_bin.exists():
-            skipped_cached += 1
-            written.append(s.allpeaks_ps_bin)
-            continue
+            return "cached"
         if not s.zip_path.exists():
             LOG.warning("peakfit(PF): scan %d zip missing at %s; skip.",
                         s.scan_nr, s.zip_path)
-            failed += 1
-            continue
+            return "failed"
         if not s.hkls_csv.exists():
             LOG.warning("peakfit(PF): scan %d missing hkls.csv at %s — "
                         "the hkl stage didn't run; skip.",
                         s.scan_nr, s.hkls_csv)
-            failed += 1
-            continue
+            return "failed"
         s.temp_dir.mkdir(parents=True, exist_ok=True)
         t0 = time.time()
-        try:
-            peakfit_run(
-                data_file=str(s.zip_path),
-                block_nr=0, n_blocks=1, num_procs=num_procs,
-                result_folder_cli=str(s.scan_dir),
-                fit_peaks_cli=1,
-                device=device, dtype=dtype,
-            )
-        except Exception as e:
-            LOG.warning("peakfit(PF): scan %d (%s) failed: %s",
-                        s.scan_nr, s.zip_path.name, e)
-            failed += 1
-            continue
-        if s.allpeaks_ps_bin.exists():
-            written.append(s.allpeaks_ps_bin)
-            LOG.info("peakfit(PF): scan %d/%d done in %.1fs (%s)",
-                     s.scan_nr, len(scans), time.time() - t0, s.allpeaks_ps_bin.name)
-        else:
+        peakfit_run(
+            data_file=str(s.zip_path),
+            block_nr=0, n_blocks=1, num_procs=num_procs,
+            result_folder_cli=str(s.scan_dir),
+            fit_peaks_cli=1,
+            device=_device_for(s.scan_nr), dtype=dtype,
+        )
+        if not s.allpeaks_ps_bin.exists():
             LOG.warning("peakfit(PF): scan %d ran but %s missing.",
                         s.scan_nr, s.allpeaks_ps_bin)
+            return "failed"
+        LOG.info("peakfit(PF): scan %d/%d done in %.1fs (%s)",
+                 s.scan_nr, len(scans), time.time() - t0,
+                 s.allpeaks_ps_bin.name)
+        return "ok"
+
+    outcomes = fan_out_scans(scans, _do_scan, layer_dir=layer_dir,
+                             stage="peakfit", n_workers=n_workers)
+    written: list[Path] = []
+    skipped_cached = 0
+    failed = 0
+    for s, out in outcomes:
+        if isinstance(out, Exception):
+            LOG.warning("peakfit(PF): scan %d (%s) failed: %s",
+                        s.scan_nr, s.zip_path.name, out)
             failed += 1
+        elif out == "cached":
+            skipped_cached += 1
+            written.append(s.allpeaks_ps_bin)
+        elif out == "ok":
+            written.append(s.allpeaks_ps_bin)
+        elif out == "failed":
+            failed += 1
+        # "claimed-elsewhere": another runner owns it; count as neither.
 
     LOG.info("peakfit(PF): %d processed + %d cached + %d failed (total %d scans)",
              len(written) - skipped_cached, skipped_cached, failed, len(scans))

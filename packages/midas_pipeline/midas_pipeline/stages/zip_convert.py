@@ -45,25 +45,38 @@ def _run_pf(ctx: StageContext, started: float) -> StageResult:
             layer_nr=ctx.layer_nr,
             raw_dir=cfg.raw_dir,
             n_scans_hint=cfg.scan.n_scans,
+            work_dir=getattr(cfg, "scan_work_dir", None),
         )
-    except (FileNotFoundError, ValueError) as e:
+    except FileNotFoundError as e:
+        # P0-2: missing positions.csv in PF mode is a HARD error. Every
+        # early PF stage used to soft-skip here, so a missing file made
+        # the whole run exit 0 having done nothing. (FF never enters this
+        # path — _run_pf is dispatched only when ctx.is_pf; the pipeline
+        # materializes positions.csv at layer setup, so this fires only
+        # for manually-driven stages or a deleted file.)
+        raise RuntimeError(
+            f"zip_convert(PF): scan discovery failed: {e}. Refusing to "
+            "soft-skip in PF mode."
+        ) from e
+    except ValueError as e:
+        # Incomplete Parameters.txt (no FileStem / StartFileNrFirstLayer):
+        # tolerated for smoke/partial runs; the missing-positions case
+        # above is the silent-corruption one.
         LOG.warning("zip_convert(PF): scan discovery failed (%s); skip.", e)
         return stub_run("zip_convert", ctx)
 
-    n_present = 0
-    n_built = 0
-    n_failed = 0
+    from .._pf_scans import fan_out_scans
 
-    for s in scans:
+    # N6: I/O-bound subprocess per scan — thread fan-out with per-scan
+    # claims. zip_workers=1 is the serial legacy behaviour.
+    def _do_scan(s):
         if s.zip_path.exists():
-            n_present += 1
-            continue
+            return "present"
         if not cfg.convert_files:
             LOG.warning("zip_convert(PF): scan %d zip missing (%s) and "
                         "--convert-files is off; skip.",
                         s.scan_nr, s.zip_path)
-            n_failed += 1
-            continue
+            return "failed"
         s.scan_dir.mkdir(parents=True, exist_ok=True)
         if not _generate_zip(
             param_file=cfg.params_file,
@@ -73,17 +86,34 @@ def _run_pf(ctx: StageContext, started: float) -> StageResult:
             preproc_thresh=cfg.preproc_thresh,
             num_files_per_scan=cfg.num_files_per_scan,
         ):
-            n_failed += 1
-            continue
+            return "failed"
         if s.zip_path.exists():
-            n_built += 1
-        else:
-            LOG.warning("zip_convert(PF): scan %d generator returned ok "
-                        "but %s is missing.", s.scan_nr, s.zip_path)
-            n_failed += 1
+            return "built"
+        LOG.warning("zip_convert(PF): scan %d generator returned ok "
+                    "but %s is missing.", s.scan_nr, s.zip_path)
+        return "failed"
+
+    outcomes = fan_out_scans(
+        scans, _do_scan, layer_dir=layer_dir, stage="zip_convert",
+        n_workers=max(1, int(getattr(cfg, "zip_workers", 1))),
+    )
+    n_present = sum(1 for _s, o in outcomes if o == "present")
+    n_built = sum(1 for _s, o in outcomes if o == "built")
+    n_failed = sum(1 for _s, o in outcomes
+                   if o == "failed" or isinstance(o, Exception))
 
     LOG.info("zip_convert(PF): %d pre-existing + %d built + %d failed "
              "(of %d scans)", n_present, n_built, n_failed, len(scans))
+    # N9: when EVERY scan failed, the run used to march on with a WARNING
+    # ("0 built + N failed") and "succeed" — e.g. a missing tqdm in a
+    # fresh env made every midas_zipper invocation exit 1. Fail hard.
+    if scans and (n_present + n_built) == 0:
+        raise RuntimeError(
+            f"zip_convert(PF): all {len(scans)} scans failed to produce a "
+            ".MIDAS.zip. Check midas_log/ZipErr.txt in a scan dir — a "
+            "broken environment (e.g. missing dependency) fails every "
+            "scan identically."
+        )
     finished = time.time()
     return StageResult(
         stage_name="zip_convert",

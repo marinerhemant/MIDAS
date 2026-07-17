@@ -185,10 +185,15 @@ def _merge_inner(*args, **kwargs) -> int:
 # CSV I/O
 # ---------------------------------------------------------------------------
 
+# NB: names match the 16 kept DATA columns (cols [0..13, 16, 17] of the
+# 18-col InputAllExtra): 11/12 are raw detector pixels, 13 is the
+# det-corrected omega, and the trailing pair is maskTouched/FitRMSE. The
+# old header mislabeled 13-15 as "IntegratedIntensity RawSumIntensity
+# FitRMSE" (the two intensities are exactly what the merge DROPS).
 _MERGED_HEADER = (
     "YLab ZLab Omega GrainRadius SpotID RingNumber Eta Ttheta "
-    "OmegaIni YOrigDetCor ZOrigDetCor YOrigNoWedge ZOrigNoWedge "
-    "IntegratedIntensity RawSumIntensity FitRMSE"
+    "OmegaIni YOrigDetCor ZOrigDetCor YRawPx ZRawPx "
+    "OmegaDetCor maskTouched FitRMSE"
 )
 
 
@@ -196,7 +201,9 @@ def _read_per_scan_csv_16(path: Path) -> np.ndarray:
     """Read an 18-col ``InputAllExtraInfoFittingAll{n}.csv`` and return
     the 16 columns the C merger keeps (cols [0..13, 16, 17]).
 
-    Also tolerates 16-col files (already-merged input).
+    Also tolerates 16-col files (already-merged input). 20/21-col files
+    carry the appended OrigSpotID/ReturnCode (N2+E3) [+ DetID]; the base
+    columns sit at the same indices, so the same keep-list applies.
     """
     arr = np.loadtxt(path, skiprows=1, dtype=np.float64)
     if arr.size == 0:
@@ -205,14 +212,12 @@ def _read_per_scan_csv_16(path: Path) -> np.ndarray:
     nc = arr.shape[1]
     if nc == 16:
         return arr
-    if nc == 18:
+    if nc in (18, 19, 20, 21):
+        # 18 base / +DetID / +OrigSpotID,ReturnCode / +both — base cols
+        # are positionally identical; drop the dummies (14, 15).
         keep = np.concatenate([np.arange(14), np.arange(16, 18)])
         return arr[:, keep]
-    if nc == 19:
-        # multi-det DetID-trailing variant — drop it then drop dummies.
-        keep = np.concatenate([np.arange(14), np.arange(16, 18)])
-        return arr[:, keep]
-    raise ValueError(f"{path}: expected 16, 18, or 19 cols, got {nc}")
+    raise ValueError(f"{path}: expected 16, 18..21 cols, got {nc}")
 
 
 def _read_per_scan_csv_with_header(path: Path) -> tuple[np.ndarray, str]:

@@ -41,6 +41,18 @@ def run(ctx: StageContext) -> BinningResult:
     return _run_ff(ctx, started, out_dir)
 
 
+def _binning_device(ctx: StageContext) -> str:
+    """N7: --binning-device overrides --device for this stage only
+    ("" = inherit). Binning's pair expansion OOMs on GPU long before any
+    other stage at dense-PF scale — a CPU override keeps the rest of the
+    run on GPU."""
+    dev = getattr(ctx.config, "binning_device", "") or ctx.config.device
+    if dev != ctx.config.device:
+        LOG.info("binning: device override %s (run device %s)",
+                 dev, ctx.config.device)
+    return dev
+
+
 def _run_ff(ctx: StageContext, started: float, out_dir: Path) -> BinningResult:
     """FF-mode binning: delegate to ``midas_transforms.bin_data``.
 
@@ -84,7 +96,7 @@ def _run_ff(ctx: StageContext, started: float, out_dir: Path) -> BinningResult:
     res = bin_data(
         result_folder=ctx.layer_dir,
         out_dir=out_dir,
-        device=ctx.config.device,
+        device=_binning_device(ctx),
         dtype=ctx.config.dtype,
         write=True,
     )
@@ -167,7 +179,7 @@ def _run_pf(ctx: StageContext, started: float, out_dir: Path) -> BinningResult:
         n_scans=n_scans,
         scan_positions=scan_positions,
         out_dir=out_dir,
-        device=ctx.config.device,
+        device=_binning_device(ctx),
         dtype=ctx.config.dtype,
         write=True,
         write_positions_csv=True,

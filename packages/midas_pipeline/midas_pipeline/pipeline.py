@@ -115,6 +115,44 @@ def all_stage_names() -> List[str]:
     return [name for (name, _, _) in _STAGES]
 
 
+# N4: per-stage upstream requirements (the stage whose OUTPUT files each
+# stage consumes). Used to validate ``--only`` allowlists — both the SOH
+# and Ni campaigns independently produced broken recons from an ``--only``
+# set that omitted merge_scans/seeding/refinement (each omitted stage
+# soft-skips, the run "succeeds"). Mode-dependent entries use a dict.
+_STAGE_DEPS: dict = {
+    "peakfit":         ("zip_convert", "hkl"),
+    "merge_overlaps":  ("peakfit",),
+    "calc_radius":     ("peakfit",),
+    "transforms":      ("peakfit", "calc_radius", "hkl"),
+    "cross_det_merge": ("transforms",),
+    "global_powder":   ("calc_radius",),
+    "merge_scans":     ("transforms",),
+    "seeding":         ("merge_scans",),
+    "binning":         {"ff": ("transforms",), "pf": ("merge_scans", "seeding")},
+    "indexing":        ("binning",),
+    "refinement":      ("indexing", "binning"),
+    "find_grains":     ("refinement",),
+    "voxel_cleanup":   ("find_grains",),
+    "sinogen":         ("find_grains",),
+    "reconstruct":     ("sinogen",),
+    "fuse":            ("reconstruct",),
+    "potts":           ("fuse",),
+    "em_refine":       ("fuse",),
+    "process_grains":  ("refinement",),
+    "grain_geometry":  ("process_grains",),
+}
+
+
+def stage_deps_for(name: str, scan_mode: ScanMode) -> Tuple[str, ...]:
+    """Upstream stage names ``name`` consumes, restricted to ``scan_mode``."""
+    deps = _STAGE_DEPS.get(name, ())
+    if isinstance(deps, dict):
+        deps = deps.get(scan_mode, ())
+    mode_stages = {n for (n, _) in stage_order_for(scan_mode)}
+    return tuple(d for d in deps if d in mode_stages)
+
+
 # ---------------------------------------------------------------------------
 # Pipeline driver
 # ---------------------------------------------------------------------------
@@ -196,6 +234,26 @@ class Pipeline:
         from .stages._base import resolve_layer_dir
         layer_dir = resolve_layer_dir(self.config.result_path, layer_nr)
         layer_dir.mkdir(parents=True, exist_ok=True)
+        # P0-2: materialize positions.csv at layer setup for PF runs.
+        # Every early PF stage (zip_convert/hkl/peakfit/transforms)
+        # iterates scans from this file; before this, a missing file made
+        # them all skip and the run exited 0 having done nothing. File
+        # order = acquisition order (sign per --scan-step); never
+        # overwrite a pre-seeded file. FF is untouched — the transforms
+        # dump writes its own 1-row sentinel (midas_transforms
+        # pipeline.py:214-217).
+        if self.config.scan.is_pf:
+            lines = "".join(
+                f"{y:.6f}\n" for y in self.config.scan.scan_positions
+            )
+            layer_pcsv = layer_dir / "positions.csv"
+            if not layer_pcsv.exists():
+                layer_pcsv.write_text(lines)
+                LOG.info("materialized %s (%d scans, acquisition order)",
+                         layer_pcsv, self.config.scan.n_scans)
+            root_pcsv = Path(self.config.result_path) / "positions.csv"
+            if not root_pcsv.exists():
+                root_pcsv.write_text(lines)
         log_dir = layer_dir / "midas_log"
         log_dir.mkdir(parents=True, exist_ok=True)
         return StageContext(
@@ -235,6 +293,40 @@ class Pipeline:
         LOG.info("Layer %d — scan_mode=%s, %d stages",
                  layer_nr, scan_mode, len(stage_list))
         LOG.info("=" * 60)
+
+        # N4: validate an ``--only`` allowlist against the per-mode stage
+        # dependency graph. A dependency is satisfied when it is in the
+        # only-set, or already complete in the provenance store (resume
+        # workflows), or produced by a previous partial run. Anything else
+        # is a hard error — an omitted dependency makes each downstream
+        # stage soft-skip and the run "succeed" with a broken recon (hit
+        # independently by two campaigns from the same handoff doc).
+        if self.config.only_stages:
+            missing: dict = {}
+            only = set(self.config.only_stages)
+            for name, _fn in stage_list:
+                if name not in only or name in self.config.skip_stages:
+                    continue
+                unmet = [
+                    d for d in stage_deps_for(name, scan_mode)
+                    if d not in only
+                    and d not in self.config.skip_stages
+                    and not store.is_complete(d)
+                ]
+                if unmet:
+                    missing[name] = unmet
+            if missing:
+                detail = "; ".join(
+                    f"{k} needs {', '.join(v)}" for k, v in missing.items()
+                )
+                raise RuntimeError(
+                    f"--only allowlist omits required upstream stages "
+                    f"({detail}) that are neither selected nor already "
+                    "complete for this layer. Each omitted stage would "
+                    "soft-skip and the run would 'succeed' with a broken "
+                    "recon. Prefer --skip on the unwanted tail stages, or "
+                    "add the missing stages to --only."
+                )
 
         # Resume-from handling: skip stages strictly before resume_from_stage
         resume_after_idx = -1

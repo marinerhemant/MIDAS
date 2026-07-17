@@ -70,8 +70,23 @@ def _run_pf(ctx: StageContext, started: float, gen_fn) -> StageResult:
             layer_nr=ctx.layer_nr,
             raw_dir=cfg.raw_dir,
             n_scans_hint=cfg.scan.n_scans,
+            work_dir=getattr(cfg, "scan_work_dir", None),
         )
-    except (FileNotFoundError, ValueError) as e:
+    except FileNotFoundError as e:
+        # P0-2: missing positions.csv in PF mode is a HARD error. Every
+        # early PF stage used to soft-skip here, so a missing file made
+        # the whole run exit 0 having done nothing. (FF never enters this
+        # path — _run_pf is dispatched only when ctx.is_pf; the pipeline
+        # materializes positions.csv at layer setup, so this fires only
+        # for manually-driven stages or a deleted file.)
+        raise RuntimeError(
+            f"hkl(PF): scan discovery failed: {e}. Refusing to "
+            "soft-skip in PF mode."
+        ) from e
+    except ValueError as e:
+        # Incomplete Parameters.txt (no FileStem / StartFileNrFirstLayer):
+        # tolerated for smoke/partial runs; the missing-positions case
+        # above is the silent-corruption one.
         LOG.warning("hkl(PF): scan discovery failed (%s); skip.", e)
         return stub_run("hkl", ctx)
 

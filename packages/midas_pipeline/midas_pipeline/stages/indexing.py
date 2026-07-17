@@ -129,12 +129,22 @@ def run(ctx: StageContext) -> StageResult:
 
     paramstest = layer_dir / "paramstest.txt"
     positions_csv = layer_dir / "positions.csv"
-    # Soft fail: when upstream stages haven't produced their artefacts
-    # (e.g. running a smoke-test or partial pipeline), skip cleanly so
+    # P0-2: a missing positions.csv in PF mode is a HARD error (the
+    # pipeline materializes it at layer setup — absence means the run is
+    # broken, and soft-skipping made whole runs exit 0 doing nothing).
+    if not positions_csv.exists():
+        raise RuntimeError(
+            f"indexing(PF): missing {positions_csv}. Refusing to soft-skip "
+            "in PF mode — positions.csv is materialized at layer setup; "
+            "if driving stages manually, pre-seed it (one Y per line, "
+            "acquisition order)."
+        )
+    # Soft fail on missing upstream artefacts other than positions
+    # (e.g. running a smoke-test or partial pipeline): skip cleanly so
     # the orchestrator can continue. Hard errors only fire from inside
     # the indexer body once we know we *should* be indexing.
-    if not paramstest.exists() or not positions_csv.exists():
-        LOG.info("indexing(PF): missing paramstest or positions.csv → skip.")
+    if not paramstest.exists():
+        LOG.info("indexing(PF): missing paramstest.txt → skip.")
         return stub_run("indexing", ctx)
 
     LOG.info("indexing(PF): paramstest=%s positions=%s out=%s",

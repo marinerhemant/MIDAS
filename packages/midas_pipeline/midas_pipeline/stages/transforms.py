@@ -72,98 +72,116 @@ def _run_pf(ctx: StageContext, started: float) -> StageResult:
             layer_nr=ctx.layer_nr,
             raw_dir=cfg.raw_dir,
             n_scans_hint=cfg.scan.n_scans,
+            work_dir=getattr(cfg, "scan_work_dir", None),
         )
-    except (FileNotFoundError, ValueError) as e:
+    except FileNotFoundError as e:
+        # P0-2: missing positions.csv in PF mode is a HARD error. Every
+        # early PF stage used to soft-skip here, so a missing file made
+        # the whole run exit 0 having done nothing. (FF never enters this
+        # path — _run_pf is dispatched only when ctx.is_pf; the pipeline
+        # materializes positions.csv at layer setup, so this fires only
+        # for manually-driven stages or a deleted file.)
+        raise RuntimeError(
+            f"transforms(PF): scan discovery failed: {e}. Refusing to "
+            "soft-skip in PF mode."
+        ) from e
+    except ValueError as e:
+        # Incomplete Parameters.txt (no FileStem / StartFileNrFirstLayer):
+        # tolerated for smoke/partial runs; the missing-positions case
+        # above is the silent-corruption one.
         LOG.warning("transforms(PF): scan discovery failed (%s); skip.", e)
         return stub_run("transforms", ctx)
+
+    from .._pf_scans import fan_out_scans
 
     device = cfg.device or "cpu"
     dtype = cfg.dtype or "float64"
 
+    # N6: scans are independent — fan out with per-scan claims (workers
+    # are threads; merge/radius/fit_setup spend their time in numpy/torch
+    # kernels that release the GIL). scan_workers=1 is the serial legacy.
+    def _do_scan(s):
+        layer_extra = layer_dir / f"InputAllExtraInfoFittingAll{s.scan_nr - 1}.csv"
+        if layer_extra.exists():
+            return "cached"
+        if not s.zip_path.exists():
+            LOG.warning("transforms(PF): scan %d zip missing (%s); skip.",
+                        s.scan_nr, s.zip_path)
+            return "failed"
+        if not s.allpeaks_ps_bin.exists():
+            LOG.warning("transforms(PF): scan %d AllPeaks_PS.bin missing — "
+                        "peakfit stage must have failed; skip.", s.scan_nr)
+            return "failed"
+
+        t0 = time.time()
+        zp = read_zarr_params(s.zip_path)
+        # ── merge ──────────────────────────────────────────────────
+        merge = merge_overlapping_peaks(
+            allpeaks_ps_bin=s.allpeaks_ps_bin,
+            allpeaks_px_bin=(s.allpeaks_px_bin
+                             if s.allpeaks_px_bin.exists() else None),
+            result_folder=s.scan_dir,
+            skip_frame=zp.SkipFrame,
+            use_maxima_positions=bool(zp.UseMaximaPositions),
+            use_pixel_overlap=bool(zp.UsePixelOverlap),
+            nr_pixels=zp.NrPixels,
+            device=device, dtype=dtype,
+            write=True,
+        )
+        # ── radius ─────────────────────────────────────────────────
+        rad = calc_radius(
+            result_folder=s.scan_dir,
+            zarr_params=zp,
+            result_array=merge.peaks.detach().cpu().numpy().astype(np.float64),
+            start_nr=1,
+            end_nr=zp.EndNr if zp.EndNr > 0 else len(merge.peaks),
+            device=device, dtype=dtype,
+            write=True,
+        )
+        # ── fit_setup ──────────────────────────────────────────────
+        fs = fit_setup(
+            result_folder=s.scan_dir,
+            zarr_params=zp,
+            radius_array=rad.spots.detach().cpu().numpy().astype(np.float64),
+            device=device, dtype=dtype,
+            write=True,
+        )
+        # ── aggregate per-scan: Y-offset + Eta/Ttheta recompute ─────
+        _write_layer_extra(
+            src_extra=s.input_all_extra_csv,
+            dst_extra=layer_extra,
+            y_position=s.y_position_um,
+            Lsd=zp.Lsd,
+        )
+        LOG.info("transforms(PF): scan %d/%d done in %.1fs (%d spots)",
+                 s.scan_nr, len(scans), time.time() - t0,
+                 fs.spots_inputall.shape[0] if fs.spots_inputall is not None else 0)
+        return "ok"
+
+    outcomes = fan_out_scans(
+        scans, _do_scan, layer_dir=layer_dir, stage="transforms",
+        n_workers=max(1, int(getattr(cfg, "scan_workers", 1))),
+    )
     written: list[Path] = []
     ok = 0
     failed = 0
     representative_paramstest: Path | None = None
-
-    for s in scans:
+    for s, out in outcomes:
         layer_extra = layer_dir / f"InputAllExtraInfoFittingAll{s.scan_nr - 1}.csv"
-        if layer_extra.exists():
+        if isinstance(out, Exception):
+            LOG.warning("transforms(PF): scan %d failed: %s", s.scan_nr, out)
+            failed += 1
+            continue
+        if out == "failed":
+            failed += 1
+            continue
+        if out in ("ok", "cached"):
             written.append(layer_extra)
             ok += 1
-            if (s.scan_dir / "paramstest.txt").exists() and representative_paramstest is None:
+            if representative_paramstest is None and (
+                    s.scan_dir / "paramstest.txt").exists():
                 representative_paramstest = s.scan_dir / "paramstest.txt"
-            continue
-        if not s.zip_path.exists():
-            LOG.warning("transforms(PF): scan %d zip missing (%s); skip.",
-                        s.scan_nr, s.zip_path)
-            failed += 1
-            continue
-        if not s.allpeaks_ps_bin.exists():
-            LOG.warning("transforms(PF): scan %d AllPeaks_PS.bin missing — "
-                        "peakfit stage must have failed; skip.", s.scan_nr)
-            failed += 1
-            continue
-
-        t0 = time.time()
-        try:
-            zp = read_zarr_params(s.zip_path)
-            # ── merge ──────────────────────────────────────────────────
-            merge = merge_overlapping_peaks(
-                allpeaks_ps_bin=s.allpeaks_ps_bin,
-                allpeaks_px_bin=(s.allpeaks_px_bin
-                                 if s.allpeaks_px_bin.exists() else None),
-                result_folder=s.scan_dir,
-                skip_frame=zp.SkipFrame,
-                use_maxima_positions=bool(zp.UseMaximaPositions),
-                use_pixel_overlap=bool(zp.UsePixelOverlap),
-                nr_pixels=zp.NrPixels,
-                device=device, dtype=dtype,
-                write=True,
-            )
-            # ── radius ─────────────────────────────────────────────────
-            rad = calc_radius(
-                result_folder=s.scan_dir,
-                zarr_params=zp,
-                result_array=merge.peaks.detach().cpu().numpy().astype(np.float64),
-                start_nr=1,
-                end_nr=zp.EndNr if zp.EndNr > 0 else len(merge.peaks),
-                device=device, dtype=dtype,
-                write=True,
-            )
-            # ── fit_setup ──────────────────────────────────────────────
-            fs = fit_setup(
-                result_folder=s.scan_dir,
-                zarr_params=zp,
-                radius_array=rad.spots.detach().cpu().numpy().astype(np.float64),
-                device=device, dtype=dtype,
-                write=True,
-            )
-        except Exception as e:
-            LOG.warning("transforms(PF): scan %d failed: %s", s.scan_nr, e)
-            failed += 1
-            continue
-
-        # ── aggregate per-scan: Y-offset + Eta/Ttheta recompute ─────
-        try:
-            _write_layer_extra(
-                src_extra=s.input_all_extra_csv,
-                dst_extra=layer_extra,
-                y_position=s.y_position_um,
-                Lsd=zp.Lsd,
-            )
-        except Exception as e:
-            LOG.warning("transforms(PF): scan %d aggregate failed: %s",
-                        s.scan_nr, e)
-            failed += 1
-            continue
-
-        written.append(layer_extra)
-        ok += 1
-        if representative_paramstest is None and (s.scan_dir / "paramstest.txt").exists():
-            representative_paramstest = s.scan_dir / "paramstest.txt"
-        LOG.info("transforms(PF): scan %d/%d done in %.1fs (%d spots)",
-                 s.scan_nr, len(scans), time.time() - t0,
-                 fs.spots_inputall.shape[0] if fs.spots_inputall is not None else 0)
+        # "claimed-elsewhere": another runner owns it; count as neither.
 
     # ── promote paramstest.txt + hkls.csv to layer dir ─────────────
     layer_paramstest = layer_dir / "paramstest.txt"
@@ -181,11 +199,18 @@ def _write_layer_extra(*, src_extra: Path, dst_extra: Path,
                        y_position: float, Lsd: float) -> None:
     """Per pf_MIDAS.py:849-906 — apply Y-offset + recompute Eta/Ttheta.
 
-    ``InputAllExtraInfoFittingAll.csv`` columns (1-row example):
-        %YLab ZLab Omega GrainRadius SpotID RingNumber Eta Ttheta
-        OmegaIni(NoWedgeCorr) YOrig(NoWedgeCorr) ZOrig(NoWedgeCorr)
-        YOrig(DetCor) ZOrig(DetCor) OmegaOrig(DetCor)
-        IntegratedIntensity(count) RawSumIntensity maskTouched FitRMSE
+    ``InputAllExtraInfoFittingAll.csv`` columns (midas-transforms
+    ``INPUTALL_EXTRA_HEADER``; cols 11/12 are raw detector px):
+        YLab ZLab Omega GrainRadius SpotID RingNumber Eta Ttheta
+        OmegaIni YOrigDetCor ZOrigDetCor YRawPx ZRawPx
+        OmegaDetCor IntegratedIntensity RawSumIntensity maskTouched FitRMSE
+
+    The scan Y-offset is applied to the two LAB-FRAME Y columns (``YLab``
+    and the pre-wedge ``YOrigDetCor``), matching pf_MIDAS.py which shifted
+    ``%YLab`` + ``YOrig(NoWedgeCorr)``. It must NOT touch ``YRawPx``
+    (detector pixels do not move with the sample). NB: an earlier version
+    looked up the legacy-C name ``"YOrig(NoWedgeCorr)"`` here — a column no
+    header variant ever contained — silently no-opping the second shift.
     """
     import pandas as pd
 
@@ -198,11 +223,22 @@ def _write_layer_extra(*, src_extra: Path, dst_extra: Path,
     # Match pf_MIDAS.py's column-name tolerance (older binaries lose the % prefix).
     ylab_col = "%YLab" if "%YLab" in df.columns else "YLab"
 
+    # ``YOrigDetCor`` sits at col 9 under BOTH the old (mislabeled cols
+    # 11+) and the fixed header, so keying on it is version-proof. Fail
+    # loud rather than silently skipping the shift on an alien header.
+    missing = [c for c in (ylab_col, "YOrigDetCor", "GrainRadius", "ZLab")
+               if c not in df.columns]
+    if missing:
+        raise ValueError(
+            f"{src_extra}: expected InputAllExtra columns {missing} not found "
+            f"(header: {list(df.columns)[:8]}...). Cannot apply the per-scan "
+            "y-offset — refusing to write a silently unshifted layer CSV."
+        )
+
     # GrainRadius > 0.001 → spot was found (vs zero-padded rows).
     valid_mask = df["GrainRadius"] > 0.001
     df.loc[valid_mask, ylab_col] += y_position
-    if "YOrig(NoWedgeCorr)" in df.columns:
-        df.loc[valid_mask, "YOrig(NoWedgeCorr)"] += y_position
+    df.loc[valid_mask, "YOrigDetCor"] += y_position
 
     # Recompute Eta + Ttheta with the shifted y.
     y = df[ylab_col].to_numpy()

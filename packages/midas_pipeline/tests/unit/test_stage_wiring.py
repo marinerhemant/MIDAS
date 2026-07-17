@@ -83,9 +83,18 @@ def test_ff_mode_returns_skipped(stage, tmp_path: Path):
 # ---------------------------------------------------------------------------
 
 
-def test_indexing_pf_missing_inputs_skips(tmp_path: Path):
-    """No paramstest / positions.csv → skip cleanly (smoke-test contract)."""
+def test_indexing_pf_missing_positions_is_hard_error(tmp_path: Path):
+    """P0-2: missing positions.csv in PF mode is a HARD error (it made
+    whole runs exit 0 doing nothing); missing paramstest still skips
+    cleanly (smoke-test contract for partial pipelines)."""
     ctx = _ctx(tmp_path, scan_mode="pf")
+    with pytest.raises(RuntimeError, match="positions.csv"):
+        indexing.run(ctx)
+
+
+def test_indexing_pf_missing_paramstest_skips(tmp_path: Path):
+    ctx = _ctx(tmp_path, scan_mode="pf")
+    (ctx.layer_dir / "positions.csv").write_text("0.0\n5.0\n")
     result = indexing.run(ctx)
     assert result.skipped is True
 

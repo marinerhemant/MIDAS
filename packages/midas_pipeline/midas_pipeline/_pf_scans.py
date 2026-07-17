@@ -22,10 +22,13 @@ this scan sits at.
 from __future__ import annotations
 
 import logging
+import os
 import re
+import socket
+from concurrent.futures import ThreadPoolExecutor
 from dataclasses import dataclass
 from pathlib import Path
-from typing import Iterator, List, Optional
+from typing import Callable, Iterator, List, Optional, Tuple
 
 import numpy as np
 
@@ -130,7 +133,16 @@ class PFScanInfo:
 
 
 def _positions_for_layer(layer_dir: Path, n_scans_hint: Optional[int] = None) -> np.ndarray:
-    """Load 1-D Y positions (µm) for the current layer's scans, ascending.
+    """Load 1-D Y positions (µm) for the current layer's scans, in FILE ORDER.
+
+    Convention (unified with ``stages/indexing.py`` and the scanning
+    indexer): **file order == acquisition order** — row *k* is the Y
+    position of the *k*-th acquired scan (``abs_scan_nr`` ordering), which
+    may be descending for a negative ``--scan-step``. The voxel grid is
+    sorted downstream by the indexer (``midas_index.run_scanning``:
+    acquisition order for the beam-position filter, sorted for the grid).
+    An earlier version ``np.sort``-ed here, silently reversing the
+    scan↔Y pairing for descending acquisitions.
 
     Reads ``positions.csv`` if present; otherwise raises since callers
     can't iterate scans without knowing how many there are.
@@ -139,10 +151,12 @@ def _positions_for_layer(layer_dir: Path, n_scans_hint: Optional[int] = None) ->
     if not pcsv.exists():
         raise FileNotFoundError(
             f"_pf_scans: missing {pcsv}. Need positions.csv to iterate "
-            "scans for PF mode."
+            "scans for PF mode. (The pipeline materializes it at layer "
+            "setup from the scan geometry; if you are driving stages "
+            "manually, pre-seed <layer_dir>/positions.csv — one Y per "
+            "line, acquisition order.)"
         )
     arr = np.atleast_1d(np.loadtxt(pcsv, dtype=np.float64))
-    arr = np.sort(arr)
     if n_scans_hint is not None and arr.size != n_scans_hint:
         LOG.warning(
             "positions.csv has %d entries but n_scans hint is %d; using "
@@ -158,6 +172,7 @@ def iter_pf_scans(
     layer_nr: int,
     raw_dir: Optional[str | Path] = None,
     n_scans_hint: Optional[int] = None,
+    work_dir: Optional[str | Path] = None,
 ) -> List[PFScanInfo]:
     """Materialise the per-scan list for the given layer.
 
@@ -179,12 +194,20 @@ def iter_pf_scans(
         subdir name is the absolute scan number (zero-padded or not).
     n_scans_hint
         Cross-check ``positions.csv`` row count.
+    work_dir
+        N11: writable per-scan work root. When set, ``scan_dir`` (where
+        zip_convert mkdirs, Temp/ and per-scan CSVs live) is
+        ``<work_dir>/<abs_scan_nr>`` instead of the raw scan dir — needed
+        when RawFolder is read-only collaborator data. A pre-built
+        ``.MIDAS.zip`` already sitting in the raw scan dir is still
+        honoured.
 
     Returns
     -------
-    A list of ``PFScanInfo``, one per scan in this layer, ordered by
-    ascending Y position (matches the indexer / refiner's voxel grid
-    convention, see midas_index.run_scanning).
+    A list of ``PFScanInfo``, one per scan in this layer, in acquisition
+    order (== positions.csv file order): scan ``s`` pairs with row ``s-1``
+    of positions.csv. The indexer sorts positions for its voxel grid
+    itself (midas_index.run_scanning).
     """
     layer_dir = Path(layer_dir)
     kv = parse_params_kv(params_file)
@@ -194,6 +217,12 @@ def iter_pf_scans(
     padding = _int_field(kv, "Padding", default=7)
     ext = _str_field(kv, "Ext", default=".tif")
 
+    # Check positions FIRST: a missing positions.csv is the
+    # silent-corruption case (P0-2, hard error at the callers), and must
+    # not be masked by an incomplete Parameters.txt (soft skip).
+    positions = _positions_for_layer(layer_dir, n_scans_hint=n_scans_hint)
+    n_scans = positions.size
+
     if start_nr_first_layer is None:
         raise ValueError(
             "_pf_scans: Parameters.txt missing StartFileNrFirstLayer."
@@ -202,9 +231,6 @@ def iter_pf_scans(
         raise ValueError(
             "_pf_scans: Parameters.txt missing NrFilesPerSweep / numFilesPerScan."
         )
-
-    positions = _positions_for_layer(layer_dir, n_scans_hint=n_scans_hint)
-    n_scans = positions.size
 
     raw_root: Path
     if raw_dir is not None:
@@ -227,6 +253,12 @@ def iter_pf_scans(
         scan_dir = next((c for c in candidates if c.exists()), candidates[0])
         zip_name = f"{file_stem}_{abs_scan_nr:0{padding}d}.MIDAS.zip"
         zip_path = scan_dir / zip_name
+        if work_dir is not None:
+            # N11: raw dir stays read-only; all outputs go to the work
+            # root. Prefer a pre-built zip in the raw location.
+            raw_zip = zip_path
+            scan_dir = Path(work_dir) / str(abs_scan_nr)
+            zip_path = raw_zip if raw_zip.exists() else scan_dir / zip_name
         out.append(PFScanInfo(
             layer_nr=layer_nr,
             scan_nr=s,
@@ -245,7 +277,107 @@ def n_scans_for_layer(layer_dir: Path) -> int:
 
 __all__ = [
     "PFScanInfo",
+    "claim_scan",
+    "fan_out_scans",
     "iter_pf_scans",
     "n_scans_for_layer",
     "parse_params_kv",
+    "release_scan",
 ]
+
+
+# ---------------------------------------------------------------------------
+# Per-scan claims + fan-out (N5/N6)
+# ---------------------------------------------------------------------------
+#
+# Two independent runners racing over the same scan list both pick the
+# lowest-undone scan (observed on the Ni Layer-3 run with an external
+# 2-worker helper: outputs identical, so benign — but still wrong). A
+# per-scan CLAIM makes each scan single-owner: an atomic O_EXCL file
+# under ``<layer_dir>/midas_log/claims/`` (the layer dir, NOT the scan
+# dir — raw data may be read-only, see N11). Claims from a dead process
+# on the same host are broken automatically; claims from another host are
+# honoured (no cross-host liveness probe).
+
+
+def _claims_dir(layer_dir: Path) -> Path:
+    d = Path(layer_dir) / "midas_log" / "claims"
+    d.mkdir(parents=True, exist_ok=True)
+    return d
+
+
+def claim_scan(layer_dir: Path, stage: str, scan_nr: int) -> bool:
+    """Atomically claim ``(stage, scan_nr)``. True = we own it."""
+    path = _claims_dir(layer_dir) / f"{stage}.scan{scan_nr}.claim"
+    payload = f"{socket.gethostname()} {os.getpid()}\n"
+    for _attempt in (0, 1):
+        try:
+            fd = os.open(path, os.O_CREAT | os.O_EXCL | os.O_WRONLY)
+            with os.fdopen(fd, "w") as f:
+                f.write(payload)
+            return True
+        except FileExistsError:
+            try:
+                host, pid = path.read_text().split()
+                pid = int(pid)
+            except (ValueError, OSError):
+                return False                    # unreadable → honour it
+            if host != socket.gethostname():
+                return False                    # other host → honour it
+            try:
+                os.kill(pid, 0)
+                return False                    # live process → honour it
+            except (ProcessLookupError, PermissionError) as e:
+                if isinstance(e, PermissionError):
+                    return False                # live (not ours) → honour
+            # Stale claim from a dead local process: break it and retry.
+            LOG.warning("breaking stale %s claim for scan %d (dead pid %d)",
+                        stage, scan_nr, pid)
+            path.unlink(missing_ok=True)
+    return False
+
+
+def release_scan(layer_dir: Path, stage: str, scan_nr: int) -> None:
+    (_claims_dir(layer_dir) / f"{stage}.scan{scan_nr}.claim").unlink(
+        missing_ok=True)
+
+
+def fan_out_scans(
+    scans: List[PFScanInfo],
+    worker: Callable[[PFScanInfo], object],
+    *,
+    layer_dir: Path,
+    stage: str,
+    n_workers: int = 1,
+) -> List[Tuple[PFScanInfo, object]]:
+    """Run ``worker(scan)`` over all scans with per-scan claims.
+
+    ``n_workers == 1`` reproduces the serial loop (claims still taken, so
+    two independent runners cannot double-process a scan). Workers are
+    THREADS: every current per-scan worker either shells out (zip_convert)
+    or spends its time in numpy/torch/child-process code that releases
+    the GIL (peakfit's own frame pool, transforms' tensor ops).
+
+    Returns ``[(scan, result), ...]`` in scan order. A worker exception
+    is captured as the result (callers decide fail/skip semantics); a
+    scan claimed by another runner yields the sentinel string
+    ``"claimed-elsewhere"``.
+    """
+    def _one(s: PFScanInfo):
+        if not claim_scan(layer_dir, stage, s.scan_nr):
+            LOG.info("%s(PF): scan %d claimed by another runner; skipping.",
+                     stage, s.scan_nr)
+            return "claimed-elsewhere"
+        try:
+            return worker(s)
+        except Exception as e:          # noqa: BLE001 — caller decides
+            return e
+        finally:
+            release_scan(layer_dir, stage, s.scan_nr)
+
+    n = max(1, int(n_workers))
+    if n == 1:
+        return [(s, _one(s)) for s in scans]
+    with ThreadPoolExecutor(max_workers=n) as ex:
+        results = list(ex.map(_one, scans))
+    return list(zip(scans, results))

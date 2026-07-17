@@ -486,6 +486,28 @@ class PipelineConfig:
     grains_file: Optional[str] = None
     nf_result_dir: Optional[str] = None
 
+    # N7: per-stage device override for binning ("" = inherit --device).
+    # The pair expansion in binning OOMs on GPU long before anything else
+    # at dense-PF scale (the Ni run moved the whole tail to CPU for this)
+    # — binning is a natural CPU stage on big data.
+    binning_device: str = ""
+
+    # PF per-scan fan-out (N5/N6). 1 = serial (legacy behaviour; per-scan
+    # claims are still taken so two independent runners never
+    # double-process a scan). scan_workers parallelises peakfit +
+    # transforms across scans (peakfit round-robins CUDA devices and
+    # splits n_cpus_local between workers); zip_workers parallelises the
+    # I/O-bound zip_convert subprocesses.
+    scan_workers: int = 1
+    zip_workers: int = 1
+
+    # N11: separate "raw read dir" from "scan work dir". By default the
+    # per-scan working dir (zip_convert mkdirs, Temp/, per-scan CSVs) is
+    # the raw scan dir under RawFolder — which fails on read-only
+    # collaborator data. When set, work dirs are created here instead
+    # (symlink-farm-free equivalent of the Ni-run workaround).
+    scan_work_dir: Optional[str] = None
+
     # Ingestion
     num_frame_chunks: int = -1
     preproc_thresh: int = -1

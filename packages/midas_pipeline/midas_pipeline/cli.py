@@ -111,6 +111,23 @@ def _build_parser() -> argparse.ArgumentParser:
     # Compute
     run.add_argument("--n-cpus", type=int, default=16)
     run.add_argument("--n-cpus-local", type=int, default=4)
+    run.add_argument("--scan-workers", type=int, default=1,
+                     help="PF: concurrent scans in peakfit/transforms "
+                          "(claims prevent double-processing; peakfit "
+                          "round-robins CUDA devices and splits "
+                          "--n-cpus-local between workers). 1 = serial.")
+    run.add_argument("--zip-workers", type=int, default=1,
+                     help="PF: concurrent zip_convert subprocesses "
+                          "(I/O-bound). 1 = serial.")
+    run.add_argument("--binning-device", default="",
+                     choices=["", "cpu", "cuda", "mps"],
+                     help="device override for the binning stage only "
+                          "(default: inherit --device). Binning's pair "
+                          "expansion OOMs on GPU first at dense-PF scale.")
+    run.add_argument("--scan-work-dir", default=None,
+                     help="PF: writable per-scan work root (default: the "
+                          "raw scan dirs). Required when RawFolder is "
+                          "read-only collaborator data.")
     run.add_argument("--machine", default="local")
     run.add_argument("--n-nodes", type=int, default=1)
     run.add_argument("--device", choices=["cpu", "cuda", "mps"], default="cuda")
@@ -740,6 +757,10 @@ def build_config(args: argparse.Namespace) -> PipelineConfig:
         machine=MachineConfig(name=args.machine, n_nodes=args.n_nodes),
         n_cpus=args.n_cpus,
         n_cpus_local=args.n_cpus_local,
+        scan_workers=args.scan_workers,
+        zip_workers=args.zip_workers,
+        binning_device=args.binning_device,
+        scan_work_dir=args.scan_work_dir,
         device=args.device,
         dtype=args.dtype,
         resume=args.resume,
