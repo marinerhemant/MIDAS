@@ -333,9 +333,10 @@ def calibrate(
     # CeO2 geometries to <=3.6 px BC / <=0.24% Lsd, ~10 s each
     # (dev/paper/midas_v2_test/run_seeder_baseline.py).
     # use_diplib=False: diplib's median filter segfaults on macOS and the scipy
-    # path is equally accurate.  make_seed handles only named calibrants
-    # (CeO2/LaB6/Si/Al2O3); custom-dict calibrants fall through to PATH 3.
-    if seed is None and isinstance(calibrant, str):
+    # path is equally accurate.  make_seed accepts either a registered name
+    # (CeO2/LaB6/Si/Al2O3) or a custom lattice dict ({'a':..,'sg':..}); both
+    # get the robust seeder.  On any failure it falls through to PATH 3.
+    if seed is None:
         try:
             from ..seed.auto_seed import make_seed
             ms = make_seed(img, wavelength_A=wavelength, px_um=pxY,
