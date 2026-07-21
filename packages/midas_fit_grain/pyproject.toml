@@ -43,7 +43,7 @@ Issues = "https://github.com/marinerhemant/MIDAS/issues"
 midas-fit-grain = "midas_fit_grain.cli:main"
 
 [tool.scikit-build]
-cmake.minimum-version = "3.20"
+cmake.version = ">=3.20"
 cmake.source-dir = "."
 wheel.packages = ["midas_fit_grain"]
 # If the C target fails to build (no OpenMP / no compiler), the install still

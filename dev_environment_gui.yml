@@ -1,0 +1,56 @@
+# MIDAS dev environment: midas_gui_dev
+# midas-* packages install from GitHub source (marinerhemant/MIDAS@master, subdirectory per package).
+# All other packages are pinned to the original env's versions.
+#
+# Create:   conda env create -f dev_environment_gui.yml
+# Update midas pkgs after GitHub changes:
+#   pip install --upgrade --force-reinstall --no-deps \
+#     "git+https://github.com/marinerhemant/MIDAS.git@master#subdirectory=packages/<pkg_dir>"
+# To track your fork instead, replace marinerhemant/MIDAS with d-beniwal/MIDAS.
+name: midas_gui_dev
+channels:
+  - conda-forge
+  - nodefaults
+dependencies:
+  - python=3.12
+  - numpy=1.26.4
+  - scipy=1.13.1
+  - h5py=3.11.0
+  - matplotlib-base=3.8.4
+  - pyqtgraph=0.14.0
+  - tifffile=2023.4.12
+  - pip
+  - pip:
+      - asciitree==0.3.3
+      - deprecated==1.3.1
+      - fasteners==0.20
+      - filelock==3.29.7
+      - fsspec==2026.6.0
+      - hdf5plugin==7.0.0
+      - imageio==2.37.3
+      - jinja2==3.1.6
+      - joblib==1.5.3
+      - lazy-loader==0.5
+      - llvmlite==0.42.0
+      - markupsafe==3.0.3
+      - mpmath==1.3.0
+      - networkx==3.6.1
+      - numba==0.59.1
+      - numcodecs==0.15.1
+      - pyqt5==5.15.10
+      - pyqt5-qt5==5.15.19
+      - pyqt5-sip==12.18.0
+      - scikit-image==0.23.2
+      - sympy==1.14.0
+      - torch==2.4.0
+      - typing-extensions==4.16.0
+      - wrapt==2.2.2
+      - zarr==2.18.7
+      - "git+https://github.com/marinerhemant/MIDAS.git@master#subdirectory=packages/midas_calibrate_v2"
+      - "git+https://github.com/marinerhemant/MIDAS.git@master#subdirectory=packages/midas_calibrate"
+      - "git+https://github.com/marinerhemant/MIDAS.git@master#subdirectory=packages/midas_distortion"
+      - "git+https://github.com/marinerhemant/MIDAS.git@master#subdirectory=packages/midas_hkls"
+      - "git+https://github.com/marinerhemant/MIDAS.git@master#subdirectory=packages/midas_integrate_v2"
+      - "git+https://github.com/marinerhemant/MIDAS.git@master#subdirectory=packages/midas_integrate"
+      - "git+https://github.com/marinerhemant/MIDAS.git@master#subdirectory=packages/midas_peakfit"
+      - "git+https://github.com/marinerhemant/MIDAS.git@master#subdirectory=packages/midas_zipper"

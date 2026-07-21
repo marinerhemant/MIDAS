@@ -42,7 +42,7 @@ Issues = "https://github.com/marinerhemant/MIDAS/issues"
 midas-index = "midas_index.cli:main"
 
 [tool.scikit-build]
-cmake.minimum-version = "3.20"
+cmake.version = ">=3.20"
 cmake.source-dir = "."
 wheel.packages = ["midas_index"]
 # If the C target fails to build (no OpenMP, no compiler, missing FF_HEDM/

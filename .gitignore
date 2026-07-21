@@ -75,3 +75,4 @@ fftwf_wisdom_*.txt
 
 # parsl run directories (created at runtime; not source)
 **/runinfo/
+scratch_gui/
