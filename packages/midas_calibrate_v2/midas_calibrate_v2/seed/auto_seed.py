@@ -57,7 +57,7 @@ import math
 import os
 import time
 from dataclasses import dataclass
-from typing import Optional
+from typing import Dict, Optional, Union
 
 import numpy as np
 
@@ -130,7 +130,50 @@ def _canonical_name(calibrant: str) -> str:
     raise KeyError(f"Unknown calibrant {calibrant!r}. Known: {list(_CALIBRANTS)}")
 
 
-def _ring_table(calibrant_name: str, wavelength_A: float,
+def _resolve_calibrant(calibrant: Union[str, Dict]) -> dict:
+    """Normalize a calibrant to a full lattice spec for ring-table generation.
+
+    Accepts either a registered name (``"CeO2"``/``"LaB6"``/``"Si"``/``"Al2O3"``)
+    or a dict describing an arbitrary powder calibrant.  Mirrors the
+    ``Union[str, Dict]`` contract of :func:`midas_calibrate_v2.calibrate`.
+
+    Dict form: ``a`` and ``sg`` are required; ``b`` defaults to ``a``, ``c`` to
+    ``a``, ``alpha`` to 90, ``beta`` to ``alpha``, ``gamma`` to 90.
+
+    Returns
+    -------
+    dict with keys ``name, sg, a, b, c, alpha, beta, gamma`` (``name`` is the
+    canonical name for registered calibrants, else ``"<custom>"``).
+    """
+    if isinstance(calibrant, str):
+        name = _canonical_name(calibrant)
+        return {"name": name, **_CALIBRANTS[name]}
+    if isinstance(calibrant, dict):
+        try:
+            a = float(calibrant["a"])
+            sg = int(calibrant["sg"])
+        except KeyError as e:
+            raise ValueError(
+                f"custom calibrant dict is missing required key {e}; "
+                "required: 'a' (Å), 'sg' (space-group number). "
+                "optional: 'b', 'c' (default a), 'alpha', 'beta' (default "
+                "alpha), 'gamma' (default 90)."
+            ) from None
+        alpha = float(calibrant.get("alpha", 90.0))
+        return {
+            "name": "<custom>", "sg": sg, "a": a,
+            "b": float(calibrant.get("b", a)),
+            "c": float(calibrant.get("c", a)),
+            "alpha": alpha,
+            "beta": float(calibrant.get("beta", alpha)),
+            "gamma": float(calibrant.get("gamma", 90.0)),
+        }
+    raise TypeError(
+        f"calibrant must be a str name or a lattice dict, got {type(calibrant)}"
+    )
+
+
+def _ring_table(cal_spec: dict, wavelength_A: float,
                 n_rings: int = 30) -> list:
     """Return unique powder rings sorted by 2θ, via midas_hkls.generate_hkls.
 
@@ -147,7 +190,7 @@ def _ring_table(calibrant_name: str, wavelength_A: float,
     """
     from midas_hkls import SpaceGroup, Lattice, generate_hkls
 
-    cal = _CALIBRANTS[calibrant_name]
+    cal = cal_spec
     sg  = SpaceGroup.from_number(cal["sg"])
     lat = Lattice(a=cal["a"], b=cal["b"], c=cal["c"],
                   alpha=cal["alpha"], beta=cal["beta"], gamma=cal["gamma"])
@@ -299,7 +342,7 @@ def _visible_arc_length(R_px, BC_y, BC_z, ny, nz, n=360):
 
 
 def _assign_rings(measured_R_px, *, wavelength_A, px_um,
-                  calibrant_name, BC_y, BC_z, detector_ny, detector_nz,
+                  cal_spec, BC_y, BC_z, detector_ny, detector_nz,
                   max_first_ring=25, max_rel_residual=0.03,
                   missing_inner_penalty=0.5, gap_penalty=0.1, rms_penalty=0.1,
                   missing_inner_min_arc_px=80.0):
@@ -312,7 +355,7 @@ def _assign_rings(measured_R_px, *, wavelength_A, px_um,
     R = np.sort(np.asarray(measured_R_px, dtype=np.float64))
     if R.size == 0:
         raise ValueError("no measured radii")
-    table = _ring_table(calibrant_name, wavelength_A, n_rings=50)
+    table = _ring_table(cal_spec, wavelength_A, n_rings=50)
 
     best = None
     for k in range(min(max_first_ring, len(table))):
@@ -453,7 +496,7 @@ def _joint_bc_refine(arcs):
 def make_seed(img: np.ndarray, *,
               wavelength_A: float,
               px_um: float,
-              calibrant: str = "CeO2",
+              calibrant: Union[str, Dict] = "CeO2",
               snr_threshold: float = 4.0,
               bright_fraction_cap: float = 0.01,
               dilation_radius: int = 0,
@@ -475,8 +518,15 @@ def make_seed(img: np.ndarray, *,
         X-ray wavelength in Ångström.
     px_um : float
         Detector pixel pitch in µm (square pixel assumed).
-    calibrant : str
-        Calibrant material. Supported: ``"CeO2"``, ``"LaB6"``, ``"Si"``.
+    calibrant : str or dict
+        Calibrant material. Either a registered name (``"CeO2"``, ``"LaB6"``,
+        ``"Si"``, ``"Al2O3"``) or a dict describing an arbitrary powder
+        calibrant: required ``a`` (Å) and ``sg`` (space-group number); optional
+        ``b``, ``c`` (default ``a``), ``alpha``, ``beta`` (default ``alpha``),
+        ``gamma`` (default 90). Any material midas_hkls supports works.
+        For a dict, the returned ``Seed.calibrant_name`` is ``"<custom>"`` —
+        do not feed that back into ``calibrate()`` as a name; pass the original
+        dict instead.
     snr_threshold : float
         Threshold = max(snr_threshold × σ, bright_fraction_cap percentile).
         Default 4 (standard 4σ).
@@ -531,8 +581,10 @@ def make_seed(img: np.ndarray, *,
     """
     from skimage import measure, morphology
 
+    print(" |   MIDAS auto-seeder for BC and Lsd has been launched.", flush=True)
     t0 = time.time()
-    calibrant_name = _canonical_name(calibrant)
+    cal_spec = _resolve_calibrant(calibrant)
+    calibrant_name = cal_spec["name"]
     nz, ny = img.shape
 
     # ── A  background subtract ──────────────────────────────────────────────
@@ -612,7 +664,7 @@ def make_seed(img: np.ndarray, *,
     # ── F  ring assignment → Lsd ─────────────────────────────────────────────
     a = _assign_rings(
         R_collapsed, wavelength_A=wavelength_A, px_um=px_um,
-        calibrant_name=calibrant_name, BC_y=cx, BC_z=cy,
+        cal_spec=cal_spec, BC_y=cx, BC_z=cy,
         detector_ny=ny, detector_nz=nz)
 
     return Seed(
