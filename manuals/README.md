@@ -11,6 +11,7 @@
 |--------|-------|-------------|
 | [GPU_Acceleration.md](GPU_Acceleration.md) | GPU-accelerated computation | Building with CUDA, GPU indexing, fitting, reconstruction, and integration |
 | [FF_Calibration.md](FF_Calibration.md) | FF-HEDM geometry calibration | Setting up a new experiment; determining detector parameters |
+| [FF_Grain_Geometry_tx.md](FF_Grain_Geometry_tx.md) | Grain-based `tx` refinement | Second calibration pass: recovering the in-plane detector rotation a powder standard cannot see |
 | [FF_Analysis.md](FF_Analysis.md) | FF-HEDM grain indexing and fitting | Extracting grain orientations, positions, and strain tensors |
 | [FF_Match_Stack_Reconstructions.md](FF_Match_Stack_Reconstructions.md) | Grain matching and layer stitching | Tracking grains across load states; combining multi-layer scans |
 | [FF_Radial_Integration.md](FF_Radial_Integration.md) | Radial integration / caking | Converting 2D detector images to 1D intensity vs. 2θ profiles |
@@ -41,12 +42,13 @@ For a first-time user performing a combined FF + NF experiment:
 2. **Integrate / cake** the powder data (if WAXS analysis is needed) → [FF_Radial_Integration.md](FF_Radial_Integration.md)
 3. **(Optional)** Import caked data into GSAS-II for Rietveld refinement → [GSAS-II_Integration.md](GSAS-II_Integration.md)
 4. **Run FF-HEDM** analysis on the specimen → [FF_Analysis.md](FF_Analysis.md)
-5. **Visualize** FF results interactively → [FF_Interactive_Plotting.md](FF_Interactive_Plotting.md)
-6. **Calibrate** the NF-HEDM detectors → [NF_Calibration.md](NF_Calibration.md)
-7. **Run NF-HEDM** reconstruction using FF orientation seeds → [NF_Analysis.md](NF_Analysis.md) or [NF_MultiResolution_Analysis.md](NF_MultiResolution_Analysis.md)
-8. **Validate** results with forward simulation → [Forward_Simulation.md](Forward_Simulation.md)
-9. **Match/stitch** grains across load states or layers → [FF_Match_Stack_Reconstructions.md](FF_Match_Stack_Reconstructions.md)
-10. **(Optional)** Reconstruct tomographic slices for absorption-contrast imaging → [Tomography_Reconstruction.md](Tomography_Reconstruction.md)
+5. **Refine `tx` from the grains and re-reconstruct** — the powder calibration in step 1 could not determine it → [FF_Grain_Geometry_tx.md](FF_Grain_Geometry_tx.md)
+6. **Visualize** FF results interactively → [FF_Interactive_Plotting.md](FF_Interactive_Plotting.md)
+7. **Calibrate** the NF-HEDM detectors → [NF_Calibration.md](NF_Calibration.md)
+8. **Run NF-HEDM** reconstruction using FF orientation seeds → [NF_Analysis.md](NF_Analysis.md) or [NF_MultiResolution_Analysis.md](NF_MultiResolution_Analysis.md)
+9. **Validate** results with forward simulation → [Forward_Simulation.md](Forward_Simulation.md)
+10. **Match/stitch** grains across load states or layers → [FF_Match_Stack_Reconstructions.md](FF_Match_Stack_Reconstructions.md)
+11. **(Optional)** Reconstruct tomographic slices for absorption-contrast imaging → [Tomography_Reconstruction.md](Tomography_Reconstruction.md)
 
 ---
 
