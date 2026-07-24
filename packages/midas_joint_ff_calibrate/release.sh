@@ -113,12 +113,22 @@ if [ "$MODE" = "--dry-run" ]; then
 fi
 
 # --- 6. Commit + tag ---
+# Both the diff check and the commit are pathspec-limited to the two version
+# files. Without that, anything the user happened to have staged before running
+# this script gets swept into the "bump version" commit -- and, under --publish,
+# pushed and tagged with it. (Happened once: utils/midas_ff_report.py landed in
+# the v0.1.6 bump commit.) A bare `git diff --cached --quiet` has the same bug
+# in reverse: unrelated staged files make it report changes even when the
+# version on disk is already correct.
+VERSION_FILES=(pyproject.toml midas_joint_ff_calibrate/__init__.py)
+
 echo "[4/7] Committing version bump..."
-git add pyproject.toml midas_joint_ff_calibrate/__init__.py
-if git diff --cached --quiet; then
+git add -- "${VERSION_FILES[@]}"
+if git diff --cached --quiet -- "${VERSION_FILES[@]}"; then
     echo "  Version was already at ${NEW_VERSION} on disk; skipping commit."
 else
-    git commit -m "midas-joint-ff-calibrate: bump version to ${NEW_VERSION}"
+    git commit -m "midas-joint-ff-calibrate: bump version to ${NEW_VERSION}" \
+        -- "${VERSION_FILES[@]}"
 fi
 
 echo "[5/7] Tagging as ${TAG}..."
