@@ -413,12 +413,31 @@ def process_hdf5_scan(config, z_groups, zRoot):
                     exclude_paths={'measurement/process/scan_parameters'}
                 )
 
-            # Copy auxiliary top-level groups verbatim so downstream consumers
-            # (e.g. _enrich_zarr_with_metadata) can find timestamps and detector info
-            for grp_name in ('misc', 'Detector', 'StorageRing'):
-                if grp_name in hf:
+            # Copy every other top-level HDF5 group verbatim so downstream consumers
+            # (_enrich_zarr_with_metadata, GUI tools) can find any per-frame metadata
+            # the source HDF5 carries (samX/samY/samRy under /SMS/, timestamps under
+            # /misc/, detector temps under /Detector/, etc.) without us needing an
+            # allow-list that drifts when the beamline adds new groups.
+            _ALREADY_HANDLED = {'instrument', 'measurement', 'exchange', 'analysis'}
+            for grp_name in hf.keys():
+                if grp_name in _ALREADY_HANDLED:
+                    continue
+                item = hf[grp_name]
+                if isinstance(item, h5py.Group):
                     print(f"  - Copying {grp_name}/ group from HDF5...")
-                    _copy_hdf5_group_to_zarr(hf[grp_name], zRoot.require_group(grp_name), grp_name)
+                    _copy_hdf5_group_to_zarr(item, zRoot.require_group(grp_name), grp_name)
+                elif isinstance(item, h5py.Dataset):
+                    try:
+                        data = item[()]
+                        if not isinstance(data, np.ndarray):
+                            data = np.array([data])
+                        if grp_name in zRoot:
+                            zRoot[grp_name][...] = data
+                        else:
+                            zRoot.create_dataset(grp_name, data=data)
+                        print(f"  - Copied top-level dataset: {grp_name} (shape={data.shape})")
+                    except Exception as e:
+                        print(f"  - Warning: Could not copy top-level dataset '{grp_name}': {e}")
 
     total_frames_to_write = frames_per_file + (frames_per_file - skip_frames) * (num_files - 1)
     print(f"HDF5 scan: {num_files} file(s), {frames_per_file} frames/file. Skipping {skip_frames} from files 2+. Total frames to write: {total_frames_to_write}. Dtype: {output_dtype}")
