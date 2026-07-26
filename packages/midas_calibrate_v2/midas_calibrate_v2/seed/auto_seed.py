@@ -107,70 +107,11 @@ class Seed:
 # Calibrant registry + ring table via midas_hkls
 # ══════════════════════════════════════════════════════════════════════════════
 
-# NIST SRM lattice constants.  All entries recognised by midas_calibrate_v2's
-# CALIBRANTS dict can be added here — any material midas_hkls supports works.
-_CALIBRANTS = {
-    "CeO2":  {"sg": 225, "a": 5.4116, "b": 5.4116, "c": 5.4116,
-               "alpha": 90.0, "beta": 90.0, "gamma": 90.0},  # SRM 674b  Fm-3m
-    "LaB6":  {"sg": 221, "a": 4.1569, "b": 4.1569, "c": 4.1569,
-               "alpha": 90.0, "beta": 90.0, "gamma": 90.0},  # SRM 660c  Pm-3m
-    "Si":    {"sg": 227, "a": 5.4307, "b": 5.4307, "c": 5.4307,
-               "alpha": 90.0, "beta": 90.0, "gamma": 90.0},  # SRM 640d  Fd-3m
-    "Al2O3": {"sg": 167, "a": 4.7589, "b": 4.7589, "c": 12.9920,
-               "alpha": 90.0, "beta": 90.0, "gamma": 120.0}, # SRM 676a  R-3c
-}
-
-
-def _canonical_name(calibrant: str) -> str:
-    """Case-insensitive lookup: 'ceo2' / 'CeO2' / 'CEO2' → 'CeO2'."""
-    lc = calibrant.lower().replace("-", "").replace(" ", "")
-    for key in _CALIBRANTS:
-        if key.lower().replace("-", "") == lc:
-            return key
-    raise KeyError(f"Unknown calibrant {calibrant!r}. Known: {list(_CALIBRANTS)}")
-
-
-def _resolve_calibrant(calibrant: Union[str, Dict]) -> dict:
-    """Normalize a calibrant to a full lattice spec for ring-table generation.
-
-    Accepts either a registered name (``"CeO2"``/``"LaB6"``/``"Si"``/``"Al2O3"``)
-    or a dict describing an arbitrary powder calibrant.  Mirrors the
-    ``Union[str, Dict]`` contract of :func:`midas_calibrate_v2.calibrate`.
-
-    Dict form: ``a`` and ``sg`` are required; ``b`` defaults to ``a``, ``c`` to
-    ``a``, ``alpha`` to 90, ``beta`` to ``alpha``, ``gamma`` to 90.
-
-    Returns
-    -------
-    dict with keys ``name, sg, a, b, c, alpha, beta, gamma`` (``name`` is the
-    canonical name for registered calibrants, else ``"<custom>"``).
-    """
-    if isinstance(calibrant, str):
-        name = _canonical_name(calibrant)
-        return {"name": name, **_CALIBRANTS[name]}
-    if isinstance(calibrant, dict):
-        try:
-            a = float(calibrant["a"])
-            sg = int(calibrant["sg"])
-        except KeyError as e:
-            raise ValueError(
-                f"custom calibrant dict is missing required key {e}; "
-                "required: 'a' (Å), 'sg' (space-group number). "
-                "optional: 'b', 'c' (default a), 'alpha', 'beta' (default "
-                "alpha), 'gamma' (default 90)."
-            ) from None
-        alpha = float(calibrant.get("alpha", 90.0))
-        return {
-            "name": "<custom>", "sg": sg, "a": a,
-            "b": float(calibrant.get("b", a)),
-            "c": float(calibrant.get("c", a)),
-            "alpha": alpha,
-            "beta": float(calibrant.get("beta", alpha)),
-            "gamma": float(calibrant.get("gamma", 90.0)),
-        }
-    raise TypeError(
-        f"calibrant must be a str name or a lattice dict, got {type(calibrant)}"
-    )
+# Shared with pipelines.auto so calibrate() and make_seed() always agree on
+# the same registry and the same crystal-system-aware validation — see
+# midas_calibrate_v2.seed.calibrant for the rationale.
+from .calibrant import CALIBRANTS as _CALIBRANTS
+from .calibrant import resolve_calibrant as _resolve_calibrant
 
 
 def _ring_table(cal_spec: dict, wavelength_A: float,
