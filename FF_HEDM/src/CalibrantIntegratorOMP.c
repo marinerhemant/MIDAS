@@ -873,94 +873,153 @@ int main(int argc, char *argv[]) {
   int n_hkls = 0;
   double MaxTtheta = rad2deg * atan(MaxRingRad / Lsd);
 
-  run_midas_binary("GetHKLList", ParamFN);
-  FILE *hklf = fopen("hkls.csv", "r");
-  if (!hklf) { fprintf(stderr, "Cannot open hkls.csv\n"); return 1; }
+  double *Thetas    = NULL;
+  double *DSpacings = NULL;
+  int    *RingIDs   = NULL;
 
-  // Pre-count data lines to allocate dynamic arrays
-  char aline[1024];
-  fgets(aline, sizeof(aline), hklf);  // header
-  int hklCapacity = 0;
-  while (fgets(aline, sizeof(aline), hklf) != NULL)
-    hklCapacity++;
-  if (hklCapacity == 0) {
-    fprintf(stderr, "hkls.csv has no data lines\n");
-    fclose(hklf);
-    return 1;
-  }
-  rewind(hklf);
-
-  double *Thetas   = malloc(hklCapacity * sizeof(double));
-  double *DSpacings = malloc(hklCapacity * sizeof(double));
-  int    *RingIDs   = malloc(hklCapacity * sizeof(int));
-  if (!Thetas || !DSpacings || !RingIDs) {
-    fprintf(stderr, "Failed to allocate HKL arrays (%d entries)\n", hklCapacity);
-    fclose(hklf);
-    return 1;
-  }
-
-  // Parse header to find column indices for 'RingNr' and 'Theta'
-  fgets(aline, sizeof(aline), hklf);  // re-read header
-  int colRingNr = -1, colTheta = -1;
-  {
-    char hdrCopy[1024];
-    strncpy(hdrCopy, aline, sizeof(hdrCopy));
-    hdrCopy[sizeof(hdrCopy) - 1] = '\0';
-    char *tok = strtok(hdrCopy, " \t\r\n");
-    int col = 0;
-    while (tok) {
-      if (strcmp(tok, "RingNr") == 0)    colRingNr = col;
-      else if (strcmp(tok, "Theta") == 0) colTheta = col;
-      tok = strtok(NULL, " \t\r\n");
-      col++;
+  if (cfg.nDSpacings > 0) {
+    // ── Direct-from-DSpacings branch ─────────────────────────────────────
+    // Lamellar SAXS calibrants (e.g. silver behenate) have no useful
+    // crystallographic (SpaceGroup, LatticeConstant) — they're characterised
+    // by their d-spacings. Skip GetHKLList entirely and derive Theta per
+    // ring from Bragg's law: sin(θ) = λ / (2d). Ring numbers are assigned
+    // 1..nDSpacings in the order given, matching what the FF viewer's
+    // ring-material dialog emits.
+    int cap = cfg.nDSpacings;
+    Thetas    = malloc(cap * sizeof(double));
+    DSpacings = malloc(cap * sizeof(double));
+    RingIDs   = malloc(cap * sizeof(int));
+    if (!Thetas || !DSpacings || !RingIDs) {
+      fprintf(stderr, "Failed to allocate ring arrays (%d entries)\n", cap);
+      return 1;
     }
-  }
-  if (colRingNr < 0 || colTheta < 0) {
-    fprintf(stderr, "hkls.csv header missing required columns: "
-            "RingNr(%s) Theta(%s)\n",
-            colRingNr < 0 ? "MISSING" : "ok",
-            colTheta < 0 ? "MISSING" : "ok");
-    fclose(hklf);
-    free(Thetas); free(DSpacings); free(RingIDs);
-    return 1;
-  }
-  int maxCol = (colRingNr > colTheta) ? colRingNr : colTheta;
-
-  int LastRingDone = 0;
-  while (fgets(aline, sizeof(aline), hklf) != NULL) {
-    // Tokenize the line and extract columns by index
-    char lineCopy[1024];
-    strncpy(lineCopy, aline, sizeof(lineCopy));
-    lineCopy[sizeof(lineCopy) - 1] = '\0';
-    char *tokens[32];
-    int nTok = 0;
-    char *tok = strtok(lineCopy, " \t\r\n");
-    while (tok && nTok < 32) {
-      tokens[nTok++] = tok;
-      tok = strtok(NULL, " \t\r\n");
-    }
-    if (nTok <= maxCol) continue;  // malformed line
-
-    int tRnr = atoi(tokens[colRingNr]);
-    double theta = atof(tokens[colTheta]);
-
-    if (theta * 2 > MaxTtheta) break;
-    if (MaxRingNumber > 0 && tRnr > MaxRingNumber) break;
-    int exclude = 0;
-    for (int i = 0; i < nRingsExclude; i++)
-      if (tRnr == RingsExclude[i]) exclude = 1;
-    if (!exclude && tRnr > LastRingDone) {
-      Thetas[n_hkls] = theta;
-      DSpacings[n_hkls] = Wavelength / (2.0 * sin(theta * deg2rad));
-      RingIDs[n_hkls] = tRnr;
-      LastRingDone = tRnr;
-      printf("  Ring %d: 2θ=%.4f° R=%.1f px\n", tRnr, 2*theta,
-             Lsd * tan(deg2rad * 2 * theta) / px);
+    printf("Using %d user-supplied d-spacings (bypassing GetHKLList).\n", cap);
+    for (int i = 0; i < cap; i++) {
+      int rn = i + 1;
+      double d = cfg.DSpacings[i];
+      if (d <= 0) continue;
+      double ratio = Wavelength / (2.0 * d);
+      if (fabs(ratio) >= 1.0) {
+        printf("  Ring %d: d=%.4fÅ SKIPPED (wavelength too large for this d)\n",
+               rn, d);
+        continue;
+      }
+      double theta_deg = asin(ratio) * rad2deg;
+      if (theta_deg * 2.0 > MaxTtheta) {
+        printf("  Ring %d: d=%.4fÅ 2θ=%.4f° SKIPPED (beyond MaxRingRad)\n",
+               rn, d, 2.0 * theta_deg);
+        continue;
+      }
+      if (MaxRingNumber > 0 && rn > MaxRingNumber) continue;
+      int exclude = 0;
+      for (int e = 0; e < nRingsExclude; e++)
+        if (rn == RingsExclude[e]) exclude = 1;
+      if (exclude) continue;
+      Thetas[n_hkls]    = theta_deg;
+      DSpacings[n_hkls] = d;
+      RingIDs[n_hkls]   = rn;
+      printf("  Ring %d: d=%.4fÅ 2θ=%.4f° R=%.1f px (from DSpacing)\n",
+             rn, d, 2.0 * theta_deg,
+             Lsd * tan(deg2rad * 2.0 * theta_deg) / px);
       n_hkls++;
     }
+    printf("%d rings selected (from %d d-spacings).\n\n", n_hkls, cap);
+    if (n_hkls == 0) {
+      fprintf(stderr, "No rings retained from DSpacings after filtering.\n");
+      free(Thetas); free(DSpacings); free(RingIDs);
+      return 1;
+    }
+  } else {
+    // ── Existing crystallographic path via GetHKLList ─────────────────────
+    run_midas_binary("GetHKLList", ParamFN);
+    FILE *hklf = fopen("hkls.csv", "r");
+    if (!hklf) { fprintf(stderr, "Cannot open hkls.csv\n"); return 1; }
+
+    // Pre-count data lines to allocate dynamic arrays
+    char aline[1024];
+    fgets(aline, sizeof(aline), hklf);  // header
+    int hklCapacity = 0;
+    while (fgets(aline, sizeof(aline), hklf) != NULL)
+      hklCapacity++;
+    if (hklCapacity == 0) {
+      fprintf(stderr, "hkls.csv has no data lines\n");
+      fclose(hklf);
+      return 1;
+    }
+    rewind(hklf);
+
+    Thetas    = malloc(hklCapacity * sizeof(double));
+    DSpacings = malloc(hklCapacity * sizeof(double));
+    RingIDs   = malloc(hklCapacity * sizeof(int));
+    if (!Thetas || !DSpacings || !RingIDs) {
+      fprintf(stderr, "Failed to allocate HKL arrays (%d entries)\n", hklCapacity);
+      fclose(hklf);
+      return 1;
+    }
+
+    // Parse header to find column indices for 'RingNr' and 'Theta'
+    fgets(aline, sizeof(aline), hklf);  // re-read header
+    int colRingNr = -1, colTheta = -1;
+    {
+      char hdrCopy[1024];
+      strncpy(hdrCopy, aline, sizeof(hdrCopy));
+      hdrCopy[sizeof(hdrCopy) - 1] = '\0';
+      char *tok = strtok(hdrCopy, " \t\r\n");
+      int col = 0;
+      while (tok) {
+        if (strcmp(tok, "RingNr") == 0)    colRingNr = col;
+        else if (strcmp(tok, "Theta") == 0) colTheta = col;
+        tok = strtok(NULL, " \t\r\n");
+        col++;
+      }
+    }
+    if (colRingNr < 0 || colTheta < 0) {
+      fprintf(stderr, "hkls.csv header missing required columns: "
+              "RingNr(%s) Theta(%s)\n",
+              colRingNr < 0 ? "MISSING" : "ok",
+              colTheta < 0 ? "MISSING" : "ok");
+      fclose(hklf);
+      free(Thetas); free(DSpacings); free(RingIDs);
+      return 1;
+    }
+    int maxCol = (colRingNr > colTheta) ? colRingNr : colTheta;
+
+    int LastRingDone = 0;
+    while (fgets(aline, sizeof(aline), hklf) != NULL) {
+      // Tokenize the line and extract columns by index
+      char lineCopy[1024];
+      strncpy(lineCopy, aline, sizeof(lineCopy));
+      lineCopy[sizeof(lineCopy) - 1] = '\0';
+      char *tokens[32];
+      int nTok = 0;
+      char *tok = strtok(lineCopy, " \t\r\n");
+      while (tok && nTok < 32) {
+        tokens[nTok++] = tok;
+        tok = strtok(NULL, " \t\r\n");
+      }
+      if (nTok <= maxCol) continue;  // malformed line
+
+      int tRnr = atoi(tokens[colRingNr]);
+      double theta = atof(tokens[colTheta]);
+
+      if (theta * 2 > MaxTtheta) break;
+      if (MaxRingNumber > 0 && tRnr > MaxRingNumber) break;
+      int exclude = 0;
+      for (int i = 0; i < nRingsExclude; i++)
+        if (tRnr == RingsExclude[i]) exclude = 1;
+      if (!exclude && tRnr > LastRingDone) {
+        Thetas[n_hkls] = theta;
+        DSpacings[n_hkls] = Wavelength / (2.0 * sin(theta * deg2rad));
+        RingIDs[n_hkls] = tRnr;
+        LastRingDone = tRnr;
+        printf("  Ring %d: 2θ=%.4f° R=%.1f px\n", tRnr, 2*theta,
+               Lsd * tan(deg2rad * 2 * theta) / px);
+        n_hkls++;
+      }
+    }
+    fclose(hklf);
+    printf("%d rings selected (capacity %d).\n\n", n_hkls, hklCapacity);
   }
-  fclose(hklf);
-  printf("%d rings selected (capacity %d).\n\n", n_hkls, hklCapacity);
 
   // Build RingTable for the factored E-step
   RingTable rings = { .n_hkls = n_hkls, .Thetas = Thetas,

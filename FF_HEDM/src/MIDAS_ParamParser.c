@@ -273,6 +273,18 @@ int midas_parse_params(const char *filename, MIDASConfig *cfg) {
         sscanf(aline, "%*s %lf", &cfg->RingRadii[cfg->nRingRadii++]);
       continue;
     }
+    // DSpacing: one Å value per line, repeated (RingsToExclude idiom).
+    // Populated for lamellar SAXS calibrants like silver behenate where the
+    // rings are known by d-spacing rather than by (SpaceGroup, LatticeConstant).
+    // Downstream calibrators bypass GetHKLList when nDSpacings > 0.
+    if (key_match(aline, "DSpacing")) {
+      if (cfg->nDSpacings < MAX_N_RINGS) {
+        double d = 0.0;
+        if (sscanf(aline, "%*s %lf", &d) == 1 && d > 0)
+          cfg->DSpacings[cfg->nDSpacings++] = d;
+      }
+      continue;
+    }
 
     // ── Optimization Tolerances ──
     if (param_double(aline, "tolTilts", &cfg->tolTilts)) continue;
