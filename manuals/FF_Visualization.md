@@ -306,6 +306,32 @@ The four GE detectors are arranged at nominally equal 90° azimuthal intervals. 
 > [!NOTE]
 > These are nominal reference values. Each detector should be independently refined via `AutoCalibrateZarr.py` before analysis.
 
+#### Sample-frame axes and η convention
+
+The overlay on the composite defines the sample coordinate frame and the sign convention for the azimuthal angle η used everywhere in the caking output:
+
+- **+X** is along the beam direction (into the page in the viewer, marked ⊗).
+- **+Z** points up in the lab frame.
+- **+Y** completes the right-handed frame (out of the page to the beam-left in the viewer).
+- **η** is measured in the detector plane about +X, with **η = 0°** at +Z, increasing clockwise as seen looking toward −X (down the beam): **η = +90°** on the +Y side (right in the viewer), **η = −90°** on the −Y side (left), and **η = ±180°** at −Z (bottom).
+
+| Composite with axes overlay | Zoomed inset near beam center |
+|:---:|:---:|
+| ![Sample-frame axes on HYDRA composite](assets/ff_multidet_viewer_with_crd.png) | ![Axes + η labels — zoom](assets/ff_multidet_viewer_with_crd_magnified.png) |
+
+#### Per-detector η ranges
+
+Each of the four GE panels captures a different η wedge of the same rings; the composite in the viewer is that concatenation. The example below is a 1-ID-E CeO₂ setup where the four panels are the four quadrants (windmill layout described above); each colored wedge on the composite corresponds to one row of the per-detector cake-parameters editor:
+
+| Cake parameters (viewer UI) | Resulting η wedges on the composite |
+|:---:|:---:|
+| ![Per-detector cake parameters row](assets/ff_multidet_viewer_cake_parameters.png) | ![Per-panel η wedges](assets/ff_multidet_viewer_with_cake_parameters.png) |
+
+The fields shown are `RMin` / `RMax` / `RBinSize` / `EtaMin` / `EtaMax` / `EtaBinSize` / `OmegaSumFrames` (`ω ave`) / `OmegaStart` / `OmegaStep` — the same keys the viewer reads from each detector's MIDAS param file.
+
+> [!NOTE]
+> The η ranges use the sign convention diagrammed under **Sample-frame axes** — GE1's `η ∈ [120°, 210°]` wraps past +180° / −180° because that panel straddles the −Z (bottom) region in the composite. `combine_hydra_zarr.py` concatenates each panel's caked lineouts along η after normalizing to a common range, so the merged zarr's η axis is continuous.
+
 #### Multi-detector workflow in the GUI
 
 Use the toolbar **Mode** selector to switch between:
