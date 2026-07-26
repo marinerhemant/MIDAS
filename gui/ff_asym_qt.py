@@ -71,6 +71,38 @@ try:
 except ImportError:
     midas_config = None
 
+# Sub-pixel BC/Lsd arc fits from upstream midas-calibrate-v2. Try the normal
+# package import first; if that fails (typically because midas_calibrate_v2's
+# __init__ pulls in v1 pipelines the current env doesn't have), fall back to
+# loading _circle_fit.py directly from the fork's packages/ tree. That module
+# is pure-numpy and self-contained, so the direct load has no other deps.
+kasa_circle_fit = None
+geometric_lm_refine = None
+joint_bc_lsd_fit = None
+HAVE_CIRCLE_FIT = False
+try:
+    from midas_calibrate_v2.gui._circle_fit import (  # type: ignore
+        kasa_circle_fit, geometric_lm_refine, joint_bc_lsd_fit,
+    )
+    HAVE_CIRCLE_FIT = True
+except ImportError:
+    import importlib.util as _iu
+    _cf_path = os.path.abspath(os.path.join(
+        os.path.dirname(__file__), '..',
+        'packages', 'midas_calibrate_v2', 'midas_calibrate_v2', 'gui',
+        '_circle_fit.py'))
+    if os.path.exists(_cf_path):
+        try:
+            _cf_spec = _iu.spec_from_file_location('_ff_asym_circle_fit', _cf_path)
+            _cf_mod = _iu.module_from_spec(_cf_spec)
+            _cf_spec.loader.exec_module(_cf_mod)
+            kasa_circle_fit = _cf_mod.kasa_circle_fit
+            geometric_lm_refine = _cf_mod.geometric_lm_refine
+            joint_bc_lsd_fit = _cf_mod.joint_bc_lsd_fit
+            HAVE_CIRCLE_FIT = True
+        except Exception:
+            HAVE_CIRCLE_FIT = False
+
 # ── Constants ──
 deg2rad = 0.0174532925199433
 rad2deg = 57.2957795130823
@@ -565,6 +597,15 @@ class FFViewer(QtWidgets.QMainWindow):
         self.rings_to_show = []
         self.show_rings = False
         self._ring_items = []
+
+        # Arc-fit BC/Lsd click-capture state. Owned by FFViewer so a single
+        # sigMouseClicked wire can serve any ArcFitDialog instance without
+        # touching MIDASImageView. See _open_arc_fit_dialog / ArcFitDialog.
+        self._arc_pick_mode = False
+        self._arc_pick_ring_idx = None      # index into self.ring_rads
+        self._arc_pick_points = []          # current-ring pick buffer [(x,y),...]
+        self._arc_pick_history = []         # completed rings: [(ring_idx, points, tth), ...]
+        self._arc_fit_dialog = None         # weakref-ish handle for status updates
 
         # Lab-frame axes overlay
         self.show_axes = False
@@ -1314,7 +1355,15 @@ class FFViewer(QtWidgets.QMainWindow):
 
         btn_rings = QtWidgets.QPushButton("Rings Material")
         btn_rings.clicked.connect(self._on_ring_selection)
-        lay.addWidget(btn_rings, 0, 0, 1, 2)
+        lay.addWidget(btn_rings, 0, 0)
+        btn_arcfit = QtWidgets.QPushButton("Arc-fit BC/Lsd…")
+        btn_arcfit.setToolTip(
+            "Click 5+ points on visible ring arcs to derive a sub-pixel BC "
+            "(and Lsd once ≥1 ring is picked with known 2θ). Useful when the "
+            "beam is off-detector or arcs are heavily occluded. Requires "
+            "midas-calibrate-v2.")
+        btn_arcfit.clicked.connect(self._open_arc_fit_dialog)
+        lay.addWidget(btn_arcfit, 0, 1)
         # Column headers over the refinement controls.
         hdr_ref = QtWidgets.QLabel("Refine?")
         hdr_ref.setStyleSheet("color: #555;")
@@ -1722,6 +1771,10 @@ class FFViewer(QtWidgets.QMainWindow):
         self.image_view.frameScrolled.connect(self._on_frame_scroll)
         # Cursor tracking
         self.image_view.cursorMoved.connect(self._on_cursor_moved)
+        # Arc-fit click capture. Fires on every left-click; the handler
+        # returns immediately unless _arc_pick_mode is True. Non-invasive:
+        # MIDASImageView._on_scene_clicked still owns double-click → zoom-home.
+        self.image_view.scene.sigMouseClicked.connect(self._on_arc_pick_click)
         # Live ring redraw on BC/Lsd change
         self.bcy_edit.editingFinished.connect(self._redraw_if_rings)
         self.bcz_edit.editingFinished.connect(self._redraw_if_rings)
@@ -5145,6 +5198,82 @@ class FFViewer(QtWidgets.QMainWindow):
         self.wl = wl_new
         self._redraw_if_rings()
 
+    # ── Arc-fit BC/Lsd ────────────────────────────────────────────────
+    #
+    # Users can click points on visible ring arcs and derive a sub-pixel
+    # (BC_y, BC_z, Lsd) seed via Kåsa → geometric-LM → joint fit routines
+    # imported from midas-calibrate-v2 (see HAVE_CIRCLE_FIT). Intended for
+    # off-detector-beam / arc-only cases where the normal RingSelectionDialog
+    # flow can't help because the geometry itself isn't yet known.
+    #
+    # Click capture is wired once in __init__ via sigMouseClicked; the
+    # handler below is a no-op unless _arc_pick_mode is True. ArcFitDialog
+    # owns mode transitions and result application.
+
+    def _on_arc_pick_click(self, ev):
+        """Collect one arc-fit point when the dialog has enabled pick mode."""
+        if not self._arc_pick_mode:
+            return
+        # Let existing double-click → zoom-home behaviour in
+        # MIDASImageView._on_scene_clicked keep firing.
+        if ev.double() or ev.button() != QtCore.Qt.LeftButton:
+            return
+        vb = self.image_view.getViewBox()
+        if vb is None:
+            return
+        pt = vb.mapSceneToView(ev.scenePos())
+        x, y = float(pt.x()), float(pt.y())
+        self._arc_pick_points.append((x, y))
+        marker = pg.PlotDataItem([x], [y], symbol='+', symbolSize=14,
+                                 symbolPen=pg.mkPen('r', width=2), pen=None)
+        self.image_view.add_overlay(marker, 'arc_pick')
+        # Nudge the dialog to update its point-count / RMS label.
+        dlg = self._arc_fit_dialog
+        if dlg is not None:
+            try:
+                dlg._on_point_added()
+            except Exception:
+                pass  # dialog closed between events
+
+    def _apply_bc_lsd_from_fit(self, cx, cy, lsd_um=None):
+        """Push arc-fit result into the geometry fields and redraw.
+
+        Writes the QLineEdits (which are the running truth for
+        _draw_rings / _on_cursor_moved / _build_calibration_ps_txt) AND
+        syncs the mirror attributes read at param-file load time.
+        """
+        self.bcy_edit.setText(f'{cx:.4f}')
+        self.bcz_edit.setText(f'{cy:.4f}')
+        self.bc_local = [float(cx), float(cy)]
+        if lsd_um is not None:
+            self.lsd_edit.setText(f'{lsd_um:.2f}')
+            self.lsd_local = float(lsd_um)
+            self.lsd_orig = self.lsd_local
+        self._redraw_if_rings()
+
+    def _open_arc_fit_dialog(self):
+        """Launcher for the Arc-fit BC/Lsd dialog. Non-modal so the user
+        can keep clicking on the image while it stays open."""
+        if not HAVE_CIRCLE_FIT:
+            QtWidgets.QMessageBox.information(
+                self, "Arc-fit unavailable",
+                "midas-calibrate-v2 is not importable in this environment.\n"
+                "Install it with:\n    pip install midas-calibrate-v2>=0.2.0")
+            return
+        if not self.ring_rads:
+            QtWidgets.QMessageBox.information(
+                self, "No rings",
+                "Generate rings via 'Rings Material…' first — the arc fit "
+                "needs 2θ per picked ring, and that comes from the current "
+                "material/d-spacing preset.")
+            return
+        # Bring an existing dialog to the front instead of stacking.
+        if self._arc_fit_dialog is not None and self._arc_fit_dialog.isVisible():
+            self._arc_fit_dialog.raise_(); self._arc_fit_dialog.activateWindow()
+            return
+        self._arc_fit_dialog = ArcFitDialog(self)
+        self._arc_fit_dialog.show()
+
     def _draw_rings(self):
         self.image_view.clear_overlays('rings')
         if not self.ring_rads:
@@ -5851,6 +5980,261 @@ class FFViewer(QtWidgets.QMainWindow):
             self._apply_param_file(result['param_file'])
 
 
+
+
+# ═══════════════════════════════════════════════════════════════════════
+#  Arc-fit BC / Lsd Dialog
+# ═══════════════════════════════════════════════════════════════════════
+
+class ArcFitDialog(QtWidgets.QDialog):
+    """Non-modal dialog that captures clicks on visible ring arcs and
+    solves for a sub-pixel (BC_y, BC_z, Lsd) seed.
+
+    Depends on midas-calibrate-v2's :mod:`midas_calibrate_v2.gui._circle_fit`
+    for the underlying Kåsa / geometric-LM / joint-BC-Lsd routines. Rings
+    must already be generated in the viewer (via RingSelectionDialog) so a
+    2θ is known per picked ring — the dialog reads them from
+    ``viewer._ring_ds``.
+
+    Workflow:
+      1. Pick which ring in the combo.
+      2. Click ≥3 points on that ring's visible arc.
+      3. Either "Add ring to joint fit" (repeat 1-2 for another ring) or
+         "Fit & apply BC+Lsd" to solve immediately.
+      4. On solve: joint fit if ≥2 rings collected, otherwise a single
+         geometric-LM refine on the one ring's points.
+    """
+
+    def __init__(self, viewer):
+        super().__init__(viewer)
+        self.viewer = viewer
+        self.setWindowTitle("Arc-fit BC / Lsd")
+        self.setWindowFlags(self.windowFlags() | QtCore.Qt.Tool)
+        self.setModal(False)
+        self._build_ui()
+
+        # Enter pick mode; a fresh dialog resets any leftover buffer.
+        self.viewer._arc_pick_mode = True
+        self.viewer._arc_pick_points = []
+        self.viewer._arc_pick_history = []
+        self.viewer.image_view.clear_overlays('arc_pick')
+        try:
+            self.viewer.image_view.setCursor(QtCore.Qt.CrossCursor)
+        except Exception:
+            pass
+        self._sync_ring_from_combo()  # sets viewer._arc_pick_ring_idx
+
+    def _build_ui(self):
+        lay = QtWidgets.QVBoxLayout(self)
+
+        # Ring selector — populated from the viewer's current ring set.
+        row1 = QtWidgets.QHBoxLayout()
+        row1.addWidget(QtWidgets.QLabel("Fit ring:"))
+        self.ring_combo = QtWidgets.QComboBox()
+        ring_ds = getattr(self.viewer, '_ring_ds', None) or []
+        for i, rn in enumerate(self.viewer.ring_nrs):
+            hkl = self.viewer.hkls[i] if i < len(self.viewer.hkls) else None
+            d = ring_ds[i] if i < len(ring_ds) else None
+            label = f"Ring {rn}"
+            if hkl:
+                label += f"  hkl={tuple(hkl)}"
+            if d:
+                label += f"  d={d:.4f} Å"
+            self.ring_combo.addItem(label, userData=i)
+        self.ring_combo.currentIndexChanged.connect(self._sync_ring_from_combo)
+        row1.addWidget(self.ring_combo, 1)
+        lay.addLayout(row1)
+
+        # Status: point count for current-ring buffer.
+        self.status_lbl = QtWidgets.QLabel("Points: 0")
+        lay.addWidget(self.status_lbl)
+
+        # Per-ring buttons.
+        row2 = QtWidgets.QHBoxLayout()
+        self.reset_btn = QtWidgets.QPushButton("Reset points")
+        self.reset_btn.setToolTip("Clear the current-ring buffer and its markers.")
+        self.reset_btn.clicked.connect(self._reset_current)
+        row2.addWidget(self.reset_btn)
+
+        self.add_btn = QtWidgets.QPushButton("Add ring to joint fit")
+        self.add_btn.setToolTip(
+            "Freeze the current picks as one ring in the joint set, then "
+            "select another ring in the combo and click on its arc.")
+        self.add_btn.clicked.connect(self._add_to_history)
+        row2.addWidget(self.add_btn)
+        lay.addLayout(row2)
+
+        # Joint-fit summary.
+        self.history_lbl = QtWidgets.QLabel("Joint fit set: 0 rings, 0 points")
+        lay.addWidget(self.history_lbl)
+
+        # Solve / close.
+        row3 = QtWidgets.QHBoxLayout()
+        self.fit_btn = QtWidgets.QPushButton("Fit && apply BC+Lsd")
+        self.fit_btn.setToolTip(
+            "Solve the current + joint-set rings for (BC, Lsd) and push the "
+            "result into the geometry fields. Rings overlay redraws so you "
+            "can eyeball the alignment.")
+        self.fit_btn.clicked.connect(self._fit_and_apply)
+        row3.addWidget(self.fit_btn)
+
+        close_btn = QtWidgets.QPushButton("Close")
+        close_btn.clicked.connect(self.close)
+        row3.addWidget(close_btn)
+        lay.addLayout(row3)
+
+    # ── slots ─────────────────────────────────────────────────────────
+    def _sync_ring_from_combo(self, *_):
+        idx = self.ring_combo.currentIndex()
+        self.viewer._arc_pick_ring_idx = idx if idx >= 0 else None
+
+    def _on_point_added(self):
+        n = len(self.viewer._arc_pick_points)
+        rms_txt = ""
+        if n >= 3:
+            try:
+                xs = [p[0] for p in self.viewer._arc_pick_points]
+                ys = [p[1] for p in self.viewer._arc_pick_points]
+                cx, cy, R, rms = kasa_circle_fit(xs, ys)
+                rms_txt = f"   Kåsa RMS: {rms:.2f} px"
+            except Exception:
+                pass
+        self.status_lbl.setText(f"Points: {n}{rms_txt}")
+
+    def _reset_current(self):
+        self.viewer._arc_pick_points = []
+        # Clear only per-ring markers; keep any joint-history overlay if we
+        # start tagging separately. Today all clicks share the 'arc_pick' tag.
+        self.viewer.image_view.clear_overlays('arc_pick')
+        # Redraw markers for the joint history (so completed rings stay visible).
+        self._redraw_history_markers()
+        self.status_lbl.setText("Points: 0")
+
+    def _redraw_history_markers(self):
+        colors = ['#3cb44b', '#4363d8', '#f58231', '#911eb4', '#42d4f4']
+        for k, (_ring_idx, pts, _tth) in enumerate(self.viewer._arc_pick_history):
+            color = colors[k % len(colors)]
+            for (x, y) in pts:
+                item = pg.PlotDataItem(
+                    [x], [y], symbol='+', symbolSize=12,
+                    symbolPen=pg.mkPen(color, width=2), pen=None)
+                self.viewer.image_view.add_overlay(item, 'arc_pick')
+
+    def _add_to_history(self):
+        pts = list(self.viewer._arc_pick_points)
+        if len(pts) < 3:
+            QtWidgets.QMessageBox.information(
+                self, "Not enough points",
+                "Pick at least 3 points on the current ring's arc first.")
+            return
+        ring_idx = self.viewer._arc_pick_ring_idx
+        tth = self._two_theta_for_ring(ring_idx)
+        if tth is None:
+            QtWidgets.QMessageBox.warning(
+                self, "Ring 2θ unavailable",
+                "This ring has no cached d-spacing (regenerate rings via "
+                "Rings Material to populate _ring_ds).")
+            return
+        self.viewer._arc_pick_history.append((ring_idx, pts, tth))
+        self.viewer._arc_pick_points = []
+        # Recolour the freshly-added ring's markers, then reset for next pick.
+        self.viewer.image_view.clear_overlays('arc_pick')
+        self._redraw_history_markers()
+        nrings = len(self.viewer._arc_pick_history)
+        npts = sum(len(p) for (_i, p, _t) in self.viewer._arc_pick_history)
+        self.history_lbl.setText(f"Joint fit set: {nrings} rings, {npts} points")
+        self.status_lbl.setText("Points: 0")
+
+    def _two_theta_for_ring(self, ring_idx):
+        """Fetch cached 2θ (radians) for the given ring index. Prefers
+        _ring_ds; falls back to the ring's own radius when needed."""
+        ds = getattr(self.viewer, '_ring_ds', None) or []
+        wl = self.viewer.wl
+        if ring_idx is None or wl is None or wl <= 0:
+            return None
+        if ring_idx < len(ds) and ds[ring_idx]:
+            d = ds[ring_idx]
+            ratio = wl / (2.0 * d)
+            if abs(ratio) >= 1.0:
+                return None
+            return 2.0 * math.asin(ratio)
+        # Fallback: derive from ring radius (should already match ds path).
+        rings = self.viewer.ring_rads or []
+        lsd = self.viewer.lsd_local
+        if ring_idx < len(rings) and lsd:
+            return math.atan(float(rings[ring_idx]) / float(lsd))
+        return None
+
+    def _fit_and_apply(self):
+        px_um = self.viewer.pixel_size
+        current_pts = list(self.viewer._arc_pick_points)
+        rings_for_joint = list(self.viewer._arc_pick_history)
+
+        # Fold the current-ring buffer into the joint set if we have enough.
+        if len(current_pts) >= 3:
+            tth = self._two_theta_for_ring(self.viewer._arc_pick_ring_idx)
+            if tth is None:
+                QtWidgets.QMessageBox.warning(
+                    self, "Ring 2θ unavailable",
+                    "Can't derive 2θ for the current-ring buffer.")
+                return
+            rings_for_joint.append(
+                (self.viewer._arc_pick_ring_idx, current_pts, tth))
+
+        if not rings_for_joint:
+            QtWidgets.QMessageBox.information(
+                self, "No points",
+                "Click at least 3 points on a ring's arc before fitting.")
+            return
+
+        try:
+            if len(rings_for_joint) == 1:
+                # Single ring: Kåsa seed → geometric LM → derive Lsd from 2θ.
+                _idx, pts, tth = rings_for_joint[0]
+                xs = [p[0] for p in pts]
+                ys = [p[1] for p in pts]
+                cx0, cy0, R0, _ = kasa_circle_fit(xs, ys)
+                cx, cy, R, rms = geometric_lm_refine(xs, ys, cx0, cy0, R0)
+                lsd_um = R * px_um / math.tan(tth)
+                msg = (f"Single-ring geometric LM:\n"
+                       f"  BC = ({cx:.3f}, {cy:.3f}) px\n"
+                       f"  R = {R:.3f} px  RMS = {rms:.3f} px\n"
+                       f"  Lsd = {lsd_um:.2f} µm")
+            else:
+                # Joint multi-ring fit locks BC across rings.
+                # Package as (xs, ys, tth_rad) tuples for joint_bc_lsd_fit.
+                rings_arg = [
+                    ([p[0] for p in pts], [p[1] for p in pts], tth)
+                    for (_i, pts, tth) in rings_for_joint]
+                res = joint_bc_lsd_fit(rings_arg, px_um)
+                cx = res['cx']; cy = res['cy']; lsd_um = res['lsd_um']
+                per_rms = ", ".join(f"{r:.2f}" for r in res['rms_per_ring_px'])
+                msg = (f"Joint fit over {res['n_rings']} rings, "
+                       f"{res['n_total']} points:\n"
+                       f"  BC = ({cx:.3f}, {cy:.3f}) px\n"
+                       f"  Lsd = {lsd_um:.2f} µm\n"
+                       f"  RMS total = {res['rms_total_px']:.3f} px "
+                       f"(per ring: {per_rms})")
+        except Exception as e:
+            QtWidgets.QMessageBox.critical(
+                self, "Fit failed", f"{type(e).__name__}: {e}")
+            return
+
+        self.viewer._apply_bc_lsd_from_fit(cx, cy, lsd_um)
+        QtWidgets.QMessageBox.information(self, "Fit result", msg)
+
+    def closeEvent(self, ev):
+        # Leave pick mode + wipe markers so subsequent clicks don't sneak in.
+        self.viewer._arc_pick_mode = False
+        self.viewer._arc_pick_points = []
+        self.viewer._arc_pick_history = []
+        self.viewer.image_view.clear_overlays('arc_pick')
+        try:
+            self.viewer.image_view.unsetCursor()
+        except Exception:
+            pass
+        self.viewer._arc_fit_dialog = None
+        super().closeEvent(ev)
 
 
 # ═══════════════════════════════════════════════════════════════════════
