@@ -4904,7 +4904,18 @@ class FFViewer(QtWidgets.QMainWindow):
         apply_btn.clicked.connect(_on_apply)
 
         proc.start(exe, [ps_path, str(n_cpus)])
-        dlg.exec_()
+        try:
+            dlg.exec_()
+        finally:
+            # Whatever closed the dialog (Close, Cancel, window [X] or
+            # Escape), never leave CalibrantIntegratorOMP running as an
+            # orphan and always remove the temp dir. exec_() blocks until
+            # the dialog is closed by any route, so this covers the [X]/
+            # Escape paths that have no explicit handler.
+            if proc.state() != QtCore.QProcess.NotRunning:
+                proc.kill()
+                proc.waitForFinished(3000)
+            shutil.rmtree(tmpdir, ignore_errors=True)
 
     def _redraw_if_rings(self):
         if self.show_rings and self.ring_rads:
