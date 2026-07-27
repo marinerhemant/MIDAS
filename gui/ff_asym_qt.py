@@ -10,6 +10,7 @@ import sys
 import os
 import math
 import tempfile
+from typing import Optional
 import subprocess
 import threading
 import shutil
@@ -364,16 +365,89 @@ def auto_detect_files(cwd):
 #  Ring computation
 # ═══════════════════════════════════════════════════════════════════════
 
-def compute_ring_points(ring_rad, lsd_local, lsd_orig, bc, px):
-    """Compute Y,Z arrays for a ring overlay."""
-    etas = np.linspace(-180, 180, 360)
-    Y, Z = [], []
+def compute_ring_points(ring_rad, lsd_local, lsd_orig, bc, px,
+                        tx_deg=0.0, ty_deg=0.0, tz_deg=0.0,
+                        p0=0.0, p1=0.0, p2=0.0, p3_deg=0.0,
+                        rho_d=None):
+    """Compute Y,Z pixel arrays for a Debye–Scherrer ring overlay.
+
+    For a perpendicular detector (Tx=Ty=Tz=0) this reduces to the legacy
+    circle-at-BC path via ``YZ4mREta``. When any tilt is non-zero, each η
+    sample is projected through the tilted detector plane so the ring
+    appears as the correct conic (ellipse/parabola) on the pixel grid.
+
+    Convention: beam along lab +X, detector origin at (Lsd, 0, 0) with
+    pixel Y along +Y_lab and Z along +Z_lab, rotated by
+    Rx(Tx)·Ry(Ty)·Rz(Tz) about the detector origin.
+    """
+    etas = np.linspace(-180.0, 180.0, 360)
     rad2 = ring_rad * (lsd_local / lsd_orig) if lsd_orig > 0 else ring_rad
-    for eta in etas:
-        tmp = YZ4mREta(rad2, eta)
-        Y.append(tmp[0] / px + bc[0])
-        Z.append(tmp[1] / px + bc[1])
-    return np.array(Y), np.array(Z)
+    has_distortion = (p0 != 0.0 or p1 != 0.0 or p2 != 0.0) and rho_d
+    # Fast path: no tilt AND no distortion → keep the legacy call so
+    # unit-test numerics match to the bit.
+    if (tx_deg == 0.0 and ty_deg == 0.0 and tz_deg == 0.0
+            and not has_distortion):
+        Y, Z = [], []
+        for eta in etas:
+            tmp = YZ4mREta(rad2, eta)
+            Y.append(tmp[0] / px + bc[0])
+            Z.append(tmp[1] / px + bc[1])
+        return np.array(Y), np.array(Z)
+
+    # Radial distortion (MIDAS DetectorGeometry.c DistortFunc).
+    # DistortFunc = 1 + p0·R̂²·cos(2·EtaT+p6) + p1·R̂⁴·cos(4·EtaT+p3) + p2·R̂²
+    # Only p0/p1/p2/p3 are user-editable here; higher-order terms
+    # (p4..p14, parallax, residual corr) default to 0 in this preview.
+    rad_effective = rad2
+    if has_distortion:
+        rnorm = rad2 / rho_d
+        eta_t_arr = 90.0 - etas   # EtaT = 90 - EtaTilted (deg)
+        p6_deg = 0.0              # exposed higher-order angular offset
+        df = (
+            1.0
+            + p0 * rnorm**2 * np.cos(np.deg2rad(2 * eta_t_arr + p6_deg))
+            + p1 * rnorm**4 * np.cos(np.deg2rad(4 * eta_t_arr + p3_deg))
+            + p2 * rnorm**2
+        )
+        rad_effective = rad2 * df  # per-η radius after distortion (µm)
+
+    # Nominal (Y_nom, Z_nom) at un-tilted plane (in microns). If we
+    # applied radial distortion above, rad_effective is per-eta.
+    if np.isscalar(rad_effective):
+        yz = np.array([YZ4mREta(rad_effective, e) for e in etas], dtype=float)
+    else:
+        yz = np.array(
+            [YZ4mREta(rad_effective[i], etas[i]) for i in range(len(etas))],
+            dtype=float)
+    y_nom = yz[:, 0]; z_nom = yz[:, 1]
+    d = np.stack([np.full_like(y_nom, lsd_local), y_nom, z_nom], axis=1)
+    d /= np.linalg.norm(d, axis=1, keepdims=True)
+
+    # Tilted-detector plane: passes through (Lsd, 0, 0) with normal
+    # n = R·(1,0,0) where R = Rx(Tx)·Ry(Ty)·Rz(Tz).
+    tx = math.radians(tx_deg); ty = math.radians(ty_deg); tz = math.radians(tz_deg)
+    cx, sx = math.cos(tx), math.sin(tx)
+    cy, sy = math.cos(ty), math.sin(ty)
+    cz, sz = math.cos(tz), math.sin(tz)
+    Rx = np.array([[1, 0, 0], [0, cx, -sx], [0, sx, cx]])
+    Ry = np.array([[cy, 0, sy], [0, 1, 0], [-sy, 0, cy]])
+    Rz = np.array([[cz, -sz, 0], [sz, cz, 0], [0, 0, 1]])
+    R = Rx @ Ry @ Rz
+    e_x = R @ np.array([1.0, 0.0, 0.0])   # tilted-plane normal
+    e_y = R @ np.array([0.0, 1.0, 0.0])   # in-plane Y basis
+    e_z = R @ np.array([0.0, 0.0, 1.0])   # in-plane Z basis
+    P0 = np.array([lsd_local, 0.0, 0.0])
+    # Ray from origin along d hits the tilted plane at t = (P0·n)/(d·n).
+    d_dot_n = d @ e_x
+    # Guard against rays that graze the plane (tilt so extreme it looks
+    # edge-on): mask them off so we don't render pathologically large Y/Z.
+    valid = np.abs(d_dot_n) > 1e-9
+    t = np.where(valid, (P0 @ e_x) / np.where(valid, d_dot_n, 1.0), np.nan)
+    P_hit = d * t[:, None]
+    rel = P_hit - P0
+    Y = rel @ e_y / px + bc[0]
+    Z = rel @ e_z / px + bc[1]
+    return Y, Z
 
 
 # ═══════════════════════════════════════════════════════════════════════
@@ -386,7 +460,11 @@ class FFViewer(QtWidgets.QMainWindow):
     def __init__(self, theme='light', auto_detect=True):
         super().__init__()
         self.setWindowTitle("FF Viewer (PyQtGraph) — MIDAS")
-        self.resize(1500, 950)
+        # Screen-aware default size: 1500×950 fits desktop monitors but
+        # exceeds most 1366×768 / 1440×900 laptop panels. Fall back to
+        # 90% of available geometry when the screen is smaller, so the
+        # window always fits on first launch and users can drag bigger.
+        self._resize_to_fit_screen(preferred=(1500, 950), max_frac=0.9)
         self._theme = theme
 
         self._init_state()
@@ -400,6 +478,25 @@ class FFViewer(QtWidgets.QMainWindow):
             self._start_auto_detect()
 
     # ── State ──────────────────────────────────────────────────────
+
+    def _resize_to_fit_screen(self, preferred: tuple, max_frac: float = 0.9
+                              ) -> None:
+        """Resize to ``preferred`` (w, h) unless that exceeds ``max_frac`` of
+        the primary screen's *available* geometry (excludes taskbar/dock),
+        in which case fall back to ``max_frac`` of the screen dimensions.
+        Silently no-ops if no QScreen is attached (headless tests)."""
+        try:
+            scr = QtWidgets.QApplication.primaryScreen()
+            if scr is None:
+                self.resize(*preferred); return
+            geo = scr.availableGeometry()
+            max_w = int(geo.width() * max_frac)
+            max_h = int(geo.height() * max_frac)
+            w = min(int(preferred[0]), max_w)
+            h = min(int(preferred[1]), max_h)
+            self.resize(max(600, w), max(400, h))
+        except Exception:
+            self.resize(*preferred)
 
     def _init_state(self):
         # Image params
@@ -446,6 +543,15 @@ class FFViewer(QtWidgets.QMainWindow):
         self.bcs = None
         self.tx = [0]; self.ty = [0]; self.tz = [0]
         self.tx_local = 0.0
+        self.ty_local = 0.0
+        self.tz_local = 0.0
+        # MIDAS radial-distortion coefficients (see DetectorGeometry.c
+        # DistortFunc). p0/p1 are angular terms, p2 a radial R^2 amplitude,
+        # p3 the p1 phase offset in degrees. Zero → no distortion.
+        self.p0_local = 0.0
+        self.p1_local = 0.0
+        self.p2_local = 0.0
+        self.p3_local = 0.0
         self._tx_shift = (0, 0)        # (r_min, c_min) of expanded rotated canvas
         self.n_detectors = 1
         self.start_det_nr = 1; self.end_det_nr = 1
@@ -461,6 +567,7 @@ class FFViewer(QtWidgets.QMainWindow):
 
         # Lab-frame axes overlay
         self.show_axes = False
+        self.grid_mode = 'off'   # 'off' | 'tth' | 'd' | 'q'
 
         # Caking overlay
         self.show_caking = False
@@ -589,7 +696,11 @@ class FFViewer(QtWidgets.QMainWindow):
         # BOTTOM_INIT_CAP so the image gets a generous starting share even
         # when the controls' natural height is large (multi-det panel,
         # tall fonts); the user can drag the divider either way.
-        BOTTOM_INIT_CAP = 320
+        # Cap the initial controls-pane height at ~1/3 of the current
+        # window (proportional so laptop screens don't lose the image
+        # to a tall controls block); floor at 200 px so multi-detector
+        # rows aren't hidden on the first click.
+        BOTTOM_INIT_CAP = max(200, int(self.height() * 0.34))
         splitter = QtWidgets.QSplitter(QtCore.Qt.Vertical)
         splitter.addWidget(self.image_view)
         splitter.addWidget(ctrl_scroll)
@@ -599,8 +710,25 @@ class FFViewer(QtWidgets.QMainWindow):
         sb_w = self.style().pixelMetric(QtWidgets.QStyle.PM_ScrollBarExtent)
         bottom_h = min(ctrl_widget.sizeHint().height() + sb_w + 4,
                        BOTTOM_INIT_CAP)
-        splitter.setSizes([900, bottom_h])
+        # Send the rest to the image pane, not a hardcoded 900 that would
+        # exceed short-screen heights and force the splitter to clip.
+        top_h = max(200, self.height() - bottom_h)
+        splitter.setSizes([top_h, bottom_h])
         splitter.setChildrenCollapsible(False)
+        # Make the divider visibly grabbable (default 1-px handle is
+        # invisible on most themes so users don't realize they can drag
+        # it). 8-px handle with a subtle hover tint = obvious affordance
+        # without dominating the layout.
+        splitter.setHandleWidth(8)
+        splitter.setStyleSheet(
+            "QSplitter::handle:vertical {"
+            " background: palette(mid); "
+            " border-top: 1px solid palette(dark);"
+            " border-bottom: 1px solid palette(dark);"
+            "}"
+            "QSplitter::handle:vertical:hover {"
+            " background: palette(highlight);"
+            "}")
         main_layout.addWidget(splitter, stretch=1)
         self._main_splitter = splitter
 
@@ -696,6 +824,22 @@ class FFViewer(QtWidgets.QMainWindow):
             "Use this to verify ImTransOpt — features should be in the\n"
             "physically expected lab-frame quadrant.")
         tb.addWidget(self.axes_check)
+
+        # Q / 2θ / d-spacing grid overlay. Isolines are all concentric
+        # circles around BC (all three quantities are monotonic in R),
+        # drawn with labels at "nice" values so the user can eyeball
+        # where a peak sits in Å⁻¹ / degrees / Å without hovering.
+        tb.addWidget(QtWidgets.QLabel("Grid:"))
+        self.grid_mode_combo = QtWidgets.QComboBox()
+        self.grid_mode_combo.addItem("Off",  userData='off')
+        self.grid_mode_combo.addItem("2θ",   userData='tth')
+        self.grid_mode_combo.addItem("d (Å)", userData='d')
+        self.grid_mode_combo.addItem("q (Å⁻¹)", userData='q')
+        self.grid_mode_combo.setToolTip(
+            "Overlay a grid of isolines at nice values of 2θ / d-spacing / q.\n"
+            "Uses current Lsd, BC and Energy (from the Detector & Rings panel).\n"
+            "Isolines are labeled; toggles Off to hide.")
+        tb.addWidget(self.grid_mode_combo)
 
         # Caking overlay is driven by the Plot/Clear button in the cake editor
         # panel (HYDRA mode), not from a top-bar checkbox. C shortcut still toggles.
@@ -813,11 +957,22 @@ class FFViewer(QtWidgets.QMainWindow):
         lay.addWidget(self.h5data_edit, 2, 1, 1, 3)
 
         lay.addWidget(QtWidgets.QLabel("Mask"), 3, 0)
+        mask_cell = QtWidgets.QHBoxLayout()
+        mask_cell.setContentsMargins(0, 0, 0, 0)
+        mask_cell.setSpacing(4)
         self.mask_edit = QtWidgets.QLineEdit("")
-        lay.addWidget(self.mask_edit, 3, 1, 1, 1)
-        btn_mask = QtWidgets.QPushButton("Browse")
-        btn_mask.clicked.connect(self._on_browse_mask)
-        lay.addWidget(btn_mask, 3, 2)
+        mask_cell.addWidget(self.mask_edit, 1)
+        btn_mask_browse = QtWidgets.QPushButton("Browse")
+        btn_mask_browse.clicked.connect(self._on_browse_mask)
+        mask_cell.addWidget(btn_mask_browse)
+        btn_mask_build = QtWidgets.QPushButton("Build…")
+        btn_mask_build.setToolTip(
+            "Build a TIFF mask from the currently-displayed frame using\n"
+            "pixel-value thresholds (e.g. mask all pixels < 0 to catch\n"
+            "Eiger dead / gap pixels, or > saturation to catch overflows).")
+        btn_mask_build.clicked.connect(self._on_build_mask_dialog)
+        mask_cell.addWidget(btn_mask_build)
+        lay.addLayout(mask_cell, 3, 1, 1, 2)
         self.mask_check = QtWidgets.QCheckBox("Apply")
         lay.addWidget(self.mask_check, 3, 3)
 
@@ -825,23 +980,13 @@ class FFViewer(QtWidgets.QMainWindow):
         self.h5dark_edit = QtWidgets.QLineEdit(self.hdf5_dark_path)
         lay.addWidget(self.h5dark_edit, 4, 1, 1, 3)
 
-        btn_param = QtWidgets.QPushButton("Load Params")
-        btn_param.setToolTip(
-            "Load a MIDAS-style parameter file (ps.txt / Parameters.txt).\n"
-            "Populates detector geometry, transforms, crystallography, "
-            "and file layout fields, then redraws.")
-        btn_param.clicked.connect(self._on_load_param_file)
-        lay.addWidget(btn_param, 5, 0)
-        self.instr_only_check = QtWidgets.QCheckBox("Instr. only")
-        self.instr_only_check.setToolTip(
-            "When checked, loading a param file applies only instrument/geometry\n"
-            "parameters (LSD, BC, pixel size, wavelength, space group, etc.).\n"
-            "All file/path fields are ignored: Folder, FileStem, StartNr, Ext,\n"
-            "dataLoc/darkLoc (HDF5 paths), and DarkStem/Dark.")
-        lay.addWidget(self.instr_only_check, 5, 1)
+        # Load Params + Instr only relocated to Detector & Rings panel
+        # (next to Save Params) so param I/O buttons cluster together
+        # visually. The status label stays here to show the last-loaded
+        # param filename inline with the Data Source rows.
         self.param_label = QtWidgets.QLabel("")
         self.param_label.setStyleSheet("color: gray;")
-        lay.addWidget(self.param_label, 5, 2, 1, 2)
+        lay.addWidget(self.param_label, 5, 0, 1, 4)
 
         # Single-mode cake editor (one row for the active detector). The
         # multi-detector panel gets the 4-row variant via _build_cake_widget().
@@ -1133,24 +1278,77 @@ class FFViewer(QtWidgets.QMainWindow):
         lay.setVerticalSpacing(2)
         lay.setHorizontalSpacing(4)
 
+        # 4-column layout so each row can grow a per-parameter refinement
+        # toggle + tolerance edit (GSAS-2 style):
+        #   col 0: label   col 1: value edit   col 2: ☐ Refine   col 3: ± tol
+        # Registries so _launch_calibration can look up each param's
+        # flag/tol without hardcoding widget names.
+        self._refine_checks: dict = {}
+        self._refine_tols: dict = {}
+
         btn_rings = QtWidgets.QPushButton("Rings Material")
         btn_rings.clicked.connect(self._on_ring_selection)
         lay.addWidget(btn_rings, 0, 0, 1, 2)
+        # Column headers over the refinement controls.
+        hdr_ref = QtWidgets.QLabel("Refine?")
+        hdr_ref.setStyleSheet("color: #555;")
+        hdr_ref.setAlignment(QtCore.Qt.AlignCenter)
+        lay.addWidget(hdr_ref, 0, 2)
+        hdr_tol = QtWidgets.QLabel("± margin")
+        hdr_tol.setStyleSheet("color: #555;")
+        hdr_tol.setAlignment(QtCore.Qt.AlignCenter)
+        lay.addWidget(hdr_tol, 0, 3)
+
+        def _add_refine(row: int, name: str, tol_default: float,
+                        tip: str = ''):
+            """Add the Refine checkbox (col 2) + tolerance edit (col 3)
+            for the parameter on ``row`` and register it under ``name``."""
+            cb = QtWidgets.QCheckBox()
+            cb.setToolTip('Include this parameter in MIDAS calibration '
+                          'refinement.\n' + tip)
+            lay.addWidget(cb, row, 2, alignment=QtCore.Qt.AlignCenter)
+            self._refine_checks[name] = cb
+            tol = QtWidgets.QLineEdit(f'{tol_default:g}')
+            tol.setFixedWidth(70)
+            tol.setToolTip('Maximum ± change allowed during refinement.\n'
+                           'Also used as MIDAS tolX (0 → parameter locked).\n'
+                           + tip)
+            lay.addWidget(tol, row, 3)
+            self._refine_tols[name] = tol
+            # Grey the tol edit when refine is unchecked so the two
+            # controls read as one intent (matches [[feedback-disable-vs-hide]]).
+            def _sync(): tol.setEnabled(cb.isChecked())
+            cb.toggled.connect(_sync)
+            _sync()
 
         lay.addWidget(QtWidgets.QLabel("Lsd (μm)"), 1, 0)
         self.lsd_edit = QtWidgets.QLineEdit(str(self.lsd_local))
         self.lsd_edit.setMinimumWidth(100)
         lay.addWidget(self.lsd_edit, 1, 1)
+        _add_refine(1, 'Lsd', 25000,
+                    'Sample-to-detector distance (µm). MIDAS default '
+                    'tolerance is 25000.')
 
         lay.addWidget(QtWidgets.QLabel("Beam Ctr Y"), 2, 0)
         self.bcy_edit = QtWidgets.QLineEdit(str(self.bc_local[0]))
         self.bcy_edit.setMinimumWidth(90)
         lay.addWidget(self.bcy_edit, 2, 1)
+        _add_refine(2, 'BC_Y', 20,
+                    'Beam center Y (pixels). MIDAS refines BC_Y/BC_Z '
+                    'as a family via tolBC (default 20).')
 
         lay.addWidget(QtWidgets.QLabel("Beam Ctr Z"), 3, 0)
         self.bcz_edit = QtWidgets.QLineEdit(str(self.bc_local[1]))
         self.bcz_edit.setMinimumWidth(90)
         lay.addWidget(self.bcz_edit, 3, 1)
+        _add_refine(3, 'BC_Z', 20,
+                    'Beam center Z (pixels). BC_Y/BC_Z refine as a '
+                    'family — check either to enable both.')
+
+        _tilt_family_tip = (
+            'Tx / Ty / Tz refine as a family in MIDAS (single tolTilts '
+            'key). Checking any tilt enables refinement of all three '
+            'with tolTilts = max of the checked tolerances.')
 
         lay.addWidget(QtWidgets.QLabel("Tx (deg)"), 4, 0)
         self.tx_edit = QtWidgets.QLineEdit(str(self.tx_local))
@@ -1160,9 +1358,112 @@ class FFViewer(QtWidgets.QMainWindow):
             "Image is rotated around (Beam Ctr Y, Beam Ctr Z) by -Tx to undo the tilt.\n"
             "Cursor R/η are reported in the corrected frame.")
         lay.addWidget(self.tx_edit, 4, 1)
+        _add_refine(4, 'Tx', 3, _tilt_family_tip)
+
+        lay.addWidget(QtWidgets.QLabel("Ty (deg)"), 5, 0)
+        self.ty_edit = QtWidgets.QLineEdit(str(self.ty_local))
+        self.ty_edit.setMinimumWidth(90)
+        self.ty_edit.setToolTip(
+            "Detector tilt about lab +Y (deg).\n"
+            "Stored for round-tripping to the MIDAS param file; the viewer\n"
+            "displays raw pixels — Ty is applied by downstream integrators\n"
+            "(AutoCalibrateZarr, integrator.py) using the refined value.")
+        lay.addWidget(self.ty_edit, 5, 1)
+        _add_refine(5, 'Ty', 3, _tilt_family_tip)
+
+        lay.addWidget(QtWidgets.QLabel("Tz (deg)"), 6, 0)
+        self.tz_edit = QtWidgets.QLineEdit(str(self.tz_local))
+        self.tz_edit.setMinimumWidth(90)
+        self.tz_edit.setToolTip(
+            "Detector tilt about lab +Z (deg).\n"
+            "Stored for round-tripping to the MIDAS param file; the viewer\n"
+            "displays raw pixels — Tz is applied by downstream integrators\n"
+            "(AutoCalibrateZarr, integrator.py) using the refined value.")
+        lay.addWidget(self.tz_edit, 6, 1)
+        _add_refine(6, 'Tz', 3, _tilt_family_tip)
+
+        # ── MIDAS radial-distortion params (p0/p1/p2/p3) ──
+        # DistortFunc = 1 + p0·R̂²·cos(2·EtaT + p6)
+        #                 + p1·R̂⁴·cos(4·EtaT + p3)
+        #                 + p2·R̂²
+        # where R̂ = R/RhoD (RhoD = MaxRingRad from the param file).
+        # Rings redraw live so users can visually match rings to peaks.
+        self._distortion_tooltip = (
+            "MIDAS radial-distortion coefficient.\n"
+            "DistortFunc = 1 + p0·R̂²·cos(2·EtaT+p6) + p1·R̂⁴·cos(4·EtaT+p3) + p2·R̂²\n"
+            "(R̂ = R / MaxRingRad). Live redraw — set to 0 for undistorted rings.")
+        for row, (name, attr, tol_def) in enumerate((
+                ('p0', 'p0_edit', 2e-3), ('p1', 'p1_edit', 2e-3),
+                ('p2', 'p2_edit', 2e-3), ('p3 (deg)', 'p3_edit', 45.0))):
+            lay.addWidget(QtWidgets.QLabel(name), 7 + row, 0)
+            key = name.split()[0]   # 'p0', 'p1', 'p2', 'p3'
+            local = getattr(self, f'{key}_local')
+            ed = QtWidgets.QLineEdit(str(local))
+            ed.setMinimumWidth(90)
+            ed.setToolTip(self._distortion_tooltip)
+            lay.addWidget(ed, 7 + row, 1)
+            setattr(self, attr, ed)
+            _add_refine(7 + row, key, tol_def,
+                        f'Distortion coefficient {key}. Written to ps.txt '
+                        f'as tol{key.upper() if key != "p0" else "P"} '
+                        f'during refinement (0 → locked).')
+
+        # Energy (keV). Live-editable — changing it re-scales the cached
+        # ring radii via Bragg's law (rescaled by the new wavelength).
+        # Kept in sync with self.wl (which is stored in Å).
+        lay.addWidget(QtWidgets.QLabel("Energy (keV)"), 11, 0)
+        self.energy_edit = QtWidgets.QLineEdit(
+            f'{12.398 / self.wl:.4f}' if self.wl else '')
+        self.energy_edit.setMinimumWidth(90)
+        self.energy_edit.setToolTip(
+            "Beam energy in keV (λ [Å] = 12.398 / E).\n"
+            "Editing this rescales existing ring radii via Bragg's law "
+            "using each ring's cached d-spacing — no need to re-run "
+            "Rings Material after an energy change.")
+        lay.addWidget(self.energy_edit, 11, 1)
+
+        # Calibrate / Save row. Calibrate launches MIDAS refinement using
+        # the checked parameters + tolerances; Save writes the current
+        # geometry (as edited on this panel) into a MIDAS-style ps.txt
+        # that can be reloaded here or fed to the caking launcher.
+        # Param I/O + Calibrate cluster. Load / Instr-only sit here
+        # (relocated from the Data Source panel) so all
+        # parameter-file-related controls live in one row.
+        action_row = QtWidgets.QHBoxLayout()
+        load_btn = QtWidgets.QPushButton("Load params…")
+        load_btn.setToolTip(
+            "Load a MIDAS-style parameter file (ps.txt / Parameters.txt).\n"
+            "Populates detector geometry, transforms, crystallography, "
+            "and file layout fields, then redraws.")
+        load_btn.clicked.connect(self._on_load_param_file)
+        action_row.addWidget(load_btn)
+        self.instr_only_check = QtWidgets.QCheckBox("Instr. only")
+        self.instr_only_check.setToolTip(
+            "When checked, loading a param file applies only instrument/geometry\n"
+            "parameters (LSD, BC, pixel size, wavelength, space group, etc.).\n"
+            "All file/path fields are ignored: Folder, FileStem, StartNr, Ext,\n"
+            "dataLoc/darkLoc (HDF5 paths), and DarkStem/Dark.")
+        action_row.addWidget(self.instr_only_check)
+        action_row.addSpacing(12)
+        self.calibrate_btn = QtWidgets.QPushButton("Calibrate…")
+        self.calibrate_btn.setToolTip(
+            "Refine every checked parameter within its ± margin using MIDAS.\n"
+            "Requires a loaded image and at least one ring generated via "
+            "Rings Material.")
+        self.calibrate_btn.clicked.connect(self._launch_calibration)
+        action_row.addWidget(self.calibrate_btn)
+        self.save_params_btn = QtWidgets.QPushButton("Save params…")
+        self.save_params_btn.setToolTip(
+            "Write the current detector geometry (Lsd, BC, tilts, "
+            "distortion, wavelength, rings) to a MIDAS ps.txt file. "
+            "The written file is compatible with the viewer's load-params "
+            "flow and with downstream MIDAS tools.")
+        self.save_params_btn.clicked.connect(self._save_params_to_file)
+        action_row.addWidget(self.save_params_btn)
+        lay.addLayout(action_row, 12, 0, 1, 4)
 
         # See _build_image_display_panel: same trick to keep rows packed at top.
-        lay.setRowStretch(5, 1)
+        lay.setRowStretch(13, 1)
 
         return grp
 
@@ -1371,6 +1672,12 @@ class FFViewer(QtWidgets.QMainWindow):
         self.dark_check.toggled.connect(self._load_and_display)
         self.rings_check.toggled.connect(self._on_rings_toggled)
         self.axes_check.toggled.connect(self._on_axes_toggled)
+        self.grid_mode_combo.currentIndexChanged.connect(self._on_grid_mode_changed)
+        # Grid also needs to redraw when the parameters it depends on
+        # change (BC / Lsd / Energy). Piggy-back on the ring-redraw path.
+        for ed in (self.bcy_edit, self.bcz_edit, self.lsd_edit,
+                   self.energy_edit):
+            ed.editingFinished.connect(self._redraw_grid_if_on)
         self.detector_mode_combo.currentIndexChanged.connect(self._on_detector_mode_changed)
         self.composite_combo.currentTextChanged.connect(self._on_composite_op_changed)
         self.mask_check.toggled.connect(self._load_and_display)
@@ -1392,7 +1699,18 @@ class FFViewer(QtWidgets.QMainWindow):
         self.bcy_edit.editingFinished.connect(self._redraw_if_rings)
         self.bcz_edit.editingFinished.connect(self._redraw_if_rings)
         self.lsd_edit.editingFinished.connect(self._redraw_if_rings)
+        # Tx rotates the displayed image AND changes the projected ring
+        # shape. Ty / Tz don't rotate the image but they DO tilt the
+        # detector plane, so both distort circles into ellipses on the
+        # detector. Wire all three to the ring redraw path; Tx also
+        # reloads the display so the image rotation happens.
         self.tx_edit.editingFinished.connect(self._load_and_display)
+        self.tx_edit.editingFinished.connect(self._redraw_if_rings)
+        self.ty_edit.editingFinished.connect(self._redraw_if_rings)
+        self.tz_edit.editingFinished.connect(self._redraw_if_rings)
+        for ed in (self.p0_edit, self.p1_edit, self.p2_edit, self.p3_edit):
+            ed.editingFinished.connect(self._redraw_if_rings)
+        self.energy_edit.editingFinished.connect(self._on_energy_edited)
         self.h5dark_edit.editingFinished.connect(self._load_and_display)
         self.h5dark_edit.editingFinished.connect(lambda: setattr(self, '_h5dark_locked', True))
         self.h5data_edit.editingFinished.connect(lambda: setattr(self, '_h5data_locked', True))
@@ -1499,6 +1817,12 @@ class FFViewer(QtWidgets.QMainWindow):
             'bcy': _try_float(self.bcy_edit),
             'bcz': _try_float(self.bcz_edit),
             'tx': _try_float(self.tx_edit),
+            'ty': _try_float(self.ty_edit),
+            'tz': _try_float(self.tz_edit),
+            'p0': _try_float(self.p0_edit),
+            'p1': _try_float(self.p1_edit),
+            'p2': _try_float(self.p2_edit),
+            'p3': _try_float(self.p3_edit),
             'px': _try_float(self.px_edit),
             # Display
             'min_intensity': _try_float(self.min_intensity_edit),
@@ -1597,6 +1921,7 @@ class FFViewer(QtWidgets.QMainWindow):
         self.mask_fn = state.get('mask_fn', self.mask_fn)
         self.sg = state.get('sg', self.sg)
         self.wl = state.get('wl', self.wl)
+        self._sync_energy_field()
 
         # ── Widgets that mirror model attributes ─────────────────────
         self.file_nr_edit.setText(str(self.first_file_nr))
@@ -1615,6 +1940,12 @@ class FFViewer(QtWidgets.QMainWindow):
         self.bcy_edit.setText(str(state.get('bcy', 1024.0)))
         self.bcz_edit.setText(str(state.get('bcz', 1024.0)))
         self.tx_edit.setText(str(state.get('tx', 0.0)))
+        self.ty_edit.setText(str(state.get('ty', 0.0)))
+        self.tz_edit.setText(str(state.get('tz', 0.0)))
+        self.p0_edit.setText(str(state.get('p0', 0.0)))
+        self.p1_edit.setText(str(state.get('p1', 0.0)))
+        self.p2_edit.setText(str(state.get('p2', 0.0)))
+        self.p3_edit.setText(str(state.get('p3', 0.0)))
         self.px_edit.setText(str(state.get('px', 200.0)))
 
         # Intensity range (set before Apply so it sticks). Mark levels as
@@ -2068,6 +2399,25 @@ class FFViewer(QtWidgets.QMainWindow):
             self.tx_edit.setText(str(tx))
             applied.append(f"tx={tx}")
 
+        ty = get_float('ty')
+        if ty is not None:
+            self.ty_local = ty
+            self.ty_edit.setText(str(ty))
+            applied.append(f"ty={ty}")
+
+        tz = get_float('tz')
+        if tz is not None:
+            self.tz_local = tz
+            self.tz_edit.setText(str(tz))
+            applied.append(f"tz={tz}")
+
+        for pk in ('p0', 'p1', 'p2', 'p3'):
+            v = get_float(pk)
+            if v is not None:
+                setattr(self, f'{pk}_local', v)
+                getattr(self, f'{pk}_edit').setText(str(v))
+                applied.append(f"{pk}={v}")
+
         wd = get_float('Wedge')
         if wd is not None:
             self.wedge = wd
@@ -2076,6 +2426,7 @@ class FFViewer(QtWidgets.QMainWindow):
         wl = get_float('Wavelength')
         if wl is not None:
             self.wl = (12.398 / wl) if wl > 1.0 else wl
+            self._sync_energy_field()
             applied.append(f"Wavelength={self.wl:.5f}Å")
         sg = get_int('SpaceGroup', 'SpaceGroupNumber')
         if sg is not None:
@@ -2284,9 +2635,27 @@ class FFViewer(QtWidgets.QMainWindow):
             eta, rr = CalcEtaAngleRad(-x + bcy, y - bcz)
             status = (f"x={x:.1f}  y={y:.1f}  I={val:.0f}  "
                       f"R={rr:.1f}px  η={eta:.1f}°")
+
+            # 2θ / d / q from R, Lsd and λ. Silently skip any leg that
+            # can't be computed (missing Lsd, missing wavelength, or
+            # λ/2·sinθ overflow) so the readout doesn't stall.
+            r_um = rr * px  # µm
+            try:
+                lsd = float(self.lsd_edit.text())
+            except (ValueError, AttributeError):
+                lsd = 0.0
+            if lsd > 0:
+                two_theta = math.atan(r_um / lsd)       # rad
+                two_theta_deg = math.degrees(two_theta)
+                status += f"  2θ={two_theta_deg:.3f}°"
+                sin_th = math.sin(two_theta / 2.0)
+                if self.wl and sin_th > 0:
+                    d_val = self.wl / (2.0 * sin_th)   # Å
+                    q_val = (4.0 * math.pi / self.wl) * sin_th  # Å⁻¹
+                    status += f"  d={d_val:.4f}Å  q={q_val:.4f}Å⁻¹"
+
             # Show nearest ring info
             if self.show_rings and self.ring_rads:
-                r_um = rr * px  # convert R from pixels to μm
                 best_i, best_diff = None, float('inf')
                 for i, rad in enumerate(self.ring_rads):
                     diff = abs(r_um - rad)
@@ -2435,6 +2804,10 @@ class FFViewer(QtWidgets.QMainWindow):
                 ny=self.ny_edit.text(),
                 nz=self.nz_edit.text(),
                 tx=self.tx_edit.text(),
+                ty=self.ty_edit.text(),
+                tz=self.tz_edit.text(),
+                p0=self.p0_edit.text(), p1=self.p1_edit.text(),
+                p2=self.p2_edit.text(), p3=self.p3_edit.text(),
             )
         elif not checked and self.multi_mode:
             saved = getattr(self, '_single_mode_state', None)
@@ -2444,6 +2817,12 @@ class FFViewer(QtWidgets.QMainWindow):
                 self.ny_edit.setText(saved['ny'])
                 self.nz_edit.setText(saved['nz'])
                 self.tx_edit.setText(saved['tx'])
+                self.ty_edit.setText(saved.get('ty', '0'))
+                self.tz_edit.setText(saved.get('tz', '0'))
+                self.p0_edit.setText(saved.get('p0', '0'))
+                self.p1_edit.setText(saved.get('p1', '0'))
+                self.p2_edit.setText(saved.get('p2', '0'))
+                self.p3_edit.setText(saved.get('p3', '0'))
 
         self.multi_mode = checked
         self._file_stack.setCurrentIndex(1 if checked else 0)
@@ -2456,8 +2835,10 @@ class FFViewer(QtWidgets.QMainWindow):
         if checked:
             # Composite center = (BigDetSize/2, BigDetSize/2). Push that into
             # the BC fields so rings, lab axes, cursor R/η work in the lab
-            # frame. Tx is identity (composite is already in lab frame).
+            # frame. Tx/Ty/Tz are identity (composite is already in lab frame).
             self.tx_edit.setText("0")
+            self.ty_edit.setText("0")
+            self.tz_edit.setText("0")
             self._update_bc_for_multi()
         # Either direction: trigger a fresh display.
         self._load_and_display()
@@ -2895,6 +3276,7 @@ class FFViewer(QtWidgets.QMainWindow):
             self.lsd_edit.setText(str(params['lsd']))
         if params.get('wavelength') is not None:
             self.wl = params['wavelength']
+            self._sync_energy_field()
         if params.get('space_group') is not None:
             self.sg = params['space_group']
         if params.get('lattice_constant') is not None:
@@ -3056,8 +3438,104 @@ class FFViewer(QtWidgets.QMainWindow):
                     self.nframes_edit.setText(str(self.n_frames_per_file))
                     self.frame_spin.setMaximum(self.n_frames_per_file - 1)
                     self._update_frame_max_label()
+                # Detector-aware pixel size + name (Eiger16M / Eiger9M /
+                # Pilatus / Varex …). Populates self.pixel_size and the
+                # px edit when we can find it, so users don't have to
+                # remember 75 µm for Eiger vs 172 for Pilatus vs 150/200
+                # for Varex on every fresh HDF5 load.
+                self._detect_hdf5_pixel_size(f)
         except Exception as e:
             print(f"HDF5 detect error: {e}")
+
+    # Nexus/HDF5 paths where common detectors store pixel size (metres).
+    # First hit wins; each entry is a (group_path, x_key, y_key) tuple.
+    _NX_PIXEL_SIZE_PATHS = (
+        ('/entry/instrument/detector',   'x_pixel_size', 'y_pixel_size'),
+        ('/entry/instrument/detector_1', 'x_pixel_size', 'y_pixel_size'),
+        ('/entry/instrument/eiger',      'x_pixel_size', 'y_pixel_size'),
+        ('/entry/instrument/pilatus',    'x_pixel_size', 'y_pixel_size'),
+        # APS beamline conventions (already in µm or metres — heuristic
+        # below chooses correctly).
+        ('/measurement/instrument/detector', 'pixel_size', None),
+        ('/misc',                            'PixelSize',  None),
+    )
+
+    # (n_y, n_z) → (default µm pixel size, human name). Consulted only
+    # when NX metadata doesn't expose the pixel size explicitly.
+    # APS Pixirad pixel size is 62 µm (per ps_1ide_pixirad_hdf5.txt),
+    # not the stock 60 µm — reflects the beamline's calibration convention.
+    _DETECTOR_SHAPE_PRESETS = (
+        ((4362, 4148), 75.0, 'Eiger2 X 16M'),
+        ((4148, 4362), 75.0, 'Eiger2 X 16M (transposed)'),
+        ((3269, 3110), 75.0, 'Eiger2 X 9M'),
+        ((3110, 3269), 75.0, 'Eiger2 X 9M (transposed)'),
+        ((2167, 2070), 75.0, 'Eiger2 X 4M'),
+        ((2070, 2167), 75.0, 'Eiger2 X 4M (transposed)'),
+        ((2527, 2463), 172.0, 'Pilatus3 6M'),
+        ((1679, 1475), 172.0, 'Pilatus3 2M'),
+        ((2880, 2880),  150.0, 'Varex 2880'),
+        ((2048, 2048),  200.0, 'Varex 2048 / GE'),
+        # Pixirad configurations at APS 1-ID-E (CdTe, 62 µm pixels).
+        ((476, 1024),   62.0, 'Pixirad-2 CdTe'),
+        ((1024, 476),   62.0, 'Pixirad-2 CdTe (transposed)'),
+        ((512, 402),    62.0, 'Pixirad-1 CdTe'),
+        ((402, 512),    62.0, 'Pixirad-1 CdTe (transposed)'),
+        ((3232, 512),   62.0, 'Pixirad-8 CdTe (linear array)'),
+        ((512, 3232),   62.0, 'Pixirad-8 CdTe (transposed)'),
+    )
+
+    def _detect_hdf5_pixel_size(self, f) -> None:
+        """Populate self.pixel_size from NX detector metadata, or fall
+        back to a shape-based preset (Eiger / Pilatus / Varex). Safe to
+        call on non-standard files — no-ops if nothing matches."""
+        px_um = None
+        detector_name = None
+        try:
+            # Try each canonical NX path in order; first hit wins.
+            for gpath, xkey, ykey in self._NX_PIXEL_SIZE_PATHS:
+                if gpath not in f:
+                    continue
+                grp = f[gpath]
+                if xkey not in grp:
+                    continue
+                val = grp[xkey]
+                px_val = float(val[()] if val.shape == () else val[0])
+                # NX standard is metres; APS-style often µm. Heuristic:
+                # anything ≥ 1e-3 is already in µm; smaller is metres.
+                px_um = px_val * 1e6 if px_val < 1e-3 else px_val
+                if 'description' in grp:
+                    try:
+                        d = grp['description']
+                        raw = d[()] if d.shape == () else d[0]
+                        detector_name = (raw.decode() if isinstance(raw, bytes)
+                                         else str(raw))
+                    except Exception:
+                        pass
+                break
+        except Exception as e:
+            print(f"HDF5 pixel-size probe error: {e}")
+        # Shape-based fallback for detectors that don't advertise NX metadata.
+        if px_um is None:
+            shape = (int(self.ny), int(self.nz))
+            for match, default_um, name in self._DETECTOR_SHAPE_PRESETS:
+                if shape == match:
+                    px_um = default_um
+                    detector_name = detector_name or name
+                    break
+        if px_um is None or px_um <= 0:
+            return
+        self.pixel_size = float(px_um)
+        try:
+            self.px_edit.setText(f'{self.pixel_size:g}')
+        except AttributeError:
+            pass
+        try:
+            msg = f"Detected pixel size: {self.pixel_size:g} µm"
+            if detector_name:
+                msg += f"  ({detector_name})"
+            self.status_label.setText(msg)
+        except AttributeError:
+            pass
 
     def _on_browse_mask(self):
         fn, _ = QtWidgets.QFileDialog.getOpenFileName(
@@ -3066,6 +3544,145 @@ class FFViewer(QtWidgets.QMainWindow):
         if fn:
             self.mask_edit.setText(fn)
             self.mask_check.setChecked(True)
+
+    def _on_build_mask_dialog(self):
+        """Build a TIFF mask from the current frame using value thresholds.
+
+        Common uses:
+          • mask all pixels with intensity < 0 → catches Eiger module
+            gaps and dead pixels that report -1 / -2.
+          • mask pixels above the ADU saturation → catches overflowing
+            pixels that skew peak fits.
+
+        Mask file format is the same MIDAS reads: uint8 TIFF, 1=masked,
+        0=good, same on-disk orientation as the raw data."""
+        if tifffile is None:
+            QtWidgets.QMessageBox.critical(
+                self, "Build mask", "tifffile package not installed — "
+                "cannot write TIFF masks.")
+            return
+        data = getattr(self.image_view, '_raw_data', None)
+        if data is None:
+            QtWidgets.QMessageBox.warning(
+                self, "Build mask", "No frame loaded yet — display a "
+                "frame first, then click Build.")
+            return
+
+        dlg = QtWidgets.QDialog(self)
+        dlg.setWindowTitle("Build mask from pixel values")
+        dlg.resize(460, 260)
+        vlay = QtWidgets.QVBoxLayout(dlg)
+
+        info = QtWidgets.QLabel(
+            f"Current frame: shape {data.shape}, "
+            f"range [{float(np.nanmin(data)):.3g}, {float(np.nanmax(data)):.3g}].")
+        info.setStyleSheet("color: #555;")
+        vlay.addWidget(info)
+
+        form = QtWidgets.QFormLayout()
+        below_edit = QtWidgets.QLineEdit("0")
+        below_edit.setPlaceholderText("blank = no lower threshold")
+        below_cb = QtWidgets.QCheckBox("Mask if value <")
+        below_cb.setChecked(True)
+        below_row = QtWidgets.QHBoxLayout()
+        below_row.addWidget(below_cb); below_row.addWidget(below_edit, 1)
+        form.addRow("Low threshold:", below_row)
+
+        above_edit = QtWidgets.QLineEdit("")
+        above_edit.setPlaceholderText("blank = no upper threshold")
+        above_cb = QtWidgets.QCheckBox("Mask if value >")
+        above_row = QtWidgets.QHBoxLayout()
+        above_row.addWidget(above_cb); above_row.addWidget(above_edit, 1)
+        form.addRow("High threshold:", above_row)
+
+        nan_cb = QtWidgets.QCheckBox("Also mask NaN pixels")
+        nan_cb.setChecked(True)
+        form.addRow("", nan_cb)
+
+        union_cb = QtWidgets.QCheckBox(
+            "Union with existing mask file (if the Mask field points to one)")
+        form.addRow("", union_cb)
+
+        vlay.addLayout(form)
+
+        preview_lbl = QtWidgets.QLabel("Preview: —")
+        preview_lbl.setStyleSheet("color: #333;")
+        vlay.addWidget(preview_lbl)
+
+        def _compute_mask():
+            m = np.zeros(data.shape, dtype=np.uint8)
+            if below_cb.isChecked():
+                try:
+                    thr = float(below_edit.text())
+                    m |= (data < thr).astype(np.uint8)
+                except ValueError:
+                    pass
+            if above_cb.isChecked():
+                try:
+                    thr = float(above_edit.text())
+                    m |= (data > thr).astype(np.uint8)
+                except ValueError:
+                    pass
+            if nan_cb.isChecked():
+                m |= (~np.isfinite(data)).astype(np.uint8)
+            if union_cb.isChecked():
+                exist = read_mask(self.mask_edit.text(), self.ny, self.nz)
+                if exist is not None and exist.shape == m.shape:
+                    m |= exist
+            return m
+
+        def _refresh_preview():
+            m = _compute_mask()
+            frac = 100.0 * m.sum() / m.size
+            preview_lbl.setText(
+                f"Preview: {int(m.sum())} pixels masked "
+                f"({frac:.2f}% of {m.size:,})")
+        for w in (below_cb, above_cb, below_edit, above_edit,
+                  nan_cb, union_cb):
+            if isinstance(w, QtWidgets.QLineEdit):
+                w.textChanged.connect(_refresh_preview)
+            else:
+                w.toggled.connect(_refresh_preview)
+        _refresh_preview()
+
+        btn_row = QtWidgets.QHBoxLayout()
+        btn_row.addStretch(1)
+        cancel_btn = QtWidgets.QPushButton("Cancel")
+        cancel_btn.clicked.connect(dlg.reject)
+        save_btn = QtWidgets.QPushButton("Save mask…")
+        save_btn.setDefault(True)
+        btn_row.addWidget(cancel_btn); btn_row.addWidget(save_btn)
+        vlay.addLayout(btn_row)
+
+        def _on_save():
+            m = _compute_mask()
+            default_dir = (os.path.dirname(self.mask_edit.text())
+                           if self.mask_edit.text() else os.getcwd())
+            base = (getattr(self, 'file_stem', 'mask') or 'mask').strip('_')
+            default_fn = os.path.join(default_dir, f'{base}_mask.tif')
+            fn, _ = QtWidgets.QFileDialog.getSaveFileName(
+                dlg, "Save mask TIFF", default_fn,
+                "TIFF Files (*.tif *.tiff);;All Files (*)")
+            if not fn:
+                return
+            try:
+                tifffile.imwrite(fn, m)
+            except Exception as e:
+                QtWidgets.QMessageBox.critical(
+                    dlg, "Build mask", f"Write failed:\n{e}")
+                return
+            self.mask_edit.setText(fn)
+            self.mask_check.setChecked(True)
+            self.apply_mask = True
+            try:
+                self.status_label.setText(
+                    f"Built mask ({int(m.sum())} px) → {fn}")
+            except AttributeError:
+                pass
+            dlg.accept()
+        save_btn.clicked.connect(_on_save)
+
+        dlg.exec_()
 
     def _load_zarr_zip(self, zip_path):
         if zarr is None:
@@ -3105,11 +3722,23 @@ class FFViewer(QtWidgets.QMainWindow):
             if 'tx' in p:
                 self.tx_local = float(p['tx'][0])
                 self.tx_edit.setText(str(self.tx_local))
+            if 'ty' in p:
+                self.ty_local = float(p['ty'][0])
+                self.ty_edit.setText(str(self.ty_local))
+            if 'tz' in p:
+                self.tz_local = float(p['tz'][0])
+                self.tz_edit.setText(str(self.tz_local))
+            for pk in ('p0', 'p1', 'p2', 'p3'):
+                if pk in p:
+                    v = float(p[pk][0])
+                    setattr(self, f'{pk}_local', v)
+                    getattr(self, f'{pk}_edit').setText(str(v))
             if 'PixelSize' in p:
                 self.pixel_size = float(p['PixelSize'][0])
                 self.px_edit.setText(str(self.pixel_size))
             if 'Wavelength' in p:
                 self.wl = float(p['Wavelength'][0])
+                self._sync_energy_field()
                 print(f"  Wavelength: {self.wl:.6f} Å")
             if 'SpaceGroup' in p:
                 self.sg = int(p['SpaceGroup'][0])
@@ -3159,6 +3788,20 @@ class FFViewer(QtWidgets.QMainWindow):
                 self.tx_local = float(self.tx_edit.text())
             except (ValueError, AttributeError):
                 self.tx_local = 0.0
+            try:
+                self.ty_local = float(self.ty_edit.text())
+            except (ValueError, AttributeError):
+                self.ty_local = 0.0
+            try:
+                self.tz_local = float(self.tz_edit.text())
+            except (ValueError, AttributeError):
+                self.tz_local = 0.0
+            for pk in ('p0', 'p1', 'p2', 'p3'):
+                try:
+                    setattr(self, f'{pk}_local',
+                            float(getattr(self, f'{pk}_edit').text()))
+                except (ValueError, AttributeError):
+                    setattr(self, f'{pk}_local', 0.0)
             self.hdf5_data_path = self.h5data_edit.text()
             self.hdf5_dark_path = self.h5dark_edit.text()
         except ValueError:
@@ -3749,6 +4392,487 @@ class FFViewer(QtWidgets.QMainWindow):
 
     # ── Rings ──────────────────────────────────────────────────────
 
+    # ── MIDAS calibration launch ───────────────────────────────────
+    def _current_data_file(self) -> Optional[str]:
+        """Best-effort path to the currently displayed data file."""
+        if getattr(self, 'zarr_zip_path', None):
+            return self.zarr_zip_path
+        if self.file_stem:
+            try:
+                return build_filename(
+                    self.folder, self.file_stem, int(self.first_file_nr),
+                    int(self.padding), int(self.det_nr), self.ext,
+                    self.sep_folder, sep=self.file_sep)
+            except Exception:
+                return None
+        return None
+
+    def _build_full_calibration_ps_txt(self) -> Optional[str]:
+        """Build a complete ps.txt suitable for CalibrantIntegratorOMP.
+
+        Uses the viewer's live state for detector geometry, wavelength,
+        rings, and file locations, and adds the per-parameter tolX keys
+        from the Detector Rings refine controls. Returns None on missing
+        prerequisites (data file, wavelength, or rings)."""
+        data_fn = self._current_data_file()
+        if not data_fn:
+            return None
+        if not self.wl:
+            return None
+        if not self.ring_rads:
+            return None
+
+        def _f(edit, default=0.0):
+            try: return float(edit.text())
+            except (ValueError, AttributeError): return default
+        def _tol(name):
+            if not self._refine_checks[name].isChecked():
+                return 0.0
+            return _f(self._refine_tols[name], 0.0)
+
+        lines: list = ['# ps.txt from FF Viewer → Calibrate…']
+
+        # Geometry seeds (current field values).
+        lsd = _f(self.lsd_edit)
+        bcy = _f(self.bcy_edit); bcz = _f(self.bcz_edit)
+        # MIDAS builds the input path as
+        #   <Folder>/<FileStem>_<StartNr:0Padding><Ext>
+        # so Ext must include the leading dot (matches AutoCalibrateZarr's
+        # state.ext convention). The viewer stores it without one.
+        ext = self.ext or ''
+        if ext and not ext.startswith('.'):
+            ext = '.' + ext
+        # Strip any trailing slash on Folder — MIDAS concatenates with '/'.
+        folder = (self.folder or os.getcwd()).rstrip('/')
+        lines.append(f'Folder {folder}')
+        lines.append(f'FileStem {self.file_stem or ""}')
+        lines.append(f'Padding {int(self.padding)}')
+        lines.append(f'Ext {ext}')
+        lines.append(f'StartNr {int(self.first_file_nr)}')
+        lines.append(f'EndNr {int(self.first_file_nr)}')
+        if self.dark_fn:
+            lines.append(f'Dark {self.dark_fn}')
+        lines.append(f'NrPixelsY {int(self.ny)}')
+        lines.append(f'NrPixelsZ {int(self.nz)}')
+        lines.append(f'px {self.pixel_size}')
+        lines.append(f'Wavelength {self.wl}')
+        lines.append(f'Lsd {lsd}')
+        lines.append(f'BC {bcy} {bcz}')
+        lines.append(f'tx {_f(self.tx_edit)}')
+        lines.append(f'ty {_f(self.ty_edit)}')
+        lines.append(f'tz {_f(self.tz_edit)}')
+        lines.append('Wedge 0')
+        # ImTransOpt: MIDAS accepts 0 (identity) / 1 (HFlip) / 2 (VFlip)
+        # / 3 (Transpose); it REJECTS any other value including its own
+        # unset-sentinel (-1) with "TransformationOptions can only be 0,
+        # 1, 2. Exiting." Always emit at least one line so downstream
+        # tools have something valid.
+        transforms: list = []
+        if getattr(self, 'hflip_check', None) and self.hflip_check.isChecked():
+            transforms.append(1)
+        if getattr(self, 'vflip_check', None) and self.vflip_check.isChecked():
+            transforms.append(2)
+        if getattr(self, 'transpose_check', None) and self.transpose_check.isChecked():
+            transforms.append(3)
+        if not transforms:
+            transforms = [0]
+        for t in transforms:
+            lines.append(f'ImTransOpt {t}')
+        lines.append(f'p0 {_f(self.p0_edit)}')
+        lines.append(f'p1 {_f(self.p1_edit)}')
+        lines.append(f'p2 {_f(self.p2_edit)}')
+        lines.append(f'p3 {_f(self.p3_edit)}')
+
+        # Rings + crystallography.
+        lines.append(f'SpaceGroup {self.sg}')
+        lc = ' '.join(f'{v}' for v in self.lattice_const)
+        lines.append(f'LatticeConstant {lc}')
+        rhod = getattr(self, 'temp_max_ring_rad', 0) or max(self.ring_rads)
+        lines.append(f'RhoD {rhod}')
+        lines.append(f'MaxRingRad {rhod}')
+        if self.hdf5_data_path:
+            lines.append(f'dataLoc {self.hdf5_data_path}')
+        dtype = self._infer_midas_datatype()
+        if dtype is None:
+            dtype = 2   # fall through to ge for calibration path
+        lines.append(f'DataType {dtype}')
+
+        # Ring restriction — refine ONLY against rings the user picked
+        # in Rings Material (the ones drawn on the image). Without this,
+        # CalibrantIntegratorOMP would fit against every ring GetHKLList
+        # generates (70+ for CeO2), including many the user rejected as
+        # off-detector or contaminated.
+        for rn in (self.ring_nrs or []):
+            lines.append(f'RingThresh {int(rn)} 100')
+
+        # Mask + bad-pixel sentinels. Forwards the user's Apply-mask
+        # setting from the Data Source panel so gap/dead pixels don't
+        # poison peak fitting. MIDAS accepts MaskFile (TIFF uint8, 1=bad)
+        # and value-based BadPxIntensity / GapIntensity sentinels.
+        if getattr(self, 'apply_mask', False) and self.mask_edit.text():
+            mask_path = self.mask_edit.text().strip()
+            if mask_path and os.path.exists(mask_path):
+                lines.append(f'MaskFile {mask_path}')
+        # Value-based masks: any pixel matching these is treated as bad.
+        bad_px = getattr(self, 'bad_px_intensity', None)
+        if bad_px is not None and not (isinstance(bad_px, float) and math.isnan(bad_px)):
+            lines.append(f'BadPxIntensity {bad_px}')
+        gap = getattr(self, 'gap_intensity', None)
+        if gap is not None and not (isinstance(gap, float) and math.isnan(gap)):
+            lines.append(f'GapIntensity {gap}')
+
+        # Tolerances — the actual refine flags.
+        lines.append(f'tolLsd {_tol("Lsd")}')
+        lines.append(f'tolBC {max(_tol("BC_Y"), _tol("BC_Z"))}')
+        lines.append(f'tolTilts {max(_tol("Tx"), _tol("Ty"), _tol("Tz"))}')
+        lines.append(f'tolP {_tol("p0")}')
+        lines.append(f'tolP1 {_tol("p1")}')
+        lines.append(f'tolP2 {_tol("p2")}')
+        lines.append(f'tolP3 {_tol("p3")}')
+
+        # Calibration engine knobs — match AutoCalibrateZarr defaults so
+        # the run behaves the same as the CLI would.
+        lines.append('nIterations 40')
+        lines.append('DoubletSeparation 25')
+        lines.append('MultFactor 5')
+        lines.append('OutlierIterations 3')
+        lines.append('MinIndicesForFit 5')
+        lines.append('NormalizeRingWeights 1')
+        lines.append('WeightByRadius 1')
+        lines.append('WeightByFitSNR 1')
+        lines.append('L2Objective 1')
+        lines.append('TrimmedMeanFraction 0.75')
+        lines.append('RemoveOutliersBetweenIters 1')
+        lines.append('EtaBinSize 1.0')
+        lines.append('Width 1000')
+
+        return '\n'.join(lines) + '\n'
+
+    def _infer_midas_datatype(self) -> Optional[int]:
+        """MIDAS DataType encoding: 0=zarr, 1=hdf5, 2=ge, 3=tif, 4=cbf.
+        Derives from either the zarr store path or the viewer's Ext."""
+        z = getattr(self, 'zarr_zip_path', None)
+        if z and z.lower().endswith(('.zarr', '.zarr.zip')):
+            return 0
+        # Ext may be multi-part (e.g. '.vrx.h5' at APS beamlines); the
+        # actual container format is the LAST segment.
+        e = (self.ext or '').lower().lstrip('.').rsplit('.', 1)[-1]
+        if e in ('h5', 'hdf5', 'nxs'):
+            return 1
+        if e in ('tif', 'tiff'):
+            return 3
+        if e == 'cbf':
+            return 4
+        if e and e.startswith('ge'):
+            return 2
+        return None
+
+    def _build_saveable_ps_txt(self) -> str:
+        """Build a self-contained MIDAS ps.txt from the viewer's current
+        state. Includes only *readable* geometry / crystallography keys —
+        no calibration control knobs, no tolerances — so the file round-
+        trips cleanly through the viewer's load-params flow."""
+        def _f(edit, default=0.0):
+            try: return float(edit.text())
+            except (ValueError, AttributeError): return default
+
+        ext = self.ext or ''
+        if ext and not ext.startswith('.'):
+            ext = '.' + ext
+        folder = (self.folder or os.getcwd()).rstrip('/')
+
+        lines: list = ['# MIDAS param file written by FF Viewer']
+        # Detector layout / raw source (best-effort — some fields may
+        # be empty if the user is looking at a zarr).
+        lines.append(f'Folder {folder}')
+        if self.file_stem:
+            lines.append(f'FileStem {self.file_stem}')
+        lines.append(f'Padding {int(self.padding)}')
+        if ext:
+            lines.append(f'Ext {ext}')
+        lines.append(f'StartNr {int(self.first_file_nr)}')
+        # AutoCalibrateZarr's refined_MIDAS_params always emits StartNr
+        # AND EndNr (single-frame calibrant). Match so downstream tools
+        # that expect both find them.
+        lines.append(f'EndNr {int(self.first_file_nr)}')
+        lines.append(f'NrPixelsY {int(self.ny)}')
+        lines.append(f'NrPixelsZ {int(self.nz)}')
+        lines.append(f'px {self.pixel_size}')
+        # DataType: 0=zarr, 1=hdf5, 2=ge, 3=tif, 4=cbf — same encoding
+        # AutoCalibrateZarr and CalibrantIntegratorOMP use.
+        dtype = self._infer_midas_datatype()
+        if dtype is not None:
+            lines.append(f'DataType {dtype}')
+        if self.hdf5_data_path:
+            lines.append(f'dataLoc {self.hdf5_data_path}')
+        if self.dark_fn:
+            lines.append(f'Dark {self.dark_fn}')
+
+        # Geometry (what the user actually edits on this panel).
+        lines.append(f'Lsd {_f(self.lsd_edit)}')
+        lines.append(f'BC {_f(self.bcy_edit)} {_f(self.bcz_edit)}')
+        lines.append(f'tx {_f(self.tx_edit)}')
+        lines.append(f'ty {_f(self.ty_edit)}')
+        lines.append(f'tz {_f(self.tz_edit)}')
+        lines.append('Wedge 0')
+        # ImTransOpt: MIDAS accepts 0 (identity) / 1 (HFlip) / 2 (VFlip)
+        # / 3 (Transpose); it REJECTS any other value including its own
+        # unset-sentinel (-1) with "TransformationOptions can only be 0,
+        # 1, 2. Exiting." Always emit at least one line so downstream
+        # tools have something valid.
+        transforms: list = []
+        if getattr(self, 'hflip_check', None) and self.hflip_check.isChecked():
+            transforms.append(1)
+        if getattr(self, 'vflip_check', None) and self.vflip_check.isChecked():
+            transforms.append(2)
+        if getattr(self, 'transpose_check', None) and self.transpose_check.isChecked():
+            transforms.append(3)
+        if not transforms:
+            transforms = [0]
+        for t in transforms:
+            lines.append(f'ImTransOpt {t}')
+        lines.append(f'p0 {_f(self.p0_edit)}')
+        lines.append(f'p1 {_f(self.p1_edit)}')
+        lines.append(f'p2 {_f(self.p2_edit)}')
+        lines.append(f'p3 {_f(self.p3_edit)}')
+
+        # Crystallography (needed for rings to regenerate on load).
+        if self.wl:
+            lines.append(f'Wavelength {self.wl}')
+        if self.sg:
+            lines.append(f'SpaceGroup {self.sg}')
+        if self.lattice_const:
+            lc = ' '.join(f'{v}' for v in self.lattice_const)
+            lines.append(f'LatticeConstant {lc}')
+        rhod = getattr(self, 'temp_max_ring_rad', 0)
+        if rhod:
+            # MIDAS binaries read either MaxRingRad or RhoD — writing
+            # both matches AutoCalibrateZarr's convention and avoids
+            # surprises if a downstream tool only checks one.
+            lines.append(f'MaxRingRad {rhod}')
+            lines.append(f'RhoD {rhod}')
+        # Ring selection (which rings the user chose from the material).
+        for rn in (self.ring_nrs or []):
+            lines.append(f'RingThresh {int(rn)} 100')
+
+        return '\n'.join(lines) + '\n'
+
+    def _default_params_save_path(self) -> str:
+        """Suggested filename: 'ff_params_<stem>.txt' next to the current
+        data folder. Falls back to CWD when no file is loaded."""
+        base_dir = self.folder if self.folder else os.getcwd()
+        stem = self.file_stem or 'ff'
+        return os.path.join(base_dir.rstrip('/'), f'ff_params_{stem}.txt')
+
+    def _save_params_to_file(self):
+        default = self._default_params_save_path()
+        fn, _ = QtWidgets.QFileDialog.getSaveFileName(
+            self, "Save MIDAS parameter file", default,
+            "MIDAS param files (*.txt);;All files (*)")
+        if not fn:
+            return
+        try:
+            with open(fn, 'w') as f:
+                f.write(self._build_saveable_ps_txt())
+        except OSError as e:
+            QtWidgets.QMessageBox.critical(
+                self, "Save params",
+                f"Could not write {fn}:\n{e}")
+            return
+        # Feedback in the status bar so the user doesn't have to hunt
+        # for the confirmation dialog.
+        try:
+            self.status_label.setText(f"Saved parameters to {fn}")
+        except AttributeError:
+            pass
+
+    def _launch_calibration(self):
+        """Spawn CalibrantIntegratorOMP on the currently displayed image
+        with the per-parameter refine flags/tolerances. Stdout streams
+        into a modal log dialog; refined values are written back to the
+        Detector Rings fields on exit."""
+        if not self.ring_rads:
+            QtWidgets.QMessageBox.warning(
+                self, "Calibrate",
+                "No rings generated yet. Use 'Rings Material' first so "
+                "MIDAS has ring positions to refine against.")
+            return
+        content = self._build_full_calibration_ps_txt()
+        if content is None:
+            QtWidgets.QMessageBox.warning(
+                self, "Calibrate",
+                "Missing prerequisites for MIDAS calibration. Need:\n"
+                "  • a loaded data file\n"
+                "  • a wavelength (set Energy on Detector Rings)\n"
+                "  • at least one ring from Rings Material")
+            return
+
+        # Locate CalibrantIntegratorOMP. Prefer the same path AutoCalibrateZarr
+        # uses so we honor any user install override.
+        exe = None
+        try:
+            from importlib import import_module
+            mc = import_module('midas_config')
+            if getattr(mc, 'MIDAS_BIN_DIR', ''):
+                cand = os.path.join(mc.MIDAS_BIN_DIR, 'CalibrantIntegratorOMP')
+                if os.path.isfile(cand):
+                    exe = cand
+        except Exception:
+            pass
+        if exe is None:
+            for cand in (
+                    os.path.expanduser(
+                        '~/opt/MIDAS/FF_HEDM/bin/CalibrantIntegratorOMP'),
+                    os.path.expanduser(
+                        '~/opt/midas_saxs_waxs/FF_HEDM/bin/CalibrantIntegratorOMP'),
+                    '/opt/MIDAS/FF_HEDM/bin/CalibrantIntegratorOMP'):
+                if os.path.isfile(cand):
+                    exe = cand; break
+        if exe is None:
+            QtWidgets.QMessageBox.critical(
+                self, "Calibrate",
+                "CalibrantIntegratorOMP binary not found. Build MIDAS "
+                "first or set MIDAS_BIN_DIR in midas_config.")
+            return
+
+        # Write ps.txt to a temp dir; CalibrantIntegratorOMP puts its
+        # outputs alongside the ps file so we want a clean folder.
+        tmpdir = tempfile.mkdtemp(prefix='ffcal_')
+        ps_path = os.path.join(tmpdir, 'ps.txt')
+        with open(ps_path, 'w') as f:
+            f.write(content)
+
+        n_cpus = max(1, (os.cpu_count() or 8) - 2)
+
+        # Log dialog. Modeless-looking (own window with title bar) so the
+        # user can drag/resize while the subprocess runs, but modal to
+        # the viewer to prevent re-clicking Calibrate mid-run.
+        dlg = QtWidgets.QDialog(self)
+        dlg.setWindowTitle("MIDAS calibration — CalibrantIntegratorOMP")
+        dlg.setModal(True)
+        dlg.resize(820, 560)
+        vlay = QtWidgets.QVBoxLayout(dlg)
+        hdr = QtWidgets.QLabel(f"Running: {exe} {ps_path} {n_cpus}")
+        hdr.setWordWrap(True)
+        hdr.setStyleSheet("color: #555;")
+        vlay.addWidget(hdr)
+        log = QtWidgets.QPlainTextEdit()
+        log.setReadOnly(True)
+        log.setStyleSheet("font-family: monospace; font-size: 10pt;")
+        vlay.addWidget(log, 1)
+        btn_row = QtWidgets.QHBoxLayout()
+        cancel_btn = QtWidgets.QPushButton("Cancel")
+        close_btn = QtWidgets.QPushButton("Close")
+        close_btn.setEnabled(False)
+        apply_btn = QtWidgets.QPushButton("Apply refined values")
+        apply_btn.setEnabled(False)
+        apply_btn.setDefault(True)
+        btn_row.addWidget(cancel_btn)
+        btn_row.addStretch(1)
+        btn_row.addWidget(apply_btn)
+        btn_row.addWidget(close_btn)
+        vlay.addLayout(btn_row)
+
+        # Buffer for parsing refined values on exit.
+        stdout_buf: list = []
+        proc = QtCore.QProcess(dlg)
+        proc.setProcessChannelMode(QtCore.QProcess.MergedChannels)
+        proc.setWorkingDirectory(tmpdir)
+
+        def _drain():
+            data = bytes(proc.readAll()).decode('utf-8', errors='replace')
+            if not data:
+                return
+            stdout_buf.append(data)
+            log.moveCursor(QtGui.QTextCursor.End)
+            log.insertPlainText(data)
+            log.moveCursor(QtGui.QTextCursor.End)
+        proc.readyRead.connect(_drain)
+
+        refined: dict = {}
+        def _parse_refined():
+            """Extract refined values from the 'Mean Values' block."""
+            text = ''.join(stdout_buf)
+            marker = text.find('Mean Values')
+            if marker < 0:
+                return
+            for line in text[marker:].splitlines():
+                parts = line.strip().split()
+                if len(parts) < 2:
+                    continue
+                key = parts[0]
+                try:
+                    if key == 'Lsd':
+                        refined['Lsd'] = float(parts[1])
+                    elif key == 'BC' and len(parts) >= 3:
+                        refined['BC'] = (float(parts[1]), float(parts[2]))
+                    elif key in ('tx', 'ty', 'tz'):
+                        refined[key] = float(parts[1])
+                    elif key in ('p0', 'p1', 'p2', 'p3'):
+                        refined[key] = float(parts[1])
+                except ValueError:
+                    continue
+
+        def _on_finished(code, _status):
+            _drain()
+            log.appendPlainText(f'\n--- CalibrantIntegratorOMP exited (rc={code}) ---')
+            close_btn.setEnabled(True)
+            cancel_btn.setEnabled(False)
+            _parse_refined()
+            if refined:
+                apply_btn.setEnabled(True)
+                log.appendPlainText(
+                    f'\nRefined parameters detected: {", ".join(sorted(refined))}. '
+                    'Click "Apply refined values" to write them to the panel.')
+            else:
+                log.appendPlainText(
+                    '\nNo refined values parsed from output. '
+                    '(Look for "Mean Values" block above.)')
+
+        def _on_apply():
+            if 'Lsd' in refined:
+                self.lsd_edit.setText(f'{refined["Lsd"]:g}')
+            if 'BC' in refined:
+                bcy_new, bcz_new = refined['BC']
+                self.bcy_edit.setText(f'{bcy_new:g}')
+                self.bcz_edit.setText(f'{bcz_new:g}')
+            for k in ('tx', 'ty', 'tz'):
+                if k in refined:
+                    getattr(self, f'{k}_edit').setText(f'{refined[k]:g}')
+            for k in ('p0', 'p1', 'p2', 'p3'):
+                if k in refined:
+                    getattr(self, f'{k}_edit').setText(f'{refined[k]:g}')
+            # Trigger the same downstream refresh as an editingFinished.
+            self._redraw_if_rings()
+            apply_btn.setEnabled(False)
+            log.appendPlainText('Applied refined values to Detector Rings panel.')
+
+        def _on_cancel():
+            if proc.state() != QtCore.QProcess.NotRunning:
+                proc.kill()
+                log.appendPlainText('\n--- Cancelled by user ---')
+            cancel_btn.setEnabled(False)
+            close_btn.setEnabled(True)
+
+        proc.finished.connect(_on_finished)
+        cancel_btn.clicked.connect(_on_cancel)
+        close_btn.clicked.connect(dlg.accept)
+        apply_btn.clicked.connect(_on_apply)
+
+        proc.start(exe, [ps_path, str(n_cpus)])
+        try:
+            dlg.exec_()
+        finally:
+            # Whatever closed the dialog (Close, Cancel, window [X] or
+            # Escape), never leave CalibrantIntegratorOMP running as an
+            # orphan and always remove the temp dir. exec_() blocks until
+            # the dialog is closed by any route, so this covers the [X]/
+            # Escape paths that have no explicit handler.
+            if proc.state() != QtCore.QProcess.NotRunning:
+                proc.kill()
+                proc.waitForFinished(3000)
+            shutil.rmtree(tmpdir, ignore_errors=True)
+
     def _redraw_if_rings(self):
         if self.show_rings and self.ring_rads:
             self._draw_rings()
@@ -3756,6 +4880,71 @@ class FFViewer(QtWidgets.QMainWindow):
             self._draw_axes()
         if self.show_caking and self.cake_params_per_det:
             self._draw_caking()
+        if self.grid_mode != 'off':
+            self._draw_grid()
+
+    def _sync_energy_field(self) -> None:
+        """Write E(keV) = 12.398 / self.wl into the Energy edit without
+        firing editingFinished (avoids re-rescaling ring_rads at the
+        same wavelength)."""
+        if not hasattr(self, 'energy_edit') or not self.wl:
+            return
+        self.energy_edit.blockSignals(True)
+        self.energy_edit.setText(f'{12.398 / self.wl:.4f}')
+        self.energy_edit.blockSignals(False)
+
+    def _cache_ring_dspacings(self) -> None:
+        """Derive each ring's d-spacing from its detector radius at the
+        current (wl, Lsd) and cache it. Lets an Energy field edit rescale
+        ring positions via Bragg without re-running GetHKLList.
+
+        d = λ / (2 sin θ), with 2θ = atan(rad / Lsd)."""
+        self._ring_ds = []
+        if not self.ring_rads or not self.wl or not self.lsd_local:
+            return
+        for rad in self.ring_rads:
+            try:
+                two_theta = math.atan(float(rad) / float(self.lsd_local))
+                sin_theta = math.sin(two_theta / 2.0)
+                if sin_theta > 0:
+                    self._ring_ds.append(self.wl / (2.0 * sin_theta))
+                else:
+                    self._ring_ds.append(None)
+            except (ValueError, ZeroDivisionError):
+                self._ring_ds.append(None)
+
+    def _on_energy_edited(self):
+        """Recompute ring radii from cached d-spacings using the new λ."""
+        try:
+            e_kev = float(self.energy_edit.text())
+        except (ValueError, AttributeError):
+            return
+        if e_kev <= 0:
+            return
+        wl_new = 12.398 / e_kev   # Å
+        # If we don't have cached d-spacings yet (rings never generated),
+        # nothing to rescale — just remember the new wl.
+        if not getattr(self, '_ring_ds', None):
+            self.wl = wl_new
+            return
+        try:
+            lsd = float(self.lsd_edit.text())
+        except (ValueError, AttributeError):
+            lsd = self.lsd_local
+        new_rads = []
+        for d in self._ring_ds:
+            if d is None or d <= 0:
+                new_rads.append(0.0); continue
+            ratio = wl_new / (2.0 * d)
+            if abs(ratio) >= 1.0:
+                # Energy pushed λ past 2d — that ring can't diffract.
+                # Keep it in the list but at r=0 so it stays hidden.
+                new_rads.append(0.0); continue
+            two_theta = 2.0 * math.asin(ratio)
+            new_rads.append(lsd * math.tan(two_theta))
+        self.ring_rads = new_rads
+        self.wl = wl_new
+        self._redraw_if_rings()
 
     def _draw_rings(self):
         self.image_view.clear_overlays('rings')
@@ -3769,12 +4958,55 @@ class FFViewer(QtWidgets.QMainWindow):
             lsd = float(self.lsd_edit.text())
         except ValueError:
             return
+        # Ty/Tz tilts distort ring circles into conics; Tx is handled by
+        # the image-rotation path in _apply_tx_rotation but we still pass
+        # it here so rings drawn on the un-rotated composite (multi mode)
+        # come out right.
+        try:
+            tx = float(self.tx_edit.text())
+        except (ValueError, AttributeError):
+            tx = 0.0
+        try:
+            ty = float(self.ty_edit.text())
+        except (ValueError, AttributeError):
+            ty = 0.0
+        try:
+            tz = float(self.tz_edit.text())
+        except (ValueError, AttributeError):
+            tz = 0.0
         self.bc_local = [bc_y, bc_z]
         self.lsd_local = lsd
+        # In single-detector mode the image was rotated by -Tx around BC
+        # to un-tilt it — so we must NOT apply Tx to the rings again, or
+        # they'll double-tilt. Multi-detector composite is already in the
+        # lab frame (Tx=0), so this reduces to just passing the field.
+        # Bottom line: pass ty/tz always, and tx only when there's no
+        # image rotation to compensate for it.
+        tx_for_rings = 0.0 if not self.multi_mode else tx
+        # Distortion coefficients + RhoD (MaxRingRad, µm).
+        def _read_float(edit, default=0.0):
+            try:
+                return float(edit.text())
+            except (ValueError, AttributeError):
+                return default
+        p0 = _read_float(self.p0_edit)
+        p1 = _read_float(self.p1_edit)
+        p2 = _read_float(self.p2_edit)
+        p3 = _read_float(self.p3_edit)
+        # RhoD normally comes from MaxRingRad in the param file; fall
+        # back to the largest ring's radius so the R̂ = R/RhoD ratio at
+        # the outer ring is ~1 (matches MIDAS convention).
+        rho_d = getattr(self, 'temp_max_ring_rad', None)
+        if not rho_d and self.ring_rads:
+            rho_d = max(self.ring_rads)
         colors = _color_cycle_colors
         for idx, rad in enumerate(self.ring_rads):
             Y, Z = compute_ring_points(rad, lsd, self.lsd_orig,
-                                        [bc_y, bc_z], px)
+                                        [bc_y, bc_z], px,
+                                        tx_deg=tx_for_rings,
+                                        ty_deg=ty, tz_deg=tz,
+                                        p0=p0, p1=p1, p2=p2,
+                                        p3_deg=p3, rho_d=rho_d)
             color = colors[idx % len(colors)]
             curve = pg.PlotDataItem(Y, Z, pen=pg.mkPen(color, width=1.5))
             self.image_view.add_overlay(curve, 'rings')
@@ -3800,6 +5032,147 @@ class FFViewer(QtWidgets.QMainWindow):
         font_size = max(10, int(round(gui_pt * 1.0)))
         draw_lab_frame_axes(self.image_view, bc_y, bc_z, self.ny, self.nz,
                             font_size=font_size)
+
+    # ── 2θ / d / q grid overlay ────────────────────────────────────
+    def _on_grid_mode_changed(self, _idx):
+        data = self.grid_mode_combo.currentData()
+        self.grid_mode = str(data) if data is not None else 'off'
+        if self.grid_mode == 'off':
+            self.image_view.clear_overlays('grid')
+        else:
+            self._draw_grid()
+
+    def _redraw_grid_if_on(self):
+        if self.grid_mode != 'off':
+            self._draw_grid()
+
+    @staticmethod
+    def _nice_step(span: float, target_steps: int = 8) -> float:
+        """Pick a nice round step (1/2/5·10^n) so ~target_steps fit in span."""
+        if span <= 0:
+            return 1.0
+        raw = span / max(1, target_steps)
+        exp = math.floor(math.log10(raw))
+        base = raw / (10 ** exp)
+        if base < 1.5:
+            nice = 1.0
+        elif base < 3.5:
+            nice = 2.0
+        elif base < 7.5:
+            nice = 5.0
+        else:
+            nice = 10.0
+        return nice * (10 ** exp)
+
+    def _draw_grid(self):
+        """Overlay isolines of constant 2θ / d / q as concentric circles
+        around BC. All three quantities are monotonic in R (pixel radius),
+        so we pick nice contour values in the *chosen* quantity, invert to
+        R (µm), and draw a circle at each in pixel units."""
+        self.image_view.clear_overlays('grid')
+        mode = self.grid_mode
+        if mode == 'off':
+            return
+        try:
+            bc_y = float(self.bcy_edit.text())
+            bc_z = float(self.bcz_edit.text())
+            lsd = float(self.lsd_edit.text())
+            px = float(self.px_edit.text() or 200)
+        except (ValueError, AttributeError):
+            return
+        if lsd <= 0 or px <= 0:
+            return
+        # Estimate the max detector radius we could see: the farthest
+        # corner from BC in pixels, converted to µm.
+        try:
+            ny = int(self.ny); nz = int(self.nz)
+        except (ValueError, TypeError):
+            return
+        corners_px = [(0, 0), (ny, 0), (0, nz), (ny, nz)]
+        r_max_px = max(math.hypot(cx - bc_y, cy - bc_z) for cx, cy in corners_px)
+        r_max_um = r_max_px * px
+        if r_max_um <= 0:
+            return
+        # Convert R_max to the chosen coordinate range so we can pick a
+        # nice step in that space.
+        two_theta_max = math.atan(r_max_um / lsd)   # rad
+        wl = self.wl if self.wl and self.wl > 0 else None
+        if mode == 'tth':
+            hi = math.degrees(two_theta_max)
+            lo = 0.0
+            step = self._nice_step(hi - lo)
+            values = [lo + step * (k + 1) for k in range(int(hi / step) + 1)]
+            unit = '°'
+            def r_of(v):   # v in degrees
+                return lsd * math.tan(math.radians(v))
+            label_of = lambda v: f'2θ={v:g}{unit}'
+        elif mode == 'q':
+            if not wl:
+                return
+            q_max = (4 * math.pi / wl) * math.sin(two_theta_max / 2.0)
+            step = self._nice_step(q_max)
+            values = [step * (k + 1) for k in range(int(q_max / step) + 1)]
+            unit = 'Å⁻¹'
+            def r_of(v):   # v in Å⁻¹
+                sin_th = v * wl / (4 * math.pi)
+                if abs(sin_th) >= 1.0:
+                    return None
+                return lsd * math.tan(2.0 * math.asin(sin_th))
+            label_of = lambda v: f'q={v:g}{unit}'
+        else:  # 'd' (Å)
+            if not wl:
+                return
+            # Minimum d we can resolve at r_max: d_min = λ / (2·sin(θ_max))
+            sin_th_max = math.sin(two_theta_max / 2.0)
+            if sin_th_max <= 0:
+                return
+            d_min = wl / (2.0 * sin_th_max)
+            # Pick isolines from d_min up to a sensible cap (10× d_min).
+            d_max = d_min * 10
+            step = self._nice_step(d_max - d_min)
+            values = [d_min + step * (k + 1) for k in range(int((d_max - d_min) / step) + 1)]
+            unit = 'Å'
+            def r_of(v):   # v in Å
+                if v <= 0:
+                    return None
+                ratio = wl / (2.0 * v)
+                if abs(ratio) >= 1.0:
+                    return None
+                return lsd * math.tan(2.0 * math.asin(ratio))
+            label_of = lambda v: f'd={v:g}{unit}'
+
+        # Draw circles + labels. Sample 360 points per circle in lab-Y/Z
+        # (same convention as _draw_rings — Y_lab is signed by view mode).
+        etas = np.linspace(-180.0, 180.0, 360)
+        pen = pg.mkPen((180, 180, 200, 180), width=1.0, style=QtCore.Qt.DashLine)
+        # Text color: match pen but opaque.
+        label_color = (180, 180, 220)
+        gui_pt = self.font_spin.value() if hasattr(self, 'font_spin') else 10
+        font = QtGui.QFont('', max(8, int(gui_pt * 0.9)))
+        for v in values:
+            r_um = r_of(v)
+            if r_um is None or r_um <= 0 or r_um > r_max_um:
+                continue
+            r_px = r_um / px
+            cy = np.deg2rad(etas)
+            Y = r_px * np.cos(cy)
+            Z = r_px * np.sin(cy)
+            # Multi-detector composite uses 'br' origin (X-flipped);
+            # single-panel 'bl'. Match _draw_rings sign.
+            Y_disp = (Y + bc_y) if self.multi_mode else (-Y + bc_y)
+            Z_disp = Z + bc_z
+            curve = pg.PlotDataItem(Y_disp, Z_disp, pen=pen)
+            self.image_view.add_overlay(curve, 'grid')
+            # Place one label at η = +45° (upper-right, usually readable).
+            eta_lbl = math.pi / 4
+            Ylab = r_px * math.cos(eta_lbl)
+            Zlab = r_px * math.sin(eta_lbl)
+            xy = ((Ylab + bc_y) if self.multi_mode else (-Ylab + bc_y),
+                  Zlab + bc_z)
+            text = pg.TextItem(label_of(v), color=label_color, anchor=(0, 1))
+            text.setFont(font)
+            text.setPos(*xy)
+            self.image_view.add_overlay(text, 'grid')
 
     # ── Caking overlay ─────────────────────────────────────────────
 
@@ -4224,6 +5597,10 @@ class FFViewer(QtWidgets.QMainWindow):
             self.ring_nrs = dlg.ring_nrs
             self.hkls = dlg.hkls
             self.rings_to_show = dlg.rings_to_show
+            # Cache d-spacings + reference (wl, Lsd) so Energy edits on
+            # the main panel can rescale ring radii without re-running
+            # GetHKLList. See _recompute_ring_rads_for_wl.
+            self._cache_ring_dspacings()
             self.rings_check.setChecked(True)
             self._draw_rings()
 
