@@ -59,7 +59,7 @@ import math
 from typing import Optional
 
 import numpy as np
-import torch
+from ._optional import torch
 
 from .tensor import tensor_to_voigt, rotation_voigt_mandel
 from .equilibrium import d0_correction_strain_level, effective_weights

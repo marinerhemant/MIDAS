@@ -13,8 +13,12 @@ Requires: ``pip install midas-stress[torch]``
 import math
 from typing import Optional
 
-import torch
-import torch.nn as nn
+# This module is torch-only (it *is* the PyTorch backend). Fail with a clear
+# message rather than an ImportError traceback when torch is absent; the NumPy
+# equivalents live in tensor.py / hooke.py / equilibrium.py.
+from ._optional import require_torch
+torch = require_torch("midas_stress.torch_backend")
+nn = torch.nn
 
 _SQRT2 = math.sqrt(2.0)
 _SQRT2_INV = 1.0 / _SQRT2

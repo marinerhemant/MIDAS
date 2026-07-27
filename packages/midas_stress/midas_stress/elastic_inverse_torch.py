@@ -38,7 +38,8 @@ from __future__ import annotations
 from typing import Optional, Sequence
 
 import numpy as np
-import torch
+from ._optional import require_torch
+torch = require_torch("midas_stress.elastic_inverse_torch")
 
 from .elastic_inverse import (
     _aggregate_basis_rotated,

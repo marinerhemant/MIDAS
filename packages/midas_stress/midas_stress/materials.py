@@ -7,8 +7,10 @@ elastic constants (returning torch tensors) or accept an explicit
 `dtype=torch.<dtype>` / `device=...` kwarg to opt into torch output.
 """
 
+
+from __future__ import annotations
 import numpy as np
-import torch
+from ._optional import torch
 
 
 def _is_torch(*args) -> bool:

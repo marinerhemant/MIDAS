@@ -4,7 +4,7 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "midas-stress"
-version = "0.8.0"
+version = "0.8.1"
 description = "Crystallographic stress-strain analysis with Voigt-Mandel notation and mechanical equilibrium constraints; torch-native API across orientation/frames/tensor/equilibrium/materials/plasticity/elastic_inverse"
 readme = "README.md"
 license = "BSD-3-Clause"
@@ -26,13 +26,15 @@ classifiers = [
 dependencies = [
     "numpy>=1.22",
     "scipy>=1.8",
-    "torch>=2.0",
 ]
 
 [project.optional-dependencies]
-# Kept as a no-op alias for one release for callers who installed via
-# `midas-stress[torch]` in 0.4.x; will be dropped in 0.6.0.
-torch = []
+# torch is OPTIONAL: every NumPy code path works without it. It is needed only
+# for tensor inputs (the differentiable paths) and the torch-only entry points
+# (fit_joint_d0_stiffness, loo_influence_stages). Install `midas-stress[torch]`
+# for those; a plain `pip install midas-stress` is torch-free, which is what
+# lets it install in environments (e.g. beamline analysis) that have no torch.
+torch = ["torch>=2.0"]
 dev = ["pytest>=7.0", "pytest-cov"]
 
 [project.urls]

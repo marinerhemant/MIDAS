@@ -12,10 +12,12 @@ Two backends:
 All Euler angles in RADIANS.  All misorientation angles returned in RADIANS.
 """
 
+
+from __future__ import annotations
 import math
 
 import numpy as np
-import torch
+from ._optional import torch
 from scipy.linalg import expm
 
 EPS = 1e-12
@@ -110,6 +112,22 @@ _CubSymLow = [
     [0.5, -0.5, -0.5, 0.5], [0.5, 0.5, 0.5, -0.5],
 ]
 _TrigType2SGs = {149, 151, 153, 157, 159, 162, 163}
+
+# The symmetry-quaternion tables above are written with 5-decimal literals
+# (0.70711, 0.86603) for readability. Those are truncations of exact
+# crystallographic values, so the raw quaternions are not quite unit and the
+# rotation matrices they produce are orthonormal (and their rotation angles
+# exact) only to ~3e-5. _snap_quat repairs that by mapping each component to the
+# nearest member of the exact set {0, +-1/2, +-sqrt(2)/2, +-sqrt(3)/2, +-1};
+# the gaps between those values (>= 0.13) dwarf the 5-decimal error (~1.5e-5),
+# so the mapping is unambiguous, and the result is an exact unit quaternion.
+_EXACT_Q = (0.0, 0.5, -0.5, math.sqrt(0.5), -math.sqrt(0.5),
+            math.sqrt(3.0) / 2.0, -math.sqrt(3.0) / 2.0, 1.0, -1.0)
+
+
+def _snap_quat(q):
+    """Map a 5-decimal symmetry quaternion to exact unit-quaternion values."""
+    return [min(_EXACT_Q, key=lambda e: abs(e - c)) for c in q]
 
 
 # ===================================================================
@@ -505,18 +523,19 @@ def rodrigues_to_orient_mat(rod) -> np.ndarray:
 # ===================================================================
 
 def _make_symmetries_py(sg):
-    if sg <= 2:    return 1, _TricSym
-    elif sg <= 15: return 2, _MonoSym
-    elif sg <= 74: return 4, _OrtSym
-    elif sg <= 88: return 4, _TetSymLow
-    elif sg <= 142: return 8, _TetSym
-    elif sg <= 148: return 3, _TrigSymLow
-    elif sg <= 167: return 6, (_TrigSym2 if sg in _TrigType2SGs else _TrigSym)
-    elif sg <= 176: return 6, _HexSymLow
-    elif sg <= 194: return 12, _HexSym
-    elif sg <= 206: return 12, _CubSymLow
-    elif sg <= 230: return 24, _CubSym
-    else: return 0, []
+    if sg <= 2:    n, tbl = 1, _TricSym
+    elif sg <= 15: n, tbl = 2, _MonoSym
+    elif sg <= 74: n, tbl = 4, _OrtSym
+    elif sg <= 88: n, tbl = 4, _TetSymLow
+    elif sg <= 142: n, tbl = 8, _TetSym
+    elif sg <= 148: n, tbl = 3, _TrigSymLow
+    elif sg <= 167: n, tbl = 6, (_TrigSym2 if sg in _TrigType2SGs else _TrigSym)
+    elif sg <= 176: n, tbl = 6, _HexSymLow
+    elif sg <= 194: n, tbl = 12, _HexSym
+    elif sg <= 206: n, tbl = 12, _CubSymLow
+    elif sg <= 230: n, tbl = 24, _CubSym
+    else:          n, tbl = 0, []
+    return n, [_snap_quat(q) for q in tbl]
 
 
 def _quaternion_product_py(q, r):

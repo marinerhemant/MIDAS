@@ -18,7 +18,7 @@ from __future__ import annotations
 import math
 
 import numpy as np
-import torch
+from ._optional import torch
 
 _RAD2DEG = 180.0 / math.pi
 

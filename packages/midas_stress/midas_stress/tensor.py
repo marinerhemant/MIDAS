@@ -10,10 +10,12 @@ return torch tensors when given torch input — same dispatch pattern as
 `orientation.py` / `frames.py`. NumPy callers see no API change.
 """
 
+
+from __future__ import annotations
 import math
 
 import numpy as np
-import torch
+from ._optional import torch
 
 
 _SQRT2 = math.sqrt(2.0)

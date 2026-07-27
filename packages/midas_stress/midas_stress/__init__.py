@@ -9,126 +9,95 @@ equilibrium constraints, materials, plasticity, elastic_inverse) accepts
 torch.Tensor inputs transparently and returns torch tensors on the
 input's device/dtype. Existing NumPy callers see no API change. See
 the `*_torch.py` test files for per-module parity contracts.
+
+PyTorch is an OPTIONAL dependency. Every NumPy code path works without it;
+torch is imported lazily and only when a tensor input or a torch-only entry
+point (``fit_joint_d0_stiffness``, ``loo_influence_stages``) is actually used.
+So that ``import midas_stress`` stays torch-free, submodules are loaded on first
+attribute access (PEP 562) rather than eagerly here.
 """
+from __future__ import annotations
 
-__version__ = "0.8.0"
+import importlib
 
-# --- Tensor / Voigt ---
-from .tensor import (
-    tensor_to_voigt,
-    voigt_to_tensor,
-    tensor_to_voigt_engineering,
-    lattice_params_to_A_matrix,
-    lattice_params_to_strain,
-    strain_grain_to_lab,
-    strain_lab_to_grain,
-    rotation_voigt_mandel,
-    hydrostatic,
-    deviatoric,
-    von_mises,
-)
+__version__ = "0.8.1"
 
-# --- Hooke's law ---
-from .hooke import hooke_stress
+# public name -> submodule it lives in. Loaded lazily on first access, so
+# importing the package pulls in nothing heavy (and no torch).
+_EXPORTS = {
+    # tensor / Voigt
+    "tensor_to_voigt": "tensor", "voigt_to_tensor": "tensor",
+    "tensor_to_voigt_engineering": "tensor", "lattice_params_to_A_matrix": "tensor",
+    "lattice_params_to_strain": "tensor", "strain_grain_to_lab": "tensor",
+    "strain_lab_to_grain": "tensor", "rotation_voigt_mandel": "tensor",
+    "hydrostatic": "tensor", "deviatoric": "tensor", "von_mises": "tensor",
+    # hooke
+    "hooke_stress": "hooke",
+    # materials
+    "cubic_stiffness": "materials", "hexagonal_stiffness": "materials",
+    "get_stiffness": "materials", "list_materials": "materials",
+    "STIFFNESS_LIBRARY": "materials", "d0_sensitivity": "materials",
+    "d0_sensitivity_table": "materials",
+    # equilibrium
+    "volume_average_stress_constraint": "equilibrium",
+    "hydrostatic_deviatoric_decomposition": "equilibrium",
+    "hydrostatic_deviatoric_decomposition_weighted": "equilibrium",
+    "equilibrium_correction_uncertainty": "equilibrium",
+    "d0_correction_strain_level": "equilibrium", "correct_d0": "equilibrium",
+    "recover_d0": "equilibrium", "recover_d0_cubic_free_standing": "equilibrium",
+    # orientation
+    "misorientation": "orientation", "misorientation_om": "orientation",
+    "misorientation_om_batch": "orientation", "misorientation_quat_batch": "orientation",
+    "euler_to_orient_mat": "orientation", "euler_to_orient_mat_batch": "orientation",
+    "orient_mat_to_quat": "orientation", "orient_mat_to_euler": "orientation",
+    "quaternion_product": "orientation", "quat_to_orient_mat": "orientation",
+    "fundamental_zone": "orientation", "make_symmetries": "orientation",
+    "axis_angle_to_orient_mat": "orientation", "rodrigues_to_orient_mat": "orientation",
+    "matrix_mult_f33": "orientation",
+    # diffraction
+    "calc_eta_angle_all": "diffraction",
+    # frames
+    "R_MIDAS_TO_APS": "frames", "R_APS_TO_MIDAS": "frames",
+    "lab_to_sample_rotation": "frames", "vector_midas_to_aps": "frames",
+    "vector_aps_to_midas": "frames", "orient_midas_to_aps": "frames",
+    "orient_aps_to_midas": "frames", "tensor_midas_to_aps": "frames",
+    "tensor_aps_to_midas": "frames", "tensor_lab_to_sample": "frames",
+    "grains_midas_to_sample": "frames",
+    # pipeline
+    "compute_stress": "pipeline",
+    # io
+    "read_grains": "io", "read_grains_csv": "io", "read_grains_h5": "io",
+    "example_data_path": "io",
+    # elastic-constant inverse (NumPy)
+    "fit_single_crystal_stiffness": "elastic_inverse",
+    "symmetry_parameterisation": "elastic_inverse",
+    "stiffness_from_cij": "elastic_inverse", "build_stage_matrix": "elastic_inverse",
+    "build_stage_matrix_voigt": "elastic_inverse",
+    "build_stage_matrix_reuss": "elastic_inverse",
+    # elastic-constant inverse (torch-only: pulls torch on access)
+    "fit_joint_d0_stiffness": "elastic_inverse_torch",
+    "loo_influence_stages": "elastic_inverse_torch",
+    # plasticity
+    "get_slip_systems": "plasticity", "get_slip_systems_for_material": "plasticity",
+    "list_slip_families": "plasticity", "slip_systems_to_lab": "plasticity",
+    "schmid_factor": "plasticity", "resolved_shear_stress": "plasticity",
+    "dominant_slip_system": "plasticity", "active_systems_from_crss": "plasticity",
+    "yield_proximity": "plasticity", "taylor_factor": "plasticity",
+    "HCP_RATIOS": "plasticity",
+}
 
-# --- Materials ---
-from .materials import (
-    cubic_stiffness,
-    hexagonal_stiffness,
-    get_stiffness,
-    list_materials,
-    STIFFNESS_LIBRARY,
-    d0_sensitivity,
-    d0_sensitivity_table,
-)
+__all__ = sorted(_EXPORTS)
 
-# --- Equilibrium ---
-from .equilibrium import (
-    volume_average_stress_constraint,
-    hydrostatic_deviatoric_decomposition,
-    hydrostatic_deviatoric_decomposition_weighted,
-    equilibrium_correction_uncertainty,
-    d0_correction_strain_level,
-    correct_d0,
-    recover_d0,
-    recover_d0_cubic_free_standing,
-)
 
-# --- Orientation / Misorientation ---
-from .orientation import (
-    misorientation,
-    misorientation_om,
-    misorientation_om_batch,
-    misorientation_quat_batch,
-    euler_to_orient_mat,
-    euler_to_orient_mat_batch,
-    orient_mat_to_quat,
-    orient_mat_to_euler,
-    quaternion_product,
-    quat_to_orient_mat,
-    fundamental_zone,
-    make_symmetries,
-    axis_angle_to_orient_mat,
-    rodrigues_to_orient_mat,
-    matrix_mult_f33,
-)
+def __getattr__(name: str):
+    """PEP 562 lazy attribute access — import the owning submodule on demand."""
+    mod = _EXPORTS.get(name)
+    if mod is None:
+        raise AttributeError(f"module 'midas_stress' has no attribute {name!r}")
+    value = getattr(importlib.import_module(f".{mod}", __name__), name)
+    globals()[name] = value          # cache so subsequent access is direct
+    return value
 
-# --- Diffraction geometry helpers ---
-from .diffraction import (
-    calc_eta_angle_all,
-)
 
-# --- Frame conversions ---
-from .frames import (
-    R_MIDAS_TO_APS,
-    R_APS_TO_MIDAS,
-    lab_to_sample_rotation,
-    vector_midas_to_aps,
-    vector_aps_to_midas,
-    orient_midas_to_aps,
-    orient_aps_to_midas,
-    tensor_midas_to_aps,
-    tensor_aps_to_midas,
-    tensor_lab_to_sample,
-    grains_midas_to_sample,
-)
-
-# --- High-level pipeline ---
-from .pipeline import compute_stress
-
-# --- I/O ---
-from .io import (
-    read_grains,
-    read_grains_csv,
-    read_grains_h5,
-    example_data_path,
-)
-
-# --- Elastic-constant inverse (Paper III) ---
-from .elastic_inverse import (
-    fit_single_crystal_stiffness,
-    symmetry_parameterisation,
-    stiffness_from_cij,
-    build_stage_matrix,
-    build_stage_matrix_voigt,
-    build_stage_matrix_reuss,
-)
-from .elastic_inverse_torch import (
-    fit_joint_d0_stiffness,
-    loo_influence_stages,
-)
-
-# --- Plasticity / slip-system analysis ---
-from .plasticity import (
-    get_slip_systems,
-    get_slip_systems_for_material,
-    list_slip_families,
-    slip_systems_to_lab,
-    schmid_factor,
-    resolved_shear_stress,
-    dominant_slip_system,
-    active_systems_from_crss,
-    yield_proximity,
-    taylor_factor,
-    HCP_RATIOS,
-)
+def __dir__():
+    return sorted(set(globals()) | set(_EXPORTS))

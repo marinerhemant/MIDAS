@@ -20,10 +20,12 @@ utilities (``recover_d0``, ``equilibrium_correction_uncertainty``, ...)
 remain NumPy-only.
 """
 
+
+from __future__ import annotations
 from typing import Optional, Tuple
 
 import numpy as np
-import torch
+from ._optional import torch
 
 from .tensor import tensor_to_voigt, voigt_to_tensor, rotation_voigt_mandel
 
