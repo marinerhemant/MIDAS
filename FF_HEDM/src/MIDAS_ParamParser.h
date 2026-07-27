@@ -168,6 +168,13 @@ typedef struct {
   int RingNumbers[MAX_N_RINGS];
   int nRingRadii;
   double RingRadii[MAX_N_RINGS];
+  // Direct d-spacings (Å) for calibrants without a crystallographic
+  // (SpaceGroup, LatticeConstant) description — e.g. lamellar SAXS
+  // standards like silver behenate. When nDSpacings > 0, calibrators
+  // that would otherwise call GetHKLList compute Theta per ring
+  // directly from Bragg's law and skip the SpaceGroup/Lattice fields.
+  int    nDSpacings;
+  double DSpacings[MAX_N_RINGS];
 
   // ── Calibration control ──
   double Width, EtaBinSize;
