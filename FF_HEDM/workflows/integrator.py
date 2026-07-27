@@ -448,7 +448,16 @@ class FileProcessor:
         frame_aligned = (total_frames > 0 and data_in.shape[0] == total_frames)
 
         if np.issubdtype(data_in.dtype, np.number):
-            if not frame_aligned or omega_sum_frames <= 1:
+            if not frame_aligned:
+                if total_frames > 0 and data_in.shape[0] != 1:
+                    logger.warning(
+                        f"METADATA LENGTH MISMATCH: numeric array '{path_for_log}' has "
+                        f"shape {data_in.shape}; first-dim length {data_in.shape[0]} "
+                        f"matches neither 1 nor total_frames={total_frames}. Copying "
+                        f"verbatim — per-frame indexing in downstream tools may be wrong."
+                    )
+                return data_in
+            if omega_sum_frames <= 1:
                 return data_in
             num_chunks = math.ceil(total_frames / omega_sum_frames)
             out_shape = (num_chunks,) + data_in.shape[1:]
@@ -462,6 +471,13 @@ class FileProcessor:
 
         # Non-numeric (string / bytes / object)
         if not frame_aligned:
+            if total_frames > 0 and data_in.shape[0] != 1:
+                logger.warning(
+                    f"METADATA LENGTH MISMATCH: non-numeric array '{path_for_log}' has "
+                    f"shape {data_in.shape}; first-dim length {data_in.shape[0]} "
+                    f"matches neither 1 nor total_frames={total_frames}. Copying "
+                    f"verbatim — per-frame indexing in downstream tools may be wrong."
+                )
             return data_in
         unique_vals = set(data_in.flatten().tolist())
         if len(unique_vals) == 1:
@@ -471,6 +487,30 @@ class FileProcessor:
             f"across {total_frames} frames — copying verbatim."
         )
         return data_in
+
+    # Datasets larger than this are treated as bulk/raw-frame data, not
+    # metadata. The generalized top-level forwarding must not pull such an
+    # array fully into memory via [()] and rewrite it uncompressed.
+    _MAX_METADATA_COPY_BYTES = 256 * 1024 * 1024  # 256 MiB
+
+    def _too_large_to_copy(self, item, path_for_log='') -> bool:
+        """True (and warns) when `item` is bulk/raw-frame data rather than
+        metadata. Uses the logical size from shape/dtype, so nothing is
+        loaded to make the decision."""
+        nbytes = getattr(item, 'nbytes', None)
+        if nbytes is None:
+            try:
+                nbytes = int(item.dtype.itemsize) * int(np.prod(item.shape))
+            except Exception:
+                return False
+        if nbytes > self._MAX_METADATA_COPY_BYTES:
+            logger.warning(
+                f"Skipping '{path_for_log}' ({nbytes / 1e9:.2f} GB): too large to "
+                "forward as metadata (looks like bulk/raw-frame data) — not loaded "
+                "or re-emitted. Copy it explicitly if it is metadata you need."
+            )
+            return True
+        return False
 
     def _copy_group_recursive(
         self, group_in, group_out, total_frames, omega_sum_frames,
@@ -516,6 +556,8 @@ class FileProcessor:
                         path_prefix=full_path, _top_level=False
                     )
                 else:
+                    if self._too_large_to_copy(item, full_path):
+                        continue
                     data_in = item[()]
                     data_to_write = self._coerce_metadata_array(
                         data_in, total_frames, omega_sum_frames, n_output, full_path
@@ -654,6 +696,7 @@ class FileProcessor:
             input_zip_file: Path to original input Zarr.zip
             output_zip_file: Path to output Zarr.zip
         """
+        import math
         try:
             with zarr.open(str(input_zip_file), mode='r') as z_in:
                 # Get total frames
@@ -685,23 +728,49 @@ class FileProcessor:
                     else:
                         logger.info("No scan parameters found in input Zarr.")
 
-                    # Groups copied wholesale from the input Zarr
-                    groups_to_copy = [
-                        ('instrument', 'instrument'),
-                        ('misc',       'misc'),
-                        ('Detector',   'Detector'),
-                        ('StorageRing','StorageRing'),
-                    ]
-                    for src_name, dst_name in groups_to_copy:
-                        if src_name in z_in:
-                            grp_out = z_out.require_group(dst_name)
-                            self._copy_group_recursive(
-                                z_in[src_name], grp_out, total_frames, omega_sum_frames,
-                                path_prefix=src_name
-                            )
-                            logger.info(f"Copied {src_name}/ metadata to output Zarr.")
-                        else:
-                            logger.debug(f"No {src_name}/ group found in input Zarr.")
+                    # Forward every top-level group from the input Zarr (driven by
+                    # what's actually there, not a hardcoded allow-list). Exclude
+                    # groups the integrator owns in the output: exchange holds raw
+                    # frame data we don't re-emit, analysis params are rewritten by
+                    # this run, processed/* is written by the bright/flat pipeline,
+                    # and measurement/process/scan_parameters is handled above with
+                    # its datatype/start/step carve-out.
+                    # Also exclude the top-level groups this integration writes
+                    # itself (IntegratorZarrOMP output), so re-feeding an already
+                    # caked zarr as input can't overwrite freshly computed results.
+                    _INTEGRATOR_OWNED = {
+                        'exchange', 'analysis', 'processed', 'measurement',
+                        'InstrumentParameters', 'IntegrationResult', 'REtaMap',
+                        'Omegas', 'SumFrames',
+                    }
+                    for src_name in z_in.keys():
+                        if src_name in _INTEGRATOR_OWNED:
+                            continue
+                        item = z_in[src_name]
+                        try:
+                            if isinstance(item, zarr.hierarchy.Group):
+                                grp_out = z_out.require_group(src_name)
+                                self._copy_group_recursive(
+                                    item, grp_out, total_frames, omega_sum_frames,
+                                    path_prefix=src_name
+                                )
+                                logger.info(f"Copied {src_name}/ metadata to output Zarr.")
+                            else:
+                                # Top-level dataset (rare); coerce + write at root.
+                                if self._too_large_to_copy(item, src_name):
+                                    continue
+                                data_in = item[()]
+                                n_out = max(1, math.ceil(total_frames / omega_sum_frames)) \
+                                    if total_frames > 0 else 0
+                                data_out = self._coerce_metadata_array(
+                                    data_in, total_frames, omega_sum_frames, n_out, src_name
+                                )
+                                if src_name in z_out:
+                                    del z_out[src_name]
+                                z_out.create_dataset(src_name, data=data_out)
+                                logger.info(f"Copied top-level dataset '{src_name}' to output Zarr.")
+                        except Exception as e:
+                            logger.warning(f"Failed to copy '{src_name}' from input Zarr: {e}")
 
         except Exception as e:
             logger.error(f"Error enriching Zarr with metadata: {e}")

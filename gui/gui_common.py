@@ -17,6 +17,7 @@ import numpy as np
 
 from PyQt5 import QtWidgets, QtCore, QtGui
 import pyqtgraph as pg
+import pyqtgraph.exporters  # noqa: F401 — populates pg.exporters for export_png
 
 # ── Constants ──────────────────────────────────────────────────────────
 COLORMAPS = ['viridis', 'inferno', 'plasma', 'magma', 'turbo',

@@ -120,9 +120,31 @@ def apply_correction(img, dark_mean, pre_proc_thresh_val):
                 else:
                     result[i, j, k] = max(0, int(img[i, j, k]) - int(dark_mean[j, k]))
     return result
+# Datasets larger than this are treated as bulk/raw-frame data, not metadata.
+# The generalized top-level forwarding must not pull such an array fully into
+# memory via [()] and rewrite it uncompressed into the output zarr.
+_MAX_METADATA_COPY_BYTES = 256 * 1024 * 1024  # 256 MiB
+
+
+def _too_large_to_copy(item, full_path):
+    """True (and prints) when an h5py dataset is bulk/raw-frame data rather
+    than metadata. Uses shape/dtype, so nothing is loaded to decide."""
+    nbytes = getattr(item, 'nbytes', None)
+    if nbytes is None:
+        try:
+            nbytes = int(item.dtype.itemsize) * int(np.prod(item.shape))
+        except Exception:
+            return False
+    if nbytes > _MAX_METADATA_COPY_BYTES:
+        print(f"    - Skipping '{full_path}' ({nbytes / 1e9:.2f} GB): too large to "
+              "forward as metadata (bulk/raw-frame data, not metadata).")
+        return True
+    return False
+
+
 def _copy_hdf5_group_to_zarr(hf_group, z_group, path_prefix='', exclude_paths=None):
     """Recursively copy all datasets from an HDF5 group to a Zarr group.
-    
+
     Args:
         hf_group: Source h5py Group
         z_group: Destination Zarr Group
@@ -131,20 +153,22 @@ def _copy_hdf5_group_to_zarr(hf_group, z_group, path_prefix='', exclude_paths=No
     """
     if exclude_paths is None:
         exclude_paths = set()
-    
+
     for key in hf_group.keys():
         full_path = f"{path_prefix}/{key}" if path_prefix else key
-        
+
         # Check if this path should be excluded
         if any(full_path.startswith(ep) for ep in exclude_paths):
             continue
-        
+
         item = hf_group[key]
         try:
             if isinstance(item, h5py.Group):
                 sub_z = z_group.require_group(key)
                 _copy_hdf5_group_to_zarr(item, sub_z, full_path, exclude_paths)
             elif isinstance(item, h5py.Dataset):
+                if _too_large_to_copy(item, full_path):
+                    continue
                 data = item[()]
                 if not isinstance(data, np.ndarray):
                     data = np.array([data])
@@ -413,12 +437,33 @@ def process_hdf5_scan(config, z_groups, zRoot):
                     exclude_paths={'measurement/process/scan_parameters'}
                 )
 
-            # Copy auxiliary top-level groups verbatim so downstream consumers
-            # (e.g. _enrich_zarr_with_metadata) can find timestamps and detector info
-            for grp_name in ('misc', 'Detector', 'StorageRing'):
-                if grp_name in hf:
+            # Copy every other top-level HDF5 group verbatim so downstream consumers
+            # (_enrich_zarr_with_metadata, GUI tools) can find any per-frame metadata
+            # the source HDF5 carries (samX/samY/samRy under /SMS/, timestamps under
+            # /misc/, detector temps under /Detector/, etc.) without us needing an
+            # allow-list that drifts when the beamline adds new groups.
+            _ALREADY_HANDLED = {'instrument', 'measurement', 'exchange', 'analysis'}
+            for grp_name in hf.keys():
+                if grp_name in _ALREADY_HANDLED:
+                    continue
+                item = hf[grp_name]
+                if isinstance(item, h5py.Group):
                     print(f"  - Copying {grp_name}/ group from HDF5...")
-                    _copy_hdf5_group_to_zarr(hf[grp_name], zRoot.require_group(grp_name), grp_name)
+                    _copy_hdf5_group_to_zarr(item, zRoot.require_group(grp_name), grp_name)
+                elif isinstance(item, h5py.Dataset):
+                    try:
+                        if _too_large_to_copy(item, grp_name):
+                            continue
+                        data = item[()]
+                        if not isinstance(data, np.ndarray):
+                            data = np.array([data])
+                        if grp_name in zRoot:
+                            zRoot[grp_name][...] = data
+                        else:
+                            zRoot.create_dataset(grp_name, data=data)
+                        print(f"  - Copied top-level dataset: {grp_name} (shape={data.shape})")
+                    except Exception as e:
+                        print(f"  - Warning: Could not copy top-level dataset '{grp_name}': {e}")
 
     total_frames_to_write = frames_per_file + (frames_per_file - skip_frames) * (num_files - 1)
     print(f"HDF5 scan: {num_files} file(s), {frames_per_file} frames/file. Skipping {skip_frames} from files 2+. Total frames to write: {total_frames_to_write}. Dtype: {output_dtype}")
