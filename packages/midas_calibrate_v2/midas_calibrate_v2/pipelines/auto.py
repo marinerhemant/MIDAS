@@ -32,18 +32,15 @@ import torch
 
 # ============================================================ calibrant DB
 
-# Canonical powder-calibrant lattice constants + space groups.  Add new
-# entries here; everything else flows through.
-CALIBRANTS: Dict[str, Dict] = {
-    "CeO2":  {"a": 5.4116, "alpha": 90.0, "sg": 225},
-    "LaB6":  {"a": 4.1569, "alpha": 90.0, "sg": 221},
-    "Si":    {"a": 5.4310, "alpha": 90.0, "sg": 227},
-    "Al2O3": {"a": 4.7589, "c": 12.9920, "alpha": 90.0, "gamma": 120.0, "sg": 167},
-}
+# Shared with midas_calibrate_v2.seed.auto_seed so calibrate() and
+# make_seed() always resolve a calibrant (named or custom dict) to the
+# exact same lattice — see midas_calibrate_v2.seed.calibrant for why the
+# two used to be independent registries that could (and did) drift apart.
+from ..seed.calibrant import CALIBRANTS, resolve_calibrant
 
 
-def _generate_sim_radii_px(*, lattice_a: float, lattice_c: float,
-                            alpha: float, gamma: float,
+def _generate_sim_radii_px(*, lattice_a: float, lattice_b: float, lattice_c: float,
+                            alpha: float, beta: float, gamma: float,
                             wavelength: float, px: float,
                             sg: int = 225,
                             Lsd_nominal_um: float = 1_000_000.0,
@@ -58,12 +55,9 @@ def _generate_sim_radii_px(*, lattice_a: float, lattice_c: float,
     """
     from midas_hkls import SpaceGroup, Lattice, generate_hkls
 
-    # Build the lattice with the canonical a-b-c, alpha-beta-gamma layout.
-    # For cubic systems alpha=beta=gamma=90 and a=b=c.
-    # For trigonal/hexagonal alpha=beta=90, gamma=120 and a=b!=c.
     lat = Lattice(
-        a=lattice_a, b=lattice_a, c=lattice_c,
-        alpha=alpha, beta=alpha, gamma=gamma,
+        a=lattice_a, b=lattice_b, c=lattice_c,
+        alpha=alpha, beta=beta, gamma=gamma,
     )
     refs = generate_hkls(
         SpaceGroup.from_number(sg), lat,
@@ -245,21 +239,15 @@ def calibrate(
     if pxZ is None:
         pxZ = pxY
 
-    # Resolve calibrant.
-    if isinstance(calibrant, str):
-        if calibrant not in CALIBRANTS:
-            raise ValueError(
-                f"Unknown calibrant {calibrant!r}; known: {sorted(CALIBRANTS)}"
-            )
-        cal = dict(CALIBRANTS[calibrant])
-    else:
-        cal = dict(calibrant)
-    a = float(cal["a"])
-    c = float(cal.get("c", a))
-    alpha = float(cal.get("alpha", 90.0))
-    gamma = float(cal.get("gamma", 90.0))
-    sg = int(cal["sg"])
-    cal_name = calibrant if isinstance(calibrant, str) else "<custom>"
+    # Resolve calibrant.  resolve_calibrant() validates dict calibrants against
+    # the crystal system implied by 'sg' and returns the full (a,b,c,alpha,
+    # beta,gamma) lattice — the same one make_seed() uses internally, so the
+    # seed and the fit never disagree on what the calibrant's lattice is.
+    cal = resolve_calibrant(calibrant)
+    a, b, c = cal["a"], cal["b"], cal["c"]
+    alpha, beta, gamma = cal["alpha"], cal["beta"], cal["gamma"]
+    sg = cal["sg"]
+    cal_name = cal["name"]
 
     # 1. Background.  Detect bad-pixel / detector-gap sentinels from the RAW
     # image *before* clipping, so they can be masked out of seeding
@@ -298,7 +286,7 @@ def calibrate(
     if verbose:
         print(f"[calibrate] STAGE 1: seeding from {cal_name} rings...", flush=True)
     sim_radii = _generate_sim_radii_px(
-        lattice_a=a, lattice_c=c, alpha=alpha, gamma=gamma,
+        lattice_a=a, lattice_b=b, lattice_c=c, alpha=alpha, beta=beta, gamma=gamma,
         wavelength=wavelength, px=pxY, sg=sg,
         Lsd_nominal_um=initial_Lsd, max_2theta_deg=max_2theta_deg,
     )
@@ -333,9 +321,10 @@ def calibrate(
     # CeO2 geometries to <=3.6 px BC / <=0.24% Lsd, ~10 s each
     # (dev/paper/midas_v2_test/run_seeder_baseline.py).
     # use_diplib=False: diplib's median filter segfaults on macOS and the scipy
-    # path is equally accurate.  make_seed handles only named calibrants
-    # (CeO2/LaB6/Si/Al2O3); custom-dict calibrants fall through to PATH 3.
-    if seed is None and isinstance(calibrant, str):
+    # path is equally accurate.  make_seed accepts either a registered name
+    # (CeO2/LaB6/Si/Al2O3) or a custom lattice dict ({'a':..,'sg':..}); both
+    # get the robust seeder.  On any failure it falls through to PATH 3.
+    if seed is None:
         try:
             from ..seed.auto_seed import make_seed
             ms = make_seed(img, wavelength_A=wavelength, px_um=pxY,
@@ -386,7 +375,7 @@ def calibrate(
         Lsd=seed.Lsd, BC_y=seed.bc_y, BC_z=seed.bc_z,
         tx=0.0, ty=0.0, tz=0.0,
         Wavelength=wavelength, SpaceGroup=sg,
-        LatticeConstant=(a, a, c, alpha, alpha, gamma),
+        LatticeConstant=(a, b, c, alpha, beta, gamma),
         MaxRingRad=float(max_ring_radius_px),
         MinRingRad=float(min_ring_radius_px),
         RhoD=RhoD_px,
