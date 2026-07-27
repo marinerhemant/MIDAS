@@ -313,7 +313,7 @@ The overlay on the composite defines the sample coordinate frame and the sign co
 - **+X** is along the beam direction (into the page in the viewer, marked ⊗).
 - **+Z** points up in the lab frame.
 - **+Y** completes the right-handed frame (out of the page to the beam-left in the viewer).
-- **η** is measured in the detector plane about +X, with **η = 0°** at +Z, increasing clockwise as seen looking toward −X (down the beam): **η = +90°** on the +Y side (right in the viewer), **η = −90°** on the −Y side (left), and **η = ±180°** at −Z (bottom).
+- **η** is the azimuthal angle in the detector plane about the beam (+X), following MIDAS's `CalcEtaAngle(y, z) = atan2(−y, z)` (degrees) used everywhere in the caking output: **η = 0°** at +Z (top), **η = −90°** on the +Y side (right in the viewer), **η = +90°** on the −Y side (left), and **η = ±180°** at −Z (bottom).
 
 | Composite with axes overlay | Zoomed inset near beam center |
 |:---:|:---:|

@@ -120,9 +120,31 @@ def apply_correction(img, dark_mean, pre_proc_thresh_val):
                 else:
                     result[i, j, k] = max(0, int(img[i, j, k]) - int(dark_mean[j, k]))
     return result
+# Datasets larger than this are treated as bulk/raw-frame data, not metadata.
+# The generalized top-level forwarding must not pull such an array fully into
+# memory via [()] and rewrite it uncompressed into the output zarr.
+_MAX_METADATA_COPY_BYTES = 256 * 1024 * 1024  # 256 MiB
+
+
+def _too_large_to_copy(item, full_path):
+    """True (and prints) when an h5py dataset is bulk/raw-frame data rather
+    than metadata. Uses shape/dtype, so nothing is loaded to decide."""
+    nbytes = getattr(item, 'nbytes', None)
+    if nbytes is None:
+        try:
+            nbytes = int(item.dtype.itemsize) * int(np.prod(item.shape))
+        except Exception:
+            return False
+    if nbytes > _MAX_METADATA_COPY_BYTES:
+        print(f"    - Skipping '{full_path}' ({nbytes / 1e9:.2f} GB): too large to "
+              "forward as metadata (bulk/raw-frame data, not metadata).")
+        return True
+    return False
+
+
 def _copy_hdf5_group_to_zarr(hf_group, z_group, path_prefix='', exclude_paths=None):
     """Recursively copy all datasets from an HDF5 group to a Zarr group.
-    
+
     Args:
         hf_group: Source h5py Group
         z_group: Destination Zarr Group
@@ -131,20 +153,22 @@ def _copy_hdf5_group_to_zarr(hf_group, z_group, path_prefix='', exclude_paths=No
     """
     if exclude_paths is None:
         exclude_paths = set()
-    
+
     for key in hf_group.keys():
         full_path = f"{path_prefix}/{key}" if path_prefix else key
-        
+
         # Check if this path should be excluded
         if any(full_path.startswith(ep) for ep in exclude_paths):
             continue
-        
+
         item = hf_group[key]
         try:
             if isinstance(item, h5py.Group):
                 sub_z = z_group.require_group(key)
                 _copy_hdf5_group_to_zarr(item, sub_z, full_path, exclude_paths)
             elif isinstance(item, h5py.Dataset):
+                if _too_large_to_copy(item, full_path):
+                    continue
                 data = item[()]
                 if not isinstance(data, np.ndarray):
                     data = np.array([data])
@@ -428,6 +452,8 @@ def process_hdf5_scan(config, z_groups, zRoot):
                     _copy_hdf5_group_to_zarr(item, zRoot.require_group(grp_name), grp_name)
                 elif isinstance(item, h5py.Dataset):
                     try:
+                        if _too_large_to_copy(item, grp_name):
+                            continue
                         data = item[()]
                         if not isinstance(data, np.ndarray):
                             data = np.array([data])

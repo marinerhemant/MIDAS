@@ -488,6 +488,30 @@ class FileProcessor:
         )
         return data_in
 
+    # Datasets larger than this are treated as bulk/raw-frame data, not
+    # metadata. The generalized top-level forwarding must not pull such an
+    # array fully into memory via [()] and rewrite it uncompressed.
+    _MAX_METADATA_COPY_BYTES = 256 * 1024 * 1024  # 256 MiB
+
+    def _too_large_to_copy(self, item, path_for_log='') -> bool:
+        """True (and warns) when `item` is bulk/raw-frame data rather than
+        metadata. Uses the logical size from shape/dtype, so nothing is
+        loaded to make the decision."""
+        nbytes = getattr(item, 'nbytes', None)
+        if nbytes is None:
+            try:
+                nbytes = int(item.dtype.itemsize) * int(np.prod(item.shape))
+            except Exception:
+                return False
+        if nbytes > self._MAX_METADATA_COPY_BYTES:
+            logger.warning(
+                f"Skipping '{path_for_log}' ({nbytes / 1e9:.2f} GB): too large to "
+                "forward as metadata (looks like bulk/raw-frame data) — not loaded "
+                "or re-emitted. Copy it explicitly if it is metadata you need."
+            )
+            return True
+        return False
+
     def _copy_group_recursive(
         self, group_in, group_out, total_frames, omega_sum_frames,
         exclude_keys=None, path_prefix='', _top_level=True
@@ -532,6 +556,8 @@ class FileProcessor:
                         path_prefix=full_path, _top_level=False
                     )
                 else:
+                    if self._too_large_to_copy(item, full_path):
+                        continue
                     data_in = item[()]
                     data_to_write = self._coerce_metadata_array(
                         data_in, total_frames, omega_sum_frames, n_output, full_path
@@ -709,7 +735,14 @@ class FileProcessor:
                     # this run, processed/* is written by the bright/flat pipeline,
                     # and measurement/process/scan_parameters is handled above with
                     # its datatype/start/step carve-out.
-                    _INTEGRATOR_OWNED = {'exchange', 'analysis', 'processed', 'measurement'}
+                    # Also exclude the top-level groups this integration writes
+                    # itself (IntegratorZarrOMP output), so re-feeding an already
+                    # caked zarr as input can't overwrite freshly computed results.
+                    _INTEGRATOR_OWNED = {
+                        'exchange', 'analysis', 'processed', 'measurement',
+                        'InstrumentParameters', 'IntegrationResult', 'REtaMap',
+                        'Omegas', 'SumFrames',
+                    }
                     for src_name in z_in.keys():
                         if src_name in _INTEGRATOR_OWNED:
                             continue
@@ -724,6 +757,8 @@ class FileProcessor:
                                 logger.info(f"Copied {src_name}/ metadata to output Zarr.")
                             else:
                                 # Top-level dataset (rare); coerce + write at root.
+                                if self._too_large_to_copy(item, src_name):
+                                    continue
                                 data_in = item[()]
                                 n_out = max(1, math.ceil(total_frames / omega_sum_frames)) \
                                     if total_frames > 0 else 0
