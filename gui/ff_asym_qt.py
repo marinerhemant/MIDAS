@@ -3344,10 +3344,20 @@ class FFViewer(QtWidgets.QMainWindow):
 
             accum = None
             frames_buf = [] if agg_mode == 'median' else None
+            n_used = 0
             for i in range(n_accum):
                 f = _md.composite_frame(states, frame_idx + i, bds, px,
                                          op=op, subtract_dark=True,
                                          parallel=True)
+                # composite_frame returns an all-zeros array (never None) when
+                # every detector failed for this frame. Counting such a frame
+                # would drag the average toward zero and corrupt the median, so
+                # skip it — matching the single-detector path, which divides by
+                # the number of frames actually accumulated.
+                if f is None or not np.any(f):
+                    emit_progress(i + 1, n_accum)
+                    continue
+                n_used += 1
                 if agg_mode == 'median':
                     frames_buf.append(f.astype(np.float32, copy=False))
                 elif agg_mode in ('sum', 'avg'):
@@ -3357,14 +3367,19 @@ class FFViewer(QtWidgets.QMainWindow):
                     accum = (f.astype(np.float32, copy=False) if accum is None
                              else np.maximum(accum, f))
                 emit_progress(i + 1, n_accum)
+            _blank = np.zeros((bds, bds), dtype=np.float32)
             if agg_mode == 'median':
-                data = np.median(np.stack(frames_buf, axis=0), axis=0)
+                data = (np.median(np.stack(frames_buf, axis=0), axis=0)
+                        if frames_buf else _blank)
             elif agg_mode == 'avg':
-                data = (accum / float(n_accum)).astype(np.float32)
+                data = ((accum / float(n_used)).astype(np.float32)
+                        if n_used else _blank)
             elif agg_mode == 'sum':
-                data = accum.astype(np.float32)
+                data = accum.astype(np.float32) if accum is not None else _blank
             else:
-                data = accum
+                data = accum if accum is not None else _blank
+            # Third value is the frame *span* processed (drives the frame-range
+            # label), not n_used which is only the average's denominator.
             return data, _time.monotonic() - t0, n_accum
 
         worker = AsyncWorker(target=_worker)
@@ -3842,6 +3857,11 @@ class FFViewer(QtWidgets.QMainWindow):
 
     # Cake CSV column order. R/ETA params are editable + drive the overlay;
     # OME params are passed through verbatim so save round-trips don't drop them.
+    # OME_SUM holds MIDAS's OmegaSumFrames: the number of frames combined per
+    # ω step (a frame *count*, not an intensity). The GUI column is labelled
+    # "ω ave" because the integration pipeline averages those frames; the
+    # serialized key stays OME_SUM for back-compat with existing
+    # cake_parameters CSVs and MIDAS param files.
     CAKE_KEYS = ('R_MIN', 'R_MAX', 'R_STEP',
                  'ETA_MIN', 'ETA_MAX', 'ETA_STEP',
                  'OME_SUM', 'OME_START', 'OME_STEP')
