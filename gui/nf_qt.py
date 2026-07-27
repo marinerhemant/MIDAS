@@ -385,8 +385,9 @@ class NFViewer(QtWidgets.QMainWindow):
         self.axes_check = QtWidgets.QCheckBox("Lab Axes")
         self.axes_check.setToolTip(
             "Overlay MIDAS lab-frame axes from the current distance's beam center.\n"
-            "+Y arrow → display LEFT, +Z arrow → display UP, ⊗ at BC = +X (beam, into page).\n"
-            "η=0 points toward +Z. If the BC for the current distance is not set, "
+            "X_Lab (Y_MIDAS, red) → display LEFT, Y_Lab (Z_MIDAS, green) → display UP,\n"
+            "Z_Lab (X_MIDAS, blue) = beam, into page (⊗ at BC). η in yellow.\n"
+            "η=0 points toward Y_Lab/Z_MIDAS. If the BC for the current distance is not set, "
             "axes anchor at (0, 0) and a warning is shown.")
         tb.addWidget(self.axes_check)
 
@@ -646,10 +647,10 @@ class NFViewer(QtWidgets.QMainWindow):
             '  Q — Quit\n'
             '\n'
             'MIDAS lab frame (axes overlay):\n'
-            '  +Y → display LEFT, +Z → display UP\n'
-            '  +X → into the page (beam direction, ⊗ at BC)\n'
-            '  η = 0 at +Z, +90° on display-right (−Y_lab side),\n'
-            '          ±180° at bottom, −90° on display-left (+Y_lab side)\n'
+            '  X_Lab (Y_MIDAS, red) → display LEFT, Y_Lab (Z_MIDAS, green) → display UP\n'
+            '  Z_Lab (X_MIDAS, blue) → into the page (beam direction, ⊗ at BC)\n'
+            '  η (yellow) = 0 at Y_Lab/Z_MIDAS, +90° on display-right (−Y_lab side),\n'
+            '          ±180° at bottom, −90° on display-left (X_Lab/Y_MIDAS side)\n'
             '  NF display origin = bottom-right; FF = bottom-left.\n'
             '  Both viewers show the same physical convention\n'
             '  (looking from source toward detector).\n'

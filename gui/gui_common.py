@@ -829,17 +829,23 @@ def add_shortcut(parent, key, callback, context=QtCore.Qt.WindowShortcut):
 
 def draw_lab_frame_axes(image_view, bc_y, bc_z, ny, nz,
                          category='axes',
-                         color='#FFD700',
+                         xl_color='#FF3B30',
+                         yl_color='#34C759',
+                         zl_color='#0A84FF',
                          eta_tick_color='#FFA500',
                          font_size=12):
     """Draw MIDAS lab-frame axes anchored at (bc_y, bc_z).
 
     Convention (independent of detector readout / display origin):
-      +Y → display LEFT,  +Z → display UP,  +X → INTO page (⊗ at BC).
-      η = 0 toward +Z (top), +90° on −Y_lab side (display-right),
-      ±180° at bottom, −90° on +Y_lab side (display-left).
+      X_Lab (MIDAS Y_MIDAS, red)   → display LEFT
+      Y_Lab (MIDAS Z_MIDAS, green) → display UP
+      Z_Lab (MIDAS X_MIDAS, blue)  → INTO page (⊗ at BC)
+      η = 0 toward Y_Lab/Z_MIDAS (top), +90° on −Y_lab side (display-right),
+      ±180° at bottom, −90° on X_Lab/+Y_MIDAS side (display-left).
       An arc from η=0 to η=+45° with an arrowhead shows the η-sweep
-      direction.
+      direction (yellow/orange, matching the η cardinal labels).
+      Each axis label shows both its lab name and the MIDAS-native
+      axis it corresponds to, e.g. ``X_Lab (Y_MIDAS)``.
 
     Compatible with both `'bl'` and `'br'` :class:`MIDASImageView` origins
     by reading ``image_view._origin`` and flipping the data-X sign.
@@ -873,14 +879,34 @@ def draw_lab_frame_axes(image_view, bc_y, bc_z, ny, nz,
 
     text_pen  = pg.mkPen('w')
     text_fill = pg.mkBrush(0, 0, 0, 200)
-    pen       = pg.mkPen(color, width=3.5)
-    arc_pen   = pg.mkPen(color, width=2.5)
+    xl_pen    = pg.mkPen(xl_color, width=3.5)
+    yl_pen    = pg.mkPen(yl_color, width=3.5)
+    arc_pen   = pg.mkPen(eta_tick_color, width=2.5)
 
     # Fonts scale off the caller-supplied label size. ⊗ uses a larger size so
     # the beam-direction glyph reads clearly; η ticks match the label size.
     label_font = QtGui.QFont(); label_font.setPointSize(int(font_size)); label_font.setBold(True)
     glyph_font = QtGui.QFont(); glyph_font.setPointSize(max(int(font_size * 1.5), int(font_size) + 4)); glyph_font.setBold(True)
-    eta_font   = QtGui.QFont(); eta_font.setPointSize(int(font_size))
+    eta_font   = QtGui.QFont(); eta_font.setPointSize(int(font_size)); eta_font.setBold(True)
+
+    # Size of one screen pixel in data coords at the *current* zoom/pan —
+    # lets us convert a desired on-screen clearance (which the fixed-size
+    # text always needs) into data units that stay correct whether the view
+    # is zoomed all the way out or magnified in.
+    px_w = px_h = 1.0
+    try:
+        pw, ph = image_view.getViewBox().viewPixelSize()
+        if pw and ph and pw > 0 and ph > 0:
+            px_w, px_h = pw, ph
+    except Exception:
+        pass
+    # Text-clearance conversions use the *isotropic* pixel scale (geometric
+    # mean of px_w/px_h) rather than the raw per-axis value. If the user has
+    # zoomed/panned to a non-square view (common with a rectangular
+    # drag-zoom), px_w and px_h can differ hugely; using the raw axis value
+    # would blow up just the X_Lab (or just the η=±90°) offset while Y_Lab
+    # stayed put, making one label shoot out far past the others.
+    px_iso = math.sqrt(px_w * px_h) if (px_w > 0 and px_h > 0) else 1.0
 
     def shaft_with_head(x0, y0, x1, y1):
         """Single polyline = shaft + open V-shaped arrowhead at (x1,y1)."""
@@ -898,32 +924,76 @@ def draw_lab_frame_axes(image_view, bc_y, bc_z, ny, nz,
         return ([x0, x1, p1x, x1, p2x],
                 [y0, y1, p1y, y1, p2y])
 
-    # +Y arrow (visually display-LEFT)
+    # X_Lab arrow (MIDAS-native Y_MIDAS, visually display-LEFT)
     xs, ys = shaft_with_head(bc_y, bc_z, bc_y + y_sign * L, bc_z)
-    image_view.add_overlay(pg.PlotDataItem(xs, ys, pen=pen, connect='all'),
+    image_view.add_overlay(pg.PlotDataItem(xs, ys, pen=xl_pen, connect='all'),
                             category)
-    # +Z arrow (visually display-UP)
+    # Y_Lab arrow (MIDAS-native Z_MIDAS, visually display-UP)
     xs, ys = shaft_with_head(bc_y, bc_z, bc_y, bc_z + L)
-    image_view.add_overlay(pg.PlotDataItem(xs, ys, pen=pen, connect='all'),
+    image_view.add_overlay(pg.PlotDataItem(xs, ys, pen=yl_pen, connect='all'),
                             category)
 
-    # +Y / +Z labels at arrow tips
-    for txt, dx, dy in (('+Y', y_sign * (L + head * 1.6), 0.0),
-                        ('+Z', 0.0,                       L + head * 1.6)):
-        lbl = pg.TextItem(txt, color=color, anchor=(0.5, 0.5),
+    # X_Lab / Y_Lab labels at arrow tips, showing the MIDAS-native axis too.
+    # "Lab" / "MIDAS" render as true subscripts via Qt rich text, and each
+    # axis is prefixed with an explicit "+" since only the positive
+    # direction is ever drawn. Color is embedded as an inline
+    # <span style="color:..."> rather than passed via TextItem's `color=`
+    # kwarg: pyqtgraph's TextItem only applies `color` in its plain-text
+    # branch and silently ignores it whenever `html` is given, so a bare
+    # `color=` here would leave the text un-tinted.
+    #
+    # Clearance beyond the arrow tip is sized from the label's *actual*
+    # rendered footprint (via QFontMetrics), not a fixed multiple of `head`:
+    # a flat multiplier stays constant even when the label text is long, so
+    # for a horizontally-anchored box (its near edge — not center — sits at
+    # the offset point) it doesn't guarantee the box clears the arrowhead.
+    # The pixel->data conversion is capped at a multiple of L: on a very
+    # zoomed-out (e.g. multi-tile hydra) view, one screen pixel covers a lot
+    # of data, so an uncapped conversion pushes the label absurdly far from
+    # the arrow just to preserve an exact on-screen gap. Capping trades a
+    # little precision at extreme zoom-out for keeping the label visually
+    # anchored near its arrow.
+    fm = QtGui.QFontMetrics(label_font)
+    margin_px = 10.0
+    label_specs = (
+            ('h', '+X<sub>Lab</sub> (+Y<sub>MIDAS</sub>)', '+X_Lab (+Y_MIDAS)', xl_color),
+            ('v', '+Y<sub>Lab</sub> (+Z<sub>MIDAS</sub>)', '+Y_Lab (+Z_MIDAS)', yl_color))
+    arrow_label_R_h = arrow_label_R_v = L + head * 1.6
+    for axis_kind, html_body, plain_text, axis_color in label_specs:
+        html = '<span style="color:{};">{}</span>'.format(axis_color, html_body)
+        if axis_kind == 'h':
+            # Anchored box extends fully backward from the offset point, so
+            # the offset itself must clear the tip by the box's full width.
+            text_extent = min((fm.boundingRect(plain_text).width() + margin_px) * px_iso,
+                               0.8 * L)
+            arrow_label_R_h = L + max(head * 1.6, text_extent)
+            # Nudge below the shaft's y so the red line stays visible instead
+            # of running straight through the middle of the label box.
+            dx, dy = y_sign * arrow_label_R_h, -head * 0.9
+            anchor = (0.0 if dx > 0 else 1.0, 0.5)
+        else:
+            # Centered box only extends half its height back toward the tip.
+            text_extent = min((fm.height() / 2.0 + margin_px) * px_iso,
+                               0.8 * L)
+            arrow_label_R_v = L + max(head * 1.6, text_extent)
+            dx, dy = 0.0, arrow_label_R_v
+            anchor = (0.5, 0.5)
+        lbl = pg.TextItem(html=html, anchor=anchor,
                           border=text_pen, fill=text_fill)
         lbl.setFont(label_font)
         lbl.setPos(bc_y + dx, bc_z + dy)
         image_view.add_overlay(lbl, category)
 
-    # ⊗ glyph at BC + label
-    glyph = pg.TextItem('⊗', color=color, anchor=(0.5, 0.5),
+    # ⊗ glyph at BC + label — Z_Lab (MIDAS-native X_MIDAS), the beam direction.
+    glyph = pg.TextItem('⊗', color=zl_color, anchor=(0.5, 0.5),
                         border=text_pen, fill=text_fill)
     glyph.setFont(glyph_font)
     glyph.setPos(bc_y, bc_z)
     image_view.add_overlay(glyph, category)
 
-    x_lbl = pg.TextItem('+X (beam)', color=color, anchor=(0, 0.5),
+    beam_html = '<span style="color:{};">+Z<sub>Lab</sub> (+X<sub>MIDAS</sub>, beam)</span>'.format(zl_color)
+    beam_anchor_x = 0.0 if y_sign > 0 else 1.0
+    x_lbl = pg.TextItem(html=beam_html, anchor=(beam_anchor_x, 0.5),
                         border=text_pen, fill=text_fill)
     x_lbl.setFont(label_font)
     x_lbl.setPos(bc_y + y_sign * head * 1.4, bc_z - head * 1.4)
@@ -969,16 +1039,32 @@ def draw_lab_frame_axes(image_view, bc_y, bc_z, ny, nz,
                          pen=arc_pen),
         category)
 
-    # η cardinal labels — placed comfortably beyond the +Y/+Z arrow tip
-    # labels (which sit at radius `L + head*1.6`) so they never overlap.
-    arrow_label_R = L + head * 1.6
-    R_eta = arrow_label_R + max(30.0, 0.25 * L)
+    # η cardinal labels — placed beyond the X_Lab/Y_Lab arrow-tip labels so
+    # they never overlap. A purely data-unit gap is zoom-dependent: it
+    # shrinks to nothing when zoomed out to fit a large hydra composite,
+    # while the labels themselves render at a fixed screen-pixel size. So
+    # convert a minimum on-screen clearance into data units using the
+    # view's *current* isotropic pixel scale (px_iso, computed above), which
+    # keeps the spacing visually correct whether the view is fully zoomed
+    # out or magnified in. Base each pair off the arrow-tip labels' *actual*
+    # offsets (arrow_label_R_h/_v), since those already grow to fit long
+    # label text — using a flat estimate here could under-space the eta
+    # labels whenever the arrow-tip labels had to grow past it. As with the
+    # arrow-tip labels, the pixel->data conversion is capped at a multiple
+    # of L so a very zoomed-out view can't push these off toward the edges
+    # of a multi-tile composite.
+    base_gap = max(30.0, 0.25 * L)
+    min_gap_v = min((2.5 * font_size + 15.0) * px_iso, 0.6 * L)
+    min_gap_h = min((8.0 * font_size + 40.0) * px_iso, 0.6 * L)
+    R_eta_v = arrow_label_R_v + max(base_gap, min_gap_v)
+    R_eta_h = arrow_label_R_h + max(base_gap, min_gap_h)
     for dx, dy, txt in (
-            ( 0.0,           +R_eta, 'η=0°'),
-            (-y_sign*R_eta,   0.0,   'η=+90°'),
-            ( 0.0,           -R_eta, 'η=±180°'),
-            ( y_sign*R_eta,   0.0,   'η=−90°')):
-        tick = pg.TextItem(txt, color=eta_tick_color, anchor=(0.5, 0.5))
+            ( 0.0,             +R_eta_v, 'η=0°'),
+            (-y_sign*R_eta_h,   0.0,     'η=+90°'),
+            ( 0.0,             -R_eta_v, 'η=±180°'),
+            ( y_sign*R_eta_h,   0.0,     'η=−90°')):
+        tick = pg.TextItem(txt, color=eta_tick_color, anchor=(0.5, 0.5),
+                           border=text_pen, fill=text_fill)
         tick.setFont(eta_font)
         tick.setPos(bc_y + dx, bc_z + dy)
         image_view.add_overlay(tick, category)

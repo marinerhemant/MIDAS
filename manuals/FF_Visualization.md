@@ -306,18 +306,18 @@ The four GE detectors are arranged at nominally equal 90° azimuthal intervals. 
 > [!NOTE]
 > These are nominal reference values. Each detector should be independently refined via `AutoCalibrateZarr.py` before analysis.
 
-#### Sample-frame axes and η convention
+#### Lab-frame axes and η convention
 
-The overlay on the composite defines the sample coordinate frame and the sign convention for the azimuthal angle η used everywhere in the caking output:
+The overlay on the composite defines the lab coordinate frame and the sign convention for the azimuthal angle η used everywhere in the caking output. Each axis is labeled with its lab-frame name plus the MIDAS-native axis it corresponds to, and color-coded to match:
 
-- **+X** is along the beam direction (into the page in the viewer, marked ⊗).
-- **+Z** points up in the lab frame.
-- **+Y** completes the right-handed frame (out of the page to the beam-left in the viewer).
-- **η** is the azimuthal angle in the detector plane about the beam (+X), following MIDAS's `CalcEtaAngle(y, z) = atan2(−y, z)` (degrees) used everywhere in the caking output: **η = 0°** at +Z (top), **η = −90°** on the +Y side (right in the viewer), **η = +90°** on the −Y side (left), and **η = ±180°** at −Z (bottom).
+- **+X_Lab** (MIDAS **+Y**, red) points toward display-left.
+- **+Y_Lab** (MIDAS **+Z**, green) points up.
+- **+Z_Lab** (MIDAS **+X**, blue, marked ⊗) is along the beam direction, into the page.
+- **η** (yellow/orange) is measured in the detector plane, with **η = 0°** at +Y_Lab/+Z_MIDAS (top), **η = +90°** on the −X_Lab side (display-right), **η = ±180°** at the bottom, and **η = −90°** on the +X_Lab/+Y_MIDAS side (display-left). The arc marks the direction of increasing η.
 
 | Composite with axes overlay | Zoomed inset near beam center |
 |:---:|:---:|
-| ![Sample-frame axes on HYDRA composite](assets/ff_multidet_viewer_with_crd.png) | ![Axes + η labels — zoom](assets/ff_multidet_viewer_with_crd_magnified.png) |
+| ![Lab-frame axes on HYDRA composite](assets/ff_multidet_viewer_with_crd.png) | ![Axes + η labels — zoom](assets/ff_multidet_viewer_with_crd_magnified.png) |
 
 #### Per-detector η ranges
 
@@ -330,7 +330,7 @@ Each of the four GE panels captures a different η wedge of the same rings; the 
 The fields shown are `RMin` / `RMax` / `RBinSize` / `EtaMin` / `EtaMax` / `EtaBinSize` / `OmegaSumFrames` (`ω ave`) / `OmegaStart` / `OmegaStep` — the same keys the viewer reads from each detector's MIDAS param file.
 
 > [!NOTE]
-> The η ranges use the sign convention diagrammed under **Sample-frame axes** — GE1's `η ∈ [120°, 210°]` wraps past +180° / −180° because that panel straddles the −Z (bottom) region in the composite. `combine_hydra_zarr.py` concatenates each panel's caked lineouts along η after normalizing to a common range, so the merged zarr's η axis is continuous.
+> The η ranges use the sign convention diagrammed under **Lab-frame axes** — GE1's `η ∈ [120°, 210°]` wraps past +180° / −180° because that panel straddles the −Y_Lab (bottom) region in the composite. `combine_hydra_zarr.py` concatenates each panel's caked lineouts along η after normalizing to a common range, so the merged zarr's η axis is continuous.
 
 #### Multi-detector workflow in the GUI
 
