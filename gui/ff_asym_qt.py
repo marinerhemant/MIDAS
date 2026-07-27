@@ -2582,9 +2582,12 @@ class FFViewer(QtWidgets.QMainWindow):
 
     def _on_pick_det_data(self, idx):
         fn, _ = QtWidgets.QFileDialog.getOpenFileName(
-            self, f"Select GE{idx+1} data HDF5",
+            self, f"Select GE{idx+1} data (HDF5 or raw GE binary)",
             os.path.dirname(self._det_states[idx].data_file) or os.getcwd(),
-            "HDF5 (*.h5 *.hdf5 *.hdf *.nxs);;All (*)")
+            "Detector data (*.h5 *.hdf5 *.hdf *.nxs *.ge *.ge1 *.ge2 *.ge3 "
+            "*.ge4 *.ge5 *.raw *.bin *.dat);;HDF5 (*.h5 *.hdf5 *.hdf *.nxs);;"
+            "Raw GE binary (*.ge *.ge1 *.ge2 *.ge3 *.ge4 *.ge5 *.raw *.bin *.dat);;"
+            "All (*)")
         if not fn:
             return
         self._det_states[idx].data_file = fn
@@ -2599,10 +2602,13 @@ class FFViewer(QtWidgets.QMainWindow):
 
     def _on_pick_det_dark(self, idx):
         fn, _ = QtWidgets.QFileDialog.getOpenFileName(
-            self, f"Select GE{idx+1} dark HDF5",
+            self, f"Select GE{idx+1} dark (HDF5 or raw GE binary)",
             os.path.dirname(self._det_states[idx].dark_file
                              or self._det_states[idx].data_file) or os.getcwd(),
-            "HDF5 (*.h5 *.hdf5 *.hdf *.nxs);;All (*)")
+            "Detector data (*.h5 *.hdf5 *.hdf *.nxs *.ge *.ge1 *.ge2 *.ge3 "
+            "*.ge4 *.ge5 *.raw *.bin *.dat);;HDF5 (*.h5 *.hdf5 *.hdf *.nxs);;"
+            "Raw GE binary (*.ge *.ge1 *.ge2 *.ge3 *.ge4 *.ge5 *.raw *.bin *.dat);;"
+            "All (*)")
         if not fn:
             return
         self._det_states[idx].dark_file = fn

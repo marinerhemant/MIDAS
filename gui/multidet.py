@@ -215,28 +215,75 @@ def _normalize_h5_path(p: Optional[str]) -> Optional[str]:
 
 _HDF5_EXTS = ('.h5', '.hdf', '.hdf5', '.nxs')
 
+# Formats the single-detector reader (ff_asym_qt.read_image) handles
+# specially but the raw-binary reader below would silently misinterpret as
+# a GE stack (TIFF/CBF/zarr/bz2/...). Only HDF5 and raw GE binary are
+# supported in the multi-detector viewer; anything in this set is skipped
+# with a warning rather than rendered as byte-offset garbage.
+_NONRAW_EXTS = ('.tif', '.tiff', '.cbf', '.zip', '.zarr', '.bz2', '.edf', '.img')
+
+# Raw GE binary bytes-per-pixel we can read. The dtype (below) and the
+# frame-byte stride must agree, so only these two are accepted.
+_SUPPORTED_BPP = (2, 4)
+
 
 def _is_hdf5(fn: str) -> bool:
     return os.path.splitext(fn)[1].lower() in _HDF5_EXTS
 
 
+def _is_unsupported_multidet(fn: str) -> bool:
+    """True (and warns once) for a format the multi-detector viewer cannot
+    read but that would otherwise fall through to the raw-binary reader and
+    render as garbage."""
+    ext = os.path.splitext(fn)[1].lower()
+    if ext in _NONRAW_EXTS:
+        _warn_once(
+            f'{os.path.basename(fn)}: {ext} is not supported in the multi-detector '
+            'viewer (HDF5 and raw GE binary only) — detector skipped. Convert to '
+            'HDF5/zarr (single-detector view or the zip workflow) first.')
+        return True
+    return False
+
+
+def _raw_dtype(bpp: int):
+    return np.uint16 if bpp == 2 else np.int32  # bpp == 4
+
+
 def _raw_n_frames(fn: str, header: int, bpp: int, ny: int, nz: int) -> int:
     """Frame count for a raw binary stack (file size minus header / frame
-    bytes). Returns 0 on any error so the caller treats it as empty."""
+    bytes). Returns 0 on any error so the caller treats it as empty.
+
+    Validates that the payload is a whole number of frames and that bpp is
+    supported; a mismatch (wrong NrPixels / BytesPerPixel / HeadSize) is a
+    silent-garbage hazard, so it is surfaced with a warning instead."""
     try:
         size = os.path.getsize(fn)
     except OSError:
         return 0
+    if bpp not in _SUPPORTED_BPP:
+        _warn_once(
+            f'raw[{os.path.basename(fn)}]: BytesPerPixel={bpp} unsupported '
+            f'(only {_SUPPORTED_BPP} handled) — detector skipped.')
+        return 0
     frame_bytes = bpp * ny * nz
     if frame_bytes <= 0 or size <= header:
         return 0
-    return max(1, (size - header) // frame_bytes)
+    payload = size - header
+    if payload % frame_bytes != 0:
+        _warn_once(
+            f'raw[{os.path.basename(fn)}]: {payload} data bytes is not a whole '
+            f'number of {ny}x{nz}x{bpp}B frames ({frame_bytes} B each) — check '
+            f'NrPixels / BytesPerPixel / HeadSize. Using {payload // frame_bytes} '
+            f'full frame(s), ignoring {payload % frame_bytes} trailing bytes.')
+    return payload // frame_bytes
 
 
 def _raw_read_frame(fn: str, header: int, bpp: int, ny: int, nz: int,
                     frame_idx: int) -> Optional[np.ndarray]:
+    if bpp not in _SUPPORTED_BPP:
+        return None
     try:
-        dtype = np.uint16 if bpp == 2 else np.int32
+        dtype = _raw_dtype(bpp)
         offset = header + frame_idx * (bpp * ny * nz)
         with open(fn, 'rb') as f:
             f.seek(offset, os.SEEK_SET)
@@ -267,6 +314,8 @@ def n_frames_in_h5(fn: str, loc: str,
                 return int(ds.shape[0]) if ds.ndim >= 3 else 1
         except OSError:
             return 0
+    if _is_unsupported_multidet(fn):
+        return 0
     return _raw_n_frames(fn, header, bpp, ny, nz)
 
 
@@ -288,6 +337,8 @@ def read_h5_frame(fn: str, loc: str, frame_idx: int,
                 return ds[...].astype(np.float32)
         except (OSError, KeyError, IndexError):
             return None
+    if _is_unsupported_multidet(fn):
+        return None
     return _raw_read_frame(fn, header, bpp, ny, nz, frame_idx)
 
 
@@ -311,6 +362,8 @@ def read_h5_dark(fn: str, loc: str,
                 return np.mean(data, axis=0) if data.ndim >= 3 else data
         except (OSError, KeyError):
             return None
+    if _is_unsupported_multidet(fn):
+        return None
     n = _raw_n_frames(fn, header, bpp, ny, nz)
     if n <= 0:
         return None
@@ -540,6 +593,14 @@ class DetectorState:
         `data_file` at `dark_loc`."""
         src = self.dark_file or self.data_file
         if not src:
+            return None
+        # When no explicit dark_file is given we fall back to the data file.
+        # For HDF5 that is correct: dark_loc addresses a *separate* dark
+        # dataset inside the same file. A raw binary data file has no such
+        # separate dark — averaging the data stack and subtracting it would
+        # remove the signal's own mean from every frame. So for raw data
+        # without an explicit dark, skip subtraction instead.
+        if not self.dark_file and not _is_hdf5(self.data_file):
             return None
         key = (src, self.dark_loc, tuple(self.im_trans_opts))
         # Cache HIT only when both key matches AND a real image is stored.
