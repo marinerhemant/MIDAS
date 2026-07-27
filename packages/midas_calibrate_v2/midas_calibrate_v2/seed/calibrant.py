@@ -105,7 +105,7 @@ def resolve_calibrant(calibrant: Union[str, Dict]) -> dict:
         )
     try:
         a = float(calibrant["a"])
-        sg = int(calibrant["sg"])
+        sg_raw = calibrant["sg"]
     except KeyError as e:
         raise ValueError(
             f"custom calibrant dict is missing required key {e}; "
@@ -113,6 +113,12 @@ def resolve_calibrant(calibrant: Union[str, Dict]) -> dict:
             "which of 'b', 'c', 'alpha', 'beta', 'gamma' are required "
             "depends on the crystal system implied by 'sg'."
         ) from None
+    sg = int(sg_raw)
+    if isinstance(sg_raw, float) and sg_raw != sg:
+        raise ValueError(
+            f"custom calibrant dict: space-group number must be an integer, "
+            f"got sg={sg_raw!r}."
+        )
 
     system = _crystal_system(sg)
     if system not in _SYSTEM_CONSTRAINTS:
@@ -143,6 +149,23 @@ def resolve_calibrant(calibrant: Union[str, Dict]) -> dict:
                     "(Rhombohedral-axes trigonal settings are not supported.)"
                 )
         values[key] = forced_value
+
+    # Boundary validation: catch physically impossible lattices here with a
+    # clear message rather than letting them reach midas_hkls.Lattice, which
+    # would raise a less contextual error (or, for a wrong metric tensor,
+    # silently produce a bad d-spacing list).
+    for _k in ("a", "b", "c"):
+        if values[_k] <= 0.0:
+            raise ValueError(
+                f"custom calibrant dict: lattice length {_k}={values[_k]:g} Å "
+                "must be positive."
+            )
+    for _k in ("alpha", "beta", "gamma"):
+        if not 0.0 < values[_k] < 180.0:
+            raise ValueError(
+                f"custom calibrant dict: lattice angle {_k}={values[_k]:g}° "
+                "must be in (0, 180)."
+            )
 
     return {
         "name": "<custom>", "sg": sg,

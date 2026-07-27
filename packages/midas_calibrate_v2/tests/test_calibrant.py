@@ -76,3 +76,26 @@ def test_invalid_calibrant_type_raises():
 def test_registry_is_shared_between_pipelines_and_seed_modules():
     assert auto_module.CALIBRANTS is CALIBRANTS
     assert auto_seed_module._CALIBRANTS is CALIBRANTS
+
+
+def test_non_integer_space_group_raises():
+    with pytest.raises(ValueError, match="integer"):
+        resolve_calibrant({"a": 5.4116, "sg": 225.9})
+    # an integer-valued float is fine (225.0 == 225)
+    assert resolve_calibrant({"a": 5.4116, "sg": 225.0})["sg"] == 225
+
+
+@pytest.mark.parametrize("bad", [
+    {"a": 0.0, "sg": 225},
+    {"a": -5.4116, "sg": 225},
+    {"a": 4.0, "b": -5.0, "c": 6.0, "sg": 16},
+])
+def test_nonpositive_lattice_length_raises(bad):
+    with pytest.raises(ValueError, match="positive"):
+        resolve_calibrant(bad)
+
+
+def test_out_of_range_lattice_angle_raises():
+    # sg 14 is monoclinic: beta is free, alpha/gamma forced to 90.
+    with pytest.raises(ValueError, match=r"\(0, 180\)"):
+        resolve_calibrant({"a": 4.0, "b": 5.0, "c": 6.0, "sg": 14, "beta": 200.0})
