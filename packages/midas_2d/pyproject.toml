@@ -1,0 +1,51 @@
+[build-system]
+requires = ["setuptools>=61"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "midas-2d"
+version = "0.1.0"
+description = "Differentiable diffraction for 2D / few-layer & ultrafast experiments: finite-size interference (Laue oscillations), crystal-truncation rods, and rocking curves on top of midas-hkls."
+readme = "README.md"
+license = "BSD-3-Clause"
+requires-python = ">=3.9"
+authors = [
+    {name = "Hemant Sharma", email = "hsharma@anl.gov"},
+]
+classifiers = [
+    "Development Status :: 2 - Pre-Alpha",
+    "Intended Audience :: Science/Research",
+    "Programming Language :: Python :: 3",
+    "Operating System :: OS Independent",
+    "Topic :: Scientific/Engineering :: Physics",
+]
+dependencies = [
+    "numpy>=1.20",
+    "torch>=2.0",
+    # Sibling MIDAS packages -- reused per MIDAS_2D_ULTRAFAST_DIFFRACTION_PLAN.md
+    # Section 3. Do NOT re-port their primitives.
+    "midas-hkls>=0.5",           # lattice math, form factors, structure factors, hkl enumeration (torch)
+    "midas-pink>=0.1",           # ParameterisedSpectrum: mono/pink/white energy model
+    "midas-invert>=0.1",         # shared differentiable-inversion primitives (fit, UQ, design, mixture, surrogate)
+]
+
+[project.optional-dependencies]
+viz = [
+    "matplotlib>=3.5",
+]
+dev = [
+    "pytest>=7.0",
+    "matplotlib>=3.5",
+]
+
+[tool.setuptools]
+packages = ["midas_2d", "midas_2d.examples"]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+markers = [
+    "unit: synthetic-data correctness tests (fast, every PR)",
+    "autograd: gradient correctness tests (gradcheck or finite-diff)",
+    "device: CPU/CUDA/MPS portability tests (skipped if device unavailable)",
+    "slow: heavy optimisation/training integration tests (run with -m slow)",
+]

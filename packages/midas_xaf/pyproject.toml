@@ -1,0 +1,45 @@
+[build-system]
+requires = ["setuptools>=68.0"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "midas-xaf"
+version = "0.1.0"
+description = "Cross-Axis Faceted HEDM (XAF-HEDM): design + simulation toolkit for merged-reciprocal-space far-field HEDM through a six-faceted diamond anvil cell"
+readme = "README.md"
+license = "BSD-3-Clause"
+requires-python = ">=3.9"
+authors = [
+    {name = "Hemant Sharma", email = "hsharma@anl.gov"},
+]
+keywords = [
+    "HEDM", "3DXRD", "diamond anvil cell", "high pressure",
+    "differentiable physics", "PyTorch", "reciprocal space", "Friedel pairs",
+]
+classifiers = [
+    "Development Status :: 3 - Alpha",
+    "Intended Audience :: Science/Research",
+    "Programming Language :: Python :: 3",
+    "Operating System :: OS Independent",
+    "Topic :: Scientific/Engineering :: Physics",
+]
+dependencies = [
+    "numpy>=1.22",
+    "torch>=2.0",
+    "midas-diffract>=0.6.0",
+    "midas-hkls>=0.5.0",
+    "midas-stress>=0.8.0",
+]
+
+[project.optional-dependencies]
+dev = ["pytest>=7.0", "pytest-cov"]
+plot = ["matplotlib>=3.5"]
+
+[project.urls]
+Homepage = "https://github.com/marinerhemant/MIDAS"
+Documentation = "https://github.com/marinerhemant/MIDAS"
+Issues = "https://github.com/marinerhemant/MIDAS/issues"
+
+[tool.setuptools.packages.find]
+where = ["."]
+include = ["midas_xaf*"]

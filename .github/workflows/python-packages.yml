@@ -280,6 +280,33 @@ jobs:
           elif [[ "$TAG" == midas-suite-v* ]]; then
             echo "package=midas_suite" >> "$GITHUB_OUTPUT"
             echo "pypi_name=midas-suite" >> "$GITHUB_OUTPUT"
+          elif [[ "$TAG" == midas-2d-v* ]]; then
+            echo "package=midas_2d" >> "$GITHUB_OUTPUT"
+            echo "pypi_name=midas-2d" >> "$GITHUB_OUTPUT"
+          elif [[ "$TAG" == midas-ckernel-v* ]]; then
+            echo "package=midas_ckernel" >> "$GITHUB_OUTPUT"
+            echo "pypi_name=midas-ckernel" >> "$GITHUB_OUTPUT"
+          elif [[ "$TAG" == midas-defect-v* ]]; then
+            echo "package=midas_defect" >> "$GITHUB_OUTPUT"
+            echo "pypi_name=midas-defect" >> "$GITHUB_OUTPUT"
+          elif [[ "$TAG" == midas-dfxm-v* ]]; then
+            echo "package=midas_dfxm" >> "$GITHUB_OUTPUT"
+            echo "pypi_name=midas-dfxm" >> "$GITHUB_OUTPUT"
+          elif [[ "$TAG" == midas-grain-odf-v* ]]; then
+            echo "package=midas_grain_odf" >> "$GITHUB_OUTPUT"
+            echo "pypi_name=midas-grain-odf" >> "$GITHUB_OUTPUT"
+          elif [[ "$TAG" == midas-pdf-v* ]]; then
+            echo "package=midas_pdf" >> "$GITHUB_OUTPUT"
+            echo "pypi_name=midas-pdf" >> "$GITHUB_OUTPUT"
+          elif [[ "$TAG" == midas-pf-odf-v* ]]; then
+            echo "package=midas_pf_odf" >> "$GITHUB_OUTPUT"
+            echo "pypi_name=midas-pf-odf" >> "$GITHUB_OUTPUT"
+          elif [[ "$TAG" == midas-pink-v* ]]; then
+            echo "package=midas_pink" >> "$GITHUB_OUTPUT"
+            echo "pypi_name=midas-pink" >> "$GITHUB_OUTPUT"
+          elif [[ "$TAG" == midas-xaf-v* ]]; then
+            echo "package=midas_xaf" >> "$GITHUB_OUTPUT"
+            echo "pypi_name=midas-xaf" >> "$GITHUB_OUTPUT"
           else
             echo "Tag $TAG does not match any known package prefix; skipping."
             echo "package=" >> "$GITHUB_OUTPUT"

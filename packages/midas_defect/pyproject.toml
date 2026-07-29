@@ -1,0 +1,71 @@
+[build-system]
+requires = ["setuptools>=61"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "midas-defect"
+version = "0.1.0"
+description = "Differentiable, phase-agnostic diffuse-scattering defect metrology on top of standard FF-HEDM: intensity-budget closure, per-grain dislocation density, fault-rod and selection-rule tests."
+readme = "README.md"
+license = "BSD-3-Clause"
+requires-python = ">=3.9"
+authors = [
+    {name = "Hemant Sharma", email = "hsharma@anl.gov"},
+]
+classifiers = [
+    "Development Status :: 2 - Pre-Alpha",
+    "Intended Audience :: Science/Research",
+    "Programming Language :: Python :: 3",
+    "Operating System :: OS Independent",
+    "Topic :: Scientific/Engineering :: Physics",
+]
+dependencies = [
+    "numpy>=1.20",
+    "torch>=2.0",
+    "pandas>=1.5",
+    "scipy>=1.10",
+    "tifffile>=2023.0",
+    "zarr>=2.14",                # full-res voxel cloud reader (examples/validation)
+    # Sibling MIDAS packages -- all reused via the MIDAS reuse map in
+    # implementation_plan.md Section 2. Do NOT re-port their primitives.
+    "midas-transforms>=0.1",     # det <-> q transforms, device/dtype resolution
+    "midas-hkls>=0.1",           # lattice math, structure factors, hkl enumeration (torch)
+    "midas-stress>=0.1",         # quat / rotation / misorientation primitives
+    "midas-diffract>=0.1",       # HEDMForwardModel for predicted spot positions
+    "midas-index>=0.1",          # initial-pass indexer for seed_index.py
+    "midas-peakfit>=0.1",        # connected-component peak extraction (torch)
+    "midas-invert>=0.1",         # shared fit + mixture-deconvolution primitives (used by peakshape.py)
+]
+
+[project.scripts]
+# Validated v0.1 core: end-to-end diffuse-defect inventory.
+midas-defect-inventory  = "midas_defect.examples.demk_fcc_end_to_end:main"
+# Experimental modules (synthetic-tested; promote once anchored to real data).
+midas-defect-rods       = "midas_defect.cli.rods:main"
+midas-defect-asterism   = "midas_defect.cli.asterism:main"
+midas-defect-polytype   = "midas_defect.cli.polytype:main"
+
+[project.optional-dependencies]
+viz = [
+    "plotly>=5.0",
+    "zarr>=2.14",
+]
+dev = [
+    "pytest>=7.0",
+    "pytest-benchmark>=4.0",
+]
+
+[tool.setuptools]
+packages = ["midas_defect", "midas_defect.cli", "midas_defect.examples"]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+markers = [
+    "unit: synthetic-data correctness tests (fast, every PR)",
+    "autograd: gradient correctness tests (gradcheck or finite-diff)",
+    "device: CPU/CUDA/MPS portability tests (skipped if device unavailable)",
+    "real_data: real-data regression tests (requires MIDAS_DEFECT_REAL_DATA=1)",
+    "integration: cross-pipeline coherence tests",
+    "benchmark: performance regression tests (pytest-benchmark)",
+    "slow: published-number regressions that are correct but take seconds (e.g. hexagonal Table-2 contrast factors)",
+]

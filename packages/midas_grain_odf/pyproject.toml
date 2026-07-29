@@ -1,0 +1,46 @@
+[build-system]
+requires = ["setuptools>=61"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "midas-grain-odf"
+version = "0.1.0"
+description = "Differentiable per-grain orientation distribution functions from FF-HEDM data"
+readme = "README.md"
+requires-python = ">=3.9"
+authors = [
+    {name = "Hemant Sharma", email = "hsharma@anl.gov"},
+]
+classifiers = [
+    "Development Status :: 3 - Alpha",
+    "Intended Audience :: Science/Research",
+    "Programming Language :: Python :: 3",
+    "Operating System :: OS Independent",
+    "Topic :: Scientific/Engineering :: Physics",
+]
+dependencies = [
+    "numpy>=1.20",
+    "torch>=2.0",
+    "pandas>=1.5",
+    "h5py>=3.0",
+    # Sibling MIDAS package -- the differentiable HEDM forward model
+    # (Sharma et al., IUCrJ 2025) that this package builds on.
+    "midas-diffract>=0.1",
+    # Sibling MIDAS package -- supplies tested orientation primitives
+    # (axis-angle <-> matrix, matrix -> quat, fundamental zone, misorientation,
+    # both numpy and torch backends).
+    "midas-stress>=0.1",
+]
+
+[project.scripts]
+midas-grain-odf = "midas_grain_odf.cli:main"
+
+[project.optional-dependencies]
+dev = [
+    "pytest>=7.0",
+    "matplotlib>=3.5",
+]
+
+[tool.setuptools.packages.find]
+where = ["."]
+include = ["midas_grain_odf*"]

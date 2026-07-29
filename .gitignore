@@ -75,3 +75,19 @@ fftwf_wisdom_*.txt
 
 # parsl run directories (created at runtime; not source)
 **/runinfo/
+
+# --- Internal planning / strategy / audit docs (never commit or publish) ---
+packages/*/implementation_plan*.md
+packages/*/AUDIT_*.md
+packages/*/IMPROVEMENTS_*.md
+packages/*/SIMULATION_CATALOG.md
+packages/*_PLAN.md
+packages/*_STRATEGY.md
+packages/*_CONCEPT.md
+packages/*_IDEAS.md
+packages/*_SCOPE.md
+packages/*_PRIOR_ART.md
+packages/*_BOUNDARY.md
+.pytest_cache/
+__pycache__/
+texput.log

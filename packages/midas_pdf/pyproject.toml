@@ -1,0 +1,79 @@
+[build-system]
+requires = ["setuptools>=68.0"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "midas-pdf"
+version = "0.1.0"
+description = "Differentiable, error-propagating total-scattering / pair-distribution-function (PDF, G(r)) pipeline. Thin Faber-Ziman layer over midas-hkls (form factors) and midas-integrate-v2 (integration, Compton, sine FT)."
+readme = "README.md"
+license = "BSD-3-Clause"
+requires-python = ">=3.9"
+authors = [
+    {name = "Hemant Sharma", email = "hsharma@anl.gov"},
+]
+keywords = [
+    "MIDAS",
+    "X-ray",
+    "total scattering",
+    "pair distribution function",
+    "PDF",
+    "G(r)",
+    "delta-PDF",
+    "Faber-Ziman",
+    "differentiable",
+    "PyTorch",
+    "uncertainty propagation",
+]
+classifiers = [
+    "Development Status :: 3 - Alpha",
+    "Intended Audience :: Science/Research",
+    "Operating System :: OS Independent",
+    "Programming Language :: Python :: 3",
+    "Programming Language :: Python :: 3.9",
+    "Programming Language :: Python :: 3.10",
+    "Programming Language :: Python :: 3.11",
+    "Programming Language :: Python :: 3.12",
+    "Topic :: Scientific/Engineering :: Physics",
+    "Topic :: Scientific/Engineering :: Chemistry",
+]
+dependencies = [
+    "numpy>=1.22",
+    "torch>=2.1",
+    "midas-hkls>=0.5.0",
+    "midas-integrate-v2>=0.1.0",
+]
+
+[project.optional-dependencies]
+dev = [
+    "pytest>=7.0",
+    "pytest-cov>=4.0",
+    "matplotlib>=3.6",
+]
+bayes = [
+    "pyro-ppl>=1.9.0",       # SVI + NUTS posterior for refine_structure
+]
+
+[project.scripts]
+midas-pdf-cif    = "midas_pdf.cli.cif_cmd:main"
+midas-pdf-refine = "midas_pdf.cli.refine_cmd:main"
+midas-pdf-joint  = "midas_pdf.cli.joint_cmd:main"
+midas-pdf-rmc    = "midas_pdf.cli.rmc_cmd:main"
+midas-pdf-multiphase = "midas_pdf.cli.multiphase_cmd:main"
+midas-pdf-coreshell  = "midas_pdf.cli.coreshell_cmd:main"
+
+[project.urls]
+Homepage = "https://github.com/marinerhemant/MIDAS"
+Issues = "https://github.com/marinerhemant/MIDAS/issues"
+
+[tool.setuptools.packages.find]
+where = ["."]
+include = ["midas_pdf*"]
+
+[tool.setuptools.package-data]
+midas_pdf = ["data/*.json"]
+
+[tool.pytest.ini_options]
+markers = [
+    "slow: full-pipeline tests (>5s)",
+]

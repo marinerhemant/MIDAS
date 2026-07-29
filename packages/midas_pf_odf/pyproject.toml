@@ -1,0 +1,38 @@
+[build-system]
+requires = ["setuptools>=61"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "midas-pf-odf"
+version = "0.1.0"
+description = "Joint per-grain peak-shape inversion of pf-HEDM data; per-voxel orientation/strain (and Phase 2: per-voxel ODF)"
+readme = "README.md"
+requires-python = ">=3.9"
+authors = [
+    {name = "Hemant Sharma", email = "hsharma@anl.gov"},
+]
+classifiers = [
+    "Development Status :: 2 - Pre-Alpha",
+    "Intended Audience :: Science/Research",
+    "Programming Language :: Python :: 3",
+    "Operating System :: OS Independent",
+    "Topic :: Scientific/Engineering :: Physics",
+]
+dependencies = [
+    "numpy>=1.20",
+    "torch>=2.0",
+    "h5py>=3.0",
+    "midas-diffract>=0.1",
+    "midas-stress>=0.1",
+    "midas-grain-odf>=0.1",
+]
+
+[project.optional-dependencies]
+dev = [
+    "pytest>=7.0",
+    "matplotlib>=3.5",
+]
+
+[tool.setuptools.packages.find]
+where = ["."]
+include = ["midas_pf_odf*"]
