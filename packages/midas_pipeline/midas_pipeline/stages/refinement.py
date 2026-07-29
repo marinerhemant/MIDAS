@@ -159,24 +159,38 @@ def run(ctx: StageContext) -> StageResult:
 
     if ctx.config.refine_backend == "c-omp":
         # Bundled unified C refiner (midas_fitgrain / FitUnified): PF mode
-        # auto-detected (positions.csv > 1 row), position FIXED to the voxel
-        # grid. Reads consolidated IndexBest_all.bin. NB: downstream
-        # consolidation_pf must read midas_fitgrain's per-voxel output format.
+        # auto-detected (positions.csv > 1 row), position FIXED to the voxel grid.
+        # The C reads the seed for each voxel from IndexBest_all.bin, indexed by a
+        # 5-col SpotsToIndex.csv (voxNr SpId nSpotsBest _ bestSolIdx). The python
+        # indexer never emits that file, so without it the C refiner silently
+        # refines nothing. We (1) synthesise the 5-col seed from IndexBest_all.bin
+        # (same highest-completeness pick as the python refiner), (2) run the C
+        # refiner into a dedicated FitBest dir, (3) adapt FitBest_*.csv ->
+        # Result_OrientPos_voxel_*.csv so pf-odf + consolidation_pf can read it.
         from midas_fit_grain import backend_c
+        from midas_fit_grain.scan_seed import write_pf_seed_file
+        from midas_fit_grain.fitbest_adapter import fitbest_to_result_orientpos
+        from ._comp_params import comp_backend_paramstest
         if not backend_c.available():
             raise RuntimeError(
                 "refine_backend='c-omp' but the midas_fitgrain binary is not "
                 "available. Re-install midas-fit-grain with an OpenMP toolchain, "
                 "or use --refine-backend python."
             )
+        # (1) 5-col seed (the C binary opens 'SpotsToIndex.csv' in cwd=layer_dir).
         spots_to_index = layer_dir / "SpotsToIndex.csv"
-        n_vox = sum(1 for ln in spots_to_index.open() if ln.strip()) \
-            if spots_to_index.exists() else 0
+        n_vox = write_pf_seed_file(index_best_all, spots_to_index)
+        # (2) point FitBest output at a dedicated dir (not Results/, which the
+        # adapter fills — same-dir FitBest + Result_OrientPos would double-count
+        # in consolidation_pf).
+        fitbest_dir = layer_dir / "FitBest_comp"
+        comp_pt = comp_backend_paramstest(paramstest, layer_dir,
+                                          result_folder=fitbest_dir)
         log_dir = Path(ctx.log_dir); log_dir.mkdir(parents=True, exist_ok=True)
-        LOG.info("refinement(PF, c-omp): %s  [%d voxels]",
+        LOG.info("refinement(PF, c-omp): %s  [%d voxels; seed synthesised]",
                  backend_c.binary_path(), n_vox)
         proc = backend_c.run_refiner(
-            paramstest, block_nr=0, n_blocks=1, n_work=n_vox,
+            comp_pt, block_nr=0, n_blocks=1, n_work=n_vox,
             num_procs=ctx.config.n_cpus, cwd=layer_dir,
         )
         (log_dir / "refinement_out.csv").write_bytes(proc.stdout or b"")
@@ -186,15 +200,19 @@ def run(ctx: StageContext) -> StageResult:
                 f"midas_fitgrain (c-omp PF) exited {proc.returncode}; see "
                 f"{log_dir / 'refinement_err.csv'}"
             )
+        # (3) FitBest_*.csv -> Result_OrientPos_voxel_*.csv.
+        n_written = fitbest_to_result_orientpos(fitbest_dir, results_dir)
+        LOG.info("refinement(PF, c-omp): adapted %d FitBest -> "
+                 "Result_OrientPos_voxel", n_written)
         finished = time.time()
         return RefineResult(
             stage_name="refinement",
             started_at=started, finished_at=finished, duration_s=finished - started,
             orient_pos_fit_bin="", results_dir=str(results_dir),
-            n_grains_refined=0, n_voxels_refined=int(n_vox),
+            n_grains_refined=0, n_voxels_refined=int(n_written),
             outputs={str(results_dir): ""},
             metrics={"scan_mode": "pf", "refine_backend": "c-omp",
-                     "n_voxels_processed": n_vox},
+                     "n_voxels_processed": n_vox, "n_voxels_written": n_written},
         )
 
     # Lazy imports to keep FF runs lean.
