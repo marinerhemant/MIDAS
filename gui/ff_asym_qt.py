@@ -820,7 +820,8 @@ class FFViewer(QtWidgets.QMainWindow):
         self.axes_check = QtWidgets.QCheckBox("Lab Axes")
         self.axes_check.setToolTip(
             "Overlay MIDAS lab-frame axes from beam center.\n"
-            "+Y arrow → left, +Z arrow → up, ⊗ at BC = +X (beam, into page).\n"
+            "X_Lab (Y_MIDAS, red) → left, Y_Lab (Z_MIDAS, green) → up,\n"
+            "Z_Lab (X_MIDAS, blue) = beam, into page (⊗ at BC). η in yellow.\n"
             "Use this to verify ImTransOpt — features should be in the\n"
             "physically expected lab-frame quadrant.")
         tb.addWidget(self.axes_check)
@@ -1748,9 +1749,9 @@ class FFViewer(QtWidgets.QMainWindow):
             '  Q — Quit\n'
             '\n'
             'MIDAS lab frame (axes overlay):\n'
-            '  +Y → display LEFT, +Z → display UP\n'
-            '  +X → into the page (beam direction, ⊗ at BC)\n'
-            '  η = 0 at +Z, +90° at −Y, ±180° at −Z, −90° at +Y\n'
+            '  X_Lab (Y_MIDAS, red) → display LEFT, Y_Lab (Z_MIDAS, green) → display UP\n'
+            '  Z_Lab (X_MIDAS, blue) → into the page (beam direction, ⊗ at BC)\n'
+            '  η (yellow) = 0 at Y_Lab/Z_MIDAS, +90° at −Y, ±180° at −Z, −90° at X_Lab/Y_MIDAS\n'
             '  View is "looking from source toward detector"\n'
             '\n'
             'Multi-Detector mode (toolbar Multi-Det checkbox):\n'
