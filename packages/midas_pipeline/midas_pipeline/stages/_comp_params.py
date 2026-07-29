@@ -16,16 +16,24 @@ from __future__ import annotations
 from pathlib import Path
 
 
-def comp_backend_paramstest(paramstest: Path, layer_dir: Path) -> Path:
+def comp_backend_paramstest(
+    paramstest: Path, layer_dir: Path, result_folder: Path | None = None,
+) -> Path:
     """Write ``paramstest_comp.txt`` next to *paramstest* with OutputFolder/
     ResultFolder pointed at ``<layer_dir>/Output`` and ``<layer_dir>/Results``.
 
     Returns the path to the new file. The binned inputs stay in *layer_dir*
     (= ``dirname(OutputFolder)``), so the C binary finds them and emits into
     ``Output/``; refinement + process-grains read from the same folders.
+
+    ``result_folder`` overrides where the C binary writes its per-seed
+    ``FitBest_*.csv`` — the PF c-omp refine path points it at a dedicated
+    dir so those files don't collide (double-count) with the adapted
+    ``Result_OrientPos_voxel_*.csv`` that consolidation also globs from
+    ``Results/``.
     """
     out_dir = layer_dir / "Output"
-    res_dir = layer_dir / "Results"
+    res_dir = Path(result_folder) if result_folder is not None else layer_dir / "Results"
     out_dir.mkdir(parents=True, exist_ok=True)
     res_dir.mkdir(parents=True, exist_ok=True)
 
