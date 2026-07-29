@@ -88,6 +88,9 @@ packages/*_IDEAS.md
 packages/*_SCOPE.md
 packages/*_PRIOR_ART.md
 packages/*_BOUNDARY.md
+# Root-level planning docs + internal Pn_* project workspaces (never released)
+/implementation_plan*.md
+packages/P[0-9]_*/
 .pytest_cache/
 __pycache__/
 texput.log
