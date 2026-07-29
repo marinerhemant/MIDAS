@@ -60,7 +60,10 @@ def test_parse_grains_csv_extracts_om_block(tmp_path: Path):
 def test_parse_grains_csv_missing_header_raises(tmp_path: Path):
     grains = tmp_path / "Grains.csv"
     grains.write_text("not a header\n1 2 3 4 5 6 7 8 9 10 11 12 13 14\n")
-    with pytest.raises(ValueError, match="%GrainID"):
+    # Header detection keys off the OM columns (the ID column is spelled both
+    # 'GrainID' and 'ID' across ProcessGrains versions), so the message names
+    # those rather than '%GrainID'.
+    with pytest.raises(ValueError, match="not a ProcessGrains output file"):
         _parse_grains_csv(grains)
 
 

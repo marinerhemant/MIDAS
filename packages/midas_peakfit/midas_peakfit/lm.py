@@ -77,12 +77,27 @@ class LMConfig:
 _COMPILED_RESJAC: dict = {}
 _COMPILE_BLACKLIST: set = set()
 
+# ``mode="reduce-overhead"`` compiles via CUDA Graphs, and each compiled
+# variant retains its OWN private CUDA memory pool for the process lifetime —
+# this cache is never evicted. One variant is created per distinct ``n_peaks``,
+# so shape-diverse data silently pins VRAM in proportion to that diversity:
+# Ni FF box-beam produced 400 distinct n_peaks (1..400) ≈ 41GB pinned and OOM'd
+# *regardless of batch size* (it still died at capacity=1). Dense pf scans have
+# ~106 and survived, which is why this never showed up before.
+#
+# Cap the number of graph-compiled variants: the most frequent shapes (compiled
+# first, and they dominate region counts) keep the CUDA-graph speedup, and the
+# long tail of rare shapes runs eager with no pinned pool.
+_MAX_COMPILED_VARIANTS = 32
+
 
 def _get_compiled_resjac(n_peaks: int, sample: torch.Tensor):
     """Return a wrapped residuals_and_jacobian_u that:
       - tries the torch.compile-d path first
       - falls back to eager (and caches that decision) on any compile or
         runtime failure (e.g. ``RuntimeError: PassManager::run failed``).
+      - falls back to eager once ``_MAX_COMPILED_VARIANTS`` graph variants
+        exist, to bound retained CUDA-graph memory pools.
     """
     key = (n_peaks, sample.dtype, str(sample.device))
     fn = _COMPILED_RESJAC.get(key)
@@ -90,6 +105,12 @@ def _get_compiled_resjac(n_peaks: int, sample: torch.Tensor):
         return fn
 
     if key in _COMPILE_BLACKLIST:
+        _COMPILED_RESJAC[key] = residuals_and_jacobian_u
+        return residuals_and_jacobian_u
+
+    n_compiled = sum(1 for v in _COMPILED_RESJAC.values()
+                     if v is not residuals_and_jacobian_u)
+    if n_compiled >= _MAX_COMPILED_VARIANTS:
         _COMPILED_RESJAC[key] = residuals_and_jacobian_u
         return residuals_and_jacobian_u
 

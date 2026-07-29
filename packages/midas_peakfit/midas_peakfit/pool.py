@@ -83,7 +83,9 @@ class RegionPool:
         self.buckets: Dict[Tuple[int, int], List[_PoolEntry]] = defaultdict(list)
         self.frame_outputs: Dict[int, List[FitOutput]] = defaultdict(list)
         self._spot_id_per_frame: Dict[int, int] = defaultdict(lambda: 1)
-        self._cached_capacity: Dict[Tuple[int, int], int] = {}
+        # keyed by (n_peaks, m_pixels, n_live_buckets) — capacity depends on
+        # how many buckets are sharing the GPU budget at the time.
+        self._cached_capacity: Dict[Tuple[int, int, int], int] = {}
 
         # Synchronization primitives for async consumer
         self._cond = threading.Condition()
@@ -92,41 +94,138 @@ class RegionPool:
         self._error: Exception | None = None
 
     # ── Capacity estimation ───────────────────────────────────────────
+    # The consumer flushes serially, so only a small number of lm_solve
+    # batches are live at once. Batch capacity is sized against this, not
+    # against the (much larger) number of queued buckets.
+    _MAX_CONCURRENT_FLUSHES = 2
+
+    # Hard cap on the number of matrices in one batched linear-algebra call.
+    # This is a CORRECTNESS bound, not a memory one: the batched Cholesky in
+    # the CUDA linalg backend faults with
+    #   "illegal memory access ... in magma_spotrs_batched"
+    # at large batch counts (observed at batch=787 with only n_peaks=46, i.e.
+    # small matrices — so it is driven by COUNT, not size). Regions are split
+    # across several flushes instead; big regions are unaffected in accuracy,
+    # they simply solve in more, smaller batches.
+    _MAX_SOLVE_BATCH = 256
+
+    def _host_available_bytes(self) -> int:
+        """Actual available HOST RAM (Linux); conservative fallback elsewhere."""
+        try:
+            with open("/proc/meminfo") as fh:
+                for line in fh:
+                    if line.startswith("MemAvailable:"):
+                        return int(line.split()[1]) * 1024
+        except Exception:
+            pass
+        return 8 * 1024 ** 3
+
+    def _host_budget_bytes(self) -> int:
+        """Budget for queued-entry residency across ALL live buckets."""
+        return self._host_available_bytes()
+
     def _free_memory_bytes(self) -> int:
+        """Free memory on the COMPUTE device (where lm_solve batches land)."""
         if self.device.type == "cuda":
             try:
                 free, _total = torch.cuda.mem_get_info(self.device)
                 return int(free)
             except Exception:
                 return 4 * 1024 ** 3
-        return 8 * 1024 ** 3
+        # CPU: the old hardcoded 8GiB both starved big machines and (with the
+        # un-shared per-bucket budget) let residency run away — a 250GB host
+        # was kernel-OOM-killed while this reported 8GiB.
+        return self._host_available_bytes()
+
+    # Count of live ``[B, M, P]`` temporaries inside the eager analytical
+    # Jacobian (``jacobian.py``: dR, dE, dR2, dE2, A, Bx, L, G, profile, plus
+    # the per-parameter Jx_*/dG_*/dL_* working set). The Triton kernel writes
+    # J in place and needs fewer, but sizing for the eager path is the safe
+    # bound — both share this capacity.
+    _JAC_TEMPS = 12
+
+    # Measured correction between the analytic term count below and the real
+    # peak. A CUDA memory snapshot at OOM showed 38.9GB live (49 blocks) for a
+    # single flush the formula priced at ~9.8GB — the LM iteration keeps more
+    # simultaneous [B,M,P]/[B,M,N] temporaries alive than a static count
+    # captures. Calibrated, not guessed; bisect-on-OOM in
+    # ``_flush_bucket_entries`` remains the backstop if a future change makes
+    # even this optimistic.
+    _PEAK_CALIBRATION = 4.0
+
+    def _solve_bytes_per_region(self, n_peaks: int, m_pixels: int) -> int:
+        """Device bytes one region costs *inside a flush* (the lm_solve batch)."""
+        n_params = 1 + 8 * n_peaks
+        bytes_per_dtype = 8 if self.dtype == torch.float64 else 4
+        raw = (
+            6 * m_pixels                   # residuals + inputs
+            + 2 * m_pixels * n_params      # Jacobian + 1 working copy
+            + self._JAC_TEMPS * m_pixels * n_peaks   # eager [B,M,P] temporaries
+            + 4 * n_params * n_params      # H, damped H, scratch
+            + 8 * n_params
+        ) * bytes_per_dtype + 4096
+        return int(raw * self._PEAK_CALIBRATION)
+
+    def _resident_bytes_per_entry(self, n_peaks: int, m_pixels: int) -> int:
+        """HOST bytes one queued entry holds while it waits to be flushed.
+
+        ``SeededRegion`` keeps z_values/Rs/Etas (M each) plus x0/xl/xu (N each),
+        always float64 on the numpy side.
+        """
+        n_params = 1 + 8 * n_peaks
+        return (3 * m_pixels + 3 * n_params) * 8 + 512
 
     def _capacity_for_bucket(self, n_peaks: int, m_pixels: int) -> int:
-        key = (n_peaks, m_pixels)
+        """Max entries to accumulate before flushing this bucket.
+
+        Two INDEPENDENT limits — conflating them was the bug:
+
+        1. *Batch* limit — the flush builds one ``lm_solve`` batch on the
+           device, so it must fit in device memory. Only ``_MAX_CONCURRENT_
+           FLUSHES`` of these exist at once (the consumer flushes serially),
+           so it is sized against device memory / that small constant — NOT
+           divided by the number of live buckets.
+        2. *Residency* limit — queued entries sit in HOST memory across ALL
+           live buckets simultaneously. That total is what OOM-killed a 250GB
+           host (~1147 live buckets × ~1100 entries). It is bounded globally
+           and shared out per live bucket.
+
+        Capacity is the min of the two. Sizing only by (1) over-commits host
+        RAM; sizing everything by (2) (the first cut of this fix) needlessly
+        starved the device batches down to 1.
+        """
+        n_live = max(1, sum(1 for e in self.buckets.values() if e))
+        key = (n_peaks, m_pixels, n_live)
         if key in self._cached_capacity:
             return self._cached_capacity[key]
 
-        n_params = 1 + 8 * n_peaks
-        bytes_per_dtype = 8 if self.dtype == torch.float64 else 4
-        per_region = (
-            6 * m_pixels                   # residuals + inputs
-            + 2 * m_pixels * n_params      # Jacobian + 1 working copy
-            + 4 * n_params * n_params      # H, damped H, scratch
-            + 8 * n_params
-        ) * bytes_per_dtype
-        per_region += 4096
+        solve_b = self._solve_bytes_per_region(n_peaks, m_pixels)
+        resident_b = self._resident_bytes_per_entry(n_peaks, m_pixels)
 
-        free = self._free_memory_bytes()
-        cap = max(8, int(free * self.memory_safety_factor / per_region))
-        # Lower hard cap (was 50_000) to force the async consumer to flush
-        # mid-stream during the CPU producer phase. Smaller batches are
-        # ~10% less GPU-efficient but 10× more overlap → net win.
-        cap = min(cap, self.max_bucket_size)
+        # On CPU the solve batch and the queued entries draw on the SAME RAM,
+        # so the budget must be split between them; on CUDA they are separate
+        # pools (VRAM vs host) and each gets its own share.
+        share = 0.5 if self.device.type == "cpu" else 1.0
+
+        dev_free = self._free_memory_bytes()
+        batch_cap = int(dev_free * self.memory_safety_factor * share
+                        / self._MAX_CONCURRENT_FLUSHES / solve_b)
+
+        host_share = (self._host_budget_bytes() * self.memory_safety_factor
+                      * share / n_live)
+        resident_cap = int(host_share / resident_b)
+
+        # >=1 and no max(8, ...) floor: the old floor silently over-committed
+        # when even a single region did not fit. _MAX_SOLVE_BATCH additionally
+        # bounds the batched-linalg call count (see the constant's note).
+        cap = max(1, min(batch_cap, resident_cap,
+                         self._MAX_SOLVE_BATCH, self.max_bucket_size))
         self._cached_capacity[key] = cap
         self._log(
             f"[pool] bucket(n_peaks={n_peaks}, M={m_pixels}): "
-            f"per_region={per_region / 1024:.1f}KB, "
-            f"free={free / 1024**3:.2f}GB → capacity={cap}"
+            f"solve={solve_b / 1024:.1f}KB resident={resident_b / 1024:.1f}KB "
+            f"→ batch_cap={batch_cap} resident_cap={resident_cap} "
+            f"({n_live} live) → capacity={cap}"
         )
         return cap
 
@@ -241,6 +340,69 @@ class RegionPool:
     def _flush_bucket_entries(
         self, key: Tuple[int, int], entries: List[_PoolEntry]
     ) -> None:
+        """Solve a bucket: chunk it, and bisect-retry on out-of-memory.
+
+        Two independent problems are handled here.
+
+        1. *Unbounded batch.* Capacity only decides **when** to flush, not how
+           many entries have piled up by then — the producer outruns the
+           consumer and the end-of-stream drain flushes every bucket
+           "regardless of capacity". Single flushes reached 10 317 matrices,
+           and the batched Cholesky then dies with "illegal memory access ...
+           in magma_spotrs_batched". So batches are capped at
+           ``_MAX_SOLVE_BATCH``.
+
+        2. *Un-modellable peak memory.* The analytical Jacobian allocates a
+           large, version-dependent set of ``[B, M, P]`` / ``[B, M, N]``
+           temporaries; a CUDA memory snapshot at OOM showed 38.9GB live in
+           49 blocks for ONE flush of a 400-peak/10 000-pixel bucket (the
+           failing request was a 2.04GiB ``J``). Every attempt to predict that
+           analytically under-counted it. Rather than model it, we let the
+           allocator tell us: on OOM, halve the batch and retry. Cost is paid
+           only when it actually overflows, and it adapts to any card, dtype
+           or future change in the Jacobian's temporaries.
+        """
+        if not entries:
+            return
+        limit = self._MAX_SOLVE_BATCH
+        if len(entries) > limit:
+            for i in range(0, len(entries), limit):
+                self._flush_bucket_entries(key, entries[i:i + limit])
+            return
+        # CRITICAL: the OOM retry must run *outside* the ``except`` block.
+        # When ``lm_solve`` raises OOM, the live exception (and its traceback)
+        # holds references to every multi-GB intermediate in that frame — J, H,
+        # the [B,M,P] temporaries — for as long as we are inside ``except``.
+        # ``empty_cache()`` cannot reclaim them (they are still referenced), so
+        # a retry *within* the handler stacks on top of the failed attempt and
+        # spirals to OOM (observed: batch=1 failing with 47GB already in use).
+        # Catch, record, LEAVE the handler (dropping the traceback), then retry.
+        oomed = False
+        try:
+            self._flush_chunk(key, entries)
+        except torch.cuda.OutOfMemoryError:
+            if len(entries) == 1:
+                raise                       # a single region cannot be split
+            oomed = True
+        if not oomed:
+            return
+        # Handler exited → failed attempt's tensors are now unreferenced.
+        import gc
+        gc.collect()
+        torch.cuda.empty_cache()
+        mid = len(entries) // 2
+        self._log(
+            f"[pool] OOM at batch={len(entries)} "
+            f"(n_peaks={key[0]}, M={key[1]}) — bisecting to {mid}/"
+            f"{len(entries) - mid} and retrying"
+        )
+        self._flush_bucket_entries(key, entries[:mid])
+        self._flush_bucket_entries(key, entries[mid:])
+
+    def _flush_chunk(
+        self, key: Tuple[int, int], entries: List[_PoolEntry]
+    ) -> None:
+        """Solve ONE bounded batch (<= ``_MAX_SOLVE_BATCH`` entries)."""
         if not entries:
             return
         n_peaks, m_pad = key

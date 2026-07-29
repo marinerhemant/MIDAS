@@ -29,6 +29,48 @@ from ._base import StageContext
 from ._stub import stub_run
 
 
+def _seed_grains_file(ctx: StageContext, layer_dir: Path) -> "Path | None":
+    """Resolve the Grains.csv-format seed file for the active seeding mode.
+
+    - ``ff``        → the user-supplied ``SeedingConfig.grains_file``.
+    - ``merged-ff`` → ``<layer_dir>/Grains.csv`` synthesised by the seeding
+                      stage (ff_index → ProcessGrains).
+    - ``unseeded``  → ``None``.
+    """
+    mode = getattr(ctx.config.seeding, "mode", "unseeded")
+    if mode == "ff":
+        gf = getattr(ctx.config.seeding, "grains_file", None)
+        return Path(gf) if gf else None
+    if mode == "merged-ff":
+        cand = layer_dir / "Grains.csv"
+        return cand if cand.exists() else None
+    return None
+
+
+def _ensure_grains_seed_in_paramstest(
+    ctx: StageContext, paramstest: Path, layer_dir: Path
+) -> None:
+    """Append a ``GrainsFile <path>`` line to *paramstest* when seeding is
+    active and it is not already present. No-op for unseeded runs."""
+    seed = _seed_grains_file(ctx, layer_dir)
+    if seed is None:
+        return
+    if not seed.exists():
+        LOG.warning("indexing(PF): seed grains file %s not found; "
+                    "indexer will run UNSEEDED (full grid).", seed)
+        return
+    existing = paramstest.read_text() if paramstest.exists() else ""
+    for ln in existing.splitlines():
+        if ln.strip().split()[:1] == ["GrainsFile"]:
+            return                                    # already wired
+    with paramstest.open("a") as fh:
+        if existing and not existing.endswith("\n"):
+            fh.write("\n")
+        fh.write(f"GrainsFile {seed.resolve()}\n")
+    LOG.info("indexing(PF): seeded from %s (GrainsFile wired into paramstest)",
+             seed)
+
+
 def _run_ff(ctx: StageContext) -> StageResult:
     """FF (single-scan) indexing — shell out to ``python -m midas_index``.
 
@@ -146,6 +188,17 @@ def run(ctx: StageContext) -> StageResult:
     if not paramstest.exists():
         LOG.info("indexing(PF): missing paramstest.txt → skip.")
         return stub_run("indexing", ctx)
+
+    # Wire the FF/merged-FF seed grains into the paramstest the indexer reads.
+    # The ``seeding`` stage produces ``UniqueOrientations.csv`` (used by the
+    # python backend + find_grains), but the c-omp binary keys its seeded PF
+    # path off a ``GrainsFile <path>`` line in its paramstest (isGrainsInput=1,
+    # DoIndexing_Seeded). Without it the C binary silently runs the FULL
+    # orientation grid — indistinguishable from unseeded, and just as slow.
+    # ``_emit_c_omp_paramstest`` copies arbitrary lines through, so injecting it
+    # here reaches the binary. The seed file must be Grains.csv format (ID + 9
+    # OM in cols 1..9), NOT UniqueOrientations.csv (OM in cols 5..13).
+    _ensure_grains_seed_in_paramstest(ctx, paramstest, layer_dir)
 
     LOG.info("indexing(PF): paramstest=%s positions=%s out=%s",
              paramstest, positions_csv, out_path)

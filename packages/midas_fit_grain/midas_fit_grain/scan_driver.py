@@ -271,6 +271,7 @@ def refine_scanning_block(
     voxel_n_blocks: int = 1,
     on_voxel: Optional[callable] = None,   # callback(voxel_idx, ScanVoxelResult)
     seed_om_table: Optional[np.ndarray] = None,   # (nVox, 9) target OMs or None
+    num_threads: int = 1,                  # parallelize the per-voxel loop
 ) -> List[ScanVoxelResult]:
     """Per-voxel scan-aware refinement orchestrator.
 
@@ -360,8 +361,19 @@ def refine_scanning_block(
     # written alongside IndexBest_all.bin.
     keys_reader, ids_reader = _open_keys_and_ids(index_best_all.parent)
 
-    out: List[ScanVoxelResult] = []
-    for v in range(v_start, v_end):
+    # ``blocks`` (from the 36GB IndexBest_all), ``obs``, ``model`` and the
+    # keys/ids readers are all read ONCE above and shared read-only across the
+    # per-voxel work below — so the voxel loop can be threaded without
+    # re-reading any of them. The ONLY shared mutable/stateful resource is the
+    # keys/ids reader pair (stateful file handles), guarded by a lock; the
+    # expensive ``refine_grain`` runs outside it, in parallel. Each voxel
+    # writes its own disjoint CSV. torch is pinned to 1 intra-op thread so
+    # ``num_threads`` workers map to ``num_threads`` cores without
+    # oversubscription.
+    import threading as _threading
+    _reader_lock = _threading.Lock()
+
+    def _do_voxel(v):
         block = blocks[v]
         if (seed_om_table is not None and v < seed_om_table.shape[0]
                 and np.isfinite(seed_om_table[v]).all() and block.shape[0] > 0):
@@ -379,7 +391,7 @@ def refine_scanning_block(
         else:
             top_idx = _top_candidate_index(block)
         if top_idx is None:
-            continue                                                    # no indexer hit
+            return None                                                 # no indexer hit
         cand = block[top_idx]
         om = cand[2:11].reshape(3, 3)
         # Convert OM → Euler (use a torch-native path so the refiner
@@ -399,7 +411,8 @@ def refine_scanning_block(
         # for this voxel's top candidate. Falls back to full obs if the
         # consolidated keys/IDs files aren't present (defensive — every
         # production run writes them, but legacy fixtures may not).
-        matched_ids = _matched_ids_for_top(keys_reader, ids_reader, v, top_idx)
+        with _reader_lock:
+            matched_ids = _matched_ids_for_top(keys_reader, ids_reader, v, top_idx)
         if matched_ids is not None and matched_ids.size > 0:
             obs_voxel = _subset_obs_by_spot_ids(obs, matched_ids)
         else:
@@ -449,7 +462,7 @@ def refine_scanning_block(
             pos_err_um=pos_err_um,
             ome_err_deg=ome_err_deg,
         )
-        vr = ScanVoxelResult(
+        return ScanVoxelResult(
             voxel_idx=v,
             n_solutions_in=int(block.shape[0]),
             final_loss=float(result.final_loss),
@@ -460,7 +473,17 @@ def refine_scanning_block(
             lattice=result.lattice.detach().cpu().numpy(),
             csv_path=csv_path,
         )
-        if on_voxel is not None:
-            on_voxel(v, vr)
-        out.append(vr)
+
+    voxels = range(v_start, v_end)
+    if num_threads and num_threads > 1:
+        torch.set_num_threads(1)
+        from concurrent.futures import ThreadPoolExecutor
+        with ThreadPoolExecutor(max_workers=int(num_threads)) as _ex:
+            results_iter = _ex.map(_do_voxel, voxels)
+            out = [vr for vr in results_iter if vr is not None]
+    else:
+        out = [vr for vr in (_do_voxel(v) for v in voxels) if vr is not None]
+    if on_voxel is not None:
+        for vr in out:
+            on_voxel(vr.voxel_idx, vr)
     return out

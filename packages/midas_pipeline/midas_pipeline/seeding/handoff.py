@@ -53,14 +53,19 @@ def _parse_grains_csv(path: Path) -> Tuple[np.ndarray, List[int]]:
     """
     lines = path.read_text().splitlines()
     header_idx: Optional[int] = None
+    # The ID column has been spelled both ``GrainID`` and ``ID`` by different
+    # ProcessGrains versions (current output starts ``%ID<TAB>O11...``), so key
+    # off the OM columns — those are the ones actually consumed here and they
+    # are stable. Anchoring on '%GrainID' alone silently rejected valid
+    # Grains.csv files and broke FF→PF seeding entirely.
     for i, line in enumerate(lines):
-        if line.startswith("%GrainID"):
+        if line.startswith("%") and "O11" in line.split():
             header_idx = i
             break
     if header_idx is None:
         raise ValueError(
-            f"{path}: missing '%GrainID' header line — not a ProcessGrains "
-            "output file?"
+            f"{path}: no '%' header line containing the OM columns "
+            f"{_OM_COL_NAMES} — not a ProcessGrains output file?"
         )
     cols = lines[header_idx][1:].split()         # strip leading '%'
     try:
@@ -69,10 +74,11 @@ def _parse_grains_csv(path: Path) -> Tuple[np.ndarray, List[int]]:
         raise ValueError(
             f"{path}: header is missing one of {_OM_COL_NAMES}; got {cols!r}"
         ) from e
-    try:
-        gid_idx = cols.index("GrainID")
-    except ValueError:
-        gid_idx = 0
+    gid_idx = 0
+    for _gid_name in ("GrainID", "ID"):
+        if _gid_name in cols:
+            gid_idx = cols.index(_gid_name)
+            break
     rows: List[List[float]] = []
     ids: List[int] = []
     for raw in lines[header_idx + 1:]:

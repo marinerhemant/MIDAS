@@ -50,7 +50,16 @@ if _TRITON_OK:
         block handles one pixel; computes residual + full Jacobian row.
         N is loaded into registers per thread (small for typical P).
         """
-        b = tl.program_id(0)
+        # int64 for the region index: it multiplies the LARGEST stride
+        # (stride_JB = M*N). For dense regions batched together — e.g. B=125
+        # regions of n_peaks=400 (N=3201) x M=10000 → stride_JB=3.2e7 — the
+        # product b*stride_JB exceeds int32 (2^31) once b>=68, wrapping to a
+        # negative offset and writing J to a garbage address → intermittent
+        # "illegal memory access". It only bites when 68+ of the biggest
+        # regions land in one batch, which is why sparse data and small
+        # isolation batches never triggered it. Cast so every b-derived
+        # address is 64-bit.
+        b = tl.program_id(0).to(tl.int64)
         m_block = tl.program_id(1)
 
         m_offsets = m_block * BLOCK_M + tl.arange(0, BLOCK_M)
