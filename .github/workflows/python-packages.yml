@@ -98,25 +98,19 @@ jobs:
           enable-cache: true
           cache-dependency-glob: 'packages/**/pyproject.toml'
 
-      # Install every in-repo MIDAS package (excluding the hidden ones) as
-      # editable in a single uv resolve. uv resolves the entire dep graph
-      # in one pass, replacing the 18 sequential conditional pip-install
-      # steps the old workflow had.
+      # Install every in-repo MIDAS package as editable in a single uv
+      # resolve. uv resolves the entire dep graph in one pass, replacing the
+      # 18 sequential conditional pip-install steps the old workflow had.
+      # ALL packages are installed (none hidden) so cross-package deps on the
+      # newly-published packages (e.g. pf_odf -> grain_odf) resolve locally
+      # rather than against PyPI, where 0.1.0 isn't published yet.
       - name: Install all in-repo MIDAS packages (editable, single uv resolve)
         run: |
           set -euo pipefail
           shopt -s nullglob
           args=()
           for d in packages/midas_*/; do
-            name=$(basename "$d")
-            case "$name" in
-              midas_grain_odf|midas_pf_odf)
-                # Hidden from CI / PyPI — skip.
-                ;;
-              *)
-                args+=("-e" "$d")
-                ;;
-            esac
+            args+=("-e" "$d")
           done
           uv pip install --system "${args[@]}"
 

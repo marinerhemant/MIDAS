@@ -53,29 +53,26 @@ _ELEMENT_Z = {
 def _anomalous_corrections(
     elements: Sequence[str], wavelength_A: float,
 ) -> Tuple[np.ndarray, np.ndarray]:
-    """Cromer-Liberman f'(E) and f''(E) for the given elements, via xraylib.
+    """Cromer-Liberman f'(E) and f''(E) for the given elements.
 
-    Returns two 1-D arrays of shape (Nel,). f'' is returned as its absolute
-    value (sign convention differs across tabulations; only |f''| enters the
-    coherent |f|² used for S(Q)).
+    Uses ``midas_hkls`` (MIDAS-native Cromer-Liberman table, already a
+    midas-pdf dependency) — no runtime xraylib. Returns two 1-D arrays of
+    shape (Nel,). f'' is returned as its absolute value (sign convention
+    differs across tabulations; only |f''| enters the coherent |f|² used
+    for S(Q)).
     """
-    try:
-        import xraylib
-    except ImportError as exc:                            # pragma: no cover
-        raise RuntimeError(
-            "anomalous corrections require xraylib (already a midas-pdf dep). "
-            "Install via `conda install -c conda-forge xraylib`.") from exc
-    E_keV = 12.39842 / float(wavelength_A)
-    f_prime  = np.empty(len(elements), dtype=np.float64)
-    f_dprime = np.empty(len(elements), dtype=np.float64)
-    for i, el in enumerate(elements):
-        # accept ionic species by stripping charge suffix ("Ni2+", "O2-")
-        base = el.rstrip("+-0123456789") if any(c in el for c in "+-") else el
-        Z = _ELEMENT_Z.get(base)
-        if Z is None:
+    from midas_hkls.anomalous import anomalous_correction
+    # accept ionic species by stripping the charge suffix ("Ni2+", "O2-")
+    base = [
+        el.rstrip("+-0123456789") if any(c in el for c in "+-") else el
+        for el in elements
+    ]
+    for el in base:
+        if el not in _ELEMENT_Z:
             raise ValueError(f"unknown element {el!r} for anomalous correction")
-        f_prime[i]  = float(xraylib.Fi(Z, E_keV))
-        f_dprime[i] = abs(float(xraylib.Fii(Z, E_keV)))
+    fp, fpp = anomalous_correction(base, float(wavelength_A))
+    f_prime  = np.asarray(fp, dtype=np.float64)
+    f_dprime = np.abs(np.asarray(fpp, dtype=np.float64))
     return f_prime, f_dprime
 
 

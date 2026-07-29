@@ -49,10 +49,12 @@ midas-defect-polytype   = "midas_defect.cli.polytype:main"
 viz = [
     "plotly>=5.0",
     "zarr>=2.14",
+    "matplotlib>=3.5",          # reports/figures.py PNG rendering (lazy import)
 ]
 dev = [
     "pytest>=7.0",
     "pytest-benchmark>=4.0",
+    "matplotlib>=3.5",          # exercised by test_reports / test_synthetic_regression
 ]
 
 [tool.setuptools]
