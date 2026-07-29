@@ -22,11 +22,11 @@ classifiers = [
     "Topic :: Scientific/Engineering :: Physics",
 ]
 
-# Floors pinned to the current PyPI version of each sub-package as of
-# 2026-05-26. Bump only when a meta-package change actually requires it.
-# The hidden in-tree packages (midas-grain-odf, midas-joint-ff-calibrate,
-# midas-pf-odf, midas-pink) are intentionally absent — they're listed
-# in the workflow HIDDEN set and never ship to PyPI.
+# Floors pinned to the current PyPI version of each sub-package. Bump only
+# when a meta-package change actually requires it. Core stays the FF/NF/
+# calib/pipeline workhorse stack; the specialized research packages
+# (pdf, defect, dfxm, xaf, 2d, grain-odf, pf-odf, pink, joint-ff-calibrate)
+# are opt-in modality extras below — with `[all]` pulling everything.
 dependencies = [
     # leaves
     "midas-distortion>=0.2.0",     # shared radial-distortion model + RhoD-units guard
@@ -99,7 +99,31 @@ calib-v2 = [
     "midas-integrate-v2>=0.1.0",
     "midas-peakfit>=0.4.0",
 ]
+# --- Specialized-modality bundles (each published 0.1.0, 2026-07) ---
+# One research capability each, layered on top of core. Kept OUT of core
+# `dependencies` (they carry heavy/optional stacks); opt in per workflow.
+pdf = ["midas-pdf>=0.1.0"]              # total scattering / PDF G(r)
+defect = ["midas-defect>=0.1.0"]        # diffuse-scattering defect metrology
+dfxm = ["midas-dfxm>=0.1.0"]            # dark-field X-ray microscopy fwd/inverse
+xaf = ["midas-xaf>=0.1.0"]              # cross-axis faceted HEDM
+ultrafast = ["midas-2d>=0.1.0"]         # midas-2d: 2D / ultrafast forward model
+grain-odf = ["midas-grain-odf>=0.1.0"]  # per-grain ODF
+pf-odf = ["midas-pf-odf>=0.1.0"]        # pf-HEDM per-voxel orientation/strain/ODF
+pink = ["midas-pink>=0.1.0"]            # pink-beam HEDM
 plots = ["matplotlib>=3.5"]
+# Everything: core (base install) + every optional modality above.
+all = [
+    "midas-joint-ff-calibrate>=0.1.5",
+    "midas-pdf>=0.1.0",
+    "midas-defect>=0.1.0",
+    "midas-dfxm>=0.1.0",
+    "midas-xaf>=0.1.0",
+    "midas-2d>=0.1.0",
+    "midas-grain-odf>=0.1.0",
+    "midas-pf-odf>=0.1.0",
+    "midas-pink>=0.1.0",
+    "matplotlib>=3.5",
+]
 dev = ["pytest>=7"]
 
 [project.urls]
