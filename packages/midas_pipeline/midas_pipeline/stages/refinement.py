@@ -50,6 +50,18 @@ def _run_ff(ctx: StageContext) -> StageResult:
     output_dir.mkdir(parents=True, exist_ok=True)
     results_dir.mkdir(parents=True, exist_ok=True)
 
+    # Clear refiner outputs left by a previous run, from BOTH the c-omp
+    # (Output//Results/) and python (bare layer_dir) conventions, before
+    # regenerating them — so process_grains' backend-agnostic readers can't
+    # resolve a stale file from the other backend's location and mix it with
+    # this run's fresh records. IndexBest_all.bin is refinement's *input* and
+    # is deliberately left intact.
+    for _stale in (results_dir / "OrientPosFit.bin", results_dir / "Key.bin",
+                   results_dir / "ProcessKey.bin", output_dir / "FitBest.bin",
+                   layer_dir / "OrientPosFit.bin", layer_dir / "Key.bin",
+                   layer_dir / "ProcessKey.bin", layer_dir / "FitBest.bin"):
+        _stale.unlink(missing_ok=True)
+
     # The 2D 'pixel' loss is removed (it omitted omega and gave poor,
     # under-determined fits); refinement always uses a full 3D / angular loss.
     loss = ctx.config.refinement.loss
