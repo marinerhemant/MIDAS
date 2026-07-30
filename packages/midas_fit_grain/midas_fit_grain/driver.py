@@ -644,16 +644,20 @@ def refine_block_from_disk(
         else:
             mean_radius = 0.0
 
-        # OrientPosFit.bin row.
+        # OrientPosFit.bin row. err_ini is (mean_angle_deg, mean_pos_um,
+        # mean_ome_deg) per calc_angle_errors's match_diff column order —
+        # unpack by name rather than index so the OrientPosFit.bin cols
+        # 22-24 (ErrorPos/ErrorOme/ErrorAngle) don't silently swap again.
+        mean_angle_deg, mean_pos_um, mean_ome_deg = err_ini
         completeness = float(n_matched) / max(int(obs.n_spots), 1)
         grain_result = GrainResult(
             SpotID=sid,
             OrientMat=OM.reshape(-1),
             Position=pos_um,
             LatticeFit=lat_c,
-            ErrorPos=err_ini[0],
-            ErrorOrient=err_ini[1],
-            ErrorStrain=err_ini[2],
+            ErrorPos=mean_pos_um,
+            ErrorOme=mean_ome_deg,
+            ErrorAngle=mean_angle_deg,
             meanRadius=mean_radius,
             completeness=completeness,
         )

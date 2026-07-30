@@ -61,7 +61,7 @@ def test_grain_result_layout():
         OrientMat=np.arange(9, dtype=np.float64),
         Position=np.array([1.0, 2.0, 3.0]),
         LatticeFit=np.array([4.04, 4.04, 4.04, 90.0, 90.0, 90.0]),
-        ErrorPos=0.1, ErrorOrient=0.2, ErrorStrain=0.3,
+        ErrorPos=0.1, ErrorOme=0.2, ErrorAngle=0.3,
         meanRadius=50.0, completeness=0.99,
     )
     row = g.to_row()
@@ -69,7 +69,8 @@ def test_grain_result_layout():
     # Layout per FitPosOrStrainsOMP.c:3007-3025:
     #   [0]=SpotID, [1..9]=OrientMat, [10]=SpotID, [11..13]=Pos,
     #   [14]=SpotID, [15..20]=Lattice, [21]=SpotID,
-    #   [22..24]=Errors, [25]=meanRadius, [26]=completeness
+    #   [22]=ErrorPos(pos,um), [23]=ErrorOme(ome,deg), [24]=ErrorAngle(IA,deg),
+    #   [25]=meanRadius, [26]=completeness
     assert row[0] == 42 and row[10] == 42 and row[14] == 42 and row[21] == 42
     np.testing.assert_array_equal(row[1:10], np.arange(9))
     np.testing.assert_array_equal(row[11:14], [1.0, 2.0, 3.0])
@@ -84,13 +85,13 @@ def test_orient_pos_fit_pwrite_strided(tmp_path):
     g0 = GrainResult(
         SpotID=10, OrientMat=np.zeros(9), Position=np.array([1, 2, 3]),
         LatticeFit=np.array([1, 2, 3, 4, 5, 6]),
-        ErrorPos=0.1, ErrorOrient=0.2, ErrorStrain=0.3,
+        ErrorPos=0.1, ErrorOme=0.2, ErrorAngle=0.3,
         meanRadius=10.0, completeness=0.5,
     )
     g3 = GrainResult(
         SpotID=99, OrientMat=np.ones(9), Position=np.array([7, 8, 9]),
         LatticeFit=np.array([10, 20, 30, 40, 50, 60]),
-        ErrorPos=1.1, ErrorOrient=1.2, ErrorStrain=1.3,
+        ErrorPos=1.1, ErrorOme=1.2, ErrorAngle=1.3,
         meanRadius=20.0, completeness=0.9,
     )
     write_orient_pos_fit_row(p, 0, g0)

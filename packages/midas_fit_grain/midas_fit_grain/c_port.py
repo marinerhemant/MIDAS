@@ -413,7 +413,15 @@ def calc_angle_errors(
       [9] FitRMSE       (per-spot peak-fit RMSE; weighted by weight_fit_rmse)
 
     Returns ``(spots_comp, spots_yzog_corr, error_ini, n_matched)`` where
-    ``spots_comp`` is the ``(n_matched, 22)`` FitBest row buffer.
+    ``spots_comp`` is the ``(n_matched, 22)`` FitBest row buffer and
+    ``error_ini`` is ``(mean_angle_deg, mean_pos_um, mean_ome_deg)`` — the
+    per-matched-spot means of ``(min_angle, diff_len, diff_ome)`` in that
+    order (matches C's ``MatchDiff[i][0..2]`` and ``Error[0..2]`` mapping
+    in ``FitPosOrStrainsOMP.c:686-719``). ``mean_angle_deg`` is bounded
+    ``< 1.0`` and ``mean_ome_deg`` is bounded ``< 5.0`` by the matching
+    filters above; ``mean_pos_um`` is unbounded. Callers must not assume
+    this tuple is already in OrientPosFit.bin column order (22=pos,
+    23=ome, 24=angle) — unpack by name, not position.
     """
     S = int(spots_yzo.shape[0])
 
