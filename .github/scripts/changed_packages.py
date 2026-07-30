@@ -14,9 +14,6 @@ If any "global" file changed (this script, the workflow yaml), every
 package is affected — there is no way to predict which test the change
 might break.
 
-Hidden packages (``midas_grain_odf``, ``midas_pf_odf``) are dropped: the
-existing CI does not test or publish them.
-
 Used by ``.github/workflows/python-packages.yml`` to populate the
 ``test`` job's matrix dynamically.
 """
