@@ -102,14 +102,22 @@ class ExtraInfoSpot:
 
 @dataclass
 class GrainResult:
-    """One refined grain — packed into 27 doubles for OrientPosFit.bin."""
+    """One refined grain — packed into 27 doubles for OrientPosFit.bin.
+
+    ``ErrorPos``/``ErrorOme``/``ErrorAngle`` map to OrientPosFit.bin cols
+    22-24, which ``midas_process_grains`` reads back as Grains.csv's
+    ``DiffPos``/``DiffOme``/``DiffAngle`` (see ``FitPosOrStrainsOMP.c``
+    ``CalcAngleErrors``: ``Error[0]``=PosErr, ``Error[1]``=OmeErr,
+    ``Error[2]``=IntAngle, and its ``OutMatr[22..24]`` assignment). Do not
+    reorder without updating that column contract.
+    """
     SpotID: int
     OrientMat: np.ndarray         # (9,) row-major 3x3
     Position: np.ndarray          # (3,)  um
     LatticeFit: np.ndarray        # (6,)  refined a,b,c,alpha,beta,gamma
-    ErrorPos: float
-    ErrorOrient: float
-    ErrorStrain: float
+    ErrorPos: float     # mean matched-spot position error, um
+    ErrorOme: float     # mean matched-spot omega error, deg
+    ErrorAngle: float   # mean matched-spot internal angle error, deg
     meanRadius: float
     completeness: float
 
@@ -123,8 +131,8 @@ class GrainResult:
         out[15:21] = self.LatticeFit
         out[21] = self.SpotID
         out[22] = self.ErrorPos
-        out[23] = self.ErrorOrient
-        out[24] = self.ErrorStrain
+        out[23] = self.ErrorOme
+        out[24] = self.ErrorAngle
         out[25] = self.meanRadius
         out[26] = self.completeness
         return out
