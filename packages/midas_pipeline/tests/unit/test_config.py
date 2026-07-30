@@ -195,6 +195,20 @@ class TestPipelineConfig:
         )
         assert cfg.recon.do_tomo is False
 
+    def test_run_sr_without_sr_midas_raises(self, tmp_path, monkeypatch):
+        """run_sr=True must fail fast if sr-midas isn't importable, not
+        silently no-op mid-pipeline (the original ff_MIDAS.py-era shim had
+        this guard; it was dropped from both package ports)."""
+        import sys
+        monkeypatch.setitem(sys.modules, "sr_midas", None)
+        params = tmp_path / "P.txt"
+        params.write_text("")
+        with pytest.raises(ValueError, match="sr-midas is not installed"):
+            PipelineConfig(
+                result_dir=str(tmp_path / "r"), params_file=str(params),
+                scan=ScanGeometry.ff(), run_sr=True,
+            )
+
 
 # ---------------------------------------------------------------------------
 # sniff_scan_mode_from_paramfile

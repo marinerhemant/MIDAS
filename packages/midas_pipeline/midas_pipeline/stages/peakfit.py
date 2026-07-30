@@ -52,6 +52,19 @@ def _run_ff(ctx: StageContext, started: float, peakfit_run) -> StageResult:
         LOG.info("peakfit(FF): %s already exists; skip.", target)
         return _result(started, [target], 1, 0)
     target.parent.mkdir(parents=True, exist_ok=True)
+
+    if cfg.run_sr:
+        from .. import sr_midas
+        sr_midas.log_status(LOG, run_sr=True)
+        _run_sr_subprocess(ctx, layer_dir)
+        if not target.exists():
+            raise RuntimeError(
+                f"peakfit(FF): SR-MIDAS reported success but {target} "
+                "was not written."
+            )
+        LOG.info("peakfit(FF): SR-MIDAS wrote %s", target)
+        return _result(started, [target], 1, 0)
+
     peakfit_run(
         data_file=str(zip_path),
         block_nr=0, n_blocks=1, num_procs=max(1, cfg.n_cpus_local),
@@ -61,6 +74,38 @@ def _run_ff(ctx: StageContext, started: float, peakfit_run) -> StageResult:
     )
     LOG.info("peakfit(FF): wrote %s", target)
     return _result(started, [target], 1, 0)
+
+
+def _run_sr_subprocess(ctx: StageContext, layer_dir: Path) -> None:
+    """Run SR-MIDAS peak search in a throwaway subprocess.
+
+    Isolation, not convenience: sr-midas's CNN cascade + GPU peak-fit hold
+    a large CUDA context (empirically ~20GB+) that is never released while
+    the interpreter stays alive. Running it in-process (as midas_ff_pipeline
+    currently does) leaves that memory resident into the indexing/refinement
+    stages that follow, which then OOM. A subprocess guarantees the context
+    is torn down when it exits, matching how stages/indexing.py and
+    stages/refinement.py already isolate their own GPU-heavy FF work.
+    """
+    import sys
+    from ._base import run_subprocess
+
+    cfg = ctx.config
+    cmd = [
+        sys.executable, "-m", "midas_pipeline._sr_worker",
+        str(layer_dir),
+        "--srfac", str(cfg.srfac),
+        "--save-sr-patches", "1" if cfg.save_sr_patches else "0",
+        "--save-frame-good-coords", "1" if cfg.save_frame_good_coords else "0",
+        "--use-gpu", "1" if cfg.device.startswith("cuda") else "0",
+    ]
+    if cfg.sr_config_path and cfg.sr_config_path != "auto":
+        cmd += ["--sr-config", cfg.sr_config_path]
+    run_subprocess(
+        cmd, cwd=layer_dir,
+        stdout_path=ctx.log_dir / "peakfit_sr_out.log",
+        stderr_path=ctx.log_dir / "peakfit_sr_err.log",
+    )
 
 
 def _run_pf(ctx: StageContext, started: float, peakfit_run) -> StageResult:
