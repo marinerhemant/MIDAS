@@ -559,6 +559,19 @@ class PipelineConfig:
         if self.scan.is_ff and self.recon.do_tomo:
             # Soft: tomography is meaningless in FF; disable silently.
             self.recon = ReconConfig(do_tomo=False, method=self.recon.method)
+        # sr-midas: fail fast, not mid-pipeline after zip_convert/hkl already
+        # ran. (The original ff_MIDAS.py-era shim had this check
+        # (validate_sr_midas_flags); it was dropped when ported into this
+        # package and midas_ff_pipeline — neither restored it.)
+        if self.run_sr:
+            try:
+                import sr_midas  # noqa: F401
+            except Exception as e:
+                raise ValueError(
+                    "run_sr=True but sr-midas is not installed/importable "
+                    f"({e}). Install it (`pip install sr-midas`) or drop "
+                    "--run-sr."
+                ) from e
 
     # --- Convenience -------------------------------------------------
 

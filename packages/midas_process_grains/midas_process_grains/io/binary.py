@@ -100,6 +100,20 @@ def _assert_native(arr: np.ndarray, fname: str) -> None:
         )
 
 
+def _resolve(run_dir: Union[str, Path], subfolder: str, filename: str) -> Path:
+    """Resolve *filename* under ``run_dir/subfolder`` (c-omp convention) or,
+    if absent, directly under ``run_dir`` (the bare-``OutputFolder``/
+    ``ResultFolder`` convention the python indexer/refiner write natively —
+    see ``midas_index``/``midas_fit_grain``'s ``ResultFolder`` docs). Callers
+    still get a ``FileNotFoundError`` naming the subfolder path when neither
+    exists, since that's the conventional/expected location."""
+    sub = Path(run_dir) / subfolder / filename
+    if sub.exists():
+        return sub
+    bare = Path(run_dir) / filename
+    return bare if bare.exists() else sub
+
+
 # ---------------------------------------------------------------------------
 # Result container
 # ---------------------------------------------------------------------------
@@ -130,7 +144,7 @@ class BinaryInputs:
 
 def read_index_best(run_dir: Union[str, Path]) -> np.memmap:
     """Read ``Output/IndexBest.bin`` into a (N, 15) float64 memmap."""
-    p = Path(run_dir) / "Output" / "IndexBest.bin"
+    p = _resolve(run_dir, "Output", "IndexBest.bin")
     if not p.exists():
         raise FileNotFoundError(p)
     arr = np.memmap(p, dtype=np.float64, mode="r")
@@ -157,7 +171,7 @@ def read_index_best_full(run_dir: Union[str, Path]) -> np.ndarray:
     table from FitBest col0 (col1/delta-omega is set to 0; it only feeds
     the residual tiebreak in spot-conflict resolution, not grain count).
     """
-    p = Path(run_dir) / "Output" / "IndexBestFull.bin"
+    p = _resolve(run_dir, "Output", "IndexBestFull.bin")
     if p.exists():
         arr = np.memmap(p, dtype=np.float64, mode="r")
         _assert_native(arr, str(p))
@@ -168,14 +182,14 @@ def read_index_best_full(run_dir: Union[str, Path]) -> np.ndarray:
             )
         return arr.reshape(-1, MAX_N_HKLS, 2)
 
-    fb_path = Path(run_dir) / "Output" / "FitBest.bin"
+    fb_path = _resolve(run_dir, "Output", "FitBest.bin")
     if not fb_path.exists():
         # c-omp FF refiner (FitUnified) emits Results/ProcessKey.bin — the
         # matched SpotID per hkl slot per seed — instead of the Output/
         # consolidated FitBest.bin. It carries the col-0 information ibf needs
         # (the matched-SpotID set per seed; col 1 / delta-omega is unused for
         # grain count), so synthesize the table from it.
-        pk_path = Path(run_dir) / "Results" / "ProcessKey.bin"
+        pk_path = _resolve(run_dir, "Results", "ProcessKey.bin")
         if pk_path.exists():
             pk = read_process_key(run_dir)          # (N, 5000) int32
             ibf = np.zeros((pk.shape[0], MAX_N_HKLS, 2), dtype=np.float64)
@@ -211,7 +225,7 @@ def read_fit_best(run_dir: Union[str, Path]) -> np.memmap:
     the readable view; longer-than-expected files are still rejected as
     corrupt.
     """
-    p = Path(run_dir) / "Output" / "FitBest.bin"
+    p = _resolve(run_dir, "Output", "FitBest.bin")
     if not p.exists():
         raise FileNotFoundError(p)
     arr = np.memmap(p, dtype=np.float64, mode="r")
@@ -228,7 +242,7 @@ def read_fit_best(run_dir: Union[str, Path]) -> np.memmap:
 
 def read_orient_pos_fit(run_dir: Union[str, Path]) -> np.memmap:
     """Read ``Results/OrientPosFit.bin`` into a (N, 27) float64 memmap."""
-    p = Path(run_dir) / "Results" / "OrientPosFit.bin"
+    p = _resolve(run_dir, "Results", "OrientPosFit.bin")
     if not p.exists():
         raise FileNotFoundError(p)
     arr = np.memmap(p, dtype=np.float64, mode="r")
@@ -246,7 +260,7 @@ def read_key(run_dir: Union[str, Path]) -> np.memmap:
 
     Columns: (keep_flag, NrIDsPerID). A seed is alive iff ``keep_flag != 0``.
     """
-    p = Path(run_dir) / "Results" / "Key.bin"
+    p = _resolve(run_dir, "Results", "Key.bin")
     if not p.exists():
         raise FileNotFoundError(p)
     arr = np.memmap(p, dtype=np.int32, mode="r")
@@ -260,7 +274,7 @@ def read_key(run_dir: Union[str, Path]) -> np.memmap:
 
 def read_process_key(run_dir: Union[str, Path]) -> np.memmap:
     """Read ``Results/ProcessKey.bin`` into a (N, 5000) int32 memmap."""
-    p = Path(run_dir) / "Results" / "ProcessKey.bin"
+    p = _resolve(run_dir, "Results", "ProcessKey.bin")
     if not p.exists():
         raise FileNotFoundError(p)
     arr = np.memmap(p, dtype=np.int32, mode="r")

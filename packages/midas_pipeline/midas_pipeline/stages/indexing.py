@@ -89,6 +89,16 @@ def _run_ff(ctx: StageContext) -> StageResult:
     out_dir = layer_dir / "Output"
     out_dir.mkdir(parents=True, exist_ok=True)
 
+    # Clear IndexBest outputs left by a previous run, from BOTH the c-omp
+    # (Output/) and python (bare layer_dir) conventions, before regenerating
+    # them. process_grains' backend-agnostic readers resolve subfolder-first
+    # then fall back to the bare path; without this a leftover file from the
+    # *other* backend's location would shadow (or mix with) this run's fresh
+    # output and silently feed stale records downstream.
+    for _stale in (out_dir / "IndexBest.bin", out_dir / "IndexBestFull.bin",
+                   layer_dir / "IndexBest.bin", layer_dir / "IndexBestFull.bin"):
+        _stale.unlink(missing_ok=True)
+
     if ctx.config.indexer_backend == "c-omp":
         from midas_index import backend_c
         from ._comp_params import comp_backend_paramstest

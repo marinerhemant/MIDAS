@@ -104,3 +104,62 @@ def test_read_all_can_skip_optional_files(tiny_run_dir):
     )
     assert inputs.fit_best is None
     assert inputs.index_best_full is None
+
+
+def _relocate_bins_to_bare(run_dir):
+    """Move every binary out of the c-omp Output/Results subfolders into the
+    bare run dir — the layout the python indexer/refiner backend writes."""
+    import shutil
+    for sub in ("Output", "Results"):
+        d = run_dir / sub
+        for f in list(d.iterdir()):
+            shutil.move(str(f), str(run_dir / f.name))
+        d.rmdir()
+
+
+def test_read_all_resolves_bare_python_backend_layout(tiny_run_dir):
+    """The python backend writes bins directly into the run dir (no Output/
+    Results subfolders). read_all must resolve them via _resolve's bare-path
+    fallback and yield the same records as the c-omp subfolder layout."""
+    # Copy expected records out of the mmaps before relocating the files.
+    exp_opf = np.array(read_orient_pos_fit(tiny_run_dir))
+    exp_pk = np.array(read_process_key(tiny_run_dir))
+    exp_fb = np.array(read_fit_best(tiny_run_dir))
+    exp_ib = np.array(read_index_best(tiny_run_dir))
+    exp_ibf = np.array(read_index_best_full(tiny_run_dir))
+
+    _relocate_bins_to_bare(tiny_run_dir)
+    assert not (tiny_run_dir / "Output").exists()
+    assert not (tiny_run_dir / "Results").exists()
+
+    np.testing.assert_array_equal(np.asarray(read_orient_pos_fit(tiny_run_dir)), exp_opf)
+    np.testing.assert_array_equal(np.asarray(read_process_key(tiny_run_dir)), exp_pk)
+    np.testing.assert_array_equal(np.asarray(read_fit_best(tiny_run_dir)), exp_fb)
+    np.testing.assert_array_equal(np.asarray(read_index_best(tiny_run_dir)), exp_ib)
+    np.testing.assert_array_equal(np.asarray(read_index_best_full(tiny_run_dir)), exp_ibf)
+
+    bundle = read_all(tiny_run_dir)
+    assert bundle.n_seeds == 3
+    assert bundle.fit_best is not None and bundle.index_best_full is not None
+
+
+def test_resolve_prefers_subfolder_then_falls_back_to_bare(tiny_run_dir):
+    """_resolve is subfolder-first, then bare. (The pipeline index/refine
+    stages clear stale bins from both locations before regenerating, so the
+    two never disagree in practice; this pins the documented precedence.)"""
+    from midas_process_grains.io.binary import _resolve
+
+    # Both present → subfolder wins.
+    (tiny_run_dir / "OrientPosFit.bin").write_bytes(b"decoy")
+    assert _resolve(tiny_run_dir, "Results", "OrientPosFit.bin") == \
+        tiny_run_dir / "Results" / "OrientPosFit.bin"
+
+    # Subfolder gone → falls back to the bare copy.
+    (tiny_run_dir / "Results" / "OrientPosFit.bin").unlink()
+    assert _resolve(tiny_run_dir, "Results", "OrientPosFit.bin") == \
+        tiny_run_dir / "OrientPosFit.bin"
+
+    # Neither present → returns the subfolder path (names the expected location).
+    (tiny_run_dir / "OrientPosFit.bin").unlink()
+    assert _resolve(tiny_run_dir, "Results", "Missing.bin") == \
+        tiny_run_dir / "Results" / "Missing.bin"

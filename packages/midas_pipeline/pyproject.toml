@@ -40,7 +40,7 @@ dependencies = [
     # per-ring intensities for the V-map. Without it a clean production
     # install raises CifBackendError at that stage.
     "midas-hkls[cif]>=0.2.0",
-    "midas-peakfit>=0.2.0",
+    "midas-peakfit>=0.4.5",                # 2026-07-29 LM memory-safety fixes; sr-midas's midas_lm fitter needs these
     "midas-transforms>=0.1.1",
     "midas-index>=0.3.0",
     "midas-fit-grain>=0.1.0a0",
@@ -65,6 +65,10 @@ notebook = ["matplotlib", "ipykernel", "jupyter"]
 # its shared object when torch is imported before numba (observed on
 # Linux + torch 2.12). 0.65/0.47 loads cleanly regardless of import order.
 fast = ["numba>=0.65"]
+# Super-resolution peak search (--run-sr). Optional: sr_midas is imported
+# lazily and PipelineConfig fails fast with a clear error if run_sr=True
+# without it installed (see config.py::__post_init__).
+sr = ["sr-midas>=0.4.0"]
 
 [project.scripts]
 midas-pipeline = "midas_pipeline.cli:main"
