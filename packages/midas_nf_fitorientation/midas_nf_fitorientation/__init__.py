@@ -23,7 +23,7 @@ The Python API exposes the same three drivers::
     )
 """
 
-__version__ = "0.3.2"
+__version__ = "0.4.0"
 
 from .params import FitParams, parse_paramfile
 from .fit_orientation import fit_orientation_run
