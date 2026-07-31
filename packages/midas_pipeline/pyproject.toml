@@ -40,11 +40,11 @@ dependencies = [
     # per-ring intensities for the V-map. Without it a clean production
     # install raises CifBackendError at that stage.
     "midas-hkls[cif]>=0.2.0",
-    "midas-peakfit>=0.4.5",                # 2026-07-29 LM memory-safety fixes; sr-midas's midas_lm fitter needs these
-    "midas-transforms>=0.1.1",
+    "midas-peakfit>=0.4.6",                # >=0.4.6: deterministic batched-LM grouping (peak fit was not reproducible)
+    "midas-transforms>=0.8.2",
     "midas-index>=0.3.0",
-    "midas-fit-grain>=0.1.0a0",
-    "midas-process-grains>=0.1.0",
+    "midas-fit-grain>=0.6.0",
+    "midas-process-grains>=0.6.1",
     "midas-diffract>=0.1.0",
     "midas-parsl-configs>=0.1.0",
     "midas-stress>=0.6.0",                # canonical orientation/diffraction primitives

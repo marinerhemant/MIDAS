@@ -34,25 +34,25 @@ dependencies = [
     "midas-params>=0.3.4",
     "midas-hkls>=0.4.1",
     "midas-diffract>=0.1.2",
-    "midas-peakfit>=0.4.0",
+    "midas-peakfit>=0.4.6",
     "midas-integrate>=0.4.0",
     "midas-integrate-v2>=0.1.0",
     "midas-calibrate>=0.2.7",
-    "midas-calibrate-v2>=0.3.3",
+    "midas-calibrate-v2>=0.5.3",
     "midas-index>=0.5.2",
-    "midas-transforms>=0.4.2",
+    "midas-transforms>=0.8.2",
     "midas-propagate>=0.1.0",      # uncertainty propagation; load-bearing for process-grains v0.4.x Stage 7 σ
     "midas-uq>=0.1.0",             # refiner-anchored bootstrap UQ (per-grain trust_score_anchored)
-    "midas-process-grains>=0.4.6", # v0.4.6: v4 Stage 6 recovers real per-grain GrainRadius on c-omp refiner outputs (was reading PF placeholder=1.0)
-    "midas-fit-grain>=0.2.1",
+    "midas-process-grains>=0.6.1", # >=0.6.1: GrainRadius read from the right SpotID space (was the sample-wide mean, 5.5x low)
+    "midas-fit-grain>=0.6.0",
     "midas-nf-preprocess>=0.1.1",
     "midas-nf-fitorientation>=0.3.1",
     "midas-zipper>=0.1.0",         # raw → .MIDAS.zip ingest (pip-portable, no C/source-tree dep)
     # parsl + pipeline orchestrators
     "midas-parsl-configs>=0.1.0",
-    "midas-ff-pipeline>=0.4.0",    # DEPRECATED → use midas-pipeline --scan-mode ff; removed in suite 1.0
+    "midas-ff-pipeline>=0.4.1",    # DEPRECATED → use midas-pipeline --scan-mode ff; removed in suite 1.0
     "midas-nf-pipeline>=0.1.0",
-    "midas-pipeline>=0.4.9",       # >=0.4.9: unified FF orchestrator — DetectorConfig, cross_det_merge, discovery+batch, ff_seeding, eta_coverage, sr_midas shim, reprocess, full global_powder, CLI auto-resolve, simulate + 7 ported notebooks
+    "midas-pipeline>=0.7.0",       # >=0.7.0: FF refinement precision default (RefinementConfig.dtype) + unrefined-position guard
 ]
 
 [project.optional-dependencies]
@@ -64,7 +64,7 @@ dependencies = [
 ff = [
     "midas-stress>=0.7.0",
     "midas-params>=0.3.4",
-    "midas-ff-pipeline>=0.4.0",    # DEPRECATED → use midas-pipeline --scan-mode ff; removed in suite 1.0
+    "midas-ff-pipeline>=0.4.1",    # DEPRECATED → use midas-pipeline --scan-mode ff; removed in suite 1.0
     "midas-calibrate>=0.2.7",          # >=0.2.7: paramstest parser strips ';' terminator
     "midas-integrate>=0.4.0",
     "midas-joint-ff-calibrate>=0.1.5", # grain-tx + full-joint refine (IUCrJ 2026)
@@ -80,14 +80,14 @@ pf = [
     # stress transitively; we list the orchestrator at the top.
     "midas-stress>=0.7.0",
     "midas-params>=0.3.4",
-    "midas-pipeline[fast]>=0.4.9",         # >=0.4.9: unified FF orchestrator; fast = numba>=0.65
+    "midas-pipeline[fast]>=0.7.0",         # >=0.7.0: as above; fast = numba>=0.65
     "midas-calibrate>=0.2.7",
     "midas-integrate>=0.4.0",
 ]
 calib = [
     "midas-hkls>=0.4.1",
     "midas-integrate>=0.4.0",
-    "midas-peakfit>=0.4.0",
+    "midas-peakfit>=0.4.6",
     "midas-calibrate>=0.2.7",
 ]
 calib-v2 = [
@@ -95,9 +95,9 @@ calib-v2 = [
     # Companion to ``calib`` (v1, C-backed) — both can be installed
     # side-by-side, the v2 spec ↔ v1 paramstest adapter handles handoff.
     "midas-hkls>=0.4.1",
-    "midas-calibrate-v2>=0.3.3",
+    "midas-calibrate-v2>=0.5.3",
     "midas-integrate-v2>=0.1.0",
-    "midas-peakfit>=0.4.0",
+    "midas-peakfit>=0.4.6",
 ]
 # --- Specialized-modality bundles (each published 0.1.0, 2026-07) ---
 # One research capability each, layered on top of core. Kept OUT of core
