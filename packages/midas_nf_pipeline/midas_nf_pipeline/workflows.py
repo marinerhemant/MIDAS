@@ -68,6 +68,28 @@ def _all_stage_labels(num_loops: int) -> List[str]:
     return out
 
 
+def _grains_file_is_empty(path: str | Path) -> bool:
+    """True if a Grains.csv has a header but no grain rows (or is absent).
+
+    ``_write_grains_csv`` emits a 9-line ``%``-prefixed header followed by one
+    row per grain, so "no grains" means every non-blank line starts with ``%``.
+    Checking ``%NumGrains 0`` alone would be fragile if the writer changes, and
+    checking file size would be wrong because the header is always present.
+    """
+    path = Path(path)
+    if not path.exists():
+        return True
+    try:
+        with open(path) as f:
+            for line in f:
+                s = line.strip()
+                if s and not s.startswith("%"):
+                    return False
+    except OSError:
+        return True
+    return True
+
+
 def _strip_loop_suffix(name: str) -> str:
     """Strip ``.<n>`` / ``_merged.<n>`` / ``_all_solutions.<n>`` accumulated
     by previous interrupted multi-resolution runs."""
@@ -430,6 +452,26 @@ def run_layer_pipeline(
                     do_neighbor_search=0, n_cpus=p["nCPUs"],
                     min_conf_override=float(getattr(args, "minConfidence", 0.6)),
                 )
+
+                # A phase that legitimately indexes NOTHING must stop cleanly, not
+                # crash. Every refinement loop is seeded from the grains clustered
+                # out of the previous map, so if no voxel cleared MinConfidence
+                # there are no grains, Grains.csv.<k> is empty, and the seeded pass
+                # below dies in run_seed_orientations_from_ff. "This phase is not
+                # present in the sample" is a VALID result -- report it and keep
+                # loop 0's map rather than aborting the run with a traceback.
+                if _grains_file_is_empty(grains_path):
+                    logger.warning(
+                        f"Loop {loop_idx}: no grains above MinConfidence in "
+                        f"{current_mic}.mic -- nothing to seed a refinement from. "
+                        f"This phase appears absent from the sample. Stopping the "
+                        f"multi-resolution loop and keeping the loop-0 result."
+                    )
+                    ph5.write_dataset(
+                        f"loop_{loop_idx}/skipped_reason",
+                        "no grains above MinConfidence; phase likely absent",
+                    )
+                    break
 
                 # (b) seeded pass.
                 seed_loop = f"{seed_base}.{loop_idx}"

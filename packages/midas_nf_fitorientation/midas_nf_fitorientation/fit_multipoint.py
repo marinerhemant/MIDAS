@@ -42,6 +42,7 @@ from .soft_overlap import (
     GeometryOverrides,
     auto_sigma_px,
     build_forward_model,
+    overrides,
     soft_overlap,
     soft_overlap_loss,
 )
@@ -168,9 +169,22 @@ def fit_multipoint_run(
 
     Lsds = torch.tensor(p.Lsd, device=torch_device, dtype=dtype)
     enc0 = LsdEncoding.from_lsds(Lsds)
+    # ONE shared tilt triple, not one per distance.
+    #
+    # tx/ty/tz describe how the detector is MOUNTED. In a multi-distance NF scan
+    # the same physical detector is translated along the beam, so the tilts are a
+    # property of the detector, not of the position -- there is one set, shared.
+    #
+    # This used to be [[tx,ty,tz]] * n_distances wrapped in a single TanhBox,
+    # which gave every distance its own free tilts. That is unphysical and it
+    # showed: a refinement returned Tilts[0] != Tilts[1] for one detector at two
+    # DetZ positions. It also inflates the parameter count by 3*(nD-1) against a
+    # dataset that cannot constrain them separately.
+    #
+    # Kept as a (3,) leaf and broadcast to (n_distances, 3) at use, so the
+    # optimiser sees three tilt parameters total regardless of distance count.
     tilts0 = torch.tensor(
-        [[p.tx, p.ty, p.tz]] * p.n_distances,
-        device=torch_device, dtype=dtype,
+        [p.tx, p.ty, p.tz], device=torch_device, dtype=dtype,
     )
 
     # Globals tracked across multi-start trials.
@@ -235,11 +249,16 @@ def fit_multipoint_run(
                 Lsd = box_lsd0.x
             else:
                 Lsd = LsdEncoding(box_lsd0.x, box_lsd_delta.x).decode()
+            # box_tilts.x is the shared (3,) triple; the geometry wants one row
+            # per distance. expand() is a view, so the gradient from every
+            # distance accumulates back into the SAME three leaves -- which is
+            # exactly the shared-tilt constraint.
+            tilts_shared = box_tilts.x.unsqueeze(0).expand(p.n_distances, 3)
             return GeometryOverrides(
                 Lsd=Lsd,
                 y_BC=box_ybc.x,
                 z_BC=box_zbc.x,
-                tilts=box_tilts.x,
+                tilts=tilts_shared,
                 wedge=box_wedge.x if box_wedge is not None else None,
             )
 
@@ -258,6 +277,32 @@ def fit_multipoint_run(
             if box_wedge is not None:
                 terms.append(box_wedge.tikhonov(p.tikhonov_sigma_wedge, lam))
             return terms
+
+        # ---- Baseline: the objective BEFORE any optimisation --------------
+        # Without this there is no way to tell an improvement from noise. On
+        # trial 0 the boxes are unperturbed, so this is the loss at the SEED
+        # geometry exactly -- the number that says whether the objective can
+        # even see a geometry you already believe in. (A seed loss of ~1.0, i.e.
+        # ~0 overlap, at a geometry known to give hard confidence ~1.0 means the
+        # objective is not tracking the reconstruction and the whole refinement
+        # is optimising noise.)
+        with torch.no_grad():
+            trial_start_loss = float(
+                _multipoint_loss(model, obs, box_eulers, positions_um,
+                                 sigma_px, make_geom_ov())
+            )
+        if trial == 0:
+            seed_loss = trial_start_loss
+            if verbose:
+                print(f"  SEED geometry loss = {seed_loss:.6f} "
+                      f"(overlap {1.0 - seed_loss:.6f})")
+                if seed_loss > 0.99:
+                    print("  WARNING: the seed geometry scores ~zero overlap. "
+                          "If it is known-good, the objective is not tracking "
+                          "the data (check sigma_px / GridSize) and any "
+                          "'improvement' below is noise.")
+        elif verbose:
+            print(f"  start loss = {trial_start_loss:.6f}")
 
         # ---- Phase 1: Eulers only (per voxel, independent) ----
         for vi, be in enumerate(box_eulers):
@@ -342,7 +387,9 @@ def fit_multipoint_run(
         trial_secs = time.perf_counter() - t0
 
         if verbose:
-            print(f"Trial {trial+1}: final loss={res.final_loss:.6f} "
+            gain = trial_start_loss - res.final_loss
+            print(f"Trial {trial+1}: {trial_start_loss:.6f} -> "
+                  f"{res.final_loss:.6f} (improved {gain:+.6f}) "
                   f"({trial_secs:.1f} s)")
 
         if res.final_loss < best_overall_loss:
@@ -376,6 +423,16 @@ def fit_multipoint_run(
     if verbose:
         print(f"\nBest result from trial {best_overall_state['trial']+1}: "
               f"avg overlap = {1.0 - best_overall_state['loss']:.6f}")
+        # State the gain against the seed, not just the final value: a good
+        # absolute number with no gain means the seed was already there, and a
+        # tiny gain on a near-1.0 loss means the objective saw nothing.
+        _gain = seed_loss - best_overall_state['loss']
+        print(f"  vs SEED: loss {seed_loss:.6f} -> "
+              f"{best_overall_state['loss']:.6f} (improved {_gain:+.6f})")
+        if seed_loss > 0.99:
+            print("  DO NOT ADOPT THIS GEOMETRY without an independent check: "
+                  "the seed scored ~zero overlap, so the objective is not "
+                  "tracking the data on this dataset.")
         for d in range(p.n_distances):
             print(f"Layer {d}: Lsd={best_overall_state['Lsd'][d]:.4f}, "
                   f"BC=({best_overall_state['y_BC'][d]:.4f}, "
@@ -388,3 +445,196 @@ def fit_multipoint_run(
             print(f"Wedge: {best_overall_state['wedge']:.4f}")
 
     return best_overall_state
+
+
+# ---------------------------------------------------------------------------
+#  Hard-FracOverlap multipoint calibration -- TRUE equivalent of the C
+# ---------------------------------------------------------------------------
+
+def fit_multipoint_hard_run(
+    paramfile: str,
+    n_cpus: int = 1,
+    *,
+    device: str = "auto",
+    dtype: torch.dtype = torch.float64,
+    verbose: bool = True,
+    seed: int = 0,
+    max_iter: int = 20000,
+) -> dict:
+    """Joint multi-voxel calibration against the HARD FracOverlap.
+
+    This is the true equivalent of ``FitOrientationParametersMultiPoint``, not a
+    differentiable approximation of it. The C objective is
+    (FitOrientationParametersMultiPoint.c:140-176)::
+
+        netResult += FracOverlap      # per GridPoint
+        netResult /= nSpots           # mean
+        return 1 - netResult          # minimise
+
+    and it is optimised with derivative-free NLopt (NELDERMEAD / CRS2_LM), so
+    nothing ever required the objective to be differentiable. The soft
+    Gaussian-splat surrogate used by :func:`fit_multipoint_run` is a *different*
+    objective, and on real data it under-reported badly enough to be unusable --
+    0.055 where the C's hard confidence was 0.852 on the same inputs.
+
+    Optimising the reported quantity directly removes the surrogate gap entirely
+    and makes the number here comparable, value for value, with the C's
+    "Original val" / "Final value".
+
+    Parameter vector, laid out exactly as the C's ``x``
+    (FitOrientationParametersMultiPoint.c:127-139)::
+
+        x[0:3]                        tx, ty, tz          (SHARED across layers)
+        x[3]                          Lsd[0]
+        x[3+i]        i=1..nL-1       Lsd[i] = Lsd[i-1] + x[3+i]   (cumulative)
+        x[3+nL : 3+2nL]               ybc per layer
+        x[3+2nL : 3+3nL]              zbc per layer
+        x[3+3nL + 3i : +3]            Eulers of voxel i
+
+    It also uses the PACKED obs volume, so it needs ~1 bit/pixel instead of the
+    dense float32 the soft path requires (1.9 GB vs 56 GiB on a 3600-frame scan).
+    """
+    from scipy.optimize import minimize
+
+    p = parse_paramfile(paramfile)
+    if device == "auto":
+        device = "cuda" if torch.cuda.is_available() else "cpu"
+    torch_device = torch.device(device)
+    out_dir = Path(p.out_dir)
+
+    grid_points = list(p.grid_points)
+    if not grid_points:
+        mic_path = out_dir / p.mic_file_text
+        grid_points = read_mic_gridpoints(
+            mic_path, min_confidence=p.min_confidence, max_points=200,
+        )
+    n_spots = len(grid_points)
+
+    hkl_table = read_hkls(out_dir)
+    if p.rings_to_use:
+        hkl_table = hkl_table.filter_rings(p.rings_to_use)
+
+    # PACKED: the hard path reads bits, so no dense float volume is needed.
+    obs = ObsVolume.from_spotsinfo(
+        out_dir / "SpotsInfo.bin",
+        n_distances=p.n_distances,
+        n_frames=p.n_frames_per_distance,
+        n_y=p.n_pixels_y, n_z=p.n_pixels_z,
+        device=torch_device, dtype=torch.uint8, packed=True,
+    )
+    model = build_forward_model(
+        p, hkl_table.hkls_int.astype(np.float64),
+        device=torch_device, dtype=dtype,
+        hkls_cart=hkl_table.hkls_cart.astype(np.float64),
+    )
+
+    positions_np = np.zeros((n_spots, 3), dtype=np.float64)
+    seed_eulers_np = np.zeros((n_spots, 3), dtype=np.float64)
+    for i, (xc, yc, _ud, e1, e2, e3) in enumerate(grid_points):
+        positions_np[i] = (xc, yc, 0.0)
+        seed_eulers_np[i] = (e1, e2, e3)
+    positions_um = torch.tensor(positions_np, device=torch_device, dtype=dtype)
+
+    nL = p.n_distances
+    n_geom = 3 + 3 * nL
+
+    # ---- seed vector in the C's layout ------------------------------------
+    x0 = np.zeros(n_geom + 3 * n_spots, dtype=np.float64)
+    x0[0], x0[1], x0[2] = p.tx, p.ty, p.tz
+    x0[3] = p.Lsd[0]
+    for i in range(1, nL):
+        x0[3 + i] = p.Lsd[i] - p.Lsd[i - 1]        # cumulative delta, as the C
+    for i in range(nL):
+        x0[3 + nL + i] = p.ybc[i]
+        x0[3 + 2 * nL + i] = p.zbc[i]
+    x0[n_geom:] = seed_eulers_np.reshape(-1)
+
+    # ---- bounds straight from the paramfile tolerances ---------------------
+    lo = x0.copy()
+    hi = x0.copy()
+    tt = p.tilts_tol
+    lo[0:3] -= tt; hi[0:3] += tt
+    lo[3] -= p.lsd_tol; hi[3] += p.lsd_tol
+    for i in range(1, nL):
+        lo[3 + i] -= p.lsd_rel_tol; hi[3 + i] += p.lsd_rel_tol
+    for i in range(nL):
+        lo[3 + nL + i] -= p.bc_tol_a; hi[3 + nL + i] += p.bc_tol_a
+        lo[3 + 2 * nL + i] -= p.bc_tol_b; hi[3 + 2 * nL + i] += p.bc_tol_b
+    ot = math.radians(p.orient_tol)
+    lo[n_geom:] -= ot; hi[n_geom:] += ot
+    bounds = list(zip(lo.tolist(), hi.tolist()))
+
+    def unpack(x):
+        tilts = torch.tensor(
+            [[x[0], x[1], x[2]]] * nL, device=torch_device, dtype=dtype,
+        )
+        lsd = [float(x[3])]
+        for i in range(1, nL):
+            lsd.append(lsd[-1] + float(x[3 + i]))
+        Lsd = torch.tensor(lsd, device=torch_device, dtype=dtype)
+        ybc = torch.tensor(
+            [float(x[3 + nL + i]) for i in range(nL)],
+            device=torch_device, dtype=dtype)
+        zbc = torch.tensor(
+            [float(x[3 + 2 * nL + i]) for i in range(nL)],
+            device=torch_device, dtype=dtype)
+        eul = torch.tensor(
+            np.asarray(x[n_geom:], dtype=np.float64).reshape(n_spots, 3),
+            device=torch_device, dtype=dtype)
+        return GeometryOverrides(Lsd=Lsd, y_BC=ybc, z_BC=zbc, tilts=tilts), eul
+
+    n_eval = [0]
+
+    def objective(x) -> float:
+        geom_ov, eul = unpack(x)
+        total = 0.0
+        with torch.no_grad(), overrides(model, geom_ov):
+            for vi in range(n_spots):
+                s = model(eul[vi:vi + 1], positions_um[vi:vi + 1])
+                total += float(obs.hard_fraction(
+                    s.frame_nr, s.y_pixel, s.z_pixel, s.valid))
+        n_eval[0] += 1
+        return 1.0 - total / n_spots
+
+    seed_val = objective(x0)
+    if verbose:
+        print(f"Multipoint (HARD FracOverlap, C-equivalent): "
+              f"{n_spots} voxels, {nL} distances")
+        print(f"  Original val: {1.0 - seed_val:.10f}   "
+              f"(this is the C's 'Original val')")
+
+    t0 = time.perf_counter()
+    res = minimize(
+        objective, x0, method="Nelder-Mead", bounds=bounds,
+        options=dict(maxiter=max_iter, maxfev=max_iter,
+                     xatol=1e-6, fatol=1e-8, adaptive=True),
+    )
+    secs = time.perf_counter() - t0
+
+    best_val = 1.0 - float(res.fun)
+    if verbose:
+        print(f"  Final value:  {best_val:.10f}   "
+              f"({n_eval[0]} evals, {secs:.1f} s)")
+        print(f"  improvement:  {best_val - (1.0 - seed_val):+.10f}")
+
+    geom_ov, eul = unpack(res.x)
+    lsd_out = geom_ov.Lsd.tolist()
+    if verbose:
+        for d in range(nL):
+            print(f"Layer {d}: Lsd={lsd_out[d]:.4f}, "
+                  f"BC=({float(geom_ov.y_BC[d]):.4f}, "
+                  f"{float(geom_ov.z_BC[d]):.4f})")
+        print(f"Tilts (shared): tx={res.x[0]:.4f}, ty={res.x[1]:.4f}, "
+              f"tz={res.x[2]:.4f}")
+
+    return dict(
+        seed_frac_overlap=1.0 - seed_val,
+        final_frac_overlap=best_val,
+        Lsd=lsd_out,
+        y_BC=geom_ov.y_BC.tolist(),
+        z_BC=geom_ov.z_BC.tolist(),
+        tilts=[float(res.x[0]), float(res.x[1]), float(res.x[2])],
+        eulers=eul.tolist(),
+        n_evals=n_eval[0],
+        seconds=secs,
+    )

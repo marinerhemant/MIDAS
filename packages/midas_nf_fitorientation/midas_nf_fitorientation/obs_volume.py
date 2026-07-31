@@ -459,11 +459,21 @@ class ObsVolume:
                 "if you want the soft / Gaussian-splat path."
             )
 
-        if sigma_px <= 1.0:
-            sampled = self._sample_dense(self.dense, frame_nr, y_pixel, z_pixel)
-        else:
-            blurred = self._blurred(sigma_px)
-            sampled = self._sample_dense(blurred, frame_nr, y_pixel, z_pixel)
+        # ALWAYS blur -- there is no bare-trilinear fast path any more.
+        #
+        # The old code took bare trilinear whenever sigma_px <= 1.0, on the
+        # docstring's claim that bilinear sampling is "roughly Gaussian-with-
+        # sigma-1". It is not: bilinear is a tent that reaches ZERO one pixel
+        # away, so on a sparse binary volume the score collapses with sub-pixel
+        # offset even when the spot lands in the CORRECT pixel and the hard
+        # fraction is 1.0. Measured: offset 0.25 px -> 0.316, 0.50 px -> 0.0625,
+        # 0.75 px -> 0.0039, and the per-distance product squares the penalty.
+        #
+        # This mattered in practice because auto_sigma_px() clamps at exactly
+        # 1.0, so typical NF configs took this branch every time.
+        sampled = self._sample_dense(
+            self._blurred(sigma_px), frame_nr, y_pixel, z_pixel,
+        )
 
         sampled = sampled * valid
 
@@ -567,18 +577,60 @@ class ObsVolume:
             -radius, radius + 1, device=self.dense.device, dtype=self.dense.dtype,
         )
         kernel_1d = torch.exp(-0.5 * (offsets / sigma_px) ** 2)
-        kernel_1d /= kernel_1d.sum()
+        # PEAK-normalise (max == 1), NOT sum-normalise.
+        #
+        # A sum-normalised kernel conserves MASS, which is right for smoothing an
+        # image but wrong for an overlap score on a SPARSE BINARY volume: it
+        # spreads each lit pixel over the kernel footprint, so the value AT a lit
+        # pixel collapses to ~1/(2*pi*sigma^2). Measured on a synthetic volume,
+        # a spot sitting exactly on a lit pixel scored 0.0050 at sigma=1.5 and
+        # 0.0016 at sigma=2.0 instead of ~1.0 -- and that is precisely the
+        # ~0.001-0.005 "overlap" the multipoint driver reported on real data at a
+        # geometry whose HARD confidence is 1.0.
+        #
+        # With max == 1 the blurred volume still reads ~1 at a lit pixel and
+        # falls off smoothly around it, so soft_fraction stays comparable to the
+        # hard fraction it is a surrogate for, and the optimiser gets a gradient
+        # that points the same way.
+        kernel_1d = kernel_1d / kernel_1d.max()
 
         D, F_, H, W = self.dense.shape
-        # blur along H and W via 1D convs in turn
-        x = self.dense.reshape(D * F_, 1, H, W)
-        # H-blur
         kH = kernel_1d.reshape(1, 1, -1, 1)
-        x = F.conv2d(x, kH, padding=(radius, 0))
-        # W-blur
         kW = kernel_1d.reshape(1, 1, 1, -1)
-        x = F.conv2d(x, kW, padding=(0, radius))
 
-        self._blurred_cache = x.reshape(D, F_, H, W)
+        # Blur IN PLACE, in chunks along the (distance, frame) axis.
+        #
+        # A real NF obs volume is huge -- 2 x 1800 x 2048^2 float32 is 56 GiB --
+        # so the old out-of-place `x = conv2d(x, ...)` held the original AND the
+        # result simultaneously and OOM'd at 112 GiB even on a 140 GiB card.
+        #
+        # Each (H, W) frame blurs independently of every other frame, so the
+        # separable H-then-W pass can be done per chunk and written straight
+        # back over the input. Only a chunk-sized temporary is live at a time.
+        #
+        # NOTE this MUTATES self.dense. That is safe here because the soft path
+        # is the only consumer of the dense volume (the hard path uses packed
+        # bits), and a run uses a single sigma -- which `_blurred_sigma` records.
+        # Re-blurring at a different sigma would compound, so that is refused.
+        if self._blurred_sigma > 0.0:
+            raise RuntimeError(
+                f"ObsVolume was already blurred in place at sigma="
+                f"{self._blurred_sigma}; cannot re-blur at {sigma_px}. Build a "
+                f"fresh ObsVolume if you need a different splat width."
+            )
+
+        x = self.dense.reshape(D * F_, 1, H, W)
+        n = x.shape[0]
+        itemsize = x.element_size()
+        # keep the transient under ~2 GiB
+        chunk = max(1, int((2 << 30) // max(H * W * itemsize * 2, 1)))
+        for i in range(0, n, chunk):
+            sl = x[i:i + chunk]
+            t = F.conv2d(sl, kH, padding=(radius, 0))
+            t = F.conv2d(t, kW, padding=(0, radius))
+            sl.copy_(t)
+            del t
+
+        self._blurred_cache = self.dense
         self._blurred_sigma = sigma_px
         return self._blurred_cache

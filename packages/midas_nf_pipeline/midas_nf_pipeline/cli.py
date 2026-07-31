@@ -196,12 +196,28 @@ def _add_refine_args(p: argparse.ArgumentParser) -> None:
                         "--multi-point).")
     p.add_argument("--n-cpus", dest="nCPUs", type=int, default=1)
     p.add_argument("--device", default="auto")
+    p.add_argument("--objective", default="hard", choices=["hard", "soft"],
+                   help="hard = optimise the SAME mean FracOverlap the C "
+                        "maximises (FitOrientationParametersMultiPoint), "
+                        "derivative-free Nelder-Mead, packed obs volume. "
+                        "soft = the differentiable Gaussian-splat surrogate "
+                        "(L-BFGS, needs a dense float obs volume). Default: hard.")
 
 
 def cmd_refine_params(args: argparse.Namespace) -> int:
     if args.multi_point:
-        from midas_nf_fitorientation import fit_multipoint_run
-        fit_multipoint_run(args.paramFN, n_cpus=args.nCPUs, device=args.device)
+        if getattr(args, "objective", "hard") == "hard":
+            from midas_nf_fitorientation.fit_multipoint import (
+                fit_multipoint_hard_run,
+            )
+            fit_multipoint_hard_run(
+                args.paramFN, n_cpus=args.nCPUs, device=args.device,
+            )
+        else:
+            from midas_nf_fitorientation import fit_multipoint_run
+            fit_multipoint_run(
+                args.paramFN, n_cpus=args.nCPUs, device=args.device,
+            )
     else:
         from midas_nf_fitorientation import fit_parameters_run
         # fit_parameters_run(paramfile, voxel_idx, n_cpus, *, device, ...) --

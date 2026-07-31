@@ -304,15 +304,34 @@ def parse_paramfile(path: str | Path) -> FitParams:
                 elif key == "GridSize":
                     p.grid_size_um = float(args[0])
                 elif key == "GridPoints":
-                    # GridPoints _ _ _ _ xc yc _ ud eul1 eul2 eul3 _ _
-                    # (matches the C sscanf format exactly)
-                    if len(args) >= 11:
-                        xc = float(args[4])
-                        yc = float(args[5])
-                        ud = float(args[7])
-                        e1 = float(args[8])
-                        e2 = float(args[9])
-                        e3 = float(args[10])
+                    # A GridPoints line is the literal key followed by a raw
+                    # 12-column .mic data row:
+                    #
+                    #   GridPoints  OrientRowNr OrientID RunTime X Y TriEdge
+                    #               UpDown Eul1 Eul2 Eul3 Confidence PhaseNr
+                    #   args index:  0         1        2       3 4 5
+                    #               6      7    8    9    10         11
+                    #
+                    # OFF-BY-ONE, now fixed. The C
+                    # (FitOrientationParametersMultiPoint.c:696-698) does
+                    #   sscanf(aline, "%s %s %s %s %lf %lf %s %lf %lf %lf %lf ...")
+                    # whose FIRST %s eats the word "GridPoints" itself, so its
+                    # xc is line-token 4. Python's `args` starts AFTER the key,
+                    # so args[i] == line-token i+1 and the C's indices are one
+                    # too high here. Using them directly read
+                    #   xc <- Y, yc <- TriEdgeSize,
+                    #   eulers <- (Eul2, Eul3, Confidence)
+                    # i.e. every field shifted by one. Positions and
+                    # orientations were both wrong, which drove the multipoint
+                    # hard FracOverlap to ~0.003 where the C gets ~0.85 on the
+                    # same paramfile.
+                    if len(args) >= 10:
+                        xc = float(args[3])       # X
+                        yc = float(args[4])       # Y
+                        ud = float(args[6])       # UpDown
+                        e1 = float(args[7])       # Eul1
+                        e2 = float(args[8])       # Eul2
+                        e3 = float(args[9])       # Eul3
                         p.grid_points.append((xc, yc, ud, e1, e2, e3))
 
                 # ---------- toggles ----------

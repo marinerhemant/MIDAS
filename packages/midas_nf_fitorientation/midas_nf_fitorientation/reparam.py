@@ -70,11 +70,22 @@ class TanhBox:
         widths" — 0.3 is a reasonable default for multi-start.
         """
         with torch.no_grad():
+            # Draw on the GENERATOR's device, then move. torch.randn refuses a
+            # CPU generator with a CUDA target ("Expected a 'cuda' device type
+            # for generator but found 'cpu'"), and callers reasonably build one
+            # CPU generator for reproducibility regardless of where the
+            # optimisation variables live -- fit_multipoint does exactly that,
+            # which meant multi-start had never worked on CUDA at all.
+            #
+            # Drawing on the generator's device rather than switching the
+            # generator to CUDA keeps the random stream IDENTICAL across
+            # devices, so a CPU and a GPU run take the same multi-start path.
+            gen_device = generator.device if generator is not None else self._u.device
             noise = torch.randn(
-                self._u.shape, dtype=self._u.dtype, device=self._u.device,
+                self._u.shape, dtype=self._u.dtype, device=gen_device,
                 generator=generator,
             )
-            self._u.copy_(scale * noise)
+            self._u.copy_(scale * noise.to(self._u.device))
 
     def tikhonov(self, sigma: torch.Tensor | float, lam: float = 1.0) -> torch.Tensor:
         """Quadratic penalty on the deviation from seed in σ-units.
