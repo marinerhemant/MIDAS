@@ -61,7 +61,8 @@ if _utils_dir not in sys.path:
 
 from gui_common import (MIDASImageView, apply_theme, get_colormap,
                          AsyncWorker, LogPanel, add_shortcut, COLORMAPS,
-                         draw_lab_frame_axes, draw_caking_overlay)
+                         draw_lab_frame_axes, draw_caking_overlay,
+                         export_frame_movie)
 import multidet as _md
 
 try:
@@ -878,6 +879,26 @@ class FFViewer(QtWidgets.QMainWindow):
         self.min_intensity_edit.returnPressed.connect(self._apply_intensity_levels)
         self.max_intensity_edit.returnPressed.connect(self._apply_intensity_levels)
         tb.addWidget(apply_btn)
+
+        self.freeze_levels_check = QtWidgets.QCheckBox("Freeze")
+        self.freeze_levels_check.setChecked(True)
+        self.freeze_levels_check.setToolTipDuration(20000)
+        self.freeze_levels_check.setToolTip(
+            "Freeze the intensity scale.\n\n"
+            "ON  (default): every frame is displayed with the Min I / Max I\n"
+            "     above, so brightness is comparable across frames and the\n"
+            "     colorbar stops jumping while playing or recording.\n"
+            "OFF: each frame is re-scaled to its own 2–98 percentile and\n"
+            "     Min I / Max I follow along.")
+        self.freeze_levels_check.toggled.connect(self._on_freeze_levels_toggled)
+        tb.addWidget(self.freeze_levels_check)
+
+        autoscale_btn = QtWidgets.QPushButton("Autoscale")
+        autoscale_btn.setToolTip(
+            "Rescale once to the current frame's 2–98 percentile and write\n"
+            "the result into Min I / Max I. Leaves Freeze as it is.")
+        autoscale_btn.clicked.connect(self._autoscale_levels)
+        tb.addWidget(autoscale_btn)
 
         # Export
         export_btn = QtWidgets.QPushButton("Export PNG")
@@ -1730,6 +1751,8 @@ class FFViewer(QtWidgets.QMainWindow):
         self.image_view.dataStatsUpdated.connect(self._on_stats_updated)
         # Movie mode: advance frame by 1 (wraps at max)
         self.image_view.movieFrameAdvance.connect(self._movie_advance_frame)
+        # Movie mode: REC button → save a frame range to a file
+        self.image_view.movieSaveRequested.connect(self._save_movie)
         # Drag-and-drop: open dropped file
         self.image_view.fileDropped.connect(self._on_file_dropped)
 
@@ -1760,6 +1783,20 @@ class FFViewer(QtWidgets.QMainWindow):
             '  GapIntensity. Frames are inverse-warped into a common\n'
             '  BigDetSize×BigDetSize composite (rotated by per-detector tx\n'
             '  about the composite center) and combined by max or sum.\n'
+            '\n'
+            'Intensity scaling (toolbar):\n'
+            '  Min I / Max I + Apply — Set the scale by hand\n'
+            '  Freeze (on by default) — Hold that scale across frames, so\n'
+            '    brightness is comparable and the colorbar stops jumping.\n'
+            '    Turn it off to rescale every frame to its own 2–98 percentile.\n'
+            '  Autoscale — Rescale once to this frame\'s 2–98 percentile\n'
+            '\n'
+            'Movie (playback toolbar under the image):\n'
+            '  ▶ / ⏸ / ⏹ + FPS — Animate frames on screen\n'
+            '  REC — Save a frame range (start / # frames / step / fps) to\n'
+            '    .mp4, .gif, or a numbered .png sequence. Captures the\n'
+            '    rendered view, so freeze the scale first if you want\n'
+            '    constant brightness through the movie.\n'
             '\n'
             'Histogram (right side of image):\n'
             '  Drag top/bottom bars — Adjust thresholds\n'
@@ -1833,6 +1870,7 @@ class FFViewer(QtWidgets.QMainWindow):
             # Display
             'min_intensity': _try_float(self.min_intensity_edit),
             'max_intensity': _try_float(self.max_intensity_edit),
+            'freeze_levels': self.freeze_levels_check.isChecked(),
             'composite_mode': self.composite_combo.currentText(),
             'detector_mode': self.detector_mode_combo.currentText(),
             'max_frames_spin': self.max_frames_spin.value(),
@@ -1966,6 +2004,13 @@ class FFViewer(QtWidgets.QMainWindow):
             self.max_intensity_edit.setText(str(max_i))
         if min_i is not None or max_i is not None:
             self._levels_initialized = True
+        # blockSignals: the toggle handler would fire a reload before the rest
+        # of the state (frame, dark, paths) has been restored.
+        blocked = self.freeze_levels_check.blockSignals(True)
+        try:
+            self.freeze_levels_check.setChecked(bool(state.get('freeze_levels', True)))
+        finally:
+            self.freeze_levels_check.blockSignals(blocked)
 
         # Display state
         self.composite_combo.setCurrentText(state.get('composite_mode',
@@ -2637,6 +2682,71 @@ class FFViewer(QtWidgets.QMainWindow):
         nxt = cur + 1 if cur < mx else 0
         self.frame_spin.setValue(nxt)
 
+    def _movie_goto_frame(self, frame):
+        """Display *frame*, forcing a reload even if the index is unchanged.
+
+        QSpinBox.setValue only emits valueChanged on an actual change, so the
+        first frame of a movie (which is usually the frame already on screen)
+        would otherwise never be loaded.
+        """
+        frame = int(frame)
+        if self.frame_spin.value() == frame:
+            self._load_and_display()
+        else:
+            self.frame_spin.setValue(frame)
+
+    def _wait_for_render(self, timeout_s=120.0):
+        """Block (pumping the event loop) until the current frame is on screen.
+
+        The HYDRA composite and the Max/Sum/Average/Median aggregation both
+        display from an AsyncWorker, so _load_and_display returns long before
+        the image updates. Without this, a movie capture would grab the
+        previous frame — or the same frame N times.
+        """
+        import time as _time
+        deadline = _time.monotonic() + timeout_s
+        app = QtWidgets.QApplication.instance()
+        for attr in ('_multi_worker', '_accum_worker'):
+            worker = getattr(self, attr, None)
+            if worker is None:
+                continue
+            while worker.isRunning() and _time.monotonic() < deadline:
+                app.processEvents(QtCore.QEventLoop.AllEvents, 20)
+        # The worker has exited, but its finished_signal is a queued connection:
+        # the slot that actually calls set_image_data still has to be delivered.
+        for _ in range(3):
+            app.processEvents()
+
+    def _total_frames_hint(self):
+        """Best-known total frame count, or None if the end isn't known.
+
+        The spin box is capped at its 99999 construction default in
+        single-detector mode, where the frame index runs across sibling files
+        and no total is knowable; multi-detector and zarr/HDF5/TIFF stacks do
+        pin down a real bound.
+        """
+        mx = self.frame_spin.maximum()
+        if 0 < mx < 99999:
+            return mx + 1
+        n = int(getattr(self, 'n_frames_per_file', 0) or 0)
+        return n if n > 1 else None
+
+    def _save_movie(self):
+        """Write a frame range to MP4 / GIF / PNG sequence."""
+        stem = 'movie'
+        if self.zarr_zip_path:
+            stem = os.path.splitext(os.path.basename(self.zarr_zip_path))[0]
+        elif self.file_stem:
+            stem = self.file_stem
+        out_dir = self.folder or os.getcwd()
+        export_frame_movie(
+            self, self.image_view,
+            set_frame=self._movie_goto_frame,
+            current_frame=self.frame_spin.value(),
+            n_frames_total=self._total_frames_hint(),
+            wait_for_render=self._wait_for_render,
+            default_path=os.path.join(out_dir, f'{stem}_movie.mp4'))
+
     def _on_file_dropped(self, path):
         """Handle file dropped onto the viewer."""
         if os.path.isdir(path):
@@ -2701,11 +2811,60 @@ class FFViewer(QtWidgets.QMainWindow):
 
     def _on_stats_updated(self, dmin, dmax, p2, p98):
         self.stats_label.setText(f"Min={dmin:.0f}  Max={dmax:.0f}  [P2={p2:.0f}  P98={p98:.0f}]")
-        # Only auto-populate MinI/MaxI on the very first image load
-        if not getattr(self, '_levels_initialized', False):
+        # Stats arrive in linear space regardless of log display mode, so they
+        # can go straight into the (linear) MinI/MaxI fields.
+        self._last_stats = (dmin, dmax, p2, p98)
+        # Populate MinI/MaxI on the very first image, and on every frame while
+        # scaling is unfrozen — there _display_image_data auto-levelled to
+        # p2/p98, so the fields would otherwise show stale numbers.
+        if not getattr(self, '_levels_initialized', False) or not self._levels_frozen():
             self._levels_initialized = True
             self.min_intensity_edit.setText(str(int(p2)))
             self.max_intensity_edit.setText(str(int(p98)))
+
+    def _levels_frozen(self):
+        """True when the intensity scale is held fixed across frames."""
+        chk = getattr(self, 'freeze_levels_check', None)
+        return True if chk is None else chk.isChecked()
+
+    def _on_freeze_levels_toggled(self, checked):
+        # Freezing adopts whatever is on screen right now; unfreezing has to
+        # redraw so this frame gets its own percentile scaling immediately.
+        if checked:
+            self._apply_intensity_levels()
+        else:
+            self._load_and_display()
+
+    def _autoscale_levels(self):
+        """One-shot rescale to the current frame's 2–98 percentile."""
+        stats = getattr(self, '_last_stats', None)
+        if stats is None:
+            return
+        _dmin, _dmax, p2, p98 = stats
+        if p98 <= p2:
+            p98 = p2 + 1
+        self.min_intensity_edit.setText(str(int(p2)))
+        self.max_intensity_edit.setText(str(int(p98)))
+        self._apply_intensity_levels()
+
+    def _display_image_data(self, data):
+        """Push *data* into the view, honouring the Freeze-scaling checkbox.
+
+        Frozen (default) → reuse the MinI/MaxI levels so brightness is
+        comparable frame to frame. Unfrozen, or before any image has ever
+        loaded → let MIDASImageView auto-level to this frame's 2–98 percentile.
+        """
+        if self._levels_frozen() and getattr(self, '_levels_initialized', False):
+            try:
+                lo = float(self.min_intensity_edit.text())
+                hi = float(self.max_intensity_edit.text())
+            except ValueError:
+                pass
+            else:
+                self.image_view.set_image_data(data, auto_levels=False,
+                                               levels=(lo, hi))
+                return
+        self.image_view.set_image_data(data)
 
     def _apply_intensity_levels(self):
         try:
@@ -4056,16 +4215,7 @@ class FFViewer(QtWidgets.QMainWindow):
             data, elapsed, n_used = result
             data = self._apply_tx_rotation(data)   # respects single Tx field
             self.bdata = data
-            if getattr(self, '_levels_initialized', False):
-                try:
-                    lo = float(self.min_intensity_edit.text())
-                    hi = float(self.max_intensity_edit.text())
-                    self.image_view.set_image_data(data, auto_levels=False,
-                                                    levels=(lo, hi))
-                except ValueError:
-                    self.image_view.set_image_data(data)
-            else:
-                self.image_view.set_image_data(data)
+            self._display_image_data(data)
             self._apply_tx_image_rect(data)
             if agg_mode is None:
                 self.frame_label.setText(
@@ -4367,15 +4517,7 @@ class FFViewer(QtWidgets.QMainWindow):
                 data_out, n_done, elapsed = result
                 data_out = self._apply_tx_rotation(data_out)
                 self.bdata = data_out
-                if getattr(self, '_levels_initialized', False):
-                    try:
-                        lo = float(self.min_intensity_edit.text())
-                        hi = float(self.max_intensity_edit.text())
-                        self.image_view.set_image_data(data_out, auto_levels=False, levels=(lo, hi))
-                    except ValueError:
-                        self.image_view.set_image_data(data_out)
-                else:
-                    self.image_view.set_image_data(data_out)
+                self._display_image_data(data_out)
                 self._apply_tx_image_rect(data_out)
                 self.max_check.setEnabled(True)
                 self.sum_check.setEnabled(True)
@@ -4435,16 +4577,7 @@ class FFViewer(QtWidgets.QMainWindow):
 
         data = self._apply_tx_rotation(data)
         self.bdata = data
-        # On first load, auto-levels; afterwards use user's MinI/MaxI
-        if getattr(self, '_levels_initialized', False):
-            try:
-                lo = float(self.min_intensity_edit.text())
-                hi = float(self.max_intensity_edit.text())
-                self.image_view.set_image_data(data, auto_levels=False, levels=(lo, hi))
-            except ValueError:
-                self.image_view.set_image_data(data)
-        else:
-            self.image_view.set_image_data(data)
+        self._display_image_data(data)
         self._apply_tx_image_rect(data)
         basename = os.path.basename(fn) if not self.zarr_store else os.path.basename(self.zarr_zip_path or '')
         self.frame_label.setText(f"Frame {self.frame_nr}  |  {basename}")

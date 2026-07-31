@@ -8,6 +8,7 @@ Provides:
   - MIDASImageView      : ImageView subclass with crosshair, colormap, status, wheel-nav
   - AsyncWorker         : QThread wrapper for background tasks
   - LogPanel            : Collapsible log output widget
+  - export_frame_movie(): Save a frame range as MP4 / GIF / PNG sequence
 """
 
 import sys
@@ -121,10 +122,13 @@ class MIDASImageView(QtWidgets.QWidget):
     cursorMoved = QtCore.pyqtSignal(float, float, float)
     # Emitted when mouse wheel changes frame: delta (+1 or -1)
     frameScrolled = QtCore.pyqtSignal(int)
-    # Emitted when image data changes: (min, max, p2, p98)
+    # Emitted when image data changes: (min, max, p2, p98).
+    # Always linear-space, like levelsChanged, even when log display is on.
     dataStatsUpdated = QtCore.pyqtSignal(float, float, float, float)
     # Emitted for movie mode: advance one frame
     movieFrameAdvance = QtCore.pyqtSignal()
+    # Emitted when the record button is pressed — host runs export_frame_movie
+    movieSaveRequested = QtCore.pyqtSignal()
     # Emitted when a file is dropped onto the viewer
     fileDropped = QtCore.pyqtSignal(str)
     # Emitted when the font size spinbox changes
@@ -285,6 +289,19 @@ class MIDASImageView(QtWidgets.QWidget):
         self._stop_btn.clicked.connect(self._movie_stop)
         self._stop_btn.setEnabled(False)
         bar.addWidget(self._stop_btn)
+
+        # Record: hand off to the host, which knows how to walk its own frame
+        # index (multi-file spans, aggregation modes, …). See export_frame_movie.
+        self._rec_btn = QtWidgets.QToolButton()
+        self._rec_btn.setIcon(style.standardIcon(QtWidgets.QStyle.SP_DialogSaveButton))
+        self._rec_btn.setText("REC")
+        self._rec_btn.setToolTipDuration(20000)
+        self._rec_btn.setToolTip(
+            "Save Movie – write a frame range to MP4 / GIF / PNG sequence.\n"
+            "Captures the rendered view (colormap, levels, log scale, zoom\n"
+            "and every overlay), so the movie matches what Play shows.")
+        self._rec_btn.clicked.connect(self.movieSaveRequested)
+        bar.addWidget(self._rec_btn)
 
         fps_label = QtWidgets.QLabel("  FPS:")
         bar.addWidget(fps_label)
@@ -447,7 +464,8 @@ class MIDASImageView(QtWidgets.QWidget):
         # are (rows, cols). Transpose so rows→Y (vertical), cols→X (horizontal).
         display = self._apply_log(data.T) if self._log_mode else data.T
 
-        # Compute stats
+        # Compute stats. These are display-space (log10'd when log mode is on),
+        # which is what the auto-level branch below needs.
         finite = display[np.isfinite(display)]
         if finite.size > 0:
             dmin, dmax = float(finite.min()), float(finite.max())
@@ -455,27 +473,44 @@ class MIDASImageView(QtWidgets.QWidget):
             p98 = float(np.percentile(finite, 98))
         else:
             dmin = dmax = p2 = p98 = 0.0
-        self.dataStatsUpdated.emit(dmin, dmax, p2, p98)
+        # dataStatsUpdated always reports LINEAR space — same convention as
+        # levelsChanged — so a consumer can drop the values straight into a
+        # MinI/MaxI field (which setLevels re-log's) without knowing whether
+        # log display is on.
+        if self._log_mode:
+            stats_out = tuple(10.0 ** v for v in (dmin, dmax, p2, p98))
+        else:
+            stats_out = (dmin, dmax, p2, p98)
+        self.dataStatsUpdated.emit(*stats_out)
 
         # autoRange=False: keep the user's pan/zoom across frame changes
         # and stop pyqtgraph from inflating the view to fit off-image
         # overlays (rings outside the detector, lab-axis labels, …).
         # We manually set a tight range below for fresh / shape-changed
         # displays.
-        if levels is not None:
-            if self._log_mode:
-                levels = (np.log10(max(levels[0], 1e-10)),
-                          np.log10(max(levels[1], 1e-10)))
-            self._iv.setImage(display, autoLevels=False, levels=levels,
-                              autoRange=False)
-            _hist_levels = levels
-        elif auto_levels:
-            self._iv.setImage(display, autoLevels=False, levels=(p2, p98),
-                              autoRange=False)
-            _hist_levels = (p2, p98)
-        else:
-            self._iv.setImage(display, autoLevels=False, autoRange=False)
-            _hist_levels = None
+        #
+        # _suppress_levels_signal: setImage makes the histogram emit
+        # sigLevelsChanged, which would echo out as levelsChanged and let a
+        # frame change rewrite the host's MinI/MaxI fields. Only a user drag
+        # should do that, so gate the whole redraw.
+        self._suppress_levels_signal = True
+        try:
+            if levels is not None:
+                if self._log_mode:
+                    levels = (np.log10(max(levels[0], 1e-10)),
+                              np.log10(max(levels[1], 1e-10)))
+                self._iv.setImage(display, autoLevels=False, levels=levels,
+                                  autoRange=False)
+                _hist_levels = levels
+            elif auto_levels:
+                self._iv.setImage(display, autoLevels=False, levels=(p2, p98),
+                                  autoRange=False)
+                _hist_levels = (p2, p98)
+            else:
+                self._iv.setImage(display, autoLevels=False, autoRange=False)
+                _hist_levels = None
+        finally:
+            self._suppress_levels_signal = False
 
         if _hist_levels is not None:
             try:
@@ -654,6 +689,37 @@ class MIDASImageView(QtWidgets.QWidget):
             exporter = pg.exporters.ImageExporter(self._iv.scene)
             exporter.export(filename)
 
+    def scene_exporter(self, even_dims=False):
+        """Build an ImageExporter bound to this view's scene.
+
+        Same object ``export_png`` uses, but returned so a caller can hold one
+        exporter across many frames: ImageExporter freezes width/height at
+        construction, which is what keeps every captured frame the same size —
+        a hard requirement for video encoders.
+
+        ``even_dims`` rounds the capture size down to even width/height, which
+        several MP4 codecs require.
+        """
+        exporter = pg.exporters.ImageExporter(self._iv.scene)
+        if even_dims:
+            w = int(exporter.params['width'])
+            h = int(exporter.params['height'])
+            # Assign height last: widthChanged() rewrites height to preserve
+            # the aspect ratio, so setting width first would undo it.
+            exporter.params.param('width').setValue(max(w - (w % 2), 2))
+            exporter.params.param('height').setValue(max(h - (h % 2), 2))
+        return exporter
+
+    def grab_scene_rgb(self, exporter=None):
+        """Render the current view to an (H, W, 3) uint8 RGB array.
+
+        Renders the scene offscreen rather than grabbing the widget, so the
+        capture is correct even when a modal progress dialog covers the window.
+        """
+        if exporter is None:
+            exporter = self.scene_exporter()
+        return qimage_to_rgb_array(exporter.export(toBytes=True))
+
     def addItem(self, item):
         """Proxy addItem to internal ImageView."""
         self._iv.addItem(item)
@@ -774,6 +840,330 @@ class AsyncWorker(QtCore.QThread):
             self.finished_signal.emit(result)
         except Exception as e:
             self.error_signal.emit(str(e))
+
+
+# ── Movie export ───────────────────────────────────────────────────────
+
+def qimage_to_rgb_array(img):
+    """QImage → (H, W, 3) uint8 RGB array.
+
+    Goes through Format_RGB888 so the result is byte-order independent (the
+    native ARGB32 buffer is BGRA on little-endian, ARGB on big-endian) and
+    honours ``bytesPerLine``, which Qt pads to a 4-byte boundary.
+    """
+    img = img.convertToFormat(QtGui.QImage.Format_RGB888)
+    w, h, bpl = img.width(), img.height(), img.bytesPerLine()
+    ptr = img.constBits()
+    ptr.setsize(bpl * h)
+    flat = np.frombuffer(bytes(ptr), dtype=np.uint8).reshape(h, bpl)
+    return flat[:, :w * 3].reshape(h, w, 3).copy()
+
+
+class MovieWriter:
+    """Frame sink for :func:`export_frame_movie`, dispatched on extension.
+
+      ``.mp4`` / ``.mov`` / ``.avi`` / ``.mkv``  → OpenCV ``VideoWriter``
+      ``.gif``                                   → Pillow animated GIF
+      ``.png`` / ``.jpg`` / ``.tif``             → numbered still sequence
+
+    Backends are imported lazily; a missing one raises ``RuntimeError`` naming
+    the package and a working alternative, so the GUI can show it verbatim
+    instead of a traceback.
+
+    Frames must all be the same size for the video path; anything off-size is
+    cropped (or zero-padded) to the first frame's dimensions.
+    """
+
+    VIDEO_EXTS = ('.mp4', '.mov', '.avi', '.mkv')
+    STILL_EXTS = ('.png', '.jpg', '.jpeg', '.tif', '.tiff')
+
+    def __init__(self, path, fps):
+        self.path = path
+        self.fps = max(1, int(round(fps)))
+        self.ext = os.path.splitext(path)[1].lower()
+        self.count = 0
+        self._size = None       # (h, w) locked in by the first frame
+        self._video = None
+        self._gif_frames = None
+
+        if self.ext in self.VIDEO_EXTS:
+            self.kind = 'video'
+            try:
+                import cv2  # noqa: F401
+            except ImportError:
+                raise RuntimeError(
+                    "Video export needs OpenCV.\n\n"
+                    "    pip install opencv-python-headless\n\n"
+                    "Or save as .gif / .png instead — those need no extra package.")
+        elif self.ext == '.gif':
+            self.kind = 'gif'
+            try:
+                from PIL import Image  # noqa: F401
+            except ImportError:
+                raise RuntimeError(
+                    "GIF export needs Pillow.\n\n    pip install Pillow")
+            self._gif_frames = []
+        elif self.ext in self.STILL_EXTS:
+            self.kind = 'stills'
+            try:
+                from PIL import Image  # noqa: F401
+            except ImportError:
+                raise RuntimeError(
+                    "Image-sequence export needs Pillow.\n\n    pip install Pillow")
+            self._stem, self._suffix = os.path.splitext(path)
+        else:
+            raise RuntimeError(
+                f"Don't know how to write '{self.ext or path}'.\n"
+                "Use .mp4, .gif, or .png (numbered sequence).")
+
+    @property
+    def needs_even_dims(self):
+        """MP4 codecs reject odd width/height; stills and GIF don't care."""
+        return self.kind == 'video'
+
+    def _fit(self, rgb):
+        """Force *rgb* to the locked-in frame size (crop, then zero-pad)."""
+        if self._size is None:
+            self._size = rgb.shape[:2]
+            return rgb
+        h, w = self._size
+        if rgb.shape[:2] == (h, w):
+            return rgb
+        out = np.zeros((h, w, 3), dtype=np.uint8)
+        ch, cw = min(h, rgb.shape[0]), min(w, rgb.shape[1])
+        out[:ch, :cw] = rgb[:ch, :cw]
+        return out
+
+    def append(self, rgb):
+        rgb = self._fit(np.ascontiguousarray(rgb, dtype=np.uint8))
+        if self.kind == 'video':
+            import cv2
+            if self._video is None:
+                h, w = self._size
+                fourcc = cv2.VideoWriter_fourcc(*('MJPG' if self.ext == '.avi'
+                                                  else 'mp4v'))
+                self._video = cv2.VideoWriter(self.path, fourcc, self.fps, (w, h))
+                if not self._video.isOpened():
+                    self._video = None
+                    raise RuntimeError(
+                        f"OpenCV could not open '{os.path.basename(self.path)}' "
+                        f"for writing at {w}×{h}.\nTry .gif or .png instead.")
+            self._video.write(rgb[:, :, ::-1])          # cv2 wants BGR
+        elif self.kind == 'gif':
+            from PIL import Image
+            # Palettize per frame rather than buffering RGB: a few hundred
+            # captures of a 1500×900 view is ~4 GB in RGB, ~1.3 GB as 'P'.
+            self._gif_frames.append(
+                Image.fromarray(rgb).convert('P', palette=Image.ADAPTIVE))
+        else:
+            from PIL import Image
+            Image.fromarray(rgb).save(f"{self._stem}_{self.count:05d}{self._suffix}")
+        self.count += 1
+
+    def close(self):
+        """Finalise and return the path actually written (None if no frames)."""
+        if self.kind == 'video':
+            if self._video is not None:
+                self._video.release()
+                self._video = None
+        elif self.kind == 'gif' and self._gif_frames:
+            self._gif_frames[0].save(
+                self.path, save_all=True, append_images=self._gif_frames[1:],
+                duration=int(round(1000.0 / self.fps)), loop=0)
+            self._gif_frames = []
+        if self.count == 0:
+            return None
+        if self.kind == 'stills':
+            return f"{self._stem}_00000{self._suffix} … +{self.count - 1} more"
+        return self.path
+
+
+class MovieExportDialog(QtWidgets.QDialog):
+    """Ask for start frame, frame count, step, fps, and an output file."""
+
+    def __init__(self, parent=None, current_frame=0, n_frames_total=None,
+                 default_path=''):
+        super().__init__(parent)
+        self.setWindowTitle("Save Movie")
+        self._n_total = n_frames_total
+
+        form = QtWidgets.QFormLayout()
+
+        self.start_spin = QtWidgets.QSpinBox()
+        self.start_spin.setRange(0, 9999999)
+        self.start_spin.setValue(int(current_frame))
+        self.start_spin.setToolTip("Frame index the movie starts at "
+                                   "(same numbering as Display Frame).")
+        form.addRow("Start frame", self.start_spin)
+
+        self.count_spin = QtWidgets.QSpinBox()
+        self.count_spin.setRange(1, 9999999)
+        if n_frames_total:
+            self.count_spin.setValue(max(1, int(n_frames_total) - int(current_frame)))
+        else:
+            self.count_spin.setValue(100)
+        self.count_spin.setToolTip("How many frames to capture.")
+        form.addRow("# frames", self.count_spin)
+
+        self.step_spin = QtWidgets.QSpinBox()
+        self.step_spin.setRange(1, 10000)
+        self.step_spin.setValue(1)
+        self.step_spin.setToolTip("Capture every Nth frame (1 = every frame).")
+        form.addRow("Step", self.step_spin)
+
+        self.fps_spin = QtWidgets.QSpinBox()
+        self.fps_spin.setRange(1, 60)
+        self.fps_spin.setValue(10)
+        self.fps_spin.setToolTip("Playback rate of the written movie.")
+        form.addRow("FPS", self.fps_spin)
+
+        path_row = QtWidgets.QHBoxLayout()
+        self.path_edit = QtWidgets.QLineEdit(default_path)
+        self.path_edit.setMinimumWidth(360)
+        self.path_edit.setToolTip(
+            ".mp4 / .mov / .avi → video (needs OpenCV)\n"
+            ".gif               → animated GIF (needs Pillow)\n"
+            ".png / .tif        → numbered still sequence")
+        path_row.addWidget(self.path_edit, 1)
+        browse = QtWidgets.QPushButton("Browse…")
+        browse.clicked.connect(self._browse)
+        path_row.addWidget(browse)
+        path_w = QtWidgets.QWidget()
+        path_w.setLayout(path_row)
+        form.addRow("Output", path_w)
+
+        self._summary = QtWidgets.QLabel("")
+        self._summary.setStyleSheet("color: gray;")
+        form.addRow("", self._summary)
+
+        buttons = QtWidgets.QDialogButtonBox(
+            QtWidgets.QDialogButtonBox.Save | QtWidgets.QDialogButtonBox.Cancel)
+        buttons.accepted.connect(self.accept)
+        buttons.rejected.connect(self.reject)
+
+        lay = QtWidgets.QVBoxLayout(self)
+        note = QtWidgets.QLabel(
+            "Captures the rendered view — current colormap, intensity levels,\n"
+            "log scale, zoom, and all overlays — one capture per frame.")
+        note.setStyleSheet("color: gray;")
+        lay.addWidget(note)
+        lay.addLayout(form)
+        lay.addWidget(buttons)
+
+        for spin in (self.start_spin, self.count_spin, self.step_spin, self.fps_spin):
+            spin.valueChanged.connect(self._update_summary)
+        self._update_summary()
+
+    def _browse(self):
+        fn, _ = QtWidgets.QFileDialog.getSaveFileName(
+            self, 'Save Movie', self.path_edit.text(),
+            'MP4 video (*.mp4);;Animated GIF (*.gif);;'
+            'PNG sequence (*.png);;TIFF sequence (*.tif);;All Files (*)')
+        if fn:
+            self.path_edit.setText(fn)
+
+    def _update_summary(self):
+        vals = self.values()
+        last = vals['start'] + (vals['count'] - 1) * vals['step']
+        secs = vals['count'] / float(vals['fps'])
+        txt = (f"frames {vals['start']}–{last} "
+               f"({vals['count']} captures) → {secs:.1f} s at {vals['fps']} fps")
+        if self._n_total and last > self._n_total - 1:
+            txt += f"\n⚠ last frame {last} is past the known end ({self._n_total - 1})"
+        self._summary.setText(txt)
+
+    def values(self):
+        return dict(start=self.start_spin.value(),
+                    count=self.count_spin.value(),
+                    step=self.step_spin.value(),
+                    fps=self.fps_spin.value(),
+                    path=self.path_edit.text().strip())
+
+
+def export_frame_movie(parent, view, set_frame, current_frame=0,
+                       n_frames_total=None, wait_for_render=None,
+                       default_path=''):
+    """Save a range of frames as a movie, capturing the rendered view.
+
+    Drives the host's own frame navigation rather than duplicating it:
+
+    ``set_frame(i)``       host callback that displays frame *i*.
+    ``wait_for_render()``  optional host callback that blocks (pumping the
+                           event loop) until the frame is actually on screen —
+                           required wherever the display path is threaded, e.g.
+                           the HYDRA composite and the Max/Sum/Median workers.
+
+    Runs synchronously behind a cancellable progress dialog rather than reusing
+    the play timer, so every frame is written exactly once regardless of how
+    long a frame takes to load. Restores the original frame when done.
+    Returns the written path, or None if cancelled before any frame.
+    """
+    dlg = MovieExportDialog(parent, current_frame=current_frame,
+                            n_frames_total=n_frames_total,
+                            default_path=default_path)
+    if dlg.exec_() != QtWidgets.QDialog.Accepted:
+        return None
+    opts = dlg.values()
+    if not opts['path']:
+        QtWidgets.QMessageBox.warning(parent, "Save Movie", "No output file given.")
+        return None
+
+    try:
+        writer = MovieWriter(opts['path'], opts['fps'])
+    except RuntimeError as e:
+        QtWidgets.QMessageBox.critical(parent, "Save Movie", str(e))
+        return None
+
+    frame_ids = [opts['start'] + i * opts['step'] for i in range(opts['count'])]
+    exporter = view.scene_exporter(even_dims=writer.needs_even_dims)
+
+    prog = QtWidgets.QProgressDialog("Capturing frames…", "Cancel",
+                                     0, len(frame_ids), parent)
+    prog.setWindowTitle("Save Movie")
+    prog.setWindowModality(QtCore.Qt.WindowModal)
+    prog.setMinimumDuration(0)
+    prog.setValue(0)
+
+    err = None
+    try:
+        for i, f in enumerate(frame_ids):
+            if prog.wasCanceled():
+                break
+            prog.setLabelText(f"Frame {f}   ({i + 1} / {len(frame_ids)})")
+            prog.setValue(i)
+            QtWidgets.QApplication.processEvents()
+            set_frame(f)
+            if wait_for_render is not None:
+                wait_for_render()
+            QtWidgets.QApplication.processEvents()
+            writer.append(view.grab_scene_rgb(exporter))
+        prog.setValue(len(frame_ids))
+    except Exception as e:                    # noqa: BLE001 — reported to the user
+        err = e
+    finally:
+        prog.close()
+        written = writer.close()
+        # Put the viewer back where the user left it.
+        try:
+            set_frame(current_frame)
+            if wait_for_render is not None:
+                wait_for_render()
+        except Exception:
+            pass
+
+    if err is not None:
+        QtWidgets.QMessageBox.critical(
+            parent, "Save Movie",
+            f"Wrote {writer.count} frame(s), then failed:\n{err}")
+        return written
+    if written is None:
+        QtWidgets.QMessageBox.information(
+            parent, "Save Movie", "Cancelled — no frames written.")
+        return None
+    QtWidgets.QMessageBox.information(
+        parent, "Save Movie",
+        f"Wrote {writer.count} frame(s) at {writer.fps} fps:\n{written}")
+    return written
 
 
 # ── LogPanel ───────────────────────────────────────────────────────────

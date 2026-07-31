@@ -56,7 +56,7 @@ if _utils_dir not in sys.path:
 
 from gui_common import (MIDASImageView, apply_theme, get_colormap,
                          AsyncWorker, LogPanel, add_shortcut, COLORMAPS,
-                         draw_lab_frame_axes)
+                         draw_lab_frame_axes, export_frame_movie)
 
 try:
     import midas_config
@@ -622,6 +622,8 @@ class NFViewer(QtWidgets.QMainWindow):
         self.col_combo.currentIndexChanged.connect(self._on_col_mode_changed)
         # Movie mode: advance frame by 1 (wraps at max)
         self.image_view.movieFrameAdvance.connect(self._movie_advance_frame)
+        # Movie mode: REC button → save a frame range to a file
+        self.image_view.movieSaveRequested.connect(self._save_movie)
         # Drag-and-drop: open dropped file
         self.image_view.fileDropped.connect(self._on_file_dropped)
 
@@ -1098,6 +1100,30 @@ class NFViewer(QtWidgets.QMainWindow):
         mx = self.frame_spin.maximum()
         nxt = cur + 1 if cur < mx else 0
         self.frame_spin.setValue(nxt)
+
+    def _movie_goto_frame(self, frame):
+        """Display *frame*, forcing a reload even if the index is unchanged.
+
+        QSpinBox.setValue only emits valueChanged on an actual change, so the
+        first frame of a movie (usually the one already on screen) would
+        otherwise never be loaded.
+        """
+        frame = int(frame)
+        if self.frame_spin.value() == frame:
+            self._load_and_display()
+        else:
+            self.frame_spin.setValue(frame)
+
+    def _save_movie(self):
+        """Write a frame range to MP4 / GIF / PNG sequence."""
+        stem = os.path.basename(self.fnstem or 'movie') or 'movie'
+        out_dir = self.folder or os.getcwd()
+        export_frame_movie(
+            self, self.image_view,
+            set_frame=self._movie_goto_frame,
+            current_frame=self.frame_spin.value(),
+            n_frames_total=None,
+            default_path=os.path.join(out_dir, f'{stem}_movie.mp4'))
 
     def _on_file_dropped(self, path):
         """Handle file dropped onto the viewer."""
