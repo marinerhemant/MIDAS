@@ -89,7 +89,7 @@ parameter files are used here. **The bundled c-omp binaries in `midas_index/bin`
 | stale `midas-fit-grain` < 0.5.7 | `Grains.csv` DiffPos/DiffOme/DiffAngle cyclically mislabeled | §8 |
 | `peakfit: AllPeaks_PS.bin already exists; skip` | results silently inherited from a previous, differently-configured run | §7 |
 | peakfit / calc_radius from a tree without the 2026-07-30 determinism fixes | **every re-run gives a different `Grains.csv`**; grain positions jump by >100 µm | §12 |
-| grain position quoted without checking the candidate spread | position is a tie-break among candidates spanning ~500 µm, all at completeness 1.0 | §12e |
+| grain position quoted to more than ~100 µm | candidates within a cluster still disagree by 50-280 µm, all at completeness 1.0 | §12e |
 | `indexing(FF): 0 / N seeds with non-zero data` read as a failure | cosmetic — the c-omp backend writes `IndexBest_all.bin`, the counter looks for `IndexBest.bin` | §11 |
 | GrainRadius from a tree without the 2026-07-30 ID-space fix | **every grain reported at ~the sample-wide mean radius**; 5.5× too small here | §13d |
 | legacy FF C binaries fed the pipeline's `Spots.bin`/`nData.bin`/`Data.bin` | PF layout vs FF layout — indexer runs minutes instead of 2 s and indexes nothing; looks like bad parameters | §13b, §13e |
@@ -724,24 +724,35 @@ Full key list: `FF_Parameters_Reference.md`. Keys this runbook depends on:
 - `OmegaStart` semantics as "ω of raw frame 0". This is what the fixed zipper implements
   and what §2's worked example assumes; it is a convention choice, not a measurement.
 
-### Provisional — the Au3 cubes reconstruction is NOT finished
+### Provisional — the Au3 cubes reconstruction is still not a finished result
 
-The `Au3_cubes_ff_000008` run completes all 13 stages and yields 2 grains at confidence
-1.000000 with physical residuals, but it should **not** be reported as a reconstruction:
+The `Au3_cubes_ff_000008` run completes all 13 stages, is bit-reproducible, and yields
+**2 grains** — a parent and its Σ3 twin, both with independent evidence in the raw frames
+(§13g). What it is not yet is a *complete* reconstruction:
 
-- **2 grains explain ~230 of 2076 spots.** ~89 % of the spot list is unindexed.
-- **The reported grain POSITION is a tie-break, not a measurement.** See §12 — this is the
-  most important open issue in the run.
+- **2 grains explain 185 of 2077 spots (8.9 %).** ~91 % of the spot list is unindexed.
+  That is the open item; it is indexing-parameter work (`Completeness`, `MinNrSpots`,
+  `OverAllRingToIndex`), not geometry.
+- **Grain positions are good to ~100 µm, not better** (§12e). Quote them accordingly.
 - `Rsample`/`Hbeam` are the generous search bound, which is correct and must stay that
-  way (§6) — they are not a pending item.
+  way (hard rule 9) — not a pending item.
 
-The run itself is now **bit-reproducible** — see §12 — so the earlier claim that "only one
-of the two grains reproduces across runs" no longer stands as stated; it was the symptom
-of the two determinism bugs fixed there, and the reported second grain was one member of
-the tie-set in §12b.
+Current output, for reference:
 
-Next step is indexing-parameter work (`Completeness`, `MinNrSpots`, `OverAllRingToIndex`,
-the envelope), not more geometry.
+```
+ ID          X          Y          Z    DiffPos   GrainRadius
+ 80    2.685097   1.982347  -5.349646   190.089      114.6207
+185  -10.289690 -22.492229  -3.493707   182.207       99.9628
+```
+
+Both grains sit within ~25 µm of the rotation centre, and DiffPos (190.1 / 182.2 µm)
+is now within ~1 % of the C reference's own residual (188.7 / 181.0 µm).
+
+**Superseded claims — do not resurrect.** Earlier revisions of this document said (i)
+"only one of the two grains reproduces across runs", (ii) "the reported position is a
+tie-break" over ~500 µm, and (iii) that indexing cost scales with `Rsample`/`Hbeam`. All
+three were artifacts of bugs since fixed — the determinism defects (§12b, §12c), the fp32
+refiner (§13f), and a malformed `nData.bin` (§13e) respectively.
 
 ### `indexing(FF): 0 / N seeds with non-zero data` is a cosmetic bug, not a failure
 
@@ -766,6 +777,13 @@ independent 180° repeat, and the rings overlay). Its **handedness** rests on co
 not measurement. The ω sign and the frame-0 skip are the two settings that will silently
 ruin a reconstruction, and both are now pinned by tests or by measurement rather than by
 memory.
+
+The pipeline itself is bit-reproducible (§12) and agrees with the C reference on grain
+reduction, grain radius (2e-7) and refined position (~14 µm) (§13). Five defects found by
+that cross-check are fixed and released; every one of them was **silent** — wrong numbers,
+never an error message. That is the lesson to carry: on this pipeline, check the answer
+against an independent implementation and against the raw frames, because nothing will
+tell you it is wrong.
 
 ---
 
@@ -858,36 +876,29 @@ Three independent full-pipeline runs on `Au3_cubes_ff_000008`, `rm -rf results/`
 each, on chutoro: **bit-identical at all 27 checkpointed artifacts**, `Grains.csv` md5
 `0449046c4a1eaa698d447fa480f10671` all three times.
 
-### 12e. NOT fixed — the reported grain position is decided by a tie-break
+### 12e. Grain position is weakly determined — but far less than first reported
 
-This is a **scientific** limitation and it survives the determinism fix. Making the run
-reproducible means it now returns the *same* answer every time; it does not make that
-answer well-determined.
+**CORRECTED 2026-07-31.** An earlier revision of this section reported cluster members
+spanning **356/193/553 µm** and called the reported position "a tie-break, not a
+measurement". Those numbers were measured with the **broken fp32 refiner** (§13f), which
+was not refining position at all — so most of that spread was the bug, not the data.
+Re-measured on the same seeds after the fix:
 
-Reading `Results/OrientPosFit.bin` from the run: 190 seeds produced **20 alive candidates**
-(completeness > 0), which fall into 4 orientation clusters at 0.5°. The two clusters that
-became grains look like this:
+| candidate cluster | pre-fix (fp32) span X/Y/Z | **after the fix** |
+|---|---|---|
+| cluster 0 (8 members) | 245 / 333 / 534 µm | **47 / 71 / 238 µm** |
+| cluster 1 (9 members) | 642 / 294 / 517 µm | **133 / 56 / 283 µm** |
 
-```
-cluster 0 — 8 candidates, ALL at completeness 1.0000
-  X span 356 µm   Y span 193 µm   Z span 553 µm
-  SpotID  884  pos ( -32.11,   7.36, -132.42)  DiffPos 221.95 µm
-  SpotID  906  pos (  18.28,  -5.46,  150.11)  DiffPos 223.86 µm
-  SpotID 1006  pos (  10.89,  47.83, -108.04)  DiffPos 203.32 µm
-  SpotID 1066  pos (  -8.23, -27.77,  -55.98)  DiffPos 201.75 µm
-  … plus 4 more out to Z = −403 µm at DiffPos 421 µm
+So position determinacy improved 3–5× in X and Y. It is still not tight: the candidates
+within a cluster disagree by ~50–130 µm in X/Y and ~240–280 µm in Z, and they all sit at
+completeness 1.0000, so `Completeness` cannot separate them — with
+`MarginRadius`/`MarginRadial`/`MarginEta` at 500 µm (2.5 px at this pixel size) a grain
+can move a long way with every spot still inside the matching window. The remaining
+discriminator is `DiffPos`, and its minimum is shallow.
 
-cluster 2 — 10 candidates, ALL at completeness 1.0000
-  X span 642 µm   Y span 294 µm   Z span 521 µm
-```
-
-Every one of those candidates matches **all** of its predicted spots, so `Completeness`
-cannot separate them — with `MarginRadius`/`MarginRadial`/`MarginEta` at 500 µm (2.5 px at
-this pixel size) a grain can move ~300 µm and every spot still falls inside the matching
-window. The only discriminator left is `DiffPos`, and across the plausible candidates it
-varies by ~15 % (202 → 232 µm) over ~280 µm of position — a very shallow minimum. Note
-also that the fitted lattice parameter varies 4.0791 → 4.0805 Å (≈350 µε) across the
-cluster: **position and mean lattice parameter are trading off against each other.**
+**What this means in practice:** quote grain positions to ~100 µm on this dataset, not to
+the six decimals `Grains.csv` prints. If you need better, tighten the matching margins
+toward 1 px — do NOT touch `Rsample`/`Hbeam`, which are a search bound (hard rule 9).
 
 ### 12f. Which candidate becomes "the grain" — and the two modes disagree
 
@@ -931,25 +942,22 @@ a printed label. One more reason not to run < 0.5.7.
 
 ### 12g. Why the answer used to jump between runs
 
-In the pre-fix runs a single flipped peak renumbered the spot IDs, which changed cluster
-membership and hence which candidate won the `argmin` — which is why one run reported
-(18.28, −5.46, 150.11) µm and another (10.89, 47.83, −108.04) µm. **Both are members of the
-tie-set in §12e.** Nothing was wrong with the clustering; the position simply is not
-pinned by the data at these settings.
+Before the fixes, a single flipped peak renumbered the spot IDs, which changed cluster
+membership and so changed which candidate won the `argmin` — which is why one run reported
+(18.28, −5.46, 150.11) µm and another (10.89, 47.83, −108.04) µm for the same grain. Both
+were members of the same candidate cluster.
 
-Before quoting a grain position from this dataset:
+Two separate defects fed that: the peak list was not reproducible (§12b, §12c), and the
+fp32 refiner was not moving position at all so the candidates stayed scattered across the
+indexer's coarse position grid (§13f). With both fixed the run is bit-reproducible and the
+candidate spread is 3–5× tighter (§12e).
 
-1. Tighten `MarginRadius` / `MarginRadial` / `MarginEta` from 500 µm (2.5 px) toward ~1 px,
-   so `Completeness` regains discriminating power.
-2. Re-check the candidate spread with the same `OrientPosFit.bin` read — if a cluster's
-   members still span hundreds of µm, the position is still a tie-break.
-
-   Do **not** reach for `Rsample`/`Hbeam` here. Shrinking the envelope would narrow the
-   spread only by clamping candidates against the bound — replacing an honest ambiguity
-   with a fabricated pile-up (§6).
-
-A `DiffPos` of ~200 µm is **1 pixel** at 200 µm pitch. Treat that as the residual floor
-for this detector, and do not quote grain positions to better than the candidate spread.
+If you want the position tighter still, tighten `MarginRadius` / `MarginRadial` /
+`MarginEta` from 500 µm (2.5 px) toward ~1 px so `Completeness` regains discriminating
+power, and re-check the candidate spread by reading `Results/OrientPosFit.bin` (cols 11-13
+are position; col 26 > 0 selects the alive candidates). Do **not** reach for
+`Rsample`/`Hbeam` — shrinking the envelope narrows the spread only by clamping candidates
+against the bound, replacing an honest ambiguity with a fabricated pile-up (hard rule 9).
 
 ---
 
@@ -1032,14 +1040,12 @@ Identical refinement input, C vs python `spot_aware`:
 
 1. **The reduction rule agrees.** Both take the minimum-internal-angle member and copy its
    fit verbatim. Nothing to fix.
-2. **The clustering does not.** C walks the *shared-spot adjacency* in `ProcessKey.bin` and
-   merges neighbours with misorientation < 0.4° (`FindInternalAngles`,
-   `ProcessGrains.c:140`), with `MinNrSpots` defaulting to 1. python Phase-1 clusters
-   globally on misorientation at `MisoriTol` 0.5° and then runs a Pass-A spot-overlap
-   merge. On this data C keeps 6 where python keeps 2. Note the 4 extra C grains have
-   clearly worse residuals (DiffPos 217-396 µm vs 198-204 µm for the two shared), so
-   "C finds more" is not automatically "C is right" — but the two are answering different
-   questions and that should be a deliberate choice, not an accident.
+2. **The clustering does not — and C is the one that is wrong (§13g).** C walks the
+   *shared-spot adjacency* in `ProcessKey.bin` and merges neighbours with misorientation
+   < 0.4° (`FindInternalAngles`, `ProcessGrains.c:140`), `MinNrSpots` defaulting to 1.
+   python Phase-1 clusters globally on misorientation at `MisoriTol` 0.5°, then runs a
+   Pass-A spot-overlap merge. C keeps 6 where python keeps 2 — but those 6 are only **two
+   orientations**, and python's 2 are the physical answer. Resolved in §13g.
 3. **GrainRadius was a genuine python bug — now fixed.** `midas_process_grains` built its
    per-spot radius lookup from `Radius_*.csv`. That file and `ExtraInfo.bin` hold the same
    spots numbered 1..N but in **different orders** (`calc_radius` renumbers, then
@@ -1198,3 +1204,68 @@ is deliberately left on the fixed scale: `position_mode="fixed"` locks the
 voxel to the scan grid there, so position is not a free parameter, and PF
 carries C-parity gates. Apply the same equilibration if you enable
 `position_mode="voxel_bounded"`.
+
+### 13g. RESOLVED — C's 6 grains are 2 orientations, and one is a Σ3 twin
+
+C reports 6, python `spot_aware` reports 2, from identical refinement. Measuring pairwise
+misorientation settles it: the 6 are **two families**, not six orientations.
+
+```
+           1000      899     1014      918     1177     1176
+ 1000         -    0.638    0.079    0.203   59.973   59.850
+  899     0.638        -    0.570    0.448   59.918   59.959
+ 1014     0.079    0.570        -    0.127   59.995   59.882
+  918     0.203    0.448    0.127        -   59.977   59.899
+ 1177    59.973   59.918   59.995   59.977        -    0.620
+ 1176    59.850   59.959   59.882   59.899    0.620        -
+```
+
+**C is over-segmenting.** 1000 and 1014 differ by **0.079°** and share **70 %** of their
+spots (Jaccard 0.697); 1000/1014/918 are mutually < 0.21°, comfortably inside C's own 0.4°
+merge threshold. They stayed separate only because `FindInternalAngles` requires
+misorientation < 0.4° **AND** shared-spot adjacency in `ProcessKey.bin` — near-identical
+orientations that miss that adjacency link never get compared. The duplicates are also the
+worse fits: the two python-matching grains (1000, 1177) have the lowest DiffPos
+(188.7, 181.0) and Conf 1.000, while the extras run 206–333 with Conf 0.875–0.983.
+
+python's two land on C's best members at **0.031°** and **0.018°**, and no C grain is more
+than 1° from a python counterpart. **python `spot_aware` gives the right answer here.**
+
+**The cross-family ~60° is a Σ3 annealing twin**, and it is about ⟨111⟩ — every one of the
+eight cross pairs, several within 0.01–0.11° of the ideal axis. So the specimen is one
+grain plus its twin.
+
+#### Verified against the raw frames
+
+Orientation algebra alone would not settle this — a phase can score highly on reflections
+it *borrows* from another (exactly what killed a Zn/Cu epitaxy claim in the Fuller Laue
+campaign). The honest test is whether the twin has spots that are **its own**:
+
+```
+parent 1000: 112 spots     twin 1177: 116 spots     shared: 43
+                                    -> 73 spots belong to the twin alone
+```
+
+Those 73 were checked directly in the dark-subtracted frames, at the predicted pixel:
+
+| spot set | SNR > 5 | median SNR | min |
+|---|---|---|---|
+| **twin-only** | **30/30** | **1718** | 351 |
+| parent-only | 30/30 | 1634 | 135 |
+| shared | 30/30 | 1736 | 820 |
+
+The pixel convention was **not assumed** — it was calibrated on spots already known to be
+real, and came out unambiguous: `img[z, y]` with `row = BCZ + z/px`, `col = BCY − y/px`
+gives median SNR **1469** where all seven alternative axis/sign combinations give ~1.0.
+Residual registration is ~1 px (median +0.77 px in column, 1.03 px radial), because this
+check ignores the distortion terms p0–p14 and the detector tilt; the ±6 px signal box
+absorbs that.
+
+Figure + generators: `twin_vs_frames.png`, `twin_vs_frames.py`, `twin_frames_fig.py`
+(beamtime `analysis/au3_cubes_ff_000008/`).
+
+**Method worth reusing:** when two codes disagree on grain count, ask (a) pairwise
+misorientation — are these even different orientations? (b) spot-set Jaccard — are they
+explaining the same observations? and (c) for any orientation you want to believe, does it
+have *exclusive* spots with real intensity? (a)+(b) separate over-segmentation from real
+grains; (c) stops you believing a phase that only ever borrows peaks.
