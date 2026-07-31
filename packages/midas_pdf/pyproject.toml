@@ -4,7 +4,7 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "midas-pdf"
-version = "0.1.0"
+version = "0.1.1"
 description = "Differentiable, error-propagating total-scattering / pair-distribution-function (PDF, G(r)) pipeline. Thin Faber-Ziman layer over midas-hkls (form factors) and midas-integrate-v2 (integration, Compton, sine FT)."
 readme = "README.md"
 license = "BSD-3-Clause"
