@@ -35,6 +35,25 @@ class BlockFitResult:
     n_iter: int
     converged: bool
 
+    # How far the optimizer actually moved each grain's position from the seed
+    # it was handed, in µm. Reported because ``converged`` cannot express the
+    # one failure that matters here: when torch.optim.LBFGS's strong-Wolfe
+    # line search gives up and returns t = 0, the loss repeats bit-for-bit,
+    # the ftol counter trips, and the solver truthfully reports "the loss
+    # stopped changing" — while nothing was ever refined. fp32 does exactly
+    # that to FF grain fits: every grain kept its seed position, ~158 µm off
+    # the C reference FitPosOrStrainsOMP, and nothing downstream noticed
+    # (1-ID GE5 Au3, 2026-07-30).
+    #
+    # Judge these against a scale that carries units — the detector pixel
+    # (``cfg.px``). A block in which not one grain's position moved by even a
+    # pixel-equivalent did no useful work, whatever ``converged`` says.
+    max_position_move_um: float = 0.0
+    median_position_move_um: float = 0.0
+    # Bit-identical to the seed: the strongest form of the same statement.
+    n_unmoved_position: int = 0
+    n_grains: int = 0
+
 
 def _rematch_batch(
     *,
@@ -214,6 +233,74 @@ def _make_block_closures(
     }
 
 
+# Bounds on the auto-derived position scale. The lower bound keeps the
+# historical 100 µm behaviour as a floor; the upper one stops a seed that
+# happens to sit at a position stationary point (|g_pos| → 0) from producing
+# an absurd scale.
+_POS_SCALE_MIN = 100.0
+_POS_SCALE_MAX = 1.0e9
+
+
+def _equilibrated_pos_scale(
+    *, model, obs, match, cfg,
+    init_positions: torch.Tensor,
+    init_eulers: torch.Tensor,
+    init_lattices: torch.Tensor,
+) -> float:
+    """Choose ``pos_scale`` so the position gradient block matches the
+    largest other block at the seed.
+
+    L-BFGS applies ONE step length to the concatenated
+    ``(pos_scaled, euler, lattice)`` vector, so a block whose gradient is much
+    smaller than the others barely moves. With the historical fixed
+    ``pos_scale = 100`` the FF orientation gradient is ~1500× the position
+    gradient, and position advances ~1500× less per step. fp64 has the mantissa
+    headroom to keep resolving that; fp32, whose gradient carries ~1e-4
+    relative rounding noise, does not — the position component of the step
+    lands under the noise, the line search finds no further descent, and the
+    grain keeps its seed position. Measured on the synthetic fixture:
+
+        pos_scale   |g|pos    |g|euler   ratio   fp32 error vs truth
+             1e2      95.8     1.47e5    1537            154.27 µm
+             1e3       958     1.47e5     154              0.75 µm
+             1e4      9581     1.47e5    15.4              0.013 µm
+             1e5    9.58e4     1.47e5     1.5              0.004 µm
+
+    Accuracy tracks the ratio monotonically, so the scale is not tuned — it is
+    the value that makes the ratio 1. Since ``d/d(pos_scaled) = s · d/d(pos)``,
+    that value is ``s = |g_other| / |g_pos_µm|``.
+
+    This is a pure reparameterization: every other use of ``pos_scale``
+    (``pos = pos_scaled · pos_scale`` and the sample-cylinder clamp, which
+    divides the µm bounds by it) stays consistent for any ``s``.
+    """
+    ps = init_positions.detach().clone().requires_grad_(True)
+    eu = init_eulers.detach().clone().requires_grad_(True)
+    la = init_lattices.detach().clone().requires_grad_(True)
+    try:
+        res = batch_residuals(
+            model, grain_position=ps, grain_euler=eu, grain_lattice=la,
+            obs=obs, match=match, kind=cfg.loss,
+            px=cfg.px, y_BC=model.y_BC, z_BC=model.z_BC,
+        )
+        (res * res).sum().backward()
+    except Exception:                                        # noqa: BLE001
+        # Never let the preconditioner break a fit that would otherwise run.
+        return _POS_SCALE_MIN
+
+    def _n(t):
+        return float(t.detach().norm()) if t is not None else 0.0
+
+    g_pos = _n(ps.grad)
+    g_other = max(_n(eu.grad), _n(la.grad))
+    if not (g_pos > 0.0) or not (g_other > 0.0):
+        return _POS_SCALE_MIN
+    s = g_other / g_pos
+    if not math.isfinite(s):
+        return _POS_SCALE_MIN
+    return float(min(max(s, _POS_SCALE_MIN), _POS_SCALE_MAX))
+
+
 def refine_block(
     cfg: FitConfig,
     *,
@@ -223,7 +310,7 @@ def refine_block(
     init_eulers:    torch.Tensor,    # (B, 3) rad
     init_lattices:  torch.Tensor,    # (B, 6)
     pred_ring_slot: torch.Tensor,    # (M,)
-    pos_scale: float = 100.0,
+    pos_scale: float | str = "auto",
     precomputed_matches: Optional[Sequence[MatchResult]] = None,
 ) -> BlockFitResult:
     """Refine ``B`` grains in one batched call.
@@ -254,6 +341,13 @@ def refine_block(
 
     omega_tol = max(cfg.MarginOme, 2.0) * DEG2RAD
     eta_tol = max(cfg.MarginEta, 5.0) * DEG2RAD
+
+    if isinstance(pos_scale, str):
+        pos_scale = _equilibrated_pos_scale(
+            model=model, obs=obs, match=match, cfg=cfg,
+            init_positions=init_positions, init_eulers=init_eulers,
+            init_lattices=init_lattices,
+        )
 
     pos_scaled = (init_positions / pos_scale).clone()
     euler = init_eulers.clone()
@@ -482,9 +576,21 @@ def refine_block(
             per_spot_residuals=per_spot_res.detach(),
         ))
 
+    # Did the optimizer actually move each grain's position? See the fields on
+    # BlockFitResult for why this is reported.
+    _seed_pos = init_positions.to(device=pos_final.device, dtype=pos_final.dtype)
+    _move = (pos_final - _seed_pos).norm(dim=-1).double()
+    n_unmoved = int((pos_final == _seed_pos).all(dim=-1).sum())
+
     return BlockFitResult(
         grains=out,
         final_total_loss=total_loss,
         n_iter=total_iter,
         converged=any(converged_phases),
+        max_position_move_um=float(_move.max()) if _move.numel() else 0.0,
+        median_position_move_um=(
+            float(_move.median()) if _move.numel() else 0.0
+        ),
+        n_unmoved_position=n_unmoved,
+        n_grains=int(B),
     )

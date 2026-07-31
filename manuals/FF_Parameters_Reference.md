@@ -73,7 +73,7 @@ Read primarily by `ff_MIDAS.py` and `ffGenerateZipRefactor.py`.
 | `StartFileNrFirstLayer`   | int  | —       | 1        | no       | file-discovery | Starting file number for layer 1 (multi-layer runs). |
 | `NrFilesPerSweep`         | int  | count   | 1        | no       | file-discovery | Files per ω sweep (multi-wedge scans). |
 | `Dark`                    | str  | path    | `""`     | no       | peak-search    | Dark/background frame (basename or full path). |
-| `SkipFrame`               | int  | count   | 0        | no       | file-discovery | Frames to skip at start of each sweep. |
+| `SkipFrame`               | int  | count   | 0        | no       | file-discovery | Leading frames to drop from the sweep and the dark stack. **Applied by the consumer (peakfit), not by the zipper** — the zarr keeps every raw frame of the first file and records `SkipFrame`; `midas_peakfit` then does `nFrames -= SkipFrame` and reads `frame_nr + SkipFrame`. `OmegaStart` is the omega of the first frame you want to **use** (post-skip); the zarr's `scan_parameters/start` is back-dated to `OmegaStart − SkipFrame·OmegaStep` so it describes raw frame 0. **At APS 1-ID set this to 1 for GE/far-field** — frame 0 of every GE acquisition is a throwaway (not applicable to NF). |
 | `HeadSize`                | int  | bytes   | 0 (→8192 if `DataType=1`) | no | file-discovery | Header to skip in raw binary. Auto-set to 8192 for GE. |
 | `DataType`                | int  | code    | 1        | no       | file-discovery | 1 = GE uint16 with 8192 header; other values for Pilatus/Dexela/etc. |
 | `ScanStep`                | float | µm     | —        | no       | file-discovery | Translation step between scan points (PF/multi-scan). |

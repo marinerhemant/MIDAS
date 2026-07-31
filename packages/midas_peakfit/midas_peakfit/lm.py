@@ -16,20 +16,12 @@ Marquardt's diagonal-scaled damping is used (``λ × diag(J^T J)``) rather than
 """
 from __future__ import annotations
 
+import contextlib
 from dataclasses import dataclass
 from typing import Tuple
 
 import torch
 from torch.func import jacrev, vmap
-
-# Enable TF32 tensor-core matmul whenever fp32 inputs hit cuBLAS. Used by
-# the mixed-precision LM path below — see ``LMConfig.matmul_precision``.
-if torch.cuda.is_available():
-    try:
-        torch.backends.cuda.matmul.allow_tf32 = True
-        torch.backends.cudnn.allow_tf32 = True
-    except Exception:
-        pass
 
 from midas_peakfit.jacobian import residuals_and_jacobian_u
 from midas_peakfit.jacobian_triton import (
@@ -39,6 +31,43 @@ from midas_peakfit.jacobian_triton import (
 from midas_peakfit.model import residuals
 from midas_peakfit.reparam import u_to_x, x_to_u
 from midas_peakfit.uncertainty import compute_param_sigma
+
+
+@contextlib.contextmanager
+def _tf32(enabled: bool):
+    """Scope TF32 tensor-core matmul to the block that asked for it.
+
+    This used to be a module-level ``allow_tf32 = True`` executed at import.
+    Two problems with that:
+
+    1. It is a PROCESS-WIDE side effect of an import. Anything else running
+       in the same interpreter — other midas packages, a user's own torch
+       code — silently got TF32 fp32 matmuls it never asked for.
+    2. The justification in ``LMConfig.matmul_precision`` only covers the
+       fp64 path, where J is cast to fp32 for the ``J^T J`` matmul and the
+       Cholesky and delta solve stay fp64. But when the LM itself runs in
+       fp32 (``midas-pipeline --dtype float32``, the FF default) the global
+       flag also caught the *plain* ``Jt @ J``, assembling the normal
+       equations at TF32's 10-bit mantissa with no fp64 anywhere to absorb
+       it. Combined with batch-size-dependent kernel selection that made the
+       peak fit non-reproducible: 1167 of 8599 peaks moved between two runs
+       on identical input (1-ID GE5 FF scan, 2026-07-30).
+
+    So: enable it explicitly, only around the matmul that was designed for
+    it, and put it back afterwards.
+    """
+    if not enabled or not torch.cuda.is_available():
+        yield
+        return
+    prev_matmul = torch.backends.cuda.matmul.allow_tf32
+    prev_cudnn = torch.backends.cudnn.allow_tf32
+    try:
+        torch.backends.cuda.matmul.allow_tf32 = True
+        torch.backends.cudnn.allow_tf32 = True
+        yield
+    finally:
+        torch.backends.cuda.matmul.allow_tf32 = prev_matmul
+        torch.backends.cudnn.allow_tf32 = prev_cudnn
 
 
 @dataclass
@@ -273,16 +302,22 @@ def lm_solve(
         # so the LM trajectory remains numerically stable. Empirically the
         # δ vector deviates by <1e-6 relative per iter, which the next
         # iter corrects.
+        #
+        # NOTE the fp64 guard: this trade is only sound when the LM itself is
+        # in fp64, because the Cholesky and delta solve below then absorb the
+        # matmul's precision loss. In an fp32 LM there is nothing to absorb
+        # it, so the else-branch must run at true fp32 — see ``_tf32``.
         if (
             config.matmul_precision == "tf32"
             and J.device.type == "cuda"
             and J.dtype == torch.float64
         ):
-            J32 = J.float()
-            r32 = r_a.float()
-            Jt32 = J32.transpose(-1, -2)
-            H = (Jt32 @ J32).double()
-            g = (Jt32 @ r32.unsqueeze(-1)).squeeze(-1).double()
+            with _tf32(True):
+                J32 = J.float()
+                r32 = r_a.float()
+                Jt32 = J32.transpose(-1, -2)
+                H = (Jt32 @ J32).double()
+                g = (Jt32 @ r32.unsqueeze(-1)).squeeze(-1).double()
         else:
             Jt = J.transpose(-1, -2)  # [Ba, N, M]
             H = Jt @ J  # [Ba, N, N]

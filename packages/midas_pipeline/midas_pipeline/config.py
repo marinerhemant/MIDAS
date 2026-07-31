@@ -193,6 +193,45 @@ class RefinementConfig:
     solver: RefineSolver = "lbfgs"
     loss: RefineLoss = "full3d"      # full 3D loss (y,z,ω); 2D 'pixel' disabled
     mode: RefineMode = "all_at_once"
+
+    # Precision for the FF refiner. Deliberately NOT inherited from the run's
+    # global ``dtype``: ``cli._resolve_dtype`` maps ``--dtype auto`` to float32
+    # on cuda/mps for throughput, which is fine for peak fitting.
+    #
+    # History, because the reason changed: fp32 refinement was found leaving
+    # every grain on its seed position — median |Δposition| vs the C reference
+    # `FitPosOrStrainsOMP` of 158.2 µm, against 13.4 µm for fp64, on the
+    # 1-ID GE5 Au3 scan (2026-07-30). That was first read as a precision
+    # limit. It is not: the root cause was PARAMETER SCALING. L-BFGS applies
+    # one step length to the concatenated (position, orientation, lattice)
+    # vector, and the fixed ``pos_scale = 100`` left the orientation gradient
+    # ~1500× the position gradient, so position advanced ~1500× less per step
+    # — resolvable in fp64, buried under fp32's ~1e-4 gradient rounding noise.
+    # ``midas_fit_grain.refine_block`` now derives ``pos_scale`` from the
+    # entry gradient so the blocks are balanced, after which fp32 recovers to
+    # 0.003–0.005 µm on the synthetic fixture (from 154 / 68 / 30 µm).
+    #
+    # Since verified on the real dataset (1-ID GE5 Au3, 189 C-indexer seeds,
+    # against the C reference `FitPosOrStrainsOMP`):
+    #
+    #   config                        median |Δposition| vs C   DiffPos median
+    #   fp32, fixed pos_scale=100              158.24 µm            231.9
+    #   fp64, fixed pos_scale=100               13.38 µm            199.07
+    #   fp32, auto pos_scale                    13.65 µm            196.94
+    #   fp64, auto pos_scale                    13.96 µm            199.11
+    #                                        (C reference itself:   193.89)
+    #
+    # So with the equilibration fix fp32 is as good as fp64 — marginally
+    # better on DiffPos — and 2-3x faster (5 s vs 11 s cpu; whole-pipeline
+    # refinement 16.4 s at fp64, down from 51.9 s before the fix, since
+    # balancing the blocks also speeds convergence).
+    #
+    # float64 is kept as the default because it is cheap at this scale and is
+    # the conservative choice; the remaining |Δ| vs C is dominated by the
+    # genuine position ambiguity (candidates spanning ~500 µm at completeness
+    # 1.0), not by precision. Set "float32" for throughput on large runs —
+    # that is now a supported trade, not a correctness risk.
+    dtype: Dtype = "float64"
     # Sigmoid box-bound reparameterization (torch-native, autograd).
     # Bounds the optimizer around the seed so it cannot drift to
     # alternative minima; preserves device portability (no scipy).

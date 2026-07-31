@@ -167,30 +167,53 @@ class ProcessGrains:
             self.spot_radius_by_id = self._load_spot_radius_by_id()
 
     def _load_spot_radius_by_id(self) -> Optional[np.ndarray]:
-        """Build a SpotID → grain-radius (µm) lookup from ``Radius_*.csv``.
+        """Build a SpotID → grain-radius (µm) lookup from ``ExtraInfo.bin``.
 
-        ``midas-calc-radius`` (midas_transforms) writes ``Radius_StartNr_*.csv``
-        with col 0 = SpotID and col 15 = per-spot GrainRadius. Returns a dense
-        array indexed by SpotID (0 where unknown), or ``None`` when no Radius
-        file is present (callers then keep the refiner's meanRadius).
+        **This must NOT come from ``Radius_*.csv``.** Both files hold the same
+        2076 spots and both number them 1..N, but in *different orders*, so the
+        integer N names a different physical spot in each:
+
+        * ``calc_radius`` writes ``Radius_*.csv`` in its own order and
+          renumbers col 0 to 1..N_out (its col 24 ``OrigSpotID`` is the
+          merge-space id, not this one);
+        * ``bin_data`` then sorts by ``(RingNumber, Omega, Eta)`` and
+          renumbers *again* into ``ExtraInfo.bin`` / ``Spots.bin``.
+
+        Everything downstream — the refiner, ``FitBest.bin``, ``SpotMatrix``,
+        the ids in this function's callers — lives in the **ExtraInfo** space.
+        Joining a Radius_*.csv-keyed lookup against those ids silently averaged
+        ~112 arbitrary spots' radii, so every grain came out near the *global*
+        mean radius instead of its own: on the 1-ID GE5 Au3 scan the two grains
+        were reported at 20.775 / 17.161 µm when the true values are
+        114.621 / 99.963 µm — 5.5× too small. Verified against the C reference
+        ``FF_HEDM/src/ProcessGrains.c``, which never had the bug because it
+        takes ``OrientPosFit.bin`` col 25 straight from the refiner (which
+        itself reads ExtraInfo col 3, ``observations.py:102``): it reports
+        114.620659 / 99.962738 µm on this identical input.
+
+        ``ExtraInfo.bin`` is ``(N, 16)`` float64 with col 4 = SpotID and
+        col 3 = per-spot ring-derived grain radius (µm). Returns a dense array
+        indexed by SpotID (0 where unknown), or ``None`` when the file is
+        absent (callers then keep the refiner's meanRadius).
         """
-        cands = sorted(self.run_dir.glob("Radius_StartNr_*.csv"))
-        if not cands:
+        path = self.run_dir / "ExtraInfo.bin"
+        if not path.exists():
             return None
         try:
-            arr = np.loadtxt(cands[0], skiprows=1, usecols=(0, 15))
+            arr = np.fromfile(path, dtype=np.float64)
         except Exception:
             return None
-        if arr.ndim == 1:
-            arr = arr[None, :]
-        if arr.size == 0:
+        if arr.size == 0 or arr.size % 16 != 0:
             return None
-        sids = arr[:, 0].astype(np.int64)
-        rad = arr[:, 1].astype(np.float64)
-        max_sid = int(sids.max())
-        out = np.zeros(max_sid + 1, dtype=np.float64)
-        ok = (sids >= 0) & (sids <= max_sid)
-        out[sids[ok]] = rad[ok]
+        arr = arr.reshape(-1, 16)
+        sids = arr[:, 4].astype(np.int64)
+        rad = arr[:, 3].astype(np.float64)
+        keep = sids >= 0
+        if not keep.any():
+            return None
+        sids, rad = sids[keep], rad[keep]
+        out = np.zeros(int(sids.max()) + 1, dtype=np.float64)
+        out[sids] = rad
         return out
 
     # ---- Run ---------------------------------------------------------------
@@ -600,7 +623,8 @@ class ProcessGrains:
             # Physical grain radius: mean of the per-spot radii over this
             # grain's matched spots (legacy FitPosOrStrainsOMP meanRadius). The
             # c-omp refiner wrote a meanRadius=1 placeholder into OrientPosFit;
-            # override it here from Radius_*.csv when available.
+            # override it here from ExtraInfo.bin, which shares this ID space.
+            # See _load_spot_radius_by_id for why Radius_*.csv must not be used.
             if self.spot_radius_by_id is not None:
                 sids = sid_col[sid_col > 0]
                 if sids.size:

@@ -186,10 +186,24 @@ def refine_grain(
     device = init_position.device
     dtype = init_position.dtype
 
-    # The optimizer parameters (`pos_scaled`, euler, lattice) are crafted so
-    # all three have comparable gradient magnitudes. ``pos_scaled`` is in
-    # units of ``pos_scale`` micrometers per unit; the closure converts back
-    # via ``pos = pos_scaled * pos_scale``.
+    # ``pos_scaled`` is in units of ``pos_scale`` micrometers per unit; the
+    # closure converts back via ``pos = pos_scaled * pos_scale``.
+    #
+    # The intent of that rescale is that (`pos_scaled`, euler, lattice) have
+    # comparable gradient magnitudes, because L-BFGS applies ONE step length
+    # to the concatenated vector. MEASURED, the fixed ``pos_scale = 100`` does
+    # not achieve it on FF geometry: the orientation gradient is ~1500× the
+    # position gradient, so position advances ~1500× less per step. In fp32
+    # that puts the position increment under the gradient's own rounding noise
+    # and the grain keeps its seed position entirely (1-ID GE5 Au3,
+    # 2026-07-30). ``refine_block`` now derives the scale from the entry
+    # gradient instead — see ``refine_block._equilibrated_pos_scale``.
+    #
+    # This per-grain path is left on the fixed scale deliberately: its only
+    # production caller is ``scan_driver`` (PF scanning), where
+    # ``position_mode="fixed"`` locks the voxel to the scan grid so position
+    # is not a free parameter, and PF carries C-parity gates. If you enable
+    # ``position_mode="voxel_bounded"``, apply the same equilibration here.
     pos_scaled = (init_position.clone().to(device=device, dtype=dtype) / pos_scale)
     euler = init_euler.clone().to(device=device, dtype=dtype)
     lattice = init_lattice.clone().to(device=device, dtype=dtype)

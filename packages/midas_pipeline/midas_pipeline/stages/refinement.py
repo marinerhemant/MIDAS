@@ -29,6 +29,35 @@ from ..results import RefineResult, StageResult
 from ._base import StageContext
 from ._stub import stub_run
 
+# midas_fit_grain's driver emits this marker when a refined grain position
+# came back bit-identical to its seed — i.e. the fit never moved it.
+_UNREFINED_MARKER = "UNREFINED-POSITIONS:"
+
+
+def _surface_unrefined_positions(log_dir: Path) -> None:
+    """Re-log the refiner's unrefined-position warning into the run log.
+
+    FF refinement runs in a subprocess whose output goes to
+    ``refinement_{out,err}.csv``, which nobody reads. A run where the solver
+    silently returned seed positions therefore looked completely normal in
+    ``ff_run.log`` — that is how ~158 µm of grain-position error shipped
+    unnoticed (1-ID GE5 Au3, 2026-07-30). Promote it to the log people
+    actually read.
+    """
+    for name in ("refinement_err.csv", "refinement_out.csv"):
+        path = log_dir / name
+        if not path.exists():
+            continue
+        try:
+            text = path.read_text(errors="replace")
+        except OSError:
+            continue
+        for line in text.splitlines():
+            if _UNREFINED_MARKER in line:
+                LOG.warning("refinement(FF): %s",
+                            line.split(_UNREFINED_MARKER, 1)[1].strip())
+                return
+
 
 def _run_ff(ctx: StageContext) -> StageResult:
     """FF (single-scan) refinement — shell out to ``python -m midas_fit_grain``.
@@ -65,6 +94,12 @@ def _run_ff(ctx: StageContext) -> StageResult:
     # The 2D 'pixel' loss is removed (it omitted omega and gave poor,
     # under-determined fits); refinement always uses a full 3D / angular loss.
     loss = ctx.config.refinement.loss
+
+    refine_dtype = ctx.config.refinement.dtype
+    if refine_dtype != ctx.config.dtype:
+        LOG.info("refinement(FF): using dtype=%s (run dtype=%s) — conservative "
+                 "default; see RefinementConfig.dtype",
+                 refine_dtype, ctx.config.dtype)
 
     # c-omp backend writes its IndexBest*_all.bin into <layer_dir>/Output; hand
     # fit-grain the matching paramstest so it reads them from there.
@@ -109,11 +144,15 @@ def _run_ff(ctx: StageContext) -> StageResult:
             str(ctx.config.n_cpus),
             "--solver", ctx.config.refinement.solver,
             "--loss", loss,
-            # Forward the run's device/dtype so the refiner doesn't auto-select
-            # MPS (which can't do float64 → crash on Apple Silicon). Honors
+            # Forward the run's device so the refiner doesn't auto-select MPS
+            # (which can't do float64 → crash on Apple Silicon). Honors
             # --device cpu/cuda from the pipeline invocation.
             "--device", str(ctx.config.device),
-            "--dtype", str(ctx.config.dtype),
+            # dtype comes from RefinementConfig, NOT the run's global dtype:
+            # `--dtype auto` resolves to float32 on cuda for peak-fitting
+            # throughput, and fp32 costs ~158 µm of grain position here. See
+            # the note on RefinementConfig.dtype.
+            "--dtype", str(refine_dtype),
         ]
         if ctx.config.refinement.mode:
             cmd += ["--mode", ctx.config.refinement.mode]
@@ -124,6 +163,7 @@ def _run_ff(ctx: StageContext) -> StageResult:
                 cmd, cwd=str(layer_dir), check=True,
                 stdout=out_fp, stderr=err_fp,
             )
+        _surface_unrefined_positions(log_dir)
 
     finished = time.time()
     orient_pos_fit = results_dir / "OrientPosFit.bin"

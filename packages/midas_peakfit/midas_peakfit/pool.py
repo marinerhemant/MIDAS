@@ -15,9 +15,37 @@ Consumer side (dedicated thread, started by ``pool.start()``):
 
 Bucket capacity is computed per-bucket from free GPU memory, so a bucket of
 small regions has a much higher capacity than a bucket of large ones.
+
+REPRODUCIBILITY CONTRACT
+------------------------
+``lm_solve`` is mathematically independent per region, but numerically it is
+not: batching B regions into one call selects a different cuBLAS/MAGMA
+batched-GEMM and Cholesky kernel, and the last bits of ``J^T J`` move with
+it. So a region's fitted parameters depend on *which other regions it was
+solved alongside*. If that grouping varies between runs, the peak list
+varies, and every downstream stage (spot IDs, indexing seeds, grain IDs)
+varies with it — measured on a 1-ID GE5 FF scan as 1167 of 8599 peaks
+differing between two runs of identical input.
+
+Grouping is therefore made a pure function of the *insertion sequence*,
+which the orchestrator guarantees is deterministic (both producer paths
+consume ``Executor.map``, which yields in submission order):
+
+  * ``_capacity_for_bucket`` is cached per ``(n_peaks, m_pixels)`` and
+    quantized to a power of two, so live free-VRAM / MemAvailable jitter
+    does not change the quantum;
+  * the consumer pulls **exactly** ``cap`` entries from the head of a
+    bucket, never "whatever has piled up" — otherwise chunk boundaries
+    would land wherever the consumer thread happened to be scheduled.
+
+Only the end-of-stream drain emits a short final chunk, and that chunk is
+still a deterministic function of the insertion sequence. Memory adaptivity
+is unchanged: capacity still sizes itself to the device, it just stops
+re-deciding mid-run.
 """
 from __future__ import annotations
 
+import math
 import threading
 from collections import defaultdict
 from dataclasses import dataclass
@@ -83,9 +111,20 @@ class RegionPool:
         self.buckets: Dict[Tuple[int, int], List[_PoolEntry]] = defaultdict(list)
         self.frame_outputs: Dict[int, List[FitOutput]] = defaultdict(list)
         self._spot_id_per_frame: Dict[int, int] = defaultdict(lambda: 1)
-        # keyed by (n_peaks, m_pixels, n_live_buckets) — capacity depends on
-        # how many buckets are sharing the GPU budget at the time.
-        self._cached_capacity: Dict[Tuple[int, int, int], int] = {}
+        # Keyed by (n_peaks, m_pixels) ONLY, and decided once. It used to also
+        # key on the live bucket count, which meant the same bucket got a
+        # different capacity every time the population changed — and capacity
+        # is the batch quantum, so that silently reshuffled which regions were
+        # solved together. See the reproducibility contract in the module
+        # docstring.
+        self._cached_capacity: Dict[Tuple[int, int], int] = {}
+
+        # Free-device-memory snapshot, taken once. Re-reading it per bucket
+        # made the batch quantum — and therefore the grouping — depend on
+        # whatever else was on the card at that instant.
+        self._dev_free_snapshot = self._free_memory_bytes()
+        # Running total of HOST bytes held by queued (unflushed) entries.
+        self._queued_bytes = 0
 
         # Synchronization primitives for async consumer
         self._cond = threading.Condition()
@@ -176,58 +215,60 @@ class RegionPool:
         return (3 * m_pixels + 3 * n_params) * 8 + 512
 
     def _capacity_for_bucket(self, n_peaks: int, m_pixels: int) -> int:
-        """Max entries to accumulate before flushing this bucket.
+        """The batch quantum for this bucket: how many entries are solved in
+        one ``lm_solve`` call.
 
-        Two INDEPENDENT limits — conflating them was the bug:
+        This is a *device* bound — the flush builds one batch on the device,
+        so it must fit in device memory. Only ``_MAX_CONCURRENT_FLUSHES`` of
+        these exist at once (the consumer flushes serially), so it is sized
+        against device memory / that small constant.
 
-        1. *Batch* limit — the flush builds one ``lm_solve`` batch on the
-           device, so it must fit in device memory. Only ``_MAX_CONCURRENT_
-           FLUSHES`` of these exist at once (the consumer flushes serially),
-           so it is sized against device memory / that small constant — NOT
-           divided by the number of live buckets.
-        2. *Residency* limit — queued entries sit in HOST memory across ALL
-           live buckets simultaneously. That total is what OOM-killed a 250GB
-           host (~1147 live buckets × ~1100 entries). It is bounded globally
-           and shared out per live bucket.
+        Host residency (queued entries waiting to be flushed, across ALL live
+        buckets — what OOM-killed a 250GB host at ~1147 live buckets × ~1100
+        entries) is NOT folded in here any more. It is a global quantity, not
+        a per-bucket one, and folding it in made the quantum depend on the
+        live bucket count, i.e. on timing. It is enforced separately by
+        ``_over_residency_budget`` in the consumer loop.
 
-        Capacity is the min of the two. Sizing only by (1) over-commits host
-        RAM; sizing everything by (2) (the first cut of this fix) needlessly
-        starved the device batches down to 1.
+        Decided ONCE per (n_peaks, m_pixels) from a free-memory snapshot taken
+        at construction, and quantized down to a power of two, so that ordinary
+        run-to-run variation in free VRAM cannot change the grouping. See the
+        reproducibility contract in the module docstring.
         """
-        n_live = max(1, sum(1 for e in self.buckets.values() if e))
-        key = (n_peaks, m_pixels, n_live)
+        key = (n_peaks, m_pixels)
         if key in self._cached_capacity:
             return self._cached_capacity[key]
 
         solve_b = self._solve_bytes_per_region(n_peaks, m_pixels)
-        resident_b = self._resident_bytes_per_entry(n_peaks, m_pixels)
 
         # On CPU the solve batch and the queued entries draw on the SAME RAM,
         # so the budget must be split between them; on CUDA they are separate
         # pools (VRAM vs host) and each gets its own share.
         share = 0.5 if self.device.type == "cpu" else 1.0
 
-        dev_free = self._free_memory_bytes()
-        batch_cap = int(dev_free * self.memory_safety_factor * share
-                        / self._MAX_CONCURRENT_FLUSHES / solve_b)
-
-        host_share = (self._host_budget_bytes() * self.memory_safety_factor
-                      * share / n_live)
-        resident_cap = int(host_share / resident_b)
+        batch_cap = int(self._dev_free_snapshot * self.memory_safety_factor
+                        * share / self._MAX_CONCURRENT_FLUSHES / solve_b)
 
         # >=1 and no max(8, ...) floor: the old floor silently over-committed
         # when even a single region did not fit. _MAX_SOLVE_BATCH additionally
         # bounds the batched-linalg call count (see the constant's note).
-        cap = max(1, min(batch_cap, resident_cap,
-                         self._MAX_SOLVE_BATCH, self.max_bucket_size))
+        raw = max(1, min(batch_cap, self._MAX_SOLVE_BATCH, self.max_bucket_size))
+        cap = 1 << int(math.floor(math.log2(raw)))
         self._cached_capacity[key] = cap
         self._log(
             f"[pool] bucket(n_peaks={n_peaks}, M={m_pixels}): "
-            f"solve={solve_b / 1024:.1f}KB resident={resident_b / 1024:.1f}KB "
-            f"→ batch_cap={batch_cap} resident_cap={resident_cap} "
-            f"({n_live} live) → capacity={cap}"
+            f"solve={solve_b / 1024:.1f}KB → batch_cap={batch_cap} "
+            f"→ quantum={cap}"
         )
         return cap
+
+    def _over_residency_budget(self) -> bool:
+        """True when queued (not-yet-flushed) entries are eating too much
+        HOST RAM. Backstop for the 250GB-host OOM; normally never fires
+        because buckets reach their quantum and flush long before this."""
+        share = 0.5 if self.device.type == "cpu" else 1.0
+        budget = self._host_budget_bytes() * self.memory_safety_factor * share
+        return self._queued_bytes > budget
 
     # ── Async lifecycle ───────────────────────────────────────────────
     def start(self) -> None:
@@ -282,6 +323,7 @@ class RegionPool:
                 )
                 key = (sr.n_peaks, _pixel_bucket(sr.n_pixels))
                 self.buckets[key].append(entry)
+                self._queued_bytes += self._resident_bytes_per_entry(*key)
             # Wake the consumer so it can re-check capacities.
             self._cond.notify_all()
 
@@ -299,21 +341,37 @@ class RegionPool:
                 torch.cuda.set_device(idx)
             while True:
                 with self._cond:
-                    # Snapshot which buckets are flush-ready (over capacity).
-                    ready_keys = []
-                    for k, entries in self.buckets.items():
-                        if not entries:
-                            continue
-                        cap = self._capacity_for_bucket(*k)
-                        if len(entries) >= cap:
-                            ready_keys.append(k)
+                    # Buckets holding at least one whole quantum.
+                    ready_keys = [
+                        k for k, e in self.buckets.items()
+                        if e and len(e) >= self._capacity_for_bucket(*k)
+                    ]
+                    short_ok = False
 
                     if not ready_keys:
                         if self._done:
-                            # Drain anything left, regardless of capacity.
+                            # Drain what is left; the tail chunk is short by
+                            # construction, which is still a deterministic
+                            # function of the insertion sequence.
                             ready_keys = [k for k, e in self.buckets.items() if e]
+                            short_ok = True
                             if not ready_keys:
                                 return
+                        elif self._over_residency_budget():
+                            # Backstop only. Flushing a partial quantum breaks
+                            # the reproducibility contract, so say so loudly
+                            # rather than let results quietly stop matching.
+                            ready_keys = [k for k, e in self.buckets.items() if e]
+                            short_ok = True
+                            self._log(
+                                "[pool] WARNING: host-residency backstop fired "
+                                f"({self._queued_bytes / 1024 ** 3:.1f}GB queued) "
+                                "— flushing partial batches. Results from this "
+                                "run are NOT bit-reproducible."
+                            )
+                            if not ready_keys:
+                                self._cond.wait()
+                                continue
                         else:
                             # Wait for more work or end-of-stream.
                             self._cond.wait()
@@ -321,10 +379,29 @@ class RegionPool:
 
                     # Pull entries out under the lock, then release for the
                     # GPU work so producers can keep filling.
+                    #
+                    # EXACTLY one quantum per bucket — never "everything that
+                    # has piled up". Taking the whole queue made the chunk
+                    # boundary depend on how far the producer had run when the
+                    # consumer got scheduled, which is the race this fixes.
+                    # ``short_ok`` only decides whether an UNDER-FULL bucket is
+                    # eligible at all; the amount taken is always one quantum.
+                    # Taking the whole remainder at drain would hand
+                    # ``_flush_bucket_entries`` a list it then splits by
+                    # _MAX_SOLVE_BATCH — and for a bucket whose quantum is
+                    # smaller than that, those boundaries would depend on how
+                    # far the consumer had got before end-of-stream. Always
+                    # slicing at a multiple of the quantum keeps every chunk
+                    # boundary a function of the insertion sequence alone.
                     pulled: Dict[Tuple[int, int], List[_PoolEntry]] = {}
                     for k in ready_keys:
-                        pulled[k] = self.buckets[k]
-                        self.buckets[k] = []
+                        cap = self._capacity_for_bucket(*k)
+                        take = min(cap, len(self.buckets[k]))
+                        pulled[k] = self.buckets[k][:take]
+                        self.buckets[k] = self.buckets[k][take:]
+                        self._queued_bytes -= (
+                            take * self._resident_bytes_per_entry(*k)
+                        )
 
                 # GPU work happens outside the lock.
                 for k, entries in pulled.items():

@@ -485,7 +485,11 @@ def calibrate(
                              "a1","phi1","a2","phi2","a3","phi3",
                              "a4","phi4","a5","phi5","a6","phi6")
                             if n in u},
-            "in_loop_strain_uE": cr.history[-1].mean_strain_uE if cr.history else None,
+            # The adopted geometry is the BEST iterate, not the last (see
+            # pipelines/single.py), so report the best iterate's strain here —
+            # history[-1] would describe a geometry that was not returned.
+            "in_loop_strain_uE": (min(h.mean_strain_uE for h in cr.history)
+                                   if cr.history else None),
             "post_residual_strain_uE": cr.post_residual_strain_uE,
             "residual_corr_bin": bin_path,
             "seed_BC_y": seed.bc_y, "seed_BC_z": seed.bc_z,
@@ -507,7 +511,8 @@ def calibrate(
         pxY=pxY, pxZ=pxZ, NrPixelsY=NY, NrPixelsZ=NZ,
         wavelength_A=wavelength,
         post_residual_strain_uE=cr.post_residual_strain_uE,
-        in_loop_strain_uE=cr.history[-1].mean_strain_uE if cr.history else None,
+        in_loop_strain_uE=(min(h.mean_strain_uE for h in cr.history)
+                            if cr.history else None),
         residual_corr_map=cr.residual_corr_map,
         residual_corr_bin_path=bin_path,
         seed_seconds=seed_time, refine_seconds=refine_time,

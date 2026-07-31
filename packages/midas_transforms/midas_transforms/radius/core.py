@@ -136,8 +136,27 @@ def _filter_and_compute_radius(
     RingNr = ring_numbers.to(device=device)[spot_match].to(dtype)
 
     # Per-ring powder intensity: sum of IntegratedIntensity / n_frames.
-    powder_int = torch.zeros(R, dtype=dtype, device=device)
-    powder_int.scatter_add_(0, spot_match, spots_in[:, 1])
+    #
+    # NOT ``scatter_add_``: on CUDA that lowers to floating-point atomics, so
+    # the summation order — and therefore the last bits of the result —
+    # changes from launch to launch. ``powder_int`` divides into GrainVolume
+    # below, so that jitter came straight out in the Radius_*.csv radius
+    # column and in Grains.csv's GrainRadius: two runs of the identical
+    # pipeline on identical input differed by 2e-6 µm on a 20 µm grain
+    # (1-ID GE5 FF scan, 2026-07-30) — the last thing standing between this
+    # pipeline and a bit-reproducible reconstruction.
+    #
+    # ``R`` is the number of CONFIGURED RINGS (nRingsThresh), a small number
+    # bounded by how many rings fall on the detector, so a per-ring masked
+    # ``sum`` is cheap; ``torch.sum`` is a fixed-order tree reduction and is
+    # deterministic on every backend. Autograd-safe (no in-place write).
+    if R > 0:
+        vals = spots_in[:, 1]
+        powder_int = torch.stack(
+            [vals[spot_match == r].sum() for r in range(R)]
+        ).to(dtype=dtype, device=device)
+    else:
+        powder_int = torch.zeros(0, dtype=dtype, device=device)
     powder_int = powder_int / max(n_frames, 1)
 
     # m_hkl is read from hkls.csv; we count how many hkl entries fall on each

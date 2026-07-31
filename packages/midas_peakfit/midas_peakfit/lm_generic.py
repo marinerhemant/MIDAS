@@ -24,13 +24,12 @@ from typing import Callable, Optional, Tuple
 import torch
 from torch.func import jacrev, vmap
 
-if torch.cuda.is_available():
-    try:
-        torch.backends.cuda.matmul.allow_tf32 = True
-        torch.backends.cudnn.allow_tf32 = True
-    except Exception:
-        pass
-
+# TF32 is scoped to the matmul that opted into it (``_tf32``), NOT enabled
+# process-wide at import — an import must not silently change the precision
+# of every other fp32 matmul in the interpreter. Importing this module used
+# to re-enable the global flag and so would have undone the same fix in
+# ``lm.py``.
+from midas_peakfit.lm import _tf32
 from midas_peakfit.reparam import u_to_x, x_to_u
 
 
@@ -169,11 +168,12 @@ def lm_solve_generic(
             and J.device.type == "cuda"
             and J.dtype == torch.float64
         ):
-            J32 = J.float()
-            r32 = r_b.float()
-            Jt32 = J32.transpose(-1, -2)
-            H = (Jt32 @ J32).double()
-            g = (Jt32 @ r32.unsqueeze(-1)).squeeze(-1).double()
+            with _tf32(True):
+                J32 = J.float()
+                r32 = r_b.float()
+                Jt32 = J32.transpose(-1, -2)
+                H = (Jt32 @ J32).double()
+                g = (Jt32 @ r32.unsqueeze(-1)).squeeze(-1).double()
         else:
             Jt = J.transpose(-1, -2)
             H = Jt @ J

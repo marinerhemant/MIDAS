@@ -106,6 +106,16 @@ def autocalibrate(
     history: List[IterRecord] = []
     fits_final: Optional[FittedDataset] = None
     unpacked = None
+    # The alternating E<->M loop is NOT monotonic: the E-step re-extracts peaks
+    # at the new geometry, so a late iteration can land in a worse basin than an
+    # earlier one (observed on real CeO2: iter 3 = 17.9 ue, iter 4 = 72.0 ue).
+    # Returning the LAST iterate therefore silently ships a worse calibration
+    # than the run actually found. v1 C keeps the best across nIterations
+    # (FF_HEDM/Example/Parameters.txt: "Number of full optimization iterations
+    # (best result is kept)"); mirror that here.
+    best_strain = float("inf")
+    best_unpacked = None
+    best_fits = None
 
     for it in range(n_iter):
         # E-step (v1, proven).  Uses current v1_params geometry.
@@ -169,6 +179,10 @@ def autocalibrate(
         )
         history.append(rec)
         fits_final = fits
+        if mean_strain_uE < best_strain:
+            best_strain = mean_strain_uE
+            best_unpacked = {k: v.detach().clone() for k, v in unpacked.items()}
+            best_fits = fits
         if verbose:
             print(f"[v2 iter {it}] n_fits={rec.n_fitted:4d}  rc={rc}  "
                   f"strain={mean_strain_uE:8.1f}μϵ "
@@ -183,6 +197,28 @@ def autocalibrate(
                 if verbose:
                     print(f"[v2 iter {it}] converged")
                 break
+
+    # ---- Adopt the best iterate, not the last (see the loop preamble).
+    # v1_params must be moved with it: the residual-corr stage below re-runs the
+    # E-step off v1_params, so leaving it on the last iterate would extract peaks
+    # at one geometry and evaluate them at another.
+    if best_unpacked is not None and best_strain < (
+            history[-1].mean_strain_uE if history else float("inf")):
+        if verbose:
+            print(f"[v2] adopting best iterate ({best_strain:.1f}μϵ) over the "
+                  f"last ({history[-1].mean_strain_uE:.1f}μϵ)")
+        unpacked = best_unpacked
+        fits_final = best_fits
+        for name, val in unpacked.items():
+            if val.numel() != 1:
+                continue
+            scalar = float(val.detach().reshape(-1)[0])
+            if hasattr(v1_params, name):
+                cur = getattr(v1_params, name)
+                try:
+                    setattr(v1_params, name, type(cur)(scalar))
+                except Exception:
+                    setattr(v1_params, name, scalar)
 
     # ---- Post-MAP empirical residual-correction map (v1 parity stage).
     residual_map = None
@@ -263,7 +299,9 @@ def autocalibrate(
                     # Guard: the empirical residual map can overfit and *worsen*
                     # strain on low-fit-count / off-panel cases. Keep it only if
                     # it actually reduced the post-MAP strain; otherwise discard.
-                    pre_strain = history[-1].mean_strain_uE if history else None
+                    # Compare against the strain of the ADOPTED iterate, not the
+                    # last one, or the map gets judged against the wrong baseline.
+                    pre_strain = best_strain if history else None
                     if pre_strain is not None and post_strain >= pre_strain:
                         if verbose:
                             print(f"[v2] residual map did not help "
@@ -274,7 +312,7 @@ def autocalibrate(
 
     # Always report the achieved strain, even when no residual map was applied.
     if post_strain is None and history:
-        post_strain = history[-1].mean_strain_uE
+        post_strain = best_strain
 
     return CalibrationResult(spec=spec, unpacked=unpacked or {},
                               history=history, fits_final=fits_final,

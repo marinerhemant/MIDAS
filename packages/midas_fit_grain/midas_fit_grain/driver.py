@@ -566,6 +566,32 @@ def refine_block_from_disk(
         pred_ring_slot=pred_ring_slot,
     )
 
+    # If not one grain's position moved by a measurable amount, the refinement
+    # did no useful work — whatever the solver reported. Invisible downstream
+    # (Grains.csv simply carries seed positions), so say it here with a stable
+    # marker the pipeline re-surfaces into the run log
+    # (midas_pipeline/stages/refinement.py).
+    #
+    # Scale: a grain position shift moves its spots ~1:1 on the detector, and
+    # spot centroids are located to ~0.1 px at best, so a shift of a
+    # MILLI-pixel is unmeasurable by construction. That is a floor, not a
+    # tuned constant — the two regimes are five orders of magnitude apart:
+    # a healthy fp64 fit moved 0.77 px while fp32 moved 2.5e-06 px on the same
+    # seed (synthetic fixture, px = 200 µm). Note a good fit can legitimately
+    # move LESS than one pixel, so a one-pixel threshold would flag it.
+    move_floor_um = cfg.px / 1000.0
+    if block.n_grains and block.max_position_move_um < move_floor_um:
+        LOG.warning(
+            "UNREFINED-POSITIONS: no grain position moved a measurable "
+            "distance (max %.4g µm, median %.4g µm over %d grains; floor "
+            "%.4g µm = px/1000; %d bit-identical to their seed; dtype=%s, "
+            "solver=%s). Grain positions from this run are indexer seeds, "
+            "not fits.",
+            block.max_position_move_um, block.median_position_move_um,
+            block.n_grains, move_floor_um, block.n_unmoved_position,
+            str(dtype).replace("torch.", ""), cfg.solver,
+        )
+
     # 5. Write per-grain outputs.
     fit_best_path = out_dir / cfg.FitBestFileName
     orient_path = res_dir / cfg.OrientPosFitFileName
