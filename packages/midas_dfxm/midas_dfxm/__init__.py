@@ -278,4 +278,4 @@ __all__ = [
     "strain_resolution_ratio",
 ]
 
-__version__ = "0.1.0"
+__version__ = "0.2.0"
