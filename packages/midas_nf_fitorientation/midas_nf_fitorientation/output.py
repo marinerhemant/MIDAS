@@ -82,6 +82,7 @@ class MicWriter:
         n_voxels: int,
         n_saves: int = 1,
         block_nr: int = 0,
+        create: bool = True,
     ):
         self.mic_path = Path(mic_path)
         self.n_voxels = n_voxels
@@ -92,18 +93,43 @@ class MicWriter:
         self.am_record_doubles = 7 + 4 * self.n_saves
         self.am_record_bytes = self.am_record_doubles * 8
 
-        # Pre-allocate (zero-filled) files. Using mmap lets us write
-        # per-voxel records via slice assignment.
+        # ``create=True`` allocates and ZEROES the whole file. That is right for
+        # a single-process run, but it must happen exactly once when the voxel
+        # range is split across concurrent block processes -- otherwise every
+        # worker zeroes the entire file and wipes the others' records. Parallel
+        # workers pass ``create=False`` and open r+ instead, writing only the
+        # rows in their own block (write_mic indexes by absolute voxel_idx, so
+        # the regions are disjoint).
+        mode = "w+" if create else "r+"
         self._mic = np.memmap(
-            self.mic_path, dtype=np.float64, mode="w+",
+            self.mic_path, dtype=np.float64, mode=mode,
             shape=(n_voxels, MIC_RECORD_DOUBLES),
         )
         self._am = np.memmap(
-            self.am_path, dtype=np.float64, mode="w+",
+            self.am_path, dtype=np.float64, mode=mode,
             shape=(n_voxels, self.am_record_doubles),
         )
-        self._mic[:] = 0.0
-        self._am[:] = 0.0
+        if create:
+            self._mic[:] = 0.0
+            self._am[:] = 0.0
+
+    # ------------------------------------------------------------------
+    @staticmethod
+    def allocate(mic_path: str | Path, n_voxels: int, n_saves: int = 1) -> None:
+        """Create both output files zero-filled, without writing any records.
+
+        Call this ONCE in the parent before fanning block workers out, so each
+        worker can open the shared files with ``create=False``.
+        """
+        mic_path = Path(mic_path)
+        am_path = Path(str(mic_path) + ".AllMatches")
+        am_doubles = 7 + 4 * max(1, n_saves)
+        for path, width in ((mic_path, MIC_RECORD_DOUBLES), (am_path, am_doubles)):
+            arr = np.memmap(path, dtype=np.float64, mode="w+",
+                            shape=(n_voxels, width))
+            arr[:] = 0.0
+            arr.flush()
+            del arr
 
     # ------------------------------------------------------------------
     def write_mic(self, voxel_idx: int, rec: MicRecord) -> None:

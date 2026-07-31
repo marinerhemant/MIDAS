@@ -53,6 +53,18 @@ from typing import Optional, Union
 import torch
 import torch.nn.functional as F
 
+# Optional fast connected-component labeller. scipy is already a hard dependency
+# of the MIDAS stack, but keep this soft so peaks.py stays importable without it
+# -- the torch propagation below is the fallback and gives identical structure.
+try:  # pragma: no cover - trivial import guard
+    import numpy as _np
+    from scipy.ndimage import label as _SCIPY_LABEL
+
+    _EIGHT_CONNECTED = _np.ones((3, 3), dtype=bool)
+except Exception:  # pragma: no cover
+    _SCIPY_LABEL = None
+    _EIGHT_CONNECTED = None
+
 
 # -----------------------------------------------------------------------------
 # Connected components: 8-neighbor label propagation, all backends.
@@ -105,6 +117,32 @@ def label_components(
     H, W = mask.shape
     device = mask.device
     fg = mask.to(torch.bool) if mask.dtype != torch.bool else mask
+
+    # ---- fast path: scipy's single-pass C labeller --------------------------
+    #
+    # The iterative propagation below needs ~diameter passes to converge, and
+    # each pass runs a 3x3 min-filter over the WHOLE image plus an
+    # ``(new != old).any()`` check. On CUDA that ``.any()`` is a device->host
+    # SYNC every iteration, so a frame becomes hundreds of tiny kernels each
+    # followed by a stall: the GPU sits at ~0% while one CPU core spins. On a
+    # 2048^2 frame with thousands of blobs that dominated the whole image-
+    # reduction stage.
+    #
+    # Labels are INTEGERS -- nothing differentiable flows through them (the
+    # caller is already inside ``torch.no_grad()``), so there is no autograd
+    # reason to keep this in torch. scipy.ndimage.label is a single-pass
+    # union-find in C.
+    #
+    # Connectivity must stay 8-way to match ``_stack_3x3_min`` (scipy defaults
+    # to 4-way, hence the explicit 3x3 structure), and scipy already numbers
+    # components contiguously 1..K, which is what the renumbering below does.
+    if _SCIPY_LABEL is not None:
+        fg_np = fg.detach().cpu().numpy()
+        lab_np, n_comp = _SCIPY_LABEL(fg_np, structure=_EIGHT_CONNECTED)
+        labels = torch.from_numpy(lab_np.astype("int64")).to(device)
+        if return_n:
+            return labels, int(n_comp)
+        return labels
 
     # Initial labels: each foreground pixel gets its (1-indexed) flat index.
     # Background gets the sentinel (max int) so it never wins min comparisons.

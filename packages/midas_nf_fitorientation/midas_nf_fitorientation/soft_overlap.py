@@ -170,6 +170,13 @@ def build_forward_model(
         flip_y=False,           # NF-HEDM convention
         wedge=p.wedge,
         multi_mode="layered",
+        # Paired OmegaRange/BoxSize gate. The C driver applies this inside
+        # CalcDiffrSpots_Furnace before CalcFracOverlap ever sees the spot
+        # list (NF_HEDM/src/SharedFuncsFit.c:830-837), so a spot outside the
+        # box is excluded from the ConfidenceIndex denominator rather than
+        # counted as a miss. Both lists empty => filter off (unchanged).
+        omega_ranges=list(p.omega_ranges) or None,
+        box_sizes=list(p.box_sizes) or None,
     )
 
     model = HEDMForwardModel(

@@ -26,6 +26,8 @@ import math
 from dataclasses import dataclass
 from typing import List, Optional, Tuple
 
+import os
+
 import numpy as np
 import torch
 
@@ -444,136 +446,292 @@ def screen(
             counts=counts, winners=winners,
         )
 
-    # ---- one-shot HtoD of voxel triangle vertices ----
-    # ``triangle_vertices`` returns a (3, 2) array; stack to (V, 3, 2).
-    verts_np = np.empty((V, 3, 2), dtype=np.float64)
-    for k, vi in enumerate(voxel_indices_arr):
-        verts_np[k] = grid.triangle_vertices(int(vi))
-    XG_all = torch.from_numpy(verts_np[:, :, 0].copy()).to(
-        device=device, dtype=dtype,
-    )                                                         # (V, 3)
-    YG_all = torch.from_numpy(verts_np[:, :, 1].copy()).to(
-        device=device, dtype=dtype,
+    # ---- voxel chunking ------------------------------------------------
+    # The block below builds (V, T, 3) tensors. T is the TOTAL simulated-spot
+    # count over every candidate orientation (~3e7 for a cubic seed list), so
+    # one voxel already costs T*3*itemsize and the full grid is terabytes.
+    # Process the voxels in chunks sized to the free device memory. Chunks are
+    # contiguous slices of ``voxel_indices_arr``, so appending winners per
+    # chunk preserves the global (voxel, orient) ordering the C diagnostic
+    # expects.
+    _k_est = _estimate_k_pixels(grid, voxel_indices_arr, px) if all_super else 1
+    chunk, t_tile = _auto_chunks(
+        T, V, device=device, dtype=dtype, k_pixels=_k_est,
     )
+    for _c0 in range(0, V, chunk):
+        _c1 = min(_c0 + chunk, V)
+        vidx_chunk = voxel_indices_arr[_c0:_c1]
+        Vc = _c1 - _c0
+        if progress is not None:
+            progress(_c0, V)
 
-    # ---- (V, T, 3) projection ----
-    # DisplacementSpots (SharedFuncsFit.c:269-292), broadcast over the
-    # voxel axis.  cos/sin are spot-only (1, T, 1); XG/YG are voxel-only
-    # (V, 1, 3); the tensor that comes out is (V, T, 3).
-    cos_w_ = cos_w.reshape(1, T, 1)
-    sin_w_ = sin_w.reshape(1, T, 1)
-    XG_ = XG_all.reshape(V, 1, 3)
-    YG_ = YG_all.reshape(V, 1, 3)
-    xa = XG_ * cos_w_ - YG_ * sin_w_                          # (V, T, 3)
-    ya = XG_ * sin_w_ + YG_ * cos_w_
-    t_0 = 1.0 - xa / Lsd_0
-    yl_0_ = yl_0.reshape(1, T, 1)
-    zl_0_ = zl_0.reshape(1, T, 1)
-    dy_v = ya + yl_0_ * t_0
-    dz_v = zl_0_ * t_0
-    if has_tilts:
-        dy_v, dz_v = apply_nf_tilt(dy_v, dz_v, Lsd_0, R_tilt)
-    v_y_px = dy_v / px + ybc[0]                               # (V, T, 3)
-    v_z_px = dz_v / px + zbc[0]
-    del xa, ya, t_0, dy_v, dz_v
-
-    # ---- spot centres at primary distance (voxel-independent) ----
-    cy_lab = yl_0
-    cz_lab = zl_0
-    if has_tilts:
-        cy_lab, cz_lab = apply_nf_tilt(cy_lab, cz_lab, Lsd_0, R_tilt)
-    c_y_px = cy_lab / px + ybc[0]                             # (T,)
-    c_z_px = cz_lab / px + zbc[0]
-
-    # Vertex-on-detector + frame-in-range gate. (V, T)
-    vert_in_bounds = (
-        (v_y_px >= 0) & (v_y_px < n_y)
-        & (v_z_px >= 0) & (v_z_px < n_z)
-    ).all(dim=2) & frame_in_range.unsqueeze(0)
-
-    rel_y = v_y_px - c_y_px.reshape(1, T, 1)                  # (V, T, 3)
-    rel_z = v_z_px - c_z_px.reshape(1, T, 1)
-    del v_y_px, v_z_px
-
-    if all_super:
-        # CalcPixels2 path: rasterise V*T triangles in one shot.
-        offsets_y_flat, offsets_z_flat, valid_flat = rasterize_triangles(
-            rel_y.reshape(V * T, 3), rel_z.reshape(V * T, 3),
+        # ---- one-shot HtoD of voxel triangle vertices ----
+        # ``triangle_vertices`` returns a (3, 2) array; stack to (Vc, 3, 2).
+        verts_np = np.empty((Vc, 3, 2), dtype=np.float64)
+        for k, vi in enumerate(vidx_chunk):
+            verts_np[k] = grid.triangle_vertices(int(vi))
+        XG_all = torch.from_numpy(verts_np[:, :, 0].copy()).to(
+            device=device, dtype=dtype,
+        )                                                         # (Vc, 3)
+        YG_all = torch.from_numpy(verts_np[:, :, 1].copy()).to(
+            device=device, dtype=dtype,
         )
-        K = offsets_y_flat.shape[1]
-        offsets_y = offsets_y_flat.reshape(V, T, K)           # (V, T, K)
-        offsets_z = offsets_z_flat.reshape(V, T, K)
-        valid_mask = valid_flat.reshape(V, T, K) & vert_in_bounds.unsqueeze(-1)
-    else:
-        # Single rounded centroid (SharedFuncsFit.c:595-600).
-        cent_y = ((rel_y[..., 0] + rel_y[..., 1] + rel_y[..., 2]) / 3.0
-                  ).round().long()                            # (V, T)
-        cent_z = ((rel_z[..., 0] + rel_z[..., 1] + rel_z[..., 2]) / 3.0
-                  ).round().long()
-        offsets_y = cent_y.unsqueeze(-1)                      # (V, T, 1)
-        offsets_z = cent_z.unsqueeze(-1)
-        valid_mask = vert_in_bounds.unsqueeze(-1)
-        K = 1
-    del rel_y, rel_z
 
-    # ---- per-distance, per-pixel multi-distance lookup ----
-    hits_per_pixel = torch.ones((V, T, K), device=device, dtype=dtype)
-    bounds_per_pixel = valid_mask.clone()
-    for d in range(D):
-        scale = (Lsd[d] / Lsd_0)
-        cy_d = (c_y_px - ybc[0]) * scale + ybc[d]             # (T,)
-        cz_d = (c_z_px - zbc[0]) * scale + zbc[d]
-        abs_y = cy_d.floor().long().reshape(1, T, 1) + offsets_y   # (V, T, K)
-        abs_z = cz_d.floor().long().reshape(1, T, 1) + offsets_z
+        # ---- accumulators over the whole spot axis ----
+        # Allocated per voxel-chunk and filled by the spot-tile loop below.
+        hits_per_orient = torch.zeros((Vc, n_orient), device=device,
+                                      dtype=torch.int32)
+        total_per_orient = torch.zeros((Vc, n_orient), device=device,
+                                       dtype=torch.int32)
 
-        in_bd = (
-            (abs_y >= 0) & (abs_y < n_y)
-            & (abs_z >= 0) & (abs_z < n_z)
-        )
-        bounds_per_pixel = bounds_per_pixel & in_bd
+        # ---- spot (T) tiling --------------------------------------------
+        # The block below materialises (Vc, Tt, K) tensors. Tiling ONLY over
+        # voxels is not enough: K scales with triangle area, so a correctly
+        # tiled 10 um grid (K~80) needs ~94 GiB for a SINGLE voxel at
+        # T = 4.7e7 -- more than any card here. The C streams over candidate
+        # spots instead of materialising them, and this loop does the same.
+        #
+        # The reduction is a scatter_add over spot_to_orient, which is additive,
+        # so accumulating tile by tile is exactly equivalent to one shot.
+        for _t0 in range(0, T, t_tile):
+            _t1 = min(_t0 + t_tile, T)
+            Tt = _t1 - _t0
 
-        ay = abs_y.clamp(0, n_y - 1)
-        az = abs_z.clamp(0, n_z - 1)
-        f_idx = frame_clamped.reshape(1, T, 1).expand_as(ay)
-        d_idx = torch.full_like(f_idx, d)
-        hit = obs.lookup(d_idx, f_idx, ay, az)                # uint8 0/1
-        hits_per_pixel = hits_per_pixel * hit.to(dtype)
+            cos_w_t = cos_w[_t0:_t1]
+            sin_w_t = sin_w[_t0:_t1]
+            yl_0_t = yl_0[_t0:_t1]
+            zl_0_t = zl_0[_t0:_t1]
+            frame_in_range_t = frame_in_range[_t0:_t1]
+            frame_clamped_t = frame_clamped[_t0:_t1]
+            spot_to_orient_t = spot_to_orient[_t0:_t1]
 
-    hits_per_pixel = hits_per_pixel * bounds_per_pixel.to(dtype)
-    total_per_spot = bounds_per_pixel.to(dtype).sum(dim=2)    # (V, T)
-    hits_per_spot = hits_per_pixel.sum(dim=2)
-    del hits_per_pixel, bounds_per_pixel
+            # ---- (Vc, Tt, 3) projection ----
+            # DisplacementSpots (SharedFuncsFit.c:269-292), broadcast over the
+            # voxel axis.  cos/sin are spot-only (1, Tt, 1); XG/YG are
+            # voxel-only (Vc, 1, 3); the result is (Vc, Tt, 3).
+            cos_w_ = cos_w_t.reshape(1, Tt, 1)
+            sin_w_ = sin_w_t.reshape(1, Tt, 1)
+            XG_ = XG_all.reshape(Vc, 1, 3)
+            YG_ = YG_all.reshape(Vc, 1, 3)
+            xa = XG_ * cos_w_ - YG_ * sin_w_                       # (Vc, Tt, 3)
+            ya = XG_ * sin_w_ + YG_ * cos_w_
+            t_0 = 1.0 - xa / Lsd_0
+            yl_0_ = yl_0_t.reshape(1, Tt, 1)
+            zl_0_ = zl_0_t.reshape(1, Tt, 1)
+            dy_v = ya + yl_0_ * t_0
+            dz_v = zl_0_ * t_0
+            if has_tilts:
+                dy_v, dz_v = apply_nf_tilt(dy_v, dz_v, Lsd_0, R_tilt)
+            v_y_px = dy_v / px + ybc[0]                            # (Vc, Tt, 3)
+            v_z_px = dz_v / px + zbc[0]
+            del xa, ya, t_0, dy_v, dz_v
 
-    # ---- scatter spot-level totals into (V, n_orient) ----
-    hits_per_orient = torch.zeros((V, n_orient), device=device, dtype=dtype)
-    total_per_orient = torch.zeros((V, n_orient), device=device, dtype=dtype)
-    spot_to_orient_b = spot_to_orient.unsqueeze(0).expand(V, T)
-    hits_per_orient.scatter_add_(1, spot_to_orient_b, hits_per_spot)
-    total_per_orient.scatter_add_(1, spot_to_orient_b, total_per_spot)
-    frac = hits_per_orient / total_per_orient.clamp(min=1.0)
+            # ---- spot centres at primary distance (voxel-independent) ----
+            cy_lab = yl_0_t
+            cz_lab = zl_0_t
+            if has_tilts:
+                cy_lab, cz_lab = apply_nf_tilt(cy_lab, cz_lab, Lsd_0, R_tilt)
+            c_y_px = cy_lab / px + ybc[0]                          # (Tt,)
+            c_z_px = cz_lab / px + zbc[0]
 
-    # ---- collect winners across all (voxel, orient) pairs ----
-    keep = frac >= p.min_frac_accept
-    keep_pairs = torch.nonzero(keep, as_tuple=False)          # (W, 2)
-    if keep_pairs.numel() > 0:
-        keep_frac_t = frac[keep_pairs[:, 0], keep_pairs[:, 1]]
-        keep_v_local = keep_pairs[:, 0].cpu().numpy()
-        keep_o = keep_pairs[:, 1].cpu().numpy().astype(np.int64)
-        keep_v = voxel_indices_arr[keep_v_local]
-        keep_f = keep_frac_t.cpu().numpy()
-        # Sort by (voxel_idx, orient_idx) so winners list ordering
-        # matches the legacy per-voxel iteration (and the C
-        # screen_cpu.csv diagnostic) byte-for-byte.
-        order = np.lexsort((keep_o, keep_v))
-        for i in order:
-            v_int = int(keep_v[i])
-            winners.append(Winner(v_int, int(keep_o[i]), float(keep_f[i])))
-            counts[v_int] += 1
+            # Vertex-on-detector + frame-in-range gate. (Vc, Tt)
+            vert_in_bounds = (
+                (v_y_px >= 0) & (v_y_px < n_y)
+                & (v_z_px >= 0) & (v_z_px < n_z)
+            ).all(dim=2) & frame_in_range_t.unsqueeze(0)
+
+            rel_y = v_y_px - c_y_px.reshape(1, Tt, 1)              # (Vc, Tt, 3)
+            rel_z = v_z_px - c_z_px.reshape(1, Tt, 1)
+            del v_y_px, v_z_px
+
+            if all_super:
+                # CalcPixels2 path: rasterise Vc*Tt triangles in one shot.
+                offsets_y_flat, offsets_z_flat, valid_flat = rasterize_triangles(
+                    rel_y.reshape(Vc * Tt, 3), rel_z.reshape(Vc * Tt, 3),
+                )
+                K = offsets_y_flat.shape[1]
+                offsets_y = offsets_y_flat.reshape(Vc, Tt, K)      # (Vc, Tt, K)
+                offsets_z = offsets_z_flat.reshape(Vc, Tt, K)
+                valid_mask = (valid_flat.reshape(Vc, Tt, K)
+                              & vert_in_bounds.unsqueeze(-1))
+            else:
+                # Single rounded centroid (SharedFuncsFit.c:595-600).
+                cent_y = ((rel_y[..., 0] + rel_y[..., 1] + rel_y[..., 2]) / 3.0
+                          ).round().long()                         # (Vc, Tt)
+                cent_z = ((rel_z[..., 0] + rel_z[..., 1] + rel_z[..., 2]) / 3.0
+                          ).round().long()
+                offsets_y = cent_y.unsqueeze(-1)                   # (Vc, Tt, 1)
+                offsets_z = cent_z.unsqueeze(-1)
+                valid_mask = vert_in_bounds.unsqueeze(-1)
+                K = 1
+            del rel_y, rel_z
+
+            # ---- per-distance, per-pixel multi-distance lookup ----
+            # These are 0/1 occupancy flags, not physical quantities: keep them
+            # as bool and let the per-spot reduction produce integer counts.
+            hits_per_pixel = torch.ones((Vc, Tt, K), device=device,
+                                        dtype=torch.bool)
+            bounds_per_pixel = valid_mask.clone()
+            for d in range(D):
+                scale = (Lsd[d] / Lsd_0)
+                cy_d = (c_y_px - ybc[0]) * scale + ybc[d]          # (Tt,)
+                cz_d = (c_z_px - zbc[0]) * scale + zbc[d]
+                abs_y = cy_d.floor().long().reshape(1, Tt, 1) + offsets_y
+                abs_z = cz_d.floor().long().reshape(1, Tt, 1) + offsets_z
+
+                in_bd = (
+                    (abs_y >= 0) & (abs_y < n_y)
+                    & (abs_z >= 0) & (abs_z < n_z)
+                )
+                bounds_per_pixel = bounds_per_pixel & in_bd
+
+                ay = abs_y.clamp(0, n_y - 1)
+                az = abs_z.clamp(0, n_z - 1)
+                f_idx = frame_clamped_t.reshape(1, Tt, 1).expand_as(ay)
+                d_idx = torch.full_like(f_idx, d)
+                hit = obs.lookup(d_idx, f_idx, ay, az)             # uint8 0/1
+                hits_per_pixel = hits_per_pixel & hit.bool()
+                del abs_y, abs_z, in_bd, ay, az, f_idx, d_idx, hit
+
+            hits_per_pixel = hits_per_pixel & bounds_per_pixel
+            # Counts, not physical quantities -> int32. K is bounded by the
+            # rasteriser's bounding box, so int32 cannot overflow.
+            total_per_spot = bounds_per_pixel.sum(dim=2, dtype=torch.int32)
+            hits_per_spot = hits_per_pixel.sum(dim=2, dtype=torch.int32)
+            del hits_per_pixel, bounds_per_pixel, offsets_y, offsets_z, valid_mask
+
+            # ---- scatter this tile's spot totals into (Vc, n_orient) ----
+            spot_to_orient_b = spot_to_orient_t.unsqueeze(0).expand(Vc, Tt)
+            hits_per_orient.scatter_add_(1, spot_to_orient_b, hits_per_spot)
+            total_per_orient.scatter_add_(1, spot_to_orient_b, total_per_spot)
+            del hits_per_spot, total_per_spot, spot_to_orient_b
+        # Only now go to float, for the ratio itself.
+        frac = hits_per_orient.to(dtype) / total_per_orient.to(dtype).clamp(min=1.0)
+
+        # ---- collect winners across all (voxel, orient) pairs ----
+        keep = frac >= p.min_frac_accept
+        keep_pairs = torch.nonzero(keep, as_tuple=False)          # (W, 2)
+        if keep_pairs.numel() > 0:
+            keep_frac_t = frac[keep_pairs[:, 0], keep_pairs[:, 1]]
+            keep_v_local = keep_pairs[:, 0].cpu().numpy()
+            keep_o = keep_pairs[:, 1].cpu().numpy().astype(np.int64)
+            keep_v = vidx_chunk[keep_v_local]
+            keep_f = keep_frac_t.cpu().numpy()
+            # Sort by (voxel_idx, orient_idx) so winners list ordering
+            # matches the legacy per-voxel iteration (and the C
+            # screen_cpu.csv diagnostic) byte-for-byte.
+            order = np.lexsort((keep_o, keep_v))
+            for i in order:
+                v_int = int(keep_v[i])
+                winners.append(Winner(v_int, int(keep_o[i]), float(keep_f[i])))
+                counts[v_int] += 1
 
     if progress is not None:
         progress(V, V)
 
     return ScreenResult(winners=winners, n_winners_per_voxel=counts)
+
+
+#: Peak number of simultaneously-live (V, T, 3)-shaped temporaries in the
+#: vectorised block. The projection itself holds ~5 (xa, ya, t_0, dy_v, dz_v)
+#: and ``apply_nf_tilt`` adds ~10 more (p0*, P1*, ABC*, safe) on top of the
+#: rel_*/v_*_px pairs, so a 5x estimate under-counts by ~3x and OOMs inside
+#: the tilt correction.
+_SCREEN_LIVE_TENSORS = 16
+
+
+def _auto_chunks(
+    T: int, V: int, *, device, dtype, k_pixels: int = 1, safety: float = 0.40,
+) -> tuple[int, int]:
+    """Pick ``(voxels_per_chunk, spots_per_tile)`` so the working set fits.
+
+    The block they bound holds ``(Vc, Tt, 3)`` projection tensors and
+    ``(Vc, Tt, K)`` per-pixel tensors, so the cost is proportional to the
+    product ``Vc * Tt``. Solve for that product once, then split it: take as
+    many whole voxels as fit, and give the spot tile whatever is left.
+
+    Tiling the spot axis is what makes a correctly-tiled coarse grid possible
+    at all -- see the note in ``screen``. Override either axis with
+    ``MIDAS_NF_SCREEN_VOXEL_CHUNK`` / ``MIDAS_NF_SCREEN_SPOT_TILE``.
+    """
+    itemsize = torch.empty((), dtype=dtype).element_size()
+    k = max(1, int(k_pixels))
+    per_pair = _SCREEN_LIVE_TENSORS * 3 * itemsize + k * 24
+    dev = torch.device(device)
+    if dev.type == "cuda":
+        free, _total = torch.cuda.mem_get_info(dev)
+    else:
+        free = 8 << 30
+    max_pairs = max(1, int((free * safety) // max(per_pair, 1)))
+
+    env_v = os.environ.get("MIDAS_NF_SCREEN_VOXEL_CHUNK")
+    env_t = os.environ.get("MIDAS_NF_SCREEN_SPOT_TILE")
+    v_chunk = int(env_v) if env_v else max(1, min(V, max_pairs // max(T, 1)))
+    v_chunk = max(1, v_chunk)
+    t_tile = int(env_t) if env_t else max(1, min(T, max_pairs // v_chunk))
+    return v_chunk, max(1, t_tile)
+
+
+def _auto_voxel_chunk(
+    T: int, *, device, dtype, k_pixels: int = 1, safety: float = 0.40,
+) -> int:
+    """Voxels per chunk such that the working set fits in memory.
+
+    Two families of tensors live simultaneously inside the chunk body:
+
+    * ``(Vc, T, 3)`` -- the projection and the three triangle vertices
+      (xa/ya/t_0/dy_v/dz_v, rel_*, v_*_px, plus apply_nf_tilt's temporaries).
+    * ``(Vc, T, K)`` -- the per-PIXEL rasterisation, where ``K`` is the number
+      of pixels a projected triangle covers: ``offsets_y``/``offsets_z``
+      (int64), ``valid_mask``/``hits_per_pixel``/``bounds_per_pixel`` (bool).
+
+    ``K`` scales with triangle AREA, so it is ~1 for a sub-pixel triangle and
+    ~(edge/px)^2 for a large one. Sizing on the vertex term alone (the old
+    behaviour) silently under-counts by that factor: raising ``EdgeLength``
+    from 1 um to 10 um at px=1.48 takes K from ~1 to ~80 and the chunk that
+    used to fit then OOMs inside ``orient2d``.
+
+    Override with ``MIDAS_NF_SCREEN_VOXEL_CHUNK`` if the heuristic is wrong for
+    a particular grid/seed-list combination.
+    """
+    env = os.environ.get("MIDAS_NF_SCREEN_VOXEL_CHUNK")
+    if env:
+        return max(1, int(env))
+    itemsize = torch.empty((), dtype=dtype).element_size()
+    k = max(1, int(k_pixels))
+    # vertex-shaped working set + per-pixel working set
+    # (2 int64 offset maps @8B + 3 bool masks @1B = 19 B per pixel; round to 24
+    #  for the transient copies torch makes during reshape/expand).
+    per_voxel = T * (_SCREEN_LIVE_TENSORS * 3 * itemsize + k * 24)
+    dev = torch.device(device)
+    if dev.type == "cuda":
+        free, _total = torch.cuda.mem_get_info(dev)
+    else:
+        free = 8 << 30  # assume 8 GiB of host budget on CPU
+    n = int((free * safety) // max(per_voxel, 1))
+    return max(1, n)
+
+
+def _estimate_k_pixels(grid, voxel_indices_arr, px: float) -> int:
+    """Upper bound on pixels covered by one projected voxel triangle.
+
+    Measured from the grid's own geometry rather than assumed: take a real
+    triangle, get its bounding box in um, convert to pixels and pad. NF is
+    effectively a 1:1 projection for a small triangle, so the detector-plane
+    footprint is the sample-plane footprint.
+    """
+    try:
+        verts = np.asarray(grid.triangle_vertices(int(voxel_indices_arr[0])))
+    except Exception:
+        return 1
+    if verts.size == 0:
+        return 1
+    span_um = max(
+        float(verts[:, 0].max() - verts[:, 0].min()),
+        float(verts[:, 1].max() - verts[:, 1].min()),
+    )
+    side_px = int(math.ceil(span_um / max(px, 1e-9))) + 2
+    return max(1, side_px * side_px)
 
 
 # ---------------------------------------------------------------------------

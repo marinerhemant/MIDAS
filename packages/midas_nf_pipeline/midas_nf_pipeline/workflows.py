@@ -245,6 +245,14 @@ def run_layer_pipeline(
     p["logDir"] = log_dir
     p["nCPUs"] = int(getattr(args, "nCPUs", p.get("nCPUs", 1)))
 
+    # Optional multi-GPU fan-out for the fitting stage. A comma-separated list
+    # ("0,1") splits the voxel range into one disjoint block per GPU, each run
+    # in its own process against a shared, pre-allocated output file.
+    _raw_gpus = getattr(args, "fitGpus", None) or ""
+    _fit_gpus = [g.strip() for g in str(_raw_gpus).split(",") if g.strip()]
+    if len(_fit_gpus) > 1:
+        logger.info(f"Fitting will be sharded across GPUs: {_fit_gpus}")
+
     mic_text_raw = p.get("MicFileText", "nf_output")
     mic_base = _strip_loop_suffix(mic_text_raw)
     seed_raw = p.get("SeedOrientations", "nf_seeds.csv")
@@ -328,8 +336,15 @@ def run_layer_pipeline(
                     device=getattr(args, "device", "auto"),
                     dtype=getattr(args, "dtype", "float64"),
                     refine=getattr(args, "refine", "nm-batched"),
+                    gpus=_fit_gpus,
                 )
-                stages.run_parse_mic(p)
+                # MicFileText was updated ON DISK above, but `p` is the
+                # in-memory copy parsed before that, and run_parse_mic reads
+                # p["MicFileText"] (stages.py:502). Without this override
+                # loop 0 writes "<base>.mic" while everything downstream --
+                # the consolidated H5 below and run_mic_to_grains in loop 1 --
+                # looks for "<base>.0.mic", which then FileNotFoundErrors.
+                stages.run_parse_mic({**p, "MicFileText": f"{mic_base}.0"})
                 if num_loops > 0:
                     _backup_diffr_spots(rf)
                 ph5.mark(_stage_label(0, "initial"))
@@ -362,8 +377,38 @@ def run_layer_pipeline(
                     raise ValueError(
                         "Multi-resolution requires SeedOrientationsAll in the param file"
                     )
-                seed_all_backup = f"{seed_all}_Backup"
-                shutil.copy2(seed_all, seed_all_backup)
+                seed_all_p = Path(seed_all)
+                if not seed_all_p.is_absolute():
+                    seed_all_p = Path(rf) / seed_all_p
+
+                # Nothing in loop 0 creates this file, so on a fresh multi-res run
+                # it does not exist and copy2 raised FileNotFoundError.
+                #
+                # Materialise it from the loop-0 SeedOrientations. That is exactly
+                # what it must contain: the FULL candidate list. `SeedOrientations`
+                # is rewritten with grain-derived seeds inside every refinement loop
+                # (update_param_file below), so the complete list has to be preserved
+                # separately for the unseeded pass on bad voxels, which reads it back
+                # via seed_all_backup.
+                if not seed_all_p.exists():
+                    src = Path(p.get("SeedOrientations", ""))
+                    if not src.is_absolute():
+                        src = Path(rf) / src
+                    if not src.exists():
+                        raise FileNotFoundError(
+                            f"SeedOrientationsAll ({seed_all_p}) does not exist and the "
+                            f"loop-0 SeedOrientations ({src}) is missing too, so it "
+                            f"cannot be reconstructed."
+                        )
+                    seed_all_p.parent.mkdir(parents=True, exist_ok=True)
+                    shutil.copy2(src, seed_all_p)
+                    logger.info(
+                        f"SeedOrientationsAll did not exist; seeded it from the "
+                        f"loop-0 candidate list {src} → {seed_all_p}"
+                    )
+
+                seed_all_backup = f"{seed_all_p}_Backup"
+                shutil.copy2(seed_all_p, seed_all_backup)
                 logger.info(f"SeedOrientationsAll backed up: {seed_all_backup}")
 
             for loop_idx in range(1, num_loops + 1):
@@ -417,6 +462,7 @@ def run_layer_pipeline(
                         device=getattr(args, "device", "auto"),
                         dtype=getattr(args, "dtype", "float64"),
                         refine=getattr(args, "refine", "nm-batched"),
+                    gpus=_fit_gpus,
                     )
                     stages.run_parse_mic(p_seeded)
                     mic_seeded_path = Path(rf) / f"{target_mic_seeded}.mic"
@@ -503,6 +549,7 @@ def run_layer_pipeline(
                         device=getattr(args, "device", "auto"),
                         dtype=getattr(args, "dtype", "float64"),
                         refine=getattr(args, "refine", "nm-batched"),
+                    gpus=_fit_gpus,
                     )
                     stages.run_parse_mic(p_uns)
                     if consolidated_h5:

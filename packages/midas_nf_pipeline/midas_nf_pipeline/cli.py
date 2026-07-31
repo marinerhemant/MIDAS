@@ -37,6 +37,11 @@ def _add_run_args(p: argparse.ArgumentParser) -> None:
                    choices=["auto", "fp32", "fp64", "float32", "float64"],
                    help="auto = fp32 on cuda/mps, fp64 on cpu (matches the "
                         "midas_nf_preprocess default).")
+    p.add_argument("--fit-gpus", dest="fitGpus", default="",
+                   help="Comma-separated GPU ids to shard the FITTING stage "
+                        "across, e.g. '0,1'. Each GPU gets a disjoint block of "
+                        "voxels in its own process, writing into one shared "
+                        "pre-allocated output. Empty = single process.")
     p.add_argument("--refine", default="nm-batched",
                    choices=["nm-triton", "nm-batched", "nm-serial",
                             "lbfgs+nm", "lbfgs"],
@@ -199,8 +204,11 @@ def cmd_refine_params(args: argparse.Namespace) -> int:
         fit_multipoint_run(args.paramFN, n_cpus=args.nCPUs, device=args.device)
     else:
         from midas_nf_fitorientation import fit_parameters_run
+        # fit_parameters_run(paramfile, voxel_idx, n_cpus, *, device, ...) --
+        # there is no `row_nr` parameter and `voxel_idx` is a required
+        # positional (fit_parameters.py:45-54).
         fit_parameters_run(
-            args.paramFN, row_nr=args.row_nr,
+            args.paramFN, args.row_nr,
             n_cpus=args.nCPUs, device=args.device,
         )
     return 0

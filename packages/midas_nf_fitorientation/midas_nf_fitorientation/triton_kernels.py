@@ -50,6 +50,20 @@ _PI = math.pi
 _DEG2RAD = _PI / 180.0
 _RAD2DEG = 180.0 / _PI
 
+# Placeholder passed as ``ome_box_ptr`` when the gate is off (NBOX=0). The
+# kernel never dereferences it, but Triton still needs a real pointer. Cached
+# per device: ``fused_hard_frac`` is called once per NM iteration per chunk,
+# so allocating a throwaway tensor here would be thousands of device allocs.
+_DUMMY_OME_BOX: "dict[torch.device, torch.Tensor]" = {}
+
+
+def _dummy_ome_box(device: "torch.device") -> "torch.Tensor":
+    t = _DUMMY_OME_BOX.get(device)
+    if t is None:
+        t = torch.zeros(1, 6, dtype=torch.float32, device=device)
+        _DUMMY_OME_BOX[device] = t
+    return t
+
 
 if HAS_TRITON:
 
@@ -65,6 +79,7 @@ if HAS_TRITON:
         zbc_ptr,           # (D,)   fp32
         R_tilt_ptr,        # (D, 9) fp32  flattened tilt rotation per d
         obs_packed_ptr,    # (total_bytes,) uint8
+        ome_box_ptr,       # (NBOX, 6) fp32  [ome_lo, ome_hi, ymin, ymax, zmin, zmax]
         # ---- output pointers ----
         hit_ptr,           # (B,) int32
         total_ptr,         # (B,) int32
@@ -82,6 +97,7 @@ if HAS_TRITON:
         D: tl.constexpr,
         HAS_TILTS: tl.constexpr,
         HAS_WEDGE: tl.constexpr,
+        NBOX: tl.constexpr,      # 0 ⇒ gate disabled (default, bit-identical to before)
         BLOCK_M: tl.constexpr,
     ):
         """One thread block per grain; threads cooperate over BLOCK_M
@@ -218,7 +234,11 @@ if HAS_TRITON:
         r_yz_safe = tl.maximum(r_yz, EPS)
         eta_arg = tl.maximum(-1.0 + EPS, tl.minimum(1.0 - EPS, Gz_lab / r_yz_safe))
         eta = tl.extra.cuda.libdevice.acos(eta_arg)
-        eta = tl.where(Gy_lab > 0.0, -eta, eta)
+        # Match the eager path exactly: forward.py:973 is
+        # ``eta = -sign(Gy_lab) * eta`` and torch.sign(0) == 0, so
+        # Gy_lab == 0 must give eta = 0, not acos(...).  Measure-zero,
+        # but the OmegaRange/BoxSize gate makes eta decide ACCEPTANCE.
+        eta = tl.where(Gy_lab > 0.0, -eta, tl.where(Gy_lab < 0.0, eta, 0.0))
 
         eta_ok = (tl.abs(eta) >= min_eta_rad) & ((3.14159265358979323846 - tl.abs(eta)) >= min_eta_rad)
         valid_k = valid_k & eta_ok
@@ -238,6 +258,32 @@ if HAS_TRITON:
         tan_2th = tl.extra.cuda.libdevice.tan(two_theta)
         sin_eta = tl.sin(eta); cos_eta = tl.cos(eta)
 
+        # ---- paired OmegaRange / BoxSize gate ----
+        # Port of the KeepSpot loop in CalcDiffrSpots_Furnace
+        # (NF_HEDM/src/CalcDiffractionSpots.c:225-243). Gates the NOMINAL
+        # ring position at Lsd[0] -- before grain displacement, tilts and
+        # BC conversion -- in MICROMETRES, with strict < / > at every edge,
+        # paired by index with any-pair-accepts. A rejected spot leaves the
+        # denominator entirely (it never enters TheorSpots in the C).
+        if NBOX > 0:
+            RingRad0 = tl.load(Lsd_ptr + 0) * tan_2th
+            yl_nom = -sin_eta * RingRad0
+            zl_nom = cos_eta * RingRad0
+            ome_deg_k = omega * RAD2DEG
+            keep_box = tl.zeros((BLOCK_M,), dtype=tl.int32)
+            for ib in tl.static_range(NBOX):
+                o_lo = tl.load(ome_box_ptr + ib * 6 + 0)
+                o_hi = tl.load(ome_box_ptr + ib * 6 + 1)
+                y_lo = tl.load(ome_box_ptr + ib * 6 + 2)
+                y_hi = tl.load(ome_box_ptr + ib * 6 + 3)
+                z_lo = tl.load(ome_box_ptr + ib * 6 + 4)
+                z_hi = tl.load(ome_box_ptr + ib * 6 + 5)
+                acc = ((ome_deg_k > o_lo) & (ome_deg_k < o_hi)
+                       & (yl_nom > y_lo) & (yl_nom < y_hi)
+                       & (zl_nom > z_lo) & (zl_nom < z_hi))
+                keep_box = keep_box | acc.to(tl.int32)
+            valid_k = valid_k & (keep_box > 0)
+
         # Per-distance projection + bit lookup, AND across distances.
         all_d_hit = tl.full((BLOCK_M,), 1, dtype=tl.int32)
         all_d_in_bounds = tl.full((BLOCK_M,), 1, dtype=tl.int32)
@@ -248,8 +294,6 @@ if HAS_TRITON:
             zbc_d = tl.load(zbc_ptr + d)
             dist = Lsd_d - x_grain
             ydet = y_grain - dist * tan_2th * sin_eta
-            zdet = 0.0 - dist * tan_2th * (-cos_eta)  # z_grain=0; z_det = z_grain + dist*tan2th*cos_eta
-            # Re-derive: z_det = z_grain + dist*tan(2θ)*cos(η) = 0 + dist*tan(2θ)*cos_eta
             zdet = dist * tan_2th * cos_eta
 
             if HAS_TILTS:
@@ -313,7 +357,11 @@ if HAS_TRITON:
         r_yz_safe = tl.maximum(r_yz, EPS)
         eta_arg = tl.maximum(-1.0 + EPS, tl.minimum(1.0 - EPS, Gz_lab / r_yz_safe))
         eta = tl.extra.cuda.libdevice.acos(eta_arg)
-        eta = tl.where(Gy_lab > 0.0, -eta, eta)
+        # Match the eager path exactly: forward.py:973 is
+        # ``eta = -sign(Gy_lab) * eta`` and torch.sign(0) == 0, so
+        # Gy_lab == 0 must give eta = 0, not acos(...).  Measure-zero,
+        # but the OmegaRange/BoxSize gate makes eta decide ACCEPTANCE.
+        eta = tl.where(Gy_lab > 0.0, -eta, tl.where(Gy_lab < 0.0, eta, 0.0))
 
         eta_ok = (tl.abs(eta) >= min_eta_rad) & ((3.14159265358979323846 - tl.abs(eta)) >= min_eta_rad)
         valid_k = valid_k & eta_ok
@@ -329,6 +377,26 @@ if HAS_TRITON:
 
         tan_2th = tl.extra.cuda.libdevice.tan(two_theta)
         sin_eta = tl.sin(eta); cos_eta = tl.cos(eta)
+
+        # Same OmegaRange/BoxSize gate as the K=0 branch.
+        if NBOX > 0:
+            RingRad0 = tl.load(Lsd_ptr + 0) * tan_2th
+            yl_nom = -sin_eta * RingRad0
+            zl_nom = cos_eta * RingRad0
+            ome_deg_k = omega * RAD2DEG
+            keep_box = tl.zeros((BLOCK_M,), dtype=tl.int32)
+            for ib in tl.static_range(NBOX):
+                o_lo = tl.load(ome_box_ptr + ib * 6 + 0)
+                o_hi = tl.load(ome_box_ptr + ib * 6 + 1)
+                y_lo = tl.load(ome_box_ptr + ib * 6 + 2)
+                y_hi = tl.load(ome_box_ptr + ib * 6 + 3)
+                z_lo = tl.load(ome_box_ptr + ib * 6 + 4)
+                z_hi = tl.load(ome_box_ptr + ib * 6 + 5)
+                acc = ((ome_deg_k > o_lo) & (ome_deg_k < o_hi)
+                       & (yl_nom > y_lo) & (yl_nom < y_hi)
+                       & (zl_nom > z_lo) & (zl_nom < z_hi))
+                keep_box = keep_box | acc.to(tl.int32)
+            valid_k = valid_k & (keep_box > 0)
 
         all_d_hit = tl.full((BLOCK_M,), 1, dtype=tl.int32)
         all_d_in_bounds = tl.full((BLOCK_M,), 1, dtype=tl.int32)
@@ -427,6 +495,7 @@ def fused_hard_frac(
     n_z: int,
     has_tilts: bool,
     has_wedge: bool,
+    ome_box: "torch.Tensor | None" = None,
 ) -> torch.Tensor:
     """One-launch fused forward + obs lookup. Returns ``(B,) float32``
     of hard FracOverlap per grain.
@@ -447,6 +516,32 @@ def fused_hard_frac(
     if BLOCK_M < 32:
         BLOCK_M = 32
 
+    # Paired OmegaRange/BoxSize gate. ``ome_box`` is (NBOX, 6) fp32:
+    # [ome_lo, ome_hi, ymin, ymax, zmin, zmax], omega in DEGREES and the box
+    # in MICROMETRES, matching CalcDiffractionSpots.c:225-243. None ⇒ gate off,
+    # and the kernel is then bit-identical to the pre-gate version.
+    if ome_box is None:
+        NBOX = 0
+        ome_box_t = _dummy_ome_box(eul.device)
+    else:
+        ome_box_t = ome_box.to(device=eul.device, dtype=torch.float32).contiguous()
+        if ome_box_t.ndim != 2 or ome_box_t.shape[1] != 6:
+            raise ValueError(
+                f"ome_box must be (NBOX, 6), got {tuple(ome_box_t.shape)}"
+            )
+        if ome_box_t.shape[0] == 0:
+            # NBOX=0 means "gate off, keep everything" here, which is the
+            # OPPOSITE of the C: CalcDiffractionSpots.c:192 initialises
+            # KeepSpot=0 at function scope and only resets it inside the
+            # range loop, so NOmegaRanges==0 there drops every spot. Pass
+            # ome_box=None to disable the gate; an empty table is a bug.
+            raise ValueError(
+                "ome_box has 0 rows; pass ome_box=None to disable the gate "
+                "(an empty table would silently keep every spot, the opposite "
+                "of the C behaviour for NOmegaRanges==0)"
+            )
+        NBOX = int(ome_box_t.shape[0])
+
     hit = torch.empty(B, dtype=torch.int32, device=eul.device)
     total = torch.empty(B, dtype=torch.int32, device=eul.device)
 
@@ -455,6 +550,7 @@ def fused_hard_frac(
         eul, pos, hkls_cart, thetas_rad,
         Lsd, ybc, zbc, R_tilt,
         obs_packed,
+        ome_box_t,
         hit, total,
         float(px),
         float(wedge_rad),
@@ -468,6 +564,7 @@ def fused_hard_frac(
         D=D,
         HAS_TILTS=has_tilts,
         HAS_WEDGE=has_wedge,
+        NBOX=NBOX,
         BLOCK_M=BLOCK_M,
     )
 

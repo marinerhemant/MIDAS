@@ -42,6 +42,14 @@ def _parse_common(args: List[str]) -> argparse.Namespace:
     pp.add_argument("--fp32", action="store_true")
     pp.add_argument("--screen-only", action="store_true")
     pp.add_argument("--verbose", action="store_true")
+    # Multi-process block fan-out: MicWriter zeroes the whole output file when
+    # it creates it, so concurrent blocks must NOT create. The parent
+    # pre-allocates (MicWriter.allocate) and passes this to every worker.
+    pp.add_argument("--no-create-output", dest="create_output",
+                    action="store_false", default=True,
+                    help="Open existing MicFileBinary r+ instead of creating "
+                         "and zeroing it. Required when running concurrent "
+                         "blocks against one shared output file.")
     pp.add_argument("--lbfgs-max-outer", type=int, default=20)
     pp.add_argument("--lbfgs-max-iter", type=int, default=20)
     pp.add_argument("--refine", default="nm-batched",
@@ -100,6 +108,7 @@ def fit_orientation_main(argv: List[str] | None = None) -> int:
         dtype=torch.float32 if common.fp32 else torch.float64,
         screen_only=common.screen_only,
         verbose=common.verbose,
+        create_output=common.create_output,
         lbfgs_config=cfg,
         refine=common.refine,
         nm_max_iter=common.nm_max_iter,

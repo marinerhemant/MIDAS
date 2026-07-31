@@ -117,6 +117,26 @@ class HEDMGeometry:
                                    # spot is valid if it lands on at least
                                    # one detector; output gains a det_id
                                    # field naming which one.
+    # Paired OmegaRange / BoxSize acceptance filter (the ``OmegaRange`` and
+    # ``BoxSize`` paramfile keys). Ports the KeepSpot gate in
+    # NF_HEDM/src/CalcDiffractionSpots.c:225-236 -- a spot is kept only if
+    # SOME index i satisfies BOTH omega in (omega_ranges[i]) AND the nominal
+    # ring position (yl, zl) inside box_sizes[i]; a spot that fails every
+    # pair is dropped from the theoretical spot list entirely, i.e. it is
+    # excluded from BOTH numerator and denominator of the overlap fraction.
+    #
+    # Entry i of ``omega_ranges`` pairs with entry i of ``box_sizes``, so the
+    # two lists must have equal length. Both default to None => the filter is
+    # OFF and every existing FF/pf/NF caller is bit-unchanged.
+    #
+    # Units: omega_ranges in degrees; box_sizes in MICROMETRES, as
+    # (y_min, y_max, z_min, z_max) on the detector plane relative to the beam
+    # centre, evaluated at the FIRST distance (Lsd[0]) with no grain
+    # displacement, no tilt and no distortion -- exactly the C's
+    # CalcSpotPosition(RingRadius = Lsd[0]*tan(2*theta), eta). Bounds are
+    # STRICT (a spot exactly on an edge is rejected), matching the C.
+    omega_ranges: "list[tuple[float, float]] | None" = None
+    box_sizes: "list[tuple[float, float, float, float]] | None" = None
 
     @property
     def n_distances(self) -> int:
@@ -398,6 +418,38 @@ class HEDMForwardModel(nn.Module):
             requires_grad=False,
         )
         self._has_wedge = abs(float(geometry.wedge)) > 0.0
+
+        # Paired OmegaRange / BoxSize acceptance filter. OFF unless BOTH
+        # lists are supplied and non-empty (see HEDMGeometry.box_sizes).
+        om_ranges = getattr(geometry, "omega_ranges", None) or []
+        bx_sizes = getattr(geometry, "box_sizes", None) or []
+        if bool(om_ranges) != bool(bx_sizes):
+            raise ValueError(
+                "omega_ranges and box_sizes are a paired filter: supply both "
+                f"or neither (got {len(om_ranges)} omega_ranges and "
+                f"{len(bx_sizes)} box_sizes)."
+            )
+        if len(om_ranges) != len(bx_sizes):
+            raise ValueError(
+                f"omega_ranges (len {len(om_ranges)}) must match box_sizes "
+                f"(len {len(bx_sizes)}); entry i of one pairs with entry i "
+                "of the other."
+            )
+        self._has_omega_box = bool(bx_sizes)
+        self.register_buffer(
+            "_omega_ranges",
+            torch.tensor(
+                [[float(a), float(b)] for a, b in om_ranges],
+                dtype=torch.float64, device=device,
+            ).reshape(-1, 2),
+        )
+        self.register_buffer(
+            "_box_sizes",
+            torch.tensor(
+                [[float(v) for v in bs] for bs in bx_sizes],
+                dtype=torch.float64, device=device,
+            ).reshape(-1, 4),
+        )
 
         # Scan config
         self.scan_config = scan_config
@@ -944,7 +996,92 @@ class HEDMForwardModel(nn.Module):
                  ((math.pi - torch.abs(eta)) >= self.min_eta)
         valid = valid * eta_ok.float()
 
+        # Paired OmegaRange / BoxSize gate (no-op unless both were supplied).
+        if self._has_omega_box:
+            valid = valid * self.omega_box_mask(
+                all_omega, eta, two_theta
+            ).to(valid.dtype)
+
         return all_omega, eta, two_theta, valid
+
+    # ------------------------------------------------------------------
+    #  omega_box_mask  (port of the KeepSpot gate in CalcDiffrSpots_Furnace)
+    # ------------------------------------------------------------------
+
+    def omega_box_mask(
+        self,
+        omega: torch.Tensor,
+        eta: torch.Tensor,
+        two_theta: torch.Tensor,
+    ) -> torch.Tensor:
+        """Paired ``OmegaRange`` / ``BoxSize`` acceptance mask.
+
+        Direct port of the ``KeepSpot`` gate in
+        ``NF_HEDM/src/CalcDiffrSpots_Furnace`` (CalcDiffractionSpots.c:225-236,
+        identical code at MakeDiffrSpots.c:248-259)::
+
+            CalcSpotPosition(RingRadius, eta, &yl, &zl);   // C:224
+            for (OmegaRangeNo = 0; OmegaRangeNo < NOmegaRanges; OmegaRangeNo++) {
+              KeepSpot = 0;
+              if ((Omega > OmegaRange[i][0]) && (Omega < OmegaRange[i][1]) &&
+                  (yl > BoxSizes[i][0]) && (yl < BoxSizes[i][1]) &&
+                  (zl > BoxSizes[i][2]) && (zl < BoxSizes[i][3])) {
+                KeepSpot = 1; break;
+              }
+            }
+
+        with ``RingRadius = Lsd[0] * tan(2*theta)`` (C:209, and the caller
+        passes ``Lsd[0]`` -- SharedFuncsFit.c:830), and
+        ``yl = -sin(eta)*RingRadius``, ``zl = cos(eta)*RingRadius``
+        (CalcDiffractionSpots.c:80-85).
+
+        Semantics that matter:
+
+        - ``(yl, zl)`` are the **nominal ring** coordinates in micrometres at
+          the FIRST distance, with **no** grain displacement, **no** tilt and
+          **no** distortion applied. They are not pixel coordinates and carry
+          no beam-centre offset.
+        - Bounds are **strict** on all six comparisons (edge-exact spots are
+          rejected).
+        - Range ``i`` pairs with box ``i``; a spot is kept if **any** pair
+          accepts (``break`` on first hit).
+        - A rejected spot never enters ``TheorSpots``, so ``nTspots`` shrinks
+          and the spot is dropped from **both** the numerator and the
+          denominator of ``CalcFracOverlap`` (SharedFuncsFit.c:645, 648-650) --
+          it is *not* counted as a miss. Folding the mask into ``valid`` here
+          reproduces that, because ``valid`` is the denominator weight in
+          ``ObsVolume.hard_fraction`` / ``soft_fraction``.
+
+        Parameters
+        ----------
+        omega, eta, two_theta : Tensor
+            Radians, all broadcastable to a common shape.
+
+        Returns
+        -------
+        Tensor (bool), same broadcast shape.
+        """
+        dtype = omega.dtype
+        # C uses Lsd[0] for the ring radius regardless of nDistances.
+        Lsd0 = self._Lsd_eff.to(dtype).reshape(-1)[0]
+        ring_radius = Lsd0 * torch.tan(two_theta)
+        yl = -torch.sin(eta) * ring_radius
+        zl = torch.cos(eta) * ring_radius
+        omega_deg = omega * self.RAD2DEG
+
+        om = self._omega_ranges.to(dtype)
+        bx = self._box_sizes.to(dtype)
+        accept = torch.zeros(
+            torch.broadcast_shapes(omega_deg.shape, yl.shape, zl.shape),
+            dtype=torch.bool, device=omega.device,
+        )
+        for i in range(om.shape[0]):
+            accept = accept | (
+                (omega_deg > om[i, 0]) & (omega_deg < om[i, 1])
+                & (yl > bx[i, 0]) & (yl < bx[i, 1])
+                & (zl > bx[i, 2]) & (zl < bx[i, 3])
+            )
+        return accept
 
     # ------------------------------------------------------------------
     #  Tilt rotation matrix (RotationTilts in SharedFuncsFit.c:230-266)

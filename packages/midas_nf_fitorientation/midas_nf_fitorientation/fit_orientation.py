@@ -101,9 +101,27 @@ class TopNTracker:
         # Symmetry-aware uniqueness: drop if within min_miso_deg of any
         # existing entry.  The vectorised numpy pairwise call replaces
         # the previous per-pair midas_stress loop (~17 s on the full Au
-        # grid).  ``min_miso_deg <= 0`` skips the check entirely (the
-        # default; matches the C path when ``MinMisoNSaves`` is unset).
-        if self.min_miso_deg > 0.0 and self._entry_quats:
+        # grid).  ``min_miso_deg <= 0`` skips the check entirely.
+        #
+        # NOTE: min_miso_deg is 1.0 BY DEFAULT (params.py:135) -- an earlier
+        # comment here claimed 0 was the default, which was wrong.
+        #
+        # With n_saves == 1 the check is skipped: it is meaningless (a single
+        # slot cannot hold two "distinct" solutions) and it was actively
+        # harmful. offer() returns early when a candidate lands within
+        # min_miso_deg of the incumbent, so a LATER candidate with a HIGHER
+        # frac was discarded and the worse solution survived into `best`,
+        # which is what gets written to the mic (see `best = tracker.best`).
+        # It was also the dominant cost: one numpy symmetry-expanded
+        # misorientation per candidate window per voxel, which is why a voxel
+        # with many surviving windows ran ~5/min instead of thousands/min.
+        #
+        # (For n_saves > 1 the early-return can still drop a better solution
+        # in favour of a near-duplicate worse one. Left alone deliberately --
+        # it changes multi-solution results and is out of scope here.)
+        if self.n_saves == 1:
+            q_new_arr = None          # no quat cache needed; nothing to compare against
+        elif self.min_miso_deg > 0.0 and self._entry_quats:
             q_new = euler_zxz_to_quat_np(eul_arr)
             existing = np.asarray(self._entry_quats, dtype=np.float64)
             misos = pairwise_miso_deg_vec(q_new, existing, self.space_group)
@@ -160,6 +178,7 @@ def fit_orientation_run(
     verbose: bool = False,
     lbfgs_config: Optional[LBFGSConfig] = None,
     voxel_indices: Optional[np.ndarray] = None,
+    create_output: bool = True,
     refine: str = "nm-batched",
     nm_max_iter: int = 200,
     nm_batch_size: int = 4096,
@@ -367,6 +386,18 @@ def fit_orientation_run(
             # Pre-build Triton-friendly fp32 constants if we're
             # going to use the fused kernel. Cheap; the launch sites
             # do not retouch them.
+            # The fused Triton kernel implements the paired OmegaRange/BoxSize
+            # gate (triton_kernels.py, ``NBOX``), matching
+            # midas_diffract.HEDMForwardModel.omega_box_mask and the C
+            # CalcDiffrSpots_Furnace gate. The (NBOX, 6) table below is passed
+            # straight through; NBOX=0 leaves the kernel bit-identical to the
+            # pre-gate version.
+            box_gate_active = bool(getattr(model, "_has_omega_box", False))
+            ome_box_tbl = None
+            if box_gate_active:
+                _omr = model._omega_ranges.to(torch.float32).reshape(-1, 2)
+                _box = model._box_sizes.to(torch.float32).reshape(-1, 4)
+                ome_box_tbl = torch.cat([_omr, _box], dim=1).contiguous()
             use_triton = (
                 refine == "nm-triton" or (
                     refine == "nm-batched"
@@ -428,6 +459,7 @@ def fit_orientation_run(
                                 n_z=p.n_pixels_z,
                                 has_tilts=has_tilts_run,
                                 has_wedge=has_wedge_run,
+                                ome_box=ome_box_tbl,
                             )
                         return (1.0 - frac).to(eul_batch.dtype)
                     return _neg_hard_frac
@@ -484,6 +516,7 @@ def fit_orientation_run(
     with MicWriter(
         mic_path, n_voxels=grid.n_voxels,
         n_saves=p.save_n_solutions, block_nr=block_nr,
+        create=create_output,
     ) as writer:
         for vi in voxel_indices:
             xs = float(grid.xs[vi])

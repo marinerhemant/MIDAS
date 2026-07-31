@@ -140,6 +140,8 @@ def run_seed_orientations_from_ff(p: Dict[str, Any]) -> str:
     """Far-field → near-field seed conversion (port of
     GenSeedOrientationsFF2NFHEDM via midas_nf_preprocess.seed_orientations).
     """
+    import torch
+
     from midas_nf_preprocess.seed_orientations.from_grains import (
         read_grains_orientations,
     )
@@ -147,9 +149,15 @@ def run_seed_orientations_from_ff(p: Dict[str, Any]) -> str:
 
     grains_path = p["GrainsFile"]
     out_path = p["SeedOrientations"]
-    seeds = read_grains_orientations(grains_path)
-    write_seeds_csv(out_path, seeds)
-    logger.info(f"Wrote {len(seeds)} seed orientations: {grains_path} → {out_path}")
+    grains = read_grains_orientations(grains_path)
+    if not grains:
+        raise ValueError(f"No grain orientations parsed from {grains_path}")
+    # read_grains_orientations returns list[GrainOrientation], but write_seeds_csv
+    # wants an (N, 4) quaternion tensor -- stack the .quat fields.
+    seeds = torch.stack([g.quat for g in grains])
+    # NOTE argument order: write_seeds_csv(quats, path), not (path, quats).
+    write_seeds_csv(seeds, out_path)
+    logger.info(f"Wrote {len(grains)} seed orientations: {grains_path} → {out_path}")
     return out_path
 
 
@@ -168,7 +176,8 @@ def run_seed_orientations_from_cache(p: Dict[str, Any], install_dir: Optional[st
             seed_dir = candidate
     seeds = load_seeds_for_space_group(sg, seed_dir=seed_dir)
     out_path = p["SeedOrientations"]
-    write_seeds_csv(out_path, seeds)
+    # NOTE argument order: write_seeds_csv(quats, path), not (path, quats).
+    write_seeds_csv(seeds, out_path)
     logger.info(f"Auto-extracted {len(seeds)} seeds for SG {sg}: {out_path}")
     return out_path
 
@@ -190,6 +199,8 @@ def run_tomo_filter(p: Dict[str, Any]) -> None:
     """Mask grid points by a tomography image (port of filterGridfromTomo)."""
     if not p.get("TomoImage") or len(str(p["TomoImage"])) < 1:
         return
+    import torch
+
     from midas_nf_preprocess.tomo_filter.filter import (
         filter_grid_by_tomo, load_square_tomo,
     )
@@ -198,14 +209,30 @@ def run_tomo_filter(p: Dict[str, Any]) -> None:
     tomo_pixel_size = float(p.get("TomoPixelSize", 1.0))
     tomo = load_square_tomo(tomo_path)
     grid_path = Path(p["resultFolder"]) / "grid.txt"
-    new_grid_path = filter_grid_by_tomo(
-        str(grid_path), tomo=tomo, tomo_pixel_size=tomo_pixel_size,
+    if not grid_path.exists():
+        return
+
+    # filter_grid_by_tomo takes an (N, 5) TENSOR and returns
+    # (filtered_points, mask) -- it does no file I/O at all
+    # (tomo_filter/filter.py:121-150). The previous call passed a path string,
+    # used the keyword `tomo_pixel_size` (the parameter is `px_tomo_um`), and
+    # treated the return value as an output path.
+    pts = np.genfromtxt(str(grid_path), skip_header=1, delimiter=" ")
+    pts = np.atleast_2d(pts)
+    kept, _mask = filter_grid_by_tomo(
+        torch.as_tensor(pts, dtype=torch.float64), tomo, tomo_pixel_size,
     )
-    # Match the legacy script: rename original to grid_unfilt.txt, new → grid.txt.
-    if str(new_grid_path) != str(grid_path):
-        shutil.move(str(grid_path), str(grid_path.with_name("grid_unfilt.txt")))
-        shutil.move(str(new_grid_path), str(grid_path))
-    logger.info(f"Tomo-filtered grid → {grid_path}")
+    kept_np = kept.cpu().numpy()
+
+    # Match the legacy script: original becomes grid_unfilt.txt, filtered → grid.txt.
+    shutil.move(str(grid_path), str(grid_path.with_name("grid_unfilt.txt")))
+    np.savetxt(
+        str(grid_path), kept_np, fmt="%.6f", delimiter=" ",
+        header=str(kept_np.shape[0]), comments="",
+    )
+    logger.info(
+        f"Tomo-filtered grid: {pts.shape[0]} → {kept_np.shape[0]} points at {grid_path}"
+    )
 
 
 def run_grid_mask(p: Dict[str, Any]) -> None:
@@ -230,9 +257,29 @@ def run_grid_mask(p: Dict[str, Any]) -> None:
 def run_diffr_spots(p: Dict[str, Any], param_file: str | Path) -> None:
     """Run :class:`midas_nf_preprocess.diffr_spots.DiffrSpotsPipeline`."""
     from midas_nf_preprocess.diffr_spots.cli import run as diffr_run
+    # hkls_csv / seeds are read unconditionally by diffr_spots.cli.run
+    # (cli.py:41-48); omitting them raises AttributeError.
+    #
+    # They must be passed EXPLICITLY, not left None. DiffrSpotsParams resolves
+    # its defaults against `data_directory` (diffr_spots/params.py:20,43), but
+    # the orchestrator writes hkls.csv into the per-layer `resultFolder`
+    # (run_get_hkls / workflows.py LayerNr_<n>). Leaving them None therefore
+    # sends the callee looking for hkls.csv inside the raw DATA directory and it
+    # raises FileNotFoundError.
+    result_folder = Path(p.get("resultFolder", ".")).resolve()
+    hkls_path = result_folder / "hkls.csv"
+
+    seed_raw = p.get("SeedOrientations") or ""
+    seed_path = Path(seed_raw)
+    if seed_raw and not seed_path.is_absolute():
+        seed_path = result_folder / seed_path
+
     args = Namespace(
         parameter_file=str(param_file),
-        device=None, dtype=None, output_dir=None,
+        device=None, dtype=None,
+        output_dir=str(result_folder),
+        hkls_csv=str(hkls_path) if hkls_path.exists() else None,
+        seeds=str(seed_path) if seed_raw and seed_path.exists() else None,
     )
     diffr_run(args)
     logger.info("Diffraction spots simulated")
@@ -281,21 +328,118 @@ def run_image_processing(p: Dict[str, Any], param_file: str | Path) -> None:
     """
     from midas_nf_preprocess.process_images.cli import run as proc_run
 
+    # ONE call with all_layers=True, NOT a loop over distances.
+    #
+    # Two reasons. (1) process_images.cli.run reads args.all_layers, args.layer_nr
+    # and args.output (cli.py:49-60); the old Namespace supplied `distance_nr`,
+    # which no callee reads, and omitted all three -> AttributeError.
+    # (2) Even with the names fixed, looping would be WRONG: each call writes the
+    # whole SpotsInfo.bin, so distance d+1 overwrites distance d and only the last
+    # distance's bits survive (pipeline.py:229-243). SpotsInfo.bin is sized for
+    # nDistances * NrFilesPerDistance * NrPixelsY * NrPixelsZ bits and must be
+    # produced in a single pass.
     n_distances = int(p.get("nDistances", 1))
-    for d in range(1, n_distances + 1):
-        logger.info(f"ProcessImages: distance {d}/{n_distances}")
-        args = Namespace(
-            parameter_file=str(param_file),
-            distance_nr=d,
-            n_cpus=int(p.get("nCPUs", 1)),
-            device=None, dtype=None,
-        )
-        proc_run(args)
+    logger.info(f"ProcessImages: all {n_distances} distance(s) in one pass")
+    args = Namespace(
+        parameter_file=str(param_file),
+        n_cpus=int(p.get("nCPUs", 1)),
+        device=None, dtype=None,
+        all_layers=True, layer_nr=1, output=None,
+    )
+    proc_run(args)
 
 
 # ---------------------------------------------------------------------------
 #  Stage 3: orientation fitting (FitOrientationOMP equivalent)
 # ---------------------------------------------------------------------------
+
+def _fit_sharded(
+    p: Dict[str, Any], param_file: str | Path, gpus, *,
+    n_cpus: int, dtype: str, refine: str,
+) -> None:
+    """Fan the voxel range out across ``gpus``, one process per GPU.
+
+    ``grid.slice_block(block_nr, n_blocks)`` gives each block a contiguous,
+    disjoint voxel range, and MicWriter indexes by ABSOLUTE voxel index, so the
+    workers write non-overlapping rows of the same files.
+
+    The parent allocates those files first and the workers open them with
+    ``--no-create-output``: MicWriter's default zeroes the whole file on open,
+    so without this every worker would wipe the others' records.
+    """
+    import subprocess
+    import sys
+
+    from midas_nf_fitorientation.output import MicWriter
+    from midas_nf_fitorientation.params import parse_paramfile as _pp
+
+    rf = Path(p["resultFolder"])
+    mic_bin = p.get("MicFileBinary")
+    if not mic_bin:
+        raise ValueError("MicFileBinary is required for sharded fitting")
+    mic_path = rf / mic_bin
+
+    # Voxel count comes from the grid file's header line.
+    grid_path = rf / p.get("GridFileName", "grid.txt")
+    with open(grid_path) as fh:
+        n_voxels = int(fh.readline().split()[0])
+
+    try:
+        n_saves = int(_pp(str(param_file)).save_n_solutions)
+    except Exception:
+        n_saves = int(p.get("SaveNSolutions", 1))
+
+    MicWriter.allocate(mic_path, n_voxels=n_voxels, n_saves=n_saves)
+    logger.info(
+        f"Sharded fit: {n_voxels} voxels over {len(gpus)} GPU(s) {list(gpus)}; "
+        f"outputs pre-allocated at {mic_path}"
+    )
+
+    # Resolve the worker entry point. shutil.which() is NOT enough: under a
+    # non-interactive ssh the env's bin/ is often off PATH. Fall back to the
+    # sibling of the running interpreter, then to calling the console-script
+    # function directly ('midas_nf_fitorientation' has no __main__, so
+    # `python -m midas_nf_fitorientation` does not work).
+    exe = shutil.which("midas-nf-fit-orientation")
+    if not exe:
+        sibling = Path(sys.executable).parent / "midas-nf-fit-orientation"
+        if sibling.exists():
+            exe = str(sibling)
+    if exe:
+        base = [exe]
+    else:
+        base = [sys.executable, "-c",
+                "import sys;from midas_nf_fitorientation.cli import "
+                "fit_orientation_main as m;sys.exit(m())"]
+
+    procs = []
+    for i, gpu in enumerate(gpus):
+        cmd = base + [
+            str(param_file), str(i), str(len(gpus)), str(max(1, n_cpus // len(gpus))),
+            "--device", "cuda", "--no-create-output", "--refine", refine,
+        ]
+        if str(dtype) in ("float32", "fp32"):
+            cmd.append("--fp32")
+        env = dict(os.environ)
+        env["CUDA_VISIBLE_DEVICES"] = str(gpu)
+        logfile = open(rf / f"fit_block{i}.log", "w")
+        procs.append((i, gpu, subprocess.Popen(cmd, env=env, stdout=logfile,
+                                               stderr=subprocess.STDOUT), logfile))
+
+    failed = []
+    for i, gpu, proc, logfile in procs:
+        rc = proc.wait()
+        logfile.close()
+        if rc != 0:
+            failed.append((i, gpu, rc))
+    if failed:
+        raise RuntimeError(
+            "sharded fit failed for block(s): "
+            + ", ".join(f"block {i} on GPU {g} (rc={rc})" for i, g, rc in failed)
+            + f" -- see {rf}/fit_block*.log"
+        )
+    logger.info(f"Sharded fit complete across {len(gpus)} GPU(s)")
+
 
 def run_fitting(
     p: Dict[str, Any], param_file: str | Path, *,
@@ -303,6 +447,7 @@ def run_fitting(
     n_cpus: int = 1, device: str = "auto",
     dtype: str = "float64",
     refine: str = "nm-batched",
+    gpus=None,
 ) -> None:
     """Run :func:`midas_nf_fitorientation.fit_orientation_run`.
 
@@ -323,6 +468,12 @@ def run_fitting(
         if bin_path.exists():
             bin_path.unlink()
             logger.info(f"Removed stale MicFileBinary: {bin_path}")
+
+    # Multi-GPU: fan disjoint voxel blocks out, one process per GPU.
+    if gpus and len(list(gpus)) > 1:
+        _fit_sharded(p, param_file, list(gpus),
+                     n_cpus=n_cpus, dtype=dtype, refine=refine)
+        return
 
     # Map "float32" / "float64" / "fp32" / "fp64" → torch.dtype.
     dtype_map = {
