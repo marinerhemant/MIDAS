@@ -4,6 +4,12 @@
 reconstruction from scratch.** Not a tutorial. Follow the steps in order; each one names
 the file to read, the command to run, the field to look at, and the branch to take.
 
+**Companion: `NF_HEDM_Lab_Notebook.md`.** This file says what to do. The notebook records
+what was found on the `pokharel_jul26` campaign, how each claim was measured, and which
+attractive ideas were **retracted** — read its §5 before re-opening any question, and its
+§4b before touching calibration. Findings are summarised here only where they change what
+you should type.
+
 Citations are `path:line` relative to `$MIDAS = /Users/hsharma/opt/MIDAS`. Read them with
 absolute paths (`/Users/hsharma/opt/MIDAS/<path>`). Every non-obvious claim carries one.
 Claims that are convention, or that could not be verified, are flagged inline and listed
@@ -31,8 +37,9 @@ are used here.
    other fields look like energy and are wrong.
 4. **Never count spots off a raw max-projection (§5).** It is dominated by cosmic rays.
    Use the temporal-median + LoG path.
-5. **Do not run `midas-nf-pipeline run` (§8a).** Five call sites in the orchestrator do not
-   match their callees, re-verified in this tree. Use the nine-command route in §8b.
+5. **`midas-nf-pipeline run` IS the supported route (§8a)** — ten orchestrator defects
+   that made it unusable are fixed. Pass `--fit-gpus 0,1` or the fit uses one GPU while
+   the rest idle. (Older notes saying "do not use it" are stale; lab notebook §2.)
 6. **`--all-layers` is mandatory** on `process-images`; without it only the last detector
    distance's bits survive (`process_images/pipeline.py:229-243`,
    `process_images/cli.py:57-60`).
@@ -61,7 +68,10 @@ are used here.
     calibrant (§7b).** All voxels are one grain, so N voxels give one grain's constraint.
 17. **Check `BoxSize` before blaming the geometry (§7d).** Unset, it costs exactly the last
     few percent of confidence (0.949153 vs 1.000000) and looks like a small geometry error.
-18. **Compare reconstructions by field, never by checksum (§8f).** `MicFileBinary` records
+18. **On weak signal, fix the REDUCTION before the geometry (§8f).** Denoising the
+    median-corrected residual and dropping `BlanketSubtraction` to ~0.7 σ was worth 3.6×
+    the voxels at C ≥ 0.9; a converged geometry refinement was worth +0.005 FracOverlap.
+19. **Compare reconstructions by field, never by checksum (§8g).** `MicFileBinary` records
     carry a per-voxel `RunTime`, so two bit-identical *physics* results have different md5s.
 
 ### Traps that silently corrupt results
@@ -88,10 +98,10 @@ are used here.
 | `GridPoints` given 6 tokens instead of a 12-column `.mic` row | parses fine, refines nothing | §7c |
 | `BoxSize` parsed but not applied | calibrant plateaus at 0.949 instead of 1.000 | §7d |
 | blob size compared using radius from the GRID ORIGIN | sample offset misread as a geometry difference | §7e |
-| md5 of `MicFileBinary` used to check reproducibility | `RunTime` differs every run; always "fails" | §8f |
-| voxel-count blow-up in `screen()` | 1704 GiB allocation on a full grid | §8g |
-| `EdgeLength` set to a fixed value while `GridSize` differs | grid stops tiling — e.g. 1 µm triangles on a 10 µm lattice is ~1 % coverage; `mic2grains` areas wrong by `(GridSize/EdgeLength)²`; worsens every multi-res loop | §10e |
-| `MinMisoNSaves` left at its **1.0 default** with `SaveNSolutions 1` | a per-window symmetry misorientation dominates runtime, AND a later higher-confidence solution is silently discarded | §8h |
+| md5 of `MicFileBinary` used to check reproducibility | `RunTime` differs every run; always "fails" | §8g |
+| voxel-count blow-up in `screen()` | 1704 GiB allocation on a full grid | §8h |
+| assuming `EdgeLength` must equal `GridSize` | **RETRACTED** — `EdgeLength` is an independent, supported knob (`MakeHexGrid.c:23-58`); small probe triangles on a coarse grid are intentional. Forcing them equal made triangles 10 µm and cost ~94 GiB/voxel. Lab notebook R2 | §10e |
+| `MinMisoNSaves` left at its **1.0 default** with `SaveNSolutions 1` | a per-window symmetry misorientation dominates runtime, AND a later higher-confidence solution is silently discarded | lab notebook §2 |
 
 ---
 
@@ -1052,159 +1062,36 @@ reconstruct the gold first.
 
 ## 8. STEP 6 — Run the reconstruction
 
-### 8a. DO NOT use `midas-nf-pipeline run`
+### 8a. `midas-nf-pipeline run` — now the supported route
 
-Five call sites in the orchestrator do not match their callees. **Re-verified 2026-07-29
-by reading both sides**; all five survive. The pipeline was **not executed** — the
-exception *types* below follow from Python semantics, the exception *text* is not quoted
-because it was not observed.
+**This section used to say "do not use it".** Ten call-site defects made the orchestrator
+unusable; all ten are fixed (commits `b95c38c0`, `d231fdf3`), and the multi-resolution
+ladder now runs end to end. The defect list, with what each one did, is in the lab
+notebook §2 — it is history, not instructions.
 
-Summary: #1, #2 and #4 fire on **every** run; #3 only with `TomoImage` set; #5 only on
-`refine-params` without `--multi-point`.
-
-**Defect 1 — `run_diffr_spots` → `diffr_spots.cli.run`. Fires on every loop-0 run.**
-
-```python
-# packages/midas_nf_pipeline/midas_nf_pipeline/stages.py:233-237  (CALL SITE)
-    args = Namespace(
-        parameter_file=str(param_file),
-        device=None, dtype=None, output_dir=None,
-    )
-    diffr_run(args)
-
-# packages/midas_nf_preprocess/midas_nf_preprocess/diffr_spots/cli.py:40-49  (CALLEE)
-def run(args: argparse.Namespace) -> int:
-    params = DiffrSpotsParams.from_paramfile(args.parameter_file)
-    pipe = DiffrSpotsPipeline(
-        params,
-        device=args.device,
-        dtype=args.dtype,
-        hkls_csv=args.hkls_csv,                    # :46
-        seed_orientations_csv=args.seeds,          # :47
-    )
-    result, paths = pipe.run(output_dir=args.output_dir)
+```bash
+midas-nf-pipeline run params.txt \
+    --n-cpus 64 --device cuda \
+    --fit-gpus 0,1 \            # shard the FIT across GPUs, one process each
+    --no-image-processing        # only if SpotsInfo.bin already exists
 ```
 
-`AttributeError`: neither `hkls_csv` nor `seeds` is on the Namespace. (`output_dir` is.)
+`--fit-gpus` splits the voxel range into one disjoint block per GPU in **every** loop.
+Without it the fitter uses a single GPU while the rest idle. The outputs are pre-allocated
+once by the parent and workers open them `r+`; do not hand-roll this, `MicWriter`'s default
+zeroes the whole file on open (lab notebook §3c).
 
-**Defect 2 — `run_image_processing` → `process_images.cli.run`. Fires on every run with
-image processing.**
+Two things the orchestrator still will not do:
 
-```python
-# packages/midas_nf_pipeline/midas_nf_pipeline/stages.py:287-293  (CALL SITE)
-        args = Namespace(
-            parameter_file=str(param_file),
-            distance_nr=d,
-            n_cpus=int(p.get("nCPUs", 1)),
-            device=None, dtype=None,
-        )
-        proc_run(args)
+* **A phase that indexes nothing** stops cleanly after loop 0 with
+  "no grains above MinConfidence" rather than refining — that is a valid result, not an
+  error (lab notebook §4c).
+* **`refine-params --multi-point`** defaults to `--objective hard`, which optimises the
+  same FracOverlap the C does. The `soft` surrogate is still selectable but is **not**
+  equivalent — see lab notebook §3b before using it.
 
-# packages/midas_nf_preprocess/midas_nf_preprocess/process_images/cli.py:49-60  (CALLEE)
-def run(args: argparse.Namespace) -> int:
-    params = ProcessParams.from_paramfile(args.parameter_file)
-    pipe = ProcessImagesPipeline(
-        params, device=args.device, dtype=args.dtype, n_cpus=args.n_cpus
-    )
-    if args.all_layers:                            # :54
-        bitmask = pipe.process_all()
-    else:
-        bitmask = pipe.process_layer(args.layer_nr)  # :57
-    out = args.output or str(Path(params.output_directory) / "SpotsInfo.bin")  # :59
-```
-
-`AttributeError` on `all_layers` at `:54`. The callee also wants `layer_nr` (not
-`distance_nr`) and `output`, neither of which is supplied.
-
-**Defect 3 — `run_tomo_filter` → `filter_grid_by_tomo`. Only when `TomoImage` is set.**
-
-```python
-# packages/midas_nf_pipeline/midas_nf_pipeline/stages.py:201-203  (CALL SITE)
-    new_grid_path = filter_grid_by_tomo(
-        str(grid_path), tomo=tomo, tomo_pixel_size=tomo_pixel_size,
-    )
-
-# packages/midas_nf_preprocess/midas_nf_preprocess/tomo_filter/filter.py:121-125  (CALLEE)
-def filter_grid_by_tomo(
-    grid_points: torch.Tensor,
-    tomo: Union[np.ndarray, torch.Tensor],
-    px_tomo_um: float,
-) -> tuple[torch.Tensor, torch.Tensor]:
-```
-
-Three mismatches: `TypeError` — unexpected keyword `tomo_pixel_size` (the parameter is
-`px_tomo_um`); a `str` is passed where an `(N,5)` Tensor is required
-(`filter.py:142-145` raises on `grid_points.ndim`); and a 2-tuple is returned where
-`stages.py:205` expects a path.
-
-**Defect 4 — both seed stages → `write_seeds_csv`. Fires on every run.**
-
-```python
-# packages/midas_nf_pipeline/midas_nf_pipeline/stages.py:150-151  (CALL SITE, FF path)
-    seeds = read_grains_orientations(grains_path)
-    write_seeds_csv(out_path, seeds)
-# packages/midas_nf_pipeline/midas_nf_pipeline/stages.py:169-171  (CALL SITE, cache path)
-    seeds = load_seeds_for_space_group(sg, seed_dir=seed_dir)
-    out_path = p["SeedOrientations"]
-    write_seeds_csv(out_path, seeds)
-
-# packages/midas_nf_preprocess/midas_nf_preprocess/seed_orientations/io.py:24-31  (CALLEE)
-def write_seeds_csv(
-    quats: torch.Tensor,
-    path: Union[str, Path],
-    *,
-    fmt: str = "%.7f",
-) -> None:
-    """Write a ``(N, 4)`` quaternion tensor to a comma-separated CSV."""
-    if quats.ndim != 2 or quats.shape[1] != 4:     # :31
-```
-
-Arguments **transposed** — `quats` receives a `str`, which has no `.ndim`. Return types
-confirmed: `load_seeds_for_space_group(...) -> torch.Tensor`
-(`seed_orientations/from_cache.py:127-133`); `read_grains_orientations(...) ->
-list[GrainOrientation]` (`seed_orientations/from_grains.py:41-46`) — the FF path
-additionally needs `write_seeds_with_lattice_csv` (`io.py:53-56`), not `write_seeds_csv`.
-
-**Defect 5 — `cmd_refine_params` → `fit_parameters_run`. Only without `--multi-point`.**
-
-```python
-# packages/midas_nf_pipeline/midas_nf_pipeline/cli.py:201-205  (CALL SITE)
-        from midas_nf_fitorientation import fit_parameters_run
-        fit_parameters_run(
-            args.paramFN, row_nr=args.row_nr,
-            n_cpus=args.nCPUs, device=args.device,
-        )
-
-# packages/midas_nf_fitorientation/midas_nf_fitorientation/fit_parameters.py:45-54  (CALLEE)
-def fit_parameters_run(
-    paramfile: str,
-    voxel_idx: int,
-    n_cpus: int = 1,
-    *,
-    device: str = "auto",
-    dtype: torch.dtype = torch.float64,
-    verbose: bool = True,
-    lbfgs_config: Optional[LBFGSConfig] = None,
-) -> dict:
-```
-
-`TypeError`: no `row_nr` parameter, and required positional `voxel_idx` is missing.
-
-**Not broken: `--multi-point`.** `cli.py:198-199` calls
-`fit_multipoint_run(args.paramFN, n_cpus=args.nCPUs, device=args.device)` against
-`fit_multipoint.py:75-84` `def fit_multipoint_run(paramfile: str, n_cpus: int = 1, *,
-device: str = "auto", ...)`. Matches.
-
-**Workaround for #5:** the standalone CLI is correct — `midas-nf-fit-parameters` passes
-`voxel_idx=row_nr` (`midas_nf_fitorientation/cli.py`, `fit_parameters_main`). Use
-`midas-nf-fit-parameters params.txt <rowNr> [nCPUs]`.
-
-Supporting evidence the `run` path is untested: every code cell in
-`packages/midas_nf_pipeline/notebooks/00_quickstart_au.ipynb`,
-`01_single_resolution.ipynb`, `02_multi_resolution.ipynb` and `05_multi_layer_batch.ipynb`
-has `execution_count: null`. The preprocess and fitorientation notebooks are marked "runs
-clean" (`packages/midas_nf_preprocess/notebooks/README.md`,
-`packages/midas_nf_fitorientation/notebooks/README.md`).
+The nine-command route in §8b remains valid and is still the right thing when you need to
+re-run one stage in isolation.
 
 ### 8b. The route that works — nine commands
 
@@ -1381,7 +1268,40 @@ multi-phase map. Today that orchestration is manual, and `PhaseNr` in the `.mic`
 is only whatever the paramfile declared — it is *not* evidence that a phase
 assignment was fitted.
 
-### 8f. Comparing two runs — never by checksum
+### 8f. Denoise the residual before thresholding — the biggest single lever
+
+On a weak-signal sample this is worth far more than any geometry work. Measured on
+`nf_Ce_ht525_s2`, 10 µm loop 0, identical geometry/grid/rings, only the reduction
+differing: **voxels at C ≥ 0.9 went 1,424 → 5,186 (3.6×)**, median confidence 0.359 →
+0.562, `max C` unchanged at 1.0000 (lab notebook §4d).
+
+```
+NLMDenoise 1
+NLMH 1.0                # h = NLMH * sigma_MAD
+NLMPatchSize 5
+NLMPatchDistance 6
+BlanketSubtraction 2    # ~0.7 sigma, NOT the ~3 sigma you need without NLM
+```
+
+NLM is applied to the **median-corrected residual, before** the blanket subtraction and
+the clamp. That ordering is the whole point: the fixed-pattern background is already gone,
+so what remains is noise plus spots, and the threshold can drop to well under 1 σ.
+
+**This is NOT the `Denoise` key.** That is a separate stage which denoises **raw** frames
+*before* median subtraction and needs `MIDAS-NF-preProc` (absent from the beamline env).
+
+Two operational notes:
+
+* Set `BlanketSubtraction` **down** when you enable NLM. Leaving it at 5 throws away most
+  of what the denoiser just recovered.
+* Changing any reduction key invalidates `SpotsInfo.bin` for **every** phase sharing it
+  (§8e). Regenerate once, then re-use.
+
+Sanity check before trusting a new reduction: `max C` must not fall. Denoising before
+peak-finding can in principle smear a centroid or merge neighbouring spots, and that shows
+up as degradation at the ceiling, not as a lower average.
+
+### 8g. Comparing two runs — never by checksum
 
 `MicFileBinary` is **11 float64 per voxel** (`output.py:32-56`), in this order:
 
@@ -1413,7 +1333,7 @@ Reference: the `screen()` dtype rework (float intermediates → `bool`/`int32`) 
 validated exactly this way on a 5046-voxel grid — every field bit-identical,
 `RunTime` the only difference.
 
-### 8g. `screen()` memory — chunking and its knob
+### 8h. `screen()` memory — chunking and its knob
 
 The vectorised path builds `(V, T, 3)` tensors, where `T` is the **total**
 simulated-spot count over every candidate orientation (~3×10⁷ for a cubic seed
@@ -1919,9 +1839,9 @@ unless `MIDAS_RUN_INTEGRATION=1`; `test_mic2grains` also skips if the C binary i
 
 1. **`BoxSize` semantics and effect** (§7d): 0.949153 → 1.000000 on one Au voxel, matching
    the C reference exactly; Triton fused kernel agrees with eager in both states.
-2. **`screen()` dtype rework is answer-preserving** (§8f): every field bit-identical across
+2. **`screen()` dtype rework is answer-preserving** (§8g): every field bit-identical across
    a 5046-voxel grid, `RunTime` the only difference.
-3. **`screen()` results are independent of `MIDAS_NF_SCREEN_VOXEL_CHUNK`** (§8g), checked at
+3. **`screen()` results are independent of `MIDAS_NF_SCREEN_VOXEL_CHUNK`** (§8h), checked at
    a fixed forced chunk size.
 4. **The three calibration negatives** (§7b) — plateau, multipoint, iteration ratchet — were
    each observed directly on `pokharel_jul26` Au5, not inferred.
