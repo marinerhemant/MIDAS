@@ -2146,6 +2146,27 @@ class FFViewer(QtWidgets.QMainWindow):
                 except Exception:
                     pass
 
+        # Re-apply session geometry AFTER _absorb_shared_params ran (via
+        # the multi-det param-file loads above). _absorb overwrites Lsd,
+        # px, Wavelength, SpaceGroup and MaxRingRad from the stale on-disk
+        # param file, which silently reverts calibration the user saved
+        # in the session. Session values must win — they represent the
+        # user's latest calibration, not the disk param file's initial
+        # seed. BC/tilts/distortion aren't touched by _absorb, so this
+        # covers only the fields it stomps.
+        if state.get('lsd') is not None:
+            self.lsd_edit.setText(str(state['lsd']))
+            self.lsd_local = float(state['lsd'])
+            self.lsd_orig  = float(state['lsd'])
+        if state.get('px') is not None:
+            self.px_edit.setText(str(state['px']))
+            self.pixel_size = float(state['px'])
+        if state.get('wl') is not None:
+            self.wl = float(state['wl'])
+            self._sync_energy_field()
+        if state.get('sg') is not None:
+            self.sg = state['sg']
+
         # Dark / frame index last (these trigger reloads — but only when the
         # state actually changes; setChecked(False) on an already-unchecked
         # box is a no-op, so we force the reload explicitly below).
