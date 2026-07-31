@@ -87,6 +87,87 @@ def test_paramstest_parser_roundtrip():
 
 
 @pytest.mark.unit
+def test_paramstest_parses_full_p0_p14_distortion():
+    """Regression: the parser once read only p0..p3 and silently zeroed p4..p14.
+
+    `midas_transforms.apply_tilt_distortion` consumes all 15 coefficients, so
+    dropping the higher-order terms shifts predicted spot positions with no
+    error raised. Values below are the 1-ID GE5 95 keV CeO2 calibration
+    (pokharel_jul26), which populates the full set.
+    """
+    body = """
+        Lsd 1666219.585298
+        BC 1018.718310 1076.544304
+        tx 0.000000
+        ty -0.005156
+        tz 0.950678
+        p0 3.043933204e-05
+        p1 -0.0002455996239
+        p2 -0.0005507571608
+        p3 -10.4095261
+        p4 0.001322929365
+        p5 -0.001041571336
+        p6 -8.595090107
+        p7 0.0005476891236
+        p8 24.62538966
+        p9 -4.579508501e-05
+        p10 80.67522769
+        p11 -4.154932876e-05
+        p12 -90
+        p13 -0.0001223074173
+        p14 90
+        Wavelength 0.130510
+        px 200.000000
+        NrPixelsY 2048
+        NrPixelsZ 2048
+        RhoD 297745.587613
+    """
+    with tempfile.NamedTemporaryFile("w", suffix=".txt", delete=False) as fh:
+        fh.write(body)
+        path = Path(fh.name)
+    try:
+        g = Geometry.from_paramstest(path)
+        assert len(g.p_coeffs) == 15
+        # the terms that used to be dropped
+        assert g.p_coeffs[4] == pytest.approx(0.001322929365, rel=1e-9)
+        assert g.p_coeffs[6] == pytest.approx(-8.595090107, rel=1e-9)
+        assert g.p_coeffs[8] == pytest.approx(24.62538966, rel=1e-9)
+        assert g.p_coeffs[10] == pytest.approx(80.67522769, rel=1e-9)
+        assert g.p_coeffs[12] == pytest.approx(-90.0, rel=1e-9)
+        assert g.p_coeffs[14] == pytest.approx(90.0, rel=1e-9)
+        assert g.rho_d_um == pytest.approx(297745.587613, rel=1e-9)
+    finally:
+        path.unlink()
+
+
+@pytest.mark.unit
+def test_paramstest_legacy_p0_p3_only_still_zero_pads():
+    """Back-compat: a file with only p0..p3 must still give a 15-tuple."""
+    body = """
+        Lsd 652665.6325
+        BC 698.42 813.68
+        Wavelength 0.172979
+        px 172.0
+        NrPixelsY 1475
+        NrPixelsZ 1679
+        p0 0.000230
+        p1 0.001234
+        p2 0.000211
+        p3 32.904494
+    """
+    with tempfile.NamedTemporaryFile("w", suffix=".txt", delete=False) as fh:
+        fh.write(body)
+        path = Path(fh.name)
+    try:
+        g = Geometry.from_paramstest(path)
+        assert len(g.p_coeffs) == 15
+        assert g.p_coeffs[:4] == pytest.approx((0.000230, 0.001234, 0.000211, 32.904494), abs=1e-9)
+        assert all(c == 0.0 for c in g.p_coeffs[4:])
+    finally:
+        path.unlink()
+
+
+@pytest.mark.unit
 def test_paramstest_missing_required_raises():
     """Missing 'Lsd' must surface as a clear ValueError."""
     with tempfile.NamedTemporaryFile("w", suffix=".txt", delete=False) as fh:

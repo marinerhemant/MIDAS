@@ -89,8 +89,10 @@ class Geometry:
     ty_deg: float = 0.0               # detector tilt about lab Y (deg)
     tz_deg: float = 0.0               # detector tilt about lab Z (deg)
     wedge_deg: float = 0.0            # ω-axis non-orthogonality (deg)
-    # MIDAS radial lens-distortion model (p0..p3 then 11 unused slots), and the
-    # normalization radius RhoD (µm). All-zero p_coeffs ⇒ no distortion.
+    # MIDAS lens-distortion model, p0..p14 (the full 15-coefficient set consumed
+    # by `midas_transforms.apply_tilt_distortion` → `pixel_to_REta_torch`), and
+    # the normalization radius RhoD (µm). All-zero p_coeffs ⇒ no distortion.
+    # Older calibrations populate only p0..p3 and leave p4..p14 zero.
     p_coeffs: tuple = (0.0,) * 15
     rho_d_um: float = 200000.0
     label: str = ""                   # free-form label for logging
@@ -103,8 +105,13 @@ class Geometry:
         Recognized keys (case-sensitive, MIDAS convention):
             Lsd, BC, ty, tz, tx, Wedge, Wavelength, px, NrPixelsY, NrPixelsZ,
             numPxY, numPxZ, OmegaFirstFile, OmegaStart, OmegaStep, NrFilesPerSweep,
-            EndNr, StartNr.
+            EndNr, StartNr, p0..p14, RhoD.
         Unknown keys are silently ignored. Missing required keys raise.
+
+        The distortion model is read in full (p0..p14). Reading only p0..p3 —
+        as this parser did before 2026-07-30 — silently drops the higher-order
+        terms of any modern calibration, which shifts predicted spot positions
+        without any error being raised.
         """
         path = Path(path)
         fields_: dict[str, list[str]] = {}
@@ -154,11 +161,10 @@ class Geometry:
         nfr_vals = _get("NrFilesPerSweep", "EndNr")
         n_frames = int(nfr_vals[0]) if nfr_vals else int(round(360.0 / abs(om_step)))
 
-        # radial lens distortion (MIDAS p0..p3 + RhoD); absent ⇒ no distortion
-        p_coeffs = (
-            _opt_f("p0", 0.0), _opt_f("p1", 0.0), _opt_f("p2", 0.0),
-            _opt_f("p3", 0.0),
-        ) + (0.0,) * 11
+        # Lens distortion: the full MIDAS p0..p14 set (+ RhoD); absent ⇒ no
+        # distortion. Older paramstest files carry only p0..p3, which parse to
+        # the same tuple with p4..p14 = 0, so this is backwards-compatible.
+        p_coeffs = tuple(_opt_f(f"p{i}", 0.0) for i in range(15))
         rho_d_um = _opt_f("RhoD", 200000.0)
 
         return cls(
