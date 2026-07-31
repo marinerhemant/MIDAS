@@ -22,15 +22,29 @@ from midas_pipeline.recon.fbp import _load_run_tomo_from_sinos, fbp_recon
 
 
 def _tomo_binary_available() -> bool:
+    """Ask the SAME resolver the code under test uses.
+
+    This used to check two hardcoded absolute paths under ``~/opt/MIDAS``
+    (one of them a literal ``/Users/hsharma/...``), while ``fbp_recon``
+    resolves the binary relative to the repo root of the *imported*
+    ``midas_pipeline`` — ``Path(fbp.__file__).parents[4] / "TOMO"``. In any
+    checkout other than ``~/opt/MIDAS`` the two disagree: the guard finds the
+    binary in the OTHER clone, declines to skip, and the test then dies with
+    FileNotFoundError on this clone's path. That is what blocked a release
+    run from a fresh clone (2026-07-31).
+
+    Going through ``_find_tomo_exe`` keeps guard and code in agreement by
+    construction, on any machine and any checkout.
+    """
     try:
-        _load_run_tomo_from_sinos()
+        _load_run_tomo_from_sinos()                   # puts TOMO/ on sys.path
+        from midas_tomo_python import _find_tomo_exe  # type: ignore
     except ImportError:
         return False
-    candidates = [
-        Path(os.path.expanduser("~/opt/MIDAS/TOMO/bin/MIDAS_TOMO")),
-        Path("/Users/hsharma/opt/MIDAS/build/bin/MIDAS_TOMO"),
-    ]
-    return any(c.exists() for c in candidates)
+    try:
+        return Path(_find_tomo_exe()).is_file()
+    except Exception:                                        # noqa: BLE001
+        return False
 
 
 pytestmark = pytest.mark.skipif(
