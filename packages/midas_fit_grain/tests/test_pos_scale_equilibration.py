@@ -146,14 +146,31 @@ def test_a_degenerate_gradient_falls_back_instead_of_exploding():
     (15.0, -5.0, 25.0),
 ])
 def test_fp32_recovers_the_position_with_auto_scaling(offset):
-    """The headline: fp32 went from 154 / 68 / 30 um of error to sub-0.01 um."""
+    """The headline: with auto scaling fp32 drives the seed onto ground truth.
+
+    Asserted in ABSOLUTE terms, plus "never worse than the fixed scale".
+
+    Deliberately NOT asserted: how badly the old fixed ``pos_scale = 100``
+    fails. That is a line-search failure in fp32, so its severity depends on
+    the platform's rounding and BLAS kernels — measured at 68 um on arm64 and
+    1.7 um on x86_64 CI for the same seed. An earlier version of this test
+    required ``err_fixed > 5.0`` as a "does the fixture still reproduce the
+    bug" canary and went red on CI for that reason alone. The property under
+    test is that auto scaling WORKS, which is platform-independent.
+    """
+    seed_err = math.sqrt(sum(v * v for v in offset))
+    _, err_auto = _refine(torch.float32, offset)           # auto
     _, err_fixed = _refine(torch.float32, offset, pos_scale=100.0)
-    _, err_auto = _refine(torch.float32, offset)          # auto
-    assert err_fixed > 5.0, (
-        f"fixture no longer reproduces the fp32 failure ({err_fixed:.4g} um)"
-    )
+
     assert err_auto < 0.5, f"auto scaling still off by {err_auto:.4g} um"
-    assert err_auto < err_fixed / 50.0
+    assert err_auto < seed_err / 100.0, (
+        f"auto scaling barely moved the seed: {err_auto:.4g} um left of a "
+        f"{seed_err:.4g} um error"
+    )
+    assert err_auto <= max(err_fixed, 0.5), (
+        f"auto scaling ({err_auto:.4g} um) is worse than the fixed scale "
+        f"({err_fixed:.4g} um)"
+    )
 
 
 @pytest.mark.parametrize("offset", [

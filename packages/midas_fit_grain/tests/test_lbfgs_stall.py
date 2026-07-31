@@ -7,8 +7,7 @@ IDENTICAL seeds from the C indexer's ``IndexBest.bin``:
     float64 (cpu or cuda): moved 149.7 µm, median |Δpos| vs C = 13.4 µm
     float32 (cpu or cuda): moved   0.0 µm — 20/20 grains, exactly
 
-fp32 did not refine position *at all*; it emitted the seed. Mechanism
-(reproduced by ``test_fp32_position_is_left_on_the_seed`` below):
+fp32 did not refine position *at all*; it emitted the seed. Mechanism:
 ``torch.optim.LBFGS``'s strong-Wolfe line search takes one improving step and
 then returns t = 0 forever, so the loss repeats bit-for-bit, the ``ftol``
 counter reaches 8, and ``minimize_lbfgs`` truthfully reports that the loss
@@ -16,9 +15,9 @@ stopped changing — which the caller reads as success.
 
 Two separable defects, and only the second is fixable here:
 
-  * the numerical one (fp32 cannot drive this line search) — handled by
-    defaulting FF refinement to float64, ``midas_pipeline.config.
-    RefinementConfig.dtype``;
+  * the numerical one — root-caused to PARAMETER SCALING and fixed by
+    ``refine_block``'s gradient equilibration (see
+    ``test_pos_scale_equilibration.py``); fp32 now refines correctly;
   * the SILENCE — nothing downstream could tell that a grain was never
     refined. That is what these tests pin, via ``BlockFitResult.
     max_position_move_um``, judged against a scale that carries units: the
@@ -30,6 +29,7 @@ from __future__ import annotations
 
 import math
 
+import pytest
 import torch
 
 from midas_fit_grain import FitConfig, refine_block
@@ -57,7 +57,7 @@ def _cfg(fix):
     )
 
 
-def _refine(dtype):
+def _refine(dtype, **kw):
     """Refine one grain from a seed displaced ~154 µm from ground truth."""
     dev = torch.device("cpu")
     fix = make_synthetic(device=dev, dtype=dtype)
@@ -71,7 +71,7 @@ def _refine(dtype):
         init_eulers=(fix.gt_euler.clone() + 0.05 * DEG2RAD).view(1, 3),
         init_lattices=fix.gt_lattice.clone().view(1, 6),
         pred_ring_slot=fix.pred_ring_slot,
-        precomputed_matches=[match],
+        precomputed_matches=[match], **kw
     )
     g = blk.grains[0]
     return dict(
@@ -105,25 +105,49 @@ def test_float64_refines_the_position_and_is_not_flagged():
 
 # ── the failure: fp32 leaves the seed, and SAYS SO ───────────────────────
 
-def test_fp32_leaves_the_position_essentially_on_the_seed_and_is_flagged():
-    """Documents the numerical failure. It is allowed to stay broken (the
-    dtype default protects production) — it is not allowed to be silent.
+def test_reported_movement_matches_what_actually_happened():
+    """The guard's invariant, which holds on every platform and dtype.
 
-    fp32 does not necessarily return the seed BIT-identically; measured here
-    it creeps ~5e-4 µm (2.5e-06 px) while the seed is 154 µm off ground
-    truth. So the guard is measurable movement, not bit equality."""
-    r = _refine(torch.float32)
-    if r["moved"] > 0.5 * r["seed_err"]:
-        # fp32 started working; then it must not be flagged either.
-        assert r["blk"].max_position_move_um > r["floor"]
-        return
-    assert r["err"] > 0.5 * r["seed_err"], "no movement but the error shrank?"
-    assert r["blk"].max_position_move_um < r["floor"], (
-        f"fp32 moved {r['blk'].max_position_move_um:.4g} µm; the driver only "
-        f"warns below {r['floor']:.4g} µm, so this failure would ship "
-        f"silently again"
+    Do NOT assert the size of the fp32 failure. It is a line-search failure,
+    so its severity moves with the platform's rounding and BLAS kernels — the
+    grain stuck exactly on its seed on arm64 but retained only ~1.7 um of
+    error on x86_64 CI for one seed. An earlier version of this file asserted
+    the failure magnitude and went red on CI for that reason alone.
+
+    What must always hold: the movement the block REPORTS is the movement that
+    actually happened, and the driver's warn condition is exactly
+    "no grain moved more than px/1000".
+    """
+    for dtype in (torch.float64, torch.float32):
+        r = _refine(dtype)
+        reported = r["blk"].max_position_move_um
+        # Tolerance is fp32-sized: `reported` is computed from the fp32
+        # tensors, the reference from an fp64 recomputation.
+        assert reported == pytest.approx(r["moved"], rel=1e-5), (
+            f"{dtype}: block reported {reported:.6g} um of movement but the "
+            f"grain actually moved {r['moved']:.6g} um"
+        )
+        assert (reported < r["floor"]) == (r["moved"] < r["floor"])
+
+
+def test_the_guard_fires_when_the_refiner_really_does_nothing():
+    """Coverage for the flagged path itself.
+
+    Forced by pinning the OLD fixed ``pos_scale = 100``, which is what left
+    fp32 unable to move the position. Skipped where the platform does not
+    reproduce that strongly enough — the point here is the guard, not the
+    numerics.
+    """
+    r = _refine(torch.float32, pos_scale=100.0)
+    if r["moved"] >= r["floor"]:
+        pytest.skip(
+            f"this platform still moves {r['moved']:.4g} um at pos_scale=100 "
+            f"(floor {r['floor']:.4g} um); nothing to flag"
+        )
+    assert r["blk"].max_position_move_um < r["floor"]
+    assert r["err"] > 0.5 * r["seed_err"], (
+        "flagged as unmoved, yet the error shrank — inconsistent"
     )
-    assert r["blk"].n_grains == 1
 
 
 def test_movement_stats_are_measured_against_the_seed():
