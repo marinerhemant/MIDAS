@@ -460,6 +460,7 @@ def fit_multipoint_hard_run(
     verbose: bool = True,
     seed: int = 0,
     max_iter: int = 20000,
+    global_iters: int = 40,
 ) -> dict:
     """Joint multi-voxel calibration against the HARD FracOverlap.
 
@@ -586,29 +587,94 @@ def fit_multipoint_hard_run(
     n_eval = [0]
 
     def objective(x) -> float:
+        # Per-voxel loop, NOT batched.
+        #
+        # The loop is the bottleneck: ~50 ms/evaluation (12 sequential GPU
+        # launches plus 12 host syncs), which caps a 45-dimensional
+        # Nelder-Mead at ~20k evaluations in ~1000 s -- not enough to move off
+        # the seed. The C is OpenMP-parallel over the same voxels and finishes
+        # its whole ladder in ~41 s.
+        #
+        # `soft_overlap.forward_batched_grains` was tried here and produced a
+        # NEGATIVE mean fraction (-0.087), i.e. nonsense: it returns `valid` as
+        # (B, K, M) but y_pixel/z_pixel as (D, B, K, M) under multi-distance
+        # layered mode, and hard_fraction does not compose correctly with that
+        # pairing. Batching is still the right optimisation, but it needs
+        # hard_fraction taught the batched layout first, with a parity check
+        # against this loop.
         geom_ov, eul = unpack(x)
         total = 0.0
         with torch.no_grad(), overrides(model, geom_ov):
             for vi in range(n_spots):
-                s = model(eul[vi:vi + 1], positions_um[vi:vi + 1])
+                sp = model(eul[vi:vi + 1], positions_um[vi:vi + 1])
                 total += float(obs.hard_fraction(
-                    s.frame_nr, s.y_pixel, s.z_pixel, s.valid))
+                    sp.frame_nr, sp.y_pixel, sp.z_pixel, sp.valid))
         n_eval[0] += 1
         return 1.0 - total / n_spots
 
     seed_val = objective(x0)
     if verbose:
         print(f"Multipoint (HARD FracOverlap, C-equivalent): "
-              f"{n_spots} voxels, {nL} distances")
+              f"{n_spots} voxels, {nL} distances", flush=True)
         print(f"  Original val: {1.0 - seed_val:.10f}   "
-              f"(this is the C's 'Original val')")
+              f"(this is the C's 'Original val')", flush=True)
+
+    # Local -> GLOBAL -> local ladder, repeated NumIterations times.
+    #
+    # The C alternates NLOPT_LN_NELDERMEAD with NLOPT_GN_CRS2_LM (a global
+    # controlled random search) five times per iteration, precisely because a
+    # single local method in 3 + 3*nL + 3*nSpots dimensions stalls. A lone
+    # scipy Nelder-Mead did exactly that here: 20001 evaluations for +0.0009
+    # against the C's +0.0119, finishing on the seed geometry to 4 decimals.
+    #
+    # scipy has no CRS2; differential_evolution is the closest bounded global
+    # search. It is seeded with the current best (`x0=`) and given a small
+    # budget per round, so it perturbs broadly without dominating the runtime.
+    from scipy.optimize import differential_evolution
 
     t0 = time.perf_counter()
-    res = minimize(
-        objective, x0, method="Nelder-Mead", bounds=bounds,
+    x_best = x0.copy()
+    f_best = float(seed_val)
+    n_rounds = max(1, p.num_iterations)
+
+    for rnd in range(n_rounds):
+        r = minimize(
+            objective, x_best, method="Nelder-Mead", bounds=bounds,
+            options=dict(maxiter=max_iter, maxfev=max_iter,
+                         xatol=1e-7, fatol=1e-9, adaptive=True),
+        )
+        if float(r.fun) < f_best:
+            f_best, x_best = float(r.fun), r.x.copy()
+        if verbose:
+            print(f"  round {rnd+1}/{n_rounds} local : "
+                  f"{1.0 - f_best:.10f}", flush=True)
+
+        gr = differential_evolution(
+            objective, bounds, x0=x_best, seed=seed + rnd,
+            maxiter=global_iters, popsize=8, tol=1e-8,
+            mutation=(0.3, 0.9), recombination=0.9,
+            polish=False, init="sobol", updating="deferred",
+        )
+        if float(gr.fun) < f_best:
+            f_best, x_best = float(gr.fun), gr.x.copy()
+        if verbose:
+            print(f"  round {rnd+1}/{n_rounds} global: "
+                  f"{1.0 - f_best:.10f}", flush=True)
+
+    # final local polish from the best point found
+    r = minimize(
+        objective, x_best, method="Nelder-Mead", bounds=bounds,
         options=dict(maxiter=max_iter, maxfev=max_iter,
-                     xatol=1e-6, fatol=1e-8, adaptive=True),
+                     xatol=1e-7, fatol=1e-9, adaptive=True),
     )
+    if float(r.fun) < f_best:
+        f_best, x_best = float(r.fun), r.x.copy()
+
+    class _R:
+        pass
+    res = _R()
+    res.x = x_best
+    res.fun = f_best
     secs = time.perf_counter() - t0
 
     best_val = 1.0 - float(res.fun)
