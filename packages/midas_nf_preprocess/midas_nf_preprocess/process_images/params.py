@@ -44,6 +44,16 @@ class ProcessParams:
 
     # Processing
     blanket_subtraction: int = 0
+    # --- NLM denoise of the MEDIAN-CORRECTED residual (before thresholding) ---
+    # Distinct from the pipeline's `Denoise` stage, which denoises RAW frames
+    # before median subtraction. Denoising the residual instead lets the
+    # threshold drop to well under 1 sigma: on nf_Ce_ht525_s2, NLM + threshold 2
+    # recovered 5.3x the area in >=30 px blobs that raw + threshold 10 did,
+    # with FEWER single-pixel specks.
+    nlm_denoise: int = 0
+    nlm_h: float = 1.0            # h = nlm_h * sigma_MAD
+    nlm_patch_size: int = 5
+    nlm_patch_distance: int = 6
     mean_filt_radius: int = 1  # spatial median radius (0=identity, 1=3x3, 2=5x5)
     do_log_filter: int = 1
     log_mask_radius: int = 4
@@ -94,6 +104,10 @@ class ProcessParams:
             ("extOrig", "ext_orig", str),
             ("extReduced", "ext_reduced", str),
             ("BlanketSubtraction", "blanket_subtraction", int),
+            ("NLMDenoise", "nlm_denoise", int),
+            ("NLMH", "nlm_h", float),
+            ("NLMPatchSize", "nlm_patch_size", int),
+            ("NLMPatchDistance", "nlm_patch_distance", int),
             ("MedFiltRadius", "mean_filt_radius", int),
             ("DoLoGFilter", "do_log_filter", int),
             ("LoGMaskRadius", "log_mask_radius", int),

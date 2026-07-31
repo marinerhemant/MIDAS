@@ -59,6 +59,40 @@ class FrameResult:
         return self.peaks.log_response
 
 
+
+def _nlm_denoise_residual(
+    resid: "torch.Tensor",
+    *,
+    h_factor: float = 1.0,
+    patch_size: int = 5,
+    patch_distance: int = 6,
+) -> "torch.Tensor":
+    """Non-local-means denoise of a median-corrected residual frame.
+
+    The noise level is estimated with a robust MAD estimator rather than
+    skimage's ``estimate_sigma``: the residual is mostly noise with SPARSE
+    spots, so the median absolute deviation ignores the spots, and
+    ``estimate_sigma`` additionally needs PyWavelets which is not a MIDAS
+    dependency.
+
+    Runs on CPU via scikit-image. Its fast NLM releases the GIL (measured ~4x on
+    4 threads), which is why ``process_layer`` can thread the frame loop.
+    """
+    import numpy as np
+    from skimage.restoration import denoise_nl_means
+
+    dev, dt = resid.device, resid.dtype
+    a = resid.detach().to("cpu", torch.float32).numpy()
+    sigma = float(1.4826 * np.median(np.abs(a - np.median(a))))
+    if not np.isfinite(sigma) or sigma <= 0:
+        return resid
+    out = denoise_nl_means(
+        a, h=h_factor * sigma, sigma=sigma, fast_mode=True,
+        patch_size=patch_size, patch_distance=patch_distance,
+        channel_axis=None,
+    )
+    return torch.from_numpy(np.ascontiguousarray(out)).to(device=dev, dtype=dt)
+
 class ProcessImagesPipeline:
     """Orchestrator for the three-phase NF processing pipeline.
 
@@ -87,6 +121,7 @@ class ProcessImagesPipeline:
         self.params = params
         self.device = resolve_device(device)
         self.dtype = resolve_dtype(self.device, dtype)
+        self.n_cpus = int(n_cpus or 0)
         apply_cpu_threads(n_cpus, self.device)
 
         # Pre-build LoG kernels once. Mirrors the C's two-scale pass:
@@ -162,7 +197,22 @@ class ProcessImagesPipeline:
         # (a) median subtraction. Match C: clamp negative results at 0.
         # Note: the C does integer subtraction (uint16 - uint16 - int -> int -> 0-clamped uint16).
         # We do float subtraction; clamp keeps the math equivalent for non-negative inputs.
-        sub = frame - median - float(self.params.blanket_subtraction)
+        #
+        # NLM, when enabled, goes HERE: on the median-corrected residual, BEFORE
+        # the blanket subtraction and the clamp. Denoising after thresholding
+        # would be pointless (the noise is already baked into the mask), and
+        # denoising the raw frame instead leaves the fixed-pattern background in.
+        # Working on the residual is what lets BlanketSubtraction drop to ~0.7
+        # sigma instead of ~3 sigma.
+        resid = frame - median
+        if int(getattr(self.params, "nlm_denoise", 0)) == 1:
+            resid = _nlm_denoise_residual(
+                resid,
+                h_factor=float(getattr(self.params, "nlm_h", 1.0)),
+                patch_size=int(getattr(self.params, "nlm_patch_size", 5)),
+                patch_distance=int(getattr(self.params, "nlm_patch_distance", 6)),
+            )
+        sub = resid - float(self.params.blanket_subtraction)
         img = torch.clamp(sub, min=0)
 
         # (b) spatial median
@@ -237,9 +287,56 @@ class ProcessImagesPipeline:
         # 0-indexed layer for the bitmask (matches C ``layer = nLayers - 1`` at L927).
         layer_idx = layer_nr - 1
         n_files = stack.shape[0]
-        for j in range(n_files):
-            result = self.process_frame(j, stack[j], median, layer_nr)
-            bitmask.set_frame_from_labels(layer_idx, j, result.labels)
+
+        # Threaded frame loop.
+        #
+        # The per-frame work (NLM, spatial median, connected components) is the
+        # dominant cost of the whole reduction and every frame is independent.
+        # It used to be a plain serial loop, and `n_cpus` only ever reached
+        # torch.set_num_threads on CPU -- so on device=cuda the cores sat idle.
+        #
+        # Threads, not processes: skimage's fast NLM and scipy's labeller both
+        # release the GIL, so threads scale (measured ~4x on 4 threads) without
+        # pickling 16 MB frames between workers.
+        #
+        # Frames are processed in batches and the bitmask writes are done in the
+        # PARENT, in frame order: set_frame_from_labels mutates shared state, and
+        # keeping the writes serial avoids needing a lock and keeps the output
+        # bit-identical to the serial path regardless of worker scheduling.
+        n_workers = max(1, int(getattr(self, "n_cpus", 1) or 1))
+
+        # Threading the frame loop multiplies the PER-FRAME GPU temporaries by
+        # the worker count: spatial_median's im2col alone OOM'd a 47 GB card at
+        # 64 workers. When NLM is on the dominant cost is CPU anyway (and NLM
+        # already forces a host round-trip per frame), so move the whole frame
+        # loop to CPU and let the threads scale against host RAM instead. When
+        # NLM is off there is no CPU-bound work to hide, so cap concurrency
+        # instead of relocating the data.
+        if int(getattr(self.params, "nlm_denoise", 0)) == 1:
+            if stack.is_cuda:
+                stack = stack.cpu()
+                median = median.cpu()
+        elif stack.is_cuda:
+            n_workers = min(n_workers, 8)
+
+        if n_workers <= 1:
+            for j in range(n_files):
+                result = self.process_frame(j, stack[j], median, layer_nr)
+                bitmask.set_frame_from_labels(layer_idx, j, result.labels)
+            return bitmask
+
+        from concurrent.futures import ThreadPoolExecutor
+
+        batch = max(n_workers, 32)
+        with ThreadPoolExecutor(max_workers=n_workers) as ex:
+            for lo in range(0, n_files, batch):
+                hi = min(lo + batch, n_files)
+                results = list(ex.map(
+                    lambda j: self.process_frame(j, stack[j], median, layer_nr),
+                    range(lo, hi),
+                ))
+                for j, result in zip(range(lo, hi), results):
+                    bitmask.set_frame_from_labels(layer_idx, j, result.labels)
         return bitmask
 
     # ------------------------------------------------------------------
