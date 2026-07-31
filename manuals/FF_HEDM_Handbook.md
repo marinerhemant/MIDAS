@@ -675,8 +675,8 @@ Established in this tree on 2026-07-30. Detector 2048², 200 µm, monolithic.
 | Au sweep (file 8) | 1441 logged frames, 1440 used | par field 21 |
 | Au ω (MIDAS) | `OmegaStart 180.00` (first used), `OmegaStep -0.25` | §2 + §3e |
 | Au `RingThresh` | 10 (not 60) | measured, §6b |
-| Au spots found | 2078 (`InputAll.csv`), ~8.5 peaks/frame | §6b |
-| Au grains indexed | **2**, confidence 1.000, R ≈ 21 µm, a = 4.07976 Å | provisional, §11 |
+| Au spots found | 2076 binned rows, but only **229 are credible** — the rest is noise, padding and haloes | Lab Notebook §4d |
+| Au grains indexed | **2** (parent + Σ3 twin), confidence 1.000, R ≈ 21 µm, a = 4.07976 Å — a COMPLETE recon | Lab Notebook §4d |
 | Au residuals (0.5.7 cols) | DiffPos ≈ 200 µm, DiffOme ≈ 0.05°, DiffAngle ≈ 0.08° | §8a |
 
 Working run directories:
@@ -727,6 +727,13 @@ discriminator or partly distortion re-fitting (the distortion-frozen control was
 only with `midas-process-grains >= 0.6.1`; the pipeline is bit-reproducible only with
 `midas-peakfit >= 0.4.6` and `midas-transforms >= 0.8.2`, and the refiner only refines
 position at all with `midas-fit-grain >= 0.6.0`.
+
+**Do not judge a reconstruction by the fraction of the spot list it indexes.** On this
+dataset 2 grains index 8.9 % of the rows and the recon is nevertheless *complete* — ~98 %
+of that list is noise, zero-intensity padding, and over-segmented haloes of the two grains
+themselves. A low indexed fraction is a statement about `RingThresh`, not about missing
+grains. Classify the spots by own-frame SNR against the raw frames before concluding
+anything from it; the method and the numbers are in Lab Notebook §4d.
 
 **Bottom line.** The geometry is trustworthy in *magnitude* — `Lsd` and `BC` repeat to
 0.01 % / 0.01 px across an independent 180° repeat, and the rings overlay. Its

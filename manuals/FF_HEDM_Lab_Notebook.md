@@ -25,7 +25,8 @@ there as retracted, with the measurement that killed each one.
 | 5 | That failure was silent — nothing downstream could tell | FIXED 0.6.0 / pipeline 0.7.0 | §3c |
 | 6 | The specimen is one grain plus its Σ3 annealing twin | VERIFIED vs raw frames | §3d |
 | 7 | C `ProcessGrains` over-segments those 2 orientations into 6 grains | ESTABLISHED | §3d |
-| 8 | 2 grains explain 185 of 2077 spots (8.9 %) | **OPEN** | §4 |
+| 8 | The recon is **COMPLETE** — 2 grains explain every credible reflection; the "91 % unindexed" spot list is ~98 % noise, padding and haloes of those same 2 grains | RESOLVED | §4d |
+| 9 | `RingThresh` is too low here: 1309 sub-SNR-5 rows admitted, plus ~16 % over-segmentation around strong spots | OPEN (peak-finder side) | §4d |
 
 Every one of defects 1–5 produced **wrong numbers and no error message**. That is the
 through-line of this campaign, and the reason the handbook now insists on cross-checking
@@ -436,18 +437,27 @@ grains; (c) stops you believing a phase that only ever borrows peaks.
 
 ## 4. Open questions, and claims that were retracted
 
-### 4a. Open — the reconstruction is not finished
+### 4a. What is and is not still open
 
 The `Au3_cubes_ff_000008` run completes all 13 stages, is bit-reproducible, and yields
 **2 grains** — a parent and its Σ3 twin, both with independent evidence in the raw frames
-(§3d). What it is not is a *complete* reconstruction:
+(§3d). As of 2026-07-31 it is a **complete** reconstruction: those two explain every
+credible reflection, and the rest of the spot list is noise (§4d).
 
-- **2 grains explain 185 of 2077 spots (8.9 %).** ~91 % of the spot list is unindexed.
-  This is the open item, and it is indexing-parameter work (`Completeness`, `MinNrSpots`,
-  `OverAllRingToIndex`) — **not** geometry, and **not** `Rsample`/`Hbeam`.
+**Closed:**
+
+- ~~"2 grains explain only 185 of 2076 spots (8.9 %)"~~ — the denominator was ~98 %
+  non-diffraction. Do not quote the 8.9 % or "91 % unindexed" figures; see §4d.
+- ~~indexing-parameter work on `Completeness`/`MinNrSpots`/`OverAllRingToIndex`~~ — there
+  is nothing left to index. Tuning these would be fitting the indexer to noise.
+
+**Still open:**
+
 - **Grain positions are good to ~100 µm, not better** (§2d). Quote them accordingly.
 - 899 of 1176 candidate pairs sit at 0.45–0.64°, just outside C's 0.4° merge threshold.
   Whether that is same-grain spread or real substructure is **not resolved**.
+- **`RingThresh` is set too low for this specimen** — the peak finder is working deep in
+  the noise and over-segmenting strong reflections (§4d). Peak-finder side, not indexer.
 - `Rsample`/`Hbeam` being generous is *correct* and must stay that way (handbook hard
   rule 9). It is not a pending item.
 
@@ -461,6 +471,100 @@ Current output, for reference:
 
 Both grains sit within ~25 µm of the rotation centre, and DiffPos (190.1 / 182.2 µm) is
 within ~1 % of the C reference's own residual (188.7 / 181.0 µm).
+
+### 4d. RESOLVED — the "91 % unindexed" figure is noise; the reconstruction is complete
+
+*Measured 2026-07-31. Scripts:
+`~/Desktop/analysis/pokharel_jul26_calib/spot_{noise_audit,noise_null,snr_all,frames_fixed}.py`
++ `halo_check.py` + `residual44_check.py`; outputs under `<run>/spot_noise_audit/`.*
+
+**Bottom line: `Au3_cubes_ff_000008` is a COMPLETE reconstruction.** The specimen is one
+grain and its Σ3 twin (§3d), and those two explain every credible reflection in the data.
+The "2 grains explain only 8.9 % of the spots" statement that sat in this document as the
+headline open item was an artifact of a spot list that is ~98 % non-diffraction.
+
+The spot list has 2076 rows (not 2077). Classifying every row by its own-frame SNR at the
+recorded detector pixel — measured on the raw frames, one read per frame, all 2076 rows:
+
+| class | n | % | what it is |
+|---|---|---|---|
+| indexed | 185 | 8.9 % | the 2 grains; own-frame SNR median **1989**, 100 % > 5 |
+| unindexed, SNR > 5, **within 20 px of an indexed spot** | 333 | 16.0 % | over-segmented tails/haloes of the SAME two grains |
+| unindexed, SNR ≤ 5 | 1309 | 63.1 % | noise excursions the peak finder crossed threshold on |
+| ring-0 padding | 205 | 9.9 % | zero-intensity rows; not spots at all |
+| unindexed, SNR > 5, isolated (≥ 50 px) | 44 | 2.1 % | **also noise — see below** |
+
+88.3 % of the SNR > 5 unindexed spots sit within 20 px of an indexed spot at |Δω| < 2°,
+and the distance distribution is cleanly bimodal (identical counts at the 20 px and 50 px
+cuts), so the halo classification is not a threshold artifact.
+
+**The residual 44 are a noise tail, not small grains.** Raising the SNR cut settles it —
+a real population thins slowly and keeps a size mode; a noise tail piled against the cut
+collapses:
+
+| SNR cut | n | median implied radius | median SNR | NImgs==1 |
+|---|---|---|---|---|
+| > 5 | 44 | 7.0 µm | 6.4 | 64 % |
+| > 8 | 10 | 7.2 µm | 11.1 | 90 % |
+| > 10 | 6 | 7.2 µm | 11.6 | 100 % |
+| > 15 | **0** | — | — | — |
+
+Three things damn them:
+
+1. **They vanish by SNR 15.** The indexed set holds all 185 at every cut through SNR 100,
+   and 166 of 185 even at SNR 1000.
+2. **The implied radius does not move** — 7.0 → 7.2 µm while the median SNR nearly doubles
+   (6.4 → 11.6). For real grains, keeping brighter spots must select *bigger* grains. A
+   size that ignores the intensity cut is a threshold artifact, and it also means the
+   fitted `IntegratedIntensity` behind `GrainRadius` is decoupled from the raw signal —
+   itself a junk signature.
+3. **The implied size distribution is absurdly narrow**: IQR 5.5–7.6 µm, against 89–124 µm
+   for the indexed grains. Real grain populations are not that monodisperse; a threshold
+   cut on a noise distribution is.
+
+44 spots scattered over 5 rings could not form a coherent grain in any case, and the
+indexer already had all 2076 spots and returned only the two.
+
+Discriminators, and what each is worth:
+
+- **Own-frame SNR** is the one that carries the result. Median 1989 (indexed) vs 2.7
+  (unindexed single-frame).
+- **ω-localization** (same pixel ±90° away) confirms the padding rows are inert
+  (ratio 1.0) but does **not** separate real from noise: unindexed spots score ~2.2×,
+  which is exactly what *selection bias* produces — the pixel was chosen because it was a
+  local maximum on that frame. Do not read that 2.2× as evidence of diffraction.
+- **NImgs**: 1389 of 1686 ring-assigned unindexed spots are single-frame vs 8 of 185
+  indexed.
+- **Hot pixels**: 26.8 % of unindexed spots fall in repeated 2-px detector cells (worst
+  cell fires 19× at different ω) vs **0 %** of indexed.
+- **Friedel pairing — REJECTED as evidence.** Unindexed spots pair at 77.8 % against a
+  25 % shuffled null, which looks like strong support for them being real. It is not
+  usable: mirrored detector artifacts and bad regions are symmetric about the beam centre,
+  so they pair systematically, and the shuffle null does not model that. Do not resurrect
+  this argument without a detector-structure-aware null.
+
+**Implied grain size.** `calc_radius` converts a spot's intensity into `GrainRadius` by
+ratio against the ring powder intensity (meaningless for a noise event — it answers "if
+real, how big?", not "is it real?"). Indexed spots imply **96.8 µm** median radius. The 44
+isolated credible spots imply **7.0 µm** (p25 5.5, p75 7.6) — ~14× smaller in radius,
+~2600× smaller in volume — at median SNR 6, i.e. right at the detection limit.
+
+**What this changes.** There is no missing-grain problem and no indexing-parameter problem.
+`Completeness`, `MinNrSpots` and `OverAllRingToIndex` do **not** need revisiting for this
+dataset — chasing them would be tuning the indexer to fit noise. Two real issues remain,
+and both are peak-finder-side, not indexer-side:
+
+- **Over-segmentation around strong reflections** inflates the spot count by ~16 % (333
+  spots). That is a `RingThresh` / peak-splitting question.
+- **The threshold is set far too low for this specimen**, admitting 1309 sub-SNR-5 rows
+  plus 205 zero-intensity padding rows. See Handbook §6b for setting `RingThresh` from the
+  data; on a specimen this coarse-grained the peak finder is digging well into the noise.
+
+**Remaining caveat.** The 20 px halo criterion is physically reasonable (the saturated
+blobs are ~10–15 px across) and the bimodal distance distribution supports it, but it was
+not independently validated. This does not affect the conclusion: the 44 spots *outside*
+that radius were tested on their own and fail independently, so the completeness verdict
+does not rest on where the halo cut is drawn.
 
 ### 4b. Could not verify — do not upgrade these
 
