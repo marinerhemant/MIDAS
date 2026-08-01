@@ -57,7 +57,7 @@ DEFAULT_SWEEP = (5, 10, 20, 30, 50, 75, 100, 150, 200, 300, 500)
 DEFAULT_SNR_MIN = 5.0
 DEFAULT_SNR_CLEAN_FRAC = 0.90
 DEFAULT_MAX_FALSE_POSITIVES = 10.0
-SIG_HALF, BG_INNER, BG_OUTER = 2, 6, 20
+SIG_HALF, BG_INNER, BG_OUTER = 2, 6, 40
 
 
 @dataclass
@@ -108,13 +108,22 @@ def blob_snr(
     background -- the failure mode that makes a mean/std estimator useless
     here.
 
-    ``valid`` (typically the in-band mask) restricts the annulus. This is not
-    optional in practice: a ring band is only ``2*Width`` px wide -- 15 px on
-    the reference dataset -- while the annulus reaches 20 px, so an
-    unrestricted annulus is mostly *out-of-band* pixels, which are identically
-    0. The median and MAD then both collapse to 0 and every SNR reads as 0.
-    With ``valid`` the annulus becomes a strip along the ring at nearby
-    azimuth, which is the right local background anyway.
+    ``img`` must be a corrected frame built WITHOUT the ring-band mask, so it
+    carries real background everywhere. Two earlier versions of this got it
+    wrong in opposite directions and both produced confident nonsense:
+
+    * on a *thresholded* frame every sub-threshold pixel is 0, so the MAD
+      collapses and every SNR reads 0;
+    * on a *band-masked* frame the annulus is mostly out-of-band zeros, so
+      restricting it to in-band pixels was needed -- but that strip carries
+      spot wings and elevated ring background, which understates the noise
+      floor. Measured on the reference dataset that made this estimator report
+      90.8% of blobs above SNR 5 where an unrestricted 81x81 box on the raw
+      frame said 53.4%. The band-restricted form is over-optimistic; do not
+      reintroduce it.
+
+    ``valid`` is kept for callers that genuinely have only a masked frame, but
+    the default (unrestricted, on an unmasked frame) is the honest one.
     """
     if rows.size == 0:
         return 0.0
@@ -335,6 +344,19 @@ def analyze(
         )
         for raw in raws
     ]
+
+    # A second, UNMASKED correction: blob SNR needs real background around the
+    # blob, and the band-masked frame is 0 outside a 2*Width-wide strip.
+    gc_full = np.ones_like(gc0)
+    ungated_full = [
+        correct_frame(
+            raw, NrPixels=p.NrPixels, NrPixelsY=p.NrPixelsY, NrPixelsZ=p.NrPixelsZ,
+            transform_options=p.TransOpt, dark=dark, flood=flood,
+            good_coords=gc_full, bc=p.bc,
+            bad_px_intensity=p.BadPxIntensity, make_map=p.makeMap,
+        )
+        for raw in raws
+    ]
     for img in ungated:
         med, sig = estimate_cell_stats(img, bg_bins)
         for r in range(len(rads)):
@@ -368,7 +390,7 @@ def analyze(
         p.Thresholds = np.full_like(orig, float(thr))
         gc = compute_good_coords(p, panels, ring_rads)
         acc = {r: {"n": [], "k": [], "mx": [], "snr": []} for r in range(len(rads))}
-        for raw_img in ungated:
+        for raw_img, snr_img in zip(ungated, ungated_full):
             # Gate the already-corrected frame: identical to what
             # preprocess_frame would return at this threshold, but the ungated
             # copy stays available for the SNR measurement below.
@@ -387,9 +409,8 @@ def analyze(
                 if r < 0:
                     continue
                 per[r]["k"] += 1
-                per[r]["snr"].append(blob_snr(
-                    raw_img, reg.pixel_rows, reg.pixel_cols,
-                    valid=bg_bins.in_band))
+                per[r]["snr"].append(
+                    blob_snr(snr_img, reg.pixel_rows, reg.pixel_cols))
             for r in range(len(rads)):
                 acc[r]["n"].append(per[r]["n"])
                 acc[r]["k"].append(per[r]["k"])

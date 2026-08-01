@@ -26,7 +26,7 @@ there as retracted, with the measurement that killed each one.
 | 6 | The specimen is one grain plus its Σ3 annealing twin | VERIFIED vs raw frames | §3d |
 | 7 | C `ProcessGrains` over-segments those 2 orientations into 6 grains | ESTABLISHED | §3d |
 | 8 | The recon is **COMPLETE** — 2 grains explain every credible reflection; the "91 % unindexed" spot list is ~98 % noise, padding and haloes of those same 2 grains | RESOLVED | §4d |
-| 9 | Is `RingThresh 10` too low here? §4d says 1309 sub-SNR-5 rows; the calculator (§6b) endorses 10 and both criteria agree. They score different objects — UNRESOLVED | OPEN (peak-finder side) | §4d, §6b |
+| 9 | The spot list degrades at **merge/fit**, not at detection: clean fraction halves 53.4 % → 28.8 % across that stage under one estimator. `RingThresh 10` is close to what both criteria recommend | RESOLVED → new open item on `merge_overlaps` | §6b |
 | 10 | "Background varies ~20σ around a ring band" — RETRACTED, an artefact of a hand-rolled band mask (13.4 % pixel overlap with the real band) | RETRACTED | §6a |
 
 Every one of defects 1–5 produced **wrong numbers and no error message**. That is the
@@ -558,9 +558,9 @@ and both are peak-finder-side, not indexer-side:
 - **Over-segmentation around strong reflections** inflates the spot count by ~16 % (333
   spots). That is a `RingThresh` / peak-splitting question.
 - **The threshold may be too low for this specimen** — 1309 sub-SNR-5 rows plus 205
-  zero-intensity padding rows were admitted. But see §6b: the `midas-ring-thresh`
-  calculator, run on this dataset, *endorses* the `RingThresh 10` that was used, with both
-  of its criteria agreeing. That tension is unresolved. Handbook §6b has the tool.
+  zero-intensity padding rows were admitted. But §6b resolves this: detection at
+  `RingThresh 10` is reasonably clean and the population degrades at **merge/fit**. The
+  threshold is close to what both criteria recommend; the open item is `merge_overlaps`.
 
 **Remaining caveat.** The 20 px halo criterion is physically reasonable (the saturated
 blobs are ~10–15 px across) and the bimodal distance distribution supports it, but it was
@@ -655,26 +655,48 @@ legacy path is bit-identical and is locked by a test). It is justified where a b
 genuinely varies; it is *not* justified here, and this dataset must not be cited as the
 motivation.
 
-### 6b. The calculator endorses `RingThresh 10` — unresolved against §4d
+### 6b. RESOLVED — the noise is mostly manufactured DOWNSTREAM of detection
 
-Both criteria return **10** on every ring, agreeing:
+§4d found 1309 of 2076 recorded spots below SNR 5 at `RingThresh 10`, while the calculator
+scored per-frame blobs at that same threshold as clean. Those differed in *two* ways at
+once — the objects (per-frame blobs at detection vs merged/fitted spots after
+`merge_overlaps`) and the SNR estimator — so both were varied independently, on the same
+30 frames (`utils/spot_audit/stage_vs_estimator.py`):
 
-| thr | kept blobs/frame | median blob SNR | frac SNR>5 | expected false/scan |
-|---|---|---|---|---|
-| 5 | 5.2 | 5.2 | 52 % | 363 |
-| **10** | **1.6** | **24.0** | **92 %** | **1.0e-10** |
-| 20 | 0.8 | 49.7 | 100 % | 2.6e-59 |
-| 40 | 0.5 | 116.7 | 100 % | 5.9e-252 |
+| | E1 in-band annulus (calculator) | E2 81×81 box on raw (audit) |
+|---|---|---|
+| **stage A — detected blobs** | 90.8 % | **53.4 %** |
+| **stage B — merged/fitted spots** | 28.8 % | 28.8 % |
 
-That contradicts §4d, which found 1309 of 2076 recorded spots below SNR 5 at that same
-threshold. Both measurements stand; they are **not** measuring the same objects:
+*(fraction of objects with SNR > 5, n = 131 blobs / 59 spots)*
 
-- the calculator scores **per-frame blobs at detection time**, with an in-band annulus on
-  the ungated corrected frame;
-- the §4d audit scored **merged, fitted spots** (post `merge_overlaps`), with an 81×81 box
-  on the raw dark-subtracted frame.
+**Both effects are real, and they are separable.**
 
-So the noise could be entering at detection *or* being manufactured by merging/fitting
-downstream of a clean blob list. **This is the open question**, and it decides whether
-"RingThresh is too low" (§4d) survives. Do not quote either number as settled until the
-two stages are compared on the same objects with the same estimator.
+1. **The stage effect dominates and is the answer.** Under the *same* estimator E2, the
+   clean fraction roughly halves from detection to the recorded spot list
+   (53.4 % → 28.8 %). Detection is not where most of the noise enters —
+   `merge_overlaps` + peak fitting is. At stage B the two estimators agree *exactly*
+   (28.8 % / 28.8 %), which is a strong check that this is a property of the objects and
+   not of how they are scored.
+2. **My criterion A was over-optimistic, and is now fixed.** E1 restricted its background
+   annulus to in-band pixels — a strip that carries spot wings and elevated ring
+   background — so it understated the noise floor (90.8 % vs 53.4 % on identical blobs).
+   `blob_snr` now measures on a corrected frame built WITHOUT the band mask, so the
+   background is real everywhere. After the fix the reference dataset reports 20 % clean at
+   threshold 5 where the old form said 52 %, and the recommendation becomes per-ring:
+   `10 / 20 / 20 / 10 / 10`.
+
+**Consequence for §4d.** "`RingThresh` is too low" is *not* supported as the main cause.
+The threshold the run used is close to what both criteria independently recommend. The
+open item moves to the stage that actually degrades the population:
+
+- **`merge_overlaps` and the peak fit are where the spot list goes bad.** A blob that is
+  clean on its own frame becomes a recorded spot at SNR ≤ 5. Candidate mechanisms, none
+  yet tested: merging chains together weak single-frame detections that should not join;
+  the fit placing a centroid off the intensity when it fails to converge (58.4 % of
+  unindexed spots have `ReturnCode != -1` vs 9.2 % of indexed, §4d); or sub-threshold
+  wings being pulled into a merged spot's footprint.
+
+That is the next thing to measure, and it is a `merge_overlaps`/fitting question, not a
+threshold one.
+
