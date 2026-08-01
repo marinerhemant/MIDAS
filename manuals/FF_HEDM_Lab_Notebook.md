@@ -26,7 +26,7 @@ there as retracted, with the measurement that killed each one.
 | 6 | The specimen is one grain plus its Σ3 annealing twin | VERIFIED vs raw frames | §3d |
 | 7 | C `ProcessGrains` over-segments those 2 orientations into 6 grains | ESTABLISHED | §3d |
 | 8 | The recon is **COMPLETE** — 2 grains explain every credible reflection; the "91 % unindexed" spot list is ~98 % noise, padding and haloes of those same 2 grains | RESOLVED | §4d |
-| 9 | The spot list degrades at **merge/fit**, not at detection: clean fraction halves 53.4 % → 28.8 % across that stage under one estimator. `RingThresh 10` is close to what both criteria recommend | RESOLVED → new open item on `merge_overlaps` | §6b |
+| 9 | The spot list degrades after detection — but the cause is **un-merged single-frame detections** (75 % of the list, 18.5 % clean), not merging. `RingThresh 10` is close to what both criteria recommend. `NImgs>=2` removes 75 % of the list for 4.3 % of the real spots | RESOLVED — fix not yet implemented | §6b, §6c |
 | 10 | "Background varies ~20σ around a ring band" — RETRACTED, an artefact of a hand-rolled band mask (13.4 % pixel overlap with the real band) | RETRACTED | §6a |
 
 Every one of defects 1–5 produced **wrong numbers and no error message**. That is the
@@ -700,3 +700,54 @@ open item moves to the stage that actually degrades the population:
 That is the next thing to measure, and it is a `merge_overlaps`/fitting question, not a
 threshold one.
 
+### 6c. RESOLVED — the mechanism is *un-merged single-frame detections*, not merging
+
+§6b established the spot list degrades between detection and the recorded spots. Testing
+the three candidate mechanisms (`utils/spot_audit/merge_fit_degradation.py`, 1871
+ring-assigned spots; frame tests on 30 frames):
+
+**The dominant one — ω multiplicity.** Cleanliness tracks `NImgs` monotonically and
+steeply:
+
+| NImgs | n | median SNR | frac SNR>5 |
+|---|---|---|---|
+| 1 | 1397 | 2.7 | **18.5 %** |
+| 2 | 184 | 3.9 | 39.7 % |
+| 3–5 | 105 | 24.5 | 60.0 % |
+| ≥ 6 | 185 | 1972.1 | **90.8 %** |
+
+This **inverts the hypothesis in §6b**. `merge_overlaps` is not manufacturing noise by
+chaining weak detections together — merging is acting as a *filter that works*, and the
+dirt is the 1397 detections (75 % of the list) that never merged with anything. A real
+Bragg reflection sweeps through the Bragg condition over finite ω and is seen on several
+frames; a noise excursion is seen once. Spots that merge across ≥6 frames are 90.8 % clean.
+
+**Secondary — fit divergence.** 54.1 % of spots carry `ReturnCode != -1`. They are dirtier
+(24.2 % clean vs 36.9 %), and 52.5 % of recorded spots sit **more than 5 px from any
+detected blob** on their own frame — of those, 87.1 % diverged and only 19.4 % are clean.
+So a failed fit really does deposit the centroid where there is no intensity. But it is not
+the whole story: even *converged* spots are only 36.9 % clean.
+
+**Actionable: filter on columns already recorded.** Evaluated against both things that
+matter — noise removed, and real (indexed) spots lost:
+
+| filter | kept | clean % | indexed kept |
+|---|---|---|---|
+| (none) | 1871 | 30.0 % | 185/185 (100 %) |
+| **`NImgs >= 2`** | 474 | **64.1 %** | **177/185 (95.7 %)** |
+| `NImgs >= 3` | 290 | 79.7 % | 171/185 (92.4 %) |
+| `ReturnCode == -1` | 859 | 36.9 % | 168/185 (90.8 %) |
+| `NImgs>=2 AND FitRMSE<2000` | 290 | 62.1 % | 78/185 (42.2 %) |
+
+`NImgs >= 2` is the clear win: it removes 75 % of the spot list, doubles the clean
+fraction, and costs 4.3 % of the indexed spots. `NImgs >= 3` reaches 79.7 % clean for 7.6 %.
+
+**`FitRMSE` is a TRAP — do not use it as a quality cut.** It is an *absolute* residual, so
+it scales with peak intensity: the brightest, most certainly-real spots have the largest
+RMSE. Cutting at `FitRMSE < 2000` throws away **58 % of the indexed spots** while barely
+improving cleanliness. If a residual cut is ever wanted it must be normalised by intensity
+first.
+
+**Not yet implemented.** MIDAS has no `NImgs` filter today; the analogue is
+`MinIntegratedIntensity` in `midas_transforms` fit_setup (default 0 = off). A `MinNrFrames`
+parameter applied at the same point would implement this directly.
