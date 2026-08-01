@@ -178,6 +178,8 @@ def parse_zarr_params(path: str | Path) -> ZarrParams:
                 "MinNrPx": ("minNrPx", int),
                 "MaxNrPx": ("maxNrPx", int),
                 "DoFullImage": ("DoFullImage", int),
+                "BgSubtract": ("BgSubtract", int),
+                "BgNSectors": ("BgNSectors", int),
                 "LayerNr": ("LayerNr", int),
                 "NPanelsY": ("NPanelsY", int),
                 "NPanelsZ": ("NPanelsZ", int),

@@ -26,7 +26,8 @@ there as retracted, with the measurement that killed each one.
 | 6 | The specimen is one grain plus its Σ3 annealing twin | VERIFIED vs raw frames | §3d |
 | 7 | C `ProcessGrains` over-segments those 2 orientations into 6 grains | ESTABLISHED | §3d |
 | 8 | The recon is **COMPLETE** — 2 grains explain every credible reflection; the "91 % unindexed" spot list is ~98 % noise, padding and haloes of those same 2 grains | RESOLVED | §4d |
-| 9 | `RingThresh` is too low here: 1309 sub-SNR-5 rows admitted, plus ~16 % over-segmentation around strong spots | OPEN (peak-finder side) | §4d |
+| 9 | Is `RingThresh 10` too low here? §4d says 1309 sub-SNR-5 rows; the calculator (§6b) endorses 10 and both criteria agree. They score different objects — UNRESOLVED | OPEN (peak-finder side) | §4d, §6b |
+| 10 | "Background varies ~20σ around a ring band" — RETRACTED, an artefact of a hand-rolled band mask (13.4 % pixel overlap with the real band) | RETRACTED | §6a |
 
 Every one of defects 1–5 produced **wrong numbers and no error message**. That is the
 through-line of this campaign, and the reason the handbook now insists on cross-checking
@@ -556,9 +557,10 @@ and both are peak-finder-side, not indexer-side:
 
 - **Over-segmentation around strong reflections** inflates the spot count by ~16 % (333
   spots). That is a `RingThresh` / peak-splitting question.
-- **The threshold is set far too low for this specimen**, admitting 1309 sub-SNR-5 rows
-  plus 205 zero-intensity padding rows. See Handbook §6b for setting `RingThresh` from the
-  data; on a specimen this coarse-grained the peak finder is digging well into the noise.
+- **The threshold may be too low for this specimen** — 1309 sub-SNR-5 rows plus 205
+  zero-intensity padding rows were admitted. But see §6b: the `midas-ring-thresh`
+  calculator, run on this dataset, *endorses* the `RingThresh 10` that was used, with both
+  of its criteria agreeing. That tension is unresolved. Handbook §6b has the tool.
 
 **Remaining caveat.** The 20 px halo criterion is physically reasonable (the saturated
 blobs are ~10–15 px across) and the bimodal distance distribution supports it, but it was
@@ -617,3 +619,62 @@ Handbook §11 is the one-paragraph summary of this table.
 | Pipeline is bit-reproducible | 3 runs identical at all 27 artifacts; `Grains.csv` md5 `0449046c4a1eaa698d447fa480f10671` | 12 |
 | `GrainRadius` agrees with C | 114.620677 / 99.962755 µm vs C's 114.620659 / 99.962738 | 13 |
 | Refined position agrees with C | 13.4–14.0 µm median over 189 identical C-indexer seeds | 13 |
+
+---
+
+## 6. `RingThresh` calculator (2026-08-01) — and a premise of mine that was wrong
+
+Built `midas_peakfit.background` + `midas_peakfit.ring_thresh` (CLI
+`midas-ring-thresh`); see Handbook §6b. Two findings matter more than the code.
+
+### 6a. RETRACTED — "the background varies by ~20 sigma around a ring band"
+
+I measured per-azimuthal-sector background inside the ring bands and reported a spread of
+**90–139 counts against a noise sigma of ~5**, and used it to argue that no single absolute
+`RingThresh` can serve a band. **That was wrong.** It came from a band mask I built myself
+from a plain radius-from-beam-centre, rather than the distortion-corrected `Rt` the
+production path uses after `apply_image_transformations` + `transpose_square`.
+
+Head to head on `Au3_cubes_ff_000008`:
+
+| | production band (`Rt`) | naive band |
+|---|---|---|
+| pixel overlap with production band | — | **13.4 %** |
+| background spread / noise sigma | **0.4** | 165–199 counts |
+
+The naive mask sits off the true ring and straddles its steep radial edge, which
+manufactures the apparent azimuthal variation. Through the real geometry **the band is
+flat** and an absolute per-ring threshold is perfectly adequate on this dataset.
+
+This is the *same* error, third time: hand-rolling the band mask also produced blob counts
+67× off the production pipeline, and made me briefly doubt Handbook §6b's (correct) table.
+**Never rebuild the band mask — call `compute_rt_eta` / `compute_good_coords`.**
+
+Local background subtraction was still implemented (`BgSubtract 1`, default **0**, so the
+legacy path is bit-identical and is locked by a test). It is justified where a background
+genuinely varies; it is *not* justified here, and this dataset must not be cited as the
+motivation.
+
+### 6b. The calculator endorses `RingThresh 10` — unresolved against §4d
+
+Both criteria return **10** on every ring, agreeing:
+
+| thr | kept blobs/frame | median blob SNR | frac SNR>5 | expected false/scan |
+|---|---|---|---|---|
+| 5 | 5.2 | 5.2 | 52 % | 363 |
+| **10** | **1.6** | **24.0** | **92 %** | **1.0e-10** |
+| 20 | 0.8 | 49.7 | 100 % | 2.6e-59 |
+| 40 | 0.5 | 116.7 | 100 % | 5.9e-252 |
+
+That contradicts §4d, which found 1309 of 2076 recorded spots below SNR 5 at that same
+threshold. Both measurements stand; they are **not** measuring the same objects:
+
+- the calculator scores **per-frame blobs at detection time**, with an in-band annulus on
+  the ungated corrected frame;
+- the §4d audit scored **merged, fitted spots** (post `merge_overlaps`), with an 81×81 box
+  on the raw dark-subtracted frame.
+
+So the noise could be entering at detection *or* being manufactured by merging/fitting
+downstream of a clean blob list. **This is the open question**, and it decides whether
+"RingThresh is too low" (§4d) survives. Do not quote either number as settled until the
+two stages are compared on the same objects with the same estimator.

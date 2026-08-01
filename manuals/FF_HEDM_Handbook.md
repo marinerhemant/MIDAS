@@ -530,30 +530,50 @@ With the default `minNrPx 1`, **any single-pixel blob is discarded**. So a thres
 is slightly too high does not degrade gracefully: it shaves every spot down to a few
 isolated pixels and you get exactly zero peaks.
 
-Measure the in-band blob population versus threshold before running:
+Use the calculator — do not hand-roll the sweep:
 
-```python
-band = np.zeros_like(img, bool)
-for R in ring_radii_px:
-    band |= np.abs(radius_from_BC - R) <= width_px
-for thr in (5, 10, 15, 20, 30, 40, 60):
-    lab, n = ndimage.label((img - dark) * band > thr, structure=np.ones((3, 3), bool))
-    sizes = np.bincount(lab.ravel())[1:]
-    print(thr, n, (sizes > 1).sum(), sizes.max() if n else 0)
+```bash
+midas-ring-thresh <run>/LayerNr_1/<name>.MIDAS.zip \
+    --result-folder <run>/LayerNr_1 --n-frames 40
 ```
 
-Measured on `Au3_cubes_ff_000008` (20 ms/frame, `Width` 7.5 px):
+It sweeps thresholds through the **production** peak-search path
+(`compute_good_coords` → `preprocess_frame` → `find_regions` →
+`filter_regions_by_size`), reports two independent criteria per ring, and prints
+paste-ready `RingThresh` lines.
 
-| threshold | blobs/frame | with > 1 px | largest blob |
-|---|---|---|---|
-| 60 | 2–4 | 1–2 | 26–37 px |
-| 20 | 5–7 | 4–6 | 40–66 px |
-| **10** | **6–10** | **3–8** | **61–95 px** |
-| 5 | 481–591 | 10–19 | noise-dominated |
+**Do not reimplement the band mask.** Earlier revisions of this section carried a
+seven-line snippet that built its own mask from a plain radius-from-beam-centre. That is
+wrong: the production band uses the *distortion-corrected* `Rt` after
+`apply_image_transformations` + `transpose_square`. Measured on `Au3_cubes_ff_000008` the
+naive mask shares only **13.4 %** of its pixels with the real band, which made blob counts
+disagree with the pipeline by ~67× and manufactured a spurious "background varies by 20σ
+around the ring" result. Through the real band that background is flat (spread 0.4σ).
 
-Pick the lowest threshold that has not yet started admitting noise — the blob count jumps
-by two orders of magnitude when you cross into noise, so the knee is obvious. Here that is
-**10**, not the 60 a template would have given.
+The two criteria:
+
+- **A — blob SNR.** Lowest threshold at which ≥90 % of surviving blobs have local
+  SNR > 5, measured on the *ungated* frame. (It must be ungated: after thresholding, every
+  sub-threshold pixel is 0, so the local background and its MAD collapse and every SNR
+  reads as 0.) The annulus is restricted to in-band pixels — a band is only `2*Width` wide,
+  so an unrestricted annulus is mostly out-of-band zeros.
+- **B — expected false positives.** Lowest threshold whose predicted noise-blob count over
+  the *whole scan* is under 10, from the per-cell σ and the `minNrPx` size filter. This is
+  the criterion that matters when the sample is sparse: a 2-grain dataset has ~1–2 real
+  peaks per frame against ~3×10⁵ in-band pixels, so a tiny per-pixel false rate still
+  swamps the signal.
+
+They should agree; the tool says so explicitly when they do not, which points at a bad band
+or a broken dark rather than at the threshold.
+
+**Why the old "pick the knee" rule was not enough.** Blobs/frame surviving the size filter
+on `Au3_cubes_ff_000008` go 5.2 (thr 5) → 1.6 (10) → 0.8 (20) → 0.5 (40). The two-orders
+jump is between 5 and 10, but noise keeps falling out well past it. The knee locates where
+noise *percolates* into detector-spanning blobs (largest blob 645 px at thr 5 vs 393 at
+10), not where noise stops being admitted.
+
+Measured on `Au3_cubes_ff_000008` (20 ms/frame, `Width` 7.5 px), both criteria return
+**10** on every ring, with 92 % of blobs above SNR 5 at that threshold versus 52 % at 5.
 
 **Caveat:** this tuning is only meaningful once the dark is verified non-zero (§3d). If the
 dark is missing, *every* threshold yields zero peaks and the table above is flat — that

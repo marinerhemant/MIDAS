@@ -84,6 +84,24 @@ def run(
     ring_rads = load_ring_radii(p, p.ResultFolder)
     good_coords = compute_good_coords(p, panels, ring_rads)
 
+    # Opt-in local background subtraction (BgSubtract 1). None => legacy/C path.
+    bg_bins = None
+    if getattr(p, "BgSubtract", 0) == 1:
+        from midas_peakfit.background import bins_from_params
+
+        bg_bins = bins_from_params(p, panels, ring_rads,
+                                   n_sectors=int(getattr(p, "BgNSectors", 36)))
+        if bg_bins is None:
+            print("BgSubtract=1 but no ring bands are available "
+                  "(DoFullImage, or no rings/radii) -- background subtraction "
+                  "is DISABLED for this run.")
+        else:
+            thin = bg_bins.thin_cells()
+            print(f"BgSubtract=1: {bg_bins.n_bins} background cells "
+                  f"({bg_bins.n_sectors} sectors/ring)"
+                  + (f", {len(thin)} thin cells fall back to the ring median"
+                     if len(thin) else ""))
+
     # Pre-pad+transform dark/flood/mask once
     dark = prepare_dark(p.dark, p.NrPixels, p.NrPixelsY, p.NrPixelsZ, p.TransOpt)
     flood = prepare_flood(p.flood, p.NrPixels, p.NrPixelsY, p.NrPixelsZ, p.TransOpt)
@@ -196,6 +214,7 @@ def run(
             bc=p.bc,
             bad_px_intensity=p.BadPxIntensity,
             make_map=p.makeMap,
+            bg_bins=bg_bins,
         )
         regions_all = find_regions(img_corr, good_coords)
         regions = filter_regions_by_size(regions_all, p.minNrPx, p.maxNrPx)
@@ -293,7 +312,7 @@ def run(
             initializer=init_worker,
             initargs=(
                 str(data_file), params_pickle, dark, flood, mask,
-                good_coords, panels_pickle, compute_moments,
+                good_coords, panels_pickle, compute_moments, bg_bins,
             ),
         ) as ex:
             for result in ex.map(

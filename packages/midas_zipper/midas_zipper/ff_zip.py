@@ -199,7 +199,10 @@ def write_analysis_parameters(z_groups, config):
         "OmegaSumFrames", "NrFilesPerSweep", "NPanelsY", "NPanelsZ", "Padding", "PanelSizeY", "PanelSizeZ", 
         "PanelGapsY", "PanelGapsZ", "doPeakFit", "nIterations", "NormalizeRingWeights", "OutlierIterations", 
         "WeightByRadius", "WeightByFitSNR", "L2Objective", "PerPanelLsd", "PerPanelDistortion", "FixPanelID", 
-        "MinIndicesForFit", "LocalMaximaOnly", "FitParallax" }
+        "MinIndicesForFit", "LocalMaximaOnly", "FitParallax",
+        # Opt-in local background subtraction in the peak search
+        # (midas_peakfit.background). BgSubtract 0 = legacy/C behaviour.
+        "BgSubtract", "BgNSectors" }
     FORCE_STRING_PARAMS = { "GapFile", "BadPxFile", "ResultFolder", "PanelShiftsFile", "MaskFile",
         "GrainsFile", "ResidualCorrectionMap" }
     RENAME_MAP = { "OmegaStep": "step", "Completeness": "MinMatchesToAcceptFrac", "px": "PixelSize", 

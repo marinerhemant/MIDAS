@@ -41,6 +41,7 @@ def init_worker(
     good_coords: np.ndarray,
     panels_pickle: bytes,
     compute_moments: bool = False,
+    bg_bins: object = None,
 ) -> None:
     """ProcessPoolExecutor initializer. Runs once per worker process.
 
@@ -73,6 +74,9 @@ def init_worker(
         store=store,
         data=data,
         compute_moments=compute_moments,
+        # Built once in the parent (full-detector distortion evaluation) and
+        # shipped to each worker rather than recomputed per process.
+        bg_bins=bg_bins,
     )
 
 
@@ -92,6 +96,7 @@ def process_frame_in_worker(local_idx: int) -> Tuple[int, float, int, List[Seede
     panels = _state["panels"]
     data = _state["data"]
     compute_moments = _state.get("compute_moments", False)
+    bg_bins = _state.get("bg_bins")
 
     try:
         raw = np.asarray(data[local_idx], dtype=np.float64)
@@ -110,6 +115,7 @@ def process_frame_in_worker(local_idx: int) -> Tuple[int, float, int, List[Seede
         bc=p.bc,
         bad_px_intensity=p.BadPxIntensity,
         make_map=p.makeMap,
+        bg_bins=bg_bins,
     )
     regions_all = find_regions(img_corr, good_coords)
     regions = filter_regions_by_size(regions_all, p.minNrPx, p.maxNrPx)

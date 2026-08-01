@@ -6,9 +6,12 @@ Order matters and is preserved exactly from ``processImageFrame`` in
 """
 from __future__ import annotations
 
-from typing import List, Optional
+from typing import TYPE_CHECKING, List, Optional
 
 import numpy as np
+
+if TYPE_CHECKING:  # pragma: no cover - typing only
+    from midas_peakfit.background import BackgroundBins
 
 
 # ─── Image transformations (matching applyImageTransformations_d) ───────────
@@ -147,7 +150,7 @@ def prepare_mask(
 
 
 # ─── Per-frame pipeline ──────────────────────────────────────────────────────
-def preprocess_frame(
+def correct_frame(
     raw_frame: np.ndarray,
     *,
     NrPixels: int,
@@ -160,6 +163,7 @@ def preprocess_frame(
     bc: float,
     bad_px_intensity: float,
     make_map: int,
+    bg_bins: "Optional[BackgroundBins]" = None,
 ) -> np.ndarray:
     """Replicate the C ``processImageFrame`` corrections (lines 1414-1440).
 
@@ -168,10 +172,28 @@ def preprocess_frame(
       2. (if ``make_map==1``) replace pixels equal to ``bad_px_intensity`` with 0
       3. apply ImTransOpt sequence
       4. transpose to analysis frame
-      5. mask via goodCoords; subtract dark, divide by flood, multiply by bc;
-         re-threshold against goodCoords
+      5. mask via goodCoords; subtract dark, divide by flood, multiply by bc
+      6. (optional) subtract the local per-(ring, sector) background
 
-    Returns: ``imgCorrBC`` shape (NrPixels, NrPixels) float64.
+    Does NOT apply the ``good_coords`` threshold -- that is
+    :func:`apply_threshold`. :func:`preprocess_frame` composes the two and is
+    what the peak search calls; this ungated form exists for noise and SNR
+    measurement, which must see sub-threshold pixels.
+
+    ``bg_bins`` is opt-in and defaults to ``None``, which reproduces the C
+    behaviour exactly. When supplied (``BgSubtract 1``), step 6 removes the
+    azimuthally-varying background *before* the threshold is applied, so
+    ``RingThresh`` becomes a height above local background rather than an
+    absolute detector count. See :mod:`midas_peakfit.background` for why that
+    matters: the background varies by ~20 sigma around a single ring band, so
+    one absolute number cannot serve the whole band.
+
+    NOTE: with background subtraction on, the surviving pixel intensities are
+    background-subtracted, so ``IntegratedIntensity`` downstream is likewise
+    background-subtracted. That is the intended meaning, but it does change
+    the numbers relative to a ``BgSubtract 0`` run -- they are not comparable.
+
+    Returns: corrected, UNGATED (NrPixels, NrPixels) float64.
     """
     image_d = make_square_image(
         raw_frame.astype(np.float64, copy=False), NrPixels, NrPixelsY, NrPixelsZ
@@ -187,14 +209,47 @@ def preprocess_frame(
     keep = good_coords > 0
     if keep.any():
         corr = (img[keep] - dark[keep]) / flood[keep] * bc
-        # Re-threshold: if corrected value < goodCoords[i], drop to 0
-        corr = np.where(corr < good_coords[keep], 0.0, corr)
+
+        if bg_bins is not None:
+            # Subtract the local background BEFORE thresholding, so the
+            # threshold is a height above background everywhere on the ring.
+            # Estimated on the corrected frame (dark/flood/bc applied), which
+            # is the same quantity the threshold is compared against.
+            from midas_peakfit.background import local_background
+
+            corr_full = np.zeros_like(img)
+            corr_full[keep] = corr
+            bg, _ = local_background(corr_full, bg_bins)
+            corr = corr - bg[keep]
+
         out[keep] = corr
+    return out
+
+
+def apply_threshold(
+    corrected: np.ndarray, good_coords: np.ndarray
+) -> np.ndarray:
+    """The final gate of :func:`preprocess_frame`, split out.
+
+    ``corrected`` values below their pixel's ``good_coords`` entry drop to 0;
+    out-of-band pixels are already 0. Kept separate because the *ungated*
+    frame is what any noise/SNR measurement has to be made on -- once this gate
+    has run, every sub-threshold pixel is 0, so a local background is
+    identically zero and its MAD collapses, which silently makes every SNR come
+    out as 0 and every noise sigma far too small.
+    """
+    out = corrected.copy()
+    keep = good_coords > 0
+    if keep.any():
+        vals = out[keep]
+        out[keep] = np.where(vals < good_coords[keep], 0.0, vals)
     return out
 
 
 __all__ = [
     "apply_image_transformations",
+    "apply_threshold",
+    "correct_frame",
     "make_square_image",
     "transpose_square",
     "prepare_dark",
@@ -202,3 +257,35 @@ __all__ = [
     "prepare_mask",
     "preprocess_frame",
 ]
+
+
+def preprocess_frame(
+    raw_frame: np.ndarray,
+    *,
+    NrPixels: int,
+    NrPixelsY: int,
+    NrPixelsZ: int,
+    transform_options: List[int],
+    dark: np.ndarray,
+    flood: np.ndarray,
+    good_coords: np.ndarray,
+    bc: float,
+    bad_px_intensity: float,
+    make_map: int,
+    bg_bins: "Optional[BackgroundBins]" = None,
+) -> np.ndarray:
+    """Replicate the C ``processImageFrame`` corrections (lines 1414-1440).
+
+    ``correct_frame`` followed by ``apply_threshold``. This is what the peak
+    search calls; the split exists so the ungated frame is available to the
+    threshold calculator.
+
+    Returns: ``imgCorrBC`` shape (NrPixels, NrPixels) float64.
+    """
+    corrected = correct_frame(
+        raw_frame, NrPixels=NrPixels, NrPixelsY=NrPixelsY, NrPixelsZ=NrPixelsZ,
+        transform_options=transform_options, dark=dark, flood=flood,
+        good_coords=good_coords, bc=bc, bad_px_intensity=bad_px_intensity,
+        make_map=make_map, bg_bins=bg_bins,
+    )
+    return apply_threshold(corrected, good_coords)

@@ -45,6 +45,7 @@ Issues = "https://github.com/marinerhemant/MIDAS/issues"
 
 [project.scripts]
 peakfit_torch = "midas_peakfit.cli:main"
+midas-ring-thresh = "midas_peakfit.ring_thresh:main"
 
 [tool.setuptools.packages.find]
 where = ["."]

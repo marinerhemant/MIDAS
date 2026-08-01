@@ -90,6 +90,14 @@ class ZarrParams:
     # ── Peak-fitting controls ────────────────────────────────────────
     minNrPx: int = 1
     maxNrPx: int = 10000
+
+    # ── Local background subtraction (opt-in; 0 = exact legacy/C behaviour) ──
+    # See midas_peakfit.background: within one ring band the background level
+    # spans ~20x the local noise sigma, so an absolute RingThresh cannot serve
+    # the whole band. With BgSubtract=1 the per-(ring, sector) background is
+    # removed before thresholding, making RingThresh a height above background.
+    BgSubtract: int = 0
+    BgNSectors: int = 36
     maxNPeaks: int = 400
     IntSat: float = DEFAULT_INT_SAT
     zDiffThresh: float = 0.0
