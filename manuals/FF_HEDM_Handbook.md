@@ -22,7 +22,8 @@ Sibling document: `NF_HEDM_Handbook.md`. The two share §2 (ω sign), §3 (metad
 the modality. Where FF differs, it is called out.
 
 Maintained code = `midas_zipper` (0.1.4), `midas_calibrate_v2` (0.5.3), `midas_peakfit`
-(0.4.6), `midas_transforms` (0.8.2), `midas_index`, `midas_fit_grain` (0.6.0),
+(0.4.6 on PyPI; `midas-ring-thresh`, `MinPeakSNR` and `BgSubtract` are **in-tree, not yet
+released** — run from a checkout or a PYTHONPATH overlay), `midas_transforms` (0.8.2), `midas_index`, `midas_fit_grain` (0.6.0),
 `midas_process_grains` (0.6.1), and the orchestrator `midas_ff_pipeline` (0.4.1) driving
 `midas_pipeline` (0.7.0). **Those floors are not cosmetic** — below them the pipeline is
 not reproducible, `GrainRadius` is ~5× wrong, and the refiner silently returns its input
@@ -95,6 +96,8 @@ preferred fast path** — "deprecated C source" does not mean "don't use the c-o
 | residual-correction map applied when it made strain worse | v2 discards it automatically — check it did | §5c |
 | `darkLoc` left unset (only `darkDataset` set) | all-zero dark → 0 peaks on every frame, invariant to `RingThresh` | §3d |
 | `RingThresh` copied from a template | strict size filter shaves spots to single pixels → 0 peaks | §6b |
+| `FitRMSE` used as a spot-quality cut | it is an **absolute** residual — cuts the brightest, most certainly-real spots first (58 % of indexed spots) | §6c |
+| ω multiplicity (`NImgs`) used as a spot-quality cut | encodes mosaicity, not reality — deletes real single-frame spots, worst for small/undeformed grains | §6c |
 | stale `midas-fit-grain` < 0.5.7 | `Grains.csv` DiffPos/DiffOme/DiffAngle cyclically mislabeled | §8 |
 | `peakfit: AllPeaks_PS.bin already exists; skip` | results silently inherited from a previous, differently-configured run | §7 |
 | peakfit / calc_radius from a tree without the 2026-07-30 determinism fixes | **every re-run gives a different `Grains.csv`**; grain positions jump by >100 µm | Lab Notebook §2 |
@@ -572,12 +575,46 @@ jump is between 5 and 10, but noise keeps falling out well past it. The knee loc
 noise *percolates* into detector-spanning blobs (largest blob 645 px at thr 5 vs 393 at
 10), not where noise stops being admitted.
 
-Measured on `Au3_cubes_ff_000008` (20 ms/frame, `Width` 7.5 px), both criteria return
-**10** on every ring, with 92 % of blobs above SNR 5 at that threshold versus 52 % at 5.
+Measured on `Au3_cubes_ff_000008` (20 ms/frame, `Width` 7.5 px) the two criteria agree on
+every ring and give **`RingThresh` 10 / 20 / 20 / 10 / 10** for rings 1–5. On ring 5 the
+clean fraction goes from 20 % of blobs above SNR 5 at threshold 5 to 100 % at threshold 10.
+
+*(An earlier revision of this section reported "both criteria return 10 on every ring, 92 %
+clean at 10 vs 52 % at 5". Those came from a `blob_snr` that restricted its background
+annulus to in-band pixels and was over-optimistic; fixed, and the numbers above supersede
+them — Lab Notebook §6b.)*
 
 **Caveat:** this tuning is only meaningful once the dark is verified non-zero (§3d). If the
 dark is missing, *every* threshold yields zero peaks and the table above is flat — that
 invariance is itself the diagnostic.
+
+---
+
+## 6c. Reject spurious peaks by SNR, not by a proxy
+
+`RingThresh` decides what gets *detected*. **`MinPeakSNR`** decides what gets *kept*, and it
+is the only quality criterion here that does not smuggle in an assumption:
+
+```
+MinPeakSNR 5          # 0 = off (default); (peak - cell_median) / cell_sigma
+```
+
+Computed per peak against its own (ring, azimuthal sector) cell during the peak search, so
+it costs nothing extra and applies to **FF and PF alike** (both use `midas_peakfit`). It is
+the natural knob for the pf-HEDM failure mode where spurious signal is admitted.
+
+**Do not substitute a proxy — each of these has been measured to fail:**
+
+| proxy | why it fails |
+|---|---|
+| `MinIntegratedIntensity` | no noise estimate, so it cannot tell a weak real spot on a quiet patch of detector from a noise excursion on a hot one |
+| `FitRMSE` | an **absolute** residual, so it grows with peak intensity — cutting at `FitRMSE < 2000` discarded **58 % of the indexed spots** on the reference dataset |
+| ω multiplicity (`NImgs`) | encodes **mosaicity, not reality**. A small or undeformed grain can satisfy Bragg inside one frame; 45.9 % of credible spots were single-frame and 8 indexed spots reached SNR 2511 on one frame |
+
+**No specific value is recommended yet.** Two SNR estimators (per-cell vs a box on the raw
+frame) rank spots differently — 94 % vs 53 % clean at SNR 5 on the reference dataset — and
+which is correct decides where the cut belongs (Lab Notebook §6d). Start at 5, and check
+what it removes against the raw frames before trusting it.
 
 ---
 
@@ -719,6 +756,9 @@ Full key list: `FF_Parameters_Reference.md`. Keys this runbook depends on:
 | `LatticeConstant` / `SpaceGroup` | the **sample's**, not the calibrant's (§6) |
 | `RhoD` | µm; distortion normalisation radius |
 | `Rsample` / `Hbeam` | generous grain-position search bound — **never set to the real sample size** (§6) |
+| `RingThresh <ring> <val>` | per-ring detection threshold; set it with `midas-ring-thresh` (§6b), never from a template |
+| `MinPeakSNR` | float, default 0 = off. Minimum local SNR to keep a detected peak (§6c). FF **and** PF |
+| `BgSubtract` / `BgNSectors` | 0/1 (default 0) + azimuthal cells per ring. Removes a varying background before thresholding. Only helps where the background actually varies — it did **not** on this beamtime (Lab Notebook §6a) |
 
 ---
 

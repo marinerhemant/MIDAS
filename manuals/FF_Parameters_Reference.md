@@ -200,6 +200,9 @@ Ring indices refer to the `hkls.csv` output of `GetHKLList`/`GetHKLListZarr`.
 | Key                   | Type | Units | Default | Required | Notes |
 |-----------------------|------|-------|---------|----------|-------|
 | `RingThresh`          | int int | ring_nr, counts | — | yes, multi | `RingThresh <ring_nr> <intensity_threshold>`. One line per ring used. |
+| `MinPeakSNR`          | double | sigma | 0 (off) | no | Minimum local SNR `(peak - cell_median)/cell_sigma` for a detected peak, per (ring, azimuthal sector) cell, during the peak search. FF **and** PF. See `FF_HEDM_Handbook.md` §6c. |
+| `BgSubtract`          | int  | 0/1   | 0       | no       | `1` subtracts a per-(ring, sector) local background before thresholding, so `RingThresh` becomes a height above background. `0` is bit-identical to the legacy/C path. |
+| `BgNSectors`          | int  | count | 36      | no       | Azimuthal cells per ring used by `BgSubtract` and `MinPeakSNR` (36 = 10°). |
 | `RingsToExclude`      | int  | ring_nr | —     | no, multi | Rings to exclude from analysis. Alias: `RingsToReject`. |
 | `RingNumbers`         | int  | ring_nr | —     | no, multi | Explicit ring list (alternate form). |
 | `RingRadii`           | double | Å    | —     | no, multi | Corresponding radii (must match `RingNumbers` count). |
