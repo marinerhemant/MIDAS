@@ -26,7 +26,7 @@ there as retracted, with the measurement that killed each one.
 | 6 | The specimen is one grain plus its Σ3 annealing twin | VERIFIED vs raw frames | §3d |
 | 7 | C `ProcessGrains` over-segments those 2 orientations into 6 grains | ESTABLISHED | §3d |
 | 8 | The recon is **COMPLETE** — 2 grains explain every credible reflection; the "91 % unindexed" spot list is ~98 % noise, padding and haloes of those same 2 grains | RESOLVED | §4d |
-| 9 | The spot list degrades after detection — but the cause is **un-merged single-frame detections** (75 % of the list, 18.5 % clean), not merging. `RingThresh 10` is close to what both criteria recommend. `NImgs>=2` removes 75 % of the list for 4.3 % of the real spots | RESOLVED — fix not yet implemented | §6b, §6c |
+| 9 | Spot list degrades after detection; brightness (SNR) is the discriminator, **not** ω multiplicity — 45.9 % of credible spots are single-frame and 8 indexed ones reach SNR 2511. `RingThresh 10` is close to what both criteria recommend. Gap: MIDAS computes no per-spot SNR | RESOLVED — `MinPeakSNR` not yet implemented | §6b, §6c |
 | 10 | "Background varies ~20σ around a ring band" — RETRACTED, an artefact of a hand-rolled band mask (13.4 % pixel overlap with the real band) | RETRACTED | §6a |
 
 Every one of defects 1–5 produced **wrong numbers and no error message**. That is the
@@ -535,7 +535,9 @@ Discriminators, and what each is worth:
   which is exactly what *selection bias* produces — the pixel was chosen because it was a
   local maximum on that frame. Do not read that 2.2× as evidence of diffraction.
 - **NImgs**: 1389 of 1686 ring-assigned unindexed spots are single-frame vs 8 of 185
-  indexed.
+  indexed. **Suggestive only — single-frame does NOT imply noise** (§6c): those 8
+  indexed single-frame spots run to SNR 2511, and 45.9 % of all credible spots are
+  single-frame. Do not use ω multiplicity as a quality criterion.
 - **Hot pixels**: 26.8 % of unindexed spots fall in repeated 2-px detector cells (worst
   cell fires 19× at different ω) vs **0 %** of indexed.
 - **Friedel pairing — REJECTED as evidence.** Unindexed spots pair at 77.8 % against a
@@ -728,7 +730,51 @@ detected blob** on their own frame — of those, 87.1 % diverged and only 19.4 %
 So a failed fit really does deposit the centroid where there is no intensity. But it is not
 the whole story: even *converged* spots are only 36.9 % clean.
 
-**Actionable: filter on columns already recorded.** Evaluated against both things that
+**RETRACTED — do NOT filter on `NImgs`.** An earlier revision of this section recommended
+`NImgs >= 2` as the spot-list filter (474 kept, 64.1 % clean, 177/185 indexed retained).
+That recommendation is **wrong and must not be implemented.**
+
+ω width is set by mosaicity, beam divergence and energy bandwidth — **not** by grain size.
+A small or undeformed grain can satisfy the Bragg condition inside a single 0.25° frame,
+so single-frame is a perfectly ordinary property of real signal. Measured here:
+
+- **8 of the 185 indexed spots are single-frame, at SNR 424, 1620, 1686, 1788, 1990, 2071,
+  2188, 2511** (median IMax 10719). These are unambiguous Bragg spots that `NImgs >= 2`
+  deletes.
+- **258 of the 562 credible (SNR > 5) spots — 45.9 % — are single-frame**, up to SNR 2752.
+- The loss is concentrated where it matters most: `NImgs >= 2` discards **85.6 % of the
+  SNR 5–10 spots**, 56.4 % of SNR 10–100, and only 10.3 % of SNR > 100. It preferentially
+  destroys the *weak but real* population, which is exactly the small-grain signal.
+
+`NImgs` only appeared to work because this dataset's real spots come from **two large
+mosaic grains** that happen to span 12+ frames each. It was acting as a proxy for "belongs
+to one of the two big grains" — circular reasoning when the goal is to find *other* grains,
+and not generalisable to a fine-grained, annealed or undeformed sample, nor to a coarser ω
+step. **A two-grain dataset cannot establish an ω-multiplicity rule.**
+
+**Use SNR instead — it strictly dominates.**
+
+| filter | kept | indexed kept |
+|---|---|---|
+| `NImgs >= 2` | 474 | 177/185 (95.7 %) |
+| **`SNR > 5`** | **562** | **185/185 (100 %)** |
+
+SNR keeps *more* spots and *all* of the real ones, and it makes no assumption about
+mosaicity. The `NImgs` correlation in the table above is a *consequence* of real spots
+being bright, not an independent criterion.
+
+**Actionable — the real gap.** MIDAS does not compute a per-spot SNR anywhere.
+`MinIntegratedIntensity` (`midas_transforms` fit_setup, default 0 = off) is the closest
+existing knob, but integrated intensity is not SNR: it carries no local background or noise
+estimate, so it cannot separate a weak real spot on a quiet patch of detector from a noise
+excursion on a hot one. The right change is to compute local SNR per spot during the peak
+search — the frame is already in hand, and `midas_peakfit.ring_thresh.blob_snr` already
+does exactly this — and expose a `MinPeakSNR` filter. That is physically principled,
+costs nothing extra to compute, and does not assume anything about ω width.
+
+For reference, what the recorded columns give (**not** a recommendation — see above):
+
+ Evaluated against both things that
 matter — noise removed, and real (indexed) spots lost:
 
 | filter | kept | clean % | indexed kept |
@@ -739,8 +785,9 @@ matter — noise removed, and real (indexed) spots lost:
 | `ReturnCode == -1` | 859 | 36.9 % | 168/185 (90.8 %) |
 | `NImgs>=2 AND FitRMSE<2000` | 290 | 62.1 % | 78/185 (42.2 %) |
 
-`NImgs >= 2` is the clear win: it removes 75 % of the spot list, doubles the clean
-fraction, and costs 4.3 % of the indexed spots. `NImgs >= 3` reaches 79.7 % clean for 7.6 %.
+Read this table only as evidence that *brightness* tracks cleanliness. The `NImgs` rows
+are retracted as a filter for the reasons above; the 4.3 % of indexed spots they cost are
+real single-frame Bragg spots, not an acceptable rounding error.
 
 **`FitRMSE` is a TRAP — do not use it as a quality cut.** It is an *absolute* residual, so
 it scales with peak intensity: the brightest, most certainly-real spots have the largest
