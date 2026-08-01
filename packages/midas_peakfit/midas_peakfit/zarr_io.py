@@ -180,6 +180,7 @@ def parse_zarr_params(path: str | Path) -> ZarrParams:
                 "DoFullImage": ("DoFullImage", int),
                 "BgSubtract": ("BgSubtract", int),
                 "BgNSectors": ("BgNSectors", int),
+                "MinPeakSNR": ("MinPeakSNR", float),
                 "LayerNr": ("LayerNr", int),
                 "NPanelsY": ("NPanelsY", int),
                 "NPanelsZ": ("NPanelsZ", int),

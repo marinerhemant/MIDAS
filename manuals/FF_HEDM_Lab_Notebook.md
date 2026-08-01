@@ -798,3 +798,42 @@ first.
 **Not yet implemented.** MIDAS has no `NImgs` filter today; the analogue is
 `MinIntegratedIntensity` in `midas_transforms` fit_setup (default 0 = off). A `MinNrFrames`
 parameter applied at the same point would implement this directly.
+
+### 6d. `MinPeakSNR` implemented (2026-08-01)
+
+`midas_peakfit.background.region_snr` / `filter_regions_by_snr`, wired into both peak-search
+paths (in-process and worker), exposed as **`MinPeakSNR <float>`**, default **0 = off**.
+Shared by FF *and* PF, since both use `midas_peakfit`.
+
+`SNR = (peak - cell_median) / cell_sigma` against the region's own
+(ring, azimuthal sector) cell. The cell statistics are robust (median, 1.4826·MAD) over
+the thousands of pixels in a 10° arc, so Bragg spots inside the cell cannot inflate the
+background against themselves — the failure that makes a small per-spot annulus
+over-optimistic (§6b). Measured on the **ungated** frame; on a thresholded frame every
+sub-threshold pixel is 0, the MAD collapses, and SNR is meaningless.
+
+**Effect on Au3 at detection** (167 blobs, 40 frames): 94 % survive at `MinPeakSNR 5`,
+80 % at 10, 46 % at 20. That is a *weak* filter here — as §6b predicts, detection is
+already reasonably clean on this dataset and the degradation happens later. It is not
+evidence the filter is ineffective in general; it is evidence Au3's problem is downstream.
+
+**Two caveats, both open:**
+
+1. **Not validated for real-spot retention.** Only 2 of 167 sampled blobs could be matched
+   to a known indexed spot (indexed spots are recorded at their intensity-weighted *mean*
+   ω, so they rarely coincide with an individually sampled frame). n = 2 establishes
+   nothing. Proper validation needs a full re-run with the filter on, comparing the final
+   grain list — not done.
+2. **The two SNR estimators disagree and neither is established as correct.** The cell
+   estimator (this filter) and the 81×81-box-on-raw estimator (the audit) rank spots
+   differently: at detection the cell form says 94 % clean at SNR 5 where the box form says
+   53 %. The cell form is local in both radius and azimuth and robust to spots; the box
+   form spans the ring's radial profile, so its σ absorbs real structure and is likely
+   *over*-conservative. Which is right decides where a sensible `MinPeakSNR` sits, so
+   **treat any specific recommended value as unestablished** until they are reconciled.
+
+**Where it should matter more: pf-HEDM.** Spurious signal being admitted at detection is
+exactly the failure this addresses, and PF shares this peak search. Unvalidated on PF data.
+
+**Natural extension, not implemented:** the same SNR could be applied *post-merge* to the
+recorded spot list, which is where §6b/§6c located the degradation on this dataset.

@@ -22,7 +22,7 @@ import numpy as np
 import zarr
 
 from midas_peakfit.connected import find_regions, filter_regions_by_size
-from midas_peakfit.preprocess import preprocess_frame
+from midas_peakfit.preprocess import apply_threshold, correct_frame
 from midas_peakfit.seeds import SeededRegion, seed_region
 from midas_peakfit.zarr_io import frame_omega
 
@@ -42,6 +42,7 @@ def init_worker(
     panels_pickle: bytes,
     compute_moments: bool = False,
     bg_bins: object = None,
+    snr_bins: object = None,
 ) -> None:
     """ProcessPoolExecutor initializer. Runs once per worker process.
 
@@ -77,6 +78,9 @@ def init_worker(
         # Built once in the parent (full-detector distortion evaluation) and
         # shipped to each worker rather than recomputed per process.
         bg_bins=bg_bins,
+        # Separate from bg_bins: the MinPeakSNR filter needs cells even when
+        # BgSubtract is off, in which case bg_bins is None.
+        snr_bins=snr_bins,
     )
 
 
@@ -103,7 +107,7 @@ def process_frame_in_worker(local_idx: int) -> Tuple[int, float, int, List[Seede
     except Exception:
         return local_idx, 0.0, 0, []
 
-    img_corr = preprocess_frame(
+    corrected = correct_frame(
         raw,
         NrPixels=p.NrPixels,
         NrPixelsY=p.NrPixelsY,
@@ -117,8 +121,16 @@ def process_frame_in_worker(local_idx: int) -> Tuple[int, float, int, List[Seede
         make_map=p.makeMap,
         bg_bins=bg_bins,
     )
+    img_corr = apply_threshold(corrected, good_coords)
     regions_all = find_regions(img_corr, good_coords)
     regions = filter_regions_by_size(regions_all, p.minNrPx, p.maxNrPx)
+    min_peak_snr = float(getattr(p, "MinPeakSNR", 0.0))
+    snr_bins = _state.get("bg_bins") or _state.get("snr_bins")
+    if min_peak_snr > 0.0 and snr_bins is not None:
+        from midas_peakfit.background import filter_regions_by_snr
+
+        regions, _ = filter_regions_by_snr(
+            regions, corrected, snr_bins, min_peak_snr)
     seeded_list: List[SeededRegion] = []
     for reg in regions:
         sr = seed_region(

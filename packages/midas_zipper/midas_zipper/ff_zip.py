@@ -175,7 +175,7 @@ def write_analysis_parameters(z_groups, config):
     sp_pro_analysis, sp_pro_meas = z_groups['sp_pro_analysis'], z_groups['sp_pro_meas']
     print("\nWriting analysis parameters to Zarr file...")
 
-    FORCE_DOUBLE_PARAMS = { "RMin", "RMax", "px", "PixelSize", "Completeness", "MinMatchesToAcceptFrac", 
+    FORCE_DOUBLE_PARAMS = { "MinPeakSNR", "RMin", "RMax", "px", "PixelSize", "Completeness", "MinMatchesToAcceptFrac", 
         "OverArea", "IntensityThresh", "MinS_N", "YPixelSize", "ZPixelSize", "BeamStopY", "BeamStopZ", 
         "DetDist", "MaxDev", "OmegaStart", "OmegaFirstFile", "OmegaStep", "step", "BadPxIntensity", 
         "GapIntensity", "FitWeightMean", "PixelSplittingRBin", "tolTilts", "tolBC", "tolLsd", "DiscArea", 

@@ -230,3 +230,84 @@ def test_blob_snr_needs_the_valid_mask_in_a_narrow_band():
     without = blob_snr(img, rows, cols)
     assert with_mask > 20.0, "in-band annulus should give a real SNR"
     assert with_mask > without
+
+
+# ── per-spot SNR filter ────────────────────────────────────────────────────
+def _region(rows, cols):
+    from midas_peakfit.connected import Region
+    return Region(id=1, pixel_rows=np.asarray(rows), pixel_cols=np.asarray(cols),
+                  intensities=np.ones(len(rows)), raw_sum=1.0, threshold=0.0)
+
+
+def _noisy_band(bins, level=100.0, sigma=4.0, seed=2):
+    rng = np.random.default_rng(seed)
+    img = np.zeros((N, N))
+    img[bins.in_band] = rng.normal(level, sigma, size=int(bins.in_band.sum()))
+    return img
+
+
+def test_region_snr_separates_spot_from_noise():
+    from midas_peakfit.background import estimate_cell_stats, region_snr
+    b = _bins(n_sectors=8)
+    img = _noisy_band(b)
+    rows, cols = np.where(b.in_band)
+    r, c = rows[len(rows) // 2], cols[len(cols) // 2]
+    med, sig = estimate_cell_stats(img, b)
+    noise_snr = region_snr(_region([r], [c]), img, b, med, sig)
+    img[r, c] = 100.0 + 40.0 * 4.0          # a 40-sigma peak
+    med, sig = estimate_cell_stats(img, b)
+    spot_snr = region_snr(_region([r], [c]), img, b, med, sig)
+    assert spot_snr > 20.0, spot_snr
+    assert abs(noise_snr) < 6.0, noise_snr
+
+
+def test_region_snr_zero_outside_bands():
+    from midas_peakfit.background import estimate_cell_stats, region_snr
+    b = _bins()
+    img = _noisy_band(b)
+    med, sig = estimate_cell_stats(img, b)
+    assert region_snr(_region([0], [0]), img, b, med, sig) == 0.0
+
+
+def test_snr_filter_rejects_noise_keeps_spot():
+    from midas_peakfit.background import filter_regions_by_snr
+    b = _bins(n_sectors=8)
+    img = _noisy_band(b)
+    rows, cols = np.where(b.in_band)
+    i1, i2 = len(rows) // 3, 2 * len(rows) // 3
+    img[rows[i1], cols[i1]] = 100.0 + 40.0 * 4.0
+    regs = [_region([rows[i1]], [cols[i1]]), _region([rows[i2]], [cols[i2]])]
+    kept, snrs = filter_regions_by_snr(regs, img, b, min_snr=10.0)
+    assert len(kept) == 1, [f"{s:.1f}" for s in snrs]
+    assert snrs[0] > 10.0
+
+
+def test_snr_filter_off_by_default_keeps_everything():
+    """min_snr <= 0 must be a no-op -- MinPeakSNR defaults to 0."""
+    from midas_peakfit.background import filter_regions_by_snr
+    b = _bins(n_sectors=8)
+    img = _noisy_band(b)
+    rows, cols = np.where(b.in_band)
+    regs = [_region([rows[k]], [cols[k]]) for k in (10, 200, 400)]
+    kept, snrs = filter_regions_by_snr(regs, img, b, min_snr=0.0)
+    assert len(kept) == len(regs)
+    assert len(snrs) == len(regs)
+
+
+def test_snr_filter_no_bins_is_a_noop():
+    from midas_peakfit.background import filter_regions_by_snr
+    regs = [_region([1], [1])]
+    kept, snrs = filter_regions_by_snr(regs, np.zeros((N, N)), None, min_snr=99.0)
+    assert kept == regs and snrs == [0.0]
+
+
+def test_snr_would_keep_a_single_pixel_bright_spot():
+    """The point of SNR over NImgs: a lone bright peak must survive."""
+    from midas_peakfit.background import filter_regions_by_snr
+    b = _bins(n_sectors=8)
+    img = _noisy_band(b)
+    rows, cols = np.where(b.in_band)
+    r, c = rows[len(rows) // 2], cols[len(cols) // 2]
+    img[r, c] = 100.0 + 500.0 * 4.0
+    kept, snrs = filter_regions_by_snr([_region([r], [c])], img, b, min_snr=5.0)
+    assert len(kept) == 1 and snrs[0] > 100.0

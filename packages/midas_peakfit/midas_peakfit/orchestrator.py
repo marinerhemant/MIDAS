@@ -30,7 +30,9 @@ from midas_peakfit.output import FrameAccumulator, write_consolidated_peak_files
 from midas_peakfit.panels import generate_panels, load_panel_shifts
 from midas_peakfit.params import ZarrParams, resolve_do_peak_fit, resolve_result_folder
 from midas_peakfit.pool import RegionPool
-from midas_peakfit.preprocess import prepare_dark, prepare_flood, prepare_mask, preprocess_frame
+from midas_peakfit.preprocess import (
+    apply_threshold, correct_frame, prepare_dark, prepare_flood, prepare_mask,
+)
 from midas_peakfit.seeds import seed_region
 from midas_peakfit.zarr_io import frame_omega, load_corrections, parse_zarr_params, read_frame
 
@@ -85,20 +87,29 @@ def run(
     good_coords = compute_good_coords(p, panels, ring_rads)
 
     # Opt-in local background subtraction (BgSubtract 1). None => legacy/C path.
+    # Cells are needed by BgSubtract AND by the MinPeakSNR filter.
+    need_bins = (getattr(p, "BgSubtract", 0) == 1
+                 or float(getattr(p, "MinPeakSNR", 0.0)) > 0.0)
+    snr_bins = None
     bg_bins = None
-    if getattr(p, "BgSubtract", 0) == 1:
+    if need_bins:
         from midas_peakfit.background import bins_from_params
 
-        bg_bins = bins_from_params(p, panels, ring_rads,
-                                   n_sectors=int(getattr(p, "BgNSectors", 36)))
-        if bg_bins is None:
-            print("BgSubtract=1 but no ring bands are available "
-                  "(DoFullImage, or no rings/radii) -- background subtraction "
-                  "is DISABLED for this run.")
+        snr_bins = bins_from_params(p, panels, ring_rads,
+                                    n_sectors=int(getattr(p, "BgNSectors", 36)))
+        if getattr(p, "BgSubtract", 0) == 1:
+            bg_bins = snr_bins
+        if float(getattr(p, "MinPeakSNR", 0.0)) > 0.0:
+            print(f"MinPeakSNR={float(p.MinPeakSNR):g}: peaks below this local "
+                  f"SNR will be rejected at detection.")
+        if snr_bins is None:
+            print("No ring bands are available (DoFullImage, or no "
+                  "rings/radii) -- background subtraction and the MinPeakSNR "
+                  "filter are both DISABLED for this run.")
         else:
-            thin = bg_bins.thin_cells()
-            print(f"BgSubtract=1: {bg_bins.n_bins} background cells "
-                  f"({bg_bins.n_sectors} sectors/ring)"
+            thin = snr_bins.thin_cells()
+            print(f"{snr_bins.n_bins} background cells "
+                  f"({snr_bins.n_sectors} sectors/ring)"
                   + (f", {len(thin)} thin cells fall back to the ring median"
                      if len(thin) else ""))
 
@@ -115,6 +126,8 @@ def run(
     #     idx % n_blocks == N. Spreads omega-correlated peak density
     #     evenly across all GPUs at the cost of needing per-frame indexing
     #     in the merger.
+    min_peak_snr = float(getattr(p, "MinPeakSNR", 0.0))
+
     block_frames = p.block_frame_indices(block_nr, n_blocks, interleave=interleave_blocks)
     if interleave_blocks:
         print(
@@ -202,7 +215,7 @@ def run(
         except Exception as e:
             print(f"Frame {frame_nr}: failed to read ({e}); skipping")
             return frame_nr, omega_local, 0, []
-        img_corr = preprocess_frame(
+        corrected = correct_frame(
             raw,
             NrPixels=p.NrPixels,
             NrPixelsY=p.NrPixelsY,
@@ -216,8 +229,17 @@ def run(
             make_map=p.makeMap,
             bg_bins=bg_bins,
         )
+        img_corr = apply_threshold(corrected, good_coords)
         regions_all = find_regions(img_corr, good_coords)
         regions = filter_regions_by_size(regions_all, p.minNrPx, p.maxNrPx)
+        if min_peak_snr > 0.0 and snr_bins is not None:
+            from midas_peakfit.background import filter_regions_by_snr
+
+            # SNR is measured on `corrected` (UNGATED): on the thresholded
+            # frame every sub-threshold pixel is 0, so the background and its
+            # MAD collapse and the SNR is meaningless.
+            regions, _ = filter_regions_by_snr(
+                regions, corrected, snr_bins, min_peak_snr)
         seeded_list = []
         for reg in regions:
             sr = seed_region(
@@ -312,7 +334,7 @@ def run(
             initializer=init_worker,
             initargs=(
                 str(data_file), params_pickle, dark, flood, mask,
-                good_coords, panels_pickle, compute_moments, bg_bins,
+                good_coords, panels_pickle, compute_moments, bg_bins, snr_bins,
             ),
         ) as ex:
             for result in ex.map(

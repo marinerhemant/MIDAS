@@ -98,6 +98,14 @@ class ZarrParams:
     # removed before thresholding, making RingThresh a height above background.
     BgSubtract: int = 0
     BgNSectors: int = 36
+
+    # Minimum local SNR for a detected peak, (peak - cell_median)/cell_sigma
+    # against its own (ring, azimuthal sector) cell. 0 = OFF (legacy/C
+    # behaviour). This is the criterion that does NOT assume anything about
+    # grain size, mosaicity or omega step -- unlike MinIntegratedIntensity
+    # (no noise estimate), FitRMSE (absolute residual, grows with intensity)
+    # or an omega-multiplicity cut (encodes mosaicity, not reality).
+    MinPeakSNR: float = 0.0
     maxNPeaks: int = 400
     IntSat: float = DEFAULT_INT_SAT
     zDiffThresh: float = 0.0

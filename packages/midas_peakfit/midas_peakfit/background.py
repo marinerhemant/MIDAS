@@ -1,23 +1,27 @@
-"""Local background estimation inside ring bands.
+"""Local background estimation inside ring bands, and per-spot SNR.
 
-Why this exists
----------------
-``RingThresh`` is a single absolute intensity per ring, applied to every pixel
-in that ring's band (``geometry.compute_good_coords``). That only works if the
-background is flat around the ring. Measured on ``Au3_cubes_ff_000008``
-(1-ID, GE5, 95 keV) it is not: within a single band the local background level
-spans **90-139 counts** while the local noise sigma is only **~5 counts**, i.e.
-a spread of ~20 sigma. One absolute number is therefore simultaneously
+Two related jobs:
 
-* several sigma *above* background in a quiet azimuthal sector -> real weak
-  spots are lost, and
-* *below* background in a busy sector -> every pixel there clears threshold and
-  the whole sector percolates into one enormous connected blob, which then
-  either dies on ``maxNrPx`` or swamps the peak list with noise.
+1. **Per-spot SNR** (``region_snr`` / ``filter_regions_by_snr``) -- the
+   physically meaningful quality criterion for a detected peak, and the reason
+   most of this module exists. See ``filter_regions_by_snr`` for why intensity,
+   fit residual and omega multiplicity are all *proxies* that fail.
+2. **Optional background subtraction** (``BgSubtract 1``, default 0) -- removes
+   an azimuthally varying background before thresholding, so ``RingThresh``
+   becomes a height above local background rather than an absolute count.
 
-Subtracting a locally-estimated background first makes the threshold mean the
-same thing everywhere on the ring, so it can be expressed in units of the noise
-rather than in raw detector counts.
+A CORRECTION, recorded so it is not repeated: an earlier version of this
+docstring justified (2) with "within a single band the background level spans
+90-139 counts against a noise sigma of ~5, i.e. ~20 sigma". **That measurement
+was wrong.** It used a band mask built from a plain radius-from-beam-centre
+instead of the distortion-corrected ``Rt`` the production path uses after
+``apply_image_transformations`` + ``transpose_square``. That naive mask shares
+only 13.4 % of its pixels with the real band and straddles the ring's steep
+radial edge, manufacturing the variation. Through the production geometry the
+reference dataset's bands are **flat** (spread 0.4 sigma), and an absolute
+per-ring threshold is adequate there. Background subtraction remains available
+for detectors where the background genuinely does vary -- but do not cite
+``Au3_cubes_ff_000008`` as its motivation.
 
 Model
 -----
@@ -32,8 +36,9 @@ noise is ``1.4826 * MAD``. Both are insensitive to the Bragg spots sitting in
 the cell, which is essential -- the spots are the signal we are trying to keep,
 and a mean/std estimator would let a bright spot inflate its own background.
 
-This module is **opt-in**. With ``BgSubtract 0`` (the default) the peak search
-behaves exactly as it did before, so existing reconstructions are unchanged.
+Background subtraction is **opt-in**. With ``BgSubtract 0`` (the default) the
+peak search behaves exactly as it did before, so existing reconstructions are
+unchanged. The SNR filter is likewise off unless ``MinPeakSNR`` is set.
 """
 
 from __future__ import annotations
@@ -224,6 +229,8 @@ def bins_from_params(
 
 __all__ = [
     "BackgroundBins",
+    "filter_regions_by_snr",
+    "region_snr",
     "DEFAULT_N_SECTORS",
     "MIN_PIXELS_PER_CELL",
     "bins_from_params",
@@ -232,3 +239,74 @@ __all__ = [
     "local_background",
     "subtract_local_background",
 ]
+
+
+# ─── Per-spot SNR (the physically meaningful quality criterion) ─────────────
+def region_snr(
+    region, corrected: np.ndarray, bins: BackgroundBins,
+    med: np.ndarray, sig: np.ndarray,
+) -> float:
+    """Local SNR of one detected region against its own (ring, sector) cell.
+
+    ``(peak - cell_median) / cell_sigma``, with the cell chosen by the region's
+    centroid. The cell statistics are robust (median, 1.4826*MAD) over the
+    thousands of pixels in a 10-degree arc of the band, so a handful of Bragg
+    spots inside the cell cannot inflate the background against themselves --
+    the failure that makes a small per-spot annulus over-optimistic.
+
+    ``corrected`` MUST be the UNGATED frame (``correct_frame``, not
+    ``preprocess_frame``): on a thresholded frame every sub-threshold pixel is
+    0, so the background and its MAD collapse and every SNR is meaningless.
+
+    Returns 0.0 when the region is outside all bands or its cell has no
+    measurable noise.
+    """
+    if region.pixel_rows.size == 0:
+        return 0.0
+    r = int(round(float(region.pixel_rows.mean())))
+    c = int(round(float(region.pixel_cols.mean())))
+    if not (0 <= r < bins.labels.shape[0] and 0 <= c < bins.labels.shape[1]):
+        return 0.0
+    lab = int(bins.labels[r, c])
+    if lab < 0 or lab >= sig.size or sig[lab] <= 0.0:
+        return 0.0
+    peak = float(corrected[region.pixel_rows, region.pixel_cols].max())
+    return (peak - float(med[lab])) / float(sig[lab])
+
+
+def filter_regions_by_snr(
+    regions, corrected: np.ndarray, bins: Optional[BackgroundBins],
+    min_snr: float,
+) -> Tuple[list, list]:
+    """Drop regions whose local SNR falls below ``min_snr``.
+
+    Returns ``(kept, snrs_of_kept)``. ``min_snr <= 0`` disables the filter and
+    every region is kept (with its SNR still computed and returned, so the
+    number can be recorded even when nothing is being rejected).
+
+    Why SNR and not a proxy:
+
+    * **not raw intensity** -- ``MinIntegratedIntensity`` cannot separate a weak
+      real spot on a quiet patch of detector from a noise excursion on a hot
+      one, because it carries no noise estimate;
+    * **not fit residual** -- ``FitRMSE`` is an *absolute* residual, so it grows
+      with peak intensity; cutting on it discards the brightest, most certainly
+      real spots first (58 % of indexed spots on the reference dataset);
+    * **not omega multiplicity** -- ``NImgs`` encodes mosaicity, not reality. A
+      small or undeformed grain can satisfy Bragg inside one frame; 45.9 % of
+      credible spots on the reference dataset were single-frame, and 8 indexed
+      spots reached SNR 2511 on a single frame.
+
+    SNR asks the only question that matters -- is this peak above the local
+    noise -- and makes no assumption about grain size, mosaicity or omega step.
+    """
+    if bins is None:
+        return list(regions), [0.0] * len(regions)
+    med, sig = estimate_cell_stats(corrected, bins)
+    kept, snrs = [], []
+    for reg in regions:
+        s = region_snr(reg, corrected, bins, med, sig)
+        if min_snr <= 0.0 or s >= min_snr:
+            kept.append(reg)
+            snrs.append(s)
+    return kept, snrs
