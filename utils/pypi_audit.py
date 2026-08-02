@@ -118,9 +118,17 @@ def inspect(root: Path, pkg_dir: Path) -> dict:
         since_all = len(git(root, "log", "--format=%H", rng, "--", rel).split())
         # Only the importable module dir counts as "shipped code" -- test and doc
         # churn does not make a release stale.
+        #
+        # Compiled bytecode is excluded: __pycache__/*.pyc can be committed (and
+        # later untracked) without any change to what a wheel contains, and a
+        # commit that only removes them would otherwise report the package as
+        # stale forever. Seen for real -- untracking midas_stress's stale .pyc
+        # files flagged midas-stress as needing a re-release.
         if (pkg_dir / pkg_dir.name).is_dir():
-            since_src = len(git(root, "log", "--format=%H", rng,
-                                "--", f"{rel}/{pkg_dir.name}").split())
+            since_src = len(git(root, "log", "--format=%H", rng, "--",
+                                f"{rel}/{pkg_dir.name}",
+                                f":(exclude){rel}/{pkg_dir.name}/**/__pycache__/**",
+                                f":(exclude){rel}/{pkg_dir.name}/**/*.pyc").split())
 
     return {"name": name, "dir": pkg_dir.name, "repo": version, "bump": bump[:8],
             "bump_date": bump_date, "commits_since_bump_src": since_src,
