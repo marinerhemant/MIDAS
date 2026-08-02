@@ -112,6 +112,26 @@ def ipf_rgb(
     if euler.size == 0:
         return np.zeros((0, 3))
     g = np.asarray(euler_to_orient_mat_batch(euler)).reshape(-1, 3, 3)
+    return ipf_rgb_from_matrix(g, space_group, axis, gamma=gamma)
+
+
+def ipf_rgb_from_matrix(
+    orient_mat: np.ndarray,
+    space_group: int = 225,
+    axis: Sequence[float] = (0.0, 0.0, 1.0),
+    *,
+    gamma: float = 0.5,
+) -> np.ndarray:
+    """RGB per orientation, from ``(N, 3, 3)`` orientation matrices.
+
+    The same colouring as :func:`ipf_rgb`, entered from the matrix rather than
+    from Euler angles. Far-field ``Grains.csv`` carries both (``O11..O33`` and
+    ``Eul0..2``); this avoids a needless matrix -> Euler -> matrix round trip,
+    which is lossy near the gimbal-lock configurations of the ZXZ convention.
+    """
+    g = np.asarray(orient_mat, dtype=float).reshape(-1, 3, 3)
+    if g.size == 0:
+        return np.zeros((0, 3))
 
     a = np.asarray(axis, dtype=float)
     n = np.linalg.norm(a)
@@ -119,10 +139,29 @@ def ipf_rgb(
         raise ValueError("axis must be non-zero")
     a = a / n
 
+    d = np.einsum("nij,j->ni", g, a)                 # crystal dir of the axis
+    return direction_rgb(d, space_group, gamma=gamma)
+
+
+def direction_rgb(
+    dirs: np.ndarray, space_group: int = 225, *, gamma: float = 0.5,
+) -> np.ndarray:
+    """RGB for **crystal directions** -- the colouring core.
+
+    ``dirs`` is ``(N, 3)`` in crystal coordinates; it is normalised here.
+    Both :func:`ipf_rgb` and the legend drawn by
+    ``midas_plotting.ff.ipf_legend`` go through this, so the key on a figure
+    is guaranteed to match the colours in the map beside it. A legend computed
+    by a separate copy of the triangle maths is a legend that eventually lies.
+    """
+    d = np.asarray(dirs, dtype=float).reshape(-1, 3)
+    if d.size == 0:
+        return np.zeros((0, 3))
+    nrm = np.linalg.norm(d, axis=1, keepdims=True)
+    d = np.divide(d, nrm, out=np.zeros_like(d), where=nrm > 0)
+
     fam = laue_class(space_group)
     sym = sym_matrices(space_group)
-
-    d = np.einsum("nij,j->ni", g, a)                 # crystal dir of the axis
     d = np.einsum("sij,nj->nsi", sym, d)             # every equivalent
 
     if fam == CUBIC:

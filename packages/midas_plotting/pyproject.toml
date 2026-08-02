@@ -4,8 +4,8 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "midas-plotting"
-version = "0.1.0"
-description = "Standard plots for MIDAS reconstructions: orientation (IPF) maps, confidence maps, grain maps."
+version = "0.2.0"
+description = "Standard plots for MIDAS reconstructions, near-field and far-field: IPF maps and legends, grain maps, pole figures, strain and size distributions."
 readme = "README.md"
 license = { text = "BSD-3-Clause" }
 authors = [
