@@ -315,9 +315,20 @@ def fit_orientation_run(
             print(f"Custom voxel selection: {len(voxel_indices)} voxels")
 
     # ---- Phase 1: screen ----
+    # |F|^2-aware weighting. Returns None unless hkls.csv carried an F2 column
+    # (i.e. a PhaseAtom basis was declared) AND the metric asks for it, so the
+    # default path is untouched.
+    from .screen import spot_weights_from_f2
+    spot_w = spot_weights_from_f2(
+        orientations, hkl_table, float(p.Lsd[0]),
+        metric=getattr(p, "confidence_metric", "raw"))
+    if spot_w is not None and verbose:
+        print(f"ConfidenceMetric={p.confidence_metric}: weighting "
+              f"{int((spot_w > 0).sum())}/{spot_w.numel()} predicted spots")
     t_screen = time.perf_counter()
     screen_result = screen(
         grid, orientations, obs, p,
+        spot_weight=spot_w,
         voxel_indices=voxel_indices, dtype=dtype,
     )
     screen_secs = time.perf_counter() - t_screen

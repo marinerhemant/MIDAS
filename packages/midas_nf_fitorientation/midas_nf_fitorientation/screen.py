@@ -301,6 +301,86 @@ def rasterize_triangles(
 #  Screen kernel (DiffractionSpots.bin path)
 # ---------------------------------------------------------------------------
 
+def spot_weights_from_f2(
+    orientations: "OrientationData",
+    hkl,
+    lsd0: float,
+    *,
+    metric: str = "filtered",
+    eps: float = 1e-6,
+    tol_um: float = 1.0,
+) -> Optional[torch.Tensor]:
+    """Per-spot weights for :func:`screen`, joined on RING RADIUS.
+
+    ``DiffractionSpots.bin`` rows are ``(yl, zl, omega)`` -- lab-frame microns
+    then degrees -- and carry no reflection index, so the join is on
+    ``r = hypot(yl, zl)``, which is the ring, and |F|^2 is a ring-level property
+    (symmetry equivalents share it).
+
+    ``lsd0`` is ``Lsd[0]``: the spot coordinates are the nominal ring position
+    at the FIRST distance, whereas the ``Radius`` column of ``hkls.csv`` is
+    computed at the LAST one. Joining against that column directly is wrong by
+    the ratio of the two (1.2769 on the Ce setup: spot radii 159.9-1092.1 um
+    against a 204.1-1394.5 um column). Ring radii are therefore recomputed here
+    from ``2*thetas_deg`` at ``lsd0`` rather than read from the file.
+
+    An earlier version joined on 2-theta, because ``OrientationData``'s
+    docstring claimed the columns were ``[2theta, eta, omega]``. They are not.
+    That join matched ZERO rows and returned an all-ones weight -- a silent
+    no-op that reproduced the unweighted result exactly, which is
+    indistinguishable from "the weighting made no difference" unless you
+    predicted the weighted number in advance.
+
+    metric
+        ``"raw"``      -> None (caller skips weighting; unchanged code path)
+        ``"filtered"`` -> 1.0 for allowed reflections, 0.0 for |F|^2 <= eps
+        ``"weighted"`` -> |F|^2 itself
+
+    ``"filtered"`` is usually better done with ``DropForbiddenReflections``,
+    which removes the rows from ``hkls.csv`` so they are never rasterised at
+    all. This path is for a spot file generated with the full list.
+
+    No Lorentz factor, deliberately -- it cancels for per-frame threshold
+    detection (Domega = w_rlp*L, so peak height is L-free; measured flat in eta
+    on nf_Ce_ht525_s2 where 1/|sin eta| predicts 4.3x).
+    """
+    if metric == "raw":
+        return None
+    if metric not in ("filtered", "weighted"):
+        raise ValueError(f"metric must be raw|filtered|weighted, got {metric!r}")
+    f2 = getattr(hkl, "f2", None)
+    if f2 is None:
+        return None
+    f2 = np.asarray(f2)
+    if f2.size == 0 or np.allclose(f2, 1.0):
+        return None                      # no basis was supplied; nothing to do
+
+    # ring radius at Lsd[0], the frame the spot coordinates live in
+    r_ring = float(lsd0) * np.tan(np.radians(np.asarray(hkl.thetas_deg) * 2.0))
+    order = np.argsort(r_ring)
+    r_s, f2_s = r_ring[order], f2[order]
+
+    r_spot = np.hypot(np.asarray(orientations.spots[:, 0], dtype=np.float64),
+                      np.asarray(orientations.spots[:, 1], dtype=np.float64))
+    j = np.clip(np.searchsorted(r_s, r_spot), 0, r_s.size - 1)
+    j2 = np.clip(j - 1, 0, r_s.size - 1)
+    pick = np.where(np.abs(r_s[j] - r_spot) <= np.abs(r_s[j2] - r_spot), j, j2)
+    matched = np.abs(r_s[pick] - r_spot) <= tol_um
+
+    if not matched.any():
+        raise ValueError(
+            "spot_weights_from_f2 matched no spots to a ring "
+            f"(spot radii {r_spot.min():.1f}-{r_spot.max():.1f} um, rings "
+            f"{r_ring.min():.1f}-{r_ring.max():.1f} um). Refusing to return a "
+            "neutral weight, which would silently look like 'no effect'."
+        )
+
+    w = np.where(matched, f2_s[pick], 1.0)
+    if metric == "filtered":
+        w = (w > eps).astype(np.float64)
+    return torch.from_numpy(w)
+
+
 @torch.no_grad()
 def screen(
     grid: GridTable,
@@ -308,6 +388,7 @@ def screen(
     obs: ObsVolume,
     p: FitParams,
     *,
+    spot_weight: Optional[torch.Tensor] = None,
     voxel_indices: Optional[np.ndarray] = None,
     progress: Optional[callable] = None,
     dtype: torch.dtype = torch.float64,
@@ -350,6 +431,11 @@ def screen(
     :class:`ScreenResult`
     """
     device = obs.device
+
+    # spot_weight arrives from numpy on the CPU; everything it multiplies lives
+    # on the compute device, so move it once here rather than at each use.
+    if spot_weight is not None:
+        spot_weight = spot_weight.to(device=device)
 
     if voxel_indices is None:
         voxel_indices = np.arange(grid.n_voxels)
@@ -479,10 +565,13 @@ def screen(
 
         # ---- accumulators over the whole spot axis ----
         # Allocated per voxel-chunk and filled by the spot-tile loop below.
+        # int32 when unweighted (counts, and the fastest path); float when a
+        # per-spot |F|^2 weight is supplied, since the sums stop being counts.
+        _acc_dt = torch.int32 if spot_weight is None else dtype
         hits_per_orient = torch.zeros((Vc, n_orient), device=device,
-                                      dtype=torch.int32)
+                                      dtype=_acc_dt)
         total_per_orient = torch.zeros((Vc, n_orient), device=device,
-                                       dtype=torch.int32)
+                                       dtype=_acc_dt)
 
         # ---- spot (T) tiling --------------------------------------------
         # The block below materialises (Vc, Tt, K) tensors. Tiling ONLY over
@@ -599,6 +688,15 @@ def screen(
             total_per_spot = bounds_per_pixel.sum(dim=2, dtype=torch.int32)
             hits_per_spot = hits_per_pixel.sum(dim=2, dtype=torch.int32)
             del hits_per_pixel, bounds_per_pixel, offsets_y, offsets_z, valid_mask
+
+            # ---- optional |F|^2 weighting ----------------------------------
+            # The fraction is over PIXELS, so weighting a reflection means
+            # scaling the pixel counts of every spot belonging to it. Applied
+            # to numerator AND denominator, so an all-equal weight is a no-op.
+            if spot_weight is not None:
+                w_t = spot_weight[_t0:_t1].to(dtype).reshape(1, Tt)
+                hits_per_spot = hits_per_spot.to(dtype) * w_t
+                total_per_spot = total_per_spot.to(dtype) * w_t
 
             # ---- scatter this tile's spot totals into (Vc, n_orient) ----
             spot_to_orient_b = spot_to_orient_t.unsqueeze(0).expand(Vc, Tt)
@@ -829,6 +927,11 @@ def _screen_per_voxel(
         hits_per_pixel = hits_per_pixel * bounds_per_pixel.to(dtype)
         total_per_spot = bounds_per_pixel.to(dtype).sum(dim=1)
         hits_per_spot = hits_per_pixel.sum(dim=1)
+
+        if spot_weight is not None:
+            _w = spot_weight.to(dtype)
+            hits_per_spot = hits_per_spot.to(dtype) * _w
+            total_per_spot = total_per_spot.to(dtype) * _w
 
         hits_per_orient = torch.zeros(n_orient, device=device, dtype=dtype)
         total_per_orient = torch.zeros(n_orient, device=device, dtype=dtype)

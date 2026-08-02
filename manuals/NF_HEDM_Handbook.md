@@ -15,10 +15,10 @@ absolute paths (`/Users/hsharma/opt/MIDAS/<path>`). Every non-obvious claim carr
 Claims that are convention, or that could not be verified, are flagged inline and listed
 again in §11. **Do not promote a §11 item to a fact.**
 
-Maintained code = four Python packages: `midas_nf_pipeline` (0.1.1), `midas_nf_preprocess`
-(0.1.2), `midas_nf_fitorientation` (0.3.2), `midas_hkls` (0.5.0), plus the viewer
-`gui/nf_qt.py`. `NF_HEDM/` is soft-deprecated C; only its example paramfile and seed cache
-are used here.
+Maintained code = four Python packages: `midas_nf_pipeline`, `midas_nf_preprocess`,
+`midas_nf_fitorientation`, `midas_hkls`, plus the viewer `gui/nf_qt.py`. `NF_HEDM/` is
+soft-deprecated C; only its example paramfile and seed cache are used here. Versions —
+**tree and shared env currently differ, see §1.**
 
 ---
 
@@ -100,8 +100,59 @@ are used here.
 | blob size compared using radius from the GRID ORIGIN | sample offset misread as a geometry difference | §7e |
 | md5 of `MicFileBinary` used to check reproducibility | `RunTime` differs every run; always "fails" | §8g |
 | voxel-count blow-up in `screen()` | 1704 GiB allocation on a full grid | §8h |
-| assuming `EdgeLength` must equal `GridSize` | **RETRACTED** — `EdgeLength` is an independent, supported knob (`MakeHexGrid.c:23-58`); small probe triangles on a coarse grid are intentional. Forcing them equal made triangles 10 µm and cost ~94 GiB/voxel. Lab notebook R2 | §10e |
+| assuming `EdgeLength` must equal `GridSize` | **RETRACTED** — `EdgeLength` is an independent, supported knob (`hex_grid/grid.py:97-153`); small probe triangles on a coarse grid are intentional, and the voxel count never changes. Forcing them equal made triangles 10 µm and cost ~94 GiB/voxel. Lab notebook R2 | §10e |
+| `EdgeLength` ≪ `GridSize` with `mic2grains -doNeighborSearch 1` | merge threshold is `2·TriEdgeSize` while neighbours are `GridSize/2` apart ⇒ **every voxel its own grain**; grain areas describe the probe, not the cell | §10e |
 | `MinMisoNSaves` left at its **1.0 default** with `SaveNSolutions 1` | a per-window symmetry misorientation dominates runtime, AND a later higher-confidence solution is silently discarded | lab notebook §2 |
+| 20-ID HDF5 assumed to be ×64 scaled | **the encoding is PER-CAMPAIGN, not per-detector.** `nfdev_jul26` is 10-bit stored ×64 (max 65472); `xzhang_jul26` on the SAME detector serial is 12-bit unscaled (max 4092, unique values 0,2,4,6,8,10,12,16,…). Dividing the second by 64 turns "threshold 2" into "threshold 128" and thresholds the **pedestal** — the background then looks like signal | §3h |
+| ring / powder analysis on a coarse-grained NF sample | an NF spot lands at *grain position* + `Lsd·tan(2θ)·d̂`, so rings are smeared by the **illuminated sample width**. On `s6061_NF` (247 µm wide) that is 2.0× the 111→200 spacing ⇒ **no rings exist**, and any `Lsd` or lattice parameter fitted to the radial profile is meaningless | §5e |
+| BC carried over from an earlier campaign at the same beamline | the beam stripe moved **57 px = 31 µm** between `nfdev_jul26` and `xzhang_jul26`. Re-measure zbc every campaign | §6d |
+| `shadow.track_shadow` left at its `band_frac=0.30` default at 20-ID | tracker wanders into the beam's dim wings; axis is wrong by **+100 to +130 px** and the amplitude comes back clipped. `band_frac=0.70` reproduces the known Au axis to **0.41 px**. `fit_axis(...).is_reliable` correctly returns False — **branch on it** | §6e |
+| moving-shadow ybc attempted on an extended specimen | works only for a COMPACT particle. An irregular specimen's deepest-dip centre does not trace a rigid sinusoid (shadow width swung 56→886 px with ω on `s6061_NF`) and `fit_axis` refuses at every setting | §6e |
+| `triangulate` used on a wide sample as if it were a point | the model assumes a point source at BC. Perturbation ≈ (sample half-width)/(typical spot radius): 11 % for a 247 µm specimen vs 3 % for a 70 µm cube. Symptom is the **y-vs-z split** rising (142 µm vs 57 µm) | §6i |
+| `BlanketSubtraction ≈ 0.7 σ` on photon-starved data | the residual is >99 % exactly zero so **MAD = 0**; 0.7 σ collapses to the code's σ floor and admits the whole single-count floor | §5d, lab notebook §7b |
+| NLM combined with a σ-derived (sub-ADU) threshold | NLM smears isolated single counts into 4-px clusters and **manufactures** spots | §5d |
+| assuming one calibrant cube | `nfdev_jul26` has **two** Au cubes, one on-axis and one 497 µm off; a fit that averages them returns a wrong geometry | lab notebook §7d |
+| 1-ID `2047 − index` BC convention reused at another beamline | mirrored microstructure, invisible in the `.mic` | §3h |
+
+---
+
+## 0. THE ORDER — do these steps in this sequence
+
+Confirmed with the instrument scientist, 2026-08-01. The section numbers show where each
+step is documented. **Getting the order wrong is itself a failure mode**: on `nfdev_jul26`
+an operator-supplied constant was written straight into `Lsd` and a full reduction plus a
+reconstruction were launched before the geometry existed (lab notebook §7f, F0).
+
+| # | Step | Where | Notes |
+|---|---|---|---|
+| 0 | **BC per distance.** Use a separate `DetZBeamPos` scan if one exists; otherwise use the direct beam on the detector. Also: use the sample **shadow** to establish how many particles there are, and get the initial `tx` guess. | §6a-§6f, §3h | zbc from the beam stripe; **ybc needs the shadow** — the beam's horizontal width is slit-defined (§6e) |
+| 1 | **Distance triangulation.** The only external input needed is **ΔD, the change in distance between successive positions.** | §6i / §6i-bis | Absolute `Lsd` is NEVER taken from the DetZ readback (hard rule 10) |
+| 2 | **Process all images → `SpotsInfo.bin`.** | §8b step 5, §3h | **Geometry-independent** (§8e), so it can run in parallel with steps 0-1 |
+| 3 | **Parameter optimisation on ONE voxel** known to be inside the sample (from the shadow). | §7c, §7d | See the two hard rules below |
+| 4 | **Run one full layer.** With multiple particles, build an artificial **tomo mask** so a generous `Rsample` does not cost a grid full of empty space. | §8b, §10e | Mask recipe in §10e |
+| 5 | **Multi-point optimisation**, iterative, keep the best. | §7b(2) | Sample voxels from **different grains** or this degenerates — see below |
+| 6 | **Full recon on a real sample**, then multi-point optimisation. | §8 | |
+
+**Two hard rules govern step 3, and both have bitten:**
+
+- **Iterate INSIDE one invocation** (`NumIterations`), never by re-seeding with the previous
+  output. `TiltsTol` is relative to the current seed, so re-seeding ratchets the tilts
+  ~1°/pass **while confidence stays high** (hard rule 15, §7b(3)).
+- **Confidence ≈ 1 is not an acceptance criterion.** It is a *plateau*: `ty` seeds 2° apart
+  all reached exactly 1.0000 (hard rule 14, §7b(1)). And check `BoxSize` first — unset, a
+  calibrant plateaus at 0.949153 for reasons that have nothing to do with the geometry
+  (§7d).
+
+**Step 5 needs more than one grain.** §7b(2) established that `-multiGridPoints` cannot
+break the degeneracy on a single-crystal calibrant, because N voxels of one grain give one
+orientation's worth of constraint. If the calibrant happens to contain **two** particles
+(as `nfdev_jul26` does — lab notebook §7d), deliberately draw voxels from **both**;
+otherwise step 5 reduces to the documented negative.
+
+**Prefer an external check over a self-consistency one.** Where two particles exist, their
+separation measured from **absorption** is independent of any diffraction fit, so
+"does the fitted geometry reproduce that separation?" is a real test in a way that
+"did confidence reach 1?" is not.
 
 ---
 
@@ -114,10 +165,33 @@ are used here.
 /home/beams12/S1IDUSER/opt/envs/midas/bin/python
 ```
 
-Verified contents (2026-07-29, `importlib.metadata`): `midas-nf-pipeline 0.1.1`,
-`midas-nf-preprocess 0.1.2`, `midas-nf-fitorientation 0.3.2`, `midas-hkls 0.5.0`,
+Contents re-checked 2026-08-01 with `importlib.metadata` on chiltepin: `midas-nf-pipeline
+0.1.1`, `midas-nf-preprocess 0.1.2`, `midas-nf-fitorientation 0.3.2`, `midas-hkls 0.5.0`,
 `numpy 2.4.6`, `tifffile 2026.3.3`, `h5py 3.16.0`, `scipy 1.17.1`, `torch 2.11.0+cu128`.
-Same versions as this repo tree.
+
+> **The shared env is BEHIND this repo tree, and it still carries the `GridPoints`
+> off-by-one.** `packages/*/pyproject.toml` reads `midas_nf_pipeline 0.2.0`,
+> `midas_nf_preprocess 0.2.0`, `midas_nf_fitorientation 0.4.0` (bumped in `a6974246`,
+> `20622089`, `7aa1e997`); `midas_hkls 0.5.0` still matches. Checked functionally on
+> 2026-08-01, not inferred from version strings — the installed
+> `midas_nf_fitorientation/params.py` reads `args[4,5,7,8,9,10]`, i.e. the **broken**
+> indices (lab notebook defect 10); the fixed tree reads `args[3,4,6,7,8,9]`. Also absent
+> from the installed copies: the scipy labeller in `process_images`, `--fit-gpus`, and the
+> `hard` multipoint objective. The packages are ordinary copies under `site-packages`, not
+> editable installs, and `~s1iduser/opt/MIDAS_canonical` sits on an unrelated HEAD
+> (`d3a55ca`) that does not contain `b95c38c0`/`d231fdf3` — so nothing on that host picks
+> these fixes up implicitly. **Any multipoint refinement run in that env is invalid.**
+> Before any remote run, either re-check the env
+>
+> ```bash
+> ssh chiltepin '/home/beams12/S1IDUSER/opt/envs/midas/bin/python -c "
+> import importlib.metadata as m
+> [print(p, m.version(p)) for p in [\"midas-nf-pipeline\",\"midas-nf-preprocess\",
+>                                   \"midas-nf-fitorientation\",\"midas-hkls\"]]"'
+> ```
+>
+> or overlay the tree with `PYTHONPATH` and say in the write-up which you used. Install on
+> chiltepin (only host with internet); the shared home makes it visible everywhere.
 
 **`matplotlib` is NOT installed in that env.** Therefore: **reduce remotely, plot
 locally.** Write an `.npz` of the reductions on the host, `scp` it to the Mac, plot there.
@@ -438,6 +512,71 @@ either convention — the two differ by one ω step, which is invisible in the
 
 ---
 
+### 3h. 20-ID HT-HEDM (Bluesky + HDF5) — a different world; inherit nothing
+
+`§3a-§3g above are 1-ID.` At 20-ID (`/gdata/dm/20ID/HT_HEDM/<cycle>/<beamtime>/`) the
+acquisition is **Bluesky/ophyd running tomography-style fly scans**, the detector is a FLIR
+optical camera, and the data is **HDF5 in DXchange layout**. Lab notebook §7 has the
+measured detail; what changes operationally:
+
+| | 1-ID | 20-ID |
+|---|---|---|
+| Frames | one TIFF per frame, 6-digit pad | **one HDF5 per (distance, layer)**, `exchange/data` `(N, Z, Y)` uint16 |
+| Metadata | `~/new_data/<beamtime>/` (`FileCount.txt`, `fastsweep_Emon.txt`, `*.par`) | `data/metadata/<bt>/.logs/ipython_logger.log` — **there is no `~/new_data` equivalent** |
+| ω | derived from the paramfile, sign from `NF.par` f9 | **`exchange/theta` is IN the file**, per frame |
+| Distance / energy / px | `FileCount.txt` f10 / `fastsweep_Emon.txt` f10 | **NOT in the HDF5** — only areaDetector camera attributes are. Read the `nfscan(...)` call out of the ipython log |
+| Darks | separate scan | may be **all-zero placeholders**; check before trusting (`data_dark`, `data_white`, `data_white_post`) |
+
+**Read the scan definition out of the acquisition command**, e.g.
+
+```bash
+M=/gdata/dm/20ID/HT_HEDM/2026-2/nfdev_jul26/data/metadata/nfdev_jul26
+grep -n "User input: RE(nfscan" $M/.logs/ipython_logger.log
+#  nfscan(0.2, fname=..., nfz_start=7, nfz_end=11, ndz=3, y0=8.04, dy=0.01, y_nlayers=2)
+#  -> ndz COUNTS DISTANCES: linspace(7,11,3) = 7, 9, 11 mm ;  2 layers ;  6 files
+```
+
+`ndz` counts distances, not steps — established from the log's own API rename (lab
+notebook §7a). Energy is an **absorption edge**; the foil table is printed in the log by
+`foilA.about` (element, thickness, position, K-edge keV).
+
+**Traps specific to this format:**
+
+1. **10-bit data stored ×64.** Values are multiples of 64 and saturation is 65472 = 1023×64.
+   **Divide by 64 to get ADU** or every threshold is 64× wrong.
+2. **The frame count may exceed 360°.** `nfdev_jul26` has 1442 frames spanning
+   −180 → +180.25; the last two duplicate the first two. Set `NrFilesPerDistance` from the
+   ω range, not from the frame count.
+3. **Chunking wastes disk and I/O.** Chunks (1,1500,1960) on a 4600×5320 frame pad to
+   6000×5880 — **44 % overhead** (101.77 GB file for 70.58 GB of payload). Reading a single
+   frame costs ~35 MB of chunk reads, not 49 MB of frame.
+4. **`midas_nf_preprocess` cannot read any of this yet** — see the two blockers below.
+
+**Two blockers before this data can enter the pipeline at all** (both established by
+reading the code, 2026-08-01):
+
+- **No HDF5 support.** `grep h5py packages/midas_nf_preprocess` returns **zero** files;
+  `process_images/io.py:24-36` builds `<dir>/<stem>_<NNNNNN>.<ext>` and calls
+  `tifffile.imread`. Reuse `midas_calibrate_v2.io.readers.read_image`, which already
+  dispatches `.h5`/`.hdf5`/`.nxs` with `data_loc="exchange/data"` — **do not write a new
+  reader.**
+- **The whole layer is loaded into RAM.** `process_all` does `stack = load_layer(...)` then
+  `temporal_median(stack)` (`process_images/pipeline.py:157, 273-277`). At 1442 × 4600 ×
+  5320 that is **141 GB at fp32** (282 GB at the `torch.float64` default). A row-blocked
+  temporal median is required; a working one is in
+  `~/Desktop/analysis/nfdev_jul26_20id/distance_grouping.py::temporal_median`.
+
+Also: `process_images` addresses distances as **frame-index ranges inside one series**
+("layer" == detector distance, §3d). Here each distance is a **separate file**, so the
+frame-addressing model needs a per-distance file list, not a `RawStartNr` stride.
+
+**Do not inherit the 1-ID pixel convention.** `ybc = 2047 − col`, `zbc = 2047 − row`
+encodes *that* detector and *that* viewer/writer chain. On a different beamline the array→lab
+mapping must be re-derived, and getting it wrong **mirrors the microstructure invisibly** —
+the same silent failure mode as the ω sign (§2).
+
+---
+
 ## 4. STEP 3 — Energy and distance: the two fields that lie
 
 ### 4a. Energy
@@ -608,6 +747,118 @@ max projection and 18 frames for the temporal median
 | max-proj has < 10 blobs ≥ 30 px | too few spots to index | check ω range, energy, and that you have the right scan |
 | `tifffile.imread` returns 3-D | multi-page TIFF | wrong layout for this code (§3f) |
 
+### 5c-bis. If confidence has a ceiling: break it down PER DISTANCE, then profile in RADIUS
+
+`hard_fraction` counts a predicted spot only if it is observed at **every** distance
+(`hits_d.prod(dim=0)`, `obs_volume.py:395`). So the reported confidence equals the **worst
+distance** and tells you nothing about which one. Before theorising about geometry, forward
+simulate the best voxel and score each distance separately — on `nfdev_jul26` that turned an
+opaque "0.717" into `71.7 % / 91.3 % / 100 %` and localised the whole deficit to the near
+distance in one step (lab notebook §7h).
+
+**Then profile in RADIUS about BC, not in rows.** A beamstop is a **disc centred on the
+beam**, so every detector row keeps unobstructed columns far from BC and a row profile —
+row-max, row-mean, or row occupancy — is **structurally blind to it**. On `nfdev_jul26` four
+row-based tests all came back negative before a radial profile found the stop immediately:
+R ≈ 1100-1240 px ≈ 600-680 µm, fixed in the detector plane.
+
+The signature to recognise: **rings vanish by RADIUS, not by index**, and the deficit grows
+as `Lsd` shrinks, because a given ring moves inward at the near distance. The **strongest**
+reflections go missing first ({111}, {200} in FCC) precisely because they sit at the
+smallest radii — an inner-ring deficit that looks backwards is the tell.
+
+**Blocked reflections still count in the denominator.** `MaxRingRad` is an OUTER limit only;
+there is no inner radial exclusion, so a beamstop caps confidence permanently and **no
+geometry refinement can lift it** (multi-point over 12 voxels, objective resolution 1/552,
+failed to improve at all). Drop the affected rings with `RingsToUse` instead of dropping the
+distance — you keep the geometry leverage of all distances.
+
+**Chance-rate discipline for any "is there a spot near here?" search.** With `N` lit pixels
+in an `H×W` frame the density is `N/(H·W)`; a search radius `R` contains `πR²·N/(H·W)` lit
+pixels **by chance**. At 3800 lit px on 4600×5320 that is ~1.75 within ±60 px and ~78 within
+±400 px — so "found something nearby" is the null result, not evidence. Compute it first.
+
+### 5d. Check the counting regime before choosing a threshold
+
+`BlanketSubtraction ≈ 0.7 σ` (§8f) assumes σ is meaningful. **On a photon-starved detector
+it is not.** Measure it before trusting it:
+
+```python
+res = frame_ADU - temporal_median_ADU          # after clamping at 0
+print("frac exactly zero:", (res == 0).mean())
+print("MAD:", 1.4826 * np.median(np.abs(res - np.median(res))))
+print("counts at 1,2,3,4,>=5 ADU:", [(np.round(res[res>0])==k).sum() for k in (1,2,3,4)])
+```
+
+On `nfdev_jul26` (20-ID, 63.3 keV, 0.2 s) this returned **99.734 % exactly zero, MAD
+exactly 0**, and of the nonzero pixels 4954 at 1 ADU against 41 at ≥5 ADU. There, `0.7 σ`
+collapses onto whatever floor the code clamps σ to and admits the entire single-count
+floor as signal.
+
+| regime | test | threshold |
+|---|---|---|
+| noise is Gaussian-ish, MAD > 0 | MAD is a real number | `0.7 σ` per §8f |
+| **photon-starved**, residual mostly exactly 0, **MAD = 0** | as above | **absolute**, in counts. 20-ID production value: **2 counts after median + NLM** |
+
+**And do not pair NLM with a sub-ADU threshold.** NLM spreads an isolated single count
+over its patch; the result then clears a 4-px minimum-area cut and is counted as a spot.
+NLM plus an *absolute* threshold is correct; NLM plus a σ-derived one manufactures spots.
+
+**Before running any spot-matching statistic, compute its random-coincidence value.** For
+N spots placed at random on an `H×W` frame the median nearest-neighbour distance is
+`0.4699/√(N/(H·W))`. At N = 35 on 4600×5320 that is **393 px** — so a nearest-neighbour
+matching test at that spot density measures nothing but chance (lab notebook §7f, F2).
+
+### 5e. Before ANY ring analysis: is this sample narrow enough to have rings?
+
+An NF spot does **not** land at `Lsd·tan(2θ)` from BC. It lands at
+
+```
+p = (grain position, projected)  +  Lsd · tan(2θ) · d̂
+```
+
+The first term is the reason NF resolves grains at all, and it is also why NF data is
+**not a powder pattern**. Every ring is convolved with the illuminated width of the
+sample. Rings survive only if
+
+```
+illuminated width (px)   <   ring spacing (px)
+```
+
+Measure both before fitting anything radial:
+
+```python
+# ring spacing, innermost pair
+r_hkl = lambda a, N: LSD * np.tan(2*np.arcsin(LAM/(2*a/np.sqrt(N)))) / PX
+spacing = r_hkl(a, 4) - r_hkl(a, 3)          # 200 minus 111
+
+# illuminated width: equivalent top-hat of the absorption profile in the beam stripe
+a_prof = np.clip(1.0 - frame_stripe/ref_stripe, 0, None)
+width  = a_prof.sum() / a_prof.max()
+```
+
+Measured at 20-ID, 63.314 keV, px 0.548 (111→200 spacing **225 px**):
+
+| sample | illuminated width | smearing | rings? |
+|---|---|---|---|
+| `nfdev_jul26` Au cube | 128 px = **70 µm** | ±64 px = 0.6× spacing | yes |
+| `xzhang_jul26` `s6061_NF` | 452 px = **247 µm** | ±226 px = **2.0× spacing** | **no** |
+
+**The control that catches it when you forget.** Two layers of the same material at the
+same distance must give **identical** ring radii. On `s6061_NF` the two 9 mm layers, 10 µm
+apart, gave radial "peaks" at 1028/1152/1294/1364/1496 and 1108/1212/1304/1386/1574. They
+are not rings; they are grain-sampling structure, and every δ and lattice parameter fitted
+to them was void (lab notebook §8b).
+
+A second, independent check: histogram **spot radii** (each spot counted once, not weighted
+by size or brightness) and compare the on-ring count against the local off-ring rate. On
+`s6061_NF` the excess was +0.2 % and +2.4 % at the two candidate lattice parameters —
+i.e. consistent with **no rings at either**.
+
+⇒ When this test fails, the lattice parameter cannot be read off the detector. **The
+indexer is the arbiter** — run the reconstruction once per candidate `LatticeParameter`
+and let confidence decide.
+
 ---
 
 ## 6. Detector-distance and rotation-axis calibration (DetZBeamPos)
@@ -735,6 +986,38 @@ axis = ( dip_centre(ω=0) + dip_centre(ω=180) ) / 2
 
 cancels the sample's own offset **exactly**. Since the sample sits on the axis and a point
 on the beam axis shadows at `BC`, this axis position **is** `BC_y(L)`.
+
+#### 6e-0. Two preconditions — check both before trusting any ybc from a shadow
+
+**(1) `band_frac` must select the beam's flat core, not its wings.**
+`beam_calib.shadow.track_shadow` defaults to `band_frac=0.30`. At 20-ID that admits the
+dim wings, the dip finder wanders, and the axis comes back **+100 to +130 px wrong** with a
+clipped amplitude. Tuned against the *known* `nfdev_jul26` answer (axis col 2625.47):
+
+| `band_frac` | axis col | amplitude | rms | `is_reliable` |
+|---|---|---|---|---|
+| 0.30 | 2721.15 | 634 px | 216 px | False |
+| 0.50 | 2787.83 | 500 px | 202 px | False |
+| **0.70** | **2625.88** | **918 px** | **1.5 px** | **True** |
+
+At 0.70 the amplitude 918 px = 503 µm also reproduces the independently measured 496.8 µm
+cube-2 offset. **Never adopt a shadow axis without first reproducing a known one**, and
+branch on `fit_axis(...).is_reliable` — it returned False on every failing row above.
+
+If the beam profile has a narrow bright spike (there is one near col 3600 in
+`xzhang_jul26`), `band_frac * ref.max()` selects only the spike and everything is reported
+as clipped. Crop to the flat core first and add the offset back.
+
+**(2) The absorber must be COMPACT.** The method assumes the shadow centre traces a rigid
+sinusoid, which is true for a particle and false for an extended irregular specimen. On
+`s6061_NF` the shadow width swung 56→886 px with ω, and `fit_axis` refused at **every**
+setting. There is no on-axis feature to fall back on either (`find_stationary` returned a
+fixed 26 µm absorber at col 3408, not the sample).
+
+⇒ When both routes fail, ybc is **not measurable from this scan**. Inherit it from a
+campaign that measured it at the same nominal distance, **mark it inherited in the
+paramfile**, widen `BCTol` in y, and let §7 refinement move it. Do not present the
+inherited number as measured.
 
 Build the transmission profile along the stripe, using the matching `NoAu` image at the
 same DetZ as the reference:
@@ -881,6 +1164,88 @@ healthy), and leave-one-out stability. On `pokharel_jun25` Au3 the `6→7` pair 
 gates at once (δ = 5012 µm, cond 115, y/z split 947 µm); naively averaging all three pairs
 would have given δ = 1786 µm instead of 174 µm — a 10× error.
 
+#### 6i-bis. When you DO have the direct beam *and* spots — the better-posed case
+
+Everything above assumes BC is unknown. If the direct beam is on the detector (20-ID, §3h)
+you get `BC(L)` per distance from §6d/§6e **first**, and then the triangulation is strictly
+better posed: a ray is `p(L) = BC(L) + L·d`, so the map between two distances is a scaling
+about the **respective** beam centres,
+
+```
+(p₂ − BC₂) = k · (p₁ − BC₁)          k = L₂/L₁
+L₁ = ΔD / (k − 1)                     δ = L₁ − DetZ₁
+```
+
+`A` never enters, so §6i's "the fit returns A, not BC" caveat does not apply. **Do not use
+one shared centre for both distances.** BC moves with distance by β·L, and at 20-ID
+β_y/p ≈ 0.0036 px/µm gives ~14 px between adjacent distances; a common centre biases `k`
+by ~0.7 %, which is ~4 % in `k−1` and hence **hundreds of µm in `L₁`**.
+
+Run the same nulls and gates as §6i. **Two spots at the same ω match only if their ray
+directions agree**, not merely their radii — match on the angle between `(p₁ − BC₁)` and
+`(p₂ − BC₂)`, and check the accidental-match rate: with N spots/frame and an angular
+tolerance `t`, roughly `N²·t/180°` pairs match by chance per frame. At N ≈ 35 and
+t = 0.3° that is ~2 accidental pairs per frame, so a peak built from a handful of pairs is
+not a measurement.
+
+> **A gate failure may mean STARVED, not BROKEN — check the inlier count first.** On
+> `nfdev_jul26` at 40 ω samples the `0→2` pair failed the y-vs-z gate at **1534 µm** (limit
+> 200) on 6 inlier pairs, and §6i:1005 says to drop such a pair. At 240 ω samples the same
+> pair passes at **57 µm** on 18 pairs. Sampling more ω is far cheaper than a wrong `Lsd`.
+> §6i's instruction to drop a gate-failing pair applies to a pair that fails **with enough
+> statistics**, not to one that has too few matches to be measured at all.
+
+Worked reference — `nfdev_jul26` layer 1, 240 ω samples, BC known per distance:
+
+| pair | k | n_peak | L(dist 0) | y-vs-z |
+|---|---|---|---|---|
+| 0→1 | 1.3258 | 71 | 6139.0 | 10.6 |
+| 1→2 | 1.2457 | 47 | 6140.2 | 15.2 |
+| 0→2 | 1.6513 | 18 | 6141.3 | 57.1 |
+
+Both nulls die at 8.88×; leave-one-out std 0.4 µm; the three pairs agree to 2.3 µm ⇒
+`Lsd = 6139.7 / 8139.7 / 10139.7 µm`, δ = −860 µm. **δ is a motor zero offset and may be
+negative** — it is not a physical distance and its sign carries no meaning.
+
+> **TERMINOLOGY TRAP — "delta".** It is used for two different things and confusing them
+> is a millimetre-scale error. `δ` in this handbook is the **Lsd offset**, `δ = L₁ − DetZ₁`
+> (a motor zero offset; it can be negative). The **step between detector positions** is a
+> different number entirely (`ΔD`, e.g. 2000 µm for `nfz` 7/9/11 mm). Only `ΔD` is
+> trustworthy from the motor (hard rule 10); `δ` must be *measured* by triangulation. When
+> anyone hands you "delta = N", establish which one they mean before writing an `Lsd` line.
+
+##### 6i-ter. The point-source assumption — quantify it before quoting a precision
+
+`p(L) = BC(L) + L·d` treats every ray as leaving **one point at BC**. Real rays leave
+grains spread across the illuminated width, so each spot carries a position term the model
+does not know about. The fractional perturbation of `|p − BC|` is
+
+```
+perturbation  ≈  (illuminated half-width, µm) / (typical spot radius, µm)
+```
+
+| sample | half-width | typical radius | perturbation | y-vs-z split |
+|---|---|---|---|---|
+| `nfdev_jul26` Au cube | 35 µm | 1096 µm | 3 % | **57 µm** |
+| `xzhang_jul26` `s6061_NF` | 124 µm | 1096 µm | **11 %** | **142 µm** |
+
+The **y-vs-z split is the symptom** — it rose by the same factor. The mode of the `k`
+histogram is more robust than its mean, so the answer does not collapse, but the honest
+precision degrades from ~2 µm to ~200 µm. Quote it accordingly, and do **not** read a
+200 µm difference between two campaigns as a calibration change when the sample is this
+wide.
+
+Two further cautions from `s6061_NF`:
+
+* **`r_min_px` matters more than the angular tolerance.** At `r_min=300` the module
+  returned `k = 1.0146`, `L = 136 mm`, y-vs-z split **129 mm**, and correctly REJECTED it:
+  near BC, ray directions are degenerate and the matcher pairs noise. `r_min=800` gave
+  `k = 1.2391` on 108 pairs and passed. Sweep `r_min`, and believe the rejection.
+* **δ is not an instrument constant.** `δ = L − DetZ` contains where the *sample* sits
+  along the beam, so a remounted sample legitimately changes it. Comparing δ across
+  campaigns tests the mounting as much as the detector. What transfers is the *method*,
+  not the number.
+
 ---
 
 ## 7. STEP 5 — Refine the geometry on a calibrant, and know what it cannot do
@@ -964,6 +1329,25 @@ held nearly fixed.
 coordinate triple (`FitOrientationParametersMultiPoint.c:697` `sscanf` reads 12
 tokens). Passing 6 tokens parses without error and silently refines nothing
 useful. Take the row straight out of a previous `.mic`.
+
+> **CHECK THE SPOT COUNT BEFORE TRUSTING A SINGLE-VOXEL FIT — this recipe is not
+> portable.** The hard FracOverlap is `matched / predicted` for that voxel, so with `N`
+> predicted spots the objective is a **step function quantised at 1/N**, and a
+> derivative-free simplex cannot move 12 parameters (3 tilts + 3 `Lsd` + 6 `BC`) across a
+> plateau tread. On `nfdev_jul26` a voxel had only **N = 46**: the refinement reported
+> 0.695652 → 0.717391, i.e. **32/46 → 33/46 — exactly one extra spot** — and `tx`, `ty`,
+> `tz` never left 0.0000 while iterations 2 and 3 were bit-identical to iteration 1
+> (lab notebook §7g).
+>
+> **Diagnostic:** print the objective to full precision; if the values are ratios of small
+> integers you are quantisation-limited, not converged.
+>
+> `N` is a property of the beamline geometry — how much of each diffraction cone the
+> detector covers. A beam near the detector edge (20-ID: 121 px from the bottom) sees
+> roughly half the azimuthal spots a centred one does. **With V voxels the resolution
+> becomes `1/(N·V)`**, so when `N` is small, go multi-point immediately; on such a geometry
+> multi-point is load-bearing, not a polish step. See §7b(2) for why those voxels must come
+> from *different grains*.
 
 Then verify the fit reproduces the *known* answer on one voxel before trusting it
 anywhere:
@@ -1220,7 +1604,7 @@ Everything is **flat** in `OutputDirectory` (fallback `DataDirectory`, then cwd 
 | `<MicFileBinary>` | fitting | 11 f64/voxel at offset `voxel_idx*88` (`fitorientation/output.py:32-56`) |
 | `<MicFileBinary>.AllMatches` | fitting | `7 + 4*SaveNSolutions` f64/voxel (`output.py:92`, `parse_mic.py:585`) |
 | `screen_cpu.csv` | fitting with `--screen-only` | phase-1 dump (`fit_orientation.py:310`) |
-| `<MicFileText>.mic` + `.map` `.map.kam` `.map.grainId` `.map.grod` | `ParseMic` | §9 |
+| `<MicFileText>` (**no suffix added**) + `<MicFileText>.AllMatches` `.map` `.map.kam` `.map.grainId` `.map.grod` | `ParseMic` | §9 |
 | `<base>_pipeline.h5` | `PipelineH5` | provenance + completed stages |
 | `<base>_consolidated.h5` | consolidator | §9c |
 
@@ -1282,6 +1666,23 @@ NLMPatchSize 5
 NLMPatchDistance 6
 BlanketSubtraction 2    # ~0.7 sigma, NOT the ~3 sigma you need without NLM
 ```
+
+> **`NLMH` is a MULTIPLE OF σ_MAD, and σ_MAD can be exactly 0.** On photon-starved data
+> the median-corrected residual is almost entirely exact zeros (20-ID `nfdev_jul26`:
+> **99.73 %**), so `σ_MAD = 0`, `h = NLMH · σ_MAD = 0`, and NLM is skipped — historically
+> **silently**, so `NLMDenoise 1` became a no-op that nothing in the output revealed.
+> It now warns, and you can set an absolute strength in **counts**:
+>
+> ```
+> NLMHAbsolute 1.0        # overrides NLMH * sigma_MAD when > 0
+> ```
+>
+> Verified on synthetic photon-starved data: with `NLMHAbsolute 1.0` a real spot peak is
+> preserved exactly (6.00 → 6.00) while an isolated single count is suppressed 167×
+> (1.000 → 0.006) — which is also why NLM plus an *absolute* threshold does not
+> manufacture spots, while NLM plus a σ-derived one does (§5d).
+>
+> **Check `σ_MAD` before trusting any σ-scaled setting** (§5d has the one-liner).
 
 NLM is applied to the **median-corrected residual, before** the blanket subtraction and
 the clamp. That ordering is the whole point: the fixed-pattern background is already gone,
@@ -1353,9 +1754,158 @@ A6000, `MIDAS_NF_SCREEN_VOXEL_CHUNK=64` died trying to allocate a further
 21.62 GiB. Results are independent of the chunk size — verified by comparing runs
 at a fixed forced chunk (identical in every field but `RunTime`).
 
+> **COARSENING `GridSize` DOES NOT SPEED UP `screen()`.** This is counter-intuitive
+> and it wastes real hours. `screen()` builds a `(T, P, Q)` tensor where `P`, `Q` are
+> each voxel triangle's bounding box **in detector pixels** (`screen.py:229-230`), and
+> the triangle side is `EdgeLength / px` with `EdgeLength` defaulting to `GridSize`.
+> So per-voxel cost grows as `GridSize²` while the voxel count falls as `1/GridSize²`
+> — **the product is roughly constant.**
+>
+> Measured on `nfdev_jul26`, same data, same geometry:
+>
+> | run | voxels | `GridSize` | `screen` |
+> |---|---|---|---|
+> | step4_std | **9038** | 4 | **7900 s** |
+> | step4_std_g6 | **6676** | 6 | **8265 s** |
+>
+> **Fewer voxels, MORE time.** Choosing a coarse grid "to make it faster" is a null
+> optimisation and costs resolution for nothing.
+>
+> **What actually controls cost is the MASK AREA.** For a fixed masked region the
+> `screen` cost is ~independent of pitch, so **use a fine grid and shrink the mask**
+> (§10e) — resolution is close to free, empty space is not.
+
 Performance is *not* the problem and never was: 5046 voxels × 4 distances took
 `screen=697.22s nm_batched=8.03s writeback=23.45s` on one A6000, against ~748 s
 for the C reference scaled to the same grid. Memory was the only defect.
+
+### 8j. Omega binning — `SumFrames`, and measure the spot width first
+
+A spot spans a finite ω range. Sampling finer than that splits its photons across
+several frames, each carrying the FULL background, so each frame is harder to threshold
+than the spot really is. `SumFrames N` sums N consecutive RAW frames before the
+reduction.
+
+**Measure the ω width before choosing N** (`recon/omega_width.py`): on
+`nf_Ce5Y_ht450_s2` at a 0.1° step the profile is 1.00 / 0.69 / 0.69 at 0, ±1 frame —
+**FWHM 0.30°**, so N = 3. Summing beyond the spot width adds background to a fixed
+signal and SNR *drops* as √N.
+
+Expected gain is **not** √N. The profile is peaked, so summing 3 gathers 2.38× the
+peak-frame signal against 1.50× the noise (measured σ_MAD 2.965 → 4.448) ≈ **1.6×**.
+
+`NrFilesPerDistance`, `EndNr` and `OmegaStep` must all describe the **POST-SUM** scan:
+
+```
+SumFrames 3
+NrFilesPerDistance 600          # was 1800
+EndNr <StartNr + 600 - 1>       # the fit derives frames/distance from EndNr-StartNr+1,
+OmegaStep -0.3                  #   NOT from NrFilesPerDistance (params.py:166)
+```
+
+Getting `EndNr` wrong silently gives the fit the wrong frame count. Check
+`SpotsInfo.bin` = `nDistances × NrFilesPerDistance × NrPixels² / 8` bytes — the size
+lands on the post-sum count only if the grouping and the per-distance stride are both
+right.
+
+### 8k. How low can `BlanketSubtraction` go — measure, do not guess
+
+`BlanketSubtraction` is applied to the **NLM-denoised** residual, so what matters is
+σ of the *denoised* frame, not the raw one. Measured on `nf_Ce5Y_ht450_s2`:
+raw σ_MAD **2.965 → 0.282 after NLM** (10.5×). So `BlanketSubtraction 2` sits at
+**7.1σ** — far more conservative than it looks.
+
+Ladder (`recon/threshold_floor.py`, 5 frames), using isolated single pixels as the noise
+indicator — a real spot cannot be 1 px:
+
+| thr | × σ_nlm | spot-like ≥3 px | isolated singles |
+|---|---|---|---|
+| 2 (typical) | 7.1σ | 3,602 | 2,603 |
+| 1 | 3.5σ | 5,359 (+49 %) | 5,370 (+106 %) |
+| 0.5 | 1.8σ | 28,989 | 54,282 |
+
+Singles stay flat from 4 down to 1.5 then explode — the floor is between 1.0 and 0.5.
+**`BlanketSubtraction` is parsed as `int`**, so the only step available is 2 → 1.
+
+**Do not raise `NLMH` to compensate.** Tested 1.5 and 2.0: σ barely moves
+(0.282 → 0.270 → 0.269) while spot-like components drop 35–42 %. 1.0 is the operating
+point.
+
+**Lowering the threshold inflates confidence mechanically** — thr 1 lights 2.35× the
+pixels, so a simulated spot is likelier to hit a lit pixel by luck. Judge the change by
+the number of orientation-coherent grains, never by confidence.
+
+### 8l. Structure factors — stop counting reflections that cannot exist
+
+Space-group extinction rules do not see **basis-dependent** extinctions. Declare the
+unit-cell basis and the generator computes |F|² per reflection:
+
+```
+PhaseAtom Ce 0.0 0.0 0.0
+PhaseAtom Ce 0.3333333333 0.6666666667 0.25    # dhcp beta-Ce, La-type hP4
+DropForbiddenReflections 1
+ConfidenceMetric filtered                       # raw | filtered | weighted
+```
+
+Measured on `nf_Ce_ht525_s2`: dhcp β-Ce has **126 of 736 reflections with |F|² = 0**,
+capping FracOverlap at **0.829**; fcc γ-Ce has none, cap 1.000 — which is why this never
+showed up on a single-atom cell. Dropping them took max confidence **0.4938 → 0.5962**
+(predicted 0.596) and voxels above `MinConfidence 0.5` from **0 → 213**.
+
+Affects any phase with a non-trivial basis: HCP, DHCP, intermetallics, oxides.
+**Maps made before and after are not numerically comparable for those phases.**
+
+- Omit `PhaseAtom` → output byte-identical to before.
+- `DropForbiddenReflections` filters `hkls.csv` itself, so it fixes the SEARCH too —
+  every downstream stage reads that one file.
+- `ConfidenceMetric weighted` changes the *scale* of confidence: on the Ce DHCP map it
+  moved the median 0.397 → 0.727 and lifted the sham null 0.097 → 0.148. Re-tune
+  `MinConfidence` before adopting it; `filtered` is the safe driver.
+- **No Lorentz factor**, deliberately — see lab notebook §11c.
+
+### 8m. DHCP-scale phases need a big GPU
+
+A hexagonal cell generates far more of everything than a cubic one. For β-Ce at
+`MaxRingRad 1400`: **736 reflections and 486,755 seeds**, against fcc's 228 and 243,129
+— roughly 8.7× the forward-model footprint. That **OOMs a 47 GB A6000** in
+`calc_bragg_geometry` before fitting a single voxel. Run it on an H200 (143 GB), or cut
+`MaxRingRad`. An OOM here looks exactly like "the phase is absent" — see lab notebook §10a.
+
+### 8i. Obs-volume memory — check which paths are packed BEFORE planning a fit
+
+`ObsVolume.from_spotsinfo` has a `packed` flag, and **the four fit entry points do not
+agree on it**. Dense costs `nDistances · nFrames · NrPixelsY · NrPixelsZ · 4` bytes;
+packed costs one **bit** per pixel, i.e. 32× less.
+
+| entry point | `packed` | source |
+|---|---|---|
+| `midas-nf-fit-orientation` | **True** (v0.4 default) | `fit_orientation.py:284-292` |
+| `midas-nf-fit-parameters` | `False` — dense | `fit_parameters.py:85-92` |
+| `midas-nf-fit-multipoint` (**always** soft) | `False` — dense | `fit_multipoint.py:138-145` |
+| `midas-nf-pipeline refine-params --multi-point --objective hard` | **True**, uint8 | `fit_multipoint.py:519-525` |
+
+> **`midas-nf-fit-multipoint` has NO `--objective` flag.** Its CLI takes only
+> `params.txt [nCPUs]` and unconditionally calls `fit_multipoint_run`, the **soft, dense**
+> path (`cli.py:159-186`). The hard/packed path is reachable **only** through the pipeline:
+> `midas-nf-pipeline refine-params --multi-point --objective hard`
+> (`midas_nf_pipeline/cli.py:207-217`, where `hard` is the default). Reaching for the
+> obvious-looking console script gets you the one that cannot run on a large detector.
+
+At 1-ID (2 × 1440 × 2048²) dense is ~56 GiB — painful but survivable on a big node, which
+is why this went unnoticed. On the 20-ID Oryx (3 × 1440 × 5320 × 4600) dense is **423 GB**
+and packed is **13.2 GB**:
+
+- `fit-orientation` — fine.
+- **`fit-parameters` cannot run at all.** Do single-voxel parameter optimisation with
+  `midas-nf-pipeline refine-params --multi-point --objective hard` and a **single**
+  `GridPoints` row: it optimises the same hard FracOverlap with the same parameter layout,
+  over the packed volume. "Multi-point" with one point is the supported route to a
+  single-voxel refinement on a big detector.
+- The **soft** multipoint objective is likewise unusable on a large detector. It is not
+  equivalent to the hard one anyway (lab notebook §3b).
+
+Rule of thumb: `dense_GB = nDistances · nFrames · NrPixelsY · NrPixelsZ · 4 / 1e9`.
+Compute it before choosing an entry point.
 
 ---
 
@@ -1606,41 +2156,153 @@ Arithmetic consistency check (derived from the example, **not enforced by code**
 |---|---|---|
 | `Rsample` | µm — radius the hex grid must cover | hex grid (`hex_grid/params.py:19`) |
 | `GridSize` | µm — voxel spacing. **Overwritten on disk each multi-resolution loop** (`workflows.py:373-376`) | hex grid; fitorientation (multipoint only) |
-| `EdgeLength` | µm — triangle edge; `0`/absent ⇒ equals `GridSize` (`hex_grid/params.py:24-28`). **Leave it out.** See the warning below. | hex grid |
-
-**`EdgeLength` must equal `GridSize` — just omit the key.** The two quantities are
-independent in the code and only the *default* ties them together:
-
-- the **lattice pitch** comes from `grid_size` alone —
-  `x = xstart + grid_size*j/2`, `ht_triangle = √3·grid_size/2` (`hex_grid/grid.py:97,118,143`);
-- `edge_length` sets only the triangle itself — `edge_half = edge_length/2` and the
-  sub-triangle offsets `xt1 = edge_length·√3/6`, `xt2 = 2·edge_length·√3/6`
-  (`grid.py:105-106,153`).
-
-Set them inconsistently and the grid stops tiling: with `EdgeLength 1` and
-`GridSize 10` you get **1 µm triangles on a 10 µm lattice**, i.e. ~1 % areal
-coverage — a sparse point sampling, not a reconstruction of the volume. Grains
-smaller than the pitch can fall entirely between probes, and every area that
-`mic2grains` reports is wrong by `(GridSize/EdgeLength)²`.
-
-**This bites hardest in multi-resolution runs.** `GridRefactor` rewrites
-`GridSize` every loop (10 → 5 → 2.5), but a hardcoded `EdgeLength` does *not*
-follow, so the mismatch grows as the run proceeds. Omitting the key makes the
-edge track `GridSize` at every level automatically.
-
-Check it on the generated grid rather than trusting the paramfile — column 5 of
-`grid.txt` is `edge_half`, which must be **half of `GridSize`**:
-
-```bash
-head -2 grid.txt | tail -1 | awk '{print "edge_half =", $5}'   # GridSize 10 -> 5.0
-```
+| `EdgeLength` | µm — probe-triangle edge; `0`/absent ⇒ equals `GridSize` (`hex_grid/params.py:25-26`). **An independent knob — see below.** | hex grid |
 | `GridFileName` | default `grid.txt` | hex grid, fitorientation |
 | `GridMask` | 4 floats. The code filters grid columns 2 and 3, i.e. **x and y in µm** (`stages.py:211-227`). `ps_au.txt:89` labels them `ymin ymax zmin zmax`; **the code's meaning wins.** | pipeline `run_grid_mask` |
 | `GlobalPosition` | µm — written into the `.mic` header | `ParseMic`, consolidator |
 | `TomoImage` | path to a **square `uint8`** mask; side inferred from file size (`tomo_filter/filter.py:33-52`) | pipeline `run_tomo_filter` — **broken, §8a #3; use the CLI** |
 | `TomoPixelSize` | µm per tomo pixel | as above |
+
+#### Building a SYNTHETIC tomo mask (no tomography required)
+
+When the sample is a few small particles inside a large search area, a hand-built mask cuts
+the voxel count enormously. On `nfdev_jul26` (two Au cubes, one on-axis and one 497 µm off)
+three dilated discs kept **5.3 %** of an `Rsample 600` disc — **19× fewer voxels**.
+
+Format and convention, from the loader and sampler (`tomo_filter/filter.py:33-52`,
+`121-149`):
+
+- raw **square `uint8`**; the byte count must be a **perfect square** (side = `isqrt(size)`)
+- **any nonzero pixel keeps the voxel** (`mask = values != 0`)
+- sampling is `xPos = int(x_um/px) + n//2`, `yPos = int(y_um/px) + n//2`, read as
+  **`tomo[n - yPos, xPos]`** — Y flipped, C parity
+- out-of-image ⇒ 0
+
+```bash
+midas-nf-preprocess tomo-filter grid.txt grid_filt.txt --tomo tomo.bin --px-tomo 2.0
+#   then point GridFileName at grid_filt.txt.  Use the CLI, not the pipeline stage.
+```
+
+Three things that will bite:
+
+1. **The index is `n - yPos`, not `n-1-yPos`.** A voxel at the extreme −y edge maps to row
+   `n` and falls out of the array. **Make the mask larger than `Rsample`** (e.g. ±800 µm of
+   mask for `Rsample 600`) so no voxel lands at the edge.
+2. **Dilate.** Use a radius comfortably larger than the particle — position uncertainty,
+   the grid pitch and any residual geometry error all eat margin. 80 µm radius for a
+   ~50 µm cube is reasonable.
+3. **Verify the mask by round-tripping it through `sample_tomo`**, not by reasoning about
+   the flip. Probe a point you expect to keep and one you expect to reject and check the
+   returned values. The Y-flip convention is easy to get backwards, and a mirrored mask
+   silently deletes exactly the voxels you wanted.
+
+**Tip — when a position is known only up to a convention**, put a dilated region at *each*
+candidate rather than guessing. On `nfdev_jul26` the second cube's sample-frame position is
+`±(406.4, 285.7) µm` — the magnitude is measured to ±0.7 µm but the sign pair depends on the
+ω sign and the detector Y handedness. Masking **both** candidates costs one extra disc and
+lets the reconstruction settle the handedness empirically.
 | `DataDirectory` | path — raw TIFFs | everything |
 | `OutputDirectory` | path — falls back to `DataDirectory` | everything |
+
+> ## ⇒ ALWAYS SET `EdgeLength 1`. On every paramfile, at every `GridSize`.
+>
+> This is the single highest-value line in an NF paramfile and it is **absent by
+> default**, in which case `EdgeLength` silently becomes `GridSize` and every voxel
+> triangle grows to the grid pitch.
+>
+> `screen()` rasterises each voxel's triangle over its bounding box **in detector
+> pixels** — a `(T, P, Q)` tensor with `P, Q ≈ EdgeLength / px` (`screen.py:229-230`).
+> So per-voxel cost scales as **`EdgeLength²`**:
+>
+> | `EdgeLength` | triangle at px 0.548 | pixels per triangle |
+> |---|---|---|
+> | 1 µm | 1.8 px | **~4** |
+> | 4 µm | 7.3 px | ~53 |
+> | 16 µm | 29 px | **~850** |
+>
+> `EdgeLength 1` versus `EdgeLength 16` is a **~200× difference in screen cost per
+> voxel.** With it omitted at `GridSize 16`, a 4202-voxel annulus scan on
+> `nfdev_jul26` had not finished after **3.4 hours**; with `EdgeLength 1` the same
+> region at `GridSize 4` — **66,864 voxels, 16× more** — runs in a fraction of that.
+>
+> **Corollary: with `EdgeLength` omitted, coarsening `GridSize` saves NOTHING.**
+> Voxel count falls as `1/GridSize²` while per-voxel cost rises as `GridSize²`, so
+> the product is flat. Measured, same data and geometry:
+>
+> | run | voxels | `GridSize` | `screen` |
+> |---|---|---|---|
+> | step4_std | **9038** | 4 (EdgeLength defaulted) | **7900 s** |
+> | step4_std_g6 | **6676** | 6 (EdgeLength defaulted) | **8265 s** |
+>
+> Fewer voxels, MORE time. Choosing a coarse grid "for speed" is a null optimisation
+> that costs resolution for nothing. **With `EdgeLength 1` pinned, `GridSize` controls
+> cost as you would expect** — and a fine grid becomes affordable.
+>
+> The probe-vs-tile consequences below still hold (`mic2grains` areas describe the
+> probe, `doNeighborSearch` will not connect) — that is the deliberate trade, and it
+> is the right one for locating and orienting grains.
+
+#### `EdgeLength` vs `GridSize` — independent, and the difference is deliberate
+
+**Earlier revisions of this file said `EdgeLength` must equal `GridSize` and that
+setting it smaller "breaks the grid". That is RETRACTED** (lab notebook R2).
+`EdgeLength` is a supported, independent knob; only the *default* ties the two
+together (`hex_grid/params.py:25-26`, `grid.py:88-89`).
+
+In `make_hex_grid` the two quantities touch different things:
+
+- the **lattice** — how many voxels and where they sit — comes from `grid_size`
+  alone: `a_large = 2·Rsample/√3` and `nr_hex = ceil(a_large/grid_size)`
+  (`hex_grid/grid.py:97-100`), `nr_row_elements = 2(2·nr_hex − |i|) + 1`
+  (`:117`), `x = xstart + grid_size·j/2` (`:142`),
+  `ht_triangle = √3·grid_size/2` (`:98`);
+- `edge_length` sets only the **probe triangle**: `edge_half = edge_length/2`
+  (`:153`, grid.txt column 5) and the sub-triangle offsets
+  `xt1 = edge_length·√3/6`, `xt2 = 2·edge_length·√3/6` (`:105-106`, columns 1-2).
+
+**Changing `EdgeLength` therefore never changes the voxel count or the voxel
+positions.** Small probe triangles on a coarse lattice are an intentional mode —
+a sparse point sampling of the volume. Removing an `EdgeLength 1` line from a
+`GridSize 10` paramfile made the triangles 10 µm and cost a ~94 GiB-per-voxel
+allocation, with the triangle *count* unchanged (lab notebook R2).
+
+What it **does** change is everything downstream that reads `TriEdgeSize`, since
+the fitter writes `2·edge_half` into `.mic` column 5
+(`fit_orientation.py:524-526`):
+
+| consumer | uses `TriEdgeSize` as | effect when `EdgeLength` ≪ `GridSize` |
+|---|---|---|
+| `mic2grains` grain radius | `area = TriEdgeSize²·√3/4` (`mic2grains.py:294`) | the area of the *probe*, not of the lattice cell — smaller by `(GridSize/EdgeLength)²` |
+| `mic2grains` spatial merge (`doNeighborSearch 1`) | bins of side `1.01·TriEdgeSize`, edge added when `dist² < (2·TriEdgeSize)²` (`mic2grains.py:198-222`) | lattice neighbours are `GridSize/2`–`GridSize` apart, so `EdgeLength 1` on `GridSize 10` gives a 2 µm threshold that connects **nothing** — every voxel becomes its own grain. **Read from the code, not measured (§11).** |
+| soft-overlap splat σ, per-voxel path | `auto_sigma_px(edge_half, px)` (`fit_orientation.py:527`) | none in practice — `auto_sigma_px` clamps at 1.0 px (`soft_overlap.py:425`) and NF values sit below the clamp either way |
+
+So: a small `EdgeLength` is the right choice when you want a sparse probe, and
+then `mic2grains` output describes the probe rather than the volume — read grain
+areas accordingly, and do not expect `doNeighborSearch 1` to connect anything.
+Omit the key when you want the triangles to tile the lattice and grain areas to
+mean volume fractions.
+
+**Multi-resolution:** `GridRefactor` rewrites `GridSize` every loop (10 → 5 →
+2.5) but a hardcoded `EdgeLength` does *not* follow, so a fixed probe size is
+held across all levels. That is a real effect either way — intended if you want a
+constant probe, surprising if you assumed it tracked. Omitting the key makes the
+edge track `GridSize` at every level.
+
+**Inconsistency between the two fit paths**, worth knowing before debugging a σ:
+the per-voxel path takes the splat σ from `grid.txt` column 5
+(`fit_orientation.py:527`), whereas `fit_multipoint` takes it from the paramfile
+`GridSize` and never reads `edge_half` at all
+(`fit_multipoint.py:165`: `auto_sigma_px(p.grid_size_um/2.0, p.px, …)`). Set the
+two keys differently and the paths disagree by construction; both clamp to 1.0 px
+at typical NF values, so it has not bitten yet.
+
+Check what you actually got rather than trusting the paramfile — column 5 of
+`grid.txt` is `edge_half`:
+
+```bash
+head -2 grid.txt | tail -1 | awk '{print "edge_half =", $5}'
+# key omitted, GridSize 10 -> 5.0      EdgeLength 1 -> 0.5
+```
 
 ### 10f. Image processing
 
@@ -1658,6 +2320,10 @@ All read by `midas_nf_preprocess.process_images` (`process_images/params.py:83-1
 | `WriteFinImage` | 0/1 | forced to 1 when `Deblur != 0` (`params.py:69-71`) |
 | `Deblur`, `WriteLegacyBin` | 0/1 | |
 | `SoftTemperature` | float or `auto` | **Python extension, not in the C** — sigmoid temperature for the differentiable spot-probability surrogate (`params.py:14-18`) |
+| `NLMDenoise` | 0/1 | NLM on the median-corrected residual, before `BlanketSubtraction` (§8f) |
+| `NLMH` | × σ_MAD | filter strength as a **multiple of σ_MAD**. Useless when σ_MAD = 0 — see `NLMHAbsolute` |
+| `NLMHAbsolute` | **counts** | absolute filter strength; overrides `NLMH · σ_MAD` when > 0. **Required on photon-starved detectors** where σ_MAD is exactly 0, otherwise NLM is skipped (now with a `RuntimeWarning`; it used to be silent) |
+| `NLMPatchSize` / `NLMPatchDistance` | px | NLM patch geometry (5 / 6) |
 
 ### 10g. Orientation search
 
@@ -1682,8 +2348,16 @@ All read by `midas_nf_preprocess.process_images` (`process_images/params.py:83-1
 ### 10h. Phase, output, calibration tolerances, multi-resolution, denoise
 
 `NumPhases` (count, into the `.mic` header), `PhaseNr` (int, into `.mic` col 11 and `.map`
-plane 5), `MicFileBinary` (filename), `MicFileText` (basename; `ParseMic` appends `.mic`,
-`.map`, …).
+plane 5), `MicFileBinary` (filename), `MicFileText` (see below).
+
+> **`ParseMic` does NOT append `.mic`.** The text microstructure is written to the
+> `MicFileText` value **verbatim**; only the companions get suffixes
+> (`.AllMatches`, `.map`, `.map.kam`, `.map.grainId`, `.map.grod`). So
+> `MicFileText Microstructure` produces a text file literally named `Microstructure`, and
+> anything looking for `Microstructure.mic` gets `FileNotFoundError`. **Put the `.mic` in
+> the value yourself** — the bundled reference does exactly that
+> (`Au_txt_Reconstructed.mic`). Verified on `nfdev_jul26`, where `ParseMic` reported
+> `[Microstructure, Microstructure.AllMatches, Microstructure.map, …]`.
 
 Calibration tolerances, all read by `midas_nf_fitorientation`
 (`fitorientation/params.py:276-289, 328-340`). Each becomes an
@@ -1702,7 +2376,7 @@ Calibration tolerances, all read by `midas_nf_fitorientation`
 | `TikhonovCalibration` | λ; 0 disables — **new** | 0.0 |
 | `TikhonovSigmaLsd` / `SigmaTilts` / `SigmaBC` / `SigmaWedge` | µm / deg / px / deg | 100.0 / 0.05 / 1.0 / 0.05 |
 | `GaussianSplatSigmaPx` | px — override the auto soft-overlap σ — **new** | auto |
-| `GridPoints` | 12 values; the fitter reads fields 4,5,7,8,9,10 as `xc yc ud eul1 eul2 eul3` (`params.py:306-316`) | — |
+| `GridPoints` | 12 values — a raw `.mic` data row. The fitter reads `args[3,4,6,7,8,9]` (`.mic` columns X, Y, UpDown, Eul1-3) as `xc yc ud eul1 eul2 eul3` (`params.py:328-335`), where `args` is the line **after** the `GridPoints` key. **Earlier revisions of this table said 4,5,7,8,9,10 — those are the C's line-token indices, one too high for Python, and they are the off-by-one that scored 0.0026 against the C's 0.8515** (lab notebook defect 10). If you see `args[4]`/`args[10]` in a parser, it is the broken version. | — |
 
 Without a `GridPoints` block, `fit_multipoint_run` derives its voxel set from the
 reconstructed `MicFileText` `.mic` — highest-confidence voxels above `MinConfidence`
@@ -1834,6 +2508,12 @@ unless `MIDAS_RUN_INTEGRATION=1`; `test_mic2grains` also skips if the C binary i
 14. **Whether the `.mic` row shortfall is exactly the `Confidence == 0` rows.** A 5046-voxel
     grid produced 5012 text rows; the drop rule is documented (§9a) but the specific
     count was not reconciled against the writer.
+15. **The `EdgeLength` ≪ `GridSize` consequences in §10e** were read out of
+    `mic2grains.py:198-222, 294` and `fit_orientation.py:524-527`, **not measured on a
+    run.** That `EdgeLength` cannot move the voxel count or positions *is* solid — it
+    follows directly from `hex_grid/grid.py:97-153`, where the lattice terms contain
+    `grid_size` only. The specific claim that a 2 µm merge threshold connects nothing on a
+    10 µm lattice has not been executed.
 
 ### Verified in this tree — safe to rely on
 

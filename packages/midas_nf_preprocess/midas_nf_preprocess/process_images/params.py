@@ -41,6 +41,26 @@ class ProcessParams:
     wf_images: int = 0
     nr_files_per_distance: int = 0
     n_distances: int = 1
+    # --- omega binning: sum SumFrames consecutive RAW frames into one ---------
+    # A spot spans a finite omega range. Sampling finer than that range splits
+    # one spot's photons across several frames, each carrying the FULL
+    # background, so each is harder to detect than the spot really is. Summing N
+    # frames that fall inside the spot recovers all of its signal while the
+    # background noise grows only as sqrt(N) -- a genuine sqrt(N) SNR gain, as
+    # opposed to lowering the threshold, which only admits more noise.
+    #
+    # Measured on nf_Ce_ht450_s2 (recon/omega_width.py): spot FWHM 0.30 deg at a
+    # 0.1 deg step, so SumFrames 3 spans the spot and should give ~1.73x.
+    #
+    # ONLY summing frames that fall INSIDE the spot helps. Beyond the spot width
+    # this adds background to a fixed signal and SNR DROPS as sqrt(N). Measure
+    # the width before choosing N.
+    #
+    # NrFilesPerDistance and OmegaStep in the paramfile describe the POST-SUM
+    # scan: for 1800 raw frames at 0.1 deg with SumFrames 3, set
+    # NrFilesPerDistance 600 and OmegaStep -0.3. Everything downstream
+    # (SpotsInfo sizing, frame indices, omega) then refers to summed frames.
+    sum_frames: int = 1
 
     # Processing
     blanket_subtraction: int = 0
@@ -54,6 +74,12 @@ class ProcessParams:
     nlm_h: float = 1.0            # h = nlm_h * sigma_MAD
     nlm_patch_size: int = 5
     nlm_patch_distance: int = 6
+    # Absolute NLM filter strength, in COUNTS.  Overrides ``nlm_h * sigma_MAD``
+    # when > 0.  Needed on photon-starved detectors where the median-corrected
+    # residual is almost entirely zero, so sigma_MAD is EXACTLY 0 and the
+    # sigma-scaled h collapses -- in which case NLM would otherwise be skipped
+    # silently.  0 = derive h from sigma_MAD (the historical behaviour).
+    nlm_h_absolute: float = 0.0
     mean_filt_radius: int = 1  # spatial median radius (0=identity, 1=3x3, 2=5x5)
     do_log_filter: int = 1
     log_mask_radius: int = 4
@@ -99,6 +125,7 @@ class ProcessParams:
             ("NrPixelsZ", "nr_pixels_z", int),
             ("WFImages", "wf_images", int),
             ("NrFilesPerDistance", "nr_files_per_distance", int),
+            ("SumFrames", "sum_frames", int),
             ("OrigFileName", "orig_filename", str),
             ("ReducedFileName", "reduced_filename", str),
             ("extOrig", "ext_orig", str),
@@ -106,6 +133,7 @@ class ProcessParams:
             ("BlanketSubtraction", "blanket_subtraction", int),
             ("NLMDenoise", "nlm_denoise", int),
             ("NLMH", "nlm_h", float),
+            ("NLMHAbsolute", "nlm_h_absolute", float),
             ("NLMPatchSize", "nlm_patch_size", int),
             ("NLMPatchDistance", "nlm_patch_distance", int),
             ("MedFiltRadius", "mean_filt_radius", int),

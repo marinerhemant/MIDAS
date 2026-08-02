@@ -22,15 +22,24 @@ from .params import ProcessParams
 
 
 def frame_paths(params: ProcessParams, layer_nr: int) -> list[str]:
-    """Return the list of NrFilesPerLayer TIFF paths for a given 1-indexed layer."""
+    """Return the RAW TIFF paths for a given 1-indexed layer.
+
+    With ``SumFrames > 1`` this returns ``NrFilesPerDistance * SumFrames``
+    paths, in order, so that consecutive groups of ``SumFrames`` collapse into
+    one output frame (:func:`load_tiff_stack` does the summing). The paramfile's
+    ``NrFilesPerDistance`` counts POST-SUM frames, so the per-distance stride
+    through the raw files scales by ``SumFrames`` too -- otherwise distance 1
+    would start part-way through distance 0's raw files.
+    """
     if layer_nr < 1:
         raise ValueError(f"layer_nr must be >= 1, got {layer_nr}")
     base = f"{params.data_directory}/{params.orig_filename}"
+    n_sum = max(1, int(getattr(params, "sum_frames", 1) or 1))
     # C: StartNr = RawStartNr + (nLayers - 1) * WFImages
     # C: FileNr  = ((nLayers - 1) * NrFilesPerLayer) + StartNr + j
     start = params.raw_start_nr + (layer_nr - 1) * params.wf_images
-    base_idx = (layer_nr - 1) * params.nr_files_per_distance
-    n = params.nr_files_per_distance
+    base_idx = (layer_nr - 1) * params.nr_files_per_distance * n_sum
+    n = params.nr_files_per_distance * n_sum
     return [
         f"{base}_{base_idx + start + j:06d}.{params.ext_orig}" for j in range(n)
     ]
@@ -53,11 +62,19 @@ def load_tiff_stack(
     if not paths:
         raise ValueError(f"No frames to load for layer {layer_nr} (NrFilesPerDistance=0).")
     device = torch.device(device)
+    n_sum = max(1, int(getattr(params, "sum_frames", 1) or 1))
+    n_out = len(paths) // n_sum
 
     # Use CPU staging buffer; move to device at the end. tifffile reads return numpy
     # arrays, so the staging buffer is always CPU regardless of target device.
-    staging = np.empty(
-        (len(paths), params.nr_pixels_z, params.nr_pixels_y), dtype=np.float32
+    #
+    # The sum accumulates IN PLACE into the output slot rather than reading the
+    # whole raw stack and reducing afterwards: at 2048^2 a 1800-frame distance is
+    # 30 GB as float32, and summing after the fact would need all of it resident
+    # at once. Accumulating keeps the buffer at the POST-SUM size (10 GB for
+    # SumFrames 3), so summing lowers peak memory instead of raising it.
+    staging = np.zeros(
+        (n_out, params.nr_pixels_z, params.nr_pixels_y), dtype=np.float32
     )
     for j, path in enumerate(paths):
         arr = tifffile.imread(path)
@@ -66,7 +83,7 @@ def load_tiff_stack(
                 f"{path}: shape {arr.shape} != expected "
                 f"({params.nr_pixels_z}, {params.nr_pixels_y})"
             )
-        staging[j] = arr.astype(np.float32, copy=False)
+        staging[j // n_sum] += arr.astype(np.float32, copy=False)
 
     return torch.from_numpy(staging).to(device=device, dtype=dtype)
 

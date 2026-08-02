@@ -15,6 +15,8 @@ pattern; ``process_all`` is the recommended Python API.
 
 from __future__ import annotations
 
+import warnings
+
 from dataclasses import dataclass
 from pathlib import Path
 from typing import Iterable, Optional, Sequence, Union
@@ -66,6 +68,7 @@ def _nlm_denoise_residual(
     h_factor: float = 1.0,
     patch_size: int = 5,
     patch_distance: int = 6,
+    h_absolute: float | None = None,
 ) -> "torch.Tensor":
     """Non-local-means denoise of a median-corrected residual frame.
 
@@ -84,10 +87,32 @@ def _nlm_denoise_residual(
     dev, dt = resid.device, resid.dtype
     a = resid.detach().to("cpu", torch.float32).numpy()
     sigma = float(1.4826 * np.median(np.abs(a - np.median(a))))
-    if not np.isfinite(sigma) or sigma <= 0:
+
+    if h_absolute is not None and h_absolute > 0:
+        # Absolute strength, in counts. Required on photon-starved data where
+        # sigma_MAD is degenerate (see below).
+        h = float(h_absolute)
+        sigma = h
+    elif np.isfinite(sigma) and sigma > 0:
+        h = h_factor * sigma
+    else:
+        # sigma_MAD == 0 happens when the median-corrected residual is almost
+        # entirely EXACTLY zero -- i.e. photon-starved, near-counting data.
+        # Returning the frame undenoised here used to be SILENT, so
+        # `NLMDenoise 1` became a no-op that nothing in the output revealed:
+        # on 20-ID nfdev_jul26 the residual was 99.73% exact zeros and every
+        # "median + NLM" reduction actually ran without the NLM.
+        warnings.warn(
+            "NLM skipped: sigma_MAD is 0, so h = NLMH * sigma_MAD is 0. The "
+            "residual is almost entirely exact zeros (photon-starved data). "
+            "Set NLMHAbsolute (in counts) to denoise anyway -- e.g. "
+            "NLMHAbsolute 1.0 -- or the reduction silently runs without NLM.",
+            RuntimeWarning, stacklevel=2,
+        )
         return resid
+
     out = denoise_nl_means(
-        a, h=h_factor * sigma, sigma=sigma, fast_mode=True,
+        a, h=h, sigma=sigma, fast_mode=True,
         patch_size=patch_size, patch_distance=patch_distance,
         channel_axis=None,
     )
@@ -211,6 +236,7 @@ class ProcessImagesPipeline:
                 h_factor=float(getattr(self.params, "nlm_h", 1.0)),
                 patch_size=int(getattr(self.params, "nlm_patch_size", 5)),
                 patch_distance=int(getattr(self.params, "nlm_patch_distance", 6)),
+                h_absolute=float(getattr(self.params, "nlm_h_absolute", 0.0)) or None,
             )
         sub = resid - float(self.params.blanket_subtraction)
         img = torch.clamp(sub, min=0)

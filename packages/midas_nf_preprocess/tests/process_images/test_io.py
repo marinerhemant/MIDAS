@@ -52,6 +52,72 @@ def test_frame_paths_invalid_layer():
         frame_paths(p, layer_nr=0)
 
 
+def test_frame_paths_sum_frames_expands_and_strides():
+    """SumFrames=N returns N raw paths per output frame, and the per-distance
+    stride scales by N so distance 1 starts after ALL of distance 0's raws."""
+    p = ProcessParams(
+        data_directory="/data",
+        orig_filename="scan",
+        ext_orig="tif",
+        raw_start_nr=10,
+        wf_images=0,
+        nr_files_per_distance=2,   # POST-sum
+        sum_frames=3,
+    )
+    assert frame_paths(p, layer_nr=1) == [
+        f"/data/scan_{n:06d}.tif" for n in (10, 11, 12, 13, 14, 15)
+    ]
+    # distance 1 must start at 10 + 2*3 = 16, not 10 + 2
+    assert frame_paths(p, layer_nr=2) == [
+        f"/data/scan_{n:06d}.tif" for n in (16, 17, 18, 19, 20, 21)
+    ]
+
+
+def test_load_tiff_stack_sums_consecutive_frames(tmp_path):
+    """Each output frame is the exact sum of its SumFrames raw frames."""
+    rng = np.random.default_rng(0)
+    raws = [rng.integers(0, 500, size=(4, 4)).astype(np.uint16) for _ in range(6)]
+    for j, arr in enumerate(raws):
+        tifffile.imwrite(str(tmp_path / f"scan_{10 + j:06d}.tif"), arr)
+
+    p = ProcessParams(
+        data_directory=str(tmp_path),
+        orig_filename="scan",
+        ext_orig="tif",
+        raw_start_nr=10,
+        nr_pixels_y=4,
+        nr_pixels_z=4,
+        nr_files_per_distance=2,
+        sum_frames=3,
+    )
+    stack = load_tiff_stack(p, layer_nr=1, dtype=torch.float64)
+    assert stack.shape == (2, 4, 4)
+    np.testing.assert_allclose(stack[0].numpy(), raws[0] + raws[1] + raws[2])
+    np.testing.assert_allclose(stack[1].numpy(), raws[3] + raws[4] + raws[5])
+
+
+def test_load_tiff_stack_sum_frames_1_is_unchanged(tmp_path):
+    """SumFrames=1 (the default) must be byte-identical to the old behaviour."""
+    rng = np.random.default_rng(1)
+    raws = [rng.integers(0, 500, size=(4, 4)).astype(np.uint16) for _ in range(3)]
+    for j, arr in enumerate(raws):
+        tifffile.imwrite(str(tmp_path / f"scan_{10 + j:06d}.tif"), arr)
+
+    p = ProcessParams(
+        data_directory=str(tmp_path),
+        orig_filename="scan",
+        ext_orig="tif",
+        raw_start_nr=10,
+        nr_pixels_y=4,
+        nr_pixels_z=4,
+        nr_files_per_distance=3,
+    )
+    stack = load_tiff_stack(p, layer_nr=1, dtype=torch.float64)
+    assert stack.shape == (3, 4, 4)
+    for j, arr in enumerate(raws):
+        np.testing.assert_allclose(stack[j].numpy(), arr)
+
+
 def test_load_tiff_stack_roundtrip(tmp_path):
     """Write a stack, load it back, verify shape and contents."""
     p = ProcessParams(

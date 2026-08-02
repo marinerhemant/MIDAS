@@ -135,3 +135,44 @@ def test_grid_block_decomposition():
     assert (s, e) == (4, 8)
     s, e = g.slice_block(2, 3)
     assert (s, e) == (8, 9)
+
+
+def test_diffraction_spots_columns_are_yl_zl_omega(tmp_path):
+    """Pin the COLUMN MEANING of DiffractionSpots.bin, not just its shape.
+
+    The OrientationData docstring said ``[2theta, eta, omega]`` (radians) for a
+    long time. The real layout is ``[yl, zl, omega]`` -- lab-frame microns then
+    degrees (midas_nf_preprocess/diffr_spots/pipeline.py:42). Nothing caught the
+    error because every reader indexes positionally, so the label was never
+    exercised; code written against it silently produced neutral results
+    instead of failing.
+
+    This test asserts the ranges are physically consistent with microns-on-the-
+    detector rather than radians, which is the cheapest thing that would have
+    caught it.
+    """
+    import numpy as np
+    from midas_nf_fitorientation.io import read_orientations
+
+    # one orientation, three spots on a ring of radius 500 um
+    r = 500.0
+    ang = np.radians([30.0, 150.0, 270.0])
+    spots = np.column_stack([r * np.cos(ang), r * np.sin(ang),
+                             np.array([12.5, 40.0, 175.0])])
+    spots.astype(np.float64).tofile(tmp_path / "DiffractionSpots.bin")
+    np.eye(3, dtype=np.float64).tofile(tmp_path / "OrientMat.bin")
+    np.array([[3, 0]], dtype=np.int32).tofile(tmp_path / "Key.bin")
+
+    o = read_orientations(tmp_path)
+    yl, zl, omega = o.spots[:, 0], o.spots[:, 1], o.spots[:, 2]
+
+    # microns on the detector, NOT radians: a 2theta in radians could never
+    # exceed ~0.2 for NF, so anything above 1 rules that reading out.
+    assert np.abs(yl).max() > 1.0
+    np.testing.assert_allclose(np.hypot(yl, zl), r, rtol=1e-9)
+
+    # column 2 is omega in DEGREES over the scan range, not radians
+    assert omega.min() >= -360.0 and omega.max() <= 360.0
+
+    # and the ring radius is what maps onto hkls.csv's Radius column
+    assert np.hypot(yl, zl).std() < 1e-9

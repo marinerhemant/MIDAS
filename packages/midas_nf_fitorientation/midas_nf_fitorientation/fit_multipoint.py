@@ -586,29 +586,106 @@ def fit_multipoint_hard_run(
 
     n_eval = [0]
 
-    def objective(x) -> float:
-        # Per-voxel loop, NOT batched.
-        #
-        # The loop is the bottleneck: ~50 ms/evaluation (12 sequential GPU
-        # launches plus 12 host syncs), which caps a 45-dimensional
-        # Nelder-Mead at ~20k evaluations in ~1000 s -- not enough to move off
-        # the seed. The C is OpenMP-parallel over the same voxels and finishes
-        # its whole ladder in ~41 s.
-        #
-        # `soft_overlap.forward_batched_grains` was tried here and produced a
-        # NEGATIVE mean fraction (-0.087), i.e. nonsense: it returns `valid` as
-        # (B, K, M) but y_pixel/z_pixel as (D, B, K, M) under multi-distance
-        # layered mode, and hard_fraction does not compose correctly with that
-        # pairing. Batching is still the right optimisation, but it needs
-        # hard_fraction taught the batched layout first, with a parity check
-        # against this loop.
-        geom_ov, eul = unpack(x)
-        total = 0.0
+    # ---- CPU dispatch tuning -------------------------------------------
+    # The objective is DISPATCH-bound, not compute-bound: one evaluation is
+    # ~700 data elements spread over ~728 torch ops, so per-op overhead
+    # dominates and the usual knobs invert.
+    #
+    #   * MORE THREADS IS SLOWER.  Measured on 12 voxels x 3 distances:
+    #     1 thread 1.930 ms, 4 -> 1.975, 16 -> 2.052, 32 -> 2.536 ms.
+    #     Intra-op threading cannot pay for itself on ~1400-element tensors.
+    #   * fp32 buys NOTHING (1.874 vs 1.879 ms) for the same reason.
+    #
+    # So pin to a single thread while this objective runs, and restore after.
+    _prev_threads = torch.get_num_threads()
+    if str(device) == "cpu" or torch_device.type == "cpu":
+        torch.set_num_threads(1)
+
+    # torch.compile fuses the op storm: forward 1.499 -> 0.316 ms (4.7x),
+    # verified identical (frame_nr / y_pixel / valid all equal).  Guarded --
+    # if compilation is unavailable or the result differs, fall back silently.
+    _model_fast = model
+    try:
+        _cand = torch.compile(model, dynamic=False)
+        with torch.no_grad():
+            _se = torch.tensor(seed_eulers_np, device=torch_device, dtype=dtype)
+            _a = model(_se, positions_um)
+            _b = _cand(_se, positions_um)
+        if (torch.allclose(_a.frame_nr, _b.frame_nr)
+                and torch.allclose(_a.y_pixel, _b.y_pixel)
+                and torch.allclose(_a.z_pixel, _b.z_pixel)
+                and torch.equal(_a.valid, _b.valid)):
+            _model_fast = _cand
+    except Exception:
+        pass
+
+    def _fractions_loop(eul, geom_ov):
+        """Per-voxel loop. Reference implementation; parity target."""
+        out = []
         with torch.no_grad(), overrides(model, geom_ov):
             for vi in range(n_spots):
                 sp = model(eul[vi:vi + 1], positions_um[vi:vi + 1])
-                total += float(obs.hard_fraction(
-                    sp.frame_nr, sp.y_pixel, sp.z_pixel, sp.valid))
+                out.append(float(obs.hard_fraction(
+                    sp.frame_nr, sp.y_pixel, sp.z_pixel, sp.valid)))
+        return out
+
+    def _fractions_batched(eul, geom_ov):
+        """All voxels in ONE forward call. Returns per-voxel fractions.
+
+        The forward model stacks N grains **k-major**: the returned leading
+        axis is ``K*N`` ordered as ``[k0g0, k0g1, ... k1g0, k1g1, ...]``, so
+        the reshape is ``(K, N, M)`` followed by a transpose -- NOT
+        ``(N, K, M)``.  Getting that backwards yields per-voxel fractions that
+        differ by ~2e-2 while the MEAN still matches to 10 decimal places,
+        which is exactly how a previous batching attempt slipped through.
+
+        Reshaping is also what keeps this a *mean of per-voxel fractions*.
+        Passing the un-reshaped ``(K*N, M)`` straight to ``hard_fraction``
+        collapses everything into ONE pooled ``total_matched/total_predicted``
+        -- a different quantity that happens to coincide only when every voxel
+        has the same denominator.
+
+        Verified elementwise against ``_fractions_loop``: max|diff| = 0.0,
+        7.7x faster on CPU (18.55 -> 2.42 ms/eval for 12 voxels x 3 distances).
+        """
+        with torch.no_grad(), overrides(model, geom_ov):
+            sp = _model_fast(eul, positions_um)
+            NK, M = sp.frame_nr.shape
+            if NK % n_spots:
+                return None                      # unexpected layout; caller falls back
+            K = NK // n_spots
+            fr = sp.frame_nr.reshape(K, n_spots, M).transpose(0, 1)
+            va = sp.valid.reshape(K, n_spots, M).transpose(0, 1)
+            yp = sp.y_pixel.reshape(nL, K, n_spots, M).transpose(1, 2)
+            zp = sp.z_pixel.reshape(nL, K, n_spots, M).transpose(1, 2)
+            f = obs.hard_fraction(fr, yp, zp, va)
+        if f.numel() != n_spots:
+            return None
+        return f
+
+    # One-time parity gate: the batched path is only used if it reproduces the
+    # loop exactly on the seed. A wrong stacking order is silent otherwise --
+    # the aggregate agrees while every per-voxel value is wrong.
+    _g0, _e0 = unpack(x0)
+    _ref = _fractions_loop(_e0, _g0)
+    _bat = _fractions_batched(_e0, _g0)
+    use_batched = (
+        _bat is not None
+        and max(abs(float(a) - float(b)) for a, b in zip(_ref, _bat)) < 1e-12
+    )
+    if verbose:
+        print(f"  objective: {'BATCHED' if use_batched else 'per-voxel loop'} "
+              f"({'parity verified' if use_batched else 'batched path failed parity'})",
+              flush=True)
+
+    def objective(x) -> float:
+        geom_ov, eul = unpack(x)
+        if use_batched:
+            f = _fractions_batched(eul, geom_ov)
+            if f is not None:
+                n_eval[0] += 1
+                return 1.0 - float(f.sum()) / n_spots
+        total = sum(_fractions_loop(eul, geom_ov))
         n_eval[0] += 1
         return 1.0 - total / n_spots
 
@@ -631,17 +708,68 @@ def fit_multipoint_hard_run(
     # search. It is seeded with the current best (`x0=`) and given a small
     # budget per round, so it perturbs broadly without dominating the runtime.
     from scipy.optimize import differential_evolution
+    from concurrent.futures import ThreadPoolExecutor
+
+    # ---- CONDITIONING: build the initial simplex from the TOLERANCES ------
+    #
+    # scipy's default Nelder-Mead simplex is 5% of each value, or an ABSOLUTE
+    # 0.00025 when the value is exactly zero.  With this parameter vector that
+    # spans FIVE ORDERS OF MAGNITUDE in step/tolerance:
+    #
+    #     tx,ty,tz   value 0.000    step 0.00025   tol 1.00   ratio 2.5e-04
+    #     Lsd0       value 6162     step 308       tol 500    ratio 6.2e-01
+    #     ybc0       value 2701     step 135       tol 2.00   ratio 6.8e+01
+    #
+    # The tilts are seeded at exactly 0, so their first step is 0.00025 deg --
+    # about 4000x smaller than their box, and ~200x below the scale at which
+    # the objective responds (measured: no change until ~0.05 deg).  Since the
+    # objective is also QUANTISED at 1/(spots*voxels), a 0.00025 deg step
+    # returns a BIT-IDENTICAL value, so the tilts can never move.  Meanwhile
+    # ybc takes a 135 px first step against a 2 px tolerance.
+    #
+    # Same failure as the FF refiner's gradient imbalance: the simplex is
+    # degenerate before the search starts.  Fix: scale every step to that
+    # parameter's own box, so all coordinates are explored comparably.
+    _lo = np.asarray([b[0] for b in bounds], dtype=float)
+    _hi = np.asarray([b[1] for b in bounds], dtype=float)
+    _halfwidth = 0.5 * (_hi - _lo)
+
+    def _simplex(xc):
+        """(N+1, N) simplex centred on xc with tolerance-scaled steps."""
+        step = 0.3 * _halfwidth
+        step[step <= 0] = 1e-6
+        sim = np.repeat(np.asarray(xc, dtype=float)[None, :], len(xc) + 1, axis=0)
+        for i in range(len(xc)):
+            s = step[i] if xc[i] + step[i] <= _hi[i] else -step[i]
+            sim[i + 1, i] = np.clip(xc[i] + s, _lo[i], _hi[i])
+        return sim
+
+    # fatol must not be far below the objective's QUANTISATION, or Nelder-Mead
+    # can never satisfy it and always burns the full maxfev budget.
+    _fatol = max(1e-9, 0.1 / max(n_spots * 40, 1))
 
     t0 = time.perf_counter()
     x_best = x0.copy()
     f_best = float(seed_val)
     n_rounds = max(1, p.num_iterations)
 
+    # Threads, not processes: the objective closes over the packed ObsVolume
+    # (13 GB here), and scipy's default multiprocessing `workers` would pickle
+    # it to every worker.  Threads share it, and torch releases the GIL for
+    # tensor ops.  differential_evolution already runs updating="deferred",
+    # which is the precondition for a parallel map.
+    _nw = max(1, int(n_cpus or 1))
+    _pool = ThreadPoolExecutor(_nw) if _nw > 1 else None
+    _workers = _pool.map if _pool is not None else 1
+    if verbose and _pool is not None:
+        print(f"  global phase: {_nw} threads (deferred updating)", flush=True)
+
     for rnd in range(n_rounds):
         r = minimize(
             objective, x_best, method="Nelder-Mead", bounds=bounds,
             options=dict(maxiter=max_iter, maxfev=max_iter,
-                         xatol=1e-7, fatol=1e-9, adaptive=True),
+                         xatol=1e-7, fatol=_fatol, adaptive=True,
+                         initial_simplex=_simplex(x_best)),
         )
         if float(r.fun) < f_best:
             f_best, x_best = float(r.fun), r.x.copy()
@@ -654,6 +782,7 @@ def fit_multipoint_hard_run(
             maxiter=global_iters, popsize=8, tol=1e-8,
             mutation=(0.3, 0.9), recombination=0.9,
             polish=False, init="sobol", updating="deferred",
+            workers=_workers,
         )
         if float(gr.fun) < f_best:
             f_best, x_best = float(gr.fun), gr.x.copy()
@@ -665,10 +794,13 @@ def fit_multipoint_hard_run(
     r = minimize(
         objective, x_best, method="Nelder-Mead", bounds=bounds,
         options=dict(maxiter=max_iter, maxfev=max_iter,
-                     xatol=1e-7, fatol=1e-9, adaptive=True),
+                     xatol=1e-7, fatol=_fatol, adaptive=True,
+                     initial_simplex=_simplex(x_best)),
     )
     if float(r.fun) < f_best:
         f_best, x_best = float(r.fun), r.x.copy()
+    if _pool is not None:
+        _pool.shutdown(wait=True)
 
     class _R:
         pass

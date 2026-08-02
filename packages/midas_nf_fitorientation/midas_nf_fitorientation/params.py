@@ -108,6 +108,13 @@ class FitParams:
     max_ring_rad: float = 0.0
     rings_to_use: List[int] = field(default_factory=list)
     exclude_pole_angle: float = 0.0
+    # raw | filtered | weighted -- how |F|^2 enters the confidence.
+    #   raw       every listed reflection counts equally (historical)
+    #   filtered  basis-forbidden reflections (|F|^2 = 0) excluded
+    #   weighted  reflections weighted by |F|^2
+    # Only has an effect when hkls.csv carries an F2 column, i.e. when a
+    # PhaseAtom basis was declared; otherwise all three are identical.
+    confidence_metric: str = "raw"
 
     # filenames
     data_dir: str = "."
@@ -272,6 +279,13 @@ def parse_paramfile(path: str | Path) -> FitParams:
                     p.rings_to_use.append(int(args[0]))
                 elif key == "ExcludePoleAngle":
                     p.exclude_pole_angle = float(args[0])
+                elif key == "ConfidenceMetric":
+                    m = str(args[0]).strip().lower()
+                    if m not in ("raw", "filtered", "weighted"):
+                        raise ValueError(
+                            f"ConfidenceMetric must be raw|filtered|weighted, "
+                            f"got {args[0]!r}")
+                    p.confidence_metric = m
 
                 # ---------- tolerances ----------
                 elif key == "OrientTol":

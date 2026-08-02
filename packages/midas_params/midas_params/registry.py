@@ -956,22 +956,66 @@ PARAMS: list[ParamSpec] = [
     ParamSpec(
         name="NrOrientations", type=ParamType.INT, category="Indexing",
         description="Number of candidate orientations in NF search space.",
-        applies_to=frozenset({NF}), required_for=frozenset({NF}),
+        applies_to=frozenset({NF}),
         typical=243129, stages=S_INDEX,
         validators=("positive",),
+        notes="NOT required: the Python orchestrator auto-extracts the seed "
+              "set for the space group and reports the count "
+              "('Auto-extracted N seeds for SG 225'). Flagging it as a "
+              "missing required key made every correct NF paramfile report "
+              "an error, which trains people to ignore the error line.",
     ),
     ParamSpec(
         name="SeedOrientations", type=ParamType.PATH, category="Indexing",
-        description="Seed orientations file.",
-        applies_to=frozenset({NF}), required_for=frozenset({NF}),
+        description="Seed orientations file (WRITTEN by the pipeline).",
+        applies_to=frozenset({NF}),
         stages=frozenset({Stage.SEED_GEN, Stage.INDEXING}),
-        validators=("file_exists",),
+        notes="An OUTPUT path, not an input: run_seed_orientations creates it. "
+              "It cannot exist at preflight time, so neither 'required' nor "
+              "'file_exists' can hold and both were false positives.",
     ),
     ParamSpec(
         name="SeedOrientationsAll", type=ParamType.PATH, category="Indexing",
-        description="Combined seed set across resolutions (multi-res driver).",
+        description="Combined seed set across resolutions (WRITTEN by the "
+                    "multi-res driver).",
         applies_to=frozenset({NF}), stages=S_INDEX,
-        validators=("file_exists",),
+        notes="Also an output path -- materialised between resolution loops, "
+              "so file_exists at preflight is always a false positive.",
+    ),
+    # --- structure-factor aware reflection handling -------------------------
+    ParamSpec(
+        name="PhaseAtom", type=ParamType.STR, category="Material",
+        description="One unit-cell basis atom: '<element> <x> <y> <z> "
+                    "[occupancy] [B_iso]'. Repeat per atom.",
+        applies_to=frozenset({NF}), multi_entry=True, stages=S_INDEX,
+        notes="Enables |F|^2 in hkls.csv. Space-group rules alone miss "
+              "basis-dependent extinctions: dhcp beta-Ce (Ce at 2a + 2c) has "
+              "126 of 736 reflections with |F|^2 = 0, which capped confidence "
+              "at 0.829 while fcc could reach 1.000.",
+    ),
+    ParamSpec(
+        name="DropForbiddenReflections", type=ParamType.BOOL,
+        category="Indexing",
+        description="Remove |F|^2 = 0 reflections from hkls.csv before use.",
+        applies_to=frozenset({NF}), default=0, stages=S_INDEX,
+        notes="Needs PhaseAtom. Fixes the SEARCH as well as the reported "
+              "number, because every downstream stage reads hkls.csv. "
+              "Measured on Ce ht525: max confidence 0.4938 -> 0.5962 and "
+              "voxels above MinConfidence 0.5 went 0 -> 213.",
+    ),
+    ParamSpec(
+        name="ForbiddenF2Threshold", type=ParamType.FLOAT, category="Indexing",
+        description="|F|^2 (relative to max) at or below which a reflection "
+                    "counts as forbidden.",
+        applies_to=frozenset({NF}), default=1e-6, stages=S_INDEX,
+    ),
+    ParamSpec(
+        name="ConfidenceMetric", type=ParamType.STR, category="Indexing",
+        description="How |F|^2 enters confidence: raw | filtered | weighted.",
+        applies_to=frozenset({NF}), default="raw", stages=S_INDEX,
+        notes="No effect unless PhaseAtom is declared. 'weighted' changes the "
+              "SCALE of confidence, so MinConfidence and any downstream "
+              "threshold need re-tuning before adopting it.",
     ),
     ParamSpec(
         name="OrientTol", type=ParamType.FLOAT, category="Indexing",
@@ -1447,6 +1491,54 @@ PARAMS: list[ParamSpec] = [
         name="BlanketSubtraction", type=ParamType.INT, category="Image processing",
         description="Flat DC offset subtracted from all pixels.",
         applies_to=frozenset({NF}), default=0, units="counts", stages=S_IMG,
+    ),
+    # --- NLM denoise of the median-corrected residual -----------------------
+    # Implemented in midas_nf_preprocess.process_images.pipeline; these were
+    # live and effective while the validator reported them as unknown keys.
+    ParamSpec(
+        name="NLMDenoise", type=ParamType.BOOL, category="Image processing",
+        description="Non-local-means denoise the median-corrected residual "
+                    "BEFORE thresholding.",
+        applies_to=frozenset({NF}), default=0, stages=S_IMG,
+        notes="The single biggest sensitivity lever measured on weak NF data: "
+              "on nf_Ce_ht525_s2 it took voxels at C>=0.9 from 1424 to 5186 "
+              "(3.6x) and cut sigma_MAD 2.97 -> 0.28 counts, which is what "
+              "lets BlanketSubtraction drop well below 1 raw sigma.",
+    ),
+    ParamSpec(
+        name="NLMH", type=ParamType.FLOAT, category="Image processing",
+        description="NLM filter strength as a multiple of sigma_MAD.",
+        applies_to=frozenset({NF}), default=1.0, stages=S_IMG,
+        notes="Measured: raising it to 1.5 or 2.0 barely moves the noise "
+              "(0.282 -> 0.270 -> 0.269) but destroys 35-42% of spot-like "
+              "components. 1.0 is the operating point.",
+    ),
+    ParamSpec(
+        name="NLMHAbsolute", type=ParamType.FLOAT, category="Image processing",
+        description="Absolute NLM strength in counts; overrides NLMH when > 0.",
+        applies_to=frozenset({NF}), default=0.0, units="counts", stages=S_IMG,
+        notes="For photon-starved data where the residual is almost all zeros "
+              "and sigma_MAD is degenerate, so the sigma-scaled h collapses.",
+    ),
+    ParamSpec(
+        name="NLMPatchSize", type=ParamType.INT, category="Image processing",
+        description="NLM patch size.",
+        applies_to=frozenset({NF}), default=5, units="pixels", stages=S_IMG,
+    ),
+    ParamSpec(
+        name="NLMPatchDistance", type=ParamType.INT, category="Image processing",
+        description="NLM patch search radius.",
+        applies_to=frozenset({NF}), default=6, units="pixels", stages=S_IMG,
+    ),
+    ParamSpec(
+        name="SumFrames", type=ParamType.INT, category="Image processing",
+        description="Sum N consecutive raw frames into one before reduction.",
+        applies_to=frozenset({NF}), default=1, stages=S_IMG,
+        validators=("positive",),
+        notes="Omega binning. NrFilesPerDistance, EndNr and OmegaStep must all "
+              "describe the POST-SUM scan. Only helps while the summed frames "
+              "fall INSIDE the spot's omega width (measured 0.30 deg FWHM on "
+              "nf_Ce_ht450_s2); beyond that it adds background to fixed signal.",
     ),
     ParamSpec(
         name="MedFiltRadius", type=ParamType.INT, category="Image processing",

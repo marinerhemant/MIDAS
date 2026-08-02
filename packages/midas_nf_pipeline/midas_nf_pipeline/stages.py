@@ -115,8 +115,61 @@ def run_denoise(p: Dict[str, Any], param_file: str | Path) -> None:
 #  Stage 1: preprocessing — hkls + seeds + hex grid + tomo filter + diffr spots
 # ---------------------------------------------------------------------------
 
+def _parse_phase_atoms(param_file: str | Path):
+    """Build the unit-cell basis from repeated ``PhaseAtom`` lines.
+
+        PhaseAtom <element> <x> <y> <z> [occupancy] [B_iso]
+
+    e.g. dhcp beta-Ce (La-type hP4)::
+
+        PhaseAtom Ce 0.0 0.0 0.0
+        PhaseAtom Ce 0.3333333 0.6666667 0.25
+
+    Read via ``collect_multiline``, not ``parse_parameters``: the latter keeps
+    only the FIRST token of an unrecognised key, so the coordinates would be
+    silently discarded and every atom would land at the origin.
+
+    Returns None when no atoms are declared, which keeps ``hkls.csv``
+    byte-identical to the historical output.
+    """
+    from midas_hkls import Atom
+    from .params import collect_multiline
+
+    rows = collect_multiline(param_file, "PhaseAtom")
+    if not rows:
+        return None
+    atoms = []
+    for r in rows:
+        toks = r.split()
+        if len(toks) < 4:
+            raise ValueError(
+                f"PhaseAtom needs '<element> <x> <y> <z>', got {r!r}")
+        atoms.append(Atom(
+            str(toks[0]), (float(toks[1]), float(toks[2]), float(toks[3])),
+            occupancy=float(toks[4]) if len(toks) > 4 else 1.0,
+            B_iso=float(toks[5]) if len(toks) > 5 else 0.0,
+        ))
+    return atoms
+
+
 def run_get_hkls(p: Dict[str, Any], param_file: str | Path) -> str:
-    """Generate ``hkls.csv`` via :func:`midas_hkls.write_nf_hkls_csv`."""
+    """Generate ``hkls.csv`` via :func:`midas_hkls.write_nf_hkls_csv`.
+
+    With a ``PhaseAtom`` basis declared, an ``F2`` column (|F|^2 normalised) is
+    appended, and ``DropForbiddenReflections 1`` additionally removes rows with
+    |F|^2 = 0 before anything downstream sees the file.
+
+    Why dropping matters: space-group extinction rules cannot see
+    basis-dependent extinctions, so the list can contain reflections no crystal
+    can produce. They are predicted, never matched, and sit in the confidence
+    denominator -- 126 of 736 for dhcp beta-Ce, capping FracOverlap at 0.829,
+    while fcc (one atom at the origin) has none and reaches 1.000.
+
+    Filtering HERE rather than in the fraction calculation is deliberate: every
+    downstream stage (diffr-spots, the orientation search in ``screen``, the
+    refine) reads this one file, so removing the rows fixes the SEARCH as well
+    as the reported number, with no change to those code paths.
+    """
     from midas_hkls import Lattice, SpaceGroup, write_nf_hkls_csv
 
     sg_nr = int(p.get("SpaceGroup", p.get("SGNr", 225)))
@@ -126,13 +179,28 @@ def run_get_hkls(p: Dict[str, Any], param_file: str | Path) -> str:
     wl = float(p["Wavelength"])
     lsd = _resolve_lsd(p, param_file)
     max_r = _resolve_max_ring_rad(p)
+    atoms = _parse_phase_atoms(param_file)
 
     out = Path(p["resultFolder"]) / "hkls.csv"
     n = write_nf_hkls_csv(
         out, sg, lat,
-        wavelength_A=wl, lsd_um=lsd, max_ring_rad_um=max_r,
+        wavelength_A=wl, lsd_um=lsd, max_ring_rad_um=max_r, atoms=atoms,
     )
     logger.info(f"Generated hkls.csv with {n} reflections at {out}")
+
+    if atoms is not None and int(p.get("DropForbiddenReflections", 0)) == 1:
+        eps = float(p.get("ForbiddenF2Threshold", 1e-6))
+        lines = out.read_text().splitlines()
+        header, body = lines[0], lines[1:]
+        kept = [ln for ln in body
+                if ln.strip() and float(ln.split()[11]) > eps]
+        dropped = len(body) - len(kept)
+        out.write_text("\n".join([header] + kept) + "\n")
+        logger.info(
+            f"DropForbiddenReflections: removed {dropped} of {len(body)} "
+            f"reflections with |F|^2 <= {eps:g} (kept {len(kept)}); "
+            f"max achievable FracOverlap was {len(kept)/max(len(body),1):.3f}"
+        )
     return str(out)
 
 

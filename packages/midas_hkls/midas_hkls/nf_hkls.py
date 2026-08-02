@@ -133,6 +133,7 @@ def emit_nf_hkls_csv(
     k_max: int = 10,
     l_max: int = 10,
     fp: TextIO | None = None,
+    atoms: "Sequence | None" = None,
 ) -> List[Tuple[float, ...]]:
     """Write an NF-HEDM ``hkls.csv`` matching ``GetHKLListNF`` row-for-row.
 
@@ -210,6 +211,32 @@ def emit_nf_hkls_csv(
     two_theta = 2.0 * theta
     radius = lsd_um * np.tan(np.radians(two_theta))
 
+    # 6b. Optional |F|^2 per reflection, from the ATOM BASIS.
+    #
+    # Space-group extinction rules alone cannot see basis-dependent
+    # extinctions. For dhcp beta-Ce (P6_3/mmc with Ce at 2a + 2c) 126 of 736
+    # reflections have |F|^2 = 0 and can never produce a spot -- yet they sat in
+    # the NF confidence denominator, capping FracOverlap at 0.829 while fcc
+    # (one atom at the origin, nothing extra extinct) could reach 1.000.
+    #
+    # |F|^2, NOT intensity: Lorentz-polarisation diverges at low 2-theta and
+    # would swamp the normalisation, and the rotation-method Lorentz factor
+    # CANCELS for per-frame peak detection anyway (Domega = w_rlp * L, so
+    # I_peak = I_int/Domega is L-free; measured on nf_Ce_ht525_s2 -- spot peak
+    # is flat in eta while 1/|sin eta| predicts 4.3x, and spot density on a ring
+    # rises as sin eta as the same model requires).
+    f2 = None
+    if atoms is not None:
+        import torch
+        from .crystal import Crystal
+        from .structure_factor import structure_factors
+
+        cry = Crystal(lattice, space_group, list(atoms))
+        F = structure_factors(cry.to_torch(), torch.as_tensor(hkl_arr.astype(int)))
+        f2_arr = np.abs(np.asarray(F.detach().cpu().numpy()).ravel()) ** 2
+        mx = float(f2_arr.max()) if f2_arr.size else 0.0
+        f2 = f2_arr / mx if mx > 0 else f2_arr
+
     # 7. Build rows + write.
     rows: List[Tuple[float, ...]] = []
     for i in range(len(d_spacing)):
@@ -219,15 +246,23 @@ def emit_nf_hkls_csv(
             float(g_cart[i, 0]), float(g_cart[i, 1]), float(g_cart[i, 2]),
             float(theta[i]), float(two_theta[i]), float(radius[i]),
         )
+        if f2 is not None:
+            row = row + (float(f2[i]),)
         rows.append(row)
 
     if fp is not None:
-        fp.write("h k l D-spacing RingNr g1 g2 g3 Theta 2Theta Radius\n")
+        # The F2 column is APPENDED, never inserted: every existing reader
+        # indexes hkls.csv by position and tolerates extra trailing tokens
+        # (midas_nf_fitorientation.io.read_hkls requires >= 9 and reads 0-8),
+        # so old readers are unaffected by its presence.
+        head = "h k l D-spacing RingNr g1 g2 g3 Theta 2Theta Radius"
+        fp.write(head + (" F2\n" if f2 is not None else "\n"))
         for row in rows:
             fp.write(
                 f"{row[0]:.0f} {row[1]:.0f} {row[2]:.0f} {row[3]:.17g} {row[4]:.0f} "
                 f"{row[5]:.17g} {row[6]:.17g} {row[7]:.17g} {row[8]:.17g} "
-                f"{row[9]:.17g} {row[10]:.17g}\n"
+                f"{row[9]:.17g} {row[10]:.17g}"
+                + (f" {row[11]:.17g}\n" if f2 is not None else "\n")
             )
 
     return rows
@@ -245,8 +280,16 @@ def write_nf_hkls_csv(
     h_max: int = 10,
     k_max: int = 10,
     l_max: int = 10,
+    atoms: "Sequence | None" = None,
 ) -> int:
-    """Convenience wrapper: write ``hkls.csv`` to ``path`` and return row count."""
+    """Convenience wrapper: write ``hkls.csv`` to ``path`` and return row count.
+
+    ``atoms`` (optional): the unit-cell basis, e.g.
+    ``[Atom("Ce", (0,0,0)), Atom("Ce", (1/3, 2/3, 0.25))]``. When supplied, an
+    ``F2`` column (|F|^2 normalised to its maximum) is APPENDED so downstream
+    code can drop or down-weight reflections the basis forbids. Omit it and the
+    output is byte-identical to before.
+    """
     path = Path(path)
     with open(path, "w") as fp:
         rows = emit_nf_hkls_csv(
@@ -256,6 +299,6 @@ def write_nf_hkls_csv(
             max_ring_rad_um=max_ring_rad_um,
             epsilon=epsilon,
             h_max=h_max, k_max=k_max, l_max=l_max,
-            fp=fp,
+            fp=fp, atoms=atoms,
         )
     return len(rows)

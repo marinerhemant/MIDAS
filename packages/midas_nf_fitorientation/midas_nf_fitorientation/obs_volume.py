@@ -321,6 +321,7 @@ class ObsVolume:
         y_pixel: torch.Tensor,
         z_pixel: torch.Tensor,
         valid: torch.Tensor,
+        refl_weight: "torch.Tensor | None" = None,
     ) -> torch.Tensor:
         """Discrete (non-differentiable) ``CalcFracOverlap`` for screening.
 
@@ -334,11 +335,35 @@ class ObsVolume:
             broadcast across the leading ``D`` dim.
         valid : Tensor (..., M)
             Validity mask (1 = predicted spot).
+        refl_weight : Tensor (M,) or None
+            Per-reflection weight applied to BOTH numerator and denominator.
+            ``None`` (default) means all-ones, i.e. exactly the historical
+            ``CalcFracOverlap``. This one hook gives all three metrics:
+
+            ==============  ==========================================
+            ones            C_raw    -- every listed reflection counts
+            (f2 > 0)        C_filt   -- basis-forbidden ones excluded
+            f2              C_weight -- weighted by |F|^2
+            ==============  ==========================================
+
+            Why this matters: space-group extinction rules do not see
+            basis-dependent extinctions, so ``hkls.csv`` can list reflections
+            with |F|^2 = 0 that no crystal can produce. They land in the
+            denominator and cap the achievable fraction -- 126 of 736 for dhcp
+            beta-Ce, a ceiling of 0.829, while fcc (nothing extra extinct) can
+            still reach 1.000.
+
+            NOT Lorentz-weighted, deliberately: for per-frame threshold
+            detection the rotation-method Lorentz factor cancels
+            (Domega = w_rlp*L so I_peak = I_int/Domega is L-free). Verified on
+            nf_Ce_ht525_s2: spot peak height is flat in eta where 1/|sin eta|
+            predicts 4.3x, and spot density along a ring rises as sin eta, the
+            complementary half of the same model.
 
         Returns
         -------
         Tensor (...)
-            Fraction = (matches over all distances) / (number of valid
+            Fraction = (weighted matches over all distances) / (weighted valid
             predicted spots), with zero-denominator → 0.
         """
         D, F_, H, W = self.n_distances, self.n_frames, self.n_y, self.n_z
@@ -399,6 +424,10 @@ class ObsVolume:
         # the denominator is ``TotalPixels`` — only spots that survive
         # ALL the bounds checks at ALL distances contribute to it.
         weight = valid * in_bounds.to(valid.dtype)
+        if refl_weight is not None:
+            # (M,) broadcasts against the trailing reflection axis of (..., M)
+            weight = weight * refl_weight.to(
+                dtype=weight.dtype, device=weight.device)
         hits_all = hits_all.to(weight.dtype) * weight
         return _reduce_over_spots(hits_all, weight)
 

@@ -40,8 +40,24 @@ class OrientationData:
     starts : np.ndarray (N,) int32
         Starting row of each orientation's spots in ``spots``.
     spots : np.ndarray (T, 3) float64
-        Concatenated predicted spots, ``[2theta, eta, omega]`` (radians)
-        per the convention written by ``MakeDiffrSpots``.
+        Concatenated predicted spots, **``[yl, zl, omega]``** — lab-frame y and
+        z of the nominal ring position in **microns**, then omega in
+        **degrees**. This is what ``flat_spots()`` writes
+        (``midas_nf_preprocess/diffr_spots/pipeline.py:42``) and what
+        ``MakeDiffrSpots`` wrote before it.
+
+        .. warning::
+           This docstring previously said ``[2theta, eta, omega]`` (radians).
+           **That was wrong and nothing caught it**: no reader validated the
+           column meaning, they only ever indexed positionally, so the label
+           was never exercised. Code written against it silently produced
+           garbage rather than failing — a 2theta join against these values
+           matched zero rows and returned a neutral weight, which looked
+           exactly like "the feature had no effect".
+
+           If you need the ring: ``r = hypot(yl, zl)`` in microns, which maps
+           onto the ``Radius`` column of ``hkls.csv``. There is no 2theta and
+           no eta in this file.
     """
     matrices: np.ndarray
     n_spots: np.ndarray
@@ -130,11 +146,24 @@ class HKLTable:
         Ring number per row (the ``RingNr`` column).
     thetas_deg : np.ndarray (M,)
         Bragg angles in degrees as written by ``GetHKLList``.
+    f2 : np.ndarray (M,)
+        |F|^2 normalised to its maximum, from the optional ``F2`` column.
+        All ones when the column is absent (i.e. when ``hkls.csv`` was
+        written without an atom basis), which reproduces the historical
+        behaviour of treating every listed reflection as equally expected.
+        Reflections with ``f2 == 0`` are FORBIDDEN by the basis and can never
+        produce a spot, so counting them in a confidence denominator caps the
+        achievable value (measured: 126/736 for dhcp beta-Ce -> cap 0.829).
     """
     hkls_int: np.ndarray
     hkls_cart: np.ndarray
     rings: np.ndarray
     thetas_deg: np.ndarray
+    f2: np.ndarray = None  # type: ignore[assignment]
+
+    def __post_init__(self):
+        if self.f2 is None:
+            object.__setattr__(self, "f2", np.ones(self.hkls_int.shape[0]))
 
     @property
     def n(self) -> int:
@@ -153,6 +182,7 @@ class HKLTable:
             hkls_cart=self.hkls_cart[mask],
             rings=self.rings[mask],
             thetas_deg=self.thetas_deg[mask],
+            f2=self.f2[mask],
         )
 
 
@@ -169,6 +199,7 @@ def read_hkls(out_dir: str | Path) -> HKLTable:
     cart_rows: List[Tuple[float, float, float]] = []
     rings_l: List[float] = []
     thetas_l: List[float] = []
+    f2_l: List[float] = []
     with open(path, "r") as f:
         # skip header
         f.readline()
@@ -184,6 +215,9 @@ def read_hkls(out_dir: str | Path) -> HKLTable:
                 float(tokens[5]), float(tokens[6]), float(tokens[7]),
             ))
             thetas_l.append(float(tokens[8]))
+            # column 11 (F2) is optional and APPENDED: files written without an
+            # atom basis have 11 columns and every reflection counts equally.
+            f2_l.append(float(tokens[11]) if len(tokens) >= 12 else 1.0)
 
     if not int_rows:
         raise ValueError(f"hkls.csv at {path} contained no parseable rows")
@@ -193,6 +227,7 @@ def read_hkls(out_dir: str | Path) -> HKLTable:
         hkls_cart=np.asarray(cart_rows, dtype=np.float64),
         rings=np.asarray(rings_l, dtype=np.int64),
         thetas_deg=np.asarray(thetas_l, dtype=np.float64),
+        f2=np.asarray(f2_l, dtype=np.float64),
     )
 
 
