@@ -28,7 +28,9 @@ dependencies = [
     "h5py>=3.0",
     "hdf5plugin>=4.0",
     "tqdm>=4.0",
-    "midas-hkls>=0.3.0",
+    # >=0.6.0: write_nf_hkls_csv(atoms=...) + midas_hkls.Atom, used by
+    # stages._build_hkls for structure-factor aware reflections.
+    "midas-hkls>=0.6.0",
     "midas-stress>=0.6.0",
     "midas-nf-preprocess>=0.1.0",
     "midas-nf-fitorientation>=0.3.0",
