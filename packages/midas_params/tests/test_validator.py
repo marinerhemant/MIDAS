@@ -331,12 +331,22 @@ def test_missing_datadirectory_nf(tmp_path):
     assert any(i.rule == "directory_exists" for i in r.errors)
 
 
-def test_nf_seed_orientations_missing(tmp_path):
+def test_nf_seed_orientations_absent_is_not_an_error(tmp_path):
+    """SeedOrientations is a pipeline OUTPUT, so its absence is not an error.
+
+    run_seed_orientations writes this file, so it cannot exist at preflight
+    time. Flagging it 'required'/'file_exists' made every correct NF paramfile
+    report an error, which trains people to ignore the error line -- so
+    69f56060 dropped both validators. This test previously asserted the
+    opposite and only passed against a stale installed copy of the registry.
+    """
     fn = tmp_path / "p.txt"
     fn.write_text("SeedOrientations /tmp/definitely_not_there_seeds.txt\n")
     r = validate(str(fn), Path.NF)
-    assert any(i.rule == "file_exists" and i.key == "SeedOrientations"
-               for i in r.errors)
+    assert not any(i.key == "SeedOrientations" for i in r.errors)
+    # and it is still a recognized key, not an "unknown parameter" warning
+    assert not any(i.rule == "unknown_key" and i.key == "SeedOrientations"
+                   for i in r.errors + r.warnings)
 
 
 def test_ff_extension_without_dot_still_finds_files(tmp_path):
