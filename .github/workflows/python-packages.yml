@@ -152,6 +152,7 @@ jobs:
   # The tag name selects which package to publish:
   #   midas-stress-v*            → midas_stress
   #   midas-params-v*            → midas_params
+  #   midas-plotting-v*          → midas_plotting
   #   midas-peakfit-v*           → midas_peakfit
   #   midas-integrate-v2-v*      → midas_integrate_v2    (matched BEFORE v1 — prefix collision)
   #   midas-integrate-v*         → midas_integrate
@@ -198,6 +199,9 @@ jobs:
           elif [[ "$TAG" == midas-params-v* ]]; then
             echo "package=midas_params" >> "$GITHUB_OUTPUT"
             echo "pypi_name=midas-params" >> "$GITHUB_OUTPUT"
+          elif [[ "$TAG" == midas-plotting-v* ]]; then
+            echo "package=midas_plotting" >> "$GITHUB_OUTPUT"
+            echo "pypi_name=midas-plotting" >> "$GITHUB_OUTPUT"
           elif [[ "$TAG" == midas-peakfit-v* ]]; then
             echo "package=midas_peakfit" >> "$GITHUB_OUTPUT"
             echo "pypi_name=midas-peakfit" >> "$GITHUB_OUTPUT"
