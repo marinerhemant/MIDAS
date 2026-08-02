@@ -1012,13 +1012,18 @@ class FFViewer(QtWidgets.QMainWindow):
 
         # Single-mode cake editor (one row for the active detector). The
         # multi-detector panel gets the 4-row variant via _build_cake_widget().
-        lay.addWidget(self._build_single_cake_widget(), 6, 0, 1, 5)
+        # Placed in its own column (5) alongside rows 0-5 instead of below
+        # them, so the panel grows wider rather than taller — trades unused
+        # horizontal space in the dock for the vertical space that used to
+        # force scrolling.
+        lay.addWidget(self._build_single_cake_widget(), 0, 5, 6, 1,
+                      QtCore.Qt.AlignTop)
 
         # See _build_image_display_panel: stretch row pushes everything up
         # so the panel's natural height is minimal — the whole control strip
         # shrinks because the HBoxLayout no longer needs to match a tall
         # over-spread sibling.
-        lay.setRowStretch(7, 1)
+        lay.setRowStretch(6, 1)
 
         return grp
 
@@ -5448,13 +5453,22 @@ class FFViewer(QtWidgets.QMainWindow):
             return
 
         self.cake_params_file = fn
-        key = src_digit if src_digit else 1
+        # Single mode always keys off _SINGLE_CAKE_DET regardless of the
+        # loaded file's own geN tag — matching _populate_cake_edits,
+        # _on_cake_param_edited and _draw_caking, which all read/write that
+        # fixed key in single mode. Only Hydra mode keys by the file's tag.
+        key = (src_digit or 1) if self.multi_mode else self._SINGLE_CAKE_DET
         self.cake_params_per_det[key] = parsed
         print(f"Cake params ge{key} from {os.path.basename(fn)}: {parsed}")
 
-        # Auto-load siblings (ge1…ge4) in the same directory — obeys Auto-fill checkbox
+        # Auto-load siblings (ge1…ge4) in the same directory — obeys Auto-fill
+        # checkbox, but only in multi-detector/Hydra mode. In single mode
+        # there's only ever one active detector, so pulling in ge2-ge4 here
+        # would silently populate cake_params_per_det with entries the save
+        # logic later mistakes for "multiple detectors are loaded".
         loaded_keys = {key: fn}
-        auto_sib = getattr(self, '_autofill_check', None) and self._autofill_check.isChecked()
+        auto_sib = (self.multi_mode and getattr(self, '_autofill_check', None)
+                    and self._autofill_check.isChecked())
         if tag and auto_sib:
             prefix, src_d = tag
             for d in '1234':
@@ -5541,10 +5555,13 @@ class FFViewer(QtWidgets.QMainWindow):
         if self.show_caking:
             self._draw_caking()
 
-    def _confirm_cake_overwrite(self, targets: list[tuple[int, str]]) -> bool:
-        """If any path in ``targets`` already exists, show a confirmation
-        dialog listing the existing files. Returns True if the user wants to
-        proceed (or no files would be overwritten), False if cancelled.
+    def _confirm_cake_overwrite(self, targets: list[tuple[int, str]]) -> str:
+        """If any path in ``targets`` already exists, ask how to proceed.
+
+        Returns ``'overwrite'`` to write to ``targets`` as-is, ``'new'`` to
+        let the caller re-prompt for a different filename, or ``'cancel'``
+        to abort the save entirely. Returns ``'overwrite'`` outright if none
+        of the targets exist yet — there's nothing to confirm.
 
         ``_write_cake_csv`` appends '.csv' when missing; mirror that here so
         the existence check matches the actual write target.
@@ -5556,25 +5573,71 @@ class FFViewer(QtWidgets.QMainWindow):
             if os.path.isfile(check):
                 existing.append(check)
         if not existing:
-            return True
+            return 'overwrite'
         msg = ("The following cake parameter file"
-               f"{'s' if len(existing) > 1 else ''} already exist and will "
-               "be overwritten:\n\n  "
+               f"{'s' if len(existing) > 1 else ''} already exist:\n\n  "
                + "\n  ".join(existing)
-               + "\n\nProceed?")
-        reply = QtWidgets.QMessageBox.question(
-            self, "Overwrite cake parameters?", msg,
-            QtWidgets.QMessageBox.Yes | QtWidgets.QMessageBox.No,
-            QtWidgets.QMessageBox.No)
-        return reply == QtWidgets.QMessageBox.Yes
+               + "\n\nOverwrite, or choose a different filename?")
+        box = QtWidgets.QMessageBox(self)
+        box.setIcon(QtWidgets.QMessageBox.Warning)
+        box.setWindowTitle("Overwrite cake parameters?")
+        box.setText(msg)
+        overwrite_btn = box.addButton("Overwrite", QtWidgets.QMessageBox.AcceptRole)
+        new_btn = box.addButton("Choose New File…", QtWidgets.QMessageBox.ActionRole)
+        cancel_btn = box.addButton(QtWidgets.QMessageBox.Cancel)
+        box.setDefaultButton(cancel_btn)
+        box.exec_()
+        clicked = box.clickedButton()
+        if clicked is overwrite_btn:
+            return 'overwrite'
+        if clicked is new_btn:
+            return 'new'
+        return 'cancel'
 
     def _on_save_cake_file(self):
-        """Save all loaded GE detector cake params to their CSV files."""
+        """Save cake params to CSV.
+
+        Single-detector mode always writes exactly one file (key
+        ``_SINGLE_CAKE_DET``) — never geN siblings, regardless of what
+        stray keys ``cake_params_per_det`` may still hold (e.g. left over
+        from a prior Hydra-mode session; switching modes doesn't clear it).
+        Only Hydra/multi-detector mode (``self.multi_mode``) derives and
+        saves sibling geN files.
+        """
         if not self.cake_params_per_det:
             QtWidgets.QMessageBox.information(
                 self, "Save Cake", "No cake parameters to save.")
             return
 
+        default_dir = (os.path.dirname(self.cake_params_file)
+                       or (os.path.dirname(self._det_states[0].param_file)
+                           if getattr(self, '_det_states', None) and
+                              self._det_states[0].param_file else '')
+                       or os.getcwd())
+
+        if not self.multi_mode:
+            det = self._SINGLE_CAKE_DET
+            fn = self.cake_params_file
+            while True:
+                if not fn:
+                    fn, _ = QtWidgets.QFileDialog.getSaveFileName(
+                        self, "Save Cake Parameters", default_dir,
+                        "CSV Files (*.csv);;All (*)")
+                    if not fn:
+                        return
+                    default_dir = os.path.dirname(fn) or default_dir
+                choice = self._confirm_cake_overwrite([(det, fn)])
+                if choice == 'cancel':
+                    return
+                if choice == 'new':
+                    fn = None
+                    continue
+                written = self._write_cake_csv(fn, det)
+                print(f"Cake params saved:\n  {written or fn}")
+                return
+
+        # Hydra/multi-detector mode below — derive and save sibling geN
+        # files for every detector currently loaded in cake_params_per_det.
         if self.cake_params_file:
             tag = self._find_detector_tag(self.cake_params_file)
             if tag:
@@ -5594,68 +5657,63 @@ class FFViewer(QtWidgets.QMainWindow):
                     if sib:
                         targets.append((det, sib))
                 if targets:
-                    if not self._confirm_cake_overwrite(targets):
+                    choice = self._confirm_cake_overwrite(targets)
+                    if choice == 'cancel':
                         return
-                    saved = []
-                    for det, sib in targets:
-                        written = self._write_cake_csv(sib, det)
-                        if written:
-                            saved.append(os.path.basename(written))
-                    if saved:
-                        print("Cake params saved:\n  " + "\n  ".join(saved))
+                    if choice == 'overwrite':
+                        saved = []
+                        for det, sib in targets:
+                            written = self._write_cake_csv(sib, det)
+                            if written:
+                                saved.append(os.path.basename(written))
+                        if saved:
+                            print("Cake params saved:\n  " + "\n  ".join(saved))
                         return
+                    # choice == 'new' → fall through to the file picker below.
 
-        # No seed cake file (or no sibling derivation worked) — prompt for one.
-        # In multi-det mode with multiple detectors loaded, derive sibling
-        # paths from the chosen filename by substituting the geN tag (or
-        # appending _geN if no tag is present) so every detector gets a file.
-        default_dir = (os.path.dirname(self.cake_params_file)
-                       or (os.path.dirname(self._det_states[0].param_file)
-                           if getattr(self, '_det_states', None) and
-                              self._det_states[0].param_file else '')
-                       or os.getcwd())
-        fn, _ = QtWidgets.QFileDialog.getSaveFileName(
-            self, "Save Cake Parameters", default_dir,
-            "CSV Files (*.csv);;All (*)")
-        if not fn:
-            return
+        # No seed cake file (sibling derivation unavailable, or the user
+        # asked for a different filename) — prompt for one, deriving
+        # sibling paths from the chosen filename by substituting the geN tag
+        # (or appending _geN if no tag is present) so every loaded detector
+        # gets a file. If the chosen name also collides, loop back and
+        # prompt again rather than losing the save outright.
         det_keys = sorted(self.cake_params_per_det.keys())
-        if len(det_keys) <= 1:
-            # Single-det: QFileDialog has already confirmed overwrite of `fn`,
-            # but check derived-extension form (.csv-appended) too just in case.
-            det = det_keys[0]
-            if not self._confirm_cake_overwrite([(det, fn)]):
+        while True:
+            fn, _ = QtWidgets.QFileDialog.getSaveFileName(
+                self, "Save Cake Parameters", default_dir,
+                "CSV Files (*.csv);;All (*)")
+            if not fn:
                 return
-            written = self._write_cake_csv(fn, det)
-            print(f"Cake params saved:\n  {written or fn}")
-            return
+            default_dir = os.path.dirname(fn) or default_dir
 
-        # Multi-det save: build the full target list first, then prompt once
-        # with all would-be-overwritten siblings.
-        base = os.path.basename(fn)
-        m = re.search(r'([A-Za-z]+)([1-4])(?![0-9])', base)
-        targets = []
-        if m:
-            prefix, src_d = m.group(1), m.group(2)
-            for det in det_keys:
-                if str(det) == src_d:
-                    sib = fn
-                else:
-                    sib = self._derive_ge_path(
-                        fn, prefix + src_d, prefix + str(det)) or fn
-                targets.append((det, sib))
-        else:
-            stem, ext = os.path.splitext(fn)
-            for det in det_keys:
-                targets.append((det, f"{stem}_ge{det}{ext}"))
-        if not self._confirm_cake_overwrite(targets):
+            base = os.path.basename(fn)
+            m = re.search(r'([A-Za-z]+)([1-4])(?![0-9])', base)
+            targets = []
+            if m:
+                prefix, src_d = m.group(1), m.group(2)
+                for det in det_keys:
+                    if str(det) == src_d:
+                        sib = fn
+                    else:
+                        sib = self._derive_ge_path(
+                            fn, prefix + src_d, prefix + str(det)) or fn
+                    targets.append((det, sib))
+            else:
+                stem, ext = os.path.splitext(fn)
+                for det in det_keys:
+                    targets.append((det, f"{stem}_ge{det}{ext}"))
+            choice = self._confirm_cake_overwrite(targets)
+            if choice == 'cancel':
+                return
+            if choice == 'new':
+                continue
+            saved = []
+            for det, sib in targets:
+                written = self._write_cake_csv(sib, det)
+                if written:
+                    saved.append(os.path.basename(written))
+            print("Cake params saved:\n  " + "\n  ".join(saved))
             return
-        saved = []
-        for det, sib in targets:
-            written = self._write_cake_csv(sib, det)
-            if written:
-                saved.append(os.path.basename(written))
-        print("Cake params saved:\n  " + "\n  ".join(saved))
 
     def _write_cake_csv(self, fn, det_nr):
         """Write cake_params_per_det[det_nr] to fn in header+data row format.
