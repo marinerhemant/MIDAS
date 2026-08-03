@@ -221,3 +221,37 @@ def test_refl_weight_accepts_foreign_device_tensor():
         out = ov.hard_fraction(frame, y, z, valid, refl_weight=w_cpu)
         assert out.device.type == dev.type
         assert out.item() == pytest.approx(1.0 / 1.5)
+
+
+def test_polish_hard_frac_accepts_a_reflection_weight():
+    """The refine path must take the weight too, not just the search.
+
+    Wiring refl_weight into screen() alone weights which orientation WINS but
+    leaves the confidence written to the .mic unweighted -- so a weighted run
+    reproduced the raw map exactly (max C 0.4938 both ways) and looked like
+    'weighting has no effect' rather than 'half the wiring is missing'.
+    """
+    import inspect
+    from midas_nf_fitorientation.hard_polish import polish_hard_frac
+
+    sig = inspect.signature(polish_hard_frac)
+    assert "refl_weight" in sig.parameters
+    assert sig.parameters["refl_weight"].default is None   # opt-in
+
+
+def test_triton_path_is_gated_off_when_a_weight_is_requested():
+    """fused_hard_frac has no weight input, so it must not run when weighting.
+
+    Otherwise the refine silently computes an UNWEIGHTED fraction while the
+    paramfile asks for a weighted one.
+    """
+    import pathlib
+    src = pathlib.Path(
+        "packages/midas_nf_fitorientation/midas_nf_fitorientation/"
+        "fit_orientation.py")
+    if not src.exists():   # running from inside the package dir
+        src = pathlib.Path(__file__).resolve().parents[1] / \
+            "midas_nf_fitorientation" / "fit_orientation.py"
+    text = src.read_text()
+    assert "_want_weight = refl_w is not None" in text
+    assert "use_triton = (not _want_weight)" in text

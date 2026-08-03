@@ -70,6 +70,7 @@ def polish_hard_frac(
     xatol: float = 1e-5,
     fatol: float = 1e-5,
     adaptive: bool = True,
+    refl_weight: "torch.Tensor | None" = None,
 ) -> PolishResult:
     """Refine ``warmed_eul`` against hard FracOverlap via Nelder-Mead.
 
@@ -117,6 +118,7 @@ def polish_hard_frac(
             spots = model(eul.unsqueeze(0), pos_b)
             hf = float(obs.hard_fraction(
                 spots.frame_nr, spots.y_pixel, spots.z_pixel, spots.valid,
+                refl_weight=refl_weight,
             ))
         return 1.0 - hf
 

@@ -319,6 +319,17 @@ def fit_orientation_run(
     # (i.e. a PhaseAtom basis was declared) AND the metric asks for it, so the
     # default path is untouched.
     from .screen import spot_weights_from_f2
+    _metric = str(getattr(p, "confidence_metric", "raw")).lower()
+    refl_w = None
+    if _metric != "raw":
+        _f2 = np.asarray(getattr(hkl_table, "f2", np.ones(hkl_table.n)))
+        if not np.allclose(_f2, 1.0):
+            # PER-REFLECTION, aligned with the forward model's M axis (which is
+            # the hkls.csv row order) -- no join needed here, unlike screen(),
+            # whose DiffractionSpots.bin is a flat spot list.
+            refl_w = torch.as_tensor(
+                (_f2 > 1e-6).astype(np.float64) if _metric == "filtered" else _f2,
+                dtype=torch.float64)
     spot_w = spot_weights_from_f2(
         orientations, hkl_table, float(p.Lsd[0]),
         metric=getattr(p, "confidence_metric", "raw"))
@@ -409,7 +420,12 @@ def fit_orientation_run(
                 _omr = model._omega_ranges.to(torch.float32).reshape(-1, 2)
                 _box = model._box_sizes.to(torch.float32).reshape(-1, 4)
                 ome_box_tbl = torch.cat([_omr, _box], dim=1).contiguous()
-            use_triton = (
+            # The fused Triton kernel has no per-reflection weight input, so a
+            # weighted metric MUST NOT use it -- it would refine and report an
+            # UNWEIGHTED confidence while the paramfile says otherwise, which is
+            # exactly the silent-wrong-answer this metric already produced once.
+            _want_weight = refl_w is not None
+            use_triton = (not _want_weight) and (
                 refine == "nm-triton" or (
                     refine == "nm-batched"
                     and torch_device.type == "cuda"
@@ -482,7 +498,8 @@ def fit_orientation_run(
                         fn_, val, yp, zp = forward_batched_grains(
                             model, eul_batch, pos_active,
                         )
-                        frac = obs.hard_fraction(fn_, yp, zp, val)
+                        frac = obs.hard_fraction(
+                            fn_, yp, zp, val, refl_weight=refl_w)
                     return 1.0 - frac
                 return _neg_hard_frac
 
@@ -600,7 +617,7 @@ def fit_orientation_run(
                 if refine in ("nm-serial", "lbfgs+nm"):
                     polish = polish_hard_frac(
                         model, obs, warmed_eul, pos_um, tol_rad,
-                        max_iter=nm_max_iter,
+                        max_iter=nm_max_iter, refl_weight=refl_w,
                     )
                     final_eul = polish.eul
                     hard_frac = polish.hard_frac
