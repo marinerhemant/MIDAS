@@ -83,6 +83,52 @@ def test_core_cutoff_keeps_field_finite_at_origin():
     assert beta.abs().max() < 1.0
 
 
+@pytest.mark.unit
+def test_displacement_finite_on_the_core_line():
+    """u must be finite ON the line, where ln(x1 + p x2) -> -inf.
+
+    Regression: the core guard used to read ``clamp(rc/r, max=1.0)``, which is a
+    no-op inside the core (rc/r > 1 there), so u was NaN at r = 0. Only
+    ``displacement_gradient`` was covered, which is why this survived.
+    """
+    rc = 0.1
+    d = stroh_dislocation(CU, burgers=B_LINE, slip_normal=PLANE, character="edge",
+                          core_radius_um=rc)
+    grid = torch.stack(torch.meshgrid(
+        *[torch.linspace(-2 * rc, 2 * rc, 7, dtype=DT)] * 3, indexing="ij"),
+        dim=-1).reshape(-1, 3)                       # includes the exact origin
+    u = d.displacement(grid)
+    assert torch.isfinite(u).all()
+
+
+@pytest.mark.unit
+def test_displacement_radius_is_clamped_inside_the_core():
+    """Inside r < rc the radius is clamped, so u is frozen at its r = rc value.
+
+    Checked along a fixed direction, since u legitimately varies with the angle
+    around the line.
+    """
+    rc = 0.1
+    d = stroh_dislocation(CU, burgers=B_LINE, slip_normal=PLANE, character="edge",
+                          core_radius_um=rc)
+    direction = torch.tensor([0.6, -0.8, 0.0], dtype=DT)     # unit, off-axis
+    pts = torch.stack([f * rc * direction for f in (1.0, 0.5, 0.1, 1e-3)])
+    u = d.displacement(pts)
+    assert torch.allclose(u, u[:1].expand_as(u), atol=1e-15), \
+        "u must not keep varying inside the core radius"
+
+
+@pytest.mark.unit
+def test_displacement_gradient_matches_beta_outside_core():
+    """The documented guarantee: with core_model='compact', grad(u) == beta for
+    r >= rc. This is what coherent imaging relies on (phase g.u, contrast beta)."""
+    d = stroh_dislocation(CU, burgers=B_LINE, slip_normal=PLANE, character="edge",
+                          core_radius_um=0.05, core_model="compact")
+    p = torch.tensor([[0.3, 0.2, 0.0]], dtype=DT)
+    J = torch.autograd.functional.jacobian(lambda x: d.displacement(x).sum(0), p)
+    assert torch.allclose(J.squeeze(1), d.displacement_gradient(p)[0], atol=1e-12)
+
+
 # --------------------------------------------------------------------------
 # g.b invisibility
 # --------------------------------------------------------------------------

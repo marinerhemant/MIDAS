@@ -60,6 +60,9 @@ _INV_2PI = 1.0 / (2.0 * math.pi)
 # to 1e-6 for edge and screw at any radius, and is gated by a test.
 _STROH_PREFACTOR = 1.0 / math.pi
 _ANGSTROM_PER_UM = 1e4  # 1 um = 1e4 Angstrom
+# Fraction of the core radius below which a point counts as "on the dislocation
+# line", where the displacement field has no defined direction.
+_CORE_EPS = 1e-9
 
 
 @dataclass
@@ -161,9 +164,17 @@ class StrohDislocation:
         # regularized and neither is physical; mask that region.
         rc = self.core_radius_um
         r = torch.sqrt(x1 * x1 + x2 * x2)
-        scale = torch.clamp(rc / r.clamp_min(1e-30), max=1.0)         # 1 outside, rc/r inside
-        x1c, x2c = x1 * torch.where(r > rc, torch.ones_like(scale), scale), \
-                   x2 * torch.where(r > rc, torch.ones_like(scale), scale)
+        # Push points inside the core radially OUT to r = rc, keeping direction, so
+        # the radius is genuinely clamped: scale = rc/r inside (>1), 1 outside.
+        # ``min=1.0`` is the operative bound -- with ``max=1.0`` the clamp is a no-op
+        # inside the core (rc/r > 1 there) and u stays singular all the way to r = 0.
+        scale = torch.clamp(rc / r.clamp_min(_CORE_EPS * rc), min=1.0)
+        # Points exactly on the line have no direction to push along; put them on the
+        # +x1 axis at r = rc. u is arbitrary there (the field is undefined on the core),
+        # but it must be finite: x1 = x2 = 0 would give log(0) = -inf -> NaN.
+        on_line = r <= _CORE_EPS * rc
+        x1c = torch.where(on_line, torch.full_like(x1, rc), x1 * scale)
+        x2c = torch.where(on_line, torch.zeros_like(x2), x2 * scale)
         denom = x1c[:, None] + self.p[None, :] * x2c[:, None]         # (N, 3) complex
         AD = self.A * self.D[None, :]                                 # (3, 3): [i, alpha]
         S = (AD[None, :, :] * torch.log(denom)[:, None, :]).sum(-1)   # (N, 3) complex
