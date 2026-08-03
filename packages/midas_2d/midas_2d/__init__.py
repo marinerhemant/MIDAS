@@ -11,6 +11,16 @@ Phase 1 (finite-size forward core):
 Builds on midas-hkls (structure factors, form factors, lattice, hkl gen) and
 midas-pink (energy spectrum).  See MIDAS_2D_ULTRAFAST_DIFFRACTION_PLAN.md.
 """
+from .bcdi import (
+    bragg_geometry,
+    conjugate_real_basis,
+    detector_distance_for_oversampling,
+    oversampling,
+    q_basis,
+    rocking_step_for_oversampling,
+    shear_angles_deg,
+    sheared_to_lab,
+)
 from .coherent import bcdi_forward, coherent_speckle, phase_retrieval
 from .debye import (
     atomic_form_factors,
@@ -152,6 +162,15 @@ __all__ = [
     "coherent_speckle",
     "bcdi_forward",
     "phase_retrieval",
+    # BCDI geometry (q-space basis and its real-space conjugate)
+    "bragg_geometry",
+    "q_basis",
+    "conjugate_real_basis",
+    "oversampling",
+    "shear_angles_deg",
+    "detector_distance_for_oversampling",
+    "rocking_step_for_oversampling",
+    "sheared_to_lab",
     "stiffness_from_msd",
     "msd_from_stiffness",
     "thermal_ensemble",

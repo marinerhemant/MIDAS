@@ -42,10 +42,23 @@ positions**:
 - **`inverse`** -- `fit` (Adam/L-BFGS), `cosine_loss` (smooth scale-invariant
   shape loss), `laplace_uncertainty` (Hessian-at-optimum error bars).
 
-### Phase 4 -- coherent / BCDI (`coherent`)
+### Phase 4 -- coherent / BCDI (`coherent`, `bcdi`)
 - `coherent_speckle`, `bcdi_forward` (`|FFT(psi)|^2`), and `phase_retrieval`
   (autograd phase retrieval inside a support -- the differentiable ER/HIO
-  alternative and a slot for learned priors).
+  alternative and a slot for learned priors).  `loss=` selects the residual;
+  the default `"amplitude"` matters, because an intensity-domain L2 over the
+  many decades of a coherent pattern is dominated by the brightest voxels and
+  stalls (`"intensity"`, `"poisson"` also available).
+- `bcdi` -- **where the FFT lands on the detector.** The measured array is
+  indexed by (detector column, detector row, rocking step), which spans a
+  *sheared* parallelepiped in q, not a box: `q_basis` builds `B`,
+  `conjugate_real_basis` gives the real-space grid the FFT actually uses
+  (`B^T C = 2 pi diag(1/N)`), `oversampling` / `shear_angles_deg` diagnose the
+  sampling, `detector_distance_for_oversampling` and
+  `rocking_step_for_oversampling` size a scan, and `sheared_to_lab` removes the
+  shear from the *reconstructed object* at the end -- never from the measured
+  intensity before phasing.
+  Worked end-to-end example with an analytic gate suite: `dev/bcdi_forward_sim.py`.
 
 ### Diffraction-as-a-loss-on-dynamics (`dynamics`)  *(novel closure)*
 - `thermal_ensemble` -- differentiable thermal cloud from anisotropic spring
