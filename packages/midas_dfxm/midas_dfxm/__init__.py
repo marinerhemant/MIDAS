@@ -35,7 +35,7 @@ from .io import (
 )
 from .resolution import ResolutionFunction, aligned_resolution, poulsen_resolution_widths
 from .detector import apply_psf, detector_model, quantize_16bit
-from .optics import ObjectiveOptics, diffracted_beam_direction
+from .optics import ObjectiveOptics, diffracted_beam_direction, two_theta_from_k_out
 from .scan import (
     bragg_two_theta_deg,
     mosaicity_scan,
@@ -184,6 +184,7 @@ __all__ = [
     "quantize_16bit",
     "ObjectiveOptics",
     "diffracted_beam_direction",
+    "two_theta_from_k_out",
     "bragg_two_theta_deg",
     "reference_q_nom",
     "mosaicity_scan",
