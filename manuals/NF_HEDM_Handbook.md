@@ -94,6 +94,9 @@ soft-deprecated C; only its example paramfile and seed cache are used here. Vers
 | centroiding `1 − T` over the whole illuminated band | axis scatter 66 px instead of 0.2 px, and it looks like real data | §6e |
 | row-permutation "null" in a spot-matching test | null silently re-runs the real analysis and passes | §6i |
 | confidence 1.0 read as "geometry solved" | a whole beamtime reconstructed on the wrong plateau | §7b |
+| a refinement driving confidence to 1.0, checked with maxC/median | **those statistics are blind to the plateau failure.** On `s6061_NF` pass C gave maxC 1.000 with 40 % of the disc indexing and the MEDIAN also up (0.229 → 0.368) — the plateau signature. Test the **orientation field** instead: misorientation between spatial NEIGHBOURS vs RANDOM pairs (0.23° / 78 % < 5° vs 40.98° / 4.5 % here ⇒ real grains). A wrong plateau gives a spatially random orientation field | lab notebook §8h |
+| chance confidence computed from the lit-pixel fraction | with `hits_d.prod(dim=0)` ANDing 1.65 % and 1.40 %, independent-pixel arithmetic predicts 2.3e-4; the truth was **~1000× higher** because observed and predicted spots cluster in the same regions. **Read the floor off the MEDIAN over the search volume** | lab notebook §8h |
+| triangulated `Lsd` used as the final geometry on a WIDE sample | it is a **seed**, not the answer. On `s6061_NF` triangulation was 211 µm off; after refinement δ landed 6.8 µm from the previous campaign's. Triangulate → refine → then quote | §6i-ter, lab notebook §8h |
 | refinement re-seeded from its own output | tilts drift ~1 deg/iteration, confidence stays high | §7b |
 | `GridPoints` given 6 tokens instead of a 12-column `.mic` row | parses fine, refines nothing | §7c |
 | `BoxSize` parsed but not applied | calibrant plateaus at 0.949 instead of 1.000 | §7d |
@@ -1241,6 +1244,15 @@ Two further cautions from `s6061_NF`:
   returned `k = 1.0146`, `L = 136 mm`, y-vs-z split **129 mm**, and correctly REJECTED it:
   near BC, ray directions are degenerate and the matcher pairs noise. `r_min=800` gave
   `k = 1.2391` on 108 pairs and passed. Sweep `r_min`, and believe the rejection.
+* **Apply the radius cut BEFORE any per-frame brightness cap.** `triangulate` applies
+  `r_min_px` internally, but if the *spot finder* caps at the N brightest blobs first, the
+  bright halo around the direct beam fills the budget and the real large-radius spots never
+  reach the matcher. On `NF_Au_cube_0802` there were **524 blobs/frame inside r < 800 px**
+  against ~120/frame outside it: a `MAXSPOT=150` cap taken before the cut left the matcher
+  nothing but chance pairs, and every gate failed with `k ≈ 1.007` (the pattern "not
+  scaling" between distances). **`k ≈ 1` with huge y-vs-z splits means the matcher is seeing
+  noise, not that the detector did not move** — check the spot list before doubting the
+  motor.
 * **δ is not an instrument constant.** `δ = L − DetZ` contains where the *sample* sits
   along the beam, so a remounted sample legitimately changes it. Comparing δ across
   campaigns tests the mounting as much as the detector. What transfers is the *method*,
@@ -1464,6 +1476,38 @@ midas-nf-pipeline run params.txt \
 Without it the fitter uses a single GPU while the rest idle. The outputs are pre-allocated
 once by the parent and workers open them `r+`; do not hand-roll this, `MicWriter`'s default
 zeroes the whole file on open (lab notebook §3c).
+
+**Three things that bite on first invocation** (all hit on `xzhang_jul26`, 2026-08-01):
+
+1. **`export MIDAS_NF_SEED_DIR=<…>/NF_HEDM/seedOrientations`.** The seed stage re-derives
+   the cache path from the *install* directory (`from_cache.py:106`), which in a conda env
+   resolves to `…/lib/python3.11/../NF_HEDM/seedOrientations` and does not exist. It dies
+   with `SeedCacheNotFound` **after** writing `hkls.csv`, so the run looks like it started
+   fine. Passing `--seed-dir` to the standalone `seed-orientations` command does *not* help
+   — the orchestrator calls the loader itself.
+2. **The driver works inside `<OutputDirectory>/LayerNr_<N>/`, not `OutputDirectory`.**
+   With `--no-image-processing` you must put `SpotsInfo.bin` (or a symlink) *there*, not in
+   the parent. `rf=…/LayerNr_1` appears in the first few log lines — read it.
+3. **`RawStartNr`, `OrigFileName`, `ReducedFileName` are demanded by the validator even
+   with `--no-image-processing`.** They are 3 hard errors; the run continues anyway unless
+   `--strictValidation`. Add stubs so real errors are not lost in the noise.
+
+**Reading the loop outputs.** `MicrostructureBinary.mic` is **pre-allocated and zeroed for
+the NEXT loop** as soon as a loop finishes, so reading it mid-run returns all zeros and an
+apparently dead reconstruction. The per-loop result is `<MicFileText>.<k>.mic`. A
+consolidation line reading `Wrote 1 grains to /grains/` likewise does not mean one grain —
+check `Grains.csv.<k>` (`%NumGrains`) instead.
+
+**Grain RADII from `mic2grains` are invalid whenever `EdgeLength ≪ GridSize`** — which is
+always, since `EdgeLength 1` is mandatory (§10e). Verified on `xzhang_jul26` loop 0: 93
+grains with radii 0.37–11.08 µm, median 1.78 µm, against an indexed area of ~499,000 µm²;
+93·π·1.78² ≈ 925 µm², a **500× discrepancy**. The merge threshold is `2·TriEdgeSize` = 2 µm
+while neighbours sit `GridSize/√3` = 5.77 µm apart, so the radii describe the **probe
+triangle, not the cell**. Orientations and grain *count* are fine (they seed the next loop
+correctly); sizes are not. For real grain sizes, segment by **neighbour misorientation**
+(link neighbours below ~5° with `midas_stress.misorientation`, cubic, then take connected
+components) and multiply voxel counts by the **measured** cell area — see the pitch warning
+in §10e.
 
 Two things the orchestrator still will not do:
 
@@ -2155,7 +2199,7 @@ Arithmetic consistency check (derived from the example, **not enforced by code**
 | Key | Values / units | Read by |
 |---|---|---|
 | `Rsample` | µm — radius the hex grid must cover | hex grid (`hex_grid/params.py:19`) |
-| `GridSize` | µm — voxel spacing. **Overwritten on disk each multi-resolution loop** (`workflows.py:373-376`) | hex grid; fitorientation (multipoint only) |
+| `GridSize` | µm — the hex **triangle edge**, NOT the voxel spacing. Nearest-neighbour pitch is **`GridSize/√3`** (measured: `GridSize 10` → 5.7735 µm; `GridSize 20` → 11.547 µm). Treating it as the pitch overstates areas by 3× and diameters by **1.73×**. Get the cell area from the grid itself (`hull area / n_voxels`), never from `GridSize²`. **Overwritten on disk each multi-resolution loop** (`workflows.py:373-376`) — `EdgeLength` is NOT, and stays 1 (verified: `grid.txt` col 5 = 0.5000 exactly, `%TriEdgeSize 1.000000` in the loop `.mic`) | hex grid; fitorientation (multipoint only) |
 | `EdgeLength` | µm — probe-triangle edge; `0`/absent ⇒ equals `GridSize` (`hex_grid/params.py:25-26`). **An independent knob — see below.** | hex grid |
 | `GridFileName` | default `grid.txt` | hex grid, fitorientation |
 | `GridMask` | 4 floats. The code filters grid columns 2 and 3, i.e. **x and y in µm** (`stages.py:211-227`). `ps_au.txt:89` labels them `ymin ymax zmin zmax`; **the code's meaning wins.** | pipeline `run_grid_mask` |

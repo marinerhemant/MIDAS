@@ -1131,12 +1131,16 @@ pairs noise, producing a 136 mm "distance". The module rejected it without being
 247 µm specimen perturbs `|p − BC|` by up to 11 % per spot (3 % for the Au cube). The
 y-vs-z split rose by the same factor, 57 → 142 µm. Handbook §6i-ter.
 
-⇒ **The correct statement is that this dataset cannot resolve the Au δ = −860 µm from its
-own −658 ± 35 µm.** The 200 µm gap is inside the systematic. Two further reasons it may
-not be a discrepancy at all: `δ = L − DetZ` contains the *sample's* position along the
-beam, so a remounted sample changes it legitimately; and the nominal 9/11 mm come from the
-**filename**, not a motor readback, so a 200 µm bookkeeping offset is unresolvable here.
-What was established is that the *method* reproduces, not that the *number* agrees.
+⇒ Triangulation **alone** cannot resolve the Au δ = −860 µm from its own −658 ± 35 µm;
+the 200 µm gap is inside its own systematic.
+
+> **This was written as "the dataset cannot resolve it" and that was WRONG — see §8h.**
+> Triangulation alone could not. Triangulation **followed by geometry refinement** could,
+> and the refined answer lands 6.8 µm from the Au value. The lesson is not "the
+> measurement is impossible"; it is **"triangulation is a SEED for refinement, not the
+> final Lsd, whenever the sample is wide."** Its 211 µm error here was correctly
+> predicted by the point-source argument — the caveat was right, the conclusion drawn
+> from it was too gloomy.
 
 ### 8e. ybc could not be measured — and the tracker default is wrong at 20-ID
 
@@ -1191,3 +1195,117 @@ one voxel.** Two unrelated physics (X-ray attenuation and diffraction indexing) 
 to 1 % is the strongest cross-check in either campaign, and it retires the open item
 "cube 2 has never been located". The −123.8° angle back-derives the phase→(x,y) convention;
 verify it on one more dataset before treating the sign as general.
+
+### 8h. Setup optimisation — the distance calibration IS consistent, and how it was checked
+
+Run at the operator's `a = 3.60` (which beats 3.59: maxC 0.7059 vs 0.6765, n≥0.6 49 vs 17
+— `a` and `Lsd` are degenerate through `r ∝ Lsd·λ/a`, so most of a 0.28 % change is
+absorbed by `Lsd`, but the *relative* ring spacing is not, and that is what discriminates).
+
+Three passes: **A** search on the starting geometry → **B** refine `Lsd`/`BC`/tilts from
+the best voxel (hard objective, `NumIterations 3` in ONE invocation) → **C** search
+**again** on the refined geometry. Pass C is the point — it scores voxels that were *not*
+used to fit the geometry. Re-seeding a refinement with its own output is the trap
+(hard rule 15); a fresh search is not a re-seed.
+
+Pass B: seed voxel **0.705882 → 1.0000000000** (19577 evals, 27.5 s).
+
+| | Lsd 9 mm | Lsd 11 mm | δ = L − DetZ |
+|---|---|---|---|
+| triangulated (this data) | 8366.4 | 10366.4 | −633.6 |
+| **REFINED (this data)** | **8155.6906** | **10155.3298** | **−844.31 / −844.67** |
+| `nfdev_jul26`, refined | 8162.2839 | 10162.2596 | −837.72 |
+
+**⇒ The earlier distance calibration IS consistent: δ agrees to 6.8 µm on a 9 mm
+distance (0.08 %),** and the two distances independently give δ agreeing to 0.36 µm.
+Refined BC `(2691.4720, 61.1784)` / `(2680.8706, 62.2930)`: ybc moved only −2.1 and
+−6.2 µm from the INHERITED Au values and nowhere near the ±20 µm `BCTol` edge, so
+inheriting it was justified and these are now dataset-local. Tilts tx=0.0347,
+ty=−0.3431, tz=0.0068 — **distrust ty**, the objective is 26× less sensitive to it.
+
+#### The check that matters when confidence jumps to 1.0
+
+| | maxC | medianC | n≥0.5 | n≥0.7 | n≥0.8 |
+|---|---|---|---|---|---|
+| PASS A | 0.7059 | 0.2286 | 217 | 1 | 0 |
+| PASS C | **1.0000** | 0.3684 | **2911** | **1415** | **810** |
+
+The whole distribution moved, so it is not a single-voxel overfit. **But the median rose
+too** (0.229 → 0.368) and 2911/7350 ≈ 40 % of the disc indexing is exactly the §7b "wrong
+plateau" signature. maxC and median **cannot** tell a solved geometry from a plateau.
+Neighbour misorientation can:
+
+| pair type | median miso | frac < 5° |
+|---|---|---|
+| ADJACENT voxels (≤22 µm, grid pitch 20) | **0.23°** | **78.0 %** |
+| RANDOM voxel pairs | 40.98° | 4.5 % |
+
+17× enrichment ⇒ **coherent grains, real microstructure.** A wrong-plateau geometry
+produces a spatially *random* orientation field; a real one does not.
+
+> **RULE: whenever a refinement drives confidence to 1.0, test the ORIENTATION FIELD, not
+> the confidence.** Compare misorientation between spatial neighbours against random
+> pairs (`midas_stress.misorientation`, cubic m-3m, radians in and out; `.mic` binary
+> columns 7-9 are RADIANS). Confidence statistics are blind to the failure this catches.
+
+Two supporting results from the same run, for the record:
+
+* **Material settled by the indexer, as §8c said it would have to be.** Al 6061
+  (a = 4.05) scored maxC **0.1951** — *below SS316L's median of 0.2286* — with **zero**
+  voxels above 0.4 anywhere. The `6061` filename is misleading; the material is SS316L.
+* **The empirical chance floor is the MEDIAN over the search volume (~0.22), not the
+  naive lit-fraction product.** With 1.65 % and 1.40 % of pixels lit at the two distances
+  and `hits_d.prod(dim=0)` ANDing them, independent-pixel arithmetic predicts 2.3e-4.
+  The truth was ~1000× higher, because observed and predicted spots cluster in the *same*
+  regions. **Never compute a chance floor from pixel fractions; read it off the median.**
+
+### 8i. `NF_Au_cube_0802` — and a recorded lesson repeated, with a new excuse
+
+A second Au cube at 20-ID, three distances, ΔD = 2000 µm, taken after the
+beamstop was addressed. Steps 0-3 went cleanly and are worth stating because
+they show what the procedure achieves when it is followed:
+
+* **Lsd = 6138.7 / 8138.7 / 10138.7 µm** by triangulation (3 pairs, y-z splits
+  25/58/54 µm, nulls 13.75× and 8.46×) — reproducing `nfdev_jul26`'s
+  6139.7/8139.7/10139.7 **to 1.0 µm**, with k(0→1) agreeing to four decimals.
+* **Step 3 reached FracOverlap 1.000000 with NO refinement** (1.0000 → 1.0000,
+  improvement +0.0000000000; Lsd, BC and tilts all returned unchanged). The
+  beamstop that capped `nfdev_jul26` at 0.913 is gone, as the beamline said.
+* Single-crystal control: **100 % of the 1071 C ≥ 0.9 voxels within 1°** of the
+  best voxel (median 0.707°). maxC 1.0 alone would not have shown that.
+
+**Two defects worth carrying forward.**
+
+**1. The spot budget was spent on halo before the radius cut.** The first
+triangulation attempt failed at every setting with `k ≈ 1.007` and y-vs-z splits
+of hundreds of millimetres. Cause: the spot finder kept the `MAXSPOT` brightest
+blobs *before* `r_min` was applied, and there are **524 blobs/frame inside
+r < 800 px** against ~120/frame outside it, so the real spots never reached the
+matcher. `k ≈ 1` with an enormous y-z split means the matcher is pairing noise —
+it does **not** mean the detector failed to move. Apply the radius cut first.
+
+**2. The point-mask null, repeated.** §7f (F5/F6) already records that a
+candidate-point tomo mask cannot be interpreted: on `nfdev_jul26` masking four
+candidate angles returned 0.0000 at every one of 5316 off-axis voxels, and the
+cube turned out to be at −123.8°, none of them. The recorded fix is *mask the
+whole locus*. On `NF_Au_cube_0802` a **two**-candidate mask was written anyway
+and returned the same nothing: 10,272 voxels, on-axis cube perfect (maxC
+1.000000), **0 off-axis**.
+
+> **The new excuse, which is the part worth recording.** This time there WAS a
+> well-measured phase — +35.0°, rms 0.81 px, 18 mutually consistent fits — where
+> the previous campaign had none. Having a precise phase made a point mask feel
+> justified. It is not. **The precision of the phase says nothing about whether
+> the phase→(x, y) MAPPING is right, and the mapping is the unpinned part.** A
+> precise measurement pushed through an unverified convention is still
+> unverified. F6 said "a finding recorded is not a finding applied"; this adds
+> that a *better measurement* is the thing most likely to talk you out of a
+> recorded lesson.
+
+**3. A new shadow failure mode: two absorbers confuse the tracker.** `fit_axis`
+refused at every setting (rms ~112 px) until the STATIONARY on-axis cube was
+masked out of the profile; then 18 settings returned `is_reliable`, agreeing on
+r = 499.8 ± 2 µm with rms down to 0.81 px. This did not appear on `nfdev_jul26`
+because the swing there (906 px) separated the two absorbers cleanly; here it is
+only ~500 px. **With more than one absorber, freeze the stationary one to the
+ω-median before tracking the moving one.**
