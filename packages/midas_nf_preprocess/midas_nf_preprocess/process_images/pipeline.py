@@ -69,6 +69,7 @@ def _nlm_denoise_residual(
     patch_size: int = 5,
     patch_distance: int = 6,
     h_absolute: float | None = None,
+    backend: str = "auto",
 ) -> "torch.Tensor":
     """Non-local-means denoise of a median-corrected residual frame.
 
@@ -78,15 +79,45 @@ def _nlm_denoise_residual(
     ``estimate_sigma`` additionally needs PyWavelets which is not a MIDAS
     dependency.
 
-    Runs on CPU via scikit-image. Its fast NLM releases the GIL (measured ~4x on
-    4 threads), which is why ``process_layer`` can thread the frame loop.
+    Backends
+    --------
+    ``backend="auto"`` (default) runs the torch implementation
+    (:mod:`~midas_nf_preprocess.process_images.denoise`) when the residual is
+    already on a non-CPU device, and scikit-image otherwise.  ``"torch"`` and
+    ``"skimage"`` force the choice.
+
+    The torch path is what allows the stack to STAY on the device: scikit-image
+    is CPU-only, so ``process_layer`` used to relocate the whole layer to the
+    host whenever ``NLMDenoise 1`` was set.  Measured 42x per frame on an
+    A6000 against one CPU thread (26.9 s -> 0.74 s at 4600x5320).
+
+    The two backends give identical blob counts on real NF residuals but
+    diverge inside saturated, densely-lit regions such as the direct beam --
+    see :mod:`~midas_nf_preprocess.process_images.denoise` for the measurement.
+    Spot finding excludes that region anyway.
+
+    scikit-image's fast NLM releases the GIL (measured ~4x on 4 threads), which
+    is why ``process_layer`` can thread the frame loop on the CPU path.
     """
     import numpy as np
-    from skimage.restoration import denoise_nl_means
 
+    if backend not in ("auto", "torch", "skimage"):
+        raise ValueError(f"backend must be auto|torch|skimage, got {backend!r}")
     dev, dt = resid.device, resid.dtype
-    a = resid.detach().to("cpu", torch.float32).numpy()
-    sigma = float(1.4826 * np.median(np.abs(a - np.median(a))))
+    use_torch = (backend == "torch") or (backend == "auto" and dev.type != "cpu")
+
+    # sigma_MAD on-device when we are staying on-device -- computing it via a
+    # host round-trip would give back exactly the transfer the torch backend
+    # exists to avoid.  Always in float32: a fp16 median is too coarse for a
+    # scale estimate on near-counting data, where sigma_MAD is already
+    # degenerate.
+    if use_torch:
+        r32 = resid.detach().to(torch.float32)
+        sigma = float(1.4826 * torch.median(torch.abs(r32 - torch.median(r32))))
+        a = None
+    else:
+        a = resid.detach().to("cpu", torch.float32).numpy()
+        sigma = float(1.4826 * np.median(np.abs(a - np.median(a))))
 
     if h_absolute is not None and h_absolute > 0:
         # Absolute strength, in counts. Required on photon-starved data where
@@ -111,6 +142,16 @@ def _nlm_denoise_residual(
         )
         return resid
 
+    if use_torch:
+        from .denoise import nl_means_torch
+        out_t = nl_means_torch(
+            resid.detach(), h=h, sigma=sigma,
+            patch_size=patch_size, patch_distance=patch_distance,
+            device=dev, dtype=torch.float32,
+        )
+        return out_t.to(dtype=dt)
+
+    from skimage.restoration import denoise_nl_means
     out = denoise_nl_means(
         a, h=h, sigma=sigma, fast_mode=True,
         patch_size=patch_size, patch_distance=patch_distance,
@@ -200,6 +241,47 @@ class ProcessImagesPipeline:
     # Phase 3: per-frame processing
     # ------------------------------------------------------------------
 
+    def _matched_operating_point(self, resid: "torch.Tensor"):
+        """``(sigma, threshold)`` for the matched detector, calibrated ONCE.
+
+        Calibration sweeps sigma x threshold and counts false positives on the
+        NEGATED residual, which costs ~126 connected-component passes -- far
+        too much per frame.  It therefore runs on the FIRST frame that needs it
+        and is reused for the whole run.  Set ``MatchedSigma`` and
+        ``MatchedThreshold`` explicitly to skip it entirely.
+        """
+        cached = getattr(self, "_matched_cal", None)
+        if cached is not None:
+            return cached
+        sigma = float(getattr(self.params, "matched_sigma", 0.0))
+        thr = float(getattr(self.params, "matched_threshold", 0.0))
+        if sigma > 0 and thr > 0:
+            self._matched_cal = (sigma, thr)
+            return self._matched_cal
+
+        from .detect import calibrate_detector
+
+        cal = calibrate_detector(
+            resid.detach().to("cpu", torch.float32).numpy(),
+            fp_budget=int(getattr(self.params, "matched_fp_budget", 5)),
+            min_px=int(getattr(self.params, "matched_min_px", 4)),
+        )
+        if not cal.ok:
+            warnings.warn(
+                "matched-filter calibration found no operating point within the "
+                f"false-positive budget; using the least-bad point "
+                f"(sigma={cal.sigma:.2f}, threshold={cal.threshold:.3f}, "
+                f"{cal.n_false} false positives). Raise MatchedFPBudget, or set "
+                "MatchedSigma/MatchedThreshold explicitly.",
+                RuntimeWarning, stacklevel=2,
+            )
+        self._matched_cal = (
+            sigma if sigma > 0 else cal.sigma,
+            thr if thr > 0 else cal.threshold,
+        )
+        self._matched_calibration = cal
+        return self._matched_cal
+
     def process_frame(
         self,
         frame_idx: int,
@@ -237,7 +319,42 @@ class ProcessImagesPipeline:
                 patch_size=int(getattr(self.params, "nlm_patch_size", 5)),
                 patch_distance=int(getattr(self.params, "nlm_patch_distance", 6)),
                 h_absolute=float(getattr(self.params, "nlm_h_absolute", 0.0)) or None,
+                backend=str(getattr(self.params, "nlm_backend", "auto")),
             )
+        # (a-bis) MATCHED-FILTER detection, if selected.
+        #
+        # This branches BEFORE the blanket subtraction and the clamp, and works
+        # on the residual itself: the filter builds the MASK, and `filtered`
+        # returned below is the UNTOUCHED residual, so downstream intensities
+        # are the original ones.  That separation is the whole point -- NLM
+        # gets a lower threshold by rewriting every pixel, this gets one
+        # without touching any (process_images/detect.py).
+        if str(getattr(self.params, "spot_detect", "log")) == "matched":
+            from .detect import detect_labels_torch
+            from .peaks import auto_temperature
+
+            sigma, thr = self._matched_operating_point(resid)
+            labels, n, score = detect_labels_torch(
+                resid, sigma=sigma, threshold=thr,
+                min_px=int(getattr(self.params, "matched_min_px", 4)),
+            )
+            t = self.params.soft_temperature
+            T = (auto_temperature(score) if (isinstance(t, str) and t == "auto")
+                 else float(t))
+            T = float(T if not torch.is_tensor(T) else T.item()) or 1.0
+            peaks = PeakFindOutputs(
+                log_response=score,
+                spot_prob=torch.sigmoid((score - thr) / T),
+                labels=labels,
+                n_components=n,
+                temperature_img=T,
+                temperature_log=T,
+            )
+            return FrameResult(
+                frame_index=frame_idx, layer_nr=layer_nr,
+                filtered=resid, peaks=peaks,
+            )
+
         sub = resid - float(self.params.blanket_subtraction)
         img = torch.clamp(sub, min=0)
 
@@ -333,17 +450,24 @@ class ProcessImagesPipeline:
 
         # Threading the frame loop multiplies the PER-FRAME GPU temporaries by
         # the worker count: spatial_median's im2col alone OOM'd a 47 GB card at
-        # 64 workers. When NLM is on the dominant cost is CPU anyway (and NLM
-        # already forces a host round-trip per frame), so move the whole frame
-        # loop to CPU and let the threads scale against host RAM instead. When
-        # NLM is off there is no CPU-bound work to hide, so cap concurrency
-        # instead of relocating the data.
-        if int(getattr(self.params, "nlm_denoise", 0)) == 1:
-            if stack.is_cuda:
-                stack = stack.cpu()
-                median = median.cpu()
+        # 64 workers.
+        #
+        # This USED TO relocate the whole layer to the host whenever NLM was on,
+        # because NLM was scikit-image only and therefore forced a host
+        # round-trip per frame -- so the CPU was where the work had to happen
+        # anyway. `denoise.nl_means_torch` removes that constraint (42x per
+        # frame on an A6000), so the stack now STAYS on the device and the
+        # frame loop is capped for memory instead, exactly as in the NLM-off
+        # case. Set NLMBackend skimage to restore the old behaviour.
+        nlm_on = int(getattr(self.params, "nlm_denoise", 0)) == 1
+        nlm_backend = str(getattr(self.params, "nlm_backend", "auto"))
+        if nlm_on and nlm_backend == "skimage" and stack.is_cuda:
+            stack = stack.cpu()
+            median = median.cpu()
         elif stack.is_cuda:
-            n_workers = min(n_workers, 8)
+            # NLM on the device roughly doubles the per-frame temporaries
+            # (~1.1 GB per 4600x5320 frame), so allow fewer concurrent frames.
+            n_workers = min(n_workers, 4 if nlm_on else 8)
 
         if n_workers <= 1:
             for j in range(n_files):

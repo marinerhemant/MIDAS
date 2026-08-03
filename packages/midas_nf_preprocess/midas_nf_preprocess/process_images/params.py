@@ -80,6 +80,37 @@ class ProcessParams:
     # sigma-scaled h collapses -- in which case NLM would otherwise be skipped
     # silently.  0 = derive h from sigma_MAD (the historical behaviour).
     nlm_h_absolute: float = 0.0
+    # Which NLM implementation to use: "skimage" (default), "torch", or "auto"
+    # (torch when the data is already on a non-CPU device).
+    #
+    # The torch path is 42x faster per frame on an A6000 (26.9 s -> 0.74 s at
+    # 4600x5320) and lets the frame loop STAY on the device -- scikit-image
+    # being CPU-only is why the layer used to be relocated to the host whenever
+    # NLMDenoise was set.
+    #
+    # It DEFAULTS TO skimage anyway, because the two are close but NOT
+    # bit-equivalent: correlation 0.988-0.9999 depending on regime, blob counts
+    # within +-2 of each other on dense synthetic data (exact on real NF
+    # frames), diverging most in saturated regions.  Switching the default
+    # would silently change existing reductions.  Opt in with NLMBackend torch.
+    nlm_backend: str = "skimage"
+    # --- spot DETECTION backend -------------------------------------------
+    # "log"     : the historical multi-scale LoG path, mirroring the C.
+    # "matched" : Gaussian matched filter on the median-corrected residual,
+    #             used ONLY to build the mask -- intensities are then read from
+    #             the UNTOUCHED residual, which is the point.  Measured 5.8-8.6x
+    #             more detected spots than a raw threshold at an equal, measured
+    #             false-positive budget, across 1-ID and 20-ID data; see
+    #             process_images/detect.py.
+    spot_detect: str = "log"
+    # 0 = calibrate from the data (recommended, and what makes it generic).
+    # The scan converged on sigma 0.70 on five frames spanning two beamlines,
+    # two detectors and a 2.7x difference in pixel size.
+    matched_sigma: float = 0.0
+    matched_threshold: float = 0.0     # 0 = calibrate
+    matched_fp_budget: int = 5         # false positives allowed, per frame
+    matched_min_px: int = 4            # blobs smaller than this are dropped
+    matched_calib_frames: int = 3      # frames used for the one-off calibration
     mean_filt_radius: int = 1  # spatial median radius (0=identity, 1=3x3, 2=5x5)
     do_log_filter: int = 1
     log_mask_radius: int = 4
@@ -134,6 +165,13 @@ class ProcessParams:
             ("NLMDenoise", "nlm_denoise", int),
             ("NLMH", "nlm_h", float),
             ("NLMHAbsolute", "nlm_h_absolute", float),
+            ("NLMBackend", "nlm_backend", str),
+            ("SpotDetect", "spot_detect", str),
+            ("MatchedSigma", "matched_sigma", float),
+            ("MatchedThreshold", "matched_threshold", float),
+            ("MatchedFPBudget", "matched_fp_budget", int),
+            ("MatchedMinPx", "matched_min_px", int),
+            ("MatchedCalibFrames", "matched_calib_frames", int),
             ("NLMPatchSize", "nlm_patch_size", int),
             ("NLMPatchDistance", "nlm_patch_distance", int),
             ("MedFiltRadius", "mean_filt_radius", int),
