@@ -1488,9 +1488,25 @@ PARAMS: list[ParamSpec] = [
     # ═══════════════════════════════════════════════════════════════════════
 
     ParamSpec(
-        name="BlanketSubtraction", type=ParamType.INT, category="Image processing",
+        name="BlanketSubtraction", type=ParamType.FLOAT, category="Image processing",
         description="Flat DC offset subtracted from all pixels.",
-        applies_to=frozenset({NF}), default=0, units="counts", stages=S_IMG,
+        applies_to=frozenset({NF}), default=0.0, units="counts", stages=S_IMG,
+        notes="FLOAT, not int: sigma_MAD of an unsummed NLM-denoised residual is "
+              "~0.27 counts, so an integer-only key put a floor at 3.7 sigma. "
+              "Prefer BlanketSigma -- an absolute count is not transferable "
+              "between reductions.",
+    ),
+    ParamSpec(
+        name="BlanketSigma", type=ParamType.FLOAT, category="Image processing",
+        description="Threshold in units of sigma_MAD of the post-denoise "
+                    "residual, measured per layer. Overrides BlanketSubtraction.",
+        applies_to=frozenset({NF}), default=0.0, units="sigma", stages=S_IMG,
+        notes="The transferable form of the threshold. A 14-configuration "
+              "catalog on Ce-5%Y found every good reduction at ~3.5 sigma "
+              "however it got there, while the same 'BlanketSubtraction 2' was "
+              "7.5 sigma unsummed (75 distinct orientations recovered) and 3.6 "
+              "sigma on a 3-frame sum (412). Set 3.5 and the noise level is "
+              "measured for you; 0 disables and falls back to the absolute key.",
     ),
     # --- NLM denoise of the median-corrected residual -----------------------
     # Implemented in midas_nf_preprocess.process_images.pipeline; these were

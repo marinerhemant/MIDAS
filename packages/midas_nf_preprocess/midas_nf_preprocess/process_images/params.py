@@ -63,7 +63,19 @@ class ProcessParams:
     sum_frames: int = 1
 
     # Processing
-    blanket_subtraction: int = 0
+    # float, not int: the arithmetic in process_frame was always float, so the
+    # int was purely a parsing restriction -- and a consequential one. It put a
+    # FLOOR on sensitivity, because on unsummed NLM-denoised data sigma_MAD is
+    # ~0.27 counts, so the smallest legal threshold (1) is already 3.7 sigma and
+    # nothing below that could be expressed at all.
+    blanket_subtraction: float = 0.0
+    # When > 0, the threshold is BlanketSigma * sigma_MAD of the POST-denoise
+    # residual, measured per layer, and blanket_subtraction is ignored. This is
+    # the transferable knob: the reduction catalog on Ce-5%Y found every good
+    # configuration sitting at ~3.5 sigma regardless of how it got there, while
+    # the same absolute "BlanketSubtraction 2" meant 7.5 sigma unsummed (75
+    # orientations recovered) and 3.6 sigma summed (412).
+    blanket_sigma: float = 0.0
     # --- NLM denoise of the MEDIAN-CORRECTED residual (before thresholding) ---
     # Distinct from the pipeline's `Denoise` stage, which denoises RAW frames
     # before median subtraction. Denoising the residual instead lets the
@@ -161,7 +173,8 @@ class ProcessParams:
             ("ReducedFileName", "reduced_filename", str),
             ("extOrig", "ext_orig", str),
             ("extReduced", "ext_reduced", str),
-            ("BlanketSubtraction", "blanket_subtraction", int),
+            ("BlanketSubtraction", "blanket_subtraction", float),
+            ("BlanketSigma", "blanket_sigma", float),
             ("NLMDenoise", "nlm_denoise", int),
             ("NLMH", "nlm_h", float),
             ("NLMHAbsolute", "nlm_h_absolute", float),

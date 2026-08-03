@@ -15,12 +15,14 @@ pattern; ``process_all`` is the recommended Python API.
 
 from __future__ import annotations
 
+import logging
 import warnings
 
 from dataclasses import dataclass
 from pathlib import Path
 from typing import Iterable, Optional, Sequence, Union
 
+import numpy as np
 import torch
 
 from ..device import resolve_device, resolve_dtype, apply_cpu_threads
@@ -30,6 +32,8 @@ from .median import spatial_median, temporal_median
 from .params import ProcessParams
 from .peaks import PeakFindOutputs, find_peaks
 from .spots_io import SpotsBitMask
+
+LOGGER = logging.getLogger(__name__)
 
 
 @dataclass
@@ -193,6 +197,7 @@ class ProcessImagesPipeline:
         # Pre-build LoG kernels once. Mirrors the C's two-scale pass:
         # primary (LoGMaskRadius, sigma) + fallback (4, 1.0).
         self._log_kernels = self._build_log_kernels()
+        self._log_kernel_cache: dict[tuple, list[torch.Tensor]] = {}
 
     # ------------------------------------------------------------------
     # Setup
@@ -213,6 +218,30 @@ class ProcessImagesPipeline:
             4, 1.0, integer=False, device=self.device, dtype=self.dtype
         )
         return [primary, fallback]
+
+    def _log_kernels_for(self, device: "torch.device") -> list[torch.Tensor]:
+        """LoG kernels on ``device``, cached per device.
+
+        The kernels are built once on ``self.device``, but the FRAME does not
+        always stay there: ``process_layer`` relocates the stack to the host for
+        the scikit-image NLM backend -- which is the DEFAULT backend. That left
+        a CPU image meeting CUDA kernels in ``F.conv2d``, so `NLMDenoise 1` plus
+        `DoLoGFilter 1` under `--device cuda` raised
+
+            Input type (torch.FloatTensor) and weight type (torch.cuda.FloatTensor)
+            should be the same
+
+        for every frame. Following the image is the fix; caching keeps it off
+        the per-frame path.
+        """
+        if device == self.device:
+            return self._log_kernels
+        key = (device.type, device.index)
+        cached = self._log_kernel_cache.get(key)
+        if cached is None:
+            cached = [k.to(device) for k in self._log_kernels]
+            self._log_kernel_cache[key] = cached
+        return cached
 
     # ------------------------------------------------------------------
     # Phase 1: load
@@ -355,7 +384,11 @@ class ProcessImagesPipeline:
                 filtered=resid, peaks=peaks,
             )
 
-        sub = resid - float(self.params.blanket_subtraction)
+        # _resolve_threshold sets this per layer; fall back to the absolute for
+        # callers that invoke process_frame directly (tests, replay tooling).
+        sub = resid - float(getattr(self, "_blanket", None)
+                            if getattr(self, "_blanket", None) is not None
+                            else self.params.blanket_subtraction)
         img = torch.clamp(sub, min=0)
 
         # (b) spatial median
@@ -366,7 +399,7 @@ class ProcessImagesPipeline:
         if self.params.do_log_filter and self._log_kernels:
             peaks = find_peaks(
                 img,
-                self._log_kernels,
+                self._log_kernels_for(img.device),
                 soft_temperature=self.params.soft_temperature,
             )
         else:
@@ -394,6 +427,177 @@ class ProcessImagesPipeline:
         )
 
     # ------------------------------------------------------------------
+    # omega-persistence diagnostic (drives the SumFrames recommendation)
+    # ------------------------------------------------------------------
+
+    #: Excess-over-control below which a lag is not counted as persistent.
+    #: Calibrated on ONE dataset -- Ce-5%Y at 0.1 deg/frame, spots ~0.30 deg
+    #: FWHM, where SumFrames 3 was measured best out of 14 configurations. It
+    #: recovers 3 there (excess +0.30, +0.15, then +0.02) when the threshold is
+    #: 7.5 sigma. It is NOT threshold-independent: at 3.5 sigma the same data
+    #: gives 5, because the spot's omega tails clear a lower threshold and the
+    #: excess then decays smoothly (+0.42, +0.25, +0.16, +0.11) with no cliff
+    #: for the floor to find. Hence the log advises a direction, not a value.
+    PERSIST_FLOOR = 0.10
+
+    def _accumulate_persistence(self, masks: list) -> None:
+        """Fold a run of CONSECUTIVE frame masks into the lag-overlap counters.
+
+        Runs inside the normal frame loop on masks that already exist, so the
+        diagnostic costs a few bitwise ANDs rather than a second reduction pass.
+
+        The control pairs each frame with a NON-adjacent one from the same run.
+        Without it the statistic is uninterpretable: NF frames share lit regions
+        simply because the same rings are lit throughout, which put the control
+        at 0.17-0.22 on real data -- far above the ~0.008 that random overlap of
+        0.8%-lit frames would give.
+        """
+        n = len(masks)
+        if n < 3:
+            return
+        for k in range(1, min(self._persist_max_lag, n - 1) + 1):
+            inter = base = ctrl = 0
+            for i in range(n - k):
+                a = masks[i]
+                inter += int((a & masks[i + k]).sum())
+                base += int(a.sum())
+                j = (i + k + n // 2) % n            # deterministic, non-adjacent
+                ctrl += int((a & masks[j]).sum())
+            self._persist_inter[k] = self._persist_inter.get(k, 0) + inter
+            self._persist_base[k] = self._persist_base.get(k, 0) + base
+            self._persist_ctrl[k] = self._persist_ctrl.get(k, 0) + ctrl
+
+    def _log_sumframes_recommendation(self, layer_nr: int) -> None:
+        """Log how many frames a spot spans, and what SumFrames that implies."""
+        if not self._persist_base:
+            return
+        already = max(1, int(getattr(self.params, "sum_frames", 1) or 1))
+        excess = {}
+        for k in sorted(self._persist_base):
+            b = self._persist_base[k]
+            if b:
+                excess[k] = (self._persist_inter[k] - self._persist_ctrl[k]) / b
+        if not excess:
+            return
+        n_persist = 0
+        for k in sorted(excess):
+            if excess[k] > self.PERSIST_FLOOR and k == n_persist + 1:
+                n_persist = k
+        span = n_persist + 1
+        detail = ", ".join(f"lag {k}: {v:+.3f}" for k, v in sorted(excess.items()))
+        step = abs(float(getattr(self.params, "omega_step", 0.0)) or 0.0)
+        deg = f" = {span * step:.2f} deg at {step:g} deg/frame" if step else ""
+        LOGGER.info("layer %d: omega persistence (excess over control) %s",
+                    layer_nr, detail)
+        if span <= 1:
+            LOGGER.info("layer %d: spots span 1 frame; SumFrames 1 is correct "
+                        "(summing would add noise and no signal)", layer_nr)
+        elif span > already:
+            LOGGER.info(
+                "layer %d: spots span ~%d frames%s but SumFrames is %d -- "
+                "consider summing (2 is the safe step; frames beyond the spot "
+                "width add only noise, and summing itself raises sigma ~1.5x "
+                "for 3). NOTE the span is measured AT THE CURRENT THRESHOLD and "
+                "grows as the threshold drops -- the same data gave 3 frames at "
+                "7.5 sigma and 5 at 3.5 sigma -- so treat it as a direction, "
+                "not a setting.",
+                layer_nr, span, deg, already)
+        else:
+            LOGGER.info("layer %d: spots span ~%d frames%s; SumFrames %d is "
+                        "matched", layer_nr, span, deg, already)
+
+    # ------------------------------------------------------------------
+    # Threshold calibration
+    # ------------------------------------------------------------------
+
+    def measure_threshold_sigma(self, stack, median, n_probe: int = 3) -> float:
+        """sigma_MAD of the residual AS THRESHOLDED, i.e. after any denoising.
+
+        Measured on ``n_probe`` frames spread across the layer and reduced by the
+        median, because a single frame is not representative: the same scan gave
+        0.268 and 0.282 on two frames.
+
+        This is deliberately the POST-denoise number. NLM changes the noise by an
+        order of magnitude (2.97 -> 0.27 counts here), so a sigma measured before
+        it would describe a distribution that never meets the threshold.
+        """
+        idx = np.linspace(0, stack.shape[0] - 1, max(1, n_probe)).astype(int)
+        sigmas = []
+        for j in idx:
+            resid = stack[int(j)] - median
+            if int(getattr(self.params, "nlm_denoise", 0)) == 1:
+                resid = _nlm_denoise_residual(
+                    resid,
+                    h_factor=float(getattr(self.params, "nlm_h", 1.0)),
+                    patch_size=int(getattr(self.params, "nlm_patch_size", 5)),
+                    patch_distance=int(getattr(self.params, "nlm_patch_distance", 6)),
+                    h_absolute=float(getattr(self.params, "nlm_h_absolute", 0.0)) or None,
+                    backend=str(getattr(self.params, "nlm_backend", "auto")),
+                )
+            r = resid.detach().to(torch.float32)
+            sigmas.append(float(1.4826 * torch.median(torch.abs(r - torch.median(r)))))
+        return float(np.median(sigmas))
+
+    def _resolve_threshold(self, stack, median, layer_nr: int) -> float:
+        """Effective blanket threshold for this layer, in counts.
+
+        Absolute thresholds are not transferable between reductions: the same
+        ``BlanketSubtraction 2`` is 7.5 sigma on an unsummed denoised residual and
+        3.6 sigma on a 3-frame sum, and those two recovered 75 and 412 distinct
+        orientations from identical data. Nothing in a parameter file reveals
+        that, so the sigma is always measured and always logged.
+        """
+        want_sigma = float(getattr(self.params, "blanket_sigma", 0.0) or 0.0)
+        absolute = float(self.params.blanket_subtraction)
+        try:
+            sigma = self.measure_threshold_sigma(stack, median)
+        except Exception as exc:                     # never fail a run over a log line
+            warnings.warn(f"threshold sigma not measured ({exc}); using "
+                          f"BlanketSubtraction {absolute}", RuntimeWarning, stacklevel=2)
+            return absolute
+
+        # 1e-6, not 0: a residual of exact zeros can still produce a denormal
+        # sigma, and dividing by it turns a disabled threshold into "0.0 sigma".
+        if not np.isfinite(sigma) or sigma < 1e-6:
+            # Photon-starved data: the residual is almost all exact zeros, so a
+            # relative threshold is meaningless. _nlm_denoise_residual warns
+            # about the same condition for h.
+            if want_sigma > 0:
+                warnings.warn(
+                    f"BlanketSigma {want_sigma} ignored on layer {layer_nr}: "
+                    f"sigma_MAD is {sigma}, i.e. the residual is essentially all "
+                    f"zeros. Falling back to BlanketSubtraction {absolute}.",
+                    RuntimeWarning, stacklevel=2)
+            return absolute
+
+        if want_sigma > 0:
+            thr = want_sigma * sigma
+            LOGGER.info("layer %d: BlanketSigma %.2f x sigma_MAD %.4f -> "
+                        "BlanketSubtraction %.4f", layer_nr, want_sigma, sigma, thr)
+            return thr
+
+        if absolute <= 0:
+            # Thresholding deliberately disabled; there is nothing to calibrate.
+            LOGGER.info("layer %d: BlanketSubtraction 0 (no threshold), "
+                        "sigma_MAD %.4f", layer_nr, sigma)
+            return absolute
+
+        in_sigma = absolute / sigma
+        LOGGER.info("layer %d: BlanketSubtraction %.4g = %.2f sigma "
+                    "(sigma_MAD %.4f, post-denoise)", layer_nr, absolute, in_sigma, sigma)
+        if not (2.0 <= in_sigma <= 5.0):
+            direction = ("far above the noise -- most real spots will be "
+                         "discarded" if in_sigma > 5.0 else
+                         "close to the noise -- expect many false detections")
+            warnings.warn(
+                f"BlanketSubtraction {absolute:g} is {in_sigma:.1f} sigma of this "
+                f"layer's post-denoise residual (sigma_MAD {sigma:.4f}), {direction}. "
+                f"Reductions on comparable NF data work best near 3.5 sigma; set "
+                f"`BlanketSigma 3.5` to get {3.5 * sigma:.3f} automatically.",
+                RuntimeWarning, stacklevel=2)
+        return absolute
+
+    # ------------------------------------------------------------------
     # Phase 3 + accumulate: per-layer
     # ------------------------------------------------------------------
 
@@ -418,6 +622,9 @@ class ProcessImagesPipeline:
         else:
             stack = self.from_stack(stack)
         median = self.temporal_median(stack)
+        self._blanket = self._resolve_threshold(stack, median, layer_nr)
+        self._persist_inter, self._persist_base, self._persist_ctrl = {}, {}, {}
+        self._persist_max_lag = 6
 
         if bitmask is None:
             bitmask = SpotsBitMask(
@@ -470,9 +677,16 @@ class ProcessImagesPipeline:
             n_workers = min(n_workers, 4 if nlm_on else 8)
 
         if n_workers <= 1:
+            buf = []
             for j in range(n_files):
                 result = self.process_frame(j, stack[j], median, layer_nr)
                 bitmask.set_frame_from_labels(layer_idx, j, result.labels)
+                buf.append(result.labels > 0)
+                if len(buf) >= 32:
+                    self._accumulate_persistence(buf)
+                    buf = []
+            self._accumulate_persistence(buf)
+            self._log_sumframes_recommendation(layer_nr)
             return bitmask
 
         from concurrent.futures import ThreadPoolExecutor
@@ -487,6 +701,9 @@ class ProcessImagesPipeline:
                 ))
                 for j, result in zip(range(lo, hi), results):
                     bitmask.set_frame_from_labels(layer_idx, j, result.labels)
+                # ex.map preserves order, so a batch IS a consecutive run.
+                self._accumulate_persistence([r.labels > 0 for r in results])
+        self._log_sumframes_recommendation(layer_nr)
         return bitmask
 
     # ------------------------------------------------------------------
