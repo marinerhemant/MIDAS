@@ -4,7 +4,7 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "midas-nf-pipeline"
-version = "0.3.0"
+version = "0.4.0"
 description = "Pure-Python NF-HEDM pipeline orchestrator (single + multi-resolution, multi-layer) — drop-in replacement for nf_MIDAS.py / nf_MIDAS_Multiple_Resolutions.py"
 readme = "README.md"
 license = "BSD-3-Clause"
@@ -32,8 +32,13 @@ dependencies = [
     # stages._build_hkls for structure-factor aware reflections.
     "midas-hkls>=0.6.0",
     "midas-stress>=0.6.0",
-    "midas-nf-preprocess>=0.1.0",
-    "midas-nf-fitorientation>=0.3.0",
+    # >=0.4.0: torch NLM backend + matched-filter spot detection, and the
+    # beam_calib shadow-phase -> sample-position fix.
+    "midas-nf-preprocess>=0.4.0",
+    # >=0.6.0: the refine (not just the search) is structure-factor weighted.
+    # Below this, a weighted ConfidenceMetric writes UNWEIGHTED confidence to
+    # the .mic -- silently wrong numbers, not an error.
+    "midas-nf-fitorientation>=0.6.0",
 ]
 
 [project.optional-dependencies]
