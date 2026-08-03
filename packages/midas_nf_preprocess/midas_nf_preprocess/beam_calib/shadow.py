@@ -113,16 +113,43 @@ class ShadowFit:
         return (n_pixels_y - 1) - self.axis_col
 
     def position_candidates_um(self, px_um: float) -> List[Tuple[float, float]]:
-        """The particle's sample-frame ``(x, y)``, up to an unresolved sign.
+        """The particle's sample-frame ``(x, y)``.
 
-        Converting the phase into a sample-frame position needs BOTH the omega
-        sign convention and the detector's horizontal handedness.  Where either
-        is open, both candidates are returned -- mask both rather than guess
-        (handbook §10e).
+        MEASURED CONVENTION (20-ID, aero stage, omega = -theta)::
+
+            angle = -phase - 90 deg      i.e.   (x, y) = (-a sin phi, -a cos phi)
+
+        Pinned on TWO independent campaigns whose reconstructions located the
+        same off-axis Au cube:
+
+        ==============  ===========  ==========  ===========
+        campaign          phase phi   recon ang   theta+phi
+        ==============  ===========  ==========  ===========
+        nfdev_jul26        +34.18      -123.8      -89.62
+        NF_Au_cube_0802    +35.05      -125.1      -90.05
+        ==============  ===========  ==========  ===========
+
+        ``theta + phi = -90 deg`` to 0.43 deg across both; ``theta - phi`` is
+        NOT constant (-158.0 vs -160.2), so the relation is unambiguously the
+        sum.  Predicted positions match the reconstructions to 0.05 deg and
+        0.38 deg respectively.
+
+        THIS REPLACES the old ``(a cos phi, a sin phi)`` form, which was wrong
+        in FORM, not merely in sign -- masking it and its antipode found nothing
+        on BOTH campaigns (every off-axis voxel exactly 0.0000), because the
+        true position is 90 deg away from either.  The antipode is still
+        returned second as a fallback.
+
+        **Do not build a point mask from this on a new beamline.**  The relation
+        above encodes an omega sign and a detector handedness; on unfamiliar
+        geometry use a full annulus at :attr:`amplitude_px` (the RADIUS is
+        convention-free) and let the reconstruction pick the angle.  Two
+        campaigns agreeing is evidence, not proof.
         """
         a = self.amplitude_px * px_um
-        x = a * np.cos(np.radians(self.phase_deg))
-        y = a * np.sin(np.radians(self.phase_deg))
+        phi = np.radians(self.phase_deg)
+        x = -a * np.sin(phi)
+        y = -a * np.cos(phi)
         return [(float(x), float(y)), (float(-x), float(-y))]
 
 
