@@ -32,6 +32,12 @@ from .symops import SymOp
 __version__ = "0.6.0"
 
 __all__ = [
+    "CLASSICAL_ELECTRON_RADIUS_A",
+    "extinction_length_um",
+    "kinematical_path_limit_um",
+    "primary_extinction_factor",
+    "refraction_shift_deg",
+    "susceptibility_chi0",
     "Atom",
     "B_to_U",
     "Crystal",
@@ -52,8 +58,20 @@ __all__ = [
 ]
 
 
+from .extinction import (
+    CLASSICAL_ELECTRON_RADIUS_A,
+    extinction_length_um,
+    kinematical_path_limit_um,
+    primary_extinction_factor,
+    refraction_shift_deg,
+)
+
+
 def __getattr__(name: str):  # pragma: no cover - lazy attribute access
     """Lazily import torch / CIF helpers so the base install stays light."""
+    if name == "susceptibility_chi0":
+        from .extinction import susceptibility_chi0
+        return susceptibility_chi0
     if name in {"structure_factors", "structure_factor"}:
         from .structure_factor import structure_factors
         return structure_factors
