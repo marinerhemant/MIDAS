@@ -837,3 +837,61 @@ exactly the failure this addresses, and PF shares this peak search. Unvalidated 
 
 **Natural extension, not implemented:** the same SNR could be applied *post-merge* to the
 recorded spot list, which is where §6b/§6c located the degradation on this dataset.
+
+---
+
+## 7. Refiner cross-implementation parity (2026-08-03)
+
+Six implementations of the same refinement, all started from the **same** C
+`IndexerOMP` seeds, the same matched spots and the same geometry, so the refiner
+is the only variable. Harness: `utils/ff_refiner/refiner_crosscheck.py` +
+`xcheck_analyze.py`. Of 189 seeds, **20 are refined by every implementation**
+(the rest never indexed); comparison is over those 20.
+
+| pair | Δposition µm (med / p95 / max) | misorientation ° (med / max) | Δa Å (max) |
+|---|---|---|---|
+| py-f64-cpu vs py-f64-gpu | 0.002 / 0.009 / **0.012** | 0.0000 / 0.0000 | 9.5e-07 |
+| py-f32-cpu vs py-f32-gpu | 0.346 / 0.965 / 1.875 | 0.0007 / 0.0018 | 4.5e-04 |
+| py-f64 vs py-f32 | 0.221 / 3.41 / **8.5** | 0.0138 / 0.0573 | 2.3e-04 |
+| c-orig vs c-omp | 5.26 / 24.6 / **60.5** | 0.0310 / 0.1441 | 9.3e-04 |
+| C vs python (any) | 12–14 / 73–79 / **85** | 0.017–0.031 / 0.088–0.155 | 2.7e-03 |
+
+**Orientation and lattice agree everywhere** — worst-case misorientation 0.155°
+across all six, worst Δa 2.7e-3 Å (6.6e-4 relative). No implementation is
+finding a different grain.
+
+**Position is the loose axis, and the C implementations are not the reference.**
+`c-orig` and `c-omp` disagree with *each other* by up to 60 µm — nearly as much
+as either disagrees with python (85 µm). Python is not the outlier; the DiffPos
+minimum is genuinely shallow (§2d), so all of this sits inside the ~100 µm
+position uncertainty the method actually has. Do not treat any one
+implementation's position as ground truth at the tens-of-µm level.
+
+**fp64 CPU vs GPU is effectively exact** (12 nm). fp32 costs ~0.2–0.4 µm
+typical and up to 8.5 µm worst case — acceptable given the ~100 µm envelope,
+and only with the `pos_scale` auto-equilibration in place (§3c); without it
+fp32 did not refine position at all.
+
+Runtime, 189 seeds / 16 threads: c-omp 0.1 s, c-orig 0.3 s, py-f32-cpu 4.4 s,
+py-f32-gpu 5.3 s, py-f64-cpu 8.9 s, py-f64-gpu 15.7 s. The C path is 30–150×
+faster here; GPU does not pay off at this problem size.
+
+**Row-count discrepancy:** the C implementations emit 188 rows where python
+emits 189. Unexplained, and flagged by the harness rather than silently
+truncated. Small, but it means the two families do not agree on how many seeds
+exist — worth resolving before anyone diffs these files row-by-row.
+
+Two traps this exercise walked into, both now guarded by tests:
+
+- **`OrientPosFit.bin` is 27 doubles per row**, with orientation at cols 1:10,
+  position 11:14, lattice 15:21. Assuming a compact packing makes the row count
+  non-integer and the file reads as "no output" — which looked like all six
+  implementations failing. Use `io_binary.read_orient_pos_fit`, don't reimplement.
+- **Orientation must be compared with symmetry.** A raw matrix angle reported a
+  median of exactly 120.000° for every pair — the cubic symmetry angle. Use
+  `midas_stress.orientation.misorientation_om_batch` (returns **radians**).
+
+CI-runnable half: `packages/midas_fit_grain/tests/test_backend_parity.py`
+(fp32/fp64 × cpu/gpu on the synthetic fixture, skips absent backends). Note it
+must drive `refine_block`, not `refine_grain` — the per-grain entry point keeps
+a fixed `pos_scale` by design and rejects `"auto"`.
