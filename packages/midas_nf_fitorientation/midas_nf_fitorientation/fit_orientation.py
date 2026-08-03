@@ -162,6 +162,38 @@ class TopNTracker:
         return np.asarray(self.entries, dtype=np.float64)
 
 
+def should_use_triton(
+    refine: str,
+    *,
+    device_type: str,
+    has_triton: bool,
+    obs_packed: bool,
+    want_weight: bool,
+) -> bool:
+    """Whether the fused Triton hard-fraction kernel may be used.
+
+    Pulled out of :func:`fit_orientation_run` so the gate is testable on its
+    own -- the weighting rule below is a correctness invariant, and asserting
+    it by grepping this file's source passed even when the gate was broken.
+
+    ``want_weight`` short-circuits everything: :func:`fused_hard_frac` takes no
+    per-reflection weight, so running it under a weighted ConfidenceMetric
+    would refine and report an UNWEIGHTED confidence while the paramfile asks
+    for a weighted one. Correctness beats the fused path; if the kernel ever
+    grows a weight argument, drop the short-circuit, not this function.
+    """
+    if want_weight:
+        return False
+    if refine == "nm-triton":
+        return True
+    return (
+        refine == "nm-batched"
+        and device_type == "cuda"
+        and has_triton
+        and obs_packed
+    )
+
+
 # ---------------------------------------------------------------------------
 #  Main driver
 # ---------------------------------------------------------------------------
@@ -420,18 +452,14 @@ def fit_orientation_run(
                 _omr = model._omega_ranges.to(torch.float32).reshape(-1, 2)
                 _box = model._box_sizes.to(torch.float32).reshape(-1, 4)
                 ome_box_tbl = torch.cat([_omr, _box], dim=1).contiguous()
-            # The fused Triton kernel has no per-reflection weight input, so a
-            # weighted metric MUST NOT use it -- it would refine and report an
-            # UNWEIGHTED confidence while the paramfile says otherwise, which is
-            # exactly the silent-wrong-answer this metric already produced once.
-            _want_weight = refl_w is not None
-            use_triton = (not _want_weight) and (
-                refine == "nm-triton" or (
-                    refine == "nm-batched"
-                    and torch_device.type == "cuda"
-                    and HAS_TRITON
-                    and obs.packed is not None
-                )
+            # See should_use_triton: a weighted metric must never take the
+            # fused path, which has no per-reflection weight input.
+            use_triton = should_use_triton(
+                refine,
+                device_type=torch_device.type,
+                has_triton=HAS_TRITON,
+                obs_packed=obs.packed is not None,
+                want_weight=refl_w is not None,
             )
             if use_triton:
                 if obs.packed is None:

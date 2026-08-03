@@ -239,19 +239,45 @@ def test_polish_hard_frac_accepts_a_reflection_weight():
     assert sig.parameters["refl_weight"].default is None   # opt-in
 
 
-def test_triton_path_is_gated_off_when_a_weight_is_requested():
+@pytest.mark.parametrize(
+    "refine,device_type,has_triton,obs_packed",
+    [
+        ("nm-triton",  "cuda", True,  True),   # the unconditional-on path
+        ("nm-triton",  "cpu",  False, False),  # nm-triton ignores the rest
+        ("nm-batched", "cuda", True,  True),   # the conditional path
+    ],
+)
+def test_triton_is_gated_off_whenever_a_weight_is_requested(
+    refine, device_type, has_triton, obs_packed
+):
     """fused_hard_frac has no weight input, so it must not run when weighting.
 
     Otherwise the refine silently computes an UNWEIGHTED fraction while the
     paramfile asks for a weighted one.
+
+    Exercises the gate itself. The previous version of this test asserted on
+    the literal source text of fit_orientation.py, which passed whether or not
+    the gate worked and broke on a rename -- and needed a cwd-dependent path
+    fallback to find the file at all.
     """
-    import pathlib
-    src = pathlib.Path(
-        "packages/midas_nf_fitorientation/midas_nf_fitorientation/"
-        "fit_orientation.py")
-    if not src.exists():   # running from inside the package dir
-        src = pathlib.Path(__file__).resolve().parents[1] / \
-            "midas_nf_fitorientation" / "fit_orientation.py"
-    text = src.read_text()
-    assert "_want_weight = refl_w is not None" in text
-    assert "use_triton = (not _want_weight)" in text
+    from midas_nf_fitorientation.fit_orientation import should_use_triton
+
+    kw = dict(device_type=device_type, has_triton=has_triton,
+              obs_packed=obs_packed)
+    # unweighted: each of these configurations WOULD use the fused kernel
+    assert should_use_triton(refine, want_weight=False, **kw) is True
+    # weighted: the same configuration must not
+    assert should_use_triton(refine, want_weight=True, **kw) is False
+
+
+def test_triton_gate_still_honours_the_non_weight_conditions():
+    """The weight short-circuit must not paper over the original conditions."""
+    from midas_nf_fitorientation.fit_orientation import should_use_triton
+
+    base = dict(want_weight=False, device_type="cuda", has_triton=True,
+                obs_packed=True)
+    assert should_use_triton("nm-batched", **{**base, "device_type": "cpu"}) is False
+    assert should_use_triton("nm-batched", **{**base, "has_triton": False}) is False
+    assert should_use_triton("nm-batched", **{**base, "obs_packed": False}) is False
+    assert should_use_triton("nm-serial", **base) is False
+    assert should_use_triton("lbfgs+nm", **base) is False
