@@ -4,7 +4,7 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "midas-suite"
-version = "0.5.0"
+version = "0.5.1"
 description = "Meta-package: installs the MIDAS Python pipeline (FF/NF/PF HEDM, calibration, peakfit, integration, transforms, ODF, stress)."
 readme = "README.md"
 license = { text = "BSD-3-Clause" }
@@ -30,28 +30,28 @@ classifiers = [
 dependencies = [
     # leaves
     "midas-distortion>=0.2.0",     # shared radial-distortion model + RhoD-units guard
-    "midas-stress>=0.7.0",
-    "midas-params>=0.3.4",
-    "midas-hkls>=0.4.1",
-    "midas-diffract>=0.1.2",
-    "midas-peakfit>=0.4.6",
-    "midas-integrate>=0.4.0",
-    "midas-integrate-v2>=0.1.0",
+    "midas-stress>=0.8.1",
+    "midas-params>=0.4.0",
+    "midas-hkls>=0.6.0",
+    "midas-diffract>=0.7.0",
+    "midas-peakfit>=0.5.0",
+    "midas-integrate>=0.4.2",
+    "midas-integrate-v2>=0.3.1",
     "midas-calibrate>=0.2.7",
     "midas-calibrate-v2>=0.5.3",
-    "midas-index>=0.5.2",
+    "midas-index>=0.7.5",
     "midas-transforms>=0.8.2",
-    "midas-propagate>=0.1.0",      # uncertainty propagation; load-bearing for process-grains v0.4.x Stage 7 σ
-    "midas-uq>=0.1.0",             # refiner-anchored bootstrap UQ (per-grain trust_score_anchored)
+    "midas-propagate>=0.1.1",      # uncertainty propagation; load-bearing for process-grains v0.4.x Stage 7 σ
+    "midas-uq>=0.1.1",             # refiner-anchored bootstrap UQ (per-grain trust_score_anchored)
     "midas-process-grains>=0.6.1", # >=0.6.1: GrainRadius read from the right SpotID space (was the sample-wide mean, 5.5x low)
     "midas-fit-grain>=0.6.0",
-    "midas-nf-preprocess>=0.1.1",
-    "midas-nf-fitorientation>=0.3.1",
-    "midas-zipper>=0.1.0",         # raw → .MIDAS.zip ingest (pip-portable, no C/source-tree dep)
+    "midas-nf-preprocess>=0.4.0",
+    "midas-nf-fitorientation>=0.6.0",
+    "midas-zipper>=0.1.5",         # raw → .MIDAS.zip ingest (pip-portable, no C/source-tree dep)
     # parsl + pipeline orchestrators
     "midas-parsl-configs>=0.1.0",
     "midas-ff-pipeline>=0.4.1",    # DEPRECATED → use midas-pipeline --scan-mode ff; removed in suite 1.0
-    "midas-nf-pipeline>=0.1.0",
+    "midas-nf-pipeline>=0.4.0",
     "midas-pipeline>=0.7.0",       # >=0.7.0: FF refinement precision default (RefinementConfig.dtype) + unrefined-position guard
 ]
 
@@ -62,49 +62,49 @@ dependencies = [
 # the corresponding pipeline orchestrator at the top — that package's
 # own dep list pulls everything it needs underneath.
 ff = [
-    "midas-stress>=0.7.0",
-    "midas-params>=0.3.4",
+    "midas-stress>=0.8.1",
+    "midas-params>=0.4.0",
     "midas-ff-pipeline>=0.4.1",    # DEPRECATED → use midas-pipeline --scan-mode ff; removed in suite 1.0
     "midas-calibrate>=0.2.7",          # >=0.2.7: paramstest parser strips ';' terminator
-    "midas-integrate>=0.4.0",
-    "midas-joint-ff-calibrate>=0.1.5", # grain-tx + full-joint refine (IUCrJ 2026)
+    "midas-integrate>=0.4.2",
+    "midas-joint-ff-calibrate>=0.1.6", # grain-tx + full-joint refine (IUCrJ 2026)
 ]
 nf = [
-    "midas-stress>=0.7.0",
-    "midas-params>=0.3.4",
-    "midas-nf-pipeline>=0.1.0",
+    "midas-stress>=0.8.1",
+    "midas-params>=0.4.0",
+    "midas-nf-pipeline>=0.4.0",
 ]
 pf = [
     # Point-focus / scanning HEDM (pf-HEDM). midas-pipeline runs in
     # --scan-mode pf and pulls index + fit-grain + transforms +
     # stress transitively; we list the orchestrator at the top.
-    "midas-stress>=0.7.0",
-    "midas-params>=0.3.4",
+    "midas-stress>=0.8.1",
+    "midas-params>=0.4.0",
     "midas-pipeline[fast]>=0.7.0",         # >=0.7.0: as above; fast = numba>=0.65
     "midas-calibrate>=0.2.7",
-    "midas-integrate>=0.4.0",
+    "midas-integrate>=0.4.2",
 ]
 calib = [
-    "midas-hkls>=0.4.1",
-    "midas-integrate>=0.4.0",
-    "midas-peakfit>=0.4.6",
+    "midas-hkls>=0.6.0",
+    "midas-integrate>=0.4.2",
+    "midas-peakfit>=0.5.0",
     "midas-calibrate>=0.2.7",
 ]
 calib-v2 = [
     # Torch-native differentiable calibration / integration stack.
     # Companion to ``calib`` (v1, C-backed) — both can be installed
     # side-by-side, the v2 spec ↔ v1 paramstest adapter handles handoff.
-    "midas-hkls>=0.4.1",
+    "midas-hkls>=0.6.0",
     "midas-calibrate-v2>=0.5.3",
-    "midas-integrate-v2>=0.1.0",
-    "midas-peakfit>=0.4.6",
+    "midas-integrate-v2>=0.3.1",
+    "midas-peakfit>=0.5.0",
 ]
 # --- Specialized-modality bundles (each published 0.1.0, 2026-07) ---
 # One research capability each, layered on top of core. Kept OUT of core
 # `dependencies` (they carry heavy/optional stacks); opt in per workflow.
-pdf = ["midas-pdf>=0.1.0"]              # total scattering / PDF G(r)
-defect = ["midas-defect>=0.1.0"]        # diffuse-scattering defect metrology
-dfxm = ["midas-dfxm>=0.1.0"]            # dark-field X-ray microscopy fwd/inverse
+pdf = ["midas-pdf>=0.1.1"]              # total scattering / PDF G(r)
+defect = ["midas-defect>=0.1.1"]        # diffuse-scattering defect metrology
+dfxm = ["midas-dfxm>=0.2.0"]            # dark-field X-ray microscopy fwd/inverse
 xaf = ["midas-xaf>=0.1.0"]              # cross-axis faceted HEDM
 ultrafast = ["midas-2d>=0.1.0"]         # midas-2d: 2D / ultrafast forward model
 grain-odf = ["midas-grain-odf>=0.1.0"]  # per-grain ODF
@@ -117,10 +117,10 @@ pink = ["midas-pink>=0.1.0"]            # pink-beam HEDM
 plots = ["midas-plotting>=0.3.0"]
 # Everything: core (base install) + every optional modality above.
 all = [
-    "midas-joint-ff-calibrate>=0.1.5",
-    "midas-pdf>=0.1.0",
-    "midas-defect>=0.1.0",
-    "midas-dfxm>=0.1.0",
+    "midas-joint-ff-calibrate>=0.1.6",
+    "midas-pdf>=0.1.1",
+    "midas-defect>=0.1.1",
+    "midas-dfxm>=0.2.0",
     "midas-xaf>=0.1.0",
     "midas-2d>=0.1.0",
     "midas-grain-odf>=0.1.0",
