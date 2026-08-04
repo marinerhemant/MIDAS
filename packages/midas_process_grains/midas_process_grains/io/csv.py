@@ -43,7 +43,7 @@ import numpy as np
 # ---------------------------------------------------------------------------
 
 # Legacy ProcessGrains.c Grains.csv schema (47 data columns + 1 ID).
-# Every downstream MIDAS tool (and Indrajeet's notebook) consumes this format.
+# Every downstream MIDAS tool (and datasetA's notebook) consumes this format.
 # Columns 0..46:
 #   0          GrainID
 #   1..9       O11..O33        (orientation matrix, row-major)

@@ -195,7 +195,7 @@ def pick_compare_strategy(
         if on_cpu:
             # CPU / MPS: probe host RAM. Without this the dense path runs
             # unbounded and crashes the box on real-scale PF data (e.g.
-            # Wenxi-class 91x91 voxels × 217k seeds where N×T×M can hit
+            # datasetC-class 91x91 voxels × 217k seeds where N×T×M can hit
             # 100s of GB per compare_spots call).
             try:
                 import psutil
@@ -822,7 +822,7 @@ def _compare_spots_m_iter(
     Why this matters on CPU at PF scale:
 
     The dense path allocates a ``(N, T, M)`` bool stack where ``M`` is the
-    global max bin occupancy. On Wenxi-class data, ``M = 177`` but the
+    global max bin occupancy. On datasetC-class data, ``M = 177`` but the
     median bin holds 0.2 spots and the 99th-percentile holds 1 — so the
     dense gather wastes ~99% of its budget processing empty cells.
 
@@ -834,7 +834,7 @@ def _compare_spots_m_iter(
          only (N, T) tensors, runs the margin checks, and updates a
          running ``best_delta_ome``/``best_matched_id`` per (N, T) cell.
 
-    Memory per iter: ``O(N·T)`` instead of ``O(N·T·M)`` — for Wenxi that's
+    Memory per iter: ``O(N·T)`` instead of ``O(N·T·M)`` — for datasetC that's
     ~14 MB vs ~4.8 GB. Total ops are the same as dense, but each iter
     fits in cache and the allocator never sees a (N, T, M) blob.
 
@@ -1060,7 +1060,7 @@ def _compare_spots_m_iter(
 # ---------------------------------------------------------------------------
 #
 # Why a separate path: the dense torch implementation allocates an
-# ``(N, T, M)`` bool stack and does bulk ops over it. At PF scale (Wenxi:
+# ``(N, T, M)`` bool stack and does bulk ops over it. At PF scale (datasetC:
 # N≈54000 per seed, T≈500, M_global=177) this is 4.8 billion cells per
 # compare call, even though ~99% of (N, T) cells point to empty bins
 # (median bin occupancy = 0.2). torch can't naturally skip empty cells —
@@ -1078,7 +1078,7 @@ def _compare_spots_m_iter(
 # ---------------------------------------------------------------------------
 #
 # Per-call ascontiguousarray on obs columns used to cost ~10-15 ms/call on
-# Wenxi-class data. The obs tensor doesn't change for a given Indexer run
+# datasetC-class data. The obs tensor doesn't change for a given Indexer run
 # — cache the numpy column views.
 #
 # Subtle correctness issue: ``data_ptr()`` is the address of the tensor's

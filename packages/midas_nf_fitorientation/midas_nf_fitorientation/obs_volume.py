@@ -350,13 +350,13 @@ class ObsVolume:
             basis-dependent extinctions, so ``hkls.csv`` can list reflections
             with |F|^2 = 0 that no crystal can produce. They land in the
             denominator and cap the achievable fraction -- 126 of 736 for dhcp
-            beta-Ce, a ceiling of 0.829, while fcc (nothing extra extinct) can
+            a DHCP polytype, a ceiling of 0.829, while fcc (nothing extra extinct) can
             still reach 1.000.
 
             NOT Lorentz-weighted, deliberately: for per-frame threshold
             detection the rotation-method Lorentz factor cancels
             (Domega = w_rlp*L so I_peak = I_int/Domega is L-free). Verified on
-            nf_Ce_ht525_s2: spot peak height is flat in eta where 1/|sin eta|
+            nf_sampleB_htB_s2: spot peak height is flat in eta where 1/|sin eta|
             predicts 4.3x, and spot density along a ring rises as sin eta, the
             complementary half of the same model.
 

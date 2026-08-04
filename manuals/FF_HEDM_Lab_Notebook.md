@@ -1,4 +1,4 @@
-# FF-HEDM Lab Notebook — `pokharel_jul26` / `Au3_cubes_ff_000008`
+# FF-HEDM Lab Notebook — `bt_1id_jul26` / `Au3_cubes_ff_000008`
 
 **Companion to `FF_HEDM_Handbook.md`.** The handbook says what to do; this records what
 was actually found, how it was measured, and what turned out to be wrong. They are kept
@@ -476,7 +476,7 @@ within ~1 % of the C reference's own residual (188.7 / 181.0 µm).
 ### 4d. RESOLVED — the "91 % unindexed" figure is noise; the reconstruction is complete
 
 *Measured 2026-07-31. Scripts:
-`~/Desktop/analysis/pokharel_jul26_calib/spot_{noise_audit,noise_null,snr_all,frames_fixed}.py`
+`~/Desktop/analysis/bt_1id_jul26_calib/spot_{noise_audit,noise_null,snr_all,frames_fixed}.py`
 + `halo_check.py` + `residual44_check.py`; outputs under `<run>/spot_noise_audit/`.*
 
 **Bottom line: `Au3_cubes_ff_000008` is a COMPLETE reconstruction.** The specimen is one
@@ -608,7 +608,7 @@ Handbook §11 is the one-paragraph summary of this table.
 
 | What | How it was established | Handbook § |
 |---|---|---|
-| ω sign (`aero` is CW, negate every ω) | all **7297** `pokharel_jul26` FF par rows; rule shared with NF | 2 |
+| ω sign (`aero` is CW, negate every ω) | all **7297** `bt_1id_jul26` FF par rows; rule shared with NF | 2 |
 | Throwaway first frame | ~1.5 % baseline offset measured in three separate files | 3e |
 | `SkipFrame` is a **consumer-side** skip | read the three `midas_peakfit` call sites; the zipper's first-file exemption and back-dated `start_omega` are correct as shipped; changing it produces the double-skip (1439-frame) failure. Locked by `midas_zipper/tests/test_skipframe.py` | 3 |
 | `DetZ` − `Lsd` = **+181 mm** | assignment-free ring-ratio measurement | 5b |

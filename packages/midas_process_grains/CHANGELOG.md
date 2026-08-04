@@ -20,7 +20,7 @@ adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
   `Grains.csv` `DiffPos`/`DiffOme` are now decomposable from this table.
   `mode="legacy"` (no FitBest) emits empty residuals by design.
   Validated: 7 new tests (`tests/test_residual_decomposition.py`), full suite
-  290 pass; production run on emerson recon_3580_003 (1.66 M-row spot table)
+  290 pass; production run on datasetB recon_3580_003 (1.66 M-row spot table)
   — diagnosed the −850 ppm reference-lattice offset that recalibration then
   removed (mean hydrostatic +850.5 → +7.6 µε).
 
@@ -37,7 +37,7 @@ adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
   was reading OPF col 25 directly into `rep_radius_naive` and propagating
   the 1.0 placeholder through Stage 6 sizing → Stage 8.5/8.5b/8.5c
   (volume-budget drop / force-keep distinct / orphan reclaim).
-  Effect on a fresh c-omp recon (Indrajeet Ni nb_ni_recon): median R = 1.0
+  Effect on a fresh c-omp recon (datasetA Ni nb_ni_recon): median R = 1.0
   µm, ΣV = 1.03 × 10⁵ µm³, packing = 0.01 %, zero drops engaged.
   **Fix:** mirror pipeline.py's recovery — detect when OPF col 25 is all
   1.0, then recompute `rep_radius_naive[i]` as the mean of per-spot
@@ -45,7 +45,7 @@ adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
   candidate's matched-spot set from `Results/ProcessKey.bin`. Vsample
   correction is then applied to the recomputed values. ~3 s overhead on
   56 k candidates.
-  Validated on Indrajeet Ni c-omp recon — now matches legacy_fresh: median
+  Validated on datasetA Ni c-omp recon — now matches legacy_fresh: median
   R = 27.71 µm, ΣV = 4.25 × 10⁹ µm³, packing 425 %, 17,723 drops engaged.
 
 ## [0.4.5] – 2026-05-26
@@ -58,7 +58,7 @@ adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
   default (`min_unique_spots=5` only) admitted grains that contributed 5
   unique spots while ALSO re-claiming 30+ redundant ones, ballooning per-spot
   multiplicity (median 3, mean 4) and ΣV (packing 328 %). The new fractional
-  guard restores intensity-conservation: on Indrajeet Ni, packing
+  guard restores intensity-conservation: on datasetA Ni, packing
   328 % → 127 %, kept count 16,846 → ~5,600, orphan rate 1.4 % → 32 %,
   median multiplicity 3 → 2. Set to 0.0 to restore v0.4.4 behaviour.
 
@@ -97,7 +97,7 @@ adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
   preferentially. σ_Z=NaN now falls back to `median(measured σ_Z)`
   instead of 5 µm, avoiding artificial boost of un-measured grains.
 
-- **Indrajeet result moves from 4,452 → ~5,745 → ~6,000+ kept grains**
+- **datasetA result moves from 4,452 → ~5,745 → ~6,000+ kept grains**
   depending on which paths (1.0° → 0.5° force-keep + orphan reclaim)
   are enabled. Trust-tier survival jumps across the board.
 
@@ -219,7 +219,7 @@ This release closes the algorithmic correctness loop for the v4 pipeline.
 
 - 236/236 unit tests pass (up from 195 in 0.3.x).
 - Per-grain σ validated on four datasets (Ti-7Al σ_Z=13 µm,
-  Indrajeet 54 µm, xzhang 37 µm, peakfit 35 µm median); xzhang and
+  datasetA 54 µm, datasetF 37 µm, peakfit 35 µm median); datasetF and
   peakfit agree to within 2 µm on the SAME sample.
 - Cross-pipeline reproducibility on heavily-twinned LMO: identified
   fundamental multi-modal-refiner limit (0.01% match at
@@ -229,7 +229,7 @@ This release closes the algorithmic correctness loop for the v4 pipeline.
   multi-phase, user-supplied orthorhombic) all recover ≥95% of
   planted pairs.
 - Twin geometry against theoretical Σ-misori: ≤ 0.14° median |Δ|
-  across Indrajeet, xzhang, peakfit; 0% > 2° off.
+  across datasetA, datasetF, peakfit; 0% > 2° off.
 
 ## [0.2.1] – 2026-04 (previous)
 

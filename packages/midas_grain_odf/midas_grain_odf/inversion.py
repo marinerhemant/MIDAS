@@ -60,7 +60,7 @@ class GrainFitResult:
     orientation_spread_fit: Optional[torch.Tensor] = None
     # E4a: True when the corresponding spread DOF finished PINNED at its
     # physical ceiling — the fit is INVALID for that parameter (observed
-    # on emerson at default LRs: both DOFs pin and the loss worsens).
+    # on datasetB at default LRs: both DOFs pin and the loss worsens).
     strain_spread_pinned: bool = False
     orientation_spread_pinned: bool = False
 
@@ -119,7 +119,7 @@ def _maybe_autoscale_spread_lr(opt, param, target_step):
     When the caller passed lr="auto", the optimizer starts with the lr=0
     sentinel; after the FIRST backward we set lr = target_step / |grad|
     so the first step moves the parameter by ~target_step (2% of its
-    physical ceiling). The emerson failure: synthetic-tuned default LRs
+    physical ceiling). The datasetB failure: synthetic-tuned default LRs
     were orders of magnitude off on real data — both spread DOFs shot to
     their ceilings and the correlation loss WORSENED (−25.4 → −4.0).
     """
@@ -567,7 +567,7 @@ def fit_grain_odf(
         # variance normalisation collapses σ_ε to 0 in this regime. lr is
         # ~c_s² (≈1e5) larger effective gradient than pixel mode, so the
         # default 5e-4 is roughly right for typical FF Cu geometry — but
-        # ONLY for synthetic-like data: on emerson both spread DOFs shot
+        # ONLY for synthetic-like data: on datasetB both spread DOFs shot
         # to their ceilings at the defaults (E4). Pass
         # lr_strain_spread="auto" to scale from the first gradient so the
         # first step moves σ_ε by ~2% of its ceiling.

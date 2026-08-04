@@ -355,7 +355,7 @@ def generate_ideal_spots_friedel_mixed(
 
     # CPU fast path: per-(sp_on_ring, n_pos) scalar inner loop. Was the
     # dominant remaining torch hot spot after Phase 2 (~3.8 s/call on
-    # Wenxi). The torch fallback below stays for GPU and for compatibility
+    # datasetC). The torch fallback below stays for GPU and for compatibility
     # if numba isn't importable.
     if device.type != "cuda":
         try:

@@ -6,7 +6,7 @@ Misori-only clustering can fail on highly twinned datasets in two ways:
 
 1. **Giant component**: chains of near-FZ-boundary candidates merge a
    physically heterogeneous population into one component (observed on
-   xzhang LMO: ~250k alive candidates collapse into a single 247k-member
+   datasetF LMO: ~250k alive candidates collapse into a single 247k-member
    "grain").
 2. **Refiner asymmetry**: indexer-refiner pipelines do not produce
    symmetric matched-spot lists across same-grain candidates (cand A
@@ -31,16 +31,16 @@ The pair-level discriminator is symmetric by construction
 
 Empirical K_AGREE
 -----------------
-On Ni FCC (Indrajeet, 57k alives) ``K_AGREE=4`` produces 12,576
+On Ni FCC (datasetA, 57k alives) ``K_AGREE=4`` produces 12,576
 components vs misori-v4's 11,591 — same-grain agreement is recovered
 with no giant component (max-size 117 vs misori's 1k+). On highly-
-twinned LMO (xzhang, 250k alives) the same ``K_AGREE=4`` removes the
+twinned LMO (datasetF, 250k alives) the same ``K_AGREE=4`` removes the
 247k-member giant component without otherwise changing topology.
 
 Performance
 -----------
 Vectorised 3D KDTree snap + ``defaultdict(int)`` pair-loop. ~5 s
-on Indrajeet (57k alives, 478k valid preds) and ~60 s on xzhang
+on datasetA (57k alives, 478k valid preds) and ~60 s on datasetF
 (250k alives, 4.3M valid preds), no Python-loop in the hot path.
 """
 
@@ -147,7 +147,7 @@ def compute_forward_predict_attributions(
         spot-attribution joins).
     y_tol_um : float, optional
         Snap radius in (Y, Z, ω·scale) µm. Defaults to 800 µm (≈4 px at
-        200 µm pixel) which matches the historical xzhang/Indrajeet
+        200 µm pixel) which matches the historical datasetF/datasetA
         diagnostics.
     omega_tol_deg : float, optional
         Effective ω matching tolerance — multiplied into the KDTree
@@ -577,7 +577,7 @@ def split_components_by_om_spread(
     merge edges, so two candidates ``A`` and ``C`` that have NO shared
     snaps can end up in the same component via a chain ``A↔B↔C``. The
     auto-K rule prevents the catastrophic chain-fusion (the 247k giant
-    component on xzhang) but not the moderate one — on Indrajeet,
+    component on datasetF) but not the moderate one — on datasetA,
     ~20 % of multi-candidate components span >5° of symmetry-aware
     misorientation.
 

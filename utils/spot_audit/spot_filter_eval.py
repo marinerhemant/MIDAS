@@ -9,7 +9,7 @@ grain-explaining) spots they cost.
 from pathlib import Path
 import numpy as np, pandas as pd
 
-m = pd.read_csv(Path("/gdata/dm/1ID/2026/pokharel_jul26/analysis/"
+m = pd.read_csv(Path("/gdata/dm/1ID/2026/bt_1id_jul26/analysis/"
                      "au3_cubes_ff_000008/spot_noise_audit/spot_audit_snr.csv"))
 snr = m["own_snr"].to_numpy(); ring = m["RingNumber"].to_numpy().astype(int)
 idx = m["indexed"].to_numpy().astype(bool)

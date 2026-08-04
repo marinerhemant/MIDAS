@@ -951,7 +951,7 @@ class ProcessGrains:
         print(summarize_residuals(resid_diag), flush=True)
 
         # E7: reference-lattice (d0) ADVISORY. When the per-ring dR/R
-        # flag trips (>200 ppm — the emerson signature: −850 ppm absorbed
+        # flag trips (>200 ppm — the datasetB signature: −850 ppm absorbed
         # as +850 µε fake hydrostatic strain), recover the free-standing
         # cubic a0 and print the exact LatticeConstant line to paste.
         # Advisory ONLY, never auto-applied: the free-standing (zero

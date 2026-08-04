@@ -214,7 +214,7 @@ def emit_nf_hkls_csv(
     # 6b. Optional |F|^2 per reflection, from the ATOM BASIS.
     #
     # Space-group extinction rules alone cannot see basis-dependent
-    # extinctions. For dhcp beta-Ce (P6_3/mmc with Ce at 2a + 2c) 126 of 736
+    # extinctions. For a DHCP polytype (P6_3/mmc, both sites 2a + 2c) 126 of 736
     # reflections have |F|^2 = 0 and can never produce a spot -- yet they sat in
     # the NF confidence denominator, capping FracOverlap at 0.829 while fcc
     # (one atom at the origin, nothing extra extinct) could reach 1.000.
@@ -222,7 +222,7 @@ def emit_nf_hkls_csv(
     # |F|^2, NOT intensity: Lorentz-polarisation diverges at low 2-theta and
     # would swamp the normalisation, and the rotation-method Lorentz factor
     # CANCELS for per-frame peak detection anyway (Domega = w_rlp * L, so
-    # I_peak = I_int/Domega is L-free; measured on nf_Ce_ht525_s2 -- spot peak
+    # I_peak = I_int/Domega is L-free; measured on nf_sampleB_htB_s2 -- spot peak
     # is flat in eta while 1/|sin eta| predicts 4.3x, and spot density on a ring
     # rises as sin eta as the same model requires).
     f2 = None

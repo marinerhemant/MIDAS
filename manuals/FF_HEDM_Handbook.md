@@ -51,10 +51,10 @@ preferred fast path** — "deprecated C source" does not mean "don't use the c-o
    *trailing* ω-wrap frame, not a leading throwaway, and `StartNr` is the first image
    (`NF_HEDM_Handbook.md` §3g).
 3. **`DetZ` is not `Lsd` (§4b).** The detector-stage readback carries an arbitrary zero
-   offset. On `pokharel_jul26` the offset was **+181 mm** on a 1666 mm distance — 11 %.
+   offset. On `bt_1id_jul26` the offset was **+181 mm** on a 1666 mm distance — 11 %.
    Only *differences* between `DetZ` readbacks are trustworthy. Lsd comes from the
    calibrant, always.
-4. **The filename is not the energy (§4a).** `pokharel_jul26` wrote
+4. **The filename is not the energy (§4a).** `bt_1id_jul26` wrote
    `CeO2_..._96keV_000001.ge5.h5` for a scan taken at **95.0 keV**. Three instrument
    records agreed on 95 and the string was stale. Read `instrument/HEM/Energy` from the
    HDF5, cross-check `fastsweep_Emon.txt` field 6 and the spec log's `Energy (keV):`.
@@ -158,7 +158,7 @@ awk '{print $9}' <METADATA_DIR>/<beamtime>_FF.par | sort | uniq -c
 | `aero` / `Aero` | stage turns **clockwise**; **ω_MIDAS = −ω_logged** | negate `OmegaStart` **and** `OmegaStep` |
 | anything else | not established by this session | **stop and ask** |
 
-Verified on `pokharel_jul26`: all **7297** FF rows read `aero`.
+Verified on `bt_1id_jul26`: all **7297** FF rows read `aero`.
 
 Worked example — `Au3_cubes_ff_000008`. The par logs 1441 frames running
 ω = −180.25 → +179.75 at step **+0.25**. Negating, and dropping the throwaway frame 0
@@ -188,18 +188,18 @@ same beamline, and the bundled NF reference paramfile carries `OmegaStart 180` /
 The image tree holds **only frames**. Distances, ω, energy and exposure live in a separate
 acquisition-log folder.
 
-| what | where (`pokharel_jul26`) |
+| what | where (`bt_1id_jul26`) |
 |---|---|
-| frames | `/gdata/dm/1ID/2026/pokharel_jul26/data/ge5/` |
-| acquisition logs | `~s1iduser/new_data/pokharel_jul26/` |
-| per-frame FF par | `<logs>/pokharel_jul26_FF.par` |
+| frames | `/gdata/dm/1ID/2026/bt_1id_jul26/data/ge5/` |
+| acquisition logs | `~s1iduser/new_data/bt_1id_jul26/` |
+| per-frame FF par | `<logs>/bt_1id_jul26_FF.par` |
 | energy monitor | `<logs>/fastsweep_Emon.txt` |
 | spec log | `<logs>/FullLog.log` |
-| macros | `<logs>/macros_PK/` |
+| macros | `<logs>/macros_<user>/` |
 
 ### 3b. Par-file field map (1-ID FF)
 
-Positional, whitespace-separated. Verified against `pokharel_jul26_FF.par`:
+Positional, whitespace-separated. Verified against `bt_1id_jul26_FF.par`:
 
 | field | meaning |
 |---|---|
@@ -290,7 +290,7 @@ skip it.**
 > rule to NF drops a real frame and pushes the ω reversal inside the first distance. See
 > `NF_HEDM_Handbook.md` §3g.
 
-Measured signature on `pokharel_jul26` GE5: frame 0 sits ~1.5 % low in baseline versus
+Measured signature on `bt_1id_jul26` GE5: frame 0 sits ~1.5 % low in baseline versus
 every later frame.
 
 | file | frame 0 mean | later frames |
@@ -332,12 +332,12 @@ no consumer to do it for you, so drop it yourself: `data[1:].mean(axis=0)`, dark
 
 ### 4a. Energy
 
-**The filename is not the energy.** On `pokharel_jul26` the CeO₂ files are named
+**The filename is not the energy.** On `bt_1id_jul26` the CeO₂ files are named
 `..._96keV_...` and the scan was taken at **95.0 keV**.
 
 Sources, in order of trust:
 
-| source | `pokharel_jul26` | verdict |
+| source | `bt_1id_jul26` | verdict |
 |---|---|---|
 | `instrument/HEM/Energy` (HDF5) | 95.0 | **use this** |
 | `fastsweep_Emon.txt` field 6 (`E_HEM`) | 95.0000 | corroborates |
@@ -346,7 +346,7 @@ Sources, in order of trust:
 | `instrument/HRM/Energy` | 78.39 | **different monochromator — ignore** |
 | the filename | "96keV" | **stale string** |
 
-`fastsweep_Emon.txt` columns come from `macros_PK/E_mon.mac`: field 2 is a foil µt, field
+`fastsweep_Emon.txt` columns come from `macros_<user>/E_mon.mac`: field 2 is a foil µt, field
 6 is `epics_get("1id:userTran3.A")` = the HEM energy readback. **Rows where the last two
 columns are `0.000 0.000` had the foil out** (air) and carry no absorption information.
 
@@ -357,7 +357,7 @@ columns are `0.000 0.000` had the foil out** (air) and carry no absorption infor
 `instrument/DMS/DetZ` is the detector translation-stage position. Its zero is not the
 sample rotation centre.
 
-**Measured on `pokharel_jul26`:** `DetZ` = 1485.00 mm, calibrated `Lsd` = **1666.2 mm** —
+**Measured on `bt_1id_jul26`:** `DetZ` = 1485.00 mm, calibrated `Lsd` = **1666.2 mm** —
 an offset of **+181 mm (11 %)**. Using `DetZ` as `Lsd` would have been a catastrophic and
 entirely plausible-looking error.
 
@@ -377,7 +377,7 @@ Reduce remotely, plot to PNG, copy back, and *look*. Before any fit you should b
 state: how many rings are visible, whether they are complete in azimuth, where the
 beamstop is, and whether the detector is saturated.
 
-`pokharel_jul26` CeO₂ reference: rings sharp and complete in azimuth, innermost at
+`bt_1id_jul26` CeO₂ reference: rings sharp and complete in azimuth, innermost at
 R ≈ 348 px about the fitted BC, beamstop shadow at ≈ (1019, 1076), signal ~54 counts above
 a ~2019-count dark after frame-0 removal.
 
@@ -390,7 +390,7 @@ which ring the innermost observed one is, independently of any geometry:
 R_i / R_1  =  tan(2θ_i) / tan(2θ_1)
 ```
 
-Measure radii from a radial profile about the seeded BC, and compare. On `pokharel_jul26`
+Measure radii from a radial profile about the seeded BC, and compare. On `bt_1id_jul26`
 the first 10 CeO₂ rings matched to ≤ 0.0015 in ratio, confirming innermost = (111), and
 those 10 rings independently gave `Lsd` = 1667.2 ± 0.3 mm — which is what exposed
 `DetZ` (1485 mm) as a stage offset rather than a distance.
@@ -457,7 +457,7 @@ degeneracy is broken only weakly, by the `tan(2θ)` nonlinearity, and **refined 
 harmonics (`iso_R2/R4/R6`) can absorb most of what is left** — so a distortion-free control
 is needed for the comparison to mean anything.
 
-Observed on `pokharel_jul26` (same image, λ the only change): 95 keV → 19.4 µε,
+Observed on `bt_1id_jul26` (same image, λ the only change): 95 keV → 19.4 µε,
 96 keV → 72.7 µε. Suggestive, and it agreed with the beamline's own confirmation of
 95 keV — but treat it as corroboration, not proof.
 
@@ -465,7 +465,7 @@ Observed on `pokharel_jul26` (same image, λ the only change): 95 keV → 19.4 �
 
 A calibrant measured at two rotations 180° apart gives an independent repeat of the same
 detector geometry; the spread between the two fits is an honest uncertainty. On
-`pokharel_jul26`:
+`bt_1id_jul26`:
 
 | | samRy −90 | samRy +90 | diff |
 |---|---|---|---|
@@ -717,7 +717,7 @@ Before interpreting it:
 
 ---
 
-## 9. Reference numbers — `pokharel_jul26`, GE5 (ADEPT), 95.0 keV
+## 9. Reference numbers — `bt_1id_jul26`, GE5 (ADEPT), 95.0 keV
 
 Established in this tree on 2026-07-30. Detector 2048², 200 µm, monolithic.
 

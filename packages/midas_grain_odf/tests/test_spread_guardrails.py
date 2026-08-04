@@ -1,7 +1,7 @@
 """E4 tests: spread-DOF guardrails.
 
 (a) a spread parameter finishing PINNED at its physical ceiling flags the
-    fit invalid (warning + result flag) — the emerson failure mode where
+    fit invalid (warning + result flag) — the datasetB failure mode where
     both DOFs shot to their clamps at default LRs and the loss worsened;
 (b) ``lr_*_spread="auto"`` scales the SGD step from the first gradient;
 (c) robust particle-spread statistics (weighted median + weight-within)

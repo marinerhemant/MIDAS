@@ -12,7 +12,7 @@ nScans = 105
 # ~ sgnum = 225
 # ~ nCPUs = 64
 # ~ folder = '/data/tomo1/sharma_internal_hedm/hpldrd_dec21/L2/'
-folder = '/data/tomo1/kenesei_nov20_midas/buscek/all_layers/'
+folder = '/data/tomo1/bt_1id_nov20_midas/buscek/all_layers/'
 # ~ maxAng = 0.5
 
 

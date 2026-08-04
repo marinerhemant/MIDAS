@@ -1,6 +1,6 @@
 """Signed per-spot residual decomposition (obs vs fitted-grain prediction).
 
-Motivation (emerson_oct25 / recon_3580 investigation, 2026-07): the legacy
+Motivation (datasetB_oct25 / recon_3580 investigation, 2026-07): the legacy
 ``Grains.csv`` columns report only the *euclidean* position error (DiffPos)
 and the *absolute* omega error (DiffOme). Those magnitudes hide the structure
 of the misfit. Decomposing every matched spot's residual into **signed**

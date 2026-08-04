@@ -153,7 +153,7 @@ zipper, fit_grain green; C smoke test green.*
 
 **Investigation R — P2-10: completeness 0.5× root-cause** (may end as doc, not code)
 - Trace nExpected in `midas_index`/find_grains (Friedel factor-2 suspect) on
-  the Wenxi/SOH data. Outcome: fix convention OR document "new 0.2 ≈ legacy
+  the datasetC/SOH data. Outcome: fix convention OR document "new 0.2 ≈ legacy
   0.4" + rescale param guidance.
 
 ## Phase 4 — Docs + deployment reconcile
@@ -177,7 +177,7 @@ zipper, fit_grain green; C smoke test green.*
 - **No local GPU**: CUDA paths tested CPU+MPS locally; CUDA validation on
   alleppey/sentosa or deferred to you.
 - **Real-data final gates** (SOH strain sanity post-P2-7, Ni run continuity,
-  emerson header re-read) run remotely; I stage, you approve execution.
+  datasetB header re-read) run remotely; I stage, you approve execution.
 - The live Ni run on toro uses the Phase-0 code — Phase 0 commits exactly what
   it runs (plus header completion); no behaviour change to that run.
 

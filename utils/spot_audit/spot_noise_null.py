@@ -22,7 +22,7 @@ from pathlib import Path
 import numpy as np
 import pandas as pd
 
-R = Path("/gdata/dm/1ID/2026/pokharel_jul26/analysis/au3_cubes_ff_000008")
+R = Path("/gdata/dm/1ID/2026/bt_1id_jul26/analysis/au3_cubes_ff_000008")
 AUD = R / "spot_noise_audit/spot_audit.csv"
 RNG = np.random.default_rng(12345)
 ETA_TOL = OME_TOL = 1.0

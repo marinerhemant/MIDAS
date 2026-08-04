@@ -1,8 +1,8 @@
 """Phase 2 anchor — DFXM field forward on a realistic bent / sub-grain crystal.
 
 Item #5 of the post-Phase-5 roadmap: the "does this look like real DFXM" gut check,
-and the drop-in shape for András Borbély's field (swap the planted field for
-generators.field_from_deformation_gradient(F_borbely, positions)).
+and the drop-in shape for an external collaborator field (swap the planted field for
+generators.field_from_deformation_gradient(F_external, positions)).
 
 Produces:
   (a) a mosaicity map — local lattice rotation from the center-of-mass of a (chi,phi)

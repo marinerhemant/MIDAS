@@ -1,7 +1,7 @@
 import numpy as np
 import os
 
-folder = '/home/beams/S1IDUSER/mnt/s1c/smaddali_jun21/ge5/'
+folder = '/home/beams/S1IDUSER/mnt/s1c/bt_1id_jun21/ge5/'
 fileStem = 'test_sam1'
 startNr = 108
 nrFiles = 96

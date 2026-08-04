@@ -47,13 +47,13 @@ Three traps, all of which produced wrong numbers before being fixed
    row -- **branch on it**; it is the whole point of the flag.
 
    If the beam profile carries a narrow bright spike (there is one near
-   col 3600 in ``xzhang_jul26``), ``band_frac * ref.max()`` selects only the
+   col 3600 in ``bt_20id_jul26b``), ``band_frac * ref.max()`` selects only the
    spike and everything reports as clipped.  Crop to the flat core first.
 
 Scope limit -- this method needs a COMPACT absorber
 ---------------------------------------------------
 The fit assumes the shadow centre traces a rigid sinusoid.  That holds for a
-particle and fails for an extended irregular specimen: on ``s6061_NF`` the
+particle and fails for an extended irregular specimen: on ``nf_sampleD`` the
 shadow width swung 56 -> 886 px with omega and :func:`fit_axis` refused at
 every setting.  When it refuses, ybc is not measurable from that scan --
 inherit it, mark it inherited, and let the refinement move it.  Do not lower

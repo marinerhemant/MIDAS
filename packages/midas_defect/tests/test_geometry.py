@@ -93,7 +93,7 @@ def test_paramstest_parses_full_p0_p14_distortion():
     `midas_transforms.apply_tilt_distortion` consumes all 15 coefficients, so
     dropping the higher-order terms shifts predicted spot positions with no
     error raised. Values below are the 1-ID GE5 95 keV CeO2 calibration
-    (pokharel_jul26), which populates the full set.
+    (bt_1id_jul26), which populates the full set.
     """
     body = """
         Lsd 1666219.585298
@@ -406,11 +406,17 @@ def test_paramstest_loader_against_demk_calibration():
     Requires the file to be locally available, or we skip. We don't put the
     path itself in the assertion to keep the test machine-agnostic; instead
     we compare fields against the hard-coded `demk_default_geometry()`.
+
+    The beamtime path is read from ``MIDAS_DEMK_CALIB`` rather than hardcoded:
+    a real ``/gdata`` beamtime directory is named after the PI, and this repo is
+    public. Resolve it from the private ``BEAMTIME_KEY.md``. Unset, the test
+    falls back to the checked-in fixture.
     """
     candidates = [
-        Path(
-            "/gdata/dm/1ID/2025/stubbins_sep25/analysis/ff/calib/"
-            "parameters_final.txt"
+        *(
+            [Path(os.environ["MIDAS_DEMK_CALIB"])]
+            if os.environ.get("MIDAS_DEMK_CALIB")
+            else []
         ),
         Path(__file__).parent / "fixtures" / "parameters_final.txt",
     ]

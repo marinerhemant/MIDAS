@@ -23,7 +23,7 @@ def _grid(n=10, half=8.0):
 
 
 # --------------------------------------------------------------------------
-# external-field adapters (Borbély drop-in)
+# external-field adapters (external-field drop-in)
 # --------------------------------------------------------------------------
 @pytest.mark.unit
 def test_field_from_F_roundtrips():

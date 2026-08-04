@@ -5,7 +5,7 @@ calc_bragg_geometry`` then applies wedge, ring-radius lookup, OmegaRange +
 BoxSize gating, COM displacement, and assembles the 14-column TheorSpots
 layout). The torch version is preserved for GPU; this numba version runs
 when the indexer is on CPU and replaces the per-seed simulate call that
-profiled at ~5 s/call on Wenxi-class PF data — biggest hot spot after
+profiled at ~5 s/call on datasetC-class PF data — biggest hot spot after
 ``compare_spots`` + ``avg_ia`` were ported in earlier phases.
 
 Per-(n, m, ±) cell loop:

@@ -2,7 +2,7 @@
 
 Phase 0 of ``implementation_plan.md``.
 
-Until András Borbély's realistic field (orientation map + deformation-gradient
+Until a collaborator's realistic field (orientation map + deformation-gradient
 field) arrives, the whole forward/inverse chain is exercised on **synthetic**
 fields planted here: a perfect crystal, a smooth orientation gradient (uniform
 lattice curvature), a uniform elastic strain, and an isotropic screw dislocation
@@ -10,7 +10,7 @@ lattice curvature), a uniform elastic strain, and an isotropic screw dislocation
 dislocation forward lands in Phase 4 (``dislocation.py``); the isotropic screw
 here is only a Phase-0/1 test fixture.
 
-``load_borbely_field`` is a documented stub: its parser is finalised once the
+``load_external_field`` is a documented stub: its parser is finalised once the
 delivery format is known.
 
 Units: positions in micrometers; lattice in Angstrom; Burgers vector in Angstrom.
@@ -163,8 +163,8 @@ def with_screw_dislocation(
     )
 
 
-def load_borbely_field(path: str) -> DeformationField:  # pragma: no cover - stub
-    """Loader stub for András Borbély's realistic field.
+def load_external_field(path: str) -> DeformationField:  # pragma: no cover - stub
+    """Loader stub for an external collaborator's realistic field.
 
     The delivery format (orientation map + deformation-gradient field) is not yet
     known; this parser is finalised on receipt. It must return a
@@ -172,6 +172,6 @@ def load_borbely_field(path: str) -> DeformationField:  # pragma: no cover - stu
     reference orientation, and reference lattice parameters.
     """
     raise NotImplementedError(
-        "Borbély field format not yet defined; finalise parser on data receipt "
+        "External field format not yet defined; finalise parser on data receipt "
         "(implementation_plan.md Phase 0 / Section 6.6)."
     )

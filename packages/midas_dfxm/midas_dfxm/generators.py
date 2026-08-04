@@ -9,7 +9,7 @@ Two jobs:
    inverse in the regime where manual g.b typing breaks down.
 2. **External-field adapters** — build a :class:`DeformationField` directly from an
    externally-supplied deformation-gradient or strain array. This is the drop-in for
-   András Borbély's realistic ``F(r)`` (and for any DDD / CP-FEM / MD field): the whole
+   a collaborator's realistic ``F(r)`` (and for any DDD / CP-FEM / MD field): the whole
    forward+inverse stack consumes it with zero rework, so the synthetic work is the
    validation harness, not a throwaway.
 
@@ -24,7 +24,7 @@ from .field import DeformationField
 
 
 # --------------------------------------------------------------------------
-# external-field adapters (the Borbély / DDD / CP-FEM / MD drop-in)
+# external-field adapters (the external / DDD / CP-FEM / MD drop-in)
 # --------------------------------------------------------------------------
 def field_from_deformation_gradient(
     F: torch.Tensor,
@@ -37,7 +37,7 @@ def field_from_deformation_gradient(
     """Build a :class:`DeformationField` from a per-voxel deformation gradient ``F``.
 
     ``F`` is ``(N, 3, 3)``, ``positions`` ``(N, 3)`` (micrometers). The canonical
-    adapter for an external field (Borbély, DDD, CP-FEM, MD). Differentiable.
+    adapter for an external field (collaborator, DDD, CP-FEM, MD). Differentiable.
     """
     device, dtype = F.device, F.dtype
     if orientation is None:

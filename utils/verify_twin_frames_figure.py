@@ -19,7 +19,7 @@ matplotlib.use("Agg")
 import matplotlib.pyplot as plt
 import numpy as np
 
-R = Path("/gdata/dm/1ID/2026/pokharel_jul26/analysis/au3_cubes_ff_000008")
+R = Path("/gdata/dm/1ID/2026/bt_1id_jul26/analysis/au3_cubes_ff_000008")
 ZIP = R / "results/LayerNr_1/Au3_cubes_ff_000008.MIDAS.zip"
 CDIR = R / "c_ff_fmt"
 OUT = R / "twin_vs_frames.png"

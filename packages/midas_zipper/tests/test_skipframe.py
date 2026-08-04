@@ -18,7 +18,7 @@ into a double skip. The contract is:
 
 Making the zipper physically drop the frame as well skips it twice: a 1441-frame
 sweep becomes 1439 processed frames instead of 1440. Verified on
-pokharel_jul26/Au3_cubes_ff_000008.
+bt_1id_jul26/Au3_cubes_ff_000008.
 
 `skip_frames` IS applied at zip time to files 2+ (`i > 0`), because a multi-file
 sweep repeats its leading frames at each file boundary — that is concatenation

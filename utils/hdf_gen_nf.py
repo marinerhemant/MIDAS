@@ -17,7 +17,7 @@ samz = 0.1 # Microns
 px = 1.48 # Microns
 folder = '/mnt/chromeos/removable/UNTITLED/NFData/Au_nf/'
 fstem = 'Au_nf'
-outfn = '/home/hemantmariner/Desktop/preuss_nov18/Dataset.hdf'
+outfn = '/home/hemantmariner/Desktop/bt_1id_nov18/Dataset.hdf'
 LoGMaskRadius = 15 # Pixels
 BlanketSubtraction = 20 # Counts
 DoLoGFilter = 1 # Switch, 0 or 1
@@ -62,7 +62,7 @@ f['measurement']['instrument']['detector']['geometry'].create_dataset('pixel_siz
 f['measurement']['instrument']['detector']['geometry']['pixel_size'].attrs['units']='microns'
 f['exchange'].create_group('data')
 f['exchange']['data'].attrs['data_units'] = '16 bit'
-f['measurement'].create_dataset('experiment_name',data='xzhang_apr17')
+f['measurement'].create_dataset('experiment_name',data='bt_1id_apr17')
 f['measurement'].create_group('sample')
 f['measurement']['sample'].create_group('geometry')
 f['measurement']['sample']['geometry'].create_dataset('omegas',data=omegas)

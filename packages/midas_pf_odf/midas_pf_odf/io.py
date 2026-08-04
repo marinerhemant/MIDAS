@@ -133,7 +133,7 @@ def geometry_from_paramstest(
 
     **Frame mapping (important):** the per-frame omega step is the
     *acquisition* step — NOT ``OmeBinSize`` (the indexing omega-bin size,
-    generally different: Wenxi has OmeBinSize 0.1 but 1440 frames over
+    generally different: datasetC has OmeBinSize 0.1 but 1440 frames over
     360° = 0.25°/frame). Resolution order:
 
     1. caller kwargs ``n_frames`` (= NrFilesPerSweep) / ``omega_step``;
@@ -694,7 +694,7 @@ def saturation_threshold_from_paramstest(params: Dict) -> Optional[float]:
 #
 # The stored frames are RAW: the MIDAS image transform (ImTransOpt + the
 # detector transpose) and dark subtraction are applied at READ time. For the
-# Wenxi data ImTransOpt=[2,0] ⇒ ``flipud`` then the always-transpose, i.e.
+# datasetC data ImTransOpt=[2,0] ⇒ ``flipud`` then the always-transpose, i.e.
 # ``corrected = flipud(raw).T - flipud(dark).T`` giving a ``[y, z]`` frame
 # (matches utils/radial_integration_comparison.py and pyFAI/MIDAS parity).
 

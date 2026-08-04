@@ -27,7 +27,7 @@ from .field import (
 )
 from .io import (
     fcc_reference_crystal,
-    load_borbely_field,
+    load_external_field,
     make_uniform_field,
     with_orientation_gradient,
     with_screw_dislocation,
@@ -175,7 +175,7 @@ __all__ = [
     "with_orientation_gradient",
     "with_uniform_strain",
     "with_screw_dislocation",
-    "load_borbely_field",
+    "load_external_field",
     "ResolutionFunction",
     "aligned_resolution",
     "poulsen_resolution_widths",

@@ -48,7 +48,7 @@ def load_cpfem_field(path_or_arrays, *, device=None, dtype=torch.float64,
     """Load a CPFEM ``F(r)`` field (``.npz`` path or ``(F, positions[, latc, shape])``).
 
     Returns a :class:`DeformationField` ready for the DFXM forward. The canonical
-    entry point for JAX-CPFEM / Borbély / any external deformation-gradient field.
+    entry point for JAX-CPFEM / external / any deformation-gradient field.
     """
     if isinstance(path_or_arrays, str):
         d = np.load(path_or_arrays, allow_pickle=False)

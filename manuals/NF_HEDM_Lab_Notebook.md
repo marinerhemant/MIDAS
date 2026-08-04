@@ -1,4 +1,4 @@
-# NF-HEDM Lab Notebook — 1-ID `pokharel_jul26` + 20-ID `nfdev_jul26`
+# NF-HEDM Lab Notebook — 1-ID `bt_1id_jul26` + 20-ID `nfdev_jul26`
 
 **Companion to `NF_HEDM_Handbook.md`.** The handbook says what to do; this records what
 was actually found, how it was measured, and what turned out to be wrong. They are kept
@@ -11,7 +11,8 @@ any 1-ID number or convention carries over.
 
 Datasets throughout: APS 1-ID, NF detector 2048², px 1.48 µm, 95.0000 keV.
 `Au5_cubes_nf_96keV` (gold calibrant, 4 distances, ω step 0.25°) and
-`nf_Ce_ht525_s2` (cerium, 2 distances DetZ 7/9, ω step 0.1°, double exposure).
+`nf_sampleB_htB_s2` (a polytypic metal — an FCC parent with a DHCP polytype; 2 distances
+DetZ 7/9, ω step 0.1°, double exposure).
 `§n` without a qualifier means a section of *this* file; handbook sections are named
 as such.
 
@@ -32,14 +33,14 @@ there as retracted, each with the measurement that killed it.
 | 6 | Confidence 1.0 is a plateau, not a unique geometry | VERIFIED NEGATIVE | §4b |
 | 7 | `-multiGridPoints` cannot break the degeneracy on a single-crystal calibrant | VERIFIED NEGATIVE | §4b |
 | 8 | Re-seeding a refinement ratchets the tilts ~1°/pass | VERIFIED NEGATIVE | §4b |
-| 9 | ~~No detectable β-Ce (DHCP)~~ | **RETRACTED — the run CRASHED** | §10a |
+| 9 | ~~No detectable DHCP polytype~~ | **RETRACTED — the run CRASHED** | §10a |
 | 10 | NLM on the median-corrected residual gives 3.6× the voxels ≥0.9 | ESTABLISHED | §4d |
 | 11 | The reconstruction is spot-detection-limited, not geometry-limited | ESTABLISHED | §4a vs §4d |
 | 12 | Spots span 0.30° FWHM but were sampled at 0.1° — `SumFrames` recovers ~1.6× | ESTABLISHED | §9a |
 | 13 | `BlanketSubtraction 2` is 7.1σ of the DENOISED residual, not 0.7σ of the raw | ESTABLISHED | §9b |
 | 14 | Raising `NLMH` above 1.0 destroys signal for no noise gain | VERIFIED NEGATIVE | §9c |
-| 15 | Ce5Y is fine-grained; refining the pitch FINDS grains where the control MERGES them | ESTABLISHED | §9d |
-| 16 | β-Ce IS present, at the polytype orientation of its parent γ grain | PROVISIONAL | §10 |
+| 15 | sampleC is fine-grained; refining the pitch FINDS grains where the control MERGES them | ESTABLISHED | §9d |
+| 16 | The DHCP polytype IS present, at the polytype orientation of its parent FCC grain | PROVISIONAL | §10 |
 | 17 | 126 of 736 dhcp reflections are forbidden and capped confidence at 0.829 | ESTABLISHED | §11 |
 | 18 | The rotation Lorentz factor CANCELS for per-frame threshold detection | ESTABLISHED | §11c |
 
@@ -215,7 +216,7 @@ Established directly on Au5, not inferred:
    to the current seed, so feeding the output back ratchets the tilts ~1°/iteration;
    `ty` walked to 4.6° with confidence high throughout.
 
-### 4c. ~~No detectable β-Ce — a controlled null~~ — SUPERSEDED, see §10
+### 4c. ~~No detectable DHCP polytype — a controlled null~~ — SUPERSEDED, see §10
 
 **Do not use this section.** Its conclusion is refuted (§10a) and its numbers below have
 **no surviving provenance**: no `.mic`, no run directory, nothing re-derivable. The only
@@ -229,14 +230,14 @@ Both phases were run against the **same** `SpotsInfo.bin` (verified phase-indepe
 
 | | max C | median C | voxels ≥0.5 |
 |---|---|---|---|
-| γ-Ce FCC (a=5.1596, SG 225) | **1.000** | 0.359 | 7,338 |
-| β-Ce DHCP (a=3.6671, c=11.805, SG 194) | **0.191** | 0.052 | **0** |
+| FCC parent (SG 225) | **1.000** | 0.359 | 7,338 |
+| DHCP polytype (SG 194) | **0.191** | 0.052 | **0** |
 
 Identical ceiling of 0.191 at Rsample 200 *and* at the full Rsample 550, so it is not an
 artifact of sampling only the centre. The FCC control rules out geometry, mirrored ω,
 ring cap and reduction as explanations.
 
-**Caveat that must stay attached:** this is at a **10 µm voxel pitch**. β-Ce in grains well
+**Caveat that must stay attached:** this is at a **10 µm voxel pitch**. The DHCP polytype in grains well
 below that is under the detection limit. "Not detected at 10 µm" ≠ "not present". The
 operator's hypothesis that the DHCP grains may simply be very small is untested.
 
@@ -357,7 +358,7 @@ remaining ~20 min for 3600 frames is GPFS reads plus the temporal median. Not ye
 | concurrent MicWriter | two workers writing disjoint rows both survive; old path zeroes everything | VERIFIED |
 | shared tilts | gradient 4.0 on each of 3 leaves for 4 distances | VERIFIED |
 | geometry A optimal | 142,977-evaluation converged refinement moves it 0.17 µm | VERIFIED |
-| β-Ce absent at 10 µm | FCC control on the same SpotsInfo.bin reaches 1.000 | CONTROLLED NULL |
+| DHCP polytype absent at 10 µm | FCC control on the same SpotsInfo.bin reaches 1.000 | CONTROLLED NULL |
 | geometry A vs B | full maps; A chosen on operator judgement, orientations agree to 0.04° | **PREFERENCE, not a measurement** |
 
 ---
@@ -786,9 +787,9 @@ in 95-99 % of frames in **all six** files. Retracted.
 
 ## 9. Sensitivity — what actually buys signal on a weak sample
 
-Campaign context: `nf_Ce5Y_ht450_s2` (Ce-5%Y at 450 C, 2 distances DetZ 7/9, 0.1 deg,
+Campaign context: `nf_sampleC_htA_s2` (a dilute binary of the sampleB base metal, heat treatment A; 2 distances DetZ 7/9, 0.1 deg,
 1800 frames/distance, StartNr 10913) and its 0.25 deg twin, both derived from
-`fastpar_pokharel_jul26_NF.par`. Same sample, same samY, so they cross-check each other.
+`fastpar_bt_1id_jul26_NF.par`. Same sample, same samY, so they cross-check each other.
 
 ### 9a. Spots span 0.30 deg FWHM but were sampled at 0.1 deg
 
@@ -840,36 +841,36 @@ NLMH 1.5 and 2.0 barely move the noise (0.282 -> 0.270 -> 0.269) but destroy 35-
 spot-like components. Only (NLMH 1.0, thr 1) increases the spot count; every stronger
 setting trades spots away. **Keep NLMH 1.0.**
 
-### 9d. Ce5Y is fine-grained -- and the control moves the OTHER way
+### 9d. sampleC is fine-grained -- and the control moves the OTHER way
 
 Grains = spatially connected AND orientation-connected (<5 deg), >=3 voxels:
 
 | C >= 0.3 | 10 um | 5 um | |
 |---|---|---|---|
-| Ce5Y ht450 | 128 | **220** | +72% |
-| Ce ht525 (control) | 62 | **44** | -29% |
-| Ce5Y, C >= 0.5 | 39 | **77** | +97% |
-| Ce control, C >= 0.5 | 36 | **36** | flat |
+| sampleC (htA) | 128 | **220** | +72% |
+| sampleB (htB, control) | 62 | **44** | -29% |
+| sampleC, C >= 0.5 | 39 | **77** | +97% |
+| sampleB control, C >= 0.5 | 36 | **36** | flat |
 
 Refining the pitch MERGES fragments in the coarse-grained control (count down, size up,
-exactly flat at C>=0.5) and FINDS NEW GRAINS in Ce5Y (count nearly doubles while total
+exactly flat at C>=0.5) and FINDS NEW GRAINS in sampleC (count nearly doubles while total
 area is ~unchanged, 65,000 -> 73,000 um^2). The control moving the opposite way under
 identical processing is what rules out "refinement just fragments things".
 
-**The Ce5Y grain size distribution is NOT resolved at 5 um.** Median equivalent diameter
+**The sampleC grain size distribution is NOT resolved at 5 um.** Median equivalent diameter
 18 um at 10 um pitch is under 2 voxels across -- treat those sizes as upper bounds.
 
-Operator confirmed independently: the rod is wider than the Ce one and the grains are
+Operator confirmed independently: the rod is wider than the sampleB one and the grains are
 finer.
 
 ---
 
-## 10. beta-Ce: a four-step correction
+## 10. The DHCP polytype: a four-step correction
 
 The most instructive sequence of the campaign. **Every intermediate conclusion here was
 wrong, and each was killed by a control.** Read the whole thing before quoting any part.
 
-### 10a. RETRACTION: "no detectable beta-Ce" does not stand
+### 10a. RETRACTION: "no detectable DHCP polytype" does not stand
 
 Finding 9 of §1 said CONTROLLED NULL, and §4c quotes max C 0.191 / median 0.052 at two
 different `Rsample` values. **Two separate problems with that record, and they are not
@@ -885,7 +886,7 @@ torch.OutOfMemoryError: CUDA out of memory. Tried to allocate 1.80 GiB
   in calc_bragg_geometry (midas_diffract/forward.py:916)
 ```
 
-`/local/s1iduser/nf_ce_dhcp/dhcp.log`. It generated hkls and seeds and died there;
+`/local/s1iduser/nf_sampleB_dhcp/dhcp.log`. It generated hkls and seeds and died there;
 `LayerNr_1/` contains no `.mic` at all. It was also run on the 0.5 deg dataset the
 operator had already declared failed, at `MaxRingRad 1600`.
 
@@ -903,18 +904,18 @@ H200s (143 GB) it completes in 22 minutes.
 
 The operator's FF phase analysis independently refutes the old claim: in this rod the
 dhcp-unique lines are strongly occupied -- (101) 91.9%, (110) 29.7%, (103) 25.6%,
-(105) 17.2%. In `Ce5Y_ht450_s2` the same probe collapses ((101) 1.9%, (110) 0.0%), so
-that sample IS single-phase fcc, a = 5.1638 +/- 0.0011 A.
+(105) 17.2%. In `sampleC_htA_s2` the same probe collapses ((101) 1.9%, (110) 0.0%), so
+that sample IS single-phase FCC, its lattice parameter fitted to +/- 0.0011 A.
 
 ### 10b. WRONG: "the dhcp map is leakage"
 
 The completed run reached max C 0.4938 (median 0.113) where fcc reaches 1.000 on the
 same voxels -- and DHCP confidence correlated **+0.749** with FCC confidence, with all
-1,167 voxels above 0.3 sitting where gamma-Ce was already strong. Read as leakage.
+1,167 voxels above 0.3 sitting where the FCC parent was already strong. Read as leakage.
 
 That reading was wrong, and the correlation had an obvious physical explanation I did
-not consider: **gamma-Ce and beta-Ce are polytypes** (ABC vs ABAC on the same
-close-packed planes), so beta forming where gamma is well-ordered is what intergrowth
+not consider: **the FCC parent and the DHCP phase are polytypes** (ABC vs ABAC on the same
+close-packed planes), so DHCP forming where FCC is well-ordered is what intergrowth
 looks like. A correlation alone was never evidence either way.
 
 Also: the coherence test **would have fooled me the other way**. It returned z = +44.5,
@@ -940,13 +941,13 @@ The dhcp c-axis is parallel to an fcc <111> of the co-located grain to within
 **0.17 deg median, 94.8% under 5 deg** across all 3,339 voxels at C >= 0.20 (100% of the
 254 at C >= 0.40). That is the polytype relationship, and it explains the "one
 orientation everywhere" worry: those voxels lie inside essentially one large gamma grain
-(FCC orientation spread median 0.2 deg, FCC confidence median 0.959), so the beta
+(FCC orientation spread median 0.2 deg, FCC confidence median 0.959), so the DHCP
 orientation is locked to that parent.
 
-**Status: PROVISIONAL.** Not through a fresh adversarial pass. And it is NOT a beta-Ce
+**Status: PROVISIONAL.** Not through a fresh adversarial pass. And it is NOT a DHCP-polytype
 grain map -- one orientation tied to one parent, whereas the collaborator's independent
-reconstruction shows ~15 distinct grains. Whether beta-Ce genuinely occurs only as faults
-within gamma grains, or our fit only finds it where the parent is strongest, is open.
+reconstruction shows ~15 distinct grains. Whether the DHCP polytype genuinely occurs only as faults
+within FCC grains, or our fit only finds it where the parent is strongest, is open.
 
 ---
 
@@ -956,14 +957,14 @@ within gamma grains, or our fit only finds it where the parent is strongest, is 
 
 `write_nf_hkls_csv(space_group, lattice, ...)` took **no atom basis**, so it applied
 space-group extinction rules and nothing else. Basis-dependent extinctions were
-invisible. For dhcp beta-Ce (Ce at 2a + 2c) **126 of 736 reflections have |F|^2 = 0**.
+invisible. For the DHCP polytype (both sites the same element, 2a + 2c) **126 of 736 reflections have |F|^2 = 0**.
 
 They are predicted, can never be matched, and sit in the confidence denominator:
 
 | phase | reflections | forbidden | max achievable FracOverlap |
 |---|---|---|---|
-| dhcp beta-Ce | 736 | 126 (17.1%) | **0.829** |
-| fcc gamma-Ce | 228 | 0 | 1.000 |
+| DHCP polytype | 736 | 126 (17.1%) | **0.829** |
+| FCC parent | 228 | 0 | 1.000 |
 
 The fcc row is the control and it validates the calculation: cap 1.000 predicted,
 1.0000 observed. **This is why the defect never showed up before** -- single-atom fcc and
@@ -985,7 +986,7 @@ The failing planes are exactly the forbidden ones -- (002), (303), (306), (222),
 
 Landing ON the prediction rather than above it says the orientation SEARCH did not
 improve -- the same orientations win, they were simply mis-scored. The consequential
-number is the last column: beta-Ce could not clear `MinConfidence 0.5` anywhere before,
+number is the last column: the DHCP polytype could not clear `MinConfidence 0.5` anywhere before,
 so the multi-res ladder had nothing to seed from.
 
 Three metrics via one hook, `hard_fraction(refl_weight=...)`: ones -> C_raw,
@@ -1000,7 +1001,7 @@ Rotation method: I_int ~ |F|^2 P L with L = 1/(sin2theta |sin eta|), and the sam
 Ewald crossing smears the reflection over Domega = w_rlp L. So
 I_peak = I_int/Domega ~ |F|^2 P -- **L cancels** for a per-frame threshold.
 
-Confirmed on the fcc 111 ring of `nf_Ce_ht525_s2`, where 2theta and |F|^2 are constant
+Confirmed on the fcc 111 ring of `nf_sampleB_htB_s2`, where 2theta and |F|^2 are constant
 by construction so only eta varies:
 
 | \|sin eta\| | ~eta | spots | median peak | if L mattered | spots / 1000 ring px |
@@ -1044,7 +1045,7 @@ control caught this twice.
 `file_exists`, but all three are **outputs** the pipeline writes. They cannot exist at
 preflight. Ten live keys were also unregistered and warned as unknown -- including the
 whole NLM group, which was delivering the campaign's single biggest gain while the
-validator called it unrecognised. Both fixed; `params_ce5y_full_fcc.txt` now validates
+validator called it unrecognised. Both fixed; `params_sampleC_full_fcc.txt` now validates
 0 errors, 0 warnings.
 
 **Nothing prevents this drift recurring.** A test that walks the keys each package
@@ -1052,7 +1053,7 @@ parses and asserts they are all registered would catch the next one at CI time.
 
 ---
 
-## 8. `xzhang_jul26` / `s6061_NF` — a second 20-ID campaign, and what did NOT transfer
+## 8. `bt_20id_jul26b` / `nf_sampleD` — a second 20-ID campaign, and what did NOT transfer
 
 Two distances (nominal 9 and 11 mm), two layers 10 µm apart, files `000629`-`000632`,
 `000628` = dark. Same beamline, same detector **serial 20514670**, ~two weeks after
@@ -1062,7 +1063,7 @@ things did **not**.
 
 ### 8a. What the data is
 
-| | `nfdev_jul26` (Au) | `xzhang_jul26` (`s6061_NF`) |
+| | `nfdev_jul26` (Au) | `bt_20id_jul26b` (`nf_sampleD`) |
 |---|---|---|
 | encoding | 10-bit stored ×64, max 65472 | **12-bit unscaled, max 4092** |
 | exposure | 0.200 s (period 275 ms) | **1.25 s** (period 1325 ms, 32 min/scan) |

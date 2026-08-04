@@ -19,7 +19,7 @@ _GD = dict(
     omega_start=180.0, omega_step=-0.25, n_frames=1440,
     n_pixels_y=1679, n_pixels_z=1679, min_eta=6.0, wavelength=0.172979,
 )
-# A representative calibrated v2 coefficient set (Bucsek Pilatus 2M CeO2).
+# A representative calibrated v2 coefficient set (datasetD Pilatus 2M CeO2).
 _COEFFS = [0.00707, -0.01, 0.00624, 0.01, -34.76, 0.00234, 81.47,
            -0.00369, -12.29, -0.00727, -5.29, -0.00863, -1.51, -0.00446, -7.79]
 

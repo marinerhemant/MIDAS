@@ -499,7 +499,7 @@ Tab-separated, one row per diffraction spot per grain:
 
 Three distinct SpotID spaces exist; nothing renumbers consistently between
 them, and a naive SpotID join silently pairs random spots (it invalidated
-two analyses on the emerson campaign before being caught):
+two analyses on the datasetB campaign before being caught):
 
 1. **peaksearch/merge space** — `Result_StartNr_*_EndNr_*.csv` col 0.
 2. **calc_radius space** — `Radius_StartNr_*.csv` col 0: renumbered 1..N,
@@ -513,13 +513,13 @@ col 18 `OrigSpotID` carries the merge-space ID end-to-end (col 19
 input), and `Radius_*.csv` cols 24/25 carry the same pair. `IDRings.csv`
 (ring, origID, newID) maps radius→fit_setup spaces.
 
-### Raw-frame conventions (verified on emerson Varex)
+### Raw-frame conventions (verified on the datasetB Varex)
 
 For raw-pixel consumers (midas-grain-odf / midas-pf-odf extractors):
 zarr frame layout is `frame[row = ZCen_px, col = (nPxY−1) − YCen_px]`;
 the ideal-µm→px map is `y_px = y_BC − y_µm/px`, `z_px = z_BC + z_µm/px`;
 and raw vs DetCor positions differ by **tens of pixels** when distortion
-is large (p3 ≈ 35.5 on emerson vs −0.64 on park22) — never anchor
+is large (p3 ≈ 35.5 on datasetB vs −0.64 on park22) — never anchor
 forward-model matching on raw pixels without applying the calibrated
 distortion (`apply_distortion=True` in the pf-odf/grain-odf model
 builders).

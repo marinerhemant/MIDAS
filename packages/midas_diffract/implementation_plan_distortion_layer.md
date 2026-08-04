@@ -13,7 +13,7 @@ indexer / fit-grain / transforms pipeline rely on.
 - **pf_odf / grain_odf are the exception:** they consume **raw pixel patches** (they need
   the full peak *shape*, which can't be reduced to a corrected centroid), so they never go
   through `transforms`. Predicting with the ideal forward leaves a detector-position-
-  dependent offset (measured 0.77px → 1.7px with radius on Bucsek Pilatus 2M) = the
+  dependent offset (measured 0.77px → 1.7px with radius on datasetD Pilatus 2M) = the
   ~1500µε false-strain floor.
 - Fix = map the **prediction** ideal→raw (NOT warp the patch, which would smear the very
   peak shape we measure). Mirrors calibrate_v2's own forward

@@ -405,7 +405,7 @@ def write_paramstest(p: ParamsTest, path: Union[str, Path]) -> None:
         fp.write(f"ZBCFit {f6(p.ZBCFit)}\n")
         # txFit: the C FitSetupZarr never emitted tx — raw-frame consumers
         # then rebuilt geometry with tx=0 (~0.27° in-plane rotation ≈ 3-4e3
-        # µε fake strain on SOH/emerson Varex data). Always write it.
+        # µε fake strain on SOH/datasetB Varex data). Always write it.
         fp.write(f"txFit {f6(p.txFit)}\n")
         fp.write(f"tyFit {f6(p.tyFit)}\n")
         fp.write(f"tzFit {f6(p.tzFit)}\n")
@@ -452,7 +452,7 @@ REQUIRED_FITSETUP_KEYS = (
     "LatticeParameter",
     "ty", "tz",
 )
-# ``tx`` defaults to 0 when absent — older datasets (Wenxi pre-2025)
+# ``tx`` defaults to 0 when absent — older datasets (datasetC pre-2025)
 # only wrote ty/tz to the zarr because tx wasn't a refined tilt at the
 # time. Modern datasets write all three; if tx is absent we treat it as 0.0.
 

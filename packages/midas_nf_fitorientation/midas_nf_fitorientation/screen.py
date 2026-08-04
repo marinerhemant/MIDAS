@@ -342,7 +342,7 @@ def spot_weights_from_f2(
 
     No Lorentz factor, deliberately -- it cancels for per-frame threshold
     detection (Domega = w_rlp*L, so peak height is L-free; measured flat in eta
-    on nf_Ce_ht525_s2 where 1/|sin eta| predicts 4.3x).
+    on nf_sampleB_htB_s2 where 1/|sin eta| predicts 4.3x).
     """
     if metric == "raw":
         return None

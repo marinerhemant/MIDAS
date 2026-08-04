@@ -50,7 +50,7 @@ def test_txfit_written_and_read_back(tmp_path: Path):
 
 def test_full_distortion_p0_to_p14_round_trip(tmp_path: Path):
     vals = {f"p{i}": (i + 1) * 0.5 for i in range(15)}
-    vals["p3"] = 35.5          # phi4-style phase (the emerson-scale value)
+    vals["p3"] = 35.5          # phi4-style phase (the datasetB-scale value)
     vals["p2"] = -1.1e-9       # small-amplitude harmonic — %f would flush to 0
     p = _minimal_pt(**vals)
     f = tmp_path / "paramstest.txt"

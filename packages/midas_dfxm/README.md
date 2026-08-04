@@ -41,7 +41,7 @@ Highlights:
 - **#1 physics coupling:** recover a **GND density** end-to-end through the forward
   (Nye `κ = ρb`) — the DFXM↔DDD/CP interface, differentiably.
 - **#2 credibility anchor:** independent numpy oracle agrees **bit-for-bit** (~1e-16).
-- **Borbély-ready:** `field_from_deformation_gradient` consumes an external `F(r)` with
+- **External-field ready:** `field_from_deformation_gradient` consumes an external `F(r)` with
   zero rework.
 
 See [`SIMULATION_CATALOG.md`](SIMULATION_CATALOG.md) and `examples/` (figures land in
@@ -55,7 +55,7 @@ Phases 0–1 implemented and tested (30 passing, CPU + MPS):
   goniometer), `field.py` (`DeformationField`, the kinematic deform operator
   `Q = F⁻ᵀ G0`, polar decomposition `F = R·U`), `io.py` (synthetic-field
   generators: perfect crystal, orientation gradient, uniform strain, isotropic
-  screw dislocation; plus a stub loader for Borbély's field).
+  screw dislocation; plus a stub loader for an external collaborator field).
 - **Phase 1 — geometrical-optics forward.** `resolution.py` (anisotropic-Gaussian
   reciprocal-space acceptance), `optics.py` (magnifying inclined projection +
   bilinear detector splat), `scan.py` (mosaicity / rocking / strain scan builders,
@@ -66,7 +66,7 @@ forbidden reflection is dark, uniaxial strain shifts `|Q|` correctly; plus
 gradcheck on the deform operator and end-to-end autograd to `F` and the instrument
 widths.
 
-**Next:** Phase 2 (field forward on Borbély's realistic `F(r)` when it lands),
+**Next:** Phase 2 (field forward on a collaborator's realistic `F(r)` when it lands),
 Phase 3 (field inverse + identifiability study), **Phase 4 (per-dislocation
 forward via the Stroh solver + `g·b` defect typing)**, Phase 5 (inverse defect
 discovery).

@@ -235,7 +235,7 @@ class SampleGrid:
 
         If ``grain_map`` is None, all voxels are unassigned (``-1``).
         If ``sample_mask`` is None, the entire grid is treated as sample
-        (the Wenxi-pf default, per the V-map plan).
+        (the datasetC-pf default, per the V-map plan).
         """
         import torch
 

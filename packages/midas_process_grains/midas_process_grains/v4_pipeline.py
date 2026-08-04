@@ -620,7 +620,7 @@ def run_v4_pipeline(
     # The correct count: recover the seed-(h,k,l) variant of EVERY
     # matched spot via Stage 1's recovery (using the grain's consensus
     # FZ-canonical OM), then count distinct variants per grain.
-    # Empirically gives 97-100% gold-eligible on Indrajeet Ni / Ti-7Al /
+    # Empirically gives 97-100% gold-eligible on datasetA Ni / Ti-7Al /
     # Xuan SS LMO / peakfit (vs <16% under the seed-based primitive).
     t5b = time.time()
     log(f"[v4] Computing matched-spot-based observed_hkls ...")
@@ -1573,7 +1573,7 @@ def _pass1_forward_predict(
     # The agree/disagree pair graph only sees pairs with at least one
     # shared snap; transitive merges across non-overlapping evidence
     # chains can fuse OM-divergent candidates into one component
-    # (~20% of multi-cand grains on Indrajeet at K=4 spanned >5°).
+    # (~20% of multi-cand grains on datasetA at K=4 spanned >5°).
     # ``om_split_tol_deg=None`` triggers data-driven auto-selection via
     # the misori-histogram antimode (same logic as Pass-1 misori θ*).
     if om_split_tol_deg is not None and om_split_tol_deg > 0:

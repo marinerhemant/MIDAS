@@ -8,7 +8,7 @@ whatever cut you chose -- the distribution is made BY the threshold.
 from pathlib import Path
 import numpy as np, pandas as pd
 
-R = Path("/gdata/dm/1ID/2026/pokharel_jul26/analysis/au3_cubes_ff_000008")
+R = Path("/gdata/dm/1ID/2026/bt_1id_jul26/analysis/au3_cubes_ff_000008")
 m = pd.read_csv(R / "spot_noise_audit/spot_audit_snr.csv")
 idx = m["indexed"].to_numpy().astype(bool)
 ring = m["RingNumber"].to_numpy().astype(int)

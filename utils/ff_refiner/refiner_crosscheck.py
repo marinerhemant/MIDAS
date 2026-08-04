@@ -36,7 +36,7 @@ from pathlib import Path
 
 import numpy as np
 
-R = Path("/gdata/dm/1ID/2026/pokharel_jul26/analysis/au3_cubes_ff_000008")
+R = Path("/gdata/dm/1ID/2026/bt_1id_jul26/analysis/au3_cubes_ff_000008")
 SRC = R / "c_ff_fmt"
 OUT = R / "refiner_crosscheck"
 ENVB = Path("/home/beams12/S1IDUSER/opt/envs/midas/bin")

@@ -1,7 +1,7 @@
 """Standard plots for MIDAS reconstructions.
 
     from midas_plotting import read_mic, orientation_map
-    orientation_map("Ce5Y.0.mic", space_group=225, cmin=0.3)
+    orientation_map("sampleC.0.mic", space_group=225, cmin=0.3)
 
 Far-field ``Grains.csv`` lives in the ``ff`` submodule::
 
@@ -26,7 +26,7 @@ Laue microdiffraction lives in ``laue``, and reads the indexer's text output::
 
 or from the shell::
 
-    midas-plot Ce5Y.0.mic --kind orientation --cmin 0.3 --sg 225
+    midas-plot sampleC.0.mic --kind orientation --cmin 0.3 --sg 225
     midas-plot Grains.csv --kind summary
 
 Written after the same IPF colouring, .mic parsing and map plotting were

@@ -587,7 +587,7 @@ New artefacts (do not collide with legacy outputs):
 
 ### 12.7 Status
 
-`midas-pipeline 0.1.0a0` covers the end-to-end PF stage graph from `find_grains` through `consolidation`, with the indexer + refiner running in scanning mode. The C-parity gate (`pytest -m slow packages/midas_index/tests/test_scanning_parity_vs_c.py`) is wired and runs green on the chiltepin cluster (989 MB nData mmap is too large for typical workstation RAM). The Wenxi CP-Ti real-data shakedown is the next planned validation.
+`midas-pipeline 0.1.0a0` covers the end-to-end PF stage graph from `find_grains` through `consolidation`, with the indexer + refiner running in scanning mode. The C-parity gate (`pytest -m slow packages/midas_index/tests/test_scanning_parity_vs_c.py`) is wired and runs green on the chiltepin cluster (989 MB nData mmap is too large for typical workstation RAM). The datasetC CP-Ti real-data shakedown is the next planned validation.
 
 ---
 

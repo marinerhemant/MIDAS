@@ -5,7 +5,7 @@ input to Stage 5's :func:`label_twins`), then assert that the labeller
 finds every planted pair with the correct twin-type name. They cover
 the three open validation gaps left by the real-data audits:
 
-A. **Deformed HCP {10-12} twins** — real Bucsek 220 N CP-Ti data is
+A. **Deformed HCP {10-12} twins** — real datasetD 220 N CP-Ti data is
    elastic-regime and contains no {10-12} twin pairs; synthetic planted
    pairs close the end-to-end loop for the HCP operators.
 

@@ -361,7 +361,7 @@ def neighbor_edges_from_grid_ij(grid_ij) -> torch.Tensor:
     pairs that BOTH belong to the grain. Use with
     ``fit_grain_peakshape(neighbor_edges=..., lambda_smooth=...)`` — the
     dense ``grid_shape`` reshape path requires ``G == prod(grid_shape)``
-    and crashes on real (sparse) grains, which is why the borbely driver
+    and crashes on real (sparse) grains, which is why the datasetE driver
     had to set lambda_smooth = 0.
     """
     ij = torch.as_tensor(grid_ij, dtype=torch.long).reshape(-1, 2)

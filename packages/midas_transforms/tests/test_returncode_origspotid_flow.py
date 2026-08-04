@@ -3,7 +3,7 @@
 Three SpotID spaces exist: peaksearch/merge (Result_StartNr), calc_radius
 (renumbered 1..N, spots near two rings DUPLICATED), and fit_setup
 (re-sorted + renumbered). Joining on SpotID across spaces silently pairs
-random spots — this invalidated two emerson analyses before it was
+random spots — this invalidated two datasetB analyses before it was
 caught. The fix threads two APPENDED columns end-to-end:
 
   merge Result col 17 = ReturnCode (peakfit col 18; sticky-first-nonzero)

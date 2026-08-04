@@ -4,7 +4,7 @@ End-to-end MIDAS HEDM orchestrator. **FF is the single-scan degeneracy of PF.** 
 
 ## Status
 
-**0.1.0 — end-to-end PF and FF paths live.** The scanning indexer matches the C `IndexerScanningOMP` reference on its 1-voxel C-parity gate (seed identity, solution counts, voxel-center positions exact; orientation matrices within mrad-scale, the refiner closes the gap downstream). Real-data validation: Wenxi CP-Ti consolidation_pf reproduces the legacy `pf_MIDAS.py` grain count (770 == 770, all common). Park22 P5c parity gate now runs in ~6.7s vs the original 790s after the scanning-indexer position-grid fix.
+**0.1.0 — end-to-end PF and FF paths live.** The scanning indexer matches the C `IndexerScanningOMP` reference on its 1-voxel C-parity gate (seed identity, solution counts, voxel-center positions exact; orientation matrices within mrad-scale, the refiner closes the gap downstream). Real-data validation: datasetC CP-Ti consolidation_pf reproduces the legacy `pf_MIDAS.py` grain count (770 == 770, all common). Park22 P5c parity gate now runs in ~6.7s vs the original 790s after the scanning-indexer position-grid fix.
 
 Stages call in-process Python kernels via `midas-index` / `midas-fit-grain` / `midas-transforms` / `midas-stress`. FF mode shells out to `python -m midas_index` and `python -m midas_fit_grain` (same kernels, subprocess for the FF parity-preserving pattern). No CUDA C; GPU is torch-only.
 
@@ -40,7 +40,7 @@ midas-pipeline run --indexer-backend {python,c-omp} ...
 
 `python` (default) — in-process numba/torch indexer. Portable (CPU/CUDA/MPS), differentiable, slower on large PF datasets.
 
-`c-omp` — bundled unified C binary (`midas_indexer`) from `midas-index`. Requires midas-index installed with a working OpenMP toolchain (macOS: `brew install libomp`). ~290× faster than the Python path on real PF datasets (per the Wenxi CP-Ti benchmark in `packages/midas_index/dev/`). Output is bit-identical to the Python path on the PF parity gate.
+`c-omp` — bundled unified C binary (`midas_indexer`) from `midas-index`. Requires midas-index installed with a working OpenMP toolchain (macOS: `brew install libomp`). ~290× faster than the Python path on real PF datasets (per the datasetC CP-Ti benchmark in `packages/midas_index/dev/`). Output is bit-identical to the Python path on the PF parity gate.
 
 ## Coexistence with `midas-ff-pipeline`
 

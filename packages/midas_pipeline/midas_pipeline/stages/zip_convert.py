@@ -7,7 +7,7 @@ MIDAS source tree required. We shell out to keep its self-contained CLI
 surface and rich raw-frame handling (TIFF / CBF / GE / HDF5).
 
 Resume-friendly: if every required ``.MIDAS.zip`` already exists, the
-stage is a no-op. PF datasets like Wenxi that ship pre-built zips
+stage is a no-op. PF datasets like datasetC that ship pre-built zips
 fall through this stage in ~50 ms (just stat + log).
 """
 

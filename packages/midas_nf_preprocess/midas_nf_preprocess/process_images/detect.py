@@ -20,7 +20,7 @@ Measured against the alternatives at a *matched false-positive budget* (see
 below for how the budget is measured), on three independent datasets:
 
 ======================  ===============  ==============  ==============
-detector                 nf_Ce_ht525_s2   Au_cube_0802    s6061_NF
+detector                 nf_sampleB_htB_s2   Au_cube_0802    nf_sampleD
 ======================  ===============  ==============  ==============
 raw threshold                 49 blobs        20 blobs      (baseline)
 NLM (h = sigma_MAD)           42 blobs        20 blobs
@@ -28,7 +28,7 @@ NLM (h = sigma_MAD)           42 blobs        20 blobs
 gain over NLM                  10.0x            5.8x
 ======================  ===============  ==============  ==============
 
-NLM is not useless -- on ``nf_Ce_ht525_s2`` it reproduces its documented 3.0x
+NLM is not useless -- on ``nf_sampleB_htB_s2`` it reproduces its documented 3.0x
 gain in >= 30 px area over a raw threshold.  But it buys that with a large
 false-positive load (180 false blobs at threshold 2), and once false positives
 are held fixed a matched Gaussian dominates it on every axis: more blobs, more

@@ -5,13 +5,13 @@ Standard plots for MIDAS reconstructions.
 ```python
 from midas_plotting import read_mic, orientation_map, compare_maps
 
-m = read_mic("Ce5Y_mr.2.mic")
+m = read_mic("sampleC_mr.2.mic")
 print(m.summary())
 orientation_map(m, space_group=225, cmin=0.3)
 ```
 
 ```bash
-midas-plot Ce5Y.0.mic Ce5Y_sum3thr2.0.mic --kind orientation --cmin 0.3 \
+midas-plot sampleC.0.mic sampleC_sum3thr2.0.mic --kind orientation --cmin 0.3 \
     --titles "baseline|sum3+thr2" -o compare.png
 ```
 

@@ -3,7 +3,7 @@ data from APS 1-ID-E, end-to-end through midas-calibrate-v2 →
 midas-integrate-v2.
 
 Data: /Users/hsharma/Desktop/analysis/Pilatus_images/
-- Pilatus-stubbins-ff_Holder3_50um_n0_004236_dark_removed.tif (calibrant)
+- Pilatus-bt_1id_sep25-ff_Holder3_50um_n0_004236_dark_removed.tif (calibrant)
 - ff_ZL_H1_Plating_n0_*.tif (HEDM sample frames)
 """
 from pathlib import Path
@@ -29,7 +29,7 @@ raw .tif → midas-calibrate-v2 (geometry) → midas-integrate-v2 (clip)
 
 We use two files from a real beamline session:
 
-1. `Pilatus-stubbins-...tif` — calibrant pattern, used to refine
+1. `Pilatus-bt_1id_sep25-...tif` — calibrant pattern, used to refine
    detector geometry. We detect rings, identify the calibrant material,
    then run `autocalibrate` to fit beam centre, Lsd, and detector tilts.
 2. `ff_ZL_H1_Plating_n0_*.tif` — HEDM sample frame from the same
@@ -89,7 +89,7 @@ torch.set_default_dtype(torch.float64)
 plt.rcParams["figure.facecolor"] = "white"
 
 BASE = "/Users/hsharma/Desktop/analysis/Pilatus_images/"
-STUB = BASE + "Pilatus-stubbins-ff_Holder3_50um_n0_004236_dark_removed.tif"
+STUB = BASE + "Pilatus-bt_1id_sep25-ff_Holder3_50um_n0_004236_dark_removed.tif"
 FFZL = BASE + "ff_ZL_H1_Plating_n0_120272.tif"
 """),
 
@@ -124,7 +124,7 @@ NZ, NY = stub.shape
 ("code", """\
 fig, axes = plt.subplots(1, 2, figsize=(14, 8))
 for ax, img, title in zip(axes, [stub, ffzl],
-                           ["calibrant (stubbins)", "HEDM frame (ff_ZL)"]):
+                           ["calibrant (bt_1id_sep25)", "HEDM frame (ff_ZL)"]):
     plot = np.where(img > 0, img, np.nan)
     p99 = np.nanpercentile(plot, 99.5)
     ax.imshow(np.log1p(plot), origin="lower", cmap="viridis",

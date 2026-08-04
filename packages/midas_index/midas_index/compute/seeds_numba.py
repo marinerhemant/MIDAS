@@ -3,7 +3,7 @@
 Phase 3 of the numba pipeline (after Phase 1's bin lookup inline +
 Phase 2's numba forward simulate). Targets the next hot spot:
 ``generate_ideal_spots_friedel_mixed`` was profiling at 3.8 s/call (8 calls
-= 30 s of 120 s wall on Wenxi). Per-candidate, per-n_pos inner loop with
+= 30 s of 120 s wall on datasetC). Per-candidate, per-n_pos inner loop with
 ~50 scalar ops and an obs-table filter per inner iter — perfect numba fit.
 
 The ``friedel`` (non-mixed) variant uses a vectorised obs-table mask in

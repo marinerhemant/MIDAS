@@ -5,7 +5,7 @@ reconstruction from scratch.** Not a tutorial. Follow the steps in order; each o
 the file to read, the command to run, the field to look at, and the branch to take.
 
 **Companion: `NF_HEDM_Lab_Notebook.md`.** This file says what to do. The notebook records
-what was found on the `pokharel_jul26` campaign, how each claim was measured, and which
+what was found on the `bt_1id_jul26` campaign, how each claim was measured, and which
 attractive ideas were **retracted** — read its §5 before re-opening any question, and its
 §4b before touching calibration. Findings are summarised here only where they change what
 you should type.
@@ -94,9 +94,9 @@ soft-deprecated C; only its example paramfile and seed cache are used here. Vers
 | centroiding `1 − T` over the whole illuminated band | axis scatter 66 px instead of 0.2 px, and it looks like real data | §6e |
 | row-permutation "null" in a spot-matching test | null silently re-runs the real analysis and passes | §6i |
 | confidence 1.0 read as "geometry solved" | a whole beamtime reconstructed on the wrong plateau | §7b |
-| a refinement driving confidence to 1.0, checked with maxC/median | **those statistics are blind to the plateau failure.** On `s6061_NF` pass C gave maxC 1.000 with 40 % of the disc indexing and the MEDIAN also up (0.229 → 0.368) — the plateau signature. Test the **orientation field** instead: misorientation between spatial NEIGHBOURS vs RANDOM pairs (0.23° / 78 % < 5° vs 40.98° / 4.5 % here ⇒ real grains). A wrong plateau gives a spatially random orientation field | lab notebook §8h |
+| a refinement driving confidence to 1.0, checked with maxC/median | **those statistics are blind to the plateau failure.** On `nf_sampleD` pass C gave maxC 1.000 with 40 % of the disc indexing and the MEDIAN also up (0.229 → 0.368) — the plateau signature. Test the **orientation field** instead: misorientation between spatial NEIGHBOURS vs RANDOM pairs (0.23° / 78 % < 5° vs 40.98° / 4.5 % here ⇒ real grains). A wrong plateau gives a spatially random orientation field | lab notebook §8h |
 | chance confidence computed from the lit-pixel fraction | with `hits_d.prod(dim=0)` ANDing 1.65 % and 1.40 %, independent-pixel arithmetic predicts 2.3e-4; the truth was **~1000× higher** because observed and predicted spots cluster in the same regions. **Read the floor off the MEDIAN over the search volume** | lab notebook §8h |
-| triangulated `Lsd` used as the final geometry on a WIDE sample | it is a **seed**, not the answer. On `s6061_NF` triangulation was 211 µm off; after refinement δ landed 6.8 µm from the previous campaign's. Triangulate → refine → then quote | §6i-ter, lab notebook §8h |
+| triangulated `Lsd` used as the final geometry on a WIDE sample | it is a **seed**, not the answer. On `nf_sampleD` triangulation was 211 µm off; after refinement δ landed 6.8 µm from the previous campaign's. Triangulate → refine → then quote | §6i-ter, lab notebook §8h |
 | refinement re-seeded from its own output | tilts drift ~1 deg/iteration, confidence stays high | §7b |
 | `GridPoints` given 6 tokens instead of a 12-column `.mic` row | parses fine, refines nothing | §7c |
 | `BoxSize` parsed but not applied | calibrant plateaus at 0.949 instead of 1.000 | §7d |
@@ -106,11 +106,11 @@ soft-deprecated C; only its example paramfile and seed cache are used here. Vers
 | assuming `EdgeLength` must equal `GridSize` | **RETRACTED** — `EdgeLength` is an independent, supported knob (`hex_grid/grid.py:97-153`); small probe triangles on a coarse grid are intentional, and the voxel count never changes. Forcing them equal made triangles 10 µm and cost ~94 GiB/voxel. Lab notebook R2 | §10e |
 | `EdgeLength` ≪ `GridSize` with `mic2grains -doNeighborSearch 1` | merge threshold is `2·TriEdgeSize` while neighbours are `GridSize/2` apart ⇒ **every voxel its own grain**; grain areas describe the probe, not the cell | §10e |
 | `MinMisoNSaves` left at its **1.0 default** with `SaveNSolutions 1` | a per-window symmetry misorientation dominates runtime, AND a later higher-confidence solution is silently discarded | lab notebook §2 |
-| 20-ID HDF5 assumed to be ×64 scaled | **the encoding is PER-CAMPAIGN, not per-detector.** `nfdev_jul26` is 10-bit stored ×64 (max 65472); `xzhang_jul26` on the SAME detector serial is 12-bit unscaled (max 4092, unique values 0,2,4,6,8,10,12,16,…). Dividing the second by 64 turns "threshold 2" into "threshold 128" and thresholds the **pedestal** — the background then looks like signal | §3h |
-| ring / powder analysis on a coarse-grained NF sample | an NF spot lands at *grain position* + `Lsd·tan(2θ)·d̂`, so rings are smeared by the **illuminated sample width**. On `s6061_NF` (247 µm wide) that is 2.0× the 111→200 spacing ⇒ **no rings exist**, and any `Lsd` or lattice parameter fitted to the radial profile is meaningless | §5e |
-| BC carried over from an earlier campaign at the same beamline | the beam stripe moved **57 px = 31 µm** between `nfdev_jul26` and `xzhang_jul26`. Re-measure zbc every campaign | §6d |
+| 20-ID HDF5 assumed to be ×64 scaled | **the encoding is PER-CAMPAIGN, not per-detector.** `nfdev_jul26` is 10-bit stored ×64 (max 65472); `bt_20id_jul26b` on the SAME detector serial is 12-bit unscaled (max 4092, unique values 0,2,4,6,8,10,12,16,…). Dividing the second by 64 turns "threshold 2" into "threshold 128" and thresholds the **pedestal** — the background then looks like signal | §3h |
+| ring / powder analysis on a coarse-grained NF sample | an NF spot lands at *grain position* + `Lsd·tan(2θ)·d̂`, so rings are smeared by the **illuminated sample width**. On `nf_sampleD` (247 µm wide) that is 2.0× the 111→200 spacing ⇒ **no rings exist**, and any `Lsd` or lattice parameter fitted to the radial profile is meaningless | §5e |
+| BC carried over from an earlier campaign at the same beamline | the beam stripe moved **57 px = 31 µm** between `nfdev_jul26` and `bt_20id_jul26b`. Re-measure zbc every campaign | §6d |
 | `shadow.track_shadow` left at its `band_frac=0.30` default at 20-ID | tracker wanders into the beam's dim wings; axis is wrong by **+100 to +130 px** and the amplitude comes back clipped. `band_frac=0.70` reproduces the known Au axis to **0.41 px**. `fit_axis(...).is_reliable` correctly returns False — **branch on it** | §6e |
-| moving-shadow ybc attempted on an extended specimen | works only for a COMPACT particle. An irregular specimen's deepest-dip centre does not trace a rigid sinusoid (shadow width swung 56→886 px with ω on `s6061_NF`) and `fit_axis` refuses at every setting | §6e |
+| moving-shadow ybc attempted on an extended specimen | works only for a COMPACT particle. An irregular specimen's deepest-dip centre does not trace a rigid sinusoid (shadow width swung 56→886 px with ω on `nf_sampleD`) and `fit_axis` refuses at every setting | §6e |
 | `triangulate` used on a wide sample as if it were a point | the model assumes a point source at BC. Perturbation ≈ (sample half-width)/(typical spot radius): 11 % for a 247 µm specimen vs 3 % for a 70 µm cube. Symptom is the **y-vs-z split** rising (142 µm vs 57 µm) | §6i |
 | `BlanketSubtraction ≈ 0.7 σ` on photon-starved data | the residual is >99 % exactly zero so **MAD = 0**; 0.7 σ collapses to the code's σ floor and admits the whole single-count floor | §5d, lab notebook §7b |
 | NLM combined with a σ-derived (sub-ADU) threshold | NLM smears isolated single counts into 4-px clusters and **manufactures** spots | §5d |
@@ -225,10 +225,10 @@ Decision:
 | `aero` / `Aero` | **recorded ω is opposite to MIDAS convention: ω_MIDAS = −ω_aero** | negate both `OmegaStart` and `OmegaStep` relative to the log |
 | anything else | not established by this session | **stop and ask.** Do not assume it matches MIDAS |
 
-Worked example, verified (`pokharel_jun25`, copland):
+Worked example, verified (`bt_1id_jun25`, copland):
 
 ```
-$ awk '{print $9}' /home/1-id/s1iduser/1id_old_data_2026preJune/pokharel_jun25/pokharel_jun25_NF.par \
+$ awk '{print $9}' /home/1-id/s1iduser/1id_old_data_2026preJune/bt_1id_jun25/bt_1id_jun25_NF.par \
     | sort | uniq -c
  441397 aero
 ```
@@ -258,7 +258,7 @@ is no self-consistency check inside the reconstruction that catches it.
 **Note for calibration work only:** an ω sign error *cancels* in a two-distance ray-bundle
 solve, because the flip applies identically at both distances and spots are matched by
 frame index within a sweep. It does **not** cancel in the paramfile or in forward
-simulation. Evidence: `/Users/hsharma/Desktop/analysis/pokharel_jun25_nf/PREREGISTER.md:49-52`.
+simulation. Evidence: `/Users/hsharma/Desktop/analysis/bt_1id_jun25_nf/PREREGISTER.md:49-52`.
 
 ---
 
@@ -267,12 +267,12 @@ simulation. Evidence: `/Users/hsharma/Desktop/analysis/pokharel_jun25_nf/PREREGI
 ### 3a. Locate the metadata folder
 
 The image tree has **only TIFFs**. The acquisition logs live elsewhere. For
-`pokharel_jun25` on copland:
+`bt_1id_jun25` on copland:
 
 | what | path |
 |---|---|
-| images | `/gdata/dm/1ID/2025/pokharel_jun25/data/nf/` |
-| **metadata** | `/home/1-id/s1iduser/1id_old_data_2026preJune/pokharel_jun25/` (= `~s1iduser/new_data/1id_old_data_2026preJune/pokharel_jun25/`) |
+| images | `/gdata/dm/1ID/2025/bt_1id_jun25/data/nf/` |
+| **metadata** | `/home/1-id/s1iduser/1id_old_data_2026preJune/bt_1id_jun25/` (= `~s1iduser/new_data/1id_old_data_2026preJune/bt_1id_jun25/`) |
 
 If you have not found a folder containing `FileCount.txt` + `fastsweep_Emon.txt` +
 `*_SequenceOfEvents.log`, **you cannot write a paramfile.** Search for it:
@@ -296,7 +296,7 @@ ssh copland 'find /home/1-id /home/beams -maxdepth 5 -name "FileCount.txt" 2>/de
 ### 3c. Extraction commands
 
 ```bash
-MD=/home/1-id/s1iduser/1id_old_data_2026preJune/pokharel_jun25
+MD=/home/1-id/s1iduser/1id_old_data_2026preJune/bt_1id_jun25
 SCAN=Au4_cubes_nf_96keV
 
 # --- the sweep inventory: DetZ, exposure, image ranges ---
@@ -355,7 +355,7 @@ awk -v S=$SCAN '$7==S{print $8}' $MD/<beamtime>_NF.par | sort -u | wc -l  # uniq
 Verified for `Au4_cubes_nf_96keV`: **1442 rows, 1441 unique.** The duplicate:
 
 ```
-$ awk '$7=="Au4_cubes_nf_96keV" && $8==404503 {print $8, $17}' pokharel_jun25_NF.par
+$ awk '$7=="Au4_cubes_nf_96keV" && $8==404503 {print $8, $17}' bt_1id_jun25_NF.par
 404503 0.000000      <- last frame of sweep 1
 404503 -180.000000   <- first frame of sweep 2
 ```
@@ -367,7 +367,7 @@ frames-per-distance from `NF.par` row counts. Use `FileCount.txt` ranges as half
 **(ii) TIFF count vs the inventory.**
 
 ```bash
-ls -1 /gdata/dm/1ID/2025/pokharel_jun25/data/nf/$SCAN/*.tif | wc -l   # -> 1441
+ls -1 /gdata/dm/1ID/2025/bt_1id_jun25/data/nf/$SCAN/*.tif | wc -l   # -> 1441
 ```
 
 1441, not 1440: image 405223 (the half-open end) also exists on disk as a stray. Expect
@@ -387,7 +387,7 @@ ns=[(len(m.group(1)),int(m.group(1))) for f in glob.glob(os.path.join(d,'*.tif')
     for m in [re.search(r'_(\d+)\.tif$', f)] if m]
 w=collections.Counter(p for p,_ in ns); v=[n for _,n in ns]
 print('pad widths:',dict(w),'count:',len(v),'min:',min(v),'max:',max(v),
-      'contiguous:',max(v)-min(v)+1==len(v))" /gdata/dm/1ID/2025/pokharel_jun25/data/nf/$SCAN
+      'contiguous:',max(v)-min(v)+1==len(v))" /gdata/dm/1ID/2025/bt_1id_jun25/data/nf/$SCAN
 ```
 
 **Frame-index formula the reader uses** (`process_images/io.py:24-36`), for the *j*-th
@@ -462,16 +462,16 @@ ls /gdata/dm/1ID/<year>/<beamtime>/data/nf/$PFX | grep -oE '[0-9]{6}' | sort -n 
 comm -3 <(awk '{print $1}' dedup.txt) files.txt      # must print nothing
 ```
 
-**Trap: sweep starts appear twice in `NF.par`.** For `nf_Ce_ht525_s2_0p5deg` the
+**Trap: sweep starts appear twice in `NF.par`.** For `nf_sampleB_htB_s2_0p5deg` the
 log had **756 rows for 721 images** — 35 duplicated image numbers, one per sweep
 restart (`nCrashedFrames : 1` in the `_Sweep.log`). Here both copies carried the
 *same* ω, so dedup is lossless — **but check that**, because a duplicate with a
 *different* ω means a genuinely lost frame and a shifted ω axis for the rest of
 the sweep. Counting rows without dedup inflates the frame count by 5%.
 
-**Worked contrast, both from `pokharel_jul26`:**
+**Worked contrast, both from `bt_1id_jul26`:**
 
-| | `Au5_cubes_nf_96keV` (calibrant) | `nf_Ce_ht525_s2_0p5deg` (sample) |
+| | `Au5_cubes_nf_96keV` (calibrant) | `nf_sampleB_htB_s2_0p5deg` (sample) |
 |---|---|---|
 | distances | 4 (DetZ 7/9/11/13) | **2** (DetZ 7/9) |
 | ω step (logged) | +0.25 | **+0.5** |
@@ -488,7 +488,7 @@ only the paths gets three of these wrong.
 
 **The last frame of the last distance is a real frame.** Each sweep nominally
 ends on ω = 0, but that frame is overwritten by the first frame of the next
-sweep — except for the final sweep, which keeps it. That is why the Ce scan has
+sweep — except for the final sweep, which keeps it. That is why the sampleB scan has
 721 files for 2×360 frames, and why a stride of `NrFilesPerDistance` is still
 exact. Set `EndNr = StartNr + NrFilesPerDistance − 1` and ignore the extra.
 
@@ -502,7 +502,7 @@ NF detector does not do this. **Never carry that rule across to an NF scan**:
 Independent evidence from the data, which also holds on any such scan:
 
 - The `+1` extra file sits at the **end**, not the start. The per-frame ω log
-  reverses exactly at the second distance's first image (9093 for the Ce scan),
+  reverses exactly at the second distance's first image (9093 for the sampleB scan),
   and the final image carries the wrap ω = 0. Skipping a leading frame would push
   the reversal *inside* the first distance, which contradicts the log.
 - `Au5_cubes_nf_96keV` reconstructed to confidence **1.000000** on the calibrant
@@ -586,7 +586,7 @@ the same silent failure mode as the ω sign (§2).
 
 **Use `fastsweep_Emon.txt` field 10. Nothing else.**
 
-Two decoys, both verified in `pokharel_jun25`:
+Two decoys, both verified in `bt_1id_jun25`:
 
 **Decoy 1 — `NF.par` field 29.** For the first frame of `Au4_cubes_nf_96keV` it reads
 `96.033875`, which looks exactly like "96 keV" for a scan named `..._96keV`. It is a
@@ -605,7 +605,7 @@ true energy by up to 11 %. **It is not energy.**
 **Decoy 2 — `<beamtime>.spe` `#U Energy:`.**
 
 ```
-$ grep -m3 "#U" pokharel_jun25.spe
+$ grep -m3 "#U" bt_1id_jun25.spe
 #U Beam Current: 200.4
 #U Energy: 8.0509
 #U Preamp Settings:
@@ -629,10 +629,10 @@ are meant to supply it: direct beam plus sample at ω = 0/90/180, macro
 `DetZBeamPos(startDetZ endDetZ step exposure prefix)`, logged to
 `<beamtime>_<E>keVBeamPos_*_BeamPosScan.txt`.
 
-**In `pokharel_jun25` those image directories exist and are EMPTY:**
+**In `bt_1id_jun25` those image directories exist and are EMPTY:**
 
 ```
-$ for d in /gdata/dm/1ID/2025/pokharel_jun25/data/nf/*BeamPos*; do echo "$d : $(ls -A $d|wc -l)"; done
+$ for d in /gdata/dm/1ID/2025/bt_1id_jun25/data/nf/*BeamPos*; do echo "$d : $(ls -A $d|wc -l)"; done
 .../Au_DetZBeamPos2 : 0 entries
 .../Au_DetZBeamPos3 : 0 entries
 .../Au_DetZBeamPos4 : 0 entries
@@ -674,15 +674,15 @@ The shared env has no matplotlib (§1). Working example from this session:
 ```
 remote reducer  -> writes au4_reduced.npz  (keys: detz{9,13}_{max,med,f0,f360,f719})
 scp to Mac
-/Users/hsharma/Desktop/analysis/pokharel_jun25_nf/plot_au4.py       -> 4 PNGs
-/Users/hsharma/Desktop/analysis/pokharel_jun25_nf/check_artifacts.py -> the null-model check
+/Users/hsharma/Desktop/analysis/bt_1id_jun25_nf/plot_au4.py       -> 4 PNGs
+/Users/hsharma/Desktop/analysis/bt_1id_jun25_nf/check_artifacts.py -> the null-model check
 ```
 
 Both scripts are checked in at that path; `check_artifacts.py` re-runs in seconds and
 reproduces every number in §5b. Run it before trusting any spot count:
 
 ```bash
-cd /Users/hsharma/Desktop/analysis/pokharel_jun25_nf
+cd /Users/hsharma/Desktop/analysis/bt_1id_jun25_nf
 /Users/hsharma/miniconda3/envs/midas_env/bin/python check_artifacts.py
 ```
 
@@ -729,7 +729,7 @@ Decision guide:
 |---|---|---|
 | counting spots / auditing frame content (§5b) | `1` | cosmics dominate a raw max-projection ~500:1 |
 | strong scatterer, dense spots (e.g. the Au calibrant) | either; Au was reconstructed to confidence 1.000 with `0` | |
-| **weak signal** (e.g. `nf_Ce_ht525_s2`) | **`0`** | LoG can suppress genuine weak peaks; cosmics are then left in, and must be tolerated downstream |
+| **weak signal** (e.g. `nf_sampleB_htB_s2`) | **`0`** | LoG can suppress genuine weak peaks; cosmics are then left in, and must be tolerated downstream |
 
 If you change this key you **must regenerate `SpotsInfo.bin`** — it is baked into the
 reduction, not applied at fit time.
@@ -737,7 +737,7 @@ reduction, not applied at fit time.
 Note the dynamic range: background ≈ 6.7, single-frame spot peaks ≈ 700–950, i.e. **~2
 decades**. The §5b reductions were computed over 72 of the 720 frames (every 10th) for the
 max projection and 18 frames for the temporal median
-(`/Users/hsharma/Desktop/analysis/pokharel_jun25_nf/plot_au4.py:49,65`).
+(`/Users/hsharma/Desktop/analysis/bt_1id_jun25_nf/plot_au4.py:49,65`).
 
 ### 5c. Decision tree on what you see
 
@@ -845,17 +845,17 @@ Measured at 20-ID, 63.314 keV, px 0.548 (111→200 spacing **225 px**):
 | sample | illuminated width | smearing | rings? |
 |---|---|---|---|
 | `nfdev_jul26` Au cube | 128 px = **70 µm** | ±64 px = 0.6× spacing | yes |
-| `xzhang_jul26` `s6061_NF` | 452 px = **247 µm** | ±226 px = **2.0× spacing** | **no** |
+| `bt_20id_jul26b` `nf_sampleD` | 452 px = **247 µm** | ±226 px = **2.0× spacing** | **no** |
 
 **The control that catches it when you forget.** Two layers of the same material at the
-same distance must give **identical** ring radii. On `s6061_NF` the two 9 mm layers, 10 µm
+same distance must give **identical** ring radii. On `nf_sampleD` the two 9 mm layers, 10 µm
 apart, gave radial "peaks" at 1028/1152/1294/1364/1496 and 1108/1212/1304/1386/1574. They
 are not rings; they are grain-sampling structure, and every δ and lattice parameter fitted
 to them was void (lab notebook §8b).
 
 A second, independent check: histogram **spot radii** (each spot counted once, not weighted
 by size or brightness) and compare the on-ring count against the local off-ring rate. On
-`s6061_NF` the excess was +0.2 % and +2.4 % at the two candidate lattice parameters —
+`nf_sampleD` the excess was +0.2 % and +2.4 % at the two candidate lattice parameters —
 i.e. consistent with **no rings at either**.
 
 ⇒ When this test fails, the lattice parameter cannot be read off the detector. **The
@@ -866,7 +866,7 @@ and let confidence decide.
 
 ## 6. Detector-distance and rotation-axis calibration (DetZBeamPos)
 
-Validated on `pokharel_jul26` (95.0000 keV, Retiga, px 1.48 µm) against an independent
+Validated on `bt_1id_jul26` (95.0000 keV, Retiga, px 1.48 µm) against an independent
 operator reading taken in `gui/nf_qt.py`. Everything below is measured, not inferred,
 except where explicitly flagged.
 
@@ -903,7 +903,7 @@ Provenance, in order of strength:
 2. The cursor readout indexes into *that reversed array* (`gui/gui_common.py:714-731`:
    `mapSceneToView` then `_raw_data[iy, ix]` with `ix = int(x+0.5)`). `origin='br'` only
    calls `vb.invertX()`, which changes the drawn axis direction, **not** data coordinates.
-3. **Empirical confirmation.** On `pokharel_jul26_95keVBeamPos_redH_NoBBwithAu0_000267.tif`
+3. **Empirical confirmation.** On `bt_1id_jul26_95keVBeamPos_redH_NoBBwithAu0_000267.tif`
    (DetZ 7 mm), this pipeline measured (997.41, 38.26); an independent operator visual read
    in `nf_qt.py` gave **(997.7, 38.2)**. Agreement 0.29 px in y, 0.06 px in z.
 
@@ -948,7 +948,7 @@ grep -E "^[[:space:]]+[0-9]+[[:space:]]+[0-9]+[[:space:]]+[0-9]+\.[0-9]+" \
 ```
 
 **Extract this per condition and never assume it from the macro** — `withBBNoAu` in
-`pokharel_jul26` was three *separate* macro invocations with a different exposure, so its
+`bt_1id_jul26` was three *separate* macro invocations with a different exposure, so its
 mapping does not follow the others.
 
 Images for all conditions usually share one folder, e.g.
@@ -1008,12 +1008,12 @@ cube-2 offset. **Never adopt a shadow axis without first reproducing a known one
 branch on `fit_axis(...).is_reliable` — it returned False on every failing row above.
 
 If the beam profile has a narrow bright spike (there is one near col 3600 in
-`xzhang_jul26`), `band_frac * ref.max()` selects only the spike and everything is reported
+`bt_20id_jul26b`), `band_frac * ref.max()` selects only the spike and everything is reported
 as clipped. Crop to the flat core first and add the offset back.
 
 **(2) The absorber must be COMPACT.** The method assumes the shadow centre traces a rigid
 sinusoid, which is true for a particle and false for an extended irregular specimen. On
-`s6061_NF` the shadow width swung 56→886 px with ω, and `fit_axis` refused at **every**
+`nf_sampleD` the shadow width swung 56→886 px with ω, and `fit_axis` refused at **every**
 setting. There is no on-axis feature to fall back on either (`find_stationary` returned a
 fixed 26 µm absorber at col 3408, not the sample).
 
@@ -1053,7 +1053,7 @@ ybc = 2047 - dip_centre
 ```
 
 Reference implementation: `axis_from_dip.py` (`dip_centre()`), alongside `beam_center.py`
-in `~/Desktop/analysis/pokharel_jul26_beampos/`.
+in `~/Desktop/analysis/bt_1id_jul26_beampos/`.
 
 **ω = 90 is the cross-check**, not an input: `dip_centre(90) − axis` is the orthogonal
 component of the sample offset. In the reference dataset it came out −2.0 to −2.8 µm at
@@ -1075,7 +1075,7 @@ values the calibration scan never visited.**
 
 > **β MUST be measured per beamtime. Never borrow it.** Borrowing β from `ps_au.txt` (by
 > differencing its two `BC` lines across its two `Lsd` lines) and applying it to
-> `pokharel_jul26` was wrong by **62× in y** and **2.1× in z**, with y's magnitude
+> `bt_1id_jul26` was wrong by **62× in y** and **2.1× in z**, with y's magnitude
 > underestimated so badly that the horizontal misalignment — which is in fact the *dominant*
 > one, 4.6× larger than vertical — looked negligible.
 
@@ -1097,7 +1097,7 @@ affected axis to tens of pixels.
 Gates 1 and 3 are the ones that caught the estimator bug in §6e: the broken estimator
 passed neither.
 
-### 6h. Reference numbers — `pokharel_jul26`, 95.0000 keV, px 1.48 µm
+### 6h. Reference numbers — `bt_1id_jul26`, 95.0000 keV, px 1.48 µm
 
 Images 251–285 in `data/nf/Au_DetZBeamPos_95keV/`, DetZ 7/9/11/13 mm, 9 conditions.
 
@@ -1117,7 +1117,7 @@ Sample on the rotation axis to 0.5 µm; sample width 41.8 µm (ω=0/180) and 47.
 
 ### 6i. Fallback when there is no DetZBeamPos scan
 
-This happens — in `pokharel_jun25` all three `Au_DetZBeamPos*` folders exist but are
+This happens — in `bt_1id_jun25` all three `Au_DetZBeamPos*` folders exist but are
 **empty** (§3f). Then BC has to come from the sample's own diffraction spots, with a real
 loss of information.
 
@@ -1141,7 +1141,7 @@ hypothesis. **This is where absolute Lsd comes from** (`δ = L1 − DetZ₁`).
 
 What you get and do not get:
 
-- **`L1`, hence δ — yes.** On `pokharel_jun25` Au this gave δ = 153–178 µm across six
+- **`L1`, hence δ — yes.** On `bt_1id_jun25` Au this gave δ = 153–178 µm across six
   accepted solves at two energies, bootstrap ±4 µm within a dataset.
 - **β — no, structurally.** With a tilt β the true model is
   `y_k(L) = A_y + L·(β + a_k)/p`, and the measured slope `r_k` *is* `(β + a_k)/p`. β is
@@ -1163,7 +1163,7 @@ Both must fail decisively. On Au4 they returned **0 of 200** consensus solutions
 inliers for the real pairing.
 
 Also gate every solve on: y-only vs z-only `L1` agreement (< 200 µm), `cond(A)` (7–8 when
-healthy), and leave-one-out stability. On `pokharel_jun25` Au3 the `6→7` pair failed five
+healthy), and leave-one-out stability. On `bt_1id_jun25` Au3 the `6→7` pair failed five
 gates at once (δ = 5012 µm, cond 115, y/z split 947 µm); naively averaging all three pairs
 would have given δ = 1786 µm instead of 174 µm — a 10× error.
 
@@ -1230,7 +1230,7 @@ perturbation  ≈  (illuminated half-width, µm) / (typical spot radius, µm)
 | sample | half-width | typical radius | perturbation | y-vs-z split |
 |---|---|---|---|---|
 | `nfdev_jul26` Au cube | 35 µm | 1096 µm | 3 % | **57 µm** |
-| `xzhang_jul26` `s6061_NF` | 124 µm | 1096 µm | **11 %** | **142 µm** |
+| `bt_20id_jul26b` `nf_sampleD` | 124 µm | 1096 µm | **11 %** | **142 µm** |
 
 The **y-vs-z split is the symptom** — it rose by the same factor. The mode of the `k`
 histogram is more robust than its mean, so the answer does not collapse, but the honest
@@ -1238,7 +1238,7 @@ precision degrades from ~2 µm to ~200 µm. Quote it accordingly, and do **not**
 200 µm difference between two campaigns as a calibration change when the sample is this
 wide.
 
-Two further cautions from `s6061_NF`:
+Two further cautions from `nf_sampleD`:
 
 * **`r_min_px` matters more than the angular tolerance.** At `r_min=300` the module
   returned `k = 1.0146`, `L = 136 mm`, y-vs-z split **129 mm**, and correctly REJECTED it:
@@ -1288,7 +1288,7 @@ under-determined in the way §7b describes.
 
 ### 7b. Three verified negatives — do not rediscover these
 
-All three were established on `pokharel_jul26` / `Au5_cubes_nf_96keV`, 4
+All three were established on `bt_1id_jul26` / `Au5_cubes_nf_96keV`, 4
 distances, 95 keV. They are properties of the *problem*, not bugs.
 
 **(1) Confidence 1.0 is a plateau, not a unique solution.**
@@ -1395,7 +1395,7 @@ geometry.
 
 When §7b leaves two plausible geometries, the instinct is to reconstruct under
 each and pick the better map. Do it, but calibrate your expectations: **on
-`pokharel_jul26` this test did not cleanly separate them.**
+`bt_1id_jul26` this test did not cleanly separate them.**
 
 Both geometries produced a single coherent gold crystal, and:
 
@@ -1431,7 +1431,7 @@ bounds gross errors rather than resolving fine ones.
 survive §7b, expect to choose on aggregate confidence and operator judgement, and
 label the choice provisional.
 
-### 7f. Reference — `pokharel_jul26` Au5, the geometry actually adopted
+### 7f. Reference — `bt_1id_jul26` Au5, the geometry actually adopted
 
 95.0000 keV, λ 0.1305097 Å, px 1.48 µm, 2048², DetZ 7/9/11/13, stage `aero`.
 Adopted **geometry A**:
@@ -1477,7 +1477,7 @@ Without it the fitter uses a single GPU while the rest idle. The outputs are pre
 once by the parent and workers open them `r+`; do not hand-roll this, `MicWriter`'s default
 zeroes the whole file on open (lab notebook §3c).
 
-**Three things that bite on first invocation** (all hit on `xzhang_jul26`, 2026-08-01):
+**Three things that bite on first invocation** (all hit on `bt_20id_jul26b`, 2026-08-01):
 
 1. **`export MIDAS_NF_SEED_DIR=<…>/NF_HEDM/seedOrientations`.** The seed stage re-derives
    the cache path from the *install* directory (`from_cache.py:106`), which in a conda env
@@ -1499,7 +1499,7 @@ consolidation line reading `Wrote 1 grains to /grains/` likewise does not mean o
 check `Grains.csv.<k>` (`%NumGrains`) instead.
 
 **Grain RADII from `mic2grains` are invalid whenever `EdgeLength ≪ GridSize`** — which is
-always, since `EdgeLength 1` is mandatory (§10e). Verified on `xzhang_jul26` loop 0: 93
+always, since `EdgeLength 1` is mandatory (§10e). Verified on `bt_20id_jul26b` loop 0: 93
 grains with radii 0.37–11.08 µm, median 1.78 µm, against an indexed area of ~499,000 µm²;
 93·π·1.78² ≈ 925 µm², a **500× discrepancy**. The merge threshold is `2·TriEdgeSize` = 2 µm
 while neighbours sit `GridSize/√3` = 5.77 µm apart, so the radii describe the **probe
@@ -1699,7 +1699,7 @@ assignment was fitted.
 ### 8f. Denoise the residual before thresholding — the biggest single lever
 
 On a weak-signal sample this is worth far more than any geometry work. Measured on
-`nf_Ce_ht525_s2`, 10 µm loop 0, identical geometry/grid/rings, only the reduction
+`nf_sampleB_htB_s2`, 10 µm loop 0, identical geometry/grid/rings, only the reduction
 differing: **voxels at C ≥ 0.9 went 1,424 → 5,186 (3.6×)**, median confidence 0.359 →
 0.562, `max C` unchanged at 1.0000 (lab notebook §4d).
 
@@ -1831,7 +1831,7 @@ than the spot really is. `SumFrames N` sums N consecutive RAW frames before the
 reduction.
 
 **Measure the ω width before choosing N** (`recon/omega_width.py`): on
-`nf_Ce5Y_ht450_s2` at a 0.1° step the profile is 1.00 / 0.69 / 0.69 at 0, ±1 frame —
+`nf_sampleC_htA_s2` at a 0.1° step the profile is 1.00 / 0.69 / 0.69 at 0, ±1 frame —
 **FWHM 0.30°**, so N = 3. Summing beyond the spot width adds background to a fixed
 signal and SNR *drops* as √N.
 
@@ -1855,7 +1855,7 @@ right.
 ### 8k. How low can `BlanketSubtraction` go — measure, do not guess
 
 `BlanketSubtraction` is applied to the **NLM-denoised** residual, so what matters is
-σ of the *denoised* frame, not the raw one. Measured on `nf_Ce5Y_ht450_s2`:
+σ of the *denoised* frame, not the raw one. Measured on `nf_sampleC_htA_s2`:
 raw σ_MAD **2.965 → 0.282 after NLM** (10.5×). So `BlanketSubtraction 2` sits at
 **7.1σ** — far more conservative than it looks.
 
@@ -1885,15 +1885,18 @@ Space-group extinction rules do not see **basis-dependent** extinctions. Declare
 unit-cell basis and the generator computes |F|² per reflection:
 
 ```
-PhaseAtom Ce 0.0 0.0 0.0
-PhaseAtom Ce 0.3333333333 0.6666666667 0.25    # dhcp beta-Ce, La-type hP4
+PhaseAtom <El> 0.0 0.0 0.0
+PhaseAtom <El> 0.3333333333 0.6666666667 0.25   # a DHCP cell, hP4: sites 2a + 2c
 DropForbiddenReflections 1
 ConfidenceMetric filtered                       # raw | filtered | weighted
 ```
 
-Measured on `nf_Ce_ht525_s2`: dhcp β-Ce has **126 of 736 reflections with |F|² = 0**,
-capping FracOverlap at **0.829**; fcc γ-Ce has none, cap 1.000 — which is why this never
-showed up on a single-atom cell. Dropping them took max confidence **0.4938 → 0.5962**
+(`<El>` is the element symbol; the worked example below is a DHCP/FCC polytype pair.)
+
+Measured on `nf_sampleB_htB_s2`: the DHCP polytype has **126 of 736 reflections with
+|F|² = 0**, capping FracOverlap at **0.829**; the FCC parent has none, cap 1.000 — which is
+why this never showed up on a single-atom cell. Dropping them took max confidence
+**0.4938 → 0.5962**
 (predicted 0.596) and voxels above `MinConfidence 0.5` from **0 → 213**.
 
 Affects any phase with a non-trivial basis: HCP, DHCP, intermetallics, oxides.
@@ -1902,14 +1905,14 @@ Affects any phase with a non-trivial basis: HCP, DHCP, intermetallics, oxides.
 - Omit `PhaseAtom` → output byte-identical to before.
 - `DropForbiddenReflections` filters `hkls.csv` itself, so it fixes the SEARCH too —
   every downstream stage reads that one file.
-- `ConfidenceMetric weighted` changes the *scale* of confidence: on the Ce DHCP map it
+- `ConfidenceMetric weighted` changes the *scale* of confidence: on the DHCP map it
   moved the median 0.397 → 0.727 and lifted the sham null 0.097 → 0.148. Re-tune
   `MinConfidence` before adopting it; `filtered` is the safe driver.
 - **No Lorentz factor**, deliberately — see lab notebook §11c.
 
 ### 8m. DHCP-scale phases need a big GPU
 
-A hexagonal cell generates far more of everything than a cubic one. For β-Ce at
+A hexagonal cell generates far more of everything than a cubic one. For the DHCP polytype at
 `MaxRingRad 1400`: **736 reflections and 486,755 seeds**, against fcc's 228 and 243,129
 — roughly 8.7× the forward-model footprint. That **OOMs a 47 GB A6000** in
 `calc_bragg_geometry` before fitting a single voxel. Run it on an H200 (143 GB), or cut
@@ -2520,7 +2523,7 @@ unless `MIDAS_RUN_INTEGRATION=1`; `test_mic2grains` also skips if the C binary i
 ### Could not verify — do not upgrade these
 
 1. **Rotation-stage names other than `aero`.** Only `aero` was observed (441397/441397 rows
-   in `pokharel_jun25`). What any other value implies for the ω sign is **unknown**. Stop
+   in `bt_1id_jun25`). What any other value implies for the ω sign is **unknown**. Stop
    and ask.
 2. **`*_nf_*` folder naming** is convention; nothing in this repo parses it.
 3. **The five §8a defects were established by reading, not by execution.** Exception
@@ -2538,7 +2541,7 @@ unless `MIDAS_RUN_INTEGRATION=1`; `test_mic2grains` also skips if the C binary i
    established.
 8. **`fastsweep_Emon.txt` fields other than f10** were not identified.
 9. **`NF.par` fields other than f6–f11, f17 and f29** were not identified.
-10. **Absolute `Lsd` for `pokharel_jun25`** is not established in this document — §6 is a
+10. **Absolute `Lsd` for `bt_1id_jun25`** is not established in this document — §6 is a
     placeholder.
 11. **Which of geometry A / B is physically correct** (§7e/§7f). A was adopted on operator
     judgement after B scored slightly worse on the map; the two orientations agree to
@@ -2568,7 +2571,7 @@ unless `MIDAS_RUN_INTEGRATION=1`; `test_mic2grains` also skips if the C binary i
 3. **`screen()` results are independent of `MIDAS_NF_SCREEN_VOXEL_CHUNK`** (§8h), checked at
    a fixed forced chunk size.
 4. **The three calibration negatives** (§7b) — plateau, multipoint, iteration ratchet — were
-   each observed directly on `pokharel_jul26` Au5, not inferred.
+   each observed directly on `bt_1id_jul26` Au5, not inferred.
 
 ### Bottom line
 

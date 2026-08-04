@@ -23,7 +23,7 @@ from pathlib import Path
 import numpy as np
 import pandas as pd
 
-R = Path("/gdata/dm/1ID/2026/pokharel_jul26/analysis/au3_cubes_ff_000008")
+R = Path("/gdata/dm/1ID/2026/bt_1id_jul26/analysis/au3_cubes_ff_000008")
 RESULT = R / "results/LayerNr_1"
 ZIP = RESULT / "Au3_cubes_ff_000008.MIDAS.zip"
 AUD = R / "spot_noise_audit/spot_audit_snr.csv"

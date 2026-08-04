@@ -2,7 +2,7 @@
 
 The alternating loop is not monotonic — the E-step re-extracts peaks at the
 new geometry, so a late iteration can land in a worse basin than an earlier
-one. Observed on real CeO2 (pokharel_jul26, GE5): iter 3 = 17.9 ue, iter 4 =
+one. Observed on real CeO2 (bt_1id_jul26, GE5): iter 3 = 17.9 ue, iter 4 =
 72.0 ue. Returning the last iterate shipped the 72 ue geometry.
 
 v1 C keeps the best across nIterations (FF_HEDM/Example/Parameters.txt:

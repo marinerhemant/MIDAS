@@ -8,9 +8,9 @@
 import pandas as pd
 import numpy as np
 
-fn = '/Users/hsharma/Desktop/analysis/kenesei_nov20/ebsd/ebsd2hedm_aligned/ebsd_inv_320.ang'
-fn = '/Users/hsharma/Desktop/analysis/kenesei_nov20/ebsd/GES_HEDM1_resampledEBSD_layer1.ang'
-outfn = '/Users/hsharma/Desktop/analysis/kenesei_nov20/ebsd/ebsd2hedm_aligned/mic/GES_HEDM1_resampledEBSD_layer1.ang.mic'
+fn = '/Users/hsharma/Desktop/analysis/bt_1id_nov20/ebsd/ebsd2hedm_aligned/ebsd_inv_320.ang'
+fn = '/Users/hsharma/Desktop/analysis/bt_1id_nov20/ebsd/GES_HEDM1_resampledEBSD_layer1.ang'
+outfn = '/Users/hsharma/Desktop/analysis/bt_1id_nov20/ebsd/ebsd2hedm_aligned/mic/GES_HEDM1_resampledEBSD_layer1.ang.mic'
 data = np.genfromtxt(fn,comments='#')
 print(data.shape)
 data2 = np.zeros((data.shape[0],12))

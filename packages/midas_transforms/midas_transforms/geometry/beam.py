@@ -84,7 +84,7 @@ class TopHat(_Module, BeamProfile):
         Beam width along the scan axis (µm).
     refine   : bool
         If ``True``, ``width_um`` becomes an :class:`torch.nn.Parameter` and
-        is refined by upstream optimizers.  Default ``False`` (Wenxi PF).
+        is refined by upstream optimizers.  Default ``False`` (datasetC PF).
     """
 
     def __init__(

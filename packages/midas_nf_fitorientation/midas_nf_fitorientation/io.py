@@ -153,7 +153,7 @@ class HKLTable:
         behaviour of treating every listed reflection as equally expected.
         Reflections with ``f2 == 0`` are FORBIDDEN by the basis and can never
         produce a spot, so counting them in a confidence denominator caps the
-        achievable value (measured: 126/736 for dhcp beta-Ce -> cap 0.829).
+        achievable value (measured: 126/736 for a DHCP polytype -> cap 0.829).
     """
     hkls_int: np.ndarray
     hkls_cart: np.ndarray

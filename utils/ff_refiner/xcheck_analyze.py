@@ -13,7 +13,7 @@ Two bugs in the first pass, both worth recording:
 from pathlib import Path
 import numpy as np
 
-R = Path("/gdata/dm/1ID/2026/pokharel_jul26/analysis/au3_cubes_ff_000008")
+R = Path("/gdata/dm/1ID/2026/bt_1id_jul26/analysis/au3_cubes_ff_000008")
 F = np.load(R / "refiner_crosscheck/fits.npy", allow_pickle=True).item()
 C_ORIENT, C_POS, C_LAT = slice(1, 10), slice(11, 14), slice(15, 21)
 SG = 225
