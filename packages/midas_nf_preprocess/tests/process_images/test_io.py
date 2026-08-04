@@ -53,24 +53,25 @@ def test_frame_paths_invalid_layer():
 
 
 def test_frame_paths_sum_frames_expands_and_strides():
-    """SumFrames=N returns N raw paths per output frame, and the per-distance
-    stride scales by N so distance 1 starts after ALL of distance 0's raws."""
+    """NrFilesPerDistance is the RAW count, so the paths do not depend on
+    SumFrames at all -- it only controls how load_tiff_stack groups them."""
     p = ProcessParams(
         data_directory="/data",
         orig_filename="scan",
         ext_orig="tif",
         raw_start_nr=10,
         wf_images=0,
-        nr_files_per_distance=2,   # POST-sum
+        nr_files_per_distance=6,   # RAW images per distance
         sum_frames=3,
     )
     assert frame_paths(p, layer_nr=1) == [
         f"/data/scan_{n:06d}.tif" for n in (10, 11, 12, 13, 14, 15)
     ]
-    # distance 1 must start at 10 + 2*3 = 16, not 10 + 2
+    # distance 1 starts after all 6 of distance 0's raw images
     assert frame_paths(p, layer_nr=2) == [
         f"/data/scan_{n:06d}.tif" for n in (16, 17, 18, 19, 20, 21)
     ]
+    assert p.n_frames_per_distance == 2, "6 raw images summed by 3 -> 2 frames"
 
 
 def test_load_tiff_stack_sums_consecutive_frames(tmp_path):
@@ -87,7 +88,7 @@ def test_load_tiff_stack_sums_consecutive_frames(tmp_path):
         raw_start_nr=10,
         nr_pixels_y=4,
         nr_pixels_z=4,
-        nr_files_per_distance=2,
+        nr_files_per_distance=6,   # RAW
         sum_frames=3,
     )
     stack = load_tiff_stack(p, layer_nr=1, dtype=torch.float64)

@@ -148,51 +148,37 @@ def startnr_le_endnr(ctx: Ctx) -> list[ValidationIssue]:
 
 
 def nf_frames_match_files_per_distance(ctx: Ctx) -> list[ValidationIssue]:
-    """In NF: StartNr..EndNr is a PER-DISTANCE frame range. The span should
-    equal NrFilesPerDistance + WFImages (same frame indices get reused for
-    every distance with an internal offset in the binary layout)."""
+    """NF: StartNr..EndNr is a PER-DISTANCE range over RAW images.
+
+    Every key in an NF parameter file describes the experiment as performed, so
+    this comparison needs no SumFrames term: the span, NrFilesPerDistance and
+    WFImages are all raw counts. SumFrames is applied inside the reduction and
+    the fit, which derive their own post-sum quantities from it.
+
+    EndNr is optional for NF (it is StartNr + NrFilesPerDistance - 1 and the
+    pipeline fills it in); this only fires when one was supplied and disagrees.
+    """
     if ctx.path != "nf":
         return []
-    s = ctx.all_values.get("StartNr")
+    s_ = ctx.all_values.get("StartNr")
     e = ctx.all_values.get("EndNr")
     nfd = ctx.all_values.get("NrFilesPerDistance")
     wf = ctx.all_values.get("WFImages") or 0
-    n_sum = int(ctx.all_values.get("SumFrames") or 1)
-    if None in (s, e, nfd):
+    if None in (s_, e, nfd):
         return []
     expected = nfd + wf
-    actual = e - s + 1
+    actual = e - s_ + 1
     if actual == expected:
         return []
-
-    # NOTE both self-consistent conventions already returned above, because
-    # NrFilesPerDistance and the span scale together:
-    #   raw       NrFilesPerDistance 1800, span 1800  -> equal
-    #   post-sum  NrFilesPerDistance  600, span  600  -> equal
-    # Reaching here with actual == nfd * SumFrames means a POST-SUM
-    # NrFilesPerDistance beside a RAW EndNr -- the mixed file, not a valid one.
-    hint = ""
-    severity = Severity.WARNING
-    if n_sum > 1:
-        # Fatal, not cosmetic: the reduction sizes SpotsInfo.bin from
-        # NrFilesPerDistance while the fit reads this span, so a mismatch runs
-        # the entire reduction and THEN dies with
-        #   SpotsInfo.bin ... has 5033164800 bits, need 15099494400
-        # which names neither key. Stop before the compute is spent.
-        severity = Severity.ERROR
-        hint = (f" With SumFrames={n_sum}, either NrFilesPerDistance and EndNr "
-                f"both describe the summed scan (EndNr={s + expected - 1}) or "
-                f"both describe the raw one (NrFilesPerDistance="
-                f"{nfd * n_sum}); this file mixes the two, which makes the "
-                f"reduction and the fit size SpotsInfo.bin differently.")
     return [ValidationIssue(
-        severity=severity,
+        severity=Severity.WARNING,
         key="EndNr",
         line=ctx.line_of.get("EndNr"),
         message=(
             f"Frame span {actual} (EndNr-StartNr+1) does not match "
-            f"expected {expected} = NrFilesPerDistance={nfd} + "
-            f"WFImages={wf}.{hint}"
+            f"NrFilesPerDistance={nfd} + WFImages={wf} = {expected}. EndNr is "
+            f"not required for NF -- omitting it lets the pipeline derive "
+            f"{s_ + expected - 1}."
         ),
         rule="nf_frames_match_files_per_distance",
     )]
@@ -426,29 +412,19 @@ def frames_exist_on_disk(ctx: Ctx) -> list[ValidationIssue]:
         nfd = ctx.all_values.get("NrFilesPerDistance")
         wf = ctx.all_values.get("WFImages") or 0
         n_dist = ctx.all_values.get("nDistances") or 1
-        n_sum = ctx.all_values.get("SumFrames") or 1
         if None in (folder, stem, start, nfd):
             return []
-        # Accept EITHER reading of NrFilesPerDistance, because the pipeline does
-        # (workflows._normalise_sum_frames): post-sum, or still-raw and converted
-        # on the way in. Demanding only the post-sum reading rejected a file that
-        # runs perfectly -- a user who raises SumFrames alone, which is the whole
-        # point of the conversion.
-        n_post = n_dist * (nfd * n_sum + wf)      # NrFilesPerDistance is post-sum
-        n_rawc = n_dist * (nfd + wf)              # ... is still the raw count
-        candidates = [n_post] if n_sum == 1 else [n_post, n_rawc]
-        n_raw = n_post
+        # NrFilesPerDistance is the RAW image count, so the file demand does not
+        # depend on SumFrames at all -- summing regroups the frames it reads, it
+        # does not read more of them.
+        n_raw = n_dist * (nfd + wf)
+        candidates = [n_raw]
         end = start + n_raw - 1
+        nf_arith = (f"{n_raw} raw files = nDistances({n_dist}) x "
+                    f"[NrFilesPerDistance({nfd}) + WFImages({wf})], "
+                    f"so {start}..{end}")
         ext_with_dot = ext if ext.startswith(".") else f".{ext}"
         key_for_error = "OrigFileName"
-        nf_arith = (
-            f"{n_post} raw files = nDistances({n_dist}) x "
-            f"[NrFilesPerDistance({nfd}) x SumFrames({n_sum}) + WFImages({wf})], "
-            f"so {start}..{start + n_post - 1}"
-            + (f" -- or, reading NrFilesPerDistance as the RAW count, {n_rawc} "
-               f"files {start}..{start + n_rawc - 1}, which the pipeline would "
-               f"convert to NrFilesPerDistance {nfd // n_sum}"
-               if n_sum > 1 and nfd % n_sum == 0 else ""))
     else:
         folder = ctx.all_values.get("RawFolder")
         stem = ctx.all_values.get("FileStem")

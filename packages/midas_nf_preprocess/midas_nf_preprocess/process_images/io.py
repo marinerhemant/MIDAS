@@ -24,22 +24,25 @@ from .params import ProcessParams
 def frame_paths(params: ProcessParams, layer_nr: int) -> list[str]:
     """Return the RAW TIFF paths for a given 1-indexed layer.
 
-    With ``SumFrames > 1`` this returns ``NrFilesPerDistance * SumFrames``
-    paths, in order, so that consecutive groups of ``SumFrames`` collapse into
-    one output frame (:func:`load_tiff_stack` does the summing). The paramfile's
-    ``NrFilesPerDistance`` counts POST-SUM frames, so the per-distance stride
-    through the raw files scales by ``SumFrames`` too -- otherwise distance 1
-    would start part-way through distance 0's raw files.
+    ``NrFilesPerDistance`` is the RAW image count per distance -- what the
+    detector wrote -- so this returns exactly that many paths and the layer
+    stride is the same number, independent of ``SumFrames``. Summing is applied
+    afterwards by :func:`load_tiff_stack`, which collapses consecutive groups of
+    ``SumFrames`` into one output frame.
+
+    That independence is the point: changing SumFrames must not change WHICH
+    files are read, only how they are grouped. When the count was instead read
+    as post-sum, raising SumFrames alone silently multiplied the file demand and
+    walked off the end of the scan.
     """
     if layer_nr < 1:
         raise ValueError(f"layer_nr must be >= 1, got {layer_nr}")
     base = f"{params.data_directory}/{params.orig_filename}"
-    n_sum = max(1, int(getattr(params, "sum_frames", 1) or 1))
     # C: StartNr = RawStartNr + (nLayers - 1) * WFImages
     # C: FileNr  = ((nLayers - 1) * NrFilesPerLayer) + StartNr + j
     start = params.raw_start_nr + (layer_nr - 1) * params.wf_images
-    base_idx = (layer_nr - 1) * params.nr_files_per_distance * n_sum
-    n = params.nr_files_per_distance * n_sum
+    base_idx = (layer_nr - 1) * params.nr_files_per_distance
+    n = params.nr_files_per_distance
     return [
         f"{base}_{base_idx + start + j:06d}.{params.ext_orig}" for j in range(n)
     ]

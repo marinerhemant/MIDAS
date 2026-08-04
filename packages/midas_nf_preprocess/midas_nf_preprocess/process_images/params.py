@@ -136,7 +136,42 @@ class ProcessParams:
     # A positive float overrides for both sigmoids.
     soft_temperature: Union[float, str] = "auto"
 
+    # ---- SumFrames is INTERNAL -------------------------------------------
+    # Every key in the parameter file describes the experiment as performed:
+    # NrFilesPerDistance is the number of raw images the detector wrote per
+    # distance, OmegaStep is the rotation between raw images. SumFrames is a
+    # reduction choice, so every quantity it changes is derived HERE rather
+    # than asked of the user.
+    #
+    # It used to work the other way -- the user restated NrFilesPerDistance,
+    # EndNr and OmegaStep in post-sum units and the pipeline rewrote the file
+    # to match. Three coupled edits for one setting is three chances to be
+    # wrong, and getting one of them wrong produced failures deep in the run
+    # that named none of the keys involved.
+
+    @property
+    def n_sum(self) -> int:
+        """SumFrames, normalised to at least 1."""
+        return max(1, int(getattr(self, "sum_frames", 1) or 1))
+
+    @property
+    def n_raw_per_distance(self) -> int:
+        """Raw images per distance -- exactly what the parameter file says."""
+        return int(self.nr_files_per_distance)
+
+    @property
+    def n_frames_per_distance(self) -> int:
+        """Frames per distance AFTER summing: what the outputs are sized by."""
+        return int(self.nr_files_per_distance) // self.n_sum
+
     def __post_init__(self) -> None:
+        n_sum = max(1, int(getattr(self, "sum_frames", 1) or 1))
+        if n_sum > 1 and self.nr_files_per_distance % n_sum:
+            raise ValueError(
+                f"SumFrames {n_sum} does not divide NrFilesPerDistance "
+                f"{self.nr_files_per_distance}. NrFilesPerDistance is the RAW "
+                f"image count per distance, so summing must consume it whole; "
+                f"pick a SumFrames that divides {self.nr_files_per_distance}.")
         # Mirror C L782-L789: NrPixelsY/Z fallback chain.
         if self.nr_pixels_y == 0 and self.nr_pixels_z == 0:
             self.nr_pixels_y = self.nr_pixels

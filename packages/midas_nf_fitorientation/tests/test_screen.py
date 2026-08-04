@@ -37,7 +37,7 @@ def _make_params(
     p.zbc = [n_pixels / 2.0] * n_distances
     p.px = 200.0
     p.omega_start = -180.0
-    p.omega_step = 1.0
+    p.omega_step_raw = 1.0
     p.start_nr = 1
     p.end_nr = 360                  # one frame per degree
     p.exclude_pole_angle = 0.0

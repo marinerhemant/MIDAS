@@ -1,13 +1,11 @@
-"""Two things the user should not have to know about.
+"""Seed generation and EndNr derivation.
 
-1. SumFrames coupling. NrFilesPerDistance / EndNr / OmegaStep are POST-SUM,
-   RawStartNr indexes RAW files. Raising SumFrames alone used to make the loader
-   ask for NrFilesPerDistance x SumFrames raw files per distance and die on a
-   filename hundreds past the end of the scan -- an error that says nothing
-   about the real mistake. The parameter file may now describe the scan as
-   acquired; the pipeline converts and logs it.
+SumFrames conversion is no longer here at all: the parameter file states the
+experiment and every stage derives its own post-sum quantities, so there is
+nothing to convert and nothing rewritten on disk. See
+midas_nf_preprocess/tests/process_images/test_sum_frames_internal.py.
 
-2. Seed orientations. The lookup cache lives in the source tree and is not
+Seed orientations. The lookup cache lives in the source tree and is not
    shipped in the wheel, so a plain `pip install midas-suite` had no cache and
    the stage raised. Orientations are derivable, so they get derived.
 """
@@ -18,7 +16,6 @@ import os
 import pytest
 
 from midas_nf_pipeline import stages
-from midas_nf_pipeline.workflows import _normalise_sum_frames
 from midas_nf_pipeline.params import parse_parameters
 
 
@@ -41,51 +38,9 @@ def _params(tmp_path, *, n_raw_files, nfd, sum_frames, n_dist=2, start=5043):
     return f
 
 
-def test_raw_counts_are_converted(tmp_path, caplog):
-    """1800 raw/distance x 2 with SumFrames 3 -> 600 post-sum, step -0.3."""
-    f = _params(tmp_path, n_raw_files=3600, nfd=1800, sum_frames=3)
-    p = parse_parameters(str(f))
-    with caplog.at_level(logging.INFO):
-        _normalise_sum_frames(p, str(f))
-    out = parse_parameters(str(f))
-    assert out["NrFilesPerDistance"] == 600
-    assert int(out["EndNr"]) == 5043 + 599
-    assert float(out["OmegaStep"]) == pytest.approx(-0.3)
-    assert out["RawStartNr"] == 5043, "RawStartNr must keep indexing raw files"
-    assert "RAW scan" in " ".join(r.getMessage() for r in caplog.records)
 
 
-def test_already_post_sum_is_left_alone(tmp_path):
-    """A file that already holds post-sum values must not be halved again."""
-    f = _params(tmp_path, n_raw_files=3600, nfd=600, sum_frames=3)
-    p = parse_parameters(str(f))
-    _normalise_sum_frames(p, str(f))
-    out = parse_parameters(str(f))
-    assert out["NrFilesPerDistance"] == 600
-    assert float(out["OmegaStep"]) == pytest.approx(-0.1)
 
-
-def test_sum_frames_one_is_a_noop(tmp_path):
-    f = _params(tmp_path, n_raw_files=3600, nfd=1800, sum_frames=1)
-    p = parse_parameters(str(f))
-    _normalise_sum_frames(p, str(f))
-    assert parse_parameters(str(f))["NrFilesPerDistance"] == 1800
-
-
-def test_indivisible_sum_frames_raises_with_the_real_reason(tmp_path):
-    f = _params(tmp_path, n_raw_files=2000, nfd=1000, sum_frames=3)
-    p = parse_parameters(str(f))
-    with pytest.raises(ValueError, match="does not divide"):
-        _normalise_sum_frames(p, str(f))
-
-
-def test_short_scan_is_left_for_the_loader_to_report(tmp_path):
-    """Neither interpretation fits: don't silently rewrite, let the loader name
-    the missing file."""
-    f = _params(tmp_path, n_raw_files=100, nfd=1800, sum_frames=3)
-    p = parse_parameters(str(f))
-    _normalise_sum_frames(p, str(f))
-    assert parse_parameters(str(f))["NrFilesPerDistance"] == 1800
 
 
 @pytest.fixture
@@ -170,17 +125,3 @@ def test_given_end_nr_is_not_overwritten(tmp_path):
     assert parse_parameters(str(f))["EndNr"] == before
 
 
-def test_derived_end_nr_then_survives_sum_frames_conversion(tmp_path):
-    """Derive, then convert: the two must compose to a self-consistent file."""
-    f = _params_no_endnr(tmp_path)
-    p = parse_parameters(str(f))
-    _derive_end_nr(p, str(f))
-    # now switch to summing by 3, as a user would, changing ONLY SumFrames
-    txt = pathlib.Path(f).read_text().replace("SumFrames 1", "SumFrames 3")
-    pathlib.Path(f).write_text(txt)
-    p = parse_parameters(str(f))
-    _normalise_sum_frames(p, str(f))
-    out = parse_parameters(str(f))
-    assert out["NrFilesPerDistance"] == 600
-    assert int(out["EndNr"]) == 5043 + 600 - 1
-    assert float(out["OmegaStep"]) == pytest.approx(-0.3)

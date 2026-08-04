@@ -41,7 +41,7 @@ def _params(omega_ranges=None, box_sizes=None) -> FitParams:
     p.zbc = [64.0]
     p.px = 2000.0
     p.omega_start = -180.0
-    p.omega_step = 10.0
+    p.omega_step_raw = 10.0
     p.start_nr = 1
     p.end_nr = 36
     p.exclude_pole_angle = 6.0

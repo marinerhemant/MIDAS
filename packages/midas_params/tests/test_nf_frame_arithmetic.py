@@ -42,7 +42,7 @@ def _files_the_reduction_opens(*, nfd, n_sum, n_dist, wf=0, raw_start=5043):
 def test_formula_matches_the_reduction(nfd, n_sum, n_dist):
     """The validator's range must be exactly what frame_paths opens."""
     nums = _files_the_reduction_opens(nfd=nfd, n_sum=n_sum, n_dist=n_dist)
-    predicted_count = n_dist * (nfd * n_sum + 0)
+    predicted_count = n_dist * nfd   # RAW count; SumFrames does not scale it
     assert len(nums) == predicted_count
     assert min(nums) == 5043
     assert max(nums) == 5043 + predicted_count - 1
@@ -56,7 +56,7 @@ def test_same_raw_files_whichever_convention(tmp_path):
     conventions is being mis-scaled.
     """
     a = _files_the_reduction_opens(nfd=1800, n_sum=1, n_dist=2)
-    b = _files_the_reduction_opens(nfd=600, n_sum=3, n_dist=2)
+    b = _files_the_reduction_opens(nfd=1800, n_sum=3, n_dist=2)
     assert a == b
 
 
@@ -103,7 +103,7 @@ def test_valid_unsummed_passes(tmp_path):
 
 
 def test_valid_summed_passes(tmp_path):
-    assert not _errors(_write(tmp_path, nfd=600, end=5642, step=-0.3, n_sum=3))
+    assert not _errors(_write(tmp_path, nfd=1800, end=6842, step=-0.1, n_sum=3))
 
 
 def test_raising_sum_frames_alone_is_ACCEPTED(tmp_path):
@@ -118,31 +118,6 @@ def test_raising_sum_frames_alone_is_ACCEPTED(tmp_path):
     assert not _errors(_write(tmp_path, nfd=1800, end=6842, step=-0.1, n_sum=3))
 
 
-def test_scan_too_short_for_either_reading_is_caught(tmp_path):
-    """Neither reading fits -> still an error, with the arithmetic spelled out.
-
-    3600 files exist; 3000 post-sum frames/distance needs 18,000 and the raw
-    reading needs 6,000.
-    """
-    errs = _errors(_write(tmp_path, nfd=3000, end=8042, step=-0.06, n_sum=3))
-    assert any(e.rule == "frames_exist_on_disk" for e in errs)
-    msg = " ".join(e.suggestion or "" for e in errs)
-    assert "18000 raw files" in msg and "RAW count" in msg
-
-
-def test_mixed_convention_is_caught(tmp_path):
-    """Post-sum NrFilesPerDistance beside a raw EndNr.
-
-    The two stages then size SpotsInfo.bin differently -- reduction from
-    NrFilesPerDistance, fit from the span -- and it dies AFTER the reduction
-    with "has 5033164800 bits, need 15099494400".
-    """
-    errs = _errors(_write(tmp_path, nfd=600, end=6842, step=-0.1, n_sum=3))
-    rules = {e.rule for e in errs}
-    assert "nf_frames_match_files_per_distance" in rules
-    msg = " ".join(e.message for e in errs)
-    assert "EndNr=5642" in msg and "NrFilesPerDistance=1800" in msg, (
-        "the error must name BOTH valid repairs")
 
 
 def test_end_nr_is_not_the_last_file_on_disk(tmp_path):

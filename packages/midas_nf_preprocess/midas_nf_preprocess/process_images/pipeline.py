@@ -629,7 +629,7 @@ class ProcessImagesPipeline:
         if bitmask is None:
             bitmask = SpotsBitMask(
                 n_layers=self.params.n_distances,
-                nr_files_per_layer=self.params.nr_files_per_distance,
+                nr_files_per_layer=self.params.n_frames_per_distance,
                 nr_pixels_y=self.params.nr_pixels_y,
                 nr_pixels_z=self.params.nr_pixels_z,
             )
@@ -727,7 +727,7 @@ class ProcessImagesPipeline:
         if bitmask is None:
             bitmask = SpotsBitMask(
                 n_layers=self.params.n_distances,
-                nr_files_per_layer=self.params.nr_files_per_distance,
+                nr_files_per_layer=self.params.n_frames_per_distance,
                 nr_pixels_y=self.params.nr_pixels_y,
                 nr_pixels_z=self.params.nr_pixels_z,
             )

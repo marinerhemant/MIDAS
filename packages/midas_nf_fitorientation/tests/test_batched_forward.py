@@ -23,7 +23,7 @@ def _make_params(n_distances: int = 1) -> FitParams:
     p.ybc = [64.0] * n_distances
     p.zbc = [64.0] * n_distances
     p.px = 200.0
-    p.omega_start = -180.0; p.omega_step = 1.0
+    p.omega_start = -180.0; p.omega_step_raw = 1.0
     p.start_nr = 1; p.end_nr = 30
     p.exclude_pole_angle = 6.0
     p.wavelength = 0.172979
