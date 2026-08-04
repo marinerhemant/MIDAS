@@ -96,6 +96,10 @@ class FitParams:
     omega_step: float = 0.0
     start_nr: int = 0
     end_nr: int = 0
+    #: Frames per distance as written in the paramfile. This is the SAME key the
+    #: reduction uses to size SpotsInfo.bin, so reading it here keeps the two
+    #: stages in agreement -- see :attr:`n_frames_per_distance`.
+    nr_files_per_distance: int = 0
     omega_ranges: List[Tuple[float, float]] = field(default_factory=list)
     box_sizes: List[Tuple[float, float, float, float]] = field(default_factory=list)
 
@@ -169,7 +173,21 @@ class FitParams:
 
     @property
     def n_frames_per_distance(self) -> int:
-        """Number of files per distance (``end_nr - start_nr + 1``)."""
+        """Frames per distance, from ``NrFilesPerDistance`` when present.
+
+        Deriving this independently as ``end_nr - start_nr + 1`` let the fit
+        disagree with the reduction, which sizes ``SpotsInfo.bin`` from
+        ``NrFilesPerDistance``. With ``SumFrames 3`` and a paramfile whose
+        ``EndNr`` still described the raw scan, the reduction wrote 600 frames
+        per distance and the fit demanded 1800 -- exactly SumFrames times more --
+        failing with
+
+            SpotsInfo.bin ... has 5033164800 bits, need 15099494400
+
+        after the whole reduction had already run. One key, one answer.
+        """
+        if self.nr_files_per_distance > 0:
+            return self.nr_files_per_distance
         return self.end_nr - self.start_nr + 1
 
 
@@ -260,6 +278,8 @@ def parse_paramfile(path: str | Path) -> FitParams:
                     p.start_nr = int(args[0])
                 elif key == "EndNr":
                     p.end_nr = int(args[0])
+                elif key == "NrFilesPerDistance":
+                    p.nr_files_per_distance = int(args[0])
                 elif key == "OmegaRange":
                     p.omega_ranges.append((float(args[0]), float(args[1])))
                 elif key == "BoxSize":

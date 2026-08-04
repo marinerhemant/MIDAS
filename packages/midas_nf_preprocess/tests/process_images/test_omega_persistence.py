@@ -2,7 +2,7 @@
 
 Measures the overlap of detection masks at increasing frame lag, pooled over
 every lit pixel, against a non-adjacent-pairing control. Validated on real data
-(Ce-5%Y, 0.1 deg/frame): excess over control +0.30, +0.15, +0.02 -> spans 3
+(sample A, 0.1 deg/frame): excess over control +0.30, +0.15, +0.02 -> spans 3
 frames, which is the SumFrames value that won a 14-configuration catalog.
 
 The control is not optional. NF frames share lit regions simply because the same

@@ -157,23 +157,45 @@ def nf_frames_match_files_per_distance(ctx: Ctx) -> list[ValidationIssue]:
     e = ctx.all_values.get("EndNr")
     nfd = ctx.all_values.get("NrFilesPerDistance")
     wf = ctx.all_values.get("WFImages") or 0
+    n_sum = int(ctx.all_values.get("SumFrames") or 1)
     if None in (s, e, nfd):
         return []
     expected = nfd + wf
     actual = e - s + 1
-    if actual != expected:
-        return [ValidationIssue(
-            severity=Severity.WARNING,
-            key="EndNr",
-            line=ctx.line_of.get("EndNr"),
-            message=(
-                f"Frame span {actual} (EndNr-StartNr+1) does not match "
-                f"expected {expected} = NrFilesPerDistance={nfd} + "
-                f"WFImages={wf}."
-            ),
-            rule="nf_frames_match_files_per_distance",
-        )]
-    return []
+    if actual == expected:
+        return []
+
+    # NOTE both self-consistent conventions already returned above, because
+    # NrFilesPerDistance and the span scale together:
+    #   raw       NrFilesPerDistance 1800, span 1800  -> equal
+    #   post-sum  NrFilesPerDistance  600, span  600  -> equal
+    # Reaching here with actual == nfd * SumFrames means a POST-SUM
+    # NrFilesPerDistance beside a RAW EndNr -- the mixed file, not a valid one.
+    hint = ""
+    severity = Severity.WARNING
+    if n_sum > 1:
+        # Fatal, not cosmetic: the reduction sizes SpotsInfo.bin from
+        # NrFilesPerDistance while the fit reads this span, so a mismatch runs
+        # the entire reduction and THEN dies with
+        #   SpotsInfo.bin ... has 5033164800 bits, need 15099494400
+        # which names neither key. Stop before the compute is spent.
+        severity = Severity.ERROR
+        hint = (f" With SumFrames={n_sum}, either NrFilesPerDistance and EndNr "
+                f"both describe the summed scan (EndNr={s + expected - 1}) or "
+                f"both describe the raw one (NrFilesPerDistance="
+                f"{nfd * n_sum}); this file mixes the two, which makes the "
+                f"reduction and the fit size SpotsInfo.bin differently.")
+    return [ValidationIssue(
+        severity=severity,
+        key="EndNr",
+        line=ctx.line_of.get("EndNr"),
+        message=(
+            f"Frame span {actual} (EndNr-StartNr+1) does not match "
+            f"expected {expected} = NrFilesPerDistance={nfd} + "
+            f"WFImages={wf}.{hint}"
+        ),
+        rule="nf_frames_match_files_per_distance",
+    )]
 
 
 # ─── Rings subset of MaxRingNumber ───────────────────────────────────────────
@@ -374,8 +396,21 @@ def frames_exist_on_disk(ctx: Ctx) -> list[ValidationIssue]:
              INSIDE a multi-frame GE/HDF5 file — they are NOT the on-disk
              filenames. A GE container with 1440 frames is a single file.
              If `StartFileNrFirstLayer` is absent, fall back to `StartNr`.
-      NF:    per-distance file numbering — `RawStartNr .. RawStartNr +
-             NrFilesPerDistance + WFImages − 1`.
+      NF:    ONE contiguous run covering EVERY distance, because
+             ``process_images.io.frame_paths`` walks distance d from
+             ``RawStartNr + (d-1)*(NrFilesPerDistance*SumFrames + WFImages)``
+             for ``NrFilesPerDistance*SumFrames`` files. So the files consumed
+             are
+
+                 RawStartNr .. RawStartNr
+                     + nDistances*(NrFilesPerDistance*SumFrames + WFImages) - 1
+
+             NOT one distance's worth. Checking only the first distance -- and
+             ignoring SumFrames -- under-verified by a factor of
+             ``nDistances * SumFrames``, which is how a parameter file that
+             asked for 6x more frames than existed passed validation and then
+             died deep inside the reduction on a filename that named none of
+             the keys responsible.
 
     Checks a small sample (first, last, up to 3 interior) rather than
     stat'ing every file.
@@ -390,11 +425,18 @@ def frames_exist_on_disk(ctx: Ctx) -> list[ValidationIssue]:
         start = ctx.all_values.get("RawStartNr")
         nfd = ctx.all_values.get("NrFilesPerDistance")
         wf = ctx.all_values.get("WFImages") or 0
+        n_dist = ctx.all_values.get("nDistances") or 1
+        n_sum = ctx.all_values.get("SumFrames") or 1
         if None in (folder, stem, start, nfd):
             return []
-        end = start + (nfd + wf) - 1
+        n_raw = n_dist * (nfd * n_sum + wf)
+        end = start + n_raw - 1
         ext_with_dot = ext if ext.startswith(".") else f".{ext}"
         key_for_error = "OrigFileName"
+        nf_arith = (
+            f"{n_raw} raw files = nDistances({n_dist}) x "
+            f"[NrFilesPerDistance({nfd}) x SumFrames({n_sum}) + WFImages({wf})], "
+            f"so {start}..{end}")
     else:
         folder = ctx.all_values.get("RawFolder")
         stem = ctx.all_values.get("FileStem")
@@ -448,6 +490,9 @@ def frames_exist_on_disk(ctx: Ctx) -> list[ValidationIssue]:
             suggestion=(
                 f"Check FileStem={stem!r}, Padding={pad}, Ext={ext!r}, and that "
                 f"frames {start}..{end} live in {folder_path}."
+                + (f" The reduction needs {nf_arith}. If fewer files exist, the "
+                   f"key to change is NrFilesPerDistance (or SumFrames), not "
+                   f"EndNr." if ctx.path == "nf" else "")
             ),
             rule="frames_exist_on_disk",
         ))

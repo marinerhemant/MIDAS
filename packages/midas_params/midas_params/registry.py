@@ -989,7 +989,7 @@ PARAMS: list[ParamSpec] = [
                     "[occupancy] [B_iso]'. Repeat per atom.",
         applies_to=frozenset({NF}), multi_entry=True, stages=S_INDEX,
         notes="Enables |F|^2 in hkls.csv. Space-group rules alone miss "
-              "basis-dependent extinctions: dhcp beta-Ce (Ce at 2a + 2c) has "
+              "basis-dependent extinctions: a DHCP polytype (both sites 2a + 2c) has "
               "126 of 736 reflections with |F|^2 = 0, which capped confidence "
               "at 0.829 while fcc could reach 1.000.",
     ),
@@ -1000,7 +1000,7 @@ PARAMS: list[ParamSpec] = [
         applies_to=frozenset({NF}), default=0, stages=S_INDEX,
         notes="Needs PhaseAtom. Fixes the SEARCH as well as the reported "
               "number, because every downstream stage reads hkls.csv. "
-              "Measured on Ce ht525: max confidence 0.4938 -> 0.5962 and "
+              "Measured on sample B: max confidence 0.4938 -> 0.5962 and "
               "voxels above MinConfidence 0.5 went 0 -> 213.",
     ),
     ParamSpec(
@@ -1502,7 +1502,7 @@ PARAMS: list[ParamSpec] = [
                     "residual, measured per layer. Overrides BlanketSubtraction.",
         applies_to=frozenset({NF}), default=0.0, units="sigma", stages=S_IMG,
         notes="The transferable form of the threshold. A 14-configuration "
-              "catalog on Ce-5%Y found every good reduction at ~3.5 sigma "
+              "catalog on sample A found every good reduction at ~3.5 sigma "
               "however it got there, while the same 'BlanketSubtraction 2' was "
               "7.5 sigma unsummed (75 distinct orientations recovered) and 3.6 "
               "sigma on a 3-frame sum (412). Set 3.5 and the noise level is "
@@ -1517,7 +1517,7 @@ PARAMS: list[ParamSpec] = [
                     "BEFORE thresholding.",
         applies_to=frozenset({NF}), default=0, stages=S_IMG,
         notes="The single biggest sensitivity lever measured on weak NF data: "
-              "on nf_Ce_ht525_s2 it took voxels at C>=0.9 from 1424 to 5186 "
+              "on nf_sampleB_htB_s2 it took voxels at C>=0.9 from 1424 to 5186 "
               "(3.6x) and cut sigma_MAD 2.97 -> 0.28 counts, which is what "
               "lets BlanketSubtraction drop well below 1 raw sigma.",
     ),
@@ -1554,7 +1554,7 @@ PARAMS: list[ParamSpec] = [
         notes="Omega binning. NrFilesPerDistance, EndNr and OmegaStep must all "
               "describe the POST-SUM scan. Only helps while the summed frames "
               "fall INSIDE the spot's omega width (measured 0.30 deg FWHM on "
-              "nf_Ce_ht450_s2); beyond that it adds background to fixed signal.",
+              "nf_sampleC_htA_s2); beyond that it adds background to fixed signal.",
     ),
     ParamSpec(
         name="MedFiltRadius", type=ParamType.INT, category="Image processing",

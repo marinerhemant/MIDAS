@@ -49,7 +49,7 @@ class ProcessParams:
     # background noise grows only as sqrt(N) -- a genuine sqrt(N) SNR gain, as
     # opposed to lowering the threshold, which only admits more noise.
     #
-    # Measured on nf_Ce_ht450_s2 (recon/omega_width.py): spot FWHM 0.30 deg at a
+    # Measured on nf_sampleC_htA_s2 (recon/omega_width.py): spot FWHM 0.30 deg at a
     # 0.1 deg step, so SumFrames 3 spans the spot and should give ~1.73x.
     #
     # ONLY summing frames that fall INSIDE the spot helps. Beyond the spot width
@@ -71,7 +71,7 @@ class ProcessParams:
     blanket_subtraction: float = 0.0
     # When > 0, the threshold is BlanketSigma * sigma_MAD of the POST-denoise
     # residual, measured per layer, and blanket_subtraction is ignored. This is
-    # the transferable knob: the reduction catalog on Ce-5%Y found every good
+    # the transferable knob: the reduction catalog on sample A found every good
     # configuration sitting at ~3.5 sigma regardless of how it got there, while
     # the same absolute "BlanketSubtraction 2" meant 7.5 sigma unsummed (75
     # orientations recovered) and 3.6 sigma summed (412).
@@ -79,7 +79,7 @@ class ProcessParams:
     # --- NLM denoise of the MEDIAN-CORRECTED residual (before thresholding) ---
     # Distinct from the pipeline's `Denoise` stage, which denoises RAW frames
     # before median subtraction. Denoising the residual instead lets the
-    # threshold drop to well under 1 sigma: on nf_Ce_ht525_s2, NLM + threshold 2
+    # threshold drop to well under 1 sigma: on nf_sampleB_htB_s2, NLM + threshold 2
     # recovered 5.3x the area in >=30 px blobs that raw + threshold 10 did,
     # with FEWER single-pixel specks.
     nlm_denoise: int = 0

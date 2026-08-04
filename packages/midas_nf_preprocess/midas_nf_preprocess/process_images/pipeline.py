@@ -431,7 +431,7 @@ class ProcessImagesPipeline:
     # ------------------------------------------------------------------
 
     #: Excess-over-control below which a lag is not counted as persistent.
-    #: Calibrated on ONE dataset -- Ce-5%Y at 0.1 deg/frame, spots ~0.30 deg
+    #: Calibrated on ONE dataset -- sample A at 0.1 deg/frame, spots ~0.30 deg
     #: FWHM, where SumFrames 3 was measured best out of 14 configurations. It
     #: recovers 3 there (excess +0.30, +0.15, then +0.02) when the threshold is
     #: 7.5 sigma. It is NOT threshold-independent: at 3.5 sigma the same data

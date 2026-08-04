@@ -245,6 +245,85 @@ def _merge_seeded_unseeded_binaries(
 #  Main per-layer driver (multi-res with NumLoops=0 == single-res)
 # ---------------------------------------------------------------------------
 
+def _normalise_sum_frames(p: Dict[str, Any], param_file: str) -> None:
+    """Let the parameter file describe the scan AS ACQUIRED, whatever SumFrames is.
+
+    Every stage downstream needs POST-SUM values -- ``NrFilesPerDistance``,
+    ``EndNr`` and ``OmegaStep`` all count summed frames, while ``RawStartNr``
+    indexes raw ``.tif`` files. Requiring the user to divide three of them by
+    ``SumFrames`` by hand is a trap: raising ``SumFrames`` alone makes the loader
+    request ``NrFilesPerDistance x SumFrames`` raw files per distance and fail
+    with "could not find file N" pointing far past the end of the scan, which
+    says nothing about the actual mistake.
+
+    So: if the values still describe the RAW scan, convert them here and say so.
+    Detection is by file count on disk, not by guessing -- ``NrFilesPerDistance``
+    raw files per distance means raw, ``NrFilesPerDistance * SumFrames`` means
+    the values were already converted.
+    """
+    n_sum = int(p.get("SumFrames", 1) or 1)
+    if n_sum <= 1:
+        return
+
+    nfd = int(p.get("NrFilesPerDistance", 0) or 0)
+    n_dist = int(p.get("nDistances", 1) or 1)
+    raw_start = int(p.get("RawStartNr", p.get("StartNr", 0)) or 0)
+    if nfd <= 0:
+        return
+
+    data_dir = p.get("DataDirectory", "")
+    stem = p.get("OrigFileName", "")
+    ext = p.get("extOrig", "tif")
+
+    def _n_available() -> int:
+        """Contiguous raw files present from RawStartNr."""
+        if not (data_dir and stem):
+            return -1
+        n = 0
+        while n < nfd * n_sum * n_dist + 1:
+            if not os.path.exists(
+                    os.path.join(data_dir, f"{stem}_{raw_start + n:06d}.{ext}")):
+                break
+            n += 1
+        return n
+
+    need_post = nfd * n_sum * n_dist       # if the file already holds post-sum
+    need_raw = nfd * n_dist                # if it still holds raw counts
+    have = _n_available()
+
+    if have < 0 or have >= need_post:
+        return                             # already post-sum (or unverifiable)
+    if have < need_raw:
+        return                             # neither fits; leave it to the loader
+                                           # to raise with the concrete filename
+
+    if nfd % n_sum:
+        raise ValueError(
+            f"SumFrames {n_sum} does not divide NrFilesPerDistance {nfd}. The "
+            f"scan has {have} raw files from {raw_start}, which is "
+            f"{nfd} x {n_dist} distances, so these are RAW counts -- but they "
+            f"cannot be summed in groups of {n_sum}. Use a SumFrames that "
+            f"divides {nfd}.")
+
+    post_nfd = nfd // n_sum
+    updates = {"NrFilesPerDistance": str(post_nfd)}
+    start = int(p.get("StartNr", raw_start) or raw_start)
+    updates["EndNr"] = str(start + post_nfd - 1)
+    if p.get("OmegaStep") is not None:
+        updates["OmegaStep"] = f"{float(p['OmegaStep']) * n_sum:g}"
+    if p.get("OmegaRange") is None:
+        pass
+    update_param_file(param_file, updates)
+    p.update({k: (float(v) if k == "OmegaStep" else int(v))
+              for k, v in updates.items()})
+    logger.info(
+        "SumFrames %d: parameter file describes the RAW scan (%d files/distance, "
+        "%d found on disk), converting to post-sum -- NrFilesPerDistance %d -> %d, "
+        "EndNr -> %s, OmegaStep -> %s. RawStartNr %d still indexes raw files.",
+        n_sum, nfd, have, nfd, post_nfd, updates["EndNr"],
+        updates.get("OmegaStep", "unchanged"), raw_start)
+
+
 def run_layer_pipeline(
     args: Namespace,
     *,
@@ -274,6 +353,8 @@ def run_layer_pipeline(
     _fit_gpus = [g.strip() for g in str(_raw_gpus).split(",") if g.strip()]
     if len(_fit_gpus) > 1:
         logger.info(f"Fitting will be sharded across GPUs: {_fit_gpus}")
+
+    _normalise_sum_frames(p, args.paramFN)
 
     mic_text_raw = p.get("MicFileText", "nf_output")
     mic_base = _strip_loop_suffix(mic_text_raw)
@@ -349,9 +430,14 @@ def run_layer_pipeline(
                     p, args.paramFN,
                     ff_seed_orientations=bool(int(getattr(args, "ffSeedOrientations", 0))),
                     install_dir=install_dir,
+                    device=getattr(args, "device", "auto"),
+                    dtype=getattr(args, "dtype", None),
                 )
                 if int(getattr(args, "doImageProcessing", 1)) == 1:
-                    stages.run_image_processing(p, args.paramFN)
+                    stages.run_image_processing(
+                        p, args.paramFN,
+                        device=getattr(args, "device", "auto"),
+                        dtype=getattr(args, "dtype", None))
                 stages.run_fitting(
                     p, args.paramFN,
                     n_cpus=p["nCPUs"],
@@ -494,6 +580,8 @@ def run_layer_pipeline(
                         p_seeded, args.paramFN,
                         ff_seed_orientations=True,
                         install_dir=install_dir,
+                        device=getattr(args, "device", "auto"),
+                        dtype=getattr(args, "dtype", None),
                     )
                     grid_pass1_map, grid_pass1_idx = _read_grid_xy_index(
                         os.path.join(rf, "grid.txt")
@@ -574,6 +662,8 @@ def run_layer_pipeline(
                         skip_hex_grid=True,           # bad-voxel grid was just written
                         skip_diffr_spots=True,        # reuse loop-0 spots
                         install_dir=install_dir,
+                        device=getattr(args, "device", "auto"),
+                        dtype=getattr(args, "dtype", None),
                     )
                     _restore_diffr_spots(rf)
                     # Backup the seeded binary before unseeded overwrites it.

@@ -1,6 +1,6 @@
 """Threshold calibration: BlanketSigma, the float threshold, and the warning.
 
-The reduction catalog on Ce-5%Y (10 um grid, loop 0, identical seeds) is what
+The reduction catalog on sample A (10 um grid, loop 0, identical seeds) is what
 these encode: every good configuration sat near 3.5 sigma of the post-denoise
 residual, while the SAME absolute ``BlanketSubtraction 2`` meant
 
@@ -77,7 +77,7 @@ def test_warns_when_threshold_is_far_above_the_noise():
     """The 7.5-sigma case: 'BlanketSubtraction 2' on an unsummed residual."""
     pipe = ProcessImagesPipeline(
         _params(blanket_subtraction=2.0), device="cpu")
-    stack, median = _noisy(0.268)                     # measured on Ce-5%Y
+    stack, median = _noisy(0.268)                     # measured on sample A
     with pytest.warns(RuntimeWarning, match=r"sigma of this layer"):
         thr = pipe._resolve_threshold(stack, median, 1)
     assert thr == 2.0, "warning must not change the reduction"

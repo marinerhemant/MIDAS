@@ -120,7 +120,7 @@ def _parse_phase_atoms(param_file: str | Path):
 
         PhaseAtom <element> <x> <y> <z> [occupancy] [B_iso]
 
-    e.g. dhcp beta-Ce (La-type hP4)::
+    e.g. a DHCP cell (hP4, sites 2a + 2c)::
 
         PhaseAtom Ce 0.0 0.0 0.0
         PhaseAtom Ce 0.3333333 0.6666667 0.25
@@ -162,7 +162,7 @@ def run_get_hkls(p: Dict[str, Any], param_file: str | Path) -> str:
     Why dropping matters: space-group extinction rules cannot see
     basis-dependent extinctions, so the list can contain reflections no crystal
     can produce. They are predicted, never matched, and sit in the confidence
-    denominator -- 126 of 736 for dhcp beta-Ce, capping FracOverlap at 0.829,
+    denominator -- 126 of 736 for a DHCP polytype, capping FracOverlap at 0.829,
     while fcc (one atom at the origin) has none and reaches 1.000.
 
     Filtering HERE rather than in the fraction calculation is deliberate: every
@@ -229,10 +229,35 @@ def run_seed_orientations_from_ff(p: Dict[str, Any]) -> str:
     return out_path
 
 
+#: Seed resolutions that reproduce the shipped cache's density per lookup type.
+#: Cubic 2.8 deg -> 251,545 against the cache's 243,129; hexagonal 2.25 deg ->
+#: 486,946 against 486,755. Generating at the sampler default (1.5 deg) would
+#: give ~2.8x as many seeds and cost ~2.8x the fitting time for no gain.
+#: Keys are ``space_group_to_lookup_type`` values ("cubic_high", not "cubic") --
+#: matched by PREFIX so cubic_low/hexagonal_low resolve too.
+_SCRATCH_RESOLUTION_DEG = {"cubic": 2.8, "hexagonal": 2.25}
+_SCRATCH_RESOLUTION_DEFAULT = 2.5
+
+
+def _scratch_resolution(lookup: str) -> float:
+    for prefix, res in _SCRATCH_RESOLUTION_DEG.items():
+        if lookup.startswith(prefix):
+            return res
+    return _SCRATCH_RESOLUTION_DEFAULT
+
+
 def run_seed_orientations_from_cache(p: Dict[str, Any], install_dir: Optional[str] = None) -> str:
-    """Auto-extract seed orientations from the MIDAS lookup cache."""
+    """Seed orientations from the MIDAS lookup cache, or generated if absent.
+
+    The cache lives in the source tree (``NF_HEDM/seedOrientations``) and is NOT
+    shipped in the wheel, so a plain ``pip install midas-suite`` has no cache at
+    all and this used to raise -- leaving a pip-only user with no way to run NF
+    without hand-generating seeds. The orientations are derivable, so derive
+    them rather than fail.
+    """
     from midas_nf_preprocess.seed_orientations.from_cache import (
-        load_seeds_for_space_group, DEFAULT_SEED_DIR,
+        load_seeds_for_space_group, DEFAULT_SEED_DIR, SeedCacheNotFound,
+        space_group_to_lookup_type,
     )
     from midas_nf_preprocess.seed_orientations.io import write_seeds_csv
 
@@ -242,11 +267,30 @@ def run_seed_orientations_from_cache(p: Dict[str, Any], install_dir: Optional[st
         candidate = Path(install_dir) / "NF_HEDM" / "seedOrientations"
         if candidate.is_dir():
             seed_dir = candidate
-    seeds = load_seeds_for_space_group(sg, seed_dir=seed_dir)
     out_path = p["SeedOrientations"]
+
+    try:
+        seeds = load_seeds_for_space_group(sg, seed_dir=seed_dir)
+        source = f"cache ({seed_dir})"
+    except (SeedCacheNotFound, FileNotFoundError, OSError):
+        from midas_nf_preprocess.seed_orientations.from_scratch import (
+            generate_uniform_seeds,
+        )
+        try:
+            lookup = space_group_to_lookup_type(sg)
+        except Exception:
+            lookup = ""
+        res = _scratch_resolution(lookup)
+        logger.info(
+            "Seed cache not found at %s; generating seeds for SG %d from "
+            "scratch at %.2f deg resolution (this is a one-off, ~1 min)",
+            seed_dir, sg, res)
+        seeds = generate_uniform_seeds(sg, resolution_deg=res)
+        source = f"generated, {res:g} deg"
+
     # NOTE argument order: write_seeds_csv(quats, path), not (path, quats).
     write_seeds_csv(seeds, out_path)
-    logger.info(f"Auto-extracted {len(seeds)} seeds for SG {sg}: {out_path}")
+    logger.info(f"Seed orientations for SG {sg}: {len(seeds)} [{source}] -> {out_path}")
     return out_path
 
 
@@ -322,7 +366,9 @@ def run_grid_mask(p: Dict[str, Any]) -> None:
     logger.info(f"GridMask kept {pts.shape[0]} grid points")
 
 
-def run_diffr_spots(p: Dict[str, Any], param_file: str | Path) -> None:
+def run_diffr_spots(p: Dict[str, Any], param_file: str | Path, *,
+                    device: Optional[str] = None,
+                    dtype: Optional[str] = None) -> None:
     """Run :class:`midas_nf_preprocess.diffr_spots.DiffrSpotsPipeline`."""
     from midas_nf_preprocess.diffr_spots.cli import run as diffr_run
     # hkls_csv / seeds are read unconditionally by diffr_spots.cli.run
@@ -342,9 +388,13 @@ def run_diffr_spots(p: Dict[str, Any], param_file: str | Path) -> None:
     if seed_raw and not seed_path.is_absolute():
         seed_path = result_folder / seed_path
 
+    # device/dtype are threaded in, NOT left None. Left None the callee
+    # auto-detects and grabs CUDA even when the user asked for --device cpu,
+    # which on a shared GPU means an OOM (or an NVML assert) in a stage that had
+    # no reason to be on the GPU at all.
     args = Namespace(
         parameter_file=str(param_file),
-        device=None, dtype=None,
+        device=device, dtype=dtype,
         output_dir=str(result_folder),
         hkls_csv=str(hkls_path) if hkls_path.exists() else None,
         seeds=str(seed_path) if seed_raw and seed_path.exists() else None,
@@ -359,6 +409,8 @@ def run_preprocessing(
     skip_diffr_spots: bool = False,
     ff_seed_orientations: bool = False,
     install_dir: Optional[str] = None,
+    device: Optional[str] = None,
+    dtype: Optional[str] = None,
 ) -> None:
     """Run the full preprocessing block (HKLs → seeds → grid → diffr spots)."""
     run_get_hkls(p, param_file)
@@ -382,14 +434,16 @@ def run_preprocessing(
         run_grid_mask(p)
 
     if not skip_diffr_spots:
-        run_diffr_spots(p, param_file)
+        run_diffr_spots(p, param_file, device=device, dtype=dtype)
 
 
 # ---------------------------------------------------------------------------
 #  Stage 2: image processing — ProcessImagesCombined per detector distance
 # ---------------------------------------------------------------------------
 
-def run_image_processing(p: Dict[str, Any], param_file: str | Path) -> None:
+def run_image_processing(p: Dict[str, Any], param_file: str | Path, *,
+                         device: Optional[str] = None,
+                         dtype: Optional[str] = None) -> None:
     """Loop over detector distances and run the combined median + peak
     pipeline (port of ``ProcessImagesCombined`` in
     :mod:`midas_nf_preprocess.process_images`).
@@ -411,7 +465,7 @@ def run_image_processing(p: Dict[str, Any], param_file: str | Path) -> None:
     args = Namespace(
         parameter_file=str(param_file),
         n_cpus=int(p.get("nCPUs", 1)),
-        device=None, dtype=None,
+        device=device, dtype=dtype,      # honour --device; see run_diffr_spots
         all_layers=True, layer_nr=1, output=None,
     )
     proc_run(args)
