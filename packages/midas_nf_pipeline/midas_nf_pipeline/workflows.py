@@ -245,6 +245,33 @@ def _merge_seeded_unseeded_binaries(
 #  Main per-layer driver (multi-res with NumLoops=0 == single-res)
 # ---------------------------------------------------------------------------
 
+def _derive_end_nr(p: Dict[str, Any], param_file: str) -> None:
+    """Fill in ``EndNr`` when absent -- it is fully determined for NF.
+
+    ``StartNr + NrFilesPerDistance - 1``, and nothing actually reads it: the
+    reduction indexes files from ``RawStartNr`` and the fit takes its frame
+    count from ``NrFilesPerDistance``. It is written back only so that tools
+    reading the parameter file (and the C-compatible key set) still find it.
+
+    Requiring a derivable number just creates a second place to be wrong: an
+    ``EndNr`` left describing the raw scan beside a post-sum
+    ``NrFilesPerDistance`` made the reduction and the fit size
+    ``SpotsInfo.bin`` differently, and the run died only after the whole
+    reduction had been computed.
+    """
+    if p.get("EndNr") is not None:
+        return
+    start = p.get("StartNr", p.get("RawStartNr"))
+    nfd = p.get("NrFilesPerDistance")
+    if start is None or not nfd:
+        return
+    end = int(start) + int(nfd) - 1
+    update_param_file(param_file, {"EndNr": str(end)})
+    p["EndNr"] = end
+    logger.info("EndNr not given; derived %d = StartNr(%d) + "
+                "NrFilesPerDistance(%d) - 1", end, int(start), int(nfd))
+
+
 def _normalise_sum_frames(p: Dict[str, Any], param_file: str) -> None:
     """Let the parameter file describe the scan AS ACQUIRED, whatever SumFrames is.
 
@@ -354,6 +381,7 @@ def run_layer_pipeline(
     if len(_fit_gpus) > 1:
         logger.info(f"Fitting will be sharded across GPUs: {_fit_gpus}")
 
+    _derive_end_nr(p, args.paramFN)
     _normalise_sum_frames(p, args.paramFN)
 
     mic_text_raw = p.get("MicFileText", "nf_output")

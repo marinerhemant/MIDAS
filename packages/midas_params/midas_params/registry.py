@@ -105,8 +105,18 @@ PARAMS: list[ParamSpec] = [
     ),
     ParamSpec(
         name="EndNr", type=ParamType.INT, category="Data source",
-        description="Last frame number in sequence.",
-        applies_to=ALL, required_for=ALL, stages=S_FILE,
+        description="Last frame number in sequence. NF: optional and derived.",
+        applies_to=ALL, required_for=FF_PF, stages=S_FILE,
+        notes="NOT required for NF, where it is fully determined by "
+              "StartNr + NrFilesPerDistance - 1 and nothing reads it: the "
+              "reduction indexes files from RawStartNr and the fit takes its "
+              "frame count from NrFilesPerDistance. Asking for a derivable "
+              "number only creates a second place to be wrong -- an EndNr left "
+              "describing the raw scan beside a post-sum NrFilesPerDistance "
+              "made the reduction and the fit size SpotsInfo.bin differently. "
+              "Omit it for NF; if supplied it is still checked for "
+              "consistency. FF/PF genuinely need it: there StartNr..EndNr are "
+              "frame indices INSIDE a multi-frame container, not file numbers.",
     ),
     ParamSpec(
         name="StartFileNrFirstLayer", type=ParamType.INT, category="Data source",

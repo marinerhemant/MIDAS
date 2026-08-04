@@ -12,6 +12,7 @@
    the stage raised. Orientations are derivable, so they get derived.
 """
 import logging
+import pathlib
 import os
 
 import pytest
@@ -130,3 +131,56 @@ def test_generated_seed_count_is_near_the_cache_density(no_cache, tmp_path):
     assert 200_000 < n < 320_000, (
         f"{n} seeds; the shipped cubic cache has 243,129 and the resolution "
         f"was chosen to match it")
+
+
+# ---------------------------------------------------------------------------
+#  EndNr is derivable, so it should not have to be given
+# ---------------------------------------------------------------------------
+
+from midas_nf_pipeline.workflows import _derive_end_nr
+
+
+def _params_no_endnr(tmp_path, *, nfd=1800, start=5043, n_files=3600):
+    _scan(tmp_path, n_files, start=start)
+    f = tmp_path / "p.txt"
+    f.write_text(
+        f"DataDirectory {tmp_path}/nf_scan\nOrigFileName nf_scan\nextOrig tif\n"
+        f"StartNr {start}\nRawStartNr {start}\n"
+        f"NrFilesPerDistance {nfd}\nnDistances 2\nSumFrames 1\nOmegaStep -0.1\n")
+    return f
+
+
+def test_end_nr_is_derived_when_absent(tmp_path, caplog):
+    f = _params_no_endnr(tmp_path)
+    p = parse_parameters(str(f))
+    assert p.get("EndNr") is None
+    with caplog.at_level(logging.INFO):
+        _derive_end_nr(p, str(f))
+    assert int(parse_parameters(str(f))["EndNr"]) == 5043 + 1800 - 1
+    assert "derived" in " ".join(r.getMessage() for r in caplog.records)
+
+
+def test_given_end_nr_is_not_overwritten(tmp_path):
+    """A supplied value stays put -- deriving over it would hide a real mistake
+    rather than let the consistency check report it."""
+    f = _params(tmp_path, n_raw_files=3600, nfd=1800, sum_frames=1)
+    p = parse_parameters(str(f))
+    before = p["EndNr"]
+    _derive_end_nr(p, str(f))
+    assert parse_parameters(str(f))["EndNr"] == before
+
+
+def test_derived_end_nr_then_survives_sum_frames_conversion(tmp_path):
+    """Derive, then convert: the two must compose to a self-consistent file."""
+    f = _params_no_endnr(tmp_path)
+    p = parse_parameters(str(f))
+    _derive_end_nr(p, str(f))
+    # now switch to summing by 3, as a user would, changing ONLY SumFrames
+    txt = pathlib.Path(f).read_text().replace("SumFrames 1", "SumFrames 3")
+    pathlib.Path(f).write_text(txt)
+    p = parse_parameters(str(f))
+    _normalise_sum_frames(p, str(f))
+    out = parse_parameters(str(f))
+    assert out["NrFilesPerDistance"] == 600
+    assert int(out["EndNr"]) == 5043 + 600 - 1
+    assert float(out["OmegaStep"]) == pytest.approx(-0.3)
