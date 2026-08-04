@@ -29,7 +29,7 @@ Public API
                                               consolidated H5.
 """
 
-__version__ = "0.4.0"
+__version__ = "0.5.0"
 
 # Submodules are imported lazily by the orchestrator so the package can be
 # installed and tested without all optional deps present (e.g. denoise).
