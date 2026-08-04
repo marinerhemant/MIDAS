@@ -429,14 +429,26 @@ def frames_exist_on_disk(ctx: Ctx) -> list[ValidationIssue]:
         n_sum = ctx.all_values.get("SumFrames") or 1
         if None in (folder, stem, start, nfd):
             return []
-        n_raw = n_dist * (nfd * n_sum + wf)
+        # Accept EITHER reading of NrFilesPerDistance, because the pipeline does
+        # (workflows._normalise_sum_frames): post-sum, or still-raw and converted
+        # on the way in. Demanding only the post-sum reading rejected a file that
+        # runs perfectly -- a user who raises SumFrames alone, which is the whole
+        # point of the conversion.
+        n_post = n_dist * (nfd * n_sum + wf)      # NrFilesPerDistance is post-sum
+        n_rawc = n_dist * (nfd + wf)              # ... is still the raw count
+        candidates = [n_post] if n_sum == 1 else [n_post, n_rawc]
+        n_raw = n_post
         end = start + n_raw - 1
         ext_with_dot = ext if ext.startswith(".") else f".{ext}"
         key_for_error = "OrigFileName"
         nf_arith = (
-            f"{n_raw} raw files = nDistances({n_dist}) x "
+            f"{n_post} raw files = nDistances({n_dist}) x "
             f"[NrFilesPerDistance({nfd}) x SumFrames({n_sum}) + WFImages({wf})], "
-            f"so {start}..{end}")
+            f"so {start}..{start + n_post - 1}"
+            + (f" -- or, reading NrFilesPerDistance as the RAW count, {n_rawc} "
+               f"files {start}..{start + n_rawc - 1}, which the pipeline would "
+               f"convert to NrFilesPerDistance {nfd // n_sum}"
+               if n_sum > 1 and nfd % n_sum == 0 else ""))
     else:
         folder = ctx.all_values.get("RawFolder")
         stem = ctx.all_values.get("FileStem")
@@ -457,23 +469,35 @@ def frames_exist_on_disk(ctx: Ctx) -> list[ValidationIssue]:
     if not folder_path.is_dir():
         return []  # directory_exists validator catches this
 
-    # Sample check: first, last, and up to 3 evenly-spaced interior frames.
-    n_total = max(0, end - start + 1)
-    if n_total <= 0:
-        return []
-    samples = {start, end}
-    if n_total > 4:
-        step = n_total // 4
-        samples.update({start + step, start + 2 * step, start + 3 * step})
-    samples = sorted(samples)
+    def _missing_for(n_total: int):
+        """Sample first, last and 3 interior frames of a candidate range."""
+        if n_total <= 0:
+            return []
+        last = start + n_total - 1
+        samples = {start, last}
+        if n_total > 4:
+            st = n_total // 4
+            samples.update({start + st, start + 2 * st, start + 3 * st})
+        gone = []
+        for n in sorted(samples):
+            filename = f"{stem}_{n:0{pad}d}{ext_with_dot}"
+            if not (folder_path / filename).exists():
+                gone.append((n, filename))
+        return gone
 
     out = []
-    missing = []
-    for n in samples:
-        filename = f"{stem}_{n:0{pad}d}{ext_with_dot}"
-        p = folder_path / filename
-        if not p.exists():
-            missing.append((n, filename))
+    if ctx.path == "nf":
+        # Satisfied by ANY accepted reading -- see the candidates above.
+        results = [_missing_for(c) for c in candidates]
+        if any(not r for r in results):
+            return []
+        missing = results[0]
+        end = start + candidates[0] - 1
+    else:
+        n_total = max(0, end - start + 1)
+        if n_total <= 0:
+            return []
+        missing = _missing_for(n_total)
 
     if missing:
         # Don't spam: report the first one with a summary count.

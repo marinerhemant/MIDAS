@@ -106,17 +106,28 @@ def test_valid_summed_passes(tmp_path):
     assert not _errors(_write(tmp_path, nfd=600, end=5642, step=-0.3, n_sum=3))
 
 
-def test_sum_frames_raised_without_dividing_is_caught(tmp_path):
-    """The template bug: SumFrames 3 left beside the unsummed NrFilesPerDistance.
+def test_raising_sum_frames_alone_is_ACCEPTED(tmp_path):
+    """Raising SumFrames without touching anything else must validate.
 
-    Needs 10,800 raw files where 3,600 exist. Previously the disk check looked
-    at one distance and ignored SumFrames, so this passed validation and failed
-    hours later inside the reduction.
+    NrFilesPerDistance 1800 beside SumFrames 3 reads as the RAW count, which
+    workflows._normalise_sum_frames converts to 600 (and OmegaStep to -0.3).
+    That is the supported way to enable summing -- change one key -- so the
+    validator has to accept exactly what the pipeline accepts. Demanding only
+    the post-sum reading rejected a file that runs perfectly.
     """
-    errs = _errors(_write(tmp_path, nfd=1800, end=6842, step=-0.1, n_sum=3))
+    assert not _errors(_write(tmp_path, nfd=1800, end=6842, step=-0.1, n_sum=3))
+
+
+def test_scan_too_short_for_either_reading_is_caught(tmp_path):
+    """Neither reading fits -> still an error, with the arithmetic spelled out.
+
+    3600 files exist; 3000 post-sum frames/distance needs 18,000 and the raw
+    reading needs 6,000.
+    """
+    errs = _errors(_write(tmp_path, nfd=3000, end=8042, step=-0.06, n_sum=3))
     assert any(e.rule == "frames_exist_on_disk" for e in errs)
     msg = " ".join(e.suggestion or "" for e in errs)
-    assert "10800 raw files" in msg and "NrFilesPerDistance" in msg
+    assert "18000 raw files" in msg and "RAW count" in msg
 
 
 def test_mixed_convention_is_caught(tmp_path):
