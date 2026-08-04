@@ -4,7 +4,7 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "midas-suite"
-version = "0.6.2"
+version = "0.7.0"
 description = "Meta-package: installs the MIDAS Python pipeline (FF/NF/PF HEDM, calibration, peakfit, integration, transforms, ODF, stress)."
 readme = "README.md"
 license = { text = "BSD-3-Clause" }
@@ -31,7 +31,7 @@ dependencies = [
     # leaves
     "midas-distortion>=0.2.0",     # shared radial-distortion model + RhoD-units guard
     "midas-stress>=0.8.1",
-    "midas-params>=0.6.2",
+    "midas-params>=0.7.0",
     "midas-hkls>=0.6.0",
     "midas-diffract>=0.7.0",
     "midas-peakfit>=0.5.0",
@@ -45,13 +45,13 @@ dependencies = [
     "midas-uq>=0.1.1",             # refiner-anchored bootstrap UQ (per-grain trust_score_anchored)
     "midas-process-grains>=0.6.1", # >=0.6.1: GrainRadius read from the right SpotID space (was the sample-wide mean, 5.5x low)
     "midas-fit-grain>=0.6.0",
-    "midas-nf-preprocess>=0.5.1",
-    "midas-nf-fitorientation>=0.7.0",
+    "midas-nf-preprocess>=0.6.0",
+    "midas-nf-fitorientation>=0.8.0",
     "midas-zipper>=0.1.5",         # raw → .MIDAS.zip ingest (pip-portable, no C/source-tree dep)
     # parsl + pipeline orchestrators
     "midas-parsl-configs>=0.1.0",
     "midas-ff-pipeline>=0.4.1",    # DEPRECATED → use midas-pipeline --scan-mode ff; removed in suite 1.0
-    "midas-nf-pipeline>=0.5.1",
+    "midas-nf-pipeline>=0.6.0",
     "midas-pipeline>=0.7.0",       # >=0.7.0: FF refinement precision default (RefinementConfig.dtype) + unrefined-position guard
 ]
 
@@ -63,7 +63,7 @@ dependencies = [
 # own dep list pulls everything it needs underneath.
 ff = [
     "midas-stress>=0.8.1",
-    "midas-params>=0.6.2",
+    "midas-params>=0.7.0",
     "midas-ff-pipeline>=0.4.1",    # DEPRECATED → use midas-pipeline --scan-mode ff; removed in suite 1.0
     "midas-calibrate>=0.2.7",          # >=0.2.7: paramstest parser strips ';' terminator
     "midas-integrate>=0.4.2",
@@ -71,15 +71,15 @@ ff = [
 ]
 nf = [
     "midas-stress>=0.8.1",
-    "midas-params>=0.6.2",
-    "midas-nf-pipeline>=0.5.1",
+    "midas-params>=0.7.0",
+    "midas-nf-pipeline>=0.6.0",
 ]
 pf = [
     # Point-focus / scanning HEDM (pf-HEDM). midas-pipeline runs in
     # --scan-mode pf and pulls index + fit-grain + transforms +
     # stress transitively; we list the orchestrator at the top.
     "midas-stress>=0.8.1",
-    "midas-params>=0.6.2",
+    "midas-params>=0.7.0",
     "midas-pipeline[fast]>=0.7.0",         # >=0.7.0: as above; fast = numba>=0.65
     "midas-calibrate>=0.2.7",
     "midas-integrate>=0.4.2",

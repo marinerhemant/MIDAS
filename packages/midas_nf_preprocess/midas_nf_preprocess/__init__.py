@@ -19,7 +19,7 @@ The shared ``device`` module provides device/dtype resolution
 matching the convention used by ``midas-transforms``.
 """
 
-__version__ = "0.5.1"
+__version__ = "0.6.0"
 
 from . import (
     device,
