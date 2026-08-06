@@ -15,7 +15,7 @@ To inspect what was installed:
 
 """
 
-__version__ = "0.7.0"
+__version__ = "0.7.1"
 
 # The sub-packages this meta-package pulls in (in publish-order).
 # Kept in sync with pyproject.toml's ``dependencies`` list.
