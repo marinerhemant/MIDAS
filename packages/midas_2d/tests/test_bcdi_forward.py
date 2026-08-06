@@ -373,33 +373,86 @@ def test_sample_counts_is_poisson_about_the_rate():
 # ------------------------------------------------------------ differentiable
 @pytest.mark.autograd
 def test_gradient_flows_to_the_object():
+    """A residual loss on the detector rate must reach the object phase.
+
+    Two things here are deliberate, and the test is worthless without both.
+
+    *The loss is a residual against a target*, not ``rate.sum()``. By Parseval
+    ``sum_q I(q)`` depends only on ``|psi|``, so the summed rate is exactly
+    invariant to the phase (partial coherence preserves this too, since the
+    coherence factor is 1 at zero separation). A summed-rate loss therefore has
+    an analytically zero phase gradient and would "pass" on float noise alone.
+
+    *The starting phase is non-zero and asymmetric.* At ``phase = 0`` the object
+    is real, the peak sits at q = 0, and the first-order variation there is
+    purely imaginary against a real amplitude -- so even the ``1/I.max()``
+    normalisation contributes nothing and the gradient is zero by symmetry.
+    """
+    torch.manual_seed(0)
     shape = (16, 16, 16)
     _, C = _geom(60.0, shape)
     s = torch.zeros(shape, dtype=DT)
     s[5:11, 5:11, 5:11] = 1.0
-    phase = torch.zeros(shape, dtype=DT, requires_grad=True)
-    psi = torch.polar(s, phase * s)
-    rate = m2d.detector_signal(_I(psi), structure_factor_sq=2.0,
-                               coherence_length_A=80.0, real_basis=C,
-                               photons_per_peak=1e4)
-    rate.sum().backward()
+
+    def rate_of(ph):
+        return m2d.detector_signal(_I(torch.polar(s, ph * s)),
+                                   structure_factor_sq=2.0,
+                                   coherence_length_A=80.0, real_basis=C,
+                                   photons_per_peak=1e4)
+
+    target = rate_of(torch.rand(shape, dtype=DT)).detach()
+    phase = (0.3 * torch.randn(shape, dtype=DT)).requires_grad_(True)
+    ((rate_of(phase) - target) ** 2).sum().backward()
+
     assert phase.grad is not None and torch.isfinite(phase.grad).all()
     assert float(phase.grad.abs().max()) > 0
+    # The gradient must live on the support: outside it the phase is multiplied
+    # by s = 0 and cannot affect anything.
+    assert float(phase.grad[s == 0].abs().max()) == 0.0
+
+
+@pytest.mark.autograd
+def test_summed_rate_is_phase_invariant_by_parseval():
+    """Pins the fact that broke the test above, so it cannot silently return.
+
+    ``sum_q |FFT(psi)|^2 = N * sum_r |psi(r)|^2`` -- independent of the phase.
+    Any future loss built on the summed rate has no phase gradient at all.
+    """
+    shape = (12, 12, 12)
+    s = torch.zeros(shape, dtype=DT)
+    s[3:9, 3:9, 3:9] = 1.0
+    torch.manual_seed(0)
+    flat = _I(torch.polar(s, torch.zeros_like(s))).sum()
+    bumpy = _I(torch.polar(s, torch.rand(shape, dtype=DT) * s)).sum()
+    assert float(flat) == pytest.approx(float(bumpy), rel=1e-12)
 
 
 @pytest.mark.autograd
 def test_gradient_flows_to_atomic_coordinates():
-    """A detector-level loss backpropagates to every atom -- the MD ask."""
+    """A detector-level loss backpropagates to every atom -- the MD ask.
+
+    Uses a residual against a target rather than the summed rate, for the same
+    reason as the object test: a sum-style loss can be invariant to the very
+    parameter under test and then "pass" on numerical noise.
+    """
     torch.manual_seed(0)
-    coords = (torch.randn(30, 3, dtype=DT) * 4.0).requires_grad_(True)
     B, _ = _geom(50.0, (6, 6, 6))
     Q = m2d.q_grid(B, (6, 6, 6),
                    offset=m2d.bragg_geometry(LAMBDA_A, D_111, dtype=DT)["G"])
-    rate = m2d.detector_signal(m2d.speckle_from_atoms(coords, ["Au"] * 30, Q),
-                               photons_per_peak=1e3)
-    rate.sum().backward()
+
+    def rate_of(c):
+        return m2d.detector_signal(m2d.speckle_from_atoms(c, ["Au"] * 30, Q),
+                                   photons_per_peak=1e3)
+
+    base = torch.randn(30, 3, dtype=DT) * 4.0
+    target = rate_of(base).detach()
+    coords = (base + 0.2 * torch.randn(30, 3, dtype=DT)).requires_grad_(True)
+    ((rate_of(coords) - target) ** 2).sum().backward()
+
     assert coords.grad is not None and torch.isfinite(coords.grad).all()
     assert float(coords.grad.abs().max()) > 0
+    # every atom should feel it, not just a lucky few
+    assert int((coords.grad.norm(dim=-1) > 0).sum()) == 30
 
 
 @pytest.mark.autograd

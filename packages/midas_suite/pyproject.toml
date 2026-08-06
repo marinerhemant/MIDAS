@@ -106,7 +106,7 @@ pdf = ["midas-pdf>=0.1.1"]              # total scattering / PDF G(r)
 defect = ["midas-defect>=0.1.1"]        # diffuse-scattering defect metrology
 dfxm = ["midas-dfxm>=0.3.1"]            # dark-field X-ray microscopy fwd/inverse
 xaf = ["midas-xaf>=0.1.0"]              # cross-axis faceted HEDM
-ultrafast = ["midas-2d>=0.3.0"]         # midas-2d: 2D / ultrafast forward model
+ultrafast = ["midas-2d>=0.3.1"]         # midas-2d: 2D / ultrafast forward model
 grain-odf = ["midas-grain-odf>=0.1.0"]  # per-grain ODF
 pf-odf = ["midas-pf-odf>=0.1.0"]        # pf-HEDM per-voxel orientation/strain/ODF
 pink = ["midas-pink>=0.1.0"]            # pink-beam HEDM
@@ -122,7 +122,7 @@ all = [
     "midas-defect>=0.1.1",
     "midas-dfxm>=0.3.1",
     "midas-xaf>=0.1.0",
-    "midas-2d>=0.3.0",
+    "midas-2d>=0.3.1",
     "midas-grain-odf>=0.1.0",
     "midas-pf-odf>=0.1.0",
     "midas-pink>=0.1.0",
