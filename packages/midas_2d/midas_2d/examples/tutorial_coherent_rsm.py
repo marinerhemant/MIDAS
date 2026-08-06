@@ -1,7 +1,5 @@
 """Showcase: coherent reciprocal-space map + differentiable phase retrieval.
 
-For the Hruszkewycz/Cherukara coherent thrust:
-
 * Left  -- a coherent 2-D reciprocal-space map |A(Q)|^2 around the (1 1 1) node
   of a few-layer CdSe platelet, showing the finite-size streak along the
   out-of-plane (l) direction (the coherent face of the thickness fringes).

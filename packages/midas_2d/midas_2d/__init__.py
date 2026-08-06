@@ -1,6 +1,6 @@
 """midas-2d -- differentiable diffraction for 2D / few-layer & ultrafast work.
 
-Phase 1 (finite-size forward core):
+Finite-size forward core:
     from midas_2d import (
         interference_factor, truncation_rod, nanoplatelet_rod,
         rod_intensity, structure_factor_q,
@@ -8,19 +8,39 @@ Phase 1 (finite-size forward core):
         make_spectrum, monochromatic,
     )
 
+Bragg coherent diffraction imaging (:mod:`midas_2d.bcdi`,
+:mod:`midas_2d.bcdi_io`, :mod:`midas_2d.coherent`):
+    from midas_2d import (
+        q_basis, conjugate_real_basis, oversampling, sheared_to_lab,
+        object_to_amplitude, detector_signal, sample_counts,
+        speckle_from_atoms, atoms_to_object,
+        load_bcdi, phase_retrieval,
+    )
+
 Builds on midas-hkls (structure factors, form factors, lattice, hkl gen) and
-midas-pink (energy spectrum).  See MIDAS_2D_ULTRAFAST_DIFFRACTION_PLAN.md.
+midas-pink (energy spectrum).  All forward paths are torch-differentiable and
+run on CPU / CUDA / MPS.  See the README and ``midas_2d.examples`` for worked
+end-to-end scripts.
 """
 from .bcdi import (
     bragg_geometry,
     conjugate_real_basis,
     detector_distance_for_oversampling,
+    detector_signal,
+    object_to_amplitude,
     oversampling,
     q_basis,
+    q_grid,
+    rotation_to_bragg,
     rocking_step_for_oversampling,
+    sample_counts,
     shear_angles_deg,
     sheared_to_lab,
+    speckle_from_atoms,
+    atoms_to_object,
+    atom_sum_cost,
 )
+from .bcdi_io import BCDIData, list_datasets, load_bcdi
 from .coherent import bcdi_forward, coherent_speckle, phase_retrieval
 from .debye import (
     atomic_form_factors,
@@ -125,7 +145,7 @@ from .shape_factor import (
     truncation_rod,
 )
 
-__version__ = "0.2.0"
+__version__ = "0.3.0"
 
 __all__ = [
     "interference_factor",
@@ -171,6 +191,18 @@ __all__ = [
     "detector_distance_for_oversampling",
     "rocking_step_for_oversampling",
     "sheared_to_lab",
+    # BCDI forward chain (differentiable) + external-data ingest
+    "q_grid",
+    "rotation_to_bragg",
+    "object_to_amplitude",
+    "detector_signal",
+    "sample_counts",
+    "speckle_from_atoms",
+    "atoms_to_object",
+    "atom_sum_cost",
+    "BCDIData",
+    "load_bcdi",
+    "list_datasets",
     "stiffness_from_msd",
     "msd_from_stiffness",
     "thermal_ensemble",

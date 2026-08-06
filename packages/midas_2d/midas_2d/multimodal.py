@@ -1,7 +1,6 @@
 """Multi-modal fusion: X-ray structure + optical electronic signal.
 
-The single most group-specific frontier capability (Schaller does ultrafast
-*optical*; the X-ray gives structure).  After a pump, the lattice strain has two
+Pairs an ultrafast *optical* probe with X-ray structure.  After a pump, the lattice strain has two
 contributions that are *degenerate in the X-ray data alone*:
 
 * an **electronic** part -- carriers deform the lattice through the deformation

@@ -10,8 +10,8 @@ intensity oscillate at twice the phonon frequency ``omega = sqrt(k/m)``.  Fittin
 the spring constant ``k`` to that oscillation -- by differentiating through the
 MD -- recovers the potential stiffness from the diffraction time series.
 
-This is the seam where Sankaranarayanan's MD, Schaller's ultrafast data, and
-Cherukara's ML meet: diffraction becomes a differentiable loss on a simulation.
+This is the seam where MD, ultrafast measurement, and ML inversion meet:
+diffraction becomes a differentiable loss on a simulation.
 """
 from __future__ import annotations
 

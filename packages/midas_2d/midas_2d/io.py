@@ -1,8 +1,8 @@
 """Structure builders and loaders for 2D / few-layer materials.
 
-Phase 1 ships a zinc-blende CdSe builder (the colloidal-nanoplatelet workhorse
-in the Schaller/Flanders line).  More builders / CIF and MD-snapshot loaders
-arrive in later phases.
+Phase 1 ships a zinc-blende CdSe builder (the colloidal-nanoplatelet
+workhorse).  More builders / CIF and MD-snapshot loaders arrive in later
+phases.
 """
 from __future__ import annotations
 

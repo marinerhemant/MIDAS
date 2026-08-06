@@ -4,7 +4,7 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "midas-2d"
-version = "0.2.0"
+version = "0.3.0"
 description = "Differentiable diffraction for 2D / few-layer & ultrafast experiments: finite-size interference (Laue oscillations), crystal-truncation rods, and rocking curves on top of midas-hkls."
 readme = "README.md"
 license = "BSD-3-Clause"
@@ -33,9 +33,24 @@ dependencies = [
 viz = [
     "matplotlib>=3.5",
 ]
+# Containers that midas_2d.bcdi_io can read. All lazily imported, so the base
+# install works without them and raises a message naming what to install.
+io = [
+    "h5py>=3.0",          # .h5 / .hdf5 / .cxi / .nxs, and MATLAB v7.3
+    "tifffile>=2021.1",   # .tif / .tiff stacks
+    "scipy>=1.7",         # MATLAB v7 and earlier
+]
+# Only the optional --dislocation field of tutorial_bcdi_forward needs this;
+# the example falls back to an analytic strain field when it is absent.
+dfxm = [
+    "midas-dfxm>=0.3.1",  # anisotropic (Stroh) dislocation displacement fields
+]
 dev = [
     "pytest>=7.0",
     "matplotlib>=3.5",
+    "h5py>=3.0",
+    "tifffile>=2021.1",
+    "scipy>=1.7",
 ]
 
 [tool.setuptools]

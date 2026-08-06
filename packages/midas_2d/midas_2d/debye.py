@@ -13,7 +13,7 @@ field):
   coordinates rather than from a phenomenological factor.
 
 * :func:`debye_intensity` -- orientationally averaged (the colloidal-solution
-  case for the Schaller/Flanders nanoplatelets)
+  case for nanoplatelets in suspension)
       I(q) = sum_i sum_j  f_i(q) f_j(q) sinc(q r_ij)
 
 :func:`ensemble_intensity` averages the incoherent intensity over MD frames;

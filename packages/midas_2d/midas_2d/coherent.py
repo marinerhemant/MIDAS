@@ -7,13 +7,16 @@ Two faces of coherence:
   :func:`midas_2d.debye.coherent_intensity`).  This is the coordinate-level
   coherent forward, differentiable w.r.t. positions.
 
-* :func:`bcdi_forward` + :func:`phase_retrieval` -- the object-level BCDI model
-  used by the Hruszkewycz/Cherukara thrust: a complex object
-  ``psi(r) = rho(r) exp(i Q0 . u(r))`` (amplitude = electron density / support,
-  phase = lattice displacement projected on the Bragg vector) produces speckle
-  ``|FFT(psi)|^2``.  :func:`phase_retrieval` inverts it by autograd -- the
-  differentiable alternative to iterative ER/HIO, and the natural place to drop
-  in a learned (Cherukara-style) prior.
+* :func:`bcdi_forward` + :func:`phase_retrieval` -- the object-level BCDI model:
+  a complex object ``psi(r) = rho(r) exp(i Q0 . u(r))`` (amplitude = electron
+  density / support, phase = lattice displacement projected on the Bragg vector)
+  produces speckle ``|FFT(psi)|^2``.  :func:`phase_retrieval` inverts it by
+  autograd -- the differentiable alternative to iterative ER/HIO, and the
+  natural place to drop in a learned prior.
+
+For where each array element sits in reciprocal space -- the non-orthogonal
+q-space basis, its real-space conjugate, and the shear correction -- see
+:mod:`midas_2d.bcdi`.
 
 All complex-valued and torch-differentiable; CPU/CUDA/MPS portable.
 """

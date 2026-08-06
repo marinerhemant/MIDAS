@@ -1,6 +1,6 @@
 """Showcase: MD-coupled anisotropic transient disordering of a CdSe nanoplatelet.
 
-This is the novel end-to-end story for the Schaller/Flanders line:
+The end-to-end story for ultrafast nanoplatelet measurements:
 
 1. Build an explicit few-layer CdSe platelet (atoms, not a unit cell).
 2. Simulate a pump-probe delay series as MD-like ensembles whose *out-of-plane*

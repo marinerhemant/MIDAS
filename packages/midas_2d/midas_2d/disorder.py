@@ -1,6 +1,6 @@
 """Transient, anisotropic disorder for few-layer materials.
 
-Schaller/Flanders observe that optical excitation disorders a CdSe nanoplatelet
+Optical excitation disorders a CdSe nanoplatelet
 *anisotropically* -- the out-of-plane mean-square displacement grows differently
 from the in-plane one, and it evolves with pump-probe delay.  This module gives
 that signature two equivalent faces:

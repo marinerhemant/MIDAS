@@ -5,9 +5,8 @@ built on `midas-hkls` (structure factors, form factors, lattice math, HKL
 enumeration) and `midas-pink` (energy spectrum). All forward paths are
 torch-differentiable and run on CPU / CUDA / MPS.
 
-See `../MIDAS_2D_ULTRAFAST_DIFFRACTION_PLAN.md` for the full phased plan and the
-collaborator-driven scope (Schaller/Flanders ultrafast nanoplatelets;
-Hruszkewycz BCDI; Cherukara ML inversion; Sankaranarayanan MD).
+Scope: ultrafast nanoplatelet diffraction, Bragg coherent diffraction imaging,
+ML-assisted inversion, and MD-coupled forward modelling.
 
 ## Status: Phases 1-4 implemented (38 tests, MPS/CPU verified)
 
@@ -58,7 +57,34 @@ positions**:
   `rocking_step_for_oversampling` size a scan, and `sheared_to_lab` removes the
   shear from the *reconstructed object* at the end -- never from the measured
   intensity before phasing.
-  Worked end-to-end example with an analytic gate suite: `dev/bcdi_forward_sim.py`.
+- **Forward chain, differentiable end to end** (`bcdi`): `q_grid`,
+  `object_to_amplitude` (`A = FFT(psi)`), `detector_signal` (|F_hkl|^2,
+  polarisation/solid angle, partial coherence in the autocorrelation domain,
+  flux) and `sample_counts`.  `detector_signal` returns the *expected rate* and
+  is differentiable; `sample_counts` draws Poisson counts and is not.  To fit
+  real data, hold the counts fixed and differentiate `poisson_nll` of the rate.
+- **From atoms** (`bcdi`): `rotation_to_bragg` orients a crystal so a reflection
+  satisfies Bragg in the lab frame, then either
+  * `speckle_from_atoms` -- exact `sum_i f_i exp(iQ.r_i)`, no envelope or
+    small-strain approximation, differentiable w.r.t. every coordinate.  Cost is
+    `O(N_atoms * N_q)`, so it caps out near 10 nm (`atom_sum_cost` tells you); or
+  * `atoms_to_object` -- bins the same coordinates in `O(N_atoms)` into
+    `psi = occupancy * exp(-i G.u)`, which scales to real grains.  6.7 M atoms
+    (60 nm) in ~1.6 s, against ~1.75e12 terms for the direct sum.  The two agree
+    to `corr = 0.9997` on a 6 nm test crystal, with inverted (0.45) and
+    shape-only (0.77) controls.
+- **Reading someone else's data** (`bcdi_io`): `load_bcdi` /
+  `BCDIData` / `list_datasets` for `.npy .npz .h5 .cxi .nxs .mat .tif .bin`
+  (container deps are optional and lazily imported).  `kind=` declares whether
+  the array is a real-space `object`, a far-field `amplitude`, or `intensity` --
+  a complex array is genuinely ambiguous and the loader refuses to guess, since
+  guessing applies or skips a Fourier transform and still looks plausible.
+  `permute` / `recenter` fix axis order and centring.
+
+  Worked examples: `examples/tutorial_bcdi_forward` (simulate a strained
+  nanocrystal end to end, with six self-checks against closed form) and
+  `examples/tutorial_bcdi_from_data` (`--from-file`, `--from-md`,
+  `--cross-check`, `--grad-demo`).
 
 ### Diffraction-as-a-loss-on-dynamics (`dynamics`)  *(novel closure)*
 - `thermal_ensemble` -- differentiable thermal cloud from anisotropic spring
@@ -139,6 +165,18 @@ positions**:
   diffusivity kappa, and interatomic stiffness k, all from diffraction.
 - `tutorial_frontier` -- deformation potential (multi-modal), equation-of-motion
   discovery, and ensemble thickness distribution.
+- `tutorial_bcdi_forward` -- **Bragg CDI end to end: a strained nanocrystal to
+  Poisson counts, with the non-orthogonal q-basis made explicit.** Six
+  self-checks against closed form (conjugate-basis identity, analytic Laue
+  transform, autocorrelation support, Ewald curvature, oversampling, shear
+  correction). Writes its own figure; run with `--dislocation` for an
+  anisotropic Stroh field if `midas-dfxm` is installed.
+- `tutorial_bcdi_from_data` -- **BCDI from data you already have**: read an
+  external array (`--from-file`, any of npy/npz/h5/cxi/mat/tif/bin) or compute
+  the signal from atomic coordinates (`--from-md`), by the exact atomic sum or
+  the O(N_atoms) binned envelope. `--cross-check` validates one against the
+  other with controls; `--grad-demo` shows the detector-level loss
+  backpropagating to every atom. Runs self-contained with no arguments.
 
 ## Quick start
 
