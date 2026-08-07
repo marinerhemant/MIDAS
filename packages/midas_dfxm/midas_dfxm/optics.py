@@ -114,6 +114,8 @@ class ObjectiveOptics:
     detector_shape: tuple[int, int] = (256, 256)
     center_px: tuple[float, float] | None = None
     k_out: torch.Tensor | None = None
+    NA: float | None = None
+    wavelength_A: float | None = None
 
     def __post_init__(self):
         if self.k_out is None:
@@ -178,6 +180,82 @@ class ObjectiveOptics:
             return self.center_px
         nu, nv = self.detector_shape
         return (nu - 1) / 2.0, (nv - 1) / 2.0
+
+    def psf(self, coeffs=None, *, defocus=0.0, grid_size=128, extent=1.4,
+            apodization=1.5, device=None, dtype=torch.float64) -> torch.Tensor:
+        """Objective point-spread function sampled at the DETECTOR pixel grid.
+
+        Builds the wave-optics pupil PSF (``aberration.aberrated_psf`` --
+        ``|FFT(pupil)|^2`` for a Zernike-aberrated, Gaussian-apodized aperture),
+        then resamples it from its native diffraction scale onto this detector's
+        object-space pixel so it can be convolved with a rendered image.
+
+        Sampling: the pupil grid spans the unit-disk aperture, so the native PSF
+        pixel is ``lambda / (2 * extent * NA)`` in object space; one detector pixel
+        images ``pixel_um / M`` of object space. The PSF is scaled by their ratio.
+        A diffraction spot finer than a detector pixel collapses to a delta (no
+        blur), which is physically correct.
+
+        ``coeffs`` is a dict/tensor of Zernike amplitudes (rad); ``None`` gives the
+        unaberrated diffraction-limited PSF. Requires ``NA`` and ``wavelength_A``
+        to be set. Differentiable in ``coeffs`` and ``defocus``.
+        """
+        if self.NA is None or self.wavelength_A is None:
+            raise ValueError("ObjectiveOptics.psf requires NA and wavelength_A to be set")
+        from .aberration import aberrated_psf
+        psf = aberrated_psf(coeffs if coeffs is not None else {}, defocus=defocus,
+                            grid_size=grid_size, extent=extent, apodization=apodization,
+                            device=device, dtype=dtype)
+        lam_um = float(self.wavelength_A) * 1e-4
+        dx_native = lam_um / (2.0 * extent * float(self.NA))   # object-space um/PSF-pixel
+        dx_image = float(self.pixel_um) / float(self.magnification)  # object-space um/img-pixel
+        scale = dx_native / dx_image
+        n = max(1, int(round(grid_size * scale)))
+        if n != grid_size:
+            psf = torch.nn.functional.interpolate(
+                psf[None, None], size=(n, n), mode="bilinear", align_corners=False
+            )[0, 0].clamp_min(0.0)
+        # keep the PSF no larger than the detector (a concentrated PSF's cropped
+        # tails carry negligible mass); convolve_psf embeds a smaller PSF centred.
+        cap = min(self.detector_shape)
+        if psf.shape[-1] > cap:
+            off = (psf.shape[-1] - cap) // 2
+            psf = psf[off:off + cap, off:off + cap]
+        return psf / psf.sum()
+
+    def _psf_scale(self, extent, grid_size):
+        """Interp size to map the native pupil-PSF pixel onto the detector pixel."""
+        lam_um = float(self.wavelength_A) * 1e-4
+        dx_native = lam_um / (2.0 * extent * float(self.NA))
+        dx_image = float(self.pixel_um) / float(self.magnification)
+        return max(1, int(round(grid_size * (dx_native / dx_image))))
+
+    def amplitude_psf(self, coeffs=None, *, defocus=0.0, grid_size=128, extent=1.4,
+                      apodization=1.5, device=None, dtype=torch.float64) -> torch.Tensor:
+        """Complex amplitude PSF ``h`` (for coherent imaging), detector-sampled.
+
+        Like :meth:`psf` but returns the field-amplitude PSF from
+        ``coherence.coherent_psf`` (normalized ``sum |h|^2 = 1``) instead of the
+        intensity PSF, for use with :func:`midas_dfxm.dfxm_image_wave`.
+        """
+        if self.NA is None or self.wavelength_A is None:
+            raise ValueError("ObjectiveOptics.amplitude_psf requires NA and wavelength_A")
+        from .coherence import coherent_psf
+        h = coherent_psf(coeffs if coeffs is not None else {}, defocus=defocus,
+                         grid_size=grid_size, extent=extent, apodization=apodization,
+                         device=device, dtype=dtype)
+        n = self._psf_scale(extent, grid_size)
+        if n != grid_size:
+            hr = torch.nn.functional.interpolate(h.real[None, None], size=(n, n),
+                                                 mode="bilinear", align_corners=False)[0, 0]
+            hi = torch.nn.functional.interpolate(h.imag[None, None], size=(n, n),
+                                                 mode="bilinear", align_corners=False)[0, 0]
+            h = torch.complex(hr, hi)
+        cap = min(self.detector_shape)
+        if h.shape[-1] > cap:
+            off = (h.shape[-1] - cap) // 2
+            h = h[off:off + cap, off:off + cap]
+        return h / torch.sqrt((h.abs() ** 2).sum())
 
     def render(self, positions_lab: torch.Tensor, intensity: torch.Tensor) -> torch.Tensor:
         """Accumulate per-voxel ``intensity`` onto the detector via bilinear splat.

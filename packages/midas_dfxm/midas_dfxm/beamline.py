@@ -95,6 +95,39 @@ def crl_na(n_lenses, radius_um, energy_keV, spacing_m=1.6e-3):
     return R / crl_focal_length(n_lenses, radius_um, energy_keV, spacing_m)
 
 
+_H_C_KEV_A = 12.398419739
+
+
+def chromatic_defocus_coeffs(energies_keV, *, E0_keV, n_lenses, radius_um,
+                             object_distance_m, spacing_m=1.6e-3):
+    """Per-energy objective-PSF **defocus Zernike coefficients** (radians) from CRL chromaticity.
+
+    A refractive objective focuses at ``f ~ 1/E^2``, so with the detector fixed on the
+    centre-energy (``E0``) image plane, an off-centre energy focuses at a different distance and
+    its image is defocused. Mapping the image-plane shift to the objective PSF's defocus term
+    (``aberration.aberrated_psf`` uses ``phase = coeff*(2 rho^2 - 1)``):
+
+        q(E), M(E) = crl_image(E);   dz_obj = (q(E) - q(E0)) / M(E0)^2   (object-space defocus)
+        coeff(E)   = pi * dz_obj * NA(E)^2 / (2 lambda(E))
+
+    where ``dz_obj`` uses the longitudinal magnification ``M^2`` and ``NA = crl_na``. Returns a
+    tensor of coefficients aligned with ``energies_keV`` (0 at ``E0``). Differentiable in the CRL
+    design parameters. Validated: the PSF built at ``coeff`` has a defocus blur matching the
+    geometric-optics prediction ``2 NA dz_obj`` in the defocused regime (``tests/test_chromatic``).
+    """
+    q0, M0 = crl_image(n_lenses, radius_um, E0_keV, object_distance_m, spacing_m)
+    Es = energies_keV if torch.is_tensor(energies_keV) else torch.as_tensor(
+        energies_keV, dtype=torch.get_default_dtype())
+    out = []
+    for E in Es:
+        q, _ = crl_image(n_lenses, radius_um, E, object_distance_m, spacing_m)
+        dz_obj = (q - q0) / (M0 ** 2)
+        na = crl_na(n_lenses, radius_um, E, spacing_m)
+        lam_m = (_H_C_KEV_A / E) * 1e-10
+        out.append(torch.pi * dz_obj * na ** 2 / (2.0 * lam_m))
+    return torch.stack(out)
+
+
 @dataclass
 class Illumination:
     """Pre-sample illumination (source + condenser): what reaches the sample."""

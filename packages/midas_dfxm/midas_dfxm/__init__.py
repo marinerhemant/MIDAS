@@ -97,10 +97,18 @@ from .plasticity import (
     recover_gnd_densities,
     slip_dislocation_types,
 )
-from .mosaicity_fit import fit_orientation_mosaicity, moment_orientation
+from .mosaicity_fit import (
+    fit_orientation_mosaicity,
+    fit_rocking_curve,
+    moment_orientation,
+    rocking_lrt,
+    rocking_nll,
+)
 from .joint_inverse import fit_dislocation_field, fit_dislocation_ensemble, signal_peaks
 from .finite_beam import beam_integrated_observable
-from .beamline import (Illumination, beamline_resolution, crl_abcd, crl_focal_length, crl_image, crl_na, delta_beryllium)
+from .beamline import (Illumination, beamline_resolution, crl_abcd, crl_focal_length, crl_image, crl_na, delta_beryllium, chromatic_defocus_coeffs)
+from .pink import pink_dynamical_reflectivity, spectrum_grid
+from .chromatic import effective_chromatic_psf, chromatic_psf_from_spectrum, psf_fwhm_um
 from .coherence import (
     coherent_image,
     dislocation_exit_wave,
@@ -118,6 +126,26 @@ from .aberration import (
     fit_aberration,
     wiener_deconvolve,
     zernike_terms,
+)
+from .takagi_taupin import (
+    susceptibility_fourier,
+    bragg_angle_deg,
+    polarization_factor,
+    extinction_length,
+    laue_intensity_analytic,
+    deviation_to_angle,
+    solve_tt_laue,
+    diffracted_intensity,
+    darwin_width,
+    solve_tt_bragg,
+    solve_tt_2d,
+    bragg_2d_nz_for_unit_shift,
+    bragg_reflectivity,
+    pink_deviation_offsets,
+    pink_diffracted_intensity,
+)
+from .wave_imaging import (
+    dfxm_image_wave, dfxm_image_dynamical, dfxm_image_dynamical_pink, dfxm_image_dynamical_chromatic_pink,
 )
 from .field_inverse import (
     angular_condition_number,
@@ -238,6 +266,9 @@ __all__ = [
     "cpfem_true_strain",
     "validate_dfxm_on_cpfem",
     "fit_orientation_mosaicity",
+    "fit_rocking_curve",
+    "rocking_lrt",
+    "rocking_nll",
     "moment_orientation",
     "reference_Q",
     "deformation_design_matrix",
@@ -258,6 +289,12 @@ __all__ = [
     "beam_integrated_observable",
     "Illumination",
     "beamline_resolution",
+    "chromatic_defocus_coeffs",
+    "pink_dynamical_reflectivity",
+    "spectrum_grid",
+    "effective_chromatic_psf",
+    "chromatic_psf_from_spectrum",
+    "psf_fwhm_um",
     "crl_abcd",
     "crl_focal_length",
     "crl_image",
@@ -277,6 +314,26 @@ __all__ = [
     "pink_beam_resolution",
     "pink_beam_res_cov",
     "strain_resolution_ratio",
+    # Takagi-Taupin dynamical diffraction
+    "susceptibility_fourier",
+    "bragg_angle_deg",
+    "polarization_factor",
+    "extinction_length",
+    "laue_intensity_analytic",
+    "deviation_to_angle",
+    "solve_tt_laue",
+    "diffracted_intensity",
+    "darwin_width",
+    "solve_tt_bragg",
+    "solve_tt_2d",
+    "bragg_2d_nz_for_unit_shift",
+    "bragg_reflectivity",
+    "pink_deviation_offsets",
+    "pink_diffracted_intensity",
+    "dfxm_image_wave",
+    "dfxm_image_dynamical",
+    "dfxm_image_dynamical_pink",
+    "dfxm_image_dynamical_chromatic_pink",
 ]
 
 __version__ = "0.3.1"

@@ -67,9 +67,7 @@ def test_jax_bridge_matches_torch():
     jax.config.update("jax_enable_x64", True)
     import jax.numpy as jnp
 
-    import sys, os
-    sys.path.insert(0, os.path.join(os.path.dirname(__file__), "..", "examples"))
-    from jax_dfxm_bridge import normal_strain_jax
+    from midas_dfxm.examples.jax_dfxm_bridge import normal_strain_jax
 
     from midas_dfxm.inverse import normal_strain
 

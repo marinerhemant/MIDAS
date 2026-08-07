@@ -101,18 +101,29 @@ def dfxm_image(
     *,
     sf2: Optional[torch.Tensor] = None,
     Q_sample: Optional[torch.Tensor] = None,
+    psf: Optional[torch.Tensor] = None,
 ) -> torch.Tensor:
     """Render one DFXM detector image ``(n_u, n_v)`` for a goniometer setting.
 
     Voxel positions are rotated into the lab frame and splatted through the
-    objective. Differentiable end-to-end.
+    objective (geometrical optics). Differentiable end-to-end.
+
+    ``psf`` -- optional objective point-spread function (e.g. ``optics.psf(...)``,
+    the wave-optics pupil PSF sampled at the detector grid). When given, the
+    geometrical image is convolved with it, adding the diffraction-limited /
+    aberrated blur the pure projection omits. ``None`` keeps the geometrical-only
+    behaviour. Differentiable in the PSF (hence in its Zernike coefficients).
     """
     if Q_sample is None:
         Q_sample = field.local_Q(hkl)
     inten = voxel_intensity(field, hkl, goniometer, resolution, sf2=sf2, Q_sample=Q_sample)
     G = goniometer.sample_rotation(device=Q_sample.device, dtype=Q_sample.dtype)
     pos_lab = field.positions @ G.transpose(-1, -2)
-    return optics.render(pos_lab, inten)
+    img = optics.render(pos_lab, inten)
+    if psf is not None:
+        from .aberration import convolve_psf
+        img = convolve_psf(img, psf.to(img.dtype))
+    return img
 
 
 def dfxm_stack(
@@ -123,14 +134,16 @@ def dfxm_stack(
     optics: ObjectiveOptics,
     *,
     sf2: Optional[torch.Tensor] = None,
+    psf: Optional[torch.Tensor] = None,
 ) -> torch.Tensor:
     """Stack of DFXM images over a scan: ``(S, n_u, n_v)``.
 
     ``Q_sample`` and ``sf2`` are computed once and reused across settings.
+    ``psf`` (optional) applies the same objective PSF to every frame.
     """
     Q_sample = field.local_Q(hkl)
     imgs = [
-        dfxm_image(field, hkl, s, resolution, optics, sf2=sf2, Q_sample=Q_sample)
+        dfxm_image(field, hkl, s, resolution, optics, sf2=sf2, Q_sample=Q_sample, psf=psf)
         for s in settings
     ]
     return torch.stack(imgs, dim=0)
