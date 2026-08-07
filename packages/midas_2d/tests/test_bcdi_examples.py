@@ -132,6 +132,38 @@ def test_invert_pattern_is_the_true_inversion_not_a_flip():
     assert fromdata.ncc(conj, torch.flip(ref, dims=(0, 1, 2))) < 0.999
 
 
+# ------------------------------------------------- the minimal transformation
+@pytest.mark.unit
+def test_transform_example_runs_and_lands_the_peak_at_the_centre(capsys):
+    """The one-file transformation example.
+
+    It carries its own asserts (array centre == G, the beam-normal ray-trace
+    identity, and that the un-sheared grain is isotropic), so running it is the
+    check. This confirms it stays runnable and returns the pieces it advertises.
+    """
+    from midas_2d.examples import tutorial_bcdi_transform as tr
+
+    out = tr.main()
+    text = capsys.readouterr().out
+    assert "= G exactly" in text, text
+    assert "the grid is sheared" in text
+
+    for key in ("I", "rate", "counts", "Q", "B", "C"):
+        assert key in out, f"missing {key}"
+    assert out["I"].shape == tr.SHAPE
+    # the Bragg peak sits at the array centre
+    c = tuple(n // 2 for n in tr.SHAPE)
+    assert torch.allclose(out["Q"][c],
+                          m2d_bragg_G(tr.LAMBDA_A, tr.D_HKL), atol=1e-12)
+    assert float(out["counts"].sum()) > 0
+
+
+def m2d_bragg_G(lam, d):
+    import midas_2d as m2d
+
+    return m2d.bragg_geometry(lam, d, dtype=DT)["G"]
+
+
 @pytest.mark.unit
 def test_synthetic_frame_returns_reference_and_deformed():
     import math

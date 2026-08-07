@@ -6,7 +6,7 @@ out of plane and plot the Laue oscillations.
 
 Run:
     python -m midas_2d.examples.tutorial_npl_fringes        # or run this file
-Saves the figure under dev/paper/figures/.
+Saves the figure under the figure directory (dev/paper/figures/ in a clone, ./figures otherwise).
 """
 from __future__ import annotations
 
@@ -16,6 +16,7 @@ import torch
 
 from midas_2d import build_crystal_tensor, rod_intensity
 from midas_2d.viz import plot_rod
+from midas_2d.examples._figures import figure_dir
 
 DT = torch.float64
 
@@ -37,10 +38,7 @@ def main(out_dir=None):
         curves.append(I / I.max())
         labels.append(f"N3 = {n3} cells  ->  {n3 - 1} fringe minima")
 
-    if out_dir is None:
-        out_dir = os.path.join(os.path.dirname(__file__), "..", "..", "dev", "paper", "figures")
-    out_dir = os.path.abspath(out_dir)
-    os.makedirs(out_dir, exist_ok=True)
+    out_dir = figure_dir(out_dir)
     out_path = os.path.join(out_dir, "cdse_npl_thickness_fringes.png")
     plot_rod(l, curves, labels, out_path, logy=False,
              title="CdSe nanoplatelet (1 1 1) Laue oscillations -- fringe count = N3 - 1")

@@ -165,6 +165,10 @@ positions**:
   diffusivity kappa, and interatomic stiffness k, all from diffraction.
 - `tutorial_frontier` -- deformation potential (multi-modal), equation-of-motion
   discovery, and ensemble thickness distribution.
+- `tutorial_bcdi_transform` -- **the transformation on its own**, one file, no
+  CLI: geometry -> object -> `|FFT|^2` -> detector counts -> un-shear, in five
+  labelled steps with the q-space mapping made explicit. Start here to read the
+  chain; the two below are the full-featured versions.
 - `tutorial_bcdi_forward` -- **Bragg CDI end to end: a strained nanocrystal to
   Poisson counts, with the non-orthogonal q-basis made explicit.** Six
   self-checks against closed form (conjugate-basis identity, analytic Laue

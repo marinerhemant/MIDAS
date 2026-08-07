@@ -7,7 +7,7 @@ Left  -- Williamson-Hall: radial spot width^2 (minus instrument) vs q^2 is a
 Right -- a crystallite-size DISTRIBUTION recovered from a broadened radial line
          profile (mixture deconvolution).
 
-Saves a two-panel figure to dev/paper/figures/.
+Saves a two-panel figure to the figure directory (dev/paper/figures/ in a clone, ./figures otherwise).
 """
 from __future__ import annotations
 
@@ -24,6 +24,7 @@ from midas_defect.peakshape import (
     size_width_q,
     williamson_hall,
 )
+from midas_defect.examples._figures import figure_dir
 
 DT = torch.float64
 
@@ -83,10 +84,7 @@ def main(out_dir=None, seed=0):
     axR.legend(fontsize=8); axR.grid(alpha=0.3, axis="y")
 
     fig.tight_layout()
-    if out_dir is None:
-        out_dir = os.path.join(os.path.dirname(__file__), "..", "..", "dev", "paper", "figures")
-    out_dir = os.path.abspath(out_dir)
-    os.makedirs(out_dir, exist_ok=True)
+    out_dir = figure_dir(out_dir)
     out_path = os.path.join(out_dir, "size_strain_mosaic.png")
     fig.savefig(out_path, dpi=150)
     plt.close(fig)

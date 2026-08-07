@@ -9,7 +9,7 @@ onto a flat area detector (Ewald-correct) and add Poisson photon noise -- the
 kind of frame a real measurement produces, ready to fit with a Poisson
 likelihood.
 
-Saves a two-panel figure to dev/paper/figures/.
+Saves a two-panel figure to the figure directory (dev/paper/figures/ in a clone, ./figures otherwise).
 """
 from __future__ import annotations
 
@@ -27,6 +27,7 @@ from midas_2d import (
     project_to_detector,
     train_surrogate,
 )
+from midas_2d.examples._figures import figure_dir
 
 DT = torch.float64
 A = 6.077
@@ -80,10 +81,7 @@ def main(out_dir=None, seed=1):
     fig.colorbar(sc, ax=axR, label="log10(counts+1)")
 
     fig.tight_layout()
-    if out_dir is None:
-        out_dir = os.path.join(os.path.dirname(__file__), "..", "..", "dev", "paper", "figures")
-    out_dir = os.path.abspath(out_dir)
-    os.makedirs(out_dir, exist_ok=True)
+    out_dir = figure_dir(out_dir)
     out_path = os.path.join(out_dir, "ml_amortized_and_detector.png")
     fig.savefig(out_path, dpi=150)
     plt.close(fig)
