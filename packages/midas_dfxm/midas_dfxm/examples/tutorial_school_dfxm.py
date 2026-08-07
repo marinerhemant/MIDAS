@@ -107,7 +107,29 @@ for a, d, t in [(ax[0], rot_true, "true lattice rotation (mdeg)"),
 fig.tight_layout(); plt.show()
 
 # %% [markdown]
-# ## 5. Where to go next
+# ## 5. Capstone: the three canonical maps — and what one reflection can't give you
+# A DFXM study usually wants three co-registered maps of the grain: **twin domains**,
+# **elastic strain**, and **mosaicity**. The forward+inverse above produce all three
+# (see `dev/paper/runs/multimodal_capstone/capstone_psingle.py` for the full figure:
+# domains segmented at 99.9%, mosaicity to 3.5 mdeg, full strain tensor to the
+# Cramér–Rao bound). One honest limit worth learning early: **a single reflection
+# measures only the strain projected onto that g** (`eps_gg = ĝ·ε·ĝ`). Recovering the
+# **full six-component** strain tensor needs a *diverse set of reflections* — and the
+# code tells you whether a set is enough before you take the data.
+
+# %%
+from midas_dfxm.inverse import strain_identifiability
+
+one_reflection = [(2, 0, 2)]
+rank6_set = [(2, 0, 2), (0, 2, 2), (2, 2, 0), (1, 1, 3), (3, 1, 1), (1, 3, 1)]
+for name, refls in [("single reflection", one_reflection), ("6-reflection set", rank6_set)]:
+    info = strain_identifiability(refls)
+    print(f"{name:18s}: rank {info['rank']}/6  full-tensor recoverable = {info['recoverable']}")
+# -> the single reflection is rank 1 (only one projected component); the diverse set is
+#    rank 6 (all six components). This is the design rule behind the CsVSb multi-reflection plan.
+
+# %% [markdown]
+# ## 6. Where to go next
 # - **Dislocation typing:** `examples/tutorial_dislocation_typing.py` — recover a
 #   Burgers vector (direction *and* sign) from the anisotropic contrast.
 # - **Physics-regularized inverse:** fit F through a dislocation model, not

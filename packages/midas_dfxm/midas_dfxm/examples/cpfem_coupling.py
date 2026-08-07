@@ -6,7 +6,10 @@ runs the DFXM strain forward + inverse, and scores the recovery against the CP g
 truth. Demonstrates the DFXM stack on a physically-realistic crystal-plasticity field
 (not a synthetic plant-and-recover) — the credibility upgrade for a methods paper.
 
-Run:  export KMP_DUPLICATE_LIB_OK=TRUE; python examples/cpfem_coupling.py
+Needs a developer clone: the field lives in the gitignored dev/ tree, so an installed
+copy will report the missing file and exit.
+
+Run:  export KMP_DUPLICATE_LIB_OK=TRUE; python -m midas_dfxm.examples.cpfem_coupling
 """
 from __future__ import annotations
 
@@ -15,14 +18,13 @@ import os
 import torch
 
 from midas_dfxm.cpfem import cpfem_true_strain, load_cpfem_field, validate_dfxm_on_cpfem
+from midas_dfxm.examples._figures import dev_path
 
 FULL_SET = [(2, 0, 0), (0, 2, 0), (0, 0, 2), (2, 2, 0), (0, 2, 2), (2, 0, 2), (2, 2, 2)]
 
 
 def main():
-    here = os.path.dirname(os.path.abspath(__file__))
-    npz = os.path.join(here, "..", "dev", "paper", "runs",
-                       "cpfem_singlecrystal_copper", "Fe_field.npz")
+    npz = dev_path("paper", "runs", "cpfem_singlecrystal_copper", "Fe_field.npz")
     if not os.path.exists(npz):
         print(f"CPFEM field not found: {npz}\n"
               "Regenerate on sentosa via export_Fe_sentosa.py and copy back.")

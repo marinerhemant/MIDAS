@@ -1,0 +1,20 @@
+# Shared figure style for the DFXM examples. Applied via:
+#   from midas_dfxm.examples._figures import paper_style
+# Larger fonts + near-square grids stop the compounding shrink when figures are
+# placed in the single-column layout.
+figure.dpi: 150
+savefig.dpi: 220
+savefig.bbox: tight
+font.size: 12
+axes.titlesize: 13
+axes.labelsize: 12
+axes.titleweight: normal
+xtick.labelsize: 10.5
+ytick.labelsize: 10.5
+legend.fontsize: 10
+figure.titlesize: 14
+lines.linewidth: 1.9
+lines.markersize: 5
+axes.grid: False
+axes.axisbelow: True
+figure.constrained_layout.use: True

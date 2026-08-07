@@ -1,9 +1,9 @@
 # midas-dfxm on Windows — quickstart
 
-`midas-dfxm` is public on PyPI (version 0.1.0). Validated 2026-07-31 by a
-clean-environment install + run from public PyPI (pure Python; the only compiled
-dependency is PyTorch, which ships Windows CPU wheels). No GPU, no CUDA, no C
-compiler, no admin rights needed.
+`midas-dfxm` is public on PyPI (current version 0.3.2). The install route below was
+validated 2026-07-31 against 0.1.0 by a clean-environment install + run from public
+PyPI (pure Python; the only compiled dependency is PyTorch, which ships Windows CPU
+wheels). No GPU, no CUDA, no C compiler, no admin rights needed.
 
 ## 1. Python
 Install Python 3.9–3.12 (python.org) or Miniconda. Then make an isolated env:
@@ -37,21 +37,16 @@ set KMP_DUPLICATE_LIB_OK=TRUE        :: this shell only
 setx KMP_DUPLICATE_LIB_OK TRUE       :: persist for future shells
 ```
 
-## 4. Get the example scripts
-`pip install` ships the library, not the `examples/` folder. Grab the examples
-from GitHub — either clone the repo, or download the two files you need:
+## 4. Where the examples live
+From 0.3.2 the tutorials ship inside the package (`midas_dfxm.examples`), so
+there is nothing extra to download — run them as modules with `python -m`.
 
-- https://github.com/marinerhemant/MIDAS/tree/master/packages/midas_dfxm/examples
-- `examples/demo_quickstart.py` and `examples/tutorial_school_dfxm.py`
-
-```bat
-git clone --depth 1 https://github.com/marinerhemant/MIDAS.git
-cd MIDAS\packages\midas_dfxm
-```
+Figures are written to a `figures\` folder in whatever directory you run from.
+Set `MIDAS_FIGDIR` to send them elsewhere.
 
 ## 5. Run the 60-second demo
 ```bat
-python examples\demo_quickstart.py
+python -m midas_dfxm.examples.demo_quickstart
 ```
 Runs in ~2 s on CPU. It builds a curved+strained crystal, renders a realistic
 DFXM image, and recovers the full nine-component deformation-gradient field,
@@ -60,12 +55,13 @@ a DFXM image, the orientation channel (what a center-of-mass mosaicity scan
 gives), and the planted-vs-recovered strain map (the extra information the
 differentiable inverse adds).
 
-For the NX-school, `examples\tutorial_school_dfxm.py` opens as an interactive
-notebook in VSCode (Run Cell on each `# %%`) with no Jupyter setup, and also runs
-as a plain script. Two more go deeper:
+For the NX-school, `tutorial_school_dfxm.py` opens as an interactive notebook in
+VSCode (Run Cell on each `# %%`) with no Jupyter setup, and also runs as a plain
+script — find it next to the others under `midas_dfxm\examples\` in site-packages,
+or run it as a module. Two more go deeper:
 ```bat
-python examples\tutorial_field_forward.py
-python examples\tutorial_dislocation_typing.py
+python -m midas_dfxm.examples.tutorial_field_forward
+python -m midas_dfxm.examples.tutorial_dislocation_typing
 ```
 
 ## 6. Confirm the install (optional, from the cloned repo)

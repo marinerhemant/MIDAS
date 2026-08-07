@@ -29,9 +29,9 @@ from midas_dfxm import (
     ObjectiveOptics, bragg_two_theta_deg, dfxm_image,
 )
 from midas_dfxm.field_inverse import deformation_observable, recover_deformation_direct
+from midas_dfxm.examples._figures import figure_dir
 
 DT = torch.float64
-HERE = os.path.dirname(os.path.abspath(__file__))
 
 
 def main():
@@ -84,7 +84,7 @@ def main():
         a.set_xticks([]); a.set_yticks([])
     fig.suptitle("midas-dfxm quickstart: DFXM forward -> orientation (COM) + full-F strain inverse", y=1.02)
     fig.tight_layout()
-    out = os.path.join(HERE, "demo_quickstart.png")
+    out = os.path.join(figure_dir(), "demo_quickstart.png")
     fig.savefig(out, dpi=140, bbox_inches="tight")
     print("figure ->", out)
 

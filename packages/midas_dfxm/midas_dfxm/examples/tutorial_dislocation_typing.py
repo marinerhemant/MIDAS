@@ -6,11 +6,11 @@ Runs entirely synthetically (no external data). Produces a 4-panel figure:
   (c) g.b invisibility series (contrast vs reflection; extinction at g.b = 0)
   (d) edge vs screw dilatation-ratio (character discriminant)
 
-Saves to midas_dfxm/dev/paper/figures/dislocation_typing.png (per repo convention;
-never /tmp). Run:
+Saves dislocation_typing.png under the directory chosen by ``figure_dir`` (the
+dev/paper tree in a clone, ./figures otherwise; never /tmp). Run:
 
     export KMP_DUPLICATE_LIB_OK=TRUE            # macOS OpenMP workaround
-    python examples/tutorial_dislocation_typing.py
+    python -m midas_dfxm.examples.tutorial_dislocation_typing
 """
 from __future__ import annotations
 
@@ -34,6 +34,7 @@ from midas_dfxm import (
     stroh_dislocation,
     visibility_series,
 )
+from midas_dfxm.examples._figures import figure_dir, paper_style
 
 DT = torch.float64
 WAVELENGTH = 0.172979  # Angstrom
@@ -64,9 +65,7 @@ def dislocation_image(character, hkl=(2, -2, 0)):
 
 
 def main():
-    here = os.path.dirname(os.path.abspath(__file__))
-    outdir = os.path.join(here, "..", "dev", "paper", "figures")
-    os.makedirs(outdir, exist_ok=True)
+    outdir = figure_dir()
 
     # Panels (a),(b): edge and screw images.
     img_edge = dislocation_image("edge")
@@ -97,7 +96,9 @@ def main():
         import matplotlib
         matplotlib.use("Agg")
         import matplotlib.pyplot as plt
-        plt.style.use(os.path.join(here, "..", "dev", "paper", "runs", "paper.mplstyle"))
+        style = paper_style()
+        if style is not None:
+            plt.style.use(style)
 
         fig, axg = plt.subplots(2, 2, figsize=(9.6, 8.8))
         ax = axg

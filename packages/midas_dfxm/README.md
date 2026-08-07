@@ -44,8 +44,15 @@ Highlights:
 - **External-field ready:** `field_from_deformation_gradient` consumes an external `F(r)` with
   zero rework.
 
-See [`SIMULATION_CATALOG.md`](SIMULATION_CATALOG.md) and `examples/` (figures land in
-`dev/paper/figures/`).
+See [`SIMULATION_CATALOG.md`](SIMULATION_CATALOG.md) and the shipped tutorials in
+`midas_dfxm/examples/`, each runnable as a module:
+
+```bash
+python -m midas_dfxm.examples.tutorial_dislocation_typing
+```
+
+Figures land in `dev/paper/figures/` inside a clone, `./figures` otherwise; set
+`MIDAS_FIGDIR` to send them somewhere else.
 
 <details><summary>Earlier milestone note</summary>
 

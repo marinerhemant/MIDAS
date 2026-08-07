@@ -10,8 +10,8 @@ Produces:
   (b) DFXM images at three rocking angles showing the diffracting sub-region sweep
       across a bent crystal (the qualitative DFXM signature).
 
-Saves midas_dfxm/dev/paper/figures/field_forward.png.
-Run:  export KMP_DUPLICATE_LIB_OK=TRUE; python examples/tutorial_field_forward.py
+Saves field_forward.png under the directory chosen by ``figure_dir``.
+Run:  export KMP_DUPLICATE_LIB_OK=TRUE; python -m midas_dfxm.examples.tutorial_field_forward
 """
 from __future__ import annotations
 
@@ -31,6 +31,7 @@ from midas_dfxm import (
     voxel_intensity,
     with_orientation_gradient,
 )
+from midas_dfxm.examples._figures import figure_dir
 
 DT = torch.float64
 WAVELENGTH = 0.172979
@@ -55,9 +56,7 @@ def mosaicity_com_map(field, hkl, settings, res):
 
 
 def main():
-    here = os.path.dirname(os.path.abspath(__file__))
-    outdir = os.path.join(here, "..", "dev", "paper", "figures")
-    os.makedirs(outdir, exist_ok=True)
+    outdir = figure_dir()
 
     field = build_bent_crystal()
     nx, ny, _ = field.shape

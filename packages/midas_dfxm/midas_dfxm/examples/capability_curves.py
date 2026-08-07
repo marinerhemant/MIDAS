@@ -7,8 +7,9 @@ makes cheap, each an honest, reviewer-proof capability statement:
   (b) strain recovery error vs SNR: direct per-voxel LSQ vs curvature-regularised,
   (c) Burgers-sign recovery margin vs weak-beam offset.
 
-Saves midas_dfxm/dev/paper/figures/capability_curves.png and prints the numbers.
-Run:  export KMP_DUPLICATE_LIB_OK=TRUE; python examples/capability_curves.py
+Saves capability_curves.png under the directory chosen by ``figure_dir`` and prints
+the numbers.
+Run:  export KMP_DUPLICATE_LIB_OK=TRUE; python -m midas_dfxm.examples.capability_curves
 """
 from __future__ import annotations
 
@@ -28,6 +29,7 @@ from midas_dfxm import (
 )
 from midas_dfxm.detect import _normalize, match_residual, weak_beam_stack
 from midas_dfxm.dislocation import cubic_stiffness, dislocation_deformation_field, stroh_dislocation
+from midas_dfxm.examples._figures import figure_dir
 
 DT = torch.float64
 CU = cubic_stiffness(168.4, 121.4, 75.4, dtype=DT)
@@ -94,9 +96,7 @@ def sign_margin_vs_offset():
 
 
 def main():
-    here = os.path.dirname(os.path.abspath(__file__))
-    outdir = os.path.join(here, "..", "dev", "paper", "figures")
-    os.makedirs(outdir, exist_ok=True)
+    outdir = figure_dir()
 
     ident = identifiability_vs_reflections()
     snr = recovery_vs_snr()
