@@ -325,5 +325,19 @@ def write_process_key_row(path: str | Path,
     arr = np.ascontiguousarray(spot_ids, dtype=np.int32)
     if arr.size > max_nhkls:
         raise ValueError(f"len(spot_ids)={arr.size} > MaxNHKLS={max_nhkls}")
+    # SpotIDs are 1-based rows of ExtraInfo.bin. A 0 here is padding that
+    # escaped the matcher, and the consumer cannot defend itself: C
+    # ProcessGrains computes rowSpotID = SpotID - 1 and dereferences
+    # InputMatrix[-1] (ProcessGrains.c:966), which segfaults with no
+    # diagnostic. Refuse to write one rather than hand a consumer an index
+    # it will turn negative.
+    if arr.size and int(arr.min()) < 1:
+        bad = np.flatnonzero(arr < 1)
+        raise ValueError(
+            f"ProcessKey row {row_nr}: {bad.size} non-positive SpotID(s) at "
+            f"slots {bad[:8].tolist()} (values {arr[bad[:8]].tolist()}). "
+            "SpotIDs are 1-based; 0 means an unfilled observation slot was "
+            "counted as a match."
+        )
     offset = row_nr * max_nhkls * 4
     _pwrite(path, offset, arr.tobytes())

@@ -24,6 +24,9 @@ def minimize_nelder_mead(
     max_iter: int = 5000,
     ftol: float = 1e-5,
     xtol: float = 1e-5,
+    bounds=None,
+    n_restarts: int = 2,
+    relative_tol: bool = True,
     **_,
 ):
     """Minimize ``loss(closure)`` via SciPy ``minimize(method='Nelder-Mead')``.
@@ -31,6 +34,30 @@ def minimize_nelder_mead(
     The closure must compute the loss at the *current* values of
     ``params`` and return a scalar tensor. Backward is **not** required;
     Nelder–Mead is derivative-free.
+
+    C-PARITY NOTES. This solver exists to mirror ``FitPosOrStrainsOMP.c``
+    (nlopt ``LN_NELDERMEAD``). Measured on the real 2-Au-grain dataset, an
+    earlier version of it was the WORST of six implementations -- it moved
+    228 um from its seed against C's 25 um and ended with a 42 % larger
+    position residual (275 vs 194 um). It was wandering, not optimizing.
+    Three configuration mismatches caused that, all fixed here:
+
+    * **Bounds.** C calls ``nlopt_set_lower_bounds``/``upper_bounds``; scipy
+      got none, so the simplex could leave the physical box entirely.
+    * **Relative vs absolute tolerances.** C sets ``ftol_rel``/``xtol_rel``
+      = 1e-5. scipy's ``fatol``/``xatol`` are ABSOLUTE. On a loss of order
+      1e3-1e5 and positions of order 100 um these are not the same stopping
+      rule -- not even close. ``relative_tol=True`` rescales them to match.
+    * **Restarts.** C runs the optimizer TWICE in succession, restarting from
+      the previous minimum to escape a collapsed simplex. ``n_restarts=2``
+      reproduces that; it is the default because C parity is the whole point
+      of this solver.
+
+    Note also that scipy runs its simplex in float64 whatever the torch dtype,
+    so "float32 Nelder-Mead" is float32 only in the objective evaluation. NM
+    compares objective values rather than differencing them, so an ~1e-7
+    relative difference never flips a simplex decision -- which is why fp32
+    and fp64 runs land in the same place to ~1e-11.
     """
     if not params:
         raise ValueError("Nelder-Mead needs at least one parameter")
@@ -50,6 +77,17 @@ def minimize_nelder_mead(
 
     saved = _read_flat()
 
+    # Relative -> absolute, referenced to the starting point, so the stopping
+    # rule means what it means in the C reference.
+    if relative_tol:
+        with torch.no_grad():
+            f0 = abs(float(closure().detach().cpu().item()))
+        x_scale = float(np.max(np.abs(saved))) if saved.size else 1.0
+        fatol = ftol * max(f0, 1e-30)
+        xatol = xtol * max(x_scale, 1e-30)
+    else:
+        fatol, xatol = ftol, xtol
+
     history: list[float] = []
     iters = 0
 
@@ -63,16 +101,20 @@ def minimize_nelder_mead(
         iters += 1
         return v
 
-    res = minimize(
-        _f, saved, method="Nelder-Mead",
-        options={
-            "maxiter": max_iter,
-            "fatol": ftol,
-            "xatol": xtol,
-            "adaptive": True,
-            "disp": False,
-        },
-    )
+    x = saved
+    res = None
+    for _restart in range(max(1, int(n_restarts))):
+        res = minimize(
+            _f, x, method="Nelder-Mead", bounds=bounds,
+            options={
+                "maxiter": max_iter,
+                "fatol": fatol,
+                "xatol": xatol,
+                "adaptive": True,
+                "disp": False,
+            },
+        )
+        x = res.x            # restart from the minimum, as the C code does
 
     _write_flat(res.x)
 

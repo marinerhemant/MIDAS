@@ -131,6 +131,7 @@ def _read_consolidated_as_ff(out_dir: Path, n_total: int):
         rec = block[top]
         index_best[v, 1:10] = rec[2:11]      # orientation matrix
         index_best[v, 10:13] = rec[11:14]    # grain position (µm)
+        index_best[v, 13] = rec[14]          # n_expected
         index_best[v, 14] = ids.size         # n_observed
         matched_ids_per_row[v] = ids.astype(np.float64)
         if ids.size > max_n_obs:
@@ -219,16 +220,29 @@ def _build_model(cfg: FitConfig, *,
     }
     _missing = [k for k in _PLACEHOLDER if not getattr(cfg, k, 0)]
     if _missing:
-        import warnings
-        warnings.warn(
-            "_build_model: paramstest is missing forward-model geometry "
-            f"{_missing}; falling back to placeholders "
-            f"{{ {', '.join(f'{k}={_PLACEHOLDER[k]}' for k in _missing)} }}. "
-            "Predicted spot positions / completeness will be WRONG unless "
-            "the real detector matches these. Ensure midas-transforms "
-            ">= 0.8.1 wrote NrPixelsY/Z, YBCFit/ZBCFit, OmegaStart/OmegaStep.",
-            stacklevel=2,
+        _msg = (
+            "paramstest is missing forward-model geometry "
+            f"{_missing}. The placeholders that would be used "
+            f"{{ {', '.join(f'{k}={_PLACEHOLDER[k]}' for k in _missing)} }} "
+            "describe a detector that probably is not yours, and predicted "
+            "spot positions and completeness are then WRONG. Add NrPixelsY/Z, "
+            "YBCFit/ZBCFit, OmegaStart, OmegaStep to the parameter file "
+            "(midas-transforms >= 0.8.1 writes them; the classical ff_MIDAS "
+            "chain does NOT, because the C refiner never needed them). "
+            "Set MIDAS_ALLOW_PLACEHOLDER_GEOMETRY=1 to proceed anyway."
         )
+        # Refuse rather than warn. This was a warning, and the run still exited
+        # 0: on an datasetA Ni layer (2880x2880 Varex) the 2048x2048 fallback
+        # put grain positions 34 um from the two C refiners where the correct
+        # geometry puts them 3.4 um away -- a 4x error that looked like a
+        # python-refiner defect until the geometry was supplied. Wrong numbers
+        # that complete are worse than a run that stops.
+        if os.environ.get("MIDAS_ALLOW_PLACEHOLDER_GEOMETRY", "").strip().lower() \
+                not in ("1", "true", "yes", "on"):
+            raise ValueError("_build_model: " + _msg)
+        import warnings
+        warnings.warn("_build_model: proceeding with placeholders. " + _msg,
+                      stacklevel=2)
     # NB: the refiner's observations are ExtraInfo YLab/ZLab — already
     # detector-corrected (tilt + distortion removed) IDEAL-frame µm — so the
     # forward predicts in the ideal frame and must NOT re-apply tilts
@@ -464,6 +478,10 @@ def refine_block_from_disk(
     init_om_list: list[np.ndarray] = []   # 3×3 orient matrices, vectorised → euler later
     init_lat_list: list[np.ndarray] = []
     seed_ids: list[int] = []
+    # Completeness denominator: the number of reflections the indexer PREDICTED
+    # for this seed (IndexBest col 13), not the number it managed to observe
+    # (col 14). See the completeness computation below.
+    seed_n_expected: list[int] = []
     matches: list[MatchResult] = []
     n_skipped = 0
     skipped_rows: list[int] = []      # for batched empty Key.bin write
@@ -529,6 +547,7 @@ def refine_block_from_disk(
         grains_obs.append(obs)
         grain_rows.append(row_nr)
         seed_ids.append(seed_spot_id)
+        seed_n_expected.append(int(rec[13]))
         init_pos_list.append(Pos0.copy())
         init_om_list.append(Orient0.copy())
         init_lat_list.append(lat_const_array)
@@ -580,6 +599,36 @@ def refine_block_from_disk(
     # seed (synthetic fixture, px = 200 µm). Note a good fit can legitimately
     # move LESS than one pixel, so a one-pixel threshold would flag it.
     move_floor_um = cfg.px / 1000.0
+
+    # A SECOND, weaker guard: "barely moved" is nearly as bad as "did not
+    # move", and the floor above cannot see it. Measured on the FCC parent
+    # (bt_1id_jul26c, 26901 seeds): the torch refiner moved a MEDIAN of 2.9 µm
+    # where the C reference moved 191 µm on identical seeds and spots, and
+    # ended 4x further from the physical truth (a 2 µm focused beam gives a
+    # known Z-spread). 2.9 µm clears px/1000 = 0.2 µm comfortably, so the
+    # original guard stayed silent through it.
+    #
+    # The scale to compare against is the SEED SPREAD, not a fixed length:
+    # if the seeds disagree with each other by far more than the fit moved
+    # any of them, the fit cannot have resolved that disagreement, whatever
+    # the loss says. Reported, never raised — a genuinely tight seed set
+    # legitimately needs little movement, which is why this is keyed to the
+    # seed spread rather than to an absolute number.
+    seed_spread_um = getattr(block, "seed_position_spread_um", 0.0) or 0.0
+    med_move = getattr(block, "median_position_move_um", 0.0) or 0.0
+    if (block.n_grains and seed_spread_um > 0.0
+            and med_move < 0.05 * seed_spread_um
+            and block.max_position_move_um >= move_floor_um):
+        LOG.warning(
+            "BARELY-REFINED-POSITIONS: grain positions moved a median of "
+            "%.3g µm against a seed spread of %.3g µm (<5%%) over %d grains "
+            "(dtype=%s, solver=%s). The fit has not resolved the disagreement "
+            "between its own seeds, so the reported positions are close to "
+            "the indexer output. Cross-check against the c-omp refiner before "
+            "using these positions.",
+            med_move, seed_spread_um, block.n_grains, cfg.dtype, cfg.solver,
+        )
+
     if block.n_grains and block.max_position_move_um < move_floor_um:
         LOG.warning(
             "UNREFINED-POSITIONS: no grain position moved a measurable "
@@ -608,7 +657,9 @@ def refine_block_from_disk(
     RAD2DEG = 180.0 / math.pi
 
     n_grains_written = 0
-    for g, row_nr, sid, obs in zip(block.grains, grain_rows, seed_ids, grains_obs):
+    n_no_expected = 0
+    for g, row_nr, sid, n_exp, obs in zip(block.grains, grain_rows, seed_ids,
+                                          seed_n_expected, grains_obs):
         # Build the C-style spotsYZO (S, 10) view from obs.
         S = int(obs.n_spots)
         spots_yzo = np.zeros((S, 10), dtype=np.float64)
@@ -675,7 +726,33 @@ def refine_block_from_disk(
         # unpack by name rather than index so the OrientPosFit.bin cols
         # 22-24 (ErrorPos/ErrorOme/ErrorAngle) don't silently swap again.
         mean_angle_deg, mean_pos_um, mean_ome_deg = err_ini
-        completeness = float(n_matched) / max(int(obs.n_spots), 1)
+        # Completeness is matched / EXPECTED, the fraction of the reflections
+        # this orientation should produce that were actually found. It was
+        # matched / obs.n_spots -- and obs.n_spots is the count the indexer
+        # ASSIGNED, i.e. exactly the numerator of the real definition. Dividing
+        # a grain's observed spots by its own observed spots is ~1 by
+        # construction, so the column carried no information.
+        #
+        # Measured on the datasetA Ni layer, 57021 shared seeds, against the C
+        # refiners (which read NrObserved/NrExpected straight from IndexBest,
+        # FitUnified.c:1716):
+        #
+        #                              ==1.0    <0.9    median
+        #   C refiners                 38.0%   23.9%    0.9741
+        #   this function, before      94.8%    0.0%    1.0000
+        #   this function, after       36.7%   24.1%    0.9741   (p95 err 0.0086)
+        #
+        # Seed row 3716 (SpotID 192842) is the clean example: NrExpected 112,
+        # NrObserved 56, both refiners match the same 56 spots. C reports
+        # 56/112 = 0.500, this reported 56/56 = 1.000.
+        #
+        # It also silently disabled the `Completeness` gate for every
+        # python-refined run, since nothing ever fell below 0.9.
+        if n_exp > 0:
+            completeness = float(n_matched) / float(n_exp)
+        else:
+            n_no_expected += 1
+            completeness = float(n_matched) / max(int(obs.n_spots), 1)
         grain_result = GrainResult(
             SpotID=sid,
             OrientMat=OM.reshape(-1),
@@ -700,4 +777,11 @@ def refine_block_from_disk(
         write_process_key_row(process_key_path, row_nr, valid_ids)
         n_grains_written += 1
 
+    if n_no_expected:
+        LOG.warning(
+            "completeness: %d of %d grains had no predicted-reflection count "
+            "in the indexing output (IndexBest col 13) and fell back to "
+            "matched/observed, which is ~1.0 by construction. Their "
+            "OrientPosFit completeness is not comparable with the rest.",
+            n_no_expected, n_grains_written)
     return n_grains_written

@@ -123,18 +123,31 @@ def grain_residuals(
     pick = _gather_pred(spots_sg, match)
 
     if kind == "pixel":
-        # DISABLED 2026-05-20. The 'pixel' loss fit only the 2 detector
-        # coordinates (y_pixel, z_pixel) and OMITTED omega, leaving the
-        # crystal free to rotate about the omega direction. On real PF data
-        # this let per-voxel orientations drift up to ~20° from the (correct)
-        # indexer seed while the loss kept dropping — see
-        # dev/REFINEMENT_DRIFT_FIX.md. A HEDM spot is 3D (y, z, omega); always
-        # use a full 3D loss. Use 'angular' (2theta, eta, omega).
-        raise ValueError(
-            "The 'pixel' loss is disabled: it is a 2D (y,z) loss that omits "
-            "omega and lets orientation drift freely (≈20° on real PF data). "
-            "Use the full 3D loss 'full3d' (y, z, omega) or 'angular'."
-        )
+        # 2-D detector loss (y_pixel, z_pixel), NO omega term.
+        #
+        # Disabled 2026-05-20 and RE-ENABLED 2026-08-04 under a caller-side
+        # guard. The 2026-05 diagnosis was right about the symptom and wrong
+        # about the cause: with ORIENTATION FREE this loss lets the crystal
+        # rotate about the omega direction and per-voxel orientations drifted
+        # ~20° on real PF data (dev/REFINEMENT_DRIFT_FIX.md). But the loss is
+        # not unsound — it is the objective the C refiner uses for its POSITION
+        # and STRAIN stages (`FitErrors12D`/`FitErrorsPosT`), where orientation
+        # is held fixed and the degeneracy cannot be excited.
+        #
+        # Measured 2026-08-04, shade_LSHR, 100 grains vs c-omp, identical
+        # stages/bounds/solver, only the objective changed:
+        #     C objectives (this loss for pos+strain)  1.55 µm
+        #     full3d everywhere                       38.57 µm
+        # full3d's Δω·r_px term inside the POSITION fit is what costs ~40 µm.
+        #
+        # `refine_block._run_phase` refuses this loss whenever euler is an
+        # active parameter, so the 2026-05 failure mode cannot recur.
+        obs_y_pixel = y_BC - obs.y_lab / px
+        obs_z_pixel = z_BC + obs.z_lab / px
+        res = torch.stack([
+            pick["y_pixel"] - obs_y_pixel,
+            pick["z_pixel"] - obs_z_pixel,
+        ], dim=-1)  # (S, 2)
 
     elif kind == "full3d":
         # Full 3D spot loss: detector position (y_pixel, z_pixel) AND omega.

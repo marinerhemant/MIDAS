@@ -50,9 +50,34 @@ class BlockFitResult:
     # pixel-equivalent did no useful work, whatever ``converged`` says.
     max_position_move_um: float = 0.0
     median_position_move_um: float = 0.0
+    # Spread of the SEED positions handed in. The scale that says whether the
+    # movement above was meaningful: a fit that moves far less than its seeds
+    # disagree has not resolved that disagreement, whatever the loss reports.
+    seed_position_spread_um: float = 0.0
     # Bit-identical to the seed: the strongest form of the same statement.
     n_unmoved_position: int = 0
     n_grains: int = 0
+
+
+def _match_chunk_size(obs, pred_ring_slot, dtype) -> int:
+    """Grains per association chunk, from a memory budget.
+
+    The association materialises roughly four (B, S, K, M) float tensors plus
+    boolean masks at once. Size the chunk so ONE of them fits the budget, which
+    leaves headroom for the rest and for the forward model's (B, K, M).
+    """
+    import os
+    try:
+        budget_gib = float(os.environ.get("MIDAS_FIT_GRAIN_MATCH_GIB", "2.0"))
+    except ValueError:
+        budget_gib = 2.0
+    S = int(obs.s_max)
+    M = int(pred_ring_slot.numel())
+    K = 2                     # Friedel pair; the model's second axis
+    itemsize = torch.empty(0, dtype=dtype).element_size()
+    per_grain = max(1, S * K * M * itemsize)
+    chunk = int((budget_gib * (1024 ** 3)) // per_grain)
+    return max(1, chunk)
 
 
 def _rematch_batch(
@@ -67,7 +92,41 @@ def _rematch_batch(
     omega_tolerance: float,
     eta_tolerance: float,
 ) -> MatchBatch:
-    """Re-associate observed↔predicted on every grain in the batch."""
+    """Re-associate observed↔predicted on every grain in the batch.
+
+    Chunked over grains. The cost machinery below materialises several
+    ``(B, S, K, M)`` tensors at once, which at full-layer FF scale is
+    ``22327 x 244 x 2 x 168`` = **13.3 GiB each** in float64 — enough to OOM a
+    47 GiB A6000 and make ``--refine-backend python --device cuda`` unusable on
+    a whole layer, since the pipeline hands the refiner one block of every
+    seed. Each grain's association is independent of every other, so slicing B
+    is exact: the returned indices and mask are identical to the unchunked
+    result, only peak memory changes.
+
+    Budget via ``MIDAS_FIT_GRAIN_MATCH_GIB`` (default 2.0 GiB per intermediate).
+    """
+    B_total = obs.n_grains
+    if B_total > 1:
+        chunk = _match_chunk_size(obs, pred_ring_slot, pos.dtype)
+        if chunk < B_total:
+            k_parts, m_parts, mask_parts = [], [], []
+            for lo in range(0, B_total, chunk):
+                hi = min(lo + chunk, B_total)
+                sub = _rematch_batch(
+                    model=model, pos=pos[lo:hi], euler=euler[lo:hi],
+                    lattice=lattice[lo:hi], obs=obs.slice_grains(lo, hi),
+                    obs_ring_slot=obs_ring_slot[lo:hi],
+                    pred_ring_slot=pred_ring_slot,
+                    omega_tolerance=omega_tolerance,
+                    eta_tolerance=eta_tolerance,
+                )
+                k_parts.append(sub.k_idx)
+                m_parts.append(sub.m_idx)
+                mask_parts.append(sub.mask)
+            return MatchBatch(k_idx=torch.cat(k_parts, 0),
+                              m_idx=torch.cat(m_parts, 0),
+                              mask=torch.cat(mask_parts, 0))
+
     B = obs.n_grains
     with torch.no_grad():
         spots = model(euler.view(B, 1, 3), pos.view(B, 1, 3),
@@ -144,9 +203,11 @@ def _make_block_closures(
     match: MatchBatch,
     pos_scaled: torch.Tensor, pos_scale: float,
     euler: torch.Tensor, lattice: torch.Tensor,
+    lattice_scale: float = 1.0,
     px: float, y_BC: float, z_BC: float,
     loss_kind: LossKind,
     active_params: list[torch.Tensor],
+    reduction: str = "sumsq",
 ):
     """Build closure variants for the four solver protocols (batched).
 
@@ -161,9 +222,10 @@ def _make_block_closures(
 
     def _residual_uncompiled() -> torch.Tensor:
         pos = pos_scaled * pos_scale
+        lat = lattice * lattice_scale
         return batch_residuals(
             model,
-            grain_position=pos, grain_euler=euler, grain_lattice=lattice,
+            grain_position=pos, grain_euler=euler, grain_lattice=lat,
             obs=obs, match=match, kind=loss_kind,
             px=px, y_BC=y_BC, z_BC=z_BC,
         )
@@ -193,7 +255,18 @@ def _make_block_closures(
             # nan_to_num's backward), so it stays frozen at its seed and is
             # filtered downstream by completeness — the other grains refine
             # normally.
-            sq = res * res
+            # Reduction over SPOTS. "sumsq" is Sigma(r^2) -- least squares,
+            # the historical behaviour. "sumnorm" is Sigma||r_i|| -- the sum of
+            # per-spot DISTANCES, which is what the C refiner accumulates
+            # (`Error += CalcNorm2(...)`). Least squares weights a spot by its
+            # error SQUARED, so a few badly-matched spots dominate the fit;
+            # sum-of-norms is robust to them. Measured to be the whole of the
+            # ~40 um FF position deficit -- see midas_fit_grain/c_recipe.py.
+            if reduction == "sumnorm":
+                r = res.reshape(res.shape[0], -1, res.shape[-1])
+                sq = torch.sqrt((r * r).sum(dim=-1) + 1e-30)      # (B, S)
+            else:
+                sq = res * res
             per_grain = sq.reshape(sq.shape[0], -1).sum(dim=1)   # (B,)
             per_grain = torch.nan_to_num(per_grain, nan=0.0,
                                          posinf=0.0, neginf=0.0)
@@ -301,6 +374,96 @@ def _equilibrated_pos_scale(
     return float(min(max(s, _POS_SCALE_MIN), _POS_SCALE_MAX))
 
 
+# The lattice block needs the same treatment as position, and for the same
+# reason. ``_equilibrated_pos_scale`` lifts position to match the LARGEST of
+# the other two blocks — which leaves the SMALLEST block starved by
+# construction. In the real FCC-parent geometry that smallest block is the lattice:
+#
+#     |g| position 2.98   |g| euler 8.51e5   |g| lattice 7.03e4
+#     pos_scale = max(euler, lattice)/pos = 2.85e5
+#     after rescale:  pos 8.51e5   euler 8.51e5   lattice 7.03e4   → 12.1× down
+#
+# One shared L-BFGS step length then advances the lattice ~12× less per step.
+# Measured cost, bridge at 1.6 px against a known 1222 µε deviatoric truth:
+# ``all_at_once`` recovers 16 µε (1.3 %), ``iterative`` — which gives the
+# lattice its own phase and therefore its own step length — recovers 530 µε
+# (43 %). On the real FCC parent both are worse still (20 µε against C's 770 µε).
+#
+# The package's synthetic fixture does NOT reproduce this: there |g| lattice
+# is the LARGEST block (1.7e6 vs euler 9.4e5), so the joint fit is already
+# well conditioned and the unit tests cannot see the defect. Any regression
+# test for this must use FF-scale geometry (Lsd ~1.7e6 µm), not the fixture.
+#
+# ─── DEFAULT OFF. Measured, and it TRADES. ────────────────────────────────
+# Switching this on confirms the mechanism by intervention — but it buys
+# strain with position, so it is opt-in, not "auto". Bridge, 200 grains,
+# truth deviatoric 1222 µε, ``all_at_once``:
+#
+#     lattice_scale     recovered strain      position median (µm) by noise px
+#                       µε (err vs truth)     0.0     0.05    0.2    0.5    1.6
+#     1.0 (off)          16.4  (1209.4)      38.7    26.4   42.1   21.0   55.4
+#     "auto"            680.0   (664.6)     106.1    60.2   75.5   71.4   63.9
+#
+# Strain recovery goes 1.3 % → 56 % of truth and its error (665 µε) beats
+# ``iterative`` (748) and nears c-orig (735). Position degrades at every
+# noise level, badly at low noise. So the under-refinement IS block
+# conditioning — rescaling the block fixes it — but a single scalar gradient
+# equalizer is the wrong cure: it is not curvature, and the lattice block is
+# internally heterogeneous (Å alongside degrees), so no ONE factor can
+# equilibrate both halves. A per-component scale, or reparameterizing to the
+# dimensionless strain tensor, is the shape a real fix would have.
+#
+# ``iterative`` (the default mode, FitAllAtOnce=0) is BIT-IDENTICAL with this
+# on or off: its lattice phase optimizes that block alone, and a converged
+# single-block L-BFGS phase is scale-invariant in its answer. So this knob
+# only ever affects the joint fit.
+_LAT_SCALE_MIN = 1.0          # never make conditioning worse than today
+_LAT_SCALE_MAX = 1.0e6
+
+
+def _equilibrated_lattice_scale(
+    *, model, obs, match, cfg,
+    init_positions: torch.Tensor,
+    init_eulers: torch.Tensor,
+    init_lattices: torch.Tensor,
+) -> float:
+    """Scale the lattice block so its gradient matches the EULER block.
+
+    Same reparameterization argument as :func:`_equilibrated_pos_scale`: since
+    ``d/d(lat_scaled) = s · d/d(lattice)``, the value that equalises two blocks
+    is ``s = |g_target| / |g_lattice|``.
+
+    Euler is the target rather than ``max`` of the others because euler is the
+    only block that is never reparameterized — it is the fixed anchor. Using
+    ``max`` here would be circular, since position is itself being rescaled to
+    ``max(euler, lattice)`` at the same time.
+    """
+    ps = init_positions.detach().clone().requires_grad_(True)
+    eu = init_eulers.detach().clone().requires_grad_(True)
+    la = init_lattices.detach().clone().requires_grad_(True)
+    try:
+        res = batch_residuals(
+            model, grain_position=ps, grain_euler=eu, grain_lattice=la,
+            obs=obs, match=match, kind=cfg.loss,
+            px=cfg.px, y_BC=model.y_BC, z_BC=model.z_BC,
+        )
+        (res * res).sum().backward()
+    except Exception:                                        # noqa: BLE001
+        return _LAT_SCALE_MIN
+
+    def _n(t):
+        return float(t.detach().norm()) if t is not None else 0.0
+
+    g_lat = _n(la.grad)
+    g_other = max(_n(eu.grad), _n(ps.grad))
+    if not (g_lat > 0.0) or not (g_other > 0.0):
+        return _LAT_SCALE_MIN
+    s = g_other / g_lat
+    if not math.isfinite(s):
+        return _LAT_SCALE_MIN
+    return float(min(max(s, _LAT_SCALE_MIN), _LAT_SCALE_MAX))
+
+
 def refine_block(
     cfg: FitConfig,
     *,
@@ -311,6 +474,7 @@ def refine_block(
     init_lattices:  torch.Tensor,    # (B, 6)
     pred_ring_slot: torch.Tensor,    # (M,)
     pos_scale: float | str = "auto",
+    lattice_scale: float | str = 1.0,
     precomputed_matches: Optional[Sequence[MatchResult]] = None,
 ) -> BlockFitResult:
     """Refine ``B`` grains in one batched call.
@@ -320,6 +484,18 @@ def refine_block(
     if not grains_obs:
         return BlockFitResult(grains=[], final_total_loss=0.0,
                               n_iter=0, converged=True)
+
+    # The ported C recipe is per-grain and derivative-free, so it does not use
+    # the batched closure/solver machinery below at all. Dispatch before any of
+    # it is built. See midas_fit_grain/c_recipe.py for why it exists.
+    if cfg.mode == "c_recipe":
+        from .c_recipe import refine_block_c_recipe
+        return refine_block_c_recipe(
+            cfg, model=model, grains_obs=grains_obs,
+            init_positions=init_positions, init_eulers=init_eulers,
+            init_lattices=init_lattices, pred_ring_slot=pred_ring_slot,
+        )
+
     B = len(grains_obs)
     device = init_positions.device
     dtype = init_positions.dtype
@@ -349,12 +525,29 @@ def refine_block(
             init_lattices=init_lattices,
         )
 
+    # The lm_batched solver bypasses the closure registry and works on packed
+    # (B, P) tensors, so the reparameterization below would not reach it.
+    # Leave it at 1.0 there rather than silently half-applying the fix.
+    if isinstance(lattice_scale, str):
+        lattice_scale = (
+            1.0 if cfg.solver == "lm_batched"
+            else _equilibrated_lattice_scale(
+                model=model, obs=obs, match=match, cfg=cfg,
+                init_positions=init_positions, init_eulers=init_eulers,
+                init_lattices=init_lattices,
+            )
+        )
+
     pos_scaled = (init_positions / pos_scale).clone()
     euler = init_eulers.clone()
-    lattice = init_lattices.clone()
+    lattice = (init_lattices / lattice_scale).clone()   # SCALED, not raw
     pos_scaled.requires_grad_(False)
     euler.requires_grad_(False)
     lattice.requires_grad_(False)
+
+    def _lat():
+        """Physical lattice from the scaled optimization variable."""
+        return lattice * lattice_scale
 
     # FF grain-position bound: the grain centre must lie inside the illuminated
     # sample cylinder — |X|,|Y| <= Rsample, |Z| <= Hbeam/2. Without this the
@@ -397,15 +590,28 @@ def refine_block(
     def _run_phase(active: list[torch.Tensor], loss_kind: str = None,
                    **solver_opts):
         nonlocal total_iter
+        # The 2-D 'pixel' loss omits omega, so with orientation FREE the
+        # crystal can rotate about the omega direction at no cost (~20° drift
+        # on real PF data, 2026-05). It is safe — and is what the C refiner
+        # uses — only while orientation is held fixed. Enforce that here rather
+        # than trusting call sites.
+        if (loss_kind or cfg.loss) == "pixel" and any(
+                p is euler for p in active):
+            raise ValueError(
+                "loss 'pixel' (2-D, no omega) cannot be used in a phase that "
+                "fits orientation: the rotation about omega is unconstrained. "
+                "Use it only for position/lattice phases, as the C does."
+            )
         for p in active:
             p.requires_grad_(True)
         closures = _make_block_closures(
             model=model, obs=obs, match=match,
             pos_scaled=pos_scaled, pos_scale=pos_scale,
-            euler=euler, lattice=lattice,
+            euler=euler, lattice=lattice, lattice_scale=lattice_scale,
             px=cfg.px, y_BC=model.y_BC, z_BC=model.z_BC,
             loss_kind=loss_kind or cfg.loss,
             active_params=active,
+            reduction=str(getattr(cfg, "reduction", "sumsq") or "sumsq"),
         )
         opts = {"max_iter": cfg.max_iter, "ftol": cfg.ftol, "xtol": cfg.xtol}
         opts.update(solver_opts)
@@ -421,7 +627,7 @@ def refine_block(
         nonlocal match
         match = _rematch_batch(
             model=model,
-            pos=pos_scaled * pos_scale, euler=euler, lattice=lattice,
+            pos=pos_scaled * pos_scale, euler=euler, lattice=_lat(),
             obs=obs, obs_ring_slot=obs_ring_slot, pred_ring_slot=pred_ring_slot,
             omega_tolerance=omega_tol, eta_tolerance=eta_tol,
         )
@@ -504,7 +710,25 @@ def refine_block(
         import os as _os
         _decouple = _os.environ.get("MIDAS_FG_DECOUPLE", "0") == "1"
         ph_pos, ph_or, ph_lat, ph_joint = cfg.phase_steps
-        if _decouple:
+        _pl = getattr(cfg, "phase_losses", None)
+        if _pl:
+            # Per-phase objectives, mirroring the C refiner: position and
+            # lattice on the 2-D detector loss, orientation on an angular one.
+            # Measured to be the whole of the ~40 µm position deficit; see
+            # midas_fit_grain/c_recipe.py.
+            l_pos, l_or, l_lat, l_joint = _pl
+            _run_phase([euler], max_iter=ph_or * 5 + 5, loss_kind=l_or)
+            _rematch()
+            _run_phase([pos_scaled], max_iter=ph_pos * 5 + 5, loss_kind=l_pos)
+            _clamp_pos_to_sample()
+            _rematch()
+            _run_phase([lattice], max_iter=ph_lat * 5 + 5, loss_kind=l_lat)
+            _rematch()
+            if l_joint:
+                _run_phase([pos_scaled, euler, lattice],
+                           max_iter=ph_joint * 5 + 5, loss_kind=l_joint)
+                _clamp_pos_to_sample()
+        elif _decouple:
             # Decoupled per-phase loss (experimental, env-gated): orientation &
             # strain via the smooth ``angular`` loss (2θ,η,ω — position-
             # independent; NOT internal_angle, whose acos gradient is singular
@@ -536,7 +760,7 @@ def refine_block(
     _clamp_pos_to_sample()   # final safety net
     pos_final = (pos_scaled * pos_scale).detach()
     euler_final = euler.detach()
-    lattice_final = lattice.detach()
+    lattice_final = _lat().detach()
 
     # Final residual per grain (for FitBest output and final-loss reporting).
     with torch.no_grad():
@@ -582,6 +806,16 @@ def refine_block(
     _move = (pos_final - _seed_pos).norm(dim=-1).double()
     n_unmoved = int((pos_final == _seed_pos).all(dim=-1).sum())
 
+    # Seed spread: RMS distance of the seeds from their own centroid, a
+    # scale-free measure of how much disagreement the fit was asked to resolve.
+    if init_positions.numel():
+        _c = init_positions.double().mean(dim=0, keepdim=True)
+        _seed_spread = float(
+            (init_positions.double() - _c).norm(dim=1).median()
+        )
+    else:
+        _seed_spread = 0.0
+
     return BlockFitResult(
         grains=out,
         final_total_loss=total_loss,
@@ -591,6 +825,7 @@ def refine_block(
         median_position_move_um=(
             float(_move.median()) if _move.numel() else 0.0
         ),
+        seed_position_spread_um=_seed_spread,
         n_unmoved_position=n_unmoved,
         n_grains=int(B),
     )

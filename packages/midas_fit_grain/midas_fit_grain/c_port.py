@@ -467,6 +467,17 @@ def calc_angle_errors(
     th_rn = theor_spots[:, 7]
 
     for sp in range(S):
+        # A spot with no SpotID is padding, not an observation. SpotIDs are
+        # 1-based rows of ExtraInfo.bin, so 0 means "empty slot counted in
+        # n_spots". Matching one produces a grain whose ProcessKey.bin entry
+        # is 0, and C ProcessGrains does rowSpotID = SpotID - 1 and indexes
+        # InputMatrix[-1] -- a deterministic segfault at ProcessGrains.c:966.
+        # Measured on the datasetA Ni layer: 329 such entries across 204 of
+        # 57021 seeds, all in the last slots of their grain's match list.
+        # Excluding them here keeps n_matched, completeness, meanRadius,
+        # FitBest.bin and ProcessKey.bin consistent with each other.
+        if spots_yzo[sp, 3] < 1.0:
+            continue
         ys, zs, omega_corr, g1, g2, g3, ring_nr = spots_yzog[sp]
         # Theoretical candidates: same ring, |Δω| < 5°.
         same_ring = th_rn.astype(int) == int(ring_nr)

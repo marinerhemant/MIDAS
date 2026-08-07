@@ -49,6 +49,27 @@ class ObservedBatch:
     valid:      torch.Tensor   # (B, S_max) bool
     n_spots:    torch.Tensor   # (B,) int — real spot count per grain
 
+    def slice_grains(self, lo: int, hi: int) -> "ObservedBatch":
+        """A view of grains ``[lo:hi]``, same S_max, no copy of the tensors.
+
+        Used to chunk the observed<->predicted association, whose cost tensors
+        are (B, S, K, M) and reach 13.3 GiB per intermediate at full-layer FF
+        scale. Grains are independent there, so slicing B is exact.
+        """
+        return ObservedBatch(
+            n_grains=int(hi - lo),
+            s_max=self.s_max,
+            spot_id=self.spot_id[lo:hi],
+            ring_nr=self.ring_nr[lo:hi],
+            y_lab=self.y_lab[lo:hi],
+            z_lab=self.z_lab[lo:hi],
+            omega=self.omega[lo:hi],
+            eta=self.eta[lo:hi],
+            two_theta=self.two_theta[lo:hi],
+            valid=self.valid[lo:hi],
+            n_spots=self.n_spots[lo:hi],
+        )
+
     @classmethod
     def pack(cls, grains: Sequence[ObservedSpots],
              *, device: torch.device, dtype: torch.dtype) -> "ObservedBatch":
@@ -193,10 +214,16 @@ def batch_residuals(
     pred_z       = _pick(z_pixel)
 
     if kind == "pixel":
-        raise ValueError(
-            "The 'pixel' loss is disabled (2D, omits omega -> orientation "
-            "drift). Use the full 3D loss 'full3d'. See dev/REFINEMENT_DRIFT_FIX.md."
-        )
+        # 2-D detector loss (y, z), NO omega term. Re-enabled 2026-08-04; see
+        # the long note in ``residuals.grain_residuals``. Safe ONLY while
+        # orientation is held fixed, which ``refine_block._run_phase`` enforces
+        # by refusing this loss in any phase where euler is active.
+        obs_y_pixel = y_BC - obs.y_lab / px
+        obs_z_pixel = z_BC + obs.z_lab / px
+        res = torch.stack([
+            pred_y - obs_y_pixel,
+            pred_z - obs_z_pixel,
+        ], dim=-1)
 
     elif kind == "full3d":
         # Detector position (y,z) + omega (scaled by spot pixel-radius to an

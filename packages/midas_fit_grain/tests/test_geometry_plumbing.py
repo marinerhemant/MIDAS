@@ -80,14 +80,37 @@ def test_build_model_uses_parsed_geometry(tmp_path: Path):
                  else model.y_BC[0]) == pytest.approx(1435.686)
 
 
-def test_build_model_warns_on_missing_geometry(tmp_path: Path):
+def test_build_model_refuses_missing_geometry(tmp_path: Path, monkeypatch):
+    """Missing forward-model geometry must RAISE, not warn and continue.
+
+    This test previously asserted a warning. The run then exited 0 while the
+    2048x2048 placeholder stood in for a 2880x2880 Varex, putting refined grain
+    positions 34 um from two independent C refiners where the correct geometry
+    puts them 3.4 um away. A run that stops is recoverable; one that completes
+    against a detector that does not exist is not.
+    """
     from midas_fit_grain.driver import _build_model
     import numpy as np
-    # paramstest WITHOUT the forward-geometry keys → placeholder fallback.
+    # paramstest WITHOUT the forward-geometry keys
     txt = ("Distance 1e6;\npx 150;\nWavelength 0.22;\nRingNumbers 3;\n"
            "RingRadii 500;\nLatticeParameter 3.6 3.6 3.6 90 90 90;\n")
     cfg = FitConfig.from_param_file(str(_write(tmp_path, txt)))
-    with pytest.warns(UserWarning, match="missing forward-model geometry"):
+    monkeypatch.delenv("MIDAS_ALLOW_PLACEHOLDER_GEOMETRY", raising=False)
+    with pytest.raises(ValueError, match="missing forward-model geometry"):
+        _build_model(cfg, device="cpu", dtype="float64",
+                     hkls_int=np.array([[3, 1, 1]], dtype=np.int64),
+                     thetas_deg=np.array([6.0]), ring_nr=np.array([3]))
+
+
+def test_build_model_placeholder_opt_out_still_warns(tmp_path: Path, monkeypatch):
+    """The escape hatch works, and is still noisy when taken."""
+    from midas_fit_grain.driver import _build_model
+    import numpy as np
+    txt = ("Distance 1e6;\npx 150;\nWavelength 0.22;\nRingNumbers 3;\n"
+           "RingRadii 500;\nLatticeParameter 3.6 3.6 3.6 90 90 90;\n")
+    cfg = FitConfig.from_param_file(str(_write(tmp_path, txt)))
+    monkeypatch.setenv("MIDAS_ALLOW_PLACEHOLDER_GEOMETRY", "1")
+    with pytest.warns(UserWarning, match="proceeding with placeholders"):
         _build_model(cfg, device="cpu", dtype="float64",
                      hkls_int=np.array([[3, 1, 1]], dtype=np.int64),
                      thetas_deg=np.array([6.0]), ring_nr=np.array([3]))

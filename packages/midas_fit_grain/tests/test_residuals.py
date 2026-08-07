@@ -74,8 +74,17 @@ def test_residuals_zero_at_gt_pixel(fix):
         assert amax < 1e-4, f"{kind} residual at GT = {amax}"
 
 
-def test_pixel_loss_is_disabled(fix):
-    """The 2D 'pixel' loss (omits omega) is disabled — it must raise."""
+def test_pixel_loss_is_usable_but_guarded(fix):
+    """The 2-D 'pixel' loss computes; the GUARD lives at the phase level.
+
+    Re-enabled 2026-08-04. It omits omega, so with orientation FREE the crystal
+    can rotate about the omega direction at no cost (~20 deg drift on real PF
+    data, 2026-05) — but it is the objective the C refiner uses for POSITION
+    and STRAIN, where orientation is held fixed. Measured: the C's stages under
+    this loss land 1.55 um from c-omp, under full3d 38.57 um. So the loss is
+    correct and the misuse is what must be blocked; `refine_block._run_phase`
+    refuses it whenever euler is an active parameter.
+    """
     import pytest
 
     def _sq(t):
@@ -96,12 +105,27 @@ def test_pixel_loss_is_disabled(fix):
         pred_eta=_sq(spots.eta), pred_valid=_sq(spots.valid),
         obs_ring_slot=obs_ring_slot, omega_tolerance=math.pi, eta_tolerance=math.pi,
     )
+    res = grain_residuals(
+        fix.model, grain_euler=fix.gt_euler, grain_position=fix.gt_position,
+        grain_lattice=fix.gt_lattice, obs=obs, match=match, kind="pixel",
+        px=fix.px, y_BC=fix.y_BC, z_BC=fix.z_BC,
+    )
+    # 2 residual components (y, z) and NO omega term
+    assert res.shape[-1] == 2
+    # at ground truth the fit is exact, so the residual is ~0
+    assert float(res.abs().max()) < 1e-6
+
+    # ...and the guard: a phase that fits orientation must refuse this loss.
+    from midas_fit_grain import FitConfig
+    from midas_fit_grain.refine_block import refine_block
+    cfg = FitConfig(RingNumbers=fix.ring_numbers, px=fix.px, loss="pixel",
+                    solver="lbfgs", mode="all_at_once")
     with pytest.raises(ValueError, match="pixel"):
-        grain_residuals(
-            fix.model, grain_euler=fix.gt_euler, grain_position=fix.gt_position,
-            grain_lattice=fix.gt_lattice, obs=obs, match=match, kind="pixel",
-            px=fix.px, y_BC=fix.y_BC, z_BC=fix.z_BC,
-        )
+        refine_block(cfg, model=fix.model, grains_obs=[obs],
+                     init_positions=fix.gt_position.view(1, 3),
+                     init_eulers=fix.gt_euler.view(1, 3),
+                     init_lattices=fix.gt_lattice.view(1, 6),
+                     pred_ring_slot=fix.pred_ring_slot)
 
 
 def test_gradients_flow(fix):

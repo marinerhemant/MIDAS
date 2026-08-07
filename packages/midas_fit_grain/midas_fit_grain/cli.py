@@ -52,9 +52,11 @@ def build_parser() -> argparse.ArgumentParser:
     p.add_argument("--solver", choices=["lbfgs", "adam", "lm", "nelder_mead", "lm_batched"],
                    default="lbfgs",
                    help="Optimizer (default: lbfgs)")
-    p.add_argument("--mode", choices=["iterative", "all_at_once"],
+    p.add_argument("--mode", choices=["iterative", "all_at_once", "c_recipe"],
                    default=None,
-                   help="Iterative re-match phases vs single joint fit. "
+                   help="Iterative re-match phases, single joint fit, or "
+                        "c_recipe (the ported FitUnified staged Nelder-Mead; "
+                        "see midas_fit_grain/c_recipe.py). "
                         "Default: iterative if FitAllAtOnce=0, else all_at_once.")
     p.add_argument("--loss", choices=["full3d", "angular", "internal_angle"],
                    default="full3d",

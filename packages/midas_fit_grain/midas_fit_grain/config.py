@@ -20,7 +20,11 @@ from typing import Literal, Optional, Tuple
 import torch
 
 SolverName = Literal["lbfgs", "adam", "lm", "nelder_mead", "lm_batched"]
-ModeName = Literal["iterative", "all_at_once"]
+#: ``c_recipe`` is the ported FitUnified staged Nelder-Mead (see
+#: ``midas_fit_grain/c_recipe.py``). It ignores ``solver``/``loss``: the C
+#: recipe fixes both per stage — (Δη, Δω) for orientation, 2-D (Δy, Δz) for
+#: position and strain — and is derivative-free throughout.
+ModeName = Literal["iterative", "all_at_once", "c_recipe"]
 LossKind = Literal["pixel", "full3d", "angular", "internal_angle"]
 
 
@@ -123,6 +127,20 @@ class FitConfig:
     # --- Refinement-package specific (NOT in the C param parser) ---
     solver: SolverName = "lbfgs"
     mode: ModeName = "iterative"
+    #: Optional per-phase objectives for ``mode="iterative"``:
+    #: ``(position, orientation, lattice, joint)``. ``None`` (default) uses
+    #: ``loss`` for every phase, which is the historical behaviour and is what
+    #: costs ~40 µm in grain position — ``full3d``'s Δω·r term does not belong
+    #: in a position fit. Set e.g. ``("pixel", "angular", "pixel", None)`` to
+    #: mirror the C refiner; a falsy 4th entry skips the joint phase, as the C
+    #: has none.
+    phase_losses: Optional[tuple] = None
+    #: Reduction over spots: ``"sumsq"`` = Sigma(r^2) (least squares,
+    #: historical) or ``"sumnorm"`` = Sigma||r_i|| (sum of per-spot distances,
+    #: what the C refiner uses). Least squares weights a spot by its error
+    #: SQUARED, so a handful of badly-matched spots dominate; sum-of-norms is
+    #: robust to them. Measured as the whole of the ~40 um FF position deficit.
+    reduction: str = "sumsq"
     loss: LossKind = "full3d"      # full 3D loss (y,z,omega); 2D 'pixel' disabled
     max_iter: int = 5000
     ftol: float = 1e-5

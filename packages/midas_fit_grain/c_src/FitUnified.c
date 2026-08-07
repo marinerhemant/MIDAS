@@ -2012,6 +2012,32 @@ int main(int argc, char *argv[]) {
     ErrorFin[1] = Error[1];  /* OmeErr from CalcAngleErrors pass 2 */
     ErrorFin[2] = Error[2];  /* InternalAngle from CalcAngleErrors pass 2 */
 
+    /* meanRadius (OrientPosFit col 25): mean of the per-spot grain-radius
+     * estimate from peak finding, over this grain's MATCHED spots. It was
+     * declared `= 1` above and written straight out, so every grain this
+     * refiner produced carried meanRadius exactly 1.0 -- measured on the
+     * datasetA Ni layer, 57021 of 57021 seeds, min = max = 1. Downstream
+     * that is the GrainRadius column of Grains.csv, so both C ProcessGrains
+     * and c_parity reported GrainRadius 1.000 for every grain from a c-omp
+     * refinement, against ~31.5 um from the legacy and python refiners.
+     * ExtraInfo.bin (AllSpots) is 16 doubles per spot with GrainRadius at
+     * col 3 and SpotID at col 4; SpotsComp[m][0] is the matched SpotID,
+     * 1-based. Same quantity midas_fit_grain's driver.py averages. */
+    if (nSpotsComp > 0) {
+      double sumRadius = 0.0;
+      int nRadius = 0;
+      for (i = 0; i < nSpotsComp; i++) {
+        long spotRowER = (long)SpotsComp[i][0] - 1;
+        if (spotRowER >= 0) {
+          sumRadius += AllSpots[spotRowER * 16 + 3];
+          nRadius++;
+        }
+      }
+      meanRadius = (nRadius > 0) ? sumRadius / nRadius : 0.0;
+    } else {
+      meanRadius = 0.0;
+    }
+
 
     // Free scratch
     FreeMemMatrix(scratch.hkls, nhkls);
