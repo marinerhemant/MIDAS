@@ -14,7 +14,7 @@ import math
 import time
 from dataclasses import dataclass
 from pathlib import Path
-from typing import List, Optional, Tuple
+from typing import List, Optional, Tuple, Union
 
 import numpy as np
 
@@ -178,10 +178,11 @@ def run_c_parity_pipeline_from_disk(
     misori_tol_stage1_deg: float = 0.4,
     misori_tol_passa_deg: float = 0.1,
     pos_tol_passa_um: float = 5.0,
-    confidence_min: float = 0.05,
+    confidence_min: Optional[float] = None,
     min_nr_spots: int = 1,
     write_spot_matrix: bool = True,
     device: str = "cpu",
+    paramstest: Optional[Union[str, Path]] = None,
 ) -> CParityResult:
     """End-to-end C-parity replica.
 
@@ -189,6 +190,15 @@ def run_c_parity_pipeline_from_disk(
     runs Stage 1 + Pass A + confidence filter; writes Grains.csv,
     GrainIDsKey.csv, and (if FitBest available) SpotMatrix.csv to
     ``out_dir`` in C ProcessGrains format.
+
+    ``paramstest`` names the parameter file to read; it defaults to
+    ``run_dir/"paramstest.txt"``. Pass the file the caller was actually
+    given — hardcoding the name silently discards a differently-named
+    parameter file (the same defect fixed in ``run_v4_pipeline``).
+
+    ``confidence_min`` defaults to the parameter file's ``Completeness``
+    (the key C ProcessGrains applies), falling back to 0.05 when the file
+    does not set it.
 
     Returns the :class:`CParityResult` for callers that want to inspect
     the kept grains in memory.
@@ -208,9 +218,17 @@ def run_c_parity_pipeline_from_disk(
     out_dir = Path(out_dir)
     out_dir.mkdir(parents=True, exist_ok=True)
 
-    print(f"[c-parity] loading inputs from {rd}", flush=True)
+    ps_path = Path(paramstest) if paramstest else rd / "paramstest.txt"
+    print(f"[c-parity] loading inputs from {rd} (params: {ps_path})", flush=True)
     t0 = time.time()
-    params = read_paramstest_pg(rd / "paramstest.txt")
+    params = read_paramstest_pg(ps_path)
+    if confidence_min is None:
+        confidence_min = (0.05 if params.Completeness is None
+                          else float(params.Completeness))
+        print(f"[c-parity] confidence_min={confidence_min} "
+              f"(from Completeness)" if params.Completeness is not None
+              else f"[c-parity] confidence_min={confidence_min} (default; "
+                   f"no Completeness in {ps_path.name})", flush=True)
     opf = np.array(read_orient_pos_fit(rd))
     key = np.array(read_key(rd))
     print(f"[c-parity] loading ProcessKey into RAM …", flush=True)

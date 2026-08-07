@@ -559,6 +559,35 @@ class ProcessGrains:
         if not out_grains:
             return _empty_result(self, params, mode)
 
+        # ---- Stage 3b: completeness gate -----------------------------------
+        # C ProcessGrains drops every grain whose completeness falls below the
+        # user's ``Completeness`` key. This package parsed the same quantity as
+        # ``ConfidenceTol`` and then never applied it, so a run that asked for
+        # ``Completeness 0.5`` kept all of them. On the datasetA Ni layer that
+        # is the difference between 6132 grains and 23710 from identical
+        # refiner output. Default 0.0 keeps the old behaviour for parameter
+        # files that set neither key.
+        conf_tol = float(getattr(params, "ConfidenceTol", 0.0) or 0.0)
+        if conf_tol > 0.0:
+            keep = [i for i, g in enumerate(out_grains)
+                    if float(g["confidence"]) >= conf_tol]
+            n_dropped = len(out_grains) - len(keep)
+            if n_dropped:
+                print(f"[process-grains] completeness gate: dropped "
+                      f"{n_dropped} of {len(out_grains)} grains below "
+                      f"{conf_tol:g} (Completeness/ConfidenceTol)", flush=True)
+                # the per-grain diagnostic arrays are parallel to out_grains
+                # and are written to the diagnostics archive, so they have to
+                # be filtered in lockstep or every diagnostic misattributes.
+                out_grains = [out_grains[i] for i in keep]
+                cluster_sizes_diag = [cluster_sizes_diag[i] for i in keep]
+                n_resolved_hkls_diag = [n_resolved_hkls_diag[i] for i in keep]
+                n_majority_diag = [n_majority_diag[i] for i in keep]
+                n_tie_diag = [n_tie_diag[i] for i in keep]
+                n_fs_diag = [n_fs_diag[i] for i in keep]
+            if not out_grains:
+                return _empty_result(self, params, mode)
+
         # ---- Stage 4: per-grain strain via configured method ---------------
         n_g = len(out_grains)
         strain_lab = torch.zeros((n_g, 3, 3), dtype=self.dtype, device=self.device)

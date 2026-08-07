@@ -59,6 +59,26 @@ def _surface_unrefined_positions(log_dir: Path) -> None:
                 return
 
 
+def _expose_legacy_seeds_for_c_refiner(layer_dir: Path) -> None:
+    """Make python-indexer seeds visible where the C refiner looks for them.
+
+    FitUnified.c probes ``Output/IndexBest_all.bin`` (the c-omp indexer's
+    consolidated family) and otherwise falls back to the legacy pair at
+    ``<OutputFolder>/IndexBest.bin`` + ``IndexBestFull.bin``. The python
+    indexer writes that pair bare in *layer_dir*, while the comp paramstest
+    points OutputFolder at ``<layer_dir>/Output`` — so without this the C
+    refiner finds neither seed source and refines nothing.
+
+    Symlinked, not copied: IndexBestFull.bin is ~1.8 GB per layer.
+    """
+    out_dir = layer_dir / "Output"
+    for name in ("IndexBest.bin", "IndexBestFull.bin"):
+        src, dst = layer_dir / name, out_dir / name
+        if src.exists() and not dst.exists():
+            out_dir.mkdir(parents=True, exist_ok=True)
+            dst.symlink_to(src)
+
+
 def _run_ff(ctx: StageContext) -> StageResult:
     """FF (single-scan) refinement — shell out to ``python -m midas_fit_grain``.
 
@@ -103,10 +123,19 @@ def _run_ff(ctx: StageContext) -> StageResult:
 
     # c-omp backend writes its IndexBest*_all.bin into <layer_dir>/Output; hand
     # fit-grain the matching paramstest so it reads them from there.
+    #
+    # This must key on the REFINER too, not just the indexer: the C refiner
+    # locates the binned inputs via dirname(OutputFolder) exactly as the C
+    # indexer does, so with indexer=python (which writes a bare
+    # OutputFolder <layer_dir>) it looked one level too high and died on
+    # `open <layer_dir>/../ExtraInfo.bin`. Measured on shade_LSHR: the
+    # python-indexer + c-omp-refiner combination could not complete a layer.
     fit_paramstest = paramstest
-    if ctx.config.indexer_backend == "c-omp":
+    if "c-omp" in (ctx.config.indexer_backend, ctx.config.refine_backend):
         from ._comp_params import comp_backend_paramstest
         fit_paramstest = comp_backend_paramstest(paramstest, layer_dir)
+        if ctx.config.refine_backend == "c-omp":
+            _expose_legacy_seeds_for_c_refiner(layer_dir)
 
     log_dir = Path(ctx.log_dir)
     log_dir.mkdir(parents=True, exist_ok=True)

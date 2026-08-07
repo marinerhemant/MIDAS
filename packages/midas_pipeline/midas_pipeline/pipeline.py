@@ -158,6 +158,41 @@ def stage_deps_for(name: str, scan_mode: ScanMode) -> Tuple[str, ...]:
 # ---------------------------------------------------------------------------
 
 
+def _report_unknown_param_keys(params_file) -> None:
+    """Warn about parameter keys MIDAS does not recognise, with suggestions.
+
+    A misspelled key is silently ignored, so the run completes on the default
+    while the user believes their setting took effect. Observed on the
+    datasetA Ni dataset: ``MarginOmega 0.6`` -- canonical is ``MarginOme`` --
+    was ignored by the classical chain, the pipeline AND the shipped reference.
+    All three used MarginOme 0.5 and nothing said so.
+
+    midas_params already parses unknown keys and the registry supports
+    difflib suggestions; nothing was calling either. Imported optionally, so
+    this adds no hard dependency and never blocks a run.
+    """
+    try:
+        import difflib
+
+        from midas_params.parser import parse_typed
+        from midas_params.registry import by_name
+    except Exception:
+        return
+    try:
+        parsed = parse_typed(str(params_file))
+        unknown = list(getattr(parsed, "unknown_keys", ()) or ())
+        if not unknown:
+            return
+        known = list(by_name())
+        for key, line_no in unknown:
+            close = difflib.get_close_matches(key, known, n=1, cutoff=0.75)
+            hint = f" -- did you mean {close[0]!r}?" if close else ""
+            LOG.warning("parameter file line %s: unrecognised key %r is "
+                        "IGNORED%s", line_no, key, hint)
+    except Exception as exc:            # a linter must never fail a run
+        LOG.debug("parameter-file key check skipped: %s", exc)
+
+
 @dataclass
 class Pipeline:
     """Top-level orchestrator.
@@ -223,6 +258,7 @@ class Pipeline:
                                              self.config.n_cpus)
         self.config.n_cpus = n_cpus
         self.config.machine.n_nodes = n_nodes
+        _report_unknown_param_keys(self.config.params_file)
         results: List[LayerResult] = []
         for layer_nr in self.config.layer_selection.layers():
             results.append(self._run_layer(layer_nr))

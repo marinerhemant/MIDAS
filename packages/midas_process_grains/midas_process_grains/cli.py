@@ -147,6 +147,8 @@ def main(argv: Optional[List[str]] = None) -> int:
         paths = run_v4_pipeline(
             layer_dir=run_dir,
             out_dir=out_dir,
+            paramstest=args.param_file,   # the file the user actually named
+
             trust_scheme="strict",
             min_n_unique_hkls=min_unique,
             merge_primitive=args.merge_primitive,
@@ -175,6 +177,7 @@ def main(argv: Optional[List[str]] = None) -> int:
         run_c_parity_pipeline_from_disk(
             run_dir=run_dir,
             out_dir=out_dir,
+            paramstest=args.param_file,
             min_nr_spots=(args.min_nr_spots
                           if args.min_nr_spots is not None else 1),
             device=device_str,

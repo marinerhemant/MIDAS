@@ -148,7 +148,10 @@ class TestPipelineConfig:
         assert cfg.is_ff
         assert not cfg.is_pf
         assert cfg.scan.n_scans == 1
-        assert cfg.process_grains_mode == "spot_aware"     # FF-default
+        # FF-default. Was "spot_aware"; changed to "c_parity" after EBSD
+        # adjudication on shade_LSHR layer 1 — same recall, 11.6 pp better
+        # precision. See tests/unit/test_pg_mode_c_parity.py.
+        assert cfg.process_grains_mode == "c_parity"
 
     def test_pf_smoke(self, tmp_path):
         cfg = _pf_config(tmp_path)

@@ -248,6 +248,7 @@ def run_v4_pipeline(
     *,
     layer_dir: Union[str, Path],
     out_dir:   Union[str, Path],
+    paramstest: Optional[Union[str, Path]] = None,
     n_seeds:   Optional[int] = None,
     trust_scheme: str = "strict",
     indexing_rings: Optional[list[int]] = None,
@@ -360,7 +361,12 @@ def run_v4_pipeline(
     t_total = time.time()
 
     # -- Inputs --
-    ps = layer_dir / "paramstest.txt"
+    # Honour the parameter file the CALLER named. This used to be hardcoded as
+    # layer_dir/"paramstest.txt", which silently discarded the file given on
+    # the command line: running with a paramstest that carried a corrected
+    # `Vsample 1440000` produced byte-identical radii and logged "no Vsample in
+    # paramstest", because the hardcoded name was read instead.
+    ps = Path(paramstest) if paramstest else layer_dir / "paramstest.txt"
     SG = int(space_group or _grab_paramstest_scalar(ps, "SpaceGroup") or 225)
     LSD = (_grab_paramstest_scalar(ps, "LsdFit")
            or _grab_paramstest_scalar(ps, "Lsd"))

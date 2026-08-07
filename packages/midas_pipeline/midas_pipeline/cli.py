@@ -156,9 +156,15 @@ def _build_parser() -> argparse.ArgumentParser:
     run.add_argument("--refine-loss",
                      choices=["full3d", "angular", "internal_angle"],
                      default="full3d")  # 2D 'pixel' loss disabled in fit-grain
-    run.add_argument("--refine-mode", choices=["", "iterative", "all_at_once"],
+    run.add_argument("--refine-mode",
+                     choices=["", "iterative", "all_at_once", "c_recipe"],
                      default="all_at_once",
-                     help="refinement strategy; default 'all_at_once' (single joint fit)")
+                     help="refinement strategy. 'c_recipe' is the ported C "
+                          "staged recipe (per-grain-independent batched LM + "
+                          "IRLS); measured 1.25 um vs the c-omp refiner on a "
+                          "full 1-ID shade_LSHR layer where 'iterative' and "
+                          "'all_at_once' give ~40 um. Default 'all_at_once' "
+                          "is kept only for back-compat.")
     run.add_argument("--use-bounds", action="store_true",
                      help="bound refinement via sigmoid reparam (torch-native, "
                           "autograd-preserving); recommended for PF to prevent "
@@ -326,8 +332,16 @@ def _build_parser() -> argparse.ArgumentParser:
                      help="sino-soft ω-Gaussian σ; 0 ⇒ uniform sum-pool")
 
     # Process-grains (FF only)
-    run.add_argument("--pg-mode", choices=["spot_aware", "legacy", "paper_claim"],
-                     default="spot_aware")
+    run.add_argument("--pg-mode",
+                     choices=["spot_aware", "legacy", "paper_claim", "c_parity"],
+                     default="c_parity",
+                     help="Grain-determination algorithm. Default 'c_parity' "
+                          "replicates C ProcessGrains (datasetA Ni: 6150 "
+                          "grains vs C's 6138; matched pairs agree to 0.0000 "
+                          "deg and 0.000 um) and is the most accurate against "
+                          "EBSD on shade_LSHR (precision 79.8% vs spot_aware's "
+                          "68.2% at equal recall). 'spot_aware' keeps ~18% more "
+                          "grains, of which only 7.2%% are EBSD-corroborated.")
 
     # Layers
     run.add_argument("--layers", default="1-1",

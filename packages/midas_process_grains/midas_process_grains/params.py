@@ -70,6 +70,12 @@ class ProcessGrainsParams:
     StiffnessFile: Optional[str] = None
     TwinRelations: Optional[str] = None
     ConfidenceTol: float = 0.0
+    # ``Completeness`` is the name the user's own parameter file and C
+    # ProcessGrains use for the same quantity as ``ConfidenceTol``: the minimum
+    # per-grain completeness to keep a grain. It reaches us only if someone
+    # propagates it — paramstest.txt does not carry it — so None means
+    # "the parameter file did not set it", distinct from an explicit 0.0.
+    Completeness: Optional[float] = None
     Twin: int = 0
     PhaseNr: int = 1
 
@@ -161,6 +167,16 @@ class ProcessGrainsParams:
                 stacklevel=2,
             )
             self.MinNrSpots = 2
+        # ``Completeness`` (user's / C ProcessGrains' name) and ``ConfidenceTol``
+        # (this package's name) are the same gate. If the file set Completeness
+        # and left ConfidenceTol at its default, honour Completeness — otherwise
+        # a user who wrote "Completeness 0.5" silently gets no gate at all.
+        if self.Completeness is not None:
+            if not (0.0 <= self.Completeness <= 1.0):
+                raise ValueError(
+                    f"Completeness must be in [0, 1]; got {self.Completeness}")
+            if self.ConfidenceTol == 0.0:
+                self.ConfidenceTol = float(self.Completeness)
         if not (0.0 <= self.JaccardTol <= 1.0):
             raise ValueError(f"JaccardTol must be in [0, 1]; got {self.JaccardTol}")
         if not (0.0 <= self.AgreementTol <= 1.0):
@@ -193,7 +209,7 @@ class ProcessGrainsParams:
 # Keys we recognize beyond what ParamsTest knows.
 _PG_FLOAT_KEYS = {
     "MisoriTol", "JaccardTol", "AgreementTol", "MergeAlpha",
-    "PixelTol", "ConfidenceTol",
+    "PixelTol", "ConfidenceTol", "Completeness",
 }
 _PG_INT_KEYS = {"MinNrSpots", "Twin", "PhaseNr"}
 _PG_STR_KEYS = {

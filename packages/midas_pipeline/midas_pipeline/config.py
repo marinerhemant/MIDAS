@@ -43,8 +43,8 @@ AlignMethod = Literal["ring-center", "cross-correlation", "none"]
 RefinePositionMode = Literal["fixed", "voxel_bounded"]
 RefineSolver = Literal["lbfgs", "lm", "nelder_mead", "adam", "lm_batched"]
 RefineLoss = Literal["full3d", "angular", "internal_angle"]   # 2D 'pixel' disabled
-RefineMode = Literal["", "iterative", "all_at_once"]
-ProcessGrainsMode = Literal["spot_aware", "legacy", "paper_claim"]
+RefineMode = Literal["", "iterative", "all_at_once", "c_recipe"]
+ProcessGrainsMode = Literal["spot_aware", "legacy", "paper_claim", "c_parity"]
 
 
 # ---------------------------------------------------------------------------
@@ -512,7 +512,18 @@ class PipelineConfig:
     refine_backend: str = "python"
 
     # Process-grains (FF mode only — see plan §3d)
-    process_grains_mode: ProcessGrainsMode = "spot_aware"
+    # c_parity, not spot_aware. Adjudicated against EBSD on shade_LSHR layer 1
+    # (one refiner output, MinNrSpots 3 + Completeness 0.7, one-to-one matching
+    # at 1 deg / 15 um against 4328 segmented EBSD grains):
+    #
+    #   C ProcessGrains  3491 grains  precision 79.8%  recall 64.3%
+    #   c_parity         3492 grains  precision 79.8%  recall 64.4%
+    #   spot_aware       4128 grains  precision 68.2%  recall 65.0%
+    #
+    # Of the 691 grains spot_aware adds over c_parity, 7.2% have an EBSD
+    # partner against 80.4% for the shared population; their DiffPos median is
+    # 387 um against 121. It buys +0.1 pp of recall for -11.6 pp of precision.
+    process_grains_mode: ProcessGrainsMode = "c_parity"
 
     # Raw-data overrides
     raw_dir: Optional[str] = None

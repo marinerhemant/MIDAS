@@ -71,6 +71,48 @@ def _ensure_grains_seed_in_paramstest(
              seed)
 
 
+def _count_indexed_seeds(out_dir: Path, legacy_path: Path):
+    """How many seeds actually got a solution, whichever backend wrote them.
+
+    Returns ``(n_indexed, path_counted_from)``; the path is ``None`` when no
+    recognised seed file exists at all.
+
+    The two backends write different families and this must handle both:
+      * legacy / python  ``IndexBest.bin``      (nSeeds, 15), col 14 = n_observed
+      * c-omp            ``IndexBest_all.bin``  int32 nVox, int32 nSol[nVox],
+                                                int64 off[nVox], then (nSol, 16)
+                                                records with col 15 = n_observed
+
+    Counting only the legacy name reported "0 / N seeds with non-zero data" on
+    every c-omp run (observed on the datasetA Ni layer: 0 / 56196 logged while
+    the run went on to produce 11475 grains). A diagnostic that always reads
+    zero cannot warn when the value is genuinely zero, which is exactly the
+    failure it exists to catch.
+    """
+    if legacy_path.exists():
+        arr = np.fromfile(legacy_path, dtype=np.float64)
+        if arr.size and arr.size % 15 == 0:
+            return int((arr.reshape(-1, 15)[:, 14] > 0).sum()), legacy_path
+
+    consolidated = out_dir / "IndexBest_all.bin"
+    if consolidated.exists():
+        raw = consolidated.read_bytes()
+        if len(raw) >= 4:
+            n_vox = int(np.frombuffer(raw[:4], dtype=np.int32)[0])
+            head = 4 + 4 * n_vox + 8 * n_vox
+            n_sol = np.frombuffer(raw[4:4 + 4 * n_vox], dtype=np.int32)
+            vals = np.frombuffer(raw[head:], dtype=np.float64)
+            if vals.size % 16 == 0:
+                vals = vals.reshape(-1, 16)
+                n_indexed, pos = 0, 0
+                for n in n_sol:
+                    if n > 0 and vals[pos:pos + n, 15].max() > 0:
+                        n_indexed += 1
+                    pos += int(n)
+                return n_indexed, consolidated
+    return 0, None
+
+
 def _run_ff(ctx: StageContext) -> StageResult:
     """FF (single-scan) indexing — shell out to ``python -m midas_index``.
 
@@ -121,9 +163,17 @@ def _run_ff(ctx: StageContext) -> StageResult:
             str(ctx.config.n_cpus),
         ]
     else:
+        # The python backend reads its input folders out of the paramstest, so
+        # the keys must name THIS layer dir -- they arrive naming whichever
+        # machine built the zarr. See localised_paramstest.
+        from ._comp_params import localised_paramstest
+        py_paramstest = localised_paramstest(paramstest, layer_dir)
+        if py_paramstest != paramstest:
+            LOG.info("indexing(FF, python): paramstest folder keys did not name "
+                     "this layer; using %s", py_paramstest.name)
         cmd = [
             sys.executable, "-m", "midas_index",
-            str(paramstest),
+            str(py_paramstest),
             "0",                               # block_nr
             "1",                               # n_blocks
             str(n_seeds),
@@ -147,14 +197,21 @@ def _run_ff(ctx: StageContext) -> StageResult:
     if not index_best.exists():
         index_best = layer_dir / "IndexBest.bin"
     index_best_full = index_best.with_name("IndexBestFull.bin")
-    n_indexed = 0
-    if index_best.exists():
-        arr = np.fromfile(index_best, dtype=np.float64)
-        if arr.size % 15 == 0:
-            arr = arr.reshape(-1, 15)
-            n_indexed = int((arr[:, 14] > 0).sum())
-    LOG.info("indexing(FF): %d / %d seeds with non-zero data",
-             n_indexed, n_seeds)
+
+    n_indexed, counted_from = _count_indexed_seeds(out_dir, index_best)
+    if counted_from is None:
+        LOG.warning(
+            "indexing(FF): produced NO recognisable seed file in %s — expected "
+            "either IndexBest.bin (legacy/python backend) or IndexBest_all.bin "
+            "(c-omp backend). Downstream stages will find no seeds.", out_dir)
+    elif n_indexed == 0:
+        LOG.warning(
+            "indexing(FF): 0 / %d seeds indexed, read from %s. Nothing "
+            "downstream can succeed; check the indexing log in %s.",
+            n_seeds, counted_from.name, log_dir)
+    else:
+        LOG.info("indexing(FF): %d / %d seeds with non-zero data (from %s)",
+                 n_indexed, n_seeds, counted_from.name)
     return IndexResult(
         stage_name="indexing",
         started_at=started, finished_at=finished, duration_s=finished - started,

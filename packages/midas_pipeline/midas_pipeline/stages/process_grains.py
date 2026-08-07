@@ -37,10 +37,22 @@ def run(ctx: StageContext) -> StageResult:
                  "→ skip.")
         return stub_run("process_grains", ctx)
 
+    # Keyed on the refiner as well as the indexer: when the c-omp refiner runs
+    # it is handed the comp paramstest and writes OrientPosFit.bin into
+    # <layer_dir>/Results, so process-grains has to read from the same folders
+    # even when the seeds came from the python indexer.
     pg_paramstest = paramstest
-    if ctx.config.indexer_backend == "c-omp":
+    if "c-omp" in (ctx.config.indexer_backend, ctx.config.refine_backend):
         from ._comp_params import comp_backend_paramstest
         pg_paramstest = comp_backend_paramstest(paramstest, layer_dir)
+
+    # paramstest.txt is written for the indexer and refiner and carries none of
+    # the grain-selection thresholds (MinNrSpots, Completeness, ...). Handing it
+    # to process-grains as-is silently discards what the user asked for and
+    # substitutes package defaults.
+    from ._comp_params import selection_paramstest
+    pg_paramstest = selection_paramstest(
+        pg_paramstest, getattr(ctx.config, "params_file", None), layer_dir)
 
     # Spot-aware / paper_claim modes need the per-spot residual table
     # (Output/FitBest.bin, or bare FitBest.bin — see opf resolution above),
@@ -52,7 +64,11 @@ def run(ctx: StageContext) -> StageResult:
     fit_best = layer_dir / "Output" / "FitBest.bin"
     if not fit_best.exists():
         fit_best = layer_dir / "FitBest.bin"
-    if mode != "legacy" and not fit_best.exists():
+    # c_parity reads FitBest only to emit SpotMatrix.csv and degrades on its
+    # own when it is absent, so it must not be downgraded here — downgrading it
+    # would silently substitute a different algorithm for the one mode whose
+    # entire purpose is to reproduce C ProcessGrains.
+    if mode not in ("legacy", "c_parity") and not fit_best.exists():
         LOG.info("process_grains(FF): FitBest.bin absent (c-omp refiner) → "
                  "using legacy mode (%r needs the per-spot FitBest.bin).", mode)
         mode = "legacy"
