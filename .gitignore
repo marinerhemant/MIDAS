@@ -8,6 +8,8 @@ dist/
 build/
 .pytest_cache/
 
+packages/midas_integrate/tests/benchmarks/spark_compare/
+eiger_calib_local/
 gui/cache/
 future/
 fwd_sim/
