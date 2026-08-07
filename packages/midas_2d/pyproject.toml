@@ -4,7 +4,7 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "midas-2d"
-version = "0.3.1"
+version = "0.3.2"
 description = "Differentiable diffraction for 2D / few-layer & ultrafast experiments: finite-size interference (Laue oscillations), crystal-truncation rods, and rocking curves on top of midas-hkls."
 readme = "README.md"
 license = "BSD-3-Clause"

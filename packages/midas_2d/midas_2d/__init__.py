@@ -145,7 +145,7 @@ from .shape_factor import (
     truncation_rod,
 )
 
-__version__ = "0.3.1"
+__version__ = "0.3.2"
 
 __all__ = [
     "interference_factor",
