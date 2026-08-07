@@ -43,8 +43,12 @@ dependencies = [
     "midas-peakfit>=0.4.6",                # >=0.4.6: deterministic batched-LM grouping (peak fit was not reproducible)
     "midas-transforms>=0.8.2",
     "midas-index>=0.3.0",
-    "midas-fit-grain>=0.6.0",
-    "midas-process-grains>=0.6.1",
+    # >=0.7.0: the "c_recipe" refine mode this CLI offers as a choice.
+    "midas-fit-grain>=0.7.0",
+    # >=0.7.0: reads Completeness as an alias for ConfidenceTol. Below it, the
+    # selection keys this pipeline now writes into paramstest are ignored and
+    # the user silently gets no grain gate at all.
+    "midas-process-grains>=0.7.0",
     "midas-diffract>=0.1.0",
     "midas-parsl-configs>=0.1.0",
     "midas-stress>=0.6.0",                # canonical orientation/diffraction primitives
