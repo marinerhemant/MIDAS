@@ -26,7 +26,7 @@ there as retracted, with the measurement that killed each one.
 | 6 | The specimen is one grain plus its Σ3 annealing twin | VERIFIED vs raw frames | §3d |
 | 7 | C `ProcessGrains` over-segments those 2 orientations into 6 grains | ESTABLISHED | §3d |
 | 8 | The recon is **COMPLETE** — 2 grains explain every credible reflection; the "91 % unindexed" spot list is ~98 % noise, padding and haloes of those same 2 grains | RESOLVED | §4d |
-| 9 | Spot list degrades after detection; brightness (SNR) is the discriminator, **not** ω multiplicity — 45.9 % of credible spots are single-frame and 8 indexed ones reach SNR 2511. `RingThresh 10` is close to what both criteria recommend. Gap: MIDAS computes no per-spot SNR | RESOLVED — `MinPeakSNR` not yet implemented | §6b, §6c |
+| 9 | Spot list degrades after detection; brightness (SNR) is the discriminator, **not** ω multiplicity — 45.9 % of credible spots are single-frame and 8 indexed ones reach SNR 2511. `RingThresh 10` is close to what both criteria recommend | RESOLVED — `MinPeakSNR` implemented 2026-08-01 (§6d). Needs `midas-zipper >= 0.1.5` or the key is dropped when the params are zipped | §6b, §6c, §6d |
 | 10 | "Background varies ~20σ around a ring band" — RETRACTED, an artefact of a hand-rolled band mask (13.4 % pixel overlap with the real band) | RETRACTED | §6a |
 
 Every one of defects 1–5 produced **wrong numbers and no error message**. That is the
@@ -895,3 +895,771 @@ CI-runnable half: `packages/midas_fit_grain/tests/test_backend_parity.py`
 (fp32/fp64 × cpu/gpu on the synthetic fixture, skips absent backends). Note it
 must drive `refine_block`, not `refine_grain` — the per-grain entry point keeps
 a fixed `pos_scale` by design and rejects `"auto"`.
+
+### 7a. Scored against KNOWN truth — the C bridge (2026-08-03)
+
+§7 concluded "the C implementations are not the reference" from C-vs-C
+disagreement alone. That argument is suggestive but circular: it shows they
+cannot *both* be right, not that neither is. This closes it non-circularly.
+
+Pre-registered before any simulated data existed:
+`PREREGISTER_refiner_gold_standard.md` (git-excluded, local). Effect size fixed
+in advance at **>5 µm median per-grain position error**, justified from the
+FCC-parent median `GrainRadius` of 4.08 µm and the 8.96 µm the two C codes already
+differ by. R1 — "no gold standard exists" — was named in advance as the most
+likely outcome.
+
+**The bridge.** `cbridge.py` writes simulated grains of known position,
+orientation and lattice into the three files the C codes read — `ExtraInfo.bin`
+(16 doubles/row, **SpotID must equal row+1**, `FitPosOrStrainsOMP.c:2541`),
+`IndexBest.bin` (15 doubles/row), `IndexBestFull.bin` (**stride `MaxNHKLS` =
+5000 × 2 doubles**, not the per-seed spot count) — inside the *real* the FCC parent
+geometry, reusing its own `paramstest_comp.txt` and `hkls.csv`. Writing only
+the legacy seed pair feeds all three implementations: c-omp probes for
+`IndexBest_all.bin` first and falls back (`FitUnified.c:1466-1481`), and the
+python driver does the same (`driver.py:411`).
+
+Geometry drops out by construction, which is worth stating because it was
+suspected for a while: **the c-orig fitting path never touches tx/ty/tz or
+p0..p14** — both codes consume ExtraInfo's already detector-corrected
+YLab/ZLab. That is the same reason `_build_model` sets `apply_tilts=False`
+(`driver.py:232`).
+
+**Gates run before interpreting anything.** Zero noise, seed displaced 133 µm:
+all four arms land within 0.12 µm of truth (c-orig 0.00, c-omp 0.12,
+py:all_at_once 0.00, py:iterative 0.00). The layouts are right and the arms
+are commensurable. A bridge that failed this would have measured only its
+author's file-format bugs.
+
+**Result** — median per-grain |position − truth|, µm, 200 grains,
+115 spots/grain (the real run has ~108):
+
+| noise px | c-orig | c-omp | py all_at_once | py iterative | seed |
+|---|---|---|---|---|---|
+| 0.05 | 2.03 | 2.69 | 26.43 | **1.82** | 125.6 |
+| 0.2 | 8.09 | 9.20 | 42.14 | **7.19** | 137.6 |
+| 0.5 | 20.58 | 20.50 | 21.01 | **18.76** | 133.3 |
+| 1.6 (real) | 70.70 | 69.02 | **55.38** | 60.41 | 138.7 |
+
+1.6 px is not a round number — it is the measured FCC-parent value, 315.6 µm
+vertical residual over a 200 µm pixel, fixed in the pre-registration.
+
+**Both refutation criteria fire.** py:iterative wins 3 of 4 levels but by
+0.21 / 0.90 / 1.74 µm — every margin inside the 5 µm effect size (**R1**), and
+the ranking inverts at the real noise level (**R2**).
+
+**So c-orig is not a gold standard.** It is statistically indistinguishable
+from c-omp and py:iterative below the real noise level, and at the real noise
+level it is the *worst* of the four. Ten years of use establishes that it is
+useful, not that it is accurate. §7's warning stands and is now demonstrated.
+
+Corollary: **"make c-omp match c-orig" is not a well-posed goal.** The 8.96 µm
+median per-grain C-vs-C disagreement is *smaller* than either code's own error
+against truth at the real noise level (~70 µm). They disagree because position
+is underdetermined there, not because one is wrong.
+
+Scope it precisely — R1 covers three arms, not four. **py:all_at_once is
+genuinely worse at low noise** (26.4 and 42.1 µm vs ~2 and ~8), far outside the
+effect size. That is the under-refinement defect of §3c, and it is real.
+
+### 7b. What the bridge did NOT explain — still open
+
+On the real FCC-parent dataset c-orig reaches robust Z σ 38.84 µm and the best python arm 63.76
+µm. On identical clean input they are equal. Measuring the *same statistic* in
+both settings (robust Z σ of refined positions; simulated truth Z is uniform in
+±1 µm so it is essentially pure error) localises this sharply:
+
+| arm | simulated @1.6 px | the real FCC-parent dataset | ratio |
+|---|---|---|---|
+| c-orig | 37.94 | 38.84 | 1.02 |
+| c-omp | 34.69 | 38.33 | 1.10 |
+| py:iterative | 33.57 | 63.76 | **1.90** |
+| py:all_at_once | 32.27 | 157.78 | **4.89** |
+
+**The simulation reproduces both C codes on real data to 2–10 %** — an
+independent validation of the whole setup, since 1.6 px was fixed beforehand
+from an unrelated measurement. It does not reproduce python. The deficit is
+therefore **real-data-specific and python-specific**: the simulation is not
+missing something that hurts everyone.
+
+Ruled out as the cause: the optimizer (equal in simulation), the loss (matching
+C's `internal_angle` changes nothing — see below), staging alone (`iterative`
+gets to 63.8 µm and stops), geometry (shared), and **dynamic spot
+reassignment**. That last one was the prime suspect — c-orig re-assigns spots
+during refinement when `Spots.bin`/`Data.bin` are present
+(`FitPosOrStrainsOMP.c:2209-2245`) and python has no equivalent — and it is
+**refuted**: deleting those files changes nothing at all. c-orig 38.84 → 38.84,
+c-omp 38.33 → 38.33, same 1441 seeds, same 192.79 µm median move, with the C
+logging "Spots.bin not found" to confirm the feature was off. Bit-identical.
+
+**Cause unexplained.** Recorded as unexplained deliberately: the reading was
+fixed before the reassignment test ran, and a third story fitted to the same
+number afterwards would not be evidence.
+
+### 7c. Loss/mode matrix on the real FCC-parent dataset (2000 seeds, target c-orig 38.84 µm)
+
+| solver | loss | mode | Z σ µm | moved µm |
+|---|---|---|---|---|
+| lbfgs | full3d | all_at_once | 157.78 | 2.94 |
+| lbfgs | full3d | **iterative** | **63.76** | **162.31** |
+| lbfgs | internal_angle | all_at_once | 160.83 | 0.00 |
+| lbfgs | internal_angle | iterative | 160.83 | 0.00 |
+| lbfgs | angular | all_at_once | 160.83 | 0.00 |
+| lbfgs | angular | iterative | 160.83 | 0.00 |
+| lm | ×3 losses | ×2 modes | all 6 FAILED (exit 1; one −9 = OOM) |
+| nelder_mead | internal_angle | iterative | no result — timed out at 3600 s |
+
+**Staging is the whole effect; the loss does nothing.** This retracts an
+earlier guess of mine that C's internal-angle objective was most of the gap —
+matching it does not help at all. Two defects fall out:
+
+- **`internal_angle` and `angular` do not refine position at all** — bit-
+  identical 160.83 µm and exactly 0.00 µm movement in every mode. The
+  `BARELY-REFINED-POSITIONS` guard fires on all four cells.
+- **Every `lm` cell fails on real data** while `lm` works on the small
+  fixture. Untriaged.
+
+`full3d` is vindicated: it is the only loss that refines position at all.
+
+### 7d. Two latent defects found by reading the source — both INERT on the FCC parent
+
+Recorded because they are real; flagged inert because that was checked, not
+assumed. Neither can explain any measurement above.
+
+1. `FitPosOrStrainsOMP.c:2481` reads `RingNr` from `ExtraInfo` column **9**
+   (`YOrig`, a lab coordinate in µm) instead of column **5** (`RingNumber`);
+   everywhere else in the same file uses col 5. Only reachable through
+   `RingsToReject`, and the FCC parent sets none, so the loop body never executes.
+2. `driver.py:427` keeps reflections out to `2·atan(RhoD/Lsd)` in 2θ — **twice**
+   c-orig's `0.5·atan(RhoD/Lsd)` in θ (`.c:2283`). c-orig is right: ring radius
+   = Lsd·tan(2θ). Inert here because the `RingNumbers` 1–5 filter bites first
+   (ring 5 sits at 2θ = 5.01°, both cutoffs pass it).
+
+Harnesses: `~/Desktop/analysis/bt_1id_jul26c/{cbridge,reassign,matrix}.py`, deployed
+to `copland:~/`; logs `copland:~/{cbridge,reassign,matrix}.log`; per-grain
+arrays under `.../bt_1id_jul26c/cbridge/*_err.npy`.
+
+### 7g. Independent replication on shade_LSHR (2026-08-04)
+
+A second real dataset, different material (Ni superalloy LSHR, a=3.585, SG 225),
+different beamtime (1-ID `bt_1id_nov20`), different geometry (Lsd 754 mm, 7
+rings): `shade_LSHR_voi_ff_000299.ge3`, layer 1. The whole FF chain was re-run
+from raw with `FF_HEDM/workflows/ff_MIDAS.py` on MIDAS **v11.0 (8be17019)** —
+690 s end to end from a 12 GB `.ge3`, peaksearch 47 s — giving 22327 seeds.
+Every refiner then started from those same seeds with **byte-identical**
+parameters, c-orig re-run rather than reused so the reference shares them.
+
+| arm | n | Z robust sd µm | moved µm | DiffPos µm | \|ΔPos\| vs c-orig µm | wall s |
+|---|---|---|---|---|---|---|
+| c-orig | 21785 | 3.92 | 263.47 | 137.34 | — | 172.5 |
+| c-omp | 21785 | 4.23 | 263.13 | 139.43 | **2.81** | 78.2 |
+| py-f64 | 21785 | 22.47 | 246.40 | 327.10 | **41.36** | 718.9 |
+| py-f32 | 21785 | 22.47 | 246.40 | 327.10 | 41.36 | 362.5 |
+| py-f64, ω placeholder | 21785 | 22.47 | 246.40 | 327.10 | 41.36 | 720.2 |
+
+Per-axis median |difference|: c-omp vs c-orig **1.47 / 1.45 / 0.73** (X/Y/Z);
+py-f64 vs c-orig **20.24 / 20.23 / 13.75**.
+
+**This is a cleaner replication than the FCC parent.** There the two C codes disagreed by
+8.96 µm, which muddied any claim about python. Here they agree to **2.81 µm**
+and python sits **41.4 µm** away — 15× the C-vs-C difference. Z IQR 30.3 µm
+against 5.3 µm. So the python position deficit of §7b reproduces on an
+independent dataset, and on this one the C codes are mutually consistent.
+
+Unlike the FCC parent, python here is worse by its **own** metric too (DiffPos 327 vs
+137). On the FCC parent python reached a marginally BETTER residual while landing
+elsewhere; here it simply fits worse. Caveat: DiffPos is each implementation's
+self-assessment and may not be defined identically across them — the
+implementation-independent numbers are |ΔPos| and the Z spread.
+
+**fp32 = fp64.** Identical to 5 significant figures on every metric, at 2× the
+speed. Precision is not a factor in the deficit — consistent with §7 and with
+the the FCC parent matrix. (The fp32 frozen-position defect of §3c is fixed and stays
+fixed here.)
+
+**The ω placeholder is INERT — measured, not assumed.** The pipeline's
+`paramstest.txt` writes no `OmegaStart`/`OmegaStep`/`NrFrames`/`NrPixelsY/Z`,
+so `_build_model` substitutes `omega_start=-180, omega_step=+0.25`
+(`driver.py:215`) where this 1-ID aero scan is truly `180 / -0.25`. An arm
+carrying the placeholder values was run against an arm carrying the true ones:
+**21785 / 21785 rows bit-identical, max |ΔPos| exactly 0.000e+00.** The covered
+ω interval is ±180 either way and the refiner takes observed ω from ExtraInfo
+and predicted ω from crystallography, so the keys never enter the residual.
+
+Scope that carefully: inert **for the refiner**. Anything that maps frames to ω
+— peaksearch, transforms — reads the master parameter file, where `OmegaStep
+-0.25` is correct. This does not license leaving the keys out.
+
+**Z is NOT an accuracy metric on this dataset**, unlike the FCC parent's 2 µm focused
+beam. `BeamSize 400` / `Hbeam 800` are search bounds, and grains rail at the
+±400 µm limit (c-orig min −399.9, max 400.0), so the true illuminated thickness
+is unknown. Z spread is used here only to compare implementations.
+
+Harness `~/Desktop/analysis/shade_LSHR/bench_refiners.py` →
+`chutoro:~/bench_refiners.py`, log `chutoro:~/bench.log`, per-arm dirs under
+`.../sharma_work/shade_LSHR/bench/`.
+
+### 7h. Then vs now — the same raw layer through three MIDAS eras
+
+Same raw file, same parameter file, three code eras:
+
+| run | grains | DiffPos median µm |
+|---|---|---|
+| 2021 original beamtime | 3775 | 157.37 |
+| 2024 v7 re-analysis | 3486 | 157.93 |
+| **2026 today (v11.0)** | **3484** | **114.10** |
+
+Grain-by-grain, mutual-nearest-neighbour matched (symmetry-aware, no
+registration — same lab frame throughout):
+
+| comparison | matched | median \|ΔPos\| µm | median misorientation |
+|---|---|---|---|
+| 2026 vs 2024 | 3443 (98.8 %) | 10.56 | 0.042° |
+| 2026 vs 2021 | 3457 (99.2 %) | 10.27 | 0.040° |
+| 2024 vs 2021 | 3464 (99.4 %) | 10.96 | 0.044° |
+
+**Grain finding is stable across five years** — ~99 % of grains recur and
+orientation agrees to 0.04°, lattice to 1.8e-3 Å. The count step 3775 → 3486
+happened between 2021 and 2024 and nothing has moved since.
+
+**But position scatters ~10.5 µm between ANY two runs**, including 2026 vs 2024.
+If code changes drove it, the closer-in-time pair would differ less; it does
+not (10.56 vs 10.27). Zero of ~3450 pairs are bit-identical, 0.3 % agree within
+1 µm. That is the shallow-position-minimum result of §7 reproduced on a
+different sample and beamtime, and it lands on the same scale as the the FCC parent
+C-vs-C figure (8.96 µm). The scatter is in-plane: X 5.68, Y 5.45, Z 2.10 µm.
+
+**One real improvement:** DiffPos 157.9 → 114.1 µm (−28 %) between the 2024
+build and v11.0, with the Z spread of grain centres tightening 7.70 → 5.78 µm.
+2021 and 2024 are indistinguishable (157.4 / 157.9). Column layout was checked
+byte-identical across all three files, so this is not a column-shift artifact.
+
+Harness `~/Desktop/analysis/shade_LSHR/compare_runs.py`.
+
+### 7i. Full python chain vs full C chain (2026-08-04)
+
+Both orchestrators, end to end, same raw `.ge3`, same parameter file.
+Classical = `FF_HEDM/workflows/ff_MIDAS.py`, all C binaries. New =
+`midas-pipeline 0.7.0 run --scan-mode ff` with `--indexer-backend python
+--refine-backend python`, CUDA.
+
+| stage | new pipeline (python) | classical (C) | ratio |
+|---|---|---|---|
+| peakfit | 1374.6 s | 47 s | **29×** |
+| transforms | 51.4 s | 8 s | 6× |
+| binning | 2.3 s | 4 s | 0.6× |
+| indexing | 2420.5 s | 425 s | **5.7×** |
+| refinement | OOM on GPU (see below) | 173 s | — |
+
+Grain-level, after completing the python chain with refinement on CPU:
+
+| | new pipeline | classical |
+|---|---|---|
+| grains | **4136** | 3484 |
+| DiffPos median | **315.47 µm** | 114.10 µm |
+| mutually matched | 3425 (82.8 % of newpipe) | |
+| \|ΔPos\| on matched | **33.00 µm** median, p95 108.4 | |
+| misorientation | 0.034° median | |
+| per-axis \|Δ\| | X 16.4, Y 16.2, Z 11.3 µm | |
+| newpipe grains with no partner | **711** | |
+
+Consistent with §7g's refiner-only 41.4 µm (smaller here because this compares
+post-`ProcessGrains` merged grains, not raw refined seeds). The 711 extra grains
+are unexplained — genuine extra detections or spurious splits, not determined.
+
+**Two integration defects found doing this:**
+
+1. **`midas-pipeline --refine-backend python --device cuda` cannot complete an
+   FF layer.** `RefinementConfig.dtype` is pinned to float64 and deliberately
+   NOT inherited from `--dtype` (`config.py:197`), and there is no
+   `--refine-dtype` flag, so the refiner always runs fp64. At B = 22328 that
+   OOMs: `_rematch_batch` builds `(B, S, K, M)` = (21785, 244, 2, 168) tensors
+   — **13.31 GiB each at fp64**, several of them — against a 47.4 GiB A6000.
+   The pipeline passes `0 1` for block_nr/n_blocks, and there is no
+   memory-aware batching anywhere: `n_blocks` is a work-splitting argument
+   (`driver.py:396`), and `refine_block` takes the whole block as one padded
+   batch. Padding is not the issue (median 240 spots vs S_max 244).
+   The pin's own docstring records that fp32 ≡ fp64 since the `pos_scale`
+   equilibration fix — reproduced in §7g to 5 significant figures — so the pin
+   is over-conservative *and* is what breaks the GPU path.
+2. **`ff_MIDAS.py -useTorchRefiner` is dead.** Its `-refineLoss` still offers
+   `pixel|angular|internal_angle` defaulting to `pixel`, but the 2-D `pixel`
+   loss was DISABLED 2026-05-20 (`residuals.py:125`, it raises) and the 3-D
+   loss renamed `full3d`. `pixel` is rejected by `midas_fit_grain --loss`;
+   `full3d` is rejected by ff_MIDAS's own argparse; `angular`/`internal_angle`
+   pass both but do not refine position at all (§7c). No setting works.
+   `midas-pipeline` tracked the rename; the classical workflow did not.
+
+### 7j. Why python fails — three pre-registered tests, and an answer
+
+**Cross-grain coupling: REFUTED.** `refine_block` optimises a whole block under
+ONE `torch.optim.LBFGS` — one scalar loss, one line search, `history_size=10`
+(rank-20) against a B×12 = 261 420-dimensional parameter vector whose true
+Hessian is block diagonal. A compelling argument, and wrong. Median |ΔPos| vs
+c-orig on 400 fixed grains:
+
+| B=400 | B=100 | B=25 | B=5 | **B=1** | B=400, iter ×8 |
+|---|---|---|---|---|---|
+| 43.314 | 43.361 | 43.231 | 43.309 | **43.309** | 43.314 |
+
+**B=1 is one optimizer per grain — total independence — and it changes the
+answer by 0.005 µm.** The iteration control is null too: 8× the budget gives a
+bit-identical result in the same wall-clock, i.e. the budget was never consumed.
+(`PREREGISTER_grain_coupling.md`.)
+
+**Matched-spot selection: REFUTED.** 779 grains, sets read from each code's own
+`FitBest.bin`: median Jaccard **1.0000**, **92 % of grains bit-identical**,
+worst 1 % still 99.1 %. Spearman(set disagreement, |ΔPos|) = **+0.057**; least-
+vs most-disagreeing quartile |ΔPos| 40.89 vs 41.83 µm. The codes use the same
+spots. (`PREREGISTER_matching.md`.)
+
+**Cross-evaluation: DESCENT FAILURE — the positive result.** Both answers
+scored under both objectives by one evaluator, 387 grains:
+
+| objective | L(c-orig) | L(python) | ratio | python wins |
+|---|---|---|---|---|
+| **full3d — python's OWN** | 9.7415e+02 | 1.6567e+03 | **1.6432** | **2.1 %** |
+| internal_angle — C's | 1.5203e-03 | 1.7837e-03 | 1.1309 | 2.6 % |
+
+**python's answer is worse under BOTH objectives on ~98 % of grains**, and
+64 % worse under its own. So this is not a modelling choice: c-orig reaches a
+point that python's own loss overwhelmingly prefers, and python stops short.
+
+> **The torch refiner does not minimise the function it is minimising.**
+
+Which matches the failure the codebase already documents for fp32
+(`refine_block.py`): the strong-Wolfe line search returns t = 0, the loss
+repeats bit-for-bit, the ftol counter trips, and the solver reports
+convergence. Converged-by-its-own-criterion, batch-independent and
+budget-independent are all consistent with that. (`PREREGISTER_crosseval.md`.)
+
+**Excluded to date** for this deficit: optimizer batching · iteration budget ·
+precision (fp32 ≡ fp64) · loss selection · staging alone · geometry · dynamic
+spot reassignment · frozen lattice block · matched-spot selection · the
+objective definition itself.
+
+Harnesses: `~/Desktop/analysis/shade_LSHR/{batch_sweep,match_diff,crosseval,
+exit_state}.py`.
+
+### 7k. RETRACTION + the actual C algorithm, read out of the source (2026-08-04)
+
+**RETRACTED — "C minimises an INTERNAL ANGLE."** Stated in §7 and repeated
+through this investigation. It is backwards for three of the four stages in
+C's default (`FitAllAtOnce=0`) path. Read from `FitPosOrStrainsOMP.c`:
+
+| stage | params **optimised** | objective (error fn) | what is **kept** |
+|---|---|---|---|
+| 1. `FitPositionIni` | **12** — pos + euler + lattice | **2-D (Δy, Δz)** (`FitErrorsPosT`) | **position only** |
+| 2. `FitOrientIni` | 9 — euler + lattice, pos fixed | **internal angle** (`FitErrorsOrientStrains`) | **euler only** |
+| 3. `FitStrainIni` | 6 — lattice, pos + euler fixed | **2-D (Δy, Δz)** (`FitErrorsStrains`) | lattice |
+| 4. `FitPosSec` | 3 — position | **2-D (Δy, Δz)** weighted (`FitErrorsPosSec`) | position |
+| *(FitAllAtOnce=1)* | 12 | internal angle (`FitErrorsOrientStrainsPos`) | all |
+
+Only the ORIENTATION stage uses the g-vector internal angle. Position and
+strain are both fitted against 2-D detector distance —
+`Error += CalcNorm2(PosObs[0]-PosTheor[0], PosObs[1]-PosTheor[1])` — with **no
+omega term**. Stage 4's `wgt` combines `WeightMask` and
+`exp(-fRMSE·WeightFitRMSE)`; both are inert on shade_LSHR (1.0 and 0.0).
+
+This retro-explains §7c, where forcing python's loss to `internal_angle` froze
+position at exactly 0.00 µm movement: C never fits position with that
+objective, so the result was never evidence about C's method.
+
+**Two structural details that a naive port would miss** — and that were caught
+by the user querying my first reading, not by me:
+
+- **Stages 1 and 2 deliberately OVER-PARAMETERISE and discard.** Stage 1
+  optimises all 12 parameters and the caller then resets euler and lattice to
+  the seed (`XFit[i+3] = Euler0[i]`, `XFit[i+6] = LatCin[i]`); stage 2
+  optimises 9 and keeps only the 3 euler. The discarded blocks act as nuisance
+  parameters absorbing misfit during the fit. This is NOT the same as freezing
+  them, and "position-only stage 1" — my first reading, from the function name
+  — is wrong.
+- **Every stage runs Nelder-Mead TWICE, warm-started**, `ftol_rel = xtol_rel =
+  1e-5`, and spots are re-mapped (`CalcAngleErrors`) plus optionally
+  re-assigned (`ReassignSpotsFromBins`) between stages.
+
+Bounds: position seed ± `Rsample`, clamped to |X|,|Y| ≤ `Rsample` and
+|Z| ≤ `Hbeam`/2 (stage 4 uses ± `Rsample`/2); euler ± `MargOme2` = 2°;
+lattice a·(1 ± `MargABC`/100), angles ± `MargABG`/100.
+
+Note python's 2-D `pixel` loss — disabled 2026-05-20 for omitting omega and
+letting orientation drift ~20° — is exactly the objective C uses for position.
+The loss is not unsound; using it while orientation is FREE is. C only ever
+applies it with orientation either fixed (stages 3, 4) or discarded
+afterwards (stage 1).
+
+### 7l. The PF refiner is a DIFFERENT algorithm — port spec for both
+
+`FitOrStrainsScanningOMP.c` (PF / scanning) is not the FF sequence with a
+tweak. Per voxel it runs only TWO stages:
+
+| stage | params | objective | bounds | initial simplex |
+|---|---|---|---|---|
+| 1 | euler (3) | **(Δη, Δω)** — `FitErrors3DOrient`, `sqrt(dη² + dω²)` | Euler0 ± `MargOme2` | 0.05° each |
+| 2 | lattice (6), pos+euler fixed | **2-D (Δy, Δz)** — `FitErrors12D` | ± `MargABC`/`MargABG` % | 0.001 Å (abc), 0.01° (angles) |
+
+**PF never refines position at all** — the voxel position is the scan-grid
+position. `obj_12D`, `obj_9D` and `obj_3D` exist in that file but are never
+called; only `obj_3DOrient` and `obj_6D` are. Matches the python config default
+`position_mode="fixed"`.
+
+**So the orientation objective differs between the two modes:** FF uses the
+g-vector internal angle (`FitErrorsOrientStrains`), PF uses (Δη, Δω)
+(`FitErrors3DOrient`). Any port must keep them distinct rather than unify them.
+
+**Initial simplex — the asymmetry that probably matters most.** PF sets
+`config.step_sizes` explicitly (`RunFit`, and `MIDAS_Math.c:28` forwards it to
+`nlopt_set_initial_step`). **The FF refiner never sets `step_sizes` at all** —
+`grep step_size FF_HEDM/src/*.c` hits only the PF file. So FF falls back to
+nlopt's default initial step, which for a bounded problem is derived from the
+BOUND RANGE. FF's position bounds are seed ± `Rsample` (1800 µm on
+shade_LSHR), so the position simplex starts spanning **hundreds of µm**.
+
+That is a coarse, quasi-global search, and it is the sharpest structural
+contrast with python's L-BFGS, which takes local gradient steps from the seed.
+It fits the established picture — both codes reach genuine stationary points
+(§7j) and C reaches a better one — and it is the most likely single reason.
+Untested as a cause; stated as the leading candidate, not a conclusion.
+
+**Common to both**: every stage runs Nelder-Mead **twice, warm-started**, with
+`ftol_rel = xtol_rel = 1e-5`.
+
+### 7m. The port target: `FitUnified.c`, and a validated NM
+
+`c_src/FitUnified.c` is the SHIPPED c-omp refiner and is already unified across
+FF and PF behind one `isFF` flag, so it — not c-orig — is what to port. Its
+recipe, per grain/voxel, every stage **two warm-started NM calls**,
+`ftol_rel = xtol_rel = 1e-5`:
+
+| stage | dim | objective | bounds | initial simplex |
+|---|---|---|---|---|
+| 1 orient | 3 | (Δη, Δω) | Euler0 ± MargOme2 | **0.05°** explicit |
+| 2 posIni *(FF only)* | 3 | 2-D (Δy, Δz) | center ± Rsample/2, clamped | **none → default from bounds** |
+| 3 strain | 6 | 2-D (Δy, Δz) | ±MargABC/ABG % | **0.001 Å / 0.01°** explicit |
+| 4 posSec *(FF only)* | 3 | 2-D (Δy, Δz) | as stage 2, `maxeval` 5000 | **none → default from bounds** |
+
+Re-match between stages (FF only). `obj_9D`/`obj_12D`/`obj_3D` are dead code.
+
+**The number that matters.** The position stages pass NO explicit step, so NLopt's
+default kicks in: `(ub-lb)·0.25`. With `Rsample` = 1800 µm the position bounds
+are center ± 900 µm, so the **initial position simplex is ~450 µm wide**. That
+is a coarse, quasi-global search over position — against L-BFGS taking local
+gradient steps from the seed. Orientation and strain, by contrast, get tight
+explicit simplices (0.05°, 0.001 Å). So C searches position globally and
+everything else locally, and python searches everything locally.
+
+**NM ported and validated bit-for-bit.**
+`midas_fit_grain/solvers/nlopt_nm.py` is a line-for-line port of
+`c_src/nelder_mead.c` (itself an exact reimplementation of NLopt `nldrmd.c`).
+Checked against a C driver built on the vendored source over 7 cases —
+sphere/rosen/beale unbounded, rosen bounded with default and explicit steps,
+rosen started ON a bound, and a wide FF-like position box:
+
+**every case returns a bit-identical `x` and the same return code**, including
+the bound-pinned case exiting FTOL at `x = (-2.2344970703125, 5)`. The `f`
+values differ only in the 14th digit, from numpy-vs-C summation inside the test
+function rather than the solver.
+
+The non-textbook behaviours all carried over: Richardson & Kuester pinning with
+the coincidence test that TERMINATES rather than sliding along a bound face,
+the default-initial-step heuristic, the initial-simplex out-of-bounds fallback
+with its 0.1 rule, centroid excluding the worst vertex, NLopt's `relstop` plus
+the L1 x-test, and returning the best point ever evaluated rather than a final
+vertex.
+
+### 7n. RESULT — the ported recipe reproduces the C refiner
+
+`~/Desktop/analysis/shade_LSHR/c_recipe.py`: FitUnified's four stages driven by
+the ported NM, per grain, on the shade_LSHR seeds. 200 grains, reference
+**c-omp**:
+
+| | median \|ΔPos\| vs c-omp | p95 |
+|---|---|---|
+| **ported C recipe** | **1.324 µm** | 6.21 |
+| shipped py-f64 (lbfgs/full3d/iterative) | 39.906 µm | 126.93 |
+| *c-orig vs c-omp, full set* | *2.81 µm* | *—* |
+
+**The port agrees with c-omp roughly twice as closely as c-orig does** — it is
+inside the envelope two accepted C implementations already span — and is
+**30× closer than the shipped python refiner**.
+
+That closes the investigation opened in §7b. The python position deficit was
+never precision, batching, spot selection, the objective definition, iteration
+budget or convergence.
+
+**And it was not the optimizer either — RETRACTING §7m's leading candidate.**
+I attributed the win to Nelder-Mead's coarse ~450 µm initial simplex on the
+position stages searching quasi-globally. Holding stages, objectives and bounds
+fixed and swapping ONLY the search, 100 grains vs c-omp:
+
+| `stage_solver` | median \|ΔPos\| | p95 |
+|---|---|---|
+| `nm` | 1.679 µm | 8.01 |
+| `lbfgs` | **1.553 µm** | 11.31 |
+
+L-BFGS — a purely local gradient method — reaches the same answer, so the
+solver is not the cause.
+
+**The third arm settles it: it is the OBJECTIVES, not the staging.** Same
+stages, same bounds, same re-matching, same solver — only the objective
+changes:
+
+| arm | median \|ΔPos\| | p95 |
+|---|---|---|
+| lbfgs + C objectives | **1.553 µm** | 11.31 |
+| lbfgs + `full3d` | **38.569 µm** | 114.51 |
+| nm + C objectives | 1.679 µm | 8.01 |
+| *shipped py-f64* | *~42 µm* | |
+
+The C's exact recipe under `full3d` still fails at 38.6 µm — indistinguishable
+from the shipped path. But the story did NOT end there, and §7o corrects it.
+
+
+Consequence: a **fully differentiable** path to the C's answer exists
+(`stage_solver="lbfgs"`), so this mode need not be a permanent exception to the
+differentiability rule.
+
+Concretely, the shipped python path differs from C in four ways at once, all
+now known to matter:
+1. **local gradient descent** instead of a coarse-simplex derivative-free search;
+2. **one objective for everything** (`full3d`, which carries Δω) instead of
+   (Δη, Δω) for orientation and 2-D (Δy, Δz) for position and strain;
+3. **no over-parameterise-and-discard / stage-specific bounds**;
+4. **one shared optimizer per block** rather than per grain — measured
+   irrelevant on its own (§7j), but it is what forced the batched design.
+
+**Still to do**: integrate as a first-class solver/mode in `midas_fit_grain`
+(the prototype calls `refine_block`'s pieces directly); validate the PF path
+(stages 1 and 3 only) against the c-omp PF refiner; and address speed — the
+prototype is per-grain and scalar, where the batched torch path was its main
+advantage.
+
+**Port implication.** The unit to port is not "an optimizer" but a *recipe*:
+per-grain Nelder-Mead, stage-specific parameter subsets, stage-specific
+objectives, over-parameterise-and-discard on FF stages 1-2, bound-derived
+coarse initial simplex on FF, explicit small simplex on PF, two warm-started
+calls per stage, re-match between stages. `midas_fit_grain` already has a
+`nelder_mead` solver and an `iterative` mode; what is missing is this
+structure.
+
+### 7e. The python refiner does not refine the LATTICE (2026-08-04)
+
+Found while chasing 7b, and **more consequential than the thing it was found
+chasing**: per-grain strain is the main scientific output of FF-HEDM, and the
+python path is not measuring it.
+
+Refined lattice on the real FCC-parent dataset, first 2000 seeds, 1441 refined by every code
+(`~/latspread.py`, `~/latdetail.py` on copland):
+
+| arm | median strain µε | robust sd µε | deviatoric sd(a−b) µε | robust sd(angles)° |
+|---|---|---|---|---|
+| c-orig | 194.1 | 651.2 | 771.6 | 0.0515 |
+| c-omp | 185.9 | 645.6 | 799.1 | 0.0442 |
+| py:iterative | 3.3 | 13.6 | 20.0 | 0.00001 |
+| py:all_at_once | 0.0 | 0.1 | 0.1 | 0.00000 |
+
+Sample rows make it plain — python emits `5.1645002 5.1644996 5.1645004,
+90.0000000 90.0000000 90.0000000` where C emits `5.1659358 5.1617696
+5.1710111, 89.9944850 89.8809261 90.0096256`.
+
+**Not a symmetry constraint.** a, b and c are all distinct in python's output
+too (1441/1441 grains), and the angles are free — they just never move. So
+this is not a cubic-lattice simplification; it is the lattice block failing to
+refine, the same family of defect as the fp32 frozen position (§3c) and the
+frozen position under `internal_angle`/`angular` (§7c).
+
+**Established against known truth, with a positive control.** In the bridge at
+1.6 px, truth deviatoric strain is 1222 µε median:
+
+| arm | recovered deviatoric µε | error vs truth µε |
+|---|---|---|
+| truth | 1222 | — |
+| c-orig | 1497.2 | 735.3 |
+| c-omp | 1568.4 | 779.1 |
+| py:iterative | 529.9 | 757.5 |
+| py:all_at_once | 16.4 | **1209.4** |
+
+Both C codes recover the strain, so the test works. `all_at_once` recovers
+1.3 % of it and its error equals the full truth magnitude — the output carries
+**zero information** about strain. `iterative` recovers 43 % — heavily shrunk,
+though its *error* (757 µε) is comparable to C's (735 µε), so it is
+under-refined rather than uninformative.
+
+**On real data both modes are effectively frozen**: py:iterative's deviatoric
+spread is 20 µε against C's 770 µε, i.e. 2.6 %, far worse than the 43 % it
+manages in simulation. Why simulation is kinder here is not established.
+
+**Which mode you get:** `FitAllAtOnce` defaults to 0 (`config.py:86`) →
+`mode="iterative"` (`config.py:225`), and the FCC parent's paramstest does not set it. So
+the default path is the *less* broken of the two — but on real data it is
+still returning ~3 % of the strain. **Treat every strain number from the python
+FF refiner as invalid until this is fixed.**
+
+**Mechanism, confirmed by intervention.** Per-block gradient norms at a
+realistic seed (150 µm, 0.1°) in the the real FCC-parent dataset geometry:
+
+```
+|g| position 2.98    |g| euler 8.51e5    |g| lattice 7.03e4
+pos_scale = max(euler, lattice)/pos = 2.85e5
+after rescale:  pos 8.51e5   euler 8.51e5   lattice 7.03e4   ->  12.1x down
+```
+
+`_equilibrated_pos_scale` lifts position to match the **largest** other block
+(`refine_block.py:299`), which by construction leaves the **smallest** block
+starved — here the lattice, by 12.1×. One shared L-BFGS step length then
+advances it ~12× less per step.
+
+**The package's synthetic fixture shows the OPPOSITE** — there |g| lattice is
+the largest block (1.7e6 vs euler 9.4e5), so the joint fit is well conditioned
+and no unit test can see this. Any regression test must use FF-scale geometry
+(Lsd ~1.7e6 µm), not the fixture.
+
+Rescaling the block confirms the causal link, and shows the cure trades:
+
+| `lattice_scale` | recovered strain µε (err) | position median µm @ 0.0 / 0.05 / 0.2 / 0.5 / 1.6 px |
+|---|---|---|
+| 1.0 (off) | 16.4 (1209.4) | 38.7 / 26.4 / 42.1 / 21.0 / 55.4 |
+| `"auto"` | **680.0 (664.6)** | 106.1 / 60.2 / 75.5 / 71.4 / **63.9** |
+
+Strain recovery goes 1.3 % → 56 % of truth, with an error (665 µε) that beats
+`iterative` (748) and nears c-orig (735) — so the under-refinement really is
+block conditioning. But position degrades at every noise level, badly at low
+noise. **Left default OFF** (`lattice_scale=1.0`, opt-in) because a single
+scalar gradient equalizer is the wrong cure: gradient norm is not curvature,
+and the lattice block is internally heterogeneous (Å alongside degrees), so no
+one factor can equilibrate both halves. A per-component scale, or
+reparameterizing to the dimensionless strain tensor, is the shape a real fix
+would have.
+
+`iterative` is **bit-identical** with the knob on or off — its lattice phase
+optimizes that block alone, and a converged single-block L-BFGS phase is
+scale-invariant in its answer. So this only ever touches the joint fit, and
+the default mode is untouched.
+
+**Still unexplained:** `iterative` recovers 43 % of truth strain in simulation
+but only 2.6 % on the real FCC-parent dataset (20 µε vs C's 770). Same mode, same code — so
+something about real spot lists suppresses it further. Not chased.
+
+**It does NOT explain the position deficit of §7b.** Pre-registered reading,
+fixed before looking: if python's per-grain position error rises with that
+grain's truth strain and C's does not, the frozen lattice is the mechanism.
+Spearman ρ over 200 simulated grains at 1.6 px: py:all_at_once **+0.069**,
+py:iterative **+0.057**, c-orig −0.017, c-omp −0.045. Low- vs high-strain
+tercile medians move 53.6 → 60.9 µm (python) against 71.0 → 62.6 µm (c-orig) —
+no meaningful trend either way. **Null.** A real defect, but not this
+mechanism. §7b stays open.
+
+### 7f. Grain-correlated azimuthal noise — the §7 pre-registered arm, NULL
+
+The pre-registration specified a grain-correlated systematic arm that had never
+been run. Implemented as a per-grain rotation of the whole spot pattern about
+the beam centre, drawn from N(0, σ_az) — which is the systematic actually
+measured (Au3: coherent azimuthal +139 µm over 2236 spots ≈ 0.05°; Ce dhcp
+0.026–0.040°) — on top of the 1.6 px white noise. Robust Z σ, µm:
+
+| σ_az ° | c-orig | c-omp | py all_at_once | py iterative |
+|---|---|---|---|---|
+| 0 | 33.21 | 33.26 | 47.95 | 26.48 |
+| 0.01 | 30.01 | 29.51 | 27.06 | 25.70 |
+| 0.03 | 31.32 | 30.84 | 33.12 | 25.67 |
+| 0.05 | 31.39 | 31.75 | 23.13 | 23.57 |
+
+**Nobody degrades.** Not "all four degrade together" — nothing degrades at all.
+
+The reason is clear in hindsight and worth recording so the arm is not re-run:
+**a rigid rotation of a grain's pattern about the beam is degenerate with a
+rotation of the grain**, so the fit absorbs it exactly into orientation and the
+residual vanishes. This arm tested a systematic the model is built to swallow.
+It also means the measured Au3 azimuthal systematic is *harmless* to grain
+position, which is worth knowing on its own.
+
+The version that could bite is a systematic **not** representable by position,
+orientation or lattice — e.g. the ring-to-ring *oscillating radial* residual
+seen in Ce dhcp (§7 intro), since a monotonic radial error is just hydrostatic
+strain but an oscillating one is not. Not yet run.
+
+### 7o. The deficit is MULTI-FACTORIAL — four attributions, all falsified
+
+Four single-cause claims were made and each was killed by its own control:
+the **solver** (lbfgs 1.553 vs nm 1.679 µm — no), the **staging** (C's staging
+under `full3d` = 38.569 µm — no), the **objective components** (shipped path
+with `phase_losses` = 38.434 vs 38.464 — no), and the **reduction over spots**
+(see below — partly).
+
+The reduction is **asymmetric**, and that asymmetry is the real finding:
+
+| direction | result |
+|---|---|
+| impose Σ(r²) on the working recipe | 5.375 → **38.434 µm** (reproduces the shipped number to 3 dp) |
+| remove Σ(r²) from the shipped path | 38.464 → **30.356 µm** (21 % only) |
+
+So **Σ(r²) is sufficient to destroy, and its removal is necessary but not
+sufficient.** That is why every earlier control returned null: while
+sum-of-squares is present it **masks everything else** — objective components,
+staging, `pos_scale` across a 285,000× range, batching, iteration budget — the
+answer is ~38 µm regardless.
+
+Mechanism: least squares weights a spot by its error **squared**, so a few
+badly-matched spots dominate and pin the grain in the wrong basin however well
+the rest is configured. The C accumulates **Σ‖rᵢ‖**, per-spot distances, which
+is robust to them.
+
+**Do not try to fix the shipped path with one change.** The configuration
+measured to work is the whole recipe: per-stage objectives + per-stage bounds +
+sum-of-norms + per-grain-independent optimisation.
+
+| best configurations | median \|ΔPos\| vs c-omp | s/grain |
+|---|---|---|
+| **LM-batched + IRLS, cuda/f64** | **1.528 µm** | **0.0373** |
+| c_recipe per-grain, lbfgs | 1.553 µm | 0.2869 |
+| c-orig (for scale) | 2.813 µm | 0.0360 |
+| c-omp | ref | 0.0162 |
+
+`config.reduction` (`"sumsq"` default / `"sumnorm"`) and `config.phase_losses`
+are now available on the shipped path for anyone wanting to explore further.
+
+### 7p. The python INDEXER reproduces the C exactly — and its dtype default (2026-08-04)
+
+2000 seeds, shade_LSHR layer 1, same inputs, CPU (so only dtype varies).
+Seeds solved: **1946 / 2000 in all three arms**, identical.
+
+| arm | vs C `IndexerOMP` | wall |
+|---|---|---|
+| **python fp64** | **0.0000 µm, 0.00000°** | 1274 s |
+| python fp32 | 0.0089 µm, 0.00003° | 1254 s |
+| C `IndexerOMP` | ref | **88 s** |
+
+`midas-index` at float64 is an **exact** reproduction of `IndexerOMP` on this
+data — not "close", zero to the printed precision in both position and
+symmetry-aware misorientation. Worth knowing: the indexing stage is not a
+source of any FF discrepancy.
+
+fp32 vs fp64 **directly** (1946 common seeds):
+
+| | median | p95 | max |
+|---|---|---|---|
+| \|ΔPos\| | 0.00894 µm | 0.0228 | **101.9** |
+| misorientation | 0.000028° | 0.000090 | **0.100** |
+
+plus **completeness differs on 6 seeds** (0.3 %). So fp32 is essentially exact
+for the typical seed with a small tail where a few land in a different
+solution. Nothing like the `lm_batched` case (229.96 µm MEDIAN) — and an
+earlier move to disable indexer fp32 by analogy with that result was correctly
+stopped by the user and reverted. The analogy had no force: `lm_batched`'s
+problem is its finite-difference Jacobian, and the indexer does not use one.
+
+**The defensible change is not a ban.** fp32 buys 1.6 % here, so the capability
+is nearly worthless and nearly harmless. What is worth fixing is that
+`midas_index/device.py` defaults dtype **by device** — float64 on cpu,
+**float32 on cuda/mps** — so the same input indexes in different arithmetic
+depending on which machine picks up the job, and on GPU you get the tail above
+without asking for it. Defaulting to float64 everywhere removes the surprise
+and leaves `--dtype float32` for anyone who wants it. NOT DONE — awaiting a
+decision.
+
+**Speed is the indexer's real gap: 14× slower than the C on CPU** (1274 s vs
+88 s). Larger than the refiner's remaining 4.8×, and on a full layer it
+dominates — the earlier all-python chain spent 2420 s in indexing on GPU
+against the C's 425 s. If python-stack throughput matters, this is where the
+work is.
