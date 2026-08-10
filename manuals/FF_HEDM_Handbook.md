@@ -228,11 +228,12 @@ imports is 0.7.0. A gate reading metadata alone fails that tree at step one, for
 that does not exist. The reverse is also possible on a stale wheel, which is why the check
 takes the **higher** of the two and reports any disagreement rather than silently picking.
 
-**Take the strictest floor, not the one in the orchestrator you happen to use.** They
-disagree: `midas_suite` floors `midas-nf-preprocess` at 0.6.0 while `midas_nf_pipeline`
-still floors it at 0.4.0 — and 0.4.0 reads `SumFrames` with the *opposite* unit convention
-(`NF_HEDM_Handbook.md` §8j). A per-package check against the weaker file certifies a
-mixed install.
+**Take the strictest floor, not the one in the orchestrator you happen to use.** The
+declarations have disagreed before and can again: `midas_suite` floored
+`midas-nf-preprocess` at 0.6.0 while `midas_nf_pipeline` still admitted 0.4.0 — which
+reads `SumFrames` with the *opposite* unit convention (`NF_HEDM_Handbook.md` §8j). That
+particular gap is closed, but a per-package check against whichever file happens to be
+weakest is how a mixed install gets certified, so scan them all.
 
 **Anything below a floor: stop.** These are not import errors. Each one produces a
 plausible result that is wrong:
@@ -243,17 +244,21 @@ plausible result that is wrong:
 | `midas-transforms` | `calc_radius` float atomics; same nondeterminism (Lab Notebook §2b) |
 | `midas-fit-grain` | the refiner returns its seed positions and reports success (Lab Notebook §3c); `c_recipe` refine mode absent |
 | `midas-process-grains` | `GrainRadius` ~5× low (Lab Notebook §3a); **and** `Completeness`/`MinNrSpots` parsed then discarded — a measured **23710 vs 6132** grains on the same refiner output, no error (`3d9bb427`) |
+| `midas-zipper` | `BgSubtract`, `BgNSectors` and `MinPeakSNR` dropped when the params are zipped — the peak search runs at the defaults with no error (`a440bef6`) |
 
-**Two couplings that packaging cannot express — check them by hand:**
+**The floors above are now all declared in the metadata**, so the gate catches them. That
+was not true when this document was written: `midas-zipper` was floored at 0.1.0 in both
+orchestrators even though `zip_convert` runs the zipper and `midas-peakfit` then reads the
+keys it wrote, and `midas_ff_pipeline` still admitted the pre-fix `fit-grain` and
+`process-grains`. Both are fixed (`midas-pipeline >= 0.8.2`, `midas-ff-pipeline >= 0.4.3`).
 
-1. **`midas-zipper >= 0.1.5`.** The dependency metadata floors it at 0.1.0 because peakfit
-   only needs the zipper in a dev extra. But 0.1.4's allow-lists do not carry
-   `BgSubtract`, `BgNSectors` or `MinPeakSNR` — the three keys §6c and §10 tell you to set.
-   A parameter file zipped by 0.1.4 **silently drops all three** and the peak search runs
-   with settings you did not ask for (`a440bef6`). No error.
-2. **`midas_ff_pipeline` still floors fit-grain at 0.6.0 and process-grains at 0.6.1** —
-   the pre-fix versions. It is deprecated (§7); use `midas-pipeline run --scan-mode ff`.
-   If you install the old orchestrator you get the buggy siblings with no warning.
+**Two things the gate still cannot see:**
+
+1. **An old zarr.** The floor governs what you *install*, not what is already on disk. A
+   `.MIDAS.zip` written earlier by a 0.1.4 zipper is missing those three keys permanently
+   — re-zip rather than reuse it, and check the zarr directly (§6c).
+2. **`midas_ff_pipeline` is deprecated** (§7). Its floors are correct now, but use
+   `midas-pipeline run --scan-mode ff`; the old orchestrator is removed in suite 1.0.
 
 **When this document and the tree disagree, the tree is right — and say so in your
 write-up.** If a number here cannot be reproduced against the code you are running, that
@@ -420,13 +425,14 @@ pip install "midas-pipeline>=0.8.0" \
             matplotlib scikit-image
 ```
 
-`midas-pipeline` pulls `midas-peakfit`, `midas-transforms`, `midas-index`,
-`midas-fit-grain>=0.7.0`, `midas-process-grains>=0.7.0`, `midas-hkls`, `midas-stress` and
-`midas-diffract` transitively. The three named explicitly are the ones its metadata does
-*not* guarantee at the version this runbook needs: `midas-calibrate-v2` for §5, and
-`midas-zipper >= 0.1.5` for the peak-search keys (§0). `scikit-image` is a hard
-requirement of the v2 auto-seeder (`midas_calibrate_v2/seed/auto_seed.py:523`);
-`matplotlib` is needed to produce the mandatory ring overlay (§5d).
+`midas-pipeline >= 0.8.2` pulls `midas-peakfit`, `midas-transforms`, `midas-index`,
+`midas-fit-grain>=0.7.0`, `midas-process-grains>=0.7.0`, `midas-zipper>=0.1.5`,
+`midas-hkls`, `midas-stress` and `midas-diffract` transitively — the zipper floor is
+declared as of 0.8.2, so the explicit pin above is belt-and-braces rather than required.
+`midas-calibrate-v2` is **not** pulled by the orchestrator and is needed for §5.
+`scikit-image` is a hard requirement of the v2 auto-seeder
+(`midas_calibrate_v2/seed/auto_seed.py:523`); `matplotlib` is needed to produce the
+mandatory ring overlay (§5d).
 
 **Then run two checks and read their output.** `pip install` exiting 0 tells you nothing.
 
@@ -913,7 +919,11 @@ MinPeakSNR 5          # 0 = off (default); (peak - cell_median) / cell_sigma
 > **`midas-zipper >= 0.1.5` or this key does nothing.** 0.1.4's allow-lists do not carry
 > `MinPeakSNR`, `BgSubtract` or `BgNSectors`, so a parameter file zipped by it drops all
 > three into the void — the peak search then runs at the defaults with no error and no log
-> line (`a440bef6`, §0). The keys are written as **datasets** under
+> line (`a440bef6`, §0). The floor is declared as of `midas-pipeline` 0.8.2, so a fresh
+> install is safe — but **an existing zarr written by an older zipper stays broken**, and
+> re-running with a newer zipper installed does not fix a zip that already exists (§7:
+> `zip_convert` is skipped when the zarr is present). The keys are written as **datasets**
+> under
 > `analysis/process/analysis_parameters` (`ff_zip.py:159-167`), so check the zarr itself
 > before trusting any threshold you set:
 >

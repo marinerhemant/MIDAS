@@ -4,7 +4,7 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "midas-ff-pipeline"
-version = "0.4.2"
+version = "0.4.3"
 description = "[DEPRECATED] End-to-end pure-Python FF-HEDM workflow orchestrator (1-N detectors). Use midas-pipeline run --scan-mode ff instead."
 readme = "README.md"
 license = "BSD-3-Clause"
@@ -32,7 +32,10 @@ dependencies = [
     "tifffile",
     "pandas>=1.5",
     # Sibling MIDAS packages.
-    "midas-zipper>=0.1.0",                # raw → .MIDAS.zip ingest (pip-portable)
+    # >=0.1.5: this package invokes the zipper, and 0.1.4 drops BgSubtract,
+    # BgNSectors and MinPeakSNR from the param file it writes -- the peak search
+    # then runs at the defaults with no error. Matches midas-pipeline.
+    "midas-zipper>=0.1.5",                # raw → .MIDAS.zip ingest (pip-portable)
     "midas-hkls>=0.2.0",
     "midas-peakfit>=0.4.6",
     "midas-transforms>=0.8.2",

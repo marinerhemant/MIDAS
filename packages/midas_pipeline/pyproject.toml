@@ -4,7 +4,7 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "midas-pipeline"
-version = "0.8.1"
+version = "0.8.2"
 description = "Unified MIDAS HEDM orchestrator. FF is the single-scan degeneracy of PF; one orchestrator, --scan-mode {ff,pf}."
 readme = "README.md"
 license = "BSD-3-Clause"
@@ -34,7 +34,14 @@ dependencies = [
     "pandas>=1.5",
     "fabio>=0.14",                        # CBF (Pilatus/Eiger) raw-frame reader
     # Sibling MIDAS packages (shared with midas-ff-pipeline).
-    "midas-zipper>=0.1.0",                # raw → .MIDAS.zip ingest (pip-portable)
+    # >=0.1.5: the zip_convert stage runs the zipper (python -m midas_zipper.ff_zip)
+    # and midas-peakfit then reads the keys it wrote. 0.1.4's allow-lists carry
+    # neither BgSubtract/BgNSectors nor MinPeakSNR, so a param file zipped by it
+    # loses all three and the peak search silently runs at the defaults. a440bef6
+    # judged the coupling workflow-level because peakfit needs the zipper only in
+    # its dev extra -- true for peakfit, not for this package, which invokes the
+    # zipper itself.
+    "midas-zipper>=0.1.5",                # raw → .MIDAS.zip ingest (pip-portable)
     # [cif] (gemmi) is a RUNTIME requirement, not just test-time: the
     # calc_radius_v stage calls midas_hkls.read_cif() to compute theoretical
     # per-ring intensities for the V-map. Without it a clean production
