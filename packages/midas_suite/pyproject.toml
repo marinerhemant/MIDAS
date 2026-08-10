@@ -4,7 +4,7 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "midas-suite"
-version = "0.7.2"
+version = "0.7.3"
 description = "Meta-package: installs the MIDAS Python pipeline (FF/NF/PF HEDM, calibration, peakfit, integration, transforms, ODF, stress)."
 readme = "README.md"
 license = { text = "BSD-3-Clause" }
@@ -43,16 +43,19 @@ dependencies = [
     "midas-transforms>=0.8.2",
     "midas-propagate>=0.1.1",      # uncertainty propagation; load-bearing for process-grains v0.4.x Stage 7 σ
     "midas-uq>=0.1.1",             # refiner-anchored bootstrap UQ (per-grain trust_score_anchored)
-    "midas-process-grains>=0.6.1", # >=0.6.1: GrainRadius read from the right SpotID space (was the sample-wide mean, 5.5x low)
-    "midas-fit-grain>=0.6.0",
+    "midas-process-grains>=0.7.0", # >=0.6.1 GrainRadius from the right SpotID space (5.5x low);
+                                   # >=0.7.0 reads Completeness as an alias for ConfidenceTol -- below it the
+                                   # grain-selection keys are parsed and DISCARDED (23710 vs 6132 grains)
+    "midas-fit-grain>=0.7.0",      # >=0.6.0 refiner returns its seed positions; >=0.7.0 adds c_recipe
     "midas-nf-preprocess>=0.6.0",
     "midas-nf-fitorientation>=0.8.0",
     "midas-zipper>=0.1.5",         # raw → .MIDAS.zip ingest (pip-portable, no C/source-tree dep)
     # parsl + pipeline orchestrators
     "midas-parsl-configs>=0.1.0",
-    "midas-ff-pipeline>=0.4.1",    # DEPRECATED → use midas-pipeline --scan-mode ff; removed in suite 1.0
-    "midas-nf-pipeline>=0.6.0",
-    "midas-pipeline>=0.7.0",       # >=0.7.0: FF refinement precision default (RefinementConfig.dtype) + unrefined-position guard
+    "midas-ff-pipeline>=0.4.3",    # DEPRECATED → use midas-pipeline --scan-mode ff; removed in suite 1.0
+    "midas-nf-pipeline>=0.6.1",
+    "midas-pipeline>=0.8.2",       # >=0.7.0 FF refinement precision default + unrefined-position guard;
+                                   # >=0.8.0 fit-grain/process-grains floors; >=0.8.2 the zipper floor
 ]
 
 [project.optional-dependencies]
@@ -68,8 +71,8 @@ ff = [
     # --scan-mode ff` -- the command the FF handbook tells users to run -- is
     # simply not installed, because midas-ff-pipeline does not depend on it.
     # >=0.8.0 carries the fit-grain/process-grains floors from 3d9bb427.
-    "midas-pipeline>=0.8.0",
-    "midas-ff-pipeline>=0.4.2",    # DEPRECATED → use midas-pipeline --scan-mode ff; removed in suite 1.0
+    "midas-pipeline>=0.8.2",
+    "midas-ff-pipeline>=0.4.3",    # DEPRECATED → use midas-pipeline --scan-mode ff; removed in suite 1.0
     "midas-calibrate>=0.2.7",          # >=0.2.7: paramstest parser strips ';' terminator
     "midas-integrate>=0.4.2",
     "midas-joint-ff-calibrate>=0.1.6", # grain-tx + full-joint refine (IUCrJ 2026)
