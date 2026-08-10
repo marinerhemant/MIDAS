@@ -4,7 +4,7 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "midas-suite"
-version = "0.7.1"
+version = "0.7.2"
 description = "Meta-package: installs the MIDAS Python pipeline (FF/NF/PF HEDM, calibration, peakfit, integration, transforms, ODF, stress)."
 readme = "README.md"
 license = { text = "BSD-3-Clause" }
@@ -64,7 +64,12 @@ dependencies = [
 ff = [
     "midas-stress>=0.8.1",
     "midas-params>=0.7.0",
-    "midas-ff-pipeline>=0.4.1",    # DEPRECATED → use midas-pipeline --scan-mode ff; removed in suite 1.0
+    # The supported FF orchestrator. Without it `midas-pipeline run
+    # --scan-mode ff` -- the command the FF handbook tells users to run -- is
+    # simply not installed, because midas-ff-pipeline does not depend on it.
+    # >=0.8.0 carries the fit-grain/process-grains floors from 3d9bb427.
+    "midas-pipeline>=0.8.0",
+    "midas-ff-pipeline>=0.4.2",    # DEPRECATED → use midas-pipeline --scan-mode ff; removed in suite 1.0
     "midas-calibrate>=0.2.7",          # >=0.2.7: paramstest parser strips ';' terminator
     "midas-integrate>=0.4.2",
     "midas-joint-ff-calibrate>=0.1.6", # grain-tx + full-joint refine (IUCrJ 2026)
@@ -72,7 +77,7 @@ ff = [
 nf = [
     "midas-stress>=0.8.1",
     "midas-params>=0.7.0",
-    "midas-nf-pipeline>=0.6.0",
+    "midas-nf-pipeline>=0.6.1",
 ]
 pf = [
     # Point-focus / scanning HEDM (pf-HEDM). midas-pipeline runs in

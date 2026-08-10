@@ -26,7 +26,7 @@ from __future__ import annotations
 
 import warnings as _warnings
 
-__version__ = "0.4.1"
+__version__ = "0.4.2"
 
 # Emit the deprecation notice once at import time. Use DeprecationWarning
 # (default-filtered by Python, but shown by pytest / explicit -W /

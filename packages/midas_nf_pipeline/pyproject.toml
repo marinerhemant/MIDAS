@@ -4,7 +4,7 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "midas-nf-pipeline"
-version = "0.6.0"
+version = "0.6.1"
 description = "Pure-Python NF-HEDM pipeline orchestrator (single + multi-resolution, multi-layer) — drop-in replacement for nf_MIDAS.py / nf_MIDAS_Multiple_Resolutions.py"
 readme = "README.md"
 license = "BSD-3-Clause"
@@ -32,13 +32,19 @@ dependencies = [
     # stages._build_hkls for structure-factor aware reflections.
     "midas-hkls>=0.6.0",
     "midas-stress>=0.6.0",
-    # >=0.4.0: torch NLM backend + matched-filter spot detection, and the
-    # beam_calib shadow-phase -> sample-position fix.
-    "midas-nf-preprocess>=0.4.0",
-    # >=0.6.0: the refine (not just the search) is structure-factor weighted.
-    # Below this, a weighted ConfidenceMetric writes UNWEIGHTED confidence to
-    # the .mic -- silently wrong numbers, not an error.
-    "midas-nf-fitorientation>=0.6.0",
+    # >=0.6.0: torch NLM backend + matched-filter spot detection, the
+    # beam_calib shadow-phase -> sample-position fix, AND SumFrames-is-internal
+    # (a7c50926). The last one is why these two floors move together: below
+    # them a resolve can mix a package that reads NrFilesPerDistance/OmegaStep
+    # as RAW with one that reads them as POST-SUM. That mismatch raises no
+    # error -- the reduction and the fit agree on a frame count derived from
+    # the same wrong key -- and every spot lands at the wrong omega.
+    # midas-suite has floored these since 9450901d; this list had not.
+    "midas-nf-preprocess>=0.6.0",
+    # >=0.8.0: as above, plus the refine (not just the search) is
+    # structure-factor weighted. Below 0.6.0 a weighted ConfidenceMetric writes
+    # UNWEIGHTED confidence to the .mic -- silently wrong numbers, not an error.
+    "midas-nf-fitorientation>=0.8.0",
 ]
 
 [project.optional-dependencies]

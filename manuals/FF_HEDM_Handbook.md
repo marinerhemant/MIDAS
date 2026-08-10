@@ -193,23 +193,39 @@ declares, so one stale dependency list cannot weaken the check:
 
 ```bash
 python - <<'PY'
-import importlib.metadata as m, re, pathlib
+import importlib, importlib.metadata as m, re, pathlib
 def vt(s): return tuple(int(x) for x in re.findall(r'\d+', s)[:3])
 floors = {}
 for p in pathlib.Path("packages").glob("*/pyproject.toml"):
     for pkg, need in re.findall(r'"(midas-[a-z0-9-]+)(?:\[[\w,]+\])?>=([0-9][0-9.]*)"',
                                 p.read_text()):
         if vt(need) > vt(floors.get(pkg, "0")): floors[pkg] = need
-bad = []
+bad, drift = [], []
 for pkg, need in sorted(floors.items()):
-    try: have = m.version(pkg)
+    try: meta = m.version(pkg)                       # what pip recorded
     except m.PackageNotFoundError: continue
-    if vt(have) < vt(need): bad.append(f"{pkg:26} have {have:8} need >={need}")
+    try: code = getattr(importlib.import_module(pkg.replace("-", "_")),
+                        "__version__", None)         # what actually imports
+    except Exception: code = None
+    eff = max([v for v in (meta, code) if v], key=vt)
+    if code and vt(code) != vt(meta):
+        drift.append(f"{pkg:26} dist-info {meta:8} code {code:8} <- editable, stale metadata")
+    if vt(eff) < vt(need): bad.append(f"{pkg:26} running {eff:8} need >={need}")
 print(f"scanned {len(floors)} floors across the tree")
+if drift:
+    print("\nMETADATA DRIFT (the code is what runs; `pip install -e` refreshes it):")
+    [print(" ", d) for d in drift]
 print("\n*** BELOW FLOOR ***" if bad else "\nall installed midas packages satisfy the tree")
 [print(" ", b) for b in bad]
 PY
 ```
+
+**Check the code, not just the metadata — an editable install lies about its version.**
+`pip install -e` records the version *at install time* and never updates it, so on a
+development checkout `importlib.metadata.version()` can report 0.6.0 while the code that
+imports is 0.7.0. A gate reading metadata alone fails that tree at step one, for a problem
+that does not exist. The reverse is also possible on a stale wheel, which is why the check
+takes the **higher** of the two and reports any disagreement rather than silently picking.
 
 **Take the strictest floor, not the one in the orchestrator you happen to use.** They
 disagree: `midas_suite` floors `midas-nf-preprocess` at 0.6.0 while `midas_nf_pipeline`

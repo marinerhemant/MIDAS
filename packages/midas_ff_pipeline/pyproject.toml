@@ -4,7 +4,7 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "midas-ff-pipeline"
-version = "0.4.1"
+version = "0.4.2"
 description = "[DEPRECATED] End-to-end pure-Python FF-HEDM workflow orchestrator (1-N detectors). Use midas-pipeline run --scan-mode ff instead."
 readme = "README.md"
 license = "BSD-3-Clause"
@@ -37,8 +37,13 @@ dependencies = [
     "midas-peakfit>=0.4.6",
     "midas-transforms>=0.8.2",
     "midas-index>=0.3.0",
-    "midas-fit-grain>=0.6.0",
-    "midas-process-grains>=0.6.1",
+    # Both floors are silent-wrong-answer gates, not import breaks. Below
+    # fit-grain 0.7.0 the refiner ships without the c_recipe mode; below
+    # process-grains 0.7.0 the grain-selection keys (Completeness, MinNrSpots)
+    # are parsed and discarded -- a measured 23710-vs-6132 grain discrepancy
+    # from the same refiner output. Matches midas-pipeline (3d9bb427).
+    "midas-fit-grain>=0.7.0",
+    "midas-process-grains>=0.7.0",
     "midas-diffract>=0.1.0",
     "midas-parsl-configs>=0.1.0",
 ]
