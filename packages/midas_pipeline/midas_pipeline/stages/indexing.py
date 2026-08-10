@@ -6,11 +6,34 @@ Two paths, one orchestrator:
   on the per-voxel grid from ``positions.csv``. Writes the consolidated
   ``Output/IndexBest_all.bin`` consumed by ``find_grains`` and refinement.
 - **FF mode** (``scan_mode='ff'``): shells out to ``python -m midas_index``
-  with the standard FF arguments (matches ``midas-ff-pipeline.stages.index``
-  byte-for-byte). Produces ``Output/IndexBest.bin`` + ``IndexBestFull.bin``.
+  (or the bundled ``midas_indexer`` for ``--indexer-backend c-omp``) with the
+  standard FF arguments.
 
 Both modes ultimately invoke the same ``midas-index`` kernels — that is
 the single-source contract.
+
+Seed-file formats, FF mode — there are TWO, and this stage must read both:
+
+===============================  ==========================================
+writer                           files
+===============================  ==========================================
+classical C ``IndexerOMP``       ``IndexBest.bin`` + ``IndexBestFull.bin``
+``midas_index`` (python)         ``IndexBest_all.bin`` + ``IndexKey_all.bin``
+``midas_indexer`` (c-omp)          + ``IndexBest_IDs_all.bin``
+                                   + ``IndexBest_weights_all.bin``
+===============================  ==========================================
+
+Measured on the datasetA Ni layer: ``py_run`` (python backend, FF) wrote only
+the consolidated family, ``c_run`` (classical ``IndexerOMP``) only the legacy
+pair. **The consolidated family is the current FF contract for both modern
+backends**; the legacy pair now comes only from the classical binary. This
+docstring used to claim FF "Produces Output/IndexBest.bin + IndexBestFull.bin",
+which sent a bug report (issues/68) chasing a non-existent branch bug in
+``IndexerUnified.c`` — the writer was right, the reader and the docs were wrong.
+
+Both consumers already handle both: ``midas_fit_grain.driver`` adapts the
+consolidated family to the legacy seed shapes, and ``FitUnified.c`` probes
+``IndexBest_all.bin`` before falling back to the legacy pair.
 """
 
 from __future__ import annotations
@@ -196,15 +219,25 @@ def _run_ff(ctx: StageContext) -> StageResult:
     index_best = out_dir / "IndexBest.bin"
     if not index_best.exists():
         index_best = layer_dir / "IndexBest.bin"
-    index_best_full = index_best.with_name("IndexBestFull.bin")
 
     n_indexed, counted_from = _count_indexed_seeds(out_dir, index_best)
     if counted_from is None:
-        LOG.warning(
-            "indexing(FF): produced NO recognisable seed file in %s — expected "
-            "either IndexBest.bin (legacy/python backend) or IndexBest_all.bin "
-            "(c-omp backend). Downstream stages will find no seeds.", out_dir)
-    elif n_indexed == 0:
+        # The indexer exited 0 and wrote nothing we recognise. That is a broken
+        # contract, not a scientific result, and it must stop the run here:
+        # letting it through means refinement writes an empty OrientPosFit.bin
+        # and process-grains dies on `cannot mmap an empty file` two stages
+        # later, in a package with no visibility of the real fault
+        # (github.com/marinerhemant/MIDAS issues/68).
+        #
+        # Deliberately distinct from "the file exists and says zero", below,
+        # which IS a legitimate if disappointing outcome and only warns.
+        raise RuntimeError(
+            f"indexing(FF): the indexer exited 0 but produced no recognisable "
+            f"seed file in {out_dir}. Expected IndexBest.bin (legacy "
+            f"IndexerOMP) or IndexBest_all.bin (python and c-omp backends). "
+            f"Nothing downstream can run; see the indexing log in {log_dir}."
+        )
+    if n_indexed == 0:
         LOG.warning(
             "indexing(FF): 0 / %d seeds indexed, read from %s. Nothing "
             "downstream can succeed; check the indexing log in %s.",
@@ -212,16 +245,47 @@ def _run_ff(ctx: StageContext) -> StageResult:
     else:
         LOG.info("indexing(FF): %d / %d seeds with non-zero data (from %s)",
                  n_indexed, n_seeds, counted_from.name)
+
+    # Report the seed files that ACTUALLY exist. FF used to hardcode the legacy
+    # pair into both the result fields and `outputs`, so a python- or c-omp-
+    # backed run advertised `index_best_bin=<...>/IndexBest.bin` for a file that
+    # was never written, left `index_best_all_bin` empty for the file that was,
+    # and listed two non-existent paths as its outputs. Anything consuming the
+    # manifest — provenance, resume, a downstream stage resolving its input —
+    # was reading fiction (github.com/marinerhemant/MIDAS issues/68).
+    consolidated = counted_from.name == "IndexBest_all.bin"
+    if consolidated:
+        index_best_bin = ""
+        index_best_all_bin = str(counted_from)
+        # the c-omp / python FF family; only the first two are always present
+        family = [counted_from,
+                  counted_from.with_name("IndexKey_all.bin"),
+                  counted_from.with_name("IndexBest_IDs_all.bin"),
+                  counted_from.with_name("IndexBest_weights_all.bin")]
+        outputs = {str(p): "" for p in family if p.exists()}
+    else:
+        index_best_bin = str(counted_from)
+        index_best_all_bin = ""
+        family = [counted_from, counted_from.with_name("IndexBestFull.bin")]
+        outputs = {str(p): "" for p in family if p.exists()}
+
     return IndexResult(
         stage_name="indexing",
         started_at=started, finished_at=finished, duration_s=finished - started,
-        index_best_bin=str(index_best),
-        index_best_all_bin="",
+        index_best_bin=index_best_bin,
+        index_best_all_bin=index_best_all_bin,
+        # IndexResult declares these as fields and FF only ever wrote them into
+        # `metrics`, so `result.n_seeds_indexed` read 0 on every FF run no
+        # matter what the indexer did — the same "advertised value is fiction"
+        # defect as the paths above.
+        n_seeds_attempted=int(n_seeds),
+        n_seeds_indexed=int(n_indexed),
         n_voxels_indexed=0,
-        outputs={str(index_best): "", str(index_best_full): ""},
+        outputs=outputs,
         metrics={"scan_mode": "ff",
                  "n_seeds_attempted": n_seeds,
-                 "n_seeds_indexed": n_indexed},
+                 "n_seeds_indexed": n_indexed,
+                 "seed_format": "consolidated" if consolidated else "legacy"},
     )
 
 

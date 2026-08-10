@@ -51,6 +51,23 @@ def _ff_ctx(tmp_path: Path, *, has_files: bool, n_seeds: int = 3,
                         log_dir=log_dir)
 
 
+def _write_stub_seeds(layer_dir: Path, n_seeds: int = 5) -> None:
+    """Give the mocked indexer an output file, as a real one would.
+
+    These tests assert on the COMMAND LINE, so they never cared what the
+    subprocess wrote. The stage now raises when the indexer exits 0 having
+    produced no recognisable seed file at all (issues/68 -- that silence used
+    to surface as `cannot mmap an empty file` two stages later), so the mock
+    has to model a successful indexer rather than a broken one.
+    """
+    import numpy as np
+    out = layer_dir / "Output"
+    out.mkdir(parents=True, exist_ok=True)
+    rec = np.zeros((n_seeds, 15), dtype=np.float64)
+    rec[:, 14] = 10.0                      # n_observed > 0 == "indexed"
+    rec.tofile(out / "IndexBest.bin")
+
+
 def test_indexing_ff_skips_when_artifacts_missing(tmp_path: Path):
     """No paramstest/SpotsToIndex → soft skip (smoke / partial-run path)."""
     result = indexing.run(_ff_ctx(tmp_path, has_files=False))
@@ -66,6 +83,7 @@ def test_indexing_ff_invokes_midas_index_subprocess(
     def fake_run(cmd, **kwargs):
         seen["cmd"] = cmd
         seen["cwd"] = kwargs.get("cwd")
+        _write_stub_seeds(Path(kwargs.get("cwd")))
         return SimpleNamespace(returncode=0)
 
     monkeypatch.setattr("subprocess.run", fake_run)
@@ -96,6 +114,14 @@ def test_indexing_ff_comp_invokes_c_binary(
     monkeypatch.setattr("midas_index.backend_c.available", lambda: True)
     monkeypatch.setattr("midas_index.backend_c.binary_path", lambda: fake_bin)
     monkeypatch.setattr("subprocess.run", fake_run)
+    _orig = fake_run
+
+    def fake_run_writing(cmd, **kwargs):
+        out = _orig(cmd, **kwargs)
+        _write_stub_seeds(Path(kwargs.get("cwd")))
+        return out
+
+    monkeypatch.setattr("subprocess.run", fake_run_writing)
 
     ctx = _ff_ctx(tmp_path, has_files=True, n_seeds=5, indexer_backend="c-omp")
     indexing.run(ctx)
@@ -161,3 +187,84 @@ def test_refinement_ff_swaps_pixel_to_angular_for_multidet(
     # pixel → angular swap
     loss_idx = seen["cmd"].index("--loss")
     assert seen["cmd"][loss_idx + 1] == "angular"
+
+
+# ---------------------------------------------------------------------------
+# FF + consolidated seeds — github.com/marinerhemant/MIDAS issues/68
+# ---------------------------------------------------------------------------
+
+def _write_consolidated_seeds(layer_dir: Path, n_vox: int = 5,
+                              n_solved: int = 4) -> None:
+    """What BOTH modern indexer backends actually write in FF mode."""
+    import struct
+    import numpy as np
+    out = layer_dir / "Output"
+    out.mkdir(parents=True, exist_ok=True)
+    recs = np.zeros((n_vox, 16), dtype=np.float64)
+    recs[:, 14] = 100.0                                   # n_expected
+    recs[:n_solved, 15] = 60.0                            # n_observed
+    with (out / "IndexBest_all.bin").open("wb") as f:
+        f.write(struct.pack("<i", n_vox))
+        f.write(np.ones(n_vox, dtype=np.int32).tobytes())
+        f.write(np.arange(n_vox, dtype=np.int64).tobytes())
+        f.write(recs.tobytes())
+    for name in ("IndexKey_all.bin", "IndexBest_IDs_all.bin",
+                 "IndexBest_weights_all.bin"):
+        (out / name).write_bytes(b"\x00" * 8)
+
+
+def test_ff_comp_reports_the_consolidated_seed_file(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch,
+):
+    """The FF stage must advertise the seed file it actually has.
+
+    It used to hardcode the legacy pair: `index_best_bin` named an
+    IndexBest.bin that was never written, `index_best_all_bin` was empty for
+    the file that was, and `outputs` listed two non-existent paths. Anything
+    reading the manifest got fiction (issues/68).
+    """
+    def fake_run(cmd, **kwargs):
+        _write_consolidated_seeds(Path(kwargs.get("cwd")))
+        return SimpleNamespace(returncode=0)
+
+    fake_bin = tmp_path / "midas_indexer"
+    monkeypatch.setattr("midas_index.backend_c.available", lambda: True)
+    monkeypatch.setattr("midas_index.backend_c.binary_path", lambda: fake_bin)
+    monkeypatch.setattr("subprocess.run", fake_run)
+
+    ctx = _ff_ctx(tmp_path, has_files=True, n_seeds=5, indexer_backend="c-omp")
+    res = indexing.run(ctx)
+
+    assert res.n_seeds_indexed == 4, "the consolidated family must be counted"
+    assert res.index_best_all_bin.endswith("IndexBest_all.bin")
+    assert res.index_best_bin == "", "there is no legacy file to point at"
+    assert res.metrics["seed_format"] == "consolidated"
+    for p in res.outputs:
+        assert Path(p).exists(), f"advertised a file that does not exist: {p}"
+
+
+def test_ff_legacy_backend_still_reports_the_legacy_pair(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch,
+):
+    def fake_run(cmd, **kwargs):
+        _write_stub_seeds(Path(kwargs.get("cwd")))
+        return SimpleNamespace(returncode=0)
+
+    monkeypatch.setattr("subprocess.run", fake_run)
+    res = indexing.run(_ff_ctx(tmp_path, has_files=True, n_seeds=5))
+
+    assert res.index_best_bin.endswith("IndexBest.bin")
+    assert res.index_best_all_bin == ""
+    assert res.metrics["seed_format"] == "legacy"
+    for p in res.outputs:
+        assert Path(p).exists()
+
+
+def test_ff_raises_when_the_indexer_writes_nothing(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch,
+):
+    """Exit 0 with no seed file is a broken contract, not a zero-seed result."""
+    monkeypatch.setattr("subprocess.run",
+                        lambda cmd, **kw: SimpleNamespace(returncode=0))
+    with pytest.raises(RuntimeError, match="no recognisable seed file"):
+        indexing.run(_ff_ctx(tmp_path, has_files=True, n_seeds=5))

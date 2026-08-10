@@ -36,6 +36,19 @@ def run(ctx: StageContext) -> StageResult:
         LOG.info("process_grains(FF): missing paramstest or OrientPosFit.bin "
                  "→ skip.")
         return stub_run("process_grains", ctx)
+    # Existence is not enough: a refiner that ran but refined nothing leaves a
+    # 0-byte OrientPosFit.bin, which passes .exists() and then reaches
+    # `np.memmap(p, ...)` in midas_process_grains.io.binary, raising
+    # "ValueError: cannot mmap an empty file" from a package that has no idea
+    # the real fault was upstream in indexing or refinement
+    # (github.com/marinerhemant/MIDAS issues/68).
+    if opf.stat().st_size == 0:
+        LOG.warning(
+            "process_grains(FF): %s is empty (0 bytes) — refinement produced "
+            "no grains, so there is nothing to consolidate. Skipping rather "
+            "than failing on an empty mmap; the fault is upstream, check the "
+            "indexing and refinement logs in %s.", opf, ctx.log_dir)
+        return stub_run("process_grains", ctx)
 
     # Keyed on the refiner as well as the indexer: when the c-omp refiner runs
     # it is handed the comp paramstest and writes OrientPosFit.bin into

@@ -62,12 +62,16 @@ def _surface_unrefined_positions(log_dir: Path) -> None:
 def _expose_legacy_seeds_for_c_refiner(layer_dir: Path) -> None:
     """Make python-indexer seeds visible where the C refiner looks for them.
 
-    FitUnified.c probes ``Output/IndexBest_all.bin`` (the c-omp indexer's
-    consolidated family) and otherwise falls back to the legacy pair at
-    ``<OutputFolder>/IndexBest.bin`` + ``IndexBestFull.bin``. The python
-    indexer writes that pair bare in *layer_dir*, while the comp paramstest
-    points OutputFolder at ``<layer_dir>/Output`` — so without this the C
-    refiner finds neither seed source and refines nothing.
+    FitUnified.c probes ``Output/IndexBest_all.bin`` (the consolidated family
+    that BOTH modern indexer backends write) and otherwise falls back to the
+    legacy pair at ``<OutputFolder>/IndexBest.bin`` + ``IndexBestFull.bin``.
+
+    This is a no-op for the modern backends, which write the consolidated
+    family into ``Output/`` where the C refiner already looks. It exists for
+    the legacy pair — from the classical ``IndexerOMP``, or a run seeded from
+    one — which lands bare in *layer_dir* while the comp paramstest points
+    OutputFolder at ``<layer_dir>/Output``; without this the C refiner would
+    find neither seed source and refine nothing.
 
     Symlinked, not copied: IndexBestFull.bin is ~1.8 GB per layer.
     """
@@ -199,6 +203,19 @@ def _run_ff(ctx: StageContext) -> StageResult:
     n_grains_refined = 0
     if orient_pos_fit.exists():
         n_grains_refined = orient_pos_fit.stat().st_size // 8
+    # A refiner that exits 0 having written nothing is a failure, and it used to
+    # be a silent one: process-grains then died two stages later on
+    # `np.memmap` of an empty file, with a traceback pointing at
+    # midas_process_grains/io/binary.py and no hint the real problem was here
+    # (github.com/marinerhemant/MIDAS issues/68).
+    if n_grains_refined == 0:
+        LOG.warning(
+            "refinement(FF): %s is %s — the %s refiner exited 0 but refined "
+            "NOTHING. Nothing downstream can succeed; check %s and confirm the "
+            "indexing stage produced seeds.",
+            orient_pos_fit,
+            "absent" if not orient_pos_fit.exists() else "empty (0 bytes)",
+            ctx.config.refine_backend, log_dir)
     return RefineResult(
         stage_name="refinement",
         started_at=started, finished_at=finished, duration_s=finished - started,

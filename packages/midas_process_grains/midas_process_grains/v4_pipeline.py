@@ -1045,11 +1045,24 @@ def run_v4_pipeline(
         v_sample_um3=v_sample_for_check,
     )
     if vol_check.v_sample_um3:
+        # fraction_in_box is None when no sample extents were supplied, i.e.
+        # "not computed". `or 0` rendered that as "in_box = 0.0%", which reads
+        # as "not one grain lies inside the sample" -- alarming and false.
+        # GrainsV4.meta.json recorded it correctly as null the whole time.
+        in_box = ("n/a (no sample extents)" if vol_check.fraction_in_box is None
+                  else f"{100*vol_check.fraction_in_box:.1f}%")
+        # packing is INVARIANT to the user's Vsample: the radius correction is
+        # (V_user/V_legacy)^(1/3), so Σ V_grain scales linearly with V_user and
+        # the ratio cancels. Verified on the datasetA Ni layer -- 473.329% at
+        # both Vsample 1.44e6 and 4.053e7. What it measures is that Σ(4/3)πR³
+        # exceeds the Vgauge the radii were calibrated against: 172% for C
+        # ProcessGrains and c_parity, 213% spot_aware, 473% here. Do not read
+        # it as a physical packing fraction.
         log(f"[v4] Stage 9 (volume consistency): "
             f"Σ V_grain = {vol_check.sum_v_grain_um3:.3e} µm³  "
             f"V_sample = {vol_check.v_sample_um3:.3e} µm³  "
             f"packing = {100*vol_check.packing_fraction:.3f}%  "
-            f"in_box = {100*(vol_check.fraction_in_box or 0):.1f}%")
+            f"in_box = {in_box}")
     else:
         log(f"[v4] Stage 9 (volume consistency): "
             f"Σ V_grain = {vol_check.sum_v_grain_um3:.3e} µm³  "
