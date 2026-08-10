@@ -177,7 +177,7 @@ your own run, and they are the ones a context-free session skips:
 | `midas-process-grains` < 0.7.0 | `Completeness` / `MinNrSpots` are parsed and **discarded** — measured **23710 grains vs 6132** from the same refiner output, no error. Reads as "the peak search is finding noise" | §0, §8b |
 | params zipped by `midas-zipper` < 0.1.5 | `BgSubtract`, `BgNSectors` and `MinPeakSNR` are **silently dropped** from the zarr — the peak search runs with settings you did not set | §0, §6c |
 | `midas-fit-grain` checked against 0.5.7 and no further | labels are correct, positions are still the **unrefined indexer seeds** (0.6.0) and `c_recipe` is missing (0.7.0) | §0, §8a |
-| version floors read from this document instead of from the tree | three floors rose for silent-wrong-answer reasons in the six days after this file was written | §0 |
+| version floors read from this document instead of from the tree | **eight** declarations rose for silent-wrong-answer reasons in the nine days after this file was written, across five packages | §0 |
 
 ---
 
@@ -185,8 +185,9 @@ your own run, and they are the ones a context-free session skips:
 
 **Do not trust the version numbers in this document. Trust the tree.** Every quantitative
 claim here was measured against one state of the code; the packages move faster than the
-prose. Between 2026-08-01 and 2026-08-07 alone, three floors in this pipeline rose for
-*silent-wrong-answer* reasons, and this handbook carried the old ones.
+prose. Between 2026-08-01 and 2026-08-09 alone, **eight** declarations across five
+packages rose for *silent-wrong-answer* reasons — and at each point this handbook
+carried the old ones.
 
 **The authoritative floors are the `pyproject.toml` files themselves**, not this table.
 Run this from the repo root; it takes the **strictest** floor any package in the tree
@@ -273,7 +274,7 @@ Each row produces an input the next one needs. Two of them cannot be checked aft
 
 | # | Step | Where | Why it is here and not later |
 |---|---|---|---|
-| 0 | **Verify the install.** | §0 | Three floors certify silently-wrong versions. Free, and it invalidates everything downstream if skipped. |
+| 0 | **Verify the install.** | §0 | Several floors exist only to keep out silently-wrong versions. Free, and it invalidates everything downstream if skipped. |
 | 1 | **Survey the folder** → write `SURVEY.md`. | §0b | Nothing else can start until you know which file is the sweep, which the dark, which the calibrant. |
 | 2 | **ω sign** from par field 9. | §2 | **Not detectable afterwards.** A sign error mirrors the microstructure with completeness unchanged. |
 | 3 | **Scan definition + dark pairing + `SkipFrame`.** | §3 | `SkipFrame` shifts every ω by one step if wrong — also invisible in the grain list. |
@@ -419,17 +420,17 @@ at once, both silent:
 Install the orchestrator this runbook actually uses, which carries the correct floors:
 
 ```bash
-pip install "midas-pipeline>=0.8.0" \
+pip install "midas-pipeline>=0.8.2" \
             "midas-calibrate-v2>=0.5.3" \
-            "midas-zipper>=0.1.5" \
             matplotlib scikit-image
 ```
 
 `midas-pipeline >= 0.8.2` pulls `midas-peakfit`, `midas-transforms`, `midas-index`,
 `midas-fit-grain>=0.7.0`, `midas-process-grains>=0.7.0`, `midas-zipper>=0.1.5`,
-`midas-hkls`, `midas-stress` and `midas-diffract` transitively — the zipper floor is
-declared as of 0.8.2, so the explicit pin above is belt-and-braces rather than required.
-`midas-calibrate-v2` is **not** pulled by the orchestrator and is needed for §5.
+`midas-hkls`, `midas-stress` and `midas-diffract` transitively. **0.8.2 is the floor that
+matters** — it is the first version declaring the zipper floor, without which the peak
+search silently runs at the defaults (§0). `midas-calibrate-v2` is **not** pulled by the
+orchestrator and is needed for §5.
 `scikit-image` is a hard requirement of the v2 auto-seeder
 (`midas_calibrate_v2/seed/auto_seed.py:523`); `matplotlib` is needed to produce the
 mandatory ring overlay (§5d).

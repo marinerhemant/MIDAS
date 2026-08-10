@@ -328,12 +328,14 @@ imports is 0.6.0. A gate reading metadata alone fails that tree at step one, for
 that does not exist. The reverse is also possible on a stale wheel, which is why the check
 takes the **higher** of the two and reports any disagreement rather than silently picking.
 
-**Strictest, not nearest.** The two lists disagree: `midas_suite` floors
-`midas-nf-preprocess` at **0.6.0** and `midas-nf-fitorientation` at **0.8.0**, while
-`midas_nf_pipeline` still floors them at **0.4.0** and **0.6.0** — the versions *before*
-the `SumFrames` change. `9450901d`'s own message says a floor left behind "would let a
-resolve mix a package that reads the keys as raw with one that reads them as post-sum";
-`midas_nf_pipeline`'s list still permits exactly that.
+**Strictest, not nearest.** The declarations have disagreed before. `midas_suite` floored
+`midas-nf-preprocess` at 0.6.0 and `midas-nf-fitorientation` at 0.8.0 while
+`midas_nf_pipeline` still admitted 0.4.0 and 0.6.0 — the versions *before* the `SumFrames`
+change. `9450901d`'s own message warns that a floor left behind "would let a resolve mix a
+package that reads the keys as raw with one that reads them as post-sum", and its own
+dependency list permitted exactly that until `midas-nf-pipeline` 0.6.1. Closed now — but
+the failure mode is a per-package check against whichever list happens to be weakest, so
+scan them all rather than trusting the one nearest to hand.
 
 **This matters more here than the version strings suggest.** In the six days after this
 document was written, `SumFrames` **inverted** its unit convention (§8j) and a new
@@ -352,20 +354,18 @@ log, or SIGHUP kills them.
 ### 1b. On your own machine or cluster
 
 ```bash
-pip install "midas-nf-pipeline>=0.6.0" "midas-nf-preprocess>=0.6.0" \
-            "midas-nf-fitorientation>=0.8.0" "midas-hkls>=0.6.0" \
-            matplotlib
+pip install "midas-nf-pipeline>=0.6.1" "midas-hkls>=0.6.0" matplotlib
 ```
 
-**Pin `midas-nf-preprocess >= 0.6.0` and `midas-nf-fitorientation >= 0.8.0` explicitly.**
-`midas-nf-pipeline`'s own metadata floors them at 0.4.0 and 0.6.0 — *below* the
-`SumFrames` change (§8j) — so a plain `pip install midas-nf-pipeline` can resolve a mix
-where one package reads `NrFilesPerDistance`/`OmegaStep` as raw and another as post-sum.
-`midas-suite[nf]` floors `midas-nf-pipeline>=0.6.0` but does not constrain the siblings
-either. This is exactly the resolve `9450901d` was written to prevent; the constraint just
-is not in that package's list yet.
+`midas-nf-pipeline >= 0.6.1` pulls `midas-nf-preprocess>=0.6.0` and
+`midas-nf-fitorientation>=0.8.0` transitively, which is what keeps `SumFrames` consistent
+(§8j). **Below 0.6.1 you must pin those two by hand:** 0.6.0's metadata floored them at
+0.4.0 and 0.6.0, so a plain `pip install midas-nf-pipeline` could resolve a mix where one
+package reads `NrFilesPerDistance`/`OmegaStep` as raw and another as post-sum — the resolve
+`9450901d` was written to prevent, which its own dependency list did not yet enforce.
 
-Then **run the floor gate above** and read its output.
+Then **run the floor gate above** and read its output. It is the check that catches this;
+do not infer a good install from `pip install` exiting 0.
 
 **Seed cache.** The orchestrator re-derives the cache path from the *install* directory
 (`from_cache.py:106`), which in a conda env resolves to a `NF_HEDM/seedOrientations` that
