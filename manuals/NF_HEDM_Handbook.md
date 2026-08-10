@@ -29,7 +29,11 @@ attractive ideas were **retracted** — read its §5 before re-opening any quest
 you should type.
 
 Citations are `path:line` relative to `$MIDAS = /Users/hsharma/opt/MIDAS`. Read them with
-absolute paths (`/Users/hsharma/opt/MIDAS/<path>`). Every non-obvious claim carries one.
+absolute paths (`/Users/hsharma/opt/MIDAS/<path>`). Every non-obvious claim carries one,
+and `utils/doc_citation_check.py` (wired into the pre-commit hook) fails the commit when a
+cited file, line or symbol no longer exists — so a citation here points at real code.
+**It cannot check the claim, only the pointer:** the line is right, the sentence about it
+may still have gone stale.
 Claims that are convention, or that could not be verified, are flagged inline and listed
 again in §11. **Do not promote a §11 item to a fact.**
 
@@ -1820,7 +1824,7 @@ the paramfile → `Mic2GrainsList` on the previous `.mic` → seeded pass → **
 filter** (voxels with `Confidence < MinConfidence` collected, `grid.txt` *overwritten*
 with only those lines, `workflows.py:437-470`; short-circuits if none) → unseeded pass on
 just those voxels from `SeedOrientationsAll` → binary merge by `pwrite` overlay at
-full-grid offsets, then `ParseMic` (`workflows.py:164-219`). `doImageProcessing` is forced
+full-grid offsets, then `ParseMic` (`workflows.py:600-660`). `doImageProcessing` is forced
 to 0 from loop 1 on (`workflows.py:371`).
 
 Stage labels, in resume order (`workflows.py:54-68`): `loop_0_initial`, then
@@ -1829,7 +1833,7 @@ Stage labels, in resume order (`workflows.py:54-68`): `loop_0_initial`, then
 ### 8d. Where files land
 
 Everything is **flat** in `OutputDirectory` (fallback `DataDirectory`, then cwd —
-`workflows.py:239-244`); the driver `chdir`s into it (`workflows.py:308`).
+`workflows.py:239-244`); the driver `chdir`s into it (`workflows.py:44-52`).
 
 | File | Written by | Contents |
 |---|---|---|
@@ -1854,7 +1858,7 @@ friends (`workflows.py:81-97`), `<MicFileBinary>.seeded_backup`, `.unseeded_back
 ### 8e. Multi-phase samples — reduce ONCE, fit once per phase
 
 **The NF path fits one phase per run.** `NumPhases` and `PhaseNr` are forwarded
-only to `parse_mic` (`stages.py:359-360`); `diffr-spots` and `fit-orientation`
+only to `parse_mic` (`stages.py:618-626`); `diffr-spots` and `fit-orientation`
 each read a single `LatticeParameter`/`SpaceGroup`. A two-phase sample therefore
 needs two paramfiles and two runs.
 
@@ -2206,7 +2210,7 @@ the *meanings* come from the writer's `MicRecord` (`fitorientation/output.py:37-
 | 3 | `X` | voxel centre, sample frame | µm |
 | 4 | `Y` | voxel centre, sample frame | µm |
 | 5 | `TriEdgeSize` | voxel triangle size | µm |
-| 6 | `UpDown` | `+1` if grid col0 ≤ col1 else `-1` (`fitorientation/io.py:298`, `:248-269`) | ±1 |
+| 6 | `UpDown` | `+1` if grid col0 ≤ col1 else `-1` (`fitorientation/io.py:355-365`, `:248-269`) | ±1 |
 | 7–9 | `Eul1..3` | Bunge ZXZ | **radians** |
 | 10 | `Confidence` | FracOverlap of the best solution | 0–1 |
 | 11 | `PhaseNr` | copied from the `PhaseNr` key | int |
@@ -2307,7 +2311,7 @@ gids = gids[gids >= 0]               # consolidate.py:162
 
 Column 6 of the text `.mic` is `UpDown` (`parse_mic.py:145-146`: `%OrientationRowNr
 OrientationID RunTime X Y TriEdgeSize **UpDown** Eul1 Eul2 Eul3 Confidence PhaseNr`),
-which takes values ±1 (`fitorientation/io.py:298`). After the `gids >= 0` filter, `/grains/`
+which takes values ±1 (`fitorientation/io.py:355-365`). After the `gids >= 0` filter, `/grains/`
 gets **one "grain" per distinct non-negative `UpDown` value — in practice a single row
 covering every upward-pointing voxel.** `/grains/mean_euler_angles` is then the mean Euler
 angle of half the map. Established by reading; **not executed against a real H5** — check
@@ -2355,7 +2359,7 @@ What it is for, in priority order for an agent:
 **Two labelling traps in the viewer**, both inherited from §9a/§9c:
 
 - Colour mode **`GrainID`** paints `.mic` column 0 / `.map` plane 4, which is
-  `OrientationRowNr` — **not a grain label** (`nf_qt.py:1783-1784`).
+  `OrientationRowNr` — **not a grain label** (`nf_qt.py:1681-1682`).
 - The mode that shows real grains is **`GrainMap`**, reading `maps/grain_id` or the
   `.map.grainId` sidecar (`nf_qt.py:1787-1799`). `KAM` and `GROD` come from `.map.kam` /
   `.map.grod` and are in **radians**.
@@ -2395,17 +2399,17 @@ Annotated reference file: `NF_HEDM/Example/ps_au.txt` (2 distances, `Lsd 8289.15
 
 | Key | Values / units | Read by |
 |---|---|---|
-| `LatticeParameter` | `a b c α β γ` — Å, deg | pipeline (`params.py:33`); HKL gen (`stages.py:123-125`); fitorientation (`params.py:265`); diffr-spots (`params.py:91`); mic2grains (`mic2grains.py:65-68`) |
+| `LatticeParameter` | `a b c α β γ` — Å, deg | pipeline (`params.py:33`); HKL gen (`stages.py:175-178`); fitorientation (`params.py:265`); diffr-spots (`params.py:91`); mic2grains (`mic2grains.py:65-68`) |
 | `LatticeConstant` | alias | **only** fitorientation, diffr-spots and the H5 consolidator (`consolidate.py:130-134`). **Use `LatticeParameter`.** The pipeline's multi-value list contains `LatticeParameter` only (`params.py:33`), so writing `LatticeConstant` leaves `p["LatticeParameter"]` absent and the HKL stage raises `KeyError` (`stages.py:123`). Cost of using `LatticeParameter`: the consolidator greps for `LatticeConstant` only, so `/parameters/` carries no lattice. Cosmetic. |
 | `Wavelength` | Å | HKL gen, diffr-spots, fitorientation |
 | `SpaceGroup` | 1–230 | HKL gen, seed cache, `ParseMic`, mic2grains, diffr-spots, fitorientation |
-| `SGNr` | fallback alias | pipeline stages only (`stages.py:122, 365`) |
+| `SGNr` | fallback alias | pipeline stages only (`stages.py:175, 264, 638`) |
 
 ### 10c. Detector geometry
 
 | Key | Values / units | Read by |
 |---|---|---|
-| `nDistances` | count | pipeline, image processing loop, fitorientation (`params.py:186-190`) |
+| `nDistances` | count | pipeline, image processing loop, fitorientation (`midas_nf_pipeline/params.py:43`) |
 | `Lsd` | µm — **one line per distance** | fitorientation (list), diffr-spots (list), HKL gen (**last** line) |
 | `BC` | `ybc zbc` px — one line per distance | fitorientation (`params.py:224-226`) |
 | `tx` `ty` `tz` | deg — shared across distances | fitorientation |
@@ -2439,7 +2443,7 @@ Arithmetic consistency check (derived from the example, **not enforced by code**
 | `GridSize` | µm — the hex **triangle edge**, NOT the voxel spacing. Nearest-neighbour pitch is **`GridSize/√3`** (measured: `GridSize 10` → 5.7735 µm; `GridSize 20` → 11.547 µm). Treating it as the pitch overstates areas by 3× and diameters by **1.73×**. Get the cell area from the grid itself (`hull area / n_voxels`), never from `GridSize²`. **Overwritten on disk each multi-resolution loop** (`workflows.py:373-376`) — `EdgeLength` is NOT, and stays 1 (verified: `grid.txt` col 5 = 0.5000 exactly, `%TriEdgeSize 1.000000` in the loop `.mic`) | hex grid; fitorientation (multipoint only) |
 | `EdgeLength` | µm — probe-triangle edge; `0`/absent ⇒ equals `GridSize` (`hex_grid/params.py:25-26`). **An independent knob — see below.** | hex grid |
 | `GridFileName` | default `grid.txt` | hex grid, fitorientation |
-| `GridMask` | 4 floats. The code filters grid columns 2 and 3, i.e. **x and y in µm** (`stages.py:211-227`). `ps_au.txt:89` labels them `ymin ymax zmin zmax`; **the code's meaning wins.** | pipeline `run_grid_mask` |
+| `GridMask` | 4 floats. The code filters grid columns 2 and 3, i.e. **x and y in µm** (`stages.py:345-370`). `ps_au.txt:89` labels them `ymin ymax zmin zmax`; **the code's meaning wins.** | pipeline `run_grid_mask` |
 | `GlobalPosition` | µm — written into the `.mic` header | `ParseMic`, consolidator |
 | `TomoImage` | path to a **square `uint8`** mask; side inferred from file size (`tomo_filter/filter.py:33-52`) | pipeline `run_tomo_filter` — **fixed**; the old path-vs-tensor defect is documented in `stages.py:327-331`. The `tomo-filter` CLI (§8b step 3) remains the way to re-run it standalone |
 | `TomoPixelSize` | µm per tomo pixel | as above |
@@ -2593,13 +2597,13 @@ All read by `midas_nf_preprocess.process_images` (`process_images/params.py:83-1
 |---|---|---|
 | `BlanketSubtraction` | counts (**float** since `4e90be80`; was int) | flat offset subtracted **after** the temporal median, then clamped at 0 (`process_images/pipeline.py:165-166`). An absolute count does not transfer between reductions — prefer `BlanketSigma` |
 | `BlanketSigma` | multiples of σ | **the transferable threshold.** `threshold = BlanketSigma × σ_MAD` of the POST-denoise residual, measured **per layer**; overrides `BlanketSubtraction` when set (`4e90be80`, §8k). ~3.5σ was optimal across a 14-configuration catalog however it was reached |
-| `MedFiltRadius` | px | spatial median radius: `0` = identity, `1` = 3×3, `2` = 5×5 (`params.py:47`) |
+| `MedFiltRadius` | px | spatial median radius: `0` = identity, `1` = 3×3, `2` = 5×5 (`process_images/params.py:225`) |
 | `GaussFiltRadius` | px | maps to the LoG `sigma` field — the *name* is `GaussFiltRadius`, the field is `sigma` |
 | `LoGMaskRadius` | px | LoG kernel half-width |
 | `DoLoGFilter` | 0/1 | `0` labels connected components of `img > 0` directly (`pipeline.py:180-195`). **Not a simple "always 1"** — LoG can suppress genuine weak peaks, so weak-signal samples are run with `0` and tolerate the cosmics. See the decision table in §5b. Changing it requires regenerating `SpotsInfo.bin`. |
 | `OrigFileName` / `ReducedFileName` | stem | input / reduced stems |
 | `extOrig` / `extReduced` | e.g. `tif` / `bin` | extensions |
-| `WriteFinImage` | 0/1 | forced to 1 when `Deblur != 0` (`params.py:69-71`) |
+| `WriteFinImage` | 0/1 | forced to 1 when `Deblur != 0` (`process_images/params.py:229`) |
 | `Deblur`, `WriteLegacyBin` | 0/1 | |
 | `SoftTemperature` | float or `auto` | **Python extension, not in the C** — sigmoid temperature for the differentiable spot-probability surrogate (`params.py:14-18`) |
 | `NLMDenoise` | 0/1 | NLM on the median-corrected residual, before `BlanketSubtraction` (§8f) |
@@ -2615,7 +2619,7 @@ All read by `midas_nf_preprocess.process_images` (`process_images/params.py:83-1
 | `OrientTol` | deg | phase-2 search box per seed (`fit_orientation.py:363-365`). Default 1.0 |
 | `ExcludePoleAngle` | deg | diffr-spots, fitorientation |
 | `BoxSize` | 4 floats µm, relative to beam centre — one line per distance | diffr-spots (list), fitorientation (list) |
-| `MinConfidence` | 0–1 | `mic2grains`; fitorientation; the multi-resolution bad-voxel filter (`workflows.py:439`) |
+| `MinConfidence` | 0–1 | `mic2grains`; fitorientation; the multi-resolution bad-voxel filter `_filter_bad_voxels` (`workflows.py:145-170`) |
 | `NrOrientations` | count | diffr-spots. **The pipeline overwrites it** from the seed-file line count (`stages.py:256-262`). Cubic-high cache = 243129 lines, matching `ps_au.txt:140` |
 | `SeedOrientations` | path to the comma-separated `w,x,y,z` CSV (`seed_orientations/io.py:24-38`) | diffr-spots, pipeline |
 | `SeedOrientationsAll` | path — the full unseeded library. **Required for multi-resolution** (`workflows.py:360-364`) | pipeline |

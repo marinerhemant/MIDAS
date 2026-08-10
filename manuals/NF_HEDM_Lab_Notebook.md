@@ -577,7 +577,7 @@ voxel (`missing_spots.py`, which reproduces the reported confidence exactly):
 | 1 | 8162 | 42/46 = 91.3 % |
 | 2 | 10162 | **46/46 = 100 %** |
 
-`hard_fraction` does `hits_d.prod(dim=0)` (`obs_volume.py:395`) — a spot counts only if seen
+`hard_fraction` does `hits_d.prod(dim=0)` (`obs_volume.py:318-330`) — a spot counts only if seen
 at **all** distances — so the aggregate equals the worst distance and gives no hint which.
 **Always break confidence down per distance before theorising.**
 

@@ -30,6 +30,7 @@ Exit codes: 0 clean (or report-only), 1 stale releases found with
 from __future__ import annotations
 
 import argparse
+import ast
 import json
 import re
 import subprocess
@@ -100,6 +101,59 @@ def version_key(v: str) -> tuple:
     return tuple(parts)
 
 
+def _strip_docstrings(tree):
+    """Drop docstring expressions in place, so comment/doc edits compare equal."""
+    for node in ast.walk(tree):
+        if not isinstance(node, (ast.Module, ast.FunctionDef, ast.AsyncFunctionDef,
+                                 ast.ClassDef)):
+            continue
+        body = node.body
+        if (body and isinstance(body[0], ast.Expr)
+                and isinstance(body[0].value, ast.Constant)
+                and isinstance(body[0].value.value, str)):
+            node.body = body[1:] or [ast.Pass()]
+    return tree
+
+
+def _behaviour_signature(src: str) -> str:
+    """AST dump with docstrings removed. Raises SyntaxError on unparseable input."""
+    return ast.dump(_strip_docstrings(ast.parse(src)))
+
+
+def changes_behaviour(root: Path, sha: str, prefix: str) -> bool:
+    """Did ``sha`` change anything under ``prefix`` that a wheel would execute?
+
+    Comments and docstrings are not executable content: the 2026-08-03 scrub
+    renamed dataset identifiers across ~30 packages' docstrings, and every one
+    of them then reported as a stale release needing a re-cut, for a diff that
+    could not change a single result. Compare the docstring-stripped AST rather
+    than the text.
+
+    Conservative in every ambiguous case -- a merge, a root commit, a
+    non-Python file, an added or deleted module, or anything that fails to
+    parse counts as a behaviour change.
+    """
+    parents = git(root, "rev-list", "--parents", "-n", "1", sha).split()
+    if len(parents) != 2:                       # merge, or no parent
+        return True
+    for entry in git(root, "show", "--name-status", "--format=", sha, "--",
+                     prefix).splitlines():
+        if not entry.strip():
+            continue
+        status, _, path = entry.partition("\t")
+        path = path.strip()
+        if not path.endswith(".py") or status.strip() != "M":
+            return True                          # data file, add, delete, rename
+        try:
+            before = git(root, "show", f"{sha}^:{path}")
+            after = git(root, "show", f"{sha}:{path}")
+            if _behaviour_signature(before) != _behaviour_signature(after):
+                return True
+        except (SyntaxError, ValueError, RecursionError):
+            return True
+    return False
+
+
 def inspect(root: Path, pkg_dir: Path) -> dict:
     """Version metadata plus how many commits touched the source since the bump."""
     name, version = read_project(pkg_dir / "pyproject.toml")
@@ -110,7 +164,7 @@ def inspect(root: Path, pkg_dir: Path) -> dict:
     bump = git(root, "log", "-1", "--format=%H", "-S", f'version = "{version}"',
                "--", f"{rel}/pyproject.toml")
 
-    since_src = since_all = 0
+    since_src = since_all = cosmetic = 0
     bump_date = ""
     if bump:
         bump_date = git(root, "log", "-1", "--format=%ad", "--date=short", bump)
@@ -124,15 +178,23 @@ def inspect(root: Path, pkg_dir: Path) -> dict:
         # commit that only removes them would otherwise report the package as
         # stale forever. Seen for real -- untracking midas_stress's stale .pyc
         # files flagged midas-stress as needing a re-release.
+        #
+        # Comments and docstrings are excluded for the same reason, one level
+        # up: a commit can touch every .py file in the package and still change
+        # nothing a wheel executes. See changes_behaviour().
         if (pkg_dir / pkg_dir.name).is_dir():
-            since_src = len(git(root, "log", "--format=%H", rng, "--",
-                                f"{rel}/{pkg_dir.name}",
-                                f":(exclude){rel}/{pkg_dir.name}/**/__pycache__/**",
-                                f":(exclude){rel}/{pkg_dir.name}/**/*.pyc").split())
+            prefix = f"{rel}/{pkg_dir.name}"
+            touched = git(root, "log", "--format=%H", rng, "--", prefix,
+                          f":(exclude){prefix}/**/__pycache__/**",
+                          f":(exclude){prefix}/**/*.pyc").split()
+            functional = [s for s in touched if changes_behaviour(root, s, prefix)]
+            since_src = len(functional)
+            cosmetic = len(touched) - since_src
 
     return {"name": name, "dir": pkg_dir.name, "repo": version, "bump": bump[:8],
             "bump_date": bump_date, "commits_since_bump_src": since_src,
-            "commits_since_bump_all": since_all}
+            "commits_since_bump_all": since_all,
+            "commits_cosmetic": cosmetic}
 
 
 def classify(row: dict, ignore: set[str]) -> str:
@@ -154,9 +216,13 @@ def render(rows: list[dict], title: str) -> None:
         print("  none")
         return
     for r in sorted(rows, key=lambda r: -r["commits_since_bump_src"]):
+        # cosmetic = touched the module dir but changed no executable content
+        # (comments/docstrings only). Shown so a suppressed commit stays visible.
+        cos = r.get("commits_cosmetic", 0)
+        cos_s = f" +{cos} cosmetic" if cos else ""
         print(f"  {r['name']:<30} repo={r['repo']:<9} pypi={r['pypi']:<12}"
               f" src_commits_since_bump={r['commits_since_bump_src']:<3}"
-              f" (all={r['commits_since_bump_all']:<3}) bump={r['bump_date']}")
+              f" (all={r['commits_since_bump_all']:<3}){cos_s} bump={r['bump_date']}")
 
 
 def main() -> int:

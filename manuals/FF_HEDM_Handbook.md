@@ -23,7 +23,11 @@ Not a tutorial. Follow the steps in order; each one names the file to read, the 
 run, the field to look at, and the branch to take.
 
 Citations are `path:line` relative to `$MIDAS = /Users/hsharma/opt/MIDAS`. Read them with
-absolute paths. Every non-obvious claim carries one. Claims that are convention, or that
+absolute paths. Every non-obvious claim carries one, and `utils/doc_citation_check.py`
+(wired into the pre-commit hook) fails the commit when a cited file, line or symbol no
+longer exists — so a citation here points at real code. **It cannot check the claim, only
+the pointer:** the line is right, the sentence about it may still have gone stale.
+Claims that are convention, or that
 could not be verified, are flagged inline and summarised in §11. **Do not promote a §11
 item to a fact.**
 
