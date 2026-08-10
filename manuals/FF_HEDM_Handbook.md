@@ -169,7 +169,8 @@ your own run, and they are the ones a context-free session skips:
 | `peakfit: AllPeaks_PS.bin already exists; skip` | results silently inherited from a previous, differently-configured run | §7 |
 | peakfit / calc_radius from a tree without the 2026-07-30 determinism fixes | **every re-run gives a different `Grains.csv`**; grain positions jump by >100 µm | Lab Notebook §2 |
 | grain position quoted to more than ~100 µm | candidates within a cluster still disagree by 50-280 µm, all at completeness 1.0 | Lab Notebook §2d |
-| `indexing(FF): 0 / N seeds with non-zero data` read as a failure | cosmetic — the c-omp backend writes `IndexBest_all.bin`, the counter looks for `IndexBest.bin` | §11 |
+| `indexing(FF): 0 / N seeds with non-zero data` dismissed as cosmetic | it **was** cosmetic before `8a594ea5` (the counter read only the legacy `IndexBest.bin`). It is now real: either a hard error, or an honest zero. Reading an older handbook here hides a genuine failure | §11 |
+| `n_seeds_attempted` / `n_seeds_indexed` quoted from a pre-`8a594ea5` FF run | FF only ever wrote them into metrics — **both fields read 0 on every FF run** regardless of what indexing did | §11 |
 | GrainRadius from a tree without the 2026-07-30 ID-space fix | **every grain reported at ~the sample-wide mean radius**; 5.5× too small here | Lab Notebook §3a |
 | legacy FF C binaries fed the pipeline's `Spots.bin`/`nData.bin`/`Data.bin` | PF layout vs FF layout — indexer runs minutes instead of 2 s and indexes nothing; looks like bad parameters | §13b, Lab Notebook §3b |
 | FF refinement on a tree without the 2026-07-30 `pos_scale` equilibration | **grain positions are the indexer seeds, unrefined** — ~158 µm off the C reference in float32, and the solver reports success | Lab Notebook §3c |
@@ -341,7 +342,8 @@ already ran — and §7 will silently resume off them:
 | `<stem>.MIDAS.zip` | `zip_convert` ran. **Check the dark is non-zero (§3d)** before reusing it |
 | `Temp/AllPeaks_PS.bin` | the peak search ran — at *some* threshold, not necessarily yours |
 | `InputAll.csv`, `Spots.bin`, `Data.bin`, `nData.bin` | transforms + binning ran |
-| `Output/IndexBest_all.bin` | indexing ran (c-omp backend) |
+| `Output/IndexBest_all.bin` + `IndexKey_all.bin` | indexing ran — the **consolidated** family, written by both the python and c-omp backends |
+| `Output/IndexBest.bin` + `IndexBestFull.bin` | indexing ran — the **legacy** pair, written only by the classical C `IndexerOMP`. Both families are recognised since `8a594ea5` (§11) |
 | `Grains.csv`, `SpotMatrix.csv` | a full reconstruction exists |
 | `midas_state.h5` | per-stage provenance — **read this** rather than guessing which stages ran |
 
@@ -1152,12 +1154,35 @@ anything from it; the method and the numbers are in Lab Notebook §4d.
 are the two settings that will silently ruin a reconstruction, and both are now pinned
 by tests or by measurement rather than by memory.
 
-### `indexing(FF): 0 / N seeds with non-zero data` is cosmetic, not a failure
+### `indexing(FF): 0 / N seeds with non-zero data` — no longer cosmetic. Read it.
 
-`midas_pipeline/stages/indexing.py:150-157` counts non-zero rows in
-`Output/IndexBest.bin`, but the c-omp backend (the default, and the fast
-path) writes `Output/IndexBest_all.bin` + `IndexKey_all.bin` instead — so the counter finds no file and prints 0 even though
-indexing succeeded. Judge the stage by `Results/OrientPosFit.bin` and the grain count.
+**This section previously said the message was cosmetic and could be ignored. That is
+wrong as of `8a594ea5`, and ignoring it now hides a real failure.**
+
+The history: the stage counted non-zero rows in `Output/IndexBest.bin` only, while both
+modern backends — python and c-omp — write the consolidated `IndexBest_all.bin` family
+instead. Measured on a Ni layer: the python backend wrote **only** the consolidated
+family, the classical `IndexerOMP` **only** the legacy pair. So the counter found no file
+and printed `0 / N` on every c-omp and python FF run, then advertised seed paths that had
+never been written.
+
+The stage now counts from **either** family and distinguishes the two cases:
+
+| what you see | meaning |
+|---|---|
+| **hard error**, "no recognisable seed file" | the indexer exited 0 having written nothing. A real fault — do not proceed |
+| **warning**, an honest `0 / N` | indexing ran and genuinely seeded nothing. A real, if disappointing, result — investigate `RingThresh`, `Completeness`, the geometry |
+| a non-zero count | normal |
+
+`IndexResult.n_seeds_attempted` / `n_seeds_indexed` are also populated now; FF only ever
+wrote them into metrics, so **both fields read 0 on every FF run before this fix** — do
+not quote those numbers from an older run. Refinement now warns when its own
+`Results/OrientPosFit.bin` is absent or empty, and `process_grains` checks its **size**
+rather than its existence, so a 0-byte `OrientPosFit.bin` no longer surfaces as
+`cannot mmap an empty file` two stages downstream of the actual fault.
+
+Still judge the stage by `Results/OrientPosFit.bin` and the grain count — but the seed
+line is now evidence, not noise.
 
 ---
 
