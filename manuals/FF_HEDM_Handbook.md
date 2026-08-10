@@ -1,9 +1,26 @@
-# FF-HEDM Reconstruction Runbook
+# FF-HEDM Reconstruction Runbook — survey → calibrate → reconstruct → report
 
-**Audience: a Claude Code session with no prior context that must take a new far-field
-beamtime from raw frames to a grain list.** Not a tutorial. Follow the steps in order;
-each one names the file to read, the command to run, the field to look at, and the branch
-to take.
+**Use this doc to start a fresh session on a far-field dataset this pipeline has never
+seen.** Paste it in together with `FF_HEDM_Lab_Notebook.md`, then give three lines:
+
+```
+Data folder:     <ABSOLUTE PATH>     # the image tree, e.g. /gdata/dm/1ID/<year>/<bt>/data/ge5/
+Metadata folder: <ABSOLUTE PATH>     # or "find it" — see §0b
+Sample material: <e.g. gold cubes / Ti-6Al-4V / unknown, tell me from the data>
+```
+
+Everything else the agent works out or asks for. **The order in §0a is not optional** —
+each step produces an input the next one needs, and two of them (§2, §3e) cannot be
+checked after the fact.
+
+**Scope.** Every recipe here is **1-ID, a single monolithic GE panel, DM-converted
+`.ge5.h5`, one layer.** Multi-panel (GE1–4) and multi-layer scans are *not* covered:
+`cross_det_merge` appears in this document only as a no-op. If your data differs in
+detector count, file format, or layer count, **stop and ask** rather than adapting a
+recipe — the §3 field maps and §5 calibration assume this configuration throughout.
+
+Not a tutorial. Follow the steps in order; each one names the file to read, the command to
+run, the field to look at, and the branch to take.
 
 Citations are `path:line` relative to `$MIDAS = /Users/hsharma/opt/MIDAS`. Read them with
 absolute paths. Every non-obvious claim carries one. Claims that are convention, or that
@@ -21,19 +38,45 @@ Sibling document: `NF_HEDM_Handbook.md`. The two share §2 (ω sign), §3 (metad
 (energy/distance) almost verbatim, because those are properties of the *beamline*, not of
 the modality. Where FF differs, it is called out.
 
-Maintained code = `midas_zipper` (0.1.4), `midas_calibrate_v2` (0.5.3), `midas_peakfit`
-(0.4.6 on PyPI; `midas-ring-thresh`, `MinPeakSNR` and `BgSubtract` are **in-tree, not yet
-released** — run from a checkout or a PYTHONPATH overlay), `midas_transforms` (0.8.2), `midas_index`, `midas_fit_grain` (0.6.0),
-`midas_process_grains` (0.6.1), and the orchestrator `midas_ff_pipeline` (0.4.1) driving
-`midas_pipeline` (0.7.0). **Those floors are not cosmetic** — below them the pipeline is
-not reproducible, `GrainRadius` is ~5× wrong, and the refiner silently returns its input
-(§11). `FF_HEDM/` is soft-deprecated C; only its example parameter files are used here.
+Maintained code = `midas_zipper`, `midas_calibrate_v2`, `midas_peakfit`,
+`midas_transforms`, `midas_index`, `midas_fit_grain`, `midas_process_grains`, and the
+orchestrator `midas_pipeline`. **The version floors are not cosmetic** — below them the
+pipeline is not reproducible, `GrainRadius` is ~5× wrong, the refiner silently returns
+its input, and the grain-selection keys you wrote are discarded (§0). `FF_HEDM/` is
+soft-deprecated C; only its example parameter files are used here.
 **The bundled c-omp binaries in `midas_index/bin` and `midas_fit_grain/bin` are the
 preferred fast path** — "deprecated C source" does not mean "don't use the c-omp indexer."
 
 ---
 
 ## STOP — read this before touching anything
+
+### When to stop and come back with a question
+
+**"Get back to me if you get stuck" does not fire here.** The failures in this pipeline
+do not feel like being stuck — a mirrored reconstruction from a wrong ω sign produces a
+clean grain list with normal completeness; a wrong ring assignment converges beautifully;
+`DetZ`-as-`Lsd` gives an 11 % geometry error that still fits; the refiner returns its seed
+positions and reports success. In each case the run finishes and looks right.
+
+So the trigger is not confusion. **Halt on these named conditions, whether or not anything
+seems wrong:**
+
+| Condition | Why you cannot decide it yourself |
+|---|---|
+| par field 9 is **not** `aero` | no other value's ω sign has ever been established here (§2, §11) |
+| the data is not 1-ID / single GE panel / DM-`.ge5.h5` / one layer | every field map and geometry recipe below assumes it (header, §3) |
+| **no calibrant** file in the folder | there is no geometry without one, and `DetZ` is not a substitute (§0b, §4b) |
+| any package **below floor** after §0 | three of them produce plausible wrong answers, not errors (§0) |
+| calibrant strain **> 100 µε** after §5 | hard gate; a converged fit above it is not usable (rule 6) |
+| the ring overlay does not match the frame | the fit is on the wrong rings; nothing downstream can detect it (§5d) |
+| the dark reads **all zero** in the zarr | every threshold returns 0 peaks; tuning `RingThresh` cannot fix it (§3d) |
+| `nFrames` ≠ logged frames − `SkipFrame` | something is skipping twice or not at all; ω is shifted either way (§3e) |
+| grain positions **pile up** at ±`Rsample` or ±`Hbeam`/2 | the envelope is binding — and the fix is forbidden to you by rule 9 (§6, §8b) |
+| this document and the tree **disagree** | report it; do not work around it (§0) |
+
+When you halt, say which row fired, what you measured, and what you would need in order to
+proceed. Everything not blocked by it should still be finished first.
 
 ### Hard rules
 
@@ -77,6 +120,30 @@ preferred fast path** — "deprecated C source" does not mean "don't use the c-o
    don't apply; a silent no-op and a silent failure look identical in the log tail. Read
    the per-stage provenance in `<result>/LayerNr_N/midas_state.h5`.
 
+The first ten rules are about distrusting the *data*. These four are about distrusting
+your own run, and they are the ones a context-free session skips:
+
+11. **Suspect success.** Almost every defect found in this pipeline **reported success**:
+    the refiner returned its input and converged; the calibration loop shipped its worst
+    iterate; `process-grains` discarded your `Completeness` and produced 4× the grains;
+    the peak fit was non-deterministic and every run looked fine. "It ran" is not
+    evidence. Ask what the stage would look like if it had silently no-opped, then check
+    that specific thing (§0c, §7).
+12. **Debug your own configuration before the data, the indexer, or the physics.** When a
+    result looks wrong, the order is: a version below floor (§0) → a key that was dropped
+    or misspelled (§0c, §6c) → a sign or unit convention (§2, §7) → a stale resumed stage
+    (§7) → only then the sample. Lab Notebook §4c records three attractive physical
+    hypotheses that were **refuted** after the mundane cause was found.
+13. **Never take a number from a name.** Not the energy from a filename (§4a), not the
+    distance from a folder, not the frame count from a `DoVolume` argument. Read it from
+    the file, and say which file in the report.
+14. **Do not reimplement what a `midas_*` package already does.** §6b carries a worked
+    example of the cost: a hand-rolled ring-band mask shared **13.4 %** of its pixels with
+    the production band and manufactured a "background varies by 20σ" result that had to
+    be retracted. Ring overlay → `midas_integrate.geometry`; orientations and
+    misorientation → `midas_stress`; structure factors → `midas_hkls`; image reading →
+    `midas_calibrate_v2.io.readers.read_image`.
+
 ### Traps that silently corrupt results
 
 | Trap | Symptom if missed | Where |
@@ -106,10 +173,181 @@ preferred fast path** — "deprecated C source" does not mean "don't use the c-o
 | GrainRadius from a tree without the 2026-07-30 ID-space fix | **every grain reported at ~the sample-wide mean radius**; 5.5× too small here | Lab Notebook §3a |
 | legacy FF C binaries fed the pipeline's `Spots.bin`/`nData.bin`/`Data.bin` | PF layout vs FF layout — indexer runs minutes instead of 2 s and indexes nothing; looks like bad parameters | §13b, Lab Notebook §3b |
 | FF refinement on a tree without the 2026-07-30 `pos_scale` equilibration | **grain positions are the indexer seeds, unrefined** — ~158 µm off the C reference in float32, and the solver reports success | Lab Notebook §3c |
+| `midas-process-grains` < 0.7.0 | `Completeness` / `MinNrSpots` are parsed and **discarded** — measured **23710 grains vs 6132** from the same refiner output, no error. Reads as "the peak search is finding noise" | §0, §8b |
+| params zipped by `midas-zipper` < 0.1.5 | `BgSubtract`, `BgNSectors` and `MinPeakSNR` are **silently dropped** from the zarr — the peak search runs with settings you did not set | §0, §6c |
+| `midas-fit-grain` checked against 0.5.7 and no further | labels are correct, positions are still the **unrefined indexer seeds** (0.6.0) and `c_recipe` is missing (0.7.0) | §0, §8a |
+| version floors read from this document instead of from the tree | three floors rose for silent-wrong-answer reasons in the six days after this file was written | §0 |
+
+---
+
+## 0. Verify the install — before anything else
+
+**Do not trust the version numbers in this document. Trust the tree.** Every quantitative
+claim here was measured against one state of the code; the packages move faster than the
+prose. Between 2026-08-01 and 2026-08-07 alone, three floors in this pipeline rose for
+*silent-wrong-answer* reasons, and this handbook carried the old ones.
+
+**The authoritative floors are the `pyproject.toml` files themselves**, not this table.
+Run this from the repo root; it takes the **strictest** floor any package in the tree
+declares, so one stale dependency list cannot weaken the check:
+
+```bash
+python - <<'PY'
+import importlib.metadata as m, re, pathlib
+def vt(s): return tuple(int(x) for x in re.findall(r'\d+', s)[:3])
+floors = {}
+for p in pathlib.Path("packages").glob("*/pyproject.toml"):
+    for pkg, need in re.findall(r'"(midas-[a-z0-9-]+)(?:\[[\w,]+\])?>=([0-9][0-9.]*)"',
+                                p.read_text()):
+        if vt(need) > vt(floors.get(pkg, "0")): floors[pkg] = need
+bad = []
+for pkg, need in sorted(floors.items()):
+    try: have = m.version(pkg)
+    except m.PackageNotFoundError: continue
+    if vt(have) < vt(need): bad.append(f"{pkg:26} have {have:8} need >={need}")
+print(f"scanned {len(floors)} floors across the tree")
+print("\n*** BELOW FLOOR ***" if bad else "\nall installed midas packages satisfy the tree")
+[print(" ", b) for b in bad]
+PY
+```
+
+**Take the strictest floor, not the one in the orchestrator you happen to use.** They
+disagree: `midas_suite` floors `midas-nf-preprocess` at 0.6.0 while `midas_nf_pipeline`
+still floors it at 0.4.0 — and 0.4.0 reads `SumFrames` with the *opposite* unit convention
+(`NF_HEDM_Handbook.md` §8j). A per-package check against the weaker file certifies a
+mixed install.
+
+**Anything below a floor: stop.** These are not import errors. Each one produces a
+plausible result that is wrong:
+
+| Package | Below the floor you get |
+|---|---|
+| `midas-peakfit` | peak fit not reproducible — every re-run a different `Grains.csv` (Lab Notebook §2a) |
+| `midas-transforms` | `calc_radius` float atomics; same nondeterminism (Lab Notebook §2b) |
+| `midas-fit-grain` | the refiner returns its seed positions and reports success (Lab Notebook §3c); `c_recipe` refine mode absent |
+| `midas-process-grains` | `GrainRadius` ~5× low (Lab Notebook §3a); **and** `Completeness`/`MinNrSpots` parsed then discarded — a measured **23710 vs 6132** grains on the same refiner output, no error (`3d9bb427`) |
+
+**Two couplings that packaging cannot express — check them by hand:**
+
+1. **`midas-zipper >= 0.1.5`.** The dependency metadata floors it at 0.1.0 because peakfit
+   only needs the zipper in a dev extra. But 0.1.4's allow-lists do not carry
+   `BgSubtract`, `BgNSectors` or `MinPeakSNR` — the three keys §6c and §10 tell you to set.
+   A parameter file zipped by 0.1.4 **silently drops all three** and the peak search runs
+   with settings you did not ask for (`a440bef6`). No error.
+2. **`midas_ff_pipeline` still floors fit-grain at 0.6.0 and process-grains at 0.6.1** —
+   the pre-fix versions. It is deprecated (§7); use `midas-pipeline run --scan-mode ff`.
+   If you install the old orchestrator you get the buggy siblings with no warning.
+
+**When this document and the tree disagree, the tree is right — and say so in your
+write-up.** If a number here cannot be reproduced against the code you are running, that
+is a finding about this document, not about your data. Record it rather than working
+around it.
+
+---
+
+## 0a. THE ORDER — do these steps in this sequence
+
+Each row produces an input the next one needs. Two of them cannot be checked afterwards.
+
+| # | Step | Where | Why it is here and not later |
+|---|---|---|---|
+| 0 | **Verify the install.** | §0 | Three floors certify silently-wrong versions. Free, and it invalidates everything downstream if skipped. |
+| 1 | **Survey the folder** → write `SURVEY.md`. | §0b | Nothing else can start until you know which file is the sweep, which the dark, which the calibrant. |
+| 2 | **ω sign** from par field 9. | §2 | **Not detectable afterwards.** A sign error mirrors the microstructure with completeness unchanged. |
+| 3 | **Scan definition + dark pairing + `SkipFrame`.** | §3 | `SkipFrame` shifts every ω by one step if wrong — also invisible in the grain list. |
+| 4 | **Energy, then distance.** | §4 | Calibration needs λ. `DetZ` is only a seed. |
+| 5 | **Calibrate on the calibrant**, overlay the rings. | §5 | Gate: ≤ 100 µε, and the overlay is mandatory. No geometry, no reconstruction. |
+| 6 | **Zip the sweep only** — `--only zip_convert`. | §7 | `midas-ring-thresh` reads the zarr, so the zarr must exist before the threshold can be measured. |
+| 7 | **Measure `RingThresh`** on that zarr; set it. | §6b | A template threshold is meaningless for your detector and exposure. |
+| 8 | **Build the parameter file.** | §6 | Needs the geometry (5), the scan definition (3) and the threshold (7). Replace the calibrant's lattice with the sample's. |
+| 9 | **Run the rest of the pipeline.** | §7 | |
+| 10 | **Read the result, then report.** | §8, §14 | |
+
+**Step 6 is the one people miss.** §6b tells you to measure `RingThresh` from the data,
+but `midas-ring-thresh` operates on `<result>/LayerNr_1/<stem>.MIDAS.zip`, which does not
+exist until `zip_convert` has run. Break the cycle by running that stage alone:
+
+```bash
+midas-pipeline run --scan-mode ff --params Parameters.txt --result results/ \
+    --layers 1-1 --only zip_convert
+```
+
+Then verify the dark is non-zero (§3d) — a zero dark makes every threshold return zero
+peaks, so measuring `RingThresh` first would give a flat, meaningless table.
+
+---
+
+## 0b. Survey the data folder — write `SURVEY.md` before promising anything
+
+**Goal: a written `SURVEY.md` in your work directory answering *what is actually here*,
+with every number read from the files, never from a folder or file name.** §4a exists
+because a file named `..._96keV_...` held a 95.0 keV scan.
+
+The script below reads metadata only, so it is cheap on a full beamtime. It dumps the
+**actual** HDF5 layout first — §3c documents what that layout usually is, but confirm it
+rather than assuming it:
+
+```bash
+python utils/ff_survey.py <data-dir> [<metadata-dir>]
+```
+
+Record, per file:
+
+| field | how to get it | why it matters |
+|---|---|---|
+| kind (sweep / dark / calibrant) | name + frame count, confirmed against the par file | decides what each file is *for*; nothing downstream works if this is wrong |
+| frame count | `exchange/data.shape[0]` | must match the par image range (§3b); off by one means `SkipFrame` (§3e) |
+| image dataset path | `visititems` dump, **not** an assumption | goes into `dataLoc`/`darkLoc` (§3d) |
+| its dark | `dark_before_<N-1>` for data `<N>` (§3d) | the single highest-cost trap in this path |
+| energy | `instrument/HEM/Energy`, cross-checked twice | **never the filename** (§4a) |
+| `DetZ` | `instrument/DMS/DetZ` | an `Lsd` **seed** only; was +181 mm off here (§4b) |
+| ω sweep bounds and step | par fields 10, 11, 17 | negate for `aero` (§2) |
+| is a calibrant present? | classification above | **if not, stop** — there is no geometry without one (§5) |
+
+**Do not derive anything from a folder name.** A companion pipeline lost a factor of 2 in
+area this way: a folder called `10x10um_0p25umStepSize` was measured from the stage
+coordinates as 20.000 µm × 14.142 µm, because the sample sat at 45° to the beam
+(`LaueMatching/scripts/pipeline/Laue_Handbook.md`, Phase 0). The same discipline applies
+here to energy, distance, frame count and step.
+
+**Is the scan still being written?** Count the files twice, 120 s apart. Never reconstruct
+a sweep that is still growing.
+
+---
+
+## 0c. Already processed? Check before recomputing
+
+A previous run leaves these flat in the result directory. Their presence means a stage
+already ran — and §7 will silently resume off them:
+
+| artifact | means |
+|---|---|
+| `<stem>.MIDAS.zip` | `zip_convert` ran. **Check the dark is non-zero (§3d)** before reusing it |
+| `Temp/AllPeaks_PS.bin` | the peak search ran — at *some* threshold, not necessarily yours |
+| `InputAll.csv`, `Spots.bin`, `Data.bin`, `nData.bin` | transforms + binning ran |
+| `Output/IndexBest_all.bin` | indexing ran (c-omp backend) |
+| `Grains.csv`, `SpotMatrix.csv` | a full reconstruction exists |
+| `midas_state.h5` | per-stage provenance — **read this** rather than guessing which stages ran |
+
+**After changing any peak-search or dark parameter, delete `results/` entirely** (§7).
+Resume is silent and costs 0.3 s where a real run costs 55 s, so an inherited result is
+easy to mistake for a fast one.
 
 ---
 
 ## 1. Environment
+
+**First, work out which situation you are in:**
+
+```bash
+if [ -d /home/beams12/S1IDUSER/opt/envs/midas ]; then
+  echo "APS beamline host — use §1a"
+else
+  echo "your own machine or cluster — use §1b"
+fi
+```
+
+### 1a. On an APS beamline host
 
 All APS hosts share `/home/beams*`. conda is **not** on the non-interactive ssh PATH, so
 call the shared env by full path:
@@ -142,6 +380,61 @@ file and `scp` them; do not inline `cat > file && python &`.
 
 Outputs go under the beamtime's own `analysis/` tree, e.g.
 `/gdata/dm/1ID/<year>/<beamtime>/analysis/<task>/`. **Never leave results in `/tmp`.**
+
+### 1b. On your own machine or cluster
+
+**Do not `pip install midas-suite[ff]`.** That extra is wrong for this runbook in two ways
+at once, both silent:
+
+1. It pulls **`midas-ff-pipeline`**, which this document deprecates (§7), and **not**
+   `midas-pipeline` — so `midas-pipeline run --scan-mode ff`, the command §7 tells you to
+   run, is not installed at all.
+2. `midas-ff-pipeline`'s own dependency list floors `midas-fit-grain` at **0.6.0** and
+   `midas-process-grains` at **0.6.1** — the versions *below* the silent-wrong-answer
+   fixes (§0). A clean install from that extra reproduces both bugs.
+
+Install the orchestrator this runbook actually uses, which carries the correct floors:
+
+```bash
+pip install "midas-pipeline>=0.8.0" \
+            "midas-calibrate-v2>=0.5.3" \
+            "midas-zipper>=0.1.5" \
+            matplotlib scikit-image
+```
+
+`midas-pipeline` pulls `midas-peakfit`, `midas-transforms`, `midas-index`,
+`midas-fit-grain>=0.7.0`, `midas-process-grains>=0.7.0`, `midas-hkls`, `midas-stress` and
+`midas-diffract` transitively. The three named explicitly are the ones its metadata does
+*not* guarantee at the version this runbook needs: `midas-calibrate-v2` for §5, and
+`midas-zipper >= 0.1.5` for the peak-search keys (§0). `scikit-image` is a hard
+requirement of the v2 auto-seeder (`midas_calibrate_v2/seed/auto_seed.py:523`);
+`matplotlib` is needed to produce the mandatory ring overlay (§5d).
+
+**Then run two checks and read their output.** `pip install` exiting 0 tells you nothing.
+
+```bash
+git clone https://github.com/marinerhemant/MIDAS.git   # for the pyproject floors + utils/
+cd MIDAS
+# 1. version floors — the §0 script
+# 2. the bundled c-omp indexer actually shipped:
+python -c "
+from midas_index import backend_c as b
+print('c indexer available:', b.available())
+print('binary:', b.binary_path())"
+```
+
+`available()` must print `True`. It resolves `midas_index/bin/midas_indexer` **inside the
+installed package** (`backend_c.py:47-71`), so it is present in a wheel and **absent in a
+plain source checkout** — where the binary is built under `build/<platform>/` instead. If
+you are running from a clone rather than an install, you will fall back to the slow Python
+indexer without being told.
+
+**No GPU?** Every stage runs on CPU: pass `--device cpu` instead of `--device cuda` in §7,
+and expect the peak search to dominate. Nothing in this runbook requires CUDA — the c-omp
+indexer and refiner are OpenMP, and they are the **preferred** fast path (header).
+
+**Working directory.** Put results next to the data, or in a project directory you own.
+**Never leave results in `/tmp`** — on a shared cluster they are also visible to others.
 
 ---
 
@@ -599,6 +892,22 @@ is the only quality criterion here that does not smuggle in an assumption:
 MinPeakSNR 5          # 0 = off (default); (peak - cell_median) / cell_sigma
 ```
 
+> **`midas-zipper >= 0.1.5` or this key does nothing.** 0.1.4's allow-lists do not carry
+> `MinPeakSNR`, `BgSubtract` or `BgNSectors`, so a parameter file zipped by it drops all
+> three into the void — the peak search then runs at the defaults with no error and no log
+> line (`a440bef6`, §0). The keys are written as **datasets** under
+> `analysis/process/analysis_parameters` (`ff_zip.py:159-167`), so check the zarr itself
+> before trusting any threshold you set:
+>
+> ```bash
+> python -c "
+> import zarr, sys
+> g = zarr.open(sys.argv[1], mode='r')['analysis/process/analysis_parameters']
+> for k in ('MinPeakSNR', 'BgSubtract', 'BgNSectors'):
+>     print(k, list(g[k][:]) if k in g else '*** ABSENT — zipper too old ***')
+> " <result>/LayerNr_1/<stem>.MIDAS.zip
+> ```
+
 Computed per peak against its own (ring, azimuthal sector) cell during the peak search, so
 it costs nothing extra and applies to **FF and PF alike** (both use `midas_peakfit`). It is
 the natural knob for the pf-HEDM failure mode where spurious signal is admitted.
@@ -684,9 +993,17 @@ The tell is obvious once you look: an ω residual of **223°** is impossible on 
 Post-fix the same grain reads `DiffPos 202 µm, DiffOme 0.054°, DiffAngle 0.090°` — all
 physical.
 
-```bash
-pip show midas-fit-grain      # need >= 0.5.7
-```
+0.5.7 fixes the *labels*. **It is not the floor** — the floor is **`>= 0.7.0`** (§0), and
+the three reasons stack:
+
+| version | what it fixes |
+|---|---|
+| 0.5.7 | the cyclic column mislabel described above |
+| 0.6.0 | the `pos_scale` fp32 scaling bug — below this the refiner **returns its seed positions unrefined** and reports success (Lab Notebook §3c) |
+| 0.7.0 | the `c_recipe` refine mode and its NLopt Nelder-Mead port (`06dd3241`) — the mode that reproduces the C refiner (Lab Notebook §7n) |
+
+Passing the 0.5.7 check and stopping there is the trap: the labels are right and the
+positions are still the indexer's seeds.
 
 If you are stuck on 0.5.6, the mapping is: printed `DiffPos` = true DiffAngle, printed
 `DiffOme` = true DiffPos, printed `DiffAngle` = true DiffOme.
@@ -695,10 +1012,26 @@ If you are stuck on 0.5.6, the mapping is: printed `DiffPos` = true DiffAngle, p
 
 Before interpreting it:
 
-1. **Grain count vs expectation.** A calibration cube should give a handful of grains, not
-   thousands. Thousands means the peak search is finding noise.
+1. **Grain count vs expectation** — but rule out the plumbing before you blame the physics.
+   A calibration cube should give a handful of grains, not thousands. Too many grains has
+   **three** causes, in this order:
+   1. **Your grain-selection keys were discarded.** `FitSetup` writes `paramstest.txt` for
+      the indexer and refiner, which have no use for `Completeness`/`MinNrSpots`, so those
+      keys are simply absent from it and every downstream consumer falls back to its own
+      default. Measured on a Ni layer: the same refiner output gave **23710 grains via
+      `paramstest.txt` and 6132 via the archive that carries the keys** — 3.9×, no error
+      anywhere. Fixed by `360cc09e` + `midas-process-grains >= 0.7.0` (§0). **Check this
+      first** — it is free, and it looks exactly like a bad peak search.
+   2. Genuinely permissive `Completeness` / `MinNrSpots` for the sample.
+   3. Only then: the peak search is finding noise (§6b).
 2. **Completeness distribution**, not just the mean — a bimodal distribution means two
-   populations, usually real grains plus junk.
+   populations, usually real grains plus junk. **`midas-process-grains >= 0.7.0` will read
+   the cut off that distribution for you**: the antimode of the log₁₀ histogram of the
+   quality metric. It is deliberately data-driven, because a fixed threshold does not
+   transfer — the EBSD-optimal `DiffPos` cut on one `shade_LSHR` layer was 195.4 µm for the
+   C chain and 222.8 µm for the python chain on the *same raw data* (`296368d2`). The gate
+   **refuses rather than guesses** when the distribution is not bimodal; a refusal is
+   information, not a failure.
 3. **Position envelope.** If grain positions pile up against ±`Rsample` or ±`Hbeam`/2, the
    envelope is binding and the positions are not physical. The fix is to make the envelope
    MORE generous, never less — see the hard rule in §6.
@@ -783,10 +1116,12 @@ the first USED frame".
 discriminator or partly distortion re-fitting (the distortion-frozen control was not run).
 
 **How far to trust the output** — orientation and lattice parameter are solid; grain
-**position is good to ~100 µm, no better** (Lab Notebook §2d); `GrainRadius` is correct
-only with `midas-process-grains >= 0.6.1`; the pipeline is bit-reproducible only with
-`midas-peakfit >= 0.4.6` and `midas-transforms >= 0.8.2`, and the refiner only refines
-position at all with `midas-fit-grain >= 0.6.0`.
+**position is good to ~100 µm, no better** (Lab Notebook §2d). Everything else is
+conditional on the install passing §0: `GrainRadius` needs `midas-process-grains >= 0.6.1`
+and the **grain-selection keys** need `>= 0.7.0`; bit-reproducibility needs
+`midas-peakfit >= 0.4.6` and `midas-transforms >= 0.8.2`; the refiner refines position at
+all only from `midas-fit-grain >= 0.6.0` and reproduces the C recipe only from `>= 0.7.0`.
+**Run the §0 check and quote its output** — do not assert these from this list.
 
 **Do not judge a reconstruction by the fraction of the spot list it indexes.** On this
 dataset 2 grains index 8.9 % of the rows and the recon is nevertheless *complete* — ~98 %
@@ -812,34 +1147,53 @@ indexing succeeded. Judge the stage by `Results/OrientPosFit.bin` and the grain 
 
 ## 12. Check reproducibility on a new install
 
-Run the identical pipeline twice into a clean result dir and checksum **every stage**, in
+Run the identical pipeline twice into a **clean** result dir and checksum every stage in
 pipeline order — not just `Grains.csv`. You want the *first* artifact that diverges,
-because that names the guilty stage.
+because that is what names the guilty stage.
 
-Run the identical pipeline twice into a clean result dir and checksum every stage, in
-pipeline order. Do not just compare `Grains.csv` — you want the **first** artifact that
-diverges, which is what identifies the guilty stage:
+`rm -rf` the result dir between runs. The stages resume silently off existing files (§7),
+so a "reproducible" result can just be a skipped stage.
 
 ```bash
-for f in Temp/AllPeaks_PS.bin Temp/AllPeaks_PX.bin Result_StartNr_*.csv \
-         Radius_StartNr_*.csv InputAll.csv InputAllExtraInfoFittingAll.csv \
-         Spots.bin Data.bin nData.bin ExtraInfo.bin SpotsToIndex.csv \
-         Output/IndexBest_all.bin Output/FitBest.bin Results/OrientPosFit.bin \
-         Grains.csv SpotMatrix.csv ; do
-  printf "%s  %s\n" "$(md5sum < "$L/$f" | cut -d' ' -f1)" "$f"
+#!/bin/bash
+# usage: ff_repro.sh <paramfile> <scratch-dir>
+# Runs the pipeline twice into separate trees and reports the FIRST divergence.
+set -u
+PARAMS="$1"; BASE="$2"
+STAGES="Temp/AllPeaks_PS.bin Temp/AllPeaks_PX.bin InputAll.csv
+        InputAllExtraInfoFittingAll.csv Spots.bin Data.bin nData.bin ExtraInfo.bin
+        SpotsToIndex.csv Output/IndexBest_all.bin Output/FitBest.bin
+        Results/OrientPosFit.bin Grains.csv SpotMatrix.csv"
+
+for run in A B; do
+  rm -rf "$BASE/$run"; mkdir -p "$BASE/$run"
+  midas-pipeline run --scan-mode ff --params "$PARAMS" \
+      --result "$BASE/$run" --layers 1-1 > "$BASE/$run.log" 2>&1
 done
+
+# md5sum is GNU; on macOS use `md5 -q`. Pick whichever exists.
+MD5=$(command -v md5sum >/dev/null && echo "md5sum" || echo "md5 -q")
+diverged=0
+for f in $STAGES; do
+  a="$BASE/A/LayerNr_1/$f"; b="$BASE/B/LayerNr_1/$f"
+  [ -e "$a" ] && [ -e "$b" ] || { printf '%-40s MISSING\n' "$f"; continue; }
+  ha=$($MD5 < "$a" | cut -d' ' -f1); hb=$($MD5 < "$b" | cut -d' ' -f1)
+  if [ "$ha" = "$hb" ]; then printf '%-40s ok\n' "$f"
+  else printf '%-40s *** DIVERGED ***\n' "$f"
+       [ $diverged -eq 0 ] && echo ">>> FIRST DIVERGENCE: $f  <- this stage is guilty"
+       diverged=1
+  fi
+done
+[ $diverged -eq 0 ] && echo "bit-identical across both runs"
 ```
 
-`rm -rf results/ runinfo/` between runs — the stages resume silently off existing files
-(§7), so a "reproducible" result can just be a skipped stage.
+Glob-named artifacts (`Result_StartNr_*.csv`, `Radius_StartNr_*.csv`) are omitted because
+their names carry the start number; add them explicitly once you know it.
 
-Two independent bugs were found this way, and each was masked by the other until the first
+With an install that passes §0 this is bit-identical across runs. If it is not, read Lab
+Notebook §2 — two separate nondeterminism bugs are documented there with the signature
+each produces. They were found exactly this way, and each masked the other until the first
 was fixed. Expect to iterate.
-
-
-With `midas-peakfit >= 0.4.6` and `midas-transforms >= 0.8.2` this is bit-identical across
-runs. If it is not, read Lab Notebook §2 — two separate nondeterminism bugs are documented
-there, with the signature each produces.
 
 ---
 
@@ -916,3 +1270,53 @@ Everything the comparison turned up — five fixed defects, the Σ3 twin verific
 the claims that had to be retracted — is in **`FF_HEDM_Lab_Notebook.md`**. Read it before
 re-investigating anything in this pipeline; several attractive hypotheses are recorded
 there as *refuted*, with the measurement that killed them.
+
+---
+
+## 14. Report — and what "done" means
+
+### 14a. What to hand back
+
+A grain list is not the deliverable; a grain list **with its provenance and its caveats**
+is. Write these into the report, not just into the chat:
+
+- The `§0` install-gate output, verbatim. Every claim below is conditional on it.
+- `SURVEY.md` (§0b) — the measured inventory, including which file is which and where each
+  number came from.
+- The calibration result: strain median **and** 5 %-trimmed, the 0/180 spread if you have
+  one, and **the ring overlay image** (§5d). The overlay is evidence, not decoration.
+- The parameter file actually used, and the `RingThresh` measurement that set it (§6b).
+- `Grains.csv` with the §8b checks answered, each with the number that answers it.
+- Every assumption you made where this document said *stop and ask* and you proceeded
+  anyway — name it explicitly.
+
+**Every quantitative claim names the file and the command that produced it.** A number you
+cannot re-derive does not go in the report.
+
+### 14b. Say which bucket each number falls in
+
+§11 splits this pipeline's output three ways — **measured on this beamtime**,
+**convention, not measured**, and **could not verify**. Put every number you report into
+one of them. The geometry's *magnitude* is measured; its *handedness* is convention. Do
+not let a §11 item become a fact by being quoted often enough.
+
+### 14c. Done means
+
+- [ ] §0 install gate run, output pasted, **no package below floor**
+- [ ] `SURVEY.md` written, every number read from a file rather than a name
+- [ ] ω sign established from par field 9 — or **stopped and asked** if it was not `aero`
+- [ ] `SkipFrame` set, and the peakfit banner's `nFrames` = logged frames − `SkipFrame`
+- [ ] dark verified **non-zero in the zarr**, not merely configured (§3d)
+- [ ] energy from three instrument records, never the filename
+- [ ] calibrant strain ≤ 100 µε, reported as median + trimmed
+- [ ] **ring overlay produced and looked at** (§5d) — the one check that catches a
+      well-converged fit on the wrong rings
+- [ ] `RingThresh` measured with `midas-ring-thresh`, not copied
+- [ ] sample lattice constant + space group replace the calibrant's (§6)
+- [ ] `Rsample`/`Hbeam` left generous; grain positions checked for pile-up at the bounds
+- [ ] `Grains.csv` read against all seven §8b checks
+- [ ] reconstruction re-run once and compared grain-by-grain (§8b item 6)
+- [ ] every number bucketed per §14b, with its provenance
+
+**If a box cannot be ticked, say so in the report rather than leaving it blank.** An
+unticked box is a known limit; a silently skipped one becomes a false claim.

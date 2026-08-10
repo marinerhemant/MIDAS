@@ -1,8 +1,26 @@
-# NF-HEDM Reconstruction Runbook
+# NF-HEDM Reconstruction Runbook — survey → calibrate → reconstruct → report
 
-**Audience: a Claude Code session with no prior context that must run an NF-HEDM
-reconstruction from scratch.** Not a tutorial. Follow the steps in order; each one names
-the file to read, the command to run, the field to look at, and the branch to take.
+**Use this doc to start a fresh session on a near-field dataset this pipeline has never
+seen.** Paste it in together with `NF_HEDM_Lab_Notebook.md`, then give three lines:
+
+```
+Data folder:     <ABSOLUTE PATH>     # the image tree, e.g. /gdata/dm/1ID/<year>/<bt>/data/nf/
+Metadata folder: <ABSOLUTE PATH>     # or "find it" — see §3a
+Sample material: <e.g. gold cubes / Ti-7Al / unknown, tell me from the data>
+```
+
+Everything else the agent works out or asks for. **The order in §0 is not optional** — it
+was confirmed with the instrument scientist, and getting it wrong is itself a documented
+failure mode.
+
+**Scope.** §3a–§3g and the `2047 − index` BC convention are **1-ID**. 20-ID HT-HEDM is a
+different acquisition, detector and file format — see §3h, which lists two blockers that
+must be cleared before that data can enter the pipeline at all. On any other beamline,
+re-derive the array→lab mapping rather than inheriting it: getting it wrong **mirrors the
+microstructure invisibly** (§3h).
+
+Not a tutorial. Follow the steps in order; each one names the file to read, the command to
+run, the field to look at, and the branch to take.
 
 **Companion: `NF_HEDM_Lab_Notebook.md`.** This file says what to do. The notebook records
 what was found on the `bt_1id_jul26` campaign, how each claim was measured, and which
@@ -23,6 +41,35 @@ soft-deprecated C; only its example paramfile and seed cache are used here. Vers
 ---
 
 ## STOP — read this before touching anything
+
+### When to stop and come back with a question
+
+**"Get back to me if you get stuck" does not fire here.** The failures in this pipeline do
+not feel like being stuck. A wrong ω sign mirrors the microstructure with confidence
+unchanged. A wrong geometry reaches confidence **1.0000** — that is a *plateau*, and
+`ty` seeds 2° apart all reach it (hard rule 14). A re-seeded refinement ratchets the tilts
+1°/pass while confidence stays high (rule 15). In each case the run finishes and looks
+right.
+
+So the trigger is not confusion. **Halt on these named conditions, whether or not anything
+seems wrong:**
+
+| Condition | Why you cannot decide it yourself |
+|---|---|
+| par field 9 is **not** `aero` | no other value's ω sign has ever been established here (§2, §11) |
+| no folder with `FileCount.txt` + `fastsweep_Emon.txt` + `*_SequenceOfEvents.log` | you cannot write a paramfile at all (§3a) |
+| the data is **20-ID / HDF5 / Bluesky** | different acquisition, format and scaling; two blockers are still open (§3h) |
+| any beamline **other than 1-ID** | the `2047 − index` BC convention encodes *this* detector; getting it wrong mirrors the microstructure invisibly (§3h) |
+| any package **below floor** after §1 | `SumFrames` units inverted; a mixed resolve is silently wrong (§1, §8j) |
+| `fit_axis(...).is_reliable` is **False** | the shadow tracker refused — branch on it, do not override (§6e) |
+| both ybc routes fail | ybc is **not measurable from this scan**; inheriting it is a decision, not a default (§6e) |
+| the specimen is extended / irregular and you need a particle position | `position_candidates_um` and `triangulate` both assume compact; mask the annulus instead (§6e, §6i) |
+| calibration reached confidence 1.0 and you are about to accept it | confidence is not an acceptance criterion — check `BoxSize` and an external constraint first (rules 14, 17; §7b) |
+| `mic2grains` radii are needed but `EdgeLength ≪ GridSize` | the radii describe the probe triangle, not the cell — a measured 500× discrepancy (§8a) |
+| this document and the tree **disagree** | report it; do not work around it (§1) |
+
+When you halt, say which row fired, what you measured, and what you would need in order to
+proceed. Everything not blocked by it should still be finished first.
 
 ### Hard rules
 
@@ -69,10 +116,37 @@ soft-deprecated C; only its example paramfile and seed cache are used here. Vers
 17. **Check `BoxSize` before blaming the geometry (§7d).** Unset, it costs exactly the last
     few percent of confidence (0.949153 vs 1.000000) and looks like a small geometry error.
 18. **On weak signal, fix the REDUCTION before the geometry (§8f).** Denoising the
-    median-corrected residual and dropping `BlanketSubtraction` to ~0.7 σ was worth 3.6×
-    the voxels at C ≥ 0.9; a converged geometry refinement was worth +0.005 FracOverlap.
+    median-corrected residual and dropping the threshold to ~0.7 σ was worth 3.6× the
+    voxels at C ≥ 0.9; a converged geometry refinement was worth +0.005 FracOverlap.
+    **Set that threshold with `BlanketSigma`, not `BlanketSubtraction`** — the latter was
+    an int and could not express a sub-σ step at all (§8k).
 19. **Compare reconstructions by field, never by checksum (§8g).** `MicFileBinary` records
     carry a per-voxel `RunTime`, so two bit-identical *physics* results have different md5s.
+
+The rules above are about distrusting the *data* and the *code*. These four are about
+distrusting your own run, and they are the ones a context-free session skips:
+
+20. **Suspect success.** Confidence 1.0 is a *plateau*, not a verdict (hard rule 14); the
+    orchestrator's `Wrote 1 grains` does not mean one grain (§8a); `MicrostructureBinary.mic`
+    reads all-zero mid-run by design (§8a); a phase that indexes nothing exits cleanly
+    (§8a). Ask what the stage would look like if it had silently no-opped, then check that
+    specific thing.
+21. **Debug your own configuration before the data or the physics.** Order: a version
+    below floor (§1) → a key whose units changed (`SumFrames`, §8j) → a dropped or
+    misspelled key (`LatticeConstant` vs `LatticeParameter`, §10b) → a sign or array
+    convention (§2, §6b) → only then the sample. Lab Notebook §4c and §6a record claims
+    that were **retracted** once the mundane cause surfaced.
+22. **Never take a number from a name.** Not the energy from a filename (§4a), not the
+    frame count from the `DoVolume(...)` arguments — those are what was *requested*, the
+    per-frame log is what was *written* (§3g). Not the raster from a folder name: a
+    companion pipeline measured a folder called `10x10um_0p25umStepSize` as 20.000 × 14.142 µm
+    because the sample sat at 45° to the beam
+    (`LaueMatching/scripts/pipeline/Laue_Handbook.md`, Phase 0).
+23. **Do not reimplement what a `midas_*` package already does.** §3h says it directly for
+    the HDF5 reader — *"Reuse `midas_calibrate_v2.io.readers.read_image` … do not write a
+    new reader"* — and §8a for the pre-allocated outputs. Grain segmentation by
+    misorientation → `midas_stress.misorientation` (§8a); structure factors →
+    `midas_hkls` (§8l).
 
 ### Traps that silently corrupt results
 
@@ -116,6 +190,9 @@ soft-deprecated C; only its example paramfile and seed cache are used here. Vers
 | NLM combined with a σ-derived (sub-ADU) threshold | NLM smears isolated single counts into 4-px clusters and **manufactures** spots | §5d |
 | assuming one calibrant cube | `nfdev_jul26` has **two** Au cubes, one on-axis and one 497 µm off; a fit that averages them returns a wrong geometry | lab notebook §7d |
 | 1-ID `2047 − index` BC convention reused at another beamline | mirrored microstructure, invisible in the `.mic` | §3h |
+| a σ-denominated threshold set through `BlanketSubtraction` | it was an **int**: on NLM-denoised data (σ_MAD ~0.27 counts) the smallest legal value is already 3.7σ, so every sub-σ recommendation in §8f/§8k was unwritable. Use **`BlanketSigma`** | §8k |
+| a tomo mask built from `position_candidates_um` on unfamiliar geometry | the mapping was wrong **in form**, not sign — the true position is 90° away, so neither the returned point nor its antipode is near the particle. A candidate-point mask returned exactly **0.0000 at every off-axis voxel**, which reads identically to "the particle is absent". Two campaigns pin `θ = −φ − 90°` (`8a5f0184`); old form was out by 985 µm, corrected form predicts both to 3 µm. **Sweep the annulus — the radius is convention-free** | §6e |
+| version floors or key semantics taken from this document rather than the tree | in the six days after this file was written, `SumFrames` inverted its units and a new threshold key appeared | §1 |
 
 ---
 
@@ -161,6 +238,18 @@ separation measured from **absorption** is independent of any diffraction fit, s
 
 ## 1. Environment
 
+**First, work out which situation you are in:**
+
+```bash
+if [ -d /home/beams12/S1IDUSER/opt/envs/midas ]; then
+  echo "APS beamline host — use §1a"
+else
+  echo "your own machine or cluster — use §1b"
+fi
+```
+
+### 1a. On an APS beamline host
+
 **On the APS hosts** (chiltepin, copland, alleppey, sentosa, chutoro — all share
 `/home/beams*`), call by full path; conda is not on the non-interactive ssh PATH:
 
@@ -173,9 +262,12 @@ Contents re-checked 2026-08-01 with `importlib.metadata` on chiltepin: `midas-nf
 `numpy 2.4.6`, `tifffile 2026.3.3`, `h5py 3.16.0`, `scipy 1.17.1`, `torch 2.11.0+cu128`.
 
 > **The shared env is BEHIND this repo tree, and it still carries the `GridPoints`
-> off-by-one.** `packages/*/pyproject.toml` reads `midas_nf_pipeline 0.2.0`,
-> `midas_nf_preprocess 0.2.0`, `midas_nf_fitorientation 0.4.0` (bumped in `a6974246`,
-> `20622089`, `7aa1e997`); `midas_hkls 0.5.0` still matches. Checked functionally on
+> off-by-one.** As of **2026-08-07** `packages/*/pyproject.toml` reads
+> `midas_nf_pipeline 0.6.0`, `midas_nf_preprocess 0.6.0`, `midas_nf_fitorientation 0.8.0`,
+> `midas_hkls 0.7.0` — several releases past the env contents quoted above, which were
+> last read on 2026-08-01. **Treat every version number in this section as a worked
+> example of the check, not as current state: re-run the command below.** The gap was
+> last measured functionally on
 > 2026-08-01, not inferred from version strings — the installed
 > `midas_nf_fitorientation/params.py` reads `args[4,5,7,8,9,10]`, i.e. the **broken**
 > indices (lab notebook defect 10); the fixed tree reads `args[3,4,6,7,8,9]`. Also absent
@@ -196,6 +288,43 @@ Contents re-checked 2026-08-01 with `importlib.metadata` on chiltepin: `midas-nf
 > or overlay the tree with `PYTHONPATH` and say in the write-up which you used. Install on
 > chiltepin (only host with internet); the shared home makes it visible everywhere.
 
+**Do not trust the version numbers in this document. Trust the tree.** Run this from the
+repo root; it takes the **strictest** floor any package declares, so one stale dependency
+list cannot weaken the check:
+
+```bash
+python - <<'PY'
+import importlib.metadata as m, re, pathlib
+def vt(s): return tuple(int(x) for x in re.findall(r'\d+', s)[:3])
+floors = {}
+for p in pathlib.Path("packages").glob("*/pyproject.toml"):
+    for pkg, need in re.findall(r'"(midas-[a-z0-9-]+)(?:\[[\w,]+\])?>=([0-9][0-9.]*)"',
+                                p.read_text()):
+        if vt(need) > vt(floors.get(pkg, "0")): floors[pkg] = need
+bad = []
+for pkg, need in sorted(floors.items()):
+    try: have = m.version(pkg)
+    except m.PackageNotFoundError: continue
+    if vt(have) < vt(need): bad.append(f"{pkg:26} have {have:8} need >={need}")
+print(f"scanned {len(floors)} floors across the tree")
+print("\n*** BELOW FLOOR ***" if bad else "\nall installed midas packages satisfy the tree")
+[print(" ", b) for b in bad]
+PY
+```
+
+**Strictest, not nearest.** The two lists disagree: `midas_suite` floors
+`midas-nf-preprocess` at **0.6.0** and `midas-nf-fitorientation` at **0.8.0**, while
+`midas_nf_pipeline` still floors them at **0.4.0** and **0.6.0** — the versions *before*
+the `SumFrames` change. `9450901d`'s own message says a floor left behind "would let a
+resolve mix a package that reads the keys as raw with one that reads them as post-sum";
+`midas_nf_pipeline`'s list still permits exactly that.
+
+**This matters more here than the version strings suggest.** In the six days after this
+document was written, `SumFrames` **inverted** its unit convention (§8j) and a new
+threshold key `BlanketSigma` appeared (§8k). Neither change raises an error if you follow
+the old instructions. **When this document and the tree disagree, the tree is right** —
+record the discrepancy as a finding about this document rather than working around it.
+
 **`matplotlib` is NOT installed in that env.** Therefore: **reduce remotely, plot
 locally.** Write an `.npz` of the reductions on the host, `scp` it to the Mac, plot there.
 See §5a for the pattern actually used.
@@ -204,8 +333,39 @@ GPU prefix on any of those hosts: `CUDA_DEVICE_ORDER=PCI_BUS_ID KMP_DUPLICATE_LI
 Pick a GPU by *utilization*, not free memory. Long jobs: `setsid`/`nohup` + redirect to a
 log, or SIGHUP kills them.
 
-On the Mac: no CUDA. Activate the project env (`midas_env` or `hsharma_midas`); ask if
-unsure. Do not assume.
+### 1b. On your own machine or cluster
+
+```bash
+pip install "midas-nf-pipeline>=0.6.0" "midas-nf-preprocess>=0.6.0" \
+            "midas-nf-fitorientation>=0.8.0" "midas-hkls>=0.6.0" \
+            matplotlib
+```
+
+**Pin `midas-nf-preprocess >= 0.6.0` and `midas-nf-fitorientation >= 0.8.0` explicitly.**
+`midas-nf-pipeline`'s own metadata floors them at 0.4.0 and 0.6.0 — *below* the
+`SumFrames` change (§8j) — so a plain `pip install midas-nf-pipeline` can resolve a mix
+where one package reads `NrFilesPerDistance`/`OmegaStep` as raw and another as post-sum.
+`midas-suite[nf]` floors `midas-nf-pipeline>=0.6.0` but does not constrain the siblings
+either. This is exactly the resolve `9450901d` was written to prevent; the constraint just
+is not in that package's list yet.
+
+Then **run the floor gate above** and read its output.
+
+**Seed cache.** The orchestrator re-derives the cache path from the *install* directory
+(`from_cache.py:106`), which in a conda env resolves to a `NF_HEDM/seedOrientations` that
+does not exist — it then dies with `SeedCacheNotFound` **after** writing `hkls.csv`, so the
+run looks like it started fine (§8a). Set it explicitly:
+
+```bash
+export MIDAS_NF_SEED_DIR=<path-to-MIDAS-checkout>/NF_HEDM/seedOrientations
+```
+
+**No GPU?** Pass `--device cpu`. Note that `--device` was silently dropped by two of three
+call sites before `2719f322` — on an install below that fix, a CPU request still ran the
+reduction on CUDA and surfaced as an OOM from a stage with no reason to be on the GPU. The
+floor gate catches this.
+
+**Working directory.** Results go in a project directory you own — **never `/tmp`**.
 
 ---
 
@@ -331,12 +491,12 @@ So the derived paramfile block for this scan is:
 
 ```
 nDistances 2
-NrFilesPerDistance 720
+NrFilesPerDistance 720    # RAW images per distance (§8j: not divided by SumFrames)
 StartNr 0
-EndNr 719
+                          # EndNr: omit — optional for NF, derived and logged (§10d)
 RawStartNr 403783
 OmegaStart 180            # NEGATED, aero  (logged -180 -> 0, step +0.25)
-OmegaStep -0.25
+OmegaStep -0.25           # RAW step (§8j: not multiplied by SumFrames)
 Wavelength 0.1291502
 px 1.48
 NrPixels 2048
@@ -490,7 +650,8 @@ only the paths gets three of these wrong.
 ends on ω = 0, but that frame is overwritten by the first frame of the next
 sweep — except for the final sweep, which keeps it. That is why the sampleB scan has
 721 files for 2×360 frames, and why a stride of `NrFilesPerDistance` is still
-exact. Set `EndNr = StartNr + NrFilesPerDistance − 1` and ignore the extra.
+exact. Ignore the extra file. **Do not set `EndNr`** — it is optional for NF and the
+pipeline derives `StartNr + NrFilesPerDistance − 1` and logs it (`60dcc94c`, §10d).
 
 **The 1-ID "skip the first frame" rule is a GE / far-field detector rule and does
 NOT apply to NF.** On the GE FF detector the first frame of every acquisition —
@@ -1017,6 +1178,23 @@ sinusoid, which is true for a particle and false for an extended irregular speci
 setting. There is no on-axis feature to fall back on either (`find_stationary` returned a
 fixed 26 µm absorber at col 3408, not the sample).
 
+**(3) Turning a shadow into a particle POSITION — use the annulus, not the point.**
+`ShadowTrack.position_candidates_um` returns the sample-frame `(x, y)` as
+`(−a sin φ, −a cos φ)`, i.e. **θ = −φ − 90°**, with the antipode second as a fallback
+(`beam_calib/shadow.py:115-153`). That relation is a *measured convention* — 20-ID, aero,
+ω = −θ — pinned on two campaigns that located the same off-axis Au cube to
+`θ + φ = −90°` within 0.43°. It replaced an earlier `(a cos φ, a sin φ)` form that was
+wrong **in form, not sign**: the true position is 90° away, so neither the point nor its
+antipode was near the particle, and a candidate-point tomo mask returned **exactly 0.0000
+at every off-axis voxel** on both campaigns — indistinguishable from "the particle is
+absent." Corrected, it predicts both reconstructions to 3 µm; the old form was out by
+985 µm (`8a5f0184`).
+
+> **On a new beamline, do not build a point mask from this.** The relation encodes an ω
+> sign and a detector handedness. Mask the full **annulus** at `amplitude_px` — the radius
+> is convention-free — and let the reconstruction pick the angle. Two campaigns agreeing
+> is evidence, not proof.
+
 ⇒ When both routes fail, ybc is **not measurable from this scan**. Inherit it from a
 campaign that measured it at the same nominal distance, **mark it inherited in the
 paramfile**, widen `BCTol` in y, and let §7 refinement move it. Do not present the
@@ -1530,8 +1708,7 @@ of them from inside `OutputDirectory`** — the fitter resolves all inputs relat
 ```bash
 cd <OutputDirectory>
 
-# 0. hkls.csv — no console script exists for the NF variant. Use the stage helper,
-#    which is NOT one of the five broken call sites (stages.py:118-136).
+# 0. hkls.csv — no console script exists for the NF variant. Use the stage helper.
 /home/beams12/S1IDUSER/opt/envs/midas/bin/python - <<'PY'
 from midas_nf_pipeline.params import parse_parameters
 from midas_nf_pipeline import stages
@@ -1552,7 +1729,7 @@ midas-nf-preprocess seed-orientations --method cache --space-group 225 \
 # 2. voxel grid
 midas-nf-preprocess hex-grid params.txt                 # -> grid.txt
 
-# 3. optional grid mask (bypasses broken call site #3)
+# 3. optional grid mask
 midas-nf-preprocess tomo-filter grid.txt grid_filt.txt --tomo tomo.bin --px-tomo 1.5
 # midas-nf-preprocess tomo-filter grid.txt grid_filt.txt --bbox -500 500 -500 500
 
@@ -1599,9 +1776,11 @@ first (`packages/midas_nf_pipeline/USAGE.md:244-256`).
 
 ### 8c. Multi-layer by hand
 
-`run_multi_layer` (`workflows.py:556`) is part of the broken `run` path. Reproduce it
-manually: for each sample layer *n*, make `<result-folder>/LayerNr_<n>/`, copy the
-paramfile in, and rewrite two keys (`workflows.py:586-594`):
+`run_multi_layer` (`workflows.py:683`, wired from `cli.py:123-129`) **works** — the
+"broken `run` path" this section used to describe was fixed in `b95c38c0`/`d231fdf3`
+(§8a). Use it. The manual reproduction below is still the right move when you need to
+re-run one layer in isolation: for each sample layer *n*, make
+`<result-folder>/LayerNr_<n>/`, copy the paramfile in, and rewrite two keys:
 
 ```
 OutputDirectory  <result-folder>/LayerNr_<n>
@@ -1838,19 +2017,37 @@ signal and SNR *drops* as √N.
 Expected gain is **not** √N. The profile is peaked, so summing 3 gathers 2.38× the
 peak-frame signal against 1.50× the noise (measured σ_MAD 2.965 → 4.448) ≈ **1.6×**.
 
-`NrFilesPerDistance`, `EndNr` and `OmegaStep` must all describe the **POST-SUM** scan:
+**`SumFrames` is INTERNAL — every other key stays in RAW units.** The parameter file
+describes the experiment as performed: `NrFilesPerDistance` is the **raw** image count
+per distance, `OmegaStep` is the rotation between **raw** images, `EndNr` is optional.
+Changing `SumFrames` is a one-line edit and nothing else moves.
 
 ```
 SumFrames 3
-NrFilesPerDistance 600          # was 1800
-EndNr <StartNr + 600 - 1>       # the fit derives frames/distance from EndNr-StartNr+1,
-OmegaStep -0.3                  #   NOT from NrFilesPerDistance (params.py:166)
+NrFilesPerDistance 1800         # RAW count — NOT divided by SumFrames
+OmegaStep -0.1                  # RAW step  — NOT multiplied by SumFrames
+                                # EndNr: omit it; the pipeline derives and logs it
 ```
 
-Getting `EndNr` wrong silently gives the fit the wrong frame count. Check
-`SpotsInfo.bin` = `nDistances × NrFilesPerDistance × NrPixels² / 8` bytes — the size
-lands on the post-sum count only if the grouping and the per-distance stride are both
-right.
+The code derives the rest at the single place that needs it: the fit uses
+`omega_step_raw × SumFrames` and `NrFilesPerDistance // SumFrames`
+(`midas_nf_fitorientation/params.py:186-221`), and the reduction reads
+`NrFilesPerDistance` raw files per distance on a stride independent of `SumFrames`
+(`process_images/io.py:29-35`, `process_images/params.py:152-166`). `SumFrames` must
+divide `NrFilesPerDistance`, enforced with a named error (`params.py:167-175`).
+
+> **This convention INVERTED on 2026-08-04** (`a7c50926`, `60dcc94c`). It used to be the
+> other way round — you restated all three keys in post-sum units and the pipeline
+> rewrote the file. **Writing post-sum values into the current code is silently wrong.**
+> With `SumFrames 3` and `NrFilesPerDistance 600`, the reduction reads the first 600 of
+> the 1800 raw images — the first 60° of the sweep — and sizes its output at 600//3 = 200
+> frames; the fit independently derives the same 200 and an ω step of −0.3 × 3 = −0.9°,
+> so it believes those 200 frames span 180°. The two stages **agree**, no size error is
+> raised, and every spot is assigned the wrong ω. Guarded by
+> `midas_nf_preprocess/tests/process_images/test_sum_frames_internal.py`.
+
+`process-images` measures the ω width itself and logs the `SumFrames` it implies
+(`process_images/pipeline.py:471-506`) — read that line rather than guessing N.
 
 ### 8k. How low can `BlanketSubtraction` go — measure, do not guess
 
@@ -1869,7 +2066,28 @@ indicator — a real spot cannot be 1 px:
 | 0.5 | 1.8σ | 28,989 | 54,282 |
 
 Singles stay flat from 4 down to 1.5 then explode — the floor is between 1.0 and 0.5.
-**`BlanketSubtraction` is parsed as `int`**, so the only step available is 2 → 1.
+
+> **Use `BlanketSigma`, not `BlanketSubtraction`.** This whole section reasons in σ while
+> naming a key that could not express it: `BlanketSubtraction` was parsed as an **int**,
+> so on NLM-denoised data — where σ_MAD of the residual is ~0.27 counts — the smallest
+> legal value (1) is already 3.7σ and **nothing below that could be written at all**.
+> Fixed in `4e90be80`: `BlanketSubtraction` is now a float, and
+>
+> ```
+> BlanketSigma 3.5        # threshold = BlanketSigma × σ_MAD of the POST-denoise residual
+> ```
+>
+> is the transferable form — measured **per layer**, and it overrides `BlanketSubtraction`
+> when set. An absolute count does not carry between reductions: a 14-configuration
+> catalog on Ce-5%Y found every good reduction at **~3.5σ however it got there**, while one
+> fixed `BlanketSubtraction 2` was 7.5σ unsummed and 3.6σ summed on the same sample. The
+> numbers in the table above are that key's σ equivalents — read them as σ, set them as σ.
+
+`process-images` also logs an ω-persistence diagnostic that advises a `SumFrames`
+**direction** (§8j). Its floor is calibrated on one dataset and is explicitly *not*
+threshold-independent — at 7.5σ it recovers the measured-best `SumFrames 3`, at 3.5σ the
+same data gives 5. The log says so in the code itself; **do not read that number as
+calibrated.**
 
 **Do not raise `NLMH` to compensate.** Tested 1.5 and 2.0: σ barely moves
 (0.282 → 0.270 → 0.269) while spot-like components drop 35–42 %. 1.0 is the operating
@@ -2187,10 +2405,10 @@ Annotated reference file: `NF_HEDM/Example/ps_au.txt` (2 distances, `Lsd 8289.15
 | Key | Values / units | Read by |
 |---|---|---|
 | `OmegaStart` | deg — ω of the first frame. **See §2 for the sign.** | fitorientation |
-| `OmegaStep` | deg/frame (negative = CW). **See §2.** | fitorientation |
+| `OmegaStep` | deg between **RAW** images (negative = CW). Not multiplied by `SumFrames` — the fit does that (§8j). **See §2.** | fitorientation |
 | `OmegaRange` | `min max` deg — one line per distance | fitorientation (list), diffr-spots (list), pipeline |
-| `StartNr` `EndNr` | frame numbers; `EndNr-StartNr+1` is what the fitter uses for frames/distance (`fitorientation/params.py:163-166`) | fitorientation |
-| `NrFilesPerDistance` | count | image processing, pipeline, multi-layer offset |
+| `StartNr` `EndNr` | frame numbers. **`EndNr` is OPTIONAL for NF** and derived as `StartNr + NrFilesPerDistance − 1`; the fitter takes frames/distance from `NrFilesPerDistance`, not from `EndNr−StartNr+1` (`fitorientation/params.py:204-221`, commit `60dcc94c`). Supply it by hand only if you want the inconsistency check. FF/PF still require it. | fitorientation |
+| `NrFilesPerDistance` | **RAW** image count per distance — the one source of truth for frames/distance. Not divided by `SumFrames` (§8j). | image processing, pipeline, multi-layer offset, fitorientation |
 | `WFImages` | wide-field frames per layer, **excluded** from `NrFilesPerDistance` (`process_images/io.py:31-33`) | image processing |
 | `RawStartNr` | first raw file number; rewritten per sample layer | image processing, pipeline |
 
@@ -2207,7 +2425,7 @@ Arithmetic consistency check (derived from the example, **not enforced by code**
 | `GridFileName` | default `grid.txt` | hex grid, fitorientation |
 | `GridMask` | 4 floats. The code filters grid columns 2 and 3, i.e. **x and y in µm** (`stages.py:211-227`). `ps_au.txt:89` labels them `ymin ymax zmin zmax`; **the code's meaning wins.** | pipeline `run_grid_mask` |
 | `GlobalPosition` | µm — written into the `.mic` header | `ParseMic`, consolidator |
-| `TomoImage` | path to a **square `uint8`** mask; side inferred from file size (`tomo_filter/filter.py:33-52`) | pipeline `run_tomo_filter` — **broken, §8a #3; use the CLI** |
+| `TomoImage` | path to a **square `uint8`** mask; side inferred from file size (`tomo_filter/filter.py:33-52`) | pipeline `run_tomo_filter` — **fixed**; the old path-vs-tensor defect is documented in `stages.py:327-331`. The `tomo-filter` CLI (§8b step 3) remains the way to re-run it standalone |
 | `TomoPixelSize` | µm per tomo pixel | as above |
 
 #### Building a SYNTHETIC tomo mask (no tomography required)
@@ -2357,7 +2575,8 @@ All read by `midas_nf_preprocess.process_images` (`process_images/params.py:83-1
 
 | Key | Units | Meaning |
 |---|---|---|
-| `BlanketSubtraction` | counts | flat offset subtracted **after** the temporal median, then clamped at 0 (`process_images/pipeline.py:165-166`) |
+| `BlanketSubtraction` | counts (**float** since `4e90be80`; was int) | flat offset subtracted **after** the temporal median, then clamped at 0 (`process_images/pipeline.py:165-166`). An absolute count does not transfer between reductions — prefer `BlanketSigma` |
+| `BlanketSigma` | multiples of σ | **the transferable threshold.** `threshold = BlanketSigma × σ_MAD` of the POST-denoise residual, measured **per layer**; overrides `BlanketSubtraction` when set (`4e90be80`, §8k). ~3.5σ was optimal across a 14-configuration catalog however it was reached |
 | `MedFiltRadius` | px | spatial median radius: `0` = identity, `1` = 3×3, `2` = 5×5 (`params.py:47`) |
 | `GaussFiltRadius` | px | maps to the LoG `sigma` field — the *name* is `GaussFiltRadius`, the field is `sigma` |
 | `LoGMaskRadius` | px | LoG kernel half-width |
@@ -2493,8 +2712,10 @@ unless `MIDAS_RUN_INTEGRATION=1`; `test_mic2grains` also skips if the C binary i
 - **`midas_nf_pipeline` end to end.**
   `tests/integration/test_au_end_to_end.py` is gated on `MIDAS_RUN_INTEGRATION=1` and asserts
   only that the consolidated H5 *contains* `voxels/position` and either `grains/grain_id` or
-  `multi_resolution/loop_0_unseeded` (`:61-66`). No numerical comparison, and given §8a it
-  cannot currently pass.
+  `multi_resolution/loop_0_unseeded` (`:61-66`). It is a smoke test: **no numerical
+  comparison against anything.** (It is no longer blocked by §8a — the orchestrator
+  defects are fixed — but passing it says only that the run produced an H5 with the right
+  keys in it.)
 
 ### Deliberate, documented departures from the C — do not report these as parity failures
 
@@ -2526,9 +2747,11 @@ unless `MIDAS_RUN_INTEGRATION=1`; `test_mic2grains` also skips if the C binary i
    in `bt_1id_jun25`). What any other value implies for the ω sign is **unknown**. Stop
    and ask.
 2. **`*_nf_*` folder naming** is convention; nothing in this repo parses it.
-3. **The five §8a defects were established by reading, not by execution.** Exception
-   *types* follow from Python semantics; exception *text* is not quoted because it was not
-   observed.
+3. **RESOLVED — the §8a orchestrator defects.** They were originally established by
+   reading, not execution. They are now fixed (`b95c38c0`, `d231fdf3`) and the three NF
+   suites run green in this tree: `midas_nf_pipeline` 39 passed / 2 skipped,
+   `midas_nf_preprocess` 442 / 1, `midas_nf_fitorientation` 102 / 24 (2026-08-07,
+   `midas_env`, CPU). `run` is the supported route (hard rule 5).
 4. **`/grains/` being a single row** was established by reading `aggregate_grains`, not
    against a real H5. Check the row count before quoting it.
 5. **The `.mic` header `%TriEdgeSize 0.000000` degradation path** was traced in code
@@ -2541,8 +2764,9 @@ unless `MIDAS_RUN_INTEGRATION=1`; `test_mic2grains` also skips if the C binary i
    established.
 8. **`fastsweep_Emon.txt` fields other than f10** were not identified.
 9. **`NF.par` fields other than f6–f11, f17 and f29** were not identified.
-10. **Absolute `Lsd` for `bt_1id_jun25`** is not established in this document — §6 is a
-    placeholder.
+10. **Absolute `Lsd` for `bt_1id_jun25`** is not established in this document. (§6 is no
+    longer a placeholder — it carries the full DetZBeamPos procedure and reference
+    numbers in §6h — but those are `bt_1id_jul26`. Nothing here pins jun25.)
 11. **Which of geometry A / B is physically correct** (§7e/§7f). A was adopted on operator
     judgement after B scored slightly worse on the map; the two orientations agree to
     0.04°, so this is a **preference, not a measurement**. Do not report A as "the
@@ -2581,7 +2805,60 @@ unless `MIDAS_RUN_INTEGRATION=1`; `test_mic2grains` also skips if the C binary i
 - **Unverified against C:** the image-reduction chain that produces `SpotsInfo.bin`, the
   candidate-spot simulation, the grid generation, the pipeline orchestration.
 - **Known wrong:** the `/grains/` group and four dataset names in the consolidated H5
-  (§9c); the five orchestrator call sites (§8a).
+  (§9c); grain **radii** from `mic2grains` whenever `EdgeLength ≪ GridSize` (§8a, §10e).
+  The orchestrator call sites are **fixed** — see §11 could-not-verify item 3.
 
 **Say which bucket each number you report falls into.** Every quantitative claim must name
 the file and the command that produced it.
+
+---
+
+## 12. Report — and what "done" means
+
+### 12a. What to hand back
+
+- The §1 install-gate output, verbatim. Every claim below is conditional on it, and the
+  gate has caught a real mixed install (`SumFrames` raw-vs-post-sum) more than once.
+- The measured scan definition per scan — `nDistances`, `NrFilesPerDistance`, `StartNr`,
+  `OmegaStep` — **re-derived from the per-frame log, not inherited from the calibrant**
+  (§3g), with the three consistency checks of §3d.
+- The geometry: `BC` per distance from `DetZBeamPos` (§6), `Lsd` from spots (§6i), the
+  five acceptance gates of §6g, and **which of them failed**.
+- The calibration: the paramfile used, `NumIterations` inside one invocation, and the
+  §7b negatives you did *not* re-run.
+- The reduction settings, in σ: `BlanketSigma`, `SumFrames` (with the ω-width measurement
+  that chose it, §8j), NLM on/off.
+- The `.mic` result with the §9a caveats, and grain **counts** — not `mic2grains` radii
+  unless `EdgeLength == GridSize` (§8a).
+- Every place this document said *stop and ask* and you proceeded anyway.
+
+### 12b. Say which bucket each number falls in
+
+§11 has five: **has a real parity test against C**, **does not**, **deliberate departure
+from C**, **could not verify**, **verified in this tree**. Put every number in one.
+
+**In particular:** the entire image-reduction chain that produces `SpotsInfo.bin`, the
+candidate-spot simulation and the grid generation carry **no byte-parity evidence against
+the C** (§11). Their docstrings cite C line numbers — that is provenance, not
+verification. A reconstruction is not wrong because of this, but a report that does not
+say it is overclaiming.
+
+### 12c. Done means
+
+- [ ] §1 install gate run, output pasted, **no package below the strictest floor**
+- [ ] ω sign established from par field 9 — or **stopped and asked** if not `aero`
+- [ ] scan definition re-derived per scan (§3g); §3d's three checks all pass
+- [ ] `StartNr` = the first image; the GE skip-first-frame rule **not** carried over (§3g)
+- [ ] raw frames looked at before anything was built (§5), on the temporal-median + LoG
+      path — **never a max-projection** (hard rule 4)
+- [ ] BC measured this campaign, not inherited (§6d); β measured this beamtime (§6f)
+- [ ] all five §6g acceptance gates checked, pass or fail recorded
+- [ ] calibration accepted on something other than confidence (hard rule 14); `BoxSize`
+      checked first (§7d)
+- [ ] reduction tuned before geometry on weak signal (hard rule 18), threshold set in σ
+- [ ] orientation field tested by **neighbour vs random misorientation**, not by maxC or
+      median — those are blind to the plateau failure (trap table, lab notebook §8h)
+- [ ] every number bucketed per §12b, with its provenance
+
+**If a box cannot be ticked, say so in the report rather than leaving it blank.** An
+unticked box is a known limit; a silently skipped one becomes a false claim.
