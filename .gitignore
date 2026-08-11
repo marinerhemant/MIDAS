@@ -70,7 +70,15 @@ fftwf_wisdom_*.txt
 .cache/
 .clangd
 .agent/
-.claude/
+# `.claude/*` and not `.claude/`: git does not descend into an excluded
+# DIRECTORY, so a negation under it never matches. Excluding the contents keeps
+# the directory walkable and lets skills be re-included below.
+.claude/*
+# Shared skills ARE project assets, not machine state -- a skill that ships with
+# the clone is usable by whoever checks the repo out, which is the point of the
+# technique doc sets it points at. Personal settings and session state stay
+# ignored by the rule above.
+!.claude/skills/
 
 # Local machine/session artifacts
 .loglogin
