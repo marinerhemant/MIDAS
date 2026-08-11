@@ -688,7 +688,7 @@ Method lesson common to both: **compute the random-coincidence expectation of a 
 statistic before running it.** Both failures were predictable on paper.
 
 **F0. The work was done in the WRONG ORDER, and that is the biggest failure here.**
-Hard rule 13 / §6a: *BC comes from the direct beam, Lsd comes from spots, in that order.*
+Hard rule 13 / Handbook §6a: *BC comes from the direct beam, Lsd comes from spots, in that order.*
 What happened instead: an operator-supplied "delta = 2000 µm" was written straight into an
 `Lsd 9000/11000/13000` paramfile, and a 100-minute reduction plus a reconstruction were
 launched — §8 work started before §6 was finished. The `Lsd` lines were void. Only
@@ -702,7 +702,7 @@ motor; `δ` must be measured. Confusing them is a millimetre-scale error — her
 Recorded as a trap in handbook §6i-bis.
 
 **F4. The position-scrambled null was written as a NO-OP — the exact bug the handbook
-documents.** §6i:995 says in as many words: *"Permuting whole rows is a no-op … the null
+documents.** Handbook §6i:995 says in as many words: *"Permuting whole rows is a no-op … the null
 silently re-runs the real analysis."* The first triangulation script did
 `dB = dB[permutation]`, i.e. permuted whole rows, and the null returned **contrast 1.00×** —
 peak 1.3262 against a real peak of 1.3262, identical to four decimals. It tested nothing.

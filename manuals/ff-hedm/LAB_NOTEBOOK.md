@@ -150,7 +150,7 @@ orientation, position and lattice. Only the strain is recomputed, from the clust
 pooled spots. So **`spot_aware` matches the C reference and `physics` deviates from it.**
 Verified by running the freshly-built C binary on the identical refinement output: the two
 grains it shares with `spot_aware` agree to six decimals in X/Y/Z, lattice parameter,
-DiffPos, DiffOme and DiffAngle. See Handbook Handbook §8a.
+DiffPos, DiffOme and DiffAngle. See Handbook §8a.
 
 For this dataset the trade is measurable. Per cluster, member position sd is
 (73, 106, 193) µm; the bootstrap SE of the median over 9 members is (31, 53, 99) µm. So

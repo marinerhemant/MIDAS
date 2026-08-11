@@ -13,7 +13,7 @@ takes an optional ``ax``, and returns the axes -- matching
 Two things worth knowing before reading any of these plots:
 
 * **Grain positions are good to ~100 µm**, not to the six decimals
-  ``Grains.csv`` prints (``FF_HEDM_Lab_Notebook.md`` §2d). Do not over-read
+  ``Grains.csv`` prints (``manuals/ff-hedm/LAB_NOTEBOOK.md`` §2d). Do not over-read
   small spatial structure.
 * **``GrainRadius`` is only correct with ``midas-process-grains >= 0.6.1``.**
   Older versions report approximately the sample-wide mean radius for *every*

@@ -1,6 +1,6 @@
 """Recommend ``RingThresh`` per ring, from the data.
 
-Replaces the manual recipe in ``manuals/FF_HEDM_Handbook.md`` section 6b.
+Replaces the manual recipe in ``manuals/manuals/ff-hedm/README.md`` section 6b.
 
 Why the old recipe is not enough
 --------------------------------

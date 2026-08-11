@@ -49,7 +49,7 @@ class GrainList:
     pos : (N, 3) float
         Grain centre-of-mass X, Y, Z in **micrometres**. Trustworthy to about
         ~100 µm on a typical reconstruction -- do not read the six decimals the
-        file prints (``FF_HEDM_Lab_Notebook.md`` §2d).
+        file prints (``manuals/ff-hedm/LAB_NOTEBOOK.md`` §2d).
     euler : (N, 3) float
         Bunge ZXZ Euler angles in **radians**, matching the ``.mic`` convention
         so :func:`midas_plotting.ipf_rgb` accepts them directly.

@@ -1,0 +1,173 @@
+# Phase 2 — Build the parameter file
+
+> Part of the **FF-HEDM doc set**. The spine — scope gate, install gate, hard rules,
+> halt conditions and the order of operations — is [`README.md`](README.md). Section
+> numbers (§n) are continuous across the set; the index in the spine says which file
+> holds which.
+
+---
+
+## 6. STEP 5 — Build the parameter file
+
+Start from `FF_HEDM/Example/Parameters.txt` and replace the geometry block. Generate it
+from the calibration JSON rather than retyping — hand-copied geometry is how a recon ends
+up describing a calibration it isn't using.
+
+**The calibrant's `LatticeConstant` and `SpaceGroup` must be replaced with the sample's.**
+The calibration paramstest carries CeO₂ (5.4116, SG 225); a gold sample needs
+`4.0782, SG 225`. This is the single most common copy-paste error.
+
+**`ImTransOpt` must match what the calibration was fitted on.** If the calibrant image was
+read straight out of `exchange/data` with no transform, the recon must use `ImTransOpt 0`.
+A mismatch mirrors the geometry relative to the fit.
+
+Ring selection: only rings with **full azimuthal coverage** are safe defaults. With BC near
+the centre of a 2048² detector, that is everything inside the *nearest-edge* radius;
+rings between the nearest-edge and far-corner radii are partial and bias η coverage.
+
+`Rsample`, `Hbeam`, `BeamThickness`, `Vsample`, `GlobalPosition` are **not** descriptions
+of the sample. **HARD RULE: never set `Rsample`/`Hbeam` to the true sample dimensions.**
+They are a deliberately generous *search bound*; tighten them to the real size and any
+grain whose true position lies near the boundary is pushed onto it, giving an artefactual
+pile-up of grain positions at ±`Rsample` and ±`Hbeam`/2 that reads as real microstructure.
+Leave the generous defaults (2000 µm here, matching `FF_HEDM/Example/Parameters.txt`).
+
+---
+
+## 6b. Set `RingThresh` from the data, not from a template
+
+`RingThresh <ring> <threshold>` is the single most consequential number in the peak
+search, and the value in any example file is meaningless for your detector, exposure and
+sample. Measure it.
+
+The peak finder labels 8-connected blobs above threshold **inside the ring bands only**
+(`Width` µm either side of each ring), then applies a **strict** size filter —
+`minNrPx < nPx < maxNrPx`, both bounds exclusive (`midas_peakfit/connected.py:91-100`).
+With the default `minNrPx 1`, **any single-pixel blob is discarded**. So a threshold that
+is slightly too high does not degrade gracefully: it shaves every spot down to a few
+isolated pixels and you get exactly zero peaks.
+
+Use the calculator — do not hand-roll the sweep:
+
+```bash
+midas-ring-thresh <run>/LayerNr_1/<name>.MIDAS.zip \
+    --result-folder <run>/LayerNr_1 --n-frames 40
+```
+
+It sweeps thresholds through the **production** peak-search path
+(`compute_good_coords` → `preprocess_frame` → `find_regions` →
+`filter_regions_by_size`), reports two independent criteria per ring, and prints
+paste-ready `RingThresh` lines.
+
+**Do not reimplement the band mask.** Earlier revisions of this section carried a
+seven-line snippet that built its own mask from a plain radius-from-beam-centre. That is
+wrong: the production band uses the *distortion-corrected* `Rt` after
+`apply_image_transformations` + `transpose_square`. Measured on `Au3_cubes_ff_000008` the
+naive mask shares only **13.4 %** of its pixels with the real band, which made blob counts
+disagree with the pipeline by ~67× and manufactured a spurious "background varies by 20σ
+around the ring" result. Through the real band that background is flat (spread 0.4σ).
+
+The two criteria:
+
+- **A — blob SNR.** Lowest threshold at which ≥90 % of surviving blobs have local
+  SNR > 5, measured on the *ungated* frame. (It must be ungated: after thresholding, every
+  sub-threshold pixel is 0, so the local background and its MAD collapse and every SNR
+  reads as 0.) The annulus is restricted to in-band pixels — a band is only `2*Width` wide,
+  so an unrestricted annulus is mostly out-of-band zeros.
+- **B — expected false positives.** Lowest threshold whose predicted noise-blob count over
+  the *whole scan* is under 10, from the per-cell σ and the `minNrPx` size filter. This is
+  the criterion that matters when the sample is sparse: a 2-grain dataset has ~1–2 real
+  peaks per frame against ~3×10⁵ in-band pixels, so a tiny per-pixel false rate still
+  swamps the signal.
+
+They should agree; the tool says so explicitly when they do not, which points at a bad band
+or a broken dark rather than at the threshold.
+
+**Why the old "pick the knee" rule was not enough.** Blobs/frame surviving the size filter
+on `Au3_cubes_ff_000008` go 5.2 (thr 5) → 1.6 (10) → 0.8 (20) → 0.5 (40). The two-orders
+jump is between 5 and 10, but noise keeps falling out well past it. The knee locates where
+noise *percolates* into detector-spanning blobs (largest blob 645 px at thr 5 vs 393 at
+10), not where noise stops being admitted.
+
+Measured on `Au3_cubes_ff_000008` (20 ms/frame, `Width` 7.5 px) the two criteria agree on
+every ring and give **`RingThresh` 10 / 20 / 20 / 10 / 10** for rings 1–5. On ring 5 the
+clean fraction goes from 20 % of blobs above SNR 5 at threshold 5 to 100 % at threshold 10.
+
+*(An earlier revision of this section reported "both criteria return 10 on every ring, 92 %
+clean at 10 vs 52 % at 5". Those came from a `blob_snr` that restricted its background
+annulus to in-band pixels and was over-optimistic; fixed, and the numbers above supersede
+them — Lab Notebook §6b.)*
+
+**Caveat:** this tuning is only meaningful once the dark is verified non-zero (§3d). If the
+dark is missing, *every* threshold yields zero peaks and the table above is flat — that
+invariance is itself the diagnostic.
+
+---
+
+## 6c. Reject spurious peaks by SNR, not by a proxy
+
+`RingThresh` decides what gets *detected*. **`MinPeakSNR`** decides what gets *kept*, and it
+is the only quality criterion here that does not smuggle in an assumption:
+
+```
+MinPeakSNR 5          # 0 = off (default); (peak - cell_median) / cell_sigma
+```
+
+> **`midas-zipper >= 0.1.5` or this key does nothing.** 0.1.4's allow-lists do not carry
+> `MinPeakSNR`, `BgSubtract` or `BgNSectors`, so a parameter file zipped by it drops all
+> three into the void — the peak search then runs at the defaults with no error and no log
+> line (`a440bef6`, §0). The floor is declared as of `midas-pipeline` 0.8.2, so a fresh
+> install is safe — but **an existing zarr written by an older zipper stays broken**, and
+> re-running with a newer zipper installed does not fix a zip that already exists (§7:
+> `zip_convert` is skipped when the zarr is present). The keys are written as **datasets**
+> under
+> `analysis/process/analysis_parameters` (`ff_zip.py:159-167`), so check the zarr itself
+> before trusting any threshold you set:
+>
+> ```bash
+> python -c "
+> import zarr, sys
+> g = zarr.open(sys.argv[1], mode='r')['analysis/process/analysis_parameters']
+> for k in ('MinPeakSNR', 'BgSubtract', 'BgNSectors'):
+>     print(k, list(g[k][:]) if k in g else '*** ABSENT — zipper too old ***')
+> " <result>/LayerNr_1/<stem>.MIDAS.zip
+> ```
+
+Computed per peak against its own (ring, azimuthal sector) cell during the peak search, so
+it costs nothing extra and applies to **FF and PF alike** (both use `midas_peakfit`). It is
+the natural knob for the pf-HEDM failure mode where spurious signal is admitted.
+
+**Do not substitute a proxy — each of these has been measured to fail:**
+
+| proxy | why it fails |
+|---|---|
+| `MinIntegratedIntensity` | no noise estimate, so it cannot tell a weak real spot on a quiet patch of detector from a noise excursion on a hot one |
+| `FitRMSE` | an **absolute** residual, so it grows with peak intensity — cutting at `FitRMSE < 2000` discarded **58 % of the indexed spots** on the reference dataset |
+| ω multiplicity (`NImgs`) | encodes **mosaicity, not reality**. A small or undeformed grain can satisfy Bragg inside one frame; 45.9 % of credible spots were single-frame and 8 indexed spots reached SNR 2511 on one frame |
+
+**No specific value is recommended yet.** Two SNR estimators (per-cell vs a box on the raw
+frame) rank spots differently — 94 % vs 53 % clean at SNR 5 on the reference dataset — and
+which is correct decides where the cut belongs (Lab Notebook §6d). Start at 5, and check
+what it removes against the raw frames before trusting it.
+
+---
+
+
+## 10. Parameter-file reference
+
+Full key list: `FF_Parameters_Reference.md`. Keys this runbook depends on:
+
+| key | note |
+|---|---|
+| `SkipFrame` | 1 at 1-ID; applies to every multi-frame file and the dark (§3e) |
+| `dataDataset` / `darkDataset` | both `exchange/data` for DM files (§3d) |
+| `OmegaStart` / `OmegaStep` | negated vs the log for `aero` (§2); `OmegaStart` describes **raw** frame 0 |
+| `ImTransOpt` | must match the calibration (§6) |
+| `LatticeConstant` / `SpaceGroup` | the **sample's**, not the calibrant's (§6) |
+| `RhoD` | µm; distortion normalisation radius |
+| `Rsample` / `Hbeam` | generous grain-position search bound — **never set to the real sample size** (§6) |
+| `RingThresh <ring> <val>` | per-ring detection threshold; set it with `midas-ring-thresh` (§6b), never from a template |
+| `MinPeakSNR` | float, default 0 = off. Minimum local SNR to keep a detected peak (§6c). FF **and** PF |
+| `BgSubtract` / `BgNSectors` | 0/1 (default 0) + azimuthal cells per ring. Removes a varying background before thresholding. Only helps where the background actually varies — it did **not** on this beamtime (Lab Notebook §6a) |
+
+---

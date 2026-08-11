@@ -127,11 +127,65 @@ def nearby_identifiers(line: str, cite_span: tuple[int, int],
     return out[-2:]                             # the nearest one or two only
 
 
+# `#{1,6}`: a top-level campaign section is written `# 7.` in the NF notebook, and
+# requiring two hashes silently reported its own subsections' parent as missing.
+SECTION_HEAD = re.compile(r"^#{1,6} (\d+[a-z]?(?:-[a-z]+)?)\.", re.M)
+# A bare §n means "this doc set". Qualified refs (Lab Notebook §n, NF_HEDM_Handbook.md §n)
+# point elsewhere and are not this checker's business.
+# Match the reference only; the qualifying lead is sliced from the source afterwards.
+# Capturing it here consumes text, so in a run like "§0-§0a" the second reference
+# gets a one-character lead and its qualifier is missed.
+SECTION_REF = re.compile(r"§(\d+[a-z]?(?:-[a-z]+)?)")
+LEAD = 40
+# The documented convention is `Handbook §n` / `Lab Notebook §n` -- a bare word,
+# not a filename. Matching only "handbook.md" missed the form actually in use.
+QUALIFIED = re.compile(r"(?i)notebook|handbook|\.md`? ")
+
+
+def _doc_set(path: Path) -> tuple:
+    """Which numbering space a file belongs to.
+
+    A technique directory (manuals/ff-hedm/) is ONE space spread over several
+    files, so a §n defined in phase-1 resolves from the spine. The lab notebook
+    is its own space even inside that directory -- it carries its own §1-§7,
+    which is exactly why the convention writes cross-refs as ``Lab Notebook §n``.
+    """
+    if "LAB_NOTEBOOK" in path.name.upper() or "LAB_NOTEBOOK" in path.stem.upper():
+        return (path.parent, "notebook")
+    return (path.parent, "handbook")
+
+
+def check_section_refs(manuals: Path) -> list[str]:
+    """Bare §n references that resolve nowhere in their own doc set."""
+    heads: dict[tuple, set[str]] = {}
+    docs = sorted(manuals.rglob("*.md"))
+    for d in docs:
+        heads.setdefault(_doc_set(d), set()).update(
+            m.group(1) for m in SECTION_HEAD.finditer(d.read_text(errors="replace")))
+    out = []
+    for d in docs:
+        known = heads.get(_doc_set(d), set())
+        if not known:
+            continue
+        bad = set()
+        text = d.read_text(errors="replace")
+        for m in SECTION_REF.finditer(text):
+            if QUALIFIED.search(text[max(0, m.start() - LEAD):m.start()]):
+                continue
+            if m.group(1) not in known:
+                bad.add(m.group(1))
+        for s in sorted(bad):
+            out.append(f"SECTION    {d.relative_to(manuals)}  §{s} resolves nowhere "
+                       f"in its doc set")
+    return out
+
+
 def check(root: Path, manuals: Path, verbose: bool) -> int:
     problems: list[str] = []
     checked = 0
 
-    for doc in sorted(manuals.glob("*.md")):
+    # rglob, not glob: a technique doc set (manuals/ff-hedm/) is several files.
+    for doc in sorted(manuals.rglob("*.md")):
         lines = doc.read_text(errors="replace").split("\n")
         for lineno, line in enumerate(lines, 1):
             for m in CITATION.finditer(line):
@@ -181,6 +235,7 @@ def check(root: Path, manuals: Path, verbose: bool) -> int:
                         f"{idents}, absent within ±{SYMBOL_WINDOW} lines "
                         f"in all {len(cands)} candidate(s)")
 
+    problems.extend(check_section_refs(manuals))
     print(f"doc-citation-check: {checked} citation(s) in {manuals}")
     if problems:
         print(f"\nFAILED -- {len(problems)} unresolved:\n")
