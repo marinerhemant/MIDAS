@@ -335,13 +335,23 @@ def _build_parser() -> argparse.ArgumentParser:
     run.add_argument("--pg-mode",
                      choices=["spot_aware", "legacy", "paper_claim", "c_parity"],
                      default="c_parity",
+                     # Every literal percent must be doubled: argparse runs the help
+                     # string through %-formatting, so a bare '%' raises and takes the
+                     # WHOLE `--help` output down, not just this line. Four of the five
+                     # here were bare, which is why `midas-pipeline run --help` crashed
+                     # with "unsupported format character 'v'" and no option could be
+                     # discovered from the CLI at all.
                      help="Grain-determination algorithm. Default 'c_parity' "
                           "replicates C ProcessGrains (datasetA Ni: 6150 "
                           "grains vs C's 6138; matched pairs agree to 0.0000 "
                           "deg and 0.000 um) and is the most accurate against "
-                          "EBSD on shade_LSHR (precision 79.8% vs spot_aware's "
-                          "68.2% at equal recall). 'spot_aware' keeps ~18% more "
-                          "grains, of which only 7.2%% are EBSD-corroborated.")
+                          "EBSD on shade_LSHR (precision 79.8%% vs spot_aware's "
+                          "68.2%% at equal recall). 'spot_aware' keeps ~18%% more "
+                          "grains, of which only 7.2%% are EBSD-corroborated. "
+                          "NOTE: only 'spot_aware', 'legacy' and 'paper_claim' "
+                          "write processgrains_diagnostics.h5; 'c_parity' returns "
+                          "without calling result.write(), so the default mode "
+                          "produces no residual sidecar.")
 
     # Layers
     run.add_argument("--layers", default="1-1",

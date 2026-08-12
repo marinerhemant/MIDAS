@@ -50,6 +50,12 @@ isolated pixels and you get exactly zero peaks.
 Use the calculator — do not hand-roll the sweep:
 
 ```bash
+# PREREQUISITE: needs hkls.csv for the ring radii and refuses without it
+# ("No ring radii available... This tool needs hkls.csv"). Only the `hkl` stage
+# writes it, so on a fresh run do BOTH conversions first:
+midas-pipeline run --params Parameters.txt --result results/ --layers 1-1 --only zip_convert
+midas-pipeline run --params Parameters.txt --result results/ --layers 1-1 --only hkl
+
 midas-ring-thresh <run>/LayerNr_1/<name>.MIDAS.zip \
     --result-folder <run>/LayerNr_1 --n-frames 40
 ```
@@ -90,7 +96,13 @@ noise *percolates* into detector-spanning blobs (largest blob 645 px at thr 5 vs
 10), not where noise stops being admitted.
 
 Measured on `Au3_cubes_ff_000008` (20 ms/frame, `Width` 7.5 px) the two criteria agree on
-every ring and give **`RingThresh` 10 / 20 / 20 / 10 / 10** for rings 1–5. On ring 5 the
+every ring and give **`RingThresh` 10 / 20 / 20 / 10 / 10** for rings 1–5.
+
+> **Re-measured 2026-08-12 on the same file: `10 10 10 10 10`**, both criteria agreeing
+> flat across all five rings, and matching the production `Parameters.txt` already on disk
+> for this dataset. The numbers here are a worked example of the *procedure*, never values
+> to copy — this is what that looks like when the tool is actually re-run.
+ On ring 5 the
 clean fraction goes from 20 % of blobs above SNR 5 at threshold 5 to 100 % at threshold 10.
 
 *(An earlier revision of this section reported "both criteria return 10 on every ring, 92 %

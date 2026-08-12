@@ -60,7 +60,7 @@ Established 2026-07-30. Detector 2048², 200 µm, monolithic. Single layer.
 | `RingThresh` | 10 / 20 / 20 / 10 / 10 (rings 1–5) | measured, §6b — **not** the template's 60 |
 | spots | 2076 binned rows, **229 credible** | Lab Notebook §4d |
 | grains | **2** (parent + Σ3 twin), confidence 1.000 | Lab Notebook §4d |
-| grain radius | R ≈ 21 µm | |
+| grain radius | **114.62 / 99.97 µm** | Lab Notebook §3a — C-cross-checked. **21 µm is the pre-fix buggy value**; reproduced 114.6 on 2026-08-12 |
 | lattice | a = 4.07976 Å | |
 | residuals | DiffPos ≈ 200 µm, DiffOme ≈ 0.05°, DiffAngle ≈ 0.08° | §8a, columns ≥ 0.5.7 |
 | indexed fraction | 8.9 % — **and the recon is COMPLETE** | §11; ~98 % of the list is noise |
@@ -89,7 +89,14 @@ until you have ruled out the plumbing** — check the §0 floors first (§8b ite
 **Last updated: 2026-08-11.**
 
 **State.** The doc set was split out of the single-file handbook today (this file is part
-of that). The FF pipeline itself is in a released, self-consistent state:
+of that). The FF pipeline itself is in a released, self-consistent state **in this
+repository**, which is not the same as on the machine you will run on:
+
+> Measured 2026-08-12 before the environment was upgraded, the shared env reached from
+> `copland` was on `midas-fit-grain 0.6.0` against a floor of 0.7.0, and a session was
+> correctly stopped by the §0 gate. **Run the gate on the host you are using.** The list
+> below describes the tree.
+
 
 - All FF-path packages released and on PyPI with correct floors — `midas-pipeline 0.8.2`,
   `midas-ff-pipeline 0.4.3`, `midas-process-grains 0.7.1`, `midas-fit-grain 0.7.0`,

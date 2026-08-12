@@ -33,6 +33,31 @@ at startup; explicit values always win.
 > `midas-ff-pipeline` is **deprecated** as of 0.4.0 — use `midas-pipeline run --scan-mode ff`.
 > Same orchestrator underneath.
 
+### The default `--pg-mode` writes no residual sidecar
+
+`--pg-mode` defaults to **`c_parity`**, and that branch returns without calling
+`result.write()`. So `processgrains_diagnostics.h5` — which carries `residuals/spot_table`,
+the per-observation residuals every downstream diagnostic needs — **is never produced by a
+default run**, with or without `--generate-h5` (the FF `process_grains` stage does not read
+that flag; FF `consolidation` is an unconditional no-op stub).
+
+Nothing errors. The run completes, `Grains.csv` is correct, and the sidecar is simply
+absent, which reads as "this pipeline version doesn't write one" rather than as a mode
+choice.
+
+If you want the sidecar, ask for a mode that writes it:
+
+```bash
+midas-pipeline run --scan-mode ff --params Parameters.txt --result results/ \
+    --layers 1-1 --pg-mode spot_aware
+```
+
+`spot_aware`, `legacy` and `paper_claim` all write it; `c_parity` does not. Note the modes
+are not interchangeable scientifically — on `Au3_cubes_ff_000008`, `c_parity` returned 5
+grains and `spot_aware` returned 2 (the documented parent + Σ3 twin, matching Lab Notebook
+§3a's C-cross-checked radii to five decimals). Read `--pg-mode --help` for the
+accuracy trade-off before choosing on convenience.
+
 **Two things to check in the log every time:**
 
 1. `nFrames` in the peakfit banner = logged frames − `SkipFrame` (§3e).
