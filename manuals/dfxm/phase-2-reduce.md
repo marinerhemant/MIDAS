@@ -51,13 +51,28 @@ For a mosaicity (rock/roll) scan, the per-pixel centre-of-mass over the two tilt
 orientation map:
 
 ```python
-import torch
+import numpy as np, torch
 from midas_dfxm.mosaicity_fit import moment_orientation
 
-# data must be a torch.Tensor -- a numpy array fails on .clamp_min inside.
-# The two tilt axes are passed SEPARATELY, and one (P,2) tensor comes back.
-com = moment_orientation(torch.as_tensor(frames_bs), chi, phi)   # (P, 2): [:,0]=chi, [:,1]=phi
+# darling hands back data (a, b, m, n) and motors (2, m, n). moment_orientation wants
+# data (P, M) and chi/phi each (M,) -- FLATTENED. You must reshape; see the trap below.
+a, b, m, n = frames_bs.shape
+d   = torch.as_tensor(frames_bs.astype(np.float32)).reshape(a * b, m * n)
+chi = torch.as_tensor(motors[0]).reshape(-1)
+phi = torch.as_tensor(motors[1]).reshape(-1)
+
+com = moment_orientation(d, chi, phi)          # (P, 2): [:,0]=chi, [:,1]=phi
+com = com.reshape(a, b, 2)                     # back to a detector-shaped map
 ```
+
+> **TRAP — passing the un-reshaped arrays does not raise. It returns the wrong answer.**
+> With `data (50,70,62,43)` and `chi/phi (62,43)`, torch broadcasts happily and returns
+> `(50,70,62,2)` instead of `(P,2)`: a centre of mass taken over the *last motor axis only*.
+> Verified 2026-08-12. The number that comes back looks reasonable and reports essentially
+> no pedestal effect, so this fails the §2a check silently in the direction that makes you
+> think the pedestal does not matter.
+>
+> **Assert the shape.** `assert com.shape == (a * b, 2)` before you use it.
 
 > Verified against the installed package 2026-08-12: the signature is
 > `moment_orientation(data, chi, phi)`. An earlier revision of this section showed

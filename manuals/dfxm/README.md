@@ -80,6 +80,14 @@ Finish everything not blocked by it first.
    agree to correlation 1.0, RMS ~1e-7°. This is required for *correctness*, not tidiness
    (Notebook §1).
 
+   > **The 67× is the *median* estimator's number and is not what you will measure.** It is
+   > `1/(1−f_ped)` with the floor at the median (`SURVEY_TEMPLATE.md`). The documented
+   > *subtraction* recipe uses percentile 5 — deliberately conservative, because
+   > over-subtracting eats signal — and a before/after comparison run that way gives
+   > **~18.6×**, reproduced 2026-08-12. Both are correct for what they measure. A reader
+   > who takes 67× as "what a before/after should show" will see 18.6× and wrongly conclude
+   > the rule failed to reproduce. Quote the estimator with the number, always.
+
 2. **Refraction is a gauge, not a per-pixel strain (§4).** The mean refraction shifts the
    Bragg peak by a constant $\varepsilon_{\mathrm{ref}}=\chi_{0r}/(2\sin^2\theta_B)$
    (≈ 144 µε for Cu 002 at 0.71 Å). It is constant across a grain for a fixed reflection
