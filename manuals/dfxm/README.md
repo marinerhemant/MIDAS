@@ -270,7 +270,8 @@ package and call its functions. There is no `midas-dfxm run` command.
 ```bash
 pip install "midas-dfxm>=0.3.2"        # public on PyPI since 2026-07-29
 # reductions of ESRF frames also use the community package:
-pip install darling                    # ID03/ID06 raw-frame moment reduction reference
+pip install darling-pypi               # ID03/ID06 raw-frame moment reduction; IMPORTS as `darling`
+                                       # (`pip install darling` fails -- no such distribution)
 ```
 
 Then run the gate and read its output — `pip install` exiting 0 tells you nothing:

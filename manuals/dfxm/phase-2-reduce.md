@@ -51,9 +51,18 @@ For a mosaicity (rock/roll) scan, the per-pixel centre-of-mass over the two tilt
 orientation map:
 
 ```python
+import torch
 from midas_dfxm.mosaicity_fit import moment_orientation
-com_fast, com_slow, weight = moment_orientation(frames_bs, angles)   # per-pixel COM
+
+# data must be a torch.Tensor -- a numpy array fails on .clamp_min inside.
+# The two tilt axes are passed SEPARATELY, and one (P,2) tensor comes back.
+com = moment_orientation(torch.as_tensor(frames_bs), chi, phi)   # (P, 2): [:,0]=chi, [:,1]=phi
 ```
+
+> Verified against the installed package 2026-08-12: the signature is
+> `moment_orientation(data, chi, phi)`. An earlier revision of this section showed
+> `moment_orientation(frames_bs, angles)` unpacked into three values; that raises
+> `TypeError` as written.
 
 The intragranular misorientation magnitude is `hypot(com_fast - median, com_slow - median)`
 over the grain mask (see `make_real_multibragg.py` for the exact idiom used on ID06). Report
@@ -63,6 +72,22 @@ the p95 spread, not the max.
 arithmetic check (rule; Notebook §1b), so expect correlation → 1.0, RMS ~1e-7°. It validates
 the estimator, **not** the physics.
 
+> **HALT — import order. Doing this in the order this doc set prescribes segfaults the
+> interpreter.** `darling.properties.moments` is numba-parallel-JIT'd. If `torch` has
+> already been imported — which the spine's §0 import gate does, transitively, via
+> `midas_dfxm` — the first call into `darling`'s JIT path dies with **SIGSEGV (exit 139),
+> no traceback**. Reproduced three times, 2026-08-12.
+>
+> Run the `darling` cross-check in **its own process**, before or separately from anything
+> that imports `midas_dfxm`/`torch`:
+>
+> ```bash
+> python -c "from darling import assets, properties; ..."   # darling alone
+> python -c "import midas_dfxm; ..."                        # midas_dfxm alone
+> ```
+>
+> A crash with no traceback in a cross-check is easy to misread as bad data. It is not.
+
 ## 2c. Mosaicity: fit, do not just moment
 
 The moment (and a phenomenological Gaussian) report the *measured* spread = intrinsic
@@ -70,9 +95,19 @@ mosaicity ⊛ instrument resolution. For the intrinsic spread, fit the physical 
 the anisotropic resolution from §1c:
 
 ```python
+import torch
 from midas_dfxm.mosaicity_fit import fit_orientation_mosaicity
-fit = fit_orientation_mosaicity(frames_bs, angles, resolution=widths)  # deconvolved
+
+# res_cov is POSITIONAL; there is no `resolution=` keyword. Returns a dict.
+fit = fit_orientation_mosaicity(
+    torch.as_tensor(frames_bs), chi, phi, res_cov)                     # deconvolved
 ```
+
+> Verified 2026-08-12:
+> `fit_orientation_mosaicity(data: torch.Tensor, chi: torch.Tensor, phi: torch.Tensor,
+> res_cov, *, n_components=1, lambda_smooth=0.0, shape=None, steps=500, lr=0.02,
+> max_offset=1.5) -> dict`. The `resolution=` form an earlier revision showed does not
+> exist.
 
 Report the intrinsic mosaicity with the resolution kernel named (DIAGNOSIS: mosaicity_too_broad).
 

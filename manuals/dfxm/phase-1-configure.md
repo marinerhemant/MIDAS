@@ -9,6 +9,24 @@
 
 ## 1a. Reflection, Bragg angle, and the reference
 
+> **HALT if the deposit carries no energy or wavelength.** Everything below —
+> `wavelength_A`, `energy_keV`, and therefore θ_B, Λ, χ and ε_ref — takes energy as a
+> literal argument, and this phase never says where to get it when the file does not
+> have it. Checked 2026-08-12: **neither `darling.assets.mosaicity_scan()` nor
+> `rocking_scan()` carries any energy field anywhere in its HDF5 tree**, and
+> `darling.metadata.ID03`'s motor map has none either.
+>
+> Assuming one is not a shortcut, it is the documented failure. Lab Notebook §5k
+> ("Darwin ladder", RETRACTED, four independent errors) records that the retraction on
+> the `fatigue_test` sample turned partly on exactly this: *"the file carries no element
+> or energy field, and λ was itself assumed."* The lesson was archived and never turned
+> into a stop, so a fresh reader can pattern-match `rocking_scan()` to
+> `mosaicity_scan()`'s "Al 1050" docstring and repeat it.
+>
+> Get the energy from the beamline record or the proposal, or **stop and ask**. An
+> orientation-only (mosaicity) reduction is exempt — hard rule 3 — so §2 can proceed
+> without it. Nothing in §1 or §4 may.
+
 From the material and the reflection **read in §0** (not the filename), compute the Bragg
 geometry with the package, not by hand:
 
