@@ -51,13 +51,52 @@ different regimes in the same crystal — never classify once per sample (§1b, 
 
 | quantity | value | healthy | why |
 |---|---|---|---|
-| pedestal share of centroid weight | | subtract regardless | ≳95 % dilutes the moment ~1/(1−f_ped) (§2a) |
+| pedestal share of centroid weight, `f_ped` | | subtract regardless | ≳95 % dilutes the moment ~1/(1−f_ped) (§2a). **Definition below — the estimator changes the answer by 4×** |
 | measured gain, this detector | <`var = a·y + b`> | quote it, don't assume 1 | absolute χ²/dof scales as 1/gain (§2a′) |
 | r(background level, rocking curve) | | \|r\| ≲ 0.3 | ≳0.9 means a θ-dependent scalar → widths biased, centroid not (§2a) |
 | kernel vs downsampled ROI | <kernel px / ROI px> | kernel < ROI | a kernel exceeding the ROI degenerates to a scalar (§2a) |
 | **per-pixel** rocking FWHM | <argmax-local, contiguous crossings> | — | never infer sampling from an integrated/published width (§2f) |
 | points per FWHM, per-pixel | | ≳12 for a model-selection test | below it, moment statistics measure broadness (§2f) |
 | injection-recovery gain | | 0.9998–1.0000 observed | physical accuracy — not a round-trip (§2d) |
+
+### How to compute `f_ped` — the estimator is the whole answer
+
+`f_ped` is the fraction of total integrated intensity carried by a flat floor:
+
+```python
+import numpy as np
+f_ped = float(np.median(d)) * d.size / float(d.sum())   # d = raw frames, un-subtracted
+dilution_predicted = 1.0 / (1.0 - f_ped)
+```
+
+**Use the median for the floor level.** Measured on `darling.assets.mosaicity_scan()`,
+2026-08-12:
+
+| floor estimator | `f_ped` | predicted dilution |
+|---|---|---|
+| **median** | **0.9849** | **66.3×** |
+| percentile 5 | 0.9459 | 18.5× |
+| percentile 1 | 0.9264 | 13.6× |
+| min | 0.7704 | 4.4× |
+
+The median reproduces the documented 98.5 % and ~67× (Notebook §1a) on a *different* scan
+from the one those came from. The other estimators are wrong by up to 15×, so an
+unqualified "pedestal share" number is not comparable between sessions.
+
+Two traps, both hit in practice:
+
+- **This is not the estimator you subtract with.** For *subtraction* a conservative low
+  percentile is right, because over-subtracting eats signal — `reduce_energy_chiltepin.py`
+  uses percentile 5 deliberately. For *measuring* `f_ped` the median is right, because the
+  question is where the flat floor sits, not how much you can safely remove. Using the
+  subtraction estimator here understates `f_ped` badly.
+- **A conservative high-tail estimate can give `f_ped > 1`**, which is not a fraction and
+  means the estimator, not the data, is wrong. If you get that, you used a floor level above
+  the mean intensity.
+
+`f_ped` *predicts* the dilution; it is not a measurement of it. The predicted 66.3× against a
+directly measured 71.8× on the same scan is the expected level of agreement — quote both if
+you have both, and never quote `f_ped` as if it were the observed dilution.
 
 ---
 
