@@ -120,6 +120,54 @@ def _behaviour_signature(src: str) -> str:
     return ast.dump(_strip_docstrings(ast.parse(src)))
 
 
+def _identifier_re():
+    """Scrub patterns, borrowed from utils/scrub_check.py so there is one list.
+
+    Falls back to None if scrub_check cannot be imported, in which case
+    redacts_identifiers() conservatively reports False and the caller keeps its
+    old behaviour-only judgement.
+    """
+    global _IDENT_RE
+    try:
+        return _IDENT_RE
+    except NameError:
+        pass
+    try:
+        sys.path.insert(0, str(Path(__file__).resolve().parent))
+        import scrub_check                                    # noqa: PLC0415
+        parts = list(scrub_check.NAME_PATTERNS) + list(scrub_check.MATERIAL_PATTERNS)
+        _IDENT_RE = re.compile("|".join(f"(?:{p})" for p in parts), re.I)
+    except Exception:                                         # noqa: BLE001
+        _IDENT_RE = None
+    return _IDENT_RE
+
+
+def redacts_identifiers(root: Path, sha: str, prefix: str) -> bool:
+    """Did ``sha`` REMOVE an identifying string under ``prefix``?
+
+    This is the hole changes_behaviour() leaves open, and it is not theoretical.
+    The 2026-08-03 anonymisation scrub was comment-only, so every package whose
+    sole unreleased change was the scrub read as in-sync -- while PyPI kept
+    serving the pre-scrub code. Five packages sat that way for nine days,
+    including a SLURM account name and a user's home path, until the published
+    artifacts were downloaded and grepped by hand.
+
+    A comment is not executable, but it IS published. For privacy the question
+    is not "would a wheel behave differently" but "does the wheel still contain
+    the string", so this counts a redaction as release-worthy on its own.
+    """
+    rx = _identifier_re()
+    if rx is None:
+        return False
+    diff = git(root, "show", "--format=", "--unified=0", sha, "--", prefix)
+    for line in diff.splitlines():
+        # removed lines only: a line that GAINED an identifier is a new leak,
+        # caught by scrub_check at commit time, not a release trigger here.
+        if line.startswith("-") and not line.startswith("---") and rx.search(line):
+            return True
+    return False
+
+
 def changes_behaviour(root: Path, sha: str, prefix: str) -> bool:
     """Did ``sha`` change anything under ``prefix`` that a wheel would execute?
 
@@ -164,7 +212,7 @@ def inspect(root: Path, pkg_dir: Path) -> dict:
     bump = git(root, "log", "-1", "--format=%H", "-S", f'version = "{version}"',
                "--", f"{rel}/pyproject.toml")
 
-    since_src = since_all = cosmetic = 0
+    since_src = since_all = cosmetic = privacy = 0
     bump_date = ""
     if bump:
         bump_date = git(root, "log", "-1", "--format=%ad", "--date=short", bump)
@@ -182,19 +230,28 @@ def inspect(root: Path, pkg_dir: Path) -> dict:
         # Comments and docstrings are excluded for the same reason, one level
         # up: a commit can touch every .py file in the package and still change
         # nothing a wheel executes. See changes_behaviour().
+        #
+        # EXCEPT when the comment change is a redaction. A scrub is comment-only
+        # and still must reach PyPI, so redacts_identifiers() overrides the
+        # cosmetic verdict -- see its docstring for what this cost last time.
         if (pkg_dir / pkg_dir.name).is_dir():
             prefix = f"{rel}/{pkg_dir.name}"
             touched = git(root, "log", "--format=%H", rng, "--", prefix,
                           f":(exclude){prefix}/**/__pycache__/**",
                           f":(exclude){prefix}/**/*.pyc").split()
-            functional = [s for s in touched if changes_behaviour(root, s, prefix)]
-            since_src = len(functional)
-            cosmetic = len(touched) - since_src
+            for s in touched:
+                if changes_behaviour(root, s, prefix):
+                    since_src += 1
+                elif redacts_identifiers(root, s, prefix):
+                    privacy += 1
+                else:
+                    cosmetic += 1
 
     return {"name": name, "dir": pkg_dir.name, "repo": version, "bump": bump[:8],
             "bump_date": bump_date, "commits_since_bump_src": since_src,
             "commits_since_bump_all": since_all,
-            "commits_cosmetic": cosmetic}
+            "commits_cosmetic": cosmetic,
+            "commits_privacy": privacy}
 
 
 def classify(row: dict, ignore: set[str]) -> str:
@@ -207,7 +264,9 @@ def classify(row: dict, ignore: set[str]) -> str:
         return "mismatch"
     if version_key(row["repo"]) != version_key(pypi):
         return "mismatch"
-    return "stale" if row["commits_since_bump_src"] > 0 else "sync"
+    if row["commits_since_bump_src"] > 0 or row.get("commits_privacy", 0) > 0:
+        return "stale"
+    return "sync"
 
 
 def render(rows: list[dict], title: str) -> None:
@@ -220,9 +279,15 @@ def render(rows: list[dict], title: str) -> None:
         # (comments/docstrings only). Shown so a suppressed commit stays visible.
         cos = r.get("commits_cosmetic", 0)
         cos_s = f" +{cos} cosmetic" if cos else ""
+        # privacy = comment-only, but REDACTS an identifier. Not executable, but
+        # still published, so it is its own reason to re-release. Flagged loudly
+        # because this class was invisible until it had shipped five packages.
+        priv = r.get("commits_privacy", 0)
+        priv_s = f"  *** +{priv} REDACTION" if priv else ""
         print(f"  {r['name']:<30} repo={r['repo']:<9} pypi={r['pypi']:<12}"
               f" src_commits_since_bump={r['commits_since_bump_src']:<3}"
-              f" (all={r['commits_since_bump_all']:<3}){cos_s} bump={r['bump_date']}")
+              f" (all={r['commits_since_bump_all']:<3}){cos_s} bump={r['bump_date']}"
+              f"{priv_s}")
 
 
 def main() -> int:
