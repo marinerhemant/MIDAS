@@ -110,6 +110,17 @@ proceed. Everything not blocked by it should still be finished first.
    is `aero`, then **ω_MIDAS = −ω_aero** and the paramfile needs the *negated* sweep. Get
    this wrong and the reconstruction is **mirrored**, which is **not detectable from the
    `.mic` alone**. This is step 1 of every new dataset, no exceptions.
+
+   > **This rule has a method at 1-ID only.** There is no `.par` file at 20-ID, and this
+   > doc set contains **no procedure for establishing the ω sign there** — `exchange/theta`
+   > is recorded per frame, but nothing here establishes whether its sign matches
+   > ω_MIDAS's convention. Masking all four sign candidates and letting the reconstruction
+   > settle handedness (`PARAMETERS.md`, Lab Notebook §7) resolves the *mask position*; it
+   > does **not** determine the sign for the paramfile or the forward model. Because a
+   > wrong sign mirrors the microstructure with confidence unchanged, no downstream check
+   > in this set — not confidence, not the neighbour-misorientation coherence test — can
+   > catch it. **Treat 20-ID ω sign as undetermined and halt.** Filling this gap needs a
+   > determination at the beamline, not a re-reading of these files.
 2. **The TIFF tree does not contain the metadata (§3).** `/gdata/dm/1ID/<year>/<beamtime>/data/nf/`
    holds only images. Distances, ω, energy, exposure live in a *separate* acquisition-log
    folder. Find it or stop.

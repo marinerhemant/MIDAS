@@ -502,6 +502,14 @@ coordinate triple (`FitOrientationParametersMultiPoint.c:697` `sscanf` reads 12
 tokens). Passing 6 tokens parses without error and silently refines nothing
 useful. Take the row straight out of a previous `.mic`.
 
+> **There is no documented bootstrap for the first session on new data**, which has no
+> previous `.mic` to take a row from. This is an open gap, not an oversight you are
+> expected to route around silently. Two candidate routes exist and **neither has been
+> verified**: seed from the shadow measurement's `position_candidates_um` (§6e), or from a
+> rough sample centroid, in both cases synthesising the remaining columns of the 12-column
+> row. If you use either, say on the report that the seed was synthesised and how, because
+> a silently-wrong seed refines to a confident answer.
+
 > **CHECK THE SPOT COUNT BEFORE TRUSTING A SINGLE-VOXEL FIT — this recipe is not
 > portable.** The hard FracOverlap is `matched / predicted` for that voxel, so with `N`
 > predicted spots the objective is a **step function quantised at 1/N**, and a

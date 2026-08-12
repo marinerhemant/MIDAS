@@ -83,10 +83,17 @@ so re-measure `zbc` every campaign (§6d).
 **State.** The doc set was split out of the single-file handbook today. NF now has the
 `DIAGNOSIS.md` and `RUNBOOK.md` it never had, so `beamreport-doc-lint` passes.
 
-The NF packages are released and self-consistent: `midas-nf-pipeline 0.6.1`,
-`midas-nf-preprocess 0.6.0`, `midas-nf-fitorientation 0.8.0`, `midas-hkls 0.7.0`.
-`midas-nf-pipeline 0.6.1` is the first release whose own metadata floors the two siblings
-past the `SumFrames` change — below it a resolve can still mix raw and post-sum readers.
+The NF packages are released and self-consistent **in this repository**:
+`midas-nf-pipeline 0.6.1`, `midas-nf-preprocess 0.6.0`, `midas-nf-fitorientation 0.8.0`,
+`midas-hkls 0.7.0`. `midas-nf-pipeline 0.6.1` is the first release whose own metadata
+floors the two siblings past the `SumFrames` change — below it a resolve can still mix raw
+and post-sum readers.
+
+> **This is a statement about the tree, not about any machine you will run on.** Measured
+> 2026-08-12, the shared env reached from `copland` was on `0.4.0 / 0.5.0 / 0.6.0 / 0.7.0`
+> — three of four a full release behind these numbers. Two independent sessions read the
+> sentence above as "you are clear to run" and were wrong. **Run the phase-0 floor gate on
+> the host you are actually using. Nothing in this file substitutes for it.**
 
 **Open, not blocking:**
 

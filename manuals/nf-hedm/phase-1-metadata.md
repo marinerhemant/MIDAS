@@ -76,7 +76,12 @@ If you have not found a folder containing `FileCount.txt` + `fastsweep_Emon.txt`
 `*_SequenceOfEvents.log`, **you cannot write a paramfile.** Search for it:
 
 ```bash
-ssh copland 'find /home/1-id /home/beams -maxdepth 5 -name "FileCount.txt" 2>/dev/null'
+# Try the convention first -- ~s1iduser/new_data/<beamtime>/, see the table in 3a.
+ssh copland 'ls /home/1-id/s1iduser/<beamtime>/'
+
+# Only if that misses. Measured 2026-08-12: this did not return within 120 s on copland
+# and produced permission noise from unrelated home directories. Background it or bound it.
+ssh copland 'find /home/1-id -maxdepth 5 -name "FileCount.txt" 2>/dev/null'
 ```
 
 ### 3b. What each metadata file answers
@@ -329,6 +334,13 @@ measured detail; what changes operationally:
 | Distance / energy / px | `FileCount.txt` f10 / `fastsweep_Emon.txt` f10 | **NOT in the HDF5** — only areaDetector camera attributes are. Read the `nfscan(...)` call out of the ipython log |
 | Darks | separate scan | may be **all-zero placeholders**; check before trusting (`data_dark`, `data_white`, `data_white_post`) |
 
+**Which scan folder?** Neither this file nor the spine names one, and a data directory
+holds many. The measured detail for a given beamtime is in **Lab Notebook §7**, which names
+the folder it worked (`nfdev_jul26` → `Au_cube`; at 1-ID `bt_1id_jul26` → the Au sweep
+`Au5_cubes_nf_96keV` with its paired `Au_DetZBeamPos_95keV`). Read that before picking, and
+do not choose on filename plausibility — a fresh session on `nfdev_jul26` picking by name
+would reasonably have taken `Au_63keV_Z20mm` or `test_nf`.
+
 **Read the scan definition out of the acquisition command**, e.g.
 
 ```bash
@@ -341,6 +353,32 @@ grep -n "User input: RE(nfscan" $M/.logs/ipython_logger.log
 `ndz` counts distances, not steps — established from the log's own API rename (lab
 notebook §7a). Energy is an **absorption edge**; the foil table is printed in the log by
 `foilA.about` (element, thickness, position, K-edge keV).
+
+> **The foil table is not a measurement of the energy, and 20-ID has no equivalent of
+> `fastsweep_Emon.txt` f10.** `foilA.about` prints a *static* 13-row reference table of
+> every foil in the wheel (Pr/Sm/Yb/Lu/Hf/Ta/W/Re/Pt/Au/Pb/Bi) and is never followed in
+> the log by a call recording which foil was selected. Checked 2026-08-12 on
+> `nfdev_jul26`: the only corroboration for 63.314 keV (Lu K-edge) is `_63keV` in the scan
+> *filenames*, which rounds to Lu rather than the neighbouring Yb (61.332) or Hf (65.351)
+> — plausible, and **exactly the inference hard rule 22 forbids** ("never take a number
+> from a name"). Record the 20-ID energy as **inferred, not measured**, and say so in any
+> report that quotes it. A rigorous value needs the foil selection logged, or an edge scan.
+
+**What you can still do at 20-ID while the two blockers are open.** `midas_nf_preprocess`
+has no HDF5 reader and `process_all` loads a whole layer into RAM (141 GB at fp32 on this
+detector), so **the pipeline cannot be entered at all** — not even the geometry-independent
+peak finding that hard rule 4b otherwise encourages running early. Still available, and
+this is the whole list:
+
+- read `exchange/data` shape, `exchange/theta` range and step directly with `h5py`
+- check `data_dark` / `data_white` for the all-zero placeholder case
+- read a single frame to confirm the ×64 encoding before anything else
+- recover the scan definition from the `nfscan(...)` call in the ipython log
+- run `midas_nf_preprocess.beam_calib.{shadow,triangulate}` ad hoc on extracted frames
+
+Anything past that waits on the blockers. Do **not** work around them by converting to
+TIFF: the ×64 scaling and the ω-sign question (hard rule 1) both survive the conversion and
+become harder to see.
 
 **Traps specific to this format:**
 
@@ -400,6 +438,13 @@ Au5_cubes_nf_96keV: n=2163  min=85.054687  max=92.116068   <- also genuinely 96 
 Au5 was at 96 keV and f29 never reaches 96. Successive Au5 frames read
 89.013416 / 89.300548 / 89.331455. It fluctuates frame-to-frame and disagrees with the
 true energy by up to 11 %. **It is not energy.**
+
+> **What f29 contains is beamtime-specific — do not use its shape as a check.** The
+> energy-like 93–98 range above is `bt_1id_jun25`. On `bt_1id_jul26` the same field
+> reads mostly `0.000000` with the rest clustered 1.00–1.05 (checked 2026-08-12), i.e.
+> nothing like energy at all. The rule is unchanged and does not depend on this: use
+> `fastsweep_Emon.txt` f10 and nothing else. A reader who tries to *recognise* the decoy
+> by its range will simply not find it on some beamtimes.
 
 **Decoy 2 — `<beamtime>.spe` `#U Energy:`.**
 

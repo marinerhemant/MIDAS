@@ -39,14 +39,17 @@ Contents re-checked 2026-08-01 with `importlib.metadata` on chiltepin: `midas-nf
 > last read on 2026-08-01. **Treat every version number in this section as a worked
 > example of the check, not as current state: re-run the command below.** The gap was
 > last measured functionally on
-> 2026-08-01, not inferred from version strings — the installed
-> `midas_nf_fitorientation/params.py` reads `args[4,5,7,8,9,10]`, i.e. the **broken**
-> indices (lab notebook defect 10); the fixed tree reads `args[3,4,6,7,8,9]`. Also absent
-> from the installed copies: the scipy labeller in `process_images`, `--fit-gpus`, and the
-> `hard` multipoint objective. The packages are ordinary copies under `site-packages`, not
-> editable installs, and `~s1iduser/opt/MIDAS_canonical` sits on an unrelated HEAD
-> (`d3a55ca`) that does not contain `b95c38c0`/`d231fdf3` — so nothing on that host picks
-> these fixes up implicitly. **Any multipoint refinement run in that env is invalid.**
+> 2026-08-01 — at that time the installed `midas_nf_fitorientation/params.py` read
+> `args[4,5,7,8,9,10]`, the **broken** indices (lab notebook defect 10), against the fixed
+> tree's `args[3,4,6,7,8,9]`.
+>
+> **That is no longer true, and how it stopped being true is the point.** Re-checked
+> 2026-08-12: the installed copy already has the fixed indices, `--fit-gpus`, the scipy
+> labeller and the `hard` objective — while `importlib.metadata` and `__version__` both
+> still report the old versions, and agree with each other. The files were patched in
+> place on an **ordinary, non-editable** install and the version strings were never
+> bumped. **Version numbers on that env are therefore meaningless in both directions**,
+> and no functional claim in this paragraph should be believed without re-checking.
 > Before any remote run, either re-check the env
 >
 > ```bash
@@ -91,6 +94,16 @@ print("\n*** BELOW FLOOR ***" if bad else "\nall installed midas packages satisf
 [print(" ", b) for b in bad]
 PY
 ```
+
+**The gate has a blind spot. Read this before trusting a pass.** The check below compares
+metadata against the imported `__version__` and reports disagreement. That catches an
+*editable* install, where code runs ahead of stale metadata. It cannot catch the opposite,
+which is what was actually found on `copland` on 2026-08-12: an ordinary `site-packages`
+install whose **files were hand-patched while the version string stayed put**. Metadata and
+`__version__` agree, so by this check's own definition there is no drift, and a below-floor
+verdict is returned for code that is already fixed — or, far worse on another day, an
+above-floor pass for code that is not. When the verdict matters, diff the installed file
+against the commit that fixed the defect; the version string is not evidence.
 
 **Check the code, not just the metadata — an editable install lies about its version.**
 `pip install -e` records the version *at install time* and never updates it, so on a
