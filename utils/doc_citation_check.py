@@ -142,6 +142,19 @@ LEAD = 40
 QUALIFIED = re.compile(r"(?i)notebook|handbook|\.md`? ")
 
 
+_FENCE = re.compile(r"^```.*?^```", re.M | re.S)
+
+
+def _strip_fences(text: str) -> str:
+    """Blank out fenced code blocks before looking for headings.
+
+    A shell block numbered ``# 0. hkls.csv`` ... ``# 9. bundle`` is comments, not
+    sections. Counting them inflates the set of "known" sections, which makes a
+    genuinely dangling reference resolve against a bash comment and never fire.
+    """
+    return _FENCE.sub(lambda m: "\n" * m.group(0).count("\n"), text)
+
+
 def _doc_set(path: Path) -> tuple:
     """Which numbering space a file belongs to.
 
@@ -161,14 +174,15 @@ def check_section_refs(manuals: Path) -> list[str]:
     docs = sorted(manuals.rglob("*.md"))
     for d in docs:
         heads.setdefault(_doc_set(d), set()).update(
-            m.group(1) for m in SECTION_HEAD.finditer(d.read_text(errors="replace")))
+            m.group(1) for m in
+            SECTION_HEAD.finditer(_strip_fences(d.read_text(errors="replace"))))
     out = []
     for d in docs:
         known = heads.get(_doc_set(d), set())
         if not known:
             continue
         bad = set()
-        text = d.read_text(errors="replace")
+        text = _strip_fences(d.read_text(errors="replace"))
         for m in SECTION_REF.finditer(text):
             if QUALIFIED.search(text[max(0, m.start() - LEAD):m.start()]):
                 continue
