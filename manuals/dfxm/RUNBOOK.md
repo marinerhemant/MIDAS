@@ -49,6 +49,23 @@ under.
 
 **Last updated: 2026-08-12.**
 
+### R3a. Where the last dataset session stopped
+
+> This is what the spine's index means by "current pick-up point": the state of the last
+> *reduction*, not of the documentation. A session driving this doc set on 2026-08-12 read
+> the index, opened this file expecting operational continuity, and found editorial history
+> instead. Keep the two apart.
+
+| | |
+|---|---|
+| last dataset worked | `darling.assets.mosaicity_scan()` (bundled ESRF ID03) and the archived ID06 `com_111`/`com_002` pair |
+| furthest phase reached | Phase 3 — halted at the registration gate, as designed |
+| blocked on | **energy/wavelength for the bundled assets** (§1a HALT). Neither carries an energy field; unblocking needs the beamline or proposal record, not more analysis |
+| next step | supply that energy, or move to a deposit that carries one, to open Phases 1 and 4 |
+| known-good numbers to check against | `f_ped` 0.9849 (median) → 66.3×; registration best NCC 0.43, native −0.30 |
+
+### R3b. Documentation history
+
 **State.** This doc set was created on 2026-08-12 from the P_merged paper campaign — it is the
 DFXM sibling of the `ff-hedm` / `nf-hedm` doc sets. It is seeded from **two campaigns, neither
 of them our own beamtime**: reduction findings (Notebook §1–§2) are real-data-proven on the

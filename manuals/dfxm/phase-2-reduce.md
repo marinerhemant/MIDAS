@@ -17,7 +17,25 @@ background) first:
 frames_bs = frames - background      # background from the dark / darling's own scalar
 ```
 
-If there is **no** background available (§0b), stop — the moment is not trustworthy.
+**Where `background` actually comes from — three routes, name the one you used.** The doc set
+said "`darling`'s own scalar" without ever naming the call, so a reader had to open
+`darling/_dataset.py` to find it.
+
+| route | call | when |
+|---|---|---|
+| the deposit's own dark | read it from the file | a separately-acquired dark exists |
+| `darling`'s estimator | `DataSet.estimate_background()` — the only background method on the class | no dark, and you want `darling`'s own conservative scalar |
+| flat percentile of the frames themselves | `np.percentile(frames, 5)` | no dark; this is what `reduce_energy_chiltepin.py` uses, deliberately conservative |
+
+Neither bundled `darling` asset carries a dark, so on those the second or third route is the
+only option — which is **not** what §0b's "background present? if absent, stop" implies if you
+read it as requiring a separately-acquired dark frame. It requires a *defensible pedestal*,
+not a dark file.
+
+Whichever you use, **state it beside the number**: the estimator changes `f_ped` by up to 15×
+(`SURVEY_TEMPLATE.md`), so an unqualified pedestal figure is not comparable between sessions.
+
+If there is **no** defensible pedestal at all (§0b), stop — the moment is not trustworthy.
 
 **And do not over-subtract: never let the subtraction follow the signal.** Correlate the
 per-frame *level* of whatever you remove against the integrated rocking curve. At r ≳ 0.9 you
