@@ -50,6 +50,7 @@ else is opened when you reach it. Section numbers are continuous across the set.
 | [`DIAGNOSIS.md`](DIAGNOSIS.md) | symptom → discriminating test → cause → lever | **when something looks wrong** — indexed by symptom, not by step |
 | [`RUNBOOK.md`](RUNBOOK.md) | §R1–§R3 — where it runs, what healthy looks like *with conditions*, pick-up point | on resume, and before quoting any number as "normal" |
 | [`LAB_NOTEBOOK.md`](LAB_NOTEBOOK.md) | evidence, measurement ledger, **retracted claims** | before re-investigating anything |
+| [`ENVELOPE.md`](ENVELOPE.md) | what this measurement can and cannot determine, sorted by whether anything can be done about it | before promising an answer, and **before suggesting a different measurement** |
 
 **Citation convention.** A bare `§n` means *this doc set* — use the table above to find
 which file. A reference to the notebook is always written `Lab Notebook §n`, because the

@@ -59,5 +59,6 @@ each one.
 
 ## Sibling doc sets
 
-`manuals/NF_HEDM_Handbook.md` (near-field) and, in the LaueMatching repository,
-`scripts/pipeline/Laue_Handbook.md`. Neither has been split into a doc set yet.
+`manuals/nf-hedm/` (near-field, skill `nf-hedm`), `manuals/dfxm/` (dark-field X-ray
+microscopy, skill `dfxm`), and, in the LaueMatching repository, `scripts/pipeline/laue/`
+(skill `laue`).

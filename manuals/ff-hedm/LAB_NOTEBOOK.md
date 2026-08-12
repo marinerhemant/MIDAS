@@ -1006,8 +1006,8 @@ number afterwards would not be evidence.
 | lbfgs | internal_angle | iterative | 160.83 | 0.00 |
 | lbfgs | angular | all_at_once | 160.83 | 0.00 |
 | lbfgs | angular | iterative | 160.83 | 0.00 |
-| lm | ×3 losses | ×2 modes | all 6 FAILED (exit 1; one −9 = OOM) |
-| nelder_mead | internal_angle | iterative | no result — timed out at 3600 s |
+| lm | ×3 losses | ×2 modes | all 6 FAILED (exit 1; one −9 = OOM) | — |
+| nelder_mead | internal_angle | iterative | no result — timed out at 3600 s | — |
 
 **Staging is the whole effect; the loss does nothing.** This retracts an
 earlier guess of mine that C's internal-angle objective was most of the gap —

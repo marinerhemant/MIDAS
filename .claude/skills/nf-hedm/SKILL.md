@@ -63,5 +63,6 @@ wrong mirrors the microstructure invisibly, the same silent failure as the ω si
 
 ## Sibling doc sets
 
-`manuals/ff-hedm/` (far-field, skill `ff-hedm`) and, in the LaueMatching repository,
-`scripts/pipeline/laue/`.
+`manuals/ff-hedm/` (far-field, skill `ff-hedm`), `manuals/dfxm/` (dark-field X-ray
+microscopy, skill `dfxm`), and, in the LaueMatching repository, `scripts/pipeline/laue/`
+(skill `laue`).
