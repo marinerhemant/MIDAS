@@ -4,7 +4,7 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "midas-plotting"
-version = "0.3.0"
+version = "0.3.1"
 description = "Standard plots for MIDAS reconstructions - near-field, far-field and Laue: IPF maps and legends, grain maps, pole figures, strain and size distributions, and Laue texture diagnostics against their chance levels."
 readme = "README.md"
 license = { text = "BSD-3-Clause" }
