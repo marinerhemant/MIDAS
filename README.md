@@ -130,6 +130,31 @@ Full manuals are in the **[manuals/](manuals/)** directory. Start with the [manu
 
 ## Installation
 
+### Python packages via pip (no source build)
+
+The Python pipeline — calibration, integration, indexing, refinement, grain
+processing — installs from PyPI and does not need the source build below:
+
+```bash
+pip install "midas-suite[all]"
+```
+
+`midas-index` and `midas-fit-grain` bundle C/OpenMP executables
+(`midas_indexer`, `midas_fitgrain`) and are published as **sdist**, so pip
+compiles them during install. CMake and ninja come along automatically; you
+need a **C compiler and OpenMP** (macOS: `brew install libomp gcc`; Linux:
+`gcc`; Windows: Visual Studio Build Tools). If either is missing the install
+still succeeds and silently leaves you on the much slower Python-only path —
+so check:
+
+```python
+import midas_index.backend_c as b;      print(b.available())   # True = c-omp indexer present
+import midas_fit_grain.backend_c as f;  print(f.available())   # True = c-omp refiner present
+```
+
+See [`packages/midas_suite/README.md`](packages/midas_suite/README.md) for the
+full breakdown of what pip does and does not give you.
+
 ### Prerequisites
 
 | Platform | Requirements |

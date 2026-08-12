@@ -109,17 +109,61 @@ Be aware:
 - **GPU acceleration** is a runtime backend selected by PyTorch device
   string. CUDA/MPS just work if your `torch` install supports them; no
   separate `*-gpu` package needed.
-- **In-tree-only packages** (`midas-grain-odf`, `midas-joint-ff-calibrate`,
-  `midas-pf-odf`, `midas-pink`, `midas-propagate`, `midas-uq`) are
-  intentionally not published to PyPI — they live in the monorepo for
-  ongoing research and only build / install from a local checkout.
+- **Unpublished packages**: `midas-ckernel` (its C is vendored into
+  `midas-index` / `midas-fit-grain`, so nothing needs it from PyPI) and
+  `midas-dct-tt` (in development). Everything else the suite names is on
+  PyPI, including the research packages `midas-grain-odf`, `midas-pf-odf`,
+  `midas-pink`, `midas-propagate`, `midas-uq` and
+  `midas-joint-ff-calibrate`.
+
+## The c-omp binaries — check you actually got them
+
+`midas-index` and `midas-fit-grain` each bundle a C/OpenMP executable
+(`midas_indexer`, `midas_fitgrain`). These are the fast path: the pure-Python
+backends do the same job far more slowly.
+
+Both publish as **sdist only**, so pip *compiles them on your machine* during
+install. CMake and ninja arrive automatically as build requirements — you do
+not need them preinstalled. What you do need is **a C compiler and OpenMP**:
+
+| platform | what to install |
+|---|---|
+| macOS | `brew install libomp gcc` |
+| Linux | your distro's `gcc` (usually pulls in `libgomp`) |
+| Windows | Visual Studio Build Tools, "Desktop development with C++" |
+
+**If either is missing the install still succeeds** — `CMakeLists.txt` probes
+with `check_language(C)` and returns cleanly rather than failing the wheel
+build, leaving you on the Python-only path. That is deliberate, but it means
+the degradation is easy to miss: pip's build isolation buries the CMake
+warning, and `pip install -q` hides it entirely. A slow pipeline with no error
+message is the usual symptom.
+
+So check explicitly after installing:
+
+```python
+import midas_index.backend_c as b
+print(b.available())    # True  -> c-omp indexer present
+print(b.binary_path())  # where it looked
+
+import midas_fit_grain.backend_c as f
+print(f.available())    # same for the refiner
+```
+
+`available() == False` means you are on the Python path. Install the compiler
+and OpenMP for your platform, then
+`pip install --force-reinstall --no-deps midas-index midas-fit-grain` to
+rebuild.
 
 ## Cross-platform
 
-All MIDAS Python sub-packages are pure Python or PyTorch and ship as
-`py3-none-any` wheels. Tested install paths: Linux, macOS, Windows.
-See [`packages/RELEASE_READINESS.md`](../RELEASE_READINESS.md) for the
-detailed cross-platform readiness matrix.
+Most MIDAS sub-packages are pure Python or PyTorch and ship as `py3-none-any`
+wheels. The exceptions are `midas-index` and `midas-fit-grain`, which are
+sdist-only and compile a C/OpenMP binary at install time (see above) — that is
+why there are no per-platform binary wheels to maintain. Tested install paths:
+Linux, macOS, Windows. See
+[`packages/RELEASE_READINESS.md`](../RELEASE_READINESS.md) for the detailed
+cross-platform readiness matrix.
 
 ## Versioning
 
