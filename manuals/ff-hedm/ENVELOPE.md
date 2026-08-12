@@ -20,7 +20,7 @@ No suggestions here. State the consequence and the substitute.
 
 | Property | Value | Provenance | What it makes unobtainable | Substitute |
 |---|---|---|---|---|
-| Beam shape | line or box, not a point | station configuration | **Position along the beam is weakly constrained.** Large `DiffPos` and \|Δy\| with small angular residuals is a geometry property, not a defect. | Orientation and in-plane position stay trustworthy and should be reported as such. Do not "fix" the position spread. |
+| Beam shape (`trend.amplitude_growing`, `trend.periodic`, `param.residual_correlated`) | line or box, not a point | station configuration | **Position along the beam is weakly constrained.** Large `DiffPos` and \|Δy\| with small angular residuals is a geometry property, not a defect. | Orientation and in-plane position stay trustworthy and should be reported as such. Do not "fix" the position spread. |
 | Detector count | one monolithic GE panel | spine scope gate | Multi-panel merging is a no-op here; `cross_det_merge` does nothing. | none — a multi-panel run is a different doc set |
 | Layers per run | one | spine scope gate | No through-thickness stacking within a run. | Match and stitch across runs, which is a separate step. |
 | Powder calibrant sensitivity to `tx` | zero | `manuals/Reconstruction_Reports.md:170`, [`DIAGNOSIS.md`](DIAGNOSIS.md) | A powder standard **cannot constrain `tx`** (rotation about the beam) at all. Refining it against powder is fitting noise. | Hold `tx` fixed during powder calibration, then refine it from the grains in a second pass. |

@@ -316,6 +316,12 @@ def main():
     ap.add_argument("--reference",
                     default=str(Path(__file__).resolve().parent.parent
                                 / "manuals" / "ff-hedm" / "DIAGNOSIS.md"))
+    # The envelope outranks the reference on levers. Without it the report will happily
+    # recommend recalibrating something the doc set already records as a fixed property
+    # of the station -- which is exactly what it did on Au3 before this was wired.
+    ap.add_argument("--envelope",
+                    default=str(Path(__file__).resolve().parent.parent
+                                / "manuals" / "ff-hedm" / "ENVELOPE.md"))
     a = ap.parse_args()
 
     rd = a.run_dir
@@ -384,8 +390,15 @@ def main():
         plate("d0_calib", lambda p: _fig_d0(d0, p),
               "d0 strain-free reference", "Before / after hydrostatic strain; recovered a₀ via midas-stress.")
 
-    results = Results(object_id=C["ID"].astype(int),
-                      columns={k: (C[k], u) for k, u in RESULT_COLS.items()})
+    # The sidecar's `grain_idx` is a POSITIONAL index into the grain array (0..N-1),
+    # not the indexer's grain ID -- on Au3 those are [0,1] against IDs [71,156].
+    # Joining on ID silently orphans every observation, so the object_id is the row
+    # position (verified: residuals/grain_n_spots is in grain_idx order and matches
+    # the per-idx spot counts) and the real ID rides along as a result column.
+    results = Results(
+        object_id=np.arange(ngr),
+        columns={"ID": (C["ID"], "1"), **{k: (C[k], u) for k, u in RESULT_COLS.items()}},
+    )
     quality = Quality(values=C["Confidence"], name="completeness", threshold=0.5)
     provenance = Provenance(
         inputs=[gpath] + ([dpath] if os.path.exists(dpath) else []),
@@ -405,6 +418,7 @@ def main():
         results=results, quality=quality, provenance=provenance, sidecar=sidecar,
         figures=plates, bounds=bounds,
         diagnosis_reference=a.reference if os.path.exists(a.reference) else None,
+        envelope=a.envelope if os.path.exists(a.envelope) else None,
         title=a.title or f"{material} — Far-Field HEDM reconstruction",
         subtitle="Peak search → indexing → per-grain lattice refinement on the MIDAS c-omp "
                  "backend. Numbers read directly from Grains.csv and the process-grains "
