@@ -112,15 +112,22 @@ class FrameReducer:
         if self._geom is None:
             try:
                 import torch
-                from midas_integrate_v2 import build_geometry
+                from midas_integrate_v2 import HardBinGeometry
             except ImportError as exc:
                 raise ImportError(
                     "reduction needs midas-integrate-v2 (and torch). Install "
                     "with `pip install midas-dt[full]`."
                 ) from exc
             spec = self.geometry.to_integration_spec(self.channel)
-            self._geom = build_geometry(spec, device=self.device, mask=self.mask)
-            log.info("built integration map for %s", self.channel.label)
+            # HardBinGeometry, not build_geometry(): the variance-aware
+            # integrators take the hard-bin structure, while build_geometry()
+            # returns the CSR-backed IntegrationGeometry used by integrate().
+            # Its flat bin index is eta_bin * n_r + r_bin, which is the
+            # ordering sinogram.assemble() and Reconstruction.voxel_pattern()
+            # both assume.
+            self._geom = HardBinGeometry.from_spec(spec, mask=self.mask)
+            log.info("built hard-bin map for %s (%d x %d bins)",
+                     self.channel.label, self.channel.n_eta, self.channel.n_r)
         return self._geom
 
     def reduce_frame(self, image: np.ndarray, *, translation: int = -1,

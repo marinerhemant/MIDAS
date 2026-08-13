@@ -89,14 +89,26 @@ class DTGeometry:
                 "Install with `pip install midas-dt[full]`."
             ) from exc
 
+        import torch
+
+        def t(v: float):
+            """IntegrationSpec's geometry fields are torch.Tensor, not float.
+
+            They are declared that way so the whole spec is differentiable for
+            joint refinement. Passing a plain float gets as far as
+            ``spec.device()``, which then fails on ``float.device`` -- a long
+            way from the call site.
+            """
+            return torch.as_tensor(float(v), dtype=torch.float64)
+
         kw = dict(
-            NrPixelsY=self.n_pixels_y, NrPixelsZ=self.n_pixels_z,
-            pxY=self.px_um, pxZ=self.px_um,
-            Lsd=self.lsd_um, BC_y=self.bc_y_px, BC_z=self.bc_z_px,
-            RhoD=self.rho_d_um, Wavelength=self.wavelength_a,
-            tx=self.tx_deg, ty=self.ty_deg, tz=self.tz_deg,
+            NrPixelsY=int(self.n_pixels_y), NrPixelsZ=int(self.n_pixels_z),
+            pxY=float(self.px_um), pxZ=float(self.px_um),
+            Lsd=t(self.lsd_um), BC_y=t(self.bc_y_px), BC_z=t(self.bc_z_px),
+            RhoD=float(self.rho_d_um), Wavelength=t(self.wavelength_a),
+            tx=t(self.tx_deg), ty=t(self.ty_deg), tz=t(self.tz_deg),
         )
-        kw.update(self.v2_distortion())
+        kw.update({k: t(v) for k, v in self.v2_distortion().items()})
         if channel is not None:
             kw.update(
                 RMin=channel.r_min, RMax=channel.r_max, RBinSize=channel.r_bin,

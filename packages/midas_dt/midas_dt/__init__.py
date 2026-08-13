@@ -33,6 +33,15 @@ from .branches import (
     run_fit_then_recon,
     run_recon_then_fit,
 )
+from .io import read_legacy_reconstruction, write_maps_hdf5, write_result
+from .maps import (
+    StrainMap,
+    d_spacing_map,
+    phase_fraction_map,
+    radius_to_d_spacing,
+    radius_to_two_theta,
+    strain_map,
+)
 from .peakfit import LineoutFit, fit_lineout
 from .center import CentreResult, centre_of_mass_shift, find_centre
 from .recon import Reconstruction, reconstruct
@@ -51,6 +60,7 @@ __all__ = [
     "BranchResult",
     "CentreResult",
     "LineoutFit",
+    "StrainMap",
     "Channel",
     "DTGeometry",
     "DTScan",
@@ -68,7 +78,15 @@ __all__ = [
     "channels_from_legacy_params",
     "compare",
     "find_centre",
+    "d_spacing_map",
+    "read_legacy_reconstruction",
+    "write_maps_hdf5",
+    "write_result",
     "fit_lineout",
+    "phase_fraction_map",
+    "radius_to_d_spacing",
+    "radius_to_two_theta",
+    "strain_map",
     "format_comparison",
     "run_fit_then_recon",
     "run_recon_then_fit",

@@ -31,6 +31,9 @@ full = [
     "midas-stress>=0.8.1",
 ]
 
+[project.scripts]
+midas-dt = "midas_dt.cli:main"
+
 [project.urls]
 Homepage = "https://github.com/marinerhemant/MIDAS"
 Issues = "https://github.com/marinerhemant/MIDAS/issues"
