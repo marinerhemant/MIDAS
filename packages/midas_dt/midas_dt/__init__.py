@@ -33,6 +33,14 @@ from .branches import (
     run_fit_then_recon,
     run_recon_then_fit,
 )
+from .index_rings import (
+    ALPHA_U3O8,
+    CEO2,
+    IndexResult,
+    PhaseCandidate,
+    RingMatch,
+    index_rings,
+)
 from .io import read_legacy_reconstruction, write_maps_hdf5, write_result
 from .maps import (
     StrainMap,
@@ -58,7 +66,12 @@ from .scan import PILATUS_1475x1679, DTScan, RawFormat, detect_snake, frames_in_
 __all__ = [
     "__version__",
     "ADDITIVE_FIT_OUTPUTS",
+    "ALPHA_U3O8",
     "BranchResult",
+    "CEO2",
+    "IndexResult",
+    "PhaseCandidate",
+    "RingMatch",
     "CentreResult",
     "LineoutFit",
     "StrainMap",
@@ -84,6 +97,7 @@ __all__ = [
     "write_maps_hdf5",
     "write_result",
     "fit_lineout",
+    "index_rings",
     "phase_fraction_map",
     "radius_to_d_spacing",
     "radius_to_two_theta",
