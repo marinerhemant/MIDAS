@@ -1,0 +1,11 @@
+build/
+dist/
+*.egg-info/
+__pycache__/
+*.pyc
+midas_tomo/bin/
+.pytest_cache/
+# FFTW planner wisdom is written to CWD by the binary (see FORK.txt / §1.1 of
+# the implementation plan). Test fixtures commit theirs explicitly under
+# tests/data/; stray ones from ad-hoc runs are noise.
+fftwf_wisdom_*d_*.txt

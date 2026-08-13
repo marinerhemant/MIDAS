@@ -4,7 +4,6 @@
 //
 
 #include <ctype.h>
-#include <fftw3.h>
 #include <limits.h>
 #include <math.h>
 #include <stdbool.h>
@@ -16,6 +15,22 @@
 #include <time.h>
 
 #include "tomo_heads.h"
+
+const char *midas_tomo_error_message(int code) {
+  switch (code) {
+  case MIDAS_TOMO_OK:
+    return "ok";
+  case MIDAS_TOMO_ERR_PSWF:
+    return "prolate spheroidal parameter C is not in the built-in database";
+  case MIDAS_TOMO_ERR_ANGLE_GEOM:
+    return "illegal angle geometry indicator passed to trig_su()";
+  case MIDAS_TOMO_ERR_LEGENDRE:
+    return "argument to legendre() fell outside [-1, 1]; the PSWF table or "
+           "the sampling parameters are inconsistent";
+  default:
+    return "unknown midas-tomo error code";
+  }
+}
 
 float filterData(float x, gridrecParams *param) {
   switch (param->filter_type) {
@@ -47,12 +62,12 @@ void initFFTMemoryStructures(gridrecParams *param) {
   param->n_prev = 0;
   param->in_1d = NULL;
   param->out_1d = NULL;
-  /* The plan handles were previously left uninitialised while the buffers
-   * were nulled. A worker that never ran a transform of a given rank then
-   * reached destroyFFTMemoryStructures() with a garbage handle, and
-   * fftwf_destroy_plan() on garbage segfaults. In the standalone binary the
-   * crash lands at teardown, after the output is already written, so it costs
-   * a wrong exit code and nothing more visible -- which is why it survived. */
+  /* The plan handles were previously left uninitialised here while the
+   * buffers were nulled. A worker that never ran a transform of a given rank
+   * therefore reached destroyFFTMemoryStructures() with a garbage handle, and
+   * fftwf_destroy_plan() on garbage segfaults. Invisible when this only ever
+   * ran as a standalone binary -- the crash landed at teardown, after the
+   * output was already on disk -- but fatal in-process. */
   param->backward_plan_1d = NULL;
   param->nx_prev = 0;
   param->ny_prev = 0;
@@ -80,6 +95,8 @@ void destroyFFTMemoryStructures(gridrecParams *param) {
     fftwf_destroy_plan(param->forward_plan_2d);
     param->forward_plan_2d = NULL;
   }
+  /* Reset the size cache too, so a reused gridrecParams re-plans instead of
+   * believing it still holds plans for the previous transform sizes. */
   param->n_prev = 0;
   param->nx_prev = 0;
   param->ny_prev = 0;
@@ -97,10 +114,12 @@ void fourn(float data[], unsigned long nn[], int ndim, int isign,
     return;
   }
   if ((nx != param->nx_prev) || (ny != param->ny_prev)) {
-    /* in_2d, not in_1d. This freed the 1-D buffer in the 2-D resize path,
-     * leaking the old 2-D buffer and leaving in_1d dangling for four1() and
-     * for teardown. Unreachable today (it needs a second, different 2-D size
-     * within one gridrecParams), so no behaviour change. */
+    /* Frees in_2d, not in_1d. The original freed the 1-D buffer here, in the
+     * 2-D resize path -- leaking the old 2-D buffer and leaving in_1d
+     * dangling for four1() and for the teardown above. Currently unreachable
+     * (it needs a second, different 2-D size within one gridrecParams, and
+     * the size is fixed per run), which is why it has never bitten; fixed
+     * while the surrounding lifetime bug was being fixed. */
     if (param->nx_prev != 0 && param->in_2d != NULL)
       fftwf_free(param->in_2d);
     //~ printf("in_2d %ld\n",(long)(sizeof(fftwf_complex)*nx*ny));
@@ -111,7 +130,36 @@ void fourn(float data[], unsigned long nn[], int ndim, int isign,
     // ny_prev=%d\n", nx, ny, param->nx_prev, param->ny_prev);
     param->nx_prev = nx;
     param->ny_prev = ny;
-    if (param->setPlan == 1) {
+    if (param->fft_engine == MIDAS_FFT_POCKET) {
+      /* pocketfft caches twiddles internally, keyed by size -- there is no
+       * plan object to build, no wisdom to read or write, and nothing left in
+       * the working directory. The buffer above is still used so the
+       * memcpy/execute/memcpy shape below stays identical between backends. */
+      param->forward_plan_2d = NULL;
+      if (param->setPlan == 1) {
+        /* createPlanFile() copies this into every worker via strlen()/strcpy(),
+         * so it must be a valid owned allocation even though pocketfft has no
+         * wisdom to share. Leaving it NULL segfaults in strlen -- the same
+         * trap the deterministic branch hit. */
+        param->wisdom_string = (char *)calloc(1, sizeof(char));
+      }
+    } else if (param->deterministic) {
+      /* FFTW_ESTIMATE selects a plan from a cost heuristic instead of timing
+       * candidates, so it depends only on the transform size and the FFTW
+       * build -- not on this machine's speed or load. No wisdom is imported
+       * or exported, which also stops the planner cache being written into
+       * whatever directory the process happens to be running in. */
+      param->forward_plan_2d = fftwf_plan_dft_2d(
+          ny, nx, param->in_2d, param->out_2d, FFTW_FORWARD, FFTW_ESTIMATE);
+      if (param->setPlan == 1) {
+        /* Downstream copies this string into every worker's params, so it has
+         * to be a valid owned allocation even though ESTIMATE accumulates no
+         * wisdom worth sharing. */
+        param->wisdom_string = fftwf_export_wisdom_to_string();
+        if (param->wisdom_string == NULL)
+          param->wisdom_string = (char *)calloc(1, sizeof(char));
+      }
+    } else if (param->setPlan == 1) {
       int fftw2d_size = nx;
       char plan2DFN[4096];
       sprintf(plan2DFN, "fftwf_wisdom_2d_%d.txt", (int)fftw2d_size);
@@ -138,7 +186,15 @@ void fourn(float data[], unsigned long nn[], int ndim, int isign,
     }
   }
   memcpy(param->in_2d, data + 1, nx * ny * sizeof(fftwf_complex));
-  fftwf_execute(param->forward_plan_2d);
+  if (param->fft_engine == MIDAS_FFT_POCKET) {
+    /* forward = 1 UNCONDITIONALLY, matching the FFTW branch, which builds
+     * its plan with FFTW_FORWARD and ignores `isign` entirely. Honouring
+     * isign here would look more correct and would silently change the
+     * transform direction relative to every previous run. */
+    midas_pocketfft_c2c_2d((float *)param->in_2d, ny, nx, /*forward=*/1);
+  } else {
+    fftwf_execute(param->forward_plan_2d);
+  }
   memcpy(data + 1, param->out_2d, nx * ny * sizeof(fftwf_complex));
 }
 
@@ -320,7 +376,21 @@ void four1(float data[], unsigned long nn, int isign, gridrecParams *param) {
     //~ printf("fft_test1f: creating plans, n=%d, n_prev=%d\n", n,
     // param->n_prev);
     param->n_prev = n;
-    if (param->setPlan == 1) {
+    if (param->fft_engine == MIDAS_FFT_POCKET) {
+      param->backward_plan_1d = NULL;
+      if (param->setPlan == 1 && param->wisdom_string == NULL) {
+        param->wisdom_string = (char *)calloc(1, sizeof(char));
+      }
+    } else if (param->deterministic) {
+      /* See the 2-D case above. */
+      param->backward_plan_1d = fftwf_plan_dft_1d(
+          n, param->in_1d, param->out_1d, FFTW_BACKWARD, FFTW_ESTIMATE);
+      if (param->setPlan == 1) {
+        param->wisdom_string = fftwf_export_wisdom_to_string();
+        if (param->wisdom_string == NULL)
+          param->wisdom_string = (char *)calloc(1, sizeof(char));
+      }
+    } else if (param->setPlan == 1) {
       int fftw1d_size = n;
       char plan1DFN[4096];
       sprintf(plan1DFN, "fftwf_wisdom_1d_%d.txt", (int)fftw1d_size);
@@ -345,7 +415,13 @@ void four1(float data[], unsigned long nn, int isign, gridrecParams *param) {
     }
   }
   memcpy(param->in_1d, data + 1, n * sizeof(fftwf_complex));
-  fftwf_execute(param->backward_plan_1d);
+  if (param->fft_engine == MIDAS_FFT_POCKET) {
+    /* forward = 0: the FFTW branch plans FFTW_BACKWARD and likewise ignores
+     * `isign`. */
+    midas_pocketfft_c2c_1d((float *)param->in_1d, n, /*forward=*/0);
+  } else {
+    fftwf_execute(param->backward_plan_1d);
+  }
   memcpy(data + 1, param->out_1d, n * sizeof(fftwf_complex));
 }
 
@@ -455,7 +531,13 @@ void get_pswf(float C, pswf_struct **P, gridrecParams *param) {
   }
   if (i >= NO_PSWFS) {
     fprintf(stderr, "Prolate parameter, C = %f not in data base\n", C);
-    exit(2);
+    /* Record and fall back to entry 0 rather than exit(2). This is reachable
+     * from an in-process call, where exiting would take the host interpreter
+     * with it. Callers must check param->error; the fallback exists only so
+     * the unwinding code does not dereference a null pointer. */
+    param->error = MIDAS_TOMO_ERR_PSWF;
+    *P = &param->pswf_db[0];
+    return;
   }
   *P = &param->pswf_db[i];
   return;
@@ -580,7 +662,8 @@ void trig_su(int geom, int n_ang, gridrecParams *param) {
   }; break;
   default: {
     fprintf(stderr, "Illegal value for angle geometry indicator.\n");
-    exit(2);
+    param->error = MIDAS_TOMO_ERR_ANGLE_GEOM;
+    return;
   }; break;
   }
 }
@@ -629,7 +712,8 @@ float legendre(int n, float *coefs, float x, gridrecParams *param) {
   int j, k, even;
   if (x > 1 || x < -1) {
     fprintf(stderr, "\nInvalid argument to legendre()");
-    exit(2);
+    param->error = MIDAS_TOMO_ERR_LEGENDRE;
+    return 0.0f;
   }
   y = coefs[0];
   penult = 1.;

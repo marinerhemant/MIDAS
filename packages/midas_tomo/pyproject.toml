@@ -1,0 +1,65 @@
+[build-system]
+requires = ["scikit-build-core>=0.10"]
+build-backend = "scikit_build_core.build"
+
+[project]
+name = "midas-tomo"
+version = "0.1.0"
+description = "Gridrec filtered back-projection CT reconstruction (CPU + CUDA) with a NumPy API"
+readme = "README.md"
+license = "BSD-3-Clause"
+requires-python = ">=3.9"
+authors = [
+    {name = "Hemant Sharma", email = "hsharma@anl.gov"},
+]
+keywords = [
+    "MIDAS", "tomography", "CT", "gridrec", "reconstruction",
+    "filtered-back-projection", "synchrotron", "XRD-CT",
+]
+classifiers = [
+    "Development Status :: 3 - Alpha",
+    "Intended Audience :: Science/Research",
+    "Programming Language :: C",
+    "Programming Language :: Python :: 3",
+    "Operating System :: POSIX :: Linux",
+    "Operating System :: MacOS",
+    "Topic :: Scientific/Engineering :: Physics",
+]
+dependencies = [
+    "numpy>=1.22",
+]
+
+[project.optional-dependencies]
+dev = ["pytest>=7.0", "pytest-cov"]
+hdf5 = ["h5py>=3.0"]
+
+[project.urls]
+Homepage = "https://github.com/marinerhemant/MIDAS"
+Documentation = "https://github.com/marinerhemant/MIDAS/tree/master/packages/midas_tomo"
+Issues = "https://github.com/marinerhemant/MIDAS/issues"
+
+[project.scripts]
+midas-tomo = "midas_tomo.cli:main"
+
+[tool.scikit-build]
+cmake.version = ">=3.20"
+cmake.source-dir = "."
+wheel.packages = ["midas_tomo"]
+# The C target is optional: if the compiler, FFTW, HDF5 or OpenMP is missing,
+# CMakeLists.txt returns early instead of erroring, so `pip install` still
+# succeeds and backend_c.available() reports False at runtime.
+build-dir = "build/{wheel_tag}"
+# Ship the vendored C in the sdist so a source install can build the binary,
+# and so downstream packages can find it via midas_tomo.c_src_dir().
+sdist.include = ["c_src/*.c", "c_src/*.h", "c_src/*.cu", "c_src/FORK.txt"]
+
+[tool.scikit-build.cmake.define]
+SKBUILD_PROJECT_VERSION = "{project.version}"
+
+[tool.pytest.ini_options]
+markers = [
+    "slow: full reconstructions on larger phantoms",
+    "gpu: requires CUDA and the MIDAS_TOMO_GPU binary",
+    "machine_pinned: bitwise golden-file checks, valid only on the recording machine",
+    "needs_binary: requires the compiled MIDAS_TOMO binary",
+]

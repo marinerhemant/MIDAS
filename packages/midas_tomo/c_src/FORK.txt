@@ -1,0 +1,259 @@
+Vendored from TOMO/src/ in the MIDAS repository.
+
+Fork commit : 0a426739603107f23e72dcd702650a25f7f45d4e
+Fork date   : 2026-08-13
+Files       : tomo_init.c tomo_gridrec.c tomo_utils.c tomo_cleanup.c
+              tomo_heads.h tomo_gpu.cu tomo_gpu.h
+
+These files are a byte-identical mirror of TOMO/src/ at the fork commit.
+packages/midas_tomo/c_src/ is CANONICAL from here on: every future fix lands
+here, and TOMO/ stays frozen.
+
+Do not edit these to work around a build problem -- fix CMakeLists.txt
+instead. A CI job diffs this directory against TOMO/src/ and warns on any
+difference, so keeping the mirror clean is what makes that signal useful.
+Deliberate divergences (e.g. the pocketfft FFT backend) must be recorded
+below with the reason.
+
+Deliberate divergences from the fork point:
+  (none yet)
+
+Build-flag constraint (discovered 2026-08-13, verified on chiltepin):
+  tomo_gridrec.c defines Cnvlvnt() as C99 `inline` with a matching `inline`
+  declaration in tomo_heads.h and NO extern definition. Under C99 that emits
+  no external symbol, so the binary only links when the optimiser inlines
+  every call. At -O0 the link fails with "undefined reference to `Cnvlvnt'".
+  The root MIDAS CMakeLists.txt builds with `-fPIC -O3 -w -g` and C99, which
+  is why this has never surfaced.
+
+  packages/midas_tomo/CMakeLists.txt therefore applies those flags
+  unconditionally, independent of CMAKE_BUILD_TYPE. Do not "fix" this by
+  adding an extern definition to the C -- that would break the mirror. And
+  do not change the flag list casually: optimisation level alters FP
+  instruction selection in the gridrec inner loops, so it is part of the
+  bit-parity pin, not just a speed knob.
+
+Deliberate divergence #1 -- `--deterministic` (2026-08-13)
+  Files: tomo_heads.h, tomo_init.c, tomo_gridrec.c, tomo_utils.c
+  Adds an opt-in FFTW_ESTIMATE planning path. Default behaviour (FFTW_MEASURE
+  + wisdom cache) is untouched, so the golden-file parity test is unaffected.
+    - tomo_heads.h : `int deterministic` on gridrecParams and GLOBAL_CONFIG_OPTS
+    - tomo_init.c  : parse --deterministic; document it in usage() (the Python
+                     side probes the usage text for the flag); warn on
+                     unrecognised argv instead of ignoring it in silence
+    - tomo_gridrec.c: plan with FFTW_ESTIMATE and skip wisdom I/O when set
+    - tomo_utils.c : initialise param.deterministic in createPlanFile
+  Two traps found while doing it, both worth not re-learning:
+    * createPlanFile() must still run in deterministic mode. Besides building
+      wisdom it performs a trial reconstruction to measure sizeMatrices, which
+      tomo_init.c divides by -- skipping it gives SIGFPE on that division.
+    * createPlanFile()'s local gridrecParams was never fully initialised, so
+      the new `if (param->deterministic)` branch read uninitialised stack until
+      the field was set explicitly.
+
+Deliberate divergence #2 -- optional HDF5 (2026-08-13)
+  Files: tomo_utils.c
+  Wraps the `#include <hdf5.h>` and the whole readRawHDF5() body in
+  `#ifdef MIDAS_TOMO_HAVE_HDF5`, with a stub that errors clearly when a
+  parameter file asks for HDF5FileName against a build without it.
+
+  Rationale: midas-tomo reads HDF5 in PYTHON (h5py, midas_tomo/hdf5.py) and
+  hands the engine the staged binary layout, so this C path is dead code in
+  package use -- and h5py handles more layouts, compression filters and
+  chunkings than the C reader. Guarding it therefore removes a build
+  dependency without removing a capability. CMakeLists.txt makes HDF5 optional
+  and defines MIDAS_TOMO_HAVE_HDF5 only when it is found.
+
+  Verified: builds both with and without HDF5, and BOTH are bitwise identical
+  to the pre-fork reference binary on the parity test -- the guarded code is
+  unreachable in the non-HDF5 input path, as intended.
+
+Deliberate divergence #3 -- exit(2) becomes a recorded error code (2026-08-13)
+  Files: tomo_heads.h, tomo_gridrec.c, tomo_init.c, tomo_utils.c
+  First step of the in-process (ctypes) work. tomo_gridrec.c called exit(2) in
+  three places -- get_pswf(), trig_su(), legendre(). That is survivable in a
+  standalone binary but terminates the HOST PROCESS when the engine is called
+  in-process, taking a Jupyter kernel and any unsaved work with it.
+
+  All three now set `gridrecParams.error` to a MIDAS_TOMO_ERR_* code and return
+  a safe value; midas_tomo_error_message() turns the code into a sentence. No
+  signature changes were needed -- all three already receive gridrecParams* --
+  so the call chain is untouched, which is what keeps this numerically inert.
+
+  The field is initialised at every gridrecParams construction site (main()'s
+  sizing struct, both worker sites, and createPlanFile). Same trap as
+  `deterministic`: an uninitialised field read by a new branch.
+
+  Verified: still bitwise identical to the pre-fork reference. Expected -- the
+  three sites are unreachable with valid input -- but worth asserting rather
+  than assuming, since this edits the numerics translation unit.
+
+NOTE ON SCOPE (2026-08-13): the mirror discipline is being retired on purpose.
+The package is moving to calling the engine IN-PROCESS via ctypes rather than
+shelling out to a binary, which requires extracting main()'s ~915 lines of
+orchestration into a callable entry point. From that point c_src/ is a fork
+with a documented lineage, not a copy. The bitwise parity gate against a
+pre-fork build (dev/build_reference_binary.sh) is retained and becomes the
+primary evidence that the refactor preserved the numerics.
+
+Deliberate divergence #4 -- library entry point + input validation (2026-08-13)
+  Files: tomo_init.c, tomo_utils.c, tomo_heads.h, CMakeLists.txt
+  a) main()'s body became `midas_tomo_run(paramFile, nProcs, gpu, bridge,
+     deterministic)`. The body is unchanged; only the source of the inputs
+     moved. main() remains as a thin argv wrapper, guarded by
+     MIDAS_TOMO_LIBRARY_BUILD so the shared object carries no entry point.
+     A `midastomo` SHARED target is built from the same sources and flags.
+  b) setGlobalOpts() now initialises the REQUIRED fields to sentinels and
+     validates them after parsing (dataFileName, reconFileName, detXdim,
+     detYdim, theta source, and that the data file actually opens).
+     Previously it failed only when the parameter FILE could not be opened, so
+     a missing key left uninitialised stack that reached the allocator as a
+     garbage size. That was survivable in a standalone binary; in-process it
+     segfaulted the interpreter. Found by a test that did exactly that.
+
+  Verified: the CLI binary is still bitwise identical to the pre-fork
+  reference, so the extraction did not disturb the numerics.
+
+Deliberate divergence #5 -- FFT plan lifetime (2026-08-13)  [BUG FIX]
+  File: tomo_gridrec.c
+  initFFTMemoryStructures() nulled in_1d/in_2d but left backward_plan_1d and
+  forward_plan_2d UNINITIALISED, while destroyFFTMemoryStructures() destroyed
+  both unconditionally. A worker thread that never ran a transform of a given
+  rank therefore passed stack garbage to fftwf_destroy_plan().
+
+  gdb backtrace:
+    fftwf_plan_awake -> fftwf_destroy_plan -> destroyFFTMemoryStructures
+    (tomo_gridrec.c:75) <- midas_tomo_run._omp_fn.0 (tomo_init.c:804)
+
+  Fix: initialise both handles to NULL, guard both destroys, null the freed
+  buffers, and reset the n_prev/nx_prev/ny_prev size cache so a reused
+  gridrecParams re-plans rather than trusting stale sizes.
+
+  Also fixed alongside: the 2-D resize path in fourn() called
+  fftwf_free(param->in_1d) -- the ONE-dimensional buffer -- leaking the old
+  2-D buffer and leaving in_1d dangling. Currently unreachable (it needs a
+  second, different 2-D size within one gridrecParams), so no behaviour
+  change, but it is the same class of bug in the same function.
+
+  *** THIS BUG IS PRESENT IN TOMO/src/tomo_gridrec.c TOO. *** It is masked in
+  the standalone binary because the crash lands at teardown, after the output
+  is already written -- a wrong exit code at worst. It is fatal in-process.
+  TOMO/ is frozen by decision, so it has NOT been fixed there; worth a
+  separate decision.
+
+  Verified: repro fixed, and the CLI binary is still bitwise identical to the
+  pre-fork reference.
+
+Deliberate divergence #6 -- in-memory sinogram input (2026-08-13)
+  Files: tomo_heads.h, tomo_init.c, tomo_utils.c
+  New entry point midas_tomo_run_sinos(..., const float *sinos, size_t bytes).
+  When `sinos` is non-NULL (areSinos mode), the engine reads the sinogram
+  stack straight out of caller memory: readSino() memcpy's the slice from the
+  buffer, the single-shift fast path uses it in place of its mmap, and
+  setGlobalOpts skips the dataFileName requirement and probe. Python therefore
+  hands over a numpy array instead of staging it to disk.
+
+  midas_tomo_run() is now a wrapper passing (NULL, 0), so the file path is
+  unchanged and the parity gate still covers it.
+
+  Guards: the buffer is bounds-checked against the declared geometry per
+  slice, and it is NEVER munmap'd -- that memory belongs to the caller.
+
+  Verified: in-memory input is BITWISE identical to the staged-file path.
+
+Deliberate divergence #7 -- error propagation (2026-08-13)  [BUG FIXES]
+  Files: tomo_init.c, tomo_utils.c, tomo_heads.h
+  Three places swallowed read failures. All are much worse in-process, where
+  no operator sees the stderr message:
+    * multi-shift path: `if (badRead == 1) return 0;` -- returned SUCCESS on a
+      failed read, yielding a silently empty reconstruction. Now returns 1.
+    * single-shift path: a failed slice was `continue`d past, leaving that
+      slice's output uninitialised and still reporting success. Now records
+      the failure and returns 1 after the parallel region joins.
+    * createPlanFile(): was `void`, and discarded readSino()/readRaw()'s
+      return. It performs the FIRST read of the input, so it is where a bad
+      input is actually detected -- the message was printed and the run
+      continued regardless. Now returns int, checked at all 4 call sites.
+  These are present in TOMO/src/ as well; see the note under divergence #5.
+
+Deliberate divergence #8 -- fully in-memory I/O (2026-08-13)
+  Files: tomo_heads.h, tomo_init.c, tomo_utils.c
+  midas_tomo_run_arrays(..., sinos, sinoBytes, out, outBytes). When `out` is
+  non-NULL, writeRecon() memcpy's each reconstruction into the caller's array
+  at the SAME offset the file would have used, so the in-memory and on-disk
+  cubes have identical layout. No output file is created.
+
+  Rejected combinations, explicitly and early: useGPU (its writer goes through
+  its own mmap'd file) and saveReconSeparate == 1 (one file per slice has no
+  in-memory meaning).
+
+  Entry points now nest: run() -> run_sinos() -> run_arrays(), so the file
+  path is unchanged and the pre-fork parity gate still covers it.
+
+  Verified: array-in/array-out is BITWISE identical to the via-disk result.
+
+  Fourth error-swallowing site found here, same shape as divergence #7: all
+  four writeRecon() call sites did `if (rw == 1) continue;`, so a failed or
+  truncated write produced a partial cube and a success return. Now recorded
+  and returned.
+
+Deliberate divergence #9 -- pocketfft FFT backend (2026-08-13)
+  Files: midas_fft.h (new), midas_fft_pocket.cpp (new),
+         vendor/pocketfft_hdronly.h (new, BSD-3-Clause), tomo_heads.h,
+         tomo_gridrec.c, tomo_init.c, tomo_utils.c, CMakeLists.txt
+
+  Adds a second FFT backend, selectable with --fft-engine=<fftw|pocketfft>.
+  FFTW remains the default WHERE IT EXISTS, so historical bit-comparability is
+  unaffected; pocketfft is the default (and only) backend when FFTW is absent.
+
+  Why: FFTW is GPL-2.0-or-later, so it cannot ship inside a BSD wheel.
+  pocketfft is BSD-3-Clause -- same licence as MIDAS -- and is vendored, so
+  the engine now builds with NOTHING but a C/C++ compiler. Verified: a build
+  configured with no FFTW and no HDF5 compiles, links against neither, and
+  reconstructs the phantom to the same correlation (+0.9278) as the FFTW build.
+
+  Structure: tomo_heads.h now includes midas_fft.h, which pulls in <fftw3.h>
+  only under MIDAS_TOMO_HAVE_FFTW and otherwise supplies the fftwf_* types and
+  stubs the engine's declarations need. The stubbed fftwf_execute() ABORTS
+  rather than silently returning -- if the pocketfft routing is ever wrong,
+  that must fail loudly, not produce a plausible zero image.
+
+  Measured on chiltepin (128x180 phantom, gcc 11.5, FFTW 3.3.3):
+    pocketfft vs FFTW           2.9e-07 relative -- same transform, different
+                                rounding. NOT bitwise; asserting that would be
+                                asserting something false.
+    pocketfft reproducibility   two fresh runs BITWISE IDENTICAL, no flag
+    FFTW reproducibility        two fresh runs NOT identical
+    speed                       pocketfft 9.5 ms vs FFTW 11.1 ms -- 0.86x,
+                                i.e. FASTER. I expected a penalty; there is
+                                none at this size.
+
+  Two traps, both the same shape as earlier ones:
+    * The pocketfft branch must still give param->wisdom_string an owned empty
+      string when setPlan==1, because createPlanFile() strlen()s it. Leaving it
+      NULL segfaults -- exactly what the deterministic branch hit.
+    * createPlanFile() never initialised param.wisdom_string, so testing it for
+      NULL read stack garbage. Now initialised.
+
+  Direction note: both FFT sites IGNORE their `isign` argument -- fourn() always
+  plans FFTW_FORWARD and four1() always FFTW_BACKWARD. The pocketfft calls
+  hard-code the same directions. Honouring isign would look more correct and
+  would silently change the transform relative to every previous run.
+
+
+Deliberate divergence #10 -- pocketfft becomes the DEFAULT (2026-08-13)
+  File: tomo_init.c
+  The default engine is now MIDAS_FFT_POCKET regardless of whether FFTW was
+  compiled in. --fft-engine=fftw reproduces historical runs bit-for-bit.
+
+  Rationale, all measured rather than assumed: pocketfft is BSD (so it ships),
+  ~0.86x the wall time of FFTW at typical sizes (faster), and bitwise
+  reproducible run to run, which the FFTW planner is NOT.
+
+  Consequence: default output now differs from every pre-2026-08-13 run by
+  ~3e-7 relative. That is float32 rounding and scientifically irrelevant, but
+  it is a real change to byte-comparisons and is why this was a deliberate
+  decision rather than a side effect of adding the backend.
+
+  tests/test_parity_vs_fork.py now passes --fft-engine=fftw explicitly, so the
+  gate still measures the packaging change and not the engine difference.

@@ -1,0 +1,86 @@
+"""midas-dt: diffraction / X-ray computed tomography (XRD-CT).
+
+Takes a scan of detector frames over (translation, rotation) to per-voxel
+diffraction patterns and the maps derived from them.
+
+**Scope.** Powder-like XRD-CT: continuous rings, integrated azimuthally. If
+the rings break into discrete spots the sample is coarse-grained and this is
+the wrong tool -- that is scanning-3DXRD, handled by ``midas_index``'s PF mode
+and ``midas_pf_odf``. The dividing line is operational: continuous at the
+working (R, eta) bin size, or not.
+"""
+
+from __future__ import annotations
+
+__version__ = "0.1.0.dev0"
+
+from .channels import Channel, channels_from_legacy_params
+from .conventions import (
+    ADDITIVE_FIT_OUTPUTS,
+    FIT_OUTPUT_NAMES,
+    RECON_SIGN,
+    aps_1id_omega,
+    fit_output_index,
+    is_additive,
+    recon_size,
+    unsnake,
+)
+from .reduce import FrameReducer, ReducedFrame, poisson_variance
+from .branches import (
+    BranchResult,
+    compare,
+    format_comparison,
+    run_fit_then_recon,
+    run_recon_then_fit,
+)
+from .peakfit import LineoutFit, fit_lineout
+from .center import CentreResult, centre_of_mass_shift, find_centre
+from .recon import Reconstruction, reconstruct
+from .sinogram import SinogramStack, assemble
+from .geometry import (
+    DTGeometry,
+    from_calibration,
+    geometry_from_legacy_params,
+    parse_legacy_params,
+)
+from .scan import PILATUS_1475x1679, DTScan, RawFormat, detect_snake, frames_in_file
+
+__all__ = [
+    "__version__",
+    "ADDITIVE_FIT_OUTPUTS",
+    "BranchResult",
+    "CentreResult",
+    "LineoutFit",
+    "Channel",
+    "DTGeometry",
+    "DTScan",
+    "FIT_OUTPUT_NAMES",
+    "PILATUS_1475x1679",
+    "RECON_SIGN",
+    "RawFormat",
+    "FrameReducer",
+    "ReducedFrame",
+    "Reconstruction",
+    "SinogramStack",
+    "aps_1id_omega",
+    "assemble",
+    "centre_of_mass_shift",
+    "channels_from_legacy_params",
+    "compare",
+    "find_centre",
+    "fit_lineout",
+    "format_comparison",
+    "run_fit_then_recon",
+    "run_recon_then_fit",
+    "detect_snake",
+    "fit_output_index",
+    "frames_in_file",
+    "from_calibration",
+    "geometry_from_legacy_params",
+    "is_additive",
+    "parse_legacy_params",
+    "poisson_variance",
+    "recon_size",
+    "reconstruct",
+    "unsnake",
+]

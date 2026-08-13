@@ -5,7 +5,9 @@
 
 #include <ctype.h>
 #include <fcntl.h>
+#ifdef MIDAS_TOMO_HAVE_HDF5
 #include <hdf5.h>
+#endif
 #include <limits.h>
 #include <math.h>
 #include <stdbool.h>
@@ -271,10 +273,11 @@ int setGlobalOpts(char *inputFN, GLOBAL_CONFIG_OPTS *recon_info_record) {
   recon_info_record->cleanup_la_values = NULL;
   recon_info_record->cleanup_sm_values = NULL;
   recon_info_record->stripeConfigFile[0] = '\0';
-  /* Sentinels for the REQUIRED keys, validated after the parse loop. Without
-   * these these fields keep whatever was on the stack, so a parameter file
-   * missing detXdim reached the allocator with a garbage size and segfaulted
-   * far from the cause. */
+  /* Sentinels for the REQUIRED keys, validated after the parse loop below.
+   * Without these these fields keep whatever was on the stack: a parameter
+   * file missing detXdim would previously reach the allocator with a garbage
+   * size and segfault. Survivable when this was only ever a standalone
+   * binary; not survivable now that it is called in-process. */
   recon_info_record->det_xdim = 0;
   recon_info_record->det_ydim = 0;
   recon_info_record->DataFileName[0] = '\0';
@@ -377,10 +380,11 @@ int setGlobalOpts(char *inputFN, GLOBAL_CONFIG_OPTS *recon_info_record) {
   }
   fclose(fileParam);
 
-  /* Required-key validation. setGlobalOpts previously failed only when the
+  /* Required-key validation. Previously setGlobalOpts only failed when the
    * parameter FILE could not be opened, so any missing key surfaced later as
-   * a bad allocation or a segfault. */
-  if (recon_info_record->DataFileName[0] == '\0') {
+   * a bad allocation or a segfault far from the cause. */
+  if (recon_info_record->DataFileName[0] == '\0' &&
+      recon_info_record->sino_in_ptr == NULL) {
     fprintf(stderr, "ERROR: parameter file is missing dataFileName.\n");
     return 1;
   }
@@ -401,7 +405,7 @@ int setGlobalOpts(char *inputFN, GLOBAL_CONFIG_OPTS *recon_info_record) {
                     "usable thetaRange.\n");
     return 1;
   }
-  {
+  if (recon_info_record->sino_in_ptr == NULL) {
     FILE *probe = fopen(recon_info_record->DataFileName, "rb");
     if (probe == NULL) {
       fprintf(stderr, "ERROR: cannot open dataFileName '%s'.\n",
@@ -740,15 +744,17 @@ void freeSinoBuffers(LOCAL_CONFIG_OPTS *information) {
 
 int readSino(int sliceNr, const GLOBAL_CONFIG_OPTS *recon_info_record,
              SINO_READ_OPTS *readStruct) {
-  FILE *dataFile;
+  FILE *dataFile = NULL;
+  if (recon_info_record->sino_in_ptr == NULL) {
 #pragma omp critical
-  {
-    dataFile = fopen(recon_info_record->DataFileName, "rb");
-  }
-  if (dataFile == NULL) {
-    printf("SliceNr: %d, Could not read datafile: %s.\n", sliceNr,
-           recon_info_record->DataFileName);
-    return 1;
+    {
+      dataFile = fopen(recon_info_record->DataFileName, "rb");
+    }
+    if (dataFile == NULL) {
+      printf("SliceNr: %d, Could not read datafile: %s.\n", sliceNr,
+             recon_info_record->DataFileName);
+      return 1;
+    }
   }
   size_t offset = sizeof(float) * sliceNr * recon_info_record->det_xdim *
                   recon_info_record->theta_list_size;
@@ -762,14 +768,38 @@ int readSino(int sliceNr, const GLOBAL_CONFIG_OPTS *recon_info_record,
   //~ printf("norm_sino
   //%ld\n",(long)(sizeof(float)*recon_info_record->sinogram_adjusted_xdim*recon_info_record->theta_list_size));
   readStruct->init_sinogram = (float *)malloc(SizeSino);
-#pragma omp critical
-  {
-    fseek(dataFile, offset, SEEK_SET);
-    fread(readStruct->init_sinogram, SizeSino, 1, dataFile);
+  if (readStruct->init_sinogram == NULL) {
+    printf("SliceNr: %d, could not allocate %zu bytes for the sinogram.\n",
+           sliceNr, SizeSino);
+    if (dataFile != NULL)
+      fclose(dataFile);
+    return 1;
   }
+  if (recon_info_record->sino_in_ptr != NULL) {
+    /* Caller-supplied buffer: copy this slice straight out of it. No file is
+     * touched, which is the point -- staging a large sinogram stack to disk
+     * purely to hand it to the engine was the dominant cost. */
+    if (offset + SizeSino > recon_info_record->sino_in_bytes) {
+      printf("SliceNr: %d, sinogram buffer is too small: need %zu bytes, "
+             "have %zu.\n",
+             sliceNr, offset + SizeSino, recon_info_record->sino_in_bytes);
+      free(readStruct->init_sinogram);
+      return 1;
+    }
+    memcpy(readStruct->init_sinogram,
+           (const char *)recon_info_record->sino_in_ptr + offset, SizeSino);
+  } else {
 #pragma omp critical
-  {
-    fclose(dataFile);
+    {
+      fseek(dataFile, offset, SEEK_SET);
+      fread(readStruct->init_sinogram, SizeSino, 1, dataFile);
+    }
+  }
+  if (dataFile != NULL) {
+#pragma omp critical
+    {
+      fclose(dataFile);
+    }
   }
   if (recon_info_record->debug == 1) {
     char outfn[4096];
@@ -794,6 +824,32 @@ int readSino(int sliceNr, const GLOBAL_CONFIG_OPTS *recon_info_record,
   return 0;
 }
 
+#ifndef MIDAS_TOMO_HAVE_HDF5
+/* Built without HDF5.
+ *
+ * midas-tomo reads HDF5 in Python (h5py, see midas_tomo/hdf5.py) and hands
+ * this engine the staged binary layout, so this code path is unused by the
+ * package -- h5py also copes with more layouts, filters and chunkings than
+ * the reader below. Keeping the symbol means readRaw() still links; reaching
+ * it means a hand-written parameter file asked for HDF5FileName against a
+ * build that cannot serve it, which is worth an explicit error rather than a
+ * link failure. */
+int readRawHDF5(int sliceNr, const GLOBAL_CONFIG_OPTS *recon_info_record,
+                SINO_READ_OPTS *readStruct) {
+  (void)sliceNr;
+  (void)recon_info_record;
+  (void)readStruct;
+  fprintf(stderr,
+          "ERROR: this MIDAS_TOMO was built without HDF5 support, but the "
+          "parameter file specifies HDF5FileName.\n"
+          "       Either rebuild with HDF5 available, or read the file in "
+          "Python instead:\n"
+          "         from midas_tomo.hdf5 import read_exchange\n"
+          "         scan = read_exchange('input.h5')\n"
+          "         run_tomo(scan.data, scan.dark, scan.whites, ...)\n");
+  return 1;
+}
+#else
 int readRawHDF5(int sliceNr, const GLOBAL_CONFIG_OPTS *recon_info_record,
                 SINO_READ_OPTS *readStruct) {
   hid_t file_id;
@@ -1128,6 +1184,7 @@ int readRawHDF5(int sliceNr, const GLOBAL_CONFIG_OPTS *recon_info_record,
 
   return 0;
 }
+#endif /* MIDAS_TOMO_HAVE_HDF5 */
 
 int readRaw(int sliceNr, const GLOBAL_CONFIG_OPTS *recon_info_record,
             SINO_READ_OPTS *readStruct, int fd) {
@@ -1451,12 +1508,23 @@ int writeRecon(int sliceNr, int slicePos, LOCAL_CONFIG_OPTS *information,
                            (size_t)recon_info_record->n_slices;
     OffsetHere *= (size_t)cleanupNr * cleanupStride + shiftSliceIdx;
 
-    int rc =
-        pwrite(fd, information->recon_calc_buffer,
-               sizeof(float) * information->reconstruction_size, OffsetHere);
-    if (rc < 0) {
-      printf("Could not write to output file.\n");
-      return 1;
+    size_t nbytes = sizeof(float) * (size_t)information->reconstruction_size;
+    if (recon_info_record->recon_out_ptr != NULL) {
+      /* Straight into the caller's array, at the same offset the file would
+       * have used -- so the in-memory and on-disk cubes are the same layout. */
+      if (OffsetHere + nbytes > recon_info_record->recon_out_bytes) {
+        printf("Output buffer too small: need %zu bytes, have %zu.\n",
+               OffsetHere + nbytes, recon_info_record->recon_out_bytes);
+        return 1;
+      }
+      memcpy((char *)recon_info_record->recon_out_ptr + OffsetHere,
+             information->recon_calc_buffer, nbytes);
+    } else {
+      int rc = pwrite(fd, information->recon_calc_buffer, nbytes, OffsetHere);
+      if (rc < 0) {
+        printf("Could not write to output file.\n");
+        return 1;
+      }
     }
   }
   return 0;
@@ -1495,6 +1563,15 @@ int createPlanFile(GLOBAL_CONFIG_OPTS *recon_info_record) {
       sizeof(float) * information.sinogram_adjusted_xdim;
   gridrecParams param;
   param.sizeMatrices = 0;
+  /* Must be initialised, or the planner's `if (param->deterministic)` branch
+   * reads uninitialised stack. This routine also runs in deterministic mode
+   * (it is what measures sizeMatrices), so propagate rather than hard-code. */
+  param.error = MIDAS_TOMO_OK;
+  param.deterministic = recon_info_record->deterministic;
+  param.fft_engine = recon_info_record->fft_engine;
+  /* The branches below test this for NULL; leaving it uninitialised
+   * makes that test read stack garbage. */
+  param.wisdom_string = NULL;
   param.sinogram_x_dim = information.sinogram_adjusted_xdim * 2;
   param.theta_list = recon_info_record->theta_list;
   param.filter_type = recon_info_record->filter;
@@ -1510,10 +1587,11 @@ int createPlanFile(GLOBAL_CONFIG_OPTS *recon_info_record) {
   if (!recon_info_record->are_sinos && !recon_info_record->use_hdf5) {
     input_fd = open(recon_info_record->DataFileName, O_RDONLY);
   }
-  /* This trial read sizes the matrices, but it is also the FIRST touch of the
-   * input -- so it is where a bad input is detected. The return value used to
-   * be discarded, so a short or missing input was reported to stderr and then
-   * reconstructed anyway, with a zero exit code. */
+  /* This trial read exists to size the matrices, but it is also the FIRST
+   * time the input is touched -- so it is where a bad input is detected. The
+   * return value used to be discarded, which meant a short or missing input
+   * was reported to stderr and then reconstructed anyway, with a zero exit
+   * code. */
   int readRC;
   if (recon_info_record->are_sinos) {
     readRC = readSino(sliceNr, &cpy, &readStruct);

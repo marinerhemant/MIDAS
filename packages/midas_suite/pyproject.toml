@@ -47,6 +47,7 @@ dependencies = [
                                    # >=0.7.0 reads Completeness as an alias for ConfidenceTol -- below it the
                                    # grain-selection keys are parsed and DISCARDED (23710 vs 6132 grains)
     "midas-fit-grain>=0.7.0",      # >=0.6.0 refiner returns its seed positions; >=0.7.0 adds c_recipe
+    "midas-tomo>=0.1.0",           # gridrec CT engine; installs Python-only when FFTW/OpenMP are absent
     "midas-nf-preprocess>=0.6.0",
     "midas-nf-fitorientation>=0.8.0",
     "midas-zipper>=0.1.5",         # raw → .MIDAS.zip ingest (pip-portable, no C/source-tree dep)

@@ -34,6 +34,7 @@ SUBPACKAGES = (
     "midas_transforms",
     "midas_process_grains",
     "midas_fit_grain",
+    "midas_tomo",
     "midas_nf_preprocess",
     "midas_nf_fitorientation",
     "midas_zipper",

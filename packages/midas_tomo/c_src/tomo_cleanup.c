@@ -1,0 +1,862 @@
+//
+// Copyright (c) 2024, UChicago Argonne, LLC
+// See LICENSE file.
+//
+// Stripe artifact removal for tomographic sinograms.
+// Based on algorithms described in:
+//   Nghia T. Vo, Robert C. Atwood, and Michael Drakopoulos,
+//   "Superior techniques for eliminating ring artifacts in X-ray
+//   micro-tomography," Optics Express 26(22), 28396-28412 (2018).
+//
+
+#include <math.h>
+#include <stdio.h>
+#include <stdlib.h>
+#include <string.h>
+
+// ============================================================================
+// qsort comparator: ascending float
+// ============================================================================
+static int cmp_float_asc(const void *a, const void *b) {
+  float fa = *(const float *)a;
+  float fb = *(const float *)b;
+  if (fa < fb)
+    return -1;
+  if (fa > fb)
+    return 1;
+  return 0;
+}
+
+// ============================================================================
+// qsort comparator: descending float
+// ============================================================================
+static int cmp_float_desc(const void *a, const void *b) {
+  float fa = *(const float *)a;
+  float fb = *(const float *)b;
+  if (fa > fb)
+    return -1;
+  if (fa < fb)
+    return 1;
+  return 0;
+}
+
+// ============================================================================
+// Entry for paired position-value sorting
+// ============================================================================
+typedef struct {
+  float pos;
+  float val;
+} SortEntry;
+
+static int cmp_entry_by_val(const void *a, const void *b) {
+  float va = ((const SortEntry *)a)->val;
+  float vb = ((const SortEntry *)b)->val;
+  if (va < vb)
+    return -1;
+  if (va > vb)
+    return 1;
+  return 0;
+}
+
+static int cmp_entry_by_pos(const void *a, const void *b) {
+  float pa = ((const SortEntry *)a)->pos;
+  float pb = ((const SortEntry *)b)->pos;
+  if (pa < pb)
+    return -1;
+  if (pa > pb)
+    return 1;
+  return 0;
+}
+
+// ============================================================================
+// Reflect an index into [0, n) using mirrored boundary conditions.
+// ============================================================================
+static inline int reflect_index(int idx, int n) {
+  if (idx < 0)
+    idx = -idx;
+  if (idx >= n)
+    idx = 2 * n - idx - 2;
+  if (idx < 0)
+    idx = 0;
+  if (idx >= n)
+    idx = n - 1;
+  return idx;
+}
+
+// ============================================================================
+// Insertion sort for small float arrays. Faster than qsort for n < ~64
+// due to no function-pointer overhead and good cache behaviour.
+// ============================================================================
+static void insertion_sort_float(float *arr, int n) {
+  for (int i = 1; i < n; i++) {
+    float key = arr[i];
+    int j = i - 1;
+    while (j >= 0 && arr[j] > key) {
+      arr[j + 1] = arr[j];
+      j--;
+    }
+    arr[j + 1] = key;
+  }
+}
+
+// ============================================================================
+// 1D median filter with reflected boundary conditions.
+// Applies a sliding window of 'size' to array 'in' of length 'n'.
+// Result is written to 'out'. 'in' and 'out' must not overlap.
+// Uses insertion sort for small windows (≤128), qsort otherwise.
+// ============================================================================
+static void medfilt1(const float *in, float *out, int n, int size) {
+  int half = size / 2;
+  float *window = (float *)malloc(sizeof(float) * size);
+  if (!window) {
+    fprintf(stderr, "medfilt1: malloc failed (n=%d, size=%d)\n", n, size);
+    memcpy(out, in, sizeof(float) * n);
+    return;
+  }
+  for (int i = 0; i < n; i++) {
+    int count = 0;
+    for (int j = i - half; j <= i + half; j++) {
+      window[count++] = in[reflect_index(j, n)];
+    }
+    if (count <= 128)
+      insertion_sort_float(window, count);
+    else
+      qsort(window, count, sizeof(float), cmp_float_asc);
+    out[i] = window[count / 2];
+  }
+  free(window);
+}
+
+// ============================================================================
+// 2D median filter on a row-major [nrow x ncol] array.
+// Kernel size is (krow, kcol) with reflected boundaries.
+// Fast path: when krow == 1, applies per-row 1D median filters.
+// ============================================================================
+static void medfilt2(const float *in, float *out, int nrow, int ncol, int krow,
+                     int kcol) {
+  // Fast path: krow == 1 means independent 1D median along each row
+  if (krow <= 1) {
+    for (int r = 0; r < nrow; r++) {
+      medfilt1(&in[r * ncol], &out[r * ncol], ncol, kcol);
+    }
+    return;
+  }
+
+  int hrow = krow / 2;
+  int hcol = kcol / 2;
+  int wsize = krow * kcol;
+  float *window = (float *)malloc(sizeof(float) * wsize);
+  if (!window) {
+    fprintf(stderr, "medfilt2: malloc failed (%dx%d, kernel %dx%d)\n", nrow,
+            ncol, krow, kcol);
+    memcpy(out, in, sizeof(float) * nrow * ncol);
+    return;
+  }
+
+  for (int r = 0; r < nrow; r++) {
+    for (int c = 0; c < ncol; c++) {
+      int count = 0;
+      for (int dr = -hrow; dr <= hrow; dr++) {
+        int rr = reflect_index(r + dr, nrow);
+        for (int dc = -hcol; dc <= hcol; dc++) {
+          int cc = reflect_index(c + dc, ncol);
+          window[count++] = in[rr * ncol + cc];
+        }
+      }
+      if (count <= 128)
+        insertion_sort_float(window, count);
+      else
+        qsort(window, count, sizeof(float), cmp_float_asc);
+      out[r * ncol + c] = window[count / 2];
+    }
+  }
+  free(window);
+}
+
+// ============================================================================
+// Column-wise mean (uniform) filter for a [nrow x ncol] array.
+// Each column is smoothed independently with a sliding window of 'size'.
+// ============================================================================
+static void mean_filter_columns(const float *data, float *out, int nrow,
+                                int ncol, int size) {
+  int half = size / 2;
+  for (int c = 0; c < ncol; c++) {
+    // Initial sum for row 0
+    float sum = 0.0f;
+    int count = 0;
+    for (int r = -half; r <= half; r++) {
+      sum += data[reflect_index(r, nrow) * ncol + c];
+      count++;
+    }
+    out[0 * ncol + c] = sum / count;
+
+    // Slide the window down through rows
+    for (int r = 1; r < nrow; r++) {
+      sum += data[reflect_index(r + half, nrow) * ncol + c];
+      sum -= data[reflect_index(r - half - 1, nrow) * ncol + c];
+      out[r * ncol + c] = sum / count;
+    }
+  }
+}
+
+// ============================================================================
+// Locate stripe column positions via linear fit + SNR thresholding.
+// (Algorithm 4 of Vo et al. 2018)
+//
+// Input:  col_stats[n]  - per-column statistics array
+// Output: stripe_mask[n] - binary mask (1.0 = stripe, 0.0 = clean)
+// ============================================================================
+static void locate_stripe_columns(const float *col_stats, float *stripe_mask,
+                                  int n, float snr) {
+  // Sort descending to find outlier ends
+  float *sorted_stats = (float *)malloc(sizeof(float) * n);
+  memcpy(sorted_stats, col_stats, sizeof(float) * n);
+  qsort(sorted_stats, n, sizeof(float), cmp_float_desc);
+
+  // Linear fit on the middle 50% (drop 25% from each tail)
+  int ndrop = (int)(0.25f * n);
+  int fit_start = ndrop;
+  int fit_end = n - ndrop - 1;
+  int fit_count = fit_end - fit_start + 1;
+
+  if (fit_count < 2) {
+    memset(stripe_mask, 0, sizeof(float) * n);
+    free(sorted_stats);
+    return;
+  }
+
+  // Linear regression: y = slope * x + intercept
+  double sx = 0, sy = 0, sxx = 0, sxy = 0;
+  for (int i = fit_start; i <= fit_end; i++) {
+    double x = (double)i;
+    double y = (double)sorted_stats[i];
+    sx += x;
+    sy += y;
+    sxx += x * x;
+    sxy += x * y;
+  }
+  double denom = fit_count * sxx - sx * sx;
+  double slope = 0, intercept = 0;
+  if (fabs(denom) > 1e-12) {
+    slope = (fit_count * sxy - sx * sy) / denom;
+    intercept = (sy - slope * sx) / fit_count;
+  }
+
+  double fitted_tail = intercept + slope * (n - 1);
+  double noise_level = fabs(fitted_tail - intercept);
+  if (noise_level < 1e-6)
+    noise_level = 1e-6;
+
+  double outlier_high = fabs(sorted_stats[0] - intercept) / noise_level;
+  double outlier_low = fabs(sorted_stats[n - 1] - fitted_tail) / noise_level;
+
+  memset(stripe_mask, 0, sizeof(float) * n);
+
+  if (outlier_high >= snr) {
+    double upper_thresh = intercept + noise_level * snr * 0.5;
+    for (int i = 0; i < n; i++) {
+      if (col_stats[i] > upper_thresh)
+        stripe_mask[i] = 1.0f;
+    }
+  }
+  if (outlier_low >= snr) {
+    double lower_thresh = fitted_tail - noise_level * snr * 0.5;
+    for (int i = 0; i < n; i++) {
+      if (col_stats[i] <= lower_thresh)
+        stripe_mask[i] = 1.0f;
+    }
+  }
+
+  free(sorted_stats);
+}
+
+// ============================================================================
+// 1D binary dilation on a float mask (0.0/1.0).
+// ============================================================================
+static void dilate_mask(float *mask, int n, int iterations) {
+  float *temp = (float *)malloc(sizeof(float) * n);
+  for (int iter = 0; iter < iterations; iter++) {
+    memcpy(temp, mask, sizeof(float) * n);
+    for (int i = 0; i < n; i++) {
+      if (temp[i] > 0.5f)
+        continue;
+      if (i > 0 && temp[i - 1] > 0.5f) {
+        mask[i] = 1.0f;
+        continue;
+      }
+      if (i < n - 1 && temp[i + 1] > 0.5f) {
+        mask[i] = 1.0f;
+        continue;
+      }
+    }
+  }
+  free(temp);
+}
+
+// ============================================================================
+// Sort each column of a [nrow x ncol] array independently (ascending).
+// ============================================================================
+static void colwise_sort(const float *sinogram, float *sorted, int nrow,
+                         int ncol) {
+  float *col = (float *)malloc(sizeof(float) * nrow);
+  for (int c = 0; c < ncol; c++) {
+    for (int r = 0; r < nrow; r++)
+      col[r] = sinogram[r * ncol + c];
+    qsort(col, nrow, sizeof(float), cmp_float_asc);
+    for (int r = 0; r < nrow; r++)
+      sorted[r * ncol + c] = col[r];
+  }
+  free(col);
+}
+
+// ============================================================================
+// Correct small-to-medium stripes by value-sorting each column, applying
+// a median filter in the sorted domain, then restoring original order.
+// (Based on Algorithm 3 of Vo et al. 2018)
+//
+// sinogram: [nrow x ncol] row-major, modified in-place
+// ============================================================================
+static void correct_by_sorting(float *sinogram, int nrow, int ncol,
+                               int filter_width, int dim) {
+  SortEntry *entries = (SortEntry *)malloc(sizeof(SortEntry) * nrow);
+  float *smoothed = (float *)malloc(sizeof(float) * nrow);
+  float *raw_col = (float *)malloc(sizeof(float) * nrow);
+  if (!entries || !smoothed || !raw_col) {
+    fprintf(stderr, "correct_by_sorting: malloc failed (nrow=%d)\n", nrow);
+    free(entries);
+    free(smoothed);
+    free(raw_col);
+    return;
+  }
+
+  for (int c = 0; c < ncol; c++) {
+    // Build position-value pairs for this column
+    for (int r = 0; r < nrow; r++) {
+      entries[r].pos = (float)r;
+      entries[r].val = sinogram[r * ncol + c];
+    }
+
+    // Sort by value
+    qsort(entries, nrow, sizeof(SortEntry), cmp_entry_by_val);
+
+    // Extract sorted values
+    for (int r = 0; r < nrow; r++)
+      raw_col[r] = entries[r].val;
+
+    // Median-filter the sorted profile (1D or 2D based on dim)
+    if (dim == 1) {
+      medfilt1(raw_col, smoothed, nrow, filter_width);
+    } else {
+      // dim == 2: treat as single-column 2D array, filter with (filter_width,
+      // 1)
+      medfilt2(raw_col, smoothed, nrow, 1, filter_width, 1);
+    }
+
+    // Replace with filtered values
+    for (int r = 0; r < nrow; r++)
+      entries[r].val = smoothed[r];
+
+    // Restore original order
+    qsort(entries, nrow, sizeof(SortEntry), cmp_entry_by_pos);
+
+    // Write corrected column back
+    for (int r = 0; r < nrow; r++)
+      sinogram[r * ncol + c] = entries[r].val;
+  }
+
+  free(entries);
+  free(smoothed);
+  free(raw_col);
+}
+
+// ============================================================================
+// Correct large stripe artifacts by normalizing columns based on their
+// sorted-domain statistics, then replacing detected stripe columns with
+// median-smoothed values.
+// (Based on Algorithm 5 of Vo et al. 2018)
+//
+// sinogram: [nrow x ncol], modified in-place
+// ============================================================================
+static void correct_large_artifacts(float *sinogram, int nrow, int ncol,
+                                    float snr, int filter_width,
+                                    float drop_ratio, int do_normalize) {
+  if (drop_ratio < 0.0f)
+    drop_ratio = 0.0f;
+  if (drop_ratio > 0.8f)
+    drop_ratio = 0.8f;
+
+  int ndrop = (int)(0.5f * drop_ratio * nrow);
+
+  // Sort each column
+  float *col_sorted = (float *)malloc(sizeof(float) * nrow * ncol);
+  colwise_sort(sinogram, col_sorted, nrow, ncol);
+
+  // Median-filter the sorted array with kernel (1, filter_width)
+  float *col_smooth = (float *)malloc(sizeof(float) * nrow * ncol);
+  medfilt2(col_sorted, col_smooth, nrow, ncol, 1, filter_width);
+
+  // Compute trimmed column means for both sorted and smoothed
+  float *mean_sorted = (float *)malloc(sizeof(float) * ncol);
+  float *mean_smooth = (float *)malloc(sizeof(float) * ncol);
+  int trim_count = nrow - 2 * ndrop;
+  if (trim_count < 1)
+    trim_count = 1;
+  for (int c = 0; c < ncol; c++) {
+    float s1 = 0, s2 = 0;
+    for (int r = ndrop; r < nrow - ndrop; r++) {
+      s1 += col_sorted[r * ncol + c];
+      s2 += col_smooth[r * ncol + c];
+    }
+    mean_sorted[c] = s1 / trim_count;
+    mean_smooth[c] = s2 / trim_count;
+  }
+
+  // Ratio of means identifies non-uniform columns
+  float *col_ratio = (float *)malloc(sizeof(float) * ncol);
+  for (int c = 0; c < ncol; c++) {
+    if (fabsf(mean_smooth[c]) > 1e-9f)
+      col_ratio[c] = mean_sorted[c] / mean_smooth[c];
+    else
+      col_ratio[c] = 1.0f;
+  }
+
+  // Detect stripe columns via SNR thresholding
+  float *stripe_mask = (float *)malloc(sizeof(float) * ncol);
+  locate_stripe_columns(col_ratio, stripe_mask, ncol, snr);
+  dilate_mask(stripe_mask, ncol, 1);
+
+  // Normalize all columns by their ratio
+  if (do_normalize) {
+    for (int r = 0; r < nrow; r++) {
+      for (int c = 0; c < ncol; c++) {
+        if (fabsf(col_ratio[c]) > 1e-9f)
+          sinogram[r * ncol + c] /= col_ratio[c];
+      }
+    }
+  }
+
+  // For stripe columns: replace with smoothed-sorted values via sort mapping
+  SortEntry *entries = (SortEntry *)malloc(sizeof(SortEntry) * nrow);
+
+  for (int c = 0; c < ncol; c++) {
+    if (stripe_mask[c] < 0.5f)
+      continue;
+
+    for (int r = 0; r < nrow; r++) {
+      entries[r].pos = (float)r;
+      entries[r].val = sinogram[r * ncol + c];
+    }
+    qsort(entries, nrow, sizeof(SortEntry), cmp_entry_by_val);
+
+    // Map sorted positions to smoothed column values
+    for (int r = 0; r < nrow; r++) {
+      entries[r].val = col_smooth[r * ncol + c];
+    }
+
+    qsort(entries, nrow, sizeof(SortEntry), cmp_entry_by_pos);
+
+    for (int r = 0; r < nrow; r++) {
+      sinogram[r * ncol + c] = entries[r].val;
+    }
+  }
+
+  free(entries);
+  free(col_sorted);
+  free(col_smooth);
+  free(mean_sorted);
+  free(mean_smooth);
+  free(col_ratio);
+  free(stripe_mask);
+}
+
+// ============================================================================
+// Correct unresponsive and fluctuating pixel columns by detecting them
+// with a fluctuation metric and replacing via linear interpolation from
+// neighboring good columns.
+// (Based on Algorithm 6 of Vo et al. 2018)
+//
+// sinogram: [nrow x ncol], modified in-place
+// ============================================================================
+static void correct_dead_pixels(float *sinogram, int nrow, int ncol, float snr,
+                                int filter_width,
+                                int apply_residual_correction) {
+  // Smooth along projection axis with a mean window of 10
+  float *smoothed = (float *)malloc(sizeof(float) * nrow * ncol);
+  mean_filter_columns(sinogram, smoothed, nrow, ncol, 10);
+
+  // Fluctuation metric: sum of absolute deviations from smooth
+  float *fluctuation = (float *)malloc(sizeof(float) * ncol);
+  for (int c = 0; c < ncol; c++) {
+    float s = 0;
+    for (int r = 0; r < nrow; r++) {
+      s += fabsf(sinogram[r * ncol + c] - smoothed[r * ncol + c]);
+    }
+    fluctuation[c] = s;
+  }
+
+  // Median-filter the fluctuation profile as background estimate
+  float *fluct_background = (float *)malloc(sizeof(float) * ncol);
+  medfilt1(fluctuation, fluct_background, ncol, filter_width);
+
+  // Ratio of fluctuation to background
+  float *fluct_ratio = (float *)malloc(sizeof(float) * ncol);
+  for (int c = 0; c < ncol; c++) {
+    if (fabsf(fluct_background[c]) > 1e-9f)
+      fluct_ratio[c] = fluctuation[c] / fluct_background[c];
+    else
+      fluct_ratio[c] = 1.0f;
+  }
+
+  // Detect dead/fluctuating columns
+  float *stripe_mask = (float *)malloc(sizeof(float) * ncol);
+  locate_stripe_columns(fluct_ratio, stripe_mask, ncol, snr);
+  dilate_mask(stripe_mask, ncol, 1);
+
+  // Keep edge columns unmarked (avoid boundary artifacts)
+  if (ncol > 2) {
+    stripe_mask[0] = 0.0f;
+    stripe_mask[1] = 0.0f;
+    stripe_mask[ncol - 2] = 0.0f;
+    stripe_mask[ncol - 1] = 0.0f;
+  }
+
+  // Interpolate bad columns from neighboring good columns
+  int *good_cols = (int *)malloc(sizeof(int) * ncol);
+  int ngood = 0;
+  for (int c = 0; c < ncol; c++) {
+    if (stripe_mask[c] < 0.5f)
+      good_cols[ngood++] = c;
+  }
+
+  if (ngood > 1) {
+    for (int c = 0; c < ncol; c++) {
+      if (stripe_mask[c] < 0.5f)
+        continue;
+
+      // Binary search for the first good column > c
+      int lo = 0, hi = ngood;
+      while (lo < hi) {
+        int mid = (lo + hi) / 2;
+        if (good_cols[mid] <= c)
+          lo = mid + 1;
+        else
+          hi = mid;
+      }
+      // lo is the index of the first good column > c
+      int right_idx = (lo < ngood) ? lo : -1;
+      int left_idx = (lo > 0) ? lo - 1 : -1;
+
+      if (left_idx < 0)
+        left_idx = right_idx;
+      if (right_idx < 0)
+        right_idx = left_idx;
+      if (left_idx < 0 || right_idx < 0)
+        continue;
+
+      int lc = good_cols[left_idx];
+      int rc = good_cols[right_idx];
+
+      if (lc == rc) {
+        for (int r = 0; r < nrow; r++)
+          sinogram[r * ncol + c] = sinogram[r * ncol + lc];
+      } else {
+        float t = (float)(c - lc) / (float)(rc - lc);
+        for (int r = 0; r < nrow; r++) {
+          sinogram[r * ncol + c] = (1.0f - t) * sinogram[r * ncol + lc] +
+                                   t * sinogram[r * ncol + rc];
+        }
+      }
+    }
+  }
+
+  free(good_cols);
+
+  // Residual correction via large-artifact removal
+  if (apply_residual_correction) {
+    correct_large_artifacts(sinogram, nrow, ncol, snr, filter_width, 0.1f, 1);
+  }
+
+  free(smoothed);
+  free(fluctuation);
+  free(fluct_background);
+  free(fluct_ratio);
+  free(stripe_mask);
+}
+
+// ============================================================================
+// cleanup_sinogram_stripes: Public API.
+//
+// Removes all types of stripe artifacts from a normalized sinogram by
+// combining dead-pixel correction, large-artifact normalization, and
+// sorting-based smoothing.
+//
+// sinogram: [nrow x ncol] row-major float array, modified in-place.
+//   nrow = number of projection angles
+//   ncol = detector width (horizontal pixels)
+// snr:       SNR threshold for stripe detection (default 3)
+// la_size:   Median filter window for large artifacts (default 61, odd)
+// sm_size:   Median filter window for small artifacts (default 21, odd)
+// dim:       Median filter dimension for sorting method (1 or 2)
+// ============================================================================
+void cleanup_sinogram_stripes(float *sinogram, int nrow, int ncol, float snr,
+                              int la_size, int sm_size, int dim) {
+  // Guard: nothing to do for degenerate inputs
+  if (!sinogram || nrow < 2 || ncol < 4) {
+    if (nrow < 2 || ncol < 4)
+      fprintf(stderr,
+              "cleanup_sinogram_stripes: sinogram too small "
+              "(%dx%d), skipping\n",
+              nrow, ncol);
+    return;
+  }
+
+  // Ensure odd window sizes
+  if (la_size % 2 == 0)
+    la_size++;
+  if (sm_size % 2 == 0)
+    sm_size++;
+
+  // Clamp window sizes to array dimensions
+  if (la_size > ncol)
+    la_size = (ncol % 2 == 0) ? ncol - 1 : ncol;
+  if (sm_size > nrow)
+    sm_size = (nrow % 2 == 0) ? nrow - 1 : nrow;
+
+  // Phase 1: Correct dead/unresponsive columns + large artifacts
+  correct_dead_pixels(sinogram, nrow, ncol, snr, la_size, 1);
+
+  // Phase 2: Correct small-to-medium stripes via sorting
+  correct_by_sorting(sinogram, nrow, ncol, sm_size, dim);
+}
+
+// ============================================================================
+// 1D Gaussian smoothing kernel (spatial domain convolution).
+// Convolves 'in' with a Gaussian of standard deviation 'sigma'.
+// Uses reflected boundary conditions.  Result in 'out'.
+// ============================================================================
+static void gaussian_smooth_1d(const float *in, float *out, int n, float sigma) {
+  int radius = (int)ceilf(3.0f * sigma);
+  if (radius < 1) radius = 1;
+  int ksize = 2 * radius + 1;
+  // Build kernel
+  float *kernel = (float *)malloc(sizeof(float) * ksize);
+  float sum = 0.0f;
+  for (int i = 0; i < ksize; i++) {
+    float x = (float)(i - radius);
+    kernel[i] = expf(-0.5f * x * x / (sigma * sigma));
+    sum += kernel[i];
+  }
+  for (int i = 0; i < ksize; i++) kernel[i] /= sum;
+  // Convolve with reflected boundaries
+  for (int i = 0; i < n; i++) {
+    float val = 0.0f;
+    for (int k = 0; k < ksize; k++) {
+      int idx = reflect_index(i + k - radius, n);
+      val += in[idx] * kernel[k];
+    }
+    out[i] = val;
+  }
+  free(kernel);
+}
+
+// ============================================================================
+// Column-wise Gaussian smoothing: smooth each column independently using
+// a 1D Gaussian of standard deviation 'sigma' along the row (angle) axis.
+// ============================================================================
+static void gaussian_smooth_columns(const float *data, float *out, int nrow,
+                                    int ncol, float sigma) {
+  float *col_in = (float *)malloc(sizeof(float) * nrow);
+  float *col_out = (float *)malloc(sizeof(float) * nrow);
+  for (int c = 0; c < ncol; c++) {
+    for (int r = 0; r < nrow; r++) col_in[r] = data[r * ncol + c];
+    gaussian_smooth_1d(col_in, col_out, nrow, sigma);
+    for (int r = 0; r < nrow; r++) out[r * ncol + c] = col_out[r];
+  }
+  free(col_in);
+  free(col_out);
+}
+
+// ============================================================================
+// cleanup_sinogram_filtering: Public API (Vo et al. 2018, Algorithm 2).
+//
+// Remove stripe artifacts using frequency filtering.
+// Separates the sinogram into smooth (low-pass) and sharp (high-pass)
+// components using a Gaussian filter, applies sorting-based correction
+// only to the smooth component, then recombines.
+// Best for: partial stripes (columns bad at only certain angles).
+//
+// sinogram: [nrow x ncol] row-major float array, modified in-place.
+// sigma:    Std-dev of Gaussian used to separate low/high-pass (default 3)
+// sm_size:  Median filter window for sorting-based correction (default 21)
+// dim:      Median filter dimension for sorting method (1 or 2)
+// ============================================================================
+void cleanup_sinogram_filtering(float *sinogram, int nrow, int ncol,
+                                float sigma, int sm_size, int dim) {
+  if (!sinogram || nrow < 2 || ncol < 4) return;
+  if (sm_size % 2 == 0) sm_size++;
+  if (sm_size > nrow) sm_size = (nrow % 2 == 0) ? nrow - 1 : nrow;
+
+  size_t total = (size_t)nrow * ncol;
+
+  // Smooth: Gaussian low-pass along columns (angle axis)
+  float *smooth = (float *)malloc(sizeof(float) * total);
+  gaussian_smooth_columns(sinogram, smooth, nrow, ncol, sigma);
+
+  // Sharp = original - smooth (high-frequency component)
+  float *sharp = (float *)malloc(sizeof(float) * total);
+  for (size_t i = 0; i < total; i++) sharp[i] = sinogram[i] - smooth[i];
+
+  // Apply sorting-based correction only to the smooth component
+  correct_by_sorting(smooth, nrow, ncol, sm_size, dim);
+
+  // Recombine: corrected_smooth + sharp
+  for (size_t i = 0; i < total; i++) sinogram[i] = smooth[i] + sharp[i];
+
+  free(smooth);
+  free(sharp);
+}
+
+// ============================================================================
+// Least-squares polynomial fit of degree 'order' to n data points.
+// Solves for coefficients c[0..order] such that y_fit[i] = sum(c[k] * i^k).
+// Uses normal equations (A^T A c = A^T y) solved by Gaussian elimination.
+// ============================================================================
+static void polyfit_eval(const float *y, float *y_fit, int n, int order) {
+  if (order >= n) order = n - 1;
+  int ncoeffs = order + 1;
+  // Build A^T A and A^T y using double precision for stability
+  double *ATA = (double *)calloc(ncoeffs * ncoeffs, sizeof(double));
+  double *ATy = (double *)calloc(ncoeffs, sizeof(double));
+  // Pre-compute powers of i
+  for (int i = 0; i < n; i++) {
+    double xi = (double)i / (double)(n > 1 ? n - 1 : 1);  // normalize to [0,1]
+    double xpow[16];  // max order 15
+    xpow[0] = 1.0;
+    for (int k = 1; k < ncoeffs; k++) xpow[k] = xpow[k - 1] * xi;
+    for (int j = 0; j < ncoeffs; j++) {
+      for (int k = 0; k < ncoeffs; k++) ATA[j * ncoeffs + k] += xpow[j] * xpow[k];
+      ATy[j] += xpow[j] * (double)y[i];
+    }
+  }
+  // Gaussian elimination with partial pivoting
+  double *aug = (double *)malloc(sizeof(double) * ncoeffs * (ncoeffs + 1));
+  for (int j = 0; j < ncoeffs; j++) {
+    for (int k = 0; k < ncoeffs; k++) aug[j * (ncoeffs + 1) + k] = ATA[j * ncoeffs + k];
+    aug[j * (ncoeffs + 1) + ncoeffs] = ATy[j];
+  }
+  for (int j = 0; j < ncoeffs; j++) {
+    // Pivot
+    int maxrow = j;
+    for (int k = j + 1; k < ncoeffs; k++)
+      if (fabs(aug[k * (ncoeffs + 1) + j]) > fabs(aug[maxrow * (ncoeffs + 1) + j]))
+        maxrow = k;
+    if (maxrow != j)
+      for (int k = 0; k <= ncoeffs; k++) {
+        double tmp = aug[j * (ncoeffs + 1) + k];
+        aug[j * (ncoeffs + 1) + k] = aug[maxrow * (ncoeffs + 1) + k];
+        aug[maxrow * (ncoeffs + 1) + k] = tmp;
+      }
+    double pivot = aug[j * (ncoeffs + 1) + j];
+    if (fabs(pivot) < 1e-15) continue;
+    for (int k = j; k <= ncoeffs; k++) aug[j * (ncoeffs + 1) + k] /= pivot;
+    for (int i = 0; i < ncoeffs; i++) {
+      if (i == j) continue;
+      double factor = aug[i * (ncoeffs + 1) + j];
+      for (int k = j; k <= ncoeffs; k++) aug[i * (ncoeffs + 1) + k] -= factor * aug[j * (ncoeffs + 1) + k];
+    }
+  }
+  double *coeffs = (double *)malloc(sizeof(double) * ncoeffs);
+  for (int j = 0; j < ncoeffs; j++) coeffs[j] = aug[j * (ncoeffs + 1) + ncoeffs];
+
+  // Evaluate polynomial at each point
+  for (int i = 0; i < n; i++) {
+    double xi = (double)i / (double)(n > 1 ? n - 1 : 1);
+    double val = coeffs[0];
+    double xpow = xi;
+    for (int k = 1; k < ncoeffs; k++) { val += coeffs[k] * xpow; xpow *= xi; }
+    y_fit[i] = (float)val;
+  }
+
+  free(ATA); free(ATy); free(aug); free(coeffs);
+}
+
+// ============================================================================
+// 2D Gaussian smoothing (separable): first smooth along rows, then columns.
+// ============================================================================
+static void gaussian_smooth_2d(const float *data, float *out, int nrow,
+                               int ncol, float sigma_row, float sigma_col) {
+  float *temp = (float *)malloc(sizeof(float) * nrow * ncol);
+  // Smooth along rows (each row independently)
+  float *row_in = (float *)malloc(sizeof(float) * ncol);
+  float *row_out = (float *)malloc(sizeof(float) * ncol);
+  for (int r = 0; r < nrow; r++) {
+    memcpy(row_in, &data[r * ncol], sizeof(float) * ncol);
+    gaussian_smooth_1d(row_in, row_out, ncol, sigma_col);
+    memcpy(&temp[r * ncol], row_out, sizeof(float) * ncol);
+  }
+  free(row_in); free(row_out);
+  // Smooth along columns
+  gaussian_smooth_columns(temp, out, nrow, ncol, sigma_row);
+  free(temp);
+}
+
+// ============================================================================
+// cleanup_sinogram_fitting: Public API (Vo et al. 2018, Algorithm 1).
+//
+// Remove low-frequency stripe artifacts using polynomial fitting.
+// Fits a polynomial along each column (angle axis) to capture the
+// slowly-varying component, then 2D-Gaussian-smooths the fit to remove
+// column-specific biases, and normalizes the sinogram.
+// Best for: broad, low-frequency stripes (gradual gain variations).
+//
+// sinogram:  [nrow x ncol] row-major float array, modified in-place.
+// order:     Polynomial fit order (default 3, range 1-5)
+// sigma_x:   Gaussian sigma along detector axis (default 20)
+// sigma_y:   Gaussian sigma along angle axis (default 5)
+// ============================================================================
+void cleanup_sinogram_fitting(float *sinogram, int nrow, int ncol,
+                              int order, float sigma_x, float sigma_y) {
+  if (!sinogram || nrow < 2 || ncol < 4) return;
+  if (order < 1) order = 1;
+  if (order > 10) order = 10;
+
+  size_t total = (size_t)nrow * ncol;
+
+  // Step 1: Polynomial fit along each column (angle axis)
+  float *sinofit = (float *)malloc(sizeof(float) * total);
+  float *col_in = (float *)malloc(sizeof(float) * nrow);
+  float *col_out = (float *)malloc(sizeof(float) * nrow);
+  for (int c = 0; c < ncol; c++) {
+    for (int r = 0; r < nrow; r++) col_in[r] = sinogram[r * ncol + c];
+    polyfit_eval(col_in, col_out, nrow, order);
+    for (int r = 0; r < nrow; r++) sinofit[r * ncol + c] = col_out[r];
+  }
+  free(col_in); free(col_out);
+
+  // Step 2: 2D Gaussian smooth the polynomial fit
+  float *sinofitsmooth = (float *)malloc(sizeof(float) * total);
+  gaussian_smooth_2d(sinofit, sinofitsmooth, nrow, ncol, sigma_y, sigma_x);
+
+  // Scale-preserving normalization
+  double mean_fit = 0, mean_smooth = 0;
+  for (size_t i = 0; i < total; i++) {
+    mean_fit += sinofit[i];
+    mean_smooth += sinofitsmooth[i];
+  }
+  mean_fit /= total;
+  mean_smooth /= total;
+  if (fabs(mean_smooth) > 1e-12) {
+    double scale = mean_fit / mean_smooth;
+    for (size_t i = 0; i < total; i++) sinofitsmooth[i] *= (float)scale;
+  }
+
+  // Step 3: Normalize sinogram = sinogram / sinofit * sinofitsmooth
+  for (size_t i = 0; i < total; i++) {
+    if (fabsf(sinofit[i]) > 1e-9f)
+      sinogram[i] = sinogram[i] / sinofit[i] * sinofitsmooth[i];
+  }
+
+  free(sinofit);
+  free(sinofitsmooth);
+}
+

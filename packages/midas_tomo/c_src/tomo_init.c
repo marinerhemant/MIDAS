@@ -75,6 +75,23 @@ void usage() {
       "tomo ParamsFile.txt numberOfParallelJobs [--gpu] [--fftw-bridge]\n"
       "  --gpu          Use GPU-accelerated reconstruction (requires CUDA build)\n"
       "  --fftw-bridge  GPU mode: use CPU FFTW for FFTs (byte-identical to CPU; slower)\n"
+      "  --fft-engine=<fftw|pocketfft>  Choose the FFT backend.\n"
+      "                 DEFAULT: pocketfft. It is BSD-licensed and vendored (so\n"
+      "                 no external FFT library is needed), measurably faster at\n"
+      "                 typical sizes, and reproducible run to run.\n"
+      "                 Use fftw to reproduce historical runs bit-for-bit: the\n"
+      "                 two agree to ~3e-7 relative but not to the bit, and the\n"
+      "                 FFTW planner is itself not reproducible between runs.\n"
+      "  --deterministic  Plan FFTs with FFTW_ESTIMATE instead of FFTW_MEASURE.\n"
+      "                 Makes repeated runs of THIS binary reproducible and writes\n"
+      "                 no fftwf_wisdom_*.txt, at some speed cost. The default\n"
+      "                 FFTW_MEASURE planner chooses by timing, so two identical\n"
+      "                 default runs can differ in the low-order bits.\n"
+      "                 SCOPE: measured reproducibility is within one build and\n"
+      "                 one process context. Output still differs at the ~1e-7\n"
+      "                 relative level between the binary and the shared library,\n"
+      "                 and across FFTW builds -- a different plan means a\n"
+      "                 different order of floating-point operations.\n"
       "Params file must have the following parameters:\n"
       "Input file is a text file name with a data link: sino data is a "
       "!!!single!!! binary file with darks, whites and tomo data in that "
@@ -163,22 +180,57 @@ void usage() {
       "up subsequent runs.\n");
 }
 
-int main(int argc, char *argv[]) {
-  printf("Version: %s\n", MIDAS_VERSION_STRING);
-  if (argc < 3) {
-    usage();
-    return 1;
-  }
+/* Library entry point.
+ *
+ * This is main()'s former body verbatim: the only changes are where the
+ * inputs come from (arguments instead of argv) and that argv parsing moved
+ * to the thin main() at the end of this file. Nothing in the numerics path
+ * was touched, which is what lets the bitwise parity gate against a pre-fork
+ * build keep passing across this refactor.
+ *
+ * Returns 0 on success, non-zero on failure. It does NOT call exit() -- see
+ * divergence #3 in FORK.txt -- so it is safe to call in-process.
+ */
+int midas_tomo_run(const char *paramFileName, int requestedProcs, int useGPU,
+                   int useFftwBridge, int useDeterministic) {
+  return midas_tomo_run_sinos(paramFileName, requestedProcs, useGPU,
+                              useFftwBridge, useDeterministic, NULL, 0);
+}
 
-  // Parse optional GPU flags from argv[3..]
-  int useGPU = 0;
-  int useFftwBridge = 0;
-  for (int argi = 3; argi < argc; argi++) {
-    if (strcmp(argv[argi], "--gpu") == 0) {
-      useGPU = 1;
-    } else if (strcmp(argv[argi], "--fftw-bridge") == 0) {
-      useFftwBridge = 1;
-    }
+int midas_tomo_run_engine(const char *paramFileName, int requestedProcs,
+                          int useGPU, int useFftwBridge, int useDeterministic,
+                          int fftEngine) {
+  return midas_tomo_run_full(paramFileName, requestedProcs, useGPU,
+                             useFftwBridge, useDeterministic, NULL, 0, NULL, 0,
+                             fftEngine);
+}
+
+int midas_tomo_run_sinos(const char *paramFileName, int requestedProcs,
+                         int useGPU, int useFftwBridge, int useDeterministic,
+                         const float *sinos, size_t sinoBytes) {
+  return midas_tomo_run_arrays(paramFileName, requestedProcs, useGPU,
+                               useFftwBridge, useDeterministic, sinos,
+                               sinoBytes, NULL, 0);
+}
+
+int midas_tomo_run_arrays(const char *paramFileName, int requestedProcs,
+                          int useGPU, int useFftwBridge, int useDeterministic,
+                          const float *sinos, size_t sinoBytes,
+                          float *out, size_t outBytes) {
+  return midas_tomo_run_full(paramFileName, requestedProcs, useGPU,
+                             useFftwBridge, useDeterministic, sinos, sinoBytes,
+                             out, outBytes,
+                             MIDAS_FFT_POCKET);
+}
+
+int midas_tomo_run_full(const char *paramFileName, int requestedProcs,
+                        int useGPU, int useFftwBridge, int useDeterministic,
+                        const float *sinos, size_t sinoBytes,
+                        float *out, size_t outBytes, int fftEngine) {
+  if (out != NULL && useGPU) {
+    fprintf(stderr, "ERROR: in-memory output is not supported on the GPU path "
+                    "yet; the CUDA writer goes through its own mmap'd file.\n");
+    return 1;
   }
 #ifdef ENABLE_CUDA
   if (useGPU)
@@ -192,13 +244,43 @@ int main(int argc, char *argv[]) {
   }
 #endif
   GLOBAL_CONFIG_OPTS recon_info_record;
+  /* Zero first: setGlobalOpts() initialises the fields it knows about, but a
+   * whole-struct zero is cheap insurance against the next field that gets
+   * added and forgotten -- which has already happened twice here. */
+  memset(&recon_info_record, 0, sizeof(recon_info_record));
   recon_info_record.sizeMatrices = 0;
+  /* Set BEFORE setGlobalOpts(), which consults it: with a caller buffer the
+   * parameter file need not name (or even have) a dataFileName. */
+  recon_info_record.sino_in_ptr = sinos;
+  recon_info_record.sino_in_bytes = sinoBytes;
+  recon_info_record.recon_out_ptr = out;
+  recon_info_record.recon_out_bytes = outBytes;
+  if (fftEngine == MIDAS_FFT_FFTW && !midas_fftw_available()) {
+    fprintf(stderr, "ERROR: the FFTW engine was requested but this build has "
+                    "no FFTW. Rebuild with FFTW, or use pocketfft.\n");
+    return 1;
+  }
+  if (fftEngine != MIDAS_FFT_FFTW && fftEngine != MIDAS_FFT_POCKET) {
+    fprintf(stderr, "ERROR: unknown FFT engine id %d.\n", fftEngine);
+    return 1;
+  }
+  recon_info_record.fft_engine = fftEngine;
+  printf("FFT engine: %s\n", midas_fft_engine_name(fftEngine));
   char *fileName;
-  fileName = argv[1];
+  fileName = (char *)paramFileName;
   int RC;
   RC = setGlobalOpts(fileName, &recon_info_record);
+  recon_info_record.deterministic = useDeterministic;
+  if (out != NULL && recon_info_record.saveReconSeparate == 1) {
+    fprintf(stderr, "ERROR: in-memory output requires saveReconSeparate 0 "
+                    "(saveReconSeparate 1 writes one file per slice).\n");
+    return 1;
+  }
   setReadStructSize(&recon_info_record);
   gridrecParams pm;
+  pm.error = MIDAS_TOMO_OK;
+  pm.fft_engine = fftEngine;
+  pm.deterministic = useDeterministic;
   pm.sinogram_x_dim = recon_info_record.sinogram_adjusted_xdim * 2;
   getGridRecFourSizes(&pm);
   int fftw1d_size = (int)pm.pdim;
@@ -212,7 +294,32 @@ int main(int argc, char *argv[]) {
     return 1;
   }
   // Get FFT Plan
-  if (access(plan2DFN, F_OK) == -1) {
+  //
+  // createPlanFile() must run in EVERY mode, deterministic included: besides
+  // building the wisdom it performs a trial reconstruction to measure
+  // recon_info_record.sizeMatrices, which the job-splitting arithmetic below
+  // divides by. Skipping it leaves sizeMatrices at 0 and the process dies with
+  // SIGFPE on that integer division. What deterministic mode changes is only
+  // the planner flag and the wisdom file I/O, both handled inside gridrec.
+  if (recon_info_record.fft_engine == MIDAS_FFT_POCKET) {
+    /* pocketfft has no timing-based planner and no wisdom cache, so it is
+     * already reproducible run to run -- measured bitwise identical across
+     * fresh runs, which the FFTW default is not. --deterministic is therefore
+     * a no-op here rather than an error. */
+    if (useDeterministic)
+      printf("Note: --deterministic is redundant with the pocketfft engine, "
+             "which has no timing-based planner.\n");
+    if (createPlanFile(&recon_info_record) != 0) {
+      fprintf(stderr, "ERROR: could not read the input data.\n");
+      return 1;
+    }
+  } else if (useDeterministic) {
+    printf("Deterministic mode: planning with FFTW_ESTIMATE, no wisdom file.\n");
+    if (createPlanFile(&recon_info_record) != 0) {
+      fprintf(stderr, "ERROR: could not read the input data.\n");
+      return 1;
+    }
+  } else if (access(plan2DFN, F_OK) == -1) {
     printf("FFT plan file did not exist, creating one %s.\n",
            plan2DFN); // Check if sizes are okay.
     if (createPlanFile(&recon_info_record) != 0) {
@@ -269,7 +376,7 @@ int main(int argc, char *argv[]) {
   long long int maxNProcs =
       (long long int)avRAM / (long long int)recon_info_record.sizeMatrices;
   int numProcs =
-      (atoi(argv[2]) < maxNProcs - 2) ? atoi(argv[2]) : maxNProcs - 2;
+      (requestedProcs < maxNProcs - 2) ? requestedProcs : maxNProcs - 2;
   printf(
       "Memory needed per process: %lld, Total available RAM: %lld, MaxNProcs: "
       "%lld.\nWe can run up to %lld processes.\nWe will use %lld MB RAM.\n",
@@ -356,13 +463,22 @@ int main(int argc, char *argv[]) {
     // mmap sinogram input for CPU path (same optimization as GPU)
     float *cpu_sino_mmap = NULL;
     size_t cpu_sino_mmap_len = 0;
-    /* Set by any worker whose slice failed to read or write. Benign race:
-     * every writer stores the same value and it is only read after the
-     * parallel region joins. Previously a failed slice was `continue`d past,
-     * leaving uninitialised output and still reporting success. */
+    int cpu_sino_is_caller_buffer = 0;
+    /* Set by any worker whose slice failed to read. A benign race: every
+     * writer stores the same value, and it is only read after the parallel
+     * region joins. Previously a failed slice was `continue`d past, leaving
+     * uninitialised output for it and still reporting success. */
     int badReadSingle = 0;
+    /* Same treatment for write failures: a full output buffer or a failed
+     * pwrite used to be `continue`d past, so the run reported success with
+     * part of the cube missing. */
     int badWriteSingle = 0;
-    if (recon_info_record.are_sinos) {
+    if (recon_info_record.are_sinos && recon_info_record.sino_in_ptr != NULL) {
+      /* Already in memory -- skip the mmap entirely. Must not be munmap'd. */
+      cpu_sino_mmap = (float *)recon_info_record.sino_in_ptr;
+      cpu_sino_mmap_len = recon_info_record.sino_in_bytes;
+      cpu_sino_is_caller_buffer = 1;
+    } else if (recon_info_record.are_sinos) {
       int mfd = open(recon_info_record.DataFileName, O_RDONLY);
       if (mfd >= 0) {
         struct stat st;
@@ -400,6 +516,9 @@ int main(int argc, char *argv[]) {
       param.wisdom_string = (char *)malloc(
           sizeof(char) * (strlen(recon_info_record.wisdom_string) + 1));
       param.setPlan = 0;
+      param.error = MIDAS_TOMO_OK;
+      param.fft_engine = recon_info_record.fft_engine;
+      param.deterministic = recon_info_record.deterministic;
       strcpy(param.wisdom_string, recon_info_record.wisdom_string);
       size_t offt, offsetRecons;
       setGridRecPSWF(&param);
@@ -419,6 +538,7 @@ int main(int argc, char *argv[]) {
             recon_info_record.ReconFileName, recon_info_record.n_shifts,
             recon_info_record.n_slices, recon_info_record.reconstruction_xdim,
             recon_info_record.reconstruction_xdim);
+        if (recon_info_record.recon_out_ptr == NULL)
         output_fd = open(outFileName, O_CREAT | O_RDWR, S_IRUSR | S_IWUSR);
       }
       int totalPairs = (endSliceNr - startSliceNr) / 2;
@@ -809,7 +929,11 @@ int main(int argc, char *argv[]) {
 #endif
       destroyFFTMemoryStructures(&param);
     } // end #pragma omp parallel
-    if (cpu_sino_mmap) munmap(cpu_sino_mmap, cpu_sino_mmap_len);
+    /* Never munmap a caller-owned buffer -- that memory belongs to the
+     * calling process (a numpy array, in the Python case) and unmapping it
+     * would corrupt the caller rather than just leak. */
+    if (cpu_sino_mmap && !cpu_sino_is_caller_buffer)
+      munmap(cpu_sino_mmap, cpu_sino_mmap_len);
     if (badReadSingle) {
       fprintf(stderr, "ERROR: could not read one or more sinograms.\n");
       return 1;
@@ -871,7 +995,8 @@ int main(int argc, char *argv[]) {
                 recon_info_record.reconstruction_xdim,
                 recon_info_record.reconstruction_xdim);
       }
-      output_fd = open(outFileName, O_CREAT | O_WRONLY, S_IRUSR | S_IWUSR);
+      if (recon_info_record.recon_out_ptr == NULL)
+        output_fd = open(outFileName, O_CREAT | O_WRONLY, S_IRUSR | S_IWUSR);
     }
 #pragma omp parallel num_threads(nJobs)
     {
@@ -895,8 +1020,10 @@ int main(int argc, char *argv[]) {
       close(input_fd);
     }
     if (badRead == 1) {
-      /* Was `return 0` -- success -- so a failed read produced a silently
-       * empty reconstruction and a zero exit code. */
+      /* Was `return 0` -- i.e. success -- so a failed read produced a
+       * silently empty reconstruction and a zero exit code. Harmless-looking
+       * in a CLI where the operator sees the printed message; invisible to a
+       * library caller. */
       fprintf(stderr, "ERROR: could not read one or more sinograms.\n");
       return 1;
     }
@@ -1001,6 +1128,9 @@ int main(int argc, char *argv[]) {
         param.wisdom_string = (char *)malloc(
             sizeof(char) * (strlen(recon_info_record.wisdom_string) + 1));
         param.setPlan = 0;
+        param.error = MIDAS_TOMO_OK;
+        param.fft_engine = recon_info_record.fft_engine;
+        param.deterministic = recon_info_record.deterministic;
         strcpy(param.wisdom_string, recon_info_record.wisdom_string);
         size_t offt, offsetRecons;
         setGridRecPSWF(&param);
@@ -1068,9 +1198,9 @@ int main(int argc, char *argv[]) {
                             &recon_info_record, shiftNr2, cleanupNr,
                             output_fd);
             if (rw == 1) {
-                badWrite = 1;
-                continue;
-              }
+              badWrite = 1;
+              continue;
+            }
           }
         }
         destroyFFTMemoryStructures(&param);
@@ -1105,3 +1235,54 @@ int main(int argc, char *argv[]) {
   printf("Finished, time elapsed: %lf seconds.\n", time);
   return 0;
 }
+
+/* Thin CLI wrapper.
+ *
+ * Deliberately retained rather than deleted once Python moved to calling the
+ * library in-process: it is what dev/build_reference_binary.sh compares
+ * against, so keeping it is what keeps the bitwise parity gate runnable.
+ */
+#ifndef MIDAS_TOMO_LIBRARY_BUILD
+int main(int argc, char *argv[]) {
+  printf("Version: %s\n", MIDAS_VERSION_STRING);
+  if (argc < 3) {
+    usage();
+    return 1;
+  }
+
+  int useGPU = 0;
+  int useFftwBridge = 0;
+  int useDeterministic = 0;
+  /* pocketfft is the DEFAULT (2026-08-13). It is BSD-licensed and vendored,
+   * measurably faster than FFTW at these sizes, and reproducible run to run,
+   * which the FFTW planner is not. Use --fft-engine=fftw to reproduce
+   * historical runs bit-for-bit. */
+  int fftEngine = MIDAS_FFT_POCKET;
+  for (int argi = 3; argi < argc; argi++) {
+    if (strcmp(argv[argi], "--gpu") == 0) {
+      useGPU = 1;
+    } else if (strcmp(argv[argi], "--fftw-bridge") == 0) {
+      useFftwBridge = 1;
+    } else if (strcmp(argv[argi], "--deterministic") == 0) {
+      useDeterministic = 1;
+    } else if (strncmp(argv[argi], "--fft-engine=", 13) == 0) {
+      const char *want = argv[argi] + 13;
+      if (strcmp(want, "pocketfft") == 0) {
+        fftEngine = MIDAS_FFT_POCKET;
+      } else if (strcmp(want, "fftw") == 0) {
+        fftEngine = MIDAS_FFT_FFTW;
+      } else {
+        fprintf(stderr, "ERROR: unknown --fft-engine=%s (use fftw or pocketfft)\n",
+                want);
+        return 1;
+      }
+    } else {
+      fprintf(stderr, "Warning: ignoring unrecognised argument '%s'.\n",
+              argv[argi]);
+    }
+  }
+
+  return midas_tomo_run_engine(argv[1], atoi(argv[2]), useGPU, useFftwBridge,
+                               useDeterministic, fftEngine);
+}
+#endif /* MIDAS_TOMO_LIBRARY_BUILD */

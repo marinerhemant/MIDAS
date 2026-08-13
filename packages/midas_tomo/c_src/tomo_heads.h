@@ -6,7 +6,13 @@
 #ifndef tomo_headsH
 #define tomo_headsH
 
+/* Pulls in FFTW when it was found at build time, and otherwise supplies the
+ * fftwf_* types/stubs so this header's gridrecParams still compiles. Must
+ * come before anything that names fftwf_complex or fftwf_plan. */
+#ifdef MIDAS_TOMO_HAVE_FFTW
 #include <fftw3.h>
+#endif
+#include "midas_fft.h"
 #include <math.h>
 #include <stdbool.h>
 #include <stddef.h>
@@ -45,6 +51,61 @@ typedef unsigned int uint; // for compatibility with C++ code
 #define FILTER_RAMP 4
 #define MAX_N_THETAS 36000
 
+/* Error codes recorded in gridrecParams.error (see also
+ * midas_tomo_error_message()). Values are stable: Python reports them. */
+#define MIDAS_TOMO_OK 0
+#define MIDAS_TOMO_ERR_PSWF 2         /* prolate parameter C not in database */
+#define MIDAS_TOMO_ERR_ANGLE_GEOM 3   /* illegal angle geometry indicator */
+#define MIDAS_TOMO_ERR_LEGENDRE 4     /* legendre() argument outside [-1, 1] */
+
+const char *midas_tomo_error_message(int code);
+
+/* Run a reconstruction described by a parameter file.
+ *
+ * The library entry point: this is what the CLI binary and the Python ctypes
+ * wrapper both call. Returns 0 on success, non-zero on failure, and never
+ * calls exit(), so it is safe to invoke in-process.
+ *
+ *   paramFileName    parameter file (absolute paths inside it)
+ *   requestedProcs   OpenMP thread count; clamped down to what RAM allows
+ *   useGPU           use the CUDA path (ignored in a non-CUDA build)
+ *   useFftwBridge    GPU only: compute FFTs with CPU FFTW for exact CPU parity
+ *   useDeterministic plan with FFTW_ESTIMATE; reproducible, no wisdom file
+ */
+int midas_tomo_run(const char *paramFileName, int requestedProcs, int useGPU,
+                   int useFftwBridge, int useDeterministic);
+
+/* As midas_tomo_run(), but reads the sinograms from caller memory instead of
+ * from dataFileName. areSinos mode only. `sinos` must hold
+ * n_slices * theta_list_size * det_xdim floats, laid out slice-major, and must
+ * stay alive for the duration of the call. The parameter file still supplies
+ * everything else, and still names an output file. Pass sinos = NULL to get
+ * exactly midas_tomo_run(). */
+int midas_tomo_run_sinos(const char *paramFileName, int requestedProcs,
+                         int useGPU, int useFftwBridge, int useDeterministic,
+                         const float *sinos, size_t sinoBytes);
+
+/* Fully in-memory: sinograms in, reconstruction out, no data files at all.
+ * `out` must hold n_cleanup * n_shifts * n_slices * X * X floats and stay
+ * alive for the call. Pass NULL for either buffer to keep that side on disk.
+ * Not supported with useGPU or saveReconSeparate; both are rejected. */
+int midas_tomo_run_arrays(const char *paramFileName, int requestedProcs,
+                          int useGPU, int useFftwBridge, int useDeterministic,
+                          const float *sinos, size_t sinoBytes,
+                          float *out, size_t outBytes);
+
+/* As midas_tomo_run(), choosing the FFT backend explicitly. */
+int midas_tomo_run_engine(const char *paramFileName, int requestedProcs,
+                          int useGPU, int useFftwBridge, int useDeterministic,
+                          int fftEngine);
+
+/* Everything at once: in-memory I/O and an explicit FFT backend. The other
+ * entry points are thin wrappers over this. */
+int midas_tomo_run_full(const char *paramFileName, int requestedProcs,
+                        int useGPU, int useFftwBridge, int useDeterministic,
+                        const float *sinos, size_t sinoBytes,
+                        float *out, size_t outBytes, int fftEngine);
+
 typedef struct PSWF_STRUCT {
   float C, lmbda;
   int nt;
@@ -69,6 +130,20 @@ typedef struct {
   fftwf_complex *in_2d, *out_2d;
   char *wisdom_string;
   long sizeMatrices;
+  /* Non-zero after a fatal condition inside the gridrec kernel. These used
+   * to call exit(2), which is survivable in a standalone binary but kills the
+   * host process when the engine is called in-process (ctypes). The kernel
+   * now records the code here, returns a safe value, and the caller checks.
+   * See MIDAS_TOMO_ERR_* below. */
+  int error;
+  /* Which FFT backend to use: MIDAS_FFT_FFTW or MIDAS_FFT_POCKET. Forced to
+   * pocketfft in a build without FFTW. */
+  int fft_engine;
+  /* When set, plan with FFTW_ESTIMATE instead of FFTW_MEASURE: the plan
+   * becomes a deterministic function of transform size and FFTW build rather
+   * than of runtime timings, and no wisdom file is read or written. Costs
+   * some speed; buys run-to-run and machine-to-machine reproducibility. */
+  int deterministic;
 } gridrecParams;
 
 // Functions
@@ -118,6 +193,8 @@ typedef struct {
   int saveReconSeparate;
   int powerIncrement;
   int doLogProj;
+  int deterministic; /* --deterministic: FFTW_ESTIMATE, no wisdom. */
+  int fft_engine;    /* --fft-engine: MIDAS_FFT_FFTW | MIDAS_FFT_POCKET */
   int use_hdf5;
   int doStripeRemoval;
   float stripeSnr;
@@ -136,6 +213,19 @@ typedef struct {
   int *cleanup_sm_values;
   char stripeConfigFile[4096];
   long sizeMatrices;
+  /* Caller-owned sinogram buffer, used INSTEAD of opening DataFileName when
+   * non-NULL (areSinos mode only). This is what lets Python hand the engine a
+   * numpy array directly rather than staging it to disk and having the engine
+   * read it back. Set by midas_tomo_run_sinos() BEFORE setGlobalOpts(), which
+   * must not clobber it. */
+  const float *sino_in_ptr;
+  size_t sino_in_bytes;
+  /* Caller-owned output buffer, used INSTEAD of writing reconFileName when
+   * non-NULL. Same (cleanup, shift, slice, Y, X) layout the file would have,
+   * so Python gets the cube without the file or its filename-encoded shape.
+   * Requires saveReconSeparate == 0 and the CPU path. */
+  float *recon_out_ptr;
+  size_t recon_out_bytes;
 } GLOBAL_CONFIG_OPTS;
 
 typedef struct {
