@@ -93,7 +93,7 @@ The package is moving to calling the engine IN-PROCESS via ctypes rather than
 shelling out to a binary, which requires extracting main()'s ~915 lines of
 orchestration into a callable entry point. From that point c_src/ is a fork
 with a documented lineage, not a copy. The bitwise parity gate against a
-pre-fork build (dev/build_reference_binary.sh) is retained and becomes the
+pre-fork build (scripts/build_reference_binary.sh) is retained and becomes the
 primary evidence that the refactor preserved the numerics.
 
 Deliberate divergence #4 -- library entry point + input validation (2026-08-13)

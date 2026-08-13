@@ -4,7 +4,7 @@ This is the gate that makes "midas-tomo is a repackage, not a rewrite" a
 checkable claim rather than an assertion.
 
 Set ``MIDAS_TOMO_REFERENCE_BIN`` to a MIDAS_TOMO built from the pristine
-pre-fork ``TOMO/src`` (see ``dev/build_reference_binary.sh``) and the tests
+pre-fork ``TOMO/src`` (see ``scripts/build_reference_binary.sh``) and the tests
 run; otherwise they skip.
 
 Why not a committed golden file: the default engine plans with FFTW_MEASURE
@@ -39,7 +39,7 @@ if not backend_c.available():
 if not REFERENCE_BIN or not Path(REFERENCE_BIN).is_file():
     pytest.skip(
         "set MIDAS_TOMO_REFERENCE_BIN to a pre-fork build "
-        "(dev/build_reference_binary.sh) to run packaging-parity tests",
+        "(scripts/build_reference_binary.sh) to run packaging-parity tests",
         allow_module_level=True,
     )
 

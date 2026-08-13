@@ -35,7 +35,7 @@ computes what `TOMO/` computed. It needs a reference binary built from the
 pre-fork source:
 
 ```bash
-./dev/build_reference_binary.sh /path/to/a/MIDAS/checkout
+./scripts/build_reference_binary.sh /path/to/a/MIDAS/checkout
 export MIDAS_TOMO_REFERENCE_BIN=$PWD/dev/refbin/MIDAS_TOMO_REF
 ```
 
@@ -52,7 +52,7 @@ not across them. See the Reproducibility section of `README.md`.
 
 ## Before a release that touched `c_src/`
 
-- [ ] `dev/build_reference_binary.sh` + parity test pass
+- [ ] `scripts/build_reference_binary.sh` + parity test pass
 - [ ] builds **with and without** HDF5 (it is optional; the Python reader is
       the supported path)
 - [ ] any new divergence from the fork is recorded in `c_src/FORK.txt` with
