@@ -20,7 +20,8 @@ from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Any
 
-__all__ = ["DTGeometry", "from_calibration", "parse_legacy_params"]
+__all__ = ["DTGeometry", "from_calibration", "spec_from_calibration",
+           "parse_legacy_params"]
 
 log = logging.getLogger(__name__)
 
@@ -156,8 +157,34 @@ class DTGeometry:
         )
 
 
+def spec_from_calibration(result: Any, channel=None):
+    """IntegrationSpec straight from a calibration, via calibrate-v2's own converter.
+
+    Prefer this over ``from_calibration(...).to_integration_spec(...)`` when
+    the calibration is fresh: it uses ``AutoCalibrationResult.to_integration_spec``,
+    so the mapping lives in one place and the v2-named distortion terms are
+    forwarded without a round trip through the legacy ``p0..p3`` convention.
+    """
+    if not hasattr(result, "to_integration_spec"):
+        raise TypeError(
+            "this AutoCalibrationResult predates to_integration_spec(); "
+            "upgrade midas-calibrate-v2, or use from_calibration() and convert"
+        )
+    kw = {}
+    if channel is not None:
+        kw = dict(RMin=channel.r_min, RMax=channel.r_max, RBinSize=channel.r_bin,
+                  EtaMin=channel.eta_min, EtaMax=channel.eta_max,
+                  EtaBinSize=channel.eta_bin)
+    return result.to_integration_spec(**kw)
+
+
 def from_calibration(result: Any) -> DTGeometry:
-    """Build from a ``midas_calibrate_v2.AutoCalibrationResult``."""
+    """Build a :class:`DTGeometry` from a ``midas_calibrate_v2.AutoCalibrationResult``.
+
+    Use this when you want DTGeometry's own helpers (energy, d-spacing). When
+    you only need to integrate, :func:`spec_from_calibration` is more direct
+    and avoids the distortion-convention round trip.
+    """
     missing = [f for f in ("Lsd", "BC_y", "BC_z", "pxY", "wavelength_A")
                if not hasattr(result, f)]
     if missing:

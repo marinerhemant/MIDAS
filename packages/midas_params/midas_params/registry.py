@@ -1990,6 +1990,205 @@ PARAMS: list[ParamSpec] = [
         description="Hold this panel fixed (don't refine).",
         applies_to=FF_PF, default=0, stages=S_CALIB, hidden_in_wizard=True,
     ),
+
+    # ================================================================ TOMO
+    # midas-tomo parameter file (midas_tomo.config.TomoConfig). Defaults are
+    # the C initialisers in setGlobalOpts(), not documentation, so the registry
+    # and the engine cannot drift apart.
+    ParamSpec(
+        name="dataFileName", type=ParamType.PATH, category="Tomography I/O",
+        description="Binary input: sinograms, or dark+whites+projections.",
+        applies_to=frozenset({Path.TOMO}), required_for=frozenset({Path.TOMO}),
+        stages=frozenset({Stage.FILE_DISCOVERY}),
+    ),
+    ParamSpec(
+        name="reconFileName", type=ParamType.PATH, category="Tomography I/O",
+        description="Output stem; the engine appends the cube shape to it.",
+        applies_to=frozenset({Path.TOMO}), required_for=frozenset({Path.TOMO}),
+        stages=frozenset({Stage.RECONSTRUCTION}),
+    ),
+    ParamSpec(
+        name="areSinos", type=ParamType.INT, category="Tomography I/O",
+        description="1 if the input is already sinograms, 0 for raw projections.",
+        applies_to=frozenset({Path.TOMO}), required_for=frozenset({Path.TOMO}),
+        default=0, stages=frozenset({Stage.FILE_DISCOVERY}),
+    ),
+    ParamSpec(
+        name="detXdim", type=ParamType.INT, category="Tomography Detector",
+        description="Detector width in pixels (translation axis for sinograms).",
+        applies_to=frozenset({Path.TOMO}), required_for=frozenset({Path.TOMO}),
+        units="pixels", stages=frozenset({Stage.RECONSTRUCTION}),
+    ),
+    ParamSpec(
+        name="detYdim", type=ParamType.INT, category="Tomography Detector",
+        description="Number of slices.",
+        applies_to=frozenset({Path.TOMO}), required_for=frozenset({Path.TOMO}),
+        units="slices", stages=frozenset({Stage.RECONSTRUCTION}),
+    ),
+    ParamSpec(
+        name="filter", type=ParamType.INT, category="Tomography Reconstruction",
+        description="0 none, 1 Shepp-Logan, 2 Hann, 3 Hamming, 4 ramp.",
+        applies_to=frozenset({Path.TOMO, Path.DT}), default=0, typical=2,
+        stages=frozenset({Stage.RECONSTRUCTION}),
+        notes="The C default is 0, but every driver passes 2 (Hann).",
+    ),
+    ParamSpec(
+        name="shiftValues", type=ParamType.STR,
+        category="Tomography Reconstruction",
+        description="start end step for the rotation-axis offset, in pixels.",
+        applies_to=frozenset({Path.TOMO}), units="pixels",
+        stages=frozenset({Stage.RECONSTRUCTION}),
+        notes="The engine reconstructs shifts in PAIRS: an odd count (other "
+              "than exactly 1) makes it exit non-zero with no useful message.",
+    ),
+    ParamSpec(
+        name="doLog", type=ParamType.INT, category="Tomography Reconstruction",
+        description="1 to take -log (transmission), 0 to back-project intensity.",
+        applies_to=frozenset({Path.TOMO, Path.DT}), default=1,
+        stages=frozenset({Stage.RECONSTRUCTION}),
+        notes="XRD-CT uses 0: diffracted intensity is not transmission. With 0 "
+              "the reconstruction is negative-going and must be negated.",
+    ),
+    ParamSpec(
+        name="ExtraPad", type=ParamType.INT, category="Tomography Reconstruction",
+        description="0 pads to the next power of 2, 1 doubles that again.",
+        applies_to=frozenset({Path.TOMO, Path.DT}), default=0,
+        stages=frozenset({Stage.RECONSTRUCTION}),
+    ),
+    ParamSpec(
+        name="AutoCentering", type=ParamType.INT,
+        category="Tomography Reconstruction",
+        description="1 shifts the reconstruction so the rotation axis is offset.",
+        applies_to=frozenset({Path.TOMO}), default=1,
+        stages=frozenset({Stage.RECONSTRUCTION}),
+    ),
+    ParamSpec(
+        name="ringRemovalCoeff", type=ParamType.FLOAT,
+        category="Tomography Artefacts",
+        description="Ring-removal strength. OMIT the key to disable it.",
+        applies_to=frozenset({Path.TOMO}),
+        stages=frozenset({Stage.RECONSTRUCTION}),
+        aliases=("ringRemovalCoefficient",),
+        notes="PRESENCE enables it: `ringRemovalCoeff 0` turns ring removal ON "
+              "with coefficient 0, it does not disable it.",
+    ),
+    ParamSpec(
+        name="doStripeRemoval", type=ParamType.INT,
+        category="Tomography Artefacts",
+        description="Vo et al. (2018) stripe removal.",
+        applies_to=frozenset({Path.TOMO}), default=0,
+        stages=frozenset({Stage.RECONSTRUCTION}),
+    ),
+    ParamSpec(
+        name="stripeSnr", type=ParamType.FLOAT, category="Tomography Artefacts",
+        description="SNR threshold for stripe detection.",
+        applies_to=frozenset({Path.TOMO}), default=3.0,
+        stages=frozenset({Stage.RECONSTRUCTION}),
+    ),
+    ParamSpec(
+        name="stripeLaSize", type=ParamType.INT, category="Tomography Artefacts",
+        description="Median window for large stripes. Must be odd.",
+        applies_to=frozenset({Path.TOMO}), default=61,
+        stages=frozenset({Stage.RECONSTRUCTION}),
+    ),
+    ParamSpec(
+        name="stripeSmSize", type=ParamType.INT, category="Tomography Artefacts",
+        description="Median window for small stripes. Must be odd.",
+        applies_to=frozenset({Path.TOMO}), default=21,
+        stages=frozenset({Stage.RECONSTRUCTION}),
+    ),
+
+    # ================================================================== DT
+    # midas-dt. Scan keys come from the 2022 MPE parameter files; the channel
+    # keys are the successor to repeated RadiusToFit / EtaToFit.
+    ParamSpec(
+        name="startNr", type=ParamType.INT, category="DT Scan",
+        description="First translation file number.",
+        applies_to=frozenset({Path.DT}), required_for=frozenset({Path.DT}),
+        stages=frozenset({Stage.FILE_DISCOVERY}),
+    ),
+    ParamSpec(
+        name="endNr", type=ParamType.INT, category="DT Scan",
+        description="Last translation file number.",
+        applies_to=frozenset({Path.DT}), required_for=frozenset({Path.DT}),
+        stages=frozenset({Stage.FILE_DISCOVERY}),
+    ),
+    ParamSpec(
+        name="nFrames", type=ParamType.INT, category="DT Scan",
+        description="Rotations per translation file.",
+        applies_to=frozenset({Path.DT}), required_for=frozenset({Path.DT}),
+        stages=frozenset({Stage.FILE_DISCOVERY}),
+        notes="1-ID writes a throwaway FIRST frame; midas-dt drops it, so the "
+              "usable count is nFrames - 1.",
+    ),
+    ParamSpec(
+        name="startOme", type=ParamType.FLOAT, category="DT Scan",
+        description="Nominal omega of the first frame.",
+        applies_to=frozenset({Path.DT}), units="deg",
+        stages=frozenset({Stage.SINOGRAM}),
+        notes="NOMINAL motor value. The 1-ID aerotech turns the opposite way, "
+              "so midas-dt negates every omega exactly once.",
+    ),
+    ParamSpec(
+        name="omeStep", type=ParamType.FLOAT, category="DT Scan",
+        description="Omega step between frames.",
+        applies_to=frozenset({Path.DT}), units="deg",
+        stages=frozenset({Stage.SINOGRAM}),
+    ),
+    ParamSpec(
+        name="BadRotation", type=ParamType.INT, category="DT Scan",
+        description="1 if alternate translations rotate the opposite way (snake).",
+        applies_to=frozenset({Path.DT}), default=0,
+        stages=frozenset({Stage.SINOGRAM}),
+        notes="midas-dt DETECTS this from the data rather than trusting the "
+              "flag: set wrongly in either direction it reconstructs a "
+              "plausible image of the wrong object.",
+    ),
+    ParamSpec(
+        name="rads", type=ParamType.FLOAT, category="DT Channels",
+        description="Radius window centre(s), in detector pixels.",
+        applies_to=frozenset({Path.DT}), units="pixels", multi_entry=True,
+        stages=frozenset({Stage.INTEGRATION}), aliases=("RadiusToFit",),
+    ),
+    ParamSpec(
+        name="Rwidth", type=ParamType.FLOAT, category="DT Channels",
+        description="Radius HALF-width about each centre.",
+        applies_to=frozenset({Path.DT}), units="pixels", default=10.0,
+        stages=frozenset({Stage.INTEGRATION}),
+        notes="Half-width, not full width: `RadiusToFit 118 10` means 108-128.",
+    ),
+    ParamSpec(
+        name="etas", type=ParamType.FLOAT, category="DT Channels",
+        description="Azimuthal window centre(s).",
+        applies_to=frozenset({Path.DT}), units="deg", multi_entry=True,
+        stages=frozenset({Stage.INTEGRATION}), aliases=("EtaToFit",),
+    ),
+    ParamSpec(
+        name="etaWidth", type=ParamType.FLOAT, category="DT Channels",
+        description="Azimuthal HALF-width about each centre.",
+        applies_to=frozenset({Path.DT}), units="deg", default=180.0,
+        stages=frozenset({Stage.INTEGRATION}),
+    ),
+    ParamSpec(
+        name="Rcenters", type=ParamType.FLOAT, category="DT Channels",
+        description="Starting peak radii for multi-peak fitting.",
+        applies_to=frozenset({Path.DT}), units="pixels", multi_entry=True,
+        stages=frozenset({Stage.VOXEL_FIT}),
+    ),
+    ParamSpec(
+        name="multipeak", type=ParamType.INT, category="DT Channels",
+        description="1 to fit several peaks per radius window.",
+        applies_to=frozenset({Path.DT}), default=0,
+        stages=frozenset({Stage.VOXEL_FIT}),
+    ),
+    ParamSpec(
+        name="ExtraPadForTomo", type=ParamType.INT, category="DT Reconstruction",
+        description="ExtraPad for the DT reconstruction step.",
+        applies_to=frozenset({Path.DT}), default=1,
+        stages=frozenset({Stage.RECONSTRUCTION}),
+        notes="With 55 translations and 1 this gives reconSize 128, which is "
+              "what the 2023 U3O8 runs used.",
+    ),
 ]
 
 

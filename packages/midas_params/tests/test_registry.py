@@ -193,3 +193,74 @@ def test_defaults_have_correct_type():
             continue  # skip list types
         assert isinstance(p.default, expected), \
             f"{p.name}: default {p.default!r} is not {expected}"
+
+
+# ---------------------------------------------------- TOMO / DT paths
+def test_tomo_and_dt_paths_are_registered():
+    from midas_params.schema import Path
+
+    assert Path.TOMO.value == "tomo"
+    assert Path.DT.value == "dt"
+
+
+def test_tomo_params_cover_the_required_engine_keys():
+    """These are exactly the keys setGlobalOpts() now validates."""
+    from midas_params import required_for
+    from midas_params.schema import Path
+
+    names = {p.name for p in required_for(Path.TOMO)}
+    assert {"dataFileName", "reconFileName", "detXdim", "detYdim"} <= names
+
+
+def test_ring_removal_documents_that_presence_enables_it():
+    """Writing `ringRemovalCoeff 0` turns ring removal ON, which is the
+    opposite of what it looks like."""
+    from midas_params import by_name
+
+    spec = by_name()["ringRemovalCoeff"]
+    assert spec is not None
+    assert "PRESENCE enables it" in (spec.notes or "")
+    assert "ringRemovalCoefficient" in spec.aliases
+
+
+def test_shift_values_documents_the_pairing_constraint():
+    from midas_params import by_name
+
+    assert "PAIRS" in (by_name()["shiftValues"].notes or "")
+
+
+def test_dt_half_width_convention_is_documented():
+    """`RadiusToFit 118 10` means 118 +/- 10, not a 10-wide window."""
+    from midas_params import by_name
+
+    assert "Half-width, not full width" in (by_name()["Rwidth"].notes or "")
+
+
+def test_dt_omega_negation_is_documented():
+    from midas_params import by_name
+
+    assert "negates every omega" in (by_name()["startOme"].notes or "")
+
+
+def test_dt_snake_is_documented_as_detected_not_trusted():
+    from midas_params import by_name
+
+    assert "DETECTS this from the data" in (by_name()["BadRotation"].notes or "")
+
+
+def test_multi_entry_channel_keys():
+    from midas_params import by_name
+
+    specs = by_name()
+    for name in ("rads", "etas", "Rcenters"):
+        assert specs[name].multi_entry, f"{name} should accumulate"
+
+
+def test_existing_paths_are_untouched():
+    """Adding two paths must not change what FF/NF/PF/RI see."""
+    from midas_params import for_path
+    from midas_params.schema import Path
+
+    for path in (Path.FF, Path.NF, Path.PF, Path.RI):
+        for spec in for_path(path):
+            assert path in spec.applies_to

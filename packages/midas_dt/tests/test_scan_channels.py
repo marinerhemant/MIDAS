@@ -341,3 +341,31 @@ def test_energy_from_wavelength():
     geo = DTGeometry(lsd_um=1e6, bc_y_px=1.0, bc_z_px=1.0, px_um=172,
                      n_pixels_y=10, n_pixels_z=10, wavelength_a=0.136994)
     assert geo.energy_kev == pytest.approx(90.5, abs=0.1)
+
+
+def test_spec_from_calibration_needs_the_new_method():
+    """Delegates to calibrate-v2's converter; says so if it is too old."""
+    from midas_dt.geometry import spec_from_calibration
+
+    class OldResult:
+        pass
+
+    with pytest.raises(TypeError, match="predates to_integration_spec"):
+        spec_from_calibration(OldResult())
+
+
+def test_spec_from_calibration_forwards_the_channel_binning():
+    from midas_dt.channels import Channel
+    from midas_dt.geometry import spec_from_calibration
+
+    captured = {}
+
+    class FakeResult:
+        def to_integration_spec(self, **kw):
+            captured.update(kw)
+            return "spec"
+
+    ch = Channel(105, 125, r_bin=0.5, eta_bin=3.0)
+    assert spec_from_calibration(FakeResult(), ch) == "spec"
+    assert captured["RMin"] == 105 and captured["RMax"] == 125
+    assert captured["RBinSize"] == 0.5 and captured["EtaBinSize"] == 3.0

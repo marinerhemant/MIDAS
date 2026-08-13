@@ -105,6 +105,72 @@ class AutoCalibrationResult:
     seed_Lsd: float = 0.0
     iter_history: List[Dict] = field(default_factory=list)
 
+    def to_integration_spec(
+        self,
+        *,
+        RMin: float = 0.0,
+        RMax: float = 0.0,
+        RBinSize: float = 0.0,
+        EtaMin: float = -180.0,
+        EtaMax: float = 180.0,
+        EtaBinSize: float = 5.0,
+        RhoD: Optional[float] = None,
+    ):
+        """Convert this calibration into a ``midas_integrate_v2.IntegrationSpec``.
+
+        Lives here rather than in each consumer so the mapping is written once,
+        next to the fields it reads. Downstream packages (midas-dt, and
+        anything else integrating against a fresh calibration) call this rather
+        than transcribing eight numbers by hand -- which is exactly where a
+        sign or unit error enters.
+
+        Two things this handles that a hand-written conversion tends to miss:
+
+        * **The spec's geometry fields are ``torch.Tensor``, not float.** They
+          are declared that way so the spec stays differentiable for joint
+          refinement. A plain float survives construction and then fails inside
+          ``spec.device()``, a long way from the call site.
+        * **Distortion naming.** ``self.distortion`` is already in v2 named
+          form (``iso_R2``, ``a1..a6``, ``phi1..phi6``), which is what this
+          pipeline refines, so it is forwarded as-is. Legacy ``p0..p3`` vectors
+          are a DIFFERENT convention and the mapping between them is a
+          permutation, not positional -- see
+          ``midas_distortion.V1_TO_V2_DISTORTION``. Do not mix the two.
+
+        R/eta binning is not part of a calibration, so pass it here or set it
+        on the returned spec.
+        """
+        try:
+            import torch
+            from midas_integrate_v2 import IntegrationSpec
+        except ImportError as exc:  # pragma: no cover - optional dependency
+            raise ImportError(
+                "to_integration_spec() needs midas-integrate-v2 (and torch). "
+                "Install with `pip install midas-integrate-v2`."
+            ) from exc
+
+        def _t(v):
+            return torch.as_tensor(float(v), dtype=torch.float64)
+
+        kw = dict(
+            NrPixelsY=int(self.NrPixelsY),
+            NrPixelsZ=int(self.NrPixelsZ),
+            pxY=float(self.pxY),
+            pxZ=float(self.pxZ or self.pxY),
+            Lsd=_t(self.Lsd),
+            BC_y=_t(self.BC_y),
+            BC_z=_t(self.BC_z),
+            tx=_t(self.tx), ty=_t(self.ty), tz=_t(self.tz),
+            Wavelength=_t(self.wavelength_A),
+            RMin=float(RMin), RMax=float(RMax), RBinSize=float(RBinSize),
+            EtaMin=float(EtaMin), EtaMax=float(EtaMax),
+            EtaBinSize=float(EtaBinSize),
+        )
+        if RhoD is not None:
+            kw["RhoD"] = float(RhoD)
+        kw.update({k: _t(v) for k, v in (self.distortion or {}).items()})
+        return IntegrationSpec(**kw)
+
 
 # ============================================================ entry point
 

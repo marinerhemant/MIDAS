@@ -37,10 +37,12 @@ class ParamType(str, Enum):
 class Path(str, Enum):
     """Which MIDAS analysis pipeline this parameter applies to."""
 
-    FF = "ff"   # far-field HEDM
-    NF = "nf"   # near-field HEDM
-    PF = "pf"   # point-focus HEDM
-    RI = "ri"   # radial integration
+    FF = "ff"     # far-field HEDM
+    NF = "nf"     # near-field HEDM
+    PF = "pf"     # point-focus HEDM
+    RI = "ri"     # radial integration
+    TOMO = "tomo" # absorption-contrast CT (midas-tomo)
+    DT = "dt"     # diffraction / X-ray CT (midas-dt)
 
 
 class Stage(str, Enum):
@@ -62,6 +64,10 @@ class Stage(str, Enum):
     FORWARD_SIM = "forward-sim"
     POST_ANALYSIS = "post-analysis"
     MULTI_PANEL = "multi-panel"
+    # Tomography / XRD-CT
+    SINOGRAM = "sinogram"           # assembling sinograms from reduced frames
+    RECONSTRUCTION = "reconstruction"  # gridrec / FBP
+    VOXEL_FIT = "voxel-fit"         # per-voxel peak fitting
 
 
 class Severity(str, Enum):

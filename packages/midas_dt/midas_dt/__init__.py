@@ -51,6 +51,7 @@ from .geometry import (
     from_calibration,
     geometry_from_legacy_params,
     parse_legacy_params,
+    spec_from_calibration,
 )
 from .scan import PILATUS_1475x1679, DTScan, RawFormat, detect_snake, frames_in_file
 
@@ -97,6 +98,7 @@ __all__ = [
     "geometry_from_legacy_params",
     "is_additive",
     "parse_legacy_params",
+    "spec_from_calibration",
     "poisson_variance",
     "recon_size",
     "reconstruct",
