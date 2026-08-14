@@ -9,7 +9,24 @@ Start at `00`. Notebook `01` asks you to type in `Lsd`, the beam centre, the
 pixel size and the wavelength; `00` is where those come from, and it writes a
 `calibration.json` that `01` reads so you never retype a number.
 
-Both notebooks run on macOS and Linux. Calibration used to segfault on macOS —
+### `02_real_data_end_to_end.ipynb`
+
+Raw detector frames to a reconstruction, on a **real** dataset: a CeO2 rod
+measured at APS 11-ID-C. Calibration, cached reduction, per-projection fitting,
+reconstruction, and a check of the answer against what the sample is known to
+be.
+
+Worth reading even if you never run it, for the four conventions that were
+wrong or ambiguous on that data and would each have produced a plausible wrong
+answer silently: a metadata distance that was the nominal stage setting, a
+beamline calibration that did not transfer despite a matching filename, a
+frame convention opposite to the neighbouring beamline's, and a background
+estimator that turned out to be signal.
+
+Needs the raw data to run from scratch; the committed copy carries its outputs,
+so it reads without it.
+
+All three notebooks run on macOS and Linux. Calibration used to segfault on macOS —
 numba's OpenMP threading layer colliding with torch's — fixed in
 **`midas-integrate` 0.4.3**, which `midas-dt` now floors, so a current install
 cannot resolve to a crashing one. On an older install, launch with
