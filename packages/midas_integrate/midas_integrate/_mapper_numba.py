@@ -12,12 +12,45 @@ falls back to the pure-Python implementation (slow, single-threaded).
 from __future__ import annotations
 
 import math
+import os
+import sys
 
 import numpy as np
+
+# ---------------------------------------------------------------------------
+# macOS: pick numba's own threadpool before numba initialises its threading
+# layer.
+#
+# The kernels below are @njit(parallel=True). numba's default layer on macOS is
+# OpenMP, and these kernels run inside processes that have ALREADY loaded a
+# different OpenMP runtime -- torch and numpy each ship one, which is why
+# KMP_DUPLICATE_LIB_OK=TRUE is needed to import them together at all. Two
+# OpenMP runtimes in one process then SEGFAULT when the parallel region opens.
+#
+# Measured: midas_calibrate_v2.calibrate() on an Apple-silicon Mac died with
+# SIGSEGV inside map_kernel, in-process AND in a child process, so it was not a
+# Jupyter-state problem. With NUMBA_THREADING_LAYER=workqueue the same call
+# completes and returns the same answer as Linux to every digit printed
+# (Lsd 940085.0 um, BC 1037.499/1014.497 px, 22.55 ue).
+#
+# workqueue is numba's built-in threadpool: still parallel, no external OpenMP,
+# typically a little slower than omp. That is the right trade for a crash.
+# Only macOS is touched, and only when the user has not chosen a layer, so a
+# deliberate setting is always respected.
+if sys.platform == "darwin":
+    os.environ.setdefault("NUMBA_THREADING_LAYER", "workqueue")
 
 try:
     import numba
     from numba import njit, prange
+    if sys.platform == "darwin":
+        # Belt and braces: the env var is read when the layer first
+        # initialises, which may already have happened if something else
+        # imported numba first. Setting config too covers that case.
+        try:
+            numba.config.THREADING_LAYER = os.environ["NUMBA_THREADING_LAYER"]
+        except Exception:            # pragma: no cover - never fatal
+            pass
     HAVE_NUMBA = True
 except ImportError:                  # pragma: no cover
     HAVE_NUMBA = False
