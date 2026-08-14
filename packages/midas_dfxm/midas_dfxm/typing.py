@@ -150,6 +150,43 @@ def visibility_series(
     return out
 
 
+def directional_visibility(
+    dislocation: StrohDislocation,
+    positions: torch.Tensor,
+    g_dir,
+    *,
+    beam_axis=(1.0, 0.0, 0.0),
+    across_axis=(0.0, 1.0, 0.0),
+) -> dict:
+    """Which SCAN axis renders a dislocation -- the directional visibility of Yildirim
+    et al. 2026, complementing the scalar ``g.b`` invisibility.
+
+    The DFXM phase is ``u_g = u . g_hat``. A rocking (``phi``) scan responds to the
+    beam-projected gradient ``d u_g / dx`` while a ``chi`` scan responds to the across-beam
+    gradient ``d u_g / dy`` (``x`` = ``beam_axis``, ``y`` = ``across_axis``). With
+    ``d u_g / dx_k = g_hat . (d u / dx_k) = g_hat_i beta_ik`` from the Stroh distortion
+    ``beta``, a dislocation segment elongated along ``y`` varies steeply across its length and
+    shows in ``phi``; one along ``x`` shows in ``chi``. So a ``phi``-built map preferentially
+    renders segments perpendicular to the projected ``g``. Returns
+    ``{'phi_frac', 'chi_frac', 'ratio'}`` (fractions sum to 1; ratio = phi/chi). Differentiable.
+    """
+    beta = dislocation.displacement_gradient(positions)             # (N,3,3): d u_i / d x_j
+    g = torch.as_tensor(g_dir, device=positions.device, dtype=positions.dtype)
+    g = g / torch.linalg.vector_norm(g)
+    e_x = torch.as_tensor(beam_axis, device=positions.device, dtype=positions.dtype)
+    e_y = torch.as_tensor(across_axis, device=positions.device, dtype=positions.dtype)
+    e_x = e_x / torch.linalg.vector_norm(e_x)
+    e_y = e_y / torch.linalg.vector_norm(e_y)
+    # d u_g / d(dir) = g_i beta_i,: . dir
+    dug = torch.einsum("i,nij->nj", g, beta)                        # (N,3): d u_g / d x_j
+    dug_x = dug @ e_x                                               # rocking (phi) sensitivity
+    dug_y = dug @ e_y                                               # chi sensitivity
+    s_x, s_y = dug_x.std(), dug_y.std()
+    tot = s_x + s_y + 1e-30
+    return {"phi_frac": float(s_x / tot), "chi_frac": float(s_y / tot),
+            "ratio": float(s_x / (s_y + 1e-30))}
+
+
 def recover_burgers(
     contrasts: dict,
     candidate_burgers: Sequence[Sequence[int]],
