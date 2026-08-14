@@ -33,7 +33,12 @@ from .io import (
     with_screw_dislocation,
     with_uniform_strain,
 )
-from .resolution import ResolutionFunction, aligned_resolution, poulsen_resolution_widths
+from .resolution import (
+    ResolutionFunction,
+    aligned_resolution,
+    poulsen_aligned_resolution,
+    poulsen_resolution_widths,
+)
 from .detector import apply_psf, detector_model, quantize_16bit
 from .optics import ObjectiveOptics, diffracted_beam_direction, two_theta_from_k_out
 from .scan import (
@@ -62,10 +67,18 @@ from .typing import (
     classify_character,
     dfxm_contrast,
     dilatation_ratio,
+    directional_visibility,
     g_dot_b,
     recover_burgers,
     reflection_signal,
     visibility_series,
+)
+from .reflection_geometry import (
+    attenuation_1e_depth,
+    depth_weighted_intensity,
+    flank_difference_intensity,
+    reflection_depth_weight,
+    surface_depth,
 )
 from .inverse import (
     normal_strain,
@@ -186,6 +199,13 @@ from .cpfem import (
     save_cpfem_field,
     validate_dfxm_on_cpfem,
 )
+from .fourier_ptychography import (
+    align_global_phase,
+    aperture_grid,
+    disk_pupil,
+    fp_forward,
+    reconstruct_fp,
+)
 
 __all__ = [
     "GoniometerSetting",
@@ -206,6 +226,12 @@ __all__ = [
     "load_external_field",
     "ResolutionFunction",
     "aligned_resolution",
+    "poulsen_aligned_resolution",
+    "disk_pupil",
+    "aperture_grid",
+    "fp_forward",
+    "reconstruct_fp",
+    "align_global_phase",
     "poulsen_resolution_widths",
     "detector_model",
     "apply_psf",
@@ -235,7 +261,13 @@ __all__ = [
     "dilatation_ratio",
     "classify_character",
     "visibility_series",
+    "directional_visibility",
     "recover_burgers",
+    "attenuation_1e_depth",
+    "reflection_depth_weight",
+    "surface_depth",
+    "depth_weighted_intensity",
+    "flank_difference_intensity",
     "normal_strain",
     "strain_design_matrix",
     "strain_identifiability",
