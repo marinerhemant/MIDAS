@@ -170,6 +170,23 @@ def _scalar(ds) -> float | None:
         return None
 
 
+def _warn_skipframe(result: "DiscoveryResult", n_frames: int) -> None:
+    """Flag that the derived span is the RAW container length.
+
+    SkipFrame is applied by the reduction on top of this and is not visible from
+    the data file, so the two readings of a 1441-frame container -- frames
+    1..1440, or 1..1441 with the first dropped -- both yield 1440 usable frames
+    but map them onto ω one step apart. Beamlines that take a throwaway first
+    frame every acquisition make that a real one-step ω error, so the caller has
+    to resolve it rather than inherit it silently.
+    """
+    result.warnings.append(
+        f"StartNr/EndNr derived as 1..{n_frames} from the container's frame "
+        f"axis; SkipFrame is applied on top of this and is not readable from "
+        f"the data, so subtract it before trusting the ω mapping."
+    )
+
+
 def _probe_hdf5(path: FsPath, result: DiscoveryResult) -> None:
     """Best-effort HDF5 metadata extraction. No-op if h5py unavailable or
     file unreadable.
@@ -188,6 +205,12 @@ def _probe_hdf5(path: FsPath, result: DiscoveryResult) -> None:
         result.confidence.setdefault(key, confidence)
         result.source.setdefault(key, source_tag)
 
+    def _override(key: str, value, source_tag: str, confidence: str = "high"):
+        """For facts measured off the array, which outrank filename guesses."""
+        result.extracted[key] = value
+        result.confidence[key] = confidence
+        result.source[key] = source_tag
+
     try:
         with h5py.File(path, "r") as f:
             # Detector shape from the data array
@@ -195,9 +218,23 @@ def _probe_hdf5(path: FsPath, result: DiscoveryResult) -> None:
                 if data_path in f:
                     ds = f[data_path]
                     if ds.ndim == 3:
-                        _, nz, ny = ds.shape
+                        nfr, nz, ny = ds.shape
                         _record("NrPixelsY", int(ny), f"h5:{data_path}.shape")
                         _record("NrPixelsZ", int(nz), f"h5:{data_path}.shape")
+                        # The frame axis IS the StartNr..EndNr span: for a
+                        # multi-frame container those are slab indices, not file
+                        # numbers, so the container knows them and the user
+                        # should not have to restate them. SkipFrame is applied
+                        # by the reduction on top of this and is not known here.
+                        # This OVERRIDES the directory scan on purpose: that
+                        # scan reports file numbers, and one .h5 holding a whole
+                        # sweep would otherwise claim a 1-frame span. A measured
+                        # frame axis beats a filename.
+                        _override("nFramesInContainer", int(nfr),
+                                  f"h5:{data_path}.shape[0]")
+                        _override("StartNr", 1, f"h5:{data_path}.shape[0]")
+                        _override("EndNr", int(nfr), f"h5:{data_path}.shape[0]")
+                        _warn_skipframe(result, int(nfr))
                     elif ds.ndim == 2:
                         nz, ny = ds.shape
                         _record("NrPixelsY", int(ny), f"h5:{data_path}.shape")
@@ -342,6 +379,60 @@ def _probe_zarr(path: FsPath, result: DiscoveryResult) -> None:
                 result.source.setdefault("BC", "zarr:analysis/.../YCen+ZCen")
         except Exception:
             pass
+
+    # Frame count + detector shape straight off the data array. For a
+    # multi-frame container StartNr..EndNr are slab indices into this axis, so
+    # the file already carries them; requiring the user to restate them just
+    # creates a second place to be wrong. SkipFrame is applied by the reduction
+    # on top of this span and is not visible here.
+    for data_path in ("exchange/data", "exchange/data_white", "data"):
+        try:
+            ds = z[data_path]
+        except Exception:
+            continue
+        shape = getattr(ds, "shape", None)
+        if not shape or len(shape) != 3:
+            continue
+        nfr, nz, ny = shape
+        result.extracted.setdefault("NrPixelsY", int(ny))
+        result.confidence.setdefault("NrPixelsY", "high")
+        result.source.setdefault("NrPixelsY", f"zarr:{data_path}.shape")
+        result.extracted.setdefault("NrPixelsZ", int(nz))
+        result.confidence.setdefault("NrPixelsZ", "high")
+        result.source.setdefault("NrPixelsZ", f"zarr:{data_path}.shape")
+
+        # A MIDAS zarr records SkipFrame beside the data, so the usable span is
+        # knowable exactly rather than guessed: peakfit reports nFrames 1440 for
+        # a 1441-long array with SkipFrame 1. Deriving 1..1441 instead would put
+        # every frame one ω step out.
+        skip = 0
+        skip_src = ""
+        if midas_param_group is not None and "SkipFrame" in midas_param_group:
+            try:
+                raw = midas_param_group["SkipFrame"][...]
+                # zarr hands back an ndarray; don't import numpy for one scalar
+                skip = int(raw.ravel()[0] if hasattr(raw, "ravel") else raw)
+                skip_src = " - SkipFrame"
+                result.extracted.setdefault("SkipFrame", skip)
+                result.confidence.setdefault("SkipFrame", "high")
+                result.source.setdefault("SkipFrame", "zarr:analysis/.../SkipFrame")
+            except Exception:
+                skip = 0
+
+        # Measured off the array, so it outranks the filename-derived span --
+        # see the matching note in _probe_hdf5. nFramesInContainer is the raw
+        # array length and is NOT skip-adjusted; only the usable span is.
+        for key, val, src in (
+            ("nFramesInContainer", int(nfr), f"zarr:{data_path}.shape[0]"),
+            ("StartNr", 1, f"zarr:{data_path}.shape[0]{skip_src}"),
+            ("EndNr", int(nfr) - skip, f"zarr:{data_path}.shape[0]{skip_src}"),
+        ):
+            result.extracted[key] = val
+            result.confidence[key] = "high"
+            result.source[key] = src
+        if not skip_src:
+            _warn_skipframe(result, int(nfr))
+        break
 
     # Scan parameters
     try:

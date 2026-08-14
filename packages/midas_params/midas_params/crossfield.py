@@ -187,6 +187,35 @@ def nf_frames_match_files_per_distance(ctx: Ctx) -> list[ValidationIssue]:
 # ─── Rings subset of MaxRingNumber ───────────────────────────────────────────
 
 
+# Formats where one file holds exactly one frame, so a file count doubles as a
+# frame count. Deliberately an allowlist: GE and HDF5/Zarr are multi-frame
+# containers (a GE container with 1440 frames is a single file), and guessing
+# wrong here invents a scan extent. Anything not listed means "don't know",
+# which makes the caller skip its check rather than emit a false error.
+_FRAME_PER_FILE_EXTS = (".tif", ".tiff", ".edf", ".cbf", ".img", ".raw")
+
+
+def is_frame_per_file(values: dict) -> bool:
+    """True only when the raw format is positively known to be one frame/file."""
+    ext = str(values.get("Ext") or "").strip().lower()
+    return ext.endswith(_FRAME_PER_FILE_EXTS)
+
+
+def data_carries_frame_span(values: dict) -> bool:
+    """True when the dataset itself knows its frame count.
+
+    A multi-frame container (GE, HDF5, Zarr) stores every frame in one file, so
+    the StartNr..EndNr span is just the length of its frame axis. Only when we
+    positively recognise a one-frame-per-file format does the span have to come
+    from the parameter file.
+    """
+    return bool(values.get("Ext")) and not is_frame_per_file(values)
+
+
+def _is_frame_per_file(ctx: Ctx) -> bool:
+    return is_frame_per_file(ctx.all_values)
+
+
 def omega_range_within_scan(ctx: Ctx) -> list[ValidationIssue]:
     """Each OmegaRange window must fall within the actual scanned ω range.
 
@@ -213,21 +242,25 @@ def omega_range_within_scan(ctx: Ctx) -> list[ValidationIssue]:
         # NF path: use NrFilesPerDistance
         nframes = ctx.all_values.get("NrFilesPerDistance")
         if nframes is None:
-            # FF/PF: each ω sweep covers the same range = NrFilesPerSweep
-            # frames × OmegaStep. PF has multiple sweeps (different sample
-            # positions), but ω-range per sweep is identical, so this gives
-            # the correct ω-end either way.
-            per_sweep = ctx.all_values.get("NrFilesPerSweep")
-            if per_sweep is None:
-                # Fall back to (EndNr - StartNr + 1) if NrFilesPerSweep is
-                # missing — assumes a single sweep, FF-style numbering.
-                snr = ctx.all_values.get("StartNr")
-                enr = ctx.all_values.get("EndNr")
-                if snr is None or enr is None:
-                    return []
+            # FF/PF: StartNr..EndNr are frame indices INSIDE the container,
+            # not on-disk file numbers (see frames_exist_on_disk), so their
+            # span IS the frame count.
+            snr = ctx.all_values.get("StartNr")
+            enr = ctx.all_values.get("EndNr")
+            if snr is not None and enr is not None:
                 nframes = enr - snr + 1
-            else:
-                nframes = per_sweep
+            elif _is_frame_per_file(ctx):
+                # NrFilesPerSweep counts FILES. It doubles as a frame count
+                # only where one file holds exactly one frame.
+                nframes = ctx.all_values.get("NrFilesPerSweep")
+        if nframes is None:
+            # Not determinable from the parameter file alone. A multi-frame
+            # container knows its own length, so the honest move is to skip
+            # the check rather than assume one frame: reading NrFilesPerSweep=1
+            # (one HDF5 file holding 1440 frames) as "1 frame" reported a real
+            # -180..180 scan as reaching only -179.75 and flagged a correct
+            # OmegaRange as out of bounds.
+            return []
         end = start + step * nframes
 
     lo = min(start, end)

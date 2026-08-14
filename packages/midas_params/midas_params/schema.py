@@ -90,6 +90,12 @@ class ParamSpec:
     description: str                       # one-line explanation shown in wizard + validator errors
     applies_to: frozenset[Path]            # which paths use this key
     required_for: frozenset[Path] = frozenset()  # subset of applies_to — fatal if absent
+    derivable_from_data: bool = False      # value is carried by the dataset itself (e.g. a frame
+                                           # count is the container's own length). Still required
+                                           # for formats that cannot carry it, but absence is
+                                           # reported as INFO, not ERROR, when the data can supply
+                                           # it — asking the user to restate a number the file
+                                           # already knows only creates a second place to be wrong.
     stages: frozenset[Stage] = frozenset()       # pipeline stages that consume this value
     units: str | None = None               # "um", "deg", "Å", "pixels", "counts", etc.
     default: Any = None                    # authoritative default from source; None = no default

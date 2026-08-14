@@ -15,7 +15,7 @@ from __future__ import annotations
 
 import difflib
 
-from .crossfield import RULE_SPECS, RULES
+from .crossfield import RULE_SPECS, RULES, data_carries_frame_span as _data_carries_frame_span
 from .parser import ParsedParams, parse_typed
 from .registry import by_name, required_for
 from .schema import (
@@ -55,9 +55,30 @@ def validate_parsed(parsed: ParsedParams, path: Path) -> ValidationReport:
     applicable_specs = [p for p in _unique_specs(registry) if path in p.applies_to]
 
     # ── 1. Required-key check ────────────────────────────────────────────────
+    carried_by_data = _data_carries_frame_span(parsed.values)
     for spec in required_for(path):
         if spec.name not in parsed.values:
             # Don't shadow if the user set an alias — the parser stores under canonical.
+            if spec.derivable_from_data and carried_by_data:
+                # The dataset itself carries this (a frame span is the length of
+                # the container's frame axis). Demanding the user restate it
+                # just creates a second place to be wrong, so say it is being
+                # derived rather than failing a correct parameter file.
+                report.issues.append(ValidationIssue(
+                    severity=Severity.INFO,
+                    key=spec.name,
+                    message=(
+                        f"{spec.name!r} not set; deriving it from the dataset "
+                        f"(multi-frame container carries its own frame count)."
+                    ),
+                    suggestion=(
+                        f"Set {spec.name} explicitly only to override the "
+                        f"container's own extent."
+                    ),
+                    rule="derived_from_data",
+                    stage=_primary_stage(spec),
+                ))
+                continue
             report.issues.append(ValidationIssue(
                 severity=Severity.ERROR,
                 key=spec.name,

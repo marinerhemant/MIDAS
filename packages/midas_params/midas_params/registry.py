@@ -100,13 +100,19 @@ PARAMS: list[ParamSpec] = [
         name="StartNr", type=ParamType.INT, category="Data source",
         description="First frame number in sequence.",
         applies_to=ALL, required_for=ALL, stages=S_FILE,
+        derivable_from_data=True,
         notes="Frame index (one-indexed for GE/TIF where frame=file, or "
-              "HDF5/Zarr slab start for multi-frame containers).",
+              "HDF5/Zarr slab start for multi-frame containers). For a "
+              "multi-frame container the span is the length of the data "
+              "array's frame axis, so the file already carries it and "
+              "midas_params.discovery reads it off the shape; it is only "
+              "genuinely required where one file holds one frame.",
     ),
     ParamSpec(
         name="EndNr", type=ParamType.INT, category="Data source",
         description="Last frame number in sequence. NF: optional and derived.",
         applies_to=ALL, required_for=FF_PF, stages=S_FILE,
+        derivable_from_data=True,
         notes="NOT required for NF, where it is fully determined by "
               "StartNr + NrFilesPerDistance - 1 and nothing reads it: the "
               "reduction indexes files from RawStartNr and the fit takes its "
