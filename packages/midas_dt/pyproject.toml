@@ -26,6 +26,12 @@ dependencies = [
     # plain `pip install midas-dt` produced a package that could not build the
     # sinograms the README advertised. Brings torch>=2.1 with it.
     "midas-integrate-v2>=0.3.1",
+    # Floored for the macOS fix, not for a feature: 0.4.3 selects numba's
+    # workqueue threading layer on darwin. Below it, calibration and any
+    # midas-dt reduction SEGFAULT on a Mac -- numba's OpenMP layer colliding
+    # with torch's. midas-integrate-v2 pulls this in transitively; the floor is
+    # stated here so resolution cannot land on a crashing one.
+    "midas-integrate>=0.4.3",
     # rings.find_rings (choosing channels) and peakfit.fit_lineout (every
     # per-voxel fit) both need it. Same reason: not optional in practice.
     "scipy>=1.7",
