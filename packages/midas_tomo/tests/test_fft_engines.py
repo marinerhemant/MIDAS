@@ -38,6 +38,32 @@ pytestmark = [pytestmark, pytest.mark.skipif(
     not HAS_ENGINE_FLAG, reason="binary predates --fft-engine")]
 
 
+def _build_has_fftw() -> bool:
+    """Was this binary compiled against FFTW at all?
+
+    An FFTW-free build is a first-class configuration, not a degraded one --
+    vendoring pocketfft is precisely what let the engine drop its last external
+    FFT dependency. GitHub's ubuntu runner has a compiler and OpenMP but no
+    libfftw3-dev, so CI now builds the engine for the first time and every
+    engine test runs there. The one test that compares the two backends cannot,
+    because one of them does not exist.
+
+    The probe passes a param file that does not exist: the engine validates the
+    requested backend in midas_tomo_run_full() *before* reading the parameter
+    file, so the FFTW complaint arrives either way and the missing file never
+    masks it.
+    """
+    p = subprocess.run(
+        [str(backend_c.binary_path()), "/nonexistent/probe.par", "1",
+         "--fft-engine=fftw"],
+        capture_output=True, text=True,
+    )
+    return "no FFTW" not in ((p.stderr or "") + (p.stdout or ""))
+
+
+HAS_FFTW = _build_has_fftw() if HAS_ENGINE_FLAG else False
+
+
 @pytest.fixture(scope="module")
 def dataset():
     return make_sino_dataset(n=128, n_angles=180)
@@ -57,6 +83,10 @@ def _run(wd, engine, sino, angles, extra=()):
     return read_recon_cube(TomoConfig.from_param_file(wd / "midastomo.par"), 2)[0]
 
 
+@pytest.mark.skipif(
+    not HAS_FFTW,
+    reason="this build has no FFTW, so there is nothing to compare pocketfft "
+           "against (an FFTW-free build is supported, and is what CI builds)")
 def test_pocketfft_agrees_with_fftw_to_float_precision(dataset, tmp_path):
     """Same transform, different rounding. NOT bitwise -- asserting that would
     be asserting something false."""
