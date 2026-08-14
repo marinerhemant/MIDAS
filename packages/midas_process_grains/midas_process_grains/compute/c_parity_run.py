@@ -179,7 +179,7 @@ def run_c_parity_pipeline_from_disk(
     misori_tol_passa_deg: float = 0.1,
     pos_tol_passa_um: float = 5.0,
     confidence_min: Optional[float] = None,
-    min_nr_spots: int = 1,
+    min_nr_spots: Optional[int] = None,
     write_spot_matrix: bool = True,
     device: str = "cpu",
     paramstest: Optional[Union[str, Path]] = None,
@@ -222,6 +222,22 @@ def run_c_parity_pipeline_from_disk(
     print(f"[c-parity] loading inputs from {rd} (params: {ps_path})", flush=True)
     t0 = time.time()
     params = read_paramstest_pg(ps_path)
+    if min_nr_spots is None:
+        # The user's cluster-size floor lives in the parameter file. This used
+        # to be hardcoded to 1 by the CLI, so `MinNrSpots 3` — propagated into
+        # the file by the pipeline precisely so it would be honoured — was
+        # silently discarded. On the datasetA Ni layer that is 23138 grains
+        # instead of ~6180; C ProcessGrains shows the same split, 23710 at
+        # MinNrSpots=1 against 6147 at 3.
+        # `raw` distinguishes "the file set it" from the dataclass default.
+        if "MinNrSpots" in getattr(params, "raw", {}):
+            min_nr_spots = int(params.MinNrSpots)
+        else:
+            min_nr_spots = 1                 # C ProcessGrains' own default
+        print(f"[c-parity] min_nr_spots={min_nr_spots} "
+              f"({'from ' + ps_path.name if 'MinNrSpots' in getattr(params, 'raw', {}) else 'C default; not set in ' + ps_path.name})",
+              flush=True)
+
     if confidence_min is None:
         confidence_min = (0.05 if params.Completeness is None
                           else float(params.Completeness))
@@ -247,10 +263,22 @@ def run_c_parity_pipeline_from_disk(
     )
 
     # Side outputs.
-    ids_hash = None
     ih_path = rd / "IDsHash.csv"
-    if ih_path.exists():
-        ids_hash = load_ids_hash(ih_path)
+    if not ih_path.exists():
+        # Strain is the primary scientific output; refusing is the only safe
+        # response. IDsHash.csv supplies the reference d-spacing d₀ per ring,
+        # and Kenesei strain is (d_obs − d₀)/d₀ — substituting zeros (which is
+        # what this used to do) pegs every grain at the ±0.01 bound and gives
+        # RMSErrorStrain ~1e36, in a run that is otherwise correct. Observed on
+        # datasetA and shade_LSHR: 100% of grains, no warning, valid positions.
+        raise FileNotFoundError(
+            f"{ih_path} not found. It carries the per-ring reference d-spacing "
+            f"used for the Kenesei strain gauge; without it every strain value "
+            f"is meaningless. It is written by midas_transforms fit_setup / "
+            f"Pipeline.dump — re-run the transforms stage, or pass a run "
+            f"directory that has it."
+        )
+    ids_hash = load_ids_hash(ih_path)
 
     fb = None
     try:

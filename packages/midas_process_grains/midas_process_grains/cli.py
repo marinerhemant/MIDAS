@@ -140,10 +140,22 @@ def main(argv: Optional[List[str]] = None) -> int:
         from .v4_pipeline import run_v4_pipeline
         run_dir = args.param_file.parent
         out_dir = args.out_dir if args.out_dir is not None else run_dir
-        # Map --min-nr-spots (legacy CLI flag, default 2 here) onto the
-        # v4 min_n_unique_hkls filter. They serve the same purpose: reject
-        # single-spot indexing artifacts.
-        min_unique = args.min_nr_spots if args.min_nr_spots is not None else 2
+        # Map --min-nr-spots onto the v4 min_n_unique_hkls filter — they serve
+        # the same purpose: reject single-spot indexing artifacts. When the
+        # flag is absent, take the user's MinNrSpots from the parameter file
+        # rather than substituting a literal; hardcoding it here is the same
+        # defect that made c_parity return 23138 grains instead of 6157 on the
+        # datasetA Ni layer, because the pipeline propagates MinNrSpots into
+        # the file precisely so it will be honoured.
+        min_unique = args.min_nr_spots
+        if min_unique is None:
+            from .params import read_paramstest_pg
+            try:
+                _p = read_paramstest_pg(args.param_file)
+                min_unique = (int(_p.MinNrSpots)
+                              if "MinNrSpots" in getattr(_p, "raw", {}) else 2)
+            except Exception:
+                min_unique = 2
         paths = run_v4_pipeline(
             layer_dir=run_dir,
             out_dir=out_dir,
@@ -178,8 +190,11 @@ def main(argv: Optional[List[str]] = None) -> int:
             run_dir=run_dir,
             out_dir=out_dir,
             paramstest=args.param_file,
-            min_nr_spots=(args.min_nr_spots
-                          if args.min_nr_spots is not None else 1),
+            # None → read MinNrSpots from the parameter file. Hardcoding 1 here
+            # meant the user's own `MinNrSpots 3` was propagated into the file
+            # by the pipeline and then ignored, and only an explicit
+            # --min-nr-spots on the command line had any effect.
+            min_nr_spots=args.min_nr_spots,
             device=device_str,
         )
         return 0

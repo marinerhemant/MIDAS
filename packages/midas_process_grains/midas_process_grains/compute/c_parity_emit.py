@@ -92,8 +92,14 @@ def gather_per_grain_spot_data(
         rho = np.sqrt(y * y + z * z)
         sin_th = np.maximum(np.sin(np.arctan(rho / distance_um) / 2.0), 1e-30)
         ds_o = wavelength_a / (2.0 * sin_th)
-        ds_r = (ids_hash.d_for_spot_ids(sid[valid])
-                if ids_hash is not None else np.zeros_like(y))
+        # d₀ per spot, from IDsHash.csv. There is NO safe fallback: Kenesei
+        # strain is (d_obs − d₀)/d₀, so a substituted zero does not degrade
+        # the answer, it destroys it — every grain pegs at the ±0.01 bound and
+        # RMSErrorStrain comes out ~1e36. That is what `np.zeros_like(y)` here
+        # produced on both datasetA and shade_LSHR, silently, in runs whose
+        # positions and orientations were correct. Refuse instead: the caller
+        # checks for IDsHash.csv and raises before reaching this point.
+        ds_r = ids_hash.d_for_spot_ids(sid[valid])
         out.append({
             "spot_ids": sid[valid],
             "y": y, "z": z, "g": g_v,
