@@ -65,20 +65,35 @@ class ResolutionFunction:
     q_nom: torch.Tensor
     sigma_par: float = 5e-3
     sigma_perp: float = 5e-3
+    sigma_perp2: "float | None" = None   # roll (2nd transverse) width; None -> isotropic transverse (== sigma_perp)
+    rock_dir: "torch.Tensor | None" = None  # in-scattering-plane direction orienting e_t1 (rock); None -> arbitrary transverse frame
 
     def weight(self, Q_lab: torch.Tensor) -> torch.Tensor:
         """Acceptance weight in ``[0, 1]`` for lab-frame vectors ``Q_lab`` ``(..., 3)``.
 
-        Differentiable in ``Q_lab``, ``q_nom``, and the widths.
+        Differentiable in ``Q_lab``, ``q_nom``, and the widths. Anisotropic transverse
+        when ``sigma_perp2`` is set (``sigma_perp`` = rock/``e_t1``, ``sigma_perp2`` =
+        roll/``e_t2``); if ``rock_dir`` is given, ``e_t1`` is aligned to its component
+        perpendicular to ``q_nom`` (the scattering-plane / rock direction).
         """
-        e_par, e_t1, e_t2 = _orthonormal_frame(self.q_nom)
+        if self.rock_dir is not None:
+            e_par = self.q_nom / torch.linalg.vector_norm(self.q_nom)
+            rd = torch.as_tensor(self.rock_dir, device=Q_lab.device, dtype=Q_lab.dtype)
+            e_t1 = rd - (rd @ e_par) * e_par
+            e_t1 = e_t1 / torch.linalg.vector_norm(e_t1)
+            e_t2 = torch.linalg.cross(e_par, e_t1)
+        else:
+            e_par, e_t1, e_t2 = _orthonormal_frame(self.q_nom)
         d = Q_lab - self.q_nom
         d_par = d @ e_par
         d_t1 = d @ e_t1
         d_t2 = d @ e_t2
         s_par = torch.as_tensor(self.sigma_par, device=Q_lab.device, dtype=Q_lab.dtype)
         s_perp = torch.as_tensor(self.sigma_perp, device=Q_lab.device, dtype=Q_lab.dtype)
-        chi2 = (d_par / s_par) ** 2 + (d_t1 / s_perp) ** 2 + (d_t2 / s_perp) ** 2
+        s_perp2 = torch.as_tensor(
+            self.sigma_perp if self.sigma_perp2 is None else self.sigma_perp2,
+            device=Q_lab.device, dtype=Q_lab.dtype)
+        chi2 = (d_par / s_par) ** 2 + (d_t1 / s_perp) ** 2 + (d_t2 / s_perp2) ** 2
         return torch.exp(-0.5 * chi2)
 
     @property
@@ -141,10 +156,36 @@ def aligned_resolution(
     *,
     sigma_par: float = 5e-3,
     sigma_perp: float = 5e-3,
+    sigma_perp2: "float | None" = None,
+    rock_dir: "torch.Tensor | None" = None,
 ) -> ResolutionFunction:
     """Build a :class:`ResolutionFunction` centred on ``q_nom`` (lab frame).
 
     ``q_nom`` is typically ``G_ref @ G0_sample`` — the reference reflection placed
     at the aligned goniometer setting (see :func:`midas_dfxm.scan.reference_q_nom`).
+    Pass ``sigma_perp2`` (and ``rock_dir`` to orient the axes) for a fully anisotropic
+    transverse resolution; omit them for the isotropic-``perp`` default.
     """
-    return ResolutionFunction(q_nom=q_nom, sigma_par=sigma_par, sigma_perp=sigma_perp)
+    return ResolutionFunction(q_nom=q_nom, sigma_par=sigma_par, sigma_perp=sigma_perp,
+                              sigma_perp2=sigma_perp2, rock_dir=rock_dir)
+
+
+def poulsen_aligned_resolution(
+    q_nom: torch.Tensor,
+    *,
+    two_theta_deg: float,
+    rock_dir: "torch.Tensor | None" = None,
+    **poulsen_kwargs,
+) -> ResolutionFunction:
+    """Fully anisotropic DFXM resolution in one call: the Poulsen widths
+    (``sigma_rock``, ``sigma_roll``, ``sigma_par``) wired into an anisotropic
+    :class:`ResolutionFunction` (``sigma_perp = rock`` on ``e_t1``, ``sigma_perp2 =
+    roll`` on ``e_t2``). ``rock_dir`` (the in-scattering-plane direction) orients the
+    axes so ``rock`` and ``roll`` land on the physical directions. Extra kwargs
+    (``div_v``, ``div_h``, ``na``, ``eps``) pass to :func:`poulsen_resolution_widths`.
+    """
+    q_mag = float(torch.linalg.vector_norm(q_nom))
+    w = poulsen_resolution_widths(q_mag, two_theta_deg=two_theta_deg, **poulsen_kwargs)
+    return ResolutionFunction(q_nom=q_nom, sigma_par=w["sigma_par"],
+                              sigma_perp=w["sigma_rock"], sigma_perp2=w["sigma_roll"],
+                              rock_dir=rock_dir)

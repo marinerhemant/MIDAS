@@ -95,6 +95,15 @@ widths = poulsen_resolution_widths(...)   # the anisotropic reciprocal-space wid
 This kernel is what you deconvolve mosaicity against in §4 — the measured spread is the
 intrinsic mosaicity convolved with it.
 
+**Known package simplification (Notebook §10).** `poulsen_resolution_widths` returns three
+distinct widths — `sigma_par` (longitudinal, objective NA), `sigma_rock` (in-scattering-plane
+transverse, condenser NA) and `sigma_roll` (out-of-plane transverse, objective NA) — which are
+genuinely different (Carlsen/Poulsen: σ_rock ≈ 1e-3 ≪ σ_roll ≈ 9e-3). But `aligned_resolution`
+currently takes only `sigma_par` + one `sigma_perp`, so the built `ResolutionFunction` is
+**transverse-isotropic** (both transverse directions get the same σ). For a fully anisotropic
+resolution, pass the tighter transverse width and note the roll direction is under-resolved, or
+extend `aligned_resolution` to two transverse widths.
+
 ## 1d. Write the configuration into `SURVEY.md`
 
 Record θ_B, 2θ, Λ, `Im χ_h` (absorption), the t/Λ regime, ε_ref, and the resolution widths,

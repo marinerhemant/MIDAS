@@ -63,6 +63,9 @@ retracted, each with the measurement or reference that killed it.
 | 34 | A single reflection senses a strain as d-spacing (θ,2θ) OR tilt (θ-rock) by geometry; diagonal→strain, cube-axis→tilt (blind in θ,2θ) | PACKAGE-GT VERIFIED | §9a |
 | 35 | A single DFXM detector frame is an inclined projection that collapses sample x and z onto one axis — it cannot separate a 2D from a 3D wave; needs a scanned reconstruction | PACKAGE-GT VERIFIED | §9c |
 | 36 | "An a–c-plane DFXM image is a clean 2D-vs-3D dimensionality test" | **RETRACTED** — the projection collapses x and z (§9c) | §9c |
+| 37 | midas `aligned_resolution` is transverse-**isotropic** (one σ_perp); Poulsen/Carlsen have σ_rock ≠ σ_roll | PACKAGE GAP | §10 |
+| 38 | Carlsen's DFXM thesis independently confirms our verified physics (Δg=−Hᵀg₀, strain/tilt channel, inclined projection, kinematic∼deformation-bound) | PRIOR-ART, CONFIRMING | §10 |
+| 39 | midas leads on differentiable **inverses**; Carlsen leads on the 3D wave-optics **forward** + **Fourier ptychography** (a midas gap) | PRIOR-ART COMPARISON | §10 |
 
 The through-line: on real DFXM frames, **nothing tells you the answer is wrong** — a
 pedestal-dominated map is smooth, an unregistered tensor is plausible, a refraction offset
@@ -783,3 +786,46 @@ worth building for intuition, but check it against the validated forward before 
 The forward behaviour is now **regression-locked** by `packages/midas_dfxm/tests/test_wave_period.py`
 (4 tests: the tensor-shear convention, the 2 µm period off-Bragg, the λ/2 doubling at Bragg, and the
 [110]-strain vs [100]-tilt channel split) — the last gap the /verify pass flagged.
+
+---
+
+## 10. Prior-art comparison: Carlsen's DFXM forward-model thesis
+
+Source: **Mads Allerup Carlsen, "Phase Resolved Dark-Field X-ray Microscopy," PhD, DTU Physics
+2022** (Poulsen/Simons group, ESRF ID06-HXM), read in full 2026-08. His trilogy: **[12]** wave-optics
+DFXM simulator (Acta Cryst A 2022), **[13]** Fourier-ptychographic DFXM (Opt. Express 30:2949 2022),
+**[14]** a Takagi–Taupin integrator on an arbitrary orthogonal grid (Acta Cryst A 78 2022).
+
+**It independently confirms our verified physics** (a primary authority, so this promotes §9 from
+package-GT to literature-backed): the reciprocal shift is $\Delta\mathbf g=(\mathbf I-\nabla\mathbf u^{\mathsf T})\mathbf g_0
+=-\mathbf H^{\mathsf T}\mathbf g_0$ (his Eq. 3.17); the strain-vs-tilt channel split is Eq. 3.21 /
+Poulsen [58] (a single reflection returns the row $(\nabla\mathbf u)\!\cdot\!\hat{\mathbf Q}$ = one axial
+strain + two tilts); the single-frame **inclined projection** is a projection along
+$\mathbf k_h=k[\cos2\theta,0,\sin2\theta]$, so the in-plane observation axis is
+$\cos2\theta\,z-\sin2\theta\,x$ — **exactly our C3 formula, and only in *projection* (box-beam) mode; in
+*slicing* (condenser/line-beam) mode a single frame is a clean z=0 sheet**, which settles the a–c
+question. He gives **no λ/2 statement** (consistent with our labelling it a generic rocking-curve
+corollary). And the kinematic bound is set by **deformation/near-perfect, not thinness/Z**: his
+validating diamond is thin and low-Z (μ_att·t<1) yet **near-perfect**, so it needs the full TT — the
+distinction is *absorption-thin* (μ_att·t) vs *extinction-thin* (t/Λ); our doc set already uses t/Λ, the
+correct one, so no correction needed (matches our own ~0.3 Λ boundary, §4).
+
+**Where each is ahead (honest, not advocacy):**
+- **midas ahead:** differentiable **inverses** — full-F deformation-gradient tensor, Stroh dislocation
+  typing, the defect model, CPFEM inference, Fisher design — none of which Carlsen's thesis carries; plus
+  breadth and the validated pipeline. midas also has a (2D) TT dynamical forward.
+- **Carlsen ahead:** a full **3D wave-optics microscope simulator** (incident beam → crystal TTE → CRL
+  propagation → detector, validated vs a diamond stacking fault); a **peer-reviewed general TT integrator**
+  [14] (exponential-Heun, arbitrary orthogonal grid, beats the traditional half-step); the **anisotropic**
+  resolution (objective NA → σ_par/σ_roll, condenser NA → σ_rock); and **Fourier ptychography / DPC phase
+  retrieval**, which midas entirely lacks (only `talbot.py` grating interferometry exists, a different
+  method). **Verdict: complementary, not dominant.**
+
+**Two grounded package findings:** (1) `aligned_resolution` collapses the two transverse widths to one
+(transverse-isotropic) even though `poulsen_resolution_widths` returns σ_rock ≠ σ_roll (finding 37,
+phase-1 §1c) — extend it to two transverse widths for full anisotropy. (2) **Fourier ptychography is
+absent** — but FP is a phase-retrieval *inverse*, which fits midas's differentiable, inverse-heavy design
+(the aberration pupil PSF + `wave_imaging` + the optimizer already exist), so a **differentiable FP-DFXM**
+is a natural next build and a live ask from the 6-ID-C collaborator. Scope kept with the analysis campaign
+(`~/Desktop/analysis/yay_strainwaves_dryad/`). Carlsen's methods are published/citable — cite them; do not
+recruit (bilateral-collaboration rule).
