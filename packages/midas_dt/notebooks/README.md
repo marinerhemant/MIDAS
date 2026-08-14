@@ -24,7 +24,7 @@ It ships with its outputs saved, so you can read it without running anything.
 ## Running it
 
 ```bash
-pip install "midas-dt[direct]"      # [direct] adds torch: branch C, SIRT/TV, absorption
+pip install "midas-dt[direct]"      # base does frames -> maps; [direct] adds branch C, SIRT/TV, absorption
 pip install jupyterlab matplotlib
 jupyter lab                         # open 01_dt_recon_walkthrough.ipynb
 ```

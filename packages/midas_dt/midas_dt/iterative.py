@@ -85,7 +85,7 @@ def _torch():
         import torch
     except ImportError as exc:                       # pragma: no cover
         raise ImportError(
-            "iterative reconstruction needs pytorch. Install with "
+            "iterative reconstruction needs midas-invert. Install with "
             "`pip install midas-dt[direct]`, or use recon.reconstruct, which "
             "is the gridrec default and needs only midas-tomo."
         ) from exc

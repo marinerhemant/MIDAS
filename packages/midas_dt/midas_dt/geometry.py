@@ -87,7 +87,9 @@ class DTGeometry:
         except ImportError as exc:
             raise ImportError(
                 "converting to an IntegrationSpec needs midas-integrate-v2. "
-                "Install with `pip install midas-dt[full]`."
+                "midas-integrate-v2 is a core dependency; a missing one means "
+                "a broken install. Repair with "
+                "`pip install --force-reinstall midas-dt`."
             ) from exc
 
         import torch
@@ -131,7 +133,8 @@ class DTGeometry:
         except ImportError as exc:
             raise ImportError(
                 "mapping legacy p0..p3 to v2 distortion terms needs "
-                "midas-distortion. Install with `pip install midas-dt[full]`."
+                "midas-distortion, which arrives with midas-integrate-v2. "
+                "Repair with `pip install --force-reinstall midas-dt`."
             ) from exc
 
         out: dict[str, float] = {}

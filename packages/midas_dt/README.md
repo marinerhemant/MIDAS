@@ -63,7 +63,7 @@ map (voxel peak parameters → per-voxel pattern → line integral → the measu
 sinogram) and solves for the voxel parameters by gradient descent, so the peak
 model is enforced *inside* the inversion. σ then comes from the curvature of
 the loss rather than from repeated reconstructions. Needs
-`pip install midas-dt[direct]` (torch).
+`pip install midas-dt[direct]`.
 
 > **No performance claim.** Whether C beats B on accuracy at matched compute
 > has **not been tested**, and nothing in this package asserts it. That claim
@@ -225,19 +225,24 @@ Attached to every result via `ScanKnownLimits` and written into
 ## Installing
 
 ```bash
-pip install midas-dt          # scan, channels, sinograms, branches A and B
-pip install midas-dt[direct]  # + branch C (torch, midas-invert)
-pip install midas-dt[full]    # everything
+pip install midas-dt            # the full workflow: frames -> sinograms -> maps
+pip install midas-dt[direct]    # + branch C, SIRT/TV, absorption (midas-invert)
+pip install midas-dt[indexing]  # + ring indexing against candidate phases
+pip install midas-dt[full]      # both extras
 ```
 
-`midas-tomo` supplies the reconstruction engine and is always installed; it
-compiles its C at install time and falls back to a Python-only path when the
-toolchain is absent, so it never breaks the install.
+The base install does the documented workflow end to end. `midas-integrate-v2`
+(integration with Poisson variance) and `scipy` are **core**, not extras:
+`FrameReducer`, ring finding and every per-voxel fit need them, so a package
+without them could not build a sinogram. `midas-integrate-v2` brings `torch`.
 
-`[direct]` adds torch and `midas-invert` for branch C. It is separate because
-torch is large and branches A and B do not need it. `[full]` also adds
-`midas-integrate-v2` (integration with variance), `midas-peakfit`,
-`midas-hkls` (ring indexing) and `midas-stress`.
+`midas-tomo` supplies the reconstruction engine; it compiles its C at install
+time and falls back to a Python-only path when the toolchain is absent, so it
+never breaks the install.
+
+`[direct]` adds `midas-invert` for branch C, SIRT/TV and the absorption
+operator. `[indexing]` adds `midas-hkls` for matching rings against candidate
+phases.
 
 ## License
 

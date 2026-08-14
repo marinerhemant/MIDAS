@@ -134,7 +134,7 @@ def index_rings(
     except ImportError as exc:
         raise ImportError(
             "ring indexing needs midas-hkls. Install with "
-            "`pip install midas-dt[full]`."
+            "`pip install midas-dt[indexing]`."
         ) from exc
 
     d_obs = np.atleast_1d(np.asarray(d_obs_a, dtype=np.float64))

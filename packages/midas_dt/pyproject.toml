@@ -20,24 +20,36 @@ classifiers = [
 dependencies = [
     "numpy>=1.22",
     "midas-tomo>=0.1.0",
+    # Reduction (raw frames -> sinograms) is this package's primary path, not an
+    # optional extra: FrameReducer, and therefore the whole documented workflow,
+    # cannot run without it. It lived in [full] until 2026-08-14, which meant a
+    # plain `pip install midas-dt` produced a package that could not build the
+    # sinograms the README advertised. Brings torch>=2.1 with it.
+    "midas-integrate-v2>=0.3.1",
+    # rings.find_rings (choosing channels) and peakfit.fit_lineout (every
+    # per-voxel fit) both need it. Same reason: not optional in practice.
+    "scipy>=1.7",
 ]
 
 [project.optional-dependencies]
 dev = ["pytest>=7.0"]
-# Branch C, SIRT/TV and the absorption operator. torch is a large dependency
-# and branches A and B do not need it, so it stays opt-in.
+# Branch C (direct inversion), SIRT/TV and the absorption operator. torch and
+# scipy are core now (they arrive with midas-integrate-v2), so this adds only
+# the optimiser.
 direct = [
-    "torch>=2.0",
     "midas-invert>=0.1.1",
-    "scipy>=1.7",
 ]
-full = [
-    "midas-integrate-v2>=0.3.1",
-    "midas-peakfit>=0.5.0",
+# Ring indexing against candidate phases (midas_dt.index_rings).
+indexing = [
     "midas-hkls>=0.6.0",
-    "midas-stress>=0.8.1",
-    "torch>=2.0",
+]
+# Everything optional. midas-peakfit and midas-stress were listed here until
+# 2026-08-14 and are NOT imported anywhere in this package -- peakfit.py names
+# midas_peakfit in its docstring as the design it mirrors, but fits with
+# scipy.optimize directly. Dropped rather than carried as dead weight.
+full = [
     "midas-invert>=0.1.1",
+    "midas-hkls>=0.6.0",
 ]
 
 [project.scripts]

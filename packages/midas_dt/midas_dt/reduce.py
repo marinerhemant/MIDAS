@@ -115,8 +115,10 @@ class FrameReducer:
                 from midas_integrate_v2 import HardBinGeometry
             except ImportError as exc:
                 raise ImportError(
-                    "reduction needs midas-integrate-v2 (and torch). Install "
-                    "with `pip install midas-dt[full]`."
+                    "reduction needs midas-integrate-v2 (and torch), which are "
+                    "CORE dependencies of midas-dt -- if they are missing, the "
+                    "install is broken rather than incomplete. Repair with "
+                    "`pip install --force-reinstall midas-dt`."
                 ) from exc
             spec = self.geometry.to_integration_spec(self.channel)
             # HardBinGeometry, not build_geometry(): the variance-aware

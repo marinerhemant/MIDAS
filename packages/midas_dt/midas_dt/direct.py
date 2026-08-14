@@ -81,7 +81,7 @@ def _torch():
         import torch
     except ImportError as exc:                       # pragma: no cover
         raise ImportError(
-            "direct inversion needs pytorch. Install with "
+            "direct inversion needs midas-invert. Install with "
             "`pip install midas-dt[direct]`, or use run_recon_then_fit, which "
             "is exact and needs only numpy."
         ) from exc
