@@ -336,4 +336,4 @@ __all__ = [
     "dfxm_image_dynamical_chromatic_pink",
 ]
 
-__version__ = "0.3.2"
+__version__ = "0.3.3"

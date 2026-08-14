@@ -7,7 +7,7 @@ run with ``n_scans > 1``. One orchestrator, one CLI, two scan modes.
 
 from __future__ import annotations
 
-__version__ = "0.8.2"
+__version__ = "0.9.0"
 
 from .config import (
     AlignMethod,

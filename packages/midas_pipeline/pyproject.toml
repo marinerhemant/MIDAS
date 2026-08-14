@@ -4,7 +4,7 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "midas-pipeline"
-version = "0.8.2"
+version = "0.9.0"
 description = "Unified MIDAS HEDM orchestrator. FF is the single-scan degeneracy of PF; one orchestrator, --scan-mode {ff,pf}."
 readme = "README.md"
 license = "BSD-3-Clause"
@@ -57,7 +57,8 @@ dependencies = [
     "midas-transforms>=0.8.2",
     "midas-index>=0.3.0",
     # >=0.7.0: the "c_recipe" refine mode this CLI offers as a choice.
-    "midas-fit-grain>=0.7.0",
+    # >=0.8.0: the canonical midas_fit_grain.losses module this package imports.
+    "midas-fit-grain>=0.8.0",
     # >=0.7.0: reads Completeness as an alias for ConfidenceTol. Below it, the
     # selection keys this pipeline now writes into paramstest are ignored and
     # the user silently gets no grain gate at all.
