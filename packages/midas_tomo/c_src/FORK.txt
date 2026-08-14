@@ -257,3 +257,26 @@ Deliberate divergence #10 -- pocketfft becomes the DEFAULT (2026-08-13)
 
   tests/test_parity_vs_fork.py now passes --fft-engine=fftw explicitly, so the
   gate still measures the packaging change and not the engine difference.
+
+
+Documentation-only divergence #11 -- the --fftw-bridge claim, corrected (2026-08-14)
+  Files: tomo_init.c (usage text), tomo_gpu.h (doc comment)
+  No code changed; both edits are a string literal and a comment. Parity was
+  re-verified after them (130 passed, bitwise) on chiltepin.
+
+  What was wrong: both places stated that --fftw-bridge gives "byte-identical"
+  output to the CPU path. It does not, and never did. Measured on copland
+  (2x RTX A6000, CUDA 12.8, 128x180 phantom, scripts/verify_gpu.py):
+
+      gpu --fftw-bridge  vs cpu FFTW      1.014e-05   not bitwise
+      gpu (cuFFT)        vs cpu FFTW      9.954e-06   not bitwise
+      cpu FFTW           vs cpu pocketfft 2.777e-07   not bitwise
+
+  Routing the FFTs through CPU FFTW does not close the GPU/CPU gap: the bridge
+  is no closer to the CPU than plain cuFFT is. Since the two CPU FFT backends
+  differ by only 2.8e-07 -- 36x less -- the GPU residual is in the gridding
+  (accumulation order in single precision), not in the transform.
+
+  The flag remains useful as a diagnostic that isolates the FFT. It is no
+  longer described as a parity switch, and scripts/verify_gpu.py asserts the
+  regime rather than a bit-parity that was never real.

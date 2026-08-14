@@ -39,6 +39,8 @@ from pathlib import Path
 
 __all__ = [
     "LIBRARY_STEMS",
+    "fft_engine_code",
+    "FFT_ENGINES",
     "run_param_file_with_sinos",
     "run_arrays",
     "TomoLibraryError",
@@ -145,6 +147,19 @@ def load(*, force: bool = False):
             ctypes.POINTER(ctypes.c_float), ctypes.c_size_t,   # recon out
         ]
         lib.midas_tomo_run_arrays.restype = ctypes.c_int
+        # The superset entry point: in-memory I/O *and* an explicit FFT
+        # backend. Bound because it is the only way to reach --fft-engine from
+        # Python -- without it the CLI advertises a flag the package's own API
+        # cannot set, and "use fftw to reproduce historical runs bit-for-bit"
+        # is unreachable for every caller that is not shelling out.
+        lib.midas_tomo_run_full.argtypes = [
+            ctypes.c_char_p, ctypes.c_int, ctypes.c_int, ctypes.c_int,
+            ctypes.c_int,
+            ctypes.POINTER(ctypes.c_float), ctypes.c_size_t,   # sinos in
+            ctypes.POINTER(ctypes.c_float), ctypes.c_size_t,   # recon out
+            ctypes.c_int,                                      # fftEngine
+        ]
+        lib.midas_tomo_run_full.restype = ctypes.c_int
         lib.midas_tomo_error_message.argtypes = [ctypes.c_int]
         lib.midas_tomo_error_message.restype = ctypes.c_char_p
 
@@ -181,6 +196,54 @@ def error_message(code: int) -> str:
     return raw.decode() if raw else f"engine error code {code}"
 
 
+#: ``--fft-engine`` names, matching ``MIDAS_FFT_*`` in ``c_src/midas_fft.h``.
+FFT_ENGINES = {"fftw": 0, "pocketfft": 1}
+
+#: What the C picks when nothing is requested. Keep in step with tomo_init.c.
+DEFAULT_FFT_ENGINE = "pocketfft"
+
+
+def fft_engine_code(name: str | None) -> int:
+    """Map an ``--fft-engine`` name to its C enum value.
+
+    ``None`` means the engine's own default, which is pocketfft. Passing an
+    unknown name raises rather than silently falling back -- a typo'd engine
+    name that quietly selected the default would make a reproducibility run
+    report success while using the wrong transform.
+    """
+    if name is None:
+        name = DEFAULT_FFT_ENGINE
+    key = str(name).strip().lower()
+    if key not in FFT_ENGINES:
+        raise ValueError(
+            f"unknown FFT engine {name!r}; expected one of "
+            f"{sorted(FFT_ENGINES)}. Default is {DEFAULT_FFT_ENGINE!r}."
+        )
+    return FFT_ENGINES[key]
+
+
+def _refuse_gpu(gpu: bool) -> None:
+    """Reject ``gpu=True`` on the library path instead of quietly using CPU.
+
+    The shared library is built from the CPU sources and never links CUDA --
+    the CUDA target is a separate executable, ``MIDAS_TOMO_GPU``. Passing
+    ``useGPU=1`` into this library makes the C print a warning to stdout and
+    reconstruct on the CPU, returning 0. Every caller that checks the return
+    value sees success and gets a CPU answer labelled as a GPU one.
+
+    That is not hypothetical: it made ``scripts/verify_gpu.py`` report a
+    GPU-vs-CPU difference of exactly zero on a machine with two working A6000s.
+    """
+    if gpu:
+        raise TomoLibraryError(
+            "the midas-tomo shared library has no CUDA path (the CUDA target "
+            "is the separate MIDAS_TOMO_GPU executable). Passing gpu=True here "
+            "would silently reconstruct on the CPU and report success. Use "
+            "midas_tomo.backend_c.run_binary(..., gpu=True), or the api-level "
+            "backend='subprocess'."
+        )
+
+
 def run_param_file(
     param_file: str | os.PathLike,
     n_cpus: int,
@@ -188,9 +251,10 @@ def run_param_file(
     gpu: bool = False,
     fftw_bridge: bool = False,
     deterministic: bool = False,
+    fft_engine: str | None = None,
     cwd: str | os.PathLike | None = None,
 ) -> int:
-    """Call ``midas_tomo_run`` in-process.
+    """Call the engine in-process.
 
     Signature mirrors :func:`midas_tomo.backend_c.run_binary` so the two
     backends are interchangeable.
@@ -199,7 +263,10 @@ def run_param_file(
     engine still resolves its wisdom-file cache relative to the *process*
     working directory. That makes this call **not thread-safe** against other
     code that depends on the cwd; a lock is held for the duration.
+
+    ``gpu=True`` is refused -- see :func:`_refuse_gpu`.
     """
+    _refuse_gpu(gpu)
     lib = load()
     param_file = str(param_file)
     prev = None
@@ -208,9 +275,12 @@ def run_param_file(
             _lock.acquire()
             prev = os.getcwd()
             os.chdir(str(cwd))
-        rc = lib.midas_tomo_run(
+        # midas_tomo_run_full, not midas_tomo_run: the short entry point
+        # hard-codes the FFT backend, so it cannot honour fft_engine.
+        rc = lib.midas_tomo_run_full(
             param_file.encode(), int(n_cpus),
             1 if gpu else 0, 1 if fftw_bridge else 0, 1 if deterministic else 0,
+            None, 0, None, 0, fft_engine_code(fft_engine),
         )
     finally:
         if prev is not None:
@@ -218,7 +288,7 @@ def run_param_file(
             _lock.release()
     if rc != 0:
         raise TomoLibraryError(
-            f"midas_tomo_run failed (code {rc}): {error_message(rc)}"
+            f"midas_tomo_run_full failed (code {rc}): {error_message(rc)}"
         )
     return rc
 
@@ -231,6 +301,7 @@ def run_param_file_with_sinos(
     gpu: bool = False,
     fftw_bridge: bool = False,
     deterministic: bool = False,
+    fft_engine: str | None = None,
     cwd: str | os.PathLike | None = None,
 ) -> int:
     """Run the engine reading sinograms straight from *sinos* in memory.
@@ -245,9 +316,12 @@ def run_param_file_with_sinos(
 
     The array must stay alive for the duration of the call, which it does
     here because a reference is held on the stack.
+
+    ``gpu=True`` is refused -- see :func:`_refuse_gpu`.
     """
     import numpy as np
 
+    _refuse_gpu(gpu)
     lib = load()
     arr = np.ascontiguousarray(sinos, dtype=np.float32)
     ptr = arr.ctypes.data_as(ctypes.POINTER(ctypes.c_float))
@@ -260,10 +334,10 @@ def run_param_file_with_sinos(
             _lock.acquire()
             prev = os.getcwd()
             os.chdir(str(cwd))
-        rc = lib.midas_tomo_run_sinos(
+        rc = lib.midas_tomo_run_full(
             param_file.encode(), int(n_cpus),
             1 if gpu else 0, 1 if fftw_bridge else 0, 1 if deterministic else 0,
-            ptr, nbytes,
+            ptr, nbytes, None, 0, fft_engine_code(fft_engine),
         )
     finally:
         if prev is not None:
@@ -271,7 +345,7 @@ def run_param_file_with_sinos(
             _lock.release()
     if rc != 0:
         raise TomoLibraryError(
-            f"midas_tomo_run_sinos failed (code {rc}): {error_message(rc)}"
+            f"midas_tomo_run_full failed (code {rc}): {error_message(rc)}"
         )
     return rc
 
@@ -284,6 +358,7 @@ def run_arrays(
     *,
     fftw_bridge: bool = False,
     deterministic: bool = False,
+    fft_engine: str | None = None,
     cwd: str | os.PathLike | None = None,
 ):
     """Fully in-memory reconstruction: array in, array out, no data files.
@@ -311,13 +386,14 @@ def run_arrays(
             _lock.acquire()
             prev = os.getcwd()
             os.chdir(str(cwd))
-        rc = lib.midas_tomo_run_arrays(
+        rc = lib.midas_tomo_run_full(
             param_file.encode(), int(n_cpus), 0,
             1 if fftw_bridge else 0, 1 if deterministic else 0,
             arr.ctypes.data_as(ctypes.POINTER(ctypes.c_float)),
             ctypes.c_size_t(arr.nbytes),
             out.ctypes.data_as(ctypes.POINTER(ctypes.c_float)),
             ctypes.c_size_t(out.nbytes),
+            fft_engine_code(fft_engine),
         )
     finally:
         if prev is not None:
@@ -325,6 +401,6 @@ def run_arrays(
             _lock.release()
     if rc != 0:
         raise TomoLibraryError(
-            f"midas_tomo_run_arrays failed (code {rc}): {error_message(rc)}"
+            f"midas_tomo_run_full failed (code {rc}): {error_message(rc)}"
         )
     return out

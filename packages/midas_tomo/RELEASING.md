@@ -42,6 +42,27 @@ export MIDAS_TOMO_REFERENCE_BIN=$PWD/dev/refbin/MIDAS_TOMO_REF
 Set `FFTW_PREFIX` if FFTW is not on the default search path. Run this before
 any release that touched `c_src/`.
 
+**Both binaries must load the same FFTW build.** `build_reference_binary.sh`
+links with a bare `-lfftw3f` and embeds no RPATH, so the reference falls back
+to the system `/lib64/libfftw3f.so.3`, while the CMake-built package carries a
+`DT_RPATH` to whatever FFTW it was configured against. Two different FFTW
+builds disagree by ~2 float32 ULP (2.8e-07 relative), and the parity test then
+fails pointing at `c_src/` and `FORK.txt` — none of which is wrong. Export
+`LD_LIBRARY_PATH` to the FFTW the package was built against:
+
+```bash
+export LD_LIBRARY_PATH=$FFTW_PREFIX/lib:$LD_LIBRARY_PATH
+```
+
+`_require_same_fftw()` in the test now compares the two resolved libraries by
+sha256 and fails with that diagnosis instead, so this should not cost anyone an
+hour twice. It compares content rather than path deliberately: on the beamline
+filesystem the same FFTW is reachable as both `/home/beams/...` and
+`/home/beams12/...`, and a path comparison red-flags a healthy environment.
+
+Measured on chiltepin with the environment right: **130 passed**, parity
+bitwise.
+
 ## Reproducibility caveat when comparing releases
 
 Do not diff reconstructions byte-for-byte across builds or machines and treat

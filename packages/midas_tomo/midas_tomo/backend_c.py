@@ -16,8 +16,11 @@ CLI contract (see ``c_src/tomo_init.c``)::
 
     MIDAS_TOMO ParamsFile.txt numberOfParallelJobs [--gpu] [--fftw-bridge]
 
-``--fftw-bridge`` makes the GPU path use CPU FFTW for its transforms, which
-is how the CPU and GPU results are checked against each other.
+``--fftw-bridge`` makes the GPU path use CPU FFTW for its transforms. It is a
+diagnostic, **not** a bit-parity switch: measured on an RTX A6000 it is no
+closer to the CPU result than plain cuFFT is (1.0e-5 relative either way,
+against a CPU FFTW/pocketfft difference of 2.8e-7), which locates the GPU/CPU
+residual in the gridding rather than the transform. See ``scripts/verify_gpu.py``.
 """
 
 from __future__ import annotations
@@ -150,6 +153,7 @@ def run_binary(
     gpu: bool = False,
     fftw_bridge: bool = False,
     deterministic: bool = False,
+    fft_engine: str | None = None,
     cwd: str | os.PathLike | None = None,
     check: bool = True,
     capture_output: bool = False,
@@ -169,6 +173,11 @@ def run_binary(
     fftw_bridge
         GPU only: compute the FFTs with CPU FFTW so the result is bitwise
         comparable to the CPU path. Slower; used for parity testing.
+    fft_engine
+        ``"fftw"`` or ``"pocketfft"``. ``None`` leaves the choice to the
+        binary, whose default is pocketfft. Use ``"fftw"`` to reproduce a run
+        made before pocketfft became the default -- the two agree to ~3e-7
+        relative, not to the bit.
     deterministic
         Plan with ``FFTW_ESTIMATE`` instead of ``FFTW_MEASURE``: reproducible
         across runs and machines, and no wisdom file written. Raises if the
@@ -188,6 +197,19 @@ def run_binary(
         If no usable binary is installed.
     """
     import warnings
+
+    # Validate arguments before probing the filesystem: a typo'd engine name
+    # is a bug in the caller either way, and reporting it as "MIDAS_TOMO was
+    # not built" sends whoever hit it after the wrong problem.
+    from .backend_lib import FFT_ENGINES
+    fft_engine_key = None
+    if fft_engine is not None:
+        fft_engine_key = str(fft_engine).strip().lower()
+        if fft_engine_key not in FFT_ENGINES:
+            raise ValueError(
+                f"unknown FFT engine {fft_engine!r}; expected one of "
+                f"{sorted(FFT_ENGINES)}"
+            )
 
     use_gpu = gpu
     if gpu and not available(gpu=True):
@@ -212,6 +234,16 @@ def run_binary(
             cmd.append("--fftw-bridge")
     elif fftw_bridge:
         raise ValueError("fftw_bridge only applies to the GPU path (gpu=True)")
+
+    if fft_engine_key is not None:
+        if "--fft-engine" not in _usage_text(gpu=use_gpu):
+            raise TomoBackendUnavailableError(
+                f"fft_engine={fft_engine!r} was requested but the installed "
+                "binary does not advertise --fft-engine, so it would ignore "
+                "the flag and silently use its built-in default. Reinstall "
+                "midas-tomo built from the current c_src/."
+            )
+        cmd.append(f"--fft-engine={fft_engine_key}")
 
     if deterministic:
         if not supports_deterministic(gpu=use_gpu):

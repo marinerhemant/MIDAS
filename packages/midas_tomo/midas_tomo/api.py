@@ -88,6 +88,7 @@ def run_engine(
     gpu: bool = False,
     fftw_bridge: bool = False,
     deterministic: bool = False,
+    fft_engine: str | None = None,
     cwd=None,
 ) -> str:
     """Run the engine on *param_file*; return the backend actually used.
@@ -116,11 +117,33 @@ def run_engine(
             f"backend must be 'auto', 'library' or 'subprocess'; got {backend!r}"
         )
 
-    if backend in {"auto", "library"}:
+    # The shared library is CPU-only *by construction*: CMake builds
+    # ``midastomo`` from the CPU sources, and the CUDA target is a separate
+    # EXECUTABLE (``MIDAS_TOMO_GPU``), never a second .so. So a gpu=True
+    # request routed through the library reconstructs on the CPU while
+    # reporting success -- the C prints "built without CUDA" to stdout and
+    # returns a CPU answer, which no caller checking a return value can tell
+    # from a real GPU run.
+    #
+    # Measured on copland (2 x A6000, CUDA 12.8): scripts/verify_gpu.py
+    # reported a GPU-vs-CPU difference of exactly 0.000e+00 and passed, because
+    # both "backends" were the same CPU code. A GPU check that cannot fail is
+    # worse than no GPU check.
+    if gpu:
+        if backend == "library":
+            raise ValueError(
+                "backend='library' cannot use the GPU: libmidastomo is built "
+                "without CUDA (the CUDA target is the separate MIDAS_TOMO_GPU "
+                "executable). Use backend='auto' or backend='subprocess'."
+            )
+        log.info("gpu=True: using the subprocess backend "
+                 "(the shared library has no CUDA path)")
+
+    if backend in {"auto", "library"} and not gpu:
         if backend_lib.available():
             backend_lib.run_param_file(
                 param_file, n_cpus, gpu=gpu, fftw_bridge=fftw_bridge,
-                deterministic=deterministic, cwd=cwd,
+                deterministic=deterministic, fft_engine=fft_engine, cwd=cwd,
             )
             return "library"
         if backend == "library":
@@ -130,7 +153,7 @@ def run_engine(
 
     backend_c.run_binary(
         param_file, n_cpus, gpu=gpu, fftw_bridge=fftw_bridge,
-        deterministic=deterministic, cwd=cwd,
+        deterministic=deterministic, fft_engine=fft_engine, cwd=cwd,
     )
     return "subprocess"
 
@@ -178,6 +201,7 @@ def run_tomo(
     use_gpu: bool = False,
     fftw_bridge: bool = False,
     deterministic: bool = False,
+    fft_engine: str | None = None,
     backend: str = "auto",
 ) -> np.ndarray:
     """Reconstruct from raw projections.
@@ -262,7 +286,7 @@ def run_tomo(
 
     run_engine(
         par_fn, n_cpus, backend=backend, gpu=use_gpu, fftw_bridge=fftw_bridge,
-        deterministic=deterministic, cwd=workingdir,
+        deterministic=deterministic, fft_engine=fft_engine, cwd=workingdir,
     )
 
     t1 = time.time()
@@ -295,6 +319,7 @@ def run_tomo_from_sinos(
     use_gpu: bool = False,
     fftw_bridge: bool = False,
     deterministic: bool = False,
+    fft_engine: str | None = None,
     backend: str = "auto",
 ) -> np.ndarray:
     """Reconstruct from pre-assembled sinograms.
@@ -367,7 +392,7 @@ def run_tomo_from_sinos(
 
     run_engine(
         par_fn, n_cpus, backend=backend, gpu=use_gpu, fftw_bridge=fftw_bridge,
-        deterministic=deterministic, cwd=workingdir,
+        deterministic=deterministic, fft_engine=fft_engine, cwd=workingdir,
     )
 
     t1 = time.time()

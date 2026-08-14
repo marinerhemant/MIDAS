@@ -35,10 +35,20 @@ typedef struct TomoGPUContext TomoGPUContext;
 /// @param filter_type     Filter enum (FILTER_NONE, FILTER_HANN, …).
 /// @param useFftwBridge   If non-zero, 1D and 2D FFTs are performed on the CPU
 ///                        (via FFTW) and data is transferred GPU↔CPU around
-///                        each FFT call.  This guarantees byte-identical output
-///                        to the CPU-only code path.
-///                        If zero, cuFFT is used (faster, but output differs
-///                        from FFTW by ~1e-6 per pixel).
+///                        each FFT call.
+///
+///                        This does NOT give byte-identical output to the CPU
+///                        path, contrary to what this comment claimed until it
+///                        was measured. On an RTX A6000 (128x180 phantom,
+///                        scripts/verify_gpu.py + the bridge probe):
+///                          bridge vs CPU FFTW      1.014e-05  not bitwise
+///                          cuFFT  vs CPU FFTW      9.954e-06  not bitwise
+///                          CPU FFTW vs pocketfft   2.777e-07  not bitwise
+///                        The bridge is no closer to the CPU than cuFFT is, so
+///                        the residual lives in the gridding/interpolation --
+///                        different accumulation order in single precision --
+///                        not in the transform. Treat this flag as a diagnostic
+///                        that isolates the FFT, not as a parity switch.
 /// @return Opaque context handle, or NULL on error.
 TomoGPUContext *tomo_gpu_init(int deviceId,
                               unsigned long sinogram_x_dim,

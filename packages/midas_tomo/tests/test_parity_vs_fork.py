@@ -49,6 +49,79 @@ def _usage(binary: str) -> str:
     return (p.stdout or "") + (p.stderr or "")
 
 
+def _resolved_libfftw(binary: str) -> str | None:
+    """Which libfftw3f the dynamic loader will actually hand this binary.
+
+    ``None`` if it cannot be determined (no ``ldd``, e.g. macOS) -- callers
+    treat that as "cannot check" rather than "they match".
+    """
+    if not shutil.which("ldd"):
+        return None
+    try:
+        out = subprocess.run(["ldd", str(binary)], capture_output=True,
+                             text=True, timeout=30).stdout
+    except (OSError, subprocess.SubprocessError):
+        return None
+    for line in out.splitlines():
+        if "libfftw3f" in line and "=>" in line:
+            return line.split("=>", 1)[1].strip().split(" ")[0]
+    return None
+
+
+def _digest(path: str) -> str | None:
+    """sha256 of a file, or ``None`` if it cannot be read."""
+    import hashlib
+    try:
+        h = hashlib.sha256()
+        with open(path, "rb") as fh:
+            for chunk in iter(lambda: fh.read(1 << 20), b""):
+                h.update(chunk)
+        return h.hexdigest()
+    except OSError:
+        return None
+
+
+def _require_same_fftw() -> None:
+    """Fail with the RIGHT diagnosis when the two binaries load different FFTWs.
+
+    This cost an hour once, so it is worth a check. ``build_reference_binary.sh``
+    links with a bare ``-lfftw3f`` and embeds no RPATH, so the reference falls
+    back to ``/lib64/libfftw3f.so.3``. The CMake-built package embeds an RPATH
+    to whatever FFTW it was configured against. With no ``LD_LIBRARY_PATH``,
+    the two therefore run *different builds of FFTW* and disagree by ~2 float32
+    ULP (2.8e-07 relative, deterministic and reproducible within each binary).
+
+    Left unchecked, the comparison then reports "the packaged build no longer
+    reproduces the pre-fork binary" -- pointing at c_src, the compile flags and
+    FORK.txt, none of which is wrong. Parity itself is fine: exporting
+    LD_LIBRARY_PATH to either copy of the custom FFTW makes both binaries load
+    the same library and the reconstructions become bitwise identical.
+    """
+    pkg = _resolved_libfftw(str(backend_c.binary_path()))
+    ref = _resolved_libfftw(REFERENCE_BIN)
+    if pkg is None or ref is None:
+        return                       # cannot check; do not pretend otherwise
+
+    # Compare CONTENT, not the path. On this filesystem the same FFTW is
+    # reachable as both /home/beams/... and /home/beams12/..., and the packaged
+    # binary carries a DT_RPATH (which beats LD_LIBRARY_PATH) while the
+    # reference has none. The two therefore report different paths to the same
+    # bytes, and a path comparison would fail a perfectly good environment.
+    pkg_h, ref_h = _digest(pkg), _digest(ref)
+    if pkg_h is None or ref_h is None or pkg_h == ref_h:
+        return
+    pytest.fail(
+        "ENVIRONMENT, not a parity regression: the two binaries load "
+        "different builds of FFTW, which disagree by ~2 float32 ULP.\n"
+        f"  packaged  -> {pkg}  (sha256 {pkg_h[:12]})\n"
+        f"  reference -> {ref}  (sha256 {ref_h[:12]})\n"
+        "Point both at one FFTW and re-run, e.g.\n"
+        f"  export LD_LIBRARY_PATH={Path(pkg).parent}:$LD_LIBRARY_PATH\n"
+        "Only if they still differ after that is c_src/ or FORK.txt worth "
+        "looking at."
+    )
+
+
 def _stage(workdir: Path, sino: np.ndarray, angles: np.ndarray) -> TomoConfig:
     """Write the sinogram, angles and parameter file into *workdir*."""
     workdir.mkdir(parents=True, exist_ok=True)
@@ -109,6 +182,7 @@ def test_packaged_build_matches_the_fork_bitwise(dataset, tmp_path):
     FFTW_WISDOM_ONLY, and any difference would be the planner rather than the
     code.
     """
+    _require_same_fftw()
     _, sino, angles = dataset
 
     ref_dir = tmp_path / "shared"
@@ -142,6 +216,7 @@ def test_deterministic_flag_does_not_perturb_the_default_path(dataset, tmp_path)
     build with no flags and requires it to match the reference exactly, which
     is what "opt-in" has to mean if the golden-file gate is to survive.
     """
+    _require_same_fftw()
     _, sino, angles = dataset
 
     shared = tmp_path / "shared"
