@@ -31,16 +31,21 @@ never reconstructed anything.
 
 | environment | result |
 |---|---|
-| midas-tomo engine built | **180 passed** |
-| no engine (e.g. a Mac with no FFTW) | 165 passed, 2 skipped |
+| midas-tomo engine built + torch | **202 passed** |
+| no engine (e.g. a Mac with no FFTW) | 187 passed, 2 skipped |
 
-Both measured 2026-08-13; the 180 on chiltepin
+Both measured 2026-08-14 at 0.2.0; the 202 on chiltepin
 (`/home/beams12/S1IDUSER/opt/tomo_buildtest` on `PYTHONPATH`, shared env at
 `/home/beams12/S1IDUSER/opt/envs/midas/bin/python`).
 
 `release.sh` passes `-rs`, so the skip reasons print. **If you see the
-165-passed line, you tested the wrapper.** Release from a host with the engine,
+187-passed line, you tested the wrapper.** Release from a host with the engine,
 or run the suite there first.
+
+Branch C (`tests/test_direct.py`) additionally needs `torch` and
+`midas-invert` -- the `[direct]` extra. Without them the whole module skips,
+so a green run on a torch-free machine has not exercised direct inversion at
+all. Same trap as the engine, one layer up.
 
 Tests marked `realdata` need the U3O8 scan on haydn
 (`/scratch/s1iduser/mpe_nov22_midas2/`, see `docs/u3o8_2022_dataset.md`).
@@ -78,3 +83,22 @@ crash.
 `midas_dt` is in `packages/midas_suite` (`SUBPACKAGES` + `dependencies`).
 The suite's CI smoke test imports every declared sub-package, so an
 unpublished or unimportable `midas_dt` fails the suite build, not this one.
+
+
+## Before a release that touches `direct.py`
+
+Branch C has two failure modes that produce plausible numbers rather than
+errors, so both are pinned by tests. If either test is weakened, stop.
+
+- [ ] `test_moment_seed_is_on_the_right_order_of_magnitude` -- the seed used to
+      be ~384x too large (peak of the summed lineout instead of a per-ray
+      peak). Because Adam steps a fixed distance in raw parameter units, the
+      solver then sat 1.5 px from a planted centre and got *worse* with a
+      larger learning rate, which reads exactly like a degenerate model.
+- [ ] `test_laplace_default_does_not_use_the_converged_loss` -- the loss is
+      already weighted by 1/variance, so using it as `noise_var` counts the
+      noise twice and inflates sigma by `sqrt(loss * N)`: 0.035 px became
+      446 px on a 20 px window.
+- [ ] `test_no_performance_claim_is_made_in_the_docstring` -- the gate on
+      claiming Branch C beats Branch B. It stays until a preregistered
+      comparison has actually been run.

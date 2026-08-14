@@ -4,7 +4,7 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "midas-dt"
-version = "0.1.0"
+version = "0.2.0"
 description = "Diffraction / X-ray computed tomography (XRD-CT): scan model, sinogram assembly with error propagation, reconstruction and per-voxel peak fitting."
 readme = "README.md"
 license = "BSD-3-Clause"
@@ -24,11 +24,20 @@ dependencies = [
 
 [project.optional-dependencies]
 dev = ["pytest>=7.0"]
+# Branch C only. torch is a large dependency and the other two branches do
+# not need it, so it stays opt-in.
+direct = [
+    "torch>=2.0",
+    "midas-invert>=0.1.1",
+    "scipy>=1.7",
+]
 full = [
     "midas-integrate-v2>=0.3.1",
     "midas-peakfit>=0.5.0",
     "midas-hkls>=0.6.0",
     "midas-stress>=0.8.1",
+    "torch>=2.0",
+    "midas-invert>=0.1.1",
 ]
 
 [project.scripts]

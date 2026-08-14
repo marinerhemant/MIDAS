@@ -107,8 +107,10 @@ echo "[2/7] Running tests..."
 # level when the engine is not built -- 15 tests, covering reconstruction and
 # the branch comparison. A green run without them means the wrapper was tested
 # and nothing else. Expected counts:
-#   midas-tomo engine built : 180 passed
-#   no engine at all        : 165 passed, 2 skipped
+#   engine + torch   : 202 passed
+#   no engine at all : 187 passed, 2 skipped
+# Branch C (test_direct.py) also needs torch + midas-invert; without them it
+# skips wholesale and direct inversion is untested.
 KMP_DUPLICATE_LIB_OK=TRUE python -m pytest tests/ -q --tb=short -rs || {
     echo "ERROR: tests failed. Aborting."
     git checkout -- pyproject.toml midas_dt/__init__.py

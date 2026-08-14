@@ -46,16 +46,35 @@ bin size, or not. Check it on a frame before committing to a reduction —
 One trap worth repeating from that script: on a Pilatus, the module gaps read
 as azimuthal structure and make **every** ring look spotty. Mask them first.
 
-## The two branches
+## The three branches
 
-Both ship, they share one `Channel` list, and `compare()` measures the gap
-between them on your data.
+All ship, they share one `Channel` list, and `compare()` measures the gap
+between any two of them on your data.
 
-**`run_fit_then_recon`** fits each projection, then reconstructs the parameter
-sinograms. 12 reconstructions per channel, independent of binning — cheap.
+**A — `run_fit_then_recon`** fits each projection, then reconstructs the
+parameter sinograms. 12 reconstructions per channel, independent of binning —
+cheap.
 
-**`run_recon_then_fit`** reconstructs every bin, then fits per voxel. Exact,
-at `n_r × n_eta` reconstructions.
+**B — `run_recon_then_fit`** reconstructs every bin, then fits per voxel.
+Exact, at `n_r × n_eta` reconstructions.
+
+**C — `run_direct`** never reconstructs. It builds a differentiable forward
+map (voxel peak parameters → per-voxel pattern → line integral → the measured
+sinogram) and solves for the voxel parameters by gradient descent, so the peak
+model is enforced *inside* the inversion. σ then comes from the curvature of
+the loss rather than from repeated reconstructions. Needs
+`pip install midas-dt[direct]` (torch).
+
+> **No performance claim.** Whether C beats B on accuracy at matched compute
+> has **not been tested**, and nothing in this package asserts it. That claim
+> is gated on a preregistered comparison followed by an adversarial check; if
+> it loses, that gets reported too. What *is* verified is correctness on
+> synthetic data with known ground truth — the projector matches an
+> independent reference, its adjoint passes the dot-product test, autograd
+> matches finite differences, and the solver recovers planted peak centres to
+> **0.019 px** (0.0005 px at 2000 steps). Use C because you want error bars
+> from curvature or a model-constrained inversion, not because it is assumed
+> to be better.
 
 ### When branch A is valid
 
@@ -112,6 +131,19 @@ option: for a linear operator `A` that computes `A @ var`, not `A² @ var`, and
 it can go negative through the ramp filter's lobes. Manufacturing an error bar
 is worse than not having one.
 
+Branch C offers a second route — `laplace_sigma()`, from the curvature of the
+loss. Two things to know before using it:
+
+- It is **block-diagonal**: every other voxel is held fixed while each 4×4
+  block is computed, because the exact Hessian is over all 4 × n_voxel
+  parameters at once. Neighbouring voxels are strongly correlated through the
+  shared rays, so this **understates** the uncertainty. Rank voxels by
+  confidence with it; do not quote it as a calibrated interval.
+- The default `noise_var` is `1/N`, **not** the converged loss. The loss here
+  is already weighted by `1/variance`, so passing the loss counts the noise
+  twice and inflates σ by exactly `sqrt(loss × N)` — measured, that turned a
+  0.035 px error bar into 446 px on a 20 px window.
+
 ## What it does not correct
 
 Attached to every result via `ScanKnownLimits` and written into
@@ -129,11 +161,17 @@ Attached to every result via `ScanKnownLimits` and written into
 ## Installing
 
 ```bash
-pip install midas-dt          # scan, channels, sinograms, reconstruction
-pip install midas-dt[full]    # + integration, peak fitting, ring indexing
+pip install midas-dt          # scan, channels, sinograms, branches A and B
+pip install midas-dt[direct]  # + branch C (torch, midas-invert)
+pip install midas-dt[full]    # everything
 ```
 
-`midas-tomo` supplies the reconstruction engine. The `[full]` extra adds
+`midas-tomo` supplies the reconstruction engine and is always installed; it
+compiles its C at install time and falls back to a Python-only path when the
+toolchain is absent, so it never breaks the install.
+
+`[direct]` adds torch and `midas-invert` for branch C. It is separate because
+torch is large and branches A and B do not need it. `[full]` also adds
 `midas-integrate-v2` (integration with variance), `midas-peakfit`,
 `midas-hkls` (ring indexing) and `midas-stress`.
 
