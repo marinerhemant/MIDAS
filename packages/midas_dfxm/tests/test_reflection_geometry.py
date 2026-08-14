@@ -95,12 +95,26 @@ def test_directional_visibility_flips_with_line_direction():
     C = cubic_stiffness(168.4, 121.4, 75.4, dtype=DT)
     g = (torch.arange(21, dtype=DT) - 10) * 0.05
     GX, GY = torch.meshgrid(g, g, indexing="xy")
-    pos = torch.stack([GX.reshape(-1), GY.reshape(-1), torch.zeros(21 * 21, dtype=DT)], -1)
+    # OFF the slip plane. At z = 0 an edge dislocation's u_g is a step function, so both
+    # gradients vanish away from the core and the two std's are rounding noise (~1e-20
+    # against a beta of ~1e-3). Asserting a dominance ordering there compares noise: it
+    # held on macOS (s_x = 2.8e-20) and failed on Linux (s_x = exactly 0.0). z = 0.1 puts
+    # the sample where the signal is real (s_x ~ 1e-4).
+    pos = torch.stack([GX.reshape(-1), GY.reshape(-1),
+                       torch.full((21 * 21,), 0.1, dtype=DT)], -1)
 
+    # BOTH must be visible in g, i.e. g.b != 0, or there is nothing to compare.
+    # The original second case used b = (0,1,0) against g = (1,0,0): g.b = 0, so that
+    # dislocation is invisible by the classic criterion and its whole du_g field is
+    # identically zero. The assertion only looked satisfied because the old code
+    # returned 0.0 for that degenerate case, so `1.0 > 0.0` read as a flip.
+    #
+    # Both below carry b = (1,0,0) (g.b = 1); only the line direction differs, which is
+    # the variable under test.
     d_line_y = stroh_dislocation(C, burgers=(1, 0, 0), slip_normal=(0, 0, 1),
                                  character="edge", line=(0, 1, 0), core_model="compact")
-    d_line_x = stroh_dislocation(C, burgers=(0, 1, 0), slip_normal=(0, 0, 1),
-                                 character="edge", line=(1, 0, 0), core_model="compact")
+    d_line_x = stroh_dislocation(C, burgers=(1, 0, 0), slip_normal=(0, 1, 0),
+                                 character="edge", line=(0, 0, 1), core_model="compact")
     g_dir = (1.0, 0.0, 0.0)
     vy = directional_visibility(d_line_y, pos, g_dir)
     vx = directional_visibility(d_line_x, pos, g_dir)

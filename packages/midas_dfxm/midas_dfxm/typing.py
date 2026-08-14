@@ -169,6 +169,12 @@ def directional_visibility(
     shows in ``phi``; one along ``x`` shows in ``chi``. So a ``phi``-built map preferentially
     renders segments perpendicular to the projected ``g``. Returns
     ``{'phi_frac', 'chi_frac', 'ratio'}`` (fractions sum to 1; ratio = phi/chi). Differentiable.
+
+    Sample OFF the slip plane. On it (e.g. ``z = 0`` for an edge dislocation with
+    ``slip_normal = (0,0,1)``) ``u_g`` is a step function, so both gradients vanish away
+    from the core, both std's are rounding noise, and there is no signal to compare. In
+    that case all three values are ``nan`` -- check with ``math.isnan`` rather than
+    reading a 0.0 as "invisible in this scan".
     """
     beta = dislocation.displacement_gradient(positions)             # (N,3,3): d u_i / d x_j
     g = torch.as_tensor(g_dir, device=positions.device, dtype=positions.dtype)
@@ -182,9 +188,28 @@ def directional_visibility(
     dug_x = dug @ e_x                                               # rocking (phi) sensitivity
     dug_y = dug @ e_y                                               # chi sensitivity
     s_x, s_y = dug_x.std(), dug_y.std()
-    tot = s_x + s_y + 1e-30
+
+    # Degenerate case: NEITHER axis has measurable sensitivity, so there is no
+    # directional preference to report. This is reachable with ordinary inputs --
+    # sample an edge dislocation on its own slip plane (z = 0) and u_g is a step
+    # function there, so both gradients vanish away from the core and the two
+    # std's are pure rounding noise (~1e-20 against a beta of ~1e-3).
+    #
+    # The old guard was `tot = s_x + s_y + 1e-30`, which silently returned
+    # 0/1e-30 = 0.0 for BOTH fractions -- violating this function's own
+    # "fractions sum to 1" contract, and doing so platform-dependently: macOS
+    # left s_x at 2.8e-20 and reported phi_frac = 1.0, Linux hit exact 0.0 and
+    # reported 0.0, so a test asserting the sum passed on one and failed on the
+    # other. Report NaN instead: undefined is the truthful answer, and it cannot
+    # be mistaken for a real 100/0 split.
+    scale = dug.abs().max()
+    tot = s_x + s_y
+    if not (tot > 1e-12 * scale):        # NaN-safe: false when tot is NaN
+        nan = float("nan")
+        return {"phi_frac": nan, "chi_frac": nan, "ratio": nan}
+
     return {"phi_frac": float(s_x / tot), "chi_frac": float(s_y / tot),
-            "ratio": float(s_x / (s_y + 1e-30))}
+            "ratio": float(s_x / s_y) if s_y > 0 else float("inf")}
 
 
 def recover_burgers(
