@@ -694,8 +694,15 @@ def refine_block_from_disk(
             min_eta=cfg.MinEta,
             wedge_deg=cfg.Wedge,
             chi_deg=cfg.chi,
-            weight_mask=getattr(cfg, "weight_by_position_uncertainty", 0) and 1.0 or 1.0,
-            weight_fit_rmse=0.0,
+            # Read from paramstest (WeightMask / WeightFitRMSE), which
+            # midas-transforms writes into every run. This used to be
+            #     getattr(cfg, "weight_by_position_uncertainty", 0) and 1.0 or 1.0
+            # which returns 1.0 for every possible input (0, 1, None, True,
+            # False, 2.5 — all 1.0), and a hardcoded 0.0, so neither knob could
+            # affect a fit. Defaults 1.0 / 0.0 keep unweighted least squares,
+            # which is what those expressions were silently doing anyway.
+            weight_mask=float(getattr(cfg, "WeightMask", 1.0)),
+            weight_fit_rmse=float(getattr(cfg, "WeightFitRMSE", 0.0)),
         )
 
         # Write FitBest.bin row.

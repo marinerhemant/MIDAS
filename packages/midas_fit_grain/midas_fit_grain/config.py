@@ -147,6 +147,19 @@ class FitConfig:
     xtol: float = 1e-5
     rematch_radius_px: float = 2.0          # used between iterative stages
     phase_steps: Tuple[int, int, int, int] = (4, 4, 4, 4)  # pos / orient / strain / joint
+    #: Per-spot residual weights, read from paramstest.txt.
+    #: ``WeightMask`` multiplies the residual of a spot whose peak touched a
+    #: detector mask (ExtraInfo maskTouched == 1); ``WeightFitRMSE`` is a decay
+    #: rate, weight *= exp(-FitRMSE * WeightFitRMSE), applied only when > 0.
+    #: The defaults reproduce unweighted least squares, which is what every run
+    #: has actually been doing — midas-transforms writes 1.0 / 0.0.
+    WeightMask: float = 1.0
+    WeightFitRMSE: float = 0.0
+    #: DEPRECATED int flags. They were wired into the driver as
+    #: ``getattr(cfg, "weight_by_position_uncertainty", 0) and 1.0 or 1.0``,
+    #: which evaluates to 1.0 for EVERY input, and ``weight_fit_rmse`` was
+    #: passed a hardcoded 0.0 — so neither could change a result no matter
+    #: what the user set. Use WeightMask / WeightFitRMSE instead.
     weight_by_position_uncertainty: int = 0
     weight_by_fit_rmse: int = 0
     debug_mode: int = 0
@@ -275,6 +288,14 @@ _FLOAT_KEYS = {
     "MarginOme", "MarginRadius", "MarginRad", "MarginRadial", "MarginEta",
     "EtaBinSize", "OmeBinSize", "MinEta", "ExcludePoleAngle",
     "MargABC", "MargABG", "BigDetSize",
+    # Per-spot residual weights, consumed by c_port.calc_angle_errors:
+    #   WeightMask     multiplier applied to a spot with maskTouched == 1
+    #   WeightFitRMSE  decay rate; weight *= exp(-FitRMSE * WeightFitRMSE)
+    # midas-transforms writes both into every paramstest.txt, and they used to
+    # sit in the "recognised but ignored" allowlist below — parsed by nobody.
+    # The driver instead consulted two int flags that were never populated from
+    # the file, through an expression that returned 1.0 for every input.
+    "WeightMask", "WeightFitRMSE",
     # Forward-model geometry (refined *Fit values preferred; raw fallbacks).
     "YBCFit", "ZBCFit", "YBC", "ZBC", "YCen", "ZCen",
     "txFit", "tyFit", "tzFit", "tx", "ty", "tz",
@@ -400,7 +421,7 @@ def _apply_param(cfg: FitConfig, key: str, args: list[str],
         # refined-geometry + scan keys emitted by write_paramstest
         "LsdFit", "YBCFit", "ZBCFit", "txFit", "tyFit", "tzFit",
         "OmegaStart", "OmegaStep",
-        "WeightMask", "WeightFitRMSE", "RingToIndex", "NoSaveAll",
+        "RingToIndex", "NoSaveAll",
         # fit_setup spot filter (midas-transforms N8; peak-search-time only)
         "MinIntegratedIntensity",
     }:
