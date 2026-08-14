@@ -163,12 +163,21 @@ def directional_visibility(
 
     The DFXM phase is ``u_g = u . g_hat``. A rocking (``phi``) scan responds to the
     beam-projected gradient ``d u_g / dx`` while a ``chi`` scan responds to the across-beam
-    gradient ``d u_g / dy`` (``x`` = ``beam_axis``, ``y`` = ``across_axis``). With
-    ``d u_g / dx_k = g_hat . (d u / dx_k) = g_hat_i beta_ik`` from the Stroh distortion
-    ``beta``, a dislocation segment elongated along ``y`` varies steeply across its length and
-    shows in ``phi``; one along ``x`` shows in ``chi``. So a ``phi``-built map preferentially
-    renders segments perpendicular to the projected ``g``. Returns
-    ``{'phi_frac', 'chi_frac', 'ratio'}`` (fractions sum to 1; ratio = phi/chi). Differentiable.
+    gradient ``d u_g / dy`` (``x`` = ``beam_axis``, ``y`` = ``across_axis``), with
+    ``d u_g / dx_k = g_hat_i beta_ik`` from the Stroh distortion ``beta``. A straight segment
+    is invariant along its line ``l``, so ``(l . grad) u_g = 0`` and its signal falls entirely
+    in the scan sensing the in-plane gradient perpendicular to ``l``: a segment along ``y``
+    shows in ``phi`` (its variation is along ``x``), a segment along ``x`` shows in ``chi``.
+    WHICH scan is set by the line direction relative to the beam, independent of ``g``.
+
+    But WHETHER the segment shows at all depends on ``g``: the rule presumes ``u_g`` is not
+    identically zero. A segment with ``g.b = 0`` (a screw with ``b perp g``, or an edge whose
+    ``b`` has no component along ``g``) has no phase to modulate and is dark in BOTH scans --
+    returned as ``nan``, not a real 100/0 split. So "along ``x`` -> ``chi``" is realised by,
+    e.g., a screw along ``x`` (``b || x``, ``g = x`` -> ``chi_frac = 1``), NOT by an edge along
+    ``x`` with ``b || y`` and ``g = x`` (``g.b = 0``, dark). Choose ``g`` so the segment of
+    interest is visible before reading the split. Returns ``{'phi_frac', 'chi_frac', 'ratio'}``
+    (fractions sum to 1; ratio = phi/chi). Differentiable.
 
     Sample OFF the slip plane. On it (e.g. ``z = 0`` for an edge dislocation with
     ``slip_normal = (0,0,1)``) ``u_g`` is a step function, so both gradients vanish away
