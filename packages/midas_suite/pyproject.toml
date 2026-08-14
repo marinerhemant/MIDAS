@@ -4,7 +4,7 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "midas-suite"
-version = "0.7.3"
+version = "0.8.0"
 description = "Meta-package: installs the MIDAS Python pipeline (FF/NF/PF HEDM, calibration, peakfit, integration, transforms, ODF, stress)."
 readme = "README.md"
 license = { text = "BSD-3-Clause" }
@@ -48,6 +48,7 @@ dependencies = [
                                    # grain-selection keys are parsed and DISCARDED (23710 vs 6132 grains)
     "midas-fit-grain>=0.7.0",      # >=0.6.0 refiner returns its seed positions; >=0.7.0 adds c_recipe
     "midas-tomo>=0.1.0",           # gridrec CT engine; installs Python-only when FFTW/OpenMP are absent
+    "midas-dt>=0.1.0",             # XRD-CT: sinogram assembly + both branch orders (fit→recon, recon→fit)
     "midas-nf-preprocess>=0.6.0",
     "midas-nf-fitorientation>=0.8.0",
     "midas-zipper>=0.1.5",         # raw → .MIDAS.zip ingest (pip-portable, no C/source-tree dep)

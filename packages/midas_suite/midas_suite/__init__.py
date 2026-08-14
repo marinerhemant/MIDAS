@@ -15,7 +15,7 @@ To inspect what was installed:
 
 """
 
-__version__ = "0.7.3"
+__version__ = "0.8.0"
 
 # The sub-packages this meta-package pulls in (in publish-order).
 # Kept in sync with pyproject.toml's ``dependencies`` list.
@@ -35,6 +35,7 @@ SUBPACKAGES = (
     "midas_process_grains",
     "midas_fit_grain",
     "midas_tomo",
+    "midas_dt",
     "midas_nf_preprocess",
     "midas_nf_fitorientation",
     "midas_zipper",

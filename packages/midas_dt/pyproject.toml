@@ -4,7 +4,7 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "midas-dt"
-version = "0.1.0.dev0"
+version = "0.1.0"
 description = "Diffraction / X-ray computed tomography (XRD-CT): scan model, sinogram assembly with error propagation, reconstruction and per-voxel peak fitting."
 readme = "README.md"
 license = "BSD-3-Clause"
@@ -12,7 +12,7 @@ requires-python = ">=3.9"
 authors = [{name = "Hemant Sharma", email = "hsharma@anl.gov"}]
 keywords = ["MIDAS", "XRD-CT", "diffraction tomography", "DT", "synchrotron", "chemical tomography"]
 classifiers = [
-    "Development Status :: 2 - Pre-Alpha",
+    "Development Status :: 3 - Alpha",
     "Intended Audience :: Science/Research",
     "Programming Language :: Python :: 3",
     "Topic :: Scientific/Engineering :: Physics",

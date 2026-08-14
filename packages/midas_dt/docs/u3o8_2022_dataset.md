@@ -6,6 +6,13 @@ repo, so anything recorded only there does not survive the working tree.
 
 Every number here is reproducible with a named script.
 
+**What this document is for.** It records what was measured while building the
+package, so the next person does not re-derive it. It is *not* a scientific
+analysis of this sample, and nothing here is a release gate: the sample belongs
+to the group that collected it, and the open question below (which phase the
+rings are) is theirs to answer, not the package's. The package's own
+correctness is established by its test suite, not by this dataset.
+
 ## Where the data is
 
 Reach: `ssh chiltepin` then `ssh haydn`, both as `s1iduser`. haydn has no
@@ -76,7 +83,14 @@ on a profile with a realistic falling background.
 Both 2023 channel choices are validated: `rad_105_125` contains the 115.11 px
 ring, `rad_470_490` contains the 483.85 px one (the strongest in the pattern).
 
-## Phase assignment — UNRESOLVED, and now well characterised
+## Phase assignment — OPEN, and belongs to the sample's owners
+
+Left open deliberately. What follows characterises the question well enough for
+whoever owns the sample to pick it up; it is not a `midas-dt` deliverable and
+does not block a release. The one thing it *does* establish for the package is
+that `midas_dt.index_rings` discriminates — CeO2, a phase that is certainly not
+present, scores 1/28 while the candidates score 17/28. A matcher that matched
+everything would be useless, and this one does not.
 
 `dev/index_u3o8_rings.py`, all 28 rings, two tolerances:
 
@@ -128,7 +142,7 @@ of the strongest rings in the pattern is in this set.
 **A phase assignment that cannot account for the strongest ring, or for the
 channel the 2023 analysis actually used, is not an assignment.**
 
-### Next steps, in order
+### If someone picks this up
 
 1. Search for a phase with large d-spacings (9.4, 9.0, 7.4 Å) — uranium
    oxide hydrates and layered uranyl phases are the obvious family, but this
@@ -136,6 +150,11 @@ channel the 2023 analysis actually used, is not an assignment.**
 2. Re-run the coverage check with any new candidate; the criterion is
    accounting for the unexplained 8, not raising the total match count.
 3. Only then treat a d-spacing map from this dataset as a lattice measurement.
+
+Everything else in `midas-dt` — reduction, sinogram assembly, both branches,
+reconstruction, the maps — is independent of the answer. Only the *labels* on a
+phase-fraction map depend on it, and `midas_dt.maps` requires the caller to
+supply the phase, so it cannot invent one.
 
 ## The legacy code, and what is wrong with it
 
