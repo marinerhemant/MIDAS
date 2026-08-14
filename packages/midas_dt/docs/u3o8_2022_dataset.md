@@ -4,7 +4,10 @@ Findings about the dataset `midas-dt` was developed against. Tracked
 deliberately: `packages/*/dev` and `CHECKPOINT*.md` are both gitignored in this
 repo, so anything recorded only there does not survive the working tree.
 
-Every number here is reproducible with a named script.
+Every number here is reproducible with a named script, and those scripts
+are tracked under `packages/midas_dt/scripts/` -- `packages/*/dev` is
+gitignored repo-wide, so a script left there is not re-derivable by anyone
+but its author.
 
 **What this document is for.** It records what was measured while building the
 package, so the next person does not re-derive it. It is *not* a scientific
@@ -47,7 +50,7 @@ Both divide with no remainder, which is what makes the layout confirmed.
 Lsd = 1071098.336 µm, BC = (790.3118888, 864.5394861) px, px = 172 µm,
 `ImTransOpt 2`, RhoD = 150000 µm.
 
-`dev/look_at_frame.py` renders a raw frame with ring radii overlaid on that
+`scripts/look_at_frame.py` renders a raw frame with ring radii overlaid on that
 beam centre. **The marker lands on the beamstop and the circles land on the
 rings.** BC and the radius scale are both correct.
 
@@ -67,7 +70,7 @@ coefficient of variation is 0.64 at R = 115 px and 0.35 at R = 205 px.
 
 ## Ring list — 28 rings
 
-`dev/inspect_u3o8_lineout.py` (translation 27, 24 frames averaged, 60-560 px),
+`scripts/inspect_u3o8_lineout.py` (translation 27, 24 frames averaged, 60-560 px),
 via `midas_dt.rings.find_rings` with a **rolling-median baseline**:
 
 **28 rings above 3 sigma.** The strongest are R = 483.85 (SNR 47), 437.76
@@ -92,7 +95,7 @@ that `midas_dt.index_rings` discriminates — CeO2, a phase that is certainly no
 present, scores 1/28 while the candidates score 17/28. A matcher that matched
 everything would be useless, and this one does not.
 
-`dev/index_u3o8_rings.py`, all 28 rings, two tolerances:
+`scripts/index_u3o8_rings.py`, all 28 rings, two tolerances:
 
 | phase | 2.0% | 0.5% | rms @ 0.5% |
 |---|---|---|---|

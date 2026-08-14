@@ -40,7 +40,7 @@ Rings are integrated azimuthally, reconstructed per (Q, η) bin, and fitted.
 coarse-grained and this is the wrong tool — use `midas_index`'s PF mode with
 `midas_pf_odf`. The dividing line is operational: continuous at your working
 bin size, or not. Check it on a frame before committing to a reduction —
-`packages/midas_dt/dev/look_at_frame.py` in the MIDAS repo does this, and
+`packages/midas_dt/scripts/look_at_frame.py` in the MIDAS repo does this, and
 `midas_dt.rings.find_rings` gives the quantitative version.
 
 One trap worth repeating from that script: on a Pilatus, the module gaps read
