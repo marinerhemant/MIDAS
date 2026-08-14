@@ -397,3 +397,51 @@ per-cycle mechanical effect such as stage settling after fly-back.
 intensity comparison, find the monitor column — and if none exists, halt and ask (README STOP
 table), because the normalisation cannot be recovered from the archive. Test a fast-axis
 correlation by dropping the scans immediately after each fly-back.
+
+## A claimed strain wave must be told from a non-periodic phase
+
+symptom: periodicity_vs_scalar
+coord: strain
+
+**Test.** Do **not** decide it with a scalar direction-coherence or band-SNR number — those do
+not collapse on a non-periodic field. Use two structural tests instead. (i) **Real-space
+autocorrelation** of the field in a clean window: a genuine wave has repeating side-lobes at ±λ
+(and ±2λ…); a non-periodic phase (smooth strain blobs) gives a single central peak decaying
+monotonically with no side-lobes. (ii) **Reflection rotation**: measure the wavevector direction
+from two different reflections — a real strain wave's wavevector rotates *with the crystal axes*
+(e.g. ~90° between orthogonal reflections), whereas a lab-frame processing/optics artifact gives
+the *same* direction for both. If the autocorrelation shows side-lobes **and** the direction
+rotates with the reflection, it is a real wave; if either fails, it is not.
+
+**Cause.** A per-window band-SNR / coherence gate measures whether a window has *a* dominant
+Fourier mode, which a smooth aperiodic gradient also has (its power piles up at the low-frequency
+band edge). On the tetragonal null the band-SNR was *higher* than on the real wave and coherence
+R = 0.63 was non-trivial (Notebook §8c), so the scalar is permissive, not diagnostic.
+
+**Lever.** Report the autocorrelation periodicity and the reflection-rotation as the evidence, not
+the coherence scalar. Keep the scalar only as a coarse pre-filter. If only one reflection exists,
+the rotation test is unavailable and the autocorrelation carries the whole claim — say so.
+
+## A reflection that should see the strain shows no contrast, or the wave period looks halved
+
+symptom: wrong_channel_or_half_period
+coord: strain
+
+**Test.** Two distinct causes, each with a clean check. (i) **No contrast in a θ,2θ map** — compute the
+shift direction for this reflection: $\Delta\mathbf Q=\mathbf H\,\mathbf G_0$. If $\Delta\mathbf Q$ is
+**transverse** to $\mathbf Q$ (a cube-axis reflection viewing a shear), the strain (longitudinal)
+channel is genuinely zero and the signal is all **tilt** — re-image as a **θ-rock (mosaicity)** map and
+it appears. If $\Delta\mathbf Q$ has a longitudinal component and there is still nothing, the cause is
+elsewhere (pedestal, alignment). (ii) **Period looks like λ/2** — check whether the intensity image was
+taken at the **exact Bragg peak**: the response there is 2nd-order, so a wave of period λ images at λ/2.
+Step onto the **weak-beam flank** (off-Bragg) and the true λ returns. A θ,2θ *strain map* (a COM, linear)
+does not have this doubling; only fixed-θ intensity does.
+
+**Cause.** (i) A single reflection senses a strain as **d-spacing (θ,2θ) or tilt (θ-rock) depending on
+its direction** relative to the strain axes; a reflection can be blind in one channel (Notebook §9a).
+(ii) At exact Bragg the fixed-θ intensity is an even function of the deviation → frequency doubling
+(Notebook §9b).
+
+**Lever.** Match the channel to the reflection (diagonal reflection → θ,2θ strain; cube-axis → θ-rock
+tilt), and read the intensity wavelength on the weak-beam flank, not at the peak. If you need the true
+strain field, use the θ,2θ COM (linear) rather than a fixed-θ intensity.

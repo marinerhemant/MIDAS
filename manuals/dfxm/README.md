@@ -239,6 +239,32 @@ your own analysis of it. Each is terse here; the measurement behind it is in Not
     **1.98 mdeg (p95 10.67)**, 12 % of the FWHM — a **44× error**, on the map the analysis
     leaned on most (Notebook §5i).
 
+21. **One measured strain component plus compatibility does NOT give you the others — it is an
+    identifiability limit, not a prediction (§4, Notebook §8b).** In-plane Saint-Venant
+    compatibility is *one* equation in *three* unknown strain components, so a measured
+    $\varepsilon_{xy}$ fixes only one combination of the normal strains. A companion field with
+    **zero dilatation** is exactly as compatible as one with maximal dilatation; the partition is
+    set by the elastic moduli, which single-peak data cannot access. Do not present a
+    compatibility-derived companion (a "predicted dilatation wave", a filled-in $\varepsilon_{xx}$)
+    as a measurement or as "demanded". The closure-free, falsifiable statement a multi-peak run
+    must satisfy is the source term $\partial^2\varepsilon_{xx}/\partial y^2 +
+    \partial^2\varepsilon_{yy}/\partial x^2 = 2\,\partial^2\varepsilon_{xy}/\partial x\partial y$.
+
+22. **A reflection senses a given strain as EITHER a d-spacing change (θ,2θ) OR a lattice tilt
+    (θ-rock / mosaicity), set by the reflection direction — not both equally (§4, Notebook §9;
+    /verify ESTABLISHED across 4 lenses).** The shift is $\Delta\mathbf g=-\mathbf H^{\mathsf T}\mathbf g_0$
+    (from $\mathbf g=\mathbf F^{-\mathsf T}\mathbf g_0$), with $\mathbf H$ the **symmetric** strain
+    tensor here; a longitudinal part (‖$\mathbf g_0$ = strain) and a transverse part
+    ($\perp\mathbf g_0$ = rotation). For a shear $\varepsilon_{xy}$, a reflection with $\mathbf g_0$
+    along the shear \emph{diagonal} ($[110]_T$-type) sees pure strain; one along a \emph{cube axis}
+    ($[100]_T$-type) sees pure tilt and is **blind in a θ,2θ scan**. **State the index frame** — the
+    same Miller string flips channels between frames: orthorhombic 400 ($a_O\!\parallel\![110]_T$) is
+    strain-sensing, tetragonal (400) is tilt-sensing. Before concluding "no signal", check the
+    channel *and the frame*. In a fixed-θ **intensity** image the response at exact Bragg is even, so
+    a period-λ wave images at **λ/2** (a generic rocking-curve corollary, not a named DFXM effect);
+    the true λ returns off-Bragg on the **weak-beam flank** — but only for the **strain** channel (a
+    tilt-channel intensity ∝ $|$deviation$|$ doubles at any operating point).
+
 ### Traps that silently corrupt results
 
 | Trap | Symptom if missed | Where |
@@ -246,7 +272,13 @@ your own analysis of it. Each is terse here; the measurement behind it is in Not
 | first moment on raw (un-subtracted) frames | orientation amplitude ~67× too small, map still smooth | §2 |
 | refraction offset subtracted as a strain field | a real uniform strain "removed"; gradient bias left in | §4 |
 | two reflections overlaid without co-registration | plausible full-F tensor that means nothing | §3 |
+| a compatibility-derived companion component quoted as a measured/"demanded" dilatation | a closure-dependent number (true value ranges 0→upper bound) read as physics | §4, Notebook §8b |
+| a periodic strain wave judged real by a scalar coherence/SNR number | a non-periodic phase scores comparably; use autocorrelation periodicity + reflection rotation | Notebook §8c, DIAGNOSIS |
 | kinematic strain inverse past ~0.3 Λ | converged, biased amplitude; looks like a real strain | §4 |
+| a shear-strain reflection reported as "no contrast" | wrong channel — a cube-axis reflection sees the shear as tilt (θ-rock), not strain (θ,2θ) | §4, Notebook §9 |
+| a fixed-θ intensity image read at exact Bragg | 2nd-order response images the wave at **λ/2**; go weak-beam for the true λ | Notebook §9 |
+| a single DFXM frame used to call a wave 2D vs 3D | the inclined projection collapses sample x and z onto one detector axis; you need the scanned reconstruction | Notebook §9 |
+| a Miller string ("the 400 reflection") quoted without its index frame | channel inverts: ortho 400 (=tet [110]) is strain-sensing, tet 400 (cube axis) is tilt-sensing | Notebook §9a |
 | round-trip quoted as physical accuracy | 1e-16 "validation" that tests only the linear algebra | §2 |
 | mosaicity read as intrinsic sample spread | it is the intrinsic spread **convolved with the instrument resolution** — deconvolve with `fit_orientation_mosaicity`, not `moment_orientation` | §2, §4 |
 | resolution widths assumed isotropic | DFXM resolution is anisotropic (Poulsen); use `poulsen_resolution_widths` | §1 |

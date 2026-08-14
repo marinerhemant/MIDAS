@@ -56,6 +56,13 @@ retracted, each with the measurement or reference that killed it.
 | 27 | "A lineshape correction removes the window-truncation bias (39.5 % of labels)" | **RETRACTED** — failed its own positive control | §5j |
 | 28 | The "Darwin ladder" — rocking-width/Darwin-width as a dynamical-diagnosability criterion | **RETRACTED** — four independent errors | §5k |
 | 29 | An apparent two-population split, and sub-resolution rocking-curve doublets | **RETRACTED** — undersampling + a fixed rocking window | §5l |
+| 30 | Reproduced a published DFXM shear-strain wave from public data (2.0 µm, diagonal), null-clean, rotating ~90° between reflections | REAL-DATA (public), VERIFIED (4-lens) | §8a |
+| 31 | **Identifiability limit:** single-peak ε_xy + in-plane compatibility does NOT fix the dilatation (1 eqn, 3 unknowns; range 0→upper bound) | ESTABLISHED (/verify) | §8b |
+| 32 | Coherence-R / band-SNR scalars do NOT collapse on a non-periodic null; autocorrelation periodicity + reflection rotation do | REAL-DATA (public) | §8c |
+| 33 | "Compatibility *demands* a ~0.8× dilatation companion to the measured shear wave" | **RETRACTED** as worded — a closure choice (§8b) | §8b |
+| 34 | A single reflection senses a strain as d-spacing (θ,2θ) OR tilt (θ-rock) by geometry; diagonal→strain, cube-axis→tilt (blind in θ,2θ) | PACKAGE-GT VERIFIED | §9a |
+| 35 | A single DFXM detector frame is an inclined projection that collapses sample x and z onto one axis — it cannot separate a 2D from a 3D wave; needs a scanned reconstruction | PACKAGE-GT VERIFIED | §9c |
+| 36 | "An a–c-plane DFXM image is a clean 2D-vs-3D dimensionality test" | **RETRACTED** — the projection collapses x and z (§9c) | §9c |
 
 The through-line: on real DFXM frames, **nothing tells you the answer is wrong** — a
 pedestal-dominated map is smooth, an unregistered tensor is plausible, a refraction offset
@@ -663,3 +670,116 @@ cannot be read as a phase fraction. The fix is upstream of image processing: **a
 extractor applied to a mis-specified contrast still returns a mis-specified answer.** Replace the
 hard deadband with a per-pixel class probability plus an explicit "undecidable at this dose"
 class.
+
+---
+
+## 8. Third campaign: reproducing a published strain wave from public data
+
+Source: **Yay et al., Sci. Adv. 12, eaec8998 (2026)**, public Dryad **doi:10.5061/dryad.rfj6q57pj**
+(CC0) — Cu-Ba122 nematic, 040₁, 80 K, figure-level Δε_xy map (not raw frames). Scripts under
+`~/Desktop/analysis/yay_strainwaves_dryad/` (`robustness.py`, `compat_dilatation.py`,
+`honest_analysis.py`, `build_artifact.py`). This campaign both **confirmed a real effect** and
+**caught our own overclaim via `/verify`** — the same pattern the whole notebook is about, this
+time on our own analysis rather than someone else's.
+
+### 8a. Real-data (public): the strain wave reproduces, and it is not an artifact
+
+From the public Δε_xy map alone, an independent pipeline recovers a coherent shear-strain wave:
+**λ = 2.0 ± 0.4 µm**, diagonal wavevector **ψ ≈ −48°**, direction coherence **R = 0.98**. Confirmed
+three independent ways: our windowed power spectrum (1.98 µm), the authors' own published Fourier
+transform (1.95 µm), and a real-space autocorrelation (side-lobes at ±2.0 µm). Strongest
+is-it-physics signature: the wavevector **rotates ~94° between the 400₄ and 040₁ reflections** —
+it tracks the crystal, not the lab, so a detector/optics/processing artifact fixed in the lab
+frame is excluded. A four-lens `/verify` returned SURVIVES on the artifact, statistics, and
+reproduction lenses.
+
+### 8b. Identifiability limit + a retraction: single-peak strain + compatibility ≠ dilatation
+
+We first claimed in-plane Saint-Venant compatibility **demands** a companion dilatation wave of
+~0.8× the shear. `/verify` (physics lens) **REFUTED** it. 2D compatibility is **one equation in
+three unknown strain components**, so a measured ε_xy fixes only one combination of the normal
+strains. A purely **deviatoric** companion with **exactly zero dilatation** satisfies the same
+compatibility with the same ε_xy (residual ~1e-10). So the compatible dilatation ranges from **0**
+(all-deviatoric) to an **upper bound** (~1.5e-5 here, all-dilatation); the partition is fixed by the
+elastic moduli / Ginzburg-Landau energetics, which single-peak data **cannot access**. The "0.8"
+was a closure choice, and was mislabeled (a normal-strain *component* vs the dilatation *trace*,
+~2×). This is now **README rule 21**. The closure-free, falsifiable residue — the honest deliverable
+— is the source term a multi-peak measurement of ε_xx, ε_yy must satisfy:
+`∂²ε_xx/∂y² + ∂²ε_yy/∂x² = 2 ∂²ε_xy/∂x∂y`. Logged: `/verify` REFUTED (closure) / ESTABLISHED (wave).
+Lesson: a deterministic linear transform of a measurement is not an independent prediction of it.
+
+### 8c. Null-discriminator: a scalar coherence/SNR does not tell a wave from a non-periodic phase
+
+The pipeline's per-window band-SNR was **higher** on the tetragonal null (Fig3c, 220, 100 K:
+SNR ~29) than on the real wave (SNR ~11), and the null's direction coherence R = 0.63 was not
+negligible — a smooth but **non-periodic** strain field (large blobs) produces both. So a scalar
+coherence/SNR gate does **not** discriminate wave from no-wave. What does: (i) **real-space
+autocorrelation** — a wave has periodic side-lobes at ±λ, a non-periodic field decays
+monotonically; (ii) **reflection rotation** — a real strain wave's wavevector rotates with the
+crystal between reflections; an artifact does not. Lead with these, never with a coherence number.
+See DIAGNOSIS ("A claimed strain wave must be told from a non-periodic phase").
+
+---
+
+## 9. Fourth campaign: forward-model ground truth vs a fast approximation
+
+We built a fast browser helper for "what does this reflection/plane image?", then rendered the same
+scenarios with the **validated `midas_dfxm` package forward model** (voxel-splat geometrical optics +
+Poulsen resolution + objective PSF; scripts `~/Desktop/analysis/yay_strainwaves_dryad/gt_render.py`,
+`forward_h0l.py`, `plane_simulator.html`). The package reproduced the planted wave exactly (2.00 µm in
+2D; 2 µm × 3 µm in 3D, recovered from the arrays), and in doing so caught three things the fast
+approximation got wrong — the same value a `/verify` pass gives, applied to our own tool. Same-team
+public context: Yay et al. Sci Adv 2026 (Cu-Ba122); Ba122 cell inferred.
+
+### 9a. A single reflection sees a strain as d-spacing OR tilt, by geometry
+
+The rigorous shift is $\Delta\mathbf g=-\mathbf H^{\mathsf T}\mathbf g_0$ (from $\mathbf g=\mathbf F^{-\mathsf T}\mathbf g_0$),
+with $\mathbf H$ the **symmetric** strain tensor here (the loose "$\Delta\mathbf Q=\mathbf H\mathbf G_0$"
+is right only for a symmetric field — for an asymmetric distortion the transpose flips the tilt). It has
+a longitudinal part (‖$\mathbf g_0$, d-spacing, θ,2θ) + transverse part (⊥$\mathbf g_0$, rotation,
+θ-rock/mosaicity). For a shear $\varepsilon_{xy}$ a diagonal reflection gives pure longitudinal → strain,
+a cube-axis reflection pure transverse → tilt — coefficients $c_{\mathrm{strain}}=2\hat g_x\hat g_y$ and
+$c_{\mathrm{tilt}}=\sqrt{\hat g_x^2+\hat g_y^2-c_{\mathrm{strain}}^2}$, verified to machine precision by
+two independent reproductions: 1.00/0.00 for $[110]_T$, 0.00/1.00 for $[100]/[010]_T$, **0.956/0.206**
+(not 0.96) for the shallow h0l. So a cube-axis reflection is **blind to the shear in a θ,2θ scan**.
+**HAZARD (the /verify strongest surviving issue): the Miller string is frame-dependent.** The paper's/
+tool's ortho 400 ($a_O\!\parallel\![110]_T$) is strain-sensing; a literal tetragonal (400) is a cube axis
+= tilt-sensing. Quoting "the 400 reflection" without the frame **inverts strain↔tilt**. Verified
+ESTABLISHED across physics, reproduction, literature (Yay/Poulsen verbatim), and package/convention
+lenses (no factor-of-2: the amplitude is the tensor shear, `small_strain_from_F` recovers it exactly).
+
+### 9b. At exact Bragg the wave images at λ/2; use the weak-beam flank for true λ
+
+A fixed-θ intensity image at the exact Bragg peak responds to the shift at **2nd order** (even), so the
+periodic wave images at **λ/2** — the package showed 1.00 µm for a 2.00 µm wave at exact Bragg, and the
+true 2.00 µm only when the acceptance centre was offset ~1σ onto the **weak-beam flank**. A θ,2θ strain
+*map* (COM, linear) always gives λ; the λ/2 trap is specific to fixed-setting intensity. Two /verify
+refinements: (i) this "frequency doubling" is a **correct but generic rocking-curve corollary, not a
+named DFXM effect** — the *citable* standard result is only "use the weak-beam flank" (Poulsen; weak-beam
+DFXM); (ii) the flank recovers the true λ **only for the strain channel** — the **tilt channel intensity
+∝ $|$deviation$|$ (sign-independent), so it doubles at *any* operating point**, on- or off-Bragg
+(reproduced numerically on a tilt-only reflection). It also assumes a symmetric rocking curve; dynamical/
+extinction asymmetry would leak some fundamental back in.
+
+### 9c. A single detector frame collapses x and z — retraction of the a–c dimensionality test
+
+RETRACTED (findings 36): I claimed an a–c-plane image cleanly separates a 2D from a 3D wave. The
+package's detector image is an **inclined projection**: with x‖beam and the diffracted beam at 2θ, the
+detector v-axis images $(\cos2\theta\,z-\sin2\theta\,x)$, so **sample x and z both map onto v** and the
+x–z checkerboard collapses along one axis in a single frame (see `gt_3d_400_mosaicity.png`, right
+panel: the clean checkerboard is only in the sample-frame voxel slice, not the detector image). The
+c-structure is recoverable from a **scanned/reconstructed volume**, not one image. /verify nuance: the
+collapse is exact for a **box beam**; a **line/sheet beam** illuminating one layer already gives an
+un-collapsed 2D map *of that layer*, and you scan layers for 3D — either way 3D needs scanning, so the
+"single frame can't separate 2D/3D" conclusion stands. Two more honest notes the GT forced: real
+contrast at $A\sim10^{-5}$ is **sub-percent** (0.2–2 %; stripes are in the data, not the eye), and the
+DFXM resolution is **strongly anisotropic** (σ_rock ≈ 1e-3 ≪ σ_roll ≈ 9e-3), which a single-σ blur
+misrepresents.
+
+The fast helper was then corrected to include the strain **and** tilt channels and the λ/λ-2 weak-beam
+behaviour; the projection-collapse, contrast and anisotropic-resolution simplifications remain and are
+labelled, with the package renders embedded as the reference. Lesson: a fast forward approximation is
+worth building for intuition, but check it against the validated forward before trusting its picture.
+The forward behaviour is now **regression-locked** by `packages/midas_dfxm/tests/test_wave_period.py`
+(4 tests: the tensor-shear convention, the 2 µm period off-Bragg, the λ/2 doubling at Bragg, and the
+[110]-strain vs [100]-tilt channel split) — the last gap the /verify pass flagged.
