@@ -98,13 +98,35 @@ class Channel:
 
     @property
     def n_r(self) -> int:
-        """Radial bins in this channel."""
-        return max(1, int(math.floor((self.r_max - self.r_min) / self.r_bin)))
+        """Radial bins in this channel.
+
+        ``ceil``, not ``floor``: a window whose span is not an exact multiple of
+        ``r_bin`` still gets a final partial bin, and the integrator produces
+        it. These two disagreed until it was measured -- a 15-124.26 px window
+        at 1 px reported 109 bins where the reducer returned 110.
+
+        The count is not cosmetic. Anyone building a radius axis as
+        ``linspace(r_min, r_max, n_r)`` -- the obvious thing to write, and what
+        :meth:`radii` now exists to prevent -- would get an axis one short of
+        the data and silently assign the wrong d-spacing to every bin.
+        """
+        return max(1, int(math.ceil(
+            (self.r_max - self.r_min) / self.r_bin - 1e-9)))
 
     @property
     def n_eta(self) -> int:
-        """Azimuthal bins in this channel."""
-        return max(1, int(math.floor((self.eta_max - self.eta_min) / self.eta_bin)))
+        """Azimuthal bins in this channel. ``ceil``, as for :attr:`n_r`."""
+        return max(1, int(math.ceil(
+            (self.eta_max - self.eta_min) / self.eta_bin - 1e-9)))
+
+    def radii(self) -> "np.ndarray":
+        """Bin-centre radii, in pixels, matching what the integrator returns.
+
+        Use this rather than building the axis by hand: it cannot drift from
+        :attr:`n_r`, and getting the length wrong misassigns every d-spacing.
+        """
+        import numpy as np
+        return np.linspace(self.r_min, self.r_max, self.n_r)
 
     @property
     def n_sinograms(self) -> int:

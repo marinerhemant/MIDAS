@@ -369,3 +369,43 @@ def test_spec_from_calibration_forwards_the_channel_binning():
     assert spec_from_calibration(FakeResult(), ch) == "spec"
     assert captured["RMin"] == 105 and captured["RMax"] == 125
     assert captured["RBinSize"] == 0.5 and captured["EtaBinSize"] == 3.0
+
+
+# ------------------------- bin counts must match the integrator's
+def test_n_r_matches_what_the_integrator_actually_produces():
+    """``Channel.n_r`` used ``floor`` while the reducer produces ``ceil``.
+
+    Found while writing the walkthrough notebook: a 15-124.26 px window at
+    1 px/bin reported 109 bins and the reducer returned 110, so
+    ``linspace(r_min, r_max, n_r)`` -- the obvious way to build a radius axis --
+    was one short of the data and misassigned every d-spacing. Exact-multiple
+    windows agreed, which is why it went unnoticed.
+    """
+    from midas_dt.channels import Channel
+    # span is NOT an exact multiple of r_bin: the case that was wrong
+    ch = Channel(15.0, 124.26, r_bin=1.0, eta_bin=360.0)
+    assert ch.n_r == 110, f"expected 110 bins for a 109.26 px span, got {ch.n_r}"
+    ch2 = Channel(15.0, 135.06, r_bin=1.0, eta_bin=360.0)
+    assert ch2.n_r == 121
+
+
+@pytest.mark.parametrize("lo,hi,rb,expect", [
+    (20.0, 92.0, 1.0, 72),        # exact multiple -- unchanged by the fix
+    (105.0, 125.0, 0.5, 40),      # exact
+    (48.0, 62.0, 1.0, 14),        # exact
+    (10.0, 100.0, 2.5, 36),       # exact
+    (15.0, 124.26, 1.0, 110),     # partial final bin
+])
+def test_exact_multiples_are_unaffected(lo, hi, rb, expect):
+    from midas_dt.channels import Channel
+    assert Channel(lo, hi, r_bin=rb, eta_bin=360.0).n_r == expect
+
+
+def test_radii_helper_length_matches_n_r():
+    from midas_dt.channels import Channel
+    for ch in (Channel(15.0, 124.26, r_bin=1.0, eta_bin=360.0),
+               Channel(105.0, 125.0, r_bin=0.5, eta_bin=360.0)):
+        r = ch.radii()
+        assert r.shape == (ch.n_r,)
+        assert r[0] == pytest.approx(ch.r_min)
+        assert r[-1] == pytest.approx(ch.r_max)
