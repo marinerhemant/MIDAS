@@ -14,6 +14,23 @@ from .._logging import stage_timer
 from ..results import PeakFitResult, PerDetPeakFitResult
 
 
+def _det_zip(ctx: StageContext, det) -> Path | None:
+    """Resolve a detector's zarr, falling back to the layer directory.
+
+    ``det.zarr_path`` comes back empty on the resume path, and ``Path("")``
+    renders as ``"."`` — so the bare conversion handed ``peakfit_torch`` the
+    current directory as its DataFile and it died on ``IsADirectoryError``,
+    while the zip zip_convert had just written sat unused in the layer dir.
+    Mirrors ``midas_pipeline.stages.peakfit._resolve_ff_zip``, which is the
+    live implementation; this package is a retirement shim (see cli.py).
+    """
+    if det.zarr_path:
+        return Path(det.zarr_path)
+    for p in sorted(ctx.layer_dir.glob("*.MIDAS.zip")):
+        return p
+    return None
+
+
 def run(ctx: StageContext) -> PeakFitResult:
     started = time.time()
     inputs: dict[str, str] = {}
@@ -27,7 +44,10 @@ def run(ctx: StageContext) -> PeakFitResult:
         from .._logging import LOG
         sr_midas.log_status(LOG, run_sr=True)
         for det in ctx.detectors:
-            zip_path = Path(det.zarr_path)
+            zip_path = _det_zip(ctx, det)
+            if zip_path is None or not zip_path.exists():
+                LOG.info("peakfit(sr): no zarr/zip for det %s; skip.", det.det_id)
+                continue
             inputs[str(zip_path)] = ""
             sr_midas.run_sr_peak_search(
                 result_dir=str(ctx.stage_dir(det)),
@@ -54,7 +74,11 @@ def run(ctx: StageContext) -> PeakFitResult:
 
     with stage_timer("peakfit"):
         for det in ctx.detectors:
-            zip_path = Path(det.zarr_path)
+            zip_path = _det_zip(ctx, det)
+            if zip_path is None or not zip_path.exists():
+                from .._logging import LOG as _LOG
+                _LOG.info("peakfit: no zarr/zip for det %s; skip.", det.det_id)
+                continue
             inputs[str(zip_path)] = ""
             stage_dir = ctx.stage_dir(det)
             stage_dir.mkdir(parents=True, exist_ok=True)
@@ -98,5 +122,10 @@ def run(ctx: StageContext) -> PeakFitResult:
 
 def expected_outputs(ctx: StageContext) -> list[Path]:
     """Peak fitting writes back into the zarr — we use the zarr's mtime
-    as a proxy for completion; no explicit auxiliary file."""
-    return [Path(d.zarr_path) for d in ctx.detectors]
+    as a proxy for completion; no explicit auxiliary file.
+
+    Resolved the same way as the input: an empty ``zarr_path`` here would make
+    the resume check stat ``"."``, and a directory that always exists reads as
+    "this stage is done".
+    """
+    return [p for p in (_det_zip(ctx, d) for d in ctx.detectors) if p is not None]

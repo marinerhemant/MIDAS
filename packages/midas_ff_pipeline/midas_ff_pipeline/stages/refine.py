@@ -5,6 +5,10 @@ import sys
 import time
 from pathlib import Path
 
+from midas_fit_grain.losses import (
+    MULTIDET_LOSS, PANEL_DEPENDENT_LOSSES, resolve as resolve_loss,
+)
+
 from ._base import StageContext, env_for_index_refine, run_subprocess
 from .._logging import stage_timer
 from ..results import RefineResult
@@ -22,17 +26,29 @@ def run(ctx: StageContext) -> RefineResult:
     output_dir.mkdir(exist_ok=True, parents=True)
     results_dir.mkdir(exist_ok=True, parents=True)
 
-    # Multi-detector pinwheel: pixel loss is per-panel (each panel has its
-    # own BC + Lsd), so a global pixel residual is meaningless when the
-    # refiner sees obs spots from multiple panels. Switch to ``angular``
-    # which compares (η, ω, 2θ) — geometry-independent — when the merged
+    from .._logging import LOG
+
+    # Retired names are substituted here rather than passed through to die in
+    # the refiner's argparse.
+    loss, note = resolve_loss(ctx.config.refine_loss)
+    if note:
+        LOG.warning("  refinement: %s", note)
+
+    # Multi-detector pinwheel: a PIXEL-BASED loss is per-panel (each panel has
+    # its own beam centre + Lsd), so one global residual mixes incompatible
+    # frames when the refiner sees spots from several panels. Switch to
+    # ``angular`` — (2θ, η, ω), geometry-independent — when the merged
     # paramstest carries DetParams blocks.
+    #
+    # This used to test ``loss == "pixel"`` only. ``full3d`` is pixel-based too
+    # (y_pixel, z_pixel, Δω·r_px — residuals.py:152-168) and is now the
+    # default, so the guard has to key on the SET of panel-dependent losses or
+    # it silently stops firing exactly when it starts mattering.
     is_multi_det = "\nDetParams " in ("\n" + paramstest.read_text())
-    loss = ctx.config.refine_loss
-    if is_multi_det and loss == "pixel":
-        loss = "angular"
-        from .._logging import LOG
-        LOG.info("  multi-detector run → switching refine loss to 'angular'")
+    if is_multi_det and loss in PANEL_DEPENDENT_LOSSES:
+        LOG.info("  multi-detector run → switching refine loss %r → %r "
+                 "(pixel-based losses are per-panel)", loss, MULTIDET_LOSS)
+        loss = MULTIDET_LOSS
 
     with stage_timer("refinement"):
         cmd = [

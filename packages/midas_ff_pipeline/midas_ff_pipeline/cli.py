@@ -15,6 +15,10 @@ import sys
 from pathlib import Path
 from typing import Optional
 
+from midas_fit_grain.losses import (
+    DEFAULT_LOSS, DEPRECATED_LOSSES, LOSS_CHOICES, resolve as resolve_loss,
+)
+
 from . import __version__
 from .config import LayerSelection, MachineConfig, PipelineConfig
 from .pipeline import Pipeline
@@ -57,12 +61,23 @@ def _build_parser() -> argparse.ArgumentParser:
     p_run.add_argument("--solver", default="lbfgs",
                        choices=["lbfgs", "lm", "nelder_mead", "adam", "lm_batched"],
                        help="midas-fit-grain solver")
-    p_run.add_argument("--loss", default="pixel",
-                       choices=["pixel", "angular", "internal_angle"],
-                       help="midas-fit-grain residual definition")
-    p_run.add_argument("--mode", default="",
-                       choices=["", "iterative", "all_at_once"],
-                       help="midas-fit-grain mode")
+    # Choices come from midas_fit_grain, not a copy: this package shells out to
+    # it, and a hardcoded list rots silently. It did — 'pixel' was retired
+    # there and kept here as the DEFAULT, so every single-detector run with
+    # default flags died in the refiner's argparse.
+    p_run.add_argument("--loss", default=DEFAULT_LOSS,
+                       choices=list(LOSS_CHOICES) + list(DEPRECATED_LOSSES),
+                       help=f"midas-fit-grain residual definition (default: "
+                            f"{DEFAULT_LOSS}). "
+                            f"{'/'.join(DEPRECATED_LOSSES)} accepted but "
+                            f"substituted, with a warning.")
+    p_run.add_argument("--mode", default="c_recipe",
+                       choices=["", "iterative", "all_at_once", "c_recipe"],
+                       help="midas-fit-grain mode. Default 'c_recipe' is the "
+                            "ported C staged recipe: 1.25 um against the c-omp "
+                            "refiner where 'iterative'/'all_at_once' give "
+                            "~40 um. Use 'all_at_once' only to reproduce a "
+                            "pre-0.8 run.")
     p_run.add_argument("--group-size", default="auto",
                        help="midas-index seed group size. 'auto' picks based "
                             "on the smallest visible-GPU memory across the "
@@ -682,23 +697,99 @@ def _cmd_simulate(args: argparse.Namespace) -> int:
 # ---- main ----
 
 
+# --------------------------------------------------------------------------
+# Retirement shim
+# --------------------------------------------------------------------------
+#
+# This console script no longer runs anything. It rewrites its arguments and
+# hands them to ``midas-pipeline run --scan-mode ff``, so there is exactly one
+# FF implementation in the tree.
+#
+# Not merely because the two were redundant — this one had fallen behind, and
+# silently:
+#
+#   * no MinNrSpots / Completeness propagation, so it returned ~4x too many
+#     grains (23710 vs 6132 on the datasetA Ni layer, one refiner output)
+#   * process-grains hardcoded to spot_aware; against EBSD on shade_LSHR
+#     layer 1 that is 68.2% precision against c_parity's 79.8% at equal recall
+#   * no consolidated-seed reading, no empty-output guards
+#
+# Two implementations of one pipeline is also what let the bug that prompted
+# this drift in undetected: this package offered a ``--loss pixel`` that
+# midas-fit-grain had retired, and defaulted to it, so every single-detector
+# run with default flags died in the refiner's argparse.
+#
+# ``midas_ff_pipeline.testing`` stays (it already re-exports
+# ``midas_pipeline.testing`` and is imported by the notebooks build).
+
+#: ff flag -> midas-pipeline flag. Everything else passes through untouched;
+#: 38 of the 41 ``run`` flags already share a name.
+_FLAG_RENAMES = {
+    "--loss": "--refine-loss",
+    "--mode": "--refine-mode",
+    "--solver": "--refine-solver",
+}
+
+#: Subcommands that take ``--scan-mode``.
+_SCAN_MODE_SUBCOMMANDS = {"run"}
+
+
+def translate_argv(argv: list[str]) -> list[str]:
+    """Rewrite a midas-ff-pipeline argv into a midas-pipeline argv.
+
+    Handles both ``--flag value`` and ``--flag=value``. Deprecated ``--loss``
+    values are resolved here so they never reach the refiner.
+    """
+    out: list[str] = []
+    for i, tok in enumerate(argv):
+        flag, sep, value = tok.partition("=")
+        if flag in _FLAG_RENAMES:
+            new = _FLAG_RENAMES[flag]
+            out.append(f"{new}{sep}{value}" if sep else new)
+            continue
+        # a bare value following --loss: resolve a retired name in place
+        if i and argv[i - 1] == "--loss":
+            tok = resolve_loss(tok)[0]
+        out.append(tok)
+
+    # `--loss=pixel` form
+    out = [
+        f"--refine-loss={resolve_loss(t.split('=', 1)[1])[0]}"
+        if t.startswith("--refine-loss=") else t
+        for t in out
+    ]
+
+    # inject --scan-mode ff for the subcommands that accept it
+    for i, tok in enumerate(out):
+        if not tok.startswith("-"):
+            if tok in _SCAN_MODE_SUBCOMMANDS and "--scan-mode" not in out:
+                out.insert(i + 1, "ff")
+                out.insert(i + 1, "--scan-mode")
+            break
+    return out
+
+
 def main(argv: Optional[list[str]] = None) -> int:
-    # Loud deprecation banner — this prints on every CLI invocation regardless
-    # of -W filters, because DeprecationWarning is silent by default and we
-    # want users to see the migration message NOW (the package import already
-    # raises DeprecationWarning at the Python layer).
+    argv = list(sys.argv[1:] if argv is None else argv)
+    new_argv = translate_argv(argv)
+
     print(
         "\n"
         "  ─────────────────────────────────────────────────────────────────\n"
-        "  midas-ff-pipeline is DEPRECATED as of 0.4.0 (will be removed in 1.0.0).\n"
-        "  Use `midas-pipeline run --scan-mode ff …` instead — same orchestrator,\n"
-        "  unified FF + PF surface. See MIDAS_FF_PIPELINE_DEPRECATION_PLAN.md.\n"
+        "  midas-ff-pipeline is RETIRED and no longer runs its own pipeline.\n"
+        "  Delegating to:\n"
+        f"      midas-pipeline {' '.join(new_argv)}\n"
+        "\n"
+        "  Update your scripts — this shim goes away at 1.0.0. The old path\n"
+        "  returned ~4x too many grains (no MinNrSpots/Completeness gate) and\n"
+        "  used spot_aware rather than c_parity; your results will change,\n"
+        "  for the better.\n"
         "  ─────────────────────────────────────────────────────────────────\n",
         file=sys.stderr,
     )
-    parser = _build_parser()
-    args = parser.parse_args(argv)
-    return args.func(args)
+
+    from midas_pipeline.cli import main as _midas_pipeline_main
+    return _midas_pipeline_main(new_argv)
 
 
 if __name__ == "__main__":

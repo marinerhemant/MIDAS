@@ -24,6 +24,7 @@ import torch
 
 from .config import FitConfig
 from .device import apply_cpu_threads, resolve_device, resolve_dtype
+from .losses import DEFAULT_LOSS, LOSS_CHOICES
 from .driver import refine_block_from_disk
 
 LOG = logging.getLogger("midas_fit_grain.cli")
@@ -58,9 +59,13 @@ def build_parser() -> argparse.ArgumentParser:
                         "c_recipe (the ported FitUnified staged Nelder-Mead; "
                         "see midas_fit_grain/c_recipe.py). "
                         "Default: iterative if FitAllAtOnce=0, else all_at_once.")
-    p.add_argument("--loss", choices=["full3d", "angular", "internal_angle"],
-                   default="full3d",
-                   help="Residual definition (default: pixel — C parity)")
+    p.add_argument("--loss", choices=list(LOSS_CHOICES), default=DEFAULT_LOSS,
+                   help=f"Residual definition (default: {DEFAULT_LOSS}). "
+                        f"'full3d' = (y_pixel, z_pixel, Δω·r_px); 'angular' = "
+                        f"(2θ, η, ω), the geometry-independent choice for "
+                        f"multi-panel runs; 'internal_angle' = scalar. The "
+                        f"2-D 'pixel' loss was retired — it omitted omega and "
+                        f"let orientation drift.")
     p.add_argument("--device", default=None,
                    help="Override MIDAS_FIT_GRAIN_DEVICE (cuda|mps|cpu)")
     p.add_argument("--dtype", default=None,

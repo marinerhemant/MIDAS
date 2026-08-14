@@ -68,8 +68,12 @@ class PipelineConfig:
 
     # Indexer / refiner knobs
     refine_solver: Literal["lbfgs", "lm", "nelder_mead", "adam", "lm_batched"] = "lbfgs"
-    refine_loss: Literal["pixel", "angular", "internal_angle"] = "pixel"
-    refine_mode: Literal["", "iterative", "all_at_once"] = ""
+    # These MUST track midas_fit_grain — it is the process being invoked.
+    # They did not: this package offered (and defaulted to) 'pixel', which
+    # midas-fit-grain retired, so every single-detector run with default flags
+    # died in the refiner's argparse. See midas_fit_grain/losses.py.
+    refine_loss: Literal["full3d", "angular", "internal_angle"] = "full3d"
+    refine_mode: Literal["", "iterative", "all_at_once", "c_recipe"] = "c_recipe"
     indexer_group_size: int = 4                    # default to small group for fp64 safety
     # Indexing backend: "c-omp" (default) shells out to the bundled unified
     # C binary (OpenMP, fast); "python" uses the in-process torch/numba
