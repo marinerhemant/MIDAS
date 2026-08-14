@@ -2,7 +2,16 @@
 
 | # | File | Topic |
 |---|---|---|
+| 0 | `00_calibration.ipynb` | detector geometry from a calibrant — **do this first** |
 | 1 | `01_dt_recon_walkthrough.ipynb` | XRD-CT scan → per-voxel maps, start to finish |
+
+Start at `00`. Notebook `01` asks you to type in `Lsd`, the beam centre, the
+pixel size and the wavelength; `00` is where those come from, and it writes a
+`calibration.json` that `01` reads so you never retype a number.
+
+**Calibration must run on Linux.** `midas_calibrate_v2.calibrate()` segfaults on
+macOS (measured, and it segfaults in a child process too, so it is not a Jupyter
+problem). Notebook `01` is fine on macOS.
 
 The notebook **generates its own synthetic scan on first run**, so it works on
 any machine with no beamline data. Step through it once to see what each stage
@@ -53,8 +62,11 @@ look spotty.
 
 ## Files
 
+- `00_calibration.ipynb` — detector calibration; recovers a planted geometry to
+  **1.1 ppm in Lsd and 0.003 px in beam centre**, and quotes a real
+  single-detector run that reproduces an archived fit to 33 ppm / 0.015 px
 - `01_dt_recon_walkthrough.ipynb` — the walkthrough
-- `_demo.py` — writes the synthetic scan. Deliberately emits **real raw files**
+- `_demo.py` — writes the synthetic scan and the synthetic calibrant. Deliberately emits **real raw files**
   (header + contiguous int32 frames) rather than handing back arrays, so the
   notebook exercises the same reader path your data takes. A demo that bypasses
   the reader proves nothing about the reader.

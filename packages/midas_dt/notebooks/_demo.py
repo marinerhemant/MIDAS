@@ -26,7 +26,8 @@ from pathlib import Path
 
 import numpy as np
 
-__all__ = ["DemoScan", "make_scan"]
+__all__ = ["DemoScan", "make_scan", "make_calibrant_frame",
+           "EXAMPLE_INSTRUMENT"]
 
 HEADER_BYTES = 8192
 
@@ -175,3 +176,113 @@ def _write_raw(path: Path, frames: np.ndarray) -> None:
     with open(path, "wb") as fh:
         fh.write(b"\0" * HEADER_BYTES)
         np.clip(frames, 0, None).astype("<i4").tofile(fh)
+
+
+# ----------------------------------------------------------- calibrant frame
+#: Instrument settings of the example beamline. Generic detector/optics
+#: parameters -- nothing here identifies a sample, a proposal or a user.
+#: Matched to the archived single-detector calibration the notebook quotes as
+#: its reference standard, so synthetic and real numbers are comparable.
+EXAMPLE_INSTRUMENT = dict(
+    wavelength_a=0.189714,      # 65.4 keV
+    px_um=200.0,
+    n_pixels_y=2048,
+    n_pixels_z=2048,
+    lsd_um=940_086.0,
+)
+
+
+def make_calibrant_frame(
+    *,
+    lsd_um: float | None = None,
+    px_um: float | None = None,
+    n_pixels_y: int | None = None,
+    n_pixels_z: int | None = None,
+    wavelength_a: float | None = None,
+    bc_offset_px: tuple[float, float] = (14.0, -9.0),
+    tilt_deg: float = 0.0,
+    lattice_a: float = 5.4116,          # CeO2
+    peak_counts: float = 4.0e3,
+    background: float = 30.0,
+    ring_width_px: float = 2.4,
+    seed: int = 0,
+):
+    """A synthetic CeO2 powder pattern with a KNOWN, deliberately-off geometry.
+
+    Returns ``(frame, truth)``. ``truth`` carries the beam centre, distance and
+    tilt actually used, so a calibration can be scored against them rather than
+    against "it looks about right".
+
+    The beam centre is offset from the detector centre and one tilt is applied,
+    because a calibration demo where the guess is already correct teaches
+    nothing -- the point is to see rings that are visibly not concentric with
+    the guess and then watch them come right.
+
+    **``tilt_deg`` defaults to 0, deliberately.** The stretch it applies,
+    ``r -> r (1 + tilt cos eta)``, is to first order *exactly a beam-centre
+    shift* -- degenerate with BC by construction -- and it is not the
+    projective deformation ``midas_calibrate_v2`` actually refines against. So a
+    non-zero value plants something the refiner cannot null: measured, it left
+    174.8 ue (a FAIL) and pushed BC_y 1.9 px off, neither of which says anything
+    about the calibration. With tilt 0 the planted geometry is one the pipeline
+    can represent exactly, so the demo tests recovery rather than model error.
+
+    Real detectors do tilt. That is what the archived single-detector example
+    in the notebook is for -- it carries genuine tilts and genuine distortion.
+    """
+    inst = EXAMPLE_INSTRUMENT
+    lsd = float(lsd_um if lsd_um is not None else inst["lsd_um"])
+    px = float(px_um if px_um is not None else inst["px_um"])
+    ny = int(n_pixels_y if n_pixels_y is not None else inst["n_pixels_y"])
+    nz = int(n_pixels_z if n_pixels_z is not None else inst["n_pixels_z"])
+    lam = float(wavelength_a if wavelength_a is not None else inst["wavelength_a"])
+
+    rng = np.random.default_rng(seed)
+    bc_y = (ny - 1) / 2.0 + bc_offset_px[0]
+    bc_z = (nz - 1) / 2.0 + bc_offset_px[1]
+
+    # CeO2 is fcc (sg 225): h,k,l all even or all odd.
+    hkls, seen = [], set()
+    for h in range(0, 7):
+        for k in range(0, 7):
+            for l in range(0, 7):
+                if h == k == l == 0:
+                    continue
+                if not (h % 2 == k % 2 == l % 2):
+                    continue
+                s = h * h + k * k + l * l
+                if s in seen:
+                    continue
+                seen.add(s)
+                hkls.append((h, k, l, s))
+    hkls.sort(key=lambda t: t[3])
+
+    yy, zz = np.meshgrid(np.arange(ny), np.arange(nz))
+    rr = np.hypot(yy - bc_y, zz - bc_z)
+    eta = np.arctan2(zz - bc_z, yy - bc_y)
+
+    frame = np.full((nz, ny), background, dtype=np.float64)
+    rings = []
+    for (h, k, l, s) in hkls:
+        d = lattice_a / np.sqrt(s)
+        arg = lam / (2.0 * d)
+        if arg >= 1.0:
+            continue
+        two_theta = 2.0 * np.arcsin(arg)
+        radius = lsd * np.tan(two_theta) / px
+        # keep rings that actually land on the detector, with a margin
+        if radius < 40 or radius > 0.98 * min(bc_y, bc_z, ny - bc_y, nz - bc_z) * 1.35:
+            continue
+        # a tilt makes the ring radius vary with azimuth, to first order
+        r_eff = radius * (1.0 + np.deg2rad(tilt_deg) * np.cos(eta))
+        amp = peak_counts / (1.0 + 0.05 * s)        # weaker at high Q
+        frame += amp * np.exp(-0.5 * ((rr - r_eff) / ring_width_px) ** 2)
+        rings.append({"hkl": (h, k, l), "d_a": d, "radius_px": float(radius),
+                      "two_theta_deg": float(np.degrees(two_theta))})
+
+    frame = rng.poisson(np.clip(frame, 0, None)).astype(np.float64)
+    truth = {"lsd_um": lsd, "bc_y_px": bc_y, "bc_z_px": bc_z, "px_um": px,
+             "wavelength_a": lam, "n_pixels_y": ny, "n_pixels_z": nz,
+             "tilt_deg": tilt_deg,
+             "lattice_a": lattice_a, "rings": rings}
+    return frame, truth

@@ -24,6 +24,12 @@ import pytest
 
 NOTEBOOK_DIR = Path(__file__).resolve().parent.parent / "notebooks"
 NOTEBOOKS = sorted(NOTEBOOK_DIR.glob("*.ipynb"))
+#: Checks below are per-notebook by topic: the calibration notebook has no
+#: beamline-convention or scope section, and the walkthrough has no beam-centre
+#: guidance. Applying every check to every notebook would only teach us to
+#: weaken the checks.
+WALKTHROUGH = [p for p in NOTEBOOKS if "recon_walkthrough" in p.name]
+CALIBRATION = [p for p in NOTEBOOKS if "calibration" in p.name]
 
 
 def _cells(nb: Path, kind: str) -> list[str]:
@@ -65,7 +71,7 @@ def test_public_names_it_calls_still_exist(nb):
     assert not missing, f"{nb.name} imports names midas_dt no longer exports: {missing}"
 
 
-@pytest.mark.parametrize("nb", NOTEBOOKS, ids=lambda p: p.name)
+@pytest.mark.parametrize("nb", WALKTHROUGH, ids=lambda p: p.name)
 def test_the_beamline_convention_warnings_survive(nb):
     """The two settings that fail silently on a non-1-ID instrument.
 
@@ -81,7 +87,7 @@ def test_the_beamline_convention_warnings_survive(nb):
     assert "1-id" in text, "the notebook does not say where the defaults come from"
 
 
-@pytest.mark.parametrize("nb", NOTEBOOKS, ids=lambda p: p.name)
+@pytest.mark.parametrize("nb", WALKTHROUGH, ids=lambda p: p.name)
 def test_it_states_the_scope_boundary(nb):
     """Continuous rings or scanning-3DXRD. A user pointed at the wrong
     technique wastes a beamtime, so the notebook has to say so."""
@@ -90,7 +96,7 @@ def test_it_states_the_scope_boundary(nb):
     assert "3dxrd" in text
 
 
-@pytest.mark.parametrize("nb", NOTEBOOKS, ids=lambda p: p.name)
+@pytest.mark.parametrize("nb", WALKTHROUGH, ids=lambda p: p.name)
 def test_demo_mode_is_the_default(nb):
     """It must run for someone with no data, or it cannot be demonstrated."""
     src = "\n".join(_cells(nb, "code"))
@@ -124,3 +130,46 @@ def test_demo_helper_builds_a_readable_scan(tmp_path):
     frame = scan.frame(1, 2)
     assert frame.shape == (48, 48)
     assert frame.max() > frame.min(), "the demo frame carries no signal"
+
+
+# ------------------------------------------------- calibration notebook only
+@pytest.mark.parametrize("nb", CALIBRATION, ids=lambda p: p.name)
+def test_calibration_demo_mode_is_the_default(nb):
+    assert "USE_DEMO_CALIBRANT = True" in "\n".join(_cells(nb, "code"))
+
+
+@pytest.mark.parametrize("nb", CALIBRATION, ids=lambda p: p.name)
+def test_it_warns_against_inventing_a_beam_centre(nb):
+    """The failure that cost 1040 ue against 47 ue on the same frame.
+
+    Passing a made-up BC_guess overrides the auto-seeder and the fit cannot
+    travel. A calibration notebook that does not warn about it will produce
+    exactly that failure in a user's hands.
+    """
+    text = "\n".join(_cells(nb, "markdown")).lower()
+    assert "bc_guess" in text
+    assert "seeder" in text
+    assert "1040" in text, "the measured consequence is not quoted"
+
+
+@pytest.mark.parametrize("nb", CALIBRATION, ids=lambda p: p.name)
+def test_it_states_the_hard_strain_rule(nb):
+    """A calibration above 100 ue has failed -- not 'is worse'."""
+    text = "\n".join(_cells(nb, "markdown") + _cells(nb, "code")).lower()
+    assert "100" in text
+    assert any(w in text for w in ("failed", "fail"))
+
+
+@pytest.mark.parametrize("nb", CALIBRATION, ids=lambda p: p.name)
+def test_it_tells_macos_users_calibration_will_not_run(nb):
+    """Measured: calibrate() segfaults on macOS, in a child process too."""
+    text = "\n".join(_cells(nb, "markdown")).lower()
+    assert "macos" in text
+    assert "segfault" in text
+
+
+@pytest.mark.parametrize("nb", CALIBRATION, ids=lambda p: p.name)
+def test_it_hands_the_geometry_on_rather_than_asking_for_retyping(nb):
+    src = "\n".join(_cells(nb, "code"))
+    assert "calibration.json" in src
+    assert "DTGeometry" in src
