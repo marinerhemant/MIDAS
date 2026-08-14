@@ -9,10 +9,12 @@ Start at `00`. Notebook `01` asks you to type in `Lsd`, the beam centre, the
 pixel size and the wavelength; `00` is where those come from, and it writes a
 `calibration.json` that `01` reads so you never retype a number.
 
-Both notebooks run on macOS and Linux. Calibration used to segfault on macOS —
-numba's OpenMP threading layer colliding with torch's — and that is **fixed in
-`midas-integrate`**, which now picks numba's `workqueue` threadpool there. On an
-older install, run with `NUMBA_THREADING_LAYER=workqueue`.
+**On macOS, launch with `NUMBA_THREADING_LAYER=workqueue jupyter lab`.**
+Calibration segfaults otherwise — numba's OpenMP threading layer colliding with
+torch's. The fix is committed to `midas-integrate` but is **not yet on PyPI**
+(0.4.3 has not published; `pip install` gives 0.4.2), so the environment
+variable is the instruction today. Linux is unaffected, and notebook `01` is
+fine on macOS either way.
 
 The notebook **generates its own synthetic scan on first run**, so it works on
 any machine with no beamline data. Step through it once to see what each stage
