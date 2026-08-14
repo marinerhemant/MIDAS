@@ -158,13 +158,16 @@ def _build_parser() -> argparse.ArgumentParser:
                      default="full3d")  # 2D 'pixel' loss disabled in fit-grain
     run.add_argument("--refine-mode",
                      choices=["", "iterative", "all_at_once", "c_recipe"],
-                     default="all_at_once",
-                     help="refinement strategy. 'c_recipe' is the ported C "
-                          "staged recipe (per-grain-independent batched LM + "
-                          "IRLS); measured 1.25 um vs the c-omp refiner on a "
-                          "full 1-ID shade_LSHR layer where 'iterative' and "
-                          "'all_at_once' give ~40 um. Default 'all_at_once' "
-                          "is kept only for back-compat.")
+                     default="c_recipe",
+                     help="refinement strategy. Default 'c_recipe' is the "
+                          "ported C staged recipe (per-grain-independent "
+                          "batched LM + IRLS): 1.25 um against the c-omp "
+                          "refiner on a full 1-ID shade_LSHR layer, where "
+                          "'iterative' and 'all_at_once' give ~40 um. On the "
+                          "datasetA Ni layer it took the median |dposition| "
+                          "from 205.8 um to 11.6 um (null 11.0) and cut grains "
+                          "beyond 500 um from 18.5% to 1.2%. Use "
+                          "'all_at_once' only to reproduce a pre-0.8 run.")
     run.add_argument("--use-bounds", action="store_true",
                      help="bound refinement via sigmoid reparam (torch-native, "
                           "autograd-preserving); recommended for PF to prevent "

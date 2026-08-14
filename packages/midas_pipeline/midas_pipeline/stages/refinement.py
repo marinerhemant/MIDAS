@@ -24,6 +24,8 @@ from pathlib import Path
 
 import numpy as np
 
+from midas_fit_grain.losses import MULTIDET_LOSS, PANEL_DEPENDENT_LOSSES
+
 from .._logging import LOG
 from ..results import RefineResult, StageResult
 from ._base import StageContext
@@ -118,6 +120,19 @@ def _run_ff(ctx: StageContext) -> StageResult:
     # The 2D 'pixel' loss is removed (it omitted omega and gave poor,
     # under-determined fits); refinement always uses a full 3D / angular loss.
     loss = ctx.config.refinement.loss
+
+    # Multi-detector: a pixel-based loss is per-panel (own beam centre + Lsd),
+    # so one global residual mixes incompatible frames. This stage's docstring
+    # has promised "the multi-detector pixel→angular loss swap" throughout,
+    # but the code was lost when 'pixel' was retired — and the default became
+    # 'full3d', which is pixel-based too (y_pixel, z_pixel, Δω·r_px). So every
+    # multi-panel run since has silently refined on a meaningless residual.
+    if loss in PANEL_DEPENDENT_LOSSES and "\nDetParams " in (
+            "\n" + paramstest.read_text()):
+        LOG.info("refinement(FF): multi-detector paramstest → switching loss "
+                 "%r → %r (pixel-based losses are per-panel)",
+                 loss, MULTIDET_LOSS)
+        loss = MULTIDET_LOSS
 
     refine_dtype = ctx.config.refinement.dtype
     if refine_dtype != ctx.config.dtype:

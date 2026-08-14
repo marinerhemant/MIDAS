@@ -88,7 +88,11 @@ class TestRefinementConfig:
         assert rc.position_mode == "fixed"
         assert rc.solver == "lbfgs"
         assert rc.loss == "full3d"
-        assert rc.mode == "all_at_once"
+        # Was "all_at_once". c_recipe is the ported C staged recipe: 1.25 um
+        # against the c-omp refiner on a full 1-ID shade_LSHR layer where
+        # all_at_once gives ~40 um, and on the datasetA Ni layer it took the
+        # median |dposition| from 205.8 um to 11.6 um (null 11.0).
+        assert rc.mode == "c_recipe"
 
     def test_voxel_bounded_mode(self):
         rc = RefinementConfig(position_mode="voxel_bounded")

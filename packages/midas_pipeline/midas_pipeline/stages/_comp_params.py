@@ -74,6 +74,10 @@ _PG_SELECTION_KEYS = (
     "MinEta",
     "Twin",
     "PhaseNr",
+    # Read by midas_process_grains, midas_fit_grain and midas_index, and not
+    # written into paramstest by FitSetup. A multi-phase run that reached
+    # process-grains through the pipeline silently saw NumPhases = 1.
+    "NumPhases",
 )
 
 

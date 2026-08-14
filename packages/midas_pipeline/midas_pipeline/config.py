@@ -184,15 +184,19 @@ class RefinementConfig:
       ``voxel_center ± beam_size/2``. New functionality, no C parity
       reference; tested against synthetic ground truth.
 
-    All refinement uses ``midas_fit_grain.refine`` with
-    ``mode="all_at_once"`` (single joint fit over orientation, position,
-    and strain; observed↔predicted association frozen at entry).
+    Refinement runs ``midas_fit_grain.refine`` in ``mode="c_recipe"`` — the
+    ported C staged recipe (per-grain-independent batched LM + IRLS). The old
+    default ``all_at_once`` (one joint fit over orientation, position and
+    strain, association frozen at entry) is kept only for reproducing a
+    pre-0.8 run: it lands ~40 um from the c-omp refiner where c_recipe lands
+    1.25 um, and on the datasetA Ni layer it left the median |dposition| at
+    205.8 um against c_recipe's 11.6 um (null 11.0).
     """
 
     position_mode: RefinePositionMode = "fixed"
     solver: RefineSolver = "lbfgs"
     loss: RefineLoss = "full3d"      # full 3D loss (y,z,ω); 2D 'pixel' disabled
-    mode: RefineMode = "all_at_once"
+    mode: RefineMode = "c_recipe"
 
     # Precision for the FF refiner. Deliberately NOT inherited from the run's
     # global ``dtype``: ``cli._resolve_dtype`` maps ``--dtype auto`` to float32
