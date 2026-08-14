@@ -21,6 +21,31 @@ out to the ``MIDAS_TOMO_C`` / ``MIDAS_TOMO_GPU`` binary. That had two defects.
 wherever midas-pipeline is installed, and the FFTW/OpenMP-free build degrades
 to the Python path instead of dying.
 
+**Why the subprocess backend by default.**
+
+OBSERVED, reproducibly: run this module's FBP under pytest and a later
+``gemmi.read_small_structure`` fails with ``ValueError: vector`` on a CIF it
+parses fine in isolation. Order-dependent (reverse the two tests and both
+pass), not capture-dependent (``-s`` behaves the same), and it goes away
+entirely with ``backend="subprocess"``. That combination is reachable in an
+ordinary run -- reconstruct, then read a crystal CIF in calc_radius_v -- so the
+risk is wrong results, not just a red test.
+
+NOT PROVEN: the mechanism. The suspicion is a C++ ABI conflict --
+``libmidastomo.dylib``, which the ``"library"`` backend dlopens into this
+process, links GCC's ``libstdc++`` (Homebrew gcc + libgomp) while gemmi links
+Apple's ``libc++``, and two C++ runtimes in one process is undefined behaviour.
+The linkage difference is real (``otool -L`` on both), but a standalone script
+doing the same two calls does NOT reproduce the failure, so something about the
+pytest process is also required and the causal chain is unconfirmed. Treat the
+above as the reason to be careful, not as a diagnosis.
+
+Subprocess keeps the engine in its own address space, which empirically avoids
+it. It costs roughly 10x per call (measured 0.002s -> 0.022s on a 16x16
+phantom), and ``fbp_recon_per_grain`` calls this per grain, so ``backend`` is
+exposed for callers who have established their environment is unaffected.
+A proper fix -- if the ABI theory holds -- belongs in midas-tomo's build.
+
 Note the keyword spellings differ: the legacy module took ``filterNr`` /
 ``doLog`` / ``extraPad`` / ``numCPUs``; the package takes ``filter_nr`` /
 ``do_log`` / ``extra_pad`` / ``n_cpus``. This wrapper's own signature is
@@ -68,6 +93,7 @@ def fbp_recon(
     num_cpus: int = 1,
     do_cleanup: int = 1,
     use_gpu: bool = False,
+    backend: str = "subprocess",
 ) -> np.ndarray:
     """Run FBP on a single sinogram, return a centered nScans×nScans recon.
 
@@ -90,6 +116,12 @@ def fbp_recon(
     filter_nr, do_log, extra_pad, auto_centering, num_cpus, do_cleanup, use_gpu
         Forwarded to ``run_tomo_from_sinos``; see that function's
         docstring for semantics.
+    backend : {"subprocess", "library", "auto"}
+        How midas-tomo runs its engine. Defaults to ``"subprocess"`` -- see
+        the module docstring for why the in-process ``"library"`` backend is
+        not the default here. Pass ``"library"`` explicitly to opt back in
+        (~10x faster per call), but only in a process that will not also use
+        a libc++-linked extension.
 
     Returns
     -------
@@ -114,6 +146,7 @@ def fbp_recon(
         n_cpus=num_cpus,
         do_cleanup=do_cleanup,
         use_gpu=use_gpu,
+        backend=backend,
     )
     # recon_arr shape: (nrShifts, nSlices, xDimNew, xDimNew)
     full = recon_arr[0, 0]
