@@ -144,13 +144,77 @@ loss. Two things to know before using it:
   twice and inflates σ by exactly `sqrt(loss × N)` — measured, that turned a
   0.035 px error bar into 446 px on a 20 px window.
 
+## Reconstruction: gridrec, SIRT or TV
+
+`reconstruct()` uses `midas-tomo`'s gridrec — filtered back projection, one
+pass, and the right default. Its failure mode matters for XRD-CT, where angle
+counts are often low because every projection costs a full detector frame at
+every translation: below Nyquist, FBP does not degrade gracefully, it puts
+**streaks** through the image that a per-voxel peak fit will happily fit.
+
+`sirt()` and `tv_reconstruct()` trade compute for artefact suppression, over
+all bins at once (one sparse mat-mul per iteration regardless of channel
+count). Neither is a free win:
+
+- both are iterative, so the answer depends on where you stop
+- SIRT is biased toward smoothness, TV toward piecewise-constant images
+- neither has analytic noise propagation, so σ needs Monte Carlo — the gridrec
+  path's `variance_samples=K` is cheaper and better understood
+
+**`tv_weight` is not a free parameter.** Set it too high and TV does exactly
+what it is designed to do — produce a piecewise-constant image — turning a
+noisy continuum into flat regions with invented edges, which a downstream fit
+then reports as real structure with small scatter. Start at 0, confirm you
+reproduce gridrec, and raise it only while streaks fall faster than features.
+
+Use gridrec unless streaking is visibly limiting, then compare.
+
+## Self-absorption
+
+The beam is attenuated reaching a voxel and the diffracted beam is attenuated
+leaving it, so an uncorrected map reads as though the sample were richer at its
+surface. The attenuation sits **inside** the ray sum, weighting each voxel
+differently — which is why it biases along the ray and why no rescaling of the
+sinogram can undo it.
+
+```python
+from midas_dt import attenuation_factors, uniform_mu, run_direct
+
+mu = uniform_mu(sample_mask, mu_per_pixel=0.05)   # or mu_from_transmission(...)
+A  = attenuation_factors(mu, scan.omega_deg, two_theta_deg=1.2)
+
+result = run_direct(stack, attenuation=A)          # exact
+```
+
+**Exact (branch C):** fold the factors into the forward operator and solve with
+them in place. The model then describes the measurement, so nothing needs
+undoing. This is the real payoff of having a forward model.
+
+**Approximate (branches A and B):** `correct_reconstruction()` divides each
+voxel by the attenuation it suffered averaged over the rotation. That removes
+the bulk near/far bias but not the distortion absorption already caused in the
+reconstruction, because the ω-dependence of the attenuation violates the Radon
+model the reconstruction assumed. Marked approximate.
+
+**Not provided:** dividing the sinogram by a per-ray factor. It looks like a
+correction and cannot be one — a single number per ray cannot invert a
+position-dependent weighting inside the sum.
+
+μ comes from the transmission channel (`mu_from_transmission`, an absorption-CT
+reconstruction through `midas-tomo`) or a uniform value over a sample mask.
+The outgoing ray is treated as parallel to the incoming one when the in-plane
+deflection is under 5° — decided from the geometry, not assumed. At 90 keV with
+rings at 100–500 px that deflection is ~0.5–2.7°, so it costs almost nothing;
+at low energy or high angle the exact path is used instead.
+
 ## What it does not correct
 
 Attached to every result via `ScanKnownLimits` and written into
 `provenance.json`, so a map cannot be separated from its caveats:
 
-- **self-absorption** — phase fractions are biased toward the sample surface
-  and are qualitative
+- **self-absorption** — correctable now (above), but **not corrected by
+  default**: it needs a μ you have to supply. Uncorrected phase fractions stay
+  biased toward the sample surface and qualitative.
 - **texture** — the η-integrated pattern is a powder pattern only if the voxel
   is randomly oriented
 - **phase fractions** are relative: uncorrected for structure factor,

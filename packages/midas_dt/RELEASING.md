@@ -31,19 +31,20 @@ never reconstructed anything.
 
 | environment | result |
 |---|---|
-| midas-tomo engine built + torch | **202 passed** |
-| no engine (e.g. a Mac with no FFTW) | 187 passed, 2 skipped |
+| midas-tomo engine built + torch | **229 passed** |
+| no engine (e.g. a Mac with no FFTW) | 214 passed, 2 skipped |
 
-Both measured 2026-08-14 at 0.2.0; the 202 on chiltepin
+Both measured 2026-08-14 at 0.3.0; the 202 on chiltepin
 (`/home/beams12/S1IDUSER/opt/tomo_buildtest` on `PYTHONPATH`, shared env at
 `/home/beams12/S1IDUSER/opt/envs/midas/bin/python`).
 
 `release.sh` passes `-rs`, so the skip reasons print. **If you see the
-187-passed line, you tested the wrapper.** Release from a host with the engine,
+214-passed line, you tested the wrapper.** Release from a host with the engine,
 or run the suite there first.
 
-Branch C (`tests/test_direct.py`) additionally needs `torch` and
-`midas-invert` -- the `[direct]` extra. Without them the whole module skips,
+Branch C (`tests/test_direct.py`) and the absorption / SIRT / TV tests
+(`tests/test_absorption_iterative.py`) additionally need `torch`,
+`midas-invert` and `scipy` -- the `[direct]` extra. Without them the whole module skips,
 so a green run on a torch-free machine has not exercised direct inversion at
 all. Same trap as the engine, one layer up.
 
@@ -102,3 +103,24 @@ errors, so both are pinned by tests. If either test is weakened, stop.
 - [ ] `test_no_performance_claim_is_made_in_the_docstring` -- the gate on
       claiming Branch C beats Branch B. It stays until a preregistered
       comparison has actually been run.
+
+
+## Before a release that touches `absorption.py` or `iterative.py`
+
+Both produce plausible images when wrong, so these tests were built by
+mutation-testing the code and are the ones that actually discriminate. Two
+gaps were found this way and closed; do not weaken them.
+
+- [ ] `test_outgoing_leg_is_downstream_not_upstream` -- taking the upstream
+      integral for both legs still attenuates, and still gives the correct
+      radial ordering once averaged over a rotation. Only the entry-face voxel
+      distinguishes the two.
+- [ ] `test_each_angle_uses_its_own_attenuation_factors` -- applying angle 0's
+      factors to every angle passed every other test in the file. A single
+      unit voxel makes the expected value analytic and pins the indexing.
+- [ ] `test_backproject_is_the_exact_transpose` -- an adjoint that drifts from
+      its projector still converges, to the wrong image.
+- [ ] `test_tv_with_zero_weight_reproduces_plain_least_squares` -- the control
+      for every TV comparison. If `tv_weight=0` does not match an
+      unregularised fit, the penalty is leaking and no weight comparison means
+      anything.

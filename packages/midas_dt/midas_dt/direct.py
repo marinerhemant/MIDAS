@@ -298,6 +298,7 @@ def run_direct(
     seed_from: BranchResult | None = None,
     mask_threshold: float | None = None,
     weighted: bool = True,
+    attenuation=None,
     device=None,
     dtype=None,
     log_every: int = 0,
@@ -324,6 +325,14 @@ def run_direct(
         Weight the residual by 1/variance. The variance is carried from
         integration, so this is a real Poisson weighting and not a guess.
         Turning it off weights empty detector bins as heavily as the peak.
+    attenuation : (n_omega, size, size) array, optional
+        Self-absorption factors from
+        :func:`midas_dt.absorption.attenuation_factors`. Folded into the
+        forward operator, which is the **exact** way to handle absorption:
+        the model then describes what the instrument measured, so nothing has
+        to be undone afterwards. Branches A and B can only apply the
+        approximate rotation-averaged correction, because they reconstruct
+        before they know about it.
 
     Returns
     -------
@@ -354,8 +363,16 @@ def run_direct(
 
     radii = torch.as_tensor(
         np.linspace(ch.r_min, ch.r_max, n_r), dtype=dtype, device=device)
-    A = projection_matrix(size, stack.omega_deg, n_trans,
-                          dtype=dtype, device=device)
+    if attenuation is None:
+        A = projection_matrix(size, stack.omega_deg, n_trans,
+                              dtype=dtype, device=device)
+    else:
+        from .absorption import attenuated_projection_matrix
+        A = attenuated_projection_matrix(
+            size, stack.omega_deg, n_trans, attenuation,
+            dtype=dtype, device=device)
+        log.info("direct: solving with self-absorption in the forward operator "
+                 "(mean factor %.4f)", float(np.mean(attenuation)))
 
     amp0, cen0, sig0, bg0, active, amp_scale = _seed(
         stack, size, n_r, seed_from, mask_threshold, dtype, device)

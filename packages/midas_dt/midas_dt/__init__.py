@@ -12,7 +12,7 @@ working (R, eta) bin size, or not.
 
 from __future__ import annotations
 
-__version__ = "0.2.0"
+__version__ = "0.3.0"
 
 from .channels import Channel, channels_from_legacy_params
 from .conventions import (
@@ -33,7 +33,15 @@ from .branches import (
     run_fit_then_recon,
     run_recon_then_fit,
 )
+from .absorption import (
+    attenuated_projection_matrix,
+    attenuation_factors,
+    correct_reconstruction,
+    mu_from_transmission,
+    uniform_mu,
+)
 from .direct import DirectResult, laplace_sigma, run_direct
+from .iterative import sirt, tv_reconstruct
 from .index_rings import (
     ALPHA_U3O8,
     CEO2,
@@ -102,8 +110,15 @@ __all__ = [
     "write_maps_hdf5",
     "write_result",
     "fit_lineout",
+    "attenuated_projection_matrix",
+    "attenuation_factors",
+    "correct_reconstruction",
     "index_rings",
     "laplace_sigma",
+    "mu_from_transmission",
+    "sirt",
+    "tv_reconstruct",
+    "uniform_mu",
     "phase_fraction_map",
     "radius_to_d_spacing",
     "radius_to_two_theta",
