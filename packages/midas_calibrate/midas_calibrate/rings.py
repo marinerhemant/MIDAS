@@ -32,9 +32,14 @@ def build_ring_table(params: CalibrationParams) -> RingTable:
     lat = Lattice(*params.LatticeConstant)
 
     # Maximum 2θ from MaxRingRad and Lsd (use mean pixel size).
+    # A ray scattered through 2θ lands at radius R = Lsd·tan(2θ), so the
+    # inverse is 2θ = arctan(R/Lsd) — the factor 2 is already inside "2θ".
+    # Multiplying by 2 here admitted rings out to ~2× MaxRingRad (2.09× at
+    # MaxRingRad=1420 px on a 2880² 150 µm detector at Lsd=1 m), i.e. well
+    # into the detector corners the caller asked to exclude.
     px = 0.5 * (params.pxY + params.pxZ) if params.pxZ > 0 else params.pxY
     max_R_um = params.MaxRingRad * px
-    two_theta_max = 2.0 * np.degrees(np.arctan(max_R_um / params.Lsd))
+    two_theta_max = np.degrees(np.arctan(max_R_um / params.Lsd))
 
     refs = generate_hkls(
         sg, lat,
@@ -57,8 +62,16 @@ def build_ring_table(params: CalibrationParams) -> RingTable:
     )
     rt.r_ideal_px[:] = params.Lsd * np.tan(np.radians(rt.two_theta_deg)) / px
 
+    # Radius filters.  MaxRingRad is enforced here as well as through
+    # two_theta_max: the 2θ cap is evaluated at the *current* Lsd, so as the
+    # refinement moves Lsd the admitted radius drifts.  Filtering r_ideal_px
+    # directly makes the bound exact and mirrors the MinRingRad treatment.
+    keep = np.ones(len(rt.r_ideal_px), dtype=bool)
     if params.MinRingRad > 0:
-        keep = rt.r_ideal_px >= params.MinRingRad
+        keep &= rt.r_ideal_px >= params.MinRingRad
+    if params.MaxRingRad > 0:
+        keep &= rt.r_ideal_px <= params.MaxRingRad
+    if not keep.all():
         for f in ("ring_nr", "h", "k", "l", "d_spacing", "two_theta_deg", "multiplicity", "r_ideal_px"):
             setattr(rt, f, getattr(rt, f)[keep])
     return rt
