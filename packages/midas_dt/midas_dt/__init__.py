@@ -61,6 +61,7 @@ from .geometry import (
     parse_legacy_params,
     spec_from_calibration,
 )
+from .rings import Ring, find_rings, rolling_baseline
 from .scan import PILATUS_1475x1679, DTScan, RawFormat, detect_snake, frames_in_file
 
 __all__ = [
@@ -82,6 +83,7 @@ __all__ = [
     "PILATUS_1475x1679",
     "RECON_SIGN",
     "RawFormat",
+    "Ring",
     "FrameReducer",
     "ReducedFrame",
     "Reconstruction",
@@ -92,6 +94,7 @@ __all__ = [
     "channels_from_legacy_params",
     "compare",
     "find_centre",
+    "find_rings",
     "d_spacing_map",
     "read_legacy_reconstruction",
     "write_maps_hdf5",
@@ -115,6 +118,7 @@ __all__ = [
     "spec_from_calibration",
     "poisson_variance",
     "recon_size",
+    "rolling_baseline",
     "reconstruct",
     "unsnake",
 ]

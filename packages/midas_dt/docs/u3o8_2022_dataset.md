@@ -58,54 +58,84 @@ coefficient of variation is 0.64 at R = 115 px and 0.35 at R = 205 px.
 *(Counting the module gaps as azimuthal structure makes every ring look
 "spotty". Mask them.)*
 
-## Ring list — INCOMPLETE
+## Ring list — 28 rings
 
-`dev/inspect_u3o8_lineout.py`, translation 27, 24 frames averaged, 60-560 px:
+`dev/inspect_u3o8_lineout.py` (translation 27, 24 frames averaged, 60-560 px),
+via `midas_dt.rings.find_rings` with a **rolling-median baseline**:
 
-| R (px) | d (Å) | height |
-|---|---|---|
-| 205.29 | 4.157 | 65.6 |
-| 248.38 | 3.437 | 44.6 |
-| 323.53 | 2.640 | 38.8 |
-| 115.11 | 7.412 | 36.3 |
-| 483.85 | 1.767 | 27.6 |
-| 253.39 | 3.369 | 25.0 |
+**28 rings above 3 sigma.** The strongest are R = 483.85 (SNR 47), 437.76
+(26), 411.70 (25), 205.29, 323.53, 248.38 px. The full list with d-spacings is
+printed by the script in a form ready to paste into an indexing input.
 
-**The image shows roughly 15-20 rings; the peak finder reported 6.** This list
-is a floor, not a census, and that matters for indexing (below).
+An earlier pass reported **6**. It used a *global* median baseline, which sits
+far above the background at low R and below it at high R: it found the strong
+inner rings and lost the rest. `midas_dt.rings` exists to prevent that, and a
+test asserts the rolling baseline finds strictly more rings than a global one
+on a profile with a realistic falling background.
 
-Both 2023 channel choices are validated by it: `rad_105_125` contains the
-115.11 px ring, `rad_470_490` contains the 483.85 px one. The strongest ring
-(205.29 px) was not used by the 2023 runs at all.
+Both 2023 channel choices are validated: `rad_105_125` contains the 115.11 px
+ring, `rad_470_490` contains the 483.85 px one (the strongest in the pattern).
 
-## Phase assignment — UNRESOLVED
+## Phase assignment — UNRESOLVED, and now well characterised
 
-`dev/index_u3o8_rings.py`, via `midas_dt.index_rings`, at a loose 2% tolerance:
+`dev/index_u3o8_rings.py`, all 28 rings, two tolerances:
 
-| phase | matched | rms residual |
-|---|---|---|
-| α-U3O8 (C2mm, 6.716/11.960/4.147) | 4/6 | 7971 ppm |
-| γ-UO3 (Pbnm, 9.813/19.93/9.711) | 4/6 | 5805 ppm |
-| CeO2 (the calibrant) | 0/6 | — |
+| phase | 2.0% | 0.5% | rms @ 0.5% |
+|---|---|---|---|
+| α-U3O8 (C2mm) | 17/28 | 11/28 | 2406 ppm |
+| **γ-UO3 (Pbnm)** | 24/28 | **17/28** | **1819 ppm** |
+| U4O9 (I23, a=21.77) | 24/28 | 17/28 | 2379 ppm |
+| UO2 (Fm-3m) | 5/28 | 2/28 | 2362 ppm |
+| CeO2 (calibrant) | 3/28 | 1/28 | 2374 ppm |
 
-**Neither candidate fits.** Residuals of 5800-8000 ppm are far too poor for a
-correct phase, and the two rings neither indexes include the **strongest ring
-in the pattern**. CeO2 at 0/6 is the control showing the matcher does not
-simply match everything.
+γ-UO3 leads, but **17/28 at ~1800 ppm is not an assignment** — a correct cell
+should index nearly every ring at a few hundred ppm. U4O9's equal count is
+almost certainly chance: a = 21.77 Å gives a very dense reflection list, which
+is exactly the failure mode the module docstring warns about. CeO2 at 1/28
+remains the control.
 
-The geometry is verified, so this is **not** a scale error — an earlier
-hypothesis to that effect (from γ-UO3's uniformly negative residuals) is
-refuted. It is a phase problem, and the incomplete ring list is the more
-likely weak input.
+### The mixture hypothesis: partially supported, not sufficient
 
-**No d-spacing or strain map from this dataset should be read as a lattice
-measurement until this is resolved.**
+The 600A/700A/800A series is an oxidation study, so a mixture is the obvious
+explanation for no single cell indexing everything. Testing α-U3O8 and γ-UO3
+together at 0.5%:
+
+| | rings |
+|---|---|
+| α-U3O8 only | 3 |
+| γ-UO3 only | 9 |
+| both | 8 |
+| **neither** | **8** |
+
+The two ARE partly complementary, which supports a mixture. But 8 rings remain
+unexplained, and they are not a random subset:
+
+```
+  91.06 px   d 9.369 A
+  95.07 px   d 8.974 A
+ 115.11 px   d 7.412 A     <- the 2023 rad_105_125 channel
+ 205.29 px   d 4.157 A     <- among the strongest rings
+ 238.36 px   d 3.581 A
+ 264.41 px   d 3.229 A
+ 270.42 px   d 3.157 A
+ 332.55 px   d 2.568 A
+```
+
+Three of them are at **large d (7.4-9.4 Å)**, i.e. low angle. That is the
+signature of a phase with a larger unit cell than anything tried here. And one
+of the strongest rings in the pattern is in this set.
+
+**A phase assignment that cannot account for the strongest ring, or for the
+channel the 2023 analysis actually used, is not an assignment.**
 
 ### Next steps, in order
 
-1. Extract a complete ring list — lower the threshold, deblend overlaps.
-2. Re-index against a wider phase list (U4O9, UO2, other U3O8 polymorphs).
-3. Only then treat a d-spacing map as a lattice measurement.
+1. Search for a phase with large d-spacings (9.4, 9.0, 7.4 Å) — uranium
+   oxide hydrates and layered uranyl phases are the obvious family, but this
+   should be a search, not a guess.
+2. Re-run the coverage check with any new candidate; the criterion is
+   accounting for the unexplained 8, not raising the total match count.
+3. Only then treat a d-spacing map from this dataset as a lattice measurement.
 
 ## The legacy code, and what is wrong with it
 
