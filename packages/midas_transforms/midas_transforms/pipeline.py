@@ -194,6 +194,17 @@ class Pipeline:
                 out_dir / "SpotsToIndex.csv",
                 pr.fit_setup.spot_ids_to_index.detach().cpu().numpy().tolist(),
             )
+            # IDRings.csv + IDsHash.csv. dump() used to omit both, while
+            # fit_setup(write=True) wrote them — and dump() is the path
+            # `midas-pipeline run --scan-mode ff` takes. IDsHash carries the
+            # reference d-spacing d₀ per ring, the only source
+            # midas-process-grains has for the Kenesei strain gauge; without
+            # it every grain's strain pegs at the ±0.01 bound.
+            fs = pr.fit_setup
+            if fs.ring_numbers is not None:
+                from .fit_setup.core import write_ring_tables
+                write_ring_tables(out_dir, fs.ring_numbers, fs.per_ring_count,
+                                  fs.ds_per_ring, fs.id_rings_rows or [])
             if pr.fit_setup.paramstest is not None:
                 write_paramstest(pr.fit_setup.paramstest, out_dir / "paramstest.txt")
         if pr.bins is not None:

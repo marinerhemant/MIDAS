@@ -47,11 +47,51 @@ class FitSetupResult:
     spot_ids_to_index: torch.Tensor               # (M,) int64
     paramstest: Optional[ParamsTest] = None
     refine_result: Optional[object] = None        # RefineParams or None
+    # Ring tables — needed to write IDRings.csv and IDsHash.csv. Carried on the
+    # result so ``Pipeline.dump()`` can emit them too: it used to write only
+    # InputAll/extra/SpotsToIndex/paramstest, so an FF run through
+    # midas-pipeline produced NO IDsHash.csv, and midas-process-grains then
+    # silently substituted ds_0 = 0 for every spot. See write_ring_tables.
+    ring_numbers: Optional[List[int]] = None
+    per_ring_count: Optional[List[int]] = None
+    ds_per_ring: Optional[List[float]] = None
+    id_rings_rows: Optional[List[tuple]] = None
 
 
 # ---------------------------------------------------------------------------
 # Helpers
 # ---------------------------------------------------------------------------
+
+
+def write_ring_tables(out_dir: Path,
+                      ring_numbers: List[int],
+                      per_ring_count: List[int],
+                      ds_per_ring: List[float],
+                      id_rings_rows) -> None:
+    """Write ``IDRings.csv`` and ``IDsHash.csv``.
+
+    One writer, called by BOTH ``fit_setup(write=True)`` and
+    ``Pipeline.dump()``. They used to diverge: ``dump()`` — the path
+    ``midas-pipeline run --scan-mode ff`` takes — wrote InputAll, the extra
+    table, SpotsToIndex and paramstest but neither ring table.
+
+    That is not a cosmetic omission. ``IDsHash.csv``'s fourth column is the
+    reference d-spacing d₀ per ring, and it is the ONLY source
+    midas-process-grains has for the Kenesei per-spot strain gauge
+    ``ε = (d_obs − d₀)/d₀``. With the file absent the consumer substituted
+    zeros, so every grain's strain pegged at the ±0.01 bound and
+    RMSErrorStrain came out ~1e36 — measured on both datasetA and shade_LSHR,
+    100% of grains, in runs whose positions and orientations were correct.
+    """
+    with open(out_dir / "IDRings.csv", "w") as f:
+        f.write("RingNumber OriginalID NewID(RingsMerge)\n")
+        for (rn, oid, nid) in id_rings_rows:
+            f.write(f"{rn} {oid} {nid}\n")
+    with open(out_dir / "IDsHash.csv", "w") as f:
+        start_row = 1
+        for rn, count, dval in zip(ring_numbers, per_ring_count, ds_per_ring):
+            f.write(f"{rn} {start_row} {start_row + count + 1} {dval}\n")
+            start_row += count
 
 
 def _load_hkls_for_rings(hkls_path: Path, ring_numbers: List[int]):
@@ -464,30 +504,22 @@ def fit_setup(
     radii_lookup = {rn: rr for rn, rr in zip(ring_numbers, radii_per_ring)}
     pt.RingRadii = [radii_lookup.get(rn, 0.0) for rn in unique_rings]
 
+    # Reference d-spacing per ring, d = λ/(2·sinθ). This is the d₀ that
+    # midas-process-grains uses for the Kenesei strain gauge, so it is
+    # computed unconditionally and carried on the result — not only when
+    # ``write`` is set, because Pipeline.dump() needs it too.
+    lam = float(zarr_params.Wavelength)
+    ds_per_ring = [
+        (lam / (2.0 * math.sin(t * _DEG2RAD))) if (lam > 0 and t > 0) else 0.0
+        for t in thetas_per_ring
+    ]
+
     # Write outputs.
     if write:
         csv_io.write_inputall_csv(out_dir / "InputAll.csv", inputall)
         csv_io.write_inputall_extra_csv(out_dir / "InputAllExtraInfoFittingAll.csv", inputall_extra)
-        # IDRings.csv: header + tuples
-        with open(out_dir / "IDRings.csv", "w") as f:
-            f.write("RingNumber OriginalID NewID(RingsMerge)\n")
-            for (rn, oid, nid) in id_rings_rows:
-                f.write(f"{rn} {oid} {nid}\n")
-        # IDsHash.csv: per-ring (ring_nr, start_row, end_row, ds).
-        # The d-spacing column is read by midas-process-grains for the Kenesei
-        # per-spot strain gauge (ds_0). It must be the real ring d-spacing
-        # d = λ/(2·sinθ) — not a 0 placeholder, or every spot is dropped and
-        # the strain comes out exactly 0.
-        lam = float(zarr_params.Wavelength)
-        ds_per_ring = [
-            (lam / (2.0 * math.sin(t * _DEG2RAD))) if (lam > 0 and t > 0) else 0.0
-            for t in thetas_per_ring
-        ]
-        with open(out_dir / "IDsHash.csv", "w") as f:
-            start_row = 1
-            for rn, count, dval in zip(ring_numbers, per_ring_count, ds_per_ring):
-                f.write(f"{rn} {start_row} {start_row + count + 1} {dval}\n")
-                start_row += count
+        write_ring_tables(out_dir, ring_numbers, per_ring_count,
+                          ds_per_ring, id_rings_rows)
         # SpotsToIndex.csv
         csv_io.write_spots_to_index(out_dir / "SpotsToIndex.csv", spots_to_index_ids.tolist())
         # paramstest.txt — written from the canonical ``pt`` built above
@@ -505,4 +537,8 @@ def fit_setup(
         spot_ids_to_index=spots_to_index_t,
         paramstest=pt,
         refine_result=refine_out,
+        ring_numbers=list(ring_numbers),
+        per_ring_count=list(per_ring_count),
+        ds_per_ring=list(ds_per_ring),
+        id_rings_rows=list(id_rings_rows),
     )
