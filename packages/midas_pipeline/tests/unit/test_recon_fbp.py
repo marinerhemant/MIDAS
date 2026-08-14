@@ -2,11 +2,15 @@
 
 We test the FBP wrapper end-to-end by:
 1. Generating a disk phantom + sinogram via the torch-free forward_project.
-2. Running ``fbp_recon`` (shells out to MIDAS_TOMO).
+2. Running ``fbp_recon``, which is backed by the midas-tomo package.
 3. Asserting RMSE recovery is within a generous threshold.
 
-The MIDAS_TOMO binary must be available on disk; we skip the test if
-the importer cannot locate it.
+The gate is now simply whether midas-tomo imports. It used to be whether a
+separately-built ``MIDAS_TOMO`` C binary existed on disk, resolved through a
+``sys.path`` hop into ``<repo>/TOMO`` -- which meant the test could only run
+from a source checkout, and passed or died depending on which clone the guard
+happened to find. midas-tomo is a declared dependency, so if it is missing the
+install is broken and skipping is the honest response.
 """
 
 from __future__ import annotations
@@ -18,38 +22,21 @@ import numpy as np
 import pytest
 
 from midas_pipeline.recon import forward_project
-from midas_pipeline.recon.fbp import _load_run_tomo_from_sinos, fbp_recon
+from midas_pipeline.recon.fbp import fbp_recon
 
 
-def _tomo_binary_available() -> bool:
-    """Ask the SAME resolver the code under test uses.
-
-    This used to check two hardcoded absolute paths under ``~/opt/MIDAS``
-    (one of them a literal ``/Users/hsharma/...``), while ``fbp_recon``
-    resolves the binary relative to the repo root of the *imported*
-    ``midas_pipeline`` — ``Path(fbp.__file__).parents[4] / "TOMO"``. In any
-    checkout other than ``~/opt/MIDAS`` the two disagree: the guard finds the
-    binary in the OTHER clone, declines to skip, and the test then dies with
-    FileNotFoundError on this clone's path. That is what blocked a release
-    run from a fresh clone (2026-07-31).
-
-    Going through ``_find_tomo_exe`` keeps guard and code in agreement by
-    construction, on any machine and any checkout.
-    """
+def _tomo_available() -> bool:
+    """The backend is a package now: either it imports or it does not."""
     try:
-        _load_run_tomo_from_sinos()                   # puts TOMO/ on sys.path
-        from midas_tomo_python import _find_tomo_exe  # type: ignore
+        from midas_tomo import run_tomo_from_sinos    # noqa: F401
     except ImportError:
         return False
-    try:
-        return Path(_find_tomo_exe()).is_file()
-    except Exception:                                        # noqa: BLE001
-        return False
+    return True
 
 
 pytestmark = pytest.mark.skipif(
-    not _tomo_binary_available(),
-    reason="MIDAS_TOMO binary not available on this machine",
+    not _tomo_available(),
+    reason="midas-tomo not installed (it is a declared midas-pipeline dependency)",
 )
 
 

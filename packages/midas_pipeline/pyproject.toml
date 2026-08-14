@@ -42,6 +42,12 @@ dependencies = [
     # its dev extra -- true for peakfit, not for this package, which invokes the
     # zipper itself.
     "midas-zipper>=0.1.5",                # raw → .MIDAS.zip ingest (pip-portable)
+    # The FBP reconstruction backend. midas_pipeline.recon.fbp used to reach
+    # it by a sys.path hop into <repo>/TOMO and a shell-out to the MIDAS_TOMO
+    # C binary -- which only resolved from a source checkout, and depended on
+    # a separately-built binary that had gone three months stale. A real
+    # dependency makes the recon work for pip users.
+    "midas-tomo>=0.1.0",
     # [cif] (gemmi) is a RUNTIME requirement, not just test-time: the
     # calc_radius_v stage calls midas_hkls.read_cif() to compute theoretical
     # per-ring intensities for the V-map. Without it a clean production

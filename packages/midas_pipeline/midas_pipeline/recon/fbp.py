@@ -1,21 +1,35 @@
 """Filtered Back-Projection reconstruction wrapper.
 
-This module is intentionally **NOT** a relocation of
-``TOMO/midas_tomo_python.py``. That file is consumed by people outside
-the pipeline (notebook callers, the standalone TOMO workflows), so we
-keep it in place and import it here through a ``sys.path`` hop. The
-public entry point ``fbp_recon`` matches the contract expected by
-``midas_pipeline.stages.reconstruct``.
+Backed by the ``midas-tomo`` package. The public entry point ``fbp_recon``
+matches the contract expected by ``midas_pipeline.stages.reconstruct``.
 
-The underlying ``run_tomo_from_sinos`` shells out to the
-``MIDAS_TOMO_C`` (or ``MIDAS_TOMO_GPU``) binary; everything else stays
-in Python here. We do not duplicate the C entrypoint.
+This used to reach the reconstruction a different way: a ``sys.path`` hop into
+``<repo>/TOMO`` to import the in-tree ``midas_tomo_python``, which then shelled
+out to the ``MIDAS_TOMO_C`` / ``MIDAS_TOMO_GPU`` binary. That had two defects.
+
+1. **It only worked from a source checkout.** The hop resolved the repo root as
+   ``Path(__file__).parents[4]``, which holds for
+   ``<repo>/packages/midas_pipeline/midas_pipeline/recon/fbp.py`` and is
+   meaningless for an installed ``site-packages/midas_pipeline/recon/fbp.py``.
+   Every pip user got an ImportError telling them to check a source tree they
+   had no reason to have.
+2. **It depended on a separately-built C binary**, which silently rots: the
+   tree's ``TOMO/bin/MIDAS_TOMO`` was three months older than its own sources
+   and aborted with SIGABRT.
+
+``midas-tomo`` is now a real dependency, so the reconstruction is importable
+wherever midas-pipeline is installed, and the FFTW/OpenMP-free build degrades
+to the Python path instead of dying.
+
+Note the keyword spellings differ: the legacy module took ``filterNr`` /
+``doLog`` / ``extraPad`` / ``numCPUs``; the package takes ``filter_nr`` /
+``do_log`` / ``extra_pad`` / ``n_cpus``. This wrapper's own signature is
+unchanged, so callers are unaffected.
 """
 
 from __future__ import annotations
 
 import os
-import sys
 from math import ceil, log2
 from pathlib import Path
 from typing import List, Optional, Sequence, Union
@@ -23,32 +37,20 @@ from typing import List, Optional, Sequence, Union
 import numpy as np
 
 
-def _ensure_tomo_on_path() -> None:
-    """Lazily prepend the legacy ``TOMO/`` directory to ``sys.path``.
-
-    Done at function-call time, not import time, so importing this
-    module never touches the filesystem.
-    """
-    # packages/midas_pipeline/midas_pipeline/recon/fbp.py
-    # parents[0]=recon, [1]=midas_pipeline, [2]=midas_pipeline pkg root,
-    # [3]=packages, [4]=MIDAS repo root → MIDAS_ROOT/TOMO
-    here = Path(__file__).resolve()
-    midas_root = here.parents[4]
-    tomo_dir = midas_root / "TOMO"
-    if tomo_dir.is_dir() and str(tomo_dir) not in sys.path:
-        sys.path.insert(0, str(tomo_dir))
-
-
 def _load_run_tomo_from_sinos():
-    """Import ``run_tomo_from_sinos`` from the in-place TOMO module."""
-    _ensure_tomo_on_path()
+    """Return ``midas_tomo.run_tomo_from_sinos``.
+
+    Imported at call time rather than module import so that merely importing
+    midas_pipeline does not require midas-tomo to be present.
+    """
     try:
-        from midas_tomo_python import run_tomo_from_sinos  # type: ignore
+        from midas_tomo import run_tomo_from_sinos
     except ImportError as exc:  # pragma: no cover - environment-dependent
         raise ImportError(
-            "midas_pipeline.recon.fbp could not import "
-            "midas_tomo_python.run_tomo_from_sinos. Ensure TOMO/ "
-            "is part of the MIDAS source tree and importable."
+            "midas_pipeline.recon.fbp requires the midas-tomo package. "
+            "Install it with `pip install midas-tomo` (it is a declared "
+            "dependency of midas-pipeline, so this normally means a partial "
+            "or --no-deps install)."
         ) from exc
     return run_tomo_from_sinos
 
@@ -69,8 +71,8 @@ def fbp_recon(
 ) -> np.ndarray:
     """Run FBP on a single sinogram, return a centered nScans×nScans recon.
 
-    Thin wrapper around ``TOMO.midas_tomo_python.run_tomo_from_sinos``
-    that does the standard pf-HEDM post-crop: MIDAS_TOMO upscales
+    Thin wrapper around ``midas_tomo.run_tomo_from_sinos`` that does the
+    standard pf-HEDM post-crop: the reconstruction upscales
     ``detXdim`` to the next power of two; we crop the central
     ``nScans × nScans`` region so the recon center aligns with the
     voxel-grid center ``(nScans - 1) / 2``.
@@ -82,7 +84,7 @@ def fbp_recon(
     thetas : ndarray, shape (nThetas,)
         Projection angles in degrees.
     workingdir : str | Path
-        Temp directory for MIDAS_TOMO inputs / outputs.
+        Temp directory for the reconstruction's inputs / outputs.
     n_scans : int, optional
         If given, crop to (n_scans, n_scans). Default: full upscaled recon.
     filter_nr, do_log, extra_pad, auto_centering, num_cpus, do_cleanup, use_gpu
@@ -94,7 +96,7 @@ def fbp_recon(
     ndarray
         If ``n_scans`` is given: ``(n_scans, n_scans)``, cropped + transposed
         to match the voxel-grid spatial convention. Otherwise the
-        upscaled square returned by MIDAS_TOMO.
+        upscaled square returned by the reconstruction.
     """
     run_tomo_from_sinos = _load_run_tomo_from_sinos()
     workingdir = Path(workingdir)
@@ -105,13 +107,13 @@ def fbp_recon(
         str(workingdir),
         np.asarray(thetas, dtype=np.float64),
         shifts=0.0,
-        filterNr=filter_nr,
-        doLog=do_log,
-        extraPad=extra_pad,
-        autoCentering=auto_centering,
-        numCPUs=num_cpus,
-        doCleanup=do_cleanup,
-        useGPU=use_gpu,
+        filter_nr=filter_nr,
+        do_log=do_log,
+        extra_pad=extra_pad,
+        auto_centering=auto_centering,
+        n_cpus=num_cpus,
+        do_cleanup=do_cleanup,
+        use_gpu=use_gpu,
     )
     # recon_arr shape: (nrShifts, nSlices, xDimNew, xDimNew)
     full = recon_arr[0, 0]
