@@ -83,13 +83,36 @@ ADDITIVE_FIT_OUTPUTS: Final[frozenset[str]] = frozenset({
 #: difference rather than reading it as an improvement.
 LEGACY_WIDTHS_ARE_SHARED: Final[bool] = True
 
-#: The reconstruction is negated before peak fitting.
+#: Sign applied to the reconstruction before peak fitting. **+1 since
+#: 2026-08-14, measured. It was -1, copied from the legacy script, and that
+#: inverted every map.**
 #:
-#: ``recon_peak_all_mul.py`` does ``recons_reshape = -1 * transpose(...)``.
-#: With ``doLog 0`` the engine back-projects diffracted intensity rather than
-#: attenuation, so gridrec returns a negative-going image. Miss this and every
-#: peak is inverted -- and a peak finder will still return numbers.
-RECON_SIGN: Final[float] = -1.0
+#: ``recon_peak_all_mul.py`` (2023) does ``recons_reshape = -1 * transpose(...)``
+#: and this constant was taken from it, with the rationale that "doLog=0 back-
+#: projects diffracted intensity, so gridrec returns a negative-going image".
+#: **That rationale is false for the current engine.** Measured against a known
+#: truth disc projected with the package's own verified operator:
+#:
+#:     RECON_SIGN = -1   corr(recon, truth) = -0.87
+#:     RECON_SIGN = +1   corr(recon, truth) = +0.87
+#:
+#: The consequence was not a cosmetic flip. ``run_recon_then_fit`` masks to the
+#: 60th percentile of per-voxel total intensity, so an inverted reconstruction
+#: made it fit the BACKGROUND: measured 0.000 of fitted voxels lay inside the
+#: sample, against 0.344 by chance. Every map was of the wrong voxels.
+#:
+#: Why the test suite missed it: nothing compared a reconstruction against a
+#: known spatial truth. The guard asserted only that some voxel in the centre
+#: exceeded the global median, which a streaky inverted image passes trivially,
+#: and the branch A/B comparison tests share the sign so they agreed with each
+#: other while both were wrong. ``tests/test_recon.py`` now correlates against
+#: a planted object instead.
+#:
+#: Reading of the legacy: if the 2022-era engine returned negative-going and the
+#: script flipped it to positive, then +1 with the current engine REPRODUCES the
+#: legacy's final answer rather than departing from it. Not verified against
+#: 2023 output -- that regression still needs the haydn scan.
+RECON_SIGN: Final[float] = 1.0
 
 #: 0.136994 Å = 90.5 keV for the U3O8 beamtime. The parameter files comment
 #: this as "55.618 keV (Ho-edge)", which is wrong -- 55.618 keV would be

@@ -110,7 +110,7 @@ produce wrong answers. All are tested.
 |---|---|
 | fit-output order | 12 canonical channels; `MaxIntensityObs` is slot **5** |
 | additive outputs | only 3 of the 12 may be back-projected |
-| `RECON_SIGN` | −1: `doLog=0` back-projects intensity, so the result is negative-going |
+| `RECON_SIGN` | **+1** — measured against a planted object. It was −1, copied from the 2023 script, and that inverted every map |
 | omega | negated once (1-ID aerotech), in `DTScan.from_stem` |
 | first frame | dropped (1-ID writes a throwaway) |
 | snake | **detected** from the data, not read from a flag |

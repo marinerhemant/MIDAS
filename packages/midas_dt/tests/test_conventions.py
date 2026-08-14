@@ -68,10 +68,21 @@ def test_is_additive_validates_the_name():
 
 
 # --------------------------------------------------------------- recon sign
-def test_recon_sign_is_negative():
-    """recon_peak_all_mul.py negates before fitting; doLog 0 back-projects
-    intensity, so gridrec returns a negative-going image."""
-    assert RECON_SIGN == -1.0
+def test_recon_sign_is_positive():
+    """+1 since 2026-08-14. It was -1, and that inverted every map.
+
+    The -1 was copied from the 2023 script ``recon_peak_all_mul.py``, with the
+    rationale that doLog=0 makes gridrec return a negative-going image. That
+    rationale is measurably false for the current engine: against a known truth
+    disc, -1 gives corr -0.87 and +1 gives +0.87
+    (``tests/test_recon.py::test_reconstruction_correlates_POSITIVELY_with_a_planted_object``).
+
+    This test now only pins the constant. The one that would have CAUGHT the
+    error lives in test_recon.py and correlates against a planted object --
+    which is the point: a constant can only be checked against a measurement,
+    never against the reasoning that produced it.
+    """
+    assert RECON_SIGN == 1.0
 
 
 # -------------------------------------------------------------------- omega

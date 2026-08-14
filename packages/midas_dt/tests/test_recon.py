@@ -56,17 +56,72 @@ def test_reconstruct_applies_the_sign():
     assert signed.sign_applied == RECON_SIGN
 
 
-def test_reconstruction_has_a_positive_feature_after_signing():
-    """The disc should be a maximum, not a minimum, once the sign is applied."""
-    st = _phantom_stack()
-    rec = reconstruct(st, n_cpus=2)
+def _planted_disc(n=20, n_ang=60, n_bins=3, radius=6.0):
+    """A disc of KNOWN position, projected with the package's own operator."""
+    from midas_dt.direct import projection_matrix
+    torch = pytest.importorskip("torch")
+
+    om = np.linspace(0.0, 180.0, n_ang, endpoint=False)
+    c = (n - 1) / 2.0
+    yy, xx = np.mgrid[0:n, 0:n]
+    truth = (((xx - c) ** 2 + (yy - c) ** 2) <= radius ** 2).astype(float)
+    A = projection_matrix(n, om, n)
+    sino = torch.sparse.mm(
+        A, torch.as_tensor(np.tile(truth.ravel(), (n_bins, 1))).T).T
+    sino = sino.numpy().reshape(n_bins, n_ang, n)
+    inten = np.transpose(sino, (2, 1, 0)).reshape(n, n_ang, 1, n_bins)
+    stack = assemble(inten, np.clip(np.abs(inten), 1e-6, None), om,
+                     Channel(105, 125, r_bin=20.0 / n_bins, eta_bin=360),
+                     snake=False)
+    return stack, truth
+
+
+def test_reconstruction_correlates_POSITIVELY_with_a_planted_object():
+    """The sign convention, tested against a known truth rather than a proxy.
+
+    This replaces a guard that asserted only ``core.max() > median(img)``. That
+    is satisfied by a streaky INVERTED image, and it was: RECON_SIGN shipped as
+    -1 (copied from the 2023 legacy script) and every reconstruction came out
+    corr = -0.87 against the object that produced it. Nothing else in the suite
+    caught it, because the branch A/B tests compare the two branches to each
+    other and both carry the same sign.
+    """
+    stack, truth = _planted_disc()
+    rec = reconstruct(stack, shift=0.0, n_cpus=2)
     img = rec.intensity[0]
-    c = img.shape[0] // 2
-    core = img[c - 12:c + 12, c - 12:c + 12]
-    assert core.max() > np.median(img), (
-        "the feature is not brighter than the background -- the sign "
-        "convention is probably inverted"
+    k = img.shape[0] // 2
+    h = truth.shape[0] // 2
+    core = img[k - h:k + h, k - h:k + h]
+
+    corr = float(np.corrcoef(core.ravel(), truth.ravel())[0, 1])
+    assert corr > 0.5, (
+        f"reconstruction correlates {corr:+.3f} with the object that produced "
+        f"it. Negative means RECON_SIGN is inverted; every map would be of the "
+        f"complement of the sample."
     )
+    assert core[truth > 0].mean() > core[truth == 0].mean(), (
+        "the sample is not brighter than the space around it")
+
+
+def test_the_default_mask_selects_the_sample_not_the_background():
+    """The consequence that made the sign bug destructive rather than cosmetic.
+
+    ``run_recon_then_fit`` keeps voxels above the 60th percentile of total
+    intensity. Under the inverted sign that selected the background: measured
+    0.000 of fitted voxels inside the sample against 0.344 by chance.
+    """
+    stack, truth = _planted_disc()
+    rec = reconstruct(stack, shift=0.0, n_cpus=2)
+    totals = rec.intensity.sum(axis=0)
+    k = totals.shape[0] // 2
+    h = truth.shape[0] // 2
+    kept = (totals > np.nanpercentile(totals, 60))[k - h:k + h, k - h:k + h]
+
+    inside = (kept & (truth > 0)).sum() / max(kept.sum(), 1)
+    chance = (truth > 0).mean()
+    assert inside > chance, (
+        f"the mask selects the sample {inside:.3f} of the time, at or below "
+        f"chance {chance:.3f} -- it is fitting the background")
 
 
 def test_brighter_bin_reconstructs_brighter():
