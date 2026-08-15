@@ -214,12 +214,20 @@ def _build_parser() -> argparse.ArgumentParser:
                      default="fbp")
     run.add_argument("--mlem-iter", type=int, default=50)
     run.add_argument("--osem-subsets", type=int, default=4)
-    run.add_argument("--sino-type", choices=["raw", "norm", "abs", "normabs"],
+    run.add_argument("--sino-type",
+                     choices=["raw", "norm", "abs", "normabs", "clean"],
                      default="raw")
     run.add_argument("--sino-source", choices=["tolerance", "indexing"],
                      default="tolerance")
     run.add_argument("--sino-conf-min", type=float, default=0.5)
     run.add_argument("--sino-scan-tol", type=float, default=1.5)
+    run.add_argument("--sino-conc-threshold", type=float, default=0.0,
+                     help="(pf) drop sino rows with less than this fraction "
+                          "of their intensity on the grain's own sinusoid, "
+                          "into sinos_clean_*.bin; 0 disables. 0.35 is the "
+                          "calibrated working value")
+    run.add_argument("--sino-conc-min-band", type=float, default=4.0,
+                     help="(pf) floor on the concentration acceptance band, um")
     run.add_argument("--cull-min-size", type=int, default=0)
 
     # Fusion (PF)
@@ -688,6 +696,8 @@ def build_config(args: argparse.Namespace) -> PipelineConfig:
         sino_source=args.sino_source,
         sino_conf_min=args.sino_conf_min,
         sino_scan_tol_um=args.sino_scan_tol,
+        sino_conc_threshold=args.sino_conc_threshold,
+        sino_conc_min_band_um=args.sino_conc_min_band,
         cull_min_size=args.cull_min_size,
     )
     fusion = FusionConfig(

@@ -210,6 +210,15 @@ def fbp_recon_per_grain(
         sino = np.asarray(sinos_by_grain[g, :n_sp, :], dtype=np.float32)
         if (sino > 0).sum() == 0:
             continue
+        # Drop all-zero rows before back-projecting. They carry no
+        # measurement — either an unpopulated (grain, hkl) cell or a row
+        # the concentration filter zeroed — and feeding them in as
+        # "measured zero at this angle" dilutes the reconstruction.
+        # MLEM/OSEM already do this (recon/mlem.py: ``row_has_data``).
+        row_has_data = (sino > 0).any(axis=1)
+        if not row_has_data.all():
+            sino = sino[row_has_data]
+            thetas = thetas[row_has_data]
         recon = fbp_recon(
             sino, thetas, workingdir,
             n_scans=n_scans,

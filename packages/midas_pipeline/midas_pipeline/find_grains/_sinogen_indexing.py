@@ -42,7 +42,12 @@ from ._consolidation_io import (
     CONSOLIDATED_VALS_COLS,
     ConsolidatedReader,
 )
-from ._sinogen import _apply_variant, SPOTS_ARRAY_COLS, SinogenOutputs
+from ._sinogen import (
+    _apply_variant,
+    SPOTS_ARRAY_COLS,
+    SinogenOutputs,
+    write_clean_variant,
+)
 from ._geom import ScanGrid
 
 _DEG2RAD = np.pi / 180.0
@@ -105,6 +110,8 @@ def generate_sinograms_indexing(
     scan_tolerance_um: float = 1.5,
     normalize_sino: bool = False,
     abs_transform: bool = False,
+    conc_threshold: float = 0.0,
+    conc_min_band_um: float = 4.0,
 ) -> SinogenOutputs:
     """Build sinograms in indexing mode + write all output files.
 
@@ -378,6 +385,17 @@ def generate_sinograms_indexing(
         fn = f"sinos_{label}_{nG}_{nH}_{nS}.bin"
         (out_dir / fn).write_bytes(arr.astype(np.float64, copy=False).tobytes())
         sino_paths[label] = str(out_dir / fn)
+
+    # Concentration-filtered variant (off unless conc_threshold > 0).
+    if conc_threshold and conc_threshold > 0:
+        clean_path, conc_path = write_clean_variant(
+            out_dir, raw_sino, ome_arr, nr_hkls_per_grain,
+            conc_threshold=conc_threshold,
+            scan_positions=spatial_positions,
+            min_band_um=conc_min_band_um,
+        )
+        sino_paths["clean"] = clean_path
+        sino_paths["conc"] = conc_path
 
     return SinogenOutputs(
         n_grains=nG,

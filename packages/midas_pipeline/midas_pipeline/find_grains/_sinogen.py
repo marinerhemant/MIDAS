@@ -83,6 +83,193 @@ def _apply_variant(sino: np.ndarray, max_int: np.ndarray, *, normalize: bool, ab
     return out
 
 
+# ---------------------------------------------------------------------------
+# Concentration filter — drop contaminated ("vertical stripe") sino rows.
+# ---------------------------------------------------------------------------
+
+
+def sinogram_concentration(
+    raw_sino: np.ndarray,
+    ome_arr: np.ndarray,
+    nr_hkls_per_grain: np.ndarray,
+    *,
+    scan_positions: Optional[np.ndarray] = None,
+    min_band_um: float = 4.0,
+) -> np.ndarray:
+    """Per-row fraction of intensity lying on the grain's own sinusoid.
+
+    A clean reflection puts all of its intensity in the few scan
+    positions where the beam actually crosses the grain, so in the
+    ``(scan position, reflection)`` sinogram it is a compact blob riding
+    a sinusoid. A *contaminated* row — one that also collected a
+    neighbouring grain's spot, or a spot from outside the scanned field
+    — smears across all scan positions and reads as a vertical stripe.
+
+    For grain ``g`` this fits the offset-free sinusoid
+    ``s(ω) = a·sin ω + b·cos ω`` to the intensity-weighted centroid of
+    every populated row (least squares, all rows), estimates the grain
+    width ``D`` from the median second moment (``D = sqrt(12·var)``, the
+    equivalent width of a uniform chord), and returns
+
+        concentration = (intensity within ±max(D, min_band_um)/2 of the
+                         fitted track) / (total row intensity)
+
+    Parameters
+    ----------
+    raw_sino : ndarray (nG, nH, nS) float64
+        The *raw* sino — before normalize / abs transforms.
+    ome_arr : ndarray (nG, nH) float64
+        Mean omega per row, degrees. Rows at the ``-10000`` sentinel are
+        unpopulated and are excluded by the ``total > 0`` test anyway.
+    nr_hkls_per_grain : ndarray (nG,) int
+    scan_positions : ndarray (nS,) float, optional
+        Scan positions in micrometres, in sinogram-column order (i.e.
+        :attr:`._geom.ScanGrid.spatial_positions`). Re-centred on the
+        midpoint of the scan, because the fit has no ``y0`` term and so
+        places the rotation axis at ``s = 0``. If ``None``, centred bin
+        indices are used and ``min_band_um`` is read as a bin count.
+    min_band_um : float
+        Floor on the acceptance band, so that a grain whose width
+        estimate collapses (single-voxel grains, or rows with one
+        populated cell) still gets a physically sensible window.
+
+    Returns
+    -------
+    conc : ndarray (nG, nH) float64
+        Concentration in ``[0, 1]``; ``NaN`` for rows with no intensity
+        and for grains with too few populated rows to fit.
+
+    Notes
+    -----
+    The track is fitted using *all* populated rows, contaminated ones
+    included — measured on 20-ID ``pf_nf709`` set A, one pass is enough
+    to separate the stripes (they are 1.7 % of rows). Iterating the fit
+    after dropping would change the numbers the threshold was calibrated
+    against, so it is deliberately not done here.
+
+    **The scan must be centred on the rotation axis.** The model has no
+    ``y0`` term, and ``a·sin ω + b·cos ω`` cannot represent a constant
+    over a full rotation, so a mis-centred scan displaces the whole
+    fitted track and depresses *every* row's concentration equally —
+    clean rows included. Measured on the synthetic clean grain of
+    ``tests/unit/find_grains/test_sinogen_concentration.py`` (5 µm blob,
+    51 scan positions, 40 rows), sweeping the axis offset:
+
+    ======  ========  =============================
+    offset  min conc  clean rows below 0.35 (of 40)
+    ======  ========  =============================
+    0 µm       0.90    0
+    3 µm       0.54    0
+    5 µm       0.20   40
+    8 µm       0.01   40
+    ======  ========  =============================
+
+    So an offset comparable to the grain width discards the entire
+    grain, and the filter cannot tell that from real contamination. The
+    ``LOG.info`` drop percentage in :func:`write_clean_variant` is the
+    check: a rate far above the ~2 % this was calibrated for means a
+    centring problem, not dirty data. Adding a ``y0`` column to the
+    design matrix would absorb it, at the cost of re-calibrating the
+    threshold.
+    """
+    raw_sino = np.asarray(raw_sino, dtype=np.float64)
+    ome_arr = np.asarray(ome_arr, dtype=np.float64)
+    n_g, n_h, n_s = raw_sino.shape
+
+    if scan_positions is None:
+        s_vals = np.arange(n_s, dtype=np.float64) - (n_s - 1) / 2.0
+    else:
+        s_vals = np.asarray(scan_positions, dtype=np.float64).ravel()
+        if s_vals.size != n_s:
+            raise ValueError(
+                f"scan_positions has {s_vals.size} entries but the sino has "
+                f"{n_s} scan columns"
+            )
+        s_vals = s_vals - 0.5 * (s_vals.min() + s_vals.max())
+
+    conc = np.full((n_g, n_h), np.nan, dtype=np.float64)
+    for g in range(n_g):
+        n = int(nr_hkls_per_grain[g])
+        if n <= 0:
+            continue
+        inten = np.clip(raw_sino[g, :n, :], 0.0, None)
+        tot = inten.sum(axis=1)
+        ok = tot > 0
+        if int(ok.sum()) < 5:
+            # Too few rows to fit a 2-parameter sinusoid meaningfully.
+            continue
+        safe = np.maximum(tot, 1e-12)
+        centroid = (inten * s_vals).sum(axis=1) / safe
+        w = np.radians(ome_arr[g, :n])
+        design = np.column_stack([np.sin(w), np.cos(w)])
+        sol, *_ = np.linalg.lstsq(design[ok], centroid[ok], rcond=None)
+        track = design @ sol
+        var = (inten * (s_vals[None, :] - centroid[:, None]) ** 2).sum(axis=1) / safe
+        width = float(np.median(np.sqrt(12.0 * np.clip(var[ok], 0.0, None))))
+        half = max(width, min_band_um) / 2.0
+        band = np.abs(s_vals[None, :] - track[:, None]) <= half
+        row_conc = (inten * band).sum(axis=1) / safe
+        conc[g, :n] = np.where(ok, row_conc, np.nan)
+    return conc
+
+
+def apply_concentration_filter(
+    raw_sino: np.ndarray, conc: np.ndarray, threshold: float,
+) -> tuple[np.ndarray, np.ndarray]:
+    """Zero every sino row whose concentration falls below ``threshold``.
+
+    Returns ``(clean_sino, dropped)`` where ``dropped`` is a (nG, nH)
+    boolean mask of the rows that were zeroed. Rows with ``NaN``
+    concentration (unpopulated, or an unfittable grain) are kept — the
+    filter only ever removes rows it has positive evidence against.
+    """
+    dropped = np.isfinite(conc) & (conc < float(threshold))
+    clean = np.array(raw_sino, dtype=np.float64, copy=True)
+    clean[dropped] = 0.0
+    return clean, dropped
+
+
+def write_clean_variant(
+    out_dir: Path,
+    raw_sino: np.ndarray,
+    ome_arr: np.ndarray,
+    nr_hkls_per_grain: np.ndarray,
+    *,
+    conc_threshold: float,
+    scan_positions: Optional[np.ndarray] = None,
+    min_band_um: float = 4.0,
+) -> tuple[str, str]:
+    """Emit ``sinos_clean_*.bin`` + ``sinoConc_*.bin``; return their paths.
+
+    The clean variant is the *raw* sino with contaminated rows zeroed —
+    no normalize, no abs. Zeroed rows are indistinguishable from
+    never-populated ones downstream, which is what the reconstructors
+    already expect.
+    """
+    from .._logging import LOG
+
+    n_g, n_h, n_s = raw_sino.shape
+    conc = sinogram_concentration(
+        raw_sino, ome_arr, nr_hkls_per_grain,
+        scan_positions=scan_positions, min_band_um=min_band_um,
+    )
+    clean, dropped = apply_concentration_filter(raw_sino, conc, conc_threshold)
+
+    n_rows = int(np.isfinite(conc).sum())
+    n_drop = int(dropped.sum())
+    LOG.info(
+        "sinogen: concentration filter at %.2f dropped %d/%d rows (%.1f %%)",
+        conc_threshold, n_drop, n_rows,
+        100.0 * n_drop / n_rows if n_rows else 0.0,
+    )
+
+    clean_fn = out_dir / f"sinos_clean_{n_g}_{n_h}_{n_s}.bin"
+    conc_fn = out_dir / f"sinoConc_{n_g}_{n_h}.bin"
+    clean_fn.write_bytes(clean.astype(np.float64, copy=False).tobytes())
+    conc_fn.write_bytes(conc.astype(np.float64, copy=False).tobytes())
+    return str(clean_fn), str(conc_fn)
+
+
 def generate_sinograms_tolerance(
     spot_list,
     n_unique: int,
@@ -98,6 +285,10 @@ def generate_sinograms_tolerance(
     # --- P7: soft sino assembly ---
     soft_weight_fn: Optional[Callable[[np.ndarray, np.ndarray], np.ndarray]] = None,
     emit_softsum: bool = False,
+    # --- concentration filter ---
+    conc_threshold: float = 0.0,
+    conc_min_band_um: float = 4.0,
+    scan_positions: Optional[np.ndarray] = None,
 ) -> SinogenOutputs:
     """Build sinograms in tolerance mode and write all output files.
 
@@ -143,6 +334,19 @@ def generate_sinograms_tolerance(
     emit_softsum : bool
         Force-write the softsum file even when no ``soft_weight_fn`` is
         provided (uniform weights = pure sum-pool).  Default off.
+
+    conc_threshold : float
+        When > 0, also emit ``sinos_clean_<nG>_<maxH>_<nS>.bin``: the raw
+        sino with every row whose on-sinusoid concentration falls below
+        this value zeroed. ``0.0`` (default) disables the filter, so the
+        set of emitted files is unchanged. See
+        :func:`sinogram_concentration`.
+    conc_min_band_um : float
+        Floor on the concentration acceptance band, micrometres.
+    scan_positions : ndarray (n_scans,) float, optional
+        Scan positions in micrometres in *sinogram-column* order
+        (``ScanGrid.spatial_positions``). Used only by the concentration
+        filter; without it the filter falls back to centred bin indices.
     """
     out_dir = Path(output_dir)
     out_dir.mkdir(parents=True, exist_ok=True)
@@ -334,6 +538,17 @@ def generate_sinograms_tolerance(
         fn = f"sinos_softsum_{nG}_{nH}_{nS}.bin"
         (out_dir / fn).write_bytes(softsum_sino.astype(np.float64, copy=False).tobytes())
         sino_paths["softsum"] = str(out_dir / fn)
+
+    # Concentration-filtered variant (off unless conc_threshold > 0).
+    if conc_threshold and conc_threshold > 0:
+        clean_path, conc_path = write_clean_variant(
+            out_dir, raw_sino, ome_arr, nr_hkls_per_grain,
+            conc_threshold=conc_threshold,
+            scan_positions=scan_positions,
+            min_band_um=conc_min_band_um,
+        )
+        sino_paths["clean"] = clean_path
+        sino_paths["conc"] = conc_path
 
     return SinogenOutputs(
         n_grains=nG,

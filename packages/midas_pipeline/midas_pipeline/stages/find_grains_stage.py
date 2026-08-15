@@ -88,6 +88,10 @@ def run(ctx: StageContext) -> StageResult:
             scan_tolerance_um=ctx.config.recon.sino_scan_tol_um,
             cluster_misorientation_deg=ctx.config.fusion.max_ang_deg,
             n_scans=ctx.config.scan.n_scans,
+            conc_threshold=getattr(ctx.config.recon, "sino_conc_threshold", 0.0),
+            conc_min_band_um=getattr(
+                ctx.config.recon, "sino_conc_min_band_um", 4.0,
+            ),
             **soft_kwargs,
         )
     else:

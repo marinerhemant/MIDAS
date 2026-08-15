@@ -72,8 +72,11 @@ from ._patches import (
 from ._sinogen import (
     SPOTS_ARRAY_COLS,
     SinogenOutputs,
+    apply_concentration_filter,
     apply_variant_torch,
     generate_sinograms_tolerance,
+    sinogram_concentration,
+    write_clean_variant,
 )
 from ._sinogen_indexing import generate_sinograms_indexing
 from ._spot_association import SpotData, SpotList, process_spots
@@ -102,6 +105,8 @@ __all__ = [
     "SPOTS_ARRAY_COLS", "SinogenOutputs",
     "apply_variant_torch", "generate_sinograms_tolerance",
     "generate_sinograms_indexing",
+    "sinogram_concentration", "apply_concentration_filter",
+    "write_clean_variant",
     # spot assoc
     "SpotData", "SpotList", "process_spots",
     # voxel keys
@@ -231,6 +236,9 @@ def find_grains_single(
     # P7: soft sino assembly (tolerance mode only — indexing mode unchanged)
     emit_softsum: bool = False,
     soft_weight_fn=None,
+    # Concentration filter (both sino modes). 0.0 ⇒ off.
+    conc_threshold: float = 0.0,
+    conc_min_band_um: float = 4.0,
     frame_loader=None,
 ) -> FindGrainsArtifacts:
     """Replace ``findSingleSolutionPFRefactored.c``.
@@ -274,6 +282,14 @@ def find_grains_single(
         outputs are written. Defaults to ``"Output"`` (matches C).
     normalize_sino, abs_transform : bool
         Variant transforms for the ``sinos_<nG>_<maxH>_<nS>.bin`` file.
+    conc_threshold : float
+        On-sinusoid concentration below which a sino row is treated as
+        contaminated and zeroed into the extra ``sinos_clean_*.bin``
+        variant. ``0.0`` (default) leaves the filter off and the emitted
+        file set unchanged. See
+        :func:`._sinogen.sinogram_concentration`.
+    conc_min_band_um : float
+        Floor on the concentration acceptance band, micrometres.
     frame_loader : callable, optional
         Required only when ``extract_patches=True``.
     """
@@ -444,6 +460,11 @@ def find_grains_single(
             abs_transform=abs_transform,
             emit_softsum=emit_softsum,
             soft_weight_fn=soft_weight_fn,
+            conc_threshold=conc_threshold,
+            conc_min_band_um=conc_min_band_um,
+            scan_positions=(
+                scan_grid.spatial_positions if scan_grid is not None else None
+            ),
         )
     elif sino_mode == "indexing":
         sg = generate_sinograms_indexing(
@@ -464,6 +485,8 @@ def find_grains_single(
             scan_tolerance_um=scan_tolerance_um,
             normalize_sino=normalize_sino,
             abs_transform=abs_transform,
+            conc_threshold=conc_threshold,
+            conc_min_band_um=conc_min_band_um,
         )
     else:
         raise ValueError(f"sino_mode must be 'tolerance' or 'indexing', got {sino_mode!r}")

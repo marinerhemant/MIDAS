@@ -36,7 +36,7 @@ ResumeMode = Literal["none", "auto", "from"]
 Device = Literal["cpu", "cuda", "mps"]
 Dtype = Literal["float32", "float64"]
 ReconMethod = Literal["fbp", "mlem", "osem", "voxelmap", "bayesian"]
-SinoType = Literal["raw", "norm", "abs", "normabs"]
+SinoType = Literal["raw", "norm", "abs", "normabs", "clean"]
 SinoSource = Literal["tolerance", "indexing"]
 SeedingMode = Literal["unseeded", "ff", "merged-ff"]
 AlignMethod = Literal["ring-center", "cross-correlation", "none"]
@@ -257,6 +257,12 @@ class ReconConfig:
     sino_source: SinoSource = "tolerance"
     sino_conf_min: float = 0.5            # MIDAS_PF_SINO_CONF_MIN
     sino_scan_tol_um: float = 1.5         # MIDAS_PF_SINO_SCAN_TOL
+    # Concentration filter: zero sino rows carrying less than this fraction
+    # of their intensity on the grain's own fitted sinusoid, into an extra
+    # ``sinos_clean_*.bin`` variant. 0.0 ⇒ off (no extra file emitted).
+    # 0.35 is the calibrated working value (20-ID pf_nf709 set A).
+    sino_conc_threshold: float = 0.0
+    sino_conc_min_band_um: float = 4.0    # floor on the acceptance band
     cull_min_size: int = 0                # drop CCs smaller than this many voxels
 
 
