@@ -60,6 +60,21 @@ class DTGeometry:
     tz_deg: float = 0.0
     distortion: dict[str, float] = field(default_factory=dict)
     rho_d_um: float = 150000.0
+    #: Path to the per-pixel residual radial correction map that
+    #: ``midas_calibrate_v2`` writes as ``residual_corr.bin`` when
+    #: ``build_residual_corr=True``.
+    #:
+    #: This is what the refined analytic geometry could NOT account for --
+    #: measured, per pixel, in pixels of radius. Leaving it out means
+    #: reconstructing with a geometry the calibration already knew was
+    #: incomplete. Measured on an 11-ID-C CeO2 calibrant the map has an rms of
+    #: 0.068 px, the same order as the azimuthal systematic that limits strain
+    #: there, so for any peak-position work it is not a refinement but a term.
+    #:
+    #: Optional because intensity-only reductions are insensitive to a
+    #: sub-pixel radial shift; it is peak position, and therefore strain, that
+    #: cares.
+    residual_corr_path: str | None = None
 
     @property
     def energy_kev(self) -> float:
@@ -112,6 +127,11 @@ class DTGeometry:
             tx=t(self.tx_deg), ty=t(self.ty_deg), tz=t(self.tz_deg),
         )
         kw.update({k: t(v) for k, v in self.v2_distortion().items()})
+        if self.residual_corr_path:
+            # The spec takes a path, not an array: the map is one float64 per
+            # detector pixel (66 MB at 2880 x 2880), so the integrator memory-maps
+            # it rather than carrying it through every conversion.
+            kw["ResidualCorrectionMap"] = str(self.residual_corr_path)
         if channel is not None:
             kw.update(
                 RMin=channel.r_min, RMax=channel.r_max, RBinSize=channel.r_bin,
@@ -121,13 +141,33 @@ class DTGeometry:
         return IntegrationSpec(**kw)
 
     def v2_distortion(self) -> dict[str, float]:
-        """Legacy ``p0..p3`` as v2 named distortion terms.
+        """The distortion as v2 named terms, from either input convention.
 
-        Uses ``midas_distortion.V1_TO_V2_DISTORTION``, the canonical table.
+        Accepts **both** forms, because both arrive in practice and telling
+        them apart is trivial while getting it wrong is silent:
+
+        * legacy ``p0..p14`` from a MIDAS parameter file, mapped through
+          ``midas_distortion.V1_TO_V2_DISTORTION`` -- a permutation, not a
+          positional shift, so ``p0 -> a2`` and not ``p0 -> iso_R2``;
+        * v2 named terms (``iso_R2``, ``a1..a6``, ``phi1..phi6``) exactly as
+          ``midas_calibrate_v2`` reports them, passed through unchanged.
+
+        Until this accepted both, handing it a calibration result's own
+        ``distortion`` dict dropped **every** term and left the geometry
+        undistorted, warning only to the log -- so ``from_calibration`` silently
+        discarded the distortion it had just been given.
+
         Returns an empty dict when no distortion was supplied.
         """
         if not self.distortion:
             return {}
+        try:
+            from midas_distortion import (AMP_NAMES, ISO_NAMES, PHASE_NAMES)
+            v2_names = set(AMP_NAMES) | set(ISO_NAMES) | set(PHASE_NAMES)
+        except ImportError:
+            v2_names = set()
+        if v2_names and set(self.distortion) <= v2_names:
+            return {k: float(v) for k, v in self.distortion.items()}
         try:
             from midas_distortion import V1_TO_V2_DISTORTION
         except ImportError as exc:
@@ -194,16 +234,37 @@ def from_calibration(result: Any) -> DTGeometry:
         raise TypeError(
             f"expected an AutoCalibrationResult; the object given lacks {missing}"
         )
+    px = float(result.pxY)
+    ny, nz = int(result.NrPixelsY), int(result.NrPixelsZ)
+    bcy, bcz = float(result.BC_y), float(result.BC_z)
+
+    # RhoD is the scale the distortion polynomial is defined against, so the
+    # class default (150 mm) applied to a detector it does not describe rescales
+    # every distortion term. Resolve it from the geometry that just arrived.
+    rho_d = 150000.0
+    try:
+        from midas_distortion import resolve_rho_d_um
+        rho_d = float(resolve_rho_d_um(None, NrPixelsY=ny, NrPixelsZ=nz,
+                                       BC_y=bcy, BC_z=bcz, pxY=px, pxZ=px)[0])
+    except Exception:                                    # pragma: no cover
+        log.warning("could not resolve RhoD; falling back to %.0f um", rho_d)
+
     return DTGeometry(
         lsd_um=float(result.Lsd),
-        bc_y_px=float(result.BC_y), bc_z_px=float(result.BC_z),
-        px_um=float(result.pxY),
-        n_pixels_y=int(result.NrPixelsY), n_pixels_z=int(result.NrPixelsZ),
+        bc_y_px=bcy, bc_z_px=bcz,
+        px_um=px,
+        n_pixels_y=ny, n_pixels_z=nz,
         wavelength_a=float(result.wavelength_A),
         tx_deg=float(getattr(result, "tx", 0.0)),
         ty_deg=float(getattr(result, "ty", 0.0)),
         tz_deg=float(getattr(result, "tz", 0.0)),
+        # v2 named terms; v2_distortion() takes them either way.
         distortion=dict(getattr(result, "distortion", {}) or {}),
+        rho_d_um=rho_d,
+        # Carry the measured residual the analytic model could not absorb. The
+        # calibration only writes this when build_residual_corr=True.
+        residual_corr_path=(str(getattr(result, "residual_corr_bin_path", "") or "")
+                            or None),
     )
 
 
