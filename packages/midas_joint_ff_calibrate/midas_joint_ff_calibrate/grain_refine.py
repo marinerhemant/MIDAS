@@ -25,12 +25,46 @@ refine several grains together.
 from __future__ import annotations
 
 import math
+import logging
 from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Dict, List, Optional, Sequence, Tuple
 
 import numpy as np
 import torch
+
+LOG = logging.getLogger(__name__)
+
+#: Geometry scalars that act directly on the *predicted* side, or on the
+#: observed side by a rotation we can apply to the stored YLab/ZLab. These are
+#: refinable without recomputing the observations from raw pixels.
+_DIRECT = frozenset({"tx", "Wedge", "Lsd"})
+
+#: Geometry scalars that were folded into ``SpotMatrix`` YLab/ZLab when the
+#: pipeline detector-corrected them. Thawing any of these switches the residual
+#: to the RAW-PIXEL path, which recomputes the observed (Y,Z) from
+#: ``det_hor``/``det_vert`` at the trial geometry. Validated on 20-ID Varex
+#: data: re-deriving at the known geometry reproduces the stored eta to
+#: 4e-5 deg and the stored position to a 2.3 um median -- the residue being the
+#: Stage-4 residual spline, which the analytic transform does not carry.
+_NEEDS_RAW = frozenset({"BC_y", "ty", "tz"})
+
+#: Distortion coefficients. Also raw-path, also validated by the same check.
+#: Frozen by default and best left so: a powder calibrant with thousands of
+#: ring points constrains them far better than a few thousand grain spots.
+_DISTORTION = frozenset(["iso_R2", "iso_R4", "iso_R6"]
+                        + [f"a{i}" for i in range(1, 7)]
+                        + [f"phi{i}" for i in range(1, 7)])
+
+#: Everything the caller may thaw.
+REFINABLE = _DIRECT | _NEEDS_RAW | _DISTORTION
+
+#: Still refused, with the reason.
+_NO_LEVER = {
+    "BC_z": "A vertical beam-centre shift is degenerate with a global shift "
+            "of the grain Z positions, which is exactly the coordinate FF "
+            "determines worst. Refine BC_y and leave BC_z at the powder value.",
+}
 
 import midas_peakfit as mp
 from midas_peakfit import Parameter
@@ -66,22 +100,126 @@ class GrainGeomRefineResult:
 
 
 # ────────────────────────────────────────────────────────── paramstest parsing
+#: Keys that mean "omega of the first frame". MIDAS FF parameter files —
+#: including everything ``ff_paramstest_from_auto_result`` writes — say
+#: ``OmegaStart``; only some older hand-written files say ``OmegaFirstFile``.
+_OMEGA_START_ALIASES = ("OmegaFirstFile", "OmegaStart")
+
+#: Keys that mean "how many frames in the sweep". NOT ``NrFilesPerSweep``,
+#: which counts *files* and is legitimately 1 on a one-file-per-sweep scan.
+_N_FRAMES_ALIASES = ("NrFrames", "nFrames")
+
+
+def _load_residual_map(v1, paramstest: Path, n_y: int, n_z: int, *, device, dtype):
+    """Load the Stage-4 residual-correction map named by the paramstest.
+
+    Returns ``None`` when the file names no map. A named-but-unusable map is an
+    error rather than a silent skip: dropping it leaves a systematic in the
+    residual exactly where a tilt or beam-centre fit would absorb it.
+    """
+    path = str(getattr(v1, "ResidualCorrectionMap", "")
+               or (getattr(v1, "extra", {}) or {}).get("ResidualCorrectionMap", "")
+               or "").strip()
+    if not path:
+        return None
+    p = Path(path)
+    if not p.is_absolute():
+        p = Path(paramstest).parent / p
+    if not p.exists():
+        raise FileNotFoundError(
+            f"{paramstest} names ResidualCorrectionMap {path!r}, which does not "
+            "exist. The pipeline applied that map when it wrote YLab/ZLab, so "
+            "refining without it leaves its signature in the residual.")
+    arr = np.fromfile(p, dtype=np.float64)
+    if arr.size != n_y * n_z:
+        raise ValueError(
+            f"residual map {p} has {arr.size} elements, expected "
+            f"{n_y * n_z} (NrPixelsZ x NrPixelsY = {n_z} x {n_y}).")
+    LOG.info("applying residual-correction map %s (%d x %d)", p, n_z, n_y)
+    return torch.from_numpy(arr.reshape(n_z, n_y)).to(device=device, dtype=dtype)
+
+
 def _read_hedm_keys(paramstest: Path) -> dict:
     """Pull FF acquisition keys the calibration ``CalibrationParams`` doesn't
-    carry (omega scan, detector size, eta gate) from the raw paramstest text."""
-    keys = {"OmegaFirstFile": 0.0, "OmegaStep": 0.0, "NrFilesPerSweep": 1440,
+    carry (omega scan, detector size, eta gate) from the raw paramstest text.
+
+    Two of these have bitten before and are now resolved by alias and checked,
+    because a wrong value here does not raise — it silently moves every
+    predicted spot out of the matching window, and the fit then "converges"
+    on almost no matched spots:
+
+    * **omega of the first frame** — read from ``OmegaStart`` as well as
+      ``OmegaFirstFile``. A file that says ``OmegaStart 180`` used to default
+      this to 0.0, putting the whole predicted pattern 180 deg from the data.
+    * **frame count** — read from ``NrFrames``, else derived from
+      ``OmegaRange``/``OmegaStep``. It used to be taken from
+      ``NrFilesPerSweep``, which counts *files*: on a one-file-per-sweep scan
+      that is 1, and the model then predicted a single-frame sweep against a
+      full 360 deg dataset.
+    """
+    keys = {"OmegaFirstFile": None, "OmegaStep": 0.0, "NrFilesPerSweep": None,
             "NrPixelsY": 2048, "NrPixelsZ": 2048, "MinEta": 6.0}
+    raw: dict = {}
     for line in Path(paramstest).read_text().splitlines():
         line = line.split("#", 1)[0].strip().rstrip(";").strip()
         if not line:
             continue
         t = line.split()
-        if len(t) >= 2 and t[0] in keys:
+        if len(t) < 2:
+            continue
+        raw[t[0]] = t[1:]
+        if t[0] in keys:
             try:
                 keys[t[0]] = float(t[1]) if ("." in t[1] or t[0] in
                                              ("OmegaFirstFile", "OmegaStep", "MinEta")) else int(t[1])
             except ValueError:
                 pass
+
+    def _f(name):
+        try:
+            return float(raw[name][0])
+        except (KeyError, IndexError, ValueError):
+            return None
+
+    # omega of the first frame, by alias
+    if keys["OmegaFirstFile"] is None:
+        for nm in _OMEGA_START_ALIASES:
+            v = _f(nm)
+            if v is not None:
+                keys["OmegaFirstFile"] = v
+                break
+    if keys["OmegaFirstFile"] is None:
+        raise ValueError(
+            f"{paramstest} sets none of {_OMEGA_START_ALIASES} — the omega of "
+            "the first frame is unknown. Defaulting it to 0 silently shifts "
+            "every predicted spot off the data and the fit matches almost "
+            "nothing while still reporting success.")
+
+    # frame count: explicit, else derived from the omega scan
+    n_frames = None
+    for nm in _N_FRAMES_ALIASES:
+        v = _f(nm)
+        if v is not None:
+            n_frames = int(round(v))
+            break
+    if n_frames is None and keys["OmegaStep"]:
+        rng = raw.get("OmegaRange")
+        if rng and len(rng) >= 2:
+            try:
+                span = abs(float(rng[1]) - float(rng[0]))
+                n_frames = int(round(span / abs(float(keys["OmegaStep"])))) + 1
+            except ValueError:
+                n_frames = None
+    if n_frames is None:
+        n_frames = keys["NrFilesPerSweep"]
+    if not n_frames or n_frames < 10:
+        raise ValueError(
+            f"{paramstest} gives a sweep of {n_frames} frame(s). Set "
+            f"{_N_FRAMES_ALIASES[0]}, or give OmegaRange + OmegaStep so it can "
+            "be derived. (NrFilesPerSweep counts FILES, not frames, and is 1 "
+            "on a one-file-per-sweep scan — using it here predicts a "
+            "single-frame sweep against a full rotation and matches nothing.)")
+    keys["NrFilesPerSweep"] = int(n_frames)
     return keys
 
 
@@ -164,6 +302,8 @@ def make_residual(
     *,
     fixed_geo: dict,
     kind: str = "angular",
+    observed_from_raw: bool = False,
+    fixed_v2: Optional[dict] = None,
 ):
     """Build the LM residual closure — the FitMultipleGrains objective.
 
@@ -182,10 +322,52 @@ def make_residual(
     """
     from midas_calibrate.geometry_torch import build_tilt_matrix_torch
 
-    Lsd = fixed_geo["Lsd"]
+    Lsd_fixed = fixed_geo["Lsd"]
     n_g = len(observations)
+    _v2_names = ["iso_R2", "iso_R4", "iso_R6"] + \
+                [x for i in range(1, 7) for x in (f"a{i}", f"phi{i}")]
+
+    def _observed_from_raw(g, unpacked, tx, Lsd):
+        """Recompute observed (Y,Z) from RAW pixels at the trial geometry.
+
+        Used when BC_y / ty / tz / distortion are thawed: those were folded
+        into the stored YLab/ZLab, so they only become levers if we redo the
+        detector correction ourselves. ``tx`` enters here too, so the caller
+        must NOT also rotate the result.
+
+        Delegates to ``midas_transforms``' ``apply_tilt_distortion`` — the same
+        function the pipeline's own transforms stage uses — so this reproduces
+        the stored YLab/ZLab exactly, **including the Stage-4 residual spline**.
+        Rolling the transform by hand here instead left a 2.3 um median offset
+        (the spline), which would have biased any tilt or beam-centre fit.
+        """
+        from midas_transforms.fit_setup.transform import apply_tilt_distortion
+        from midas_distortion import v2_coeffs_from_named, v2_to_v1_coeffs
+        hor, ver = raw_yz[g]
+        if any(nm in unpacked for nm in _v2_names):
+            named = {nm: unpacked[nm] if nm in unpacked else fixed_v2[nm]
+                     for nm in _v2_names}
+            p_arr = v2_to_v1_coeffs(v2_coeffs_from_named(named))
+            if not torch.is_tensor(p_arr):
+                p_arr = torch.as_tensor(p_arr, dtype=torch.float64)
+        else:
+            p_arr = fixed_geo["p_coeffs"]
+        return apply_tilt_distortion(
+            hor, ver,
+            Lsd=Lsd,
+            BC_y=unpacked.get("BC_y", fixed_geo["BC_y"]),
+            BC_z=unpacked.get("BC_z", fixed_geo["BC_z"]),
+            tx=tx,
+            ty=unpacked.get("ty", fixed_geo["ty"]),
+            tz=unpacked.get("tz", fixed_geo["tz"]),
+            p_coeffs=p_arr,
+            px=fixed_geo["px"], rho_d=fixed_geo["RhoD"],
+            residual_corr_map=fixed_geo.get("residual_corr_map"),
+        )
 
     def residual(unpacked: Dict[str, torch.Tensor]) -> torch.Tensor:
+        # Lsd is thawable (it scales R_pred); falls back to the frozen value.
+        Lsd = unpacked.get("Lsd", Lsd_fixed)
         tx = unpacked.get("tx", torch.zeros((), dtype=torch.float64))
         z = torch.zeros_like(tx)
         # 2-D rotation (about the beam) the trial tx applies to the on-detector
@@ -223,11 +405,16 @@ def make_residual(
             R_pred = Lsd * torch.tan(pick_2th)
             Y_pred = -R_pred * torch.sin(pick_eta)
             Z_pred = R_pred * torch.cos(pick_eta)
-            # Observed detector (Y,Z) (µm), rotated about the beam by tx.
-            Yo = observations[g].y_lab
-            Zo = observations[g].z_lab
-            Yo_t = R11 * Yo + R12 * Zo
-            Zo_t = R21 * Yo + R22 * Zo
+            if observed_from_raw:
+                # tx is applied inside the detector correction here, so do NOT
+                # also rotate — that would double-count it.
+                Yo_t, Zo_t = _observed_from_raw(g, unpacked, tx, Lsd)
+            else:
+                # Observed detector (Y,Z) (µm), rotated about the beam by tx.
+                Yo = observations[g].y_lab
+                Zo = observations[g].z_lab
+                Yo_t = R11 * Yo + R12 * Zo
+                Zo_t = R21 * Yo + R22 * Zo
             r = torch.stack([Y_pred - Yo_t, Z_pred - Zo_t], dim=-1)
             r = r * mt.mask.to(r.dtype).unsqueeze(-1)
             pieces.append(r.flatten())
@@ -249,6 +436,9 @@ def refine_geometry_from_grains(
     max_iter: int = 50,
     two_theta_max_deg: float = 20.0,
     refine_grain_strain: bool = True,
+    refine_grain_orientation: bool = False,
+    refine_grain_position: bool = False,
+    fix_values: Optional[Dict[str, object]] = None,
     with_powder: bool = False,
     select: str = "internal_angle",
     out_paramstest: Optional[Path | str] = None,
@@ -359,6 +549,27 @@ def refine_geometry_from_grains(
                        refined=False, bounds=(-5.0, 5.0)))
     spec.add(Parameter("Wedge", init=torch.tensor(float(getattr(v1, "Wedge", 0.0) or 0.0),
                        dtype=dtype), refined=False, bounds=(-5.0, 5.0)))
+    # Lsd scales the predicted radius (R = Lsd·tan 2θ), so it is a genuine
+    # lever on this residual and may be thawed. Frozen by default: the powder
+    # calibrant constrains it far better than a few hundred grain spots do,
+    # and thawing it lets Lsd trade against the grain radial positions.
+    spec.add(Parameter("Lsd", init=torch.tensor(float(v1.Lsd), dtype=dtype),
+                       refined=False,
+                       bounds=(0.5 * float(v1.Lsd), 2.0 * float(v1.Lsd))))
+    # Raw-pixel-path geometry: only levers once the observations are recomputed
+    # from det_hor/det_vert (see _NEEDS_RAW). Frozen unless asked for.
+    spec.add(Parameter("BC_y", init=torch.tensor(float(v1.BC_y), dtype=dtype),
+                       refined=False,
+                       bounds=(float(v1.BC_y) - 50.0, float(v1.BC_y) + 50.0)))
+    spec.add(Parameter("ty", init=torch.tensor(float(v1.ty), dtype=dtype),
+                       refined=False, bounds=(-5.0, 5.0)))
+    spec.add(Parameter("tz", init=torch.tensor(float(v1.tz), dtype=dtype),
+                       refined=False, bounds=(-5.0, 5.0)))
+    _v2_init = {nm: float(_named.get(nm, 0.0)) for nm in _DISTORTION}
+    for nm in sorted(_DISTORTION):
+        lo, hi = (-180.0, 180.0) if nm.startswith("phi") else (-0.05, 0.05)
+        spec.add(Parameter(nm, init=torch.tensor(_v2_init[nm], dtype=dtype),
+                           refined=False, bounds=(lo, hi)))
     # Grain pose is held FIXED at the (good) MIDAS values for the tx step: a
     # free grain orientation rotates the predicted (Y,Z) pattern about the beam
     # exactly as tx rotates the observed one, so co-refining it re-absorbs tx
@@ -370,15 +581,59 @@ def refine_geometry_from_grains(
         grain_eulers_init=torch.from_numpy(grain_eulers).to(dtype),
         grain_positions_init=torch.from_numpy(grain_pos).to(dtype),
         grain_lattices_init=torch.from_numpy(grain_lat).to(dtype),
-        refine_grain_orientation=False, refine_grain_position=False,
+        refine_grain_orientation=refine_grain_orientation,
+        refine_grain_position=refine_grain_position,
         refine_grain_strain=False,
     )
     spec.parameters["grain_euler"].bounds = (-2 * math.pi, 2 * math.pi)
     spec.parameters["grain_pos"].bounds = (-2000.0, 2000.0)
     for nm in refine_params:
+        if nm in _NO_LEVER:
+            raise ValueError(
+                f"refine_params has {nm!r}. {_NO_LEVER[nm]} Refinable here: "
+                f"{', '.join(sorted(REFINABLE))} (+ the grain blocks via "
+                "refine_grain_orientation / _position / _strain).")
         if nm not in spec.parameters:
-            raise KeyError(f"refine_params has {nm!r} but spec has no such parameter")
+            raise KeyError(
+                f"refine_params has {nm!r} but spec has no such parameter. "
+                f"Refinable: {', '.join(sorted(REFINABLE))}.")
         spec.parameters[nm].refined = True
+
+    # Pin parameters to externally KNOWN values (a LaB6 lattice, a focused-beam
+    # grain position). Distinct from freezing, which just keeps whatever the
+    # parameter file happened to say.
+    for nm, val in (fix_values or {}).items():
+        if nm in refine_params:
+            raise ValueError(
+                f"{nm!r} is in both refine_params and fix_values — it cannot "
+                "be pinned to a known value and refined at the same time.")
+        if nm not in spec.parameters:
+            raise KeyError(
+                f"fix_values has {nm!r}; known parameters are "
+                f"{', '.join(sorted(spec.parameters))}.")
+        cur = spec.parameters[nm].init
+        t = torch.as_tensor(val, dtype=dtype)
+        if t.ndim == 1 and cur.ndim == 2 and t.shape[0] == cur.shape[1]:
+            t = t.unsqueeze(0).expand_as(cur).clone()   # one row → all grains
+        if t.shape != cur.shape:
+            raise ValueError(
+                f"fix_values[{nm!r}] has shape {tuple(t.shape)}, expected "
+                f"{tuple(cur.shape)}.")
+        spec.parameters[nm].init = t
+        spec.parameters[nm].refined = False
+        LOG.info("pinned %s to a supplied known value", nm)
+
+    observed_from_raw = bool(
+        (set(refine_params) & (_NEEDS_RAW | _DISTORTION)))
+    if observed_from_raw:
+        LOG.info("recomputing observations from raw pixels (thawed: %s)",
+                 ", ".join(sorted(set(refine_params) & (_NEEDS_RAW | _DISTORTION))))
+    if "tx" in refine_params and refine_grain_orientation:
+        LOG.warning(
+            "refining tx with refine_grain_orientation=True: a free grain "
+            "orientation rotates the predicted pattern about the beam exactly "
+            "as tx rotates the observed one, so tx is re-absorbed and comes "
+            "back ~0. Hold the pose fixed for the tx step.")
 
     fixed_geo = dict(
         Lsd=torch.tensor(float(v1.Lsd), dtype=dtype),
@@ -390,8 +645,18 @@ def refine_geometry_from_grains(
         RhoD=torch.tensor(float(v1.RhoD if v1.RhoD > 0 else v1.MaxRingRad), dtype=dtype),
         p_coeffs=p_arr,
     )
+    # Stage-4 residual spline: applied, never refined. The pipeline folds it
+    # into the stored YLab/ZLab, so the raw-pixel path must apply it too or it
+    # sits in the residual as a systematic (2.3 um median on 20-ID Varex) and
+    # biases any tilt / beam-centre fit.
+    fixed_geo["residual_corr_map"] = _load_residual_map(
+        v1, paramstest, int(hedm["NrPixelsY"]), int(hedm["NrPixelsZ"]),
+        device=dev, dtype=dtype)
     residual = make_residual(model, observations, matches, raw_yz,
-                             fixed_geo=fixed_geo, kind=kind)
+                             fixed_geo=fixed_geo, kind=kind,
+                             observed_from_raw=observed_from_raw,
+                             fixed_v2={nm: torch.tensor(_v2_init[nm], dtype=dtype)
+                                       for nm in _DISTORTION})
 
     unpacked0 = {n: spec.parameters[n].init_tensor() for n in spec.parameters}
     cost_init = float((residual(unpacked0) ** 2).sum().item())

@@ -265,5 +265,46 @@ def test_stripped_paramstest_without_omegastep_errors(tmp_path):
         "MaxRingRad 312493.0;\n"
         "OmegaRange -180 180;\n"
     )
+    # The stripped file is missing BOTH the omega origin and OmegaStep; either
+    # guard firing is correct, so accept either name.
+    with pytest.raises(ValueError, match="OmegaStep|OmegaStart"):
+        refine_geometry_from_grains(ps, tmp_path, refine_params=("tx",))
+
+
+def test_omegastep_guard_still_fires_when_origin_is_present(tmp_path):
+    """The OmegaStep guard must not be masked by the omega-origin guard added
+    alongside it: a file that names its origin but omits OmegaStep is still
+    unusable, and must say so."""
+    from midas_joint_ff_calibrate.grain_refine import refine_geometry_from_grains
+
+    ps = tmp_path / "paramstest.txt"
+    ps.write_text(
+        "LatticeParameter 3.6 3.6 3.6 90 90 90;\n"
+        "SpaceGroup 225;\nWavelength 0.2066;\nDistance 959886.899;\n"
+        "px 150.0;\nBC 1391.14 1422.36;\n"
+        "tx 0;\nty -0.198;\ntz 0.324;\n"
+        "RhoD 312493.0;\nMaxRingRad 312493.0;\n"
+        "OmegaRange -180 180;\n"
+        "OmegaStart 180;\n"          # origin present, OmegaStep still absent
+        "NrFrames 1441;\n"
+    )
     with pytest.raises(ValueError, match="OmegaStep"):
         refine_geometry_from_grains(ps, tmp_path, refine_params=("tx",))
+
+
+def test_omega_origin_read_from_omegastart_alias(tmp_path):
+    """`OmegaStart` is what every MIDAS FF parameter file actually writes.
+    Reading it as 0.0 puts the predicted pattern 180 deg off the data and the
+    fit then "converges" on a handful of matched spots."""
+    from midas_joint_ff_calibrate.grain_refine import _read_hedm_keys
+
+    ps = tmp_path / "paramstest.txt"
+    ps.write_text(
+        "OmegaStart 180\nOmegaStep -0.25\nOmegaRange -180 180\n"
+        "NrFilesPerSweep 1\nNrPixelsY 2880\nNrPixelsZ 2880\nMinEta 6.0\n"
+    )
+    keys = _read_hedm_keys(ps)
+    assert keys["OmegaFirstFile"] == 180.0
+    # NrFilesPerSweep counts FILES (1 here); the frame count comes from the
+    # omega scan, not from that key.
+    assert keys["NrFilesPerSweep"] == 1441

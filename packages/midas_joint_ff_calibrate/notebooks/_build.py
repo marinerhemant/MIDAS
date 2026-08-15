@@ -1285,12 +1285,11 @@ calibrate → reconstruct → `grain-tx` → re-reconstruct) is
 
 ## Limitations
 
-* **Only `tx` and `Wedge` can be refined here.** `refine_geometry_from_grains`
-  builds its spec with those two; `Lsd`, `BC_y`, `BC_z`, `ty`, `tz` and the
-  distortion coefficients are passed as fixed geometry, so asking for them
-  raises `KeyError`. The archived C `FitGrain` fit ten geometry parameters —
-  that breadth has not been ported, because `tx` is the one powder genuinely
-  cannot see.
+* **Three parameters have a lever here: `tx`, `Wedge`, `Lsd`** (see
+  `REFINABLE`). `BC_y`, `BC_z`, `ty`, `tz` and the distortion do **not**, and
+  are rejected with an explanation rather than accepted — see section 6.
+  The archived C `FitGrain` fit ten geometry parameters; that breadth has not
+  been ported, because `tx` is the one powder genuinely cannot see.
 * **`tx` needs several grains.** One grain cannot separate `tx` from its own
   orientation; the ω-coupling across differently-oriented grains is what breaks
   the degeneracy. The default `max_grains=50` is a reasonable floor.
@@ -1298,6 +1297,135 @@ calibrate → reconstruct → `grain-tx` → re-reconstruct) is
   wrong `Lsd` or a hydrostatic strain offset. For those, see the `d0` recovery
   in `midas_pipeline` notebook 06 section 6.
 """),
+
+    ("md", """\
+## 6. Choosing what to freeze and what to thaw
+
+`refine_params` is the freeze/thaw control: everything not named stays frozen.
+The honest set of levers is small, and the package now enforces it.
+
+| Parameter | Path | Default |
+|---|---|---|
+| `tx` | rotates the observed (Y,Z) about the beam | **thawed** |
+| `Wedge` | enters the forward model's rotation axis | **thawed** |
+| `Lsd` | scales the predicted radius `R = Lsd·tan 2θ` | frozen |
+| `BC_y`, `ty`, `tz` | raw-pixel (see below) | frozen |
+| distortion `iso_R*`, `a*`, `phi*` | raw-pixel (see below) | frozen |
+| `BC_z` | — | **rejected** |
+
+**Why some of them need a different path.** The observed side of this residual
+is `SpotMatrix` `YLab`/`ZLab`, which the pipeline **already detector-corrected**
+at the calibration geometry — the beam centre, the tilts and the distortion
+were folded in before we saw the spots. Thawing them against those coordinates
+would change nothing, and the optimiser would hand back your input while
+reporting convergence.
+
+So naming any of them switches the residual to the **raw-pixel path**: the
+observations are recomputed from `det_hor`/`det_vert` at the trial geometry,
+via `midas_transforms`' own `apply_tilt_distortion` — the same function the
+pipeline's transforms stage uses, Stage-4 residual spline included. That
+matters: re-deriving *without* the spline leaves a 2.3 µm median offset, which
+is precisely the sort of systematic a tilt or beam-centre fit would happily
+absorb. With it, the re-derivation reproduces the stored `YLab`/`ZLab` to a
+0.016 µm median — round-off. The spline is applied, never refined.
+
+`BC_z` is refused outright: a vertical beam-centre shift is degenerate with a
+global shift of the grain Z positions, which is exactly the coordinate
+far-field determines worst.
+
+**Pinning to a known value** is separate from freezing. `fix_values` overrides
+a parameter's starting value *and* holds it there — for a lattice you measured
+on a standard, or grain positions a focused beam already defines:
+
+```python
+refine_geometry_from_grains(
+    ps, layer,
+    refine_params=("tx", "Wedge"),
+    fix_values={"grain_lattice": (4.1569, 4.1569, 4.1569, 90, 90, 90)},  # LaB6
+)
+```
+
+A one-row lattice or position broadcasts to every grain; naming a parameter in
+both `refine_params` and `fix_values` is an error."""),
+
+    ("py", """\
+from midas_joint_ff_calibrate.grain_refine import REFINABLE, _NO_LEVER
+
+print("refinable:", sorted(REFINABLE))
+print()
+for nm in ("BC_z", "ty", "p3"):
+    print(f"{nm:6} -> {_NO_LEVER[nm]}")"""),
+
+    ("md", """\
+### Grain blocks
+
+`refine_grain_orientation` / `refine_grain_position` are also exposed, but for
+a `tx` fit **leave them off** (the default). A free grain orientation rotates
+the predicted pattern about the beam in exactly the way `tx` rotates the
+observed one, so `tx` is re-absorbed and returns ~0. The function logs a
+warning if you thaw the orientation while refining `tx`."""),
+
+    ("md", """\
+## 7. Trust gate: profile the objective before believing the number
+
+An optimiser reporting success is not evidence. On a real 20-ID Varex dataset
+this refiner converged, `rc=0`, onto `Wedge = 5.0` — exactly its upper bound —
+because a parameter-file key mismatch had left only 5 of 12 355 spots matched.
+Every summary field looked healthy.
+
+Two checks catch that, and both are cheap:
+
+1. **`n_spots_matched`.** It should be a large fraction of the spots belonging
+   to the grains you selected. A handful means the predicted pattern is not
+   landing on the data at all — almost always the omega scan keys.
+2. **Scan the cost.** A real minimum is an interior parabola. A value sitting
+   on a bound, or a flat profile, is not a measurement."""),
+
+    ("py", """\
+# Profile the production objective by intercepting the solver, so the scan
+# uses exactly the residual the refiner minimises.
+import numpy as np, torch
+import midas_joint_ff_calibrate.grain_refine as gr
+
+cap = {}
+_orig = gr.mp.lm_minimise
+def _spy(spec, residual, **kw):
+    cap["spec"], cap["residual"] = spec, residual
+    return {n: spec.parameters[n].init_tensor() for n in spec.parameters}, 0.0, 0
+
+gr.mp.lm_minimise = _spy
+try:
+    gr.refine_geometry_from_grains(PARAMSTEST, LAYER_DIR,
+                                   refine_params=("tx", "Wedge"),
+                                   max_grains=100, max_iter=1)
+finally:
+    gr.mp.lm_minimise = _orig
+
+spec, residual = cap["spec"], cap["residual"]
+base = {n: spec.parameters[n].init_tensor() for n in spec.parameters}
+
+def cost(tx):
+    u = dict(base); u["tx"] = torch.tensor(float(tx), dtype=torch.float64)
+    with torch.no_grad():
+        r = residual(u)
+        return float((r ** 2).sum()), r.numel()
+
+grid = np.linspace(-0.4, 0.4, 41)
+c = np.array([cost(t)[0] for t in grid])
+n = cost(0.0)[1]
+print(f"minimum at tx = {grid[c.argmin()]:+.3f} deg")
+print(f"contrast (max-min)/min = {(c.max()-c.min())/c.min():.2f}   "
+      f"(a flat profile means tx is not determined)")
+print(f"RMS residual at min = {np.sqrt(c.min()/n):.0f} um")"""),
+
+    ("md", """\
+On the 20-ID Ti-7Al layer this gives a clean interior minimum at
+`tx = -0.079°` with a contrast of ~3.9 — the residual roughly doubles by
+±0.4°. Feeding `tx` and `Wedge` back and re-reconstructing moved the grain
+count 208 → 226, the median completeness 0.58 → 0.63, and **halved the
+vertical position scatter** (Z sd 153 → 76 µm) while leaving X and Y
+unchanged — which is what a genuine geometry correction looks like: it
+tightens the badly-conditioned coordinate and leaves the good ones alone."""),
 ]
 
 
