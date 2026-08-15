@@ -41,6 +41,15 @@ from .absorption import (
     uniform_mu,
 )
 from .direct import DirectResult, laplace_sigma, run_direct
+from .tensor_strain import (
+    COMPONENT_NAMES,
+    DeviatoricStrain,
+    TensorResult,
+    deviatoric_design,
+    fit_tensor_strain,
+    q_hat_sample_frame,
+    strain_to_radius,
+)
 from .iterative import sirt, tv_reconstruct
 from .index_rings import (
     ALPHA_U3O8,
@@ -125,6 +134,14 @@ __all__ = [
     "strain_map",
     "format_comparison",
     "run_direct",
+    # tensor strain (deviatoric, direct inversion)
+    "DeviatoricStrain",
+    "TensorResult",
+    "COMPONENT_NAMES",
+    "fit_tensor_strain",
+    "q_hat_sample_frame",
+    "deviatoric_design",
+    "strain_to_radius",
     "run_fit_then_recon",
     "run_recon_then_fit",
     "detect_snake",
