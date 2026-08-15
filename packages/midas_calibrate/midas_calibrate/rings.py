@@ -75,3 +75,49 @@ def build_ring_table(params: CalibrationParams) -> RingTable:
         for f in ("ring_nr", "h", "k", "l", "d_spacing", "two_theta_deg", "multiplicity", "r_ideal_px"):
             setattr(rt, f, getattr(rt, f)[keep])
     return rt
+
+
+def max_resolvable_ring_radius_px(
+    rt: RingTable,
+    *,
+    min_separation_px: float = 8.0,
+    r_min_px: float = 0.0,
+) -> tuple:
+    """Largest ring radius out to which the rings are actually separable.
+
+    Returns ``(radius_px, n_rings)``: the radius of the outermost ring such
+    that every adjacent pair inside ``[r_min_px, radius_px]`` is at least
+    ``min_separation_px`` apart, and how many rings that leaves.  Returns
+    ``(None, n)`` when fewer than two rings are in range.
+
+    Why this exists
+    ---------------
+    A ring table is generated from crystallography and says nothing about
+    whether the detector can tell two rings apart.  For a dense calibrant at
+    short wavelength the table can be far denser than the pixel pitch
+    supports, and the peak fitter then fits unresolved blends: the fit
+    "succeeds", the residuals are structureless, and the geometry is quietly
+    biased.  Concretely, CeO2 at 0.116 A (107 keV) on a 150 um detector at
+    Lsd = 330 mm puts **546 rings inside 1420 px -- one every ~2 px**, and
+    fitting them gives +/-2000 ue residuals.  Capping at the radius this
+    returns took that dataset from 300-600 ue to 13-36 ue per image.
+
+    Because ring separation in pixels scales with Lsd, the binding pair is
+    set by the SHORTEST distance in a scan.  For CeO2 at 107 keV it is
+    (331)/(420) at 2theta = 5.353/5.492 deg, which needs Lsd >~ 490 mm just
+    to separate by 8 px -- so the usable set caps near 2theta ~ 6.4 deg.
+
+    Note this is a necessary, not sufficient, condition: it uses ideal ring
+    radii and a fixed separation, and does not know peak widths or structure
+    factors.  Weak rings inside the returned radius may still be unusable.
+    """
+    R = np.asarray(rt.r_ideal_px, dtype=float)
+    order = np.argsort(R)
+    R = R[order]
+    inside = R[R >= float(r_min_px)]
+    if inside.size < 2:
+        return None, int(inside.size)
+    gaps = np.diff(inside)
+    bad = np.nonzero(gaps < float(min_separation_px))[0]
+    cut = float(inside[bad[0]]) if bad.size else float(inside[-1])
+    return cut, int((inside <= cut).sum())
