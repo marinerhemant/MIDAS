@@ -12,7 +12,7 @@ working (R, eta) bin size, or not.
 
 from __future__ import annotations
 
-__version__ = "0.4.1"
+__version__ = "0.4.2"
 
 from .channels import Channel, channels_from_legacy_params
 from .conventions import (
