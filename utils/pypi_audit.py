@@ -207,16 +207,40 @@ def inspect(root: Path, pkg_dir: Path) -> dict:
     name, version = read_project(pkg_dir / "pyproject.toml")
     rel = f"packages/{pkg_dir.name}"
 
-    # The commit that last introduced this exact version string. Pathspec-limited
-    # to pyproject.toml so an unrelated file mentioning the version cannot match.
+    # Where the published artifact was actually built from.
+    #
+    # First choice is the RELEASE TAG. The workflow checks out the tag, so the
+    # tag's commit -- not the version-bump commit -- is what PyPI holds. These
+    # differ whenever a release is fixed by retargeting the tag onto a later
+    # commit, which is the only recovery path when a release run fails (a rerun
+    # re-checks-out the same tag). Anchoring at the bump commit then counts the
+    # fix itself as "source moved since release" and the package reads stale
+    # forever. Seen twice: midas-dfxm 0.4.0 (tag moved onto the NaN-guard fix)
+    # and midas-calibrate-v2 0.5.5 (tag moved onto a revert, so the add+revert
+    # pair had zero net diff yet counted as two commits).
+    #
+    # Requires local tags to be current -- run `git fetch --tags --force` first,
+    # or a missing tag silently falls back to the bump commit. --force is not
+    # optional: a plain `git fetch --tags` REFUSES to move a tag that already
+    # exists locally ("would clobber existing tag") and exits non-zero, which is
+    # exactly the retargeted-tag case this anchoring exists to handle.
+    tag = f"{name}-v{version}"
+    anchor = git(root, "rev-list", "-1", tag)
+    anchored_at = "tag" if anchor else "bump"
+
+    # Fallback: the commit that last introduced this exact version string.
+    # Pathspec-limited to pyproject.toml so an unrelated file mentioning the
+    # version cannot match.
     bump = git(root, "log", "-1", "--format=%H", "-S", f'version = "{version}"',
                "--", f"{rel}/pyproject.toml")
+    if not anchor:
+        anchor = bump
 
     since_src = since_all = cosmetic = privacy = 0
     bump_date = ""
-    if bump:
-        bump_date = git(root, "log", "-1", "--format=%ad", "--date=short", bump)
-        rng = f"{bump}..HEAD"
+    if anchor:
+        bump_date = git(root, "log", "-1", "--format=%ad", "--date=short", anchor)
+        rng = f"{anchor}..HEAD"
         since_all = len(git(root, "log", "--format=%H", rng, "--", rel).split())
         # Only the importable module dir counts as "shipped code" -- test and doc
         # churn does not make a release stale.
@@ -236,7 +260,15 @@ def inspect(root: Path, pkg_dir: Path) -> dict:
         # cosmetic verdict -- see its docstring for what this cost last time.
         if (pkg_dir / pkg_dir.name).is_dir():
             prefix = f"{rel}/{pkg_dir.name}"
-            touched = git(root, "log", "--format=%H", rng, "--", prefix,
+            # Short-circuit on the net diff. Counting commits answers "did anyone
+            # touch this?"; the question that decides a re-release is "does the
+            # tree differ from what shipped?". They part company on an add+revert
+            # pair, which is two commits and zero difference.
+            net_changed = bool(git(root, "diff", "--name-only", anchor, "HEAD",
+                                   "--", prefix,
+                                   f":(exclude){prefix}/**/__pycache__/**",
+                                   f":(exclude){prefix}/**/*.pyc"))
+            touched = [] if not net_changed else git(root, "log", "--format=%H", rng, "--", prefix,
                           f":(exclude){prefix}/**/__pycache__/**",
                           f":(exclude){prefix}/**/*.pyc").split()
             for s in touched:
@@ -248,6 +280,7 @@ def inspect(root: Path, pkg_dir: Path) -> dict:
                     cosmetic += 1
 
     return {"name": name, "dir": pkg_dir.name, "repo": version, "bump": bump[:8],
+            "anchor": anchor[:8], "anchored_at": anchored_at,
             "bump_date": bump_date, "commits_since_bump_src": since_src,
             "commits_since_bump_all": since_all,
             "commits_cosmetic": cosmetic,
@@ -284,9 +317,13 @@ def render(rows: list[dict], title: str) -> None:
         # because this class was invisible until it had shipped five packages.
         priv = r.get("commits_privacy", 0)
         priv_s = f"  *** +{priv} REDACTION" if priv else ""
+        # "bump=" is the anchor date: the release tag's commit when the tag is
+        # present locally, else the version-bump commit. A "(no tag)" marks the
+        # fallback, which is the weaker measurement -- see inspect().
+        anch = "" if r.get("anchored_at") == "tag" else " (no tag)"
         print(f"  {r['name']:<30} repo={r['repo']:<9} pypi={r['pypi']:<12}"
               f" src_commits_since_bump={r['commits_since_bump_src']:<3}"
-              f" (all={r['commits_since_bump_all']:<3}){cos_s} bump={r['bump_date']}"
+              f" (all={r['commits_since_bump_all']:<3}){cos_s} bump={r['bump_date']}{anch}"
               f"{priv_s}")
 
 
