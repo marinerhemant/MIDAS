@@ -63,6 +63,7 @@ def mosaicity_scan(
                 GoniometerSetting(
                     mu=center.mu, omega=center.omega,
                     chi=center.chi + c, phi=center.phi + p,
+                    frame=center.frame,
                 )
             )
     return out
@@ -83,7 +84,7 @@ def rocking_scan(
     for d in vals:
         kw = dict(mu=center.mu, omega=center.omega, chi=center.chi, phi=center.phi)
         kw[axis] = kw[axis] + d
-        out.append(GoniometerSetting(**kw))
+        out.append(GoniometerSetting(**kw, frame=center.frame))
     return out
 
 

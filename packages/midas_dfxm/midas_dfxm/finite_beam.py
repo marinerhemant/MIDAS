@@ -31,6 +31,7 @@ def beam_integrated_observable(
     sigma_z: float,
     ray_dir=None,
     two_theta_deg: float | None = None,
+    geometry=None,
     n_samples: int = 21,
     span: float = 3.0,
 ) -> torch.Tensor:
@@ -39,16 +40,17 @@ def beam_integrated_observable(
     ``field_fn(pts) -> DeformationField`` evaluates the deformation field at arbitrary
     positions (e.g. an analytic Stroh dislocation, or an interpolated voxel field).
     ``sigma_z`` is the beam thickness; the ray direction defaults to the diffracted-beam
-    direction from ``two_theta_deg`` (or pass ``ray_dir`` explicitly). Differentiable in
-    the field parameters. As ``sigma_z -> 0`` this reduces to
-    :func:`midas_dfxm.deformation_observable`.
+    direction from ``two_theta_deg`` in ``geometry``'s scattering plane (or pass
+    ``ray_dir`` explicitly). Differentiable in the field parameters. As
+    ``sigma_z -> 0`` this reduces to :func:`midas_dfxm.deformation_observable`.
     """
     device, dtype = positions.device, positions.dtype
     if ray_dir is None:
         if two_theta_deg is None:
             ray_dir = torch.tensor([0.0, 0.0, 1.0], device=device, dtype=dtype)
         else:
-            ray_dir = diffracted_beam_direction(two_theta_deg, device=device, dtype=dtype)
+            ray_dir = diffracted_beam_direction(two_theta_deg, geometry=geometry,
+                                                device=device, dtype=dtype)
     ray_dir = torch.as_tensor(ray_dir, device=device, dtype=dtype)
     ray_dir = ray_dir / torch.linalg.vector_norm(ray_dir)
     if sigma_z <= 0:

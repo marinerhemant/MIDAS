@@ -103,6 +103,63 @@ optics = ObjectiveOptics(two_theta_deg=tt, magnification=10.0, detector_shape=(2
 image = dfxm_image(field, hkl, center, res, optics)   # (256, 256), differentiable
 ```
 
+## Lab frame and scattering plane
+
+Two beamline conventions are settable, and both default to the ESRF ID06-HXM case
+so existing code is unchanged.
+
+**Which axis is the beam** — `LabFrame` carries the choice; `outboard` is derived
+as `up × beam`, so a frame cannot be built inconsistently.
+
+| preset | beam | up | outboard |
+|---|---|---|---|
+| `MIDAS_FRAME` (default, = ESRF) | `x` | `z` | `y` |
+| `APS_FRAME` (Park convention) | `Z` | `Y` | `X` |
+| `BEAM_X_UP_Y` | `x` | `y` | `−z` |
+
+Any other orthogonal `(beam, up)` pair works too. `frame_rotation`,
+`convert_vector`, `convert_tensor` (strain, `F`, Nye) and `convert_orientation`
+move between them, and agree exactly with `midas_stress.frames` for the
+MIDAS↔APS pair — that module stays the repo-wide authority.
+
+```python
+from midas_dfxm import GoniometerSetting, APS_FRAME, MIDAS_FRAME
+
+g = GoniometerSetting.from_aps(mu=2.0, omega=4.0)   # geometry supplied in APS coords
+g_midas = g.in_frame(MIDAS_FRAME)                   # what the rest of the package uses
+```
+
+The motor angles are the same numbers in both — only the axes they are taken
+about are relabelled (`G_dst = R G_src Rᵀ`).
+
+**Which plane it scatters in** — `ScatteringGeometry(plane="vertical"|"horizontal")`,
+or an explicit `deflection` direction for an oblique plane. This is *not* a
+relabelling; it changes physics in two places:
+
+- **Which motor is the base tilt.** Vertical plane → `mu`. Horizontal plane →
+  `omega`, and `mu` is *inert* for a reflection whose `Q` lies along outboard,
+  since it rotates about the axis `Q` sits on.
+- **Which divergence limits which width.** Poulsen 2017 Eqs. 58–63 put `div_v`
+  on `sigma_rock`/`sigma_par` and `div_h` on `sigma_roll`. That holds for a
+  vertical plane; a horizontal one swaps them. `poulsen_resolution_widths(...,
+  geometry=...)` resolves it. The stock defaults have `div_v == div_h`, which
+  hides the swap entirely — on an anisotropic source it is a ~1.6× error in each
+  width, with `sigma_roll` further amplified by `1/sin θ`.
+
+```python
+from midas_dfxm import diffracted_beam_direction, poulsen_resolution_widths
+
+diffracted_beam_direction(12.0, geometry="horizontal")   # APS 6-ID-C transmission
+poulsen_resolution_widths(3.0, two_theta_deg=20.0, geometry="horizontal",
+                          div_v=0.2e-3, div_h=1.0e-3)
+```
+
+Note that `two_theta_from_k_out` needs the frame, and gets it wrong quietly
+without one: a horizontal-plane 12° reflection in APS components, read as MIDAS
+components, returns 78° (`90 − 2θ`); the vertical-plane case returns a flat 90°
+for any angle, since the beam component is identically zero. Pass `geometry=`
+whenever the vector did not come from this package.
+
 ## Tests
 
 ```bash

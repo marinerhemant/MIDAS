@@ -31,6 +31,8 @@ from dataclasses import dataclass
 
 import torch
 
+from .conventions import as_geometry
+
 
 def _orthonormal_frame(q_nom: torch.Tensor) -> tuple[torch.Tensor, torch.Tensor, torch.Tensor]:
     """Right-handed frame ``(e_par, e_t1, e_t2)`` with ``e_par`` along ``q_nom``."""
@@ -124,29 +126,45 @@ def poulsen_resolution_widths(
     div_h: float = 0.53e-3,
     na: float = 0.731e-3,
     eps: float = 1.4e-4,
+    geometry=None,
 ) -> dict:
     """Principal reciprocal-space resolution widths (Poulsen 2017, Eqs. 58-63).
 
     The rigorous DFXM resolution element is anisotropic with three distinct principal
     widths in the ``(rock, roll, par)`` frame::
 
-        sigma_rock^2 = (|Q0|^2/4) (div_v^2 + na^2)
-        sigma_roll^2 = (|Q0|^2/4 sin^2 theta) (div_h^2 + na^2)
-        sigma_par^2  = (|Q0|^2/4) (4 eps^2 + cot^2 theta (div_v^2 + na^2))
+        sigma_rock^2 = (|Q0|^2/4) (div_in^2 + na^2)
+        sigma_roll^2 = (|Q0|^2/4 sin^2 theta) (div_out^2 + na^2)
+        sigma_par^2  = (|Q0|^2/4) (4 eps^2 + cot^2 theta (div_in^2 + na^2))
 
-    with ``theta = two_theta/2``, ``div_v/div_h`` the incident vertical/horizontal
-    divergence (r.m.s.), ``na`` the objective angular acceptance (r.m.s.), ``eps`` the
-    r.m.s. energy spread. Returns ``{'sigma_rock', 'sigma_roll', 'sigma_par'}`` in the
-    same 1/Angstrom units as :class:`ResolutionFunction`. This is the closed-form
-    ground truth against which the (isotropic-``perp``, Gaussian) approximation of
+    with ``theta = two_theta/2``, ``na`` the objective angular acceptance (r.m.s.),
+    ``eps`` the r.m.s. energy spread, and ``div_in``/``div_out`` the incident
+    divergence **in** and **out of** the scattering plane.
+
+    Poulsen writes these for a **vertical** scattering plane, where ``div_in`` is the
+    vertical divergence ``div_v`` and ``div_out`` the horizontal ``div_h``. That
+    assignment is a property of the geometry, not of the physics: in a **horizontal**
+    scattering plane (APS 6-ID-C transmission) the two swap. Pass ``geometry`` and
+    :meth:`~midas_dfxm.conventions.ScatteringGeometry.divergences` resolves it; the
+    default reproduces the vertical-plane assignment exactly.
+
+    Because the defaults ``div_v == div_h`` the swap is invisible on defaults --
+    it only bites on an anisotropic source, where ``sigma_roll`` also carries a
+    ``1/sin(theta)`` amplification. Hence the explicit knob rather than a comment.
+
+    Returns ``{'sigma_rock', 'sigma_roll', 'sigma_par'}`` in the same 1/Angstrom
+    units as :class:`ResolutionFunction`. This is the closed-form ground truth
+    against which the (isotropic-``perp``, Gaussian) approximation of
     :class:`ResolutionFunction` should be benchmarked (rock << roll ~ par: a thin plate).
     """
+    d = as_geometry(geometry).divergences(div_v, div_h)
+    div_in, div_out = d["div_in_plane"], d["div_out_of_plane"]
     q = float(q_mag)
     theta = 0.5 * two_theta_deg * torch.pi / 180.0
     s, c = torch.sin(torch.tensor(theta)).item(), torch.cos(torch.tensor(theta)).item()
-    ang = div_v ** 2 + na ** 2
+    ang = div_in ** 2 + na ** 2
     sigma_rock = 0.5 * q * (ang ** 0.5)
-    sigma_roll = 0.5 * q / s * ((div_h ** 2 + na ** 2) ** 0.5)
+    sigma_roll = 0.5 * q / s * ((div_out ** 2 + na ** 2) ** 0.5)
     sigma_par = 0.5 * q * ((4 * eps ** 2 + (c / s) ** 2 * ang) ** 0.5)
     return {"sigma_rock": sigma_rock, "sigma_roll": sigma_roll, "sigma_par": sigma_par}
 
@@ -175,6 +193,7 @@ def poulsen_aligned_resolution(
     *,
     two_theta_deg: float,
     rock_dir: "torch.Tensor | None" = None,
+    geometry=None,
     **poulsen_kwargs,
 ) -> ResolutionFunction:
     """Fully anisotropic DFXM resolution in one call: the Poulsen widths
@@ -183,9 +202,18 @@ def poulsen_aligned_resolution(
     roll`` on ``e_t2``). ``rock_dir`` (the in-scattering-plane direction) orients the
     axes so ``rock`` and ``roll`` land on the physical directions. Extra kwargs
     (``div_v``, ``div_h``, ``na``, ``eps``) pass to :func:`poulsen_resolution_widths`.
+
+    ``geometry`` sets the scattering plane, which both fixes the divergence roles in
+    the widths and -- when ``rock_dir`` is not given explicitly -- orients ``e_t1``
+    along that plane's deflection direction. Passing neither leaves the previous
+    behaviour untouched: vertical-plane widths and an arbitrary transverse frame.
     """
+    geom = as_geometry(geometry)
+    if rock_dir is None and geometry is not None:
+        rock_dir = geom.deflection_direction(device=q_nom.device, dtype=q_nom.dtype)
     q_mag = float(torch.linalg.vector_norm(q_nom))
-    w = poulsen_resolution_widths(q_mag, two_theta_deg=two_theta_deg, **poulsen_kwargs)
+    w = poulsen_resolution_widths(q_mag, two_theta_deg=two_theta_deg,
+                                  geometry=geom, **poulsen_kwargs)
     return ResolutionFunction(q_nom=q_nom, sigma_par=w["sigma_par"],
                               sigma_perp=w["sigma_rock"], sigma_perp2=w["sigma_roll"],
                               rock_dir=rock_dir)

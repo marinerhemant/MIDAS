@@ -23,29 +23,45 @@ from dataclasses import dataclass
 
 import torch
 
+from .conventions import as_geometry
 
-def diffracted_beam_direction(two_theta_deg: float, *, device=None, dtype=torch.float64) -> torch.Tensor:
-    """Unit ``k_out`` for a reflection at ``2*theta`` in the vertical diffraction plane.
 
-    Incident beam along lab ``x``; diffraction plane is ``x``-``z`` (vertical).
-    ``k_out = (cos 2theta) xhat + (sin 2theta) zhat``.
+def diffracted_beam_direction(two_theta_deg: float, *, geometry=None,
+                              device=None, dtype=torch.float64) -> torch.Tensor:
+    """Unit ``k_out`` for a reflection at ``2*theta`` in the scattering plane.
 
-    This assumes the diffraction plane is vertical, which is the DFXM case (the
-    objective is placed there). Techniques that image *one chosen grain's*
-    reflection -- topotomography, DCT -- get whatever direction crystallography
-    gives them, and must pass an explicit ``k_out`` to
-    :class:`ObjectiveOptics` instead. See :meth:`ObjectiveOptics.from_k_out`.
+    ``k_out = cos(2theta) * beam + sin(2theta) * deflection``, with both
+    directions taken from ``geometry`` (a :class:`~midas_dfxm.conventions.
+    ScatteringGeometry`, the string ``"vertical"``/``"horizontal"``, or ``None``).
+
+    The default is the **vertical** scattering plane in the MIDAS frame -- beam
+    along ``x``, plane ``x``-``z``, ``k_out = (cos 2theta) xhat + (sin 2theta)
+    zhat`` -- which is the ESRF ID06-HXM geometry. Pass
+    ``geometry="horizontal"`` for a transmission geometry that scatters in the
+    ``x``-``y`` plane (APS 6-ID-C).
+
+    Techniques that image *one chosen grain's* reflection -- topotomography, DCT
+    -- get whatever direction crystallography gives them, and should pass an
+    explicit ``k_out`` to :class:`ObjectiveOptics` instead. See
+    :meth:`ObjectiveOptics.from_k_out`.
     """
-    tt = torch.deg2rad(torch.as_tensor(two_theta_deg, device=device, dtype=dtype))
-    return torch.stack([torch.cos(tt), torch.zeros_like(tt), torch.sin(tt)])
+    return as_geometry(geometry).k_out(two_theta_deg, device=device, dtype=dtype)
 
 
-def two_theta_from_k_out(k_out) -> float:
+def two_theta_from_k_out(k_out, *, geometry=None) -> float:
     """Scattering angle ``2*theta`` (degrees) of an arbitrary ``k_out``.
 
-    ``2*theta`` is by definition the angle between the incident beam (lab ``x``)
-    and ``k_out``, so this inverts :func:`diffracted_beam_direction` for any
-    direction, not only vertical-plane ones.
+    ``2*theta`` is by definition the angle between the incident beam and
+    ``k_out``, so this inverts :func:`diffracted_beam_direction` for any
+    direction, not only in-plane ones.
+
+    ``geometry`` supplies the beam direction. The default assumes the beam is
+    along ``x`` (MIDAS frame) -- pass a geometry built on
+    :data:`~midas_dfxm.conventions.APS_FRAME` if ``k_out`` has APS components,
+    or the answer is silently wrong rather than an error. How wrong depends on
+    the scattering plane, and neither case raises: APS components read as MIDAS
+    give ``90 - 2*theta`` for a horizontal plane (12 deg reads as 78) and a flat
+    ``90`` for a vertical one, where the beam component is identically zero.
     """
     k = torch.as_tensor(k_out)
     if not torch.is_floating_point(k):
@@ -53,20 +69,23 @@ def two_theta_from_k_out(k_out) -> float:
     n = torch.linalg.vector_norm(k.detach())
     if float(n) == 0.0:
         raise ValueError("k_out must be a non-zero vector")
-    c = (k.detach()[0] / n).clamp(-1.0, 1.0)
+    beam = as_geometry(geometry).beam_direction(device=k.device, dtype=k.dtype)
+    c = ((k.detach() @ beam) / n).clamp(-1.0, 1.0)
     return float(torch.rad2deg(torch.acos(c)))
 
 
-def detector_basis(k_out: torch.Tensor) -> tuple[torch.Tensor, torch.Tensor]:
+def detector_basis(k_out: torch.Tensor, *, geometry=None) -> tuple[torch.Tensor, torch.Tensor]:
     """Orthonormal detector axes ``(u, v)`` spanning the plane transverse to ``k_out``.
 
-    ``u`` is horizontal (in the lab ``x``-``y`` sense), ``v`` completes a
-    right-handed set. Returns two ``(3,)`` unit vectors.
+    ``u`` is transverse to the frame's up direction, ``v`` completes a
+    right-handed set (so for an in-plane ``k_out``, ``v`` is the frame's up).
+    Returns two ``(3,)`` unit vectors.
     """
+    geom = as_geometry(geometry)
     k = k_out / torch.linalg.vector_norm(k_out)
-    up = torch.tensor([0.0, 0.0, 1.0], device=k.device, dtype=k.dtype)
+    up = geom.frame.axis("up", device=k.device, dtype=k.dtype)
     if torch.abs(torch.dot(k, up)) > 0.9:
-        up = torch.tensor([0.0, 1.0, 0.0], device=k.device, dtype=k.dtype)
+        up = geom.frame.axis("outboard", device=k.device, dtype=k.dtype)
     u = torch.linalg.cross(up, k)
     u = u / torch.linalg.vector_norm(u)
     v = torch.linalg.cross(k, u)
@@ -91,15 +110,20 @@ class ObjectiveOptics:
         Pixel coordinate of the optical axis (defaults to detector centre).
     k_out : tensor (3,), optional
         Explicit optical axis in the lab frame. When ``None`` (the default) the
-        axis is derived from ``two_theta_deg`` and lies in the vertical
-        ``x``-``z`` diffraction plane, which is the DFXM geometry. Supply it when
-        the imaged reflection is *not* in that plane -- topotomography and DCT
-        image one chosen grain's ``G``, which points wherever crystallography
-        puts it. Need not be normalised. Gradients flow through it.
+        axis is derived from ``two_theta_deg`` and lies in ``geometry``'s
+        scattering plane. Supply it when the imaged reflection is *not* in that
+        plane -- topotomography and DCT image one chosen grain's ``G``, which
+        points wherever crystallography puts it. Need not be normalised.
+        Gradients flow through it.
 
         It must agree with ``two_theta_deg`` (checked at construction, since
         ``two_theta_deg`` remains the scattering angle other code reads);
         :meth:`from_k_out` derives the pair consistently for you.
+    geometry : ScatteringGeometry | str, optional
+        Lab frame + scattering plane. ``None`` (the default) is the vertical
+        plane in the MIDAS frame (ESRF ID06-HXM); pass ``"horizontal"`` for an
+        APS 6-ID-C style transmission geometry. It also sets the frame used to
+        read an explicit ``k_out`` and to build the detector basis.
 
     Notes
     -----
@@ -116,15 +140,17 @@ class ObjectiveOptics:
     k_out: torch.Tensor | None = None
     NA: float | None = None
     wavelength_A: float | None = None
+    geometry: object = None
 
     def __post_init__(self):
+        self.geometry = as_geometry(self.geometry)
         if self.k_out is None:
             return
         # An inconsistent (k_out, two_theta_deg) pair is a silent physics bug:
         # the projection would use one direction while anything reading
         # two_theta_deg (resolution widths, Lorentz factors) uses another.
         # Check once, here, rather than on every project() call.
-        tt = two_theta_from_k_out(self.k_out)
+        tt = two_theta_from_k_out(self.k_out, geometry=self.geometry)
         if abs(tt - float(self.two_theta_deg)) > 1e-6:
             raise ValueError(
                 f"k_out is at 2*theta = {tt:.9g} deg but two_theta_deg = "
@@ -149,12 +175,15 @@ class ObjectiveOptics:
             raise TypeError(
                 "from_k_out derives two_theta_deg from k_out; do not pass it as well"
             )
-        return cls(two_theta_deg=two_theta_from_k_out(k_out), k_out=k_out, **kwargs)
+        geometry = as_geometry(kwargs.pop("geometry", None))
+        return cls(two_theta_deg=two_theta_from_k_out(k_out, geometry=geometry),
+                   k_out=k_out, geometry=geometry, **kwargs)
 
     def optical_axis(self, *, device=None, dtype=torch.float64) -> torch.Tensor:
         """Unit optical axis ``(3,)``: explicit ``k_out`` if set, else from ``2*theta``."""
         if self.k_out is None:
-            return diffracted_beam_direction(self.two_theta_deg, device=device, dtype=dtype)
+            return diffracted_beam_direction(self.two_theta_deg, geometry=self.geometry,
+                                             device=device, dtype=dtype)
         k = self.k_out
         if not isinstance(k, torch.Tensor):
             k = torch.as_tensor(k, device=device, dtype=dtype)
@@ -169,7 +198,7 @@ class ObjectiveOptics:
         and (when supplied) ``k_out``.
         """
         k_out = self.optical_axis(device=positions_lab.device, dtype=positions_lab.dtype)
-        u, v = detector_basis(k_out)
+        u, v = detector_basis(k_out, geometry=self.geometry)
         cu, cv = self._center(positions_lab)
         pu = self.magnification * (positions_lab @ u) / self.pixel_um + cu
         pv = self.magnification * (positions_lab @ v) / self.pixel_um + cv
