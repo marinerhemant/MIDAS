@@ -25,7 +25,14 @@ dependencies = [
     # cannot run without it. It lived in [full] until 2026-08-14, which meant a
     # plain `pip install midas-dt` produced a package that could not build the
     # sinograms the README advertised. Brings torch>=2.1 with it.
-    "midas-integrate-v2>=0.3.1",
+    #
+    # Raised to 0.3.2 for correctness, not for a feature. DTGeometry sets
+    # ``ResidualCorrectionMap`` in the IntegrationSpec it hands to v2; below
+    # 0.3.2 the v2 binning path *declares that field and silently ignores it*,
+    # so every integration discards the residual the calibration measured and
+    # nothing reports a problem. The failure is a slightly wrong radius, not an
+    # error, which is why the floor has to carry it.
+    "midas-integrate-v2>=0.3.2",
     # Floored for the macOS fix, not for a feature: 0.4.3 selects numba's
     # workqueue threading layer on darwin. Below it, calibration and any
     # midas-dt reduction SEGFAULT on a Mac -- numba's OpenMP layer colliding
