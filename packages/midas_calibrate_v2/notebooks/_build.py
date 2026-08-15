@@ -20,6 +20,12 @@ import sys
 from pathlib import Path
 from typing import List, Tuple
 
+# NB 24's cell list lives in its own module — it is long, and keeping it here
+# would push this file past the point where the notebook registry at the
+# bottom is findable.
+sys.path.insert(0, str(Path(__file__).parent))
+from _nb24_source import NB_24        # noqa: E402
+
 HERE = Path(__file__).parent
 
 Cell = Tuple[str, str]    # (kind, source)
@@ -1403,10 +1409,19 @@ but slowly: a 70-ring CeO₂ pattern at 63 keV gives σ(a) of about
 6 ppm at one distance, *limited by the nonlinearity-strength*, not
 by detector noise.
 
-The only fix is two (or more) calibrant images at different L_sd.
-The same `a` must satisfy both images' Bragg conditions; only the
-true `a` does.  This notebook walks through the analytical Fisher
-information that quantifies the σ(a) collapse.
+Two (or more) calibrant images at different L_sd help, because the
+same `a` must satisfy every image's Bragg condition.  This notebook
+walks through the analytical Fisher information that quantifies the
+σ(a) collapse.
+
+> **Read notebook 24 before applying this to a wavelength.**  Extra
+> distances tighten `a` here only because each image contributes more
+> rings at a *different* 2θ range.  They do **not** break a
+> scale degeneracy on their own: if every image carries its own free
+> `L_sd`, then `(λ, L_sd,i) → (kλ, k·L_sd,i)` rescales the whole set
+> and leaves every predicted radius unchanged.  What breaks it is
+> knowing the *travel* `Δ_i` between images and fitting a single
+> `L_sd,i = L₀ + Δ_i`.  See `autocalibrate_multi(..., lsd_offsets_um=)`.
 """),
     ("py", """\
 import os, math
@@ -1521,9 +1536,17 @@ Mathematically: σ(a) ≈ σ(L_sd_prior) · ∂a/∂L_sd along the gauge
 null.  At small 2θ, ∂a/∂L_sd ≈ a/L_sd ≈ 6 × 10⁻⁶ Å/µm × 100 µm =
 6 × 10⁻⁴ Å ≈ 100 ppm — same scale as the data-only result.
 
-The two-distance protocol is the only thing that adds a *new*
-direction to the Fisher block (Lsd_2 is independent of Lsd_1) and
-thereby breaks the gauge.
+A second distance adds rows to the Fisher block at a different 2θ
+range, which is what tightens `a` above.
+
+Be careful with the tempting next step, though: `Lsd_2` being
+*independent* of `Lsd_1` is precisely what does **not** break a
+scale gauge.  An independent `Lsd_2` is free to rescale along with
+everything else.  Adding distances while letting each keep its own
+free `L_sd` leaves the (λ, L_sd) Fisher block numerically singular
+— on a real 28-distance CeO₂ scan, cond(F) = 3.3 × 10¹³ with free
+`L_sd,i` versus 1.9 × 10⁸ once the travel is constrained. Notebook
+**24** works that through.
 
 ## What about adding per-ring offsets `δr_k`?
 
@@ -3150,6 +3173,7 @@ NOTEBOOKS = {
     "21_four_stage_refinement":         NB_21,
     "22_multi_distance_bayesian":       NB_22,
     "23_joint_multidetector_hydra":     NB_23,
+    "24_wavelength_from_known_travel":  NB_24,
 }
 
 

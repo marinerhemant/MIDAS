@@ -24,7 +24,7 @@ Optional dependencies:
 - `pip install pyFAI` — for **NB 10** to run pyFAI live (otherwise
   it falls back to paper-validated comparison numbers)
 
-## The 20 notebooks
+## The notebooks
 
 ### Tier 0 — the one-shot entry point
 
@@ -83,6 +83,7 @@ only notebooks here that need **no** mounted test data.
 | **21** | [Four-Stage Refinement](21_four_stage_refinement.ipynb) | ~15 s | `autocalibrate_four_stage` — paper-3's staged workflow (geom-only → full distortion → TPS-spline residual map → honest held-out eval) in one call; per-ring `δr_k` context |
 | **22** | [Multi-Distance Bayesian](22_multi_distance_bayesian.ipynb) | ~35 s | `autocalibrate_multi_bayesian` — two CeO₂ images at distinct L_sd → joint MAP + Laplace covariance → per-image L_sd and per-parameter σ; the runnable counterpart to the analytical NB 07 |
 | **23** | [Joint Multi-Detector (HYDRA)](23_joint_multidetector_hydra.ipynb) | ~1–2 min | `robust_multipanel_seed` + `autocalibrate_multi` — four azimuthally-mounted GE panels (off-panel BC, weak arcs) refined with **one shared L_sd** + per-panel beam-centre; needs `$V2_HYDRA_BASE` real data |
+| **24** | [Wavelength from Known Travel](24_wavelength_from_known_travel.ipynb) | ~40 s | `autocalibrate_multi(..., lsd_offsets_um=)` — recover **λ and L_sd together** from a scan of exactly-known detector travel. Shows why several distances with a free `L_sd` each does *not* work (cond 5e2 linked vs 7e6 free; σ(λ) 35× worse), the slope-1 cross-check, the stage-vs-detector discriminator, and the ring-overlap ceiling |
 
 ## Running them
 

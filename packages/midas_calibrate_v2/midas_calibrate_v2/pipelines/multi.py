@@ -38,11 +38,19 @@ def build_multi_spec(
     v1_per_image: List[V1Params],
     *,
     shared_names: Optional[List[str]] = None,
+    link_lsd: bool = False,
 ) -> MultiImageSpec:
     """Construct a MultiImageSpec from per-image v1 params.
 
     Default shared block: pxY, pxZ, RhoD, all v2 distortion params, panel_*.
     Per-image: Lsd, BC_y, BC_z, ty, tz, Wavelength, Parallax, tx.
+
+    ``link_lsd=True`` additionally shares ``Lsd`` and ``Wavelength``.  Use it
+    with ``lsd_offsets_um`` on :func:`autocalibrate_multi`, which turns the
+    shared ``Lsd`` into a single refined offset ``L0`` and reconstructs each
+    image's distance as ``Lsd_i = L0 + Delta_i``.  See that function for why
+    this — and not merely using several distances — is what makes the
+    wavelength identifiable.
     """
     if shared_names is None:
         from ..forward.distortion import P_COEF_NAMES
@@ -50,6 +58,8 @@ def build_multi_spec(
                         + list(P_COEF_NAMES)
                         + ["panel_delta_yz", "panel_delta_theta",
                            "panel_delta_lsd", "panel_delta_p2"])
+    if link_lsd:
+        shared_names = list(shared_names) + ["Lsd", "Wavelength"]
 
     specs = [spec_from_v1_params(p) for p in v1_per_image]
     shared_names = [n for n in shared_names if n in specs[0].parameters]
@@ -71,6 +81,13 @@ class MultiResult:
     # map is applied — the honest "post-correction" number.  None when
     # ``build_residual_corr=False``.
     post_residual_strain_uE: Optional[List[float]] = None
+    # Known-distance-travel mode only (``lsd_offsets_um``): the single refined
+    # offset L0 (µm) and the reconstructed per-image Lsd_i = L0 + Delta_i.
+    # ``shared_unpacked["Lsd"]`` holds L0, NOT a usable per-image distance, so
+    # read the distances from here.  Deltas are re-centred to zero mean, so L0
+    # is the distance at the centroid of the scan, not at any one image.
+    L0_um: Optional[float] = None
+    lsd_per_image_um: Optional[List[float]] = None
 
 
 def _build_multi_indices(multi_spec: MultiImageSpec, info: MultiPackInfo,
@@ -109,8 +126,36 @@ def autocalibrate_multi(
     build_residual_corr: bool = True,
     residual_corr_outlier_pct: float = 90.0,
     residual_corr_path: Optional[str] = None,
+    lsd_offsets_um: Optional[List[float]] = None,
 ) -> MultiResult:
     """Joint calibration over multiple images.
+
+    Known-distance-travel mode (``lsd_offsets_um``)
+    -----------------------------------------------
+    Pass the *exactly known* relative travel of the detector stage, one value
+    per image (µm, any common origin).  Each image's distance is then
+    reconstructed as ``Lsd_i = L0 + Delta_i`` from a SINGLE shared refined
+    ``L0`` (the unknown offset between the stage readback and the true
+    sample-detector distance), instead of one free ``Lsd`` per image.
+
+    This is what makes ``Wavelength`` identifiable, and it is worth being
+    precise about why, because "just use several distances" does NOT do it.
+    With one free ``Lsd`` per image the transformation
+
+        lambda -> k*lambda,   Lsd_i -> k*Lsd_i  (all i)
+
+    leaves every predicted ring radius unchanged to first order (2theta is
+    small, R = Lsd*tan(2theta), 2theta ~ lambda/d), so lambda and the
+    distances stay degenerate no matter how many images are stacked up --
+    only the weak tan/arcsin non-linearity separates them.  Fixing the
+    DIFFERENCES ``Delta_i`` forbids that rescaling: k*Lsd_i is no longer of
+    the form L0' + Delta_i unless k == 1.  On a 28-image CeO2 scan spanning
+    330-3000 mm this stiffens the soft (lambda, Lsd) Fisher direction by ~3
+    orders of magnitude (condition number 3e13 -> 2e8).
+
+    Requires ``link_lsd=True`` when building the spec (or a ``multi_spec``
+    that already carries a shared ``Lsd``), so that the shared ``Lsd``
+    parameter can play the role of ``L0``.
 
     After LM/EM convergence, optionally builds an empirical residual
     correction map from per-fit ``ΔR = R_forward - R_ideal`` and stores it on
@@ -139,8 +184,53 @@ def autocalibrate_multi(
     if darks is None:
         darks = [None] * n_imgs
 
+    # ---- Known-distance-travel mode.  Delta_i are constants, not parameters:
+    # they are re-centred to a zero-mean so the shared "Lsd" is L0 at the
+    # centroid of the scan, which decorrelates L0 from lambda far better than
+    # anchoring at an arbitrary end point.
+    link_lsd = lsd_offsets_um is not None
+    deltas_t: List[torch.Tensor] = []
+    if link_lsd:
+        if len(lsd_offsets_um) != n_imgs:
+            raise ValueError(
+                f"lsd_offsets_um has {len(lsd_offsets_um)} entries but there "
+                f"are {n_imgs} images")
+        d_arr = np.asarray(lsd_offsets_um, dtype=float)
+        d_arr = d_arr - d_arr.mean()
+        deltas_t = [torch.as_tensor(float(d), dtype=dtype, device=device)
+                    for d in d_arr]
+        # Seed the shared L0 at the mean of the per-image distances so the
+        # first LM step starts on the constraint surface rather than off it.
+        L0_seed = float(np.mean([v1.Lsd for v1 in v1_per_image]))
+        for v1, d in zip(v1_per_image, d_arr):
+            v1.Lsd = L0_seed + float(d)
+
     if multi_spec is None:
-        multi_spec = build_multi_spec(v1_per_image)
+        multi_spec = build_multi_spec(v1_per_image, link_lsd=link_lsd)
+
+    if link_lsd:
+        if "Lsd" not in multi_spec.shared:
+            raise ValueError(
+                "lsd_offsets_um requires a shared 'Lsd' in the multi_spec "
+                "(build it with build_multi_spec(..., link_lsd=True))")
+        p_lsd = multi_spec.shared["Lsd"]
+        # The shared block is taken from image 0, so this Parameter's bounds
+        # are centred on image 0's DISTANCE, whereas it now has to represent
+        # L0 at the centroid of the scan.  Re-centre the box on L0_seed as
+        # well as the init: leaving the old bounds puts the start point far
+        # outside them, the Logit transform saturates, and LM sits on a bound
+        # burning its whole iteration budget without moving.
+        half = 0.5 * abs(p_lsd.bounds[1] - p_lsd.bounds[0]) if p_lsd.bounds \
+            else max(1.0e4, 0.05 * abs(L0_seed))
+        p_lsd.init = L0_seed
+        p_lsd.refined = True
+        p_lsd.bounds = (L0_seed - half, L0_seed + half)
+        p_lsd.transform = None      # rebuilt as Logit over the new box
+        if verbose:
+            print(f"[multi] linked Lsd: L0 seed {L0_seed/1e3:.4f} mm, "
+                  f"box +/-{half/1e3:.1f} mm, Delta range "
+                  f"{d_arr.min()/1e3:+.1f}..{d_arr.max()/1e3:+.1f} mm",
+                  flush=True)
 
     cost_final = float("inf")
     rc_final = 1
@@ -151,9 +241,17 @@ def autocalibrate_multi(
         # E-step per image at current geometry.
         fits_per_image: List[FittedDataset] = []
         for v1, img, drk in zip(v1_per_image, images, darks):
-            fits_per_image.append(
-                run_estep_v1(v1, img, dark=drk, dtype=dtype, device=device)
-            )
+            fd = run_estep_v1(v1, img, dark=drk, dtype=dtype, device=device)
+            if link_lsd and fd.ring_d_spacing_A is None and fd.rt is not None:
+                # Refining a SHARED Wavelength needs the autograd chain to run
+                # through lambda, which pseudo_strain_residual only does when
+                # per-point d-spacings are supplied (otherwise it uses the
+                # pre-computed constant 2theta and d(residual)/d(lambda) = 0).
+                # run_estep_v1 leaves this field empty, so fill it here.
+                d_ring = torch.as_tensor(fd.rt.d_spacing, dtype=dtype,
+                                         device=device)
+                fd.ring_d_spacing_A = d_ring[fd.ring_idx]
+            fits_per_image.append(fd)
 
         x_full, info = pack_multi(multi_spec, dtype=dtype, device=device)
         refined_idx, lo, hi = _build_multi_indices(multi_spec, info, dtype, device)
@@ -180,12 +278,19 @@ def autocalibrate_multi(
             per_dicts = [unpack_spec(x_full_now, img_info, ps)
                           for img_info, ps in zip(info.per_image_info, per_specs)]
             r_pieces: List[torch.Tensor] = []
-            for fits, per_d in zip(fits_per_image, per_dicts):
+            for i_img, (fits, per_d) in enumerate(zip(fits_per_image, per_dicts)):
                 merged = {**shared_dict, **per_d}
+                if link_lsd:
+                    # Lsd_i = L0 + Delta_i.  Built here (not packed as a
+                    # parameter) so the autograd chain runs through the single
+                    # shared L0 and the Delta_i stay exact constants.
+                    merged["Lsd"] = shared_dict["Lsd"] + deltas_t[i_img]
                 r = pseudo_strain_residual(
                     fits.Y_pix, fits.Z_pix, fits.ring_two_theta_deg, merged,
                     rho_d=fits.rho_d, weights=fits.weights,
                     panel_layout=panel_layout, panel_idx=fits.panel_idx,
+                    ring_idx=fits.ring_idx,
+                    ring_d_spacing_A=fits.ring_d_spacing_A,
                 )
                 r_pieces.append(r)
             if _zs_active:
@@ -212,11 +317,19 @@ def autocalibrate_multi(
         for name, val in shared_dict_final.items():
             init = val.detach().cpu() if val.numel() > 1 else float(val.detach())
             multi_spec.shared[name].init = init
-            for v1 in v1_per_image:
+            for i_img, v1 in enumerate(v1_per_image):
                 if hasattr(v1, name) and val.numel() == 1:
                     try:
                         cur = getattr(v1, name)
-                        setattr(v1, name, type(cur)(float(val.detach())))
+                        v = float(val.detach())
+                        if link_lsd and name == "Lsd":
+                            # shared Lsd is L0; the image's actual distance for
+                            # the next E-step is L0 + Delta_i.  Writing L0 to
+                            # every image would collapse the whole scan onto
+                            # one distance and the next E-step would look for
+                            # rings at the wrong radii.
+                            v = v + float(deltas_t[i_img])
+                        setattr(v1, name, type(cur)(v))
                     except Exception:
                         pass
         for img_idx, per_d in enumerate(per_dicts_final):
@@ -350,6 +463,12 @@ def autocalibrate_multi(
                   f"{sum(t.numel() for t in Y_all)} non-outlier fits "
                   f"(need >=50)", flush=True)
 
+    L0_out = None
+    lsd_out = None
+    if link_lsd:
+        L0_out = float(shared_dict_final["Lsd"].detach())
+        lsd_out = [L0_out + float(d) for d in deltas_t]
+
     return MultiResult(
         multi_spec=multi_spec,
         shared_unpacked=shared_dict_final,
@@ -357,6 +476,8 @@ def autocalibrate_multi(
         cost=cost_final, rc=rc_final,
         residual_corr_map=residual_map,
         post_residual_strain_uE=post_strain,
+        L0_um=L0_out,
+        lsd_per_image_um=lsd_out,
     )
 
 

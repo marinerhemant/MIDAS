@@ -42,6 +42,16 @@ def main(argv: Optional[List[str]] = None) -> int:
                    help="image files (multi-image mode)")
     p.add_argument("--paramsfiles", type=Path, nargs="+",
                    help="per-image paramstest files (multi-image mode)")
+    p.add_argument("--lsd-offsets", type=float, nargs="+", default=None,
+                   metavar="UM",
+                   help="multi mode: EXACTLY known relative detector travel, "
+                        "one per image, in µm (any common origin — e.g. the "
+                        "stage readback). Switches on linked-distance mode: "
+                        "Lsd_i = L0 + Delta_i from a single shared L0, with a "
+                        "shared refined Wavelength. This — not merely using "
+                        "several distances — is what makes the wavelength "
+                        "identifiable; with a free Lsd per image, lambda and "
+                        "the distances rescale together and stay degenerate.")
     p.add_argument("--bayesian-mode", choices=("laplace", "vi", "hmc"),
                    default="laplace")
     p.add_argument("--n-iter", type=int, default=5)
@@ -75,8 +85,18 @@ def main(argv: Optional[List[str]] = None) -> int:
             raise SystemExit("len(--images) must equal len(--paramsfiles)")
         v1s = [V1Params.from_file(p) for p in args.paramsfiles]
         imgs = [_load_image(p) for p in args.images]
+        if args.lsd_offsets is not None and len(args.lsd_offsets) != len(imgs):
+            raise SystemExit(
+                f"--lsd-offsets has {len(args.lsd_offsets)} values but "
+                f"{len(imgs)} images were given; pass one per image")
         result = autocalibrate_multi(v1s, imgs, n_iter=args.n_iter,
-                                       device=args.device, verbose=args.verbose)
+                                       device=args.device, verbose=args.verbose,
+                                       lsd_offsets_um=args.lsd_offsets)
+        if result.L0_um is not None:
+            lam = float(result.shared_unpacked["Wavelength"].detach())
+            print(f"linked-distance fit: L0 = {result.L0_um/1e3:.4f} mm, "
+                  f"Wavelength = {lam:.7f} A "
+                  f"({12.398419843320026/lam:.4f} keV)")
         # Write per-image paramstest files.
         for i, (per, v1_i) in enumerate(zip(result.per_image_unpacked, v1s)):
             unpacked = {**result.shared_unpacked, **per}
