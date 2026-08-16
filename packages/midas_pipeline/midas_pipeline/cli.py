@@ -182,7 +182,7 @@ def _build_parser() -> argparse.ArgumentParser:
                           "'iterative' and 'all_at_once' give ~40 um. On the "
                           "datasetA Ni layer it took the median |dposition| "
                           "from 205.8 um to 11.6 um (null 11.0) and cut grains "
-                          "beyond 500 um from 18.5% to 1.2%. Use "
+                          "beyond 500 um from 18.5%% to 1.2%%. Use "
                           "'all_at_once' only to reproduce a pre-0.8 run.")
     run.add_argument("--use-bounds", action="store_true",
                      help="bound refinement via sigmoid reparam (torch-native, "
