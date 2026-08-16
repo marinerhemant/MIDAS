@@ -10,6 +10,8 @@ return a list of ValidationIssue.
 
 from __future__ import annotations
 
+import math
+
 from typing import Any, Callable
 
 from .schema import CrossFieldRule, Path, Severity, ValidationIssue
@@ -552,6 +554,113 @@ def ring_numbers_below_max(ctx: Ctx) -> list[ValidationIssue]:
     return out
 
 
+def rhod_plausible(ctx: Ctx) -> list[ValidationIssue]:
+    """``RhoD`` must be about the beam-centre-to-farthest-corner distance in um.
+
+    It is two things at once: the distortion normalisation (rho = R_um / RhoD)
+    and, aliased to ``MaxRingRad``, the cap on hkl generation. Too large and
+    the polynomial goes limp *and* the generator emits hundreds of rings.
+
+    Measured, 20-ID Varex 2880 px at 150 um: ``RhoD 2000000`` (6.5x the true
+    309537) produced 745 rings, overran the c-omp indexer's fixed 500-ring
+    array, and indexed 0 of 4569 seeds without raising. The old `positive`
+    validator passed it, because 2000000 is positive.
+    """
+    rho = ctx.all_values.get("RhoD") or ctx.all_values.get("MaxRingRad")
+    px = ctx.all_values.get("px")
+    n_y = ctx.all_values.get("NrPixelsY") or ctx.all_values.get("NrPixels")
+    n_z = ctx.all_values.get("NrPixelsZ") or n_y
+    if not rho or not px or not n_y:
+        return []
+    rho = rho[0] if isinstance(rho, list) else rho
+    px = px[0] if isinstance(px, list) else px
+    n_y = n_y[0] if isinstance(n_y, list) else n_y
+    n_z = n_z[0] if isinstance(n_z, list) else n_z
+    if not (rho > 0 and px > 0 and n_y > 0):
+        return []
+
+    corner_um = px * math.hypot(float(n_y), float(n_z))          # generous: full diagonal
+    if rho > 2.0 * corner_um:
+        return [ValidationIssue(
+            severity=Severity.ERROR,
+            key="RhoD",
+            line=ctx.line_of.get("RhoD") or ctx.line_of.get("MaxRingRad"),
+            message=(
+                f"RhoD={rho:g} um is {rho / corner_um:.1f}x the detector's full "
+                f"diagonal ({corner_um:.0f} um for {n_y:g}x{n_z:g} at {px:g} um). "
+                "RhoD is the beam-centre-to-farthest-corner distance in MICRONS. "
+                "Oversized, it both weakens the distortion model and (as "
+                "MaxRingRad) generates far too many rings, which can overrun the "
+                "indexer's fixed ring array and silently index nothing."
+            ),
+            suggestion=(
+                f"Set RhoD to about {corner_um / 2.0:.0f}-{corner_um:.0f} "
+                "(corner distance x pixel pitch). midas-calibrate-v2 --mode ff "
+                "computes it for you."
+            ),
+            rule="rhod_plausible",
+        )]
+    if rho < 0.25 * corner_um:
+        return [ValidationIssue(
+            severity=Severity.WARNING,
+            key="RhoD",
+            line=ctx.line_of.get("RhoD") or ctx.line_of.get("MaxRingRad"),
+            message=(
+                f"RhoD={rho:g} um is far smaller than the detector diagonal "
+                f"({corner_um:.0f} um). If this is a pixel count rather than "
+                "microns, the distortion polynomial will explode."
+            ),
+            suggestion=f"In microns that would be about {rho * px:.0f}.",
+            rule="rhod_plausible",
+        )]
+    return []
+
+
+#: The c-omp indexer writes RingHKL[Rnr]/RingTtheta[Rnr] with no bounds check
+#: into arrays sized by this. Keep in step with MAX_N_RINGS in
+#: midas_index/c_src/IndexerUnified.c.
+MAX_N_RINGS = 500
+
+
+def ring_cap_within_indexer_array(ctx: Ctx) -> list[ValidationIssue]:
+    """Warn when the ring cap could generate more rings than the indexer holds.
+
+    Estimating the exact ring count needs the lattice and wavelength, so this
+    is a cheap proxy: how many ring radii fit inside MaxRingRad compared with
+    what fits on the detector. A cap far beyond the detector is the condition
+    that produced 745 rings and a silent zero-grain run.
+    """
+    rho = ctx.all_values.get("MaxRingRad") or ctx.all_values.get("RhoD")
+    px = ctx.all_values.get("px")
+    n_y = ctx.all_values.get("NrPixelsY") or ctx.all_values.get("NrPixels")
+    if not rho or not px or not n_y:
+        return []
+    rho = rho[0] if isinstance(rho, list) else rho
+    px = px[0] if isinstance(px, list) else px
+    n_y = n_y[0] if isinstance(n_y, list) else n_y
+    if not (rho > 0 and px > 0 and n_y > 0):
+        return []
+    on_detector_um = px * float(n_y) / 2.0
+    if on_detector_um <= 0 or rho <= 2.0 * on_detector_um:
+        return []
+    return [ValidationIssue(
+        severity=Severity.WARNING,
+        key="MaxRingRad",
+        line=ctx.line_of.get("MaxRingRad") or ctx.line_of.get("RhoD"),
+        message=(
+            f"The ring cap reaches {rho / on_detector_um:.0f}x past the detector "
+            "edge, so hkl generation will emit many rings that can never be "
+            f"observed. Beyond {MAX_N_RINGS} rings the c-omp indexer overruns a "
+            "fixed array and indexes nothing, without error."
+        ),
+        suggestion=(
+            "After generating hkls.csv, check: "
+            "awk 'NR>1{print $5}' hkls.csv | sort -n | tail -1"
+        ),
+        rule="ring_cap_within_indexer_array",
+    )]
+
+
 # ─── Lookup table ────────────────────────────────────────────────────────────
 
 
@@ -568,6 +677,8 @@ RULES: dict[str, RuleFn] = {
     "ri_etamax_gt_etamin": ri_etamax_gt_etamin,
     "pf_nscans_implies_scanstep": pf_nscans_implies_scanstep,
     "nrpixels_either_or": nrpixels_either_or,
+    "rhod_plausible": rhod_plausible,
+    "ring_cap_within_indexer_array": ring_cap_within_indexer_array,
 }
 
 
@@ -664,5 +775,22 @@ RULE_SPECS: list[CrossFieldRule] = [
         applies_to=frozenset({Path.FF, Path.NF, Path.PF, Path.RI}),
         severity=Severity.ERROR,
         check="nrpixels_either_or",
+    ),
+    CrossFieldRule(
+        name="rhod_plausible",
+        description="RhoD must be about the beam-centre-to-corner distance in "
+                    "microns; oversized values weaken the distortion model and "
+                    "overrun the indexer's ring array.",
+        applies_to=frozenset({Path.FF, Path.NF, Path.PF, Path.RI}),
+        severity=Severity.ERROR,
+        check="rhod_plausible",
+    ),
+    CrossFieldRule(
+        name="ring_cap_within_indexer_array",
+        description="A ring cap far beyond the detector generates unobservable "
+                    "rings and can exceed the indexer's fixed ring array.",
+        applies_to=frozenset({Path.FF, Path.PF}),
+        severity=Severity.WARNING,
+        check="ring_cap_within_indexer_array",
     ),
 ]

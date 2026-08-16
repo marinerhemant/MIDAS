@@ -21,6 +21,21 @@ from pathlib import Path as FsPath
 
 from .schema import Path, Severity
 
+# ── MIDAS preflight: richer argument errors when midas-params is installed ───
+_MIDAS_DIST = "midas-params"
+
+
+def _midas_make_parser(*a, **kw):
+    """ArgumentParser factory. Uses midas_params' subclass when available so
+    argument errors carry the running version and a did-you-mean; falls back to
+    stock argparse otherwise, so this stays an optional dependency."""
+    try:
+        from midas_params.preflight import MidasArgumentParser
+    except Exception:
+        return argparse.ArgumentParser(*a, **kw)
+    return MidasArgumentParser(*a, package=_MIDAS_DIST, **kw)
+
+
 
 def _path_from_str(s: str) -> Path:
     try:
@@ -197,7 +212,7 @@ def cmd_wizard(args: argparse.Namespace) -> int:
 
 
 def build_parser() -> argparse.ArgumentParser:
-    p = argparse.ArgumentParser(prog="midas-params",
+    p = _midas_make_parser(prog="midas-params",
                                  description="MIDAS parameter-file tools.")
     p.add_argument("--no-color", action="store_true", help="Disable ANSI colors.")
     sub = p.add_subparsers(dest="cmd", required=True)

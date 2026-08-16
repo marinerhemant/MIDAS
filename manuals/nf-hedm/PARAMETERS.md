@@ -254,7 +254,7 @@ All read by `midas_nf_preprocess.process_images` (`process_images/params.py:83-1
 | Key | Values / units | Read by |
 |---|---|---|
 | `MinFracAccept` | 0–1 | phase-1 screen threshold; also a `MinConfidence` fallback in `mic2grains` (`mic2grains.py:80-83`). `ps_au.txt:124` suggests **0.1 seeded / 0.04 unseeded / 0.01 deformed** |
-| `OrientTol` | deg | phase-2 search box per seed (`fit_orientation.py:363-365`). Default 1.0 |
+| `OrientTol` | deg | phase-2 search box per seed (`fit_orientation.py:466-470`). Default 1.0 |
 | `ExcludePoleAngle` | deg | diffr-spots, fitorientation |
 | `BoxSize` | 4 floats µm, relative to beam centre — one line per distance | diffr-spots (list), fitorientation (list) |
 | `MinConfidence` | 0–1 | `mic2grains`; fitorientation; the multi-resolution bad-voxel filter `_filter_bad_voxels` (`workflows.py:145-170`) |
