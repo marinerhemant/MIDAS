@@ -1601,9 +1601,27 @@ int main(int argc, char *argv[]) {
     fdFitBest = open(ffn, O_CREAT | O_WRONLY, S_IRUSR | S_IWUSR);
   }
 
+  /* Intra-stage progress, same contract as midas_indexer: counted on entry,
+   * reported by whichever thread crosses the interval, fflush'd because
+   * stdout is a pipe. midas-pipeline parses this line, so keep the format. */
+  long long nDoneFit = 0;
+  const long long fitReportEvery =
+      (long long)(nSptIDs / 200) > 0 ? (long long)(nSptIDs / 200) : 1;
+  double fit_t0 = omp_get_wtime();
 #pragma omp parallel for num_threads(numProcs) private(thisRowNr)              \
     schedule(dynamic)
   for (thisRowNr = 0; thisRowNr < nSptIDs; thisRowNr++) {
+    {
+      long long doneNow;
+#pragma omp atomic capture
+      doneNow = ++nDoneFit;
+      if (doneNow % fitReportEvery == 0 || doneNow == (long long)nSptIDs) {
+        double el = omp_get_wtime() - fit_t0;
+        printf("  progress: %lld/%d seeds, %.1f seeds/s, elapsed %.1fs\n",
+               doneNow, nSptIDs, (double)doneNow / (el > 1e-9 ? el : 1e-9), el);
+        fflush(stdout);
+      }
+    }
     char *h1 = "SpotID\tYObsCorrPos\tZObsCorrPos\tOmegaObsCorrPos\tG1Obs\tG2Obs"
                "\tG3Obs\tYExp\tZExp\tOmegaExp\tG1Exp\tG2Exp\tG3Exp\t";
     char *h2 = "YObsCorrWedge\tZObsCorrWedge\tOmegaObsCorrWedge\tOmegaObs\tYObs"

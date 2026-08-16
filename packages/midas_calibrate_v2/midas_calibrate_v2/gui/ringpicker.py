@@ -70,6 +70,21 @@ from ._circle_fit import (
     kasa_circle_fit, geometric_lm_refine, joint_bc_lsd_fit,
 )
 
+# ── MIDAS preflight: richer argument errors when midas-params is installed ───
+_MIDAS_DIST = "midas-calibrate-v2"
+
+
+def _midas_make_parser(*a, **kw):
+    """ArgumentParser factory. Uses midas_params' subclass when available so
+    argument errors carry the running version and a did-you-mean; falls back to
+    stock argparse otherwise, so this stays an optional dependency."""
+    try:
+        from midas_params.preflight import MidasArgumentParser
+    except Exception:
+        return argparse.ArgumentParser(*a, **kw)
+    return MidasArgumentParser(*a, package=_MIDAS_DIST, **kw)
+
+
 
 # ---------------------------------------------------------------------------
 # Calibrant presets
@@ -595,7 +610,7 @@ class RingPicker:
 # ---------------------------------------------------------------------------
 
 def _parse_args(argv: Optional[List[str]] = None) -> argparse.Namespace:
-    p = argparse.ArgumentParser(
+    p = _midas_make_parser(
         prog="midas-calibrate-v2-pick",
         description=(
             "Manual ring-picker for midas-calibrate-v2.  Produces a "

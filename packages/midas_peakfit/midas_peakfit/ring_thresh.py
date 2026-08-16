@@ -53,6 +53,21 @@ from typing import Dict, List, Optional, Sequence
 
 import numpy as np
 
+# ── MIDAS preflight: richer argument errors when midas-params is installed ───
+_MIDAS_DIST = "midas-peakfit"
+
+
+def _midas_make_parser(*a, **kw):
+    """ArgumentParser factory. Uses midas_params' subclass when available so
+    argument errors carry the running version and a did-you-mean; falls back to
+    stock argparse otherwise, so this stays an optional dependency."""
+    try:
+        from midas_params.preflight import MidasArgumentParser
+    except Exception:
+        return argparse.ArgumentParser(*a, **kw)
+    return MidasArgumentParser(*a, package=_MIDAS_DIST, **kw)
+
+
 DEFAULT_SWEEP = (5, 10, 20, 30, 50, 75, 100, 150, 200, 300, 500)
 DEFAULT_SNR_MIN = 5.0
 DEFAULT_SNR_CLEAN_FRAC = 0.90
@@ -486,7 +501,7 @@ def main(argv: Optional[Sequence[str]] = None) -> int:
     """Console entry point ``midas-ring-thresh``."""
     import argparse
 
-    ap = argparse.ArgumentParser(
+    ap = _midas_make_parser(
         prog="midas-ring-thresh",
         description="Recommend RingThresh per ring from the data, using the "
                     "production peak-search path. Reports two independent "

@@ -34,6 +34,21 @@ from . import (
     write_map_bin_from_geometry,
 )
 
+# ── MIDAS preflight: richer argument errors when midas-params is installed ───
+_MIDAS_DIST = "midas-integrate-v2"
+
+
+def _midas_make_parser(*a, **kw):
+    """ArgumentParser factory. Uses midas_params' subclass when available so
+    argument errors carry the running version and a did-you-mean; falls back to
+    stock argparse otherwise, so this stays an optional dependency."""
+    try:
+        from midas_params.preflight import MidasArgumentParser
+    except Exception:
+        return argparse.ArgumentParser(*a, **kw)
+    return MidasArgumentParser(*a, package=_MIDAS_DIST, **kw)
+
+
 
 def _load_image(path: Path, *, NY: int, NZ: int,
                   raw_dtype: str | None) -> np.ndarray:
@@ -85,7 +100,7 @@ def _build_geometry_and_integrate(spec, image, *, mode: str, K: int):
 
 
 def integrate_main(argv=None) -> int:
-    p = argparse.ArgumentParser(
+    p = _midas_make_parser(
         prog="midas-integrate-v2",
         description=(
             "Integrate one detector frame against a v1 paramstest using "
@@ -149,7 +164,7 @@ def integrate_main(argv=None) -> int:
 
 
 def write_map_main(argv=None) -> int:
-    p = argparse.ArgumentParser(
+    p = _midas_make_parser(
         prog="midas-integrate-v2-write-map",
         description=(
             "Build a v2 binning geometry from a v1 paramstest and emit "
@@ -195,7 +210,7 @@ def batch_main(argv=None) -> int:
     against the same geometry, writes one CSV per frame OR a single
     HDF5 with all profiles.
     """
-    p = argparse.ArgumentParser(
+    p = _midas_make_parser(
         prog="midas-integrate-v2-batch",
         description=(
             "Batch-integrate a sweep-mode stack of detector frames "
@@ -369,7 +384,7 @@ def bootstrap_main(argv=None) -> int:
     Wraps ``midas_calibrate_v2.bootstrap.estimate_initial_spec`` and
     emits a v1-format ``paramstest.txt`` ready for any MIDAS workflow.
     """
-    p = argparse.ArgumentParser(
+    p = _midas_make_parser(
         prog="midas-bootstrap",
         description="One-shot calibration from a calibrant frame.",
     )
@@ -415,7 +430,7 @@ def pdf_main(argv=None) -> int:
     5. Write outputs in DAT (PDFgetX3-friendly) and/or FXYE (TOPAS) and
        optional ``.gr`` (G(r) + σ).
     """
-    p = argparse.ArgumentParser(
+    p = _midas_make_parser(
         prog="midas-integrate-v2-pdf",
         description=(
             "Differentiable PDF workflow: pixel → I(Q) → G(r) with σ "

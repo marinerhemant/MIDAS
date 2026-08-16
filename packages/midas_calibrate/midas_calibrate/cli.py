@@ -8,6 +8,21 @@ from typing import Sequence
 
 import numpy as np
 
+# ── MIDAS preflight: richer argument errors when midas-params is installed ───
+_MIDAS_DIST = "midas-calibrate"
+
+
+def _midas_make_parser(*a, **kw):
+    """ArgumentParser factory. Uses midas_params' subclass when available so
+    argument errors carry the running version and a did-you-mean; falls back to
+    stock argparse otherwise, so this stays an optional dependency."""
+    try:
+        from midas_params.preflight import MidasArgumentParser
+    except Exception:
+        return argparse.ArgumentParser(*a, **kw)
+    return MidasArgumentParser(*a, package=_MIDAS_DIST, **kw)
+
+
 
 def _load_image(path: Path) -> np.ndarray:
     p = Path(path)
@@ -29,7 +44,7 @@ def main(argv: Sequence[str] | None = None) -> int:
 
 
 def autocalibrate_main(argv: Sequence[str] | None = None) -> int:
-    parser = argparse.ArgumentParser(prog="midas-autocalibrate",
+    parser = _midas_make_parser(prog="midas-autocalibrate",
                                      description="Native Python detector calibration")
     parser.add_argument("params_file", type=Path, help="CalibrationParams .txt")
     parser.add_argument("--image", type=Path, default=None,

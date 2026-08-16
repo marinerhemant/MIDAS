@@ -10,6 +10,21 @@ from __future__ import annotations
 import argparse
 from pathlib import Path
 
+# ── MIDAS preflight: richer argument errors when midas-params is installed ───
+_MIDAS_DIST = "midas-joint-ff-calibrate"
+
+
+def _midas_make_parser(*a, **kw):
+    """ArgumentParser factory. Uses midas_params' subclass when available so
+    argument errors carry the running version and a did-you-mean; falls back to
+    stock argparse otherwise, so this stays an optional dependency."""
+    try:
+        from midas_params.preflight import MidasArgumentParser
+    except Exception:
+        return argparse.ArgumentParser(*a, **kw)
+    return MidasArgumentParser(*a, package=_MIDAS_DIST, **kw)
+
+
 
 def _grain_tx(args) -> int:
     from midas_joint_ff_calibrate.grain_refine import refine_geometry_from_grains
@@ -32,7 +47,7 @@ def _grain_tx(args) -> int:
 
 
 def main(argv=None) -> int:
-    p = argparse.ArgumentParser(prog="midas-joint-ff-calibrate", description=__doc__,
+    p = _midas_make_parser(prog="midas-joint-ff-calibrate", description=__doc__,
                                 formatter_class=argparse.RawDescriptionHelpFormatter)
     sub = p.add_subparsers(dest="cmd", required=True)
 

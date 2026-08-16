@@ -43,6 +43,21 @@ from midas_defect.defect_tests import (
 )
 from midas_defect.williamson_hall import dislocation_density_per_grain
 
+# ── MIDAS preflight: richer argument errors when midas-params is installed ───
+_MIDAS_DIST = "midas-defect"
+
+
+def _midas_make_parser(*a, **kw):
+    """ArgumentParser factory. Uses midas_params' subclass when available so
+    argument errors carry the running version and a did-you-mean; falls back to
+    stock argparse otherwise, so this stays an optional dependency."""
+    try:
+        from midas_params.preflight import MidasArgumentParser
+    except Exception:
+        return argparse.ArgumentParser(*a, **kw)
+    return MidasArgumentParser(*a, package=_MIDAS_DIST, **kw)
+
+
 
 @dataclass
 class DemkGeometry:
@@ -158,7 +173,7 @@ def run_inventory(voxels_npz: str, grains_csv: str, *, crystal=None, geom=None,
 
 
 def main():
-    ap = argparse.ArgumentParser(description=__doc__)
+    ap = _midas_make_parser(description=__doc__)
     ap.add_argument("--voxels", required=True, help="sparse voxel NPZ (indices/values)")
     ap.add_argument("--grains", required=True, help="MIDAS Grains.csv")
     ap.add_argument("--q-max", type=float, default=8.5)

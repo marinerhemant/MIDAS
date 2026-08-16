@@ -30,13 +30,28 @@ from .fit_multipoint import fit_multipoint_run
 from .fit_orientation import fit_orientation_run
 from .fit_parameters import fit_parameters_run
 
+# ── MIDAS preflight: richer argument errors when midas-params is installed ───
+_MIDAS_DIST = "midas-nf-fitorientation"
+
+
+def _midas_make_parser(*a, **kw):
+    """ArgumentParser factory. Uses midas_params' subclass when available so
+    argument errors carry the running version and a did-you-mean; falls back to
+    stock argparse otherwise, so this stays an optional dependency."""
+    try:
+        from midas_params.preflight import MidasArgumentParser
+    except Exception:
+        return argparse.ArgumentParser(*a, **kw)
+    return MidasArgumentParser(*a, package=_MIDAS_DIST, **kw)
+
+
 
 def _parse_common(args: List[str]) -> argparse.Namespace:
     """Strip the optional flags from the argv tail, returning a
     namespace with ``device``, ``fp32``, ``screen_only``, ``verbose``,
     and the residual positional args.
     """
-    pp = argparse.ArgumentParser(add_help=False)
+    pp = _midas_make_parser(add_help=False)
     pp.add_argument("--device", default="auto",
                     choices=["auto", "cpu", "cuda"])
     pp.add_argument("--fp32", action="store_true")

@@ -25,6 +25,21 @@ import sys
 
 # --- Global Configuration ---
 from numcodecs import blosc as _blosc
+
+# ── MIDAS preflight: richer argument errors when midas-params is installed ───
+_MIDAS_DIST = "midas-zipper"
+
+
+def _midas_make_parser(*a, **kw):
+    """ArgumentParser factory. Uses midas_params' subclass when available so
+    argument errors carry the running version and a did-you-mean; falls back to
+    stock argparse otherwise, so this stays an optional dependency."""
+    try:
+        from midas_params.preflight import MidasArgumentParser
+    except Exception:
+        return argparse.ArgumentParser(*a, **kw)
+    return MidasArgumentParser(*a, package=_MIDAS_DIST, **kw)
+
 _blosc.set_nthreads(8)
 compressor = Blosc(cname='zstd', clevel=1, shuffle=Blosc.BITSHUFFLE)
 
@@ -875,7 +890,7 @@ def build_config(parser, args):
 
 # --- Main ---
 def main():
-    parser = argparse.ArgumentParser(description='Generate Zarr.zip dataset.', formatter_class=argparse.ArgumentDefaultsHelpFormatter)
+    parser = _midas_make_parser(description='Generate Zarr.zip dataset.', formatter_class=argparse.ArgumentDefaultsHelpFormatter)
     parser.add_argument('-resultFolder', type=str, required=True); 
     parser.add_argument('-paramFN', type=str, required=True)
     parser.add_argument('-dataFN', type=str, default=''); 

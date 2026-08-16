@@ -11,9 +11,24 @@ from .hkl_gen import generate_hkls
 from .lattice import Lattice
 from .space_group import SpaceGroup, list_space_groups
 
+# ── MIDAS preflight: richer argument errors when midas-params is installed ───
+_MIDAS_DIST = "midas-hkls"
+
+
+def _midas_make_parser(*a, **kw):
+    """ArgumentParser factory. Uses midas_params' subclass when available so
+    argument errors carry the running version and a did-you-mean; falls back to
+    stock argparse otherwise, so this stays an optional dependency."""
+    try:
+        from midas_params.preflight import MidasArgumentParser
+    except Exception:
+        return argparse.ArgumentParser(*a, **kw)
+    return MidasArgumentParser(*a, package=_MIDAS_DIST, **kw)
+
+
 
 def _build_parser() -> argparse.ArgumentParser:
-    p = argparse.ArgumentParser(prog="midas-hkls", description="Generate HKL list (sginfo replacement)")
+    p = _midas_make_parser(prog="midas-hkls", description="Generate HKL list (sginfo replacement)")
     sub = p.add_subparsers(dest="cmd", required=True)
 
     g = sub.add_parser("gen", help="Generate an HKL list")

@@ -11,6 +11,20 @@ import sys
 from pathlib import Path
 from typing import List, Optional
 
+# ── MIDAS preflight: richer argument errors when midas-params is installed ───
+_MIDAS_DIST = "midas-calibrate-v2"
+
+
+def _midas_make_parser(*a, **kw):
+    """ArgumentParser factory. Uses midas_params' subclass when available so
+    argument errors carry the running version and a did-you-mean; falls back to
+    stock argparse otherwise, so this stays an optional dependency."""
+    try:
+        from midas_params.preflight import MidasArgumentParser
+    except Exception:
+        return argparse.ArgumentParser(*a, **kw)
+    return MidasArgumentParser(*a, package=_MIDAS_DIST, **kw)
+
 
 def _load_image(path: Path):
     import numpy as np
@@ -29,8 +43,8 @@ def _load_image(path: Path):
 
 
 def main(argv: Optional[List[str]] = None) -> int:
-    p = argparse.ArgumentParser("midas-calibrate-v2",
-                                  description="Differentiable detector calibration v2.")
+    p = _midas_make_parser("midas-calibrate-v2",
+                                description="Differentiable detector calibration v2.")
     p.add_argument("paramsfile", type=Path, nargs="?", default=None,
                    help="v1-format paramstest.txt. In ff mode this is the "
                         "TEMPLATE; omit it and pass the --from-scratch group "
@@ -137,6 +151,21 @@ def main(argv: Optional[List[str]] = None) -> int:
     if args.mode == "ff":
         from .pipelines.ff_calibrate import (calibrate_ff_from_files,
                                              synthesize_template)
+        try:
+            from midas_params.preflight import preflight, check_hdf5_group
+            r = preflight(tool="midas-calibrate-v2", package="midas-calibrate-v2",
+                          paths={"--image": args.image,
+                                 "paramsfile (template)": args.paramsfile},
+                          device=args.device)
+            for msg in check_hdf5_group(args.image, args.image_group):
+                print(f"[preflight] problem: {msg}", file=sys.stderr)
+            for msg in check_hdf5_group(args.image, args.dark_group,
+                                        label="--dark-group"):
+                print(f"[preflight] problem: {msg}", file=sys.stderr)
+            if not r.ok:
+                raise SystemExit(2)
+        except ImportError:
+            pass
         if args.image is None:
             raise SystemExit("--image is required for ff mode (the calibrant "
                              "exposure)")

@@ -26,6 +26,7 @@ classifiers = [
     "Topic :: Scientific/Engineering :: Image Processing",
 ]
 dependencies = [
+    "midas-params>=0.9.0",  # preflight: CLI errors + path checks
     "numpy>=1.22",
     "torch>=2.1",
     "tifffile>=2022.0",

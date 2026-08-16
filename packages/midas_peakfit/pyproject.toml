@@ -24,6 +24,7 @@ classifiers = [
     "Topic :: Scientific/Engineering :: Physics",
 ]
 dependencies = [
+    "midas-params>=0.9.0",  # preflight: CLI errors + path checks
     "numpy>=1.22",
     "scipy>=1.9",
     "zarr>=2.18,<3.0",

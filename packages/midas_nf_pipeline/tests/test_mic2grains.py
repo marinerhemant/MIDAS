@@ -28,6 +28,37 @@ from midas_nf_pipeline.parse_mic import (
 _AU_DIR = Path(__file__).resolve().parents[3] / "NF_HEDM/Example/sim"
 _AU_PARAM = _AU_DIR / "test_ps_au.txt"
 _AU_BIN = _AU_DIR / "Au_bin_Reconstructed.mic.c_ref"
+
+
+def _c_binary_runs(path) -> bool:
+    """True only if the C reference actually EXECUTES.
+
+    Existence is not enough. These binaries were linked against
+    ``MIDAS/build/lib``; once that tree goes away the dynamic loader fails
+    with
+
+        Library not loaded: @rpath/libnlopt.1.dylib
+
+    and the process aborts before doing anything. A skipif that tests only for
+    the file then lets a dead binary through, and the parity test reports a
+    FAILURE -- implying the Python disagrees with C, when in fact C never ran
+    and nothing was compared. Probe it instead.
+    """
+    import subprocess
+    from pathlib import Path as _P
+    if not _P(str(path)).exists():
+        return False
+    try:
+        r = subprocess.run([str(path)], capture_output=True, timeout=30)
+    except (OSError, subprocess.SubprocessError):
+        return False
+    # A usage message on empty argv is fine (any exit code >= 0). A negative
+    # returncode means killed by a signal -- the dyld abort is -6 (SIGABRT) --
+    # and a loader message on stderr says the same thing explicitly.
+    if r.returncode < 0:
+        return False
+    return b"Library not loaded" not in (r.stderr or b"")
+
 _C_BIN = Path("/Users/hsharma/opt/MIDAS/NF_HEDM/bin/Mic2GrainsList")
 
 
@@ -37,6 +68,9 @@ def workspace():
         pytest.skip("Au example files not present")
     if not _C_BIN.exists():
         pytest.skip(f"C Mic2GrainsList binary not built: {_C_BIN}")
+    if not _c_binary_runs(_C_BIN):
+        pytest.skip(f"C Mic2GrainsList present but does not run "
+                    f"(stale link against MIDAS/build/lib): {_C_BIN}")
     with tempfile.TemporaryDirectory() as td:
         td_path = Path(td)
         # 1. Reproduce the .mic text file via our parse_mic.

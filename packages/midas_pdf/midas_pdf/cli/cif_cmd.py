@@ -20,6 +20,21 @@ from ..cif import (
 )
 from ._common import print_json
 
+# ── MIDAS preflight: richer argument errors when midas-params is installed ───
+_MIDAS_DIST = "midas-pdf"
+
+
+def _midas_make_parser(*a, **kw):
+    """ArgumentParser factory. Uses midas_params' subclass when available so
+    argument errors carry the running version and a did-you-mean; falls back to
+    stock argparse otherwise, so this stays an optional dependency."""
+    try:
+        from midas_params.preflight import MidasArgumentParser
+    except Exception:
+        return argparse.ArgumentParser(*a, **kw)
+    return MidasArgumentParser(*a, package=_MIDAS_DIST, **kw)
+
+
 
 def _cmd_info(args: argparse.Namespace) -> int:
     crystal = read_cif_to_crystal(args.path)
@@ -83,7 +98,7 @@ def _cmd_raw(args: argparse.Namespace) -> int:
 
 
 def main(argv: Optional[Sequence[str]] = None) -> int:
-    p = argparse.ArgumentParser(
+    p = _midas_make_parser(
         prog="midas-pdf-cif",
         description="Inspect or round-trip a CIF file via midas-hkls.")
     sub = p.add_subparsers(dest="cmd", required=True)

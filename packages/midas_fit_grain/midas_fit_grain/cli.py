@@ -27,11 +27,26 @@ from .device import apply_cpu_threads, resolve_device, resolve_dtype
 from .losses import DEFAULT_LOSS, LOSS_CHOICES
 from .driver import refine_block_from_disk
 
+# ── MIDAS preflight: richer argument errors when midas-params is installed ───
+_MIDAS_DIST = "midas-fit-grain"
+
+
+def _midas_make_parser(*a, **kw):
+    """ArgumentParser factory. Uses midas_params' subclass when available so
+    argument errors carry the running version and a did-you-mean; falls back to
+    stock argparse otherwise, so this stays an optional dependency."""
+    try:
+        from midas_params.preflight import MidasArgumentParser
+    except Exception:
+        return argparse.ArgumentParser(*a, **kw)
+    return MidasArgumentParser(*a, package=_MIDAS_DIST, **kw)
+
+
 LOG = logging.getLogger("midas_fit_grain.cli")
 
 
 def build_parser() -> argparse.ArgumentParser:
-    p = argparse.ArgumentParser(
+    p = _midas_make_parser(
         prog="midas-fit-grain",
         description=(
             "PyTorch single/multi-grain refiner — drop-in replacement for "

@@ -25,6 +25,21 @@ from .process_images import cli as process_images_cli
 from .seed_orientations import cli as seed_orientations_cli
 from .tomo_filter import cli as tomo_filter_cli
 
+# ── MIDAS preflight: richer argument errors when midas-params is installed ───
+_MIDAS_DIST = "midas-nf-preprocess"
+
+
+def _midas_make_parser(*a, **kw):
+    """ArgumentParser factory. Uses midas_params' subclass when available so
+    argument errors carry the running version and a did-you-mean; falls back to
+    stock argparse otherwise, so this stays an optional dependency."""
+    try:
+        from midas_params.preflight import MidasArgumentParser
+    except Exception:
+        return argparse.ArgumentParser(*a, **kw)
+    return MidasArgumentParser(*a, package=_MIDAS_DIST, **kw)
+
+
 
 _SUBCOMMANDS = {
     "hex-grid": hex_grid_cli,
@@ -36,7 +51,7 @@ _SUBCOMMANDS = {
 
 
 def _build_parser() -> argparse.ArgumentParser:
-    parser = argparse.ArgumentParser(
+    parser = _midas_make_parser(
         prog="midas-nf-preprocess",
         description="Differentiable PyTorch port of NF-HEDM preprocessing.",
     )

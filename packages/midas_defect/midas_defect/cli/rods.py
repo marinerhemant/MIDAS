@@ -26,6 +26,21 @@ from ..lattice import cual2_crystal
 from ..rod_detect import find_rods
 from ..seed_index import find_seed_orientation
 
+# ── MIDAS preflight: richer argument errors when midas-params is installed ───
+_MIDAS_DIST = "midas-defect"
+
+
+def _midas_make_parser(*a, **kw):
+    """ArgumentParser factory. Uses midas_params' subclass when available so
+    argument errors carry the running version and a did-you-mean; falls back to
+    stock argparse otherwise, so this stays an optional dependency."""
+    try:
+        from midas_params.preflight import MidasArgumentParser
+    except Exception:
+        return argparse.ArgumentParser(*a, **kw)
+    return MidasArgumentParser(*a, package=_MIDAS_DIST, **kw)
+
+
 
 def _add_args(p: argparse.ArgumentParser) -> None:
     p.add_argument("--voxels", required=True,
@@ -76,7 +91,7 @@ def _add_args(p: argparse.ArgumentParser) -> None:
 
 
 def main(argv: list[str] | None = None) -> int:
-    parser = argparse.ArgumentParser(prog="midas-defect-rods",
+    parser = _midas_make_parser(prog="midas-defect-rods",
                                      description=__doc__)
     _add_args(parser)
     args = parser.parse_args(argv)

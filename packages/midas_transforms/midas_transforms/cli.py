@@ -20,9 +20,24 @@ from typing import List, Optional
 
 from . import __version__
 
+# ── MIDAS preflight: richer argument errors when midas-params is installed ───
+_MIDAS_DIST = "midas-transforms"
+
+
+def _midas_make_parser(*a, **kw):
+    """ArgumentParser factory. Uses midas_params' subclass when available so
+    argument errors carry the running version and a did-you-mean; falls back to
+    stock argparse otherwise, so this stays an optional dependency."""
+    try:
+        from midas_params.preflight import MidasArgumentParser
+    except Exception:
+        return argparse.ArgumentParser(*a, **kw)
+    return MidasArgumentParser(*a, package=_MIDAS_DIST, **kw)
+
+
 
 def _common_argparser(prog: str, description: str) -> argparse.ArgumentParser:
-    p = argparse.ArgumentParser(prog=prog, description=description)
+    p = _midas_make_parser(prog=prog, description=description)
     p.add_argument("--device", choices=["cpu", "cuda", "mps"], default=None)
     p.add_argument("--dtype", choices=["float32", "float64"], default=None)
     p.add_argument("--version", action="version", version=f"midas-transforms {__version__}")
@@ -127,7 +142,7 @@ def bin_data_main(argv: Optional[List[str]] = None) -> int:
 
 def main(argv: Optional[List[str]] = None) -> int:
     """Umbrella command: ``midas-transforms <stage> [args]``."""
-    parser = argparse.ArgumentParser(
+    parser = _midas_make_parser(
         prog="midas-transforms",
         description="Pure-Python/PyTorch FF-HEDM transforms (merge / radius / fit-setup / bin-data).",
     )

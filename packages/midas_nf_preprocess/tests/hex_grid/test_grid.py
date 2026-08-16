@@ -209,13 +209,39 @@ def test_params_from_paramfile(tmp_path):
 # -----------------------------------------------------------------------------
 
 
+def _c_binary_runs(path) -> bool:
+    """True only if the C reference actually EXECUTES.
+
+    Existence is not enough. These binaries were linked against
+    ``MIDAS/build/lib``; once that tree goes away the loader fails with
+    ``Library not loaded: @rpath/libnlopt.1.dylib`` and the process aborts
+    before doing anything. A skipif that tests only for the file then lets a
+    dead binary through and the parity test reports a FAILURE -- implying the
+    Python disagrees with C, when C never ran and nothing was compared.
+    """
+    import subprocess
+    from pathlib import Path as _P
+    if not _P(str(path)).exists():
+        return False
+    try:
+        r = subprocess.run([str(path)], capture_output=True, timeout=30)
+    except (OSError, subprocess.SubprocessError):
+        return False
+    # A usage message on empty argv is fine (any exit code >= 0). A negative
+    # returncode means killed by a signal -- the dyld abort is -6 (SIGABRT) --
+    # and a loader message on stderr says the same thing explicitly.
+    if r.returncode < 0:
+        return False
+    return b"Library not loaded" not in (r.stderr or b"")
+
+
 C_BINARY = "/Users/hsharma/opt/MIDAS/NF_HEDM/bin/MakeHexGrid"
 
 
 @pytest.mark.parity
 @pytest.mark.skipif(
-    not __import__("os").path.exists(C_BINARY),
-    reason="compiled MakeHexGrid binary not found",
+    not _c_binary_runs(C_BINARY),
+    reason="compiled MakeHexGrid binary missing or does not run",
 )
 def test_make_hex_grid_matches_c(tmp_path):
     """Bit-comparable parity with the C MakeHexGrid for a small grid."""

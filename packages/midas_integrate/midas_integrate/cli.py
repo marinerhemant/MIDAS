@@ -39,6 +39,21 @@ from midas_integrate.kernels import build_csr, integrate, profile_1d, r_axis
 from midas_integrate.params import parse_params
 from midas_integrate.server import FrameServer
 
+# ── MIDAS preflight: richer argument errors when midas-params is installed ───
+_MIDAS_DIST = "midas-integrate"
+
+
+def _midas_make_parser(*a, **kw):
+    """ArgumentParser factory. Uses midas_params' subclass when available so
+    argument errors carry the running version and a did-you-mean; falls back to
+    stock argparse otherwise, so this stays an optional dependency."""
+    try:
+        from midas_params.preflight import MidasArgumentParser
+    except Exception:
+        return argparse.ArgumentParser(*a, **kw)
+    return MidasArgumentParser(*a, package=_MIDAS_DIST, **kw)
+
+
 
 def _add_common_args(p: argparse.ArgumentParser) -> None:
     p.add_argument("params", type=Path, help="MIDAS parameter file (.txt)")
@@ -53,7 +68,7 @@ def _add_common_args(p: argparse.ArgumentParser) -> None:
 # midas-detector-mapper
 # ─────────────────────────────────────────────────────────────────────────────
 def detector_mapper_main(argv=None) -> int:
-    p = argparse.ArgumentParser(
+    p = _midas_make_parser(
         prog="midas-detector-mapper",
         description="Build Map.bin / nMap.bin from a MIDAS parameter file.",
     )
@@ -103,7 +118,7 @@ def detector_mapper_main(argv=None) -> int:
 # midas-integrate (one-shot)
 # ─────────────────────────────────────────────────────────────────────────────
 def integrate_main(argv=None) -> int:
-    p = argparse.ArgumentParser(
+    p = _midas_make_parser(
         prog="midas-integrate",
         description="Integrate one detector frame against an existing Map.bin.",
     )
@@ -187,7 +202,7 @@ def integrate_main(argv=None) -> int:
 # midas-integrate-server (streaming)
 # ─────────────────────────────────────────────────────────────────────────────
 def server_main(argv=None) -> int:
-    p = argparse.ArgumentParser(
+    p = _midas_make_parser(
         prog="midas-integrate-server",
         description="Streaming integrator server (TCP, port 60439 by default).",
     )
@@ -262,7 +277,7 @@ def server_main(argv=None) -> int:
 # midas-integrate-export-csv
 # ─────────────────────────────────────────────────────────────────────────────
 def export_csv_main(argv=None) -> int:
-    p = argparse.ArgumentParser(
+    p = _midas_make_parser(
         prog="midas-integrate-export-csv",
         description="Export per-frame lineouts and the REtaMap from an "
                     "integrated zarr (.zarr.zip) as plain CSVs.",

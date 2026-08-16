@@ -16,6 +16,7 @@ classifiers = [
     "Topic :: Scientific/Engineering :: Physics",
 ]
 dependencies = [
+    "midas-params>=0.9.0",  # preflight: CLI errors + path checks
     "parsl",
 ]
 
